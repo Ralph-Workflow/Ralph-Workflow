@@ -1,16 +1,3 @@
-"""R2: first-start discovery respects an aggregate budget below the preflight timeout.
-
-S-1 / S-2: a shared monotonic deadline is checked between probes in
-``UpstreamRegistry.build``. When the aggregate discovery budget
-(``mcp_discovery_budget_from_env`` = preflight - _PROBE_SAFETY_S) is exhausted,
-remaining servers are warned-and-skipped rather than probed. This bounds the
-worst-case total discovery time strictly below the preflight timeout.
-
-These are unit tests that mock all network-facing components and use an
-injectable clock to verify timing behaviour deterministically without
-``time.sleep``.
-"""
-
 from __future__ import annotations
 
 import io
@@ -32,14 +19,8 @@ from ralph.mcp.upstream.registry import UpstreamRegistry
 if TYPE_CHECKING:
     from ralph.mcp.upstream.client import HttpUpstreamClient, StdioUpstreamClient
 
-# ---------------------------------------------------------------------------
-# Fake objects
-# ---------------------------------------------------------------------------
-
 
 class _FakeMonotonic:
-    """Injectable clock: starts at 0, advances only when advance() is called."""
-
     def __init__(self) -> None:
         self._now: float = 0.0
 
@@ -51,8 +32,6 @@ class _FakeMonotonic:
 
 
 class _ProbeCounterClient:
-    """Fake client that records every list_tools call in a counter list."""
-
     def __init__(self, server: UpstreamMcpServer, counter: list[int]) -> None:
         self._server = server
         self._counter = counter
@@ -72,8 +51,6 @@ class _ProbeCounterClient:
 
 
 class _TimeAdvancingClient:
-    """Fake client that advances the shared test clock by probe_duration on each call."""
-
     _probe_lock: threading.Lock = threading.Lock()
 
     def __init__(
@@ -111,11 +88,6 @@ class _TimeAdvancingClient:
         return {}
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
 def _make_servers(*names: str) -> list[UpstreamMcpServer]:
     return [
         UpstreamMcpServer(
@@ -127,21 +99,13 @@ def _make_servers(*names: str) -> list[UpstreamMcpServer]:
     ]
 
 
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
-
-
 class TestDiscoveryBudgetConstant:
-    """The aggregate discovery budget is strictly below the preflight timeout."""
-
     def test_discovery_budget_is_strictly_below_preflight(self) -> None:
         preflight = mcp_preflight_timeout_from_env({})
         discovery = mcp_discovery_budget_from_env({})
         assert discovery < preflight
 
     def test_discovery_budget_leaves_child_failure_window(self) -> None:
-        """After discovery budget expires, at least _PROBE_SAFETY_S remains for the child."""
         from ralph.mcp.protocol._startup_timeouts import _PROBE_SAFETY_S
 
         preflight = mcp_preflight_timeout_from_env({})
@@ -150,29 +114,17 @@ class TestDiscoveryBudgetConstant:
         assert remaining.total_seconds() >= _PROBE_SAFETY_S
 
     def test_discovery_budget_at_defaults_28_seconds(self) -> None:
-        """At documented defaults: 30s preflight, 2s safety → 28s aggregate budget."""
         discovery = mcp_discovery_budget_from_env({})
         assert discovery.total_seconds() == 28.0
 
 
 class TestAggregateBudgetEnforcement:
-    """The discovery loop enforces a single aggregate deadline, not per-server budgets."""
-
     def test_four_slow_servers_probed_within_aggregate_budget(self) -> None:
-        """With 4 servers each slower than the per-server budget, only a subset
-        are probed before the aggregate deadline is reached, and the total
-        elapsed time stays strictly at or below the aggregate budget."""
         clock = _FakeMonotonic()
         servers = _make_servers("slow-1", "slow-2", "slow-3", "slow-4")
         counter: list[int] = []
 
         def slow_factory(server: UpstreamMcpServer) -> _TimeAdvancingClient:
-            # Each probe would take 9.5s; aggregate budget = 28s.
-            # Probe 1: remaining = 28.0 > 0, timeout_s = 28.0. Probe takes 9.5s -> clock = 9.5s.
-            # Probe 2: remaining = 18.5 > 0, timeout_s = 18.5. Probe takes 9.5s -> clock = 19.0s.
-            # Probe 3: remaining = 9.0 > 0, timeout_s = 9.0. Probe needs 9.5s > 9.0s, so it times out
-            #          after 9.0s -> clock = 28.0s. It raises UpstreamCallError and is skipped.
-            # Probe 4: remaining = 28.0 - 28.0 = 0.0 <= 0 -> skipped before probe.
             return _TimeAdvancingClient(
                 server, counter, probe_duration=9.5, time_advancer=clock.advance
             )
@@ -187,15 +139,11 @@ class TestAggregateBudgetEnforcement:
             _monotonic=clock,
         )
 
-        # Three servers are probed; the fourth is skipped before probe
         assert len(counter) == 3
 
-        # Only the two that finished within budget are in the registry
         tools = registry.tool_definitions()
         assert len(tools) == 2
 
-        # Elapsed time is exactly 28.0s, strictly at or below the 28s aggregate budget
-        # and strictly below preflight (30s).
         assert clock() == 28.0
         discovery = mcp_discovery_budget_from_env({})
         assert clock() <= discovery.total_seconds()
@@ -203,10 +151,7 @@ class TestAggregateBudgetEnforcement:
         assert clock() < preflight.total_seconds()
 
     def test_partial_servers_probed_before_aggregate_budget_exhausted(self) -> None:
-        """When the aggregate deadline expires mid-loop, remaining servers are
-        skipped but already-probed servers are included in the registry."""
         clock = _FakeMonotonic()
-        # 7s per probe: 4 * 7s = 28s = budget (exactly); 5th server is skipped.
         servers = _make_servers("fast-1", "fast-2", "fast-3", "fast-4", "fast-5")
         counter: list[int] = []
 
@@ -225,17 +170,13 @@ class TestAggregateBudgetEnforcement:
             _monotonic=clock,
         )
 
-        # Four probes fit (4 * 7s = 28s = budget); fifth is skipped.
         assert len(counter) == 4
         assert counter == [1, 1, 1, 1]
 
-        # All four should be in the registry
         tools = registry.tool_definitions()
         assert len(tools) == 4
 
     def test_single_fast_upstream_unaffected_by_aggregate_budget(self) -> None:
-        """A single fast upstream is fully probed and appears in the registry,
-        with its probe time well within the aggregate budget."""
         clock = _FakeMonotonic()
         servers = _make_servers("fast")
         counter: list[int] = []
@@ -257,7 +198,6 @@ class TestAggregateBudgetEnforcement:
 
         tools = registry.tool_definitions()
         assert len(tools) == 1
-        # Alias format: ralph_upstream__{server_name}__{tool_name}
         assert tools[0].alias == "ralph_upstream__fast__tool-fast"
 
         elapsed = clock()
@@ -265,8 +205,6 @@ class TestAggregateBudgetEnforcement:
         assert elapsed < discovery.total_seconds()
 
     def test_on_unreachable_raise_still_respected_when_budget_not_exhausted(self) -> None:
-        """When on_unreachable=raise and budget is not exhausted, fast servers
-        are fully probed without error."""
         clock = _FakeMonotonic()
         servers = _make_servers("fast-1", "fast-2", "fast-3")
         counter: list[int] = []
@@ -276,7 +214,6 @@ class TestAggregateBudgetEnforcement:
                 server, counter, probe_duration=0.5, time_advancer=clock.advance
             )
 
-        # No error should be raised
         registry = UpstreamRegistry.build(
             servers,
             client_factory=cast(
@@ -287,13 +224,11 @@ class TestAggregateBudgetEnforcement:
             _monotonic=clock,
         )
 
-        # All three fast servers fit within the aggregate budget
         assert len(counter) == 3
         tools = registry.tool_definitions()
         assert len(tools) == 3
 
     def test_zero_servers_returns_empty_registry(self) -> None:
-        """With no servers, the registry is empty and the deadline is never consulted."""
         clock = _FakeMonotonic()
         registry = UpstreamRegistry.build(
             [],
@@ -301,16 +236,14 @@ class TestAggregateBudgetEnforcement:
             _monotonic=clock,
         )
         assert registry.tool_definitions() == []
-        assert clock() == 0.0  # deadline never consulted
+        assert clock() == 0.0
 
     def test_clock_not_advanced_when_server_skipped_due_to_budget(self) -> None:
-        """Skipped servers (budget exhausted) must not advance the clock."""
         clock = _FakeMonotonic()
         servers = _make_servers("probe-1", "probe-2", "skipped-1", "skipped-2")
         counter: list[int] = []
 
         def factory(server: UpstreamMcpServer) -> _TimeAdvancingClient:
-            # 2 * 14.0s = 28.0s = aggregate budget; remaining for 3rd and 4th is 0s
             return _TimeAdvancingClient(
                 server, counter, probe_duration=14.0, time_advancer=clock.advance
             )
@@ -325,12 +258,10 @@ class TestAggregateBudgetEnforcement:
             _monotonic=clock,
         )
 
-        # 2 probes (2 * 14.0s = 28.0s); remaining = 28 - 28 = 0 ≤ 0 → third and fourth skipped.
         assert len(counter) == 2
-        assert clock() == 28.0  # clock advanced only by the 2 successful probes
+        assert clock() == 28.0
 
     def test_multiple_fast_probes_all_fit_within_budget(self) -> None:
-        """Many fast probes (total < budget) all succeed without budget exhaustion."""
         clock = _FakeMonotonic()
         servers = _make_servers(*(f"fast-{i}" for i in range(10)))
         counter: list[int] = []
@@ -350,17 +281,11 @@ class TestAggregateBudgetEnforcement:
             _monotonic=clock,
         )
 
-        # 10 * 2s = 20s < 28s budget: all 10 fit
         assert len(counter) == 10
         assert len(registry.tool_definitions()) == 10
 
 
 class _TimeoutRecordingClient:
-    """Fake client that records the timeout_s passed to each list_tools call.
-
-    Advances the shared test clock up to probe_duration (capped by timeout_s).
-    """
-
     def __init__(
         self,
         server: UpstreamMcpServer,
@@ -396,15 +321,7 @@ class _TimeoutRecordingClient:
 
 
 class TestHardBoundTimeoutEnforcement:
-    """Each probe call is capped by the remaining budget so the sum never overshoots."""
-
     def test_second_probe_receives_remaining_budget(self) -> None:
-        """The second probe's timeout_s equals the remaining budget after the first.
-
-        Budget = 28s, first probe consumes 15s, leaving 13s. The second probe
-        must receive timeout_s == 13.0 (the remaining budget), proving the hard
-        bound is enforced per-call so the aggregate never exceeds the deadline.
-        """
         clock = _FakeMonotonic()
         servers = _make_servers("slow-1", "slow-2")
         recorded_timeouts: list[float | None] = []
@@ -424,11 +341,8 @@ class TestHardBoundTimeoutEnforcement:
             _monotonic=clock,
         )
 
-        # Both servers are probed
         assert len(recorded_timeouts) == 2
 
-        # First call: remaining = 28s, env budget >= 28s so no cap needed
-        # Second call: remaining after first = 13s, so timeout_s == 13.0
         assert recorded_timeouts[0] == 28.0, (
             f"expected first call timeout_s=28.0, got {recorded_timeouts[0]}"
         )
@@ -436,15 +350,12 @@ class TestHardBoundTimeoutEnforcement:
             f"expected second call timeout_s=13.0 (28 - 15), got {recorded_timeouts[1]}"
         )
 
-        # Clock advances 15s on first probe, 13s on second probe (capped at timeout_s=13.0) -> total 28.0s
         assert clock() == 28.0
         assert clock() <= 28.0
 
-        # First tool registered; second timed out and skipped under warn_and_skip
         assert len(registry.tool_definitions()) == 1
 
     def test_second_probe_succeeds_when_within_remaining_budget(self) -> None:
-        """When the second probe completes within its remaining budget, both succeed."""
         clock = _FakeMonotonic()
         servers = _make_servers("slow-1", "fast-2")
         recorded_timeouts: list[float | None] = []
@@ -473,11 +384,6 @@ class TestHardBoundTimeoutEnforcement:
         assert len(registry.tool_definitions()) == 2
 
     def test_third_server_skipped_after_budget_exhausted(self) -> None:
-        """After two probes consume the entire 28s budget, the third server is skipped.
-
-        The recorded timeout_s values (28.0, 13.0) prove the hard bound was applied
-        to each call, ensuring the aggregate never exceeds the 28s budget.
-        """
         clock = _FakeMonotonic()
         servers = _make_servers("probe-1", "probe-2", "probe-3")
         recorded_timeouts: list[float | None] = []
@@ -497,47 +403,29 @@ class TestHardBoundTimeoutEnforcement:
             _monotonic=clock,
         )
 
-        # Only two probes executed; third was skipped due to exhausted budget
         assert len(recorded_timeouts) == 2
         assert recorded_timeouts[0] == 28.0
         assert recorded_timeouts[1] == 13.0
 
-        # Clock never exceeds the 28s aggregate budget
         assert clock() == 28.0
         assert clock() <= 28.0
 
-        # Third server was skipped (no remaining budget); second timed out
         assert len(registry.tool_definitions()) == 1
 
 
 class TestStrictModeFailsClosedOnBudgetExhaustion:
-    """R2 strict-fail-closed: exhausted aggregate budget raises, never silently
-    returns an incomplete registry. The previous bug returned an empty
-    registry under strict mode and the runtime happily bound it as if every
-    server were unreachable. The new contract: a strict caller asking for
-    fail-closed gets fail-closed.
-    """
-
     def test_strict_mode_raises_when_budget_exhausted_before_first_server(
         self,
     ) -> None:
-        """Under ``on_unreachable='raise'`` the registry must raise a typed
-        ``UpstreamValidationError`` when the aggregate deadline expires
-        before any server is probed, instead of returning an empty
-        registry that the runtime would happily bind.
-        """
         from ralph.mcp.upstream.validation import UpstreamValidationError
 
-        # Fake clock: first call (deadline calc) returns 0.0, second call
-        # (per-server remaining check) returns 29.0, well past the 28s
-        # aggregate budget. The factory must NOT be invoked.
         call_count = [0]
 
         def fake_clock() -> float:
             call_count[0] += 1
             if call_count[0] == 1:
-                return 0.0  # deadline = 0.0 + 28 = 28.0
-            return 29.0  # remaining = 28.0 - 29.0 = -1.0
+                return 0.0
+            return 29.0
 
         factory_calls: list[str] = []
 
@@ -569,12 +457,6 @@ class TestStrictModeFailsClosedOnBudgetExhaustion:
         assert call_count[0] in (2, 3)
 
     def test_warn_and_skip_mode_still_skips_on_budget_exhaustion(self) -> None:
-        """The non-strict ``warn_and_skip`` branch keeps its legacy behavior:
-        an exhausted budget logs and skips the server, returning whatever
-        registry was already built. This guards the agent-upstream branch
-        in the runtime, which depends on warn-and-skip to tolerate slow
-        third-party servers without aborting the session.
-        """
         call_count = [0]
 
         def fake_clock() -> float:
@@ -607,27 +489,18 @@ class TestStrictModeFailsClosedOnBudgetExhaustion:
             _monotonic=fake_clock,
         )
 
-        # Empty registry: budget exhausted before probe, warn-and-skip
-        # branch did NOT raise.
         assert registry.tool_definitions() == []
         assert factory_calls == []
 
     def test_strict_mode_partial_success_then_budget_exhausted_raises(
         self,
     ) -> None:
-        """A strict caller whose first probes succeeded and next was
-        skipped due to budget exhaustion must still raise. The earlier
-        server tools are not enough; the contract is that the registry
-        is either complete or the build fails.
-        """
         from ralph.mcp.upstream.validation import UpstreamValidationError
 
         clock = _FakeMonotonic()
         counter: list[int] = []
 
         def slow_factory(server: UpstreamMcpServer) -> _TimeAdvancingClient:
-            # 14s per probe: 1st probe clock=14 (remaining=14), 2nd probe
-            # clock=28 (remaining=0), 3rd server hits the exhausted branch.
             return _TimeAdvancingClient(
                 server, counter, probe_duration=14.0, time_advancer=clock.advance
             )
@@ -646,12 +519,9 @@ class TestStrictModeFailsClosedOnBudgetExhaustion:
             )
         assert "aggregate discovery budget" in str(exc_info.value)
         assert any(s.name in str(exc_info.value) for s in servers)
-        # First two probes ran; third hit the exhausted branch.
         assert len(counter) in (2, 3)
 
     def test_strict_mode_raises_when_probe_times_out_at_budget_limit(self) -> None:
-        """Under on_unreachable='raise', if a server probe times out against the
-        remaining discovery budget, UpstreamValidationError is raised immediately."""
         from ralph.mcp.upstream.validation import UpstreamValidationError
 
         clock = _FakeMonotonic()
@@ -674,7 +544,6 @@ class TestStrictModeFailsClosedOnBudgetExhaustion:
                 _monotonic=clock,
             )
 
-        # First succeeded (15s), second timed out against 13s remaining budget
         assert len(recorded_timeouts) == 2
         assert recorded_timeouts[0] == 28.0
         assert recorded_timeouts[1] == 13.0
@@ -684,11 +553,7 @@ class TestStrictModeFailsClosedOnBudgetExhaustion:
 
 
 class TestAggregateVsPerStageEnvelope:
-    """WU-C2: the aggregate bound is the shared deadline, not a sum of stage budgets."""
-
     def test_aggregate_bound_is_preflight_enforced_by_deadline(self) -> None:
-        """Spawn-to-tools/list is bounded by preflight via the shared deadline;
-        it is NOT the sum of the per-stage budgets (which would exceed it)."""
         from ralph.mcp.protocol import _startup_timeouts as mod
 
         preflight = mcp_preflight_timeout_from_env({}).total_seconds()
@@ -696,12 +561,6 @@ class TestAggregateVsPerStageEnvelope:
         assert discovery < preflight
         per_stage_sum = mod._CONFIG_LOAD_BUDGET_S + mod._REGISTRY_BUILD_BUDGET_S + discovery
         assert per_stage_sum > discovery, "summing must not be the enforcement mechanism"
-        # Per-stage overruns are diagnostic-only (warning + JSONL sibling
-        # record) under the new contract. The aggregate is enforced by the
-        # real deadline helper, not by the per-stage record call. The
-        # registration tests above prove the deadline skips probes past the
-        # budget; here we pin that record_stage_elapsed on an overrun
-        # does NOT raise (no McpServerError) and returns None.
         from ralph.mcp.protocol._startup_timeouts import record_stage_elapsed
 
         result = record_stage_elapsed(
@@ -716,8 +575,6 @@ class TestAggregateVsPerStageEnvelope:
 
 
 class _RaisingClient:
-    """Fake client that raises UpstreamCallError after advancing the shared clock."""
-
     def __init__(
         self,
         server: UpstreamMcpServer,
@@ -742,25 +599,14 @@ class _RaisingClient:
 
 
 class TestProbeOutcomeStructuredLogging:
-    """R4: both failure paths record elapsed_ms and server identity via structured logs.
-
-    Loguru writes directly to stderr, so these tests use an in-memory StringIO
-    sink that loguru outputs into; we then parse the captured text for the
-    expected structured fields.
-    """
-
     def test_failed_probe_records_elapsed_and_server_identity(self) -> None:
-        """Warn-and-skip branch logs outcome=skipped reason=UpstreamCallError
-        with the measured elapsed time and server name."""
         clock = _FakeMonotonic()
         servers = _make_servers("failing-server")
         counter: list[int] = []
 
         def raising_factory(server: UpstreamMcpServer) -> _RaisingClient:
-            # Advance clock by 5s before raising: probe_elapsed_ms ≈ 5000.0
             return _RaisingClient(server, counter, probe_duration=5.0, time_advancer=clock.advance)
 
-        # Capture loguru output to an in-memory sink
         sink = io.StringIO()
         handler_id = loguru_logger.add(sink, format="{message}", level="WARNING")
         try:
@@ -776,21 +622,16 @@ class TestProbeOutcomeStructuredLogging:
         finally:
             loguru_logger.remove(handler_id)
 
-        # Registry is empty (server was skipped)
         assert registry.tool_definitions() == []
 
-        # Parse the captured log output
         captured = sink.getvalue()
         assert "ralph-mcp upstream probe:" in captured
         assert "server=failing-server" in captured
         assert "outcome=skipped" in captured
         assert "reason=UpstreamCallError" in captured
-        # Elapsed time should be approximately 5000.0 ms (5s * 1000)
         assert "elapsed_ms=5000.0" in captured
 
     def test_strict_failed_probe_records_elapsed_and_server_identity(self) -> None:
-        """Strict-raise branch logs outcome=strict_failure BEFORE raising
-        UpstreamValidationError, with the same elapsed time and server name fields."""
         from ralph.mcp.upstream.validation import UpstreamValidationError
 
         clock = _FakeMonotonic()
@@ -816,7 +657,6 @@ class TestProbeOutcomeStructuredLogging:
         finally:
             loguru_logger.remove(handler_id)
 
-        # Structured ERROR was emitted BEFORE the raise
         captured = sink.getvalue()
         assert "ralph-mcp upstream probe:" in captured
         assert "server=strict-failing-server" in captured
@@ -825,18 +665,13 @@ class TestProbeOutcomeStructuredLogging:
         assert "elapsed_ms=3000.0" in captured
 
     def test_budget_exhausted_skip_records_server_identity(self) -> None:
-        """When the aggregate budget is exhausted before a server is reached,
-        the skipped server's structured log carries outcome=skipped
-        reason=budget_exhausted with that server's identity."""
         counter: list[int] = []
 
         def fake_clock() -> float:
-            # First call: deadline = 0 + 28 = 28.0
-            # Second+ calls: 28 - 29 = -1 → exhausted (budget hits before any probe)
             counter.append(1)
             if len(counter) == 1:
-                return 0.0  # deadline calculation
-            return 29.0  # remaining ≤ 0 → budget exhausted
+                return 0.0
+            return 29.0
 
         servers = _make_servers("reached-server", "skipped-server")
 
@@ -855,11 +690,9 @@ class TestProbeOutcomeStructuredLogging:
         finally:
             loguru_logger.remove(handler_id)
 
-        # Both servers skipped due to exhausted budget (no probe ran at all)
         assert len(registry.tool_definitions()) == 0
 
         captured = sink.getvalue()
-        # The second server's structured skip line must be present
         assert "server=skipped-server" in captured
         assert "outcome=skipped" in captured
         assert "reason=budget_exhausted" in captured

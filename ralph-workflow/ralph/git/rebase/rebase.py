@@ -1,4 +1,3 @@
-"""Core git rebase helpers (abort/continue/rebase)."""
 
 from __future__ import annotations
 
@@ -31,7 +30,6 @@ _RENAME_LIMIT_RETRY_ARGS = ("-c", "merge.renameLimit=0")
 
 @dataclass(frozen=True)
 class RebaseFailed:
-    """Rebase failed with a specific error kind."""
 
     kind: RebaseErrorKind
 
@@ -44,7 +42,6 @@ def abort_rebase(
     repo_root: Path | str | None = None,
     executor: ProcessExecutor | None = None,
 ) -> None:
-    """Abort an in-progress rebase."""
 
     path = _resolve_repo_root(repo_root)
     executor = executor or SubprocessExecutor()
@@ -64,7 +61,6 @@ def continue_rebase(
     repo_root: Path | str | None = None,
     executor: ProcessExecutor | None = None,
 ) -> None:
-    """Continue an in-progress rebase after conflicts have been resolved."""
 
     path = _resolve_repo_root(repo_root)
     executor = executor or SubprocessExecutor()
@@ -86,7 +82,6 @@ def continue_rebase(
 
 
 def rebase_in_progress(repo_root: Path | str | None = None) -> bool:
-    """Return True when a rebase directory exists in the git repo."""
 
     path = _resolve_repo_root(repo_root)
     git_dir = _git_dir(path)
@@ -98,26 +93,8 @@ def get_conflicted_files(
     repo_root: Path | str | None = None,
     executor: ProcessExecutor | None = None,
 ) -> list[str]:
-    """List files that are currently marked as conflicted in the index.
-
-    Detection is NUL-delimited (D12 / spec section C detection rule):
-    paths with embedded newlines, spaces, tabs, and unicode survive
-    unchanged, and the same path is authoritative over stderr text
-    for every conflict type -- several produce no markers at all
-    (modify/delete, binary, symlink, mode-only, gitlink). The
-    parser used is :func:`ralph.git.hardening.unmerged_paths_z`,
-    the shared index-authoritative surface the rebase engine,
-    conflict-resolution pipeline, and recovery code path all
-    read from. Renames are surfaced as the destination path
-    (the live path the resolver will see); the source lives
-    on the returned :class:`PorcelainEntry` for callers that
-    need both names.
-    """
     path = _resolve_repo_root(repo_root)
-    _ = executor  # kept for signature compatibility; the NUL helper
-    # runs git via the hardened run_git path so the per-invocation
-    # pin and non-interactive env are exactly what the rest of the
-    # auto-integration pipeline uses.
+    _ = executor
 
     try:
         entries = unmerged_paths_collect(path)
@@ -133,44 +110,6 @@ def rebase_onto(
     repo_root: Path | str | None = None,
     executor: ProcessExecutor | None = None,
 ) -> RebaseResult:
-    """Rebase the current branch on top of the provided upstream branch.
-
-    Every flag is set explicitly so no user/system git config can
-    hang, abort, or silently mutate a rebase the agent is watching:
-
-    * ``--no-autostash`` (D4) — a dirty tree never starts
-      integration in the first place; an autostash that
-      ``--abort`` later cannot re-apply is not our problem to
-      inherit.
-    * ``--no-autosquash`` (D5) — user config can turn it on, and
-      ``squash!`` commits would otherwise open an editor.
-    * ``--no-update-refs`` (B9) — ``rebase.updateRefs=true`` would
-      force-move other branches pointing into the replay range and
-      half-skip ones checked out in sibling worktrees.
-    * ``--empty=drop`` (B4) — commits that became empty on replay
-      (change already upstream) are dropped without stopping; the
-      flag also answers the older-git prompt that the empty-result
-      would otherwise trigger.
-    * ``--no-keep-empty`` is NOT here on purpose — we want a stop on
-      the first genuinely-empty commit, because it is the one case
-      where the agent's intent matters.
-    * The ``--`` terminator (B1/B8) — a branch whose name begins
-      with ``-`` would otherwise be parsed as an option, and a
-      target like ``--allow-unrelated-histories`` would be parsed
-      as a flag rather than a revision.
-    * The active branch name is appended AFTER ``--`` so the
-      replay range is unambiguous and independent of any
-      ``branch.<name>.merge``/fork-point heuristic (B8).
-    * The backend is pinned to ``merge`` via
-      :data:`ralph.git.hardening.PINNED_CONFIG_ARGS` (G5); the
-      apply backend has documented unrecoverable-interrupt states
-      and a different state layout.
-    * ``rerere.enabled=false`` (D3) — a recorded wrong resolution
-      would be silently committed with zero conflict signal.
-    * ``commit.gpgsign=false`` / ``tag.gpgsign=false`` (D6) — a
-      locked key or pinentry prompt must never hang or fail a
-      replayed commit.
-    """
 
     path = _resolve_repo_root(repo_root)
     executor = executor or SubprocessExecutor()
@@ -189,14 +128,6 @@ def rebase_onto(
     finally:
         repo.close()
 
-    # Build the argv. The active branch is passed AFTER the ``--``
-    # terminator as a positional revision so the replay range is
-    # ``<upstream>..<branch>`` and independent of any
-    # ``branch.<name>.merge``/fork-point heuristic (B8). When no
-    # branch is checked out (detached HEAD) we fall through with
-    # ``HEAD`` -- rebase_onto is only ever called from a known
-    # checked-out state, and the precondition check has already
-    # gated this path, so the fallback is purely defensive.
     upstream_branch_name = branch_name if branch_name is not None else "HEAD"
     rebase_argv = (
         "rebase",
@@ -210,42 +141,15 @@ def rebase_onto(
     )
     result = executor.execute("git", rebase_argv, cwd=path)
     if result.returncode != 0 and _rename_detection_was_skipped(result):
-        # C12 ladder rung 2: Git has paused this replay after declining
-        # inexact rename detection. Abort the untouched stop, then retry once
-        # with the documented unlimited limit; a second warning falls through
-        # to normal index-based conflict resolution/fallback.
         aborted = executor.execute("git", ("rebase", "--abort"), cwd=path)
         if aborted.succeeded:
             result = executor.execute("git", (*_RENAME_LIMIT_RETRY_ARGS, *rebase_argv), cwd=path)
 
-    # The earlier-stop handling for ``--empty=drop``-refusing
-    # older git: when a rebase STOPs on a commit that became
-    # empty (older git that ignores ``--empty=drop``), the engine
-    # answers the stop with ``git rebase --skip`` rather than
-    # abandoning to endpoint merge. The skip is the B4/G2 path
-    # that closes the all-empty-replay-abandon bug class. The
-    # loop is bounded so a wedged replay (a skip that itself
-    # produces a stop on the next empty commit, indefinitely)
-    # cannot keep integration spinning: the same per-call
-    # timeout that closes the original rebase closes the loop
-    # here too.
     while result.returncode != 0 and _rebase_stop_is_empty(result, path, executor):
         skip_result = executor.execute("git", ("rebase", "--skip"), cwd=path)
-        # A skip that itself succeeded means the empty stop landed
-        # and either the replay continues or the rebase finished;
-        # in BOTH cases the next iteration re-evaluates a fresh
-        # ``ProcessResult`` so the rest of the engine (and the
-        # conflict resolution pipeline below) sees the same shape
-        # it would have for a clean rebase.
         result = skip_result
         if result.succeeded:
             break
-        # A non-zero skip with NO empty stop, OR no rebase in
-        # progress anymore, means we just answered an empty stop
-        # but the underlying rebase reported something else
-        # (typically a fresh conflict on the next commit). Stop
-        # the empty-stop loop and let ``_rebase_result_from_process``
-        # classify the new ``ProcessResult``.
         if not _rebase_stop_is_empty(result, path, executor):
             break
 
@@ -253,7 +157,6 @@ def rebase_onto(
 
 
 def _rename_detection_was_skipped(result: ProcessResult) -> bool:
-    """Whether Git declined inexact rename detection for this replay (C12)."""
     payload = f"{result.stderr}\n{result.stdout}".lower()
     return (
         "inexact rename detection was skipped" in payload
@@ -261,13 +164,6 @@ def _rename_detection_was_skipped(result: ProcessResult) -> bool:
     )
 
 
-#: The lines git itself prints when a replay stops because the commit is
-#: EMPTY (sequencer, ``git commit`` status, and the apply backend). Each is
-#: matched at the START of a line, never as a substring of the output: git
-#: echoes the replayed commit's SUBJECT inside ``could not apply <sha>...
-#: <subject>`` and the todo hint, so a conflicting commit titled "Fix crash
-#: when the list is empty" read as an empty stop and was ``--skip``-ped out
-#: of history while the rebase reported success.
 _EMPTY_STOP_LINE_PREFIXES: tuple[str, ...] = (
     "the previous cherry-pick is ",
     "nothing to commit",
@@ -275,22 +171,10 @@ _EMPTY_STOP_LINE_PREFIXES: tuple[str, ...] = (
     "no changes -- patch already applied",
 )
 
-#: Severity prefixes git puts in front of a message line.
 _GIT_MESSAGE_PREFIXES: tuple[str, ...] = ("error: ", "fatal: ")
 
 
 def is_empty_rebase_stop(stderr: str, stdout: str) -> bool:
-    """True when git's output names an "empty commit" stop, not a conflict.
-
-    Only git's own empty-stop message lines count, matched at the start
-    of a line (after an optional ``error:``/``fatal:`` prefix). A bare
-    substring search over the whole output matched the replayed commit's
-    subject -- git prints it in ``could not apply <sha>... <subject>`` --
-    so a genuine conflict on a commit whose subject said "is empty" was
-    skipped and silently dropped. The text is still only one half of the
-    evidence: the rebase engine answers a stop with ``--skip`` only when
-    the repository state corroborates it (see ``_rebase_stop_is_empty``).
-    """
     for raw_line in f"{stderr}\n{stdout}".splitlines():
         line = raw_line.strip().lower()
         for prefix in _GIT_MESSAGE_PREFIXES:
@@ -301,16 +185,6 @@ def is_empty_rebase_stop(stderr: str, stdout: str) -> bool:
 
 
 def _rebase_stop_is_empty(result: ProcessResult, path: Path, executor: ProcessExecutor) -> bool:
-    """Whether a paused rebase is provably stopped on an EMPTY commit.
-
-    ``git rebase --skip`` discards the commit being replayed, so it is
-    only ever answered to a stop the repository state proves empty: a
-    rebase is in progress, no path is unmerged, the staged tree equals
-    ``HEAD`` (the replay contributed nothing), and git's own output names
-    an empty stop. A conflict leaves unmerged paths; a pick that git
-    refused (an untracked file in the way) leaves an untouched index but
-    no empty-stop message -- neither is ever skipped.
-    """
     if not rebase_in_progress(path):
         return False
     if not is_empty_rebase_stop(result.stderr, result.stdout):
@@ -343,14 +217,6 @@ def _validate_rebase_request(
     if branch_name is None:
         return RebaseNoOp("HEAD is detached (not on any branch), rebase not applicable")
 
-    # Identity, not name: this guard exists solely to stop a branch
-    # rebasing onto itself. Keying it on the hardcoded names main/master
-    # made the decision name-based, so a configured integration target
-    # such as 'develop' produced a phantom no-op whenever the feature
-    # branch happened to be called main or master. The genuine
-    # already-up-to-date case is still covered by the ancestry check
-    # below, and auto_integrate short-circuits the on-target case earlier
-    # with reason 'on target branch'.
     if branch_name == upstream_branch:
         return RebaseNoOp(f"Already on '{branch_name}' branch, rebase not applicable")
 
@@ -365,41 +231,12 @@ def _rebase_result_from_process(
     repo_root: Path,
     executor: ProcessExecutor,
 ) -> RebaseResult:
-    """Classify a completed ``git rebase`` process result.
-
-    A non-zero exit is only ever reported as :class:`RebaseNoOp` when
-    the on-disk state CORROBORATES it: git printed an up-to-date
-    message AND left no rebase directory behind. Matching the message
-    alone was a false-success bug -- git prints ``up to date`` inside
-    the hint block of a genuinely conflicted rebase, and a
-    success-shaped ``RebaseNoOp`` makes
-    :func:`ralph.pipeline.auto_integrate_rebase_merge.run_rebase_or_merge`
-    skip the
-    endpoint-merge fallback and leave the unfinished rebase on disk,
-    where it fails ``check_rebase_preconditions`` for every later
-    integration.
-
-    Everything else falls through to :func:`classify_rebase_error`,
-    whose :class:`RebaseConflicts` / :class:`RebaseFailed` outcomes
-    both route into that fallback, so a misclassification inside the
-    classifier table can no longer end the integration attempt.
-    """
     if result.succeeded:
         return RebaseSuccess()
 
     if _contains_up_to_date_message(result) and not rebase_in_progress(repo_root):
         return RebaseNoOp("Branch is already up-to-date with upstream")
 
-    # The INDEX is authoritative about conflicts; stderr text is only a
-    # heuristic. ``classify_rebase_error`` runs the hook-rejection,
-    # concurrent-operation and dirty-worktree classifiers BEFORE the
-    # content-conflict one and each matches on substrings, so a genuine
-    # conflict whose output also mentions an earlier classifier's keyword
-    # is reported as RebaseFailed. That misclassification now costs more
-    # than a wrong label: RebaseFailed skips the resolve-in-place path in
-    # :mod:`ralph.pipeline.auto_integrate_rebase_merge` entirely, so the
-    # conflicts most worth resolving would be the ones never offered to a
-    # resolver.
     conflicted = _conflicted_files_if_rebasing(repo_root, executor)
     if conflicted:
         return RebaseConflicts(conflicted)
@@ -412,17 +249,6 @@ def _rebase_result_from_process(
 
 
 def _conflicted_files_if_rebasing(repo_root: Path, executor: ProcessExecutor) -> list[str]:
-    """Unmerged paths, but ONLY while a rebase is genuinely paused.
-
-    Both conditions matter. Without the rebase-in-progress check this
-    would reclassify a rebase that git refused to start (dirty worktree,
-    concurrent operation) as a content conflict, because the unmerged
-    entries it saw would belong to some OTHER unfinished operation.
-
-    Returns an empty list rather than raising when the index cannot be
-    read: an unreadable repository must fall through to the text
-    classifier, not fail the rebase.
-    """
     try:
         if not rebase_in_progress(repo_root):
             return []
@@ -482,10 +308,6 @@ def _merge_base_is_ancestor(
     repo_root: Path,
     upstream_branch: str,
 ) -> bool:
-    # ``--`` terminator, for the same reason ``rebase_onto`` uses one: a
-    # branch whose name begins with ``-`` would otherwise be parsed as an
-    # option (git exits 129, "unknown switch"), and this probe would
-    # silently report "not an ancestor" for every such target.
     result = executor.execute(
         "git",
         ("merge-base", "--is-ancestor", "--", upstream_branch, "HEAD"),
@@ -517,31 +339,4 @@ __all__ = [
 ]
 
 
-# ----- AC-14 catalog evidence -----
-# This file is the authoritative source for the catalog entries listed
-# below. Each ``# AC-14 rationale: <ID>`` line is the code-adjacent
-# marker the AC-14 audit looks for; each ``# ladder rung: <N>``
-# names the rung the entry sits on. Adding a new entry here requires
-# BOTH lines or the audit fails.
 
-# AC-14 rationale: A12
-# ladder rung: 1
-# AC-14 rationale: B1
-# ladder rung: 4
-# AC-14 rationale: B2
-# ladder rung: 1
-# AC-14 rationale: B4
-# ladder rung: 1
-# AC-14 rationale: B5
-# ladder rung: 1
-# AC-14 rationale: B8
-# ladder rung: 1
-# AC-14 rationale: D2
-# ladder rung: 3
-# AC-14 rationale: D4
-# ladder rung: 1
-# AC-14 rationale: G2
-# ladder rung: 1
-# AC-14 rationale: H6
-# ladder rung: 1
-# ----- end AC-14 catalog evidence -----

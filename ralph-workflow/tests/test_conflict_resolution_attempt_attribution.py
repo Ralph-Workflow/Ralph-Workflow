@@ -1,15 +1,3 @@
-"""B1-B6 continued: one attempt's verdict must never answer for another's.
-
-Split from ``test_conflict_resolution_phase_parity`` so neither file
-exceeds the repo-structure size cap. Where that file pins the CHAIN --
-that every candidate gets its turn, in order, with its own retry budget
--- this one pins ATTRIBUTION: a reason belongs to the attempt that
-earned it. A stop must not inherit the previous stop's verdict, a
-candidate that never launched must not be recorded as declining, an
-agent that ran out of context must not be filed as refusing the work,
-and a missing agent must be named rather than failing anonymously.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -43,9 +31,7 @@ if TYPE_CHECKING:
 def test_a_stop_never_inherits_the_previous_stops_verdict(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """An early exit must not report a reason left behind by an earlier conflict."""
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one",))
-    # The failed attempt benches the lone resolver; do not really wait out the cooldown.
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED])
     session = ResolutionSession()
@@ -63,7 +49,6 @@ def test_a_stop_never_inherits_the_previous_stops_verdict(
     )
     assert outcome.reason is ResolutionTerminationReason.ATTEMPT_FAILED
 
-    # Second stop: nothing is conflicted, so no resolver runs at all.
     monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: [])
     quiet = driver_module.run_conflict_resolution_outcome(
         root=tmp_path,
@@ -84,7 +69,6 @@ def test_a_stop_never_inherits_the_previous_stops_verdict(
 def test_one_stop_cannot_exceed_its_configured_invocation_ceiling(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Rounds re-spend the chain, so pin the ceiling that bounds the cost."""
     chain = ("one", "two", "three")
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: chain)
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
@@ -110,9 +94,6 @@ def test_one_stop_cannot_exceed_its_configured_invocation_ceiling(
         )
         is False
     )
-    # With the shared failure ledger as the sole authority governing retries,
-    # round-count caps do not independently truncate rounds. Candidates progress
-    # until their total unproductive limit (9 attempts each) is reached.
     assert len(called) == 27
     rounds_spent = max(index for index, _ in called)
     for round_index in range(1, rounds_spent + 1):
@@ -125,13 +106,6 @@ def test_one_stop_cannot_exceed_its_configured_invocation_ceiling(
 def test_a_failed_attempt_is_charged_to_recovery_exactly_once(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Two verdicts on one failure spent the same-agent retry budget instantly.
-
-    The default invoker records the failure and the driver classifies
-    it; classifying in both places charged RecoveryController twice for
-    one attempt, so a transient provider error failed over to the next
-    candidate rather than retrying the agent it just lost.
-    """
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED])
@@ -182,8 +156,6 @@ def test_a_failed_attempt_is_charged_to_recovery_exactly_once(
         )
         is False
     )
-    # 'one' is retried on a transient failure before the chain falls over,
-    # which only happens while each attempt is charged once.
     assert charged.count("one") > 1
     assert "two" in charged
 
@@ -191,13 +163,6 @@ def test_a_failed_attempt_is_charged_to_recovery_exactly_once(
 def test_one_candidates_exit_reason_is_not_pinned_on_the_next_candidate(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The executor parks a retry intent on failure and clears it only on success.
-
-    A candidate that failed through an exception path therefore leaves
-    its intent behind; the next candidate's plain failure used to be
-    reported with that reason and to inherit its skip_same_agent_retries,
-    spending a healthy agent's retry budget on somebody else's exit.
-    """
     from ralph.pipeline import effect_executor as effect_executor_module
     from ralph.pipeline.agent_retry_intent import AgentRetryIntent
     from ralph.pipeline.events import PipelineEvent
@@ -239,13 +204,6 @@ def test_one_candidates_exit_reason_is_not_pinned_on_the_next_candidate(
 def test_work_that_ran_and_did_not_finish_is_incomplete_not_refused(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A successful invocation that leaves markers has not answered anything.
-
-    No agent can refuse this work -- the session has no tool for it --
-    so a round that came back successful with markers still on disk is
-    unfinished work, and the next round hands the same agent's successor
-    the paths that still carry markers.
-    """
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
@@ -279,14 +237,6 @@ def test_work_that_ran_and_did_not_finish_is_incomplete_not_refused(
 
 
 def test_no_reason_the_pipeline_can_report_is_an_agent_refusing_the_work() -> None:
-    """The enum must not offer a state that means "the resolver said no".
-
-    There is no MCP tool with which a resolution session could refuse a
-    conflict: ``declare_complete`` is its only completion signal. A
-    reason named for a refusal therefore described something that cannot
-    happen, while hiding what did -- an attempt that failed, a candidate
-    that never started, or work that did not finish.
-    """
     values = {reason.value for reason in ResolutionTerminationReason}
     assert not any("DECLIN" in value or "REFUS" in value for value in values)
     assert {
@@ -300,14 +250,6 @@ def test_no_reason_the_pipeline_can_report_is_an_agent_refusing_the_work() -> No
 def test_an_unavailable_candidate_does_not_answer_for_the_one_after_it(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A misconfigured candidate must not own the stop's verdict or its budget.
-
-    A chain naming an agent this workspace does not have is ordinary. When
-    the healthy candidate after it really ran and really failed, the round
-    reported the GHOST's fault and left the stop unchargeable -- and an
-    unchargeable stop records no exhaustion evidence at all, so the run
-    could never escalate honestly.
-    """
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("ghost", "healthy")
     )
@@ -349,13 +291,6 @@ def test_an_unavailable_candidate_does_not_answer_for_the_one_after_it(
 
 
 def test_the_executor_names_a_missing_agent_instead_of_failing_anonymously() -> None:
-    """The registry lookup lives in the executor; only it should do it.
-
-    Duplicating the check in conflict resolution meant building an
-    AgentRegistry per candidate, and building one spawns subprocesses --
-    a process spawn in front of every resolution attempt. The executor
-    already knows, so it says so on the channel callers already read.
-    """
     from ralph.pipeline import effect_executor as effect_executor_module
 
     assert effect_executor_module.AGENT_NOT_FOUND_REASON == "AgentNotFound"

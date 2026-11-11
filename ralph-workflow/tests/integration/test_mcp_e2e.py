@@ -1,10 +1,3 @@
-"""Tests for MCP server configuration, upstream proxy, and web search behavior.
-
-Each test drives the server in-process via McpServer.handle_request() — no threads,
-no sockets, no wall-clock waits.  All five behaviors are preserved at the public
-JSON-RPC request/response seam.
-"""
-
 from __future__ import annotations
 
 import json
@@ -61,19 +54,12 @@ def _make_session(session_id: str = "test-session") -> AgentSession:
 
 
 def _fake_upstream_registry(server_name: str, *, tool_name: str = "fake_tool") -> UpstreamRegistry:
-    """Return an UpstreamRegistry with one proxied fake tool — no subprocess."""
     tool = UpstreamTool(name=tool_name, description="A fake tool for testing")
     alias = upstream_proxy_tool_name(server_name, tool_name)
     return UpstreamRegistry([ProxiedTool(alias=alias, server_name=server_name, tool=tool)], {})
 
 
 def _unreachable_upstream_registry(server_name: str) -> UpstreamRegistry:
-    """Build an UpstreamRegistry where the upstream fails to connect.
-
-    Uses a custom client_factory that raises UpstreamCallError on list_tools()
-    so UpstreamRegistry.build() emits the warning and returns an empty registry
-    without spawning any real subprocess.
-    """
     server = UpstreamMcpServer(name=server_name, transport="stdio", command="/not/a/real/command")
 
     class _FailingClient:
@@ -96,7 +82,6 @@ def _build_mcp_server(
     upstream_registry: UpstreamRegistry | None = None,
     session_id: str = "test-session",
 ) -> McpServer:
-    """Build a McpServer with MemoryWorkspace — no sockets, no threads."""
     session = _make_session(session_id)
     workspace = MemoryWorkspace()
     registry = build_ralph_tool_registry(
@@ -109,7 +94,6 @@ def _build_mcp_server(
 
 
 def _initialize(server: McpServer) -> ServerState:
-    """Send initialize + notifications/initialized; return the running ServerState."""
     req = JsonRpcRequest(
         jsonrpc="2.0",
         method="initialize",
@@ -129,7 +113,6 @@ def _initialize(server: McpServer) -> ServerState:
 
 
 def _list_tools(server: McpServer, state: ServerState) -> list[dict[str, object]]:
-    """Call tools/list and return the tools array."""
     req = JsonRpcRequest(jsonrpc="2.0", method="tools/list", params={}, msg_id=2)
     resp, _ = server.handle_request(req, state)
     assert resp is not None and resp.result is not None, f"tools/list failed: {resp}"
@@ -144,7 +127,6 @@ def _call_tool(
     *,
     msg_id: int = 3,
 ) -> dict[str, object]:
-    """Call tools/call and return the result payload."""
     req = JsonRpcRequest(
         jsonrpc="2.0",
         method="tools/call",
@@ -215,9 +197,6 @@ def test_unreachable_upstream_emits_warning_and_server_starts() -> None:
     log_output = "\n".join(captured)
     assert WEB_SEARCH_TOOL in tool_names
     assert not any(name.startswith("ralph_upstream__fake_stdio__") for name in tool_names)
-    # R4: failed-probe diagnostic uses the new structured format
-    # (server name + elapsed_ms + outcome=skipped + reason=UpstreamCallError)
-    # and never the raw exception message (which may carry env values).
     assert (
         "ralph-mcp upstream probe: server=fake_stdio" in log_output
         and "outcome=skipped" in log_output
@@ -245,10 +224,6 @@ def test_secret_never_in_e2e_logs() -> None:
     assert BROKEN_CANARY not in log_output
 
 
-# ---------------------------------------------------------------------------
-# Multimodal capability-aware tool visibility and resource template tests
-# ---------------------------------------------------------------------------
-
 _MEDIA_CAPABILITIES = _REQUIRED_CAPABILITIES | {"media.read"}
 
 
@@ -257,7 +232,6 @@ def _build_multimodal_server(
     *,
     mcp_config: McpConfig | None = None,
 ) -> McpServer:
-    """Build a McpServer with media.read session capability."""
 
     session = AgentSession(
         session_id=session_id,
@@ -275,7 +249,6 @@ def _build_multimodal_server(
 
 
 def _initialize_with_multimodal_caps(server: McpServer) -> ServerState:
-    """Send initialize declaring multimodal client capabilities; return running ServerState."""
     req = JsonRpcRequest(
         jsonrpc="2.0",
         method="initialize",
@@ -295,7 +268,6 @@ def _initialize_with_multimodal_caps(server: McpServer) -> ServerState:
 
 
 def test_multimodal_client_sees_read_media_and_read_image_in_tools_list() -> None:
-    """Multimodal-capable client sees read_media and read_image in tools/list."""
     server = _build_multimodal_server()
     state = _initialize_with_multimodal_caps(server)
     tool_names = {tool["name"] for tool in _list_tools(server, state)}
@@ -304,7 +276,6 @@ def test_multimodal_client_sees_read_media_and_read_image_in_tools_list() -> Non
 
 
 def test_default_handshake_sees_media_tools_without_client_capability() -> None:
-    """A default MCP handshake exposes media tools when media.read is granted."""
     server = _build_multimodal_server()
     state = _initialize(server)
     tool_names = {tool["name"] for tool in _list_tools(server, state)}
@@ -313,7 +284,6 @@ def test_default_handshake_sees_media_tools_without_client_capability() -> None:
 
 
 def test_explicit_media_disabled_keeps_media_tools() -> None:
-    """``[media] enabled = false`` is INERT -- media tools always stay visible (criterion 1)."""
     server = _build_multimodal_server(mcp_config=McpConfig(media=MediaConfig(enabled=False)))
     state = _initialize(server)
     tool_names = {tool["name"] for tool in _list_tools(server, state)}
@@ -322,7 +292,6 @@ def test_explicit_media_disabled_keeps_media_tools() -> None:
 
 
 def test_resource_templates_list_includes_media_template_when_media_read_is_granted() -> None:
-    """resources/templates/list exposes ralph://media/{artifact_id} when media.read is granted."""
     server = _build_multimodal_server()
     state = _initialize_with_multimodal_caps(server)
     req = JsonRpcRequest(jsonrpc="2.0", method="resources/templates/list", params={}, msg_id=5)

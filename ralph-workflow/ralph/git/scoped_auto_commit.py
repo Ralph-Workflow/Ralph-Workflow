@@ -1,39 +1,3 @@
-"""Generic deterministic auto-commit over an explicit path scope.
-
-Shared machinery behind Ralph's engine-owned chore commits — the skill-tree
-sync (``ralph.skills._auto_commit``) and the project-policy readiness sync
-(``ralph.project_policy._auto_commit``). Each caller supplies its path
-scopes, deterministic subject, and body builder; this module owns the git
-mechanics that make the commit safe:
-
-* dirty-path discovery per scope via ``git status --porcelain
-  --untracked-files=all -- <scope>`` with a defensive re-filter;
-* preservation of the user's exact staged state for paths OUTSIDE the
-  scope (snapshot via ``git ls-files --stage``, restore via ``git
-  update-index --cacheinfo``) so a partially staged file is never
-  silently committed or corrupted;
-* best-effort semantics: a non-git workspace, a clean scope, or any
-  ``OSError`` / ``GitCommandError`` returns an explicit ``ScopedCommitResult``
-  with status ``NOT_REPO`` / ``NOOP`` / ``FAILED`` so callers can surface
-  the outcome to the user — a broken git state must never block the
-  pipeline, but it MUST be reported, never silently swallowed.
-
-A scope string ending in ``/`` matches every path under that directory;
-any other scope string matches that exact repo-relative file.
-
-The single isolation primitive every deterministic background writer must
-route through is :func:`commit_deterministic_writes` (added in wt-012). A
-callable that knows the byte-exact set of paths it just wrote, and each
-path's pre-write content hash, commits ONLY the paths whose HEAD blob
-equals the recorded pre-write hash. A path that was already dirty before
-the deterministic writer touched it (HEAD != pre-write hash, e.g. an
-agent-edited AGENTS.md that a bootstrap then rewrote) is SKIPPED with a
-warning and left uncommitted for the agent flow; it can never enter a
-fixed-message commit. A path whose pre-write hash equals HEAD and whose
-post-write content still equals HEAD is a no-op (no commit). This is the
-single isolation guarantee that keeps a deterministic chore commit from
-sweeping in agent or user changes.
-"""
 
 from __future__ import annotations
 
@@ -75,37 +39,16 @@ if TYPE_CHECKING:
 
 
 class ScopedCommitStatus(Enum):
-    """Outcome category returned by :func:`commit_scoped_updates` and friends.
-
-    Every status is reportable. The legacy helper returned ``None`` for
-    both "clean scope" (NOOP) and "git error" (FAILED), so callers could
-    not distinguish them; wt-012 makes them explicit so failures are
-    visible per the product criterion that a commit failure is reported
-    clearly and never silently swallowed.
-    """
 
     CREATED = "created"
-    NOOP = "noop"  # No dirty in-scope paths; nothing to commit.
-    NOT_REPO = "not_repo"  # ``repo_root`` is not inside a git working tree.
-    FAILED = "failed"  # Any ``OSError`` / ``GitCommandError`` from the attempt.
-    SKIPPED = "skipped"  # Every in-scope path was already dirty at HEAD, or its staging would sweep a dirty skipped descendant (wt-012 DA-003/DA-008).
+    NOOP = "noop"
+    NOT_REPO = "not_repo"
+    FAILED = "failed"
+    SKIPPED = "skipped"
 
 
 @dataclass(frozen=True)
 class ScopedCommitResult:
-    """Typed outcome for a scoped deterministic commit attempt.
-
-    Attributes:
-        status: Outcome category (CREATED / NOOP / NOT_REPO / FAILED / SKIPPED).
-        sha: The commit SHA on ``CREATED``, else ``None``.
-        skipped_paths: Paths left uncommitted: those already dirty at
-            HEAD (HEAD != pre-write hash) and any ancestor-transition
-            entries whose staging would have swept such a path's
-            deletion into the commit (wt-012 DA-003/DA-008).
-            Empty on every non-SKIPPED status.
-        error: Human-readable failure detail for ``FAILED``; ``None``
-            otherwise.
-    """
 
     status: ScopedCommitStatus
     sha: str | None = None
@@ -113,29 +56,10 @@ class ScopedCommitResult:
     error: str | None = None
 
 
-# Sentinel returned by :func:`_read_head_blob_sha` when the HEAD metadata
-# probe itself failed (``GitCommandError``). MUST be distinguishable from
-# ``None`` ("absent at HEAD") so a broken index can never masquerade as a
-# brand-new path and authorize staging (wt-012 DA-006/DA-011: fail closed).
 _HEAD_PROBE_FAILED: str = "__HEAD_PROBE_FAILED__"
 
 
 def _symlink_ancestor_path(repo: Repo, rel_path: str) -> str | None:
-    """Return the repo-relative path of the first symlink ancestor of ``rel_path``.
-
-    Used by :func:`commit_deterministic_writes` to rewrite a
-    lexically-unreachable path (its parent is a symlink) to the
-    nearest symlink ancestor so ``git add --all`` can stage both the
-    new symlink AND the tracked-descendant deletions atomically. wt-012
-    PA-002. Walks the parent directories from the closest to the
-    repo root; returns the first symlink encountered as a
-    repo-relative POSIX path, or ``None`` if no ancestor is a symlink.
-
-    The repo-relative form is the LEXICAL path of the symlink itself
-    (wt-012 DA-003/DA-010: resolving it returned the canonical target
-    directory, sweeping unrelated user-dirty files into the chore
-    commit); the lexical path scopes staging to the symlink entry.
-    """
     try:
         working_dir = repo.working_dir
     except (OSError, ValueError):
@@ -153,32 +77,11 @@ def _symlink_ancestor_path(repo: Repo, rel_path: str) -> str | None:
 
 
 def _has_symlink_ancestor(abs_path: Path) -> bool:
-    """Return True when any parent directory of ``abs_path`` is a symlink.
-
-    Used by :func:`_git_blob_sha` to detect the dir→symlink transition
-    shape (wt-012 PA-002): ``git hash-object <rel_path>`` follows
-    ancestor symlinks on the filesystem, so a deleted sibling dir
-    replaced by a symlink to a target that contains a same-named file
-    would hash bytes that no longer belong to the lexical path. The
-    consumer (the post-write HEAD-vs-on-disk equality check) treats
-    ``_ANCESTOR_SYMLINK_DIRTY`` as a real change so the deletion is
-    always staged.
-
-    Walks the path's parents from the closest to the root; stops at
-    the first symlink. ``abs_path`` itself is NOT inspected (a leaf
-    symlink is the expected leaf-blob case handled above).
-    """
     try:
         parents = list(abs_path.parents)
     except OSError:
         return False
     for parent in parents:
-        # ``parent == abs_path`` can never be a symlink for a relative
-        # path; the loop terminates on the root ancestor. ``is_symlink``
-        # returns False for nonexistent parents, so a deleted file under
-        # a non-symlink ancestor is correctly classified as "no
-        # symlink ancestor" (the file is just missing, which
-        # ``git hash-object`` will surface as an error / None result).
         try:
             if parent.is_symlink():
                 return True
@@ -187,54 +90,18 @@ def _has_symlink_ancestor(abs_path: Path) -> bool:
     return False
 
 
-# Sentinel returned by :func:`_git_blob_sha` when the path's on-disk
-# content CANNOT be safely compared against HEAD because an ancestor
-# directory is a symlink. The consumer in :func:`commit_deterministic_writes`
-# treats this as a real change (forces staging) so a dir→symlink
-# transition cannot be silently misclassified as a no-op. MUST be
-# distinguishable from ``None`` ("path is missing or unreadable") so the
-# no-op short-circuit ``on_disk_sha is not None and on_disk_sha == head_sha``
-# never accidentally matches.
 _ANCESTOR_SYMLINK_DIRTY: str = "__ANCESTOR_SYMLINK_DIRTY__"
 
 
 def _read_head_blob_sha(repo: Repo, path: str) -> str | None:
-    """Return the HEAD blob SHA for ``path`` or ``None`` if not tracked / absent.
-
-    Used by :func:`commit_deterministic_writes` to compare the caller's
-    recorded pre-write content hash against the actual HEAD state. A
-    missing file at HEAD (``None``) is a valid "no prior content" case;
-    a missing path that the deterministic writer is adding fresh must
-    show up as ``None`` in the caller's pre-write map, and this helper
-    must return ``None`` too, so the SHA-equality check is correct.
-
-    A probe FAILURE (``GitCommandError`` from the index metadata read)
-    returns the ``_HEAD_PROBE_FAILED`` sentinel instead of ``None`` --
-    the caller treats it as fail-closed (``FAILED``), never as
-    "absent at HEAD" (wt-012 DA-006/DA-011).
-    """
     try:
         raw: object = route_git_method(repo, "ls_files", ("--stage", "--", path))
     except GitCommandError:
         return _HEAD_PROBE_FAILED
     if not isinstance(raw, str):
-        # Non-string output means the probe itself is broken; fail closed
-        # rather than treating the path as absent at HEAD (wt-012 DA-006).
         return _HEAD_PROBE_FAILED
     if not raw.strip():
         return None
-    # CRITICAL (wt-012 PA-002): parse the path field and only return the SHA
-    # when the returned pathname equals the requested path EXACTLY. The
-    # ``git ls-files --stage -- <path>`` output is path-relative, but a
-    # path argument of ``a`` will return every tracked entry whose name
-    # STARTS WITH ``a/`` (e.g. ``a/b``, ``a/c.txt``). The previous
-    # implementation returned the FIRST line's blob, which silently
-    # attributed a descendant's blob to the ancestor path -- so a
-    # directory root replaced by a symlink captured ``pre_sha = None``
-    # (directory is un-hashable) while ``head_sha`` was the blob of a
-    # tracked descendant, putting the caller in the
-    # ``pre_sha is None and head_sha is not None`` SKIP branch and
-    # preventing the new symlink root from ever being committed.
     for line in raw.splitlines():
         parts = line.split("\t", 1)
         if len(parts) != _GIT_LS_FILES_PATH_PARTS:
@@ -248,7 +115,6 @@ def _read_head_blob_sha(repo: Repo, path: str) -> str | None:
 
 
 def _file_blob_sha(abs_path: Path) -> str | None:
-    """Hash a regular file using Git's blob representation."""
     try:
         content_bytes = abs_path.read_bytes()
     except OSError:
@@ -258,7 +124,6 @@ def _file_blob_sha(abs_path: Path) -> str | None:
 
 
 def _symlink_blob_sha(abs_path: Path) -> str | None:
-    """Hash a symlink target using Git's blob representation."""
     try:
         link_target = abs_path.readlink()
     except OSError:
@@ -272,27 +137,6 @@ def _symlink_blob_sha(abs_path: Path) -> str | None:
 
 
 def _git_blob_sha(repo: Repo, rel_path: str) -> str | None:
-    """Return the git blob SHA-1 of the on-disk content at ``rel_path``.
-
-    Uses ``git hash-object <path>`` so the value is git's blob hash,
-    matching what :func:`_read_head_blob_sha` returns for HEAD. This
-    makes the caller's recorded pre-write hash directly comparable
-    to HEAD (a deterministic writer passes pre-write = ``git
-    hash-object`` of the file as it stood BEFORE the write). Symlinks
-    are handled natively: git stores them as blobs containing the link
-    target, so the on-disk and HEAD blob hashes are the same shape.
-
-    Returns ``None`` for unreadable / missing / non-git paths.
-
-    Note: ``git hash-object`` cannot read a directory symlink (it tries
-    to open the path as a regular file and fails). For that case we
-    compute the blob hash directly from the symlink target bytes
-    using git's ``blob <len>\\0<target>`` envelope, which is the same
-    blob layout git itself uses for symlinks. The result is byte-for-byte
-    comparable to what ``git hash-object --stdin`` produces for the
-    same target (wt-012 DA-001/DA-008: the producer-level install
-    creates directory symlinks for the project sibling roots).
-    """
     try:
         working_dir = repo.working_dir
     except (OSError, ValueError):
@@ -300,66 +144,14 @@ def _git_blob_sha(repo: Repo, rel_path: str) -> str | None:
     if not working_dir:
         return None
     abs_path = Path(working_dir) / rel_path
-    # Ancestor-symlink safety (wt-012 PA-002 / DA-010): if any parent
-    # directory of ``rel_path`` is a symlink, the lexical path no longer
-    # exists as its own directory entry, so ANY content reachable
-    # through it -- a regular file OR a symlink leaf -- belongs to the
-    # link target's tree, not to this path. The guard MUST run before
-    # the leaf fast path below: otherwise a symlink leaf under a
-    # freshly-installed ancestor symlink (e.g. a replaced sibling dir
-    # whose canonical ships a same-named symlink) would hash its link
-    # target bytes and -- when those bytes accidentally equal the
-    # recorded pre-write hash -- be misclassified as "unchanged", which
-    # drops the path from the producer's written set and lets the
-    # ancestor commit silently sweep its deletion (wt-012 DA-003/DA-012).
-    # Refuse the comparison instead: return a non-None sentinel the
-    # consumer treats as "real change" so the path is always staged
-    # through its nearest symlink ancestor.
     if _has_symlink_ancestor(abs_path):
         return _ANCESTOR_SYMLINK_DIRTY
-    # Directory-symlink fast path: ``git hash-object`` cannot open a
-    # directory symlink because it would have to read the directory
-    # contents. Git itself stores symlink blobs as
-    # ``blob <len>\\0<target>``, so we compute the SHA-1 directly from
-    # the target bytes. The hash matches ``git hash-object --stdin``
-    # exactly.
     if abs_path.is_symlink():
         return _symlink_blob_sha(abs_path)
     return _file_blob_sha(abs_path)
 
 
 def _resolved_descendant_sha(repo: Repo, rel_path: str) -> str | None:
-    """Return the on-disk blob SHA of ``rel_path`` resolved through any ancestor symlink.
-
-    Used by :func:`commit_deterministic_writes` to detect a
-    pre-write-dirty descendant under a freshly-installed symlink
-    ancestor (wt-012 DA-003/DA-008/DA-010/DA-012). The producer
-    captures the pre-write content hash BEFORE the install runs, so
-    a user change that lands BETWEEN the capture and the install
-    makes the recorded pre-write hash stale. The on-disk state at
-    commit time resolves THROUGH the new symlink to whatever the
-    install's canonical target now contains -- a state the producer
-    did not author and cannot be sure belongs to the deterministic
-    chore commit. When that resolved state also differs from
-    ``head_sha`` (the originally committed blob), the user must
-    have dirtied the path after the capture, and the transition
-    must be SKIPPED to keep the chore commit isolated.
-
-    The helper resolves ``rel_path`` through the filesystem, hashes
-    the resolved file's bytes, and returns the git-blob SHA. Returns
-    ``None`` for missing / unreadable / non-regular resolved paths
-    so the caller can treat the result as "indeterminate" rather
-    than "equal to HEAD".
-
-    Args:
-        repo: An open :class:`git.Repo` for the working tree.
-        rel_path: Repo-relative path of the descendant whose
-            resolved on-disk state we want to inspect.
-
-    Returns:
-        A 40-char hex git blob SHA, or ``None`` when the path
-        cannot be resolved to a readable regular file.
-    """
     try:
         working_dir = repo.working_dir
         if not working_dir:
@@ -376,29 +168,10 @@ def capture_pre_write_contents(
     repo_root: Path | str,
     paths: list[str] | tuple[str, ...],
 ) -> dict[str, str | None]:
-    """Record the git blob hash of every path BEFORE the deterministic write.
-
-    This is the producer-side helper every deterministic writer
-    (skill sync, ``.gitignore`` seed, policy preflight) MUST call
-    immediately before writing, then pass the returned dict as
-    ``pre_contents`` to :func:`commit_deterministic_writes`.
-
-    The dict maps each path to its current git blob SHA-1 (the same
-    value HEAD records), or ``None`` for a path that does not exist
-    on disk yet. Symlinks are handled by ``git hash-object``.
-
-    The helper is a thin ``git hash-object`` wrapper; it never raises.
-    A git error or OSError yields ``None`` for the offending path so
-    :func:`commit_deterministic_writes` will SKIP it (paths without a
-    recorded pre-write hash are NOT committed — see its docstring).
-    """
     recorded: dict[str, str | None] = {}
     try:
         repo = Repo(Path(repo_root))
     except (InvalidGitRepositoryError, Exception):
-        # Non-git workspace -- record every path as None so the
-        # downstream commit helper will skip them all (NOT_REPO at
-        # the commit step will return a NOOP / NOT_REPO result).
         for path in paths:
             recorded[path] = None
         return recorded
@@ -412,23 +185,13 @@ def capture_pre_write_contents(
     return recorded
 
 
-# ---- classify_target_for_commit ---------------------------------------------
 
 TargetCommitClass = Literal["tracked", "untracked_ignored", "untracked_new", "not_repo"]
 
 
-# ---- classify_target_for_commit ----------------------------------------------
 
 
 def _classify_untracked_target(repo: Repo, rel_path: str) -> TargetCommitClass | None:
-    """Classify a target that is not in the index (the untracked probe).
-
-    Returns the classification, or ``None`` when a probe failed closed:
-    a genuine git error from ``ls-files`` / ``check-ignore`` means the
-    target's index or ignore state is unprovable, so the caller must not
-    trust the commit helper to stage only the right paths and treats the
-    site as ``not_repo`` (skip silently).
-    """
     try:
         route_git_method(repo, "ls_files", ("--error-unmatch", "--", rel_path))
         return "tracked"
@@ -441,18 +204,11 @@ def _classify_untracked_target(repo: Repo, rel_path: str) -> TargetCommitClass |
             )
             return None
     try:
-        # ``--quiet`` suppresses output; the exit status carries the
-        # answer (0 = ignored, 1 = not ignored, 128 = error).
         route_git_method(repo, "check_ignore", ("--quiet", rel_path))
         return "untracked_ignored"
     except GitCommandError as exc:
         if exc.status == 1:
-            # Not ignored -- a brand-new untracked path that the
-            # deterministic writer is wholly authoring.
             return "untracked_new"
-        # Any other status (128 = error) is fail-closed: an unprovable
-        # ignore status cannot be trusted to commit on. Skip silently
-        # rather than misclassifying a broken repo as ``untracked_new``.
         logger.debug(
             "classify_target_for_commit: check-ignore failed for {} ({}); treating as not_repo",
             rel_path,
@@ -462,48 +218,8 @@ def _classify_untracked_target(repo: Repo, rel_path: str) -> TargetCommitClass |
 
 
 def classify_target_for_commit(repo_root: Path | str, path: Path | str) -> TargetCommitClass:
-    """Classify a filesystem target BEFORE a deterministic writer touches it.
-
-    wt-12: ``config/bootstrap.py::_copy_with_backup`` needs to know, per
-    config write, whether the target is tracked at HEAD, a new untracked
-    path, an ignored path, or outside any repository -- so only
-    Ralph-authored writes to tracked or genuinely-new paths route through
-    :func:`commit_deterministic_writes`, while ignored targets and non-repo
-    targets bypass commit handling silently.
-
-    The containing repository is discovered from ``path`` itself (with
-    ``search_parent_directories=True``) -- NEVER from the process CWD, which
-    may be a different worktree.
-
-    Classification:
-
-    * ``tracked`` -- the path is tracked in the index (``git ls-files
-      --error-unmatch`` succeeds);
-    * ``untracked_ignored`` -- untracked AND ignored (``git check-ignore``
-      succeeds);
-    * ``untracked_new`` -- untracked and not ignored (a brand-new path a
-      deterministic writer is wholly authoring);
-    * ``not_repo`` -- the path is not inside a git working tree, the
-      containing repo could not be discovered, or any classification
-      probe (``ls-files`` / ``check-ignore``) returned a git error.
-      The caller skips commit handling silently (no commit, no warning).
-
-    Repository discovery uses the closest existing ancestor of
-    ``path`` -- never ``path`` itself when it does not exist yet
-    (the canonical first-creation case). ``Repo(nonexistent, ...)``
-    raises ``NoSuchPathError`` even with
-    ``search_parent_directories=True``, so a brand-new
-    ``.agent/ralph-workflow.toml`` would otherwise misclassify as
-    ``not_repo`` and the deterministic commit routing would skip
-    it (DA-001 / DA-007 / DA-008 / DA-010 wt-12).
-    """
-    del repo_root  # the containing repo is discovered from ``path`` itself
+    del repo_root
     target = Path(path).resolve(strict=False)
-    # Find the closest existing ancestor for the Repo() probe. Without
-    # this, ``Repo(target, search_parent_directories=True)`` raises
-    # ``NoSuchPathError`` when ``target`` itself does not exist on disk
-    # yet -- the canonical first-creation shape -- and we wrongly
-    # classify the path as ``not_repo``.
     repo_anchor = target if DEFAULT_FILE_BACKEND.exists(target) else target.parent
     while not DEFAULT_FILE_BACKEND.exists(repo_anchor):
         repo_anchor = repo_anchor.parent
@@ -519,8 +235,6 @@ def classify_target_for_commit(repo_root: Path | str, path: Path | str) -> Targe
             rel_path = target.relative_to(Path(working_dir)).as_posix()
         except ValueError:
             return "not_repo"
-        # ``None`` means the untracked probes failed closed (unprovable
-        # index/ignore state) -- skip silently as ``not_repo``.
         untracked_class = _classify_untracked_target(repo, rel_path)
         if untracked_class is not None:
             return untracked_class
@@ -531,7 +245,6 @@ def classify_target_for_commit(repo_root: Path | str, path: Path | str) -> Targe
             close()
 
 
-# ---- commit_deterministic_writes --------------------------------------------
 
 
 def commit_deterministic_writes(
@@ -545,64 +258,6 @@ def commit_deterministic_writes(
     body_builder: Callable[[list[str]], str] | None = None,
     intentional_transitions: frozenset[str] | None = None,
 ) -> ScopedCommitResult:
-    """Commit EXACTLY the given paths, but only those whose HEAD blob hash
-    equals the caller-recorded pre-write content hash.
-
-    This is the single isolation primitive every deterministic background
-    writer (skill sync, ``.gitignore`` seed, policy preflight) routes
-    through. The contract:
-
-    * ``paths`` is the byte-exact set of paths the deterministic writer
-      just touched. Paths outside this set are NEVER staged.
-    * ``pre_contents`` maps each path to its pre-write content hash
-      (``None``/absent means "the path did not exist before the write").
-      The recorded hash is the SHA-256 hex of the on-disk file content
-      the writer saw BEFORE writing. ``commit_deterministic_writes``
-      recomputes the HEAD blob hash and compares; a mismatch means the
-      user or agent edited the file in between the writer's pre-write
-      snapshot and the commit attempt. Such paths are SKIPPED with a
-      warning so they stay in the agent / user commit flow and never
-      enter a fixed-message deterministic commit.
-    * ``subject`` is the literal conventional-commit subject line (e.g.
-      ``chore(skills): sync baseline bundle``).
-    * ``create_commit_fn`` and ``stage_fn`` are the production
-      dependencies. Tests inject stubs / spies.
-    * ``intentional_transitions`` (optional) is the set of paths
-      whose ancestor-symlink transition the caller has AUTHORED
-      (e.g. the install code's sibling-root symlink). When a path's
-      ancestor is a symlink (the ``_ANCESTOR_SYMLINK_DIRTY``
-      shape) the on-disk state cannot be cheaply compared against
-      HEAD, and the resolved state may legitimately differ from
-      HEAD because the install set the canonical's content
-      intentionally. Listing the transition's root path here
-      bypasses the wt-012 DA-003/DA-010/DA-012 user-dirty
-      descendant check for that path -- the caller has confirmed
-      the transition is intentional, so a non-matching resolved
-      state is the install's content, not a user edit. The
-      bypass is per-transition-root, not per-descendant.
-
-    Outcomes:
-
-    * ``CREATED`` -- at least one in-scope path was committed. ``sha``
-      is the commit SHA.
-    * ``NOOP`` -- every in-scope path's post-write content still equals
-      HEAD (nothing changed since the writer ran, or the writer's
-      write was a no-op idempotent rewrite of the existing blob).
-    * ``SKIPPED`` -- at least one in-scope path was already dirty at
-      HEAD (HEAD != pre-write hash), or an ancestor transition stage
-      (dir→symlink replacement) would sweep such a skipped
-      descendant's deletion into the commit; git cannot hold the new
-      symlink and the kept descendant in one tree, so the ancestor and
-      every stageable entry beneath it join ``skipped_paths`` instead
-      (wt-012 DA-003/DA-008, see ``ralph.git._transition_guard``).
-      Skipped paths are left dirty for the agent flow. Other in-scope
-      paths are still committed.
-    * ``NOT_REPO`` -- ``repo_root`` is not a git working tree.
-    * ``FAILED`` -- any ``OSError`` / ``GitCommandError`` from the
-      attempt. The pre-attempt index state is restored byte-for-byte
-      before the helper returns so the failed commit leaves no
-      half-staged debris.
-    """
     path_list: list[str] = sorted({p for p in paths if p})
     if not path_list:
         return ScopedCommitResult(status=ScopedCommitStatus.NOOP)
@@ -618,12 +273,6 @@ def commit_deterministic_writes(
             )
             return ScopedCommitResult(status=ScopedCommitStatus.NOT_REPO)
 
-        # wt-012 DA-006: an unborn HEAD (no commits yet) makes every
-        # HEAD probe raise ValueError mid-attempt -- after staging -- and
-        # the guards below catch only OSError/GitCommandError, so the
-        # failure escaped as an unhandled exception with a half-staged
-        # index. Fail closed HERE, before any snapshot or staging, so
-        # the index is untouched and the caller gets an explicit FAILED.
         try:
             _ = repo.head.commit
         except ValueError as unborn_exc:
@@ -635,15 +284,8 @@ def commit_deterministic_writes(
             return ScopedCommitResult(status=ScopedCommitStatus.FAILED, error=str(unborn_exc))
 
         try:
-            # Snapshot the FULL pre-staged state (in-scope and out-of-scope)
-            # so the failed-attempt rollback can restore byte-for-byte. We
-            # will unstage the whole set, stage ONLY the in-scope paths
-            # the deterministic writer touched, attempt the commit, then
-            # restore.
             pre_staged_paths = _capture_staged_paths(repo)
             pre_staged_snapshots = _snapshot_pre_staged_index(repo, pre_staged_paths)
-            # Unstage EVERY pre-staged path so the chore commit cannot
-            # capture unrelated pre-staged entries.
             if pre_staged_paths:
                 _ = cast(
                     "None",
@@ -651,9 +293,6 @@ def commit_deterministic_writes(
                 )
 
             try:
-                # Compare each in-scope path's HEAD blob hash against the
-                # caller-recorded pre-write content hash. SKIPPED paths
-                # stay dirty for the agent flow.
                 selected = _deterministic._select_deterministic_paths(
                     repo, path_list, pre_contents, intentional_transitions
                 )
@@ -673,14 +312,6 @@ def commit_deterministic_writes(
                     body_builder,
                 )
             finally:
-                # Always restore the pre-staged snapshot (modulo any
-                # rollback above) so the user's staged state is preserved
-                # byte-for-byte after the deterministic commit succeeds.
-                # wt-012 DA-006: a failed restoration must not be silently
-                # swallowed while the helper still reports CREATED -- the
-                # user's pre-staged state is lost, so the commit cannot be
-                # considered fully successful. Re-raise so the outer guard
-                # converts it to an explicit FAILED outcome.
                 if pre_staged_snapshots:
                     _restore_pre_staged_index(repo, pre_staged_snapshots)
         finally:
@@ -698,13 +329,9 @@ def _select_scoped_paths(
     exclude: frozenset[str],
     path_filter: Callable[[str], bool] | None,
 ) -> list[str]:
-    """Find dirty scoped paths while retaining pre-existing user edits."""
     all_dirty: list[str] = []
     for scope in sorted(scopes):
         all_dirty.extend(_list_dirty_paths(repo, scope))
-    # Defensive re-filter: drop anything outside the scopes even if
-    # ``git status -- <scope>`` somehow returned it. Then drop everything
-    # that was already dirty before we started -- that is the user's work.
     all_dirty = sorted(
         {path for path in all_dirty if path_in_scope(path, scopes) and path not in exclude}
     )
@@ -719,12 +346,9 @@ def _scoped_commit_failure(
     pre_staged_blobs: dict[str, str | None],
     result: CommitCreationResult,
 ) -> ScopedCommitResult:
-    """Restore the index after a declined scoped commit and report its error."""
-    # Commit failed: rollback the stage, restore the
-    # pre-staged snapshot, return FAILED.
     try:
         _ = cast("None", route_git_method(repo, "reset", ("HEAD", "--", *all_dirty)))
-    except (OSError, GitCommandError) as reset_exc:  # pragma: no cover
+    except (OSError, GitCommandError) as reset_exc:
         logger.debug(
             "commit_scoped_updates: failed-attempt unstage failed (non-fatal): {}",
             reset_exc,
@@ -741,7 +365,6 @@ def _scoped_commit_failure(
     )
 
 
-# ---- commit_scoped_updates (legacy public helper) ---------------------------
 
 
 def commit_scoped_updates(
@@ -755,24 +378,6 @@ def commit_scoped_updates(
     path_filter: Callable[[str], bool] | None = None,
     exclude: frozenset[str] = frozenset(),
 ) -> ScopedCommitResult:
-    """Create one deterministic chore commit for dirty paths inside ``scopes``.
-
-    ``path_filter`` (optional) further narrows the in-scope dirty set — a
-    path is committed only when the filter returns True. Callers use it for
-    content-conditional scopes (e.g. commit a migration candidate only when
-    it carries the migrated marker).
-
-    ``exclude`` is subtracted from the dirty set BEFORE anything else. Callers
-    pass the paths that were already dirty before the automated work began, so a
-    file the user was mid-edit on is never swept into an automated commit — even
-    when it sits inside one of the ``scopes``. Being Ralph-owned (``AGENTS.md``,
-    the canonical policy dir) makes a file in-scope; it does NOT make the user's
-    uncommitted edit to it ours to commit.
-
-    Returns a :class:`ScopedCommitResult` describing the outcome. On
-    ``CREATED`` the SHA is in ``result.sha``; on every other status
-    ``result.sha`` is ``None``.
-    """
     try:
         repo_root_path = Path(repo_root)
         try:
@@ -784,18 +389,11 @@ def commit_scoped_updates(
             )
             return ScopedCommitResult(status=ScopedCommitStatus.NOT_REPO)
 
-        # wt-012 DA-006: an unborn HEAD raises ValueError from the HEAD
-        # probe AFTER staging; the inner rollback below unstages the set
-        # and the outer guard (ValueError included) reports FAILED.
 
         try:
             all_dirty = _select_scoped_paths(repo, scopes, exclude, path_filter)
             if not all_dirty:
                 return ScopedCommitResult(status=ScopedCommitStatus.NOOP)
-            # Snapshot and unstage every pre-staged path (in-scope and
-            # out-of-scope) so the chore commit cannot capture unrelated
-            # pre-staged entries, then restore the exact index state
-            # afterwards including staged deletions.
             pre_staged_paths = _capture_staged_paths(repo)
             pre_staged_blobs = _snapshot_pre_staged_index(repo, pre_staged_paths)
             if pre_staged_paths:
@@ -812,17 +410,12 @@ def commit_scoped_updates(
                     return _scoped_commit_failure(repo, all_dirty, pre_staged_blobs, result)
                 return ScopedCommitResult(status=ScopedCommitStatus.CREATED, sha=result.sha)
             except (OSError, GitCommandError, ValueError):
-                # wt-012 DA-006: a raised commit failure (including the
-                # unborn-HEAD ValueError) must unstage the
-                # freshly staged set before the finally below restores the
-                # pre-staged snapshot -- otherwise the failure leaves the
-                # deterministic paths half-staged for a later agent commit.
                 try:
                     _ = cast(
                         "None",
                         route_git_method(repo, "reset", ("HEAD", "--", *all_dirty)),
                     )
-                except (OSError, GitCommandError, ValueError) as reset_exc:  # pragma: no cover
+                except (OSError, GitCommandError, ValueError) as reset_exc:
                     logger.warning(
                         "commit_scoped_updates: failed-attempt unstage failed "
                         "(index may need manual repair): {}",
@@ -830,16 +423,10 @@ def commit_scoped_updates(
                     )
                 raise
             finally:
-                # Best-effort restore -- a broken git state MUST NOT block
-                # the pipeline. Worst case the user re-runs ``git add``.
                 if pre_staged_blobs:
                     try:
                         _restore_pre_staged_index(repo, pre_staged_blobs)
-                    except (OSError, GitCommandError) as restore_exc:  # pragma: no cover
-                        # wt-012 DA-003: a failed restoration silently loses
-                        # the user's pre-staged state while the helper still
-                        # reports success. Report it at WARNING so the loss
-                        # is visible at normal verbosity.
+                    except (OSError, GitCommandError) as restore_exc:
                         logger.warning(
                             "commit_scoped_updates: failed to restore pre-staged "
                             "paths (user's staged state may need manual repair): {}",

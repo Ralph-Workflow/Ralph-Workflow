@@ -1,4 +1,3 @@
-"""Nanocoder-specific MCP transport helpers."""
 
 from __future__ import annotations
 
@@ -30,25 +29,6 @@ def build_nanocoder_mcp_config(
     workspace_path: Path | None = None,
     env: Mapping[str, str] | None = None,
 ) -> tuple[str, tuple[UpstreamMcpServer, ...]]:
-    """Build a Nanocoder MCP payload with Ralph injected as the managed server.
-
-    No ``tools/call`` timeout field is written here: the Nanocoder package
-    docs (https://www.npmjs.com/package/@nanocollective/nanocoder plus
-    https://github.com/Nano-Collective/nanocoder) document the MCP server
-    keys ``transport``/``url``/``command``/``args``/``env``/``enabled``/
-    ``alwaysAllow`` only; no tool-call timeout is named in the package's
-    README or ``docs/``. Writing a synthetic timeout field would either be
-    silently ignored or hand craft a contract the agent does not honour, so
-    the transport falls back to whatever Nanocoder's internal default is.
-    See ``docs/agents/exec-long-running-root-cause.md`` for the verified
-    citation.
-
-    Ralph's own entry is dropped before normalization. ``ralph`` is a reserved
-    upstream name and ``normalize_upstream_mcp_servers`` raises on it, so an
-    agent payload that already names it -- one written by hand, or copied back
-    from a payload Ralph synthesized -- used to abort every Nanocoder
-    invocation instead of being replaced by the live endpoint.
-    """
     agent_servers = _parse_nanocoder_mcp_servers(existing)
     upstreams = normalize_upstream_mcp_servers(
         {name: entry for name, entry in agent_servers.items() if name != RALPH_MCP_SERVER_NAME}
@@ -84,10 +64,9 @@ def load_existing_nanocoder_upstream_servers(
     *,
     env: dict[str, str] | None = None,
 ) -> tuple[UpstreamMcpServer, ...]:
-    """Load Nanocoder MCP servers from documented config locations."""
     active_env = (
         env if env is not None else cast("dict[str, str]", os.environ)
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     config_dir = active_env.get(_NANOCODER_CONFIG_DIR_ENV)
     paths: tuple[Path, ...]
     if config_dir:

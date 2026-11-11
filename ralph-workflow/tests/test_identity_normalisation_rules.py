@@ -1,12 +1,3 @@
-"""The identity-normalisation and profile-re-basing rules.
-
-Every delivery guard keys on an identity, so these two rules decide what
-the guards see. Both have been wrong at least once in a way the suite
-did not notice -- a blank transport treated as a real CLI, a foreign
-provider's verdicts carried forward -- so they are pinned here directly
-rather than only through the paths that consume them.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -18,11 +9,6 @@ if TYPE_CHECKING:
 
 
 def test_a_whitespace_transport_is_not_a_transport() -> None:
-    """Blank is not a CLI name, on either side of the comparison.
-
-    Treating one as authoritative let a blank declaration override a
-    genuine restricted transport and then strip to nothing.
-    """
     from ralph.mcp.multimodal.capabilities import (
         MultimodalModelIdentity,
         identity_on_transport,
@@ -36,7 +22,6 @@ def test_a_whitespace_transport_is_not_a_transport() -> None:
 
 
 def test_a_transport_differing_only_in_case_keeps_its_provider() -> None:
-    """Case is not a different CLI; dropping the provider there costs the ledger."""
     from ralph.mcp.multimodal.capabilities import (
         MultimodalModelIdentity,
         identity_on_transport,
@@ -53,7 +38,6 @@ def test_a_transport_differing_only_in_case_keeps_its_provider() -> None:
 
 
 def test_a_blank_identity_transport_does_not_relax_a_restricted_profile() -> None:
-    """The less-informed guard must see blank as "knows nothing", like None."""
     from ralph.mcp.multimodal.artifacts import MODALITY_IMAGE
     from ralph.mcp.multimodal.capabilities import (
         MultimodalModelIdentity,
@@ -76,7 +60,6 @@ def test_a_blank_identity_transport_does_not_relax_a_restricted_profile() -> Non
 
 
 def test_a_profile_from_another_provider_is_re_resolved() -> None:
-    """Another provider's verdicts describe another API."""
     from ralph.mcp.multimodal.artifacts import MODALITY_PDF
     from ralph.mcp.multimodal.capabilities import (
         MultimodalModelIdentity,
@@ -84,10 +67,6 @@ def test_a_profile_from_another_provider_is_re_resolved() -> None:
         resolve_capability_profile,
     )
 
-    # On gemini's OWN CLI. Pairing a gemini model with a claude
-    # transport now bounds delivery by what that CLI can carry, which
-    # would make this fixture assert the bound rather than the
-    # re-resolution it is about.
     gemini = resolve_capability_profile(
         MultimodalModelIdentity(provider="gemini", model_id="g", transport="agy")
     )
@@ -98,35 +77,18 @@ def test_a_profile_from_another_provider_is_re_resolved() -> None:
         MultimodalModelIdentity(provider="openai", model_id="gpt-5", transport="agy"),
     )
 
-    # OpenAI accepts none of these; carrying gemini's verdicts promised
-    # typed blocks its API would reject.
     assert rebased.verdict_for("audio").delivery is DeliveryMode.UNSUPPORTED
     assert rebased.verdict_for(MODALITY_PDF).delivery is DeliveryMode.UNSUPPORTED
 
-    # The IDENTITY must be re-resolved, not just the deliveries. Asserting
-    # only on delivery let the re-resolution guard be deleted with this
-    # test still green: ``verdict_for`` independently corrects gemini's
-    # perceptible verdicts down for an openai identity, so both asserts
-    # above survive a profile that never re-resolved at all. These are
-    # the fields this layer prints and the wire ledger records, and a
-    # verdict still claiming ``provider='gemini'`` is an audit trail
-    # naming the wrong API.
     assert rebased.identity.provider == "openai"
     assert rebased.identity.model_id == "gpt-5"
 
-    # ``image`` is the modality where the two providers AGREE, so no
-    # per-verdict correction fires and the stored verdict is returned
-    # verbatim. That makes it the only place the re-resolution itself is
-    # observable: a profile that merely carried the new identity over
-    # gemini's verdicts still reports ``provider='gemini'`` here, in the
-    # text this layer prints and the wire ledger records.
     image_verdict = rebased.verdict_for("image")
     assert image_verdict.provider == "openai"
     assert "gemini" not in image_verdict.reason
 
 
 def test_an_empty_payload_transport_does_not_outrank_the_declaration() -> None:
-    """``"transport": ""`` is absence, not a CLI the payload named."""
     from ralph.mcp.multimodal.capabilities import payload_transport
 
     assert payload_transport("") is None
@@ -137,17 +99,6 @@ def test_an_empty_payload_transport_does_not_outrank_the_declaration() -> None:
 
 
 def test_a_re_based_identity_carries_the_canonical_transport_spelling() -> None:
-    """The transport written into an identity is canonicalised, not copied.
-
-    Every consumer strips and lowercases before matching, so a
-    difference in spelling changed no behaviour and no test -- but the
-    spelling IS what lands in the session file and the wire-ledger
-    capability digest, and the other seam that re-bases a transport
-    lowercases. Two seams normalising differently made that digest
-    depend on which one ran, and left this function returning
-    ``transport='CODEX'`` while claiming to have re-based the identity
-    onto the launched ``codex``.
-    """
     from ralph.mcp.multimodal.capabilities import (
         MultimodalModelIdentity,
         identity_on_transport,
@@ -161,13 +112,6 @@ def test_a_re_based_identity_carries_the_canonical_transport_spelling() -> None:
 
 
 def test_a_blank_stated_transport_takes_the_launched_one() -> None:
-    """Whitespace is not a transport, in either position.
-
-    Treating a whitespace-only value as authoritative let
-    ``--agent-transport "  "`` override a delegate's genuine restricted
-    CLI and then strip to nothing, reopening the incident at the one
-    seam the payload readers' normalisation did not cover.
-    """
     from ralph.mcp.multimodal.capabilities import (
         MultimodalModelIdentity,
         identity_on_transport,
@@ -177,19 +121,10 @@ def test_a_blank_stated_transport_takes_the_launched_one() -> None:
     stated = MultimodalModelIdentity(provider="openai", model_id="m", transport="codex")
 
     assert identity_on_transport(blank, "codex").transport == "codex"
-    # A blank LAUNCHED value must not clear a real stated transport.
     assert identity_on_transport(stated, "   ").transport == "codex"
 
 
 def test_an_identity_nobody_can_place_is_returned_untouched() -> None:
-    """``None`` transport means unknown, and must not become ``""``.
-
-    Canonicalising unconditionally rewrote an unknown transport to the
-    empty string, which reads as "known to be nothing" and flips
-    ``lifecycle.identity_is_serialisable`` (it tests ``is not None``) --
-    so an identity nothing knew anything about started being written
-    into the session file and the wire-ledger digest.
-    """
     from ralph.mcp.multimodal.capabilities import (
         UNKNOWN_IDENTITY,
         identity_on_transport,
@@ -203,13 +138,6 @@ def test_an_identity_nobody_can_place_is_returned_untouched() -> None:
 
 
 def test_the_standalone_seam_canonicalises_like_the_others() -> None:
-    """Three seams write a transport spelling; all three must agree.
-
-    The guards strip and lower before matching, so a shouted value still
-    works -- but the spelling reaches the session file and the
-    wire-ledger capability digest, and two spellings of one CLI produced
-    two different digests for the same run.
-    """
     from ralph.mcp.server.runtime import standalone_session_identity
 
     assert standalone_session_identity("CODEX").transport == "codex"
@@ -219,14 +147,6 @@ def test_the_standalone_seam_canonicalises_like_the_others() -> None:
 
 
 def test_every_seam_that_writes_a_transport_spelling_agrees() -> None:
-    """Four seams write one; three normalised differently.
-
-    The same operator input produced ``'codex'``, ``'CODEX'`` and
-    ``'  codex  '`` depending on which path ran, and the wire-ledger
-    capability digest differed with it -- two digests for one run. Every
-    matcher strips and lowercases, so this is an audit-trail defect
-    rather than a guard failure, which is exactly why nothing caught it.
-    """
     from ralph.mcp.multimodal.capabilities import (
         MultimodalModelIdentity,
         identity_on_transport,
@@ -244,20 +164,12 @@ def test_every_seam_that_writes_a_transport_spelling_agrees() -> None:
         }
         assert set(seams.values()) == {"codex"}, (raw, seams)
 
-    # And a value that is not a transport reads as absent at every seam.
     for blank in ("", "   ", "\t\n"):
         assert payload_transport(blank) is None
         assert standalone_session_identity(blank).transport is None
 
 
 def test_a_blank_transport_is_not_serialised_as_known() -> None:
-    """``transport=""`` must not reach the child payload or the digest.
-
-    ``identity_is_serialisable`` tests ``is not None``, so an empty
-    string read as "known to be nothing" and was written out; only the
-    reader's own normalisation dropped it again. Unknown means ``None``
-    at every seam.
-    """
     from ralph.mcp.multimodal.capabilities import (
         MultimodalModelIdentity,
         identity_on_transport,
@@ -274,15 +186,6 @@ def test_a_blank_transport_is_not_serialised_as_known() -> None:
 
 
 def test_the_persisted_and_declared_seams_normalise_too() -> None:
-    """All SIX seams, not the three the last test reached.
-
-    A transport spelling is written by ``payload_transport``, the
-    ``FileBackedSession`` declaration, ``session_from_env``'s JSON
-    branch, ``standalone_session_identity``, ``identity_on_transport``
-    and ``profile_from_payload``. The previous test said "four seams"
-    and exercised three, and mutation confirmed two of the others could
-    drop their normalisation with the whole suite green.
-    """
     import json
     from pathlib import Path
 
@@ -290,13 +193,9 @@ def test_the_persisted_and_declared_seams_normalise_too() -> None:
     from ralph.mcp.server.runtime_session import FileBackedSession
 
     for raw in ("CODEX", "  codex  ", "codex"):
-        # A profile rehydrated from a payload.
         profile = profile_from_payload({"provider": "openai", "model_id": "m", "transport": raw})
         assert profile.identity.transport == "codex", raw
 
-        # A file-backed session's declared transport, with no identity
-        # in the payload at all -- the shape session_from_env produces
-        # when the identity is unresolvable.
         session = FileBackedSession(
             Path("/nonexistent/session.json"),
             loader=lambda _path: json.loads('{"session_id":"s","run_id":"r","drain":"d"}'),
@@ -306,14 +205,6 @@ def test_the_persisted_and_declared_seams_normalise_too() -> None:
 
 
 def test_a_blank_transport_is_normalised_at_the_reconciling_seam() -> None:
-    """The seam that short-circuits must normalise before it returns.
-
-    ``_reconcile_injected_transport`` returns early when nothing is
-    being launched, and that early return kept ``""`` -- which
-    ``identity_is_serialisable`` reads as known, so a blank transport
-    was written into the child payload and the capability digest by the
-    one path that never reached ``identity_on_transport``.
-    """
     from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
     from ralph.mcp.session_plan import reconcile_injected_transport
 
@@ -326,17 +217,6 @@ def test_a_blank_transport_is_normalised_at_the_reconciling_seam() -> None:
 
 
 def test_the_payload_writer_canonicalises_the_transport_it_records() -> None:
-    """The SEVENTH seam. It wrote whatever it was handed.
-
-    ``session_payload_json`` records the identity that crosses to the
-    child, and it copied the transport spelling verbatim -- so a
-    hand-constructed parent identity of ``'CODEX'`` or ``'  codex  '``
-    was carried into the child payload and into the verdict ``reason``
-    strings, giving one run several different capability digests. Every
-    production constructor normalises upstream, so this changes no
-    delivery decision; it makes the last seam meet the claim the other
-    six already do.
-    """
     import json
 
     from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
@@ -360,22 +240,6 @@ def test_the_payload_writer_canonicalises_the_transport_it_records() -> None:
 
 
 def test_a_stale_payload_cannot_defeat_a_declared_restricted_cli(tmp_path: Path) -> None:
-    """Between a declaration and a payload, the RESTRICTED side wins.
-
-    ``--agent-transport`` exists so an operator can tell a manually
-    started server which CLI it serves, and its help text promises the
-    server will then withhold content that CLI cannot carry. Reading the
-    payload first (``payload_transport(raw) or declared``) meant a stale
-    or hand-written session file naming another CLI defeated it
-    outright, putting inline image bytes in front of the restricted CLI
-    the operator had named.
-
-    Reading the declaration first would have inverted a case that was
-    deliberate — a payload written by a parent Ralph process does know
-    which agent it launched. Preferring whichever side is restricted
-    keeps both right, and is the rule ``select_session_transport``
-    already applies to a mixed chain.
-    """
     import json
 
     from ralph.mcp.server.runtime_session import FileBackedSession, reconcile_declared_transport
@@ -399,7 +263,6 @@ def test_a_stale_payload_cannot_defeat_a_declared_restricted_cli(tmp_path: Path)
     assert session.model_identity.transport == "codex"
     assert session.caller_model_identity.transport == "codex"
 
-    # Both directions, and the cases where nothing is at stake.
     assert reconcile_declared_transport("claude", "codex") == "codex"
     assert reconcile_declared_transport(None, "claude") == "claude"
     assert reconcile_declared_transport("codex", None) == "codex"
@@ -408,15 +271,6 @@ def test_a_stale_payload_cannot_defeat_a_declared_restricted_cli(tmp_path: Path)
 
 
 def test_the_capability_profile_beside_the_identity_is_canonicalised_too() -> None:
-    """The EIGHTH seam, in the same JSON object as the seventh.
-
-    ``session_payload_json`` canonicalises ``model_identity.transport``,
-    but the ``capability_profile`` written beside it is built from the
-    raw identity and ``to_payload`` copied its spelling verbatim. The
-    wire-ledger digest is taken over that payload, so one run still
-    produced several digests -- the defect the previous round reported
-    as closed, closed on one of its two halves.
-    """
     import json
 
     from ralph.mcp.multimodal.capabilities import (
@@ -448,19 +302,6 @@ def test_the_capability_profile_beside_the_identity_is_canonicalised_too() -> No
 
 
 def test_a_padded_provider_cannot_change_what_an_agent_is_served() -> None:
-    """The NINTH field, beside eight transport seams already fixed.
-
-    ``get_delivery_mode`` lowercases the provider when it matches the
-    capability matrix but does not strip it, so ``' claude '`` missed
-    every entry and fell through to unknown-provider delivery. One
-    padded character in a persisted payload changed what the agent was
-    served -- conservatively, but silently -- and produced a different
-    wire-ledger digest for the same run.
-
-    Canonicalising in ``MultimodalModelIdentity`` itself is what makes
-    the seams belt-and-braces: an identity cannot be constructed
-    carrying a spelling its own matcher will not recognise.
-    """
     from ralph.mcp.multimodal.capabilities import (
         MultimodalModelIdentity,
         get_delivery_mode,
@@ -475,12 +316,6 @@ def test_a_padded_provider_cannot_change_what_an_agent_is_served() -> None:
 
 
 def test_a_blank_provider_is_unknown_not_a_resolved_one() -> None:
-    """``is_known()`` gates the identity-unknown degradation warning.
-
-    An exact ``!= "unknown"`` test read ``{"provider": ""}`` and
-    ``{"provider": "Unknown"}`` as RESOLVED providers, suppressing the
-    warning that tells an operator delivery is running on defaults.
-    """
     from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
 
     for blank in ("", "   ", "Unknown", "unknown"):
@@ -493,17 +328,6 @@ def test_a_blank_provider_is_unknown_not_a_resolved_one() -> None:
 
 
 def test_a_padded_model_id_does_not_change_the_digest() -> None:
-    """The ELEVENTH field, between the two already canonicalised.
-
-    ``model_id`` sits between ``provider`` and ``transport`` and was
-    copied verbatim into every verdict ``reason`` and the wire-ledger
-    capability digest, so one padded character produced three digests
-    for a single run -- the same defect the previous rounds fixed for
-    its two neighbours.
-
-    Stripped, never lowered: a model id is a vendor's name for a
-    specific model and its case can be significant.
-    """
     import json
 
     from ralph.mcp.multimodal.capabilities import (
@@ -523,21 +347,11 @@ def test_a_padded_model_id_does_not_change_the_digest() -> None:
 
     assert len(digests) == 1, "padding changed the capability digest"
 
-    # Case IS significant for a model id, unlike a provider or transport.
     assert MultimodalModelIdentity(provider="openai", model_id="GPT-5").model_id == "GPT-5"
     assert MultimodalModelIdentity(provider="openai", model_id="   ").model_id is None
 
 
 def test_a_json_null_provider_reads_as_unknown() -> None:
-    """``null`` is the natural serialisation of "no provider".
-
-    The readers coerced with ``str(...)`` before canonicalisation saw
-    the value, so ``{"provider": null}`` became the literal provider
-    ``"none"`` -- resolved by every test in the codebase, which
-    suppresses the identity-unknown degradation warning that tells an
-    operator delivery is running on defaults. ``0``, ``[]`` and ``{}``
-    were no better.
-    """
     import json
 
     from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
@@ -549,6 +363,5 @@ def test_a_json_null_provider_reads_as_unknown() -> None:
         assert identity.provider == "unknown", raw
         assert identity.is_known() is False, raw
 
-    # Direct construction agrees, and a real provider still resolves.
     assert MultimodalModelIdentity(provider="claude").is_known() is True
     assert json.loads('{"provider": null}')["provider"] is None

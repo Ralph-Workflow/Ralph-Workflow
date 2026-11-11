@@ -55,8 +55,6 @@ class TestPerformance:
         _q, sub = _make_subscriber()
         state = _make_state()
 
-        # Warm the cached prompt/plan/analysis paths so we measure steady-state notify cost,
-        # not first-call setup or coverage tracer startup noise.
         sub.notify(state)
 
         measurements: list[float] = []

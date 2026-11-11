@@ -1,5 +1,3 @@
-"""Tests for same-workspace parallel worker behaviour."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -40,7 +38,6 @@ class TestWorkerArtifactIsolation:
         ns_root = ctx_a.worker_namespace_root
         assert (ns_root / "unit-a" / "artifacts").is_dir()
         assert (ns_root / "unit-b" / "artifacts").is_dir()
-        # Namespaces are separate
         assert ns_root / "unit-a" != ns_root / "unit-b"
 
 

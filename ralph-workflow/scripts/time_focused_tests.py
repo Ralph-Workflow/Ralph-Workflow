@@ -1,10 +1,4 @@
 #!/usr/bin/env python3
-"""Time the focused S-3/S-4 test files (S-5 phase 2 helper).
-
-Emits one ``file_time <file> <seconds>`` line per file and one
-``total_time <seconds>`` line. Each file is run in a fresh pytest
-subprocess so the timing reflects an isolated run.
-"""
 
 from __future__ import annotations
 

@@ -1,4 +1,3 @@
-"""Typed failures raised by Ralph's Git operations."""
 
 from __future__ import annotations
 
@@ -6,7 +5,6 @@ from git.exc import GitCommandError
 
 
 class GitOperationError(GitCommandError):
-    """Represent a failed high-level Git operation while retaining Git failure semantics."""
 
     def __init__(self, operation: str, message: str) -> None:
         self.operation = operation

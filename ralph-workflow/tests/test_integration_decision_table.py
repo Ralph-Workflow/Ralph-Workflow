@@ -1,17 +1,3 @@
-"""Table-driven and property-based tests for the integration decision table.
-
-The decision table for Ralph's auto-integration subsystem must be total
-and safe: every combination of the seven :class:`Observation` dimensions
-maps to exactly one :class:`NextAction`, and no combination yields a
-discard-class action or a resolver dispatch on an unknown reading.
-
-These tests enumerate the complete finite state space (136,080
-observations crossed with each escalation rung) and assert the
-contract directly. They are pure in-memory: no subprocess, no
-filesystem, no clock, no ``time.sleep``. This is a project audit
-contract under ``ralph.testing.audit_test_policy``.
-"""
-
 from __future__ import annotations
 
 from functools import cache
@@ -40,10 +26,6 @@ from ralph.pipeline.integration_observation import (
 pytestmark = pytest.mark.timeout_seconds(30)
 
 
-# ---------------------------------------------------------------------------
-# Exhaustive observation builder.
-# ---------------------------------------------------------------------------
-
 _ALL_TARGET_VS_FEATURE: tuple[TargetVsFeature, ...] = tuple(TargetVsFeature)
 _ALL_TARGET_VS_REMOTE: tuple[TargetVsRemote, ...] = tuple(TargetVsRemote)
 _ALL_WORKTREE: tuple[WorktreeState, ...] = tuple(WorktreeState)
@@ -52,10 +34,6 @@ _ALL_KIND: tuple[InProgressKind, ...] = tuple(InProgressKind)
 _ALL_OWNERSHIP: tuple[InProgressOwnership, ...] = tuple(InProgressOwnership)
 _ALL_RECORD: tuple[IntegrationRecordState, ...] = tuple(IntegrationRecordState)
 
-#: Every in-progress operation kind. The rule-4/rule-5 rows must hold for
-#: ALL of these: the decision table branches on "some operation vs NONE",
-#: never on a specific kind, so a kind missing here means a row went
-#: unproven. ``NONE`` is excluded: it names "no operation in flight".
 _ALL_OPERATION_KINDS: tuple[InProgressKind, ...] = tuple(
     kind for kind in InProgressKind if kind is not InProgressKind.NONE
 )
@@ -63,7 +41,6 @@ _ALL_OPERATION_KINDS: tuple[InProgressKind, ...] = tuple(
 
 @cache
 def _build_observations() -> tuple[Observation, ...]:
-    """Materialise every combination of the seven dimensions."""
     return tuple(
         Observation(
             target_vs_feature=target_vs_feature,
@@ -88,22 +65,10 @@ def _build_observations() -> tuple[Observation, ...]:
 
 @cache
 def _build_unknown_observations() -> tuple[Observation, ...]:
-    """Materialise every observation where at least one dimension is UNKNOWN.
-
-    Resolver dispatch is only ever admitted with ``REAL_CONFLICT`` evidence,
-    so the unknown rule must be asserted across every possible unknown
-    combination.
-    """
     return tuple(obs for obs in _build_observations() if obs.has_unknown())
 
 
-# ---------------------------------------------------------------------------
-# Observation contract.
-# ---------------------------------------------------------------------------
-
-
 def test_observation_has_unknown_is_consistent_with_enum_membership() -> None:
-    """``Observation.has_unknown`` is True iff an enum dimension caps UNKNOWN."""
     obs = Observation(
         target_vs_feature=TargetVsFeature.EQUAL,
         target_vs_remote=TargetVsRemote.EQUAL,
@@ -129,19 +94,9 @@ def test_observation_has_unknown_is_consistent_with_enum_membership() -> None:
     assert obs_clean.has_unknown() is False
 
 
-# ---------------------------------------------------------------------------
-# Total mapping: rule 7.
-# ---------------------------------------------------------------------------
-
-
 _LADDER_ATTEMPTS: tuple[AttemptState, ...] = tuple(AttemptState(rung=rung) for rung in LADDER_ORDER)
 
 
-#: Members the default (shape-free) context must reach across the
-#: exhaustive observation space. The dirty-tree cleanup members are
-#: deliberately excluded: they require an explicit DirtShape refinement
-#: in the context, and their reachability across the dirt-shape space is
-#: proven by ``tests/test_integration_dirt_decisions.py``.
 _DEFAULT_CONTEXT_MEMBERS: frozenset[NextAction] = frozenset(
     set(NextAction)
     - {
@@ -158,7 +113,6 @@ _DEFAULT_CONTEXT_MEMBERS: frozenset[NextAction] = frozenset(
 
 @cache
 def _observation_ladder_actions() -> dict[Observation, tuple[NextAction, ...]]:
-    """Precompute the decision mapping for all observations crossed with ladder rungs."""
     table: dict[Observation, tuple[NextAction, ...]] = {}
     first_unknown = _build_unknown_observations()[0]
     unknown_actions = tuple(
@@ -191,14 +145,6 @@ def _observation_ladder_actions() -> dict[Observation, tuple[NextAction, ...]]:
 
 
 def test_decide_total_mapping_covers_every_state_and_reaches_every_member() -> None:
-    """Every observation crossed with every rung yields one NextAction; the full
-    enum is reachable (rule 7 completeness).
-
-    The default (shape-free) context must reach every member that does
-    not require a dirt-shape refinement; the cleanup-ladder members are
-    reachable only through a shaped context, which the exhaustive
-    dirt-shape suite walks.
-    """
     observations = _build_observations()
     assert len(observations) == 136_080
     table = _observation_ladder_actions()
@@ -213,13 +159,7 @@ def test_decide_total_mapping_covers_every_state_and_reaches_every_member() -> N
     )
 
 
-# ---------------------------------------------------------------------------
-# Rule 1: UNKNOWN never blocks and never dispatches an agent.
-# ---------------------------------------------------------------------------
-
-
 def test_decide_unknown_observation_never_dispatches_resolver() -> None:
-    """Rule 1: no unknown reading ever routes to ``DISPATCH_RESOLVER``."""
     unknown_observations = _build_unknown_observations()
     assert unknown_observations, "expected at least one unknown observation"
     table = _observation_ladder_actions()
@@ -230,9 +170,6 @@ def test_decide_unknown_observation_never_dispatches_resolver() -> None:
 
 
 def test_decide_unknown_observation_yields_wait_or_pending() -> None:
-    """Rule 1/2: unknown observations only yield ``WAIT_FOR_ENVIRONMENT`` or
-    ``CONTINUE_WITH_INTEGRATION_PENDING``.
-    """
     attempts_unexhausted = AttemptState(unknown_attempts=0, unknown_budget=5)
     attempts_exhausted = AttemptState(unknown_attempts=5, unknown_budget=5)
     for observation in _build_unknown_observations():
@@ -250,13 +187,7 @@ def test_decide_unknown_observation_yields_wait_or_pending() -> None:
         )
 
 
-# ---------------------------------------------------------------------------
-# Rule 2: WAIT_FOR_ENVIRONMENT budget exhaustion.
-# ---------------------------------------------------------------------------
-
-
 def test_decide_wait_for_environment_holds_until_budget_then_continues() -> None:
-    """Rule 2: WAIT_FOR_ENVIRONMENT holds until the unknown budget is spent."""
     obs = Observation(
         target_vs_feature=TargetVsFeature.UNKNOWN,
         target_vs_remote=TargetVsRemote.EQUAL,
@@ -289,13 +220,7 @@ def test_decide_wait_for_environment_holds_until_budget_then_continues() -> None
     )
 
 
-# ---------------------------------------------------------------------------
-# Rule 3: Landed work release short-circuit.
-# ---------------------------------------------------------------------------
-
-
 def test_decide_landed_work_short_circuits_to_land() -> None:
-    """Rule 3: clean worktree + feature contained yields LAND at every rung."""
     for target_vs_feature in (TargetVsFeature.EQUAL, TargetVsFeature.AHEAD):
         obs = Observation(
             target_vs_feature=target_vs_feature,
@@ -315,7 +240,6 @@ def test_decide_landed_work_short_circuits_to_land() -> None:
 
 
 def test_decide_contained_feature_never_dispatches_resolver() -> None:
-    """Rule 3 corollary: contained feature never yields ``DISPATCH_RESOLVER``."""
     for target in (TargetVsFeature.EQUAL, TargetVsFeature.AHEAD):
         for worktree in WorktreeState:
             if worktree is WorktreeState.UNMERGED:
@@ -337,13 +261,7 @@ def test_decide_contained_feature_never_dispatches_resolver() -> None:
                 )
 
 
-# ---------------------------------------------------------------------------
-# Rule 4: REAL_CONFLICT routes to DISPATCH_RESOLVER.
-# ---------------------------------------------------------------------------
-
-
 def test_decide_real_conflict_uses_dispatch_resolver() -> None:
-    """Rule 4: ``REAL_CONFLICT`` (unmerged worktree or foreign op) routes to the resolver."""
     unmerged = Observation(
         target_vs_feature=TargetVsFeature.BEHIND,
         target_vs_remote=TargetVsRemote.EQUAL,
@@ -376,13 +294,7 @@ def test_decide_real_conflict_uses_dispatch_resolver() -> None:
             )
 
 
-# ---------------------------------------------------------------------------
-# Rule 5: owned in-progress ops route to RESUME_OWNED_OPERATION.
-# ---------------------------------------------------------------------------
-
-
 def test_decide_owned_in_progress_resumes_owned_operation() -> None:
-    """Rule 5: owned in-progress ops yield RESUME_OWNED_OPERATION at every rung."""
     for kind in _ALL_OPERATION_KINDS:
         obs = Observation(
             target_vs_feature=TargetVsFeature.BEHIND,
@@ -401,19 +313,7 @@ def test_decide_owned_in_progress_resumes_owned_operation() -> None:
             )
 
 
-# ---------------------------------------------------------------------------
-# Rule 6: escalation ladder advances on repeat.
-# ---------------------------------------------------------------------------
-
-
 def test_decide_ladder_advances_after_signature_repeats() -> None:
-    """Rule 6: advancing one rung per ``(signature, action)`` repeat threshold.
-
-    Uses a ``HEAD=DETACHED`` observation so the action routes through the
-    ladder (rule 7 / rule 8 — clean worktree + detached HEAD is repairable;
-    REPAIR is the ladder's rung 0, REBUILD_ON_TARGET the rung 1, and
-    CONTINUE_WITH_INTEGRATION_PENDING the terminal rung).
-    """
     obs = Observation(
         target_vs_feature=TargetVsFeature.BEHIND,
         target_vs_remote=TargetVsRemote.EQUAL,
@@ -460,8 +360,6 @@ def test_decide_ladder_advances_after_signature_repeats() -> None:
 
 
 def test_decide_ladder_reaches_resolver_rung_with_real_conflict_signature() -> None:
-    """A repeated same-signature signature on the resolver rung dispatches resolver
-    only through the ladder, never via an unknown reading."""
     obs = Observation(
         target_vs_feature=TargetVsFeature.BEHIND,
         target_vs_remote=TargetVsRemote.EQUAL,
@@ -480,7 +378,6 @@ def test_decide_ladder_reaches_resolver_rung_with_real_conflict_signature() -> N
 
 
 def test_decide_ladder_stays_put_when_action_changes() -> None:
-    """Different action at the same signature does not count as a repeat."""
     obs = Observation(
         target_vs_feature=TargetVsFeature.BEHIND,
         target_vs_remote=TargetVsRemote.EQUAL,
@@ -504,13 +401,7 @@ def test_decide_ladder_stays_put_when_action_changes() -> None:
     }
 
 
-# ---------------------------------------------------------------------------
-# Rule 8: dirty/staged/untracked worktree without conflict => COMMIT.
-# ---------------------------------------------------------------------------
-
-
 def test_decide_dirty_worktree_without_conflict_commits() -> None:
-    """Rule 8: dirty/staged/untracked worktree without conflict yields COMMIT."""
     for dirty_worktree in (
         WorktreeState.TRACKED_CHANGES,
         WorktreeState.STAGED,
@@ -533,13 +424,7 @@ def test_decide_dirty_worktree_without_conflict_commits() -> None:
             )
 
 
-# ---------------------------------------------------------------------------
-# No discard-class action exists in the enum; AttemptState is immutable.
-# ---------------------------------------------------------------------------
-
-
 def test_next_action_enum_excludes_discard_actions() -> None:
-    """The enum has no ``DISCARD``-class member by design."""
     member_names = {m.name for m in NextAction}
     assert "DISCARD" not in member_names
     assert "FORCE_RESET" not in member_names
@@ -547,7 +432,6 @@ def test_next_action_enum_excludes_discard_actions() -> None:
 
 
 def test_attempt_state_is_immutable_and_bump_returns_new_instance() -> None:
-    """``AttemptState`` is frozen: ``with_attempt`` returns a new value."""
     obs = Observation(
         target_vs_feature=TargetVsFeature.BEHIND,
         target_vs_remote=TargetVsRemote.EQUAL,
@@ -566,7 +450,6 @@ def test_attempt_state_is_immutable_and_bump_returns_new_instance() -> None:
 
 
 def test_attempt_state_unknown_attempt_does_not_touch_repeat_counts() -> None:
-    """An unknown cycle increments ``unknown_attempts``, not the repeat counters."""
     obs = Observation(
         target_vs_feature=TargetVsFeature.UNKNOWN,
         target_vs_remote=TargetVsRemote.EQUAL,
@@ -585,7 +468,6 @@ def test_attempt_state_unknown_attempt_does_not_touch_repeat_counts() -> None:
 
 
 def test_attempt_state_signature_is_stable_across_observation_fields() -> None:
-    """Signature depends only on the durable invariant dimensions."""
     obs_a = Observation(
         target_vs_feature=TargetVsFeature.BEHIND,
         target_vs_remote=TargetVsRemote.UNREACHABLE,
@@ -610,7 +492,6 @@ def test_attempt_state_signature_is_stable_across_observation_fields() -> None:
 
 
 def test_attempt_state_key_pair_combines_signature_and_action() -> None:
-    """``key_pair`` returns the ``(signature, action.value)`` pair the ladder counts."""
     obs = Observation(
         target_vs_feature=TargetVsFeature.BEHIND,
         target_vs_remote=TargetVsRemote.EQUAL,
@@ -631,42 +512,6 @@ def test_attempt_state_key_pair_combines_signature_and_action() -> None:
 
 
 def test_decide_output_is_invariant_to_agent_active_flag() -> None:
-    """``decide`` never reads ``Observation.agent_active`` — by design, not omission.
-
-    ``agent_active`` is deliberately excluded from every decision path, and
-    this test pins that exclusion so it can never silently become load-bearing
-    or drift into a half-input. The deferral of mutation while an agent is
-    active is owned ENTIRELY by the catch-up ticker's mutation lease, not by
-    this table:
-
-    * ``ralph/pipeline/auto_integrate_catchup.py:351`` — ``_mutation_lease``
-      yields ``"held"`` whenever ``is_lease_held(root)`` or the lease cannot
-      be acquired, and never mutates in that case.
-    * ``ralph/pipeline/auto_integrate_catchup.py:379`` — ``_lease_failure``
-      maps the ``"held"`` verdict to ``CATCHUP_REFUSED_AGENT_ACTIVE``, the
-      operator-facing reason the tick was deferred.
-    * ``ralph/pipeline/auto_integrate_catchup.py:634-642`` — the tick body
-      documents that the lease holder owns the worktree and the catch-up
-      mutation defers to it.
-
-    Routing deferral through ``decide`` as well would double-own the policy:
-    a decision made from a stale ``agent_active`` snapshot could block the
-    catch-up after the agent has exited, or admit a mutation between probe
-    and act that the lease would have refused. The lease is checked at the
-    moment of mutation; the flag is a point-in-time observation. Only the
-    lease is safe, so only the lease decides.
-
-    The exclusion is safe because of the table's contract shape: every
-    action the table returns is either (a) a reading/classification answer
-    (WAIT, LAND, REINTEGRATE, RESUME, REPAIR, resolver dispatch, cleanup
-    rungs) that names WHAT the state needs — the executor's own lease
-    admission governs WHEN it may act — or (b) a pure ladder-position
-    answer driven by ``AttemptState``, whose ``signature`` (see
-    ``ralph/pipeline/integration_decision.py:297``) already excludes
-    ``agent_active`` so escalation state cannot differ between two
-    observations that differ only in the flag. There is no row for which
-    the flag changes the answer.
-    """
     state = AttemptState()
     for observation in _build_observations():
         if not observation.agent_active:

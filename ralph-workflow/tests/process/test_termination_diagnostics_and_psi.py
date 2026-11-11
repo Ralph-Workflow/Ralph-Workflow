@@ -1,12 +1,3 @@
-"""Tests for supervisor PSI pressure recording and termination failure diagnostics.
-
-Covers:
-- McpSupervisor calls record_psi_pressure() once per supervisor tick (exception-safe).
-- ProcessManager logs "still alive after kill" / "termination failed" with psutil status
-  and command name, handling NoSuchProcess and AccessDenied safely.
-- Unkillable D-state child retirement records host contention signal and never blocks.
-"""
-
 from __future__ import annotations
 
 import itertools
@@ -44,8 +35,6 @@ _FAST_POLICY = ProcessManagerPolicy(
 
 
 class _StubbornDStateProcess(FakePsutilProcess):
-    """Stubborn psutil process simulating uninterruptible D-state (disk-sleep)."""
-
     def __init__(self, pid: int, *, cmdline: Sequence[str] = ("git", "status")) -> None:
         super().__init__(pid=pid, stubborn=True, _status="disk-sleep")
         self._custom_cmdline = list(cmdline)
@@ -67,8 +56,6 @@ class _StubbornDStateProcess(FakePsutilProcess):
 
 
 class _FakeBridge(RestartAwareMcpBridge):
-    """Minimal test bridge for McpSupervisor."""
-
     def __init__(self) -> None:
         self._restart_count = 0
         self.health_check_called = 0
@@ -87,7 +74,6 @@ class _FakeBridge(RestartAwareMcpBridge):
 
 
 def test_supervisor_tick_calls_record_psi_pressure() -> None:
-    """McpSupervisor.tick calls record_psi_pressure once per tick."""
     bridge = _FakeBridge()
     psi_calls: list[int] = []
 
@@ -106,7 +92,6 @@ def test_supervisor_tick_calls_record_psi_pressure() -> None:
 
 
 def test_supervisor_tick_record_psi_pressure_exception_safe() -> None:
-    """McpSupervisor.tick silently swallows exceptions from record_psi_pressure."""
     bridge = _FakeBridge()
 
     def failing_record_psi() -> None:
@@ -117,14 +102,12 @@ def test_supervisor_tick_record_psi_pressure_exception_safe() -> None:
         _record_psi_pressure=failing_record_psi,
     )
 
-    # Must not raise despite failing record_psi_pressure
     restarted = supervisor.tick()
     assert not restarted
     assert bridge.health_check_called == 1
 
 
 def test_termination_diagnostics_include_psutil_status_and_command_on_alive_after_kill() -> None:
-    """Termination failure logs include psutil status and command name."""
     sync_factory = make_sync_process_factory(itertools.count(100), returncode=None)
     fake_psutil = FakePsutil()
     stubborn_proc = _StubbornDStateProcess(pid=100, cmdline=("git", "status"))
@@ -144,13 +127,11 @@ def test_termination_diagnostics_include_psutil_status_and_command_on_alive_afte
         with pytest.raises(ProcessTerminationError):
             handle.terminate(grace_period_s=0.0)
 
-        # Check that "still alive after kill" contains status and command
         still_alive_logs = [log for log in logs if "still alive after kill" in log]
         assert len(still_alive_logs) >= 1
         assert "status=disk-sleep" in still_alive_logs[0]
         assert "command=git status" in still_alive_logs[0]
 
-        # Check that "termination failed" contains status and command
         term_failed_logs = [log for log in logs if "termination failed" in log]
         assert len(term_failed_logs) >= 1
         assert "status=disk-sleep" in term_failed_logs[0]
@@ -160,7 +141,6 @@ def test_termination_diagnostics_include_psutil_status_and_command_on_alive_afte
 
 
 def test_termination_diagnostics_handles_no_such_process() -> None:
-    """When psutil raises NoSuchProcess on status check, status is no_such_process."""
     sync_factory = make_sync_process_factory(itertools.count(100), returncode=None)
 
     class _NoSuchProcessFake(FakePsutilProcess):
@@ -194,7 +174,6 @@ def test_termination_diagnostics_handles_no_such_process() -> None:
 
 
 def test_termination_diagnostics_handles_access_denied() -> None:
-    """When psutil raises AccessDenied on status check, status is access_denied."""
     sync_factory = make_sync_process_factory(itertools.count(100), returncode=None)
 
     class _AccessDeniedFake(FakePsutilProcess):
@@ -228,7 +207,6 @@ def test_termination_diagnostics_handles_access_denied() -> None:
 
 
 def test_d_state_retirement_failure_recorded_as_contention_and_non_blocking() -> None:
-    """D-state retirement failure emits host contention signal and never blocks."""
     sync_factory = make_sync_process_factory(itertools.count(100), returncode=None)
     fake_psutil = FakePsutil()
     stubborn_proc = _StubbornDStateProcess(pid=100)
@@ -256,11 +234,8 @@ def test_d_state_retirement_failure_recorded_as_contention_and_non_blocking() ->
     ):
         handle.terminate(grace_period_s=0.0)
 
-    # Contention signal assertion
     assert "d_state:disk-sleep" in signals
 
-    # Process record state: failed with termination_failed
     assert handle.record.status == ProcessStatus.FAILED
     assert handle.record.cause == "termination_failed"
-    # Not active anymore
     assert pm.list_active() == []

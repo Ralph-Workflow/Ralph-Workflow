@@ -1,16 +1,3 @@
-"""A PTY watchdog fire must sweep the agent's whole session, not just its leader.
-
-``PtyLineReader._check_fire`` terminated the handle and then ran
-``teardown_subtree`` only ``if self._handle.poll() is None``. ``terminate``
-waits for and reaps the leader, so ``poll()`` is never ``None`` at that point
-and the sweep was skipped on every idle / session-ceiling fire. Session members
-that had re-parented away from the leader (MCP servers, backgrounded tools)
-survived every fire. Every other PTY fire path tears down unconditionally.
-
-The handle double below behaves like the real one: ``terminate`` leaves it
-reaped, so ``poll()`` reports an exit code afterwards.
-"""
-
 from __future__ import annotations
 
 import threading
@@ -30,8 +17,6 @@ _SIGTERM_RC = -15
 
 
 class _ReapingHandle:
-    """PTY handle double whose ``terminate`` reaps the leader, as the real one does."""
-
     def __init__(self) -> None:
         self.pid = _LEADER_PID
         self.master_fd = 7

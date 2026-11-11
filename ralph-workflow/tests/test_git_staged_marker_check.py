@@ -1,17 +1,3 @@
-"""``staged_conflict_marker_paths`` counts conflict FENCES, not heading rules.
-
-``git diff --cached --check`` reports a lone line of seven ``=`` as a
-"leftover conflict marker", but that line is ordinary
-reStructuredText/Markdown heading punctuation (``Changes`` underlined
-with ``=======``). Counting it made every retry of a fully resolved merge
-come back ``merge_commit_pending`` -- a livelock -- whenever either side
-added such a heading. Only an opening ``<`` / closing ``>`` fence in the
-STAGED content is a conflict.
-
-git is replaced by a fake that serves a ``--check`` report and the staged
-blobs it was computed from, so no real git process runs.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -37,7 +23,6 @@ def _serve(
     check_report: str,
     staged: Mapping[str, str],
 ) -> None:
-    """Fake git: ``diff --cached --check`` and ``cat-file blob :0:<path>``."""
 
     def _fake_run_git(
         args: tuple[str, ...],
@@ -66,7 +51,6 @@ def _serve(
 def test_a_heading_underlined_with_seven_equals_is_not_a_conflict(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The exact report git emits for ``Changes\\n=======`` is not a marker."""
     _serve(
         monkeypatch,
         check_report="CHANGES.rst:2: leftover conflict marker\n",
@@ -79,7 +63,6 @@ def test_a_heading_underlined_with_seven_equals_is_not_a_conflict(
 def test_a_real_fence_beside_a_heading_rule_is_still_reported(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A path with both a heading rule and a surviving fence still counts."""
     _serve(
         monkeypatch,
         check_report=(
@@ -99,7 +82,6 @@ def test_a_real_fence_beside_a_heading_rule_is_still_reported(
 def test_a_reported_line_that_cannot_be_read_back_still_counts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Unverifiable is never clean: an unreadable staged blob keeps the report."""
     _serve(
         monkeypatch,
         check_report="gone.rst:2: leftover conflict marker\nshort.rst:9: leftover conflict marker\n",

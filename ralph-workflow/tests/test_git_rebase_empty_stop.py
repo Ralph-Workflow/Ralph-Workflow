@@ -1,15 +1,3 @@
-"""The empty-stop classifier never reads a commit SUBJECT as an empty stop.
-
-``git rebase --skip`` discards the commit being replayed. The classifier
-that decides whether a paused rebase is an "empty commit" stop used to
-search the whole output for ``is empty``; git echoes the replayed
-commit's subject in ``could not apply <sha>... <subject>``, so a genuine
-conflict on "Fix crash when the list is empty" was skipped and the commit
-silently vanished while the rebase reported success.
-
-The output below is what git 2.50 prints for exactly that conflict.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -30,7 +18,6 @@ _CONFLICT_ON_IS_EMPTY_SUBJECT_STDOUT = (
 
 
 def test_a_conflict_whose_subject_says_is_empty_is_not_an_empty_stop() -> None:
-    """The subject git echoes back is never evidence of an empty commit."""
     assert not is_empty_rebase_stop(
         _CONFLICT_ON_IS_EMPTY_SUBJECT_STDERR, _CONFLICT_ON_IS_EMPTY_SUBJECT_STDOUT
     )
@@ -45,7 +32,6 @@ def test_a_conflict_whose_subject_says_is_empty_is_not_an_empty_stop() -> None:
     ],
 )
 def test_a_subject_that_quotes_an_empty_stop_message_is_not_an_empty_stop(subject: str) -> None:
-    """Even a subject that IS git's message text only appears mid-line."""
     stderr = (
         f"error: could not apply abc1234... {subject}\nCould not apply abc1234... # {subject}\n"
     )
@@ -65,5 +51,4 @@ def test_a_subject_that_quotes_an_empty_stop_message_is_not_an_empty_stop(subjec
     ],
 )
 def test_gits_own_empty_stop_messages_are_recognised(stderr: str) -> None:
-    """Every empty-stop line git itself authors is still recognised."""
     assert is_empty_rebase_stop(stderr, "")

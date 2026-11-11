@@ -1,4 +1,3 @@
-"""AnalysisDecision — validation model for analysis decision artifacts."""
 
 from __future__ import annotations
 
@@ -10,7 +9,6 @@ from ralph.pydantic_compat import RalphBaseModel
 
 
 class AnalysisDecision(RalphBaseModel):
-    """Validation model for an evidence-backed analysis decision artifact."""
 
     model_config = ConfigDict(extra="forbid")
 

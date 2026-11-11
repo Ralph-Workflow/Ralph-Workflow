@@ -1,30 +1,3 @@
-"""Policy module for Ralph orchestration configuration.
-
-This module provides the policy layer that drives Ralph's configurable
-orchestration. Policy is expressed in three TOML files:
-
-- agents.toml: Agent chains and drain-to-chain bindings
-- pipeline.toml: Phase graph and transition routing
-- artifacts.toml: Artifact contracts per drain
-
-The loader validates all three files together, ensuring cross-file consistency
-(e.g., every drain used in pipeline.toml is bound in agents.toml).
-
-Example usage::
-
-    from pathlib import Path
-    from ralph.policy import load_policy
-
-    bundle = load_policy(Path(".agent"))
-    drain_binding = bundle.agents.agent_drains["planning"]
-    chain = bundle.agents.agent_chains[drain_binding.chain]
-
-Public names resolve lazily, on first attribute access, from the module that
-defines them. Importing a leaf submodule such as ``ralph.policy.models`` no
-longer pulls the loader (and through it ``ralph.config`` and the MCP stack)
-into the importing process, which keeps every interpreter that touches the
-policy models cheap to start.
-"""
 
 from __future__ import annotations
 
@@ -57,7 +30,6 @@ if TYPE_CHECKING:
     )
 
 __all__ = [
-    # Models (alphabetical - uppercase before lowercase per ASCII)
     "AgentChainConfig",
     "AgentDrainConfig",
     "AgentsPolicy",
@@ -73,7 +45,6 @@ __all__ = [
     "PolicyValidationError",
     "load_policy",
     "load_policy_or_die",
-    # Validation (alphabetical)
     "validate_chain_exists",
     "validate_checkpoint_compatible",
     "validate_drain_bound",
@@ -81,7 +52,6 @@ __all__ = [
     "validate_policy_completeness",
 ]
 
-#: Public name -> (defining module, attribute name in that module).
 _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     "AgentChainConfig": ("ralph.policy.models", "AgentChainConfig"),
     "AgentDrainConfig": ("ralph.policy.models", "AgentDrainConfig"),
@@ -119,12 +89,6 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
 
 
 def __getattr__(name: str) -> object:
-    """Resolve a public export from its defining module on first access.
-
-    The eager imports this replaces pulled ``ralph.policy.loader`` -- and
-    through it ``ralph.config`` and the MCP startup stack -- into every
-    process that only needed the policy models.
-    """
     try:
         module_name, attr_name = _LAZY_EXPORTS[name]
     except KeyError as exc:

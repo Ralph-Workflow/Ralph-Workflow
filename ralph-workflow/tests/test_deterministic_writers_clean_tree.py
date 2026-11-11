@@ -1,27 +1,3 @@
-"""Parameterized black-box clean-tree tests for the non-bootstrap deterministic writers (wt-12).
-
-For each deterministic writer surface (skill sync, skill install, policy
-preflight, gitignore seed, config autowire) the test runs the writer FOR
-REAL against a fresh git repository and asserts the wt-12 contract:
-
-* after the writer call, the writer's own paths are CLEAN in
-  ``git status --porcelain`` (the deterministic chore commit captured
-  them -- nothing is left dirty for the committing agent);
-* when content actually changed, a fixed-message commit exists at HEAD
-  (the writer's pinned deterministic subject line);
-* a no-op second invocation creates NO new commit.
-
-The bootstrap ``_copy_with_backup`` writer is EXCLUDED here: it is
-covered by :mod:`tests.test_config_bootstrap_git_isolation`. There is
-NO cross-unit xfail: every case in this file must pass on its own.
-
-All tests use real git (per-test repos via the shared ``tmp_git_repo``
-template fixture) and run under the ``subprocess_e2e`` marker on the
-default ``make test`` profile via
-``ralph.test_suites.REQUIRED_AUTO_INTEGRATE_E2E_FILES``, inside the
-IMMUTABLE 60 s combined verify budget.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -39,33 +15,20 @@ from ralph.skills._content import BASELINE_SKILL_NAMES
 from ralph.skills._installer import install_project_baseline_skills_with_diff
 
 pytestmark = [
-    pytest.mark.required_auto_integrate_e2e,  # wt-03-fix-bug: subprocess_e2e removed; runs in E2E shard only
+    pytest.mark.required_auto_integrate_e2e,
     pytest.mark.timeout_seconds(15),
 ]
 
 
 @pytest.fixture(autouse=True)
 def _scope_baseline_skills_to_test_skills(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Scope baseline skills to the tested skill to avoid redundant multi-root hashing.
-
-    The skill install and sync tests in this file specifically test clean tree
-    and no-op repeat behavior for BASELINE_SKILL_NAMES[0]. Scoping the baseline
-    skill set avoids hundreds of redundant per-leaf `git hash-object` calls
-    across unexercised skills.
-    """
     test_skills = (BASELINE_SKILL_NAMES[0],)
     monkeypatch.setattr("ralph.skills._content.BASELINE_SKILL_NAMES", test_skills)
     monkeypatch.setattr("ralph.skills._installer.BASELINE_SKILL_NAMES", test_skills)
     monkeypatch.setattr("ralph.skills._installer_candidates.BASELINE_SKILL_NAMES", test_skills)
 
 
-# ---------------------------------------------------------------------------
-# Shared real-git helpers
-# ---------------------------------------------------------------------------
-
-
 def _head_subject(repo_root: Path) -> str:
-    """Return the HEAD commit subject line of the repo at ``repo_root``."""
     repo = Repo(repo_root)
     try:
         return repo.head.commit.message.splitlines()[0]
@@ -82,7 +45,6 @@ def _commit_count(repo_root: Path) -> int:
 
 
 def _porcelain(repo_root: Path) -> list[str]:
-    """Return ``git status --porcelain`` lines (tracked + untracked)."""
     repo = Repo(repo_root)
     try:
         status: str = str(repo.git.status("--porcelain"))
@@ -92,13 +54,11 @@ def _porcelain(repo_root: Path) -> list[str]:
 
 
 def _paths_clean(repo_root: Path, paths: list[str]) -> bool:
-    """True when none of ``paths`` appears dirty in ``git status --porcelain``."""
     dirty = {line[3:].strip('"') for line in _porcelain(repo_root)}
     return not (dirty & set(paths))
 
 
 def _track_and_commit(repo_root: Path, files: list[str], message: str) -> None:
-    """Stage ``files`` and commit them so the writer's diff is a real change."""
     repo = Repo(repo_root)
     try:
         repo.index.add(files)
@@ -108,16 +68,10 @@ def _track_and_commit(repo_root: Path, files: list[str], message: str) -> None:
         repo.close()
 
 
-# ---------------------------------------------------------------------------
-# 1. Skill sync (pipeline-run sync helper)
-# ---------------------------------------------------------------------------
-
-
 def test_skill_sync_leaves_skill_paths_clean_with_fixed_subject_commit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A stale tracked skill is overwritten and committed by the sync."""
     from ralph.cli.commands import run as run_module
 
     home = tmp_path / "fake-home"
@@ -139,9 +93,6 @@ def test_skill_sync_leaves_skill_paths_clean_with_fixed_subject_commit(
     mock_manager.check_skills_for_updates.return_value = False
     monkeypatch.setattr(run_module, "SkillManager", lambda *a, **kw: mock_manager)
     monkeypatch.setattr(run_module, "_project_skills_need_install", lambda _root: True)
-    # The gitignore/exclude seeders are separate writer surfaces with
-    # their own tests; stub them here so this test pins ONLY the skill
-    # sync writer's cleanliness contract.
     monkeypatch.setattr("ralph.config.bootstrap.auto_seed_default_gitignore", lambda _root: None)
     monkeypatch.setattr("ralph.config.bootstrap.auto_seed_default_git_exclude", lambda _root: None)
 
@@ -153,17 +104,10 @@ def test_skill_sync_leaves_skill_paths_clean_with_fixed_subject_commit(
     )
 
 
-# ---------------------------------------------------------------------------
-# 2. Skill install (producer-level wrapper)
-# ---------------------------------------------------------------------------
-
-
 def test_skill_install_commits_clean_and_noop_second_run(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Install commits the fixed subject, leaves the tree clean, and a
-    second run is a no-op (no new commit)."""
     home = tmp_path / "fake-home"
     home.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr("pathlib.Path.home", lambda: home)
@@ -196,8 +140,6 @@ def test_skill_install_commits_clean_and_noop_second_run(
         f"install must leave its own paths clean; got: {_porcelain(tmp_path)}"
     )
 
-    # No-op second run: content now matches the bundle, so the diff is
-    # empty and no commit is created.
     with patch("pathlib.Path.home", return_value=home):
         second = install_project_baseline_skills_with_diff(tmp_path)
 
@@ -207,16 +149,9 @@ def test_skill_install_commits_clean_and_noop_second_run(
     )
 
 
-# ---------------------------------------------------------------------------
-# 3. Policy preflight
-# ---------------------------------------------------------------------------
-
-
 def test_policy_preflight_leaves_policy_paths_clean_with_commit(
     tmp_git_repo: Path,
 ) -> None:
-    """The preflight's own writes (AGENTS.md, CLAUDE.md, policy starters)
-    are committed at the preflight boundary -- nothing left dirty."""
     from ralph.workspace.fs import FsWorkspace
 
     ws = FsWorkspace(tmp_git_repo)
@@ -230,21 +165,12 @@ def test_policy_preflight_leaves_policy_paths_clean_with_commit(
     )
 
 
-# ---------------------------------------------------------------------------
-# 4. Gitignore seed
-# ---------------------------------------------------------------------------
-
-
 def test_gitignore_seed_commits_clean_and_noop_second_call(
     tmp_git_repo: Path,
     tmp_path: Path,
 ) -> None:
-    """The default-gitignore seed commits with its fixed subject and a
-    second call appends nothing (no new commit)."""
     from ralph.config.bootstrap import auto_seed_default_gitignore
 
-    # tmp_git_repo comes from the shared template (a copied repo); the
-    # copy keeps the template's initial commit so HEAD exists.
     appended = auto_seed_default_gitignore(tmp_git_repo)
 
     assert appended, "a template repo without .gitignore must seed patterns"
@@ -261,17 +187,10 @@ def test_gitignore_seed_commits_clean_and_noop_second_call(
     )
 
 
-# ---------------------------------------------------------------------------
-# 5. Config autowire
-# ---------------------------------------------------------------------------
-
-
 def test_config_autowire_leaves_config_clean_with_fixed_subject(
     tmp_git_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Repo-local autowire commits ``chore(config): update agent
-    configuration`` and leaves the config clean."""
     from ralph.config.agent_detection import autowire_chains_to_detected_agent
 
     defaults = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
@@ -294,8 +213,6 @@ def test_config_autowire_leaves_config_clean_with_fixed_subject(
     )
     assert _commit_count(tmp_git_repo) == commits_before + 1
 
-    # No-op: the chains are already rewritten to codex, so a re-run with
-    # the same detection changes nothing and creates no commit.
     monkeypatch.setattr("ralph.config.agent_detection.shutil.which", lambda _: None)
     second = autowire_chains_to_detected_agent(main_config, detected=["codex"])
     assert second == "chains-customized", (

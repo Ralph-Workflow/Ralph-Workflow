@@ -1,4 +1,3 @@
-"""RalphAuditRecord — audit record format consumed by Ralph's audit trail."""
 
 from __future__ import annotations
 
@@ -14,7 +13,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class RalphAuditRecord:
-    """Audit record format consumed by Ralph's audit trail."""
 
     session_id: AgentSessionId
     timestamp: int

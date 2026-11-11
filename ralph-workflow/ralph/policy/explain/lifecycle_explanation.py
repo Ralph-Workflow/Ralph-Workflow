@@ -1,4 +1,3 @@
-"""Lifecycle completion explanation structures."""
 
 from __future__ import annotations
 
@@ -7,7 +6,6 @@ from dataclasses import dataclass, field
 
 @dataclass
 class LifecycleExplanation:
-    """Human-readable lifecycle completion metadata."""
 
     lifecycle_name: str
     completion_phase: str

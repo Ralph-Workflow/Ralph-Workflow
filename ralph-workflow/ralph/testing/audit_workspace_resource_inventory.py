@@ -1,52 +1,3 @@
-"""Workspace resource inventory completeness audit.
-
-Ralph Workflow's workspace-awareness product (watches, change detection,
-indexing, search, storage, retention, cleanup, recovery) is governed by five
-existing fail-closed AST audits:
-
-  * :func:`ralph.testing.audit_fsevents_watch_consolidation.audit_fsevents_watch_consolidation`
-  * :func:`ralph.testing.audit_filesystem_polling_invocation.audit_filesystem_polling_invocation`
-  * :func:`ralph.testing.audit_filesystem_read_consolidation.audit_filesystem_read_consolidation`
-  * :func:`ralph.testing.audit_filesystem_write_consolidation.audit_filesystem_write_consolidation`
-  * :func:`ralph.testing.audit_resource_lifecycle.audit_resource_lifecycle_directory`
-
-Each constituent audit independently flags a *raw* site that has neither a
-reasoned local marker nor a canonical-primitive exemption. This audit owns the
-complementary product inventory without rerunning those package-wide scans: it
-requires every canonical-primitive owner and any injected discovery to have a
-structured entry in ``workspace_resource_inventory.json`` that names its
-product role, storage category, watch contract, or cleanup outcome.
-
-Completeness is mechanically decidable:
-
-  * **Forward (uncovered)** -- callers may inject discovered
-    ``ralph-relative-path:qualified-symbol`` site keys, each of which must have
-    a matching inventory entry. In the default gate the five independent
-    constituent lanes fail directly when a site loses its marker.
-  * **Canonical owners** -- every canonical-primitive production module must
-    appear as an inventory ``site`` so the product map always explains where
-    the shared filesystem boundaries live.
-  * **Backward (stale)** -- every inventory ``site`` must resolve to a real
-    module path whose source defines the named top-level symbol, so a
-    refactor that deletes or renames an owner fails closed.
-  * **Structural** -- top-level arrays, required per-entry fields, fixed
-    responsibility / category enums, and duplicate ``site`` keys within one
-    array are all checked.
-
-The audit is AST + ``Path.read_text`` only (no subprocess, no ``time.sleep``,
-no real filesystem mutation). Its default lane avoids duplicating the five
-constituent audits' AST walks and validates only the distinct inventory oracle.
-
-Usage::
-
-    python -m ralph.testing.audit_workspace_resource_inventory [package_root]
-
-Exit codes:
-  0 = clean
-  1 = violations found
-  2 = root not found
-"""
-
 from __future__ import annotations
 
 import ast
@@ -59,18 +10,9 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
-    #: Injectable seam type alias for synthetic forward discoveries. The
-    #: production default is empty because constituent audits own their own
-    #: fail-closed verification lanes. Mirrors the DI seams enforced by
-    #: ``audit_di_seam.py``.
     SiteDiscovery = Callable[[Path], list[tuple[str, str]]]
 
 
-#: Canonical production modules that the constituent audits exempt because
-#: they ARE the shared filesystem / process / template boundaries. Each must
-#: be documented as an inventory owner so the product map always names where
-#: the consolidation primitives live. Testing-only audit modules are excluded
-#: because this audit walks non-testing production modules only.
 _CANONICAL_PRIMITIVE_MODULES: frozenset[str] = frozenset(
     {
         "mcp/artifacts/idempotent_write.py",
@@ -84,9 +26,6 @@ _CANONICAL_PRIMITIVE_MODULES: frozenset[str] = frozenset(
     }
 )
 
-#: Fixed responsibility enum for ``workspace_owners`` entries. Mirrors the
-#: product-brief activity list (discovery, reading, writing, change awareness,
-#: indexing, searching, retention, recovery, cleanup).
 _OWNER_RESPONSIBILITIES: frozenset[str] = frozenset(
     {
         "discovery",
@@ -101,9 +40,6 @@ _OWNER_RESPONSIBILITIES: frozenset[str] = frozenset(
     }
 )
 
-#: Fixed storage-category enum for ``storage_classes`` entries. Mirrors the
-#: five product storage categories exactly -- the audit rejects any other
-#: value so the inventory cannot invent a sixth category.
 _STORAGE_CATEGORIES: frozenset[str] = frozenset(
     {
         "project_content",
@@ -146,8 +82,6 @@ _TOP_LEVEL_ARRAYS: tuple[str, ...] = (
 
 @dataclass(frozen=True)
 class WorkspaceResourceInventoryViolation:
-    """A single workspace-resource-inventory audit violation."""
-
     kind: str
     site: str
     message: str
@@ -157,26 +91,17 @@ class WorkspaceResourceInventoryViolation:
 
 
 def _inventory_path(package_root: Path) -> Path:
-    """Return the canonical inventory JSON location under the testing tree."""
     return package_root / "testing" / "workspace_resource_inventory.json"
 
 
 @dataclass(frozen=True)
 class _SymbolSpan:
-    """A top-level or member symbol with its enclosing source line range."""
-
     qualified_name: str
     start_line: int
     end_line: int
 
 
 def _module_symbols(tree: ast.Module) -> list[_SymbolSpan]:
-    """Return top-level classes/functions and their methods/member functions.
-
-    Each span records a ``qualified_name`` in ``TopLevel`` or
-    ``TopLevel.member`` form and the inclusive ``[start_line, end_line]``
-    range. ``<module>`` is synthesized by the caller for module-level sites.
-    """
     spans: list[_SymbolSpan] = []
     for node in tree.body:
         if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -201,11 +126,6 @@ def _module_symbols(tree: ast.Module) -> list[_SymbolSpan]:
 
 
 def _symbol_exists(rel_path: str, symbol: str, package_root: Path) -> bool:
-    """Return whether ``rel_path`` defines a top-level or member ``symbol``.
-
-    Accepts ``TopLevel``, ``TopLevel.member``, or ``<module>``. Used by the
-    backward (stale) check so a deleted/renamed owner fails closed.
-    """
     if symbol == "<module>":
         return (package_root / rel_path).is_file()
     module_path = package_root / rel_path
@@ -220,10 +140,6 @@ def _symbol_exists(rel_path: str, symbol: str, package_root: Path) -> bool:
 
 
 def _split_site(site: str) -> tuple[str, str] | None:
-    """Split a ``rel_path:symbol`` site key into ``(rel_path, symbol)``.
-
-    Returns ``None`` when the key has no ``:`` separator or an empty side.
-    """
     if ":" not in site:
         return None
     rel_path, _, symbol = site.partition(":")
@@ -232,15 +148,9 @@ def _split_site(site: str) -> tuple[str, str] | None:
     return rel_path, symbol
 
 
-# ---------------------------------------------------------------------------
-# Structural validation helpers (one per inventory array)
-# ---------------------------------------------------------------------------
-
-
 def _validate_owner_entries(
     owners: list[object],
 ) -> list[WorkspaceResourceInventoryViolation]:
-    """Validate ``workspace_owners`` entries: fields, enum, duplicates."""
     violations: list[WorkspaceResourceInventoryViolation] = []
     seen_sites: set[str] = set()
     for entry in owners:
@@ -310,7 +220,6 @@ def _validate_required_string_fields(
     site: str,
     section_label: str,
 ) -> list[WorkspaceResourceInventoryViolation]:
-    """Validate that every required field is a non-empty string."""
     violations: list[WorkspaceResourceInventoryViolation] = []
     for field in required_fields:
         value = entry.get(field)
@@ -328,7 +237,6 @@ def _validate_required_string_fields(
 def _validate_watch_entries(
     watches: list[object],
 ) -> list[WorkspaceResourceInventoryViolation]:
-    """Validate ``watch_consumers`` entries: fields, duplicates."""
     violations: list[WorkspaceResourceInventoryViolation] = []
     seen_sites: set[str] = set()
     for entry in watches:
@@ -361,7 +269,6 @@ def _validate_watch_entries(
 def _validate_storage_entries(
     storage: list[object],
 ) -> list[WorkspaceResourceInventoryViolation]:
-    """Validate ``storage_classes`` entries: fields, enum, duplicates."""
     violations: list[WorkspaceResourceInventoryViolation] = []
     seen_sites: set[str] = set()
     for entry in storage:
@@ -409,7 +316,6 @@ def _validate_storage_entries(
 def _validate_structural(
     inventory: dict[str, object],
 ) -> list[WorkspaceResourceInventoryViolation]:
-    """Validate top-level arrays, required fields, enums, and duplicate sites."""
     violations: list[WorkspaceResourceInventoryViolation] = []
 
     for array_name in _TOP_LEVEL_ARRAYS:
@@ -443,7 +349,6 @@ def _validate_structural(
 
 
 def _all_inventory_sites(inventory: dict[str, object]) -> set[str]:
-    """Return every ``site`` value across all three inventory arrays."""
     sites: set[str] = set()
     for array_name in _TOP_LEVEL_ARRAYS:
         section = inventory.get(array_name)
@@ -457,12 +362,6 @@ def _all_inventory_sites(inventory: dict[str, object]) -> set[str]:
 
 
 def _inventory_site_paths(inventory_sites: set[str]) -> set[str]:
-    """Return the ``rel_path`` component of every inventory site key.
-
-    Used by the canonical-owner check so the inventory may document whichever
-    symbol best represents the module (e.g. ``TemplateRegistry`` rather than
-    the first private helper), while still proving the module is covered.
-    """
     paths: set[str] = set()
     for site in inventory_sites:
         split = _split_site(site)
@@ -475,11 +374,6 @@ def _load_inventory(
     package_root: Path,
     json_path: Path,
 ) -> tuple[dict[str, object] | None, list[WorkspaceResourceInventoryViolation]]:
-    """Read and parse the inventory JSON; return ``(inventory, violations)``.
-
-    On any read/parse/type failure, returns ``(None, [violation])`` so the
-    caller can short-circuit. On success returns ``(parsed_dict, [])``.
-    """
     if not json_path.is_file():
         return None, [
             WorkspaceResourceInventoryViolation(
@@ -524,7 +418,6 @@ def _load_inventory(
 
 
 def _no_discovered_sites(_package_root: Path) -> list[tuple[str, str]]:
-    """Return no sites; constituent audits own their independent gate lanes."""
     return []
 
 
@@ -534,27 +427,6 @@ def audit_workspace_resource_inventory(
     inventory_path: Path | None = None,
     site_discovery: SiteDiscovery = _no_discovered_sites,
 ) -> list[WorkspaceResourceInventoryViolation]:
-    """Validate the inventory and injected discoveries; return violations.
-
-    Args:
-        package_root: The ``ralph/`` package root whose production modules and
-            inventory are audited.
-        inventory_path: Optional override for the inventory JSON location.
-            Defaults to ``testing/workspace_resource_inventory.json`` under
-            ``package_root``.
-        site_discovery: Optional injectable seam returning
-            ``(audit_name, site_key)`` pairs for the forward (uncovered) check.
-            Defaults to no additional sites because the five constituent
-            audits already run as independent, fail-closed ``make verify``
-            lanes. Tests may inject synthetic discoveries to prove forward
-            inventory coverage without repeating the full package scans.
-
-    Returns:
-        A list of :class:`WorkspaceResourceInventoryViolation` records. An
-        empty list means the inventory is structurally valid, covers every
-        constituent-audit discovery and canonical primitive owner, and has no
-        stale entries.
-    """
     if not package_root.is_dir():
         return [
             WorkspaceResourceInventoryViolation(
@@ -578,11 +450,6 @@ def audit_workspace_resource_inventory(
 
     inventory_sites = _all_inventory_sites(inventory)
 
-    # Forward check consumes injected discoveries. Production does not repeat
-    # the five full-package constituent audits here: each is already an owned,
-    # fail-closed ``make verify`` lane, so any newly unmarked site fails there.
-    # Rewalking them here duplicates the same oracle and made this audit exceed
-    # its 30-second verification timeout without adding fault sensitivity.
     for audit_name, site in site_discovery(package_root):
         if site not in inventory_sites:
             violations.append(
@@ -597,9 +464,6 @@ def audit_workspace_resource_inventory(
                 )
             )
 
-    # Canonical owners: every canonical-primitive production module must
-    # appear as an inventory site so the product map always names the shared
-    # filesystem/process/template boundaries.
     inventory_paths = _inventory_site_paths(inventory_sites)
     for rel_path in sorted(_CANONICAL_PRIMITIVE_MODULES):
         if rel_path not in inventory_paths:
@@ -615,8 +479,6 @@ def audit_workspace_resource_inventory(
                 )
             )
 
-    # Backward check: every inventory site must resolve to a real module and
-    # symbol so a refactor that deletes/renames an owner fails closed.
     for site in sorted(inventory_sites):
         split = _split_site(site)
         if split is None:
@@ -648,7 +510,6 @@ def audit_workspace_resource_inventory(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """CLI entry point. Returns 0 when clean, 1 on violations, 2 on bad root."""
     selected = sys.argv[1:] if argv is None else argv
     package_root = Path(selected[0]) if selected else Path(__file__).parent.parent
 

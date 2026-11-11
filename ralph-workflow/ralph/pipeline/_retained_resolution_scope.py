@@ -1,4 +1,3 @@
-"""Recover interrupted resolver path ownership without sweeping unrelated edits."""
 
 from __future__ import annotations
 
@@ -17,7 +16,6 @@ if TYPE_CHECKING:
 
 
 def original_conflict_paths(root: Path) -> tuple[str, ...]:
-    """Read Git's resolve-undo receipt after staging removed conflict entries."""
     result = run_git(
         ("ls-files", "--resolve-undo", "-z"), cwd=root, label="resolution:original-conflicts"
     )
@@ -29,7 +27,6 @@ def original_conflict_paths(root: Path) -> tuple[str, ...]:
 
 
 def retained_merge_paths(root: Path, paths: tuple[str, ...]) -> tuple[str, ...]:
-    """Use only durable or Git-recorded conflict paths from the active merge."""
     record = read_record(root)
     if record is None or classify_git_operation(record) is not GitOperationKind.RESOLVING_MERGE:
         return paths
@@ -39,7 +36,6 @@ def retained_merge_paths(root: Path, paths: tuple[str, ...]) -> tuple[str, ...]:
 
 
 def retained_rebase_paths(root: Path, sha: str, paths: tuple[str, ...]) -> tuple[str, ...]:
-    """Keep resolver scope pinned to the stopped commit, never a prior replay."""
     record = read_record(root)
     if record is None or classify_git_operation(record) is not GitOperationKind.RESOLVING_REBASE:
         return paths

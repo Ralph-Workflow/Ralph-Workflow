@@ -1,4 +1,3 @@
-"""AgentInactivityTimeoutError — raised when an agent stalls without producing output."""
 
 from __future__ import annotations
 
@@ -8,7 +7,6 @@ from ralph.agents.invoke._inactivity_timeout_opts import InactivityTimeoutOpts
 
 
 class AgentInactivityTimeoutError(AgentInvocationError):
-    """Raised when an agent stalls without producing output."""
 
     def __init__(
         self,

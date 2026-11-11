@@ -1,4 +1,3 @@
-"""Optional extraction helpers, never a second plan acceptance gate."""
 
 from __future__ import annotations
 
@@ -11,12 +10,10 @@ if TYPE_CHECKING:
 
 
 def is_noop_plan(artifact: Mapping[str, object]) -> bool:
-    """Only an explicit true marker is a no-op; prose plans remain active."""
     return artifact.get("noop") is True
 
 
 def normalize_plan_artifact_content(content: PlanArtifactDict) -> PlanArtifactDict:
-    """Preserve optional context; sanity belongs to raw Markdown."""
     return dict(content)
 
 

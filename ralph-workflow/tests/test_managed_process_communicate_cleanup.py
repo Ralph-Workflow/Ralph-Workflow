@@ -1,12 +1,3 @@
-"""Tests for ManagedProcess.communicate_and_cleanup.
-
-Every case configures the spawned process through the PUBLIC
-``ProcessManager(sync_process_factory=...)`` seam: the test hands the
-manager a process double whose ``communicate`` runs a test-owned script.
-Nothing in this file reaches into a spawned handle's private process
-attribute -- the manager owns the handle, the test owns the double.
-"""
-
 from __future__ import annotations
 
 import io
@@ -45,10 +36,6 @@ _FAST_POLICY = ProcessManagerPolicy(
     enable_zombie_reaper=False,
 )
 
-#: A ``communicate`` script: the test-owned behaviour the spawned process
-#: double runs when the manager drains it. It receives the same keyword
-#: arguments ``ManagedProcess.communicate`` passes to
-#: ``Popen.communicate``.
 _CommunicateScript = Callable[..., tuple[bytes, bytes]]
 
 
@@ -56,7 +43,6 @@ def _default_script(
     input: bytes | None = None,
     timeout: float | None = None,
 ) -> tuple[bytes, bytes]:
-    """Return the canned output used by the cases that only need a drain."""
     del input, timeout
     return b"ok", b""
 
@@ -65,23 +51,11 @@ def _timeout_script(
     input: bytes | None = None,
     timeout: float | None = None,
 ) -> tuple[bytes, bytes]:
-    """Fail the drain the way a wedged child does."""
     del input, timeout
     raise subprocess.TimeoutExpired(cmd=[sys.executable], timeout=0.1)
 
 
 class _ScriptedPopen(FakePopen):
-    """A ``FakePopen`` whose ``communicate`` runs a test-supplied script.
-
-    The script is bound into the double BEFORE the manager spawns it, so
-    the test configures the process through the PUBLIC
-    ``ProcessManager(sync_process_factory=...)`` seam instead of reaching
-    into the spawned handle's private process attribute. The manager
-    owns the handle; the test owns the double.
-    """
-
-    # OpenCode's prompt is delivered on stdin, so a process fake must
-    # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
     stdin = None
 
     def __init__(self, script: _CommunicateScript, *, returncode: int | None = 0) -> None:
@@ -101,7 +75,6 @@ def _scripted_process_factory(
     *,
     returncode: int | None = 0,
 ) -> Callable[[Sequence[str], SpawnOptions], _ScriptedPopen]:
-    """Return a ``sync_process_factory`` that yields a scripted double."""
 
     def factory(command: Sequence[str], opts: SpawnOptions) -> _ScriptedPopen:
         del command, opts
@@ -135,11 +108,6 @@ class TreeProcess(FakePsutilProcess):
         )
         self._direct_children: Sequence[FakePsutilProcess] = list(direct_children or [])
         self._recursive_children: Sequence[FakePsutilProcess] = list(recursive_children or [])
-        # Public observation counters. The manager's contract with the OS is
-        # "stop this descendant", so the double records the *effective*
-        # outcome of each signal it received (a ``stubborn`` double refuses
-        # a graceful terminate) instead of the test reading the double's own
-        # private ``_terminated``/``_killed`` bookkeeping.
         self.terminations = 0
         self.kills = 0
 
@@ -157,7 +125,6 @@ class TreeProcess(FakePsutilProcess):
 
     @property
     def alive(self) -> bool:
-        """Whether the double still looks alive to a psutil-style observer."""
         return self.is_running()
 
 
@@ -167,13 +134,6 @@ def _make_handle(
     script: _CommunicateScript | None = None,
     returncode: int | None = 0,
 ) -> ManagedProcess:
-    """Spawn a managed process whose ``communicate`` runs ``script``.
-
-    The script is bound into the process double by the PUBLIC
-    ``sync_process_factory`` seam, so the test never mutates the spawned
-    handle's private process attribute: the manager owns the handle,
-    the test owns the double it handed over.
-    """
     pm = ProcessManager(
         policy=_FAST_POLICY,
         sync_process_factory=_scripted_process_factory(
@@ -246,12 +206,10 @@ def test_missing_root_still_returns_output() -> None:
     assert handle.record.status == ProcessStatus.EXITED
 
 
-# ponytail: observer-thread scheduling under xdist can exceed 1s; the 60s suite budget remains authoritative.
 @pytest.mark.timeout_seconds(2.0)
 def test_process_observer_regression_permission_error_does_not_escape_thread(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Regression: macOS sandbox denial must not escape the observer thread."""
     attempted = threading.Event()
 
     class PermissionDeniedRoot(TreeProcess):
@@ -286,7 +244,6 @@ def test_process_observer_regression_permission_error_does_not_escape_thread(
 
 
 def test_process_observer_regression_keeps_child_seen_before_permission_error() -> None:
-    """Regression: a denied later scan must not discard an observed child."""
     child = TreeProcess(pid=1001, stubborn=True)
     observed = threading.Event()
 
@@ -461,8 +418,6 @@ def test_output_limit_cleanup_kills_descendants_and_returns_tail() -> None:
     fake_psutil._processes = {1: root, 1001: child}
 
     class StreamingFakePopen(FakePopen):
-        # OpenCode's prompt is delivered on stdin, so a process fake must
-        # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
         stdin = None
 
         def __init__(self) -> None:
@@ -496,9 +451,6 @@ def test_output_limit_cleanup_kills_descendants_and_returns_tail() -> None:
     assert child.kills == 1
 
 
-# Bounded per-test timeout (5s): the psutil tree-walk legitimately grazes
-# the 1.0s default bound only when the full suite loads the machine; the
-# bound keeps it under the per-test policy without touching the 60s budget.
 @pytest.mark.timeout_seconds(5)
 def test_already_dead_descendants_are_ignored() -> None:
     live_child = TreeProcess(pid=1001, stubborn=True)
@@ -545,16 +497,7 @@ def test_timeout_kills_snapshot_descendants() -> None:
     )
 
 
-# ---------------------------------------------------------------------------
-# Streaming: on_output_chunk callback
-# ---------------------------------------------------------------------------
-
-
 class _StreamingFakePopen(FakePopen):
-    """Fake Popen that returns fixed stdout/stderr bytes for chunk streaming tests."""
-
-    # OpenCode's prompt is delivered on stdin, so a process fake must
-    # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
     stdin = None
 
     def __init__(self, stdout_data: bytes = b"", stderr_data: bytes = b"") -> None:
@@ -587,7 +530,6 @@ def _make_streaming_handle(
 
 
 def test_on_output_chunk_receives_stdout_bytes_before_completion() -> None:
-    """communicate_and_cleanup calls on_output_chunk with stdout bytes before returning."""
     handle = _make_streaming_handle(stdout_data=b"hello-stdout", stderr_data=b"")
 
     received: list[bytes] = []
@@ -603,7 +545,6 @@ def test_on_output_chunk_receives_stdout_bytes_before_completion() -> None:
 
 
 def test_on_output_chunk_receives_stderr_bytes_before_completion() -> None:
-    """communicate_and_cleanup calls on_output_chunk with stderr bytes before returning."""
     handle = _make_streaming_handle(stdout_data=b"", stderr_data=b"hello-stderr")
 
     received: list[bytes] = []
@@ -619,7 +560,6 @@ def test_on_output_chunk_receives_stderr_bytes_before_completion() -> None:
 
 
 def test_on_output_chunk_does_not_prevent_output_limit_error() -> None:
-    """on_output_chunk callback does not suppress ManagedProcessOutputLimitExceededError."""
     handle = _make_streaming_handle(
         stdout_data=b"123456789012345",
         stderr_data=b"err-data",
@@ -715,20 +655,10 @@ def test_timeout_still_terminates_root(monkeypatch: pytest.MonkeyPatch) -> None:
         handle.communicate_and_cleanup(cleanup_grace_period_s=0.25)
 
     assert seen == [0.25]
-    # The spy called through, so the root really was terminated: the
-    # public record reports the terminal status the timeout handler
-    # produced.
     assert handle.record.status == ProcessStatus.KILLED
 
 
-# ---------------------------------------------------------------------------
-# Cost contract: one synchronous process-tree scan per call
-# ---------------------------------------------------------------------------
-
-
 class _CountingTreeProcess(TreeProcess):
-    """A :class:`TreeProcess` that records every recursive-tree scan."""
-
     def __init__(self, pid: int, scans: list[str], **kwargs: object) -> None:
         super().__init__(pid, **kwargs)
         self._scans = scans
@@ -740,19 +670,6 @@ class _CountingTreeProcess(TreeProcess):
 
 
 def test_successful_call_takes_exactly_one_recursive_tree_scan() -> None:
-    """A managed subprocess must cost ONE recursive process-tree scan, not two.
-
-    ``psutil.Process.children(recursive=True)`` walks every pid on the
-    machine to build a ppid map. Measured on a developer machine with
-    ~900 live processes it costs ~13 ms -- about the same as running a
-    whole short ``git`` command -- and it grows with the machine's total
-    process count, so it degrades precisely when several Ralph agents
-    run side by side. ``communicate_and_cleanup`` used to take a second
-    scan *before* handing control to the child; that scan ran
-    microseconds after ``spawn`` and so could only ever observe the tree
-    the trailing scan observes again. This test pins the cost contract
-    so the redundant scan cannot creep back in.
-    """
     scans: list[str] = []
     root = _CountingTreeProcess(pid=1, scans=scans)
     fake_psutil = FakePsutil()
@@ -770,13 +687,6 @@ def test_successful_call_takes_exactly_one_recursive_tree_scan() -> None:
 
 
 def test_single_scan_still_reaps_a_descendant_spawned_while_running() -> None:
-    """The surviving trailing scan must still find and kill late descendants.
-
-    Guards the optimisation pinned by
-    :func:`test_successful_call_takes_exactly_one_recursive_tree_scan`
-    against becoming a correctness regression: dropping the pre-run scan
-    must not drop any reaping coverage.
-    """
     scans: list[str] = []
     late_spawn = TreeProcess(pid=2001, stubborn=True)
     root = _CountingTreeProcess(pid=1, scans=scans)

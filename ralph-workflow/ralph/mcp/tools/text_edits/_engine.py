@@ -1,4 +1,3 @@
-"""Sequential first-occurrence application of text edits."""
 
 from __future__ import annotations
 
@@ -14,11 +13,6 @@ if TYPE_CHECKING:
 
 
 def line_range_to_byte_offsets(text: str, start_line: int, end_line: int) -> tuple[int, int]:
-    """Convert ``(start_line, end_line)`` (1-based, inclusive) to byte offsets.
-
-    The mapping is conservative: missing line boundaries fall back to ``0``
-    and ``len(text)`` so anchored matching never crashes on edge cases.
-    """
     if not text:
         return 0, 0
     lines = text.splitlines(keepends=True)
@@ -38,12 +32,6 @@ def apply_text_edits(
     label: str,
     anchor: TextEditAnchor | None = None,
 ) -> AppliedTextEdits | RejectedTextEdits:
-    """Apply ``edits`` sequentially to ``original``.
-
-    Returns :class:`AppliedTextEdits` when every edit matched, otherwise
-    :class:`RejectedTextEdits` carrying the structured rejection payload.
-    The caller persists nothing on rejection — the batch is atomic.
-    """
     current = original
     applied: list[TextEdit] = []
 
@@ -76,7 +64,6 @@ def _check_anchor(
     anchor: TextEditAnchor,
     match_index: int,
 ) -> RejectedTextEdits | None:
-    """Return a rejection when ``edit`` violates the anchor, else ``None``."""
     anchor_start, anchor_end = line_range_to_byte_offsets(
         current, anchor.start_line, anchor.end_line
     )
@@ -106,11 +93,6 @@ def _check_all_in_target(
     span: tuple[int, int],
     match_index: int,
 ) -> RejectedTextEdits | None:
-    """Reject unless every ``old_text`` occurrence lies inside ``span``.
-
-    The boundary is checked against ``old_text`` (NOT ``new_text``) so a
-    caller cannot hide an over-broad oldText behind a short replacement.
-    """
     anchor_start, anchor_end = span
     old_length = len(edit.old_text)
     occurrence_starts = _occurrence_starts(current, edit.old_text)
@@ -136,7 +118,6 @@ def _check_all_in_target(
 
 
 def _occurrence_starts(text: str, needle: str) -> list[int]:
-    """Return the start offsets of every non-overlapping ``needle`` occurrence."""
     starts: list[int] = []
     search_from = 0
     while True:
@@ -148,7 +129,6 @@ def _occurrence_starts(text: str, needle: str) -> list[int]:
 
 
 def _anchor_rejection(reason: str, index: int) -> RejectedTextEdits:
-    """Return the standard ``ambiguous_target`` rejection for anchor violations."""
     return RejectedTextEdits(
         payload={"status": "ambiguous_target", "reason": reason, "edit_index": index}
     )

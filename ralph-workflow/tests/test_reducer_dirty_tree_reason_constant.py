@@ -1,12 +1,3 @@
-"""Public reducer behavior pins the dirty-tree commit-recovery encoding.
-
-The commit executor exposes failure prose through ``set_last_commit_error``, and
-the public ``reduce`` seam turns that prose into observable routing. These
-tests pin the public ``DIRTY_WORKTREE_FAILURE_ENCODING`` constant and prove
-that the encoded dirty-tree reason receives automated recovery while an
-unrelated commit failure routes to terminal failure.
-"""
-
 from __future__ import annotations
 
 import re
@@ -22,7 +13,6 @@ if TYPE_CHECKING:
 
 
 def _commit_failure_policy() -> PipelinePolicy:
-    """Return a minimal policy with observable commit-recovery routing."""
     return PipelinePolicy(
         entry_phase="development_commit",
         terminal_phase="failed_terminal",
@@ -52,7 +42,6 @@ def _reduce_commit_failure(
     reason: str,
     policy: PipelinePolicy,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Reduce a commit failure carrying ``reason`` through the public seam."""
     set_last_commit_error(reason)
     try:
         return reduce(
@@ -65,18 +54,13 @@ def _reduce_commit_failure(
 
 
 class TestDirtyWorktreeFailureEncoding:
-    """The dirty-tree routing input is one named constant, nothing else."""
-
     def test_constant_value_is_pinned(self) -> None:
-        """The constant encodes exactly the canonical dirty-tree phrase."""
         assert DIRTY_WORKTREE_FAILURE_ENCODING == "worktree not clean"
 
     def test_constant_is_lowercase_words_only(self) -> None:
-        """The encoding is plain lowercase prose (a substring, not a regex)."""
         assert re.fullmatch(r"[a-z][a-z ]*[a-z]", DIRTY_WORKTREE_FAILURE_ENCODING)
 
     def test_dirty_tree_commit_failure_routes_to_automated_recovery(self) -> None:
-        """The encoded dirty-tree reason receives automated commit recovery."""
         policy = _commit_failure_policy()
         reason = DIRTY_WORKTREE_FAILURE_ENCODING
 
@@ -88,7 +72,6 @@ class TestDirtyWorktreeFailureEncoding:
         assert effects == []
 
     def test_non_dirty_tree_commit_failure_routes_to_terminal_failure(self) -> None:
-        """A commit failure without the dirty-tree encoding is not recovered."""
         policy = _commit_failure_policy()
         reason = "merge failed; see operator log for details"
 
@@ -99,6 +82,5 @@ class TestDirtyWorktreeFailureEncoding:
         assert effects == []
 
     def test_encoding_matches_as_substring_of_canonical_deferral_reason(self) -> None:
-        """The canonical deferral prose embeds the pinned encoding verbatim."""
         canonical = "worktree not clean; uncommitted tracked changes deferred catch-up integration"
         assert DIRTY_WORKTREE_FAILURE_ENCODING in canonical

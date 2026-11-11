@@ -1,10 +1,3 @@
-"""JavaScript-specific review guideline categories.
-
-Ported from the canonical Rust implementation in
-``ralph-workflow/src/guidelines/javascript.rs`` and adapted for the Python port.
-The module models core JavaScript guidance plus optional framework-specific
-extensions for React, Vue, Angular, Node backends, SSR stacks, and TypeScript.
-"""
 
 from __future__ import annotations
 
@@ -15,13 +8,6 @@ if TYPE_CHECKING:
 
 
 class JavaScriptGuidelines:
-    """JavaScript and TypeScript review checks.
-
-    Args:
-        frameworks: Optional framework names used to add stack-specific guidance.
-        typescript: When true, include the TypeScript-specific checks from the
-            Rust implementation alongside the JavaScript baseline.
-    """
 
     __slots__ = (
         "anti_patterns",
@@ -133,7 +119,6 @@ class JavaScriptGuidelines:
             self._apply_typescript_guidelines()
 
     def _apply_typescript_guidelines(self) -> None:
-        """Add the TypeScript-specific checks from the Rust implementation."""
         self.quality_checks += (
             "Use strict TypeScript mode.",
             "Prefer interfaces over type aliases for object shapes.",
@@ -151,7 +136,6 @@ class JavaScriptGuidelines:
         )
 
     def _apply_frontend_guidelines(self) -> None:
-        """Add shared frontend guidance for React and Vue stacks."""
         self.quality_checks += (
             "Components are properly modularized.",
             "State management is predictable.",
@@ -164,7 +148,6 @@ class JavaScriptGuidelines:
         )
 
     def _apply_framework(self, framework: str) -> None:
-        """Add framework-specific guideline extensions."""
         framework_name = framework.casefold()
 
         if framework_name == "react":
@@ -230,7 +213,6 @@ class JavaScriptGuidelines:
             )
 
     def summary(self) -> str:
-        """Return a short human-readable summary."""
         return (
             f"{len(self.quality_checks)} quality checks, "
             f"{len(self.security_checks)} security checks, "
@@ -238,7 +220,6 @@ class JavaScriptGuidelines:
         )
 
     def total_checks(self) -> int:
-        """Return the total number of configured checks."""
         return sum(
             [
                 len(self.quality_checks),

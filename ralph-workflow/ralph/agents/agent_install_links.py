@@ -1,4 +1,3 @@
-"""Installation links for bundled coding-agent CLIs."""
 
 from __future__ import annotations
 
@@ -17,5 +16,4 @@ AGENT_INSTALL_URLS: Final[dict[str, str]] = {
 
 
 def install_url_for(name: str) -> str | None:
-    """Return the installation URL for a built-in agent name, if known."""
     return AGENT_INSTALL_URLS.get(name.lower())

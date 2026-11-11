@@ -30,19 +30,10 @@ if TYPE_CHECKING:
 PREFLIGHT_TIMEOUT = 123
 
 
-#: The port every fake reservation reports. Nothing binds it: the spawn and
-#: preflight seams are fakes, so the port only has to appear in the endpoint.
 _FAKE_LISTENING_PORT = 43210
 
 
 class _FakeListeningSocket:
-    """Stand-in for the parent-owned listening socket (no real bind).
-
-    The lifecycle only hands ``fileno()`` to the (fake) spawn and calls
-    ``close()`` on shutdown or on a failed start, so this records exactly
-    that: a closed socket reports ``fileno() == -1`` like a real one.
-    """
-
     def __init__(self) -> None:
         self.closed = False
 
@@ -65,7 +56,6 @@ def _fake_served_tools(endpoint: str, timeout_s: float = 1.0) -> list[dict[str, 
 
 @pytest.fixture(autouse=True)
 def _mock_served_tool_entries(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Mock served_tool_entries so capture_tool_hash_baseline does not hang on fake processes."""
     monkeypatch.setattr(
         lifecycle,
         "served_tool_entries",
@@ -75,7 +65,6 @@ def _mock_served_tool_entries(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture(autouse=True)
 def _isolate_contention_signals() -> None:
-    """Clear the module-level contention deque before and after each test."""
     from ralph.mcp.server._mcp_health_event import clear_host_contention_signals
 
     clear_host_contention_signals()
@@ -170,7 +159,6 @@ def test_start_mcp_server_uses_injected_dependencies(tmp_path: Path) -> None:
     assert seen["endpoint"] == "http://127.0.0.1:53123/mcp"
     assert seen["timeout"] == timedelta(seconds=PREFLIGHT_TIMEOUT)
     assert seen["cwd"] == tmp_path
-    # R1: the parent-owned listening socket is released on shutdown.
     bridge.shutdown()
     reserved = seen["reserved_socket"]
     assert isinstance(reserved, _FakeListeningSocket)
@@ -300,11 +288,6 @@ def test_start_mcp_server_preflight_includes_upstream_tool_names(tmp_path: Path)
     assert "ralph_upstream__remote__ping" in required
 
 
-# ---------------------------------------------------------------------------
-# RestartAwareMcpBridge tests
-# ---------------------------------------------------------------------------
-
-
 def _make_standalone(
     endpoint: str = "http://127.0.0.1:9001/mcp", *, poll_result: int | None = None
 ) -> lifecycle.StandaloneMcpProcess:
@@ -319,7 +302,6 @@ def _make_standalone(
 
 
 def test_mcp_restart_policy_default_is_bounded() -> None:
-    """AC-08: the default max_restarts is 20 (was 1000; lowered to bound churn)."""
     policy = lifecycle.McpRestartPolicy()
     assert policy.max_restarts == 20
 
@@ -339,7 +321,6 @@ def test_restart_aware_bridge_returns_false_when_process_alive() -> None:
 
 def test_restart_aware_bridge_restarts_dead_process() -> None:
     inner = _make_standalone(endpoint="http://127.0.0.1:9001/mcp", poll_result=1)
-    # Restarted process uses the same endpoint — stable endpoint invariant
     new_inner = _make_standalone(endpoint="http://127.0.0.1:9001/mcp", poll_result=None)
     bridge = lifecycle.RestartAwareMcpBridge(
         inner,
@@ -361,10 +342,10 @@ def test_restart_aware_bridge_raises_when_budget_exhausted() -> None:
         restart_policy=lifecycle.McpRestartPolicy(max_restarts=2, cooldown_seconds=0.0),
         run_id="test-run",
     )
-    bridge.check_health_and_restart_if_needed()  # restart 1
-    bridge.check_health_and_restart_if_needed()  # restart 2
+    bridge.check_health_and_restart_if_needed()
+    bridge.check_health_and_restart_if_needed()
     with pytest.raises(lifecycle.McpServerError) as exc_info:
-        bridge.check_health_and_restart_if_needed()  # budget exhausted
+        bridge.check_health_and_restart_if_needed()
     assert exc_info.value.restart_count == 2
 
 
@@ -391,7 +372,6 @@ def test_restart_aware_bridge_calls_restart_fn_on_each_restart() -> None:
 
 
 def test_check_mcp_bridge_health_noop_for_non_restart_bridge() -> None:
-    """check_mcp_bridge_health is safe to call on bridges that are not RestartAwareMcpBridge."""
 
     class FakeBridge:
         @property
@@ -408,11 +388,10 @@ def test_check_mcp_bridge_health_noop_for_non_restart_bridge() -> None:
         def shutdown(self) -> None: ...
 
     fake: Any = FakeBridge()
-    lifecycle.check_mcp_bridge_health(fake)  # must not raise
+    lifecycle.check_mcp_bridge_health(fake)
 
 
 def test_conflict_resolution_relay_drops_events_after_bridge_shutdown(tmp_path: Path) -> None:
-    """S-5/R9: no relay callback can refresh liveness after teardown starts."""
     session_file = tmp_path / "relay-closure-session.json"
     session_file.write_text("{}", encoding="utf-8")
     relay = ActivityRelay()
@@ -471,7 +450,6 @@ def test_sender_timeout_reported_by_probe_interrupts_the_parent_without_agent_ou
 
 
 def test_restart_aware_bridge_closes_relay_before_terminating_the_server(tmp_path: Path) -> None:
-    """S-5/R9: relay intake is closed before the MCP process can be reaped."""
     session_file = tmp_path / "relay-order-session.json"
     session_file.write_text("{}", encoding="utf-8")
     events: list[str] = []
@@ -523,7 +501,6 @@ def test_standalone_mcp_process_shutdown_removes_session_file_even_if_process_ex
 
 
 def test_start_mcp_server_restart_fn_runs_preflight(tmp_path: Path) -> None:
-    """Restart function from start_mcp_server re-runs preflight on each restart."""
     preflight_calls: list[str] = []
     spawn_call_count = [0]
 
@@ -578,15 +555,12 @@ def test_start_mcp_server_restart_fn_runs_preflight(tmp_path: Path) -> None:
     )
     assert len(preflight_calls) == 1, "preflight runs once at initial spawn"
 
-    # Trigger a restart: process is dead (poll_result=1), so health check restarts
     bridge.check_health_and_restart_if_needed()
     assert len(preflight_calls) == 2, "preflight runs again after restart"
     assert spawn_call_count[0] == 2, "spawn called twice (initial + restart)"
 
 
 def test_restart_aware_bridge_process_dying_after_initial_preflight(tmp_path: Path) -> None:
-    """Simulates process dying after initial preflight; bridge detects and restarts."""
-    # Start with a process that is alive (poll=None)
     initial_process = FakeProcess(poll_result=None)
     session_file = tmp_path / "session.json"
     session_file.write_text("{}", encoding="utf-8")
@@ -598,7 +572,6 @@ def test_restart_aware_bridge_process_dying_after_initial_preflight(tmp_path: Pa
     restarted_process = FakeProcess(poll_result=None)
     restarted_session = tmp_path / "restarted-session.json"
     restarted_session.write_text("{}", encoding="utf-8")
-    # Same endpoint as initial process — stable port guaranteed by start_mcp_server
     restarted = lifecycle.StandaloneMcpProcess(
         endpoint="http://127.0.0.1:9010/mcp",
         process=restarted_process,
@@ -612,32 +585,19 @@ def test_restart_aware_bridge_process_dying_after_initial_preflight(tmp_path: Pa
         run_id="test-run",
     )
 
-    # Process is alive — health check returns False
     result = bridge.check_health_and_restart_if_needed()
     assert result is False
     assert bridge.restart_count == 0
 
-    # Now simulate process crash (as if it died after initial preflight)
     initial_process._poll_result = 1
 
     result = bridge.check_health_and_restart_if_needed()
     assert result is True
     assert bridge.restart_count == 1
-    # Endpoint stays stable (same port) even after restart
     assert bridge.agent_endpoint_uri() == "http://127.0.0.1:9010/mcp"
 
 
-# ---------------------------------------------------------------------------
-# Responsiveness probe tests (alive-but-unresponsive scenario)
-# ---------------------------------------------------------------------------
-
-
 def test_restart_aware_bridge_restarts_when_process_alive_but_probe_fails() -> None:
-    """Bridge restarts an alive process once probe failures are sustained.
-
-    A restart needs repeated evidence: one missed probe window is a slow
-    server under load, not a dead one.
-    """
     inner = _make_standalone(poll_result=None)
     new_inner = _make_standalone(poll_result=None)
     restart_calls: list[int] = []
@@ -661,7 +621,6 @@ def test_restart_aware_bridge_restarts_when_process_alive_but_probe_fails() -> N
 
 
 def test_restart_aware_bridge_raises_budget_exhausted_on_probe_failure() -> None:
-    """McpServerError raised when budget exhausted even though process is alive (probe failure)."""
     inner = _make_standalone(poll_result=None)
 
     def failing_probe(endpoint: str, timeout: timedelta) -> None:
@@ -684,7 +643,6 @@ def test_restart_aware_bridge_raises_budget_exhausted_on_probe_failure() -> None
 
 
 def test_restart_aware_bridge_terminates_stale_process_on_probe_failure(tmp_path: Path) -> None:
-    """Stale but alive process is terminated via shutdown() before respawn on probe failure."""
     session_file = tmp_path / "probe-stale-session.json"
     session_file.write_text("{}", encoding="utf-8")
     initial_process = FakeProcess(poll_result=None)
@@ -713,7 +671,6 @@ def test_restart_aware_bridge_terminates_stale_process_on_probe_failure(tmp_path
 
 
 def test_restart_aware_bridge_no_probe_fn_means_alive_is_healthy() -> None:
-    """When probe_fn is None, a live process is always treated as healthy (backward compat)."""
     inner = _make_standalone(poll_result=None)
     bridge = lifecycle.RestartAwareMcpBridge(
         inner,
@@ -728,7 +685,6 @@ def test_restart_aware_bridge_no_probe_fn_means_alive_is_healthy() -> None:
 
 
 def test_restart_aware_bridge_passing_probe_does_not_trigger_restart() -> None:
-    """When probe_fn succeeds, bridge reports healthy and does not restart."""
     probe_calls: list[str] = []
 
     def passing_probe(endpoint: str, timeout: timedelta) -> None:
@@ -746,11 +702,10 @@ def test_restart_aware_bridge_passing_probe_does_not_trigger_restart() -> None:
     result = bridge.check_health_and_restart_if_needed()
     assert result is False
     assert bridge.restart_count == 0
-    assert probe_calls  # probe was called
+    assert probe_calls
 
 
 def test_start_mcp_server_stable_endpoint_across_restarts(tmp_path: Path) -> None:
-    """start_mcp_server reuses the same port on every restart so the endpoint stays stable."""
     reserved_listening_calls: list[str] = []
     spawn_call_count = [0]
 
@@ -778,7 +733,6 @@ def test_start_mcp_server_stable_endpoint_across_restarts(tmp_path: Path) -> Non
     ) -> FakeProcess:
         del command, cwd, env, phase
         spawn_call_count[0] += 1
-        # First process is dead; second is alive
         return FakeProcess(poll_result=1 if spawn_call_count[0] == 1 else None)
 
     endpoints_seen: list[str] = []
@@ -815,12 +769,9 @@ def test_start_mcp_server_stable_endpoint_across_restarts(tmp_path: Path) -> Non
 
     bridge.check_health_and_restart_if_needed()
 
-    # Port reserved exactly once, not on each restart
     assert reserved_listening_calls == ["called"], "reserve_listening_socket called more than once"
-    # Endpoint unchanged after restart
     assert bridge.agent_endpoint_uri() == initial_endpoint
     assert initial_endpoint == f"http://127.0.0.1:{stable_port}/mcp"
-    # Both preflight calls use the same endpoint
     assert endpoints_seen == [initial_endpoint, initial_endpoint]
 
 
@@ -873,13 +824,7 @@ def test_start_mcp_server_raises_clear_error_when_process_exits_before_preflight
         lifecycle.start_mcp_server(session, workspace, deps=deps)
 
 
-# ---------------------------------------------------------------------------
-# model_identity serialization tests
-# ---------------------------------------------------------------------------
-
-
 def test_session_payload_json_includes_model_identity_when_known() -> None:
-    """_session_payload_json serializes model_identity for sessions with a known provider."""
     session = AgentSession(
         session_id="sid-mi",
         run_id="run-mi",
@@ -897,7 +842,6 @@ def test_session_payload_json_includes_model_identity_when_known() -> None:
 
 
 def test_session_payload_json_omits_model_identity_when_unknown() -> None:
-    """session_payload_json omits model_identity for UNKNOWN_IDENTITY sessions."""
     session = AgentSession(
         session_id="sid-unknown",
         run_id="run-unknown",
@@ -909,7 +853,6 @@ def test_session_payload_json_omits_model_identity_when_unknown() -> None:
 
 
 def test_session_payload_json_omits_model_identity_for_sessions_without_attribute() -> None:
-    """session_payload_json is safe when session lacks model_identity attribute."""
 
     class _MinimalSession:
         session_id = "sid-min"
@@ -940,13 +883,7 @@ def test_session_payload_json_omits_non_bool_activity_only_supervision() -> None
     assert "activity_only_supervision" not in payload
 
 
-# ---------------------------------------------------------------------------
-# capability_profile serialization tests
-# ---------------------------------------------------------------------------
-
-
 def test_session_payload_json_includes_capability_profile_for_known_provider() -> None:
-    """_session_payload_json serializes capability_profile for sessions with a known provider."""
     session = AgentSession(
         session_id="sid-cp",
         run_id="run-cp",
@@ -971,7 +908,6 @@ def test_session_payload_json_includes_capability_profile_for_known_provider() -
 
 
 def test_session_payload_json_includes_profile_for_unknown_provider() -> None:
-    """Unknown-provider profiles preserve image delivery without guessing model capability."""
     session = AgentSession(
         session_id="sid-cp-unknown",
         run_id="run-cp-unknown",
@@ -992,7 +928,6 @@ def test_session_payload_json_includes_profile_for_unknown_provider() -> None:
 
 
 def test_session_payload_json_capability_profile_verdicts_cover_all_modalities() -> None:
-    """Serialized capability_profile verdicts include all supported modalities."""
     session = AgentSession(
         session_id="sid-cp-full",
         run_id="run-cp-full",
@@ -1030,12 +965,6 @@ def test_session_payload_json_includes_parallel_worker_metadata(tmp_path: Path) 
 
 @pytest.mark.timeout_seconds(5)
 def test_listening_socket_closed_on_first_spawn_preflight_failure(tmp_path: Path) -> None:
-    """R1 cleanup invariant: the reserved listening socket must not leak.
-
-    When the FIRST spawn's preflight fails, start_mcp_server raises
-    before a bridge exists to own the socket. The failure path must
-    close the reserved socket so its FD (and the bound port) is not leaked.
-    """
     reserved_socks: list[_FakeListeningSocket] = []
 
     def fake_reserve_listening_socket() -> tuple[str, int, object]:

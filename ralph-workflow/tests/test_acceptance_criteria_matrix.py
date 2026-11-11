@@ -1,25 +1,3 @@
-"""Acceptance-criteria matrix for the workspace-awareness product criteria.
-
-Renders the canonical AC-1 .. AC-12 mapping from
-``.agent/PRODUCT_CRITERIA.md`` to the maintained test tree, writes the
-matrix into the deterministic ``tmp_path`` boundary (never the durable
-``.agent/evidence/`` path -- the evidence recorder promotes a copy), and
-asserts:
-
-1. every AC-1 through AC-12 row is present;
-2. every ``Test: tests/...`` reference resolves to a real file under
-   ``ralph-workflow/tests/`` (so a typo or an arbitrary string fails);
-3. every ``Status:`` token is drawn from the closed vocabulary
-   ``{COVERED, GAP, DELIVERED}``;
-4. every row carries a ``Delivery: S-N`` step and a ``Verify:`` command
-   so the matrix records both the delivery work and the externally
-   observable verification method per AC.
-
-The reference table below is the canonical AC-to-test mapping; any
-future change must update the table so the matrix cannot lie about
-acceptance coverage.
-"""
-
 from __future__ import annotations
 
 import re
@@ -30,13 +8,6 @@ _TESTS_ROOT = _PACKAGE_ROOT / "tests"
 
 _STATUS_VOCABULARY = frozenset({"COVERED", "GAP", "DELIVERED"})
 
-#: Canonical AC-to-test mapping. Each row is
-#: ``(criterion, summary, status, delivery_work, verification_method,
-#:   (test references relative to the package root))``.
-#: ``delivery_work`` names the S-N plan step that closes the gap or
-#: maintains coverage. ``verification_method`` names the test or
-#: ``make verify`` target. A ``GAP`` row carries an empty reference
-#: tuple by definition.
 _ACCEPTANCE_ROWS: tuple[tuple[str, str, str, str, str, tuple[str, ...]], ...] = (
     (
         "AC-1",
@@ -219,7 +190,6 @@ def _render_row(
 
 
 def render_acceptance_matrix() -> str:
-    """Render the full 12-row acceptance matrix as a markdown string."""
     body = "\n\n".join(
         _render_row(criterion, summary, status, delivery_work, verification_method, references)
         for criterion, summary, status, delivery_work, verification_method, references in _ACCEPTANCE_ROWS
@@ -228,17 +198,12 @@ def render_acceptance_matrix() -> str:
 
 
 def test_acceptance_matrix_renders_inside_tmp_path(tmp_path: Path) -> None:
-    """Every AC row is present, references real tests, and uses the closed vocabulary."""
     matrix = render_acceptance_matrix()
     destination = tmp_path / "acceptance-criteria-matrix.md"
     destination.write_text(matrix, encoding="utf-8")
 
     rendered = destination.read_text(encoding="utf-8")
 
-    # Every rendered line is compared against the canonical table, row by
-    # row. A length-only check ("12 Status lines") would pass for a matrix
-    # that rendered 12 WRONG statuses, 12 rows in the wrong order, or
-    # duplicated one row; the exact-sequence comparison pins the content.
     rendered_criteria = re.findall(r"^## (AC-\d+):", rendered, flags=re.MULTILINE)
     assert rendered_criteria == [row[0] for row in _ACCEPTANCE_ROWS], (
         f"rendered AC rows must match the canonical table exactly; got {rendered_criteria!r}"
@@ -270,13 +235,10 @@ def test_acceptance_matrix_renders_inside_tmp_path(tmp_path: Path) -> None:
             f"matrix references a missing test file: {reference}"
         )
 
-    # The deterministic boundary: this test only writes inside tmp_path;
-    # the durable evidence copy is produced solely by S-7's recorder.
     assert str(destination).startswith(str(tmp_path))
 
 
 def test_matrix_table_is_canonical() -> None:
-    """The shipped table covers exactly AC-1 .. AC-12 with the closed vocabulary."""
     assert [row[0] for row in _ACCEPTANCE_ROWS] == [f"AC-{index}" for index in range(1, 13)]
     for (
         _criterion,

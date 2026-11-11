@@ -1,5 +1,3 @@
-"""Tests for fast no-progress quiet agent detection and recovery flow."""
-
 from __future__ import annotations
 
 import tempfile
@@ -52,15 +50,6 @@ def _memory_scope(monkeypatch: MonkeyPatch) -> WorkspaceScope:
 
 
 def test_classifier_flags_structured_unavailable_without_text_match() -> None:
-    """FailureClassifier flags is_unavailable based on the structured error reason alone.
-
-    The structured watchdog_reason (NO_PROGRESS_QUIET) short-circuits the OR chain in
-    is_unavailable before text matching is evaluated. Even though the
-    AgentInactivityTimeoutError message for NO_PROGRESS_QUIET contains
-    'produced no output' (which is in UNAVAILABLE_AGENT_SUBSTRINGS), the
-    structured reason is checked FIRST in the OR chain, so text matching is
-    never evaluated. This proves the structured reason is the deciding signal.
-    """
     classifier = FailureClassifier()
     opts = InactivityTimeoutOpts(
         reason=WatchdogFireReason.NO_PROGRESS_QUIET,
@@ -81,7 +70,6 @@ def test_classifier_flags_structured_unavailable_without_text_match() -> None:
 
 
 def test_recovery_controller_falls_over_on_no_progress_quiet() -> None:
-    """RecoveryController transitions agent on NO_PROGRESS_QUIET and publishes correct events."""
     clock = FakeClock(start=0.0)
     bus = FailureEventBus()
     events: list[object] = []
@@ -115,23 +103,19 @@ def test_recovery_controller_falls_over_on_no_progress_quiet() -> None:
         FailureContext(phase="development", agent="claude"),
     )
 
-    # Agent transitions to opencode
     chain = new_state.chain_for_phase("development")
     assert chain is not None
     assert chain.current_index == 1
 
-    # FalloverEvent is published carrying watchdog_reason
     fallovers = [e for e in events if isinstance(e, FalloverEvent)]
     assert len(fallovers) == 1
     assert fallovers[0].watchdog_reason == "no_progress_quiet"
 
-    # Cooldown timeout is set
     snap = controller.snapshot()
     assert snap["unavailable_timeouts"]["claude"] == 5000
 
 
 def test_run_loop_emits_waiting_then_resumed(monkeypatch: MonkeyPatch) -> None:
-    """Run loop emits WAITING status before cooldown sleep and RESUMED after, using the guard."""
     policy_bundle = MagicMock()
     policy_bundle.pipeline.terminal_phase = "complete"
     policy_bundle.pipeline.terminal_states.return_value = {"complete", "failed_terminal"}
@@ -175,10 +159,6 @@ def test_run_loop_emits_waiting_then_resumed(monkeypatch: MonkeyPatch) -> None:
         phase="development",
         phase_chains={"development": chain_state},
     )
-    # Use the structured ``is_waiting_state`` flag as the wait-state signal;
-    # the previous ``last_error`` text parser was brittle and was replaced
-    # with this boolean. The ``last_error`` text remains as operator
-    # context only and is NOT a contract the run loop parses.
     state = state.copy_with(
         last_error=(
             "all agents unavailable (last reason: out_of_credits); waiting for cooldown expiry"
@@ -186,8 +166,6 @@ def test_run_loop_emits_waiting_then_resumed(monkeypatch: MonkeyPatch) -> None:
         last_retry_delay_ms=200,
         is_waiting_state=True,
     )
-    # The MagicMock controller is consumed by the run loop through the
-    # public ``waiting_state_payload`` and ``agents_now_available`` methods.
     ctx.controller.waiting_state_payload.return_value = [("claude", 1, 200)]
     ctx.controller.agents_now_available.return_value = ["claude"]
 
@@ -201,13 +179,11 @@ def test_run_loop_emits_waiting_then_resumed(monkeypatch: MonkeyPatch) -> None:
     assert len(slept) == 1
     assert slept[0] == 0.2
 
-    # Check WAITING and RESUMED emissions
     assert any("WAITING" in str(s) for s in emitted)
     assert any("RESUMED" in str(s) for s in emitted)
 
 
 def test_run_loop_never_crashes_on_sleep_exception(monkeypatch: MonkeyPatch) -> None:
-    """Run loop catches sleep exception, logs it, and continues rather than crashing."""
     policy_bundle = MagicMock()
     policy_bundle.pipeline.terminal_phase = "complete"
     policy_bundle.pipeline.terminal_states.return_value = {"complete", "failed_terminal"}
@@ -263,10 +239,6 @@ def test_run_loop_never_crashes_on_sleep_exception(monkeypatch: MonkeyPatch) -> 
         phase="development",
         phase_chains={"development": chain_state},
     )
-    # Use the structured ``is_waiting_state`` flag as the wait-state signal;
-    # the previous ``last_error`` text parser was brittle and was replaced
-    # with this boolean. The ``last_error`` text remains as operator
-    # context only and is NOT a contract the run loop parses.
     state = state.copy_with(
         last_error=(
             "all agents unavailable (last reason: out_of_credits); waiting for cooldown expiry"
@@ -274,8 +246,6 @@ def test_run_loop_never_crashes_on_sleep_exception(monkeypatch: MonkeyPatch) -> 
         last_retry_delay_ms=200,
         is_waiting_state=True,
     )
-    # The MagicMock controller is consumed by the run loop through the
-    # public ``waiting_state_payload`` and ``agents_now_available`` methods.
     ctx.controller.waiting_state_payload.return_value = [("claude", 1, 200)]
     ctx.controller.agents_now_available.return_value = ["claude"]
 
@@ -291,7 +261,6 @@ def test_run_loop_never_crashes_on_sleep_exception(monkeypatch: MonkeyPatch) -> 
 
 
 def test_fallover_log_line_includes_watchdog_reason(monkeypatch: MonkeyPatch) -> None:
-    """FALLOVER log message includes the watchdog reason."""
     logs: list[str] = []
     sink_id = logger.add(lambda msg: logs.append(msg.record["message"]), level="INFO")
 
@@ -335,7 +304,6 @@ def test_fallover_log_line_includes_watchdog_reason(monkeypatch: MonkeyPatch) ->
 def test_run_loop_guard_suppresses_duplicate_waiting_in_same_phase(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """Once-per-phase guard suppresses duplicate WAITING emissions until phase changes."""
     policy_bundle = MagicMock()
     policy_bundle.pipeline.terminal_phase = "complete"
     policy_bundle.pipeline.terminal_states.return_value = {"complete", "failed_terminal"}
@@ -388,10 +356,6 @@ def test_run_loop_guard_suppresses_duplicate_waiting_in_same_phase(
         phase="development",
         phase_chains={"development": chain_state},
     )
-    # Use the structured ``is_waiting_state`` flag as the wait-state signal;
-    # the previous ``last_error`` text parser was brittle and was replaced
-    # with this boolean. The ``last_error`` text remains as operator
-    # context only and is NOT a contract the run loop parses.
     state = state.copy_with(
         last_error=(
             "all agents unavailable (last reason: out_of_credits); waiting for cooldown expiry"
@@ -399,8 +363,6 @@ def test_run_loop_guard_suppresses_duplicate_waiting_in_same_phase(
         last_retry_delay_ms=200,
         is_waiting_state=True,
     )
-    # The MagicMock controller is consumed by the run loop through the
-    # public ``waiting_state_payload`` and ``agents_now_available`` methods.
     ctx.controller.waiting_state_payload.return_value = [("claude", 1, 200)]
     ctx.controller.agents_now_available.return_value = ["claude"]
 

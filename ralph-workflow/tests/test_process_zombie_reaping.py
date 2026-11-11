@@ -1,26 +1,3 @@
-"""Parametrized unit test for all seven zombie_after_kill paths.
-
-Each parameter exercises one of the four new centralized reaping helpers
-introduced in `ralph.process.manager._process_manager.ProcessManager`:
-
-    _reap_sync_and_mark
-    _reap_async_and_mark
-    _reap_psutil_zombie_and_mark
-    _reap_async_in_sync_and_mark
-
-The test verifies two things for every zombie_after_kill path:
-
-1. The corresponding reaping primitive (proc.poll / proc.wait /
-   psutil.wait_procs / os.waitpid) is invoked BEFORE
-   _mark_killed(..., cause="zombie_after_kill") is called.
-2. After the helper returns, the record is in
-   `ProcessStatus.KILLED` with `cause == "zombie_after_kill"`.
-
-No real subprocesses are spawned. The test never uses time.sleep and
-each parameter case must complete well under 1.0s so the 60-second
-combined `make verify` budget is preserved.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -44,14 +21,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 
-# --------------------------------------------------------------------------
-# Test doubles
-# --------------------------------------------------------------------------/
-
-
 class _RecordingPopen:
-    """Fake sync process that records reaping calls and reaps when killed."""
-
     def __init__(self, pid: int) -> None:
         self.pid = pid
         self._returncode: int | None = None
@@ -92,8 +62,6 @@ class _RecordingPopen:
 
 
 class _RecordingAsyncProcess:
-    """Fake async process that records reaping calls and reaps when killed."""
-
     def __init__(self, pid: int) -> None:
         self.pid = pid
         self._returncode: int | None = None
@@ -138,8 +106,6 @@ class _RecordingAsyncProcess:
 
 
 class _RecordingPsutilProcess:
-    """Fake psutil.Process that records reaping calls."""
-
     def __init__(self, pid: int) -> None:
         self.pid = pid
         self._terminated = False
@@ -177,8 +143,6 @@ class _RecordingPsutilProcess:
 
 
 class _RecordingPsutil:
-    """Fake psutil module that records wait_procs calls."""
-
     def __init__(self) -> None:
         self.NoSuchProcess: type[BaseException] = type("NoSuchProcess", (Exception,), {})
         self.AccessDenied: type[BaseException] = type("AccessDenied", (Exception,), {})
@@ -209,11 +173,6 @@ class _RecordingPsutil:
         self.wait_procs_calls.append(timeout if timeout is not None else 0.0)
         alive = [p for p in procs if p.is_running()]
         return [], alive
-
-
-# --------------------------------------------------------------------------
-# Helper: build a record in the RUNNING state for the given pid
-# --------------------------------------------------------------------------/
 
 
 def _make_record(pid: int) -> ProcessRecord:
@@ -271,11 +230,6 @@ def _make_pm() -> ProcessManager:
     )
 
 
-# --------------------------------------------------------------------------
-# The parametrized test
-# --------------------------------------------------------------------------/
-
-
 _ZOMBIE_PATH_IDS: ClassVar[list[str]] = [
     "terminate_root_only_sync",
     "terminate_root_only_async",
@@ -289,13 +243,6 @@ _ZOMBIE_PATH_IDS: ClassVar[list[str]] = [
 
 @pytest.mark.parametrize("path_name", _ZOMBIE_PATH_IDS)
 def test_reaps_zombie_before_mark_killed(path_name: str) -> None:
-    """Each zombie_after_kill path reaps its process before _mark_killed.
-
-    The single test body branches on ``path_name`` to drive the correct
-    helper directly. We patch ``_mark_killed`` on the manager instance to
-    record the ordering of (reap call) vs (_mark_killed) and assert the
-    helper did its reaping work.
-    """
 
     pid = 4000 + _ZOMBIE_PATH_IDS.index(path_name)
     record = _make_record(pid)
@@ -312,19 +259,13 @@ def test_reaps_zombie_before_mark_killed(path_name: str) -> None:
         mark_calls.append((rec, rc, cause))
         real_mark_killed(rec, rc, cause=cause)
 
-    # Async paths must run inside a real event loop so StreamReader
-    # construction has a loop to bind to.
     if path_name in {
         "terminate_root_only_async",
         "escalate_termination_async",
     }:
         asyncio.run(_drive_async_reap(pm, record, pid, _spy_mark_killed))
     else:
-        # Monkeypatch the per-instance _mark_killed for sync paths
         with patch.object(pm, "_mark_killed", side_effect=_spy_mark_killed):
-            # ------------------------------------------------------------------
-            # _reap_sync_and_mark  (terminate_root_only_sync, escalate_termination_sync)
-            # ------------------------------------------------------------------
             if path_name in {
                 "terminate_root_only_sync",
                 "escalate_termination_sync",
@@ -335,9 +276,6 @@ def test_reaps_zombie_before_mark_killed(path_name: str) -> None:
                     f"{path_name}: proc.poll() must be called before _mark_killed"
                 )
 
-            # ------------------------------------------------------------------
-            # _reap_psutil_zombie_and_mark  (terminate_by_pid, escalate_with_psutil)
-            # ------------------------------------------------------------------
             elif path_name in {
                 "terminate_by_pid",
                 "escalate_with_psutil",
@@ -350,29 +288,20 @@ def test_reaps_zombie_before_mark_killed(path_name: str) -> None:
                 assert psutil_mod.wait_procs_called, (
                     f"{path_name}: psutil.wait_procs must be called before _mark_killed"
                 )
-                # Verify bounded timeout
                 assert all(t <= 0.0 + 1e-9 for t in psutil_mod.wait_procs_calls), (
                     f"{path_name}: psutil.wait_procs timeout must be 0.0 (non-blocking)"
                 )
 
-            # ------------------------------------------------------------------
-            # _reap_async_in_sync_and_mark  (escalate_without_psutil)
-            # ------------------------------------------------------------------
             elif path_name == "escalate_without_psutil":
                 proc = _RecordingAsyncProcess(pid=pid)
-                # Patch os.waitpid only on POSIX; on non-POSIX, the helper must
-                # still record a returncode and mark the record KILLED.
                 with patch.object(os, "waitpid", wraps=getattr(os, "waitpid", None)) as mocked:
                     pm._reap_async_in_sync_and_mark(record, proc, cause="zombie_after_kill")
                 if hasattr(os, "waitpid"):
                     _ = mocked
 
-            else:  # pragma: no cover - defensive
+            else:
                 pytest.fail(f"unknown zombie_after_kill path: {path_name}")
 
-    # --------------------------------------------------------------
-    # Universal assertions: reaping happened AND the record is KILLED
-    # --------------------------------------------------------------
     assert record.status == ProcessStatus.KILLED, (
         f"{path_name}: record must be KILLED after the helper runs"
     )
@@ -398,26 +327,13 @@ async def _drive_async_reap(
     pid: int,
     spy_mark_killed: Callable[..., None],
 ) -> None:
-    """Drive _reap_async_and_mark inside a running event loop."""
     proc = _RecordingAsyncProcess(pid=pid)
     with patch.object(pm, "_mark_killed", side_effect=spy_mark_killed):
         await pm._reap_async_and_mark(record, proc, cause="zombie_after_kill")
     assert proc.wait_called, f"proc.wait() must be called before _mark_killed for pid {pid}"
 
 
-# --------------------------------------------------------------------------
-# Idempotency / exception-safety guard
-# --------------------------------------------------------------------------/
-
-
 def test_reap_helpers_are_idempotent_and_dont_double_mark() -> None:
-    """A second call to any reap helper on a terminal record is a no-op.
-
-    This protects against the case where the same zombie_after_kill path
-    is reached twice for the same record (e.g. re-entrancy from
-    shutdown_all). The helper must not re-emit, must not re-wait, and
-    must not overwrite the existing cause with a new one.
-    """
     pm = _make_pm()
     pid = 7777
     record = _make_record(pid)
@@ -428,7 +344,6 @@ def test_reap_helpers_are_idempotent_and_dont_double_mark() -> None:
     assert record.cause == "zombie_after_kill"
     first_ended_at = record.ended_at
 
-    # Second call should be a no-op (record is already terminal).
     proc2 = _RecordingPopen(pid=pid)
     pm._reap_sync_and_mark(record, proc2, cause="zombie_after_kill")
     assert proc2.poll_called is False, "idempotent reap must not re-poll once record is terminal"
@@ -437,7 +352,6 @@ def test_reap_helpers_are_idempotent_and_dont_double_mark() -> None:
 
 
 def test_reap_sync_helper_swallows_oserror_but_still_marks() -> None:
-    """OSError from proc.poll() must be suppressed; _mark_killed must still run."""
 
     class _ExplodingPopen:
         pid = 1234
@@ -472,7 +386,6 @@ def test_reap_sync_helper_swallows_oserror_but_still_marks() -> None:
     pm = _make_pm()
     record = _make_record(1234)
     proc = _ExplodingPopen()
-    # Must not raise; must still mark KILLED.
     pm._reap_sync_and_mark(record, proc, cause="zombie_after_kill")
     assert record.status == ProcessStatus.KILLED
     assert record.cause == "zombie_after_kill"
@@ -480,7 +393,6 @@ def test_reap_sync_helper_swallows_oserror_but_still_marks() -> None:
 
 
 def test_reap_sync_helper_swallows_timeout_expired() -> None:
-    """subprocess.TimeoutExpired from proc.wait(timeout=0.1) must not propagate."""
 
     class _HangingPopen:
         pid = 1235
@@ -521,7 +433,6 @@ def test_reap_sync_helper_swallows_timeout_expired() -> None:
 
 
 def test_reap_psutil_helper_calls_wait_procs_with_zero_timeout() -> None:
-    """psutil.wait_procs must be called with timeout=0.0 (non-blocking)."""
     pm = _make_pm()
     record = _make_record(4242)
     psutil_mod = _RecordingPsutil()

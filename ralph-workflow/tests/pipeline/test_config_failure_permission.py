@@ -1,12 +1,3 @@
-"""Tests verifying unreadable ralph-workflow.toml (permission/directory) carries CONFIG_FAILURE.
-
-When project-local ralph-workflow.toml is unreadable due to filesystem permissions
-or being a directory instead of a regular file, the configuration loader fails fast
-with ConfigTomlError, workspace_context wraps this into WorkspaceContextError,
-and the auto-integrate rebase resolver records a non-charging CONFIG_FAILURE outcome
-with the actionable `fix <file> then run ralph --check-config` remediation message.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -29,7 +20,6 @@ from ralph.workspace.scope import WorkspaceScope
 
 
 def test_load_toml_directory_raises_config_toml_error(tmp_path: Path) -> None:
-    """A directory in place of a TOML file raises ConfigTomlError with What/Why/Fix envelope."""
     dir_path = tmp_path / "ralph-workflow.toml"
     dir_path.mkdir(parents=True)
 
@@ -44,14 +34,11 @@ def test_load_toml_directory_raises_config_toml_error(tmp_path: Path) -> None:
 
 
 def test_load_toml_permission_denied_raises_config_toml_error(tmp_path: Path) -> None:
-    """An unreadable TOML file raises ConfigTomlError with What/Why/Fix envelope."""
     file_path = tmp_path / "ralph-workflow.toml"
     file_path.write_text("[general]\n", encoding="utf-8")
     file_path.chmod(0o000)
 
     try:
-        # On POSIX systems when not running as root, chmod 000 triggers PermissionError.
-        # If running as root, we simulate the PermissionError directly.
         try:
             file_path.read_text(encoding="utf-8")
             is_root = True
@@ -83,7 +70,6 @@ def test_load_toml_permission_denied_raises_config_toml_error(tmp_path: Path) ->
 
 
 def test_workspace_context_wraps_directory_in_place_of_config(tmp_path: Path) -> None:
-    """A directory in place of .agent/ralph-workflow.toml raises WorkspaceContextError."""
     agent_dir = tmp_path / ".agent"
     agent_dir.mkdir(parents=True)
     cfg_dir = agent_dir / "ralph-workflow.toml"
@@ -98,7 +84,6 @@ def test_workspace_context_wraps_directory_in_place_of_config(tmp_path: Path) ->
 
 
 def test_auto_integrate_resolver_directory_in_place_of_config(tmp_path: Path) -> None:
-    """Resolver handles directory in place of config: returns CONFIG_FAILURE without charging budget."""
     agent_dir = tmp_path / ".agent"
     agent_dir.mkdir(parents=True)
     cfg_dir = agent_dir / "ralph-workflow.toml"
@@ -144,7 +129,6 @@ def test_auto_integrate_resolver_directory_in_place_of_config(tmp_path: Path) ->
 def test_auto_integrate_resolver_unreadable_permission_denied_config(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Resolver handles unreadable config: returns CONFIG_FAILURE without charging budget."""
     agent_dir = tmp_path / ".agent"
     agent_dir.mkdir(parents=True)
     cfg_file = agent_dir / "ralph-workflow.toml"

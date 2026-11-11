@@ -1,37 +1,3 @@
-"""Pin that a manual harness run exercises the same code the live pipeline runs.
-
-A harness PASS is only evidence when the harness ran what the pipeline runs.
-Two divergences made a PASS worthless:
-
-  1. Each ``smoke-interactive-*`` command pinned a hardcoded
-     ``<transport>/<provider>/<model>`` default alias, duplicated as a string
-     literal in ``ralph/cli/main.py`` (what the CLI actually used) and in
-     ``ralph/cli/commands/smoke.py`` (shadowed, so the two could silently
-     disagree). The operator's real pipeline is driven by ``[agent_chains]``
-     in their config, so the harness exercised a model the pipeline never
-     runs -- and a pinned id goes stale when the provider retires it (the
-     Codex harness pinned ``gpt-5-flash`` until it began returning HTTP 400
-     and failed for a reason unrelated to Ralph).
-
-  2. Four transports carried a hand-copied trio of ``RALPH_*_BINARY`` override
-     helpers. The shared harness applied only AGY and Cursor; the Kimi and
-     OpenCode CLI commands applied theirs to a config that the harness then
-     discarded, so ``RALPH_OPENCODE_BINARY`` logged "Using ... override" and
-     had no effect.
-
-This file is deliberately NOT named after the manual-harness commands it
-covers: ``audit_test_policy`` forces any test file whose NAME carries that
-word to be marked excluded-from-every-suite, and these regression guards must
-run inside ``make verify``.
-
-Test isolation guarantees (per ``docs/agents/testing-guide.md``):
-
-  - No real subprocess (the harness plumbing is monkeypatched).
-  - No real filesystem outside ``tmp_path``.
-  - No real wall-clock waits.
-  - No module-level mutable accumulators.
-"""
-
 from __future__ import annotations
 
 import inspect
@@ -68,11 +34,6 @@ if TYPE_CHECKING:
 
 
 def _cli_agent_defaults() -> dict[str, object]:
-    """Return the ``--agent`` Typer default of every ``smoke-*`` CLI command.
-
-    A command that takes no ``--agent`` is absent from the mapping; one that
-    takes it maps to the Typer option's ``default`` value.
-    """
     defaults: dict[str, object] = {}
     for command in cli_main.app.registered_commands:
         name = command.name
@@ -87,14 +48,8 @@ def _cli_agent_defaults() -> dict[str, object]:
     return defaults
 
 
-# ---------------------------------------------------------------------------
-# Divergence 1 -- no harness default may pin a provider/model literal.
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.timeout_seconds(3)
 def test_every_agent_taking_command_defers_its_default_to_the_config() -> None:
-    """No ``--agent`` default is a hardcoded alias; each defers to the config."""
     offenders: list[str] = []
     for name, default in _cli_agent_defaults().items():
         if name in CONFIG_ALIAS_DEFAULT_SMOKE_COMMANDS:
@@ -109,12 +64,8 @@ def test_every_agent_taking_command_defers_its_default_to_the_config() -> None:
 
 @pytest.mark.timeout_seconds(3)
 def test_command_seam_default_matches_the_cli_default() -> None:
-    """The command-function default is not a second, shadowed source of truth."""
     offenders: list[str] = []
     for name in SMOKE_COMMAND_TRANSPORTS:
-        # Derived from the CLI command name, not the transport: two Claude
-        # commands drive Claude, and neither function is named after its
-        # transport's enum value.
         command = getattr(smoke_module, name.replace("-", "_") + "_command")
         default = inspect.signature(command).parameters["agent_name"].default
         if default is not None:
@@ -198,7 +149,6 @@ def test_opencode_smoke_uses_bare_agent_when_policy_lacks_transport(
 def test_command_without_agent_flag_runs_the_configured_chain_alias(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``smoke-interactive-cursor`` with no ``--agent`` runs the operator's alias."""
     config = UnifiedConfig(agent_chains={"development": ["claude/sonnet"]})
     agents_policy = AgentsPolicy(
         agent_chains={"smoke-development": AgentChainConfig(agents=["cursor/gpt-5.3-codex-high"])},
@@ -227,7 +177,6 @@ def test_command_without_agent_flag_runs_the_configured_chain_alias(
 
 @pytest.mark.timeout_seconds(3)
 def test_explicit_agent_flag_still_wins(monkeypatch: pytest.MonkeyPatch) -> None:
-    """An operator-supplied ``--agent`` overrides the configured default."""
     config = UnifiedConfig(agent_chains={"development": ["cursor/auto"]})
     monkeypatch.setattr(smoke_module.shutil, "which", lambda _name: "/usr/bin/agent")
     monkeypatch.setattr(smoke_module, "load_config", lambda *_a, **_k: config)
@@ -248,13 +197,7 @@ def test_explicit_agent_flag_still_wins(monkeypatch: pytest.MonkeyPatch) -> None
     assert captured["agent_name"] == "cursor/gpt-5.3-codex-high"
 
 
-# ---------------------------------------------------------------------------
-# Divergence 2 -- every override transport is applied in the shared harness.
-# ---------------------------------------------------------------------------
-
-
 def _executable_stub(tmp_path: Path, name: str) -> Path:
-    """Write an executable no-op stub binary under ``tmp_path``."""
     stub = tmp_path / name
     stub.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     stub.chmod(0o755)
@@ -262,16 +205,12 @@ def _executable_stub(tmp_path: Path, name: str) -> Path:
 
 
 class _FakePipelineFactory:
-    """Stand-in composition root so the harness never builds real deps."""
-
     def build(self, *_args: object, **_kwargs: object) -> PipelineDeps | None:
-        """Return ``None``; the fake plumbing never reads the deps bundle."""
         return None
 
 
 @pytest.mark.timeout_seconds(3)
 def test_override_table_covers_every_documented_env_var() -> None:
-    """The table is the single source of truth for the four override vars."""
     assert {
         smoke_binary_override_env_var(transport) for transport in smoke_binary_override_transports()
     } == {
@@ -289,7 +228,6 @@ def test_shared_harness_applies_every_override_transport(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """The harness rewrites the agent's ``cmd`` for EVERY override transport."""
     stub = _executable_stub(tmp_path, f"stub-{transport.value}")
     env_var = smoke_binary_override_env_var(transport)
     assert env_var is not None
@@ -331,7 +269,6 @@ def test_shared_harness_applies_every_override_transport(
 
 @pytest.mark.timeout_seconds(3)
 def test_override_is_a_no_op_for_a_transport_without_one() -> None:
-    """A transport with no override entry is returned unchanged."""
     agent_config = AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE)
 
     assert apply_smoke_binary_override(agent_config) is agent_config
@@ -339,15 +276,6 @@ def test_override_is_a_no_op_for_a_transport_without_one() -> None:
 
 @pytest.mark.timeout_seconds(3)
 def test_every_smoke_command_that_drives_an_agent_accepts_an_agent_flag() -> None:
-    """A smoke command with no ``--agent`` cannot run what the pipeline runs.
-
-    ``test_every_agent_taking_command_defers_its_default_to_the_config`` only
-    inspects commands that already take ``--agent``, so a command taking none
-    is exempt by construction -- which is exactly how the two Claude smokes
-    stayed pinned to the bare ``claude`` / ``claude-headless`` built-ins while
-    an operator's chains ran ``claude/sonnet``. Every smoke command that drives
-    an agent must let the operator name one, and must default to their config.
-    """
     agent_taking = set(_cli_agent_defaults())
     driving = {
         command.name

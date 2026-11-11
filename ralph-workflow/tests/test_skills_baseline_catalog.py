@@ -1,5 +1,3 @@
-"""Tests for ralph.skills._baseline_catalog."""
-
 from ralph.skills._baseline_catalog import (
     CONDITIONAL_DEFAULTS,
     MANDATORY_DEFAULTS,

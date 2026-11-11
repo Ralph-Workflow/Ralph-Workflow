@@ -1,5 +1,3 @@
-"""Black-box unit tests for :mod:`ralph.pro_support.hooks` and ``run`` factory wiring."""
-
 from __future__ import annotations
 
 import dataclasses
@@ -37,15 +35,6 @@ from ralph.recovery.controller import RecoveryController
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
 
-# All tests in this module go through the full ``ralph.pipeline.run_loop.run()``
-# integration path (lazy import via ``importlib.import_module`` triggers the
-# heavy ``ralph.pipeline.*`` dependency graph; the run() call wires up
-# display/recovery/state machinery even when ``_run_inner_loop`` is mocked
-# to short-circuit). Wall-clock cost under parallel xdist load is regularly
-# > 1 s on busy machines, so the default 1-second per-test ceiling is unsafe.
-# The 5-second cap matches the precedent in
-# ``tests/test_git_rebase_preconditions.py`` for integration tests that
-# transitively load the pipeline dependency graph.
 pytestmark = pytest.mark.timeout_seconds(5)
 
 
@@ -466,31 +455,6 @@ def test_custom_pipeline_artifact_type_end_to_end(
 
 
 def test_pro_pipeline_hooks_to_runner_kwargs_shape() -> None:
-    """Pin the shape of :meth:`ProPipelineHooks.to_runner_kwargs` and the dataclass guards.
-
-    Contract pinned by this test (from the engine-side handoff
-    in ``ralph-workflow/docs/sphinx/pro-support.md#engine-internals-pro-contract``
-    and the public docstring of :class:`ralph.pro_support.hooks.ProPipelineHooks`):
-
-    1. ``to_runner_kwargs()`` returns a dict with EXACTLY six
-       entries — one per factory or passthrough, but never the
-       ``policy_bundle_override`` field.
-    2. The six forwarded values are the same objects the
-       constructor received (identity-equality, not just equality).
-    3. ``policy_bundle_override`` is NOT in the returned dict
-       (the engine inspects it separately to short-circuit
-       ``policy_bundle_factory``).
-    4. The dataclass is ``frozen=True`` and ``slots=True``:
-       direct attribute assignment (``hooks.x = y``) and direct
-       attribute deletion (``del hooks.x``) both raise
-       :class:`dataclasses.FrozenInstanceError`.
-
-    NOTE: We use direct attribute mutation, NOT
-    ``dataclasses.replace``. ``dataclasses.replace`` constructs
-    a new instance via ``__init__`` and therefore bypasses the
-    ``frozen=True`` guard, so it would not detect a regression
-    in which someone removed ``frozen=True`` from the dataclass.
-    """
     sentinel_bundle = object()
     sentinel_policy = MagicMock(name="policy_bundle_factory")
     sentinel_registry = MagicMock(name="registry_factory")
@@ -509,14 +473,12 @@ def test_pro_pipeline_hooks_to_runner_kwargs_shape() -> None:
         snapshot_registry=sentinel_registry_holder,
     )
 
-    # (1) Exactly six entries.
     kwargs = hooks.to_runner_kwargs()
     assert isinstance(kwargs, dict)
     assert len(kwargs) == 6, (
         f"to_runner_kwargs() must forward exactly 6 entries; got {sorted(kwargs)}"
     )
 
-    # (2) Each forwarded value is identity-equal to the constructor argument.
     expected_keys = {
         "policy_bundle_factory",
         "registry_factory",
@@ -535,25 +497,18 @@ def test_pro_pipeline_hooks_to_runner_kwargs_shape() -> None:
     assert kwargs["marker_watcher_factory"] is sentinel_marker
     assert kwargs["snapshot_registry"] is sentinel_registry_holder
 
-    # (3) policy_bundle_override is NOT forwarded via to_runner_kwargs.
     assert "policy_bundle_override" not in kwargs, (
         "to_runner_kwargs() must NOT forward policy_bundle_override; "
         "run() inspects it separately to short-circuit policy_bundle_factory"
     )
 
-    # (4) frozen=True: direct attribute assignment raises FrozenInstanceError.
-    # Cast to a mutable object so the test compiles without inline ignore
-    # markers (test files must have zero suppressions per
-    # tests/test_type_ignore_policy.py::test_zero_test_file_suppressions).
     mutable_hooks: Any = hooks
     with pytest.raises(dataclasses.FrozenInstanceError):
         mutable_hooks.policy_bundle_factory = MagicMock(name="replacement")
 
-    # (4b) frozen=True: direct attribute deletion raises FrozenInstanceError.
     with pytest.raises(dataclasses.FrozenInstanceError):
         del mutable_hooks.policy_bundle_factory
 
-    # (4c) slots=True: the dataclass has __slots__ defined (the field set is fixed).
     assert dataclasses.fields(ProPipelineHooks) is not None
     assert hasattr(ProPipelineHooks, "__slots__"), (
         "ProPipelineHooks must use slots=True to keep the field set closed"

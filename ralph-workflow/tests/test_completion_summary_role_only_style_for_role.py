@@ -1,5 +1,3 @@
-"""Regression tests: completion_summary derives styles from roles, not canonical phase names."""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -22,7 +20,6 @@ from ralph.policy.models import (
 
 
 def _make_custom_policy() -> PipelinePolicy:
-    """Custom PipelinePolicy: design (execution), sign_off (commit), done/halt (terminal)."""
     return PipelinePolicy(
         entry_phase="design",
         terminal_phase="done",

@@ -1,5 +1,3 @@
-"""A killed agent must not be rescued by an artifact left over from an earlier run."""
-
 from __future__ import annotations
 
 import os

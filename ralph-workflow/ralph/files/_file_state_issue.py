@@ -1,4 +1,3 @@
-"""FileStateIssue — a mismatch between captured and current file state."""
 
 from __future__ import annotations
 
@@ -13,7 +12,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class FileStateIssue:
-    """A mismatch between captured and current file state."""
 
     kind: FileStateKind
     path: Path

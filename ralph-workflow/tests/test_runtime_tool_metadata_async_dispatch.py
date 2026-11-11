@@ -1,19 +1,3 @@
-"""The production _FallbackHttpHandler must offload sync tool work off the event loop.
-
-A synchronous MCP tool handler (e.g. ``exec``, which blocks on a subprocess for
-up to its timeout) must not run directly on the asyncio event loop. If it does, a
-single long-running tool call freezes the entire server — no SSE streaming, no
-keepalives, no concurrent requests — which the OpenCode MCP client surfaces as
-``-32001 Request timed out``.
-
-After the legacy async tool-offload path was hard-deleted (property A),
-this property is now enforced at the production transport layer
-(``_FallbackHttpHandler.do_POST``): every request is dispatched via the
-saturated-dispatch seam :mod:`ralph.mcp.server._saturated_dispatch`. The
-seam is observable in the test (a fake ``submit`` records the submitted
-callable) and the offload contract is pinned through that seam.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -54,7 +38,6 @@ def _make_mcp_server(tmp_path: Path) -> McpServer:
 def test_dispatch_invokes_through_saturated_dispatch_seam(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The production do_POST path must route the dispatch through the saturated-dispatch seam."""
     seen: list[object] = []
 
     def fake_submit(callable_: object) -> object:
@@ -74,7 +57,6 @@ def test_dispatch_invokes_through_saturated_dispatch_seam(
 
 
 def test_saturated_dispatch_noop_invokes_callable_directly() -> None:
-    """The no-op pass-through submit must invoke the callable and return its result."""
     sentinel = object()
     assert _saturated_submit(lambda: sentinel) is sentinel
 
@@ -82,7 +64,6 @@ def test_saturated_dispatch_noop_invokes_callable_directly() -> None:
 def test_each_request_runs_through_the_seam(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Two requests must each route through the saturated-dispatch seam independently."""
     invocations: list[str] = []
 
     def fake_submit(callable_: object) -> object:

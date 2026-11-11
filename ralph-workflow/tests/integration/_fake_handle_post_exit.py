@@ -2,8 +2,6 @@ from __future__ import annotations
 
 
 class _FakeHandlePostExit:
-    """ManagedProcess-compatible test double with injectable descendant state."""
-
     returncode = 0
     stdout = None
     stderr = None

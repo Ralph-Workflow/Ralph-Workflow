@@ -1,8 +1,3 @@
-"""Codex alias syntax translation without a release-specific model catalog.
-
-Ralph validates alias structure and safely encodes CLI options. Codex owns
-the available model IDs and reasoning effort vocabulary.
-"""
 
 from __future__ import annotations
 
@@ -14,7 +9,6 @@ if TYPE_CHECKING:
 
 
 def resolve_codex_alias(name: str, base_config: AgentConfig | None) -> AgentConfig | None:
-    """Translate a model alias and optional effort into Codex CLI arguments."""
     alias = _parse_alias(name.removeprefix("codex/"))
     if alias is None or base_config is None:
         return None
@@ -27,7 +21,6 @@ def resolve_codex_alias(name: str, base_config: AgentConfig | None) -> AgentConf
 
 
 def _parse_alias(alias_value: str) -> tuple[str, str | None] | None:
-    """Accept effort=value and effort-value suffixes with safe TOML tokens."""
     model_id, separator, suffix = alias_value.partition("[")
     if (
         not model_id

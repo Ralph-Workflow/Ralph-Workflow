@@ -1,28 +1,3 @@
-"""Resolve a conflicted rebase in place, one stopped commit at a time.
-
-A rebase is not a single conflict. It replays N commits and can stop on
-a conflict at every one of them, so resolving it means a LOOP: resolve
-the stop, prove the resolution, ``git rebase --continue``, repeat. The
-previous behaviour -- abort on the first stop and fall back to one
-endpoint three-way merge -- meant the rebase-conflict resolution phase
-was never reachable from a rebase at all, which is the defect this
-module exists to close.
-
-The resolver is injected as a plain callable rather than imported, for
-the same reason
-:data:`ralph.pipeline.auto_integrate_resolve.ConflictResolver` is: it
-keeps this module free of the agent session, the display and the policy
-bundle, so the loop can be unit-tested with fakes and driven end to end
-by a deterministic stub.
-
-Division of labour, mirroring
-:func:`ralph.pipeline.auto_integrate_resolve._stage_verify_and_commit`
-exactly: the resolver only EDITS FILES. Ralph stages, Ralph re-scans for
-surviving conflict markers, Ralph asks git whether any unmerged path
-remains, and only Ralph continues the rebase. An agent running under
-Ralph's own MCP exec policy is denied every git invocation, so it could
-not stage even if it tried.
-"""
 
 from __future__ import annotations
 
@@ -87,28 +62,12 @@ from ralph.pipeline.conflict_resolution.stray_paths import (
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
 
-#: Placeholder subject used when the stopped commit's subject could not
-#: be read. The stop is still resolvable -- the conflicted paths are what
-#: the agent actually needs -- so an unreadable subject must not abort it.
 _UNKNOWN_SUBJECT = "(subject unavailable)"
 
-#: Where git records the commit a paused rebase is replaying onto, newest
-#: backend first. ``rebase-merge`` is the default backend; ``rebase-apply``
-#: is still produced by ``--apply`` and by older gits.
 _REBASE_ONTO_FILES = ("rebase-merge/onto", "rebase-apply/onto")
 
-#: Where git records the tip a paused rebase is replaying FROM, same
-#: backend order as :data:`_REBASE_ONTO_FILES`. Together the two pin the
-#: replay for its whole lifetime, which is what makes them usable as the
-#: progress sidecar's rebase identity.
 _REBASE_ORIG_HEAD_FILES = ("rebase-merge/orig-head", "rebase-apply/orig-head")
 
-#: Where git records how far a paused rebase has got, as ``(current,
-#: total)`` state-file pairs, newest backend first. The ``rebase-merge``
-#: backend counts with ``msgnum``/``end``; the ``rebase-apply`` backend,
-#: still produced by ``--apply`` and by older gits, counts with
-#: ``next``/``last``. Read for the operator's benefit only -- see
-#: :func:`_read_replay_progress`.
 _REBASE_PROGRESS_FILES = (
     ("rebase-merge/msgnum", "rebase-merge/end"),
     ("rebase-apply/next", "rebase-apply/last"),
@@ -129,12 +88,6 @@ _ACTIVE_REBASE_RESOLUTION_SESSION: ContextVar[ResolutionSession | None] = Contex
     "active_rebase_resolution_session", default=None
 )
 
-# Module-local names for the primitives this loop delegates to. Each one
-# is read through THIS module's globals by the functions below, which is
-# what keeps them substitutable one at a time -- the same seam
-# ``rebase_continuation`` publishes for ``open_repo`` and friends. The
-# ort-residue name is additionally the import path
-# ``auto_integrate_resolve`` reaches the cleanup through.
 _try_deterministic_resolution = try_deterministic_resolution
 _remove_ort_residue = remove_ort_residue
 _is_ralph_workspace_path = is_ralph_workspace_path
@@ -144,24 +97,6 @@ _worktree_dirty_paths = worktree_dirty_paths
 
 @dataclass(frozen=True)
 class RebaseStop:
-    """One commit a rebase has paused on because replaying it conflicted.
-
-    Carries exactly the context a resolution session is allowed to see:
-    which commit is being replayed and which paths conflicted, plus two
-    INDEPENDENT counters that are easy to confuse.
-
-    ``stop_index``/``stop_cap`` are the bounded loop's safety counters:
-    how many stops this loop has spent out of the fixed
-    :data:`~ralph.pipeline.conflict_resolution.graph.MAX_REBASE_CONFLICT_STOPS`
-    it is allowed, which is what terminates the loop. They say nothing
-    about how long the rebase is.
-
-    ``replay_index``/``replay_total`` are the operator-facing replay
-    position: which of the rebase's own commits is being replayed, read
-    from git's rebase state by :func:`_read_replay_progress`. They are
-    display-only, both ``None`` when that state is unreadable, and must
-    never influence loop termination.
-    """
 
     sha: str
     subject: str
@@ -172,24 +107,14 @@ class RebaseStop:
     replay_total: int | None = None
 
 
-#: Resolves ONE rebase stop: ``(root, target, stop) -> resolved``. The
-#: implementation is expected to edit the conflicted files and nothing
-#: else; staging and continuing are Ralph's job, never the resolver's.
-#:
-#: ``Callable`` is imported at RUNTIME, not under ``TYPE_CHECKING``: a
-#: ``type`` alias body is evaluated lazily, and sphinx autodoc forces
-#: that evaluation while building the API reference. The same is true of
-#: :data:`ralph.pipeline.conflict_resolution.driver.ResolutionInvoker`.
 type RebaseStopResolver = Callable[["Path", str, RebaseStop], ResolutionOutcome | bool]
 
 
 def _resolution_succeeded(result: ResolutionOutcome | bool) -> bool:
-    """Project legacy injected boolean fakes onto the typed resolver contract."""
     return result.succeeded if isinstance(result, ResolutionOutcome) else result
 
 
 def resolution_session_from_config(config: UnifiedConfig) -> ResolutionSession:
-    """Snapshot immutable conflict-resolution limits for one complete rebase."""
     limits = config.conflict_resolution
     return ResolutionSession(
         inactivity_timeout_seconds=limits.inactivity_timeout_seconds,
@@ -202,7 +127,6 @@ def resolution_session_from_config(config: UnifiedConfig) -> ResolutionSession:
 
 @contextmanager
 def bind_active_rebase_resolution_session(session: ResolutionSession) -> Iterator[None]:
-    """Expose one complete-rebase session to unchanged three-argument resolvers."""
     token = _ACTIVE_REBASE_RESOLUTION_SESSION.set(session)
     try:
         yield
@@ -211,7 +135,6 @@ def bind_active_rebase_resolution_session(session: ResolutionSession) -> Iterato
 
 
 def active_rebase_resolution_session() -> ResolutionSession | None:
-    """Return the session bound by the owning rebase loop, if any."""
     return _ACTIVE_REBASE_RESOLUTION_SESSION.get()
 
 
@@ -223,29 +146,6 @@ def resolve_rebase_in_progress(
     stop_cap: int = 10,
     session: object | None = None,
 ) -> bool:
-    """Drive an in-progress rebase to completion through ``resolver``.
-
-    Args:
-        root: Repository root holding the paused rebase.
-        target: Branch being rebased onto, passed through to the
-            resolver as context and used as the completion check's
-            fallback when the replay's own base cannot be read.
-        resolver: Called once per stop to resolve that stop's conflicts.
-
-    Returns:
-        ``True`` only when the rebase finished AND ``HEAD`` is a
-        descendant of the commit the replay was landing on. ``False``
-        for every other outcome, including a declining resolver, a
-        surviving conflict marker, a refused continuation and an
-        exhausted stop budget. A ``target`` a sibling moved during the
-        resolution is NOT one of those outcomes -- see
-        :func:`_resolve_stops`.
-
-    Never raises. The caller treats ``False`` as "resolution declined"
-    and falls through to the pre-existing abort-then-endpoint-merge
-    path, so an unexpected failure here degrades to exactly the
-    behaviour that shipped before this module existed.
-    """
     effective_session = session if isinstance(session, ResolutionSession) else None
     try:
         effective_cap = _configured_stop_cap(effective_session, stop_cap)
@@ -263,7 +163,6 @@ def resolve_rebase_in_progress(
 
 
 def _configured_stop_cap(session: ResolutionSession | None, fallback: int) -> int:
-    """Use the configured stop cap when a typed resolution session carries it."""
     raw: object = getattr(session, "max_rebase_conflict_stops", fallback)
     return raw if isinstance(raw, int) and raw > 0 else fallback
 
@@ -274,17 +173,6 @@ def _resolve_stops(
     resolver: RebaseStopResolver,
     stop_cap: int,
 ) -> bool:
-    """Body of the bounded loop; see :func:`resolve_rebase_in_progress`."""
-    # Completion is proved against the commit this replay is actually
-    # landing on, pinned BEFORE the first resolver call -- not against
-    # the target NAME. A resolution session runs for as long as an agent
-    # takes, and in a shared-checkout fleet a sibling lands on the
-    # mainline during that window routinely. Re-reading the name at the
-    # end would then report a perfectly good replay as "not a descendant
-    # of target" and throw it away for an endpoint merge, burying the
-    # resolved work under a merge commit. A target that moved is the
-    # bounded retry loop's job (it re-observes and replays onto the new
-    # tip); it is not evidence that this rebase failed.
     base = _rebase_base_sha(root) or target
     entry_landed = frozenset(_landed_shas_at_entry(root))
     skipped_entry_shas: set[str] = set()
@@ -302,12 +190,6 @@ def _resolve_stops(
         ):
             return False
         if len(skipped_entry_shas) > skipped_before:
-            # A stop this rebase had ALREADY landed was replayed past,
-            # not resolved. ``stop_cap`` bounds resolver attempts, and no
-            # resolver was spent here -- counting it meant a rebase
-            # resumed after ``stop_cap`` landed stops was abandoned
-            # before its first UNLANDED stop was ever offered to an
-            # agent. Each sha can be skipped once, so this cannot spin.
             continue
         stops_spent += 1
         route = route_after_stop(stops_spent, not rebase_in_progress_at(root), stop_cap)
@@ -333,28 +215,8 @@ def _resolve_one_stop(
     entry_landed: frozenset[str],
     skipped_entry_shas: set[str],
 ) -> bool:
-    """Resolve, prove and continue past ONE stop of the paused rebase.
-
-    The order is the contract: observe the worktree BEFORE the resolver
-    runs, so what it changed can be told apart from what the replay had
-    already left dirty; revert out-of-scope edits BEFORE staging, so a
-    resolver that strayed outside its conflicted paths does not poison
-    the worktree, while the in-scope resolution can still land; and only
-    then continue. Stops already recorded in the progress sidecar are
-    skipped so a fresh process resumes at the first unlanded stop.
-
-    Returns:
-        Whether this stop landed. ``False`` routes the caller -- and
-        through it :func:`resolve_rebase_in_progress` -- to the abort and
-        endpoint-merge fallback.
-    """
     stop = _read_stop(root, stop_index, stop_cap)
     if stop is None:
-        # A paused rebase with nothing unmerged needs no agent: its
-        # conflicts are already staged, most likely by a run that died
-        # between proving the stop and continuing past it. Declining
-        # left the rebase paused on disk and the run exited having
-        # invoked nobody -- for a stop that only needed `--continue`.
         return _continue_already_staged_stop(root, stop_index)
     if stop.sha in entry_landed and stop.sha not in skipped_entry_shas:
         skipped_entry_shas.add(stop.sha)
@@ -369,10 +231,6 @@ def _resolve_one_stop(
     if _try_deterministic_resolution(root, stop):
         if _stage_and_prove(root, stop) and _continue_past(root, stop):
             return True
-        # Ralph's own mechanical attempt did not hold up. It is not the
-        # resolver's attempt, so it must not consume the stop's only
-        # chance: fall through and let an agent look at the conflict
-        # rather than abandoning a stop no agent was ever offered.
         logger.info(
             "conflict_resolution: deterministic resolution of stop {} did not prove out; "
             "handing the stop to the resolver",
@@ -391,10 +249,6 @@ def _resolve_one_stop(
                 elif isinstance(raw_reason, str) and not active_session.exhaustion_reason:
                     active_session.exhaustion_reason = raw_reason
     if not _resolution_succeeded(outcome):
-        # "Declined" is the resolver's own verdict, and this branch is
-        # reached by anything that did not resolve the stop -- including
-        # a launch that never happened and a provider that was never
-        # reachable. Say what is actually known here.
         logger.info(
             "conflict_resolution: rebase stop {} ({}) was not resolved",
             stop.stop_index,
@@ -410,12 +264,6 @@ def _resolve_one_stop(
 
 
 def _continue_already_staged_stop(root: Path, stop_index: int) -> bool:
-    """Continue a paused rebase whose stop is staged and marker-free.
-
-    Only when the index really is clean: an unreadable ``REBASE_HEAD``
-    or any surviving unmerged path still declines, because then the stop
-    is not resolved, it is unreadable.
-    """
     if not _stop_is_genuinely_staged(root, stop_index):
         return False
     logger.info(
@@ -442,20 +290,9 @@ def _continue_already_staged_stop(root: Path, stop_index: int) -> bool:
 
 
 def _stop_is_genuinely_staged(root: Path, stop_index: int) -> bool:
-    """Whether a paused rebase's stop really is resolved and stageable.
-
-    A clean INDEX is not enough. ``_stage_and_prove`` stages before it
-    scans -- deliberately, because ``git add`` clears the unmerged bit --
-    so a round refused for surviving markers leaves exactly this state:
-    nothing unmerged, markers still in the files. Continuing without
-    looking committed them, with no agent invoked and a log line
-    claiming the stop was marker-free.
-    """
     if not rebase_in_progress_at(root):
         return False
     if not _rev_parse_rebase_head(root):
-        # No readable identity for the stopped commit: the fail-closed
-        # decline, not a resolved stop.
         return False
     if [path for path in unmerged_paths(root) if path != "<unmerged-path-query-failed>"]:
         return False
@@ -475,9 +312,6 @@ def _stop_is_genuinely_staged(root: Path, stop_index: int) -> bool:
 
 
 def _staged_paths(root: Path) -> list[str]:
-    """Paths staged against HEAD, i.e. what continuing would commit."""
-    # ``-z``: git quotes a non-ASCII path otherwise, and the quoted
-    # string cannot be opened by the marker scan that reads this list.
     result = run_git(
         ("diff", "--cached", "--name-only", "-z"),
         cwd=root,
@@ -489,42 +323,18 @@ def _staged_paths(root: Path) -> list[str]:
 
 
 def _rebase_base_sha(root: Path) -> str | None:
-    """Commit the paused rebase is replaying onto, or ``None`` if unreadable.
-
-    ``None`` is a benign answer -- the caller falls back to the branch
-    name, i.e. exactly the pre-existing behaviour.
-    """
     return _read_rebase_state_sha(root, _REBASE_ONTO_FILES, label="git-rebase-onto-path")
 
 
 def _rebase_orig_head_sha(root: Path) -> str | None:
-    """Feature tip the paused rebase is replaying, or ``None`` if unreadable."""
     return _read_rebase_state_sha(root, _REBASE_ORIG_HEAD_FILES, label="git-rebase-orig-head-path")
 
 
 def current_rebase_identity(root: Path) -> tuple[str | None, str | None]:
-    """``(orig-head, onto)`` of the rebase paused at ``root``.
-
-    The pair git pins for the whole replay, so it names one rebase and
-    no other. ``(None, None)`` when no rebase is in progress -- which is
-    exactly how :func:`record_landed_stop` recognises that the replay it
-    was following has finished and has no progress left worth keeping.
-
-    Read through ``git rev-parse --git-path`` rather than by joining
-    ``.git`` onto ``root``: this loop runs in LINKED worktrees, whose
-    rebase state lives under the per-worktree git dir, not the common
-    one.
-    """
     return _rebase_orig_head_sha(root), _rebase_base_sha(root)
 
 
 def _read_rebase_state_sha(root: Path, relatives: tuple[str, ...], *, label: str) -> str | None:
-    """First readable non-empty SHA among ``relatives`` rebase state files.
-
-    ``relatives`` lists the same file under each rebase backend, newest
-    first, so a repository rebasing with ``--apply`` answers as well as
-    the default ``merge`` backend.
-    """
     gitdir: Path | None = None
     try:
         from ralph.git.operations import _resolve_gitdir_paths
@@ -549,7 +359,6 @@ def _read_rebase_state_sha(root: Path, relatives: tuple[str, ...], *, label: str
             if not state_file.is_absolute():
                 state_file = root / state_file
         try:
-            # filesystem-read-ok: git reports one rebase metadata path per explicit conflict resolution attempt
             sha = state_file.read_text(encoding="utf-8").strip()
         except OSError:
             continue
@@ -561,24 +370,6 @@ def _read_rebase_state_sha(root: Path, relatives: tuple[str, ...], *, label: str
 def _read_replay_progress(
     root: Path, *, read_text: Callable[[Path], str] | None = None
 ) -> tuple[int, int] | None:
-    """Position of the current commit within the paused rebase's replay.
-
-    Returns ``(current, total)`` -- the operator-facing "commit i/N" --
-    or ``None`` when git's own rebase state cannot be read or does not
-    describe a sensible position. Both backends are probed, because a
-    repository rebasing with ``--apply`` keeps its counters under
-    ``rebase-apply`` instead.
-
-    Paths are resolved through ``git rev-parse --git-path`` rather than
-    by joining ``.git`` onto ``root``, for exactly the reason
-    :func:`_rebase_base_sha` documents: this loop runs in LINKED
-    worktrees, whose rebase state lives under the per-worktree git dir.
-
-    Purely cosmetic. The loop's termination is governed by
-    :data:`~ralph.pipeline.conflict_resolution.graph.MAX_REBASE_CONFLICT_STOPS`
-    alone, so an unreadable counter degrades the footer label and must
-    never be able to fail a resolution.
-    """
     reader = _read_rebase_state_text if read_text is None else read_text
     for current_file, total_file in _REBASE_PROGRESS_FILES:
         current = _read_rebase_state_int(root, current_file, read_text=reader)
@@ -591,18 +382,12 @@ def _read_replay_progress(
 
 
 def _read_rebase_state_text(path: Path) -> str:
-    """Read one rebase state file through the production filesystem seam."""
     return path.read_text(encoding="utf-8")
 
 
 def _read_rebase_state_int(
     root: Path, relative: str, *, read_text: Callable[[Path], str] = _read_rebase_state_text
 ) -> int | None:
-    """One integer out of a rebase state file, or ``None`` if unusable.
-
-    Unreadable, absent, half-written and non-numeric all collapse to
-    ``None``: the caller has a working fallback for every one of them.
-    """
     state_path: Path | None = None
     try:
         from ralph.git.operations import _resolve_gitdir_paths
@@ -631,23 +416,6 @@ def _read_rebase_state_int(
 
 
 def _read_stop(root: Path, stop_index: int, stop_cap: int) -> RebaseStop | None:
-    """Describe the commit the rebase is currently stopped on.
-
-    Returns ``None`` when the stopped commit's IDENTITY is unreadable,
-    and when the paused rebase reports no conflicted path.
-
-    Both are fail-closed on purpose. An unreadable ``REBASE_HEAD`` breaks
-    two things at once: the prompt template gates its whole rebase-mode
-    commit context on ``replaying_commit_sha``, so the resolver would be
-    asked to fix a commit it is never told the identity of; and
-    :func:`_advanced_to_a_new_stop` proves a stop landed by comparing
-    SHAs, so an empty one would make ANY later readable SHA look like
-    proof of advancement. A stop with no conflicted path is the other
-    anomaly -- a stop this loop can act on always has unmerged entries in
-    the index -- and there is nothing a resolver could repair there
-    either. Declining hands the repository to the caller's abort path
-    untouched rather than guessing.
-    """
     sha = _rev_parse_rebase_head(root)
     if not sha:
         logger.warning(
@@ -684,18 +452,6 @@ def _touched_nothing_unexpected(
     stop: RebaseStop,
     before: frozenset[str],
 ) -> bool:
-    """Whether the resolver stayed inside the paths it was given.
-
-    The prompt forbids editing any path that is not conflicted, and this
-    is the enforcement that makes the prohibition real rather than
-    advisory. A disobedient resolver's unrelated edit is reverted so it
-    cannot linger as dirty worktree state, while in-scope conflicted
-    paths still stage through :func:`_stage_and_prove`.
-
-    ``before`` is subtracted so a worktree that was already dirty when
-    the stop was read is not blamed on the resolver; the gate is about
-    what THIS round changed.
-    """
     after = _worktree_dirty_paths(root)
     if after is None:
         return False
@@ -725,25 +481,11 @@ def _touched_nothing_unexpected(
 
 
 def _landed_shas_at_entry(root: Path) -> tuple[str, ...]:
-    """Sidecar SHAs this SAME rebase landed before the current process.
-
-    Scoped to the paused rebase's own identity. A record left by any
-    other rebase must not be read here either: its SHAs would make
-    :func:`_resolve_one_stop` skip a genuinely unresolved stop and
-    ``--continue`` straight past it.
-    """
     feature_sha, target_sha = current_rebase_identity(root)
     progress = load_progress_for_rebase(root, feature_sha=feature_sha, target_sha=target_sha)
     if progress is None:
         return ()
     if progress.landed_shas and _is_at_the_first_replay(root):
-        # The identity survives `git rebase --abort` intact -- abort
-        # restores HEAD to orig-head, so a retry reproduces the very same
-        # (orig-head, onto) pair and the record is accepted. But a rebase
-        # that had landed stops cannot be sitting on its FIRST commit, so
-        # this record describes an attempt that no longer exists. Reading
-        # it would skip a genuinely unresolved stop and continue straight
-        # past it, with no resolver ever offered the conflict.
         logger.warning(
             "conflict_resolution: discarding a progress record claiming {} landed stop(s) "
             "while the replay is back at its first commit; the earlier attempt was aborted",
@@ -755,24 +497,11 @@ def _landed_shas_at_entry(root: Path) -> tuple[str, ...]:
 
 
 def _is_at_the_first_replay(root: Path) -> bool:
-    """Whether the paused rebase is stopped on the first commit it replays."""
     position = _read_replay_progress(root)
     return position is not None and position[0] == 1
 
 
 def _stage_and_prove(root: Path, stop: RebaseStop) -> bool:
-    """Stage the stop's paths and prove the conflicts are really gone.
-
-    Staging is scoped to exactly the paths that conflicted -- never
-    ``git add -A`` -- so an unrelated file the agent touched is not
-    swept into the replayed commit.
-
-    The marker scan runs AFTER staging deliberately: ``git add`` clears
-    a file's unmerged bit even when ``<<<<<<<`` fences survive in its
-    content, so an empty :func:`unmerged_paths` result is not by itself
-    proof of a resolution. Both gates are kept; git is authoritative
-    about the index, the textual scan about the content.
-    """
     paths = list(stop.conflicted_files)
     if not stage_paths(root, paths):
         logger.warning(
@@ -804,22 +533,6 @@ def _stage_and_prove(root: Path, stop: RebaseStop) -> bool:
 
 
 def _continue_past(root: Path, stop: RebaseStop) -> bool:
-    """Run ``git rebase --continue`` for a proven-resolved stop.
-
-    Two non-obvious outcomes both count as SUCCESS for this stop:
-
-    * :class:`NoRebaseInProgressError` -- the rebase finished between the
-      proof and the continuation, which is the state the loop drives
-      towards.
-    * A non-zero exit that is really the NEXT commit conflicting.
-      ``git rebase --continue`` commits the resolved stop and then keeps
-      replaying; if the very next commit conflicts, git reports the whole
-      invocation as failed even though this stop landed. Treating that as
-      a failure is what made a two-conflict branch unresolvable while a
-      one-conflict branch worked -- the loop would decline on stop 1 and
-      fall back to the endpoint merge, so exactly the messiest rebases
-      never got the multi-stop resolution this module exists to provide.
-    """
     try:
         prepare_pending_rebase(root)
         continue_rebase_at(root, skip_empty=True)
@@ -849,22 +562,6 @@ def _continue_past(root: Path, stop: RebaseStop) -> bool:
 
 
 def record_landed_stop(root: Path, stop: RebaseStop) -> None:
-    """Persist a landed rebase stop so a later failure does not discard it.
-
-    Stamped with the identity of the rebase that produced it, so the
-    record can only ever be resumed from -- or counted as a reason to
-    keep a conflicted rebase on disk -- by that same rebase.
-
-    A stop that landed the LAST commit leaves no rebase in progress, and
-    this is the call that notices: with no identity to stamp there is
-    nothing left to resume, so the sidecar is deleted instead of
-    written. Skipping that was the whole defect. ``git rebase
-    --continue`` past the final stop raises
-    :class:`NoRebaseInProgressError`, which this module correctly counts
-    as the stop LANDING -- and the old code answered that success by
-    writing a sidecar for a rebase that no longer existed, which then
-    outlived it forever.
-    """
     feature_sha, target_sha = current_rebase_identity(root)
     if feature_sha is None or target_sha is None:
         clear_progress(root)
@@ -881,15 +578,6 @@ def record_landed_stop(root: Path, stop: RebaseStop) -> None:
 
 
 def _advanced_to_a_new_stop(root: Path, stop: RebaseStop) -> bool:
-    """Whether the rebase moved on to a DIFFERENT commit than ``stop``.
-
-    Identity, not exit code: ``REBASE_HEAD`` naming a commit other than
-    the one just resolved is proof that git committed this stop and
-    paused on a later one. A rebase that is no longer in progress is not
-    a new stop -- that case is already handled by the caller's
-    :class:`NoRebaseInProgressError` branch and by the loop's own
-    completion check.
-    """
     if not rebase_in_progress_at(root):
         return False
     current = _rev_parse_rebase_head(root)
@@ -897,7 +585,6 @@ def _advanced_to_a_new_stop(root: Path, stop: RebaseStop) -> bool:
 
 
 def _rev_parse_rebase_head(root: Path) -> str:
-    """SHA of the commit being replayed, or ``''`` when unreadable."""
     result = run_git(
         ("rev-parse", "REBASE_HEAD"),
         cwd=root,
@@ -909,7 +596,6 @@ def _rev_parse_rebase_head(root: Path) -> str:
 
 
 def _rebase_head_subject(root: Path) -> str:
-    """Subject line of the commit being replayed, with a safe fallback."""
     result = run_git(
         ("log", "-1", "--format=%s", "REBASE_HEAD"),
         cwd=root,
@@ -920,31 +606,4 @@ def _rebase_head_subject(root: Path) -> str:
     return result.stdout.strip() or _UNKNOWN_SUBJECT
 
 
-# ----- AC-14 catalog evidence -----
-# This file is the authoritative source for the catalog entries listed
-# below. Each ``# AC-14 rationale: <ID>`` line is the code-adjacent
-# marker the AC-14 audit looks for; each ``# ladder rung: <N>``
-# names the rung the entry sits on. Adding a new entry here requires
-# BOTH lines or the audit fails.
 
-# AC-14 rationale: C1
-# ladder rung: 2
-# AC-14 rationale: C11
-# ladder rung: 2
-# AC-14 rationale: C12
-# ladder rung: 2
-# AC-14 rationale: C15
-# ladder rung: 2
-# AC-14 rationale: C2
-# ladder rung: 2
-# AC-14 rationale: C3
-# ladder rung: 2
-# AC-14 rationale: C4
-# ladder rung: 2
-# AC-14 rationale: C6
-# ladder rung: 2
-# AC-14 rationale: C8
-# ladder rung: 2
-# AC-14 rationale: C9
-# ladder rung: 1
-# ----- end AC-14 catalog evidence -----

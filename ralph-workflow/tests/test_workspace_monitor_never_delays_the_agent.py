@@ -1,22 +1,3 @@
-"""The workspace monitor may not stand between Ralph and an agent launch.
-
-``invoke_agent`` starts a :class:`WorkspaceMonitor` AFTER it logs
-``Invoking agent: <argv>`` and BEFORE it spawns the agent process. Every
-step of that start is optional -- the monitor is an activity signal for
-the idle watchdog, nothing the agent needs -- but on the way in it reads
-the host's live inotify budget by sweeping ``/proc/<pid>/fdinfo`` and
-counts the workspace's directories with ``os.walk``, neither of which
-has a time bound. A hung network mount inside the workspace, or one
-process in uninterruptible sleep, therefore parks the run between those
-two lines: the operator sees the argv, no agent process is ever created,
-no file is ever written, and nothing times out, because every watchdog
-Ralph owns lives on the far side of a spawn that never happened.
-
-The rule these tests pin is that the probe fails OPEN: when it cannot
-answer quickly, the monitor gives up on watching and the launch
-proceeds.
-"""
-
 from __future__ import annotations
 
 import threading
@@ -32,25 +13,14 @@ from ralph.workspace.awareness import awareness_for_workspace, release_workspace
 if TYPE_CHECKING:
     import pytest
 
-#: The probe budget these tests give the monitor. Production's default
-#: is far larger; what is under test is that SOME bound exists and that
-#: the monitor honours it, not the value.
 _PROBE_BUDGET_SECONDS = 0.05
 
-#: How long the hung probe answers in. Far beyond the suite's per-test
-#: ceiling, which is what fails a regression here: an unbounded start
-#: does not return slowly, it does not return, and the test times out
-#: exactly as the run does.
 _HUNG_PROBE_SECONDS = 20.0
 
-#: How long the slow watch start walks for. Deliberately UNDER the
-#: per-test ceiling: a step that blocks past it is rescued by the
-#: harness's own alarm, and a rescued test proves nothing about a bound.
 _SLOW_WATCH_SECONDS = 0.5
 
 
 def _hung_counter(workspace: Path, cap: int) -> int | None:
-    """A directory count that never answers, like a hung mount's walk."""
     del workspace, cap
     threading.Event().wait(timeout=_HUNG_PROBE_SECONDS)
     return 0
@@ -59,7 +29,6 @@ def _hung_counter(workspace: Path, cap: int) -> int | None:
 def test_a_capacity_probe_that_never_answers_does_not_park_the_start(
     tmp_path: Path,
 ) -> None:
-    """A wedged capacity probe costs the WATCH, never the launch."""
     monitor = WorkspaceMonitor(
         tmp_path,
         host_budget=8192,
@@ -68,8 +37,6 @@ def test_a_capacity_probe_that_never_answers_does_not_park_the_start(
     )
     try:
         monitor.start()
-        # Reaching this line at all is half the assertion: an unbounded
-        # probe never gets here, and the agent is never spawned.
         status = awareness_for_workspace(tmp_path).snapshot()
     finally:
         monitor.stop()
@@ -79,8 +46,6 @@ def test_a_capacity_probe_that_never_answers_does_not_park_the_start(
 
 
 class _CompletedProbeThread:
-    """Publishes a completed probe without supporting join-based observation."""
-
     def __init__(self, *, target: Callable[[], None], name: str, daemon: bool) -> None:
         del name, daemon
         self._target = target
@@ -97,7 +62,6 @@ class _CompletedProbeThread:
 def test_capacity_probe_regression_completed_answer_is_published_without_join_observation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-2: a completed answer remains visible when scheduling hides join observation."""
     monkeypatch.setattr(
         "ralph.agents.invoke._watch_capacity.threading.Thread", _CompletedProbeThread
     )
@@ -112,22 +76,6 @@ def test_capacity_probe_regression_completed_answer_is_published_without_join_ob
 
 
 class _SlowObserver:
-    """A watchdog observer whose recursive walk takes its time.
-
-    On Linux, ``Observer.start()`` builds the whole inotify watch tree
-        inline on the CALLER's thread -- watchdog runs
-        ``InotifyEmitter.on_thread_start`` synchronously there, which
-        constructs ``Inotify`` -> ``_add_dir_watch`` -> ``os.walk``. So the
-        step the capacity estimate clears the way for does the very same
-        recursive walk the estimate was bounded for. Scheduling is cheap on
-        both backends; starting is where the tree is built.
-
-        It blocks for less than the suite's per-test ceiling on purpose: a
-        fake that blocks forever is rescued by that ceiling's own alarm,
-        which makes an unbounded start look bounded. What proves the bound
-        is that ``start()`` came back while this was still walking.
-    """
-
     def __init__(self) -> None:
         self.entered = threading.Event()
         self.finished = threading.Event()
@@ -154,13 +102,6 @@ class _SlowObserver:
 def test_a_slow_watch_start_does_not_park_the_launch(
     tmp_path: Path,
 ) -> None:
-    """Bounding the ESTIMATE is not bounding the walk it estimates.
-
-    The capacity probe answering "there is room" is the common case, and
-    it hands control straight to a step that walks the same tree with no
-    bound of its own -- holding the monitor's process-global lock, still
-    before any agent process exists.
-    """
     observer = _SlowObserver()
     monitor = WorkspaceMonitor(
         tmp_path,
@@ -184,25 +125,11 @@ def test_a_slow_watch_start_does_not_park_the_launch(
 
 
 def test_the_shipped_probe_budget_is_finite_and_small() -> None:
-    """The bound tests inject is not the bound production runs with.
-
-    Both tests above pass their own budget, so nothing else pins the
-    value a real launch is exposed to.
-    """
     assert 0.0 < CAPACITY_PROBE_BUDGET_SECONDS <= 30.0
     assert 0.0 < STOP_OBSERVER_BUDGET_SECONDS <= 30.0
 
 
 class _SlowWatchLock:
-    """A cross-process watch lock whose sidecar I/O takes its time.
-
-    ``try_acquire`` creates ``<workspace>/.agent/`` and opens the lock
-    file there, and the ownership record is written to the same place.
-    That is workspace filesystem I/O, in the same pre-spawn window and
-    under the same process-global lock as the walk -- so the hung mount
-    that parks one parks the other.
-    """
-
     def __init__(self, *, stall: bool = True, holder: str | None = None) -> None:
         self.entered = threading.Event()
         self.finished = threading.Event()
@@ -232,13 +159,6 @@ class _SlowWatchLock:
 
 
 def test_slow_watch_lock_io_does_not_park_the_launch(tmp_path: Path) -> None:
-    """The lock the watch is claimed under is workspace I/O too.
-
-    Bounding the capacity probe and the observer start leaves the step
-    BETWEEN them -- claiming the cross-process watch lock and writing
-    the ownership sidecar, both under ``<workspace>/.agent/`` -- free to
-    park the launch for as long as the filesystem takes.
-    """
     lock = _SlowWatchLock()
     monitor = WorkspaceMonitor(
         tmp_path,
@@ -262,20 +182,6 @@ def test_slow_watch_lock_io_does_not_park_the_launch(tmp_path: Path) -> None:
 
 
 def test_abandoning_a_slow_watch_start_releases_the_cross_process_lock(tmp_path: Path) -> None:
-    """Giving up on the watch must give up the claim to it.
-
-    The cross-process lock is what stops a second process registering an
-    overlapping recursive observer on the same workspace. Holding it
-    after abandoning the watch keeps that guarantee's cost -- no one
-    else may watch -- with none of its benefit, until the process exits.
-
-    The sidecar's ``begin_ownership`` is mocked to a fast stub so the
-    test's path is deterministic under shard load: the
-    ``call_within_budget`` budget the test injects is the one being
-    tested, not real-disk latency, and asserting that the
-    ``_abandon_slow_watch_start`` branch releases the lock does not
-    require the system to be idle.
-    """
     lock = _SlowWatchLock(stall=False)
     observer = _SlowObserver()
     monitor = WorkspaceMonitor(
@@ -301,18 +207,6 @@ def test_abandoning_a_slow_watch_start_releases_the_cross_process_lock(tmp_path:
 
 
 class _FastSidecar:
-    """A shared-awareness sidecar stub that completes synchronously.
-
-    Used by tests that pin an invariant on the workspace-monitor's
-    internal timing (e.g. the cross-process lock release on
-    abandoned watch start) without wanting the test to depend on
-    the real sidecar's disk latency. The interface matches
-    ``SharedAwarenessSidecar`` for the methods the monitor reaches
-    on the success path: ``begin_ownership`` returns the new
-    epoch, ``publish_changes`` is a no-op, ``claim_epoch`` is a
-    no-op, and ``end_ownership`` is a no-op.
-    """
-
     def begin_ownership(self, owner_id: str, *, prior_holder: str | None = None) -> int:
         del owner_id, prior_holder
         return 1
@@ -329,16 +223,6 @@ class _FastSidecar:
 
 
 class _SlowStoppingObserver(_SlowObserver):
-    """An observer whose teardown will not finish.
-
-    ``observer.join(5)`` reads like the bound on a teardown, but the
-    unbounded half is ``stop()``: watchdog joins every emitter thread
-    there with no timeout. Teardown runs on the launch thread inside
-    ``start()`` -- unwinding a failed watch, or discarding a stale one
-    -- so an emitter that will not join is a launch that does not
-    happen.
-    """
-
     def __init__(self) -> None:
         super().__init__()
         self.stopping = threading.Event()
@@ -355,7 +239,6 @@ class _SlowStoppingObserver(_SlowObserver):
 
 
 def test_a_teardown_that_will_not_finish_does_not_park_the_launch(tmp_path: Path) -> None:
-    """Unwinding a failed watch may not cost more than the watch would."""
     observer = _SlowStoppingObserver()
     monitor = WorkspaceMonitor(
         tmp_path,
@@ -381,8 +264,6 @@ def test_a_teardown_that_will_not_finish_does_not_park_the_launch(tmp_path: Path
 
 
 class _SlowSidecar:
-    """A shared-awareness sidecar whose reads and writes take their time."""
-
     def __init__(self) -> None:
         self.polling = threading.Event()
         self.polled = threading.Event()
@@ -412,7 +293,6 @@ class _SlowSidecar:
 
 
 def test_a_slow_ownership_write_does_not_park_the_launch(tmp_path: Path) -> None:
-    """Recording the claim is workspace I/O like taking it."""
     sidecar = _SlowSidecar()
     monitor = WorkspaceMonitor(
         tmp_path,
@@ -441,13 +321,6 @@ def test_a_slow_ownership_write_does_not_park_the_launch(tmp_path: Path) -> None
 
 
 def test_a_slow_owner_sidecar_read_does_not_park_the_launch(tmp_path: Path) -> None:
-    """The consumer path reads the workspace too.
-
-    When another process already holds the watch lock, this one does not
-    watch: it polls the owner's sidecar instead. That poll is a read
-    under ``<workspace>/.agent/``, on the launch thread, in the same
-    pre-spawn window as everything else here.
-    """
     sidecar = _SlowSidecar()
     monitor = WorkspaceMonitor(
         tmp_path,
@@ -476,12 +349,6 @@ def test_a_slow_owner_sidecar_read_does_not_park_the_launch(tmp_path: Path) -> N
 
 
 def test_the_watch_teardown_joins_with_a_timeout(tmp_path: Path) -> None:
-    """Both halves of a teardown are bounded, not just the stop.
-
-    ``observer.stop()`` runs under a budget; the ``join`` that follows it
-    is the other half, and a join without a timeout waits on the same
-    emitter thread the stop just failed to reach.
-    """
     observer = _SlowStoppingObserver()
     monitor = WorkspaceMonitor(
         tmp_path,

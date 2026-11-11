@@ -1,5 +1,3 @@
-"""Tests for the per-workspace SQLite bookkeeping store."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -45,7 +43,6 @@ def test_completion_sentinel_roundtrip(tmp_path: Path) -> None:
 
 
 def test_upsert_regression_refreshes_retention_age(tmp_path: Path) -> None:
-    """S-2: renewed machine state is retained instead of pruned as stale."""
     db = RunStateDB(tmp_path)
     db.upsert_receipt("renewed", "plan", "old-receipt")
     db.upsert_completion_sentinel("renewed", "old-sentinel")
@@ -64,7 +61,6 @@ def test_upsert_regression_refreshes_retention_age(tmp_path: Path) -> None:
 
 
 def test_cross_connection_visibility(tmp_path: Path) -> None:
-    """Simulates MCP-server-writes / engine-reads across processes."""
     writer = RunStateDB(tmp_path)
     reader = RunStateDB(tmp_path)
     writer.upsert_receipt("run-1", "plan", "sig")
@@ -73,10 +69,6 @@ def test_cross_connection_visibility(tmp_path: Path) -> None:
     reader.close()
 
 
-# RFC-013 P3 storage-mode contract: the per-workspace ``.agent/state.db``
-# MUST enable WAL journaling and ``synchronous=NORMAL``. A regression
-# to default SQLite settings would pass the CRUD tests above but
-# silently reintroduce the per-commit fsync that the RFC eliminated.
 def test_pragmas_journal_mode_wal_synchronous_normal(tmp_path: Path) -> None:
     db = RunStateDB(tmp_path)
     try:

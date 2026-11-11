@@ -1,5 +1,3 @@
-"""Test helpers for constructing ``PipelineDeps`` with fakes."""
-
 from __future__ import annotations
 
 import dataclasses
@@ -48,8 +46,6 @@ if TYPE_CHECKING:
 
 
 class _FakeBridge:
-    """Minimal stand-in for a ``SessionBridgeLike`` in tests."""
-
     def __init__(self) -> None:
         self.run_id = str(uuid.uuid4())
 
@@ -67,13 +63,6 @@ _DEFAULT_BRIDGE_CALL_HISTORY_LIMIT = 64
 
 
 class _RecordingBridgeFactory:
-    """Bridge factory that records every call and returns a configured bridge.
-
-    ``calls`` is a FIFO-capped deque so a multi-cycle memory harness cannot
-    retain unbounded per-invocation argument dicts through the test helper.
-    Callers that need longer history inject ``call_history_limit``.
-    """
-
     def __init__(
         self,
         bridge: object | None = None,
@@ -231,7 +220,6 @@ def make_test_pipeline_deps(
     validate_custom_mcp_servers_fn: Callable[[Path], int] | None = None,
     recovery_clock: Clock | None = None,
 ) -> PipelineDeps:
-    """Build a ``PipelineDeps`` suitable for fast, deterministic tests."""
     deps = PipelineDeps(
         display_context=display_context,
         model_identity=model_identity,
@@ -281,5 +269,4 @@ def make_test_pipeline_deps(
 
 
 def make_recording_bridge_factory(bridge: object | None = None) -> _RecordingBridgeFactory:
-    """Return a bridge factory that records call arguments."""
     return _RecordingBridgeFactory(bridge)

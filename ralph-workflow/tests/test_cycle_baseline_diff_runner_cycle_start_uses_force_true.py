@@ -1,5 +1,3 @@
-"""Tests: cycle baseline semantics and cumulative dev-cycle diff."""
-
 from __future__ import annotations
 
 import errno
@@ -40,8 +38,6 @@ def git_repo(tmp_path: Path) -> Generator[tuple[Path, Repo], None, None]:
 
 
 class TestRunnerCycleStartUsesForceTrue:
-    """Prove that the real runner cycle-start path always passes force=True."""
-
     def test_runner_calls_write_cycle_baseline_with_force_true(
         self, git_repo: tuple[Path, Repo]
     ) -> None:
@@ -78,10 +74,6 @@ class TestRunnerCycleStartUsesForceTrue:
     def test_write_start_commit_if_absent_does_not_propagate_oserror(
         self, git_repo: tuple[Path, Repo]
     ) -> None:
-        """write_start_commit_if_absent must handle write errors gracefully.
-
-        Disk-full (ENOSPC) is environmental; the cycle baseline is best-effort.
-        """
         root, _ = git_repo
 
         def failing_write(workspace_root: Path, sha: str, *, force: bool = False) -> None:

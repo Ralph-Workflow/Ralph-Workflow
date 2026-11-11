@@ -1,17 +1,3 @@
-"""End-to-end integration test: custom-named pipeline (design → build → audit → sign_off → done).
-
-Proves that policy-driven routing works with only user-defined phase names and
-that no canonical phase name (planning, development, review, fix, complete, failed)
-is hard-required anywhere in the runtime.
-
-Exercises:
-  - Policy validation via validate_policy_completeness
-  - Reducer-driven routing through all phase roles
-  - Post-commit routing via resolve_post_commit_phase
-  - ASCII explain-policy output contains custom names only
-  - Parallelization policy in a custom-named phase
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -60,15 +46,6 @@ CANONICAL_PHASE_NAMES = frozenset(
 
 
 def _build_custom_bundle() -> PolicyBundle:
-    """Build the design → build → audit → sign_off → done custom pipeline.
-
-    Phase roles:
-      design:    execution
-      build:     execution (with parallelization)
-      audit:     analysis (loops back to build on request_changes)
-      sign_off:  commit (increments cycles counter, resets audit_round)
-      terminal:  terminal success (done), terminal failure (rejected)
-    """
     pipeline = PipelinePolicy(
         entry_phase="design",
         terminal_phase="done",
@@ -198,10 +175,7 @@ def custom_bundle() -> PolicyBundle:
 
 
 class TestCustomNamedPipelineHappyPath:
-    """Full happy-path routing through the custom-named pipeline via reducer."""
-
     def test_happy_path_design_to_done(self, custom_bundle: PolicyBundle) -> None:
-        """design → build → audit → sign_off → done happy path via reducer."""
         policy = custom_bundle.pipeline
         state = _initial_state()
         assert state.phase == "design"
@@ -220,7 +194,6 @@ class TestCustomNamedPipelineHappyPath:
         assert state.get_outer_progress("cycles") == 1
 
     def test_analysis_loopback_routes_to_build(self, custom_bundle: PolicyBundle) -> None:
-        """audit ANALYSIS_LOOPBACK sends back to build."""
         policy = custom_bundle.pipeline
         state = _initial_state()
 

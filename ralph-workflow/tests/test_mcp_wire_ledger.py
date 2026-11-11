@@ -1,13 +1,3 @@
-"""Regression tests for the MCP wire ledger (Evidence Provenance F2).
-
-``Provenance.WIRE`` is granted only by a matching, HMAC-verifiable
-``tools/call`` record in ``.agent/tmp/mcp-wire-ledger.jsonl``. These tests
-pin: a real dispatch through :class:`McpServer` produces a verifiable
-record; an unsigned server (no broker secret) never writes one; and a
-forged or unchained row is rejected by the chain verifier, never grading
-``WIRE``.
-"""
-
 from __future__ import annotations
 
 import json
@@ -30,8 +20,6 @@ from ralph.mcp.tools.coordination import ToolContent, ToolResult
 
 
 class _Workspace:
-    """Minimal workspace stub exposing only the ``.root`` McpServer reads."""
-
     def __init__(self, root: Path) -> None:
         self.root = root
 
@@ -41,8 +29,6 @@ def _signed_ledger_path(tmp_path: Path, secret: str) -> Path:
 
 
 class _FakeRegistry:
-    """A registry whose dispatch always succeeds with a fixed text result."""
-
     def dispatch(
         self,
         tool_name: str,
@@ -97,11 +83,6 @@ def _dispatch_tools_call(
     assert response.error is None
 
 
-#: S-1 (Evidence Provenance): the six request methods routed through the
-#: `_dispatch_request` `handlers` dict, each with a minimal-but-valid params
-#: payload so the handler itself does not short-circuit before the ledger
-#: append (the append happens before `handler(request)` runs either way, but
-#: a valid payload keeps these tests representative of real traffic).
 _HANDLER_DICT_METHODS: tuple[tuple[str, dict[str, object]], ...] = (
     ("initialize", {}),
     ("prompts/list", {}),
@@ -113,7 +94,6 @@ _HANDLER_DICT_METHODS: tuple[tuple[str, dict[str, object]], ...] = (
 
 
 def test_every_handler_dict_method_appends_a_ledger_row(tmp_path: Path) -> None:
-    """S-1: every one of the six non-tools/call request methods gets chained too."""
     server = McpServer(
         session=_session("run-1", broker_secret="s3cr3t"),
         workspace=_Workspace(tmp_path),
@@ -136,9 +116,6 @@ def test_every_handler_dict_method_appends_a_ledger_row(tmp_path: Path) -> None:
         assert method in recorded_methods, f"no ledger row for {method}"
 
 
-#: S-2 (Evidence Provenance G2): the two notification methods are handled
-#: before the `handlers` dict in `_dispatch_request` and previously never
-#: reached the ledger at all.
 _NOTIFICATION_METHODS: tuple[str, ...] = (
     "notifications/initialized",
     "notifications/reset_wrapup",
@@ -146,7 +123,6 @@ _NOTIFICATION_METHODS: tuple[str, ...] = (
 
 
 def test_notification_methods_append_a_ledger_row(tmp_path: Path) -> None:
-    """S-2: notifications/initialized and notifications/reset_wrapup are chained too."""
     server = McpServer(
         session=_session("run-1", broker_secret="s3cr3t"),
         workspace=_Workspace(tmp_path),
@@ -155,7 +131,7 @@ def test_notification_methods_append_a_ledger_row(tmp_path: Path) -> None:
     for msg_id, method in enumerate(_NOTIFICATION_METHODS, start=1):
         request = JsonRpcRequest(jsonrpc="2.0", method=method, msg_id=str(msg_id), params={})
         response, _ = server.handle_request(request, ServerState.RUNNING)
-        assert response is None  # notifications never carry a response
+        assert response is None
 
     ledger_path = _signed_ledger_path(tmp_path, "s3cr3t")
     assert ledger_path.exists()
@@ -170,8 +146,6 @@ def test_notification_methods_append_a_ledger_row(tmp_path: Path) -> None:
 
 
 def test_ledger_with_only_handler_dict_rows_grants_no_wire_evidence(tmp_path: Path) -> None:
-    """A ledger with only initialize/tools/list/... rows (no tools/call) still
-    grades below WIRE — F2's `tools/call`-only grading predicate is unchanged."""
     server = McpServer(
         session=_session("run-1", broker_secret="s3cr3t"),
         workspace=_Workspace(tmp_path),
@@ -194,7 +168,6 @@ def test_dispatch_appends_verified_wire_record(tmp_path: Path) -> None:
 
 
 def test_media_tools_call_records_delivery_and_agent_identity(tmp_path: Path) -> None:
-    """A media call seals its resolved perceptible delivery facts into the ledger."""
     server = McpServer(
         session=_session(
             "run-1",
@@ -288,7 +261,6 @@ def test_wire_evidence_isolated_between_secrets(tmp_path: Path) -> None:
 
 
 def test_delegated_media_call_derives_and_seals_its_caller_identity(tmp_path: Path) -> None:
-    """S-5: each delegate's media call is sealed under its own identity/profile."""
     parent = McpServer(
         session=_session(
             "run-1",
@@ -376,7 +348,6 @@ def test_wire_evidence_can_be_scoped_to_the_delegated_agent(tmp_path: Path) -> N
 
 
 def test_unsigned_server_writes_no_ledger_record(tmp_path: Path) -> None:
-    """A5: RALPH_BROKER_SECRET unset -> no ledger record, never grades WIRE."""
     _dispatch_tools_call(tmp_path, run_id="run-1", broker_secret=None)
 
     assert not (tmp_path / WIRE_LEDGER_RELPATH).exists()
@@ -405,7 +376,6 @@ def test_forged_row_breaks_the_chain(tmp_path: Path) -> None:
     lines = ledger_path.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 2
 
-    # Forge the second row's hmac in place (simulating a tampered ledger).
     import json
 
     forged = json.loads(lines[1])
@@ -418,7 +388,6 @@ def test_forged_row_breaks_the_chain(tmp_path: Path) -> None:
 
 
 def test_unchained_appended_row_is_rejected(tmp_path: Path) -> None:
-    """A row inserted without going through the chain (wrong prior_hmac) fails verification."""
     append_wire_record(
         tmp_path,
         method="tools/call",
@@ -436,7 +405,7 @@ def test_unchained_appended_row_is_rejected(tmp_path: Path) -> None:
         "params_digest": "deadbeef",
         "run_id": "run-1",
         "timestamp": 0.0,
-        "prior_hmac": "f" * 64,  # wrong: does not chain from the real prior record
+        "prior_hmac": "f" * 64,
         "hmac": "0" * 64,
     }
     with ledger_path.open("a", encoding="utf-8") as handle:
@@ -485,22 +454,6 @@ def test_append_wire_record_returns_none_without_secret(tmp_path: Path) -> None:
 
 
 def test_concurrent_appends_chain_safely(tmp_path: Path) -> None:
-    """Concurrent MCP server instances writing to the same ledger must not break the chain.
-
-    The restart-aware bridge tears down a previous server and starts a new one
-    in the same turn, and the smoke harness drives a sequence of
-    restart-aware turns. Two writers reading the same prior_hmac and both
-    appending would leave the on-disk chain with two children of the same
-    parent; ``verify_chain`` then fails at the first non-contiguous row, so
-    even a fully-correct run never grades ``WIRE``. The non-blocking
-    ``fcntl.flock`` in ``append_wire_record`` serializes the read + write
-    so every append sees the previous record's hmac as its prior_hmac.
-
-    Best-effort: a writer that loses the ``LOCK_NB`` race returns ``None``
-    (its frame is dropped; the surviving frames in the same run still
-    grade ``WIRE``). The chain MUST verify regardless of which writer
-    won the race.
-    """
     import threading
 
     barrier = threading.Barrier(2)

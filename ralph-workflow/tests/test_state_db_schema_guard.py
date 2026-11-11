@@ -1,5 +1,3 @@
-"""Regression coverage for RunStateDB's per-file schema version guard."""
-
 from __future__ import annotations
 
 import sqlite3
@@ -21,7 +19,6 @@ def _user_version(db: RunStateDB) -> int:
 def test_state_db_regression_schema_guard_creates_and_versions_fresh_database(
     tmp_path: Path,
 ) -> None:
-    """S-11: a fresh database receives the schema and its version marker."""
     db = RunStateDB(tmp_path)
     try:
         assert _user_version(db) == state_db._SCHEMA_VERSION
@@ -33,7 +30,6 @@ def test_state_db_regression_schema_guard_creates_and_versions_fresh_database(
 def test_state_db_regression_schema_guard_preserves_existing_data_on_reopen(
     tmp_path: Path,
 ) -> None:
-    """S-11: a versioned database reopens without needing schema recreation."""
     writer = RunStateDB(tmp_path)
     writer.upsert_receipt("run-1", "plan", "signature")
     writer.close()
@@ -47,7 +43,6 @@ def test_state_db_regression_schema_guard_preserves_existing_data_on_reopen(
 
 
 def test_state_db_migrates_v1_receipt_database_with_normalization_audit(tmp_path: Path) -> None:
-    """A v1 receipt database gains the audit column without losing its HMAC."""
     db_path = tmp_path / DB_RELPATH
     db_path.parent.mkdir(parents=True)
     connection = sqlite3.connect(str(db_path))
@@ -81,7 +76,6 @@ def test_state_db_migrates_v1_receipt_database_with_normalization_audit(tmp_path
 
 
 def test_state_db_regression_schema_guard_recreates_deleted_database(tmp_path: Path) -> None:
-    """S-11: deleting the file resets its version and triggers create-on-open."""
     initial = RunStateDB(tmp_path)
     initial.close()
     db_path = tmp_path / DB_RELPATH

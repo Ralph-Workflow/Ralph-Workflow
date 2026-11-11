@@ -1,5 +1,3 @@
-"""Shared formatting helpers for technical retry prompts and retry hints."""
-
 from __future__ import annotations
 
 from typing import Final
@@ -8,7 +6,6 @@ VALIDATION_FAILURE_BANNER: Final[str] = "VALIDATION FAILURE"
 
 
 def build_validation_retry_footer() -> str:
-    """Return the final blocking instruction for a validation retry prompt."""
     return (
         f"{VALIDATION_FAILURE_BANNER}\n"
         "Fix the underlying issue before submitting again.\n"
@@ -24,11 +21,6 @@ def build_retry_error_block(
     context_path: str | None = None,
     validation: bool = False,
 ) -> str:
-    """Return a shared error-first retry block.
-
-    The failure must lead the prompt. Original prompt and prior context paths are
-    secondary references for continuing the same task after addressing the error.
-    """
     lines = [
         VALIDATION_FAILURE_BANNER if validation else "ERROR RECOVERY REQUIRED",
         f"PREVIOUS ATTEMPT FAILED: {failure_summary}",

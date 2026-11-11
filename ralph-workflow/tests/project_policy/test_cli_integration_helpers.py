@@ -1,16 +1,3 @@
-"""Unit tests for the project-policy preflight CLI helpers.
-
-Covers the seams that the run-integration tests mock away:
-
-* ``_resolve_remediation_agent_name`` resolves through the
-  ``policy_remediation`` drain binding (so a development-drain alias works).
-* ``_resolve_max_attempts`` uses the remediation driver's own small budget,
-  never the global recovery ``cycle_cap``.
-* The production invocation closure forwards ``display_context`` to
-  ``execute_agent_effect`` and converts launch crashes into
-  ``RemediationInvocationError`` so the driver aborts instead of spinning.
-"""
-
 from __future__ import annotations
 
 import functools
@@ -45,8 +32,6 @@ def _default_bundle() -> PolicyBundle:
 
 @functools.lru_cache(maxsize=1)
 def _bundle_with_development_bound_remediation() -> PolicyBundle:
-    """Default bundle rewired: no policy_remediation chain; the drain binds
-    to a development chain, mirroring the loader's development-drain backfill."""
     bundle = _default_bundle()
     chains = dict(bundle.agents.agent_chains)
     del chains["policy_remediation"]
@@ -78,8 +63,6 @@ def _load_result(bundle: PolicyBundle | None) -> _LoadResult:
 
 
 def test_chain_agents_resolve_through_drain_binding() -> None:
-    """Resolution reuses the pipeline's strict drain->chain lookup and
-    returns the FULL fallback chain, not just the first agent."""
     load_result = _load_result(_bundle_with_development_bound_remediation())
     assert cli_integration._resolve_chain_agents(load_result, PHASE_REMEDIATION) == [
         "dev-agent",
@@ -92,9 +75,6 @@ def test_chain_agents_empty_when_bundle_missing() -> None:
 
 
 def test_analysis_cap_ignores_global_recovery_cycle_cap() -> None:
-    """The policy loop uses its own small budget. The global recovery cycle_cap
-    (200) governs pipeline recovery cycles and must NOT leak in here: 200
-    synchronous agent rounds at startup is a display flood, not a strategy."""
     bundle = _default_bundle()
     assert bundle.pipeline.recovery.cycle_cap == 200
     assert DEFAULT_ANALYSIS_CAP == 3
@@ -123,7 +103,7 @@ def test_production_closure_forwards_display_context(
     monkeypatch.setattr(effect_executor_module, "execute_agent_effect", fake_execute_agent_effect)
     invoke = cli_integration._make_production_invoke_agent(
         load_result,
-        object(),  # non-None pipeline deps sentinel
+        object(),
         load_result.workspace_scope,
         None,
         display_context,
@@ -139,8 +119,6 @@ def test_production_closure_forwards_display_context(
 def test_production_closure_falls_back_across_chain_agents(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A failing first agent falls back to the next agent in the chain,
-    mirroring drain fallback semantics in the pipeline proper."""
     load_result = _load_result(_bundle_with_development_bound_remediation())
     invoked_agents: list[str] = []
 
@@ -174,7 +152,6 @@ def test_production_closure_falls_back_across_chain_agents(
 def test_ready_preflight_triggers_policy_auto_commit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A READY preflight auto-commits the policy surfaces (wt-025 mirror)."""
     from ralph.project_policy import _auto_commit as policy_auto_commit_module
     from ralph.workspace.memory import MemoryWorkspace
 
@@ -193,13 +170,6 @@ def test_ready_preflight_triggers_policy_auto_commit(
         del written_paths, pre_contents, create_commit_fn
         committed_roots.append(repo_root)
 
-    # wt-012: the post-pipeline commit now uses the producer-level
-    # ``commit_policy_writes`` helper (with pre-write hash discipline)
-    # instead of the legacy ``commit_policy_updates`` scope-dirty
-    # helper. The MemoryWorkspace test seam does NOT carry a real
-    # on-disk root, so the producer-level commit at the pre-write
-    # hash capture step is a no-op for this test; only the post-
-    # pipeline call exercises the new helper.
     monkeypatch.setattr(policy_auto_commit_module, "commit_policy_writes", fake_commit)
 
     load_result = _load_result(_default_bundle())
@@ -217,8 +187,6 @@ def test_ready_preflight_triggers_policy_auto_commit(
 def test_ready_preflight_condenses_placeholder_agents_md_block(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """After READY, an untouched bootstrap placeholder block in AGENTS.md is
-    condensed to the short pointer form (the placeholder is temporary)."""
     from ralph.language_detector.models import ProjectStack
     from ralph.project_policy import _auto_commit as policy_auto_commit_module
     from ralph.project_policy import agents_md, markers
@@ -229,7 +197,7 @@ def test_ready_preflight_condenses_placeholder_agents_md_block(
     )
 
     ws = MemoryWorkspace()
-    agents_md.bootstrap(ws)  # writes the long placeholder block
+    agents_md.bootstrap(ws)
     _seed_claude_md(ws)
     _seed_all_core_complete(ws, ProjectStack(primary_language="Python"))
     assert "The remediation agent MUST" in ws.read(markers.AGENTS_MD)
@@ -254,8 +222,6 @@ def test_ready_preflight_condenses_placeholder_agents_md_block(
 
 
 class _FakeDisplay:
-    """Records the lifecycle the remediation loop must drive."""
-
     def __init__(self) -> None:
         self.entered = 0
         self.exited = 0
@@ -275,14 +241,10 @@ class _FakeDisplay:
 def test_remediation_runs_inside_started_display_with_status_bar(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The remediation loop drives the SAME display lifecycle as the pipeline
-    proper: display started (status bar live), a status-bar model pushed for
-    the remediation phase, and the display forwarded to execute_agent_effect
-    so agent activity renders consistently."""
     from ralph.pipeline.events import PipelineEvent
     from ralph.workspace.memory import MemoryWorkspace
 
-    ws = MemoryWorkspace()  # unseeded -> remediation required
+    ws = MemoryWorkspace()
     fake_display = _FakeDisplay()
     monkeypatch.setattr(cli_integration, "resolve_active_display", lambda *_a, **_k: fake_display)
 
@@ -325,13 +287,6 @@ def test_remediation_runs_inside_started_display_with_status_bar(
 def test_policy_handback_regression_preserves_caller_owned_live_display(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-2: normal-run remediation must hand its active footer to planning.
-
-    A policy preflight entered from the normal run has one caller-owned
-    display scope. When remediation finishes, it must not stop that scope or
-    leave ``Policy Remediation`` in its footer; the persisted pipeline phase
-    takes over immediately.
-    """
     from ralph.pipeline.events import PipelineEvent
     from ralph.workspace.memory import MemoryWorkspace
 
@@ -399,10 +354,6 @@ def test_production_closure_raises_on_launch_crash(
 def test_a_crashing_first_agent_falls_back_to_the_next_in_the_chain(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """REGRESSION (found by review). An exception from the FIRST agent raised
-    straight out of the loop, so agents 2..N were never tried -- contradicting the
-    documented "invoke each agent until one succeeds" fallback semantics. Only a
-    False return fell through. A crash must fall through too."""
     load_result = _load_result(_bundle_with_development_bound_remediation())
     invoked: list[str] = []
 
@@ -437,7 +388,6 @@ def test_a_crashing_first_agent_falls_back_to_the_next_in_the_chain(
 def test_a_chain_where_every_agent_crashes_reports_a_launch_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Only when the WHOLE chain has crashed is this real infrastructure breakage."""
     load_result = _load_result(_bundle_with_development_bound_remediation())
 
     def always_crash(*_args: object, **_opts: object) -> object:

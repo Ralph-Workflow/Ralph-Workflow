@@ -1,5 +1,3 @@
-"""Regression tests for stable prompt writes that previously emitted redundant FSEvents."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -17,8 +15,6 @@ if TYPE_CHECKING:
 
 
 class RecordingFileBackend(FileBackend):
-    """In-memory file backend that counts physical text writes."""
-
     def __init__(self) -> None:
         self.files: dict[Path, str] = {}
         self.write_text_calls = 0
@@ -89,7 +85,6 @@ def _render(
 
 
 def test_write_prompt_regression_skips_byte_identical_rewrite() -> None:
-    """Step 2: an unchanged auto-integrate prompt performs one physical write total."""
     backend = RecordingFileBackend()
     root = Path("/virtual-workspace")
     write_prompt = _auto_integrate_prompt_writer()
@@ -106,7 +101,6 @@ def test_write_prompt_regression_skips_byte_identical_rewrite() -> None:
 
 
 def test_write_prompt_regression_writes_on_changed_content() -> None:
-    """Step 2: a changed auto-integrate target persists the newly rendered prompt."""
     backend = RecordingFileBackend()
     root = Path("/virtual-workspace")
     write_prompt = _auto_integrate_prompt_writer()
@@ -119,15 +113,12 @@ def test_write_prompt_regression_writes_on_changed_content() -> None:
     assert backend.write_text_calls == 2
     assert "release" in backend.files[prompt_path]
 
-    # A changed conflicted-path list is changed content too, so it must
-    # persist rather than be skipped as a byte-identical rewrite.
     _render(write_prompt, root, "release", ("other.txt",), backend)
     assert backend.write_text_calls == 3
     assert "other.txt" in backend.files[prompt_path]
 
 
 def test_parallel_worker_prompt_regression_skips_byte_identical_rewrite() -> None:
-    """Step 2: an unchanged worker prompt performs one physical write total."""
     backend = RecordingFileBackend()
     prompt_path = Path("/virtual-workspace/.agent/workers/unit-a/tmp/development_prompt.md")
     write_prompt = _parallel_worker_prompt_writer()
@@ -141,7 +132,6 @@ def test_parallel_worker_prompt_regression_skips_byte_identical_rewrite() -> Non
 
 
 def test_parallel_worker_prompt_regression_writes_on_changed_content() -> None:
-    """Step 2: changed worker prompt content is persisted through the backend seam."""
     backend = RecordingFileBackend()
     prompt_path = Path("/virtual-workspace/.agent/workers/unit-a/tmp/development_prompt.md")
     write_prompt = _parallel_worker_prompt_writer()
@@ -154,7 +144,6 @@ def test_parallel_worker_prompt_regression_writes_on_changed_content() -> None:
 
 
 def test_cycle_baseline_regression_skips_byte_identical_rewrite() -> None:
-    """Step 1: a force=True rewrite of the same SHA performs one physical write total."""
     backend = RecordingFileBackend()
     root = Path("/virtual-workspace")
     write_baseline = _write_cycle_baseline()
@@ -169,7 +158,6 @@ def test_cycle_baseline_regression_skips_byte_identical_rewrite() -> None:
 
 
 def test_cycle_baseline_regression_writes_on_changed_content() -> None:
-    """Step 1: a force=True rewrite of a different SHA performs a second physical write."""
     backend = RecordingFileBackend()
     root = Path("/virtual-workspace")
     write_baseline = _write_cycle_baseline()
@@ -183,7 +171,6 @@ def test_cycle_baseline_regression_writes_on_changed_content() -> None:
 
 
 def test_review_baseline_regression_skips_byte_identical_rewrite() -> None:
-    """Step 2: a review baseline rewrite of the same SHA performs one physical write."""
     backend = RecordingFileBackend()
     marker_path = Path("/virtual-workspace/.agent/tmp/last_reviewed_sha.txt")
     persist = _persist_review_baseline()
@@ -197,7 +184,6 @@ def test_review_baseline_regression_skips_byte_identical_rewrite() -> None:
 
 
 def test_review_baseline_regression_writes_on_changed_content() -> None:
-    """Step 2: a review baseline rewrite with a different SHA performs a second write."""
     backend = RecordingFileBackend()
     marker_path = Path("/virtual-workspace/.agent/tmp/last_reviewed_sha.txt")
     persist = _persist_review_baseline()
@@ -210,7 +196,6 @@ def test_review_baseline_regression_writes_on_changed_content() -> None:
 
 
 def test_fsworkspace_write_skips_byte_identical_rewrite(tmp_path: Path) -> None:
-    """Step 4: identical workspace content writes once and changed content writes again."""
     backend = RecordingFileBackend()
     workspace = FsWorkspace(tmp_path, backend=backend)
     expected_path = (tmp_path / "file.txt").resolve()

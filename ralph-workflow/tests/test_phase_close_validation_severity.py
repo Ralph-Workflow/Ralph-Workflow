@@ -1,5 +1,3 @@
-"""Regression tests for validation-failure phase-close severity."""
-
 from __future__ import annotations
 
 from io import StringIO

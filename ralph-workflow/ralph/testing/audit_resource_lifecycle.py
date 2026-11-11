@@ -1,78 +1,10 @@
-"""Resource-lifecycle audit (AST-based).
-
-Enforces the resource-lifecycle contract documented in
-``ralph-workflow/docs/agents/memory-lifecycle.md``:
-
-1. ``threading.Thread(...)`` / ``Thread(...)`` calls MUST have
-   ``daemon=True`` — non-daemon threads can block process exit on the
-   interpreter shutdown atexit join that ``concurrent.futures``
-   registers for its default executor.
-2. ``httpx.Client(...)``, ``httpx.AsyncClient(...)``, and
-   ``requests.Session(...)`` constructions MUST be the context-manager
-   expression of a ``with`` statement — bare assignment leaks the
-   underlying HTTP connection pool and may not be closed at interpreter
-   exit.
-3. ``os.open(...)``, ``os.openpty(...)``, and ``os.pipe(...)`` are
-   allowed ONLY under ``ralph/process/`` (the centralized process
-   lifecycle layer). Outside that allowlist, raw fd creation is a
-   leak: it bypasses the centralized fd ownership policy and is not
-   tracked by the zombie reaper.
-4. Long-lived mutable accumulators (``list``, ``dict``, ``set``,
-   ``deque``) assigned to module-level names OR instance attributes
-   (``self.X``) inside ``__init__`` bodies MUST carry a FIFO/size cap
-   (deque ``(maxlen=...)``, ``OrderedDict`` + count cap, or carry a
-   ``# bounded-accumulator-ok: <reason>`` marker). A ``deque()`` /
-   ``collections.deque()`` call WITHOUT ``maxlen=`` is treated as
-   unbounded. Mutable collection LITERALS (``[]``, ``{}``, ``set()``)
-   assigned to a module-level name or ``self.X`` are flagged — they
-   have no cap and grow monotonically across a long session.
-5. Direct child-process creation (``subprocess`` / ``os`` / ``asyncio``) is
-   allowed ONLY under ``ralph/process/``, where ProcessManager owns teardown.
-
-The audit resolves ``import x as y`` / ``from x import y [as z]``
-bindings so an aliased call cannot evade detection (``import httpx as
-hx; hx.Client()`` and ``from httpx import Client; Client()`` are both
-caught). The same alias resolution applies to the accumulator
-contract (``import collections as c; c.deque()`` is caught; ``from
-collections import deque; deque()`` is caught).
-
-Escape hatch: an inline marker on the call's line suppresses the
-violation. The marker SET (``_ALLOW_MARKERS``) keeps the
-resource-lifecycle-ok marker for contracts 1-3 and 5 and the
-bounded-accumulator-ok marker for contract 4. Keep markers rare and
-justified.
-
-Scope and exclusions (intentional, documented):
-
-- ``ThreadPoolExecutor`` is NOT covered by the daemon-Thread rule; it
-  has its own ``.shutdown()`` lifecycle owned by the caller.
-- Bare ``open()`` is governed by ``audit_di_seam`` (composition-root
-  env/open reads) and is OUT OF SCOPE here.
-- ``loop.run_in_executor(None, ...)`` in ``ralph/interrupt/asyncio_bridge.py``
-  is intentionally NOT covered — it is a bounded shutdown block
-  owned by the asyncio bridge (different lifecycle), not a thread leak.
-- The accumulator contract covers module-level and ``self.X`` (in
-  ``__init__`` body) mutable literals + constructors WITHOUT
-  ``maxlen``. ``deque(maxlen=...)`` is clean by construction.
-  Dataclass field defaults (``field(default_factory=...)``) and
-  local-function variables are out of scope (higher false-positive
-  rate; the ``BudgetState.failures`` leak class is closed by dropping
-  the field + the tracemalloc test, not by this AST contract).
-- The audit is AST-based and can only flag literal-name calls.
-  Deliberate-obfuscation indirection (``getattr``, ``importlib``) is
-  out of scope (would require dataflow tracking).
-
-Usage:
-    python -m ralph.testing.audit_resource_lifecycle [root1 ...]
-
-Exit 0 = clean, 1 = violations, 2 = root not found.
-"""
-
 from __future__ import annotations
 
 import ast
 import sys
 from pathlib import Path
+
+from ralph.testing._audit_scope import build_parent_map, qualified_scope
 
 _SKIP_DIRS: frozenset[str] = frozenset(
     {
@@ -88,37 +20,297 @@ _SKIP_DIRS: frozenset[str] = frozenset(
     }
 )
 
-# Inline marker set that suppresses a violation (the only escape hatch).
-# resource-lifecycle-ok covers contracts 1-3 and 5; bounded-accumulator-ok
-# covers contract 4.
-_ALLOW_MARKERS: frozenset[str] = frozenset({"resource-lifecycle-ok", "bounded-accumulator-ok"})
-
-# threading.Thread / Thread constructors — these must carry daemon=True.
+EXEMPT_CALL_SITES: frozenset[tuple[str, str, str]] = frozenset(
+    {
+        ("ralph/agents/catalog.py", "<module>", "unbounded_accumulator"),
+        (
+            "ralph/agents/execution_state/opencode_execution_strategy.py",
+            "OpenCodeExecutionStrategy.__init__",
+            "unbounded_accumulator",
+        ),
+        (
+            "ralph/agents/idle_watchdog/_subagent_identity.py",
+            "SubagentPidRegistry.__init__",
+            "unbounded_accumulator",
+        ),
+        (
+            "ralph/agents/idle_watchdog/idle_watchdog.py",
+            "IdleWatchdog.__init__",
+            "unbounded_accumulator",
+        ),
+        (
+            "ralph/agents/idle_watchdog/repetition_tracker.py",
+            "RepetitionTracker.__init__",
+            "unbounded_accumulator",
+        ),
+        (
+            "ralph/agents/invoke/_bounded_lines_queue.py",
+            "BoundedLinesQueue.__init__",
+            "unbounded_accumulator",
+        ),
+        (
+            "ralph/agents/invoke/_process_reader.py",
+            "ProcessLineReader.__init__",
+            "unbounded_accumulator",
+        ),
+        (
+            "ralph/agents/invoke/_pty_line_reader.py",
+            "PtyLineReader.__init__",
+            "unbounded_accumulator",
+        ),
+        (
+            "ralph/agents/invoke/_shared_awareness_publisher.py",
+            "ThrottledSidecarPublisher.__init__",
+            "unbounded_accumulator",
+        ),
+        (
+            "ralph/agents/invoke/_subagent_transcript.py",
+            "ClaudeSubagentTranscriptTails.__init__",
+            "unbounded_accumulator",
+        ),
+        ("ralph/agents/invoke/_workspace.py", "WorkspaceMonitor", "unbounded_accumulator"),
+        ("ralph/agents/invoke/_workspace.py", "WorkspaceMonitor.__init__", "unbounded_accumulator"),
+        (
+            "ralph/agents/invoke/_workspace_change_coalescer.py",
+            "WorkspaceChangeCoalescer.__init__",
+            "unbounded_accumulator",
+        ),
+        (
+            "ralph/agents/invoke/opencode_subagent_sessions/_probe.py",
+            "OpenCodeSubagentSessionProbe.__init__",
+            "unbounded_accumulator",
+        ),
+        (
+            "ralph/agents/parsers/_template.py",
+            "ParserTemplateBase.__init__",
+            "unbounded_accumulator",
+        ),
+        ("ralph/agents/parsers/agy.py", "AgyParser.__init__", "unbounded_accumulator"),
+        ("ralph/agents/parsers/claude.py", "ClaudeParser.__init__", "unbounded_accumulator"),
+        (
+            "ralph/agents/parsers/claude_interactive.py",
+            "ClaudeInteractiveParser.__init__",
+            "unbounded_accumulator",
+        ),
+        ("ralph/agents/parsers/codex.py", "CodexParser.__init__", "unbounded_accumulator"),
+        ("ralph/agents/parsers/codex.py", "_CodexDispatch.__init__", "unbounded_accumulator"),
+        ("ralph/agents/parsers/opencode.py", "OpenCodeParser.__init__", "unbounded_accumulator"),
+        ("ralph/agents/parsers/pi.py", "PiParser.__init__", "unbounded_accumulator"),
+        ("ralph/agents/registry.py", "AgentRegistry.__init__", "unbounded_accumulator"),
+        (
+            "ralph/agents/subprocess_executor.py",
+            "SubprocessAgentExecutor.__init__",
+            "unbounded_accumulator",
+        ),
+        ("ralph/agents/support.py", "<module>", "unbounded_accumulator"),
+        ("ralph/config/_toml_fallback.py", "<module>", "unbounded_accumulator"),
+        ("ralph/config/agents_file_writer.py", "_publish_backup", "raw_os_fd"),
+        ("ralph/config/loader.py", "<module>", "unbounded_accumulator"),
+        ("ralph/diagnostics/host_pressure.py", "_macos_maxfiles_pressure", "direct_child_spawn"),
+        ("ralph/display/_salience.py", "SalienceAllocator.__init__", "unbounded_accumulator"),
+        ("ralph/display/_terminal_bg_query.py", "_tty_fd", "raw_os_fd"),
+        ("ralph/display/activity_router.py", "<module>", "unbounded_accumulator"),
+        ("ralph/display/activity_router.py", "ActivityRouter.__init__", "unbounded_accumulator"),
+        (
+            "ralph/display/capability_observation_recorder.py",
+            "CapabilityObservationRecorder.__init__",
+            "unbounded_accumulator",
+        ),
+        ("ralph/display/parallel_display.py", "ParallelDisplay.__init__", "unbounded_accumulator"),
+        ("ralph/display/raw_overflow.py", "<module>", "unbounded_accumulator"),
+        ("ralph/display/raw_overflow.py", "_is_live_foreign_capture", "raw_os_fd"),
+        ("ralph/display/ring_buffer.py", "RingBuffer.__init__", "unbounded_accumulator"),
+        ("ralph/display/subscriber.py", "PipelineSubscriber.__init__", "unbounded_accumulator"),
+        ("ralph/display/terminal_restore.py", "_default_tty_stream", "raw_os_fd"),
+        ("ralph/git/_git_command_queue_lease.py", "_acquire_lock_file", "raw_os_fd"),
+        ("ralph/git/_lock_recovery.py", "_find_lock_holder", "direct_child_spawn"),
+        ("ralph/git/_lock_recovery.py", "_probe_lsof_fuser", "direct_child_spawn"),
+        ("ralph/git/_worktree_lease.py", "_takeover_lock_file", "raw_os_fd"),
+        ("ralph/git/git_command_queue.py", "GitCommandQueue.__init__", "unbounded_accumulator"),
+        (
+            "ralph/language_detector/signatures.py",
+            "DetectionResults.__init__",
+            "unbounded_accumulator",
+        ),
+        (
+            "ralph/mcp/artifacts/_path_file_backend.py",
+            "PathFileBackend.sync_directory",
+            "raw_os_fd",
+        ),
+        (
+            "ralph/mcp/artifacts/audit_adapter.py",
+            "RalphAuditSinkAdapter.__init__",
+            "unbounded_accumulator",
+        ),
+        (
+            "ralph/mcp/artifacts/markdown/_parser.py",
+            "_SectionBuilder.__init__",
+            "unbounded_accumulator",
+        ),
+        ("ralph/mcp/artifacts/markdown/registry.py", "<module>", "unbounded_accumulator"),
+        ("ralph/mcp/explore/_bench_r6_metrics.py", "measure_cold_build", "direct_child_spawn"),
+        ("ralph/mcp/explore/_bench_r6_subprocess.py", "run_build_subprocess", "direct_child_spawn"),
+        (
+            "ralph/mcp/explore/_burst_scheduler.py",
+            "BurstDebounceScheduler.__init__",
+            "unbounded_accumulator",
+        ),
+        ("ralph/mcp/explore/_handlers_graph.py", "<module>", "unbounded_accumulator"),
+        ("ralph/mcp/explore/_handlers_reindex.py", "<module>", "unbounded_accumulator"),
+        ("ralph/mcp/explore/_pipeline_writer.py", "ReindexWriter", "unbounded_accumulator"),
+        ("ralph/mcp/explore/dirty_paths.py", "<module>", "unbounded_accumulator"),
+        ("ralph/mcp/explore/recovery.py", "<module>", "unbounded_accumulator"),
+        ("ralph/mcp/explore/recovery.py", "try_advisory_lock", "raw_os_fd"),
+        ("ralph/mcp/protocol/transport.py", "_default_thread_factory", "non_daemon_thread"),
+        ("ralph/mcp/server/_activity_relay.py", "ActivityRelay.__init__", "unbounded_accumulator"),
+        (
+            "ralph/mcp/server/_pre_serve_overrun_events.py",
+            "StageEventRecorder.__init__",
+            "unbounded_accumulator",
+        ),
+        ("ralph/mcp/server/_runtime_hooks.py", "<module>", "unbounded_accumulator"),
+        ("ralph/mcp/server/_start_stage_tracker.py", "_do_record", "raw_os_fd"),
+        ("ralph/mcp/server/_wire_ledger.py", "<module>", "unbounded_accumulator"),
+        (
+            "ralph/mcp/server/_wire_ledger_index.py",
+            "WireLedgerIndex.__init__",
+            "unbounded_accumulator",
+        ),
+        (
+            "ralph/mcp/server/factory_impl.py",
+            "DynamicBindingMcpServerFactory.__init__",
+            "unbounded_accumulator",
+        ),
+        (
+            "ralph/mcp/server/lifecycle.py",
+            "RestartAwareMcpBridge.__init__",
+            "unbounded_accumulator",
+        ),
+        ("ralph/mcp/server/lifecycle.py", "_spawn_process", "raw_os_fd"),
+        ("ralph/mcp/tool_contract.py", "<module>", "unbounded_accumulator"),
+        ("ralph/mcp/tools/_exec_jobs.py", "<module>", "unbounded_accumulator"),
+        ("ralph/mcp/tools/_exec_jobs.py", "ExecJobRegistry.__init__", "unbounded_accumulator"),
+        (
+            "ralph/mcp/tools/_exec_resource_uri.py",
+            "ExecResourceResolver.__init__",
+            "unbounded_accumulator",
+        ),
+        ("ralph/mcp/tools/bridge/_tool_bridge.py", "ToolBridge.__init__", "unbounded_accumulator"),
+        ("ralph/mcp/transport/codex.py", "<module>", "unbounded_accumulator"),
+        ("ralph/mcp/upstream/tool_catalog_cache.py", "<module>", "unbounded_accumulator"),
+        ("ralph/mcp/upstream/tool_catalog_cache.py", "_write_catalog_file", "raw_os_fd"),
+        ("ralph/phases/__init__.py", "<module>", "unbounded_accumulator"),
+        (
+            "ralph/pipeline/_auto_integrate_agent_phase.py",
+            "AgentPhaseActivity.__init__",
+            "unbounded_accumulator",
+        ),
+        (
+            "ralph/pipeline/_integration_log_dedupe.py",
+            "IntegrationOutcomeLog.__init__",
+            "unbounded_accumulator",
+        ),
+        (
+            "ralph/pipeline/auto_integrate_boundary_refresh.py",
+            "BoundaryRefreshThrottle.__init__",
+            "unbounded_accumulator",
+        ),
+        ("ralph/pipeline/auto_integrate_conflict_budget.py", "<module>", "unbounded_accumulator"),
+        (
+            "ralph/pipeline/auto_integrate_remote_sync.py",
+            "_RemotePullThrottle.__init__",
+            "unbounded_accumulator",
+        ),
+        (
+            "ralph/pipeline/config_file_fingerprint_watcher.py",
+            "ConfigFileFingerprintWatcher.__init__",
+            "unbounded_accumulator",
+        ),
+        (
+            "ralph/pipeline/integration_attempt_ledger.py",
+            "AttemptLedger._atomic_write",
+            "raw_os_fd",
+        ),
+        ("ralph/pipeline/integration_ladder.py", "<module>", "unbounded_accumulator"),
+        ("ralph/pipeline/reducer.py", "<module>", "unbounded_accumulator"),
+        ("ralph/policy/loader.py", "<module>", "unbounded_accumulator"),
+        ("ralph/pro_support/heartbeat.py", "_default_httpx_client_factory", "bare_http_client"),
+        (
+            "ralph/process/child_liveness.py",
+            "ChildLivenessRegistry.__init__",
+            "unbounded_accumulator",
+        ),
+        (
+            "ralph/process/manager/_liveness_sampler.py",
+            "TreeSampler.__init__",
+            "unbounded_accumulator",
+        ),
+        (
+            "ralph/process/manager/_process_manager.py",
+            "ProcessManager.__init__",
+            "unbounded_accumulator",
+        ),
+        ("ralph/process/manager/_process_manager_types.py", "<module>", "unbounded_accumulator"),
+        ("ralph/process/teardown.py", "<module>", "unbounded_accumulator"),
+        ("ralph/project_policy/portfolio.py", "<module>", "unbounded_accumulator"),
+        ("ralph/project_policy/validators.py", "<module>", "unbounded_accumulator"),
+        ("ralph/prompts/template_engine.py", "<module>", "unbounded_accumulator"),
+        ("ralph/prompts/template_engine.py", "TemplateRenderer.__init__", "unbounded_accumulator"),
+        (
+            "ralph/prompts/template_registry.py",
+            "TemplateRegistry.__init__",
+            "unbounded_accumulator",
+        ),
+        (
+            "ralph/prompts/template_registry.py",
+            "_PackagedTemplateCache.__init__",
+            "unbounded_accumulator",
+        ),
+        (
+            "ralph/recovery/agent_failure_ledger.py",
+            "AgentFailureLedger.__init__",
+            "unbounded_accumulator",
+        ),
+        ("ralph/recovery/connectivity.py", "<module>", "unbounded_accumulator"),
+        ("ralph/recovery/connectivity.py", "ConnectivityMonitor.__init__", "unbounded_accumulator"),
+        ("ralph/recovery/controller.py", "<module>", "unbounded_accumulator"),
+        ("ralph/recovery/controller.py", "RecoveryController.__init__", "unbounded_accumulator"),
+        ("ralph/recovery/events.py", "FailureEventBus.__init__", "unbounded_accumulator"),
+        ("ralph/recovery/testing.py", "FakeConnectivityMonitor.__init__", "unbounded_accumulator"),
+        ("ralph/telemetry/_user_identity.py", "_identity_lock", "raw_os_fd"),
+        (
+            "ralph/workspace/_cross_process_watch_lock.py",
+            "CrossProcessWatchLock",
+            "unbounded_accumulator",
+        ),
+        ("ralph/workspace/_shared_awareness.py", "<module>", "unbounded_accumulator"),
+        (
+            "ralph/workspace/_shared_awareness.py",
+            "SharedAwarenessSidecar.__init__",
+            "unbounded_accumulator",
+        ),
+        ("ralph/workspace/awareness.py", "<module>", "unbounded_accumulator"),
+        ("ralph/workspace/awareness.py", "WorkspaceAwareness.__init__", "unbounded_accumulator"),
+        ("ralph/workspace/memory.py", "MemoryWorkspace.__init__", "unbounded_accumulator"),
+        (
+            "ralph/workspace/probe.py",
+            "DefaultWorkspaceChangeProbe.__init__",
+            "unbounded_accumulator",
+        ),
+    }
+)
 _THREAD_NAMES: frozenset[str] = frozenset({"threading.Thread", "Thread"})
 
-# HTTP client constructors — these must be the context-manager expression
-# of a with statement. Bare assignment leaks the connection pool.
 _HTTP_CLIENT_NAMES: frozenset[str] = frozenset(
     {"httpx.Client", "httpx.AsyncClient", "requests.Session"}
 )
 _HTTP_ROOTS: frozenset[str] = frozenset({"httpx", "requests"})
 
-# OrderedDict / defaultdict constructors — these have NO ``maxlen`` kwarg
-# (unlike ``deque``), so the FIFO-cap escape hatch is a manual
-# ``popitem(last=False)`` / ``len(...) > cap`` eviction policy in the
-# code itself. The audit MUST flag them so the only escape is an honest
-# ``# bounded-accumulator-ok: <cap>`` marker naming the real cap / drain.
 _ORDERED_DICT_NAMES: frozenset[str] = frozenset({"OrderedDict", "collections.OrderedDict"})
 _DEFAULT_DICT_NAMES: frozenset[str] = frozenset({"defaultdict", "collections.defaultdict"})
 
-# Raw os fd creation — only allowed under ralph/process/ (centralized
-# process lifecycle layer). Outside that allowlist, this is a leak.
 _RAW_OS_FD_NAMES: frozenset[str] = frozenset({"os.open", "os.openpty", "os.pipe"})
 
-# Allowlist roots: directories where raw os fd creation is legitimate
-# because the centralized process lifecycle owns the fd. Paths are
-# matched against the relative-to-package-root path of the file under
-# audit.
 _RAW_OS_FD_ALLOWLIST_DIRS: tuple[str, ...] = ("process",)
 
 _DIRECT_CHILD_PROCESS_NAMES: frozenset[str] = frozenset(
@@ -140,8 +332,6 @@ _DIRECT_CHILD_PROCESS_NAMES: frozenset[str] = frozenset(
 
 
 class ResourceLifecycleViolation:
-    """A single resource-lifecycle contract violation."""
-
     def __init__(self, file_path: str, line: int, category: str, detail: str) -> None:
         self.file_path = file_path
         self.line = line
@@ -153,29 +343,6 @@ class ResourceLifecycleViolation:
 
 
 def _keyword_truthy(node: ast.Call, name: str) -> bool:
-    """Return True iff ``name=True`` is passed as an explicit boolean keyword.
-
-    The ``daemon=True`` rule for ``threading.Thread`` must require the
-    explicit ``True`` value — ``daemon=False``, ``daemon=1``,
-    ``daemon="yes"``, or any non-boolean expression does NOT satisfy
-    the contract because:
-
-    - ``daemon=False`` is the same lifecycle hazard as omitting the
-      argument (a non-daemon thread blocks interpreter exit);
-    - ``daemon=1`` / ``daemon=0`` / ``daemon="yes"`` are truthy but
-      ``threading.Thread.__init__`` rejects non-bool ``daemon`` values
-      at runtime (``TypeError: daemon must be explicitly set to True``
-      in Python 3.13+), so the call would already crash — flagging
-      it at audit time surfaces the latent bug before it ships;
-    - ``daemon=expr`` (any non-constant expression) cannot be
-      statically resolved and MUST be flagged for human review.
-
-    Only the literal ``True`` constant (``ast.Constant(value=True)``)
-    is accepted. Everything else — ``False``, ``1``, ``0``,
-    expressions, calls, names — is treated as "not explicitly
-    daemon=True" so the violation is surfaced rather than silently
-    accepted.
-    """
     for kw in node.keywords:
         if kw.arg != name:
             continue
@@ -187,38 +354,10 @@ def _keyword_truthy(node: ast.Call, name: str) -> bool:
 
 
 def _keyword_present(node: ast.Call, name: str) -> bool:
-    """Return True iff ``name`` is passed as a keyword (any value).
-
-    Used by the accumulator contract to decide whether a
-    ``deque(maxlen=...)`` call is bounded (maxlen keyword present, any
-    numeric value). A deque constructed without ``maxlen=`` is
-    unbounded and MUST be flagged (or carry a marker).
-
-    NOTE: this helper only checks keyword PRESENCE; use
-    ``_keyword_value_is_positive_int`` to verify the value is a
-    positive integer literal (rejects ``maxlen=None``, ``maxlen=0``,
-    ``maxlen=-1``, and any non-constant expression). The deque
-    accumulator contract requires BOTH: the keyword must be present
-    AND its value must be a positive integer literal.
-    """
     return any(kw.arg == name for kw in node.keywords)
 
 
 def _keyword_value_is_positive_int(node: ast.Call, name: str) -> bool:
-    """Return True iff ``name`` is passed as a keyword with a positive
-    integer literal value.
-
-    Rejects:
-      - ``maxlen=None`` (effectively unbounded, defeats the FIFO cap);
-      - ``maxlen=0`` / ``maxlen=-1`` (non-positive; deque would drop
-        on the next append or refuse construction);
-      - ``maxlen=<name>`` / ``maxlen=<expression>`` (cannot be statically
-        resolved and MUST be surfaced for human review, not silently
-        accepted).
-
-    Accepts only ``maxlen=N`` where ``N`` is a non-zero positive
-    integer literal (``ast.Constant`` with ``int`` value > 0``).
-    """
     for kw in node.keywords:
         if kw.arg != name:
             continue
@@ -234,7 +373,6 @@ def _keyword_value_is_positive_int(node: ast.Call, name: str) -> bool:
 
 
 def _dotted_name(node: ast.Call) -> str | None:
-    """Return the dotted function name when the receiver chain is plain names."""
     func: ast.expr = node.func
     parts: list[str] = []
     while isinstance(func, ast.Attribute):
@@ -251,39 +389,14 @@ def _collect_import_aliases_if_needed(
     source: str,
     tree: ast.Module,
 ) -> tuple[dict[str, str], dict[str, str]]:
-    """Resolve ``import x as y`` / ``from x import y [as z]`` bindings ONLY
-    when the source contains an import pattern that the audit cares about.
-
-    For files that don't import threading/httpx/requests/urllib3/os/asyncio
-    (the imports the alias-resolved contracts care about), the visitor
-    relies on bare canonical names and the import-collection walk is
-    unnecessary. Skipping the walk saves ~200-300 ms on large files like
-    ``ralph/mcp/tools/artifact.py`` (2.6k lines, 10k+ AST nodes).
-
-    Returns:
-        module_aliases: local module alias -> canonical module ("sp" -> "subprocess")
-        from_imports: local name -> canonical dotted path ("Client" -> "httpx.Client")
-    """
     if not _source_needs_import_resolution(source):
         return {}, {}
     return _collect_import_aliases(tree)
 
 
 def _collect_import_aliases(tree: ast.Module) -> tuple[dict[str, str], dict[str, str]]:
-    """Resolve ``import x as y`` / ``from x import y [as z]`` bindings.
-
-    Returns:
-        module_aliases: local module alias -> canonical module ("sp" -> "subprocess")
-        from_imports: local name -> canonical dotted path ("Client" -> "httpx.Client")
-    """
     module_aliases: dict[str, str] = {}
     from_imports: dict[str, str] = {}
-    # Walk ONLY the module body — imports live at the top level
-    # (``ast.Import`` / ``ast.ImportFrom`` are not nested). This skips
-    # walking every nested function body, expression, etc., which on
-    # ``ralph/mcp/tools/artifact.py`` (10k+ nodes total, ~50 top-level
-    # statements) is a ~200x reduction in the walked-node count for the
-    # import-collection pass.
     for node in tree.body:
         if isinstance(node, ast.Import):
             for alias in node.names:
@@ -301,10 +414,6 @@ def _canonical_name(
     module_aliases: dict[str, str],
     from_imports: dict[str, str],
 ) -> str | None:
-    """Resolve a dotted call name through the module's import aliases so
-    ``sp.run`` -> ``subprocess.run``, ``th.Thread`` -> ``threading.Thread``,
-    and bare ``Client`` -> ``httpx.Client`` are caught.
-    """
     if name is None:
         return None
     parts = name.split(".")
@@ -315,20 +424,6 @@ def _canonical_name(
 
 
 def _collect_in_with_calls(tree: ast.Module) -> set[ast.Call]:
-    """Return the set of Call nodes that ARE the context-manager
-    expression of a with statement (sync or async).
-
-    Both ``with httpx.Client() as client:`` (sync) and ``async with
-    httpx.AsyncClient() as client:`` (async) are legitimate patterns
-    and must NOT be flagged. Bare assignment (``client = httpx.Client()``
-    or ``client = httpx.AsyncClient()``) is the violation. The set is
-    pre-computed once per file so the visit loop does O(1) membership
-    tests instead of an O(nodes) walk per HTTP client call.
-
-    Only ``context_expr`` is captured (the typical Client/AsyncClient
-    pattern). The audit calls ``node not in in_with_calls`` for every
-    HTTP client call, so the membership test must be cheap.
-    """
     result: set[ast.Call] = set()
     for parent in ast.walk(tree):
         if isinstance(parent, (ast.With, ast.AsyncWith)):
@@ -340,14 +435,6 @@ def _collect_in_with_calls(tree: ast.Module) -> set[ast.Call]:
 
 
 def _is_static_dict_key(node: ast.expr) -> bool:
-    """Return True iff ``node`` is a static dict key (not a dynamic expression).
-
-    Static keys are string constants, name references, attribute
-    accesses (e.g. ``McpCapability.X``), or subscripts (e.g.
-    ``dicts[X]``). Dict literals whose keys are ALL static are
-    populated once at construction and never mutated thereafter, so
-    they are dispatch / handler / config tables — NOT accumulators.
-    """
     return isinstance(node, (ast.Constant, ast.Name, ast.Attribute, ast.Subscript)) or (
         isinstance(node, ast.Tuple) and all(_is_static_dict_key(element) for element in node.elts)
     )
@@ -358,40 +445,7 @@ def _is_unbounded_accumulator_value(
     module_aliases: dict[str, str],
     from_imports: dict[str, str],
 ) -> bool:
-    """Return True iff ``value`` is an unbounded mutable accumulator
-    initializer.
-
-    Flagged (treated as unbounded accumulator):
-      - empty ``[]`` list literal (multi-element list literals are
-        excluded — see "NOT flagged" below);
-      - empty ``{}`` dict literal (dict literals with all-static keys
-        are excluded — see "NOT flagged" below);
-      - ``set()`` literal whose elements are NOT all static;
-      - bare ``list()`` / ``dict()`` / ``set()`` constructor call;
-      - ``deque()`` / ``collections.deque()`` constructor call WITHOUT
-        a ``maxlen=`` keyword.
-
-    NOT flagged (clean by construction / static patterns):
-      - ``deque(maxlen=N)`` / ``collections.deque(maxlen=N)``;
-      - constructor calls WITH a documented size argument such as
-        ``list(some_iterable)`` (out of scope; requires dataflow
-        tracking to prove boundedness);
-      - single-element list literal ``[X]`` (Python's mutable-closure
-        idiom for capturing a counter / flag / None sentinel — the
-        list itself is NOT an accumulator);
-      - dict literal where EVERY key is static (string constants,
-        names, attributes, or subscripts) — populated once at
-        construction and never mutated thereafter (dispatch /
-        handler / config tables);
-      - set literal where EVERY element is static — populated once
-        at construction and never mutated thereafter.
-    """
     if isinstance(value, ast.List):
-        # Single-element list literals are Python's mutable-closure
-        # idiom (counter / flag / sentinel) — they hold ONE element
-        # and the .append() / [0] = ... pattern mutates in place. They
-        # are not accumulators; flagging them produces massive false
-        # positives on common streaming-reader patterns.
         return len(value.elts) != 1
     return _classify_unbounded_accumulator_call_or_collection(value, module_aliases, from_imports)
 
@@ -401,12 +455,9 @@ def _classify_unbounded_accumulator_call_or_collection(
     module_aliases: dict[str, str],
     from_imports: dict[str, str],
 ) -> bool:
-    """Continue classification for dict/set/call literals (extracted
-    to keep the top-level function below PLR0911).
-    """
     if isinstance(value, ast.Dict):
         if value.keys is None or not value.keys:
-            return True  # empty {} is flagged (starts an unbounded accumulator)
+            return True
         keys: list[ast.expr | None] = value.keys
         return not all(_is_static_dict_key(k) for k in keys if k is not None)
     if isinstance(value, ast.Set):
@@ -421,27 +472,6 @@ def _classify_unbounded_accumulator_call(
     module_aliases: dict[str, str],
     from_imports: dict[str, str],
 ) -> bool:
-    """Classify a Call expression as an unbounded accumulator or not.
-
-    Flagged (treated as unbounded accumulator):
-      - ``set()`` literal (no size kwarg at all);
-      - ``deque()`` / ``collections.deque()`` WITHOUT ``maxlen=`` as a
-        positive integer literal;
-      - bare ``list()`` / ``dict()`` / ``set()`` constructor calls;
-      - ``OrderedDict()`` / ``collections.OrderedDict()`` constructor
-        calls (no maxlen kwarg; the FIFO escape hatch is a manual
-        ``popitem(last=False)`` eviction policy in the code itself);
-      - ``defaultdict()`` / ``collections.defaultdict()`` constructor
-        calls (no size kwarg at all; the factory argument controls
-        the default VALUE for missing keys, not the size).
-
-    NOT flagged (clean by construction):
-      - ``deque(maxlen=N)`` / ``collections.deque(maxlen=N)`` with N
-        a positive integer literal;
-      - constructor calls WITH a documented size argument such as
-        ``list(some_iterable)`` (out of scope; requires dataflow
-        tracking to prove boundedness).
-    """
     if not isinstance(value, ast.Call):
         return False
     canonical = _canonical_name(_dotted_name(value), module_aliases, from_imports)
@@ -460,31 +490,6 @@ def _is_module_level_or_self_init(
     targets: list[ast.expr],
     enclosing_function: ast.FunctionDef | ast.AsyncFunctionDef | None,
 ) -> bool:
-    """Return True iff the assignment targets are a module-level name
-    OR an instance attribute (``self.X``) inside an ``__init__`` body.
-
-    The accumulator contract deliberately limits its scope to these two
-    locations because that is where long-lived accumulators live (a
-    module-level singleton or an instance attribute initialized in
-    ``__init__``). Local variables inside non-``__init__`` functions
-    are out of scope (higher false-positive rate; the
-    ``BudgetState.failures`` leak class is closed by dropping the
-    field + the tracemalloc test, not by this AST contract).
-
-    Returns False for targets that are:
-      - bare ``Name`` not at module level (i.e., enclosing function is
-        not None and the name is not a global declaration);
-      - ``Attribute`` whose ``value`` is not ``self``;
-      - ``Subscript`` / ``Starred`` / ``Tuple`` targets.
-
-    Excludes ``__all__`` (the Python re-export convention). ``__all__``
-    is a static list of exported symbol names set at class load and
-    never mutated across a session; treating it as an accumulator
-    would force spurious ``# bounded-accumulator-ok`` markers on every
-    package's ``__init__.py`` for no leak-prevention benefit. The
-    contract applies to ``__all__``-SHAPED lists too (so it is
-    documented here), but the audit intentionally skips them.
-    """
     is_module_level = enclosing_function is None
     is_init = enclosing_function is not None and enclosing_function.name == "__init__"
     if not (is_module_level or is_init):
@@ -503,63 +508,33 @@ def _is_module_level_or_self_init(
 
 
 class ResourceLifecycleAuditor(ast.NodeVisitor):
-    """AST visitor that detects resource-lifecycle contract violations."""
-
     def __init__(
         self,
         file_path: str,
-        source: str,
         rel_path: str,
+        registry_path: str,
         *,
         module_aliases: dict[str, str] | None = None,
         from_imports: dict[str, str] | None = None,
     ) -> None:
         self.file_path = file_path
         self.rel_path = rel_path
-        self.source_lines = source.splitlines()
+        self.registry_path = registry_path
         self.tree: ast.Module | None = None
         self.violations: list[ResourceLifecycleViolation] = []
         self._module_aliases = module_aliases or {}
         self._from_imports = from_imports or {}
         self._enclosing_function: ast.FunctionDef | ast.AsyncFunctionDef | None = None
         self._enclosing_class: ast.ClassDef | None = None
-        # Pre-computed in ``visit_Module`` so ``visit_Call`` can do an
-        # O(1) set membership test instead of an O(nodes) tree walk per
-        # HTTP client call. ``None`` until ``visit_Module`` runs.
         self._in_with_calls: set[ast.Call] | None = None
+        self._parents: dict[ast.AST, ast.AST] = {}
 
-    def _allowed(self, node: ast.AST) -> bool:
-        # The marker convention is ``# bounded-accumulator-ok: <reason>``
-        # on the same line as the assignment. For multi-line assignments
-        # (``_X: dict[str, bool] = {}`` split across several lines or
-        # parenthesized assignment targets), the marker naturally falls
-        # on the line where the value closes (``] = {}``). The audit
-        # accepts the assignment's own line, the value's line, and the
-        # assignment's ``end_lineno`` so the marker can sit at the
-        # natural end-of-statement position too.
-        candidates: set[int] = set()
-        for attr in ("lineno", "end_lineno"):
-            value: int | None = getattr(node, attr, None)
-            if isinstance(value, int) and value > 0:
-                candidates.add(value)
-        # When the anchor is an AnnAssign / Assign, the value's
-        # lineno is the line where the ``=`` happens for multi-line
-        # patterns (``_X: dict[\n  str, bool\n] = {}``). Pull it from
-        # the value attribute if available.
-        value_node: ast.AST | None = getattr(node, "value", None)
-        if value_node is not None:
-            v_lineno: int | None = getattr(value_node, "lineno", None)
-            if isinstance(v_lineno, int) and v_lineno > 0:
-                candidates.add(v_lineno)
-        for candidate in candidates:
-            if 1 <= candidate <= len(self.source_lines) and any(
-                marker in self.source_lines[candidate - 1] for marker in _ALLOW_MARKERS
-            ):
-                return True
-        return False
+    def _registered(self, node: ast.AST, category: str) -> bool:
+        scope = qualified_scope(node, self._parents)
+        return (self.registry_path, scope, category) in EXEMPT_CALL_SITES
 
     def _add(self, node: ast.AST, category: str, detail: str) -> None:
-        if self._allowed(node):
+        if self._registered(node, category):
             return
         lineno: int = getattr(node, "lineno", 0)
         self.violations.append(
@@ -572,24 +547,12 @@ class ResourceLifecycleAuditor(ast.NodeVisitor):
         )
 
     def visit_Module(self, node: ast.Module) -> None:
-        # Capture the module so we can check whether each Call is the
-        # context-manager expression of a with statement. The set of
-        # Call nodes that ARE in a ``with`` statement's context_expr is
-        # pre-computed once via ``ast.walk``; ``visit_Call`` then does a
-        # set membership test instead of a full tree walk per HTTP
-        # client call. This collapses the worst-case complexity from
-        # O(http_calls * nodes) to O(nodes + http_calls).
         self.tree = node
         self._in_with_calls = _collect_in_with_calls(node)
+        self._parents = build_parent_map(node)
         self.generic_visit(node)
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
-        # Track the enclosing class so ``__init__`` bodies are detected
-        # for the accumulator contract. Module-level assignments to
-        # a class body Name do NOT trigger the accumulator contract
-        # (class-level Names are class attributes, not module-level
-        # singletons); the contract deliberately targets only module-
-        # level Names and ``self.X`` in ``__init__``.
         previous_class = self._enclosing_class
         self._enclosing_class = node
         self.generic_visit(node)
@@ -622,13 +585,6 @@ class ResourceLifecycleAuditor(ast.NodeVisitor):
         targets: list[ast.expr],
         anchor: ast.AST,
     ) -> None:
-        """Apply the 4th contract to a single assignment.
-
-        Flags unbounded mutable accumulators assigned to module-level
-        names or ``self.X`` in ``__init__`` bodies. Skipped when the
-        value is NOT an unbounded accumulator (e.g., ``deque(maxlen=8)``
-        or a non-collection expression).
-        """
         if not _is_unbounded_accumulator_value(value, self._module_aliases, self._from_imports):
             return
         if not _is_module_level_or_self_init(targets, self._enclosing_function):
@@ -640,7 +596,8 @@ class ResourceLifecycleAuditor(ast.NodeVisitor):
             "unbounded_accumulator",
             f"{rendered_targets} = {rendered_value} — long-lived mutable "
             "accumulator without a FIFO/size cap; use deque(maxlen=...), "
-            "OrderedDict + count cap, or carry # bounded-accumulator-ok: <reason>",
+            "OrderedDict + count cap, or register the call site in "
+            "EXEMPT_CALL_SITES",
         )
 
     def visit_Call(self, node: ast.Call) -> None:
@@ -674,7 +631,8 @@ class ResourceLifecycleAuditor(ast.NodeVisitor):
                 "raw_os_fd",
                 f"{canonical}() outside ralph/process/ — raw fd "
                 "creation must be centralized in the process lifecycle "
-                "layer (relocate or add # resource-lifecycle-ok: <reason>)",
+                "layer (relocate or register the call site in "
+                "EXEMPT_CALL_SITES)",
             )
 
         if (
@@ -685,21 +643,13 @@ class ResourceLifecycleAuditor(ast.NodeVisitor):
                 node,
                 "direct_child_spawn",
                 f"{canonical}() outside ralph/process/ — child creation must flow "
-                "through ProcessManager (relocate or add # resource-lifecycle-ok: <reason>)",
+                "through ProcessManager (relocate or register the call site in "
+                "EXEMPT_CALL_SITES)",
             )
 
         self.generic_visit(node)
 
     def _is_in_raw_fd_allowlist(self) -> bool:
-        """True if ``self.rel_path`` is under one of the raw-fd allowlist dirs.
-
-        The allowlist is a TUPLE of directory prefixes (relative to the
-        ralph package root). A file whose relative path starts with
-        one of these prefixes is allowed to create raw fds because the
-        centralized process lifecycle owns those fds. Files in
-        ``ralph/process/pty.py`` (``process/pty.py``) and any
-        ``process/.../...py`` match the ``process`` allowlist.
-        """
         rel = self.rel_path.replace("\\", "/")
         for prefix in _RAW_OS_FD_ALLOWLIST_DIRS:
             if rel == prefix or rel.startswith(prefix + "/"):
@@ -707,52 +657,21 @@ class ResourceLifecycleAuditor(ast.NodeVisitor):
         return False
 
 
-# Substring pre-filter: any file that lacks ALL of the audited
-# patterns cannot contain a violation, so the AST parse + walk is
-# skipped. Each entry is a substring that, when absent, rules out
-# one or more contract classes. The pre-filter is conservative: a
-# file that contains a substring still MIGHT be clean (the AST walk
-# decides), but a file that contains none cannot be in violation.
-# This collapses the AST-walk cost from O(total_source_bytes) to
-# O(matching_files_source_bytes), which on the ralph/ tree is a
-# ~30x speedup for the production-tree scan.
-#
-# The pre-filter covers the EXPENSIVE contracts (alias-resolved
-# calls). The accumulator rule (contract 4) uses bare ``self._x = []``
-# / ``_x = []`` patterns that are cheap to detect via ast.walk
-# WITHOUT alias resolution, so the substring pre-filter does not
-# need to enumerate every mutable-collection literal; the AST walk
-# handles those quickly.
-#
-# ``_IMPORT_KEYWORDS`` is the substring set that, when absent, rules
-# out ALL alias-resolved call checks (the daemon-thread,
-# HTTP-client, and raw-fd contracts). A file that contains none of
-# these keywords has no aliased imports that the audit needs to
-# resolve, so ``_collect_import_aliases`` (an ``ast.walk`` over every
-# node in the file) is unnecessary — the visitor can rely on bare
-# canonical names. This is the secondary fast-path: even after the
-# _AUDIT_SUBSTRINGS pre-filter admits a file, the import-collection
-# walk is skipped unless a relevant import pattern is present.
 _IMPORT_KEYWORDS: tuple[str, ...] = (
-    # daemon-Thread rule
     "from threading",
     "import threading",
     "from asyncio",
     "import asyncio",
-    # HTTP-client rule
     "from httpx",
     "import httpx",
     "from requests",
     "import requests",
     "from urllib3",
     "import urllib3",
-    # raw os fd rule
     "import subprocess",
     "from subprocess",
     "from os import",
     "import os",
-    # alias-only patterns (still useful: catches ``from x import`` /
-    # ``import x as y`` shapes that hide canonical names)
     "import threading as",
     "import httpx as",
     "import requests as",
@@ -762,34 +681,22 @@ _IMPORT_KEYWORDS: tuple[str, ...] = (
 
 
 def _source_needs_import_resolution(source: str) -> bool:
-    """Return True iff ``source`` contains any substring that the
-    alias-resolved call checks need to resolve.
-
-    Files that do not match are skipped without an ``_collect_import_aliases``
-    walk — that walk is O(nodes) and is the dominant cost on large
-    files like ``ralph/mcp/tools/artifact.py`` (2.6k lines, 10k+ nodes)
-    even after the broader audit substring pre-filter admits them.
-    """
     return any(needle in source for needle in _IMPORT_KEYWORDS)
 
 
 _AUDIT_SUBSTRINGS: tuple[str, ...] = (
-    # daemon-Thread rule (contract 1)
     "Thread(",
     "threading.Thread",
     "from threading",
     "import threading",
-    # HTTP-with rule (contract 2)
     "Client(",
     "AsyncClient(",
     "Session(",
     "httpx",
     "requests",
-    # raw os fd rule (contract 3)
     "os.open(",
     "os.openpty(",
     "os.pipe(",
-    # direct child-spawn rule (contract 5)
     "subprocess",
     "subprocess.run(",
     "subprocess.call(",
@@ -808,23 +715,12 @@ _AUDIT_SUBSTRINGS: tuple[str, ...] = (
     "fork(",
     "asyncio.create_subprocess_exec(",
     "asyncio.create_subprocess_shell(",
-    # accumulator constructors (contract 4) — alias-resolved
-    # call patterns. The bare ``=[]`` / ``={}`` / ``[]`` / ``{}``
-    # literal patterns are also included: a file that lacks every
-    # list/dict literal in the audited shapes cannot contain an
-    # accumulator violation, and the substring pre-filter is
-    # cheaper than the AST parse + walk.
     "deque(",
     "OrderedDict(",
     "defaultdict(",
     "list()",
     "dict()",
     "set()",
-    # The accumulator literal patterns tolerate a single space
-    # between ``=`` and the literal because Python's PEP 8 style
-    # (``x = []``, ``x = {}``) is the dominant idiom and the
-    # substring pre-filter must catch it to avoid silently
-    # skipping files like ``self._x = {}`` in __init__.
     "= []",
     "= {}",
     "= set()",
@@ -837,35 +733,25 @@ _AUDIT_SUBSTRINGS: tuple[str, ...] = (
 
 
 def _source_has_audit_pattern(source: str) -> bool:
-    """Return True iff ``source`` contains any substring that the audit
-    needs to inspect. Files that do not match are skipped without an
-    AST parse + walk — the dominant cost of the production-tree scan.
-    """
     return any(needle in source for needle in _AUDIT_SUBSTRINGS)
 
 
-def audit_resource_lifecycle_file(file_path: Path) -> list[ResourceLifecycleViolation]:
-    """Audit a single Python file for resource-lifecycle violations.
+def registry_path(file_path: Path) -> str:
+    repository_root = Path(__file__).parent.parent.parent
+    try:
+        return file_path.resolve().relative_to(repository_root.resolve()).as_posix()
+    except ValueError:
+        return file_path.as_posix()
 
-    The ``file_path`` is resolved against the ralph package root to
-    compute a relative path; the relative path is used to decide
-    whether the file is in the raw-fd allowlist (ralph/process/).
-    """
+
+def audit_resource_lifecycle_file(file_path: Path) -> list[ResourceLifecycleViolation]:
     package_root = Path(__file__).parent.parent
     try:
         rel_path = file_path.resolve().relative_to(package_root.resolve()).as_posix()
     except ValueError:
-        # Outside the package root — treat as outside-allowlist for
-        # raw fd checks. This is the conservative choice (flag any
-        # raw os fd outside ralph/process/) and matches the contract.
         rel_path = file_path.as_posix()
+    exemption_key_path = registry_path(file_path)
     source = file_path.read_text(encoding="utf-8")
-    # Substring pre-filter: a file that lacks every audited pattern
-    # cannot contain a violation. The same pattern (substring
-    # pre-filter, then AST parse + walk) is used in
-    # test_no_anti_drift_regression.py and
-    # test_no_anti_drift_recovery_invariants.py. This is the
-    # canonical fast-path for AST audits over the ralph/ tree.
     if not _source_has_audit_pattern(source):
         return []
     try:
@@ -875,8 +761,8 @@ def audit_resource_lifecycle_file(file_path: Path) -> list[ResourceLifecycleViol
     module_aliases, from_imports = _collect_import_aliases_if_needed(source, tree)
     auditor = ResourceLifecycleAuditor(
         str(file_path),
-        source,
         rel_path,
+        exemption_key_path,
         module_aliases=module_aliases,
         from_imports=from_imports,
     )
@@ -887,10 +773,6 @@ def audit_resource_lifecycle_file(file_path: Path) -> list[ResourceLifecycleViol
 def audit_resource_lifecycle_directory(
     root: Path,
 ) -> tuple[list[ResourceLifecycleViolation], int]:
-    """Audit every Python file under ``root``.
-
-    Returns (violations, files_checked).
-    """
     all_violations: list[ResourceLifecycleViolation] = []
     files_checked = 0
     for py_file in sorted(root.rglob("*.py")):
@@ -902,14 +784,6 @@ def audit_resource_lifecycle_directory(
 
 
 def _default_roots() -> list[Path]:
-    """Roots audited when no explicit root is given.
-
-    Covers every production package the resource-lifecycle contract
-    applies to every production package with lifecycle-sensitive code.
-    ``ralph/process`` remains the raw-fd allowlist root; ``ralph/recovery``
-    is deliberately excluded only from the separate timeout audit because
-    its event waits need type-aware handling there.
-    """
     package_root = Path(__file__).parent.parent
     return [
         package_root / "mcp",
@@ -946,13 +820,6 @@ def _default_roots() -> list[Path]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the resource-lifecycle audit and return an exit code.
-
-    When ``argv`` (or ``sys.argv[1:]``) is empty, audit the default
-    production roots. When explicit roots are provided, audit EVERY
-    one of them — a missing root short-circuits to exit 2 before any
-    audit work, so a partial-pass output cannot hide a violating root.
-    """
     args = argv if argv is not None else sys.argv[1:]
     roots = [Path(a) for a in args] if args else _default_roots()
 
@@ -983,11 +850,9 @@ def main(argv: list[str] | None = None) -> int:
             "Production code MUST use daemon=True threads, with-managed HTTP "
             "clients, raw os fd creation only under ralph/process/, and "
             "long-lived mutable accumulators must carry a FIFO/size cap "
-            "(deque(maxlen=...), OrderedDict + count cap) or a "
-            "# bounded-accumulator-ok: <reason> marker. Add an inline "
-            "# resource-lifecycle-ok: <reason> marker if the call is "
-            "genuinely bounded by a try/finally lifecycle (rare — keep it "
-            "justified)."
+            "(deque(maxlen=...), OrderedDict + count cap). Register a call "
+            "site in EXEMPT_CALL_SITES as (file, qualified callable, "
+            "category) when the lifecycle contract is genuinely bounded."
         )
         return 1
 

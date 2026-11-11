@@ -1,4 +1,3 @@
-"""BudgetCounterConfig Pydantic model."""
 
 from __future__ import annotations
 
@@ -8,7 +7,6 @@ from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 
 
 class BudgetCounterConfig(_FrozenPolicyModel):
-    """Declaration of a named budget counter in the pipeline."""
 
     description: str = Field(default="", description="Human-readable description")
     tracks_budget: bool = Field(

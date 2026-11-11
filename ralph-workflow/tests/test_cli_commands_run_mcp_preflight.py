@@ -1,5 +1,3 @@
-"""Tests for custom MCP validation in run-command preflight."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -101,10 +99,6 @@ def test_run_pipeline_stops_before_execution_when_custom_mcp_validation_fails(
 def test_execute_pipeline_forwards_pro_hooks_model_identity_and_policy_bundle(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``_execute_pipeline`` builds PipelineDeps through the shared factory and
-    forwards Pro hooks, model identity, and the loaded policy bundle into the
-    runner so the main pipeline uses the same initialization path as plumbing.
-    """
     captured: dict[str, object] = {}
 
     def fake_runner(

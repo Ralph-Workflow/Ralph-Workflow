@@ -1,4 +1,3 @@
-"""Move constants_block to after fixtures, before test_fns."""
 from pathlib import Path
 
 path = Path('.agent/tmp/consolidate_any.py')

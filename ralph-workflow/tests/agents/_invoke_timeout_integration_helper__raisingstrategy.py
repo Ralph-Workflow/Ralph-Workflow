@@ -4,8 +4,6 @@ from ralph.agents.execution_state import AgentExecutionState, GenericExecutionSt
 
 
 class _RaisingStrategy(GenericExecutionStrategy):
-    """Strategy whose classify_quiet always raises to simulate a transient probe failure."""
-
     def classify_quiet(
         self,
         handle: object,

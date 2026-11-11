@@ -1,9 +1,3 @@
-"""Characterization baseline for filesystem-proportional workspace activity.
-
-The test drives only public persistence and watch lifecycle seams through
-in-memory fakes.  It does not touch the host filesystem or a watchdog observer.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -16,8 +10,6 @@ from ralph.workspace.fs import FsWorkspace
 
 
 class _HealthyCrossProcessLock:
-    """In-memory cross-process lock fake: always free, no filesystem sidecar."""
-
     def __init__(self) -> None:
         self._owner_id: str | None = None
 
@@ -40,8 +32,6 @@ class _HealthyCrossProcessLock:
 
 
 class _InMemorySidecar:
-    """In-memory shared-awareness sidecar fake."""
-
     def __init__(self) -> None:
         self.epoch = 0
 
@@ -63,8 +53,6 @@ class _InMemorySidecar:
 
 
 class _ActivityBackend(FileBackend):
-    """In-memory persistence boundary exposing observable publications."""
-
     def __init__(self) -> None:
         self._files: dict[Path, str] = {}
         self.publications: list[tuple[Path, str]] = []
@@ -116,8 +104,6 @@ class _ActivityBackend(FileBackend):
 
 
 class _ActivityObserver:
-    """In-memory watch boundary exposing recursive registrations."""
-
     def __init__(self) -> None:
         self.registrations: list[tuple[str, bool]] = []
 
@@ -138,7 +124,6 @@ class _ActivityObserver:
 def test_unchanged_workspace_cycle_preserves_bytes_without_new_publication_or_watch_registration() -> (
     None
 ):
-    """S-1: unchanged cycle leaves final bytes and activity boundaries unchanged."""
     backend = _ActivityBackend()
     observer = _ActivityObserver()
     workspace = FsWorkspace(Path("/virtual-ws"), backend=backend)
@@ -176,7 +161,6 @@ def test_unchanged_workspace_cycle_preserves_bytes_without_new_publication_or_wa
 
 
 def test_public_output_bytes_fixture_matches_unchanged_cycle() -> None:
-    """S-3: an unchanged byte publication has no observable side effect."""
     backend = _ActivityBackend()
     result_path = Path("/virtual-ws/artifacts/result.txt")
 
@@ -190,7 +174,6 @@ def test_public_output_bytes_fixture_matches_unchanged_cycle() -> None:
 
 
 def test_text_and_byte_publications_share_publication_log() -> None:
-    """S-3: byte and text seams expose the same publication contract."""
     backend = _ActivityBackend()
     result_path = Path("/virtual-ws/artifacts/result.txt")
 
@@ -203,7 +186,6 @@ def test_text_and_byte_publications_share_publication_log() -> None:
 
 
 def test_byte_mode_publication_records_decoded_payload() -> None:
-    """S-3: a fresh byte publication is visible through the public log."""
     backend = _ActivityBackend()
     result_path = Path("/virtual-ws/artifacts/result.txt")
 
@@ -213,7 +195,6 @@ def test_byte_mode_publication_records_decoded_payload() -> None:
 
 
 def test_independent_monitors_for_one_workspace_share_one_recursive_registration() -> None:
-    """S-2 regression: equivalent in-process consumers share one root watch."""
     first = _ActivityObserver()
     second = _ActivityObserver()
     observers = iter((first, second))
@@ -259,13 +240,6 @@ def test_independent_monitors_for_one_workspace_share_one_recursive_registration
 def test_shared_retention_coordinator_runs_one_pass_for_parallel_sweeps(
     tmp_path: Path,
 ) -> None:
-    """AC-3: N parallel sweeps under one coordinator coalesce into one pass.
-
-    Every caller enters the wave before any of them runs the inner sweep
-    body (``threading.Barrier``), so exactly one owner records the pass
-    and every caller receives the same shared ``removed`` count drawn
-    from the canonical first-sweep result.
-    """
     import threading
 
     from ralph.workspace.agent_dir_retention import (
@@ -290,9 +264,6 @@ def test_shared_retention_coordinator_runs_one_pass_for_parallel_sweeps(
     results_lock = threading.Lock()
 
     def _caller() -> None:
-        # The barrier fires inside the wave (owner and joiners alike), so
-        # every caller has entered the wave before the owner runs the
-        # inner sweep body.
         removed = sweep_agent_dir(
             tmp_path,
             keep_run_id=None,
@@ -310,6 +281,4 @@ def test_shared_retention_coordinator_runs_one_pass_for_parallel_sweeps(
 
     assert len(results) == caller_count
     assert coordinator.passes == 1
-    # Every caller received the same shared result: the aged sentinel was
-    # removed exactly once by the wave owner and joiners share its count.
     assert all(removed == 1 for removed in results)

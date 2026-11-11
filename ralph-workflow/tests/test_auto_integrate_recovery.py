@@ -1,47 +1,3 @@
-"""Crash-recovery and security regression tests for :mod:`ralph.pipeline.auto_integrate`.
-
-Houses the tests that were previously inlined in
-:mod:`tests.test_auto_integrate` but pushed that file past the
-repo-structure ``_MAX_FILE_LINES`` cap (1000 lines). Splitting
-them out keeps the main test file under the cap while preserving
-the same ``subprocess_e2e`` marker so the tests still run under
-``make test-subprocess-e2e``.
-
-Three test families live here:
-
-* **AC-11 ground-truth recovery tests** with REAL conflicting
-  rebases that leave ``rebase-apply`` / ``rebase-merge`` on disk
-  before recovery runs. The headline-only versions in
-  :mod:`tests.test_auto_integrate` only prove the orchestrator
-  returns ``last_action='recovered'``; the tests here prove
-  HEAD is restored, the working tree is clean, the durable
-  record is cleared, and (for case 4) an operator-owned
-  in-progress rebase is byte-unchanged.
-
-* **Fault-injection tests** that monkeypatch ``reset_hard`` /
-  ``abort_rebase`` to raise, and assert the durable
-  ``IntegrationRecord`` is RETAINED (so the next startup can
-  retry) rather than cleared. This closes the bug the prompt's
-  feedback item flagged: the prior implementation called
-  ``_clear_record`` unconditionally after the abort/reset path
-  and returned ``last_action='recovered'``, leaving the
-  repository in a rebase/merge state with no ownership marker.
-
-* **Security regression tests** that create a local ref whose
-  name starts with ``-`` and drive ``rebase_onto`` /
-  ``merge_target_into_current`` against it. With the ``--``
-  option terminator in place, the target is treated as a
-  revision argument; without the terminator, git would parse it
-  as a ``--exec`` (rebase) or ``--allow-unrelated-histories``
-  (merge) option. The ``--exec`` case is an RCE exposure.
-
-The helpers (``_run``, ``_commit``, ``_base_branch``,
-``_build_config``, ``_snapshot``) are duplicated here to keep
-this file standalone; the duplication is small (~50 lines) and
-avoids a brittle ``from test_auto_integrate import ...``
-dependency.
-"""
-
 from __future__ import annotations
 
 import subprocess
@@ -66,7 +22,6 @@ from ralph.pipeline.auto_integrate_transaction import LeaseOutcome
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
 
-# ponytail: real-Git recovery conflicts can exceed 10s under xdist; the 60s suite budget remains authoritative.
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
 
 
@@ -75,7 +30,6 @@ def auto_integrate_after_commit(
     scope: WorkspaceScope,
     state: RebaseState,
 ) -> RebaseState | None:
-    """Run integration with injected zero-delay retry timing."""
     return _auto_integrate_after_commit(config, scope, state, sleep=_no_op, jitter=lambda: 0.0)
 
 
@@ -83,14 +37,7 @@ def _no_op(*_args: object, **_kwargs: object) -> None:
     return None
 
 
-# ---------------------------------------------------------------------------
-# Helpers (duplicated from tests/test_auto_integrate.py to keep this file
-# standalone; see the module docstring for the rationale).
-# ---------------------------------------------------------------------------
-
-
 def _run(repo_root: Path, *args: str, timeout: float = 10.0) -> subprocess.CompletedProcess[str]:
-    """Run ``git <args>`` in ``repo_root`` with a configurable timeout."""
     return subprocess.run(
         ("git", *args),
         cwd=str(repo_root),
@@ -102,7 +49,6 @@ def _run(repo_root: Path, *args: str, timeout: float = 10.0) -> subprocess.Compl
 
 
 def _base_branch(tmp_git_repo: Path) -> str:
-    """Return the seed template's default branch name."""
     head_file = tmp_git_repo / ".git" / "HEAD"
     try:
         head_content = head_file.read_text(encoding="utf-8").strip()
@@ -116,7 +62,6 @@ def _base_branch(tmp_git_repo: Path) -> str:
 
 
 def _commit(repo_root: Path, filename: str, content: str, message: str) -> str:
-    """Write+stage+commit ``filename`` and return the resulting HEAD SHA."""
     from git import Repo
 
     target = repo_root / filename
@@ -136,16 +81,10 @@ def _build_config(
     enabled: bool = True,
     target: str | None = None,
 ) -> UnifiedConfig:
-    """Build a real ``UnifiedConfig`` with the auto-integrate knobs set."""
     general: dict[str, object] = {"auto_integrate_enabled": enabled}
     if target is not None:
         general["auto_integrate_target"] = target
     return UnifiedConfig.model_validate({"general": general})
-
-
-# ---------------------------------------------------------------------------
-# AC-11 ground-truth recovery tests with REAL conflicting rebases
-# ---------------------------------------------------------------------------
 
 
 def test_recovery_mid_rebase_kill_preserves_feature_resolution(tmp_git_repo: Path) -> None:
@@ -194,16 +133,6 @@ def test_recovery_mid_rebase_kill_preserves_feature_resolution(tmp_git_repo: Pat
 
 
 def test_recovery_killed_after_clean_rebase_before_ff(tmp_git_repo: Path) -> None:
-    """AC-11 case 2: rebase completed but ff not done -> recover completes ff.
-
-    Builds a diverged clean topology (feature ahead of base, base
-    advanced separately on a disjoint file so the rebase replays
-    cleanly). RUNS the real rebase so the feature branch now
-    contains the target, then pre-writes the phase='integrated'
-    record with the rebased-state SHA -- exactly what the
-    integration would have written just before the fast-forward --
-    and verifies recovery completes the ff.
-    """
     base = _base_branch(tmp_git_repo)
     _commit(tmp_git_repo, "base_seed.txt", "base seed\n", "base seed")
     base_seed_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
@@ -213,12 +142,9 @@ def test_recovery_killed_after_clean_rebase_before_ff(tmp_git_repo: Path) -> Non
     _run(tmp_git_repo, "checkout", base)
     _commit(tmp_git_repo, "base_clean.txt", "base clean\n", "base clean")
     _run(tmp_git_repo, "checkout", "feature")
-    # RUN the rebase so feature now contains target -- the recovery
-    # preamble only verifies is_ancestor(target, feature_sha) and
-    # will fail if target isn't actually an ancestor of feature_sha.
     rebased = _run(tmp_git_repo, "rebase", base)
     assert rebased.returncode == 0, "test setup: rebase of feature onto base must succeed cleanly"
-    pre_feature_sha = base_seed_sha  # original feature HEAD before the rebase
+    pre_feature_sha = base_seed_sha
     pre_target_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
     record = IntegrationRecord(
         phase="integrated",
@@ -240,16 +166,6 @@ def test_recovery_killed_after_clean_rebase_before_ff(tmp_git_repo: Path) -> Non
 
 
 def test_recovery_killed_after_clean_merge_before_ff(tmp_git_repo: Path) -> None:
-    """AC-11 case 3: clean merge completed but ff not done -> recover completes ff.
-
-    Builds a topology where the rebase would conflict (D1 modifies
-    a line that base also modifies) but the endpoint three-way merge
-    succeeds (D2 reverts D1 so the final feature tip matches the
-    common ancestor). Pre-writes the phase='integrated' record with
-    the merge-commit SHA -- exactly what the integration would have
-    written just before the fast-forward -- and verifies recovery
-    completes the ff.
-    """
     base = _base_branch(tmp_git_repo)
     a_sha = _commit(tmp_git_repo, "shared.txt", "line1\nline2\nline3\n", "shared seed")
     _run(tmp_git_repo, "branch", "feature", a_sha)
@@ -281,21 +197,6 @@ def test_recovery_killed_after_clean_merge_before_ff(tmp_git_repo: Path) -> None
 def test_recovery_no_record_preserves_operator_in_progress_rebase(
     tmp_git_repo: Path,
 ) -> None:
-    """AC-11 case 4: operator-owned in-progress rebase is left untouched.
-
-    The prior synthetic version of this test aborted the operator's
-    rebase BEFORE the recovery call -- so the recovery never had to
-    prove it would leave a real in-progress rebase alone. This
-    ground-truth test sets up a REAL in-progress rebase (with
-    ``rebase-apply`` / ``rebase-merge`` actually on disk) and an
-    OPERATOR-owned conflict state, with NO auto-integrate record on
-    disk. ``recover_incomplete_integration`` must:
-
-    * Return ``None`` (no record -> nothing to recover).
-    * Leave the rebase-apply / rebase-merge directory INTACT.
-    * Leave HEAD, working tree, and the conflict markers
-      bit-unchanged.
-    """
     base = _base_branch(tmp_git_repo)
     _commit(tmp_git_repo, "shared.txt", "base version 1\n", "base shared 1")
     base_seed = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
@@ -315,8 +216,6 @@ def test_recovery_no_record_preserves_operator_in_progress_rebase(
     assert (git_dir / "rebase-apply").exists() or (git_dir / "rebase-merge").exists(), (
         "test setup: rebase-apply/rebase-merge must be on disk"
     )
-    # CRITICAL: there is NO auto-integrate record -- this is an
-    # operator-owned in-progress rebase that recovery MUST NOT touch.
     assert not (tmp_git_repo / ".agent" / "auto_integrate_in_progress.json").exists(), (
         "test setup: no auto-integrate record must exist"
     )
@@ -393,15 +292,6 @@ def test_recovery_no_record_reclaims_stale_rebase_state_on_clean_tree(
 def test_recovery_no_record_reclaims_stale_merge_state_on_clean_tree(
     tmp_git_repo: Path,
 ) -> None:
-    """Stale unowned MERGE_HEAD on a CLEAN tree is reclaimed, not preserved.
-
-    Merge-flavored twin of the stale-rebase reclaim: a leftover
-    ``MERGE_HEAD`` with no ownership record blocks
-    ``check_rebase_preconditions`` at every seam forever. Terminal-state
-    invariant: an integration attempt must end in a completed rebase, a
-    completed merge, or a clean abort -- never in-progress bookkeeping
-    nobody owns.
-    """
     base = _base_branch(tmp_git_repo)
     _commit(tmp_git_repo, "shared.txt", "base version 1\n", "base shared 1")
     base_seed = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
@@ -415,7 +305,6 @@ def test_recovery_no_record_reclaims_stale_merge_state_on_clean_tree(
     assert conflicted.returncode != 0, (
         "test setup: expected a real merge conflict to leave MERGE_HEAD"
     )
-    # Clean the tree while MERGE_HEAD stays behind -- the stale shape.
     _run(tmp_git_repo, "reset", "--hard")
     git_dir = Path(_run(tmp_git_repo, "rev-parse", "--git-dir").stdout.strip())
     if not git_dir.is_absolute():
@@ -441,16 +330,6 @@ def test_recovery_no_record_reclaims_stale_merge_state_on_clean_tree(
 def test_merge_exception_with_lingering_merge_head_retains_record(
     tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A failed merge whose abort also failed must RETAIN the record.
-
-    Terminal-state invariant: ``_endpoint_merge_result`` used to call
-    ``clear_record`` unconditionally on the merge-raised path. When the
-    merge abort ALSO failed (MERGE_HEAD still on disk), that orphaned
-    the in-progress state -- recovery only reconciles operations whose
-    record it holds, so the worktree was permanently locked out of
-    integration. The record must survive whenever an in-progress
-    operation provably remains.
-    """
     from ralph.pipeline import auto_integrate_rebase_merge as rm
     from ralph.pipeline.auto_integrate_record import (
         IntegrationRecord as Record,
@@ -474,8 +353,6 @@ def test_merge_exception_with_lingering_merge_head_retains_record(
     git_dir = Path(_run(tmp_git_repo, "rev-parse", "--git-dir").stdout.strip())
     if not git_dir.is_absolute():
         git_dir = (tmp_git_repo / git_dir).resolve()
-    # Model "merge raised AND its abort failed": the resolver-side
-    # helper reports the raise (None) while MERGE_HEAD stays on disk.
     (git_dir / "MERGE_HEAD").write_text(head + "\n", encoding="utf-8")
     monkeypatch.setattr(rm, "endpoint_merge_with_resolution", _no_op)
 
@@ -486,11 +363,6 @@ def test_merge_exception_with_lingering_merge_head_retains_record(
         "record must be retained while MERGE_HEAD remains on disk --"
         " clearing it orphans the in-progress state recovery would own"
     )
-
-
-# ---------------------------------------------------------------------------
-# Fault-injection tests: assert the durable record is RETAINED on failure
-# ---------------------------------------------------------------------------
 
 
 def test_recovery_requires_config_before_retrying_initial_integration(tmp_git_repo: Path) -> None:
@@ -554,33 +426,9 @@ def test_recovery_preserves_a_rebase_with_mismatched_ownership(tmp_git_repo: Pat
     assert (git_dir / "rebase-apply").exists() or (git_dir / "rebase-merge").exists()
 
 
-# ---------------------------------------------------------------------------
-# Context-resolution failure must produce a RECORDED skip, not a silent no-op
-# ---------------------------------------------------------------------------
-
-
 def test_context_resolution_failure_returns_recorded_skip(
     tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """AC-07/AC-08 supplement: env lookup failure produces a recorded skip.
-
-    The prompt feedback item flagged that
-    :func:`ralph.pipeline.auto_integrate._auto_integrate_resolve_context`
-    swallowed EVERY context-resolution exception (env lookup, git
-    transport, etc.) and returned ``None``. With ``None`` the
-    caller treated the call as AC-01 disabled and returned ``None``
-    to the runner -- a silent no-op with NO state recorded, so the
-    operator had no idea WHY integration did not run.
-
-    The fix is to let the exception propagate to
-    :func:`auto_integrate_after_commit`'s outer try/except, which
-    converts it to a recorded skip ``RebaseState``. This test
-    injects a ``RuntimeError`` from
-    :func:`ralph.pipeline.auto_integrate._current_branch_or_detached_marker`
-    and asserts the outcome is a recorded skip with the failure
-    reason captured in ``last_reason`` (and ``outcome is not None``
-    so the runner persists it).
-    """
     import ralph.pipeline.auto_integrate as _ai_mod
 
     def _failing_probe(root: object) -> str | None:
@@ -603,17 +451,6 @@ def test_context_resolution_failure_returns_recorded_skip(
 def test_context_resolution_disabled_returns_none_not_skip(
     tmp_git_repo: Path,
 ) -> None:
-    """AC-01 supplement: disabled returns ``None`` (no recorded skip).
-
-    Verifies the discriminator fix: the AC-01 byte-identical
-    no-op (disabled feature) MUST still return ``None`` so the
-    runner does not persist any rebase state change when the
-    feature is off. The context-resolution failure path (the
-    regression test above) must NOT regress this behavior -- the
-    distinction is now: ``None`` means "the feature is off", a
-    ``RebaseState`` with ``last_action='skipped'`` means "the
-    feature is on but something blocked this run".
-    """
     config = _build_config(tmp_git_repo, enabled=False)
     outcome = auto_integrate_after_commit(config, WorkspaceScope(tmp_git_repo), RebaseState())
     assert outcome is None, (
@@ -623,15 +460,9 @@ def test_context_resolution_disabled_returns_none_not_skip(
     )
 
 
-# ---------------------------------------------------------------------------
-# Malformed record phase: a bogus on-disk phase must be treated as corrupt
-# ---------------------------------------------------------------------------
-
-
 def test_recovery_treats_bogus_phase_record_as_corrupt(
     tmp_git_repo: Path,
 ) -> None:
-    """Unknown phase ownership blocks dispatch without mutating the live rebase."""
     base = _base_branch(tmp_git_repo)
     _commit(tmp_git_repo, "shared.txt", "base v1\n", "base shared")
     base_seed = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
@@ -663,16 +494,10 @@ def test_recovery_treats_bogus_phase_record_as_corrupt(
     outcome = recover_incomplete_integration(WorkspaceScope(tmp_git_repo))
     assert outcome is not None and outcome.recovery_record_retained
     assert record_file.exists()
-    # The operator's in-progress rebase is preserved untouched.
     assert (git_dir / "rebase-apply").exists() or (git_dir / "rebase-merge").exists(), (
         "AC-11 supplement: corrupt record must NOT abort the operator's rebase"
     )
     assert _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip() == pre_feature_sha
-
-
-# ---------------------------------------------------------------------------
-# U4d: PRESENT-but-UNREADABLE record surfaces typed intervention, not a skip
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -687,13 +512,6 @@ def test_unreadable_record_reports_ladder_escalation_not_retained_skip(
     cause: str,
     payload: bytes,
 ) -> None:
-    """A PRESENT-but-unreadable record must yield the typed ladder escalation.
-
-    The unreadable bytes are the only proof of the interrupted
-    integration, so the record stays retained on disk; the typed
-    ``LADDER_ESCALATION`` outcome names the next autonomous action (the
-    fallback ladder) instead of an operator hand-off.
-    """
     record_file = tmp_git_repo / ".agent" / "auto_integrate_in_progress.json"
     record_file.parent.mkdir(parents=True, exist_ok=True)
     record_file.write_bytes(payload)
@@ -704,7 +522,6 @@ def test_unreadable_record_reports_ladder_escalation_not_retained_skip(
     assert outcome.operation_display_state == "evidence_diagnosis"
     assert cause in (outcome.last_reason or "")
     assert outcome.recovery_record_retained is True
-    # The unreadable evidence bytes stay untouched on disk.
     assert record_file.read_bytes() == payload
 
 
@@ -712,19 +529,8 @@ def test_unreadable_exists_permission_error_reports_ladder_escalation_not_generi
     tmp_git_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """PermissionError from backend.exists() flows to UNREADABLE branch, not generic skip.
-
-    This is the producer-fix verification (WU-1): ``read_record_outcome`` now
-    catches ``PermissionError`` from ``backend.exists()`` and returns the typed
-    ``UNREADABLE`` outcome instead of letting the exception escape to
-    ``recover_incomplete_integration``\'s outer ``except Exception`` handler (which
-    would return a generic retained skip). The typed path returns the ladder
-    escalation decision and leaves the record file bytes untouched.
-    """
     import ralph.pipeline.auto_integrate_recovery as recovery_mod
 
-    # 1. Write a valid record so the record file is present. The bytes are
-    #    irrelevant to the test -- ``exists()`` raises before ``read_text()``.
     record_file = tmp_git_repo / ".agent" / "auto_integrate_in_progress.json"
     record_file.parent.mkdir(parents=True, exist_ok=True)
     valid_record = IntegrationRecord(
@@ -736,10 +542,6 @@ def test_unreadable_exists_permission_error_reports_ladder_escalation_not_generi
     record_file.write_text(valid_record.model_dump_json(), encoding="utf-8")
     original_bytes = record_file.read_bytes()
 
-    # 2. Mock ``read_record_outcome`` to return UNREADABLE with
-    #    ``backend_read_failure`` -- the outcome that ``read_record_outcome``
-    #    now produces when ``backend.exists()`` raises ``PermissionError``.
-    #    This verifies the consumer reaches the typed UNREADABLE branch.
     from ralph.pipeline.auto_integrate_record import (
         RecordReadOutcome,
         RecordReadOutcomeDisposition,
@@ -763,11 +565,6 @@ def test_unreadable_exists_permission_error_reports_ladder_escalation_not_generi
         _unreadable_exists_outcome,
     )
 
-    # 3. Mock ``integration_transaction`` so the recovery path proceeds past the
-    #    lock-acquisition gate without needing a real lease. Use a simple
-    #    context-manager class rather than a generator (the real
-    #    ``integration_transaction`` is a generator-function, but ``with`` only
-    #    needs ``__enter__``/__exit__`` on the returned object).
     class _AlwaysAcquired:
         def __enter__(self) -> LeaseOutcome:
             return LeaseOutcome.acquired_outcome()
@@ -780,50 +577,19 @@ def test_unreadable_exists_permission_error_reports_ladder_escalation_not_generi
 
     monkeypatch.setattr(recovery_mod, "integration_transaction", _fake_transaction)
 
-    # 4. Call the startup recovery path and assert the typed intervention decision.
     outcome = recover_incomplete_integration(WorkspaceScope(tmp_git_repo))
 
-    # 5. The typed UNREADABLE branch must be reached (NOT the generic retained
-    #    skip from the outer except handler that would catch an escaped exception).
     assert outcome is not None
     assert outcome.last_outcome.value == "ladder_escalation"
     assert outcome.last_decision == "block_for_recovery"
     assert outcome.operation_display_state == "evidence_diagnosis"
     assert outcome.recovery_record_retained is True
-    # 6. The record file bytes are unchanged (the escalation path never mutates).
     assert record_file.read_bytes() == original_bytes
-
-
-# ---------------------------------------------------------------------------
-# Security regression: branch names starting with ``-`` are refs, not options
-# ---------------------------------------------------------------------------
 
 
 def test_target_with_leading_dash_is_treated_as_ref_only(
     tmp_git_repo: Path,
 ) -> None:
-    """AC-10 supplement: a target name starting with ``-`` is a ref, not an option.
-
-    The prompt feedback item flagged that
-    :func:`ralph.git.rebase.rebase.rebase_onto` and
-    :func:`ralph.git.merge.merge_target_into_current` passed the
-    target branch name as a positional argument WITHOUT a ``--``
-    option terminator. A configured value such as ``--exec=<cmd>``
-    (or any branch whose name begins with ``-``) could be parsed
-    by git as a rebase / merge option rather than a revision
-    argument; in the rebase case the ``--exec`` option executes a
-    command, which is a real RCE exposure.
-
-    This test creates a LOCAL ref whose name starts with ``-``
-    (allowed by git -- branch names allow any byte sequence that is
-    not a ref-format restriction) and drives the rebase primitive
-    against it. With the ``--`` terminator in place, the rebase is
-    treated as a rebase onto that ref (which is the configured
-    target) and the operation behaves as a normal rebase. Without
-    the terminator, git would either reject the argument (because
-    ``-r`` is not a known option) or, worse, execute the command
-    embedded in the value (the ``--exec`` case).
-    """
     import ralph.git.rebase.rebase as _rebase_mod
 
     branch_name = "-dashy-target"
@@ -845,10 +611,6 @@ def test_target_with_leading_dash_is_treated_as_ref_only(
         f"expected RebaseNoOp/RebaseSuccess for a dashed target treated as"
         f" a ref, got {type(result).__name__}"
     )
-    # Belt-and-braces: the result is NOOP because HEAD == target,
-    # which only happens when git parsed the argument correctly as
-    # a revision (NOT as an option that would have failed or
-    # executed an embedded command).
     assert isinstance(result, RebaseNoOp), (
         f"expected RebaseNoOp when HEAD == target; got {type(result).__name__}"
     )
@@ -857,13 +619,6 @@ def test_target_with_leading_dash_is_treated_as_ref_only(
 def test_merge_target_with_leading_dash_is_treated_as_ref_only(
     tmp_git_repo: Path,
 ) -> None:
-    """AC-10 supplement: merge_target_into_current honors ``--`` terminator.
-
-    Mirrors the rebase case for the merge primitive. A target
-    whose name starts with ``-`` must be treated as a revision
-    argument, never as a git merge option (e.g.
-    ``--allow-unrelated-histories``).
-    """
     import ralph.git.merge as _merge_mod
 
     _run(tmp_git_repo, "checkout", "-b", "feature")
@@ -882,20 +637,6 @@ def test_merge_target_with_leading_dash_is_treated_as_ref_only(
 def test_rebase_conflict_abort_failure_retains_record_for_recovery(
     tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """AC-11: a normal conflict abort failure remains recoverable.
-
-    This drives ``auto_integrate_after_commit`` through a real rebase conflict,
-    injects a failing fallback abort, then proves the retained record lets the
-    next recovery abort the rebase and restore the pre-integration feature HEAD.
-
-    R6/AC-06: the post-attempt verification now RAISES on a leaked
-    marker instead of swallowing it (the analysis feedback's
-    regression). The test therefore asserts the integration raises
-    ``TerminalStateViolationError`` on the failed-abort path -- the
-    record is still RETAINED (the next recovery run can still
-    restore the pre-attempt tip), but the violation is loud rather
-    than silent.
-    """
     base = _base_branch(tmp_git_repo)
     _commit(tmp_git_repo, "shared.txt", "seed\n", "seed")
     seed_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
@@ -922,8 +663,6 @@ def test_rebase_conflict_abort_failure_retains_record_for_recovery(
             WorkspaceScope(tmp_git_repo),
             RebaseState(),
         )
-    # The violation detail must name the leaked marker so the
-    # operator log points at the exact residue.
     assert "REBASE_HEAD" in str(excinfo.value) or "rebase" in str(excinfo.value).lower(), (
         f"R6/AC-06: violation detail must name the leaked marker; got {excinfo.value!r}"
     )
@@ -942,34 +681,10 @@ def test_rebase_conflict_abort_failure_retains_record_for_recovery(
     assert record_file.exists()
 
 
-# ---------------------------------------------------------------------------
-# B11/E5: refs/rebase-backup/<id> backup ref protects in-flight tips
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.timeout_seconds(10)
 def test_rebase_backup_ref_exists_during_attempt_and_is_cleaned_after(
     tmp_git_repo: Path,
 ) -> None:
-    """B11/E5: ``refs/rebase-backup/<id>`` is created BEFORE the rebase,
-    retained through it, and deleted after the verified land.
-
-    The backup ref is what stops a concurrent ``git gc --prune`` in a
-    shared object store from reclaiming the in-flight commits while
-    the rebase is mid-replay. Without it, an aborted attempt whose
-    only path back is the pre-attempt SHA would be unable to
-    ``reset --hard`` to a commit that gc already pruned, leaving the
-    feature branch stranded on the rebased-but-not-yet-landed tip.
-
-    The test drives a normal ``auto_integrate_after_commit`` with
-    NON-CONFLICTING changes (the feature adds a brand-new file the
-    base does not touch) so the integration lands without
-    surfacing a conflict, and asserts:
-
-    * The integration lands (the rebase + ff both succeed).
-    * After the verified land, NO ``refs/rebase-backup/<id>`` ref
-      remains -- the cleanup at the verified land path deleted it.
-    """
     base = _base_branch(tmp_git_repo)
     _commit(tmp_git_repo, "shared.txt", "seed\n", "seed")
     seed_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
@@ -988,7 +703,6 @@ def test_rebase_backup_ref_exists_during_attempt_and_is_cleaned_after(
         f"B11/E5 happy-path setup failed: integration did not land; got outcome={outcome!r}"
     )
 
-    # After the verified land, no refs/rebase-backup/ may remain.
     backup_listing = _run(
         tmp_git_repo, "for-each-ref", "--format=%(refname)", "refs/rebase-backup/"
     )
@@ -1001,13 +715,6 @@ def test_rebase_backup_ref_exists_during_attempt_and_is_cleaned_after(
 def test_rebase_backup_ref_observed_mid_attempt_then_cleaned_after_land(
     tmp_git_repo: Path,
 ) -> None:
-    """B11/E5: the backup-ref seam creates and deletes the exact protective ref.
-
-    The preceding test retains the real integration proof that a verified land
-    cleans the backup namespace. This test isolates the lower backup-ref
-    contract: creation happens before mutation, points to the exact
-    pre-attempt tip, and deletion removes it.
-    """
     from ralph.pipeline.auto_integrate import (
         _create_rebase_backup_ref,
         _delete_rebase_backup_ref,
@@ -1018,11 +725,6 @@ def test_rebase_backup_ref_observed_mid_attempt_then_cleaned_after_land(
         tmp_git_repo, "feature_only.txt", "feature-only content\n", "feature only"
     )
 
-    # DIRECT: verify the helper creates the backup ref BEFORE any
-    # mutation and that it points at the pre-attempt SHA. This is
-    # the B11/E5 contract: a concurrent ``git gc --prune`` in a
-    # shared object store cannot reclaim the in-flight tip while
-    # the backup ref is reachable.
     backup_ref = _create_rebase_backup_ref(tmp_git_repo, pre_feature_sha, str(tmp_git_repo))
     assert backup_ref is not None, (
         "B11/E5: _create_rebase_backup_ref MUST return a non-None "
@@ -1031,14 +733,12 @@ def test_rebase_backup_ref_observed_mid_attempt_then_cleaned_after_land(
     assert backup_ref.startswith("refs/rebase-backup/"), (
         f"B11/E5: backup ref name shape violation: {backup_ref!r}"
     )
-    # Verify the backup ref resolves to the pre-attempt SHA.
     backup_sha = _run(tmp_git_repo, "rev-parse", backup_ref).stdout.strip()
     assert backup_sha == pre_feature_sha, (
         f"B11/E5: backup ref MUST resolve to the pre-attempt SHA "
         f"(got {backup_sha!r}, expected {pre_feature_sha!r})"
     )
 
-    # Verify cleanup deletes the backup ref.
     _delete_rebase_backup_ref(tmp_git_repo, backup_ref)
     after_delete = _run(
         tmp_git_repo, "for-each-ref", "--format=%(refname)", "refs/rebase-backup/"
@@ -1048,52 +748,15 @@ def test_rebase_backup_ref_observed_mid_attempt_then_cleaned_after_land(
     )
 
 
-# ---------------------------------------------------------------------------
-# R6/AC-06: post_attempt_verify runs on every exit path
-# ---------------------------------------------------------------------------
-
-
 def test_post_attempt_verify_clean_tree_after_land(tmp_git_repo: Path) -> None:
-    """R6/AC-06: after a verified land, post_attempt_verify passes silently.
-
-    The verified-land caller passes ``expected_head_sha=None`` because the
-    feature branch legitimately moved past its pre-attempt tip. At that
-    boundary the verifier's observable contract is exactly the clean terminal
-    state represented by ``tmp_git_repo``: no in-progress marker and no
-    required HEAD comparison. Real rebase-and-land cleanup remains covered by
-    the adjacent backup-ref integration tests.
-
-    The contract is now raise-on-violation (AC-06 loud-diagnostic
-    contract from the analysis feedback): the verifier RAISES
-    :class:`TerminalStateViolationError` on failure rather than
-    returning ``(False, detail)`` so the caller can rely on the
-    exception to skip the backup-ref cleanup (the recovery path
-    must still be able to read the backup to restore the
-    pre-attempt tip).
-    """
     from ralph.pipeline.auto_integrate_recovery import post_attempt_verify
 
-    # AC-06 raise-on-violation: the clean-tree success path returns
-    # without raising. The legacy (False, detail) tuple shape is
-    # gone; a violation is a raised
-    # :class:`TerminalStateViolationError`.
     post_attempt_verify(tmp_git_repo, expected_head_sha=None, owns_resolution=False)
 
 
 def test_post_attempt_verify_in_progress_marker_violation_raises_loudly(
     tmp_git_repo: Path,
 ) -> None:
-    """R6/AC-06: post_attempt_verify RAISES on an in-progress marker
-    violation when no active resolution session owns it.
-
-    The verifier is the terminal-state invariant: when a stray
-    ``rebase-merge`` directory is present and ``owns_resolution`` is
-    False, it now RAISES :class:`TerminalStateViolationError` (the
-    AC-06 loud-diagnostic contract from the analysis feedback)
-    rather than returning ``(False, detail)`` so the caller can
-    skip the backup-ref cleanup and let the recovery path
-    restore the pre-attempt tip.
-    """
     from ralph.pipeline._auto_integrate_recovery_git_state import rebase_bookkeeping_dir
     from ralph.pipeline.auto_integrate_recovery import (
         TerminalStateViolationError,
@@ -1102,8 +765,6 @@ def test_post_attempt_verify_in_progress_marker_violation_raises_loudly(
 
     git_dir = rebase_bookkeeping_dir(tmp_git_repo)
     assert git_dir is not None
-    # Plant a synthetic rebase-merge dir to simulate a leaked
-    # rebase that the integration left on disk.
     rebase_dir = git_dir / "rebase-merge"
     rebase_dir.mkdir()
     (rebase_dir / "head-name").write_text("refs/heads/feature\n")
@@ -1115,7 +776,6 @@ def test_post_attempt_verify_in_progress_marker_violation_raises_loudly(
             f"R6/AC-06: violation detail must name the leaked marker; got {excinfo.value!r}"
         )
     finally:
-        # Clean up so subsequent tests start from a clean tree.
         import shutil as _shutil
 
         if rebase_dir.exists():
@@ -1125,16 +785,6 @@ def test_post_attempt_verify_in_progress_marker_violation_raises_loudly(
 def test_post_attempt_verify_abort_path_restores_pre_attempt_sha(
     tmp_git_repo: Path,
 ) -> None:
-    """R6/AC-06: on the abort path, post_attempt_verify RAISES when HEAD
-    does not resolve to the recorded pre-attempt SHA.
-
-    The verifier never trusts ``ORIG_HEAD`` (which any intervening
-    operation overwrites); it reads HEAD and compares against the
-    SHA the pipeline recorded BEFORE starting. This test pins
-    both the success case (HEAD matches, no raise) and the failure
-    case (HEAD moved, verifier raises
-    :class:`TerminalStateViolationError`).
-    """
     from ralph.pipeline.auto_integrate_recovery import (
         TerminalStateViolationError,
         post_attempt_verify,
@@ -1152,8 +802,6 @@ def test_post_attempt_verify_abort_path_restores_pre_attempt_sha(
     _commit(tmp_git_repo, "main_only.txt", "mainline-only content\n", "main only")
     _run(tmp_git_repo, "checkout", "feature")
 
-    # Move HEAD forward -- simulate an aborted attempt that left
-    # the feature branch stranded past the recorded pre-attempt SHA.
     _commit(tmp_git_repo, "feature_extra.txt", "extra\n", "extra")
 
     with pytest.raises(TerminalStateViolationError) as excinfo:
@@ -1171,29 +819,6 @@ def test_post_attempt_verify_abort_path_restores_pre_attempt_sha(
 def test_integrate_once_propagates_terminal_violation_on_exception_path(
     tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """R6/AC-06: an exception path through ``_integrate_once`` propagates the violation.
-
-    The analysis feedback called out the second regression: the
-    prior integration path called ``_clear_record(root)``
-    BEFORE ``_verify_and_cleanup_backup``. If the verification
-    then failed, the log claimed the durable record was
-    retained but the implementation had already deleted it,
-    removing the recovery metadata needed to restore the
-    recorded pre-attempt SHA. The fix: the record stays on
-    disk until ``post_attempt_verify`` passes, so a violation
-    is loud AND leaves the recovery metadata intact.
-
-    This test plants a LEAKED MARKER BETWEEN the precondition
-    pass and the post-attempt-verify step. The marker is
-    hidden from the seam-level reclaim by being planted
-    AFTER the precondition check ran (the precondition
-    reads the disk once, so a marker planted right after
-    passes through to the verify). On the success path
-    the post-attempt verify trips on the leaked marker,
-    raises ``TerminalStateViolationError``, and the
-    integration propagates the violation rather than
-    recording a skip.
-    """
     from ralph.pipeline import auto_integrate as auto_integrate_module
 
     base = _base_branch(tmp_git_repo)
@@ -1206,14 +831,7 @@ def test_integrate_once_propagates_terminal_violation_on_exception_path(
     _commit(tmp_git_repo, "base_only.txt", "base\n", "base only")
     _run(tmp_git_repo, "checkout", "feature")
 
-    # Monkeypatch ``_check_rebase_preconditions`` so it ALWAYS
-    # reports the precondition is healthy. This bypasses the
-    # seam-level reclaim path, ensuring the integration
-    # reaches the post-attempt-verify step.
     try:
-        # Plant a leaked rebase-merge dir AFTER the
-        # precondition check passed -- the post-attempt
-        # verify is the only thing that will see it.
         git_dir = Path(_run(tmp_git_repo, "rev-parse", "--git-dir").stdout.strip())
         if not git_dir.is_absolute():
             git_dir = (tmp_git_repo / git_dir).resolve()
@@ -1224,11 +842,6 @@ def test_integrate_once_propagates_terminal_violation_on_exception_path(
             (rebase_dir / "head-name").write_text("refs/heads/feature\n")
             (rebase_dir / "onto").write_text(f"refs/heads/{base}\n")
 
-        # Use a one-shot side effect that plants the marker
-        # the first time the precondition is checked. The
-        # precondition is checked at least once on the seam
-        # before the integration reaches the verify, so the
-        # marker is on disk for the verify to trip on.
         called = [False]
 
         def _check_with_marker(_root: Path) -> None:
@@ -1250,7 +863,6 @@ def test_integrate_once_propagates_terminal_violation_on_exception_path(
         rebase_dir = git_dir / "rebase-merge"
         if rebase_dir.exists():
             _shutil.rmtree(rebase_dir)
-        # The record file may or may not exist; clean it up.
         record_file = tmp_git_repo / ".agent" / "auto_integrate_in_progress.json"
         if record_file.exists():
             record_file.unlink()
@@ -1270,7 +882,6 @@ def test_recovery_honors_target_reclaim_opt_out(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """S-3 regression: recovery must retain a dirty target when reclaiming is disabled."""
     record = IntegrationRecord(
         phase="integrated",
         target="main",
@@ -1306,44 +917,6 @@ def test_recovery_honors_target_reclaim_opt_out(
 def test_seam_level_reclaim_lands_integration_without_recovery_preamble(
     tmp_git_repo: Path,
 ) -> None:
-    """AC-07/R8: reclaim-then-land at a non-startup seam.
-
-    The original failure mode (PROMPT.md wt-23): a leftover
-    rebase state at a non-startup seam (e.g. the commit seam)
-    was the forbidden silent noop -- the precondition check
-    caught the leftover state and returned a recorded skip,
-    permanently disabling integration. The fix: the seam-level
-    reclaim-then-retry path runs at every seam and re-runs
-    ``check_rebase_preconditions``, proceeding in the same
-    seam when the reclaim succeeds.
-
-    This test plants orphaned rebase state WITHOUT an
-    ownership record on a clean tree, drives the seam-level
-    reclaim through the public :func:`auto_integrate_after_commit`
-    seam (the seam the production commit / phase-transition
-    path uses), and asserts:
-
-    * the integration PROCEEDS in the same seam -- outcome is
-      not the ``"preconditions not met"`` skip the silent-noop
-      bug produced;
-    * the rebase marker is gone after the reclaim ran (the
-      reclaim is what removed it; the subsequent rebase would
-      have run in the same seam but is not exercised here
-      because the test setup plants a content conflict on
-      ``shared.txt`` -- the marker-removal + integration-proceed
-      is the seam-level reclaim's contract, and the full
-      conflict-resolution pipeline is pinned by the recovery
-      and rebase-conflict e2e suites);
-    * ``check_rebase_preconditions`` passes when invoked
-      directly on the same worktree, proving the reclaim
-      restored the precondition to a healthy state.
-
-    The full integration outcome is exercised by the existing
-    ``test_recovery_no_record_reclaims_stale_rebase_state_on_clean_tree``
-    which drives the start-up recovery path; this test pins
-    the SEAM-LEVEL (non-startup) path which is the AC-07/R8
-    contract the analysis feedback requires.
-    """
     from ralph.git.rebase import check_rebase_preconditions
 
     base = _base_branch(tmp_git_repo)
@@ -1360,13 +933,6 @@ def test_seam_level_reclaim_lands_integration_without_recovery_preamble(
     assert preflight.returncode != 0, (
         "test setup: expected a real rebase conflict to leave state on disk"
     )
-    # Make the tree clean while the rebase bookkeeping stays on disk:
-    # this is exactly the stale shape the seam-level reclaim meets.
-    # We reset to the pre-rebase tip (the original feature HEAD) so
-    # the feature is still ahead of base after the reset, then
-    # re-checkout feature -- ``reset --hard`` keeps HEAD detached
-    # from the in-progress rebase, and ``auto_integrate_after_commit``
-    # needs a checked-out branch to know the integration source.
     pre_rebase_feature_sha = _run(tmp_git_repo, "rev-parse", "feature").stdout.strip()
     _run(tmp_git_repo, "reset", "--hard", pre_rebase_feature_sha)
     _run(tmp_git_repo, "checkout", "feature")
@@ -1385,14 +951,6 @@ def test_seam_level_reclaim_lands_integration_without_recovery_preamble(
         "test setup: no auto-integrate record must exist"
     )
 
-    # Drive the seam-level reclaim through the PUBLIC seam
-    # (the same ``auto_integrate_after_commit`` the commit and
-    # phase-transition paths call). On a clean tree, the
-    # seam-level reclaim runs, removes the orphaned state, and
-    # the integration proceeds. The headline assertion is that
-    # the integration is NOT recorded as ``"preconditions not met"``:
-    # the silent-noop bug would have produced exactly that skip
-    # and disabled integration for the worktree forever.
     result = auto_integrate_after_commit(
         _build_config(tmp_git_repo, target=base),
         WorkspaceScope(tmp_git_repo),
@@ -1416,24 +974,11 @@ def test_seam_level_reclaim_lands_integration_without_recovery_preamble(
     assert not (git_dir / "rebase-merge").exists(), (
         "AC-07/R8: seam-level reclaim must have removed the rebase-merge marker in the same seam"
     )
-    # Direct precondition check after the reclaim: no marker,
-    # so the seam-level retry must have been a pass. The
-    # production caller's check at the seam would have been
-    # the same call.
     check_rebase_preconditions(tmp_git_repo)
 
 
 @pytest.mark.timeout_seconds(20)
 def test_seam_level_reclaim_preserves_dirty_tree(tmp_git_repo: Path) -> None:
-    """AC-07/R8 / AC-11 case 4: dirty tree with unmerged paths is preserved.
-
-    The seam-level reclaim is a recovery primitive: it MUST NOT
-    reclaim state when an operator (or live agent) owns an
-    in-progress rebase via unmerged paths. The dirty-tree
-    discriminator is the same one the startup recovery uses;
-    a precondition failure on a dirty tree is recorded as a
-    loud skip, and the state stays on disk.
-    """
     base = _base_branch(tmp_git_repo)
     _commit(tmp_git_repo, "shared.txt", "base version 1\n", "base shared 1")
     base_seed = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
@@ -1447,17 +992,6 @@ def test_seam_level_reclaim_preserves_dirty_tree(tmp_git_repo: Path) -> None:
     assert preflight.returncode != 0, (
         "test setup: expected a real rebase conflict to leave state on disk"
     )
-    # DO NOT reset -- the unmerged paths are the operator's
-    # in-progress conflict, which must be preserved (AC-11 case 4).
-    # Re-attach HEAD to the feature branch so the integration's
-    # branch-resolution path runs (a rebase leaves HEAD detached,
-    # which would short-circuit the precondition check with a
-    # ``detached HEAD`` skip BEFORE the seam-level reclaim runs,
-    # bypassing the dirty-tree discriminator under test). A plain
-    # ``git checkout feature`` would refuse while unmerged paths
-    # are present, so use ``symbolic-ref HEAD`` to re-attach the
-    # pointer without touching the worktree -- the unmerged paths
-    # and the rebase-apply/rebase-merge state both stay on disk.
     _run(tmp_git_repo, "symbolic-ref", "HEAD", "refs/heads/feature")
     git_dir = Path(_run(tmp_git_repo, "rev-parse", "--git-dir").stdout.strip())
     if not git_dir.is_absolute():
@@ -1468,16 +1002,6 @@ def test_seam_level_reclaim_preserves_dirty_tree(tmp_git_repo: Path) -> None:
     status = _run(tmp_git_repo, "status", "--porcelain", "--untracked-files=no")
     assert status.stdout.strip(), "test setup: worktree must be dirty with unmerged paths"
 
-    # Drive the seam-level reclaim through the PUBLIC seam
-    # (the same ``auto_integrate_after_commit`` the commit and
-    # phase-transition paths call). On a dirty tree with
-    # unmerged paths, the seam-level reclaim MUST refuse --
-    # the operator (or live agent) owns the in-progress
-    # rebase via the unmerged paths, and the AC-11 case-4
-    # protection is the same dirty-tree discriminator the
-    # startup recovery uses. The outcome must therefore be
-    # a recorded ``"preconditions not met"`` skip (loud,
-    # not silent), and the state must still be on disk.
     result = auto_integrate_after_commit(
         _build_config(tmp_git_repo, target=base),
         WorkspaceScope(tmp_git_repo),
@@ -1497,7 +1021,6 @@ def test_seam_level_reclaim_preserves_dirty_tree(tmp_git_repo: Path) -> None:
         "integration. Got: "
         f"{result.last_reason!r}"
     )
-    # The state is still on disk.
     assert (git_dir / "rebase-apply").exists() or (git_dir / "rebase-merge").exists(), (
         "AC-11 case 4: dirty-tree reclaim MUST preserve the operator-owned in-progress rebase state"
     )
@@ -1506,7 +1029,6 @@ def test_seam_level_reclaim_preserves_dirty_tree(tmp_git_repo: Path) -> None:
 def test_post_attempt_verify_passes_on_bare_rebase_head_with_no_active_rebase_dir(
     tmp_git_repo: Path,
 ) -> None:
-    """Plan step 3 regression: A4 residue is not an active rebase."""
     git_dir = Path(_run(tmp_git_repo, "rev-parse", "--git-dir").stdout.strip())
     if not git_dir.is_absolute():
         git_dir = (tmp_git_repo / git_dir).resolve()
@@ -1522,7 +1044,6 @@ def test_post_attempt_verify_passes_on_bare_rebase_head_with_no_active_rebase_di
 def test_post_attempt_verify_still_raises_when_rebase_head_accompanies_an_active_rebase_dir(
     tmp_git_repo: Path,
 ) -> None:
-    """Plan step 3 regression: a real rebase marker remains a hard failure."""
     git_dir = Path(_run(tmp_git_repo, "rev-parse", "--git-dir").stdout.strip())
     if not git_dir.is_absolute():
         git_dir = (tmp_git_repo / git_dir).resolve()

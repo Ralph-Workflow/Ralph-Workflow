@@ -1,13 +1,3 @@
-"""HTTP and stdio clients for proxying calls to upstream MCP servers.
-
-Provides ``HttpUpstreamClient`` and ``StdioUpstreamClient``, both implementing
-``UpstreamMcpClient``. ``make_upstream_client`` selects the right implementation
-from the server's transport field. Internal helpers handle JSON-RPC framing,
-legacy SSE endpoints, and multimodal content-block normalization.
-
-Multimodal normalization is done at the registry level via
-``normalize_upstream_content_blocks()``, not inside individual clients.
-"""
 
 from __future__ import annotations
 
@@ -51,7 +41,6 @@ JsonRpcCaller = Callable[[str, JsonObject], JsonObject]
 
 
 class HttpUpstreamClient:
-    """Upstream MCP client that communicates over HTTP JSON-RPC."""
 
     def __init__(
         self,
@@ -102,7 +91,6 @@ def make_upstream_client(
     *,
     caller: JsonRpcCaller | None = None,
 ) -> HttpUpstreamClient | StdioUpstreamClient:
-    """Instantiate the appropriate upstream client for the server's transport."""
     if server.transport == "http":
         return HttpUpstreamClient(server, caller=caller)
     return StdioUpstreamClient(server, caller=caller)
@@ -144,10 +132,6 @@ def _json_rpc_result(raw: object, context: str) -> JsonObject:
     return {}
 
 
-#: Block types the contract passes through UNCHANGED. Everything else
-#: -- media, an unknown name, a malformed block -- is either normalised
-#: or refused, so anything outside this set must not be waved past a
-#: guard on the grounds that it is not one of the five media names.
 _UPSTREAM_PASSTHROUGH_BLOCK_TYPES: frozenset[str] = frozenset({"text", "resource_reference"})
 
 UPSTREAM_MEDIA_BLOCK_TYPES: frozenset[str] = frozenset(
@@ -166,7 +150,6 @@ _DEFAULT_MIME_BY_BLOCK_TYPE: dict[str, str] = {
 
 
 def _modality_from_mime(mime_type: str) -> str | None:
-    """Return modality for a MIME type by prefix, or None if unrecognized."""
     if mime_type.startswith("image/"):
         return "image"
     if mime_type.startswith("audio/"):
@@ -185,7 +168,6 @@ def _modality_from_mime(mime_type: str) -> str | None:
 
 
 def _extract_mime(block: Mapping[str, object], block_type: str) -> str:
-    """Extract MIME type from an upstream block, falling back by block_type."""
     mime = block.get("mimeType")
     if isinstance(mime, str) and mime:
         return mime
@@ -207,7 +189,6 @@ def _extract_mime(block: Mapping[str, object], block_type: str) -> str:
 
 
 def _extract_uri(block: Mapping[str, object]) -> str | None:
-    """Extract URI from URI-backed upstream block, or None if not URI-backed."""
     uri = block.get("uri")
     if isinstance(uri, str) and uri:
         return uri
@@ -220,7 +201,6 @@ def _extract_uri(block: Mapping[str, object]) -> str | None:
 
 
 def _extract_data(block: Mapping[str, object]) -> bytes | None:
-    """Extract raw bytes from embedded-data upstream block, or None if not embedded."""
     data = block.get("data")
     if isinstance(data, str) and data:
         try:
@@ -239,7 +219,6 @@ def _extract_data(block: Mapping[str, object]) -> bytes | None:
 
 
 def _get_block_title(block: Mapping[str, object], tool_name: str, idx: int, block_type: str) -> str:
-    """Get display title for a normalized block."""
     title = block.get("title") or block.get("name")
     if isinstance(title, str) and title:
         return title
@@ -255,20 +234,6 @@ def _normalize_media_block(
     _session: HasMediaManifest | None,
     _workspace: Workspace | None = None,
 ) -> dict[str, object]:
-    """Normalize an upstream media block into a resource_reference content block.
-
-    Handles image/audio/video/pdf/document blocks with either URI-backed or
-    embedded-data shapes:
-
-    - Embedded-data blocks (with 'data'/'source.data'): bytes are stored in
-      the session manifest as a Ralph-owned ralph://media/... artifact.
-      Delivery is 'resource_reference_replay' — the agent can call read_media
-      with the returned URI to retrieve the artifact.
-
-    - URI-backed blocks (with 'uri'/'source.uri'): the original upstream URI is
-      preserved as-is. Delivery is 'resource_reference' — the URI points to
-      an external resource, not a Ralph-owned artifact.
-    """
     mime_type = _extract_mime(block, block_type)
 
     derived_modality = _modality_from_mime(mime_type)
@@ -298,23 +263,11 @@ def _normalize_media_block(
             title=title,
             source=MediaSource(raw_bytes=raw_bytes),
         )
-        # When a workspace is threaded through, write the bytes to a durable
-        # cache file and wire a lazy byte_loader so the manifest entry does
-        # NOT retain the raw payload (AC-04). Without a workspace the legacy
-        # in-memory contract is preserved verbatim. The imports are lazy to
-        # keep this module import-light (mirrors the existing
-        # ``import_module('ralph.mcp.tools.workspace')`` pattern at
-        # ``_upstream_proxy_handler.py:43``).
         cache_path = ""
         byte_loader: Callable[[], bytes | None] | None = None
         artifact_id = new_artifact_id()
         if _workspace is not None:
             try:
-                # Lazy imports via importlib.import_module keep this module
-                # import-light (mirrors the existing
-                # ``import_module('ralph.mcp.tools.workspace')`` pattern at
-                # ``_upstream_proxy_handler.py:43``). importlib avoids the
-                # PLC0415 noqa which the lint-bypass audit forbids.
                 _media_io_mod: ModuleType = import_module("ralph.mcp.tools.workspace._media_io")
                 _media_session_mod: ModuleType = import_module(
                     "ralph.mcp.tools.workspace._media_session"
@@ -333,8 +286,6 @@ def _normalize_media_block(
                 if cache_path:
                     byte_loader = _workspace_artifact_loader(_workspace, cache_path, "")
             except Exception:
-                # Failure to wire the durable cache is non-fatal: fall back
-                # to the in-memory retention contract for this single entry.
                 cache_path = ""
                 byte_loader = None
         entry = _session.media_manifest.add(
@@ -372,25 +323,10 @@ def _normalize_media_block(
 
 
 def _get_content_list(result: JsonObject, server_name: str, tool_name: str) -> list[object] | None:
-    """Extract the content blocks from a result, or ``None`` if there are none.
-
-    Accepts a TUPLE as well as a list, because the server layer does:
-    ``_serialize_content_blocks`` serialises either. Requiring a list
-    here while the server accepted both meant ``{"content": (image,)}``
-    was never normalised and served verbatim -- raw base64 image bytes
-    to a codex caller, by the same route and the same one-word mismatch
-    that the top-level tuple had one round earlier.
-    """
     content = result.get("content")
     if content is None:
         return None
     if not isinstance(content, (list, tuple)):
-        # FAIL CLOSED, like every other shape this contract does not
-        # recognise. Returning ``None`` here meant "nothing to
-        # normalise", so ``{"content": {"type": "image", "data": ...}}``
-        # was passed through with its base64 intact -- and the guard
-        # added for the text-smuggling route never sees this one, so the
-        # registry route shipped the bytes the contract exists to stop.
         msg = (
             f"upstream server {server_name!r} tool {tool_name!r} returned a 'content' "
             f"field that is not a list of blocks (got {type(content).__name__}); "
@@ -401,40 +337,12 @@ def _get_content_list(result: JsonObject, server_name: str, tool_name: str) -> l
 
 
 def carries_upstream_media_blocks(content: object) -> bool:
-    """True when ``content`` holds a block this contract would not pass.
-
-    FAIL-CLOSED, matching :func:`normalize_upstream_content_blocks`
-    itself: that function raises on anything outside ``text`` /
-    ``resource_reference`` / the media types. An exact-match allowlist
-    of the five media names was NARROWER than the contract it defends,
-    so a standard MCP ``EmbeddedResource`` carrying a base64 image --
-    or a block typed ``Image`` rather than ``image`` -- was waved
-    through as "not media" and served to a codex caller. Anything this
-    contract would not pass unchanged counts as media here.
-
-    Public because it answers a question OUTSIDE this module: the server
-    layer replaces a whole tool payload with JSON decoded out of a text
-    block, and that JSON can carry media that never passed through the
-    contract. Keeping the predicate beside the vocabulary it tests is
-    what stops the two drifting -- the same lesson as every other
-    "two questions, one function" defect in this area.
-    """
     if content is None:
-        # No content key at all: nothing to serve, nothing to refuse.
         return False
     if not isinstance(content, (list, tuple)):
-        # A ``content`` that is not a block SEQUENCE is non-conforming,
-        # and ``_get_content_list`` leaves it untouched for exactly that
-        # reason -- so it reaches the agent un-normalised. Refusing it
-        # here is what fail-closed means: ``{"content": {"type":
-        # "image", "data": ...}}`` crossed the boundary with its base64
-        # intact, by both the registry route and the text-smuggling
-        # route this guard was written for.
         return True
     for block in cast("Sequence[object]", content):
         if not isinstance(block, Mapping):
-            # A block whose shape the contract rejects is not something
-            # to pass through on the grounds that it is "not media".
             return True
         typed_block: Mapping[str, object] = cast("Mapping[str, object]", block)
         raw_type: object = typed_block.get("type")
@@ -452,28 +360,12 @@ def normalize_upstream_content_blocks(
     session: HasMediaManifest | None = None,
     workspace: Workspace | None = None,
 ) -> None:
-    """Normalize upstream tool result content blocks into the multimodal contract.
-
-    - text blocks: pass through unchanged.
-    - resource_reference blocks: pass through unchanged.
-    - image/audio/video/pdf/document blocks: normalized to resource_reference.
-      URI-backed blocks preserve the upstream URI; embedded-data blocks store
-      bytes in the session manifest (ralph://media/... URI) when available.
-    - Other types: raise UpstreamCallError with a clear explanation.
-
-    Modifies the result dict in place.
-    """
     content_blocks = _get_content_list(result, server_name, tool_name)
     if content_blocks is None:
         return
 
     normalized: list[object] = []
     for idx, block in enumerate(content_blocks):
-        # A block whose type cannot be read is rejected, not passed
-        # through. An unknown STRING type is already fail-closed below,
-        # so letting a missing or non-string one through was the one way
-        # to get an unnormalized block -- base64 media included -- past
-        # this contract and into a tool result.
         if not isinstance(block, Mapping) or not isinstance(block.get("type"), str):
             raise UpstreamCallError(
                 f"upstream server '{server_name}' tool '{tool_name}' returned a "
@@ -502,7 +394,6 @@ def normalize_upstream_content_blocks(
 
 
 def _http_rpc_call(url: str, method: str, params: JsonObject, timeout_s: float) -> JsonObject:
-    """Make a single HTTP JSON-RPC call with an explicit timeout."""
     payload_obj: dict[str, object] = {
         "jsonrpc": "2.0",
         "id": 2,
@@ -532,9 +423,6 @@ def _http_rpc_call(url: str, method: str, params: JsonObject, timeout_s: float) 
 
 def _make_http_caller(url: str) -> JsonRpcCaller:
     def _call(method: str, params: JsonObject) -> JsonObject:
-        # Discovery (``tools/list``) runs inside a starting MCP server
-        # subprocess, before its port is bound, so it is capped below the
-        # server-readiness budget; a real tool call keeps the full call budget.
         timeout_s = upstream_call_timeout_seconds(method)
         return _http_rpc_call(url, method, params, timeout_s)
 
@@ -544,16 +432,6 @@ def _make_http_caller(url: str) -> JsonRpcCaller:
 def _with_call_timeout(
     caller: JsonRpcCaller, method: str, params: JsonObject, timeout_s: float
 ) -> JsonObject:
-    """Apply ``timeout_s`` to one injected-caller JSON-RPC call.
-
-    An injected ``caller`` (test fake or alternate transport) has no
-    timeout parameter of its own, so a deadline-capped discovery call
-    cannot otherwise bound the fake. Run it on a daemon thread and
-    abandon it past ``timeout_s``: the aggregate discovery deadline
-    then stays a hard bound regardless of what the injected caller
-    does. The abandoned thread is left to finish or block on its own;
-    it holds no shared lock and writes only to its own result slot.
-    """
 
     result: dict[str, JsonObject | BaseException] = {}
 

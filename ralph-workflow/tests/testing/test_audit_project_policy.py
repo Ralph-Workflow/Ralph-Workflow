@@ -1,5 +1,3 @@
-"""Tests for :mod:`ralph.testing.audit_project_policy`."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

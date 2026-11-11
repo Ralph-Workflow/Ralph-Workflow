@@ -1,4 +1,3 @@
-"""Patch consolidate_any.py to apply helper/class renames to constants block."""
 from pathlib import Path
 
 path = Path('.agent/tmp/consolidate_any.py')

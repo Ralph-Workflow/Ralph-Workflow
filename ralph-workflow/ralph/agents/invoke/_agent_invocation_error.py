@@ -1,4 +1,3 @@
-"""AgentInvocationError — base exception for agent invocation failures."""
 
 from __future__ import annotations
 
@@ -9,13 +8,6 @@ if TYPE_CHECKING:
 
 
 class AgentInvocationError(Exception):
-    """Raised when agent invocation fails.
-
-    Attributes:
-        agent_name: Name of the agent that failed.
-        returncode: Process exit code.
-        stderr: Standard error output.
-    """
 
     def __init__(
         self,

@@ -1,5 +1,3 @@
-"""Tests for the AGY command builder's measured v1.1.8 flag wiring."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -77,13 +75,10 @@ def test_agy_command_yolo_flag_precedes_model_and_print(tmp_path: Path) -> None:
 
 
 def test_agy_command_emits_print_timeout_2h_before_print_flag(tmp_path: Path) -> None:
-    # Given: an AGY agent config using the default transport spec.
     config = AgentConfig(cmd="agy", print_flag="--print", transport=AgentTransport.AGY)
 
-    # When: the command is built.
     cmd = build_command(config, str(_make_prompt_file(tmp_path)), options=BuildCommandOptions())
 
-    # Then: the explicit 2h print timeout appears immediately before --print.
     print_index = cmd.index("--print")
     assert cmd[print_index - 2 : print_index] == ["--print-timeout", "2h"]
 

@@ -1,5 +1,3 @@
-"""Regression coverage for clean quick exits with no LLM evidence (S-6)."""
-
 from __future__ import annotations
 
 from io import StringIO
@@ -38,15 +36,6 @@ def _watchdog(clock: FakeClock) -> IdleWatchdog:
 
 
 def test_quick_clean_exit_without_evidence_falls_over_before_grace_window() -> None:
-    """S-6: an exited process with no output or session proof fails over fast.
-
-    "On the next poll" was too fast to be true. The exit and the absence
-    of output are read at one instant, and a line the agent wrote is
-    recorded only once the reader thread has been scheduled -- so the
-    next poll after the exit condemned agents whose output was still in
-    flight. The verdict now waits one settle window, which is still an
-    order of magnitude inside the grace window this test is named for.
-    """
     clock = FakeClock(start=0.0)
     handle = _ManagedHandle(returncode=23)
     watchdog = _watchdog(clock)
@@ -66,7 +55,6 @@ def test_quick_clean_exit_without_evidence_falls_over_before_grace_window() -> N
 
 
 def test_quick_exit_regression_retains_stderr_with_real_nonzero_exit_code() -> None:
-    """S-2: a settled instant crash preserves bounded stderr diagnostic evidence."""
     clock = FakeClock(start=0.0)
     handle = _ManagedHandle(returncode=37, stderr_text="provider bootstrap rejected credentials")
     watchdog = _watchdog(clock)
@@ -84,7 +72,6 @@ def test_quick_exit_regression_retains_stderr_with_real_nonzero_exit_code() -> N
 
 
 def test_live_silent_process_keeps_startup_grace_window() -> None:
-    """S-6: a live slow-starting process is not killed at five seconds."""
     clock = FakeClock(start=0.0)
     handle = _ManagedHandle(returncode=None)
     watchdog = _watchdog(clock)
@@ -96,7 +83,6 @@ def test_live_silent_process_keeps_startup_grace_window() -> None:
 
 
 def test_meaningful_output_prevents_early_exit_classification() -> None:
-    """S-6: a completed agent that emitted genuine LLM activity is not a no-output failure."""
     clock = FakeClock(start=0.0)
     handle = _ManagedHandle(returncode=0)
     watchdog = _watchdog(clock)

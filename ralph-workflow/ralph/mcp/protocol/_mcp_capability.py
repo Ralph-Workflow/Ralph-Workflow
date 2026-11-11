@@ -1,4 +1,3 @@
-"""McpCapability — typed MCP capability vocabulary."""
 
 from __future__ import annotations
 
@@ -6,7 +5,6 @@ from enum import StrEnum
 
 
 class McpCapability(StrEnum):
-    """Typed MCP capability vocabulary."""
 
     FILE_READ = "FileRead"
     FILE_WRITE = "FileWrite"

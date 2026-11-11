@@ -1,10 +1,3 @@
-"""Black-box proof for the commit-review unsafe-action loopback routing.
-
-Split from ``tests/test_commit_review_verify_gate.py`` so both files stay
-under the repository's 1000-line file cap enforced by
-:mod:`ralph.testing.audit_repo_structure`.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -22,12 +15,6 @@ _DEFAULT_POLICY_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" /
 
 
 def test_unsafe_action_loopback_returns_to_the_review_phase_instead_of_advancing() -> None:
-    """The loopback route returns to the review phase; it never advances.
-
-    Both commit-review phases declare the loopback route back onto
-    themselves, so an unsafe action re-enters the review instead of moving
-    the run on to the commit phase.
-    """
     policy = load_policy(_DEFAULT_POLICY_DIR).pipeline
     for phase, commit_phase in (
         ("development_commit_review", "development_commit"),

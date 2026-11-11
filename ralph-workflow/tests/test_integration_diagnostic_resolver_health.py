@@ -1,13 +1,3 @@
-"""The retained-integration diagnostic must not keep calling a resolver that gets nowhere.
-
-Every attempt is reported to the shared owner with the facts Ralph
-OBSERVES -- the operation-completion proof (the artifact on disk) and
-whether the workspace changed while the attempt ran. The invoke boolean
-is not one of those facts: an invocation that reports failure after the
-operation completed is not a failure, and one that reports success
-after nothing was produced is not a success.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -32,8 +22,6 @@ CHAIN = ("codex/a", "cursor/auto", "opencode/b")
 
 
 class _ChangingWorkspaceProbe:
-    """A workspace probe that observes the workspace changing on every attempt."""
-
     def __init__(self) -> None:
         self.changed = True
 
@@ -254,13 +242,11 @@ def test_agent_whose_invocation_raises_is_benched_before_the_error_propagates(
 
 
 def test_phase_histories_remain_independent(tmp_path: Path) -> None:
-    """An agent cooling down in resolution remains eligible in development, and vice versa."""
     backend = _RecordBackend()
     _record(tmp_path, backend=backend)
     controller = _controller(FakeClock())
     invoked: list[str] = []
 
-    # Fail codex/a 3 times in resolution -> demoted to cooldown in resolution
     for _ in range(3):
         _handoff(tmp_path, controller, invoked, backend=backend)
 
@@ -268,19 +254,12 @@ def test_phase_histories_remain_independent(tmp_path: Path) -> None:
 
     assert controller.ledger.status(PHASE_RESOLUTION, "codex/a").is_cooldown is True
 
-    # In development phase, codex/a remains eligible
     assert controller.ledger.status("development", "codex/a").is_eligible is True
 
 
 def test_truthy_invocation_without_a_verified_completion_is_unproductive(
     tmp_path: Path,
 ) -> None:
-    """§3.5: the invoke boolean is not a fact.
-
-    The invocation reports success, but Ralph's own completion proof
-    does not verify: the attempt produced no completion, so the agent
-    is charged and the owner's consecutive limit names the next agent.
-    """
     backend = _RecordBackend()
     _record(tmp_path, backend=backend)
     controller = _controller(FakeClock())
@@ -296,12 +275,6 @@ def test_truthy_invocation_without_a_verified_completion_is_unproductive(
 def test_observed_workspace_change_defers_the_demotion_to_the_total_limit(
     tmp_path: Path,
 ) -> None:
-    """§4.3: an observed workspace change restarts the consecutive count.
-
-    The agent changed the workspace on every attempt, so it is not
-    benched after three consecutive attempts; the larger total limit is
-    what finally demotes it.
-    """
     backend = _RecordBackend()
     _record(tmp_path, backend=backend)
     controller = _controller(FakeClock(), probe=_ChangingWorkspaceProbe())
@@ -315,13 +288,6 @@ def test_observed_workspace_change_defers_the_demotion_to_the_total_limit(
 
 
 def test_agent_attempts_do_not_spend_the_diagnostic_budget(tmp_path: Path) -> None:
-    """§7.2/§7.4: an invocation count never decides the integration's fate.
-
-    Offering an agent does not advance the diagnostic-repair budget: the
-    budget counts repository failures, and an agent's health belongs to
-    the shared owner. The integration therefore stays pending instead of
-    being escalated into the fallback ladder.
-    """
     backend = _RecordBackend()
     _record(tmp_path, backend=backend)
     controller = _controller(FakeClock())

@@ -1,17 +1,3 @@
-"""Tests for ``AgentConfig.subagent_capability`` default and partial-override path.
-
-The bundled ``ralph-workflow.toml`` ships with ``[agents.claude]
-subagent_capability = true`` so capable agents dispatch their own
-sub-agents out of the box. The model infers the default to ``True`` for
-Claude / Claude-interactive transports and to ``None`` (no inference) for
-every other transport.
-
-A user with an existing project-local ``.agent/ralph-workflow.toml``
-that overrides ``[agents.claude]`` without setting
-``subagent_capability`` must still inherit the ``True`` default — that is
-the prompt's "no manual configuration required" requirement.
-"""
-
 from __future__ import annotations
 
 import textwrap
@@ -84,18 +70,6 @@ def test_subagent_capability_stays_none_for_explicit_claude_interactive_false_ov
 def test_partial_override_inherits_subagent_capability_default_for_claude(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A project-local config that overrides ``[agents.claude]`` WITHOUT
-    setting ``subagent_capability`` must still resolve to ``True`` because
-    the bundled default ships that key uncommented (via the deep-merge
-    pipeline) and the model fills the missing field with ``True`` for
-    Claude / Claude-interactive transports.
-
-    NOTE: ``[agents.*]`` tables live in ``ralph-workflow.toml``, NOT
-    ``agents.toml`` — ``agents.toml`` only accepts ``[agent_chains]`` and
-    ``[agent_drains]``. The test writes the partial override to
-    ``.agent/ralph-workflow.toml`` so the loader's three-layer merge
-    (global → local → CLI) actually surfaces the override.
-    """
     monkeypatch.setattr(
         "ralph.config.loader.GLOBAL_CONFIG_PATH", tmp_path / GLOBAL_CONFIG_PATH.name
     )
@@ -123,27 +97,6 @@ def test_partial_override_inherits_subagent_capability_default_for_claude(
 
 
 def test_bundled_agents_toml_shipped_with_subagent_capability_true() -> None:
-    """The bundled ``ralph/policy/defaults/ralph-workflow-agents.toml`` MUST
-    ship with ``[agents.claude] subagent_capability = true`` uncommented.
-
-    ``[agents.*]`` moved out of the main config into its own file so
-    ralph-workflow.toml opens on ``[agent_chains]``; the requirement this
-    test pins is unchanged, only the file it reads.
-
-    This pins the bundled default end-to-end: the model_post_init default is
-    covered by ``test_subagent_capability_defaults_true_for_claude_command``,
-    the partial-override merge path is covered by
-    ``test_partial_override_inherits_subagent_capability_default_for_claude``,
-    and this test covers the third leg of requirement 3 ("Task MCP enabled by
-    default") by reading the shipped file directly. A future edit that
-    re-comments the line (or moves it out of the ``[agents.claude]`` block)
-    would break PROMPT.md requirement 3 and would now fail this test.
-
-    Implementation note: this is a black-box, path-anchored source-text check
-    (same pattern as ``test_continuation_template_parallel_guidance.py``) so
-    it stays under the 60s combined test budget — no Ralph imports, no
-    fixture overhead, no parser invocation.
-    """
     repo_root = Path(__file__).resolve().parents[1]
     bundled = repo_root / "ralph" / "policy" / "defaults" / "ralph-workflow-agents.toml"
     assert bundled.is_file(), f"bundled default not found at {bundled}"

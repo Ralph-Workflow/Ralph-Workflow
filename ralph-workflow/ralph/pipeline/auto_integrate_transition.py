@@ -1,10 +1,3 @@
-"""Closed transition table for :class:`~ralph.pipeline.auto_integrate_record.IntegrationRecord`.
-
-Defines the :class:`Transition` descriptor and the authoritative closed set
-of record state transitions. Ad-hoc ``model_copy(update=...)`` mutations are
-forbidden; every durable record mutation must flow through one of the
-registered transition instances with its validated field map and phase guard.
-"""
 
 from __future__ import annotations
 
@@ -17,24 +10,6 @@ if TYPE_CHECKING:
 
 
 class Transition:
-    """A single record-mutation transition. Each call site uses one of the
-    pre-defined transitions; ad-hoc ``model_copy(update=...)`` is no
-    longer allowed.
-
-    Transitions are intentionally lightweight descriptors (not an
-    ``Enum``) so the table can be extended without breaking the
-    public surface. The class-level ``ALL`` tuple is the closed set;
-    the loader and the transition validator consult it.
-
-    Each transition carries an optional ``from_state_guard`` -- a
-    callable accepting the current :class:`IntegrationRecord` and
-    returning ``True`` when the transition is legal at the record's
-    current phase. ``with_transition`` consults the guard before
-    delegating to ``model_copy(update=...)`` so a caller that tries
-    to advance a record whose state does not permit the transition
-    fails loudly rather than silently writing a contradicting
-    record.
-    """
 
     __slots__ = ("_field_map", "_from_state_guard", "_name")
 
@@ -47,13 +22,10 @@ class Transition:
         from_state_guard: Callable[[IntegrationRecord], bool] | None = None,
     ) -> None:
         self._name = name
-        # field_map maps a logical field name to a constructor kwarg
-        # the apply() method will pass to model_copy. Keeping the
-        # mapping here makes the table the single source of truth.
         self._field_map = field_map or {}
         self._from_state_guard = from_state_guard
 
-    def __repr__(self) -> str:  # pragma: no cover - debug aid
+    def __repr__(self) -> str:
         return f"Transition({self._name!r})"
 
     @property
@@ -61,7 +33,6 @@ class Transition:
         return self._name
 
     def is_legal_from(self, record: IntegrationRecord) -> bool:
-        """Return ``True`` when this transition is legal at the record's current phase."""
         if self._from_state_guard is None:
             return True
         return self._from_state_guard(record)
@@ -71,14 +42,6 @@ class Transition:
         record: IntegrationRecord,
         **fields: object,
     ) -> IntegrationRecord:
-        """Validate and apply this transition to ``record``.
-
-        The from-state guard runs first; a record whose phase does
-        not permit this transition raises :class:`ValueError`. The
-        field map is then enforced: only names registered for this
-        transition are accepted, so callers cannot smuggle
-        arbitrary keys past the table.
-        """
         if not self.is_legal_from(record):
             raise ValueError(f"Transition {self._name!r} is not legal from phase={record.phase!r}")
         update: dict[str, object] = {}
@@ -92,18 +55,7 @@ class Transition:
         return record.model_copy(update=update)
 
 
-# --- Concrete transitions ---
 
-#: The typed "diagnostic budget spent" outcome. Recorded on the durable
-#: record as ``repair_cap_reason`` when the repair-attempt cap is
-#: reached, it names the next autonomous action (the fallback ladder)
-#: instead of a terminal operator hand-off. The marker deliberately
-#: avoids the retired "operator intervention required" phrasing so the
-#: legacy migrator (:func:`_clear_legacy_ownership_and_intervention`)
-#: can distinguish fresh typed outcomes from stale hand-off reasons.
-#: Lives here (not in ``_integration_diagnostic_state``) because the
-#: load-time counter clamp in ``_auto_integrate_record_restamp`` must
-#: read it without an import cycle.
 DIAGNOSTIC_BUDGET_SPENT_REASON: str = (
     "diagnostic repair budget spent; escalating through the autonomous fallback ladder"
 )
@@ -246,23 +198,10 @@ BUMP_DIAGNOSTIC_ATTEMPT = Transition(
     {
         "merge_commit_repair_attempts": "merge_commit_repair_attempts",
         "repair_last_error": "repair_last_error",
-        # The typed "diagnostic budget spent" marker: when the bumped
-        # counter reaches the cap the same transition records WHY the
-        # budget is spent, routing the record to the autonomous
-        # fallback ladder (never to a human hand-off).
         "repair_cap_reason": "repair_cap_reason",
     },
 )
 
-#: Retired transition, kept ONLY as a legacy-payload parsing input: the
-#: loader may still meet records whose history names this transition,
-#: and :func:`transition_by_name` resolves it. NO production path emits
-#: it: an exhausted diagnostic-repair budget is a typed
-#: ``repair_cap_reason`` outcome routed to the autonomous fallback
-#: ladder (see
-#: :mod:`ralph.pipeline._integration_diagnostic_handoff`), and legacy
-#: flagged records load-and-clear at parse time
-#: (:func:`ralph.pipeline.auto_integrate_record.parse_record_payload`).
 RAISE_DIAGNOSTIC_INTERVENTION = Transition(
     "RAISE_DIAGNOSTIC_INTERVENTION",
     {
@@ -328,13 +267,6 @@ _TRANSITIONS_BY_NAME: dict[str, Transition] = {t.name: t for t in Transition.ALL
 
 
 def transition_by_name(name: str) -> Transition:
-    """Return the :class:`Transition` with the given name.
-
-    The loader and the diagnostic path both call this; an unknown
-    name is a programming error and is rejected loudly so a future
-    refactor that drops a transition from the closed set is caught
-    at import time, not at the call site.
-    """
     try:
         return _TRANSITIONS_BY_NAME[name]
     except KeyError as exc:

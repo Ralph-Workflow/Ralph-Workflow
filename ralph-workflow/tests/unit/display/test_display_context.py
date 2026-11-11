@@ -1,12 +1,3 @@
-"""Tests for DisplayContext and make_display_context factory.
-
-After the wt-028-display consolidation, DisplayContext exposes a single
-``default`` mode with one fixed set of adaptive limits. The
-``compact`` / ``medium`` / ``wide`` tier is gone, and
-``RALPH_FORCE_NARROW`` is silently ignored. The historical per-mode
-constants (``COMPACT_HEADLINE_MAX_CHARS`` etc.) are removed.
-"""
-
 from __future__ import annotations
 
 import io
@@ -36,7 +27,6 @@ _WIDE_TEST_WIDTH = 200
 
 @pytest.mark.parametrize("width", [40, 60, 80, 100, 120, 200])
 def test_width_is_preserved_for_any_input_width(width: int) -> None:
-    """Single default-mode invariant: input width is preserved on the context."""
     console = Console(width=width, force_terminal=True)
     ctx = make_display_context(console=console, env={})
     assert ctx.width == width
@@ -49,16 +39,6 @@ def test_force_width_overrides_console_width() -> None:
 
 
 def test_columns_env_overrides_console_width() -> None:
-    """Env ``COLUMNS`` overrides the default console width when Ralph built the console.
-
-    When the caller does NOT pass an explicit ``console=`` argument,
-    ``injected_console`` is False and ``COLUMNS`` wins over the
-    console's default width. When the caller DOES pass an explicit
-    ``console=`` argument, the console's own width is AUTHORITATIVE
-    (see ``_compute_width_uncached`` -- ``test_force_width_overrides_console_width``
-    pins the explicit-console case); mixing the two would silently
-    widen a 40-column test fixture under a host ``COLUMNS=200``.
-    """
     ctx = make_display_context(env={"COLUMNS": str(_NARROW_TEST_WIDTH)})
     assert ctx.width == _NARROW_TEST_WIDTH
 
@@ -84,7 +64,6 @@ def test_color_enabled_by_default() -> None:
 
 
 def test_display_context_regression_default_console_emits_color_off_tty() -> None:
-    """S-2: the default color-enabled context emits ANSI to a non-TTY stream."""
     ctx = make_display_context(env={"RALPH_TERMINAL_BG": "dark"})
     with ctx.console.capture() as output:
         ctx.console.print("[theme.phase.development]development[/]")
@@ -93,7 +72,6 @@ def test_display_context_regression_default_console_emits_color_off_tty() -> Non
 
 
 def test_default_mode_uses_single_fixed_limits() -> None:
-    """Single default-mode uses one fixed set of adaptive limits."""
     console = Console(width=120, force_terminal=True)
     ctx = make_display_context(console=console, env={})
     assert ctx.headline_max_chars == HEADLINE_MAX_CHARS
@@ -105,7 +83,6 @@ def test_default_mode_uses_single_fixed_limits() -> None:
 
 
 def test_default_mode_limits_constant_for_any_width() -> None:
-    """Single default-mode uses the same limits regardless of width."""
     narrow = make_display_context(console=Console(width=40, force_terminal=True), env={})
     wide = make_display_context(console=Console(width=200, force_terminal=True), env={})
     assert narrow.headline_max_chars == wide.headline_max_chars
@@ -146,16 +123,7 @@ def test_display_context_exported_from_display_package() -> None:
     assert make_display_context_export is make_display_context
 
 
-# --- wt-028-display S-5 / AC-04: wide-terminal measure cap. ----------------
-# The measure cap keeps prose and log body text at a comfortable
-# column count on very wide terminals (e.g. 250 cols) so the
-# operator's eye does not have to track a 250-character line. Rules,
-# tables, and aligned columns continue to use the full ``width``;
-# the cap only applies to prose-shaped content.
-
-
 def test_body_measure_caps_at_measure_cap_on_wide_terminal() -> None:
-    """S-5: 250-column console → body measure is the 100-column cap, not 250."""
     from ralph.display._mode_adaptive_limits import BODY_MEASURE_CAP
 
     ctx = make_display_context(console=Console(width=250, force_terminal=True), env={})
@@ -168,14 +136,12 @@ def test_body_measure_caps_at_measure_cap_on_wide_terminal() -> None:
 
 
 def test_body_measure_returns_full_width_when_narrower_than_cap() -> None:
-    """S-5: 80-column console → body measure is the full 80 (cap is a no-op)."""
     ctx = make_display_context(console=Console(width=80, force_terminal=True), env={})
     assert ctx.width == 80
     assert ctx.body_measure() == 80
 
 
 def test_body_measure_handles_very_wide_terminal() -> None:
-    """S-5: 500-column console → body measure still capped (does not grow)."""
     from ralph.display._mode_adaptive_limits import BODY_MEASURE_CAP
 
     ctx = make_display_context(console=Console(width=500, force_terminal=True), env={})
@@ -183,7 +149,6 @@ def test_body_measure_handles_very_wide_terminal() -> None:
 
 
 def test_body_measure_floor_at_40_columns() -> None:
-    """S-5: 30-column console → body measure floors at 40 (token wrap contract)."""
     ctx = make_display_context(console=Console(width=30, force_terminal=True), env={})
     assert ctx.body_measure() == 40, (
         f"body_measure() must floor at 40 columns, got {ctx.body_measure()}"
@@ -191,7 +156,6 @@ def test_body_measure_floor_at_40_columns() -> None:
 
 
 def test_body_measure_survives_refreshed() -> None:
-    """S-5: ``refreshed()`` preserves the cap on the new context."""
     from ralph.display._mode_adaptive_limits import BODY_MEASURE_CAP
 
     ctx = make_display_context(console=Console(width=250, force_terminal=True), env={})
@@ -200,14 +164,8 @@ def test_body_measure_survives_refreshed() -> None:
     assert refreshed.body_measure() == BODY_MEASURE_CAP
 
 
-# --- DA-003 / DA-004: measured-surface hex validation and threading. -------
-
-
 @pytest.mark.parametrize("malformed", ["#zzzzzz", "#12345"])
 def test_display_context_rejects_malformed_terminal_background_hex(malformed: str) -> None:
-    """DA-003: a malformed RALPH_TERMINAL_BG hex must not crash display
-    construction and must not be threaded, unvalidated, into the palette
-    solver."""
     ctx = make_display_context(
         env={"RALPH_TERMINAL_BG": malformed}, console=Console(file=io.StringIO())
     )
@@ -215,9 +173,6 @@ def test_display_context_rejects_malformed_terminal_background_hex(malformed: st
 
 
 def test_display_context_threads_measured_surface_hex_through_resolved_theme() -> None:
-    """DA-004: a valid RALPH_TERMINAL_BG hex is carried onto the context, and
-    the resolved theme resolves the same pigment as the surface-aware status
-    resolver for the same surface."""
     ctx = make_display_context(
         env={"RALPH_TERMINAL_BG": "#2D2A2E"}, console=Console(file=io.StringIO())
     )
@@ -233,14 +188,6 @@ def test_display_context_threads_measured_surface_hex_through_resolved_theme() -
 def test_malformed_terminal_bg_hex_falls_through_to_the_osc11_probe(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """B-1: a malformed ``RALPH_TERMINAL_BG`` hex (wrong length, non-hex
-    digits) must fall through to the next precedence tier -- the OSC 11
-    probe -- rather than being threaded, unvalidated, into the palette
-    solver or raising. ``relative_luminance`` already raises ``ValueError``
-    for a malformed body; ``detect_terminal_background_hex`` must catch that
-    and continue past the ``RALPH_TERMINAL_BG`` branch instead of
-    propagating it or returning the malformed string.
-    """
     monkeypatch.setattr(
         "ralph.display._terminal_bg_query.query_terminal_background_hex",
         lambda *, timeout: "#123456",
@@ -250,8 +197,6 @@ def test_malformed_terminal_bg_hex_falls_through_to_the_osc11_probe(
         resolved_hex = _theme.detect_terminal_background_hex(env)
         assert resolved_hex == "#123456", malformed
 
-        # The boolean detector must not raise either -- it degrades to the
-        # probe/COLORFGBG tier the same way.
         is_light = _theme.detect_terminal_background_is_light(env)
         assert is_light is not None
 
@@ -259,19 +204,6 @@ def test_malformed_terminal_bg_hex_falls_through_to_the_osc11_probe(
 def test_probe_measurement_wins_over_a_conflicting_explicit_override(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """DA-001 / B-1: the measured background wins. A successful OSC 11 probe
-    (stubbed here to answer with a light colour) outranks an explicit
-    ``RALPH_TERMINAL_BG=dark`` declaration that disagrees with it -- the
-    override is a fallback for terminals that cannot be measured, not a veto
-    over a real measurement.
-
-    Before the fix, ``detect_terminal_background_hex`` and
-    ``detect_terminal_background_is_light`` both let the explicit ``dark``
-    declaration win over the probed ``#FFFFFF``, resolving a dark-surface
-    palette onto a terminal OSC 11 had just measured as light. This test
-    pins the opposite: both resolvers agree the surface is the *probed*
-    light one, not the declared dark one.
-    """
     monkeypatch.setattr(
         "ralph.display._terminal_bg_query.query_terminal_background_hex",
         lambda *, timeout: "#FFFFFF",
@@ -289,23 +221,6 @@ def test_probe_measurement_wins_over_a_conflicting_explicit_override(
 def test_explicit_override_is_honored_only_when_the_probe_cannot_measure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """DA-001 / B-1 companion: when OSC 11 cannot measure the surface
-    (returns ``None``), the explicit ``RALPH_TERMINAL_BG`` override becomes
-    the next precedence tier and must resolve the declared surface -- the
-    same canonical headroom DA-001 established for the dark/light tables --
-    rather than falling all the way through to an unmeasured guess.
-
-    DA-001 moved the canonical dark/light tables off the pure
-    ``#000000``/``#FFFFFF`` endpoints onto the representative
-    ``#2D2A2E``/``#FAF8F5`` surfaces (a pigment solved to exactly the floor
-    on ``#000000`` measures only ~3.05:1 on a realistic ``#2D2A2E``
-    surface), so this declared-but-unmeasured path must resolve to that same
-    representative surface, or it would regress below the floor exactly
-    where DA-001 restored headroom. This test pins both properties: the hex
-    and boolean resolvers agree, and the surface-aware resolution collapses
-    onto the same dark canonical table -- now solved with real headroom on
-    ``#2D2A2E`` -- used everywhere else, not a contradicting light-solved one.
-    """
     monkeypatch.setattr(
         "ralph.display._terminal_bg_query.query_terminal_background_hex",
         lambda *, timeout: None,
@@ -328,14 +243,6 @@ def test_explicit_override_is_honored_only_when_the_probe_cannot_measure(
     for style, _glyph, _label in surface_resolved.values():
         pigment = _theme._extract_hex(style)
         assert pigment.upper() != broken_light_solved_success
-        # DA-002: an absolute floor assertion, not a self-comparison against
-        # `canonical` -- `surface_resolved == canonical` above already pins
-        # the two byte-for-byte, so comparing derived values against each
-        # other proved nothing. This is a true witness once DA-001 restores
-        # canonical headroom, and it fails if the `elif explicit:` branch in
-        # `detect_terminal_background_hex` regresses to threading a pure
-        # `#000000`/`#FFFFFF` endpoint (zero headroom) instead of the
-        # representative surface.
         assert _theme.contrast_ratio(pigment, real_dark_surface) >= CONTRAST_FLOOR
 
 
@@ -343,17 +250,6 @@ def test_explicit_override_is_honored_only_when_the_probe_cannot_measure(
 def test_make_display_context_probes_the_terminal_at_most_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """F-3/DA-008: the OSC 11 probe's timeout is documented as the *entire*
-    startup budget (see ``_terminal_bg_query.py``'s module docstring), which
-    only holds if ``make_display_context`` triggers at most one real probe.
-    It calls both ``detect_terminal_background_is_light`` and
-    ``detect_terminal_background_hex`` (``context.py``'s own comment says
-    this relies on ``query_terminal_background_hex``'s process-lifetime
-    cache to collapse to one real probe) -- so this spies on
-    ``_terminal_bg_query._probe`` itself, the actual tty-touching seam
-    beneath the cache, rather than ``query_terminal_background_hex`` (which
-    legitimately gets called twice by design; the cache is what is under
-    test, not the call count at that boundary)."""
     _bg_query.reset_cache()
     calls: list[float] = []
 

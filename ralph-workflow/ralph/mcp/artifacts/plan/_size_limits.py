@@ -1,4 +1,3 @@
-"""The sole plan-artifact size boundary: raw UTF-8 bytes."""
 
 from __future__ import annotations
 
@@ -10,7 +9,6 @@ _MAX_TOTAL_BYTES = 4_000_000
 
 @dataclass(frozen=True)
 class PlanSizeLimits:
-    """Size limit for raw plan markdown, deliberately without shape caps."""
 
     max_total_bytes: int = _MAX_TOTAL_BYTES
     DEFAULT: ClassVar[PlanSizeLimits]
@@ -22,7 +20,6 @@ class PlanSizeLimits:
 
 @dataclass(frozen=True)
 class PlanArtifactSizeError(ValueError):
-    """A pure-return raw-byte limit violation."""
 
     field: str
     actual: int
@@ -41,7 +38,6 @@ def check_plan_size(
     *,
     limits: PlanSizeLimits = PlanSizeLimits.DEFAULT,
 ) -> PlanArtifactSizeError | None:
-    """Check only a precomputed raw UTF-8 byte count, never payload shape."""
     if not isinstance(content, dict):
         return None
     raw_bytes = content.get("_raw_bytes")

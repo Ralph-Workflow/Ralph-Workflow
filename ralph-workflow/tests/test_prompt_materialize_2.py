@@ -30,10 +30,6 @@ from ralph.recovery.retry_prompt import build_validation_retry_footer
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.memory import MemoryWorkspace
 
-# All tests in this module exercise real git operations against the
-# ``tmp_git_repo`` fixture (per-test process-isolated git repository).
-# Wall-clock cost under parallel xdist load is regularly > 1 s on busy
-# machines, so the default 1-second per-test ceiling is unsafe.
 pytestmark = pytest.mark.timeout_seconds(5)
 
 
@@ -50,7 +46,6 @@ class _ArtifactSubmitSession:
 def test_prompt_materialize_regression_real_validator_context_enters_planning_edit_prompt(
     tmp_path,
 ) -> None:
-    """S-3: real submit diagnostics and retained draft reach the next planning prompt."""
     workspace = FsWorkspace(tmp_path)
     workspace.write("PROMPT.md", "Repair the existing plan")
     workspace.write(".agent/PLAN.md", "---\ntype: plan\n---\n## Outcome\nRetained prior plan.\n")
@@ -346,14 +341,6 @@ def test_materialize_review_phase_references_plan_handoff_when_plan_exists(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A custom review-role phase must reference the plan handoff.
-
-    When the plan handoff markdown is present the prompt-materialization layer
-    passes its absolute path as PLAN_PATH. The rendered review prompt must
-    point at that file rather than inlining the plan content, because
-    The selected template emits a file-reference
-    instruction when the path variable is non-empty.
-    """
     pipeline_policy = PipelinePolicy(
         phases={
             "review": PhaseDefinition(
@@ -724,8 +711,6 @@ def test_materialize_planning_analysis_renders_plan_payload(
 def test_materialize_development_falls_back_to_plan_artifact_markdown(
     tmp_path: Path,
 ) -> None:
-    """When the .agent/PLAN.md handoff copy is missing, the plan artifact
-    document itself (identical bytes at submit time) is referenced instead."""
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Implement unattended planning recovery")

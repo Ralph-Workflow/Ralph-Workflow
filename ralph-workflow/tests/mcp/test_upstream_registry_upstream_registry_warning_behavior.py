@@ -65,8 +65,6 @@ class TestUpstreamRegistryWarningBehavior:
         assert "ralph_upstream__healthy__ping" in aliases
         assert "broken" not in aliases
         assert "broken" in warning_output
-        # R4: structured log replaces the old unstructured "Skipping ... server unreachable"
-        # with outcome=skipped reason=UpstreamCallError (no exception message logged)
         assert "ralph-mcp upstream probe:" in warning_output
         assert "outcome=skipped" in warning_output
         assert "reason=UpstreamCallError" in warning_output
@@ -107,8 +105,6 @@ class TestUpstreamRegistryWarningBehavior:
         warning_output = stream.getvalue()
 
         assert "broken" in warning_output
-        # R4: structured log records only exception class name (UpstreamCallError),
-        # never the raw exception message which could contain env values or secrets
         assert "ralph-mcp upstream probe:" in warning_output
         assert "outcome=skipped" in warning_output
         assert "reason=UpstreamCallError" in warning_output

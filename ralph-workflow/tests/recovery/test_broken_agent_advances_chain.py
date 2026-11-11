@@ -1,5 +1,3 @@
-"""End-to-end recovery regression for broken-agent fallover."""
-
 from __future__ import annotations
 
 import functools
@@ -27,7 +25,6 @@ def _minimal_policy_bundle() -> PolicyBundle:
 
 
 def test_recovery_regression_broken_agent_advances_chain_without_same_agent_retry() -> None:
-    """S-9: broken agents fall over immediately rather than consuming retries."""
     clock = FakeClock(start=0.0)
     events: list[FailureEvent | FalloverEvent] = []
     event_bus = FailureEventBus()

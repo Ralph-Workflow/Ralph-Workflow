@@ -1,5 +1,3 @@
-"""Behavior tests for manifest-bounded pytest shard collection."""
-
 from __future__ import annotations
 
 from pathlib import Path

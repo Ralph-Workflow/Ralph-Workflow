@@ -1,9 +1,3 @@
-"""Black-box regression tests for OpenCode session-aware execution.
-
-All tests use in-memory fakes — no real subprocesses, no real wall-clock waits,
-no real psutil. Verifies five acceptance scenarios and two edge cases.
-"""
-
 from __future__ import annotations
 
 import threading
@@ -31,20 +25,13 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# Poll interval used in the wait helper - matches _DESCENDANT_WAIT_POLL_SECONDS
 _DESCENDANT_WAIT_POLL_SECONDS = 0.5
-
-# Local aliases: tests call the same public functions but under the private-looking names
-# that were used when this module was monolithic (pre-package split).
 
 
 class TestOptionalArtifactCompletion:
-    """Optional-artifact phases terminal on clean exit; required phases enforce presence."""
-
     def test_optional_artifact_absent_with_declare_complete_does_not_raise(
         self, tmp_path: Path
     ) -> None:
-        """Optional artifact absent plus durable declaration is terminal."""
         ra = RequiredArtifact(
             phase="development",
             artifact_type="development_result",
@@ -110,12 +97,6 @@ class TestOptionalArtifactCompletion:
         )
 
     def test_optional_artifact_malformed_present_does_not_raise(self, tmp_path: Path) -> None:
-        """Optional artifact present but malformed must not raise OpenCodeResumableExitError.
-
-        check_process_result is not responsible for validating artifact content.
-        When artifact_required=False the exit is terminal regardless of what the
-        file contains; content validation is the execution.py layer's job.
-        """
         artifact_path = tmp_path / ".agent" / "artifacts" / "development_result.md"
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
         artifact_path.write_text("not a valid markdown artifact: no frontmatter {{{")
@@ -155,7 +136,6 @@ class TestOptionalArtifactCompletion:
         )
 
     def test_required_artifact_absent_still_raises_resumable(self, tmp_path: Path) -> None:
-        """Required artifact absent without evidence still raises OpenCodeResumableExitError."""
         ra = RequiredArtifact(
             phase="development_analysis",
             artifact_type="development_analysis_decision",

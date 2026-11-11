@@ -1,14 +1,3 @@
-"""Regression test: the exec SSE streaming POST must always write a final frame.
-
-``do_POST`` sends the SSE headers before dispatching an exec tools/call. If an
-exception then escapes the streaming dispatch (e.g. a session object without
-the ``tool_output_sink_entry`` surface), the request thread dies and the socket
-closes with an empty body. A streamable-http client cannot distinguish that
-from a still-running call, so it waits for its full request timeout and
-surfaces ``-32001 Request timed out`` — for every retry, forever. The handler
-must instead emit a final JSON-RPC frame (result or -32603 error) in all cases.
-"""
-
 from __future__ import annotations
 
 import io
@@ -23,8 +12,6 @@ from ralph.mcp.server._server_state import ServerState
 
 
 class _SessionWithoutStreamingSurface:
-    """Session lacking the tool_output_sink_entry streaming surface."""
-
     session_id = "sess-1"
 
 
@@ -47,8 +34,6 @@ class _RecordingMcp:
 
 
 class _SessionWithStreamingSurface:
-    """Session carrying the streaming surface so dispatch is actually reached."""
-
     session_id = "sess-1"
 
     def __init__(self) -> None:
@@ -64,22 +49,15 @@ class _RaisingMcp:
 
 
 class _Server(_FallbackHttpServer):
-    """In-memory subclass of the production ``_FallbackHttpServer``.
-
-    PROMPT.md proof obligation B requires the production handler to narrow
-    ``self.server`` via ``isinstance`` (no ``cast()``), so the test harness
-    must subclass the real class to pass that check.
-    """
-
     def __init__(self, mcp: _RecordingMcp | _RaisingMcp | None = None) -> None:
         self.mcp_server = mcp if mcp is not None else _RecordingMcp()
         self.state: object = ServerState.RUNNING
 
     def server_bind(self) -> None:
-        """No-op: the in-memory harness never binds a real socket."""
+        pass
 
     def server_activate(self) -> None:
-        """No-op: the in-memory harness never activates a real listener."""
+        pass
 
 
 def _run_exec_post(server: _Server) -> tuple[str, list[tuple[str, str]], bool]:
@@ -107,7 +85,7 @@ def _run_exec_post(server: _Server) -> tuple[str, list[tuple[str, str]], bool]:
     handler.end_headers = lambda: None
     handler.server = server
 
-    handler.do_POST()  # must not raise, must not leave an empty body
+    handler.do_POST()
 
     return (
         wfile.getvalue().decode("utf-8"),
@@ -121,8 +99,6 @@ def test_exec_streaming_post_with_streamless_session_still_writes_final_frame() 
 
     assert raw, "exec streaming POST closed with an empty body (client would hang)"
     assert "exec-req-1" in raw
-    # Either the dispatch succeeded (result frame) or it failed as a JSON-RPC
-    # error frame — both resolve the client's pending request.
     assert "result" in raw or "-32603" in raw
 
 

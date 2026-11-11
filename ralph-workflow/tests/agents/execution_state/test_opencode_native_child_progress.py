@@ -1,5 +1,3 @@
-"""``OpenCodeExecutionStrategy.record_native_child_progress`` public seam."""
-
 from __future__ import annotations
 
 from ralph.agents.execution_state import AgentExecutionState, OpenCodeExecutionStrategy

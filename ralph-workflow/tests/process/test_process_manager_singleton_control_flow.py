@@ -1,13 +1,3 @@
-"""Regression: singleton shutdown swallows errors, never control flow.
-
-``shutdown_process_manager`` and ``reset_process_manager`` suppressed
-``BaseException``. That swallowed ``KeyboardInterrupt``, ``SystemExit`` and the
-test harness's per-test timeout (a ``BaseException`` by design, so ordinary
-``except Exception`` cannot catch it) whenever they fired inside
-``shutdown_all`` -- a hung teardown then ran on past its budget instead of
-being reported. Ordinary errors must still be swallowed.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -22,7 +12,7 @@ from ralph.process.manager import ProcessManager
 
 
 class _ControlFlowSignal(BaseException):
-    """Stands in for a harness timeout: a BaseException that is not an error."""
+    pass
 
 
 class _RaisingManager(ProcessManager):
@@ -42,7 +32,6 @@ def test_shutdown_process_manager_propagates_control_flow(exc: BaseException) ->
         with pytest.raises(type(exc)):
             shutdown_process_manager()
     finally:
-        # Hand the per-test reset fixture a manager whose shutdown is quiet.
         install_process_manager(ProcessManager(psutil=None))
 
 

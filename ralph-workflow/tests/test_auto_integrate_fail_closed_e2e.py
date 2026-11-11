@@ -1,5 +1,3 @@
-"""Fast fail-closed contracts for auto-integration and crash recovery."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -53,7 +51,6 @@ def _stub_recovery(monkeypatch: MonkeyPatch, *, phase: str) -> list[Path]:
 def test_head_read_failure_names_the_git_operation(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """A failed HEAD read is an operator-visible skip, not an opaque failure."""
     monkeypatch.setattr(
         auto_integrate,
         "_auto_integrate_resolve_context",
@@ -91,7 +88,6 @@ def test_head_read_failure_names_the_git_operation(
 def test_unreadable_merge_state_retains_integrating_record(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """Unknown merge state cannot be treated as a clean recovery."""
     cleared = _stub_recovery(monkeypatch, phase="integrating")
     states = iter((MERGE_STATE_UNKNOWN, MERGE_STATE_UNKNOWN, MERGE_STATE_UNKNOWN))
     monkeypatch.setattr(recovery, "merge_state", lambda _root: next(states))
@@ -109,7 +105,6 @@ def test_unreadable_merge_state_retains_integrating_record(
 def test_unreadable_merge_state_blocks_integrated_fast_forward(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """The integrated phase also retains its record before any landing."""
     cleared = _stub_recovery(monkeypatch, phase="integrated")
     states = iter((MERGE_STATE_UNKNOWN, MERGE_STATE_UNKNOWN, MERGE_STATE_UNKNOWN))
     monkeypatch.setattr(recovery, "merge_state", lambda _root: next(states))

@@ -1,5 +1,3 @@
-"""Tests for McpSupervisor active MCP health monitoring."""
-
 from __future__ import annotations
 
 import pathlib
@@ -37,7 +35,6 @@ class FakeProcess:
 def _make_bridge_with_process(
     *, max_restarts: int = 3
 ) -> tuple[lifecycle.RestartAwareMcpBridge, FakeProcess]:
-    """Return a bridge paired with the controllable initial FakeProcess."""
     tmp_dir = pathlib.Path(tempfile.mkdtemp())
     session_file = tmp_dir / "session.json"
     session_file.write_text("{}", encoding="utf-8")
@@ -67,7 +64,6 @@ def _make_bridge_with_process(
 
 
 def _make_exhausted_bridge(max_restarts: int = 0) -> lifecycle.RestartAwareMcpBridge:
-    """Return a bridge whose initial process is already dead and budget starts at max."""
     tmp_dir = pathlib.Path(tempfile.mkdtemp())
     session_file = tmp_dir / "session.json"
     session_file.write_text("{}", encoding="utf-8")
@@ -97,34 +93,17 @@ def test_supervisor_detects_crash_and_restarts_bridge() -> None:
 
     supervisor = McpSupervisor(bridge, on_restart=restart_recorded.append)
 
-    supervisor._do_check_once()  # process alive — no restart
+    supervisor._do_check_once()
     assert bridge.restart_count == 0
 
-    initial_process._poll_result = 1  # process now dead
-    supervisor._do_check_once()  # detects crash, restarts
+    initial_process._poll_result = 1
+    supervisor._do_check_once()
 
     assert bridge.restart_count == 1
     assert restart_recorded == [1]
 
 
 def test_supervisor_keeps_supervising_across_transient_failed_respawn() -> None:
-    """C2 regression: a single transient restart_fn failure does NOT terminate the run.
-
-    The bug from 2026-10-19 (Expeditions-Core): a host stall caused
-    the first probe to over-run; the bridge called ``restart_fn``,
-    which failed because the spawn also stalled; the supervisor
-    classified the typed ``McpServerError`` as budget-exhausted and
-    killed the agent run. The C2 fix changes the contract: a single
-    failed respawn is NON-TERMINAL while the budget remains. The
-    supervisor keeps polling and the agent's MCP calls resume on the
-    next health-check cycle once the host recovers.
-
-    This test pins the supervisor-level behaviour: a transient
-    ``restart_fn`` failure is logged at WARNING; the supervisor
-    does NOT raise; ``on_error`` is NOT called; ``on_restart`` is
-    NOT called for the failed attempt; the supervisor keeps
-    supervising across the failure.
-    """
     td = pathlib.Path(tempfile.mkdtemp())
     sf = td / "session.json"
     sf.write_text("{}", encoding="utf-8")
@@ -133,7 +112,6 @@ def test_supervisor_keeps_supervising_across_transient_failed_respawn() -> None:
 
     def flaky_restart_fn() -> lifecycle.StandaloneMcpProcess:
         restart_attempts.append(len(restart_attempts) + 1)
-        # The first restart attempt fails (synthetic transient host stall).
         if len(restart_attempts) == 1:
             raise RuntimeError("synthetic transient respawn failure")
         new_sf = td / f"session-{len(restart_attempts)}.json"
@@ -146,7 +124,7 @@ def test_supervisor_keeps_supervising_across_transient_failed_respawn() -> None:
 
     inner = lifecycle.StandaloneMcpProcess(
         endpoint="http://127.0.0.1:9510/mcp",
-        process=FakeProcess(poll_result=1),  # process already exited
+        process=FakeProcess(poll_result=1),
         session_file=sf,
     )
 
@@ -166,21 +144,13 @@ def test_supervisor_keeps_supervising_across_transient_failed_respawn() -> None:
         on_error=error_recorded.append,
     )
 
-    # First health check: inner.poll() is not None -> restart attempted,
-    # which fails (transient). Under C2 this is NON-TERMINAL; the
-    # supervisor keeps polling. on_error MUST NOT be called.
     result = supervisor._do_check_once()
     assert result is False, "C2: a single failed respawn must not report success"
-    # First failed attempt was via _perform_restart's process_exited path;
-    # restart_fn was invoked (and raised), so restart_attempts has one entry.
     assert restart_attempts == [1]
     assert error_recorded == [], "C2: a single failed respawn must not call on_error"
     assert restart_recorded == [], "C2: a failed respawn must not count as a restart"
-    # restart_count advanced to 1 (S1 invariant).
     assert bridge.restart_count == 1
 
-    # Second health check: dead inner triggers another restart attempt,
-    # which succeeds. on_restart IS called for the successful replacement.
     result = supervisor._do_check_once()
     assert result is True, "C2: the second restart attempt succeeds"
     assert restart_attempts == [1, 2]
@@ -188,11 +158,6 @@ def test_supervisor_keeps_supervising_across_transient_failed_respawn() -> None:
     assert restart_recorded == [2]
     assert bridge.restart_count == 2
 
-    # No terminal McpServerError was stored on the supervisor (a single
-    # failed respawn is non-terminal under C2). The supervisor's
-    # internal ``_mcp_error`` attribute must remain None; this is the
-    # observable contract that downstream code (the agent's MCP
-    # caller) uses to decide whether the run is recoverable.
     assert supervisor._mcp_error is None, (
         "C2: a single failed respawn must not store a terminal McpServerError"
     )
@@ -206,13 +171,11 @@ def test_supervisor_raises_mcp_error_when_budget_exhausted() -> None:
         supervisor._do_check_once()
 
     assert exc_info.value.restart_count == 0
-    # __exit__ re-raises the stored error
     with pytest.raises(lifecycle.McpServerError), supervisor:
         pass
 
 
 def test_supervisor_mcp_error_propagates_even_when_agent_also_fails() -> None:
-    """McpServerError from supervisor takes priority over agent invocation errors."""
     bridge = _make_exhausted_bridge(max_restarts=0)
     supervisor = McpSupervisor(bridge, check_interval=timedelta(milliseconds=20))
 
@@ -246,25 +209,22 @@ def test_supervisor_stops_thread_on_exit() -> None:
 
 
 def test_supervisor_mid_run_restart_preserves_endpoint() -> None:
-    """Endpoint stays stable after a mid-run crash and supervisor restart."""
     bridge, initial_process = _make_bridge_with_process(max_restarts=3)
     initial_endpoint = bridge.agent_endpoint_uri()
 
     supervisor = McpSupervisor(bridge)
 
-    supervisor._do_check_once()  # process alive — no restart
+    supervisor._do_check_once()
     assert bridge.restart_count == 0
 
-    initial_process._poll_result = 1  # process now dead
-    supervisor._do_check_once()  # detects crash, restarts
+    initial_process._poll_result = 1
+    supervisor._do_check_once()
 
     assert bridge.restart_count == 1
-    # Endpoint unchanged — agent's MCP_ENDPOINT_ENV value remains valid
     assert bridge.agent_endpoint_uri() == initial_endpoint
 
 
 def test_supervisor_uses_configured_check_interval() -> None:
-    """McpSupervisor stores and exposes the interval it was constructed with."""
     bridge, _ = _make_bridge_with_process()
     custom_interval = timedelta(milliseconds=350)
     supervisor = McpSupervisor(bridge, check_interval=custom_interval)
@@ -272,12 +232,10 @@ def test_supervisor_uses_configured_check_interval() -> None:
 
 
 def test_supervisor_default_interval_equals_two_seconds() -> None:
-    """The module-level _DEFAULT_INTERVAL constant is still 2 s for explicit construction."""
     assert timedelta(seconds=2) == DEFAULT_INTERVAL
 
 
 def test_supervisor_calls_on_error_callback_when_budget_exhausted() -> None:
-    """McpSupervisor calls on_error when restart budget is exhausted."""
     bridge = _make_exhausted_bridge(max_restarts=0)
     error_calls: list[lifecycle.McpServerError] = []
 
@@ -291,18 +249,11 @@ def test_supervisor_calls_on_error_callback_when_budget_exhausted() -> None:
 
 
 def test_supervisor_restarts_alive_but_probe_failing_bridge() -> None:
-    """McpSupervisor restarts an alive bridge after sustained probe failure.
-
-    Sustained is the operative word: a single missed probe window means a
-    loaded server, so restarting on it tore down healthy servers mid-call.
-    """
     td = pathlib.Path(tempfile.mkdtemp())
     sf = td / "session.json"
     sf.write_text("{}", encoding="utf-8")
 
     probe_should_fail = [False]
-    # Tracks whether the restart has run; probe passes after the first restart
-    # so the budget is not exhausted by subsequent health checks.
     restart_done = [False]
 
     def controlled_probe(endpoint: str, timeout: timedelta) -> None:
@@ -318,7 +269,7 @@ def test_supervisor_restarts_alive_but_probe_failing_bridge() -> None:
     )
 
     def restart_fn() -> lifecycle.StandaloneMcpProcess:
-        restart_done[0] = True  # after restart the new server is responsive
+        restart_done[0] = True
         new_sf = td / "session-restart.json"
         new_sf.write_text("{}", encoding="utf-8")
         return lifecycle.StandaloneMcpProcess(
@@ -339,12 +290,9 @@ def test_supervisor_restarts_alive_but_probe_failing_bridge() -> None:
 
     supervisor = McpSupervisor(bridge, on_restart=restart_recorded.append)
 
-    # First check: process alive, probe passes — no restart
     supervisor._do_check_once()
     assert bridge.restart_count == 0
 
-    # Process still alive but probe now fails — restarts once the failure
-    # is repeated, not on the first miss.
     probe_should_fail[0] = True
     supervisor._do_check_once()
     assert bridge.restart_count == 0

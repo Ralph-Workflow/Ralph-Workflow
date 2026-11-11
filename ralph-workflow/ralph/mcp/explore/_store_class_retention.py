@@ -1,8 +1,3 @@
-"""Retention and storage method mixin for :class:`ExploreStore`.
-
-Extracted from :mod:`ralph.mcp.explore._store_class` so the host
-module stays under the repository file-size ceiling.
-"""
 
 from __future__ import annotations
 
@@ -22,13 +17,11 @@ from ralph.mcp.explore._store_types import (
 
 
 class _RetentionMethods:
-    """Mixin supplying job history, tombstones, and storage size methods."""
 
     _conn: sqlite3.Connection
     _db_path: Path
     _transaction: Callable[[], AbstractContextManager[sqlite3.Cursor]]
 
-    # --- Job history (bounded) ----------------------------------------
 
     def record_job(
         self,
@@ -65,9 +58,6 @@ class _RetentionMethods:
                     error_summary,
                 ),
             )
-            # Batch cap pruning: deleting on every insert after the cap turns
-            # a bounded history into repeated full-table scans. Keep at most a
-            # ten-record slack, then prune back to the canonical cap.
             count_row: sqlite3.Row | None = cur.execute("SELECT COUNT(*) FROM jobs").fetchone()
             job_count = _row_int_opt(count_row, 0) if count_row is not None else 0
             if job_count > JOB_HISTORY_CAP + 10:
@@ -91,7 +81,6 @@ class _RetentionMethods:
         row: sqlite3.Row | None = cur.fetchone()
         return row
 
-    # --- Evidence tombstones (bounded) -------------------------------
 
     def record_tombstone(
         self,
@@ -109,15 +98,6 @@ class _RetentionMethods:
     ) -> None:
         now_seconds = time.time() if now is None else now
         with self._transaction() as cur:
-            # AC-05: tombstone identity is derived deterministically
-            # from (path, content_hash, kind), so a delete-then-restore
-            # cycle of the same bytes can produce the same evidence_id
-            # on the next delete. The lifecycle must remain idempotent
-            # to avoid ``IntegrityError`` on the primary-key collision.
-            # An ON CONFLICT refreshes ``stale_at``/``stale_reason``/
-            # ``replacement_evidence_id`` on the existing row so the
-            # row count does not balloon and the most recent deletion
-            # wins for lookup, while bounded retention still applies.
             cur.execute(
                 """
                 INSERT INTO evidence_tombstones (
@@ -167,7 +147,6 @@ class _RetentionMethods:
         row: sqlite3.Row | None = cur.fetchone()
         return row
 
-    # --- Storage size -------------------------------------------------
 
     def index_storage_bytes(self) -> int:
         total = 0

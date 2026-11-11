@@ -1,5 +1,3 @@
-"""Prompt contracts for project-policy analysis."""
-
 from __future__ import annotations
 
 from ralph.project_policy import analysis, markers

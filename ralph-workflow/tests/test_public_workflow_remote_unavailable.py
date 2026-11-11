@@ -24,17 +24,6 @@ class _FakeConfig:
 
 
 def test_remote_unavailable_defers_remote_and_renders_distinct_display(tmp_path: Path) -> None:
-    """Local landing with remote unavailable: defer remote, keep landing/remote distinct.
-
-    Drives the FULL public boundary: ``push_target_after_landing`` is the
-    single public entry point for post-landing remote push. The asserted
-    outcome is the **persisted** ``last_publication_decision`` (the
-    post-push decision), NOT the pre-push eligibility check. A successful
-    push must close the publication obligation (``PUBLICATION_TERMINAL``)
-    and a failed push must keep the obligation open
-    (``PUBLISH_DEFERRED_REMOTE``).
-    """
-    # 1. Local landing complete: integrated_feature_sha is established
     record = IntegrationRecord(
         phase="integrated",
         target="main",
@@ -50,7 +39,6 @@ def test_remote_unavailable_defers_remote_and_renders_distinct_display(tmp_path:
         operation_display_state=OperationDisplayState.LANDING.value,
     )
 
-    # 2. With remote_unavailable=True and configured_remote="origin"
     decision = next_publication_action(
         rebase,
         record=record,
@@ -59,10 +47,6 @@ def test_remote_unavailable_defers_remote_and_renders_distinct_display(tmp_path:
     )
     assert decision == PublicationDecision.PUBLISH_DEFERRED_REMOTE
 
-    # 3. Drive the FULL public boundary through push_target_after_landing
-    #    with a typed UNREACHABLE push result. The persisted
-    #    last_publication_decision MUST reflect the actual post-push
-    #    outcome, not the pre-push eligibility check.
     with patch(
         "ralph.git.remote_push.push_branch_to_single_remote",
         return_value=PushResult(
@@ -78,12 +62,6 @@ def test_remote_unavailable_defers_remote_and_renders_distinct_display(tmp_path:
     )
     assert rebase_after_unavailable.last_action == "remote_failed"
 
-    # 4. Drive the FULL public boundary with a typed PUSHED success
-    #    result. The persisted last_publication_decision MUST be
-    #    PUBLICATION_TERMINAL -- a successful push closes the
-    #    publication obligation; reporting PUBLISH_NOW would
-    #    leave the obligation open and the terminal-success
-    #    authority would refuse to report success.
     with patch(
         "ralph.git.remote_push.push_branch_to_single_remote",
         return_value=PushResult(
@@ -97,10 +75,6 @@ def test_remote_unavailable_defers_remote_and_renders_distinct_display(tmp_path:
     )
     assert rebase_after_success.last_action == "remote_pushed"
 
-    # 5. Local landing (REBASE_STATE) and remote publication (deferred
-    #    OR terminal) render with distinct messages. Use the post-push
-    #    state for the deferred case so the formatter sees the
-    #    deferred-remote display state.
     rebase_publishing = rebase.model_copy(
         update={
             "last_publication_decision": decision.value,
@@ -114,8 +88,6 @@ def test_remote_unavailable_defers_remote_and_renders_distinct_display(tmp_path:
         }
     )
 
-    # 6. Format messages for the three distinct states and assert
-    #    distinct rendering
     msg_landing = format_auto_integrate_message(
         rebase.last_action,
         rebase.last_target,
@@ -142,8 +114,6 @@ def test_remote_unavailable_defers_remote_and_renders_distinct_display(tmp_path:
     assert msg_publishing != msg_terminal
     assert "landing" in msg_landing.lower() or "target" in msg_landing.lower()
     assert "publishing" in msg_publishing.lower() or "remote" in msg_publishing.lower()
-    # Terminal success after push is the operator-facing signal that
-    # the publication obligation is closed.
     assert (
         "terminal" in msg_terminal.lower()
         or "success" in msg_terminal.lower()

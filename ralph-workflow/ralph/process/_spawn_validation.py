@@ -1,34 +1,3 @@
-"""Reject spawn arguments the OS exec interface cannot carry.
-
-A NUL byte anywhere in argv, cwd, or the environment map makes CPython's
-``_fork_exec`` raise ``ValueError("embedded null byte")`` from deep inside
-``subprocess.Popen.__init__``; an empty argv raises ``IndexError`` from the
-same place. Neither message names the process nor the offending argument.
-
-Worse, neither is an ``OSError``. The spawn seams' failure bookkeeping ran
-only for ``OSError``, so no FAILED ``ProcessRecord`` was built for these
-inputs -- and every layer above the seams that converts a spawn failure into
-a structured outcome (``ExecutorError`` in the agent executor,
-``ExecutionError`` in the agent-facing ``exec`` MCP tool,
-``ProcessExecutionError`` in ``ralph.executor.process``, the GitPython
-fallbacks around ``run_git``) keys on ``OSError`` too, so all of them were
-bypassed as well. The pipeline's blanket ``except Exception`` in
-``ralph.pipeline.effect_executor`` still absorbed the escape into
-``PipelineEvent.AGENT_FAILURE``, so the run did not hard-crash; what was lost
-was the diagnosis and every structured outcome on the way up.
-
-Validating at the boundary instead fails closed with a message that names
-exactly which argument is unusable, and raises
-:class:`InvalidSpawnArgumentError`, which is both an ``OSError`` (the OS
-cannot perform this spawn, so every existing spawn-failure handler sees it)
-and a ``ValueError`` (the class ``Popen`` raises for the same input today, so
-no existing caller regresses). Values are never interpolated into the
-message: an environment value can hold a credential.
-
-The accepted argument forms mirror what ``Popen`` itself accepts -- ``str``,
-``bytes``-like, and ``os.PathLike`` -- so validation never rejects, or raises
-``TypeError`` over, an input the OS would have carried happily.
-"""
 
 from __future__ import annotations
 
@@ -43,7 +12,6 @@ from ralph.runtime_events import record_runtime_event
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
 
-#: Every form ``subprocess.Popen`` accepts for an argv element or a cwd.
 type SpawnArgument = str | bytes | os.PathLike[str] | os.PathLike[bytes]
 
 _NUL_TEXT = "\x00"
@@ -52,39 +20,23 @@ _NUL_BYTES = b"\x00"
 
 @runtime_checkable
 class _PromptMaterializerModule(Protocol):
-    """The minimal typed interface imported lazily to avoid a cycle."""
 
     def materialize_argv_prompt(self, prompt: str, cwd: str | None) -> str:
-        """Persist one prompt and return its file path."""
+        pass
 
 
 @runtime_checkable
 class _FsPathLike(Protocol):
-    """Structural stand-in for ``os.PathLike`` with a non-generic path type.
-
-    ``os.PathLike`` is generic in the string type it yields, so narrowing to it
-    yields ``PathLike[Any]`` and ``os.fspath`` then returns ``Any``. Only the
-    two concrete forms exist, and both are handled below.
-    """
 
     def __fspath__(self) -> str | bytes:
-        """Return the filesystem path this object stands for."""
         ...
 
 
 class InvalidSpawnArgumentError(OSError, ValueError):
-    """A spawn argument the OS exec interface cannot carry.
-
-    Subclasses both builtin classes on purpose. ``OSError`` is the class
-    every spawn-failure handler in the codebase already keys on -- being
-    unable to start the process is exactly what happened -- and ``ValueError``
-    is what ``subprocess.Popen`` raises for the same input, so callers written
-    against the pre-validation behaviour keep working.
-    """
+    pass
 
 
 def _as_text(value: object) -> str:
-    """Render a spawn argument for a message without ever raising."""
     if isinstance(value, str):
         return value
     if isinstance(value, Buffer):
@@ -95,15 +47,12 @@ def _as_text(value: object) -> str:
 
 
 def _carries_nul(value: object) -> bool:
-    """Return whether ``value``, in any form ``Popen`` accepts, holds a NUL byte."""
     if isinstance(value, str):
         return _NUL_TEXT in value
     if isinstance(value, Buffer):
         return _NUL_BYTES in bytes(value)
     if isinstance(value, _FsPathLike):
         return _carries_nul(value.__fspath__())
-    # Any other type is one ``Popen`` itself rejects; leave that verdict to it
-    # rather than inventing a second, differently-worded rejection here.
     return False
 
 
@@ -112,12 +61,10 @@ def _spawn_target(command: Sequence[SpawnArgument]) -> str:
 
 
 def _env_label(name: object) -> str:
-    """Name an environment variable in a message, with any NUL made visible."""
     return _as_text(name).replace(_NUL_TEXT, "?")
 
 
 def spawn_payload_bytes(command: Sequence[SpawnArgument], env: Mapping[str, str] | None) -> int:
-    """Return the byte payload passed to execve, including NUL terminators."""
     values = [os.fsencode(item) for item in command]
     if env is not None:
         values.extend(os.fsencode(f"{key}={value}") for key, value in env.items())
@@ -125,7 +72,6 @@ def spawn_payload_bytes(command: Sequence[SpawnArgument], env: Mapping[str, str]
 
 
 def arg_max_limit(sysconf: Callable[[str], int] = os.sysconf) -> int:
-    """Return a conservative exec payload limit when the platform cannot report one."""
     try:
         limit: int = sysconf("SC_ARG_MAX")
     except (AttributeError, OSError, ValueError):
@@ -138,7 +84,6 @@ def reduce_oversized_inline_prompt(
     *,
     cwd: str | None,
 ) -> tuple[str, ...]:
-    """Replace a Claude-style ``-- <prompt>`` positional with a file path."""
     if "--" not in command:
         return tuple(command)
     prompt_index = command.index("--") + 1
@@ -161,7 +106,6 @@ def prepare_spawn_command(
     env: Mapping[str, str] | None,
     payload_limit: int | None = None,
 ) -> tuple[str, ...]:
-    """Return a validated argv, spilling an oversized inline prompt to a file."""
     limit = arg_max_limit() if payload_limit is None else payload_limit
     prepared: tuple[str, ...] = tuple(command)
     if spawn_payload_bytes(prepared, env) > limit:
@@ -177,21 +121,6 @@ def validate_spawn_arguments(
     env: Mapping[str, str] | None,
     payload_limit: int | None = None,
 ) -> None:
-    """Raise when a spawn argument is one the OS exec interface cannot carry.
-
-    Args:
-        command: The argv the child would be executed with.
-        cwd: The working directory the child would start in, if any.
-        env: The environment map the child would actually inherit, if any.
-            Callers pass the map AFTER scrubbing, because a variable removed
-            before the child exists can never reach it.
-
-    Raises:
-        InvalidSpawnArgumentError: When the command is empty, or naming the
-            first argument that carries a NUL byte. The offending value itself
-            is never included, because an environment value can hold a
-            credential.
-    """
     if not command:
         raise InvalidSpawnArgumentError(
             "cannot spawn: the command is empty, so there is no executable to run; "

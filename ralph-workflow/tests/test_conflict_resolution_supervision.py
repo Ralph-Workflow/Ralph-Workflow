@@ -1,11 +1,3 @@
-"""Regression contracts for conflict-resolution-only supervision (S-2).
-
-These tests describe the required externally observable supervision model before
-its production implementation is introduced.  They intentionally fail against
-the shipped elapsed-time driver/watchdog behavior and use only injected clocks
-and in-process fakes.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -21,8 +13,6 @@ from ralph.agents.timeout_clock import FakeClock
 
 @dataclass
 class _ActivityOnlyResolution:
-    """Expected conflict-only profile driven by a fake clock and activity source."""
-
     clock: FakeClock
     inactivity_seconds: float = 900.0
     total_cap_seconds: float | None = None
@@ -45,11 +35,6 @@ class _ActivityOnlyResolution:
 def test_conflict_resolution_regression_each_recognized_source_preserves_liveness(
     source: str,
 ) -> None:
-    """S-2/R3: each normal liveness source alone keeps resolution alive.
-
-    The expected profile is intentionally distinct from the ordinary watchdog:
-    no absolute session or child-wait ceiling may override fresh activity.
-    """
     clock = FakeClock()
     profile = _ActivityOnlyResolution(clock)
     for _ in range(4):
@@ -59,7 +44,6 @@ def test_conflict_resolution_regression_each_recognized_source_preserves_livenes
 
 
 def test_conflict_resolution_regression_steady_activity_outlives_former_deadline() -> None:
-    """S-2/R1: active work beyond 900 seconds remains live."""
     clock = FakeClock()
     profile = _ActivityOnlyResolution(clock)
     for _ in range(4):
@@ -69,7 +53,6 @@ def test_conflict_resolution_regression_steady_activity_outlives_former_deadline
 
 
 def test_conflict_resolution_regression_identical_streams_are_duration_independent() -> None:
-    """S-2/R2: a ten-times-longer active stream has the same outcome."""
     short_clock = FakeClock()
     long_clock = FakeClock()
     short = _ActivityOnlyResolution(short_clock)
@@ -84,7 +67,6 @@ def test_conflict_resolution_regression_identical_streams_are_duration_independe
 
 
 def test_conflict_resolution_regression_silence_is_the_only_default_termination() -> None:
-    """S-2/R4: complete silence ends within the fixed 900-second window."""
     clock = FakeClock()
     profile = _ActivityOnlyResolution(clock)
     clock.advance(900.0)
@@ -92,7 +74,6 @@ def test_conflict_resolution_regression_silence_is_the_only_default_termination(
 
 
 def test_conflict_resolution_regression_cap_is_disabled_by_default_and_named_when_enabled() -> None:
-    """S-2/R6: only an explicit operator cap can end active work on elapsed time."""
     default_clock = FakeClock()
     default = _ActivityOnlyResolution(default_clock)
     default_clock.advance(9_000.0)
@@ -109,11 +90,6 @@ def test_conflict_resolution_regression_cap_is_disabled_by_default_and_named_whe
 def test_conflict_resolution_regression_activity_only_profile_ignores_elapsed_session_ceiling() -> (
     None
 ):
-    """S-2/S-4: fresh MCP-only work outlives ordinary session ceiling math.
-
-    This assertion was red before ``TimeoutProfile.ACTIVITY_ONLY`` was added:
-    the ordinary watchdog fired ``SESSION_CEILING_EXCEEDED`` at 900 seconds.
-    """
     clock = FakeClock()
     watchdog = IdleWatchdog(
         TimeoutPolicy(

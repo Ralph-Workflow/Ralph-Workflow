@@ -1,9 +1,3 @@
-"""Black-box tests for CompletionEnforcingStrategy mixin.
-
-All tests use in-memory fakes — no real subprocesses, no real wall-clock waits,
-no real psutil.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -21,12 +15,10 @@ from tests.fake_handle import _FakeHandle
 
 
 class _HostWithCompletionEnforcement(CompletionEnforcingStrategy, GenericExecutionStrategy):
-    """Host that inherits True from the mixin."""
+    pass
 
 
 class TestCompletionEnforcingStrategy:
-    """Mixin requires durable declaration plus any required artifact receipt."""
-
     def test_classify_exit_resumable_when_required_receipt_lacks_sentinel(self) -> None:
         strategy = _HostWithCompletionEnforcement()
         handle = _FakeHandle(returncode=0)
@@ -101,7 +93,6 @@ class TestCompletionEnforcingStrategy:
         assert state == AgentExecutionState.RESUMABLE_CONTINUE
 
     def test_mixin_allows_host_that_inherits_enforcement(self) -> None:
-        """A host inheriting the mixin's True default is accepted."""
         cls = type(
             "_EnforcementHost",
             (CompletionEnforcingStrategy, GenericExecutionStrategy),
@@ -110,7 +101,6 @@ class TestCompletionEnforcingStrategy:
         assert cls().supports_completion_enforcement() is True
 
     def test_mixin_rejects_host_that_overrides_enforcement(self) -> None:
-        """A host that shadows the mixin's capability method is rejected."""
         with pytest.raises(TypeError):
             type(
                 "_OverriddenEnforcementHost",
@@ -119,7 +109,6 @@ class TestCompletionEnforcingStrategy:
             )
 
     def test_mixin_rejects_host_returning_false(self) -> None:
-        """A subclass explicitly returning False cannot bypass enforcement."""
         with pytest.raises(TypeError):
             type(
                 "_FalseEnforcementHost",

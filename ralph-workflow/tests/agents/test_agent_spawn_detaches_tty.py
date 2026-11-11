@@ -1,46 +1,3 @@
-"""Regression tests proving agent spawn sites detach the controlling TTY.
-
-When an interactive agent child inherits Ralph's controlling-terminal
-stdin it can put the shared TTY into raw mode and steal keystrokes.
-Ralph feeds agents via a prompt FILE / argv, never via stdin, so the
-two agent-spawn sites must request ``stdin=subprocess.DEVNULL`` and
-keep ``start_new_session=True``.
-
-These tests drive the spawn sites RUNTIME via recording fake factories
-on a real ``ProcessManager`` and assert on the captured ``SpawnOptions``.
-No real subprocess is spawned and no production-source ``ast.parse``
-is used -- the assertions run against the live code paths so a
-runtime refactor that changes the actual spawn options (while keeping
-equivalent-looking source text elsewhere) cannot slip through.
-
-There are two distinct seams:
-
-  1. **PTY-less invoke reader** -- ``ralph.agents.invoke._process_reader
-     ._run_subprocess_and_read_lines`` calls the module-level SINGLETON
-     ``get_process_manager()`` (imported at module load time). The
-     factory is sync with signature ``(Sequence[str], SpawnOptions) ->
-     _SyncProcessLike``. We monkeypatch the bound name on the reader
-     module so the production code's ``get_process_manager()`` call
-     resolves to our injected ``ProcessManager`` and the recording
-     factory captures the ``SpawnOptions`` it would have spawned.
-
-  2. **Fan-out executor** -- ``ralph.agents.subprocess_executor
-     .SubprocessAgentExecutor`` accepts an injected ``ProcessManager``
-     via the underscore keyword ``_pm=`` (constructor line ~72). The
-     factory is async with signature ``(command, *, cwd, env, stdin,
-     stdout, stderr, start_new_session) -> _AsyncProcessLike``. The
-     keyword args are destructured from the captured ``SpawnOptions``
-     at ``ProcessManager.spawn_async`` (ralph/process/manager/
-     _process_manager.py:629-635); we record the ``stdin`` and
-     ``start_new_session`` kwargs at the factory boundary.
-
-Both fake factories use ``FakePopen`` /
-``FakeControllableAsyncProcess`` from ``ralph/testing/fake_process.py``
-so no real OS process is created. ``audit_test_policy.py:331-348``
-forbids ``subprocess.run`` / ``Popen`` / ``create_subprocess_exec`` in
-tests; we comply by injecting the seam instead of executing it.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -65,7 +22,6 @@ if TYPE_CHECKING:
 
 
 def _make_invoke_ctx() -> AgentRunCtx:
-    """Build a minimal ``AgentRunCtx`` that lets the reader reach spawn."""
     return AgentRunCtx(
         config=AgentConfig(cmd="fake-binary"),
         show_progress=False,
@@ -78,13 +34,6 @@ def _make_invoke_ctx() -> AgentRunCtx:
 def test_invoke_reader_spawn_passes_devnull_at_runtime(
     monkeypatch: object,
 ) -> None:
-    """``_run_subprocess_and_read_lines`` requests ``DEVNULL`` stdin at spawn time.
-
-    The sync recording factory captures the actual ``SpawnOptions``
-    passed to ``ProcessManager.spawn`` -- not the source text. A
-    refactor that drops the ``stdin=`` kwarg entirely, or sets it to
-    ``None`` (INHERIT) or ``PIPE``, fails this test.
-    """
     captured: list[SpawnOptions] = []
 
     def sync_factory(command: Sequence[str], opts: SpawnOptions) -> FakePopen:
@@ -100,17 +49,10 @@ def test_invoke_reader_spawn_passes_devnull_at_runtime(
         sync_process_factory=sync_factory,
     )
 
-    # The reader module imports ``get_process_manager`` at line 75 and
-    # calls it as a module-level singleton at lines 884 and 259. Rebind
-    # the name on the reader module so the production code resolves
-    # ``get_process_manager()`` to our injected manager.
     monkeypatch.setattr(_process_reader, "get_process_manager", lambda: pm)
 
     ctx = _make_invoke_ctx()
     with contextlib.suppress(Exception):
-        # ``FakePopen.stdout`` defaults to None; the reader raises after
-        # spawn (expected and harmless -- the assertion is on the
-        # captured SpawnOptions, not on consumed lines).
         for _line in _process_reader._run_subprocess_and_read_lines(
             ["/bin/true"],
             ctx,
@@ -134,15 +76,6 @@ def test_invoke_reader_spawn_passes_devnull_at_runtime(
 
 
 def test_subprocess_executor_spawn_passes_devnull_at_runtime() -> None:
-    """``SubprocessAgentExecutor.run`` requests ``DEVNULL`` stdin at spawn time.
-
-    ``ProcessManager.spawn_async`` destructures ``SpawnOptions`` into
-    keyword arguments before calling the async factory (ralph/process/
-    manager/_process_manager.py:629-635), so we record the kwargs at
-    the factory boundary. A refactor that drops ``stdin=`` from the
-    ``SpawnOptions(...)`` block, or sets it to ``None`` / ``PIPE``,
-    fails this test.
-    """
 
     captured: list[dict[str, object]] = []
 
@@ -163,8 +96,6 @@ def test_subprocess_executor_spawn_passes_devnull_at_runtime() -> None:
                 "start_new_session": start_new_session,
             }
         )
-        # Pre-completed event so the executor's drain_output + wait
-        # gather exits cleanly without the test waiting on real time.
         event = asyncio.Event()
         event.set()
         return FakeControllableAsyncProcess(pid=1, completion_event=event)

@@ -1,5 +1,3 @@
-"""Structured logging coverage for markdown artifact validation outcomes."""
-
 from __future__ import annotations
 
 from pathlib import Path

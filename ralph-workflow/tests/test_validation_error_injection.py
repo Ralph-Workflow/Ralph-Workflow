@@ -1,5 +1,3 @@
-"""Regression coverage for drain-keyed validation retry context."""
-
 from __future__ import annotations
 
 from pathlib import Path

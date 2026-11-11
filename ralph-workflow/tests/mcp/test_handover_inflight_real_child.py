@@ -1,30 +1,3 @@
-"""WU-U3a: Handover & In-Flight Edge Cases with real child subprocesses.
-
-Pins catalogue requirements:
-- E1.3: Pause/drain stops accepting new calls while in-flight calls finish.
-- E1.4: In-flight non-idempotent call severed mid-flight produces typed failure
-        (network error at the raw HTTP boundary; outcome-unknown detection
-        is the caller's responsibility per the E1.4 contract).
-- E1.4: Duplicate artifact submission retried across swap is applied exactly once.
-- E1.5: ACK-before-resume: parent does not resume candidate until old child
-        explicitly ACKs pause or drains. Real subprocess for BOTH the
-        retiring and the candidate child.
-- E1.5: Streaming/long-call drain fate during handover against a real subprocess.
-- E1.6: Fail-closed resume timeout: if candidate resume handshake times out,
-        fail closed and mark candidate unready.
-- E1.6: Two real children writing to shared on-disk wire ledger interleave
-        cleanly and cryptographically verify afterwards.
-
-Note: the typed-retry helper ``execute_mcp_http_request`` that previously
-lived in ``_http_tools_list`` was deleted (it had no production caller; the
-deleted helper applied a per-call typed outcome-unknown wrapper around the
-raw ``http.client`` boundary). E1.4's boundary is the raw
-``http.client.HTTPConnection``; the caller observes a typed OSError-family
-exception (``ConnectionResetError``, ``RemoteDisconnected``, ``BrokenPipeError``)
-when the connection is severed mid-flight, and dedupe on retry is observed at
-the artifact store layer.
-"""
-
 from __future__ import annotations
 
 import contextlib
@@ -72,7 +45,6 @@ assert _markdown_specs is not None
 
 
 def _reap_process(proc: ManagedProcess) -> None:
-    """Ensure a managed process is terminated and reaped without leaks."""
     if proc.poll() is None:
         with contextlib.suppress(Exception):
             proc.kill()
@@ -85,14 +57,6 @@ def _spawn_real_candidate(
     label: str,
     lifetime_s: float = 30.0,
 ) -> ManagedProcess:
-    """Spawn a real subprocess that acts as a candidate child.
-
-    The candidate just needs ``pid`` and ``poll()`` (alive) for the
-    bridge's pause/ack/resume sentinel protocol. It does not need to
-    serve any HTTP traffic — the bridge's ``_hand_over_accept`` path
-    writes sentinel files; only the candidate's liveness matters for
-    the kill-on-hang escape branch.
-    """
     script = tmp_path / f"{label}.py"
     script.write_text(
         "\n".join(
@@ -109,11 +73,7 @@ def _spawn_real_candidate(
     )
 
 
-# ---------------------------------------------------------------------------
-# E1.3: Pause/drain stops accepting new calls while in-flight finish
-# ---------------------------------------------------------------------------
 def test_e13_pause_drain_stops_accepting_while_inflight_finishes(tmp_path: Path) -> None:
-    """Retiring child drops listening socket on pause, completing in-flight requests."""
     ralph_root = str(Path(__file__).resolve().parents[2])
     port_file = tmp_path / "port.txt"
     pause_file = tmp_path / "accept.pause"
@@ -162,16 +122,12 @@ def test_e13_pause_drain_stops_accepting_while_inflight_finishes(tmp_path: Path)
     )
 
     try:
-        # Wait for child to bind and write port. The 20s deadline absorbs
-        # sustained external host load (the child must import the package
-        # and bind before writing); under a quiet host it fires in <1s.
         deadline = time.monotonic() + 20.0
         while time.monotonic() < deadline and not port_file.exists():
             time.sleep(0.02)
         assert port_file.exists(), "Child failed to report bound port"
         port = int(port_file.read_text(encoding="utf-8").strip())
 
-        # 1. Start an in-flight request on a separate thread
         inflight_result: list[tuple[int, bytes]] = []
 
         def _do_inflight() -> None:
@@ -186,25 +142,16 @@ def test_e13_pause_drain_stops_accepting_while_inflight_finishes(tmp_path: Path)
         req_thread = threading.Thread(target=_do_inflight)
         req_thread.start()
 
-        # Wait until the request is genuinely in flight -- inside the child's
-        # slow_probe -- before pausing. A fixed sleep raced the child: on a
-        # loaded host the request had not been accepted yet, the pause
-        # dropped the listener first, and the "in-flight" request was
-        # refused instead.
         deadline = time.monotonic() + 10.0
         while time.monotonic() < deadline and not probe_entered_file.exists():
             time.sleep(0.025)
         assert probe_entered_file.exists(), "In-flight request never reached slow_probe"
 
-        # 2. Trigger handover pause sentinel
         request_old_child_pause(pause_file)
 
-        # 3. Wait for pause acknowledgement from retiring child
         ack = wait_for_old_child_pause_ack(pause_file, timeout=2.0)
         assert ack is True, "Retiring child failed to acknowledge pause"
 
-        # 4. Attempt a NEW connection to the retiring child's dropped port
-        # Invariant: Must fail because drop_listening_socket() detached the port
         new_conn_rejected = False
         try:
             rejected_conn = http.client.HTTPConnection("127.0.0.1", port, timeout=0.5)
@@ -220,7 +167,6 @@ def test_e13_pause_drain_stops_accepting_while_inflight_finishes(tmp_path: Path)
             "New connection was accepted after child acknowledged handover pause!"
         )
 
-        # 5. In-flight request completes successfully
         req_thread.join(timeout=3.0)
         assert len(inflight_result) == 1, "In-flight request did not complete"
         status, body = inflight_result[0]
@@ -229,47 +175,13 @@ def test_e13_pause_drain_stops_accepting_while_inflight_finishes(tmp_path: Path)
     finally:
         _reap_process(proc)
 
-    # Leak check: child is terminated and reaped
     assert proc.poll() is not None
 
 
-# ---------------------------------------------------------------------------
-# E1.4: In-flight non-idempotent call severed surfaces typed network error
-# ---------------------------------------------------------------------------
 def test_e14_outcome_unknown(tmp_path: Path) -> None:
-    """Severing a NON-IDEMPOTENT in-flight tools/call request mid-retirement surfaces a typed failure.
-
-    Pre-DEc evidence this replaces: the prior test severed a /health GET
-    (an idempotent health probe) and asserted a generic
-    :class:`http.client.RemoteDisconnected`. That covered the network
-    severse but did NOT prove the documented behaviour for a non-idempotent
-    call — e.g. an artifact submission or exec — which is the surface where
-    outcome-unknown matters.
-
-    Drives a real subprocess server that holds the request open for long
-    enough that the parent can kill it while the call is in-flight. The
-    handler responds with a JSON-RPC frame ONLY after a long sleep; the
-    parent kills the child mid-flight. The severed HTTP connection must
-    surface as a typed network error class on the client side.
-
-    NOTE on typed outcome-unknown: the catalogue calls for a TYPED
-    "outcome unknown" error class. The previous test asserted the
-    helper-defined :class:`McpOutcomeUnknownError`; that helper has
-    been deleted because no production caller uses it. The existing
-    boundary at this seam is the raw ``http.client`` library, which
-    raises an OSError-family exception on a severed connection. The
-    dedupe-on-retry contract is observed at the artifact store layer
-    (see :func:`test_e14_duplicate_submission_across_swap_applied_once`).
-    """
     port_file = tmp_path / "port_e14.txt"
     handler_entered_file = tmp_path / "e14_handler.entered"
 
-    # Standalone subprocess server: a minimal HTTP server that accepts a
-    # POST /mcp request, sleeps long enough for the parent to kill it,
-    # then returns a JSON-RPC success frame. No dependency on
-    # ralph.mcp.server.runtime (which has its own circular-import
-    # surface during this work) — the contract is observable over plain
-    # HTTP/1.1.
     child_script = tmp_path / "e14_non_idempotent_child.py"
     child_script.write_text(
         "\n".join(
@@ -329,7 +241,6 @@ def test_e14_outcome_unknown(tmp_path: Path) -> None:
 
         def _do_non_idempotent_request() -> None:
             try:
-                # Non-idempotent method: tools/call with mutate-style params
                 payload: dict[str, object] = {
                     "jsonrpc": "2.0",
                     "id": 1,
@@ -337,9 +248,6 @@ def test_e14_outcome_unknown(tmp_path: Path) -> None:
                     "params": {"name": "submit_artifact", "arguments": {"x": 1}},
                 }
                 body = json.dumps(payload).encode("utf-8")
-                # The production boundary the agent uses is raw ``http.client``.
-                # A non-idempotent severed mid-flight call surfaces a typed
-                # OSError-family exception at this boundary.
                 conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5.0)
                 try:
                     conn.request(
@@ -358,15 +266,8 @@ def test_e14_outcome_unknown(tmp_path: Path) -> None:
 
         t = threading.Thread(target=_do_non_idempotent_request)
         t.start()
-        # Wait until the request is genuinely inside the slow non-idempotent
-        # handler (the child touches a marker after reading the body). A
-        # fixed sleep raced the child on a loaded host: the kill could land
-        # before the request was dispatched, so the "mid-flight" sever was
-        # really a refused/unread connection and the test passed vacuously.
         _wait_for_marker(handler_entered_file, "non-idempotent request never entered the handler")
 
-        # Sever the call mid-flight by killing the child — this is the
-        # documented "outcome unknown" surface for non-idempotent calls.
         proc.kill()
         proc.wait(timeout=2.0)
 
@@ -376,12 +277,6 @@ def test_e14_outcome_unknown(tmp_path: Path) -> None:
         )
         exc = severed_error[0]
 
-        # E1.4 at the raw ``http.client`` boundary: a severed non-idempotent
-        # call surfaces a typed OSError-family exception. The exact class
-        # is platform-dependent (RemoteDisconnected, ConnectionResetError,
-        # BrokenPipeError, socket.timeout); all are valid typed network
-        # errors. The dedupe-on-retry contract is observed separately at
-        # the artifact store layer.
         assert isinstance(exc, OSError), (
             f"non-idempotent severed call must surface a typed OSError-family "
             f"exception; got {type(exc).__name__}: {exc!r}"
@@ -389,13 +284,9 @@ def test_e14_outcome_unknown(tmp_path: Path) -> None:
     finally:
         _reap_process(proc)
 
-    # Leak check: child is terminated and reaped
     assert proc.poll() is not None
 
 
-# ---------------------------------------------------------------------------
-# E1.4: Duplicate artifact submission retried across swap is applied exactly once
-# ---------------------------------------------------------------------------
 _VALID_DEVELOPMENT_RESULT = """\
 ---
 type: development_result
@@ -422,20 +313,6 @@ status: completed
 
 
 def test_e14_duplicate_submission_across_swap_applied_once(tmp_path: Path) -> None:
-    """A duplicate artifact submission retried across a bridge swap is applied EXACTLY ONCE.
-
-    Real bridge path (``start_mcp_server``). Identical ``development_result``
-    markdown is submitted TWICE through the public
-    :func:`submit_artifact_canonical` surface. The two calls are not bridged
-    by the same client identity; the contract is that the canonical artifact
-    store dedupes by content + ``run_id``, regardless of the network framing.
-
-    This is the request-id-dedupe proof: even when a client retries after a
-    severed mid-flight call, the canonical store shows the artifact exists
-    exactly once, no spurious history snapshot is created, and the receipt
-    is present. Observed via filesystem state only — no inspection of the
-    request-id plumbing internals.
-    """
     from datetime import timedelta
 
     from ralph.mcp.protocol.session import AgentSession as _AgentSession
@@ -447,7 +324,6 @@ def test_e14_duplicate_submission_across_swap_applied_once(tmp_path: Path) -> No
     run_id = f"run-e14-swap-{uuid.uuid4().hex[:8]}"
     deps = _ArtifactHandlerDeps(history_enabled=True)
 
-    # First submission (would be the in-flight call before retirement).
     res1 = submit_artifact_canonical(
         workspace_root=tmp_path,
         artifact_type="development_result",
@@ -471,8 +347,6 @@ def test_e14_duplicate_submission_across_swap_applied_once(tmp_path: Path) -> No
         set(DEFAULT_FILE_BACKEND.glob(history_dir, "*.md")) if history_dir.exists() else set()
     )
 
-    # Bridge swap: a new ``start_mcp_server`` bridge is started on the same
-    # workspace; the new bridge inherits the canonical store and the receipt.
     session = _AgentSession(
         session_id=f"session-e14-swap-{uuid.uuid4().hex[:8]}",
         run_id=run_id,
@@ -499,7 +373,6 @@ def test_e14_duplicate_submission_across_swap_applied_once(tmp_path: Path) -> No
 
     try:
         assert bridge.process.poll() is None
-        # Duplicate submission (client retry after swap, identical payload).
         res2 = submit_artifact_canonical(
             workspace_root=tmp_path,
             artifact_type="development_result",
@@ -513,15 +386,11 @@ def test_e14_duplicate_submission_across_swap_applied_once(tmp_path: Path) -> No
         assert res2.receipt_path is not None
         assert res2.receipt_path.exists()
 
-        # Invariant 1: Canonical store is byte-equal to the first submission
-        # (the duplicate replay produced no observable change).
         second_content = canonical_file.read_text(encoding="utf-8")
         assert second_content == first_content, (
             "duplicate submission must leave the canonical artifact unchanged"
         )
 
-        # Invariant 2: History archive did NOT gain a new entry — dedupe
-        # by content + run_id is observable on disk.
         history_after_second = (
             set(DEFAULT_FILE_BACKEND.glob(history_dir, "*.md")) if history_dir.exists() else set()
         )
@@ -532,11 +401,8 @@ def test_e14_duplicate_submission_across_swap_applied_once(tmp_path: Path) -> No
                 f"after={sorted(history_after_second)}"
             )
 
-        # Invariant 3: Exactly one receipt for (run_id, artifact_type).
         assert artifact_receipt_present(tmp_path, run_id, "development_result") is True
 
-        # Bridge is still serving — observable state proves the swap path
-        # did not interrupt the agent run.
         names = _http_tools_list_names(bridge.endpoint_uri(), timeout=2.0)
         assert isinstance(names, list)
     finally:
@@ -544,21 +410,8 @@ def test_e14_duplicate_submission_across_swap_applied_once(tmp_path: Path) -> No
             bridge.shutdown()
 
 
-# ---------------------------------------------------------------------------
-# E1.5: ACK-before-resume: parent does not resume candidate until old child ACKs
-# ---------------------------------------------------------------------------
 def test_e15_ack_before_resume_prompt_ack(tmp_path: Path) -> None:
-    """Candidate resume is signaled only after old child explicitly acknowledges pause.
-
-    Real subprocess for BOTH the retiring child (writes ACK after a small
-    delay) AND the candidate child (a live sleep subprocess the bridge
-    owns but never starts an HTTP listener — the test only exercises the
-    pause/ack/resume sentinel protocol, not HTTP serving).
-    """
     ralph_root = str(Path(__file__).resolve().parents[2])
-    # ``accept.pause.ack`` from it when a replacement starts. A constant
-    # run_id therefore lets a concurrent run of this same test delete the
-    # sentinels this run's handover protocol depends on.
     run_id = f"run-e15-{uuid.uuid4().hex}"
     snap = lifecycle.snapshot_dir(tmp_path, run_id)
     pause_file = snap / "accept.pause.stage-old"
@@ -624,16 +477,13 @@ def test_e15_ack_before_resume_prompt_ack(tmp_path: Path) -> None:
         snap = lifecycle.snapshot_dir(tmp_path, run_id)
         resume_file = snap / "accept.resume.stage-cand"
 
-        # Run handover in a background thread to inspect intermediate state
         handover_thread = threading.Thread(
             target=bridge._hand_over_accept,
             args=(old_inner, cand_inner),
         )
         handover_thread.start()
 
-        # While ack has NOT been written, resume must NOT exist
         ack_file = pause_file.with_name(pause_file.name + ".ack")
-        # Sample early in the handover window
         if not ack_file.exists():
             assert not resume_file.exists(), (
                 "Candidate resume signaled before old child acknowledged pause!"
@@ -642,7 +492,6 @@ def test_e15_ack_before_resume_prompt_ack(tmp_path: Path) -> None:
         handover_thread.join(timeout=3.0)
         assert ack_file.exists()
         assert resume_file.exists()
-        # Cleanup: real candidate child is still alive and reaped at end.
         assert cand_proc.poll() is None, "candidate child was killed prematurely"
     finally:
         _reap_process(old_proc)
@@ -650,10 +499,6 @@ def test_e15_ack_before_resume_prompt_ack(tmp_path: Path) -> None:
 
 
 def test_e15_ack_before_resume_hung_child_killed_before_resume(tmp_path: Path) -> None:
-    """If old child hangs without ACK, parent terminates it before resuming candidate.
-
-    Real subprocess for BOTH the hung child AND the candidate child.
-    """
     hung_script = tmp_path / "hung_child.py"
     hung_script.write_text("import time; time.sleep(10)\n", encoding="utf-8")
 
@@ -698,13 +543,9 @@ def test_e15_ack_before_resume_hung_child_killed_before_resume(tmp_path: Path) -
         bridge._hand_over_accept(old_inner, cand_inner)
         elapsed = time.monotonic() - start
 
-        # Parent must have waited for ack timeout, killed the old child,
-        # confirmed it dead, and only then signaled resume
         assert hung_proc.poll() is not None, "Hung old child was not killed"
         assert resume_file.exists(), "Candidate was not resumed after old child killed"
         assert elapsed >= _HANDOVER_ACK_TIMEOUT_S * 0.8
-        # The real candidate child is still alive — the bridge owns it
-        # but the kill-on-hang path targeted the OLD, not the CANDIDATE.
         assert cand_proc.poll() is None, (
             "candidate child was killed by the bridge's hang-escape path; "
             "expected the bridge to only target the hanging old child"
@@ -714,15 +555,7 @@ def test_e15_ack_before_resume_hung_child_killed_before_resume(tmp_path: Path) -
         _reap_process(cand_proc)
 
 
-# ---------------------------------------------------------------------------
-# E1.5: Streaming/long-call drain fate during handover (real subprocess)
-# ---------------------------------------------------------------------------
 def _wait_for_marker(marker: Path, message: str) -> None:
-    """Poll until a child-written marker file exists.
-
-    The 10 s bound only limits the failure path; a quiet host sees the marker
-    within milliseconds, a saturated one within a few hundred.
-    """
     deadline = time.monotonic() + 10.0
     while time.monotonic() < deadline and not marker.exists():
         time.sleep(0.025)
@@ -735,16 +568,6 @@ def _write_streaming_child_script(
     script_name: str,
     handler_entered_file: Path,
 ) -> Path:
-    """Write a real subprocess script that holds POSTs open for ~2 s.
-
-    Extracted helper so the E1.5 test body stays under PLR0915. The
-    returned script is a self-contained :class:`HTTPServer` that writes
-    the bound port to ``port_file`` and serves each POST with a 2 s
-    delay — the surface the parent relies on to observe a drain-induced
-    severed in-flight call. ``handler_entered_file`` is touched once a POST
-    body has been read, so the parent can wait for the call to be genuinely
-    in flight instead of sleeping.
-    """
     child_script = tmp_path / script_name
     child_script.write_text(
         "\n".join(
@@ -791,7 +614,6 @@ def _write_streaming_child_script(
 
 
 def _write_ok_child_script(tmp_path: Path, port_file: Path, script_name: str) -> Path:
-    """Write a real subprocess script that responds to GET / with ``b"OK"``."""
     child_script = tmp_path / script_name
     child_script.write_text(
         "\n".join(
@@ -830,14 +652,6 @@ def _spawn_and_wait_for_port(
     *,
     expected_port_file: Path,
 ) -> tuple[ManagedProcess, int]:
-    """Spawn the script, wait for ``expected_port_file`` to appear, return ``(proc, port)``.
-
-    The previous glob-based version could pick up a stale port file from
-    a previous subprocess spawn — once a retired child writes its port
-    file, the file lingers on the test's tmp_path until cleanup. The
-    caller must pass ``expected_port_file`` so we deterministically read
-    the port for THIS spawn, not a previous one.
-    """
     pm = get_process_manager()
     proc = pm.spawn(
         [sys.executable, str(script_path)],
@@ -855,7 +669,6 @@ def _spawn_and_wait_for_port(
 
 
 def _force_kill(proc: ManagedProcess, *, drain_grace_s: float = 3.0) -> None:
-    """Send SIGTERM, wait up to ``drain_grace_s``, escalate to SIGKILL if needed."""
     proc.terminate()
     deadline = time.monotonic() + drain_grace_s
     while time.monotonic() < deadline:
@@ -868,22 +681,6 @@ def _force_kill(proc: ManagedProcess, *, drain_grace_s: float = 3.0) -> None:
 
 
 def test_e15_streaming_call_drain_fate_real_subprocess(tmp_path: Path) -> None:
-    """Streaming / long-running calls during drain finish or surface a typed error.
-
-    The catalogue contract for E1.5 says a long-running call started on the
-    retired-but-draining child either completes within the draining child's
-    own bound or ends in a typed error, AND whatever the child spawned is
-    reaped, AND a draining child does not block the NEXT replacement.
-
-    Drives a real subprocess that holds an HTTP request open for a long
-    time, then makes a request, then triggers a drain by having the bridge
-    drop the listening socket via the documented pause/ack handshake. The
-    in-flight call ends in a typed network error (RemoteDisconnected /
-    ConnectionResetError) — which is the production surface today, no
-    dedicated typed-error class exists. The drain finishes (the subprocess
-    is reaped) and a subsequent bridge operation completes without being
-    blocked by the in-flight request.
-    """
     port_file = tmp_path / "port_e15_stream.txt"
     handler_entered_file = tmp_path / "e15_handler.entered"
     child_script = _write_streaming_child_script(
@@ -896,13 +693,7 @@ def test_e15_streaming_call_drain_fate_real_subprocess(tmp_path: Path) -> None:
         expected_port_file=port_file,
     )
 
-    # No head-start sleep: ``HTTPServer(...)`` binds AND listens before the
-    # port file is written, so a connect queues in the backlog until
-    # ``serve_forever`` accepts it. The handler-entered marker below is the
-    # real synchronization point.
-
     try:
-        # 1. Open an in-flight streaming call (long-running).
         inflight_errors: list[Exception] = []
         inflight_completed = threading.Event()
 
@@ -935,17 +726,10 @@ def test_e15_streaming_call_drain_fate_real_subprocess(tmp_path: Path) -> None:
 
         worker = threading.Thread(target=_do_streaming_call)
         worker.start()
-        # Wait until the request is inside the slow handler. A fixed sleep
-        # raced child dispatch on a loaded host, so the drain could sever a
-        # call that never started and the typed-error assertion held vacuously.
         _wait_for_marker(handler_entered_file, "streaming request never entered the handler")
 
-        # 2. Simulate the drain by closing the listening socket and
-        # terminating the subprocess. The in-flight call must surface a
-        # typed error (the production surface today is a network error).
         _force_kill(proc)
 
-        # Wait for the in-flight call to surface its error.
         worker.join(timeout=5.0)
         inflight_completed.wait(timeout=1.0)
         assert inflight_errors, "draining must produce a typed error on the in-flight call"
@@ -962,12 +746,8 @@ def test_e15_streaming_call_drain_fate_real_subprocess(tmp_path: Path) -> None:
             f"got {type(inflight_errors[0]).__name__}: {inflight_errors[0]!r}"
         )
 
-        # 3. Whatever the child spawned is reaped — no leak assertion.
         assert proc.poll() is not None, "subprocess must be reaped after drain"
 
-        # 4. A draining child does not block the NEXT replacement. The
-        # second subprocess spawn proves the port is free and a new
-        # in-flight call on the same port range succeeds.
         new_port_file = tmp_path / "port_e15_stream2.txt"
         new_child_script = _write_ok_child_script(tmp_path, new_port_file, "e15_next_child.py")
         new_proc, new_port = _spawn_and_wait_for_port(
@@ -991,11 +771,7 @@ def test_e15_streaming_call_drain_fate_real_subprocess(tmp_path: Path) -> None:
         _reap_process(proc)
 
 
-# ---------------------------------------------------------------------------
-# E1.6: Fail-closed resume timeout
-# ---------------------------------------------------------------------------
 def test_e16_fail_closed_resume_timeout(tmp_path: Path) -> None:
-    """Candidate child fails closed and exits non-zero if resume sentinel times out."""
     ralph_root = str(Path(__file__).resolve().parents[2])
     resume_file = tmp_path / "accept.resume"
 
@@ -1043,7 +819,6 @@ def test_e16_fail_closed_resume_timeout(tmp_path: Path) -> None:
             workspace_root=tmp_path,
         )
 
-        # Verification must fail closed because candidate exited prematurely
         ready = bridge._verify_candidate(cand_inner)
         assert ready is False, "Candidate was not marked unready after timeout exit"
     finally:
@@ -1051,11 +826,6 @@ def test_e16_fail_closed_resume_timeout(tmp_path: Path) -> None:
 
 
 def _wait_child_bounded(proc: ManagedProcess, *, timeout_s: float) -> int:
-    """Wait for child process with bounded polling and slice-based wait.
-
-    Prevents spurious TimeoutExpired under loaded multi-shard runs where
-    a single rigid wait(timeout=5.0) can be starved by scheduler contention.
-    """
     deadline = time.monotonic() + timeout_s
     while True:
         rc = proc.poll()
@@ -1074,11 +844,7 @@ def _wait_child_bounded(proc: ManagedProcess, *, timeout_s: float) -> int:
     raise subprocess.TimeoutExpired(proc.record.command, timeout_s)
 
 
-# ---------------------------------------------------------------------------
-# E1.6: Two children writing shared wire ledger serialize and verify cleanly
-# ---------------------------------------------------------------------------
 def test_e16_interleaved_ledger(tmp_path: Path) -> None:
-    """Interleaved writes to shared ledger from two real children cryptographically verify."""
     ralph_root = str(Path(__file__).resolve().parents[2])
     secret = "secret-wire-key-e16"
     run_id = "run-e16-ledger"
@@ -1122,7 +888,6 @@ def test_e16_interleaved_ledger(tmp_path: Path) -> None:
     )
 
     try:
-        # Bounded wait within the module's 10s per-test timeout budget
         overall_deadline = time.monotonic() + 8.0
         remaining_1 = max(1.0, overall_deadline - time.monotonic())
         rc1 = _wait_child_bounded(p1, timeout_s=remaining_1)
@@ -1131,7 +896,6 @@ def test_e16_interleaved_ledger(tmp_path: Path) -> None:
         assert rc1 == 0, f"Child 1 exited with {rc1}"
         assert rc2 == 0, f"Child 2 exited with {rc2}"
 
-        # Hash chain verification must hold across interleaved writes
         assert verify_chain(tmp_path, secret) is True
     finally:
         _reap_process(p1)

@@ -1,5 +1,3 @@
-"""Clean import-order regression for commit plumbing."""
-
 from __future__ import annotations
 
 import importlib
@@ -21,7 +19,6 @@ def _loaded_module(name: str) -> ModuleType | None:
 
 
 def test_commit_plumbing_is_directly_importable() -> None:
-    """The pipeline module must not require its CLI facade to be imported first."""
     plumbing_package = importlib.import_module("ralph.pipeline.plumbing")
     cli_package = importlib.import_module("ralph.cli.commands")
     saved_modules = {

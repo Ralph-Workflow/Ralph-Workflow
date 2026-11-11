@@ -1,14 +1,3 @@
-"""Public default-routing contract for the OpenCode smoke command.
-
-S-2 previously pinned the OpenCode smoke default to the literal
-``opencode/minimax/MiniMax-M3`` in two places -- the Typer option in
-``ralph/cli/main.py`` and the command function's own signature. That pinned a
-provider/model the operator's pipeline never runs, and went stale the moment
-the provider retired the id (exactly what happened to the Codex smoke's
-``gpt-5-flash``). The default is now resolved from the operator's own
-``[agent_chains]``, so the smoke exercises what the pipeline exercises.
-"""
-
 from __future__ import annotations
 
 import inspect
@@ -23,7 +12,6 @@ from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
 
 
 def test_opencode_smoke_default_is_not_pinned_in_either_seam() -> None:
-    """S-2: neither the CLI nor the command seam hardcodes a provider/model."""
     cli_default = inspect.signature(main.smoke_interactive_opencode).parameters["agent"].default
     command_default = (
         inspect.signature(smoke_interactive_opencode_command).parameters["agent_name"].default

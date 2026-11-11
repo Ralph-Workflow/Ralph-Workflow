@@ -1,27 +1,3 @@
-"""Deterministic guards for the phase-boundary cleanliness contract.
-
-The real-git proof of this behaviour lives in
-``tests/test_auto_integrate_worktree_sync.py``, which is marked
-``subprocess_e2e`` -- and ``make verify`` selects
-``-m 'not subprocess_e2e and not smoke'``. A contract that is only
-checked by an opt-in suite rots, so the two invariants an operator
-actually depends on are pinned here as fast, subprocess-free tests
-that the default gate runs.
-
-Both invariants exist because the phase boundary is the ONLY seam
-that carries another agent's landing to an agent that is not
-committing right now:
-
-1. The cleanliness probe must ignore untracked files, or one stray
-   scratch file silently disables cross-agent synchronisation.
-2. A deferral that suppressed real catch-up work must be recorded,
-   or the operator cannot tell a working feature from a dead one.
-
-Every filesystem touch uses the ``tmp_path`` fixture, which
-``ralph.testing.audit_test_policy._is_using_tmp_path`` accepts, so this
-module needs no ``_IO_ALLOWLIST`` entry.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -54,8 +30,6 @@ _DIRTY_READINESS = TreeReadinessAssessment(
 
 @dataclass(frozen=True)
 class _StubGitResult:
-    """Minimal stand-in for the ``run_git`` completed-process result."""
-
     returncode: int
     stdout: str
 
@@ -63,13 +37,6 @@ class _StubGitResult:
 def _record_status_argv(
     monkeypatch: pytest.MonkeyPatch, *, returncode: int
 ) -> list[tuple[str, ...]]:
-    """Replace ``ai_worktree.run_git`` with a recorder returning a fixed exit code.
-
-    ``_worktree_is_clean`` was extracted to
-    :mod:`ralph.pipeline.auto_integrate_worktree_state`, so the
-    helper now reads ``run_git`` from that module's namespace;
-    patching it on ``ai`` would no longer affect the helper.
-    """
     seen: list[tuple[str, ...]] = []
 
     def _fake_run_git(argv: tuple[str, ...], *, cwd: Path, label: str) -> _StubGitResult:
@@ -83,20 +50,11 @@ def _record_status_argv(
 def test_boundary_cleanliness_probe_ignores_untracked_files(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """AC-01: the probe asks git to ignore untracked files, and fails closed.
-
-    ``--untracked-files=no`` is the same definition of "clean" that
-    ``rebase_preconditions._ensure_clean_worktree`` already uses for the
-    commit seam. Dropping the flag here re-creates the run-wide outage
-    that docstring records: one scratch file disabling integration for
-    the rest of the run.
-    """
     seen = _record_status_argv(monkeypatch, returncode=0)
 
     assert ai_worktree._worktree_is_clean(tmp_path) is True
     assert seen == [(*COMMIT_PIN_CONFIG_ARGS, "status", "--porcelain", "--untracked-files=no")]
 
-    # Any git failure still counts as "not clean" (fail closed).
     _record_status_argv(monkeypatch, returncode=1)
     assert ai_worktree._worktree_is_clean(tmp_path) is False
 
@@ -112,19 +70,10 @@ def _dirty_boundary_config() -> UnifiedConfig:
     )
 
 
-# ponytail: boundary catch-up setup can exceed 1s under xdist; 5s preserves the no-real-subprocess contract within the 60s suite cap.
 @pytest.mark.timeout_seconds(5)
 def test_dirty_boundary_records_a_skip_when_the_target_is_ahead(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """AC-02: a suppressed cross-agent catch-up is diagnosable, not silent.
-
-    Returning ``None`` for every dirty boundary meant the one case the
-    operator needed to see -- "another agent landed and I could not pick
-    it up" -- looked exactly like the eleven-per-cycle routine case.
-    Recording is gated on the target genuinely carrying commits this
-    checkout lacks, so routine boundaries add no run-state noise.
-    """
     (tmp_path / ".git").mkdir()
     monkeypatch.setattr(ai, "resolve_integration_target", lambda _config, _root: "main")
     monkeypatch.setattr(boundary, "assess_tree_readiness", lambda _root: _DIRTY_READINESS)
@@ -145,8 +94,6 @@ def test_dirty_boundary_records_a_skip_when_the_target_is_ahead(
     assert result.last_reason is not None
     assert "worktree not clean" in result.last_reason
 
-    # The target is already contained in HEAD: nothing was lost, so the
-    # routine boundary stays silent.
     monkeypatch.setattr(boundary, "is_ancestor", lambda _root, _a, _b: True)
     assert ai.auto_integrate_on_phase_transition(config, scope, RebaseState()) is None
 
@@ -154,7 +101,6 @@ def test_dirty_boundary_records_a_skip_when_the_target_is_ahead(
 def test_dirty_clean_target_boundary_stays_silent_on_repeated_evaluations(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Expected local work never becomes a repeated auto-integration failure."""
     (tmp_path / ".git").mkdir()
     monkeypatch.setattr(ai, "resolve_integration_target", lambda _config, _root: "main")
     monkeypatch.setattr(boundary, "assess_tree_readiness", lambda _root: _DIRTY_READINESS)
@@ -176,7 +122,6 @@ def test_dirty_clean_target_boundary_stays_silent_on_repeated_evaluations(
 def test_dirty_boundary_regression_suppressed_divergence_forces_a_refresh(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """AC-06: an armed throttle cannot leave a catch-up verdict stale."""
     (tmp_path / ".git").mkdir()
     monkeypatch.setattr(ai, "resolve_integration_target", lambda _config, _root: "main")
     monkeypatch.setattr(boundary, "assess_tree_readiness", lambda _root: _DIRTY_READINESS)

@@ -1,21 +1,3 @@
-"""Remote-client / throttle path split from :mod:`ralph.pipeline.auto_integrate_remote_sync`.
-
-Owns the default production :class:`_DefaultRemoteClient` (and the
-shared instance), the per-(root, remote, target) pull throttle, the
-remote-tracking-SHA reader, and the pull-side
-:func:`pull_and_reconcile_target` entry point plus its refresh-label
-dispatcher. Push-side and publication helpers live next door in
-:mod:`ralph.pipeline.auto_integrate_remote_push`; the orchestrator
-(:mod:`ralph.pipeline.auto_integrate_remote_sync`) keeps the
-ref-comparison reconciler and the closed :class:`RemoteSyncStatus`
-vocabulary.
-
-:func:`fast_forward_target_to_remote` is the ONE routine every remote-sync
-entry point (post-commit pull, publication reconciler, startup seam,
-rejected-push recovery) uses to move the local target to the remote tip: a
-true fast-forward through the target's own worktree, or a CAS when it has no
-checkout -- never a forced move. See ``docs/agents/remote-sync.md``.
-"""
 
 from __future__ import annotations
 
@@ -74,7 +56,6 @@ __all__ = [
 
 
 class _DefaultRemoteClient:
-    """Default production implementation delegating to live Git operations."""
 
     def refresh_target(
         self,
@@ -183,20 +164,12 @@ def pull_and_reconcile_target(
     ledger: AgentFailureLedger | None = None,
     candidates: Sequence[str] = (),
 ) -> RebaseState | None:
-    """Run the throttled pull side; reconcile the local target from the remote.
-
-    Uses the configured remote when synchronization is enabled; otherwise it
-    performs no remote operation.
-    """
     if config is None or not remote_sync_enabled(config):
         return None
 
     client = remote_client or _DEFAULT_REMOTE_CLIENT
     chosen_remote = remote if isinstance(remote, str) and remote else remote_target_name(config)
     try:
-        # Look up via the orchestrator so a test monkeypatch on
-        # ``ralph.pipeline.auto_integrate_remote_sync.observe_conflict_identity``
-        # reaches the same binding this client uses.
         from ralph.pipeline.auto_integrate_remote_sync import observe_conflict_identity
 
         identity = observe_conflict_identity(repo_root, target, scope="remote")
@@ -273,29 +246,6 @@ def _dispatch_pull_outcome(
     config: UnifiedConfig | None,
     rebase_stop_resolver: RebaseStopResolver | None,
 ) -> RebaseState | None:
-    """Translate a pull refresh outcome into the recorded ``RebaseState`` (AC-15..20).
-
-    Each refresh label maps to one branch of the byte-identical contract:
-
-    * ``REFRESH_LOCAL_FLEET`` -- the local ref store already mirrors the
-      remote; arm the throttle and report no operator-visible change.
-    * ``REFRESH_UNREACHABLE`` -- fetch failed; recorded as
-      ``REMOTE_PULL_FAILED`` with an operator line naming the
-      CONFIGURED remote. The line is rendered from this observation
-      and is never read back as a decision input.
-    * ``REFRESH_NO_REMOTE`` / ``REFRESH_NO_REMOTE_BRANCH`` -- the remote
-      or its target branch is missing; recorded as ``REMOTE_NO_REMOTE``
-      (resp. ``REMOTE_NO_REMOTE_BRANCH``) and the throttle is NOT armed.
-    * ``REFRESH_NO_LOCAL_BRANCH`` -- the local target is missing; the
-      local-only contract takes over and the caller's skip reason
-      applies (``None`` returned).
-    * ``REFRESH_ORIGIN_AHEAD`` -- strictly ahead; the local target is
-      fast-forwarded to the remote tip via Part-A's landing table.
-      Recorded as ``REMOTE_PULLED``.
-    * Anything else -- already current OR an unknown (future-proof)
-      outcome; the throttle is armed so a healthy "nothing changed"
-      read still counts as a fresh observation.
-    """
     state: RebaseState | None = None
     if refresh == REFRESH_LOCAL_FLEET:
         _arm_throttle(repo_root, chosen_remote, target, clock)
@@ -422,11 +372,6 @@ def _fast_forward_local_target_to_remote(
     remote: str,
     config: UnifiedConfig | None,
 ) -> None:
-    """Move ``refs/heads/<target>`` to ``refs/remotes/<remote>/<target>``.
-
-    The pull-side wrapper over :func:`fast_forward_target_to_remote`: a
-    refusal raises so the caller's ``except`` records ``pull failed``.
-    """
     ok, reason = fast_forward_target_to_remote(
         repo_root,
         target,
@@ -445,22 +390,6 @@ def fast_forward_target_to_remote(
     reclaim_target_worktree: bool,
     remote_sha: str | None = None,
 ) -> tuple[bool, str]:
-    """Fast-forward local ``target`` to the remote tip; never force-move it.
-
-    The ONE target-advance routine every remote-sync entry point shares
-    (pull side, publication reconciler, startup seam, rejected-push
-    recovery). ``remote_sha`` is the tip the caller already observed; when
-    omitted, ``refs/remotes/<remote>/<target>`` is read. Uses the Part-A
-    landing table, so a target checked out in a worktree advances through
-    that worktree's ``merge --ff-only`` (ref, index and files together) and
-    a target with no checkout advances by an atomic CAS.
-
-    Returns ``(True, "")`` when the local target now names the remote tip
-    (including "already there"), otherwise ``(False, reason)``: a missing
-    ref, a target that DIVERGED from the remote (left to the dedicated
-    reconcile path), or a refused landing (for example a dirty owner when
-    ``reclaim_target_worktree`` is false). See ``docs/agents/remote-sync.md``.
-    """
     from ralph.git.merge import branch_sha, is_ancestor
     from ralph.pipeline.auto_integrate_ff import fast_forward_target
 
@@ -483,7 +412,6 @@ def fast_forward_target_to_remote(
 
 
 def _remote_tracking_sha(repo_root: Path, target: str, remote: str) -> str | None:
-    """``refs/remotes/<remote>/<target>`` SHA, or ``None`` when absent."""
     from ralph.git.subprocess_runner import run_git
 
     result = run_git(
@@ -496,7 +424,6 @@ def _remote_tracking_sha(repo_root: Path, target: str, remote: str) -> str | Non
     return result.stdout.strip() or None
 
 
-# ----- Throttle ----------------------------------------------------------
 
 
 def _arm_throttle(
@@ -511,13 +438,11 @@ def _arm_throttle(
 
 
 def _consume_throttle_signal_unhealthy(repo_root: Path, remote: str, target: str) -> None:
-    """A failed fetch must NOT arm the next window."""
     from ralph.pipeline.auto_integrate_remote_sync import _REMOTE_PULL_THROTTLE
 
     _REMOTE_PULL_THROTTLE.invalidate(repo_root, remote, target)
 
 
-# ----- State helpers ---------------------------------------------------
 
 
 def _record_remote_state(
@@ -530,7 +455,6 @@ def _record_remote_state(
     freshness_source: str | None = None,
     freshness_safe: bool = True,
 ) -> RebaseState:
-    """Build the canonical ``RebaseState`` annotation for a remote sync outcome."""
     return RebaseState(
         last_outcome=RebaseOutcomeKind.SKIPPED,
         last_reason=reason,

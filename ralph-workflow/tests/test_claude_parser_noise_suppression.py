@@ -1,5 +1,3 @@
-"""Tests for ClaudeParser noise-suppression improvements."""
-
 from __future__ import annotations
 
 import json
@@ -8,7 +6,6 @@ from ralph.agents.parsers.claude import ClaudeParser
 
 
 def test_thinking_content_block_start_does_not_emit_error() -> None:
-    """thinking block_start must not produce an 'unsupported content block type' error."""
     parser = ClaudeParser()
     lines = [
         '{"type":"message_start","message":{"id":"msg-think-1"}}',
@@ -26,7 +23,6 @@ def test_thinking_content_block_start_does_not_emit_error() -> None:
 
 
 def test_claude_model_qualified_lifecycle_is_suppressed() -> None:
-    """model-qualified lifecycle markers must be completely suppressed."""
     parser = ClaudeParser()
     lines = [
         "claude/sonnet: message_delta",
@@ -39,7 +35,6 @@ def test_claude_model_qualified_lifecycle_is_suppressed() -> None:
 
 
 def test_claude_model_qualified_text_and_tool_are_parsed() -> None:
-    """model-qualified text lines and tool lines must be parsed correctly."""
     parser = ClaudeParser()
     lines = [
         "claude/sonnet: hello world",
@@ -62,7 +57,6 @@ def test_claude_model_qualified_text_and_tool_are_parsed() -> None:
 
 
 def test_bare_claude_lifecycle_is_suppressed() -> None:
-    """Bare (non-model-qualified) lifecycle markers must also be suppressed."""
     parser = ClaudeParser()
     lines = [
         "claude: message_delta",
@@ -74,7 +68,6 @@ def test_bare_claude_lifecycle_is_suppressed() -> None:
 
 
 def test_claude_error_prefix_emits_error() -> None:
-    """claude/<model> ✗: error text must surface as type='error'."""
     parser = ClaudeParser()
     lines = ["claude/sonnet ✗: unsupported content block type 'thinking' in agent output"]
     results = list(parser.parse(iter(lines)))
@@ -84,7 +77,6 @@ def test_claude_error_prefix_emits_error() -> None:
 
 
 def test_claude_assistant_message_with_thinking_block_does_not_emit_error() -> None:
-    """Assistant event with message.content thinking block must not produce an error."""
 
     parser = ClaudeParser()
     line = json.dumps(
@@ -102,7 +94,6 @@ def test_claude_assistant_message_with_thinking_block_does_not_emit_error() -> N
 
 
 def test_whitespace_only_thinking_delta_is_suppressed() -> None:
-    """thinking_delta with whitespace-only content must produce zero thinking lines."""
     parser = ClaudeParser()
     ws_delta = (
         '{"type":"content_block_delta","index":0,'
@@ -121,7 +112,6 @@ def test_whitespace_only_thinking_delta_is_suppressed() -> None:
 
 
 def test_empty_thinking_delta_is_suppressed() -> None:
-    """thinking_delta with empty string must produce zero thinking lines."""
     parser = ClaudeParser()
     lines = [
         '{"type":"message_start","message":{"id":"msg-empty-1"}}',
@@ -136,7 +126,6 @@ def test_empty_thinking_delta_is_suppressed() -> None:
 
 
 def test_non_empty_thinking_delta_is_still_emitted() -> None:
-    """Real thinking content must still be emitted after the whitespace guard."""
     parser = ClaudeParser()
     real_delta = (
         '{"type":"content_block_delta","index":0,'
@@ -156,14 +145,6 @@ def test_non_empty_thinking_delta_is_still_emitted() -> None:
 
 
 def test_headless_system_plumbing_subtypes_are_suppressed() -> None:
-    """Top-level ``system`` events that carry no agent-authored content must
-    not surface as bare, content-less lines. ``claude -p --output-format
-    =stream-json`` emits ``init``/``hook_started``/``hook_response``/
-    ``thinking_tokens`` system events dozens of times per turn; each one
-    previously fell through to the generic dispatch fallback and emitted an
-    empty ``type="system"`` line, flooding operator-visible output with
-    blank noise while burying the real semantic content.
-    """
     parser = ClaudeParser()
     lines = [
         json.dumps({"type": "system", "subtype": "init", "session_id": "abc"}),
@@ -176,10 +157,6 @@ def test_headless_system_plumbing_subtypes_are_suppressed() -> None:
 
 
 def test_headless_system_compact_boundary_surfaces_with_content() -> None:
-    """A ``system`` subtype outside the known-noise set must still surface,
-    and must carry the subtype as content rather than an empty line, so an
-    operator can see it happened without it being dropped or blank.
-    """
     parser = ClaudeParser()
     line = json.dumps({"type": "system", "subtype": "compact_boundary"})
     results = list(parser.parse(iter([line])))
@@ -189,9 +166,6 @@ def test_headless_system_compact_boundary_surfaces_with_content() -> None:
 
 
 def test_headless_system_status_surfaces_status_value_not_bare_subtype() -> None:
-    """The real ``system/status`` event (observed live: fires once per turn
-    boundary) must surface its actual ``status`` value, not just the
-    literal word "status", so the content is informative."""
     parser = ClaudeParser()
     line = json.dumps({"type": "system", "subtype": "status", "status": "requesting"})
     results = list(parser.parse(iter([line])))
@@ -201,8 +175,6 @@ def test_headless_system_status_surfaces_status_value_not_bare_subtype() -> None
 
 
 def test_headless_rate_limit_event_allowed_is_suppressed() -> None:
-    """A rate-limit event reporting the account is comfortably within quota
-    is pure per-turn telemetry and must be suppressed."""
     parser = ClaudeParser()
     line = json.dumps(
         {
@@ -215,7 +187,6 @@ def test_headless_rate_limit_event_allowed_is_suppressed() -> None:
 
 
 def test_headless_rate_limit_event_overage_surfaces() -> None:
-    """Drawing on overage is operator-relevant even when nominally 'allowed'."""
     parser = ClaudeParser()
     line = json.dumps(
         {
@@ -230,8 +201,6 @@ def test_headless_rate_limit_event_overage_surfaces() -> None:
 
 
 def test_headless_rate_limit_event_non_allowed_status_surfaces() -> None:
-    """Any status other than the known-OK set must surface with that status
-    as content, including a future/unrecognized status value."""
     parser = ClaudeParser()
     line = json.dumps(
         {
@@ -245,8 +214,6 @@ def test_headless_rate_limit_event_non_allowed_status_surfaces() -> None:
 
 
 def test_headless_rate_limit_event_missing_info_does_not_crash() -> None:
-    """A malformed/future rate_limit_event with no rate_limit_info dict must
-    not raise, and must fail open (surface) rather than silently vanish."""
     parser = ClaudeParser()
     line = json.dumps({"type": "rate_limit_event"})
     results = list(parser.parse(iter([line])))
@@ -255,10 +222,6 @@ def test_headless_rate_limit_event_missing_info_does_not_crash() -> None:
 
 
 def test_headless_message_delta_expected_stop_reasons_are_suppressed() -> None:
-    """The nested stream_event message_delta fires once per turn with a
-    stop_reason; the two routine reasons (mid-turn tool dispatch, and a
-    normal end of turn) carry no actionable signal and must be
-    suppressed."""
     parser = ClaudeParser()
     lines = [
         json.dumps(
@@ -274,9 +237,6 @@ def test_headless_message_delta_expected_stop_reasons_are_suppressed() -> None:
 
 
 def test_headless_message_delta_unusual_stop_reason_surfaces() -> None:
-    """An unusual stop_reason (truncation, refusal, or any future reason
-    this parser has not seen yet) must surface -- an operator needs to
-    know a turn did not end normally."""
     parser = ClaudeParser()
     line = json.dumps(
         {
@@ -291,8 +251,6 @@ def test_headless_message_delta_unusual_stop_reason_surfaces() -> None:
 
 
 def test_headless_message_delta_missing_stop_reason_is_suppressed() -> None:
-    """A message_delta with no stop_reason (a mid-stream usage-only delta)
-    carries nothing actionable and must be suppressed."""
     parser = ClaudeParser()
     line = json.dumps(
         {
@@ -305,9 +263,6 @@ def test_headless_message_delta_missing_stop_reason_is_suppressed() -> None:
 
 
 def test_headless_top_level_user_tool_result_success_is_captured() -> None:
-    """A top-level 'user' event is how claude -p echoes a tool_result back
-    after a tool call. Before this fix it was completely unhandled and the
-    result content was silently dropped."""
     parser = ClaudeParser()
     line = json.dumps(
         {
@@ -332,9 +287,6 @@ def test_headless_top_level_user_tool_result_success_is_captured() -> None:
 
 
 def test_headless_top_level_user_tool_result_error_surfaces_as_error() -> None:
-    """A failed tool call must surface as type='error' (matching the
-    established Cursor/Pi/Generic parser precedent for is_error), not as a
-    routine tool_result, so it is a distinguishable break signal."""
     parser = ClaudeParser()
     line = json.dumps(
         {
@@ -359,9 +311,6 @@ def test_headless_top_level_user_tool_result_error_surfaces_as_error() -> None:
 
 
 def test_headless_unclassified_top_level_event_with_subtype_surfaces_subtype() -> None:
-    """A future top-level event type this parser has never seen must still
-    surface, self-describing via its subtype, rather than vanishing or
-    rendering as a truly blank line."""
     parser = ClaudeParser()
     line = json.dumps({"type": "context_edit", "subtype": "auto_truncate"})
     results = list(parser.parse(iter([line])))
@@ -371,8 +320,6 @@ def test_headless_unclassified_top_level_event_with_subtype_surfaces_subtype() -
 
 
 def test_headless_unclassified_top_level_event_without_subtype_does_not_crash() -> None:
-    """A future top-level event with no subtype at all must still parse
-    without raising and yield exactly one self-describing line."""
     parser = ClaudeParser()
     line = json.dumps({"type": "future_unknown_event", "payload": {"x": 1}})
     results = list(parser.parse(iter([line])))
@@ -381,8 +328,6 @@ def test_headless_unclassified_top_level_event_without_subtype_does_not_crash() 
 
 
 def test_headless_unclassified_nested_stream_event_does_not_crash() -> None:
-    """A future stream_event-nested type this parser has never seen must
-    also surface self-describing rather than raising or vanishing."""
     parser = ClaudeParser()
     line = json.dumps(
         {
@@ -397,7 +342,6 @@ def test_headless_unclassified_nested_stream_event_does_not_crash() -> None:
 
 
 def test_whitespace_only_thinking_in_assistant_message_is_suppressed() -> None:
-    """assistant message with whitespace-only thinking block must not produce thinking lines."""
 
     parser = ClaudeParser()
     line = json.dumps(

@@ -1,10 +1,3 @@
-"""Production observer for the conflict-resolution round loop.
-
-:class:`GitWorktreeConflictObserver` implements
-:class:`~ralph.pipeline.conflict_resolution.worktree_observer.WorktreeConflictObserver`
-against the real worktree and git index. The driver uses it whenever no
-``observer=`` is injected.
-"""
 
 from __future__ import annotations
 
@@ -20,17 +13,6 @@ __all__ = ["GitWorktreeConflictObserver"]
 
 
 class GitWorktreeConflictObserver:
-    """Default observer delegating to the existing module-level functions.
-
-    Every git/sight delegation resolves its target through the ``driver``
-    module namespace at CALL TIME, not import time. The legacy
-    monkeypatch-based tests patch attributes such as
-    ``driver.unmerged_paths`` and ``driver.paths_with_conflict_markers``
-    on that module; binding the functions at import time here would hide
-    those patches behind this adapter and break the suites that rely on
-    them. The content/existence checks are not part of that patch surface
-    and are implemented directly.
-    """
 
     def unmerged_paths(self, root: Path) -> Sequence[str]:
         from ralph.pipeline.conflict_resolution import driver as _driver_mod

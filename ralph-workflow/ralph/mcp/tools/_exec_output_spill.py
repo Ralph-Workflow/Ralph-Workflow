@@ -1,20 +1,3 @@
-"""Shared oversized-output handling for the exec tool family.
-
-When a command's formatted result is larger than the inline limit, the exec
-tools must not dump it all into the agent's context (it floods the window) nor
-discard it (the old bounded-exec behavior killed the process and raised, forcing
-a blind retry loop that surfaced as ``-32001 Request timed out``). Instead the
-full output is written to a spill file and the agent receives a bounded head/tail
-preview plus the path so it can read the rest in chunks. The exec tools pass a
-workspace-relative ``spill_dir`` (``<workspace>/.agent/tmp``) so the spill is
-reachable by the agent's workspace-scoped read tools — a spill outside the
-workspace root is rejected by those tools, leaving the agent told to read a file
-it cannot open. ``spill_output`` falls back to the OS temp dir only when no
-directory is supplied (direct/library callers). The files are not deleted here.
-
-Both ``exec`` and ``unsafe_exec`` share these helpers so their output caps and
-spill behavior cannot silently diverge.
-"""
 
 from __future__ import annotations
 
@@ -26,39 +9,24 @@ from pathlib import Path
 from ralph.mcp.tools._cache_retention import prune_cache_files
 from ralph.mcp.tools.coordination import ToolContent, ToolResult
 
-#: Above this many bytes the formatted result is spilled to a file instead of
-#: inlined, so a large output cannot flood the agent's context window.
 INLINE_OUTPUT_LIMIT_BYTES = 1 * 1024 * 1024
-#: Hard cap on captured subprocess output for the bounded exec tool. The process
-#: is killed past this; the captured tail is still spilled (not discarded).
 SPILL_OUTPUT_LIMIT_BYTES = 10 * 1024 * 1024
-#: Total retained exec spill cache under a workspace's .agent/tmp directory.
 SPILL_CACHE_MAX_TOTAL_BYTES = 64 * 1024 * 1024
-#: Head/tail sizes (chars) for the inline preview shown alongside a spill path.
 PREVIEW_HEAD_CHARS = 8 * 1024
 PREVIEW_TAIL_CHARS = 8 * 1024
 
 
 def spill_output(text: str, spill_dir: Path | None) -> Path:
-    """Write the full formatted output to a temp file and return its path.
-
-    Defaults to the OS temp directory so the OS reclaims the file; ``spill_dir``
-    overrides this (used in tests and configurable deployments).
-    """
     directory = spill_dir if spill_dir is not None else Path(tempfile.gettempdir())
     directory.mkdir(parents=True, exist_ok=True)
     fd, name = tempfile.mkstemp(prefix="ralph-exec-", suffix=".txt", dir=str(directory))
     try:
-        # filesystem-write-ok: unique temporary command-output spill is retained under bounded cache policy
         with os.fdopen(fd, "w", encoding="utf-8", errors="replace") as spill_file:
             spill_file.write(text)
     except BaseException:
-        # filesystem-write-ok: cleanup of a temporary command-output spill after failed creation
         Path(name).unlink(missing_ok=True)
         raise
     path = Path(name)
-    # Do not prune the shared OS temp directory: another process may own a
-    # matching file there. The OS reclaims spill_dir=None files instead.
     if spill_dir is not None:
         prune_cache_files(
             directory.glob("ralph-exec-*.txt"),
@@ -69,7 +37,6 @@ def spill_output(text: str, spill_dir: Path | None) -> Path:
 
 
 def build_spill_preview(text: str, path: Path, total_bytes: int, *, truncated: bool) -> str:
-    """Render a bounded head/tail preview pointing at the full spilled output."""
     truncation_note = " (truncated at the capture cap)" if truncated else ""
     head = text[:PREVIEW_HEAD_CHARS]
     tail = text[-PREVIEW_TAIL_CHARS:]
@@ -93,31 +60,6 @@ def format_or_spill(
     stderr_text: str | None = None,
     exec_resource_resolver: object | None = None,
 ) -> ToolResult:
-    """Return the result inline, or spill to a file when it is too large.
-
-    ``truncated`` forces a spill even under the inline limit, because a truncated
-    capture means the full output never fit and the agent must be told so.
-
-    AC-11 contract: when ``summary=True`` the response is a JSON
-    envelope carrying ``stdout_resource_id`` / ``stderr_resource_id``
-    replayable handles plus spill paths and a head/tail preview. The
-    raw output fallback (``summary=False``) is the legacy behavior.
-
-    ``stdout_text`` and ``stderr_text`` are optional pre-split streams;
-    when supplied they are tracked separately so the stdout/stderr
-    resource ids point at per-stream spill files instead of the
-    combined text. When omitted, ``text`` is treated as stdout (the
-    pre-AC-11 contract).
-
-    ``exec_resource_resolver`` is an optional
-    :class:`ralph.mcp.tools._exec_resource_uri.ExecResourceResolver`.
-    When supplied, every spill path is registered with the resolver
-    so the resulting ``ralph://exec/<spill-name>`` URIs can be
-    replayed through ``resources/read``. When ``None``, the URIs
-    remain well-formed but the server returns a structured
-    "resolver not attached" error on read. Callers should pass the
-    session's resolver to keep the resource IDs replayable.
-    """
     encoded_len = len(text.encode("utf-8", errors="replace"))
     is_error = returncode != 0
     has_split_streams = stdout_text is not None or stderr_text is not None
@@ -129,15 +71,6 @@ def format_or_spill(
     def _register(spill: Path) -> str:
         if exec_resource_resolver is None:
             return f"ralph://exec/{spill.name}"
-        # Resolver returns a stable URI for the registered spill; the
-        # legacy ``ralph://exec/<name>`` shape is also acceptable.
-        # The resolver attribute is typed as
-        # ``ExecResourceResolverLike`` on the production session
-        # classes; the closure-bound argument here is ``object | None``
-        # to keep the surrounding ``format_or_spill`` signature
-        # narrow, so a local ``getattr`` is required to invoke
-        # ``register`` without an audit policy-violating blanket
-        # type-ignore marker.
         register_method: object = getattr(exec_resource_resolver, "register", None)
         if not callable(register_method):
             return f"ralph://exec/{spill.name}"
@@ -147,24 +80,10 @@ def format_or_spill(
         return f"ralph://exec/{spill.name}"
 
     if truncated or encoded_len > INLINE_OUTPUT_LIMIT_BYTES:
-        # Spill the combined text so the legacy fallback (summary=False)
-        # keeps working; for summary=True we also spill each stream
-        # separately when the caller provided split streams.
         spill_path = spill_output(text, spill_dir)
         preview = build_spill_preview(text, spill_path, encoded_len, truncated=truncated)
         if not summary:
             return ToolResult(content=[ToolContent.text_content(preview)], is_error=is_error)
-        # AC-11: when the caller provided split streams, each stream
-        # gets its own resource id and spill path so the agent can
-        # re-read stdout and stderr independently. Both streams are
-        # spilled whenever the combined output triggered this branch,
-        # regardless of each stream's individual truncation flag —
-        # otherwise a nonempty stderr stream below the 1 MiB inline
-        # threshold would have no replayable resource id when the
-        # combined output exceeds the limit, breaking the AC-11
-        # stdout/stderr replayable-resource contract. When the caller
-        # did not split, the combined spill is the single source of
-        # truth and we report it under stdout_resource_id.
         if has_split_streams:
             stdout_resource_id: str | None = None
             stdout_spill_path_v: str | None = None

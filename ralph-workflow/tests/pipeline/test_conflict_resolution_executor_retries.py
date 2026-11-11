@@ -1,5 +1,3 @@
-"""The executor owns no retry budget for a conflict resolver and surfaces its kills typed."""
-
 from __future__ import annotations
 
 from ralph.agents.invoke import (
@@ -23,7 +21,6 @@ def _effect(*, activity_only: bool) -> InvokeAgentEffect:
 
 
 def test_a_conflict_resolver_gets_no_executor_level_retries() -> None:
-    """The conflict-resolution driver is the only retry authority for its resolver."""
     config = UnifiedConfig.model_validate({"general": {}})
     assert recovery_attempts_for_effect(_effect(activity_only=True), config) == 0
     assert recovery_attempts_for_effect(_effect(activity_only=False), config) >= 1

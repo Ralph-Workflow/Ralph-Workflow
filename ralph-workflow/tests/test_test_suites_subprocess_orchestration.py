@@ -1,15 +1,3 @@
-"""Subprocess-E2E PTY regression and process-pool termination tests for the test-suite runner.
-
-Split out of :mod:`tests.test_test_suites` so the discovery + partitioning
-suite stays under the maintained 1000-line-per-file cap. The shared shard
-fake classes live in :mod:`tests._test_test_suites_helpers` to keep both
-this file and the discovery / orchestration suites free of repeated fakes.
-
-Scope: subprocess E2E PTY exclusivity (S-1) plus one-process termination /
-reaping (S-5). The "no terminal lost" PTY completion contract has its own
-file (see :mod:`tests.test_test_suites_pty_completion`).
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -27,7 +15,6 @@ EXPECTED_EXCLUSIVE_SUBPROCESS_E2E_FILES = ("tests/agents/test_terminal_state_res
 
 
 def test_subprocess_e2e_regression_exclusive_pty_registry_is_fixed_and_unique() -> None:
-    """S-1: PTY restoration runs in exactly one explicit exclusive lane."""
     assert (
         test_suites_module.EXCLUSIVE_SUBPROCESS_E2E_FILES == EXPECTED_EXCLUSIVE_SUBPROCESS_E2E_FILES
     )
@@ -52,7 +39,6 @@ def test_subprocess_e2e_regression_exclusive_pty_selection_fails_closed(
     monkeypatch: pytest.MonkeyPatch,
     selected_files: tuple[str, ...],
 ) -> None:
-    """S-1: missing or duplicate PTY selection must start no subprocesses."""
     monkeypatch.setenv("PYTEST_WORKERS", "2")
     monkeypatch.setattr(test_suites_module, "REQUIRED_AUTO_INTEGRATE_E2E_FILES", ())
     spawner = _StubSpawner([])
@@ -77,7 +63,6 @@ def test_subprocess_e2e_regression_runs_pty_after_general_shards_once_without_xd
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """S-1: general shards complete before the one-process PTY lane starts."""
     monkeypatch.setenv("PYTEST_WORKERS", "2")
     monkeypatch.setenv("PYTEST_XDIST_WORKERS_PER_SHARD", "2")
     monkeypatch.setattr(test_suites_module, "REQUIRED_AUTO_INTEGRATE_E2E_FILES", ())
@@ -125,10 +110,6 @@ def test_subprocess_e2e_regression_runs_pty_after_general_shards_once_without_xd
     assert general_reap_order == [2, 2]
     assert "-n" in spawner.calls[0][0]
     assert "-n" in spawner.calls[1][0]
-    # The exclusive subprocess E2E shard uses 4 in-shard xdist workers
-    # (see ``_EXCLUSIVE_SUBPROCESS_E2E_SHARD_XDIST_WORKERS``) so the
-    # eight real-PTY regressions can run concurrently and fit inside
-    # the 60s combined subprocess profile budget.
     assert "-n" in spawner.calls[2][0]
     exclusive_xdist_index = spawner.calls[2][0].index("-n")
     assert spawner.calls[2][0][exclusive_xdist_index + 1] == "4"
@@ -149,13 +130,6 @@ def test_terminate_and_reap_continues_when_one_process_raises(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """S-5: one shard's terminate raising must not skip the rest.
-
-    A foreign exception from a real process manager (e.g. when its
-    descendant accounting trips) cannot leak the rest of the shard
-    pool. The runner logs a warning and continues termination
-    + reaping of the remaining processes.
-    """
     monkeypatch.setenv("PYTEST_WORKERS", "3")
     monkeypatch.setattr(test_suites_module, "REQUIRED_AUTO_INTEGRATE_E2E_FILES", ())
     clock = _FakeClock()
@@ -181,11 +155,6 @@ def test_terminate_and_reap_continues_when_one_process_raises(
     )
 
     assert exit_code == 124
-    # All three processes must be reaped. The raising one is still
-    # reaped via its ``communicate``; the other two were terminated
-    # first then reaped. Skipping the rest of the pool would have
-    # left two ``reaped == False`` (and the leak would have
-    # inflated the budget drain on a busy host).
     assert all(process.reaped for process in processes)
     assert sibling_a.terminated
     assert sibling_b.terminated

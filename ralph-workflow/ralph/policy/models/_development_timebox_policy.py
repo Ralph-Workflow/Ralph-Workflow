@@ -1,4 +1,3 @@
-"""Development-phase timebox policy."""
 
 from __future__ import annotations
 
@@ -14,7 +13,6 @@ DEFAULT_DEVELOPMENT_WARNING_SECONDS: float = 4200.0
 
 
 class DevelopmentTimeboxPolicy(_FrozenPolicyModel):
-    """Independent hard-stop timer for uninterrupted development work."""
 
     model_config = ConfigDict(extra="forbid")
 

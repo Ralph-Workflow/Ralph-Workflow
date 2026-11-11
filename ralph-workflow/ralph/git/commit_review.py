@@ -1,15 +1,10 @@
-"""Git cleanup operations for commit hardening.
-
-This module provides deterministic git operations for the commit review phase,
-handling file deletion, gitignore updates, and git exclude patterns.
-"""
 
 from __future__ import annotations
 
 from contextlib import suppress
 from fnmatch import fnmatchcase
 from pathlib import Path, PurePath, PurePosixPath
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 from git import InvalidGitRepositoryError, Repo
 from loguru import logger
@@ -31,17 +26,19 @@ _TRACKED_SECRET_BASENAME_PATTERNS: tuple[str, ...] = (
 )
 
 
-def ensure_git_initialized(repo_root: Path | str) -> None:
-    """Ensure the directory is a git repository, initializing if necessary.
+class _RepoClass(Protocol):
+    @classmethod
+    def init(cls, path: str | Path) -> _RepoClass: ...
 
-    Args:
-        repo_root: Path to the repository root.
-    """
+    def close(self) -> None: ...
+
+
+def ensure_git_initialized(repo_root: Path | str) -> None:
     with suppress(InvalidGitRepositoryError):
         repo = Repo(repo_root, search_parent_directories=False)
         repo.close()
         return
-    new_repo: Repo = Repo.init(repo_root)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    new_repo = cast("_RepoClass", Repo).init(repo_root)
     try:
         logger.info("Initialized git repository at {}", repo_root)
     finally:
@@ -49,12 +46,6 @@ def ensure_git_initialized(repo_root: Path | str) -> None:
 
 
 def delete_file_from_repo(repo_root: Path | str, relative_path: str) -> None:
-    """Remove a file from the repository, unstaging if necessary.
-
-    Args:
-        repo_root: Path to the repository root.
-        relative_path: Path relative to repo_root of the file to delete.
-    """
     repo_root_path = Path(repo_root).resolve()
     path = PurePath(relative_path)
     if path.is_absolute() or any(part == ".." for part in path.parts):
@@ -84,24 +75,11 @@ def delete_file_from_repo(repo_root: Path | str, relative_path: str) -> None:
         finally:
             repo.close()
 
-    # filesystem-write-ok: explicit secret-cleanup deletion requested by the caller after repository-boundary validation
     target.unlink(missing_ok=True)
     logger.debug("Deleted file {}", relative_path)
 
 
 def add_to_git_exclude(repo_root: Path | str, patterns: list[str]) -> None:
-    """Append machine-local excludes and safely untrack recognized secrets.
-
-    A tracked file is removed from the index only when both its basename and
-    the requested exclude pattern identify a recognized secret filename. This
-    deliberately prevents broad or project-file patterns such as ``*`` or
-    ``settings.ini`` from silently untracking source files. The working-tree
-    secret is retained.
-
-    Args:
-        repo_root: Path to the repository root.
-        patterns: List of patterns to add to exclude.
-    """
     repo = Repo(repo_root, search_parent_directories=False)
     try:
         exclude_path = Path(repo.git_dir) / "info" / "exclude"
@@ -126,7 +104,7 @@ def add_to_git_exclude(repo_root: Path | str, patterns: list[str]) -> None:
             tracked_output = cast(
                 "str",
                 route_git_method(repo, "ls_files", ("--cached", "-z")),
-            )  # cast-policy: seam: structural boundary (git null-separated output; CLI returns plain text)
+            )
             tracked: list[str] = [path for path in tracked_output.split("\0") if path]
             tracked_secrets: list[str] = [
                 path
@@ -147,19 +125,16 @@ def add_to_git_exclude(repo_root: Path | str, patterns: list[str]) -> None:
 
 
 def _is_recognized_secret_name(name: str) -> bool:
-    """Return whether ``name`` is in the deliberately narrow secret family."""
     return any(
         fnmatchcase(name, secret_pattern) for secret_pattern in _TRACKED_SECRET_BASENAME_PATTERNS
     )
 
 
 def is_recognized_secret_path(path: str) -> bool:
-    """Return whether a repository-relative path names a recognized secret."""
     return _is_recognized_secret_name(PurePosixPath(path.replace("\\", "/")).name)
 
 
 def _sensitive_pattern_matches_path(pattern: str, tracked_path: str) -> bool:
-    """Return whether a safe secret exclude pattern selects ``tracked_path``."""
     normalized = pattern.strip().replace("\\", "/")
     pattern_name = PurePosixPath(normalized).name
     if not _is_recognized_secret_name(pattern_name):
@@ -173,68 +148,6 @@ def untrack_engine_internal_files(
     repo_root: Path | str,
     is_internal_path: Callable[[str], bool],
 ) -> list[str]:
-    """Pre-emptively ``git rm --cached`` every tracked engine-internal file.
-
-    This is the rock-solid safety net that the ``commit_review`` phase
-    calls BEFORE the agent runs: any tracked file that matches
-    ``is_internal_path`` (the canonical ``is_agent_internal_path``
-    predicate) is removed from the index so it cannot enter the diff
-    the agent sees. Without this step, a ``delete_file`` action for a
-    tracked engine-internal file is rejected by ``_is_safe_to_delete``
-    (the prior failure mode -- the safety check would otherwise
-    surface a hard fail for tracked engine-owned paths even though
-    the path is engine-owned).
-
-    Contract:
-
-    * ``git rm --cached`` is used (NOT ``git rm``) -- the working-tree
-      files remain on disk so the agent can decide whether to follow
-      up with a separate ``delete_file`` action.
-    * Symlinks are rejected BEFORE ``git rm --cached`` by checking
-      ``Path(repo_root / path).is_symlink()``. ``git rm`` follows
-      symlinks, so a symlink under ``.agent/`` could stage the
-      symlink target (which may live outside the repo).
-    * The FIVE canonical project-scope skill-root prefixes
-      (``.opencode/skills/``, ``.agents/skills/``, ``.claude/skills/``,
-      ``.codex/skills/``, ``.gemini/antigravity-cli/skills/``) are
-      early-skipped BEFORE the symlink-WARNING block. Skills are tracked
-      by design (see commit ``e4b47d2fb``), so a symlink under any of
-      those roots is intentional and the WARNING is noise. This does
-      NOT widen the safety surface: the canonical
-      ``is_agent_internal_path`` predicate is unchanged and
-      ``is_internal_path`` still gates the ``git rm --cached`` call.
-    * ``Repo`` is opened in a ``try/finally`` and closed on every
-      exit path, mirroring ``delete_file_from_repo``.
-    * Per-path failures are wrapped in ``try/except Exception`` so a
-      single bad entry does NOT abort the batch -- the helper is
-      best-effort by design.
-    * The function returns the list of paths actually untracked so
-      the caller (``handle_commit_review_phase``) can log the result.
-
-    The placement of this helper's call in
-    ``handle_commit_review_phase`` is pinned by the
-    ``_check_pre_emptive_untrack_placement`` AST helper in
-    ``ralph/testing/audit_agent_internal_paths.py`` -- any future
-    refactor that moves the call behind the artifact load, or that
-    widens the deletion surface, fails that audit.
-
-    Args:
-        repo_root: Path to the repository root. Accepts both ``Path``
-            and ``str`` for parity with the rest of this module's API.
-        is_internal_path: Predicate that returns True when a tracked
-            path is a Ralph runtime artifact (the canonical
-            ``is_agent_internal_path`` from
-            ``ralph.phases._agent_internal_paths``). Passed as a
-            positional argument to keep the helper decoupled from
-            the leaf module and avoid circular-import risk.
-
-    Returns:
-        List of repository-relative paths that were removed from the
-        index. Empty when no paths matched the predicate, when the
-        repository has no tracked files, when ``repo_root`` is not a
-        git repository, or when every match was a symlink and got
-        rejected before ``git rm --cached``.
-    """
     repo_root_path = Path(repo_root)
     try:
         repo = Repo(repo_root_path)
@@ -247,8 +160,6 @@ def untrack_engine_internal_files(
 
     untracked: list[str] = []
     try:
-        # The FIVE canonical skill roots are tracked by design, so skip them
-        # before the symlink warning block.
         for entry_key in list(repo.index.entries.keys()):
             entry_path = entry_key[0] if isinstance(entry_key, tuple) else entry_key
             entry_path_str = str(entry_path)
@@ -290,13 +201,5 @@ def untrack_engine_internal_files(
 
 
 def stage_commit_changes_safely(repo_root: Path | str) -> None:
-    """Stage all non-secret work after applying canonical secret cleanup.
-
-    Recognized tracked secrets are removed from the index while their
-    working-tree copies remain. The same narrow patterns are persisted in the
-    repository-local exclude file before ``git add -A``, so recognized
-    untracked secrets never enter the index and all other untracked work keeps
-    the normal stage-all behavior.
-    """
     add_to_git_exclude(repo_root, list(_TRACKED_SECRET_BASENAME_PATTERNS))
     stage_all(repo_root)

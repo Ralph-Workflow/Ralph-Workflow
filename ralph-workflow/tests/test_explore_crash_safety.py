@@ -1,25 +1,3 @@
-"""Crash-safety tests for the explore index (acceptance criterion 3).
-
-Killing the process at random points during a build, repeated
-many times, never leaves an index that serves wrong results. The
-next session always recovers without help.
-
-These tests drive real child processes so the process boundary and
-atomic promotion are exercised. The children are spawned through the
-production executor seam (``ralph.executor.process.run_process``)
-instead of a raw ``subprocess`` call, so the real-process boundary
-stays under the production process manager (bounded timeout, reaped
-subtree). The in-budget pytest wall time is bounded by the per-suite
-cap; the real workload is small enough to fit.
-
-The repeated-kill loop runs 5 rounds with random kill delays so
-the process is killed at different points across cold build,
-incremental refresh, and the atomic-promote step. After every
-round, a fresh process must (a) not crash, (b) leave a SQLite
-DB in a valid state, and (c) succeed at a complete reindex with
-no manual cleanup.
-"""
-
 from __future__ import annotations
 
 import json
@@ -161,17 +139,6 @@ def _seed(tmp_path: Path, *, files: int = 20) -> Path:
 
 
 def _run_kill_round(workspace: Path, kill_after_seconds: float) -> int:
-    """Run one build with a SIGKILL delay. Returns the process returncode.
-
-    A non-zero returncode is the EXPECTED outcome: the process was
-    killed mid-build. The next test step is to verify that a fresh
-    session can recover without manual cleanup.
-
-    The child is spawned through the production executor seam so the
-    real process boundary is exercised under the production process
-    manager (bounded timeout, reaped subtree) rather than through a
-    raw ``subprocess`` call from the test.
-    """
     script = SCRIPT_TEMPLATE.replace("__WORKSPACE__", repr(str(workspace))).replace(
         "__KILL_AFTER__", repr(kill_after_seconds)
     )
@@ -184,12 +151,6 @@ def _run_kill_round(workspace: Path, kill_after_seconds: float) -> int:
 
 
 def _verify_recovery(workspace: Path) -> dict[str, object]:
-    """Run a fresh process that recovers the workspace after a kill.
-
-    The recovery process (a) reindexes the workspace, (b) returns
-    matches from a search. The result is a dict with ``status`` and
-    ``match_count`` keys; ``status='ok'`` means recovery succeeded.
-    """
     script = VERIFY_SCRIPT_TEMPLATE.replace("__WORKSPACE__", repr(str(workspace)))
     result = run_process(
         sys.executable,
@@ -211,22 +172,9 @@ def _verify_recovery(workspace: Path) -> dict[str, object]:
 
 
 def test_repeated_random_kill_during_build_self_recovers(tmp_path: Path) -> None:
-    """Repeated randomized SIGKILL-during-build is self-healing.
-
-    The loop runs 5 rounds. Each round spawns a process that
-    performs a cold build; a random delay (between 0.005s and
-    0.05s) triggers SIGKILL so the build is interrupted at a
-    different phase each iteration. After every kill, a fresh
-    process re-runs the build and asserts:
-
-    1. The fresh process exits 0 with ``status=ok``.
-    2. The fresh index serves matches via a real search.
-    3. The DB is valid SQLite (no half-written generation).
-    """
-    rng = random.Random(0xC0FFEE)  # deterministic
+    rng = random.Random(0xC0FFEE)
     workspace = _seed(tmp_path, files=4)
     for round_idx in range(1):
-        # Reset the index between rounds so each round is a cold build.
         import shutil
 
         index_dir = workspace / ".agent" / "ralph-explore"
@@ -235,12 +183,9 @@ def test_repeated_random_kill_during_build_self_recovers(tmp_path: Path) -> None
         index_dir.mkdir(parents=True, exist_ok=True)
         kill_delay = rng.uniform(0.005, 0.05)
         rc = _run_kill_round(workspace, kill_delay)
-        # The process was killed -> non-zero returncode expected.
         assert rc != 0, (
             f"round {round_idx}: SIGKILL did not interrupt build (rc={rc}, kill_delay={kill_delay})"
         )
-        # Recovery: a fresh process must rebuild the index and serve
-        # matches without manual cleanup.
         verify = _verify_recovery(workspace)
         assert verify["status"] == "ok", f"round {round_idx}: recovery failed, verify={verify}"
         assert verify["match_count"] > 0, (
@@ -249,22 +194,9 @@ def test_repeated_random_kill_during_build_self_recovers(tmp_path: Path) -> None
 
 
 def test_kill_during_atomic_promote_does_not_serve_partial_generation(tmp_path: Path) -> None:
-    """A SIGKILL during the atomic-promote step never serves a half-written generation.
-
-    The test seeds a large enough workspace that the cold build
-    crosses multiple SQLite transaction boundaries; the kill
-    delay is set so SIGKILL fires after the writer has begun
-    staging the next generation but before the promote completes.
-    A subsequent read must either serve the prior generation OR
-    the next generation, never a partial mix.
-    """
     workspace = _seed(tmp_path, files=6)
-    # Use a longer delay so the build gets past the staging step.
     rc = _run_kill_round(workspace, kill_after_seconds=0.02)
     assert rc != 0
-    # Recovery: the next process rebuilds; the resulting search
-    # either serves matches from the new index OR falls through
-    # to live search. Both are valid; the contract is no error.
     verify = _verify_recovery(workspace)
     assert verify["status"] == "ok", verify
     assert verify["match_count"] > 0, verify

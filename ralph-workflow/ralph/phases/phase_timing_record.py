@@ -1,4 +1,3 @@
-"""PhaseTimingRecord: structured timing result for a completed phase execution."""
 
 from __future__ import annotations
 
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class PhaseTimingRecord:
-    """Structured timing result for a completed phase execution."""
 
     phase: str
     iteration: int

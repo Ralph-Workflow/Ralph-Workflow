@@ -1,5 +1,3 @@
-"""Regression coverage for quota signals in parallel worker output."""
-
 from __future__ import annotations
 
 import asyncio
@@ -59,7 +57,6 @@ async def _run_with_output(output: bytes, *, completes_normally: bool) -> list[s
 
 @pytest.mark.asyncio
 async def test_worker_quota_output_terminates_and_raises_with_executable_name() -> None:
-    """A shared quota signal aborts a still-running parallel worker."""
 
     with pytest.raises(QuotaExhaustedError, match="worker-cli") as excinfo:
         await _run_with_output(b"rate limit reached\n", completes_normally=False)
@@ -69,7 +66,6 @@ async def test_worker_quota_output_terminates_and_raises_with_executable_name() 
 
 @pytest.mark.asyncio
 async def test_worker_authentication_output_remains_regular_progress() -> None:
-    """Authentication failures do not use the quota terminal path."""
 
     output_lines = await _run_with_output(b"authentication failed\n", completes_normally=True)
 

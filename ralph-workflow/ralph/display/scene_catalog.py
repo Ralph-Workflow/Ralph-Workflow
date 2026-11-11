@@ -1,4 +1,3 @@
-"""Generated console scene catalog and executable support matrix."""
 
 from __future__ import annotations
 
@@ -41,13 +40,6 @@ GRACEFUL_WIDTH_FLOOR: Final[int] = 40
 GRACEFUL_HEIGHT_FLOOR: Final[int] = 12
 INDENT_UNIT: Final[str] = "  "
 _SCENE_PROMPT_PATH: Final[str] = ".agent/PROMPT.md"
-#: PLAN.md S-3: how many alternating tool_use / tool_result rows the
-#: ``idle_stretch`` scene renders before its terminal transition. Sized
-#: larger than ``STEADY_STATE_DECAY_FRAMES`` (3) so the allocator's
-#: per-role decay counter reaches the decay window for *both* roles
-#: the stretch alternates between, and the catalogue-wide sweeps
-#: (G-3/G-4, G-5, G-7, G-10/E-3) cannot pass vacuously for the scene
-#: named for the steady stretch.
 _IDLE_STRETCH_FRAMES: Final[int] = 6
 
 CANONICAL_VALUE_FORMATS: Final[dict[str, str]] = {
@@ -60,7 +52,6 @@ CANONICAL_VALUE_FORMATS: Final[dict[str, str]] = {
 
 @dataclass(frozen=True)
 class _SceneCheckpointOptions:
-    """Minimal checkpoint summary input for the deterministic scene driver."""
 
     phase: str
     budget_progress: dict[str, tuple[int, int]]
@@ -68,7 +59,6 @@ class _SceneCheckpointOptions:
 
 @dataclass(frozen=True)
 class SupportCase:
-    """One deterministic rendering configuration in the support matrix."""
 
     background: Background
     colour: ColourMode
@@ -78,14 +68,12 @@ class SupportCase:
 
     @property
     def terminal_background_is_light(self) -> bool | None:
-        """Return the background preference consumed by semantic display themes."""
         if self.background == "unknown":
             return None
         return self.background == "light"
 
     @property
     def color_system(self) -> RichColorSystem | None:
-        """Return the Rich color-system name for this support case."""
         if self.colour == "truecolour":
             return "truecolor"
         if self.colour == "reduced":
@@ -94,7 +82,6 @@ class SupportCase:
 
     @property
     def height(self) -> int:
-        """Return the 12-row degradation floor or a full-scene working height."""
         return GRACEFUL_HEIGHT_FLOOR if self.width == GRACEFUL_WIDTH_FLOOR else 40
 
 
@@ -114,13 +101,6 @@ def render_scene(
     *,
     terminal_bg_is_light: bool | None,
 ) -> str:
-    """Render a deterministic reference scene through production display seams.
-
-    The catalog is a driver, not a second renderer: lifecycle, activity,
-    status-bar, completion, and preview text are produced by the public owners
-    used by a live run. Fixed clocks and in-memory streams retain the support
-    matrix's deterministic, bounded test profile.
-    """
     if scene_name not in SCENE_NAMES:
         raise ValueError(f"unknown scene {scene_name!r}")
     if terminal_bg_is_light != case.terminal_background_is_light:
@@ -166,15 +146,6 @@ def scene_salience_decisions(
     *,
     terminal_bg_is_light: bool | None,
 ) -> tuple[AllocationDecision, ...]:
-    """G-9/S-8: drive one scene through the same production seams as
-    :func:`render_scene` and return the per-frame salience decisions the
-    real ``ParallelDisplay`` instance recorded (PLAN.md S-7's allocator
-    wiring in ``ParallelDisplay._apply_salience``), so tests can assert on
-    lit-accent counts, alarm exemption, and oscillation without
-    reaching into allocator internals (F-4). Mirrors ``render_scene``'s
-    setup exactly, minus the parts (SCENE header, preview rendering) that
-    do not themselves bid for salience.
-    """
     if scene_name not in SCENE_NAMES:
         raise ValueError(f"unknown scene {scene_name!r}")
     if terminal_bg_is_light != case.terminal_background_is_light:
@@ -212,7 +183,6 @@ def scene_salience_decisions(
 
 
 def _scene_environment(case: SupportCase) -> dict[str, str]:
-    """Return explicit environment inputs for one support-matrix case."""
     environment: dict[str, str] = {"RALPH_FORCE_ASCII": "1" if case.glyphs == "ascii" else "0"}
     if case.background != "unknown":
         environment["RALPH_TERMINAL_BG"] = case.background
@@ -224,7 +194,6 @@ def _scene_environment(case: SupportCase) -> dict[str, str]:
 
 
 def _scene_snapshot(*, failed: bool) -> PipelineSnapshot:
-    """Build fixed production completion input without pipeline execution."""
     return PipelineSnapshot(
         phase="review" if failed else "complete",
         previous_phase="review",
@@ -260,7 +229,6 @@ def _scene_snapshot(*, failed: bool) -> PipelineSnapshot:
 
 
 def _drive_first_screen(display: ParallelDisplay, *, include_capability_summary: bool) -> None:
-    """Drive the ``first_screen`` scene through public display seams."""
     display.emit_welcome_banner(version="0.0.0-scene")
     display.emit_first_run_panel([Text("Production display scene", style="theme.text.muted")])
     display.emit_run_start(
@@ -276,7 +244,6 @@ def _drive_first_screen(display: ParallelDisplay, *, include_capability_summary:
 
 
 def _drive_clean_run(display: ParallelDisplay) -> None:
-    """Drive the ``clean_run`` scene through public display seams."""
     display.emit_blank_line()
     entry = PhaseEntryModel(
         "development", "execution", "pi", outer_dev_iteration=1, outer_dev_cap=3
@@ -327,7 +294,6 @@ def _drive_clean_run(display: ParallelDisplay) -> None:
 
 
 def _drive_failure(display: ParallelDisplay) -> None:
-    """Drive the ``failure`` scene through public display seams."""
     display.emit_phase_start("review", agent_name="reviewer")
     raw_machine_detail = (
         "tests failed: assertion output retained; trace-detail condensed count=48 bytes=624"
@@ -352,13 +318,6 @@ def _drive_failure(display: ParallelDisplay) -> None:
 
 
 def _drive_burst(display: ParallelDisplay) -> None:
-    """Drive the ``burst`` scene through public display seams.
-
-    A burst keeps one representative call in the scarce live stream. The
-    explicit elision entry preserves the total, byte size, and durable
-    transcript location instead of flooding later structural beats with
-    indistinguishable rows.
-    """
     display.emit_activity_line(
         "codex",
         "tool_use",
@@ -376,17 +335,6 @@ def _drive_burst(display: ParallelDisplay) -> None:
 
 
 def _drive_idle_stretch(display: ParallelDisplay) -> None:
-    """Drive the ``idle_stretch`` scene through public display seams.
-
-    PLAN.md S-3: the steady-stretch scene must exercise the salience
-    allocator so the catalogue-wide sweeps (G-3/G-4, G-5, G-7,
-    G-10/E-3) cannot pass vacuously for the scene named for the
-    steady stretch. Render one unit's alternating tool_use /
-    tool_result rows for a steady stretch (varying bodies so the
-    burst-elision path cannot collapse them) and finish with a
-    genuine state change at the end so the post-stretch frame has
-    a ``state change`` reason to observe.
-    """
     for tick in range(_IDLE_STRETCH_FRAMES):
         display.emit_activity_line(
             "pi",
@@ -404,13 +352,10 @@ def _drive_idle_stretch(display: ParallelDisplay) -> None:
         agent_name="pi",
         attention="waiting",
     )
-    # The public push seam writes a durable state transition on redirected
-    # and CI streams; real TTYs retain the sole transient Live footer.
     display.update_status_bar(model)
 
 
 def _drive_closing_screen(display: ParallelDisplay) -> None:
-    """Drive the ``closing_screen`` scene through public display seams."""
     display.emit_dry_run_summary(
         phase="review",
         iterations=1,
@@ -430,12 +375,6 @@ def _drive_production_scene(
     *,
     include_capability_summary: bool,
 ) -> None:
-    """Drive public production display entry points with fixed scenario data.
-
-    Each scene's driver is its own helper so the dispatch body stays
-    below ``PLR0915``'s 60-statement cap while every scene is still
-    trivially traceable to its ``scene_name`` string.
-    """
     if scene_name == "first_screen":
         _drive_first_screen(display, include_capability_summary=include_capability_summary)
     elif scene_name == "clean_run":
@@ -451,7 +390,6 @@ def _drive_production_scene(
 
 
 def _render_scene_previews(console: Console, *, terminal_bg_is_light: bool | None) -> None:
-    """Render real write and diff previews through the production preview builder."""
     write_preview = build_edit_preview(
         "write_file",
         {"path": "café.py", "content": "def café(value: str) -> int:\n    return len(value)"},
@@ -475,12 +413,6 @@ def _render_scene_previews(console: Console, *, terminal_bg_is_light: bool | Non
 
 
 def support_matrix() -> tuple[SupportCase, ...]:
-    """Return the complete declared support matrix.
-
-    Every reference scene is rendered across this complete matrix. The
-    separate :func:`floor_matrix` remains a compact helper for focused floor
-    mutations, not a substitute for support-matrix scene evidence.
-    """
     backgrounds: tuple[Background, ...] = ("dark", "light", "unknown")
     colours: tuple[ColourMode, ...] = ("truecolour", "reduced", "none")
     glyph_modes: tuple[GlyphMode, ...] = ("unicode", "ascii")
@@ -496,21 +428,6 @@ def support_matrix() -> tuple[SupportCase, ...]:
 
 
 def floor_matrix() -> tuple[SupportCase, ...]:
-    """Return the floor-bullet matrix for the per-scene visual-floor tests.
-
-    The product criteria declares that the support matrix MUST include
-    at minimum an undetermined background, a reduced-colour mode, a
-    no-colour mode, an ASCII-only glyph mode, a narrowest width no
-    wider than the standard default terminal, and one destination for
-    each of TTY, redirect, and CI. The floor matrix therefore carries
-    every background x every colour x every glyph x every destination,
-    but only the graceful-width floor and the full-layout width: 120
-    columns adds a third width point without changing the floor
-    bullets and is covered by the per-surface preview/regression
-    tests instead. That keeps the per-scene matrix to 54 cases
-    (3 x 3 x 2 x 3) rather than the support matrix's 162, so the
-    matrix-driven test fits the immutable combined 60 s budget.
-    """
     backgrounds: tuple[Background, ...] = ("dark", "light", "unknown")
     colours: tuple[ColourMode, ...] = ("truecolour", "reduced", "none")
     glyph_modes: tuple[GlyphMode, ...] = ("unicode", "ascii")
@@ -526,41 +443,6 @@ def floor_matrix() -> tuple[SupportCase, ...]:
 
 
 def compact_matrix() -> tuple[SupportCase, ...]:
-    """Return the compact matrix used by the per-scene sweep tests.
-
-    The full :func:`support_matrix` is 162 cases (3 backgrounds x 3 colours
-    x 2 glyphs x 3 widths x 3 destinations). Per-scene sweeps over the
-    full matrix produce 972 cases (6 scenes x 162), which pushes the
-    per-shard wall-clock over the immutable 60 s combined budget because
-    each scene must import the renderer pipeline, instantiate the
-    console, and emit the full ANSI/SGR/colour stream before the
-    assertions can fire.
-
-    The compact matrix covers the same five logical axes (background,
-    colour mode, glyph mode, width, destination) but holds the width
-    axis at the canonical full-layout width (80) for the cross-product
-    sweep, plus a focused width-axis witness that exercises the
-    graceful floor (40 columns) on one representative
-    (background, colour, glyph) cell per destination and a
-    high-water-mark sample at 120 columns. That yields 54 + 9 + 3 = 66
-    cases per full sweep (66 x 6 scenes = 396 tests), which fits inside
-    the budget while preserving:
-
-    * all three backgrounds (dark, light, unknown);
-    * all three colour modes (truecolour, reduced, none);
-    * both glyph modes (unicode, ascii);
-    * the width axis at the graceful floor (40) and the high-water
-      mark (120) so width-aware layout assertions still fire;
-    * all three destinations (tty, redirect, ci) so the
-      destination-specific repaint/erase invariants stay covered.
-
-    This is the matrix used by ``tests/test_display_generated_scenes.py``
-    to assert that each of the six reference scenes renders without
-    crashing and obeys the per-case colour / repaint invariants. The
-    support matrix remains the canonical contract (see
-    :func:`support_matrix`); the matrix shape itself is locked by
-    ``test_generated_scene_support_matrix_declares_all_dimensions``.
-    """
     backgrounds: tuple[Background, ...] = ("dark", "light", "unknown")
     colours: tuple[ColourMode, ...] = ("truecolour", "reduced", "none")
     glyph_modes: tuple[GlyphMode, ...] = ("unicode", "ascii")
@@ -572,12 +454,6 @@ def compact_matrix() -> tuple[SupportCase, ...]:
         for glyphs in glyph_modes
         for destination in destinations
     )
-    # Per the docstring above, the width-axis witness exercises the
-    # graceful floor at ONE representative (background, colour) cell per
-    # destination, not the full 3 x 3 cross product. That keeps the matrix
-    # at the documented 54 + 9 + 3 = 66 cases (single representative cell
-    # per destination for the graceful floor) and reduces the per-shard
-    # wall time under the immutable combined 60 s budget.
     width_witness = tuple(
         SupportCase(background, "truecolour", "unicode", GRACEFUL_WIDTH_FLOOR, destination)
         for background in backgrounds

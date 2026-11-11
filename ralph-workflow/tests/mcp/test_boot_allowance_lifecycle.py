@@ -1,11 +1,3 @@
-"""``_await_mcp_startup_or_failure`` budgets child boot apart from the pre-serve envelope.
-
-Regression: the parent anchored one ~29.8s deadline at spawn, but the child's
-own startup clock only starts after interpreter boot and imports. Under heavy
-host pressure a healthy, still-booting child was killed with
-``startup_deadline_exceeded`` and no log output at all.
-"""
-
 from __future__ import annotations
 
 import threading
@@ -25,16 +17,10 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 STAGE_ID = "boot-allowance-spawn"
-ENVELOPE_S = 0.5  # preflight_timeout 1s -> envelope 0.5s
+ENVELOPE_S = 0.5
 
 
 class _Process:
-    """Minimal ``ProcessLike`` stand-in: a child that never exits on its own.
-
-    ``pid`` is not a real pid, so the psutil lookup behind the startup
-    diagnostics stays best-effort.
-    """
-
     def __init__(self) -> None:
         self.terminations = 0
 
@@ -54,16 +40,10 @@ class _Process:
         return 0
 
     def kill(self) -> None:
-        """The teardown path terminates the child; it never kills it directly."""
+        pass
 
 
 def _bridge(root: Path, process: _Process) -> StandaloneMcpProcess:
-    """A real ``StandaloneMcpProcess`` around the fake child.
-
-    The production wait loop only ever touches the bridge's child process and
-    its ``shutdown()``, so the test drives the real dataclass instead of a
-    hand-rolled stand-in.
-    """
     session_file = root / "session.json"
     session_file.write_text("{}", encoding="utf-8")
     return StandaloneMcpProcess(
@@ -81,7 +61,6 @@ def _spawn_process(
     phase: str | None = None,
     pass_fds: tuple[int, ...] = (),
 ) -> _Process:
-    """Spawn the fake child the wait loop only ever polls."""
     del command, cwd, env, phase, pass_fds
     return _Process()
 
@@ -110,8 +89,6 @@ def _deps(
 
 
 class _TickClock:
-    """Monotonic clock that advances ``step`` per read and fires time-keyed hooks."""
-
     def __init__(self, step: float = 1.0) -> None:
         self.now = 0.0
         self.step = step
@@ -201,7 +178,6 @@ def test_booted_child_is_judged_by_the_envelope_from_its_first_stage(tmp_path: P
 
 
 def test_slow_boot_longer_than_the_envelope_still_becomes_ready(tmp_path: Path) -> None:
-    """Boot (3s) outlasts the 0.5s envelope yet readiness inside the allowance succeeds."""
     release = threading.Event()
     budgets: list[timedelta] = []
     clock = _TickClock(step=0.2)
@@ -267,7 +243,6 @@ def test_boot_allowance_default_and_env_override() -> None:
     assert mcp_boot_allowance_from_env({MCP_BOOT_ALLOWANCE_MS_ENV: "1500"}) == timedelta(
         milliseconds=1500
     )
-    # Unparseable values fall back to the default instead of disabling the guard.
     assert mcp_boot_allowance_from_env({MCP_BOOT_ALLOWANCE_MS_ENV: "soon"}) == timedelta(seconds=90)
 
 

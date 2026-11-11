@@ -1,5 +1,3 @@
-"""Tests for mcp.toml Pydantic models."""
-
 from __future__ import annotations
 
 import importlib
@@ -17,8 +15,8 @@ from ralph.config.mcp_models import (
 
 RALPH_RESERVED_NAME = "ralph"
 
-DEFAULT_MAX_INLINE_BYTES = 5_242_880  # 5 MiB
-_TEN_MIB = 10_485_760  # 10 MiB - used in tests
+DEFAULT_MAX_INLINE_BYTES = 5_242_880
+_TEN_MIB = 10_485_760
 
 
 def test_mcp_server_spec_rejects_reserved_name() -> None:
@@ -112,16 +110,8 @@ def test_model_module_exports_all() -> None:
     )
 
 
-# =============================================================================
-# MediaConfig tests (Task 4)
-# =============================================================================
-
-
 class TestMcpConfigMediaIntegration:
-    """Tests for media config integration in McpConfig (Task 4)."""
-
     def test_mcp_config_has_media_field_with_default(self) -> None:
-        """McpConfig has media field that defaults to enabled MediaConfig."""
         config = McpConfig()
         assert hasattr(config, "media")
         assert isinstance(config.media, MediaConfig)
@@ -129,14 +119,12 @@ class TestMcpConfigMediaIntegration:
         assert config.media.max_inline_bytes == DEFAULT_MAX_INLINE_BYTES
 
     def test_mcp_config_media_enabled_roundtrip(self) -> None:
-        """McpConfig.media round-trips through model_validate."""
         config = McpConfig(media=MediaConfig(enabled=True, max_inline_bytes=_TEN_MIB))
         roundtrip = McpConfig.model_validate(config.model_dump())
         assert roundtrip.media.enabled is True
         assert roundtrip.media.max_inline_bytes == _TEN_MIB
 
     def test_mcp_config_without_media_section_yields_default(self) -> None:
-        """Parsing mcp.toml without [media] section yields enabled media config."""
         config = McpConfig()
         assert config.media.enabled is True
         assert config.media.max_inline_bytes == DEFAULT_MAX_INLINE_BYTES

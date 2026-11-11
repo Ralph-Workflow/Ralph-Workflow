@@ -10,8 +10,6 @@ if TYPE_CHECKING:
 
 
 class PlanningAnalysisRequestChangesOnceInvoker(MockAgentInvoker):
-    """Request planning changes once, then approve if planning_analysis is re-entered."""
-
     def __init__(self, workspace: MemoryWorkspace) -> None:
         super().__init__(workspace)
         self.last_phase: str | None = None

@@ -1,26 +1,3 @@
-"""S-6 (Evidence Provenance G6 / DoD 20): no per-transport exemption branch
-anywhere in ``smoke_plumbing.py``, for ANY registered transport.
-
-``tests/test_agy_no_exemptions.py`` pins the four specific AGY-only
-branches F7 removed. This module generalizes the invariant: DoD 20 reads
-"Every check the gate applies is applied to every registered transport.
-Where a check is genuinely wrong, it is changed for all of them, with the
-reason recorded -- never softened for one." That must hold for every
-``AgentTransport`` member, not only AGY -- including members registered
-after this test was written.
-
-The allowlist below is the complete, reviewed set of every
-``AgentTransport.<X>`` reference in ``smoke_plumbing.py`` as of S-6,
-each one confirmed to be transport IDENTIFICATION (routing to a
-transport-shaped code path, e.g. building a prompt) or an ADDITIVE
-diagnostic (a check that only fires -- adds an error -- for one
-transport's own known failure shape; it never skips, relaxes, or
-substitutes for a check another transport must pass). A future
-occurrence that is not in this allowlist fails the test, forcing a
-deliberate review rather than a silent reopening of the AGY-shaped lane
-for a new transport.
-"""
-
 from __future__ import annotations
 
 import re
@@ -30,8 +7,6 @@ _SMOKE_PLUMBING_PATH = (
     Path(__file__).resolve().parent.parent / "ralph" / "pipeline" / "plumbing" / "smoke_plumbing.py"
 )
 
-#: Each entry is (line-content regex, rationale). Matched against the
-#: stripped text of every line containing ``AgentTransport.<UPPER_NAME>``.
 _ALLOWED_TRANSPORT_REFERENCE_PATTERNS: tuple[tuple[str, str], ...] = (
     (
         r"^is_agy = transport is AgentTransport\.AGY$",
@@ -74,7 +49,6 @@ def _read_smoke_plumbing() -> str:
 
 
 def test_every_transport_reference_is_identification_or_additive_diagnostic() -> None:
-    """Every ``AgentTransport.<X>`` reference in smoke_plumbing.py matches the allowlist."""
     source = _read_smoke_plumbing()
     compiled = [
         (re.compile(pattern), reason) for pattern, reason in _ALLOWED_TRANSPORT_REFERENCE_PATTERNS
@@ -99,16 +73,6 @@ def test_every_transport_reference_is_identification_or_additive_diagnostic() ->
 
 
 def test_no_literal_transport_exclusion_set_anywhere_in_smoke_plumbing() -> None:
-    """No ``<transport-expr> not in {AgentTransport...}`` set exists anywhere.
-
-    This is the exact shape the pre-S-6 session-ID exemption used (and the
-    shape F7 removed for AGY's other three branches in spirit): a literal
-    enumerated set of exempted transports. S-6 replaced the one remaining
-    instance with a general, transport-declared property
-    (``AgentSupport.session_identifier_observable``). This regression fails
-    if that pattern -- for ANY transport, not only AGY or NANOCODER -- is
-    ever reintroduced anywhere in the file.
-    """
     source = _read_smoke_plumbing()
     match = re.search(r"transport\s+(?:not\s+)?in\s+\{\s*\n(\s*AgentTransport\.)", source)
     if match is not None:

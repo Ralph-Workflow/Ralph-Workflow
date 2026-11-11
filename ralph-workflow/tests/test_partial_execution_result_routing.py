@@ -1,5 +1,3 @@
-"""Black-box routing tests for partial execution results."""
-
 from __future__ import annotations
 
 from datetime import timedelta
@@ -93,14 +91,11 @@ def _custom_policy(
 
 def _advance_to_commit(state: PipelineState, policy: PipelinePolicy) -> PipelineState:
     review_state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
-    assert (
-        review_state.phase == "savepoint"
-    )  # RALPH-TEST-REASON: rename cleanup_state local to review_state for commit_review rename
+    assert review_state.phase == "savepoint"
     return review_state
 
 
 def _dev_timing(seconds: float) -> PhaseTimingRecord:
-    """Create a development phase timing record with the given elapsed seconds."""
     return PhaseTimingRecord(
         phase="development",
         iteration=0,
@@ -111,7 +106,6 @@ def _dev_timing(seconds: float) -> PhaseTimingRecord:
 
 
 def _state_with_dev_time(seconds: float, **kwargs: object) -> PipelineState:
-    """Create a development-phase state with a single timing record."""
     kwargs.setdefault("phase", "development")
     kwargs.setdefault("phase_timings", (_dev_timing(seconds),))
     return PipelineState(**kwargs)
@@ -129,12 +123,8 @@ def test_partial_result_commits_then_returns_to_same_execution_phase_in_new_sess
     commit_state = _advance_to_commit(review_state, policy)
     next_state, _ = reducer_reduce(commit_state, PipelineEvent.COMMIT_SUCCESS, policy)
 
-    assert (
-        review_state.phase == "polisher"
-    )  # RALPH-TEST-REASON: rename cleanup_state local to review_state for commit_review rename
-    assert (
-        review_state.post_commit_phase_override == "builder"
-    )  # RALPH-TEST-REASON: rename cleanup_state local to review_state for commit_review rename
+    assert review_state.phase == "polisher"
+    assert review_state.post_commit_phase_override == "builder"
     assert next_state.phase == "builder"
     assert next_state.previous_phase == "savepoint"
     assert next_state.last_agent_session_id is None
@@ -198,9 +188,7 @@ def test_completed_result_retains_commit_then_analyzer_flow() -> None:
     commit_state = _advance_to_commit(review_state, policy)
     next_state, _ = reducer_reduce(commit_state, PipelineEvent.COMMIT_SUCCESS, policy)
 
-    assert (
-        review_state.post_commit_phase_override is None
-    )  # RALPH-TEST-REASON: rename cleanup_state local to review_state for commit_review rename
+    assert review_state.post_commit_phase_override is None
     assert next_state.phase == "inspector"
     assert next_state.previous_phase == "savepoint"
 
@@ -252,14 +240,11 @@ def test_default_policy_routes_every_development_result_to_analysis_after_commit
             policy,
         )
         assert analysis_state.phase == "development_analysis"
-        assert (
-            review_state.phase == "development_commit_review"
-        )  # RALPH-TEST-REASON: rename cleanup_state local to review_state for commit_review rename
+        assert review_state.phase == "development_commit_review"
         assert commit_state.phase == "development_commit"
 
 
 def test_failed_development_analysis_loops_back_to_development() -> None:
-    """A failed analyzer decision returns for explicit resolution."""
     policy = _DEFAULT_PIPELINE_POLICY
 
     next_state, _ = reducer_reduce(
@@ -276,7 +261,6 @@ def test_failed_development_analysis_loops_back_to_development() -> None:
 def test_failed_analysis_preserves_outer_budget_on_loopback(
     completed_cycles: int,
 ) -> None:
-    """Failure-resolution loopback does not consume the outer cycle budget."""
     policy = _DEFAULT_PIPELINE_POLICY
     state = PipelineState(
         phase="development_analysis",
@@ -289,20 +273,15 @@ def test_failed_analysis_preserves_outer_budget_on_loopback(
         AnalysisDecisionEvent(phase="development_analysis", decision="failed"),
         policy,
     )
-    assert (
-        review_state.phase == "development"
-    )  # RALPH-TEST-REASON: rename cleanup_state local to review_state for commit_review rename
+    assert review_state.phase == "development"
     assert review_state.pending_cycle_outcome is None
-    assert (
-        review_state.get_outer_progress("iteration") == completed_cycles
-    )  # RALPH-TEST-REASON: rename cleanup_state local to review_state for commit_review rename
+    assert review_state.get_outer_progress("iteration") == completed_cycles
 
 
 @pytest.mark.parametrize("completed_cycles", [0, 1])
 def test_failed_analysis_does_not_enter_commit_path(
     completed_cycles: int,
 ) -> None:
-    """A failed analysis follows the same direct rework route as request changes."""
     policy = _DEFAULT_PIPELINE_POLICY
     state = PipelineState(
         phase="development_analysis",
@@ -315,20 +294,15 @@ def test_failed_analysis_does_not_enter_commit_path(
         AnalysisDecisionEvent(phase="development_analysis", decision="failed"),
         policy,
     )
-    assert (
-        review_state.phase == "development"
-    )  # RALPH-TEST-REASON: rename cleanup_state local to review_state for commit_review rename
+    assert review_state.phase == "development"
     assert review_state.pending_cycle_outcome is None
-    assert (
-        review_state.get_outer_progress("iteration") == completed_cycles
-    )  # RALPH-TEST-REASON: rename cleanup_state local to review_state for commit_review rename
+    assert review_state.get_outer_progress("iteration") == completed_cycles
 
 
 @pytest.mark.parametrize("status", ["completed", "partial", "failed"])
 def test_development_result_regression_every_terminal_result_consumes_one_analysis_cycle(
     status: str,
 ) -> None:
-    """S-1: terminal development results charge analysis at the post-commit seam, not before."""
     policy = _DEFAULT_PIPELINE_POLICY
 
     next_state, _ = reducer_reduce(
@@ -338,13 +312,10 @@ def test_development_result_regression_every_terminal_result_consumes_one_analys
     )
 
     assert next_state.phase == "development_commit_review"
-    # The analysis counter is NOT charged at execution-result time;
-    # it is charged at the post-commit seam when analysis is entered.
     assert next_state.get_loop_iteration("development_analysis_iteration") == 0
 
 
 def test_development_result_regression_analysis_loopback_does_not_double_charge_cycle() -> None:
-    """S-1: the charged result cycle remains one when its analysis requests changes."""
     policy = _DEFAULT_PIPELINE_POLICY
 
     review_state, _ = reducer_reduce(
@@ -369,7 +340,6 @@ def test_invocation_gate_threshold_controls_analysis_entry(
     seconds: float,
     enters_analysis: bool,
 ) -> None:
-    """S-1: cumulative unrounded dev time at or above 900.0s enters analysis."""
     policy = _DEFAULT_PIPELINE_POLICY
 
     state = _state_with_dev_time(seconds)
@@ -389,7 +359,6 @@ def test_invocation_gate_threshold_controls_analysis_entry(
 
 
 def test_invocation_gate_fractional_records_straddle_threshold() -> None:
-    """S-1: split fractional records totaling 899.9 skip; 900.0 enter analysis."""
     policy = _DEFAULT_PIPELINE_POLICY
 
     for total, enters in [(899.9, False), (900.0, True)]:
@@ -409,7 +378,6 @@ def test_invocation_gate_fractional_records_straddle_threshold() -> None:
 
 
 def test_invocation_gate_skipped_analysis_sets_cycle_outcome() -> None:
-    """S-1: when analysis is skipped by the gate, the completed cycle outcome is set."""
     policy = _DEFAULT_PIPELINE_POLICY
 
     state = _state_with_dev_time(100.0)
@@ -424,29 +392,23 @@ def test_invocation_gate_skipped_analysis_sets_cycle_outcome() -> None:
 
 
 def test_session_ceiling_partial_result_enters_analysis_regardless_of_time() -> None:
-    """S-2: a session-ceiling partial result commits then enters analysis even below threshold."""
     policy = _DEFAULT_PIPELINE_POLICY
 
     state = _state_with_dev_time(100.0, last_agent_session_id="session-1")
     review_state, _ = reducer_reduce(
         state, _execution_result_event("development", "partial"), policy
     )
-    # The partial result routes to commit review first
-    assert (
-        review_state.phase == "development_commit_review"
-    )  # RALPH-TEST-REASON: rename cleanup_state local to review_state for commit_review rename
+    assert review_state.phase == "development_commit_review"
 
     commit_state, _ = reducer_reduce(review_state, PipelineEvent.AGENT_SUCCESS, policy)
     assert commit_state.phase == "development_commit"
 
     next_state, _ = reducer_reduce(commit_state, PipelineEvent.COMMIT_SUCCESS, policy)
-    # Below the threshold, partial status still enters analysis (always_invoke_statuses)
     assert next_state.phase == "development_analysis"
     assert next_state.get_loop_iteration("development_analysis_iteration") == 1
 
 
 def test_failed_analysis_returns_to_development_for_every_outer_budget_state() -> None:
-    """Failed analysis is rework, independent of outer budget progress."""
     policy = _DEFAULT_PIPELINE_POLICY
 
     for completed_cycles in (0, 1):
@@ -460,26 +422,19 @@ def test_failed_analysis_returns_to_development_for_every_outer_budget_state() -
             AnalysisDecisionEvent(phase="development_analysis", decision="failed"),
             policy,
         )
-        assert (
-            review_state.phase == "development"
-        )  # RALPH-TEST-REASON: rename cleanup_state local to review_state for commit_review rename
-        assert (
-            review_state.get_outer_progress("iteration") == completed_cycles
-        )  # RALPH-TEST-REASON: rename cleanup_state local to review_state for commit_review rename
+        assert review_state.phase == "development"
+        assert review_state.get_outer_progress("iteration") == completed_cycles
 
 
 def test_cycle_timing_start_index_resets_on_lifecycle_commit() -> None:
-    """S-1: earlier cycle timings cannot make a short later cycle eligible for analysis."""
     policy = _DEFAULT_PIPELINE_POLICY
 
-    # Simulate a state at development_final_commit with one prior cycle's timing (900s)
-    # plus the current cycle's short timing (10s).
     old_timing = _dev_timing(900.0)
     new_timing = _dev_timing(10.0)
     state = PipelineState(
         phase="development_final_commit",
         phase_timings=(old_timing, new_timing),
-        cycle_timing_start_index=1,  # current cycle starts at index 1
+        cycle_timing_start_index=1,
         budget_caps={"iteration": 5},
         outer_progress={"iteration": 0},
         pending_cycle_outcome="completed",
@@ -487,13 +442,9 @@ def test_cycle_timing_start_index_resets_on_lifecycle_commit() -> None:
 
     commit_state, _ = reducer_reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
 
-    # The lifecycle commit should advance to planning (budget remaining)
-    # and reset cycle_timing_start_index so the old 900s record is excluded.
     assert commit_state.phase == "planning"
-    assert commit_state.cycle_timing_start_index == 2  # len(phase_timings)
+    assert commit_state.cycle_timing_start_index == 2
 
-    # Now if the next development cycle is short, it should NOT enter analysis
-    # because only the new cycle's 10s is counted.
     next_dev_state = PipelineState(
         phase="development",
         phase_timings=(old_timing, new_timing, _dev_timing(10.0)),
@@ -510,7 +461,6 @@ def test_cycle_timing_start_index_resets_on_lifecycle_commit() -> None:
 
 @pytest.mark.parametrize("status", ["partial", "failed"])
 def test_always_invoke_statuses_enter_analysis_below_threshold(status: str) -> None:
-    """S-2: partial and failed results enter analysis even below the 900s threshold."""
     policy = _DEFAULT_PIPELINE_POLICY
 
     state = _state_with_dev_time(10.0)
@@ -523,7 +473,6 @@ def test_always_invoke_statuses_enter_analysis_below_threshold(status: str) -> N
 
 
 def test_completed_below_threshold_skips_analysis_and_charges_no_cycle() -> None:
-    """S-2: completed results below 900s skip analysis per the retained time bypass."""
     policy = _DEFAULT_PIPELINE_POLICY
 
     state = _state_with_dev_time(10.0)
@@ -539,10 +488,8 @@ def test_completed_below_threshold_skips_analysis_and_charges_no_cycle() -> None
 
 
 def test_result_status_does_not_leak_across_cycles() -> None:
-    """S-2: a partial result's status is cleared after the gate so it cannot force the next cycle."""
     policy = _DEFAULT_PIPELINE_POLICY
 
-    # Cycle 1: partial result below threshold enters analysis via always_invoke_statuses
     state = _state_with_dev_time(10.0)
     review_state, _ = reducer_reduce(
         state, _execution_result_event("development", "partial"), policy
@@ -550,10 +497,8 @@ def test_result_status_does_not_leak_across_cycles() -> None:
     commit_state, _ = reducer_reduce(review_state, PipelineEvent.AGENT_SUCCESS, policy)
     analysis_state, _ = reducer_reduce(commit_state, PipelineEvent.COMMIT_SUCCESS, policy)
     assert analysis_state.phase == "development_analysis"
-    # The status must have been cleared at the post-commit seam
     assert analysis_state.last_execution_result_status is None
 
-    # The analysis loopback returns to development for the next cycle
     dev_state, _ = reducer_reduce(analysis_state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
     assert dev_state.phase == "development"
     assert dev_state.last_execution_result_status is None

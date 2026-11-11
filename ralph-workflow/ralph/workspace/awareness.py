@@ -1,4 +1,3 @@
-"""Bounded workspace-change awareness shared by observation and index refresh."""
 
 from __future__ import annotations
 
@@ -13,20 +12,18 @@ _FRESHNESS_STATES = frozenset(
 
 
 class WorkspaceAwareness:
-    """Coalesce relevant workspace paths for one canonical workspace root."""
 
     def __init__(self, workspace_root: Path) -> None:
         self._workspace_root = workspace_root.absolute()
         self._dirty_paths: OrderedDict[str, None] = (
             OrderedDict()
-        )  # bounded-accumulator-ok: record evicts beyond _MAX_DIRTY_PATHS
+        )
         self._mode = "watch"
         self._cause: str | None = None
         self._freshness_override: str | None = None
         self._lock = threading.Lock()
 
     def record(self, absolute_path: str) -> None:
-        """Remember one relevant path, retaining only the latest bounded set."""
         try:
             relative = Path(absolute_path).absolute().relative_to(self._workspace_root)
         except ValueError:
@@ -39,21 +36,18 @@ class WorkspaceAwareness:
                 self._dirty_paths.popitem(last=False)
 
     def set_live_fallback(self, cause: str) -> None:
-        """Expose a failed observer without claiming indexed knowledge is current."""
         with self._lock:
             self._mode = "live_fallback"
             self._cause = cause
             self._freshness_override = None
 
     def set_watch_active(self) -> None:
-        """Record successful observation recovery for the shared status surface."""
         with self._lock:
             self._mode = "watch"
             self._cause = None
             self._freshness_override = None
 
     def set_freshness(self, freshness: str, *, cause: str | None = None) -> None:
-        """Expose a non-current knowledge state without filesystem work."""
         if freshness not in _FRESHNESS_STATES - {"live_fallback"}:
             raise ValueError(f"unsupported workspace freshness: {freshness}")
         with self._lock:
@@ -61,7 +55,6 @@ class WorkspaceAwareness:
             self._cause = cause
 
     def requeue(self, paths: list[str], *, cause: str) -> None:
-        """Restore unacknowledged paths after a failed persistent handoff."""
         with self._lock:
             for path in paths:
                 self._dirty_paths.pop(path, None)
@@ -72,13 +65,6 @@ class WorkspaceAwareness:
             self._freshness_override = "stale"
 
     def record_relative(self, relative_path: str) -> None:
-        """Remember one workspace-relative path from the shared owner sidecar.
-
-        The path is coalesced with locally observed changes and marks the
-        knowledge state non-current until drained into the persisted dirty
-        queue (S-2: a non-owner must durably claim owner-published changes
-        before claiming current freshness).
-        """
         path = relative_path.strip("/")
         if not path or path.startswith(".."):
             return
@@ -91,14 +77,12 @@ class WorkspaceAwareness:
                 self._freshness_override = "pending"
 
     def drain(self) -> list[str]:
-        """Return the coalesced dirty set once, in deterministic arrival order."""
         with self._lock:
             paths = list(self._dirty_paths)
             self._dirty_paths.clear()
             return paths
 
     def snapshot(self) -> dict[str, object]:
-        """Return bounded status without filesystem I/O."""
         with self._lock:
             live_fallback = self._mode == "live_fallback"
             freshness = (
@@ -127,12 +111,11 @@ class WorkspaceAwareness:
 
 _awareness_by_workspace: dict[
     str, WorkspaceAwareness
-] = {}  # bounded-accumulator-ok: release_workspace removes final lease state
+] = {}
 _awareness_lock = threading.Lock()
 
 
 def awareness_for_workspace(workspace_root: Path) -> WorkspaceAwareness:
-    """Return the canonical process-local awareness owner for ``workspace_root``."""
     key = str(workspace_root.absolute())
     with _awareness_lock:
         awareness = _awareness_by_workspace.get(key)
@@ -143,7 +126,6 @@ def awareness_for_workspace(workspace_root: Path) -> WorkspaceAwareness:
 
 
 def release_workspace_awareness(workspace_root: Path) -> None:
-    """Release derived state once its final watcher lease closes."""
     with _awareness_lock:
         _awareness_by_workspace.pop(str(workspace_root.absolute()), None)
 

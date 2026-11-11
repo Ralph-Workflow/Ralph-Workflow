@@ -1,5 +1,3 @@
-"""Canonical invoker that forces every commit review run to loopback."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -12,8 +10,6 @@ if TYPE_CHECKING:
 
 
 class CommitReviewAlwaysLoopbackInvoker(MockAgentInvoker):
-    """Force every commit review run to loopback."""
-
     def __init__(self, workspace: MemoryWorkspace) -> None:
         super().__init__(workspace)
         self.last_phase: str | None = None

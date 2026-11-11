@@ -1,10 +1,3 @@
-"""Single authority for parallel-worker fan-out joins.
-
-The fan-out authority owns the parallel-worker lifecycle. It
-exposes a typed :class:`FanOutDecision` enum; the reducer
-and run loop read :attr:`RebaseState.last_fan_out_decision` and
-never inspect the worker's :class:`WorkerState` directly.
-"""
 
 from __future__ import annotations
 
@@ -21,7 +14,6 @@ if TYPE_CHECKING:
 
 
 class FanOutDecision(StrEnum):
-    """The closed vocabulary the run loop reads for fan-out joins."""
 
     JOIN_PENDING = "join_pending"
     JOIN_COMPLETE = "join_complete"
@@ -106,13 +98,6 @@ def handle_worker_failed(
 
 
 def fan_out_decision(state: PipelineState) -> FanOutDecision:
-    """Return the typed :class:`FanOutDecision` for the current state.
-
-    The function is the single authority for the question "may the
-    reducer proceed past the fan-out join?". The decision is
-    computed by inspecting :class:`WorkerState` instances; the
-    reducer never inspects them directly.
-    """
     raw_worker_states: object = getattr(state, "worker_states", None)
     if not isinstance(raw_worker_states, dict) or not raw_worker_states:
         return FanOutDecision.JOIN_COMPLETE

@@ -1,5 +1,3 @@
-"""Tests for inline skill content injection into prompt templates."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

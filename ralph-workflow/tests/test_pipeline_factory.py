@@ -1,9 +1,3 @@
-"""Tests for PipelineDeps / PipelineFactory.
-
-Black-box tests using injected fakes only: no real subprocess, no real
-network, no time.sleep, no real file I/O.
-"""
-
 from __future__ import annotations
 
 from io import StringIO
@@ -97,8 +91,6 @@ def _display_context() -> DisplayContext:
 
 
 class TestBuildDefaultPipelineDeps:
-    """Tests for build_default_pipeline_deps."""
-
     def test_returns_frozen_deps_with_all_fields_populated(self, tmp_path: Path) -> None:
         display_ctx = _display_context()
         deps = build_default_pipeline_deps(
@@ -187,8 +179,6 @@ class TestBuildDefaultPipelineDeps:
 
 
 class TestPipelineDepsCollaborators:
-    """Tests for per-field injection on PipelineDeps."""
-
     def test_bridge_factory_collaborator_is_overridable(self, tmp_path: Path) -> None:
         class FakeBridgeFactory:
             @property
@@ -227,8 +217,6 @@ class TestPipelineDepsCollaborators:
 
 
 class TestProHooksComposition:
-    """Tests for ProPipelineHooks composition in build_default_pipeline_deps."""
-
     def test_policy_bundle_override_short_circuits(self, tmp_path: Path) -> None:
         display_ctx = _display_context()
         bundle = _make_fake_bundle()
@@ -465,8 +453,6 @@ class TestProHooksComposition:
 
 
 class TestPipelineSharedExecutionCore:
-    """Regression tests proving PipelineDeps drives the shared execution core."""
-
     def test_execute_agent_effect_uses_pipeline_deps_bridge_factory(
         self,
         tmp_path: Path,
@@ -571,8 +557,6 @@ class TestPipelineSharedExecutionCore:
 
 
 class TestPipelineFactoryProtocol:
-    """Tests for PipelineFactory Protocol."""
-
     def test_runtime_checkable(self, tmp_path: Path) -> None:
         class FakeFactory:
             def build(

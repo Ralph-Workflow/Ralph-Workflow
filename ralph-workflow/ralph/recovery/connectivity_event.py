@@ -1,4 +1,3 @@
-"""Connectivity event dataclass."""
 
 from __future__ import annotations
 
@@ -13,7 +12,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class ConnectivityEvent:
-    """A snapshot of a connectivity state transition."""
 
     state: ConnectivityState
     since: datetime

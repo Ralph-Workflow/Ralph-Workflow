@@ -1,30 +1,3 @@
-"""Resume target reconciliation in its owning worktree without moving the feature.
-
-Decision ownership
--------------------
-
-The **mutation ladder** -- which integration rung the boundary must climb
-next -- is decided by the single owner
-:func:`ralph.pipeline.integration_owner.decide_integration`, reached through
-the one seam :func:`ralph.pipeline._integration_owner_seam.decide_seam_action`.
-This module asks the seam and acts on its verdict; it never re-derives the
-rung from the durable record.
-
-The **record facts the pure observation table cannot express** stay with
-the seam:
-
-* the durable record's identity -- the resolving / pending-continuation
-  flags, the pre-integration feature SHA, the owning worktree -- is
-  intent and ownership the observation table never reads.
-* the completion / publication verdicts (``COMPLETE_WITH_PROOF``,
-  ``PUBLISH_AFTER_LANDING``) are derived from the record's landing proof,
-  and the busy refusal (``WAIT_FOR_BOUNDED_RETRY`` /
-  ``REQUIRE_INTERVENTION``) is derived from the persisted retry deadline.
-
-The split is deliberate: the owner decides *what to do to the integration
-state*, the record facts decide *whether the obligation is already
-finished*.
-"""
 
 from __future__ import annotations
 
@@ -77,17 +50,6 @@ def busy_refusal_outcome(
     *,
     clock: object = None,
 ) -> IntegrationAction | RecordFactOutcome:
-    """Map a persisted ``RebaseState.retry_deadline`` to the typed retry decision.
-
-    Canonical mapping lives in
-    :mod:`ralph.pipeline._integration_record_facts` (lazy import avoids
-    an import cycle): an unexpired persisted deadline yields
-    ``WAIT_FOR_BOUNDED_RETRY``; a missing, malformed, or expired
-    deadline fails closed to the typed
-    :attr:`RecordFactOutcome.STALE_INTENT` verdict, which the caller
-    routes to the autonomous fallback ladder — never an operator
-    hand-off.
-    """
     from ralph.pipeline._integration_diagnostic import busy_refusal_outcome as _map
 
     return _map(retry_deadline, clock=clock)
@@ -107,7 +69,6 @@ def recover_target_resolution(
     conflict_resolver: ConflictResolver | None,
     rebase_stop_resolver: RebaseStopResolver | None,
 ) -> RebaseState:
-    """Bind resolver receipts to their durable owner while leasing the Git owner."""
     if record.owning_worktree is None:
         return _retained(record, "target reconciliation has no owning worktree")
     owner = Path(record.owning_worktree)
@@ -142,18 +103,6 @@ def _maybe_release_target_diagnostic(
     retry_deadline: float | None = None,
     clock: object = None,
 ) -> RebaseState | None:
-    """Release the diagnostic evidence through the typed record store.
-
-    Returns ``None`` when there is no diagnostic evidence OR the
-    release succeeded. Returns a typed :class:`RebaseState` only for
-    CHANGED verdicts (retained skip -- the only path to operator
-    escalation, which means a different worktree rewrote the
-    durable identity) or BUSY/UNREADABLE refusals (bounded retry
-    vs intervention). The UNKNOWN verdict (expired or unparseable
-    lease) is fail-open: the caller auto-releases and re-derives
-    state from Git, matching the O1 contract that an older or
-    pre-fix version's lease must never block a newer run.
-    """
     if not record.diagnostic_evidence:
         return None
     from ralph.pipeline._diagnostic_evidence_gate import diagnostic_evidence_gate_reason
@@ -164,13 +113,7 @@ def _maybe_release_target_diagnostic(
     if verdict == EvidenceVerdict.UNCHANGED:
         return _apply_release_or_refuse(root, record, retry_deadline=retry_deadline, clock=clock)
     if verdict == EvidenceVerdict.UNKNOWN:
-        # Fail-open: expired or unparseable lease -> auto-release
-        # through the typed record store. Returns None on success
-        # (caller proceeds) or a refusal RebaseState on BUSY /
-        # UNREADABLE.
         return _apply_release_or_refuse(root, record, retry_deadline=retry_deadline, clock=clock)
-    # CHANGED: a different worktree rewrote the durable identity
-    # under us. This is the only path to operator escalation.
     return _retained(record, diagnostic_evidence_gate_reason(verdict))
 
 
@@ -182,7 +125,6 @@ def _continue_target_reconciliation(
     conflict_resolver: ConflictResolver | None,
     rebase_stop_resolver: RebaseStopResolver | None,
 ) -> RebaseState:
-    """Continue the target reconciliation; returns the final RebaseState."""
     with bind_integration_record_root(owner, root):
         continued = _continue_target_record(
             owner, root, record, config, conflict_resolver, rebase_stop_resolver
@@ -215,22 +157,6 @@ def _apply_release_or_refuse(
     retry_deadline: float | None = None,
     clock: object = None,
 ) -> RebaseState | None:
-    """Route the release through the typed record store; return refusal RebaseState or None.
-
-    BUSY refusals are mapped through the PERSISTED
-    ``RebaseState.retry_deadline`` (via :func:`busy_refusal_outcome`):
-    an unexpired deadline yields a bounded-wait retained skip; a
-    missing or expired deadline fails closed to the typed
-    ``RecordFactOutcome.STALE_INTENT`` verdict, recorded here as the
-    typed LADDER_ESCALATION outcome. UNREADABLE refusals always map
-    to LADDER_ESCALATION with recovery_record_retained =True and bytes
-    preserved on disk -- never bare-written over. Both refusals name
-    the next autonomous action: the fallback ladder escalates
-    (preservation first, rung 6 hard reset last) -- never a person.
-    Callers with access to the checkpointed RebaseState pass its
-    ``retry_deadline``; without one the deadline is treated as missing
-    (ladder escalation).
-    """
     try:
         apply_record_transition(
             root,
@@ -315,17 +241,6 @@ def _continue_target_record(
     )
 
 
-#: The owner's actions under which the retained target reconciliation is
-#: re-entered against the target.
-#:
-#: ``RESOLVE_ACTIVE_OPERATION`` is the owner's repair rung: the durable
-#: record claims an integration that Git does not show, so the intent is
-#: stale and the boundary drops the stale flags and re-enters at step 1
-#: (the automatic rebase). ``REINTEGRATE_AGAINST_TARGET`` asks for the
-#: re-integration directly. Every other action leaves the retained
-#: resolution to the path that owns it (``CONTINUE_GIT_OPERATION`` resumes
-#: the owned operation, ``WAIT_FOR_BOUNDED_RETRY`` authorises no
-#: mutation).
 _REENTRY_ACTIONS: frozenset[IntegrationAction] = frozenset(
     {
         IntegrationAction.RESOLVE_ACTIVE_OPERATION,
@@ -339,21 +254,6 @@ def _owner_reenters_against_target(
     record: IntegrationRecord,
     config: UnifiedConfig | None,
 ) -> bool:
-    """Ask the single owner whether the integration must be re-entered.
-
-    ``root`` is the workspace that holds the durable record (and anchors
-    the durable attempt ledger). The in-flight Git operation lives in the
-    owning worktree and is re-derived from Git by the caller before the
-    owner is asked, so the observation never has to guess it.
-
-    The observation is built by the director -- the one observation owner
-    -- against the CONFIGURED target and remote (``main`` and ``origin``
-    are defaults only), and the owner then decides on it. The boundary
-    asks through the ONE seam, so the durable record facts (a retained
-    obligation that demands operator intervention) are overlaid on the
-    owner's answer: an intervention verdict keeps the retained
-    reconciliation where it is instead of re-entering it.
-    """
     target = _configured_target(config) if config is not None else record.target
     remote = _remote_target_name(config) if config is not None else DEFAULT_REMOTE
     action = decide_seam_action(

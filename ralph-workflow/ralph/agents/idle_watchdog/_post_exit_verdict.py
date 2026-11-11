@@ -1,4 +1,3 @@
-"""PostExitVerdict enum for post-exit watchdog results."""
 
 from __future__ import annotations
 
@@ -6,7 +5,6 @@ from enum import StrEnum
 
 
 class PostExitVerdict(StrEnum):
-    """Result of a PostExitWatchdog wait method."""
 
     CONTINUE = "continue"
     FIRE_PROCESS_EXIT_HANG = "fire_process_exit_hang"

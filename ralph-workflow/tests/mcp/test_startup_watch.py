@@ -1,5 +1,3 @@
-"""Edge cases of the BOOT -> ENVELOPE startup watch, under an injected clock."""
-
 from __future__ import annotations
 
 import pytest
@@ -19,8 +17,6 @@ class _Clock:
 
 
 class _Stage:
-    """Stage file stand-in: ``None`` until the child records its first stage."""
-
     def __init__(self) -> None:
         self.value: str | None = None
         self.reads = 0
@@ -48,11 +44,10 @@ def _watch(
 
 
 def test_slow_boot_does_not_consume_the_envelope() -> None:
-    """A boot longer than the envelope is fine while the allowance holds."""
     clock, stage = _Clock(), _Stage()
     watch = _watch(clock, stage)
 
-    clock.now += ENVELOPE_S + 5  # would have tripped a spawn-anchored deadline
+    clock.now += ENVELOPE_S + 5
     assert watch.check() is StartupVerdict.WAITING
 
     stage.value = "env_loaded"
@@ -92,7 +87,6 @@ def test_boot_deadline_boundary_is_inclusive() -> None:
 
 
 def test_first_stage_landing_exactly_at_the_boot_boundary_wins() -> None:
-    """A child that began on the last tick is judged by the envelope, not boot."""
     clock, stage = _Clock(), _Stage()
     watch = _watch(clock, stage)
     clock.now += BOOT_S
@@ -123,7 +117,7 @@ def test_stage_file_is_polled_at_the_configured_cadence_only() -> None:
     clock, stage = _Clock(), _Stage()
     watch = _watch(clock, stage, poll_interval_s=0.25)
 
-    for _ in range(10):  # ten ticks inside one poll interval
+    for _ in range(10):
         clock.now += 0.02
         watch.check()
     assert stage.reads == 1

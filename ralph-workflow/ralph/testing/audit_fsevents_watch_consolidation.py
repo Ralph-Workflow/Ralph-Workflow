@@ -1,72 +1,3 @@
-"""Fsevents watch-consolidation drift audit.
-
-The macOS fseventsd backend in ``watchdog.observers.fsevents`` is
-OS-recursive: a single ``observer.schedule(handler, path,
-recursive=True)`` call already delivers events for every nested
-directory under ``path``, so non-recursive subscriptions cannot
-reduce fseventsd delivery and only multiply overlapping streams.
-Ralph Workflow commits to scheduling **exactly one** recursive root
-watch from ``WorkspaceMonitor.start()`` so the fseventsd footprint
-is the minimal single recursive stream.
-
-This audit locks that consolidation structurally. It walks every production
-module under ``ralph/`` and permits ``observer.schedule(...)`` only in the
-canonical ``WorkspaceMonitor.start()`` owner. It then parses that owner with
-the ``ast`` module only (no subprocess, no ``time.sleep``, no real file I/O
-outside reading source) and enforces five invariants:
-
-  1. **INV-1 (count)** -- the module contains exactly one direct
-     ``ast.Call`` whose function is an ``ast.Attribute`` named
-     ``schedule``.  Binding ``.schedule`` to another name is rejected
-     as ``aliased_watch_schedule`` so an indirect call cannot evade
-     the single-watch check. The TYPE_CHECKING ``_ObserverProtocol`` signature
-     (``def schedule(...)``) is an ``ast.FunctionDef``, not an
-     ``ast.Call``, so it is excluded by construction.  Zero matches
-     raises ``missing_watch_schedule``; ``N > 1`` raises one
-     ``multiple_watch_schedule`` violation per extra call.
-  2. **INV-2 (recursive)** -- the single schedule call passes a
-     keyword argument named ``recursive`` whose value is the
-     literal ``ast.Constant(value=True)``.  Missing, ``False``, or
-     any non-constant expression raises ``watch_not_recursive``.
-  3. **INV-3 (static location)** -- the schedule call's
-     ancestor chain (built via an explicit child->parent AST map)
-     contains no ``ast.For`` / ``ast.AsyncFor`` / ``ast.While``
-     node AND its nearest enclosing ``ast.FunctionDef`` /
-     ``ast.AsyncFunctionDef`` is named ``start``.  Either condition
-     being violated raises ``dynamic_watch_schedule``.  The
-     ancestor-walk approach is essential: a FunctionDef
-     line-range containment check would treat a schedule call
-     nested in a ``for``/``while`` loop inside ``start()`` as still
-     "in start()" and let a per-iteration reschedule slip through.
-  4. **INV-4 (module presence)** -- the target module exists
-     under ``package_root``.  Missing raises
-     ``missing_workspace_module`` because the file's absence is
-     itself drift.
-  5. **INV-5 (package-wide ownership)** -- every production module other
-     than the canonical owner is scanned for direct ``.schedule(...)`` calls
-     and dynamic ``getattr(..., "schedule")`` calls or aliases. Any such use
-     raises ``unowned_watch_schedule``. New production modules therefore fail
-     closed rather than silently adding an overlapping watch.
-  6. **INV-6 (canonical receiver)** -- the canonical call must be the direct
-     ``self._observer.schedule(...)`` expression. An unrelated scheduler must
-     not satisfy the owner contract while the real observer is hidden behind a
-     dynamic lookup.
-  7. **INV-7 (observer ownership)** -- every construction of watchdog's
-     ``Observer`` outside the canonical workspace-monitor module is rejected.
-     Scheduling-only enforcement can otherwise be evaded by creating another
-     observer behind a helper and scheduling it later. The lifecycle-owned
-     monitor is the sole place that may create the workspace event source.
-
-Usage::
-
-    python -m ralph.testing.audit_fsevents_watch_consolidation [package_root]
-
-Exit codes:
-  0 = clean
-  1 = violations found
-  2 = root not found
-"""
-
 from __future__ import annotations
 
 import ast
@@ -79,10 +10,6 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 
-#: Module that owns the canonical ``WorkspaceMonitor.start()``
-#: schedule call.  Anchored at import time so a refactor that
-#: renames or relocates the module trips the audit immediately
-#: rather than silently passing.
 _WORKSPACE_MONITOR_MODULE: str = "agents/invoke/_workspace.py"
 
 _EXCLUDED_DIRECTORY_NAMES: frozenset[str] = frozenset({"__pycache__"})
@@ -92,8 +19,6 @@ _MIN_GETATTR_ARGUMENTS: int = _GETATTR_ATTRIBUTE_POSITION + 1
 
 @dataclass(frozen=True)
 class FseventsWatchViolation:
-    """A single fsevents-watch-consolidation audit violation."""
-
     kind: str
     file_path: str
     line: int
@@ -104,16 +29,6 @@ class FseventsWatchViolation:
 
 
 def _build_parent_map(nodes: Sequence[ast.AST]) -> dict[ast.AST, ast.AST]:
-    """Return a child->parent AST map for the supplied nodes.
-
-    Built by iterating the caller's materialized ``ast.walk`` result and, for each node,
-    assigning ``parents[child] = node`` for every child yielded by
-    ``ast.iter_child_nodes(node)``.  This explicit ancestor map
-    is the seam that lets INV-3 distinguish a schedule call
-    nested in a ``for``/``while`` loop inside ``start()`` from one
-    placed directly in ``start()`` -- a check that FunctionDef
-    line-range containment cannot perform.
-    """
     parents: dict[ast.AST, ast.AST] = {}
     for node in nodes:
         for child in ast.iter_child_nodes(node):
@@ -122,15 +37,6 @@ def _build_parent_map(nodes: Sequence[ast.AST]) -> dict[ast.AST, ast.AST]:
 
 
 def _ancestors(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> list[ast.AST]:
-    """Return ``node``'s ancestor chain from immediate parent to module root.
-
-    Walks the parent map until a node is missing a parent.  Excludes
-    ``node`` itself -- only ancestors (callers, loops, function
-    bodies) are returned.  The order is innermost-first so the
-    nearest enclosing ``FunctionDef`` is the LAST function-def entry
-    in the returned list, which lets INV-3(b) pick the nearest
-    enclosing function with a single reversed iteration.
-    """
     chain: list[ast.AST] = []
     current: ast.AST | None = parents.get(node)
     while current is not None:
@@ -140,7 +46,6 @@ def _ancestors(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> list[ast.AST]:
 
 
 def _is_dynamic_schedule_lookup(node: ast.AST) -> bool:
-    """Return whether ``node`` is the literal ``getattr(..., "schedule")`` form."""
     match node:
         case ast.Call(
             func=ast.Name(id="getattr"),
@@ -152,19 +57,12 @@ def _is_dynamic_schedule_lookup(node: ast.AST) -> bool:
 
 
 def _is_observer_receiver(node: ast.expr) -> bool:
-    """Return whether a receiver's name identifies watchdog observer ownership."""
     if isinstance(node, ast.Name):
         return node.id.endswith("observer")
     return isinstance(node, ast.Attribute) and node.attr.endswith("observer")
 
 
 def _nonliteral_observer_getattr_invocation_line(node: ast.AST) -> int | None:
-    """Return an invoked nonliteral lookup on an observer-like receiver.
-
-    Dynamic dispatch unrelated to an observer is not a filesystem-watch
-    operation. A nonliteral method invoked on an observer can be ``schedule``,
-    however, and must fail closed so it cannot introduce an unowned watch.
-    """
     if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Call):
         return None
     lookup = node.func
@@ -182,13 +80,6 @@ def _nonliteral_observer_getattr_invocation_line(node: ast.AST) -> int | None:
 
 
 def _observer_constructor_aliases(nodes: Sequence[ast.AST]) -> frozenset[str]:
-    """Return local names that construct watchdog observers in one module.
-
-    The audit recognizes direct ``from watchdog.observers import Observer``
-    imports, including aliases. A new observer is a new watch source even when
-    scheduling is deferred through another helper, so ownership must be
-    rejected at construction rather than only at ``schedule``.
-    """
     aliases: set[str] = set()
     for node in nodes:
         if not isinstance(node, ast.ImportFrom) or node.module != "watchdog.observers":
@@ -202,7 +93,6 @@ def _observer_constructor_aliases(nodes: Sequence[ast.AST]) -> frozenset[str]:
 
 
 def _observer_constructor_lines(nodes: Sequence[ast.AST]) -> list[int]:
-    """Return lines that construct a directly imported watchdog ``Observer``."""
     aliases = _observer_constructor_aliases(nodes)
     return [
         node.lineno
@@ -214,17 +104,6 @@ def _observer_constructor_lines(nodes: Sequence[ast.AST]) -> list[int]:
 
 
 def _find_schedule_calls(nodes: Sequence[ast.AST]) -> list[ast.Call]:
-    """Return every ``Call`` whose function attribute is ``schedule``.
-
-    Matches only ``ast.Call`` nodes whose ``func`` is an
-    ``ast.Attribute`` with ``attr == "schedule"``.  This excludes
-    the TYPE_CHECKING ``_ObserverProtocol.schedule`` (a
-    ``FunctionDef``, not a ``Call``) and the
-    ``observers_module.Observer()`` call (attribute ``Observer``,
-    not ``schedule``).  Bare ``Name.schedule(...)`` is not used by
-    the production code path and is also excluded by the
-    ``ast.Attribute`` requirement.
-    """
     calls: list[ast.Call] = []
     for node in nodes:
         if not isinstance(node, ast.Call):
@@ -238,13 +117,6 @@ def _find_schedule_calls(nodes: Sequence[ast.AST]) -> list[ast.Call]:
 
 
 def _find_schedule_aliases(nodes: Sequence[ast.AST]) -> list[ast.expr]:
-    """Return every ``.schedule`` attribute bound for later invocation.
-
-    The canonical owner must call ``self._observer.schedule(...)`` directly.
-    A bound method assignment such as ``schedule = self._observer.schedule``
-    can otherwise hide a subsequent invocation from the AST call matcher and
-    evade the package-wide single-watch rule.
-    """
     aliases: list[ast.expr] = []
     for node in nodes:
         if not isinstance(node, (ast.Assign, ast.NamedExpr, ast.AnnAssign)):
@@ -258,13 +130,6 @@ def _find_schedule_aliases(nodes: Sequence[ast.AST]) -> list[ast.expr]:
 
 
 def _has_recursive_true_kwarg(call: ast.Call) -> bool:
-    """Return True iff ``call`` passes ``recursive=True`` as a kwarg.
-
-    The literal ``ast.Constant(value=True)`` is required --
-    ``recursive=maybe`` or any non-constant expression is treated
-    as not-recursive because runtime ``recursive=`` evaluation is
-    the exact drift class the audit is built to catch.
-    """
     for kw in call.keywords:
         if kw.arg != "recursive":
             continue
@@ -274,27 +139,12 @@ def _has_recursive_true_kwarg(call: ast.Call) -> bool:
 
 
 def _has_loop_ancestor(ancestors: list[ast.AST]) -> bool:
-    """Return True iff any ancestor is a ``for`` / ``async for`` / ``while``.
-
-    Walks the ancestor chain returned by :func:`_ancestors` and
-    checks for loop constructs.  A schedule call wrapped in any
-    such loop is treated as dynamic because the loop body runs
-    zero or more times at runtime, even when the nearest enclosing
-    function is statically correct.
-    """
     return any(isinstance(ancestor, (ast.For, ast.AsyncFor, ast.While)) for ancestor in ancestors)
 
 
 def _nearest_enclosing_function(
     ancestors: list[ast.AST],
 ) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
-    """Return the nearest enclosing ``FunctionDef``/``AsyncFunctionDef``.
-
-    Ancestors are innermost-first, so the first match is the
-    nearest.  Returns ``None`` when the schedule call sits at
-    module top-level (no enclosing function), which INV-3(b)
-    treats as drift.
-    """
     for ancestor in ancestors:
         if isinstance(ancestor, (ast.FunctionDef, ast.AsyncFunctionDef)):
             return ancestor
@@ -306,19 +156,6 @@ def _check_module(
     rel_path: str,
     source: str,
 ) -> list[FseventsWatchViolation]:
-    """Run INV-1..INV-3 against one ``_workspace.py`` source string.
-
-    Args:
-        module_path: Absolute path of the module being audited
-            (used as the ``filename`` argument to ``ast.parse`` for
-            accurate error reporting).
-        rel_path: Posix-style path relative to ``package_root``;
-            recorded in violation messages.
-        source: The full source text of the module.
-
-    Returns:
-        A list of violations.  Empty when all invariants pass.
-    """
     try:
         tree: ast.Module = ast.parse(source, filename=str(module_path))
     except (SyntaxError, ValueError) as exc:
@@ -355,12 +192,6 @@ def _check_schedule_call_invariants(
     rel_path: str,
     schedule_calls: list[ast.Call],
 ) -> list[FseventsWatchViolation]:
-    """Run INV-1 (count) and INV-2 (recursive) against the schedule-call list.
-
-    Returns an empty list when the invariants pass.  The location
-    check (INV-3) is performed separately because it requires the
-    AST tree, not just the call list.
-    """
     if not schedule_calls:
         return [_missing_watch_schedule_violation(rel_path)]
 
@@ -388,7 +219,6 @@ def _check_schedule_call_invariants(
 
 
 def _is_canonical_schedule_receiver(call: ast.Call) -> bool:
-    """Return whether ``call`` directly invokes ``self._observer.schedule``."""
     func = call.func
     if not isinstance(func, ast.Attribute) or func.attr != "schedule":
         return False
@@ -404,7 +234,6 @@ def _is_canonical_schedule_receiver(call: ast.Call) -> bool:
 def _invalid_watch_schedule_receiver_violation(
     rel_path: str, lineno: int
 ) -> FseventsWatchViolation:
-    """INV-6 failure: another scheduler cannot satisfy the monitor contract."""
     return FseventsWatchViolation(
         kind="invalid_watch_schedule_receiver",
         file_path=rel_path,
@@ -421,14 +250,6 @@ def _check_schedule_call_location(
     nodes: Sequence[ast.AST],
     schedule_call: ast.Call,
 ) -> list[FseventsWatchViolation]:
-    """Run INV-3 (static location) against the single schedule call.
-
-    Builds the AST ancestor map from the already-materialized ``nodes`` and emits a
-    ``dynamic_watch_schedule`` violation if any ancestor is a loop
-    construct OR the nearest enclosing function is not ``start``.
-    Returns an empty list when the call sits directly inside
-    ``start()`` with no loop ancestor.
-    """
     if not _is_canonical_schedule_receiver(schedule_call):
         return [_invalid_watch_schedule_receiver_violation(rel_path, schedule_call.lineno)]
 
@@ -449,7 +270,6 @@ def _check_schedule_call_location(
 
 
 def _unowned_watch_observer_violation(rel_path: str, lineno: int) -> FseventsWatchViolation:
-    """INV-7 failure: only the lifecycle owner may create a watch observer."""
     return FseventsWatchViolation(
         kind="unowned_watch_observer",
         file_path=rel_path,
@@ -465,7 +285,6 @@ def _unowned_watch_observer_violation(rel_path: str, lineno: int) -> FseventsWat
 def _unowned_watch_schedule_violation(
     rel_path: str, lineno: int, *, dynamic_getattr: bool = False
 ) -> FseventsWatchViolation:
-    """INV-5 failure: a production module attempts to own a watch schedule."""
     if dynamic_getattr:
         message = (
             "dynamic getattr attribute name cannot prove this is not observer.schedule; "
@@ -487,7 +306,6 @@ def _unowned_watch_schedule_violation(
 
 
 def _aliased_watch_schedule_violation(rel_path: str, lineno: int) -> FseventsWatchViolation:
-    """INV-1 failure: a bound ``.schedule`` method hides its call site."""
     return FseventsWatchViolation(
         kind="aliased_watch_schedule",
         file_path=rel_path,
@@ -500,7 +318,6 @@ def _aliased_watch_schedule_violation(rel_path: str, lineno: int) -> FseventsWat
 
 
 def _missing_watch_schedule_violation(rel_path: str) -> FseventsWatchViolation:
-    """INV-1 failure: zero ``observer.schedule(...)`` calls in the module."""
     return FseventsWatchViolation(
         kind="missing_watch_schedule",
         file_path=rel_path,
@@ -514,7 +331,6 @@ def _missing_watch_schedule_violation(rel_path: str) -> FseventsWatchViolation:
 
 
 def _watch_not_recursive_violation(rel_path: str, lineno: int) -> FseventsWatchViolation:
-    """INV-2 failure: the single schedule call is not ``recursive=True``."""
     return FseventsWatchViolation(
         kind="watch_not_recursive",
         file_path=rel_path,
@@ -529,7 +345,6 @@ def _watch_not_recursive_violation(rel_path: str, lineno: int) -> FseventsWatchV
 
 
 def _loop_ancestor_violation(rel_path: str, lineno: int) -> FseventsWatchViolation:
-    """INV-3(a) failure: schedule call is wrapped in a ``for``/``while`` loop."""
     return FseventsWatchViolation(
         kind="dynamic_watch_schedule",
         file_path=rel_path,
@@ -545,7 +360,6 @@ def _loop_ancestor_violation(rel_path: str, lineno: int) -> FseventsWatchViolati
 def _wrong_enclosing_function_violation(
     rel_path: str, lineno: int, actual_name: str
 ) -> FseventsWatchViolation:
-    """INV-3(b) failure: schedule call sits in a function other than ``start``."""
     return FseventsWatchViolation(
         kind="dynamic_watch_schedule",
         file_path=rel_path,
@@ -559,13 +373,6 @@ def _wrong_enclosing_function_violation(
 
 
 def _unowned_schedule_violations(package_root: Path) -> list[FseventsWatchViolation]:
-    """Reject watch schedules outside the lifecycle-owned monitor module.
-
-    Only generated bytecode caches are excluded; every Python module is
-    automatically in scope. Unreadable or
-    unparsable source fails closed because the watch audit cannot prove it
-    contains no raw schedule call.
-    """
     violations: list[FseventsWatchViolation] = []
     for module_path in sorted(package_root.rglob("*.py")):
         rel_path = module_path.relative_to(package_root).as_posix()
@@ -588,9 +395,6 @@ def _unowned_schedule_violations(package_root: Path) -> list[FseventsWatchViolat
                 )
             )
             continue
-        # Every discovered production module is parsed. A syntactically invalid
-        # new module must fail closed even when it has no textual ``.schedule``
-        # marker; otherwise it could conceal an unrecognized watch owner.
         try:
             tree = ast.parse(source, filename=str(module_path))
         except (SyntaxError, ValueError) as exc:
@@ -609,17 +413,10 @@ def _unowned_schedule_violations(package_root: Path) -> list[FseventsWatchViolat
         if "Observer" not in source and "schedule" not in source and "getattr" not in source:
             continue
         nodes = list(ast.walk(tree))
-        # Most production modules cannot own a watch. Parse every module first
-        # so malformed source still fails closed. Observer construction is also
-        # ownership: a helper that creates an observer before scheduling it
-        # elsewhere would otherwise evade the schedule-only check.
         violations.extend(
             _unowned_watch_observer_violation(rel_path, line)
             for line in _observer_constructor_lines(nodes)
         )
-        # Direct and literal schedule forms are cheap to skip when their marker
-        # is absent, but every module still checks nonliteral ``getattr`` because
-        # AST cannot prove that such a lookup is unrelated to scheduling.
         if "schedule" in source:
             violations.extend(
                 _unowned_watch_schedule_violation(rel_path, call.lineno)
@@ -641,12 +438,6 @@ def _unowned_schedule_violations(package_root: Path) -> list[FseventsWatchViolat
 def audit_fsevents_watch_consolidation(
     package_root: Path,
 ) -> list[FseventsWatchViolation]:
-    """Walk the production source tree and return all violations.
-
-    Scans every production module for raw schedules and enforces INV-1..INV-5
-    on the canonical ``_workspace.py`` owner. A missing package root produces
-    a violation so programmatic callers also fail closed.
-    """
     if not package_root.is_dir():
         return [
             FseventsWatchViolation(
@@ -691,15 +482,10 @@ def audit_fsevents_watch_consolidation(
             )
         ]
 
-    # Parse before looking for a schedule call. Otherwise malformed source that
-    # happens not to contain the textual marker would be misclassified as a
-    # missing watch and evade the audit's fail-closed invalid-source diagnosis.
-
     return _check_module(module_path, rel_path, source) + _unowned_schedule_violations(package_root)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """CLI entry point.  Returns 0 when clean, 1 on violations, 2 on bad root."""
     if argv is None:
         argv = sys.argv[1:]
 

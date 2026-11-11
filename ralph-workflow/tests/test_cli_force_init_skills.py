@@ -1,9 +1,3 @@
-"""Black-box tests for the ``ralph --force-init-skills`` early-exit flag.
-
-Reuses the ``typer.testing.CliRunner`` pattern from the other CLI tests
-in this directory.
-"""
-
 from __future__ import annotations
 
 import ast
@@ -32,7 +26,6 @@ def _invoke(args: list[str], tmp_path: Path) -> typer.testing.Result:
 def test_force_init_skills_flag_invokes_reinstall(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The flag must invoke reinstall_baseline_skills exactly once and exit 0."""
     monkeypatch.chdir(tmp_path)
     fake_state = MagicMock()
     fake_state.skills.status = "installed_healthy"
@@ -60,7 +53,6 @@ def test_force_init_skills_flag_invokes_reinstall(
 def test_force_init_skills_flag_does_not_run_pipeline(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The pipeline runner must NOT be invoked when --force-init-skills is set."""
     monkeypatch.chdir(tmp_path)
     fake_state = MagicMock()
     fake_state.skills.status = "installed_healthy"
@@ -88,7 +80,6 @@ def test_force_init_skills_flag_does_not_run_pipeline(
 def test_force_init_skills_flag_early_exit_reached_in_standalone(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Standalone (no --init) must still hit the early-exit branch (PA-008 verification)."""
     monkeypatch.chdir(tmp_path)
     fake_state = MagicMock()
     fake_state.skills.status = "installed_healthy"
@@ -114,7 +105,6 @@ def test_force_init_skills_flag_early_exit_reached_in_standalone(
 def test_force_init_skills_surfaces_failures(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Failures are surfaced as a warning line and the exit code is still 0 (non-fatal)."""
     monkeypatch.chdir(tmp_path)
     fake_state = MagicMock()
     fake_state.skills.status = "installed_healthy"
@@ -131,7 +121,6 @@ def test_force_init_skills_surfaces_failures(
 
 
 def test_force_init_skills_imports_public_capability_summary() -> None:
-    """main.py must import print_capability_summary from ralph.cli._capability_summary (PA-002)."""
     main_py = Path(main_module.__file__).resolve()
     tree = ast.parse(main_py.read_text(encoding="utf-8"))
     found = False
@@ -153,7 +142,6 @@ def test_force_init_skills_imports_public_capability_summary() -> None:
 def test_force_init_skills_branch_surfaces_force_init_skills_hint_when_failures(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """main.py --force-init-skills branch includes the force-init-skills hint on failures."""
     monkeypatch.chdir(tmp_path)
     fake_state = MagicMock()
     fake_state.skills.status = "installed_healthy"

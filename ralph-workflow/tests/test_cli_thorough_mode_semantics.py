@@ -1,5 +1,3 @@
-"""Unit tests for CLI."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -28,7 +26,6 @@ _BUNDLED_POLICY_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" /
 
 
 def _make_display_context_for_console(console: Console) -> DisplayContext:
-    """Create a DisplayContext for a given console."""
     return make_display_context(console=console, env={})
 
 
@@ -36,8 +33,6 @@ pytestmark = pytest.mark.timeout_seconds(5)
 
 
 class TestThoroughModeSemantics:
-    """Tests for --thorough/-T flag behavior."""
-
     def test_thorough_mode_forces_developer_iters_10(self, monkeypatch: pytest.MonkeyPatch) -> None:
         captured: dict[str, object] = {}
         monkeypatch.setattr(

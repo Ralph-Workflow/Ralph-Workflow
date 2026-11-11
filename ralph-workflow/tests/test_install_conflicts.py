@@ -1,5 +1,3 @@
-"""Regression tests for the installation conflict preflight (S-2)."""
-
 from __future__ import annotations
 
 from importlib import import_module
@@ -121,15 +119,12 @@ def test_install_conflict_non_tty_same_source_checkout_continues(
 def test_install_conflict_non_tty_other_source_checkout_still_aborts(
     tmp_path: Path,
 ) -> None:
-    # An install from a sibling-of-sibling checkout must still raise in
-    # non-interactive mode; only THIS worktree is accepted silently.
     sibling = tmp_path / "sibling"
     sibling.mkdir()
     package_init = sibling / "ralph" / "__init__.py"
     package_init.parent.mkdir(parents=True)
     package_init.write_text("", encoding="utf-8")
 
-    # Cwd is a deeper subdir that is NOT an ancestor of ``sibling``.
     cwd = tmp_path / "worktree"
     cwd.mkdir()
 

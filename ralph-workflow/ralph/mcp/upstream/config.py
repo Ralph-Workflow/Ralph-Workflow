@@ -1,4 +1,3 @@
-"""Transport-neutral upstream MCP config normalization helpers."""
 
 from __future__ import annotations
 
@@ -22,7 +21,6 @@ McpServerOrigin = Literal["custom", "agent_upstream"]
 
 @dataclass(frozen=True)
 class UpstreamMcpServer:
-    """Normalized upstream MCP server definition for Ralph runtime use."""
 
     name: str
     transport: Literal["http", "stdio"]
@@ -36,7 +34,6 @@ class UpstreamMcpServer:
 def normalize_upstream_mcp_servers(
     server_entries: Mapping[str, object],
 ) -> tuple[UpstreamMcpServer, ...]:
-    """Normalize provider-specific MCP server maps into Ralph runtime definitions."""
 
     normalized: list[UpstreamMcpServer] = []
     for name, raw_entry in server_entries.items():
@@ -81,7 +78,6 @@ def normalize_upstream_mcp_servers(
 
 
 def serialize_upstream_mcp_servers(servers: Iterable[UpstreamMcpServer]) -> str:
-    """Serialize normalized upstream servers for process environment transport."""
 
     payload = [
         {
@@ -99,7 +95,6 @@ def serialize_upstream_mcp_servers(servers: Iterable[UpstreamMcpServer]) -> str:
 
 
 def load_upstream_mcp_servers(raw: str | None) -> tuple[UpstreamMcpServer, ...]:
-    """Decode upstream MCP servers from their serialized environment payload."""
 
     if not raw:
         return ()
@@ -139,7 +134,6 @@ def load_upstream_mcp_servers(raw: str | None) -> tuple[UpstreamMcpServer, ...]:
 def serialize_upstream_tool_catalog(
     tool_catalog: Mapping[str, Iterable[UpstreamTool]],
 ) -> str:
-    """Serialize discovered upstream tool metadata for process environment transport."""
 
     payload = {
         server_name: [
@@ -156,12 +150,6 @@ def serialize_upstream_tool_catalog(
 
 
 def load_upstream_tool_catalog(raw: str | None) -> dict[str, list[UpstreamTool]]:
-    """Decode upstream tool metadata from its serialized environment payload.
-
-    Fail-closed: invalid JSON or a non-mapping payload raises
-    ``McpServerError(last_stage="parent_catalog_load", restart_count=0)``
-    instead of silently continuing with an empty catalog.
-    """
 
     if not raw:
         return {}
@@ -230,7 +218,7 @@ def _origin_value(value: object) -> McpServerOrigin:
     if isinstance(value, str) and value in {"custom", "agent_upstream"}:
         return cast(
             "McpServerOrigin", value
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
     return "agent_upstream"
 
 

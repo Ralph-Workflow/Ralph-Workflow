@@ -1,16 +1,3 @@
-"""Regression tests: web-access MCP tools are visible and callable for non-commit SessionDrains.
-
-These verify the historically brittle "configured-but-invisible" regression:
-- visit_url (built-in WebVisit) must appear in the tool registry for non-commit drains
-- upstream proxy tools must appear in the tool registry for drains with UPSTREAM_TOOL_USE
-- commit-class drains must NOT receive web capabilities (read-only, no web/upstream access)
-
-These use the ToolBridge API directly rather than a real HTTP server, which avoids
-subprocess startup overhead (~1.5-3 s per test under parallel execution) and keeps
-each test well within the 1 s per-test wall-clock budget.
-The full HTTP-stack path is covered by test_mcp_e2e.py.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -51,14 +38,11 @@ _NON_COMMIT_DRAINS = [d.value for d in SessionDrain if d not in _COMMIT_CLASS_DR
 
 
 class TestUpstreamToolPhaseVisibility:
-    """Test that upstream proxy tools are visible for every drain that grants UPSTREAM_TOOL_USE."""
-
     @pytest.mark.parametrize("drain_str", [d.value for d in SessionDrain])
     def test_upstream_proxy_listed_for_drain(
         self,
         drain_str: str,
     ) -> None:
-        """Upstream proxy tools must appear for drains with UPSTREAM_TOOL_USE."""
         session_drain = SessionDrain(drain_str)
         default_caps = DEFAULT_CAPABILITIES.get(session_drain, ())
         session = _make_session(drain_str)

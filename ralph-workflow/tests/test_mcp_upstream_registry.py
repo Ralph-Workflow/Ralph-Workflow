@@ -1,5 +1,3 @@
-"""Tests for the live upstream MCP registry."""
-
 from __future__ import annotations
 
 import pytest
@@ -66,8 +64,6 @@ class TestUpstreamRegistry:
         assert "ralph_upstream__github__search_repos" in aliases
 
     def test_upstream_registry_rejects_colliding_proxy_aliases(self) -> None:
-        # Server "a__b" tool "c" → ralph_upstream__a__b__c
-        # Server "a"    tool "b__c" → ralph_upstream__a__b__c  ← same alias, collision
         server_producing_ralph_upstream__a__b__c_via_server = UpstreamMcpServer(
             name="a__b", transport="http", url="http://unused"
         )

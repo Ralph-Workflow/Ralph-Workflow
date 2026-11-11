@@ -1,14 +1,3 @@
-"""Contract tests for a fully custom-named policy workflow.
-
-This module proves that Ralph Workflow routes on user-defined phase, drain,
-loop counter, and budget counter names without any runtime knowledge of the
-canonical default names (planning, development, review, etc.).
-
-Scope: pure functions only (validate, explain, render, resolve_post_commit_phase,
-with_loop_iteration). The full orchestrator is not exercised here because phase
-handler registration is out of scope for this PR.
-"""
-
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -50,7 +39,6 @@ def _make_drain(drain: str, chain: str) -> tuple[str, AgentDrainConfig]:
 
 @pytest.fixture(scope="session")
 def custom_bundle() -> PolicyBundle:
-    """Build a fully custom-named PolicyBundle without any disk I/O."""
     agents = AgentsPolicy(
         agent_chains=dict(
             [
@@ -166,17 +154,9 @@ def custom_bundle() -> PolicyBundle:
 
 
 class TestCustomNamedPipelineHandlerDispatch:
-    """Black-box flow: register_role_handlers + handle_phase work for custom phase names.
-
-    This proves that the runtime treats phase names as opaque policy identifiers.
-    A pipeline using only non-canonical phase names (audit, sign_off) routes
-    through the generic handlers without any built-in phase name knowledge.
-    """
-
     def test_register_role_handlers_registers_audit_and_sign_off(
         self, custom_bundle: PolicyBundle
     ) -> None:
-        """register_role_handlers adds handlers for custom audit and sign_off phases."""
 
         before_audit = HANDLERS.get("audit")
         before_sign_off = HANDLERS.get("sign_off")
@@ -195,7 +175,6 @@ class TestCustomNamedPipelineHandlerDispatch:
                 HANDLERS["sign_off"] = before_sign_off
 
     def test_handle_phase_dispatches_custom_commit_phase(self, custom_bundle: PolicyBundle) -> None:
-        """handle_phase dispatches sign_off (commit-role) via the generic commit handler."""
 
         HANDLERS.pop("sign_off", None)
         register_role_handlers(custom_bundle.pipeline)
@@ -213,8 +192,6 @@ class TestCustomNamedPipelineHandlerDispatch:
                 drain="sign_off",
             )
             events = handle_phase(effect, ctx)
-            # No diff check fails gracefully → COMMIT_SKIPPED not emitted;
-            # missing commit_message artifact → PhaseFailureEvent emitted.
 
             assert any(isinstance(e, PhaseFailureEvent) for e in events), (
                 "Expected PhaseFailureEvent for missing commit_message artifact"
@@ -225,7 +202,6 @@ class TestCustomNamedPipelineHandlerDispatch:
     def test_handle_phase_dispatches_custom_analysis_phase(
         self, custom_bundle: PolicyBundle
     ) -> None:
-        """handle_phase dispatches audit (analysis-role) via the generic analysis handler."""
 
         HANDLERS.pop("audit", None)
         register_role_handlers(custom_bundle.pipeline)

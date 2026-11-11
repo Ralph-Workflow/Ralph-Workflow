@@ -1,8 +1,3 @@
-"""Shared MCP tool-surface contract helpers.
-
-This module owns the canonical Ralph MCP tool naming contract so startup,
-runtime, prompts, and provider integrations all derive from the same rules.
-"""
 
 from __future__ import annotations
 
@@ -22,7 +17,6 @@ if TYPE_CHECKING:
 
 
 def claude_alias_for_tool_name(tool_name: str) -> str | None:
-    """Return the strict-MCP alias for a canonical Ralph tool name."""
     try:
         return str(RalphToolName(tool_name).as_claude_alias(server_name=RALPH_MCP_SERVER_NAME))
     except ValueError:
@@ -30,7 +24,6 @@ def claude_alias_for_tool_name(tool_name: str) -> str | None:
 
 
 def canonical_tool_name(tool_name: str) -> str:
-    """Collapse a raw or aliased tool name to its canonical raw Ralph name."""
     prefix = claude_tool_name_prefix(server_name=RALPH_MCP_SERVER_NAME)
     if tool_name.startswith(prefix):
         raw_name = tool_name[len(prefix) :]
@@ -42,7 +35,6 @@ def canonical_tool_name(tool_name: str) -> str:
 
 
 def canonicalize_tool_names(tool_names: Iterable[str]) -> tuple[str, ...]:
-    """Return deduped canonical raw Ralph tool names in input order."""
     canonical: list[str] = []
     seen: set[str] = set()
     for tool_name in tool_names:
@@ -55,7 +47,6 @@ def canonicalize_tool_names(tool_names: Iterable[str]) -> tuple[str, ...]:
 
 
 def expand_tool_names_with_aliases(tool_names: Iterable[str]) -> list[str]:
-    """Return each canonical tool name plus its strict-MCP alias, deduped."""
     expanded: list[str] = []
     for tool_name in canonicalize_tool_names(tool_names):
         if tool_name not in expanded:
@@ -73,7 +64,6 @@ def visible_owned_tool_names(
     upstream_registry: UpstreamRegistry | None = None,
     include_aliases: bool = True,
 ) -> list[str]:
-    """Return the live visible Ralph-owned tool surface for a session."""
     registry = build_ralph_tool_registry(
         session, workspace, upstream_registry=upstream_registry, mcp_config=None
     )
@@ -86,14 +76,13 @@ def visible_owned_tool_names(
 _VISIBLE_TOOL_NAME_CACHE_MAXSIZE = 32
 _VISIBLE_TOOL_NAMES_BY_PROFILE: OrderedDict[tuple[tuple[str, ...], str], tuple[str, ...]] = (
     OrderedDict()
-)  # bounded-accumulator-ok: FIFO cache is capped at _VISIBLE_TOOL_NAME_CACHE_MAXSIZE.
+)
 _VISIBLE_TOOL_NAMES_LOCK = Lock()
 
 
 def _visible_tool_names_for_capabilities(
     capability_ids: tuple[str, ...], *, drain: str
 ) -> tuple[str, ...]:
-    """Build the immutable prompt catalog for one capability profile once."""
     key = (capability_ids, drain)
     with _VISIBLE_TOOL_NAMES_LOCK:
         cached = _VISIBLE_TOOL_NAMES_BY_PROFILE.get(key)
@@ -117,12 +106,6 @@ def _visible_tool_names_for_capabilities(
 
 
 def visible_tool_names_for_capabilities(capability_ids: Iterable[str], *, drain: str) -> list[str]:
-    """Project capabilities onto the real runtime registry tool surface.
-
-    Prompt rendering asks this question repeatedly for the same static capability
-    profile. Cache only the immutable catalog and return a fresh list so callers
-    cannot mutate the shared value.
-    """
     return list(
         _visible_tool_names_for_capabilities(tuple(sorted(set(capability_ids))), drain=drain)
     )

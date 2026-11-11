@@ -1,11 +1,3 @@
-"""Offline black-box coverage for the public ``make install`` command.
-
-The fake ``uv`` accepts only installer argv forms and never reaches a network.
-The source checkout's real Makefile and installer execute in isolated HOME and
-PATH directories, so each assertion observes the installed artifacts exactly
-as an operator would.
-"""
-
 from __future__ import annotations
 
 import os
@@ -183,7 +175,6 @@ def _assert_generation_has_fake_uv_environment(generation: Path) -> None:
 def test_make_install_regression_offline_transaction_preserves_operator_artifacts(
     tmp_path: Path,
 ) -> None:
-    """The public install command is offline, transactional, and reinstall-safe."""
     source = tmp_path / "source"
     _copy_install_fixture(Path(__file__).resolve().parents[1], source)
     home = tmp_path / "home"
@@ -218,8 +209,6 @@ def test_make_install_regression_offline_transaction_preserves_operator_artifact
     assert detached_source_version.returncode == 0, detached_source_version.stderr
     assert detached_source_version.stdout.strip().endswith("-build")
 
-    # A caller exporting PYTHONPATH at a checkout (every package Make recipe
-    # does) must still run the snapshot, not shadow it with unflavored source.
     shadowed_version = _run_rdev({**environment, "PYTHONPATH": str(source)})
     assert shadowed_version.returncode == 0, shadowed_version.stderr
     assert shadowed_version.stdout.strip().endswith("-build")
@@ -228,18 +217,11 @@ def test_make_install_regression_offline_transaction_preserves_operator_artifact
 def test_existing_install_probe_ignores_shadowing_ralph_packages(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The conflict probe must report the executable's own package.
-
-    ``make`` runs the installer from the checkout with PYTHONPATH exported at
-    it; an unisolated probe resolved every global ``ralph`` to that checkout.
-    """
     shadow_root = tmp_path / "shadow"
     (shadow_root / "ralph").mkdir(parents=True)
     (shadow_root / "ralph" / "__init__.py").write_text("", encoding="utf-8")
     console_script = tmp_path / "bin" / "ralph"
     console_script.parent.mkdir()
-    # Write the script the way installers do: a shebang cannot carry an
-    # interpreter path containing spaces, so they fall back to a sh trampoline.
     header = (
         f"#!/bin/sh\n'''exec' {shlex.quote(sys.executable)} \"$0\" \"$@\"\n' '''\n"
         if " " in sys.executable

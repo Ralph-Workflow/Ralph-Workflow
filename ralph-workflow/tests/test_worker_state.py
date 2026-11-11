@@ -1,5 +1,3 @@
-"""Unit tests for WorkerState and WorkerStatus models."""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -11,7 +9,6 @@ from ralph.pipeline.worker_state import WorkerState, WorkerStatus
 
 
 def test_worker_status_enum_values() -> None:
-    """WorkerStatus has the required enum members."""
     assert WorkerStatus.PENDING.value == "PENDING"
     assert WorkerStatus.RUNNING.value == "RUNNING"
     assert WorkerStatus.SUCCEEDED.value == "SUCCEEDED"
@@ -20,7 +17,6 @@ def test_worker_status_enum_values() -> None:
 
 
 def test_worker_state_defaults() -> None:
-    """WorkerState has correct defaults for optional fields."""
     ws = WorkerState(unit_id="u1")
 
     assert ws.unit_id == "u1"
@@ -34,7 +30,6 @@ def test_worker_state_defaults() -> None:
 
 
 def test_worker_state_frozen_immutable() -> None:
-    """WorkerState raises on mutation attempt (frozen=True)."""
     ws = WorkerState(unit_id="u1")
 
     with pytest.raises((TypeError, ValidationError)):
@@ -42,7 +37,6 @@ def test_worker_state_frozen_immutable() -> None:
 
 
 def test_worker_state_round_trip_json() -> None:
-    """WorkerState round-trips through model_dump_json / model_validate_json."""
     ws = WorkerState(
         unit_id="unit-42",
         status=WorkerStatus.SUCCEEDED,
@@ -60,7 +54,6 @@ def test_worker_state_round_trip_json() -> None:
 
 
 def test_worker_state_all_status_values_serialize() -> None:
-    """All WorkerStatus values round-trip through JSON."""
     for status in WorkerStatus:
         ws = WorkerState(unit_id="u", status=status)
         loaded = WorkerState.model_validate_json(ws.model_dump_json())
@@ -68,13 +61,11 @@ def test_worker_state_all_status_values_serialize() -> None:
 
 
 def test_worker_state_unit_id_required() -> None:
-    """WorkerState requires unit_id."""
     with pytest.raises(ValidationError):
         WorkerState()
 
 
 def test_worker_state_none_optionals_round_trip() -> None:
-    """WorkerState with all None optionals round-trips cleanly."""
     ws = WorkerState(unit_id="u99")
     loaded = WorkerState.model_validate_json(ws.model_dump_json())
     assert loaded == ws

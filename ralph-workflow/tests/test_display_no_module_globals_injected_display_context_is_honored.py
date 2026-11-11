@@ -1,10 +1,3 @@
-"""Regression tests: no module-level Console globals in renderer modules.
-
-These black-box tests verify that:
-1. No module-level Console globals exist in pipeline runner and CLI command modules.
-2. Injected DisplayContext is honored when provided.
-"""
-
 from __future__ import annotations
 
 import os
@@ -30,7 +23,6 @@ from ralph.pipeline._integration_action import RebaseOutcomeKind
 
 
 def _make_recording_console() -> Console:
-    """Create a StringIO-backed recording console with Ralph theme."""
     stream = StringIO()
     return Console(
         file=stream,
@@ -62,11 +54,8 @@ def _make_display_context() -> DisplayContext:
 
 
 class TestInjectedDisplayContextIsHonored:
-    """Tests that verify injected DisplayContext is used when provided."""
-
     @pytest.mark.timeout_seconds(3)
     def test_run_pipeline_keyboard_interrupt_uses_injected_context(self) -> None:
-        """Verify run_pipeline renders KeyboardInterrupt on the injected console."""
         ctx = _make_display_context()
 
         def _raise_keyboard_interrupt(*args: object, **kwargs: object) -> int:
@@ -94,7 +83,6 @@ class TestInjectedDisplayContextIsHonored:
 
     @pytest.mark.timeout_seconds(3)
     def test_init_command_unknown_template_uses_injected_context(self, tmp_path: Path) -> None:
-        """Verify an unknown template error uses the injected display context."""
         ctx = _make_display_context()
         skipped_result = BootstrapResult(path=tmp_path / "placeholder.toml", action="skipped")
 
@@ -127,7 +115,6 @@ class TestInjectedDisplayContextIsHonored:
             os.chdir(original_cwd)
 
     def test_commit_plumbing_no_repo_uses_injected_context(self, tmp_path: Path) -> None:
-        """Verify commit_plumbing uses injected display_context for 'not in git repo' message."""
         del tmp_path
         ctx = _make_display_context()
 
@@ -147,7 +134,6 @@ class TestInjectedDisplayContextIsHonored:
     def test_completion_summary_operation_display_states_use_injected_context(
         self, state: OperationDisplayState
     ) -> None:
-        """Verify rendering completion summary with each OperationDisplayState honors injected DisplayContext."""
         ctx = _make_display_context()
         snap = MagicMock(spec=PipelineSnapshot)
         snap.phase = "done"
@@ -194,7 +180,6 @@ class TestInjectedDisplayContextIsHonored:
     def test_completion_summary_rebase_outcome_kinds_use_injected_context(
         self, kind: RebaseOutcomeKind
     ) -> None:
-        """Verify rendering completion summary with each RebaseOutcomeKind honors injected DisplayContext."""
         ctx = _make_display_context()
         snap = MagicMock(spec=PipelineSnapshot)
         snap.phase = "done"

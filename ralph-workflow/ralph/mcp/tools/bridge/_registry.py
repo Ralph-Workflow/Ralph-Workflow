@@ -1,4 +1,3 @@
-"""Tool registry builder for MCP bridge."""
 
 from __future__ import annotations
 
@@ -27,7 +26,6 @@ from ralph.visual.policy_facts import DESIGN_SYSTEM_POLICY_RELPATH, parse_policy
 
 
 def _warn_over_budget(stage: str, elapsed_s: float, budget_s: float) -> None:
-    """Log a diagnostic warning for a per-stage budget overrun (non-fatal)."""
     remaining_s = max(0.0, budget_s - elapsed_s)
     print(
         f"WARNING: startup stage {stage!r} over budget: "
@@ -45,7 +43,6 @@ if TYPE_CHECKING:
 
 
 def tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
-    """Build the full ordered list of tool specifications for the MCP bridge."""
     specs: list[ToolSpec] = []
     specs.extend(file_read_specs())
     specs.extend(file_list_specs())
@@ -61,7 +58,6 @@ _clock = time.monotonic
 
 
 class _ReadableWorkspace(Protocol):
-    """Minimal workspace contract needed for policy-gated tool exposure."""
 
     def read(self, path: str) -> str: ...
 
@@ -73,7 +69,6 @@ def _read_workspace_policy(
     t0: float | None = None,
     clock_fn: Callable[[], float] | None = None,
 ) -> str:
-    """Read design system policy with a strict, fail-closed timeout bound."""
     if not hasattr(workspace, "read"):
         raise AttributeError("Workspace object has no 'read' method")
     readable = cast("_ReadableWorkspace", workspace)
@@ -113,7 +108,6 @@ def _capture_policy_is_resolved(
     t0: float | None = None,
     clock_fn: Callable[[], float] | None = None,
 ) -> bool:
-    """Return whether this workspace declares a complete capture matrix."""
     clk = clock_fn if clock_fn is not None else _clock
     effective_timeout_s = timeout_s if timeout_s is not None else _REGISTRY_BUILD_BUDGET_S
     try:
@@ -157,10 +151,9 @@ def build_ralph_tool_registry(
     timeout_s: float | None = None,
     clock_fn: Callable[[], float] | None = None,
 ) -> ToolBridge:
-    """Build the default Ralph MCP tool registry."""
     mcp_config_cls = cast(
         "type[McpConfig]", import_module("ralph.config.mcp_models").McpConfig
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     mcp_cfg = mcp_config or mcp_config_cls()
     bridge = ToolBridge(session=session)
     effective_clock = clock_fn if clock_fn is not None else _clock

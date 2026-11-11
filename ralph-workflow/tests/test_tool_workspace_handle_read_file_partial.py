@@ -1,5 +1,3 @@
-"""Tests for ralph/mcp/tool_workspace.py — MCP workspace tool handlers."""
-
 from __future__ import annotations
 
 import json
@@ -21,8 +19,6 @@ DEFAULT_MAX_INLINE_BYTES = 5_242_880
 
 
 class TestHandleReadFilePartial:
-    """Tests for partial read variants."""
-
     def test_head_returns_first_n_lines(self) -> None:
         ws = MagicMock()
         ws.read_lines.return_value = (
@@ -138,7 +134,6 @@ class TestHandleReadFilePartial:
     def test_line_range_with_inert_zero_offset_and_limit_succeeds(
         self,
     ) -> None:
-        """Regression: brokers that send all optional fields with zero defaults must not fail."""
         ws = MagicMock()
         ws.read_lines.return_value = (
             "line2\nline3\n",
@@ -161,7 +156,6 @@ class TestHandleReadFilePartial:
     def test_head_with_inert_zero_offset_and_limit_succeeds(
         self,
     ) -> None:
-        """Regression: head read must work when broker also sends offset=0, limit=0."""
         ws = MagicMock()
         ws.read_lines.return_value = (
             "first\nsecond\n",
@@ -183,7 +177,6 @@ class TestHandleReadFilePartial:
     def test_tail_with_inert_zero_offset_succeeds(
         self,
     ) -> None:
-        """Regression: tail read must work when broker also sends offset=0."""
         ws = MagicMock()
         ws.read_lines.return_value = (
             "last\nline\n",
@@ -205,7 +198,6 @@ class TestHandleReadFilePartial:
     def test_offset_zero_with_positive_limit_uses_byte_window(
         self,
     ) -> None:
-        """Regression: offset=0 with limit>0 must select byte-window mode."""
         ws = MagicMock()
         ws.read_bytes.return_value = (
             "hello",

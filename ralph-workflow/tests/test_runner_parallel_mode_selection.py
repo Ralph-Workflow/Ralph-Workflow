@@ -1,5 +1,3 @@
-"""Tests for runner-boundary fail-closed and explicit mode selection for parallel workers."""
-
 from __future__ import annotations
 
 from functools import lru_cache
@@ -23,15 +21,6 @@ def _load_default_policy_bundle() -> PolicyBundle:
 
 
 def _legacy_fan_out_policy_bundle() -> PolicyBundle:
-    """Bundle that opts into the legacy ``ralph_fan_out`` dispatch mode.
-
-    The bundled default in ``ralph/policy/defaults/pipeline.toml`` sets
-    ``dispatch_mode = 'agent_subagents'`` on the development phase, so
-    the existing routing tests that assert ``FanOutEffect`` (or rely on
-    the same-workspace preflight validation that runs only on the
-    ``ralph_fan_out`` path) must opt into the legacy path explicitly on
-    their policy fixture.
-    """
     bundle = _load_default_policy_bundle()
     dev_phase = bundle.pipeline.phases["development"]
     assert dev_phase.parallelization is not None
@@ -61,7 +50,6 @@ class TestRunnerBoundaryPreflightRejection:
         assert {u.unit_id for u in effect.work_units} == {"unit-a", "unit-b"}
 
     def test_runner_single_work_unit_does_not_trigger_validation(self) -> None:
-        """Single work unit must bypass fan-out validation and run normal serial path."""
         bundle = _load_default_policy_bundle()
         state = PipelineState(
             phase="development",
@@ -73,7 +61,6 @@ class TestRunnerBoundaryPreflightRejection:
         )
 
     def test_runner_post_fanout_verification_defaults_to_false(self) -> None:
-        """FanOutEffect.run_post_fanout_verification must default to False."""
         bundle = _legacy_fan_out_policy_bundle()
         state = PipelineState(
             phase="development",
@@ -89,9 +76,7 @@ class TestRunnerBoundaryPreflightRejection:
         )
 
     def test_runner_keeps_unroutable_units_in_the_main_agent(self) -> None:
-        """A missing parallelization declaration never rejects an accepted plan."""
         bundle = _load_default_policy_bundle()
-        # planning phase has no parallelization declared
         state = PipelineState(
             phase="planning",
             work_units=(
@@ -104,15 +89,6 @@ class TestRunnerBoundaryPreflightRejection:
         assert effect.phase == "planning"
 
     def test_runner_uses_phase_scoped_max_parallel_workers(self) -> None:
-        """FanOutEffect must use max_workers from the phase's parallelization."""
-        # ponytail: use a real policy stub instead of MagicMock so the test
-        # stays well under the 1.0 s per-test budget regardless of Python
-        # version. The bundle below is the canonical legacy-fan-out policy
-        # with max_parallel_workers overridden to 1, so the
-        # _terminal_phase_effect recovery-route lookup resolves against a
-        # real RecoveryPolicy.failed_route rather than a deep MagicMock
-        # attribute that triggers recursive _Call mocking on slow
-        # interpreters.
         bundle = _legacy_fan_out_policy_bundle()
         dev_phase = bundle.pipeline.phases["development"]
         assert dev_phase.parallelization is not None
@@ -138,11 +114,6 @@ class TestRunnerBoundaryPreflightRejection:
         assert effect.max_workers == 1
 
     def test_runner_post_fanout_verification_reads_phase_scoped_value(self) -> None:
-        """FanOutEffect.run_post_fanout_verification reads from phase parallelization."""
-        # ponytail: same real-policy-stub pattern as above; keeps the test
-        # under 1.0 s on every supported Python version because the
-        # _terminal_phase_effect recovery-route lookup resolves against a
-        # real RecoveryPolicy, not a deep MagicMock graph.
         bundle = _legacy_fan_out_policy_bundle()
         dev_phase = bundle.pipeline.phases["development"]
         assert dev_phase.parallelization is not None

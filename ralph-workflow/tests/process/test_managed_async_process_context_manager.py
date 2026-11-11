@@ -1,24 +1,3 @@
-"""Black-box tests for ``ManagedAsyncProcess`` async context manager.
-
-wt-024 memory-perf GAP-PROC-01: ``ManagedAsyncProcess`` lacks an
-async context-manager protocol (``__aenter__``/``__aexit__``). Its
-sync sibling ``ManagedProcess`` provides ``__enter__``/``__exit__``,
-so the absence on the async side means any future async caller that
-forgets a ``try/finally`` leaks the async subprocess.
-
-Because ``ManagedAsyncProcess.terminate`` is ``async def``, the
-correct pattern is the ASYNC context-manager protocol — a sync
-``__exit__`` calling ``self.terminate()`` would return an un-awaited
-coroutine and never terminate.
-
-These tests are self-contained: they inline ``ProcessManager`` +
-``FakePsutil`` + ``make_async_process_factory`` and assert on
-``record.status`` (the real termination outcome via
-``manager._escalate_termination_async``), NOT on
-``FakeAsyncProcess.terminate`` (which ``ManagedAsyncProcess.terminate``
-never calls — it routes through the manager).
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -54,14 +33,10 @@ _FAST_POLICY = ProcessManagerPolicy(
 
 
 class _AsyncStream(Protocol):
-    """Minimal protocol for a stdio stream that supports ``close()``."""
-
     def close(self) -> None: ...
 
 
 class _AsyncProc(Protocol):
-    """Minimal protocol matching the production ``AsyncProcessLike`` for tests."""
-
     pid: int
     stdin: _AsyncStream | None
     stdout: _AsyncStream | None
@@ -86,7 +61,6 @@ def _as_proc(value: object) -> AsyncProcessLike:
 
 
 async def test_async_context_manager_terminates_on_exit() -> None:
-    """``async with handle`` must terminate the process on exit when still non-terminal."""
     async_factory = make_async_process_factory(itertools.count(1), returncode=None)
     pm = ProcessManager(
         policy=_FAST_POLICY,
@@ -97,7 +71,7 @@ async def test_async_context_manager_terminates_on_exit() -> None:
     assert handle.record.status == ProcessStatus.RUNNING
 
     async with handle:
-        pass  # exit the block without explicit terminate
+        pass
 
     assert is_terminal_status(handle.record.status), (
         f"async-with exit should have terminated the process; status={handle.record.status}"
@@ -105,7 +79,6 @@ async def test_async_context_manager_terminates_on_exit() -> None:
 
 
 async def test_async_context_manager_noop_when_already_terminal() -> None:
-    """``async with handle`` on an already-terminal handle must be a no-op."""
     async_factory = make_async_process_factory(itertools.count(1), returncode=None)
     pm = ProcessManager(
         policy=_FAST_POLICY,
@@ -114,18 +87,16 @@ async def test_async_context_manager_noop_when_already_terminal() -> None:
     )
     handle = await pm.spawn_async([sys.executable, "-c", "pass"])
 
-    # Mark the handle as already terminated via the sync manager API
     pm._mark_exited(handle.record, returncode=0)
     assert handle.record.status == ProcessStatus.EXITED
 
     async with handle:
-        pass  # no raise, no re-escalation
+        pass
 
     assert handle.record.status == ProcessStatus.EXITED
 
 
 async def test_async_context_manager_returns_self() -> None:
-    """``async with handle as x`` must return the handle itself."""
     async_factory = make_async_process_factory(itertools.count(1), returncode=None)
     pm = ProcessManager(
         policy=_FAST_POLICY,
@@ -153,8 +124,6 @@ class _RecordingStream:
 
 
 class _RecordingFakeAsyncProc:
-    """A minimal async-proc stand-in: records close calls on stdin/stdout/stderr."""
-
     def __init__(
         self,
         pid: int,
@@ -206,7 +175,6 @@ class _RecordingFakeAsyncProc:
 def _build_proc_with_close_tracking(
     close_calls: list[str], *, raise_on_close: bool
 ) -> AsyncProcessLike:
-    """Build a fake async proc whose stdin/stdout/stderr each call ``close()``."""
     return _RecordingFakeAsyncProc(
         pid=9999,
         stdin=_RecordingStream("stdin", close_calls, raise_on_close),
@@ -216,7 +184,6 @@ def _build_proc_with_close_tracking(
 
 
 async def test_aexit_closes_stdin_stdout_stderr_transports() -> None:
-    """``__aexit__`` must close the underlying asyncio stdin/stdout/stderr transports."""
     close_calls: list[str] = []
     fake_proc = _build_proc_with_close_tracking(close_calls, raise_on_close=False)
 
@@ -238,7 +205,6 @@ async def test_aexit_closes_stdin_stdout_stderr_transports() -> None:
 
 
 async def test_aexit_closes_transports_even_when_exception_raised() -> None:
-    """``__aexit__`` must close transports even when the with-body raises."""
     close_calls: list[str] = []
     fake_proc = _build_proc_with_close_tracking(close_calls, raise_on_close=False)
 
@@ -262,7 +228,6 @@ async def test_aexit_closes_transports_even_when_exception_raised() -> None:
 
 
 async def test_aexit_swallows_close_errors() -> None:
-    """Transport-close errors during ``__aexit__`` must NOT mask the original exception."""
     close_calls: list[str] = []
     fake_proc = _build_proc_with_close_tracking(close_calls, raise_on_close=True)
 
@@ -281,20 +246,11 @@ async def test_aexit_swallows_close_errors() -> None:
 
 
 async def _never_return_future() -> None:
-    """Await an Event that is never set; the await never resolves.
-
-    The production code's ``asyncio.wait_for(... timeout=0.05s)``
-    triggers its ``TimeoutError`` long before this stub's 60s elapses,
-    so the test outcome is unchanged. The 60s ceiling keeps the
-    audit ``blocking-wait`` check (docs/agents/testing-guide.md
-    §'blocking-wait') green.
-    """
     event = asyncio.Event()
     await asyncio.wait_for(event.wait(), timeout=60.0)
 
 
 async def test_wait_bounds_with_asyncio_wait_for(monkeypatch: pytest.MonkeyPatch) -> None:
-    """``wait()`` must raise TimeoutError when the subprocess never completes."""
 
     class _NeverWaitProc(FakeControllableAsyncProcess):
         async def wait(self) -> int:
@@ -312,19 +268,12 @@ async def test_wait_bounds_with_asyncio_wait_for(monkeypatch: pytest.MonkeyPatch
     handle = await pm.spawn_async([sys.executable, "-c", "pass"])
     handle._proc = controllable
 
-    # The exit-wait ceiling is a PUBLIC default (``ralph.timeout_defaults``);
-    # shrinking it here keeps the bounded-wait assertion fast.
     monkeypatch.setattr("ralph.timeout_defaults.PROCESS_EXIT_WAIT_SECONDS", 0.05)
-    # Wrap in asyncio.wait_for to satisfy the audit ``blocking-wait``
-    # check (docs/agents/testing-guide.md §'blocking-wait'). The
-    # production code's 0.05s timeout fires first; the 5s wrapper
-    # ceiling is a defensive backstop.
     with pytest.raises(TimeoutError):
         await asyncio.wait_for(handle.wait(), timeout=5.0)
 
 
 async def test_communicate_bounds_with_asyncio_wait_for(monkeypatch: pytest.MonkeyPatch) -> None:
-    """``communicate()`` must raise TimeoutError when subprocess never completes."""
 
     class _NeverCommunicateProc(FakeControllableAsyncProcess):
         async def communicate(self, input: bytes | None = None) -> tuple[bytes, bytes]:
@@ -343,12 +292,6 @@ async def test_communicate_bounds_with_asyncio_wait_for(monkeypatch: pytest.Monk
     handle = await pm.spawn_async([sys.executable, "-c", "pass"])
     handle._proc = controllable
 
-    # The exit-wait ceiling is a PUBLIC default (``ralph.timeout_defaults``);
-    # shrinking it here keeps the bounded-wait assertion fast.
     monkeypatch.setattr("ralph.timeout_defaults.PROCESS_EXIT_WAIT_SECONDS", 0.05)
-    # Wrap in asyncio.wait_for to satisfy the audit ``blocking-wait``
-    # check (docs/agents/testing-guide.md §'blocking-wait'). The
-    # production code's 0.05s timeout fires first; the 5s wrapper
-    # ceiling is a defensive backstop.
     with pytest.raises(TimeoutError):
         await asyncio.wait_for(handle.communicate(), timeout=5.0)

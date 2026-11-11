@@ -1,4 +1,3 @@
-"""Semantic parser for VT-normalized Claude interactive transcripts."""
 
 from __future__ import annotations
 
@@ -61,9 +60,6 @@ _THINKING_STATUS_RE = re.compile(
     r"|[\s]*\d+s\s*·\s*(?:↓\s*\d+\.?\d*[km]?\s*tokens?\s*·\s*)?thinking\s*\)"
 )
 
-# Short fragments (< 20 chars) ending in "thinking" are thinking status
-# remnants from character-by-character PTY reads.  Legitimate prose containing
-# "thinking" is always longer or doesn't end with "thinking".
 _LENIENT_THINKING_MAX_LEN = 30
 _MIN_OUTPUT_LEN = 6
 _MAX_THINKING_PREFIX_ALPHA = 2
@@ -76,7 +72,6 @@ def _contains_thinking_keyword(text: str) -> bool:
     return "ought for" in lower or "inking)" in lower or bool(re.search(r"\bthinking\b", lower))
 
 
-# Box-drawing (U+2500-U+257F) + block elements (U+2580-U+259F) + extras.
 _BOX_DRAWING_CHARS: frozenset[str] = frozenset(
     "\u2500\u2502\u250c\u2510\u2514\u2518\u251c\u2524\u252c\u2534\u253c"
     "\u2550\u2551\u2554\u2557\u255a\u255d\u2560\u2563\u2566\u2569\u256c"
@@ -99,11 +94,7 @@ _TUI_CHROME_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^\s*⏵⏵"),
     re.compile(r"^\s*(shift\+tab|ctrl\+[cd]|esc)\s+to\s+(cycle|interrupt|cancel)", re.IGNORECASE),
     re.compile(r"^\s*[⬆↑]\s*[/\w-]+\s*│", re.UNICODE),
-    # Exit banner (Claude Code >= 2.1.x prints the resume hint on two lines;
-    # the id-carrying second line is matched by _SESSION_ID_PATTERNS first,
-    # so this only ever drops the bare banner line).
     re.compile(r"^\s*Resume this session\b", re.IGNORECASE),
-    # PTY echo of a typed slash command (e.g. the auto-exit "/exit").
     re.compile(r"^\s*/[A-Za-z][A-Za-z0-9_-]{0,30}\s*$"),
 )
 
@@ -115,7 +106,6 @@ _MIN_BOX_COUNT_FOR_STRIPPED_CHECK = 2
 
 
 def _count_box_drawing(text: str) -> int:
-    """Count Unicode box-drawing / block-element characters in *text*."""
     return sum(
         1
         for ch in text
@@ -125,13 +115,6 @@ def _count_box_drawing(text: str) -> int:
 
 
 def _is_tui_chrome(text: str) -> bool:
-    """Return True when *text* is terminal-render surface noise.
-
-    Detects box-drawing borders, splash screens, spinners, status bars, and
-    other TUI artifacts that should never be classified as agent output.
-    Platform-agnostic: operates on Unicode character properties, not
-    terminal-specific escape sequences (those are handled by the VT normalizer).
-    """
     if not text or any(pattern.search(text) for pattern in _TUI_CHROME_PATTERNS):
         return True
 
@@ -192,13 +175,6 @@ def _extract_error_text(value: object) -> str:
 
 
 def _tool_result_event(item: dict[str, object]) -> InteractiveTranscriptEvent | None:
-    """Build a tool_result event from a content block, or None if empty.
-
-    Honors the wire-format ``is_error`` flag (matching the headless Claude,
-    Cursor, Pi, and Generic parsers) by carrying it in metadata so the
-    downstream parser can surface a failed tool call as an error instead of
-    a routine result.
-    """
     text = _extract_message_text(item.get("content")).strip()
     if not text:
         return None
@@ -221,21 +197,6 @@ _IDLE_TUI_GLYPH_MAX_LEN = 20
 
 
 class ClaudeInteractiveTranscriptParser:
-    """Extract semantic events from a normalized Claude interactive transcript.
-
-    Architecture: the transcript file delivers structured JSON events that tell us
-    which mode the session is in (thinking / output / tool_use).  Non-JSON text
-    fragments that arrive between JSON events are classified by *mode*, not by
-    per-line regex heuristics:
-
-      - *thinking* mode → every non-JSON fragment is TUI status-bar noise → drop.
-      - *tool_use*  mode → every non-JSON fragment is TUI rendering noise → drop.
-      - *output*    mode → non-JSON fragments are genuine agent output → emit.
-      - *idle*      (no mode yet) → conservative heuristics (drop short / TUI-ish).
-
-    This eliminates the whack-a-mole regex approach where every new Claude Code
-    thinking-status variant needed a dedicated pattern.
-    """
 
     def __init__(self, *, max_buffer_chars: int = DEFAULT_MAX_BUFFER_CHARS) -> None:
         self.session_id: str | None = None
@@ -278,9 +239,6 @@ class ClaudeInteractiveTranscriptParser:
     def _append_if_new(
         self, events: list[InteractiveTranscriptEvent], event: InteractiveTranscriptEvent
     ) -> None:
-        # tool_use_id participates in the signature so parallel same-tool
-        # calls (and identical result texts from distinct calls) all emit;
-        # only a literal re-read of the same transcript line is suppressed.
         signature = (event.kind, event.text, event.metadata.get("tool_use_id"))
         if signature == self._last_emitted_signature:
             return
@@ -337,8 +295,6 @@ class ClaudeInteractiveTranscriptParser:
             return []
         content = message.get("content")
         if isinstance(content, str):
-            # Defensive future-proofing: assistant text delivered as a plain
-            # string instead of a content-block list is still agent output.
             text = content.strip()
             if not text:
                 return []
@@ -386,23 +342,6 @@ class ClaudeInteractiveTranscriptParser:
             self.session_id = session_id
             self._append_if_new(events, InteractiveTranscriptEvent(kind="session", text=session_id))
         if event_type == "assistant":
-            # RC2: classify the full top-level record via the shared
-            # envelope classifier BEFORE per-item content extraction.
-            # The shared classifier handles BOTH the top-level
-            # ``isApiErrorMessage`` placement (current Claude Code 2.1.x)
-            # and the nested ``message.isApiErrorMessage`` placement
-            # (legacy wire) so a future wire change does not silently
-            # route the record to the normal path. The synthetic
-            # envelope emits exactly one ``lifecycle`` event carrying
-            # the bookkeeping text as payload; ``is_lifecycle_kind``
-            # in ``claude_interactive.parse()`` drops the event from
-            # the agent-text stream so the watchdog's ``_record_event``
-            # path cannot reach it and the retry-context excerpt
-            # builder cannot reach it (R4 contract: no surface to
-            # operator output, no surface to retry-context excerpt,
-            # no idle-baseline reset). The error envelope emits
-            # exactly one ``error`` event with the wire-shape error
-            # text and never produces a ``text`` / ``output`` event.
             decision: AssistantEnvelopeDecision = classify_assistant_record(obj)
             if decision.envelope == ENVELOPE_API_ERROR:
                 if decision.error_text:
@@ -436,7 +375,6 @@ class ClaudeInteractiveTranscriptParser:
         return events
 
     def _match_known_pattern(self, text: str) -> InteractiveTranscriptEvent | None:
-        """Match text against known regex/prefix patterns, returning event or None."""
         result = (
             InteractiveTranscriptEvent(kind="error", text=text)
             if _PROVIDER_FAILURE_PATTERN.match(text)
@@ -464,11 +402,9 @@ class ClaudeInteractiveTranscriptParser:
 
     @staticmethod
     def _is_tui_thinking_garbage(text: str) -> bool:
-        """Return True if *text* is TUI spinner/status garbage, not real content."""
         return bool(_THINKING_STATUS_RE.search(text)) or any(c in _TUI_GLYPH_CHARS for c in text)
 
     def _event_for_active_mode(self, text: str) -> InteractiveTranscriptEvent | None:
-        """Classify text after a structured content block established its mode."""
         if self._current_content_mode == "thinking":
             if self._is_tui_thinking_garbage(text):
                 return None
@@ -479,7 +415,6 @@ class ClaudeInteractiveTranscriptParser:
 
     @staticmethod
     def _is_idle_tui_fragment(text: str) -> bool:
-        """Return whether idle-mode text is terminal status chrome."""
         return (
             bool(_THINKING_STATUS_RE.search(text))
             or (len(text) < _IDLE_SINGLE_WORD_MAX_LEN and " " not in text)

@@ -1,4 +1,3 @@
-"""Prepare-prompt pipeline effect."""
 
 from __future__ import annotations
 
@@ -14,14 +13,6 @@ else:
 
 @dataclass(frozen=True)
 class PreparePromptEffect:
-    """Effect to prepare a prompt for an agent.
-
-    Attributes:
-        phase: Current pipeline phase.
-        iteration: Deprecated — kept for prompt-template rendering only; None when not applicable.
-        skip_materialization: When True, advance phase without materializing the prompt.
-            Used for routing-only transitions (e.g. skip_invocation phases).
-    """
 
     phase: PipelinePhase
     iteration: int | None = None

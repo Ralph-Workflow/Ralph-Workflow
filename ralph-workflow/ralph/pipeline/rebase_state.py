@@ -1,4 +1,3 @@
-"""Rebase state model for pipeline state."""
 
 from __future__ import annotations
 
@@ -25,7 +24,6 @@ _LEGACY_AGENT_FAILURE_REASON = "resolution_agent_failure"
 
 
 class _StartupRetentionReason(StrEnum):
-    """Typed vocabulary for why a startup recovery record stayed on disk."""
 
     FAILED_ABORT = "FAILED_ABORT"
     FAILED_RESET = "FAILED_RESET"
@@ -43,17 +41,6 @@ StartupRetentionReason = _StartupRetentionReason
 
 
 class RebaseState(RalphBaseModel):
-    """State for git rebase operations.
-
-    The legacy ``pending``/``in_progress``/``completed`` fields are
-    preserved so existing checkpoints deserialize cleanly. The
-    auto-integration fields (``last_outcome``/``last_reason``/
-    ``last_target``/``fast_forwarded``) are the surface the runner
-    reads to thread the integration outcome into the persisted
-    checkpoint, and the surface operators see in run state when a
-    skip or conflict is recorded. All four new fields have defaults
-    so legacy checkpoints load without modification.
-    """
 
     model_config = _FROZEN
 
@@ -61,16 +48,6 @@ class RebaseState(RalphBaseModel):
     in_progress: bool = False
     completed: bool = False
 
-    # Auto-integration outcome. ``last_outcome`` is the typed outcome
-    # kind (``RebaseOutcomeKind``); ``last_action`` is the backward-compatible
-    # string property projection; ``last_reason`` is the human-readable
-    # skip / failure reason when one applies; ``last_target`` is the
-    # mainline branch the integration step targeted; ``fast_forwarded``
-    # records whether the fast-forward phase actually advanced the
-    # target ref (False on conflict, on dirty worktree, on
-    # concurrent-target-update race, etc.). See
-    # ``ralph.pipeline.auto_integrate`` for the producer of these
-    # values.
     last_outcome: RebaseOutcomeKind | None = None
     last_reason: str | None = None
     last_failure_cause: ResolutionFailureCause = ResolutionFailureCause.NONE
@@ -79,7 +56,6 @@ class RebaseState(RalphBaseModel):
 
     @property
     def last_action(self) -> str | None:
-        """Backward-compatible projection of typed last_outcome."""
         return self.last_outcome.value if self.last_outcome is not None else None
 
     @model_validator(mode="before")
@@ -160,7 +136,6 @@ class RebaseState(RalphBaseModel):
 
     @classmethod
     def from_legacy_payload(cls, payload: dict[str, object]) -> Self:
-        """One-way migration entry point for legacy checkpoints."""
         validated = cls.model_validate(payload)
         legacy_action = payload.get("last_action")
         mapped_outcome = validated.last_outcome
@@ -172,66 +147,25 @@ class RebaseState(RalphBaseModel):
         )
         return validated
 
-    # ``last_refresh`` records the outcome of the origin refresh that
-    # ran immediately before the fast-forward observed the target SHA
-    # (one of the ``REFRESH_*`` values in
-    # ``ralph.pipeline.auto_integrate_sync``). The refresh is fail-open
-    # -- an unreachable remote still lands locally -- so this field is
-    # the only signal that tells an operator whether the mainline
-    # pointer just landed against was actually fresh. Defaulted, so
-    # legacy checkpoints load unchanged.
     last_refresh: str | None = None
 
-    # Freshness is structured so seam control and display never infer safety
-    # from human-readable reasons. ``verified`` means a healthy fetch or
-    # shared-ref observation established the base; ``degraded`` is fail-open
-    # remote unavailability; ``unverified`` is an intentionally suppressed
-    # probe; ``unsafe`` blocks the feature rebase for this seam.
     freshness_verdict: str | None = None
     freshness_source: str | None = None
     freshness_safe: bool = True
     freshness_target_sha: str | None = None
 
-    # Reclamation is structured separately from warning prose so checkpoints,
-    # summaries, and recovery tooling can report destructive target-owner work
-    # without parsing a log line. ``None`` / 0 preserve legacy checkpoints.
     reclaimed_worktree_path: str | None = None
     reclaim_snapshot_ref: str | None = None
     reclaim_discarded_path_count: int = 0
 
-    # ``last_push`` records the fail-open configured-remote push after a
-    # successful local landing. The summary is operator-visible but never
-    # changes the landing result. The field is None when sync is disabled
-    # or when the prior integration did not produce a record, so legacy
-    # checkpoints load unchanged.
     last_push: str | None = None
 
-    # ``last_remote_sync`` carries the latest opt-in remote-sync
-    # outcome produced by
-    # :mod:`ralph.pipeline.auto_integrate_remote_sync`. Distinct from
-    # ``last_push`` (which is the free-form summary string) and from
-    # ``last_refresh`` (which is the observe-only outcome); the value
-    # is one of the ``REMOTE_*`` constants in that module and names
-    # the higher-level verb (`pulled`, `reconciled`, `pushed`,
-    # `push rejected`, `pending push`, ...). Defaults to ``None`` so
-    # legacy checkpoints load unchanged.
     last_remote_sync: str | None = None
 
-    # Configured remote used for the latest remote-sync outcome.
     last_remote: str | None = None
 
-    # Structured classification of the latest publication attempt. This is
-    # deliberately separate from ``last_push`` prose: retry decisions must
-    # never parse operator display text. Defaults preserve old checkpoints.
     last_push_status: str | None = None
 
-    # ``consecutive_conflicts`` counts unresolved integration conflicts
-    # against ``last_target`` in a row. It describes the REPOSITORY: it
-    # scopes the conflict identity and feeds the operator escalation
-    # (see ``ralph.pipeline.auto_integrate_conflict_budget``). It is not
-    # an agent-selection input -- resolver eligibility is owned by
-    # ``AgentFailureLedger`` -- and it resets to 0 on any successful
-    # land. Defaulted, so legacy checkpoints load unchanged.
     consecutive_conflicts: int = 0
     integration_retry_attempt: int = Field(
         default=0,
@@ -239,155 +173,49 @@ class RebaseState(RalphBaseModel):
         description="Checkpointed integration backoff attempt; stops increasing at the delay cap",
     )
 
-    # Typed persisted deadline (monotonic seconds since an unspecified
-    # origin) the run loop uses to bound a ``WAIT_FOR_BOUNDED_RETRY``
-    # decision. The origin restarts at every boot, so readers accept a
-    # deadline only within ``MAX_RETRY_DEADLINE_HORIZON_SECONDS`` of now
-    # (``auto_integrate_backoff.retry_deadline_is_live``); one further
-    # out is a previous boot's reading and has expired. ``None`` is the default for legacy checkpoints and for
-    # records that have not yet been armed with a deadline; the action
-    # authority treats a missing or malformed ``retry_deadline`` as
-    # proof that the wait cannot be bounded, which routes the
-    # decision to ``REQUIRE_INTERVENTION`` rather than a hopeful
-    # wait. The value is read through the typed
-    # :class:`IntegrationAction` authority; the run loop never parses
-    # this field directly.
     retry_deadline: float | None = None
 
-    # Durable identity of the conflict ``consecutive_conflicts`` counts.
-    # ``last_target`` alone does not identify a conflict: a developer
-    # can add a feature commit that changes what conflicts while the
-    # mainline branch NAME stays ``main``, and other agents move the
-    # mainline tip continuously. Without these two observations the
-    # budget would keep suppressing the resolver for a conflict it has
-    # never actually seen. The pair is the feature tip and the target
-    # tip observed immediately before the integration attempt that
-    # recorded the conflict; when either differs at the next seam the
-    # budget starts fresh (see
-    # ``ralph.pipeline.auto_integrate_conflict_budget.ConflictIdentity``).
-    # Both are cleared on a successful land and both are defaulted, so
-    # legacy checkpoints load unchanged and conservatively keep their
-    # carried count.
     last_conflict_feature_sha: str | None = None
     last_conflict_target_sha: str | None = None
     last_conflict_paths: tuple[str, ...] = ()
     last_conflict_stage_oids: tuple[str, ...] = ()
     last_conflict_scope: str = ""
 
-    # The ladder rung that spent ``consecutive_conflicts``.  A new rung gets
-    # its own configured resolver budget even when it addresses the same
-    # durable conflict identity; defaulting preserves legacy checkpoints.
     last_conflict_strategy_index: int = 0
 
     resolving_rebase: bool = False
     resolving_merge: bool = False
     diagnostic_ownership: str | None = None
 
-    # ``recovery_record_retained`` marks a startup crash-recovery outcome
-    # that deliberately LEFT the durable ``IntegrationRecord`` on disk for
-    # the next startup to retry (a failed abort, a failed reset, a target
-    # pointer that could not be refreshed, a transient fast-forward
-    # failure). Recovery still owns that record, so the caller must not
-    # begin a fresh integration in the same startup: ``_integrate_once``
-    # writes a new ``IntegrationRecord(phase='integrating', ...)`` before
-    # it mutates anything, which would overwrite the only durable
-    # metadata describing the interrupted operation.
-    #
-    # This is a STRUCTURED flag on purpose. The retention fact used to be
-    # legible only from the free-form ``last_reason`` display text, which
-    # no caller may parse. Produced by
-    # ``ralph.pipeline.auto_integrate_recovery`` and read through its
-    # ``recovery_retained_record`` predicate; defaulted, so legacy
-    # checkpoints load unchanged and conservatively read as "not
-    # retained".
     recovery_record_retained: bool = False
 
-    # Typed companion to ``recovery_record_retained``: the single-owner
-    # vocabulary describing WHY the durable record was left on disk.
-    # ``None`` for legacy checkpoints and cleared states. Write it only
-    # through :meth:`set_recovery_record_retained` / the constructor's
-    # ``recovery_record_retained_reason`` kwarg; never through
-    # ``model_copy(update={...})`` at call sites.
     recovery_record_retained_reason: StartupRetentionReason | None = None
 
-    # A resolver chain that has tried every allowed candidate is terminal
-    # integration evidence.  These defaulted fields preserve compatibility
-    # with checkpoints written before conflict-resolution exhaustion was
-    # durable.
     resolution_exhausted: bool = False
     resolution_exhaustion_reason: str | None = None
 
-    # The conflict-resolution ladder is durable so a restart continues with
-    # the next genuinely different integration strategy.
     conflict_strategy_index: int = 0
     conflict_strategies_tried: tuple[str, ...] = ()
 
-    # An earlier seam recorded an unresolved integration and a LATER seam
-    # neither landed nor re-recorded one -- a skip, which changes nothing
-    # about the repository and so cannot resolve anything either. Carrying
-    # the block on its own field keeps ``last_action`` honest about what
-    # the latest seam actually did, which the operator log and the
-    # integration tests both read. Defaulted, so older checkpoints load
-    # unchanged. Cleared by a landing; see
-    # ``ralph.pipeline.auto_integrate_resolution_state``.
     unresolved_integration_carried: bool = False
 
-    # Typed planning obstruction kind set by the planning producer (see
-    # :mod:`ralph.pipeline._planning_obstruction`) and consumed by the
-    # run loop's :func:`_route_planning_commit`. ``None`` for legacy
-    # checkpoints; the consumer treats ``None`` as
-    # :attr:`PlanningObstructionKind.NONE` (no routing). Closed
-    # vocabulary, so no caller may write this field with anything other
-    # than a :class:`PlanningObstructionKind` member.
     last_planning_obstruction: str | None = None
 
-    # --- Lifecycle authority fields (ADR-0007) ---------------------------
-    # All four fields are defaulted so legacy checkpoints load unchanged.
-    # They are the single persisted surface for the seven typed authorities
-    # defined in the integration-lifecycle architecture decision record.
-    # No caller may infer progression from the prose fields above; the
-    # run loop reads the typed values here.
 
-    # The run loop's typed decision. One of
-    # ``CONTINUE_PHASE`` / ``ADVANCE_PHASE`` / ``BLOCK_FOR_RECOVERY`` /
-    # ``REPORT_TERMINAL_SUCCESS`` / ``REPORT_TERMINAL_FAILURE`` /
-    # ``REPORT_INTERVENTION_REQUIRED``. ``None`` until the run loop's
-    # first :func:`ralph.pipeline._pipeline_state_machine.decide_phase_transition`
-    # call lands.
     last_decision: str | None = None
 
-    # The remote-publication authority's typed decision. One of
-    # ``PUBLICATION_PENDING`` / ``PUBLISH_NOW`` /
-    # ``PUBLISH_DEFERRED_FRESHNESS`` / ``PUBLISH_DEFERRED_REMOTE`` /
-    # ``PUBLICATION_TERMINAL`` / ``PUBLICATION_BLOCKED``.
     last_publication_decision: str | None = None
 
-    # The parallel-joins authority's typed decision. One of
-    # ``JOIN_PENDING`` / ``JOIN_COMPLETE`` / ``JOIN_PARTIAL_FAILURE`` /
-    # ``JOIN_BLOCKED``.
     last_fan_out_decision: str | None = None
 
-    # The display formatter's typed eight-category state. One of
-    # ``INTEGRATING`` / ``LANDING`` / ``PUBLISHING`` / ``CONFLICT_RESOLUTION``
-    # / ``EVIDENCE_DIAGNOSIS`` / ``WAITING`` / ``INTERVENTION_REQUIRED`` /
-    # ``TERMINAL``. ``None`` for legacy checkpoints; the display formatter
-    # falls back to the prose fields when this is unset.
     operation_display_state: str | None = None
 
     @model_validator(mode="after")
     def _populate_operation_display_state(self) -> Self:
         if self.last_decision is None:
             if self.last_outcome is RebaseOutcomeKind.LADDER_ESCALATION:
-                # The typed autonomous escalation blocks for recovery (the
-                # fallback ladder owns the next action) -- it is not the
-                # retired terminal operator hand-off.
                 object.__setattr__(self, "last_decision", "block_for_recovery")
             elif self.integration_unresolved or self.recovery_record_retained:
-                # Legacy checkpoints may still parse the retired
-                # INTERVENTION_REQUIRED / DIAGNOSTIC_INTERVENTION_REQUIRED
-                # outcomes; those keep the obligation blocking for the
-                # autonomous recovery ladder too -- never the terminal
-                # operator hand-off.
                 object.__setattr__(self, "last_decision", "block_for_recovery")
         if self.operation_display_state is None:
             state = _resolve_operation_display_state(self)
@@ -395,8 +223,6 @@ class RebaseState(RalphBaseModel):
                 object.__setattr__(self, "operation_display_state", state)
         return self
 
-    # Legacy rebase checkpoint identity. These fields let both startup paths
-    # retain actionable evidence without re-parsing or replacing it.
     legacy_checkpoint_blocked: bool = False
     legacy_phase: str | None = None
     legacy_conflicted_files: tuple[str, ...] = ()
@@ -407,12 +233,6 @@ class RebaseState(RalphBaseModel):
 
     @property
     def integration_unresolved(self) -> bool:
-        """Whether a durable integration outcome still blocks phase advancement.
-
-        Conflict resolution and retained crash-recovery records are both
-        unresolved integration ownership. Callers must fail closed rather than
-        materializing prompts, dispatching agents, or reporting success.
-        """
         return (
             self.last_outcome
             in (
@@ -431,7 +251,6 @@ class RebaseState(RalphBaseModel):
         )
 
     def set_recovery_record_retained(self, reason: StartupRetentionReason) -> Self:
-        """Retain the durable recovery record with a typed reason."""
         return self.model_copy(
             update={
                 "recovery_record_retained": True,
@@ -440,25 +259,11 @@ class RebaseState(RalphBaseModel):
         )
 
     def set_publication_decision(self, value: PublicationDecision) -> Self:
-        """Record the remote-publication authority's typed decision.
-
-        Single writer of :attr:`last_publication_decision`;
-        ``value`` must belong to the closed
-        :class:`PublicationDecision` vocabulary.
-        """
         if not isinstance(value, PublicationDecision):
             raise ValueError(f"invalid publication decision: {value!r}")
         return self.model_copy(update={"last_publication_decision": value.value})
 
     def set_fan_out_decision(self, value: FanOutDecision) -> Self:
-        """Record the fan-out authority's typed decision.
-
-        Single writer of :attr:`last_fan_out_decision`;
-        ``value`` must belong to the closed
-        :class:`FanOutDecision` vocabulary.
-        """
-        # Lazy import: _fan_out_authority imports PipelineState, which
-        # imports this module.
         from ralph.pipeline._fan_out_authority import FanOutDecision
 
         if not isinstance(value, FanOutDecision):
@@ -466,13 +271,6 @@ class RebaseState(RalphBaseModel):
         return self.model_copy(update={"last_fan_out_decision": value.value})
 
     def set_operation_display_state(self, value: OperationDisplayState) -> Self:
-        """Record the operator display state.
-
-        Single writer of :attr:`operation_display_state`;
-        ``value`` must belong to the closed
-        :class:`OperationDisplayState` vocabulary (legacy alias
-        strings are rejected).
-        """
         from ralph.display.auto_integrate_message import OperationDisplayState
 
         if not isinstance(value, OperationDisplayState):
@@ -480,7 +278,6 @@ class RebaseState(RalphBaseModel):
         return self.model_copy(update={"operation_display_state": value.value})
 
     def clear_recovery_record_retained(self) -> Self:
-        """Clear the retained-record fact and its typed reason together."""
         return self.model_copy(
             update={
                 "recovery_record_retained": False,
@@ -489,22 +286,6 @@ class RebaseState(RalphBaseModel):
         )
 
     def set_retry_deadline(self, value: float | None) -> Self:
-        """Record the typed persistent retry deadline.
-
-        Single writer of :attr:`retry_deadline`; ``value`` must be
-        ``float`` (monotonic seconds) or ``None`` to clear the
-        deadline. The reducer and the budget module both call this
-        setter instead of writing the field through ``model_copy``.
-
-        Non-finite values (``NaN``, positive/negative infinity) are
-        rejected because the action authority compares the deadline
-        against an injected clock with ``>=`` -- ``NaN`` and ``-inf``
-        would otherwise masquerade as a future deadline and authorise
-        a bounded wait for a deadline that cannot actually be
-        bounded. ``True``/``False`` are rejected because ``bool`` is
-        a subclass of ``int`` and would otherwise pass the type
-        check.
-        """
         if value is not None:
             if isinstance(value, bool) or not isinstance(value, (int, float)):
                 raise ValueError(f"invalid retry_deadline: {value!r}")
@@ -515,28 +296,6 @@ class RebaseState(RalphBaseModel):
         return self.model_copy(update={"retry_deadline": value})
 
     def record_consecutive_conflicts(self, value: int | None, cap: int | None = None) -> Self:
-        """Record the bounded consecutive-conflict counter.
-
-        Single writer of :attr:`consecutive_conflicts`; ``value`` is
-        clamped to ``[0, effective_cap]`` where ``effective_cap`` is
-        ``cap`` if supplied (clamped to >= 1), or
-        ``MAX_TRACKED_CONFLICT_ATTEMPTS`` by default.
-        This ensures that a caller that hands in a stale or oversized
-        count cannot push the ladder past the configured cap.
-        ``None`` is treated as 0.
-
-        The counter describes the REPOSITORY -- how many times this one
-        conflict has been observed unresolved -- and feeds the conflict
-        identity and the operator escalation. It is NOT an
-        agent-selection input: resolver eligibility is owned by
-        ``AgentFailureLedger``.
-        """
-        # Lazy import: auto_integrate_conflict_budget imports
-        # ``RebaseState`` only under ``TYPE_CHECKING``, but importing
-        # the constant eagerly here would force a real import cycle
-        # through ``rebase_state`` -> ``auto_integrate_conflict_budget``
-        # -> ``rebase_state`` at module load. Doing it inside the
-        # function body keeps the import graph clean.
         from ralph.pipeline.auto_integrate_conflict_budget import (
             MAX_TRACKED_CONFLICT_ATTEMPTS,
         )
@@ -547,19 +306,6 @@ class RebaseState(RalphBaseModel):
         return self.model_copy(update={"consecutive_conflicts": clamped})
 
     def advance_conflict_strategy(self, reason: str) -> Self:
-        """Advance the durable conflict-resolution ladder by one rung.
-
-        Single writer of :attr:`conflict_strategy_index`,
-        :attr:`conflict_strategies_tried`,
-        :attr:`resolution_exhausted`, and
-        :attr:`resolution_exhaustion_reason`. Appends the current
-        strategy with the supplied ``reason`` to the tried list,
-        increments the index modulo
-        :data:`CONFLICT_RESOLUTION_STRATEGIES`, and sets
-        ``resolution_exhausted=True`` once the cap is reached. The
-        exhaustion reason is the joined history of every tried
-        strategy.
-        """
         from ralph.pipeline.auto_integrate_resolution_state import (
             CONFLICT_RESOLUTION_STRATEGIES,
         )
@@ -581,13 +327,6 @@ class RebaseState(RalphBaseModel):
         )
 
     def project_conflict_strategy_from(self, source: RebaseState) -> Self:
-        """Project the conflict-strategy block one-way from ``source``.
-
-        Exact one-way projection of exactly four fields: index,
-        tried, exhausted, exhausted-reason. Used to copy a typed
-        prior's strategy block onto a new record without re-deriving
-        it from prose.
-        """
         return self.model_copy(
             update={
                 "conflict_strategy_index": source.conflict_strategy_index,
@@ -598,19 +337,6 @@ class RebaseState(RalphBaseModel):
         )
 
     def clear_conflict_strategy(self) -> Self:
-        """Reset the conflict-strategy block to its default values.
-
-        Single writer of the reset-to-default transition for the
-        same four fields owned by
-        :meth:`advance_conflict_strategy` and
-        :meth:`project_conflict_strategy_from`. Used by
-        :func:`reconcile_stale_unresolved_state` to release
-        persisted conflict evidence after a clean live inspection.
-        Two typed setters writing the same field are not a
-        multi-writer violation: they are distinct transitions
-        (advance / project / clear) over the same field, and every
-        other module reaches the field only through them.
-        """
         return self.model_copy(
             update={
                 "conflict_strategy_index": 0,
@@ -621,15 +347,6 @@ class RebaseState(RalphBaseModel):
         )
 
     def clear_resolution_exhausted(self) -> Self:
-        """Reset only the ``resolution_exhausted`` flag pair.
-
-        Single writer of the reset transition for the two
-        exhaustion fields when the strategy index and tried list
-        must be preserved. Used by
-        :func:`reconcile_stale_unresolved_state` to release
-        latched exhausted flags without losing the operator's
-        strategy history.
-        """
         return self.model_copy(
             update={
                 "resolution_exhausted": False,
@@ -638,26 +355,14 @@ class RebaseState(RalphBaseModel):
         )
 
     def set_ladder_escalation(self, reason: str) -> Self:
-        """Record a persistent autonomous ladder-escalation transition.
-
-        Single writer of the persistent :attr:`last_outcome` /
-        :attr:`last_reason` transition that signals the typed
-        :attr:`RebaseOutcomeKind.LADDER_ESCALATION` outcome: a spent
-        conflict cap or an exhausted resolution ladder routes to the
-        autonomous fallback ladder (rung 6 hard reset as the last
-        resort — never a person). ``reason`` names the next
-        autonomous ladder rung and the preserved copy's location.
-        """
         return self.model_copy(
             update={"last_outcome": RebaseOutcomeKind.LADDER_ESCALATION, "last_reason": reason}
         )
 
     def is_terminal_action(self) -> bool:
-        """Whether the last outcome kind is terminal."""
         return self.last_outcome is not None and self.last_outcome.is_terminal()
 
     def is_diagnostic_action(self) -> bool:
-        """Whether the last outcome kind represents an evidence diagnosis action."""
         return self.last_outcome in (
             RebaseOutcomeKind.DIAGNOSING,
             RebaseOutcomeKind.EVIDENCE_DIAGNOSIS,
@@ -665,34 +370,19 @@ class RebaseState(RalphBaseModel):
         )
 
     def is_rebasing_or_merging(self) -> bool:
-        """Whether the outcome is a rebase or merge."""
         return self.last_outcome in (RebaseOutcomeKind.REBASED, RebaseOutcomeKind.MERGED)
 
     def is_conflict_resolution(self) -> bool:
-        """Whether the outcome represents active conflict resolution."""
         return _is_conflict_resolution(self)
 
     def is_landing(self) -> bool:
-        """Whether the outcome represents a landing in progress or completed."""
         return _is_landing(self)
 
     def is_skipped(self) -> bool:
-        """Whether the outcome was skipped."""
         return self.last_outcome == RebaseOutcomeKind.SKIPPED
 
     @property
     def is_intervention_required(self) -> bool:
-        """Whether the boundary must not dispatch and an escalation owns the state.
-
-        The property names the ESCALATION, not a person: the durable
-        ``LADDER_ESCALATION`` outcome (a spent diagnostic budget or a
-        stale retained intent routed to the autonomous fallback ladder)
-        sets it, and the run loop's escalation machinery owns the state
-        from there. The retired ``INTERVENTION_REQUIRED`` /
-        ``DIAGNOSTIC_INTERVENTION_REQUIRED`` outcomes are legacy
-        checkpoint values only: they keep the flag for compatibility
-        with legacy checkpoints and never gate a live run.
-        """
         return self.last_outcome in (
             RebaseOutcomeKind.INTERVENTION_REQUIRED,
             RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
@@ -712,10 +402,6 @@ _OUTCOME_DISPLAY_MAP: dict[RebaseOutcomeKind, str] = {
     RebaseOutcomeKind.WAITING: "waiting",
     RebaseOutcomeKind.DIAGNOSING: "evidence_diagnosis",
     RebaseOutcomeKind.EVIDENCE_DIAGNOSIS: "evidence_diagnosis",
-    # The retired hand-off outcomes stay mapped for legacy-checkpoint
-    # parsing; the ladder escalation is the live autonomous
-    # continuation of evidence diagnosis (the reason names the next
-    # rung and the preserved copy's location).
     RebaseOutcomeKind.INTERVENTION_REQUIRED: "intervention_required",
     RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED: "intervention_required",
     RebaseOutcomeKind.LADDER_ESCALATION: "evidence_diagnosis",
@@ -723,10 +409,6 @@ _OUTCOME_DISPLAY_MAP: dict[RebaseOutcomeKind, str] = {
     RebaseOutcomeKind.COMPLETED: "terminal",
 }
 
-#: Publication decisions that keep the obligation open. The
-#: terminal decision (``publication_terminal``) is handled
-#: separately and is NOT in this set; the closed-obligation
-#: display state is "terminal", not "publishing".
 _PUBLISHING_DECISIONS: frozenset[str] = frozenset(
     {
         "publish_now",
@@ -738,14 +420,6 @@ _PUBLISHING_DECISIONS: frozenset[str] = frozenset(
 
 
 def _resolve_operation_display_state(rebase: RebaseState) -> str | None:
-    """Derive the eight-category display state from current authority outputs.
-
-    Pure: takes a :class:`RebaseState` snapshot and returns one of the
-    eight :class:`OperationDisplayState` values (or ``None`` when no
-    authority has reported yet). The function never infers a state
-    from prose alone; every branch reads a typed field whose owner
-    is a single authority.
-    """
     decision_state = _decision_display_state(rebase)
     if decision_state is not None:
         return decision_state

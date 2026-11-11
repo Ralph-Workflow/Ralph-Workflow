@@ -1,4 +1,3 @@
-"""First-run welcome banner and agent availability helper."""
 
 from __future__ import annotations
 
@@ -28,7 +27,6 @@ if TYPE_CHECKING:
 def _build_agent_availability_content(
     agent_registry: HasListAgents | None,
 ) -> list[RenderableType]:
-    """Build agent availability content or generic PATH message."""
     content: list[RenderableType] = []
     if agent_registry is not None:
         try:
@@ -50,7 +48,7 @@ def _build_agent_availability_content(
                     if install_url:
                         t.append(f" install: {install_url}", style="theme.text.muted")
                     avail_lines.append(t)
-                else:  # no_cmd
+                else:
                     t = Text(f"  • {label}: ")
                     t.append("⚠ missing (not on PATH)", style="theme.status.warning")
                     avail_lines.append(t)
@@ -59,10 +57,6 @@ def _build_agent_availability_content(
                 content.extend(avail_lines)
                 return content
         except Exception as exc:
-            # Non-fatal: the agent-availability check is best-effort so a
-            # broken agent registry or transient PATH scan failure does
-            # not block the welcome panel. Warn so the operator can
-            # investigate the failure without breaking the run.
             logger.warning(
                 "Agent availability check failed (non-fatal): {}. "
                 "Falling back to the generic PATH hint; check the agent "
@@ -76,7 +70,6 @@ def _build_agent_availability_content(
 
 
 def _build_regenerate_summary(results: list[BootstrapResult]) -> Text | None:
-    """Build summary text for regenerate operation showing backup info."""
     regenerated = [r for r in results if r.action == "regenerated"]
     if not regenerated:
         return None
@@ -93,7 +86,6 @@ def _build_regenerate_summary(results: list[BootstrapResult]) -> Text | None:
 
 
 def _partition_config_files(results: list[BootstrapResult]) -> tuple[list[str], list[str]]:
-    """Split created config file names into global and local display groups."""
     global_files: list[str] = []
     local_files: list[str] = []
     for result in results:
@@ -109,7 +101,6 @@ def _partition_config_files(results: list[BootstrapResult]) -> tuple[list[str], 
 
 
 def _append_file_section(content: list[RenderableType], heading: str, files: list[str]) -> None:
-    """Append a headed bullet list of config files when present."""
     if not files:
         return
     content.append(Text(heading, style="theme.banner.title"))
@@ -117,7 +108,6 @@ def _append_file_section(content: list[RenderableType], heading: str, files: lis
 
 
 def _build_next_steps_text() -> Text:
-    """Build the welcome panel next-steps block."""
     next_steps = Text("Next steps:\n", style="theme.banner.title")
     lines = welcome_panel_next_steps()
     for index, line in enumerate(lines, start=1):
@@ -137,18 +127,6 @@ def emit_first_run_welcome(
     is_regenerate: bool = False,
     display_context: DisplayContext,
 ) -> None:
-    """Print a structured first-run welcome panel.
-
-    Args:
-        results: Bootstrap results from a bootstrap operation.
-        agent_registry: Optional agent registry for availability checking.
-        newly_enabled: Agents automatically enabled because their CLI was found on PATH.
-        rewired: Default chains replaced with a detected agent because Claude is absent.
-        autowire_outcome: Why safe autowiring deliberately left chains unchanged.
-        is_regenerate: Whether this is a regenerate (--regenerate-config) operation.
-        display_context: Display context for adaptive layout (required).
-            The banner and panel are both emitted on ``display_context.console``.
-    """
     if all(r.action == "skipped" for r in results):
         return
 
@@ -188,13 +166,13 @@ def emit_first_run_welcome(
     )
     content.append(docs_line2)
 
-    content.append(Text())  # blank line
+    content.append(Text())
 
     if is_regenerate:
         summary = _build_regenerate_summary(results)
         if summary:
             content.append(summary)
-            content.append(Text())  # blank line
+            content.append(Text())
 
     if newly_enabled:
         content.append(
@@ -227,8 +205,7 @@ def emit_first_run_welcome(
 
     content.append(Text(ERROR_REPORTING_DISCLOSURE, style="theme.text.muted"))
 
-    # Star CTA — highest-leverage conversion from install → repo adoption
-    content.append(Text())  # blank line
+    content.append(Text())
     content.append(Text(GITHUB_STAR_CTA, style="theme.status.warning"))
 
     display.emit_first_run_panel(content)

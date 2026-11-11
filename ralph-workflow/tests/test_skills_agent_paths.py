@@ -1,5 +1,3 @@
-"""Black-box tests for ralph.skills._agent_paths registry."""
-
 from __future__ import annotations
 
 from dataclasses import fields
@@ -34,7 +32,6 @@ def test_sibling_agents_exclude_canonical() -> None:
 def test_agent_skill_root_paths_use_home_dir(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Path.home() must be re-resolved on every call so monkeypatch works."""
     fake_home = tmp_path / "fake-home"
     fake_home.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("HOME", str(fake_home))
@@ -67,13 +64,6 @@ def test_sibling_root_count_matches_supported_agents_minus_canonical() -> None:
 
 
 def test_agent_skill_roots_excludes_project_local_roots() -> None:
-    """Registry must cover USER-GLOBAL roots only. No project-relative or absolute segments.
-
-    A future maintainer who wants to add a project-local root (e.g.
-    ``./.opencode/skills/``) must add an explicit test that documents the new
-    invariant and the supported-agent lookup semantics. Do NOT silently add
-    a project-local root here.
-    """
     for entry in agent_skill_roots():
         for segment in entry.path_segments:
             assert segment, f"empty path segment in {entry.agent}: {entry.path_segments!r}"
@@ -97,10 +87,7 @@ def test_agent_skill_roots_returns_six_total_entries() -> None:
 
 def test_agent_skill_root_dataclass_is_frozen() -> None:
     canonical = canonical_agent_skill_root()
-    # A frozen dataclass stores its frozen-ness via __dataclass_params__.
     assert canonical.__dataclass_params__.frozen is True
-    # Confirm the field set is exactly what we declared; mutation would be the
-    # failure mode the frozen flag protects against.
     assert {f.name for f in fields(canonical)} == {
         "agent",
         "path_segments",

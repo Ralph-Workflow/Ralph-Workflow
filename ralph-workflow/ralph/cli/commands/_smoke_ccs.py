@@ -1,24 +1,3 @@
-"""CCS (Claude Code Switch) smoke command implementation.
-
-Extracted from :mod:`ralph.cli.commands.smoke` so the main smoke module
-can stay under the 1000-line audit cap (see
-:mod:`ralph.testing.audit_repo_structure`), mirroring the
-``_smoke_opencode_override.py`` split for the OpenCode binary-override
-helpers.
-
-Dependencies that a test needs to override (``resolve_workspace_scope``,
-``load_config``, ``AgentRegistry``) are accessed through their owning
-PUBLIC module objects (``ralph.workspace.scope``, ``ralph.config.loader``,
-``ralph.agents.registry``) rather than imported as bare names, so tests
-can ``monkeypatch.setattr`` those canonical public modules directly --
-the repo-structure audit forbids test files from importing this private
-``_``-prefixed submodule. ``smoke_harness_agent_command`` is imported
-lazily (inside the function body, not at module level) from ``smoke.py``
-because ``smoke.py`` imports this module at its own module level -- a
-module-level import back would be circular; tests patch that one seam on
-``ralph.cli.commands.smoke`` instead, exactly as they already do for the
-AGY / Cursor / Nanocoder commands that still live directly in ``smoke.py``.
-"""
 
 from __future__ import annotations
 
@@ -53,22 +32,6 @@ def smoke_interactive_ccs_command(
     subagent_prompt_file: Path | None = None,
     multimodal: bool = False,
 ) -> int:
-    """Run the manual smoke harness for a CCS (Claude Code Switch) alias.
-
-    The alias follows the dynamic ``ccs/<alias>`` pattern; the command builder strips the leading ``ccs/`` and
-    passes ``<alias>`` to the configured ``ccs`` wrapper as
-    ``ccs <alias> --print --output-format=stream-json ...`` (headless
-    Claude flags -- see :class:`ralph.config.ccs_config.CcsConfig`).
-    Without ``--agent``, the effective agents policy's ``development`` drain
-    selects the first CCS alias. ``ccs/<alias>`` resolves even without a ``[ccs_aliases]`` config
-    entry (the registry synthesizes ``cmd="ccs <alias>"`` dynamically),
-    so this command only rejects aliases that resolve to a non-CCS
-    command, not aliases missing from config.
-
-    Like every other ``smoke-interactive-*`` command this consumes live
-    tokens and is therefore OUTSIDE ``make verify``; it only runs when
-    an operator invokes it.
-    """
     if shutil.which("ccs") is None:
         logger.error(
             "ccs binary not found. Install Claude Code Switch (CCS) and ensure `ccs` is on PATH."

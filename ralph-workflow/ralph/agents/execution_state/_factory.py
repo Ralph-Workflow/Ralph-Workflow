@@ -1,4 +1,3 @@
-"""Transport-keyed strategy resolution."""
 
 from __future__ import annotations
 

@@ -1,12 +1,3 @@
-"""Drift guard for the linting policy's per-file-ignores inventory.
-
-``docs/ralph-workflow-policy/linting-policy.md`` claims its
-``RALPH-FACT: excluded_paths`` line is "the complete inventory of keys" for
-``[tool.ruff.lint.per-file-ignores]``. That claim silently rotted twice: two
-keys added to ``pyproject.toml`` were never recorded. The shipped file
-contents ARE the contract here, so both files are read as-is.
-"""
-
 from __future__ import annotations
 
 import tomllib
@@ -45,7 +36,6 @@ def _inventory_line() -> str:
 
 
 def test_every_per_file_ignore_key_is_recorded_in_the_policy_inventory() -> None:
-    """The documented inventory must name every pyproject per-file-ignores key."""
     line = _inventory_line()
     missing = [key for key in _per_file_ignore_keys() if f"`{key}`" not in line]
     assert missing == [], f"per-file-ignores keys absent from the documented inventory: {missing}"

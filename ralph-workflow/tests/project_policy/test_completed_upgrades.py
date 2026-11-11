@@ -1,17 +1,3 @@
-"""Tests proving completed v4 and v5 policy pack upgrades to schema v6 under simulated remediation.
-
-Proves:
-1. An authentic v4 policy pack upgrades to v6 invariants (marker, 7-column header,
-   execution-kernel.md, and portfolio v3) under simulated remediation.
-2. An authentic v5 policy pack upgrades to v6 invariants (marker, 7-column header,
-   and portfolio v3) under simulated remediation.
-3. The upgrade consent flow executes exactly once: subsequent preflight or upgrade checks
-   detect no outdated files, prompt zero times, and leave the workspace unchanged.
-4. Simulated-remediation scope: verifies interactive upgrade consent, simulates
-   completed remediation agent output on disk, validates post-remediation READY
-   status, and confirms subsequent runs never re-prompt.
-"""
-
 from __future__ import annotations
 
 import re
@@ -34,8 +20,6 @@ from tests.project_policy.authentic_v4_data import V4_PORTFOLIO, V4_STARTERS
 
 
 class _Selector:
-    """Scripted select seam: records prompts and returns each queued answer in order."""
-
     def __init__(self, *answers: str) -> None:
         self._answers = list(answers)
         self.questions: list[str] = []
@@ -61,7 +45,6 @@ class _Selector:
 
 
 def _clean_v4_starter_prose(body: str) -> str:
-    """Resolve placeholders and strip starter banners for authentic v4 files."""
     body = re.sub(r"<!--\s*RALPH-STARTER-TEMPLATE:.*?-->\s*", "", body, flags=re.DOTALL)
     body = re.sub(r"<!--\s*REPLACE-ME:.*?-->\s*", "", body, flags=re.DOTALL)
     body = re.sub(r"RALPH-COMMAND:\s*PROJECT-FACT-UNRESOLVED", "RALPH-COMMAND: make test", body)
@@ -73,7 +56,6 @@ def _clean_v4_starter_prose(body: str) -> str:
 
 
 def _build_unmodified_v4_pack() -> MemoryWorkspace:
-    """Build a MemoryWorkspace with authentic v4 starters and v1 portfolio."""
     ws = MemoryWorkspace()
     for name in markers.core_files_for_version("v4"):
         raw_body = V4_STARTERS[name]
@@ -93,7 +75,6 @@ def _build_unmodified_v4_pack() -> MemoryWorkspace:
 
 
 def _clean_v5_starter_prose(body: str) -> str:
-    """Adapt bundled starters into authentic unfrozen v5 policy files."""
     body = re.sub(r"<!--\s*RALPH-STARTER-TEMPLATE:.*?-->\s*", "", body, flags=re.DOTALL)
     body = re.sub(r"<!--\s*REPLACE-ME:.*?-->\s*", "", body, flags=re.DOTALL)
     body = re.sub(r"RALPH-COMMAND:\s*PROJECT-FACT-UNRESOLVED", "RALPH-COMMAND: make test", body)
@@ -117,7 +98,6 @@ def _clean_v5_starter_prose(body: str) -> str:
 
 
 def _build_unmodified_v5_pack() -> MemoryWorkspace:
-    """Build a MemoryWorkspace with authentic unfrozen v5 starters and v2 portfolio."""
     ws = MemoryWorkspace()
     for name in markers.CORE_POLICY_FILES:
         raw_body = starters.read_starter(name)
@@ -141,7 +121,6 @@ def _build_unmodified_v5_pack() -> MemoryWorkspace:
 
 
 def _clean_v6_starter_prose(body: str) -> str:
-    """Resolve starter template prose into compliant v6 content."""
     body = re.sub(r"<!--\s*RALPH-STARTER-TEMPLATE:.*?-->\s*", "", body, flags=re.DOTALL)
     body = re.sub(r"<!--\s*REPLACE-ME:.*?-->\s*", "", body, flags=re.DOTALL)
     body = re.sub(r"RALPH-COMMAND:\s*PROJECT-FACT-UNRESOLVED", "RALPH-COMMAND: make test", body)
@@ -154,7 +133,6 @@ def _clean_v6_starter_prose(body: str) -> str:
 
 
 def _apply_v6_upgrade(ws: MemoryWorkspace) -> None:
-    """Simulate completed remediation agent output on disk across core files and portfolio."""
     for name in markers.CORE_POLICY_FILES:
         body = starters.read_starter(name)
         cleaned = _clean_v6_starter_prose(body)
@@ -167,7 +145,6 @@ def _apply_v6_upgrade(ws: MemoryWorkspace) -> None:
 
 
 def _assert_pack_is_fully_v6(ws: MemoryWorkspace) -> None:
-    """Assert all structural invariants of a fully upgraded v6 policy pack."""
     for name in markers.CORE_POLICY_FILES:
         path = f"{markers.CANONICAL_DIR}{name}"
         assert ws.exists(path), f"Core file {name} missing after upgrade"
@@ -201,22 +178,10 @@ def _assert_pack_is_fully_v6(ws: MemoryWorkspace) -> None:
 
 
 def test_v4_pack_upgrade_consent_and_post_remediation_invariants_hold_once() -> None:
-    """Proves v4 upgrade consent and structural v6 readiness under simulated remediation.
-
-    Demonstrates:
-    1. An unmodified v4 pack requires remediation before upgrade.
-    2. Interactive consent via maybe_resolve_schema_upgrade confirms upgrade (returns True).
-    3. Preflight produces remediation-required status targeting outdated schema/portfolio.
-    4. Once upgraded to v6 format (simulating completed remediation agent output on disk),
-       all v6 structural invariants hold and readiness validates cleanly.
-    5. A subsequent preflight check never re-prompts (selector is never invoked),
-       proving the upgrade consent flow executes exactly once.
-    """
     ws = _build_unmodified_v4_pack()
     stack = ProjectStack(primary_language="Python")
     emitted: list[str] = []
 
-    # Before upgrade: preflight requires remediation due to outdated schema/portfolio
     pre_result = preflight.run_policy_readiness_preflight(ws, stack)
     assert pre_result.requires_remediation()
     assert any(
@@ -225,7 +190,6 @@ def test_v4_pack_upgrade_consent_and_post_remediation_invariants_hold_once() -> 
         for f in pre_result.findings
     ), f"Expected schema/portfolio findings in v4 preflight; got: {pre_result.findings}"
 
-    # Step 1: Maybe-resolve asks for upgrade choice and records user consent
     first_selector = _Selector("upgrade")
     first_resolved = maybe_resolve_schema_upgrade(
         ws,
@@ -236,12 +200,10 @@ def test_v4_pack_upgrade_consent_and_post_remediation_invariants_hold_once() -> 
     assert first_resolved is True
     assert first_selector.call_count == 1
 
-    # Step 2: Simulate completed remediation output on disk
     _apply_v6_upgrade(ws)
     _assert_pack_is_fully_v6(ws)
 
-    # Step 3: Second preflight check must not prompt, passes readiness cleanly
-    second_selector = _Selector()  # raises if invoked
+    second_selector = _Selector()
     second_resolved = maybe_resolve_schema_upgrade(
         ws,
         emitted.append,
@@ -257,22 +219,10 @@ def test_v4_pack_upgrade_consent_and_post_remediation_invariants_hold_once() -> 
 
 
 def test_v5_pack_upgrade_consent_and_post_remediation_invariants_hold_once() -> None:
-    """Proves v5 upgrade consent and structural v6 readiness under simulated remediation.
-
-    Demonstrates:
-    1. An unmodified v5 pack requires remediation before upgrade (6-column header, portfolio v2).
-    2. Interactive consent via maybe_resolve_schema_upgrade confirms upgrade (returns True).
-    3. Preflight produces remediation-required status targeting v5-to-v6 differences.
-    4. Once upgraded to v6 format (simulating completed remediation agent output on disk),
-       all v6 structural invariants hold and readiness validates cleanly.
-    5. A subsequent preflight check never re-prompts (selector is never invoked),
-       proving the upgrade consent flow executes exactly once.
-    """
     ws = _build_unmodified_v5_pack()
     stack = ProjectStack(primary_language="Python")
     emitted: list[str] = []
 
-    # Before upgrade: preflight requires remediation due to v5 header/portfolio
     pre_result = preflight.run_policy_readiness_preflight(ws, stack)
     assert pre_result.requires_remediation()
     assert any(
@@ -282,7 +232,6 @@ def test_v5_pack_upgrade_consent_and_post_remediation_invariants_hold_once() -> 
         for f in pre_result.findings
     ), f"Expected inventory/portfolio findings in v5 preflight; got: {pre_result.findings}"
 
-    # Step 1: Maybe-resolve asks for upgrade choice and records user consent
     first_selector = _Selector("upgrade")
     first_resolved = maybe_resolve_schema_upgrade(
         ws,
@@ -293,12 +242,10 @@ def test_v5_pack_upgrade_consent_and_post_remediation_invariants_hold_once() -> 
     assert first_resolved is True
     assert first_selector.call_count == 1
 
-    # Step 2: Simulate completed remediation output on disk
     _apply_v6_upgrade(ws)
     _assert_pack_is_fully_v6(ws)
 
-    # Step 3: Second preflight check must not prompt, passes readiness cleanly
-    second_selector = _Selector()  # raises if invoked
+    second_selector = _Selector()
     second_resolved = maybe_resolve_schema_upgrade(
         ws,
         emitted.append,
@@ -315,7 +262,6 @@ def test_v5_pack_upgrade_consent_and_post_remediation_invariants_hold_once() -> 
 
 @pytest.mark.parametrize("version", ["v4", "v5"])
 def test_upgrade_spec_matrix_invariants(version: str) -> None:
-    """Before upgrade, spec matches v4/v5; after upgrade, matches v6."""
     pre_spec = markers.spec_for_version(version)
     assert pre_spec.version == version
 
@@ -329,7 +275,6 @@ def test_upgrade_spec_matrix_invariants(version: str) -> None:
         assert len(pre_spec.guard_inventory_header) == 6
         assert pre_spec.portfolio_schema_version == ("v2",)
 
-    # Post-upgrade target spec
     v6_spec = markers.spec_for_version("v6")
     assert v6_spec.version == "v6"
     assert len(v6_spec.core_manifest) == 12

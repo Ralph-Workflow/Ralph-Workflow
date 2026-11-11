@@ -1,9 +1,3 @@
-"""Tests for budget_caps seeding in PipelineState initial construction.
-
-Asserts that _create_initial_state seeds budget_caps from policy-declared
-budget_counters using their default_max values and counter_overrides.
-"""
-
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -76,7 +70,6 @@ class TestBudgetCapsSeeding:
         assert state.budget_caps["attempts"] == _CUSTOM_MAX
 
     def test_budget_counter_config_requires_explicit_default_max(self) -> None:
-        """BudgetCounterConfig must be constructed with explicit default_max."""
         with pytest.raises((ValidationError, TypeError)):
             BudgetCounterConfig()
 

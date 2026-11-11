@@ -1,4 +1,3 @@
-"""Phase-level validation helpers for policy completeness checks."""
 
 from __future__ import annotations
 
@@ -99,23 +98,12 @@ COMMIT_REVIEW_REJECTION_COUNTER = "commit_review_rejections"
 
 
 def _resets_rejection_counter(loop_resets: object) -> bool:
-    """Return whether *loop_resets* lists the commit-review rejection counter."""
     if not isinstance(loop_resets, (list, tuple)):
         return False
     return COMMIT_REVIEW_REJECTION_COUNTER in loop_resets
 
 
 def _validate_rejection_counter_not_reset(policy: object, errors: list[str]) -> None:
-    """The rejection counter must survive every loop reset in the policy.
-
-    ``commit_review_rejections`` bounds the commit-review rejection loop, so
-    any ``loop_resets`` list that names it would silently zero the counter
-    and let the run reject forever. A commit phase's ``commit_policy`` is
-    checked by :func:`_validate_commit_phase_loop_resets`; this helper covers
-    the remaining reset sites: group blocks (whose ``loop_resets`` become the
-    compiled lifecycle phase's ``loop_resets``) and any other phase that
-    carries a ``commit_policy``.
-    """
     if not isinstance(policy, PipelinePolicy):
         return
 
@@ -340,7 +328,6 @@ def _validate_loop_policy_role(
 
 
 def _phases_reachable_via_success(policy: PipelinePolicy, start: str) -> set[str]:
-    """Collect phases reachable from *start* via ``on_success`` transitions only."""
     visited: set[str] = set()
     queue: list[str] = [start]
     while queue:
@@ -360,7 +347,6 @@ def _validate_invocation_gate(
     policy: PipelinePolicy,
     errors: list[str],
 ) -> None:
-    """Validate an analysis phase's optional invocation_gate declaration."""
     gate = phase_def.invocation_gate
     if gate is None:
         return

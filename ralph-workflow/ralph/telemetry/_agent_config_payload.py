@@ -1,12 +1,3 @@
-"""Privacy-bounded snapshot of the resolved ``[agents.*]`` configuration.
-
-Reduces the loaded agent table to metadata only: closed-vocabulary transports,
-the model identifier, and booleans recording WHICH flags are set. The
-user-authored agent names (dict keys), the raw ``cmd`` string, and every flag
-VALUE are dropped here and never reach the transport layer — ``cmd`` can embed
-absolute paths, wrapper scripts, or env prefixes, so it is reduced to a known
-binary name or ``custom``.
-"""
 
 from __future__ import annotations
 
@@ -20,7 +11,6 @@ if TYPE_CHECKING:
 
     from ralph.config.agent_config import AgentConfig
 
-# Static dispatch table (all-static keys): transport value -> coarse family.
 AGENT_FAMILY_BY_TRANSPORT: dict[str, str] = {
     AgentTransport.CLAUDE.value: "claude",
     AgentTransport.CLAUDE_INTERACTIVE.value: "claude_interactive",
@@ -34,32 +24,14 @@ AGENT_FAMILY_BY_TRANSPORT: dict[str, str] = {
     AgentTransport.GENERIC.value: "custom",
 }
 
-# Only these binary names survive the ``cmd`` reduction. Anything else — a
-# wrapper script, an absolute path, a user-authored launcher — collapses to
-# ``custom`` so no filesystem or tooling identity leaves the process.
 _KNOWN_AGENT_BINARIES: frozenset[str] = frozenset(
     {"claude", "codex", "opencode", "nanocoder", "agy", "pi", "cursor", "kimi"}
 )
 
-# Caps the forwarded entry count so a pathological config cannot inflate the
-# event payload. The true size is still reported via ``agent_count``.
 AGENT_CONFIG_MAX_ENTRIES: int = 32
 
 _CUSTOM: str = "custom"
 
-# ``model`` is forwarded verbatim because a model IDENTIFIER is a product
-# identifier, not PII. But the field is free text: local-model and proxy
-# workflows (ollama, llama.cpp, vLLM, LiteLLM) legitimately put a filesystem
-# path or a credentialed endpoint URL there — e.g.
-# ``/home/jane/acme/secret-ft.gguf`` or ``http://user:pw@llm.internal/v1/m``.
-# Those are exactly the paths and secrets the metadata-only contract forbids,
-# and the ``before_send`` prefix scrubber cannot neutralize them (it only
-# rewrites the home/cwd/argv PREFIX, leaving the rest of the path intact).
-#
-# So a model string is forwarded only when it LOOKS like an identifier: dotted /
-# hyphenated segments, at most two ``/`` separators (``vendor/family/name``),
-# and no scheme, credential, whitespace, or backslash. Anything else — every
-# absolute path and every URL — collapses to ``custom``.
 _MODEL_ID_RE: re.Pattern[str] = re.compile(
     r"^[A-Za-z0-9][A-Za-z0-9._:+-]*(?:/[A-Za-z0-9._:+-]+){0,2}$"
 )
@@ -67,7 +39,6 @@ _MODEL_ID_MAX_LEN: int = 96
 
 
 def _binary_name(cmd: str) -> str:
-    """Reduce a ``cmd`` string to a known agent binary name, else ``custom``."""
     parts = cmd.split()
     if not parts:
         return _CUSTOM
@@ -76,11 +47,6 @@ def _binary_name(cmd: str) -> str:
 
 
 def _safe_model(model: str | None) -> str | None:
-    """Forward a model IDENTIFIER; collapse a path/URL/free-text value to ``custom``.
-
-    Returns ``None`` when no model is configured, so ``model is None`` stays
-    distinguishable from "a model was set but it was not an identifier".
-    """
     if model is None:
         return None
     candidate = model.strip()
@@ -92,7 +58,6 @@ def _safe_model(model: str | None) -> str | None:
 
 
 def _transport_value(agent: AgentConfig) -> str:
-    """Return the agent's transport as its raw enum value, or ``generic``."""
     transport = agent.transport
     if isinstance(transport, AgentTransport):
         return transport.value
@@ -100,7 +65,6 @@ def _transport_value(agent: AgentConfig) -> str:
 
 
 def _flags_present(agent: AgentConfig) -> dict[str, bool]:
-    """Record WHICH invocation flags are configured, never their values."""
     return {
         "output_flag": agent.output_flag is not None,
         "yolo_flag": agent.yolo_flag is not None,
@@ -113,7 +77,6 @@ def _flags_present(agent: AgentConfig) -> dict[str, bool]:
 
 
 def _unique_slug(family: str, taken: Mapping[str, object]) -> str:
-    """Derive a stable, name-free key: the family, suffixed on collision."""
     if family not in taken:
         return family
     index = 2
@@ -123,19 +86,11 @@ def _unique_slug(family: str, taken: Mapping[str, object]) -> str:
 
 
 def build_agent_config_payload(agents: Mapping[str, AgentConfig]) -> dict[str, object]:
-    """Build the metadata-only ``agent_config`` context payload.
-
-    The mapping's keys are user-authored agent names and are deliberately
-    discarded: each entry is re-keyed by its transport-derived family, with a
-    numeric suffix on collision.
-    """
     entries: dict[str, object] = {}
     families: set[str] = set()
     total = len(agents)
     configured = list(agents.values())
 
-    # Families are summarized over EVERY agent, not just the forwarded ones, so
-    # the tag stays accurate for a config larger than the entry cap.
     for agent in configured:
         families.add(AGENT_FAMILY_BY_TRANSPORT.get(_transport_value(agent), _CUSTOM))
 

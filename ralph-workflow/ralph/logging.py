@@ -1,19 +1,3 @@
-"""Logging configuration for Ralph Workflow.
-
-This module configures loguru for structured logging throughout the Ralph Workflow CLI.
-Log levels map to verbosity as follows::
-
-    0 (QUIET)  -> ERROR only
-    1 (NORMAL) -> WARNING
-    2 (VERBOSE) -> INFO
-    3 (FULL)   -> DEBUG
-    4+ (DEBUG) -> TRACE
-
-Custom levels registered on first configure_logging() call::
-
-    SUCCESS (25): between INFO (20) and WARNING (30)
-    MILESTONE (35): between WARNING (30) and ERROR (40)
-"""
 
 from __future__ import annotations
 
@@ -31,14 +15,6 @@ if TYPE_CHECKING:
     from loguru import Logger
 
     class SinkAdder(Protocol):
-        """Structural seam that mirrors ``loguru.Logger.add``.
-
-        Tests substitute a recording fake implementing this protocol
-        (a callable accepting a sink target plus arbitrary kwargs and
-        returning a synthetic ``int`` sink id) so the buffering
-        invariant can be asserted without doing any real loguru file
-        I/O.  Production code binds the actual ``logger.add`` here.
-        """
 
         def __call__(self, target: object, /, **kwargs: object) -> int: ...
 
@@ -46,18 +22,8 @@ if TYPE_CHECKING:
 from .logging_models import LoggingConfig, LoggingPaths, LoggingSession
 from .logging_worker_sink import WorkerSinkHandle, bind_worker_sink, remove_worker_sink
 
-#: Block-buffer size for file sinks. loguru's FileSink defaults to
-#: ``buffering=1`` (line-buffered) which causes one OS write per log
-#: record -- and therefore one fsevents notification per record --
-#: at verbose levels. ``buffering=8192`` amortizes writes (and the
-#: fsevents they generate) across ~8 KB of records, matching the
-#: already-buffered ralph.jsonl sink and the worker sink. Records
-#: are flushed on buffer full, on rotation, and on sink close at
-#: process teardown so no record is lost; ``tail -f`` sees records
-#: in bursts (deliberate tradeoff for fseventsd amortization).
 _FILE_SINK_BUFFER_BYTES: int = 8192
 
-# Verbosity level to loguru minimum level
 _VERBOSITY_LEVELS = {
     0: "ERROR",
     1: "WARNING",
@@ -91,40 +57,6 @@ def configure_logging(
     console_sink: Callable[[str], None] | None = None,
     sink_adder: SinkAdder | None = None,
 ) -> LoggingSession:
-    """Configure loguru for Ralph Workflow CLI output.
-
-    Removes the default handler and adds a new handler with formatting
-    based on verbosity level. Higher verbosity shows more detail.
-
-    Args:
-        verbosity: Verbosity level (0=quiet/errors only, 1=normal, 2=verbose,
-            3=debug, 4+=trace).
-        log_directory: Optional base directory for file logging.
-        run_id: Optional run identifier for per-run log directories.
-        structured: Whether to emit JSON structured logs.
-        rotation: Optional loguru rotation policy for file handlers.
-        retention: Optional loguru retention policy for rotated file handlers.
-        console_sink: Optional callable that replaces the terminal
-            ``logger.add`` sink. When ``None`` (default) the
-            library/worker fallback ``make_stderr_log_sink`` is used,
-            which strips terminal-control constructs before writing
-            to the process error stream. Pass
-            ``make_sanitizing_log_sink(ctx)`` from the CLI to route
-            through the rich ``DisplayContext`` ``Console`` instead
-            (so the rich Live status bar is the single painter of
-            the terminal).
-        sink_adder: Optional callable that replaces ``loguru.logger.add``
-            for file-sink wiring. Defaults to ``logger.add`` (production).
-            Tests inject a recording fake to assert that both engine
-            file sinks receive ``buffering=8192`` without doing any
-            real loguru file I/O. The console/stderr callable sink
-            is wired through ``logger.add`` directly and is NOT
-            routed through this seam (callable sinks are not file
-            sinks and so are not subject to the buffering invariant).
-
-    Returns:
-        Logging session with resolved paths and bound logger helpers.
-    """
     config = LoggingConfig(
         verbosity=verbosity,
         log_directory=Path(log_directory) if log_directory is not None else None,
@@ -181,32 +113,6 @@ def _configure_file_handlers(
     *,
     sink_adder: SinkAdder | None = None,
 ) -> LoggingPaths:
-    """Wire the engine file sinks for a configured logging session.
-
-    Both engine file sinks (the always-on ``ralph.log`` text sink and
-    the optional ``ralph.jsonl`` structured sink) are routed through
-    :func:`_add_buffered_file_sink` so they share one sink-adder
-    seam AND one explicit ``buffering=8192`` invariant. loguru's
-    ``FileSink`` defaults to ``buffering=1`` (line-buffered) which
-    produces one OS write per record -- and therefore one fsevents
-    notification per record -- at verbose levels. The 8 KB buffer
-    amortizes writes (and fsevents) across many records, matching
-    the buffering already in place for the worker sink. Records are
-    flushed on buffer full, on rotation, and on sink close at
-    process teardown so no record is lost.
-
-    Args:
-        config: The :class:`LoggingConfig` resolved by the caller.
-        level: The minimum loguru level name (e.g. ``"DEBUG"``) to
-            apply to the file sinks.
-        sink_adder: Optional override of ``loguru.logger.add`` used
-            ONLY for the file sinks. Defaults to ``logger.add``.
-            Tests inject a recording fake to assert the buffering
-            invariant without doing real file I/O. The console
-            callable sink wired by ``configure_logging`` is NOT
-            routed through this seam (callable sinks are not file
-            sinks).
-    """
     log_directory = config.log_directory
     if log_directory is None:
         return LoggingPaths(
@@ -220,7 +126,7 @@ def _configure_file_handlers(
 
     adder: SinkAdder = (
         sink_adder if sink_adder is not None else cast("SinkAdder", logger.add)
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
 
     text_log_path = run_directory / "ralph.log"
     _add_buffered_file_sink(
@@ -258,30 +164,6 @@ def _configure_file_handlers(
 
 
 def _add_buffered_file_sink(adder: SinkAdder, path: Path, **kwargs: object) -> int:
-    """Add a block-buffered (buffering=8192) loguru file sink.
-
-    Centralizes the buffering invariant for every file sink in
-    ``ralph/logging.py``. ``ralph.jsonl`` and ``ralph.log`` MUST both
-    pass through this helper so a future refactor cannot regress the
-    buffering property -- the matching AST drift audit
-    (``ralph.testing.audit_log_sink_buffering``) parses
-    ``ralph/logging.py`` and rejects any ``logger.add(<file-path>,
-    ...)`` that omits an explicit positive ``buffering`` kwarg.
-
-    Args:
-        adder: The sink-adder callable (defaults to ``logger.add``
-            in production; tests substitute a recording fake).
-        path: The filesystem path of the file sink.
-        **kwargs: Extra kwargs forwarded verbatim to ``adder`` (the
-            loguru ``logger.add`` kwargs -- level, format,
-            colorize, backtrace, diagnose, serialize, rotation,
-            filter, etc.). ``buffering`` MUST NOT be passed by the
-            caller; this helper always sets it.
-
-    Returns:
-        The sink id returned by ``adder`` (the ``logger.add``
-            int sink-id used to later ``logger.remove(sink_id)``).
-    """
     if "buffering" in kwargs:
         raise TypeError(
             "_add_buffered_file_sink sets buffering=8192 internally;"
@@ -291,32 +173,15 @@ def _add_buffered_file_sink(adder: SinkAdder, path: Path, **kwargs: object) -> i
 
 
 def get_logger() -> Logger:
-    """Get the configured ralph logger.
-
-    Returns:
-        The loguru logger instance.
-    """
     return logger
 
 
 class RalphLogger:
-    """Structured logger for Ralph Workflow pipeline events.
-
-    This class provides convenient methods for common logging scenarios
-    in the Ralph Workflow pipeline.
-    """
 
     def __init__(self, base_logger: Logger | None = None) -> None:
-        """Initialize the Ralph Workflow logger."""
         self._logger: Logger = base_logger if base_logger is not None else logger
 
     def phase_start(self, phase: str, drain: str) -> None:
-        """Log the start of a pipeline phase.
-
-        Args:
-            phase: Phase name.
-            drain: Drain name.
-        """
         self._logger.bind(event="phase_start", phase=phase, drain=drain).info(
             "Starting phase '{phase}' on drain '{drain}'",
             phase=phase,
@@ -324,12 +189,6 @@ class RalphLogger:
         )
 
     def phase_complete(self, phase: str, drain: str) -> None:
-        """Log the completion of a pipeline phase.
-
-        Args:
-            phase: Phase name.
-            drain: Drain name.
-        """
         self._logger.bind(event="phase_complete", phase=phase, drain=drain).info(
             "Completed phase '{phase}' on drain '{drain}'",
             phase=phase,
@@ -337,12 +196,6 @@ class RalphLogger:
         )
 
     def agent_invoked(self, agent_name: str, drain: str) -> None:
-        """Log agent invocation.
-
-        Args:
-            agent_name: Name of the agent being invoked.
-            drain: Drain name.
-        """
         self._logger.bind(event="agent_invoked", agent=agent_name, drain=drain).debug(
             "Invoking agent '{agent}' for drain '{drain}'",
             agent=agent_name,
@@ -350,12 +203,6 @@ class RalphLogger:
         )
 
     def agent_output(self, drain: str, line: str) -> None:
-        """Log agent output line.
-
-        Args:
-            drain: Drain name.
-            line: Output line from agent.
-        """
         self._logger.bind(event="agent_output", drain=drain).debug(
             "agent_output | drain={drain} | line={line}",
             drain=drain,
@@ -363,53 +210,27 @@ class RalphLogger:
         )
 
     def checkpoint_saved(self, path: str) -> None:
-        """Log checkpoint save.
-
-        Args:
-            path: Path to checkpoint file.
-        """
         self._logger.bind(event="checkpoint_saved", path=path).debug(
             "Checkpoint saved to '{path}'",
             path=path,
         )
 
     def checkpoint_loaded(self, path: str) -> None:
-        """Log checkpoint load.
-
-        Args:
-            path: Path to checkpoint file.
-        """
         self._logger.bind(event="checkpoint_loaded", path=path).debug(
             "Checkpoint loaded from '{path}'",
             path=path,
         )
 
     def policy_loaded(self, config_dir: str) -> None:
-        """Log policy load.
-
-        Args:
-            config_dir: Configuration directory path.
-        """
         self._logger.bind(event="policy_loaded", config_dir=config_dir).info(
             "Policy loaded from '{config_dir}'",
             config_dir=config_dir,
         )
 
     def validation_error(self, error: str) -> None:
-        """Log validation error.
-
-        Args:
-            error: Error message.
-        """
         self._logger.bind(event="validation_error").error("Validation error: {error}", error=error)
 
     def pipeline_error(self, phase: str, error: str) -> None:
-        """Log pipeline error.
-
-        Args:
-            phase: Current phase name.
-            error: Error message.
-        """
         self._logger.bind(event="pipeline_error", phase=phase).error(
             "Pipeline error in phase '{phase}': {error}",
             phase=phase,

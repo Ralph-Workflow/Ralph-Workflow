@@ -1,4 +1,3 @@
-"""Runtime environment discovery helpers."""
 
 from __future__ import annotations
 
@@ -36,7 +35,6 @@ if TYPE_CHECKING:
         def name(self) -> str: ...
 
     class SysModuleProtocol(Protocol):
-        """Subset of the sys module interface required for runtime environment detection."""
 
         @property
         def version_info(self) -> _VersionInfoProtocol: ...
@@ -65,7 +63,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class RuntimeEnvironment:
-    """Snapshot of the active Python runtime environment."""
 
     python: PythonVersionInfo
     executable: Path
@@ -78,7 +75,6 @@ class RuntimeEnvironment:
     env: Mapping[str, str]
 
     def get(self, name: str, default: str | None = None) -> str | None:
-        """Return an environment variable from the captured snapshot."""
 
         return self.env.get(name, default)
 
@@ -96,7 +92,6 @@ def detect_virtualenv_path(
     *,
     sys_module: SysModuleProtocol = sys,
 ) -> Path | None:
-    """Return the detected virtual environment path, if any."""
 
     captured_env = _normalize_env(env)
     explicit_path = next(
@@ -117,7 +112,6 @@ def is_virtualenv(
     *,
     sys_module: SysModuleProtocol = sys,
 ) -> bool:
-    """Return whether the current interpreter is running inside a virtual environment."""
 
     return detect_virtualenv_path(env, sys_module=sys_module) is not None
 
@@ -127,7 +121,6 @@ def detect_runtime_environment(
     *,
     sys_module: SysModuleProtocol = sys,
 ) -> RuntimeEnvironment:
-    """Capture a structured snapshot of the active Python runtime."""
 
     captured_env = _normalize_env(env)
     virtualenv_path = detect_virtualenv_path(captured_env, sys_module=sys_module)

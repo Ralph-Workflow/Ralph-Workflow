@@ -1,5 +1,3 @@
-"""Tests for the public --check-mcp CLI path with AGY-compatible workspaces."""
-
 from __future__ import annotations
 
 import json

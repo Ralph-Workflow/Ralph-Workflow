@@ -1,5 +1,3 @@
-"""Completion-path liveness regressions for conflict resolution (S-2)."""
-
 from __future__ import annotations
 
 import os
@@ -20,7 +18,6 @@ from ralph.config.models import AgentConfig
 
 
 def test_conflict_resolution_regression_parent_exit_keeps_scoped_activity_supervised() -> None:
-    """S-2/R3: parent exit cannot discard fresh scoped MCP activity as idle."""
     clock = FakeClock()
     watchdog = IdleWatchdog(
         TimeoutPolicy(
@@ -41,8 +38,6 @@ def test_conflict_resolution_regression_parent_exit_keeps_scoped_activity_superv
 
 
 class _ParentExitedHandle:
-    """Parent already exited while a scoped resolver child remains active."""
-
     stdout = iter(())
     pid = None
 
@@ -54,8 +49,6 @@ class _ParentExitedHandle:
 
 
 class _ScopedChildStrategy:
-    """Reports active scoped work while the parent is already terminal."""
-
     def __init__(self) -> None:
         self.active = True
 
@@ -70,8 +63,6 @@ class _ScopedChildStrategy:
 
 
 class _CompletionClock(FakeClock):
-    """Advances only injected time and feeds fresh MCP activity to the watchdog."""
-
     def __init__(self, strategy: _ScopedChildStrategy) -> None:
         super().__init__()
         self.strategy = strategy
@@ -89,15 +80,11 @@ class _CompletionClock(FakeClock):
 
 
 class _AlwaysScopedChildStrategy(_ScopedChildStrategy):
-    """Keeps the PTY done path in scoped-work mode until inactivity fires."""
-
     def classify_quiet(self, _handle: object, _probe: object) -> AgentExecutionState:
         return AgentExecutionState.WAITING_ON_CHILD
 
 
 class _PtyCompletionClock(_CompletionClock):
-    """Feeds four live MCP events, then drives the one allowed inactivity verdict."""
-
     def wait_for_event(self, event: threading.Event, seconds: float) -> bool:
         self.waits += 1
         if self.waits <= 4 and self.watchdog is not None:
@@ -109,8 +96,6 @@ class _PtyCompletionClock(_CompletionClock):
 
 
 class _PtyParentExitedHandle:
-    """PTY parent already exited while a scoped resolver child remains active."""
-
     pid = 1
 
     def __init__(self, master_fd: int) -> None:
@@ -127,7 +112,6 @@ class _PtyParentExitedHandle:
 
 
 def test_conflict_resolution_regression_pty_parent_exit_has_no_elapsed_drain() -> None:
-    """S-3/R1: a PTY resolver ends only after scoped MCP liveness becomes silent."""
     read_fd, write_fd = os.pipe()
     reader: PtyLineReader | None = None
     strategy = _AlwaysScopedChildStrategy()
@@ -165,7 +149,6 @@ def test_conflict_resolution_regression_pty_parent_exit_has_no_elapsed_drain() -
 
 
 def test_conflict_resolution_regression_pty_termination_exposes_direct_liveness_metadata() -> None:
-    """S-3/R7: a PTY inactivity verdict carries the same direct fields as subprocess mode."""
     read_fd, write_fd = os.pipe()
     reader: PtyLineReader | None = None
     try:
@@ -202,7 +185,6 @@ def test_conflict_resolution_regression_pty_termination_exposes_direct_liveness_
 def test_conflict_resolution_regression_parent_exit_disables_elapsed_reader_drain(
     tmp_path: Path,
 ) -> None:
-    """S-2/DA-001-003: the production done path cannot derive a drain deadline."""
     from ralph.agents.invoke._process_reader import make_line_reader
     from ralph.agents.invoke._types import ProcessReaderCtx
     from ralph.config.enums import AgentTransport
@@ -229,9 +211,6 @@ def test_conflict_resolution_regression_parent_exit_disables_elapsed_reader_drai
     watchdog.record_invocation_start()
     clock.watchdog = watchdog
 
-    # Four fresh MCP events carry this completion path well beyond the
-    # ordinary 0.1s drain interval.  It may return only after scoped work
-    # quiesces, never merely because elapsed drain time expired.
     assert reader._finish_reader_done(watchdog) is None
     assert clock.waits == 4
     assert clock.monotonic() == 0.4
@@ -246,7 +225,6 @@ class _RaisingStrategy(_ScopedChildStrategy):
 def test_conflict_resolution_regression_classify_failure_after_exit_does_not_hold_the_drain(
     tmp_path: Path,
 ) -> None:
-    """A dead parent has nothing to wait for: a raising strategy must not pin WAITING_ON_CHILD."""
     from ralph.agents.invoke._process_reader import make_line_reader
     from ralph.agents.invoke._types import ProcessReaderCtx
     from ralph.config.enums import AgentTransport
@@ -288,7 +266,6 @@ def test_conflict_resolution_regression_classify_failure_after_exit_does_not_hol
 def test_conflict_resolution_completion_evidence_gates_the_activity_only_reader(
     profile: TimeoutProfile, requires: bool, expected: bool
 ) -> None:
-    """A resolver's ``declare_complete`` sentinel may stop its reader like any gated phase."""
     from ralph.agents.invoke._process_reader import completion_evidence_gates_reader
 
     ctx = AgentRunCtx(
@@ -303,8 +280,6 @@ def test_conflict_resolution_completion_evidence_gates_the_activity_only_reader(
 
 
 class _EndlessActivityClock(FakeClock):
-    """Feeds fresh activity on every wait, like unrelated workspace churn."""
-
     def __init__(self) -> None:
         super().__init__()
         self.watchdog: IdleWatchdog | None = None
@@ -342,13 +317,6 @@ def _declared_complete(
 def test_conflict_resolution_regression_pty_declared_completion_ends_the_done_path(
     tmp_path: Path,
 ) -> None:
-    """A resolver that called ``declare_complete`` and exited is finished.
-
-    Observed with AGY: after ``declare_complete`` the parent was told to
-    ``/exit`` and its subtree was torn down, yet the activity-only done path
-    kept waiting on "child work" for minutes because unrelated workspace
-    events kept the inactivity verdict from ever firing.
-    """
     read_fd, write_fd = os.pipe()
     reader: PtyLineReader | None = None
     clock = _EndlessActivityClock()

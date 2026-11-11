@@ -19,14 +19,6 @@ from tests._claude_interactive_pty_helper__fakeptymanager import _FakePtyManager
 
 @pytest.fixture(autouse=True)
 def _seed_default_catalog() -> None:
-    """Seed the default catalog with built-in agents for tests that depend on it.
-
-    Tests in this file rely on ``default_catalog().get('claude')`` returning the
-    built-in interactive Claude support, so that ``invoke_agent`` routes through
-    the PTY runtime (the new spec.requires_pty dispatch in ralph/agents/invoke).
-    The seeding runs in every worker process so parallel test execution does
-    not depend on test ordering.
-    """
     _seed_catalog_with_builtins(default_catalog())
 
 
@@ -166,11 +158,6 @@ def test_invoke_agent_assigns_fresh_interactive_session_id_to_command_and_pty(
             options=InvokeOptions(
                 workspace_path=tmp_path,
                 show_progress=False,
-                # Skip the real WorkspaceMonitor watchdog observer:
-                # this test only exercises routing / session-id
-                # behaviour, so the observer's start/stop cost would
-                # otherwise eat the 1-second per-test budget on a slow
-                # machine.
                 workspace_monitor_factory=lambda *args, **kwargs: None,
             ),
         )

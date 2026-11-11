@@ -1,14 +1,3 @@
-"""Scenario tests for the observer/materializer seam of the round loop.
-
-These tests drive FULL resolution rounds through the public entry point
-:func:`run_conflict_resolution_outcome` with only a fake
-:class:`WorktreeConflictObserver`, a fake :class:`PromptMaterializer`,
-and a temporary workspace. Nothing here monkeypatches driver internals:
-the fake observer scripts every filesystem/git read the round loop's
-verdict rests on, and the fake materializer stands in for the prompt
-render+write.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -41,8 +30,6 @@ pytestmark = pytest.mark.timeout_seconds(5)
 
 
 class _RecordingClock:
-    """A clock whose sleeps advance fake time instead of the wall clock."""
-
     def __init__(self) -> None:
         self.time_s = 0.0
         self.slept: list[float] = []
@@ -57,14 +44,6 @@ class _RecordingClock:
 
 @pytest.fixture(autouse=True)
 def _no_real_waits() -> Iterator[_RecordingClock]:
-    """Run every round on a fake clock.
-
-    A round whose only resolver is cooling down waits out the cooldown
-    through the installed clock. On the real clock that wait was a 5 s
-    ``time.sleep`` -- which the per-test timeout used to interrupt and the
-    round loop then absorbed, so the scenario silently spent its whole
-    budget sleeping.
-    """
     clock = _RecordingClock()
     token = install_executors(clock=clock)
     yield clock
@@ -72,8 +51,6 @@ def _no_real_waits() -> Iterator[_RecordingClock]:
 
 
 class _FakeObserver(WorktreeConflictObserver):
-    """Scripts every read the round loop's verdict rests on."""
-
     def __init__(
         self,
         *,
@@ -118,8 +95,6 @@ class _FakeObserver(WorktreeConflictObserver):
 
 
 class _FakeMaterializer(PromptMaterializer):
-    """Records each round's materialization request and writes a real prompt file."""
-
     def __init__(self, workspace: Path) -> None:
         self._workspace = workspace
         self.rounds: list[int] = []
@@ -146,8 +121,6 @@ class _FakeMaterializer(PromptMaterializer):
         prompt_path = self._workspace / ".agent" / "tmp" / f"round_{round_index}_prompt.md"
         prompt_path.parent.mkdir(parents=True, exist_ok=True)
         prompt_path.write_text("resolve the conflicts", encoding="utf-8")
-        # The driver unlinks the prompt when the round ends, so capture
-        # the rendered body now rather than reading the file back later.
         self.rendered_bodies.append(prompt_path.read_text(encoding="utf-8"))
         return prompt_path
 
@@ -195,7 +168,6 @@ def test_full_round_resolves_through_fake_observer_and_materializer(tmp_path: Pa
 
 
 def test_surviving_markers_drive_a_second_round_with_feedback(tmp_path: Path) -> None:
-    """Round 2 exists because the on-disk re-scan says round 1 left markers."""
     observer = _FakeObserver(unmerged=_CONFLICTED, surviving_per_scan=[["src/alpha.py"], []])
     materializer = _FakeMaterializer(tmp_path)
     invoked_rounds: list[int] = []
@@ -231,7 +203,6 @@ def test_empty_unmerged_set_exits_without_invoking_anyone(tmp_path: Path) -> Non
 
 
 def test_markers_that_never_clear_decline_the_merge(tmp_path: Path) -> None:
-    """The repository outranks the agent: surviving markers are not a resolution."""
     observer = _FakeObserver(unmerged=_CONFLICTED, surviving_per_scan=[_CONFLICTED])
     materializer = _FakeMaterializer(tmp_path)
 

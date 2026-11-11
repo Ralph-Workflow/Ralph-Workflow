@@ -1,12 +1,3 @@
-"""Black-box tests for ``ralph workspace-health`` (AC-11).
-
-Drives ``typer.testing.CliRunner.invoke(app, ["workspace-health",
-"--workspace", str(tmp_path)])`` and asserts the rendered JSON carries
-every AC-11 key with real values drawn from the controlled seams
-(storage inventory, awareness snapshot, cleanup planner). The command
-is read-only: it must not mutate the workspace.
-"""
-
 from __future__ import annotations
 
 import json
@@ -161,8 +152,6 @@ _READINESS_TOKENS = frozenset(
 def _invoke(workspace: Path) -> dict[str, object]:
     result = _runner.invoke(app, ["workspace-health", "--workspace", str(workspace)])
     assert result.exit_code == 0, result.output
-    # The JSON payload is the final line; earlier lines may carry rich
-    # display decorations from the CLI callback bootstrap.
     return json.loads(result.output.strip().splitlines()[-1])
 
 
@@ -174,7 +163,6 @@ def fake_workspace() -> Path:
 def test_workspace_health_routes_json_through_shared_display(
     fake_workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The command uses the shared display surface for operator output."""
     from ralph.cli.commands import workspace_health as command_module
 
     emitted: list[dict[str, object]] = []
@@ -197,7 +185,6 @@ def test_workspace_health_routes_json_through_shared_display(
 
 
 def test_workspace_health_reports_every_ac11_key(fake_workspace: Path) -> None:
-    """The JSON payload contains every AC-11 key with real values."""
     payload = _invoke(fake_workspace)
 
     for key in _REQUIRED_TOP_LEVEL_KEYS:
@@ -250,15 +237,12 @@ def test_workspace_health_reports_every_ac11_key(fake_workspace: Path) -> None:
 
 
 def test_workspace_health_is_read_only(fake_workspace: Path) -> None:
-    """The health read must not create or delete workspace content."""
     payload = _invoke(fake_workspace)
     assert payload["workspace"] == str(fake_workspace.absolute())
-    # No .agent directory is created by the read-only health command.
     assert not (fake_workspace / ".agent").exists()
 
 
 def test_workspace_health_surfaces_live_fallback_watch_capacity(fake_workspace: Path) -> None:
-    """A degraded observer surfaces through watch_capacity, not silently."""
     from ralph.workspace.awareness import (
         awareness_for_workspace,
         release_workspace_awareness,

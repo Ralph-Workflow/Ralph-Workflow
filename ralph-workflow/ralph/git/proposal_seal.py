@@ -1,10 +1,3 @@
-"""Proposal seal and rollback primitives for commit review.
-
-Provides mechanisms to seal pending working tree changes into an isolated
-Git proposal ref using a temporary Git index without mutating the real index
-or working tree. Supports tree diff inspection, preflight validation, proposal
-pruning, dirty baseline sealing, and crash-safe rollback.
-"""
 
 from __future__ import annotations
 
@@ -34,29 +27,13 @@ _NUMSTAT_MIN_FIELDS: int = 3
 _NUMSTAT_PATH_INDEX: int = 2
 _REF_PARTITION_COUNT: int = 2
 
-#: Upper bound on the blob size whose CONTENT the diff reads for the
-#: staged-secret content scan. Same order as the tripwire binary size
-#: limit: large enough to hold a credential file, small enough that a
-#: multi-megabyte blob never enters the scan. Binary blobs are never
-#: read at all.
 _MAX_CONTENT_SCAN_BYTES: int = 1_000_000
 
-#: The diff statuses whose recorded path exists in the NEW tree: an
-#: addition (``A``), the NEW path of a rename (``R``) and the NEW path
-#: of a copy (``C``). A deletion (``D``) records a path that the new
-#: tree does NOT hold.
 _PROPOSAL_ADDED_STATUSES: frozenset[str] = frozenset({"A", "R", "C"})
 
 
 @dataclass(frozen=True)
 class Seal:
-    """A sealed proposal or baseline reference.
-
-    Attributes:
-        ref: The git ref name (e.g. ``refs/ralph/proposals/<run>/<iteration>``).
-        commit_sha: The 40-character hex SHA of the commit object.
-        tree_sha: The 40-character hex SHA of the tree object.
-    """
 
     ref: str
     commit_sha: str
@@ -64,29 +41,10 @@ class Seal:
 
 
 def _open_repo(repo_root: Path | str) -> Repo:
-    """Open a GitPython Repo instance for the given repository root."""
     return Repo(Path(repo_root).resolve())
 
 
 def seal_pending(repo_root: Path | str, run_id: str, iteration: int | str) -> Seal:
-    """Seal the current pending state into an isolated proposal ref.
-
-    Creates a Git tree from the current working tree state using a temporary
-    index file without mutating the real repository index or working tree.
-    Creates a commit object parented on HEAD (if available) and points
-    ``refs/ralph/proposals/<run_id>/<iteration>`` to it.
-
-    Args:
-        repo_root: Path to the Git repository root.
-        run_id: Unique identifier for the pipeline run.
-        iteration: Iteration number or identifier.
-
-    Returns:
-        Seal instance recording the proposal ref, commit SHA, and tree SHA.
-
-    Raises:
-        ProposalSealError: If sealing fails.
-    """
     root_path = Path(repo_root).resolve()
     with _open_repo(root_path) as repo:
         ref = f"refs/ralph/proposals/{run_id}/{iteration}"
@@ -101,9 +59,8 @@ def seal_pending(repo_root: Path | str, run_id: str, iteration: int | str) -> Se
             tmp_index_path = Path(tmp_dir) / "proposal_index"
             real_index_path = Path(
                 repo.index.path
-            )  # filesystem-read-ok: inspect real index path to seed temporary index
+            )
             if DEFAULT_FILE_BACKEND.exists(real_index_path):
-                # filesystem-write-ok: seed the temporary index from the real index to avoid a full rehash
                 shutil.copy2(real_index_path, tmp_index_path)
 
             try:
@@ -140,23 +97,6 @@ def seal_pending(repo_root: Path | str, run_id: str, iteration: int | str) -> Se
 
 
 def seal_baseline(repo_root: Path | str, run_id: str, force: bool = False) -> Seal | None:
-    """Record a baseline seal at run start if the working tree is dirty.
-
-    If the repository is dirty (or ``force=True``), captures the current state
-    into ``refs/ralph/baselines/<run_id>`` using a temporary index.
-
-    Args:
-        repo_root: Path to the Git repository root.
-        run_id: Unique identifier for the pipeline run.
-        force: If True, creates the baseline seal even if the repository is clean.
-
-    Returns:
-        Seal instance if a baseline was created, or None if the tree was clean
-        and force was False.
-
-    Raises:
-        ProposalSealError: If baseline sealing fails.
-    """
     root_path = Path(repo_root).resolve()
     with _open_repo(root_path) as repo:
         if not force:
@@ -176,9 +116,8 @@ def seal_baseline(repo_root: Path | str, run_id: str, force: bool = False) -> Se
             tmp_index_path = Path(tmp_dir) / "baseline_index"
             real_index_path = Path(
                 repo.index.path
-            )  # filesystem-read-ok: inspect real index path to seed temporary index
+            )
             if DEFAULT_FILE_BACKEND.exists(real_index_path):
-                # filesystem-write-ok: seed the temporary index from the real index to avoid a full rehash
                 shutil.copy2(real_index_path, tmp_index_path)
 
             try:
@@ -209,7 +148,6 @@ def seal_baseline(repo_root: Path | str, run_id: str, force: bool = False) -> Se
 
 
 def _collect_binary_paths(repo: Repo, base: str, ref: str) -> set[str]:
-    """Identify paths classified as binary by Git between base and ref."""
     binary_paths: set[str] = set()
     try:
         raw_numstat_obj = route_git_method(
@@ -231,25 +169,6 @@ def _collect_binary_paths(repo: Repo, base: str, ref: str) -> set[str]:
 
 
 def _collect_base_tree_paths(repo: Repo, base: str) -> frozenset[str] | None:
-    """Return the tracked paths present in the tree the diff is computed against.
-
-    A recursive ``git diff-tree`` reports BLOB entries only, so the removal of
-    a whole directory arrives as one deleted blob path per tracked file and
-    never as a directory entry. The membership of the base tree is therefore
-    the only evidence that separates "the directory is gone in its entirety"
-    from "some files under it are gone".
-
-    ``--full-tree`` is required: without it ``git ls-tree`` limits the listing
-    to the current working directory and reports paths relative to it.
-
-    Returns:
-        The tracked paths of the base tree, an EMPTY set when the base tree
-        holds no tracked path, or ``None`` when the membership could not be
-        read. ``None`` is not an empty tree: it means the denominator of the
-        mass-deletion fraction is unknown, so the caller must fail closed
-        instead of measuring the fraction against a denominator it cannot
-        trust.
-    """
     try:
         raw_obj = route_git_method(
             repo,
@@ -268,13 +187,6 @@ def _read_bounded_blob_content(
     size: int,
     is_binary: bool,
 ) -> str | None:
-    """Return the text content of a blob, bounded and only for text blobs.
-
-    The staged-secret CONTENT scan needs the blob text; reading every blob
-    would be unbounded work, so only NON-BINARY blobs up to
-    ``_MAX_CONTENT_SCAN_BYTES`` are read. A blob that cannot be read yields
-    ``None`` and the content scan stays silent for it.
-    """
     if not blob_sha or is_binary or size <= 0 or size > _MAX_CONTENT_SCAN_BYTES:
         return None
     try:
@@ -285,21 +197,6 @@ def _read_bounded_blob_content(
 
 
 def diff_tree(repo_root: Path | str, ref: str, base: str = "HEAD") -> list[DiffEntry]:
-    """Compute structural diff entries between base and ref.
-
-    Args:
-        repo_root: Path to the Git repository root.
-        ref: The proposal ref or commit SHA to compare.
-        base: The base ref or commit SHA (defaults to 'HEAD').
-
-    Returns:
-        List of DiffEntry records describing changed paths, modes, sizes, and binary status.
-        Every entry also carries the tracked paths of the base tree, or ``None``
-        when that membership could not be read.
-
-    Raises:
-        ProposalSealError: If diff-tree execution fails.
-    """
     root_path = Path(repo_root).resolve()
     with _open_repo(root_path) as repo:
         try:
@@ -374,21 +271,11 @@ def diff_tree(repo_root: Path | str, ref: str, base: str = "HEAD") -> list[DiffE
 
 
 def preflight(repo_root: Path | str, ref: str) -> None:
-    """Preflight check that HEAD and proposal ref exist and resolve.
-
-    Args:
-        repo_root: Path to the Git repository root.
-        ref: Proposal ref to verify.
-
-    Raises:
-        ProposalPreflightError: If repo_root is invalid, .git is damaged or missing,
-            HEAD does not resolve, or ref does not resolve.
-    """
     root_path = Path(repo_root).resolve()
     git_dir = (
         root_path / ".git"
-    )  # filesystem-read-ok: verify .git directory exists before git operations
-    if not git_dir.exists():  # filesystem-read-ok: verify .git presence
+    )
+    if not git_dir.exists():
         raise ProposalPreflightError(f"Repository metadata missing or damaged at {git_dir}")
 
     try:
@@ -411,7 +298,6 @@ def preflight(repo_root: Path | str, ref: str) -> None:
 
 
 def _proposal_ref_sort_key(ref_name: str) -> tuple[int, str]:
-    """Sort key placing higher numeric iterations first."""
     parts = ref_name.rsplit("/", 1)
     if len(parts) == _REF_PARTITION_COUNT and parts[1].isdigit():
         return (int(parts[1]), ref_name)
@@ -424,18 +310,6 @@ def prune(
     keep_refs: Iterable[str] | None = None,
     max_retained: int | None = None,
 ) -> list[str]:
-    """Prune proposal refs according to retention rules.
-
-    Args:
-        repo_root: Path to the Git repository root.
-        run_id: Optional run_id filter. If provided, only refs under
-            ``refs/ralph/proposals/<run_id>/`` are considered.
-        keep_refs: Optional collection of ref names that must not be pruned.
-        max_retained: Optional maximum number of recent proposal refs to retain.
-
-    Returns:
-        List of ref names that were pruned.
-    """
     root_path = Path(repo_root).resolve()
     with _open_repo(root_path) as repo:
         prefix = f"refs/ralph/proposals/{run_id}" if run_id is not None else "refs/ralph/proposals"
@@ -465,7 +339,6 @@ def prune(
 
 
 def _remove_proposal_added_files(root_path: Path, diff_entries: list[DiffEntry]) -> None:
-    """Remove files added in the proposal relative to the target ref."""
     for entry in diff_entries:
         if entry.status not in _PROPOSAL_ADDED_STATUSES:
             continue
@@ -476,15 +349,14 @@ def _remove_proposal_added_files(root_path: Path, diff_entries: list[DiffEntry])
             continue
 
         target_file = root_path / rel_path
-        # filesystem-read-ok: check file or symlink existence before removing added proposal file
         if target_file.is_file() or target_file.is_symlink():
-            target_file.unlink()  # filesystem-write-ok: rollback removes files added in proposal relative to target
+            target_file.unlink()
             parent = target_file.parent
             while parent != root_path:
                 if parent == root_path / ".agent" or parent == root_path / ".git":
                     break
                 try:
-                    parent.rmdir()  # filesystem-write-ok: rollback cleans empty directory left by removed proposal file
+                    parent.rmdir()
                     parent = parent.parent
                 except OSError:
                     break
@@ -496,23 +368,6 @@ def rollback(
     baseline_ref: str | None = None,
     step_hook: Callable[[str], None] | None = None,
 ) -> None:
-    """Roll back the repository working tree and index to HEAD or baseline.
-
-    Idempotent and crash-safe restore. Restores tracked files via
-    ``git read-tree --reset -u <target>`` and removes files that were added
-    in the proposal tree and absent from the target, preserving ignored files
-    and ``.agent/`` runtime state.
-
-    Args:
-        repo_root: Path to the Git repository root.
-        ref: The proposal ref to roll back.
-        baseline_ref: Optional baseline ref to restore to instead of HEAD.
-        step_hook: Optional hook called at each step for crash-safety testing.
-
-    Raises:
-        ProposalPreflightError: If preflight checks fail.
-        ProposalSealError: If rollback fails.
-    """
     if step_hook is not None:
         step_hook("preflight")
 
@@ -550,37 +405,13 @@ def rollback(
         _mark_rejected_proposal(root_path, ref)
 
 
-#: Namespace a rolled-back proposal is marked under, mirroring the proposal
-#: namespace segment for segment.
 REJECTED_PROPOSAL_REF_PREFIX = "refs/ralph/rejected-proposals/"
 _PROPOSAL_REF_PREFIX = "refs/ralph/proposals/"
 
-#: A full Git object name: 40 hex characters in a SHA-1 repository, 64 in a
-#: SHA-256 one. A ref that resolves to anything else did not resolve to an
-#: object, and a marker ref must never be pointed at such a value.
 _FULL_OBJECT_NAME_RE: re.Pattern[str] = re.compile(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})")
 
 
 def _resolve_full_object_name(repo: Repo, ref: str) -> str:
-    """Return the full object name ``ref`` resolves to.
-
-    The resolved value comes out of an EXTERNAL process (git), so it is
-    validated at runtime instead of asserted: git must return text, and that
-    text must be a full hex object name (40 characters in a SHA-1
-    repository, 64 in a SHA-256 one). Anything else is refused, so no ref
-    is ever pointed at a value that is not an object id.
-
-    Args:
-        repo: The open repository the ref is resolved in.
-        ref: The ref to resolve.
-
-    Returns:
-        The validated full object name.
-
-    Raises:
-        TypeError: If git did not return text.
-        ValueError: If the resolved text is not a full hex object name.
-    """
     resolved = as_str(
         route_git_method(repo, "rev_parse", ("--verify", ref)),
         field=f"resolved object name for {ref!r}",
@@ -591,14 +422,6 @@ def _resolve_full_object_name(repo: Repo, ref: str) -> str:
 
 
 def _mark_rejected_proposal(repo_root: Path, proposal_ref: str) -> None:
-    """Record a rolled-back proposal ref so the sweep keeps it for the run.
-
-    A rolled-back proposal is a REJECTED proposal: its tree never became a
-    commit, and ``git checkout <ref> -- .`` is the documented recovery. The
-    mark lives in its own ref namespace, so the ref is protected by NAME and
-    never by the tree it happens to carry: a later iteration that reproduces
-    the same tree must not make the rejected ref prunable.
-    """
     if not proposal_ref.startswith(_PROPOSAL_REF_PREFIX):
         return
     marker_ref = REJECTED_PROPOSAL_REF_PREFIX + proposal_ref[len(_PROPOSAL_REF_PREFIX) :]
@@ -607,8 +430,6 @@ def _mark_rejected_proposal(repo_root: Path, proposal_ref: str) -> None:
             sha = _resolve_full_object_name(repo, proposal_ref)
             route_git_method(repo, "update_ref", (marker_ref, sha))
     except Exception as exc:
-        # The mark only protects a ref; a failure here must not fail the
-        # rollback that already restored the tree.
         logger.warning(
             "Could not mark the rejected proposal ref {ref}: {err}",
             ref=proposal_ref,

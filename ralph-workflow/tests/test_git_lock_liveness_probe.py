@@ -1,11 +1,3 @@
-"""Tests for the /proc liveness probe that gates git stale-lock recovery.
-
-Split out of ``tests/test_git_lock_recovery.py`` to keep both modules under
-the 1000-line repo-structure limit. This module covers the PROBE: the
-per-process ``/proc`` inspection, the bounded worker pool and the
-platform-specific verdicts ("live" / "dead" / "unknown").
-"""
-
 from __future__ import annotations
 
 import os
@@ -32,7 +24,6 @@ def test_liveness_probe_whole_timeout_0_5s(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Whole-probe ThreadPoolExecutor timeout (0.5s) returns 'unknown'."""
     lock_path = tmp_path / "index.lock"
     lock_path.write_text("stale", encoding="utf-8")
     gitdir = tmp_path / ".git"
@@ -59,7 +50,6 @@ def test_liveness_probe_or_predicate_cwd_only(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Process with cwd in gitdir (no GIT_DIR, no fd link) returns 'live'."""
     lock_path = tmp_path / "index.lock"
     lock_path.write_text("stale", encoding="utf-8")
     gitdir = tmp_path / ".git"
@@ -70,10 +60,10 @@ def test_liveness_probe_or_predicate_cwd_only(
     fake_proc.mkdir()
     fake_pid_dir = fake_proc / str(os.getpid())
     fake_pid_dir.mkdir()
-    (fake_pid_dir / "cwd").symlink_to(str(gitdir.resolve()))  # cwd -> gitdir (live signal)
-    (fake_pid_dir / "fd").mkdir()  # empty fd dir (no lock open)
-    (fake_pid_dir / "comm").write_text("git\n", encoding="utf-8")  # git process
-    (fake_pid_dir / "environ").write_bytes(b"")  # no GIT_DIR
+    (fake_pid_dir / "cwd").symlink_to(str(gitdir.resolve()))
+    (fake_pid_dir / "fd").mkdir()
+    (fake_pid_dir / "comm").write_text("git\n", encoding="utf-8")
+    (fake_pid_dir / "environ").write_bytes(b"")
 
     def fake_run(
         cmd: object,
@@ -94,7 +84,6 @@ def test_liveness_probe_common_gitdir_holder(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Process with cwd in common gitdir also returns 'live'."""
     lock_path = tmp_path / "index.lock"
     lock_path.write_text("stale", encoding="utf-8")
     gitdir = tmp_path / "worktree" / ".git"
@@ -106,9 +95,9 @@ def test_liveness_probe_common_gitdir_holder(
     fake_proc.mkdir()
     fake_pid_dir = fake_proc / str(os.getpid())
     fake_pid_dir.mkdir()
-    (fake_pid_dir / "cwd").symlink_to(str(gitdir_common.resolve()))  # cwd -> common gitdir
+    (fake_pid_dir / "cwd").symlink_to(str(gitdir_common.resolve()))
     (fake_pid_dir / "fd").mkdir()
-    (fake_pid_dir / "comm").write_text("git\n", encoding="utf-8")  # git process
+    (fake_pid_dir / "comm").write_text("git\n", encoding="utf-8")
     (fake_pid_dir / "environ").write_bytes(b"")
 
     def fake_run(
@@ -130,7 +119,6 @@ def test_liveness_probe_real_blocked_worker_elapsed_bound(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A hung worker thread (e.g. 2s sleep) does not delay probe return beyond timeout."""
     lock_path = tmp_path / "index.lock"
     lock_path.write_text("stale", encoding="utf-8")
     gitdir = tmp_path / ".git"
@@ -157,7 +145,6 @@ def test_liveness_probe_holder_beyond_120_cap(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Probe scans all PIDs without 120 cap and detects holder at PID > 120."""
     lock_path = tmp_path / "index.lock"
     lock_path.write_text("stale", encoding="utf-8")
     gitdir = tmp_path / ".git"
@@ -166,13 +153,11 @@ def test_liveness_probe_holder_beyond_120_cap(
     fake_proc = tmp_path / "proc"
     fake_proc.mkdir()
 
-    # Create 140 non-holder processes
     for p in range(1, 140):
         p_dir = fake_proc / str(p)
         p_dir.mkdir()
         (p_dir / "fd").mkdir()
 
-    # Process 140 holds the lock open
     holder_dir = fake_proc / "140"
     holder_dir.mkdir()
     holder_fd = holder_dir / "fd"
@@ -200,7 +185,6 @@ def test_liveness_probe_unreadable_pid_returns_unknown(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Unreadable PID (PermissionError) prevents negative liveness proof and returns 'unknown'."""
     lock_path = tmp_path / "index.lock"
     lock_path.write_text("stale", encoding="utf-8")
     gitdir = tmp_path / ".git"
@@ -252,11 +236,6 @@ def test_liveness_probe_unreadable_non_git_fd_does_not_veto_recovery(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A non-git process with an unreadable fd table cannot be a git lock holder.
-
-    systemd/sshd privsep/sandboxed helpers are on every host; if they vetoed
-    recovery, "dead" would be unprovable and an orphaned lock permanent.
-    """
     gitdir = tmp_path / "repo" / ".git"
     gitdir.mkdir(parents=True)
     lock_path = gitdir / "index.lock"
@@ -269,10 +248,7 @@ def test_liveness_probe_unreadable_non_git_fd_does_not_veto_recovery(
         lambda *a, **k: SimpleNamespace(returncode=1, stdout=b""),
     )
     try:
-        # A fresh lock may still be a git client's: unreadable stays unknown.
         assert lock_has_no_live_holder(lock_path, gitdir, proc_root=fake_proc) == "unknown"
-        # Once the lock has outlived any git operation Ralph would wait on, a
-        # proven non-git process with an unreadable fd table cannot be it.
         long_ago = time.time() - 10_000
         os.utime(lock_path, (long_ago, long_ago))
         assert lock_has_no_live_holder(lock_path, gitdir, proc_root=fake_proc) == "dead"
@@ -284,7 +260,6 @@ def test_liveness_probe_unreadable_git_fd_fails_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A git process whose state cannot be inspected keeps the lock (unknown)."""
     gitdir = tmp_path / "repo" / ".git"
     gitdir.mkdir(parents=True)
     lock_path = gitdir / "index.lock"
@@ -303,7 +278,6 @@ def test_liveness_probe_unreadable_git_fd_fails_closed(
 def test_liveness_probe_inaccessible_metadata_fails_closed(
     tmp_path: Path,
 ) -> None:
-    """Inaccessible or corrupted metadata (commondir/gitdir) fails closed to 'unknown'."""
     repo_dir = tmp_path / "worktree"
     repo_dir.mkdir()
     gitdir = repo_dir / ".git"
@@ -321,7 +295,6 @@ def test_liveness_probe_inaccessible_metadata_fails_closed(
     finally:
         commondir_file.chmod(0o644)
 
-    # Empty commondir also fails closed
     commondir_file.write_text("", encoding="utf-8")
     result = lock_has_no_live_holder(lock_path, gitdir, proc_root=tmp_path / "proc")
     assert result == "unknown", "Empty commondir metadata must fail closed to 'unknown'"
@@ -331,7 +304,6 @@ def test_liveness_probe_blocked_metadata_within_whole_probe_timeout(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Blocked metadata read (e.g. stalled NFS) is bound by the 0.5s probe timeout."""
     gitdir = tmp_path / ".git"
     gitdir.mkdir()
     lock_path = gitdir / "index.lock"
@@ -361,7 +333,6 @@ def test_probe_worker_lifecycle_under_repeated_timeouts_no_accumulation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Repeated probe timeouts do not accumulate stuck worker threads beyond pool limit."""
     lock_path = tmp_path / "index.lock"
     lock_path.write_text("stale", encoding="utf-8")
     gitdir = tmp_path / ".git"
@@ -375,11 +346,9 @@ def test_probe_worker_lifecycle_under_repeated_timeouts_no_accumulation(
 
     monkeypatch.setattr("ralph.git.operations._probe_lsof_fuser", hung_lsof)
 
-    # Reset executor to clean slate
     reset_probe_executor()
 
     try:
-        # Execute 6 probe calls with timeouts
         for _ in range(6):
             res = lock_has_no_live_holder(
                 lock_path,
@@ -390,7 +359,6 @@ def test_probe_worker_lifecycle_under_repeated_timeouts_no_accumulation(
             assert res == "unknown", "Timed out probe must return 'unknown'"
 
         status = probe_executor_status()
-        # Workers must not accumulate beyond the bounded pool size (capacity = 4)
         assert status.worker_count <= probe_pool_capacity(), (
             f"Thread pool accumulated {status.worker_count} threads, exceeding cap {probe_pool_capacity()}"
         )
@@ -403,7 +371,6 @@ def test_probe_worker_lifecycle_under_repeated_timeouts_no_accumulation(
 
 
 def test_probe_executor_status_inspection() -> None:
-    """Probe executor status exposes capacity, worker count, health, and initialization state."""
     reset_probe_executor()
     try:
         initial = probe_executor_status()
@@ -419,7 +386,6 @@ def test_probe_executor_status_inspection() -> None:
 def test_liveness_probe_zombie_process_treated_as_dead(
     tmp_path: Path,
 ) -> None:
-    """Zombie/dead processes (/proc/<pid>/status State: Z) are definitively treated as dead."""
     gitdir = tmp_path / ".git"
     gitdir.mkdir()
     lock_path = gitdir / "index.lock"
@@ -448,16 +414,6 @@ def test_liveness_probe_cwd_in_repo_subdirectory_is_live(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A git process whose cwd is a subdirectory of the worktree top returns 'live'.
-
-    The OR-predicate must accept any path inside the repository (worktree top,
-    main-repo top, or any subdirectory of either) as a live holder signal. A
-    developer running ``git status`` from a project subdirectory while a long
-    ``git gc`` holds a worktree-private lock must be treated as a live holder;
-    unlinking the lock would corrupt the gc.
-    """
-    # Real worktree layout: repo_root is the worktree top, .git/worktrees/wt-17
-    # is the per-worktree gitdir, repo_root/.git is the common gitdir symlink.
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     worktree_dot_git = repo_root / ".git"
@@ -479,12 +435,10 @@ def test_liveness_probe_cwd_in_repo_subdirectory_is_live(
     fake_proc.mkdir()
     pid_dir = fake_proc / str(os.getpid())
     pid_dir.mkdir()
-    # cwd is a subdirectory of the worktree top — not an exact match for any
-    # live_cwd entry. The expanded OR-predicate must still recognize it.
     (pid_dir / "cwd").symlink_to(str(subdir.resolve()))
-    (pid_dir / "fd").mkdir()  # empty: no lock open
+    (pid_dir / "fd").mkdir()
     (pid_dir / "comm").write_text("git\n", encoding="utf-8")
-    (pid_dir / "environ").write_bytes(b"")  # no GIT_DIR
+    (pid_dir / "environ").write_bytes(b"")
 
     def fake_run(
         cmd: object,
@@ -514,7 +468,6 @@ def _make_fake_proc(root: Path, pid: str, comm: str = "git") -> Path:
 
 
 def test_systemd_unreadable_descriptors_does_not_veto_recovery(tmp_path: Path) -> None:
-    """systemd/init with unreadable descriptors is not git, so it cannot veto recovery."""
     gitdir = tmp_path / ".git"
     gitdir.mkdir()
     pid_dir = _make_fake_proc(tmp_path, "1", "systemd")
@@ -531,7 +484,6 @@ def test_systemd_unreadable_descriptors_does_not_veto_recovery(tmp_path: Path) -
 
 
 def test_relative_gitdir_outside_repo_resolves_live(tmp_path: Path) -> None:
-    """relative GIT_DIR with cwd outside repo resolves to repo gitdir and returns live."""
     gitdir, outside = tmp_path / "repo" / ".git", tmp_path / "outside"
     gitdir.mkdir(parents=True)
     outside.mkdir()
@@ -544,7 +496,6 @@ def test_relative_gitdir_outside_repo_resolves_live(tmp_path: Path) -> None:
 
 
 def test_relative_gitdir_outside_repo_not_pointing_to_gitdir_no_match(tmp_path: Path) -> None:
-    """relative GIT_DIR that does not point to repo gitdir returns not_in_repo / no_match."""
     gitdir, outside = tmp_path / "repo" / ".git", tmp_path / "outside"
     gitdir.mkdir(parents=True)
     outside.mkdir()
@@ -558,7 +509,6 @@ def test_relative_gitdir_outside_repo_not_pointing_to_gitdir_no_match(tmp_path: 
 
 
 def test_relative_gitdir_resolution_failure_fails_closed_unknown(tmp_path: Path) -> None:
-    """resolution failure on relative GIT_DIR fails closed to unknown."""
     gitdir = tmp_path / "repo" / ".git"
     gitdir.mkdir(parents=True)
     pid_dir = _make_fake_proc(tmp_path, "44")

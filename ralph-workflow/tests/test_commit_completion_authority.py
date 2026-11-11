@@ -1,5 +1,3 @@
-"""Tests for the single commit-completion authority (WU-G5)."""
-
 import ast
 import os
 from pathlib import Path
@@ -11,7 +9,6 @@ from ralph.pipeline.auto_integrate_record import IntegrationRecord
 
 REPO = Path(__file__).resolve().parent.parent
 
-# The seven return sites that must route through the authority.
 _RETURN_SITES = (
     "ralph/pipeline/_pending_merge_commit.py",
     "ralph/pipeline/_pending_rebase_continue.py",

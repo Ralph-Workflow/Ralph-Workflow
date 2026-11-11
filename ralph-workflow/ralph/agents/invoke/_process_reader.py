@@ -1,4 +1,3 @@
-"""Subprocess-based process line reader."""
 
 from __future__ import annotations
 
@@ -146,34 +145,15 @@ def _agent_command_name(config: AgentConfig) -> str:
 
 
 def _deliver_prompt_on_stdin(handle: ManagedProcess, prompt: str) -> None:
-    """Feed *prompt* to the child's stdin from a daemon thread, then close it.
-
-    OpenCode blocks on ``Bun.stdin.text()`` until EOF, so the close is what
-    releases the run -- leaving the pipe open hangs the agent before it starts.
-
-    The write never runs on the caller's thread. A child that does not read
-    stdin fills the pipe buffer (64 KiB) and blocks the writer; on the caller's
-    thread that happened before the reader and its idle watchdog existed, so
-    neither ``idle_timeout_seconds`` nor ``max_session_seconds`` could stop the
-    run. The writer owns a duplicate of the pipe descriptor and the stream
-    object is closed at once, so closing the handle never waits behind a
-    blocked write. A child that exits before reading everything ends the write
-    with ``BrokenPipeError``; that is the child's exit, which the reader then
-    classifies from the exit code and stderr like any other.
-    """
     stream = handle.stdin
-    if stream is None:  # pragma: no cover - spawn always provides a pipe here
+    if stream is None:
         return
-    # The spawn below sets ``text=True``, so this pipe is a text stream even
-    # though ``ManagedProcess.stdin`` is annotated for the bytes case.
     text_stream = cast(
         "TextIO", stream
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     try:
         write_fd = os.dup(text_stream.fileno())
     except (AttributeError, OSError, ValueError):
-        # Not backed by a descriptor (an in-memory stand-in): there is no pipe
-        # buffer to fill, so the write cannot block and needs no thread.
         _write_prompt_to_stream(text_stream, prompt)
         return
     payload = prompt.encode(text_stream.encoding or "utf-8", text_stream.errors or "strict")
@@ -187,15 +167,12 @@ def _deliver_prompt_on_stdin(handle: ManagedProcess, prompt: str) -> None:
 
 
 def _write_prompt_to_fd(fd: int, payload: bytes) -> None:
-    """Write *payload* to *fd* and close it; a closed reader ends the write."""
     view = memoryview(payload)
     try:
         while view:
             written = os.write(fd, view)
             view = view[written:]
     except OSError:
-        # BrokenPipeError: the child exited (or was killed) before reading the
-        # whole prompt. Its exit code and stderr tell the reader why.
         pass
     finally:
         with contextlib.suppress(OSError):
@@ -203,7 +180,6 @@ def _write_prompt_to_fd(fd: int, payload: bytes) -> None:
 
 
 def _write_prompt_to_stream(stream: TextIO, prompt: str) -> None:
-    """Write *prompt* through *stream* and close it; a closed reader ends the write."""
     try:
         stream.write(prompt)
         stream.flush()
@@ -218,36 +194,6 @@ def split_prompt_for_stdin_delivery(
     command: Sequence[str],
     config: AgentConfig,
 ) -> tuple[list[str], str | None]:
-    """Split stdin-delivered prompts from their command argv.
-
-    ``opencode run`` RE-QUOTES its positional message: every argv token holding
-    a space is wrapped in literal double quotes and every ``"`` inside it is
-    backslash-escaped before the tokens are joined into the message text.
-    Verified against the installed CLI with a live call -- a prompt containing
-    ``{"a": "b"}`` reached the model as ``{\\"a\\": \\"b\\"}`` through argv, and
-    verbatim through stdin. Ralph's prompts carry JSON artifact grammars and
-    tool-call examples, so every OpenCode run was reading a corrupted prompt.
-
-    The CLI falls back to reading the whole message from stdin when no
-    positional message is given, which delivers it byte-for-byte. Codex also
-    documents stdin prompt delivery when its positional prompt is replaced by
-    an explicit ``-`` marker. This keeps large fresh and resumed prompts out of
-    argv, avoiding the operating system's argument-size limit.
-
-    Taking the LAST token is correct because the command builder
-    appends the composed prompt last (``positional_prompt``); that coupling is
-    pinned by ``test_opencode_regression_the_builder_really_puts_the_prompt_last``
-    so this cannot start shipping a flag value as the prompt.
-
-    Args:
-        command: The argv the command builder produced.
-        config: The agent being invoked.
-
-    Returns:
-        The argv to spawn, and the prompt to write to stdin (``None`` for every
-        transport that does not need this treatment). OpenCode omits the final
-        positional prompt; Codex replaces it with ``-``.
-    """
     if not command:
         return [], None
     if config.transport is AgentTransport.OPENCODE:
@@ -258,38 +204,13 @@ def split_prompt_for_stdin_delivery(
 
 
 def _effective_broken_agent_grace_seconds(watchdog: IdleWatchdog) -> float:
-    """Return the broken-agent grace for this invocation.
-
-    The historical 12-second floor is preserved, but when the operator
-    (or smoke harness) has configured a larger ``no_output_at_start_seconds``
-    startup grace, the broken-agent kill is deferred to just under that
-    value so a slow-initializing agent is not terminated while still
-    loading. When the configured grace is unset, the historical floor
-    remains the default.
-    """
     configured = watchdog.no_output_at_start_seconds
     if configured is None:
         return BROKEN_AGENT_OUTPUT_GRACE_SECONDS
-    # The -3 s margin keeps the broken-agent timer strictly inside the
-    # NO_OUTPUT_AT_START watchdog window so the broken-agent classification
-    # still wins the race for genuinely broken agents.
     return max(BROKEN_AGENT_OUTPUT_GRACE_SECONDS, configured - 3.0)
 
 
 def _effective_exit_settle_seconds(watchdog: IdleWatchdog) -> float:
-    """Return the settle window for this invocation.
-
-    Read from the live policy, the same way
-    :func:`_effective_broken_agent_grace_seconds` reads the startup
-    grace. An operator who widens ``drain_window_seconds`` is saying
-    this host needs longer for a reader to deliver output a process has
-    already written -- which is precisely the question this window asks,
-    so a bare constant ignored the one knob that answers it.
-
-    Floored at the default so no configuration removes the window, and
-    capped at the broken-agent grace: past that the slow path fires
-    anyway, so a larger value would only disable the fast one.
-    """
     configured = watchdog.drain_window_seconds
     return min(
         max(BROKEN_AGENT_EXIT_SETTLE_SECONDS, configured),
@@ -298,24 +219,6 @@ def _effective_exit_settle_seconds(watchdog: IdleWatchdog) -> float:
 
 
 def _exit_evidence_has_settled(watchdog: IdleWatchdog) -> bool:
-    """True once an exited process's remaining output should have arrived.
-
-    "Dead" and "produced nothing" are read at one instant, but they are
-    not true at the same instant: the process is dead as soon as
-    ``poll()`` says so, while its last line is recorded only after the
-    reader thread has been scheduled and the line classified. Reading
-    both at once let a loaded host fail a healthy agent that wrote its
-    output and exited promptly -- the shard run diagnosed "no meaningful
-    LLM output; check credentials" against ``echo``.
-
-    SHOULD, not must. This bounds the race; it cannot close it. A reader
-    starved past the window still produces the false verdict, and the
-    only honest remedy for a host that starves readers that long is to
-    widen ``drain_window_seconds``, which this reads. What it does buy
-    is that the reader's own idle poll fits inside the window, so the
-    ordinary case -- a line sitting in the queue while the exit is
-    sampled -- is no longer a diagnosis.
-    """
     settled_for = watchdog.seconds_since_process_exit
     return settled_for is not None and settled_for >= _effective_exit_settle_seconds(watchdog)
 
@@ -326,12 +229,6 @@ def check_broken_agent_timer(
     agent_name: str,
     process_teardown: ProcessTeardown | None = None,
 ) -> None:
-    """Fail over promptly when a silent agent exits, or after a live-startup grace window."""
-    # Conflict resolution has exactly one default termination clock: the
-    # activity-only watchdog's fixed inactivity window.  The broken-agent
-    # heuristic is an elapsed startup timer, so invoking it here would let a
-    # silent resolver die before ``CONFLICT_INACTIVITY`` and would kill an
-    # MCP-only resolver despite fresh recognised liveness.
     if watchdog._config.profile.value == "activity_only":
         return
     grace_seconds = _effective_broken_agent_grace_seconds(watchdog)
@@ -340,10 +237,6 @@ def check_broken_agent_timer(
     try:
         process_alive = handle.poll() is None
     except Exception:
-        # Liveness is circumstantial evidence: an unavailable probe must not
-        # manufacture a clean-exit diagnosis, so preserve the live grace path.
-        # It is not evidence the process came BACK either, which is why the
-        # reading is flagged unobserved rather than passed off as a live one.
         process_alive = True
         liveness_observed = False
     watchdog.record_process_liveness(process_alive, observed=liveness_observed)
@@ -365,22 +258,12 @@ def check_broken_agent_timer(
             returncode=0 if returncode is None else int(returncode),
             stderr=read_bounded_stderr(handle),
         )
-    # The BROKEN_AGENT_OUTPUT_GRACE_SECONDS reference is load-bearing:
-    # test_teardown_subtree_calls_are_verdict_guarded audits that every
-    # terminate/teardown site is guarded by a fire-class verdict, and the
-    # elapsed-grace window here is that guard for the broken-agent path.
     if (
         elapsed_seconds < max(BROKEN_AGENT_OUTPUT_GRACE_SECONDS, grace_seconds)
         or evidence.has_meaningful_output
     ):
         return
     if not watchdog.observed_output_is_structurally_small():
-        # Substantial observed output without a meaningful-LLM classification
-        # is NOT provider silence: it is (at worst) a failure to submit the
-        # required artifact. Do not terminate the process and do not mark the
-        # provider broken here; let the run proceed so the completion gate
-        # raises the resumable / incomplete-artifact error with the agent's
-        # own exit evidence once the process exits.
         return
     handle.terminate(grace_period_s=0.5)
     pid = cast("int | None", getattr(handle, "pid", None))
@@ -402,10 +285,6 @@ def make_line_reader(
     ctx: ProcessReaderCtx,
     clock: Clock,
 ) -> ProcessLineReader:
-    """Public factory for the subprocess line reader.
-
-    Tests and production callers both route through this seam.
-    """
     return ProcessLineReader(handle, ctx, clock)
 
 
@@ -414,26 +293,9 @@ def record_line_activity(
     watchdog: IdleWatchdog,
     queued_line: str,
 ) -> None:
-    """Public seam that classifies one line and routes it to the watchdog.
-
-    The classification rule lives on the reader's private method; this
-    module-level function is the supported way to exercise it without
-    reaching into the reader's private surface.
-    """
     reader._record_line_activity(watchdog, queued_line)
 
 
-# Canonical resumable-fire-reason set for the watchdog-kill -> resume
-# flow.  This set is the single source of truth consulted by BOTH
-# line readers (subprocess ``_process_reader.py`` AND PTY
-# ``_pty_runner.py``) so the recovery controller's
-# ``recovery_action_for_failure_reason`` returns ``'resume'`` for the
-# same in-set reasons end-to-end.  ``CHILDREN_PERSIST_TOO_LONG`` is
-# deliberately EXCLUDED: a long cumulative child-wait is not safe to
-# resume (the child may have side effects outside the agent session),
-# so the recovery must restart from a fresh session.  Any new
-# ``WatchdogFireReason`` member that should resume MUST be added here
-# AND in ``tests/agents/idle_watchdog/test_resume_after_kill_contract.py``.
 _RESUMABLE_FIRE_REASONS: frozenset[WatchdogFireReason] = frozenset(
     {
         WatchdogFireReason.NO_OUTPUT_AT_START,
@@ -447,22 +309,10 @@ _RESUMABLE_FIRE_REASONS: frozenset[WatchdogFireReason] = frozenset(
 
 
 def _is_resumable_fire_reason(reason: WatchdogFireReason) -> bool:
-    """Return True when the watchdog fire reason is safe to resume.
-
-    Mirrors the contract pinned in
-    ``tests/agents/idle_watchdog/test_resume_after_kill_contract.py``:
-    only the six production reasons plus
-    ``REPEATED_IDENTICAL_TOOL_CALL`` are resumable; everything else
-    (``PROCESS_EXIT_HANG``, ``DESCENDANT_HANG``,
-    ``SESSION_CEILING_EXCEEDED``, ``CHILDREN_PERSIST_TOO_LONG``,
-    ``DEFERRED_BY_STUCK_CLASSIFIER``) must restart from a fresh
-    session.
-    """
     return reason in _RESUMABLE_FIRE_REASONS
 
 
 def _raise_on_relay_health_error(reader: object, agent_name: str) -> None:
-    """Raise the typed conflict supervision error when the parent relay latched one."""
     raw_provider: object = getattr(reader, "_relay_health_error", None)
     if not callable(raw_provider):
         return
@@ -481,15 +331,6 @@ def _convert_idle_stream_timeout_to_agent_error(
     captured_session_id: str | None = None,
     expected_session_id: str | None = None,
 ) -> AgentInactivityTimeoutError:
-    """Convert an in-stream ``_IdleStreamTimeoutError`` into ``AgentInactivityTimeoutError``.
-
-    This is the canonical invocation-layer seam that the line readers
-    use when the idle watchdog fires (or post-exit detects a hang). The
-    wrapper exception carries the watchdog fire reason; this helper
-    threads the session-resume metadata (``session_resume_safe`` and
-    ``resumable_session_id``) that the recovery controller consults
-    when deciding whether to resume the prior agent session.
-    """
     session_resume_safe = _is_resumable_fire_reason(exc.reason)
     return AgentInactivityTimeoutError(
         agent_name,
@@ -514,13 +355,6 @@ def _convert_idle_stream_timeout_to_agent_error(
 
 def _subprocess_env(extra_env: dict[str, str] | None) -> dict[str, str]:
     env = scrub_activity_relay_controls(os.environ.copy())
-    # ``RALPH_BROKER_SECRET`` is the broker-owned HMAC secret used by the
-    # orchestrator to bind completion sentinels / receipts to forge-proof
-    # claims. It MUST NOT leak to spawned agent subprocesses — the
-    # anti-forgery boundary is enforced by keeping the secret on the
-    # parent side only. Strip from both the inherited environment AND
-    # any caller-supplied ``extra_env`` so neither path can smuggle the
-    # secret into the child process.
     env.pop(_BROKER_ENV_VAR_NAME, None)
     if extra_env:
         env.update(extra_env)
@@ -535,18 +369,10 @@ def _subprocess_env(extra_env: dict[str, str] | None) -> dict[str, str]:
 def _extract_tool_call_from_activity_signal(
     raw: str,
 ) -> tuple[str, dict[str, object]] | None:
-    """Backward-compat alias re-exported from ``_tool_call_extraction``.
-
-    The implementation was extracted to
-    :mod:`ralph.agents.invoke._tool_call_extraction` to keep this
-    module under the 1000-line policy cap. The import path is
-    preserved for callers and tests.
-    """
     return _extract_tool_call_from_activity_signal_impl(raw)
 
 
 class ProcessLineReader:
-    """Reads lines from a subprocess stdout in a background thread."""
 
     def __init__(
         self,
@@ -590,8 +416,6 @@ class ProcessLineReader:
             )
         )
         self._lines_queue: BoundedLinesQueue = BoundedLinesQueue(maxlen=_MAX_PARSED_OUTPUT_LINES)
-        # Anything the bounded queue evicts still reaches the raw
-        # capture; see ``_capture_evicted_line``.
         self._lines_queue.set_eviction_sink(self._capture_evicted_line)
         self._lines_lock = threading.Lock()
         self._lines_event = threading.Event()
@@ -599,24 +423,14 @@ class ProcessLineReader:
         self._last_activity_meaningful: list[bool] = [False]
         self._last_hard_stop: list[WaitingStatusEvent | None] = [None]
         self._reader_done: list[bool] = [False]
-        self._cpu_baselines: dict[int, tuple[float, float]] = {}  # bounded-accumulator-ok: drained
-        self._log_growth_state: dict[str, tuple[int, float]] = {}  # bounded-accumulator-ok: drained
+        self._cpu_baselines: dict[int, tuple[float, float]] = {}
+        self._log_growth_state: dict[str, tuple[int, float]] = {}
         self._raw_overflow = get_or_create_raw_overflow_log(
             self._workspace_path or Path.cwd(),
             raw_log_unit_id_for(self._config),
             model=self._config.model,
         )
         self._last_activity_kind = "none"
-        # Captured transport-level session id from the most recent
-        # ``Session ID:`` / ``--resume`` / JSON-shaped session event on
-        # the subprocess stdout. Mirrors ``captured_session_id`` in
-        # ``_run_subprocess_and_read_lines`` but is stored at the
-        # reader level so ``_check_fire`` can read it at the moment of
-        # the watchdog fire WITHOUT re-walking the stdout pipe. The
-        # canonical seam is still ``extract_transport_session_id_from_line``
-        # called from ``_read_thread`` below; this field is the
-        # cache so the watchdog-kill path does not need to retain
-        # ``_lines_queue`` content for re-scanning.
         self._captured_session_id: str | None = None
         self._opencode_child_part_source = ctx.opencode_child_part_source
         self._opencode_subagent_probe: OpenCodeSubagentSessionProbe | None = None
@@ -631,15 +445,6 @@ class ProcessLineReader:
             self._terminal_counter[0] += 1
 
     def _build_subagent_pid_source(self) -> ChildLivenessSubagentPidSource | None:
-        """Build a PID source from the strategy's child-liveness registry, if any.
-
-        OpenCode emits structured child lifecycle events on stdout. The
-        strategy ingests those events into a ``ChildLivenessRegistry`` whose
-        records include the child PID. Returning those PIDs as a
-        ``SubagentPidSource`` lets ``DefaultProcessMonitor`` classify real
-        spawned subagents as ``SPAWNED_SUBAGENT`` instead of guessing from
-        the command line.
-        """
         registry, prefix = self._strategy_registry_and_prefix()
         if registry is None:
             return None
@@ -648,17 +453,6 @@ class ProcessLineReader:
     def _strategy_registry_and_prefix(
         self,
     ) -> tuple[ChildLivenessRegistry | None, str]:
-        """Return ``(registry, scope_prefix)`` from the strategy, or ``(None, "")``.
-
-        Reads the strategy's ``_registry`` attribute and resolves the
-        active label scope prefix via ``_active_label_prefix``. The prefix
-        lookup is wrapped in a try/except so a strategy stub that omits
-        ``_label_scope`` (used by some test fakes) does not crash the
-        caller. The returned ``scope_prefix`` is ``""`` when the registry
-        is missing or when the prefix lookup raises so downstream
-        ``OpenCodeRegistryDiscoveryStrategy`` calls always receive a
-        well-typed string.
-        """
         registry = cast(
             "ChildLivenessRegistry | None",
             getattr(self._strategy, "_registry", None),
@@ -678,7 +472,6 @@ class ProcessLineReader:
     def _bind_watchdog_monitors_and_sinks(
         self, watchdog: IdleWatchdog
     ) -> tuple[Token[ActivitySink | None], Token[ActivitySink | None]]:
-        """Bind workspace monitor and MCP/subagent sinks to the watchdog."""
         if self._monitor is not None:
 
             def _forward_event(kind: WorkspaceChangeKind, weight: float) -> None:
@@ -739,12 +532,6 @@ class ProcessLineReader:
                         self._cpu_baselines[pid] = (current_cpu, _now)
                 else:
                     self._cpu_baselines[pid] = (current_cpu, _now)
-            # wt-024 M4 (AC-01): sweep PIDs that are no longer in the
-            # current child list so the baseline map does not retain
-            # entries for descendants that have exited between ticks.
-            # Without this sweep, every distinct PID ever observed
-            # accumulates one entry for the rest of the session, which
-            # is unbounded in long build/test-runner patterns.
             live_pids = set(child_pids)
             for stale_pid in list(self._cpu_baselines.keys() - live_pids):
                 self._cpu_baselines.pop(stale_pid, None)
@@ -784,28 +571,6 @@ class ProcessLineReader:
         )
         scoped_active: bool | None = None
         scoped_count: int | None = None
-        # R1 (Trustworthy Idle Watchdog spec): the corroborator MUST
-        # read the FILTERED subagent count from
-        # ``ProcessMonitor.spawned_subagent_count()`` (preferred) or
-        # the legacy alias ``live_subagent_count()``. The BROADER
-        # ``self._handle.descendant_snapshot()`` count includes shell
-        # helpers like ``npm test`` / ``cargo build`` and is the bug
-        # source that produced the 2365s indefinite deferral in the
-        # wild (cited in the product spec).
-        #
-        # Production behavior: when a process monitor is injected,
-        # the corroborator sources ``scoped_child_active`` from the
-        # FILTERED seam. When the monitor is unavailable
-        # (``process_monitor_enabled=False`` legacy escape hatch
-        # used by integration tests that pre-date the R5 registry
-        # seam), the corroborator falls back to
-        # ``self._handle.descendant_snapshot()`` so the watchdog
-        # still has a signal. This fallback is the only
-        # ``descendant_snapshot`` reference the audit
-        # ``check_subagent_counting_seam`` does NOT flag because it
-        # is the canonical legacy escape hatch -- it MUST be the
-        # only descendant_snapshot reference in the function body,
-        # guarded by ``self._process_monitor is None``.
         oldest_secs_from_legacy = None
         try:
             monitor: ProcessMonitor | None = getattr(self, "_process_monitor", None)
@@ -814,11 +579,6 @@ class ProcessLineReader:
                 scoped_count = filtered_count
                 scoped_active = filtered_count > 0
             else:
-                # Legacy escape hatch: ``process_monitor_enabled=False``
-                # (e.g. integration tests pre-dating the R5 registry
-                # seam). Reads the broader descendant count so the
-                # watchdog still has a signal. Production callers
-                # always have a monitor.
                 try:
                     desc_count, desc_oldest = self._handle.descendant_snapshot()
                     scoped_count = desc_count
@@ -833,17 +593,11 @@ class ProcessLineReader:
             scoped_count = None
             scoped_active = None
         oldest_secs: float | None = oldest_secs_from_legacy
-        # Type assertion for mypy: after the try/except above,
-        # scoped_count is guaranteed to be int (when the monitor
-        # produced a value) or None (when no monitor was injected
-        # or the call raised). The expression below reads
-        # ``scoped_count`` as ``int | None`` so the snapshot's
-        # typed ``scoped_child_count`` argument matches.
         scoped_count_int: int | None = scoped_count
         alive_by: AliveBy | None = None
         reg = cast(
             "ChildLivenessRegistry | None", getattr(self._strategy, "_registry", None)
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         if reg is not None:
             try:
                 label_prefix = cast(
@@ -880,20 +634,10 @@ class ProcessLineReader:
         )
 
     def _capture_evicted_line(self, line: str) -> None:
-        """Write a queue-evicted line to the raw capture.
-
-        The queue drops its oldest entry when the producer outruns the
-        consumer, and the capture is written consumer-side -- so a
-        dropped line never reached the transcript. Losing whole lines
-        leaves the file parseable, so nothing reported it.
-        """
         with contextlib.suppress(Exception):
-            # NOT liveness: this write means the consumer fell behind,
-            # not that it made progress. See ``RawOverflowLog.append``.
             self._raw_overflow.append(line, counts_as_liveness=False)
 
     def _start_read_thread(self) -> threading.Thread:
-        """Start the stdout reader thread."""
         reader = threading.Thread(target=self._read_thread, daemon=True)
         reader.start()
         return reader
@@ -901,7 +645,7 @@ class ProcessLineReader:
     def _start_stderr_thread(self) -> threading.Thread | None:
         stderr_pipe = cast(
             "IO[str] | None", getattr(self._handle, "stderr", None)
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         if stderr_pipe is None:
             return None
         reader = threading.Thread(target=self._read_stderr_thread, args=(stderr_pipe,), daemon=True)
@@ -948,7 +692,6 @@ class ProcessLineReader:
             self._publish_bounded_stderr()
 
     def _finish_terminal_completion(self) -> bool:
-        """Stop a process whose completion evidence is already durable."""
         _raise_on_relay_health_error(self, _agent_command_name(self._config))
         if self._completion_is_terminal is None:
             return False
@@ -965,7 +708,7 @@ class ProcessLineReader:
     def _read_thread(self) -> None:
         stdout_pipe = cast(
             "IO[str] | None", self._handle.stdout
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         if stdout_pipe is None:
             with self._lines_lock:
                 self._reader_done[0] = True
@@ -981,13 +724,6 @@ class ProcessLineReader:
                 if is_provider_quota_output_line(line):
                     self._terminate_for_quota(line)
                     break
-                # Per-line session id capture mirrors the canonical
-                # extraction in ``_run_subprocess_and_read_lines``
-                # (``captured_session_id`` accumulator there) so the
-                # watchdog-kill -> resume path sees the same id at the
-                # reader level. The two captures are independent
-                # (reader vs. outer generator) but the extraction is
-                # idempotent so both end up with the same value.
                 session_id = extract_transport_session_id_from_line(line)
                 if session_id is not None:
                     self._captured_session_id = session_id
@@ -995,15 +731,6 @@ class ProcessLineReader:
                     if watchdog is not None:
                         watchdog.record_session_id_capture(session_id)
         except UnicodeDecodeError:
-            # LISTED FIRST, deliberately: ``UnicodeDecodeError`` is a
-            # SUBCLASS of ``ValueError``, so the stream-close clause
-            # below swallowed it at DEBUG and told the operator the
-            # reader "stopped at stream close". A decode error means the
-            # opposite -- the transcript is truncated mid-run, the exact
-            # failure this reader is instrumented to report.
-            # ``SpawnOptions.errors="replace"`` should prevent it; if one
-            # still arrives, some spawn path is not forwarding that
-            # option and the operator needs to see it.
             logger.warning(
                 "output reader for {cmd} stopped on an undecodable byte; "
                 "the transcript is truncated here: {err}",
@@ -1011,21 +738,11 @@ class ProcessLineReader:
                 err=traceback.format_exc(limit=1).strip(),
             )
         except ValueError:
-            # Ordinary teardown, not truncation: the watchdog-fire path
-            # closes stdout under this still-iterating daemon thread, so
-            # "I/O operation on closed file" is expected there. Warning
-            # about it would tell the operator the opposite of the truth.
             logger.debug(
                 "output reader for {cmd} stopped at stream close",
                 cmd=_agent_command_name(self._config),
             )
         except Exception:
-            # Reported, not swallowed. The reader ending early truncates
-            # both the capture and the parse stream, and an operator
-            # seeing a short transcript needs to know it was cut here
-            # rather than by the agent. Decode errors no longer reach
-            # this path -- ``SpawnOptions.errors`` is ``"replace"`` --
-            # but anything else that stops the thread still should.
             logger.warning(
                 "output reader for {cmd} stopped early: {err}",
                 cmd=_agent_command_name(self._config),
@@ -1042,36 +759,16 @@ class ProcessLineReader:
                 self._pre_output_listener()
 
     def _terminate_for_quota(self, detail: str) -> None:
-        """Stop a quota-exhausted process without waiting for further output.
-
-        Quota exhaustion is a recognized fatal-process-failure terminal
-        reason (per R7 of the rebase supervision invariant -- one of the
-        four permitted terminal reasons for process termination). The
-        verdict is recorded before signaling so an operator can
-        distinguish deliberate shutdown from a runaway kill, and the kill
-        site is gated by the same fire-class verdict marker that
-        authorizes the broken-agent timer (a documented fatal process
-        failure in the same verdict family).
-        """
         if self._quota_error is not None:
             return
-        # Verdict guard: quota exhaustion is a documented fatal-process-failure
-        # terminal reason (R7). The typed terminal verdict is RECORDED FIRST —
-        # before any signal — so an operator can distinguish deliberate
-        # shutdown from a runaway kill, and a crash between verdict and signal
-        # still leaves the durable reason behind.
-        # ``BROKEN_AGENT_OUTPUT_GRACE_SECONDS`` is the canonical fire-class
-        # verdict marker for fatal process terminations; the guard below is
-        # never taken (the constant is positive) and exists so an AST scan of
-        # this function sees the recognized verdict family.
         if not BROKEN_AGENT_OUTPUT_GRACE_SECONDS:
-            return  # unreachable; structural verdict marker
+            return
         self._quota_error = QuotaExhaustedError(_agent_command_name(self._config), detail)
         self._lines_event.set()
         self._handle.terminate(grace_period_s=0.5)
         pid = cast(
             "int | None", getattr(self._handle, "pid", None)
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         if pid is not None:
             if self._process_teardown is None:
                 teardown_subtree(pid, issuer="invoke:process")
@@ -1092,13 +789,12 @@ class ProcessLineReader:
             raise self._quota_error
 
     def _terminate_completed_process(self) -> None:
-        """Stop the agent process after verified completion without waiting for stdout EOF."""
         if self._completion_is_terminal is None:
             return
         self._handle.terminate(grace_period_s=0.5)
         pid = cast(
             "int | None", getattr(self._handle, "pid", None)
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         if pid is not None:
             if self._process_teardown is None:
                 teardown_subtree(pid, issuer="invoke:process")
@@ -1109,10 +805,6 @@ class ProcessLineReader:
         try:
             return self._strategy.classify_quiet(self._handle, self._probe)
         except Exception:
-            # A dead parent has nothing left to wait for: defaulting to
-            # WAITING_ON_CHILD there held the conflict-resolution drain
-            # (no deadline, exits only when not waiting) until the
-            # inactivity ceiling.
             if self._handle.poll() is not None:
                 logger.opt(exception=True).debug(
                     "idle watchdog: classify_quiet raised after exit; defaulting to ACTIVE"
@@ -1145,14 +837,7 @@ class ProcessLineReader:
             else self._policy.idle_timeout_seconds
         )
         assert timeout_val is not None
-        # The captured transport session id (mirrors
-        # ``captured_session_id`` in ``_run_subprocess_and_read_lines``
-        # but reads the reader-level cache so the value is available
-        # at fire time without re-scanning the stdout pipe).
         captured_session_id = self._captured_session_id
-        # Real resume-safety from the canonical helper at
-        # ``_process_reader._is_resumable_fire_reason`` (NOT the
-        # hardcoded ``false`` that pre-fix this method logged).
         resume_safe = _is_resumable_fire_reason(fire_reason)
         logger.warning(
             "idle watchdog firing reason={} idle_elapsed={}s cumulative_waiting={}s "
@@ -1170,7 +855,7 @@ class ProcessLineReader:
         self._handle.terminate(grace_period_s=0.5)
         pid = cast(
             "int | None", getattr(self._handle, "pid", None)
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         if pid is not None:
             if self._process_teardown is None:
                 teardown_subtree(pid, issuer="invoke:process")
@@ -1178,33 +863,13 @@ class ProcessLineReader:
                 self._process_teardown.teardown_subtree(pid, issuer="invoke:process")
         hs_event = self._last_hard_stop[0]
         hard_stop_diag = hs_event.diagnostic if hs_event is not None else None
-        # Always merge the watchdog's per-channel evidence summary into
-        # the diagnostic so a post-mortem (or the on-call operator) can
-        # see exactly which evidence channels were fresh and which
-        # were stale at the moment the watchdog fired. The watchdog's
-        # own ``last_evidence_summary`` produces a list of
-        # ``ChannelEvidenceSummary.to_dict()`` entries; we surface that
-        # under ``evidence_summary`` alongside any HARD_STOP diagnostic
-        # the watchdog already populated.
         now = self._clock.monotonic()
         evidence_block = {
             "evidence_summary": watchdog.last_evidence_summary(now).to_dict_list(),
         }
         merged_diag: dict[str, object] = dict(evidence_block)
-        # Surface the captured session id and the real resume-safety
-        # signal in the post-mortem diagnostic. The
-        # ``FailureClassifier.classify`` consults ``exc.__cause__``
-        # first (which already carries ``resumable_session_id`` on the
-        # ``IdleWatchdogKilledError``), but a future reader of the
-        # diagnostic that does not walk the exception chain (e.g. an
-        # on-call grep of the merged_diag payload) must see the
-        # captured id here as well.
         merged_diag["resumable_session_id"] = captured_session_id
         merged_diag["resume_safe"] = resume_safe
-        # The diagnostic_snapshot adds the full watchdog state at the
-        # moment of the fire for post-mortem reconstruction. It is
-        # optional because a watchdog mock without ``diagnostic_snapshot``
-        # must not crash the fire path.
         snapshot_method: object = getattr(watchdog, "diagnostic_snapshot", None)
         if callable(snapshot_method):
             try:
@@ -1225,47 +890,12 @@ class ProcessLineReader:
             for key, value in hard_stop_diag.items():
                 if key not in merged_diag:
                     merged_diag[key] = value
-        # The watchdog's typed exception ``IdleWatchdogKilledError``
-        # (AC-05: the failure_classifier's typed-attribute branch in
-        # ``failure_classifier.py`` consults ``exc.reason`` and
-        # ``exc.signal`` directly instead of substring-matching the
-        # message) is raised by this method, but the existing
-        # ``except _IdleStreamTimeoutError as exc:`` block in
-        # ``_run_subprocess_and_read_lines`` is the conversion seam
-        # to ``AgentInactivityTimeoutError`` for the recovery
-        # layer. The typed exception is attached to the wrapped
-        # payload via ``__cause__`` so a downstream
-        # ``failure_classifier.classify`` call that walks the
-        # ``__cause__`` chain (and the future ``isinstance`` check
-        # on the typed exception) sees the typed cause first. The
-        # post-exit ``PROCESS_EXIT_HANG`` path
-        # (post_exit_watchdog.py) still raises
-        # ``_IdleStreamTimeoutError`` directly because it is owned
-        # by ``PostExitWatchdog``, not ``IdleWatchdog``.
-        # Surface the watchdog's corroborator ``alive_by`` signal at
-        # the moment of the fire. ``child_alive=True`` means the
-        # child was alive per the corroborator (defense-in-depth;
-        # normally dead code because the gate refinement in
-        # ``IdleWatchdog._is_no_progress_quiet`` defers the
-        # ``NO_PROGRESS_QUIET`` fire when alive_by is not None).
-        # ``child_alive=False`` means the corroborator returned
-        # ``alive_by=None`` (truly dead child -- Rule 2:
-        # exponential backoff). The signal is consumed by
-        # ``FailureClassifier._classify_unavailability_reason`` to
-        # differentiate live-child from dead-child
-        # ``NO_PROGRESS_QUIET`` at the typed-evidence level. The
-        # ``is not None`` test maps ``None`` (no signal at all) to
-        # ``False`` (dead-child / Rule 2 path) and any of the 5
-        # non-``None`` ``AliveBy`` values to ``True`` (live-child /
-        # Rule 1 defense-in-depth path). ``getattr(..., None)`` is
-        # used for backward-compat with test mocks that do not set
-        # the ``last_alive_by`` attribute.
         _alive_by_signal: object = getattr(watchdog, "last_alive_by", None)
         _child_alive = _alive_by_signal is not None
         _append_conflict_termination_diagnostic(merged_diag, watchdog, fire_reason, now)
         typed_exc = IdleWatchdogKilledError(
             reason=fire_reason.value,
-            signal=15,  # SIGTERM
+            signal=15,
             evidence_summary=str(merged_diag),
             child_alive=_child_alive,
             resumable_session_id=captured_session_id,
@@ -1284,16 +914,6 @@ class ProcessLineReader:
         return pending, wrapper
 
     def _capture_pending(self, pending_lines: list[str]) -> list[str]:
-        """Write drained queue lines to the raw capture before yielding them.
-
-        A watchdog fire drains the pending queue straight to the parser.
-        Those lines are agent output like any other, so skipping the
-        capture left the "verbatim" transcript missing exactly the lines
-        written just before a stall -- and losing whole lines leaves the
-        file parseable, so the corruption detector reports nothing and
-        the loss is silent. The transport-failure scan reads that same
-        tail for the frame naming a cause.
-        """
         for line in pending_lines:
             with contextlib.suppress(Exception):
                 self._raw_overflow.append(line)
@@ -1307,34 +927,12 @@ class ProcessLineReader:
         reader: threading.Thread,
         stderr_reader: threading.Thread | None,
     ) -> None:
-        """Release everything ``read_lines`` acquired, in reverse order."""
-        # The join lives HERE, not at the end of the loop. Sitting there
-        # it was reached only via ``break``: every ``raise`` path -- a
-        # watchdog fire, a broken-agent verdict -- and ``GeneratorExit``
-        # went straight to this teardown with the reader thread still
-        # running, so the drain below ran against a queue the reader was
-        # still filling and the frame it was mid-push was lost. The
-        # comment claiming "after the reader thread is joined" was true
-        # of one exit out of five.
-        #
-        # BOUNDED by the drain window, not the old ten seconds. Those
-        # raise paths exist to fail over PROMPTLY, and the reader they
-        # are abandoning is usually blocked on a read that will never
-        # return -- so waiting ten seconds for it turned every watchdog
-        # fire into a ten-second stall. A reader about to deliver its
-        # last frame finishes well inside this; a wedged one is not
-        # waited for, and the frame it was holding is lost. That is the
-        # honest limit of this guarantee.
         with contextlib.suppress(RuntimeError):
             reader.join(timeout=max(self._policy.drain_window_seconds, 0.5))
         if stderr_reader is not None:
             with contextlib.suppress(RuntimeError):
                 stderr_reader.join(timeout=max(self._policy.drain_window_seconds, 0.5))
         self._publish_bounded_stderr()
-        # BEFORE the capture is closed and AFTER the reader thread is
-        # joined: the reader may append while the loop is breaking out,
-        # so draining any earlier would leave exactly the lines this
-        # exists to save.
         self._capture_abandoned_lines()
         watchdog.record_invocation_end()
         if self._remove_relay_sink is not None:
@@ -1351,24 +949,6 @@ class ProcessLineReader:
         self._unsubscribe()
 
     def _capture_abandoned_lines(self) -> None:
-        """Write queued lines the read loop stopped short of.
-
-        The loop can leave the queue un-drained: terminal completion
-        evidence breaks out of it, and the reader-done branch breaks
-        after a drain window the reader thread can still append behind.
-        Those lines are agent output like any other, and losing whole
-        lines leaves the file PARSEABLE -- so the corruption detector
-        reports nothing and the loss is silent, which is the same
-        failure mode the eviction sink and ``_capture_pending`` were
-        written to close. Each covers one exit; neither covers
-        abandonment.
-
-        Capture only, never yielded: the parser stream stopped
-        deliberately, and re-opening it here would deliver a frame after
-        the completion that ended the turn. The verbatim record has no
-        such constraint -- it is supposed to hold everything the agent
-        wrote.
-        """
         with self._lines_lock:
             pending = list(self._lines_queue)
             self._lines_queue.clear()
@@ -1377,15 +957,6 @@ class ProcessLineReader:
                 self._raw_overflow.append(line)
 
     def _record_line_activity(self, watchdog: IdleWatchdog, queued_line: str) -> None:
-        """Classify a line and route it to the matching watchdog activity sink.
-
-        ERROR_LINE and repeated PROGRESS_REPORT lines feed the repeated-error
-        circuit breaker without resetting the idle baseline; LIFECYCLE frames
-        reset idle only; everything else is genuine forward progress.
-        TOOL_USE activity also feeds the tool-call circuit breaker so an
-        agent wedged in an identical-tool-call retry loop trips
-        REPEATED_IDENTICAL_TOOL_CALL.
-        """
         activity_signal = self._strategy.classify_activity_line(queued_line)
         if activity_signal is None:
             self._last_activity_meaningful[0] = False
@@ -1402,15 +973,9 @@ class ProcessLineReader:
             and not activity_signal.is_harness_echo
         )
         if activity_signal.is_harness_echo:
-            # Keep the idle baseline current without treating echoed input as LLM output.
             watchdog.record_prompt_echo(queued_line)
             return
         if activity_signal.error_message is not None:
-            # A failed tool call is BOTH a call and an error. Feeding only the
-            # dimension its ``kind`` names left the other wedge invisible: a
-            # repeated failing command whose output text varies, or an
-            # MCP-timeout storm whose args vary. Feed the error dimension here
-            # and let the kind-specific branch below feed the other.
             watchdog.record_error_activity(activity_signal.error_message)
         if activity_signal.kind == AgentActivityKind.ERROR_LINE:
             watchdog.record_error_activity(activity_signal.raw)
@@ -1419,26 +984,12 @@ class ProcessLineReader:
         elif activity_signal.kind == AgentActivityKind.LIFECYCLE:
             watchdog.record_lifecycle_activity()
         elif activity_signal.kind == AgentActivityKind.TOOL_USE:
-            # NEW BEHAVIOR: feed the tool-call circuit breaker so
-            # the watchdog can fire REPEATED_IDENTICAL_TOOL_CALL
-            # when an agent re-issues the same (tool_name,
-            # tool_args) combination.  The extraction is
-            # best-effort -- non-JSON or unknown envelopes are
-            # silently skipped so the breaker sees only stable
-            # (name, args) fingerprints.
             tool_call = _extract_tool_call_from_activity_signal(activity_signal.raw)
             if tool_call is not None:
                 tool_name, tool_args = tool_call
                 watchdog.record_tool_call_activity(tool_name, tool_args)
             watchdog.record_tool_use_activity()
         elif activity_signal.kind == AgentActivityKind.TOOL_RESULT:
-            # Every non-PTY transport lands here (PTY serves only
-            # claude_interactive / agy / nanocoder), and this branch did not
-            # exist: a tool result fell through to ``record_activity()``, whose
-            # ``note_progress()`` wiped the tool-call repetition streak after
-            # every completed call, and ``record_tool_result_activity`` was
-            # never reached at all -- so STALLED_AFTER_TOOL_RESULT was
-            # unreachable on opencode, claude, pi, cursor, and codex alike.
             watchdog.record_tool_result_activity()
         else:
             watchdog.record_activity()
@@ -1470,17 +1021,10 @@ class ProcessLineReader:
     def _finish_reader_done(
         self, watchdog: IdleWatchdog
     ) -> tuple[list[str], _IdleStreamTimeoutError] | None:
-        """Stop on durable completion or drain remaining process shutdown evidence."""
         _raise_on_relay_health_error(self, _agent_command_name(self._config))
-        # stdout is closed: a buffered OpenCode frame can no longer arrive, so
-        # the strategy must stop treating an open turn as a live child.
         self._strategy.observe_stream_end()
         if self._finish_terminal_completion():
             return None
-        # A conflict resolver may exit its foreground parent while scoped MCP
-        # or child work continues.  Its activity-only profile must retain that
-        # work until liveness ends; an ordinary drain deadline is elapsed-time
-        # termination and would discard fresh non-stdout activity here.
         drain_deadline = (
             None
             if self._policy.profile.value == "activity_only"
@@ -1500,22 +1044,11 @@ class ProcessLineReader:
     def _build_opencode_subagent_probe(
         self, watchdog: IdleWatchdog
     ) -> OpenCodeSubagentSessionProbe | None:
-        """Watch OpenCode's session store for native ``task`` children.
-
-        OpenCode buffers a native task's ``tool_use`` frame until the child
-        finishes, so stdout carries nothing while a subagent works. Every
-        part the child writes to OpenCode's own store is forwarded as
-        demonstrated work: the watchdog's subagent channel and idle
-        baseline (the same treatment a parent output line gets) and the
-        strategy's child-liveness registry. Other transports get no probe.
-        """
         strategy = self._strategy
         if not isinstance(strategy, OpenCodeExecutionStrategy):
             return None
         source = self._opencode_child_part_source
         if source is None:
-            # Observation-only: an unresolvable home directory or a store that
-            # vanishes mid-resolution must cost the evidence, never the run.
             try:
                 db_path = default_opencode_db_path()
             except (OSError, RuntimeError):
@@ -1541,7 +1074,6 @@ class ProcessLineReader:
         )
 
     def _build_process_monitor(self) -> ProcessMonitor | None:
-        """Build the monitor with transport-scoped child evidence."""
         subagent_pid_source = self._build_subagent_pid_source()
         registry, scope_prefix = self._strategy_registry_and_prefix()
         return _make_process_monitor(
@@ -1555,12 +1087,6 @@ class ProcessLineReader:
 
     def read_lines(self) -> Iterator[str]:
         process_monitor = self._build_process_monitor()
-        # R1 (Trustworthy Idle Watchdog spec): store the monitor so
-        # ``_corroborate`` can read the FILTERED subagent count from
-        # ``spawned_subagent_count()`` (preferred) instead of the
-        # broader ``handle.descendant_snapshot()`` count. The monitor
-        # is reset in the ``finally`` block so a stale monitor never
-        # leaks across invocations.
         self._process_monitor = process_monitor
         watchdog = IdleWatchdog(
             self._policy,
@@ -1575,22 +1101,11 @@ class ProcessLineReader:
         watchdog.record_invocation_start()
         if self._expected_session_id is not None:
             watchdog.record_session_id_capture(self._expected_session_id)
-        # R7 (Trustworthy Idle Watchdog): expose the watchdog
-        # reference on the reader so the line-reader layer can
-        # populate the R7 diagnostic fields on
-        # ``CompletionCheckOptions`` at the construction site
-        # AFTER the iterator exhausts (post-read at
-        # ``_process_reader.py:945``). The watchdog is also
-        # closed-loop in the ``finally`` block below; the reader
-        # only consumes the reference while it is in scope.
         self._watchdog = watchdog
         if self._captured_session_id is not None:
             watchdog.record_session_id_capture(self._captured_session_id)
 
         sink_token, subagent_token = self._bind_watchdog_monitors_and_sinks(watchdog)
-        # Establish the watchdog epoch before the producer can advance an
-        # injected clock or enqueue its first line. Starting the reader first
-        # let a fast producer make an elapsed session ceiling invisible.
         self._opencode_subagent_probe = self._build_opencode_subagent_probe(watchdog)
         stderr_reader = self._start_stderr_thread()
         reader = self._start_read_thread()
@@ -1604,8 +1119,6 @@ class ProcessLineReader:
                 is_done = False
                 with self._lines_lock:
                     if self._lines_queue:
-                        # BoundedLinesQueue exposes O(1) popleft; raw lists
-                        # (used by tests) fall back to O(n) pop(0).
                         queued_line = _pop_queue_line(self._lines_queue)
                     elif self._reader_done[0]:
                         is_done = True
@@ -1666,14 +1179,6 @@ class ProcessLineReader:
 
 
 def completion_evidence_gates_reader(ctx: AgentRunCtx) -> bool:
-    """Return whether durable completion evidence may stop the reader early.
-
-    Completion-enforced phases opt in explicitly. A conflict resolver
-    (``activity_only`` supervision) is gated too: its ``declare_complete``
-    sentinel is the resolver saying it is finished, and honouring it ends
-    the invocation the moment the work is durable instead of waiting for
-    stdout EOF and then for every liveness signal to go quiet.
-    """
     return bool(ctx.requires_completion_evidence) or ctx.policy.profile.value == "activity_only"
 
 
@@ -1683,7 +1188,6 @@ def _append_conflict_termination_diagnostic(
     fire_reason: WatchdogFireReason,
     now: float,
 ) -> None:
-    """Attach direct activity provenance for both process-reader transports."""
     if fire_reason not in {
         WatchdogFireReason.CONFLICT_INACTIVITY,
         WatchdogFireReason.OPERATOR_CAP_REACHED,
@@ -1715,15 +1219,6 @@ def _run_subprocess_and_read_lines(
     cmd: list[str],
     ctx: AgentRunCtx,
 ) -> Iterator[str]:
-    """Run subprocess and yield output lines.
-
-    Args:
-        cmd: Command to execute.
-        ctx: Agent run context with configuration and options.
-
-    Yields:
-        Output lines from the subprocess.
-    """
     clock: Clock = ctx.clock or SystemClock()
     argv, stdin_prompt = split_prompt_for_stdin_delivery(cmd, ctx.config)
     spawn_options = (
@@ -1798,8 +1293,6 @@ def _run_subprocess_and_read_lines(
         reader = ProcessLineReader(handle, reader_ctx, clock, agy_cli_log=agy_cli_log)
         lines_iter = reader.read_lines()
         if stdin_prompt is not None:
-            # Only now that the reader exists: a child that never drains its
-            # stdin must stay under the reader's idle watchdog.
             _deliver_prompt_on_stdin(handle, stdin_prompt)
         parsed_output: deque[str] = deque(maxlen=_MAX_PARSED_OUTPUT_LINES)
         explicit_completion_seen = False
@@ -1846,7 +1339,7 @@ def _run_subprocess_and_read_lines(
                     handle.terminate(grace_period_s=0.5)
                     exit_pid = cast(
                         "int | None", getattr(handle, "pid", None)
-                    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                    )
                     if exit_pid is not None:
                         if ctx.process_teardown is None:
                             teardown_subtree(exit_pid, issuer="invoke:process")
@@ -1866,13 +1359,6 @@ def _run_subprocess_and_read_lines(
                 expected_session_id=reader_ctx.expected_session_id,
             ) from exc
 
-        # R7 (Trustworthy Idle Watchdog): populate the diagnostic
-        # fields on ``CompletionCheckOptions`` from the watchdog
-        # state held on the reader (``reader._watchdog`` was set
-        # at the start of ``read_lines()``). The helper at
-        # ``collect_r7_diagnostic_fields`` extracts the four
-        # fields into a tuple so this function stays under the
-        # PLR0912 / PLR0915 branch / statement limits.
         (
             evidence_summary_str,
             last_tool_call_str,
@@ -1924,7 +1410,6 @@ def _read_lines_from_process(
 
 
 def _has_meaningful_output_from_reader(reader: object) -> bool | None:
-    """Return the watchdog's LLM-output verdict, or unknown for legacy readers."""
     watchdog: IdleWatchdog | None = getattr(reader, "_watchdog", None)
     if watchdog is None:
         return None
@@ -1940,39 +1425,6 @@ def collect_r7_diagnostic_fields(
     clock: Clock,
     parsed_output: deque[str],
 ) -> tuple[str | None, str | None, float | None, tuple[str, ...]]:
-    """Extract the four R7 diagnostic fields from the reader's watchdog.
-
-    R7 (Trustworthy Idle Watchdog spec) requires the
-    ``OpenCodeResumableExitError`` to carry the captured watchdog
-    state at the moment of the rc=0 exit so a logged traceback is
-    actionable. The helper returns a tuple of
-    ``(last_evidence_summary, last_observed_tool_call, elapsed_seconds,
-    transcript_tail)`` extracted from the watchdog instance held
-    on the line reader (``reader._watchdog``, set at the start of
-    ``read_lines()``). The ``reader`` parameter is typed as
-    ``object`` so both ``ProcessLineReader`` (subprocess transport,
-    ``_process_reader.py``) and ``PtyLineReader`` (PTY transport,
-    ``_pty_line_reader.py``) can be passed in -- both expose the
-    same ``_watchdog`` attribute.
-
-    The ``transcript_tail`` is hard-capped to the last 10 entries
-    of ``parsed_output`` via tuple slice so audit_resource_lifecycle
-    accepts it (the dataclass field is typed as ``tuple[str, ...]``,
-    never a list literal). ``last_evidence_summary`` is str-coerced
-    from the ``to_dict_list()`` payload via the canonical coercion
-    pattern already used at ``_process_reader.py:598`` for the
-    watchdog-kill merged_diag payload.
-
-    Every read is wrapped in ``try / except Exception`` so a
-    misbehaving watchdog mock cannot crash the rc=0 path; the
-    caller falls back to ``None`` / ``()`` on any exception.
-
-    Returns:
-      A tuple of ``(last_evidence_summary, last_observed_tool_call,
-      elapsed_seconds, transcript_tail)``. The dataclass field
-      order matches the keyword-only signature of
-      ``CompletionCheckOptions``.
-    """
     watchdog_for_diag: IdleWatchdog | None = getattr(reader, "_watchdog", None)
     if watchdog_for_diag is None:
         return None, None, None, ()

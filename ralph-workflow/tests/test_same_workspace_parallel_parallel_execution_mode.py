@@ -1,5 +1,3 @@
-"""Tests for same-workspace parallel worker behaviour."""
-
 from __future__ import annotations
 
 from ralph.pipeline.parallel.mode import ParallelExecutionMode

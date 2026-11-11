@@ -1,21 +1,3 @@
-"""Typed vocabularies for integration actions and rebase outcome kinds.
-
-Defines the closed vocabularies for:
-- IntegrationAction: integration lifecycle progression
-- RebaseOutcomeKind: the 19 outcome verbs across the pipeline
-along with the typed accessors `last_outcome_reason` and
-`next_integration_action`.
-
-`next_integration_action` is NOT the integration decision authority. The
-owner seam decides: `ralph.pipeline.integration_owner` (`decide_integration`,
-`decide_integration_verdict`, ledger writes through
-`charge_integration_attempt`), reached from the pipeline boundaries through
-`ralph.pipeline._integration_owner_seam.decide_seam_action`. The helper here
-is a typed projection of durable state (`RebaseState` / `IntegrationRecord`)
-onto the closed `IntegrationAction` vocabulary. It has no production callers
-and it fails closed to `REQUIRE_INTERVENTION` when the durable facts cannot
-prove a next step.
-"""
 
 from __future__ import annotations
 
@@ -27,7 +9,6 @@ from ralph.pipeline.auto_integrate_backoff import retry_deadline_is_live
 
 
 class IntegrationAction(StrEnum):
-    """The closed vocabulary for the integration lifecycle."""
 
     RESOLVE_ACTIVE_OPERATION = "resolve_active_operation"
     CONTINUE_GIT_OPERATION = "continue_git_operation"
@@ -50,7 +31,6 @@ def _safe_attr(obj: object, name: str) -> object:
 
 
 def last_outcome_reason(record: object) -> str | None:
-    """Typed accessor for the human-readable outcome reason on a record/state."""
     if record is None:
         return None
     reason: object = _safe_attr(record, "last_reason")
@@ -63,7 +43,6 @@ def last_outcome_reason(record: object) -> str | None:
 
 
 def _check_intervention(record: object) -> IntegrationAction | None:
-    """Check if intervention is required from current durable facts only."""
     diag: object = _safe_attr(record, "diagnostic_intervention_required")
     exhausted: object = _safe_attr(record, "resolution_exhausted")
     last_out: object = _safe_attr(record, "last_outcome")
@@ -81,7 +60,6 @@ def _check_intervention(record: object) -> IntegrationAction | None:
 
 
 def _check_prepared_merge_tree(record: object) -> IntegrationAction | None:
-    """Prepared merge tree with no armed flags still owns an in-flight merge."""
     if _safe_attr(record, "merge_commit_tree") is None:
         return None
     from ralph.pipeline._git_operation_authority import (
@@ -99,7 +77,6 @@ def _check_prepared_merge_tree(record: object) -> IntegrationAction | None:
 
 
 def _check_active_or_pending(record: object) -> IntegrationAction | None:
-    """Check active operations and pending continuations or reintegrations."""
     if (
         _safe_attr(record, "rebase_continue_pending") is True
         or _safe_attr(record, "merge_commit_pending") is True
@@ -147,23 +124,6 @@ def _conflict_action(
     record: object,
     clock: object,
 ) -> IntegrationAction | None:
-    """Compute the action for a conflict / retained-recovery record.
-
-    Returns ``REQUIRE_INTERVENTION`` when the record does not carry
-    a typed ``retry_deadline`` (the architecture forbids an
-    unbounded wait), and ``WAIT_FOR_BOUNDED_RETRY`` only when the
-    injected clock reports a value before the deadline. Returns
-    ``None`` for records that are not in the conflict or
-    retained-recovery lifecycle, so the caller can fall through to
-    the next authority check.
-
-    ``retry_deadline`` is a persisted MONOTONIC instant. A deadline
-    further in the future than any writer arms
-    (``MAX_RETRY_DEADLINE_HORIZON_SECONDS``) was written against another
-    clock origin -- a previous boot -- and is treated as expired, so a
-    reboot cannot hold the record in ``WAIT_FOR_BOUNDED_RETRY`` for the
-    previous uptime.
-    """
     last_outcome: object = _safe_attr(record, "last_outcome")
     recovery_retained: object = _safe_attr(record, "recovery_record_retained")
     if not (last_outcome == RebaseOutcomeKind.CONFLICT or recovery_retained is True):
@@ -188,7 +148,6 @@ def _check_rebase_state_action(
     policy: object,
     clock: object = None,
 ) -> IntegrationAction | None:
-    """Check RebaseState outcomes, landing, and publication."""
     conflict_action = _conflict_action(record, clock)
     if conflict_action is not None:
         return conflict_action
@@ -220,16 +179,6 @@ def _landed_publication_proof(
     policy: object,
     fast_fwd: object,
 ) -> bool:
-    """Return True when the record carries landing + publication proof.
-
-    A terminal label (COMPLETED / TERMINAL) is NEVER sufficient
-    proof on its own: it must be paired with ``fast_forwarded=True``
-    (the durable landing fact) and either a clean fast-forward
-    outcome, or a remote-pushed outcome that already exercised the
-    publication path. The previous projection accepted terminal
-    labels alone, which authorized completion without landing and
-    was the source of the wt-03 drift.
-    """
     if last_outcome is RebaseOutcomeKind.REMOTE_PUSHED:
         return True
     pub_pol = _safe_attr(policy, "publication_policy") if policy is not None else None
@@ -244,12 +193,6 @@ def _has_completion_proof(
     policy: object = None,
     proof: bool | None = None,
 ) -> bool:
-    """Check whether positive proof of integration completion is present.
-
-    Unknown evidence (last_outcome is None, an unfamiliar outcome,
-    or any condition the typed authority cannot classify) routes
-    to ``REQUIRE_INTERVENTION`` rather than this shortcut.
-    """
     if proof is True:
         return True
     if _safe_attr(record, "completion_proof") is True:
@@ -270,17 +213,6 @@ def next_integration_action(
     *,
     proof: bool | None = None,
 ) -> IntegrationAction:
-    """Project the next integration action out of durable state.
-
-    Typed projection helper, not the integration decision authority: the
-    owner seam (`ralph.pipeline.integration_owner`, reached through
-    `ralph.pipeline._integration_owner_seam.decide_seam_action`) decides.
-    This helper maps a durable record or rebase state onto the closed
-    `IntegrationAction` vocabulary and fails closed to
-    `REQUIRE_INTERVENTION` when the durable facts cannot prove a next step.
-
-    Requires proof for completion and uses injected clock for durable deadline.
-    """
     has_proof = proof is True
     if record is None:
         return (

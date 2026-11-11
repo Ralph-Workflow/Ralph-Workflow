@@ -1,4 +1,3 @@
-"""Execution strategy for Opencode agents."""
 
 from __future__ import annotations
 
@@ -44,7 +43,6 @@ if TYPE_CHECKING:
 
 
 def _step_frame_message_id(envelope: dict[str, object]) -> str | None:
-    """Return ``part.messageID`` of a step frame, or ``None`` when absent."""
     part = envelope.get("part")
     if not isinstance(part, dict):
         return None
@@ -55,23 +53,6 @@ def _step_frame_message_id(envelope: dict[str, object]) -> str | None:
 
 
 class OpenCodeExecutionStrategy(BaseExecutionStrategy):
-    """OpenCode-aware strategy.
-
-    Idle classification checks the injectable LivenessProbe before falling
-    back to the psutil-based has_live_descendants(), so unit tests can inject
-    a FakeLivenessProbe without spawning real processes.
-
-    Exit classification uses evidence precedence:
-      1. durable phase-completion evidence -> TERMINAL_COMPLETE
-      2. fresh progress in registry -> WAITING_ON_CHILD
-      3. live OS descendants with no fresh progress -> RESUMABLE_CONTINUE (stale)
-      4. else -> RESUMABLE_CONTINUE
-
-    ``label_scope`` narrows the Ralph-tracked liveness check to processes whose
-    labels start with ``agent:{label_scope}:``. When no scope is available,
-    the empty-prefix registry-wide snapshot is consulted; the strategy never
-    returns ACTIVE based on a never-matching sentinel.
-    """
 
     def __init__(
         self,
@@ -83,33 +64,11 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
     ) -> None:
         self._label_scope = label_scope
         self._registry = registry
-        # Optional sink invoked from ``observe_line`` when a child
-        # progress / heartbeat / tool_call signal is observed. The
-        # canonical sink is the per-run watchdog's
-        # ``record_subagent_work`` method, which updates the
-        # per-channel ``_last_subagent_progress_at`` timestamp the
-        # verdict hook consults to defer NO_OUTPUT_DEADLINE. The
-        # default is None (legacy / non-opencode transports) so
-        # existing callers and tests are unaffected.
         self._subagent_activity_sink = subagent_activity_sink
-        # Tracks whether this invocation ever observed scoped Ralph
-        # child evidence (registry records matching the active label
-        # prefix). Once true, the strategy treats the later absence of
-        # fresh scoped evidence as stale evidence, preventing raw OS
-        # descendant existence alone from keeping a quiet run in
-        # WAITING_ON_CHILD after the scoped child has been pruned.
         self._scoped_records_seen = False
-        # OpenCode emits ``step_start`` before it begins native delegated work,
-        # but buffers the matching ``task`` tool frame until that work has
-        # completed. Keep the turn itself as liveness evidence during that
-        # otherwise stdout-silent interval; ``step_finish`` releases it.
-        # Open steps are keyed by ``part.messageID``: a retried model call
-        # re-emits ``step_start`` for the SAME message and closes it with a
-        # single ``step_finish``, so a plain frame counter never returned to
-        # zero. Frames without a message id fall back to a counter.
         self._open_step_messages: set[str] = (
             set()
-        )  # bounded-accumulator-ok: one entry per in-flight OpenCode message; emptied by step_finish and on stream EOF
+        )
         self._anonymous_open_steps = 0
 
     def _active_label_prefix(self) -> str | None:
@@ -118,11 +77,6 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
         return f"{_AGENT_LABEL_PREFIX}{self._label_scope}:"
 
     def classify_activity_line(self, line: str) -> AgentActivitySignal | None:
-        """Classify OpenCode output for idle-watchdog activity."""
-        # A tool envelope remains tool activity even when its embedded state
-        # reports an error. The tool dimension correlates repeated identical
-        # calls; routing it through ERROR_LINE loses that evidence. Top-level
-        # error envelopes still take the error path below.
         signal = _classify_opencode_child_signal(line)
         if signal is not None:
             return signal
@@ -138,61 +92,10 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
         return _non_blank_output_signal(line)
 
     def observe_line(self, line: str) -> None:
-        """Route a parsed output line into the child liveness registry.
-
-        When ``subagent_activity_sink`` is set, the sink is invoked once
-        per CHILD_PROGRESS or CHILD_HEARTBEAT signal so the idle
-        watchdog's per-channel evidence surface stays fresh. The
-        child_liveness registry continues to own freshness tracking;
-        this is a thin shim from "progress observed" to "activity
-        signal sent". Sink exceptions are swallowed so a buggy sink
-        cannot corrupt the registry or break the line loop.
-        """
         self._update_open_step_liveness(line)
         registry = cast(
             "ChildLivenessRegistry | None", getattr(self, "_registry", None)
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-        # Invoke the activity sink BEFORE the registry update so a
-        # progress signal is recorded as activity regardless of whether
-        # the registry update succeeds. We only invoke on the two
-        # 'demonstrable work' kinds — CHILD_PROGRESS (phase change or
-        # tool_call) and CHILD_HEARTBEAT (live signal). Terminal and
-        # spawn signals are not forward progress: a child_complete
-        # event means the child is no longer running, and child_started
-        # is just OS-level evidence the child was launched.
-        #
-        # Two sink sources are consulted: the constructor-injected
-        # ``subagent_activity_sink`` (used by direct unit tests that
-        # construct a strategy with an explicit sink) and the
-        # per-task contextvar (production: the per-run watchdog
-        # registers itself before its lines loop starts). The
-        # constructor sink takes precedence so test fixtures can
-        # override the production wiring.
-        #
-        # Signal resolution order: OpenCode's specialised classifier
-        # runs first (it understands the OpenCode wire format);
-        # when it returns None (e.g. for plain-text child markers
-        # like ``[subagent] progress`` or ``[subagent] heartbeat``
-        # that some agent setups emit on the same stdout), the
-        # cross-transport generic classifier is consulted as a
-        # fallback so every supported transport feeds the watchdog
-        # surface with REAL extracted progress.
-        #
-        # SINK/REGISTRY PARITY (FIX): the watchdog activity sink
-        # and the child-liveness registry MUST consume the SAME
-        # evidence model so the watchdog cannot treat a line as
-        # fresh subagent activity while the registry-backed
-        # liveness view stays stale. The registry drops lines
-        # without a child id (see
-        # ``_route_opencode_line_to_registry``); the sink now
-        # applies the same gate: a CHILD_PROGRESS / CHILD_HEARTBEAT
-        # line without a parsed child id is treated as
-        # un-attributable and is dropped from the sink. Plain-text
-        # generic markers (``[subagent] progress`` /
-        # ``[subagent] heartbeat``) classify as CHILD_PROGRESS /
-        # CHILD_HEARTBEAT but do NOT carry a JSON child_id; the
-        # plain-text path passes the gate because child scoping
-        # is implicit in the marker text itself.
+        )
         child_id: str | None = parse_opencode_child_id(line)
         if self._subagent_activity_sink is not None or _has_subagent_sink():
             signal = _classify_opencode_child_signal(line)
@@ -202,17 +105,7 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
                 AgentActivityKind.CHILD_PROGRESS,
                 AgentActivityKind.CHILD_HEARTBEAT,
             ):
-                # Plain-text generic markers carry implicit child
-                # scoping via the marker text; JSON envelopes must
-                # carry an explicit child_id to be attributed to a
-                # specific child record. Without this gate a
-                # JSON-shaped CHILD_PROGRESS line without a child_id
-                # would refresh the watchdog but be dropped from the
-                # registry (parity bug).
                 if _classify_opencode_child_signal(line) is not None:
-                    # OpenCode JSON envelope -- require an explicit
-                    # child_id so the registry and the sink see the
-                    # SAME attribution.
                     if child_id is not None:
                         if self._subagent_activity_sink is not None:
                             with contextlib.suppress(Exception):
@@ -220,9 +113,6 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
                         else:
                             _invoke_subagent_sink(line)
                 elif self._subagent_activity_sink is not None:
-                    # Plain-text generic marker -- child scoping is
-                    # implicit in the marker text, no child_id
-                    # required for parity.
                     with contextlib.suppress(Exception):
                         self._subagent_activity_sink(line)
                 else:
@@ -235,16 +125,6 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
             self._scoped_records_seen = True
 
     def record_native_child_progress(self, child_id: str) -> None:
-        """Record demonstrated work by a native ``task`` child observed out of band.
-
-        OpenCode buffers a native task's ``tool_use`` frame until the child
-        finishes, so the stream itself carries no progress while the child
-        works. The child's session store does (see
-        ``ralph.agents.invoke.opencode_subagent_sessions``); each observed
-        update lands here as fresh ``running`` progress under the active
-        label scope so ``classify_quiet`` and the corroborator see a live,
-        productive child instead of a silent parent.
-        """
         registry = self._registry
         if registry is None:
             return
@@ -256,23 +136,13 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
 
     @property
     def open_step_count(self) -> int:
-        """Number of OpenCode turns whose ``step_finish`` has not been seen."""
         return len(self._open_step_messages) + self._anonymous_open_steps
 
     def observe_stream_end(self) -> None:
-        """Release every open step: after EOF no buffered frame can arrive.
-
-        OpenCode's final turn ends with its text and the process exit; the
-        trailing ``step_finish`` reaches its store but not always stdout.
-        Without this release a conflict-resolution drain that consults
-        ``classify_quiet`` after the process exited waited on a dead parent
-        until the inactivity ceiling.
-        """
         self._open_step_messages.clear()
         self._anonymous_open_steps = 0
 
     def _update_open_step_liveness(self, line: str) -> None:
-        """Track OpenCode turn boundaries that bracket buffered native task work."""
         try:
             decoded = cast("object", json.loads(line))
         except json.JSONDecodeError:
@@ -308,16 +178,11 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
 
         registry = cast(
             "ChildLivenessRegistry | None", getattr(self, "_registry", None)
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         if registry is not None:
             had_scoped_records = registry.has_records(probe_prefix)
             if had_scoped_records:
                 self._scoped_records_seen = True
-            # Native OpenCode ``task`` calls expose an explicit ``running``
-            # lifecycle state but no heartbeat/PID while the delegated agent
-            # works. That state remains authoritative until the matching
-            # completed/error frame arrives; treating it as ordinary stale
-            # evidence kills healthy subagent runs at the parent idle deadline.
             if registry.has_active_phase(probe_prefix, "running"):
                 running_snapshot = registry.snapshot(probe_prefix)
                 running_verdict = classify_child_snapshot(running_snapshot)
@@ -340,12 +205,6 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
             return probe_state
         scoped_child_evidence_stale = scoped_child_evidence_stale or probe_stale
 
-        # Once scoped Ralph child evidence has been observed for this
-        # invocation, its later absence (records pruned due to staleness,
-        # or probe returning no fresh evidence) must not be overridden by
-        # raw OS descendant existence. Raw descendants alone are only a
-        # valid WAITING_ON_CHILD signal when Ralph never had scoped
-        # visibility into the child in the first place.
         return (
             AgentExecutionState.ACTIVE
             if scoped_child_evidence_stale or self._scoped_records_seen
@@ -360,13 +219,9 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
     ) -> AgentExecutionState:
         registry = cast(
             "ChildLivenessRegistry | None", getattr(self, "_registry", None)
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         label_prefix = self._active_label_prefix()
         if self._scoped_records_seen:
-            # A prior reader may have pruned stale scoped records before this
-            # post-exit check. Preserve that invocation-level evidence so raw
-            # OS descendants cannot turn a known stale child back into a
-            # reason to wait indefinitely.
             return _evidence_precedence(
                 handle,
                 completion_signals,

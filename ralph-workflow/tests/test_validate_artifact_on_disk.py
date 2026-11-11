@@ -1,10 +1,3 @@
-"""Tests for the single on-disk artifact-contract check, `validate_artifact_on_disk`.
-
-Both the pipeline phase gates and the commit command call this one function to
-decide "is the required artifact present, parseable, and the right shape?", so
-the missing / can't-parse / wrong-format detection cannot drift between callers.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

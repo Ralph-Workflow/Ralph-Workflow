@@ -1,4 +1,3 @@
-"""Commit review prompt rendering."""
 
 from __future__ import annotations
 
@@ -32,7 +31,6 @@ if TYPE_CHECKING:
 
 
 def _format_soft_tripwires(soft_tripwires: list[dict[str, object]] | str | None) -> str:
-    """Format soft tripwires into bulleted markdown findings."""
     if not soft_tripwires:
         return ""
     if isinstance(soft_tripwires, str):
@@ -54,9 +52,6 @@ def _format_soft_tripwires(soft_tripwires: list[dict[str, object]] | str | None)
 def render_commit_review_prompt(
     phase: str,
     workspace_root: Path,
-    # Deprecated: Ralph-orchestrated workers are removed from the execution model;
-    # parallelism is owned by the developer agent's own sub-agents.
-    # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
     worker_namespace: Path | None,
     prompt_content: str | None,
     product_criteria_path: str,
@@ -68,7 +63,6 @@ def render_commit_review_prompt(
     tree_sha: str | None = None,
     soft_tripwires: list[dict[str, object]] | str | None = None,
 ) -> str:
-    """Render the commit review prompt using the commit_review.jinja template."""
     if proposal_ref is None or tree_sha is None or soft_tripwires is None:
         context_file = (
             worker_namespace / "tmp" / "commit_review_context.json"
@@ -79,7 +73,7 @@ def render_commit_review_prompt(
             try:
                 raw = cast(
                     "object", json.loads(context_file.read_text(encoding="utf-8"))
-                )  # filesystem-read-ok: read stage 1 commit review context
+                )
                 if isinstance(raw, dict):
                     raw_dict = cast("dict[str, object]", raw)
                     if proposal_ref is None:
@@ -144,13 +138,9 @@ def render_commit_review_prompt(
 def _read_and_clear_retry_hint(
     workspace_root: Path,
     phase: str,
-    # Deprecated: Ralph-orchestrated workers are removed from the execution model;
-    # parallelism is owned by the developer agent's own sub-agents.
-    # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
     worker_namespace: Path | None,
     pipeline_policy: PipelinePolicy | None,
 ) -> str:
-    """Read the phase retry hint without consuming active validation context."""
     phase_def = pipeline_policy.phases.get(phase) if pipeline_policy is not None else None
     drain = phase_def.drain if phase_def is not None else phase
     hint_file = (

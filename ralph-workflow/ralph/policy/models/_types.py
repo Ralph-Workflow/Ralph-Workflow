@@ -1,4 +1,3 @@
-"""Shared types and constants for policy models."""
 
 from __future__ import annotations
 

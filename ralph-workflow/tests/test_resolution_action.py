@@ -1,5 +1,3 @@
-"""Tests for conflict-resolution ResolutionAction round selection."""
-
 from __future__ import annotations
 
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
@@ -16,7 +14,6 @@ from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
 
 def test_resolution_action_enum_values() -> None:
-    """Verify that all ResolutionAction values exist as expected."""
     expected = {
         "CONTINUE_AGENT_ROUND",
         "ESCALATE_TO_INTERVENTION",
@@ -27,7 +24,6 @@ def test_resolution_action_enum_values() -> None:
 
 
 def test_select_resolution_action_continue_agent_round() -> None:
-    """When unresolved paths remain and round cap is not reached, continue agent round."""
     session = ResolutionSession(
         unresolved_paths=("conflict.py",),
         terminal_reason=None,
@@ -37,7 +33,6 @@ def test_select_resolution_action_continue_agent_round() -> None:
 
 
 def test_select_resolution_action_does_not_escalate_on_round_cap() -> None:
-    """Action selection does not independently cap rounds; ledger and operator caps decide."""
     session = ResolutionSession(
         unresolved_paths=("conflict.py",),
         terminal_reason=None,
@@ -47,7 +42,6 @@ def test_select_resolution_action_does_not_escalate_on_round_cap() -> None:
 
 
 def test_select_resolution_action_escalate_to_intervention_out_of_reach() -> None:
-    """When out_of_reach_paths exist, escalate to intervention regardless of round cap."""
     session = ResolutionSession(
         unresolved_paths=("submodule",),
         out_of_reach_paths=("submodule",),
@@ -58,7 +52,6 @@ def test_select_resolution_action_escalate_to_intervention_out_of_reach() -> Non
 
 
 def test_select_resolution_action_accept_worktree_repair() -> None:
-    """When worktree markers are resolved despite agent fault, accept worktree repair."""
     session = ResolutionSession(
         unresolved_paths=(),
         terminal_reason=ResolutionTerminationReason.CANDIDATE_EXITED,
@@ -68,7 +61,6 @@ def test_select_resolution_action_accept_worktree_repair() -> None:
 
 
 def test_select_resolution_action_proceed_to_fast_forward() -> None:
-    """When resolution succeeded cleanly with no unresolved paths, proceed to fast forward."""
     session = ResolutionSession(
         unresolved_paths=(),
         terminal_reason=None,
@@ -78,7 +70,6 @@ def test_select_resolution_action_proceed_to_fast_forward() -> None:
 
 
 def test_infrastructure_termination_reason_transport_loop_detected() -> None:
-    """TRANSPORT_LOOP_DETECTED escalates to intervention."""
     session = ResolutionSession(
         unresolved_paths=("conflict.py",),
         terminal_reason=ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED,
@@ -88,7 +79,6 @@ def test_infrastructure_termination_reason_transport_loop_detected() -> None:
 
 
 def test_infrastructure_termination_reason_supervision_infrastructure_failure() -> None:
-    """SUPERVISION_INFRASTRUCTURE_FAILURE escalates to intervention."""
     session = ResolutionSession(
         unresolved_paths=("conflict.py",),
         terminal_reason=ResolutionTerminationReason.SUPERVISION_INFRASTRUCTURE_FAILURE,
@@ -98,7 +88,6 @@ def test_infrastructure_termination_reason_supervision_infrastructure_failure() 
 
 
 def test_infrastructure_termination_reason_tool_surface_dead() -> None:
-    """TOOL_SURFACE_DEAD escalates to intervention."""
     session = ResolutionSession(
         unresolved_paths=("conflict.py",),
         terminal_reason=ResolutionTerminationReason.TOOL_SURFACE_DEAD,
@@ -108,7 +97,6 @@ def test_infrastructure_termination_reason_tool_surface_dead() -> None:
 
 
 def test_infrastructure_termination_reason_candidate_unavailable() -> None:
-    """CANDIDATE_UNAVAILABLE escalates to intervention."""
     session = ResolutionSession(
         unresolved_paths=("conflict.py",),
         terminal_reason=ResolutionTerminationReason.CANDIDATE_UNAVAILABLE,
@@ -118,7 +106,6 @@ def test_infrastructure_termination_reason_candidate_unavailable() -> None:
 
 
 def test_all_infrastructure_termination_reasons_covered() -> None:
-    """Ensure every reason in INFRASTRUCTURE_TERMINATION_REASONS is tested."""
     expected_reasons = {
         ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED,
         ResolutionTerminationReason.SUPERVISION_INFRASTRUCTURE_FAILURE,

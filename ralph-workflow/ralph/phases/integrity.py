@@ -1,4 +1,3 @@
-"""PROMPT.md integrity helpers for Python phase execution."""
 
 from __future__ import annotations
 
@@ -24,7 +23,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class IntegrityResult:
-    """Result of a PROMPT.md integrity verification pass."""
 
     ok: bool
     restored: bool
@@ -37,11 +35,6 @@ def default_prompt_path(
     workspace_root: Path,
     env: Mapping[str, str] | None = None,
 ) -> Path:
-    """Return the env-aware effective source-prompt path for a workspace.
-
-    Thin convenience wrapper around
-    :func:`ralph.pro_support.prompt.resolve_effective_prompt_path`.
-    """
     return resolve_effective_prompt_path(workspace_root, env if env is not None else os.environ)
 
 
@@ -50,16 +43,6 @@ def verify_prompt_integrity(
     *,
     prompt_path: str | None = None,
 ) -> IntegrityResult:
-    """Check that PROMPT.md exists and is non-empty.
-
-    When ``prompt_path`` is ``None`` the effective path is resolved
-    through
-    :func:`ralph.pro_support.prompt.resolve_effective_prompt_path`
-    so the ``PROMPT_PATH`` env var is honoured in Pro mode. The
-    legacy literal ``"PROMPT.md"`` is preserved when the caller passes
-    that string explicitly so the existing tests can keep their
-    explicit defaults.
-    """
     if prompt_path is None:
         prompt_path = str(resolve_effective_prompt_path(workspace.absolute_path("."), os.environ))
     if not workspace.exists(prompt_path):
@@ -92,7 +75,6 @@ def find_prompt_backup(
     *,
     backup_paths: tuple[str, ...] = DEFAULT_BACKUP_PATHS,
 ) -> str | None:
-    """Return the first available prompt backup path."""
     for candidate in backup_paths:
         if workspace.exists(candidate) and workspace.read(candidate).strip():
             return candidate
@@ -107,12 +89,6 @@ def ensure_prompt_integrity(
     prompt_path: str | None = None,
     backup_paths: tuple[str, ...] = DEFAULT_BACKUP_PATHS,
 ) -> IntegrityResult:
-    """Ensure PROMPT.md is present, restoring from backup when possible.
-
-    When ``prompt_path`` is ``None`` the effective path is resolved
-    through
-    :func:`ralph.pro_support.prompt.resolve_effective_prompt_path`.
-    """
     if prompt_path is None:
         prompt_path = str(resolve_effective_prompt_path(workspace.absolute_path("."), os.environ))
     verification = verify_prompt_integrity(workspace, prompt_path=prompt_path)

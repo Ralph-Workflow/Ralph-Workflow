@@ -1,4 +1,3 @@
-"""ArtifactPersistence — backend and clock dependencies for artifact operations."""
 
 from __future__ import annotations
 
@@ -18,7 +17,6 @@ def _utc_now_iso() -> str:
 
 @dataclass(frozen=True)
 class ArtifactPersistence:
-    """Backend and clock dependencies for artifact persistence operations."""
 
     backend: FileBackend = DEFAULT_FILE_BACKEND
     now_iso: Callable[[], str] = _utc_now_iso

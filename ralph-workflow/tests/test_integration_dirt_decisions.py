@@ -1,28 +1,3 @@
-"""Dirty-tree decision-row tests for the integration decision table.
-
-The decision table maps every dirt shape x in-progress operation x
-target/remote relation to exactly one deterministic action
-(``PRODUCT_CRITERIA.md``, "Open symptom: a dirty tree after planning"):
-
-* Phase-owned blocking dirt -> ``COMMIT_VIA_COMMIT_PHASE`` (run the
-  owning phase's commit first; never integrate around it, never wait on
-  it).
-* Residue / unowned dirt, and dirt of unknown attribution -> exactly
-  ``SAVE_AND_RESTORE`` (save to a backup ref, restore the baseline,
-  never discard, never a silent revert).
-* Non-blocking shapes (``LINE_ENDING_ONLY`` — clean after refresh, and
-  scratch ``UNTRACKED_ONLY``) never route to a cleanup action.
-* An in-progress operation is resolved FIRST: no cleanup action is ever
-  returned while an operation owns the tree.
-* Under repeat pressure the answer climbs the autonomous fallback
-  ladder one rung per repeat — a different, stronger action each time,
-  saturating at the last-resort rung — and never re-runs the direct
-  action, never waits, and never dispatches the resolver for dirt.
-
-Everything is pure in-memory: no Git, no subprocess, no filesystem, no
-clock, no sleep. This is the ``audit_test_policy`` contract.
-"""
-
 from __future__ import annotations
 
 from collections import OrderedDict
@@ -56,9 +31,6 @@ from ralph.pipeline.integration_observation import (
 
 pytestmark = pytest.mark.timeout_seconds(30)
 
-# ---------------------------------------------------------------------------
-# The dirty-tree space.
-# ---------------------------------------------------------------------------
 
 _ALL_SHAPES: tuple[DirtShape, ...] = tuple(DirtShape)
 _ALL_ATTRIBUTIONS: tuple[DirtAttribution, ...] = tuple(DirtAttribution)
@@ -67,7 +39,6 @@ _ALL_OWNERSHIP: tuple[InProgressOwnership, ...] = tuple(InProgressOwnership)
 _ALL_TARGET_VS_FEATURE: tuple[TargetVsFeature, ...] = tuple(TargetVsFeature)
 _ALL_TARGET_VS_REMOTE: tuple[TargetVsRemote, ...] = tuple(TargetVsRemote)
 
-#: Every shape the table treats as blocking tracked dirt.
 _BLOCKING_SHAPES: frozenset[DirtShape] = frozenset(
     {
         DirtShape.UNSTAGED_MODIFICATION,
@@ -82,13 +53,10 @@ _BLOCKING_SHAPES: frozenset[DirtShape] = frozenset(
     }
 )
 
-#: Deterministic ordering of the blocking shapes for parametrized ids.
 _BLOCKING_SHAPES_SORTED: tuple[DirtShape, ...] = tuple(
     sorted(_BLOCKING_SHAPES, key=lambda shape: shape.value)
 )
 
-#: Every cleanup-ladder action: the direct actions plus the rung
-#: destinations. No other branch of the table may return these.
 _CLEANUP_ACTIONS: frozenset[NextAction] = frozenset(
     {
         NextAction.COMMIT_VIA_COMMIT_PHASE,
@@ -112,7 +80,6 @@ def _observation(
     record: IntegrationRecordState = IntegrationRecordState.NONE,
     head: HeadState = HeadState.ATTACHED,
 ) -> Observation:
-    """Build one observation over the dimensions the dirt rows consult."""
     return Observation(
         target_vs_feature=target_vs_feature,
         target_vs_remote=target_vs_remote,
@@ -126,7 +93,6 @@ def _observation(
 
 
 def _worktree_for_shape(shape: DirtShape) -> WorktreeState:
-    """The coarse state each shape refines (for building observations)."""
     if shape in (DirtShape.NONE, DirtShape.LINE_ENDING_ONLY):
         return WorktreeState.TRACKED_CHANGES
     if shape is DirtShape.UNMERGED:
@@ -150,13 +116,7 @@ def _context(
     )
 
 
-# ---------------------------------------------------------------------------
-# The ladder contract.
-# ---------------------------------------------------------------------------
-
-
 def test_cleanup_ladder_maps_every_rung_to_exactly_one_action() -> None:
-    """The fallback ladder is total and preservation-first in name."""
     assert len(CLEANUP_LADDER_ORDER) == 6
     assert len(set(CLEANUP_LADDER_ORDER)) == 6
     mapped = {rung: cleanup_action_for(rung) for rung in CleanupLadderRung}
@@ -172,7 +132,6 @@ def test_cleanup_ladder_maps_every_rung_to_exactly_one_action() -> None:
 
 
 def test_every_new_cleanup_action_is_chargeable_and_projected() -> None:
-    """The ladder actions participate in the durable budget and the projection."""
     from ralph.pipeline.integration_owner import (
         NEXT_ACTION_TO_INTEGRATION_ACTION,
         is_chargeable,
@@ -181,11 +140,6 @@ def test_every_new_cleanup_action_is_chargeable_and_projected() -> None:
     for action in _CLEANUP_ACTIONS:
         assert is_chargeable(action), f"{action.name} must spend durable budget"
         assert action in NEXT_ACTION_TO_INTEGRATION_ACTION
-
-
-# ---------------------------------------------------------------------------
-# Direct actions: shape x attribution.
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("shape", _BLOCKING_SHAPES_SORTED)
@@ -202,7 +156,6 @@ def test_phase_owned_dirt_commits_through_the_commit_phase(
     target_vs_feature: TargetVsFeature,
     target_vs_remote: TargetVsRemote,
 ) -> None:
-    """Phase-owned dirt maps to COMMIT_VIA_COMMIT_PHASE, whatever the target."""
     observation = _observation(
         target_vs_feature=target_vs_feature,
         target_vs_remote=target_vs_remote,
@@ -227,7 +180,6 @@ def test_residue_and_ambiguous_dirt_saves_and_restores(
     shape: DirtShape,
     attribution: DirtAttribution,
 ) -> None:
-    """Residue (and ambiguous attribution) maps to SAVE_AND_RESTORE."""
     observation = _observation(
         target_vs_feature=TargetVsFeature.BEHIND,
         target_vs_remote=TargetVsRemote.EQUAL,
@@ -253,7 +205,6 @@ def test_non_blocking_shapes_never_route_to_cleanup(
     shape: DirtShape,
     expected: str,
 ) -> None:
-    """Clean-after-refresh behaves like clean; legacy shapes keep COMMIT."""
     observation = _observation(
         target_vs_feature=TargetVsFeature.BEHIND,
         target_vs_remote=TargetVsRemote.EQUAL,
@@ -280,18 +231,12 @@ def test_non_blocking_shapes_never_route_to_cleanup(
         assert shaped is NextAction.COMMIT
 
 
-# ---------------------------------------------------------------------------
-# The ordering rule: an operation is resolved first.
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize("shape", _BLOCKING_SHAPES_SORTED)
 @pytest.mark.parametrize(
     "kind",
     (InProgressKind.REBASE, InProgressKind.MERGE, InProgressKind.CHERRY_PICK),
 )
 def test_owned_operation_outranks_dirt_cleanup(shape: DirtShape, kind: InProgressKind) -> None:
-    """Dirt coexisting with an owned operation is the operation's state."""
     observation = _observation(
         target_vs_feature=TargetVsFeature.BEHIND,
         target_vs_remote=TargetVsRemote.EQUAL,
@@ -314,7 +259,6 @@ def test_foreign_operation_is_a_real_conflict_not_dirt(
     shape: DirtShape,
     kind: InProgressKind,
 ) -> None:
-    """A foreign operation routes to the resolver rung, never cleanup."""
     observation = _observation(
         target_vs_feature=TargetVsFeature.BEHIND,
         target_vs_remote=TargetVsRemote.EQUAL,
@@ -329,7 +273,6 @@ def test_foreign_operation_is_a_real_conflict_not_dirt(
 
 
 def test_unmerged_worktree_outranks_dirt_shapes() -> None:
-    """Unmerged paths are a real conflict whatever the shape context says."""
     observation = _observation(
         target_vs_feature=TargetVsFeature.BEHIND,
         target_vs_remote=TargetVsRemote.EQUAL,
@@ -346,7 +289,6 @@ def test_unmerged_worktree_outranks_dirt_shapes() -> None:
 
 
 def test_unknown_observation_never_uses_the_cleanup_rows() -> None:
-    """UNKNOWN precedes the dirt rows: back off, never clean up blindly."""
     observation = _observation(
         target_vs_feature=TargetVsFeature.UNKNOWN,
         target_vs_remote=TargetVsRemote.EQUAL,
@@ -363,7 +305,6 @@ def test_unknown_observation_never_uses_the_cleanup_rows() -> None:
 
 
 def test_repairable_record_precedes_dirt_cleanup() -> None:
-    """A stale record is repaired before any dirt cleanup runs."""
     observation = _observation(
         target_vs_feature=TargetVsFeature.BEHIND,
         target_vs_remote=TargetVsRemote.EQUAL,
@@ -380,19 +321,7 @@ def test_repairable_record_precedes_dirt_cleanup() -> None:
     assert action is NextAction.REPAIR
 
 
-# ---------------------------------------------------------------------------
-# The escalation ladder: each repeat is a stronger action.
-# ---------------------------------------------------------------------------
-
-
 def _pressure_trace(attribution: DirtAttribution) -> list[NextAction]:
-    """Simulate the boundary's charged cycles against one dirty signature.
-
-    Each cycle decides, then folds the charge back through
-    :meth:`AttemptState.with_attempt` — the same bump rules the durable
-    ledger mirrors — so the trace is exactly what a live boundary with a
-    restart-proof ledger observes.
-    """
     observation = _observation(
         target_vs_feature=TargetVsFeature.BEHIND,
         target_vs_remote=TargetVsRemote.EQUAL,
@@ -411,7 +340,6 @@ def _pressure_trace(attribution: DirtAttribution) -> list[NextAction]:
 
 
 def test_residue_repeats_climb_the_fallback_ladder() -> None:
-    """Residue escalates rung by rung, saturating at the last resort."""
     trace = _pressure_trace(DirtAttribution.UNOWNED)
 
     assert trace[:2] == [NextAction.SAVE_AND_RESTORE, NextAction.SAVE_AND_RESTORE]
@@ -424,7 +352,6 @@ def test_residue_repeats_climb_the_fallback_ladder() -> None:
 
 
 def test_phase_owned_repeats_climb_the_same_ladder() -> None:
-    """Phase-owned dirt that repeats (the phase never commits) escalates too."""
     trace = _pressure_trace(DirtAttribution.PHASE_OWNED)
 
     assert trace[:2] == [
@@ -436,27 +363,14 @@ def test_phase_owned_repeats_climb_the_same_ladder() -> None:
 
 
 def test_cleanup_ladder_never_dispatches_the_resolver_for_dirt() -> None:
-    """Dirt is a condition no agent can change — at every depth."""
     for attribution in (DirtAttribution.PHASE_OWNED, DirtAttribution.UNOWNED):
         trace = _pressure_trace(attribution)
         assert NextAction.DISPATCH_RESOLVER not in trace
         assert NextAction.WAIT_FOR_ENVIRONMENT not in trace
 
 
-# ---------------------------------------------------------------------------
-# Totality over the dirty-tree space.
-# ---------------------------------------------------------------------------
-
-
 @cache
 def _dirty_space() -> tuple[tuple[Observation, DirtShape, DirtAttribution], ...]:
-    """Materialise the dirt refinement over the operation/target space.
-
-    14 shapes x 3 attributions x 4 operation kinds x 3 ownerships x 5
-    target/feature relations x 6 target/remote relations = 15,120
-    (context, observation) pairs: the complete dirt-shape decision space
-    at the fresh attempt state.
-    """
     return tuple(
         (
             _observation(
@@ -481,8 +395,6 @@ def _dirty_space() -> tuple[tuple[Observation, DirtShape, DirtAttribution], ...]
 
 
 def test_every_dirt_shape_state_has_exactly_one_defined_action() -> None:
-    """The dirt rows are total: no (shape, attribution, operation, target) falls
-    through, and no reachable row answers dirt with a resolver or a discard."""
     undefined: list[str] = []
     for observation, shape, attribution in _dirty_space():
         context = _context(observation, shape, attribution)
@@ -506,7 +418,6 @@ def test_every_dirt_shape_state_has_exactly_one_defined_action() -> None:
 
 
 def test_cleanup_actions_reachable_only_through_repeat_pressure() -> None:
-    """At the fresh attempt state no ladder rung above NORMAL_CLEANUP appears."""
     observation = _observation(
         target_vs_feature=TargetVsFeature.BEHIND,
         target_vs_remote=TargetVsRemote.EQUAL,
@@ -524,7 +435,6 @@ def test_cleanup_actions_reachable_only_through_repeat_pressure() -> None:
 
 
 def test_dirt_signature_repeat_counts_drive_the_climb() -> None:
-    """The climb is a function of the durable (signature, action) counts."""
     observation = _observation(
         target_vs_feature=TargetVsFeature.BEHIND,
         target_vs_remote=TargetVsRemote.EQUAL,
@@ -551,6 +461,4 @@ def test_dirt_signature_repeat_counts_drive_the_climb() -> None:
         ),
     )
 
-    # Five charged attempts at this signature: the first two answered
-    # the direct action, so the climb stands at rung 5.
     assert action is NextAction.ADAPT_ENVIRONMENT_AND_RETRY

@@ -1,5 +1,3 @@
-"""Black-box tests for the SQLite+FTS5 index store."""
-
 from __future__ import annotations
 
 import json
@@ -27,7 +25,6 @@ from ralph.mcp.explore.store import (
     sha256_text,
 )
 
-# ponytail: SQLite history pruning contends with xdist filesystem setup; 5s preserves the store contract within the 60s suite cap.
 pytestmark = pytest.mark.timeout_seconds(5)
 
 
@@ -78,7 +75,6 @@ def test_store_creates_minimum_schema(tmp_path: Path) -> None:
 
 
 def test_store_creates_full_minimum_schema(tmp_path: Path) -> None:
-    """AC-05: minimum schema must include every required table."""
     store = _build_store(tmp_path)
     try:
         cur = sqlite3.connect(str(store.db_path))
@@ -122,7 +118,6 @@ def test_store_creates_chunks_fts_virtual_table(tmp_path: Path) -> None:
             cur.close()
     finally:
         store.close()
-    # Either 'chunks_fts' or 'chunks_fts_data'/'chunks_fts_idx' shadow names exist.
     assert any(name.startswith("chunks_fts") for name in vtables)
 
 
@@ -319,8 +314,6 @@ def test_record_job_caps_history(tmp_path: Path) -> None:
             count = cur.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
         finally:
             cur.close()
-        # The cap is JOB_HISTORY_CAP; allow a small slack to absorb
-        # the deletion semantics but assert it never wildly exceeds.
         assert count <= 110
     finally:
         store.close()
@@ -353,7 +346,6 @@ def test_normalize_index_path_returns_posix() -> None:
 
 
 def test_normalize_index_path_rejects_absolute_paths() -> None:
-    """AC-05: absolute paths must be rejected with ValueError."""
     with pytest.raises(ValueError, match="absolute path"):
         normalize_index_path("/tmp/escape")
     with pytest.raises(ValueError, match="absolute path"):
@@ -361,17 +353,12 @@ def test_normalize_index_path_rejects_absolute_paths() -> None:
 
 
 def test_normalize_index_path_rejects_parent_escapes() -> None:
-    """AC-05: any path containing a ``..`` segment must be rejected."""
     for bad in ("..", "../escape", "a/../escape", "a/b/../../escape", "a/.."):
         with pytest.raises(ValueError, match="parent-escape"):
             normalize_index_path(bad)
 
 
 def test_schema_version_pinned_after_init(tmp_path: Path) -> None:
-    """AC-01: opening a brand new store records the current
-    ``settings.schema_version`` so the next open reuses the DDL
-    without re-running migrations.
-    """
     index_dir = tmp_path / ".agent" / "ralph-explore"
     store = ExploreStore(index_dir)
     try:
@@ -381,11 +368,6 @@ def test_schema_version_pinned_after_init(tmp_path: Path) -> None:
 
 
 def test_evidence_round_trip_persists_chunk_and_span_links(tmp_path: Path) -> None:
-    """AC-01: the persisted evidence row carries the durable
-    ``chunk_id`` and ``span_id`` columns from the minimum schema
-    so an evidence lookup can resolve the exact chunk/span
-    identities without re-deriving line coordinates.
-    """
     from ralph.mcp.explore.store import (
         EvidenceRow,
         derive_chunk_id,
@@ -435,10 +417,6 @@ def test_evidence_round_trip_persists_chunk_and_span_links(tmp_path: Path) -> No
 
 
 def test_schema_migration_is_idempotent_on_reopen(tmp_path: Path) -> None:
-    """AC-01: reopening an up-to-date explore store does not
-    re-run migrations (settings.schema_version matches
-    SCHEMA_VERSION).
-    """
     from ralph.mcp.explore.store import SCHEMA_VERSION
 
     index_dir = tmp_path / ".agent" / "ralph-explore"
@@ -447,7 +425,6 @@ def test_schema_migration_is_idempotent_on_reopen(tmp_path: Path) -> None:
         assert store.get_setting("schema_version") == SCHEMA_VERSION
     finally:
         store.close()
-    # Reopen; the second init must remain a no-op (no SQL errors).
     store_again = ExploreStore(index_dir)
     try:
         assert store_again.get_setting("schema_version") == SCHEMA_VERSION
@@ -456,7 +433,6 @@ def test_schema_migration_is_idempotent_on_reopen(tmp_path: Path) -> None:
 
 
 def test_normalize_index_path_accepts_workspace_relative_paths() -> None:
-    """AC-05: ordinary relative paths normalize without error."""
     assert normalize_index_path("a") == "a"
     assert normalize_index_path("a/b/c.py") == "a/b/c.py"
     assert normalize_index_path("./a/b/") == "a/b"
@@ -500,18 +476,8 @@ def test_collect_workspace_files_returns_sorted(tmp_path: Path) -> None:
 
 
 def test_collect_workspace_files_matches_os_walk_shape(tmp_path: Path) -> None:
-    """``collect_workspace_files`` returns rows whose (path, size, mtime_ns)
-    match a manual ``os.walk`` traversal of the same fixture tree.
-
-    The real ralph-workflow tree has no symlinked files outside the
-    skip_dirs set (``.venv``, ``__pycache__``, etc.), so this test
-    exercises the no-symlink case which is what production actually
-    sees.
-    """
     import os
 
-    # Use the SAME skip set the production code uses so the parity
-    # check stays apples-to-apples.
     skip_dir_names = SKIP_DIR_NAMES
 
     (tmp_path / "sub").mkdir()
@@ -534,14 +500,12 @@ def test_collect_workspace_files_matches_os_walk_shape(tmp_path: Path) -> None:
         "sub/deep/skip_me.py",
     ]
 
-    # Each row's (size, mtime_ns) matches a fresh Path.stat().
     root = tmp_path.resolve()
     for relpath, size, mtime in rows:
         st = (root / relpath).stat()
         assert size == st.st_size
         assert mtime == st.st_mtime_ns
 
-    # ``os.walk`` would have produced the same shape (file names only).
     walked: list[str] = []
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in skip_dir_names]
@@ -611,7 +575,6 @@ def test_delete_file_rows_clears_state(tmp_path: Path) -> None:
 def test_tombstone_round_trip(tmp_path: Path) -> None:
     store = _build_store(tmp_path)
     try:
-        # Use a recent stale_at value that survives the 30-day retention cap.
         import time as _time
 
         recent = _time.time()
@@ -643,20 +606,7 @@ def test_settings_round_trip(tmp_path: Path) -> None:
         store.close()
 
 
-"""Black-box tests for the SQLite+FTS5 exploration store.
-
-Includes the security regression for path-boundary rejection
-sibling-prefix/symlink escapes, plus the prompt-exact minimum
-schema/version invariants (AC-05).
-"""
-
-
 def test_hash_workspace_file_rejects_sibling_prefix_escape(tmp_path) -> None:
-    """AC-05 contract: ``hash_workspace_file`` MUST reject sibling
-    prefix collisions (``/tmp/ws`` vs ``/tmp/ws_evil``) and symlink
-    escapes. The legacy ``str.startswith`` check is unsafe; the
-    store now uses ``Path.is_relative_to`` so the escape raises.
-    """
     from ralph.mcp.explore.store import hash_workspace_file
 
     workspace = tmp_path / "ws"
@@ -669,7 +619,6 @@ def test_hash_workspace_file_rejects_sibling_prefix_escape(tmp_path) -> None:
     with pytest.raises(ValueError, match="escapes workspace"):
         hash_workspace_file(workspace, "../ws_evil/secret.txt")
 
-    # Symlink escape: ws/link -> sibling/secret.txt.
     link = workspace / "link.txt"
     try:
         link.symlink_to(secret)
@@ -680,9 +629,6 @@ def test_hash_workspace_file_rejects_sibling_prefix_escape(tmp_path) -> None:
 
 
 def test_pipeline_re_extract_path_rejects_sibling_prefix_escape(tmp_path) -> None:
-    """AC-05 contract: the reindex pipeline rejects sibling-prefix escapes
-    in ``_re_extract_path`` (was previously a string-prefix check).
-    """
     from ralph.mcp.explore.pipeline import (
         DEFAULT_TIMEOUT_MS,
         ReindexOptions,
@@ -696,12 +642,7 @@ def test_pipeline_re_extract_path_rejects_sibling_prefix_escape(tmp_path) -> Non
     sibling.mkdir()
     (sibling / "secret.txt").write_text("SECRET_DATA")
 
-    # Trigger _re_extract_path by writing a file with a relative
-    # path that escapes the workspace.
     workspace_relative_escape = "../ws_evil/secret.txt"
-    # We can't make the file exist inside the workspace root, but
-    # _re_extract_path first resolves and checks; the boundary
-    # check runs before any read.
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     try:
         result = reindex(
@@ -713,7 +654,6 @@ def test_pipeline_re_extract_path_rejects_sibling_prefix_escape(tmp_path) -> Non
                 path_scope=(workspace_relative_escape,),
             ),
         )
-        # The path is rejected so the file is recorded as failed.
         assert workspace_relative_escape in list(result.failed_files) or (
             result.changed_files == ()
         )
@@ -722,10 +662,6 @@ def test_pipeline_re_extract_path_rejects_sibling_prefix_escape(tmp_path) -> Non
 
 
 def test_indexed_grep_evidence_round_trip_resolves_via_read_file(tmp_path) -> None:
-    """AC-02 contract: indexed grep evidence_ids must resolve through
-    ``read_file(evidence_id=...)``. The fix inserts a real evidence
-    row for each FTS chunk so the round-trip succeeds.
-    """
     from ralph.mcp.explore.dirty_paths import build_sqlite_index_handle
     from ralph.mcp.explore.pipeline import ReindexOptions, reindex
     from ralph.mcp.explore.store import ExploreStore
@@ -754,7 +690,6 @@ def test_indexed_grep_evidence_round_trip_resolves_via_read_file(tmp_path) -> No
         payload = json.loads(result.content[0].text)
         for ev_id in payload["evidence_ids"]:
             assert isinstance(ev_id, str) and ev_id
-        # Now resolve the first evidence_id through read_file.
         read_result = handle_read_file(
             session,
             _GrepWorkspace(workspace),
@@ -821,7 +756,6 @@ def _make_content_cache_row(
     language: str | None = "python",
     extractor_version: str = "phase1-lexical-v1",
 ) -> ContentCacheRow:
-    """Build a deterministic ``ContentCacheRow`` for round-trip tests."""
     return ContentCacheRow(
         content_hash=content_hash,
         language=language,
@@ -833,10 +767,6 @@ def _make_content_cache_row(
 
 
 def test_content_cache_metadata_round_trip(tmp_path: Path) -> None:
-    """AC-05: ``insert_content_cache`` persists the metadata row and
-    ``lookup_content_cache`` returns it back when the extractor
-    version matches. ``content_cache_size`` reports the new row.
-    """
     store = _build_store(tmp_path)
     try:
         row = _make_content_cache_row()
@@ -849,7 +779,6 @@ def test_content_cache_metadata_round_trip(tmp_path: Path) -> None:
         assert looked_up is not None
         assert looked_up.content_hash == row.content_hash
         assert looked_up.extraction_status == "ok"
-        # Iter shows the row too.
         rows = list(store.iter_content_cache())
         assert len(rows) == 1
         assert rows[0].content_hash == row.content_hash
@@ -858,10 +787,6 @@ def test_content_cache_metadata_round_trip(tmp_path: Path) -> None:
 
 
 def test_content_cache_lookup_misses_on_version_mismatch(tmp_path: Path) -> None:
-    """AC-05: a stale ``extractor_version`` must NOT serve a payload
-    that was extracted under an older schema. ``lookup_content_cache``
-    returns ``None`` so the pipeline re-extracts from source.
-    """
     store = _build_store(tmp_path)
     try:
         row = _make_content_cache_row(extractor_version="old-version")
@@ -876,9 +801,6 @@ def test_content_cache_lookup_misses_on_version_mismatch(tmp_path: Path) -> None
 
 
 def test_content_cache_lookup_misses_on_unknown_hash(tmp_path: Path) -> None:
-    """AC-05: ``lookup_content_cache`` returns ``None`` when the hash
-    has never been cached. The cache must never invent a payload.
-    """
     store = _build_store(tmp_path)
     try:
         looked_up = store.lookup_content_cache(
@@ -891,9 +813,6 @@ def test_content_cache_lookup_misses_on_unknown_hash(tmp_path: Path) -> None:
 
 
 def test_content_cache_insert_then_delete_round_trip(tmp_path: Path) -> None:
-    """AC-05: ``delete_content_cache`` removes the metadata row so a
-    retried extraction starts with a clean slate.
-    """
     store = _build_store(tmp_path)
     try:
         row = _make_content_cache_row(content_hash="feedface" * 8)

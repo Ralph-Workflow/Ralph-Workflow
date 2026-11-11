@@ -1,5 +1,3 @@
-"""Tests for ralph/mcp/tools/git_read.py — MCP git read tool handlers."""
-
 from __future__ import annotations
 
 import pytest
@@ -10,10 +8,6 @@ from ralph.mcp.tools.git_read import (
 )
 
 CUSTOM_LOG_COUNT = 20
-
-# =============================================================================
-# Mock infrastructure
-# =============================================================================
 
 
 class TestParseGitShowParams:
@@ -33,9 +27,6 @@ class TestParseGitShowParams:
             parse_git_show_params(params)
 
     def test_rejects_a_flag_shaped_ref_that_would_write_a_file(self) -> None:
-        """``git show --output=<path>`` writes a file: a READ-ONLY tool must not
-        accept a flag where it expects a revision, with or without a NUL hiding
-        it from a substring check."""
         for ref in ("--output=/tmp/pwn", "--outp\x00ut=/tmp/pwn", "-o/tmp/pwn"):
             with pytest.raises(InvalidParamsError):
                 parse_git_show_params({"ref": ref})

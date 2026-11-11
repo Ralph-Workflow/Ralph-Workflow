@@ -1,4 +1,3 @@
-"""Color-identity collision helpers for the display theme."""
 
 from __future__ import annotations
 
@@ -33,7 +32,6 @@ _CVD_MATRICES: Final[tuple[tuple[tuple[float, float, float], ...], ...]] = (
 
 
 def normalize_identity_name(name: str) -> str:
-    """Return a stable, lowercase, separator- and case-folded identity."""
     if not name:
         return "unknown"
     folded = _IDENTITY_WS_RE.sub("-", name.strip().lower()).strip("-")
@@ -41,7 +39,6 @@ def normalize_identity_name(name: str) -> str:
 
 
 def identity_slot(name: str, palette_size: int) -> int:
-    """Return the deterministic palette slot for ``name``."""
     return zlib.crc32(normalize_identity_name(name).encode("utf-8")) % palette_size
 
 
@@ -51,7 +48,6 @@ def simulate_cvd(
     *,
     rgb: Callable[[str], tuple[int, int, int]] | None = None,
 ) -> str:
-    """Return the simulated CVD colour for a hex input."""
     raw = hex_color.lstrip("#")
     parsed_rgb = tuple(int(raw[index : index + 2], 16) for index in range(0, 6, 2))
     source_rgb = rgb(hex_color) if rgb is not None else parsed_rgb
@@ -71,7 +67,6 @@ def identity_color(
     active: Iterable[str] | None,
     rgb: Callable[[str], tuple[int, int, int]],
 ) -> str:
-    """Resolve an identity colour without collision under documented CVD simulations."""
     base_slot = identity_slot(name, len(palette))
     if active is None:
         return palette[base_slot]

@@ -1,5 +1,3 @@
-"""Shared _FakeHandle for opencode child liveness state tests."""
-
 from __future__ import annotations
 
 

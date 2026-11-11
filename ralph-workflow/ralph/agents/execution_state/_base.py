@@ -1,9 +1,3 @@
-"""Template-method base for transport-aware execution strategies.
-
-Subclasses MAY override any public method; the defaults here are the
-historical single-process semantics shared by GenericExecutionStrategy and
-the fallback path for every transport.
-"""
 
 from __future__ import annotations
 
@@ -41,13 +35,6 @@ def with_prompt_echo_flag(
     queued_line: str,
     input_prompt: str | None,
 ) -> AgentActivitySignal:
-    """Return ``activity_signal`` with the harness-echo flag when the line echoes the prompt.
-
-    Both line readers route a raw line through this public helper after
-    ``classify_activity_line`` so prompt-echo detection stays
-    transport-neutral and tests can exercise it without touching private
-    methods.
-    """
     if not is_prompt_echo_line(queued_line, input_prompt):
         return activity_signal
     return AgentActivitySignal(
@@ -59,16 +46,6 @@ def with_prompt_echo_flag(
 
 
 class BaseExecutionStrategy:
-    """Default strategy: single-process lifetime, exit 0 is terminal success.
-
-    Concrete strategies inherit from this class and override only the methods
-    that need transport-specific behaviour. Completion-enforced and
-    session-capable transports override these defaults through their registered
-    strategy or the shared completion mixin.
-
-    For legacy callers that pass arbitrary kwargs (e.g. direct class refs in
-    _STRATEGY_DISPATCH), the __init__ only accepts label_scope and registry.
-    """
 
     def __init__(
         self,
@@ -79,40 +56,9 @@ class BaseExecutionStrategy:
     ) -> None:
         self._label_scope = label_scope
         self._registry = registry
-        # Optional injected SubagentPidSource (the FILTERED PID source
-        # from the watchdog's perspective -- ``known_subagent_pids()``
-        # returns the set of REAL subagents, NOT the broader
-        # ``descendant_snapshot()`` count). When ``self._registry`` is
-        # set (OpenCode path), the registry wins. When ``self._registry``
-        # is None but ``self._subagent_pid_source`` is set, this is a
-        # registry-aware non-OpenCode transport (Claude / Pi / Codex /
-        # Gemini / Generic / Agy / Claude-interactive); the filtered
-        # count is the canonical signal. When neither is set, the
-        # legacy ``LiveDescendantHandle.has_live_descendants()``
-        # fallback wins for backward compatibility with non-instrumented
-        # tests.
         self._subagent_pid_source = subagent_pid_source
 
     def observe_line(self, line: str) -> None:
-        """Observe a raw provider line and route child signals to the subagent sink.
-
-        The base implementation now applies the cross-transport generic
-        child-signal classifier (``_classify_generic_child_signal``) and
-        invokes the active subagent activity sink for any line that
-        matches a CHILD_PROGRESS or CHILD_HEARTBEAT marker. This makes
-        every transport's ``observe_line`` automatically feed the
-        watchdog's per-channel evidence surface without each transport
-        needing its own classifier.
-
-        Transport-specialised strategies (OpenCode) continue to override
-        ``observe_line`` entirely; the base implementation is only
-        invoked when a subclass does NOT override the method, so the
-        OpenCode path does not double-invoke the sink.
-
-        Sink exceptions are swallowed (same pattern as
-        ``opencode_execution_strategy.py``) so a buggy sink cannot break
-        the line loop.
-        """
         if not _has_subagent_sink():
             return
         signal = _classify_generic_child_signal(line)
@@ -126,25 +72,9 @@ class BaseExecutionStrategy:
                 _invoke_subagent_sink(line)
 
     def observe_stream_end(self) -> None:
-        """Observe that the provider's stdout reached EOF.
-
-        Evidence that is only meaningful while frames can still arrive (an
-        OpenCode turn whose ``step_finish`` is pending) must be released
-        here, because ``classify_quiet`` keeps being consulted while a
-        conflict-resolution drain waits for scoped child work to end. The
-        base strategy tracks no such evidence.
-        """
         return
 
     def classify_activity_line(self, line: str) -> AgentActivitySignal | None:
-        """Classify a raw output line for idle-watchdog activity.
-
-        Generic transports treat any non-blank line as activity while rejecting
-        whitespace-only heartbeats so a process cannot evade the idle deadline
-        without emitting meaningful provider output. JSON error events are
-        classified as ERROR_LINE so the repeated-error circuit breaker can detect
-        a wedged retry loop.
-        """
         progress_signal = _progress_report_signal(line)
         if progress_signal is not None:
             return progress_signal
@@ -159,31 +89,8 @@ class BaseExecutionStrategy:
         liveness_probe: LivenessProbe,
     ) -> AgentExecutionState:
         del liveness_probe
-        # R1 (Trustworthy Idle Watchdog spec): the precedence is
-        # (a) OpenCode ChildLivenessRegistry first, (b) injected
-        # ``SubagentPidSource`` (per-transport factory helpers in
-        # ``ralph.process.monitor._subagent_pid_source_providers`` wire
-        # this from a ``SubagentPidRegistry``), then (c) the legacy
-        # ``handle.has_live_descendants()`` fallback ONLY when neither
-        # filtered seam is injected. The registry wins for OpenCode
-        # because the OpenCode path already has a
-        # ``ChildLivenessSubagentPidSource`` wrapper feeding the
-        # registry from structured lifecycle events; the
-        # ``SubagentPidSource`` wins for non-OpenCode transports that
-        # do not wire a registry but still inject a filtered source.
-        # The BROADER ``descendant_snapshot()`` /
-        # ``handle.has_live_descendants()`` count is the bug class
-        # from the product spec -- it includes shell helpers like
-        # ``npm test`` / ``cargo build`` and produced the 2365s
-        # indefinite deferral. We MUST NOT consult it when a filtered
-        # seam is present.
         if self._registry is not None:
             try:
-                # ``snapshot`` returns a ``ChildActivitySnapshot``;
-                # count via ``active_count`` (the filtered live-child
-                # signal). Empty prefix matches every record so a
-                # generic registry without a label scope still
-                # produces a meaningful filtered count.
                 reg_snapshot = self._registry.snapshot("")
                 if reg_snapshot.active_count > 0:
                     return AgentExecutionState.WAITING_ON_CHILD
@@ -198,12 +105,6 @@ class BaseExecutionStrategy:
             if pids:
                 return AgentExecutionState.WAITING_ON_CHILD
             return AgentExecutionState.ACTIVE
-        # Legacy fallback (no registry, no injected source): keep the
-        # previous ``has_live_descendants()`` behavior for
-        # backward-compatible tests that pre-date the registry seam.
-        # Used ONLY when no filtered seam is available so a
-        # non-instrumented test (or a transport the R5 wiring has not
-        # yet covered) does not regress to "always ACTIVE".
         if hasattr(handle, "has_live_descendants"):
             try:
                 if bool(handle.has_live_descendants()):
@@ -228,16 +129,4 @@ class BaseExecutionStrategy:
         return False
 
     def supports_incomplete_exit_reprompt(self) -> bool:
-        """Whether a rc=0 exit without completion evidence gets ONE bounded reprompt.
-
-        When True, ``check_process_result`` raises the typed
-        ``AgyIncompleteExitError`` (instead of a plain
-        ``AgentInvocationError``) so the recovery layer issues exactly
-        one automatic fresh-session reprompt carrying the original task
-        plus an explicit completion instruction. Only the AGY strategy
-        opts in: AGY has no resumable session (so the opencode-style
-        session-continuation path cannot apply) and no stable wire-level
-        waiting signal (so the objective exit condition is the only
-        recoverable signal).
-        """
         return False

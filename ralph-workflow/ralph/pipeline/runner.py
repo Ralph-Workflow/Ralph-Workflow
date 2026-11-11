@@ -1,10 +1,3 @@
-# Deprecated: Ralph-orchestrated workers are removed from the execution model; parallelism is owned by the developer agent's own sub-agents. See docs/sphinx/concepts.md §"Deprecated: Ralph-orchestrated workers".
-"""Pipeline runner: orchestration glue that wires extracted submodules together.
-
-This module coordinates effect dispatch, step execution, and policy resolution.
-Heavy lifting is delegated to focused submodules; runner.py owns only the
-plumbing that connects them.
-"""
 
 from __future__ import annotations
 
@@ -295,17 +288,6 @@ __all__ = [
 
 
 def __getattr__(name: str) -> object:
-    """Lazy attribute proxy that breaks the runner <-> run_loop import cycle.
-
-    ``ralph.pipeline.run_loop`` historically imports this module as
-    ``_runner_module`` to reach the orchestration helpers, while this
-    module historically re-exported the ``run`` entry point from
-    ``run_loop``. Importing both eagerly produces a circular import
-    error in some test-collection orders. Proxying the cross-module
-    symbol via :pep:`562` ``__getattr__`` defers the resolution until
-    the consumer actually needs it, eliminating the cycle while
-    preserving the public re-export contract.
-    """
     if name == "run":
         from ralph.pipeline.run_loop import run as _run_loop_entry
 
@@ -415,9 +397,6 @@ def _execute_effect(
     if pipeline_deps is None:
         pipeline_deps = DefaultPipelineFactory().build(config, resolved_display_context)
     if isinstance(effect, InvokeAgentEffect):
-        # The agent phase owns this checkout until it returns or raises
-        # (KeyboardInterrupt included): the in-process catch-up ticker
-        # defers every move of it and keeps syncing the target elsewhere.
         with process_agent_phases().agent_phase(workspace_scope.root):
             return execute_agent_effect(
                 effect,
@@ -517,7 +496,7 @@ def _execute_effect_with_optional_display(
     supported = all_opts if accepts_kwargs else {k: v for k, v in all_opts.items() if k in params}
     return cast("_ExecuteEffectKwargsFn", fn)(
         effect, config, workspace_scope, **supported
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
 
 
 def execute_effect_with_optional_display(
@@ -533,7 +512,6 @@ def execute_effect_with_optional_display(
     pipeline_deps: PipelineDeps | None = None,
     run_id: str | None = None,
 ) -> Event | CommitReviewEvent:
-    """Execute an effect and return the resulting event, optionally routing output to a display."""
     return _execute_effect_with_optional_display(
         effect,
         config,
@@ -557,12 +535,6 @@ def run_visual_capture_lifecycle(
     capture: Callable[[], CaptureSet],
     invoke_agent: Callable[[], Event | CommitReviewEvent],
 ) -> tuple[Event | CommitReviewEvent, CaptureSet, CaptureSet]:
-    """Capture an immutable baseline, invoke the agent, then capture a fresh matrix.
-
-    The caller supplies the policy-bound capture operation.  A retained baseline
-    is reused on retry; the after set must be a new capture run with identical
-    matrix coverage before it can be compared by a visual verdict.
-    """
     before = lifecycle.get_retained_before_set(target=target, matrix_key=matrix_key)
     if before is None:
         before = capture()
@@ -584,12 +556,6 @@ def run_visual_capture_lifecycle(
 def _resolve_policy_capture_plan(
     workspace_root: Path,
 ) -> tuple[PolicyFacts, CaptureRequest, str] | str:
-    """Resolve the policy-declared capture plan, or return why there is none.
-
-    Returns the reason as a string rather than raising so the caller can run
-    the agent outside any ``except`` block: a failure inside that run must not
-    be chained onto this recoverable, already-reported policy problem.
-    """
     from ralph.visual.capture_lifecycle import compute_matrix_key
     from ralph.visual.capture_request import CaptureRequest
     from ralph.visual.policy_facts import DESIGN_SYSTEM_POLICY_RELPATH, parse_policy_facts
@@ -620,12 +586,6 @@ def _run_policy_declared_visual_capture(
     invoke_agent: Callable[[], Event | CommitReviewEvent],
     env_getter: EnvGetter = os.environ.get,
 ) -> Event | CommitReviewEvent:
-    """Run policy-declared before/after capture around one development invocation.
-
-    An unavailable renderer, absent capture policy, or unsigned session is a
-    visible visual-review blocker.  It never manufactures a CaptureSet and it
-    does not prevent a non-visual development task from proceeding.
-    """
     if run_id is None:
         logger.warning("visual-review blocked: development invocation has no run id")
         return invoke_agent()
@@ -711,18 +671,6 @@ def _invoke_execute_effect_with_optional_display(
     pre_phase_drain: str | None = None,
     run_id: str | None = None,
 ) -> Event | CommitReviewEvent:
-    # Phase 1 lifecycle hooks: bounded changed-file refresh before
-    # and after an InvokeAgentEffect. Hooks skip cleanly when the
-    # explore index is disabled or missing; they never block the
-    # agent indefinitely (fail-open for the agent, fail-closed for
-    # the reindex job).
-    #
-    # AC-04: the refresh gate is the development / fix phase drain
-    # (NOT just the role). The planning block in
-    # ``ralph/policy/defaults/pipeline.toml`` is also mapped to
-    # ``role = "execution"``; gating on role alone would trigger
-    # an uncosted index refresh for the planning agent. The drain
-    # is the authoritative identity of a dev/fix session.
     from ralph.mcp.explore.lifecycle import (
         after_agent_refresh,
         before_agent_refresh,
@@ -790,14 +738,6 @@ def _reduce_runtime_recovery(
     exc: BaseException | None = None,
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Route a crashed step through recovery, bounded by the cycle deadline.
-
-    This path hands the failure straight to the controller, skipping ``reduce``
-    and therefore every guard inside it — so the deadline is asked here. With
-    the budget already spent the controller's retries would otherwise each be
-    another full-length invocation of the guarded phase, counted and reported
-    nowhere.
-    """
     expired = redirect_expired_cycle_in_place(state, pipeline_policy, routing_timing)
     if expired is not None:
         return expired
@@ -823,30 +763,10 @@ def _reduce_runtime_recovery(
 
 
 def checkpoint_path_for_root(root: Path) -> Path:
-    """Return the canonical checkpoint path for a workspace root.
-
-    The canonical checkpoint is the durable file the runner writes for the
-    run's own progress, so every consumer that needs the checkpoint of a
-    workspace root resolves it through this function instead of re-deriving a
-    path of its own.
-    """
     return root / "checkpoint.json"
 
 
 def rollback_checkpoint_path_for_root(root: Path) -> Path:
-    """Return the durable rollback-lifecycle checkpoint path for a workspace root.
-
-    The commit-review rollback's pending marker lives under ``.agent/``
-    because the proposal seal EXCLUDES the runtime directory from the
-    proposal tree. A marker in the working tree would be part of the
-    proposal, and the restore would delete it as a proposal-added file --
-    taking the recovery evidence with it, so a crash inside the restore
-    would leave a half-restored tree with nothing left to resume from.
-
-    The rollback writes BOTH halves of its lifecycle state here: the pending
-    marker BEFORE the destructive restore and the durable clear AFTER it, so
-    one file carries the whole recovery contract.
-    """
     return root / ".agent" / "checkpoint.json"
 
 
@@ -860,7 +780,6 @@ def _save_checkpoint_or_log(
     message: str,
     path: Path,
 ) -> bool:
-    """Persist ``state``, logging failure and reporting whether it succeeded."""
     try:
         ckpt.save(state, path)
     except Exception as exc:
@@ -904,19 +823,6 @@ _PHASE_SUCCESS_EVENTS: frozenset[PipelineEvent] = frozenset(
 
 
 def _coarse_outcome_for_event(event: Event | CommitReviewEvent) -> str:
-    """Map a post-with-block ``Event`` to a coarse phase-outcome tag.
-
-    Returns one of the closed vocabulary strings forwarded to Sentry:
-    ``"success"``, ``"skipped"``, or ``"failure"``. The mapping is
-    deliberately fail-safe: ``COMMIT_SKIPPED`` is its own bucket, the
-    closed success set covers agent/commit/analysis/review/fix success
-    events, and everything else (loopback/retry/failure) is conservatively
-    ``"failure"`` so a real failure can never be hidden behind
-    ``"success"``. Non-``PipelineEvent`` events (PhaseFailureEvent /
-    WorkerStartedEvent / WorkerCompletedEvent / WorkerFailedEvent /
-    PostFanoutVerificationEvent / AnalysisDecisionEvent) all map to
-    ``"failure"`` because none of them are part of the closed success set.
-    """
     if event == PipelineEvent.COMMIT_SKIPPED:
         return "skipped"
     if isinstance(event, CommitResidualEvent):
@@ -927,21 +833,6 @@ def _coarse_outcome_for_event(event: Event | CommitReviewEvent) -> str:
 
 
 def _log_auto_integrate_outcome(display: ParallelDisplay, outcome: RebaseState) -> None:
-    """Emit the user-facing action log line for an auto-integration outcome.
-
-    Delegates the verb -> phrase mapping to
-    :func:`ralph.display.auto_integrate_message.format_auto_integrate_message`
-    so the live activity line and the run's final receipt cannot drift.
-    The single ``[cyan]auto-integrate:[/cyan]`` prefix is added here;
-    the formatter returns a bare phrase.
-
-    Per the prompt Notes the user-facing line should describe what
-    actually happened: ``rebased onto target`` / ``merged target into
-    feature`` (each optionally followed by ``, fast-forwarded
-    <target>`` or ``, fast-forward skipped: <reason>``) /
-    ``skipped: <reason>`` / ``conflict: <reason>`` /
-    ``recovered (<reason>)``.
-    """
     message = format_auto_integrate_message(
         outcome.last_action,
         outcome.last_target,
@@ -953,9 +844,6 @@ def _log_auto_integrate_outcome(display: ParallelDisplay, outcome: RebaseState) 
         remote=outcome.last_remote,
         freshness_verdict=outcome.freshness_verdict,
     )
-    # A skip or conflict means no integration happened this commit; an
-    # operator who expects continuous integration must not lose that
-    # signal in the INFO stream, so it escalates to a WARN line.
     if outcome.is_skipped() or outcome.last_outcome == RebaseOutcomeKind.CONFLICT:
         display.emit_warn_line("run", "auto-integrate", message)
         return
@@ -970,18 +858,7 @@ def _assert_integration_dispatch_invariant(
     workspace_scope: WorkspaceScope,
     config: UnifiedConfig,
 ) -> None:
-    """Prove integration is resolved before every ordinary dispatch.
-
-    ``auto_integrate_enabled`` controls whether Ralph proactively changes Git
-    state; it never relaxes the safety requirement for an existing worktree.
-    Keep the configuration argument for the dispatch-funnel seam's stable
-    signature, but deliberately do not consult it here.
-    """
     del config
-    # The recovery drain is intentionally the sole out-of-graph executor.
-    # It must remain reachable while the worktree is blocked so its fallback
-    # chain can resolve the evidence; every ordinary phase consumes the same
-    # fail-closed verdict below.
     if state.phase == RESOLUTION_DRAIN:
         return
     verdict = inspect_integration_resolution(workspace_scope.root, state.rebase)
@@ -989,18 +866,6 @@ def _assert_integration_dispatch_invariant(
 
 
 def _inline_event_for_effect(effect: object) -> PipelineEvent | None:
-    """Map an inline-effect handle to the phase-transition event the
-    boundary integration hook should treat it as.
-
-    The mapping mirrors what :func:`_execute_effect` returns for the
-    SAME effect when it routes through the normal path; without it,
-    the inline early-return would route every SaveCheckpointEffect
-    through the no-op ``PHASE_LOOPBACK`` path, so a checkpoint save
-    could never carry a catch-up landing to this checkout. Returns
-    ``None`` only for effects the boundary integration is not
-    equipped to handle (currently none of the inline ones; the
-    fallback is conservative).
-    """
     if isinstance(effect, SaveCheckpointEffect):
         return PipelineEvent.CHECKPOINT_SAVED
     if isinstance(effect, PreparePromptEffect):
@@ -1027,24 +892,6 @@ def _integrate_inline_effect(
     pipeline_deps: PipelineDeps | None,
     display_context: DisplayContext | None,
 ) -> PipelineState | int:
-    """Run the boundary integration hook for an inline-effect return and
-    thread the outcome back through a state-shaped result.
-
-    The helper owns the early-return-on-inline-effect path in
-    :func:`_run_pipeline_step` so the orchestrator function keeps a
-    sensible branch / statement count and the test surface is
-    narrowly scoped to this contract. Returns ``inline_result``
-    unchanged when:
-
-    * the effect is not one of the mapped inline effects (the helper
-      returns ``None`` for the event), OR
-    * the integration returns ``None`` (disabled / no work to do),
-      OR
-    * ``inline_result`` is not a :class:`PipelineState` (e.g. the
-      ``int`` return of :class:`ExitSuccessEffect`): the integration
-      is run for its git side-effect but cannot be threaded onto a
-      non-state value.
-    """
     inline_event = _inline_event_for_effect(effect)
     if inline_event is None:
         return inline_result
@@ -1060,7 +907,7 @@ def _integrate_inline_effect(
             pipeline_deps=pipeline_deps,
             display_context=display_context,
         )
-    except Exception as inline_exc:  # pragma: no cover -- defensive
+    except Exception as inline_exc:
         logger.warning(
             "auto_integrate inline-effect boundary raised: {}",
             inline_exc,
@@ -1082,14 +929,8 @@ def _integrate_inline_effect(
             return failed_state.copy_with(
                 rebase=_merge_strategy_onto_outcome(failed_state.rebase, outcome)
             )
-        # ExitSuccessEffect returns an int, so it cannot carry rebase state.
-        # Never return its successful value while recovery still owns a record
-        # or a resolver left a conflict unresolved.
         return 1
     if outcome is not None and isinstance(inline_result, PipelineState):
-        # PipelineState-shaped result: thread the integration outcome into the
-        # persisted checkpoint so the catch-up survives a crash right after the
-        # inline effect. The reducer/phase is left untouched.
         return inline_result.copy_with(
             rebase=_reconcile_rebase_if_live_resolved(workspace_scope, outcome)
         )
@@ -1097,7 +938,6 @@ def _integrate_inline_effect(
 
 
 def _merge_strategy_onto_outcome(reducer_rebase: RebaseState, outcome: RebaseState) -> RebaseState:
-    """Keep reducer-owned conflict strategy progress on a seam outcome."""
     return outcome.project_conflict_strategy_from(reducer_rebase)
 
 
@@ -1105,7 +945,6 @@ def _reconcile_rebase_if_live_resolved(
     workspace_scope: WorkspaceScope,
     rebase: RebaseState,
 ) -> RebaseState:
-    """Discard stale durable conflict evidence only after a clean inspection."""
     if not isinstance(cast("object", rebase), RebaseState):
         return rebase
     if not (
@@ -1129,7 +968,6 @@ def _prepare_pipeline_step_dispatch(
     recovery_controller: RecoveryController | None,
     pipeline_deps: PipelineDeps | None,
 ) -> tuple[PipelineState, Effect]:
-    """Reconcile clean durable state before selecting ordinary work."""
     rebase = _reconcile_rebase_if_live_resolved(workspace_scope, state.rebase)
     if rebase is not state.rebase:
         state = state.copy_with(rebase=rebase)
@@ -1158,7 +996,6 @@ def _prepare_pipeline_step_dispatch(
 
 
 def _integration_conflict_failure(state: PipelineState, outcome: RebaseState) -> PhaseFailureEvent:
-    """Build the recovery-routable failure for an unresolved integration."""
     from ralph.recovery.failure_category import FailureCategory
 
     reason = outcome.last_reason or "the conflict resolver did not produce a resolution"
@@ -1184,34 +1021,12 @@ def _maybe_auto_integrate(
     pipeline_deps: PipelineDeps | None = None,
     display_context: DisplayContext | None = None,
 ) -> RebaseState | None:
-    """Run the post-commit auto-integration step when warranted.
-
-    Mirrors the existing commit-seam block (clears the cycle baseline,
-    then conditionally integrates). Returns ``None`` when no integration
-    ran (disabled path / non-commit phase / ``COMMIT_SKIPPED`` / the
-    integration call returned ``None``). Otherwise returns the
-    recorded ``RebaseState`` and emits a user-facing action log line
-    so the operator sees ``rebased`` / ``merged`` / ``fast-forwarded
-    <target>`` / ``skipped: <reason>``.
-
-    Extracted from :func:`_run_pipeline_step` so the seam keeps a
-    sensible branch + statement count without losing the
-    ``COMMIT_SUCCESS``-only trigger and the skip-on-``COMMIT_SKIPPED``
-    guard.
-
-    The ``effect`` / ``event`` parameters are typed as ``object`` so
-    callers passing a union of effect / event types do not need to
-    pre-narrow; the helper narrows via ``isinstance`` / ``in`` itself.
-    """
     if not (
         isinstance(effect, (CommitEffect, EmptyCommitEffect))
         and commit_phase_def is not None
         and commit_phase_def.role == "commit"
         and event in (PipelineEvent.COMMIT_SUCCESS, PipelineEvent.COMMIT_SKIPPED)
     ):
-        # Non-commit seam: keep the branch in lockstep with the target
-        # at every successful phase boundary (silent no-op when the
-        # worktree is dirty or nothing moved).
         return _integrate_on_phase_transition(
             event=event,
             config=config,
@@ -1236,10 +1051,6 @@ def _maybe_auto_integrate(
             pipeline_deps=pipeline_deps,
             display_context=display_context,
         )
-    # The commit-boundary integration (crash record + full sequence
-    # keyed to a NEW commit) fires only on COMMIT_SUCCESS. An
-    # early-skipped commit still means a clean tree, so the boundary
-    # hook below catches a target that moved during the cycle.
     if event != PipelineEvent.COMMIT_SUCCESS:
         return _integrate_on_phase_transition(
             event=event,
@@ -1292,8 +1103,7 @@ def _maybe_auto_integrate(
                 ),
                 display=display,
             )
-    except Exception as auto_integrate_exc:  # pragma: no cover -- defensive
-        # R2/AC8: ladder rung 3 -- a clean abort is retried at the next seam.
+    except Exception as auto_integrate_exc:
         logger.warning(
             "auto_integrate_after_commit raised unexpectedly: {}",
             auto_integrate_exc,
@@ -1304,27 +1114,6 @@ def _maybe_auto_integrate(
     return outcome
 
 
-#: Events that trigger the boundary integration hook.
-#:
-#: The hook is STATELESS and EVENT-AGNOSTIC. It runs for EVERY
-#: ``PipelineEvent`` reaching the phase-transition boundary other
-#: than :data:`PipelineEvent.COMMIT_SUCCESS` (which has its own
-#: commit-boundary path via :func:`auto_integrate_after_commit`).
-#: Whether the integration actually moves a ref is decided downstream
-#: by the same guards the commit seam already trusts:
-#: :func:`ralph.pipeline.auto_integrate._worktree_is_clean` defers
-#: (records a skip, mutates nothing) on any uncommitted TRACKED change,
-#: and :func:`ralph.git.rebase.check_rebase_preconditions` blocks when
-#: a rebase / merge / cherry-pick is already in progress. A clean
-#: worktree means no in-progress phase work can be lost, so a catch-up
-#: is safe regardless of which event fired.
-#:
-#: The hook is the SINGLE place that carries another agent's landing
-#: to a feature branch that is not committing right now, so restricting
-#: it to a success-only whitelist was the asymmetry that broke
-#: cross-agent synchronisation on every non-success seam. The whitelist
-#: used to be the gate; the worktree/preconditions guards below are the
-#: gate now, and they enforce the same invariant on every event.
 _PHASE_TRANSITION_INTEGRATION_EVENTS = frozenset(
     {
         PipelineEvent.AGENT_SUCCESS,
@@ -1355,12 +1144,6 @@ _PHASE_TRANSITION_INTEGRATION_EVENTS = frozenset(
 
 
 def _is_phase_transition_integration_event(event: object) -> bool:
-    """Return whether a typed or enum event reaches integration.
-
-    ``AgentFailureEvent`` is the typed carrier of an ordinary agent
-    failure; it reaches the SAME seam as the bare
-    ``PipelineEvent.AGENT_FAILURE`` member it replaces.
-    """
     return isinstance(event, (CommitResidualEvent, AgentFailureEvent)) or (
         isinstance(event, PipelineEvent) and event in _PHASE_TRANSITION_INTEGRATION_EVENTS
     )
@@ -1377,19 +1160,8 @@ def _build_seam_conflict_resolver(
     display_context: DisplayContext | None = None,
     strategy_history: tuple[str, ...] = (),
 ) -> ConflictResolver | None:
-    """Pipeline-backed resolver when policy + registry are available, else None.
-
-    ``pipeline_deps`` and ``workspace_scope`` are what let the resolver
-    start a REAL Ralph MCP session; a resolver built without them
-    declines instead of invoking an agent that would have no exec policy
-    and no completion contract. They are keyword-only with ``None``
-    defaults so an all-mock seam still constructs.
-    """
     if policy_bundle is None or registry is None:
         return None
-    # Production path: hand the integration step a pipeline-backed
-    # resolver so a conflicted endpoint merge is resolved and committed
-    # instead of abandoned until the next commit.
     return build_agent_conflict_resolver(
         policy_bundle=policy_bundle,
         registry=registry,
@@ -1413,14 +1185,6 @@ def _build_seam_rebase_stop_resolver(
     display_context: DisplayContext | None = None,
     strategy_history: tuple[str, ...] = (),
 ) -> RebaseStopResolver | None:
-    """Rebase-stop resolver when policy + registry are available, else None.
-
-    The counterpart of :func:`_build_seam_conflict_resolver`, and gated on
-    exactly the same availability: without it a conflicted rebase is
-    aborted and degraded to one endpoint merge, which is precisely the
-    behaviour that made auto-rebase look broken whenever a real conflict
-    appeared.
-    """
     if policy_bundle is None or registry is None:
         return None
     return build_agent_rebase_stop_resolver(
@@ -1447,18 +1211,8 @@ def _integrate_on_phase_transition(
     pipeline_deps: PipelineDeps | None = None,
     display_context: DisplayContext | None = None,
 ) -> RebaseState | None:
-    """Run the boundary integration hook for successful phase events."""
     if not _is_phase_transition_integration_event(event):
-        # R2/AC8: ladder rung 3 -- this helper is called only for pipeline
-        # transitions; non-seam events are retried at their next real seam.
         return None
-    # wt-012: the phase-seam skill commit was removed. Every
-    # deterministic skill writer now commits at its own write site
-    # (the run-start sync, ``ralph --init``, and
-    # ``ralph --force-init-skills``). The phase seam does not write
-    # any skill path; a sweep here would commit any agent or user
-    # dirtied-since-run-start skill file and contaminate the
-    # deterministic chore commit.
     if pipeline_deps is not None and pipeline_deps.auto_integrate_resolver is not None:
         return pipeline_deps.auto_integrate_resolver(config, workspace_scope, state.rebase)
     conflict_resolver = _build_seam_conflict_resolver(
@@ -1488,8 +1242,7 @@ def _integrate_on_phase_transition(
                 ),
                 display=display,
             )
-    except Exception as transition_exc:  # pragma: no cover -- defensive
-        # R2/AC8: ladder rung 3 -- a clean abort is retried at the next seam.
+    except Exception as transition_exc:
         logger.warning(
             "auto_integrate_on_phase_transition raised unexpectedly: {}",
             transition_exc,
@@ -1511,7 +1264,6 @@ def _integrate_after_fan_out(
     pipeline_deps: PipelineDeps | None = None,
     display_context: DisplayContext | None = None,
 ) -> PipelineState:
-    """Integrate a completed fan-out at the shared coordinator seam."""
     enabled_raw: object = getattr(config.general, "auto_integrate_enabled", True)
     if not bool(enabled_raw):
         return state
@@ -1555,24 +1307,8 @@ def _finalize_agent_invocation(
     recovery_controller: RecoveryController | None,
     run_id: str | None,
 ) -> tuple[PipelineState, Event | CommitReviewEvent]:
-    """Apply session capture and the post-agent-run render/phase-handler call.
-
-    A no-op that returns ``(state, event)`` unchanged for every effect type
-    other than :class:`InvokeAgentEffect`. Extracted from
-    ``_run_pipeline_step`` (S-2) so that function's branch/statement count
-    stays under the repo's complexity budget after the F6 success/failure
-    render split was added -- this is a pure extraction, not a behavior
-    change.
-    """
     if not isinstance(effect, InvokeAgentEffect):
         return state, event
-    # The deadline published for this invocation is deliberately still in the
-    # environment here. Both branches below grade the agent's result, and
-    # grading promotes and validates the result artifact, whose warned
-    # incomplete-work gate asks the runtime -- not the agent -- whether this
-    # cycle had warned. Revoking before that point answered "no" for every
-    # promoted artifact, which is exactly the invocation the gate exists for.
-    # The step's ``finally`` revokes instead, covering every exit path.
     state = _apply_session_capture(state)
     if event == PipelineEvent.AGENT_SUCCESS:
         if recovery_controller is not None:
@@ -1593,11 +1329,6 @@ def _finalize_agent_invocation(
             ),
         )
     else:
-        # F6 / DoD 12: a required-artifact phase whose agent invocation did
-        # not succeed must not report success by omission. Display-only --
-        # does not call handle_phase or otherwise change what the reducer
-        # sees afterward (see render_phase_failure_report's reachability
-        # docstring).
         render_phase_failure_report(
             effect,
             policy_bundle=policy_bundle,
@@ -1617,12 +1348,6 @@ def _sample_cycle_timing(
     pipeline_deps: PipelineDeps | None,
     cycle_sample_box: list[float | None] | None,
 ) -> tuple[RoutingTiming | None, float | None, float, CycleTimeboxPolicy | None]:
-    """Sample the monotonic clock and build routing timing for one step.
-
-    Returns ``(routing_timing, cycle_now, cycle_delta, ct_policy)``. When
-    no sample box or no timebox policy is configured, returns all-None / zero
-    so the caller's behavior is unchanged.
-    """
     ct_policy = pipeline_policy.cycle_timebox
     if cycle_sample_box is None or ct_policy is None:
         return None, None, 0.0, ct_policy
@@ -1661,7 +1386,6 @@ def _sample_development_timing(
     pipeline_deps: PipelineDeps | None,
     sample_box: list[float | None] | None,
 ) -> tuple[RoutingTiming | None, float | None, float, DevelopmentTimeboxPolicy | None]:
-    """Sample the independent development timer using the runner's clock."""
     policy = pipeline_policy.development_timebox
     if sample_box is None or policy is None:
         return None, None, 0.0, policy
@@ -1702,7 +1426,6 @@ def _sample_development_timing(
 def _merge_routing_timings(
     cycle_timing: RoutingTiming | None, development_timing: RoutingTiming | None
 ) -> RoutingTiming | None:
-    """Combine independently sampled timers for routing without cross-charging."""
     if cycle_timing is None:
         return development_timing
     if development_timing is None:
@@ -1728,7 +1451,6 @@ def _sample_step_routing_timing(
     CycleTimeboxPolicy | None,
     DevelopmentTimeboxPolicy | None,
 ]:
-    """Sample both timers for pre-invocation routing and prompt publication."""
     cycle_timing, cycle_now, cycle_delta, cycle_policy = _sample_cycle_timing(
         state, pipeline_policy, pipeline_deps, cycle_sample_box
     )
@@ -1799,7 +1521,6 @@ def _fold_development_elapsed(
     delta_seconds: float,
     timing_enabled: bool,
 ) -> PipelineState:
-    """Persist development elapsed time across validation retries and resumes."""
     if (
         not timing_enabled
         or not before.dev_timebox_active
@@ -1825,7 +1546,6 @@ def _fold_sampled_timeboxes(
     development_sample_box: list[float | None] | None,
     development_policy: DevelopmentTimeboxPolicy | None,
 ) -> PipelineState:
-    """Persist sampled timer deltas and advance their monotonic anchors."""
     after = fold_cycle_elapsed(
         before,
         after,
@@ -1856,17 +1576,6 @@ def _fold_cycle_elapsed(
     delta_seconds: float,
     timing_enabled: bool,
 ) -> PipelineState:
-    """Add a step's wall-clock delta to the cycle's serialized consumed time.
-
-    This is the only thing that makes the deadline advance: without it the
-    cycle timer reads zero forever, so it never warns, never redirects, and
-    publishes a deadline that never arrives.
-
-    The delta is folded whenever the cycle was active coming INTO the step —
-    whether or not the step concluded it — so a concluded cycle carries its
-    true elapsed duration for the operator surfaces, and so the budget
-    survives a crash-resume.
-    """
     if not timing_enabled or not before.cycle_timebox_active or delta_seconds <= 0.0:
         return after
     return after.model_copy(
@@ -1895,20 +1604,9 @@ def _run_fan_out_phase(
     display_context: DisplayContext,
     routing_timing: RoutingTiming | None,
 ) -> PipelineState:
-    """Publish the cycle deadline for the workers, fan out, then revoke it.
-
-    Publication and revocation belong together: the deadline lives in the
-    process-global environment, so leaving it set after the fan-out nags
-    whatever runs next — including the auto-integrate conflict resolver, which
-    this fan-out invokes as its own completion callback.
-    """
     _publish_fan_out_cycle_deadline(state, effect.phase, policy_bundle, routing_timing)
 
     def integrate_after_successful_fan_out(finished_state: PipelineState) -> PipelineState:
-        # This callback runs INSIDE the fan-out, so the outer revoke has not
-        # happened yet. Auto-integration spawns its own conflict-resolver
-        # agent, which never joined the cycle and must not be nagged to wrap
-        # up work it has no part in.
         withdraw_cycle_deadline_env()
         return _integrate_after_fan_out(
             state=finished_state,
@@ -1932,10 +1630,6 @@ def _run_fan_out_phase(
             config=config,
             config_path=config_path,
             cli_overrides=cli_overrides,
-            # ``fan_out.execute_fan_out_sync`` reads this out of ``opts`` under
-            # the underscore-prefixed name. Spelling it without the underscore
-            # here dropped the callback silently, so the fan-out's SignalBridge
-            # never got ``_connectivity_stop`` wired on the production path.
             _monitor_stop_cb=monitor_stop_cb,
             pipeline_deps=pipeline_deps,
             _on_successful_completion=integrate_after_successful_fan_out,
@@ -1950,13 +1644,6 @@ def _publish_fan_out_cycle_deadline(
     policy_bundle: PolicyBundle,
     routing_timing: RoutingTiming | None,
 ) -> None:
-    """Publish the cycle deadline for a fan-out's worker processes.
-
-    Fan-out spawns its own worker bridges without going through prompt
-    materialization, so without this a fanned-out cycle gives its workers no
-    deadline at all while still leaking whatever a previous invocation left
-    published.
-    """
     publish_cycle_deadline_env(
         state,
         phase,
@@ -1990,9 +1677,6 @@ def _apply_step_integration_outcome(
     reconciled_rebase = _reconcile_rebase_if_live_resolved(workspace_scope, auto_integrate_outcome)
     record = read_record(workspace_scope.root)
     if record is not None or reconciled_rebase.recovery_record_retained:
-        # The dispatch invariant asks the SINGLE owner for the mutation
-        # ladder and overlays the durable record facts. The runner never
-        # re-derives the rung from the record itself.
         target = config.general.auto_integrate_target if config is not None else None
         remote = config.general.auto_integrate_remote if config is not None else None
         action = decide_seam_action(
@@ -2008,16 +1692,6 @@ def _apply_step_integration_outcome(
             integration_record=record,
             rebase_state=reconciled_rebase,
         )
-        # Consume the typed decisions instead of discarding them. The
-        # reducer stays the single last_decision writer; here the runner
-        # only acts on the decision by surfacing the escalation in the
-        # operator display state, and it fails closed on the closed
-        # vocabularies (UNKNOWN action / unrecognized decision) rather
-        # than inventing behavior. A fail-closed record fact is a typed
-        # RecordFactOutcome verdict: the owner seam routes it to the
-        # autonomous cleanup ladder (preserve the work to backup refs,
-        # then re-enter the rebase-first path) — the display names the
-        # bounded wait, never an operator hand-off.
         if isinstance(action, RecordFactOutcome):
             reconciled_rebase = reconciled_rebase.set_operation_display_state(
                 OperationDisplayState.WAITING
@@ -2031,7 +1705,7 @@ def _apply_step_integration_outcome(
             PhaseDecision.REPORT_TERMINAL_SUCCESS,
             PhaseDecision.REPORT_TERMINAL_FAILURE,
             PhaseDecision.REPORT_INTERVENTION_REQUIRED,
-        ):  # pragma: no cover - enum exhaustiveness guard
+        ):
             raise ValueError(f"Unknown phase decision: {decision!r}")
         if (
             decision
@@ -2058,10 +1732,6 @@ def _handle_blocked_dispatch_recovery(
     if not isinstance(exc, IntegrationDispatchBlockedError):
         return recovered_state
     record = read_record(workspace_scope.root)
-    # The blocked-dispatch recovery asks the SINGLE owner for the
-    # mutation ladder and overlays the durable record facts. A retained
-    # obligation with no record behind it fails closed to the typed
-    # STALE_INTENT verdict, routed to the autonomous cleanup ladder.
     target = config.general.auto_integrate_target if config is not None else None
     remote = config.general.auto_integrate_remote if config is not None else None
     action = decide_seam_action(
@@ -2077,14 +1747,6 @@ def _handle_blocked_dispatch_recovery(
         integration_record=record,
         rebase_state=timed_state.rebase,
     )
-    # Consume the typed decisions: only a genuinely blocking verdict
-    # retains the recovery record; an authoritative terminal-success
-    # verdict means the dispatch block is stale and recovery retention
-    # would fabricate an obligation the authorities do not support.
-    # A fail-closed record fact (typed RecordFactOutcome) is a
-    # recovery-owned verdict: the ladder must preserve the work before
-    # retention is reconsidered. Unknown vocabulary values fail closed
-    # to retention.
     if decision is PhaseDecision.REPORT_TERMINAL_SUCCESS and not (
         action
         in (
@@ -2108,21 +1770,6 @@ def _commit_review_phase_for_gate_failure(
     state: PipelineState,
     pipeline_policy: PipelinePolicy,
 ) -> PipelinePhase:
-    """Return the commit-review phase that owns a failed rollback.
-
-    A rejection advances the run to the phase the review routes to, so the
-    commit-review phase that produced the rejection is the run's
-    ``previous_phase``. The gate failure is routed through THAT phase's own
-    failure transition, exactly as a reviewer malfunction would be.
-
-    Args:
-        state: The state the failed rollback was attempted from.
-        pipeline_policy: The active pipeline policy.
-
-    Returns:
-        The commit-review phase name, or the state's current phase when the
-        run did not come from one.
-    """
     previous = state.previous_phase
     if isinstance(previous, str):
         phase_def = pipeline_policy.phases.get(previous)
@@ -2136,24 +1783,6 @@ def rollback_gate_failure_state(
     pipeline_policy: PipelinePolicy,
     detail: str,
 ) -> PipelineState:
-    """Return the terminal gate-failure state for a rollback that must not run.
-
-    A rejection whose rollback cannot be preflighted -- a damaged ``.git``,
-    a proposal ref that does not resolve, or a baseline ref that does not
-    resolve -- is a GATE FAILURE, never a rollback attempt: the working tree
-    is left exactly as it was and the run stops on the policy's failure
-    route. The proposal ref is kept, so the rejected work stays recoverable
-    by hand.
-
-    Args:
-        state: The state the failed rollback was attempted from.
-        pipeline_policy: The active pipeline policy.
-        detail: Operator-facing detail describing why the rollback failed.
-
-    Returns:
-        The state advanced to the failure route, with ``rollback_pending``
-        cleared and the rejection's proposal ref preserved.
-    """
     gate_state = state.copy_with(
         phase=_commit_review_phase_for_gate_failure(state, pipeline_policy),
         rollback_pending=False,
@@ -2173,7 +1802,6 @@ def _write_rejection_hint(
     workspace_root: Path,
     pipeline_policy: PipelinePolicy,
 ) -> None:
-    """Record the rejection context the next development prompt reads."""
     from ralph.phases.required_artifacts import retry_hint_path
 
     dev_hint_path = workspace_root / retry_hint_path("development", pipeline_policy=pipeline_policy)
@@ -2188,7 +1816,6 @@ def _write_rejection_hint(
         f"Proposal ref: {state.rollback_ref}\n"
         f"{baseline_note} To inspect rejected changes: git checkout {state.rollback_ref} -- .\n"
     )
-    # filesystem-write-ok: record rollback retry context for the next dev prompt
     dev_hint_path.write_text(rejection_text, encoding="utf-8")
 
 
@@ -2199,34 +1826,6 @@ def execute_pending_rollback(
     *,
     checkpoint_path: Path | None = None,
 ) -> PipelineState:
-    """Roll the working tree back to the run's restore point.
-
-    The restore target is the run-start baseline seal when the run recorded
-    one (the run started on a dirty tree), and ``HEAD`` otherwise. The
-    restore is REFUSED when it cannot be preflighted: a damaged ``.git``, a
-    proposal ref that does not resolve, or a baseline ref that does not
-    resolve is a gate failure, never a rollback attempt. The working tree
-    then keeps exactly the state it had.
-
-    This is the single owner of the rollback decision, so the runner's
-    post-reducer step and the run loop's resume path cannot drift apart.
-
-    Args:
-        state: The state asking for the rollback.
-        workspace_root: The workspace root the restore runs in.
-        pipeline_policy: The active pipeline policy.
-        checkpoint_path: The file the rollback's durable lifecycle state is
-            written to. When omitted, the rollback's OWN rollback-safe path
-            is used (``<workspace_root>/.agent/checkpoint.json``): the
-            proposal seal EXCLUDES the runtime directory from the proposal
-            tree, so a marker in the working tree would be deleted by the
-            very restore it protects.
-
-    Returns:
-        The state with the rollback flags cleared and the rejection context
-        recorded, or the terminal gate-failure state when its crash-safe
-        checkpoint could not be saved or the restore could not be preflighted.
-    """
     from ralph.git.proposal_seal import rollback
 
     marker_path = (
@@ -2262,9 +1861,6 @@ def execute_pending_rollback(
         )
     _write_rejection_hint(state, workspace_root, pipeline_policy)
     cleared = state.copy_with(rollback_pending=False, rollback_ref=None)
-    # The durable CLEAR belongs in the same file as the durable marker: a
-    # resume that reads a pending marker it has already satisfied would
-    # restore the working tree a second time.
     if not _save_checkpoint_or_log(
         cleared,
         message="Checkpoint save failed after rollback in phase={phase}: {err}",
@@ -2283,7 +1879,6 @@ def _execute_pending_rollback_if_needed(
     workspace_scope: WorkspaceScope,
     policy_bundle: PolicyBundle,
 ) -> PipelineState:
-    """Execute rollback if flagged as pending in next_state and record retry hint."""
     if not (
         isinstance(next_state.rollback_pending, bool)
         and next_state.rollback_pending is True
@@ -2305,7 +1900,6 @@ def _finalize_step_state(
     auto_integrate_outcome: RebaseState | None,
     config: UnifiedConfig | None,
 ) -> PipelineState:
-    """Post-reducer state finalization: execute rollbacks and thread integration outcomes."""
     next_state = _execute_pending_rollback_if_needed(next_state, workspace_scope, policy_bundle)
     return _apply_step_integration_outcome(
         next_state, workspace_scope, policy_bundle, auto_integrate_outcome, config=config
@@ -2331,16 +1925,7 @@ def _run_pipeline_step(
     _cycle_sample_box: list[float | None] | None = None,
     _development_sample_box: list[float | None] | None = None,
 ) -> PipelineState | int:
-    # Phase telemetry primitives — bound BEFORE the try/except so the
-    # ``finally`` clause can read them on every exit path. PhaseRole is
-    # derived from the EXISTING PhaseDefinition.role closed vocabulary
-    # (never the raw ``state.phase`` string — privacy invariant). The
-    # pessimistic ``_phase_outcome = "crashed"`` default ensures any
-    # unmapped path is recorded as ``crashed`` rather than ``success``.
     _phase_role, _phase_drain, _phase_timer = _start_phase_telemetry(state, policy_bundle.pipeline)
-    # AC-04: the drain is the authoritative identity of a dev/fix
-    # session; the role alone is too permissive (planning also maps
-    # to ``role=execution``).
     _phase_outcome = "crashed"
 
     def _with_phase_timing(result: PipelineState | int) -> PipelineState | int:
@@ -2350,9 +1935,6 @@ def _run_pipeline_step(
             else result
         )
 
-    # --- Cycle timebox: sample the monotonic clock ONCE per step and build
-    # routing timing for both prompt materialization (the 80% warning) and
-    # the reducer (deadline enforcement).
     (
         state,
         _routing_timing,
@@ -2369,10 +1951,6 @@ def _run_pipeline_step(
     )
 
     try:
-        # This common dispatch funnel checks immediately before effect
-        # selection/prompt materialization so no ordinary phase can observe a
-        # partial integration result.
-        # determine_effect_from_policy is reached through the shared preparation funnel.
         state, effect = _prepare_pipeline_step_dispatch(
             state,
             workspace_scope,
@@ -2397,20 +1975,6 @@ def _run_pipeline_step(
             recovery_controller=recovery_controller,
         )
         if inline_result is not None:
-            # Inline-effect early-return path: a phase transition realized
-            # purely as an inline effect (SaveCheckpointEffect /
-            # PreparePromptEffect / ExitSuccessEffect / ExitFailureEffect /
-            # ExhaustedAnalysisPhaseAdvanceEffect) would otherwise BYPASS the
-            # boundary integration the normal path runs at the bottom of
-            # the step, so a checkpoint save or a prompt-prepared
-            # transition could never carry another agent's landing to
-            # this checkout. The hook is the single seam that catches
-            # up an advanced target between commits, so it MUST fire on
-            # every inline transition too. The integration logic
-            # lives in ``_integrate_inline_effect`` to keep this
-            # orchestrator's branch / statement count under the
-            # project caps; the helper is best-effort and fail-closed
-            # so an exception never escapes.
             inline_result = _integrate_inline_effect(
                 effect=effect,
                 inline_result=inline_result,
@@ -2491,10 +2055,6 @@ def _run_pipeline_step(
                         exc=exc,
                     )
                 )
-            # Generated once per attempt so the later render call (success
-            # PASS/DEGRADED banner or the FAILED-no-artifact report) grades
-            # the same run's evidence the agent invocation itself was
-            # scoped under (S-2 run_id threading).
             run_id = str(uuid.uuid4())
             event = invoke_execute_effect_with_optional_display(
                 effect,
@@ -2547,11 +2107,6 @@ def _run_pipeline_step(
         ):
             event = _integration_conflict_failure(state, _auto_integrate_outcome)
         _phase_outcome = _coarse_outcome_for_event(event)
-        # Resample the monotonic clock AFTER the agent invocation so the
-        # reducer's deadline guard sees elapsed time that includes the
-        # just-finished invocation. The step-start sample remains
-        # authoritative for the prompt warning; this post-invocation sample
-        # is authoritative for the routing guard and the consumed-seconds fold.
         _reduce_routing_timing, _reduce_now, _reduce_delta, _ = _sample_cycle_timing(
             state, policy_bundle.pipeline, pipeline_deps, _cycle_sample_box
         )
@@ -2604,13 +2159,7 @@ def _run_pipeline_step(
         )
         return _with_phase_timing(next_state)
     except KeyboardInterrupt:
-        # Re-raise — the ``finally`` clause still records ``crashed`` first.
         raise
-    # Ordinary errors -- and a ``SystemExit`` raised by library code (e.g.
-    # ``McpConfigError``), which the recovery-first design routes to recovery
-    # -- become a recoverable crash. Any other ``BaseException`` (a harness
-    # deadline, ``GeneratorExit``, ``asyncio.CancelledError``) is control flow
-    # from outside the step and propagates; ``finally`` still records it.
     except (Exception, SystemExit) as exc:
         _phase_outcome = "crashed"
         logger.exception(
@@ -2666,15 +2215,7 @@ def _run_pipeline_step(
         )
         return _with_phase_timing(recovered_state)
     finally:
-        # Revoke the deadline published for this step's invocation. The
-        # environment is process-global, so anything spawned later
-        # (auto-integrate, plumbing agents) would otherwise inherit a nag
-        # about a cycle it is not part of -- and revoking anywhere inside the
-        # body leaks it on every path that raises, including Ctrl-C.
         withdraw_cycle_deadline_env()
-        # SINGLE recording site for all exit paths (inline/FanOut/
-        # MissingPlanHandoff/success/crash/any propagating BaseException).
-        # Fail-soft: telemetry must never break the pipeline.
         with contextlib.suppress(Exception):
             phase_timing = _phase_timer.finish()
             record_phase_execution(
@@ -2738,7 +2279,6 @@ def _handle_inline_effect(
 
     if isinstance(effect, PreparePromptEffect):
         if not effect.skip_materialization:
-            # Phase-agnostic resume guard: suppress clearing when restoring a checkpoint
             is_resume = (
                 state is not None
                 and str(state.phase) == str(effect.phase)
@@ -2780,23 +2320,6 @@ def _handle_inline_effect(
         prepared_state = state
         target_phase = effect.phase
         if pipeline_policy.recovery.failed_route == state.phase:
-            # A recovery cycle re-enters the phase with a fresh chain. The
-            # agent-health decision belongs to the failure ledger alone, so
-            # nothing has to be replenished here: the ledger keeps the
-            # demotions it recorded and the chain re-enters with a fresh
-            # retry counter.
-            # Resolve the deadline FIRST. This hop re-enters the phase by
-            # writing state.phase directly rather than routing, so it is the
-            # one way into the guarded phase that is not a routing boundary --
-            # and the deadline is enforced at boundaries. Everything below then
-            # prepares the phase the run actually enters: preparing the
-            # original target instead reset the cycle's git baseline to
-            # redirect-time HEAD and persisted that phase's drain for a phase
-            # that never runs.
-            # The step already sampled the clock; using the stored consumed
-            # total instead discards the seconds elapsed since that sample, so
-            # a cycle that crossed its deadline mid-step was judged as still
-            # having room.
             timeboxed = apply_cycle_timebox(
                 state,
                 effect.phase,
@@ -2842,19 +2365,11 @@ def _handle_inline_effect(
             if target_phase_def is not None and target_phase_def.role == "execution":
                 clear_cycle_baseline(workspace_scope.root)
                 write_start_commit_if_absent(workspace_scope.root)
-        # The effect's drain describes the phase it named; once a redirect has
-        # changed the target, only the policy knows the right one.
         requested_drain = effect.drain if target_phase == effect.phase else None
         prepare_updates: dict[str, object] = {
             "phase": target_phase,
             "current_drain": requested_drain or resolve_phase_drain(target_phase, pipeline_policy),
         }
-        # A change of phase here (skip-invocation success route, failed-route
-        # re-entry) must clear the next-attempt session action exactly like
-        # progress.advance_phase does. Preserving it would leak a stale resume
-        # session id / retry intent into an unrelated phase's first attempt.
-        # Same-phase re-prompts (the retry-in-session resume path) intentionally
-        # keep the intent so the resume can take effect.
         if target_phase != prepared_state.phase:
             prepare_updates["last_agent_session_id"] = None
             prepare_updates["agent_retry_intent"] = cleared_agent_retry_intent()
@@ -2864,9 +2379,6 @@ def _handle_inline_effect(
         return updated_state
 
     if isinstance(effect, ExitSuccessEffect):
-        # Route through the same run-loop authority: a retained record or
-        # a live retained-reason on disk is an open obligation, not a raw
-        # read-record miss.
         record = read_record(workspace_scope.root)
         return (
             _emit_success_exit(display, os.getenv)
@@ -2902,9 +2414,6 @@ def _emit_success_exit(
     getenv: EnvGetter,
 ) -> int:
     emit_activity_line(display, None, "[green]Pipeline completed successfully.[/green]")
-    # Periodic star CTA - shown ~50% of successful runs.
-    # Only fires after first-run (first-run already shows full welcome panel with star CTA).
-    # Uses process-id hash to avoid deterministic spam: each user sees it ~1 in 2 runs.
     show_cta = (hash(str(os.getpid()) + str(getenv("USER") or "")) % 2) == 0
     if show_cta:
         emit_activity_line(display, None, f"[bold yellow]{GITHUB_STAR_CTA}[/bold yellow]")
@@ -2973,13 +2482,6 @@ def execute_fan_out_sync(
     pipeline_deps: PipelineDeps | None = None,
     **opts: object,
 ) -> PipelineState:
-    """Execute fan-out synchronously, forwarding current module globals as injectable overrides.
-
-    The module globals are defaults, not overrides: a caller that names any of
-    them in ``opts`` wins. Passing them as explicit keywords alongside
-    ``**opts`` would instead raise ``TypeError: got multiple values for
-    keyword argument``.
-    """
     opts.setdefault("_install_signal_handlers", install_signal_handlers)
     opts.setdefault("_executor_cls", SubprocessAgentExecutor)
     opts.setdefault("_mcp_factory_cls", DynamicBindingMcpServerFactory)
@@ -3007,7 +2509,6 @@ def materialize_prepared_prompt(
     config: UnifiedConfig | None = None,
     pipeline_deps: PipelineDeps | None = None,
 ) -> None:
-    """Delegate to _materialize_prepared_prompt, injecting the patchable prompt function."""
     _materialize_prepared_prompt_impl(
         effect,
         pipeline_policy,
@@ -3025,7 +2526,6 @@ def materialize_prepared_prompt(
 
 
 def available_width(prefix_len: int) -> int:
-    """Return usable terminal width minus prefix and padding."""
     return max(40, terminal_width() - prefix_len - 2)
 
 
@@ -3037,15 +2537,6 @@ def execute_commit_effect(
     display: ParallelDisplay | None = None,
     **opts: object,
 ) -> Event:
-    """Execute a commit effect while preserving runner-level dependency injection hooks.
-
-    The work probes are defaults, not overrides: a caller that names
-    ``has_commit_work_fn`` / ``has_residual_work_fn`` in ``opts`` wins. Naming
-    them here as explicit keywords instead collided with the forwarded
-    ``**opts`` and raised ``TypeError: got multiple values for keyword
-    argument`` on every commit the pipeline attempted, which the recovery
-    classifier could only report as an ambiguous commit-phase failure.
-    """
     opts.setdefault("has_commit_work_fn", repo_has_commit_work)
     opts.setdefault("has_residual_work_fn", repo_has_commit_work)
     return _ee_execute_commit_effect(
@@ -3066,7 +2557,6 @@ def emit_phase_transition_if_changed(
     verbosity: Verbosity,
     pipeline_policy: PipelinePolicy,
 ) -> str:
-    """Emit phase-transition surfaces via the consolidated display surface."""
     return _pt_emit_phase_transition_if_changed(
         display,
         previous_phase,
@@ -3077,7 +2567,6 @@ def emit_phase_transition_if_changed(
 
 
 def write_start_commit_if_absent(workspace_root: Path) -> None:
-    """Persist the current HEAD SHA as the cycle baseline when no baseline exists yet."""
     if read_cycle_baseline(workspace_root) is not None:
         return
 

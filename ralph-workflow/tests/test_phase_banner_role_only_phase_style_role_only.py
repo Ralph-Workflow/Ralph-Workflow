@@ -1,5 +1,3 @@
-"""Regression tests: phase_banner uses role-only styling, no canonical phase-name fallback."""
-
 from __future__ import annotations
 
 from io import StringIO
@@ -17,7 +15,6 @@ from ralph.policy.models import (
 
 
 def _make_execution_to_analysis_policy() -> PipelinePolicy:
-    """Policy with 'design' (execution) → 'audit' (analysis) → 'done' (terminal)."""
     return PipelinePolicy(
         entry_phase="design",
         terminal_phase="done",
@@ -57,7 +54,6 @@ def _make_execution_to_analysis_policy() -> PipelinePolicy:
 
 
 def _make_commit_policy() -> PipelinePolicy:
-    """Policy with 'sign_off' (commit) phase."""
     return PipelinePolicy(
         entry_phase="sign_off",
         terminal_phase="done",
@@ -111,8 +107,6 @@ class TestPhaseStyleRoleOnly:
         assert style == "theme.phase.commit"
 
     def test_no_policy_no_canonical_name_lookup(self) -> None:
-        # Without policy, canonical phase names are NOT recognized — only role strings are.
-        # 'planning' is not a role, so it returns the muted default.
         style = phase_style("planning")
         assert style == "theme.text.muted"
 

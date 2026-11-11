@@ -1,5 +1,3 @@
-"""Runtime extraction keeps arbitrary plans safe without judging their shape."""
-
 from pathlib import Path
 
 from ralph.mcp.artifacts.markdown.specs.plan import analyze_plan_document
@@ -82,8 +80,6 @@ Files:
 
 
 def test_worker_file_scope_never_includes_the_parent_directory() -> None:
-    # Deprecated: WorkspaceScope.for_same_workspace_worker is removed with
-    # Ralph-orchestrated workers (see docs/sphinx/concepts.md).
     scope = WorkspaceScope.for_same_workspace_worker(
         repo_root=Path("/workspace"),
         allowed_directories=(),
@@ -105,11 +101,6 @@ def test_rendered_developer_guidance_uses_unit_plus_unowned_step_proof() -> None
         MemoryWorkspace(),
         SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
     )
-    # The development_result partial is free-form body: the validator
-    # only checks the frontmatter ``status`` enum. The prompt must
-    # tell the developer to lead with one ``## Summary`` item and
-    # must NOT re-introduce the old per-step unit-proof grammar that
-    # was removed by ``4c34866e5`` (validate only frontmatter status).
     assert "## Summary" in prompt
     assert "free-form" in prompt.lower()
     assert "frontmatter" in prompt.lower()

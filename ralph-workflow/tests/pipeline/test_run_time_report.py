@@ -1,5 +1,3 @@
-"""Behavior tests for the bounded, comparable run-time report."""
-
 from datetime import timedelta
 
 from ralph.mcp.artifacts.markdown import parse_and_validate
@@ -187,12 +185,6 @@ def test_run_time_report_suppresses_sg2_for_non_artifact_failure_category() -> N
 
 
 def test_run_time_report_includes_cycle_timebox_when_consumed() -> None:
-    """The report shows cycle timebox diagnostics when budget was consumed.
-
-    A still-running timer at report time means the run exited from inside its
-    cycle, which is reported as such — the report is written after the run is
-    over, so nothing it describes is "active".
-    """
     report = render_run_time_report(
         state=PipelineState(
             phase="development",
@@ -210,7 +202,6 @@ def test_run_time_report_includes_cycle_timebox_when_consumed() -> None:
 
 
 def test_run_time_report_omits_cycle_timebox_when_unused() -> None:
-    """No cycle timebox section when the budget was never consumed."""
     report = render_run_time_report(
         state=PipelineState(phase="planning"),
         outcome="completed",
@@ -220,7 +211,6 @@ def test_run_time_report_omits_cycle_timebox_when_unused() -> None:
 
 
 def test_run_time_report_shows_concluded_when_cycle_ended() -> None:
-    """After the cycle ends, the report shows 'concluded' not 'active'."""
     report = render_run_time_report(
         state=PipelineState(
             phase="complete",
@@ -235,7 +225,6 @@ def test_run_time_report_shows_concluded_when_cycle_ended() -> None:
 
 
 def test_run_time_report_shows_redirect_reason_when_set() -> None:
-    """When redirect_reason is set, the report shows a CT-2 redirect line."""
     report = render_run_time_report(
         state=PipelineState(
             phase="development_final_commit_review",
@@ -253,8 +242,6 @@ def test_run_time_report_shows_redirect_reason_when_set() -> None:
 
 
 def test_run_time_report_shows_configured_limit_and_target_when_policy_given() -> None:
-    """When the cycle_timebox policy is threaded in, the report includes the
-    configured deadline and finalization target (FR-6, S-5)."""
     from ralph.policy.models import CycleTimeboxPolicy
 
     ct = CycleTimeboxPolicy(

@@ -1,5 +1,3 @@
-"""Observed liveness-source matrix for conflict resolution (S-1)."""
-
 from __future__ import annotations
 
 from contextvars import Context
@@ -32,11 +30,6 @@ class _LivenessPathObservation:
 
 
 def test_conflict_resolution_liveness_path_matrix() -> None:
-    """S-1: record the source, transport, recorder, and observed verdict.
-
-    The separately spawned MCP server has a process-local ContextVar, so a
-    parent reader sink cannot see an MCP-only event without the S-4 relay.
-    """
     parent_hits: list[str] = []
     token = set_active_sink(parent_hits.append)
     try:
@@ -129,8 +122,6 @@ def test_conflict_resolution_liveness_path_matrix() -> None:
 
 
 class _LiveSubagentMonitor:
-    """Minimal process-monitor seam that reports one quality-filtered live child."""
-
     def live_subagent_count(self) -> int:
         return 1
 
@@ -149,13 +140,6 @@ def test_conflict_resolution_liveness_inventory_proves_standard_categories_and_c
     source: str,
     recorder: str,
 ) -> None:
-    """S-1/R3: every ordinary liveness source has the same conflict deferral path.
-
-    The test drives each real recorder or its real active-sink transport rather
-    than treating a literal observation table as evidence.  A future ordinary
-    source that does not reach the conflict watchdog cannot be added to this
-    inventory without making this parity check fail.
-    """
     standard_clock = FakeClock()
     standard = IdleWatchdog(
         TimeoutPolicy(
@@ -232,7 +216,6 @@ def _emit_subagent_liveness(watchdog: IdleWatchdog) -> None:
 
 
 def test_conflict_resolution_regression_mcp_relay_crosses_the_process_boundary() -> None:
-    """S-4/R3: standalone MCP activity reaches conflict supervision through the relay."""
     relay = ActivityRelay()
     try:
         sender = ActivityRelaySender.from_environment(relay.server_environment())

@@ -1,5 +1,3 @@
-"""Opt-out gating for the update nagger."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -12,14 +10,12 @@ if TYPE_CHECKING:
 
 
 def _isolated_env(tmp_path: Path, **overrides: str) -> dict[str, str]:
-    """An env pointing config lookups at an empty tmp dir, plus any overrides."""
     env = {"XDG_CONFIG_HOME": str(tmp_path / "config")}
     env.update(overrides)
     return env
 
 
 def test_enabled_by_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # Run from an empty cwd so the local-config walk finds nothing.
     monkeypatch.chdir(tmp_path)
     assert is_update_check_disabled(_isolated_env(tmp_path)) is False
 

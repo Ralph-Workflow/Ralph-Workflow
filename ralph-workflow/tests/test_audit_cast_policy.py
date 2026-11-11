@@ -1,11 +1,3 @@
-"""Tests for ``ralph.testing.audit_cast_policy``.
-
-The audit is exercised here via fixture source strings rather than the
-real tree so the tests stay under 1 second and never depend on the
-contents of ``ralph/`` or ``tests/``. Real-tree regression coverage
-lives in ``make verify`` (``cast policy audit (audit_cast_policy)``).
-"""
-
 from __future__ import annotations
 
 from ralph.testing.audit_cast_policy import (
@@ -16,10 +8,6 @@ from ralph.testing.audit_cast_policy import (
     audit_codebase,
     main,
 )
-
-# ---------------------------------------------------------------------------
-# _extract_outer_and_params
-# ---------------------------------------------------------------------------
 
 
 class TestExtractOuterAndParams:
@@ -39,11 +27,6 @@ class TestExtractOuterAndParams:
         assert "list[int]" in params
 
 
-# ---------------------------------------------------------------------------
-# _all_leaves_universal
-# ---------------------------------------------------------------------------
-
-
 class TestAllLeavesUniversal:
     def test_object_is_universal(self) -> None:
         assert _all_leaves_universal("object") is True
@@ -55,7 +38,6 @@ class TestAllLeavesUniversal:
         assert _all_leaves_universal("list[object]") is True
 
     def test_dict_str_object_not_all_universal(self) -> None:
-        # ``str`` is not universal, only ``object`` is.
         assert _all_leaves_universal("dict[str, object]") is False
 
     def test_dict_str_str_is_not_universal(self) -> None:
@@ -63,11 +45,6 @@ class TestAllLeavesUniversal:
 
     def test_optional_str_not_universal(self) -> None:
         assert _all_leaves_universal("str | None") is False
-
-
-# ---------------------------------------------------------------------------
-# _is_sound_dict_widening
-# ---------------------------------------------------------------------------
 
 
 class TestIsSoundDictWidening:
@@ -82,11 +59,6 @@ class TestIsSoundDictWidening:
 
     def test_bare_str_not_sound(self) -> None:
         assert _is_sound_dict_widening("str") is False
-
-
-# ---------------------------------------------------------------------------
-# _find_cast_violations
-# ---------------------------------------------------------------------------
 
 
 def _lines(*raw_lines: str) -> list[str]:
@@ -191,11 +163,6 @@ class TestAuditFileExemptions:
         assert violations == []
 
 
-# ---------------------------------------------------------------------------
-# audit_codebase / main
-# ---------------------------------------------------------------------------
-
-
 class TestAuditCodebase:
     def test_clean_fixture_root_has_no_violations(self, tmp_path) -> None:
         clean = tmp_path / "ralph"
@@ -234,18 +201,7 @@ class TestMain:
         assert rc == 1
 
 
-# ---------------------------------------------------------------------------
-# Boundary helper coverage
-# ---------------------------------------------------------------------------
-
-
 def test_inside_parser_parse_event_is_boundary_exempt(tmp_path) -> None:
-    """Casts inside ralph/agents/parsers/*_parse_event helpers are exempt.
-
-    These helpers are registered in the policy's
-    ``sanctioned_dynamic_boundaries`` and the audit's
-    ``_BOUNDARY_HELPERS`` registry.
-    """
     src = tmp_path / "ralph"
     (src / "agents" / "parsers").mkdir(parents=True)
     (src / "agents" / "parsers" / "claude.py").write_text(

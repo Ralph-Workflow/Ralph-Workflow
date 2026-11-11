@@ -1,4 +1,3 @@
-"""Master prompt materialization for supported agent transports."""
 
 from __future__ import annotations
 
@@ -16,7 +15,6 @@ from ralph.prompts.template_registry import _packaged_template_cache, packaged_t
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    # filesystem-write-ok: master prompt template load path (resolves from the package's own data dir), not a repo write
     from pathlib import Path
 
 
@@ -26,7 +24,6 @@ def _write_master_prompt_file(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> None:
-    # filesystem-write-ok: master prompt template load path (resolves from the package's own data dir), not a repo write
     write_text_if_changed(
         backend,
         master_prompt_path,
@@ -41,33 +38,11 @@ def materialize_master_prompt(
     workspace_root: Path,
     name: str,
     default_product_criteria: str | None = None,
-    # Deprecated: Ralph-orchestrated workers are removed from the execution model;
-    # parallelism is owned by the developer agent's own sub-agents.
-    # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
     worker_namespace: Path | None = None,
     planning_style: bool = False,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
     transport: AgentTransport | None = None,
 ) -> str:
-    """Write a master prompt file for the named agent and return its path.
-
-    The injected ``backend`` controls both ``mkdir`` and the physical
-    text writes so a byte-identical re-emit of the current or system
-    prompt does not advance the file's mtime or generate an additional
-    fseventsd notification. The default backend is the real-Path
-    backend; tests inject an in-memory counting backend to verify the
-    idempotent skip. The post-condition "file contains the rendered
-    prompt" always holds: any read uncertainty or content mismatch
-    falls through to a real write.
-
-    ``transport`` (S-7 / C1 / DoD 13) threads the agent transport into
-    the master prompt so AGY-shaped sessions receive the MCP
-    ``call_mcp_tool`` dispatcher hint at the prompt level (Ralph's
-    tools are not exposed as directly callable names under AGY).
-    Non-AGY transports do NOT receive this hint -- their tools
-    advertise ``ralph_*`` directly, so the dispatcher route is
-    unreachable and the hint would be misleading.
-    """
     product_criteria_path = _sync_product_criteria_file(
         workspace_root=workspace_root,
         default_product_criteria=default_product_criteria,
@@ -101,28 +76,9 @@ def _sync_product_criteria_file(
     *,
     workspace_root: Path,
     default_product_criteria: str | None,
-    # Deprecated: Ralph-orchestrated workers are removed from the execution model;
-    # parallelism is owned by the developer agent's own sub-agents.
-    # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
     worker_namespace: Path | None = None,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> Path:
-    """Mirror the operator-visible prompt into the engine-owned PRODUCT_CRITERIA.md.
-
-    The source is resolved through
-    :func:`ralph.pro_support.prompt.resolve_effective_prompt_path` so the
-    ``PROMPT_PATH`` env var is honoured in Pro mode. The destination
-    remains the engine-owned materialised file under ``.agent/``.
-
-    The injected ``backend`` controls both ``mkdir`` and the physical
-    text writes so a byte-identical re-emit of the current prompt does
-    not advance the file's mtime or generate an additional fseventsd
-    notification. The default backend is the real-Path backend;
-    tests inject an in-memory counting backend to verify the
-    idempotent skip. The post-condition "file contains the resolved
-    prompt text" always holds: any read uncertainty or content mismatch
-    falls through to a real write.
-    """
     product_criteria_path = (
         worker_product_criteria_path(worker_namespace)
         if worker_namespace is not None
@@ -130,10 +86,6 @@ def _sync_product_criteria_file(
     )
     source_prompt_path = resolve_effective_prompt_path(workspace_root, os.environ)
     if source_prompt_path.exists():
-        # Compare content when both files exist. Equal size/mtime is not
-        # sufficient here because rapid rewrites can preserve both metadata
-        # values while changing the operator's prompt text.
-        # The helper also returns the source text when needed.
         def _stat(path: Path) -> tuple[int, int] | None:
             if not path.exists():
                 return None
@@ -147,15 +99,8 @@ def _sync_product_criteria_file(
             read_source=lambda p: p.read_text(encoding="utf-8"),
             read_current=lambda p: p.read_text(encoding="utf-8"),
             trust_equal_metadata=False,
-            # filesystem-write-ok: master prompt template load path (resolves from the package's own data dir), not a repo write
         )
-        # ``changed`` covers two cases: current is missing (size/mtime
-        # don't match) OR the content actually differs. ``prompt_text``
-        # is None only when sizes differ AND read_source was not
-        # provided -- but we always pass read_source above, so it is
-        # populated when changed is True.
         if changed and prompt_text is not None:
-            # filesystem-write-ok: master prompt template load path (resolves from the package's own data dir), not a repo write
             write_text_if_changed(
                 backend,
                 product_criteria_path,
@@ -171,7 +116,6 @@ def _sync_product_criteria_file(
                     prompt_text=prompt_text,
                     backend=backend,
                 )
-        # filesystem-write-ok: master prompt template load path (resolves from the package's own data dir), not a repo write
         return product_criteria_path
     if not backend.exists(product_criteria_path) and default_product_criteria is not None:
         write_text_if_changed(
@@ -193,18 +137,10 @@ def _sync_product_criteria_file(
 
 
 def worker_product_criteria_path(worker_namespace: Path) -> Path:
-    # Deprecated: Ralph-orchestrated workers are removed from the execution model;
-    # parallelism is owned by the developer agent's own sub-agents.
-    # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
-    """Return the worker-local mirror path for PRODUCT_CRITERIA.md."""
     return worker_namespace / "tmp" / "PRODUCT_CRITERIA.md"
 
 
 def worker_master_prompt_path(worker_namespace: Path, phase: str) -> Path:
-    # Deprecated: Ralph-orchestrated workers are removed from the execution model;
-    # parallelism is owned by the developer agent's own sub-agents.
-    # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
-    """Return the worker-local master prompt materialization path."""
     normalized = phase.replace("/", "_").replace(" ", "_")
     return worker_namespace / "tmp" / f"{normalized}_master_prompt.md"
 
@@ -215,19 +151,8 @@ def _write_prompt_history_snapshot(
     prompt_text: str,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> None:
-    """Mirror the new prompt into the timestamped prompt-history directory.
-
-    The injected ``backend`` controls both ``mkdir`` and the physical
-    text write so the implementation does not regress to a raw
-    ``Path.write_text`` call. The history filename embeds
-    ``_history_timestamp`` so the file is unique per call; the idempotent
-    guard still holds even when the same nanosecond timestamps collide
-    (the read-comparison falls through to a real write on a content
-    mismatch or a missing path).
-    """
     history_dir = workspace_root / ".agent" / "prompt_history"
     history_path = history_dir / f"PROMPT_{_history_timestamp()}.md"
-    # filesystem-write-ok: master prompt template load path (resolves from the package's own data dir), not a repo write
     backend.mkdir(history_dir, parents=True, exist_ok=True)
     write_text_if_changed(backend, history_path, prompt_text, encoding="utf-8")
 
@@ -255,18 +180,6 @@ def build_master_prompt(
     current_plan_path: str | None = None,
     transport: AgentTransport | None = None,
 ) -> str:
-    """Build the master prompt text that points the agent at durable task context files.
-
-    ``transport`` (S-7 / C1 / DoD 13): when the agent transport is
-    ``AgentTransport.AGY``, the rendered prompt appends the MCP
-    ``call_mcp_tool`` dispatcher hint naming ``ralph_submit_md_artifact``
-    so the model has a route to Ralph's submission tool. Non-AGY
-    transports do not receive this hint; their tools advertise the
-    Ralph tools directly. The hint is rendered into both the
-    ``planning_style`` and the non-``planning_style`` prompt bodies
-    because every master prompt eventually needs the submit-artifact
-    route.
-    """
     unattended = _unattended_mode_text().strip()
     preamble = (
         "This is the session's master prompt. Its instructions remain binding for the "
@@ -276,12 +189,6 @@ def build_master_prompt(
         "Read it now; after any context compaction, resume, or continuation, re-read "
         f"`{master_prompt_path}` and the files it references before doing anything else.\n"
     )
-    # S-7 / C1 / DoD 13: render the AGY-shaped MCP dispatcher hint into
-    # every master prompt for AGY transports so the model has a route
-    # to ``ralph_submit_md_artifact`` (the one Ralph tool every master
-    # prompt ultimately needs). Non-AGY transports do not get this
-    # hint; their tools advertise ``ralph_*`` directly and the
-    # dispatcher is unreachable.
     exec_guidance = f"\n\n{exec_job_guidance_text()}"
     dispatcher_hint = (
         f"\n\n{agy_dispatcher_hint_text('ralph_submit_md_artifact')}"
@@ -324,7 +231,6 @@ def build_master_prompt(
 
 
 def exec_job_guidance_text() -> str:
-    """Return concise agent guidance on the exec job flow."""
     return (
         "EXEC JOB FLOW:\n"
         "Commands in `exec` / `unsafe_exec` running past the 45s soft reply budget detach and return "
@@ -349,31 +255,6 @@ def _prompt_files_differ(
     read_current: Callable[[Path], str] | None = None,
     trust_equal_metadata: bool = True,
 ) -> tuple[bool, str | None]:
-    """Compare two prompt files using a (st_size, st_mtime_ns) fast path.
-
-    Returns ``(changed, source_text_if_read)``. The fast-path rules are:
-
-      - ``current`` does not exist -> ``(True, source_text)``. Source IS
-        read so the caller can write it to ``current``.
-      - ``(src.st_size, src.st_mtime_ns) == (cur.st_size, cur.st_mtime_ns)``
-        -> ``(False, None)``. NO content reads.
-      - sizes differ -> ``(True, source_text_if_read)``. CURRENT is
-        never read; source IS read only if the caller passed
-        ``read_source``.
-      - sizes match but mtime differs -> read both, return
-        ``(src_text != cur_text, src_text)``.
-
-    ``stat_fn`` is an injectable callable returning ``(size, mtime_ns)``
-    or ``None`` if the path does not exist. ``read_source`` /
-    ``read_current`` are optional injectable readers (default
-    ``Path.read_text``). All I/O is funnelled through these seams so
-    tests can run without real disk I/O.
-
-    Used by both ``_sync_product_criteria_file`` (which always needs the
-    source text to rematerialise) and
-    ``pipeline.prompt_prep._prompt_changed_since_last_materialization``
-    (which only needs the boolean verdict).
-    """
 
     def _default_read(path: Path) -> str:
         return path.read_text(encoding="utf-8")

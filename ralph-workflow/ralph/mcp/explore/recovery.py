@@ -1,34 +1,3 @@
-"""Recovery scheduler for the indexed exploration substrate (S-4).
-
-Every applicable F1-F20 failure mode is mapped to a recovery action.
-The scheduler drives the recovery with bounded exponential backoff and
-a cross-process advisory lock so concurrent Ralph sessions on one
-workspace never trigger duplicate rebuilds.
-
-The scheduler is intentionally minimal: it owns the *decision* to
-start, continue, defer, or mark unhealthy and records each detection
-in a persistent on-disk state file so the
-:class:`ralph.mcp.explore._handlers_index_status` handler can report
-the truthful health/last_failure/recovery_attempts/next_recovery_at
-payload across sessions and processes. The scheduler ALSO drives
-actual recovery: :func:`run_recovery_action` walks the recovered
-state, calls the right write path, and the same scheduler can be
-queried for the post-recovery health snapshot.
-
-The state machine is:
-
-* ``idle`` -- nothing to do
-* ``scheduled`` -- a recovery attempt is queued
-* ``running`` -- a writer owns the rebuild
-* ``cooldown`` -- exponential backoff after a failure
-* ``unhealthy`` -- bounded attempts exhausted; reads still serve
-  from live search
-
-The scheduler integrates with the existing :class:`ReindexWriter.claim`
-path so concurrent calls coalesce. The cross-process lock is a
-``fcntl`` advisory file lock under ``.agent/ralph-explore/.lock`` so
-two Ralph processes cannot both rebuild the same index at once.
-"""
 
 from __future__ import annotations
 
@@ -47,28 +16,19 @@ from ralph.mcp.explore._recovery_types import HealthState, _RecoveryState
 logger = logging.getLogger(__name__)
 
 
-# Bounded defaults. The values are immutable per the absolute-budget
-# invariants in ``ralph/verify.py`` -- the recovery scheduler must
-# not consume more than the documented share of CPU/IO budget.
 DEFAULT_BACKOFF_BASE_SECONDS: float = 0.5
 DEFAULT_MAX_BACKOFF_SECONDS: float = 8.0
 DEFAULT_MAX_ATTEMPTS: int = 4
 
 
-#: File name for the persisted scheduler state under
-#: ``.agent/ralph-explore/``. Each mark_* / record_failure call writes
-#: the snapshot so the status handler can report the truthful
-#: health / last_failure / recovery_attempts across processes.
 _RECOVERY_STATE_FILENAME: str = "recovery_state.json"
 
 
 def _state_file(workspace_root: Path) -> Path:
-    """Return the on-disk path of the persisted scheduler state file."""
     return Path(workspace_root) / ".agent" / "ralph-explore" / _RECOVERY_STATE_FILENAME
 
 
 def _read_state_file(workspace_root: Path) -> _RecoveryState | None:
-    """Return the persisted state for ``workspace_root`` (or ``None``)."""
     path = _state_file(workspace_root)
     if not path.is_file():
         return None
@@ -100,13 +60,6 @@ def _read_state_file(workspace_root: Path) -> _RecoveryState | None:
 
 
 def _write_state_file(workspace_root: Path, state: _RecoveryState) -> None:
-    """Persist ``state`` to the on-disk recovery state file.
-
-    Writes are best-effort: a read-only index directory or any
-    filesystem error is non-fatal because the in-process state is
-    still authoritative for the current session and the status
-    handler will rebuild the file on the next successful write.
-    """
     path = _state_file(workspace_root)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -122,27 +75,14 @@ def _write_state_file(workspace_root: Path, state: _RecoveryState) -> None:
     }
     try:
         tmp_path = path.with_suffix(path.suffix + ".tmp")
-        # filesystem-write-ok: transient JSON state write, replaced atomically via temp+rename so a SIGKILL mid-write cannot leave a half-written file.
         tmp_path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
-        # filesystem-write-ok: atomic-replace boundary that promotes the temp file in a single syscall.
         tmp_path.replace(path)
     except OSError:
-        # Best-effort; the in-process state is still authoritative.
         return
 
 
 @dataclass
 class RecoveryScheduler:
-    """Per-workspace recovery scheduler.
-
-    The scheduler owns the bounded backoff and the in-process
-    coalescing state. Each state mutation is also persisted to
-    ``.agent/ralph-explore/recovery_state.json`` so the
-    :class:`ralph.mcp.explore._handlers_index_status` handler can
-    report the truthful health/last_failure/recovery_attempts across
-    processes. Cross-process coalescing is delegated to the
-    :class:`ReindexWriter` lock plus the advisory file lock.
-    """
 
     workspace_root: Path
     initial_attempts: int = 0
@@ -152,10 +92,6 @@ class RecoveryScheduler:
     max_attempts: int = DEFAULT_MAX_ATTEMPTS
     _lock: threading.RLock = field(default_factory=threading.RLock)
     _state: _RecoveryState = field(default_factory=_RecoveryState)
-    # When ``True`` the scheduler reloads any persisted state file
-    # on construction so the in-process scheduler reflects the
-    # latest persisted truth (e.g. a fault recorded by a sibling
-    # process). The default keeps the test seam transparent.
     _load_persisted: bool = True
 
     def __post_init__(self) -> None:
@@ -165,7 +101,6 @@ class RecoveryScheduler:
                 self._state = persisted
 
     def snapshot(self) -> dict[str, object]:
-        """Return the canonical state payload for ``ralph_index_status``."""
         with self._lock:
             return {
                 "health": self._state.health.value,
@@ -209,12 +144,6 @@ class RecoveryScheduler:
         message: str = "",
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
-        """Record a failed recovery attempt and schedule the next backoff.
-
-        Uses exponential backoff capped at ``max_backoff_seconds`` and
-        marks the scheduler ``unhealthy`` once ``recovery_attempts``
-        exceeds ``max_attempts``.
-        """
         with self._lock:
             self._state.recovery_attempts += 1
             self._state.last_failure_code = code
@@ -235,13 +164,11 @@ class RecoveryScheduler:
         self._persist()
 
     def mark_read_only(self) -> None:
-        """F10: index can be read but not written. Serve from index while fresh."""
         with self._lock:
             self._state.health = HealthState.DEGRADED
         self._persist()
 
     def mark_stale(self) -> None:
-        """R4: stale past threshold; recovery scheduled."""
         with self._lock:
             self._state.health = HealthState.STALE
         self._persist()
@@ -253,13 +180,6 @@ class RecoveryScheduler:
         message: str = "",
         health: HealthState = HealthState.STALE,
     ) -> None:
-        """Record a detected fault without counting a recovery attempt.
-
-        Query paths call this so ``ralph_index_status`` shows the
-        fault immediately. Attempt accounting stays in
-        :meth:`record_failure` so a burst of reads cannot exhaust
-        the backoff budget.
-        """
         with self._lock:
             self._state.health = (
                 health
@@ -271,12 +191,6 @@ class RecoveryScheduler:
         self._persist()
 
     def should_attempt_recovery(self, *, clock: Callable[[], float] = time.monotonic) -> bool:
-        """Return True when the scheduler should run another recovery attempt.
-
-        Bounded by ``max_attempts`` and the exponential backoff. When
-        ``recovery_attempts`` exceeds ``max_attempts``, the scheduler
-        is ``unhealthy`` and returns False.
-        """
         with self._lock:
             if self._state.recovery_attempts > self.max_attempts:
                 return False
@@ -285,7 +199,6 @@ class RecoveryScheduler:
             return clock() >= self._state.next_recovery_at
 
     def _persist(self) -> None:
-        """Write the current state to the on-disk recovery state file."""
         with self._lock:
             snapshot = _RecoveryState(
                 health=self._state.health,
@@ -298,7 +211,6 @@ class RecoveryScheduler:
         _write_state_file(self.workspace_root, snapshot)
 
     def clear_persisted(self) -> None:
-        """Remove the on-disk recovery state file (used at successful recovery)."""
         path = _state_file(self.workspace_root)
         try:
             if path.is_file():
@@ -309,35 +221,19 @@ class RecoveryScheduler:
 
 _LAST_ADVISORY_LOCK_FD: list[int | None] = [
     None
-]  # bounded-accumulator-ok: single-element lock fd cell
+]
 
 
 def advisory_lock_path(workspace_root: Path) -> Path:
-    """Return the path to the cross-process advisory lock file."""
     return Path(workspace_root) / ".agent" / "ralph-explore" / ".recovery.lock"
 
 
 def try_advisory_lock(workspace_root: Path) -> bool:
-    """Attempt to acquire a non-blocking cross-process advisory lock.
-
-    Returns True if the lock was acquired (caller owns it and MUST
-    release with :func:`release_advisory_lock`). Returns False when
-    another process already holds it -- the caller should defer the
-    rebuild rather than start a duplicate writer.
-
-    Uses ``fcntl`` on POSIX and is a no-op on platforms without
-    ``fcntl``; the in-process coalescing via :class:`ReindexWriter`
-    still applies on those platforms.
-    """
     lock_path = advisory_lock_path(workspace_root)
     lock_path.parent.mkdir(parents=True, exist_ok=True)
-    # resource-lifecycle-ok: cross-process advisory lock requires raw fd;
-    # the lock is released by ``release_advisory_lock`` and closed via
-    # ``os.close`` so it cannot leak across long-running sessions.
-    # filesystem-write-ok: cross-process advisory lock file opened for flock fd
     fd = os.open(
         str(lock_path), os.O_CREAT | os.O_RDWR, 0o644
-    )  # resource-lifecycle-ok: cross-process advisory lock — released by release_advisory_lock
+    )
     try:
         import fcntl
 
@@ -347,27 +243,18 @@ def try_advisory_lock(workspace_root: Path) -> bool:
             os.close(fd)
             return False
     except ImportError:
-        # No fcntl: rely on the in-process coalescing seam only.
         pass
-    # Stash the fd on the path's stat so :func:`release_advisory_lock`
-    # can find it. We deliberately do NOT remove the file on release;
-    # the next call reopens it. The fd is leaked by intent across
-    # the in-process scheduler so the OS keeps the lock for the
-    # lifetime of the writer. ``release_advisory_lock`` is called at
-    # end-of-recovery.
     import contextlib
 
     with contextlib.suppress(OSError):
         lock_path.touch()
     with contextlib.suppress(OSError):
         lock_path.stat()
-    # Store the fd in a module-level cell so release_advisory_lock can find it.
     _LAST_ADVISORY_LOCK_FD[0] = fd
     return True
 
 
 def release_advisory_lock() -> None:
-    """Release the advisory lock acquired by :func:`try_advisory_lock`."""
     import contextlib
 
     fd = _LAST_ADVISORY_LOCK_FD[0]
@@ -386,14 +273,6 @@ def release_advisory_lock() -> None:
 
 
 def build_scheduler(workspace_root: Path) -> RecoveryScheduler:
-    """Construct a per-workspace scheduler seeded with default state.
-
-    The scheduler reloads any persisted recovery state file under
-    ``.agent/ralph-explore/recovery_state.json`` so the returned
-    scheduler reflects the latest fault recorded by a sibling
-    process. The status handler uses the same seam so the
-    ``recovery`` / ``health`` payload stays truthful across sessions.
-    """
     return RecoveryScheduler(workspace_root=workspace_root)
 
 
@@ -405,24 +284,6 @@ def run_recovery_action(
     reason: str = "",
     timeout_ms: int = 5_000,
 ) -> dict[str, object]:
-    """Execute the recovery action associated with ``fault_code``.
-
-    The driver wires the scheduler decision to the actual write path:
-    F1, F2, F4, F5 schedule a full rebuild via :func:`ralph.mcp.explore.pipeline.reindex`;
-    F3 / F11 / F12 / F13 / F14 schedule a changed-files refresh when
-    the persisted store has a committed generation, falling back to a
-    full rebuild when no committed generation exists; F6 / F20 wipe
-    the persisted index and rebuild; F9 / F10 record the backoff
-    only; F7 / F18 defer to the next ``should_attempt_recovery``
-    gate; F17 / F19 mark the scheduler unhealthy and let the next
-    read path serve from live search.
-
-    The driver returns the post-recovery scheduler snapshot so
-    callers can chain it into a status payload without a second
-    scheduler construction. The cross-process advisory lock
-    guarantees only one rebuild runs at a time across sibling
-    sessions on the same workspace.
-    """
     import time as _time
 
     from ralph.mcp.explore.pipeline import ReindexOptions, reindex
@@ -443,40 +304,24 @@ def run_recovery_action(
         except OSError:
             lock_acquired = False
         if not lock_acquired:
-            # Another session is rebuilding; the scheduler defers
-            # the rebuild to the holder and the next read still
-            # falls through to live search.
             scheduler.record_failure(code=code, message="lock_held_by_other_session")
             return scheduler.snapshot()
 
         if code in {"index_unwritable", "index_read_only"}:
-            # F9 / F10: do not attempt writes. The scheduler records
-            # the failure and live search continues to serve. After
-            # three consecutive failures the scheduler flips to
-            # ``unhealthy`` and the next read still falls through
-            # to live search, never a failed tool call.
             scheduler.record_failure(code=code, message=reason)
             return scheduler.snapshot()
 
         if code in {"interrupted_build", "workspace_moved", "version_mismatch", "index_corrupt"}:
-            # F4, F5, F6, F20: wipe the existing index and rebuild.
             import shutil
 
             try:
                 if index_dir.exists():
-                    # filesystem-write-ok: recovery transient wipe; the old index is rebuilt in the same recovery call.
                     shutil.rmtree(index_dir, ignore_errors=True)
             except OSError:
                 pass
 
         store = ExploreStore(index_dir)
         try:
-            # The recovery driver must always end with a fresh
-            # committed generation so the (d) acceptance (a later
-            # query is served from the index) holds. ``changed``
-            # mode is only safe when a committed generation
-            # already exists; otherwise we fall back to ``full``
-            # mode which builds and commits a generation.
             raw_committed = ""
             try:
                 raw_committed = store.get_setting("current_generation") or "0"
@@ -502,10 +347,6 @@ def run_recovery_action(
             elapsed = _time.monotonic() - start
             status_value: object = getattr(result, "status", "ok")
             status = str(status_value) if status_value is not None else "ok"
-            # ``skipped_no_changes`` is a successful no-op (the
-            # index already matches the workspace) and must NOT
-            # count as a failure; only true error / cancel / timeout
-            # paths flip the scheduler to stale.
             if status in {"ok", "skipped_no_changes"}:
                 scheduler.mark_healthy()
                 scheduler.clear_persisted()
@@ -518,7 +359,7 @@ def run_recovery_action(
                 "rebuild_status": status,
                 "rebuild_wall_seconds": elapsed,
             }
-        except Exception as exc:  # indexer error (F18)
+        except Exception as exc:
             scheduler.record_failure(code=code, message=f"exception: {exc!r}")
             snapshot = {"rebuild_status": "error", "rebuild_wall_seconds": 0.0}
         finally:
@@ -533,13 +374,10 @@ def run_recovery_action(
     return snapshot_payload
 
 
-# One pending recovery code per workspace. Drained by
-# ``run_pending_recovery``. Insert refuses growth past this cap so a
-# long-lived server cannot accumulate unbounded path keys.
 _PENDING_RECOVERY_CAP: int = 64
 _PENDING_RECOVERY: dict[
     str, str
-] = {}  # bounded-accumulator-ok: capped at _PENDING_RECOVERY_CAP; drained by run_pending_recovery
+] = {}
 _PENDING_LOCK = threading.Lock()
 
 _RECOVERABLE_QUERY_CODES: frozenset[str] = frozenset(
@@ -564,14 +402,6 @@ def _pending_key(workspace_root: Path) -> str:
 
 
 def _committed_generation_healthy(workspace_root: Path) -> bool:
-    """Return True when a healthy committed generation already exists.
-
-    Side-effect free disk probe: a ``no_committed_generation`` fault
-    queued in one process can outlive the rebuild another process
-    completed. Draining such a stale entry must heal the scheduler
-    (mark healthy, clear the persisted state) instead of rebuilding
-    a healthy index.
-    """
     from ralph.mcp.explore.store import DEFAULT_INDEX_ROOT, ExploreStore
 
     index_dir = Path(workspace_root) / DEFAULT_INDEX_ROOT
@@ -597,7 +427,7 @@ def _committed_generation_healthy(workspace_root: Path) -> bool:
         return False
     if latest is None:
         return True
-    keys = tuple(latest.keys())  # sqlite3.Row: explicit keys() view
+    keys = tuple(latest.keys())
     if "status" not in keys:
         return False
     raw_status: object = latest["status"]
@@ -610,16 +440,6 @@ def enqueue_recovery(
     *,
     message: str = "",
 ) -> None:
-    """Persist a detected fault and queue one recovery for ``code``.
-
-    Query handlers call this on fall-through so status is truthful
-    before the response returns. The rebuild itself runs when
-    :func:`run_pending_recovery` drains the queue (a background
-    daemon thread started by this call drains it, and tests drain
-    it synchronously to prove a later query is indexed).
-    ``index_locked`` is intentionally absent: another writer already
-    owns the rebuild (F7).
-    """
     if code not in _RECOVERABLE_QUERY_CODES:
         return
     health = HealthState.STALE
@@ -641,19 +461,14 @@ def enqueue_recovery(
     _ensure_drain_thread()
 
 
-# Background drain: one daemon thread per process wakes on the
-# enqueue event and drains the pending-recovery queue. It is the
-# S-2 production drain path -- without it the queue fills and no
-# rebuild ever runs (E1 root cause).
 _DRAIN_WAKEUP = threading.Event()
 _DRAIN_THREAD: list[threading.Thread | None] = [
     None
-]  # bounded-accumulator-ok: single-element thread cell
+]
 _DRAIN_TIMEOUT_MS = 15_000
 
 
 def _drain_pending_recoveries_once() -> int:
-    """Drain every queued recovery once; return the number attempted."""
     with _PENDING_LOCK:
         keys = list(_PENDING_RECOVERY)
     for key in keys:
@@ -669,13 +484,10 @@ def _drain_thread_main() -> None:
         try:
             _drain_pending_recoveries_once()
         except Exception:
-            # Fail-open: the drain thread must never die; the next
-            # enqueue re-wakes it and backoff bounds the retries.
             continue
 
 
 def _ensure_drain_thread() -> None:
-    """Start the single background drain thread lazily (idempotent)."""
     current = _DRAIN_THREAD[0]
     if current is not None and current.is_alive():
         return
@@ -700,29 +512,18 @@ def run_pending_recovery(
     *,
     timeout_ms: int = 5_000,
 ) -> dict[str, object]:
-    """Run the queued recovery for ``workspace_root``, if any."""
     key = _pending_key(workspace_root)
     scheduler = build_scheduler(workspace_root)
     with _PENDING_LOCK:
         code = _PENDING_RECOVERY.get(key)
     if code is None:
         return scheduler.snapshot()
-    # Heal a wedge: a ``no_committed_generation`` fault queued in one
-    # process can outlive the rebuild a sibling process completed.
-    # When a healthy committed generation already exists, the queued
-    # fault is stale -- mark healthy, drop the queue entry and the
-    # persisted scheduler state instead of rebuilding again. Scope-
-    # freshness faults (``index_stale_scope`` etc.) still refresh.
     if code == "no_committed_generation" and _committed_generation_healthy(workspace_root):
         with _PENDING_LOCK:
             _PENDING_RECOVERY.pop(key, None)
         scheduler.mark_healthy()
         scheduler.clear_persisted()
         return scheduler.snapshot()
-    # Single chokepoint for retry-storm prevention: a drain inside
-    # the backoff window re-queues the code and defers the rebuild;
-    # the scheduler (max_attempts + exponential backoff) bounds
-    # total attempts.
     if not scheduler.should_attempt_recovery():
         return scheduler.snapshot()
     with _PENDING_LOCK:
@@ -757,12 +558,6 @@ __all__ = [
 
 
 def read_persisted_state(workspace_root: Path) -> dict[str, object] | None:
-    """Return the persisted scheduler state as a public read seam.
-
-    Returns ``None`` when no state file exists or the file is
-    unreadable. Used by tests and the status handler to report
-    health across processes.
-    """
     state = _read_state_file(workspace_root)
     if state is None:
         return None
@@ -777,7 +572,6 @@ def read_persisted_state(workspace_root: Path) -> dict[str, object] | None:
 
 
 def clear_persisted_state(workspace_root: Path) -> None:
-    """Remove the on-disk recovery state file (test seam)."""
     path = _state_file(workspace_root)
     try:
         if path.is_file():
@@ -787,14 +581,12 @@ def clear_persisted_state(workspace_root: Path) -> None:
 
 
 def pending_recovery_code(workspace_root: Path) -> str | None:
-    """Return the queued recovery fault code for ``workspace_root`` (test seam)."""
     key = _pending_key(workspace_root)
     with _PENDING_LOCK:
         return _PENDING_RECOVERY.get(key)
 
 
 def clear_pending_recovery(workspace_root: Path | None = None) -> None:
-    """Clear queued recovery codes (test seam)."""
     with _PENDING_LOCK:
         if workspace_root is None:
             _PENDING_RECOVERY.clear()

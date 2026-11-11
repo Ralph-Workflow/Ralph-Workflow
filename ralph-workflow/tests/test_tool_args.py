@@ -1,5 +1,3 @@
-"""Tests for format_tool_input helper."""
-
 from __future__ import annotations
 
 import json
@@ -21,7 +19,6 @@ if TYPE_CHECKING:
 
 def test_format_tool_input_orders_known_keys_first() -> None:
     result = format_tool_input({"command": "ls -la", "path": "/tmp", "extra": "x"})
-    # path before command before extra (alphabetical)
     assert result.startswith("(path=")
     assert "command=" in result
     assert result.index("path=") < result.index("command=")
@@ -32,7 +29,6 @@ def test_format_tool_input_truncates_long_values() -> None:
     long_val = "a" * 200
     result = format_tool_input({"path": long_val})
     assert "…" in result
-    # Truncated at max_value_chars=120 + ellipsis
     assert len(result) < 160
 
 
@@ -73,8 +69,6 @@ def test_format_tool_input_known_key_order_all_four() -> None:
 def test_format_tool_input_total_length_bounded_for_many_values() -> None:
     big_input = {f"key{i}": "v" * 200 for i in range(5)}
     result = format_tool_input(big_input)
-    # Each value truncated at 120 chars + "…" = 121, plus key names and separators
-    # 5 * (121 + ~8) = ~645, well under a hard limit of 900
     assert len(result) < 900
 
 
@@ -94,7 +88,6 @@ def test_friendly_tool_name_leaves_other_names_unchanged() -> None:
 
 
 def test_tool_use_renders_friendly_name_in_parallel_display(tmp_path: Path) -> None:
-    """tool_use with mcp__ralph__ prefix renders with ralph. in output."""
 
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=2000)
@@ -121,7 +114,6 @@ def test_tool_use_renders_friendly_name_in_parallel_display(tmp_path: Path) -> N
 
 
 def test_cursor_mcp_tool_wrapper_renders_inner_tool_and_args(tmp_path: Path) -> None:
-    """Cursor MCP wrapper events render the inner Ralph tool, not ``mcpToolCall``."""
 
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=2000)
@@ -159,11 +151,6 @@ def test_cursor_mcp_tool_wrapper_renders_inner_tool_and_args(tmp_path: Path) -> 
 
 
 def test_tool_use_metadata_preserves_original_name() -> None:
-    """Metadata must still hold the original mcp__ralph__ name after friendly rendering.
-
-    The friendly_tool_name transform is render-only: the router's on_event callback
-    receives the original parser content and metadata untransformed.
-    """
 
     received: list[tuple[str | None, dict[str, object]]] = []
 

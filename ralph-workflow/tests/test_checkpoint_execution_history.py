@@ -1,5 +1,3 @@
-"""Unit tests for checkpoint execution history helpers."""
-
 from __future__ import annotations
 
 from importlib import import_module
@@ -11,7 +9,6 @@ StepOutcome = checkpoint_module.StepOutcome
 
 
 def test_execution_step_success_defaults_exit_code_and_files() -> None:
-    """Success outcomes should carry sensible defaults."""
     step = ExecutionStep.new(
         phase="development",
         iteration=1,
@@ -26,7 +23,6 @@ def test_execution_step_success_defaults_exit_code_and_files() -> None:
 
 
 def test_execution_history_add_step_bounded_keeps_recent_tail() -> None:
-    """Bounded history should drop older steps when over limit."""
     history = ExecutionHistory.new()
 
     history = history.add_step_bounded(
@@ -46,7 +42,6 @@ def test_execution_history_add_step_bounded_keeps_recent_tail() -> None:
 
 
 def test_execution_history_clone_bounded_preserves_tail_only() -> None:
-    """clone_bounded should preserve file snapshots while trimming steps."""
     history = ExecutionHistory.new(file_snapshots={"PROMPT.md": "abc123"})
     for iteration in range(1, 5):
         history = history.add_step_bounded(

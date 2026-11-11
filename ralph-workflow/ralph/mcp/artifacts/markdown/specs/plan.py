@@ -1,4 +1,3 @@
-"""Sanity-only plan acceptance with optional canonical execution extraction."""
 
 from __future__ import annotations
 
@@ -16,14 +15,10 @@ if TYPE_CHECKING:
 
 _STEP_ID = re.compile(r"^S-([1-9][0-9]*)$")
 _TARGET = re.compile(r"^-\s+(?:(modify|create|delete|read|run|test|verify)\s+)?(`?)(\S+?)\2$")
-# Python's int() rejects integer strings longer than 4300 digits by default;
-# tolerate that boundary during best-effort extraction rather than raising
-# the whole submission.
 _MAX_INT_DIGITS = 4300
 
 
 def _safe_int(value: str) -> int | None:
-    """Parse a small positive integer; return None on size or value errors."""
     if not value or len(value) > _MAX_INT_DIGITS:
         return None
     try:
@@ -33,7 +28,6 @@ def _safe_int(value: str) -> int | None:
 
 
 def analyze_plan_document(text: str) -> tuple[Content, list[Diagnostic], list[object]]:
-    """Accept readable plan prose and return optional structure, without shape findings."""
     content, diagnostics = parse_and_validate(text, PLAN_SPEC)
     return content, diagnostics, []
 
@@ -49,8 +43,6 @@ def _steps(document: ParsedDocument) -> list[Content]:
             seen.add(block.identifier)
             number = _safe_int(match[1])
             if number is None:
-                # Oversized numeric token: keep the prose block but skip the
-                # numeric step entry so we never raise on extraction.
                 continue
             lines = [line.text for line in block.lines]
             step: Content = {
@@ -128,7 +120,6 @@ def _units(document: ParsedDocument, name: str) -> list[Content]:
 
 
 def _is_step_metadata_line(text: str) -> bool:
-    """Return whether a step-body line is safely represented in extraction."""
     stripped = text.strip()
     return _TARGET.match(stripped) is not None or stripped.casefold().startswith(
         ("files:", "depends on:", "satisfies:", "verify:", "expect:")
@@ -136,13 +127,9 @@ def _is_step_metadata_line(text: str) -> bool:
 
 
 def _has_residual_work(document: ParsedDocument, unit_step_ids: set[str]) -> bool:
-    """Keep prose that extraction cannot safely assign out of fan-out."""
     seen_step_ids: set[str] = set()
     for section in document.sections:
         is_unit_section = section.name in {"Work Units", "Parallel Plan"}
-        # A non-unit heading can itself name work. Extraction has no safe
-        # ownership for its text, including a heading that contains a unit
-        # section, so retain it for the main agent rather than omit it.
         unrepresented_heading = not is_unit_section and not (
             section.lines or section.items or section.blocks
         )
@@ -201,8 +188,6 @@ def _to_content(document: ParsedDocument) -> Content:
         if isinstance(raw_step_ids, list):
             unit_step_ids.update(step_id for step_id in raw_step_ids if isinstance(step_id, str))
     if (units or parallel) and _has_residual_work(document, unit_step_ids):
-        # Keep non-unit prose or unowned blocks in the main session instead
-        # of allowing fan-out to silently drop it.
         content["unextractable_work_units"] = True
     if units:
         content["work_units"] = units

@@ -1,4 +1,3 @@
-"""Minimal Pygments style surface used by Ralph's syntax themes."""
 
 from typing import ClassVar
 

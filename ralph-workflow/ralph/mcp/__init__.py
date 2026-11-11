@@ -1,14 +1,3 @@
-"""Public MCP transport and tool-bridge package.
-
-This package exposes transport abstractions, tool registration, and access-mode
-helpers used by both the pipeline and standalone ``ralph-mcp`` runtime.
-
-Public names resolve lazily, on first attribute access, from the module that
-defines them. Importing a leaf submodule such as ``ralph.mcp.artifacts`` no
-longer pulls the protocol startup module (and through it ``httpx`` and
-``rich``) into the importing process, which keeps every interpreter that
-touches MCP artifacts cheap to start.
-"""
 
 from __future__ import annotations
 
@@ -48,7 +37,6 @@ __all__ = [
     "access_mode_for_drain",
 ]
 
-#: Public name -> (defining module, attribute name in that module).
 _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     "ArtifactError": ("ralph.mcp.artifacts._artifact_error", "ArtifactError"),
     "HeartbeatPolicy": ("ralph.mcp.protocol.startup", "HeartbeatPolicy"),
@@ -65,12 +53,6 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
 
 
 def __getattr__(name: str) -> object:
-    """Resolve a public export from its defining module on first access.
-
-    The eager imports this replaces pulled ``ralph.mcp.protocol.startup`` --
-    and through it ``httpx`` and ``rich`` -- into every process that only
-    needed an MCP leaf submodule.
-    """
     try:
         module_name, attr_name = _LAZY_EXPORTS[name]
     except KeyError as exc:

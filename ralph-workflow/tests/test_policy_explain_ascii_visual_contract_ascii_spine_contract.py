@@ -1,15 +1,3 @@
-"""Lock-down tests for render_explanation_ascii() ASCII marker contracts.
-
-These tests verify that the required ASCII visual markers are present in the
-rendered output for three structural patterns:
-  - spine (=ENTRY=>, ==SUCCESS==>, ==FAILURE==>, Legend: block)
-  - loopback (<<==[loopback]==, [LOOPBACK: ...], >> RE-ENTRY at ...)
-  - fan-out / rejoin (>>> FAN_OUT ..., <<< REJOIN)
-
-Tests use synthetic PolicyExplanation / PolicyBundle instances so they do not
-depend on the bundled default pipeline.toml.
-"""
-
 from __future__ import annotations
 
 from ralph.policy.explain import (
@@ -67,8 +55,6 @@ def _minimal_recovery() -> RecoveryExplanation:
 
 
 class TestAsciiSpineContract:
-    """Spine markers: =ENTRY=>, ==SUCCESS==>, ==FAILURE==>, Legend: block, ASCII-only."""
-
     def _linear_explanation(self) -> PolicyExplanation:
         work = _make_phase("work", on_success="done", is_entry=True)
         fail_exit = _make_phase(
@@ -95,27 +81,22 @@ class TestAsciiSpineContract:
         )
 
     def test_entry_marker_present(self) -> None:
-        """=ENTRY=> appears above the entry phase box."""
         output = render_explanation_ascii(self._linear_explanation())
         assert "=ENTRY=>" in output
 
     def test_success_terminal_marker_present(self) -> None:
-        """==SUCCESS==> appears for the success terminal phase."""
         output = render_explanation_ascii(self._linear_explanation())
         assert "==SUCCESS==>" in output
 
     def test_failure_terminal_marker_present(self) -> None:
-        """==FAILURE==> appears for the failure terminal phase."""
         output = render_explanation_ascii(self._linear_explanation())
         assert "==FAILURE==>" in output
 
     def test_legend_block_present(self) -> None:
-        """Legend: block appears at the end of the output."""
         output = render_explanation_ascii(self._linear_explanation())
         assert "Legend:" in output
 
     def test_legend_contains_all_required_entries(self) -> None:
-        """Legend: block documents all required glyph types."""
         output = render_explanation_ascii(self._linear_explanation())
         assert "=ENTRY=>" in output
         assert "==SUCCESS==>" in output
@@ -126,7 +107,6 @@ class TestAsciiSpineContract:
         assert "<<< REJOIN" in output
 
     def test_ascii_only_no_unicode(self) -> None:
-        """Output must not contain any Unicode box-drawing or non-ASCII characters."""
         output = render_explanation_ascii(self._linear_explanation())
         for i, char in enumerate(output):
             assert ord(char) <= _ASCII_MAX, (

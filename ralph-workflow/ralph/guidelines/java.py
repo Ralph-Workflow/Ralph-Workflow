@@ -1,10 +1,3 @@
-"""Java-specific review guideline categories.
-
-Ported from the canonical Rust implementation in
-``ralph-workflow/src/guidelines/java.rs`` and adapted for the Python port.
-The module exposes a lightweight data container with optional Spring-specific
-extensions for Java codebases.
-"""
 
 from __future__ import annotations
 
@@ -17,11 +10,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class JavaGuidelines:
-    """Java language-specific review checks.
-
-    Args:
-        frameworks: Optional framework names used to add stack-specific guidance.
-    """
 
     frameworks: tuple[str, ...] = ()
     quality_checks: tuple[str, ...] = field(init=False)
@@ -100,7 +88,6 @@ class JavaGuidelines:
             self._apply_framework(framework)
 
     def _apply_framework(self, framework: str) -> None:
-        """Add framework-specific guideline extensions."""
         if framework.casefold() != "spring":
             return
 
@@ -122,7 +109,6 @@ class JavaGuidelines:
         )
 
     def summary(self) -> str:
-        """Return a short human-readable summary."""
         return (
             f"{len(self.quality_checks)} quality checks, "
             f"{len(self.security_checks)} security checks, "
@@ -130,7 +116,6 @@ class JavaGuidelines:
         )
 
     def total_checks(self) -> int:
-        """Return the total number of configured checks."""
         return sum(
             [
                 len(self.quality_checks),

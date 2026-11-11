@@ -1,5 +1,3 @@
-"""Unit tests for Ralph logging extensions."""
-
 from __future__ import annotations
 
 import json
@@ -19,7 +17,6 @@ _MILESTONE_LEVEL_NO = 35
 
 
 def test_configure_logging_creates_per_run_directory_and_structured_log(tmp_path: Path) -> None:
-    """Configuring file logging should create a run-scoped directory and JSON log."""
     session = configure_logging(
         verbosity=2,
         log_directory=tmp_path,
@@ -37,9 +34,6 @@ def test_configure_logging_creates_per_run_directory_and_structured_log(tmp_path
     assert structured_log_path is not None
     assert structured_log_path.exists()
 
-    # RFC-013 P1: the structured JSONL sink uses block buffering
-    # (buffering=8192). logger.remove() closes the file and flushes the
-    # buffered tail to disk before the assertion reads it.
     logger.remove()
 
     structured_lines = structured_log_path.read_text().strip().splitlines()
@@ -51,7 +45,6 @@ def test_configure_logging_creates_per_run_directory_and_structured_log(tmp_path
 
 
 def test_configure_logging_rotates_run_log_files(tmp_path: Path) -> None:
-    """Small rotation thresholds should produce multiple files in the run directory."""
     session = configure_logging(
         verbosity=2,
         log_directory=tmp_path,
@@ -70,7 +63,6 @@ def test_configure_logging_rotates_run_log_files(tmp_path: Path) -> None:
 
 
 def test_ralph_logger_emits_structured_phase_events(tmp_path: Path) -> None:
-    """Structured logs should preserve event metadata from RalphLogger helpers."""
     session = configure_logging(
         verbosity=2,
         log_directory=tmp_path,
@@ -80,7 +72,6 @@ def test_ralph_logger_emits_structured_phase_events(tmp_path: Path) -> None:
 
     session.ralph.phase_start("planning", "planner")
 
-    # RFC-013 P1: flush the buffered JSONL sink before reading.
     logger.remove()
 
     structured_log_path = session.paths.structured_log_path

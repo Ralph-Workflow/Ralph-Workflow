@@ -1,4 +1,3 @@
-"""UpstreamProxyHandler class."""
 
 from __future__ import annotations
 
@@ -13,7 +12,6 @@ if TYPE_CHECKING:
 
 
 class UpstreamProxyHandler:
-    """Proxy handler that forwards tool calls to an upstream MCP registry."""
 
     def __init__(self, alias: str, upstream_registry: UpstreamRegistry) -> None:
         self._alias = alias
@@ -25,25 +23,15 @@ class UpstreamProxyHandler:
         workspace: object | None,
         params: JsonObject,
     ) -> object:
-        # The activity sink is intentionally NOT invoked here. The
-        # single emission point for every ``tools/call`` (in-process or
-        # upstream-proxied) is ``McpServer._handle_tools_call``, which
-        # calls ``self._invoke_activity_sinks(tool_name)`` before
-        # dispatch. Invoking the sink inside the proxy as well would
-        # double-count upstream-proxied calls on the ``mcp_tool``
-        # channel and break per-channel accounting. The upstream proxy
-        # is therefore a pure pass-through: it forwards the call and
-        # returns the result, while the server boundary records activity
-        # exactly once per logical call.
         result = self._upstream_registry.call_tool(
             self._alias,
             params,
             session=cast(
                 "HasMediaManifest | None", host_session
-            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            ),
             workspace=cast(
                 "Workspace | None", workspace
-            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            ),
         )
         if workspace is not None and host_session is not None and isinstance(result, dict):
             mod = import_module("ralph.mcp.tools.workspace")

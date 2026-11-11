@@ -1,13 +1,3 @@
-"""Rung 6's stale-lock removal is gated and scoped to this worktree.
-
-The last-resort rung removes git locks left behind by a crashed writer.
-A lock is only ever removed through the shared stale-lock reaper (age,
-liveness and unchanged identity), and only from this worktree's private
-git dir plus the common dir's shared top-level and ref locks -- never a
-sibling linked worktree's private git dir. The git dirs are laid out on
-``tmp_path`` by hand, so no git process is spawned.
-"""
-
 from __future__ import annotations
 
 import os
@@ -46,7 +36,6 @@ def _aged(lock: Path) -> Path:
 
 
 def test_a_sibling_worktrees_locks_are_never_touched(tmp_path: Path) -> None:
-    """An orphaned-looking lock in a sibling's private git dir is not ours to reap."""
     common = _git_dir(tmp_path / "main")
     sibling = _linked_private_dir(common, "sibling")
     sibling_index = _aged(sibling / "index.lock")
@@ -60,7 +49,6 @@ def test_a_sibling_worktrees_locks_are_never_touched(tmp_path: Path) -> None:
 
 
 def test_a_fresh_lock_in_this_worktree_is_never_removed(tmp_path: Path) -> None:
-    """A brand-new lock may belong to a live writer: the age gate refuses it."""
     git_dir = _git_dir(tmp_path / "main")
     index_lock = git_dir / "index.lock"
     index_lock.write_text("", encoding="utf-8")
@@ -77,7 +65,6 @@ def test_a_fresh_lock_in_this_worktree_is_never_removed(tmp_path: Path) -> None:
 def test_a_linked_worktree_never_reaps_the_main_worktrees_private_locks(
     tmp_path: Path,
 ) -> None:
-    """From a linked worktree, the common dir's ``index.lock`` is the MAIN checkout's."""
     common = _git_dir(tmp_path / "main")
     private = _linked_private_dir(common, "mine")
     main_index = _aged(common / "index.lock")

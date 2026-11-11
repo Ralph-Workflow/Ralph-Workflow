@@ -1,4 +1,3 @@
-"""DuckDuckGo Search backend implementation."""
 
 from __future__ import annotations
 
@@ -13,33 +12,30 @@ if TYPE_CHECKING:
     from typing import Protocol
 
     class _DdgsTextClient(Protocol):
-        """Minimal structural protocol matching the DDGS text-search API."""
 
         def text(self, query: str, max_results: int) -> Iterable[Mapping[str, object]] | None: ...
 
 
 _ddgs_module: object | None
-try:  # pragma: no cover - exercised via monkeypatch in tests
+try:
     import ddgs as _loaded_ddgs_module
-except ImportError:  # pragma: no cover - depends on optional runtime dependency
+except ImportError:
     _ddgs_module = None
 else:
     _ddgs_module = _loaded_ddgs_module
 
 DDGS = cast(
     "Callable[[], _DdgsTextClient] | None", getattr(_ddgs_module, "DDGS", None)
-)  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+)
 
 
 class DdgsBackend:
-    """In-process default backend backed by the ``ddgs`` package."""
 
     def __init__(self, *, timeout_seconds: float | None = None) -> None:
         self._timeout_seconds = timeout_seconds
 
     @property
     def timeout_seconds(self) -> float | None:
-        """Return the per-call timeout, or None to inherit the central default."""
         return self._timeout_seconds
 
     def search(self, query: str, *, limit: int = 10) -> list[SearchResult]:

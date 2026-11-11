@@ -9,7 +9,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class CommitPlumbingOptions:
-    """Options for commit plumbing operations."""
 
     generate_commit_msg: bool = False
     generate_commit: bool = False

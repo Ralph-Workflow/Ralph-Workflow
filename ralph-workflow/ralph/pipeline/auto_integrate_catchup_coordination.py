@@ -1,14 +1,3 @@
-"""Cross-worktree lock and throttle for remote catch-up synchronization.
-
-The catch-up ticker of every worktree of one repository shares one fetch
-cadence per (remote, target): :func:`remote_sync_transaction` hands out the
-lock and decides whether this tick may fetch. The cadence is
-``general.auto_integrate_remote_interval_seconds`` when it is a positive,
-finite number (:func:`remote_sync_interval_seconds`) and
-:data:`REMOTE_SYNC_INTERVAL_SECONDS` (300 s) otherwise. ``0.0``, the field's
-default, means "fetch at every seam" for the commit, phase and startup
-seams; the background ticker keeps the 300 s fleet cadence for it.
-"""
 
 from __future__ import annotations
 
@@ -43,14 +32,6 @@ REMOTE_SYNC_INTERVAL_SECONDS: Final = 300.0
 
 
 def remote_sync_interval_seconds(config: UnifiedConfig | None) -> float:
-    """Return the ticker's fleet-wide fetch cadence for ``config``.
-
-    A positive, finite ``general.auto_integrate_remote_interval_seconds``
-    is honoured as configured. ``0.0`` (the default: the seams fetch every
-    time) and any unusable value fall back to
-    :data:`REMOTE_SYNC_INTERVAL_SECONDS`, so the background ticker never
-    fetches on every 30-second tick of every worktree.
-    """
     general: object = getattr(config, "general", None)
     configured: object = getattr(general, "auto_integrate_remote_interval_seconds", None)
     if isinstance(configured, bool) or not isinstance(configured, (int, float)):
@@ -63,7 +44,6 @@ def remote_sync_interval_seconds(config: UnifiedConfig | None) -> float:
 
 @dataclass(slots=True)
 class RemoteSyncLease:
-    """Owned remote-sync transaction with one shared fetch decision."""
 
     fetch_allowed: bool
     _state_path: Path
@@ -114,7 +94,7 @@ def _write_fetch_after(state_path: Path, fetch_after: float) -> None:
     state: dict[str, float] = {"fetch_after": fetch_after}
     payload = json.dumps(state, separators=(",", ":"))
     temporary = state_path.with_suffix(f".{os.getpid()}.tmp")
-    temporary.write_text(  # filesystem-write-ok: atomic staging file replaced below
+    temporary.write_text(
         payload, encoding="utf-8"
     )
     temporary.replace(state_path)
@@ -127,7 +107,7 @@ def _fetch_allowed(state_path: Path, interval_seconds: float) -> bool:
         payload = cast(
             "dict[str, str | float | int]",
             json.loads(state_path.read_text(encoding="utf-8")),
-        )  # cast-policy: seam: persisted JSON is parsed at this boundary
+        )
         fetch_after = float(payload["fetch_after"])
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
         return True
@@ -136,9 +116,6 @@ def _fetch_allowed(state_path: Path, interval_seconds: float) -> bool:
     now = time.time()
     latest_defensible_deadline = now + interval_seconds
     if fetch_after > latest_defensible_deadline:
-        # A rollback or corrupt future record must neither fetch every 30-second
-        # tick nor suppress forever. Re-anchor and persist one full cadence while
-        # the transaction lock is held, so every worktree observes one deadline.
         _write_fetch_after(state_path, latest_defensible_deadline)
         fetch_after = latest_defensible_deadline
     return now >= fetch_after
@@ -152,13 +129,6 @@ def remote_sync_transaction(
     *,
     interval_seconds: float = REMOTE_SYNC_INTERVAL_SECONDS,
 ) -> Iterator[RemoteSyncLease | None]:
-    """Acquire the cross-worktree remote lock and yield its throttle lease.
-
-    ``interval_seconds`` is the fetch cadence (see
-    :func:`remote_sync_interval_seconds`). A persisted deadline further away
-    than one cadence is re-anchored to one cadence, so lowering the
-    configured interval takes effect at once.
-    """
 
     common_dir = _common_git_dir(root)
     if common_dir is None:
@@ -170,7 +140,7 @@ def remote_sync_transaction(
     state_path = coordination_dir / f"{key}.json"
     try:
         coordination_dir.mkdir(parents=True, exist_ok=True)
-        handle = lock_path.open(  # filesystem-write-ok: persistent advisory lock inode
+        handle = lock_path.open(
             "a+", encoding="utf-8"
         )
     except OSError:

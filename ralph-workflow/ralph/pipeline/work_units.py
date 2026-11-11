@@ -1,5 +1,3 @@
-# Deprecated: Ralph-orchestrated workers are removed from the execution model; parallelism is owned by the developer agent's own sub-agents. See docs/sphinx/concepts.md §"Deprecated: Ralph-orchestrated workers".
-"""Best-effort plan ownership extraction and safe dispatch selection."""
 
 from __future__ import annotations
 
@@ -28,7 +26,6 @@ __all__ = [
 
 
 class WorkUnitsPlan(RalphBaseModel):
-    """Typed representation of work_units[] in planning artifacts."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -44,12 +41,10 @@ def _is_mapping(value: object) -> TypeGuard[dict[str, object]]:
 
 
 def _string_list(value: object) -> list[str]:
-    """Return only string members from a best-effort extracted field."""
     return [member for member in value if isinstance(member, str)] if _is_list(value) else []
 
 
 def sanitize_ownership_paths(paths: list[str]) -> list[str]:
-    """Drop unsafe ownership rather than authorizing broad worker writes."""
     safe: list[str] = []
     for path in paths:
         parsed = PurePosixPath(path)
@@ -77,7 +72,6 @@ def _step_ref(step: Mapping[str, object]) -> str | None:
 def canonical_plan_references(
     content: Mapping[str, object],
 ) -> tuple[frozenset[str], frozenset[str], frozenset[str]]:
-    """Return usable steps, units, and owned existing steps for proof selection."""
     raw_steps = content.get("steps")
     steps = frozenset(
         ref
@@ -94,7 +88,6 @@ def canonical_plan_references(
 
 
 def dispatchable_work_units(units: tuple[WorkUnit, ...]) -> tuple[WorkUnit, ...]:
-    """Select only bounded scopes whose complete prerequisite graph is runnable."""
     candidates = {
         unit.unit_id: unit.model_copy(
             update={
@@ -143,11 +136,6 @@ def _has_unsafe_step_graph(artifact: Mapping[str, object]) -> bool:
 
 
 def has_unextractable_work_units(artifact: Mapping[str, object]) -> bool:
-    """Report whether raw plan units include any work unsafe for worker dispatch.
-
-    Invalid or omitted unit metadata must retain the plan in the main session;
-    returning true prevents partial native fan-out from discarding that work.
-    """
     if artifact.get("unextractable_work_units") is True or _has_unsafe_step_graph(artifact):
         return True
     parsed = parse_work_units_from_artifact(artifact)
@@ -165,11 +153,6 @@ def has_unextractable_work_units(artifact: Mapping[str, object]) -> bool:
 
 
 def parse_work_units_from_artifact(artifact: Mapping[str, object]) -> WorkUnitsPlan | None:
-    """Best-effort convert extracted plan units without making prose a gate.
-
-    Invalid siblings are omitted deterministically; their raw plan prose remains
-    available to the main agent rather than creating an unsafe worker scope.
-    """
     raw_fields = [artifact.get("work_units"), artifact.get("parallel_plan")]
     if all(value is None for value in raw_fields):
         return None

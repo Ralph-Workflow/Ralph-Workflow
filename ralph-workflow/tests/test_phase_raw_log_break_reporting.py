@@ -1,16 +1,3 @@
-"""S-4 (G4 / DoD 15): a corrupted raw transcript reaches BOTH non-smoke
-phase-verdict outcomes -- not only the smoke gate.
-
-``_detect_smoke_errors`` (``tests/test_raw_transcript_corruption_detection.py``)
-proves the smoke seam. This module proves the shared, non-smoke seam:
-``phase_agent_handler._compute_graded_phase_verdict`` is the one function
-called by BOTH operator-facing phase-verdict renderers --
-``render_success_artifact`` (the PASS/DEGRADED path) and
-``render_phase_failure_report`` (the FAILED path, DoD 12's machinery).
-Wiring the break check into that one shared function covers every
-artifact-producing phase's report.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -39,28 +26,18 @@ def _claude_interactive_config() -> AgentConfig:
 
 
 def _capture_path(workspace_root: Path, config: AgentConfig) -> Path:
-    """Return the path the production writer and grader both derive.
-
-    DERIVED, not spelled out. The capture identity is keyed on the whole
-    invocation now -- it has to be, or two agents differing only in a
-    cmd flag or a transport share one file -- so a hardcoded filename
-    here writes somewhere the code under test never looks, and the test
-    passes or fails for the wrong reason.
-    """
     from ralph.display.raw_overflow import raw_log_path_for, raw_log_unit_id_for
 
     return raw_log_path_for(workspace_root, raw_log_unit_id_for(config), model=config.model)
 
 
 def _write_corrupted_raw_log(workspace_root: Path) -> None:
-    """Write a raw log at the exact path ``AgentConfig(cmd="agy")`` resolves to."""
     raw_path = _capture_path(workspace_root, AgentConfig(cmd="agy", transport=AgentTransport.AGY))
     raw_path.parent.mkdir(parents=True, exist_ok=True)
     raw_path.write_bytes(b'{"event":"init","tools":["call_mcp_tool"]}\n' + (b"\x00" * 512))
 
 
 def _write_valid_claude_raw_log(workspace_root: Path) -> None:
-    """Write a valid Claude interactive raw log at the path for ``cmd="claude"``."""
     raw_path = _capture_path(workspace_root, _claude_interactive_config())
     raw_path.parent.mkdir(parents=True, exist_ok=True)
     raw_path.write_bytes(
@@ -73,13 +50,6 @@ def test_render_phase_failure_report_names_raw_log_corruption(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """The FAILED (no artifact) path also names a corrupted raw transcript.
-
-    No receipt exists for ``run_id`` (a genuine required-artifact failure,
-    the same DoD-12 shape ``tests/pipeline/test_phase_close_failed_no_artifact.py``
-    pins) AND the raw transcript for this agent's config is corrupted. Both
-    facts must reach the rendered verdict line.
-    """
     _write_corrupted_raw_log(tmp_path)
 
     required_artifact = RequiredArtifact(
@@ -147,8 +117,6 @@ def test_render_phase_failure_report_omits_corruption_when_config_not_supplied(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """``config`` is optional and additive: omitting it (pre-S-4 call shape)
-    reproduces the pre-S-4 text exactly -- no crash, no corruption text."""
     _write_corrupted_raw_log(tmp_path)
 
     required_artifact = RequiredArtifact(
@@ -208,15 +176,6 @@ def test_render_phase_failure_report_omits_corruption_when_config_not_supplied(
 
 
 def test_render_success_artifact_names_raw_log_corruption(tmp_path: Path) -> None:
-    """The PASS/DEGRADED path (``render_success_artifact``) also names a
-    corrupted raw transcript, not only the FAILED path above.
-
-    ``artifact_required=False`` sidesteps the FAILED branch entirely (no
-    receipt exists in ``tmp_path`` either way) so the render goes through
-    ``graded_verdict``'s PASS/DEGRADED vocabulary -- proving the corruption
-    detail reaches that branch's rendered text too, independently of the
-    FAILED-path proof above.
-    """
     _write_corrupted_raw_log(tmp_path)
 
     required_artifact = RequiredArtifact(
@@ -255,7 +214,6 @@ def test_render_success_artifact_names_raw_log_corruption(tmp_path: Path) -> Non
 
 
 def _write_clean_claude_session_raw_log(workspace_root: Path, alias: str) -> None:
-    """Write a raw log containing only canonical Claude session metadata."""
     raw_path = _capture_path(workspace_root, _claude_interactive_config())
     raw_path.parent.mkdir(parents=True, exist_ok=True)
     raw_path.write_bytes(
@@ -271,7 +229,6 @@ def test_render_phase_failure_report_keeps_missing_artifact_without_corruption_d
     monkeypatch: MonkeyPatch,
     alias: str,
 ) -> None:
-    """S-6: every interactive Claude alias accepts canonical session metadata."""
     _write_clean_claude_session_raw_log(tmp_path, alias)
 
     required_artifact = RequiredArtifact(
@@ -338,7 +295,6 @@ def test_render_phase_failure_report_keeps_missing_artifact_without_corruption_d
 def test_render_success_artifact_omits_corruption_with_clean_session_metadata(
     tmp_path: Path,
 ) -> None:
-    """The PASS/DEGRADED path is free of corruption text for a clean session log."""
     _write_clean_claude_session_raw_log(tmp_path, "haiku")
 
     required_artifact = RequiredArtifact(

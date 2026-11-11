@@ -1,4 +1,3 @@
-"""Structured concurrency coordinator for parallel development fan-out."""
 
 from __future__ import annotations
 

@@ -1,18 +1,3 @@
-"""Reproduction and assertion tests for streaming-block coalescing (S-7).
-
-The pre-S-7 "META [activity] deduplication" work was about suppressing
-duplicate ``[activity]`` lines that piggybacked on the noisy per-fragment
-emission. With S-7 the streaming layer is silent during open / continue,
-so the ``[activity]`` duplicates disappear at the source rather than
-being deduped after the fact.
-
-These tests still pin the broader invariant the dedup work was trying
-to enforce — no duplicate ``[activity]``-badged lines for a single tool
-call — but in the post-S-7 shape the duplication is structurally
-impossible (the streaming layer never emits a redundant line), so the
-new assertions are about the resulting shape.
-"""
-
 from __future__ import annotations
 
 import io
@@ -41,25 +26,15 @@ def _make_display(
 
 
 def _plain_lines(output: str) -> list[str]:
-    """Return the non-empty plain lines from a Rich console dump."""
     return [line for line in output.splitlines() if line.strip()]
 
 
 def _activity_meta_lines(output: str) -> list[str]:
-    """Return the lines that carry the META [activity] badge."""
     return [line for line in _plain_lines(output) if "[activity]" in line and "META" in line]
 
 
 class TestStreamingBlockCoalescingNoActivityDuplication:
-    """S-7: the streaming layer is silent, so [activity] lines cannot duplicate."""
-
     def test_single_tool_use_emits_at_most_one_activity_line(self, tmp_path: Path) -> None:
-        """A single tool_use emits at most one META [activity] line.
-
-        Post-S-7, the streaming layer is silent during open / continue.
-        Tool_use emits its own single entry. The META [activity] line
-        (if any) surfaces once at most.
-        """
         pd, buf, _console = _make_display(tmp_path)
         unit_id = "u1"
 
@@ -86,12 +61,6 @@ class TestStreamingBlockCoalescingNoActivityDuplication:
     def test_two_tool_uses_with_identical_path_emits_at_most_one_activity(
         self, tmp_path: Path
     ) -> None:
-        """Two identical tool_use calls do not duplicate the activity badge.
-
-        Post-S-7, the streaming layer never emits a redundant activity
-        line — the close-only emission means a tool_use event surfaces
-        exactly once.
-        """
         pd, buf, _console = _make_display(tmp_path)
         unit_id = "u1"
 
@@ -119,12 +88,6 @@ class TestStreamingBlockCoalescingNoActivityDuplication:
         )
 
     def test_tool_use_with_different_paths_preserves_both(self, tmp_path: Path) -> None:
-        """Tool calls with different paths still both surface in the log.
-
-        The dedup invariant only kicks in for identical signatures; a
-        different path produces a different ``tool_signature`` and must
-        not be collapsed.
-        """
         pd, buf, _console = _make_display(tmp_path)
         unit_id = "u1"
 

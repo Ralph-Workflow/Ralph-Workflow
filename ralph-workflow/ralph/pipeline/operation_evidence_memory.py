@@ -1,8 +1,3 @@
-"""In-memory fake for operation-scoped diagnostic evidence collection.
-
-Defines :class:`InMemoryOperationEvidenceCollector`, an in-memory implementation
-used by tests to avoid real subprocess or Git calls.
-"""
 
 from __future__ import annotations
 
@@ -23,7 +18,6 @@ if TYPE_CHECKING:
 
 
 class InMemoryOperationEvidenceCollector:
-    """Test fake that returns caller-supplied facts and reachability observations."""
 
     def __init__(
         self,

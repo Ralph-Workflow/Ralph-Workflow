@@ -1,5 +1,3 @@
-"""Configured non-main auto-integration target contracts."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -83,7 +81,6 @@ class _RecordingRemoteClient(RemoteClient):
 def test_configured_non_main_local_target_is_honored_verbatim(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A configured local target is authoritative without fallback detection."""
 
     def _fake_observe_branch_sha(_root: Path, _target: str) -> tuple[str, bool]:
         return ("target-sha", True)
@@ -100,14 +97,6 @@ def test_configured_non_main_local_target_is_honored_verbatim(
 def test_post_landing_seam_forwards_rebase_stop_resolver_and_converges(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """AC5, AC9: post-landing seam forwards rebase_stop_resolver to reconciler and converges.
-
-    Configured target is 'release' and remote is 'tacos'. When the feature lands
-    locally and remote has diverged, the post-landing seam in _integrate_once forwards
-    rebase_stop_resolver to reconcile_remote_publication. The resolver resolves the
-    divergence conflict, the target is pushed to tacos/release, and no origin/main
-    is touched.
-    """
     config = UnifiedConfig(
         general=GeneralConfig(
             auto_integrate_enabled=True,
@@ -234,16 +223,13 @@ def test_post_landing_seam_forwards_rebase_stop_resolver_and_converges(
 
     assert state is not None
     assert retry is False
-    # Verify the resolver was received through the post-landing seam
     assert received_resolver is my_resolver
     assert resolver_invoked is True
-    # Verify push to configured remote and target
     assert client.pushed == [("tacos", "release")]
     assert state.last_remote == "tacos"
     assert state.last_target == "release"
     assert state.last_push_status == "pushed"
     assert state.last_outcome == RebaseOutcomeKind.REMOTE_PUSHED
-    # Verify no hardcoded origin or main
     assert "origin" not in str(client.pushed)
     assert "origin" not in str(client.observed)
     assert "main" not in str(client.pushed)
@@ -253,12 +239,6 @@ def test_post_landing_seam_forwards_rebase_stop_resolver_and_converges(
 def test_landing_while_fetch_throttle_suppresses_probe_publishes_to_configured_names(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """AC6, AC5: probe suppressed by throttle during landing still converges configured names.
-
-    When fetch throttle suppresses probes (refresh returns REFRESH_SUPPRESSED),
-    reconcile_remote_publication still observes remote-tracking ref and pushes
-    when local is ahead. Operates on tacos/release without reading origin/main.
-    """
     client = _RecordingRemoteClient(
         remote_sha="remote-tacos-sha-1",
         refresh_status=REFRESH_SUPPRESSED,
@@ -302,11 +282,6 @@ def test_landing_while_fetch_throttle_suppresses_probe_publishes_to_configured_n
 def test_unreachable_then_recovering_remote_publishes_to_configured_names(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """AC8, AC5: remote unreachable at landing time is retried and pushes on recovery.
-
-    First call finds tacos remote unreachable; returns scheduled retry state.
-    Second call finds tacos reachable; pushes release to tacos/release and converges.
-    """
 
     def _branch_sha(_root: Path, _target: str) -> str:
         return "local-release-sha"
@@ -322,7 +297,6 @@ def test_unreachable_then_recovering_remote_publishes_to_configured_names(
         )
     )
 
-    # 1. Unreachable remote
     unreachable_client = _RecordingRemoteClient(
         remote_sha=None,
         refresh_status=REFRESH_UNREACHABLE,
@@ -340,7 +314,6 @@ def test_unreachable_then_recovering_remote_publishes_to_configured_names(
         remote_sync.REMOTE_REMOTE_UNREACHABLE,
     )
 
-    # 2. Remote recovers
     recovering_client = _RecordingRemoteClient(
         remote_sha="old-remote-sha",
         refresh_status="refreshed",
@@ -371,7 +344,6 @@ def test_unreachable_then_recovering_remote_publishes_to_configured_names(
 def test_concurrent_remote_advance_with_configured_names(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """AC9, AC5: concurrent remote advance under release/tacos catches up / reintegrates and pushes."""
     current_local_sha = "local-release-sha"
 
     def _branch_sha(_root: Path, _target: str) -> str:
@@ -434,15 +406,6 @@ def test_unreachable_remote_message_uses_configured_remote_name(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AC5: the unreachable-remote signal carries the configured remote name.
-
-    With a configured ``tacos`` remote the durable record must carry
-    ``last_remote="tacos"`` / ``last_target="release"`` and the
-    ``last_reason`` field must mention the configured remote; no
-    literal ``origin`` may appear when ``origin`` is not configured.
-    With a configured ``origin`` remote the same fields record
-    ``origin`` (the configured-name fidelity contract).
-    """
     from ralph.pipeline.auto_integrate_sync import REFRESH_UNREACHABLE
 
     def _branch_sha(_root: Path, _target: str) -> str:
@@ -450,9 +413,6 @@ def test_unreachable_remote_message_uses_configured_remote_name(
 
     monkeypatch.setattr(remote_sync, "branch_sha", _branch_sha)
 
-    # 1. Configured ``tacos`` remote: the durable record carries
-    # ``tacos`` / ``release`` and the user-facing ``last_reason``
-    # mentions the configured remote; no literal ``origin`` appears.
     tacos_config = UnifiedConfig(
         general=GeneralConfig(
             auto_integrate_enabled=True,
@@ -480,9 +440,6 @@ def test_unreachable_remote_message_uses_configured_remote_name(
     assert "tacos" in state.last_reason
     assert "origin" not in state.last_reason
 
-    # 2. Configured ``origin`` remote: the durable record carries
-    # ``origin`` / ``main``; the legacy hard-coded ``origin``
-    # behaviour is no longer a default that overrides configuration.
     origin_config = UnifiedConfig(
         general=GeneralConfig(
             auto_integrate_enabled=True,

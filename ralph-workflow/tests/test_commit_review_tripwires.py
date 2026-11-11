@@ -1,11 +1,3 @@
-"""Unit tests for deterministic Stage 1 commit review tripwires.
-
-The unit cases drive the tripwire evaluator with synthetic diff entries. The
-black-box proofs at the end of this module drive the REAL commit-review phase
-against a REAL temporary git repository, so the post-edit re-check is proven
-against the sealed proposal tree instead of a synthetic diff.
-"""
-
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
@@ -36,7 +28,6 @@ from ralph.workspace.fs import FsWorkspace
 
 
 def test_thresholds_defaults() -> None:
-    """TripwireThresholds provides documented defaults and frozen immutability."""
     thresholds = TripwireThresholds()
     assert thresholds.max_deleted_files == DEFAULT_MAX_DELETED_FILES
     assert thresholds.max_deleted_fraction == DEFAULT_MAX_DELETED_FRACTION
@@ -47,7 +38,6 @@ def test_thresholds_defaults() -> None:
 
 
 def test_thresholds_custom() -> None:
-    """TripwireThresholds accepts custom values positionally and via kwargs."""
     t1 = TripwireThresholds(10, 0.1, 500_000)
     assert t1.max_deleted_files == 10
     assert t1.max_deleted_fraction == 0.1
@@ -64,7 +54,6 @@ def test_thresholds_custom() -> None:
 
 
 def test_finding_and_report_properties() -> None:
-    """Finding and TripwireReport report correct properties."""
     clean_report = TripwireReport()
     assert clean_report.is_clean is True
     assert clean_report.passed is True
@@ -94,7 +83,6 @@ def test_finding_and_report_properties() -> None:
 
 
 def test_empty_diff_evaluates_clean() -> None:
-    """An empty diff produces no tripwire findings."""
     report = evaluate_tripwires(
         diff_entries=[],
         tracked_count=100,
@@ -107,7 +95,6 @@ def test_empty_diff_evaluates_clean() -> None:
 
 
 def test_legitimate_small_deletions_and_edits_pass() -> None:
-    """Small modifications and deletions below thresholds pass cleanly."""
     diff = [
         DiffEntry(path="src/app.py", status="M"),
         DiffEntry(path="src/feature.py", status="A"),
@@ -124,7 +111,6 @@ def test_legitimate_small_deletions_and_edits_pass() -> None:
 
 
 def test_mass_deletion_count_threshold() -> None:
-    """Deleted file count exceeding threshold triggers a hard tripwire."""
     thresholds = TripwireThresholds(max_deleted_files=2, max_deleted_fraction=0.8)
     diff = [DiffEntry(path=f"src/file_{i}.py", status="D") for i in range(3)]
     report = evaluate_tripwires(
@@ -142,9 +128,7 @@ def test_mass_deletion_count_threshold() -> None:
 
 
 def test_mass_deletion_fraction_threshold() -> None:
-    """Deleted file fraction exceeding threshold triggers a hard tripwire."""
     thresholds = TripwireThresholds(max_deleted_files=50, max_deleted_fraction=0.2)
-    # 3 out of 10 is 30% > 20%
     diff = [DiffEntry(path=f"src/file_{i}.py", status="D") for i in range(3)]
     report = evaluate_tripwires(
         diff_entries=diff,
@@ -161,7 +145,6 @@ def test_mass_deletion_fraction_threshold() -> None:
 
 
 def test_whole_repo_deletion_triggers_both_mass_deletion_checks() -> None:
-    """Whole repo deletion triggers mass deletion by count and fraction."""
     thresholds = TripwireThresholds(max_deleted_files=10, max_deleted_fraction=0.25)
     diff = [DiffEntry(path=f"file_{i}.py", status="D") for i in range(20)]
     report = evaluate_tripwires(
@@ -175,7 +158,6 @@ def test_whole_repo_deletion_triggers_both_mass_deletion_checks() -> None:
 
 
 def test_zero_tracked_count_avoids_division_by_zero() -> None:
-    """A tracked count of zero does not divide by zero."""
     diff = [DiffEntry(path="file.py", status="D")]
     report = evaluate_tripwires(
         diff_entries=diff,
@@ -186,29 +168,24 @@ def test_zero_tracked_count_avoids_division_by_zero() -> None:
 
 
 def test_protected_git_content_deleted_and_modified() -> None:
-    """Modifying or deleting .git content triggers hard protected tripwires."""
-    # Deletion
     del_diff = [DiffEntry(path=".git/config", status="D")]
     del_report = evaluate_tripwires(del_diff, 10, TripwireThresholds())
     assert del_report.passed is False
     assert del_report.hard[0].category == "protected_deletion"
     assert ".git/config" in del_report.hard[0].message
 
-    # Modification / addition
     mod_diff = [DiffEntry(path=".git/HEAD", status="M")]
     mod_report = evaluate_tripwires(mod_diff, 10, TripwireThresholds())
     assert mod_report.passed is False
     assert mod_report.hard[0].category == "protected_overwrite"
     assert ".git/HEAD" in mod_report.hard[0].message
 
-    # .gitignore is NOT .git content
     ignore_diff = [DiffEntry(path=".gitignore", status="M")]
     ignore_report = evaluate_tripwires(ignore_diff, 10, TripwireThresholds())
     assert ignore_report.is_clean is True
 
 
 def test_protected_prompt_and_agents_md() -> None:
-    """Deleting or overwriting PROMPT.md or AGENTS.md triggers hard tripwires."""
     diff = [
         DiffEntry(path="PROMPT.md", status="M"),
         DiffEntry(path="AGENTS.md", status="D"),
@@ -225,19 +202,15 @@ def test_protected_prompt_and_agents_md() -> None:
 
 
 def test_protected_manifest_and_lockfile_deletion() -> None:
-    """Deleting manifest or lockfile is a hard tripwire; editing is allowed."""
-    # Editing pyproject.toml is allowed
     edit_diff = [DiffEntry(path="pyproject.toml", status="M")]
     edit_report = evaluate_tripwires(edit_diff, 10, TripwireThresholds())
     assert edit_report.is_clean is True
 
-    # Deleting pyproject.toml is rejected
     del_diff = [DiffEntry(path="pyproject.toml", status="D")]
     del_report = evaluate_tripwires(del_diff, 10, TripwireThresholds())
     assert del_report.passed is False
     assert del_report.hard[0].category == "protected_deletion"
 
-    # Deleting lockfiles
     for lockfile in ("package-lock.json", "poetry.lock", "uv.lock", "Cargo.lock"):
         lock_report = evaluate_tripwires(
             [DiffEntry(path=lockfile, status="D")],
@@ -249,14 +222,11 @@ def test_protected_manifest_and_lockfile_deletion() -> None:
 
 
 def test_protected_top_level_directory_deletion() -> None:
-    """Deleting a top-level source or test directory in its entirety triggers hard tripwire."""
-    # Directory entry directly
     dir_diff = [DiffEntry(path="src", status="D")]
     dir_report = evaluate_tripwires(dir_diff, 10, TripwireThresholds())
     assert dir_report.passed is False
     assert dir_report.hard[0].category == "protected_deletion"
 
-    # Tree mode entry
     tree_diff = [DiffEntry(path="tests", status="D", old_mode="040000")]
     tree_report = evaluate_tripwires(tree_diff, 10, TripwireThresholds())
     assert tree_report.passed is False
@@ -264,13 +234,6 @@ def test_protected_top_level_directory_deletion() -> None:
 
 
 def test_protected_top_level_directory_deleted_in_its_entirety() -> None:
-    """Deleting EVERY tracked path of a protected top-level directory is a hard tripwire.
-
-    A recursive diff reports blob entries only, so the removal of a whole
-    directory arrives as one deleted blob path per tracked file. The
-    base-tree membership carried by the entries is the evidence that the
-    directory is gone in its entirety.
-    """
     base_paths = frozenset({"src/app.py", "src/util.py", "tests/test_app.py"})
     diff = [
         DiffEntry(path="src/app.py", status="D", base_tree_paths=base_paths),
@@ -285,10 +248,6 @@ def test_protected_top_level_directory_deleted_in_its_entirety() -> None:
 
 
 def test_partially_deleted_protected_top_level_directory_is_not_an_entirety_deletion() -> None:
-    """Deleting SOME tracked paths of a protected top-level directory fires no such finding."""
-    # RALPH-TEST-REASON: the membership is the WHOLE base tree, so the fixture
-    # must match the tracked_count it reports: a 2-path subset presented as the
-    # whole tree would make one deletion look like half the repository.
     base_paths = frozenset({"src/app.py", "src/util.py"}) | frozenset(
         f"docs/note_{index}.md" for index in range(8)
     )
@@ -298,30 +257,16 @@ def test_partially_deleted_protected_top_level_directory_is_not_an_entirety_dele
     assert report.hard == ()
 
 
-#: A source tree whose NAME is not in DEFAULT_TOP_LEVEL_SOURCE_TEST_DIRS.
 _UNLISTED_SOURCE_DIR = "ralph-workflow"
 
-#: A top-level directory that holds no source file at all.
 _NON_SOURCE_DIR = "docs-old"
 
 
 def _base_tree_with_filler(members: frozenset[str], filler: int = 20) -> frozenset[str]:
-    """Return ``members`` plus ``filler`` documentation paths outside them.
-
-    The filler keeps the deleted fraction below the mass-deletion threshold,
-    so a finding the assertion reads can ONLY come from the directory rule.
-    """
     return members | frozenset(f"notes/note_{index}.md" for index in range(filler))
 
 
 def test_a_top_level_source_directory_with_an_unlisted_name_is_protected() -> None:
-    """A source directory whose NAME is not in the fixed list is protected.
-
-    The fixed name set cannot cover every repository: this tree keeps its
-    sources under ``ralph-workflow/``, so the content-based rule is the only
-    thing that can protect it. The base tree is the evidence: it holds source
-    files, and the pending diff deletes every one of them.
-    """
     base_paths = _base_tree_with_filler(
         frozenset(
             {
@@ -346,7 +291,6 @@ def test_a_top_level_source_directory_with_an_unlisted_name_is_protected() -> No
 
 
 def test_a_deleted_directory_entry_with_an_unlisted_source_name_is_protected() -> None:
-    """A diff that reports the directory entry itself is protected too."""
     base_paths = _base_tree_with_filler(frozenset({f"{_UNLISTED_SOURCE_DIR}/ralph/app.py"}))
     diff = [
         DiffEntry(
@@ -365,7 +309,6 @@ def test_a_deleted_directory_entry_with_an_unlisted_source_name_is_protected() -
 
 
 def test_a_partial_deletion_of_a_source_directory_with_an_unlisted_name_is_not_a_tripwire() -> None:
-    """Deleting SOME files of an unlisted source directory stays silent."""
     base_paths = _base_tree_with_filler(
         frozenset(
             {
@@ -389,7 +332,6 @@ def test_a_partial_deletion_of_a_source_directory_with_an_unlisted_name_is_not_a
 
 
 def test_a_top_level_directory_without_source_files_is_not_protected() -> None:
-    """A whole directory that holds NO source file may be deleted."""
     base_paths = _base_tree_with_filler(frozenset({f"{_NON_SOURCE_DIR}/guide.md"}))
     diff = [
         DiffEntry(
@@ -406,7 +348,6 @@ def test_a_top_level_directory_without_source_files_is_not_protected() -> None:
 
 
 def test_a_top_level_directory_holding_a_tests_subdirectory_is_protected() -> None:
-    """A ``tests`` subdirectory marks its top-level directory as test code."""
     base_paths = _base_tree_with_filler(
         frozenset(
             {
@@ -429,7 +370,6 @@ def test_a_top_level_directory_holding_a_tests_subdirectory_is_protected() -> No
 
 
 def test_a_fixed_name_directory_stays_protected_without_source_files() -> None:
-    """The fixed name set protects its directories regardless of their content."""
     base_paths = _base_tree_with_filler(frozenset({"src/notes.md"}))
     diff = [DiffEntry(path="src/notes.md", status="D", base_tree_paths=base_paths)]
 
@@ -441,16 +381,13 @@ def test_a_fixed_name_directory_stays_protected_without_source_files() -> None:
 
 
 def test_custom_protected_paths() -> None:
-    """Custom protected paths passed to evaluator trigger hard tripwires."""
     protected_rules = ["config/production.json", "licenses/*"]
 
-    # Modification of protected file
     mod_diff = [DiffEntry(path="config/production.json", status="M")]
     mod_report = evaluate_tripwires(mod_diff, 10, TripwireThresholds(), protected=protected_rules)
     assert mod_report.passed is False
     assert mod_report.hard[0].category == "protected_overwrite"
 
-    # Deletion of glob-matched file
     del_diff = [DiffEntry(path="licenses/BSD.txt", status="D")]
     del_report = evaluate_tripwires(del_diff, 10, TripwireThresholds(), protected=protected_rules)
     assert del_report.passed is False
@@ -458,7 +395,6 @@ def test_custom_protected_paths() -> None:
 
 
 def test_out_of_scope_allowed_directories() -> None:
-    """Changes outside allowed_directories trigger soft tripwire findings."""
     allowed = ["ralph/phases", "tests"]
 
     in_scope_diff = [
@@ -477,7 +413,7 @@ def test_out_of_scope_allowed_directories() -> None:
     out_of_scope_report = evaluate_tripwires(
         out_of_scope_diff, 10, TripwireThresholds(), allowed_dirs=allowed
     )
-    assert out_of_scope_report.passed is True  # Soft finding does not fail hard gate
+    assert out_of_scope_report.passed is True
     assert out_of_scope_report.has_soft_tripwires is True
     assert len(out_of_scope_report.soft) == 1
     assert out_of_scope_report.soft[0].category == "out_of_scope"
@@ -485,7 +421,6 @@ def test_out_of_scope_allowed_directories() -> None:
 
 
 def test_recognized_secret_paths_and_patterns() -> None:
-    """Staged recognized secret files trigger soft tripwire findings."""
     assert is_recognized_secret_path(".env") is True
     assert is_recognized_secret_path("config/.env.local") is True
     assert is_recognized_secret_path(".env.staging.local") is True
@@ -506,14 +441,12 @@ def test_recognized_secret_paths_and_patterns() -> None:
     for finding in report.soft:
         assert finding.category == "secret"
 
-    # Deleted secret file does not trigger staged secret soft finding
     del_secret = [DiffEntry(path=".env", status="D")]
     del_report = evaluate_tripwires(del_secret, 10, TripwireThresholds())
     assert del_report.has_soft_tripwires is False
 
 
 def test_staged_secret_content_scanning() -> None:
-    """Content containing credentials triggers soft secret tripwires."""
     secret_diff = [
         DiffEntry(
             path="config/tokens.py",
@@ -535,15 +468,12 @@ def test_staged_secret_content_scanning() -> None:
 
 
 def test_binary_size_thresholds() -> None:
-    """Oversized binary files trigger soft findings; small binaries pass."""
     thresholds = TripwireThresholds(binary_size_limit=500)
 
-    # Small binary passes
     small_binary = [DiffEntry(path="assets/logo.png", status="A", size=400, is_binary=True)]
     small_report = evaluate_tripwires(small_binary, 10, thresholds)
     assert small_report.is_clean is True
 
-    # Large binary triggers soft finding
     large_binary = [DiffEntry(path="assets/banner.png", status="A", size=1000, is_binary=True)]
     large_report = evaluate_tripwires(large_binary, 10, thresholds)
     assert large_report.passed is True
@@ -552,19 +482,16 @@ def test_binary_size_thresholds() -> None:
     assert large_report.soft[0].category == "binary_size"
     assert large_report.soft[0].count == 1000
 
-    # Large text file does not trigger binary size limit
     large_text = [DiffEntry(path="data.txt", status="A", size=10_000, is_binary=False)]
     text_report = evaluate_tripwires(large_text, 10, thresholds)
     assert text_report.is_clean is True
 
-    # Deleted large binary does not trigger binary size limit
     del_large_binary = [DiffEntry(path="old_asset.png", status="D", size=1000, is_binary=True)]
     del_binary_report = evaluate_tripwires(del_large_binary, 10, thresholds)
     assert del_binary_report.has_soft_tripwires is False
 
 
 def test_duck_typing_and_dict_compatibility() -> None:
-    """evaluate_tripwires supports plain dicts and duck-typed objects."""
     dict_diff = [
         {"path": "src/module.py", "status": "M", "size": 120},
         {"path": ".env", "status": "A", "size": 50},
@@ -576,10 +503,9 @@ def test_duck_typing_and_dict_compatibility() -> None:
 
 
 def test_combined_hard_and_soft_findings() -> None:
-    """Diff containing both hard and soft violations reports both categories."""
     diff = [
-        DiffEntry(path="PROMPT.md", status="M"),  # hard: protected overwrite
-        DiffEntry(path="secrets.yml", status="A"),  # soft: secret
+        DiffEntry(path="PROMPT.md", status="M"),
+        DiffEntry(path="secrets.yml", status="A"),
     ]
     report = evaluate_tripwires(diff, 10, TripwireThresholds())
     assert report.passed is False
@@ -592,19 +518,10 @@ def test_combined_hard_and_soft_findings() -> None:
 
 
 def _base_tree_paths(count: int) -> frozenset[str]:
-    """Return a base-tree membership of ``count`` tracked paths."""
     return frozenset(f"components/module_{index:03d}.py" for index in range(count))
 
 
 def test_mass_deletion_fraction_is_measured_against_the_immutable_base_tree() -> None:
-    """The fraction denominator is the base tree, never the mutable real index.
-
-    Staging the deletion of every tracked path empties the real index, so a
-    denominator read from that index would be zero and the fraction check
-    would be skipped entirely. The membership the git layer attaches to the
-    entries keeps the denominator at the size of the tree the diff was
-    computed against.
-    """
     base_paths = _base_tree_paths(10)
     deleted = sorted(base_paths)[:3]
     diff = [DiffEntry(path=path, status="D", base_tree_paths=base_paths) for path in deleted]
@@ -625,12 +542,6 @@ def test_mass_deletion_fraction_is_measured_against_the_immutable_base_tree() ->
 
 
 def test_staged_additions_cannot_dilute_the_mass_deletion_fraction() -> None:
-    """Staged additions never inflate the denominator of the fraction.
-
-    The additions are tracked by the real index, so an index-sized
-    denominator would report a fraction of 3/27 and stay silent. The
-    immutable base tree holds 10 paths, so 3 of them is 30%.
-    """
     base_paths = _base_tree_paths(10)
     deleted = sorted(base_paths)[:3]
     diff = [DiffEntry(path=path, status="D", base_tree_paths=base_paths) for path in deleted]
@@ -654,7 +565,6 @@ def test_staged_additions_cannot_dilute_the_mass_deletion_fraction() -> None:
 
 
 def test_a_small_deletion_does_not_trip_the_mass_deletion_fraction() -> None:
-    """A couple of deleted files in a large repository stays below the fraction."""
     base_paths = _base_tree_paths(100)
     deleted = sorted(base_paths)[:2]
     diff = [DiffEntry(path=path, status="D", base_tree_paths=base_paths) for path in deleted]
@@ -670,7 +580,6 @@ def test_a_small_deletion_does_not_trip_the_mass_deletion_fraction() -> None:
 
 
 def test_the_deleted_file_count_threshold_survives_an_empty_real_index() -> None:
-    """The count threshold keeps working when the real index lists nothing."""
     base_paths = _base_tree_paths(10)
     deleted = sorted(base_paths)[:3]
     diff = [DiffEntry(path=path, status="D", base_tree_paths=base_paths) for path in deleted]
@@ -689,11 +598,6 @@ def test_the_deleted_file_count_threshold_survives_an_empty_real_index() -> None
 
 
 def test_the_immutable_tracked_count_is_unavailable_without_the_base_membership() -> None:
-    """A missing membership makes the denominator unknowable, not zero.
-
-    ``None`` is the fail-closed signal: the caller must refuse the proposal
-    instead of evaluating the fraction against a denominator it cannot trust.
-    """
     deletions = [DiffEntry(path="components/module_000.py", status="D")]
     additions = [DiffEntry(path="components/module_000.py", status="A")]
 
@@ -706,24 +610,11 @@ def test_the_immutable_tracked_count_is_unavailable_without_the_base_membership(
     assert resolve_immutable_tracked_count(carried) == 4
 
 
-# Black-box proofs: the post-edit re-check of the REAL commit-review phase.
-#
-# A staged secret and an oversized binary are FIRST offered to the edit step:
-# the reviewer may untrack or ignore them. When the unsafe content is still
-# in the re-sealed proposal, the engine must REJECT the proposal on its own
-# evidence (the affected paths and the concrete counts and limits) and must
-# never approve it. The proofs below drive ``handle_commit_review_phase``
-# against a REAL temporary git repository, so the sealed proposal tree, the
-# re-seal after the edit step and the real diff are the subject under test.
-
 _COMMIT_REVIEW_ARTIFACT_PATH = ".agent/artifacts/commit_review.md"
 _REVIEW_PHASE = "development_commit_review"
 
-#: A recognized secret file name the engine's default ignore rules do NOT
-#: cover, so the sealed proposal really carries it.
 _SECRET_REL_PATH = "secrets.yml"
 
-#: A binary one byte above the default ``binary_size_limit``.
 _BINARY_REL_PATH = "assets/big.bin"
 _BINARY_SIZE = DEFAULT_BINARY_SIZE_LIMIT + 1
 
@@ -735,7 +626,6 @@ def _write_review_artifact(
     actions: tuple[tuple[str, str], ...] = (),
     tree_sha: str | None = None,
 ) -> None:
-    """Write a canonical commit_review artifact with the given verdict and actions."""
     resolved_tree_sha = tree_sha
     if resolved_tree_sha is None and (repo_root / ".git").exists():
         try:
@@ -768,7 +658,6 @@ def _write_review_artifact(
 
 
 def _run_review_phase(repo_root: Path) -> list[object]:
-    """Drive the real commit-review phase entry point against ``repo_root``."""
     workspace = FsWorkspace(repo_root)
     ctx = PhaseContext.construct(
         workspace=workspace,
@@ -787,12 +676,10 @@ def _run_review_phase(repo_root: Path) -> list[object]:
 
 
 def _write_secret(repo_root: Path) -> None:
-    """Write a recognized secret file into the working tree."""
     (repo_root / _SECRET_REL_PATH).write_text("token: hunter2\n", encoding="utf-8")
 
 
 def _write_oversized_binary(repo_root: Path) -> None:
-    """Write a binary one byte above the default binary size limit."""
     target = repo_root / _BINARY_REL_PATH
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(b"\x00" * _BINARY_SIZE)
@@ -802,12 +689,6 @@ def _write_oversized_binary(repo_root: Path) -> None:
 def test_a_staged_secret_that_survives_the_edit_step_is_rejected_on_engine_evidence(
     tmp_git_repo: Path,
 ) -> None:
-    """A staged secret the edit step did not remove must never be approved.
-
-    The reviewer approved the proposal, but the secret is still in the sealed
-    proposal tree, so the engine rejects it on its own evidence instead of
-    honouring the verdict.
-    """
     repo_root = tmp_git_repo
     _write_secret(repo_root)
     _write_review_artifact(repo_root, verdict="approve")
@@ -831,7 +712,6 @@ def test_a_staged_secret_that_survives_the_edit_step_is_rejected_on_engine_evide
 def test_an_oversized_binary_that_survives_the_edit_step_is_rejected_on_engine_evidence(
     tmp_git_repo: Path,
 ) -> None:
-    """An oversized binary the edit step did not remove must never be approved."""
     repo_root = tmp_git_repo
     _write_oversized_binary(repo_root)
     _write_review_artifact(repo_root, verdict="approve")
@@ -860,11 +740,6 @@ def test_an_oversized_binary_that_survives_the_edit_step_is_rejected_on_engine_e
 
 @pytest.mark.timeout_seconds(20)
 def test_a_secret_the_edit_step_removed_is_approved(tmp_git_repo: Path) -> None:
-    """A secret the edit step DID remove must be approved, with no false rejection.
-
-    The reviewer ignored the secret file, so it is no longer in the re-sealed
-    proposal tree and the gate has nothing left to reject.
-    """
     repo_root = tmp_git_repo
     _write_secret(repo_root)
     _write_review_artifact(
@@ -883,7 +758,6 @@ def test_a_secret_the_edit_step_removed_is_approved(tmp_git_repo: Path) -> None:
 
 @pytest.mark.timeout_seconds(20)
 def test_an_oversized_binary_the_edit_step_excluded_is_approved(tmp_git_repo: Path) -> None:
-    """An oversized binary the edit step excluded must be approved."""
     repo_root = tmp_git_repo
     _write_oversized_binary(repo_root)
     _write_review_artifact(

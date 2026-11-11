@@ -1,5 +1,3 @@
-"""Tests for the policy explanation feature (ralph/policy/explain.py and render.py)."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -31,7 +29,6 @@ _CHECK_LOOP_MAX = 3
 
 
 def _minimal_bundle(phases: dict[str, PhaseDefinition] | None = None) -> PolicyBundle:
-    """Build a minimal PolicyBundle for testing."""
     if phases is None:
         phases = {
             "work": PhaseDefinition(
@@ -64,8 +61,6 @@ def _minimal_bundle(phases: dict[str, PhaseDefinition] | None = None) -> PolicyB
 
 
 class TestExplanationSentencesProductOutcomeD:
-    """Tests for the three Product Outcome D sentence types."""
-
     def _bundle_with_verification_and_commit(
         self, on_failure_route: str = "crashed"
     ) -> PolicyBundle:

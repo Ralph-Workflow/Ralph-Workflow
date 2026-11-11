@@ -1,9 +1,3 @@
-"""Black-box tests for the shared integration-resolver health ledger.
-
-A resolver that exits without a verified result must stop being offered,
-whatever its error text says; repeating the same failing call is not recovery.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -135,27 +129,22 @@ def test_bench_accepts_any_failure_shape(failure: BaseException | str) -> None:
 
 
 def test_integration_health_does_not_contaminate_development_phase() -> None:
-    """Demoting an agent in resolution does not affect its status in development."""
     controller = _controller(FakeClock())
 
     _bench_unproductive(controller, "codex/a", "kaboom")
 
-    # In resolution phase, codex/a is cooling down.
     res_choice = choose_resolver(controller, CHAIN)
     assert res_choice.agent == "cursor/auto"
 
-    # In development phase, codex/a remains fully eligible.
     dev_choice = controller.preferred_agent_index("development", CHAIN)
     assert dev_choice.agent == "codex/a"
 
 
 def test_development_phase_failure_does_not_contaminate_resolution() -> None:
-    """Failures recorded in development do not contaminate resolution selection."""
     from ralph.recovery.agent_failure_ledger import AttemptFact
 
     controller = _controller(FakeClock())
 
-    # Demote codex/a in development phase.
     for _ in range(3):
         controller.ledger.record(
             AttemptFact(
@@ -165,10 +154,8 @@ def test_development_phase_failure_does_not_contaminate_resolution() -> None:
             )
         )
 
-    # In development phase, codex/a is in cooldown.
     dev_choice = controller.preferred_agent_index("development", CHAIN)
     assert dev_choice.agent == "cursor/auto"
 
-    # In resolution phase, codex/a is completely unaffected and eligible.
     res_choice = choose_resolver(controller, CHAIN)
     assert res_choice.agent == "codex/a"

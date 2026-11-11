@@ -1,17 +1,3 @@
-"""``Connection error.`` is a transport fault, not a code failure.
-
-This is the literal string pi reports in ``message.errorMessage`` /
-``auto_retry_end.finalError`` when its configured provider is
-unreachable.  The marker set already covered "connection refused" /
-"connection reset" / "connection timed out" but not this shape, so an
-offline provider was classified as a generic agent failure and burned
-the retry budget instead of routing to connectivity backoff.
-
-Asserted through the public ``FailureClassifier.classify`` surface: the
-observable contract is the ENVIRONMENTAL verdict plus the fact that such
-a failure does not count against the agent's retry budget.
-"""
-
 from __future__ import annotations
 
 import pytest

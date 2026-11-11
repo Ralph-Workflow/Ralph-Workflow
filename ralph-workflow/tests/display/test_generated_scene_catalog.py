@@ -1,5 +1,3 @@
-"""Generated-scene support-matrix tests."""
-
 from __future__ import annotations
 
 import re
@@ -22,7 +20,6 @@ from ralph.display.scene_catalog import (
 
 @pytest.fixture(scope="module", autouse=True)
 def _prewarm_syntax_lexer() -> None:
-    """Pre-warm pygments syntax lexer so compilation does not hit per-test SIGALRM."""
     PythonLexer()
 
 
@@ -92,7 +89,6 @@ def test_generated_scene_catalog_declares_canonical_value_and_structure_formats(
 
 
 def test_generated_scene_clean_run_reaches_catalogued_table_panel_and_artifact_surfaces() -> None:
-    """S-1: catalogued production owners are exercised, not merely declared."""
     rendered = render_scene(
         "clean_run",
         SupportCase("dark", "none", "unicode", 80, "redirect"),
@@ -115,7 +111,6 @@ def test_generated_scene_clean_run_reaches_catalogued_table_panel_and_artifact_s
 def test_generated_scene_catalog_assigns_owner_overflow_and_generated_scene_to_every_surface() -> (
     None
 ):
-    """S-1: catalog entries declare the complete production-display contract."""
     assert {surface.scene for surface in SURFACE_CATALOG} <= set(SCENE_NAMES)
     assert all(surface.owner for surface in SURFACE_CATALOG)
     assert all(surface.overflow_policy for surface in SURFACE_CATALOG)
@@ -123,7 +118,6 @@ def test_generated_scene_catalog_assigns_owner_overflow_and_generated_scene_to_e
 
 
 def test_generated_scene_catalog_names_non_emitter_production_seams() -> None:
-    """S-1 regression: non-``emit_*`` surfaces cannot become unowned metadata."""
     catalog = {surface.name: surface for surface in SURFACE_CATALOG}
     assert catalog["tool_call"].production_entry_points == ("ParallelDisplay.emit_activity_line",)
     assert catalog["tool_result"].production_entry_points == ("ParallelDisplay.emit_activity_line",)
@@ -135,7 +129,6 @@ def test_generated_scene_catalog_names_non_emitter_production_seams() -> None:
 
 
 def test_generated_scene_catalog_production_entry_points_resolve_to_real_owners() -> None:
-    """S-1 regression: catalogued seams are callable production APIs, not prose."""
     resolvable = {
         "build_edit_preview": build_edit_preview,
         "condense_content": condense_content,
@@ -151,7 +144,6 @@ def test_generated_scene_catalog_production_entry_points_resolve_to_real_owners(
 
 
 def test_generated_scene_catalog_elision_owner_derives_a_recoverable_marker() -> None:
-    """S-1/S-7: the catalogued condenser produces the elision contract it claims."""
     visible, condensed = condense_content(
         "condensed production content " * 32,
         options=CondenseOptions(
@@ -169,7 +161,6 @@ def test_generated_scene_catalog_elision_owner_derives_a_recoverable_marker() ->
 def test_generated_scene_catalog_assigns_representative_surfaces_to_the_scene_that_renders_them() -> (
     None
 ):
-    """S-1 regression: catalog scenes are executable evidence, not decorative labels."""
     common = SupportCase("dark", "none", "unicode", 80, "redirect")
     expected_carriers = {
         "table": "Pipeline Metrics",
@@ -192,7 +183,6 @@ def test_generated_scene_catalog_assigns_representative_surfaces_to_the_scene_th
 
 
 def test_generated_scene_catalog_covers_every_public_parallel_display_emitter() -> None:
-    """S-1 regression: a new production ``emit_*`` seam cannot bypass the catalog."""
     entry_points = tuple(
         entry_point for surface in SURFACE_CATALOG for entry_point in surface.entry_points
     )
@@ -203,14 +193,10 @@ def test_generated_scene_catalog_covers_every_public_parallel_display_emitter() 
         if name.startswith("emit_") and callable(getattr(ParallelDisplay, name))
     }
     assert production_emitters == catalogued
-    # Completion success and failure deliberately share the final-summary
-    # renderer; catalog ownership is one-to-many rather than a false claim
-    # that either outcome owns a private renderer.
     assert entry_points.count("emit_completion_summary_panel") == 2
 
 
 def test_generated_scene_catalog_exercises_phase_close_and_table_owners() -> None:
-    """S-1 regression: clean-run evidence reaches phase-close and every table owner."""
     rendered = render_scene(
         "clean_run",
         SupportCase("dark", "none", "unicode", 80, "redirect"),
@@ -230,7 +216,6 @@ def test_generated_scene_catalog_exercises_phase_close_and_table_owners() -> Non
 
 
 def test_generated_scene_catalog_exercises_public_emitters_that_have_stable_scene_inputs() -> None:
-    """S-1 regression: every scene-backed emitter has observable production evidence."""
     common = SupportCase("dark", "none", "unicode", 80, "redirect")
     expected_carriers = {
         "emit_activity_line": "[output][pi]",
@@ -264,7 +249,6 @@ def test_generated_scene_catalog_exercises_public_emitters_that_have_stable_scen
 
 
 def test_generated_scene_regression_clean_run_never_emits_an_empty_structural_rule() -> None:
-    """S-6: every structural rule carries a durable category identifier."""
     rendered = render_scene(
         "clean_run",
         SupportCase("dark", "none", "unicode", 80, "redirect"),
@@ -275,7 +259,6 @@ def test_generated_scene_regression_clean_run_never_emits_an_empty_structural_ru
 
 
 def test_generated_scene_failure_leads_with_phase_and_cause_before_machine_detail() -> None:
-    """S-6/S-7 regression: the failure scene exposes phase and cause before its raw detail."""
     rendered = render_scene(
         "failure",
         SupportCase("dark", "none", "unicode", 80, "redirect"),
@@ -292,22 +275,18 @@ def test_generated_scene_failure_leads_with_phase_and_cause_before_machine_detai
 
 
 def test_generated_scene_regression_burst_preserves_structural_carriers_under_volume() -> None:
-    """S-6: the burst scene exercises repetition without losing its recovery marker."""
     rendered = render_scene(
         "burst",
         SupportCase("dark", "none", "unicode", 80, "redirect"),
         terminal_bg_is_light=False,
     )
 
-    # A burst must preserve its representative call and recovery carrier without
-    # flushing structural beats off-screen as 24 equal-weight rows.
     assert rendered.count("[call][codex]") == 1
     assert "count=24" in rendered
     assert ".agent/raw/run.log" in rendered
 
 
 def test_generated_scene_catalog_declares_runtime_backed_value_formats() -> None:
-    """S-1: generated output exercises every catalogued stream format."""
     common = SupportCase("dark", "none", "unicode", 80, "redirect")
     burst = render_scene("burst", common, terminal_bg_is_light=False)
     opening = render_scene("first_screen", common, terminal_bg_is_light=False)
@@ -325,5 +304,4 @@ def test_generated_scene_catalog_declares_runtime_backed_value_formats() -> None
 
 def test_generated_scene_frames_are_rationed_to_identity_surfaces() -> None:
     for surface in SURFACE_CATALOG:
-        # Just exercise the attribute to ensure surface.frame_entitled is well-formed
         assert isinstance(surface.frame_entitled, bool)

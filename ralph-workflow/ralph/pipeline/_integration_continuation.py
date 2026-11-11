@@ -1,4 +1,3 @@
-"""Continue retained resolver work under recovery's existing integration lease."""
 
 from __future__ import annotations
 
@@ -39,7 +38,6 @@ _WAITING_STATE: dict[str, tuple[object, ...] | None] = {"last_key": None}
 
 
 def reset_continuation_gate_state() -> None:
-    """Reset the in-memory continuation gate state (for test isolation)."""
     _WAITING_STATE["last_key"] = None
 
 
@@ -50,7 +48,6 @@ def _emit_waiting_line(msg: str, key: tuple[object, ...] | None = None) -> None:
 
 
 def _current_stop_identity(root: Path, record: IntegrationRecord) -> str | None:
-    """Return the identity of the current stopped commit in rebase or merge."""
     if record.resolving_merge:
         try:
             if merge_state(root) == MERGE_STATE_IN_PROGRESS:
@@ -82,7 +79,6 @@ def compute_continuation_retry_gate_key(
     config_path: Path | None = None,
     stop_identity: str | None = None,
 ) -> tuple[str | None, tuple[str, ...], str | None]:
-    """Compute the (stop identity, sorted eligible-agent set, config fingerprint) key."""
     stop_id = stop_identity if stop_identity is not None else _current_stop_identity(root, record)
 
     eligible_agents: tuple[str, ...] = ()
@@ -280,7 +276,6 @@ def continue_retained_resolution(
     force_retry: bool = False,
     stop_identity: str | None = None,
 ) -> IntegrationRecord | str:
-    """Resume the recorded operation and promote only a terminal Git result."""
     target = record.pre_target_sha if record.operation_kind == "target_reconcile" else record.target
     if not target:
         return "retained resolution target unreadable; progress preserved"
@@ -332,14 +327,6 @@ def active_operation_matches(root: Path, record: IntegrationRecord) -> bool:
 
 
 def _terminal_state_refusal(root: Path) -> str | None:
-    """Verify the operation left no live markers; name the refusal when it did.
-
-    A leftover operation marker Git still shows (cherry-pick, sequencer,
-    merge state) is live Git state, not completion proof.  Named as a
-    typed refusal the caller retains through the conflict /
-    identity-mismatch mapping -- never as "lacks proof" withholding,
-    which must not exist.
-    """
     from ralph.pipeline.auto_integrate_recovery_terminal import (
         TerminalStateViolationError,
         post_attempt_verify,
@@ -381,12 +368,6 @@ promote_completed_resolution = _promote_completed_resolution
 
 
 def _stale_replay_record(root: Path, record: IntegrationRecord) -> IntegrationRecord | None:
-    """Mark a record whose resolution claim Git disproves for a fresh replay.
-
-    Only a feature-integration record is replayed here: a target
-    reconciliation owns its work in another worktree and is continued by
-    the reconciliation path, not by the feature replay.
-    """
     from ralph.pipeline._owned_landing_reintegration import retained_resolution_is_stale
 
     if not (
@@ -415,12 +396,6 @@ def _legacy_completed_rebase(root: Path, record: IntegrationRecord) -> CommitCom
     head = _git_value(root, "rev-parse", "--verify", "HEAD")
     if branch is None or head is None:
         return None
-    # Distinct reflog contract #1 (commondir reflog): this reads
-    # commondir/logs/refs/heads/<branch> -- one row of a multi-part legacy
-    # rebase completion proof, combined with branch, HEAD, the rebase-finish
-    # subject, and ancestry. This is a crash-recovery seam, NOT diagnostic
-    # evidence; do not reuse it for the worktree-private logs/HEAD seam
-    # (see _auto_integrate_recovery_git_state.detached_branch_name).
     history = run_git(
         ("reflog", "show", "--format=%H%x00%gs", "-2", branch),
         cwd=root,
@@ -487,7 +462,6 @@ def recover_before_attempt(
 
 
 def config_for_owned_integration(config: UnifiedConfig) -> UnifiedConfig:
-    """Disabling new integrations does not abandon an already-owned landing."""
     return (
         config
         if config.general.auto_integrate_enabled

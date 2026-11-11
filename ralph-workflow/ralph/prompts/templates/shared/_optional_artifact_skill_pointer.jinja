@@ -1,15 +1,4 @@
-{# Single OPTIONAL skill pointer shared across the planning-family and
-   artifact-producing templates. Import via:
 
-     {% from 'shared/_optional_artifact_skill_pointer.j2' import render_optional_artifact_skill_pointer %}
-
-   Then call:
-
-     {{ render_optional_artifact_skill_pointer(skill_name, format_doc) }}
-
-   Renders a short OPTIONAL-skill block pointing at the named skill while
-   keeping the format doc as the source of truth.
-#}
 {% macro render_optional_artifact_skill_pointer(skill_name, format_doc) -%}
 Optional aid: use `{{ skill_name }}` when available; `{{ format_doc }}` remains
 the authoritative grammar.

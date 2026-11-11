@@ -1,12 +1,3 @@
-"""Tests that explain_policy output covers all routing surfaces.
-
-Verifies that the policy explanation includes:
-- POST-COMMIT ROUTES section with phase, budget_state, and target
-- PARALLEL EXECUTION section with post_fanout_verify annotation
-- RECOVERY POLICY section with preserve_session_on_categories
-- Verification on_failure_route arrow in ASCII diagram
-"""
-
 from __future__ import annotations
 
 from ralph.policy.explain import PolicyExplanation, explain_policy
@@ -20,8 +11,6 @@ def _default_explanation() -> PolicyExplanation:
 
 
 class TestRecoveryPreserveSessionInExplanation:
-    """explain_policy populates preserve_session_on_categories in RecoveryExplanation."""
-
     def test_recovery_explanation_populated(self) -> None:
         exp = _default_explanation()
         assert exp.recovery is not None, "RecoveryExplanation must be populated"

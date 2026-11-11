@@ -1,13 +1,3 @@
-"""Black-box tests for edit_file indexed safety args.
-
-AC-10: edit_file accepts prompt-exact ``target`` /
-``match_strategy`` ``exact|within_target|all_in_target`` /
-``expected_content_hash`` / ``impact_preview`` /
-``reindex`` ``auto|skip|changed_blocking`` /
-``return_evidence_updates`` while preserving edit-area checks,
-dry-run diffs, and dirty marking.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -59,9 +49,6 @@ def _seed_workspace(tmp_path: Path) -> Path:
 
 
 def test_edit_file_accepts_only_prompt_exact_match_strategy_values() -> None:
-    """AC-10 schema: ``match_strategy`` enum must be
-    ``exact|within_target|all_in_target``.
-    """
     spec = _edit_spec()
     properties = spec.metadata.definition.input_schema.get("properties", {})
     enum_values = properties["match_strategy"]["enum"]
@@ -69,9 +56,6 @@ def test_edit_file_accepts_only_prompt_exact_match_strategy_values() -> None:
 
 
 def test_edit_file_schema_exposes_expected_content_hash_and_target() -> None:
-    """AC-10 schema: target, expected_content_hash, impact_preview,
-    reindex, return_evidence_updates are all part of the public schema.
-    """
     spec = _edit_spec()
     properties = spec.metadata.definition.input_schema.get("properties", {})
     for arg in (
@@ -87,7 +71,6 @@ def test_edit_file_schema_exposes_expected_content_hash_and_target() -> None:
 
 
 def test_edit_file_rejects_invalid_match_strategy(tmp_path: Path) -> None:
-    """AC-10: edit_file fails closed on unsupported match_strategy."""
     workspace = _seed_workspace(tmp_path)
     from ralph.mcp.tools.coordination import InvalidParamsError
 
@@ -115,7 +98,6 @@ def test_edit_file_rejects_invalid_match_strategy(tmp_path: Path) -> None:
 def test_edit_file_rejects_expected_content_hash_mismatch_before_mutation(
     tmp_path: Path,
 ) -> None:
-    """AC-10: hash mismatch fails closed before any mutation."""
     workspace = _seed_workspace(tmp_path)
     session = _FakeSession()
     ws = MagicMock()
@@ -145,21 +127,14 @@ def test_edit_file_rejects_expected_content_hash_mismatch_before_mutation(
 def test_edit_file_target_symbol_returns_impact_preview_and_evidence_updates(
     tmp_path: Path,
 ) -> None:
-    """AC-10: target symbol dry_run with impact_preview returns the
-    payload; return_evidence_updates includes generation/freshness.
-    """
     workspace = _seed_workspace(tmp_path)
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     try:
         reindex(store, workspace, options=ReindexOptions(timeout_ms=5000))
         session = _FakeSession(explore_index=build_sqlite_index_handle(store))
-        # Locate the indexed ``hello`` symbol row.
         hello_symbols = [sym for sym in store.iter_symbols() if sym.name == "hello"]
         assert len(hello_symbols) == 1
         sym = hello_symbols[0]
-        # The MagicMock must mirror the workspace file the index was
-        # built from so the implicit stale-target hash-check does
-        # not falsely flag a fresh edit.
         mock_file_text = (workspace / "module.py").read_text(encoding="utf-8")
         ws = MagicMock()
         ws.read.return_value = mock_file_text
@@ -204,7 +179,6 @@ def test_edit_file_target_symbol_returns_impact_preview_and_evidence_updates(
 
 
 def test_edit_file_legacy_oldtext_newtext_contract_still_works(tmp_path: Path) -> None:
-    """The legacy ``oldText/newText`` contract still works without an index."""
     workspace = _seed_workspace(tmp_path)
     session = _FakeSession()
     ws = MagicMock()
@@ -229,9 +203,6 @@ def test_edit_file_legacy_oldtext_newtext_contract_still_works(tmp_path: Path) -
 def test_edit_file_ambiguous_symbol_target_returns_structured_error(
     tmp_path: Path,
 ) -> None:
-    """AC-10: ambiguous / unresolved symbol targets fail closed before
-    any mutation.
-    """
     workspace = _seed_workspace(tmp_path)
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     try:
@@ -261,12 +232,10 @@ def test_edit_file_ambiguous_symbol_target_returns_structured_error(
 
 
 def test_edit_file_cross_file_evidence_target_is_rejected(tmp_path: Path) -> None:
-    """AC-10: an evidence target that points to another file must be rejected."""
     workspace = _seed_workspace(tmp_path)
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     try:
         reindex(store, workspace, options=ReindexOptions(timeout_ms=5000))
-        # Build an evidence row that points at a sibling file.
         from ralph.mcp.explore.store import (
             EvidenceRow,
             derive_evidence_id,
@@ -321,7 +290,6 @@ def test_edit_file_cross_file_evidence_target_is_rejected(tmp_path: Path) -> Non
 
 
 def test_edit_file_reindex_skip_still_marks_dirty(tmp_path: Path) -> None:
-    """AC-04 + AC-10: ``reindex='skip'`` still marks the path dirty."""
     workspace = _seed_workspace(tmp_path)
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     try:
@@ -346,11 +314,6 @@ def test_edit_file_reindex_skip_still_marks_dirty(tmp_path: Path) -> None:
 
 
 def test_edit_file_stale_target_hash_fails_closed_before_mutation(tmp_path: Path) -> None:
-    """AC-10: when a ``target`` resolves to an evidence/span whose
-    recorded ``content_hash`` no longer matches the current file, the
-    edit fails closed with ``status='stale_evidence'`` and never
-    writes the file.
-    """
     workspace = _seed_workspace(tmp_path)
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     try:
@@ -361,8 +324,6 @@ def test_edit_file_stale_target_hash_fails_closed_before_mutation(tmp_path: Path
             "def hello():\n    return 1\n\nclass Foo:\n    def bar(self):\n        return 2\n"
         )
         ws = MagicMock()
-        # The on-disk file has changed since the indexed hash; the
-        # handler must refuse to mutate because the row is stale.
         mutated_file = "def hello():\n    return 99\n"
         ws.read.return_value = mutated_file
         ws.is_path_git_tracked.return_value = False
@@ -387,18 +348,12 @@ def test_edit_file_stale_target_hash_fails_closed_before_mutation(tmp_path: Path
         assert payload["path"] == "module.py"
         assert payload["reason"] == "content_changed"
         ws.write.assert_not_called()
-        del original_file  # silence linter; the read returns mutated_file above
+        del original_file
     finally:
         store.close()
 
 
 def test_edit_file_all_in_target_boundary_uses_old_text_length(tmp_path: Path) -> None:
-    """AC-10: ``match_strategy='all_in_target'`` constrains every
-    ``oldText`` occurrence to lie inside the target span using
-    ``len(old_text)`` (NOT ``len(new_text)``). A caller that
-    supplies a short ``new_text`` while ``old_text`` would bleed
-    past the target boundary must fail closed.
-    """
     workspace = _seed_workspace(tmp_path)
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     try:
@@ -413,10 +368,6 @@ def test_edit_file_all_in_target_boundary_uses_old_text_length(tmp_path: Path) -
         ws.is_path_git_tracked.return_value = False
         ws.absolute_path.return_value = str(workspace / "module.py")
         session = _FakeSession(explore_index=build_sqlite_index_handle(store))
-        # The span covers only the ``def hello(): return 1`` body,
-        # but the edit asks to replace a snippet that lives partly
-        # outside the function body. ``all_in_target`` must refuse
-        # even though the new_text is shorter than old_text.
         result = handle_edit_file(
             session,
             ws,
@@ -445,7 +396,6 @@ def test_edit_file_all_in_target_boundary_uses_old_text_length(tmp_path: Path) -
 
 
 def test_edit_file_rejects_empty_oldtext_before_matching(tmp_path: Path) -> None:
-    """An empty replacement anchor is rejected instead of looping."""
     workspace = _seed_workspace(tmp_path)
     from ralph.mcp.tools.coordination import InvalidParamsError
 

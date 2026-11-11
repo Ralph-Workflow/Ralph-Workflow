@@ -1,28 +1,3 @@
-# Deprecated: Ralph-orchestrated workers are removed from the execution model; parallelism is owned by the developer agent's own sub-agents. See docs/sphinx/concepts.md §"Deprecated: Ralph-orchestrated workers".
-"""Immutable pipeline state model.
-
-This module defines PipelineState - the single source of truth for pipeline
-execution progress. It serves dual purposes:
-1. Runtime State: Tracks current phase, iteration counters, agent chain state
-2. Checkpoint Payload: Serializes to JSON for resume functionality
-
-PipelineState is IMMUTABLE from the reducer's perspective. State transitions
-occur exclusively through the reduce function.
-
-POLICY-DRIVEN STATE TRACKING
-==============================
-Loop counters (loop_iterations) and phase chains (phase_chains)
-are keyed by policy-declared names, not hardcoded field names. This enables
-custom workflows with arbitrary phase and counter names to work without
-modifying source code.
-
-Budget counters (budget_caps / outer_progress) track the cap and completed
-cycles for each policy-declared budget counter. Remaining budget is always
-derived: remaining = max(0, cap - progress).
-
-Legacy checkpoint fields (budget fields only) are migrated to the generic
-dicts at deserialise time via the _migrate_legacy_state_fields model_validator.
-"""
 
 from __future__ import annotations
 
@@ -56,7 +31,6 @@ _DEFAULT_RECOVERY_CYCLE_CAP: Final[int] = 200
 
 
 def _legacy_chain_agents(chain: dict[str, object]) -> tuple[str, ...]:
-    """Return the agent names declared by a legacy phase-chain entry."""
     raw_agents = chain.get("agents")
     if not isinstance(raw_agents, list | tuple):
         return ()
@@ -67,7 +41,6 @@ def _legacy_chain_current_agent(
     chain: dict[str, object],
     agents: tuple[str, ...],
 ) -> str | None:
-    """Return the agent a legacy phase chain was running, when recoverable."""
     raw_index = chain.get("current_index", 0)
     if isinstance(raw_index, bool) or not isinstance(raw_index, int):
         return None
@@ -77,26 +50,6 @@ def _legacy_chain_current_agent(
 
 
 def _migrate_legacy_guard_into_ledger(d: dict[str, object]) -> None:
-    """Migrate legacy per-chain failure history into the durable ledger snapshot.
-
-    Legacy checkpoints stored one ``progress_guard`` payload per phase chain,
-    plus a top-level copy describing the active phase. Every payload held the
-    failure history of exactly ONE agent, so each chain is migrated
-    independently into its own ledger entry keyed ``"{phase}:{agent}"``. The
-    identity comes from the chain itself: the chain key is the phase and the
-    chain's current agent is the agent the history belongs to.
-
-    Precedence: when a stored ledger snapshot already exists, the stricter
-    (more demoted) of the stored entry and the migrated entry is kept for
-    every identity, so translation never lowers demotion protection.
-
-    Fail closed: legacy payloads that cannot be READ (not a mapping, an
-    unusable value) are recorded as spent for the affected identity instead of
-    being dropped or reset, so an unreadable checkpoint never hands back a
-    fresh attempt budget. When a chain declares no agent at all, the history
-    belongs to no recoverable identity and is likewise recorded as spent for
-    the phase's legacy default agent.
-    """
     from ralph.recovery.agent_failure_ledger import (
         LEDGER_SNAPSHOT_MALFORMED_REASON,
         LEGACY_DEFAULT_AGENT,
@@ -216,7 +169,7 @@ def _normalize_fallover_history_for_cap(
         if isinstance(item, dict)
         else cast(
             "FalloverRecord", item
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         for item in history
     )
     cap = _resolved_recovery_cycle_cap(recovery_cycle_cap)
@@ -226,34 +179,17 @@ def _normalize_fallover_history_for_cap(
 
 
 class PipelineState(_FrozenPipelineStateModel):
-    """Immutable snapshot of pipeline execution state.
-
-    This is the checkpoint payload - the single source of truth for pipeline progress.
-    Serialize it to JSON to save state; deserialize to resume interrupted runs.
-
-    GENERIC TRACKING FIELDS (policy-keyed):
-        phase_chains: Per-phase agent chain state keyed by canonical phase name.
-        loop_iterations: Loop iteration counters keyed by iteration_state_field name.
-        budget_caps: Max budget keyed by budget counter name (seeded from policy).
-        outer_progress: Completed cycle counts keyed by budget counter name.
-        Remaining budget is derived on-demand: max(0, cap - progress).
-    """
 
     phase: PipelinePhase = _UNSET_PHASE
     previous_phase: PipelinePhase | None = None
     integration_commit_resume_phase: PipelinePhase | None = None
 
-    # Review outcome tracking (replaces direct review_issues_found writes)
     review_outcome: str | None = None
 
-    # Generic per-phase chain state (keyed by canonical phase name from policy)
     phase_chains: dict[str, AgentChainState] = Field(default_factory=dict)
 
-    # Generic loop iteration tracking (keyed by iteration_state_field from loop_policy)
     loop_iterations: dict[str, int] = Field(default_factory=dict)
 
-    # Generic budget counter tracking (keyed by budget counter name from budget_counters)
-    # Remaining budget is derived: max(0, budget_caps[k] - outer_progress[k])
     budget_caps: dict[str, int] = Field(default_factory=dict)
     outer_progress: dict[str, int] = Field(default_factory=dict)
 
@@ -270,64 +206,27 @@ class PipelineState(_FrozenPipelineStateModel):
     last_error: str | None = None
     last_reviewed_sha: str | None = None
 
-    # Commit review safety gate and rollback state
     rollback_pending: bool = False
     rollback_ref: str | None = None
-    # Baseline seal recorded at run start when the working tree was dirty.
-    # A rejection rollback restores to this ref instead of HEAD so the
-    # user's pre-existing uncommitted work survives the rollback. ``None``
-    # means "no baseline was recorded" -- a clean tree at run start, or a
-    # checkpoint written before this field existed -- and the rollback
-    # restores to HEAD exactly as it did before. A recorded ref that does
-    # not resolve is a GATE FAILURE, never a destructive rollback.
     rollback_baseline_ref: str | None = None
     commit_review_rejections: int = 0
     approved_tree_sha: str | None = None
-    # True once a commit review approved a tree for the pending commit. A
-    # SHA-bound commit that reaches the executor without an approved tree SHA
-    # is refused (fail closed), so a lost approval cannot degrade into an
-    # unbounded commit. Flows that never ran a commit review keep the default
-    # False and commit exactly as they did before.
     commit_approval_required: bool = False
     last_review_rejection_reason: str | None = None
 
-    # Policy-derived fields (set at startup and after phase transitions)
     policy_entry_phase: PipelinePhase = _UNSET_PHASE
     policy_format_version: int | None = None
     current_drain: str | None = None
     post_commit_phase_override: PipelinePhase | None = None
     pending_cycle_outcome: str | None = None
     execution_cycle_charged: bool = False
-    # Carries the upstream execution artifact's status (completed/partial/failed)
-    # from the execution-result event through the commit boundary so the
-    # post-commit invocation gate can route status-awarely without hardcoding
-    # phase names. Cleared after the gate decision is applied.
     last_execution_result_status: str | None = None
-    # Index into phase_timings marking the start of the current outer development
-    # cycle. Timing records at or after this index are summed for the analysis
-    # invocation gate. Reset when the lifecycle commit advances to a new cycle.
     cycle_timing_start_index: int = 0
-    # Plan-to-final-commit cycle timebox state (serialized, resume-safe).
-    # ``cycle_timebox_active`` is True while a cycle timer is running; the
-    # runner folds elapsed wall-clock time into ``cycle_timebox_consumed_seconds``
-    # on every step and persists the wall-clock start epoch so restart downtime
-    # remains charged. Both default so legacy checkpoints load cleanly.
     cycle_timebox_active: bool = False
     cycle_timebox_consumed_seconds: float = 0.0
     cycle_timebox_started_at_epoch: float | None = None
-    # When the cycle concluded via a deadline redirect, the concise operator
-    # reason (carrying configured and elapsed seconds) is persisted here so
-    # run-report and status surfaces can distinguish a redirect from an
-    # ordinary completion. Cleared when the next cycle starts. Defaults so
-    # legacy checkpoints load cleanly.
     cycle_timebox_redirect_reason: str | None = None
-    # Running count of cycles this run finalized by deadline redirect. The
-    # reason above describes one cycle and is cleared when the next starts,
-    # which is the normal path after a redirect, so the count is what survives
-    # to the end-of-run report. Defaults so legacy checkpoints load cleanly.
     cycle_timebox_redirects: int = 0
-    # Independent development-phase hard-stop state. Defaults preserve older
-    # checkpoints; elapsed time is folded by the runner while active.
     dev_timebox_active: bool = False
     dev_timebox_consumed_seconds: float = 0.0
     dev_timebox_started_at_epoch: float | None = None
@@ -335,11 +234,8 @@ class PipelineState(_FrozenPipelineStateModel):
 
     work_units: tuple[WorkUnit, ...] = Field(default_factory=tuple)
     worker_states: dict[str, WorkerState] = Field(default_factory=dict)
-    # A run has a bounded number of policy phases and iterations, so this immutable
-    # tuple remains bounded by the workflow's existing execution limits.
     phase_timings: tuple[PhaseTimingRecord, ...] = Field(default_factory=tuple)
 
-    # Recovery observability fields — all have defaults so legacy checkpoints load cleanly
     recovery_cycle_count: int = 0
     fallover_history: tuple[FalloverRecord, ...] = Field(default_factory=tuple)
     last_failure_category: str | None = None
@@ -349,18 +245,9 @@ class PipelineState(_FrozenPipelineStateModel):
     last_agent_session_id: str | None = None
     agent_retry_intent: AgentRetryIntent = Field(default_factory=AgentRetryIntent)
     last_unavailability_reason: str | None = None
-    # Structured wait-state flag: True when the recovery controller has
-    # entered the all-agents-unavailable wait branch (the run loop will
-    # sleep on last_retry_delay_ms and then retry the same phase). This
-    # is the structured signal the run loop keys off; the ``last_error``
-    # text is operator-readable context only and is NOT a contract.
     is_waiting_state: bool = False
-    # Reason the wait flag was raised, and the monotonic-clock deadline
-    # (ms) after which the wait expires. Both have defaults so legacy
-    # checkpoints load cleanly; they are only written via set_waiting.
     wait_reason: WaitReason | None = None
     wait_until_monotonic_ms: int | None = None
-    # Durable agent failure ledger state across process restarts.
     ledger_snapshot: dict[str, object] | None = None
 
     @model_validator(mode="after")
@@ -380,11 +267,6 @@ class PipelineState(_FrozenPipelineStateModel):
 
     @classmethod
     def from_policy(cls, policy: PipelinePolicy, **overrides: object) -> PipelineState:
-        """Construct initial pipeline state from a loaded PipelinePolicy.
-
-        The entry phase is derived from policy.entry_phase so no workflow
-        entry semantics are embedded in this class.
-        """
         payload: dict[str, object] = {
             "phase": policy.entry_phase,
             "policy_entry_phase": policy.entry_phase,
@@ -396,15 +278,6 @@ class PipelineState(_FrozenPipelineStateModel):
     @model_validator(mode="before")
     @classmethod
     def _migrate_legacy_state_fields(cls, data: object) -> object:
-        """Migrate legacy checkpoint fields into generic dicts.
-
-        Handles old checkpoints that stored:
-        - Typed chain fields → migrated into phase_chains
-        - Legacy budget fields → migrated into budget_caps / outer_progress
-
-        Legacy budget_remaining values are converted to outer_progress by computing
-        progress = cap - remaining, so the derived remaining stays the same.
-        """
         if not isinstance(data, dict):
             return data
         d = cast("dict[str, object]", dict(data))
@@ -422,7 +295,6 @@ class PipelineState(_FrozenPipelineStateModel):
         _migrate_counter_field(d, outer_progress_data, "iteration", "iteration")
         _migrate_counter_field(d, outer_progress_data, "reviewer_pass", "reviewer_pass")
 
-        # Migrate very-old scalar remaining fields to outer_progress via progress = cap - remaining
         for _br_field, _counter in (
             ("development_budget_remaining", "iteration"),
             ("review_budget_remaining", "reviewer_pass"),
@@ -435,13 +307,12 @@ class PipelineState(_FrozenPipelineStateModel):
             ):
                 _cap = int(
                     cast("int", budget_caps_data[_counter])
-                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                )
                 _rem = int(
                     cast("int", _scalar_br)
-                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                )
                 outer_progress_data[_counter] = max(0, _cap - _rem)
 
-        # Migrate legacy budget_remaining dict into outer_progress via progress = cap - remaining
         _raw_br = d.get("budget_remaining")
         if isinstance(_raw_br, dict):
             legacy_br = cast("dict[str, object]", _raw_br)
@@ -449,10 +320,10 @@ class PipelineState(_FrozenPipelineStateModel):
                 if counter not in outer_progress_data and counter in budget_caps_data:
                     cap = int(
                         cast("int", budget_caps_data[counter])
-                    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                    )
                     remaining = int(
                         cast("int", remaining_val)
-                    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                    )
                     outer_progress_data[counter] = max(0, cap - remaining)
 
         d["budget_caps"] = budget_caps_data
@@ -462,10 +333,8 @@ class PipelineState(_FrozenPipelineStateModel):
                 d.get("fallover_history"),
                 d.get("recovery_cycle_cap"),
             )
-        # Drop legacy budget_remaining — no longer a field
         d.pop("budget_remaining", None)
 
-        # Migrate legacy progress_guard snapshots into ledger_snapshot
         _migrate_legacy_guard_into_ledger(d)
 
         return d
@@ -515,7 +384,7 @@ class PipelineState(_FrozenPipelineStateModel):
                 if isinstance(value, dict)
                 else cast(
                     "AgentChainState", value
-                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                )
                 for key, value in v.items()
             }
         raise TypeError(f"Expected dict for phase_chains, got {type(v).__name__!r}")
@@ -548,19 +417,9 @@ class PipelineState(_FrozenPipelineStateModel):
         raise TypeError(f"Expected dict for outer_progress, got {type(v).__name__!r}")
 
     def is_complete(self, policy: PipelinePolicy) -> bool:
-        """Check if pipeline has reached a terminal success state.
-
-        Args:
-            policy: PipelinePolicy. Compares current phase against
-                policy.terminal_phase to determine completion.
-
-        Raises:
-            RuntimeError: When policy is None (routing requires loaded policy).
-        """
         return self.phase == policy.terminal_phase
 
     def current_agent(self) -> str | None:
-        """Get the current agent for the active phase."""
         chain = self.chain_for_phase(self.phase)
         if chain is None:
             return None
@@ -569,7 +428,6 @@ class PipelineState(_FrozenPipelineStateModel):
         return chain.agents[chain.current_index]
 
     def chain_for_phase(self, phase: PipelinePhase | str) -> AgentChainState | None:
-        """Get the tracked agent chain state for a phase, if any."""
         return self.phase_chains.get(str(phase))
 
     def with_phase_chain(
@@ -577,104 +435,51 @@ class PipelineState(_FrozenPipelineStateModel):
         phase: PipelinePhase | str,
         chain: AgentChainState,
     ) -> PipelineState:
-        """Return a copy with the chain state for the given phase updated."""
         phase_key = str(phase)
         new_chains = {**self.phase_chains, phase_key: chain}
         return self.copy_with(phase_chains=new_chains)
 
     def with_drain(self, drain: DrainName | None) -> PipelineState:
-        """Return a copy with the current_drain set."""
         return self.copy_with(current_drain=drain)
 
     def get_loop_iteration(self, field_name: str) -> int:
-        """Get the loop iteration counter for a policy-declared iteration field.
-
-        Args:
-            field_name: The iteration_state_field value from PhaseLoopPolicy.
-
-        Returns:
-            Current iteration count (0 when not yet set).
-        """
         return self.loop_iterations.get(field_name, 0)
 
     def with_loop_iteration(self, field_name: str, value: int) -> PipelineState:
-        """Return a copy with the specified loop iteration field set to value.
-
-        Args:
-            field_name: The iteration_state_field value from PhaseLoopPolicy.
-            value: New iteration count.
-
-        Returns:
-            New PipelineState with the iteration counter updated.
-        """
         return self.copy_with(
             loop_iterations={**self.loop_iterations, field_name: value},
         )
 
     def get_budget_remaining(self, counter_name: str) -> int:
-        """Get the remaining budget for a policy-declared budget counter.
-
-        Args:
-            counter_name: The budget counter name from PhaseCommitPolicy.increments_counter.
-
-        Returns:
-            Remaining budget count, derived as max(0, cap - completed).
-        """
         return max(
             0,
             self.budget_caps.get(counter_name, 0) - self.outer_progress.get(counter_name, 0),
         )
 
     def get_budget_cap(self, counter_name: str) -> int:
-        """Get the budget cap for a policy-declared budget counter.
-
-        Args:
-            counter_name: The budget counter name.
-
-        Returns:
-            Budget cap (maximum allowed), or 0 if not set.
-        """
         return self.budget_caps.get(counter_name, 0)
 
     def get_outer_progress(self, counter_name: str) -> int:
-        """Get the completed cycle count for a policy-declared budget counter."""
         return self.outer_progress.get(counter_name, 0)
 
     def with_outer_progress(self, counter_name: str, value: int) -> PipelineState:
-        """Return a copy with the specified outer progress counter set to value."""
         return self.copy_with(outer_progress={**self.outer_progress, counter_name: value})
 
     def with_budget_cap(self, counter_name: str, value: int) -> PipelineState:
-        """Return a copy with the specified budget cap set to value."""
         return self.copy_with(
             budget_caps={**self.budget_caps, counter_name: value},
         )
 
     def with_fallover_record(self, record: FalloverRecord) -> PipelineState:
-        """Return a copy with one additional fallover record, trimmed to cycle cap."""
         return self.copy_with(fallover_history=(*self.fallover_history, record))
 
     def with_phase_timing(self, record: PhaseTimingRecord) -> PipelineState:
-        """Return a copy carrying one completed phase timing record."""
         return self.copy_with(phase_timings=(*self.phase_timings, record))
 
     def with_parallel_execution_cleared(self) -> PipelineState:
-        """Return a copy with completed fan-out tracking removed.
-
-        This is the single sanctioned seam for ending a parallel wave's
-        lifecycle. ``copy_with`` deliberately refuses to mutate non-empty
-        ``work_units`` so mid-wave state cannot be lost by accident; once a
-        wave has fully succeeded the tracking state must be dropped here or
-        it would poison routing of the next (non-parallelized) phase.
-        """
         return self.model_copy(update={"work_units": (), "worker_states": {}})
 
     def set_waiting(self, reason: WaitReason, until_monotonic_ms: int | None) -> PipelineState:
-        """Return a copy raised into the wait state with a structured reason.
-
-        Single owner of ``is_waiting_state`` transitions to True: callers
-        must not write the flag directly via ``copy_with``.
-        """
         return self.model_copy(
             update={
                 "is_waiting_state": True,
@@ -684,7 +489,6 @@ class PipelineState(_FrozenPipelineStateModel):
         )
 
     def clear_waiting(self) -> PipelineState:
-        """Return a copy lowered out of the wait state, clearing reason/deadline."""
         return self.model_copy(
             update={
                 "is_waiting_state": False,
@@ -694,7 +498,6 @@ class PipelineState(_FrozenPipelineStateModel):
         )
 
     def copy_with(self, **updates: object) -> PipelineState:
-        """Return a copy with updates applied in a typed-safe manner."""
         if self.work_units and "work_units" in updates and updates["work_units"] != self.work_units:
             updates = {k: v for k, v in updates.items() if k != "work_units"}
         if "fallover_history" in updates or "recovery_cycle_cap" in updates:
@@ -708,7 +511,6 @@ class PipelineState(_FrozenPipelineStateModel):
         return self.model_copy(update=updates)
 
 
-# Resolve forward references from TYPE_CHECKING imports at runtime
 PipelineState.model_rebuild(
     _types_namespace={
         "PipelinePhase": PipelinePhase,

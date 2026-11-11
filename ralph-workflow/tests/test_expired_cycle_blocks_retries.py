@@ -1,14 +1,3 @@
-"""A spent cycle must not keep starting fresh development invocations.
-
-Retry and chain-fallover leave the run in the same phase, so no routing
-boundary is crossed and the deadline — enforced only at boundaries — is never
-consulted. With three retries per agent times the length of the agent chain,
-an expired cycle could still run a double-digit number of full-length
-development invocations, while the prompt, the tool-result banner and the
-policy documentation all state that the redirect happens instead of starting
-another development invocation.
-"""
-
 from __future__ import annotations
 
 from functools import lru_cache
@@ -42,9 +31,6 @@ def _developing(consumed: float) -> PipelineState:
 
 
 def _fail(state: PipelineState, elapsed: float) -> PipelineState:
-    # The recovery controller is the owner of the retry decision: it decides
-    # whether the failing agent may try again, so the retry below is the
-    # owner's verdict rather than a counter the reducer keeps itself.
     next_state, _effects = reducer_reduce(
         state,
         PipelineEvent.AGENT_FAILURE,
@@ -56,7 +42,6 @@ def _fail(state: PipelineState, elapsed: float) -> PipelineState:
 
 
 def test_a_retry_inside_a_spent_cycle_is_redirected_instead() -> None:
-    """The retry would be a fresh full-length invocation on a spent budget."""
     redirected = _fail(_developing(_SPENT), _SPENT)
 
     assert redirected.phase == "development_final_commit_review"
@@ -65,7 +50,6 @@ def test_a_retry_inside_a_spent_cycle_is_redirected_instead() -> None:
 
 
 def test_retries_inside_the_budget_are_untouched() -> None:
-    """A failure with budget left still retries, as it always did."""
     retried = _fail(_developing(1000.0), 1000.0)
 
     assert retried.phase == "development"
@@ -73,7 +57,6 @@ def test_retries_inside_the_budget_are_untouched() -> None:
 
 
 def test_a_spent_cycle_cannot_fall_over_to_the_next_agent_either() -> None:
-    """Chain fallover is the same unbudgeted invocation by another name."""
     exhausted = _developing(_SPENT)
     chain = exhausted.chain_for_phase("development")
     exhausted = exhausted.with_phase_chain(
@@ -86,7 +69,6 @@ def test_a_spent_cycle_cannot_fall_over_to_the_next_agent_either() -> None:
 
 
 def test_a_failure_outside_the_guarded_phase_is_unaffected() -> None:
-    """Only the deadline-guarded phase is bounded by the cycle budget."""
     planning = PipelineState(
         phase="planning",
         phase_chains={"planning": AgentChainState(agents=["claude"])},
@@ -99,7 +81,6 @@ def test_a_failure_outside_the_guarded_phase_is_unaffected() -> None:
 
 
 def test_a_continuation_inside_a_spent_cycle_is_redirected_too() -> None:
-    """A continuation is another full-length invocation of the same phase."""
     redirected, _effects = reducer_reduce(
         _developing(_SPENT),
         PipelineEvent.AGENT_RETRY,
@@ -111,18 +92,6 @@ def test_a_continuation_inside_a_spent_cycle_is_redirected_too() -> None:
 
 
 def test_a_stale_active_cycle_redirects_the_start_edge_entry() -> None:
-    """Entering on the start edge with a cycle still armed and spent.
-
-    The start branch only fires when no cycle is running, so an entry made
-    while one is still armed falls through to the guarded-entry check and is
-    redirected rather than silently starting a second cycle on a spent clock.
-
-    What this does NOT pin: the signal resolver's forwarding of the routing
-    timing. Under the bundled graph every edge into the guarded phase is
-    reached through the analysis-success or loopback handlers, not the signal
-    resolver, so no bundled-policy test can distinguish that forwarding —
-    verified by mutating it and watching this stay green.
-    """
     spent = PipelineState(
         phase="planning_analysis",
         budget_caps={"iteration": 5},

@@ -1,5 +1,3 @@
-"""Integration tests for the standalone Python MCP server runtime."""
-
 from __future__ import annotations
 
 import json
@@ -8,7 +6,6 @@ from pathlib import Path
 import pytest
 from loguru import logger
 
-# Config imports for multimodal tests
 from ralph.mcp.multimodal.artifacts import SUPPORTED_MODALITIES
 from ralph.mcp.multimodal.capabilities import (
     UNKNOWN_IDENTITY,
@@ -49,8 +46,6 @@ from tests._support.typed_accessors import (
 )
 from tests.mcp.test_md_plan_spec import _plan_document
 
-# Lazy imports for multimodal tests that require optional dependencies
-# These are only available when the multimodal feature is fully configured
 _lazy_imports: dict[str, object] = {}
 
 HTTP_OK = 200
@@ -59,8 +54,6 @@ HTTP_ACCEPTED = 202
 
 @pytest.fixture(autouse=True)
 def _isolate_from_upstream_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Prevent real upstream MCP servers (configured in dev env) from being
-    # loaded during tests. Each test provides its own upstream config if needed.
     monkeypatch.delenv(UPSTREAM_MCP_CONFIG_ENV, raising=False)
 
 
@@ -213,9 +206,6 @@ def test_direct_standalone_server_protects_secret_before_session_read(
 ) -> None:
     calls: list[str] = []
 
-    # The unit test calls ``run_standalone_server`` with no bridge
-    # parent, so the inherited-FD env var must be cleared to keep
-    # the test hermetic against ambient env from sibling tests.
     monkeypatch.delenv("RALPH_MCP_INHERITED_FD", raising=False)
 
     monkeypatch.setattr(
@@ -365,9 +355,6 @@ def test_file_backed_session_accepts_injected_fallback_id_factories() -> None:
 def test_build_standalone_http_server_falls_back_without_mcp_dependency(
     tmp_path: Path,
 ) -> None:
-    # Property A: there is no alternate FastMCP path. The single production
-    # _FallbackStandaloneServer (via build_standalone_http_server) is the
-    # only server construction surface. This test pins the shipped path.
     session = _session(
         capabilities={
             "WorkspaceRead",
@@ -632,8 +619,6 @@ def test_runtime_main_launches_streamable_http_server(
         "transport": "streamable-http",
         "host": "0.0.0.0",
         "port": 8123,
-        # The agent CLI being served is declared, not inferred; omitted
-        # here, so the server keeps the permissive default.
         "agent_transport": None,
     }
 
@@ -1050,18 +1035,10 @@ def test_upstream_policy_allows_proxied_tools_with_upstream_capability(
     assert "ralph_upstream__srv2__do_thing" in tool_names
 
 
-# =============================================================================
-# Image content serialization tests (Task 3)
-# =============================================================================
-
-
 class TestFileBackedSessionCapabilityProfile:
-    """Tests for FileBackedSession.capability_profile property."""
-
     def test_file_backed_session_restores_capability_profile_from_payload(
         self, tmp_path: Path
     ) -> None:
-        """FileBackedSession.capability_profile reads from the serialized payload."""
 
         agent_session = AgentSession(
             session_id="sid-cap",
@@ -1084,16 +1061,13 @@ class TestFileBackedSessionCapabilityProfile:
         assert profile.verdict_for("pdf").delivery == DeliveryMode.TYPED_BLOCK
         assert profile.verdict_for("audio").delivery == DeliveryMode.UNSUPPORTED
 
-        # Ensure the raw payload contained capability_profile
         raw = json.loads(payload_str)
         assert "capability_profile" in raw
 
     def test_file_backed_session_capability_profile_falls_back_to_model_identity(
         self, tmp_path: Path
     ) -> None:
-        """FileBackedSession.capability_profile falls back to computing from model_identity."""
 
-        # Write a payload that has model_identity but no capability_profile
         payload = {
             "session_id": "sid-fb",
             "run_id": "run-fb",
@@ -1115,7 +1089,6 @@ class TestFileBackedSessionCapabilityProfile:
         assert profile.verdict_for("audio").delivery == DeliveryMode.TYPED_BLOCK
 
     def test_lifecycle_payload_roundtrip_preserves_capability_profile(self, tmp_path: Path) -> None:
-        """_session_payload_json + FileBackedSession preserves the full capability profile."""
 
         agent_session = AgentSession(
             session_id="sid-rt-cp",

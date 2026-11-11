@@ -1,5 +1,3 @@
-"""A broken activity relay must be visible to the supervisor's MCP probe."""
-
 from __future__ import annotations
 
 import pytest

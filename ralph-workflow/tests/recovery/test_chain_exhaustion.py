@@ -1,5 +1,3 @@
-"""Black-box test: the ledger demotes agents and the chain advances."""
-
 from __future__ import annotations
 
 import tempfile
@@ -43,8 +41,6 @@ def _make_state(agents: list[str]) -> PipelineState:
     )
 
 
-#: The failure ledger demotes an agent after this many consecutive
-#: unproductive attempts; the demotion is what advances the chain.
 _CONSECUTIVE_UNPRODUCTIVE_LIMIT = 3
 
 
@@ -54,7 +50,6 @@ def _fail_repeatedly(
     agent: str,
     attempts: int,
 ) -> PipelineState:
-    """Drive ``attempts`` failures for ``agent`` through the controller."""
     for _attempt in range(attempts):
         state, _, _ = controller.handle(
             state,
@@ -65,7 +60,6 @@ def _fail_repeatedly(
 
 
 def test_ledger_demotion_advances_the_chain_to_the_next_agent() -> None:
-    """A demoted agent hands the chain over to the next agent in the phase."""
     fallovers: list[FalloverEvent] = []
     bus = FailureEventBus()
     bus.subscribe(lambda evt: fallovers.append(evt) if isinstance(evt, FalloverEvent) else None)
@@ -79,8 +73,6 @@ def test_ledger_demotion_advances_the_chain_to_the_next_agent() -> None:
     )
     state = _make_state(["claude", "opencode"])
 
-    # The ledger demotes claude after the consecutive unproductive limit, so
-    # the chain falls over to opencode.
     state = _fail_repeatedly(controller, state, "claude", _CONSECUTIVE_UNPRODUCTIVE_LIMIT)
 
     assert len(fallovers) == 1
@@ -92,12 +84,6 @@ def test_ledger_demotion_advances_the_chain_to_the_next_agent() -> None:
 
 
 def test_every_demoted_agent_makes_the_controller_wait_instead_of_failing() -> None:
-    """When every agent in the chain is demoted, the controller waits.
-
-    The pipeline never exits because an agent is unavailable: the controller
-    reports a wait until the earliest cooldown expires instead of failing the
-    phase.
-    """
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,
@@ -112,12 +98,10 @@ def test_every_demoted_agent_makes_the_controller_wait_instead_of_failing() -> N
     assert state.phase == "development"
     assert state.is_waiting_state is True
     assert state.last_retry_delay_ms > 0
-    # The claude -> opencode fallover is the only record; opencode was last.
     assert len(state.fallover_history) == 1
 
 
 def test_chain_exhaustion_last_error_is_non_sentinel() -> None:
-    """Chain exhaustion last_error must be descriptive and not a forbidden sentinel."""
     controller = RecoveryController(
         options=RecoveryControllerOptions(cycle_cap=10, policy_bundle=_minimal_policy_bundle())
     )
@@ -132,7 +116,6 @@ def test_chain_exhaustion_last_error_is_non_sentinel() -> None:
 
 
 def test_chain_exhaustion_increments_recovery_cycle_count() -> None:
-    """Each full-chain exhaustion must increment recovery_cycle_count by 1."""
     controller = RecoveryController(
         options=RecoveryControllerOptions(cycle_cap=10, policy_bundle=_minimal_policy_bundle())
     )
@@ -146,7 +129,6 @@ def test_chain_exhaustion_increments_recovery_cycle_count() -> None:
 
 
 def test_single_agent_chain_exhaustion_retains_no_fallover_records() -> None:
-    """A single-agent chain increments recovery count without retaining fallover history."""
     controller = RecoveryController(
         options=RecoveryControllerOptions(cycle_cap=10, policy_bundle=_minimal_policy_bundle())
     )

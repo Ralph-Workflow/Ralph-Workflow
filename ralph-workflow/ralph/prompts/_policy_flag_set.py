@@ -1,4 +1,3 @@
-"""PolicyFlagSet — set of Ralph policy flags."""
 
 from __future__ import annotations
 
@@ -12,7 +11,6 @@ if TYPE_CHECKING:
 
 
 class PolicyFlagSet:
-    """Set of Ralph policy flags."""
 
     def __init__(self, values: Iterable[PolicyFlag] | None = None) -> None:
         self._values = frozenset(values or ())

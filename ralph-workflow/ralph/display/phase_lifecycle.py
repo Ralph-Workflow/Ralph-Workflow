@@ -1,4 +1,3 @@
-"""Lifecycle view-model dataclasses for phase rendering."""
 
 from __future__ import annotations
 
@@ -16,7 +15,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class RunCompletionModel:
-    """Immutable view-model for final run-completion summary data."""
 
     final_phase: str
     is_failure: bool
@@ -46,7 +44,6 @@ class RunCompletionModel:
         elapsed_seconds: float | None = None,
         activity: PhaseActivityCounts | None = None,
     ) -> RunCompletionModel:
-        """Build a RunCompletionModel from a PipelineSnapshot."""
         effective_activity = activity or PhaseActivityCounts()
         budget_progress: dict[str, tuple[int, int]] = {
             name: (bp.completed, bp.cap)

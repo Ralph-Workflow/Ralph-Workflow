@@ -1,9 +1,3 @@
-"""Central runtime planner for per-session MCP availability.
-
-This module is the single runtime source of truth for what MCP capabilities a new
-agent session should receive and what upstream MCP environment must be injected
-into the Ralph MCP subprocess for that session.
-"""
 
 from __future__ import annotations
 
@@ -49,28 +43,6 @@ _CAPABILITY_PRESETS: dict[str, frozenset[str]] = {
     "commit": frozenset({"run.report_progress", "workspace.write_ephemeral"}),
 }
 
-#: Capabilities withheld from named drains AFTER their class grant, keyed by
-#: drain name. A drain class describes the drain's write surface; it cannot
-#: express "this drain produces no artifact at all", which is exactly the
-#: out-of-graph ``policy_remediation`` drain: it takes its task from a
-#: materialized prompt and is judged solely by the deterministic validator
-#: that re-runs after it exits, so its prompt never asks the agent to submit
-#: an artifact, read a plan draft, or declare completion. Granting those
-#: capabilities would advertise the matching MCP tools in ``tools/list`` (and
-#: in the Claude ``--allowedTools`` allowlist discovered from it) with nothing
-#: on the other end to read what the agent submitted.
-#:
-#: Its analysis counterpart keeps ``artifact.submit`` and ``artifact.plan_read``:
-#: the latter exposes the read-only Markdown verifier used before submitting its
-#: routing decision. There is no startup plan for it to read, but capability
-#: filtering groups that verifier with the plan-read surface. Note what the
-#: ``analysis`` class does NOT grant: any workspace-write tool. It does grant
-#: ``process.exec_bounded`` (the reviewer must RUN the declared gates to check
-#: they resolve), and a shell can redirect -- so the no-write property is a
-#: strong default here, not a sandbox.
-#: What actually guarantees a review cannot approve its way past a failing
-#: validator is the deterministic re-validation in
-#: ``ralph.project_policy.pipeline_driver._finish``.
 _DRAIN_CAPABILITY_DENIALS: dict[str, frozenset[str]] = {
     "policy_remediation": frozenset({"artifact.submit", "artifact.plan_read"}),
 }
@@ -84,7 +56,6 @@ type UpstreamLoaderFn = Callable[[Path | None], tuple[UpstreamMcpServer, ...]]
 
 @dataclass(frozen=True)
 class SessionMcpPlan:
-    """Resolved MCP plan capturing capability grants and server environment for a session."""
 
     capabilities: frozenset[str]
     server_env: dict[str, str] | None = None
@@ -92,24 +63,7 @@ class SessionMcpPlan:
     capability_profile: ResolvedCapabilityProfile | None = None
 
 
-# Transports whose provider is fixed by the transport itself: the model
-# flag's provider hint is ignored because every model reachable via the
-# transport shares the same provider slug. Each entry maps the transport
-# to its canonical provider slug (used as the identity's ``provider``
-# field when no qualified ``provider/model`` form is present in the
-# flag).
 def _fixed_provider_for(transport: AgentTransport) -> str | None:
-    """Return the vendor this CLI is fixed to, or ``None``.
-
-    READ, never restated, and read on every call rather than snapshotted
-    at import. This and the delivery-side bound in ``capabilities``
-    answer the same question -- which CLIs call exactly one vendor's API
-    -- and while they were two hand-kept literals either could gain a
-    transport the other did not, resolving an identity the delivery side
-    would then decline to bound. A dict comprehension fixed the drift at
-    import time and left it reachable at runtime: one ``setitem`` on the
-    now-public source map and the two sides disagreed again.
-    """
     return TRANSPORT_FIXED_PROVIDER.get(transport.value)
 
 
@@ -117,14 +71,6 @@ def _resolve_transport_fixed_identity(
     transport: AgentTransport,
     model_flag: str | None,
 ) -> MultimodalModelIdentity:
-    """Resolve identity for a transport whose provider is fixed.
-
-    The model flag is parsed for a qualified ``provider/model`` form;
-    when present the embedded provider wins (so a Codex CLI invoked
-    with ``--model anthropic/claude-...`` resolves to
-    ``(anthropic, claude-...)`` rather than the Codex-default
-    ``openai``). Otherwise the transport's canonical provider is used.
-    """
     provider_slug, model_id = parse_model_flag(model_flag or "")
     canonical_provider = TRANSPORT_FIXED_PROVIDER[transport.value]
     if provider_slug is None:
@@ -144,15 +90,6 @@ def _resolve_opencode_identity(
     transport: AgentTransport,
     model_flag: str | None,
 ) -> MultimodalModelIdentity:
-    """Resolve identity for an OpenCode transport with optional catalog lookup.
-
-    The flag is parsed for a qualified ``provider/model`` form first; when
-    that yields a provider, the identity is returned without a catalog
-    lookup (the qualified form is self-describing). When the flag carries
-    only a bare model name, the OpenCode catalog is consulted to discover
-    the provider. A catalog miss or lookup failure degrades to
-    ``(unknown, model_id, opencode)`` so the caller can fall back safely.
-    """
     provider_slug, model_id = parse_model_flag(model_flag or "")
     if provider_slug is not None and model_id is not None:
         return MultimodalModelIdentity(
@@ -167,7 +104,6 @@ def _resolve_opencode_identity(
             transport=transport.value,
         )
 
-    # Bare model name: ask the catalog for the canonical provider.
     try:
         entry = get_model_by_id(model_id)
     except Exception:
@@ -193,23 +129,6 @@ def resolve_model_identity(
     transport: AgentTransport | None,
     model_flag: str | None = None,
 ) -> MultimodalModelIdentity:
-    """Resolve multimodal model identity from agent transport and model flag.
-
-    The flag is parsed by :func:`ralph.mcp._model_flag_parser.parse_model_flag`
-    for every transport, so a ``--model`` style flag, a qualified
-    ``provider/model`` form, and a bare name all flow through the same
-    tokeniser. Transports with a fixed provider (``CLAUDE``,
-    ``CLAUDE_INTERACTIVE``, ``CODEX``, ``AGY``) prefer the qualified
-    provider embedded in the flag when present and otherwise fall back
-    to the canonical provider. ``OPENCODE`` resolves the bare model
-    name against the catalog; catalog failure degrades to an unknown
-    provider. Uncovered transports (``NANOCODER``, ``PI``, ``CURSOR``,
-    ``GENERIC``) preserve the raw flag as the ``model_id`` and tag the
-    identity with the transport slug so the multimodal layer can fall
-    back to a safe ``resource_reference_replay`` delivery.
-
-    Returns :data:`UNKNOWN_IDENTITY` when ``transport`` is ``None``.
-    """
     if transport is None:
         return UNKNOWN_IDENTITY
 
@@ -219,10 +138,6 @@ def resolve_model_identity(
     if transport == AgentTransport.OPENCODE:
         return _resolve_opencode_identity(transport, model_flag)
 
-    # NANOCODER, PI, CURSOR, GENERIC: preserve the flag verbatim as the
-    # model_id; tag the identity with the transport slug so downstream
-    # layers can show "transport set, provider unknown" and the
-    # multimodal runtime defaults to RESOURCE_REFERENCE_REPLAY.
     return MultimodalModelIdentity(
         provider=transport.value,
         model_id=model_flag,
@@ -236,12 +151,6 @@ def resolve_effective_session_mcp_plan(
     agent_upstream_servers: tuple[UpstreamMcpServer, ...] = (),
     provider_visible_server_names: tuple[str, ...] = (RALPH_MCP_SERVER_NAME,),
 ) -> EffectiveSessionMcpPlan:
-    """Return the canonical effective MCP inventory for a session.
-
-    ``provider_visible_server_names`` captures the direct provider-visible MCP
-    entries (typically just ``ralph``), while ``effective_servers`` captures the
-    merged custom + agent-native upstream server set that Ralph will proxy.
-    """
 
     custom_servers = mcp_toml_as_upstreams(workspace_path)
     return effective_session_mcp_plan_from_servers(
@@ -257,7 +166,6 @@ def effective_session_mcp_plan_from_servers(
     agent_upstream_servers: tuple[UpstreamMcpServer, ...] = (),
     provider_visible_server_names: tuple[str, ...] = (RALPH_MCP_SERVER_NAME,),
 ) -> EffectiveSessionMcpPlan:
-    """Build the canonical effective session MCP inventory from preloaded servers."""
 
     effective_servers = merge_mcp_toml_into_upstreams(agent_upstream_servers, custom_servers)
     return EffectiveSessionMcpPlan(
@@ -272,37 +180,8 @@ def reconcile_injected_transport(
     identity: MultimodalModelIdentity,
     transport: AgentTransport | None,
 ) -> MultimodalModelIdentity:
-    """Reconcile a caller-supplied identity with the transport being launched.
-
-    Two facts can disagree: the identity a caller injected, which may
-    carry a transport of its own, and the transport this session is
-    actually being built for. Only one CLI is ever on the other end, and
-    that is the one being launched -- a stated transport that disagrees
-    is stale, whichever of the two is the restricted one.
-
-    Delegated to :func:`identity_on_transport`, which also drops the
-    provider beside a transport it replaces: that provider described the
-    other CLI, and keeping it mints a typed PDF block for a CLI that
-    cannot take one, or a hard unsupported error for one that can. The
-    two seams that reconcile a transport now apply the same rule.
-
-    Public because it is one of the six places a transport spelling gets
-    written, and the only one that can return WITHOUT normalising --
-    which is exactly how a blank transport kept reaching the child
-    payload after the other five were fixed.
-    """
-    # Normalise FIRST: a padded or differently-cased value from a
-    # hand-edited payload reaches the session file and the wire-ledger
-    # digest verbatim, and the early return below is exactly the case
-    # that comment was describing.
     stated = (identity.transport or "").strip().lower()
     if not stated:
-        # A BLANK transport is an unknown one, and unknown is ``None``.
-        # This branch kept ``""`` and ``"  "`` verbatim, and
-        # ``identity_is_serialisable`` reads a non-``None`` transport as
-        # known -- so ``"transport": ""`` was written into the child's
-        # payload and its capability digest by the one seam that
-        # short-circuits before ``identity_on_transport`` normalises it.
         normalised = identity if identity.transport is None else replace(identity, transport=None)
     else:
         normalised = (
@@ -322,17 +201,6 @@ def build_session_mcp_plan(
     model_opts: SessionModelOpts | None = None,
     model_flag: str | None = None,
 ) -> SessionMcpPlan:
-    """Build the runtime MCP plan for a new agent session.
-
-    The result captures both session capability grants and any upstream MCP
-    environment that must be present in the Ralph MCP subprocess so its runtime
-    tool registry matches what the agent is expected to see.
-
-    Identity resolution precedence:
-    1. ``model_identity`` (explicit, if provided)
-    2. ``model_flag`` resolved via ``resolve_model_identity(transport, model_flag)``
-    3. ``UNKNOWN_IDENTITY`` fallback
-    """
 
     capability_cls = _resolve_capability_cls(drain, agents_policy)
     capabilities = _base_capabilities_for_resolved_class(
@@ -388,20 +256,6 @@ def build_session_mcp_plan(
     elif _model_opts.model_flag is not None:
         resolved_identity = resolve_model_identity(transport, _model_opts.model_flag)
     elif transport is not None:
-        # No model flag -- the common ``ralph run`` shape. The provider
-        # stays unresolved (we genuinely do not know which model the CLI
-        # will pick), but the TRANSPORT is known and must survive: the
-        # multimodal layer keys some delivery decisions on the agent CLI
-        # rather than on the provider, because the defect being guarded
-        # lives in the CLI's own wire serialisation (see
-        # ``inline_image_roundtrip_unsafe``). Falling through to
-        # ``UNKNOWN_IDENTITY`` here discarded the transport and left
-        # those guards dead on the default run path.
-        #
-        # Only the transport is added. Resolving the canonical provider
-        # instead would flip every other modality for flagless runs from
-        # resource-reference to UNSUPPORTED -- a much wider behaviour
-        # change than this fix intends.
         resolved_identity = MultimodalModelIdentity(
             provider=UNKNOWN_IDENTITY.provider,
             model_id=None,
@@ -421,11 +275,6 @@ def _resolve_capability_cls(
     drain: str,
     agents_policy: AgentsPolicy | None = None,
 ) -> DrainClass:
-    """Resolve the effective capability class for a drain.
-
-    Uses capability_class from agents_policy when declared, falling back to
-    drain_class. This is the single source of truth for MCP surface selection.
-    """
     drain_class = drain_class_for_session(drain, agents_policy)
     if agents_policy is not None:
         drain_cfg = agents_policy.agent_drains.get(drain)
@@ -462,9 +311,6 @@ _BASE_CAPABILITIES: frozenset[str] = frozenset(
         "artifact.plan_read",
         "workspace.metadata_read",
         "process.exec_bounded",
-        # S-14 (criterion 1): the multimodal MCP endpoints always stay
-        # enabled. ``media.read`` is granted to every drain by default;
-        # there is no config flag that removes it.
         "media.read",
         "media.capture",
     }
@@ -492,13 +338,6 @@ def _apply_config_driven_capabilities(
     mcp_config_enabled_web_visit: bool,
     has_upstreams: bool,
 ) -> set[str]:
-    """Apply config-driven capability grants.
-
-    The ``media.read`` capability is part of ``_BASE_CAPABILITIES``
-    (S-14 / criterion 1) and is no longer gated by a config flag --
-    the multimodal MCP endpoints always stay enabled. ``web.search``,
-    ``web.visit`` and ``web.download`` remain config-gated tunables.
-    """
     is_commit = capability_cls == DrainClass.COMMIT
     if mcp_config_enabled_web_search and not is_commit:
         capabilities.add("web.search")
@@ -512,7 +351,6 @@ def _apply_config_driven_capabilities(
 
 
 def default_prompt_capability_identifiers(drain: SessionDrain) -> frozenset[str]:
-    """Return prompt-visible default capabilities from the runtime plan rules."""
     capability_cls = _PROMPT_DRAIN_RUNTIME_CLASSES[drain]
     mcp_config = load_mcp_config(config_path=None)
     capabilities = _base_capabilities_for_resolved_class(
@@ -541,7 +379,6 @@ def _base_capabilities_for_resolved_class(
         extras.add("artifact.plan_write")
     if cls_value in _CAPABILITY_PRESETS:
         return set(_BASE_CAPABILITIES | extras)
-    # development and fix classes: full write surface
     return set(_BASE_CAPABILITIES | _DEVELOPMENT_EXTRA | extras)
 
 

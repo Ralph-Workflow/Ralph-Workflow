@@ -1,5 +1,3 @@
-"""Phase-proof arms for the atomic integration transition check."""
-
 import ralph.pipeline._integration_diagnostic as diagnostic
 from ralph.pipeline.auto_integrate_record import IntegrationRecord
 

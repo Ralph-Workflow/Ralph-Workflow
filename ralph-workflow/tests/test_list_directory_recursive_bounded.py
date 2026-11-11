@@ -1,11 +1,3 @@
-"""Regression: recursive directory walks are bounded (same bug class as git hang).
-
-A recursive ``list_directory`` / ``grep`` over a huge plain tree (e.g. a large
-``vendor/`` without a ``.git`` marker) is an unbounded in-memory walk that can
-block the MCP server thread for a long time, starving the agent of output. The
-walks must cap entries and emit an explicit truncation marker.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -26,7 +18,7 @@ def test_recursive_list_truncates_beyond_max_entries(monkeypatch: pytest.MonkeyP
     out = _list_ops._list_dir_recursive_output(ws, "")
 
     assert "truncated" in out.lower()
-    assert out.count("[FILE]") <= 6  # bounded, not all 20 emitted
+    assert out.count("[FILE]") <= 6
 
 
 def test_collect_files_recursive_is_bounded(monkeypatch: pytest.MonkeyPatch) -> None:

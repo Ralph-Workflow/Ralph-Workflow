@@ -1,4 +1,3 @@
-"""Reverify explicitly declared source corrections without absorbing existing work."""
 
 from __future__ import annotations
 
@@ -8,7 +7,7 @@ import os
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
-from ralph.git import subprocess_runner  # call-time run_git: never capture a test fake
+from ralph.git import subprocess_runner
 from ralph.git.merge import staged_conflict_marker_paths, unmerged_paths
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
@@ -34,18 +33,6 @@ _GIT_REFUSAL_DETAIL_LIMIT = 200
 
 
 def _refusal(reason: str, result: GitRunResult) -> RuntimeError:
-    """Return a fail-closed refusal that names the git exit and git's own diagnostic.
-
-    Each enumeration below runs a real git child, so one nonzero exit covers
-    two unrelated worlds: git answered that the work cannot be captured, or
-    the child never produced an answer at all (an unreadable index or config,
-    or a spawn that did not exec). Reporting only ``reason`` collapsed both
-    into one opaque sentence, so
-    ``ralph.pipeline._pending_merge_repair._repair_owned_merge`` retained the
-    integration with nothing that separates a repository fault from a spawn
-    fault. Naming the exit code and git's own stderr keeps the refusal
-    fail-closed and identical in behaviour while making it attributable.
-    """
     detail = " ".join(result.stderr.split())[:_GIT_REFUSAL_DETAIL_LIMIT]
     observed = f": {detail}" if detail else " with no diagnostic"
     return RuntimeError(f"{reason} (git exit {result.returncode}{observed})")
@@ -103,7 +90,6 @@ def accept_repair_edits(
     *,
     backend: FileBackend,
 ) -> bool:
-    """Admit declared edits only after proving existing work and Git parents unchanged."""
     matches = (
         pending_rebase_identity_matches(root, record)
         if classify_git_operation(record) is GitOperationKind.AWAITING_CONTINUE
@@ -216,8 +202,6 @@ def resume_source_repair(
         repair_pending_diff=None,
         repair_pending_paths=(),
     )
-    # Mutation decision routed through the git-operation authority; the
-    # model fields remain for checkpoint compatibility.
     revised = (
         cleared.with_transition(MARK_PENDING_REBASE_CONTINUE, rebase_continue_tree=tree)
         if classify_git_operation(cleared) is GitOperationKind.AWAITING_CONTINUE

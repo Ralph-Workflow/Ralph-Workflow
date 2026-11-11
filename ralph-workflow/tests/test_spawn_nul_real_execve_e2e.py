@@ -1,13 +1,3 @@
-"""Real-execve proof that a NUL-carrying argument still reaches the child.
-
-The fake-factory coverage in ``tests/process/test_spawn_nul_sanitization.py``
-pins the contract; this spawns a real process so the assertion is made
-against CPython's actual ``fork_exec`` boundary — the one that raised
-``ValueError: embedded null byte`` and aborted a Pi invocation whose
-positional prompt carried a git diff of a source file containing a
-literal NUL.
-"""
-
 from __future__ import annotations
 
 import subprocess
@@ -28,7 +18,6 @@ _WAIT_TIMEOUT_SECONDS = 30.0
 
 
 def test_real_spawn_delivers_a_nul_carrying_prompt_with_the_nul_stripped() -> None:
-    """A real child receives the prompt minus its NULs instead of no spawn at all."""
     pm = ProcessManager(policy=ProcessManagerPolicy(log_events=False, enable_zombie_reaper=False))
 
     with pm.spawn(
@@ -44,8 +33,6 @@ def test_real_spawn_delivers_a_nul_carrying_prompt_with_the_nul_stripped() -> No
 
 
 def test_real_spawn_still_accepts_a_pathlike_argument() -> None:
-    """``subprocess`` accepts a ``PathLike`` argv token; sanitizing must not
-    take that away from the one chokepoint every child goes through."""
     pm = ProcessManager(policy=ProcessManagerPolicy(log_events=False, enable_zombie_reaper=False))
 
     with pm.spawn(

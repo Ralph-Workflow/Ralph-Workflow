@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Update watchdog-spec.md to reference the consolidated file."""
 import re
 from pathlib import Path
 

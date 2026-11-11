@@ -15,7 +15,7 @@ IMPORT_ERROR_MATCH = "pip install ralph-workflow\\[web-search\\]"
 def _import_exa_module() -> object:
     try:
         return import_module("ralph.mcp.websearch.backends.exa")
-    except ModuleNotFoundError as exc:  # pragma: no cover - exercised in RED phase
+    except ModuleNotFoundError as exc:
         raise AssertionError("ralph.mcp.websearch.backends.exa should exist") from exc
 
 

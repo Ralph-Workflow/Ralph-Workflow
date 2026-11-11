@@ -1,34 +1,3 @@
-"""Standalone MCP HTTP server runtime for Ralph tools.
-
-Runs the Ralph MCP server as a long-lived HTTP process that AI agents connect
-to over the MCP protocol. The server exposes Ralph's tool registry (file
-operations, git commands, artifact submission, coordination, etc.) through
-the production streamable-HTTP transport (``_FallbackStandaloneServer``).
-
-The architecture is intentionally single-path: there is exactly one server
-transport — the production ``_FallbackHttpHandler`` (constructed by
-``_FallbackStandaloneServer``) — and every behavior (tool dispatch,
-streaming, session handling, concurrency control, error framing) lives on
-that one path. See ``docs/agents/architecture.md`` for the rationale.
-
-Key responsibilities:
-
-- ``RalphmcpServer`` - the main server class; call ``start(config)`` to launch
-  and ``stop()`` to shut down gracefully. A health-check endpoint listens on
-  ``/health``; liveness is polled by ``ralph.process.mcp_supervisor``.
-- Environment handshake: the server reads ``MCP_SESSION`` (session JSON) and
-  ``MCP_SESSION_FILE`` env vars to populate the agent session, which governs
-  which capabilities and upstream MCP servers are enabled.
-- Tool capability filtering: tools are registered or skipped based on the
-  session's declared ``McpCapability`` set so each agent only sees the tools
-  it needs.
-- Upstream MCP registry: ``load_upstream_mcp_servers`` discovers additional
-  MCP servers from ``UPSTREAM_MCP_CONFIG`` and mounts them alongside Ralph
-  tools.
-
-The server is launched by ``ralph.process.manager`` via the
-``ralph-mcp`` entry point (``ralph/mcp/server/__main__.py``).
-"""
 
 from __future__ import annotations
 
@@ -139,29 +108,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class McpServerExtras:
-    """Optional DI parameters for building standalone MCP servers.
-
-    The dataclass is the dependency-injection bundle threaded through
-    ``build_standalone_http_server`` and ``run_standalone_server``.
-    Every field is optional (``None`` means "use the production
-    default") so callers can override exactly one seam (e.g. an
-    upstream registry for a test) without rebuilding the rest of the
-    composition root.
-
-    Attributes:
-        session: Pre-built ``McpSession`` (handshake, capabilities,
-            upstream mounts). When ``None`` the runtime reads
-            ``MCP_SESSION`` / ``MCP_SESSION_FILE`` from the environment
-            via ``session_from_env``.
-        upstream_registry: Pre-loaded ``UpstreamRegistry`` for
-            upstream MCP servers. When ``None`` the runtime loads the
-            registry from ``UPSTREAM_MCP_CONFIG`` /
-            ``UPSTREAM_MCP_TOOL_CATALOG_ENV`` via
-            ``load_runtime_upstream_servers``.
-        mcp_config: Pre-parsed ``McpConfig`` (mcp.toml model). When
-            ``None`` the runtime calls ``load_mcp_config`` with the
-            user-global path.
-    """
 
     session: McpSession | None = None
     upstream_registry: UpstreamRegistry | None = None
@@ -171,24 +117,10 @@ class McpServerExtras:
 
 FallbackStandaloneServer = _FallbackStandaloneServer
 
-# Test seam for stage-deadline measurement: tests monkeypatch this to a fake
-# monotonic clock (see test_mcp_server_startup_stages_observable).
 _clock = time.monotonic
 
-# Hard ceiling for ``MCP_TEST_REGISTRY_BUILD_GATE_ENV`` polling. The
-# production deadline comes from the caller's ``budget_s`` argument
-# (the whole-startup envelope), but a subprocess-E2E test that
-# blocks the gate on purpose would otherwise tie up a single
-# test-shard slot for up to ``budget_s`` seconds. This hard ceiling
-# keeps the gate's worst-case wall-clock bounded so a single
-# subprocess-E2E test does not starve the immutable 60-second
-# combined test budget enforced by ``ralph/verify.py``. The
-# production behavior is unchanged (production never sets the env
-# var, so the gate returns immediately).
 _REGISTRY_BUILD_GATE_HARD_DEADLINE_S: float = 0.05
 
-# Import-time invariant: whole startup budget must stay strictly below
-# preflight timeout (if/raise, not assert, so it survives python -O).
 if not (mcp_whole_startup_budget_from_env() < mcp_preflight_timeout_from_env().total_seconds()):
     raise RuntimeError(
         "import-time invariant violated: mcp_whole_startup_budget_from_env() "
@@ -197,20 +129,6 @@ if not (mcp_whole_startup_budget_from_env() < mcp_preflight_timeout_from_env().t
 
 
 def standalone_session_identity(agent_transport: str | None) -> MultimodalModelIdentity:
-    """Return the model identity for a standalone server's own session.
-
-    ``agent_transport`` names the agent CLI on the other end. The
-    provider stays unresolved -- a standalone server genuinely does not
-    know which model will be used -- but the transport is enough for the
-    delivery guards that key on the CLI. Omitted, the identity stays
-    fully unknown, which "unresolvable -> capable" treats as permissive.
-    """
-    # Lowercased as well as stripped: this is the THIRD seam that writes
-    # a transport spelling into an identity, and the other two
-    # canonicalise. The guards all strip and lower before matching, so a
-    # shouted value still works -- but the spelling reaches the session
-    # file and the wire-ledger capability digest, and two spellings of
-    # one CLI produced two different digests for the same run.
     declared = (agent_transport or "").strip().lower()
     if not declared:
         return UNKNOWN_IDENTITY
@@ -232,39 +150,9 @@ def _build_mcp_registry_and_server(
     t0: float,
     env_map: Mapping[str, str],
 ) -> McpServer:
-    """Construct the Ralph tool registry and wrap it in ``McpServer``.
-
-    Synchronous, no daemon thread, no ``join(timeout=)``: the previous
-    implementation used a daemon thread and only recorded
-    ``registry_built`` after the ``join`` timed out, which is the
-    workaround the plan expressly prohibited. The deadline is enforced
-    by ``_poll_registry_build_gate`` at the McpServer constructor
-    boundary, where the test seam can simulate a blocked constructor
-    and surface a typed ``McpServerError`` with
-    ``last_stage="registry_built"`` BEFORE the parent's preflight
-    closes.
-
-    The gate is polled BETWEEN the tool-registry build (and its
-    "MCP server started with N built-in tools" log) and the
-    ``McpServer(...)`` call. This is the exact constructor boundary:
-    when the gate fires, the ``McpServer.__init__`` is never called,
-    so a real constructor block (one that hangs in ``__init__``)
-    is exercised end-to-end — the child exits with a typed
-    ``McpServerError`` and the parent's preflight surfaces
-    ``last_stage="registry_built"`` from the stage file the caller
-    wrote before invoking this function.
-    """
     real_deadline_s = mcp_real_startup_deadline_from_env(env_map)
     remaining_budget_s = max(0.0, real_deadline_s - (_clock() - t0))
-    # mcp_registry_read_timeout_from_env is retained for diagnostic/compatibility purposes,
-    # while the fatal read bound is the remaining real deadline.
     _read_timeout_ceiling_s = mcp_registry_read_timeout_from_env(env_map)
-    # Diagnostic-vs-deadline contract: the per-read ceiling is informational only.
-    # Slow-but-responsive I/O succeeds as long as it fits the real deadline.
-    # Truly hung I/O still fails closed via ``_read_workspace_policy``'s
-    # ``done.wait(timeout=...)`` bound, which is set to ``effective_read_timeout_s``
-    # below; a hung read therefore surfaces a typed McpServerError with
-    # ``last_stage="registry_built"`` before the real deadline elapses.
     effective_read_timeout_s = remaining_budget_s
 
     t_reg_build_start = _clock()
@@ -302,14 +190,6 @@ def _build_mcp_registry_and_server(
     else:
         logger.info("MCP server started with {n} built-in tools", n=n_builtin)
 
-    # R2 blocked-operation seam: poll the gate AT THE McpServer
-    # constructor boundary. If the gate fires, ``McpServer.__init__``
-    # is never called, so a real constructor block is exercised. The
-    # gate's deadline uses the WHOLE-STARTUP envelope so the child
-    # can surface a typed ``McpServerError`` with
-    # ``last_stage="registry_built"`` BEFORE the parent's preflight
-    # closes. Production never sets ``MCP_TEST_REGISTRY_BUILD_GATE_ENV``,
-    # so the gate returns immediately in the fast path.
     whole_startup_budget_s = mcp_whole_startup_budget_from_env(env_map)
     _poll_registry_build_gate(env_map, t0, whole_startup_budget_s)
 
@@ -340,29 +220,14 @@ def _poll_bounded_pre_serve(
     env_map: Mapping[str, str],
     t0: float,
 ) -> tuple[FsWorkspace, McpConfig]:
-    """Run the pre-serve critical path with a wall-clock deadline.
-
-    Executes allowed_roots access, FsWorkspace construction, and load_mcp_config
-    inside a ThreadPoolExecutor worker thread and raises McpServerError
-    (last_stage="config_loading") if the budget is exceeded.  Event.wait()
-    (which releases the GIL) is used in test doubles so the timeout fires;
-    path.open("rb") on a FIFO holds the GIL and cannot be interrupted.
-    """
     real_deadline_s = mcp_preflight_timeout_from_env(env_map).total_seconds() - _PROBE_SAFETY_S
     remaining_s = max(0.0, real_deadline_s - (_clock() - t0))
-    # Per the diagnostic-vs-deadline contract: the per-stage budget is diagnostic-only.
-    # Slow-but-responsive I/O succeeds as long as it finishes before the real deadline.
-    # The wall-clock envelope is the remaining real deadline, not a min() with a
-    # sub-second constant; the per-stage budget is recorded in the overrun
-    # diagnostics and never used as a hard cap.
     effective_timeout_s = remaining_s
 
     def _do_pre_serve() -> tuple[FsWorkspace, McpConfig]:
-        # allowed_roots access triggers FileBackedSession._load() which
-        # does blocking stat() + read_text() on the session file.
         allowed_roots = cast(
             "tuple[Path, ...]", getattr(effective_session, "allowed_roots", ())
-        )  # cast-policy: seam: structural boundary
+        )
         ws = (
             workspace
             if workspace is not None
@@ -383,17 +248,12 @@ def _poll_bounded_pre_serve(
 
     ex: concurrent.futures.ThreadPoolExecutor | None = None
     try:
-        # ThreadPoolExecutor (not bare daemon Thread) is required by the
-        # resource-lifecycle audit; max_workers=1 serialises all blocking
-        # operations so the budget covers the whole sequence.
         ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         future = ex.submit(_do_pre_serve)
         return future.result(timeout=effective_timeout_s)
     except concurrent.futures.TimeoutError:
-        # Worker is wedged on real I/O holding the GIL;
-        # ``shutdown(wait=False)`` cannot interrupt it (see ``_pre_serve_overrun``).
         elapsed = _clock() - t0
-        fail_closed_pre_serve_overrun(  # never returns: ``os._exit``
+        fail_closed_pre_serve_overrun(
             workspace_root,
             stage="config_loading",
             elapsed_s=elapsed,
@@ -404,7 +264,7 @@ def _poll_bounded_pre_serve(
         raise
     finally:
         if ex is not None:
-            ex.shutdown(wait=False)  # do not accumulate executor threads across calls
+            ex.shutdown(wait=False)
 
 
 def build_standalone_http_server(
@@ -420,24 +280,6 @@ def build_standalone_http_server(
     parent_socket: socket.socket | None = None,
     t0: float | None = None,
 ) -> _StandaloneHttpServer:
-    """Build a standalone HTTP MCP server backed by the Ralph tool registry.
-
-    ``agent_transport`` names the agent CLI this server will be serving
-    (distinct from the MCP wire transport). Some delivery decisions key
-    on the CLI rather than on the provider, so a server that does not
-    know what it serves cannot make them: an operator pointing a
-    restricted CLI at a manually started server would be handed content
-    that kills its turn. There is no way to infer this, so it is
-    declared -- and omitted, the server keeps the permissive default.
-
-    SCOPE: the declaration reaches the session this function MINTS. A
-    caller that supplies its own session in ``extras`` is stating who it
-    is talking to, and that session's identity is used as given --
-    ``agent_transport`` does not override it. ``run_standalone_server``
-    is the path that always honours the declaration: it threads it into
-    ``session_from_env``, which applies it to both the file-backed and
-    the JSON handshake shapes.
-    """
     _extras = extras or McpServerExtras()
     env_map = os.environ if env is None else env
     if t0 is None:
@@ -449,17 +291,7 @@ def build_standalone_http_server(
         capabilities=_all_capability_values(),
         model_identity=standalone_session_identity(agent_transport),
     )
-    # An environment-handshake session gets the declaration inside
-    # ``session_from_env``, which applies it to both the file-backed and
-    # the JSON shape; the minted fallback above gets it from
-    # ``standalone_session_identity``. Nothing is needed here.
 
-    # R2: bound the synchronous pre-serve critical path (allowed_roots access,
-    # FsWorkspace construction, load_mcp_config). A hung filesystem (NFS,
-    # container, sandboxed mount) would otherwise block the child indefinitely.
-    # Record config_loading BEFORE the bounded block so the stage file captures
-    # where the child was when the budget fires. ThreadPoolExecutor (not bare
-    # daemon Thread) is required by the resource-lifecycle audit.
     t0_eff = t0 if t0 is not None else _clock()
 
     def _stage(name: str) -> None:
@@ -493,42 +325,16 @@ def build_standalone_http_server(
     _check_real_startup_deadline("config_loaded", t0, env_map)
 
     t_stage_discovery = _clock()
-    # Keep this composition seam unary: callers and test doubles can replace
-    # it without knowing which environment source the standalone runtime uses.
-    # The production loader defaults to ``os.environ``; ``env_map`` remains
-    # the explicit source for the adjacent cached-catalog lookup below.
     upstream_servers = load_runtime_upstream_servers(mcp_cfg)
-    # R2: presence-aware catalog load. The env var is the canonical
-    # presence signal: SET (even if the value is "{}") means the parent
-    # has an authoritative snapshot and the child MUST NOT probe upstreams;
-    # UNSET means the catalog is absent and the child must discover. The
-    # 3-state contract (absent / present-empty / present-with-tools) is
-    # defined in ralph/mcp/upstream/tool_catalog_cache.py:UpstreamToolCatalogSnapshot
-    # and materialized at the parent end by apply_tool_catalog_env.
     catalog_raw = env_map.get(UPSTREAM_MCP_TOOL_CATALOG_ENV)
     catalog_present = catalog_raw is not None
     if catalog_present:
-        # load_upstream_tool_catalog is fail-closed: malformed JSON or
-        # non-mapping payload raises McpServerError, which propagates up.
         tool_catalog = load_upstream_tool_catalog(catalog_raw)
-        # Filter configured upstreams to those with at least one tool in
-        # the catalog. A present-empty catalog ("{}" or {"remote":[]})
-        # filters every server out, which is the documented
-        # "I have an authoritative empty snapshot" case: the child serves
-        # built-ins with upstream_reg=None below.
         upstream_servers = tuple(
             server for server in upstream_servers if server.name in tool_catalog
         )
     else:
         tool_catalog = {}
-    # R2 respawn invariant: a child started with ``RALPH_MCP_RESPAWN=1``
-    # must NOT probe upstreams. The parent owns the catalog and hands
-    # it via ``UPSTREAM_MCP_TOOL_CATALOG_ENV``; a respawn that cannot
-    # find that catalog would silently fall through to the network
-    # probe above and burn the readiness budget before serving. The
-    # contract: respawn without a catalog is a typed McpServerError
-    # BEFORE any preflight and BEFORE any UpstreamRegistry.build() call,
-    # so the supervisor never sees a half-bound child.
     is_respawn = env_map.get(MCP_RESPAWN_ENV) == "1"
     if is_respawn and upstream_servers and not catalog_present:
         _stage("respawn_precheck")
@@ -543,21 +349,13 @@ def build_standalone_http_server(
     if _extras.upstream_registry is not None:
         upstream_reg = _extras.upstream_registry
     elif upstream_servers and catalog_present:
-        # Parent has an authoritative snapshot (even if empty). Use the
-        # catalog-only path; ``build_from_tool_catalog`` returns an empty
-        # registry when ``tool_catalog`` is empty, so a present-empty
-        # snapshot correctly drops every server without ever reaching
-        # ``UpstreamRegistry.build()`` (which would burn the readiness
-        # budget on a network probe the parent already settled).
         upstream_reg = UpstreamRegistry.build_from_tool_catalog(upstream_servers, tool_catalog)
     elif upstream_servers:
-        # RALPH_MCP_STRICT ... works.
         try:
             upstream_reg = UpstreamRegistry.build(
                 upstream_servers,
                 on_unreachable="raise" if strict_mode_from_env(env_map) else "warn_and_skip",
             )
-            # First start owns the catalog; bounded publish keeps ``os.open`` from wedging on a FIFO.
             catalog_payload = {
                 s.name: [
                     pt.tool for pt in upstream_reg.tool_definitions() if pt.server_name == s.name
@@ -569,11 +367,6 @@ def build_standalone_http_server(
             (workspace_root / ".agent" / "mcp" / "parent_catalog.json").unlink(missing_ok=True)
             raise
         except Exception as exc:
-            # A failed first start must not leave a stale/partial published
-            # catalog behind: the parent would serve tools the child could not
-            # bind. Unlink before re-raising so respawn never reads a ghost.
-            # UpstreamValidationError is normalized to the typed McpServerError
-            # so the supervisor's restart budget sees a typed stage failure.
             (workspace_root / ".agent" / "mcp" / "parent_catalog.json").unlink(missing_ok=True)
             raise McpServerError(
                 f"first-start upstream discovery failed: {exc}",
@@ -582,13 +375,6 @@ def build_standalone_http_server(
             ) from exc
     else:
         upstream_reg = None
-    # R4-LOGS: upstream_catalog_or_discovery_done is ALWAYS logged and
-    # recorded — even when there are zero upstreams, the stage marks
-    # the boundary after which Ralph tools are registered. The n_servers
-    # detail line is kept as an extra emit when upstreams exist.
-    # ``ready_to_serve`` is recorded inside ``server.run()`` via the
-    # ``on_ready`` callback so it lands when the socket is actually
-    # accepting connections, not before.
     if upstream_reg is not None and upstream_servers:
         n_proxied = len(list(upstream_reg.tool_definitions()))
         n_servers = len(upstream_servers)
@@ -608,14 +394,6 @@ def build_standalone_http_server(
     )
     _check_real_startup_deadline("upstream_catalog_or_discovery_done", t0, env_map)
 
-    # R4-LOGS: ``registry_built`` is recorded at the boundary, BEFORE
-    # calling ``_build_mcp_registry_and_server``. This is essential:
-    # the gate inside that function can fire BEFORE the
-    # ``McpServer.__init__`` runs, so a real constructor block must
-    # still leave ``registry_built`` in the stage file. The semantic
-    # is "we are entering the registry_built phase"; the
-    # post-construction ``record_stage_elapsed`` below is the
-    # checkpoint that catches a slow (but not blocked) constructor.
     t_stage_reg = _clock()
     _stage("registry_built")
     _check_real_startup_deadline("registry_built", t0, env_map)
@@ -660,7 +438,6 @@ def load_runtime_upstream_servers(
     mcp_config: McpConfig,
     env: Mapping[str, str] | None = None,
 ) -> tuple[UpstreamMcpServer, ...]:
-    """Merge upstream MCP servers from the environment variable and mcp.toml."""
     env_map = os.environ if env is None else env
     raw_upstream = env_map.get(UPSTREAM_MCP_CONFIG_ENV)
     env_servers = load_upstream_mcp_servers(raw_upstream)
@@ -678,22 +455,6 @@ def run_standalone_server(
     stop_event: Event | None = None,
     env: Mapping[str, str] | None = None,
 ) -> None:
-    """Run the standalone Ralph MCP server over HTTP.
-
-    ``transport`` is the MCP wire transport; ``agent_transport`` names
-    the agent CLI being served. ``env`` is the composition-root
-    environment map for the inherited listening FD and the respawn
-    sentinel. When omitted, the process environment is that map.
-
-    R4: every startup stage is logged as a flushed ``logger.info``
-    line AND recorded to a stage-tracker file the supervisor reads
-    on preflight failure. The six stage markers form a closed
-    vocabulary; the audit at
-    :mod:`ralph.testing.audit_resource_lifecycle` validates that the
-    runtime emits each in the right order on the readiness path.
-    ``PYTHONUNBUFFERED=1`` is set in the PARENT's ``_subprocess_env``
-    so the child inherits unbuffered streams from the start.
-    """
     if transport != DEFAULT_TRANSPORT:
         raise ValueError(f"Unsupported transport: {transport}")
 
@@ -712,24 +473,7 @@ def run_standalone_server(
     _stage("env_loaded")
     _check_real_startup_deadline("env_loaded", t0, env_map)
 
-    # WU-B: switch the child's stdio to line-buffered so the listening
-    # banner (``_fallback_standalone_server.py``) and every other
-    # stdout line reaches the parent's pipe even when the parent did
-    # NOT pre-set ``PYTHONUNBUFFERED`` (the W4 regression: setting
-    # ``PYTHONUNBUFFERED`` inside the already-running child cannot
-    # reconfigure its own stdio, and the parent sometimes forgets).
-    # A closed/redirected stream raises ``ValueError`` from
-    # ``reconfigure``; treat it as a no-op so embedded callers and
-    # the test suite do not need a live tty.
     with contextlib.suppress(ValueError, AttributeError, OSError):
-        # ``sys.stdout`` is typed ``TextIO | Any`` by mypy; ``reconfigure``
-        # is a runtime method on the concrete text stream class, not on
-        # the ``TextIO`` ABC, so the type stub does not declare it.
-        # Use a ``getattr`` so the call is dynamic and a non-text
-        # stream (e.g. a captured/redirected one) returns ``None``
-        # instead of raising ``AttributeError`` (the suppress handles
-        # the ValueError that ``reconfigure`` raises on a closed
-        # stream).
         reconfigure_fn: object = getattr(sys.stdout, "reconfigure", None)
         if callable(reconfigure_fn):
             reconfigure_fn(line_buffering=True)
@@ -739,9 +483,6 @@ def run_standalone_server(
     relay_sender = ActivityRelaySender.from_environment(dict(os.environ))
     scrub_activity_relay_environment(os.environ)
 
-    # R2: Session loading can perform blocking I/O (file read/stat, explore index SQLite open).
-    # Isolate behind ThreadPoolExecutor with timeout <= remaining deadline so it cannot hang
-    # indefinitely.
     real_deadline_s = mcp_real_startup_deadline_from_env(env_map)
     remaining_s = max(0.0, real_deadline_s - (_clock() - t0))
     session_timeout_s = remaining_s
@@ -756,8 +497,6 @@ def run_standalone_server(
         )
         session = future.result(timeout=session_timeout_s)
     except concurrent.futures.TimeoutError:
-        # FIFO / hung FS / wedged explore-index blocks the worker holding the
-        # GIL; ``shutdown(wait=False)`` cannot interrupt it (see ``_pre_serve_overrun``).
         elapsed = _clock() - t0
         fail_closed_pre_serve_overrun(
             workspace_root,
@@ -771,26 +510,11 @@ def run_standalone_server(
             ex.shutdown(wait=False)
 
     erase_broker_secret_environment()
-    # Synchronous block: fsync cannot be interrupted mid-call; deadline enforced at next boundary with correct stage attribution.
     _stage("session_ready")
     _check_real_startup_deadline("session_ready", t0, env_map)
 
-    # R1: when the parent passed a listening FD via
-    # ``RALPH_MCP_INHERITED_FD``, adopt it. The bridge owns the
-    # socket for the full lifetime; this child serves on it without
-    # re-binding, so a client that connects during a respawn queues
-    # in the kernel backlog instead of being refused.
-    # Fail-closed invalid-inherited-FD: when MCP_INHERITED_FD_ENV is set
-    # but the FD fails validation/adoption, child fails closed with typed
-    # McpServerError (not log-and-fresh-bind). Absent env keeps the
-    # fallback to fresh bind.
     parent_socket = _adopt_inherited_socket(env_map, t0, _stage, clock_fn=_clock)
 
-    # R2: a respawn runs with ``MCP_RESPAWN_ENV=1`` set. The
-    # upstream registry must come from the cached tool catalog the
-    # parent hands us, never from a live probe — a respawn has no
-    # network budget. First start keeps the existing path so
-    # discovery still happens once.
     is_respawn = env_map.get(MCP_RESPAWN_ENV) == "1"
     server = build_standalone_http_server(
         workspace_root,
@@ -811,10 +535,6 @@ def run_standalone_server(
 
     t_stage_ready = _clock()
 
-    # R4: record ready_to_serve and emit the banner INSIDE
-    # ``server.run()`` so the banner fires when serving actually
-    # starts, not before. The stage file is the authoritative
-    # marker the supervisor reads on preflight failure.
     def _record_ready_to_serve() -> None:
         _check_real_startup_deadline("ready_to_serve", t0, env_map)
         per_stage_ready_s = _clock() - t_stage_ready
@@ -848,13 +568,11 @@ def run_standalone_server(
 
 
 def _agent_transport_choices() -> list[str]:
-    """Return the agent-CLI values accepted by ``--agent-transport``."""
     values: list[str] = [transport.value for transport in AgentTransport]
     return sorted(values)
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
-    """Parse standalone MCP server CLI arguments."""
     parser = argparse.ArgumentParser(description="Run the standalone Ralph MCP HTTP server")
     parser.add_argument(
         "--workspace",
@@ -878,14 +596,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 
 def _run_shutdown_hooks() -> None:
-    """Execute all registered shutdown hooks."""
     for hook in _SHUTDOWN_HOOKS:
         with contextlib.suppress(Exception):
             hook()
 
 
 def _run_owner_loss_hooks(timeout_s: float = EXEC_OWNER_LOSS_HOOK_BUDGET_S) -> None:
-    """Execute all registered owner-loss hooks bounded to timeout_s."""
 
     def _invoke_all() -> None:
         for hook in _OWNER_LOSS_HOOKS:
@@ -898,7 +614,6 @@ def _run_owner_loss_hooks(timeout_s: float = EXEC_OWNER_LOSS_HOOK_BUDGET_S) -> N
 
 
 def install_shutdown_signal_handlers() -> None:
-    """Install SIGTERM handler to invoke shutdown hooks before exit."""
 
     def _sigterm_handler(signum: int, frame: object) -> None:
         _run_shutdown_hooks()
@@ -918,18 +633,6 @@ def exit_when_owner_exits(
     sleep: Callable[[float], None] = time.sleep,
     exit_process: Callable[[int], None] = os._exit,
 ) -> threading.Thread | None:
-    """Exit this server once the Ralph process that spawned it is gone.
-
-    A server spawned by the lifecycle is stopped by its owner, so an owner
-    killed without that cleanup (SIGKILL, a crashed test worker) used to
-    leave the server running indefinitely. The owner names itself in
-    ``RALPH_MCP_OWNER_PID``; while it is still our parent, a daemon thread
-    watches for reparenting and exits the process. Standalone launches
-    (``ralph-mcp`` without the variable) are left alone.
-
-    Returns:
-        The watcher thread, or ``None`` when there is no owner to watch.
-    """
     raw_owner = env.pop(MCP_OWNER_PID_ENV, "")
     if not raw_owner.isdigit():
         return None
@@ -951,34 +654,6 @@ def exit_when_owner_exits(
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """CLI entrypoint for the standalone Ralph MCP HTTP server.
-
-    The handler is the ``ralph-mcp`` console script entry point
-    declared in ``pyproject.toml`` (``ralph-mcp =
-    ralph.mcp.server.runtime:main``). It parses ``--workspace``,
-    ``--host``, and ``--port`` via ``parse_args`` and delegates to
-    ``run_standalone_server`` with the production
-    ``DEFAULT_TRANSPORT`` (``streamable-http``). The environment
-    handshake (``MCP_SESSION`` / ``MCP_SESSION_FILE``) is performed
-    inside ``run_standalone_server``; this entry point does not touch
-    the environment directly.
-
-    Args:
-        argv: Optional argv override. When ``None``,
-            ``argparse`` reads from ``sys.argv[1:]``; tests pass a
-            sequence of strings to avoid mutating process state.
-
-    Returns:
-        ``None``. The handler blocks until the server is shut down
-        (Ctrl-C / SIGTERM). The process exit code is whatever the
-        underlying HTTP server / signal handler produces.
-
-    Side effects:
-        Starts a long-lived HTTP server bound to ``--host:--port`` and
-        a ``/health`` endpoint; the liveness probe is polled by
-        ``ralph.process.mcp_supervisor``. Reads the MCP session
-        environment variables.
-    """
     sanitize_process_environment()
     install_shutdown_signal_handlers()
     exit_when_owner_exits(os.environ)
@@ -986,17 +661,17 @@ def main(argv: Sequence[str] | None = None) -> None:
     run_standalone_server(
         cast(
             "Path", args.workspace
-        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        ),
         transport=DEFAULT_TRANSPORT,
         host=cast(
             "str", args.host
-        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        ),
         port=cast(
             "int", args.port
-        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        ),
         agent_transport=cast(
             "str | None", args.agent_transport
-        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        ),
     )
 
 

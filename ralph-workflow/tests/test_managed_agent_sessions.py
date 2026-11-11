@@ -1,5 +1,3 @@
-"""Behavior tests for Ralph's public managed agent-session runtime."""
-
 from __future__ import annotations
 
 from importlib import import_module
@@ -99,30 +97,9 @@ def test_managed_session_with_agy_transport_threads_dispatcher_hint(
     tmp_path: Path,
     config_with_test_agent: UnifiedConfig,
 ) -> None:
-    """S-3 (G3/C1, closes PA-001): a real managed session with
-    ``agent_config.transport=AgentTransport.AGY`` gets the ``call_mcp_tool``
-    dispatcher hint in its materialized master prompt file, driven through
-    the REAL production ``materialize_master_prompt`` wrapper end to end --
-    ``ManagedAgentSessionDeps`` deliberately does NOT override
-    ``materialize_master_prompt`` here (every other test in this module
-    does), so ``ManagedAgentSessionRuntime.open`` calls the actual
-    ``ralph._session_runtime_deps._materialize_master_prompt`` wrapper with
-    exactly the four positional arguments
-    ``(workspace_root, name, default_product_criteria, worker_namespace,
-    transport)`` it now accepts.
-
-    PA-001 found the prior draft's wrapper change had no transport value to
-    forward because ``open`` passed only three positional arguments; this
-    test proves the full chain -- ``open`` -> the deps wrapper -> the public
-    ``materialize_master_prompt`` -- now carries the transport through to a
-    file a real agent process would read.
-    """
     prompt_file = tmp_path / "prompt.md"
     prompt_file.write_text("Describe a notes app.", encoding="utf-8")
 
-    # AgentConfig is a pydantic RalphBaseModel, not a stdlib dataclass --
-    # model_copy(update=...) is the pydantic equivalent of
-    # dataclasses.replace() for an immutable-by-convention config value.
     agy_agent_config = config_with_test_agent.agents["test-agent"].model_copy(
         update={"transport": AgentTransport.AGY}
     )

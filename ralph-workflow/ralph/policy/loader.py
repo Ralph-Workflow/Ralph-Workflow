@@ -1,22 +1,3 @@
-"""TOML policy loader with fallback to bundled defaults.
-
-Loads agents.toml, pipeline.toml, and artifacts.toml from the user's .agent/
-config directory, falling back to the packaged defaults when files are absent.
-
-All loading goes through Pydantic validation so any malformed config surfaces
-as a PolicyValidationError with field-level detail.
-
-User-global policy overrides prefer branded filenames
-(`ralph-workflow-pipeline.toml`, `ralph-workflow-artifacts.toml`) while
-still accepting the legacy unprefixed names for backward compatibility.
-
-This module owns the layering rules -- which file wins, how a workspace
-inherits, and which bundle Ralph gets back. The per-file half (reading a
-policy TOML, compiling the block-authored pipeline graph, validating the
-agents/pipeline/artifacts schemas) lives in
-:mod:`ralph.policy._policy_validation` and is re-exported here under its
-public names.
-"""
 
 from __future__ import annotations
 
@@ -101,9 +82,6 @@ __all__ = [
     "validate_pipeline",
 ]
 
-#: Backward-compatible alias for :func:`validate_pipeline`. The public name is
-#: the seam; the private spelling stays until the remaining private-attribute
-#: callers move to the public name.
 _validate_pipeline = validate_pipeline
 
 
@@ -116,12 +94,6 @@ _GLOBAL_POLICY_FILENAME_MAP = {
 def _merge_mapping_defaults(
     defaults: Mapping[str, object], overrides: Mapping[str, object]
 ) -> dict[str, object]:
-    """Recursively merge a project-local policy mapping onto bundled defaults.
-
-    This preserves backward compatibility for older generated policy files that
-    omit newly added fields or artifact contracts. Explicit project-local values
-    still win over the bundled defaults.
-    """
     merged: dict[str, object] = dict(defaults)
     for key, override_value in overrides.items():
         default_value = merged.get(key)
@@ -135,15 +107,6 @@ def _merge_mapping_defaults(
 def _merge_pipeline_defaults(
     defaults: Mapping[str, object], overrides: Mapping[str, object]
 ) -> dict[str, object]:
-    """Merge pipeline defaults while treating omitted override phases as removals.
-
-    Older generated pipeline files are typically full phase graphs. When they
-    intentionally omit a default-only phase, recursively unioning the ``phases``
-    mapping revives that phase and can make the resulting graph unreachable.
-    For pipeline phase overlays, preserve deep field inheritance *within* each
-    declared override phase, but do not inherit default phases that the override
-    omitted entirely.
-    """
     merged = _merge_mapping_defaults(defaults, overrides)
     for section in ("phases", "blocks"):
         merged_section = _merge_declared_entries(defaults, overrides, section)
@@ -157,15 +120,6 @@ def _merge_declared_entries(
     overrides: Mapping[str, object],
     section: str,
 ) -> dict[str, object] | None:
-    """Merge one graph section, treating entries the override omits as removed.
-
-    Returns ``None`` when either side does not declare the section, leaving the
-    plain union in place. ``blocks`` needs the same treatment as ``phases``:
-    without it a block-authored file that renames or drops a block still
-    inherits every bundled block, which compiles into the graph as unreachable
-    phases and fails validation on the runtime load path — while the
-    ``--check-config`` path, which does not merge, reports the file as fine.
-    """
     override_entries = overrides.get(section)
     default_entries = defaults.get(section)
     if not isinstance(override_entries, Mapping) or not isinstance(default_entries, Mapping):
@@ -181,14 +135,10 @@ def _merge_declared_entries(
     return merged_entries
 
 
-#: Public alias: overlay merge semantics decide whether a workspace file can
-#: rename or delete parts of the bundled graph, so they are worth pinning
-#: directly rather than only through a full policy load.
 merge_pipeline_defaults = _merge_pipeline_defaults
 
 
 def _is_phase_authored_pipeline_data(data: Mapping[str, object]) -> bool:
-    """Return whether a pipeline TOML uses the legacy phase-authored schema."""
     if not data:
         return False
     has_phases = isinstance(data.get("phases"), Mapping)
@@ -213,7 +163,6 @@ def _handle_phase_authored_pipeline(
     scope: str,
     strict: bool,
 ) -> bool:
-    """Check for obsolete phase-authored schema; warn or raise if present."""
     if not (data and _is_phase_authored_pipeline_data(data)):
         return False
     if strict:
@@ -243,7 +192,6 @@ def _resolve_pipeline_policy(
     global_pipeline_path: Path | None,
     strict_optional_files: bool = False,
 ) -> PipelinePolicy:
-    """Resolve and validate pipeline policy across default, global, and local layers."""
     default_pipeline_data = cached_default_pipeline_data()
     default_pipeline_policy = cached_default_pipeline_policy()
 
@@ -332,7 +280,6 @@ def _resolve_artifacts_policy(
     global_artifacts_path: Path | None,
     strict_optional_files: bool = False,
 ) -> ArtifactsPolicy:
-    """Resolve and validate artifacts policy across default, global, and local layers."""
     default_artifacts_data = cached_default_artifacts_data()
     default_artifacts_policy = cached_default_artifacts_policy()
 
@@ -401,7 +348,7 @@ def _coerce_agent_chain_config(
     return AgentChainConfig(
         agents=list(
             cast("Sequence[str]", value)
-        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        ),
         max_retries=retry_budget,
         retry_delay_ms=retry_delay_ms,
     )
@@ -422,22 +369,12 @@ def _coerce_agent_drain_config(
     return AgentDrainConfig(
         chain=cast(
             "str", value
-        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        ),
         drain_class=builtin_drain_classes.get(drain),
     )
 
 
 def build_agents_policy_from_config(config: UnifiedConfig) -> AgentsPolicy:
-    """Synthesize the active agents policy from the main Ralph config.
-
-    User-facing chain order and drain routing live in ``ralph-workflow.toml``.
-    This helper converts the flat ``UnifiedConfig`` representation into the richer
-    ``AgentsPolicy`` model used by the runtime.
-
-    Canonical built-in drains are upgraded to explicit ``drain_class`` declarations
-    here so downstream runtime code can resolve classes from policy alone without
-    relying on hidden enum fallbacks.
-    """
     general: object = getattr(config, "general", None)
     retry_budget_value: object = getattr(general, "max_retries", 3)
     retry_delay_ms_value: object = getattr(general, "retry_delay_ms", 1000)
@@ -494,35 +431,30 @@ def build_agents_policy_from_config(config: UnifiedConfig) -> AgentsPolicy:
 
 _DEFAULT_AGENTS_POLICY_CACHE: list[
     AgentsPolicy
-] = []  # bounded-accumulator-ok: at most one cached default AgentsPolicy
+] = []
 
 _DEFAULT_PIPELINE_DATA_CACHE: list[
     dict[str, object]
-] = []  # bounded-accumulator-ok: at most one cached default pipeline toml dict
+] = []
 
 _DEFAULT_PIPELINE_POLICY_CACHE: list[
     PipelinePolicy
-] = []  # bounded-accumulator-ok: at most one cached default PipelinePolicy
+] = []
 
 _DEFAULT_ARTIFACTS_DATA_CACHE: list[
     dict[str, object]
-] = []  # bounded-accumulator-ok: at most one cached default artifacts toml dict
+] = []
 
 _DEFAULT_ARTIFACTS_POLICY_CACHE: list[
     ArtifactsPolicy
-] = []  # bounded-accumulator-ok: at most one cached default ArtifactsPolicy
+] = []
 
 _DEFAULT_POLICY_BUNDLE_CACHE: list[
     PolicyBundle
-] = []  # bounded-accumulator-ok: at most one cached default PolicyBundle
+] = []
 
 
 def cached_default_agents_policy() -> AgentsPolicy:
-    """Return the bundled default agents policy, parsed once per process.
-
-    The default policy is the same for every workspace, so it is parsed once
-    and cached; the cache holds at most one entry.
-    """
     if not _DEFAULT_AGENTS_POLICY_CACHE:
         _DEFAULT_AGENTS_POLICY_CACHE.append(
             validate_agents(load_toml(default_dir() / "agents.toml", kind="agents", strict=True))
@@ -531,7 +463,6 @@ def cached_default_agents_policy() -> AgentsPolicy:
 
 
 def cached_default_pipeline_data() -> dict[str, object]:
-    """Return the bundled default pipeline TOML mapping, parsed once per process."""
     if not _DEFAULT_PIPELINE_DATA_CACHE:
         _DEFAULT_PIPELINE_DATA_CACHE.append(
             load_toml(default_dir() / "pipeline.toml", kind="pipeline", strict=True)
@@ -540,7 +471,6 @@ def cached_default_pipeline_data() -> dict[str, object]:
 
 
 def cached_default_pipeline_policy() -> PipelinePolicy:
-    """Return the bundled default pipeline policy, validated once per process."""
     if not _DEFAULT_PIPELINE_POLICY_CACHE:
         _DEFAULT_PIPELINE_POLICY_CACHE.append(
             validate_pipeline(cached_default_pipeline_data(), timeboxes_explicit=False)
@@ -549,7 +479,6 @@ def cached_default_pipeline_policy() -> PipelinePolicy:
 
 
 def cached_default_artifacts_data() -> dict[str, object]:
-    """Return the bundled default artifacts TOML mapping, parsed once per process."""
     if not _DEFAULT_ARTIFACTS_DATA_CACHE:
         _DEFAULT_ARTIFACTS_DATA_CACHE.append(
             load_toml(default_dir() / "artifacts.toml", kind="artifacts", strict=True)
@@ -558,14 +487,12 @@ def cached_default_artifacts_data() -> dict[str, object]:
 
 
 def cached_default_artifacts_policy() -> ArtifactsPolicy:
-    """Return the bundled default artifacts policy, validated once per process."""
     if not _DEFAULT_ARTIFACTS_POLICY_CACHE:
         _DEFAULT_ARTIFACTS_POLICY_CACHE.append(validate_artifacts(cached_default_artifacts_data()))
     return _DEFAULT_ARTIFACTS_POLICY_CACHE[0]
 
 
 def cached_default_policy_bundle() -> PolicyBundle:
-    """Return the bundled default policy bundle, loaded once per process."""
     if not _DEFAULT_POLICY_BUNDLE_CACHE:
         default_policy_dir = default_dir()
         bundle = _load_policy_from_paths(
@@ -589,18 +516,6 @@ def _alias_out_of_graph_drain(
     drain_class: str,
     fallback_drain: str,
 ) -> None:
-    """Bind an undeclared out-of-graph ``drain`` to a user chain, in place.
-
-    A user's own chain of the same name wins. Otherwise the drain follows the
-    chain behind ``fallback_drain`` -- the in-graph drain of the same class --
-    so a user who redirected their whole pipeline to a different agent gets
-    that agent for the out-of-graph policy phases too.
-
-    ``fallback_drain`` is always same-class on purpose. The shipped pipeline
-    has NO review drain (see :mod:`ralph.project_policy.remediation`), so a
-    legacy ``review`` drain in a user config must never capture either policy
-    phase.
-    """
     if drain in user_drains:
         return
     if drain in user_chains:
@@ -612,18 +527,6 @@ def _alias_out_of_graph_drain(
 
 
 def _merge_agents_policy_onto_defaults(user_policy: AgentsPolicy) -> AgentsPolicy:
-    """Merge a user agents policy onto the bundled defaults.
-
-    Mirrors the pipeline/artifacts layering: user entries win per chain and
-    drain name; anything not overridden keeps its bundled default. This is
-    what makes internal chains (``policy_remediation``,
-    ``policy_remediation_analysis``) survive user configs written before those
-    chains existed.
-
-    Before the merge, each undeclared out-of-graph policy drain is aliased to
-    the chain behind the user's same-class in-graph drain. See
-    :func:`_alias_out_of_graph_drain`.
-    """
     defaults = cached_default_agents_policy()
     user_chains = dict(user_policy.agent_chains)
     user_drains = dict(user_policy.agent_drains)
@@ -641,12 +544,6 @@ def _merge_agents_policy_onto_defaults(user_policy: AgentsPolicy) -> AgentsPolic
         drain_class="analysis",
         fallback_drain="development_analysis",
     )
-    # Auto-integration's conflict resolver runs out of graph too, and an
-    # unresolved drain here does not fail loudly: the resolver simply
-    # declines, every rebase conflict falls back to an abort, and
-    # auto-rebase silently stops working for exactly the workspaces that
-    # customised their agents. Registering the alias is what stops a
-    # user-supplied agents.toml from disabling the feature by omission.
     _alias_out_of_graph_drain(
         user_chains,
         user_drains,
@@ -667,7 +564,6 @@ def _load_agents_policy_from_path(
     *,
     strict_optional_files: bool = False,
 ) -> AgentsPolicy:
-    """Load the agents policy, then apply any ``--developer-agent`` pin from ``config``."""
     default_policy = cached_default_agents_policy()
     if config is not None and _config_defines_agent_policy(config):
         policy = _merge_agents_policy_onto_defaults(build_agents_policy_from_config(config))
@@ -695,11 +591,6 @@ def load_agents_policy(
     *,
     strict_optional_files: bool = False,
 ) -> AgentsPolicy:
-    """Load only the agents policy, using config synthesis when available.
-
-    This is for call sites that need drain/chain declarations without requiring a
-    full pipeline/artifact bundle.
-    """
     return _load_agents_policy_from_path(
         config_dir / "agents.toml",
         config=config,
@@ -713,7 +604,6 @@ def load_agents_policy_for_workspace_scope(
     *,
     strict_optional_files: bool = False,
 ) -> AgentsPolicy:
-    """Load agents policy for a workspace with worktree-aware inheritance."""
     return _load_agents_policy_from_path(
         workspace_scope.resolve_agent_file("agents.toml"),
         config=config,
@@ -731,7 +621,6 @@ def _load_policy_from_paths(
     strict_optional_files: bool = False,
     _bypass_bundle_cache: bool = False,
 ) -> PolicyBundle:
-    """Load a policy bundle from explicit file paths."""
     default_policy_dir = default_dir()
     global_pipeline_path, global_artifacts_path = (
         global_policy_paths if global_policy_paths is not None else (None, None)
@@ -819,11 +708,6 @@ def load_policy(
     *,
     strict_optional_files: bool = False,
 ) -> PolicyBundle:
-    """Load all three policy TOML files and return a validated PolicyBundle.
-
-    Files are loaded from ``config_dir`` (the .agent/ directory). Any absent
-    or corrupt file falls back to the bundled default (no global layering).
-    """
     return _load_policy_from_paths(
         agents_path=config_dir / "agents.toml",
         pipeline_path=config_dir / "pipeline.toml",
@@ -858,7 +742,6 @@ def load_policy_for_config_dir(
     *,
     strict_optional_files: bool = False,
 ) -> PolicyBundle:
-    """Load ``config_dir``'s policy layered like :func:`load_policy_for_workspace_scope`."""
     return _load_layered_policy(
         lambda name: config_dir / name,
         config,
@@ -872,7 +755,6 @@ def load_policy_for_workspace_scope(
     *,
     strict_optional_files: bool = False,
 ) -> PolicyBundle:
-    """Load policy for a workspace with worktree-aware per-file inheritance."""
     return _load_layered_policy(
         workspace_scope.resolve_agent_file,
         config,
@@ -881,12 +763,10 @@ def load_policy_for_workspace_scope(
 
 
 def default_dir() -> Path:
-    """Return the path to the bundled default policy files."""
     return Path(ralph.policy.__file__).parent / "defaults"
 
 
 def _global_policy_path(filename: str) -> Path:
-    """Return the canonical user-global path for a runtime policy TOML."""
     xdg_config_home = getenv("XDG_CONFIG_HOME")
     base_dir = Path(xdg_config_home) if xdg_config_home else Path.home() / ".config"
     preferred_name = _GLOBAL_POLICY_FILENAME_MAP.get(filename, filename)
@@ -899,16 +779,6 @@ def load_policy_or_die(
     *,
     strict_optional_files: bool = False,
 ) -> PolicyBundle:
-    """Load policy, exiting with a user-friendly message on failure.
-
-    Args:
-        config_dir: Path to the .agent/ configuration directory.
-        config: Optional unified config.
-        strict_optional_files: If True, re-raise errors instead of falling back.
-
-    Returns:
-        Validated PolicyBundle.
-    """
     try:
         try:
             if config is None:

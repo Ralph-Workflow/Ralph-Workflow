@@ -1,10 +1,3 @@
-"""Integration tests for MCP wire-level roundtrip.
-
-- HTTP transport tests: replaced with in-process McpServer.handle_request() calls —
-  no daemon threads, no socket polling, no httpx against localhost.
-- stdio transport: uses the fake stdio server fixture to test Ralph's MCP client.
-"""
-
 from __future__ import annotations
 
 import base64
@@ -27,23 +20,18 @@ from tests._support.typed_accessors import must_mapping
 
 pytestmark = pytest.mark.subprocess_e2e
 
-# Description length bounds enforced by the quality bar
 _MIN_DESCRIPTION_CHARS = 20
 _MAX_DESCRIPTION_CHARS = 500
 
-# Content used by the append_file roundtrip assertion
 _APPEND_CONTENT = "hi"
 
-# Tiny 1x1 PNG image for inline image delivery tests
 _TINY_PNG_BYTES = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk"
     "+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
 )
 
-# Minimal PDF bytes for resource-reference delivery tests
 _TINY_PDF_BYTES = b"%PDF-1.4 tiny test pdf\n%%EOF"
 
-# Capabilities required by the built-in Ralph tools
 _REQUIRED_CAPABILITIES = {
     "WorkspaceRead",
     "WorkspaceWriteAny",
@@ -79,7 +67,6 @@ def _build_server(
 
 
 def _do_initialize(server: McpServer) -> ServerState:
-    """Send initialize + notifications/initialized; return running ServerState."""
     req = JsonRpcRequest(
         jsonrpc="2.0",
         method="initialize",
@@ -114,7 +101,6 @@ def _do_tool_call(
     name: str,
     args: dict[str, object],
 ) -> dict[str, object]:
-    """Make a tools/call request and return the MCP result object."""
     call_id[0] += 1
     req = JsonRpcRequest(
         jsonrpc="2.0",
@@ -166,10 +152,7 @@ def _initialize_multimodal(server: McpServer) -> ServerState:
 
 @pytest.mark.integration
 class TestMultimodalToolRoundtrip:
-    """Black-box multimodal tool/resource roundtrips via McpServer.handle_request()."""
-
     def test_read_media_png_with_claude_session_returns_inline_image(self, tmp_path: Path) -> None:
-        """PNG file with Claude model identity delivers an inline image block."""
         png_file = tmp_path / "screenshot.png"
         png_file.write_bytes(_TINY_PNG_BYTES)
 
@@ -192,14 +175,6 @@ class TestMultimodalToolRoundtrip:
         assert isinstance(block.get("data"), str) and len(block["data"]) > 0
 
     def test_ccs_media_result_matches_client_content_schema(self, tmp_path: Path) -> None:
-        """CCS receives a standard image block, never a resource_reference alias.
-
-        CCS validates each tools/call content item against the Claude content
-        union. The prior live run rejected Ralph's nonstandard
-        resource_reference item, so an image request made with the wrapper's
-        unrecognised provider identity must still return the standard MCP image
-        shape with base64 data.
-        """
         png_file = tmp_path / "smoke-fixture.png"
         png_file.write_bytes(_TINY_PNG_BYTES)
 
@@ -239,7 +214,6 @@ class TestMultimodalToolRoundtrip:
     def test_read_media_pdf_returns_resource_reference_and_is_retrievable(
         self, tmp_path: Path
     ) -> None:
-        """PDF with unknown provider delivers resource_reference retrievable via resources/read."""
         pdf_file = tmp_path / "report.pdf"
         pdf_file.write_bytes(_TINY_PDF_BYTES)
 
@@ -263,7 +237,6 @@ class TestMultimodalToolRoundtrip:
         assert block.get("mimeType") == "application/pdf"
         assert block.get("modality") == "pdf"
 
-        # Artifact must appear in resources/list
         list_req = JsonRpcRequest(jsonrpc="2.0", method="resources/list", params={}, msg_id=20)
         list_resp, _ = server.handle_request(list_req, state)
         assert list_resp is not None and list_resp.result is not None
@@ -271,7 +244,6 @@ class TestMultimodalToolRoundtrip:
         resource_uris = {r.get("uri") for r in resources}
         assert uri in resource_uris, f"URI {uri!r} not found in resources/list: {resource_uris}"
 
-        # Artifact bytes must be retrievable via resources/read
         read_req = JsonRpcRequest(
             jsonrpc="2.0", method="resources/read", params={"uri": uri}, msg_id=21
         )
@@ -286,7 +258,6 @@ class TestMultimodalToolRoundtrip:
         assert isinstance(contents[0].get("blob"), str) and len(contents[0]["blob"]) > 0
 
     def test_read_media_audio_resource_reference_is_retrievable(self, tmp_path: Path) -> None:
-        """Audio from unknown provider stored as resource_reference fetchable via resources/read."""
 
         mp3_bytes = b"ID3" + b"\x00" * 50
         with tempfile.NamedTemporaryFile(suffix=".mp3", dir=tmp_path, delete=False) as f:
@@ -314,7 +285,6 @@ class TestMultimodalToolRoundtrip:
         uri = str(block.get("uri", ""))
         assert uri.startswith("ralph://media/"), f"Expected ralph://media/ URI: {uri!r}"
 
-        # Artifact must be retrievable via resources/read
         read_req = JsonRpcRequest(
             jsonrpc="2.0",
             method="resources/read",
@@ -331,7 +301,6 @@ class TestMultimodalToolRoundtrip:
         assert isinstance(contents[0].get("blob"), str) and len(contents[0]["blob"]) > 0
 
     def test_read_media_video_resource_reference_is_retrievable(self, tmp_path: Path) -> None:
-        """Video from unknown provider stored as resource_reference fetchable via resources/read."""
 
         mp4_bytes = b"\x00\x00\x00\x20ftyp" + b"\x00" * 40
         with tempfile.NamedTemporaryFile(suffix=".mp4", dir=tmp_path, delete=False) as f:

@@ -1,28 +1,3 @@
-"""In-place rebase-stop resolution companions for the rebase/merge engine.
-
-:func:`resolve_conflicted_rebase` / :func:`resolve_rebase_with_config`
-resolve a paused rebase commit-by-commit before the endpoint-merge
-fallback is considered, :func:`verify_terminal_state` runs the shared
-terminal-state probe for the merge / fallback exits, and
-:data:`RebaseRunResult` is the closed outcome vocabulary of one
-:func:`run_rebase_or_merge` attempt. They live in this private
-companion module so :mod:`ralph.pipeline.auto_integrate_rebase_merge`
-stays under the repo-structure file-size cap; the engine driver keeps
-the skip-reason registry, the range routing, and the fallback branch
-table, and re-exports every name defined here unchanged.
-
-The outcome of one resolution attempt is
-:class:`ralph.pipeline.rebase_resolution_result.RebaseResolutionResult`:
-``(succeeded, reason, failure_cause)``. The typed cause travels with the
-outcome because the reason text alone cannot tell a broken configuration
-(``CONFIG_FAILURE``) apart from an unresolved conflict.
-
-Names that tests monkeypatch on the
-``ralph.pipeline.auto_integrate_rebase_merge`` module
-(``set_resolving_rebase``, ``read_record``, ``resolve_rebase_in_progress``,
-``rebase_in_progress``) are reached through a deferred module attribute
-access, so the monkeypatch surface is unchanged by the split.
-"""
 
 from __future__ import annotations
 
@@ -65,8 +40,6 @@ if TYPE_CHECKING:
 __all__ = [
     "RebaseResolutionResult",
     "RebaseRunResult",
-    # Compatibility seams re-exported by
-    # ``ralph.pipeline.auto_integrate_rebase_merge``.
     "_clear_record_if_no_inflight_op",
     "_resolve_conflicted_rebase",
     "_resolve_rebase_with_config",
@@ -78,12 +51,6 @@ __all__ = [
 
 @dataclass(frozen=True)
 class RebaseRunResult:
-    """Outcome of :func:`run_rebase_or_merge`.
-
-    ``short_circuit`` carries the state to return when the attempt stopped
-    early; otherwise the engine and merge outcomes describe the path taken.
-    ``skip_reason`` names the registered reason when the rebase was skipped.
-    """
 
     rebase_outcome: RebaseSuccess | RebaseConflicts | RebaseNoOp | RebaseFailed
     merge_attempted: bool
@@ -98,16 +65,6 @@ def verify_terminal_state(
     expected_head_sha: str | None,
     owns_resolution: bool,
 ) -> None:
-    """Run :func:`post_attempt_verify` on a merge / fallback exit path.
-
-    Catches :class:`TerminalStateViolationError` and logs a loud
-    ``ERROR`` -- the caller continues to record its outcome (a
-    merge / fallback can legitimately finish with a feature that
-    already moved, so the only invariant we can check here is the
-    absence of stale in-progress markers). Extracted into its
-    own helper so the three call sites in this module share one
-    diagnostic shape.
-    """
     try:
         post_attempt_verify(
             root,
@@ -127,14 +84,6 @@ def verify_terminal_state(
 
 
 class _RebaseResolutionOutcome(tuple[bool, str | None]):
-    """The two-value compatibility outcome of a rebase-resolution attempt.
-
-    The engine driver re-exports the two-value resolver seam and its
-    callers unpack exactly two values, so that shape stays available
-    here. The typed cause rides along as an attribute so a caller that
-    needs it does not lose it; the canonical three-value transport is
-    :class:`ralph.pipeline.rebase_resolution_result.RebaseResolutionResult`.
-    """
 
     failure_cause: ResolutionFailureCause
 
@@ -166,16 +115,6 @@ def resolve_conflicted_rebase(
     conflict_resolution_config: ConflictResolutionConfig | None,
     agent_runner: AgentRunner | None = None,
 ) -> RebaseRunResult | None:
-    """Resolve the paused rebase and retain unfinished agent work for continuation.
-
-    Persist resolution ownership before launching an agent. A completed replay
-    returns the clean rebase result; a verified blocked continuation or partial
-    agent result returns a retained record so no endpoint fallback discards it.
-    If ownership cannot be recorded before the agent starts, return control to
-    the existing fallback without launching an unowned resolution session.
-    """
-    # Late binding through the engine-driver namespace: tests monkeypatch
-    # ``auto_integrate_rebase_merge.set_resolving_rebase`` there.
     from ralph.pipeline import auto_integrate_rebase_merge as _merge_mod
 
     if not _merge_mod.set_resolving_rebase(root, True):
@@ -247,7 +186,6 @@ def resolve_conflicted_rebase(
     )
 
 
-#: The engine driver imports this name; it stays the same callable.
 _resolve_conflicted_rebase = resolve_conflicted_rebase
 
 
@@ -258,12 +196,6 @@ def resolve_rebase_with_config(
     config: ConflictResolutionConfig | None,
     agent_runner: AgentRunner | None = None,
 ) -> RebaseResolutionResult:
-    """Return rebase completion and terminal resolver-chain evidence.
-
-    The outcome carries the typed root cause beside the reason text, so
-    the run loop can name a broken configuration instead of re-deriving
-    it from the prose.
-    """
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
     session = (
@@ -277,8 +209,6 @@ def resolve_rebase_with_config(
             total_resolution_cap_seconds=config.total_resolution_cap_seconds,
         )
     )
-    # Late binding through the engine-driver namespace: tests monkeypatch
-    # ``auto_integrate_rebase_merge.resolve_rebase_in_progress`` there.
     from ralph.pipeline import auto_integrate_rebase_merge as _merge_mod
 
     resolved = (
@@ -301,13 +231,6 @@ def resolve_rebase_with_config(
         not session.charge_conflict_budget
         or session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS
     ):
-        # Something OTHER than the resolver failed: Ralph's own plumbing
-        # (a dead tool surface, a transport loop, an unanswered relay), a
-        # launch that never happened, a name the registry could not
-        # produce, or an operator's wall-clock cap. Recording any of
-        # those as an exhausted chain wrote durable terminal evidence
-        # that the AGENTS had given up -- and the next seam then refused
-        # to try, for a conflict none of them ever got to attempt.
         logger.warning(
             "auto_integrate: rebase conflict resolution for '{}' ended on {} "
             "without the resolver chain being spent; not recording it as exhausted",
@@ -377,33 +300,11 @@ def _resolve_rebase_with_config(
     config: ConflictResolutionConfig | None,
     agent_runner: AgentRunner | None = None,
 ) -> _RebaseResolutionOutcome:
-    """The two-value compatibility seam over :func:`resolve_rebase_with_config`.
-
-    ``ralph.pipeline.auto_integrate_rebase_merge`` re-exports this name
-    and its callers unpack exactly two values, so the legacy shape stays
-    available here. The typed cause stays reachable on the outcome's
-    ``failure_cause`` attribute; the canonical three-value transport is
-    :func:`resolve_rebase_with_config`.
-    """
     result = resolve_rebase_with_config(root, target, resolver, config, agent_runner)
     return _RebaseResolutionOutcome(result.succeeded, result.reason, result.failure_cause)
 
 
 def _clear_record_if_no_inflight_op(root: Path) -> None:
-    """Clear the durable record ONLY when no in-progress operation remains.
-
-    Terminal-state invariant: clearing the record while ``MERGE_HEAD``
-    or rebase bookkeeping is still on disk ORPHANS that state --
-    startup recovery reconciles only operations whose record it holds,
-    so the leftover markers fail ``check_rebase_preconditions`` at
-    every later seam with nothing ever able to clean them. When the
-    proof of cleanliness cannot be obtained the record is retained:
-    a spurious retention costs one redundant recovery pass at next
-    startup, a spurious clear costs the worktree its integration
-    forever.
-    """
-    # Late binding through the engine-driver namespace: tests monkeypatch
-    # ``auto_integrate_rebase_merge.rebase_in_progress`` there.
     from ralph.pipeline import auto_integrate_rebase_merge as _merge_mod
 
     try:

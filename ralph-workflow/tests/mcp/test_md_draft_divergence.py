@@ -1,5 +1,3 @@
-"""Unit coverage for the unsubmitted markdown draft comparison."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -30,7 +28,6 @@ def _worker_plan() -> RequiredArtifact:
 
 
 def test_unsubmitted_draft_divergence_handles_every_persistence_branch() -> None:
-    """S-2: only a retained draft differing from canonical is divergence."""
     backend = MemoryBackend()
     artifact_dir = Path("/virtual/.agent/artifacts")
     canonical = artifact_dir / "plan.md"
@@ -50,7 +47,6 @@ def test_unsubmitted_draft_divergence_handles_every_persistence_branch() -> None
 
 
 def test_md_draft_save_regression_identical_seeded_replay_preserves_provenance() -> None:
-    """S-3: replaying an unchanged seeded draft does not remove its provenance marker."""
     backend = MemoryBackend()
     artifact_dir = Path("/virtual/.agent/artifacts")
 
@@ -71,7 +67,6 @@ def test_md_draft_save_regression_identical_seeded_replay_preserves_provenance()
 def test_md_draft_divergence_regression_worker_artifact_uses_its_own_directory(
     tmp_path: Path,
 ) -> None:
-    """S-4: coordinator drafts must not mask or block worker submissions."""
     required = _worker_plan()
     worker_artifact_dir = tmp_path / ".agent" / "workers" / "unit-api" / "artifacts"
     worker_artifact_dir.mkdir(parents=True)

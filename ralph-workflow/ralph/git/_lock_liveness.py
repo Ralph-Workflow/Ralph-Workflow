@@ -1,14 +1,3 @@
-"""Bounded liveness probe for a git lock file.
-
-The probe aggregates the per-process verdicts of
-:mod:`ralph.git._lock_proc_inspect` into a single lock verdict and owns the
-bounded worker pool the probe runs in. The external (``lsof`` / ``fuser``)
-corroboration and the fail-closed entry point stay in
-:mod:`ralph.git._lock_recovery`, which owns the bounded subprocess calls.
-
-Split out of ``ralph.git._lock_recovery`` to stay within the repo-structure
-line limits; the public surface is unchanged and re-exported from there.
-"""
 
 from __future__ import annotations
 
@@ -24,23 +13,15 @@ from typing import Literal
 
 from ralph.git._lock_proc_inspect import _check_pid_liveness, _list_pids
 
-#: Wall-clock bound on one liveness probe. The scan itself is cheap (a few
-#: reads per process); the bound exists for a process table that is huge or a
-#: /proc entry that hangs, and is generous because the probe only runs after
-#: a lock has already blocked git for at least the staleness floor.
 _PROBE_TIMEOUT_S = 5.0
 _PROBE_MAX_WORKERS: int = 4
 PROBE_MAX_WORKERS: int = _PROBE_MAX_WORKERS
 
-#: Thread-name prefix of the bounded probe pool. It is a named constant so a
-#: test can observe the pool's worker count through ``threading.enumerate()``
-#: instead of reaching into a private attribute of the executor object.
 _PROBE_THREAD_NAME_PREFIX = "ralph-git-lock-probe"
 
 
 @dataclass(frozen=True)
 class ProbeExecutorStatus:
-    """Status and health inspection snapshot of the bounded lock-probe thread pool."""
 
     max_workers: int
     worker_count: int
@@ -48,20 +29,14 @@ class ProbeExecutorStatus:
 
     @property
     def capacity(self) -> int:
-        """Maximum worker capacity of the probe thread pool."""
         return self.max_workers
 
     @property
     def healthy(self) -> bool:
-        """True if worker thread count does not exceed maximum pool capacity."""
         return self.worker_count <= self.max_workers
 
 
 class _ProbeExecutorHolder:
-    """Dedicated bounded ThreadPoolExecutor holder for lock liveness probes.
-
-    Sizing is bounded to prevent thread accumulation under repeated timeouts.
-    """
 
     def __init__(self, max_workers: int = _PROBE_MAX_WORKERS) -> None:
         self._max_workers = max_workers
@@ -106,12 +81,10 @@ _probe_pool = _ProbeExecutorHolder()
 
 
 def probe_pool_capacity() -> int:
-    """Return the bounded maximum worker capacity of the probe thread pool."""
     return _PROBE_MAX_WORKERS
 
 
 def probe_executor_status() -> ProbeExecutorStatus:
-    """Return health and status inspection for the probe thread pool."""
     return _probe_pool.status()
 
 
@@ -120,7 +93,6 @@ def _get_probe_executor() -> ThreadPoolExecutor:
 
 
 def reset_probe_executor() -> None:
-    """Test seam and interpreter-exit cleanup for the probe executor."""
     _probe_pool.reset()
 
 
@@ -192,10 +164,6 @@ def _resolve_repo_identity(
     gitdir: Path | str,
     gitdir_common: Path | str | None,
 ) -> tuple[Path, set[Path], Path, bytes, bytes]:
-    """Resolve lock path, live cwds, common worktrees dir, and gitdir byte encodings.
-
-    Raises OSError on any metadata discovery or file read error to fail closed.
-    """
     lock = Path(lock_path)
     gitdir_path = Path(gitdir).resolve()
     if gitdir_common is not None:
@@ -235,8 +203,6 @@ def _resolve_repo_identity(
         live_cwds.add(main_repo_top)
 
     common_worktrees_dir = gitdir_common_path / "worktrees"
-    # Every linked worktree shares the refs/packed-refs/config locks of the common
-    # dir, so a git running in ANY of them can be the holder.
     with suppress(OSError):
         for linked in common_worktrees_dir.glob("*/gitdir"):
             top = linked.read_text(encoding="utf-8").strip()
@@ -252,9 +218,7 @@ _HOST_INIT_MAX_START_S = 600.0
 
 
 def _pid1_started_at_boot() -> bool:
-    """Return True when pid 1 is a host init that started within minutes of boot."""
     try:
-        # filesystem-read-ok: /proc is a virtual kernel process-metadata source, not workspace content
         stat_text = Path("/proc/1/stat").read_text(encoding="utf-8")
         start_ticks = int(stat_text.rsplit(")", 1)[1].split()[19])
         return start_ticks / os.sysconf("SC_CLK_TCK") < _HOST_INIT_MAX_START_S
@@ -263,28 +227,15 @@ def _pid1_started_at_boot() -> bool:
 
 
 def _not_host_pid_namespace() -> bool:
-    """Return True when ``/proc`` may show only part of the machine.
-
-    Inside a container, bwrap or ``unshare --pid`` sandbox, ``/proc`` lists only
-    that namespace's processes, so "nobody else holds the lock" proves nothing
-    about a git running on the host against a bind-mounted repository. ``NSpid``
-    only reveals a namespace nested below the *reader's own*, which a fresh
-    ``--mount-proc`` hides, so the telling signs are used instead: a pid 1 that
-    is not a boot-time init, a container marker file, or a non-identity uid map.
-    """
     try:
-        # filesystem-read-ok: /proc is a virtual kernel process-metadata source, not workspace content
         status_text = Path("/proc/self/status").read_text(encoding="utf-8")
         for line in status_text.splitlines():
             if line.startswith("NSpid:") and len(line.split()[1:]) > 1:
                 return True
-        # filesystem-read-ok: system container marker probe outside workspace
         is_docker = Path("/.dockerenv").exists()
-        # filesystem-read-ok: system container marker probe outside workspace
         is_container = Path("/run/.containerenv").exists()
         if is_docker or is_container:
             return True
-        # filesystem-read-ok: /proc is a virtual kernel process-metadata source, not workspace content
         uid_map = Path("/proc/self/uid_map").read_text(encoding="utf-8").split()
         if uid_map[:3] != ["0", "0", "4294967295"]:
             return True
@@ -299,12 +250,6 @@ def _combine_verdicts(
     *,
     has_proc: bool,
 ) -> Literal["live", "dead", "unknown"]:
-    """Merge the /proc scan with the lsof/fuser corroboration.
-
-    Any "live" wins. A "dead" needs the /proc scan to have proven it; only on a
-    platform with no /proc (macOS) is lsof/fuser's "nothing holds it" accepted,
-    because there it is the only mechanism there is.
-    """
     if "live" in (proc_status, external):
         return "live"
     if proc_status == "dead" or (not has_proc and external == "dead"):

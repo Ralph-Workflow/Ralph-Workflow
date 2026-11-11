@@ -1,25 +1,3 @@
-"""G6 invariants: the diagnostic-cap hand-off is gone; the ladder owns it.
-
-Three properties are pinned here:
-
-1. **Cap exhaustion reaches a ladder rung.** When the diagnostic-repair
-   budget is spent the durable record carries the typed "diagnostic
-   budget spent" outcome and the state escalates into the autonomous
-   fallback ladder: a rung is recorded in the durable attempt ledger,
-   the resolver-agent salvage attempt the last-resort precondition waits
-   for is recorded, and the retired
-   ``diagnostic_intervention_required`` hand-off flag is never set.
-2. **Legacy flagged records load-and-clear into the ladder.** A record
-   that still carries the retired flag on disk loads cleared (flag,
-   held evidence and lease), so it re-enters the autonomous path
-   instead of deadlocking on a person.
-3. **No terminal ``INTERVENTION_REQUIRED`` display state is reachable
-   from production inputs.** The display vocabulary keeps the retired
-   values for parsing legacy payloads, but no production projection
-   (record fact, recovery outcome, phase decision) renders the terminal
-   intervention state.
-"""
-
 from __future__ import annotations
 
 import json
@@ -68,7 +46,6 @@ def _record(**overrides: object) -> IntegrationRecord:
 
 
 def test_cap_exhaustion_stamps_typed_outcome_and_reaches_a_ladder_rung(tmp_path: Path) -> None:
-    """The spent budget escalates into the ladder; the hand-off flag stays False."""
     root = tmp_path / "repo"
     root.mkdir()
     ledger = AttemptLedger(root, ledger_path=root / ".agent" / "attempt-ledger.json")
@@ -96,12 +73,9 @@ def test_cap_exhaustion_stamps_typed_outcome_and_reaches_a_ladder_rung(tmp_path:
     }
     evidence = ledger.read().ladder_evidence
     assert any(key.startswith("rung:") for key in evidence)
-    # The last-resort precondition (b) waits for the resolver-agent
-    # salvage attempt; the diagnostic rotation IS that salvage.
     assert "salvage:resolver_agent" in evidence
     assert evidence["salvage:resolver_agent"].startswith("failed:")
 
-    # The durable record still carries the typed outcome, never the flag.
     on_disk = read_record(root)
     assert on_disk is not None
     assert on_disk.diagnostic_intervention_required is False
@@ -109,7 +83,6 @@ def test_cap_exhaustion_stamps_typed_outcome_and_reaches_a_ladder_rung(tmp_path:
 
 
 def test_stale_intent_outcome_routes_to_the_ladder(tmp_path: Path) -> None:
-    """The typed stale-intent verdict routes into the ladder too."""
     root = tmp_path / "repo"
     root.mkdir()
     ledger = AttemptLedger(root, ledger_path=root / ".agent" / "attempt-ledger.json")
@@ -134,7 +107,6 @@ def test_stale_intent_outcome_routes_to_the_ladder(tmp_path: Path) -> None:
 
 
 def test_legacy_flagged_record_loads_and_clears_into_the_ladder(tmp_path: Path) -> None:
-    """A legacy flagged payload loads cleared and re-enters the ladder."""
     root = tmp_path / "repo"
     root.mkdir()
     payload: dict[str, object] = {
@@ -161,7 +133,6 @@ def test_legacy_flagged_record_loads_and_clears_into_the_ladder(tmp_path: Path) 
     assert loaded is not None
     assert loaded.diagnostic_intervention_required is False
 
-    # The cleared record routes into the ladder through the typed outcome.
     ledger = AttemptLedger(root, ledger_path=root / ".agent" / "attempt-ledger.json")
     escalate_diagnostic_budget_to_ladder(
         root,
@@ -173,7 +144,6 @@ def test_legacy_flagged_record_loads_and_clears_into_the_ladder(tmp_path: Path) 
 
 
 def test_phase_decision_for_a_spent_budget_is_a_recovery_block(tmp_path: Path) -> None:
-    """A spent budget blocks for recovery, never for a person."""
     from ralph.policy.loader import load_policy
     from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
 
@@ -187,7 +157,7 @@ def test_phase_decision_for_a_spent_budget_is_a_recovery_block(tmp_path: Path) -
         entry_phase="development",
         terminal_phase="complete",
     )
-    del load_policy  # the policy above is the only input the decision needs
+    del load_policy
 
     record = _record(merge_commit_repair_attempts=DIAGNOSTIC_REPAIR_ATTEMPT_CAP)
     state = PipelineState(phase="development", rebase=RebaseState())
@@ -201,12 +171,6 @@ def test_phase_decision_for_a_spent_budget_is_a_recovery_block(tmp_path: Path) -
 
 
 def test_no_production_projection_renders_a_terminal_intervention_state() -> None:
-    """No production projection renders the terminal intervention state.
-
-    The display vocabulary keeps the retired values for parsing legacy
-    payloads, but the live projections (the typed ladder escalation, the
-    recovery outcome, the phase decision) never render them.
-    """
     escalation = RebaseState(
         last_outcome=RebaseOutcomeKind.LADDER_ESCALATION,
         last_reason=(
@@ -222,12 +186,9 @@ def test_no_production_projection_renders_a_terminal_intervention_state() -> Non
     message = format_auto_integrate_message(rebase=escalation)
     assert "intervention required" not in message
     assert "ladder" in message
-    # The message names the next autonomous action and the preserved copy.
     assert "alternate_preservation" in message
     assert "refs/ralph-backup/abc123" in message
 
-    # The typed display state of the escalation is the diagnosis state,
-    # never the terminal intervention state.
     assert (
         format_auto_integrate_message(
             operation_display_state=OperationDisplayState.EVIDENCE_DIAGNOSIS,
@@ -242,7 +203,6 @@ def test_no_production_projection_renders_a_terminal_intervention_state() -> Non
     ["ladder_escalation", "evidence_diagnosis"],
 )
 def test_escalation_outcomes_never_render_the_intervention_label(outcome_value: str) -> None:
-    """The typed escalation labels never name the terminal intervention."""
     from ralph.display.integration_display_label import DISPLAY_LABEL_MAP
 
     assert DISPLAY_LABEL_MAP[outcome_value] != IntegrationDisplayLabel.INTERVENTION.value

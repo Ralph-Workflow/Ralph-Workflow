@@ -1,5 +1,3 @@
-"""Tests for ralph/workspace/fs.py — Filesystem workspace implementation."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -61,7 +59,6 @@ class TestFsWorkspaceReadBytes:
     def test_read_bytes_regression_uses_metadata_to_detect_a_missing_file(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """S-5: a byte-window read obtains existence and size in one metadata access."""
         ws = FsWorkspace(tmp_path)
         target = tmp_path / "missing.txt"
         original_exists = Path.exists
@@ -88,7 +85,6 @@ class TestFsWorkspaceReadBytes:
         assert meta["truncated"] is True
 
     def test_read_bytes_regression_rejects_an_unbounded_large_read(self, tmp_path: Path) -> None:
-        """S-4: a full byte read is size-checked before opening the file."""
         ws = FsWorkspace(tmp_path)
         (tmp_path / "large.txt").write_text("A" * 11, encoding="utf-8")
 
@@ -96,7 +92,6 @@ class TestFsWorkspaceReadBytes:
             ws.read_bytes("large.txt", max_bytes=10)
 
     def test_read_bytes_allows_a_bounded_window_for_a_large_file(self, tmp_path: Path) -> None:
-        """S-4: requesting a small byte window does not require a full-file load."""
         ws = FsWorkspace(tmp_path)
         (tmp_path / "large.txt").write_text("abcdefghijk", encoding="utf-8")
 
@@ -106,7 +101,6 @@ class TestFsWorkspaceReadBytes:
         assert meta == {"total_bytes": 11, "returned_bytes": 4, "truncated": True}
 
     def test_read_bytes_allows_a_short_tail_without_an_explicit_limit(self, tmp_path: Path) -> None:
-        """S-4: a read to end is bounded by the bytes after its offset, not file size."""
         ws = FsWorkspace(tmp_path)
         (tmp_path / "large.txt").write_text("abcdefghijk", encoding="utf-8")
 
@@ -116,7 +110,6 @@ class TestFsWorkspaceReadBytes:
         assert meta == {"total_bytes": 11, "returned_bytes": 3, "truncated": False}
 
     def test_read_bytes_regression_rejects_a_negative_window_limit(self, tmp_path: Path) -> None:
-        """S-4: a negative limit cannot bypass the requested-window size guard."""
         ws = FsWorkspace(tmp_path)
         (tmp_path / "large.txt").write_text("abcdefghijk", encoding="utf-8")
 

@@ -1,9 +1,3 @@
-"""Tests for PreparePromptEffect boundary clearing via handle_inline_effect.
-
-These tests verify that artifact clearing fires correctly on fresh phase entry
-and is suppressed on resume, same-phase retry, and analysis loopback.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -32,7 +26,6 @@ def _write_artifact_files(
     artifact_path: str,
     md_path: str | None,
 ) -> None:
-    """Write minimal artifact files for a given artifact type."""
     ws.mkdirs(Path(artifact_path).parent.as_posix())
     document = f"---\ntype: {artifact_type}\n---\n## Summary\n- [S1] test\n"
     ws.write(artifact_path, document)
@@ -41,17 +34,13 @@ def _write_artifact_files(
 
 
 class TestHandleInlineEffectPhaseEntryClearing:
-    """PreparePromptEffect handler clears drains on genuine fresh entry."""
-
     def test_fresh_planning_entry_clears_artifacts(self, tmp_path: Path) -> None:
-        """Fresh planning entry (checkpoint_saved_count=0, previous_phase=None) clears artifacts."""
         pipeline, artifacts_policy = _load_default_policy_bundle()
 
         root = tmp_path / ".agent"
         root.mkdir(parents=True)
         ws = FsWorkspace(root)
 
-        # Pre-create all 6 planning, planning_analysis, and development_analysis files
         _write_artifact_files(ws, "plan", ".agent/artifacts/plan.md", ".agent/PLAN.md")
         _write_artifact_files(
             ws,
@@ -71,7 +60,6 @@ class TestHandleInlineEffectPhaseEntryClearing:
         )
         state = PipelineState(phase="planning", previous_phase=None, checkpoint_saved_count=0)
 
-        # Monkeypatch materialize_prepared_prompt to avoid actual materialization
         original = runner_module.materialize_prepared_prompt
         runner_module.materialize_prepared_prompt = lambda *a, **k: None
 
@@ -86,7 +74,6 @@ class TestHandleInlineEffectPhaseEntryClearing:
         finally:
             runner_module.materialize_prepared_prompt = original
 
-        # All 6 files cleared
         assert not ws.exists(".agent/artifacts/plan.md")
         assert not ws.exists(".agent/PLAN.md")
         assert not ws.exists(".agent/artifacts/planning_analysis_decision.md")
@@ -95,13 +82,11 @@ class TestHandleInlineEffectPhaseEntryClearing:
         assert not ws.exists(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")
 
     def test_planning_to_development_clears_analysis_and_dev(self, tmp_path: Path) -> None:
-        """Fresh development entry clears planning_analysis + dev + dev_analysis artifacts."""
         pipeline, artifacts_policy = _load_default_policy_bundle()
         root = tmp_path / ".agent"
         root.mkdir(parents=True)
         ws = FsWorkspace(root)
 
-        # Pre-create all 6 files
         _write_artifact_files(
             ws,
             "planning_analysis_decision",
@@ -145,7 +130,6 @@ class TestHandleInlineEffectPhaseEntryClearing:
         finally:
             runner_module.materialize_prepared_prompt = original
 
-        # All 6 files cleared
         assert not ws.exists(".agent/artifacts/planning_analysis_decision.md")
         assert not ws.exists(".agent/PLANNING_ANALYSIS_DECISION.md")
         assert not ws.exists(".agent/artifacts/development_result.md")
@@ -154,7 +138,6 @@ class TestHandleInlineEffectPhaseEntryClearing:
         assert not ws.exists(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")
 
     def test_development_commit_clears_dev_and_analysis(self, tmp_path: Path) -> None:
-        """Fresh development_commit entry clears development + development_analysis artifacts."""
         pipeline, artifacts_policy = _load_default_policy_bundle()
         root = tmp_path / ".agent"
         root.mkdir(parents=True)
@@ -199,14 +182,12 @@ class TestHandleInlineEffectPhaseEntryClearing:
         finally:
             runner_module.materialize_prepared_prompt = original
 
-        # All 4 files cleared
         assert not ws.exists(".agent/artifacts/development_result.md")
         assert not ws.exists(".agent/DEVELOPMENT_RESULT.md")
         assert not ws.exists(".agent/artifacts/development_analysis_decision.md")
         assert not ws.exists(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")
 
     def test_planning_resume_does_not_clear(self, tmp_path: Path) -> None:
-        """Planning resume (checkpoint_saved_count>0, previous_phase=None) suppresses clearing."""
         pipeline, artifacts_policy = _load_default_policy_bundle()
         root = tmp_path / ".agent"
         root.mkdir(parents=True)
@@ -233,12 +214,10 @@ class TestHandleInlineEffectPhaseEntryClearing:
         finally:
             runner_module.materialize_prepared_prompt = original
 
-        # Files still exist (resume guard suppressed clearing)
         assert ws.exists(".agent/artifacts/plan.md")
         assert ws.exists(".agent/PLAN.md")
 
     def test_analysis_loopback_does_not_clear(self, tmp_path: Path) -> None:
-        """Analysis loopback (previous_phase='planning_analysis') suppresses clearing."""
         pipeline, artifacts_policy = _load_default_policy_bundle()
         root = tmp_path / ".agent"
         root.mkdir(parents=True)
@@ -267,12 +246,10 @@ class TestHandleInlineEffectPhaseEntryClearing:
         finally:
             runner_module.materialize_prepared_prompt = original
 
-        # Files still exist (analysis loopback, not fresh)
         assert ws.exists(".agent/artifacts/plan.md")
         assert ws.exists(".agent/PLAN.md")
 
     def test_same_phase_loopback_does_not_clear(self, tmp_path: Path) -> None:
-        """Same-phase loopback (previous_phase='development') suppresses clearing."""
         pipeline, artifacts_policy = _load_default_policy_bundle()
         root = tmp_path / ".agent"
         root.mkdir(parents=True)
@@ -306,12 +283,10 @@ class TestHandleInlineEffectPhaseEntryClearing:
         finally:
             runner_module.materialize_prepared_prompt = original
 
-        # Files still exist
         assert ws.exists(".agent/artifacts/development_result.md")
         assert ws.exists(".agent/DEVELOPMENT_RESULT.md")
 
     def test_development_commit_to_planning_clears_planning(self, tmp_path: Path) -> None:
-        """Last-commit re-entry (previous_phase='development_commit') clears planning artifacts."""
         pipeline, artifacts_policy = _load_default_policy_bundle()
         root = tmp_path / ".agent"
         root.mkdir(parents=True)
@@ -337,7 +312,7 @@ class TestHandleInlineEffectPhaseEntryClearing:
         state = PipelineState(
             phase="planning",
             previous_phase="development_commit",
-            checkpoint_saved_count=5,  # checkpoint exists but previous_phase != None
+            checkpoint_saved_count=5,
         )
 
         original = runner_module.materialize_prepared_prompt
@@ -354,7 +329,6 @@ class TestHandleInlineEffectPhaseEntryClearing:
         finally:
             runner_module.materialize_prepared_prompt = original
 
-        # All 6 files cleared despite checkpoint_saved_count > 0
         assert not ws.exists(".agent/artifacts/plan.md")
         assert not ws.exists(".agent/PLAN.md")
         assert not ws.exists(".agent/artifacts/planning_analysis_decision.md")
@@ -363,7 +337,6 @@ class TestHandleInlineEffectPhaseEntryClearing:
         assert not ws.exists(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")
 
     def test_resumed_non_planning_phase_does_not_clear(self, tmp_path: Path) -> None:
-        """Non-planning resume: checkpoint_saved_count>0, previous_phase=None."""
         pipeline, artifacts_policy = _load_default_policy_bundle()
         root = tmp_path / ".agent"
         root.mkdir(parents=True)
@@ -395,6 +368,5 @@ class TestHandleInlineEffectPhaseEntryClearing:
         finally:
             runner_module.materialize_prepared_prompt = original
 
-        # Files still exist (non-planning resume guard suppressed clearing)
         assert ws.exists(".agent/artifacts/development_result.md")
         assert ws.exists(".agent/DEVELOPMENT_RESULT.md")

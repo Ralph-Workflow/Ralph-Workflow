@@ -1,4 +1,3 @@
-"""Fail-open, non-force push of one target branch to one configured remote."""
 
 from __future__ import annotations
 
@@ -15,13 +14,10 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-#: Wall-clock ceiling for each remote push attempt.
 PUSH_TIMEOUT_SECONDS = 30.0
 
-#: Wall-clock ceiling for the pre-push remote ref query.
 REF_QUERY_TIMEOUT_SECONDS = 10.0
 
-#: ``PushResult.detail`` marker for the skipped-push no-op publication.
 UP_TO_DATE_DETAIL = "remote ref already equals the local branch tip"
 
 
@@ -42,7 +38,6 @@ PushStatus = StrEnum(
 
 @dataclass(frozen=True, slots=True)
 class PushResult:
-    """Structured, bounded result of an opt-in remote publication attempt."""
 
     status: PushStatus
     remote: str
@@ -51,12 +46,10 @@ class PushResult:
 
     @property
     def success(self) -> bool:
-        """Whether the remote now has the requested target branch."""
         return self.status in {PushStatus.PUSHED, PushStatus.CREATED}
 
     @property
     def summary(self) -> str:
-        """Human-facing compatibility text derived from facts, never parsed."""
         if self.status is PushStatus.PUSHED:
             if self.detail == UP_TO_DATE_DETAIL:
                 return f"{self.branch} already published to {self.remote}"
@@ -69,7 +62,6 @@ class PushResult:
 
 
 def _list_remotes(repo_root: Path) -> list[str]:
-    """Return configured remote names, treating query failure as no remote."""
     try:
         result = run_git(("remote",), cwd=repo_root, label="git-list-remotes")
     except (OSError, FileNotFoundError) as exc:
@@ -86,7 +78,6 @@ def _list_remotes(repo_root: Path) -> list[str]:
 
 
 def _classify_failure(detail: str) -> PushStatus:
-    """Classify Git's bounded failure output once at the subprocess boundary."""
     text = detail.lower()
     if "timed out" in text or "timeout" in text:
         return PushStatus.TIMEOUT
@@ -108,12 +99,6 @@ def _classify_failure(detail: str) -> PushStatus:
 
 
 def _remote_ref_sha(repo_root: Path, remote: str, branch: str) -> str | None:
-    """Return the remote's ``refs/heads/<branch>`` SHA, or ``None`` when unreadable.
-
-    An unreadable remote and a remote that simply has no such branch are
-    both ``None`` on purpose: neither proves the remote already matches,
-    so neither may skip the push.
-    """
     try:
         result = run_git(
             ("ls-remote", "--", remote, f"refs/heads/{branch}"),
@@ -135,7 +120,6 @@ def _remote_ref_sha(repo_root: Path, remote: str, branch: str) -> str | None:
 
 
 def _publishable_locally(repo_root: Path, remote: str, branch: str) -> bool:
-    """Whether publication is a no-op because both refs already name one commit."""
     local_sha = branch_sha(repo_root, branch)
     if local_sha is None:
         return False
@@ -145,7 +129,6 @@ def _publishable_locally(repo_root: Path, remote: str, branch: str) -> bool:
 def _push_to_remote(
     repo_root: Path, remote: str, branch: str, *, timeout_seconds: float = PUSH_TIMEOUT_SECONDS
 ) -> tuple[bool, str]:
-    """Run the one permitted refspec; retain this narrow subprocess seam for tests."""
     try:
         result = run_git(
             ("push", "--", remote, f"refs/heads/{branch}:refs/heads/{branch}"),
@@ -165,13 +148,6 @@ def push_branch_to_single_remote(
     remote: str,
     timeout_seconds: float = PUSH_TIMEOUT_SECONDS,
 ) -> PushResult:
-    """Push exactly ``refs/heads/<branch>`` to one remote without raising.
-
-    Publication is idempotent: when the local and remote refs already name
-    the same commit the push is skipped and the result still reports
-    success, because the postcondition callers assert -- the remote holds
-    the requested target branch -- already holds.
-    """
     if not isinstance(remote, str) or not remote.strip() or remote not in _list_remotes(repo_root):
         return PushResult(
             PushStatus.MISSING_REMOTE, remote if isinstance(remote, str) else "", branch

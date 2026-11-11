@@ -1,4 +1,3 @@
-"""Optional context for building a PhaseExitModel from a PhaseEntryModel."""
 
 from __future__ import annotations
 
@@ -7,7 +6,6 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class ExitContext:
-    """Optional context for building a PhaseExitModel from a PhaseEntryModel."""
 
     elapsed_seconds: float = 0.0
     exit_trigger: str | None = None

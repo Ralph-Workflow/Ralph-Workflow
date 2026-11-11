@@ -1,81 +1,3 @@
-"""End-to-end pipeline test: drive ``_run_inner_loop`` and assert that
-``_push_status_bar_if_changed`` calls ``ParallelDisplay.update_status_bar``
-on a real ``ParallelDisplay`` whenever the
-(``state.phase``, ``outer_dev_iteration``, ``inner_analysis``) signature
-changes, and skips the update when the signature is unchanged.
-
-This is the integration-boundary regression test that pins the contract
-between :func:`ralph.pipeline.run_loop._push_status_bar_if_changed` and
-:func:`ralph.display.parallel_display.ParallelDisplay.update_status_bar`.
-The test asserts:
-
-1. The exact ``update_status_bar`` method on the live ``ParallelDisplay``
-   is invoked (NOT a sub-seam on ``StatusBar.update``), so a regression
-   that drops / replaces / shadows the entry point is caught.
-2. The captured ``StatusBarModel`` carries the full data contract — the
-   ``workspace_root``, ``phase_label``, ``outer_dev_iteration``,
-   ``outer_dev_cap``, ``inner_analysis``, and ``inner_analysis_cap``
-   values mirror the patched-runner output.
-3. At least one captured push has a non-``None`` ``inner_analysis`` value
-   so the analysis-iteration contract is exercised (not only
-   commit-phase ``outer_dev_iteration``).
-
-The test drives the real loop body against:
-
-1. A real ``ParallelDisplay`` composed with a ``_TtyLikeStringIO``
-   console so the StatusBar real-TTY gate passes (the same pattern
-   already pinned by ``tests/display/test_status_bar.py::
-   test_status_bar_live_region_renders_updated_model_on_tty_like_stream``).
-2. A monkeypatched ``_runner_module.run_pipeline_step`` that returns a
-   known ``PipelineState`` with a known phase name and known
-   ``outer_dev_iteration`` / ``inner_analysis`` counts on successive
-   calls, so the test can assert the helper pushes a fresh
-   ``StatusBarModel`` exactly when the signature changes and skips the
-   push when the signature is unchanged.
-3. A real policy bundle loaded from the default bundled policies so
-   ``_build_status_bar_model`` can resolve the human phase label and
-   the iteration caps deterministically.
-
-The test uses ``force_terminal=True`` plus a ``_TtyLikeStringIO`` console
-because Rich's ``is_terminal`` flag is True on a force_terminal console
-AND the ``isatty()`` conjunct is True on a ``_TtyLikeStringIO`` —
-exactly the two conjuncts the real-TTY gate requires. The test does NOT
-spawn a real subprocess, does NOT use ``time.sleep``, and runs in well
-under 1 second wall-clock so it fits inside the 60s combined test budget.
-
-Documented policy exception -- the frozen private run-loop API
----------------------------------------------------------------
-
-This file is ONE explicitly recorded exception to the project's
-black-box-by-default rule, quoted from
-``docs/ralph-workflow-policy/testing-policy.md``:
-
-    "The test suite MUST be black-box by default: tests assert observable
-    behaviour through the project's public surface (CLI entry points, MCP
-    tool handlers, library exports, HTTP endpoints, CLI outputs). White-box
-    tests that reach into private internals are permitted only when no
-    observable surface can express the regression."
-
-The run-loop status-bar wiring has no public entry point of its own: the
-seam that pushes a ``StatusBarModel`` into the composed display is the
-PRIVATE ``ralph.pipeline.run_loop`` API -- ``_run_inner_loop``,
-``_push_status_bar_if_changed``, ``_setup_active_display``,
-``_sync_live_display_context``, ``_execute_with_cleanup``, ``_LoopContext``
-and ``_attention_state_for_state``. Those names are FROZEN: 13 sibling
-test suites (14 files in total, counting this one) already import the
-same private API from ``ralph.pipeline.run_loop``, so renaming them or
-publishing them would require edits in those suites, which are outside
-this unit's scope.
-
-What this file asserts is nevertheless observable behaviour, not internal
-state: every case drives the REAL loop body and asserts on the PUBLIC
-``ParallelDisplay`` / ``StatusBar`` surface -- the pushed
-``StatusBarModel`` (phase label, iteration counters, attention slot) and
-the rendered single-line bar. The private names are used only to REACH
-that public surface; no assertion reads a private attribute of the run
-loop or of the display.
-"""
-
 from __future__ import annotations
 
 import io
@@ -110,15 +32,6 @@ if TYPE_CHECKING:
 
 
 class _TtyLikeStringIO(io.StringIO):
-    """An in-memory buffer that reports ``isatty() is True``.
-
-    Mirrors the canonical pattern from
-    ``tests/display/test_status_bar.py:58-65`` so the StatusBar real-TTY
-    gate (the ``console.is_terminal AND console.file.isatty()`` conjunct)
-    passes on a StringIO-backed console without requiring an actual
-    pseudo-tty.
-    """
-
     def isatty(self) -> bool:
         return True
 
@@ -127,25 +40,11 @@ _ANSI_ESCAPE_RE: re.Pattern[str] = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 
 
 def _strip_ansi(text: str) -> str:
-    """Return ``text`` with all CSI / SGR escape sequences removed.
-
-    Mirrors the escape-stripping regex used by
-    ``ralph.display.status_bar`` so the test can compare the rendered
-    buffer against a plain-text target without ANSI noise polluting the
-    length measurement.
-    """
     return _ANSI_ESCAPE_RE.sub("", text)
 
 
 @lru_cache(maxsize=1)
 def _load_default_policy() -> PolicyBundle:
-    """Load the bundled default policy bundle for a deterministic, no-disk test.
-
-    ``load_policy`` reads from a config directory; passing a tempdir
-    with no TOML files forces it to fall back to the bundled defaults,
-    which is the same shape used by the rest of the run-loop test
-    suite.
-    """
     with tempfile.TemporaryDirectory() as d:
         return load_policy(Path(d) / ".agent")
 
@@ -153,21 +52,6 @@ def _load_default_policy() -> PolicyBundle:
 def _patched_update_recorder(
     monkeypatch: pytest.MonkeyPatch,
 ) -> list[StatusBarModel]:
-    """Patch ``ParallelDisplay.update_status_bar`` directly to capture
-    every push into a shared list.
-
-    :func:`ParallelDisplay.update_status_bar` is the canonical entry
-    point that :func:`ralph.pipeline.run_loop._push_status_bar_if_changed`
-    calls — patching the method on the class (not on the ``StatusBar``
-    sub-object) keeps the seam aligned with the actual production call
-    site. The patch delegates to the original implementation so the
-    StatusBar sub-lifecycle is still exercised end-to-end (the model is
-    stored on the StatusBar's ``_model`` slot, so the StatusBar's
-    observable ``last_model`` reflects every push).
-
-    Returns the list so callers can read the captured ``StatusBarModel``
-    instances after the run loop completes.
-    """
     captured: list[StatusBarModel] = []
 
     real_update_status_bar = ParallelDisplay.update_status_bar
@@ -189,15 +73,6 @@ def _make_loop_context(
     workspace_root: Path,
     policy_bundle: PolicyBundle,
 ) -> _LoopContext:
-    """Build a ``_LoopContext`` populated with real display + policy_bundle.
-
-    Mirrors the construction pattern from
-    ``tests/pipeline/test_run_loop_waiting_state_logs.py``
-    (``_build_loop_context_and_state``) but with real ``active_display``
-    and real ``policy_bundle`` so ``_build_status_bar_model`` (called
-    from inside the run loop) can read the policy's phase definitions
-    and resolve the human phase label / iteration caps deterministically.
-    """
     buf = _TtyLikeStringIO()
     console = Console(
         file=buf,
@@ -231,16 +106,6 @@ def _make_loop_context(
 
 
 def _make_display() -> tuple[ParallelDisplay, Console]:
-    """Build a real ``ParallelDisplay`` composed with a tty-like console.
-
-    The tty-like console (``force_terminal=True`` plus
-    ``_TtyLikeStringIO``) is the canonical pattern that makes the
-    StatusBar real-TTY gate pass without requiring an actual pseudo-tty.
-
-    The injected ``Console`` is returned so the test asserts on the
-    console IT created instead of reaching into the display's private
-    context holder.
-    """
     buf = _TtyLikeStringIO()
     console = Console(
         file=buf,
@@ -255,38 +120,6 @@ def _make_display() -> tuple[ParallelDisplay, Console]:
 def test_run_inner_loop_pushes_status_bar_with_full_contract(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AC-03 contract: ``_run_inner_loop`` pushes a fresh
-    ``StatusBarModel`` to ``ParallelDisplay.update_status_bar`` every
-    time the (phase, cycle) signature changes — including pushes with a
-    non-``None`` ``inner_analysis`` value (the analysis-phase contract).
-
-    Drives the real loop body with a monkeypatched
-    ``_runner_module.run_pipeline_step`` that returns a NEW
-    ``PipelineState`` with a distinct phase on the first two calls and
-    then the terminal phase on the third call (so the loop exits).
-    The recording wrapper patches ``ParallelDisplay.update_status_bar``
-    so every push is captured; the test asserts that the captured
-    pushes contain a ``StatusBarModel`` whose
-    ``(workspace_root, phase_label, outer_dev_iteration,
-    outer_dev_cap, inner_analysis, inner_analysis_cap)`` exactly
-    matches the model built from each patched-runner state.
-
-    Phases selected so the captured pushes span both halves of the
-    contract:
-
-    - ``development_final_commit`` is a lifecycle/commit phase that
-      increments the ``iteration`` counter, so its model has
-      ``outer_dev_iteration=1, outer_dev_cap=5,
-      inner_analysis=None, inner_analysis_cap=None``.
-    - ``development_analysis`` is an analysis phase (role="analysis")
-      with ``iteration_state_field="development_analysis_iteration"``,
-      so a state with
-      ``loop_iterations={"development_analysis_iteration": 2}``
-      produces ``inner_analysis=2`` — the phase is gated, so the stored
-      counter is charged on entry and already includes the pass now
-      running, which ``completed_analysis_passes`` takes back out before
-      the label is derived.
-    """
     workspace_root = Path("/tmp/wt028-statusbar-e2e").resolve()
     policy_bundle = _load_default_policy()
     workspace_root_str = str(workspace_root)
@@ -318,10 +151,6 @@ def test_run_inner_loop_pushes_status_bar_with_full_contract(
             budget_caps={"iteration": 5},
             loop_iterations={"development_analysis_iteration": 2},
         ),
-        # Third call returns an int so the loop exits via the
-        # ``isinstance(step_result, int)`` early-exit branch (which
-        # reads BEFORE the status-bar push), giving us EXACTLY two
-        # captured pushes for the two distinct signatures.
         0,
     ]
 
@@ -348,16 +177,6 @@ def test_run_inner_loop_pushes_status_bar_with_full_contract(
 
     _run_inner_loop(state, loop_ctx, prev_phase="development_final_commit")
 
-    # Two captured pushes for two distinct signatures:
-    #   1. (``development_final_commit``, outer_dev=1, inner=None)
-    #      -> ``Development Final Commit`` label, outer iteration 1/5,
-    #         no analysis iteration.
-    #   2. (``development_analysis``, outer_dev=1, inner=3)
-    #      -> ``Development Analysis`` label, outer iteration traced
-    #         to 1/5 (the find_commit_counter_from_phase logic reaches
-    #         ``development_final_commit_review`` whose
-    #         ``increments_counter="iteration"``), analysis iteration
-    #         3/3.
     assert len(captured) == 2, (
         f"expected exactly 2 update_status_bar pushes (one per signature), "
         f"got {len(captured)}: phase_labels={[m.phase_label for m in captured]!r}"
@@ -366,8 +185,6 @@ def test_run_inner_loop_pushes_status_bar_with_full_contract(
     assert isinstance(first_push, StatusBarModel)
     assert isinstance(second_push, StatusBarModel)
 
-    # First push — ``development_final_commit`` lifecycle phase with
-    # no analysis-iteration loop_iterations seeded on the state.
     assert first_push.workspace_root == workspace_root_str
     assert first_push.phase_label == "Development Final Commit"
     assert first_push.outer_dev_iteration == 1
@@ -375,26 +192,13 @@ def test_run_inner_loop_pushes_status_bar_with_full_contract(
     assert first_push.inner_analysis is None
     assert first_push.inner_analysis_cap is None
 
-    # Second push — ``development_analysis`` analysis phase with a
-    # populated development_analysis_iteration loop_iterations entry.
-    # The analysis-iteration value proves the helper picked up the
-    # inner_analysis data path (not just the outer_dev path).
     assert second_push.workspace_root == workspace_root_str
     assert second_push.phase_label == "Development Analysis"
     assert second_push.outer_dev_iteration == 1
     assert second_push.outer_dev_cap == 5
-    # `development_analysis` is gated, so its counter is charged on ENTRY and
-    # includes the pass now running: a stored 2 means one pass finished and the
-    # second is under way, which is what the operator is shown.
     assert second_push.inner_analysis == 2
     assert second_push.inner_analysis_cap == 5
 
-    # AC-03 invariant: the StatusBar's observable ``last_model``
-    # reflects the final push (the ``update_status_bar`` patch
-    # delegates to the real implementation, which stores the model on
-    # the StatusBar's ``_model`` slot). This locks the contract that
-    # a future regression in the run-loop -> update_status_bar ->
-    # StatusBar chain is visible on both sides of the seam.
     assert pd.status_bar.last_model is second_push
     assert pd.status_bar.last_model is not None
     last = pd.status_bar.last_model
@@ -407,17 +211,6 @@ def test_run_inner_loop_pushes_status_bar_with_full_contract(
 def test_run_inner_loop_dedupes_status_bar_on_unchanged_signature(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AC-03: ``_push_status_bar_if_changed`` skips the
-    ``update_status_bar`` call when the (phase, cycle) signature is
-    unchanged from the previous loop iteration.
-
-    Drives the real loop body with a monkeypatched runner that returns
-    a state with the SAME phase and the SAME iteration counts on every
-    call (the loop exits early when the runner returns an int). The
-    test asserts that ``update_status_bar`` is called exactly ONCE: the
-    initial push for the first signature, with no further pushes on the
-    unchanged-signature iterations.
-    """
     workspace_root = Path("/tmp/wt028-statusbar-e2e-dedup").resolve()
     policy_bundle = _load_default_policy()
     workspace_root_str = str(workspace_root)
@@ -459,12 +252,6 @@ def test_run_inner_loop_dedupes_status_bar_on_unchanged_signature(
 
     _run_inner_loop(state, loop_ctx, prev_phase="development_final_commit")
 
-    # AC-03 dedupe: the helper pushes exactly ONE StatusBarModel for
-    # the (``development_final_commit``, outer_dev=1, inner=None)
-    # signature; the dedupe at run_loop.py ``if signature != last_sig``
-    # must suppress every subsequent push on the same signature, and
-    # the int early-exit path returns before the third call's push so
-    # the second call is also deduped.
     assert len(captured) == 1, (
         f"expected exactly one update_status_bar push (dedupe), "
         f"got {len(captured)}: {[m.phase_label for m in captured]!r}"
@@ -481,58 +268,6 @@ def test_run_inner_loop_dedupes_status_bar_on_unchanged_signature(
 
 @pytest.mark.parametrize("width", [70, 80, 99])
 def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
-    """AC-07 proof at the run-loop seam: workspace + phase stay visible at narrow widths.
-
-    Drives the actual run-loop helper
-    :func:`ralph.pipeline.run_loop._push_status_bar_if_changed` (NOT a
-    direct ``pd.update_status_bar`` call) at terminal widths 40, 20,
-    and 14 cols. This is the AC-07 proof at the seam the analysis
-    feedback named: the helper that the run loop body calls every
-    iteration to push the Status Bar model through to the composed
-    ``ParallelDisplay.update_status_bar``. By driving the helper at
-    narrow widths, the test proves the same production wire honors
-    AC-07 even at widths that would force width-driven degradation of
-    the Status Bar's content layout.
-
-    The test feeds a real :class:`PipelineState` for
-    ``development_analysis`` (an analysis phase that exercises BOTH
-    the outer-dev and inner-analysis iteration paths) through the
-    helper, and asserts:
-
-    1. The captured push reached ``ParallelDisplay.update_status_bar``
-       (verified via ``pd.status_bar.last_model`` after the helper
-       call, since the production entry point stores the model on the
-       StatusBar).
-    2. ``len(visible_text) <= width`` after ANSI escape stripping, so
-       the bar never overflows the terminal width at any narrow width.
-    3. The workspace path AND phase label are visible in some
-       recognizable form (the AC-07 minimum contract). Phase shows
-       a recognizable prefix of the human phase label
-       (e.g. ``Dev`` for ``Development Analysis``); path shows a
-       recognizable trailing segment (e.g. ``sub`` for
-       ``.../subdir``). At width 40 the canonical ``Cycle N/cap`` /
-       ``iter N/cap`` iteration labels also render; at width 20
-       the iteration labels render in compact/minimal form (one or
-       both segments may be dropped at very narrow widths to keep
-       workspace + phase visible); at width 14 the outer iter may
-       render but inner is dropped.
-    4. The bar is single-line (no newline wrap into the working
-       area), so copy/paste, terminal search, and scrollback
-       ergonomics are preserved at every width.
-
-    Width-driven degradation is intentional and consistent with the
-    existing :mod:`tests.display.test_status_bar` narrow-width test
-    family. The AC-07 invariant is that workspace + phase always
-    remain readable; iteration labels may degrade or drop entirely at
-    very narrow widths to honour that invariant.
-
-    Reuses the ``_TtyLikeStringIO`` fake-console pattern from the
-    existing tests in this file so the StatusBar real-TTY gate passes
-    without a real pseudo-tty. The test does NOT spawn a subprocess,
-    does NOT use ``time.sleep``, and runs in well under 1s per
-    parametrized variant so it fits inside the 60s combined test
-    budget.
-    """
     buf = _TtyLikeStringIO()
     console = Console(
         file=buf,
@@ -553,11 +288,6 @@ def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
     workspace_root_str = str(workspace_root)
     policy_bundle = _load_default_policy()
 
-    # ``development_analysis`` is an analysis phase that exercises BOTH
-    # the outer-dev (``iteration`` counter, cap 5) and inner-analysis
-    # (``development_analysis_iteration`` counter, cap 3) paths, so the
-    # StatusBar model is fully populated and the bar's narrow-width
-    # layout is forced to make every field compete for space.
     state = PipelineState(
         phase="development_analysis",
         phase_chains={
@@ -571,9 +301,6 @@ def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
     captured_inside_active = False
     with pd:
         captured_inside_active = sb.is_active
-        # Drive the run-loop seam directly. ``last_sig=None`` forces
-        # an unconditional first push (the dedupe check skips when the
-        # signature differs from ``last_sig`` and starts as None).
         new_sig = _push_status_bar_if_changed(
             pd,
             state,
@@ -594,9 +321,6 @@ def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
         f"StatusBar must be active inside the production context manager at width={width}"
     )
 
-    # The captured push reached the production entry point: the
-    # StatusBar's ``last_model`` slot is populated by
-    # ``update_status_bar`` forwarding into ``StatusBar.update``.
     pushed_model = sb.last_model
     assert pushed_model is not None, (
         f"AC-07: _push_status_bar_if_changed at width={width} must push "
@@ -609,9 +333,6 @@ def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
 
     raw_out = buf.getvalue()
     plain = _strip_ansi(raw_out)
-    # The Rich Live region emits a trailing CRLF for cursor positioning
-    # after the bar; the bar itself is single-line so splitlines() yields
-    # at most one content line followed by an empty fragment.
     visible_lines = [line for line in plain.splitlines() if line.strip()]
     distinct_visible_frames = set(visible_lines)
     assert len(distinct_visible_frames) <= 1, (
@@ -630,16 +351,9 @@ def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
             f"AC-07: bar content must be single-line at width={width}; "
             f"got content_line={content_line!r}"
         )
-    # AC-07 narrow-terminal contract: workspace path AND phase label
-    # remain visible at every applicable width (the minimum contract).
-    # The path budget allocator reserves at least _MIN_PATH_BUDGET
-    # chars for path (so the trailing segment of the workspace path
-    # is recognizable), and at least _MIN_PHASE_BUDGET chars for
-    # phase (so a recognizable prefix of the human phase label
-    # renders).
     phase_label = "Development Analysis"
     phase_label_prefixes = (
-        "DAn",  # distinct narrow carrier for Development Analysis
+        "DAn",
         phase_label[:3],
         phase_label[:2],
     )
@@ -650,9 +364,9 @@ def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
     )
     trailing_segment = workspace_root_str.rsplit("/", 1)[-1]
     path_prefixes = (
-        trailing_segment[:3],  # "sub"
-        trailing_segment[:2],  # "su"
-        trailing_segment[:1],  # "s"
+        trailing_segment[:3],
+        trailing_segment[:2],
+        trailing_segment[:1],
     )
     path_visible = any(prefix in plain for prefix in path_prefixes)
     assert path_visible, (
@@ -661,44 +375,7 @@ def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
     )
 
 
-# ---------------------------------------------------------------------------
-# DisplayContext refresh-consistency regression test (analysis-feedback how_to_fix)
-# ---------------------------------------------------------------------------
-
-
 def test_setup_active_display_returns_live_context_object() -> None:
-    """``_setup_active_display`` returns the SAME context object the refresher mutates.
-
-    The original implementation returned a snapshot
-    ``resolved_ctx = display._ctx`` that was only equal (by identity)
-    to ``active._ctx`` at construction time. The width refresher
-    installed by the function REPLACED ``active._ctx`` with a new
-    ``DisplayContext`` object on every tick, leaving the caller's
-    separate reference pointing at the stale original. Code reading
-    ``_LoopContext.display_context`` and code reading
-    ``active._ctx`` could therefore observe different widths after
-    a refresh.
-
-    The fix mutates the existing context in place via
-    :func:`ralph.pipeline.run_loop._sync_live_display_context` (using
-    ``object.__setattr__`` to bypass ``DisplayContext``'s
-    ``frozen=True`` constraint), so the identity of the context
-    object is preserved across refreshes. ``_setup_active_display``
-    now returns ``active._ctx`` itself so the caller holds the SAME
-    object that's mutated in place.
-
-    This test proves the contract directly:
-
-    1. The ``display_context`` the caller receives observes the
-       refreshed width after the live-sync callback fires with a
-       refreshed context whose width differs from the original.
-    2. The refresher mutates the context IN PLACE, so the caller's
-       reference is the very object the display keeps live -- the
-       width the caller reads is the width the display renders with.
-
-    The test does NOT spawn a real subprocess, does NOT use
-    ``time.sleep``, and runs in well under 1s.
-    """
     workspace_root = Path("/tmp/wt028-display-context-refresh")
     policy_bundle = _load_default_policy()
 
@@ -721,21 +398,9 @@ def test_setup_active_display_returns_live_context_object() -> None:
     )
 
     try:
-        # Identity contract: the caller holds the SAME context object the
-        # refresher mutates (the returned context IS the display's live
-        # context, not a snapshot).
         original_width = display_context.width
 
-        # Simulate a width refresh: produce a refreshed context whose
-        # width differs from the original, then invoke the live-sync
-        # callback directly. The original implementation's
-        # ``display._ctx = ctx`` would replace ``active._ctx`` (and
-        # leave ``display_context`` stale); the in-place mutation in
-        # ``_sync_live_display_context`` preserves identity and makes
-        # both reads observe the new width.
         refreshed_ctx = display_context.refreshed()
-        # Force a different width on the refreshed context so the
-        # assertion catches the staleness bug.
         object.__setattr__(refreshed_ctx, "width", original_width + 17)
         _sync_live_display_context(active, refreshed_ctx)
 
@@ -749,17 +414,6 @@ def test_setup_active_display_returns_live_context_object() -> None:
 
 
 def test_liveness_producer_writes_to_last_activity_monotonic() -> None:
-    """wt-047-stall-label: STALLED is now watchdog-sourced.
-
-    The display no longer owns a ``last_activity_monotonic`` producer
-    -- the watchdog is the sole owner of the STALLED label. The
-    display surfaces the watchdog-sourced attention via the
-    ``watchdog_attention`` slot and the setter is wired to the
-    ``PipelineSubscriber``'s sink.
-
-    This test pins the new surface (the slot exists, defaults to
-    ``None``, and the setter writes the slot).
-    """
     clock = {"t": 1000.0}
     console = Console(file=_TtyLikeStringIO(), force_terminal=True, width=120)
     pd = ParallelDisplay(
@@ -767,28 +421,14 @@ def test_liveness_producer_writes_to_last_activity_monotonic() -> None:
         workspace_root=Path(tempfile.mkdtemp()),
         monotonic=lambda c=clock: c.__setitem__("t", c["t"] + 1) or c["t"],
     )
-    # Initial state: no watchdog transition yet.
     assert pd.watchdog_attention is None
-    # Sink path: the subscriber calls set_watchdog_attention.
     pd.set_watchdog_attention("stalled")
     assert pd.watchdog_attention == "stalled"
-    # None clears.
     pd.set_watchdog_attention(None)
     assert pd.watchdog_attention is None
 
 
 def test_push_status_bar_carries_liveness_through_production_path() -> None:
-    """wt-047-stall-label: the production push path no longer carries
-    ``last_activity_monotonic``.
-
-    The display-side 30 s stall derivation is gone (zero dead code).
-    The watchdog is the sole owner of the STALLED label and surfaces
-    its state via the host's ``watchdog_attention`` slot. The push
-    helper still pushes the model through to the StatusBar so the
-    ``last_model`` reads the pushed state, but the captured model
-    carries only ``run_started_monotonic`` and ``attention`` (NOT
-    ``last_activity_monotonic``).
-    """
     clock = {"t": 1000.0}
     console = Console(file=_TtyLikeStringIO(), force_terminal=True, width=120)
     workspace_root = Path(tempfile.mkdtemp())
@@ -797,7 +437,6 @@ def test_push_status_bar_carries_liveness_through_production_path() -> None:
         workspace_root=workspace_root,
         monotonic=lambda c=clock: c.__setitem__("t", c["t"] + 1) or c["t"],
     )
-    # Seed the watchdog-sourced attention via the host setter.
     pd.set_watchdog_attention("stalled")
     policy_bundle = _load_default_policy()
     state = _make_state("development", 1, 1, 1)
@@ -814,15 +453,10 @@ def test_push_status_bar_carries_liveness_through_production_path() -> None:
         "The production push path must reach the StatusBar's update "
         "seam so ``last_model`` reflects the new model."
     )
-    # wt-047-stall-label: the pushed model carries the operator-pushed
-    # ``attention`` slot only; the watchdog-sourced ``stalled`` is
-    # substituted on each Live tick via ``_model_with_live_attention``.
-    # The captured model itself does NOT carry the watchdog attention.
     assert pushed.attention is None, (
         "The pushed model's attention slot is operator-pushed only; "
         "the watchdog-sourced value is substituted on each Live tick."
     )
-    # Sanity: the field the production push path USED to carry is gone.
     assert not hasattr(pushed, "last_activity_monotonic"), (
         "wt-047-stall-label: the dead display-side stall derivation "
         "must be removed from the model entirely (zero dead code)."
@@ -832,7 +466,6 @@ def test_push_status_bar_carries_liveness_through_production_path() -> None:
 def test_run_loop_regression_final_status_push_is_terminated_before_teardown(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-7: teardown follows a final, truthful terminated Status Bar push."""
     workspace_root = Path(tempfile.mkdtemp())
     display, _console = _make_display()
     loop_ctx = _make_loop_context(
@@ -874,25 +507,21 @@ def test_run_loop_regression_final_status_push_is_terminated_before_teardown(
 
 
 def test_attention_state_for_state_returns_waiting() -> None:
-    """S-2 / AC-01: a waiting phase pushes ``attention='waiting'`` through the run loop."""
     state = _make_state("waiting", 1, 1, 1)
     assert _attention_for(state) == "waiting"
 
 
 def test_attention_state_for_state_returns_retrying() -> None:
-    """S-2 / AC-01: a retrying run pushes ``attention='retrying'`` through the run loop."""
     state = _StubState(phase="development", retrying=True)
     assert _attention_for(state) == "retrying"
 
 
 def test_attention_state_for_state_returns_failed() -> None:
-    """S-2 / AC-01: a failed run keeps its outcome in the Status Bar."""
     state = _StubState(phase="development", run_outcome="failed")
     assert _attention_for(state) == "failed"
 
 
 def test_attention_state_for_state_regression_failed_terminal_is_terminated() -> None:
-    """DA-002: the policy terminal-failure phase occupies the terminal slot."""
     assert (
         _attention_for(_StubState(phase="failed_terminal", run_outcome="terminated"))
         == "terminated"
@@ -900,20 +529,11 @@ def test_attention_state_for_state_regression_failed_terminal_is_terminated() ->
 
 
 def test_attention_state_for_state_returns_none_when_healthy() -> None:
-    """S-2 / AC-01: a healthy development phase pushes ``attention=None`` (renderer drives)."""
     state = _StubState(phase="development")
     assert _attention_for(state) is None
 
 
 class _StubState:
-    """Lightweight stand-in for ``PipelineState`` in attention-state tests.
-
-    ``PipelineState`` is a frozen pydantic model; the
-    ``_attention_state_for_state`` helper reads via ``getattr`` so
-    a stub is the simplest way to set ``run_outcome`` / ``retrying``
-    per test without copying the model.
-    """
-
     def __init__(
         self,
         *,
@@ -927,15 +547,6 @@ class _StubState:
 
 
 def _attention_for(state: PipelineState) -> str | None:
-    """Return the attention slot the run loop derives for ``state``.
-
-    This is the SINGLE reference to the private run-loop attention helper
-    in this file, so the documented policy exception (module docstring)
-    has exactly one place to point at. The value it returns is the
-    ``attention`` slot the run loop pushes onto the PUBLIC
-    ``StatusBarModel``, so the attention cases stay assertions about the
-    operator-visible status bar.
-    """
     from ralph.pipeline.run_loop import _attention_state_for_state
 
     return _attention_state_for_state(state)
@@ -947,12 +558,6 @@ def _make_state(
     outer_dev_cap: int,
     inner_analysis: int,
 ) -> PipelineState:
-    """Build a minimal ``PipelineState`` for the wiring tests.
-
-    Mirrors the same shape ``_build_status_bar_model`` expects so
-    the helper can resolve the human phase label. Defensive
-    ``getattr`` keeps the test tolerant of new optional fields.
-    """
     from ralph.pipeline.state import AgentChainState
 
     chain = AgentChainState(agent_name="claude", attempts=0, history=())

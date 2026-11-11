@@ -1,15 +1,8 @@
-"""CheckpointPolicyMismatchError exception."""
 
 from __future__ import annotations
 
 
 class CheckpointPolicyMismatchError(Exception):
-    """Raised when a checkpoint's phase is not present in the current policy.
-
-    Attributes:
-        checkpoint_phase: Phase name stored in the checkpoint.
-        valid_phases: Set of valid phase names in the current policy.
-    """
 
     def __init__(self, checkpoint_phase: str, valid_phases: set[str]) -> None:
         self.checkpoint_phase = checkpoint_phase

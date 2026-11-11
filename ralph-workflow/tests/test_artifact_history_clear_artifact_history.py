@@ -1,5 +1,3 @@
-"""Tests for artifact history archival and indexing."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -20,7 +18,7 @@ def _now_iso() -> str:
 class TestClearArtifactHistory:
     def test_no_op_when_history_dir_missing(self, tmp_path: Path) -> None:
         artifact_dir = tmp_path / ".agent" / "artifacts"
-        clear_artifact_history(artifact_dir, "plan")  # must not raise
+        clear_artifact_history(artifact_dir, "plan")
 
     def test_removes_archived_markdown_files_and_index(self, tmp_path: Path) -> None:
         artifact_dir = tmp_path / ".agent" / "artifacts"

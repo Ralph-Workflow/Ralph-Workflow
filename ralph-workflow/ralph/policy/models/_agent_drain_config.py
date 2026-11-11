@@ -1,4 +1,3 @@
-"""AgentDrainConfig Pydantic model."""
 
 from __future__ import annotations
 
@@ -8,7 +7,6 @@ from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 
 
 class AgentDrainConfig(_FrozenPolicyModel):
-    """Binding from a named drain to an agent chain."""
 
     chain: str = Field(..., description="Agent chain name to bind to this drain")
     drain_class: str | None = Field(

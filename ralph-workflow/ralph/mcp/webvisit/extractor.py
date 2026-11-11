@@ -1,8 +1,3 @@
-"""HTML text extraction for the visit_url tool.
-
-Uses readability-lxml for main-content isolation and selectolax for fast
-plain-text rendering. Both dependencies are included in the default ralph-workflow installation.
-"""
 
 from __future__ import annotations
 
@@ -18,7 +13,6 @@ _MAX_LINKS = 100
 
 @dataclass(frozen=True)
 class ExtractedPage:
-    """Result of extracting readable content from an HTML page."""
 
     title: str | None
     text: str
@@ -31,7 +25,6 @@ def extract_readable(
     base_url: str | None,
     with_links: bool,
 ) -> ExtractedPage:
-    """Extract readable text and optional links from raw HTML."""
     doc = Document(html)
     title: str | None = doc.title() or None
     content_html = doc.summary(html_partial=True)

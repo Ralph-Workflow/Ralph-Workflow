@@ -1,5 +1,3 @@
-"""Tests for the typed activity model display helpers."""
-
 from __future__ import annotations
 
 import threading
@@ -71,18 +69,6 @@ def test_make_event_is_thread_safe_for_unique_sequences() -> None:
 
 
 def test_render_event_line_preserves_literal_brackets() -> None:
-    """Plain-text path must NOT escape literal Rich markup.
-
-    After the wt-028-display consolidation the plain-text renderer
-    (``render_event_line`` -> ``render_event_kind_text``) calls the
-    canonical registry with ``escape_body=False``. Plain-text
-    consumers (e.g. ``ParallelDisplay`` with ``markup=False``) print
-    the returned string verbatim, so escaping would mutate literal
-    content such as ``[result]`` into ``\\[result]``. The plain-text
-    path therefore leaves the body unchanged; escaping remains the
-    rich-Text path's contract (see ``test_content_escape_strips_rich_markup``
-    in :mod:`tests.display.test_agent_event_renderer`).
-    """
     rendered = render_event_line(
         ActivityEventKind.TEXT,
         "[red]injected[/red]",
@@ -100,9 +86,6 @@ def test_render_event_line_uses_tool_use_icon() -> None:
         timestamp="2026-04-18T12:00:00+00:00",
     )
 
-    # After wt-028-display the registry owns the iconography; tool_use
-    # carries the RUN carrier (◐ + "RUN" label). The activity_router
-    # surface still renders a non-color icon, just from the theme.
     assert "◐" in rendered or "RUN" in rendered
 
 
@@ -116,11 +99,6 @@ def test_render_event_line_truncates_to_200_cells() -> None:
         timestamp="2026-04-18T12:00:00+00:00",
     )
 
-    # After wt-028-display the registry owns the cell-aware truncation;
-    # the plain-text line ends with an ellipsis when content overflows
-    # the 200-cell cap and the visible body cell-count stays bounded.
     assert rendered.endswith("…")
-    # Extract the body (after the icon + label + timestamp prefix).
     body = rendered.rsplit(" ", 1)[-1] if " " in rendered else rendered
-    # The body holds the truncated content (200 cells worth of smileys + ellipsis).
     assert body.count("🙂") <= TRUNCATED_SMILEYS

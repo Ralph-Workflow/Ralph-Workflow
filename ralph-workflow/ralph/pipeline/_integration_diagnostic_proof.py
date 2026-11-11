@@ -1,23 +1,3 @@
-"""The four-condition positive operation-completion proof.
-
-The diagnostic path must not accept an agent's success as proof that the
-Git operation finished. It proves the operation against live Git with
-four independent conditions (ADR-0008 section 3):
-
-1. **Commit ancestry proof** -- ``HEAD`` matches the record's expected
-   SHA and ``HEAD``'s parents match the expected parent SHAs.
-2. **Operation ownership proof** -- the record's owning worktree is the
-   inspected root and the held diagnostic lease matches the record's
-   durable identity.
-3. **Clean index and tree proof** -- no ``MERGE_HEAD`` / ``REBASE_HEAD``
-   marker, no unmerged index entries, and a clean worktree diff.
-4. **Durable atomic transition proof** -- the record is in the
-   integrated phase and its diagnostic lease is still trustworthy.
-
-Every helper in this module is read-only on Git: it never deletes or
-mutates ``MERGE_HEAD``, ``REBASE_HEAD``, ``ORIG_HEAD``, the index, or
-worktree files.
-"""
 
 from __future__ import annotations
 
@@ -240,11 +220,6 @@ def _check_atomic_transition_proof(
         return False, "diagnostic evidence status is UNKNOWN (observations unreadable)"
     if verdict != EvidenceVerdict.UNCHANGED:
         return False, "diagnostic evidence does not match release conditions"
-    # Even when the held lease is valid, the live snapshot may carry
-    # UNREADABLE observations (e.g. a half-rewritten gitdir, a
-    # half-removed marker). The proof refuses to release while the
-    # live state cannot be observed; the diagnostic re-derives on the
-    # next seam.
     if snapshot_has_unreadable(effective_root, record, collector=collector):
         return False, "diagnostic evidence status is UNKNOWN (observations unreadable)"
     return True, "atomic transition verified"

@@ -1,13 +1,3 @@
-"""Tests for auto-integration remote reconciliation with no target owner (D2/O2).
-
-Verifies that when no worktree owns the configured target branch:
-- Reconciles in a temporary worktree without commandeering dirty feature work.
-- Interruption or resolver failures clean up all temporary resources.
-- Stale temporary worktrees from prior crashes are safely recovered.
-- Divergence on configured non-main target (e.g. release/tacos) converges
-  without touching main/origin.
-"""
-
 from __future__ import annotations
 
 import shutil
@@ -36,7 +26,6 @@ def test_unowned_target_reconciles_via_temporary_workspace_and_cleans_up(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """D2/O2: target with no owning worktree reconciles in a temporary workspace."""
     repo_root = tmp_path / "feature-wt"
     repo_root.mkdir()
     (repo_root / "feature.txt").write_text("feature work\n", encoding="utf-8")
@@ -106,7 +95,6 @@ def test_unowned_target_interruption_cleans_resources(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """D2/O2: interruption or resolver failure in temporary workspace cleans all resources."""
     repo_root = tmp_path / "feature-wt"
     repo_root.mkdir()
     (repo_root / "dirty.txt").write_text("uncommitted feature work\n", encoding="utf-8")
@@ -183,7 +171,6 @@ def test_unowned_target_recovery_from_stale_temporary_worktree(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """D2/O2: recovers from a stale temporary worktree left by an interrupted crash."""
     repo_root = tmp_path / "feature-wt"
     repo_root.mkdir()
     primary_root = tmp_path / "main-repo"
@@ -246,7 +233,6 @@ def test_reconcile_after_rejected_push_converges_unowned_non_main_target(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """D2/O2/AC5/AC9: release/tacos divergence converges with no target owner, no main/origin access."""
     repo_root = tmp_path / "feature-wt"
     repo_root.mkdir()
     (repo_root / "feature_code.py").write_text("# uncommitted dirty work\n", encoding="utf-8")

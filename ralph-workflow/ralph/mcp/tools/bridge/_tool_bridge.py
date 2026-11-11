@@ -1,4 +1,3 @@
-"""ToolBridge registry and dispatcher."""
 
 from __future__ import annotations
 
@@ -25,16 +24,8 @@ if TYPE_CHECKING:
     from ralph.mcp.tools.bridge._tool_spec import ToolSpec
     from ralph.mcp.tools.bridge._types import JsonObject
 
-# Mis-prefixes models commonly invent for MCP tool names; stripped when looking
-# for the tool the agent actually meant.
 _INVENTED_PREFIXES: tuple[str, ...] = ("ralph_mcp__", "mcp__ralph__", "ralph__", "ralph_", "ralph.")
 
-# Retired JSON artifact tools -> their markdown replacements.
-# Migration contract: markdown artifact authoring removed these tools;
-# calling a removed name must fail with an error that says so and names the
-# specific markdown tool to call instead. Keyed by exact retired name;
-# mis-prefixed variants are handled by the same prefix-stripping as
-# ``_suggest_registered_name``.
 _RETIRED_JSON_TOOL_REPLACEMENTS: dict[str, str] = {
     "ralph_submit_artifact": "ralph_submit_md_artifact",
     "ralph_submit_plan_section": "ralph_stage_md_artifact",
@@ -53,7 +44,6 @@ _RETIRED_JSON_TOOL_REPLACEMENTS: dict[str, str] = {
 
 
 def _candidate_names(name: str) -> tuple[str, ...]:
-    """Return ``name`` plus variants with common invented prefixes stripped."""
     stripped = tuple(
         name[len(prefix) :] for prefix in _INVENTED_PREFIXES if name.startswith(prefix)
     )
@@ -61,7 +51,6 @@ def _candidate_names(name: str) -> tuple[str, ...]:
 
 
 def _retired_replacement(name: str) -> str | None:
-    """Return the markdown replacement if ``name`` is a retired JSON artifact tool."""
     for candidate in _candidate_names(name):
         replacement = _RETIRED_JSON_TOOL_REPLACEMENTS.get(candidate)
         if replacement is not None:
@@ -70,21 +59,18 @@ def _retired_replacement(name: str) -> str | None:
 
 
 class ToolBridge:
-    """Registry for MCP tools and dispatcher for tool invocations."""
 
     def __init__(self, session: object | None = None) -> None:
-        self._tools: dict[str, RegisteredTool] = {}  # bounded-accumulator-ok: bounded
+        self._tools: dict[str, RegisteredTool] = {}
         self._session = session
 
     def register(self, metadata: ToolMetadata, handler: RegistrationHandler) -> None:
-        """Register a tool definition and handler."""
         name = metadata.definition.name
         if name in self._tools:
             raise ToolRegistrationError(f"Tool '{name}' is already registered")
         self._tools[name] = RegisteredTool(metadata=metadata, handler=handler)
 
     def register_spec(self, spec: ToolSpec, *, session: object, workspace: object) -> None:
-        """Register a tool from a complete lazy-loading spec."""
         self.register(
             spec.metadata,
             LazyToolHandler(
@@ -96,29 +82,15 @@ class ToolBridge:
         )
 
     def has_tool(self, name: str) -> bool:
-        """Return whether a tool is registered."""
         return name in self._tools
 
     def get(self, name: str) -> RegisteredTool:
-        """Return a registered tool or raise if it does not exist."""
         try:
             return self._tools[name]
         except KeyError as exc:
             raise ToolDispatchError(self._unknown_tool_message(name)) from exc
 
     def _unknown_tool_message(self, name: str) -> str:
-        """Build an actionable unknown-tool error.
-
-        Keeps the ``Tool '<name>' is not registered`` phrasing (the recovery
-        classifier keys on "is not registered"), then tells the agent the correct
-        tool name — models often mis-prefix MCP tools (e.g. ``ralph_mcp__exec`` or
-        ``mcp__ralph__exec`` instead of the registered name) — and lists what is
-        available so the next call can succeed.
-
-        Retired JSON artifact tools are checked first: they get a dedicated
-        error naming the markdown replacement (see
-        ``_RETIRED_JSON_TOOL_REPLACEMENTS``).
-        """
         base = f"Tool '{name}' is not registered"
         replacement = _retired_replacement(name)
         if replacement is not None:
@@ -132,20 +104,17 @@ class ToolBridge:
         return f"{base}.{hint} Do not retry the same name. Available tools: {available}"
 
     def _suggest_registered_name(self, name: str) -> str | None:
-        """Strip common mis-prefixes a model may invent and return a real tool name."""
         for candidate in _candidate_names(name)[1:]:
             if candidate in self._tools:
                 return candidate
         return None
 
     def list_metadata(self) -> list[ToolMetadata]:
-        """Return tool metadata in registration order."""
         return [
             tool.metadata for tool in self._tools.values() if self._is_tool_allowed(tool.metadata)
         ]
 
     def list_definitions(self) -> list[ToolDefinition]:
-        """Return public tool definitions in registration order."""
         return [
             tool.metadata.definition
             for tool in self._tools.values()
@@ -160,7 +129,6 @@ class ToolBridge:
         host_session: object | None = None,
         workspace: object | None = None,
     ) -> object:
-        """Dispatch a tool invocation to its registered handler."""
         tool = self.get(name)
         session = host_session or self._session
         if not self._is_tool_allowed(tool.metadata, session=session):
@@ -172,16 +140,8 @@ class ToolBridge:
         except ToolBridgeError:
             raise
         except (InvalidParamsError, CapabilityDeniedError):
-            # Fix-your-call errors: the agent must change the call before it can
-            # succeed, so they correctly surface as protocol errors — retrying the
-            # identical call is rightly rejected again.
             raise
         except ToolError as exc:
-            # Operational tool failure (timeout, output/size limit, spawn/IO/git
-            # failure). Returning a retryable -32603 protocol error here is what let
-            # an agent re-issue an identical failing call for ~5 hours. Convert to a
-            # terminal, non-retryable is_error result so every handler is covered by
-            # one guard even if it forgets to convert the failure itself.
             return ToolResult(
                 content=[ToolContent.text_content(str(exc))],
                 is_error=True,

@@ -1,14 +1,3 @@
-"""Minimal real-worktree coverage for automatic branch integration.
-
-Equivalent happy-path, untracked-file, prefix-collision, conflict fallback,
-declined-resolution, and retry-policy cases were deleted from this file because
-their behavior is already pinned at faster public seams elsewhere in the suite.
-This test retains only the interaction that requires Git's linked-worktree
-state: landing through a checked-out dirty target. Cross-agent convergence is
-covered through the injected phase-boundary seam and the dedicated catch-up
-proofs.
-"""
-
 from __future__ import annotations
 
 import importlib
@@ -31,7 +20,6 @@ pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(20)]
 
 
 def auto_integrate_after_commit(*args: Any, **kwargs: Any) -> Any:
-    """Test-only wrapper that skips real CAS backoff sleeps."""
     kwargs.setdefault("sleep", lambda _seconds: None)
     kwargs.setdefault("jitter", lambda: 0.0)
     return _auto_integrate_after_commit(*args, **kwargs)
@@ -73,7 +61,7 @@ def _commit(repo_root: Path, filename: str, content: str, message: str) -> str:
     try:
         repo.index.add([filename])
         commit = repo.index.commit(message)
-        assert commit.hexsha  # RALPH-TEST-REASON: GitPython commit replaces subprocess git add/commit to reduce CPU overhead
+        assert commit.hexsha
         return commit.hexsha
     finally:
         repo.close()
@@ -93,7 +81,6 @@ def test_reclaim_regression_snapshot_failure_restores_the_original_index(
     tmp_git_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-2/AC-7: a failed snapshot leaves tracked, staged, and untracked state intact."""
     main = _base_branch(tmp_git_repo)
     tracked = tmp_git_repo / "tracked.txt"
     _commit(tmp_git_repo, tracked.name, "base\n", "seed tracked file")
@@ -125,7 +112,6 @@ def test_reclaim_regression_stage_failure_restores_the_original_index(
     tmp_git_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-2/AC-7: a failed staging snapshot leaves every owner byte intact."""
     main = _base_branch(tmp_git_repo)
     tracked = tmp_git_repo / "tracked.txt"
     _commit(tmp_git_repo, tracked.name, "base\n", "seed tracked file")
@@ -157,7 +143,6 @@ def test_reclaim_regression_stage_failure_restores_the_original_index(
 def test_reclaim_refuses_a_feature_worktree(
     tmp_git_repo: Path,
 ) -> None:
-    """AC-8: reclamation can discard only the worktree owning the target."""
     main = _base_branch(tmp_git_repo)
     _commit(tmp_git_repo, "tracked.txt", "base\n", "seed tracked file")
     feature = tmp_git_repo.parent / "feature-owner"
@@ -174,7 +159,6 @@ def test_reclaim_refuses_a_feature_worktree(
 def test_reclaim_regression_prunes_expired_and_excess_snapshot_refs(
     tmp_git_repo: Path,
 ) -> None:
-    """DA-001: reclaim snapshots retain only recent refs within the per-target cap."""
     main = _base_branch(tmp_git_repo)
     _commit(tmp_git_repo, "tracked.txt", "base\n", "seed tracked file")
     reclaim_module = importlib.import_module("ralph.pipeline._auto_integrate_reclaim")
@@ -225,7 +209,6 @@ def test_reclaim_regression_prunes_expired_and_excess_snapshot_refs(
 def test_dirty_checked_out_target_snapshots_then_lands(
     tmp_git_repo: Path,
 ) -> None:
-    """S-3: dirty target ownership is snapshotted then reclaimed before landing."""
     main = _base_branch(tmp_git_repo)
     _commit(tmp_git_repo, "tracked.txt", "base\n", "seed tracked file")
     feature = tmp_git_repo.parent / "feature-ff"
@@ -256,7 +239,6 @@ def test_reclaim_regression_discard_failure_restores_owner_state(
     tmp_git_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-2/E15: a failed clean rolls the target owner back byte-for-byte."""
     main = _base_branch(tmp_git_repo)
     tracked = tmp_git_repo / "tracked.txt"
     _commit(tmp_git_repo, tracked.name, "base\n", "seed tracked file")
@@ -287,12 +269,6 @@ def test_reclaim_regression_discard_failure_restores_owner_state(
 def test_dirty_checked_out_target_qualifies_its_backup_ref_with_owning_worktree(
     tmp_git_repo: Path,
 ) -> None:
-    """U5: the create seam records the record's worktree-qualified ref name.
-
-    The pre-U5 name keyed only on the pre-feature SHA, so two linked
-    worktrees sharing a base commit shared one recovery ref. The record
-    seam must now produce refs/rebase-backup/<wt8>-<sha8>-<sha>.
-    """
     import hashlib
 
     from ralph.pipeline.auto_integrate_backup_refs import qualified_backup_ref
@@ -309,8 +285,6 @@ def test_dirty_checked_out_target_qualifies_its_backup_ref_with_owning_worktree(
     expected = qualified_backup_ref(str(feature), pre_sha)
     wt8 = expected.split("/")[2].split("-")[0]
     assert wt8 == hashlib.sha256(str(feature).encode("utf-8")).hexdigest()[:8]
-    # If the attempt is still in flight, its live ref must be the
-    # qualified one; legacy SHA-only names must never reappear.
     refs = _run(tmp_git_repo, "for-each-ref", "--format=%(refname)").stdout.splitlines()
     live = [r.strip() for r in refs if r.strip().startswith("refs/rebase-backup/")]
     for ref in live:

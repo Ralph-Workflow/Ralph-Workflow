@@ -120,21 +120,6 @@ def test_find_latest_claude_transcript_entry_excludes_pre_existing_names(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """wt-04-claude-parsing regression: a still-active sibling session must
-    never masquerade as the freshly-spawned child.
-
-    The orchestrating session and any child ``claude`` process it spawns
-    in the same workspace share the exact same
-    ``~/.claude/projects/<project-key>`` directory. Before this fix,
-    ``find_latest_claude_transcript_entry`` picked whichever ``*.jsonl``
-    file had the newest mtime among ALL files touched since the child's
-    start -- including an orchestrator session that already existed and
-    keeps being appended to throughout the child's entire run. That
-    starves the transcript-tail thread of every real event the child
-    actually produced (the observed symptom: "session ID was not
-    observed", "no tool activity was observed", "subagent dispatch was
-    not observed" despite the child doing real, verified work).
-    """
     workspace_root = tmp_path / "workspace"
     workspace_root.mkdir()
     project_dir_name = str(workspace_root).replace("/", "-")
@@ -145,18 +130,13 @@ def test_find_latest_claude_transcript_entry_excludes_pre_existing_names(
     os.utime(orchestrator_session, (10.0, 10.0))
     monkeypatch.setattr(transcript_module.Path, "home", lambda: tmp_path)
 
-    # The reader snapshots existing names BEFORE the child starts.
     pre_existing = transcript_module.existing_transcript_names(workspace_root)
     assert pre_existing == frozenset({"orchestrator-session.jsonl"})
 
-    # The child process starts; its transcript file appears.
     child_session = project_root / "child-session.jsonl"
     child_session.write_text("{}\n", encoding="utf-8")
     os.utime(child_session, (20.0, 20.0))
 
-    # The orchestrator keeps being active too -- its mtime advances past
-    # the child's, which is exactly the race that broke the old
-    # "latest mtime wins" heuristic.
     os.utime(orchestrator_session, (30.0, 30.0))
 
     without_exclusion = transcript_module.find_latest_claude_transcript_entry(

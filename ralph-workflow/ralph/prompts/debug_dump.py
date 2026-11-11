@@ -1,4 +1,3 @@
-"""Helpers for persisting rendered prompts for debugging."""
 
 from __future__ import annotations
 
@@ -19,54 +18,30 @@ def _normalized_phase(phase: str) -> str:
 
 
 def prompt_dump_path(phase: str) -> str:
-    """Return the workspace-relative path for a phase's debug prompt dump."""
     return f".agent/tmp/{_normalized_phase(phase)}_prompt.md"
 
 
 def worker_prompt_dump_path(worker_namespace: Path, phase: str) -> Path:
-    # Deprecated: Ralph-orchestrated workers are removed from the execution model;
-    # parallelism is owned by the developer agent's own sub-agents.
-    # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
-    """Return the worker-local prompt dump path for a phase."""
     return worker_namespace / "tmp" / f"{_normalized_phase(phase)}_prompt.md"
 
 
 def multimodal_sidecar_path(phase: str) -> str:
-    """Return the workspace-relative path for a phase's multimodal handoff sidecar."""
     return f".agent/tmp/{_normalized_phase(phase)}_multimodal_handoff.json"
 
 
 def worker_multimodal_sidecar_path(worker_namespace: Path, phase: str) -> Path:
-    # Deprecated: Ralph-orchestrated workers are removed from the execution model;
-    # parallelism is owned by the developer agent's own sub-agents.
-    # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
-    """Return the worker-local multimodal handoff sidecar path for a phase."""
     return worker_namespace / "tmp" / f"{_normalized_phase(phase)}_multimodal_handoff.json"
 
 
 def media_session_path(phase: str) -> str:
-    """Path for the persistent media session index written by the MCP server.
-
-    This file accumulates artifact metadata for each media file loaded during
-    a session via read_media. The runner reads it at the next prompt
-    materialization to carry media context forward across sessions.
-    """
     return f".agent/tmp/{_normalized_phase(phase)}_media_session.json"
 
 
 def media_registry_path() -> str:
-    """Path for the centralized media artifact registry.
-
-    Maps artifact_id to full v2 metadata for cross-session replay lookup.
-    """
     return ".agent/tmp/media_registry.json"
 
 
 def media_cache_artifact_path(artifact_id: str) -> str:
-    """Path for the durable byte cache of a media artifact.
-
-    Bytes written here survive the session and enable cross-session replay.
-    """
     return f".agent/tmp/media/{artifact_id}"
 
 
@@ -88,12 +63,8 @@ def write_multimodal_sidecar(
     phase: str,
     entries: list[MultimodalSidecarEntry],
     *,
-    # Deprecated: Ralph-orchestrated workers are removed from the execution model;
-    # parallelism is owned by the developer agent's own sub-agents.
-    # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
     worker_namespace: Path | None = None,
 ) -> None:
-    """Persist the phase multimodal handoff sidecar for shared or worker-local prompts."""
     path = (
         str(worker_multimodal_sidecar_path(worker_namespace, phase))
         if worker_namespace is not None
@@ -111,12 +82,8 @@ def clear_multimodal_sidecar(
     workspace: Workspace,
     phase: str,
     *,
-    # Deprecated: Ralph-orchestrated workers are removed from the execution model;
-    # parallelism is owned by the developer agent's own sub-agents.
-    # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
     worker_namespace: Path | None = None,
 ) -> None:
-    """Remove the multimodal handoff sidecar for a shared or worker-local prompt."""
     path = (
         str(worker_multimodal_sidecar_path(worker_namespace, phase))
         if worker_namespace is not None
@@ -132,17 +99,6 @@ def collect_media_entries_for_phase(
     *,
     drain: str | None = None,
 ) -> list[MultimodalSidecarEntry]:
-    """Read media entries from the persistent session index for a phase.
-
-    When ``drain`` is supplied, the reader also merges the drain-keyed
-    media index (the canonical write key is ``session.drain``, not the
-    phase name) so callers on phases whose configured drain differs from
-    the phase name do not silently lose artifacts. Entries are
-    de-duplicated by the same ``_sidecar_entry_identity`` rule the
-    writer enforces, and drain-keyed entries are appended after the
-    phase-keyed ones so a phase-only entry wins on identity collisions
-    (it was the write the runner observed first).
-    """
     entries: OrderedDict[str, MultimodalSidecarEntry] = OrderedDict()
     if drain and drain != phase:
         entries = _collect_media_entries_from_index(workspace, media_session_path(drain), entries)
@@ -196,12 +152,8 @@ def dump_rendered_prompt(
     phase: str,
     prompt: str,
     *,
-    # Deprecated: Ralph-orchestrated workers are removed from the execution model;
-    # parallelism is owned by the developer agent's own sub-agents.
-    # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
     worker_namespace: Path | None = None,
 ) -> str:
-    """Write the rendered prompt to the debug dump path and return the path."""
     path = (
         worker_prompt_dump_path(worker_namespace, phase)
         if worker_namespace is not None

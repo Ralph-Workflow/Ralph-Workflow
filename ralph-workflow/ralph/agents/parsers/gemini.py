@@ -1,9 +1,3 @@
-"""Parser for Gemini's SSE+JSON streaming format.
-
-Gemini emits Server-Sent Events (SSE) where each event contains a JSON payload.
-This parser handles the SSE format and normalizes Gemini output to AgentOutputLine
-instances with robust delta accumulation.
-"""
 
 from __future__ import annotations
 
@@ -24,13 +18,6 @@ if TYPE_CHECKING:
 
 
 class _GeminiDispatch:
-    """Per-event-type dispatch for GeminiParser.
-
-    Encapsulates the historical event-routing logic that used to live in
-    ``_parse_object``.  The subclass ``_dispatch_json_object`` delegates
-    here for all non-lifecycle, non-error events.  The dispatcher holds
-    a reference to the owning parser so accumulator state stays in one place.
-    """
 
     def __init__(self, owner: GeminiParser) -> None:
         self._owner = owner
@@ -102,7 +89,7 @@ class _GeminiDispatch:
         func_call: JsonDict | None = (
             cast("JsonDict", function_call_obj)
             if isinstance(function_call_obj, dict)
-            else None  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            else None
         )
         tool_name = str(
             obj.get("name", "")
@@ -118,7 +105,7 @@ class _GeminiDispatch:
             if isinstance(func_args, dict):
                 args_str = str(
                     cast("JsonDict", func_args)
-                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                )
         yield AgentOutputLine(
             type="tool_use",
             content=tool_name,
@@ -141,7 +128,7 @@ class _GeminiDispatch:
                 if isinstance(part, dict):
                     part_dict = cast(
                         "JsonDict", part
-                    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                    )
                     text = str(part_dict.get("text", ""))
                     if text:
                         if part_dict.get("thought") is True:
@@ -152,7 +139,7 @@ class _GeminiDispatch:
                     func: JsonDict | None = (
                         cast(
                             "JsonDict", function_call_obj
-                        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                        )
                         if isinstance(function_call_obj, dict)
                         else None
                     )
@@ -180,14 +167,14 @@ class _GeminiDispatch:
             "JsonDict", candidate
         ).get(
             "content"
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         if not isinstance(content_val, dict):
             return
         parts_val = cast(
             "JsonDict", content_val
         ).get(
             "parts"
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         if not isinstance(parts_val, list):
             return
         for part in parts_val:
@@ -195,7 +182,7 @@ class _GeminiDispatch:
                 continue
             part_dict = cast(
                 "JsonDict", part
-            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            )
             text = str(part_dict.get("text", ""))
             if not text:
                 continue
@@ -211,27 +198,12 @@ class _GeminiDispatch:
             if isinstance(first_part, dict):
                 part_dict = cast(
                     "JsonDict", first_part
-                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                )
                 return str(part_dict.get("text", ""))
         return ""
 
 
 class GeminiParser(NdjsonParserBase):
-    """Parser for Gemini's SSE+JSON streaming output with robust delta accumulation.
-
-    Gemini uses SSE with data: lines containing JSON payloads.
-    Each payload has a "type" field indicating what kind of content it carries.
-    Text deltas are accumulated into coherent blocks before emission, flushing on:
-    - ``done`` / ``stop`` / ``message_end`` (end of message)
-    - ``\\n\\n`` paragraph boundary (incremental surfacing of long responses)
-    - Iterator exhaustion (final flush via ``flush_accumulators()``)
-
-    Inherits from :class:`NdjsonParserBase` which owns the
-    ``data:`` strip, ``[DONE]`` short-circuit, JSON parse dispatch,
-    lifecycle suppression, and error extraction.  The subclass
-    ``_dispatch_json_object`` delegates to ``_GeminiDispatch`` for the
-    per-event-type routing.
-    """
 
     _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset({"done", "stop", "message_end"})
 
@@ -241,10 +213,6 @@ class GeminiParser(NdjsonParserBase):
         subagent_source_label: str | None = None,
     ) -> None:
         super().__init__()
-        # R5: bind the per-invocation shared SubagentPidRegistry + per-transport
-        # source label. Gemini's SSE+JSON events do not currently carry
-        # embedded PIDs; this is forward-compat for the per-transport
-        # SubagentPidSource seam.
         self._subagent_pid_registry: SubagentPidRegistry | None = subagent_pid_registry
         self._subagent_source_label: str | None = subagent_source_label
         self._text_accumulator: TextAccumulator | None = None
@@ -256,13 +224,7 @@ class GeminiParser(NdjsonParserBase):
         raw: str,
         source_timestamp: str | None = None,
     ) -> Iterator[AgentOutputLine]:
-        # DA-002 (wt-028-display S-2 / AC-01): the base class
-        # post-processes the iterator to attach ``source_timestamp``
-        # to any AgentOutputLine that lacks one, so the per-event
-        # dispatcher itself does not need to thread the parameter.
-        del source_timestamp  # accepted for override compatibility; ignored
-        # R5: register any embedded PID into the shared registry BEFORE
-        # the dispatcher routes the event.
+        del source_timestamp
         self._try_register_subagent_pid_from_obj(obj)
         yield from self._dispatcher.dispatch(obj, raw)
 
@@ -271,17 +233,6 @@ class GeminiParser(NdjsonParserBase):
         obj: dict[str, object],
         event_type: str,
     ) -> Iterator[AgentOutputLine] | None:
-        """Flush text and emit stop for Gemini's terminal lifecycle events.
-
-        Gemini uses ``done`` / ``stop`` / ``message_end`` to mark the end
-        of a model turn. These wire-format event types are also flagged
-        as lifecycle markers by ``is_lifecycle_event`` (they share the
-        same names as OpenCode's terminal ``done`` event), so the base
-        class short-circuits to this hook instead of routing them
-        through ``_dispatch_json_object``. We must explicitly flush the
-        text accumulator and yield a stop line so the public contract
-        (every Gemini turn ends with a stop) is preserved.
-        """
         if event_type in self._STOP_EVENT_TYPES:
             return self._flush_stop_event(obj, event_type)
         return super()._handle_lifecycle_event(obj, event_type)
@@ -291,7 +242,6 @@ class GeminiParser(NdjsonParserBase):
         obj: dict[str, object],
         event_type: str,
     ) -> Iterator[AgentOutputLine]:
-        """Flush the text accumulator and yield a stop line."""
         yield from self.flush_accumulators()
         yield AgentOutputLine(type="stop", raw=str(event_type), metadata=obj)
 

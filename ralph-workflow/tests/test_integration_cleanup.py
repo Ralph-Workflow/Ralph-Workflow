@@ -1,12 +1,3 @@
-"""Planning-residue cleanup executor tests (AC-10 machinery).
-
-Everything is pure in-memory: the git effects run through a fake
-:class:`CleanupGitPort` (no subprocess, no filesystem, no clock) and the
-ledger through a fake :class:`ResidueLedgerPort`. This is the
-``audit_test_policy`` contract: only the decision-table projection checks
-touch the real pure table.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -62,8 +53,6 @@ def _diff_hash(worktree: Mapping[str, str], committed: Mapping[str, str]) -> str
 
 
 class _FakeCleanupGit:
-    """In-memory CleanupGitPort: committed/worktree/staged/untracked maps."""
-
     def __init__(self) -> None:
         self.head = "head-sha-1"
         self.committed: dict[str, str] = {"src/app.py": "base"}
@@ -81,19 +70,10 @@ class _FakeCleanupGit:
         self.fail_restore = False
         self.fail_reobserve = False
         self.forced_blob: str | None = None
-        # Mode-only and intent-to-add dirt modelling. A mode-only path (a
-        # chmod with clean content) renders as " M"; an intent-to-add path
-        # (``git add -N``: the index holds an empty-blob intent, the content
-        # lives only in the worktree) renders as " A". Both are
-        # tracked-shaped dirt, never "??" untracked.
         self.mode_only: set[str] = set()
         self.intent_to_add: dict[str, str] = {}
-        # Operation-marker probe state: the kind the probe reports, or an
-        # unreadable probe when ``operation_probe_unreadable``.
         self.operation_kind: InProgressKind = InProgressKind.NONE
         self.operation_probe_unreadable = False
-
-    # -- observation ------------------------------------------------------
 
     def _blob(self) -> str:
         rows: list[str] = []
@@ -127,8 +107,6 @@ class _FakeCleanupGit:
         if self.fail_reobserve:
             return None
         base = _diff_hash(self.worktree, self.committed)
-        # ``git diff HEAD`` includes mode-only and intent-to-add rows, so
-        # the hash moves for shape-only dirt exactly the way git moves it.
         shaped = sorted(self.mode_only | set(self.intent_to_add))
         if not shaped:
             return base
@@ -143,15 +121,12 @@ class _FakeCleanupGit:
         return Reading.known(self.operation_kind)
 
     def index_flag_dirt(self, root: Path) -> Reading[IndexFlagDirt]:
-        """No index flags by default; ``_FlagAwareGit`` models the flagged case."""
         del root
         return Reading.known(IndexFlagDirt.empty())
 
     def clear_index_flags(self, root: Path, paths: Sequence[str]) -> bool:
         del root, paths
         return True
-
-    # -- mutations ---------------------------------------------------------
 
     def snapshot_worktree(self, root: Path, *, head_sha: str) -> str:
         self.snapshot_count += 1
@@ -170,9 +145,6 @@ class _FakeCleanupGit:
             if path in self.committed:
                 self.worktree[path] = self.committed[path]
             self.staged.pop(path, None)
-            # ``git restore --worktree --staged --source=HEAD`` also resets
-            # the mode bit and drops an intent-to-add index entry (and the
-            # worktree file HEAD does not contain).
             self.mode_only.discard(path)
             self.intent_to_add.pop(path, None)
         return True
@@ -206,8 +178,6 @@ class _FakeCleanupGit:
     def incoming_overwrite_paths(self, root: Path, target: str | None) -> frozenset[str]:
         return self.incoming
 
-    # -- state -------------------------------------------------------------
-
     def load_state(self, root: Path) -> Mapping[str, Any] | None:
         return self.state
 
@@ -216,8 +186,6 @@ class _FakeCleanupGit:
 
     def clear_state(self, root: Path) -> None:
         self.state = None
-
-    # -- landing restore ---------------------------------------------------
 
     def path_exists(self, path: Path) -> bool:
         return str(path) in {str(_ROOT / p) for p in (*self.worktree, *self.untracked)}
@@ -233,8 +201,6 @@ class _FakeCleanupGit:
 
 
 class _FakeLedger:
-    """In-memory ResidueLedgerPort returning a scripted action sequence."""
-
     def __init__(self, actions: Sequence[NextAction] | None = None) -> None:
         self.actions = list(actions or [NextAction.SAVE_AND_RESTORE])
         self.charged: list[tuple[tuple[str, ...], tuple[str, ...]]] = []
@@ -269,11 +235,6 @@ def _run(
     )
 
 
-# ---------------------------------------------------------------------------
-# Baseline capture.
-# ---------------------------------------------------------------------------
-
-
 def test_baseline_capture_records_head_status_and_fingerprint() -> None:
     git = _FakeCleanupGit()
     baseline = _baseline(git)
@@ -300,11 +261,6 @@ def test_baseline_capture_none_when_unreadable() -> None:
     git = _FakeCleanupGit()
     git.fail_reobserve = True
     assert capture_planning_baseline(_ROOT, git=git) is None
-
-
-# ---------------------------------------------------------------------------
-# Pure residue detection.
-# ---------------------------------------------------------------------------
 
 
 def _clean_baseline() -> PlanningBaseline:
@@ -336,7 +292,7 @@ def test_detect_residue_xy_change_is_ambiguous() -> None:
     baseline_git = _FakeCleanupGit()
     baseline_git.worktree["src/app.py"] = "human"
     baseline = _baseline(baseline_git)
-    after = "M  src/app.py\0"  # planning staged the human-edited file
+    after = "M  src/app.py\0"
     residue = detect_planning_residue(baseline, after, after_diff_hash="different")
     assert residue is not None
     assert residue.tracked_paths == ()
@@ -347,7 +303,7 @@ def test_detect_residue_content_only_change_is_ambiguous() -> None:
     baseline_git = _FakeCleanupGit()
     baseline_git.worktree["src/app.py"] = "human-v1"
     baseline = _baseline(baseline_git)
-    after = " M src/app.py\0"  # same porcelain row, content moved underneath
+    after = " M src/app.py\0"
     residue = detect_planning_residue(baseline, after, after_diff_hash="moved")
     assert residue is not None
     assert residue.ambiguous_paths == ("src/app.py",)
@@ -368,11 +324,6 @@ def test_detect_residue_agent_artifacts_not_residue() -> None:
     assert (
         detect_planning_residue(baseline, after, after_diff_hash=baseline.tracked_diff_hash) is None
     )
-
-
-# ---------------------------------------------------------------------------
-# The executor against the decision table's vocabulary.
-# ---------------------------------------------------------------------------
 
 
 def test_residue_observation_maps_to_blocking_shape() -> None:
@@ -417,8 +368,6 @@ def test_ambiguous_attribution_is_unknown_save_never_revert() -> None:
     baseline_git = _FakeCleanupGit()
     baseline_git.worktree["src/app.py"] = "human edit"
     baseline = _baseline(baseline_git)
-    # Planning staged the human-edited file: attribution cannot separate
-    # the human edit from planning's staging.
     residue = detect_planning_residue(baseline, "M  src/app.py\0", after_diff_hash="x")
     assert residue is not None
     assert residue.ambiguous_paths == ("src/app.py",)
@@ -433,11 +382,6 @@ def test_ambiguous_attribution_is_unknown_save_never_revert() -> None:
         )
     )
     assert decision is NextAction.SAVE_AND_RESTORE
-
-
-# ---------------------------------------------------------------------------
-# Executor behaviour.
-# ---------------------------------------------------------------------------
 
 
 def test_clean_dispatch_runs_no_cleanup() -> None:
@@ -471,33 +415,12 @@ def test_tracked_residue_saved_restored_and_warned_once() -> None:
     assert len(warns) == 1
     assert "src/app.py" in warns[0]
     assert "refs/ralph-backup/fake-01" in warns[0]
-    # Completed and nothing quarantined: progress state is retired.
     assert git.state is None
 
 
-# ---------------------------------------------------------------------------
-# Per-shape blocking-residue rows. Portfolio admission: each row pins a
-# DISTINCT fault sensitivity of the same executor seam — staged dirt needs
-# an index reset (not just a worktree reset), a chmod-only or intent-to-add
-# shape must not be skipped by a content-only residue probe. Layer: this
-# fake-based executor suite (cheapest sufficient). Marginal cost: three
-# in-memory tests, each well under 1 s. Owner: integration cleanup.
-# Trigger: any change to detect_planning_residue / run_residue_cleanup /
-# the CleanupGitPort restore contract.
-# ---------------------------------------------------------------------------
-
-
 def test_staged_only_residue_is_saved_restored_and_index_reset() -> None:
-    """A staged-only residue needs the INDEX reset, not just the worktree.
-
-    The production restore is ``git restore --worktree --staged``: a defect
-    that only rewrote worktree content would leave the staged dirt in the
-    index and the tree would re-dirty on the next observation.
-    """
     git = _FakeCleanupGit()
     baseline = _baseline(git)
-    # Planning staged its edit: the index moved and the worktree matches
-    # it, so porcelain shows the staged row only.
     git.staged["src/app.py"] = "planning staged this"
     git.worktree["src/app.py"] = "planning staged this"
     ledger = _FakeLedger()
@@ -516,12 +439,6 @@ def test_staged_only_residue_is_saved_restored_and_index_reset() -> None:
 
 
 def test_mode_only_residue_is_saved_and_restored() -> None:
-    """A chmod-only residue is blocking dirt: saved, restored, mode reset.
-
-    Porcelain shows `` M`` for a mode change with clean content, so a
-    residue probe that trusted content diffs alone would read the tree as
-    clean and skip the cleanup entirely.
-    """
     git = _FakeCleanupGit()
     git.committed["run.sh"] = "base"
     git.worktree["run.sh"] = "base"
@@ -540,22 +457,6 @@ def test_mode_only_residue_is_saved_and_restored() -> None:
 
 
 def test_intent_to_add_residue_routes_through_save_and_restore() -> None:
-    """An intent-to-add (``git add -N``) residue routes through the ladder.
-
-    Porcelain reports the path as `` A`` — a tracked-shape row, never
-    ``??`` untracked — so the residue seam treats it as blocking tracked
-    dirt: save first, then restore the baseline (index entry dropped and
-    the worktree file removed, exactly what
-    ``git restore --staged --worktree --source=HEAD`` does for a path HEAD
-    does not contain).
-
-    Scope note: this row pins the EXECUTOR-seam routing and outcome only.
-    Whether the production ``stash create``-based preservation ref actually
-    captures intent-to-add file content (the index holds an empty-blob
-    intent, so a stash-derived tree may not contain it) is a port-level
-    question this fake cannot answer — reported as an open mechanism
-    question for the orchestrator, not asserted here.
-    """
     git = _FakeCleanupGit()
     baseline = _baseline(git)
     git.intent_to_add["src/new.py"] = "planning sketched a new module"
@@ -595,7 +496,7 @@ def test_overwritten_untracked_is_quarantined_and_restoreable_after_landing() ->
     assert outcome.quarantined_untracked == ("docs/spec.md",)
     assert git.untracked == {}
     assert git.quarantined == {"docs/spec.md": "untracked spec"}
-    assert git.state is not None  # progress survives: landing owes the restore
+    assert git.state is not None
     restored = restore_quarantined_untracked(_ROOT, git=git, emit=warns.append)
     assert restored == ("docs/spec.md",)
     assert git.untracked["docs/spec.md"] == "untracked spec"
@@ -608,8 +509,6 @@ def test_landing_restore_skips_paths_the_landing_recreated() -> None:
     git.untracked["docs/spec.md"] = "untracked spec"
     git.incoming = frozenset({"docs/spec.md"})
     _run(git, baseline, _FakeLedger())
-    # The landing content now occupies the destination: the preserved copy
-    # must stay quarantined rather than clobber it.
     git.untracked["docs/spec.md"] = "landed content"
     warns: list[str] = []
     restored = restore_quarantined_untracked(_ROOT, git=git, emit=warns.append)
@@ -635,10 +534,6 @@ def test_unmerged_residue_is_never_touched() -> None:
 
 
 def test_all_resolved_merge_with_staged_resolution_blocks_cleanup() -> None:
-    # The defect this gate exists for: MERGE_HEAD is present and every
-    # conflict is already resolved and staged — porcelain shows only a
-    # staged row, no unmerged entry. Cleanup must NOT restore the baseline
-    # over the operation's staged resolution.
     git = _FakeCleanupGit()
     baseline = _baseline(git)
     git.worktree["src/app.py"] = "resolved merge"
@@ -653,7 +548,6 @@ def test_all_resolved_merge_with_staged_resolution_blocks_cleanup() -> None:
     assert ledger.charged == []
     assert git.snapshot_count == 0
     assert git.restore_calls == []
-    # The operation's staged resolution is untouched.
     assert git.staged["src/app.py"] == "resolved merge"
     assert git.worktree["src/app.py"] == "resolved merge"
     assert any("merge" in line for line in warns)
@@ -665,10 +559,6 @@ def test_all_resolved_merge_with_staged_resolution_blocks_cleanup() -> None:
     ids=[kind.value for kind in InProgressKind if kind is not InProgressKind.NONE],
 )
 def test_operation_marker_blocks_cleanup(kind: InProgressKind) -> None:
-    # Every non-NONE kind blocks cleanup: the gate branches on "some
-    # operation vs NONE", never on a specific kind, so the parametrization
-    # over the whole vocabulary proves the label map and the gate stay
-    # total when the enum grows.
     git = _FakeCleanupGit()
     baseline = _baseline(git)
     git.worktree["src/app.py"] = "operation staged this"
@@ -743,14 +633,13 @@ def test_resume_after_interruption_skips_second_backup() -> None:
     first = _run(git, baseline, ledger)
     assert first.remaining_paths == ("src/app.py",)
     assert first.backup_ref == "refs/ralph-backup/fake-01"
-    assert git.state is not None  # progress persisted mid-cleanup
+    assert git.state is not None
 
-    # Kill + restart: same residue fingerprint, backup ref still exists.
     git.fail_restore = False
     second = _run(git, baseline, ledger)
     assert second.resumed
     assert second.backup_ref == "refs/ralph-backup/fake-01"
-    assert git.snapshot_count == 1  # NO second backup of the same content
+    assert git.snapshot_count == 1
     assert git.restore_calls[1] == ("head-sha-1", ("src/app.py",))
     assert second.remaining_paths == ()
     assert git.worktree["src/app.py"] == "base"
@@ -796,14 +685,13 @@ def test_ambiguous_paths_saved_not_restored_and_reported() -> None:
     git = _FakeCleanupGit()
     git.worktree["src/app.py"] = "human edit"
     baseline = _baseline(git)
-    git.staged["src/app.py"] = "human edit"  # planning staged the human file
+    git.staged["src/app.py"] = "human edit"
     ledger = _FakeLedger()
     warns: list[str] = []
     outcome = _run(git, baseline, ledger, warns)
     assert outcome.ambiguous_paths == ("src/app.py",)
     assert outcome.restored_paths == ()
     assert git.restore_calls == []
-    # Backup still happens: ambiguous work is saved, never discarded.
     assert outcome.backup_ref is not None
     assert ledger.attributions == [DirtAttribution.UNKNOWN]
     assert any("human work" in line and "NOT reverted" in line for line in warns)
@@ -822,9 +710,6 @@ def test_executor_never_raises_on_port_failure() -> None:
 
 
 def test_owner_ledger_port_charges_through_real_decision_table(tmp_path: Path) -> None:
-    # The only real-I/O seam exercised here: the durable attempt ledger,
-    # which owns its own tmp file. Verifies the production port's
-    # load -> decide -> charge ordering end to end.
     baseline = PlanningBaseline(
         head_sha="head-sha-1",
         status_blob="",

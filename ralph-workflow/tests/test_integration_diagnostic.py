@@ -133,7 +133,6 @@ def test_public_diagnose_retained_integration_refuses_when_proof_missing(
     assert _git(root, "config", "user.email", "test@example.com").returncode == 0
     base = _commit(root, "file.txt", "base\n")
 
-    # Ancestry mismatch: record has nonexistent SHAs
     record = IntegrationRecord(
         phase="integrated",
         target="main",
@@ -152,8 +151,6 @@ def test_public_diagnose_retained_integration_refuses_when_proof_missing(
 
     saved = read_record(root)
     assert saved is not None
-    # The pre-pass proof failure spends one bounded repair attempt
-    # instead of raising the retired operator hand-off.
     assert saved.diagnostic_intervention_required is False
     assert saved.merge_commit_repair_attempts == 1
     assert "operation completion proof failed" in (saved.repair_last_error or "")
@@ -206,8 +203,6 @@ def test_diagnose_retained_integration_honors_injected_invoke_and_collector(tmp_
     assert invoked == []
     saved = read_record(root)
     assert saved is not None
-    # The unreachable-marker pre-pass failure spends one bounded repair
-    # attempt instead of raising the retired operator hand-off.
     assert saved.diagnostic_intervention_required is False
     assert saved.merge_commit_repair_attempts == 1
     assert "unreachable marker object" in (saved.repair_last_error or "")
@@ -263,7 +258,6 @@ def test_diagnose_retained_integration_repeated_failures_persist_intervention_at
             facts=(OperationFact(kind="rebase_object_resolvable", value="True"),)
         )
 
-    # Attempt 1: from cap - 2 to cap - 1
     assert not diagnostic.diagnose_retained_integration(
         ctx, "test failure 1", invoke=custom_invoke, collector=collector
     )
@@ -272,9 +266,6 @@ def test_diagnose_retained_integration_repeated_failures_persist_intervention_at
     assert s1.diagnostic_intervention_required is False
     assert invoked == []
 
-    # Attempt 2: reaches cap, stamps the typed budget-spent outcome and
-    # escalates into the autonomous fallback ladder (recorded in the
-    # durable ledger).
     ledger = AttemptLedger(root, ledger_path=root / ".agent" / "test-attempt-ledger.json")
     plumbing = _FakePlumbing(changed=())
     assert not diagnostic.diagnose_retained_integration(
@@ -287,7 +278,6 @@ def test_diagnose_retained_integration_repeated_failures_persist_intervention_at
     )
     s2 = read_record(root)
     assert s2 is not None
-    # The typed marker preserves the counter at the cap across loads.
     assert s2.merge_commit_repair_attempts == cap
     assert s2.diagnostic_intervention_required is False
     assert s2.repair_cap_reason == diagnostic.DIAGNOSTIC_BUDGET_SPENT_REASON
@@ -296,8 +286,6 @@ def test_diagnose_retained_integration_repeated_failures_persist_intervention_at
         "cap exhaustion must reach a ladder rung recorded in the durable ledger"
     )
 
-    # Attempt 3: already at cap; the typed marker preserves the counter
-    # across loads and zero later invocations occur.
     calls_before = getattr(collector, "calls", 0)
     assert not diagnostic.diagnose_retained_integration(
         ctx,

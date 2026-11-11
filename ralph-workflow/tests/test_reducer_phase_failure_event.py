@@ -1,5 +1,3 @@
-"""Unit tests for the pure pipeline reducer."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -40,7 +38,6 @@ if TYPE_CHECKING:
 
 
 def _available_ledger() -> AgentFailureLedger:
-    """A ledger with no recorded agent failure: every candidate is eligible."""
     return AgentFailureLedger(clock=FakeClock())
 
 
@@ -76,7 +73,6 @@ def _basic_pipeline_policy() -> PipelinePolicy:
 
 
 def _commit_review_policy() -> PipelinePolicy:
-    """Return a policy with a commit-review phase that fails closed."""
     return PipelinePolicy(
         phases={
             "development": PhaseDefinition(
@@ -367,16 +363,8 @@ def _policy_with_planning_analysis() -> PipelinePolicy:
     )
 
 
-# =============================================================================
-# PhaseFailureEvent tests
-# =============================================================================
-
-
 class TestPhaseFailureEvent:
-    """Tests for PhaseFailureEvent routing through the reducer."""
-
     def test_phase_failure_recoverable_retries_through_the_owner(self) -> None:
-        """PhaseFailureEvent(recoverable=True) retries on the owner's verdict."""
         state = PipelineState(
             phase="development",
             phase_chains={
@@ -397,7 +385,6 @@ class TestPhaseFailureEvent:
     def test_phase_failure_recoverable_falls_back_when_the_owner_demotes_the_agent(
         self,
     ) -> None:
-        """The owner's verdict decides the fallover, not a local retry counter."""
         ledger = AgentFailureLedger(clock=FakeClock())
         for _ in range(3):
             ledger.record(AttemptFact(phase="development", agent="claude", artifact_valid=False))
@@ -428,7 +415,6 @@ class TestPhaseFailureEvent:
     def test_phase_failure_skip_same_agent_retries_advances_through_the_owner(
         self,
     ) -> None:
-        """Context-exhausted agents advance to the next agent on the owner's verdict."""
         state = PipelineState(
             phase="development",
             phase_chains={
@@ -453,7 +439,6 @@ class TestPhaseFailureEvent:
     def test_phase_failure_recoverable_with_single_agent_after_3_retries_enters_recovery(
         self,
     ) -> None:
-        """Single-agent chain exhaustion should enter recovery without exit effects."""
         state = PipelineState(
             phase="development",
             phase_chains={
@@ -472,7 +457,6 @@ class TestPhaseFailureEvent:
     def test_phase_failure_not_recoverable_enters_recovery_without_exit_effect(
         self,
     ) -> None:
-        """PhaseFailureEvent(recoverable=False) should still avoid process exit."""
         state = PipelineState(phase="development")
         event = PhaseFailureEvent(
             phase="development_analysis",
@@ -486,7 +470,6 @@ class TestPhaseFailureEvent:
         assert effects == []
 
     def test_integration_conflict_failure_advances_durable_strategy_ladder(self) -> None:
-        """Integration failures advance durable recovery without terminating development."""
         state = PipelineState(phase="development")
         reason = "integration conflict requires resolution: unresolved shared.txt"
 
@@ -551,7 +534,6 @@ class TestPhaseFailureEvent:
         ]
 
     def test_strategy_advance_grants_the_next_rung_its_own_budget_after_restart(self) -> None:
-        """Persisted progress does not let one rung suppress the next one."""
         state = PipelineState(
             phase="development",
             rebase=RebaseState(
@@ -579,7 +561,6 @@ class TestPhaseFailureEvent:
         assert resolver_allowed(restored, "main", ledger=_available_ledger()) is True
 
     def test_phase_failure_recoverable_preserves_reason_in_last_error(self) -> None:
-        """When chain exhausts, the original PhaseFailureEvent reason is preserved."""
         state = PipelineState(
             phase="development",
             phase_chains={
@@ -599,7 +580,6 @@ class TestPhaseFailureEvent:
         assert new_state.recovery_epoch == 1
 
     def test_phase_failure_never_produces_unknown_failure_string(self) -> None:
-        """Terminal failure from PhaseFailureEvent must never show 'Unknown failure'."""
         state = PipelineState(
             phase="review",
             phase_chains={
@@ -622,12 +602,6 @@ class TestPhaseFailureEvent:
     def test_phase_failure_not_recoverable_routes_via_workflow_fallback_when_declared(
         self,
     ) -> None:
-        """Non-recoverable PhaseFailureEvent routes to workflow_fallback.target when declared.
-
-        Policy-declared workflow_fallback takes precedence over recovery.failed_route
-        for non-recoverable failures, matching the same precedence used in
-        _handle_agent_failure for chain exhaustion.
-        """
 
         policy = PipelinePolicy(
             phases={
@@ -667,7 +641,6 @@ class TestPhaseFailureEvent:
     def test_phase_failure_not_recoverable_enters_terminal_when_no_workflow_fallback(
         self,
     ) -> None:
-        """Non-recoverable PhaseFailureEvent without workflow_fallback routes to failed_route."""
         state = PipelineState(phase="development")
         event = PhaseFailureEvent(
             phase="development",
@@ -682,7 +655,6 @@ class TestPhaseFailureEvent:
     def test_development_failure_regression_terminal_error_consumes_one_analysis_cycle(
         self,
     ) -> None:
-        """S-1: terminal development failures advance the declared analysis counter once."""
         policy = _policy_with_post_commit_routes()
         policy.phases["development"] = policy.phases["development"].model_copy(
             update={"workflow_fallback": PhaseWorkflowFallback(target="development_analysis")}
@@ -755,7 +727,6 @@ class TestPhaseFailureEvent:
         assert "Artifact validation fault" not in new_state.last_error
 
     def test_commit_review_gate_failure_leaves_no_rollback_flags(self) -> None:
-        """A commit review gate failure stops the run without a rollback effect."""
         state = PipelineState(
             phase="development_commit_review",
             rollback_pending=True,
@@ -767,13 +738,11 @@ class TestPhaseFailureEvent:
 
         assert new_state.phase == "failed_terminal"
         assert new_state.rollback_pending is False
-        # The proposal ref survives so the rejected work stays recoverable.
         assert new_state.rollback_ref == "refs/ralph/proposals/run-1/0"
         assert "gate failed" in (new_state.last_error or "")
         assert effects == []
 
     def test_commit_review_rejection_at_the_limit_fails_without_rollback(self) -> None:
-        """The second consecutive rejection is terminal: no rollback, proposal ref kept."""
         state = PipelineState(
             phase="development_commit_review",
             commit_review_rejections=1,

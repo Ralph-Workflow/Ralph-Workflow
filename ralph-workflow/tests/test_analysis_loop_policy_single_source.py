@@ -1,10 +1,3 @@
-"""Contract tests for single-source analysis loop caps.
-
-Analysis phases must derive their cap from pipeline.loop_counters only.
-The phase-local loop_policy block keeps only the counter linkage and must not
-accept a duplicate max_iterations field.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path

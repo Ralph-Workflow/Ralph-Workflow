@@ -1,5 +1,3 @@
-"""Unit tests for workspace-bounded git cwd validation."""
-
 from __future__ import annotations
 
 from pathlib import Path

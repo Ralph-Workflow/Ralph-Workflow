@@ -78,7 +78,6 @@ def test_copy_install_tree_omits_source_virtualenv_from_new_candidate(tmp_path: 
 def test_copy_install_tree_regression_omits_development_state_from_snapshot(
     tmp_path: Path,
 ) -> None:
-    """The dev installer must not copy checkout-local agent state or caches."""
     from ralph._install_copy_tree import copy_install_tree
 
     source, destination = tmp_path / "source", tmp_path / "snapshot"

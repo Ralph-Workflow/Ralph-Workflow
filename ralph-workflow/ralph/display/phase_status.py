@@ -1,12 +1,3 @@
-"""Canonical presentation formatters for phase lifecycle rendering.
-
-This is the single source of truth for how iteration context (dev cycles,
-analysis cycles) and phase outcomes are labeled across
-phase-start banners, phase-close lines, and run-end summaries.
-
-All formatters are pure: they accept simple values and return strings.
-No Console construction, no env reads, no pipeline logic.
-"""
 
 from __future__ import annotations
 
@@ -35,101 +26,42 @@ if TYPE_CHECKING:
 
 
 def format_dev_cycle(n: int, cap: int | None = None) -> str:
-    """Return canonical phase-neutral label for the outer cycle (1-indexed).
-
-    The outer cycle is run-level context (the lifecycle counter owned by
-    ``developer_iteration`` / ``development_final_commit``) that is
-    meaningful across ``planning``, ``development``, ``analysis``,
-    ``commit``, and remediation phases alike. The label uses the
-    phase-neutral word ``Cycle`` instead of the phase-specific ``Dev`` so
-    the same string carries the right meaning in every phase.
-
-    When *cap* is provided (and positive), shows ``Cycle N/cap`` to make
-    the remaining budget immediately visible.  Without a cap, shows
-    ``Cycle #N``.
-
-    Phase-specific labeling overrides (e.g. ``Remediation`` for policy
-    remediation, ``Round`` for conflict resolution) are applied in the
-    Status Bar layer via :class:`ralph.display.status_bar.StatusBarModel.outer_label`,
-    never by introducing a second formatter -- format_dev_cycle is the
-    single-source renderer.
-    """
     if cap is not None and cap > 0:
         return f"Cycle {n}/{cap}"
     return f"Cycle #{n}"
 
 
 def format_analysis_cycle(n: int, cap: int | None = None) -> str:
-    """Return the phase-neutral label for an inner iteration (1-indexed)."""
     if cap is not None and cap > 0:
         return f"iter {n}/{cap}"
     return f"iter #{n}"
 
 
 def format_dev_cycle_compact(n: int, cap: int | None = None) -> str:
-    """Return compact phase-neutral outer-cycle label for narrow-terminal rendering.
-
-    Shortens the canonical ``Cycle N/cap`` to ``C1/3`` (4 chars) so the
-    persistent Status Bar fits a constrained terminal without dropping
-    the iteration field. Without a cap, returns ``C#1`` (3 chars).
-
-    The compact form keeps the disambiguating ``C`` prefix so an
-    operator can still tell outer cycles from inner-analysis cycles
-    at a glance. Used by :mod:`ralph.display.status_bar` when the
-    canonical label exceeds the per-iteration label budget derived
-    from ``ctx.width``.
-    """
     if cap is not None and cap > 0:
         return f"C{n}/{cap}"
     return f"C#{n}"
 
 
 def format_analysis_cycle_compact(n: int, cap: int | None = None) -> str:
-    """Return compact analysis cycle label for narrow-terminal rendering.
-
-    Shortens ``iter N/cap`` to ``i1/3`` (4 chars) and ``iter #N``
-    to ``i#1`` (3 chars). The ``i`` prefix keeps the label distinct
-    from the outer-cycle compact form.
-    """
     if cap is not None and cap > 0:
         return f"i{n}/{cap}"
     return f"i#{n}"
 
 
 def format_dev_cycle_minimal(n: int, cap: int | None = None) -> str:
-    """Return minimal phase-neutral outer-cycle label for very narrow terminals.
-
-    Returns ``N/cap`` (no prefix) when a cap is provided, ``#N``
-    otherwise. Used by :mod:`ralph.display.status_bar` when even the
-    compact form (``C1/3``) cannot fit.
-    """
     if cap is not None and cap > 0:
         return f"{n}/{cap}"
     return f"#{n}"
 
 
 def format_analysis_cycle_minimal(n: int, cap: int | None = None) -> str:
-    """Return minimal analysis cycle label for very narrow terminals.
-
-    Returns ``N/cap`` (no prefix) when a cap is provided, ``#N``
-    otherwise. The compact and minimal forms of the analysis cycle share
-    the same shape (the ``A`` prefix is dropped); at very narrow widths
-    the operator still sees the count vs cap and a glyph prefix
-    distinguishes dev vs analysis.
-    """
     if cap is not None and cap > 0:
         return f"{n}/{cap}"
     return f"#{n}"
 
 
 def format_elapsed_seconds(s: float) -> str:
-    """Return the shared compact duration spelling for durable display surfaces.
-
-    Whole-minute values use ``<minutes>m<seconds>s``; a meaningful tenth is
-    retained in the seconds component at every scale.  Every stream boundary,
-    activity close, and completion view delegates here so a duration never
-    changes vocabulary merely because its surface changes.
-    """
     rounded = round(max(0.0, s), 1)
     whole_seconds = int(rounded)
     if whole_seconds >= _SECONDS_PER_MINUTE:
@@ -141,7 +73,6 @@ def format_elapsed_seconds(s: float) -> str:
 
 
 def format_exit_trigger(snapshot: _ExitState) -> str:
-    """Return canonical exit-trigger label from a PipelineSnapshot-like object."""
     if snapshot.interrupted_by_user:
         return "interrupted"
     if snapshot.is_terminal_success:
@@ -152,14 +83,6 @@ def format_exit_trigger(snapshot: _ExitState) -> str:
 
 
 def format_transition_context_items(context: dict[str, object]) -> list[str]:
-    """Return formatted display strings for a phase transition context dict.
-
-    Normalizes context items from generic key=value to canonical display format:
-    - 'analysis_status' key: rendered as the bare value (no key prefix)
-    - 'decision' key: rendered as '→ {value}' (arrow notation)
-    - multi-word keys (containing spaces): rendered as '[key value]' bracket notation
-    - all other keys: rendered as 'key=value'
-    """
     parts: list[str] = []
     for k, v in context.items():
         v_str = str(v)
@@ -176,14 +99,6 @@ def format_transition_context_items(context: dict[str, object]) -> list[str]:
 
 @dataclass(frozen=True)
 class PhaseIterationContext:
-    """Canonical iteration context for phase start/close rendering.
-
-    Attributes:
-        outer_dev: Outer development cycle number (None if not in outer loop).
-        outer_dev_cap: Budget cap for outer dev cycles (shows Cycle N/cap when set).
-        inner_analysis: Inner analysis cycle number (None if not in analysis).
-        inner_analysis_cap: Max inner analysis cycles (None if unknown).
-    """
 
     outer_dev: int | None = None
     outer_dev_cap: int | None = None
@@ -191,14 +106,9 @@ class PhaseIterationContext:
     inner_analysis_cap: int | None = None
 
     def has_context(self) -> bool:
-        """Return True if any iteration context is set."""
         return any(x is not None for x in (self.outer_dev, self.inner_analysis))
 
     def context_labels(self) -> list[tuple[str, str]]:
-        """Return (label, style_key) pairs for rendering, in display priority order.
-
-        Order: outer dev (highest visibility) → inner analysis.
-        """
         parts: list[tuple[str, str]] = []
         if self.outer_dev is not None:
             parts.append((format_dev_cycle(self.outer_dev, self.outer_dev_cap), "theme.outer_dev"))
@@ -214,7 +124,6 @@ def format_integration_phase_label(
     is_diagnosis: bool = False,
     detail: str | None = None,
 ) -> str:
-    """Return the canonical formatted phase label for an integration action or display state."""
     base = format_integration_label(action_or_state, is_diagnosis=is_diagnosis)
     title_label = base.title()
     if detail:

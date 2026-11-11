@@ -1,4 +1,3 @@
-"""Resolve smoke-harness agent defaults from the effective agents policy."""
 
 from __future__ import annotations
 
@@ -62,11 +61,6 @@ def resolve_default_smoke_agent(
     drain: DrainName,
     command_prefix: str | None = None,
 ) -> str | None:
-    """Select a compatible policy-chain alias or return ``None`` for an actionable CLI failure.
-
-    The caller owns presenting the failure because only it knows which smoke
-    command's explicit ``--agent`` override is applicable.
-    """
     try:
         chain = ChainManager(agents_policy).chain_for_drain(drain)
     except DrainNotBoundError:

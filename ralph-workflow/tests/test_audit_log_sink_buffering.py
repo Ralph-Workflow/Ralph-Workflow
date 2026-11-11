@@ -1,38 +1,3 @@
-"""Regression tests pinning the log-sink-buffering audit contract.
-
-The log-sink-buffering audit
-(``ralph.testing.audit_log_sink_buffering``) is the AST drift gate
-that locks the ``buffering=8192`` invariant on every file-path
-``logger.add(...)`` call in ``ralph/logging.py``. Without it, a
-future refactor could silently drop the kwarg (or pass
-``buffering=1``) and revert to loguru's line-buffered file default
--- one OS write per record, one fsevents notification per record,
-the exact per-record filesystem-mutation class the fseventsd
-mitigation closes.
-
-These tests write forbidden-construct source files under pytest's
-``tmp_path`` fixture and run the audit directly against the temp
-``package_root``. No real subprocess, no ``time.sleep``, no real
-file I/O outside ``tmp_path``. They cover:
-
-  * a compliant fixture: every file sink passes
-    ``buffering=8192`` -> zero violations.
-  * a violating fixture: a file sink omits buffering -> exactly
-    one ``file_sink_missing_buffering`` violation at the expected
-    line.
-  * a violation fixture where ``buffering=1`` is passed -> exactly
-    one ``file_sink_missing_buffering`` violation (line-buffered
-    is the regression class the audit catches).
-  * a stream-sink fixture: a callable/stream sink without
-    buffering -> zero violations (the audit must NOT false-flag
-    non-file sinks).
-  * the real production ``ralph/logging.py`` -> zero violations
-    (proves the audit is clean on the committed tree).
-  * the audit module's forbidden-I/O contract (no ``time.sleep``,
-    no real subprocess, no real HTTP) -- mirrors the
-    ``audit_fsevents_watch_consolidation`` I/O contract test.
-"""
-
 from __future__ import annotations
 
 import ast as _ast
@@ -50,20 +15,6 @@ def _write_fake_logging_module(
     *,
     module_body: str,
 ) -> Path:
-    """Write a fake package_root containing ``logging.py`` for the audit.
-
-    Args:
-        tmp_path: The pytest ``tmp_path`` fixture; the fake package
-            tree is rooted at ``tmp_path / "ralph"``.
-        module_body: The full source body of the fake ``logging.py``.
-            Tests pass mutated ``logger.add(...)`` bodies through
-            this parameter so the fixtures differ only in the
-            mutation site.
-
-    Returns:
-        The path of the fake ``package_root`` (the audit walks this
-            directory).
-    """
     package_root: Path = tmp_path / "ralph"
     module_path: Path = package_root / _LOGGING_MODULE
     module_path.parent.mkdir(parents=True)
@@ -71,27 +22,7 @@ def _write_fake_logging_module(
     return package_root
 
 
-# NOTE: ``test_audit_passes_real_production_tree`` was deleted in the
-# wt-05-test-opti pass. That audit is already invoked as a dedicated
-# ``_VERIFY_STEPS`` entry inside ``make verify`` (via
-# ``python -m ralph.testing.audit_log_sink_buffering``), so the same
-# clean-tree check runs in the same gate. Re-running it through pytest
-# on the default profile added ~1 s of AST-walk cost while proving
-# nothing the verify step does not already prove. The fixture-driven
-# tests below cover every audit branch on a synthetic ``tmp_path``
-# tree without touching the real package, preserving the audit's
-# behavior contract.
-
-
 def test_audit_flags_file_sink_without_buffering(tmp_path: Path) -> None:
-    """A ``logger.add(<file-path>, ...)`` that omits ``buffering`` triggers
-    ``file_sink_missing_buffering``.
-
-    The audit must catch the regression class where the buffering
-    kwarg is forgotten -- loguru's ``FileSink`` defaults to
-    ``buffering=1`` (line-buffered), so an omitted buffering kwarg
-    reinflates the fseventsd footprint.
-    """
     package_root: Path = _write_fake_logging_module(
         tmp_path,
         module_body=(
@@ -115,13 +46,6 @@ def test_audit_flags_file_sink_without_buffering(tmp_path: Path) -> None:
 def test_audit_log_sink_buffering_regression_helper_missing_buffering(
     tmp_path: Path,
 ) -> None:
-    """The Step 4 audit must catch a missing kwarg in the injected-adder helper.
-
-    This covers analysis feedback Item 1: the actual production file-sink
-    path is ``_add_buffered_file_sink`` calling its injected ``adder``.
-    Omitting ``buffering`` there must produce one violation at the adder
-    call, even when the source has no direct ``logger.add`` call.
-    """
     package_root: Path = _write_fake_logging_module(
         tmp_path,
         module_body=(
@@ -144,14 +68,6 @@ def test_audit_log_sink_buffering_regression_helper_missing_buffering(
 
 
 def test_audit_flags_file_sink_with_buffering_one(tmp_path: Path) -> None:
-    """``buffering=1`` (line-buffered) triggers ``file_sink_missing_buffering``.
-
-    The mitigation contract requires block buffering
-    (``buffering >= 2``). Passing ``buffering=1`` keeps the
-    line-buffered behavior and reinflates the fseventsd footprint;
-    the audit rejects it as the regression class it exists to
-    catch.
-    """
     package_root: Path = _write_fake_logging_module(
         tmp_path,
         module_body=(
@@ -171,13 +87,6 @@ def test_audit_flags_file_sink_with_buffering_one(tmp_path: Path) -> None:
 
 
 def test_audit_flags_file_sink_with_non_int_buffering(tmp_path: Path) -> None:
-    """A non-int (e.g. variable name) buffering value triggers
-    ``file_sink_missing_buffering``.
-
-    The audit requires a literal ``ast.Constant`` int value so
-    runtime expressions like ``buffering=runtime_buffer`` cannot
-    sneak through with an unresolved value at audit time.
-    """
     package_root: Path = _write_fake_logging_module(
         tmp_path,
         module_body=(
@@ -199,8 +108,6 @@ def test_audit_flags_file_sink_with_non_int_buffering(tmp_path: Path) -> None:
 
 
 def test_audit_passes_compliant_fixture(tmp_path: Path) -> None:
-    """A compliant fixture (both file sinks pass ``buffering=8192``)
-    yields zero violations."""
     package_root: Path = _write_fake_logging_module(
         tmp_path,
         module_body=(
@@ -217,13 +124,6 @@ def test_audit_passes_compliant_fixture(tmp_path: Path) -> None:
 
 
 def test_audit_ignores_callable_stream_sinks(tmp_path: Path) -> None:
-    """A callable/stream sink (no buffering) yields zero violations.
-
-    The CLI's terminal sink is ``logger.add(make_stderr_log_sink(),
-    ...)`` -- a callable sink, not a file sink. The audit must NOT
-    flag it as missing buffering. This fixture proves the
-    stream/callable discriminator works.
-    """
     package_root: Path = _write_fake_logging_module(
         tmp_path,
         module_body=(
@@ -246,18 +146,6 @@ def test_audit_ignores_callable_stream_sinks(tmp_path: Path) -> None:
 
 
 def test_audit_flags_text_log_path_without_buffering(tmp_path: Path) -> None:
-    """``logger.add(text_log_path, ...)`` without ``buffering`` triggers
-    ``file_sink_missing_buffering``.
-
-    The plan explicitly requires the audit to recognize the canonical
-    ``text_log_path`` Name binding as a file-path expression. Without
-    this branch, a future refactor that writes
-    ``logger.add(text_log_path, level='INFO')`` directly (instead of
-    routing through ``_add_buffered_file_sink``) would silently
-    regress to loguru's line-buffered ``FileSink`` default and
-    reinflate the fseventsd footprint. This fixture pins that
-    detection.
-    """
     package_root: Path = _write_fake_logging_module(
         tmp_path,
         module_body=(
@@ -283,14 +171,6 @@ def test_audit_flags_text_log_path_without_buffering(tmp_path: Path) -> None:
 
 
 def test_audit_flags_structured_log_path_without_buffering(tmp_path: Path) -> None:
-    """``logger.add(structured_log_path, ...)`` without ``buffering``
-    triggers ``file_sink_missing_buffering``.
-
-    The plan explicitly requires the audit to recognize the canonical
-    ``structured_log_path`` Name binding as a file-path expression.
-    Mirrors the ``text_log_path`` fixture -- pins the structured
-    JSONL sink under the same invariant.
-    """
     package_root: Path = _write_fake_logging_module(
         tmp_path,
         module_body=(
@@ -317,12 +197,6 @@ def test_audit_flags_structured_log_path_without_buffering(tmp_path: Path) -> No
 
 
 def test_audit_passes_text_log_path_with_buffering(tmp_path: Path) -> None:
-    """``logger.add(text_log_path, ..., buffering=8192)`` yields zero violations.
-
-    Negative-control fixture proving the named-path recognition
-    does NOT false-flag a correctly buffered call -- the audit
-    only triggers on MISSING buffering.
-    """
     package_root: Path = _write_fake_logging_module(
         tmp_path,
         module_body=(
@@ -338,13 +212,6 @@ def test_audit_passes_text_log_path_with_buffering(tmp_path: Path) -> None:
 
 
 def test_audit_passes_structured_log_path_with_buffering(tmp_path: Path) -> None:
-    """``logger.add(structured_log_path, ..., buffering=8192)`` yields
-    zero violations.
-
-    Negative-control fixture proving the named-path recognition
-    does NOT false-flag a correctly buffered call -- the audit
-    only triggers on MISSING buffering.
-    """
     package_root: Path = _write_fake_logging_module(
         tmp_path,
         module_body=(
@@ -363,18 +230,6 @@ def test_audit_passes_structured_log_path_with_buffering(tmp_path: Path) -> None
 
 
 def test_audit_flags_attribute_path_without_buffering(tmp_path: Path) -> None:
-    """``logger.add(paths.text_log_path, ...)`` without ``buffering``
-    triggers ``file_sink_missing_buffering`` at the call line.
-
-    PLAN step 4 requires the audit to recognize Attribute
-    filesystem-path expressions; this fixture pins that the
-    canonical ``*.text_log_path`` form is detected. Without
-    Attribute recognition, a future refactor that writes
-    ``logger.add(paths.text_log_path, level='INFO')`` directly
-    (bypassing the ``_add_buffered_file_sink`` helper) would
-    silently regress to loguru's line-buffered FileSink default
-    and reinflate the fseventsd footprint.
-    """
     package_root: Path = _write_fake_logging_module(
         tmp_path,
         module_body=(
@@ -403,16 +258,6 @@ def test_audit_flags_attribute_path_without_buffering(tmp_path: Path) -> None:
 def test_audit_flags_attribute_path_structured_log_path_without_buffering(
     tmp_path: Path,
 ) -> None:
-    """``logger.add(paths.structured_log_path, ...)`` without
-    ``buffering`` triggers ``file_sink_missing_buffering``.
-
-    Mirrors the ``text_log_path`` attribute-path fixture and pins
-    the structured JSONL sink under the same invariant. The audit
-    MUST treat any ``Attribute`` whose terminal ``attr`` is
-    ``structured_log_path`` (or ``text_log_path``) as a file-path
-    expression regardless of the value's namespace (e.g. an
-    object attribute access via ``paths.`` / ``config.``).
-    """
     package_root: Path = _write_fake_logging_module(
         tmp_path,
         module_body=(
@@ -434,16 +279,6 @@ def test_audit_flags_attribute_path_structured_log_path_without_buffering(
 
 
 def test_audit_passes_attribute_path_with_buffering(tmp_path: Path) -> None:
-    """``logger.add(paths.text_log_path, ..., buffering=8192)`` yields
-    zero violations.
-
-    Negative-control fixture proving the Attribute filesystem-path
-    recognition does NOT false-flag a correctly buffered
-    attribute-path sink -- the audit only triggers on MISSING
-    buffering. Without this negative control, an over-broad
-    fix that always flags any Attribute sink regardless of the
-    buffering kwarg would slip past review.
-    """
     package_root: Path = _write_fake_logging_module(
         tmp_path,
         module_body=(
@@ -464,14 +299,6 @@ def test_audit_passes_attribute_path_with_buffering(tmp_path: Path) -> None:
 def test_audit_passes_attribute_path_structured_with_buffering(
     tmp_path: Path,
 ) -> None:
-    """``logger.add(paths.structured_log_path, ..., buffering=8192)``
-    yields zero violations.
-
-    Buffered negative control for the structured attribute path.
-    Proves the Attribute recognition accepts any value-bearing
-    namespace (``paths.``, ``config.``, ``ctx.``, etc.) when the
-    buffering kwarg is present and correct.
-    """
     package_root: Path = _write_fake_logging_module(
         tmp_path,
         module_body=(
@@ -491,18 +318,6 @@ def test_audit_passes_attribute_path_structured_with_buffering(
 
 
 def test_audit_does_not_flag_non_canonical_attribute(tmp_path: Path) -> None:
-    """``logger.add(obj.foo, ...)`` (a non-canonical attribute) is
-    NOT flagged even without buffering.
-
-    The audit's Attribute recognition is conservative: only the
-    canonical ``text_log_path`` / ``structured_log_path`` terminal
-    attribute names trigger the file-sink check. Other attribute
-    access (e.g. ``module.foo``, ``config.bar``) is left alone to
-    avoid over-matching unrelated patterns. The
-    :func:`_is_stream_or_callable_sink` filter still runs first,
-    so true stream/callable attribute access (e.g. ``sys.stderr``)
-    is excluded at the stream stage.
-    """
     package_root: Path = _write_fake_logging_module(
         tmp_path,
         module_body=(
@@ -522,14 +337,8 @@ def test_audit_does_not_flag_non_canonical_attribute(tmp_path: Path) -> None:
 
 
 def test_audit_flags_missing_logging_module(tmp_path: Path) -> None:
-    """A package root WITHOUT ``logging.py`` triggers ``missing_logging_module``.
-
-    The file's absence is itself drift -- the audit must NOT
-    silently pass when the canonical module is gone.
-    """
     package_root: Path = tmp_path / "ralph"
     package_root.mkdir(parents=True)
-    # Intentionally do NOT write logging.py.
 
     violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(package_root)
 
@@ -551,15 +360,6 @@ def _dotted(node: _ast.AST) -> str | None:
 
 
 def test_audit_module_imports_clean() -> None:
-    """The audit must NOT use ``time.sleep``, ``asyncio.sleep``,
-    ``subprocess.run``, ``httpx.*``, ``requests.*``,
-    ``urllib.request.urlopen``, or ``socket.create_connection``
-    (the test-policy and mcp-timeout invariants). The audit is
-    purely an AST walk over local files.
-
-    The check uses AST-based detection (not regex) so the literal
-    strings in the test source do not produce false positives.
-    """
     audit_path: Path = REPO_ROOT / "ralph" / "testing" / "audit_log_sink_buffering.py"
     source: str = audit_path.read_text(encoding="utf-8")
     tree: _ast.Module = _ast.parse(source, filename=str(audit_path))
@@ -602,13 +402,6 @@ def test_audit_module_imports_clean() -> None:
 
 
 def test_audit_module_forbids_known_io_primitives() -> None:
-    """The audit must not be modified to introduce any of the known
-    I/O primitives. This locks the invariant that the audit is a
-    pure static walker and never a runtime probe.
-
-    Uses AST-based detection (not regex) so the literal strings in
-    the test source do not produce false positives.
-    """
     audit_path: Path = REPO_ROOT / "ralph" / "testing" / "audit_log_sink_buffering.py"
     source: str = audit_path.read_text(encoding="utf-8")
     tree: _ast.Module = _ast.parse(source, filename=str(audit_path))

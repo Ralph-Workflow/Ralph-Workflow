@@ -1,5 +1,3 @@
-"""Tests for safe regeneration of agents configuration via write_agents_toml."""
-
 from __future__ import annotations
 
 import logging
@@ -18,13 +16,6 @@ AGENTS_FILENAME = "ralph-workflow-agents.toml"
 
 
 def _backup_holding_bytes(target: Path, expected: bytes) -> Path | None:
-    """Return the ``.bak`` file that holds ``expected``, if there is one.
-
-    The backup may live next to the target or next to the resolved real
-    file (a symlinked agents path keeps its backup beside the file it
-    actually replaces), so both locations are accepted. The CONTENT is
-    the contract: the backup must hold the previous bytes.
-    """
     candidates = [target.with_name(f"{target.name}.bak")]
     resolved = target.resolve()
     resolved_candidate = resolved.with_name(f"{resolved.name}.bak")
@@ -37,13 +28,6 @@ def _backup_holding_bytes(target: Path, expected: bytes) -> Path | None:
 
 
 def _capture_loguru_records(level: str = "DEBUG") -> tuple[list[tuple[str, int]], int]:
-    """Attach a loguru sink that records every emitted message.
-
-    Returns the captured ``(message, level number)`` pairs and the sink id
-    so the caller can remove the sink again. loguru is the operator-visible
-    sink the CLI wires, so a record captured here is a line the operator
-    can actually see.
-    """
     records: list[tuple[str, int]] = []
 
     def sink(message: object) -> None:
@@ -61,7 +45,6 @@ def _capture_loguru_records(level: str = "DEBUG") -> tuple[list[tuple[str, int]]
 def test_ensure_global_agents_config_force_creates_backup_with_operator_edits(
     tmp_path: Path,
 ) -> None:
-    """Calling ensure_global_agents_config(force=True) creates a .bak with operator edits."""
     global_dir = tmp_path / "config"
     global_dir.mkdir(parents=True)
     agents_file = global_dir / AGENTS_FILENAME
@@ -76,7 +59,6 @@ def test_ensure_global_agents_config_force_creates_backup_with_operator_edits(
     assert bak_path.exists()
     assert bak_path.read_text(encoding="utf-8") == custom_content
 
-    # Target file is rewritten and is valid TOML
     assert agents_file.exists()
     target_content = agents_file.read_text(encoding="utf-8")
     assert target_content != custom_content
@@ -87,7 +69,6 @@ def test_ensure_global_agents_config_force_creates_backup_with_operator_edits(
 def test_regenerate_all_creates_backup_with_operator_edits(
     tmp_path: Path,
 ) -> None:
-    """regenerate_all creates a .bak backup containing previous operator edits."""
     global_dir = tmp_path / "config"
     global_dir.mkdir(parents=True)
     agents_file = global_dir / AGENTS_FILENAME
@@ -113,7 +94,6 @@ def test_ensure_global_agents_config_force_logs_trigger(
     tmp_path: Path,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """ensure_global_agents_config(force=True) logs trigger 'ralph --regenerate-config'."""
     global_dir = tmp_path / "config"
     global_dir.mkdir(parents=True)
     agents_file = global_dir / AGENTS_FILENAME
@@ -130,7 +110,6 @@ def test_regenerate_all_logs_trigger(
     tmp_path: Path,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """regenerate_all logs trigger 'ralph --regenerate-config' when refreshing agents file."""
     global_dir = tmp_path / "config"
     global_dir.mkdir(parents=True)
     agents_file = global_dir / AGENTS_FILENAME
@@ -145,7 +124,6 @@ def test_regenerate_all_logs_trigger(
 def test_ensure_global_agents_config_validates_toml_before_replacing(
     tmp_path: Path,
 ) -> None:
-    """If TOML validation fails, replacement fails without corrupting target."""
     global_dir = tmp_path / "config"
     global_dir.mkdir(parents=True)
     agents_file = global_dir / AGENTS_FILENAME
@@ -161,7 +139,6 @@ def test_ensure_global_agents_config_validates_toml_before_replacing(
     ):
         ensure_global_agents_config(global_dir, force=True)
 
-    # Existing file must remain untouched and no .bak created
     assert agents_file.read_text(encoding="utf-8") == initial_content
     assert not (global_dir / f"{AGENTS_FILENAME}.bak").exists()
 
@@ -170,7 +147,6 @@ def test_ensure_global_agents_config_commits_without_double_commit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When agents config is tracked, regeneration commits safely without double commit."""
     global_dir = tmp_path / "config"
     global_dir.mkdir(parents=True)
     agents_file = global_dir / AGENTS_FILENAME
@@ -193,7 +169,6 @@ def test_ensure_global_agents_config_commits_without_double_commit(
     ) -> object:
         from ralph.git.scoped_auto_commit import ScopedCommitResult, ScopedCommitStatus
 
-        # Check if any path actually changed compared to pre_contents
         has_changes = any(
             pre_contents.get(p)
             != ((_repo_root / p).read_text(encoding="utf-8") if (_repo_root / p).exists() else None)
@@ -225,7 +200,6 @@ def test_ensure_global_agents_config_commits_without_double_commit(
 
     monkeypatch.setattr("ralph.config.agents_bootstrap.Repo", FakeRepo)
 
-    # First run with force=True
     result = ensure_global_agents_config(global_dir, force=True)
     assert result.action == "regenerated"
     assert len(committed_subjects) == 1
@@ -233,12 +207,7 @@ def test_ensure_global_agents_config_commits_without_double_commit(
     assert committed_paths[0] == [agents_file.relative_to(tmp_path).as_posix()]
     assert not any(p.endswith(".bak") for p in committed_paths[0])
 
-    # Running again with force=True when content is identical does not create duplicate commit
     result2 = ensure_global_agents_config(global_dir, force=True)
-    # RALPH-TEST-REASON: an agents file that already carries the shipped
-    # content is left alone by the writer, so the bootstrap reports
-    # "skipped" (no backup, no commit) instead of claiming a
-    # regeneration that never happened.
     assert result2.action == "skipped"
     assert result2.backup is None
     assert len(committed_subjects) == 1
@@ -247,7 +216,6 @@ def test_ensure_global_agents_config_commits_without_double_commit(
 def test_regenerate_agents_with_invalid_utf8_keeps_original_bytes_in_backup(
     tmp_path: Path,
 ) -> None:
-    """The regenerate path on an invalid-UTF-8 agents file yields a parseable file and keeps the original bytes in a .bak."""
     global_dir = tmp_path / "config"
     global_dir.mkdir(parents=True)
     agents_file = global_dir / AGENTS_FILENAME
@@ -260,11 +228,9 @@ def test_regenerate_agents_with_invalid_utf8_keeps_original_bytes_in_backup(
     assert len(agents_results) == 1
     assert agents_results[0].action == "regenerated"
 
-    # The rewritten file is valid UTF-8 and parseable TOML.
     rewritten = agents_file.read_text(encoding="utf-8")
     assert "agents" in tomllib.loads(rewritten)
 
-    # The previous bytes are recoverable from a .bak next to the target.
     assert _backup_holding_bytes(agents_file, original_bytes) is not None
 
 
@@ -272,7 +238,6 @@ def test_regenerate_config_command_on_invalid_utf8_agents_file_yields_parseable_
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`ralph --regenerate-config` on an invalid-UTF-8 agents file yields a parseable file plus a .bak with the original bytes."""
     config_home = tmp_path / "xdg-config"
     config_home.mkdir(parents=True)
     home_dir = tmp_path / "home"
@@ -285,7 +250,6 @@ def test_regenerate_config_command_on_invalid_utf8_agents_file_yields_parseable_
 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
     monkeypatch.setenv("HOME", str(home_dir))
-    # Keep the command away from the checkout's own .agent/ directory.
     monkeypatch.chdir(workspace_dir)
 
     result = CliRunner().invoke(app, ["--regenerate-config"])
@@ -299,7 +263,6 @@ def test_regenerate_config_command_on_invalid_utf8_agents_file_yields_parseable_
 def test_regenerate_agents_emits_trigger_line_to_operator_visible_loguru_sink(
     tmp_path: Path,
 ) -> None:
-    """The regenerate path's trigger line reaches the loguru sink the operator sees."""
     global_dir = tmp_path / "config"
     global_dir.mkdir(parents=True)
     agents_file = global_dir / AGENTS_FILENAME
@@ -323,5 +286,4 @@ def test_regenerate_agents_emits_trigger_line_to_operator_visible_loguru_sink(
         "no operator-visible trigger line for the regenerate path; captured: "
         f"{[text for text, _ in records]}"
     )
-    # The line is emitted at INFO or above, so it is visible without debug verbosity.
     assert max(level_no for _, level_no in matching) >= 20

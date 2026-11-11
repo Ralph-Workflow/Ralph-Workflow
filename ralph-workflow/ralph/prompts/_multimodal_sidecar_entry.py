@@ -5,7 +5,6 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class MultimodalSidecarEntry:
-    """A single multimodal artifact entry in the prompt-to-invoke handoff sidecar."""
 
     artifact_id: str
     uri: str

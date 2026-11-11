@@ -1,9 +1,3 @@
-"""Tests for the AGENTS.md / CLAUDE.md opt-out and bootstrap behavior.
-
-All tests use MemoryWorkspace (no real filesystem I/O) per the repository
-test policy.
-"""
-
 from __future__ import annotations
 
 import re
@@ -17,15 +11,10 @@ def _empty_stack() -> ProjectStack:
     return ProjectStack()
 
 
-#: The policy-loading directive every current managed block carries. A block
-#: without it is outdated, so a migration has to restore it.
 _V6_LOADING_ORDER = "execution-kernel.md first"
 
-#: The wording an outdated managed block carries in place of the directive.
 _OUTDATED_LOADING_ORDER = "the canonical kernel file first"
 
-#: The readiness clause of a managed block. A migration carries the three
-#: reported values over to the re-rendered block.
 _READINESS_DIMENSIONS_RE = re.compile(
     r"structure complete=[a-z]+, "
     r"implementation verified=[a-z]+, "
@@ -34,23 +23,12 @@ _READINESS_DIMENSIONS_RE = re.compile(
 
 
 def _outdated_placeholder_block() -> str:
-    """Return the bootstrap placeholder as an outdated managed block.
-
-    The block is derived from the public bootstrap output, so the test never
-    reads the private production constant that recognises a Ralph-managed
-    placeholder.
-    """
     scratch = MemoryWorkspace()
     agents_md.bootstrap(scratch)
     return scratch.read(markers.AGENTS_MD).replace(_V6_LOADING_ORDER, _OUTDATED_LOADING_ORDER)
 
 
 def _outdated_ready_block(*, structure: str, implementation: str, outcome: str) -> str:
-    """Return the condensed ready block as an outdated managed block.
-
-    The readiness dimensions are set to the given values so a test can prove
-    that a migration carries them over.
-    """
     scratch = MemoryWorkspace()
     agents_md.bootstrap(scratch)
     agents_md.condense_placeholder_block(scratch)
@@ -84,19 +62,15 @@ def test_is_opted_out_returns_true_when_marker_exact() -> None:
 
 
 def test_is_opted_out_rejects_near_miss_variants() -> None:
-    # extra words
     ws = MemoryWorkspace()
     ws.write(markers.AGENTS_MD, "<!-- ralph-workflow-policy: skip project -->\n")
     assert agents_md.is_opted_out(ws) is False
-    # whitespace change
     ws2 = MemoryWorkspace()
     ws2.write(markers.AGENTS_MD, "<!-- ralph-workflow-policy:  skip  -->\n")
     assert agents_md.is_opted_out(ws2) is False
-    # uppercase
     ws3 = MemoryWorkspace()
     ws3.write(markers.AGENTS_MD, "<!-- RALPH-WORKFLOW-POLICY: SKIP -->\n")
     assert agents_md.is_opted_out(ws3) is False
-    # trailing token
     ws4 = MemoryWorkspace()
     ws4.write(markers.AGENTS_MD, "<!-- ralph-workflow-policy: skipx -->\n")
     assert agents_md.is_opted_out(ws4) is False
@@ -135,12 +109,9 @@ def test_bootstrap_is_idempotent() -> None:
     assert markers.AGENTS_MD in first
     first_content = ws.read(markers.AGENTS_MD)
     second = agents_md.bootstrap(ws)
-    # Second call is a no-op for AGENTS.md.
     assert markers.AGENTS_MD not in second
     second_content = ws.read(markers.AGENTS_MD)
-    # The first byte of pre-existing content is preserved exactly.
     assert first_content == second_content
-    # Exactly one managed block is present.
     assert first_content.count(markers.AGENTS_BLOCK_BEGIN) == 1
     assert first_content.count(markers.AGENTS_BLOCK_END) == 1
 
@@ -158,7 +129,6 @@ def test_bootstrap_preserves_claude_md_with_existing_agents_ref() -> None:
     ws.write(markers.CLAUDE_MD, "# CLAUDE.md\n\nSee AGENTS.md for project policy.\n")
     original = ws.read(markers.CLAUDE_MD)
     changed = agents_md.bootstrap(ws)
-    # CLAUDE.md already references AGENTS.md -> no change.
     assert markers.CLAUDE_MD not in changed
     assert ws.read(markers.CLAUDE_MD) == original
 
@@ -174,18 +144,11 @@ def test_bootstrap_appends_pointer_to_claude_md_when_missing_ref() -> None:
 
 
 def test_bootstrap_does_not_append_when_partial_begin_only() -> None:
-    """A pre-existing AGENTS.md with begin but no end marker MUST NOT be
-    silently appended-to: doing so creates a second begin marker that
-    the validator would then flag and bootstrap cannot clear. The
-    remediation agent must reconcile the partial state in one change.
-    """
     ws = MemoryWorkspace()
     original = f"# Original\n\nUser content.\n\n{markers.AGENTS_BLOCK_BEGIN}\nincomplete\n"
     ws.write(markers.AGENTS_MD, original)
     changed = agents_md.bootstrap(ws)
-    # Bootstrap is a no-op for AGENTS.md on malformed state.
     assert markers.AGENTS_MD not in changed
-    # Content is preserved byte-for-byte (no duplicate begin appended).
     assert ws.read(markers.AGENTS_MD) == original
 
 
@@ -199,10 +162,6 @@ def test_bootstrap_does_not_append_when_partial_end_only() -> None:
 
 
 def test_bootstrap_does_not_append_when_duplicate_complete_block() -> None:
-    """A pre-existing AGENTS.md with two complete managed blocks MUST NOT
-    have a third block appended; that would push the duplicate count
-    higher and the validator would still flag the file.
-    """
     ws = MemoryWorkspace()
     block = (
         f"{markers.AGENTS_BLOCK_BEGIN}\nSee {markers.CANONICAL_DIR}.\n{markers.AGENTS_BLOCK_END}\n"
@@ -215,10 +174,6 @@ def test_bootstrap_does_not_append_when_duplicate_complete_block() -> None:
 
 
 def test_bootstrap_does_not_append_when_misordered_markers() -> None:
-    """A managed block with the end marker appearing before the begin
-    marker is structurally malformed. Bootstrap must NOT append another
-    block that would compound the defect.
-    """
     ws = MemoryWorkspace()
     original = (
         f"{markers.AGENTS_BLOCK_END}\n{markers.AGENTS_BLOCK_BEGIN}\nSee {markers.CANONICAL_DIR}.\n"
@@ -230,9 +185,6 @@ def test_bootstrap_does_not_append_when_misordered_markers() -> None:
 
 
 def test_condense_replaces_untouched_placeholder_with_concise_block() -> None:
-    """The bootstrap placeholder is TEMPORARY: once the project is READY it
-    is condensed to a short pointer block. User content outside the block
-    is preserved byte-for-byte."""
     ws = MemoryWorkspace()
     ws.write(markers.AGENTS_MD, "# My project\n\nUser-authored intro.\n")
     agents_md.bootstrap(ws)
@@ -255,7 +207,6 @@ def test_condense_replaces_untouched_placeholder_with_concise_block() -> None:
 
 
 def test_condense_ready_block_requires_portfolio_and_public_evidence() -> None:
-    """READY instructions load the bounded portfolio and reject weak proof."""
     ws = MemoryWorkspace()
     agents_md.bootstrap(ws)
 
@@ -273,7 +224,6 @@ def test_condense_ready_block_requires_portfolio_and_public_evidence() -> None:
 
 
 def test_condense_preserves_rewritten_block() -> None:
-    """A block the agent or user rewrote is NOT the placeholder; leave it."""
     ws = MemoryWorkspace()
     custom = (
         f"{markers.AGENTS_BLOCK_BEGIN}\n"
@@ -372,7 +322,6 @@ def test_write_opt_out_second_call_does_not_duplicate_marker() -> None:
 
 
 def test_managed_block_routing_satisfies_idempotency_and_readiness() -> None:
-    """The compact explicit routing managed block satisfies readiness and bootstrap/condense idempotency."""
     ws = MemoryWorkspace()
     ws.write(markers.CANONICAL_DIR.rstrip("/"), "")
     routing_content = (
@@ -387,27 +336,23 @@ def test_managed_block_routing_satisfies_idempotency_and_readiness() -> None:
     )
     ws.write(markers.AGENTS_MD, routing_content)
 
-    # Readiness validation of AGENTS.md passes with zero findings.
     findings = [
         f for f in validators.validate_readiness(ws, ProjectStack()) if f.path == markers.AGENTS_MD
     ]
     assert not findings, f"validate AGENTS.md returned unexpected findings: {findings}"
 
-    # Bootstrap is idempotent: AGENTS.md is not modified or duplicated.
     bootstrap_changed = agents_md.bootstrap(ws)
     assert markers.AGENTS_MD not in bootstrap_changed
     assert ws.read(markers.AGENTS_MD) == routing_content
     assert ws.read(markers.AGENTS_MD).count(markers.AGENTS_BLOCK_BEGIN) == 1
     assert ws.read(markers.AGENTS_MD).count(markers.AGENTS_BLOCK_END) == 1
 
-    # Condense is a no-op: preserves customized routing block.
     condense_changed = agents_md.condense_placeholder_block(ws)
     assert markers.AGENTS_MD not in condense_changed
     assert ws.read(markers.AGENTS_MD) == routing_content
 
 
 def test_bootstrap_output_directs_v6_loading_order() -> None:
-    """Bootstrap placeholder directs kernel first, role slice second, triggered domains third."""
     ws = MemoryWorkspace()
     agents_md.bootstrap(ws)
     content = ws.read(markers.AGENTS_MD)
@@ -422,7 +367,6 @@ def test_bootstrap_output_directs_v6_loading_order() -> None:
 
 
 def test_condense_output_directs_v6_loading_order() -> None:
-    """Condensed ready block directs kernel first, role slice second, triggered domains third."""
     ws = MemoryWorkspace()
     agents_md.bootstrap(ws)
     agents_md.condense_placeholder_block(ws)
@@ -435,7 +379,6 @@ def test_condense_output_directs_v6_loading_order() -> None:
 
 
 def test_bootstrap_migrates_outdated_ralph_placeholder_idempotently() -> None:
-    """An outdated Ralph placeholder is migrated to v6 loading order while preserving user content outside."""
     ws = MemoryWorkspace()
     ws.write(markers.CLAUDE_MD, "# CLAUDE.md\n\nSee `AGENTS.md` for project policy.\n")
     user_header = "# Project Title\n\nCustom user rules above.\n\n"
@@ -443,7 +386,6 @@ def test_bootstrap_migrates_outdated_ralph_placeholder_idempotently() -> None:
     outdated_placeholder = _outdated_placeholder_block()
     ws.write(markers.AGENTS_MD, user_header + outdated_placeholder + user_footer)
 
-    # First bootstrap call migrates the placeholder in place
     changed = agents_md.bootstrap(ws)
     assert changed == [markers.AGENTS_MD]
     content = ws.read(markers.AGENTS_MD)
@@ -451,14 +393,12 @@ def test_bootstrap_migrates_outdated_ralph_placeholder_idempotently() -> None:
     assert content.endswith(user_footer.lstrip("\n") if content.endswith("\n") else user_footer)
     assert "execution-kernel.md first" in content
 
-    # Second bootstrap call is idempotent
     second_changed = agents_md.bootstrap(ws)
     assert second_changed == []
     assert ws.read(markers.AGENTS_MD) == content
 
 
 def test_bootstrap_migrates_outdated_ralph_ready_block_idempotently() -> None:
-    """An outdated Ralph ready block is migrated to v6 loading order, preserving readiness dimensions."""
     ws = MemoryWorkspace()
     ws.write(markers.CLAUDE_MD, "# CLAUDE.md\n\nSee `AGENTS.md` for project policy.\n")
     user_header = "# Project Title\n\n"
@@ -474,13 +414,11 @@ def test_bootstrap_migrates_outdated_ralph_ready_block_idempotently() -> None:
     assert "implementation verified=false" in content
     assert "outcome evidence reviewed=true" in content
 
-    # Second run is idempotent
     assert agents_md.bootstrap(ws) == []
     assert ws.read(markers.AGENTS_MD) == content
 
 
 def test_condense_migrates_outdated_ralph_ready_block_idempotently() -> None:
-    """Condense updates an outdated Ralph ready block to include v6 loading order."""
     ws = MemoryWorkspace()
     outdated_ready = _outdated_ready_block(structure="true", implementation="true", outcome="true")
     ws.write(markers.AGENTS_MD, outdated_ready)
@@ -491,13 +429,11 @@ def test_condense_migrates_outdated_ralph_ready_block_idempotently() -> None:
     assert "execution-kernel.md first" in content
     assert "structure complete=true" in content
 
-    # Repeated condense is idempotent
     assert agents_md.condense_placeholder_block(ws) == []
     assert ws.read(markers.AGENTS_MD) == content
 
 
 def test_bootstrap_and_condense_preserve_user_authored_block() -> None:
-    """User-authored managed blocks (neither placeholder nor Ralph signature) are never altered."""
     ws = MemoryWorkspace()
     ws.write(markers.CLAUDE_MD, "# CLAUDE.md\n\nSee `AGENTS.md` for project policy.\n")
     user_block = (
@@ -517,7 +453,6 @@ def test_bootstrap_and_condense_preserve_user_authored_block() -> None:
 
 
 def test_bootstrap_migrates_v1_marker_to_v2_idempotently() -> None:
-    """An existing v1 managed block is migrated to v2, preserving user content outside."""
     ws = MemoryWorkspace()
     ws.write(markers.CLAUDE_MD, "# CLAUDE.md\n\nSee `AGENTS.md` for project policy.\n")
     user_header = "# Project Title\n\nCustom user rules above.\n\n"
@@ -533,7 +468,6 @@ def test_bootstrap_migrates_v1_marker_to_v2_idempotently() -> None:
     )
     ws.write(markers.AGENTS_MD, user_header + v1_block + user_footer)
 
-    # First pass: migrates v1 to v2
     changed = agents_md.bootstrap(ws)
     assert changed == [markers.AGENTS_MD]
     content = ws.read(markers.AGENTS_MD)
@@ -542,14 +476,12 @@ def test_bootstrap_migrates_v1_marker_to_v2_idempotently() -> None:
     assert content.startswith(user_header)
     assert "execution-kernel.md first" in content
 
-    # Second pass: idempotent, zero changes
     second_changed = agents_md.bootstrap(ws)
     assert second_changed == []
     assert ws.read(markers.AGENTS_MD) == content
 
 
 def test_bootstrap_preserves_user_authored_v1_block() -> None:
-    """User-authored custom block with v1 marker is preserved without altering user text."""
     ws = MemoryWorkspace()
     ws.write(markers.CLAUDE_MD, "# CLAUDE.md\n\nSee `AGENTS.md` for project policy.\n")
     user_block = (

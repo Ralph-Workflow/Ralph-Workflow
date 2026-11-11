@@ -1,5 +1,3 @@
-"""Receipt-backed plan acceptance through the public artifact tools."""
-
 from __future__ import annotations
 
 import json
@@ -35,12 +33,8 @@ def unavailable_history_policy(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 class Utf8Backend(MemoryBackend):
-    """Mirror the real UTF-8 writer's encoding boundary without filesystem I/O."""
-
     def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
         content.encode(encoding)
-        # Explicit unbound call to the in-memory backend: the parent write
-        # is a dict assignment, never a filesystem write.
         MemoryBackend.write_text(self, path, content, encoding=encoding)
 
 
@@ -176,9 +170,6 @@ def test_unencodable_plan_returns_sanity_diagnostic_before_persistence(operation
 
 
 def test_prose_plan_development_result_is_free_form() -> None:
-    """A development result with a free-form body is accepted regardless of
-    the plan's extracted step IDs. The DEV015 plan-proof gate is gone.
-    """
     workspace = MemoryWorkspace()
     session = MockSession()
     session.run_id = "proof-parity"
@@ -238,10 +229,6 @@ def test_submit_regression_accepts_oversized_numeric_step_token() -> None:
     workspace = MemoryWorkspace()
     session = MockSession("planning")
     backend = MemoryBackend()
-    # Use a real parent section so the parser actually attaches the block to a
-    # section; without that, extraction is a no-op and the int() overflow
-    # path is never exercised. The oversized step ID lives inside the section
-    # where the plan mapper would convert it to an int.
     document = (
         _PROSE + "\n\n## Steps\n\n### [S-" + ("9" * 4_301) + "] Structural token remains prose"
     )

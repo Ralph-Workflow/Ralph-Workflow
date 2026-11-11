@@ -1,14 +1,3 @@
-"""Markdown spec for review issues.
-
-Consumed structure (stays strict): frontmatter ``type`` and ``status``
-(closed vocabulary ``issues_found`` | ``no_issues`` — review routing
-reads it, so a wrong status is a hard error naming the valid values),
-the required-section skeleton, and the ``path | severity | summary``
-shape of ``Issues`` items. Per-issue severity is descriptive (no
-consumer gates on it), so unknown severities are preserved.
-Section bodies tolerate multi-line prose and unknown continuation
-lines under items.
-"""
 
 from __future__ import annotations
 

@@ -1,4 +1,3 @@
-"""JSON persistence for capability state."""
 
 from __future__ import annotations
 
@@ -20,7 +19,6 @@ def default_state_path() -> Path:
 
 
 def load_capability_state(path: Path | None = None) -> CapabilityState:
-    """Load capability state from JSON file, returning empty state on errors."""
     resolved = path if path is not None else default_state_path()
     if not resolved.exists():
         return CapabilityState()
@@ -37,9 +35,7 @@ def save_capability_state(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> None:
-    """Persist capability state to JSON file."""
     resolved = path if path is not None else default_state_path()
-    # filesystem-write-ok: skill state store under .agent/skills_state, runtime state metadata not tracked
     backend.mkdir(resolved.parent, parents=True, exist_ok=True)
     write_text_if_changed(
         backend,

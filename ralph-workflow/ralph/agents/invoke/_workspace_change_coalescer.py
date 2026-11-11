@@ -1,13 +1,3 @@
-"""Absorb watchdog events at O(1) cost and classify them in batches.
-
-watchdog queues every filesystem event without bound and dispatches them on
-a single thread. Classifying one event there costs hundreds of microseconds
-(path resolution, the change classifier, awareness bookkeeping), which caps
-dispatch near 1-2k events/s; a busy build emits more, so the queue grew
-without limit and long Ralph runs reached many GB. The handler now only
-records the change: repeated writes to one file coalesce, and a timer
-drains the distinct set off the queue.
-"""
 
 from __future__ import annotations
 
@@ -20,23 +10,12 @@ from ralph.agents.invoke._has_src_path import _HasSrcPath
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-#: How long observed changes are coalesced before the classifying drain.
 CHANGE_DRAIN_INTERVAL_SECONDS = 0.1
 
-#: Distinct pending changes held between drains. Beyond it ``on_overflow``
-#: runs (consumers reconcile) instead of the set growing without bound.
 MAX_PENDING_CHANGES = 4096
 
 
 class WorkspaceChangeCoalescer:
-    """watchdog handler that defers per-event work to a batched drain.
-
-    Args:
-        deliver: Records one in-workspace path (the expensive part).
-        is_within: Whether a path belongs to the watched workspace.
-        on_overflow: Called on a drain after changes were dropped at the cap.
-        max_pending: Distinct changes retained between drains.
-    """
 
     def __init__(
         self,
@@ -51,7 +30,7 @@ class WorkspaceChangeCoalescer:
         self._on_overflow = on_overflow
         self._max_pending = max_pending
         self._lock = threading.Lock()
-        self._pending: dict[tuple[str, str | None], None] = {}  # bounded-accumulator-ok: capped
+        self._pending: dict[tuple[str, str | None], None] = {}
         self._overflowed = False
         self._timer: threading.Timer | None = None
         self._draining = False
@@ -65,11 +44,9 @@ class WorkspaceChangeCoalescer:
         self._timer.start()
 
     def dispatch(self, event: object) -> None:
-        """watchdog entry point."""
         self.on_any_event(event)
 
     def on_any_event(self, event: object) -> None:
-        """Record the event's paths; classification happens in :meth:`flush`."""
         if not isinstance(event, _HasSrcPath):
             return
         dest_path = event.dest_path if isinstance(event, _HasDestPath) else None
@@ -85,7 +62,6 @@ class WorkspaceChangeCoalescer:
                 self._schedule_drain_locked()
 
     def flush(self) -> None:
-        """Deliver every pending change: the source path, else an in-root destination."""
         with self._lock:
             if self._closed or self._draining:
                 return
@@ -111,11 +87,10 @@ class WorkspaceChangeCoalescer:
                     self._schedule_drain_locked()
 
     def close(self) -> None:
-        """Stop accepting events and cancel any scheduled drain."""
         with self._lock:
             self._closed = True
             if self._timer is not None:
                 self._timer.cancel()
                 self._timer = None
             self._pending.clear()
-        self._drain_finished.wait()  # mcp-timeout-ok: teardown waits for the sole active drain
+        self._drain_finished.wait()

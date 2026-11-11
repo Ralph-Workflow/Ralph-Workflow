@@ -1,5 +1,3 @@
-"""Regression coverage for watchdog circumstantial evidence snapshots (S-5)."""
-
 from __future__ import annotations
 
 from ralph.agents.idle_watchdog import IdleWatchdog, TimeoutPolicy
@@ -7,7 +5,6 @@ from ralph.agents.timeout_clock import FakeClock
 
 
 def test_circumstantial_evidence_tracks_only_meaningful_agent_output() -> None:
-    """S-5: byte, tool, echo, and session signals stay distinguishable and isolated."""
     clock = FakeClock(start=10.0)
     watchdog = IdleWatchdog(TimeoutPolicy(idle_timeout_seconds=30.0), clock)
     watchdog.record_invocation_start()

@@ -62,12 +62,6 @@ def _default_agents_policy(_workspace_path: Path) -> AgentsPolicy:
 
 
 class TestMediaReadGrantedToAllDrainsByDefault:
-    """media.read is granted to ALL drains when media.enabled defaults to true.
-
-    This includes commit-class drains (commit, development_commit, review_commit).
-    Web search/visit remain restricted on commit drains per existing behavior.
-    """
-
     @pytest.mark.parametrize(
         "drain",
         [
@@ -89,7 +83,6 @@ class TestMediaReadGrantedToAllDrainsByDefault:
         tmp_path: Path,
         drain: str,
     ) -> None:
-        """Under default config (no [media] section), media.read is present for all drains."""
         del isolated_home
 
         plan = build_session_mcp_plan(

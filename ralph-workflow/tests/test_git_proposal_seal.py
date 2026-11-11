@@ -1,5 +1,3 @@
-"""Tests for proposal seal and rollback primitives (ralph.git.proposal_seal)."""
-
 from __future__ import annotations
 
 import shutil
@@ -34,8 +32,6 @@ from ralph.policy.loader import load_policy
 
 _DEFAULT_POLICY_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
 
-#: The steps the rollback exposes to a crash injector. A crash at ANY of them
-#: must leave a repository the RESUME can converge from.
 _ROLLBACK_CRASH_STEPS: tuple[str, ...] = (
     "preflight",
     "read_tree",
@@ -45,7 +41,6 @@ _ROLLBACK_CRASH_STEPS: tuple[str, ...] = (
 
 
 def _setup_repo(path: Path) -> Repo:
-    """Initialize a git repo with identity and an initial commit."""
     repo = Repo.init(path)
     repo.config_writer().set_value("user", "name", "Ralph Test").release()
     repo.config_writer().set_value("user", "email", "test@ralph.internal").release()
@@ -59,12 +54,6 @@ def _setup_repo(path: Path) -> Repo:
 
 @pytest.fixture(scope="module")
 def _repo_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Build the template repository once for the whole module.
-
-    The template holds the same identity, the same ``init.txt`` payload and
-    the same ``initial commit`` every proof in this file starts from, so a
-    private copy of it is the starting state each proof needs.
-    """
     template_root = tmp_path_factory.mktemp("proposal-seal-template")
     _setup_repo(template_root)
     return template_root
@@ -72,7 +61,6 @@ def _repo_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 @pytest.fixture
 def setup_repo(_repo_template: Path) -> Callable[[Path], Repo]:
-    """Return a callable that materializes a private copy of the template repo."""
 
     def _materialize(path: Path) -> Repo:
         shutil.copytree(_repo_template, path, dirs_exist_ok=True)
@@ -84,12 +72,10 @@ def setup_repo(_repo_template: Path) -> Callable[[Path], Repo]:
 def test_seal_pending_leaves_real_index_and_worktree_intact(
     tmp_path: Path, setup_repo: Callable[[Path], Repo]
 ) -> None:
-    """Sealing must leave the real .git/index and working tree byte-identical."""
     repo = setup_repo(tmp_path)
     real_index_path = Path(repo.index.path)
     real_index_before = real_index_path.read_bytes()
 
-    # Create uncommitted modifications and an untracked file
     init_file = tmp_path / "init.txt"
     init_file.write_text("modified in working tree\n", encoding="utf-8")
     untracked_file = tmp_path / "untracked.txt"
@@ -102,15 +88,12 @@ def test_seal_pending_leaves_real_index_and_worktree_intact(
     assert len(seal.commit_sha) == 40
     assert len(seal.tree_sha) == 40
 
-    # Real index must be byte-identical
     real_index_after = real_index_path.read_bytes()
     assert real_index_after == real_index_before
 
-    # Working tree files must be untouched
     assert init_file.read_text(encoding="utf-8") == "modified in working tree\n"
     assert untracked_file.read_text(encoding="utf-8") == "new untracked content\n"
 
-    # The proposal ref must exist and resolve to the commit and tree SHA
     resolved_commit = str(route_git_method(repo, "rev_parse", (seal.ref,))).strip()
     assert resolved_commit == seal.commit_sha
     resolved_tree = str(route_git_method(repo, "rev_parse", (f"{seal.ref}^{{tree}}",))).strip()
@@ -120,10 +103,8 @@ def test_seal_pending_leaves_real_index_and_worktree_intact(
 def test_diff_tree_reports_all_change_types_and_metadata(
     tmp_path: Path, setup_repo: Callable[[Path], Repo]
 ) -> None:
-    """diff_tree must accurately reflect additions, deletions, modifications, modes, and binary flags."""
     repo = setup_repo(tmp_path)
 
-    # Add initial tracked files of various types
     tracked_txt = tmp_path / "tracked.txt"
     tracked_txt.write_text("tracked text v1\n", encoding="utf-8")
     to_delete_txt = tmp_path / "to_delete.txt"
@@ -137,7 +118,6 @@ def test_diff_tree_reports_all_change_types_and_metadata(
     route_git_method(repo, "add", ("tracked.txt", "to_delete.txt", "binary.dat", "script.sh"))
     route_git_method(repo, "commit", ("-m", "add test fixtures"))
 
-    # Apply development mutations
     tracked_txt.write_text("tracked text v2 modified\n", encoding="utf-8")
     to_delete_txt.unlink()
     binary_file.write_bytes(b"modified\x00binary\x00v2\x00bytes")
@@ -186,7 +166,6 @@ def test_diff_tree_reports_all_change_types_and_metadata(
 
 
 def _setup_source_and_test_trees(path: Path, setup_repo: Callable[[Path], Repo]) -> Repo:
-    """Create a repo whose HEAD tracks a ``src/`` and a ``tests/`` directory."""
     repo = setup_repo(path)
     src_dir = path / "src"
     src_dir.mkdir()
@@ -204,24 +183,14 @@ def _setup_source_and_test_trees(path: Path, setup_repo: Callable[[Path], Repo])
 def test_fully_deleted_protected_top_level_directory_is_a_hard_tripwire(
     tmp_path: Path, setup_repo: Callable[[Path], Repo]
 ) -> None:
-    """Deleting EVERY tracked file of a protected top-level directory trips the hard gate.
-
-    ``git diff-tree -r`` reports blob entries only, so the removal of a whole
-    directory arrives as one deleted blob path per tracked file and NEVER as a
-    directory entry. The tripwire therefore compares the base-tree membership
-    carried by the diff entries against the deleted-path set.
-    """
     _setup_source_and_test_trees(tmp_path, setup_repo)
     shutil.rmtree(tmp_path / "src")
 
     seal = seal_pending(tmp_path, "run-dir", 1)
     entries = diff_tree(tmp_path, seal.ref)
 
-    # The real diff holds the individual deleted blobs, never a "src" entry.
     assert {entry.path for entry in entries} == {"src/app.py", "src/util.py"}
     assert all(entry.status == "D" for entry in entries)
-    # Every entry carries the membership of the tree the diff was computed
-    # against, which is what makes the entirety check possible.
     for entry in entries:
         assert entry.base_tree_paths is not None
         assert {"src/app.py", "src/util.py"} <= entry.base_tree_paths
@@ -240,7 +209,6 @@ def test_partially_deleted_protected_top_level_directory_is_not_an_entirety_dele
     tmp_path: Path,
     setup_repo: Callable[[Path], Repo],
 ) -> None:
-    """Deleting SOME tracked files of a protected top-level directory is not an entirety deletion."""
     _setup_source_and_test_trees(tmp_path, setup_repo)
     (tmp_path / "tests" / "test_util.py").unlink()
 
@@ -260,10 +228,8 @@ def test_rollback_restores_head_and_cleans_added_files_intact_agent_and_ignored(
     tmp_path: Path,
     setup_repo: Callable[[Path], Repo],
 ) -> None:
-    """Rollback restores HEAD exactly, removes proposal additions, and preserves ignored and .agent/ files."""
     repo = setup_repo(tmp_path)
 
-    # Initial tracked files
     tracked_txt = tmp_path / "tracked.txt"
     tracked_txt.write_text("tracked v1\n", encoding="utf-8")
     del_target = tmp_path / "to_delete.txt"
@@ -284,7 +250,6 @@ def test_rollback_restores_head_and_cleans_added_files_intact_agent_and_ignored(
     )
     route_git_method(repo, "commit", ("-m", "initial baseline fixtures"))
 
-    # Add ignored file and .agent runtime directory
     ignored_log = tmp_path / "activity.log"
     ignored_log.write_text("persisted log line 1\n", encoding="utf-8")
     agent_dir = tmp_path / ".agent"
@@ -292,7 +257,6 @@ def test_rollback_restores_head_and_cleans_added_files_intact_agent_and_ignored(
     agent_state = agent_dir / "state.json"
     agent_state.write_text('{"phase": "test"}\n', encoding="utf-8")
 
-    # Mutate working directory (proposal state)
     tracked_txt.write_text("tracked modified v2\n", encoding="utf-8")
     del_target.unlink()
     exec_script.chmod(0o644)
@@ -310,44 +274,29 @@ def test_rollback_restores_head_and_cleans_added_files_intact_agent_and_ignored(
     added_exec.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     added_exec.chmod(0o755)
 
-    # Mutate ignored and .agent state (should be preserved)
     ignored_log.write_text("persisted log line 2\n", encoding="utf-8")
     agent_state.write_text('{"phase": "test", "step": 2}\n', encoding="utf-8")
 
     seal = seal_pending(tmp_path, "run-rb", 1)
 
-    # Rollback to HEAD
     rollback(tmp_path, seal.ref)
 
-    # Verifications after rollback:
-    # 1. Tracked modifications restored
     assert tracked_txt.read_text(encoding="utf-8") == "tracked v1\n"
-    # 1b. A tracked BINARY restores byte-for-byte, not just a text file.
     assert tracked_bin.read_bytes() == b"initial\x00binary\x00payload"
-    # 2. Deleted tracked files restored
     assert del_target.read_text(encoding="utf-8") == "will be deleted\n"
-    # 3. Executable mode restored
     assert oct(exec_script.stat().st_mode)[-3:] == "755"
-    # 4. Added files and empty parent directories removed
     assert not added_sub_file.exists()
     assert not sub_dir.exists()
     assert not added_bin.exists()
     assert not added_exec.exists()
-    # 5. Ignored files and .agent/ state preserved intact
     assert ignored_log.read_text(encoding="utf-8") == "persisted log line 2\n"
     assert agent_state.read_text(encoding="utf-8") == '{"phase": "test", "step": 2}\n'
 
-    # Recovery test: git checkout <ref> -- . restores the rejected proposal byte-for-byte
     route_git_method(repo, "checkout", (seal.ref, "--", "."))
     assert tracked_txt.read_text(encoding="utf-8") == "tracked modified v2\n"
     assert added_sub_file.read_text(encoding="utf-8") == "added in proposal\n"
-    # A TRACKED binary modified by the proposal restores byte-for-byte too,
-    # not just a binary the proposal added.
     assert tracked_bin.read_bytes() == b"modified\x00binary\x00v2\x00payload"
     assert added_bin.read_bytes() == b"\x00\x01\x02\x03\x04"
-    # The recovery restores the FILE MODE recorded in the proposal tree, not
-    # just the content: ``run.sh`` was 755 in HEAD and 644 in the proposal, and
-    # ``added_exec.sh`` is 755 in the proposal.
     assert oct(exec_script.stat().st_mode)[-3:] == "644"
     assert oct(added_exec.stat().st_mode)[-3:] == "755"
 
@@ -356,35 +305,17 @@ def test_a_crash_at_every_rollback_step_resumes_to_the_same_end_state(
     tmp_path: Path,
     setup_repo: Callable[[Path], Repo],
 ) -> None:
-    """A crash at ANY rollback step resumes to the same end state.
-
-    The engine's rollback sequence is: seal the proposal ref FIRST, then
-    checkpoint "rollback pending", then restore the tree, then clear the
-    flag. A crash inside the restore leaves the checkpoint's
-    ``rollback_pending`` flag set, so the RESUME must COMPLETE the pending
-    rollback (repeat the restore, then clear the flag) instead of skipping
-    it.
-
-    Every crash point must converge on the SAME end state: the tree back at
-    HEAD, the proposal additions gone, the rollback flags cleared, and the
-    proposal ref KEPT so the rejected work stays recoverable.
-    """
-    # RALPH-TEST-REASON: the two removed sibling crash tests are consolidated
-    # into this matrix, which keeps every assertion they made.
     setup_repo(tmp_path)
 
     init_file = tmp_path / "init.txt"
     new_file = tmp_path / "proposal_added.txt"
 
-    # The rejected proposal: a modified tracked file and an added file.
     init_file.write_text("dev modified text\n", encoding="utf-8")
     new_file.write_text("temporary addition\n", encoding="utf-8")
 
-    # Step 1: the proposal ref is sealed BEFORE anything is destructive.
     seal = seal_pending(tmp_path, "run-crash", 1)
     preflight(tmp_path, seal.ref)
 
-    # Step 2: the reducer checkpoints "rollback pending" with the sealed ref.
     policy_bundle = load_policy(_DEFAULT_POLICY_DIR)
     pending_state, _ = reduce(
         PipelineState(phase="development_commit_review", commit_review_rejections=0),
@@ -395,12 +326,9 @@ def test_a_crash_at_every_rollback_step_resumes_to_the_same_end_state(
     assert pending_state.rollback_ref == seal.ref
 
     for crash_step in _ROLLBACK_CRASH_STEPS:
-        # Re-dirty working tree to proposal state
         init_file.write_text("dev modified text\n", encoding="utf-8")
         new_file.write_text("temporary addition\n", encoding="utf-8")
 
-        # RALPH-TEST-REASON: the removed sibling test raised its simulated crash
-        # inside its own hook; this matrix raises it once per crash step.
         def make_hook(target_step: str) -> Callable[[str], None]:
             def hook(step: str) -> None:
                 if step == target_step:
@@ -408,14 +336,9 @@ def test_a_crash_at_every_rollback_step_resumes_to_the_same_end_state(
 
             return hook
 
-        # RALPH-TEST-REASON: the removed sibling test asserted the crash in
-        # isolation; this matrix asserts it for every step of the sequence.
-        # Step 3: the restore crashes part-way through.
         with pytest.raises(RuntimeError, match=f"simulated crash at {crash_step}"):
             rollback(tmp_path, seal.ref, step_hook=make_hook(crash_step))
 
-        # Step 4: the RESUME must complete the pending rollback and clear
-        # the flag instead of skipping it.
         resumed = resolve_initial_state(
             config=UnifiedConfig(),
             policy_bundle=policy_bundle,
@@ -427,33 +350,24 @@ def test_a_crash_at_every_rollback_step_resumes_to_the_same_end_state(
             workspace_root=tmp_path,
         )
 
-        # RALPH-TEST-REASON: the removed sibling test asserted the restored
-        # content in isolation; this matrix asserts it for every crash point.
-        # The SAME end state for every crash point.
         assert init_file.read_text(encoding="utf-8") == "initial commit payload\n"
         assert not new_file.exists()
         assert resumed.rollback_pending is False
         assert resumed.rollback_ref is None
-        # The proposal ref is KEPT for a rejection, so the rejected work
-        # stays recoverable by hand.
         preflight(tmp_path, seal.ref)
 
 
 def test_preflight_fails_on_damaged_git_or_missing_refs(
     tmp_path: Path, setup_repo: Callable[[Path], Repo]
 ) -> None:
-    """Preflight raises ProposalPreflightError on invalid/missing refs or damaged git metadata."""
     setup_repo(tmp_path)
 
-    # Missing proposal ref
     with pytest.raises(ProposalPreflightError, match="Proposal ref .* does not resolve"):
         preflight(tmp_path, "refs/ralph/proposals/nonexistent/99")
 
-    # Rollback refuses to execute on invalid ref
     with pytest.raises(ProposalPreflightError):
         rollback(tmp_path, "refs/ralph/proposals/nonexistent/99")
 
-    # Damaged .git metadata
     git_dir = tmp_path / ".git"
     git_head = git_dir / "HEAD"
     git_head.unlink()
@@ -465,14 +379,11 @@ def test_preflight_fails_on_damaged_git_or_missing_refs(
 def test_seal_baseline_and_rollback_to_baseline(
     tmp_path: Path, setup_repo: Callable[[Path], Repo]
 ) -> None:
-    """Baseline seals uncommitted start state and rollback restores to baseline instead of HEAD."""
     setup_repo(tmp_path)
 
-    # Clean working tree: seal_baseline should return None
     clean_baseline = seal_baseline(tmp_path, "run-base")
     assert clean_baseline is None
 
-    # User uncommitted changes at run start
     init_file = tmp_path / "init.txt"
     init_file.write_text("user uncommitted modifications\n", encoding="utf-8")
     user_file = tmp_path / "user_untracked.txt"
@@ -482,17 +393,14 @@ def test_seal_baseline_and_rollback_to_baseline(
     assert isinstance(base_seal, Seal)
     assert base_seal.ref == "refs/ralph/baselines/run-base"
 
-    # Pipeline development introduces further changes
     init_file.write_text("pipeline broke this file\n", encoding="utf-8")
     pipeline_junk = tmp_path / "pipeline_junk.txt"
     pipeline_junk.write_text("pipeline junk content\n", encoding="utf-8")
 
     prop_seal = seal_pending(tmp_path, "run-base", 1)
 
-    # Rollback to baseline
     rollback(tmp_path, prop_seal.ref, baseline_ref=base_seal.ref)
 
-    # User changes are restored; pipeline additions removed
     assert init_file.read_text(encoding="utf-8") == "user uncommitted modifications\n"
     assert user_file.read_text(encoding="utf-8") == "user uncommitted new file\n"
     assert not pipeline_junk.exists()
@@ -501,11 +409,9 @@ def test_seal_baseline_and_rollback_to_baseline(
 def test_prune_removes_proposals_honoring_keep_and_retention(
     tmp_path: Path, setup_repo: Callable[[Path], Repo]
 ) -> None:
-    """prune deletes proposal refs according to run_id, keep_refs, and max_retained rules."""
     repo = setup_repo(tmp_path)
     head_sha = str(route_git_method(repo, "rev_parse", ("HEAD",))).strip()
 
-    # Create several proposal refs across two run IDs
     ref_a1 = "refs/ralph/proposals/run-a/1"
     ref_a2 = "refs/ralph/proposals/run-a/2"
     ref_a3 = "refs/ralph/proposals/run-a/3"
@@ -516,7 +422,6 @@ def test_prune_removes_proposals_honoring_keep_and_retention(
     route_git_method(repo, "update_ref", (ref_a3, head_sha))
     route_git_method(repo, "update_ref", (ref_b1, head_sha))
 
-    # Prune run-a with keep_refs protecting ref_a1 and max_retained=1 protecting ref_a3
     pruned = prune(
         tmp_path,
         run_id="run-a",
@@ -524,12 +429,10 @@ def test_prune_removes_proposals_honoring_keep_and_retention(
         max_retained=1,
     )
 
-    # ref_a2 was neither kept nor in the top 1 newest, so it is pruned
     assert ref_a2 in pruned
     assert ref_a1 not in pruned
     assert ref_b1 not in pruned
 
-    # Remaining refs check
     raw_refs = str(
         route_git_method(repo, "for_each_ref", ("refs/ralph/proposals", "--format=%(refname)"))
     )
@@ -543,13 +446,6 @@ def test_prune_removes_proposals_honoring_keep_and_retention(
 def test_prune_keeps_the_rejection_ref_and_bounds_the_retained_refs(
     tmp_path: Path, setup_repo: Callable[[Path], Repo]
 ) -> None:
-    """A kept rejection ref is never pruned; the retention limit bounds the rest.
-
-    The documented recovery for a wrongly rejected iteration is
-    ``git checkout <ref> -- .``, so the ref of a rejected iteration must
-    survive every sweep. The retention limit bounds how many other
-    proposal refs the sweep keeps.
-    """
     repo = setup_repo(tmp_path)
     head_sha = str(route_git_method(repo, "rev_parse", ("HEAD",))).strip()
 
@@ -568,8 +464,6 @@ def test_prune_keeps_the_rejection_ref_and_bounds_the_retained_refs(
         max_retained=1,
     )
 
-    # The kept ref is never pruned, the retention limit keeps exactly one
-    # other ref of the run, and a ref of another run is out of scope.
     assert rejection_ref not in pruned
     assert newest_ref not in pruned
     assert older_ref in pruned

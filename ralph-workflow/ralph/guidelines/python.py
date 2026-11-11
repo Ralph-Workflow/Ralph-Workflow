@@ -1,9 +1,3 @@
-"""Python-specific review guidelines.
-
-Port of the Rust review guidance for Python projects, with Python-native structure.
-Includes core Python checks plus framework-specific additions for Django, FastAPI,
-and Flask projects.
-"""
 
 from __future__ import annotations
 
@@ -15,7 +9,6 @@ if TYPE_CHECKING:
     from typing import Protocol
 
     class ReviewGuidelines(Protocol):
-        """Protocol for language-specific review guideline collections."""
 
         quality_checks: tuple[str, ...]
         security_checks: tuple[str, ...]
@@ -31,11 +24,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class PythonGuidelines:
-    """Review guidelines for Python codebases.
-
-    Args:
-        frameworks: Optional framework names used to add stack-specific guidance.
-    """
 
     frameworks: tuple[str, ...] = ()
     quality_checks: tuple[str, ...] = field(init=False)
@@ -92,7 +80,6 @@ class PythonGuidelines:
             self._apply_framework(framework)
 
     def _apply_framework(self, framework: str) -> None:
-        """Add framework-specific guideline extensions."""
         framework_name = framework.casefold()
 
         if framework_name == "django":
@@ -132,7 +119,6 @@ class PythonGuidelines:
             )
 
     def summary(self) -> str:
-        """Return a short human-readable summary."""
         return (
             f"{len(self.quality_checks)} quality checks, "
             f"{len(self.security_checks)} security checks, "
@@ -140,7 +126,6 @@ class PythonGuidelines:
         )
 
     def total_checks(self) -> int:
-        """Return the total number of configured checks."""
         return sum(
             [
                 len(self.quality_checks),

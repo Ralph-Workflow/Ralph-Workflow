@@ -1,4 +1,3 @@
-"""CommitReview artifact model for commit hardening."""
 
 from __future__ import annotations
 
@@ -11,7 +10,6 @@ from ralph.pydantic_compat import RalphBaseModel
 
 
 class CommitReview(RalphBaseModel):
-    """Validated schema for a commit review artifact payload."""
 
     model_config = ConfigDict(extra="forbid")
 

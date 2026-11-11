@@ -1,12 +1,3 @@
-"""Regression tests: the bundled default falls through to ``InvokeAgentEffect``.
-
-The bundled ``pipeline.toml`` sets ``dispatch_mode = 'agent_subagents'`` on
-the development phase, so a plan that declares ``work_units`` must NOT
-trigger Ralph-managed fan-out. The router logs a WARNING and falls through
-to the single-agent ``InvokeAgentEffect`` so the executing agent can
-dispatch its own sub-agents.
-"""
-
 from __future__ import annotations
 
 import dataclasses
@@ -132,15 +123,6 @@ def test_effect_router_regression_agy_agent_subagents_no_longer_gated_on_agy_age
     tmp_path: Path,
     agent_name: str,
 ) -> None:
-    """AGY parallel plans route through the supported agent_subagents path.
-
-    The measured v1.1.10-v1.1.13 stream-json fixtures prove AGY dispatches
-    subagents natively (define_subagent / invoke_subagent), so an empty
-    ``agy agents`` listing must NOT veto the dormant agent_subagents
-    fall-through to ``InvokeAgentEffect``. The probe seam that used to
-    carry that listing is removed; this call would raise ``TypeError``
-    if it still existed.
-    """
     _write_plan_artifact(tmp_path, _two_disjoint_units())
     state = PipelineState(phase="development")
 
@@ -151,7 +133,6 @@ def test_effect_router_regression_agy_agent_subagents_no_longer_gated_on_agy_age
         config=_config_with_development_agent(),
     )
 
-    # Establish the existing non-AGY default before selecting AGY below.
     assert isinstance(effect, InvokeAgentEffect)
     agy_state = PipelineState(
         phase="development",
@@ -169,15 +150,6 @@ def test_effect_router_regression_agy_agent_subagents_no_longer_gated_on_agy_age
 
 
 def test_agy_agents_probe_seam_is_gone_from_the_pipeline() -> None:
-    """The stale ``agy agents`` availability veto and its probe plumbing are removed.
-
-    The measured v1.1.10-v1.1.13 stream-json fixtures prove AGY dispatches
-    subagents natively without any user-configured ``agy agents`` listing, so
-    the probe parameter, its ExitFailureEffect veto, and the ``agy agents``
-    subprocess call are dead policy drift and must stay removed -- from the
-    router, the runner forwarding branch, the ``PipelineDeps`` dataclass,
-    and the worker-runtime forwarding call.
-    """
     import inspect
 
     from ralph.pipeline.factory import PipelineDeps as _PipelineDeps
@@ -195,7 +167,6 @@ def test_runner_forwards_only_config_and_commit_seams_to_effect_router(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The runner forwarding branch passes config/commit seams, never the removed probe."""
 
     observed: dict[str, object] = {}
 
@@ -235,9 +206,6 @@ def test_runner_forwards_only_config_and_commit_seams_to_effect_router(
 
 
 def test_dormant_default_falls_through_to_invoke_agent_effect(tmp_path: Path) -> None:
-    """Bundled default ``dispatch_mode='agent_subagents'`` must log a WARNING
-    and fall through to ``InvokeAgentEffect`` for plans with 2+ work units.
-    """
     _write_plan_artifact(tmp_path, _two_disjoint_units())
     state = PipelineState(phase="development")
     bundle = _default_policy_bundle()
@@ -259,13 +227,6 @@ def test_dormant_default_falls_through_to_invoke_agent_effect(tmp_path: Path) ->
 
 
 def test_dormant_default_logs_warning_with_real_string(tmp_path: Path) -> None:
-    """The router MUST log the documented WARNING string when the bundled
-    default is in effect and work_units are present.
-
-    The audit at ``ralph.testing.audit_parallelization_dormant`` enforces the
-    WARNING string in ``effect_router.py``; this test asserts the same string
-    is actually emitted at runtime by intercepting the loguru sink.
-    """
     state = PipelineState(
         phase="development",
         work_units=(
@@ -300,10 +261,6 @@ def test_dormant_default_logs_warning_with_real_string(tmp_path: Path) -> None:
 
 
 def test_dormant_default_single_unit_still_serial(tmp_path: Path) -> None:
-    """A single work unit must still fall through to ``InvokeAgentEffect``
-    under the bundled default (the 2-unit threshold is independent of
-    dispatch_mode).
-    """
     _write_plan_artifact(
         tmp_path,
         [
@@ -328,10 +285,6 @@ def test_dormant_default_single_unit_still_serial(tmp_path: Path) -> None:
 
 
 def test_ralph_fan_out_mode_still_emits_fan_out_when_explicit() -> None:
-    """When a phase declares ``dispatch_mode='ralph_fan_out'`` (the legacy
-    mode) the router must still emit ``FanOutEffect`` for 2+ work units.
-    This guards the opt-in path for future re-arming.
-    """
     units = (
         WorkUnit(unit_id="unit-a", description="A", allowed_directories=["src/a"]),
         WorkUnit(unit_id="unit-b", description="B", allowed_directories=["src/b"]),
@@ -370,7 +323,6 @@ def test_ralph_fan_out_mode_still_emits_fan_out_when_explicit() -> None:
 
 
 def test_multi_unit_nested_steps_reach_ralph_fan_out_assignments(tmp_path: Path) -> None:
-    """One Work Units section must route non-empty, unit-specific step assignments."""
     artifact_dir = tmp_path / ".agent" / "artifacts"
     artifact_dir.mkdir(parents=True)
     (artifact_dir / "plan.md").write_text(

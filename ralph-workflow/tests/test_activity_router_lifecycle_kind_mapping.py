@@ -1,5 +1,3 @@
-"""Lifecycle/retry parser types must not render as bodiless WARN banners."""
-
 from __future__ import annotations
 
 import pytest

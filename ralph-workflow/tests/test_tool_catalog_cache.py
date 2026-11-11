@@ -1,25 +1,3 @@
-"""Black-box tests for the FIFO-bounded upstream tool catalog cache.
-
-wt-024 Step 4 (AC-02): the in-process catalog cache in
-``ralph/mcp/upstream/tool_catalog_cache.py`` is an ``OrderedDict`` with
-a 32-entry cap. Inserting more than the cap evicts the oldest entry
-(FIFO), so a session that touches many distinct workspace roots cannot
-grow the cache unboundedly. ``get_tool_catalog`` and
-``clear_tool_catalog`` still behave identically from the public contract;
-the change is purely a memory-growth fix.
-
-Each test creates a fresh ``tmp_path`` and seeds a deterministic
-``UpstreamTool`` per workspace so the assertions don't depend on real
-upstream servers. No real subprocess, no time.sleep.
-
-The cache is a module-level singleton; each test resets it through the
-public ``reset_tool_catalog_cache`` seam so the assertions can count
-entries exactly. The cap, the entry count, and the cache identity of a
-workspace are read through the module's public accessors
-(``cache_capacity``, ``cached_entry_count``, ``cached_workspace_keys``,
-``cache_key``) -- never through its private state.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -39,7 +17,6 @@ def _clear_cache() -> None:
 
 
 def _seed_workspace(path: Path, tool_name: str) -> None:
-    """Cache a single, deterministic tool under the given workspace root."""
     tool_catalog_cache.cache_tool_catalog(
         path,
         {tool_name: [UpstreamTool(name=tool_name, description=f"tool for {path.name}")]},
@@ -49,10 +26,8 @@ def _seed_workspace(path: Path, tool_name: str) -> None:
 def test_cache_tool_catalog_evicts_oldest_workspace_when_cap_exceeded(
     tmp_path: Path,
 ) -> None:
-    """FIFO eviction: oldest workspace is dropped when the cap is exceeded."""
     cap = tool_catalog_cache.cache_capacity()
 
-    # Insert cap+5 distinct workspaces, each with a unique tool.
     oldest_paths = [tmp_path / f"old-{i}" for i in range(5)]
     newest_paths = [tmp_path / f"new-{i}" for i in range(cap)]
 
@@ -61,28 +36,22 @@ def test_cache_tool_catalog_evicts_oldest_workspace_when_cap_exceeded(
     for index, path in enumerate(newest_paths):
         _seed_workspace(path, f"new-{index}")
 
-    # The 5 oldest workspaces MUST have been evicted from the in-process
-    # cache. (The disk file remains authoritative — the snapshot reader
-    # may still re-read them from disk by design.)
     cached_keys = set(tool_catalog_cache.cached_workspace_keys())
     evicted_keys = {tool_catalog_cache.cache_key(path) for path in oldest_paths}
     assert not (evicted_keys & cached_keys), (
         "oldest workspaces must be evicted from the cache when cap exceeded"
     )
 
-    # The most recent cap workspaces MUST still be cached.
     for index, path in enumerate(newest_paths):
         catalog = tool_catalog_cache.get_tool_catalog(path)
         assert f"new-{index}" in catalog, f"newest workspace new-{index} must still be cached"
 
-    # Total entries in the cache MUST be exactly the cap.
     assert tool_catalog_cache.cached_entry_count() == cap, (
         f"cache must hold exactly {cap} entries, got {tool_catalog_cache.cached_entry_count()}"
     )
 
 
 def test_cache_tool_catalog_does_not_evict_when_under_cap(tmp_path: Path) -> None:
-    """Inserts under the cap never evict anything."""
     cap = tool_catalog_cache.cache_capacity()
     paths = [tmp_path / f"ws-{i}" for i in range(cap)]
     for index, path in enumerate(paths):
@@ -93,38 +62,27 @@ def test_cache_tool_catalog_does_not_evict_when_under_cap(tmp_path: Path) -> Non
 
 
 def test_cache_tool_catalog_refreshes_existing_key_position(tmp_path: Path) -> None:
-    """Re-inserting an existing key moves it to the back (FIFO refresh)."""
     cap = tool_catalog_cache.cache_capacity()
-    # Fill to the cap; the LAST key is at the back.
     paths = [tmp_path / f"keep-{i}" for i in range(cap)]
     for index, path in enumerate(paths):
         _seed_workspace(path, f"keep-{index}")
-    # Re-insert the FIRST key. It should move to the back and the
-    # previously-second key becomes the oldest.
     _seed_workspace(paths[0], "keep-0-refreshed")
-    # Insert one MORE key to trigger eviction of the current oldest.
     extra = tmp_path / "extra"
     _seed_workspace(extra, "extra")
 
-    # The first key (refreshed) must still be cached.
     assert "keep-0-refreshed" in tool_catalog_cache.get_tool_catalog(paths[0])
-    # The previously-second key (now the oldest) MUST be evicted from the
-    # in-process cache (its disk file remains authoritative by design).
     assert tool_catalog_cache.cache_key(paths[1]) not in tool_catalog_cache.cached_workspace_keys()
-    # The newest key must be present.
     assert "extra" in tool_catalog_cache.get_tool_catalog(extra)
 
 
 def test_clear_tool_catalog_removes_one_entry_without_disturbing_others(
     tmp_path: Path,
 ) -> None:
-    """clear_tool_catalog pops exactly one entry; the cap is preserved."""
     cap = tool_catalog_cache.cache_capacity()
     paths = [tmp_path / f"keep-{i}" for i in range(cap)]
     for index, path in enumerate(paths):
         _seed_workspace(path, f"keep-{index}")
 
-    # Clear the middle key.
     target = paths[cap // 2]
     tool_catalog_cache.clear_tool_catalog(target)
 
@@ -137,10 +95,8 @@ def test_clear_tool_catalog_removes_one_entry_without_disturbing_others(
 
 
 def test_cache_key_collision_does_not_grow_cache(tmp_path: Path) -> None:
-    """Re-inserting the SAME workspace overwrites in place; the cap is unaffected."""
     path = tmp_path / "single"
     for index in range(5):
         _seed_workspace(path, f"v-{index}")
     assert tool_catalog_cache.cached_entry_count() == 1
-    # The most recent value wins.
     assert "v-4" in tool_catalog_cache.get_tool_catalog(path)

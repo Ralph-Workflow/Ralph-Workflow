@@ -1,5 +1,3 @@
-"""Support helpers for the real-config isolation guard."""
-
 from __future__ import annotations
 
 import hashlib
@@ -9,8 +7,6 @@ import sys
 from pathlib import Path
 from typing import NamedTuple
 
-# Real home and real XDG config home resolved before any test or fixture
-# monkeypatches HOME or XDG_CONFIG_HOME.
 REAL_HOME: Path = Path(os.environ.get("HOME") or Path.home()).resolve()
 REAL_XDG_CONFIG_HOME: Path = (
     Path(os.environ["XDG_CONFIG_HOME"]).resolve()
@@ -41,31 +37,21 @@ _WRITE_FLAGS: int = os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APP
 _GUARDED_CONFIG_DIRS_ENV = "RALPH_TEST_GUARDED_CONFIG_DIRS"
 _GUARDED_CONFIG_DIRS_ENV_KEY = _GUARDED_CONFIG_DIRS_ENV.encode()
 
-# Upper bound on the memoized parent-directory resolutions. The memo is keyed
-# by directory, so its size tracks the number of distinct directories a test
-# session touches; the bound keeps a long session from growing it without
-# limit.
 _MAX_CACHED_PARENTS = 4096
 
 
 class _GuardedDirs(NamedTuple):
-    """Cached guarded-directory resolution for one override value."""
-
     env_raw: bytes | None
     dirs: tuple[Path, ...]
     dir_strings: tuple[str, ...]
 
 
 class _ParentResolution(NamedTuple):
-    """Memoized canonical form of a directory plus the identity validating it."""
-
     resolved: str
     identity: tuple[int, int]
 
 
 class _ConfigPathSnapshot(NamedTuple):
-    """Snapshot record of a guarded configuration file or directory."""
-
     path: Path
     is_dir: bool
     mtime_ns: int
@@ -76,8 +62,6 @@ class _ConfigPathSnapshot(NamedTuple):
 
 
 class _GuardState:
-    """Internal mutable state container avoiding global statements."""
-
     def __init__(self) -> None:
         self.scanning: bool = False
         self.audit_hook_installed: bool = False
@@ -92,16 +76,6 @@ _STATE = _GuardState()
 
 
 def _env_override_raw() -> bytes | None:
-    """Return the raw override value of the guarded-config env var, if set.
-
-    ``os.environ`` is a live view over a private bytes-keyed mapping. Reading
-    that mapping directly skips the str -> bytes -> str round trip that
-    ``os.environ.get`` performs on every call, which is measurable when the
-    audit hook runs for every ``open()`` of the test suite. The mapping is
-    looked up through the current ``os.environ`` on every call so that a test
-    replacing ``os.environ`` wholesale is honoured, and the public accessor
-    stays the fallback for mappings that do not expose the private one.
-    """
     environ = os.environ
     data: dict[bytes, bytes] | None = getattr(environ, "_data", None)
     if data is None:
@@ -112,7 +86,6 @@ def _env_override_raw() -> bytes | None:
 
 
 def _compute_file_sha256(path: Path) -> str:
-    """Compute sha256 hex digest of a file, returning empty string on read failure."""
     hasher = hashlib.sha256()
     try:
         with path.open("rb") as f:
@@ -124,12 +97,10 @@ def _compute_file_sha256(path: Path) -> str:
 
 
 def _resolve_guarded_config_dirs() -> list[Path]:
-    """Resolve real configuration directories to guard against test pollution."""
     return _resolve_guarded_config_dirs_from(_env_override_raw())
 
 
 def _resolve_guarded_config_dirs_from(env_raw: bytes | None) -> list[Path]:
-    """Resolve the guarded configuration directories for one override value."""
     if env_raw:
         override = os.fsdecode(env_raw)
         return [Path(p).resolve() for p in override.split(os.pathsep) if p]
@@ -145,7 +116,6 @@ def _resolve_guarded_config_dirs_from(env_raw: bytes | None) -> list[Path]:
 
 
 def _guarded_dirs(env_raw: bytes | None) -> _GuardedDirs:
-    """Return the cached guarded-directory resolution for one override value."""
     cached = _STATE.guarded_dirs
     if cached.env_raw == env_raw and cached.dirs:
         return cached
@@ -158,7 +128,6 @@ def _guarded_dirs(env_raw: bytes | None) -> _GuardedDirs:
 def _scan_guarded_config_files(
     guarded_dirs: list[Path] | None = None,
 ) -> dict[Path, _ConfigPathSnapshot]:
-    """Scan and snapshot all existing files matching ralph-workflow* in guarded dirs."""
     prev_scanning = _STATE.scanning
     _STATE.scanning = True
     try:
@@ -239,7 +208,6 @@ def _diff_config_snapshots(
     before: dict[Path, _ConfigPathSnapshot],
     after: dict[Path, _ConfigPathSnapshot],
 ) -> list[str]:
-    """Compare before and after snapshots and return a list of violation descriptions."""
     violations: list[str] = []
     created = set(after) - set(before)
     for p in sorted(created):
@@ -268,7 +236,6 @@ def _diff_config_snapshots(
 
 
 def _parse_raw_path_string(arg0: object) -> str | None:
-    """Extract string path from open() first argument."""
     if isinstance(arg0, str):
         return arg0
     if isinstance(arg0, bytes):
@@ -303,29 +270,18 @@ _SAFE_SYSTEM_PREFIXES: tuple[str, ...] = (
 
 
 def _is_safe_pre_canonical_path(s_str: str) -> bool:
-    """Check if raw string path is obviously safe to ignore before canonicalization."""
     if ".." in s_str:
         return False
     return bool(s_str.startswith(_SAFE_SYSTEM_PREFIXES))
 
 
 def _join_parent(parent: str, name: str) -> str:
-    """Join a directory path and a file name without pathlib overhead."""
     if parent.endswith("/"):
         return parent + name
     return f"{parent}/{name}"
 
 
 def _resolve_parent_directory(parent_str: str) -> str | None:
-    """Return the canonical path of a directory, memoized per directory.
-
-    The canonical form of a directory is cached together with the identity
-    (``st_dev``, ``st_ino``) of the directory the path currently resolves to.
-    Every lookup re-validates that identity with a single ``lstat``, so a
-    directory that is swapped for a symlink -- or replaced -- in the middle of
-    a test is re-resolved instead of being answered from a stale memo. When no
-    identity can be established the caller falls back to a full resolution.
-    """
     cache = _STATE.parent_cache
     entry = cache.get(parent_str)
     try:
@@ -333,8 +289,6 @@ def _resolve_parent_directory(parent_str: str) -> str | None:
     except (OSError, ValueError):
         return None
     if stat.S_ISLNK(link_stat.st_mode):
-        # The inode of a symlink does not change when the link is re-pointed,
-        # so the link is validated by the identity of the directory it leads to.
         try:
             target_stat = Path(parent_str).stat()
         except (OSError, ValueError):
@@ -352,7 +306,6 @@ def _resolve_parent_directory(parent_str: str) -> str | None:
 
 
 def _resolve_fully(target_str: str) -> str | None:
-    """Resolve a path completely, matching ``Path.resolve()`` semantics."""
     try:
         return str(Path(target_str).resolve())
     except Exception:
@@ -360,12 +313,6 @@ def _resolve_fully(target_str: str) -> str | None:
 
 
 def _split_final_component(target_str: str) -> tuple[str, str] | None:
-    """Split an absolute path into its parent directory and its last component.
-
-    ``None`` is returned when the last component is not a plain name, i.e. when
-    the canonical form of the path cannot be derived from the canonical form of
-    its parent directory.
-    """
     if target_str.startswith("//"):
         return None
     parent_str, separator, final = target_str.rpartition("/")
@@ -375,11 +322,9 @@ def _split_final_component(target_str: str) -> tuple[str, str] | None:
 
 
 def _final_component_is_plain(target_str: str) -> bool:
-    """Report whether the last component of a path is a plain, non-symlink name."""
     try:
         final_stat = os.lstat(target_str)
     except FileNotFoundError:
-        # The last component does not exist, so it cannot be a symlink.
         return True
     except (OSError, ValueError):
         return False
@@ -387,14 +332,6 @@ def _final_component_is_plain(target_str: str) -> bool:
 
 
 def _canonicalize_path(target_str: str) -> str | None:
-    """Return the canonical form of an absolute path.
-
-    The canonical form of a path whose last component is a plain name is the
-    canonical form of its parent directory plus that name. The parent form is
-    memoized (see ``_resolve_parent_directory``) and the last component is
-    checked with a single ``lstat``: only a symlinked last component, or a
-    parent whose identity changed, needs the full resolution.
-    """
     split = _split_final_component(target_str)
     if split is None:
         return _resolve_fully(target_str)
@@ -408,7 +345,6 @@ def _canonicalize_path(target_str: str) -> str | None:
 
 
 def _is_protected_canonical_str(canonical: str, env_raw: bytes | None) -> bool:
-    """Determine if a canonical path falls within guarded boundaries."""
     if (
         canonical in (_REPO_DIR_STR, _ROOT_DIR_STR)
         or canonical.startswith(_REPO_DIR_PREFIX)
@@ -434,7 +370,6 @@ def _is_protected_canonical_str(canonical: str, env_raw: bytes | None) -> bool:
 
 
 def _extract_guarded_path(event: str, args: tuple[object, ...]) -> Path | None:
-    """Extract and validate target path if event touches a guarded configuration file."""
     del event
     s_str = _parse_raw_path_string(args[0]) if args else None
     if s_str is None:
@@ -453,7 +388,6 @@ def _extract_guarded_path(event: str, args: tuple[object, ...]) -> Path | None:
 
 
 def _extract_read_path(args: tuple[object, ...]) -> Path | None:
-    """Extract and validate target path if open event is a read on a guarded file."""
     if not args:
         return None
     mode = args[1] if len(args) > 1 and isinstance(args[1], str) else ""
@@ -464,7 +398,6 @@ def _extract_read_path(args: tuple[object, ...]) -> Path | None:
 
 
 def _extract_write_path(args: tuple[object, ...]) -> Path | None:
-    """Extract and validate target path if open event is a write/mutation on a guarded file."""
     if not args:
         return None
     mode = args[1] if len(args) > 1 and isinstance(args[1], str) else ""

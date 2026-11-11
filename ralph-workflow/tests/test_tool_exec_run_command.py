@@ -1,5 +1,3 @@
-"""Tests for ralph/mcp/tool_exec.py — MCP exec tool handler."""
-
 from __future__ import annotations
 
 import io
@@ -34,7 +32,6 @@ _FAST_POLICY = ProcessManagerPolicy(
 
 
 def test_run_command_writes_persist_in_workspace(tmp_path: Path) -> None:
-    """File writes via run_command persist in the real workspace root (no sandbox)."""
     run_command("sh", ["-c", "touch created.txt"], tmp_path, 5000)
     assert (tmp_path / "created.txt").exists()
 
@@ -68,7 +65,6 @@ def test_timeout_error_includes_captured_output_tail(tmp_path: Path) -> None:
 
 
 def test_file_not_found_raises_execution_error(tmp_path: Path) -> None:
-    """The handler wraps launch failures without requiring a real process."""
 
     def missing_runner(
         _command: list[str], _cwd: Path, _timeout_seconds: float | None
@@ -86,12 +82,6 @@ def test_file_not_found_raises_execution_error(tmp_path: Path) -> None:
 
 
 def test_zero_timeout_clamps_to_bounded_default(tmp_path: Path) -> None:
-    """A non-positive timeout must never mean unbounded; it clamps to the default.
-
-    The bounded-timeout pin lives in
-    test_tool_exec_handle_exec_command.py::TestRunCommandAlwaysBounded; this
-    confirms the clamped call still executes successfully end to end.
-    """
     seen: dict[str, float | None] = {}
 
     def fake_runner(
@@ -167,7 +157,6 @@ def test_uses_injected_runner(tmp_path: Path) -> None:
 
 
 def test_run_command_concurrent_calls_both_succeed(tmp_path: Path) -> None:
-    """Concurrent run_command calls on the same workspace both complete without error."""
     workspace = MockWorkspaceRoot(tmp_path)
     results: list[exec_completed_process._CompletedProcessAdapter] = []
     errors: list[BaseException] = []
@@ -198,7 +187,7 @@ def test_run_command_concurrent_calls_both_succeed(tmp_path: Path) -> None:
             results.append(
                 run_command("echo", [], workspace, 1000, deps=ExecRunDeps(runner=fake_runner_first))
             )
-        except BaseException as exc:  # pragma: no cover
+        except BaseException as exc:
             errors.append(exc)
 
     def invoke_second() -> None:
@@ -208,7 +197,7 @@ def test_run_command_concurrent_calls_both_succeed(tmp_path: Path) -> None:
                     "echo", [], workspace, 1000, deps=ExecRunDeps(runner=fake_runner_second)
                 )
             )
-        except BaseException as exc:  # pragma: no cover
+        except BaseException as exc:
             errors.append(exc)
 
     t1 = threading.Thread(target=invoke_first)
@@ -228,8 +217,6 @@ def test_run_command_kills_process_when_output_exceeds_limit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     class StreamingFakePopen(FakePopen):
-        # OpenCode's prompt is delivered on stdin, so a process fake must
-        # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
         stdin = None
 
         def __init__(self) -> None:
@@ -254,9 +241,6 @@ def test_run_command_kills_process_when_output_exceeds_limit(
         sync_process_factory=lambda command, opts: StreamingFakePopen(),
     )
 
-    # Exceeding the capture cap no longer raises (which forced a blind retry loop).
-    # The process is killed and the captured tail is returned flagged truncated, so
-    # the caller can spill it to a file and the agent can still see the output.
     result = run_command(
         "python",
         ["-c", "print('boom')"],
@@ -271,8 +255,6 @@ def test_run_command_kills_process_when_output_exceeds_limit(
 
 
 class _ChunkedStream:
-    """Fake IO[bytes] stream that returns fixed-size chunks for deterministic testing."""
-
     def __init__(self, chunks: list[bytes]) -> None:
         self._chunks = list(chunks)
 
@@ -298,11 +280,8 @@ class _ChunkedStream:
 def test_run_subprocess_streams_output_chunks_in_order(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Verify that on_output_chunk receives chunks in order before run_command returns."""
 
     class ChunkedFakePopen(FakePopen):
-        # OpenCode's prompt is delivered on stdin, so a process fake must
-        # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
         stdin = None
 
         def __init__(self) -> None:

@@ -1,5 +1,3 @@
-"""Tests for ralph/pipeline/runner.py — pipeline runner."""
-
 from __future__ import annotations
 
 import io
@@ -42,11 +40,11 @@ DEVELOPER_ITERATIONS = 5
 REVIEWER_PASSES = 2
 SECOND_ITERATION = 2
 INTERRUPT_EXIT_CODE = 130
-_TRUNCATED_TEXT_MAX = runner_module.MAX_TEXT_LENGTH + 1  # content + ellipsis
-_TRUNCATED_RESULT_BRIEF_MAX = runner_module.MAX_TOOL_RESULT_BRIEF + 1  # content + ellipsis
-_TRUNCATED_METADATA_MAX = runner_module.MAX_METADATA_SUMMARY_LENGTH + 1  # content + ellipsis
+_TRUNCATED_TEXT_MAX = runner_module.MAX_TEXT_LENGTH + 1
+_TRUNCATED_RESULT_BRIEF_MAX = runner_module.MAX_TOOL_RESULT_BRIEF + 1
+_TRUNCATED_METADATA_MAX = runner_module.MAX_METADATA_SUMMARY_LENGTH + 1
 _AVAILABLE_WIDTH_FLOOR = 40
-_TRUNCATE_RESULT_LEN = 6  # 5 chars + 1 ellipsis char
+_TRUNCATE_RESULT_LEN = 6
 
 
 @lru_cache(maxsize=1)
@@ -78,13 +76,6 @@ def _registry_factory(return_value: object) -> object:
 
 
 def _deps_display_context() -> DisplayContext:
-    """A real display context, so ``PipelineDeps`` can be built as itself.
-
-    ``PipelineDeps`` requires one when no ``core`` is supplied. Building
-    the genuine object beats standing in a duck-typed namespace: the
-    seam under test is exactly the one that broke on an argument shape,
-    so the test must pass the real shape.
-    """
     return make_display_context(
         console=Console(record=True, force_terminal=False, width=120, color_system=None),
         force_width=120,
@@ -197,11 +188,6 @@ class TestExecuteCommitEffect:
             committed_paths=("done.py",), remaining_paths=("left.py",), sha="sha"
         )
 
-    # Real-git test: two commits plus `git diff --cached` / `git ls-files`
-    # and the production staging path all fork real `git` processes. Process
-    # spawn latency under a fully parallel `make test` intermittently pushed
-    # this past the 1.0s default per-test alarm even though the test measures
-    # ~0.4s standalone. The combined 60s suite budget is unaffected.
     @pytest.mark.timeout_seconds(5)
     def test_pipeline_staging_excludes_tracked_and_untracked_secrets(
         self,
@@ -339,7 +325,6 @@ class TestExecuteCommitEffect:
     def test_returns_residual_event_when_scoped_commit_leaves_worktree_dirty(
         self, tmp_path: Path, monkeypatch: MonkeyPatch
     ) -> None:
-        """A scoped commit must request another commit pass when changes remain."""
         message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
         message_file.parent.mkdir(parents=True, exist_ok=True)
         message_file.write_text(_commit_document(files=("src/feature.py",)), encoding="utf-8")
@@ -368,7 +353,6 @@ class TestExecuteCommitEffect:
     def test_runner_reports_residual_when_scoped_commit_leaves_worktree_dirty(
         self, tmp_path: Path, monkeypatch: MonkeyPatch
     ) -> None:
-        """S-3: the runner seam must preserve residual-work detection."""
         message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
         message_file.parent.mkdir(parents=True, exist_ok=True)
         message_file.write_text(_commit_document(files=("src/first.py",)), encoding="utf-8")
@@ -395,18 +379,6 @@ class TestExecuteCommitEffect:
     def test_production_deps_seam_executes_commit_without_duplicate_kwargs(
         self, tmp_path: Path, monkeypatch: MonkeyPatch
     ) -> None:
-        """The production seam must reach the executor, not raise TypeError.
-
-        ``_execute_commit_effect_from_deps`` is the only caller the pipeline
-        actually uses for a ``CommitEffect``. It names ``has_residual_work_fn``
-        while ``execute_commit_effect`` also supplied it positionally, so every
-        real commit raised ``TypeError: got multiple values for keyword
-        argument 'has_residual_work_fn'``. That surfaced as an unclassifiable
-        ``development_commit`` failure that routed to the failed terminal and
-        re-entered the phase forever, so no commit could ever be created.
-        Every other test in this class calls ``execute_commit_effect`` directly
-        and therefore never crossed this seam.
-        """
         stage_all = MagicMock()
         create_commit = MagicMock(return_value=CommitCreationResult.created("sha"))
         message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
@@ -436,7 +408,6 @@ class TestExecuteCommitEffect:
     def test_caller_supplied_work_probes_override_runner_defaults(
         self, tmp_path: Path, monkeypatch: MonkeyPatch
     ) -> None:
-        """Explicit probes in ``opts`` win over the runner's module-global defaults."""
         message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
         message_file.parent.mkdir(parents=True, exist_ok=True)
         message_file.write_text(
@@ -654,9 +625,6 @@ class TestExecuteCommitEffect:
     def test_commit_effect_calls_a_rejected_artifact_invalid_not_empty(
         self, tmp_path: Path
     ) -> None:
-        """An artifact that fails the grammar (a NUL in a Files path) is retained
-        and re-read on every later pass, so the diagnostic has to name the real
-        problem instead of claiming a non-empty file is empty."""
         message_file = tmp_path / "commit_message.md"
         message_file.write_text(
             "---\ntype: commit\nsubject: fix(auth): scope the commit\n---\n\n"
@@ -680,14 +648,6 @@ class TestExecuteCommitEffect:
     def test_resolve_commit_scope_names_an_embedded_nul_in_a_staged_path(
         self, tmp_git_repo: Path
     ) -> None:
-        """A NUL-bearing path is named for what it is.
-
-        Without the guard, ``Path.resolve`` raises ``ValueError: embedded
-        null byte``, the escape check catches it, and the commit fails
-        claiming the path resolves "outside repository root" — a diagnostic
-        the agent cannot act on while the retained artifact fails the same
-        way on every later pass.
-        """
         with pytest.raises(ValueError, match="embedded NUL"):
             commit_executor_module._resolve_commit_scope(
                 {"files": ["src/au\x00th.py"], "excluded_files": []},
@@ -698,15 +658,6 @@ class TestExecuteCommitEffect:
     def test_resolve_commit_scope_rejects_symlink_inside_repo_pointing_to_sibling(
         self, tmp_git_repo: Path
     ) -> None:
-        """A symlink inside the repo pointing to a sibling file is rejected.
-
-        Defense-in-depth: ``_resolve_commit_scope`` already escapes
-        absolute paths and ``..`` segments via ``_normalize_repo_relative_path``,
-        but a symlink whose literal path is inside the repo can still
-        resolve outside. The hardening rejects symlinks at the
-        ``_resolve_commit_scope`` boundary so a malformed commit payload
-        cannot stage files outside the worktree.
-        """
         sibling_target = tmp_git_repo / "sibling_target.txt"
         sibling_target.write_text("I am the sibling target\n")
         symlink_chain = tmp_git_repo / "symlink_chain"
@@ -722,13 +673,6 @@ class TestExecuteCommitEffect:
     def test_resolve_commit_scope_rejects_symlink_pointing_outside_repo(
         self, tmp_git_repo: Path, tmp_path: Path
     ) -> None:
-        """A symlink pointing outside the repo is rejected.
-
-        A symlink whose literal path is inside the repo can still resolve
-        outside via its target. The hardening rejects such symlinks at
-        the ``_resolve_commit_scope`` boundary so a malformed commit
-        payload cannot stage files outside the worktree.
-        """
         outside = tmp_path / "outside_target.txt"
         outside.write_text("outside the repo\n")
         escape_sym = tmp_git_repo / "escape_sym"
@@ -742,12 +686,6 @@ class TestExecuteCommitEffect:
             )
 
     def test_resolve_commit_scope_rejects_absolute_path(self) -> None:
-        """An absolute path in the ``files`` list is rejected.
-
-        The hardening checks the absolute-path vector at the
-        ``_resolve_commit_scope`` boundary in addition to the existing
-        check in ``_normalize_repo_relative_path`` -- defense-in-depth.
-        """
         with pytest.raises(ValueError, match="repository root"):
             commit_executor_module._resolve_commit_scope(
                 {"files": ["/etc/passwd"], "excluded_files": []},
@@ -755,12 +693,6 @@ class TestExecuteCommitEffect:
             )
 
     def test_resolve_commit_scope_rejects_dotdot_segment(self) -> None:
-        """A ``..`` segment in the ``files`` list is rejected.
-
-        The hardening checks the parent-traversal vector at the
-        ``_resolve_commit_scope`` boundary in addition to the existing
-        check in ``_normalize_repo_relative_path``.
-        """
         with pytest.raises(ValueError, match=r"\.\."):
             commit_executor_module._resolve_commit_scope(
                 {"files": ["../escape"], "excluded_files": []},
@@ -770,16 +702,6 @@ class TestExecuteCommitEffect:
     def test_resolve_commit_scope_rejects_parent_symlink_chain_escape(
         self, tmp_git_repo: Path, tmp_path: Path
     ) -> None:
-        """A path whose parent directory is a symlink chain escape is rejected.
-
-        Defense-in-depth: a parent-directory symlink pointing outside the
-        worktree (e.g. ``linkdir`` is a symlink to ``/tmp/.../outside``)
-        would otherwise resolve to a location outside ``repo_root`` when
-        ``git add`` follows the symlink. The literal-path symlink check
-        in ``_resolve_commit_scope`` walks every parent directory and
-        rejects the first symlink found, so the file inside
-        ``linkdir/payload.txt`` (a regular file) cannot be staged.
-        """
         linkdir = tmp_git_repo / "linkdir"
         linkdir.symlink_to(tmp_path)
         target_file = linkdir / "payload.txt"
@@ -795,18 +717,6 @@ class TestExecuteCommitEffect:
     def test_resolve_commit_scope_rejects_resolved_path_escape(
         self, tmp_git_repo: Path, tmp_path: Path
     ) -> None:
-        """A path whose resolved location escapes repo_root is rejected.
-
-        Defense-in-depth against symlink chains. Even though the
-        parent-walk catches the same scenario when ``is_symlink()``
-        fires on the parent directory, the resolved-path check provides
-        a defense-in-depth guarantee: any candidate whose resolved
-        location is not under ``repo_root.resolve()`` is rejected.
-        The error message in this case carries the ``parent directory``
-        wording because the parent-walk fires first; the test pins
-        that the resolved-path escape is rejected regardless of which
-        check wins.
-        """
         outside_dir = tmp_path / "outside_dir"
         outside_dir.mkdir()
         linkdir = tmp_git_repo / "deep"
@@ -827,17 +737,6 @@ class TestExecuteCommitEffect:
     def test_execute_commit_effect_logs_exception_type_on_failure(
         self, tmp_path: Path, monkeypatch: MonkeyPatch
     ) -> None:
-        """The COMMIT_FAILURE log message must include the exception type.
-
-        Post-mortem diagnosis of ``COMMIT_FAILURE`` events depends on the
-        log message surfacing the exception type name (e.g.,
-        ``GitOperationError``, ``OSError``, ``ValueError``) -- otherwise
-        an operator sees only the str message (e.g., ``index.lock
-        contention``) with no signal about which subsystem raised.
-
-        Pins the contract that the log line includes both
-        ``type(exc).__name__`` AND the str message.
-        """
         captured: list[str] = []
 
         sink_id = loguru_logger.add(
@@ -1018,11 +917,6 @@ class TestExecuteCommitEffect:
     def test_skips_commit_when_message_is_skip_artifact(
         self, tmp_path: Path, monkeypatch: MonkeyPatch
     ) -> None:
-        """_execute_commit_effect must return COMMIT_SKIPPED when the message is a skip response.
-
-        This is the late guard that prevents 'SKIP: reason' from being committed
-        as a real git commit subject when the phase handler missed the skip.
-        """
         stage_all = MagicMock()
         create_commit = MagicMock()
         message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"

@@ -1,5 +1,3 @@
-"""Tests for the development execution phase handled by handle_execution_phase."""
-
 from __future__ import annotations
 
 import tempfile

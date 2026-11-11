@@ -1,5 +1,3 @@
-"""Bound pytest shard collection to an ordered manifest of test modules."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -14,8 +12,6 @@ _ROOT_PATH_KEY = pytest.StashKey[Path]()
 
 @dataclass(frozen=True)
 class ShardManifest:
-    """Ordered project-relative test-module paths assigned to one shard."""
-
     paths: tuple[str, ...]
     _path_set: frozenset[str] = field(init=False, repr=False)
     _path_order: dict[str, int] = field(init=False, repr=False)
@@ -29,11 +25,9 @@ class ShardManifest:
         )
 
     def order_for(self, path: str) -> int:
-        """Return the declared position of ``path`` in this manifest."""
         return self._path_order.get(path, len(self.paths))
 
     def should_ignore(self, path: str) -> bool:
-        """Reject collectable test modules under ``tests/`` not in the shard."""
         if not _is_collectable_test_module(path):
             return False
         return path not in self._path_set
@@ -62,7 +56,6 @@ def _is_valid_manifest_path(path: str) -> bool:
 
 
 def load_shard_manifest(manifest_path: Path) -> ShardManifest:
-    """Read and validate one fail-closed pytest shard manifest."""
     try:
         contents = manifest_path.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as exc:
@@ -91,12 +84,10 @@ def _project_relative_path(path: Path, *, root: Path) -> str | None:
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
-    """Register the required shard-manifest path option."""
     parser.addoption(_MANIFEST_OPTION, action="store", default=None)
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    """Load the shard manifest before collection starts."""
     option: object = config.getoption(_MANIFEST_OPTION)
     if not isinstance(option, str) or not option:
         raise pytest.UsageError(f"{_MANIFEST_OPTION} is required")
@@ -105,7 +96,6 @@ def pytest_configure(config: pytest.Config) -> None:
 
 
 def pytest_ignore_collect(collection_path: Path, config: pytest.Config) -> bool | None:
-    """Reject non-selected test modules before pytest imports them."""
     relative_path = _project_relative_path(
         collection_path,
         root=config.stash[_ROOT_PATH_KEY],
@@ -116,7 +106,6 @@ def pytest_ignore_collect(collection_path: Path, config: pytest.Config) -> bool 
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    """Restore manifest module order after pytest collection."""
     manifest = config.stash[_MANIFEST_KEY]
 
     def manifest_order(item: pytest.Item) -> int:

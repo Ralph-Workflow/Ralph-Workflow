@@ -1,31 +1,3 @@
-"""READY-cache freshness regression (S-5).
-
-A completed policy run must stay completed. ``_finalize_ready_state``
-owns the cache write so the cached signature is taken over the tree
-the run actually leaves behind -- after ``condense_placeholder_block``
-and the auto-commit. The contract: immediately after
-``run_project_policy_readiness`` returns READY,
-``cache.read_cached_ready(workspace, stack) is True``; a second
-preflight over the same workspace then hits the cache and invokes
-zero agents, because the cache short-circuits before the policy
-pipeline runs.
-
-Two routes reach READY through the orchestrator and both must
-honour the contract:
-
-* The DIRECT-READY route goes through the no-findings path in
-  ``run_policy_readiness_preflight`` -- the preflight returns
-  READY before the policy pipeline is invoked.
-* The POST-REMEDIATION route goes through the policy pipeline and
-  reaches READY in ``pipeline_driver._finish`` after remediation
-  + analysis.
-
-Both routes are regression-tested immediately after the hand-back
-so a future change that re-introduces a stale cache signature
-lights the test up rather than silently letting a full
-re-validation slip past.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -42,12 +14,10 @@ _LoadResult = run_module._LoadResult
 
 
 def _ensure_run_func_state_unset() -> None:
-    """Reset ``_state.run_func`` to ``_RUN_FUNC_UNSET`` before each test."""
     run_module._state.run_func = run_module._RUN_FUNC_UNSET
 
 
 def _stub_load_result(workspace_root: str, *, phase: str = "planning") -> _LoadResult:
-    """Build a minimal ``_LoadResult`` that exercises the helper seam."""
     config = UnifiedConfig()
     workspace_scope = WorkspaceScope(root=workspace_root, allowed_roots=[workspace_root])
     return _LoadResult(
@@ -63,25 +33,6 @@ def _stub_load_result(workspace_root: str, *, phase: str = "planning") -> _LoadR
 
 
 def _submit_completed_decision(ws: MemoryWorkspace) -> None:
-    """Submit a Markdown analysis decision with status ``completed``.
-
-    A JSON blob at the analysis artifact path is rejected by the
-    analysis-decision spec (the loader expects a Markdown file with
-    frontmatter and a ``Criterion Verdicts`` section whose IDs match
-    the artifact-type pattern ``PR-NNN``). The legacy
-    ``_approve_policy`` helper in ``test_run_integration.py`` writes
-    JSON, which is why the earlier integration tests pass the
-    orchestrator exit-code and emit-message assertions without ever
-    reaching a real READY cache write -- the analysis loops back to
-    remediation until the budget is spent and the driver returns
-    BLOCKED with the word "ready" in the budget-spent message.
-
-    This helper writes the Markdown form so the analysis phase
-    actually approves and the driver reaches the
-    ``_finalize_ready_state`` path that writes the READY cache.
-    Mirrors ``_submit_decision`` in ``test_pipeline_driver.py`` for
-    the ``completed`` case.
-    """
     ws.mkdirs(".agent/artifacts")
     ws.write(
         policy_analysis.ANALYSIS_ARTIFACT_REL_PATH,
@@ -100,10 +51,6 @@ def _submit_completed_decision(ws: MemoryWorkspace) -> None:
 
 @pytest.mark.timeout_seconds(5)
 def test_direct_ready_route_writes_fresh_cache_and_second_preflight_invokes_zero_agents() -> None:
-    """AC-CACHE-01: a direct-READY preflight (no findings path) writes a
-    fresh READY cache, and a second preflight over the same workspace
-    invokes zero agents.
-    """
     _ensure_run_func_state_unset()
 
     ws = MemoryWorkspace()
@@ -117,12 +64,6 @@ def test_direct_ready_route_writes_fresh_cache_and_second_preflight_invokes_zero
         _seed_claude_md,
     )
 
-    # The workspace is fully complete BEFORE the orchestrator runs, so
-    # the preflight returns READY on the no-findings path -- the same
-    # path that the bundle starter seeding + empty AGENTS.md
-    # bootstrap would walk. The orchestrator calls
-    # ``_finalize_ready_state`` which writes the cache; without the
-    # S-5 fix the cache is stale on arrival.
     _seed_agents_md(ws)
     _seed_claude_md(ws)
     _seed_all_core_complete(ws, get_project_stack(ws))
@@ -135,13 +76,6 @@ def test_direct_ready_route_writes_fresh_cache_and_second_preflight_invokes_zero
     )
     assert rc == 0, "direct-READY preflight should exit 0"
 
-    # Use the SAME stack the orchestrator detected. The orchestrator's
-    # stack is captured at the START of the run -- in this case, the
-    # workspace is ALREADY pre-seeded by the test, so the stack is
-    # the pre-seeded stack (with ``has_tests=True`` because the
-    # ``testing-policy.md`` name trips ``detect_tests``). The test
-    # computes the same stack by calling ``get_project_stack(ws)``
-    # against the post-seed workspace, BEFORE the orchestrator runs.
     stack = get_project_stack(ws)
     assert policy_cache.read_cached_ready(ws, stack) is True, (
         "Direct-READY route must write a fresh READY cache after the "
@@ -150,16 +84,6 @@ def test_direct_ready_route_writes_fresh_cache_and_second_preflight_invokes_zero
         "subsequent preflight."
     )
 
-    # Second preflight over the same workspace. The fresh cache must
-    # short-circuit before the policy pipeline runs, so the injected
-    # agent is never invoked. If a regression re-introduces a stale
-    # signature, the cache is missed, the validator re-runs, the
-    # preflight still returns READY (no findings), and the counter
-    # stays at zero -- but only because the cache miss routed
-    # through the direct-READY path, not through the policy pipeline.
-    # The assertion below distinguishes those two paths: a count of
-    # zero on a cache miss is the expected cache-MISS short-circuit;
-    # any nonzero count means the policy pipeline ran.
     second_agent_invocations: list[str] = []
 
     def counting_invoke(*, phase: str, prompt_path: str) -> bool:
@@ -186,10 +110,6 @@ def test_direct_ready_route_writes_fresh_cache_and_second_preflight_invokes_zero
 def test_post_remediation_ready_route_writes_fresh_cache_and_second_preflight_invokes_zero_agents() -> (
     None
 ):
-    """AC-CACHE-02: a post-remediation READY preflight (the through-``_finish``
-    path) writes a fresh READY cache, and a second preflight over the
-    same workspace invokes zero agents.
-    """
     _ensure_run_func_state_unset()
 
     ws = MemoryWorkspace()
@@ -207,18 +127,10 @@ def test_post_remediation_ready_route_writes_fresh_cache_and_second_preflight_in
     def fix_invoke(*, phase: str, prompt_path: str) -> bool:
         del prompt_path
         if phase == PHASE_REMEDIATION:
-            # Materialize every required canonical file so the
-            # post-remediation revalidation passes.
             _seed_agents_md(ws)
             _seed_claude_md(ws)
             _seed_all_core_complete(ws, get_project_stack(ws))
             return True
-        # The analysis phase then approves what remediation wrote.
-        # The artifact is a Markdown file with frontmatter, NOT a
-        # JSON blob -- see _submit_decision in test_pipeline_driver.py
-        # for the canonical format. A JSON artifact would be
-        # rejected by the analysis-decision spec and the analysis
-        # would loop back to remediation instead of approving.
         _submit_completed_decision(ws)
         return True
 
@@ -231,17 +143,6 @@ def test_post_remediation_ready_route_writes_fresh_cache_and_second_preflight_in
     )
     assert rc == 0, "post-remediation READY preflight should exit 0"
 
-    # The orchestrator detected the stack at the START of the run --
-    # BEFORE the preflight writes the bootstrap, BEFORE the policy
-    # pipeline runs the fake agent. At that moment the workspace is
-    # empty, so ``has_tests`` is False. The post-remediation test
-    # reads the cache AFTER the agent seeded ``testing-policy.md``,
-    # which would make ``has_tests`` flip to True -- a different
-    # stack produces a different cache signature and the read
-    # misses on a stack mismatch. Pin the test to the
-    # orchestrator's pre-seed stack by detecting the stack against a
-    # FRESH empty workspace (the same stack the orchestrator
-    # detected when the run started, before anything was written).
     stack = get_project_stack(MemoryWorkspace())
     assert policy_cache.read_cached_ready(ws, stack) is True, (
         "Post-remediation READY route must write a fresh READY cache "
@@ -251,12 +152,6 @@ def test_post_remediation_ready_route_writes_fresh_cache_and_second_preflight_in
         "re-validation on every subsequent preflight."
     )
 
-    # Second preflight over the same workspace. The fresh cache must
-    # short-circuit before the policy pipeline runs, so the counting
-    # agent is never invoked. A nonzero count means a regression
-    # broke the cache -- the second preflight routed through the
-    # full orchestrator (remediation + analysis) instead of hitting
-    # the cache.
     second_agent_invocations: list[str] = []
 
     def counting_invoke(*, phase: str, prompt_path: str) -> bool:

@@ -11,16 +11,14 @@ if TYPE_CHECKING:
 
 
 class _FakeNoSuchProcessError(Exception):
-    """Simulates psutil.NoSuchProcess."""
+    pass
 
 
 class _FakeAccessDeniedError(Exception):
-    """Simulates psutil.AccessDenied."""
+    pass
 
 
 class FakePsutil:
-    """Fake psutil module for testing without real process operations."""
-
     NoSuchProcess: type[BaseException] = _FakeNoSuchProcessError
     AccessDenied: type[BaseException] = _FakeAccessDeniedError
     Process: Callable[[int], _PsutilProcessLike]

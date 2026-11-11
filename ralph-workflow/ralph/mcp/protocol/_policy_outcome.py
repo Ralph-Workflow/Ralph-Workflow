@@ -1,4 +1,3 @@
-"""PolicyOutcome — normalized policy outcome payload."""
 
 from __future__ import annotations
 
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class PolicyOutcome:
-    """Normalized policy outcome payload."""
 
     status: PolicyOutcomeStatus
     reason: str | None = None

@@ -1,4 +1,3 @@
-"""Policy validation utilities beyond what Pydantic provides at the model level."""
 
 from ralph.policy.validation._api import (
     get_drain_resolution_matrix,

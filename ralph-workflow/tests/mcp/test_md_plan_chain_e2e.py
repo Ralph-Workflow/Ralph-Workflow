@@ -1,5 +1,3 @@
-"""Public plan-validation and prompt contract tests."""
-
 from __future__ import annotations
 
 import json
@@ -66,7 +64,6 @@ def test_public_verify_accepts_executor_ready_plan() -> None:
 
 
 def test_public_verify_accepts_prose_plan() -> None:
-    """A prose plan with no headings is accepted with no error diagnostics."""
     payload = _verify_payload(_prose_plan())
 
     assert payload["valid"] is True
@@ -74,7 +71,6 @@ def test_public_verify_accepts_prose_plan() -> None:
 
 
 def test_public_verify_accepts_plan_with_duplicate_step_ids() -> None:
-    """Duplicate step IDs are best-effort, not a structural error."""
     duplicate = (
         _plan()
         + """
@@ -114,7 +110,6 @@ def test_submission_rejects_planning_finding_for_unknown_plan_step(tmp_path: Pat
 
 
 def test_planning_prompts_share_the_compact_contract() -> None:
-    """The four planning variants share their shared partials."""
     context = TemplateContext.default()
     for name in (
         "planning.jinja",
@@ -128,7 +123,6 @@ def test_planning_prompts_share_the_compact_contract() -> None:
 
 
 def test_planning_edit_variants_apply_substantive_feedback() -> None:
-    """Planning edits repair supported findings and split avoidable serialization."""
     context = TemplateContext.default()
     for name in ("planning_edit.jinja", "planning_edit_fallback.jinja"):
         source = context.registry.get_template(name.removesuffix(".jinja"))

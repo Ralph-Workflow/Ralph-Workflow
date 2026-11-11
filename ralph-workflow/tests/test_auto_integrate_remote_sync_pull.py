@@ -1,16 +1,3 @@
-"""Tests for the opt-in remote-sync pull side of auto-integration.
-
-Covers AC-15 to AC-20 of the PRODUCT_CRITERIA.md. The pull side
-periodically fetches ``<auto_integrate_remote> <target>``,
-reconciles the local target with the remote target, and degrades to
-local-only integration when the flag is off, the remote is missing,
-or the fetch fails.
-
-Tests are deterministic: clock and ``run_git`` are injected so the
-suite drives failures and successes without ever contacting a real
-remote or sleeping.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -33,19 +20,10 @@ if TYPE_CHECKING:
 
 @pytest.fixture(autouse=True)
 def _reset_remote_throttle() -> None:
-    """Clear the module-level ``_REMOTE_PULL_THROTTLE`` singleton between tests.
-
-    The throttle keyed ``(root, remote, target)`` keeps state across the
-    whole module. Without this autouse fixture an earlier test that
-    armed the throttle with ``time.monotonic()`` would suppress a later
-    test's pull entirely (the throttle window is up to 300s). Each
-    test gets a clean slate instead.
-    """
     remote_sync._REMOTE_PULL_THROTTLE._last_pull.clear()
 
 
 def _config(remote: str = "origin", enabled: bool = True, interval: float = 300.0):
-    """Build the minimum ``UnifiedConfig`` shape the new helpers read."""
     from ralph.config.models import UnifiedConfig
 
     return UnifiedConfig.model_validate(
@@ -93,7 +71,6 @@ def _fake_remote_present(
 def test_disabled_returns_none_with_no_fetch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Default off; no fetch is issued and no record is produced."""
     calls: list[tuple[str, ...]] = []
 
     def run_git(args: Sequence[str], **_kwargs: object) -> GitRunResult:
@@ -109,7 +86,6 @@ def test_disabled_returns_none_with_no_fetch(
 def test_already_current_records_a_verified_freshness_verdict(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """E1: a healthy equal-tip fetch is visible as a verified base."""
     from ralph.pipeline import auto_integrate_remote_sync as mod
     from ralph.pipeline.auto_integrate_sync import REFRESH_ALREADY_CURRENT
 
@@ -126,7 +102,6 @@ def test_already_current_records_a_verified_freshness_verdict(
 def test_local_ahead_does_not_move_target(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Local already matches the remote; nothing is ff'd, no record."""
     from ralph.pipeline import auto_integrate_remote_sync as mod
 
     monkeypatch.setattr(
@@ -144,7 +119,6 @@ def test_local_ahead_does_not_move_target(
 def test_local_strictly_ahead_records_publishable_without_reconcile(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Regression S-1: a remote behind local target is not a divergence."""
     from ralph.pipeline import auto_integrate_remote_sync as mod
 
     monkeypatch.setattr(mod, "refresh_target_from_remote", lambda *a, **kw: REFRESH_LOCAL_AHEAD)
@@ -156,7 +130,6 @@ def test_local_strictly_ahead_records_publishable_without_reconcile(
 def test_remote_strictly_ahead_records_pulled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """REFRESH_ORIGIN_AHEAD -> record REMOTE_PULLED."""
     from ralph.pipeline import auto_integrate_remote_sync as mod
 
     monkeypatch.setattr(mod, "refresh_target_from_remote", lambda *a, **kw: REFRESH_ORIGIN_AHEAD)
@@ -174,7 +147,6 @@ def test_remote_strictly_ahead_records_pulled(
 def test_diverged_target_rebases_in_owning_worktree_before_feature_integration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Regression S-1: diverged pull uses the safe target reconciliation seam."""
     from ralph.pipeline import auto_integrate_remote_reconcile as reconcile
     from ralph.pipeline import auto_integrate_remote_sync as mod
 
@@ -203,7 +175,6 @@ def test_diverged_target_rebases_in_owning_worktree_before_feature_integration(
 def test_remote_strictly_ahead_records_reconciled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The reconcile outcome is named distinctly for the operator line."""
     from ralph.pipeline import auto_integrate_remote_sync as mod
 
     monkeypatch.setattr(
@@ -228,27 +199,20 @@ def test_remote_strictly_ahead_records_reconciled(
 def test_throttle_is_keyed_per_root_remote_target(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AC-18: throttle window keyed (root, remote, target)."""
     clock = _FakeClock(start=100.0)
     from ralph.pipeline import auto_integrate_remote_sync as mod
 
-    # Use a fresh throttle so this test does not see leakage from
-    # earlier tests.
     fresh = mod._RemotePullThrottle()
     monkeypatch.setattr(mod, "_REMOTE_PULL_THROTTLE", fresh)
 
     monkeypatch.setattr(mod, "refresh_target_from_remote", lambda *a, **kw: REFRESH_LOCAL_FLEET)
     config = _config(interval=600.0)
-    # Same root, same (remote,target) -> second call within 600s is throttled.
     remote_sync.pull_and_reconcile_target(config, Path("/repo-a"), "main", clock=clock)
     assert (
         fresh.should_pull("/repo-a", "origin", "main", interval_seconds=600.0, clock=clock) is False
     )
-    # Different root -> distinct slot, both arms are independent.
-    clock.advance(1.0)  # tiny advance so the second call arms at 101.0
+    clock.advance(1.0)
     remote_sync.pull_and_reconcile_target(config, Path("/repo-b"), "main", clock=clock)
-    # /repo-b's slot was armed at 101.0; advancing the clock past the
-    # interval opens the /repo-b slot but does NOT open the /repo-a slot.
     clock.advance(700.0)
     assert (
         fresh.should_pull("/repo-b", "origin", "main", interval_seconds=600.0, clock=clock) is True
@@ -261,12 +225,9 @@ def test_throttle_is_keyed_per_root_remote_target(
 def test_interval_zero_fetches_every_seam(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AC-19: interval=0 opts out of the throttle."""
     from ralph.pipeline import auto_integrate_remote_sync as mod
 
     monkeypatch.setattr(mod, "refresh_target_from_remote", lambda *a, **kw: REFRESH_LOCAL_FLEET)
-    # Interval=0 should_pull always returns True because of the
-    # interval <= 0 short-circuit in _RemotePullThrottle.
     throttle = mod._REMOTE_PULL_THROTTLE
     clock = _FakeClock(0.0)
     throttle.arm("/repo", "origin", "main", clock=clock)
@@ -278,7 +239,6 @@ def test_interval_zero_fetches_every_seam(
 def test_suppressed_refresh_is_explicitly_unverified(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """E6/AC-6: throttle suppression cannot masquerade as a fresh base."""
     from ralph.pipeline import auto_integrate_remote_sync as mod
 
     monkeypatch.setattr(mod, "_throttle_allows_pull", lambda *a, **kw: False)
@@ -294,7 +254,6 @@ def test_suppressed_refresh_is_explicitly_unverified(
 def test_reconcile_failure_is_unsafe_and_blocks_feature_integration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """E9: failed target reconciliation is not a base a feature may use."""
     from ralph.pipeline import auto_integrate_remote_reconcile as reconcile
     from ralph.pipeline import auto_integrate_remote_sync as mod
 
@@ -316,7 +275,6 @@ def test_reconcile_failure_is_unsafe_and_blocks_feature_integration(
 def test_cleanly_aborted_target_reconcile_conflict_degrades_without_blocking_local_integration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-2: a proven clean abort releases ownership and leaves local landing eligible."""
     from ralph.pipeline import auto_integrate_remote_reconcile as reconcile
     from ralph.pipeline import auto_integrate_remote_sync as mod
 
@@ -341,7 +299,6 @@ def test_cleanly_aborted_target_reconcile_conflict_degrades_without_blocking_loc
 
 
 def test_rebase_state_preserves_structured_reclamation_metadata() -> None:
-    """S-4: reclamation facts survive checkpoint serialization without parsing warnings."""
     from ralph.pipeline.rebase_state import RebaseState
 
     restored = RebaseState.model_validate_json(
@@ -360,7 +317,6 @@ def test_rebase_state_preserves_structured_reclamation_metadata() -> None:
 def test_unreachable_remote_degrades_without_failing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AC-20: unreachable remote degrades, run continues."""
     from ralph.pipeline import auto_integrate_remote_sync as mod
     from ralph.pipeline.auto_integrate_sync import REFRESH_UNREACHABLE
 
@@ -378,7 +334,6 @@ def test_unreachable_remote_degrades_without_failing(
 def test_unknown_remote_records_skip_not_crash(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AC-46: unknown remote is recorded as a skip, not a crash."""
     from ralph.pipeline import auto_integrate_remote_sync as mod
     from ralph.pipeline.auto_integrate_sync import REFRESH_NO_REMOTE
 
@@ -398,14 +353,12 @@ def test_unknown_remote_records_skip_not_crash(
 def test_remote_failure_does_not_arm_throttle(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AC-18: failed fetch leaves the throttle unarmed."""
     from ralph.pipeline import auto_integrate_remote_sync as mod
     from ralph.pipeline.auto_integrate_sync import REFRESH_UNREACHABLE
 
     monkeypatch.setattr(mod, "refresh_target_from_remote", lambda *a, **kw: REFRESH_UNREACHABLE)
     config = _config(interval=300.0)
     remote_sync.pull_and_reconcile_target(config, Path("/repo"), "main")
-    # The throttle for that key is empty/unarmed; should not be in the map.
     throttle = mod._REMOTE_PULL_THROTTLE
     assert throttle.should_pull(
         "/repo", "origin", "main", interval_seconds=300.0, clock=lambda: 0.0

@@ -1,5 +1,3 @@
-"""Tests for serialized post-fanout workspace verification."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -39,7 +37,6 @@ def _make_scope(tmp_path: Path) -> WorkspaceScope:
 
 class TestVerificationSkippedWhenWorkerFails:
     def test_verification_skipped_when_any_worker_failed(self) -> None:
-        """When any worker failed, the verification block must be skipped."""
         effect = FanOutEffect(
             work_units=(
                 WorkUnit(unit_id="unit-a", description="A", allowed_directories=["src/a"]),
@@ -47,7 +44,7 @@ class TestVerificationSkippedWhenWorkerFails:
             max_workers=1,
             run_post_fanout_verification=True,
         )
-        any_worker_failed = True  # at least one worker failed
+        any_worker_failed = True
 
         verify_called = False
         if effect.run_post_fanout_verification and not any_worker_failed:
@@ -56,7 +53,6 @@ class TestVerificationSkippedWhenWorkerFails:
         assert not verify_called, "Verification must NOT run when any_worker_failed=True"
 
     def test_verification_runs_when_no_worker_failed(self) -> None:
-        """When all workers succeeded and flag=True, verification block must run."""
         effect = FanOutEffect(
             work_units=(WorkUnit(unit_id="u", description="u", allowed_directories=["src/u"]),),
             max_workers=1,

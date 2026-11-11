@@ -1,4 +1,3 @@
-"""Typed registry entry shared by agent catalog and execution dispatch."""
 
 from __future__ import annotations
 
@@ -15,7 +14,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class ParserRegistryEntry:
-    """Pair a parser factory with its transport-specific strategy factory."""
 
     parser_factory: Callable[[], AgentParser]
     strategy_factory: StrategyFactory

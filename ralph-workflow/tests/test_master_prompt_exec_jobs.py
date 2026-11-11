@@ -1,5 +1,3 @@
-"""Regression tests for exec job flow guidance in master prompt and shared MCP partial."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -23,7 +21,6 @@ if TYPE_CHECKING:
 
 
 def test_exec_job_guidance_text_contains_required_contract_elements() -> None:
-    """The exec job guidance text must state all key operational contract elements."""
     text = exec_job_guidance_text()
     assert "soft reply budget" in text
     assert "job_id" in text
@@ -37,7 +34,6 @@ def test_exec_job_guidance_text_contains_required_contract_elements() -> None:
 
 @pytest.mark.parametrize("planning_style", [True, False])
 def test_build_master_prompt_includes_exec_job_guidance(planning_style: bool) -> None:
-    """Master prompt must render exec job guidance in both planning and execution styles."""
     prompt = build_master_prompt(
         planning_style=planning_style,
         master_prompt_path="/tmp/test_master_prompt.md",
@@ -59,7 +55,6 @@ def test_build_master_prompt_includes_exec_job_guidance(planning_style: bool) ->
 def test_build_master_prompt_preserves_exec_guidance_across_transports(
     transport: AgentTransport | None,
 ) -> None:
-    """Exec job flow guidance must be present regardless of agent transport."""
     prompt = build_master_prompt(
         planning_style=False,
         master_prompt_path="/tmp/transport_master.md",
@@ -76,7 +71,6 @@ def test_build_master_prompt_preserves_exec_guidance_across_transports(
 
 
 def test_materialize_master_prompt_writes_exec_job_guidance(tmp_path: Path) -> None:
-    """Materializing the master prompt writes durable file with exec job guidance."""
     (tmp_path / "PROMPT.md").write_text("Test prompt task criteria", encoding="utf-8")
     master_path = materialize_master_prompt(
         workspace_root=tmp_path,
@@ -95,7 +89,6 @@ def test_materialize_master_prompt_writes_exec_job_guidance(tmp_path: Path) -> N
 
 
 def test_shared_mcp_tools_partial_renders_exec_job_guidance() -> None:
-    """The shared _mcp_tools partial must render exec job guidance when exec is granted."""
     ctx = TemplateContext.default()
     caps, flags = template_variables.default_caps_and_flags_for_drain(SessionDrain.DEVELOPMENT)
     variables = template_variables.capability_template_variables(caps, flags)
@@ -112,13 +105,8 @@ def test_shared_mcp_tools_partial_renders_exec_job_guidance() -> None:
     assert "do not re-run" in rendered
 
 
-# Bounded per-test timeout (5s): rendering the full Jinja template tree
-# legitimately grazes the 1.0s default bound only when the full suite loads
-# the machine; the bound keeps it under the per-test policy without
-# touching the 60s combined budget.
 @pytest.mark.timeout_seconds(5)
 def test_shared_mcp_tools_partial_omits_exec_guidance_when_exec_not_granted() -> None:
-    """When HAS_MCP_EXEC is false, the shared partial omits exec job guidance."""
     ctx = TemplateContext.default()
     caps, flags = template_variables.default_caps_and_flags_for_drain(SessionDrain.DEVELOPMENT)
     variables = template_variables.capability_template_variables(caps, flags)
@@ -132,10 +120,6 @@ def test_shared_mcp_tools_partial_omits_exec_guidance_when_exec_not_granted() ->
     assert "max_runtime_ms" not in rendered
 
 
-# Bounded per-test timeout (5s): rendering the full Jinja template tree
-# legitimately grazes the 1.0s default bound only when the full suite loads
-# the machine; the bound keeps it under the per-test policy without
-# touching the 60s combined budget.
 @pytest.mark.timeout_seconds(5)
 @pytest.mark.parametrize(
     "drain",
@@ -149,7 +133,6 @@ def test_shared_mcp_tools_partial_omits_exec_guidance_when_exec_not_granted() ->
 def test_shared_mcp_tools_partial_renders_exec_guidance_across_production_drains(
     drain: SessionDrain,
 ) -> None:
-    """Every production drain granting process execution includes the exec guidance."""
     ctx = TemplateContext.default()
     caps, flags = template_variables.default_caps_and_flags_for_drain(drain)
     assert caps.contains(RalphCapability.PROCESS_EXEC_BOUNDED)

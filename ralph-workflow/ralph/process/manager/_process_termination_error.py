@@ -1,21 +1,8 @@
-"""ProcessTerminationError exception."""
 
 from __future__ import annotations
 
 
 class ProcessTerminationError(RuntimeError):
-    """Raised when a managed process cannot be terminated after escalation.
-
-    Attributes:
-        pid: The PID of the process that failed to terminate.
-        pgid: The process group ID.
-        stage: Which escalation stage failed
-            ('graceful_terminate', 'force_kill', 'zombie_detected',
-             'access_denied', 'already_gone').
-        reason: Human-readable explanation of what went wrong.
-        descendant_pids: Optional list of descendant PIDs that could not
-            be terminated.
-    """
 
     def __init__(
         self,

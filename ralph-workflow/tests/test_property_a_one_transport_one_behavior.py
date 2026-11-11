@@ -1,11 +1,3 @@
-# property-test: A — one transport, one behavior, the shipped path is the tested path
-"""The shipped path is the tested path.
-
-The FastMCP-only async tool-offload path has been hard-deleted. This test
-pins the absence of the alternate path and the fact that the production
-transport is the one every behavioral test exercises.
-"""
-
 from __future__ import annotations
 
 import importlib
@@ -55,15 +47,10 @@ def _source_bytes(root: Path) -> tuple[tuple[Path, bytes], ...]:
 
 
 _RALPH_SOURCE_BYTES = _source_bytes(REPO / "ralph")
-# Build the repository-wide test-source snapshot during collection, before the
-# per-test wall-clock watchdog starts. The assertion below is a pure audit of
-# this immutable snapshot; performing the full filesystem walk inside its
-# three-second budget makes it contend with parallel verification workers.
 _TEST_SOURCE_BYTES = _source_bytes(REPO / "tests")
 
 
 def test_runtime_module_contains_no_fastmcp_symbols() -> None:
-    """The runtime module must not export any FastMCP-only construction path."""
     text = (REPO / "ralph" / "mcp" / "server" / "runtime.py").read_text()
     for token in FORBIDDEN_TOKENS:
         assert token not in text, (
@@ -72,7 +59,6 @@ def test_runtime_module_contains_no_fastmcp_symbols() -> None:
 
 
 def test_grep_audit_finds_zero_fastmcp_hits_in_ralph() -> None:
-    """The file-walk audit must find no hits in ralph/ outside the absence-asserting test."""
     hits: list[str] = []
     for path, content in _RALPH_SOURCE_BYTES:
         for token, token_bytes in zip(FORBIDDEN_TOKENS, FORBIDDEN_TOKEN_BYTES, strict=True):
@@ -85,7 +71,6 @@ def test_grep_audit_finds_zero_fastmcp_hits_in_ralph() -> None:
 def test_in_memory_transport_drives_dispatch_via_saturated_seam(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Drives the in-memory transport; verifies the dispatch offloads via the seam."""
     seen: list[object] = []
     monkeypatch.setattr(
         _fallback_http_handler._saturated_dispatch,
@@ -115,12 +100,9 @@ def test_in_memory_transport_drives_dispatch_via_saturated_seam(
 
 
 def test_ralph_mcp_server_public_surface_has_no_fastmcp_symbol() -> None:
-    """The ralph.mcp.server package surface must not re-export build_fastmcp_server."""
     pkg = importlib.import_module("ralph.mcp.server")
-    # __getattr__ raises AttributeError when the symbol is missing — pin that.
     with pytest.raises(AttributeError):
         _ = pkg.build_fastmcp_server
-    # The runtime module attribute is also gone.
     runtime = importlib.import_module("ralph.mcp.server.runtime")
     assert not hasattr(runtime, "build_fastmcp_server")
     assert not hasattr(runtime, "FastMCP")
@@ -128,16 +110,8 @@ def test_ralph_mcp_server_public_surface_has_no_fastmcp_symbol() -> None:
     assert not hasattr(runtime, "_create_tool")
 
 
-# Absence-asserting marker substring used by the test files that document the
-# FastMCP path removal. A test line is classified as absence-asserting if it
-# contains this exact marker (the canonical assertion text the test fixtures
-# quote in a # comment or docstring).
 _ABSENCE_MARKER = "Property A: there is no alternate FastMCP path"
 
-# Test files that use the absence marker to document the FastMCP path
-# removal. They are the only files in tests/ that may reference any
-# FORBIDDEN_TOKENS — every hit in them is a documentation comment, not a
-# real import or call.
 _ABSENCE_DOCUMENTING_TESTS: frozenset[str] = frozenset(
     {
         "test_mcp_server_file_backed_session_capability_profile.py",
@@ -150,24 +124,6 @@ _ABSENCE_DOCUMENTING_TESTS: frozenset[str] = frozenset(
 
 
 def _line_is_absence_asserting(line: str, rel: str) -> bool:
-    """True if a matched line is a documentation marker, not a usage hit.
-
-    The classification rule from the plan: a hit is absence-asserting if
-    EITHER (a) the line is an inline # comment or docstring containing the
-    literal marker ``_ABSENCE_MARKER``, OR (b) the line is inside
-    ``test_property_a_one_transport_one_behavior.py`` and the hit is the
-    FORBIDDEN_TOKENS tuple itself or a docstring explaining the FastMCP
-    path removal.
-
-    In practice, every line inside the canonical pin file
-    ``test_property_a_one_transport_one_behavior.py`` is part of the
-    absence-asserting machinery (the FORBIDDEN_TOKENS tuple, the
-    ``test_ralph_mcp_server_public_surface_has_no_fastmcp_symbol`` body
-    that checks ``hasattr(runtime, ...)`` for each token, the test
-    function f-string error messages, and the module/test docstrings
-    explaining the FastMCP path removal). The classifier below captures
-    the union of those cases plus the marker comment rule (a).
-    """
     stripped = line.lstrip()
     if _ABSENCE_MARKER in line:
         return True
@@ -177,27 +133,11 @@ def _line_is_absence_asserting(line: str, rel: str) -> bool:
         return True
     if "FORBIDDEN_TOKENS" in line:
         return True
-    # The canonical pin file: any line in it that references a
-    # forbidden token is part of the absence-asserting machinery
-    # (the FORBIDDEN_TOKENS tuple, the hasattr() test body, the
-    # f-string error messages, or the module/test docstrings).
     return rel.endswith("test_property_a_one_transport_one_behavior.py")
 
 
 @pytest.mark.timeout_seconds(3)
 def test_grep_audit_finds_zero_fastmcp_hits_in_tests() -> None:
-    """The file-walk audit must find no USAGE hits in tests/.
-
-    Per the PROMPT.md property A acceptance gate, the forbidden tokens may
-    appear ONLY as absence-asserting documentation (a # comment, docstring,
-    or FORBIDDEN_TOKENS tuple reference). Any usage hit in a test file is a
-    real defect — a test that imports or calls a FastMCP-only symbol would
-    re-introduce the alternate path.
-
-    A test file is permitted to have hits if EVERY hit in that file is
-    classified as absence-asserting; otherwise the test fails with a list
-    of offending files and lines.
-    """
     usage_hits: list[str] = []
     absent_files: list[str] = []
     for path, content in _TEST_SOURCE_BYTES:

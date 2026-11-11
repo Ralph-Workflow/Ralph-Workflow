@@ -1,23 +1,3 @@
-"""Single-attempt integration machinery of :mod:`ralph.pipeline.auto_integrate`.
-
-:func:`_integrate_once` / :func:`_integrate_once_owned` run one
-rebase-or-merge attempt inside the integration transaction (durable
-record transitions, backup ref, fast-forward, remote publication), and
-:func:`_reintegrate_after_remote_reconcile` re-lands the feature after a
-target-to-remote reconciliation. They live in this private companion
-module so ``auto_integrate.py`` stays under the repo-structure file-size
-cap; the orchestration (retry loop, recovery preamble, resolver
-suppression) stays there and re-exports every name defined here
-unchanged.
-
-Names that tests monkeypatch on the ``ralph.pipeline.auto_integrate``
-module (``_run_rebase_or_merge``, ``_fast_forward_target``,
-``_clear_record``, ``_record_rebase_outcome``, ``post_attempt_verify``,
-``contained_land``, ``read_record``, ``get_head_sha``, ``branch_sha``,
-the backup-ref aliases, and the record I/O probes) are reached through a
-deferred ``auto_integrate`` module attribute access, so the monkeypatch
-surface is unchanged by the split.
-"""
 
 from __future__ import annotations
 
@@ -78,7 +58,6 @@ def _reintegrate_after_remote_reconcile(
     rebase_stop_resolver: RebaseStopResolver | None,
     display: ParallelDisplay | None,
 ) -> bool:
-    """Rebase and land the feature after a target-to-remote reconciliation."""
     record, retry = _integrate_once_owned(
         config,
         root,
@@ -148,17 +127,9 @@ def _integrate_once_owned(
     require_in_sync: bool = False,
     owned_record: IntegrationRecord | None = None,
 ) -> tuple[RebaseState | None, bool]:
-    """Run one rebase-or-merge integration and report whether a landing race merits retry."""
-    # Late binding through the auto_integrate namespace: tests monkeypatch
-    # these names on the ``ralph.pipeline.auto_integrate`` module.
     from ralph.pipeline import auto_integrate as _ai
 
     _ai.post_attempt_verify(root, expected_head_sha=None, owns_resolution=False)
-    # Idempotent land: the target already holds every feature commit, so
-    # nothing needs rebasing, merging or moving. Report the same success a
-    # first landing reports and release every latch the record was holding.
-    # A catch-up (``require_in_sync``) is the planning path: the branch must
-    # also absorb the target tip, so "already inside target" is not enough.
     contained = _ai.contained_land(root, target, require_in_sync=require_in_sync)
     if contained is not None:
         return contained, False
@@ -188,11 +159,6 @@ def _integrate_once_owned(
         )
     )
     _ai._write_record_probe(root, attempt_record)
-    # B11/E5: backup the original feature tip on a uniquely named
-    # ``refs/rebase-backup/<id>`` ref BEFORE any mutation so a
-    # concurrent ``git gc --prune`` cannot reclaim the in-flight commits.
-    # The ref is retained through the attempt (the recovery preamble
-    # reads it) and deleted after a successful land or a verified abort.
     backup_ref = _ai._create_rebase_backup_ref(
         root,
         pre_feature_sha,
@@ -212,8 +178,6 @@ def _integrate_once_owned(
             agent_runner=current_agent_runner(),
         )
         if rebase_result.short_circuit is not None:
-            # Resolved failures clear the record; an abort that leaves a rebase
-            # in progress retains it for startup recovery.
             if not rebase_result.short_circuit.recovery_record_retained:
                 _verify_and_cleanup_backup(root, backup_ref, pre_feature_sha, owns_resolution)
             return record_refresh(rebase_result.short_circuit, refresh), False
@@ -227,10 +191,6 @@ def _integrate_once_owned(
             ), False
 
         _ai.post_attempt_verify(root, expected_head_sha=None, owns_resolution=False)
-        # Flip the durable record to 'integrated' BEFORE any ref move so
-        # a crash between this point and the fast-forward will be
-        # recoverable as a continue-fast-forward rather than a restore
-        # (AC-11).
         _ai._write_record_probe(
             root,
             complete_commit(attempt_record, integrated_feature_sha=feature_sha).record,
@@ -254,14 +214,6 @@ def _integrate_once_owned(
             on_reclaimed=remember_reclamation,
         )
 
-        # R6/AC-06: post-attempt terminal-state verification on EVERY
-        # exit path. A completed rebase/merge leaves HEAD at feature_sha,
-        # regardless of whether the target fast-forward wins its race.
-        #
-        # The record MUST stay on disk until this verification passes, so
-        # the recovery preamble can reclaim the leaked state using the
-        # recorded pre-attempt SHA. Clearing the record BEFORE
-        # verification (the prior shape) discarded that metadata.
         _ai.post_attempt_verify(root, expected_head_sha=feature_sha, owns_resolution=False)
         if ok:
             _ai._delete_rebase_backup_ref(root, backup_ref)
@@ -294,26 +246,13 @@ def _integrate_once_owned(
                 target,
                 skip_reason,
             )
-            # Fast-forward skipped: reason is appended but we keep
-            # the rebase/merged action as the headline so the log line
-            # reflects what actually happened to the feature. Only an
-            # explicit concurrent target move merits a bounded retry.
             record = with_skip_reason(
                 record.model_copy(update={"last_reason": skip_reason, "fast_forwarded": False}),
                 rebase_result.skip_reason,
             )
             return record, is_retryable_fast_forward_failure(skip_reason)
-        # A landed feature carries no rebase-phase reason; the registered
-        # skip reason is appended below.
         record = record.model_copy(update={"fast_forwarded": True, "last_reason": None})
         if publish:
-            # Single publication entry point: the reconciler compares
-            # local and remote SHAs, pushes when local is ahead, catches
-            # up when remote is ahead, and reintegrates on divergence.
-            # A non-fast-forward inside the reconciler is handled by
-            # ``reconcile_after_rejected_push``. The caller's
-            # ``fast_forwarded`` is carried through ``source_state`` so
-            # the headline "did the local land" signal survives.
             record = _ai.reconcile_remote_publication(
                 config,
                 root,
@@ -322,9 +261,6 @@ def _integrate_once_owned(
                 source_state=record,
             )
             if record.last_push_status == "non_fast_forward":
-                # A non-fast-forward push is a remote race, not a failed local
-                # landing. Re-integrate the feature after reconciling the target
-                # before retrying publication, without recursively publishing.
                 record = reconcile_after_rejected_push(
                     config,
                     root,
@@ -341,8 +277,6 @@ def _integrate_once_owned(
                         display=display,
                     ),
                 )
-        # A skipped rebase is RECORDED: the registered reason text rides on
-        # the state, so a prescribed skip is visible next to the fallback.
         record = with_skip_reason(record, rebase_result.skip_reason)
         return record, False
     except BaseException:

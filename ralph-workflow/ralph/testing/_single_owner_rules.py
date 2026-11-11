@@ -1,56 +1,3 @@
-"""Single-owner rule engine for the agent failure ledger audit.
-
-This private module holds the single-owner policy data (the forbidden
-tracker names, the temporary allowlists) and the production rule
-implementations that decide whether a module under ``ralph/recovery/``,
-``ralph/pipeline/``, or ``ralph/agents/invoke/`` breaks the single-owner
-invariant: exactly one decision owner
-(:class:`ralph.recovery.agent_failure_ledger.AgentFailureLedger`) owns the
-state and the decision logic for whether an agent is failing, unproductive,
-or broken, and whether to retry it or stop using it.
-
-The rules implemented here are:
-
-1. No module declares streak/counter state or logic used for agent
-   stop/retry decisions (duplicate retry trackers, retry progress guards,
-   in-session retry counters, competing health counters).
-2. No module decides an agent's fate with a LOCAL retry cap: a retry counter
-   compared against a locally declared retry cap that then retries or advances
-   an agent is a second decision owner. Genuine repository-safety bounds (a
-   merge-repair attempt cap, for example) bound repository state rather than
-   agent health and stay accepted. This rule lives in
-   :mod:`ralph.testing._single_owner_retry_cap_rule`.
-3. No module imports a deleted tracker module or symbol.
-4. No module feeds Ralph-authored failure prose (a string literal, an
-   f-string, or a module-level Ralph-authored constant such as
-   ``ATTEMPT_FAILED_EVIDENCE``) into the text classifier
-   (:func:`ralph.pipeline.conflict_resolution.session.classify_failed_resolution_attempt`,
-   ``RecoveryController.classify_conflict_attempt``,
-   :func:`ralph.pipeline.conflict_resolution.resolver_health.bench_resolver`,
-   :func:`ralph.recovery.failure_classifier.should_reset_tool_registry`, a
-   direct ``FailureClassifier().classify(...)`` call, or a ``classify(...)``
-   call on a classifier instance stored in the module). The classifier must
-   only ever see RAW external runtime text (exception objects, subprocess
-   stderr, agent/provider text); Ralph-authored prose reaches AMBIGUOUS and
-   poisons the failure ledger's decisions. The prose is flagged wherever it
-   is laundered: assigned directly at the call site, assigned to a session
-   failure field (``last_attempt_failure`` / ``last_attempt_evidence``) that
-   is then classified, assigned to a local variable (or an ``or``-chain
-   fallback) that is then classified, or returned from a local helper that
-   is then classified. Exception objects passed as the failure argument are
-   legitimate RAW inputs and are never flagged.
-
-The audit entry point (:mod:`ralph.testing.audit_agent_failure_single_owner`)
-scans the tree, applies these rules, and adds the test-side rules that keep
-tests on the owner's public seam. Those test-side rules include the
-name-based rejection of private failure-owner state (the recovery
-controller's backoff counter, unavailability store handle, and
-agent-unavailable marker) and the rejection of the same private state read
-through the controller's SERIALISED snapshot (``snapshot()["backoff_attempts"]``
-and friends); their policy data and violation builders live in
-:mod:`ralph.testing._single_owner_test_rules`.
-"""
-
 from __future__ import annotations
 
 import ast
@@ -59,8 +6,6 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class SingleOwnerViolation:
-    """A violation of the single-owner failure ledger policy."""
-
     path: str
     line: int
     rule: str
@@ -70,23 +15,16 @@ class SingleOwnerViolation:
         return f"{self.path}:{self.line}: [{self.rule}] {self.detail}"
 
 
-# Temporary production allowlist during single-owner consolidation (U4 removed the deleted trackers, controller, options and run_loop; the remaining error modules and __init__ re-export stay until U5 removes the tests).
 TEMPORARY_PRODUCTION_ALLOWLIST: frozenset[str] = frozenset()
 
 TEMPORARY_TEST_ALLOWLIST: frozenset[str] = frozenset()
 
-# Transitional allowlist for surviving competing shapes in conflict resolution until future
-# work refactors them into AgentFailureLedger; only surviving production references remain.
 TEMPORARY_TRANSITIONAL_RULES: dict[str, frozenset[str]] = {
-    # session.py: dead_tool_surfaces tracks candidate tool-surface fault state across
-    # rebase stops. RALPH_FAULT_ESCALATION_HITS is no longer transitional: the
-    # diagnostic constant was deleted, so the forbidden-name ban applies again.
     "ralph/pipeline/conflict_resolution/session.py": frozenset(
         {
             "dead_tool_surfaces",
         }
     ),
-    # chain_candidates.py: dead_tool_surfaces filters candidate chains for tool-faulted agents.
     "ralph/pipeline/conflict_resolution/chain_candidates.py": frozenset(
         {
             "dead_tool_surfaces",
@@ -96,7 +34,6 @@ TEMPORARY_TRANSITIONAL_RULES: dict[str, frozenset[str]] = {
 
 
 def is_transitional_allowed(rel_path: str, name: str) -> bool:
-    """Return True if the symbol is temporarily allowed in rel_path."""
     allowed = TEMPORARY_TRANSITIONAL_RULES.get(rel_path)
     return bool(allowed and name in allowed)
 
@@ -118,7 +55,6 @@ _FORBIDDEN_TRACKER_SYMBOLS: frozenset[str] = frozenset(
         "SameShapeRetryLoopError",
         "BrokenAgentSameShapeLimitError",
         "SameShapeRetryTrackerOptions",
-        # Permanent bans: Rival retry progress guard and signature tracking (eliminated across U3c/U4b)
         "RetryProgressGuard",
         "progress_guard",
         "retry_failure_signature",
@@ -148,7 +84,6 @@ _FORBIDDEN_TRACKER_NAMES: frozenset[str] = frozenset(
         "_in_session_retry_escalation_limit",
         "_check_same_shape_bound",
         "_check_broken_agent_same_shape_bound",
-        # D-7: Competing retry caps and resolver counters
         "technical_retry_cap",
         "_technical_retry_cap",
         "resolver_retries",
@@ -160,7 +95,6 @@ _FORBIDDEN_TRACKER_NAMES: frozenset[str] = frozenset(
         "_resolver_retry_count",
         "_resolver_retry_cap",
         "_resolver_health_counter",
-        # RC-1: Competing fault-hit counters and ad-hoc agent exclusion lists
         "ralph_fault_hits",
         "_ralph_fault_hits",
         "fault_hits",
@@ -181,7 +115,6 @@ _FORBIDDEN_TRACKER_NAMES: frozenset[str] = frozenset(
         "_barred_agents",
         "excluded_agents",
         "_excluded_agents",
-        # Permanent bans: Rival retry progress guard and signature tracking (eliminated across U3c/U4b)
         "RetryProgressGuard",
         "_RetryProgressGuard",
         "progress_guard",
@@ -195,7 +128,6 @@ _FORBIDDEN_TRACKER_NAMES: frozenset[str] = frozenset(
 
 
 def _is_forbidden_target_name(name: str) -> bool:
-    """Check if variable/attribute name matches forbidden duplicate tracker or competing counter patterns."""
     if name in _FORBIDDEN_TRACKER_NAMES:
         return True
     lower = name.lower()
@@ -458,7 +390,6 @@ def _check_production_import(
 
 
 def _check_production_compare(node: ast.Compare, rel_path: str) -> list[SingleOwnerViolation]:
-    """Flag comparisons of retry counters against caps/limits outside AgentFailureLedger."""
     for operand in [node.left, *node.comparators]:
         attrs = [n.attr for n in ast.walk(operand) if isinstance(n, ast.Attribute)]
         names = [n.id for n in ast.walk(operand) if isinstance(n, ast.Name)]
@@ -524,11 +455,6 @@ def _check_production_subscript(node: ast.Subscript, rel_path: str) -> list[Sing
     return []
 
 
-#: Function/method names that enter the text classifier, mapped to the
-#: positional index of the failure argument. ``classify_failed_resolution_attempt``
-#: takes (session, agent_name, raw_failure, ...); ``bench_resolver`` takes
-#: (controller, agent, raw_failure, ...); every other entry takes the
-#: failure as its first positional argument.
 _CLASSIFIER_ENTRY_FUNCTIONS: dict[str, int] = {
     "classify_failed_resolution_attempt": 2,
     "classify_conflict_attempt": 0,
@@ -536,7 +462,6 @@ _CLASSIFIER_ENTRY_FUNCTIONS: dict[str, int] = {
     "bench_resolver": 2,
 }
 
-#: Session failure fields that carry failure text into the classifier.
 _FAILURE_TEXT_FIELDS: frozenset[str] = frozenset(
     {
         "last_attempt_failure",
@@ -544,9 +469,6 @@ _FAILURE_TEXT_FIELDS: frozenset[str] = frozenset(
     }
 )
 
-#: Module-level Ralph-authored evidence constants imported across modules
-#: (assigned in ralph/pipeline/conflict_resolution/session.py). A Name with
-#: one of these identifiers is Ralph-authored prose wherever it appears.
 _KNOWN_RALPH_AUTHORED_CONSTANTS: frozenset[str] = frozenset(
     {
         "ATTEMPT_FAILED_EVIDENCE",
@@ -557,16 +479,6 @@ _KNOWN_RALPH_AUTHORED_CONSTANTS: frozenset[str] = frozenset(
 def _classifier_entry_name(
     call: ast.Call, classifier_instances: set[str] | frozenset[str] = frozenset()
 ) -> str | None:
-    """Return the classifier entry name for a call, or None for unrelated calls.
-
-    Matches ``classify_failed_resolution_attempt(...)``,
-    ``controller.classify_conflict_attempt(...)``, ``bench_resolver(...)``,
-    ``should_reset_tool_registry(...)``, a direct
-    ``FailureClassifier().classify(...)`` construction call, and a
-    ``classify(...)`` call on a classifier instance stored in the module
-    (a name or ``self.<name>`` attribute assigned a ``FailureClassifier(...)``
-    construction anywhere in the module, per ``classifier_instances``).
-    """
     func = call.func
     if isinstance(func, ast.Name) and func.id in _CLASSIFIER_ENTRY_FUNCTIONS:
         return func.id
@@ -589,15 +501,6 @@ def _classifier_entry_name(
 
 
 def _collect_classifier_instance_names(tree: ast.Module) -> set[str]:
-    """Return names bound to a ``FailureClassifier(...)`` construction in the module.
-
-    Covers module-level variables and instance attributes (``self._classifier``),
-    so a STORED classifier instance (``self._classifier.classify(...)``) is
-    recognised as a classifier entry exactly like an inline
-    ``FailureClassifier().classify(...)`` construction. A ``.classify(...)``
-    receiver bound to anything else (e.g. the workspace-change classifier)
-    stays ignored.
-    """
     names: set[str] = set()
     for node in ast.walk(tree):
         if not isinstance(node, (ast.Assign, ast.AnnAssign)) or node.value is None:
@@ -619,7 +522,6 @@ def _collect_classifier_instance_names(tree: ast.Module) -> set[str]:
 
 
 def _classifier_failure_arg(call: ast.Call, entry: str) -> ast.AST | None:
-    """Return the failure argument expression of a classifier entry call."""
     index = _CLASSIFIER_ENTRY_FUNCTIONS.get(entry, 0)
     if len(call.args) > index:
         return call.args[index]
@@ -630,13 +532,6 @@ def _classifier_failure_arg(call: ast.Call, entry: str) -> ast.AST | None:
 
 
 def _expr_is_ralph_authored_prose(node: ast.AST, module_constants: set[str]) -> bool:
-    """Return True when an expression IS Ralph-authored string prose.
-
-    A string literal, an f-string, or a Name referencing a module-level
-    Ralph-authored string constant (locally assigned or in the known
-    cross-module constant set) is prose Ralph wrote; everything else —
-    exception objects, call results, parameters — is external runtime text.
-    """
     if isinstance(node, ast.Constant):
         return isinstance(node.value, str)
     if isinstance(node, ast.JoinedStr):
@@ -647,7 +542,6 @@ def _expr_is_ralph_authored_prose(node: ast.AST, module_constants: set[str]) -> 
 
 
 def _expr_contains_ralph_authored_prose(node: ast.AST, module_constants: set[str]) -> bool:
-    """Return True when any operand of an (or-)chain is Ralph-authored prose."""
     if isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or):
         return any(
             _expr_contains_ralph_authored_prose(value, module_constants) for value in node.values
@@ -656,12 +550,6 @@ def _expr_contains_ralph_authored_prose(node: ast.AST, module_constants: set[str
 
 
 def _expr_reads_failure_field(node: ast.AST, tainted_fields: dict[str, int]) -> str | None:
-    """Return the tainted failure field an expression reads, if any.
-
-    Matches a bare field name or any attribute with a tainted field name,
-    including inside an (or-)chain such as
-    ``session.last_attempt_failure or ... or ATTEMPT_FAILED_EVIDENCE``.
-    """
     for child in ast.walk(node):
         if isinstance(child, ast.Name) and child.id in tainted_fields:
             return child.id
@@ -671,7 +559,6 @@ def _expr_reads_failure_field(node: ast.AST, tainted_fields: dict[str, int]) -> 
 
 
 def _collect_module_string_constants(tree: ast.Module) -> set[str]:
-    """Return names assigned a module-level string literal in the module."""
     constants: set[str] = set()
     for node in tree.body:
         if isinstance(node, ast.Assign):
@@ -693,7 +580,6 @@ def _collect_module_string_constants(tree: ast.Module) -> set[str]:
 
 
 def _assignment_target_field(target: ast.AST) -> str | None:
-    """Return the failure-field name an assignment target writes, if any."""
     if isinstance(target, ast.Name) and target.id in _FAILURE_TEXT_FIELDS:
         return target.id
     if isinstance(target, ast.Attribute) and target.attr in _FAILURE_TEXT_FIELDS:
@@ -702,7 +588,6 @@ def _assignment_target_field(target: ast.AST) -> str | None:
 
 
 def _collect_tainted_failure_fields(tree: ast.Module, module_constants: set[str]) -> dict[str, int]:
-    """Map each failure field assigned Ralph-authored prose to its first line."""
     tainted_fields: dict[str, int] = {}
     for node in ast.walk(tree):
         if not isinstance(node, (ast.Assign, ast.AnnAssign)):
@@ -725,17 +610,6 @@ def _collect_tainted_failure_fields(tree: ast.Module, module_constants: set[str]
 def _collect_local_provenance(
     tree: ast.Module, module_constants: set[str]
 ) -> tuple[dict[str, int], set[str]]:
-    """Return (locally tainted names, prose-returning local function names).
-
-    A name is locally tainted when it is assigned Ralph-authored prose (a
-    string literal, an f-string, a known Ralph-authored constant, or an
-    ``or``-chain containing any of those) anywhere in the module — the
-    ``text = detail or f"..."`` laundering shape. A function is
-    prose-returning when any of its ``return`` values contains authored
-    prose — the ``return detail or f"..."`` helper shape that feeds a
-    classifier entry through a same-module call. Neither taints on its own;
-    both are only violations when the value reaches a classifier entry.
-    """
     tainted: dict[str, int] = {}
     prose_returners: set[str] = set()
     for node in ast.walk(tree):
@@ -764,7 +638,6 @@ def _collect_local_provenance(
 
 
 def _expr_reads_tainted_name(node: ast.AST, tainted_names: dict[str, int]) -> str | None:
-    """Return the locally tainted name an expression reads, if any."""
     for child in ast.walk(node):
         if isinstance(child, ast.Name) and child.id in tainted_names:
             return child.id
@@ -774,7 +647,6 @@ def _expr_reads_tainted_name(node: ast.AST, tainted_names: dict[str, int]) -> st
 
 
 def _expr_calls_prose_returner(node: ast.AST, prose_returners: set[str]) -> str | None:
-    """Return the prose-returning local function an expression calls, if any."""
     for child in ast.walk(node):
         if (
             isinstance(child, ast.Call)
@@ -795,7 +667,6 @@ def _ralph_authored_classifier_call_violation(
     prose_returner: str | None,
     rel_path: str,
 ) -> SingleOwnerViolation:
-    """Build the violation for a classifier entry call fed Ralph-authored prose."""
     if direct_prose:
         detail = (
             f"Classifier entry '{entry}' receives Ralph-authored failure prose "
@@ -835,25 +706,6 @@ def _ralph_authored_classifier_call_violation(
 def _check_ralph_authored_classifier_inputs(
     tree: ast.Module, rel_path: str
 ) -> list[SingleOwnerViolation]:
-    """Flag Ralph-authored failure prose entering the text classifier.
-
-    Per module, this flags (a) any classifier entry call
-    (``classify_failed_resolution_attempt``, ``classify_conflict_attempt``,
-    ``bench_resolver``, ``should_reset_tool_registry``,
-    ``FailureClassifier().classify(...)``, or ``classify(...)`` on a
-    classifier instance stored in the module) whose failure argument is a
-    string literal, an f-string, or a module-level Ralph-authored constant
-    (directly or inside an ``or`` fallback chain); (b) any assignment of
-    such prose to ``last_attempt_failure`` / ``last_attempt_evidence`` — a
-    session field a later classify call classifies; (c) any classifier
-    entry call classifying a local assigned such prose (the
-    ``text = detail or f"..."`` laundering shape); and (d) any classifier
-    entry call receiving the result of a same-module helper returning such
-    prose (the ``return detail or f"..."`` helper shape). Exception objects
-    are RAW external runtime text and are never flagged. The §11
-    typed-conflict-facts fix converted every formerly Ralph-authored site
-    to a typed outcome parameter, so no temporary allowlist remains.
-    """
     module_constants = _collect_module_string_constants(tree)
     tainted_fields = _collect_tainted_failure_fields(tree, module_constants)
     classifier_instances = _collect_classifier_instance_names(tree)
@@ -911,7 +763,6 @@ def _check_ralph_authored_classifier_inputs(
 
 
 def _is_ledger_receiver(node: ast.AST) -> bool:
-    """Check if AST expression represents an AgentFailureLedger receiver."""
     if isinstance(node, ast.Name):
         lower = node.id.lower()
         return "ledger" in lower or lower == "agentfailureledger"

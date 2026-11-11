@@ -1,4 +1,3 @@
-"""Utilities for formatting tool_use input arguments as a compact display string."""
 
 from __future__ import annotations
 
@@ -11,24 +10,12 @@ _FRIENDLY_PREFIX: Final[str] = "ralph."
 
 
 def friendly_tool_name(name: str) -> str:
-    """Return a shorter display name for well-known MCP tool prefixes.
-
-    ``mcp__ralph__read_file`` becomes ``ralph.read_file``.
-    All other names are returned unchanged.
-    Only the rendered display string is affected; metadata is untouched.
-    """
     if name.startswith(_MCP_RALPH_PREFIX):
         return _FRIENDLY_PREFIX + name[len(_MCP_RALPH_PREFIX) :]
     return name
 
 
 def format_tool_input(input_obj: object, *, max_value_chars: int = 120) -> str:
-    """Format a tool_use input dict as a compact key=value string.
-
-    Returns empty string for non-dict inputs.
-    Formats as: (k=v k=v ...) with known keys first (path, command, workdir, pattern),
-    then remaining keys alphabetically. Values are truncated at max_value_chars.
-    """
     if not isinstance(input_obj, dict):
         return ""
     d = cast("dict[str, object]", input_obj)

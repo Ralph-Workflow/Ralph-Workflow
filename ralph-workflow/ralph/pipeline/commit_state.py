@@ -1,4 +1,3 @@
-"""Commit state model for pipeline state."""
 
 from __future__ import annotations
 
@@ -10,7 +9,6 @@ _FROZEN = ConfigDict(frozen=True)
 
 
 class CommitState(RalphBaseModel):
-    """State for commit operations."""
 
     model_config = _FROZEN
 

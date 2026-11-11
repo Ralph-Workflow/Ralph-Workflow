@@ -1,4 +1,3 @@
-"""Test helpers for recovery package: fake monitors and fakes for black-box tests."""
 
 from __future__ import annotations
 
@@ -14,14 +13,10 @@ if TYPE_CHECKING:
 
 
 class FakeConnectivityMonitor:
-    """Deterministic connectivity monitor for tests.
-
-    Allows injecting state transitions without real network probes.
-    """
 
     def __init__(self, initial_state: ConnectivityState = ConnectivityState.ONLINE) -> None:
         self._state: ConnectivityState = initial_state
-        self._listeners: list[  # bounded-accumulator-ok: drained
+        self._listeners: list[
             Callable[[ConnectivityEvent], None]
         ] = []
         self._online_event: asyncio.Event = asyncio.Event()
@@ -51,14 +46,12 @@ class FakeConnectivityMonitor:
         await self._online_event.wait()
 
     def go_offline(self, reason: str = "test offline") -> None:
-        """Simulate going offline."""
         if self._state != ConnectivityState.OFFLINE:
             self._state = ConnectivityState.OFFLINE
             self._online_event.clear()
             self._emit(ConnectivityState.OFFLINE, reason)
 
     def go_online(self, reason: str = "test online") -> None:
-        """Simulate coming back online."""
         if self._state != ConnectivityState.ONLINE:
             self._state = ConnectivityState.ONLINE
             self._online_event.set()

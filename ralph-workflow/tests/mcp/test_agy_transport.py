@@ -1,5 +1,3 @@
-"""Tests for ralph/mcp/transport/agy.py."""
-
 from __future__ import annotations
 
 import json
@@ -19,7 +17,6 @@ pytestmark = pytest.mark.smoke
 
 
 def test_agy_mcp_config_produces_serverurl_key(tmp_path: Path) -> None:
-    """AGY uses serverUrl (not url) as the HTTP key."""
     endpoint = "http://localhost:8080/mcp"
     config = agy_mcp_config(endpoint)
 
@@ -35,7 +32,6 @@ def test_load_existing_agy_upstream_servers_returns_empty_when_no_config(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """When no config file exists, returns empty tuple."""
     monkeypatch.setenv("HOME", str(tmp_path))
     result = load_existing_agy_upstream_servers(workspace_path=None)
     assert result == ()
@@ -45,7 +41,6 @@ def test_load_existing_agy_upstream_servers_parses_http_entry(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """It parses mcpServers entries with serverUrl key."""
     agy_home = tmp_path / ".gemini" / "antigravity-cli"
     agy_home.mkdir(parents=True)
     config_file = agy_home / "mcp_config.json"
@@ -82,7 +77,6 @@ def test_load_existing_agy_upstream_servers_reads_workspace_config(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """It reads workspace-level .agents/mcp_config.json before global config."""
     monkeypatch.setenv("HOME", str(tmp_path))
     workspace = tmp_path / "project"
     workspace.mkdir()
@@ -115,7 +109,6 @@ def test_load_existing_agy_upstream_servers_global_overrides_workspace_on_name_c
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Global AGY config overrides workspace config when names collide."""
     monkeypatch.setenv("HOME", str(tmp_path))
 
     workspace = tmp_path / "project"

@@ -1,13 +1,3 @@
-"""Policy-driven acceptance tests — Product Requirements 1-10 and Criteria A-H.
-
-These tests assert every product requirement and acceptance criterion against a
-fully renamed PolicyBundle (no canonical phase names). Any regression that
-re-introduces hidden phase name knowledge in the runtime will fail here.
-
-Scope: pure functions only. No I/O.
-Runtime budget: ≤ 5 seconds for the full module.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -37,17 +27,6 @@ from ralph.policy.models import (
 
 @pytest.fixture(scope="module")
 def policy_with_renamed_phases() -> PolicyBundle:
-    """Fully custom-named PolicyBundle — no canonical Ralph phase names.
-
-    Custom name mappings (canonical → custom):
-      planning          → design
-      development       → build
-      development_analysis → audit
-      development_commit → sign_off
-      review            → inspect
-      complete          → done
-      failed_terminal   → aborted
-    """
     agents = AgentsPolicy(
         agent_chains={
             "design_chain": AgentChainConfig(agents=["fake-agent"]),
@@ -175,11 +154,6 @@ def policy_with_renamed_phases() -> PolicyBundle:
     return PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
 
 
-# =============================================================================
-# Requirement 1: Policy must fully define user-visible routing semantics
-# =============================================================================
-
-
 class TestRequirement6VerificationSemantics:
     def _bundle_with_verification(self) -> PolicyBundle:
 
@@ -224,7 +198,6 @@ class TestRequirement6VerificationSemantics:
         )
 
     def test_verification_kind_is_policy_declared(self) -> None:
-        """Verification kind comes from policy declaration, not phase name."""
         bundle = self._bundle_with_verification()
         exp = explain_policy(bundle)
         gate = next(p for p in exp.phases if p.name == "gate")
@@ -232,7 +205,6 @@ class TestRequirement6VerificationSemantics:
         assert gate.verification.kind == "artifact"
 
     def test_verification_failure_route_is_policy_declared(self) -> None:
-        """Verification on_failure_route comes from policy."""
         bundle = self._bundle_with_verification()
         exp = explain_policy(bundle)
         gate = next(p for p in exp.phases if p.name == "gate")

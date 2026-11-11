@@ -1,5 +1,3 @@
-"""Tests for ralph.skills._skill_resolver."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

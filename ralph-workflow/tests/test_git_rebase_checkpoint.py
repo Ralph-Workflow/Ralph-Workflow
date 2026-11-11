@@ -48,7 +48,6 @@ def test_legacy_inspection_classifies_persisted_conflict_without_normalizing_it(
 
 
 def test_checkpoint_from_dict_regression_rejects_malformed_typed_fields() -> None:
-    """S-4: invalid persisted collection and counter values remain fail-closed."""
     payload = _checkpoint_entry("main").to_dict()
     payload["conflicted_files"] = ["conflict.txt", 3]
     with pytest.raises(ValueError, match="conflicted_files"):
@@ -95,7 +94,7 @@ def test_save_checkpoint_uses_unique_temp_files_per_writer(
     def worker(checkpoint: RebaseCheckpoint) -> None:
         try:
             save_rebase_checkpoint(checkpoint)
-        except BaseException as exc:  # pragma: no cover - assertion consumes failures
+        except BaseException as exc:
             errors.append(exc)
 
     threads = [threading.Thread(target=worker, args=(checkpoint,)) for checkpoint in checkpoints]
@@ -132,7 +131,6 @@ def test_corrupted_checkpoint_restores_from_backup(
     primary = Path(".agent") / "rebase_checkpoint.json"
     backup = primary.with_suffix(".json.bak")
 
-    # Force the backup to match the latest checkpoint so restoration is deterministic.
     shutil.copy2(primary, backup)
 
     primary.write_text("{{corrupted json}}")

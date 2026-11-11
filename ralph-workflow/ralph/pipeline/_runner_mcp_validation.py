@@ -1,4 +1,3 @@
-"""MCP server validation helpers for the pipeline runner."""
 
 from __future__ import annotations
 
@@ -60,16 +59,6 @@ def default_probe_agent_transports(
 def _effective_session_mcp_servers_for_runner_validation(
     workspace_root: Path,
 ) -> tuple[UpstreamMcpServer, ...]:
-    """Return the effective session MCP server set used by agent transports.
-
-    Product terminology:
-    - servers from ``mcp.toml`` are Ralph custom MCP servers
-    - servers imported from agent-native config (for example Claude ``.mcp.json``)
-      are upstream MCP servers
-
-    The runtime child ultimately consumes one combined session MCP set, so runner
-    preflight must validate that effective set before agent invocation.
-    """
     effective_mcp = effective_session_mcp_plan_from_servers(
         transport_common_module.mcp_toml_as_upstreams(workspace_root),
         agent_upstream_servers=(
@@ -85,10 +74,6 @@ def run_custom_mcp_validation(
     validate_fn: _ValidateMcpFn,
     probe_fn: _ProbeTransportsFn,
 ) -> int:
-    """Validate the effective session MCP server set and agent transports.
-
-    Returns the exit code the runner should propagate (0 to continue, 1 to abort).
-    """
     upstreams = _effective_session_mcp_servers_for_runner_validation(workspace_root)
     if not upstreams:
         clear_tool_catalog(workspace_root)
@@ -111,9 +96,6 @@ def run_custom_mcp_validation(
     probe_results = probe_fn(healthy_servers, workspace_path=workspace_root)
     failures = [p for p in probe_results if not p.ok]
 
-    # Agent-native (third-party) servers are best-effort here too: a probe failure
-    # warns and continues even in strict mode, because the agent runtime owns them.
-    # Only Ralph-owned custom (mcp.toml) servers gate the runner exit code.
     origin_by_name = {server.name: server.origin for server in healthy_servers}
     custom_failures = [p for p in failures if origin_by_name.get(p.server_name) == "custom"]
     agent_failures = [p for p in failures if origin_by_name.get(p.server_name) != "custom"]
@@ -144,9 +126,6 @@ def run_custom_mcp_validation(
             failure.error,
         )
 
-    # Agent-native catalogs are best-effort and collected per server so one broken
-    # third-party server cannot sink the whole catalog or abort preflight. Custom
-    # (mcp.toml) catalog collection stays all-or-nothing and gates the exit code.
     agent_healthy = tuple(s for s in healthy_servers if s.origin != "custom")
     custom_healthy = tuple(s for s in healthy_servers if s.origin == "custom")
     catalog: dict[str, list[UpstreamTool]] = {}

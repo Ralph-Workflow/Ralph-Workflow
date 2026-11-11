@@ -1,10 +1,3 @@
-"""Black-box tests for ralph/display/phase_lifecycle.py.
-
-Verifies the view-model dataclasses hold correct data, provide consistent
-iteration labels, and convert cleanly to PhaseIterationContext for
-downstream rendering.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -20,10 +13,6 @@ from ralph.policy.models import (
     PhaseTransition,
     PipelinePolicy,
 )
-
-# ---------------------------------------------------------------------------
-# PhaseEntryModel
-# ---------------------------------------------------------------------------
 
 
 class TestPhaseEntryModel:
@@ -52,7 +41,6 @@ class TestPhaseEntryModel:
         assert parts[0] == format_dev_cycle(3)
 
     def test_iteration_label_parts_full_context_order(self) -> None:
-        """Labels are ordered: outer_dev → inner_analysis."""
         m = PhaseEntryModel(
             phase_name="fix",
             outer_dev_iteration=2,

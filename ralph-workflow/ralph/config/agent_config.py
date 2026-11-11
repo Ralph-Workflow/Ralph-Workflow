@@ -1,4 +1,3 @@
-"""Agent configuration model definitions."""
 
 from __future__ import annotations
 
@@ -12,18 +11,10 @@ from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.pydantic_compat import RalphBaseModel
 
 _ENV_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
-# ``env`` options that consume the following token as their argument.
 _ENV_OPTIONS_WITH_ARGUMENT = frozenset({"-u", "--unset", "-C", "--chdir"})
 
 
 def command_binary_name(cmd: str) -> str:
-    """Return the bare name of the program ``cmd`` runs.
-
-    An absolute or relative path is reduced to its final component, and an
-    ``env`` launcher (with its options) and leading ``VAR=value``
-    assignments are skipped, so ``env FOO=1 /usr/local/bin/claude`` names
-    ``claude``. Returns ``""`` when ``cmd`` names no program.
-    """
     try:
         tokens = shlex.split(cmd)
     except ValueError:
@@ -42,30 +33,6 @@ def command_binary_name(cmd: str) -> str:
 
 
 class AgentConfig(RalphBaseModel):
-    """Configuration for a single AI agent.
-
-    Attributes:
-        cmd: Base command to run the agent.
-        output_flag: Optional output format flag for streaming JSON.
-        yolo_flag: Optional autonomous/non-interactive flag string.
-        verbose_flag: Flag for verbose output.
-        json_parser: Which JSON parser to use for agent output.
-        model_flag: Optional model/provider flag.
-        print_flag: Optional print flag for non-interactive output mode.
-        streaming_flag: Optional streaming flag for partial JSON messages.
-        session_flag: Optional session continuation flag template.
-        display_name: Human-readable display name for UI/UX.
-        transport: Invocation/MCP transport type for the agent runtime.
-        subagent_capability: Whether the agent runtime exposes a usable
-            sub-agent / task tooling that can dispatch parallel work. When
-            ``None`` (the default), it is inferred from the resolved
-            ``transport``: Claude / Claude-interactive runs default to
-            ``True``; every other transport defaults to ``None`` (no
-            inference, the agent decides at runtime). The bundled
-            ``ralph-workflow.toml`` ships with ``[agents.claude]
-            subagent_capability = true`` so new installs and partial
-            overrides both inherit the sub-agent-enabled default.
-    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -81,10 +48,6 @@ class AgentConfig(RalphBaseModel):
     display_name: str | None = None
     transport: AgentTransport | None = None
     subagent_capability: bool | None = None
-    # Optional model identifier (e.g. ``zai-coding-plan/glm-5.2``). Surfaced
-    # in stale-session retry prompts so the retry agent knows which model
-    # rejected the prior session. Optional because not every agent config
-    # names a model (some resolve the model via flag/env at invocation time).
     model: str | None = None
 
     def model_post_init(self, _context: object) -> None:

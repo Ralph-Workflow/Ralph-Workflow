@@ -1,14 +1,3 @@
-"""Update nagger: tell the user when a newer ``ralph-workflow`` release exists.
-
-This package informs; it never mutates. Public surface:
-
-- :func:`maybe_render_update_nag` — one-line nag at run start, cache-driven with
-  a throttled background refresh so it never delays a run.
-- :func:`update_status` — synchronous summary for ``ralph --diagnose``.
-
-Every dependency is injected via :class:`UpdateCheckDeps` so the whole flow is
-unit-testable without threads, network, filesystem, or a real clock.
-"""
 
 from __future__ import annotations
 
@@ -65,7 +54,6 @@ def _spawn_daemon(target: Callable[[], None]) -> None:
 
 
 def default_deps() -> UpdateCheckDeps:
-    """Wire the production implementations of every collaborator."""
     return UpdateCheckDeps(
         current_version=__version__,
         environ=os.environ,
@@ -83,7 +71,6 @@ def default_deps() -> UpdateCheckDeps:
 
 
 def _refresh_cache(deps: UpdateCheckDeps, path: Path, now: float) -> None:
-    """Fetch the latest version and persist it; swallow every failure."""
     try:
         latest = deps.fetch_latest()
         if latest is not None:
@@ -95,15 +82,8 @@ def _refresh_cache(deps: UpdateCheckDeps, path: Path, now: float) -> None:
 def maybe_render_update_nag(
     display_context: DisplayContext, *, deps: UpdateCheckDeps | None = None
 ) -> None:
-    """Show a one-line upgrade nag when the cache reports a newer release.
-
-    Reads only from cache for display (so run start is never blocked); when the
-    cache is stale, a background refresh is scheduled to update it for next time.
-    """
     resolved = deps if deps is not None else default_deps()
     try:
-        # A nag (and its background network refresh) only makes sense for an
-        # interactive human at a terminal; skip for pipes, CI, and the test suite.
         if not display_context.console.is_terminal:
             return
         if resolved.is_disabled(resolved.environ):
@@ -124,13 +104,6 @@ def maybe_render_update_nag(
 def update_status(
     *, allow_network: bool = True, deps: UpdateCheckDeps | None = None
 ) -> UpdateStatus:
-    """Return the current update situation for ``ralph --diagnose``.
-
-    Reads the cached result; when ``allow_network`` is True (an interactive
-    diagnose) and the cache is stale, it does a single synchronous, time-boxed
-    PyPI refresh. Callers pass ``allow_network=False`` for non-interactive
-    contexts (pipes, CI, tests) so the status is computed from cache alone.
-    """
     resolved = deps if deps is not None else default_deps()
     install = resolved.detect_install()
     if resolved.is_disabled(resolved.environ):

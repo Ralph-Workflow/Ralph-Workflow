@@ -1,5 +1,3 @@
-"""Tests for ralph.skills._capability_* modules."""
-
 from ralph.skills._capability_entry import CapabilityEntry
 from ralph.skills._capability_state import CapabilityState
 from ralph.skills._capability_status import CapabilityStatus
@@ -39,20 +37,17 @@ def test_capability_entry_full_init() -> None:
 
 def test_capability_entry_supports_model_copy() -> None:
     entry = CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY)
-    # frozen=True prevents direct modification; use model_copy to create modified copy
     copy = entry.model_copy(update={"status": CapabilityStatus.NEEDS_REPAIR})
     assert copy.status == CapabilityStatus.NEEDS_REPAIR
-    assert entry.status == CapabilityStatus.INSTALLED_HEALTHY  # original unchanged
+    assert entry.status == CapabilityStatus.INSTALLED_HEALTHY
 
 
 def test_capability_state_has_four_named_fields() -> None:
     state = CapabilityState()
-    # All four dependency-backed helpers are present
     assert hasattr(state, "web_search")
     assert hasattr(state, "visit_url")
     assert hasattr(state, "docs_mcp")
     assert hasattr(state, "skills")
-    # All are CapabilityEntry instances
     assert isinstance(state.web_search, CapabilityEntry)
     assert isinstance(state.visit_url, CapabilityEntry)
     assert isinstance(state.docs_mcp, CapabilityEntry)
@@ -61,12 +56,11 @@ def test_capability_state_has_four_named_fields() -> None:
 
 def test_capability_state_supports_model_copy() -> None:
     state = CapabilityState()
-    # frozen=True prevents direct modification; use model_copy to create modified copy
     copy = state.model_copy(
         update={"web_search": CapabilityEntry(status=CapabilityStatus.INSTALLED_OUTDATED)}
     )
     assert copy.web_search.status == CapabilityStatus.INSTALLED_OUTDATED
-    assert state.web_search.status == CapabilityStatus.NOT_INSTALLED  # original unchanged
+    assert state.web_search.status == CapabilityStatus.NOT_INSTALLED
 
 
 def test_capability_state_can_be_copied_with_update() -> None:
@@ -81,5 +75,4 @@ def test_capability_state_can_be_copied_with_update() -> None:
     )
     assert updated.web_search.status == CapabilityStatus.INSTALLED_HEALTHY
     assert updated.web_search.ralph_version == "2.0.0"
-    # Original unchanged
     assert state.web_search.status == CapabilityStatus.NOT_INSTALLED

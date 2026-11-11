@@ -1,13 +1,3 @@
-"""Policy-driven acceptance tests — Product Requirements 1-10 and Criteria A-H.
-
-These tests assert every product requirement and acceptance criterion against a
-fully renamed PolicyBundle (no canonical phase names). Any regression that
-re-introduces hidden phase name knowledge in the runtime will fail here.
-
-Scope: pure functions only. No I/O.
-Runtime budget: ≤ 5 seconds for the full module.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -40,17 +30,6 @@ from ralph.policy.render import render_explanation_text
 
 @pytest.fixture(scope="module")
 def policy_with_renamed_phases() -> PolicyBundle:
-    """Fully custom-named PolicyBundle — no canonical Ralph phase names.
-
-    Custom name mappings (canonical → custom):
-      planning          → design
-      development       → build
-      development_analysis → audit
-      development_commit → sign_off
-      review            → inspect
-      complete          → done
-      failed_terminal   → aborted
-    """
     agents = AgentsPolicy(
         agent_chains={
             "design_chain": AgentChainConfig(agents=["fake-agent"]),
@@ -178,16 +157,10 @@ def policy_with_renamed_phases() -> PolicyBundle:
     return PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
 
 
-# =============================================================================
-# Requirement 1: Policy must fully define user-visible routing semantics
-# =============================================================================
-
-
 class TestAcceptanceASingleSourceOfTruth:
     def test_all_phases_appear_in_policy_render(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """render_explanation_text shows all custom phase names from policy."""
         exp = explain_policy(policy_with_renamed_phases)
         text = render_explanation_text(exp)
         for phase_name in ("design", "build", "audit", "sign_off", "done", "aborted"):
@@ -196,7 +169,6 @@ class TestAcceptanceASingleSourceOfTruth:
     def test_routing_from_policy_matches_reduce_result(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """The route declared in policy matches what reduce() produces."""
         policy_target = (
             policy_with_renamed_phases.pipeline.phases["audit"].decisions["request_changes"].target
         )

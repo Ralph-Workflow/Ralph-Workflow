@@ -1,12 +1,3 @@
-"""Unit tests for the diagnostics module.
-
-Tests cover:
-- SystemInfo.gather() populates all fields
-- run_diagnostics() returns a DiagnosticReport
-- AgentDiagnostics with mocked AgentRegistry
-- Agent availability check logic
-"""
-
 from __future__ import annotations
 
 from ralph.diagnostics import (
@@ -17,10 +8,7 @@ MULTI_AGENT_COUNT = 2
 
 
 class TestAgentStatus:
-    """Tests for AgentStatus dataclass."""
-
     def test_agent_status_creation(self) -> None:
-        """Test that AgentStatus can be created with all fields."""
         status = AgentStatus(
             name="claude",
             display_name="Claude Code",
@@ -35,7 +23,6 @@ class TestAgentStatus:
         assert status.command == "claude"
 
     def test_agent_status_defaults(self) -> None:
-        """Test that AgentStatus fields have correct types."""
         status = AgentStatus(
             name="test",
             display_name="Test",

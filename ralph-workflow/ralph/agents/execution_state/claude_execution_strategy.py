@@ -1,4 +1,3 @@
-"""Execution strategy for Claude agents."""
 
 from __future__ import annotations
 
@@ -17,7 +16,6 @@ from .generic_execution_strategy import GenericExecutionStrategy
 
 
 class ClaudeExecutionStrategy(CompletionEnforcingStrategy, GenericExecutionStrategy):
-    """Claude-aware activity classification for watchdog control flow."""
 
     def classify_activity_line(self, line: str) -> AgentActivitySignal | None:
         stripped = line.strip()

@@ -1,19 +1,3 @@
-"""Ralph CLI commands package.
-
-Re-exports the top-level entry points for each CLI sub-command so callers can
-import them from ``ralph.cli.commands`` without knowing the submodule layout.
-The main CLI wiring lives in ``ralph.cli.main``; each sub-command is
-implemented in its own submodule under this package.
-
-Public exports:
-
-- ``commit_plumbing`` - drives ``ralph --generate-commit``
-- ``diagnose_command`` - drives ``ralph diagnose``
-- ``init_command`` - drives ``ralph init``
-- ``run_pipeline`` - drives ``ralph run`` (the primary workflow entry point)
-- ``smoke_interactive_agy_command`` - drives the manual AGY end-to-end smoke test
-- ``smoke_interactive_claude_command`` - drives the manual PTY parity smoke test
-"""
 
 from __future__ import annotations
 

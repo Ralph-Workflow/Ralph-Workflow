@@ -1,20 +1,8 @@
-"""Single declarative source for the 9 built-in agent declarations.
-
-The :class:`BuiltinAgentSpec` dataclass mirrors the kwargs accepted by
-:func:`ralph.agents.registration.register_agent_support` and the legacy
-:class:`AgentSupport.from_registration_kwargs` so the 9 built-in entries
-in :mod:`ralph.agents.builtin` can be expressed as a single declarative
-row per agent, instead of repeating the kwargs across nine function calls.
-
-Use :meth:`BuiltinAgentSpec.to_support` to materialize the dataclass into
-an :class:`AgentSupport` instance.  The resulting ``is_builtin`` flag is
-always ``True`` so the catalog can treat these entries as reserved.
-"""
 
 from __future__ import annotations
 
 import dataclasses
-from dataclasses import dataclass
+from dataclasses import Field, dataclass
 from typing import TYPE_CHECKING, cast
 
 from ralph.agents.support import AgentSupport
@@ -29,61 +17,37 @@ if TYPE_CHECKING:
     from ralph.agents.parsers.base import AgentParser
 
 
-# Fields that are NOT forwarded to ``AgentSupport.from_registration_kwargs``
-# via **kwargs because they are passed as positional / named arguments by
-# :meth:`BuiltinAgentSpec.to_support`.  Kept as a frozenset so the surface
-# is explicit and future built-in agent additions do not silently break
-# the 9-entry frozen contract pinned by
-# ``test_agents/test_builtin_spec_consolidation.py``.
 _BUILTIN_SPEC_POSITIONAL_FIELDS: frozenset[str] = frozenset(
     {"transport", "parser_factory", "strategy_factory"}
+)
+
+_BUILTIN_SPEC_FORWARDED_FIELDS: frozenset[str] = frozenset(
+    {
+        "cmd",
+        "display_capabilities",
+        "display_name",
+        "dynamic_alias_help",
+        "dynamic_alias_help_prefix",
+        "empty_output_diagnostic_factory",
+        "empty_output_diagnostic_prefix",
+        "interactive",
+        "json_parser",
+        "model_flag",
+        "no_default_session_flag",
+        "output_flag",
+        "print_flag",
+        "session_flag",
+        "session_identifier_observable",
+        "streaming_flag",
+        "subagent_capability",
+        "verbose_flag",
+        "yolo_flag",
+    }
 )
 
 
 @dataclass(frozen=True, slots=True)
 class BuiltinAgentSpec:
-    """Declarative description of one built-in agent.
-
-    Attributes:
-        transport: Transport enum value.
-        parser_factory: Callable returning a parser instance.
-        strategy_factory: Callable returning an execution strategy instance.
-        json_parser: Parser type token.
-        cmd: Executable command; defaults to ``name`` on materialization.
-        output_flag: Optional output format flag.
-        yolo_flag: Optional autonomous flag string.
-        verbose_flag: Optional verbose flag string.
-        model_flag: Optional model/provider flag.
-        print_flag: Optional print flag.
-        streaming_flag: Optional streaming flag.
-        session_flag: Optional session continuation flag template.
-        display_name: Human-readable display name.
-        interactive: Whether the agent is interactive (PTY).
-        subagent_capability: Whether the agent exposes usable sub-agent tooling.
-        no_default_session_flag: When True, suppress the default
-            ``--resume {}`` session template that would otherwise be set
-            by :meth:`AgentSupport.from_registration_kwargs` for
-            interactive agents.  Used for agy.
-        session_identifier_observable: S-6 (G6 / DoD 20). Whether this
-            transport's output can ever carry an observable session
-            identifier. Defaults to True; nanocoder is the one documented
-            False case (see :class:`ralph.agents.support.AgentSupport`'s
-            docstring for the full reasoning and its evidence source).
-        dynamic_alias_help: Zero-arg callable returning the agent's alias
-            help string (e.g. the available-model list). Served for exact
-            catalog matches and, together with
-            ``dynamic_alias_help_prefix``, for unknown aliases under the
-            registered prefixes. Used by agy.
-        dynamic_alias_help_prefix: Agent-name prefixes under which
-            ``dynamic_alias_help`` is served for names that never resolve
-            in the catalog. Used by agy as ``("agy",)``.
-        empty_output_diagnostic_factory: Callable receiving the bounded
-            output lines and an optional CLI-log path that returns an
-            actionable empty-output cause or ``None``. Used by agy.
-        empty_output_diagnostic_prefix: Agent-name prefixes under which
-            ``empty_output_diagnostic_factory`` is served for names that
-            never resolve in the catalog. Used by agy as ``("agy",)``.
-    """
 
     transport: AgentTransport
     parser_factory: Callable[[], AgentParser]
@@ -109,88 +73,60 @@ class BuiltinAgentSpec:
     empty_output_diagnostic_prefix: tuple[str, ...] = ()
 
     def to_support(self, name: str) -> AgentSupport:
-        """Materialize the dataclass into an :class:`AgentSupport`.
-
-        Forwards every dataclass field as a keyword argument to
-        :meth:`AgentSupport.from_registration_kwargs` so future
-        BuiltinAgentSpec additions do not require updating two parallel
-        kwarg lists.  ``is_builtin=True`` is always set.
-
-        Args:
-            name: Agent name to assign to the resulting support.
-
-        Returns:
-            The materialized :class:`AgentSupport` with ``is_builtin=True``.
-        """
-        asdict_result: dict[str, object] = cast(
-            "dict[str, object]",
-            dataclasses.asdict(self),
+        spec_fields = frozenset(
+            spec_field.name
+            for spec_field in cast("tuple[Field[str], ...]", dataclasses.fields(self))
         )
-        kwargs: dict[str, object] = {
-            field: value
-            for field, value in asdict_result.items()
-            if field not in _BUILTIN_SPEC_POSITIONAL_FIELDS
-        }
-        # ``dataclasses.asdict`` recursively converts nested dataclasses
-        # to plain dicts, which would lose the ``DisplayCapabilityStance``
-        # class identity the downstream validator relies on. Pass the
-        # original tuple through explicitly so the validator sees real
-        # ``DisplayCapabilityStance`` instances.
-        kwargs["display_capabilities"] = self.display_capabilities
+        forwarded = spec_fields - _BUILTIN_SPEC_POSITIONAL_FIELDS
+        if forwarded != _BUILTIN_SPEC_FORWARDED_FIELDS:
+            msg = (
+                f"BuiltinAgentSpec fields {sorted(forwarded)} do not match the "
+                f"registration fields forwarded to AgentSupport "
+                f"{sorted(_BUILTIN_SPEC_FORWARDED_FIELDS)}"
+            )
+            raise ValueError(msg)
         return AgentSupport.from_registration_kwargs(
             name,
             transport=self.transport,
             parser_factory=self.parser_factory,
             strategy_factory=self.strategy_factory,
+            json_parser=self.json_parser,
+            cmd=self.cmd,
+            output_flag=self.output_flag,
+            yolo_flag=self.yolo_flag,
+            verbose_flag=self.verbose_flag,
+            model_flag=self.model_flag,
+            print_flag=self.print_flag,
+            streaming_flag=self.streaming_flag,
+            session_flag=self.session_flag,
+            display_name=self.display_name,
+            interactive=self.interactive,
+            subagent_capability=self.subagent_capability,
+            no_default_session_flag=self.no_default_session_flag,
+            session_identifier_observable=self.session_identifier_observable,
+            display_capabilities=self.display_capabilities,
+            dynamic_alias_help=self.dynamic_alias_help,
+            dynamic_alias_help_prefix=self.dynamic_alias_help_prefix,
+            empty_output_diagnostic_factory=self.empty_output_diagnostic_factory,
+            empty_output_diagnostic_prefix=self.empty_output_diagnostic_prefix,
             is_builtin=True,
-            **kwargs,  # type: ignore[arg-type]  # reason: autogenerated code has no type support, see docs/agents/type-ignore-policy.md#autogenerated-code
         )
 
 
 def vision_verdict_agent_spec() -> BuiltinAgentSpec:
-    """Return the canonical :class:`BuiltinAgentSpec` for the vision-verdict agent.
-
-    The vision-verdict agent (see
-    :file:`ralph/agents/content/vision-verdict-agent.md`) is a
-    conditional built-in: it is registered as ``is_builtin=True``
-    so the catalog treats ``vision-verdict`` as a reserved name,
-    but it is NOT part of the always-seeded
-    :data:`ralph.agents.builtin._BUILTIN_AGENT_SUPPORTS` tuple.
-    The :func:`ralph.agents.vision_agent_provisioning.provision_vision_verdict_agent`
-    call site is the only place that materializes the spec into a
-    support; it does so when the design-system policy is in scope
-    for the active workspace.
-
-    The factory lives in :mod:`ralph.agents.builtin_spec` so the
-    canonical kwarg surface for every built-in agent is in one
-    place, even when the agent is conditionally provisioned. The
-    three display capabilities are declared
-    :meth:`~ralph.agents.display_capability_stance.DisplayCapabilityStance.not_applicable`
-    because the agent emits a
-    :class:`~ralph.visual.design_verdict.DesignVerdict` artifact
-    rather than a TUI surface; declaring NOT_APPLICABLE is the
-    honest stance, not UNIMPLEMENTED.
-
-    Returns:
-        A fresh :class:`BuiltinAgentSpec` carrying the
-        vision-verdict kwargs. The spec is independent of the
-        always-seeded built-in tuple so the conditional
-        provisioning can be exercised without leaking the agent
-        into the always-on path.
-    """
     from ralph.agents.display_capabilities import (
-        DisplayCapability,  # reason: lazy import keeps the module-level dependency graph clean
+        DisplayCapability,
     )
     from ralph.agents.display_capability_stance import (
-        DisplayCapabilityStance,  # reason: same lazy-import rationale
+        DisplayCapabilityStance,
     )
-    from ralph.agents.execution_state.generic_execution_strategy import (  # reason: same lazy-import rationale
+    from ralph.agents.execution_state.generic_execution_strategy import (
         GenericExecutionStrategy,
     )
     from ralph.agents.parsers.generic import (
-        GenericParser,  # reason: same lazy-import rationale
+        GenericParser,
     )
-    from ralph.config.enums import (  # reason: same lazy-import rationale
+    from ralph.config.enums import (
         AgentTransport,
         JsonParserType,
     )

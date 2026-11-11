@@ -1,5 +1,3 @@
-# Deprecated: Ralph-orchestrated workers are removed from the execution model; parallelism is owned by the developer agent's own sub-agents. See docs/sphinx/concepts.md §"Deprecated: Ralph-orchestrated workers".
-"""Effect routing: determine which effect to apply given the current pipeline state."""
 
 from __future__ import annotations
 
@@ -78,7 +76,6 @@ def determine_effect_from_policy(
     has_uncommitted_changes_fn: Callable[[Path], bool] = has_uncommitted_changes,
     recovery: RecoveryController | None = None,
 ) -> Effect:
-    """Select the next pipeline effect based on current state and policy."""
     terminal = _terminal_phase_effect(state, policy_bundle.pipeline)
     if terminal is not None:
         return terminal
@@ -190,13 +187,6 @@ def _fan_out_effect(
 
 
 def _work_units_from_plan_artifact(workspace_root: Path) -> tuple[WorkUnit, ...]:
-    """Best-effort read of work_units from the on-disk plan artifact.
-
-    Returns an empty tuple when the plan is absent, a no-op, declares no
-    usable work_units, or cannot be read. Accepted plans need not have structure;
-    incomplete extraction and unsafe dispatch graphs stay with the main agent,
-    as do ordinary missing or corrupt artifact integrity failures.
-    """
     workspace = FsWorkspace(workspace_root)
     try:
         artifact_wrapper = load_phase_artifact(workspace, PLAN_ARTIFACT_PATH)
@@ -223,8 +213,6 @@ def _work_units_from_plan_artifact(workspace_root: Path) -> tuple[WorkUnit, ...]
         return ()
     steps, _units, owned_steps = canonical_plan_references(artifact)
     if steps != owned_steps:
-        # Native fan-out advances the phase after worker completion. Keep any
-        # unowned step in the main agent rather than silently omitting it.
         return ()
     return tuple(parsed.work_units)
 
@@ -263,7 +251,6 @@ def _current_analysis_phase_advance_effect(
     phase_def: PhaseDefinition,
     pipeline_policy: PipelinePolicy,
 ) -> ExhaustedAnalysisPhaseAdvanceEffect | None:
-    """Return a phase-advance effect when the current analysis phase is exhausted."""
     if phase_def.role != "analysis":
         return None
     bypass = resolve_exhausted_analysis_bypass(state, state.phase, pipeline_policy)
@@ -323,20 +310,6 @@ def _commit_review_phase_effect(
 
 
 def commit_review_proposal_identity(state: PipelineState) -> tuple[str, str]:
-    """Return the stable ``(run_id, iteration)`` identity of a commit-review seal.
-
-    The identity must be the SAME in the preflight that seals the proposal and
-    in the phase handler that re-seals it after the reviewer acted, or the two
-    seals land on different refs. It must also be UNIQUE per sealing attempt,
-    so a later attempt never overwrites an earlier proposal ref: the rejected
-    ref of one attempt has to stay resolvable for the whole run.
-
-    The iteration segment therefore combines the pipeline iteration (the
-    completed development-cycle count, which only advances when a cycle
-    commits) with the consecutive-rejection count (which only advances when
-    an attempt is rejected). Both components are monotone, so a segment is
-    never reused.
-    """
     cycle = state.get_outer_progress("iteration") + 1
     attempt = state.commit_review_rejections + 1
     return "run", f"{cycle}-{attempt}"

@@ -1,4 +1,3 @@
-"""Secret resolution helpers for web-search backends."""
 
 from __future__ import annotations
 
@@ -16,7 +15,6 @@ def resolve_secret(
     *,
     getenv: EnvGetter = os.getenv,
 ) -> str:
-    """Resolve a backend secret from either an inline value or an env var name."""
 
     normalized_key = _normalize_optional_string(api_key)
     normalized_env = _normalize_optional_string(api_key_env)

@@ -1,5 +1,3 @@
-"""Tests for autowiring agent chains when targeting agents configuration files."""
-
 from __future__ import annotations
 
 import logging
@@ -12,11 +10,6 @@ from git import Actor, Repo
 
 from ralph.config.agent_detection import autowire_chains_to_detected_agent
 
-# This module crosses the real Git boundary on purpose: the autowire proofs
-# assert on the git log subjects (no chore commit for an agents file, a
-# chore commit for a main config). It is registered in
-# ``REQUIRED_AUTO_INTEGRATE_E2E_FILES`` so the real-Git proof stays on the
-# default ``make test`` lane instead of rotting behind an opt-in gate.
 pytestmark = pytest.mark.subprocess_e2e
 
 _UNTOUCHED_DEFAULT_CHAINS_AGENTS_TOML = """\
@@ -32,7 +25,6 @@ commit = ["claude/haiku"]
 
 
 def _init_repo_with_initial_commit(repo_root: Path) -> None:
-    """Create a fresh git repo with one initial empty commit so HEAD exists."""
     repo = Repo.init(repo_root)
     try:
         repo.config_writer().set_value("user", "name", "Test Author").release()
@@ -44,7 +36,6 @@ def _init_repo_with_initial_commit(repo_root: Path) -> None:
 
 
 def _git_log_subjects(repo_root: Path) -> list[str]:
-    """Return git log subject lines (newest first) for the test repo."""
     repo = Repo(repo_root)
     try:
         return [str(c.message).splitlines()[0] for c in repo.iter_commits()]
@@ -53,7 +44,6 @@ def _git_log_subjects(repo_root: Path) -> list[str]:
 
 
 def _mock_no_binary(_name: str) -> str | None:
-    """Mock `shutil.which` to simulate absent agent binaries."""
     return None
 
 
@@ -62,7 +52,6 @@ def test_autowire_agents_toml_routes_through_write_agents_toml_with_backup_and_l
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """An agents config file rewritten by autowiring creates a .bak backup and trigger log."""
     agents_path = tmp_path / "ralph-workflow-agents.toml"
     agents_path.write_text(_UNTOUCHED_DEFAULT_CHAINS_AGENTS_TOML, encoding="utf-8")
     bak_path = agents_path.with_name(f"{agents_path.name}.bak")
@@ -89,7 +78,6 @@ def test_autowire_agents_toml_routes_through_write_agents_toml_with_backup_and_l
     assert chains["analysis"] == ["codex"]
     assert chains["commit"] == ["codex"]
 
-    # Log output names trigger, .bak path, and config path
     assert "ralph --init: autowire agent chains" in caplog.text
     assert str(bak_path) in caplog.text
     assert str(agents_path) in caplog.text
@@ -99,7 +87,6 @@ def test_autowire_agents_toml_in_git_repo_creates_no_chore_commit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An agents file inside a git repo does NOT create a chore auto-commit when autowired."""
     _init_repo_with_initial_commit(tmp_path)
     agents_path = tmp_path / "ralph-workflow-agents.toml"
     agents_path.write_text(_UNTOUCHED_DEFAULT_CHAINS_AGENTS_TOML, encoding="utf-8")
@@ -136,7 +123,6 @@ def test_autowire_main_config_in_git_repo_still_creates_chore_commit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A main config file (not agents config) still creates a chore auto-commit and no .bak file."""
     _init_repo_with_initial_commit(tmp_path)
     defaults = Path(__file__).resolve().parents[2] / "ralph" / "policy" / "defaults"
     main_config = tmp_path / "ralph-workflow.toml"
@@ -182,7 +168,6 @@ def test_autowire_agents_filename_variants_route_through_safe_writer(
     monkeypatch: pytest.MonkeyPatch,
     filename: str,
 ) -> None:
-    """All agent config filename variants route through write_agents_toml with .bak backup."""
     agents_path = tmp_path / filename
     agents_path.write_text(_UNTOUCHED_DEFAULT_CHAINS_AGENTS_TOML, encoding="utf-8")
     bak_path = agents_path.with_name(f"{filename}.bak")
@@ -203,13 +188,6 @@ def test_autowire_symlink_alias_to_agents_target_uses_validated_atomic_writer(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """A symlink alias of an agents file is rewritten through the validated atomic writer.
-
-    The alias resolves to the agents configuration, so the write that lands on
-    that target must be published by ``write_agents_toml``: the target is
-    replaced (never rewritten in place), the previous bytes stay recoverable
-    next to the target, and the trigger reaches the operator-visible log.
-    """
     target_path = tmp_path / "ralph-workflow-agents.toml"
     target_path.write_text(_UNTOUCHED_DEFAULT_CHAINS_AGENTS_TOML, encoding="utf-8")
     alias_path = tmp_path / "custom.toml"
@@ -287,7 +265,6 @@ def test_autowire_symlink_alias_to_main_config_keeps_deterministic_auto_commit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A symlink alias of a main config still lands the deterministic chore commit."""
     _init_repo_with_initial_commit(tmp_path)
     defaults = Path(__file__).resolve().parents[2] / "ralph" / "policy" / "defaults"
     main_config = tmp_path / "ralph-workflow.toml"

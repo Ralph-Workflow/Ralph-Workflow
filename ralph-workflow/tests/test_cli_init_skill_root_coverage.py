@@ -1,10 +1,3 @@
-"""Black-box tests for the 'Skill root coverage' table in init_command output.
-
-These tests are subprocess_e2e: they exercise the real `ralph --init` entry
-point and its full filesystem path. They cannot be mocked down to the
-per-test 1 s budget without losing the end-to-end contract they assert.
-"""
-
 from __future__ import annotations
 
 import io
@@ -69,11 +62,6 @@ def _install_fake_roots(
     *,
     with_sibling_skill: bool = True,
 ) -> tuple[Path, Path, Path, Path]:
-    """Pre-create fake canonical + sibling roots under tmp_path and redirect
-    agent_skill_roots() to return entries that resolve there.
-
-    Returns (canonical_dir, codex_dir, opencode_dir, agy_dir).
-    """
     canonical_dir = tmp_path / "claude"
     codex_dir = tmp_path / "codex"
     opencode_dir = tmp_path / "opencode"
@@ -81,8 +69,6 @@ def _install_fake_roots(
     for d in (canonical_dir, codex_dir, opencode_dir, agy_dir):
         d.mkdir(parents=True, exist_ok=True)
     if with_sibling_skill:
-        # Pre-create a single SKILL.md in codex sibling so the
-        # 'all present' check needs to find at least one file.
         (codex_dir / "using-superpowers").mkdir(parents=True, exist_ok=True)
         (codex_dir / "using-superpowers" / "SKILL.md").write_text(
             "# sibling skill\n", encoding="utf-8"
@@ -115,8 +101,6 @@ def _install_fake_roots(
         ),
     )
     monkeypatch.setattr("ralph.skills._agent_paths.agent_skill_roots", lambda: roots)
-    # Pre-create SKILL.md in every baseline skill name under each root so
-    # the table renders 'OK' for every row.
     for root_dir in (canonical_dir, opencode_dir, agy_dir):
         for name in BASELINE_SKILL_NAMES:
             skill_dir = root_dir / name
@@ -165,10 +149,8 @@ def test_init_command_skill_summary_reports_missing_sibling(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     stream = _attach_console_with_buffer(monkeypatch)
-    # Don't pre-create the opencode sibling's SKILL.md files.
     _install_fake_roots(monkeypatch, tmp_path, with_sibling_skill=False)
     monkeypatch.chdir(tmp_path)
-    # Manually delete the opencode skill dirs we just created.
     opencode_dir = tmp_path / "opencode"
     for child in list(opencode_dir.iterdir()):
         if child.is_dir():
@@ -205,19 +187,15 @@ def test_init_command_skill_summary_reports_missing_sibling(
 def test_init_command_skill_summary_reports_project_skill_root(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The skill root coverage table must include project-scope rows with a 'Scope' column."""
     stream = _attach_console_with_buffer(monkeypatch)
     _canonical_dir, _codex_dir, _opencode_dir, _agy_dir = _install_fake_roots(monkeypatch, tmp_path)
 
-    # Pre-create project-scope canonical files so the rows render 'OK'.
     project_canonical = tmp_path / ".opencode" / "skills"
     for name in BASELINE_SKILL_NAMES:
         skill_dir = project_canonical / name
         skill_dir.mkdir(parents=True, exist_ok=True)
         (skill_dir / "SKILL.md").write_text(f"# {name}\n", encoding="utf-8")
 
-    # Pre-create the project-scope siblings so they exist and are symlinked
-    # into the project canonical.
     sibling_specs: tuple[tuple[str, Path], ...] = (
         ("claude", tmp_path / ".claude" / "skills"),
         ("codex", tmp_path / ".codex" / "skills"),

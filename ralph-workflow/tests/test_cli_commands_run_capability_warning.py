@@ -1,5 +1,3 @@
-"""Tests for baseline capability degradation warning in run.py."""
-
 from __future__ import annotations
 
 import io
@@ -63,7 +61,6 @@ def _fake_policy_bundle() -> PolicyBundle:
 
 
 def _configure_workspace(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> WorkspaceScope:
-    """Set up a minimal workspace with .agent dir and mocked scope resolution."""
     agent_dir = tmp_path / ".agent"
     agent_dir.mkdir(parents=True, exist_ok=True)
     scope = WorkspaceScope(tmp_path)
@@ -72,7 +69,6 @@ def _configure_workspace(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Wor
 
 
 def _make_display_context() -> tuple[io.StringIO, object]:
-    """Build a display context backed by a StringIO console for capture."""
     output = io.StringIO()
     console = Console(
         file=output,
@@ -86,17 +82,13 @@ def _make_display_context() -> tuple[io.StringIO, object]:
 
 
 class TestWarnIfCapabilitiesDegraded:
-    """Tests for the _warn_if_capabilities_degraded helper and its integration."""
-
     def test_warning_panel_printed_when_web_search_degraded(
         self,
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """When web_search is degraded, the Baseline Capability Warning panel is printed."""
         scope = _configure_workspace(monkeypatch, tmp_path)
 
-        # Set up a fake capability state file with degraded web_search
         fake_state_file = tmp_path / ".ralph_capabilities.json"
         cap_state = CapabilityState(
             web_search=CapabilityEntry(status=CapabilityStatus.INSTALLED_DEGRADED),
@@ -106,10 +98,8 @@ class TestWarnIfCapabilitiesDegraded:
         )
         fake_state_file.write_text(cap_state.model_dump_json(), encoding="utf-8")
 
-        # Mock default_state_path to return our temp file
         monkeypatch.setattr(run_module, "default_state_path", lambda: fake_state_file)
 
-        # Mock SkillManager to return a mock with degraded web_search
         mock_manager = MagicMock()
         mock_manager.check_baseline_health.return_value = {
             "web_search": False,
@@ -121,10 +111,8 @@ class TestWarnIfCapabilitiesDegraded:
 
         output, display_context = _make_display_context()
 
-        # Call the function directly
         run_module._warn_if_capabilities_degraded(display_context, scope.root)
 
-        # Verify warning panel was printed
         rendered = output.getvalue()
         assert "Baseline Capability Warning" in rendered
         assert "One or more baseline capabilities may need attention" in rendered
@@ -134,10 +122,8 @@ class TestWarnIfCapabilitiesDegraded:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """When no capability state file exists (first run), no warning is printed."""
         scope = _configure_workspace(monkeypatch, tmp_path)
 
-        # Mock default_state_path to return a non-existent path
         fake_state_file = tmp_path / "nonexistent_capabilities.json"
         monkeypatch.setattr(run_module, "default_state_path", lambda: fake_state_file)
 
@@ -153,10 +139,8 @@ class TestWarnIfCapabilitiesDegraded:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """When all three mandatory capabilities are healthy, no warning is printed."""
         scope = _configure_workspace(monkeypatch, tmp_path)
 
-        # Set up a healthy capability state
         fake_state_file = tmp_path / ".ralph_capabilities_healthy.json"
         cap_state = CapabilityState(
             web_search=CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
@@ -189,7 +173,6 @@ class TestWarnIfCapabilitiesDegraded:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """When visit_url is degraded, the Baseline Capability Warning panel is printed."""
         scope = _configure_workspace(monkeypatch, tmp_path)
 
         fake_state_file = tmp_path / ".ralph_capabilities_visit_url_degraded.json"
@@ -225,7 +208,6 @@ class TestWarnIfCapabilitiesDegraded:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """When skills bundle is degraded, the Baseline Capability Warning panel is printed."""
         scope = _configure_workspace(monkeypatch, tmp_path)
 
         fake_state_file = tmp_path / ".ralph_capabilities_skills_degraded.json"

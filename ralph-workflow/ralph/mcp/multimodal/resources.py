@@ -1,8 +1,3 @@
-"""URI builder/parser and session-scoped manifest for ralph://media resources.
-
-The manifest tracks every resource_reference artifact emitted during a session
-so they can be listed via resources/list and retrieved via resources/read.
-"""
 
 from __future__ import annotations
 
@@ -23,20 +18,14 @@ _URI_PATTERN = re.compile(
 
 MEDIA_URI_TEMPLATE = "ralph://media/{artifact_id}"
 
-# wt-024 M2: default cap on retained manifest entries.  Matches the
-# shipped-in-production knob documented in the wt-024 plan.  256 is
-# generous for any realistic session; pathological unbounded growth
-# is the only thing this cap prevents.
 _DEFAULT_MAX_ENTRIES = 256
 
 
 def build_media_uri(artifact_id: str) -> str:
-    """Build a ralph://media/{artifact_id} URI."""
     return f"{_RALPH_MEDIA_PREFIX}{artifact_id}"
 
 
 def parse_media_uri(uri: str) -> str | None:
-    """Parse a ralph://media/{artifact_id} URI and return artifact_id, or None."""
     m = _URI_PATTERN.match(uri)
     if m is None:
         return None
@@ -44,7 +33,6 @@ def parse_media_uri(uri: str) -> str | None:
 
 
 def new_artifact_id() -> str:
-    """Generate a new random artifact UUID."""
     return str(uuid.uuid4())
 
 
@@ -55,7 +43,6 @@ def build_media_identity(
     title: str,
     source: MediaSource | None = None,
 ) -> str:
-    """Build a stable identity for deduping repeated live artifacts."""
     src = source or MediaSource()
     if src.source_uri:
         return f"source-uri:{modality}:{src.source_uri}"
@@ -69,26 +56,11 @@ def build_media_identity(
 
 @dataclass
 class MediaManifest:
-    """Session-scoped manifest of all multimodal resource references."""
 
-    # wt-024 M2: bounded retention.  ``_entries`` is an ``OrderedDict``
-    # so we can evict the oldest entry (FIFO) when a NEW identity
-    # pushes the manifest past ``max_entries``.  Re-adding an
-    # EXISTING identity dedups in place and PRESERVES its original
-    # insertion position so ``list_entries()`` (and the downstream
-    # ``resources/list`` response) keep stable ordering across
-    # duplicate adds.  Typed as ``OrderedDict`` (not ``dict``) so
-    # mypy --strict can verify ``popitem(last=False)`` is a valid
-    # call.
     _entries: OrderedDict[str, ManifestEntry] = field(
         default_factory=OrderedDict,
     )
     _identity_index: dict[str, str] = field(default_factory=dict)
-    # Maximum number of distinct artifact_ids retained in ``_entries``.
-    # When a NEW identity pushes ``len(_entries) > max_entries`` we
-    # evict the oldest artifact and clear its mapping from
-    # ``_identity_index``.  Default keeps existing small-fixture
-    # behaviour unchanged.
     max_entries: int = _DEFAULT_MAX_ENTRIES
 
     def add(
@@ -100,14 +72,6 @@ class MediaManifest:
         raw_bytes: bytes,
         extras: MediaEntryExtras | None = None,
     ) -> ManifestEntry:
-        """Add or replace an artifact and return its manifest entry.
-
-        Re-adding an EXISTING identity dedups in place and PRESERVES
-        the original insertion order so the ``resources/list`` output
-        order stays stable across duplicate adds (wt-024 analysis
-        feedback: reordering on re-add was an externally visible
-        behavior change that the memory cap did not require).
-        """
         xt = extras or MediaEntryExtras()
         resolved_identity = xt.identity_key or build_media_identity(
             modality=modality,
@@ -124,16 +88,6 @@ class MediaManifest:
             xt.artifact_id or new_artifact_id(),
         )
         uri = build_media_uri(artifact_id)
-        # wt-024 M2 follow-up (AC-06): when a durable replay source is
-        # wired at add-time (a byte_loader is supplied), the manifest
-        # must NOT retain the raw payload in memory. The byte_loader
-        # is the canonical source for rehydrating bytes later, so
-        # storing raw_bytes on top of it doubles peak memory per
-        # entry (up to 256 entries x multi-MB each) for no observable
-        # benefit. Raw bytes are only retained when the caller has
-        # no durable replay source — i.e. when neither byte_loader nor
-        # cache_path is supplied — so the in-memory-only contract for
-        # legacy callers is preserved verbatim.
         retain_raw_bytes = xt.byte_loader is None and not xt.cache_path
         stored_raw_bytes = raw_bytes if retain_raw_bytes else None
         entry = ManifestEntry(
@@ -157,17 +111,9 @@ class MediaManifest:
         return entry
 
     def _evict_oldest(self) -> str | None:
-        """Pop the oldest ``_entries`` key and drop its identity mappings.
-
-        Returns the evicted ``artifact_id`` so callers can log or
-        observe the eviction.  No-op when ``_entries`` is empty.
-        """
         if not self._entries:
             return None
         evicted_id, _ = self._entries.popitem(last=False)
-        # Remove every ``_identity_index`` entry whose value is the
-        # evicted artifact_id so we never serve a stale dedup to a
-        # future ``add()`` of the same identity.
         stale_identities = [
             identity
             for identity, mapped_id in self._identity_index.items()
@@ -178,15 +124,12 @@ class MediaManifest:
         return evicted_id
 
     def get(self, artifact_id: str) -> ManifestEntry | None:
-        """Retrieve a manifest entry by artifact_id, or None if not found."""
         return self._entries.get(artifact_id)
 
     def list_entries(self) -> list[ManifestEntry]:
-        """Return all manifest entries in insertion order."""
         return list(self._entries.values())
 
     def is_empty(self) -> bool:
-        """Return True if no artifacts have been stored."""
         return not self._entries
 
 

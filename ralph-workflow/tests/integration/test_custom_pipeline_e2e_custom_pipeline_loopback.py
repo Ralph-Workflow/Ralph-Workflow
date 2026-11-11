@@ -1,14 +1,3 @@
-"""End-to-end test: custom-named pipeline with no canonical phase names.
-
-Proves that the runtime no longer depends on built-in phase names.
-A workflow with phases named:
-  kickoff → build → gate (analysis loop) → seal (commit) → verify (verification)
-  → done (terminal success) or crashed (terminal failure)
-exercises every role type and all routing transitions using only policy-declared names.
-
-All phase transitions are driven through the reducer. No real agents are invoked.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -41,17 +30,6 @@ _BUILD_LOOP_MAX = 3
 
 
 def _build_custom_bundle() -> PolicyBundle:
-    """Build a custom policy bundle with no canonical phase names.
-
-    The pipeline exercises every phase role:
-    - kickoff: execution
-    - build: execution
-    - gate: analysis (with build_loop counter)
-    - seal: commit (increments build_pass, resets build_loop)
-    - verify: verification (routes to done on success, crashed on failure)
-    - crashed: terminal (failure outcome)
-    - done: terminal (success outcome)
-    """
     pipeline = PipelinePolicy(
         phases={
             "kickoff": PhaseDefinition(
@@ -163,7 +141,6 @@ def _build_custom_bundle() -> PolicyBundle:
 
 
 def _initial_state(policy: PipelinePolicy) -> PipelineState:
-    """Build initial PipelineState for the custom pipeline."""
     return PipelineState(
         phase="kickoff",
         phase_chains={
@@ -182,19 +159,15 @@ def custom_bundle() -> PolicyBundle:
 
 
 class TestCustomPipelineLoopback:
-    """Loop counter increments and routing via analysis loopback."""
-
     def test_gate_loopback_increments_loop_counter(self, custom_bundle: PolicyBundle) -> None:
         policy = custom_bundle.pipeline
         state = _initial_state(policy)
 
-        # Advance to 'gate'
-        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)  # kickoff→build
-        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)  # build→gate
+        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
+        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
         assert state.phase == "gate"
         assert state.get_loop_iteration("build_loop") == 0
 
-        # Loopback: gate→build, counter should increment
         state, _ = reducer_reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert state.phase == "build", f"Expected build after loopback, got {state.phase}"
         assert state.get_loop_iteration("build_loop") == 1
@@ -203,10 +176,9 @@ class TestCustomPipelineLoopback:
         policy = custom_bundle.pipeline
         state = _initial_state(policy)
 
-        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)  # kickoff→build
-        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)  # build→gate
+        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
+        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
 
-        # Loopback should set review_outcome from loopback_review_outcome config
         state, _ = reducer_reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert state.review_outcome == "has_issues"
 
@@ -216,14 +188,11 @@ class TestCustomPipelineLoopback:
         policy = custom_bundle.pipeline
         state = _initial_state(policy)
 
-        # Advance to gate
-        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)  # kickoff→build
-        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)  # build→gate
+        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
+        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
 
-        # Loop back through every allowed gate run, then bypass on the next re-entry.
         for i in range(1, _BUILD_LOOP_MAX + 1):
             state, _ = reducer_reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
-            # After loopback, we're back at build
             assert state.phase == "build", f"iter {i}: Expected build after loopback"
             expected_counter = min(i, _BUILD_LOOP_MAX)
             assert state.get_loop_iteration("build_loop") == expected_counter
@@ -241,17 +210,14 @@ class TestCustomPipelineLoopback:
         policy = custom_bundle.pipeline
         state = _initial_state(policy)
 
-        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)  # kickoff→build
-        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)  # build→gate
+        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
+        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
 
-        # Loopback sets review_outcome
         state, _ = reducer_reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert state.review_outcome == "has_issues"
 
-        # Back to gate via build
-        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)  # build→gate
+        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
 
-        # Success clears review_outcome
-        state, _ = reducer_reduce(state, PipelineEvent.ANALYSIS_SUCCESS, policy)  # gate→seal
+        state, _ = reducer_reduce(state, PipelineEvent.ANALYSIS_SUCCESS, policy)
         assert state.phase == "seal"
         assert state.review_outcome is None

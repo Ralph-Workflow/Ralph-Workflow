@@ -1,5 +1,3 @@
-"""Tests for ralph/pipeline/runner.py — pipeline runner."""
-
 from __future__ import annotations
 
 from functools import lru_cache
@@ -39,11 +37,11 @@ DEVELOPER_ITERATIONS = 5
 REVIEWER_PASSES = 2
 SECOND_ITERATION = 2
 INTERRUPT_EXIT_CODE = 130
-_TRUNCATED_TEXT_MAX = runner_module.MAX_TEXT_LENGTH + 1  # content + ellipsis
-_TRUNCATED_RESULT_BRIEF_MAX = runner_module.MAX_TOOL_RESULT_BRIEF + 1  # content + ellipsis
-_TRUNCATED_METADATA_MAX = runner_module.MAX_METADATA_SUMMARY_LENGTH + 1  # content + ellipsis
+_TRUNCATED_TEXT_MAX = runner_module.MAX_TEXT_LENGTH + 1
+_TRUNCATED_RESULT_BRIEF_MAX = runner_module.MAX_TOOL_RESULT_BRIEF + 1
+_TRUNCATED_METADATA_MAX = runner_module.MAX_METADATA_SUMMARY_LENGTH + 1
 _AVAILABLE_WIDTH_FLOOR = 40
-_TRUNCATE_RESULT_LEN = 6  # 5 chars + 1 ellipsis char
+_TRUNCATE_RESULT_LEN = 6
 
 
 @lru_cache(maxsize=1)
@@ -259,15 +257,7 @@ def test_materialize_agent_prompt_if_needed_rewrites_stale_development_prompt_on
 
 
 class TestPhaseHandlerExceptionGuard:
-    """Tests for the phase handler exception guard in runner.py.
-
-    When runner.py wraps handle_phase calls in try/except Exception, a handler that
-    raises RuntimeError should result in PhaseFailureEvent(recoverable=True) being
-    emitted rather than the exception propagating.
-    """
-
     def _make_context(self) -> PhaseContext:
-        """Create a mock phase context for testing."""
         workspace = MagicMock()
         workspace.exists.return_value = False
         return PhaseContext.construct(
@@ -280,7 +270,6 @@ class TestPhaseHandlerExceptionGuard:
         )
 
     def test_keyboard_interrupt_propagates_not_swallowed(self) -> None:
-        """KeyboardInterrupt must propagate, not be caught by the exception guard."""
 
         def ki_handler(effect: Effect, ctx: PhaseContext) -> list[Event]:
             del effect, ctx
@@ -343,7 +332,6 @@ class TestPhaseHandlerExceptionGuard:
     def test_phase_failure_event_recoverable_routes_through_reducer_retry(
         self,
     ) -> None:
-        """PhaseFailureEvent(recoverable=True) should route through the owner's retry."""
         state = PipelineState(
             phase="development",
             phase_chains={
@@ -359,7 +347,6 @@ class TestPhaseHandlerExceptionGuard:
 
         new_state, effects = reducer_reduce(state, event, recovery=controller)
 
-        # The owner decides the retry, so the phase is retried, not failed
         chain = new_state.chain_for_phase("development")
         assert chain is not None
         assert chain.retries == 1
@@ -369,7 +356,6 @@ class TestPhaseHandlerExceptionGuard:
     def test_phase_failure_event_not_recoverable_transitions_to_failed(
         self,
     ) -> None:
-        """PhaseFailureEvent(recoverable=False) should transition to "failed"."""
         state = PipelineState(phase="development")
         event = PhaseFailureEvent(
             phase="development_analysis",

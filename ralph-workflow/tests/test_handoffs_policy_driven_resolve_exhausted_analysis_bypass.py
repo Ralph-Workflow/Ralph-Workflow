@@ -1,10 +1,3 @@
-"""Tests that handoffs._compute_budget_state is policy-driven.
-
-Verifies that budget routing works for any commit-role phase name, not just
-the canonical development_commit/review_commit names, as long as commit_policy
-declares the correct increments_counter.
-"""
-
 from __future__ import annotations
 
 from ralph.pipeline.handoffs import resolve_exhausted_analysis_bypass

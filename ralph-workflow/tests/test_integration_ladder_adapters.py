@@ -1,13 +1,3 @@
-"""Production git-adapter argv contract, captured at the ``run_git`` seam.
-
-These tests patch the queue-routed runner the production adapter resolves
-(no subprocess is ever spawned) and assert the exact argv tuples: config
-flags before the subcommand, the compare-and-swap ``update-ref`` old-value
-form, and the abort mapping for every :class:`InProgressKind` the ladder
-can meet. The plumbing under test comes from the public
-:func:`~ralph.pipeline.integration_ladder.default_git_plumbing` constructor.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -29,12 +19,6 @@ def _install_run_git_recorder(
     monkeypatch: pytest.MonkeyPatch,
     script: Callable[[Sequence[str], Path | None, str], GitRunResult],
 ) -> list[tuple[str, ...]]:
-    """Patch the queue-routed runner with a recorder; returns the argv list.
-
-    The production adapter imports ``run_git`` lazily from
-    :mod:`ralph.git.subprocess_runner`, so patching the module attribute is
-    the exact seam the adapter resolves — no subprocess is ever spawned.
-    """
 
     from ralph.git import subprocess_runner
 
@@ -55,7 +39,6 @@ def _ok_script(args: Sequence[str], cwd: Path | None, label: str) -> GitRunResul
 def test_adapter_changed_paths_puts_config_flags_before_the_subcommand(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``git status ... -c key=val`` exits 129; the config flags must lead."""
     argv = _install_run_git_recorder(monkeypatch, _ok_script)
     plumbing = default_git_plumbing()
 
@@ -68,7 +51,6 @@ def test_adapter_changed_paths_puts_config_flags_before_the_subcommand(
 def test_adapter_changed_paths_probe_error_is_unknown_never_clean(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The exit-129 shape from the ordering bug must read as ``None``."""
 
     def _script(args: Sequence[str], cwd: Path | None, label: str) -> GitRunResult:
         return GitRunResult(
@@ -84,7 +66,6 @@ def test_adapter_changed_paths_probe_error_is_unknown_never_clean(
 def test_adapter_land_uses_old_value_update_ref_and_races_issue_none(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """CAS argv carries ``--no-deref`` and the old value; a race never updates."""
     expected = "a" * 40
     tip = "b" * 40
     state = {"current": expected}
@@ -109,13 +90,11 @@ def test_adapter_land_uses_old_value_update_ref_and_races_issue_none(
     )
     assert ("update-ref", "--no-deref", "refs/heads/main", tip, expected) in argv
 
-    # The tip already at the expectation is a no-op: no second update-ref.
     assert (
         plumbing.land_in_worktree(Path("/root"), Path("/wt"), "main", expected_sha=tip)
         == "landed-already"
     )
 
-    # A concurrent advance: the expectation is stale, NO update-ref is issued.
     state["current"] = "c" * 40
     update_refs = [a for a in argv if a[:1] == ("update-ref",)]
     assert (
@@ -128,7 +107,6 @@ def test_adapter_land_uses_old_value_update_ref_and_races_issue_none(
 def test_adapter_repoint_not_now_outcomes_never_reset(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A gone worktree or a missing observation is a typed not-now, never a reset."""
 
     def _script(args: Sequence[str], cwd: Path | None, label: str) -> GitRunResult:
         return GitRunResult(args=("git", *args), returncode=0, stdout="b" * 40 + "\n", stderr="")
@@ -150,7 +128,6 @@ def test_adapter_repoint_not_now_outcomes_never_reset(
 def test_adapter_abort_operation_covers_every_in_progress_kind(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Every abortable kind maps to its git abort verb with hooks disabled."""
     argv = _install_run_git_recorder(monkeypatch, _ok_script)
     plumbing: GitPlumbing = default_git_plumbing()
 
@@ -160,8 +137,6 @@ def test_adapter_abort_operation_covers_every_in_progress_kind(
         InProgressKind.CHERRY_PICK: ("cherry-pick", "--abort"),
         InProgressKind.REVERT: ("revert", "--abort"),
         InProgressKind.AM: ("am", "--abort"),
-        # A multi-step sequencer owns state files, not one operation:
-        # ``--quit`` forgets the sequence without committing.
         InProgressKind.SEQUENCER: ("cherry-pick", "--quit"),
     }
     for kind, command in expected_commands.items():

@@ -1,8 +1,3 @@
-"""Tests for the shared readiness-evidence inventory.
-
-All tests use MemoryWorkspace; no real filesystem I/O.
-"""
-
 from __future__ import annotations
 
 import json
@@ -57,7 +52,6 @@ def test_design_system_required_for_css_language() -> None:
 
 
 def test_design_system_required_without_ux() -> None:
-    """A project with CSS but no router-dep / app framework triggers design-system only."""
     ws = MemoryWorkspace()
     stack = _stack(secondary=["CSS"])
     assert evidence.design_system_required(ws, stack)[0] is True
@@ -65,9 +59,6 @@ def test_design_system_required_without_ux() -> None:
 
 
 def test_router_only_project_requires_both_design_system_and_ux() -> None:
-    """AC-07: a project whose only UX signal is a router dependency must
-    require BOTH design-system AND ux (UX implies design-system).
-    """
     ws = MemoryWorkspace()
     package_json: dict[str, dict[str, str]] = {"dependencies": {"react-router-dom": "^6.0.0"}}
     ws.write("package.json", json.dumps(package_json))
@@ -82,9 +73,6 @@ def test_router_only_project_requires_both_design_system_and_ux() -> None:
 
 
 def test_design_system_required_does_not_imply_ux() -> None:
-    """AC-07 symmetry: design-system can stand on its own without UX.
-    A project with CSS but no UX signals triggers ONLY design-system.
-    """
     ws = MemoryWorkspace()
     stack = _stack(secondary=["CSS"])
     ds_required, _ = evidence.design_system_required(ws, stack)
@@ -234,9 +222,6 @@ def test_migration_candidates_flags_recognized_heading() -> None:
 
 
 def test_migration_candidates_flags_root_security_md() -> None:
-    """A project's existing SECURITY.md (standard GitHub convention) must be
-    pulled into the canonical security policy during remediation — otherwise
-    a parallel security rulebook survives outside the canonical directory."""
     ws = MemoryWorkspace()
     ws.write(
         "SECURITY.md",
@@ -249,8 +234,6 @@ def test_migration_candidates_flags_root_security_md() -> None:
 
 
 def test_migration_candidates_flags_docs_security_heading() -> None:
-    """A docs/security.md with a security heading is policy-like content and
-    must be flagged for migration into security-policy.md."""
     ws = MemoryWorkspace()
     ws.write(
         "docs/security.md",
@@ -278,30 +261,22 @@ def test_migration_candidates_resolved_with_migrated_marker() -> None:
 
 
 def test_performance_required_for_directory_signal() -> None:
-    """AC-07 + plan step 3: directory signal paths must trigger performance."""
     ws = MemoryWorkspace()
     ws.create_dir("benches")
     assert evidence.performance_required(ws, _stack())[0] is True
 
 
 def test_memory_required_for_directory_signal() -> None:
-    """AC-07 + plan step 3: directory signal paths must trigger memory-usage."""
     ws = MemoryWorkspace()
     ws.create_dir("soak-tests")
     assert evidence.memory_required(ws, _stack())[0] is True
 
 
 def test_readiness_evidence_handles_directory_signal_paths() -> None:
-    """AC-04 + AC-11: a project containing the plan-required ``benches/`` or
-    ``soak-tests/`` directory must not crash readiness_evidence /
-    evidence_signature. The directory is captured as an existing
-    :class:`EvidenceEntry` with a stable sentinel hash, not read.
-    """
     ws = MemoryWorkspace()
     ws.create_dir("benches")
     ws.create_dir("soak-tests")
     stack = _stack()
-    # The two functions must not raise IsADirectoryError.
     entries = evidence.readiness_evidence(ws, stack)
     signature = evidence.evidence_signature(ws, stack)
     by_path = {entry.rel_path: entry for entry in entries}
@@ -313,10 +288,6 @@ def test_readiness_evidence_handles_directory_signal_paths() -> None:
 
 
 def test_readiness_evidence_directory_signal_signature_changes_with_contents() -> None:
-    """AC-04: the readiness-evidence signature must change when files are
-    added/removed inside a directory signal path (e.g. ``benches/``),
-    so a cached READY cannot stay valid across such a change.
-    """
     ws = MemoryWorkspace()
     ws.create_dir("benches")
     before = evidence.evidence_signature(ws, _stack())
@@ -329,7 +300,6 @@ def test_readiness_evidence_directory_signal_signature_changes_with_contents() -
 
 
 def test_readiness_evidence_directory_signal_signature_changes_on_delete() -> None:
-    """AC-04: deleting a directory signal invalidates a cached READY."""
     ws = MemoryWorkspace()
     ws.create_dir("benches")
     before = evidence.evidence_signature(ws, _stack())

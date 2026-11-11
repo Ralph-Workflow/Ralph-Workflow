@@ -1,5 +1,3 @@
-"""Behavior tests for ParallelDisplay emit_* helpers."""
-
 from __future__ import annotations
 
 import io
@@ -14,7 +12,6 @@ from ralph.pipeline.state import PipelineState
 
 
 def test_default_mode_emit_reduces_rich_markup() -> None:
-    """In the single default mode, Rich markup is reduced before rendering."""
     buf = io.StringIO()
     console = Console(file=buf, force_terminal=False, width=120, color_system=None)
     pd = ParallelDisplay(make_display_context(console=console, env={"CI": "1"}))
@@ -25,41 +22,27 @@ def test_default_mode_emit_reduces_rich_markup() -> None:
 
 
 def test_emit_analysis_result_in_default_mode_records_to_decision_log() -> None:
-    """emit_analysis_result records to decision_log but does NOT emit to console.
-
-    The analysis decision is rendered as a titled block by render_analysis_decision
-    in the phase handler, not by emit_analysis_result. This avoids double-rendering.
-    """
     buf = io.StringIO()
     console = Console(file=buf, force_terminal=False, width=120, color_system=None)
     pd = ParallelDisplay(make_display_context(console=console, env={"CI": "1"}))
     pd.emit_analysis_result("development_analysis", "proceed", "all tests pass")
     text = buf.getvalue()
-    # emit_analysis_result should NOT emit to console - the titled block is
-    # rendered separately by render_analysis_decision in development.py/review.py
     assert text == ""
-    # But it SHOULD record to decision_log for the completion summary
     log = pd.subscriber.decision_log
     assert any(entry[1].lower() == "proceed" and "all tests pass" in entry[2] for entry in log), log
 
 
 def test_emit_analysis_result_updates_subscriber_state_in_default_mode() -> None:
-    """emit_analysis_result updates subscriber state in the single default mode."""
     console = Console(file=io.StringIO(), force_terminal=True, width=120)
     pd = ParallelDisplay(make_display_context(console=console, env={}))
     pd.emit_analysis_result("development_analysis", "proceed", "all good")
-    # subscriber state should reflect the analysis result
     subscriber = pd.subscriber
     log = subscriber.decision_log
     assert any(entry[1].lower() == "proceed" and "all good" in entry[2] for entry in log), log
 
 
-# Bounded per-test timeout (5s): rich-console rendering legitimately grazes
-# the 1.0s default bound only when the full suite loads the machine; the
-# bound keeps it under the per-test policy without touching the 60s budget.
 @pytest.mark.timeout_seconds(5)
 def test_record_activity_updates_snapshot_fields() -> None:
-    """record_activity propagates to snapshot fields and build_snapshot mirrors notify."""
     console = Console(file=io.StringIO(), force_terminal=True, width=120)
     pd = ParallelDisplay(make_display_context(console=console, env={}))
 
@@ -89,7 +72,6 @@ def test_record_activity_updates_snapshot_fields() -> None:
     assert drained.active_command == "python -m pytest tests/test_foo.py"
     assert drained.last_activity_line == "I am editing foo.py"
 
-    # build_snapshot exposes the same projection without going through the queue.
     snap = pd.subscriber.build_snapshot(state)
     assert snap is not None
     assert snap.active_agent == "developer"
@@ -101,7 +83,6 @@ def test_record_activity_updates_snapshot_fields() -> None:
 
 
 def test_emit_updates_subscriber_snapshot_for_unit_scoped_raw_activity() -> None:
-    """Unit-scoped raw emits must update the subscriber state as well as the console."""
     console = Console(file=io.StringIO(), force_terminal=True, width=120)
     pd = ParallelDisplay(make_display_context(console=console, env={}))
 
@@ -114,7 +95,6 @@ def test_emit_updates_subscriber_snapshot_for_unit_scoped_raw_activity() -> None
 
 
 def test_long_unit_id_does_not_hide_payload_content() -> None:
-    """Long unit ids are elided so the payload remains visible."""
     buf = io.StringIO()
     console = Console(file=buf, force_terminal=False, width=120, color_system=None)
     pd = ParallelDisplay(make_display_context(console=console, env={}))
@@ -127,7 +107,6 @@ def test_long_unit_id_does_not_hide_payload_content() -> None:
 
 
 def test_emit_refreshes_visible_activity_when_line_changes_but_unit_is_same() -> None:
-    """Later activity lines for the same unit must still render when the payload changes."""
     buf = io.StringIO()
     console = Console(file=buf, force_terminal=False, width=160, color_system=None)
     pd = ParallelDisplay(make_display_context(console=console, env={}))

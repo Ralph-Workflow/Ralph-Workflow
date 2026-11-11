@@ -1,15 +1,3 @@
-"""CLI flag overrides must reach the configuration the run actually uses.
-
-Two regressions pinned here:
-
-* ``--developer-agent`` / ``--developer-model`` were emitted as top-level
-  override keys that ``UnifiedConfig`` silently dropped, so the flags never
-  changed which agent ran the development phase.
-* Every run emitted ``None`` for ``general.git_user_name`` /
-  ``general.git_user_email`` when the flags were absent, and the override
-  merge let that ``None`` erase the identity configured in the TOML file.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -68,14 +56,12 @@ def _development_agents(config_path: Path, override: CLIOverrideInput) -> list[s
 def test_developer_flags_select_the_development_agent(
     tmp_path: Path, override: CLIOverrideInput, expected: list[str]
 ) -> None:
-    """The development drain must run the agent/model the CLI flags name."""
     config_path = _write_config(tmp_path, _CHAINS_AND_DRAINS)
 
     assert _development_agents(config_path, override) == expected
 
 
 def test_developer_agent_flag_applies_to_the_bundled_agents_policy(tmp_path: Path) -> None:
-    """A config without its own chains still honours the flag over the bundled policy."""
     config_path = _write_config(tmp_path, "[general]\n")
 
     agents = _development_agents(config_path, CLIOverrideInput(developer_agent="codex"))
@@ -84,7 +70,6 @@ def test_developer_agent_flag_applies_to_the_bundled_agents_policy(tmp_path: Pat
 
 
 def test_developer_agent_flag_leaves_other_drains_on_their_own_chains(tmp_path: Path) -> None:
-    """Only the developer role moves; analysis and commit keep their configured agents."""
     config_path = _write_config(tmp_path, _CHAINS_AND_DRAINS)
     config = load_config(
         config_path=config_path,
@@ -97,7 +82,6 @@ def test_developer_agent_flag_leaves_other_drains_on_their_own_chains(tmp_path: 
 
 
 def test_developer_flags_are_recorded_on_the_config_for_run_start(tmp_path: Path) -> None:
-    """The run-start orientation reads the requested developer agent off the config."""
     config_path = _write_config(tmp_path, _CHAINS_AND_DRAINS)
     config = load_config(
         config_path=config_path,
@@ -110,7 +94,6 @@ def test_developer_flags_are_recorded_on_the_config_for_run_start(tmp_path: Path
 
 
 def test_blank_developer_agent_flag_fails_loudly(tmp_path: Path) -> None:
-    """An empty agent name must not be silently replaced by the configured chain."""
     config_path = _write_config(tmp_path, _CHAINS_AND_DRAINS)
     config = load_config(
         config_path=config_path,
@@ -122,7 +105,6 @@ def test_blank_developer_agent_flag_fails_loudly(tmp_path: Path) -> None:
 
 
 def test_developer_agent_key_in_a_config_file_is_reported_and_ignored(tmp_path: Path) -> None:
-    """The developer pin is a CLI flag, not a config key: a TOML copy must not apply."""
     config_path = _write_config(tmp_path, 'developer_agent = "codex"\n' + _CHAINS_AND_DRAINS)
     warnings: list[str] = []
 
@@ -133,7 +115,6 @@ def test_developer_agent_key_in_a_config_file_is_reported_and_ignored(tmp_path: 
 
 
 def test_absent_git_identity_flags_keep_the_configured_identity(tmp_path: Path) -> None:
-    """Running without --git-user-name/--git-user-email must not erase the config values."""
     config_path = _write_config(
         tmp_path,
         '[general]\ngit_user_name = "Alice Config"\ngit_user_email = "alice@example.com"\n',
@@ -148,7 +129,6 @@ def test_absent_git_identity_flags_keep_the_configured_identity(tmp_path: Path) 
 
 
 def test_git_identity_flags_still_override_the_configured_identity(tmp_path: Path) -> None:
-    """An explicit flag keeps winning over the config file."""
     config_path = _write_config(
         tmp_path,
         '[general]\ngit_user_name = "Alice Config"\ngit_user_email = "alice@example.com"\n',

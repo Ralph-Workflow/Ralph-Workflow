@@ -1,5 +1,3 @@
-"""Timing contract for graceful interactive PTY teardown."""
-
 from __future__ import annotations
 
 import sys

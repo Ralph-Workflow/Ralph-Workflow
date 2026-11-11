@@ -1,5 +1,3 @@
-"""Discoverability contract for auto-integration configuration documentation."""
-
 from __future__ import annotations
 
 from tests.doc_roots import PACKAGE_DOCS_SPHINX_DIR
@@ -29,18 +27,15 @@ _RETIRED_KEYS = (
 
 
 def _general_rows(content: str) -> list[str]:
-    """Return auto-integration rows from the ``[general]`` settings table."""
     return [line for line in content.splitlines() if line.startswith("| `auto_integrate_")]
 
 
 def test_configuration_md_documents_exactly_the_six_live_auto_integrate_keys_in_order() -> None:
-    """S-2: the operator reference matches the six-key configuration surface."""
     rows = _general_rows(_CONTENT)
     assert [row.split("`")[1] for row in rows] == list(_LIVE_KEYS)
 
 
 def test_configuration_md_documents_defaults_and_opt_out_contract() -> None:
-    """S-8: operators can discover defaults and the local/remote safety split."""
     content = _CONTENT
     rows = _general_rows(content)
     assert "`true`" in rows[0]
@@ -59,6 +54,5 @@ def test_configuration_md_documents_defaults_and_opt_out_contract() -> None:
 
 
 def test_configuration_md_omits_retired_auto_integrate_keys() -> None:
-    """S-8: removed configuration names do not remain discoverable in docs."""
     content = _CONTENT
     assert not any(key in content for key in _RETIRED_KEYS)

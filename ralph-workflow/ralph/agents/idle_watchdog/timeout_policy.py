@@ -1,4 +1,3 @@
-"""Timeout policy configuration for the idle watchdog."""
 
 from __future__ import annotations
 
@@ -51,83 +50,6 @@ _VALID_WORKSPACE_CHANGE_WEIGHT_VALUES: frozenset[float] = frozenset({0.0, 1.0})
 
 @dataclass(frozen=True)
 class TimeoutPolicy:
-    """Consolidated timeout configuration for all agent timeout dimensions.
-
-    All timeout constants that previously appeared as module-level magic numbers
-    in invoke.py are consolidated here so a single config-built TimeoutPolicy
-    governs every timeout decision.
-
-    Precedence of fire conditions (in evaluation order):
-
-    1. SESSION_CEILING_EXCEEDED — absolute wall-clock cap; activity cannot reset it.
-    2. CHILDREN_PERSIST_TOO_LONG — cumulative WAITING_ON_CHILD ceiling; this is an
-       absolute ceiling across the session and never decays. Checked before
-       NO_OUTPUT_DEADLINE so the cumulative ceiling fires even while
-       non-stdout activity channels are still fresh.
-    3. NO_OUTPUT_DEADLINE (+ drain window) — idle deadline since last output.
-       When ``activity_evidence_ttl_seconds`` is set and any non-stdout
-       evidence channel (MCP tool call, subagent work, workspace file
-       change) is fresher than that TTL, the fire is deferred and the
-       watchdog returns CONTINUE. The SESSION_CEILING and
-       CHILDREN_PERSIST_TOO_LONG checks run before this so absolute
-       ceilings remain absolute.
-    4. PROCESS_EXIT_HANG — subprocess closed stdout but did not exit within budget.
-    5. DESCENDANT_HANG — descendant-wait deadline elapsed with persistent WAITING_ON_CHILD
-       (post-exit only, owned by PostExitWatchdog).
-
-    Suspicion is purely informational and does NOT affect any fire condition. The
-    ``suspect_waiting_on_child_seconds`` threshold exists only to emit an elevated
-    warning event before the hard stop; crossing it never shortens the hard-stop
-    ceiling.
-
-    Attributes:
-        idle_timeout_seconds: Maximum seconds without output before watchdog may fire.
-            None disables the idle-timeout watchdog entirely.
-        drain_window_seconds: After a potential timeout, the watchdog enters a drain
-            window of this duration to allow late output to flush.
-        max_waiting_on_child_seconds: Hard cumulative ceiling on time spent in
-            WAITING_ON_CHILD state across the entire session. Activity cannot decay
-            or reset it; once exceeded, fires CHILDREN_PERSIST_TOO_LONG even while
-            children are still alive.
-        max_session_seconds: Absolute wall-clock ceiling for the entire session.
-            Activity cannot reset this ceiling. None means no ceiling (opt-in).
-            When set, must be >= idle_timeout_seconds.
-        idle_poll_interval_seconds: How often the read loop polls for new lines.
-            Values < 0.01s are intended for tests only.
-        parent_exit_grace_seconds: Grace window after parent rc=0 exit during which
-            we poll for late completion signals or appearing children.
-        descendant_wait_timeout_seconds: Maximum time to wait for descendant processes
-            to finish before declaring failure.
-        descendant_wait_poll_seconds: Poll interval for descendant-wait and
-            process-exit-wait loops. Values < 0.01s are intended for tests only.
-        process_exit_wait_seconds: Maximum time to wait for a subprocess to exit after
-            its stdout closes. Prevents hanging on subprocesses that close stdout but
-            never call exit().
-        waiting_status_interval_seconds: How often to emit a PROGRESS status event
-            while WAITING_ON_CHILD deferral is active. Controls only the status
-            emission cadence; does NOT affect timeout safety or ceiling math.
-        suspect_waiting_on_child_seconds: Cumulative WAITING time after which a
-            SUSPECTED_FROZEN event is emitted. Purely informational — does NOT
-            shorten the hard-stop ceiling or change the watchdog verdict.
-            Must be strictly less than max_waiting_on_child_seconds when set.
-            None disables suspicion events.
-        max_waiting_on_child_no_progress_seconds: Hard ceiling on cumulative
-            WAITING_ON_CHILD time when corroboration shows the child is alive but
-            not making progress (e.g., heartbeat-only, stale-label, or OS-descendant-only
-            evidence). When set, must be <= max_waiting_on_child_seconds. When None,
-            the no-progress ceiling is disabled and max_waiting_on_child_seconds is
-            used for all WAITING_ON_CHILD states.
-        post_tool_result_progression_seconds: When set, the watchdog fires
-            STALLED_AFTER_TOOL_RESULT if no follow-up STREAM_DELTA / OUTPUT_LINE
-            activity arrives within this many seconds of a TOOL_RESULT activity.
-            This is a NEW BEHAVIOR for direct wedge detection: pre-fix, the
-            watchdog only fired NO_OUTPUT_DEADLINE at the full
-            idle_timeout_seconds deadline, which meant a post-tool-result
-            wedge was detected in ~300s (the default idle timeout) rather
-            than ~120s (the default post-tool-result budget). When None,
-            the legacy NO_OUTPUT_DEADLINE-only behavior is preserved.
-            Must be > 0 when set.
-    """
 
     idle_timeout_seconds: float | None
     profile: TimeoutProfile = TimeoutProfile.STANDARD
@@ -147,186 +69,35 @@ class TimeoutPolicy:
         MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS
     )
     no_progress_quiet_seconds: float | None = NO_PROGRESS_QUIET_SECONDS
-    # Dumb-kill floor for NO_PROGRESS_QUIET: the watchdog cannot fire this
-    # reason within the first ``no_progress_quiet_minimum_invocation_seconds``
-    # of an agent run, so a recently-launched agent that is doing real
-    # thinking work (planning, exploration, dispatching subagents) but has
-    # not yet produced first-party activity evidence is not killed. Must be
-    # > 0 when set (zero is rejected by the validator). When None, the
-    # floor is disabled (not recommended). The default of 120.0s matches
-    # the OS_DESCENDANT_ONLY_CEILING default. SESSION_CEILING_EXCEEDED
-    # is unaffected (operator-set hard cap).
     no_progress_quiet_minimum_invocation_seconds: float | None = (
         NO_PROGRESS_QUIET_MINIMUM_INVOCATION_SECONDS
     )
-    # When set, the watchdog fires NO_OUTPUT_AT_START if the agent has been alive
-    # for this many seconds with zero recorded activity (no stdout, no tool call,
-    # no file change, no subagent output). Fires BEFORE the 600s cumulative
-    # no-progress ceiling. Set to None to opt out and restore the legacy
-    # CHILDREN_PERSIST_TOO_LONG-only behavior. Must be > 0 when set and strictly
-    # less than max_waiting_on_child_no_progress_seconds when both are set.
     no_output_at_start_seconds: float | None = NO_OUTPUT_AT_START_SECONDS
-    # When set, the watchdog fires STALLED_AFTER_TOOL_RESULT if no
-    # follow-up STREAM_DELTA/OUTPUT_LINE activity arrives within this
-    # many seconds of a TOOL_RESULT activity. When None, the legacy
-    # NO_OUTPUT_DEADLINE-only behavior is preserved (the wedge is
-    # detected only at the full idle_timeout_seconds deadline). The
-    # default of 120.0s is generous enough to cover the typical 60s
-    # 95th-percentile tool-result-to-output-line latency in
-    # production while still detecting the wedge in ~120s rather
-    # than waiting for the 300s default.
     post_tool_result_progression_seconds: float | None = POST_TOOL_RESULT_PROGRESSION_SECONDS
-    # Repeated-error circuit breaker thresholds. The watchdog fires
-    # REPEATED_ERROR_LOOP when an agent re-emits the same error fingerprint
-    # either ``repeated_error_consecutive_threshold`` times in a row with no
-    # intervening forward progress, or ``repeated_error_window_count`` times
-    # within ``repeated_error_window_seconds``. Each rule is independently
-    # disablable by setting its threshold to None.
     repeated_error_consecutive_threshold: int | None = REPEATED_ERROR_CONSECUTIVE_THRESHOLD
     repeated_error_window_count: int | None = REPEATED_ERROR_WINDOW_COUNT
     repeated_error_window_seconds: float | None = REPEATED_ERROR_WINDOW_SECONDS
-    # Per-channel activity evidence TTL (seconds). When set, the watchdog
-    # defers a NO_OUTPUT_DEADLINE fire (returning CONTINUE) while ANY
-    # non-stdout channel is fresher than this TTL. Each non-stdout channel
-    # (MCP tool call, subagent work, workspace file change) records its own
-    # last_at timestamp; the watchdog computes the channel age relative to
-    # the injected clock and returns CONTINUE when at least one channel
-    # age is below the TTL. The default of 30.0s is well under the 300s
-    # idle-timeout default, so a silent subagent (or silent MCP path) is
-    # detected at the regular idle deadline once its own channel goes
-    # stale. The SESSION_CEILING and CHILDREN_PERSIST_TOO_LONG ceilings are
-    # checked BEFORE this deferral, so they remain absolute. Setting this
-    # to 0.0 disables the activity-aware verdict and restores the
-    # legacy stdout-only NO_OUTPUT_DEADLINE behavior. Must be >= 0 when
-    # set. The operator-facing config surface exposes this as a
-    # non-negative float (0.0 disables). TimeoutPolicy also accepts None
-    # internally for test callers and layered defaults; None is treated the
-    # same as 0.0 (disabled).
     activity_evidence_ttl_seconds: float | None = AGENT_IDLE_ACTIVITY_EVIDENCE_TTL_SECONDS
-    # Staleness threshold (seconds) for the SILENT_SUBAGENT diagnostic.
-    # The watchdog's StuckClassifier returns ``StuckKind.SILENT_SUBAGENT``
-    # when the subagent channel has evidence (count >= 1) but the most
-    # recent signal is older than this threshold AND no first-party /
-    # side-channel activity is fresh AND classify_quiet is ACTIVE.  The
-    # SILENT_SUBAGENT kind is a post-mortem label parallel to
-    # DEFERRED_BY_STUCK_CLASSIFIER; it tells operators "a subagent was
-    # dispatched but went silent for >180s".  The default of 180.0s is
-    # deliberately looser than ``activity_evidence_ttl_seconds`` (30.0s)
-    # so the diagnostic surfaces once the short-term deferral gate has
-    # expired but before the 600s no-progress ceiling.  Set to None to
-    # disable the diagnostic.  When set, must be > 0.
     silent_subagent_seconds: float | None = SILENT_SUBAGENT_SECONDS
-    # Per-kind workspace file-change weights. Each value is BINARY:
-    # weight==0.0 means the change is dropped (does not defer the
-    # NO_OUTPUT_DEADLINE verdict); weight==1.0 means the change
-    # counts as full activity. Intermediate values are rejected
-    # by ``_validate_workspace_change_weights``; the binary-only
-    # semantics are reserved for a future fractional-TTL feature.
-    # The default policy is conservative: only source-code
-    # changes count. Operators can opt kinds in (e.g.
-    # ``{"source": 1.0, "log": 1.0}``) to restore the legacy
-    # ``every file change counts`` behavior on a per-kind basis.
     workspace_change_weights: dict[str, float] | None = field(
         default_factory=lambda: dict(DEFAULT_AGENT_WORKSPACE_CHANGE_WEIGHTS)
     )
-    # Process monitor and subagent output capture controls. These are
-    # feature flags that let operators disable the new evidence channels
-    # when the agent CLI does not expose observable subagent output.
     process_monitor_enabled: bool = PROCESS_MONITOR_ENABLED
     subagent_output_capture_enabled: bool = SUBAGENT_OUTPUT_CAPTURE_ENABLED
     subagent_output_poll_interval_seconds: float = SUBAGENT_OUTPUT_POLL_INTERVAL_SECONDS
-    # Short ceiling on cumulative WAITING_ON_CHILD time when alive_by is
-    # OS_DESCENDANT_ONLY_STALE_PROGRESS and no probe override has fired.
-    # When set, must be <= max_waiting_on_child_seconds. None disables
-    # the override and falls back to max_waiting_on_child_no_progress_seconds.
     os_descendant_only_ceiling_seconds: float | None = OS_DESCENDANT_ONLY_CEILING_SECONDS
-    # Earlier SUSPECTED_FROZEN threshold when alive_by is OS_DESCENDANT_ONLY_STALE_PROGRESS.
-    # The watchdog fires suspect at min(suspect_waiting_on_child_seconds, this value).
-    # When set, must be < os_descendant_only_ceiling_seconds and
-    # < max_waiting_on_child_seconds. None disables the override.
     os_descendant_only_suspect_seconds: float | None = OS_DESCENDANT_ONLY_SUSPECT_SECONDS
-    # A known descendant PID with 0 user+system CPU time over this window is reported
-    # as alive_by=CPU_IDLE_WHILE_ALIVE by the read-loop corroborator. The override
-    # short-circuits the OS-descendant-only ceiling and falls back to the no-progress
-    # ceiling. None disables the CPU probe.
     cpu_idle_seconds: float | None = CPU_IDLE_SECONDS
-    # The per-run .agent/raw/{safe_id}.log file is reported as alive_by=LOG_STALE_WHILE_ALIVE
-    # when its size has not grown for this many seconds. The override short-circuits
-    # the OS-descendant-only ceiling and falls back to the no-progress ceiling.
-    # None disables the log-growth probe; the probe no-ops when the file is absent.
     log_growth_seconds: float | None = LOG_GROWTH_SECONDS
-    # STRICTLY_STUCK ceiling: orthogonal to ``no_progress_quiet_seconds``, the
-    # watchdog fires ``WatchdogFireReason.STRICTLY_STUCK`` when the corroborator
-    # reports a stuck-but-alive state (``alive_by`` in
-    # ``{OS_DESCENDANT_ONLY_STALE_PROGRESS, CPU_IDLE_WHILE_ALIVE,
-    # LOG_STALE_WHILE_ALIVE}``) AND no first-party channel is fresh for this
-    # many seconds. Set to None to disable. When set, the value MUST be > 0
-    # AND <= ``no_progress_quiet_seconds`` (the strictly-stuck ceiling is a
-    # SHORTER, ORTHOGONAL ceiling -- if it were equal or longer it would be
-    # redundant with the standard no-progress ceiling).
     no_progress_quiet_strictly_stuck_seconds: float | None = (
         NO_PROGRESS_QUIET_STRICTLY_STUCK_SECONDS
     )
-    # Heartbeat-only ceiling: fires ``NO_PROGRESS_QUIET`` when a
-    # heartbeat-only subagent (``AliveBy.FRESH_HEARTBEAT_ONLY`` -- alive
-    # per the corroborator but no first-party progress) has been alive for
-    # this many seconds. Without this ceiling, a heartbeat-only subagent
-    # would bypass ``NO_PROGRESS_QUIET`` (which requires ``alive_by is
-    # None``) AND ``STRICTLY_STUCK`` (which requires a stale alive_by) and
-    # only trip the cumulative 600s ``CHILDREN_PERSIST_TOO_LONG`` ceiling
-    # -- too late for a heartbeat-only subagent that emits heartbeats but
-    # no real work. Must be > 0 when set and <=
-    # ``no_progress_quiet_seconds`` when both are set (the heartbeat-only
-    # ceiling is a SHORTER, ORTHOGONAL ceiling that fires BEFORE the
-    # dumb-kill ``NO_PROGRESS_QUIET`` ceiling; if the heartbeat ceiling
-    # were longer than the outer ceiling the heartbeat branch would
-    # never fire and the operator's intent would be silently
-    # defeated). When ``None``, the heartbeat-only ceiling is disabled
-    # and the watchdog falls back to the cumulative
-    # ``CHILDREN_PERSIST_TOO_LONG`` ceiling. The 240s default equals
-    # ``no_progress_quiet_seconds`` so the heartbeat-only branch fires
-    # AT the dumb-kill ceiling in the default configuration; operators
-    # can RAISE ``no_progress_quiet_seconds`` to give heartbeat-only
-    # subagents more headroom, or LOWER
-    # ``no_progress_quiet_heartbeat_ceiling_seconds`` to fire the
-    # heartbeat branch EARLIER (must remain <= ``no_progress_quiet_seconds``
-    # per the cross-field validator). The 240s default still tolerates
-    # long-running legitimate work that emits heartbeats but no first-party
-    # progress (e.g. multi-step exploration, dispatching subagents).
     no_progress_quiet_heartbeat_ceiling_seconds: float | None = (
         NO_PROGRESS_QUIET_HEARTBEAT_CEILING_SECONDS
     )
-    # Per-(fire_reason, deferred_kind) log throttle in seconds for the
-    # ``_gate_fire`` DEBUG emissions. The PROMPT log showed ~10 DEBUG
-    # records/sec while a fire was deferred (SILENT_SUBAGENT or generic
-    # non-STUCK kind); that per-tick emission is log spam. The throttle
-    # keeps emissions to at most one per ``(fire_reason, deferred_kind)``
-    # key per ``watchdog_log_throttle_seconds``. Must be > 0.
     watchdog_log_throttle_seconds: float = WATCHDOG_LOG_THROTTLE_SECONDS
-    # Cadence (seconds) for the SUBAGENT_PROGRESS waiting-status event.
-    # The watchdog emits a SUBAGENT_PROGRESS event at most once per this
-    # many seconds while WAITING_ON_CHILD deferral is active. The 30s
-    # default matches the existing PROGRESS cadence so the new event does
-    # not introduce additional churn. Must be > 0.
     watchdog_subagent_progress_interval_seconds: float = WATCHDOG_SUBAGENT_PROGRESS_INTERVAL_SECONDS
 
-    # Stuck-job sub-ceiling. When set, the watchdog fires
-    # ``CHILDREN_PERSIST_TOO_LONG`` when the cumulative ``WAITING_ON_CHILD``
-    # time exceeds this value AND the corroborator reports a STALE alive_by
-    # (``OS_DESCENDANT_ONLY_STALE_PROGRESS`` / ``CPU_IDLE_WHILE_ALIVE`` /
-    # ``LOG_STALE_WHILE_ALIVE`` / ``STALE_LABEL_ONLY``). This is a SHORTER,
-    # ORTHOGONAL ceiling that kills a "stuck-but-alive" job well before the
-    # full ``max_waiting_on_child_seconds`` cumulative ceiling fires. Pre-fix,
-    # the gate could climb to 2365s without firing because ``classify_stuck``
-    # never returned STUCK while the corroborator reported a stale alive_by
-    # (the OS-descendant / CPU-idle / log-stale overrides short-circuited the
-    # no-progress ceiling via ``max_waiting_on_child_no_progress_seconds``
-    # which is itself wider than this sub-ceiling). The 600s default is half
-    # the cumulative ceiling and tolerates the typical "I would have noticed
-    # if the agent was alive" run budget. When None, the sub-ceiling is
-    # disabled and the legacy ``max_waiting_on_child_no_progress_seconds``
-    # behavior is preserved. Must be > 0 and <= ``max_waiting_on_child_seconds``
-    # when set.
     stuck_job_sub_ceiling_seconds: float | None = STUCK_JOB_SUB_CEILING_SECONDS
 
     def __post_init__(self) -> None:
@@ -442,16 +213,6 @@ class TimeoutPolicy:
             raise ValueError(msg)
 
     def _validate_no_progress_quiet_minimum_invocation_seconds(self) -> None:
-        """Validate the dumb-kill floor for NO_PROGRESS_QUIET.
-
-        The floor prevents the watchdog from killing a recently-launched
-        agent that is doing real work (planning, exploration, dispatching
-        subagents) but has not yet produced first-party activity evidence.
-        When set, the field MUST be > 0 (zero is rejected). When None,
-        the floor is disabled. When both the floor and
-        ``no_progress_quiet_seconds`` are set, the floor MUST be <= the
-        ceiling (the floor is a sub-window of the ceiling).
-        """
         if self.no_progress_quiet_minimum_invocation_seconds is None:
             return
         if self.no_progress_quiet_minimum_invocation_seconds <= 0:
@@ -596,17 +357,6 @@ class TimeoutPolicy:
         if self.no_progress_quiet_strictly_stuck_seconds <= 0:
             msg = "no_progress_quiet_strictly_stuck_seconds must be positive when set"
             raise ValueError(msg)
-        # The strictly-stuck ceiling must be SHORTER than the outer
-        # ``max_waiting_on_child_seconds`` ceiling or it is redundant
-        # with the standard ceiling. We compare against the outermost
-        # bound because the inner ``no_progress_quiet_seconds`` /
-        # ``max_waiting_on_child_no_progress_seconds`` pair are the
-        # dumb-kill floor's twin ceilings and tests routinely
-        # configure them with shorter values (e.g. 180 s) than the
-        # default strictly-stuck (300 s); the strictly-stuck ceiling
-        # is an ORTHOGONAL addition that fires before any of the
-        # outer cumulative ceilings, so the relevant upper bound is
-        # the outer ceiling itself.
         if self.no_progress_quiet_strictly_stuck_seconds > self.max_waiting_on_child_seconds:
             msg = "no_progress_quiet_strictly_stuck_seconds must be <= max_waiting_on_child_seconds"
             raise ValueError(msg)
@@ -617,14 +367,6 @@ class TimeoutPolicy:
         if self.no_progress_quiet_heartbeat_ceiling_seconds <= 0:
             msg = "no_progress_quiet_heartbeat_ceiling_seconds must be positive when set"
             raise ValueError(msg)
-        # The heartbeat-only ceiling MUST be <= ``no_progress_quiet_seconds``
-        # when both fields are set. The heartbeat-only branch is a
-        # SHORTER, ORTHOGONAL ceiling that fires BEFORE the dumb-kill
-        # ``NO_PROGRESS_QUIET`` ceiling; if the heartbeat ceiling were
-        # longer than the outer ``no_progress_quiet_seconds`` ceiling,
-        # the heartbeat branch would never fire (the outer ceiling
-        # would trip first) and the operator's intent (a faster kill
-        # for heartbeat-only subagents) would be silently defeated.
         if (
             self.no_progress_quiet_seconds is not None
             and self.no_progress_quiet_heartbeat_ceiling_seconds > self.no_progress_quiet_seconds
@@ -646,14 +388,6 @@ class TimeoutPolicy:
             raise ValueError(msg)
 
     def _validate_stuck_job_sub_ceiling_seconds(self) -> None:
-        """Validate the stuck-job sub-ceiling for ``CHILDREN_PERSIST_TOO_LONG``.
-
-        When set, the sub-ceiling MUST be > 0 (zero or negative is
-        rejected) AND <= ``max_waiting_on_child_seconds`` (the sub-ceiling
-        is a SHORTER, ORTHOGONAL ceiling; if it were equal or longer it
-        would be redundant with the cumulative ceiling). When None, the
-        sub-ceiling is disabled and the legacy behavior is preserved.
-        """
         if self.stuck_job_sub_ceiling_seconds is None:
             return
         if self.stuck_job_sub_ceiling_seconds <= 0:

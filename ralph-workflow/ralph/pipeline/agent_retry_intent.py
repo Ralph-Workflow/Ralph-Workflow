@@ -1,4 +1,3 @@
-"""Canonical retry/session intent for the next agent attempt."""
 
 from __future__ import annotations
 
@@ -23,7 +22,6 @@ class _RecoveryActionForFailureReason(Protocol):
 
 
 class AgentRetryIntent(RalphBaseModel):
-    """Single source of truth for the next-attempt session action."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -52,23 +50,10 @@ class AgentRetryIntent(RalphBaseModel):
         return self
 
 
-# wt-05-test-opti: cache the empty intent. ``AgentRetryIntent()`` is a
-# frozen Pydantic model with all-default fields; constructing a fresh
-# instance on every ``cleared_agent_retry_intent()`` call costs ~50 us
-# of Pydantic validation overhead, and the function is called from the
-# conftest autouse fixture for every test (~12.8k times per ``make
-# test``), in the pipeline reducer at least three times per state
-# transition, and from the effect executor every time the captured
-# intent is read. A single module-level singleton short-circuits the
-# constructor + validator and is safe because the model is frozen and
-# the function is documented as "the empty intent used to clear
-# next-attempt session state" \u2014 mutability is impossible and call
-# sites only read fields.
 _CLEARED_AGENT_RETRY_INTENT: AgentRetryIntent = AgentRetryIntent()
 
 
 def cleared_agent_retry_intent() -> AgentRetryIntent:
-    """Return the empty intent used to clear next-attempt session state."""
     return _CLEARED_AGENT_RETRY_INTENT
 
 
@@ -78,7 +63,6 @@ def agent_retry_intent_for_failure(
     session_id: str | None,
     reset_tool_registry: bool,
 ) -> AgentRetryIntent:
-    """Build the canonical next-attempt action from failure semantics."""
 
     module = import_module("ralph.agents.invoke._session_resume")
     recovery_action_for_failure_reason = cast(
@@ -112,7 +96,6 @@ def resume_agent_retry_intent(
     failure_reason: str = "",
     reset_tool_registry: bool = False,
 ) -> AgentRetryIntent:
-    """Build a resume intent that reuses an existing agent session id."""
     return AgentRetryIntent(
         action="resume",
         session_id=session_id,

@@ -1,11 +1,3 @@
-"""Public diagnostics for the restart-aware MCP bridge.
-
-The bridge exposes one immutable diagnostics snapshot instead of asking callers
-to inspect private counters.  The snapshot is intended for operators,
-supervisors, and black-box tests: every field describes state that affects the
-bridge's public behaviour (restart budget, probe classification, carried tool
-catalogue, and handover timing).
-"""
 
 from __future__ import annotations
 
@@ -21,12 +13,6 @@ def classify_probe_failure(
     *,
     overrun: bool = False,
 ) -> ProbeFailureClass:
-    """Classify one health-probe outcome for the bridge's public API.
-
-    ``timeout`` outcomes may be deferred while the host is contended.
-    ``saturated`` is a busy signal, not a failed server.  Every other outcome
-    is ``fatal`` and must not be hidden behind contention deferral.
-    """
     if exc is None:
         return "timeout" if overrun else "fatal"
     exc_text = str(exc).lower()
@@ -51,12 +37,6 @@ def classify_probe_failure(
 
 
 def bound_dominates(bound: float, components: tuple[float, ...]) -> bool:
-    """Return whether ``bound`` dominates every positive duration in ``components``.
-
-    This is the arithmetic-dominance predicate used by the lifecycle's
-    import-time restart-budget guard.  It is public so the same rule can be
-    evaluated without reaching into the lifecycle module's private helpers.
-    """
     if not components or not bound > 0.0:
         return False
     return all(component > 0.0 for component in components) and bound >= sum(components)
@@ -64,7 +44,6 @@ def bound_dominates(bound: float, components: tuple[float, ...]) -> bool:
 
 @dataclass(frozen=True)
 class BridgeDiagnostics:
-    """Immutable snapshot of restart-aware bridge state and operational limits."""
 
     restart_count: int
     restart_attempt_count: int

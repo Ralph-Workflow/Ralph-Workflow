@@ -1,4 +1,3 @@
-"""Internal context for agent invocation execution."""
 
 from __future__ import annotations
 
@@ -40,9 +39,6 @@ class _AgentInvocationCtx:
     agent_config: AgentConfig
     display: ParallelDisplay | None
     invocation_started_monotonic: float
-    # The injected time source for every decision this invocation makes.
-    # It is the same clock the recovery owner records against, so a
-    # cooldown expires on one timeline.
     clock: Clock
     invocation_options: InvokeOptions | None = None
     worker_namespace: Path | None = None

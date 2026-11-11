@@ -1,5 +1,3 @@
-"""Planning-edit prompts reuse the concise shared planning standard."""
-
 from __future__ import annotations
 
 from ralph.prompts.template_context import TemplateContext

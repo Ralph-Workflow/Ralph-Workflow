@@ -1,4 +1,3 @@
-"""Backup and migration helpers for config bootstrapping."""
 
 from __future__ import annotations
 
@@ -42,11 +41,6 @@ def _module_attr_or_none(module: ModuleType, attribute: str) -> object | None:
 
 
 def _get_bundled_defaults_dir() -> Path:
-    """Return the path to the bundled default policy files.
-
-    Computed lazily to avoid circular import: ralph.policy.loader imports
-    ralph.phases which imports ralph.pipeline which imports ralph.config.
-    """
     import sys
 
     module_name = "ralph.policy.loader"
@@ -93,12 +87,6 @@ def _resolve_global_policy_source(
 
 
 def _safe_resolved_path(path: Path) -> Path | None:
-    """Return the canonical identity of *path*, or None when it cannot be resolved.
-
-    ``Path.resolve`` raises ``RuntimeError`` on a symlink loop and ``OSError``
-    on other filesystem failures. An unknown identity must never be reported as
-    a match, so every failure degrades to None.
-    """
     try:
         return path.resolve()
     except (OSError, RuntimeError):
@@ -106,12 +94,6 @@ def _safe_resolved_path(path: Path) -> Path | None:
 
 
 def _same_file_identity(left: Path, right: Path) -> bool:
-    """Return True when both paths denote ONE file on disk.
-
-    ``Path.samefile`` compares device and inode, so it recognises a hard
-    link -- two names for one backing file -- which a resolved-path comparison
-    cannot see. A path that does not exist has no identity to compare.
-    """
     try:
         return left.samefile(right)
     except (OSError, ValueError):
@@ -119,34 +101,13 @@ def _same_file_identity(left: Path, right: Path) -> bool:
 
 
 def _agents_config_candidate_paths(target: Path) -> list[Path]:
-    """Return the agents-configuration paths whose identity *target* must match.
-
-    The sibling path covers the co-located layout where the main config and
-    the agents config share one directory; the XDG path covers the active
-    user-global agents config, which may live in a different directory than
-    the main config being migrated.
-    """
     candidates = [target.parent / _GLOBAL_AGENTS_FILENAME]
-    # An undeterminable home directory leaves the sibling candidate only.
     with suppress(OSError, RuntimeError):
         candidates.append(resolve_global_config_dir() / _GLOBAL_AGENTS_FILENAME)
     return candidates
 
 
 def _agents_config_alias_reason(target: Path) -> str | None:
-    """Return why *target* is the agents configuration file, or None when it is not.
-
-    A filename comparison alone cannot see an alias: the main config and the
-    agents config may be two names for ONE backing file whose own name is
-    neither of them. Comparing the identity of *target* with the identity of
-    every known agents-configuration path closes that bypass, so the migration
-    never writes to the operator-owned agents file. Identity is the file
-    itself (device and inode), not its spelling, so a hard link is recognised
-    as the very same file a symlink would point at.
-
-    An identity that cannot be established is treated as an alias: refusing to
-    migrate is recoverable, rewriting the agents file is not.
-    """
     if target.name == _GLOBAL_AGENTS_FILENAME:
         return f"target filename is {_GLOBAL_AGENTS_FILENAME}"
     resolved_target = _safe_resolved_path(target)
@@ -235,7 +196,6 @@ def _migrate_legacy_global_config(target: Path) -> BootstrapResult | None:
     backup = _backup_path(target)
     if backup.exists():
         backup.unlink()
-    # filesystem-write-ok: migration backup preserves existing user configuration metadata
     shutil.copy2(str(target), str(backup))
     write_text_if_changed(
         DEFAULT_FILE_BACKEND,

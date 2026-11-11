@@ -1,14 +1,3 @@
-"""Starters must read as durable enforcement policy, not remediation to-dos.
-
-The remediation prompt (:mod:`ralph.project_policy.remediation`) is the single
-home for remediation-time instructions (inspect the project, replace
-placeholders, gate the completion marker). Policy starters become the
-project's PERMANENT policy files after remediation, so any sentence that only
-makes sense while remediating is forbidden in them: it would bloat every
-project's policy files forever and bury the instructions agents actually need
-to FOLLOW the policy.
-"""
-
 from __future__ import annotations
 
 import re
@@ -17,11 +6,7 @@ import pytest
 
 from ralph.project_policy import remediation, starters
 
-#: Phrases that address the remediation agent's one-time task rather than the
-#: permanent policy reader. Each must live in the remediation prompt (most
-#: already do) and must NOT appear in any starter.
 _REMEDIATION_ERA_PHRASES: tuple[str, ...] = (
-    # One-time fill-in instructions.
     "REPLACE every starter placeholder",
     "The agent MUST resolve every",
     "resolve every `RALPH-FACT:` line",
@@ -29,18 +14,12 @@ _REMEDIATION_ERA_PHRASES: tuple[str, ...] = (
     "REMOVE inapplicable conditional sections",
     "INSPECT the project to identify",
     "PRESERVE stricter existing",
-    # Validator mechanics addressed to the remediating agent.
     "the validator will reject",
     "rejected by the validator",
     "is rejected by the validator",
     "Placeholder tokens in the",
-    # Stale conditional-seeding mechanics: conditional starters are only
-    # seeded when their domain is detected, so "REMOVE this file" and
-    # validator-signal explanations are never true in a seeded file.
     "REMOVE this file",
     "validator detects",
-    # Self-references to the template era: after remediation the file IS
-    # the project policy, so durable prose must not mention starters.
     "starter boilerplate",
 )
 
@@ -58,13 +37,6 @@ def test_starter_contains_no_remediation_era_prose(name: str) -> None:
 
 @pytest.mark.parametrize("name", sorted(starters.iter_starter_names()))
 def test_starter_facts_section_reads_as_a_record(name: str) -> None:
-    """The facts section must present RALPH-FACT lines as a durable record
-    agents rely on and keep current — not as a to-do list to 'resolve'.
-
-    The template banner also mentions "verified project facts", so it is
-    stripped before asserting: the durable body itself must carry the
-    record framing.
-    """
     content = starters.read_starter(name)
     start = content.find("<!-- RALPH-STARTER-TEMPLATE")
     if start != -1:
@@ -78,9 +50,6 @@ def test_starter_facts_section_reads_as_a_record(name: str) -> None:
 
 @pytest.mark.parametrize("name", sorted(starters.iter_starter_names()))
 def test_starter_carries_exactly_one_template_banner(name: str) -> None:
-    """Each starter must be OBVIOUSLY a template: one RALPH-STARTER-TEMPLATE
-    banner comment whose removal is machine-enforced (the token is a
-    validator placeholder, so readiness is blocked until it is deleted)."""
     content = starters.read_starter(name)
     assert content.count("RALPH-STARTER-TEMPLATE") == 1, (
         f"starter {name} must contain exactly one template banner"
@@ -88,9 +57,6 @@ def test_starter_carries_exactly_one_template_banner(name: str) -> None:
 
 
 def test_validator_blocks_readiness_while_banner_remains() -> None:
-    """A freshly seeded starter must yield a deterministic finding for the
-    template banner, and an otherwise-complete policy file that still
-    carries the banner must NOT validate clean."""
     from ralph.language_detector.models import ProjectStack
     from ralph.project_policy import markers, validators
     from ralph.workspace.memory import MemoryWorkspace
@@ -102,7 +68,6 @@ def test_validator_blocks_readiness_while_banner_remains() -> None:
 
     stack = ProjectStack(primary_language="Python")
 
-    # Complete project: no findings.
     ws = MemoryWorkspace()
     _seed_agents_md(ws)
     _seed_claude_md(ws)
@@ -114,7 +79,6 @@ def test_validator_blocks_readiness_while_banner_remains() -> None:
     )
     assert validators.validate_readiness(ws, stack) == []
 
-    # Same project with the banner re-inserted into one complete file.
     path = f"{markers.CANONICAL_DIR}testing-policy.md"
     ws.write(
         path,
@@ -128,10 +92,6 @@ def test_validator_blocks_readiness_while_banner_remains() -> None:
 
 @pytest.mark.parametrize("name", sorted(starters.iter_starter_names()))
 def test_starter_machine_lines_are_line_start(name: str) -> None:
-    """RALPH machine lines must sit at line start: the validator only counts
-    line-anchored `RALPH-FACT:` / `RALPH-COMMAND:` / `RALPH-LANG:` /
-    `RALPH-INAPPLICABLE:` lines, so a bulleted machine line can never
-    satisfy a check even after its value is filled in."""
     content = starters.read_starter(name)
     offending = [
         line
@@ -150,39 +110,23 @@ def test_starter_machine_lines_are_line_start(name: str) -> None:
 
 @pytest.mark.parametrize("name", sorted(starters.iter_starter_names()))
 def test_filled_in_starter_validates_clean(name: str) -> None:
-    """The full contract: take a starter, do exactly what the remediation
-    prompt says (resolve placeholders in place, delete the banner and every
-    REPLACE-ME comment) and the file must pass every per-file validator
-    check with NO completion marker — completion is the absence of
-    unresolved markers, not a certification comment. If this fails, the
-    template forces the agent to fight the validator over formatting
-    instead of filling in facts."""
     from ralph.project_policy import markers, validators
     from ralph.workspace.memory import MemoryWorkspace
 
     content = starters.read_starter(name)
-    # Delete the banner comment block, then every REPLACE-ME section-marker
-    # comment (the remediation prompt instructs deleting each one after
-    # following its in-place instruction — a file can carry several).
     for comment_prefix in ("<!-- RALPH-STARTER-TEMPLATE", "<!-- REPLACE-ME"):
         while (start := content.find(comment_prefix)) != -1:
             end = content.find("-->", start) + len("-->")
             content = content[:start] + content[end:].lstrip("\n")
-    # Resolve every command placeholder with an allowlisted tool, then every
-    # remaining fact placeholder with a plain verified value.
     content = content.replace("RALPH-COMMAND: PROJECT-FACT-UNRESOLVED", "RALPH-COMMAND: make test")
     content = content.replace("deterministic: PROJECT-FACT-UNRESOLVED", "deterministic: make test")
     content = content.replace("PROJECT-FACT-UNRESOLVED", "verified-value")
-    # The capture-command fact must be a bare, runnable command (the visual
-    # pipeline rejects anything else), so it is resolved like a RALPH-COMMAND.
     content = re.sub(
         r"^(RALPH-FACT: design_capture_command:).*$",
         r"\1 make visual-capture",
         content,
         flags=re.MULTILINE,
     )
-    # No completion marker is appended: a file is complete exactly when no
-    # banner, REPLACE-ME comment, or placeholder token remains.
 
     ws = MemoryWorkspace()
     path = f"{markers.CANONICAL_DIR}{name}"
@@ -195,7 +139,6 @@ def test_filled_in_starter_validates_clean(name: str) -> None:
 
 
 def test_v4_testing_and_verification_own_portfolio_maintenance() -> None:
-    """The two owning policies carry the complete portfolio workflow once."""
     testing = starters.read_starter("testing-policy.md")
     verification = starters.read_starter("verification-policy.md")
 
@@ -228,12 +171,8 @@ def test_every_starter_delegates_shared_rules_to_the_portfolio() -> None:
 
 
 def test_remediation_prompt_owns_the_fill_in_instructions() -> None:
-    """The instructions removed from starters must exist in the remediation
-    prompt so the remediating agent still receives them."""
     prompt = remediation._render_prompt([])
     assert "Replace every `RALPH-FACT:` placeholder" in prompt
-    # Completion is the absence of unresolved markers — the prompt must say
-    # so and must NOT instruct adding any completion marker.
     assert "no unresolved or completion marker" in prompt.lower()
     assert "inspect the project's languages" in prompt
     assert "inactive conditional domain" in prompt
@@ -242,25 +181,17 @@ def test_remediation_prompt_owns_the_fill_in_instructions() -> None:
 
 
 def test_clean_code_and_architecture_agree_on_abstraction_justification() -> None:
-    """Clean-code and architecture starters must agree that implementation count
-    alone neither requires nor forbids abstraction, and that abstraction is
-    justified by demonstrated boundary, volatility, testing, or reuse value
-    rather than a second implementation count proxy.
-    """
     clean_code = starters.read_starter("clean-code-policy.md")
     architecture = starters.read_starter("architecture-policy.md")
     cc_norm = " ".join(clean_code.split())
     arch_norm = " ".join(architecture.split())
 
-    # Both starters must agree that implementation count alone neither requires nor forbids abstraction.
     assert "implementation count alone neither requires nor forbids" in cc_norm
     assert "implementation count alone neither requires nor forbids" in arch_norm
 
-    # Both starters must justify abstraction by demonstrated boundary, volatility, testing, or reuse.
     assert "demonstrated boundary, volatility, testing, or reuse value" in cc_norm
     assert "demonstrated boundary, volatility, testing, or reuse need" in arch_norm
 
-    # Neither starter may use a second-implementation proxy or label a single implementation inherently premature.
     for text, name in (
         (clean_code, "clean-code-policy.md"),
         (architecture, "architecture-policy.md"),
@@ -272,7 +203,6 @@ def test_clean_code_and_architecture_agree_on_abstraction_justification() -> Non
             f"{name} must not declare a one-implementation abstraction inherently premature"
         )
 
-    # Clean-code guard inventory must align with demonstrated value, not second implementation.
     abstraction_rows = [
         line
         for line in clean_code.splitlines()

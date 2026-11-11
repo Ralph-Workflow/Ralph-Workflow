@@ -1,12 +1,3 @@
-"""Black-box regression tests: _build_agent_recovery_plan with OpenCodeResumableExitError.
-
-Tests that:
-1. OpenCodeResumableExitError.resumable_session_id is threaded into the recovery plan.
-2. When resumable_session_id is None, extract_session_id() fallback is used from raw output.
-
-No real subprocesses, no real wall clock.
-"""
-
 from __future__ import annotations
 
 import json
@@ -36,7 +27,6 @@ def _make_effect(
 
 class TestBuildAgentRecoveryPlanInteractiveClaude:
     def test_resumable_session_id_is_threaded_into_recovery_plan(self, tmp_path: Path) -> None:
-        """Claude interactive resumable exit threads session_id into the recovery plan."""
         exc = OpenCodeResumableExitError("claude", session_id="sess-abc")
         effect = _make_effect(agent_name="claude")
 
@@ -62,7 +52,6 @@ class TestBuildAgentRecoveryPlanInteractiveClaude:
     def test_fallback_to_extract_session_id_when_resumable_session_id_is_none(
         self, tmp_path: Path
     ) -> None:
-        """Claude interactive fallback extracts the session id from raw output."""
         exc = OpenCodeResumableExitError("claude", session_id=None)
         effect = _make_effect(agent_name="claude")
         raw_output = [json.dumps({"session_id": "sess-from-output"})]
@@ -87,7 +76,6 @@ class TestBuildAgentRecoveryPlanInteractiveClaude:
         assert plan.prompt_file != "PROMPT.md"
 
     def test_no_plan_when_attempt_limit_exceeded(self, tmp_path: Path) -> None:
-        """No recovery plan for Claude interactive when attempt limit is exceeded."""
         exc = OpenCodeResumableExitError("claude", session_id="sess-xyz")
         effect = _make_effect(agent_name="claude")
 

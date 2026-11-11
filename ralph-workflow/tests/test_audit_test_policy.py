@@ -1,5 +1,3 @@
-"""Tests for ralph.testing.audit_test_policy."""
-
 from __future__ import annotations
 
 import ast
@@ -23,13 +21,8 @@ from ralph.testing.audit_test_policy import (
 from ralph.testing.test_whitebox_baseline import WHITEBOX_BASELINE
 from ralph.testing.whitebox_reconciliation import reconcile_whitebox_baseline
 
-# ---------------------------------------------------------------------------
-# Core function tests — audit_test_file
-# ---------------------------------------------------------------------------
-
 
 def test_sleep_with_positive_arg_is_violation(tmp_path: Path) -> None:
-    """time.sleep(1) should be detected as a sleep violation."""
     test_file = tmp_path / "test_example.py"
     test_file.write_text("import time\ntime.sleep(1)\n")
     violations = audit_test_file(test_file)
@@ -38,7 +31,6 @@ def test_sleep_with_positive_arg_is_violation(tmp_path: Path) -> None:
 
 
 def test_sleep_with_zero_arg_is_allowed(tmp_path: Path) -> None:
-    """time.sleep(0) should NOT be flagged."""
     test_file = tmp_path / "test_example.py"
     test_file.write_text("import time\ntime.sleep(0)\n")
     violations = audit_test_file(test_file)
@@ -46,7 +38,6 @@ def test_sleep_with_zero_arg_is_allowed(tmp_path: Path) -> None:
 
 
 def test_asyncio_sleep_zero_is_allowed(tmp_path: Path) -> None:
-    """asyncio.sleep(0) should NOT be flagged."""
     test_file = tmp_path / "test_example.py"
     test_file.write_text("import asyncio\nasyncio.sleep(0)\n")
     violations = audit_test_file(test_file)
@@ -54,7 +45,6 @@ def test_asyncio_sleep_zero_is_allowed(tmp_path: Path) -> None:
 
 
 def test_asyncio_sleep_positive_is_violation(tmp_path: Path) -> None:
-    """asyncio.sleep(0.5) should be detected as a sleep violation."""
     test_file = tmp_path / "test_example.py"
     test_file.write_text("import asyncio\nasyncio.sleep(0.5)\n")
     violations = audit_test_file(test_file)
@@ -63,7 +53,6 @@ def test_asyncio_sleep_positive_is_violation(tmp_path: Path) -> None:
 
 
 def test_open_is_violation(tmp_path: Path) -> None:
-    """open() call should be detected as an I/O violation."""
     test_file = tmp_path / "test_example.py"
     test_file.write_text('open("file.txt")\n')
     violations = audit_test_file(test_file)
@@ -72,7 +61,6 @@ def test_open_is_violation(tmp_path: Path) -> None:
 
 
 def test_open_with_exact_monkeypatch_is_allowed(tmp_path: Path) -> None:
-    """open() is allowed when builtins.open itself is patched."""
     test_file = tmp_path / "test_example.py"
     test_file.write_text("monkeypatch.setattr('builtins.open', fake_open)\nopen('file.txt')\n")
     violations = audit_test_file(test_file)
@@ -80,7 +68,6 @@ def test_open_with_exact_monkeypatch_is_allowed(tmp_path: Path) -> None:
 
 
 def test_path_read_text_is_violation(tmp_path: Path) -> None:
-    """Path('f.txt').read_text() should be detected as I/O violation."""
     test_file = tmp_path / "test_example.py"
     test_file.write_text("from pathlib import Path\nPath('f.txt').read_text()\n")
     violations = audit_test_file(test_file)
@@ -89,7 +76,6 @@ def test_path_read_text_is_violation(tmp_path: Path) -> None:
 
 
 def test_path_read_text_with_tmp_path_is_allowed(tmp_path: Path) -> None:
-    """Path().read_text() with tmp_path in source should be allowed."""
     test_file = tmp_path / "test_example.py"
     test_file.write_text("from pathlib import Path\np = tmp_path / 'f.txt'\nPath(p).read_text()\n")
     violations = audit_test_file(test_file)
@@ -97,7 +83,6 @@ def test_path_read_text_with_tmp_path_is_allowed(tmp_path: Path) -> None:
 
 
 def test_subprocess_run_is_violation(tmp_path: Path) -> None:
-    """subprocess.run() should be detected as an I/O violation."""
     test_file = tmp_path / "test_example.py"
     test_file.write_text("import subprocess\nsubprocess.run(['cmd'])\n")
     violations = audit_test_file(test_file)
@@ -106,7 +91,6 @@ def test_subprocess_run_is_violation(tmp_path: Path) -> None:
 
 
 def test_subprocess_with_e2e_marker_is_allowed(tmp_path: Path) -> None:
-    """File with @pytest.mark.subprocess_e2e AND subprocess.run() should be allowed."""
     test_file = tmp_path / "test_example.py"
     test_file.write_text(
         "import pytest\nimport subprocess\n\n"
@@ -119,7 +103,6 @@ def test_subprocess_with_e2e_marker_is_allowed(tmp_path: Path) -> None:
 
 
 def test_gitpython_repo_init_is_violation(tmp_path: Path) -> None:
-    """GitPython Repo.init in an unmarked file crosses the real-Git boundary."""
     test_file = tmp_path / "test_example.py"
     test_file.write_text(
         "from pathlib import Path\n"
@@ -136,7 +119,6 @@ def test_gitpython_repo_init_is_violation(tmp_path: Path) -> None:
 
 
 def test_gitpython_aliased_repo_import_is_violation(tmp_path: Path) -> None:
-    """An aliased ``Repo`` import (``GitRepo``) still crosses the boundary."""
     test_file = tmp_path / "test_example.py"
     test_file.write_text(
         "from git import Repo as GitRepo\n\ndef _seed_repo(tmp_path):\n    GitRepo.init(tmp_path)\n"
@@ -148,7 +130,6 @@ def test_gitpython_aliased_repo_import_is_violation(tmp_path: Path) -> None:
 
 
 def test_git_module_attribute_repo_is_violation(tmp_path: Path) -> None:
-    """``git.Repo(...)`` through the module import crosses the boundary."""
     test_file = tmp_path / "test_example.py"
     test_file.write_text("import git\n\ndef _seed_repo(tmp_path):\n    git.Repo.init(tmp_path)\n")
     violations = audit_test_file(test_file)
@@ -158,7 +139,6 @@ def test_git_module_attribute_repo_is_violation(tmp_path: Path) -> None:
 
 
 def test_git_exception_constructor_is_not_a_violation(tmp_path: Path) -> None:
-    """Constructing GitPython exception classes touches no real git process."""
     test_file = tmp_path / "test_example.py"
     test_file.write_text(
         "from git import GitCommandError, InvalidGitRepositoryError\n"
@@ -171,7 +151,6 @@ def test_git_exception_constructor_is_not_a_violation(tmp_path: Path) -> None:
 
 
 def test_gitpython_with_e2e_marker_is_allowed(tmp_path: Path) -> None:
-    """A subprocess_e2e-marked file owns its real-Git crossings."""
     test_file = tmp_path / "test_example.py"
     test_file.write_text(
         "import pytest\n"
@@ -186,7 +165,6 @@ def test_gitpython_with_e2e_marker_is_allowed(tmp_path: Path) -> None:
 
 
 def test_registered_real_git_file_is_exempt(tmp_path: Path) -> None:
-    """The sanctioned real-git registry keeps default-lane proofs on make test."""
     import ralph.testing.audit_test_policy as audit_module
 
     tests_dir = tmp_path / "tests"
@@ -204,19 +182,12 @@ def test_registered_real_git_file_is_exempt(tmp_path: Path) -> None:
         ),
     ):
         assert audit_module.audit_test_file(test_file) == []
-    # Outside the registry, the same file is a real-Git violation again.
     with mock.patch.object(audit_module, "_PROJECT_ROOT", tmp_path):
         violations = audit_module.audit_test_file(test_file)
     assert [violation.category for violation in violations] == ["io"]
 
 
 def test_sanctioned_default_lane_real_git_file_is_exempt(tmp_path: Path) -> None:
-    """The audit-exception registry alone also keeps a default-lane proof exempt.
-
-    ``SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES`` carries files pytest cannot
-    select (starting with ``tests/conftest.py``); the audit must consult it
-    on its own, not only via ``REQUIRED_AUTO_INTEGRATE_E2E_FILES``.
-    """
     import ralph.testing.audit_test_policy as audit_module
 
     tests_dir = tmp_path / "tests"
@@ -234,14 +205,12 @@ def test_sanctioned_default_lane_real_git_file_is_exempt(tmp_path: Path) -> None
         ),
     ):
         assert audit_module.audit_test_file(test_file) == []
-    # Outside both registries, the same file is a real-Git violation again.
     with mock.patch.object(audit_module, "_PROJECT_ROOT", tmp_path):
         violations = audit_module.audit_test_file(test_file)
     assert [violation.category for violation in violations] == ["io"]
 
 
 def test_socket_creation_is_violation(tmp_path: Path) -> None:
-    """socket.socket() should be detected as an I/O violation."""
     test_file = tmp_path / "test_example.py"
     test_file.write_text("import socket\nsocket.socket()\n")
     violations = audit_test_file(test_file)
@@ -250,7 +219,6 @@ def test_socket_creation_is_violation(tmp_path: Path) -> None:
 
 
 def test_time_monotonic_is_violation(tmp_path: Path) -> None:
-    """time.monotonic() should be detected as a wall-clock violation."""
     test_file = tmp_path / "test_example.py"
     test_file.write_text("import time\ntime.monotonic()\n")
     violations = audit_test_file(test_file)
@@ -259,7 +227,6 @@ def test_time_monotonic_is_violation(tmp_path: Path) -> None:
 
 
 def test_blocking_wait_is_violation(tmp_path: Path) -> None:
-    """event.wait() without timeout should be detected as blocking-wait violation."""
     test_file = tmp_path / "test_example.py"
     test_file.write_text("import threading\nevent = threading.Event()\nevent.wait()\n")
     violations = audit_test_file(test_file)
@@ -268,7 +235,6 @@ def test_blocking_wait_is_violation(tmp_path: Path) -> None:
 
 
 def test_wait_with_timeout_is_allowed(tmp_path: Path) -> None:
-    """event.wait(timeout=5) with timeout should be allowed."""
     test_file = tmp_path / "test_example.py"
     test_file.write_text("import threading\nevent = threading.Event()\nevent.wait(timeout=5)\n")
     violations = audit_test_file(test_file)
@@ -294,7 +260,6 @@ def test_wait_with_timeout_is_allowed(tmp_path: Path) -> None:
 def test_calls_through_an_import_alias_are_violations(
     tmp_path: Path, source: str, category: str
 ) -> None:
-    """A banned call is banned however the module or function was imported."""
     test_file = tmp_path / "test_example.py"
     test_file.write_text(source)
     violations = audit_test_file(test_file)
@@ -302,21 +267,18 @@ def test_calls_through_an_import_alias_are_violations(
 
 
 def test_aliased_sleep_zero_is_still_allowed(tmp_path: Path) -> None:
-    """Resolving an alias does not turn an allowed zero sleep into a violation."""
     test_file = tmp_path / "test_example.py"
     test_file.write_text("from asyncio import sleep\nsleep(0)\n")
     assert audit_test_file(test_file) == []
 
 
 def test_patching_the_alias_target_exempts_the_aliased_call(tmp_path: Path) -> None:
-    """Patching ``time.sleep`` exempts a call made through ``import time as t``."""
     test_file = tmp_path / "test_example.py"
     test_file.write_text("import time as t\nmonkeypatch.setattr(t, 'sleep', fake)\nt.sleep(0.3)\n")
     assert audit_test_file(test_file) == []
 
 
 def test_unrelated_names_sharing_a_banned_suffix_are_not_violations(tmp_path: Path) -> None:
-    """A local ``run``/``sleep`` that no import binds to a banned module is ignored."""
     test_file = tmp_path / "test_example.py"
     test_file.write_text(
         "from ralph.example import run\n"
@@ -327,7 +289,6 @@ def test_unrelated_names_sharing_a_banned_suffix_are_not_violations(tmp_path: Pa
 
 
 def test_clean_file_no_violations(tmp_path: Path) -> None:
-    """A test file with no policy violations should return empty list."""
     test_file = tmp_path / "test_example.py"
     test_file.write_text("def test_hello():\n    assert True\n")
     violations = audit_test_file(test_file)
@@ -335,20 +296,13 @@ def test_clean_file_no_violations(tmp_path: Path) -> None:
 
 
 def test_non_py_file_returns_empty(tmp_path: Path) -> None:
-    """A non-.py file should return empty violations list."""
     test_file = tmp_path / "test_example.txt"
     test_file.write_text("time.sleep(1)\n")
     violations = audit_test_file(test_file)
     assert len(violations) == 0
 
 
-# ---------------------------------------------------------------------------
-# Allowlist tests
-# ---------------------------------------------------------------------------
-
-
 def test_io_allowlist_skips_only_io_and_keeps_whitebox_check(tmp_path: Path) -> None:
-    """An I/O-allowlisted file still receives the white-box ratchet check."""
     test_file = tmp_path / "test_multimodal_session_memory_regression.py"
     test_file.write_text("from ralph.example import _private\nopen('file.txt')\n")
     violations = audit_test_file(test_file)
@@ -356,7 +310,6 @@ def test_io_allowlist_skips_only_io_and_keeps_whitebox_check(tmp_path: Path) -> 
 
 
 def test_wall_clock_allowlist_file_is_skipped(tmp_path: Path) -> None:
-    """File with stem in _WALL_CLOCK_ALLOWLIST should be skipped entirely."""
     test_file = tmp_path / "test_timeout_clock.py"
     test_file.write_text("import time\ntime.monotonic()\n")
     violations = audit_test_file(test_file)
@@ -364,14 +317,12 @@ def test_wall_clock_allowlist_file_is_skipped(tmp_path: Path) -> None:
 
 
 def test_source_read_allowlist_permits_reading_shipped_files(tmp_path: Path) -> None:
-    """A source-read allowlisted file may read repository files."""
     test_file = tmp_path / "test_visual_verdict_policy_alignment.py"
     test_file.write_text("from pathlib import Path\nPath('policy.md').read_text()\n")
     assert audit_test_file(test_file) == []
 
 
 def test_source_read_allowlist_still_flags_wall_clock(tmp_path: Path) -> None:
-    """The narrow exemption must not suppress wall-clock violations."""
     test_file = tmp_path / "test_visual_verdict_policy_alignment.py"
     test_file.write_text("import time\ntime.monotonic()\n")
     violations = audit_test_file(test_file)
@@ -379,7 +330,6 @@ def test_source_read_allowlist_still_flags_wall_clock(tmp_path: Path) -> None:
 
 
 def test_source_read_allowlist_still_flags_subprocess(tmp_path: Path) -> None:
-    """The narrow exemption must not suppress subprocess violations."""
     test_file = tmp_path / "test_visual_verdict_policy_alignment.py"
     test_file.write_text("import subprocess\nsubprocess.run(['ls'])\n")
     violations = audit_test_file(test_file)
@@ -388,7 +338,6 @@ def test_source_read_allowlist_still_flags_subprocess(tmp_path: Path) -> None:
 
 
 def test_source_read_allowlist_still_flags_sleep_and_writes(tmp_path: Path) -> None:
-    """The exemption covers reads only: sleep and filesystem writes stay flagged."""
     test_file = tmp_path / "test_visual_verdict_policy_alignment.py"
     test_file.write_text(
         "import time\nfrom pathlib import Path\ntime.sleep(1)\nPath('policy.md').write_text('x')\n"
@@ -397,37 +346,27 @@ def test_source_read_allowlist_still_flags_sleep_and_writes(tmp_path: Path) -> N
     assert sorted(violation.category for violation in violations) == ["io", "sleep"]
 
 
-# ---------------------------------------------------------------------------
-# White-box detector and ratchet tests
-# ---------------------------------------------------------------------------
-
-
 def test_const_first_private_setattr_is_flagged() -> None:
-    """A const-first monkeypatch target reaching a private name is counted."""
     tree = ast.parse('monkeypatch.setattr("ralph.example._secret", value)\n')
     assert count_setattr_private(tree) == 1
 
 
 def test_name_first_private_setattr_is_flagged() -> None:
-    """A name-first monkeypatch target reaching a private name is counted."""
     tree = ast.parse('monkeypatch.setattr(run_loop, "_save_checkpoint", fake)\n')
     assert count_setattr_private(tree) == 1
 
 
 def test_public_setattr_target_is_not_flagged() -> None:
-    """A public monkeypatch target is not white-box coupling."""
     tree = ast.parse('monkeypatch.setattr("ralph.example.public_name", value)\n')
     assert count_setattr_private(tree) == 0
 
 
 def test_dunder_setattr_target_is_not_flagged() -> None:
-    """Dunder monkeypatch targets are public and are not counted."""
     tree = ast.parse('monkeypatch.setattr("ralph.example.__wrapped__", value)\n')
     assert count_setattr_private(tree) == 0
 
 
 def test_private_ralph_symbol_import_is_flagged_but_public_import_is_not() -> None:
-    """Only imports reaching private production symbols are counted."""
     private_tree = ast.parse("from ralph.example import _private\n")
     public_tree = ast.parse("from ralph.example import public_name\n")
     assert count_private_imports(private_tree) == 1
@@ -435,31 +374,26 @@ def test_private_ralph_symbol_import_is_flagged_but_public_import_is_not() -> No
 
 
 def test_dunder_private_import_is_not_flagged() -> None:
-    """Dunder imports are public and are not counted as private coupling."""
     tree = ast.parse("from ralph.example import __doc__\n")
     assert count_private_imports(tree) == 0
 
 
 def test_public_symbol_through_private_module_is_flagged() -> None:
-    """A public symbol imported through a private ralph module is coupling."""
     tree = ast.parse("from ralph.example._private_module import public_name\n")
     assert count_private_imports(tree) == 1
 
 
 def test_private_attribute_read_inside_assert_is_flagged() -> None:
-    """A private attribute read in an assertion is high-confidence coupling."""
     tree = ast.parse("def test_value(owner):\n    assert owner._secret == 1\n")
     assert count_private_attrs(tree) == 1
 
 
 def test_private_attribute_read_outside_assert_is_not_flagged() -> None:
-    """An unrelated private attribute read outside the narrowed contexts is ignored."""
     tree = ast.parse("value = owner._secret\n")
     assert count_private_attrs(tree) == 0
 
 
 def test_unrelated_monkeypatch_does_not_exempt_sleep(tmp_path: Path) -> None:
-    """Mentioning monkeypatch does not suppress a real sleep call."""
     test_file = tmp_path / "test_sleep_policy.py"
     test_file.write_text(
         "monkeypatch.setattr('ralph.example.public_name', fake)\ntime.sleep(0.3)\n"
@@ -469,7 +403,6 @@ def test_unrelated_monkeypatch_does_not_exempt_sleep(tmp_path: Path) -> None:
 
 
 def test_exact_sleep_target_patch_exempts_sleep(tmp_path: Path) -> None:
-    """Patching the exact sleep target exempts that sleep call."""
     test_file = tmp_path / "test_sleep_policy.py"
     test_file.write_text("monkeypatch.setattr('time.sleep', fake)\ntime.sleep(0.3)\n")
     violations = audit_test_file(test_file)
@@ -480,7 +413,6 @@ def test_whitebox_count_above_baseline_exits_one(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """A count above its frozen ceiling is a fail-closed regression."""
     test_file = tmp_path / "test_whitebox_regression.py"
     test_file.write_text("from ralph.example import _private\n")
     baseline: Mapping[str, Mapping[str, int]] = {
@@ -500,7 +432,6 @@ def test_nonzero_whitebox_count_missing_from_baseline_exits_one(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """A new file with white-box usage fails closed when absent from baseline."""
     test_file = tmp_path / "test_whitebox_missing.py"
     test_file.write_text("from ralph.example import _private\n")
     exit_code = main([str(tmp_path)], baseline={})
@@ -510,7 +441,6 @@ def test_nonzero_whitebox_count_missing_from_baseline_exits_one(
 
 
 def test_emit_baseline_entry_set_matches_frozen_baseline() -> None:
-    """The emitted inventory parses and contains the frozen baseline's file set."""
     emitted_text = render_whitebox_baseline(WHITEBOX_BASELINE)
     parsed = ast.parse(emitted_text)
     raw_assignment = next(
@@ -525,17 +455,11 @@ def test_emit_baseline_entry_set_matches_frozen_baseline() -> None:
     assert emitted_paths == set(WHITEBOX_BASELINE)
 
 
-# ---------------------------------------------------------------------------
-# Whole-tree reconciliation tests
-# ---------------------------------------------------------------------------
-
-
 def _whitebox_counts(
     setattr_private: int = 0,
     private_import: int = 0,
     private_attr: int = 0,
 ) -> dict[str, int]:
-    """Return one frozen-baseline style count triple."""
     return {
         "setattr_private": setattr_private,
         "private_import": private_import,
@@ -544,7 +468,6 @@ def _whitebox_counts(
 
 
 def _existing_paths(tree_root: Path) -> set[str]:
-    """Return the baseline key of every Python file that exists under ``tree_root``."""
     return {
         (Path("tests") / path.relative_to(tree_root)).as_posix()
         for path in tree_root.rglob("*.py")
@@ -553,7 +476,6 @@ def _existing_paths(tree_root: Path) -> set[str]:
 
 
 def test_reconciliation_reports_a_fully_converted_row_as_stale(tmp_path: Path) -> None:
-    """A baseline row whose coupling is fully converted away is reported stale."""
     tree_root = tmp_path / "tests"
     tree_root.mkdir()
     (tree_root / "test_converted.py").write_text(
@@ -573,7 +495,6 @@ def test_reconciliation_reports_a_fully_converted_row_as_stale(tmp_path: Path) -
 
 
 def test_reconciliation_reports_a_deleted_file_as_removed(tmp_path: Path) -> None:
-    """A baseline row naming a file that no longer exists is reported removed."""
     tree_root = tmp_path / "tests"
     tree_root.mkdir()
     key = "tests/test_deleted.py"
@@ -592,7 +513,6 @@ def test_reconciliation_reports_a_deleted_file_as_removed(tmp_path: Path) -> Non
 def test_reconciliation_reports_a_ceiling_above_the_count_as_unlowered(
     tmp_path: Path,
 ) -> None:
-    """A frozen ceiling above the fresh count is reported as unlowered."""
     tree_root = tmp_path / "tests"
     tree_root.mkdir()
     (tree_root / "test_partial.py").write_text(
@@ -614,7 +534,6 @@ def test_reconciliation_reports_a_ceiling_above_the_count_as_unlowered(
 
 
 def test_reconciliation_reports_no_drift_for_an_exact_match(tmp_path: Path) -> None:
-    """An exactly matching inventory and baseline produce no drift at all."""
     tree_root = tmp_path / "tests"
     tree_root.mkdir()
     (tree_root / "test_matching.py").write_text(
@@ -634,7 +553,6 @@ def test_reconciliation_reports_no_drift_for_an_exact_match(tmp_path: Path) -> N
 
 
 def test_frozen_baseline_paths_all_exist_in_the_test_tree() -> None:
-    """Every frozen baseline path still exists in the repository test tree."""
     project_root = Path(__file__).resolve().parents[1]
     existing = {
         path.relative_to(project_root).as_posix()
@@ -646,7 +564,6 @@ def test_frozen_baseline_paths_all_exist_in_the_test_tree() -> None:
 
 
 def test_frozen_baseline_holds_no_all_zero_row() -> None:
-    """A frozen row with three zero counts claims no coupling and must not exist."""
     all_zero = sorted(
         path for path, counts in WHITEBOX_BASELINE.items() if not any(counts.values())
     )
@@ -655,13 +572,6 @@ def test_frozen_baseline_holds_no_all_zero_row() -> None:
 
 @pytest.mark.timeout_seconds(5)
 def test_frozen_baseline_matches_a_fresh_scan_of_the_project_policy_cluster() -> None:
-    """A fresh scan of a bounded cluster must not drift from the frozen baseline.
-
-    The whole-tree scan the policy audit performs costs tens of seconds, so it
-    cannot live inside the immutable 60-second pytest budget. This test keeps
-    the same fresh-inventory-vs-frozen-baseline comparison for one bounded
-    cluster, where the AST scan costs well under a second.
-    """
     project_root = Path(__file__).resolve().parents[1]
     cluster_root = project_root / "tests" / "project_policy"
     inventory = collect_whitebox_inventory(cluster_root)
@@ -679,18 +589,9 @@ def test_frozen_baseline_matches_a_fresh_scan_of_the_project_policy_cluster() ->
     assert drifts == []
 
 
-# ---------------------------------------------------------------------------
-# Directory-level audit test
-# ---------------------------------------------------------------------------
-
-
 def test_audit_tests_directory(tmp_path: Path) -> None:
-    """Create a tmp directory with clean files and violation files, verify correct count."""
-    # Clean file
     (tmp_path / "test_clean.py").write_text("def test_ok():\n    assert True\n")
-    # Violation file
     (tmp_path / "test_bad.py").write_text("import time\ntime.sleep(2)\n")
-    # File in __pycache__ should be skipped
     cache_dir = tmp_path / "__pycache__"
     cache_dir.mkdir()
     (cache_dir / "test_cached.py").write_text("import time\ntime.sleep(99)\n")
@@ -698,17 +599,10 @@ def test_audit_tests_directory(tmp_path: Path) -> None:
     violations, files_checked = audit_tests_directory(tmp_path)
     assert len(violations) == 1
     assert violations[0].category == "sleep"
-    # files_checked should be 2 (clean + bad); __pycache__ is skipped
     assert files_checked >= 2
 
 
-# ---------------------------------------------------------------------------
-# Integration with main()
-# ---------------------------------------------------------------------------
-
-
 def test_audit_test_policy_main_exit_zero(tmp_path: Path) -> None:
-    """main() on a clean test directory should return exit code 0."""
     (tmp_path / "test_a.py").write_text("def test_ok():\n    assert True\n")
     (tmp_path / "test_b.py").write_text("def test_also_ok():\n    assert 1 + 1 == 2\n")
 
@@ -717,7 +611,6 @@ def test_audit_test_policy_main_exit_zero(tmp_path: Path) -> None:
 
 
 def test_audit_test_policy_main_exit_one(tmp_path: Path) -> None:
-    """main() on a directory with violations should return exit code 1."""
     (tmp_path / "test_bad.py").write_text("import time\ntime.sleep(3)\n")
 
     result = main([str(tmp_path)])
@@ -725,18 +618,11 @@ def test_audit_test_policy_main_exit_one(tmp_path: Path) -> None:
 
 
 def test_audit_test_policy_main_missing_dir() -> None:
-    """main() with nonexistent directory should return exit code 2."""
     result = main(["/nonexistent/path/98765"])
     assert result == 2
 
 
-# ---------------------------------------------------------------------------
-# TestPolicyViolation __str__ test
-# ---------------------------------------------------------------------------
-
-
 def test_policy_violation_str_representation() -> None:
-    """TestPolicyViolation.__str__ should contain file path, line, category, and detail."""
     v = TestPolicyViolation(
         file_path="tests/test_bad.py",
         line=42,

@@ -1,13 +1,3 @@
-"""Failure classification logic and rules.
-
-The classifier walks the full ``__cause__`` / ``__context__`` chain
-when looking for the typed ``IdleWatchdogKilledError`` (AC-05). The
-typed-attribute branch wins before any text scanning so a SIGTERM
-relabeled as a connectivity blip because the agent's stderr contained
-the word "timeout" is still classified as AGENT, even when the
-typed cause is buried several layers deep in the wrapped exception
-chain.
-"""
 
 from __future__ import annotations
 
@@ -25,21 +15,7 @@ from .failure_category import FailureCategory
 from .failure_details import contains_casefolded_marker, failure_detail_parts
 from .unavailability_reason import UnavailabilityReason
 
-# drift-audit: FailureClassifier( is the single-source classifier. The
-# 8-file allowlist (enforced by
-# tests/test_no_anti_drift_recovery_invariants.py:TestFailureClassifierSingleOwner)
-# is the LEGAL constructor set. The 5 actual construction sites are:
-#   - ralph/recovery/failure_classifier.py:should_reset_tool_registry (this file)
-#   - ralph/recovery/controller.py:RecoveryController.__init__
-#   - ralph/agents/invoke/_completion.py:log_invocation_exit
-#   - ralph/pipeline/effect_executor.py:_run_attempt (recovery-decision seam)
-#   - ralph/pipeline/agent_retry_decision.py:resolve_retry_intent (recovery-decision seam)
-# Consumer-facing callers outside this package MUST route through
-# should_reset_tool_registry(...) (this file) — NEVER construct
-# FailureClassifier directly. PA-003 extension: pin count is INVARIANT
-# (5 actual sites inside 8-file allowlist); do not raise either count.
 
-# Network/transport error substrings that indicate environmental faults
 _TRANSPORT_SUBSTRINGS: frozenset[str] = frozenset(
     {
         "connection reset",
@@ -52,16 +28,10 @@ _TRANSPORT_SUBSTRINGS: frozenset[str] = frozenset(
         "Connection timed out",
         "Name or service not known",
         "nodename nor servname provided",
-        # The literal string pi reports in ``message.errorMessage`` /
-        # ``auto_retry_end.finalError`` when its configured provider is
-        # unreachable. Deliberately narrower than a bare "connection":
-        # this matches pi's exact phrasing so an offline provider routes
-        # to connectivity backoff instead of burning the retry budget.
         "connection error",
     }
 )
 
-# OSError error numbers that indicate environmental faults
 _ENV_ERRNOS: frozenset[int] = frozenset(
     {
         errno.ENETUNREACH,
@@ -73,7 +43,6 @@ _ENV_ERRNOS: frozenset[int] = frozenset(
     }
 )
 
-# Substrings that indicate a stale/invalid agent session ID was used for resume.
 SESSION_NOT_FOUND_SUBSTRINGS: tuple[str, ...] = (
     "No conversation found with session ID:",
     "Session not found",
@@ -81,22 +50,6 @@ SESSION_NOT_FOUND_SUBSTRINGS: tuple[str, ...] = (
     "session does not exist",
 )
 
-# Substrings that indicate a backing MCP tool is missing at runtime. The
-# live Claude Code failure mode emits
-#   `<tool_use_error>Error: No such tool available: mcp__<server>__<tool></tool_use_error>`
-# when the agent's `tools/list` snapshot lost the alias (post-restart, post-retry,
-# or after a transient MCP recovery) and the call lands in the live server
-# with no registered handler. This is a tool-availability failure, NOT a
-# stale-session failure: the session is still valid; the tool registry needs
-# rebuilding. Routing it to `reset_tool_registry=True` lets the next attempt
-# call `RestartAwareMcpBridge.reset_tool_registry()` and recover without
-# needing a fresh session.
-#
-# IMPORTANT: The matching is case-insensitive literal-substring via
-# `contains_casefolded_marker`. Do NOT add a literal `"Tool ... is not registered"`
-# substring here — `...` would be matched as three literal characters
-# (the helper does NOT do regex). The runtime `ToolDispatchError` check is
-# handled by a separate class-name + substring helper below.
 _TOOL_AVAILABILITY_SUBSTRINGS: tuple[str, ...] = ("no such tool available",)
 
 POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS: tuple[str, ...] = (
@@ -104,8 +57,6 @@ POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS: tuple[str, ...] = (
     "empty response",
 )
 
-# Substrings that indicate an agent is temporarily unavailable (e.g. out of
-# credits). These are matched against the raw failure message.
 UNAVAILABLE_AGENT_SUBSTRINGS: frozenset[str] = frozenset(
     {
         "agent produced no output",
@@ -139,10 +90,6 @@ _MISSING_ARTIFACT_SUBSTRINGS: frozenset[str] = frozenset(
     }
 )
 
-# Permanent account/billing/configuration failures that will not self-heal
-# after a cooldown. These are matched case-insensitively via
-# ``contains_casefolded_marker`` and routed to USER_CONFIG so the pipeline
-# terminates through the normal failure path instead of waiting forever.
 _AUTH_CONFIG_SUBSTRINGS: tuple[str, ...] = (
     "authentication required",
     "please run 'agent login'",
@@ -158,17 +105,11 @@ _PERMANENT_ACCOUNT_SUBSTRINGS: tuple[str, ...] = (
     "trial expired",
 )
 
-# Usage/billing/limit messages that indicate the current agent run cannot
-# continue without waiting for a quota reset or adding credits. Patterns are
-# matched case-insensitively via ``contains_casefolded_marker``. Add provider-
-# specific and cross-provider phrases here; keep them lowercase because the
-# helper casefolds both the marker and the detail surface.
 _MODEL_PREFLIGHT_UNAVAILABLE_SUBSTRINGS: tuple[str, ...] = (
     "opencode local model preflight failed",
 )
 
 _SUBSCRIPTION_LIMIT_SUBSTRINGS: tuple[str, ...] = (
-    # Claude Code documented limits
     "You've hit your session limit",
     "You've hit your weekly limit",
     "You've hit your Opus limit",
@@ -177,7 +118,6 @@ _SUBSCRIPTION_LIMIT_SUBSTRINGS: tuple[str, ...] = (
     "Extra usage is required for long context requests",
     "workspace API usage limits",
     "billing_error",
-    # OpenAI credit / quota / billing families
     "you exceeded your current quota",
     "insufficient_quota",
     "insufficient quota",
@@ -186,31 +126,26 @@ _SUBSCRIPTION_LIMIT_SUBSTRINGS: tuple[str, ...] = (
     "monthly spend limit reached",
     "selected model is at capacity",
     "you've run out of credits",
-    # Cursor CLI: ActionRequiredError carries no vendor error code, only prose.
     "hit your usage limit",
     "usage limits will reset",
     "set a spend limit to continue",
-    # Anthropic / Claude API families
     "rate_limit_error",
     "number of request tokens has exceeded your per-minute rate limit",
     "number of output tokens has exceeded your per-minute rate limit",
     "out of credits",
     "spend limit reached",
     "rate limit reached",
-    # Google / Gemini
     "resource_exhausted",
     "resource exhausted",
     "quota exceeded",
     "quota exhausted",
     "individual quota reached",
     "quota limit has been exceeded",
-    # Cohere / general providers
     "rate limit exceeded",
     "too many requests",
     "http 429",
     "status 429",
     "(429)",
-    # Cross-provider generic credit/quota/limit signals
     "credits exhausted",
     "no credits remaining",
     "insufficient credits",
@@ -252,9 +187,6 @@ _CONTEXT_EXHAUSTED_SUBSTRINGS: tuple[str, ...] = (
     'stopreason":"length',
 )
 
-# Typed *ValidationError class names that should route to ARTIFACT_VALIDATION.
-# Matched by type(exc).__name__ to avoid circular imports between ralph.recovery
-# and ralph.mcp/ralph.pipeline.
 _ARTIFACT_VALIDATION_TYPE_NAMES: frozenset[str] = frozenset(
     {
         "DevelopmentResultValidationError",
@@ -265,57 +197,10 @@ _ARTIFACT_VALIDATION_TYPE_NAMES: frozenset[str] = frozenset(
     }
 )
 
-# Watchdog fire-reasons that always mark the agent as unavailable
-# (Rule 2: exponential backoff to the next agent) — with the
-# exception of ``no_progress_quiet``, which is a CONDITIONAL
-# branch (depends on the typed ``child_alive`` signal). The
-# constant is the 2-element hard-coded set; the conditional
-# ``no_progress_quiet`` branch is added by the ``is_unavailable``
-# predicate when ``child_alive is False`` (truly dead child) OR
-# ``child_alive is None`` (legacy default — conservative policy
-# preserves the original 3-element set behavior).
-#
-# Conservative policy:
-#   - ``child_alive is None`` (legacy default — no signal at
-#     all) preserves the original STALE_CHILD_QUIET (Rule 2)
-#     behavior for backward-compat with the 14 existing tests
-#     in test_unavailability_reason.py that do not set
-#     child_alive.
-#   - ``child_alive is False`` (truly dead child — the
-#     corroborator returned alive_by=None) routes to
-#     STALE_CHILD_QUIET (Rule 2). This is the only path where
-#     NO_PROGRESS_QUIET can fire under the wt-012 gate
-#     refinement.
-#   - ``child_alive is True`` (live child — defense-in-depth;
-#     normally dead code because the gate refinement defers
-#     the fire) routes to is_unavailable=False (Rule 1: same-
-#     agent retry).
 _WATCHDOG_UNAVAILABILITY_REASONS: frozenset[str] = frozenset(
     {"no_output_at_start", "children_persist_too_long"}
 )
 
-# Import-time invariant: pin the canonical 2-element set so a
-# future PR cannot silently widen the set, drop an element, or
-# move ``no_progress_quiet`` back into the constant without
-# updating the failure classifier. The ``if/raise RuntimeError``
-# (NOT ``assert``) idiom makes the invariant survive ``python -O``
-# per AGENTS.md 'Non-negotiables'. The checks are:
-#   1. the constant is non-empty (an empty set would silently
-#      disable all watchdog-based unavailability detection);
-#   2. the constant contains the string ``no_output_at_start``
-#      (the operator-visible hard failure mode that the
-#      recovery controller must always treat as unavailable);
-#   3. the constant contains the string ``children_persist_too_long``
-#      (the cumulative ceiling that bounds live-child stalls);
-#   4. the constant is exactly the canonical 2-element set
-#      {``no_output_at_start``, ``children_persist_too_long``} --
-#      nothing more, nothing less. Any widening or narrowing
-#      is a behavior change and must update the constant
-#      explicitly so this guard trips;
-#   5. the constant does NOT contain ``no_progress_quiet``
-#      (that reason is handled by the separate ``child_alive``
-#      conditional branch in the ``is_unavailable`` predicate,
-#      NOT by membership in this set).
 if not _WATCHDOG_UNAVAILABILITY_REASONS:
     msg = (
         "_WATCHDOG_UNAVAILABILITY_REASONS must not be empty. An empty"
@@ -376,7 +261,6 @@ if _EXPECTED_WATCHDOG_UNAVAILABILITY_REASONS != _WATCHDOG_UNAVAILABILITY_REASONS
 
 
 def _is_environmental_exc(exc: BaseException) -> bool:
-    """Return True if this exception is clearly an environmental/network fault."""
     if type(exc).__name__ == "McpServerError":
         return True
     if isinstance(exc, ConnectionError | TimeoutError):
@@ -389,7 +273,6 @@ def _is_environmental_exc(exc: BaseException) -> bool:
 
 
 def _message_looks_environmental(msg: str) -> bool:
-    """Return True if the error message contains a transport-fault substring."""
     lower = msg.lower()
     return any(s.lower() in lower for s in _TRANSPORT_SUBSTRINGS)
 
@@ -416,40 +299,21 @@ def _is_user_config_message(raw_message: str) -> bool:
 
 
 def is_missing_artifact_message(raw_message: str) -> bool:
-    """Return True if the message indicates a missing required artifact."""
     return any(s in raw_message for s in _MISSING_ARTIFACT_SUBSTRINGS)
 
 
 def is_unsubmitted_artifact_failure(detail_parts: tuple[str, ...] | list[str]) -> bool:
-    """Return True when an agent finished WITHOUT submitting a required artifact.
-
-    This is the single, shared signal every artifact-requiring caller (commit
-    generation, pipeline phases) routes to the resubmit recovery. It covers BOTH
-    a clean "completed without writing artifact" exit AND an empty/no-tool-call
-    response — both mean nothing was submitted, so both must re-prompt the agent
-    to submit (feeding back its prior analysis) rather than restart from scratch.
-    """
     return contains_casefolded_marker(
         detail_parts, tuple(_MISSING_ARTIFACT_SUBSTRINGS)
     ) or contains_casefolded_marker(detail_parts, POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS)
 
 
 def should_reset_tool_registry(exc: BaseException, *, phase: str, agent: str | None) -> bool:
-    """Return True when an invocation error indicates a tool-registry reset is needed.
-
-    Single-source-of-truth wrapper that owns the inline
-    ``FailureClassifier().classify(...).reset_tool_registry`` lookup so
-    the ``commit_plumbing`` module does not need to import or
-    construct the classifier directly. The anti-drift pin in
-    ``tests/test_no_anti_drift_regression.py`` enforces this
-    indirection.
-    """
     classified = FailureClassifier().classify(exc, phase=phase, agent=agent)
     return classified.reset_tool_registry
 
 
 def _is_artifact_validation_message(raw_message: str) -> bool:
-    """Return True for artifact/proof validation failures with a typed recovery path."""
     artifact_validation_substrings = (
         "Invalid plan artifact:",
         "Invalid development evidence:",
@@ -471,27 +335,10 @@ def _is_artifact_validation_message(raw_message: str) -> bool:
 
 
 def _is_stale_session_message(raw_message: str) -> bool:
-    """Return True if the message indicates a stale agent session ID was used."""
     return contains_casefolded_marker((raw_message,), SESSION_NOT_FOUND_SUBSTRINGS)
 
 
 def _is_tool_dispatch_unregistered_error(exc: BaseException) -> bool:
-    """Detect a runtime `ToolDispatchError` raised by the tool bridge.
-
-    The bridge raises ``ToolDispatchError(f"Tool '{name}' is not registered")``
-    at ``ralph/mcp/tools/bridge/_tool_bridge.py:64`` when a tools/call hits
-    a name that is not in the live registry. This is the runtime-side
-    mirror of the live `No such tool available: mcp__<server>__<tool>`
-    failure mode and MUST be classified as a tool-availability failure
-    (route to ``reset_tool_registry=True``).
-
-    We distinguish it from the programming-time
-    ``ToolRegistrationError`` (raised at bridge construction by
-    ``_tool_registration_error.py:8``) by class name: ``ToolDispatchError``
-    is the runtime path; ``ToolRegistrationError`` is the bridge-
-    construction path. Programming-time errors should NOT trigger a
-    registry reset — they indicate a code defect in the bridge builder.
-    """
     if type(exc).__name__ != "ToolDispatchError":
         return False
     message = str(exc)
@@ -505,13 +352,11 @@ def _is_post_tool_empty_response_failure(detail_parts: list[str]) -> bool:
 
 
 def _is_unavailable_agent_message(msg: str) -> bool:
-    """Return True when the raw message indicates an unavailable agent."""
     lower = msg.casefold()
     return any(marker.casefold() in lower for marker in UNAVAILABLE_AGENT_SUBSTRINGS)
 
 
 def _is_subscription_limit_message(detail_parts: tuple[str, ...] | list[str]) -> bool:
-    """Return True if the message matches Claude Code documented limit/billing families."""
     return contains_casefolded_marker(detail_parts, _SUBSCRIPTION_LIMIT_SUBSTRINGS)
 
 
@@ -597,12 +442,10 @@ def _apply_terminal_unavailability_category(
 
 
 def _is_auth_config_failure(detail_parts: tuple[str, ...] | list[str]) -> bool:
-    """Return True when the agent requires user authentication configuration."""
     return contains_casefolded_marker(detail_parts, _AUTH_CONFIG_SUBSTRINGS)
 
 
 def _is_permanent_account_failure(detail_parts: tuple[str, ...] | list[str]) -> bool:
-    """Return True for permanent account/billing failures that will not self-heal."""
     return contains_casefolded_marker(detail_parts, _PERMANENT_ACCOUNT_SUBSTRINGS)
 
 
@@ -613,34 +456,17 @@ _NO_OUTPUT_SUBSTRINGS: tuple[str, ...] = (
     "without producing output",
 )
 
-#: Conflict resolution's own typed outcomes. The resolver pipeline
-#: already KNOWS what went wrong -- it classifies the attempt itself and
-#: reports a typed reason -- but it has no exception to hand over, so
-#: these arrived as bare prose and fell through to AMBIGUOUS: an
-#: "unrecognised fault, flagged for review" warning for the one failure
-#: Ralph understands best. They are agent-attributed, and deliberately
-#: NOT counted against the budget: an attempt that failed is answered by
-#: trying the next candidate, which is what the conflict chain does.
 _CONFLICT_ATTEMPT_SUBSTRINGS: tuple[str, ...] = (
     "conflict attempt failed",
     "candidate produced no activity before it exited",
 )
 
-#: Ralph's own typed exit errors, by NAME. They normally arrive as
-#: exceptions and are classified from the object -- but the executor
-#: swallows a terminal invocation error and parks only its class name on
-#: the retry-intent channel, which is all conflict resolution ever gets.
-#: Classifying the name is the difference between "an unrecognised fault,
-#: flagged for review" and knowing that a provider is unreachable.
 _TYPED_EXIT_REASON_CATEGORIES: dict[str, tuple[FailureCategory, bool, bool]] = {
-    # pi ran out of context: its own limit, answered by the next candidate.
     "PiContextExhaustedExitError": (FailureCategory.AGENT, False, False),
-    # pi could not reach its provider: the environment, not the agent.
     "PiProviderFailureExitError": (FailureCategory.ENVIRONMENTAL, False, False),
     "QuotaExhaustedError": (FailureCategory.AGENT, False, False),
     "BrokenAgentExitError": (FailureCategory.AGENT, False, False),
     "MissingCredentialsError": (FailureCategory.USER_CONFIG, False, False),
-    # A name this workspace's registry cannot produce is configuration.
     "AgentNotFound": (FailureCategory.USER_CONFIG, False, False),
 }
 
@@ -655,7 +481,6 @@ def _is_suspicious_timeout_without_output(
     detail_parts: tuple[str, ...] | list[str],
     connectivity_state: str | None,
 ) -> bool:
-    """Return True when a timeout/no-output failure occurs while connectivity is known online."""
     if (connectivity_state or "").casefold() != "online":
         return False
     has_no_output_signal = contains_casefolded_marker(detail_parts, _NO_OUTPUT_SUBSTRINGS)
@@ -673,65 +498,12 @@ def _classify_unavailability_reason(
     *,
     child_alive: bool | None = None,
 ) -> UnavailabilityReason | None:
-    """Classify the unavailability reason from failure signals.
-
-    Priority order (first match wins):
-    1. watchdog_reason == "no_output_at_start" -> NO_OUTPUT_AT_START
-    2. watchdog_reason == "no_progress_quiet" -> STALE_CHILD_QUIET
-       (child alive with stale-progress evidence: heartbeat-only,
-        stale-label, or OS-descendant-only — a NEGATIVE signal)
-    3. watchdog_reason == "children_persist_too_long" -> SUSPICIOUS_TIMEOUT_NO_OUTPUT
-       (cumulative waiting ceiling hit; also a NEGATIVE/stuck signal)
-    4. connectivity=online and subscription limit -> OUT_OF_CREDITS
-    5. connectivity=online and suspicious timeout -> SUSPICIOUS_TIMEOUT_NO_OUTPUT
-    6. unavailable_agent_message text -> NO_OUTPUT_AT_START
-    7. post-tool empty response -> NO_OUTPUT_AFTER_ACTIVITY
-    8. else None
-
-    The ``child_alive`` parameter is consumed ONLY by the
-    ``no_progress_quiet`` branch. The conservative policy:
-
-      - ``child_alive is True`` (live child — defense-in-depth;
-        normally dead code because the wt-012 gate refinement
-        in ``IdleWatchdog._is_no_progress_quiet`` defers the
-        fire when alive_by is not None): returns ``None`` here
-        so the ``is_unavailable`` predicate below takes the
-        Rule 1 path (defense-in-depth; same-agent retry).
-      - ``child_alive is False`` (truly dead child — the
-        corroborator returned alive_by=None): routes to
-        ``STALE_CHILD_QUIET`` (Rule 2: exponential backoff).
-        This is the only path where NO_PROGRESS_QUIET can
-        fire under the wt-012 gate refinement.
-      - ``child_alive is None`` (legacy default — no signal at
-        all): routes to ``STALE_CHILD_QUIET`` (Rule 2). This
-        preserves the original behavior for the 14 existing
-        tests in test_unavailability_reason.py that do not set
-        child_alive.
-
-    NOTE: watchdog_reason takes precedence over text-based detection because
-    the watchdog provides structural evidence (alive_by, channel freshness)
-    whereas text can be ambiguous.
-    """
     reason: UnavailabilityReason | None = None
     if watchdog_reason == "no_output_at_start":
         reason = UnavailabilityReason.NO_OUTPUT_AT_START
     elif watchdog_reason == "no_progress_quiet":
-        # Per the PROMPT: NOT ALL stuck retries should advance the
-        # chain. The conservative policy: child_alive=None (default
-        # — no signal at all) preserves the original STALE_CHILD_QUIET
-        # (Rule 2) behavior for backward-compat. child_alive=False
-        # (truly dead child — no corroborator signal) also routes to
-        # STALE_CHILD_QUIET (Rule 2). child_alive=True (live child)
-        # routes to None here so the is_unavailable predicate below
-        # can take the Rule 1 branch (defense-in-depth; normally dead
-        # code because the wt-012 gate refinement defers the fire
-        # when alive_by is not None).
         reason = None if child_alive is True else UnavailabilityReason.STALE_CHILD_QUIET
     elif watchdog_reason == "strictly_stuck":
-        # Stuck-but-alive orthogonal ceiling. Distinct from
-        # STALE_CHILD_QUIET (which is for dead children); this branch
-        # is for a live child with no progress / heartbeat for the
-        # strictly-stuck ceiling.
         reason = UnavailabilityReason.STRICTLY_STUCK
     elif watchdog_reason == "children_persist_too_long":
         reason = UnavailabilityReason.SUSPICIOUS_TIMEOUT_NO_OUTPUT
@@ -750,11 +522,6 @@ def _connectivity_unavailability_reason(
     detail_parts: tuple[str, ...] | list[str],
     connectivity_state: str | None,
 ) -> UnavailabilityReason | None:
-    """Check connectivity-based unavailability reasons.
-
-    Called when connectivity_state == "online" to check subscription limit
-    and suspicious timeout conditions.
-    """
     if _is_subscription_limit_message(detail_parts):
         return UnavailabilityReason.OUT_OF_CREDITS
     if _is_suspicious_timeout_without_output(detail_parts, connectivity_state):
@@ -763,11 +530,6 @@ def _connectivity_unavailability_reason(
 
 
 class FailureClassifier:
-    """Classify failures into categories for intelligent recovery routing.
-
-    This is a pure, stateless classifier. All classification rules are
-    encapsulated here so new failure modes are added once, not at call sites.
-    """
 
     def classify(
         self,
@@ -777,7 +539,6 @@ class FailureClassifier:
         agent: str | None,
         connectivity_state: str | None = None,
     ) -> ClassifiedFailure:
-        """Classify a failure and return a ClassifiedFailure."""
         if isinstance(exc, str):
             raw_message = exc
             original: BaseException | None = None
@@ -806,14 +567,6 @@ class FailureClassifier:
             if watchdog_reason_val is not None:
                 watchdog_reason = str(watchdog_reason_val)
 
-        # Detect tool-availability failures independently of the category
-        # table above. Both the live `No such tool available: mcp__<server>__<tool>`
-        # string and the runtime `ToolDispatchError("Tool 'X' is not registered")`
-        # exception are routed to `reset_tool_registry=True` so the next
-        # attempt calls `RestartAwareMcpBridge.reset_tool_registry()`. The
-        # class-name check (`ToolDispatchError` vs `ToolRegistrationError`)
-        # prevents the programming-time bridge-construction error from being
-        # classified here.
         reset_tool_registry = self._is_tool_availability_failure(exc_obj, detail_parts)
         category, counts, provider_unavailability = _apply_terminal_unavailability_category(
             category,
@@ -821,40 +574,6 @@ class FailureClassifier:
             provider_unavailability,
             reset_tool_registry,
         )
-        # Walk the full ``__cause__`` / ``__context__`` chain to find the
-        # typed ``IdleWatchdogKilledError`` and read the ``child_alive``
-        # and ``resumable_session_id`` fields. The watchdog fires into
-        # ``_IdleStreamTimeoutError`` (the line-reader wrapper) whose
-        # ``__cause__`` is the typed ``IdleWatchdogKilledError``, and
-        # the recovery layer wraps ``_IdleStreamTimeoutError`` into
-        # ``AgentInactivityTimeoutError`` via ``raise X from exc``. The
-        # production chain is therefore TWO hops deep, not one:
-        #
-        #     AgentInactivityTimeoutError
-        #         \u2191 __cause__
-        #         _IdleStreamTimeoutError
-        #             \u2191 __cause__
-        #             IdleWatchdogKilledError (typed)
-        #
-        # Pre-fix bug: the classifier walked ``exc_obj.__cause__``
-        # directly (one hop only), hit ``_IdleStreamTimeoutError``
-        # (NOT ``IdleWatchdogKilledError``), and lost the typed cause.
-        # The live-child signal collapsed to the conservative
-        # ``child_alive=None`` path, which falsely routes a live-child
-        # ``NO_PROGRESS_QUIET`` (defense-in-depth Rule 1) to Rule 2
-        # (exponential backoff). The captured ``resumable_session_id``
-        # also fell through to ``None``, so the resumable-kill
-        # carve-out did not fire and the recovery controller started a
-        # fresh session instead of resuming the killed one.
-        #
-        # The fix: reuse ``self._find_typed_watchdog_cause`` (which
-        # already walks the full chain via ``__cause__`` /
-        # ``__context__`` with a visited-set cycle guard) so the typed
-        # cause is reachable at ANY chain depth. The categorization
-        # pass above already calls this helper, so the typed-cause
-        # walk is a no-op for the second invocation but the
-        # correctness guarantee (reaching the typed cause at two hops
-        # deep) is preserved end-to-end.
         child_alive: bool | None = None
         resumable_session_id: str | None = None
         if exc_obj is not None:
@@ -864,50 +583,11 @@ class FailureClassifier:
                 cause_session_id: str | None = getattr(typed_cause, "resumable_session_id", None)
                 if isinstance(cause_session_id, str) and cause_session_id:
                     resumable_session_id = cause_session_id
-        # Also read the wrapped ``AgentInactivityTimeoutError.resumable_session_id``
-        # so the captured id reaches the classifier even when the
-        # ``__cause__`` walk above found no ``IdleWatchdogKilledError``
-        # (e.g. when the wrapper is re-raised without the typed cause).
-        # ``AgentInactivityTimeoutError.__init__`` lifts ``opts.resumable_session_id``
-        # into a top-level attribute on the exception instance so the
-        # classifier can read it without re-walking the construction
-        # arguments.
         if resumable_session_id is None and exc_obj is not None:
             exc_session_id = cast("object", getattr(exc_obj, "resumable_session_id", None))
             if isinstance(exc_session_id, str) and exc_session_id:
                 resumable_session_id = exc_session_id
 
-        # Unavailable-agent detection only applies when the failure is agent-side
-        # AND connectivity is known healthy AND the failure is not a tool-registry
-        # wedge (those have their own bounded retry path). The "no output despite
-        # healthy connection" signal is what distinguishes a temporarily
-        # unavailable agent (e.g. out of credits) from a transport or offline
-        # failure. AgentInactivityTimeoutError subclasses AgentInvocationError,
-        # so both class names are accepted here. We match by name rather than
-        # isinstance to avoid a circular import through ralph.agents.invoke.
-        #
-        # The 2-element ``_WATCHDOG_UNAVAILABILITY_REASONS`` frozenset is
-        # the canonical 2-element set; the conditional
-        # ``child_alive in (False, None)`` for ``no_progress_quiet``
-        # preserves backward-compat for ``child_alive=None`` and the
-        # new ``child_alive=False`` paths (both Rule 2: exponential
-        # backoff). The ``child_alive=True`` case falls through the
-        # conditional and ``is_unavailable=False`` (Rule 1: same-agent
-        # retry, defense-in-depth).
-        #
-        # Resumable watchdog kill carve-out: when the watchdog reason is
-        # ``no_output_at_start`` AND a captured ``resumable_session_id``
-        # is present, the failure is a SESSION-LOCAL timeout (the agent
-        # just failed to produce output within the deadline) rather than
-        # an infrastructure-level outage. The PROMPT explicitly requires
-        # the killed session to be resumed in place instead of starting
-        # a fresh session, so a captured session id forces
-        # ``is_unavailable=False`` and the recovery controller's Rule 1
-        # (same-agent retry) path emits a resume intent with the
-        # captured id. Without the carve-out, the controller would mark
-        # the agent unavailable, fall over to the next chain agent, and
-        # clear ``last_agent_session_id`` -- silently dropping the
-        # captured id and starting a fresh session.
         typed_quota_exhaustion = (
             exc_obj is not None and type(exc_obj).__name__ == "QuotaExhaustedError"
         )
@@ -932,16 +612,6 @@ class FailureClassifier:
                             or type(exc_obj).__name__
                             in {"AgentInvocationError", "AgentInactivityTimeoutError"}
                         )
-                        # Suppress the text-based fallback when the watchdog
-                        # provided a typed ``child_alive=True`` signal for a
-                        # ``no_progress_quiet`` fire: the typed signal is
-                        # authoritative (live child = defense-in-depth;
-                        # ``is_unavailable=False`` per
-                        # ``_classify_unavailability_reason``), so allowing
-                        # the text fallback to flip it to ``True`` would
-                        # collapse the typed Rule 1 path back to the
-                        # text-based Rule 2 path the gate refinement was
-                        # designed to avoid.
                         and not (watchdog_reason == "no_progress_quiet" and child_alive is True)
                         and (
                             _is_unavailable_agent_message(raw_message)
@@ -1008,22 +678,6 @@ class FailureClassifier:
         exc: BaseException | None,
         detail_parts: list[str],
     ) -> bool:
-        """Return True when the failure is a backing MCP tool-availability error.
-
-        Two paths qualify:
-
-        1. The exception is a runtime ``ToolDispatchError`` with an
-           "is not registered" message (raised at
-           ``ralph/mcp/tools/bridge/_tool_bridge.py:64``). Programming-time
-           ``ToolRegistrationError`` is excluded by class name.
-        2. Any failure detail surface contains the case-insensitive
-           substring "no such tool available" — the live Claude Code
-           ``<tool_use_error>Error: No such tool available: mcp__<server>__<tool></tool_use_error>``
-           message format.
-        3. The agent reports an empty response after prior tool activity.
-           This is the transport-agnostic post-tool desync family: the
-           tool boundary succeeded, but the model failed to continue the turn.
-        """
         return (
             (exc is not None and _is_tool_dispatch_unregistered_error(exc))
             or (contains_casefolded_marker(detail_parts, _TOOL_AVAILABILITY_SUBSTRINGS))
@@ -1038,21 +692,6 @@ class FailureClassifier:
         *,
         connectivity_state: str | None,
     ) -> tuple[FailureCategory, bool, bool] | None:
-        # IdleWatchdogKilledError: classify by the watchdog's typed
-        # attributes (reason, signal) — never by the str(exc) text. The
-        # exception message may legitimately contain misleading tokens
-        # like the word "timeout" (it is in fact a SIGTERM), and the
-        # substring-match vocabulary below would mislabel it as a
-        # connectivity blip. The check is FIRST so the typed-cause
-        # branch wins before any text scanning. The chain is walked
-        # recursively (with a cycle guard) so the typed exception is
-        # reachable when it is buried several layers deep in the
-        # ``__cause__`` / ``__context__`` chain (e.g. when the
-        # recovery layer wraps the watchdog's
-        # ``_IdleStreamTimeoutError`` inside an
-        # ``AgentInactivityTimeoutError`` whose ``__cause__`` is the
-        # stream-timeout wrapper whose ``__cause__`` is the typed
-        # ``IdleWatchdogKilledError``).
         if self._find_typed_watchdog_cause(exc) is not None or contains_casefolded_marker(
             detail_parts, _MODEL_PREFLIGHT_UNAVAILABLE_SUBSTRINGS
         ):
@@ -1071,23 +710,6 @@ class FailureClassifier:
         type_name = type(exc).__name__
         if type_name in {"AgentInactivityTimeoutError", "BrokenAgentExitError"}:
             return FailureCategory.AGENT, True, type_name == "BrokenAgentExitError"
-        # OpenCodeResumableExitError is a subclass of AgentInvocationError
-        # raised when an agent session exits without completion evidence
-        # (no durable sentinel, or no required artifact receipt). It MUST be classified as
-        # AGENT so the recovery controller's resume path is engaged and
-        # the next attempt continues the prior session instead of
-        # starting fresh. The mapping is checked BEFORE
-        # AgentInvocationError because the more specific name should
-        # win over the broader class branch. This kills the prompt's
-        # "Ambiguous failure classification ... OpenCodeResumableExitError
-        # [flagged_for_review=true]" warning -- the classifier no
-        # longer falls through to AMBIGUOUS for this exit signature.
-        #
-        # AgyIncompleteExitError is the AGY sibling: same deterministic
-        # AGENT-not-AMBIGUOUS requirement; the recovery layer engages
-        # its ONE bounded fresh-session reprompt (the bound itself lives
-        # in build_agent_recovery_plan and the direct-MCP recovery
-        # loop, not here).
         if type_name in {
             "QuotaExhaustedError",
             "OpenCodeResumableExitError",
@@ -1107,13 +729,6 @@ class FailureClassifier:
     def _find_typed_watchdog_cause(
         exc: BaseException,
     ) -> IdleWatchdogKilledError | None:
-        """Walk the ``__cause__`` / ``__context__`` chain for the watchdog typed exception.
-
-        Returns the deepest ``IdleWatchdogKilledError`` reachable in the
-        chain, or ``None`` if no typed cause is found. The walk is
-        bounded by the visited-set (cycle guard) so a malformed cycle
-        in the chain cannot hang the classifier.
-        """
         if isinstance(exc, IdleWatchdogKilledError):
             return exc
         visited: set[int] = {id(exc)}
@@ -1123,20 +738,20 @@ class FailureClassifier:
         if current is None:
             current = cast(
                 "BaseException | None", getattr(exc, "__context__", None)
-            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            )
         while current is not None and id(current) not in visited:
             visited.add(id(current))
             if isinstance(current, IdleWatchdogKilledError):
                 return current
             next_cause = cast(
                 "BaseException | None", getattr(current, "__cause__", None)
-            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            )
             if next_cause is not None:
                 current = next_cause
             else:
                 current = cast(
                     "BaseException | None", getattr(current, "__context__", None)
-                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                )
         return None
 
     def _classify_agent_invocation_error(
@@ -1165,13 +780,6 @@ class FailureClassifier:
         for predicate, result in checks:
             if predicate:
                 return result
-        # Scan the full detail surface (message + stderr + parsed_output) with
-        # the shared marker vocabulary, the same surface and vocabulary the
-        # pipeline retryable reasoner uses. Checking only ``raw_message`` here
-        # let an empty-response signal carried in ``parsed_output`` (e.g. the
-        # nanocoder/MiniMax-M3 empty turn) be misclassified as AMBIGUOUS, so the
-        # same failure was budget-attributed differently depending on which text
-        # surface carried the signal.
         if not _message_looks_environmental(raw_message) and (
             contains_casefolded_marker(detail_parts, POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS)
             or contains_casefolded_marker(detail_parts, _NO_OUTPUT_SUBSTRINGS)

@@ -1,5 +1,3 @@
-"""Tests for ralph/workspace/memory.py — In-memory workspace implementation."""
-
 from __future__ import annotations
 
 from ralph.workspace.memory import MemoryWorkspace

@@ -1,12 +1,3 @@
-"""Phase 4: tests for ``format='metadata'`` in ``handle_visit_url`` and
-``format='summary'`` in ``handle_download_url``.
-
-Tests are colocated under ``tests/mcp/`` to match the existing web
-test layout (``test_tool_webvisit.py``). They stub the fetch layer
-and the readability extractor so the handlers run end-to-end without
-any real network call.
-"""
-
 from __future__ import annotations
 
 import json
@@ -33,13 +24,6 @@ class _AllowedSession:
 
 
 class _Workspace:
-    """Minimal Workspace double for download tests.
-
-    Implements only the ``absolute_path`` and ``write`` methods the
-    download handler actually touches. ``explore_index`` is set to
-    ``None`` so the structural Workspace protocol stays satisfied.
-    """
-
     def __init__(self) -> None:
         self.writes: list[tuple[str, str]] = []
         self.explore_index: object | None = None
@@ -79,11 +63,6 @@ def _make_config(**overrides: object) -> WebVisitConfig:
     return WebVisitConfig.model_validate(data)
 
 
-# =============================================================================
-# visit_url format=metadata
-# =============================================================================
-
-
 def test_format_metadata_drops_text_body(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(tool_webvisit, "fetch_url", lambda *a, **kw: _GOOD_OUTCOME)
     monkeypatch.setattr(tool_webvisit, "extract_readable", lambda *a, **kw: _GOOD_PAGE)
@@ -103,7 +82,6 @@ def test_format_metadata_drops_text_body(monkeypatch: pytest.MonkeyPatch) -> Non
     assert payload["title"] == "Hello"
     assert payload["effective_url"] == "https://example.com/page"
     assert payload["content_type"] == "text/html; charset=utf-8"
-    # Full text body must NOT be echoed in metadata mode.
     assert "text" not in payload
     assert payload["byte_count"] == len(_GOOD_PAGE.text)
     assert len(payload["head_preview"]) <= tool_webvisit._VISIT_HEAD_PREVIEW_CHARS
@@ -134,7 +112,6 @@ def test_format_metadata_includes_links_when_requested(
 
 
 def test_format_raw_default_unchanged(monkeypatch: pytest.MonkeyPatch) -> None:
-    """``format='raw'`` (default) preserves the legacy full text body."""
     monkeypatch.setattr(tool_webvisit, "fetch_url", lambda *a, **kw: _GOOD_OUTCOME)
     monkeypatch.setattr(tool_webvisit, "extract_readable", lambda *a, **kw: _GOOD_PAGE)
 
@@ -162,11 +139,6 @@ def test_format_invalid_value_returns_error() -> None:
 
     assert result.is_error is True
     assert "Invalid visit_url format" in result.content[0].text
-
-
-# =============================================================================
-# download_url format=summary
-# =============================================================================
 
 
 def test_format_summary_download_returns_metadata(
@@ -204,11 +176,9 @@ def test_format_summary_download_returns_metadata(
     assert payload["bytes_written"] == len(body)
     assert payload["sha256"] != ""
     assert len(payload["sha256"]) == 16
-    # The body itself must NOT be echoed inline; only the head preview.
     assert "head_preview" in payload
     assert payload["truncated"] is True
     assert payload["bytes_in"] == len(body)
-    # The file must still be persisted to ``output_path``.
     assert ws.writes == [("tmp/data.bin", body.decode("utf-8", errors="replace"))]
 
 
@@ -230,7 +200,6 @@ def test_format_summary_invalid_value_returns_error() -> None:
 def test_format_summary_raw_default_unchanged(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``format='raw'`` (default) preserves the legacy metadata-only envelope."""
     body = b"some content"
     outcome = FetchOutcome(
         status="ok",
@@ -257,6 +226,5 @@ def test_format_summary_raw_default_unchanged(
     assert "format" not in payload
     assert payload["status"] == "ok"
     assert payload["bytes_written"] == len(body)
-    # sha256 + head_preview must NOT be present in raw mode.
     assert "sha256" not in payload
     assert "head_preview" not in payload

@@ -1,5 +1,3 @@
-"""Tests for normalize_product_spec_content."""
-
 from __future__ import annotations
 
 import pytest
@@ -11,10 +9,7 @@ from ralph.mcp.artifacts.product_spec import (
 
 
 class TestNormalizeProductSpecContent:
-    """Tests for normalize_product_spec_content."""
-
     def test_normalizer_accepts_valid_payload_with_all_fields(self) -> None:
-        """Normalizer accepts a valid payload with all required and optional fields."""
         payload = {
             "title": "Test Title",
             "scope": "Test scope description",
@@ -40,7 +35,6 @@ class TestNormalizeProductSpecContent:
         assert result["open_questions"] == ["Question 1"]
 
     def test_normalizer_accepts_valid_payload_with_required_fields_only(self) -> None:
-        """Normalizer accepts a valid payload with only required fields."""
         payload = {
             "title": "Minimal Title",
             "scope": "Minimal scope",
@@ -50,11 +44,9 @@ class TestNormalizeProductSpecContent:
         }
         result = normalize_product_spec_content(payload)
         assert result["title"] == "Minimal Title"
-        # Optional fields with default_factory are included as empty lists
         assert result["constraints"] == []
 
     def test_normalizer_raises_on_missing_title(self) -> None:
-        """Normalizer raises on missing title."""
         payload = {
             "scope": "Test scope",
             "goals": ["Goal 1"],
@@ -65,7 +57,6 @@ class TestNormalizeProductSpecContent:
             normalize_product_spec_content(payload)
 
     def test_normalizer_raises_on_missing_scope(self) -> None:
-        """Normalizer raises on missing scope."""
         payload = {
             "title": "Test Title",
             "goals": ["Goal 1"],
@@ -76,7 +67,6 @@ class TestNormalizeProductSpecContent:
             normalize_product_spec_content(payload)
 
     def test_normalizer_raises_on_missing_goals(self) -> None:
-        """Normalizer raises on missing goals."""
         payload = {
             "title": "Test Title",
             "scope": "Test scope",
@@ -87,7 +77,6 @@ class TestNormalizeProductSpecContent:
             normalize_product_spec_content(payload)
 
     def test_normalizer_raises_on_missing_users(self) -> None:
-        """Normalizer raises on missing users."""
         payload = {
             "title": "Test Title",
             "scope": "Test scope",
@@ -98,7 +87,6 @@ class TestNormalizeProductSpecContent:
             normalize_product_spec_content(payload)
 
     def test_normalizer_raises_on_missing_success_criteria(self) -> None:
-        """Normalizer raises on missing success_criteria."""
         payload = {
             "title": "Test Title",
             "scope": "Test scope",
@@ -109,7 +97,6 @@ class TestNormalizeProductSpecContent:
             normalize_product_spec_content(payload)
 
     def test_normalizer_raises_on_extra_fields(self) -> None:
-        """Normalizer raises on extra fields."""
         payload = {
             "title": "Test Title",
             "scope": "Test scope",
@@ -122,7 +109,6 @@ class TestNormalizeProductSpecContent:
             normalize_product_spec_content(payload)
 
     def test_normalizer_raises_on_empty_goals_list(self) -> None:
-        """Normalizer raises when goals is an empty list."""
         payload = {
             "title": "Test Title",
             "scope": "Test scope",
@@ -134,7 +120,6 @@ class TestNormalizeProductSpecContent:
             normalize_product_spec_content(payload)
 
     def test_normalizer_raises_on_empty_users_list(self) -> None:
-        """Normalizer raises when users is an empty list."""
         payload = {
             "title": "Test Title",
             "scope": "Test scope",
@@ -146,7 +131,6 @@ class TestNormalizeProductSpecContent:
             normalize_product_spec_content(payload)
 
     def test_normalizer_raises_on_empty_success_criteria_list(self) -> None:
-        """Normalizer raises when success_criteria is an empty list."""
         payload = {
             "title": "Test Title",
             "scope": "Test scope",

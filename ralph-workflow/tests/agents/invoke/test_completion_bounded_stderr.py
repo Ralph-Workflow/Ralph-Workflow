@@ -1,16 +1,3 @@
-"""Black-box tests for bounded stderr capture in ``_completion.py``.
-
-wt-024 memory-perf AC-05: the non-zero-exit stderr capture is an
-unbounded full read on the subprocess stderr pipe. A crashing agent
-spewing many MB to stderr OOMs the parent. This test asserts the new
-bounded helper caps the read at ``_MAX_STDERR_CAPTURE_BYTES`` and
-appends a truncation marker.
-
-All tests are unit tests using a fake handle with a stub stderr pipe
-that records the bytes it was asked to produce. No real subprocess,
-no real I/O.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -36,8 +23,6 @@ if TYPE_CHECKING:
 
 
 class _ChunkedPipe:
-    """Stub that returns chunks via a read(n) API like real subprocess pipes."""
-
     def __init__(self, payload: str, chunk_size: int = 4096) -> None:
         self._payload = payload
         self._offset = 0
@@ -55,8 +40,6 @@ class _ChunkedPipe:
 
 
 class _FakeHandle(ManagedPtyProcess):
-    """Stub process handle satisfying ManagedPtyProcess for completion tests."""
-
     def __init__(
         self,
         returncode: int | None = None,
@@ -96,8 +79,6 @@ def _stub_eval_completion(
     sentinel_secret: str | None = None,
     receipt_secret: str | None = None,
 ) -> CompletionSignals:
-    # Minimal stub — the real terminal logic lives in apply_sentinel_signal
-    # which is called by _agy_has_terminal_completion_evidence after this.
     return CompletionSignals(
         explicit_complete=False,
         required_artifact_present=False,
@@ -106,9 +87,6 @@ def _stub_eval_completion(
 
 
 def test_bounded_read_caps_at_max_bytes() -> None:
-    """``_bounded_read`` returns at most _MAX_STDERR_CAPTURE_BYTES bytes from
-    the pipe (the truncation marker is appended after the cap; the pipe
-    itself never contributes more than the cap)."""
     payload = "x" * (_MAX_STDERR_CAPTURE_BYTES * 4)
     pipe = _ChunkedPipe(payload)
     captured = _bounded_read(pipe)
@@ -121,7 +99,6 @@ def test_bounded_read_caps_at_max_bytes() -> None:
 
 
 def test_bounded_read_appends_truncation_marker() -> None:
-    """When the pipe has more bytes than the cap, append a truncation marker."""
     payload = "x" * (_MAX_STDERR_CAPTURE_BYTES * 2)
     pipe = _ChunkedPipe(payload)
     captured = _bounded_read(pipe)
@@ -131,7 +108,6 @@ def test_bounded_read_appends_truncation_marker() -> None:
 
 
 def test_bounded_read_short_payload_unchanged() -> None:
-    """When the payload fits within the cap, no marker is appended."""
     payload = "small stderr\n"
     pipe = _ChunkedPipe(payload)
     captured = _bounded_read(pipe)
@@ -139,7 +115,6 @@ def test_bounded_read_short_payload_unchanged() -> None:
 
 
 def test_bounded_read_uses_only_capped_chunk_reads() -> None:
-    """``_bounded_read`` must NOT make an unbounded ``read(-1)`` call."""
     payload = "x" * (_MAX_STDERR_CAPTURE_BYTES * 3)
     pipe = _ChunkedPipe(payload, chunk_size=4096)
     _bounded_read(pipe)
@@ -154,8 +129,6 @@ def test_bounded_read_uses_only_capped_chunk_reads() -> None:
 def test_completion_uses_bounded_read_on_nonzero_exit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Wire ``_bounded_read`` into ``check_process_result`` and assert the
-    captured stderr is bounded by the cap with a truncation marker."""
     captured: list[str] = []
 
     def fake_bounded(pipe: _ReadableTextPipe) -> str:
@@ -181,7 +154,6 @@ def test_completion_uses_bounded_read_on_nonzero_exit(
 
 
 def test_completion_no_stderr_pipe_preserves_bounded_merged_output() -> None:
-    """A PTY failure uses its bounded merged output as the error detail."""
     with pytest.raises(Exception) as excinfo:
         completion_mod.check_process_result(
             _FakeHandle(returncode=1),
@@ -195,7 +167,6 @@ def test_completion_no_stderr_pipe_preserves_bounded_merged_output() -> None:
 
 
 def test_completion_rejects_missing_terminal_returncode() -> None:
-    """Completion must fail closed when lifecycle finalization did not establish an exit."""
     with pytest.raises(AgentInvocationError, match="terminal return code") as exc_info:
         completion_mod.check_process_result(_FakeHandle(returncode=None), "test-agent", None, None)
     assert exc_info.value.agent_name == "test-agent"
@@ -206,8 +177,6 @@ def test_completion_rejects_missing_terminal_returncode() -> None:
 
 @pytest.mark.timeout_seconds(5)
 def test_completion_evidence_short_circuits_missing_returncode(tmp_path: Path) -> None:
-    """Handle with interactive_completion reason and durable evidence returns
-    success even when returncode is None (the bug case)."""
     opts = CompletionCheckOptions(
         workspace_path=tmp_path,
         execution_strategy=_StubStrategy(),
@@ -216,7 +185,6 @@ def test_completion_evidence_short_circuits_missing_returncode(tmp_path: Path) -
         _sentinel_check_fn=lambda workspace, run_id: True,
     )
 
-    # Must NOT raise — the new guard short-circuits before the RuntimeError
     completion_mod.check_process_result(
         _FakeHandle(returncode=None, terminal_reason="interactive_completion"),
         "agy",
@@ -227,7 +195,6 @@ def test_completion_evidence_short_circuits_missing_returncode(tmp_path: Path) -
 
 @pytest.mark.timeout_seconds(5)
 def test_no_terminal_reason_raises_agent_invocation_error() -> None:
-    """Handle without original_terminal_reason still raises the classified error."""
     with pytest.raises(AgentInvocationError, match="terminal return code") as exc_info:
         completion_mod.check_process_result(
             _FakeHandle(returncode=None), "test-agent", parsed_output=None, check_options=None

@@ -1,4 +1,3 @@
-"""Helpers for continuing paused Git rebases."""
 
 from __future__ import annotations
 
@@ -37,9 +36,6 @@ __all__ = [
     "verify_rebase_completed_at",
 ]
 
-#: git's own on-disk markers for a paused rebase. Exported so a caller
-#: that must not answer "no rebase" on an unreadable state can probe the
-#: filesystem directly rather than guessing.
 REBASE_STATE_DIRS: Sequence[str] = ("rebase-apply", "rebase-merge")
 
 _REBASE_INDICATORS: Sequence[str] = REBASE_STATE_DIRS
@@ -104,7 +100,6 @@ def _has_index_conflicts(repo: Repo) -> bool:
 
 
 def rebase_in_progress_at(repo_root: Path | str) -> bool:
-    """Return True if a git rebase is currently in progress at ``repo_root``."""
     repo = open_repo(repo_root)
     try:
         return rebase_in_progress_impl(repo)
@@ -113,13 +108,11 @@ def rebase_in_progress_at(repo_root: Path | str) -> bool:
 
 
 def rebase_in_progress(repo_root: Path | str | None = None) -> bool:
-    """Return True if a git rebase is in progress, auto-detecting the repo root."""
     path = _resolve_repo_root(repo_root)
     return rebase_in_progress_at(path)
 
 
 def verify_rebase_completed_at(repo_root: Path | str, upstream_branch: str) -> bool:
-    """Return True if the rebase is complete and HEAD is a descendant of ``upstream_branch``."""
     repo = open_repo(repo_root)
     try:
         if rebase_in_progress_impl(repo):
@@ -145,23 +138,11 @@ def verify_rebase_completed_at(repo_root: Path | str, upstream_branch: str) -> b
 
 
 def verify_rebase_completed(upstream_branch: str, repo_root: Path | str | None = None) -> bool:
-    """Verify rebase completion, auto-detecting the repo root."""
     path = _resolve_repo_root(repo_root)
     return verify_rebase_completed_at(path, upstream_branch)
 
 
 def continue_rebase_at(repo_root: Path | str, *, skip_empty: bool = True) -> None:
-    """Resume a paused rebase at ``repo_root``, raising if conflicts remain.
-
-    ``skip_empty`` decides what an EMPTIED replay means. For an ordinary
-    replay it means the commit was already applied upstream, and git's
-    own advice is to skip it -- that is the default. After a RESOLUTION
-    it means something else entirely: the resolver chose the other
-    side, and skipping silently deletes a commit the author wrote while
-    the rebase reports success. Callers that just resolved a conflict
-    pass ``skip_empty=False`` and get :class:`EmptyReplayError`, so the
-    stop can be escalated with the history intact.
-    """
     repo = open_repo(repo_root)
     try:
         if not rebase_in_progress_impl(repo):
@@ -173,26 +154,6 @@ def continue_rebase_at(repo_root: Path | str, *, skip_empty: bool = True) -> Non
         _close_repo(repo)
 
     try:
-        # ``git rebase --continue`` is a START-TIME-INDEPENDENT verb:
-        # the only flags git accepts with it are the engine-control
-        # ones (``--no-verify``, ``--skip``/``--quit`` etc.), NOT the
-        # replay-shape flags (``--no-autostash``, ``--no-autosquash``,
-        # ``--no-update-refs``, ``--empty=...``) which only apply to
-        # the initial rebase invocation. Passing those flags with
-        # ``--continue`` makes real git print a usage error and exit
-        # non-zero (the rebase-conflict loop never gets past stop 1).
-        # The replay-shape policy is therefore carried by the original
-        # ``rebase_onto`` call's argv; the continuation just needs the
-        # pinned -c config and the non-interactive editor env, both of
-        # which :data:`PINNED_CONFIG_ARGS` and ``_git_env()`` already
-        # supply. The ``GIT_EDITOR=`` / ``GIT_SEQUENCE_EDITOR=`` env
-        # vars are pinned unconditionally in
-        # :data:`_GIT_BATCH_MODE_ENV` so the only failure mode left is
-        # a hung edit, which the universal git call timeout closes.
-        # ``--no-verify`` is intentionally OMITTED so a user-installed
-        # ``pre-rebase`` / ``reference-transaction`` hook still has a
-        # chance to veto a malicious replay: D2 classifies such a
-        # refusal as a clean retryable error.
         run_git(
             [*PINNED_CONFIG_ARGS, "rebase", "--continue"],
             cwd=Path(repo_root),
@@ -213,8 +174,6 @@ def continue_rebase_at(repo_root: Path | str, *, skip_empty: bool = True) -> Non
                 "drop it from history"
             ) from exc
 
-        # C15 continuation-path half: a resolver can make this replayed
-        # commit empty, so skip it just as the initial rebase path does.
         for _ in range(_MAX_EMPTY_SKIP_ATTEMPTS):
             skipped = run_git(
                 [*PINNED_CONFIG_ARGS, "rebase", "--skip"],
@@ -256,7 +215,6 @@ def continue_rebase_at(repo_root: Path | str, *, skip_empty: bool = True) -> Non
 
 
 def continue_rebase(repo_root: Path | str | None = None) -> None:
-    """Resume a paused rebase, auto-detecting the repo root."""
     path = _resolve_repo_root(repo_root)
     continue_rebase_at(path)
 
@@ -290,13 +248,4 @@ has_index_conflicts = _has_index_conflicts
 head_is_descendant = _head_is_descendant
 
 
-# ----- AC-14 catalog evidence -----
-# This file is the authoritative source for the catalog entries listed
-# below. Each ``# AC-14 rationale: <ID>`` line is the code-adjacent
-# marker the AC-14 audit looks for; each ``# ladder rung: <N>``
-# names the rung the entry sits on. Adding a new entry here requires
-# BOTH lines or the audit fails.
 
-# AC-14 rationale: G1
-# ladder rung: 2
-# ----- end AC-14 catalog evidence -----

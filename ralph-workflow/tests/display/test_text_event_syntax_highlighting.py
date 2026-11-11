@@ -1,18 +1,3 @@
-"""Regression: parser highlight metadata drives REAL lexer styling on the
-canonical render path (AC-02, plan S-3).
-
-``AgyParser`` annotates fenced-code text events with
-``metadata["syntax_highlight"] = True`` and ``metadata["language"]``.
-Before this fix the canonical registry renderer
-(:func:`ralph.display.agent_event_renderer.render_event`) ignored that
-metadata entirely, so AGY-originated code reached the operator as flat
-single-style text. These tests pin the transport-neutral contract: ANY
-text event carrying the annotation -- from any agent -- renders the fenced
-body through Pygments with lexer-derived styled spans, while ``.plain``
-preserves the original content byte-for-byte and unknown languages fall
-back to unstyled text.
-"""
-
 from __future__ import annotations
 
 import json
@@ -35,7 +20,6 @@ if TYPE_CHECKING:
 
 
 def _agy_text_event(content: str) -> AgentActivityEvent:
-    """Parse a payload-carrying AGY frame into its canonical activity event."""
     frame = {
         "event": "step_update",
         "step_update": {
@@ -53,14 +37,12 @@ def _agy_text_event(content: str) -> AgentActivityEvent:
 
 
 def _body_spans(text: Text, body_prefix: str) -> list[object]:
-    """Return the styled spans that overlap the rendered body segment."""
     start = text.plain.find(body_prefix)
     assert start >= 0, f"body {body_prefix!r} missing from {text.plain!r}"
     return [span for span in text.spans if span.end > start and span.style not in (None, "")]
 
 
 def test_fenced_python_event_renders_lexer_derived_spans() -> None:
-    """The canonical renderer styles a fenced python body with Pygments."""
     content = "Here is the snippet:\n```python\nprint('hello')\n```\n"
     event = _agy_text_event(content)
     assert event.metadata.get("syntax_highlight") is True
@@ -68,20 +50,14 @@ def test_fenced_python_event_renders_lexer_derived_spans() -> None:
 
     rendered = render_event(event, ctx=None)
 
-    # The plain text preserves the original content exactly (no reflow).
     assert "```python" in rendered.plain
     assert "print('hello')" in rendered.plain
-    # Real highlighting: the code body carries MORE THAN ONE distinct style,
-    # proving the Pygments lexer ran (a flat single-style body is the old
-    # un-highlighted rendering). Python lexing separates the ``print`` name
-    # from the string literal, so the body must carry at least two styles.
     body_spans = _body_spans(rendered, "print")
     distinct_styles = {str(span.style) for span in body_spans}
     assert len(distinct_styles) >= 2, f"expected lexer-derived span variety, got {distinct_styles}"
 
 
 def test_fenced_typescript_event_renders_distinct_token_styles() -> None:
-    """A TypeScript fence highlights through the same generic seam."""
     content = "```ts\nconst value: number = 1;\n```\n"
     event = _agy_text_event(content)
     assert event.metadata.get("language") == "typescript"
@@ -95,7 +71,6 @@ def test_fenced_typescript_event_renders_distinct_token_styles() -> None:
 
 
 def test_unknown_language_fence_falls_back_to_single_body_style() -> None:
-    """An unknown fence language renders visibly without Pygments styling."""
     content = "```futurelang\nwhatever\n```\n"
     event = _agy_text_event(content)
     assert event.metadata.get("syntax_highlight") is True
@@ -104,8 +79,6 @@ def test_unknown_language_fence_falls_back_to_single_body_style() -> None:
     rendered = render_event(event, ctx=None)
 
     assert "whatever" in rendered.plain
-    # Fallback: the body keeps the event's single body style rather than
-    # crashing or inventing token spans.
     body_spans = _body_spans(rendered, "whatever")
     distinct_styles = {str(span.style) for span in body_spans}
     assert len(distinct_styles) == 1, (
@@ -114,7 +87,6 @@ def test_unknown_language_fence_falls_back_to_single_body_style() -> None:
 
 
 def test_unannotated_text_event_keeps_flat_body() -> None:
-    """A text event without the annotation is untouched by the seam."""
     event = make_event_for_emit(
         ActivityEventKind.TEXT,
         "plain message with no fence",
@@ -127,7 +99,6 @@ def test_unannotated_text_event_keeps_flat_body() -> None:
 
 
 def test_equivalent_annotation_from_any_provider_highlights_identically() -> None:
-    """The seam is transport-neutral: hand-built metadata highlights too."""
     content = "x = 1"
     agy_event = make_event_for_emit(
         ActivityEventKind.TEXT,

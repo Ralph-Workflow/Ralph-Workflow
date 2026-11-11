@@ -1,4 +1,3 @@
-"""Web-search backends and helpers for the MCP web_search tool."""
 
 from __future__ import annotations
 

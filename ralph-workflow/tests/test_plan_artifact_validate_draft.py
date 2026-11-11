@@ -1,5 +1,3 @@
-"""Read-only inspection of staged plan prose through public tools."""
-
 from __future__ import annotations
 
 import json

@@ -1,13 +1,3 @@
-"""Black-box tests for bounded HTTP ``response.read()`` in ``lifecycle.py``.
-
-wt-024 memory-perf AC-08: two sites in ``lifecycle.py`` call
-``response.read()`` with no byte cap. A misbehaving upstream that
-streams an unbounded response body would OOM the parent. We bound both
-at ``_LIFECYCLE_MAX_RESPONSE_BYTES`` (1 MiB).
-
-All tests stub ``urllib.request.urlopen`` so no real network is involved.
-"""
-
 from __future__ import annotations
 
 import io
@@ -27,15 +17,11 @@ if TYPE_CHECKING:
 
 
 class _HTTPResponseLike(Protocol):
-    """Minimal contract for the response object passed to ``response.read()``."""
-
     def read(self, size: int | None = None) -> bytes: ...
     def close(self) -> None: ...
 
 
 class _RecordingResponse(io.BytesIO):
-    """In-memory response that records every ``read(size)`` invocation."""
-
     def __init__(self, payload: bytes = b"") -> None:
         super().__init__(payload)
         self.read_calls: list[int | None] = []
@@ -49,7 +35,6 @@ class _RecordingResponse(io.BytesIO):
 
 
 def test_lifecycle_max_response_bytes_constant_value() -> None:
-    """``_LIFECYCLE_MAX_RESPONSE_BYTES`` must be a positive integer >= 1 MiB."""
     assert isinstance(_LIFECYCLE_MAX_RESPONSE_BYTES, int)
     assert _LIFECYCLE_MAX_RESPONSE_BYTES >= 1024 * 1024, (
         f"_LIFECYCLE_MAX_RESPONSE_BYTES must be >= 1 MiB; got {_LIFECYCLE_MAX_RESPONSE_BYTES}"
@@ -59,7 +44,6 @@ def test_lifecycle_max_response_bytes_constant_value() -> None:
 def test_http_tools_list_names_caps_response_read(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``_http_tools_list_names`` must pass a positive int to ``response.read``."""
     captured: dict[str, object] = {}
     response = _RecordingResponse(b"x" * (4 * 1024 * 1024))
 
@@ -77,7 +61,6 @@ def test_http_tools_list_names_caps_response_read(
 def test_http_tools_list_names_bounded_by_max(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The read() in _http_tools_list_names must use a positive cap."""
     response = _RecordingResponse(b"")
 
     def fake_urlopen(request: object, timeout: float = 0) -> _RecordingResponse:
@@ -95,8 +78,6 @@ def test_http_tools_list_names_bounded_by_max(
 
 
 class _FakeProcess:
-    """Minimal ``ProcessLike`` test double with a live ``poll()``."""
-
     def __init__(self) -> None:
         self.polls = 0
 
@@ -129,8 +110,6 @@ def _make_inner() -> StandaloneMcpProcess:
 def test_reset_session_budget_caps_response_read(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``RestartAwareMcpBridge.reset_session_budget`` must also cap
-    ``response.read()``."""
     response = _RecordingResponse(b"")
 
     def fake_urlopen(request: object, timeout: float = 0) -> _RecordingResponse:

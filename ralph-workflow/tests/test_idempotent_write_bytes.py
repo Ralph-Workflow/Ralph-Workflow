@@ -1,5 +1,3 @@
-"""Black-box byte-persistence contracts for idempotent artifact writes."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -13,8 +11,6 @@ from ralph.mcp.artifacts.idempotent_write import (
 
 
 class _ByteBackend:
-    """In-memory persistence boundary that exposes byte-level outcomes."""
-
     def __init__(self) -> None:
         self.files: dict[Path, bytes] = {}
         self.byte_reads: list[Path] = []
@@ -61,16 +57,12 @@ class _ByteBackend:
 
 
 class _UnreadableByteBackend(_ByteBackend):
-    """Byte boundary that cannot read its destination but can publish a replacement."""
-
     def read_bytes(self, path: Path) -> bytes:
         del path
         raise OSError("permission denied")
 
 
 class _CleanupFailingByteBackend(_ByteBackend):
-    """Publication boundary whose best-effort staging cleanup also fails."""
-
     def replace(self, source: Path, destination: Path) -> None:
         del source, destination
         raise OSError("publication failed")
@@ -81,7 +73,6 @@ class _CleanupFailingByteBackend(_ByteBackend):
 
 
 def test_byte_write_regression_identical_replay_has_no_mutation() -> None:
-    """S-3: identical byte content does not write or prepare a stable path."""
     backend = _ByteBackend()
     path = Path("/workspace/value.bin")
     backend.files[path] = b"\x00same\xff"
@@ -101,7 +92,6 @@ def test_byte_write_regression_identical_replay_has_no_mutation() -> None:
 
 
 def test_byte_write_regression_changed_and_unreadable_content_publishes_exact_bytes() -> None:
-    """S-3: changed and unreadable content fail open to exact requested bytes."""
     path = Path("/workspace/value.bin")
     changed_backend = _ByteBackend()
     changed_backend.files[path] = b"old"
@@ -117,7 +107,6 @@ def test_byte_write_regression_changed_and_unreadable_content_publishes_exact_by
 
 
 def test_atomic_byte_write_regression_rejects_cross_directory_staging_without_mutation() -> None:
-    """S-2: byte publication never stages on a different filesystem directory."""
     backend = _ByteBackend()
     destination = Path("/workspace/state.db")
 
@@ -136,7 +125,6 @@ def test_atomic_byte_write_regression_rejects_cross_directory_staging_without_mu
 
 
 def test_atomic_byte_write_regression_identical_replay_skips_write_replace_and_barrier() -> None:
-    """S-3: an identical atomic replay performs no staging, publish, or directory sync."""
     backend = _ByteBackend()
     destination = Path("/workspace/state.db")
     temporary = Path("/workspace/state.db.tmp")
@@ -160,7 +148,6 @@ def test_atomic_byte_write_regression_identical_replay_skips_write_replace_and_b
 
 
 def test_atomic_byte_write_regression_fails_open_when_destination_is_unreadable() -> None:
-    """S-3: unreadable atomic destinations still publish the requested byte sequence."""
     backend = _UnreadableByteBackend()
     destination = Path("/workspace/state.db")
     temporary = Path("/workspace/state.db.tmp")
@@ -182,7 +169,6 @@ def test_atomic_byte_write_regression_fails_open_when_destination_is_unreadable(
 
 
 def test_atomic_byte_write_regression_preserves_publication_error_when_cleanup_fails() -> None:
-    """S-3: failed transient cleanup does not hide the atomic publication error."""
     backend = _CleanupFailingByteBackend()
     destination = Path("/workspace/state.db")
     temporary = Path("/workspace/state.db.tmp")
@@ -197,7 +183,6 @@ def test_atomic_byte_write_regression_preserves_publication_error_when_cleanup_f
 
 
 def test_atomic_byte_write_regression_changed_content_publishes_exact_bytes_once() -> None:
-    """S-3: changed bytes stage once, publish atomically, and sync only when requested."""
     backend = _ByteBackend()
     destination = Path("/workspace/state.db")
     temporary = Path("/workspace/state.db.tmp")

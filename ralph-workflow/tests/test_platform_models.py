@@ -1,5 +1,3 @@
-"""Unit tests for platform data models."""
-
 from __future__ import annotations
 
 from importlib import import_module
@@ -12,7 +10,6 @@ PlatformInfo = platform_module.PlatformInfo
 
 
 def test_platform_info_reports_posix_and_windows_behavior() -> None:
-    """PlatformInfo should expose portable behavior helpers."""
     windows_platform = PlatformInfo(
         os=OperatingSystem.WINDOWS,
         architecture=Architecture.X86_64,
@@ -29,7 +26,6 @@ def test_platform_info_reports_posix_and_windows_behavior() -> None:
 
 
 def test_platform_info_builds_install_command_from_package_manager() -> None:
-    """Install command should reflect the detected package manager."""
     profile = PlatformInfo(
         os=OperatingSystem.MACOS,
         architecture=Architecture.ARM64,
@@ -40,7 +36,6 @@ def test_platform_info_builds_install_command_from_package_manager() -> None:
 
 
 def test_platform_info_summary_mentions_environment_markers() -> None:
-    """Summary should include notable environment details."""
     profile = PlatformInfo(
         os=OperatingSystem.LINUX,
         architecture=Architecture.X86_64,

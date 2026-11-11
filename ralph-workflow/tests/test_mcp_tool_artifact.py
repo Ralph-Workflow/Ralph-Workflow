@@ -1,5 +1,3 @@
-"""Public markdown artifact handler contracts."""
-
 from __future__ import annotations
 
 import json
@@ -74,7 +72,6 @@ def _record_active_run_media(workspace: Path, secret: str) -> None:
 
 
 def test_design_verdict_submission_accepts_only_active_run_ledger_captures(tmp_path: Path) -> None:
-    """S-4: a verdict may cite only tiered, active-run replay evidence."""
     secret = "artifact-ledger-secret"
     _record_active_run_media(tmp_path, secret)
 
@@ -88,10 +85,6 @@ def test_design_verdict_submission_accepts_only_active_run_ledger_captures(tmp_p
 
 
 def test_design_verdict_submission_accepts_minimal_run_id_only(tmp_path: Path) -> None:
-    """The development-result proof coupling to the design-verdict ledger is
-    gone; the only run-id check is the design verdict's own provenance
-    field, which is now non-empty-by-construction rather than session-matched.
-    """
     secret = "artifact-ledger-secret"
     _record_active_run_media(tmp_path, secret)
 
@@ -107,10 +100,6 @@ def test_design_verdict_submission_accepts_minimal_run_id_only(tmp_path: Path) -
 def test_completed_development_result_with_optional_capture_refs_is_accepted(
     tmp_path: Path,
 ) -> None:
-    """A development result with optional capture references is accepted
-    regardless of the design-verdict ledger state. UI proof coupling is
-    gone; the body is the next agent's reading matter.
-    """
     secret = "artifact-ledger-secret"
     session = _RunSession(session_id="run-md-submit", broker_secret=secret)
     workspace = MockWorkspace(tmp_path)

@@ -1,5 +1,3 @@
-"""Tests for the plan / analysis-decision artifact readers."""
-
 from __future__ import annotations
 
 from pathlib import Path

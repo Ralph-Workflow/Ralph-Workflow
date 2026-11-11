@@ -1,4 +1,3 @@
-"""WebSearchBackendSpec model — backend configuration for built-in web search providers."""
 
 from __future__ import annotations
 
@@ -10,7 +9,6 @@ from ralph.pydantic_compat import RalphBaseModel
 
 
 class WebSearchBackendSpec(RalphBaseModel):
-    """Backend configuration for built-in web search providers."""
 
     model_config = ConfigDict(frozen=True)
 

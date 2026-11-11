@@ -1,5 +1,3 @@
-"""End-to-end regression tests for PROMPT.md lifecycle noise suppression."""
-
 from __future__ import annotations
 
 import queue
@@ -32,7 +30,6 @@ def _make_display(tmp_path: Path) -> tuple[ParallelDisplay, StringIO]:
     return pd, buf
 
 
-# The exact noisy sequence from PROMPT.md
 _TOOL_LINE = (
     "claude/sonnet tool: mcp__ralph__read_file"
     " (path=ralph-workflow/ralph/prompts/template_registry.py)"
@@ -51,7 +48,6 @@ _PROMPT_MD_LINES: list[str] = [
 
 
 def test_prompt_md_sequence_produces_no_lifecycle_noise(tmp_path: Path) -> None:
-    """PROMPT.md noisy transcript replay must produce zero lifecycle noise in output."""
     pd, buf = _make_display(tmp_path)
     for line in _PROMPT_MD_LINES:
         pd.activity_router.push_raw_line(
@@ -62,7 +58,6 @@ def test_prompt_md_sequence_produces_no_lifecycle_noise(tmp_path: Path) -> None:
     pd.stop()
     out = buf.getvalue()
 
-    # Bare lifecycle tokens must not appear
     assert "claude/sonnet: thinking" not in out, (
         f"Lifecycle token 'claude/sonnet: thinking' leaked into output:\n{out}"
     )
@@ -76,7 +71,6 @@ def test_prompt_md_sequence_produces_no_lifecycle_noise(tmp_path: Path) -> None:
         f"Lifecycle token 'system (status=requesting)' leaked into output:\n{out}"
     )
 
-    # The tool call must appear with its path
     assert "mcp__ralph__read_file" in out or "ralph.read_file" in out, (
         f"Tool call missing from output:\n{out}"
     )
@@ -84,13 +78,11 @@ def test_prompt_md_sequence_produces_no_lifecycle_noise(tmp_path: Path) -> None:
         f"Tool path missing from output:\n{out}"
     )
 
-    # The error line must appear exactly once (it's a real error, not lifecycle noise)
     error_count = out.count("unsupported content block type 'thinking'")
     assert error_count == 1, f"Expected exactly 1 error occurrence, got {error_count}:\n{out}"
 
 
 def test_snapshot_last_activity_line_never_stores_lifecycle(tmp_path: Path) -> None:
-    """PipelineSubscriber.record_activity must not store bare lifecycle markers."""
 
     q: queue.Queue[PipelineSnapshot] = queue.Queue(maxsize=64)
     subscriber = PipelineSubscriber(
@@ -117,7 +109,6 @@ def test_snapshot_last_activity_line_never_stores_lifecycle(tmp_path: Path) -> N
     state.previous_phase = None
     state.current_agent = MagicMock(return_value="claude/sonnet")
 
-    # Feed a meaningful activity first
     subscriber.notify(state)
     subscriber.record_activity(
         unit_id="main",
@@ -130,7 +121,6 @@ def test_snapshot_last_activity_line_never_stores_lifecycle(tmp_path: Path) -> N
     previous_line = snapshot.last_activity_line
     assert previous_line is not None, "Expected a meaningful activity line"
 
-    # Now feed bare lifecycle markers — they must NOT overwrite the previous line
     for lifecycle_line in [
         "claude/sonnet: thinking",
         "claude/sonnet: message_delta",
@@ -169,7 +159,6 @@ def test_snapshot_last_activity_line_never_stores_lifecycle(tmp_path: Path) -> N
     ],
 )
 def test_is_bare_lifecycle_smoke(lifecycle_line: str) -> None:
-    """is_bare_lifecycle must return True for all known lifecycle markers."""
 
     assert is_bare_lifecycle(lifecycle_line), (
         f"Expected is_bare_lifecycle({lifecycle_line!r}) to be True"
@@ -187,7 +176,6 @@ def test_is_bare_lifecycle_smoke(lifecycle_line: str) -> None:
     ],
 )
 def test_is_bare_lifecycle_passes_real_content(non_lifecycle_line: str) -> None:
-    """is_bare_lifecycle must return False for real content lines."""
 
     assert not is_bare_lifecycle(non_lifecycle_line), (
         f"Expected is_bare_lifecycle({non_lifecycle_line!r}) to be False"

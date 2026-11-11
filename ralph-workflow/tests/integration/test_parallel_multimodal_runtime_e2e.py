@@ -1,28 +1,3 @@
-"""End-to-end acceptance suite for multimodal managed-runtime through parallel workers.
-
-Proves that the parallel worker path properly exercises the public fan-out seam
-(_execute_fan_out_sync) and produces observable outcomes consistent with the serial
-multimodal runtime:
-
-- same-workspace workers complete successfully through run_fan_out
-- worker namespace directories are created with correct structure
-- worker sessions receive the parent phase's session contract (drain, capabilities,
-  model identity) and use it to expose multimodal tools
-- worker-local multimodal artifacts are visible in worker namespace
-
-Observable behaviors verified (black-box):
-- Worker final states reflect successful completion
-- Worker namespaces contain artifacts/, tmp/, logs/, handoffs/ subdirectories
-- Claude/Gemini/unknown-provider workers complete with expected outcomes
-
-Full serial multimodal MCP coverage is in test_multimodal_managed_runtime_e2e.py.
-That file proves the MCP-layer delivery verdicts, typed-block handling, and
-upstream normalization through direct McpServer.handle_request() calls.
-
-This file proves that the parallel managed-runtime path (_execute_fan_out_sync) produces
-correct observable outcomes for multimodal-capable workers.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -100,7 +75,6 @@ def _setup_patches(
     tmp_path: Path,
     fake_executor: FakeAgentExecutor,
 ) -> None:
-    """Set up patches mirroring test_parallel_resume.py patterns."""
     monkeypatch.setattr(
         "ralph.agents.subprocess_executor.SubprocessAgentExecutor",
         lambda *args, **kwargs: fake_executor,
@@ -146,15 +120,6 @@ def _run_fan_out_sync(
     contract: sessioncontract_helper._SessionContract,
     monkeypatch: pytest.MonkeyPatch,
 ) -> tuple[PipelineState, capturedcontext_helper._CapturedContext]:
-    """Run fan-out via the public _execute_fan_out_sync seam.
-
-    This exercises the same path that the real runner uses, including the
-    same-workspace session contract propagation into worker sessions.
-
-    Returns:
-        A tuple of (final_state, captured_context). The captured_context
-        holds the session contract values that the coordinator received.
-    """
     captured = capturedcontext_helper._CapturedContext()
     units = effect.work_units
 
@@ -252,12 +217,6 @@ _THREE_WORKERS_EXPECTED = 3
 
 
 def _assert_workers_succeeded_in_summary(tmp_path: Path, unit_ids: tuple[str, ...]) -> int:
-    """Assert each unit succeeded per the durable fan-out summary artifact.
-
-    A fully successful wave clears worker tracking from the returned state,
-    so the persisted summary is the post-wave observable for worker outcomes.
-    Returns the number of verified workers.
-    """
     summary_path = tmp_path / ".agent" / "artifacts" / "parallel_development_summary.md"
     assert summary_path.exists(), "fan-out must write parallel_development_summary.md"
     summary = summary_path.read_text(encoding="utf-8")
@@ -270,10 +229,6 @@ def _assert_workers_succeeded_in_summary(tmp_path: Path, unit_ids: tuple[str, ..
 def test_workers_complete_successfully_with_multimodal_session_contract(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Parallel workers must complete successfully when session contract is propagated.
-
-    Black-box observable: Worker final states show SUCCEEDED status.
-    """
     units = (
         _make_work_unit("unit-a"),
         _make_work_unit("unit-b"),
@@ -305,11 +260,6 @@ def test_workers_complete_successfully_with_multimodal_session_contract(
 def test_multiple_workers_each_get_unique_session_ids(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Each worker must receive a unique session ID even with same session contract.
-
-    Black-box observable: all workers complete successfully with SUCCEEDED status,
-    proving the session contract was propagated correctly.
-    """
     units = (
         _make_work_unit("unit-multi-a"),
         _make_work_unit("unit-multi-b"),
@@ -344,11 +294,6 @@ def test_multiple_workers_each_get_unique_session_ids(
 def test_claude_worker_completes_with_inline_image_capability(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Workers with Claude identity must complete successfully.
-
-    Black-box observable: WorkerCompletedEvent with exit_code=0 proves the
-    Claude-capable worker path works correctly.
-    """
     unit = _make_work_unit("unit-claude")
     effect = FanOutEffect(work_units=(unit,), max_workers=1)
 
@@ -377,11 +322,6 @@ def test_claude_worker_completes_with_inline_image_capability(
 def test_gemini_worker_completes_with_typed_block_capability(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Workers with Gemini identity must complete successfully.
-
-    Black-box observable: WorkerCompletedEvent with exit_code=0 proves the
-    Gemini-capable worker path works correctly.
-    """
     unit = _make_work_unit("unit-gemini")
     effect = FanOutEffect(work_units=(unit,), max_workers=1)
 
@@ -410,11 +350,6 @@ def test_gemini_worker_completes_with_typed_block_capability(
 def test_unknown_provider_worker_completes_with_replay_fallback(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Workers with unknown provider must complete successfully (replay fallback is safe).
-
-    Black-box observable: WorkerCompletedEvent with exit_code=0 proves the
-    unknown-provider replay fallback path works correctly.
-    """
     unit = _make_work_unit("unit-unknown")
     effect = FanOutEffect(work_units=(unit,), max_workers=1)
 
@@ -442,11 +377,6 @@ def test_unknown_provider_worker_completes_with_replay_fallback(
 def test_worker_handoff_contains_multimodal_artifacts(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Worker handoffs directory must contain DEVELOPMENT_RESULT.md after completion.
-
-    Black-box observable: the handoff file proves the worker completed its phase
-    and produced the expected artifact in the worker namespace.
-    """
     unit = _make_work_unit("unit-handoff")
     effect = FanOutEffect(work_units=(unit,), max_workers=1)
 
@@ -476,11 +406,6 @@ def test_worker_handoff_contains_multimodal_artifacts(
 def test_worker_artifacts_contain_plan_markdown(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Worker artifacts directory must contain plan.md after completion.
-
-    Black-box observable: the plan.md artifact proves the worker produced
-    its expected output in the correct location.
-    """
     unit = _make_work_unit("unit-artifacts")
     effect = FanOutEffect(work_units=(unit,), max_workers=1)
 

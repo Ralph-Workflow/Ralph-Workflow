@@ -1,15 +1,3 @@
-"""Black-box tests for the auto-skill-install contract on every `ralph --init` invocation.
-
-The prompt requires skill installation to be automatic on every `ralph --init`
-regardless of which bootstrap path fires (first run OR re-run where every
-bootstrap result is `skipped`). These tests pin that contract.
-
-These tests are subprocess_e2e: they exercise the real `ralph --init` entry
-point and its full filesystem + skill-install path. They cannot be
-mocked down to the per-test 1 s budget without losing the end-to-end
-contract they assert.
-"""
-
 from __future__ import annotations
 
 from io import StringIO
@@ -74,9 +62,6 @@ def _install_fake_roots(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> tuple[Path, Path, Path, Path]:
-    """Pre-create fake canonical + sibling roots under tmp_path and redirect
-    agent_skill_roots() to return entries that resolve there.
-    """
     canonical_dir = tmp_path / "claude"
     codex_dir = tmp_path / "codex"
     opencode_dir = tmp_path / "opencode"
@@ -121,7 +106,6 @@ def _install_fake_roots(
 def test_init_command_always_runs_ensure_baseline_capabilities_on_first_run(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """init_command on a fresh empty dir must call ensure_baseline_capabilities."""
     _attach_console(monkeypatch)
     _install_fake_roots(monkeypatch, tmp_path)
     monkeypatch.chdir(tmp_path)
@@ -152,16 +136,9 @@ def test_init_command_always_runs_ensure_baseline_capabilities_on_first_run(
 def test_init_command_runs_ensure_baseline_capabilities_when_configs_already_exist(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Pre-existing .agent/ must NOT skip the skill install on a re-run.
-
-    The full capability summary table must be printed in the captured output
-    on the re-run path so a regression that silently breaks the
-    per-agent symlink fan-out is visible to the user.
-    """
     stream = _attach_console(monkeypatch)
     _install_fake_roots(monkeypatch, tmp_path)
     monkeypatch.chdir(tmp_path)
-    # Pre-create local support configs so the bootstrap results are all 'skipped'.
     agent_dir = tmp_path / ".agent"
     agent_dir.mkdir(parents=True, exist_ok=True)
     (agent_dir / "mcp.toml").write_text("# existing\n", encoding="utf-8")
@@ -200,13 +177,6 @@ def test_init_command_runs_ensure_baseline_capabilities_when_configs_already_exi
 def test_init_command_runs_capability_refresh_on_every_run(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Replacing the legacy `test_init_command_fallback_path_skips_capability_refresh`.
-
-    The legacy test pinned the buggy behavior (capability refresh runs only on
-    first run). The new contract is: capability refresh runs on EVERY
-    `ralph --init`, including the re-run path. Assert the call count is 2
-    across two invocations on a re-run.
-    """
     _attach_console(monkeypatch)
     _install_fake_roots(monkeypatch, tmp_path)
     monkeypatch.chdir(tmp_path)
@@ -235,18 +205,9 @@ def test_init_command_runs_capability_refresh_on_every_run(
 def test_init_command_runs_ensure_baseline_capabilities_when_global_config_path_passed(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """config_path=<custom> branch must still trigger the skill install.
-
-    The legacy one-shot init path is the `config_path is not None and not
-    config_path.exists()` branch. When that branch fires, the skill
-    install MUST still be invoked so a one-shot init copy is a complete
-    setup.
-    """
     _attach_console(monkeypatch)
     _install_fake_roots(monkeypatch, tmp_path)
     monkeypatch.chdir(tmp_path)
-    # Note: we intentionally do NOT pre-create config_path — the branch
-    # under test is the one where config_path does not yet exist.
     config_path = tmp_path / "custom.toml"
 
     called: list[Path] = []
@@ -273,7 +234,6 @@ def test_init_command_runs_ensure_baseline_capabilities_when_global_config_path_
 def test_init_command_skill_install_failure_does_not_raise(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A raising skill install must NOT block init from creating PROMPT.md / .agent/."""
     stream = _attach_console(monkeypatch)
     _install_fake_roots(monkeypatch, tmp_path)
     monkeypatch.chdir(tmp_path)
@@ -300,7 +260,6 @@ def test_init_command_skill_install_failure_does_not_raise(
 def test_init_command_surfaces_skill_install_failure_codes(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """When the manager returns a failure code, init must print a visible signal."""
     stream = _attach_console(monkeypatch)
     _install_fake_roots(monkeypatch, tmp_path)
     monkeypatch.chdir(tmp_path)
@@ -330,8 +289,6 @@ def test_init_command_surfaces_skill_install_failure_codes(
     assert "Skills auto-install reported: sibling-conflict-using-superpowers" in output, (
         f"Expected literal failure-code line in output, got: {output!r}"
     )
-    # The diagnose hint may be word-wrapped by the rich console, so we
-    # normalize whitespace before checking the literal hint.
     normalized = " ".join(output.split())
     assert "ralph --diagnose" in normalized, (
         f"Expected 'ralph --diagnose' hint in normalized output, got: {normalized!r}"
@@ -342,7 +299,6 @@ def test_init_command_surfaces_skill_install_failure_codes(
 def test_init_command_surfaces_skill_install_failure_codes_on_rerun(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The re-run (all-skipped) path must also surface skill-install failure codes."""
     stream = _attach_console(monkeypatch)
     _install_fake_roots(monkeypatch, tmp_path)
     monkeypatch.chdir(tmp_path)
@@ -383,7 +339,6 @@ def test_init_command_surfaces_skill_install_failure_codes_on_rerun(
 def test_init_command_surfaces_force_init_skills_hint_in_warning(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The init-path conflict warning must include the `ralph --force-init-skills` hint."""
     stream = _attach_console(monkeypatch)
     _install_fake_roots(monkeypatch, tmp_path)
     monkeypatch.chdir(tmp_path)

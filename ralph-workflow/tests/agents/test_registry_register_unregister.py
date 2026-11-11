@@ -1,5 +1,3 @@
-"""Tests for AgentRegistry register and unregister logic."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -23,13 +21,6 @@ from ralph.config.models import UnifiedConfig
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-# Snapshot the default catalog's state at import time so tests that
-# mutate it (e.g. the [agents.pi] override tests below) can restore
-# the golden built-in seeds before and after they run.  Without
-# this, test_registry_register_unregister.py can leave the default
-# catalog with an override installed, which would silently leak
-# into other tests in the same pytest session (the catalog is a
-# module-level singleton).
 _GOLDEN_PARSERS: dict[str, object] = dict(_PARSER_REGISTRY)
 _GOLDEN_CUSTOM: dict[str, object] = dict(_CUSTOM_COMMAND_REGISTRY)
 _GOLDEN_STRATEGIES: dict[AgentTransport, object] = dict(_STRATEGY_DISPATCH)
@@ -38,15 +29,6 @@ _GOLDEN_BY_COMMAND: dict[str, object] = dict(default_catalog()._by_command)
 
 
 def _restore_golden_catalog() -> None:
-    """Reset the default catalog to its import-time built-in seed state.
-
-    The override tests replace the ``pi`` built-in via
-    ``AgentCatalog.replace_builtin``, which mutates ``_entries`` and
-    ``_by_command``.  This helper is the inverse of that operation
-    so a test that ran ``from_config(agents={'pi': ...})`` cannot
-    leak a polluted ``pi-custom`` entry into a sibling test that
-    later asserts the built-in is still present.
-    """
     cat = default_catalog()
     cat._entries.clear()
     cat._entries.update(_GOLDEN_ENTRIES)
@@ -62,13 +44,6 @@ def _restore_golden_catalog() -> None:
 
 @pytest.fixture(autouse=True)
 def _reset_default_catalog() -> object:
-    """Restore the default catalog before AND after each test in this module.
-
-    Necessary because the override tests use ``AgentRegistry.from_config``
-    which writes to the module-level default catalog (a singleton).
-    Without this fixture, the override would leak into other tests in
-    the same pytest session that assert the built-in ``pi`` is present.
-    """
     _restore_golden_catalog()
     yield
     _restore_golden_catalog()
@@ -108,7 +83,6 @@ def test_register_unregister_flow() -> None:
 
 
 def test_idempotent_register_unregister_loop() -> None:
-    # (b) registering a headless agent and unregistering it can be repeated 5 times in a row
     registry = AgentRegistry()
     name = "dummy-loop-agent"
 
@@ -130,7 +104,6 @@ def test_idempotent_register_unregister_loop() -> None:
 
 
 def test_interactive_register_unregister() -> None:
-    # (c) the same flow works for an interactive agent
     registry = AgentRegistry()
     name = "dummy-interactive-agent"
 
@@ -152,15 +125,12 @@ def test_interactive_register_unregister() -> None:
 
 
 def test_unregister_not_in_catalog() -> None:
-    # (d) unregister() on a name in self.agents but NOT in catalog is safe
-    # and removes from self.agents only
     registry = AgentRegistry()
     name = "legacy-alias"
     config = AgentConfig(cmd="echo alias", transport=AgentTransport.CLAUDE)
     registry.register(name, config)
 
     assert name in registry.agents
-    # Since we bypassed register_agent_support, it is not in catalog
     assert default_catalog().get(name) is None
 
     registry.unregister(name)
@@ -169,14 +139,6 @@ def test_unregister_not_in_catalog() -> None:
 
 
 def test_pi_dynamic_alias_preserves_provider_id_suffix() -> None:
-    """`pi/<model>` dynamic alias must preserve the full provider/id suffix.
-
-    Pi's documented model pattern is `provider/id` (e.g. `anthropic/claude-sonnet-4-20250514`)
-    plus an optional `:<thinking>` suffix (e.g. `sonnet:high`).  The dynamic
-    alias in ``AgentRegistry._resolve_dynamic_agent`` must use
-    ``name.removeprefix('pi/')`` (NOT ``segments[1]``) so the multi-segment
-    suffix round-trips intact into the ``--model <pattern>`` flag value.
-    """
     registry = AgentRegistry()
 
     config = registry.get("pi/anthropic/claude-sonnet-4-20250514")
@@ -189,36 +151,19 @@ def test_pi_dynamic_alias_preserves_provider_id_suffix() -> None:
 
 
 def test_pi_dynamic_alias_rejects_malformed_model_ids() -> None:
-    """Malformed ``pi/<model>`` aliases must return ``None``.
-
-    Per https://pi.dev/docs/latest/usage the documented --model pattern is
-    ``provider/id`` with an optional ``:<thinking>`` suffix.  Aliases with
-    empty provider segments, empty model segments, empty thinking suffixes,
-    or otherwise structurally invalid shapes must NOT be accepted, since
-    they would emit undocumented ``--model <garbage>`` flags downstream.
-    """
     registry = AgentRegistry()
 
-    # Empty provider (leading slash with no provider before it).
     assert registry.get("pi//x") is None
-    # Empty model id (provider with trailing slash but no model name).
     assert registry.get("pi/provider/") is None
-    # Both provider and model id empty.
     assert registry.get("pi//") is None
-    # Just the prefix, no model id at all.
     assert registry.get("pi/") is None
-    # Trailing slash with no model id (variant of `pi/provider/`).
     assert registry.get("pi/anthropic/") is None
-    # Empty thinking suffix after a valid provider/id.
     assert registry.get("pi/anthropic/claude-sonnet-4-20250514:") is None
-    # Empty base before the thinking colon.
     assert registry.get("pi/:high") is None
-    # Bare colon with nothing on either side.
     assert registry.get("pi/:") is None
 
 
 def test_pi_dynamic_alias_accepts_nested_provider_model_paths() -> None:
-    """``pi/<model>`` aliases must preserve nested provider/model paths."""
     registry = AgentRegistry()
 
     bare = registry.get("pi/anthropic/claude-sonnet-4-20250514")
@@ -243,17 +188,6 @@ def test_pi_dynamic_alias_accepts_nested_provider_model_paths() -> None:
 
 
 def test_configured_pi_override_propagates_to_catalog() -> None:
-    """A configured ``[agents.pi]`` override must reach the public catalog.
-
-    Per the existing ``AgentRegistry.register`` contract, ``registry.get('pi')``
-    returns the configured override.  ``registry.catalog.get('pi')`` must
-    also return the override so downstream consumers (catalog.get_parser,
-    catalog.get_strategy, _resolve_dynamic_support) all see the configured
-    command, not the built-in.
-
-    Regression test for the D92 catalog-sync gap where the override reached
-    ``self.agents`` but never ``self.catalog``.
-    """
     config = UnifiedConfig(
         agents={
             "pi": AgentConfig(
@@ -266,15 +200,12 @@ def test_configured_pi_override_propagates_to_catalog() -> None:
     )
     registry = AgentRegistry.from_config(config)
 
-    # registry.get must reflect the override (existing behavior).
     direct = registry.get("pi")
     assert direct is not None, "registry.get('pi') must resolve the override"
     assert direct.cmd == "pi-custom", (
         f"registry.get('pi').cmd must be the override ('pi-custom'), got {direct.cmd!r}"
     )
 
-    # catalog.get must ALSO reflect the override so the public catalog
-    # surface stays in lockstep with registry.get.
     catalog_pi = registry.catalog.get("pi")
     assert catalog_pi is not None, (
         "registry.catalog.get('pi') must resolve the configured override; "
@@ -283,24 +214,12 @@ def test_configured_pi_override_propagates_to_catalog() -> None:
     assert catalog_pi.config.cmd == "pi-custom", (
         f"registry.catalog.get('pi').config.cmd must be 'pi-custom', got {catalog_pi.config.cmd!r}"
     )
-    # The override must preserve the built-in's parser factory and strategy
-    # factory (they are structural to the pi transport, not user-preference).
     assert catalog_pi.parser_factory is PiParser, (
         f"pi override must keep the built-in's PiParser factory, got {catalog_pi.parser_factory!r}"
     )
 
 
 def test_configured_pi_override_propagates_to_dynamic_alias() -> None:
-    """The ``pi/<model>`` dynamic alias must use the configured override base.
-
-    Both ``registry.get('pi/<model>')`` and ``registry.catalog.get('pi/<model>')``
-    must derive the synthesized support from the override's cmd/flags, not
-    from the built-in.  Without this, a user who points ``[agents.pi]`` at a
-    custom binary still gets the built-in's ``pi`` cmd when they ask for
-    ``pi/anthropic/claude-sonnet-4-20250514``.
-
-    Regression test for the D92 dynamic-alias-sync gap.
-    """
     config = UnifiedConfig(
         agents={
             "pi": AgentConfig(
@@ -313,7 +232,6 @@ def test_configured_pi_override_propagates_to_dynamic_alias() -> None:
     )
     registry = AgentRegistry.from_config(config)
 
-    # registry.get path
     alias = registry.get("pi/anthropic/claude-sonnet-4-20250514")
     assert alias is not None, (
         "registry.get('pi/anthropic/claude-sonnet-4-20250514') must resolve "
@@ -324,7 +242,6 @@ def test_configured_pi_override_propagates_to_dynamic_alias() -> None:
     )
     assert alias.model_flag == "--model anthropic/claude-sonnet-4-20250514"
 
-    # registry.catalog.get path
     catalog_alias = registry.catalog.get("pi/anthropic/claude-sonnet-4-20250514")
     assert catalog_alias is not None, (
         "registry.catalog.get('pi/anthropic/claude-sonnet-4-20250514') must "
@@ -338,27 +255,6 @@ def test_configured_pi_override_propagates_to_dynamic_alias() -> None:
 
 
 def test_ccs_dynamic_alias_resolves_on_both_registry_and_catalog() -> None:
-    """A ``ccs/<alias>`` dynamic alias must resolve on both surfaces.
-
-    Regression test for the D92 follow-up where ``ccs/<alias>``
-    synthesized ``AgentConfig.cmd`` is a multi-word string (e.g.
-    ``"ccs mm"``) that is NOT registered as a built-in command key.
-    The previous implementation looked up the base support by
-    ``config.cmd.lower()`` in ``catalog._by_command``, which only
-    stores single-token built-in commands; the synthesized multi-word
-    cmd was missing from the lookup, so ``registry.catalog.get(...)``
-    returned ``None`` while ``registry.get(...)`` returned the
-    synthesized config.  The public catalog surface must stay in
-    lockstep with the registry surface for every documented dynamic
-    alias, including ``ccs/<alias>``.
-
-    Both ``registry.get('ccs/<alias>')`` and
-    ``registry.catalog.get('ccs/<alias>')`` must return a synthesized
-    support whose ``config.cmd`` carries the multi-word synthesized
-    command, ``config.transport`` is the alias's underlying transport
-    (here ``claude``), and the parser/strategy factories are the
-    built-in's factories for that transport.
-    """
     config = UnifiedConfig(
         ccs_aliases={"mm": "ccs mm"},
     )

@@ -1,10 +1,3 @@
-"""Direct assertions for multimodal capability detection.
-
-Tests every major modality class, provider/transport combination, and
-verdict helper method. This is the primary verification suite for the
-capabilities module — the single source of truth for delivery decisions.
-"""
-
 from __future__ import annotations
 
 from ralph.mcp.multimodal.artifacts import (
@@ -26,10 +19,6 @@ from ralph.mcp.multimodal.capabilities import (
 )
 from ralph.mcp.multimodal.errors import MultimodalFailure, MultimodalFailureKind
 
-# ---------------------------------------------------------------------------
-# MultimodalModelIdentity helpers
-# ---------------------------------------------------------------------------
-
 
 def test_known_provider_is_known() -> None:
     assert MultimodalModelIdentity(provider="claude").is_known()
@@ -39,11 +28,6 @@ def test_known_provider_is_known() -> None:
 
 def test_explicit_unknown_provider_is_not_known() -> None:
     assert not MultimodalModelIdentity(provider="unknown").is_known()
-
-
-# ---------------------------------------------------------------------------
-# CapabilityVerdict helpers
-# ---------------------------------------------------------------------------
 
 
 def test_capability_verdict_helpers() -> None:
@@ -61,11 +45,6 @@ def test_capability_verdict_helpers() -> None:
         assert verdict.is_supported() == expected_supported
 
 
-# ---------------------------------------------------------------------------
-# Unknown modality → UNSUPPORTED for any provider
-# ---------------------------------------------------------------------------
-
-
 def test_unknown_modality_is_unsupported() -> None:
 
     for provider in ["claude", "openai", "gemini", "unknown"]:
@@ -74,11 +53,6 @@ def test_unknown_modality_is_unsupported() -> None:
         assert verdict.delivery == DeliveryMode.UNSUPPORTED
         assert not verdict.is_supported()
         assert "unknown modality" in verdict.reason
-
-
-# ---------------------------------------------------------------------------
-# Unknown provider → RESOURCE_REFERENCE for every supported modality
-# ---------------------------------------------------------------------------
 
 
 def test_unknown_provider_defaults_to_resource_reference_replay() -> None:
@@ -101,11 +75,6 @@ def test_image_delivery_does_not_depend_on_model_identity() -> None:
     assert "does not guess" in verdict.reason
 
 
-# ---------------------------------------------------------------------------
-# Claude provider — all modalities
-# ---------------------------------------------------------------------------
-
-
 def test_claude_image_is_inline() -> None:
 
     for model_id in [None, "claude-3-5-sonnet-20241022", "claude-opus-4-7"]:
@@ -119,7 +88,6 @@ def test_claude_image_is_inline() -> None:
 def test_claude_pdf_and_document_are_typed_block() -> None:
 
     for modality in [MODALITY_PDF, MODALITY_DOCUMENT]:
-        """Claude supports PDF and document modalities via typed document blocks."""
         identity = MultimodalModelIdentity(provider="claude", model_id="claude-3-5-sonnet-20241022")
         verdict = get_delivery_mode(identity, modality)
         assert verdict.delivery == DeliveryMode.TYPED_BLOCK
@@ -131,7 +99,6 @@ def test_claude_pdf_and_document_are_typed_block() -> None:
 def test_claude_av_modalities_are_unsupported() -> None:
 
     for modality in [MODALITY_AUDIO, MODALITY_VIDEO]:
-        """Claude's API does not accept audio or video input."""
         identity = MultimodalModelIdentity(provider="claude", model_id="claude-3-5-sonnet-20241022")
         verdict = get_delivery_mode(identity, modality)
         assert verdict.delivery == DeliveryMode.UNSUPPORTED
@@ -142,11 +109,6 @@ def test_claude_anthropic_alias_also_supports_inline_image() -> None:
     identity = MultimodalModelIdentity(provider="anthropic")
     verdict = get_delivery_mode(identity, MODALITY_IMAGE)
     assert verdict.delivery == DeliveryMode.INLINE_IMAGE
-
-
-# ---------------------------------------------------------------------------
-# OpenAI / codex provider — image modality
-# ---------------------------------------------------------------------------
 
 
 def test_openai_vision_model_image_is_inline() -> None:
@@ -160,7 +122,7 @@ def test_openai_vision_model_image_is_inline() -> None:
         ("openai", "o1-preview"),
         ("openai", "o3-mini"),
         ("codex", "gpt-4o"),
-        ("codex", None),  # unknown model defaults to inline
+        ("codex", None),
     ]:
         identity = MultimodalModelIdentity(provider=provider, model_id=model_id)
         verdict = get_delivery_mode(identity, MODALITY_IMAGE)
@@ -187,11 +149,6 @@ def test_openai_av_modalities_are_unsupported() -> None:
 def test_openai_pdf_and_document_are_unsupported() -> None:
 
     for modality in [MODALITY_PDF, MODALITY_DOCUMENT]:
-        """OpenAI chat API cannot process PDFs or documents as raw bytes.
-
-        Returning UNSUPPORTED gives the agent an explicit, actionable failure
-        instead of a resource_reference that the model cannot use.
-        """
         identity = MultimodalModelIdentity(provider="openai", model_id="gpt-4o")
         verdict = get_delivery_mode(identity, modality)
         assert verdict.delivery == DeliveryMode.UNSUPPORTED
@@ -205,11 +162,6 @@ def test_codex_pdf_and_document_are_unsupported() -> None:
         verdict = get_delivery_mode(identity, modality)
         assert verdict.delivery == DeliveryMode.UNSUPPORTED
         assert not verdict.is_supported()
-
-
-# ---------------------------------------------------------------------------
-# Gemini provider — all modalities
-# ---------------------------------------------------------------------------
 
 
 def test_gemini_image_is_inline() -> None:
@@ -232,27 +184,16 @@ def test_gemini_non_image_modalities_are_typed_block() -> None:
         assert verdict.block_type == modality
 
 
-# ---------------------------------------------------------------------------
-# Mixed-modality: same identity, multiple modalities
-# ---------------------------------------------------------------------------
-
-
 def test_claude_mixed_modality_verdicts_are_consistent() -> None:
     identity = MultimodalModelIdentity(provider="claude", model_id="claude-3-5-sonnet-20241022")
     modalities = [MODALITY_IMAGE, MODALITY_PDF, MODALITY_AUDIO, MODALITY_VIDEO, MODALITY_DOCUMENT]
     verdicts = [get_delivery_mode(identity, m) for m in modalities]
     image_v, pdf_v, audio_v, video_v, doc_v = verdicts
-    # Image: inline_image; pdf/document: typed_block; audio/video: unsupported
     assert image_v.is_inline()
     assert pdf_v.is_typed_block()
     assert doc_v.is_typed_block()
     assert audio_v.delivery == DeliveryMode.UNSUPPORTED
     assert video_v.delivery == DeliveryMode.UNSUPPORTED
-
-
-# ---------------------------------------------------------------------------
-# Verdict fields are populated correctly
-# ---------------------------------------------------------------------------
 
 
 def test_verdict_fields_are_populated() -> None:
@@ -268,11 +209,6 @@ def test_unsupported_verdict_cites_modality_name() -> None:
     identity = MultimodalModelIdentity(provider="claude")
     verdict = get_delivery_mode(identity, "hologram")
     assert "hologram" in verdict.reason
-
-
-# ---------------------------------------------------------------------------
-# MultimodalFailure taxonomy
-# ---------------------------------------------------------------------------
 
 
 def test_multimodal_failure_kinds_are_importable() -> None:
@@ -306,18 +242,7 @@ def test_multimodal_failure_user_message_without_optional_fields() -> None:
     assert f.user_message() == "file not found"
 
 
-# ---------------------------------------------------------------------------
-# Named contract tests required by the managed-runtime acceptance plan
-# ---------------------------------------------------------------------------
-
-
 def test_capability_verdict_carries_block_type_for_typed_modalities() -> None:
-    """Every TYPED_BLOCK verdict must carry a non-empty block_type string.
-
-    This proves that downstream layers (tool handlers, prompt sidecar) can rely
-    on block_type being set whenever the delivery mode is TYPED_BLOCK, without
-    re-inspecting the provider or modality.
-    """
     typed_cases = [
         (MultimodalModelIdentity(provider="claude"), "pdf"),
         (MultimodalModelIdentity(provider="claude"), "document"),
@@ -343,11 +268,6 @@ def test_capability_verdict_carries_block_type_for_typed_modalities() -> None:
 
 
 def test_capability_verdict_reason_is_explicit_for_unsupported_modality() -> None:
-    """UNSUPPORTED verdicts must carry a non-empty reason that names the modality.
-
-    This ensures agents and workflows receive an explicit, actionable message
-    rather than a silent failure when a modality is not supported.
-    """
     unsupported_cases = [
         (MultimodalModelIdentity(provider="claude"), "audio"),
         (MultimodalModelIdentity(provider="claude"), "video"),
@@ -370,11 +290,6 @@ def test_capability_verdict_reason_is_explicit_for_unsupported_modality() -> Non
             f"provider={identity.provider!r} modality={modality!r}: reason must name the "
             f"modality so agents can diagnose the failure; reason={verdict.reason!r}"
         )
-
-
-# ---------------------------------------------------------------------------
-# ResolvedCapabilityProfile
-# ---------------------------------------------------------------------------
 
 
 def test_resolve_capability_profile_contains_all_supported_modalities() -> None:
@@ -429,7 +344,6 @@ def test_resolve_capability_profile_provider_modality_coverage() -> None:
 
 
 def test_resolved_capability_profile_to_payload_roundtrip() -> None:
-    """profile_from_payload(profile.to_payload()) restores the same verdicts."""
 
     identity = MultimodalModelIdentity(provider="gemini", model_id="gemini-2.0-flash")
     original = resolve_capability_profile(identity)
@@ -448,7 +362,6 @@ def test_resolved_capability_profile_to_payload_roundtrip() -> None:
 
 
 def test_profile_from_payload_missing_verdicts_falls_back_to_computed() -> None:
-    """profile_from_payload with no verdicts key falls back to get_delivery_mode."""
 
     raw: dict[str, object] = {"provider": "claude", "model_id": None, "transport": None}
     profile = profile_from_payload(raw)
@@ -456,7 +369,6 @@ def test_profile_from_payload_missing_verdicts_falls_back_to_computed() -> None:
 
 
 def test_profile_from_payload_bad_delivery_value_defaults_to_resource_reference() -> None:
-    """profile_from_payload with an unrecognized delivery string uses RESOURCE_REFERENCE."""
 
     raw: dict[str, object] = {
         "provider": "unknown",

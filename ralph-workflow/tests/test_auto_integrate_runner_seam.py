@@ -1,5 +1,3 @@
-"""Deterministic runner-seam regressions for default auto-integration."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -27,19 +25,12 @@ from ralph.workspace.scope import WorkspaceScope
 
 
 def _default_config() -> UnifiedConfig:
-    """Build the local-fleet fixture; remote freshness is covered separately."""
     return UnifiedConfig.model_validate(
         {"general": {"auto_integrate_enabled": True, "auto_integrate_remote_enabled": False}}
     )
 
 
 def _stub_ff_environment(monkeypatch, root: Path) -> None:
-    """Point every fast-forward lookup at a single in-memory worktree."""
-    # The fast-forward now reads the target through ``observe_branch_sha``,
-    # which reports (sha, query_ok) so a FAILED ``git rev-parse`` can be
-    # retried instead of being mistaken for an absent branch. The stub
-    # answers "read successfully", which is the environment these tests
-    # always described.
     monkeypatch.setattr(
         auto_integrate_ff,
         "observe_branch_sha",
@@ -47,10 +38,6 @@ def _stub_ff_environment(monkeypatch, root: Path) -> None:
     )
     monkeypatch.setattr(auto_integrate_ff, "is_ancestor", lambda *_args: True)
     monkeypatch.setattr(auto_integrate_ff, "find_main_worktree_root", lambda _root: root)
-    # The fast-forward now consults ``worktree_lookup``, which reports
-    # found / not-checked-out / query-failed instead of collapsing the
-    # last two into ``None``. The stub answers "found", which is the
-    # same environment these tests always described.
     monkeypatch.setattr(
         auto_integrate_ff,
         "worktree_lookup",
@@ -59,12 +46,6 @@ def _stub_ff_environment(monkeypatch, root: Path) -> None:
 
 
 def test_default_config_resolves_main_and_lands_via_ff_only(monkeypatch) -> None:
-    """AC-04: a checked-out target lands through ``merge --ff-only``, not the CAS.
-
-    ``merge --ff-only`` advances the ref, the index and the working tree
-    together, so it is tried first no matter how dirty that checkout is;
-    the CAS advances the ref alone and must stay a fallback.
-    """
     config = _default_config()
     root = Path("/workspace/feature")
     monkeypatch.setattr(
@@ -89,25 +70,6 @@ def test_default_config_resolves_main_and_lands_via_ff_only(monkeypatch) -> None
 def test_refused_ff_only_leaves_ref_untouched_and_records_loud_skip(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AC-10/E2: when merge --ff-only refuses on a checked-out target, the
-    shared ref is LEFT UNTOUCHED and a loud retryable skip is recorded.
-
-    AC-10 forbids the previous CAS fallback on a checked-out target --
-    a bare ``update-ref`` there would silently desync the worktree's
-    index and working tree (its ``git status`` would describe the
-    freshly landed work as a local reverse diff, and ``reset --hard``
-    there would destroy work). The new contract: ``merge --ff-only``
-    is the ONLY accepted landing path when the target is checked out
-    somewhere, and on refusal the shared ref is left untouched with a
-    loud ``_TARGET_CHECKED_OUT_REFUSED`` reason so the next clean
-    seam retries.
-
-    The CAS primitive is also never called in this path -- the
-    worktree_query-failed-or-found contract routes through
-    ``fast_forward_via_target_worktree`` and returns
-    ``(False, _TARGET_CHECKED_OUT_REFUSED)`` directly without
-    invoking ``compare_and_swap_branch``.
-    """
     root = Path("/workspace/feature")
     _stub_ff_environment(monkeypatch, root)
     monkeypatch.setattr(auto_integrate_ff, "fast_forward_via_worktree", lambda *_args: False)
@@ -128,7 +90,6 @@ def test_refused_ff_only_leaves_ref_untouched_and_records_loud_skip(
 
 
 def test_commit_seam_invokes_auto_integrate(monkeypatch) -> None:
-    """A successful commit passes the configured target to integration."""
     config = _default_config()
     outcome = RebaseState(last_action="rebased", last_target="main", fast_forwarded=True)
     integrate = MagicMock(return_value=outcome)
@@ -152,16 +113,6 @@ def test_commit_seam_invokes_auto_integrate(monkeypatch) -> None:
 
 
 def test_pending_remote_publish_keeps_phase_boundary_resolver(monkeypatch) -> None:
-    """S-4: rejected-push retry reconciliation receives the boundary resolver.
-
-    The new boundary code calls ``reconcile_remote_publication``
-    directly rather than the OLD ``retry_pending_remote_publish``
-    shim. The resolver is not threaded through the new entry
-    point (the reconciler is configuration-driven, not
-    resolver-driven); this test now pins the simpler contract
-    that the boundary still drives a reconcile call when the
-    state is ``non_fast_forward``.
-    """
     config = UnifiedConfig.model_validate(
         {"general": {"auto_integrate_enabled": True, "auto_integrate_remote_enabled": True}}
     )
@@ -185,7 +136,6 @@ def test_pending_remote_publish_keeps_phase_boundary_resolver(monkeypatch) -> No
 
 
 def test_phase_transition_seam_invokes_auto_integrate(monkeypatch) -> None:
-    """A phase transition passes the configured target to integration."""
     config = _default_config()
     outcome = RebaseState(last_action="rebased", last_target="main", fast_forwarded=True)
     integrate = MagicMock(return_value=outcome)
@@ -208,15 +158,6 @@ def test_phase_transition_seam_invokes_auto_integrate(monkeypatch) -> None:
     assert integrate.call_args.args == (config, workspace_scope, state.rebase)
 
 
-# ---------------------------------------------------------------------------
-# Bounded jittered backoff between landing retries
-# ---------------------------------------------------------------------------
-#
-# Every seam here is injected -- no wait ever happens, and this file never
-# imports ``random``. The production defaults (``time.sleep`` /
-# ``random.random``) are only exercised by the real-git e2e suite.
-
-
 def _install_retry_loop(
     monkeypatch,
     root: Path,
@@ -224,12 +165,6 @@ def _install_retry_loop(
     retries: list[bool],
     events: list[str] | None = None,
 ) -> None:
-    """Drive the bounded landing loop with a scripted retry verdict.
-
-    ``retries[i]`` is what attempt ``i`` reports as ``retry_ff`` -- True
-    meaning the fast-forward lost the compare-and-swap and the loop must
-    re-integrate onto the moved tip.
-    """
     verdicts = iter(retries)
     monkeypatch.setattr(auto_integrate, "read_record", lambda _root: None)
     monkeypatch.setattr(
@@ -265,7 +200,6 @@ def _install_retry_loop(
 
 
 def _recorder(monkeypatch, root: Path, *, retries: list[bool], events=None):
-    """Run one integration and return the delays the loop asked to sleep."""
     delays: list[float] = []
     _install_retry_loop(monkeypatch, root, retries=retries, events=events)
 
@@ -285,12 +219,10 @@ def _recorder(monkeypatch, root: Path, *, retries: list[bool], events=None):
 
 
 def test_a_first_attempt_that_lands_never_waits(monkeypatch, tmp_path: Path) -> None:
-    """The common case must cost nothing: no collision, no backoff."""
     assert _recorder(monkeypatch, tmp_path, retries=[False]) == []
 
 
 def test_a_lost_compare_and_swap_waits_once_before_retrying(monkeypatch, tmp_path: Path) -> None:
-    """One collision, one bounded wait, inside the documented schedule."""
     delays = _recorder(monkeypatch, tmp_path, retries=[True, False])
 
     assert len(delays) == 1
@@ -299,7 +231,6 @@ def test_a_lost_compare_and_swap_waits_once_before_retrying(monkeypatch, tmp_pat
 
 
 def test_the_delay_grows_across_attempts_and_stays_capped(monkeypatch, tmp_path: Path) -> None:
-    """Exponential, so two agents that keep colliding spread further apart."""
     delays = _recorder(monkeypatch, tmp_path, retries=[True, True, True])
 
     assert len(delays) == 2
@@ -308,12 +239,6 @@ def test_the_delay_grows_across_attempts_and_stays_capped(monkeypatch, tmp_path:
 
 
 def test_the_wait_happens_before_the_pointer_is_re_read(monkeypatch, tmp_path: Path) -> None:
-    """Ordering is the point: the retry must observe a POST-wait pointer.
-
-    Refreshing first and then sleeping would land the retry on a pointer
-    read before the collision had time to settle, which is exactly the
-    lockstep the backoff exists to break.
-    """
     events: list[str] = []
     _recorder(monkeypatch, tmp_path, retries=[True, False], events=events)
 
@@ -323,7 +248,6 @@ def test_the_wait_happens_before_the_pointer_is_re_read(monkeypatch, tmp_path: P
 def test_a_sleep_that_raises_never_escapes_the_integration_step(
     monkeypatch, tmp_path: Path
 ) -> None:
-    """Integration never raises into the run -- the backoff is no exception."""
 
     def _explode(_seconds: float) -> None:
         raise RuntimeError("interrupted")
@@ -343,7 +267,6 @@ def test_a_sleep_that_raises_never_escapes_the_integration_step(
 
 
 def test_full_jitter_shortens_the_wait_rather_than_fixing_it(monkeypatch, tmp_path: Path) -> None:
-    """A deterministic backoff would re-synchronise the agents it separated."""
     long_wait = _recorder(monkeypatch, tmp_path, retries=[True, False])
     delays: list[float] = []
     _install_retry_loop(monkeypatch, tmp_path, retries=[True, False])
@@ -361,21 +284,6 @@ def test_full_jitter_shortens_the_wait_rather_than_fixing_it(monkeypatch, tmp_pa
 def test_direct_auto_integrate_entry_points_preserve_unresolved_state(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-3 regression: neither public seam may LOSE durable recovery evidence.
-
-    The original form of this test asserted the seams must not integrate
-    at all while unresolved. That is the deadlock: the integration seam
-    is the recovery path, so refusing to run it left the only operation
-    able to clear ``integration_unresolved`` blocked by
-    ``integration_unresolved``, and
-    ``assert_non_resolution_dispatch_allowed`` then rejected every
-    ordinary phase for the rest of the run -- against a repository that
-    may already be clean.
-
-    The invariant S-3 actually needs is the one asserted here: a seam
-    that does not LAND cannot launder the evidence away. The seam runs;
-    a skip comes back still blocking, with its durable reason intact.
-    """
     config = _default_config()
     workspace_scope = WorkspaceScope(Path("/workspace"))
     monkeypatch.setattr(auto_integrate, "read_record", lambda _root: None)
@@ -395,8 +303,6 @@ def test_direct_auto_integrate_entry_points_preserve_unresolved_state(
         )
         assert after_commit is not None
         assert after_commit.integration_unresolved is True
-        # The seam ran and reports honestly what IT did; the block is
-        # carried on its own field rather than by rewriting the action.
         assert after_commit.last_action == "skipped"
 
         on_transition = auto_integrate.auto_integrate_on_phase_transition(
@@ -409,13 +315,6 @@ def test_direct_auto_integrate_entry_points_preserve_unresolved_state(
 def test_a_landing_releases_the_unresolved_integration_block(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Only a real landing clears the block -- and it must actually clear it.
-
-    ``resolution_exhausted`` was set in one place and cleared in none, so
-    a single exhausted resolver chain made every later run and every
-    ``--resume`` exit against a clean tree, permanently, recoverable only
-    by hand-editing ``.agent/checkpoint.json``.
-    """
     config = _default_config()
     workspace_scope = WorkspaceScope(Path("/workspace"))
     monkeypatch.setattr(auto_integrate, "read_record", lambda _root: None)

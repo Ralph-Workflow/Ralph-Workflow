@@ -1,5 +1,3 @@
-"""Regression guards for GitHub-primary canonical repository URLs."""
-
 from __future__ import annotations
 
 import importlib.util

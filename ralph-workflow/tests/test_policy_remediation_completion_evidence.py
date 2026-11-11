@@ -1,14 +1,3 @@
-"""The policy-remediation session requires no agent-side completion evidence.
-
-Remediation has no artifact contract and its prompt never asks the agent to
-call ``declare_complete`` — completion IS the absence of unresolved markers,
-and the driver re-runs the deterministic validator after every attempt
-(``ralph.project_policy.remediation.remediate``). The agent's claim was never
-trusted, so the completion-enforcing transports (claude-interactive, agy,
-cursor, pi) must treat a clean exit as terminal here instead of raising
-"agent exited without required completion evidence".
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -47,7 +36,6 @@ def _zero_grace() -> TimeoutPolicy:
 def test_clean_exit_is_terminal_when_completion_evidence_is_not_required(
     tmp_path: Path,
 ) -> None:
-    """No artifact, no declare_complete, no sentinel — and no error raised."""
     check_process_result(
         _FakeHandle(returncode=0),
         "agy",
@@ -65,7 +53,6 @@ def test_clean_exit_is_terminal_when_completion_evidence_is_not_required(
 def test_clean_exit_still_raises_when_completion_evidence_is_required(
     tmp_path: Path,
 ) -> None:
-    """The default contract is unchanged: evidence is required unless opted out."""
     with pytest.raises(AgentInvocationError):
         check_process_result(
             _FakeHandle(returncode=0),
@@ -92,7 +79,6 @@ def test_invoke_agent_effect_requires_completion_evidence_by_default() -> None:
 
 @pytest.fixture(scope="module")
 def _remediation_invoke_inputs() -> tuple[_LoadResult, DisplayContext]:
-    """Build immutable production inputs outside the timed test call phase."""
     return (
         _LoadResult(
             config=UnifiedConfig(),
@@ -109,7 +95,6 @@ def test_remediation_effect_opts_out_of_completion_evidence(
     monkeypatch: pytest.MonkeyPatch,
     _remediation_invoke_inputs: tuple[_LoadResult, DisplayContext],
 ) -> None:
-    """The production remediation closure builds an evidence-free effect."""
     observed: list[InvokeAgentEffect] = []
 
     def fake_execute_agent_effect(
@@ -136,8 +121,6 @@ def test_remediation_effect_opts_out_of_completion_evidence(
     assert invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md") is True
     assert observed and observed[0].requires_completion_evidence is False
 
-    # The ANALYSIS phase is the mirror image: returning a decision artifact is
-    # its entire purpose, so its completion evidence IS required.
     observed.clear()
     assert invoke(phase=PHASE_ANALYSIS, prompt_path="prompt.md") is True
     assert observed and observed[0].requires_completion_evidence is True

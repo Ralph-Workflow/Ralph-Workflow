@@ -1,4 +1,3 @@
-"""Pure helpers for failure-reason formatting in the pipeline slice."""
 
 from __future__ import annotations
 

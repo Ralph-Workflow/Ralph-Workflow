@@ -1,5 +1,3 @@
-"""Behavioral contracts for the evidence-first commit pipeline."""
-
 from __future__ import annotations
 
 import json
@@ -112,7 +110,6 @@ def test_receipt_requires_exact_live_file_identity(tmp_path: Path) -> None:
 def test_normalization_audit_records_fresh_evidence_and_draft_revision(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """DA-005/S-6: the canonical receipt gets the exact fresh-evidence audit."""
     monkeypatch.setattr(
         commit_normalization_module, "_build_evidence", lambda _root: _evidence("ralph/app.py")
     )
@@ -160,7 +157,6 @@ def test_normalization_audit_does_not_score_authored_words(
 def test_canonical_submission_persists_first_normalization_pass_audit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """DA-007/S-2: canonical receipt keeps the single fresh normalization pass."""
     monkeypatch.setattr(
         commit_normalization_module, "_build_evidence", lambda _root: _evidence("ralph/app.py")
     )

@@ -1,10 +1,3 @@
-"""Integration tests for MCP wire-level roundtrip.
-
-- HTTP transport tests: replaced with in-process McpServer.handle_request() calls —
-  no daemon threads, no socket polling, no httpx against localhost.
-- stdio transport: uses the fake stdio server fixture to test Ralph's MCP client.
-"""
-
 from __future__ import annotations
 
 import sys
@@ -26,14 +19,11 @@ from tests._support.typed_accessors import must_mapping
 
 pytestmark = pytest.mark.subprocess_e2e
 
-# Description length bounds enforced by the quality bar
 _MIN_DESCRIPTION_CHARS = 20
 _MAX_DESCRIPTION_CHARS = 500
 
-# Content used by the append_file roundtrip assertion
 _APPEND_CONTENT = "hi"
 
-# Capabilities required by the built-in Ralph tools
 _REQUIRED_CAPABILITIES = {
     "WorkspaceRead",
     "WorkspaceWriteAny",
@@ -68,7 +58,6 @@ def _build_server(
 
 
 def _do_initialize(server: McpServer) -> ServerState:
-    """Send initialize + notifications/initialized; return running ServerState."""
     req = JsonRpcRequest(
         jsonrpc="2.0",
         method="initialize",
@@ -103,7 +92,6 @@ def _do_tool_call(
     name: str,
     args: dict[str, object],
 ) -> dict[str, object]:
-    """Make a tools/call request and return the MCP result object."""
     call_id[0] += 1
     req = JsonRpcRequest(
         jsonrpc="2.0",
@@ -119,10 +107,7 @@ def _do_tool_call(
 @pytest.mark.integration
 @pytest.mark.subprocess_e2e
 class TestStdioUpstreamClient:
-    """Test Ralph's MCP client code path using the fake stdio fixture."""
-
     def test_list_tools_from_fake_stdio_server(self) -> None:
-        """make_upstream_client lists tools from the fake stdio server."""
         fake_stdio_path = Path(__file__).parent.parent / "fixtures" / "fake_stdio_mcp.py"
 
         server = UpstreamMcpServer(
@@ -140,7 +125,6 @@ class TestStdioUpstreamClient:
         assert tools[0].description == "A fake tool for testing"
 
     def test_call_tool_on_fake_stdio_server(self) -> None:
-        """call_tool on the fake stdio server returns the expected response shape."""
         fake_stdio_path = Path(__file__).parent.parent / "fixtures" / "fake_stdio_mcp.py"
 
         server = UpstreamMcpServer(

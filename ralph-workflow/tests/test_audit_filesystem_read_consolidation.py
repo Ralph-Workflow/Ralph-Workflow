@@ -1,10 +1,16 @@
-"""Regression tests for the package-wide filesystem-read consolidation audit."""
-
 from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from ralph.testing import audit_filesystem_read_consolidation as audit
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "marker exemption": "the inline marker comment no longer waives a read finding",
+    "raw read detection": "the raw-read detection message now names the structural exemption registry",
+    "structural exemption": "the structural exemption registry now carries the waived call site",
+}
 
 
 def _write_fake_package(tmp_path: Path, module_rel: str, body: str) -> Path:
@@ -16,7 +22,6 @@ def _write_fake_package(tmp_path: Path, module_rel: str, body: str) -> Path:
 
 
 def test_invalid_candidate_free_module_fails_closed(tmp_path: Path) -> None:
-    """Invalid source cannot bypass the read audit."""
     module_rel = "alpha/broken.py"
     package_root = _write_fake_package(tmp_path, module_rel, "def broken(:\n")
     violations = audit.audit_filesystem_read_consolidation(
@@ -30,7 +35,6 @@ def test_invalid_candidate_free_module_fails_closed(tmp_path: Path) -> None:
 
 
 def test_non_utf8_candidate_module_fails_closed(tmp_path: Path) -> None:
-    """S-6: undecodable new source cannot escape the package-wide read audit."""
     module_rel = "alpha/non_utf8.py"
     package_root = tmp_path / "ralph"
     module_path = package_root / module_rel
@@ -48,7 +52,6 @@ def test_non_utf8_candidate_module_fails_closed(tmp_path: Path) -> None:
 
 
 def test_valid_candidate_free_module_passes(tmp_path: Path) -> None:
-    """A valid inert production module remains accepted."""
     module_rel = "alpha/inert.py"
     package_root = _write_fake_package(tmp_path, module_rel, "VALUE = 1\n")
     assert (
@@ -61,7 +64,6 @@ def test_valid_candidate_free_module_passes(tmp_path: Path) -> None:
 
 
 def test_flags_raw_path_constructor_read_text(tmp_path: Path) -> None:
-    """``Path('x').read_text()`` is flagged when ``Path`` is the constructor."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -81,7 +83,6 @@ def test_flags_raw_path_constructor_read_text(tmp_path: Path) -> None:
 
 
 def test_regression_flags_local_path_variable_read_text(tmp_path: Path) -> None:
-    """S-6: local pathlib values cannot bypass the R1/R3 audit boundary."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -103,7 +104,6 @@ def test_regression_flags_local_path_variable_read_text(tmp_path: Path) -> None:
 
 
 def test_regression_flags_path_read_closed_over_by_nested_function(tmp_path: Path) -> None:
-    """S-6: nested functions cannot evade R1/R3 with a captured pathlib value."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -127,7 +127,6 @@ def test_regression_flags_path_read_closed_over_by_nested_function(tmp_path: Pat
 
 
 def test_flags_raw_path_open_read(tmp_path: Path) -> None:
-    """Raw ``Path.open`` read handles cannot evade the R1/R3 boundary."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -149,7 +148,6 @@ def test_flags_raw_path_open_read(tmp_path: Path) -> None:
 
 
 def test_regression_flags_raw_builtin_open_read(tmp_path: Path) -> None:
-    """S-6: builtin ``open`` reads cannot evade the R1/R3 boundary."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -170,7 +168,6 @@ def test_regression_flags_raw_builtin_open_read(tmp_path: Path) -> None:
 
 
 def test_flags_raw_pathlib_module_read_text(tmp_path: Path) -> None:
-    """``pathlib.Path(...).read_text()`` is flagged."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -188,7 +185,6 @@ def test_flags_raw_pathlib_module_read_text(tmp_path: Path) -> None:
 
 
 def test_flags_raw_os_path_exists(tmp_path: Path) -> None:
-    """Existence probes via ``os.path.exists`` are flagged (R4)."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -205,7 +201,6 @@ def test_flags_raw_os_path_exists(tmp_path: Path) -> None:
 
 
 def test_flags_os_path_module_aliases(tmp_path: Path) -> None:
-    """Aliased ``os.path`` probes cannot bypass R4 enforcement."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -225,7 +220,6 @@ def test_flags_os_path_module_aliases(tmp_path: Path) -> None:
 
 
 def test_regression_flags_path_constructor_alias_assignment(tmp_path: Path) -> None:
-    """S-6: aliases of pathlib constructors cannot evade R1/R3 enforcement."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -248,7 +242,6 @@ def test_regression_flags_path_constructor_alias_assignment(tmp_path: Path) -> N
 
 
 def test_flags_raw_os_stat(tmp_path: Path) -> None:
-    """Stat probes via ``os.stat`` are flagged (R4)."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -263,27 +256,26 @@ def test_flags_raw_os_stat(tmp_path: Path) -> None:
     assert violations[0].kind == "raw_stat"
 
 
-def test_ignores_marked_read_via_local_marker(tmp_path: Path) -> None:
-    """A marker carrying a non-empty reason exempts the call."""
+def test_marker_comment_no_longer_silences_a_read_violation(tmp_path: Path) -> None:
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
         module_rel,
         "from pathlib import Path\n"
         "def load() -> str:\n"
-        '    return Path("x").read_text(encoding="utf-8")  # filesystem-read-ok: shipped data fixture\n',
+        '    return Path("x").read_text(encoding="utf-8")  # filesystem-read-ok: fixture\n',
     )
-    assert (
-        audit.audit_filesystem_read_consolidation(
-            package_root,
-            module_paths=(module_rel,),
-        )
-        == []
+    violations = audit.audit_filesystem_read_consolidation(
+        package_root,
+        module_paths=(module_rel,),
     )
+    assert len(violations) == 1, (
+        "an inline marker comment MUST NOT silence the filesystem-read audit"
+    )
+    assert violations[0].kind in {"raw_path_read_text", "raw_read_text"}
 
 
-def test_marker_without_reason_does_not_exempt(tmp_path: Path) -> None:
-    """A bare ``# filesystem-read-ok:`` does NOT exempt the call (D3)."""
+def test_marker_without_reason_does_not_exempt_either(tmp_path: Path) -> None:
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -300,8 +292,7 @@ def test_marker_without_reason_does_not_exempt(tmp_path: Path) -> None:
     assert violations[0].kind in {"raw_path_read_text", "raw_read_text"}
 
 
-def test_marker_on_preceding_line_exempts(tmp_path: Path) -> None:
-    """A marker on the immediately preceding line exempts the call."""
+def test_marker_on_preceding_line_no_longer_exempts(tmp_path: Path) -> None:
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -311,17 +302,17 @@ def test_marker_on_preceding_line_exempts(tmp_path: Path) -> None:
         "    # filesystem-read-ok: shipped data fixture\n"
         '    return Path("x").read_text(encoding="utf-8")\n',
     )
-    assert (
-        audit.audit_filesystem_read_consolidation(
-            package_root,
-            module_paths=(module_rel,),
-        )
-        == []
+    violations = audit.audit_filesystem_read_consolidation(
+        package_root,
+        module_paths=(module_rel,),
     )
+    assert len(violations) == 1, (
+        "an inline marker comment MUST NOT silence the filesystem-read audit"
+    )
+    assert violations[0].kind in {"raw_path_read_text", "raw_read_text"}
 
 
 def test_recovery_controller_is_not_exempt_from_read_enforcement(tmp_path: Path) -> None:
-    """S-6 regression: recovery code must use a local reason, not a module exemption."""
     module_rel = "recovery/controller.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -341,7 +332,6 @@ def test_recovery_controller_is_not_exempt_from_read_enforcement(tmp_path: Path)
 
 
 def test_regression_explicit_module_path_cannot_escape_package_root(tmp_path: Path) -> None:
-    """S-6: an explicit candidate outside the package fails closed rather than passing."""
     package_root = _write_fake_package(tmp_path, "alpha/inert.py", "VALUE = 1\n")
     external_module = tmp_path / "outside.py"
     external_module.write_text("VALUE = 1\n", encoding="utf-8")
@@ -357,7 +347,6 @@ def test_regression_explicit_module_path_cannot_escape_package_root(tmp_path: Pa
 
 
 def test_regression_exempt_suffix_cannot_skip_unrelated_module(tmp_path: Path) -> None:
-    """S-6: only the canonical boundary path can be exempt from read enforcement."""
     module_rel = "unrelated/mcp/artifacts/file_backend.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -378,7 +367,6 @@ def test_regression_exempt_suffix_cannot_skip_unrelated_module(tmp_path: Path) -
 def test_regression_workspace_monitor_is_not_broadly_exempt_from_read_enforcement(
     tmp_path: Path,
 ) -> None:
-    """S-6: future monitor reads must earn a local D3 exception, not a file exemption."""
     module_rel = "agents/invoke/_workspace.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -397,7 +385,6 @@ def test_regression_workspace_monitor_is_not_broadly_exempt_from_read_enforcemen
 
 
 def test_exempt_paths_are_skipped(tmp_path: Path) -> None:
-    """The default exempt set keeps the canonical primitives clean."""
     module_rel = "mcp/artifacts/file_backend.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -417,7 +404,6 @@ def test_exempt_paths_are_skipped(tmp_path: Path) -> None:
 
 
 def test_audit_module_is_exempt(tmp_path: Path) -> None:
-    """The audit module itself is in the default exempt set."""
     module_rel = "testing/audit_filesystem_read_consolidation.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -434,7 +420,6 @@ def test_audit_module_is_exempt(tmp_path: Path) -> None:
 
 
 def test_missing_package_root_returns_missing_root_violation(tmp_path: Path) -> None:
-    """An absent package root fails closed with a diagnostic."""
     missing = tmp_path / "does-not-exist"
     violations = audit.audit_filesystem_read_consolidation(missing)
     assert len(violations) == 1
@@ -442,7 +427,6 @@ def test_missing_package_root_returns_missing_root_violation(tmp_path: Path) -> 
 
 
 def test_main_module_entry_point_clean_returns_zero(tmp_path: Path) -> None:
-    """``main()`` returns 0 when the audit is clean."""
     package_root = tmp_path / "pkg"
     (package_root / "ralph").mkdir(parents=True)
     (package_root / "ralph" / "inert.py").write_text("VALUE = 1\n", encoding="utf-8")
@@ -450,7 +434,6 @@ def test_main_module_entry_point_clean_returns_zero(tmp_path: Path) -> None:
 
 
 def test_main_module_entry_point_violations_returns_one(tmp_path: Path) -> None:
-    """``main()`` returns 1 when violations are present."""
     package_root = tmp_path / "pkg"
     (package_root / "ralph").mkdir(parents=True)
     (package_root / "ralph" / "bad.py").write_text(
@@ -461,7 +444,6 @@ def test_main_module_entry_point_violations_returns_one(tmp_path: Path) -> None:
 
 
 def test_flags_raw_path_traversal_methods(tmp_path: Path) -> None:
-    """Path traversal bypasses the bounded Workspace enumeration seam (S-6)."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -482,7 +464,6 @@ def test_flags_raw_path_traversal_methods(tmp_path: Path) -> None:
 
 
 def test_flags_raw_os_and_glob_traversal_aliases(tmp_path: Path) -> None:
-    """Aliased filesystem-module traversals cannot evade the audit (S-6)."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -505,7 +486,6 @@ def test_flags_raw_os_and_glob_traversal_aliases(tmp_path: Path) -> None:
 
 
 def test_direct_imported_read_and_traversal_functions_cannot_evade_audit(tmp_path: Path) -> None:
-    """S-1/S-6 regression: direct filesystem imports remain fail-closed."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -532,28 +512,28 @@ def test_direct_imported_read_and_traversal_functions_cannot_evade_audit(tmp_pat
     ]
 
 
-def test_marked_traversal_is_exempt_but_unmarked_traversal_is_not(tmp_path: Path) -> None:
-    """Traversal exceptions remain local, reasoned, and fail closed when empty (S-6)."""
+def test_marked_traversal_is_no_longer_exempt(tmp_path: Path) -> None:
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
         module_rel,
         "import os\n"
         "def allowed(root: str) -> object:\n"
-        "    # filesystem-read-ok: canonical workspace implementation owns bounded traversal\n"
+        "    # filesystem-read-ok: canonical workspace traversal\n"
         "    return os.walk(root)\n"
         "def rejected(root: str) -> object:\n"
-        "    return os.scandir(root)  # filesystem-read-ok:\n",
+        "    return os.scandir(root)\n",
     )
     violations = audit.audit_filesystem_read_consolidation(
         package_root,
         module_paths=(module_rel,),
     )
-    assert [violation.kind for violation in violations] == ["raw_scandir"]
+    assert [violation.kind for violation in violations] == ["raw_walk", "raw_scandir"], (
+        "an inline marker comment MUST NOT silence the filesystem-read audit"
+    )
 
 
 def test_unrelated_method_chain_passes(tmp_path: Path) -> None:
-    """Non-filesystem lookups and arbitrary similarly named methods remain accepted."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -577,7 +557,6 @@ def test_unrelated_method_chain_passes(tmp_path: Path) -> None:
 
 
 def test_regression_missing_default_production_root_fails_closed(tmp_path: Path) -> None:
-    """S-6: a repository without its expected ralph/ root cannot pass the audit."""
     repository_root = tmp_path / "repository"
     repository_root.mkdir()
 
@@ -589,7 +568,6 @@ def test_regression_missing_default_production_root_fails_closed(tmp_path: Path)
 
 
 def test_regression_marker_in_string_literal_does_not_bypass_enforcement(tmp_path: Path) -> None:
-    """S-6: D3 read markers must be comments rather than payload text."""
     module_rel = "alpha/string_marker.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -606,3 +584,72 @@ def test_regression_marker_in_string_literal_does_not_bypass_enforcement(tmp_pat
     )
 
     assert [violation.kind for violation in violations] == ["raw_path_read_text"]
+
+
+def test_registered_call_site_is_exempt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "from pathlib import Path\n"
+        "def load() -> str:\n"
+        '    return Path("x").read_text(encoding="utf-8")\n',
+    )
+    monkeypatch.setattr(
+        audit,
+        "EXEMPT_CALL_SITES",
+        frozenset({("alpha/example.py", "load", "raw_path_read_text")}),
+    )
+    violations = audit.audit_filesystem_read_consolidation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+    assert violations == []
+
+
+def test_registered_scope_does_not_exempt_another_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "from pathlib import Path\n"
+        "def load() -> str:\n"
+        '    return Path("x").read_text(encoding="utf-8")\n',
+    )
+    monkeypatch.setattr(
+        audit,
+        "EXEMPT_CALL_SITES",
+        frozenset({("alpha/example.py", "other", "raw_path_read_text")}),
+    )
+    violations = audit.audit_filesystem_read_consolidation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+    assert len(violations) == 1
+
+
+def test_registered_kind_does_not_exempt_another_kind(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "from pathlib import Path\n"
+        "def load() -> str:\n"
+        '    return Path("x").read_text(encoding="utf-8")\n',
+    )
+    monkeypatch.setattr(
+        audit,
+        "EXEMPT_CALL_SITES",
+        frozenset({("alpha/example.py", "load", "raw_path_exists")}),
+    )
+    violations = audit.audit_filesystem_read_consolidation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+    assert len(violations) == 1

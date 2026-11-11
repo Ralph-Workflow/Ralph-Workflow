@@ -1,5 +1,3 @@
-"""Planning prompts teach substantive, optional parallel conventions."""
-
 from __future__ import annotations
 
 import pytest

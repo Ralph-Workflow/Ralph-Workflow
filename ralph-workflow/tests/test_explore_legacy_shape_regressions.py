@@ -1,28 +1,3 @@
-"""Regression tests for AC-04 and AC-09 backward-compatibility.
-
-These tests cover the regressions flagged by the prior analysis
-how_to_fix items:
-
-* ``handle_write_file`` (and other mutation handlers) must not
-  raise ``AttributeError`` when a real ``ExploreIndex`` handle is
-  attached. The freshness payload must report ``reindex_in_progress``
-  and other shared fields without exploding after a successful
-  mutation.
-
-* ``handle_list_directory`` must preserve the legacy plain-text
-  shape whenever the caller did not request an indexed view AND
-  must honor ``use_index='never'`` for every view (compact, ranked,
-  outline, raw) as an unconditional bypass of the explore index.
-
-* ``handle_directory_tree`` must preserve the legacy tree shape
-  under the same conditions, and must consistently decorate child
-  nodes (including non-``changed_only`` children) when the caller
-  asks for ``include_counts`` / ``include_symbols`` / ``ranked``.
-
-The tests use real ``build_explore_index()`` handles so the
-behavior is black-box.
-"""
-
 from __future__ import annotations
 
 import json
@@ -60,7 +35,6 @@ def explore_handle() -> object:
 
 
 def _make_handle(tmp_path: Path):
-    """Build a real ``ExploreIndex`` handle over a temp workspace."""
     (tmp_path / "foo.py").write_text("def foo():\n    pass\n")
     return build_explore_index(tmp_path)
 
@@ -83,8 +57,6 @@ def _make_write_ws() -> MagicMock:
 
 
 class TestMutationFreshnessWithRealHandle:
-    """AC-04: every mutation returns freshness metadata, no exceptions."""
-
     def test_write_file_returns_freshness_metadata(self, tmp_path: Path) -> None:
         handle = _make_handle(tmp_path)
         session = MockSession(WORKSPACE_WRITE_TRACKED_CAPABILITY, WORKSPACE_READ_CAPABILITY)
@@ -189,9 +161,6 @@ class TestMutationFreshnessWithRealHandle:
         assert result.is_error is False
 
     def test_write_file_with_handle_missing_reindex_attr(self, tmp_path: Path) -> None:
-        """Real ``ExploreIndex`` exposes ``reindex_in_progress``; the
-        new safe accessor must default to ``False`` when a duck-typed
-        handle lacks the attribute."""
         handle = _make_handle(tmp_path)
         session = MockSession(WORKSPACE_WRITE_TRACKED_CAPABILITY, WORKSPACE_READ_CAPABILITY)
         session.explore_index = handle
@@ -206,15 +175,12 @@ class TestMutationFreshnessWithRealHandle:
 
 
 class TestListDirectoryLegacyShape:
-    """AC-09 backward compatibility for ``handle_list_directory``."""
-
     def test_default_preserves_legacy_text_with_handle(self, explore_handle: object) -> None:
         session = MockSession(WORKSPACE_READ_CAPABILITY)
         session.explore_index = explore_handle
         result = handle_list_directory(session, _make_listing_ws(), {"path": "."})
         assert result.is_error is False
         text = result.content[0].text
-        # Legacy shape: "Directory: ." header + entry list.
         assert text.startswith("Directory: .")
         assert "foo.py" in text
 
@@ -263,8 +229,6 @@ class TestListDirectoryLegacyShape:
 
 
 class TestDirectoryTreeLegacyShape:
-    """AC-09 backward compatibility for ``handle_directory_tree``."""
-
     def test_default_preserves_legacy_tree_with_handle(self, explore_handle: object) -> None:
         session = MockSession(WORKSPACE_READ_CAPABILITY)
         session.explore_index = explore_handle
@@ -304,7 +268,6 @@ class TestDirectoryTreeLegacyShape:
             assert "index_used" not in body
 
     def test_compact_view_decorates_non_changed_only_children(self, explore_handle: object) -> None:
-        """AC-09: requested counts decorate every child."""
         session = MockSession(WORKSPACE_READ_CAPABILITY)
         session.explore_index = explore_handle
         ws = MagicMock()
@@ -342,9 +305,6 @@ class TestDirectoryTreeLegacyShape:
 
 
 class TestDirectoryTreeSchemaAdvertisesChangedOnly:
-    """AC-09: the ``DIRECTORY_TREE_TOOL`` schema must advertise
-    ``changed_only`` so callers can discover it."""
-
     def test_directory_tree_schema_has_changed_only(self) -> None:
         from ralph.mcp.tools.bridge._specs_file_list import file_list_specs
         from ralph.mcp.tools.names import DIRECTORY_TREE_TOOL

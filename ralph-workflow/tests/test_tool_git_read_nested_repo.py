@@ -1,5 +1,3 @@
-"""Handler-level cwd boundary tests for the git read tools."""
-
 from __future__ import annotations
 
 import subprocess
@@ -83,9 +81,6 @@ def test_handler_rejects_non_string_cwd(tmp_path: Path) -> None:
 
 
 def test_handler_names_an_embedded_nul_in_cwd(tmp_path: Path) -> None:
-    """Left to ``Path.resolve``, this is a bare ``ValueError: lstat: embedded
-    null character in path`` — an internal-looking error naming neither the
-    tool nor the parameter the caller has to fix."""
     root = tmp_path / "workspace"
     root.mkdir()
     with pytest.raises(InvalidParamsError, match="embedded NUL"):

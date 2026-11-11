@@ -1,5 +1,3 @@
-"""Lifecycle ordering contracts for conflict-resolution process quiescence (S-6)."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -35,7 +33,6 @@ class _TrackedProcess:
 
 
 def test_conflict_resolution_lifecycle_shutdown_reaps_server_before_next_action(tmp_path) -> None:
-    """S-6/R9: bridge shutdown reaches a terminal server before the next git action."""
     session_file = tmp_path / "session.json"
     session_file.write_text("{}", encoding="utf-8")
     process = _TrackedProcess()
@@ -50,8 +47,6 @@ def test_conflict_resolution_lifecycle_shutdown_reaps_server_before_next_action(
 
 @dataclass
 class _UnreapedProcess:
-    """A process double whose terminate call never establishes terminal state."""
-
     terminated: int = 0
     returncode: int | None = None
 
@@ -77,7 +72,6 @@ class _UnreapedProcess:
 def test_conflict_resolution_lifecycle_keeps_session_artifact_until_server_is_terminal(
     tmp_path,
 ) -> None:
-    """S-5/R9: recovery cannot release an MCP session file after an unproven reap."""
     session_file = tmp_path / "session.json"
     session_file.write_text("{}", encoding="utf-8")
     process = _UnreapedProcess()
@@ -96,15 +90,12 @@ def test_conflict_resolution_lifecycle_keeps_session_artifact_until_server_is_te
 
 @dataclass
 class _UnreapableProcess(_TrackedProcess):
-    """A process double that reports a bounded reap failure."""
-
     def wait(self, timeout: float | None = None) -> int | None:
         del timeout
         raise TimeoutError("still running")
 
 
 def test_conflict_resolution_lifecycle_keeps_session_artifact_when_reap_times_out(tmp_path) -> None:
-    """S-5/R9: a bounded reap error blocks recovery and retains server authority."""
     session_file = tmp_path / "timeout-session.json"
     session_file.write_text("{}", encoding="utf-8")
     process = _UnreapableProcess()

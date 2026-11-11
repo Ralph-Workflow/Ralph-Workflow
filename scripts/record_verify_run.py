@@ -1,42 +1,4 @@
 #!/usr/bin/env python3
-"""Run the authoritative gate and record durable acceptance evidence.
-
-Runs ``make docs`` (Sphinx, ``-W --keep-going``) then
-``make -C ralph-workflow verify``, and writes
-``.agent/evidence/verify-run.json`` with:
-
-* ``make_exit_code`` — the ``make -C ralph-workflow verify`` exit code
-  (``124`` when it outran this recorder's own timeout);
-* ``docs_exit_code`` — the ``make docs`` exit code, same convention;
-* ``timed_out`` — the commands this recorder had to kill;
-* ``combined_wall_seconds`` — the combined test wall time parsed from the
-  ``Cumulative test elapsed: X s / budget: 60.0 s`` line ``ralph/verify.py``
-  prints once every step has passed, or ``null`` when it never got there;
-* ``budget`` — the verdict and every figure from the
-  ``Combined test budget: ...`` line that follows it (wall and
-  contention-adjusted wall, foreign and total cores, the suite's
-  utilisation, suite CPU and the CPU budget), or ``null``;
-* ``make_wall_seconds`` — total wall clock of the verify invocation,
-  recorded for diagnostics only;
-* ``per_step`` — ``{"label", "status", "elapsed_seconds"}`` entries;
-* ``matrix_artifact_path`` — the durable acceptance-matrix path.
-
-``ralph/verify.py`` prints no machine-readable per-step lines, so
-``per_step`` is derived from what it does print: each pytest summary line
-(``N passed ... in X s`` passes, one that counts failures or errors
-fails) and the combined budget. The budget's status comes from the run
-itself, never assumed: ``fail`` when verify exited non-zero or printed the
-``test budget exhausted`` banner, ``warning`` when it printed a
-host-contention or host-capacity WARNING, else ``pass``.
-
-The acceptance matrix at ``.agent/evidence/acceptance-criteria-matrix.md``
-is produced by re-running the S-1 matrix renderer in-process and copying
-the rendered markdown to the durable path; the S-1 test itself never
-writes outside ``tmp_path``.
-
-The JSON receipt is written even when ``make verify`` fails or times out,
-so future regressions still leave a durable receipt.
-"""
 
 from __future__ import annotations
 
@@ -76,7 +38,6 @@ _BUDGET_WARNING = "WARNING: the tests took longer than the wall-clock budget"
 
 
 class CommandOutcome(NamedTuple):
-    """What one recorded command did."""
 
     returncode: int
     output: str
@@ -99,7 +60,6 @@ def run_command(
     timeout: float = COMMAND_TIMEOUT_SECONDS,
     run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
 ) -> CommandOutcome:
-    """Run ``command``; a timeout becomes exit code 124 with whatever it printed."""
     start = time.monotonic()
     try:
         completed = run(
@@ -178,7 +138,6 @@ def _per_step(verify_code: int, verify_output: str) -> list[dict[str, object]]:
 
 
 def build_receipt(docs: CommandOutcome, verify: CommandOutcome) -> dict[str, object]:
-    """Return the JSON receipt for a ``make docs`` + ``make verify`` run."""
     budget = _combined_budget(verify.output)
     return {
         "make_exit_code": verify.returncode,
@@ -199,7 +158,6 @@ def build_receipt(docs: CommandOutcome, verify: CommandOutcome) -> dict[str, obj
 
 
 def _render_matrix_artifact() -> None:
-    """Re-run the S-1 renderer and copy its output to the durable path."""
     sys.path.insert(0, str(PACKAGE_ROOT / "tests"))
     try:
         import test_acceptance_criteria_matrix as matrix_module

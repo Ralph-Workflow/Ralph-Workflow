@@ -1,18 +1,3 @@
-"""Regression coverage for embedded NUL characters in spawn arguments.
-
-``execve`` carries argv tokens, environment entries and the child's cwd as
-NUL-terminated C strings, so CPython raises ``ValueError: embedded null
-byte`` before the fork when any of them contains one. Ralph passes content
-it does not author as argv: the positional agent prompt (Pi, Cursor, Kimi)
-carries a git diff, and ``git commit -m`` carries an agent-authored
-message. A single source file with a literal NUL in a string literal put
-one in the diff, into the prompt, and aborted the Pi invocation with a
-``ValueError`` that named neither the token nor the run.
-
-Every Ralph child is spawned through ``ProcessManager``, so these tests
-pin the strip at that one chokepoint, through its public surface.
-"""
-
 from __future__ import annotations
 
 import itertools
@@ -53,7 +38,6 @@ _CLEAN_PROMPT = '+  const masked = token.replace(/x/g, () => "".repeat(2));'
 
 
 def _reject_embedded_nul(values: Iterable[str]) -> None:
-    """Fail exactly as CPython's ``Popen`` does on an un-encodable argument."""
     for value in values:
         if _NUL in value:
             msg = "embedded null byte"
@@ -61,8 +45,6 @@ def _reject_embedded_nul(values: Iterable[str]) -> None:
 
 
 class _ExecveFaithfulSyncFactory:
-    """Sync process factory that rejects NULs the way the real spawn does."""
-
     def __init__(self) -> None:
         self.calls: list[tuple[tuple[str, ...], SpawnOptions]] = []
         self._pids = itertools.count(1000)
@@ -87,7 +69,6 @@ def _manager(factory: _ExecveFaithfulSyncFactory) -> ProcessManager:
 
 
 def test_spawn_strips_embedded_nul_from_a_positional_prompt_argument() -> None:
-    """A NUL inside a prompt argv token must not abort the spawn."""
     factory = _ExecveFaithfulSyncFactory()
     pm = _manager(factory)
 
@@ -99,7 +80,6 @@ def test_spawn_strips_embedded_nul_from_a_positional_prompt_argument() -> None:
 
 
 def test_spawn_strips_embedded_nul_from_an_agent_authored_commit_message() -> None:
-    """The other argv carrier of authored content is a ``git commit -m`` subject."""
     factory = _ExecveFaithfulSyncFactory()
     pm = _manager(factory)
 
@@ -113,7 +93,6 @@ def test_spawn_strips_embedded_nul_from_an_agent_authored_commit_message() -> No
 
 
 def test_spawn_rejects_an_embedded_nul_in_an_environment_entry() -> None:
-    """Env carries control values, not authored content: a NUL there is a defect."""
     factory = _ExecveFaithfulSyncFactory()
     pm = _manager(factory)
 
@@ -124,7 +103,6 @@ def test_spawn_rejects_an_embedded_nul_in_an_environment_entry() -> None:
 
 
 def test_spawn_rejects_an_embedded_nul_in_the_program_name() -> None:
-    """argv[0] names the program: stripping it would run a DIFFERENT binary."""
     factory = _ExecveFaithfulSyncFactory()
     pm = _manager(factory)
 
@@ -135,7 +113,6 @@ def test_spawn_rejects_an_embedded_nul_in_the_program_name() -> None:
 
 
 def test_spawn_rejects_an_embedded_nul_in_an_environment_value() -> None:
-    """The value carries the NUL as readily as the name does."""
     factory = _ExecveFaithfulSyncFactory()
     pm = _manager(factory)
 
@@ -146,7 +123,6 @@ def test_spawn_rejects_an_embedded_nul_in_an_environment_value() -> None:
 
 
 def test_spawn_rejects_an_embedded_nul_in_the_working_directory() -> None:
-    """Silently rewriting a path could point the child at a different directory."""
     factory = _ExecveFaithfulSyncFactory()
     pm = _manager(factory)
 
@@ -157,7 +133,6 @@ def test_spawn_rejects_an_embedded_nul_in_the_working_directory() -> None:
 
 
 def test_a_rejected_spawn_argument_still_records_a_failed_process() -> None:
-    """A pre-fork rejection leaves the same truthful bookkeeping as an OSError."""
     factory = _ExecveFaithfulSyncFactory()
     pm = _manager(factory)
     seen: list[ProcessRecord] = []
@@ -171,7 +146,6 @@ def test_a_rejected_spawn_argument_still_records_a_failed_process() -> None:
 
 
 def test_spawn_warns_when_it_strips_a_nul_and_stays_silent_otherwise() -> None:
-    """The warning is the only evidence of the mutation, so it is part of the contract."""
     factory = _ExecveFaithfulSyncFactory()
     pm = _manager(factory)
     warnings: list[str] = []
@@ -189,7 +163,6 @@ def test_spawn_warns_when_it_strips_a_nul_and_stays_silent_otherwise() -> None:
 
 
 def test_spawn_without_a_nul_passes_command_and_options_through_unchanged() -> None:
-    """Clean input is never rewritten: same values, same options object."""
     factory = _ExecveFaithfulSyncFactory()
     pm = _manager(factory)
     opts = SpawnOptions(cwd="/work/space", env={"KEEP": "kept"}, label="git:status")
@@ -202,7 +175,6 @@ def test_spawn_without_a_nul_passes_command_and_options_through_unchanged() -> N
 
 
 def test_spawn_pty_strips_embedded_nul_from_the_command() -> None:
-    """The PTY transport shares the argv contract with the pipe transport."""
     factory = _FakePtyFactory()
     pm = ProcessManager(policy=_FAST_POLICY, pty_process_factory=factory, psutil=FakePsutil())
 
@@ -215,7 +187,6 @@ def test_spawn_pty_strips_embedded_nul_from_the_command() -> None:
 
 
 async def test_spawn_async_strips_embedded_nul_from_the_command() -> None:
-    """The async transport shares the argv contract with the sync one."""
     calls: list[tuple[str, ...]] = []
     async_factory = make_async_process_factory(itertools.count(4000))
 

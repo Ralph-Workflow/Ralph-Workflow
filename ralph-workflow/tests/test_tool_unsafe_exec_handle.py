@@ -1,5 +1,3 @@
-"""Tests for ralph/mcp/tools/unsafe_exec.py -- MCP unsafe_exec tool handler."""
-
 from __future__ import annotations
 
 import subprocess
@@ -35,7 +33,6 @@ def _runner(
     truncated: bool = False,
     capture: list[object] | None = None,
 ) -> ExecRunDeps:
-    """Inject a fake bounded runner returning a fixed adapter."""
 
     def _run(
         _argv: list[str], _cwd: Path, timeout_seconds: float | None
@@ -59,9 +56,6 @@ def _timeout_deps() -> ExecRunDeps:
 
 
 class TestUnsafeExecAlwaysBounded:
-    """timeout_ms<=0 must clamp to the default, never become an unbounded call that
-    hangs the MCP server thread; oversized timeouts clamp to the max."""
-
     def test_zero_timeout_passes_bounded_timeout_to_runner(self, tmp_path: Path) -> None:
         captured: list[object] = []
         handle_unsafe_exec(
@@ -73,8 +67,6 @@ class TestUnsafeExecAlwaysBounded:
         assert captured == [EXEC_DEFAULT_TIMEOUT_MS / 1000]
 
     def test_oversized_timeout_is_capped_at_max(self, tmp_path: Path) -> None:
-        # An over-large timeout_ms must be capped so unsafe_exec cannot outrun the
-        # MCP client request timeout (which would re-trigger -32001).
         captured: list[object] = []
         handle_unsafe_exec(
             MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY}),
@@ -86,11 +78,6 @@ class TestUnsafeExecAlwaysBounded:
 
 
 class TestUnsafeExecTimeout:
-    """A timeout must become an actionable, non-retryable is_error result — not a
-    propagated exception that the bridge turns into a retryable -32603 protocol
-    error (the 5-hour retry-storm pathology). The message must teach BOTH meanings
-    of a timeout, matching what the tool description promises the agent."""
-
     def test_timeout_returns_actionable_is_error_result_not_exception(self, tmp_path: Path) -> None:
         result = handle_unsafe_exec(
             MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY}),
@@ -105,7 +92,6 @@ class TestUnsafeExecTimeout:
         text = content.text.lower()
         assert "timed out" in text
         assert "timeout_ms" in text
-        # The second interpretation (command may be genuinely stuck) must be present.
         assert any(word in text for word in ("loop", "stuck", "hang", "deadlock"))
 
 
@@ -137,8 +123,6 @@ class TestUnsafeExecCapabilityGate:
     def test_rejects_an_embedded_nul_that_would_hide_a_denied_vcs_command(
         self, tmp_path: Path
     ) -> None:
-        """The VCS scanner reads ``gi<NUL>t`` as an unknown word, but the spawn
-        strips the NUL and runs ``git``: reject it before the denylist runs."""
         session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
         workspace = MockWorkspaceRoot(tmp_path)
         for hidden in ("gi\x00t init subrepo", "git diff --outpu\x00t=/tmp/pwn"):
@@ -148,7 +132,6 @@ class TestUnsafeExecCapabilityGate:
 
 class TestUnsafeExecVcsBlacklist:
     def test_blocks_git_command(self, tmp_path: Path) -> None:
-        # ``git status`` is whitelisted (read-only); ``push`` is not.
         session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
         workspace = MockWorkspaceRoot(tmp_path)
         with pytest.raises(CapabilityDeniedError, match="git"):
@@ -191,7 +174,6 @@ class TestUnsafeExecVcsBlacklist:
             handle_unsafe_exec(session, workspace, {"command": "cat patch.diff | git apply"})
 
     def test_blocks_path_prefixed_git(self, tmp_path: Path) -> None:
-        # Path-prefixed git with a mutating subcommand must still be denied.
         session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
         workspace = MockWorkspaceRoot(tmp_path)
         with pytest.raises(CapabilityDeniedError, match="git"):
@@ -204,8 +186,6 @@ class TestUnsafeExecVcsBlacklist:
             handle_unsafe_exec(session, workspace, {"command": "sh -c 'git push origin main'"})
 
     def test_blocks_git_in_command_substitution(self, tmp_path: Path) -> None:
-        # ``git rev-parse`` is whitelisted; pick a mutating subcommand so the
-        # deep textual scan still has to deny on a substitution.
         session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
         workspace = MockWorkspaceRoot(tmp_path)
         with pytest.raises(CapabilityDeniedError, match="git"):
@@ -218,7 +198,6 @@ class TestUnsafeExecVcsBlacklist:
             handle_unsafe_exec(session, workspace, {"command": "echo `git commit -m x`"})
 
     def test_blocks_git_separated_by_newline(self, tmp_path: Path) -> None:
-        """sh -c treats a newline as a command separator; the policy must too."""
         session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
         workspace = MockWorkspaceRoot(tmp_path)
         with pytest.raises(CapabilityDeniedError, match="git"):
@@ -254,8 +233,6 @@ class TestUnsafeExecVcsBlacklist:
         )
 
     def test_warns_for_a_script_hiding_git_behind_an_embedded_nul(self, tmp_path: Path) -> None:
-        """``sh`` drops NULs from a script, so the scanner must drop them too:
-        ``gi<NUL>t tag`` scans as an unknown word but executes as ``git tag``."""
         script = tmp_path / "deploy.sh"
         script.write_bytes(b"#!/bin/sh\necho deploying\ngi\x00t tag v9\n")
         session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
@@ -280,7 +257,6 @@ class TestUnsafeExecVcsBlacklist:
         assert result.is_error is False
 
     def test_allows_github_url_argument(self, tmp_path: Path) -> None:
-        """'github.com' must not trip the git word match — only the git tool itself."""
         result = handle_unsafe_exec(
             MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY}),
             MockWorkspaceRoot(tmp_path),
@@ -290,8 +266,6 @@ class TestUnsafeExecVcsBlacklist:
         assert result.is_error is False
 
     def test_allows_git_named_file_as_argument(self, tmp_path: Path) -> None:
-        """Only a git COMMAND is blocked; a file argument containing 'git' (e.g.
-        .gitignore) must still run."""
         result = handle_unsafe_exec(
             MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY}),
             MockWorkspaceRoot(tmp_path),
@@ -301,8 +275,6 @@ class TestUnsafeExecVcsBlacklist:
         assert result.is_error is False
 
     def test_malformed_shell_string_fails_closed(self, tmp_path: Path) -> None:
-        """A command the policy tokenizer cannot parse must be rejected, not run
-        unchecked through sh -c."""
         session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
         workspace = MockWorkspaceRoot(tmp_path)
         with pytest.raises(InvalidParamsError):
@@ -399,8 +371,6 @@ class TestVcsCommandsConstant:
 def test_unsafe_exec_large_output_spills_to_file(tmp_path: Path) -> None:
     spill_dir = tmp_path / "spill"
     spill_dir.mkdir()
-    # Just over the spill threshold: enough to exercise the branch without
-    # making the default-suite regression depend on slow external storage.
     body = "".join(f"line-{i:08d}\n" for i in range(80_000)).encode()
 
     def _run(_argv: list[str], _cwd: Path, _timeout: float | None) -> _CompletedProcessAdapter:
@@ -416,7 +386,6 @@ def test_unsafe_exec_large_output_spills_to_file(tmp_path: Path) -> None:
     assert result.is_error is False
     content = result.content[0]
     assert isinstance(content, ToolContent)
-    # Bounded preview, not the whole body dumped inline.
     assert len(content.text) < len(body)
 
     spill_files = list(spill_dir.iterdir())
@@ -429,16 +398,9 @@ def test_unsafe_exec_large_output_spills_to_file(tmp_path: Path) -> None:
 
 
 def test_unsafe_exec_runs_via_bounded_sh_path_and_spills_truncated(tmp_path: Path) -> None:
-    # unsafe_exec must execute through the SAME bounded process-manager path as
-    # exec (shell via `sh -c`, output-capped, process-tree killed) so it cannot
-    # capture unbounded output (OOM) — and an over-cap, truncated result spills to
-    # a file instead of being dumped or discarded.
     spill_dir = tmp_path / "spill"
     spill_dir.mkdir()
     seen_argv: list[list[str]] = []
-    # Reduce the fixture size from 150k lines to keep the per-test budget
-    # bounded under shard contention (the 1-second per-test timeout is
-    # immutably pinned; a 1.5 MB fixture stresses it under CPU saturation).
     big = "".join(f"line-{i:08d}\n" for i in range(50_000)).encode()
 
     def _run(argv: list[str], _cwd: Path, _timeout: float | None) -> _CompletedProcessAdapter:

@@ -1,5 +1,3 @@
-"""Tests for theme.log.* style entries in RALPH_THEME."""
-
 from __future__ import annotations
 
 import pytest

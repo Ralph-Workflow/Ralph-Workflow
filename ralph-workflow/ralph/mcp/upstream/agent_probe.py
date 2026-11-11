@@ -1,14 +1,3 @@
-"""Probe per-agent MCP wiring against validated upstream servers.
-
-After :mod:`ralph.mcp.upstream.validation` has confirmed that each upstream
-MCP server is reachable from Ralph, this module synthesizes the
-agent-specific config payload Ralph would emit for Claude/Codex/OpenCode/AGY/Kimi and
-re-runs the same MCP handshake to confirm the wire is shaped correctly.
-
-The probe is *self-contained*: it never spawns the agent binaries themselves.
-The MCP JSON-RPC handshake is identical across the supported agents so
-Ralph's own client is a faithful reference implementation.
-"""
 
 from __future__ import annotations
 
@@ -60,7 +49,6 @@ _DEFAULT_TRANSPORTS: tuple[AgentTransport, ...] = (
 
 @dataclass(frozen=True)
 class AgentProbeReport:
-    """Result of probing one (transport, upstream server) combination."""
 
     transport: AgentTransport
     server_name: str
@@ -82,20 +70,8 @@ def probe_agent_transports(
     workspace_path: Path | None = None,
     timeout: timedelta | None = None,
 ) -> tuple[AgentProbeReport, ...]:
-    """Confirm Ralph's per-agent MCP wiring reaches each server.
 
-    Args:
-        servers: Iterable of validated upstream servers.
-        transports: Agent transports to probe. Defaults to all supported.
-        workspace_path: Optional workspace path used by Codex prep helpers.
-        timeout: Reserved; subprocess and HTTP probes use the per-call
-            timeout configured via ``RALPH_MCP_PREFLIGHT_TIMEOUT_MS``.
-
-    Returns:
-        One report per (transport, server) pair.
-    """
-
-    del timeout  # individual probes manage their own per-call budgets
+    del timeout
     server_list = list(servers)
     transport_list = list(transports)
     reports: list[AgentProbeReport] = [
@@ -181,20 +157,10 @@ def _probe_codex(server: UpstreamMcpServer, workspace_path: Path | None) -> Agen
         existing_home=None,
         master_prompt_file=None,
     )
-    # Release the codex home in a finally block: the probe only uses
-    # the home to synthesize a config + run the handshake, and has no
-    # further use for it. Without this release, the in-memory
-    # ``_allocated_codex_homes`` registry grows monotonically across
-    # every probe call and the on-disk directory persists for the
-    # entire interpreter lifetime. The bounded deque in codex.py is
-    # the backstop safety net; this finally block is the
-    # "normal production release path" the registry marker references.
     try:
         codex_home = Path(codex_home_str)
         config_path = codex_home / "config.toml"
         config_text = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
-        # Reuse existing native entries when present; otherwise append the synthetic
-        # server so the probe verifies how Ralph would write it.
         parsed = (
             cast("dict[str, object]", tomllib.loads(config_text)) if config_text.strip() else {}
         )
@@ -227,29 +193,10 @@ def _probe_codex(server: UpstreamMcpServer, workspace_path: Path | None) -> Agen
         server_handshake(server)
         return AgentProbeReport(transport=AgentTransport.CODEX, server_name=server.name, ok=True)
     finally:
-        # Use ``_codex_transport.release_codex_home`` (not the locally
-        # imported ``release_codex_home``) so a test that monkeypatches
-        # ``ralph.mcp.transport.codex.release_codex_home`` is observed.
-        # ``from ... import x`` creates a local binding that ignores
-        # later module-level ``setattr`` patches.
         _codex_transport.release_codex_home(codex_home_str)
 
 
 def _augment_codex_config_with_server(base_config: str, server: UpstreamMcpServer) -> str:
-    """Return *base_config* with *server* added under ``[mcp_servers]``.
-
-    Built by merging mappings and re-serializing rather than by appending a
-    hand-written section, for the same reason ``ralph.mcp.transport.codex``
-    stopped splicing: text carries no escaping. A server name or URL holding a
-    TOML metacharacter -- a dot, a quote, a backslash -- landed in the file
-    raw, so ``my.server`` became a nested ``mcp_servers.my.server`` table and
-    one quote in a URL closed the string early; either way the caller's own
-    ``tomllib.loads`` raised a bare decode error rather than
-    ``AgentTransportProbeError``. A mapping also cannot hold ``mcp_servers``
-    twice, so an operator's inline ``mcp_servers = {...}`` can no longer
-    collide with an appended ``[mcp_servers.x]`` header and reproduce the
-    "duplicate key" abort this probe exists to rule out.
-    """
     config: dict[str, object] = {}
     if base_config.strip():
         parsed: object = tomllib.loads(base_config)
@@ -349,19 +296,6 @@ def _probe_kimi(server: UpstreamMcpServer, workspace_path: Path | None) -> Agent
         "Kimi MCP config",
         ralph_url_key="url",
     )
-    # The Kimi Code CLI is a pure relay: it forwards every ``tools/list``
-    # entry it harvests from ITS upstreams verbatim as OpenAI-style
-    # ``tools[].function.parameters`` to Moonshot, and Moonshot rejects
-    # any schema that mixes ``type`` with composition keywords at any
-    # level (the measured 400). Kimi never re-handshakes Ralph's own MCP
-    # server when it proxies that server's tools through the operator's
-    # OWN Kimi config, so Ralph's server-side initialize-time flavor
-    # negotiation never fires for the relayed copy — the ONLY gate that
-    # can reject a relayed composed root before it costs a paid token
-    # call is this preflight probe. Walk every tool the server advertises
-    # and require the flattened form to be composition-free; anything
-    # deeper than the flatten repairs surfaces here, in preflight, with
-    # the tool name and offending path.
     if server.url is not None:
         for tool in _list_upstream_tools_for_probe(server):
             _assert_kimi_relayable_schema(server.name, tool)
@@ -369,13 +303,6 @@ def _probe_kimi(server: UpstreamMcpServer, workspace_path: Path | None) -> Agent
 
 
 def _list_upstream_tools_for_probe(server: UpstreamMcpServer) -> tuple[UpstreamTool, ...]:
-    """Best-effort tools/list against one upstream server for the probe.
-
-    A server that cannot be listed here is already surfaced as a probe
-    failure by the handshake above; this helper only runs when the
-    handshake succeeded, so a listing failure is a genuine relay risk
-    and is raised as a probe error rather than swallowed.
-    """
     client = make_upstream_client(server)
     return tuple(client.list_tools())
 
@@ -384,13 +311,6 @@ _KIMI_COMPOSITION_KEYWORDS: frozenset[str] = frozenset({"oneOf", "anyOf", "allOf
 
 
 def _kimi_schema_violations(schema: object, path: str) -> list[str]:
-    """Faithful model of Moonshot's flavor validator for relayed schemas.
-
-    Mirrors the rejection strings measured on the wire (2026-08-17):
-    ``type`` mixed with a composition keyword at the same level, an
-    ``enum`` without a sibling ``type``, ``required`` without ``type``,
-    and a composition branch list with no sibling ``type``.
-    """
     if not isinstance(schema, dict):
         return []
     violations: list[str] = []
@@ -421,17 +341,6 @@ def _kimi_schema_violations(schema: object, path: str) -> list[str]:
 
 
 def _assert_kimi_relayable_schema(server_name: str, tool: UpstreamTool) -> None:
-    """Reject an upstream tool whose schema Moonshot would refuse via Kimi.
-
-    The server-side flavor negotiation repairs only what a flavored
-    ``initialize`` handshake sees; a schema Kimi harvests WITHOUT that
-    handshake (the operator's own config pointing straight at an
-    upstream, or the serialized catalog env relay) must already be
-    relayable. The check applies the same flattening the server would
-    have applied and then runs the faithful Moonshot model: a clean
-    result proves the flattened advertisement passes, anything else
-    fails preflight with the exact offending path.
-    """
     flattened = normalize_schema_for_function_calling(tool.input_schema)
     violations = _kimi_schema_violations(tool.input_schema, "root")
     if violations:
@@ -452,10 +361,6 @@ def _validate_mcp_json_and_handshake(
     label: str,
     ralph_url_key: str,
 ) -> None:
-    """Validate MCP JSON config structure and perform HTTP handshake.
-
-    Shared helper for agents that use mcpServers dict with a Ralph entry.
-    """
     parsed = _parse_json_obj(config_blob, label)
     mcp_servers = parsed.get("mcpServers")
     if not isinstance(mcp_servers, dict):
@@ -556,7 +461,6 @@ def _log_probe_report(report: AgentProbeReport) -> None:
         )
 
 
-# Public aliases — test-accessible names and monkeypatch interception points.
 http_handshake = _http_handshake
 server_handshake = _server_handshake
 DEFAULT_TRANSPORTS = _DEFAULT_TRANSPORTS

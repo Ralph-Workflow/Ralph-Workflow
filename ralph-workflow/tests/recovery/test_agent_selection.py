@@ -1,5 +1,3 @@
-"""Unit tests for priority agent selection and its controller surface."""
-
 from loguru import logger
 
 from ralph.agents.timeout_clock import FakeClock
@@ -179,26 +177,7 @@ def test_unavailable_agent_with_zero_cooldown_remainder_reports_unavailable_not_
     assert "0ms remaining" not in selection.skipped_reasons[0][1]
 
 
-# ---------------------------------------------------------------------------
-# Priority-first invariants (plan S-1)
-#
-# These focused regressions assert that ``select_preferred_agent`` is a pure
-# ordered scan starting at index 0, not a cursor advance: the same rows
-# always yield the same selection, the skipped_reasons classify every
-# non-selected agent against the SAME priority order (not a cursor from a
-# prior call), and an out-of-order availability tuple never advances the
-# search origin past index 0.
-# ---------------------------------------------------------------------------
-
-
 def test_select_preferred_agent_is_a_pure_index_zero_scan() -> None:
-    """The selection scans from index 0 regardless of how many times we call.
-
-    A cursor-style implementation would advance past index 0 on the
-    second/third call. The pure scan returns index 0 every time
-    because ``rows[0]`` is the only selectable agent and the scan
-    starts there.
-    """
     rows = [
         agent_availability(agent="claude", available=True, cooldown_ms_remaining=0, spent=False),
         agent_availability(agent="opencode", available=True, cooldown_ms_remaining=0, spent=False),
@@ -211,7 +190,6 @@ def test_select_preferred_agent_is_a_pure_index_zero_scan() -> None:
 
 
 def test_select_preferred_agent_skips_unavailable_cooldown_spent_in_priority_order() -> None:
-    """Every skipped agent is reported in priority order with the right reason."""
     rows = [
         agent_availability(
             agent="claude",
@@ -235,7 +213,6 @@ def test_select_preferred_agent_skips_unavailable_cooldown_spent_in_priority_ord
 
 
 def test_select_preferred_agent_returns_none_when_no_agent_selectable() -> None:
-    """When every row is unavailable, cooldown-locked, or spent, the selection is None."""
     rows = [
         agent_availability(
             agent="claude", available=False, cooldown_ms_remaining=2000, spent=False
@@ -256,7 +233,6 @@ def test_select_preferred_agent_returns_none_when_no_agent_selectable() -> None:
 
 
 def test_select_preferred_agent_index_zero_with_full_remaining_cooldown() -> None:
-    """An agent at index 0 with a FULL remaining cooldown is not picked."""
     rows = [
         agent_availability(
             agent="claude", available=True, cooldown_ms_remaining=10_000, spent=False
@@ -271,7 +247,6 @@ def test_select_preferred_agent_index_zero_with_full_remaining_cooldown() -> Non
 
 
 def test_select_preferred_agent_repeated_calls_with_same_rows_are_stable() -> None:
-    """Consecutive calls with identical rows return the identical selection."""
     rows = [
         agent_availability(agent="claude", available=True, cooldown_ms_remaining=0, spent=False),
         agent_availability(agent="opencode", available=True, cooldown_ms_remaining=0, spent=False),
@@ -288,7 +263,6 @@ def test_select_preferred_agent_repeated_calls_with_same_rows_are_stable() -> No
 
 
 def test_select_preferred_agent_zero_cooldown_unavailable_is_unavailable() -> None:
-    """An unavailable agent with cooldown_ms_remaining=0 is reported as 'unavailable'."""
     rows = [
         agent_availability(agent="claude", available=False, cooldown_ms_remaining=0, spent=False),
         agent_availability(agent="opencode", available=False, cooldown_ms_remaining=0, spent=False),
@@ -304,7 +278,6 @@ def test_select_preferred_agent_zero_cooldown_unavailable_is_unavailable() -> No
 
 
 def test_preferred_agent_index_deduplicates_unchanged_all_unavailable_logs() -> None:
-    """Repeated calls with an unchanged all-unavailable chain emit selection logs at most once."""
     clock = FakeClock(start=0.0)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
@@ -331,7 +304,6 @@ def test_preferred_agent_index_deduplicates_unchanged_all_unavailable_logs() -> 
     logs: list[str] = []
     sink_id = logger.add(logs.append, level="INFO", format="{message}")
     try:
-        # First call: all unavailable, logs selection evidence
         sel1 = controller.preferred_agent_index("development", ["claude", "opencode"])
         assert sel1.agent is None
         assert len(logs) == 1
@@ -339,25 +311,21 @@ def test_preferred_agent_index_deduplicates_unchanged_all_unavailable_logs() -> 
         assert "claude" in logs[0]
         assert "opencode" in logs[0]
 
-        # Second call: unchanged state, log must be suppressed
         sel2 = controller.preferred_agent_index("development", ["claude", "opencode"])
         assert sel2.agent is None
         assert len(logs) == 1
 
-        # Third call: clock advances but both are still on cooldown (unchanged eligibility state)
         clock.advance(2.0)
         sel3 = controller.preferred_agent_index("development", ["claude", "opencode"])
         assert sel3.agent is None
         assert len(logs) == 1
 
-        # Fourth call: clock advances past claude's cooldown (eligibility state changes)
-        clock.advance(5.0)  # advance past cooldown period to restore agent eligibility
+        clock.advance(5.0)
         sel4 = controller.preferred_agent_index("development", ["claude", "opencode"])
         assert sel4.agent == "claude"
         assert len(logs) == 2
         assert "Phase development: Selected agent claude" in logs[1]
 
-        # Fifth call: unchanged state with claude still selected
         sel5 = controller.preferred_agent_index("development", ["claude", "opencode"])
         assert sel5.agent == "claude"
         assert len(logs) == 2
@@ -366,7 +334,6 @@ def test_preferred_agent_index_deduplicates_unchanged_all_unavailable_logs() -> 
 
 
 def test_preferred_agent_index_deduplicates_unchanged_spent_chain() -> None:
-    """Repeated calls with spent agents emit selection evidence at most once."""
     clock = FakeClock(start=0.0)
     controller = RecoveryController(options=RecoveryControllerOptions(clock=clock))
     controller.note_retry_exhaustion("development", "agent_a")
@@ -380,7 +347,6 @@ def test_preferred_agent_index_deduplicates_unchanged_spent_chain() -> None:
         assert len(logs) == 1
         assert "Phase development: No selectable agent" in logs[0]
 
-        # Repeated calls without changes do not emit duplicate logs
         for _ in range(5):
             sel = controller.preferred_agent_index("development", ["agent_a", "agent_b"])
             assert sel.agent is None

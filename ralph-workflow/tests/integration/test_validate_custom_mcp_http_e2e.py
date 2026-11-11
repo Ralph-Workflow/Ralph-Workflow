@@ -1,9 +1,3 @@
-"""Integration tests for the runner's HTTP MCP startup validation.
-
-Tests the full chain from mcp.toml parsing through _validate_custom_mcp_servers
-without spawning real subprocess servers or waiting on real sockets.
-"""
-
 from __future__ import annotations
 
 from io import StringIO
@@ -52,7 +46,6 @@ def _write_http_mcp_toml(workspace: Path, port: int) -> None:
 def test_validate_http_server_healthy_returns_zero(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """_validate_custom_mcp_servers returns 0 when HTTP preflight and tool probe pass."""
     _write_http_mcp_toml(tmp_path, 9999)
     monkeypatch.setenv("HOME", str(tmp_path / "fake-home"))
     monkeypatch.delenv("RALPH_MCP_STRICT", raising=False)
@@ -92,7 +85,6 @@ def test_validate_http_server_healthy_returns_zero(
 def test_validate_http_server_unreachable_strict_returns_one(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """_validate_custom_mcp_servers returns 1 in strict mode when HTTP server unreachable."""
     _write_http_mcp_toml(tmp_path, 9999)
     monkeypatch.setenv("HOME", str(tmp_path / "fake-home"))
     monkeypatch.delenv("RALPH_MCP_STRICT", raising=False)
@@ -120,7 +112,6 @@ def test_validate_http_server_unreachable_strict_returns_one(
 def test_validate_http_server_unreachable_soft_returns_zero(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """_validate_custom_mcp_servers returns 0 in soft mode when HTTP server unreachable."""
     _write_http_mcp_toml(tmp_path, 9999)
     monkeypatch.setenv("HOME", str(tmp_path / "fake-home"))
     monkeypatch.setenv("RALPH_MCP_STRICT", "0")

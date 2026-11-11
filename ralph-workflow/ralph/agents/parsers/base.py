@@ -1,7 +1,3 @@
-"""Base types for agent output parsing.
-
-This module defines the parser protocol and shared text-block helpers.
-"""
 
 from __future__ import annotations
 
@@ -31,11 +27,6 @@ __all__ = [
 
 
 def _multimodal_block_summary(block: dict[str, object]) -> str | None:
-    """Return a bounded readable summary for a multimodal content block, or None.
-
-    Returns a short human-readable placeholder for image and resource_reference
-    blocks so they are never silently dropped when only text can be emitted.
-    """
     block_type = str(block.get("type", ""))
     if block_type == "image":
         source = block.get("source") or block.get("data") or {}
@@ -54,21 +45,6 @@ def _multimodal_block_summary(block: dict[str, object]) -> str | None:
 
 
 def extract_error_message(obj: object) -> str:
-    """Extract an error message string from a parsed JSON object.
-
-    Resolution order (union of all per-parser bodies):
-    1. obj['error'] dict -> message, type, data.message, or name field
-    2. obj['error'] non-empty string (codex/generic)
-    3. obj.get('message') (codex/opencode/generic)
-    4. obj.get('error') non-dict truthy value (codex fallback)
-    5. obj.get('msg') (generic)
-    6. 'unknown error'
-
-    Note: claude.py previously returned 'unknown' (not 'unknown error') when
-    error_obj was not a dict. The unified helper returns 'unknown error' in
-    that branch, a one-character behavior change documented in the module
-    docstring.
-    """
     if not isinstance(obj, dict):
         return "unknown error"
     error_val = obj.get("error")
@@ -77,10 +53,6 @@ def extract_error_message(obj: object) -> str:
             candidate = error_val.get(key)
             if candidate:
                 return str(candidate)
-        # OpenCode nests the only actionable text one level deeper:
-        # ``{"error": {"name": "APIError", "data": {"message": "...", "statusCode": 402}}}``.
-        # Falling straight through to ``name`` reported the operator-useless
-        # string "APIError" and dropped "requires more credits ... 402".
         data = error_val.get("data")
         if isinstance(data, dict):
             nested = data.get("message")
@@ -102,16 +74,6 @@ def extract_error_message(obj: object) -> str:
 
 
 def stringify_text_blocks(value: object, *, require_text_type: bool = False) -> str:
-    """Extract text from a string or a list of text-block dicts.
-
-    Args:
-        value: A plain string, or a list of dicts with a 'text' field.
-        require_text_type: When True, only include dicts where type=='text' (Claude
-            tool_result rule). When False, include any dict with a 'text' key
-            (OpenCode output rule). In both modes, multimodal blocks (image,
-            resource_reference) emit a bounded readable placeholder rather than
-            being silently dropped.
-    """
     if isinstance(value, str):
         return value
     if isinstance(value, list):
@@ -141,19 +103,6 @@ def stringify_text_blocks(value: object, *, require_text_type: bool = False) -> 
 
 @runtime_checkable
 class AgentParser(Protocol):
-    """Protocol all parser modules must implement.
-
-    A parser takes raw lines from an agent's stdout and yields
-    normalized AgentOutputLine instances.
-    """
 
     def parse(self, lines: Iterator[str]) -> Iterator[AgentOutputLine]:
-        """Parse agent output lines.
-
-        Args:
-            lines: Iterator of raw lines from agent stdout.
-
-        Yields:
-            Normalized AgentOutputLine instances.
-        """
         ...

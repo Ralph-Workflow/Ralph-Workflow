@@ -1,5 +1,3 @@
-"""The diagnostic evidence gate retention reason has a single definition site."""
-
 from ralph.pipeline._diagnostic_evidence_gate import (
     EVIDENCE_CHANGED_REASON,
     EVIDENCE_UNREADABLE_REASON,

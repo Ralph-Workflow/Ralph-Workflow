@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 
 @dataclass(frozen=True)
 class CommitAgentAttempt:
-    """Result of a single commit-message agent invocation attempt."""
 
     message: str = ""
     skipped: bool = False

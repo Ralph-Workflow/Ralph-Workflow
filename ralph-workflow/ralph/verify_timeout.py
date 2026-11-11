@@ -1,14 +1,3 @@
-"""Test timeout enforcement wrapper.
-
-This module runs a pytest suite with per-test and full-suite timeout limits.
-Per-test limit is ``DEFAULT_TEST_TIMEOUT_SECONDS`` (1 s). The suite limit,
-``DEFAULT_SUITE_TIMEOUT_SECONDS`` (180 s), is hang detection for one pytest
-invocation and equals ``ralph/verify.py:_TOTAL_TEST_HANG_CAP_SECONDS``: on a
-shared host a healthy suite's wall clock stretches with other load, so the
-speed budget is the contention-aware 60 s combined budget in
-``ralph/verify.py``, not this cap. A test that exceeds these limits is a
-design defect — fix the production coupling, not the timeout.
-"""
 
 from __future__ import annotations
 
@@ -115,18 +104,6 @@ _POLICY_FIX_MESSAGE = (
 
 
 class SuiteTimeoutError(RuntimeError):
-    """Raised when a pytest invocation exceeds the configured suite timeout.
-
-    Args:
-        timeout_seconds: The wall-clock cap (in seconds) that the
-            subprocess exceeded before ``run_process`` reported
-            ``TIMEOUT_EXIT_CODE``. Surfaced as ``self.timeout_seconds``
-            for programmatic inspection.
-
-    The error message embeds the policy-violation banner from
-    ``_POLICY_FIX_MESSAGE`` so the agent sees the full fix guidance
-    on first sight.
-    """
 
     def __init__(self, timeout_seconds: float) -> None:
         super().__init__(
@@ -136,23 +113,6 @@ class SuiteTimeoutError(RuntimeError):
 
 
 def timeout_seconds_from_env(name: str, default: float) -> float:
-    """Read a timeout value from the process environment.
-
-    Args:
-        name: Environment variable name. Recognised values include
-            ``RALPH_PYTEST_TEST_TIMEOUT_SECONDS`` and
-            ``RALPH_PYTEST_SUITE_TIMEOUT_SECONDS``.
-        default: Value returned when ``name`` is unset.
-
-    Returns:
-        The parsed float from the environment, or ``default`` if the
-        variable is missing.
-
-    Raises:
-        ValueError: The variable is set but is not a positive, finite
-            number. Zero used to disarm the timers outright, so it is
-            rejected rather than honoured.
-    """
     raw_value = os.getenv(name)
     if raw_value is None:
         return default
@@ -171,21 +131,6 @@ def build_timeout_env(
     test_timeout_seconds: float = DEFAULT_TEST_TIMEOUT_SECONDS,
     suite_timeout_seconds: float = DEFAULT_SUITE_TIMEOUT_SECONDS,
 ) -> dict[str, str]:
-    """Build a subprocess environment carrying the per-test and per-suite timeouts.
-
-    Args:
-        base_env: Environment mapping to copy. When ``None``, the
-            current ``os.environ`` is used as the base.
-        test_timeout_seconds: Value for ``RALPH_PYTEST_TEST_TIMEOUT_SECONDS``
-            (default ``DEFAULT_TEST_TIMEOUT_SECONDS`` = 1.0).
-        suite_timeout_seconds: Value for ``RALPH_PYTEST_SUITE_TIMEOUT_SECONDS``
-            (default ``DEFAULT_SUITE_TIMEOUT_SECONDS`` = 180.0).
-
-    Returns:
-        A fresh dict containing every base entry plus the two
-        timeout variables. Caller-owned: mutations do not affect
-        ``os.environ`` or the base mapping.
-    """
     env = dict(base_env or os.environ)
     env[TEST_TIMEOUT_ENV] = str(test_timeout_seconds)
     env[SUITE_TIMEOUT_ENV] = str(suite_timeout_seconds)
@@ -200,35 +145,6 @@ def run_command_with_timeout(
     suite_timeout_seconds: float = DEFAULT_SUITE_TIMEOUT_SECONDS,
     capture_output: bool = True,
 ) -> ProcessResult:
-    """Run ``command`` under the bounded subprocess manager with a suite timeout.
-
-    Args:
-        command: The argv to invoke. ``command[0]`` is the executable.
-        cwd: Working directory for the subprocess.
-        env: Environment mapping for the subprocess. ``None`` inherits
-            the parent process environment.
-        suite_timeout_seconds: Wall-clock cap (seconds) passed to
-            ``run_process``. Default is ``DEFAULT_SUITE_TIMEOUT_SECONDS``
-            (180 s). Note this is the per-invocation cap; the combined
-            test budget is enforced upstream in ``ralph.verify``.
-        capture_output: When ``True`` (default), capture stdout/stderr
-            into the returned ``ProcessResult``; when ``False``, the
-            subprocess writes directly to the parent's streams.
-
-    Returns:
-        The ``ProcessResult`` from ``run_process``.
-
-    Raises:
-        SuiteTimeoutError: When the subprocess exits with
-            ``TIMEOUT_EXIT_CODE``, indicating the suite exceeded
-            ``suite_timeout_seconds``.
-
-    Side effects:
-        Spawns a subprocess through the shared ``_VERIFY_TIMEOUT_PM``
-        ``ProcessManager``. The subprocess inherits the parent
-        environment (with the timeout env vars added when ``env`` is
-        ``None``); both stdout/stderr are routed per ``capture_output``.
-    """
     cmd = tuple(command)
     result = run_process(
         cmd[0],
@@ -253,10 +169,10 @@ def _parse_args(argv: Sequence[str]) -> tuple[float, list[str]]:
     parsed = parser.parse_args(list(argv))
     suite_timeout = cast(
         "float", parsed.suite_timeout
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     command = cast(
         "list[str]", parsed.command
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     if command and command[0] == "--":
         command = command[1:]
     if not command:
@@ -265,11 +181,6 @@ def _parse_args(argv: Sequence[str]) -> tuple[float, list[str]]:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Run ``argv`` as a subprocess under the configured suite timeout.
-
-    Returns the subprocess returncode, or 124 on ``SuiteTimeoutError``
-    (matching the conventional ``timeout(1)`` exit code).
-    """
     sanitize_process_environment()
     suite_timeout_seconds, command = _parse_args(argv or sys.argv[1:])
     test_timeout_seconds = timeout_seconds_from_env(TEST_TIMEOUT_ENV, DEFAULT_TEST_TIMEOUT_SECONDS)

@@ -1,5 +1,3 @@
-"""Unit tests for CLI."""
-
 from __future__ import annotations
 
 from importlib import import_module
@@ -26,13 +24,10 @@ _BUNDLED_POLICY_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" /
 
 
 def _make_display_context_for_console(console: Console) -> DisplayContext:
-    """Create a DisplayContext for a given console."""
     return make_display_context(console=console, env={})
 
 
 class TestAdditionalShortcutAliases:
-    """Tests for added short aliases on common control flags."""
-
     def test_short_resume_alias_sets_resume(self, monkeypatch: pytest.MonkeyPatch) -> None:
         captured: dict[str, object] = {}
         monkeypatch.setattr(
@@ -76,7 +71,6 @@ class TestAdditionalShortcutAliases:
 def test_version_callback_displays_flavored_runtime_version(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-1: CLI version output uses runtime metadata rather than package metadata."""
     cli_main = import_module("ralph.cli.main")
 
     displayed: list[str] = []
@@ -106,7 +100,6 @@ def test_version_callback_displays_flavored_runtime_version(
 def test_version_callback_names_the_checkout_a_dev_build_came_from(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`rdev --version` must reveal which checkout owns the installed snapshot."""
     cli_main = import_module("ralph.cli.main")
 
     statuses: list[str] = []

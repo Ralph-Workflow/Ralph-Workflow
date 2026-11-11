@@ -1,23 +1,3 @@
-"""Parse design-system policy facts into typed, validated structures.
-
-The visual module enforces that any visual capture session is built
-from a project's verified design-system policy, never from agent
-intuition. This module is the single source of truth for that parsing
-step: it pulls ``RALPH-FACT`` lines out of the policy markdown,
-validates the bare minimum for a usable capture matrix (default plus
-empty/loading/error/overflow states across narrow and wide viewports),
-and rejects unsafe command fragments that would let a policy author
-smuggle shell behaviour into the visual pipeline.
-
-Single-screenshot defaults are explicitly rejected. A default that
-captures only the happy path cannot tell the agent whether the empty,
-loading, error, or overflow state regressed; anything less than the
-canonical five-state matrix is a misconfiguration, not a preference.
-Shell fragments (``;``, ``&&``, ``|``, ``>``, ``<``, backticks,
-``$(...)``, newlines) and path-traversal sequences (``..``) inside
-``design_capture_command`` are rejected so a misconfigured policy
-cannot turn a capture into a shell escape.
-"""
 
 from __future__ import annotations
 
@@ -25,70 +5,32 @@ import re
 import shlex
 from dataclasses import dataclass
 
-# ---------------------------------------------------------------------------
-# Constants — the canonical minimum a visual capture policy must declare.
-# ---------------------------------------------------------------------------
 
-# Required states. A policy that omits any of these collapses the
-# visual review to a single-screenshot happy path check, which the
-# module rejects.
 REQUIRED_STATES: tuple[str, ...] = ("default", "empty", "loading", "error", "overflow")
 
-# Default viewport sizes. 375x812 is the iPhone-class narrow viewport
-# used by the multimodal package; 1440x900 is the wide desktop class
-# the design-system policy starter recommends.
 VIEWPORT_DEFAULT_WIDTH_NARROW: int = 375
 VIEWPORT_DEFAULT_HEIGHT_NARROW: int = 812
 VIEWPORT_DEFAULT_WIDTH_WIDE: int = 1440
 VIEWPORT_DEFAULT_HEIGHT_WIDE: int = 900
 
-# Default themes. The design-system policy starter enforces light +
-# dark; we keep that contract here so the visual layer cannot drift
-# back to light-only reviews.
 DEFAULT_THEMES: tuple[str, ...] = ("light", "dark")
 
-# Minimum number of policy-declared viewports. Narrow + wide is the
-# bare minimum; a single-viewport matrix is a single-screenshot
-# default in disguise and is rejected upstream.
 MIN_VIEWPORTS: int = 2
 
-# Minimum number of whitespace-separated tokens required inside
-# ``design_capture_command``. A capture command must carry at least an
-# executable plus a target (test path, URL, etc.); anything shorter is
-# a single-screenshot default in disguise.
 MIN_CAPTURE_COMMAND_TOKENS: int = 2
 
-# A policy command is repeated once for every matrix cell. Keep the declared
-# argv bounded so one policy fact cannot multiply into an oversized process.
 MAX_CAPTURE_COMMAND_TOKENS: int = 32
 
-# Workspace-relative policy source used for both tool registration and calls.
 DESIGN_SYSTEM_POLICY_RELPATH: str = "docs/ralph-workflow-policy/design-system-policy.md"
 
-# Characters / fragments that signal a shell escape attempt inside
-# ``design_capture_command``. The set is conservative on purpose: any
-# ambiguity defaults to rejection so a misconfigured policy cannot
-# promote ``design_capture_command`` into a shell primitive.
 _SHELL_METACHARS: frozenset[str] = frozenset({";", "&", "|", ">", "<", "`", "$", "\n"})
 
-# A double-dot segment anywhere in a path component is treated as
-# path traversal and rejected.
 _TRAVERSAL_SEGMENT = re.compile(r"(^|/)\.\.?(/|$)")
 
-# The whole-string pattern above only sees a ``..`` at the very start or after
-# a ``/``; an argv token such as ``../out`` or ``--out=../out`` sits after a
-# space or ``=``. Checked per token so those cannot escape the project root.
 _TRAVERSAL_ARGV_SEGMENT = re.compile(r"(^|[/=])\.\.(/|$)")
 
-# RALPH-FACT line grammar. Captures the key + value; whitespace around
-# the value is trimmed. The line MUST start with ``RALPH-FACT:`` so a
-# body paragraph that happens to contain ``RALPH-FACT:`` mid-line is
-# not picked up.
 _FACT_LINE = re.compile(r"^RALPH-FACT:\s*([A-Za-z0-9_]+)\s*:\s*(.+?)\s*$")
 
-# Known fact keys. Unknown keys are ignored (other modules may
-# consume them) but a misspelling of the canonical keys surfaces as
-# an unresolved fact.
 _KEY_DESIGN_CAPTURE_COMMAND = "design_capture_command"
 _KEY_DESIGN_TARGET = "design_target"
 _KEY_NARROW_VIEWPORT = "narrow_viewport"
@@ -110,14 +52,10 @@ _KNOWN_KEYS: frozenset[str] = frozenset(
 )
 
 
-# ---------------------------------------------------------------------------
-# Typed structures
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class Viewport:
-    """A named capture viewport (resolution) declared in policy."""
 
     name: str
     width: int
@@ -134,7 +72,6 @@ class Viewport:
 
 @dataclass(frozen=True)
 class _PolicyFacts:
-    """Validated design-system policy facts for a single capture target."""
 
     design_capture_command: str
     target: str
@@ -171,13 +108,9 @@ PolicyFacts.__name__ = "PolicyFacts"
 PolicyFacts.__qualname__ = "PolicyFacts"
 
 
-# ---------------------------------------------------------------------------
-# Parsing
-# ---------------------------------------------------------------------------
 
 
 def _parse_viewport_token(token: str, *, fallback_name: str) -> Viewport:
-    """Parse a ``WxH`` token (optionally prefixed with a name) into a Viewport."""
     cleaned = token.strip()
     if not cleaned:
         raise ValueError(f"viewport token must not be empty (got {fallback_name!r})")
@@ -210,7 +143,6 @@ def _parse_viewport_token(token: str, *, fallback_name: str) -> Viewport:
 
 
 def _split_csv(value: str) -> list[str]:
-    """Split a comma-separated value into trimmed, deduplicated tokens."""
     seen: dict[str, None] = {}
     for raw in value.split(","):
         token = raw.strip()
@@ -220,7 +152,6 @@ def _split_csv(value: str) -> list[str]:
 
 
 def validate_capture_command(command: str) -> None:
-    """Reject shell fragments and path-traversal inside ``design_capture_command``."""
     if not command or not command.strip():
         raise ValueError("design_capture_command must be a non-empty string")
     bad = sorted(c for c in _SHELL_METACHARS if c in command)
@@ -256,7 +187,6 @@ def validate_capture_command(command: str) -> None:
 
 
 def _extract_facts(policy_markdown: str) -> dict[str, str]:
-    """Walk a policy markdown and pull out the ``RALPH-FACT:`` lines."""
     if not isinstance(policy_markdown, str):
         raise ValueError("policy_markdown must be a string")
     facts: dict[str, str] = {}
@@ -266,21 +196,11 @@ def _extract_facts(policy_markdown: str) -> dict[str, str]:
         if match is None:
             continue
         key, value = match.group(1), match.group(2)
-        # First occurrence wins; later occurrences are ignored so a
-        # policy cannot redefine a fact mid-document.
         facts.setdefault(key, value)
     return facts
 
 
 def capture_command_problem(policy_markdown: str) -> str | None:
-    """Return why a policy's ``design_capture_command`` fact is unusable, else ``None``.
-
-    Reads the fact exactly as :func:`parse_policy_facts` does (first
-    occurrence wins) and applies the same :func:`validate_capture_command`
-    rules, so authoring-time validation can never disagree with what the
-    visual pipeline will accept. An absent fact is not a *problem* here --
-    presence is enforced separately -- so it yields ``None``.
-    """
     command = _extract_facts(policy_markdown).get(_KEY_DESIGN_CAPTURE_COMMAND)
     if command is None:
         return None
@@ -292,20 +212,6 @@ def capture_command_problem(policy_markdown: str) -> str | None:
 
 
 def parse_policy_facts(policy_markdown: str, *, target: str | None = None) -> PolicyFacts:
-    """Parse and validate a managed-repo policy markdown into PolicyFacts.
-
-    Raises ``ValueError`` for any of:
-
-    * Missing required RALPH-FACT entries (command, target, viewports, themes, states).
-    * ``design_capture_command`` that contains shell metacharacters or ``..`` traversal.
-    * A state set that omits one or more canonical states (single-screenshot default).
-    * A viewport set with fewer than two entries (single-viewport default).
-    * An empty themes list.
-
-    The ``target`` keyword overrides any ``design_target`` fact in the
-    markdown; supply it when the caller already resolved the target
-    upstream (e.g. from a plan item).
-    """
     facts = _extract_facts(policy_markdown)
 
     if _KEY_DESIGN_CAPTURE_COMMAND not in facts:
@@ -325,9 +231,6 @@ def parse_policy_facts(policy_markdown: str, *, target: str | None = None) -> Po
             "RALPH-FACT: design_target: ... in the policy"
         )
 
-    # Viewports: accept either individual ``narrow_viewport`` /
-    # ``wide_viewport`` facts OR a combined ``viewports`` CSV. Either
-    # path produces the same canonical tuple.
     viewports: list[Viewport] = []
     if _KEY_VIEWPORTS in facts:
         tokens = _split_csv(facts[_KEY_VIEWPORTS])
@@ -379,13 +282,6 @@ def parse_policy_facts(policy_markdown: str, *, target: str | None = None) -> Po
 
 
 def default_policy_facts(*, target: str, command: str) -> PolicyFacts:
-    """Build a PolicyFacts using the canonical defaults.
-
-    Useful for tests and for the project bootstrap path where the
-    policy has not yet been rewritten from its starter template.
-    Raises ``ValueError`` for unsafe commands (same rules as
-    :func:`parse_policy_facts`).
-    """
     validate_capture_command(command)
     if not target or not target.strip():
         raise ValueError("target must be a non-empty string")

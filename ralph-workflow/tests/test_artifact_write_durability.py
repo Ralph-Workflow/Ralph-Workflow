@@ -1,5 +1,3 @@
-"""S-5 regression coverage for durable artifact file writes."""
-
 from __future__ import annotations
 
 import os
@@ -26,7 +24,6 @@ class _RecordingBackend(MemoryBackend):
 def test_artifact_write_regression_atomic_publish_syncs_destination_directory(
     tmp_path: Path,
 ) -> None:
-    """S-6: every atomic artifact publication makes its rename durable."""
     backend = _RecordingBackend()
     destination = tmp_path / ".agent" / "artifacts" / "plan.md"
     backend.mkdir(destination.parent, parents=True, exist_ok=True)
@@ -47,7 +44,6 @@ def test_artifact_write_regression_fsyncs_written_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-5: writing an artifact file flushes it to the operating system."""
     fsynced_descriptors: list[int] = []
     monkeypatch.setattr(os, "fsync", fsynced_descriptors.append)
 
@@ -62,7 +58,6 @@ def test_artifact_write_regression_fsyncs_written_bytes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-3: changed byte content keeps the concrete backend's durability barrier."""
     fsynced_descriptors: list[int] = []
     monkeypatch.setattr(os, "fsync", fsynced_descriptors.append)
 

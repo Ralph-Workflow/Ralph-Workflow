@@ -1,13 +1,3 @@
-"""Unit tests for the orchestrator module.
-
-Tests cover:
-- determine_next_effect returns InvokeAgentEffect when agent not yet invoked
-- analysis loopback routes back to development phase
-- analysis success routes to development_commit
-- development_commit with budget=0 routes to review
-- unknown phase raises PhaseHandlerNotFoundError
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -32,7 +22,6 @@ from ralph.policy.models import (
 
 
 def _make_minimal_agents_policy() -> AgentsPolicy:
-    """Create a minimal agents policy for testing."""
     return AgentsPolicy(
         agent_chains={
             "planning": AgentChainConfig(agents=["claude"], max_retries=2),
@@ -56,7 +45,6 @@ def _make_minimal_agents_policy() -> AgentsPolicy:
 
 
 def _make_minimal_pipeline_policy() -> PipelinePolicy:
-    """Create a minimal pipeline policy for testing."""
     return PipelinePolicy(
         phases={
             "planning": PhaseDefinition(
@@ -154,15 +142,11 @@ def _make_minimal_pipeline_policy() -> PipelinePolicy:
 
 
 def _make_state(phase: str = "planning", **overrides: object) -> PipelineState:
-    """Create a pipeline state for testing."""
     return PipelineState(phase=phase, **overrides)
 
 
 class TestResolveNextPhase:
-    """Tests for resolve_next_phase function."""
-
     def test_unknown_phase_raises_value_error(self) -> None:
-        """Test that resolving transition from unknown phase raises ValueError."""
         with pytest.raises(ValueError, match="not found"):
             resolve_next_phase(
                 current_phase="nonexistent",
@@ -171,7 +155,6 @@ class TestResolveNextPhase:
             )
 
     def test_unknown_signal_raises_value_error(self) -> None:
-        """Test that unknown signal raises ValueError."""
         with pytest.raises(ValueError, match="Unknown signal"):
             resolve_next_phase(
                 current_phase="development",
@@ -180,8 +163,6 @@ class TestResolveNextPhase:
             )
 
     def test_missing_transition_raises_value_error(self) -> None:
-        """Test that missing transition target raises ValueError."""
-        # Create a pipeline where development has no on_failure transition
         pipeline = PipelinePolicy(
             phases={
                 "planning": PhaseDefinition(
@@ -193,7 +174,6 @@ class TestResolveNextPhase:
                     transitions=PhaseTransition(
                         on_success="development_commit",
                         on_loopback="development",
-                        # No on_failure defined
                     ),
                 ),
                 "development_commit": PhaseDefinition(
@@ -223,7 +203,6 @@ class TestResolveNextPhase:
             )
 
     def test_terminal_transition_returns_terminal_state(self) -> None:
-        """Test that transition to 'complete' or 'failed' is returned as-is."""
         next_phase = resolve_next_phase(
             current_phase="review_commit",
             signal="success",

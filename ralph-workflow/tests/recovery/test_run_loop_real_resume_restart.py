@@ -1,5 +1,3 @@
-"""Black-box test for real-resume restart via run_loop.py without injected controller."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -35,14 +33,7 @@ if TYPE_CHECKING:
 def test_run_loop_real_resume_restores_ledger_without_injected_controller(
     tmp_path: Path,
 ) -> None:
-    """Test resume via run_loop.py without injected or manually restored controller.
 
-    Mid-streak failure state persisted in checkpoint ledger_snapshot is restored
-    directly by run_loop's _resolve_recovery_controller, and the demotion limit
-    is honored on the next failure without inspecting private counters.
-    """
-
-    # Session 1: Run mid-streak with consecutive limit 3, stop after 2 failures of agent_a
     def script_run_1(
         _agent: str, _phase: str, _attempt: int, _workspace: object
     ) -> AgentAttemptResult:
@@ -56,15 +47,12 @@ def test_run_loop_real_resume_restores_ledger_without_injected_controller(
     )
     assert outcome_run_1.invocations == ["agent_a", "agent_a"]
 
-    # Persist checkpoint to disk and reload state
     checkpoint_path = tmp_path / "checkpoint.json"
     checkpoint.save(outcome_run_1.final_state, checkpoint_path)
     loaded_state = checkpoint.load(checkpoint_path)
     assert loaded_state is not None
     assert loaded_state.ledger_snapshot is not None
 
-    # Session 2: Resume via run_loop.run without injecting recovery_controller_factory
-    # or manually creating RecoveryController.from_snapshot
     workspace = FsWorkspace(tmp_path)
     _seed_valid_plan(workspace)
     bundle = _build_policy_bundle(("agent_a", "agent_b"))
@@ -102,7 +90,7 @@ def test_run_loop_real_resume_restores_ledger_without_injected_controller(
         policy_bundle=bundle,
         registry_factory=lambda _cfg: _ScenarioRegistry(),
         artifact_requirements_resolver=resolve_phase_required_artifact,
-        recovery_controller_factory=None,  # run_loop must resolve and build its own controller
+        recovery_controller_factory=None,
         invoke_agent=fake_invoke_agent,
     )
 
@@ -121,6 +109,4 @@ def test_run_loop_real_resume_restores_ledger_without_injected_controller(
         )
 
     assert exit_code == 0
-    # In Session 2, agent_a fails 1 more time (completing consecutive streak of 3)
-    # and is demoted; agent_b is then selected and completes the phase.
     assert invocations_run_2 == ["agent_a", "agent_b"]

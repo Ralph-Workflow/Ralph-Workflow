@@ -1,4 +1,3 @@
-"""Commit prompt generation utilities."""
 
 from __future__ import annotations
 
@@ -26,7 +25,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class CommitPromptPayloadConfig:
-    """Configuration for where commit prompt payload files are written."""
 
     output_dir: Path | None = None
     name_prefix: str = "commit_message"
@@ -47,7 +45,6 @@ def prompt_commit_message(
     optional_context_paths: Sequence[str] = (),
     allow_empty_diff: bool = False,
 ) -> str:
-    """Return the commit message prompt for the provided diff."""
 
     diff_content, evidence = _diff_and_evidence(diff)
     if not diff_content and not allow_empty_diff:
@@ -102,7 +99,6 @@ def prompt_commit_message_for_opencode(
     workspace_root: Path | None = None,
     allow_empty_diff: bool = False,
 ) -> str:
-    """Return a simplified commit message prompt for OpenCode's single-tool interface."""
     diff_content, evidence = _diff_and_evidence(diff)
     if not diff_content and not allow_empty_diff:
         raise ValueError("empty diff provided; cannot build commit prompt")
@@ -153,7 +149,6 @@ def _diff_and_evidence(diff: str | CommitEvidenceBundle) -> tuple[str, CommitEvi
 
 
 def _evidence_facts(evidence: CommitEvidenceBundle | None, field: str) -> str:
-    """Render recorded facts without turning recommendations into claims."""
     if evidence is None:
         return "none recorded"
     facts = evidence.behavior_facts if field == "behavior_facts" else evidence.verification_facts
@@ -167,7 +162,6 @@ def _read_commit_retry_hint(workspace_root: Path | None) -> str:
 
 
 def _select_template(template_registry: TemplateRegistry | None) -> str:
-    """Choose the commit_message template, falling back to the default."""
 
     if template_registry is not None:
         try:
@@ -193,15 +187,6 @@ def _format_submit_artifact_tool_instructions(tool_names: Sequence[str]) -> str:
 
 
 def _format_submit_artifact_tool_reference(tool_names: Sequence[str]) -> str:
-    """Render the canonical submit-tool reference for the single-shot macro.
-
-    Returns a single backtick-quoted tool name so the rendered macro
-    surfaces one alias (the canonical MCP tool name) the agent can
-    call. When multiple aliases are registered for the active
-    transport, the first non-empty one wins; the macro's worked
-    example uses this same name to keep the call site and the example
-    in lock-step.
-    """
     unique_list: list[str] = []
     for name in tool_names:
         if name and name not in unique_list:
@@ -212,7 +197,6 @@ def _format_submit_artifact_tool_reference(tool_names: Sequence[str]) -> str:
 
 
 def _tool_name_prefix_from_submit_artifact_names(tool_names: Sequence[str]) -> str:
-    """Derive the active transport prefix from the first usable submit-tool name."""
     suffix = str(SUBMIT_MD_ARTIFACT_TOOL)
     for name in tool_names:
         if not name:

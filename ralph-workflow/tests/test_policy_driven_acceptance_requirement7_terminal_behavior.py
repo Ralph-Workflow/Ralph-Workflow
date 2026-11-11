@@ -1,13 +1,3 @@
-"""Policy-driven acceptance tests — Product Requirements 1-10 and Criteria A-H.
-
-These tests assert every product requirement and acceptance criterion against a
-fully renamed PolicyBundle (no canonical phase names). Any regression that
-re-introduces hidden phase name knowledge in the runtime will fail here.
-
-Scope: pure functions only. No I/O.
-Runtime budget: ≤ 5 seconds for the full module.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -36,17 +26,6 @@ from ralph.policy.models import (
 
 @pytest.fixture(scope="module")
 def policy_with_renamed_phases() -> PolicyBundle:
-    """Fully custom-named PolicyBundle — no canonical Ralph phase names.
-
-    Custom name mappings (canonical → custom):
-      planning          → design
-      development       → build
-      development_analysis → audit
-      development_commit → sign_off
-      review            → inspect
-      complete          → done
-      failed_terminal   → aborted
-    """
     agents = AgentsPolicy(
         agent_chains={
             "design_chain": AgentChainConfig(agents=["fake-agent"]),
@@ -174,16 +153,10 @@ def policy_with_renamed_phases() -> PolicyBundle:
     return PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
 
 
-# =============================================================================
-# Requirement 1: Policy must fully define user-visible routing semantics
-# =============================================================================
-
-
 class TestRequirement7TerminalBehavior:
     def test_terminal_success_phase_declared_in_policy(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """The terminal success phase 'done' is declared in policy with role=terminal."""
         done = policy_with_renamed_phases.pipeline.phases["done"]
         assert done.role == "terminal"
         assert done.terminal_outcome == "success"
@@ -191,7 +164,6 @@ class TestRequirement7TerminalBehavior:
     def test_terminal_failure_phase_declared_in_policy(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """The terminal failure phase 'aborted' is declared in policy with role=terminal."""
         aborted = policy_with_renamed_phases.pipeline.phases["aborted"]
         assert aborted.role == "terminal"
         assert aborted.terminal_outcome == "failure"
@@ -199,7 +171,6 @@ class TestRequirement7TerminalBehavior:
     def test_only_policy_declared_terminal_phases_exist(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """No undeclared terminal phases exist; all terminals are in policy."""
         terminal_phases = [
             name
             for name, phase in policy_with_renamed_phases.pipeline.phases.items()
@@ -210,7 +181,6 @@ class TestRequirement7TerminalBehavior:
     def test_explain_policy_exposes_terminal_outcomes(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """explain_policy lists terminal outcomes from policy."""
         exp = explain_policy(policy_with_renamed_phases)
         outcome_phases = {to.phase for to in exp.terminal_outcomes}
         assert "done" in outcome_phases

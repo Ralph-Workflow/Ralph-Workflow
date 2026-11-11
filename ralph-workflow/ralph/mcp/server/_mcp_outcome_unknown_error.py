@@ -1,4 +1,3 @@
-"""McpOutcomeUnknownError — raised when in-flight non-idempotent tool call is severed."""
 
 from __future__ import annotations
 
@@ -6,12 +5,6 @@ from ralph.mcp.server._mcp_server_error import McpServerError
 
 
 class McpOutcomeUnknownError(McpServerError, OSError):
-    """Raised when an in-flight non-idempotent tool call is severed during retirement.
-
-    Signals to the caller that the operation was interrupted mid-flight and its
-    outcome is unknown; the call must not be blindly re-executed without
-    deduplication or verification.
-    """
 
     def __init__(
         self,

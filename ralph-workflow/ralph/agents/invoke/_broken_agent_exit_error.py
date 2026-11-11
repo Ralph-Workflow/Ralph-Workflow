@@ -1,4 +1,3 @@
-"""Typed failure for an agent that is alive but cannot produce LLM output."""
 
 from __future__ import annotations
 
@@ -11,7 +10,6 @@ _VALID_REASONS = frozenset({"no_output", "prompt_echo", "no_llm_activity"})
 
 
 class BrokenAgentExitError(AgentInvocationError):
-    """Signal that recovery must fall over instead of retrying this agent."""
 
     def __init__(
         self,

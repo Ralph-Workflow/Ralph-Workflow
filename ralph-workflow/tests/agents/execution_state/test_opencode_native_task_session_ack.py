@@ -1,11 +1,3 @@
-"""A finished native ``task`` acks the store-keyed child record too.
-
-OpenCode's completed ``task`` frame names the child by ``state.metadata.sessionId``;
-the store probe registers that child under the same session id. Acking only
-the ``callID`` record left the session-keyed one ``running`` until its
-progress TTL pruned it, 45 s after the child had visibly finished.
-"""
-
 from __future__ import annotations
 
 import json

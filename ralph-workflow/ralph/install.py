@@ -1,4 +1,3 @@
-"""Public checkout-installer API and module command entry point."""
 
 from __future__ import annotations
 
@@ -57,19 +56,16 @@ _UV_INSTALL_URL = "https://docs.astral.sh/uv/getting-started/installation/"
 
 
 class LauncherWriter(Protocol):
-    """Publishes the generated global dev launcher."""
 
     def __call__(self, path: Path, content: str) -> None: ...
 
 
 class InstallLockFactory(Protocol):
-    """Creates the transaction lock for a shared install root."""
 
     def __call__(self, path: Path) -> AbstractContextManager[None]: ...
 
 
 class GenerationPublisher(Protocol):
-    """Finalize a candidate generation and publish the launcher while holding the install lock."""
 
     def __call__(
         self, candidate: Path, generations: Path, *, publish_launcher: Callable[[Path], None]
@@ -82,15 +78,6 @@ def global_executable(
     search_path: str | None = None,
     own_bin: Path | None = None,
 ) -> str | None:
-    """Find ``name`` on ``PATH``, skipping this installer's own virtualenv ``bin``.
-
-    ``make`` runs the installer through ``uv run``, which puts the checkout's
-    ``.venv/bin`` first on ``PATH``, so a bare ``shutil.which`` reported the
-    installer's own environment as an existing global install: ``make install``
-    printed a false conflict notice and an interactive ``make stable`` aborted.
-    A real global launcher symlinked to that venv is still found through its
-    own ``PATH`` entry.
-    """
     excluded = own_bin if own_bin is not None else _own_environment_bin()
     entries = (
         search_path if search_path is not None else os.environ.get("PATH", os.defpath)
@@ -144,7 +131,6 @@ def install_dev_checkout(
     publish: GenerationPublisher = publish_generation,
     update_current: Callable[[Path, Path], None] = point_current,
 ) -> None:
-    """Build, validate, and transactionally publish a checkout snapshot."""
     if uv_executable is None:
         raise InstallError(f"uv >= 0.7.0 is required; install it: {_UV_INSTALL_URL}")
     root = install_root or Path.home() / ".local" / "share" / "ralph-workflow-dev"
@@ -208,7 +194,6 @@ def install_stable_release(
     installed_at: Callable[[], str] = utc_now_iso8601,
     preflight: _UvPreflight = preflight_uv,
 ) -> None:
-    """Install the requested release with uv tool."""
     if uv_executable is None:
         raise InstallError(f"uv >= 0.7.0 is required; install it: {_UV_INSTALL_URL}")
     preflight(uv_executable)
@@ -221,9 +206,6 @@ def install_stable_release(
         command.append(f"{STABLE_PACKAGE_NAME}=={version}")
     run(tuple(command), cwd=cwd)
     if from_path is not None:
-        # ``global_executable``, not ``shutil.which``: under ``uv run`` the
-        # checkout's editable ``.venv/bin/ralph`` comes first on PATH, and
-        # marking it would rewrite this checkout's own ``_build_meta.py``.
         installed_package_file = resolve_installed_package_file(which_fn("ralph") or "")
         if installed_package_file is None:
             raise InstallError(
@@ -263,7 +245,6 @@ def _parse_args(argv: Sequence[str] | None) -> tuple[bool, bool, str | None, Pat
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Run the installer module command."""
     sanitize_process_environment()
     stable, build, version, from_path = _parse_args(argv)
     package_dir = Path(__file__).resolve().parents[1]
@@ -282,8 +263,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     else:
         _report_dev_launcher_conflict()
-        # The launcher bakes in this uv path, so it must be a global uv: the
-        # checkout's dev-extra ``.venv/bin/uv`` dies with that virtualenv.
         install_dev_checkout(
             run=run_command,
             uv_executable=_absolute_uv_path(global_executable("uv")),

@@ -1,5 +1,3 @@
-"""Tests for surrogate-safe payload reference handling."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -11,13 +9,13 @@ from ralph.prompts.payload_refs import (
     write_payload_to_directory,
 )
 
-SURROGATE = "\udca4"  # PEP 383 representation of raw byte 0xA4
+SURROGATE = "\udca4"
 
 
 def test_sanitize_surrogates_removes_lone_surrogate() -> None:
     sanitized = sanitize_surrogates(f"prefix {SURROGATE} suffix")
     assert SURROGATE not in sanitized
-    sanitized.encode("utf-8")  # must not raise
+    sanitized.encode("utf-8")
 
 
 def test_sanitize_surrogates_preserves_normal_text() -> None:
@@ -58,7 +56,7 @@ def test_build_prompt_payload_variables_inlines_surrogate_text(tmp_path: Path) -
 
     assert SURROGATE not in variables["DIFF"]
     assert variables["DIFF_PATH"] == ""
-    variables["DIFF"].encode("utf-8")  # must not raise
+    variables["DIFF"].encode("utf-8")
 
 
 def test_build_prompt_payload_variables_writes_file_for_oversized_surrogate_text(
@@ -81,7 +79,7 @@ def test_build_prompt_payload_variables_writes_file_for_oversized_surrogate_text
     assert variables["DIFF"] == ""
     assert variables["DIFF_PATH"] == captured["path"]
     assert SURROGATE not in captured["content"]
-    captured["content"].encode("utf-8")  # must not raise
+    captured["content"].encode("utf-8")
 
 
 def test_write_payload_to_directory_handles_surrogates(tmp_path: Path) -> None:

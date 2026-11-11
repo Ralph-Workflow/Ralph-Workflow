@@ -1,14 +1,3 @@
-"""Pure, injectable query-latency sampler for the R6 perf regression gate.
-
-Split from ``_bench_r6_metrics`` so each module stays under the
-repository file-size cap. The sampler is the testable seam behind
-``_measure_query_latency``: the production caller hands in the real
-handler and the real ``time.perf_counter``, the test hands in a
-plain-class fake with a scripted ``perf_counter`` sequence and
-asserts on the returned metric values. The seam exists to prove
-the warmup that excludes the first per-mode call from the sampled
-loop (R6.6 "no flaky results").
-"""
 
 from __future__ import annotations
 
@@ -19,21 +8,6 @@ from ralph.mcp.explore._bench_product_baseline import nearest_rank_p95
 
 
 class _QueryCallable(Protocol):
-    """Callable shape for the ``grep_handler`` injection in ``sample_query_latencies``.
-
-    The sampler calls the handler with ``(session, workspace, params)``
-    where ``params`` is the per-call argument dict. The Protocol
-    bound takes ``object`` for the session / workspace parameters (the
-    sampler does not constrain them -- callers pass whatever the
-    handler accepts) so test fakes can satisfy it without inheriting
-    from the production ``CoordinationSessionLike`` / ``Workspace``
-    Protocols. Production injects
-    ``cast(_QueryCallable, handle_grep_files)`` because the
-    concrete production handler's parameter types are stricter than
-    this Protocol's ``object`` parameters, and contravariance
-    correctly accepts a narrower-input function in place of a
-    wider-input one.
-    """
 
     def __call__(
         self,
@@ -52,29 +26,6 @@ def sample_query_latencies(
     raw_overhead_p50: float,
     samples: int = 5,
 ) -> dict[str, float]:
-    """Time indexed and live grep calls over ``samples`` iterations each.
-
-    Each iteration calls ``grep_handler(session, workspace, params)``
-    once with ``use_index="auto"`` and once with ``use_index="never"``;
-    the duration of every call is measured by ``perf_counter()`` and
-    recorded in the per-mode samples list. Percentiles are computed
-    with the same arithmetic the inlined harness used before this
-    extraction (``sorted[len // 2]`` for p50, ``nearest_rank_p95``,
-    and ``sorted[-1]`` for p99). The returned dict matches the
-    metric shape ``_measure_query_latency`` historically returned
-    so the extraction is behaviour-preserving.
-
-    One untimed warmup call is issued per mode before the sampled
-    loop mirrors the ``do_warmup=True`` pattern the cold-build /
-    refresh measurements already use: the first call per mode pays
-    a one-time SQLite query-plan compile + page-cache fill cost
-    that otherwise dominates the five-sample p95/p99 (the
-    ``nearest_rank_p95`` of 5 samples is the sorted maximum).
-    """
-    # Untimed warmup: amortise the per-mode cold-start cost (SQLite
-    # query-plan compile + page-cache fill) so the sampled loop sees
-    # only steady-state behaviour. Mirrors ``do_warmup=True`` in the
-    # cold-build / refresh harnesses. Intentionally not measured.
     grep_handler(
         session,
         workspace,

@@ -1,5 +1,3 @@
-"""Tests for Unit 7b: Incident path and selection handling of WorkspaceContextError."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -33,7 +31,6 @@ from tests._resolver_controller import make_resolver_controller
 
 
 def test_check_target_worktree_context_identifies_bad_config(tmp_path: Path) -> None:
-    """check_target_worktree_context returns reason text on corrupt config, None on valid."""
     worktree = tmp_path / "wt"
     agent_dir = worktree / ".agent"
     agent_dir.mkdir(parents=True)
@@ -44,7 +41,6 @@ def test_check_target_worktree_context_identifies_bad_config(tmp_path: Path) -> 
     assert reason is not None
     assert f"fix {cfg_file} then run ralph --check-config" in reason
 
-    # Fix file to valid TOML
     cfg_file.write_text('[general]\nproject_name = "test"\n', encoding="utf-8")
     assert check_target_worktree_context(worktree) is None
 
@@ -52,7 +48,6 @@ def test_check_target_worktree_context_identifies_bad_config(tmp_path: Path) -> 
 def test_next_resolver_context_precondition_prevents_selection_announcement(
     tmp_path: Path,
 ) -> None:
-    """next_resolver returns CONFIG_FAILURE reason and skips selection when target context is broken."""
     worktree = tmp_path / "wt"
     agent_dir = worktree / ".agent"
     agent_dir.mkdir(parents=True)
@@ -68,19 +63,16 @@ def test_next_resolver_context_precondition_prevents_selection_announcement(
     finally:
         logger.remove(handler_id)
 
-    # Result must be the CONFIG_FAILURE reason string, NOT an agent name
     assert result is not None
     assert result not in ["agent_a", "agent_b"]
     assert f"fix {cfg_file} then run ralph --check-config" in result
 
-    # No selection announcement must be logged
     for log_msg in captured_logs:
         assert "Selected agent" not in log_msg
         assert "Phase resolution:" not in log_msg
 
 
 def test_next_resolver_proceeds_with_selection_when_context_valid(tmp_path: Path) -> None:
-    """next_resolver calls choose_resolver and announces selection when target context is valid."""
     worktree = tmp_path / "wt"
     agent_dir = worktree / ".agent"
     agent_dir.mkdir(parents=True)
@@ -103,7 +95,6 @@ def test_next_resolver_proceeds_with_selection_when_context_valid(tmp_path: Path
 def test_diagnostic_path_config_failure_sets_config_failure_no_bump(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Diagnostic handoff on config failure sets CONFIG_FAILURE without bumping attempts or logging selection."""
     root = tmp_path / "root"
     root.mkdir(parents=True)
     (root / ".agent").mkdir(parents=True)
@@ -154,7 +145,7 @@ def test_diagnostic_path_config_failure_sets_config_failure_no_bump(
     updated = read_record(root)
     assert updated is not None
     assert updated.last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE
-    assert updated.merge_commit_repair_attempts == 2  # NOT bumped!
+    assert updated.merge_commit_repair_attempts == 2
     assert f"fix {bad_cfg} then run ralph --check-config" in (updated.repair_last_error or "")
 
     for msg in captured_logs:
@@ -164,7 +155,6 @@ def test_diagnostic_path_config_failure_sets_config_failure_no_bump(
 def test_diagnose_retained_integration_handles_workspace_context_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """diagnose_retained_integration catches WorkspaceContextError without bumping attempts."""
     root = tmp_path / "root"
     root.mkdir(parents=True)
     (root / ".agent").mkdir(parents=True)
@@ -211,14 +201,13 @@ def test_diagnose_retained_integration_handles_workspace_context_error(
     updated = read_record(root)
     assert updated is not None
     assert updated.last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE
-    assert updated.merge_commit_repair_attempts == 1  # NOT bumped!
+    assert updated.merge_commit_repair_attempts == 1
     assert f"fix {bad_cfg} then run ralph --check-config" in (updated.repair_last_error or "")
 
 
 def test_pending_merge_repair_catches_workspace_context_error_without_bumping(
     tmp_path: Path,
 ) -> None:
-    """Pending merge repair catches WorkspaceContextError without bumping attempts or logging selection."""
     root = tmp_path / "root"
     root.mkdir(parents=True)
     (root / ".agent").mkdir(parents=True)
@@ -263,7 +252,7 @@ def test_pending_merge_repair_catches_workspace_context_error_without_bumping(
     updated = read_record(root)
     assert updated is not None
     assert updated.last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE
-    assert updated.merge_commit_repair_attempts == 3  # NOT bumped!
+    assert updated.merge_commit_repair_attempts == 3
     assert f"fix {bad_cfg} then run ralph --check-config" in (updated.repair_last_error or "")
 
     for msg in captured_logs:
@@ -273,7 +262,6 @@ def test_pending_merge_repair_catches_workspace_context_error_without_bumping(
 def test_handoff_pending_merge_repair_avoids_selection_on_config_failure(
     tmp_path: Path,
 ) -> None:
-    """handoff_pending_merge_repair returns False and skips selection when target config is corrupt."""
     root = tmp_path / "root"
     root.mkdir(parents=True)
     (root / ".agent").mkdir(parents=True)
@@ -311,7 +299,7 @@ def test_handoff_pending_merge_repair_avoids_selection_on_config_failure(
     updated = read_record(root)
     assert updated is not None
     assert updated.last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE
-    assert updated.merge_commit_repair_attempts == 0  # NOT bumped!
+    assert updated.merge_commit_repair_attempts == 0
 
     for msg in captured_logs:
         assert "Selected agent" not in msg

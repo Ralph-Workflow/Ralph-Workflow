@@ -1,15 +1,3 @@
-"""Integration test: same-workspace fan-out → analysis handoff.
-
-Proves the full supported path:
-  planning artifact with >=2 disjoint work_units
-  → FanOutEffect from _determine_effect_from_policy
-  → coordinator.run_fan_out produces ALL_WORKERS_COMPLETE
-  → reducer advances to development_analysis (no merge/worktree step)
-  → per-worker evidence stays in its own namespace
-
-All workers use FakeAgentExecutor (no subprocess, no real MCP).
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -71,18 +59,9 @@ def _make_policy_bundle(max_workers: int = 4) -> MagicMock:
 
 
 class TestRunnerAnalysisHandoffIntegration:
-    """Runner-level integration: _execute_fan_out_sync wires the analysis handoff.
-
-    These tests call _execute_fan_out_sync directly (not just the helper) to prove
-    that after parallel fan-out the runner writes .agent/DEVELOPMENT_RESULT.md so the
-    analysis phase can pick it up through the normal handoff path.
-    """
-
     def test_runner_writes_development_result_md_after_all_succeed(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """After two workers succeed, .agent/DEVELOPMENT_RESULT.md must exist
-        and contain the parallel summary so the analysis phase can read it."""
 
         unit_a = WorkUnit(unit_id="unit-a", description="Unit A", allowed_directories=["src/a"])
         unit_b = WorkUnit(unit_id="unit-b", description="Unit B", allowed_directories=["src/b"])
@@ -137,13 +116,11 @@ class TestRunnerAnalysisHandoffIntegration:
     def test_runner_partial_failure_reflected_in_handoff(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """When unit-b fails, DEVELOPMENT_RESULT.md must show any_failed=true
-        and all_succeeded=false so the analysis phase sees the honest outcome."""
 
         unit_a = WorkUnit(unit_id="unit-a", description="Unit A", allowed_directories=["src/a"])
         unit_b = WorkUnit(unit_id="unit-b", description="Unit B", allowed_directories=["src/b"])
 
-        _seed_artifact(tmp_path, "unit-a")  # unit-b gets no artifact on purpose
+        _seed_artifact(tmp_path, "unit-a")
 
         scope = WorkspaceScope(root=tmp_path, allowed_roots=frozenset([tmp_path]))
         initial_state = PipelineState(

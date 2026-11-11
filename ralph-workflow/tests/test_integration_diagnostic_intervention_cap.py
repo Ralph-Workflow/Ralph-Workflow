@@ -1,18 +1,3 @@
-"""Bounded-recovery tests for the diagnostic-repair attempt cap.
-
-The production loop kept rotating inspection agents without ever
-reaching a terminal state. The fix is a module-level cap; once
-the cap is reached the diagnostic path stamps the typed "diagnostic
-budget spent" outcome and routes the state into the autonomous
-fallback ladder -- never a human hand-off.
-
-Rewritten to drive the real recovery boundary:
-(ralph.pipeline._integration_diagnostic.diagnose_retained_integration
-and ralph.pipeline._integration_diagnostic_handoff), asserting the
-typed outcome, the ladder escalation and the non-terminal phase
-decision.
-"""
-
 from __future__ import annotations
 
 from functools import lru_cache
@@ -91,16 +76,6 @@ def _build_ctx(root: Path, policy: PipelinePolicy) -> run_loop._LoopContext:
 
 
 def test_cap_stamps_budget_spent_and_routes_to_ladder(tmp_path: Path) -> None:
-    """Reaching the cap stamps the typed outcome and escalates to a ladder rung.
-
-    A record written with ``merge_commit_repair_attempts = cap`` is
-    loaded by the diagnostic. The load-time clamp preserves the counter
-    when the typed "diagnostic budget spent" marker is present, so the
-    diagnostic gate fires immediately: no further agent is called, the
-    record carries the typed marker (never the retired
-    ``diagnostic_intervention_required`` hand-off flag), and the
-    escalation reaches a ladder rung recorded in the durable ledger.
-    """
     policy = _policy()
     ctx = _build_ctx(tmp_path, policy)
 
@@ -135,14 +110,10 @@ def test_cap_stamps_budget_spent_and_routes_to_ladder(tmp_path: Path) -> None:
 
     persisted = read_record(tmp_path)
     assert persisted is not None
-    # The typed outcome is the durable signal of the spent budget; the
-    # retired hand-off flag is never set.
     assert persisted.diagnostic_intervention_required is False
     assert persisted.repair_cap_reason == DIAGNOSTIC_BUDGET_SPENT_REASON
     assert persisted.merge_commit_repair_attempts == DIAGNOSTIC_REPAIR_ATTEMPT_CAP
 
-    # The phase decision is a recovery block (ladder escalation), never
-    # the terminal operator hand-off.
     state = PipelineState(phase="development", rebase=RebaseState())
     decision = decide_phase_transition(
         state,
@@ -159,14 +130,6 @@ def test_cap_stamps_budget_spent_and_routes_to_ladder(tmp_path: Path) -> None:
 
 
 def test_cap_does_not_increment_attempt_counter(tmp_path: Path) -> None:
-    """The typed marker preserves the counter at the cap across loads.
-
-    Records written with a value at or above the cap WITHOUT the typed
-    marker are legacy stuck counters: the load-time clamp rewrites them
-    to ``cap - 1`` so the next run's gate is False and the record
-    proceeds to automated recovery. The on-disk value never silently
-    increments.
-    """
     policy = _policy()
     ctx = _build_ctx(tmp_path, policy)
 
@@ -185,10 +148,6 @@ def test_cap_does_not_increment_attempt_counter(tmp_path: Path) -> None:
 
     persisted = read_record(tmp_path)
     assert persisted is not None
-    # Loader clamp: any unmarked value >= cap is read as cap - 1, and the
-    # in-run diagnostic may re-bump the counter up to the cap (never past
-    # it). The retired hand-off flag is never set; a counter resting at
-    # the cap carries the typed budget-spent outcome.
     assert persisted.merge_commit_repair_attempts <= DIAGNOSTIC_REPAIR_ATTEMPT_CAP
     assert persisted.diagnostic_intervention_required is False
     if persisted.merge_commit_repair_attempts == DIAGNOSTIC_REPAIR_ATTEMPT_CAP:
@@ -196,7 +155,6 @@ def test_cap_does_not_increment_attempt_counter(tmp_path: Path) -> None:
 
 
 def test_below_cap_preserves_budget_unspent(tmp_path: Path) -> None:
-    """A record below the cap retains an unspent budget."""
     policy = _policy()
     ctx = _build_ctx(tmp_path, policy)
 
@@ -228,5 +186,4 @@ def test_below_cap_preserves_budget_unspent(tmp_path: Path) -> None:
 
 
 def test_default_cap_is_five() -> None:
-    """The default cap is 5 (low enough to break the production loop fast)."""
     assert DIAGNOSTIC_REPAIR_ATTEMPT_CAP == 5

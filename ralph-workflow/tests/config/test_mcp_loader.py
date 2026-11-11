@@ -1,9 +1,3 @@
-"""Tests for the three-layer mcp.toml loader (T3).
-
-Merge order under test:
-  bundled default (empty) -> user-global -> project-local
-"""
-
 from __future__ import annotations
 
 import textwrap
@@ -26,24 +20,12 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-DEFAULT_MAX_INLINE_BYTES = 5_242_880  # 5 MiB
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+DEFAULT_MAX_INLINE_BYTES = 5_242_880
 
 
 class _FakeScope:
-    """Minimal WorkspaceScope stand-in for loader tests."""
-
     def __init__(self, root: Path) -> None:
         self.local_config_path = root / ".agent" / "ralph-workflow.toml"
-
-
-# ---------------------------------------------------------------------------
-# Path resolution
-# ---------------------------------------------------------------------------
 
 
 def test_bundled_default_path_resolves_to_existing_file() -> None:
@@ -80,11 +62,6 @@ def test_local_mcp_config_path(tmp_path: Path) -> None:
     assert path == tmp_path / ".agent" / "mcp.toml"
 
 
-# ---------------------------------------------------------------------------
-# No files present -> defaults
-# ---------------------------------------------------------------------------
-
-
 def test_load_mcp_config_no_files_returns_defaults(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -97,15 +74,9 @@ def test_load_mcp_config_no_files_returns_defaults(
     assert config.web_search.backend == "ddgs"
 
 
-# ---------------------------------------------------------------------------
-# Layer merge order
-# ---------------------------------------------------------------------------
-
-
 def test_load_mcp_config_local_overrides_global(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Project-local backend setting overrides user-global backend setting."""
     xdg = tmp_path / "xdg"
     xdg.mkdir()
     (xdg / "ralph-workflow-mcp.toml").write_text(
@@ -131,7 +102,6 @@ def test_load_mcp_config_local_overrides_global(
 def test_load_mcp_config_global_servers_survive_local_override(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Servers declared in user-global appear even when a local file exists."""
     xdg = tmp_path / "xdg"
     xdg.mkdir()
     (xdg / "ralph-workflow-mcp.toml").write_text(
@@ -160,7 +130,6 @@ def test_load_mcp_config_global_servers_survive_local_override(
 def test_load_mcp_config_workspace_scope_local_path(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """When workspace_scope is provided (no config_path), derive local from scope."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     agent_dir = tmp_path / ".agent"
     agent_dir.mkdir()
@@ -176,15 +145,9 @@ def test_load_mcp_config_workspace_scope_local_path(
     assert config.web_search.enabled is False
 
 
-# ---------------------------------------------------------------------------
-# Fail-fast TOML parse errors
-# ---------------------------------------------------------------------------
-
-
 def test_load_mcp_config_unknown_top_level_field_warns(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Unknown top-level tables must warn without inspecting server definitions."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     cfg = tmp_path / "mcp.toml"
     cfg.write_text("[web_serch]\nenabled = false\n", encoding="utf-8")
@@ -223,11 +186,6 @@ def test_load_mcp_config_malformed_global_toml_exits(
     assert exc_info.value.code == 1
 
 
-# ---------------------------------------------------------------------------
-# Schema validation errors
-# ---------------------------------------------------------------------------
-
-
 def test_load_mcp_config_reserved_server_name_exits(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -245,11 +203,6 @@ def test_load_mcp_config_reserved_server_name_exits(
     with pytest.raises(SystemExit) as exc_info:
         load_mcp_config(config_path=bad, strict_optional_files=True)
     assert exc_info.value.code == 1
-
-
-# ---------------------------------------------------------------------------
-# Fallback backend validation
-# ---------------------------------------------------------------------------
 
 
 def test_load_mcp_config_unknown_fallback_backend_exits(
@@ -323,15 +276,9 @@ def test_load_mcp_config_configured_fallback_allowed(
     assert "searxng" in config.web_search.fallback
 
 
-# ---------------------------------------------------------------------------
-# Secret scrubbing
-# ---------------------------------------------------------------------------
-
-
 def test_load_mcp_config_api_key_not_in_logs(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Resolved api_key values must never appear in loguru output."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     cfg = tmp_path / "mcp.toml"
     secret = "super-secret-tavily-key-xyz987"
@@ -356,15 +303,9 @@ def test_load_mcp_config_api_key_not_in_logs(
     assert secret not in joined, f"api_key leaked into logs: {joined!r}"
 
 
-# ---------------------------------------------------------------------------
-# Media config tests (Task 4)
-# ---------------------------------------------------------------------------
-
-
 def test_load_mcp_config_media_enabled_in_toml(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Parsing [media] with enabled=true yields enabled MediaConfig."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     cfg = tmp_path / "mcp.toml"
     cfg.write_text(
@@ -382,7 +323,6 @@ def test_load_mcp_config_media_enabled_in_toml(
 def test_load_mcp_config_media_with_custom_max_inline_bytes(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Parsing [media] with max_inline_bytes round-trips correctly."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     cfg = tmp_path / "mcp.toml"
     cfg.write_text(
@@ -401,7 +341,6 @@ def test_load_mcp_config_media_with_custom_max_inline_bytes(
 def test_load_mcp_config_media_enabled_by_default(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """When no [media] section is present, media is enabled by default."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     cfg = tmp_path / "mcp.toml"
     cfg.write_text(
@@ -419,15 +358,6 @@ def test_load_mcp_config_media_enabled_by_default(
 def test_load_mcp_config_media_explicit_false_is_coerced_to_true(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """``[media] enabled = false`` is INERT -- the value is coerced to ``True`` and a warning is logged.
-
-    The multimodal MCP endpoints always stay enabled (criterion 1).
-    The legacy opt-out is retired at the ``MediaConfig`` validator
-    so an existing ``mcp.toml`` asking for ``enabled = false`` parses
-    without a hard failure but its value never reaches the resolved
-    model. ``max_inline_bytes`` remains a genuine tunable and is
-    unaffected by the coercion.
-    """
     import logging
 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
@@ -454,7 +384,6 @@ def test_load_mcp_config_media_explicit_false_is_coerced_to_true(
 def test_load_mcp_config_media_rejects_invalid_max_inline_bytes(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """media.max_inline_bytes must be positive."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     cfg = tmp_path / "mcp.toml"
     cfg.write_text(
@@ -470,22 +399,9 @@ def test_load_mcp_config_media_rejects_invalid_max_inline_bytes(
     assert exc_info.value.code == 1
 
 
-# ---------------------------------------------------------------------------
-# What/why/fix envelope shape (S-6)
-# ---------------------------------------------------------------------------
-
-
 def test_load_mcp_config_malformed_toml_emits_what_why_fix_envelope(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """MCP parse errors must follow the what/why/fix envelope and name the file + fix command.
-
-    Before the fix the parse-error message was a single one-liner
-    (``MCP config parse error at <path>: <tomllib msg>``) with no WHY
-    line and no remediation hint. After the fix the message must name
-    the file, explain why Ralph stops instead of guessing, and tell the
-    operator to re-run ``ralph --check-config`` after fixing.
-    """
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     bad = tmp_path / "mcp.toml"
     bad.write_bytes(b"[invalid = }")
@@ -505,15 +421,6 @@ def test_load_mcp_config_malformed_toml_emits_what_why_fix_envelope(
 def test_load_mcp_config_validation_failure_does_not_dump_raw_pydantic_blob(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """MCP validation errors must use the formatted field-level messages, not ``str(exc)``.
-
-    Before the fix the message contained the raw ``str(ValidationError)``
-    output (``"N validation errors for McpConfig\nfield\n  ..."``), which
-    is exactly the dump the project standardised away from. After the
-    fix the message must reuse ``format_validation_error_messages`` so
-    the operator sees a single ``location: message`` line per field, and
-    it must NOT contain the raw pydantic framing string.
-    """
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     bad = tmp_path / "mcp.toml"
     bad.write_text(
@@ -535,8 +442,6 @@ def test_load_mcp_config_validation_failure_does_not_dump_raw_pydantic_blob(
     assert "DETAILS:" in message, (
         f"Validation-error envelope MUST label the field-level DETAILS section; got: {message!r}"
     )
-    # The field-level formatter renders ``loc: msg`` lines; assert one
-    # such line exists for the failing field.
     assert "media.max_inline_bytes" in message, (
         f"Validation-error envelope MUST include the failing field path; got: {message!r}"
     )

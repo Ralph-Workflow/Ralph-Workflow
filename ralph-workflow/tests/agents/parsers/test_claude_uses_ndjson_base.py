@@ -1,12 +1,3 @@
-"""Migration test: ClaudeParser must inherit from NdjsonParserBase.
-
-After the consolidation refactor, ClaudeParser inherits from
-:class:`ralph.agents.parsers._ndjson_base.NdjsonParserBase` and delegates
-the json parse dispatch, lifecycle suppression, and error extraction to
-the base layer. The prefixed-transcript hook (``[claude]:``,
-``claude/...:``) stays in the subclass because it is claude-specific.
-"""
-
 from __future__ import annotations
 
 import json
@@ -24,8 +15,6 @@ def _lines(*raw: str) -> Iterator[str]:
 
 
 class TestClaudeUsesNdjsonBase:
-    """Pin subclass relationship and migration behavior preservation."""
-
     def test_claude_parser_subclass_of_ndjson_base(self) -> None:
         assert issubclass(ClaudeParser, NdjsonParserBase)
 
@@ -43,17 +32,13 @@ class TestClaudeUsesNdjsonBase:
         assert results[0].content == "boom"
 
     def test_prefixed_transcript_line_still_handled(self) -> None:
-        """Claude-specific [claude]: prefix must still be handled in the subclass."""
         parser = ClaudeParser()
-        # The "[claude]:" line is the claude-prefixed-transcript marker;
-        # the subclass hook should return [] for it.
         results = list(parser.parse(_lines("[claude]: hello world")))
         assert results == [], (
             f"[claude]: prefix should be suppressed by the subclass hook, got {results!r}"
         )
 
     def test_plain_text_prefix_emits_text(self) -> None:
-        """A line like ``claude: hello`` is parsed by the subclass as plain text."""
         parser = ClaudeParser()
         results = list(parser.parse(_lines("claude: hello world")))
         text_results = [r for r in results if r.type == "text"]
@@ -61,7 +46,6 @@ class TestClaudeUsesNdjsonBase:
         assert text_results[0].content == "hello world"
 
     def test_text_delta_emits_text_after_flush(self) -> None:
-        """text_delta events still flow through the per-content-block path."""
         parser = ClaudeParser()
         results = list(
             parser.parse(

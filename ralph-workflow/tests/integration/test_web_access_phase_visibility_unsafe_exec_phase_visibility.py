@@ -1,11 +1,3 @@
-"""Phase visibility integration tests for unsafe_exec and raw_exec MCP tools.
-
-Verifies that unsafe_exec and raw_exec are visible only in development and fix drains,
-and not visible in planning, analysis, review, commit, or analysis-commit drains.
-Exercises the full pipeline: DEFAULT_CAPABILITIES -> CapabilitySet ->
-visible_mcp_tool_names -> ToolBridge._is_tool_allowed -> list_definitions().
-"""
-
 from __future__ import annotations
 
 import pytest

@@ -1,15 +1,3 @@
-"""Regression tests for retryable agent-failure classification.
-
-The cross-caller drift: a model that connects, reasons, and returns an empty
-turn with NO tool call (e.g. nanocoder/MiniMax-M3 over-reasoning a commit
-message and never calling ``ralph_submit_md_artifact``) is retried by the pipeline
-path (the classifier treats it as recoverable), but the direct-MCP recovery path
-used by `ralph --generate-commit` did NOT retry it because the empty-response
-signal was gated on prior tool activity. These tests pin that BOTH a
-post-tool-result empty response AND a plain empty response (no prior tool
-activity) are retryable, so the two callers agree.
-"""
-
 from __future__ import annotations
 
 from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
@@ -18,7 +6,6 @@ from ralph.pipeline.retryable_failure import retryable_agent_failure_reason
 
 
 def test_plain_empty_model_response_without_tool_activity_is_retryable() -> None:
-    """A model that returns empty with no prior tool call must be retryable."""
     exc = AgentInvocationError(
         "nanocoder",
         1,
@@ -35,7 +22,6 @@ def test_plain_empty_model_response_without_tool_activity_is_retryable() -> None
 
 
 def test_post_tool_result_empty_response_keeps_specific_reason() -> None:
-    """An empty response AFTER tool activity keeps its specific reason."""
     exc = AgentInvocationError(
         "claude",
         1,
@@ -52,13 +38,6 @@ def test_post_tool_result_empty_response_keeps_specific_reason() -> None:
 
 
 def test_bare_fetch_failed_is_a_transient_connectivity_failure() -> None:
-    """Node/Bun surface a bare ``fetch failed`` with the errno on ``.cause``.
-
-    Node-based agent CLIs (pi, opencode) exit with exactly this string when
-    their provider endpoint flaps, and the text carries no ECONNRESET /
-    ENOTFOUND marker to match on. Without it the fault is misclassified as a
-    non-retryable agent failure and the run is abandoned instead of retried.
-    """
     exc = AgentInvocationError(
         "pi",
         1,
@@ -72,12 +51,6 @@ def test_bare_fetch_failed_is_a_transient_connectivity_failure() -> None:
 
 
 def test_mcp_tool_call_deadline_is_not_labelled_as_connectivity() -> None:
-    """Codex reports a stalled Ralph MCP call as ``timed out awaiting tools/call``.
-
-    The provider connection is fine; only the tool server did not answer in
-    time. Calling it a connectivity failure sends the retry agent hunting for
-    an internet outage that never happened, but the failure stays retryable.
-    """
     exc = AgentInvocationError(
         "codex",
         1,
@@ -91,7 +64,6 @@ def test_mcp_tool_call_deadline_is_not_labelled_as_connectivity() -> None:
 
 
 def test_unrelated_failure_is_not_retryable() -> None:
-    """A failure with none of the retryable signals returns None."""
     exc = AgentInvocationError(
         "claude",
         1,

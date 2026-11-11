@@ -1,16 +1,3 @@
-"""MCP handlers for the explore index: ``ralph_index_status`` and ``ralph_reindex``.
-
-Both handlers operate on an optional, lazily-initialized
-:class:`ExploreIndex` handle attached to the session. When the index
-is disabled or missing, both handlers return a structured "disabled"
-response rather than raising — this keeps the live tool surface
-unchanged for existing callers.
-
-The handlers own the ExploreIndex handle and the path-resolution
-logic so they are testable in isolation. Tests construct a
-``_SqliteBackedExploreIndex`` directly over a ``tmp_path`` workspace
-and pass it as ``session.explore_index``.
-"""
 
 from __future__ import annotations
 
@@ -21,7 +8,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.explore.pipeline import (
     ReindexOptions,
@@ -43,22 +30,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# --- Explore index handle -------------------------------------------------
 
 
 @dataclass
 class ExploreIndex:
-    """Optional, lazily-initialized handle on the session/workspace.
-
-    Stores the index directory + a live :class:`ExploreStore`. The
-    handle is created by the MCP server bootstrap (or by tests) and
-    injected as ``session.explore_index``. When ``None``, handlers
-    behave exactly as today — no metadata added, no dirty marking.
-
-    The handle exposes a single public surface to MCP handlers:
-    ``mark_dirty(paths, source_tool, reason)`` so the
-    dirty-path tracking stays narrow and testable.
-    """
 
     workspace_root: Path
     index_root: Path
@@ -67,22 +42,7 @@ class ExploreIndex:
     cold_index_required: bool = False
     generation: int = 0
     last_job_status: str | None = None
-    #: Set by a reindex writer while it owns the work; the mutation
-    #: freshness block reports it. Production writers flip this to
-    #: ``True`` for the duration of the job and back to ``False`` on
-    #: success/failure. The default ``False`` keeps the attribute
-    #: optional for test doubles that subclass or duck-type the handle.
     reindex_in_progress: bool = False
-    #: Cache slot for the canonical ``serving_metadata`` staleness
-    #: block. The block is recomputed on every index-capable tool
-    #: call (a single ``fetch`` is not expensive but the per-call
-    #: aggregate across a tight indexed-search loop is); the cache
-    #: avoids 3-4 SQL round-trips when the underlying store state
-    #: has not changed since the previous read. The slot stores a
-    #: ``(signature, block)`` tuple; the cache is invalidated when
-    #: the store-state signature changes. The default ``None``
-    #: keeps the attribute optional for test doubles that subclass
-    #: or duck-type the handle.
     staleness_block_cache: tuple[tuple[int, int, float | None, int], dict[str, object]] | None = (
         None
     )
@@ -105,24 +65,10 @@ class ExploreIndex:
 
 
 def _resolve_index_dir(workspace_root: Path) -> Path:
-    """Return the canonical index directory under ``.agent/ralph-explore``."""
     return Path(workspace_root) / DEFAULT_INDEX_ROOT
 
 
 def build_explore_index(workspace_root: Path) -> ExploreIndex:
-    """Construct a fresh ExploreIndex for ``workspace_root``.
-
-    Tests call this directly. Production callers should defer
-    construction to the MCP server bootstrap so the index is created
-    lazily and only when first queried.
-
-    AC-05/AC-06: when the persisted ``schema_version`` or
-    ``extractor_version`` settings disagree with the runtime
-    constants, the on-disk index is wiped and a safe cold rebuild is
-    triggered on the next call. The handle is still returned so the
-    caller can observe the wiped state via ``index_exists=True`` and
-    ``cold_index_required=True``.
-    """
     workspace_root = Path(workspace_root).resolve()
     index_root = _resolve_index_dir(workspace_root)
     store = ExploreStore(index_root)
@@ -138,52 +84,22 @@ def build_explore_index(workspace_root: Path) -> ExploreIndex:
     persisted_schema = store.get_setting("schema_version")
     persisted_extractor = store.get_setting("extractor_version")
     persisted_structure = store.get_setting("structure_extractor_version")
-    if persisted_schema is None and store.index_storage_bytes() > 0:
-        # Legacy / hand-written index without a schema version: wipe
-        # it to avoid undefined reads from incompatible rows.
+    if (
+        persisted_schema is None and store.index_storage_bytes() > 0
+    ) or (persisted_schema is not None and persisted_schema != SCHEMA_VERSION) or (
+        persisted_extractor is not None and persisted_extractor != EXTRACTOR_VERSION
+    ):
         try:
             index_db = index_root / DEFAULT_INDEX_DB
             for suffix in ("", "-wal", "-shm"):
                 target = Path(str(index_db) + suffix)
-                # filesystem-read-ok: cold rebuild checks only known incompatible index sidecars
                 if target.exists():
-                    # filesystem-write-ok: remove incompatible internal explore index sidecar before cold rebuild
-                    target.unlink()
-        except OSError:
-            pass
-        store = ExploreStore(index_root)
-        generation = 0
-    elif persisted_schema is not None and persisted_schema != SCHEMA_VERSION:
-        # Incompatible persisted index: safe cold rebuild.
-        try:
-            index_db = index_root / DEFAULT_INDEX_DB
-            for suffix in ("", "-wal", "-shm"):
-                target = Path(str(index_db) + suffix)
-                # filesystem-read-ok: cold rebuild checks only known incompatible index sidecars
-                if target.exists():
-                    # filesystem-write-ok: remove incompatible internal explore index sidecar before cold rebuild
-                    target.unlink()
-        except OSError:
-            pass
-        store = ExploreStore(index_root)
-        generation = 0
-    elif persisted_extractor is not None and persisted_extractor != EXTRACTOR_VERSION:
-        try:
-            index_db = index_root / DEFAULT_INDEX_DB
-            for suffix in ("", "-wal", "-shm"):
-                target = Path(str(index_db) + suffix)
-                # filesystem-read-ok: cold rebuild checks only known incompatible index sidecars
-                if target.exists():
-                    # filesystem-write-ok: remove incompatible internal explore index sidecar before cold rebuild
                     target.unlink()
         except OSError:
             pass
         store = ExploreStore(index_root)
         generation = 0
     elif persisted_structure is not None and persisted_structure != STRUCTURE_EXTRACTOR_VERSION:
-        # Structure rows are out of date but the lexical rows are
-        # still safe: drop structure rows and the structure-extractor
-        # key. The next reindex rebuilds the structure rows.
         try:
             store._conn.execute("DELETE FROM spans")
             store._conn.execute("DELETE FROM symbols")
@@ -209,11 +125,9 @@ def build_explore_index(workspace_root: Path) -> ExploreIndex:
     )
 
 
-# --- Handler helpers ------------------------------------------------------
 
 
 def _resolve_explore_index(session: object) -> ExploreIndex | None:
-    """Return the explore index handle attached to ``session`` if any."""
     handle: ExploreIndex | None = getattr(session, "explore_index", None)
     if handle is None:
         return None
@@ -221,17 +135,6 @@ def _resolve_explore_index(session: object) -> ExploreIndex | None:
 
 
 def _gitignore_coverage(workspace_root: Path) -> bool:
-    """Return True when the managed gitignore rule is present.
-
-    AC-05: the explicit disposable-cache rule is ``.agent/ralph-explore/``
-    (added to ``_DEFAULT_GITIGNORE_PATTERNS``). The parent
-    ``.agent/`` rule is also accepted because it covers the same
-    path via trailing-slash semantics. The handler reports the
-    truthful union of coverage rather than requiring an exact
-    rule match so existing ``.agent/``-only gitignores continue
-    to be honored. The repair metadata distinguishes between the
-    two cases (see ``_gitignore_repair_payload``).
-    """
     gitignore = Path(workspace_root) / ".gitignore"
     if not gitignore.is_file():
         return False
@@ -245,11 +148,9 @@ def _gitignore_coverage(workspace_root: Path) -> bool:
     return ".agent/" in stripped_lines or ".agent" in stripped_lines or "/.agent/" in stripped_lines
 
 
-# --- MCP handlers ---------------------------------------------------------
 
 
 def _new_cancel_token() -> str:
-    """Return a fresh per-request cancellation token (UUID4 string)."""
     return uuid.uuid4().hex
 
 
@@ -259,16 +160,6 @@ def _arm_cancel_flag(
     token: str,
     initial: bool,
 ) -> Callable[[], bool]:
-    """Register a per-request cancel flag and return its poll callable.
-
-    The token is unique to this call. A concurrent call against
-    the same session generates a different token, so concurrent
-    callers cannot observe or mutate each other's flags. The
-    returned callable reads the flag under ``lock`` so a writer
-    that flips the flag does not race with the dispatcher's
-    poll. Removal happens in the ``finally`` block via
-    ``_disarm_cancel_flag``.
-    """
     with lock:
         registry[token] = bool(initial)
 
@@ -284,18 +175,11 @@ def _disarm_cancel_flag(
     lock: threading.Lock,
     token: str,
 ) -> None:
-    """Remove the per-request cancel flag entry on every exit path.
-
-    The token-based key guarantees the pop never deletes a
-    concurrent caller's flag. The lock prevents the pop from
-    racing with a poll that has already loaded the entry.
-    """
     with lock:
         registry.pop(token, None)
 
 
 def _int_param(params: dict[str, object], key: str, default: int) -> int:
-    """Coerce an integer parameter, falling back to ``default`` on error."""
     raw: object = params.get(key, default)
     if isinstance(raw, bool):
         return default
@@ -317,15 +201,6 @@ def _strict_int_param(
     min_value: int,
     max_value: int,
 ) -> int:
-    """Coerce a strictly-bounded integer parameter; fail-closed on bad input.
-
-    AC-05: bounded per-call budgets cannot be silently widened by
-    malformed or out-of-range values. ``bool`` is rejected because
-    Python treats ``True``/``False`` as ``int``; floats must be
-    integer-valued; strings must parse to an integer. Returns the
-    supplied ``default`` only when the caller did not provide the
-    key at all.
-    """
     if key not in params:
         value = default
     else:
@@ -369,21 +244,9 @@ __all__ = [
 ]
 
 
-# --- Deferred re-exports (PEP 562) -------------------------------------
-#
-# The public MCP handlers and their per-sub-module helpers live in
-# dedicated sub-modules (``_handlers_graph``,
-# ``_handlers_index_status``, ``_handlers_reindex``). Importing those
-# sub-modules eagerly at module top-level would form an import cycle
-# because each sub-module imports ``ExploreIndex``,
-# ``_int_param``/``_strict_int_param``/``_new_cancel_token`` from this
-# module. Resolving the symbols lazily through PEP 562
-# ``__getattr__`` keeps the public API surface (``from ralph.mcp.explore.handlers
-# import handle_ralph_graph``) source-compatible without creating
-# the cycle.
 _LAZY_REEXPORTS: dict[
     str, str
-] = {  # bounded-accumulator-ok: PEP 562 dispatch table; fixed size, populated once at module load
+] = {
     "graph_module": "ralph.mcp.explore.graph",
     "_GRAPH_CANCEL_FLAGS": "ralph.mcp.explore._handlers_graph",
     "_GRAPH_CANCEL_LOCK": "ralph.mcp.explore._handlers_graph",
@@ -405,20 +268,7 @@ _LAZY_REEXPORTS: dict[
 
 
 def __getattr__(name: str) -> object:
-    """Resolve ``handlers.<name>`` lazily to a sub-module symbol.
-
-    PEP 562 module-level ``__getattr__``. Mirrors the same pattern
-    as :mod:`ralph.mcp.explore.graph` so the per-sub-module public
-    surface remains importable through the legacy
-    ``ralph.mcp.explore.handlers`` namespace without re-entering
-    the explore subgraph and forming a partial-init cycle.
-    """
     if name in _LAZY_REEXPORTS:
-        # Lazy resolution of the per-sub-module handlers. ``graph_module``
-        # is a self-referential alias that resolves to the module
-        # itself (the lazy re-export of the graph module); all other
-        # names are forwarded as ordinary attribute access on the
-        # resolved sub-module.
         import importlib
         import sys
 
@@ -433,14 +283,7 @@ def __getattr__(name: str) -> object:
 
 
 def __dir__() -> list[str]:
-    """Include the lazy re-export names in ``dir(handlers)``.
-
-    Without this hook the per-sub-module handlers and helpers are
-    invisible to introspection. Keeping the sorted supplementary
-    list grouped with the eagerly defined names preserves the
-    documented public surface for tooling and auto-import wildcard
-    forms used by bridge specs.
-    """
-    eagerly_defined_names: list[str] = list(globals())  # type: ignore[misc]  # reason: autogenerated code has no type support, see docs/agents/type-ignore-policy.md#autogenerated-code
+    module_globals: dict[str, str] = cast("dict[str, str]", globals())
+    eagerly_defined_names: list[str] = list(module_globals)
     lazy_rexport_names: list[str] = list(_LAZY_REEXPORTS.keys())
     return sorted(set(eagerly_defined_names) | set(lazy_rexport_names))

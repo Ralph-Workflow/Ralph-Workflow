@@ -12,7 +12,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class CommitAttemptContext:
-    """Runtime context threaded into each commit agent invocation attempt."""
 
     repo_root: Path
     verbose: bool

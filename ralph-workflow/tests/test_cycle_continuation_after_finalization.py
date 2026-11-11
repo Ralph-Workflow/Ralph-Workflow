@@ -1,14 +1,3 @@
-"""Reducer tests for cycle continuation after a short-circuited finalization.
-
-A development cycle can reach the final-commit path in three ways: an analysis
-phase approves it, the analysis loop budget is exhausted, or the cycle timebox
-redirects an expired development entry. All three conclude the SAME cycle, so
-all three must leave the run able to start the next cycle while the iteration
-budget still has room. These tests drive the pure ``reduce`` state machine over
-the bundled default policy and assert on the phase the run lands in after the
-final commit — the operator-visible behavior — never on internal routing state.
-"""
-
 from __future__ import annotations
 
 from functools import lru_cache
@@ -43,7 +32,6 @@ def _drive_to_next_cycle(
     *,
     elapsed: float,
 ) -> PipelineState:
-    """Advance from the final-commit review phase through the final commit."""
     assert state.phase == "development_final_commit_review"
     state, _ = reduce(state, PipelineEvent.AGENT_SUCCESS, policy, routing_timing=_rt(elapsed))
     assert state.phase == "development_final_commit"
@@ -52,7 +40,6 @@ def _drive_to_next_cycle(
 
 
 def test_exhausted_analysis_loop_starts_next_cycle_when_budget_remains() -> None:
-    """An exhausted development-analysis loop finalizes, then plans the next cycle."""
     policy = _policy()
     state = PipelineState(
         phase="development_commit",
@@ -71,7 +58,6 @@ def test_exhausted_analysis_loop_starts_next_cycle_when_budget_remains() -> None
 
 
 def test_timebox_redirect_starts_next_cycle_when_budget_remains() -> None:
-    """A deadline-redirected cycle finalizes, then plans the next cycle."""
     policy = _policy()
     state = PipelineState(
         phase="development_analysis",
@@ -95,7 +81,6 @@ def test_timebox_redirect_starts_next_cycle_when_budget_remains() -> None:
 
 
 def test_concluded_cycle_does_not_redirect_a_later_development_entry() -> None:
-    """Consumed seconds survive a concluded cycle and must not redirect the next one."""
     policy = _policy()
     state = PipelineState(
         phase="planning_analysis",
@@ -113,13 +98,6 @@ def test_concluded_cycle_does_not_redirect_a_later_development_entry() -> None:
 
 
 def test_recorded_failure_outranks_a_deadline_redirect() -> None:
-    """Running out of time is not a verdict and must not overwrite one.
-
-    The analysis phase records `failed` and its route re-enters development,
-    which the expired deadline then redirects to finalization. The recorded
-    failure has to survive that redirect, or an out-of-budget failed run
-    reports success.
-    """
     from ralph.policy.models import PhaseDecisionRoute
 
     base = _policy()
@@ -165,7 +143,6 @@ def test_recorded_failure_outranks_a_deadline_redirect() -> None:
 
 
 def test_analysis_success_without_a_decision_starts_the_next_cycle() -> None:
-    """Leaving analysis forward concludes the cycle even with no decision artifact."""
     policy = _policy()
     state = PipelineState(
         phase="development_analysis",
@@ -183,7 +160,6 @@ def test_analysis_success_without_a_decision_starts_the_next_cycle() -> None:
 
 
 def test_inactive_timer_does_not_guard_a_development_entry() -> None:
-    """A stale consumed count must not redirect an entry made with no cycle running."""
     policy = _policy()
     state = PipelineState(
         phase="development_analysis",
@@ -204,7 +180,6 @@ def test_inactive_timer_does_not_guard_a_development_entry() -> None:
 
 
 def test_timebox_redirect_completes_run_when_budget_is_spent() -> None:
-    """A deadline-redirected cycle still ends the run once no dev cycles remain."""
     policy = _policy()
     state = PipelineState(
         phase="development_analysis",
@@ -228,7 +203,6 @@ def test_timebox_redirect_completes_run_when_budget_is_spent() -> None:
 
 
 def test_timebox_finalization_outcome_is_policy_declared() -> None:
-    """Declaring `failed` sends an out-of-budget timed-out cycle to the failure terminal."""
     from ralph.policy.models import CycleTimeboxPolicy
 
     base = _policy()
@@ -263,7 +237,6 @@ def test_timebox_finalization_outcome_is_policy_declared() -> None:
 
 
 def test_resumed_state_without_a_recorded_outcome_starts_the_next_cycle() -> None:
-    """A checkpoint written before cycle outcomes existed must not end the run early."""
     policy = _policy()
     state = PipelineState(
         phase="development_final_commit",
@@ -278,7 +251,6 @@ def test_resumed_state_without_a_recorded_outcome_starts_the_next_cycle() -> Non
 
 
 def test_exhausted_analysis_loop_completes_run_when_budget_is_spent() -> None:
-    """With no iteration budget left, the same path ends the run instead of looping."""
     policy = _policy()
     state = PipelineState(
         phase="development_commit",
@@ -297,13 +269,6 @@ def test_exhausted_analysis_loop_completes_run_when_budget_is_spent() -> None:
 
 
 def test_cycle_is_timed_even_when_planning_analysis_is_skipped() -> None:
-    """A skipped planning-analysis must not leave the whole cycle untimed.
-
-    The timer is bound to the declared `planning_analysis -> development`
-    edge so unrelated routes cannot restart it. When that phase is skipped
-    because its loop budget is spent, the run still enters development to
-    begin a cycle — and that cycle has to be on the clock like any other.
-    """
     policy = _policy()
     state = PipelineState(
         phase="planning",
@@ -320,12 +285,6 @@ def test_cycle_is_timed_even_when_planning_analysis_is_skipped() -> None:
 
 
 def test_redirect_reason_survives_to_the_run_time_report(tmp_path: Path) -> None:
-    """The operator must still be told a deadline forced the finalization.
-
-    The reason is the only record of WHY the cycle ended where it did, and the
-    report reads it off the final state — so clearing it at the commit that
-    concludes the redirected cycle would erase it one step before it is read.
-    """
     from ralph.pipeline.run_time_report import emit_run_time_report
 
     policy = _policy()
@@ -345,10 +304,6 @@ def test_redirect_reason_survives_to_the_run_time_report(tmp_path: Path) -> None
     )
     state = _drive_to_next_cycle(state, policy, elapsed=36000.0)
 
-    # Emitted, not merely rendered: the report is validated against a CLOSED
-    # markdown spec on the way out, and an undeclared section fails that
-    # validation and discards the whole report — so a renderer-only assertion
-    # passes while the operator receives nothing.
     emit_run_time_report(
         tmp_path,
         state=state,
@@ -360,8 +315,6 @@ def test_redirect_reason_survives_to_the_run_time_report(tmp_path: Path) -> None
 
     assert "[CT-2] Redirected cycles: 1;" in report
     assert "cycle timebox reached" in report
-    # The reason ends with the phase the cycle was redirected to, so a report
-    # that truncates it names a phase that does not exist.
     assert "redirecting to development_final_commit_review" in report
 
 
@@ -384,7 +337,6 @@ def test_bypassed_analysis_into_finalization_preserves_the_cycle() -> None:
 
 
 def test_next_cycle_after_a_bypassed_finalization_reaches_development() -> None:
-    """The cycle that follows must get its own full budget, not the leftovers."""
     policy = _policy()
     state = PipelineState(
         phase="development_commit",
@@ -409,14 +361,6 @@ def test_next_cycle_after_a_bypassed_finalization_reaches_development() -> None:
 
 
 def test_bypassed_start_edge_does_not_redirect_the_cycle_it_just_started() -> None:
-    """A cycle that starts on this very transition must not be judged as expired.
-
-    When the start source is itself skipped for a spent loop budget, the timer
-    starts and its consumed count resets to zero — but the elapsed seconds
-    sampled for this step still describe the PREVIOUS cycle. Judging the new
-    cycle against them redirects it instantly, burning a dev cycle that never
-    ran any development.
-    """
     policy = _policy()
     state = PipelineState(
         phase="planning_analysis",
@@ -463,13 +407,6 @@ def test_skipping_final_commit_does_not_reset_the_cycle_timer() -> None:
 
 
 def test_intermediate_commit_does_not_destroy_a_recorded_verdict() -> None:
-    """Only the commit that closes a cycle consumes that cycle's verdict.
-
-    A graph that reviews before committing records `failed` and then passes
-    through an intermediate commit on its way to the final one. Clearing the
-    verdict at every commit-role phase threw it away, and the outcome-less
-    cycle was then routed as `completed` — a failed run reporting success.
-    """
     policy = _policy()
     state = PipelineState(
         phase="development_commit",
@@ -489,15 +426,6 @@ def test_intermediate_commit_does_not_destroy_a_recorded_verdict() -> None:
 
 
 def test_the_recovery_failed_route_keeps_the_cycle_timer_armed() -> None:
-    """The recovery failed route is a terminal here but does not end the run.
-
-    The effect router turns it back into the phase the run was in, so the run
-    re-enters the same cycle. Disarming the timer on the way through left the
-    rest of that cycle unbounded, with no way to re-arm — starting a timer
-    requires an inactive one. A run that really does die inside its cycle is
-    handled by the report, which describes the cycle as open at exit rather
-    than as still running.
-    """
     policy = _policy()
     state = PipelineState(
         phase="development_commit_review",
@@ -586,15 +514,6 @@ def test_a_loopback_that_skips_final_commit_preserves_the_timer() -> None:
 
 
 def test_commit_review_loop_cap_still_counts_after_a_charged_analysis_cycle() -> None:
-    """A cleanup loop must remain bounded however the cycle got there.
-
-    The charged-cycle flag is set when the invocation gate admits analysis and
-    cleared only on entry to an execution phase, so it is still set at the
-    cleanup phase later in the same cycle. Suppressing the charge there froze
-    that phase's own counter, its cap never fired, and a cleanup that kept
-    asking to loop looped forever — with the cycle timer already concluded, so
-    nothing could bound it.
-    """
     policy = _policy()
     state = PipelineState(
         phase="development_final_commit_review",
@@ -614,12 +533,6 @@ def test_commit_review_loop_cap_still_counts_after_a_charged_analysis_cycle() ->
 
 
 def test_a_redirect_reason_does_not_ride_into_the_next_cycle() -> None:
-    """The reason belongs to the cycle that earned it.
-
-    A redirected cycle is normally followed by another, and a reason carried
-    across would make the fresh cycle's report claim a deadline it never hit.
-    Driven end to end because a hand-built state cannot show the clearing.
-    """
     policy = _policy()
     state = PipelineState(
         phase="development_analysis",
@@ -638,7 +551,6 @@ def test_a_redirect_reason_does_not_ride_into_the_next_cycle() -> None:
     assert state.cycle_timebox_redirect_reason is not None
     state = _drive_to_next_cycle(state, policy, elapsed=36000.0)
 
-    # Plan the next cycle and enter development, starting a fresh timer.
     assert state.phase == "planning"
     state, _ = reduce(state, PipelineEvent.AGENT_SUCCESS, policy, routing_timing=_rt(0.0))
     state, _ = reduce(state, PipelineEvent.AGENT_SUCCESS, policy, routing_timing=_rt(0.0))
@@ -646,5 +558,4 @@ def test_a_redirect_reason_does_not_ride_into_the_next_cycle() -> None:
     assert state.phase == "development"
     assert state.cycle_timebox_active is True
     assert state.cycle_timebox_redirect_reason is None
-    # The running total still records that an earlier cycle was redirected.
     assert state.cycle_timebox_redirects == 1

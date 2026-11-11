@@ -1,13 +1,3 @@
-"""Policy-driven acceptance tests — Product Requirements 1-10 and Criteria A-H.
-
-These tests assert every product requirement and acceptance criterion against a
-fully renamed PolicyBundle (no canonical phase names). Any regression that
-re-introduces hidden phase name knowledge in the runtime will fail here.
-
-Scope: pure functions only. No I/O.
-Runtime budget: ≤ 5 seconds for the full module.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -35,17 +25,6 @@ from ralph.policy.models import (
 
 @pytest.fixture(scope="module")
 def policy_with_renamed_phases() -> PolicyBundle:
-    """Fully custom-named PolicyBundle — no canonical Ralph phase names.
-
-    Custom name mappings (canonical → custom):
-      planning          → design
-      development       → build
-      development_analysis → audit
-      development_commit → sign_off
-      review            → inspect
-      complete          → done
-      failed_terminal   → aborted
-    """
     agents = AgentsPolicy(
         agent_chains={
             "design_chain": AgentChainConfig(agents=["fake-agent"]),
@@ -173,16 +152,10 @@ def policy_with_renamed_phases() -> PolicyBundle:
     return PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
 
 
-# =============================================================================
-# Requirement 1: Policy must fully define user-visible routing semantics
-# =============================================================================
-
-
 class TestRequirement9ArtifactExpectations:
     def test_artifact_contract_declared_in_policy(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """ArtifactsPolicy contains the artifact contract declared for 'audit' drain."""
         artifacts = policy_with_renamed_phases.artifacts
         assert "audit_decision" in artifacts.artifacts
         ac = artifacts.artifacts["audit_decision"]
@@ -193,7 +166,6 @@ class TestRequirement9ArtifactExpectations:
     def test_decision_vocabulary_covers_all_audit_decisions(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """The artifact's decision_vocabulary covers all decisions declared in the phase."""
         audit_def = policy_with_renamed_phases.pipeline.phases["audit"]
         ac = policy_with_renamed_phases.artifacts.artifacts["audit_decision"]
         for decision_name in audit_def.decisions:

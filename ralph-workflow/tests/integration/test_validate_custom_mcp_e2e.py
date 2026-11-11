@@ -1,5 +1,3 @@
-"""End-to-end tests for the runner's custom MCP startup validation."""
-
 from __future__ import annotations
 
 import json

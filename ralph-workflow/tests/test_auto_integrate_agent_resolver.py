@@ -1,15 +1,3 @@
-"""Unit contracts for the conflict-resolver builder.
-
-All-mock: no test here starts git or a real agent subprocess. The
-builder is a thin adapter now, so its contract is (a) it delegates to the
-conflict-resolution pipeline with the seam's dependencies threaded
-through, (b) a MISSING dependency declines instead of falling back to an
-MCP-less invocation -- that fallback was the defect -- and (c) every
-failure mode is contained as ``False`` so
-:mod:`ralph.pipeline.auto_integrate_resolve` aborts the merge rather than
-crashing the run.
-"""
-
 from __future__ import annotations
 
 from functools import lru_cache
@@ -33,8 +21,6 @@ def _load_default_policy_bundle() -> PolicyBundle:
     return load_policy(defaults_dir)
 
 
-#: Distinct from every other timeout default so an assertion on it
-#: cannot pass by coincidence.
 _RESOLVE_TIMEOUT_SECONDS = 123.5
 
 
@@ -72,7 +58,6 @@ def _build_resolver(
 def _install_pipeline_spy(
     monkeypatch: pytest.MonkeyPatch, *, result: bool = True
 ) -> list[dict[str, object]]:
-    """Replace the pipeline with a recorder; returns the recorded kwargs."""
     calls: list[dict[str, object]] = []
 
     def _fake_pipeline(**kwargs: object) -> bool:
@@ -86,7 +71,6 @@ def _install_pipeline_spy(
 def test_resolver_delegates_to_the_conflict_resolution_pipeline(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The seam's dependencies reach the pipeline that needs them."""
     calls = _install_pipeline_spy(monkeypatch)
     resolver, registry, _display = _build_resolver(agent_config=object())
 
@@ -96,11 +80,9 @@ def test_resolver_delegates_to_the_conflict_resolution_pipeline(
     kwargs = calls[0]
     assert kwargs["root"] == tmp_path
     assert kwargs["target"] == "main"
-    # Without these two the pipeline cannot build an MCP session at all.
     assert kwargs["pipeline_deps"] == "pipeline-deps-sentinel"
     assert kwargs["workspace_scope"] == "workspace-scope-sentinel"
     assert kwargs["policy_bundle"] is _load_default_policy_bundle()
-    # The resolution chain is checked against the installed agents first.
     looked_up = [call.args[0] for call in registry.get.call_args_list]
     assert looked_up[0] == "claude"
 
@@ -108,7 +90,6 @@ def test_resolver_delegates_to_the_conflict_resolution_pipeline(
 def test_resolver_reports_the_pipeline_verdict(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A pipeline that could not resolve is reported as failure, not success."""
     _install_pipeline_spy(monkeypatch, result=False)
     resolver, _registry, _display = _build_resolver(agent_config=object())
 
@@ -118,12 +99,6 @@ def test_resolver_reports_the_pipeline_verdict(
 def test_resolver_declines_without_pipeline_deps(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A seam that did not thread pipeline_deps must NOT invoke an agent.
-
-    An invocation without pipeline_deps has no Ralph MCP session, hence
-    no exec-policy git denial and no completion contract. Declining is
-    the only safe answer.
-    """
     calls = _install_pipeline_spy(monkeypatch)
     resolver, _registry, _display = _build_resolver(agent_config=object(), pipeline_deps=None)
 
@@ -134,7 +109,6 @@ def test_resolver_declines_without_pipeline_deps(
 def test_resolver_declines_without_workspace_scope(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Same contract for the other required dependency."""
     calls = _install_pipeline_spy(monkeypatch)
     resolver, _registry, _display = _build_resolver(agent_config=object(), workspace_scope=None)
 
@@ -142,15 +116,10 @@ def test_resolver_declines_without_workspace_scope(
     assert calls == []
 
 
-# Bounded per-test timeout (5s): filesystem PATH probing legitimately
-# grazes the 1.0s default bound only when the full suite loads the machine;
-# the bound keeps it under the per-test policy without touching the 60s
-# combined budget.
 @pytest.mark.timeout_seconds(5)
 def test_resolver_declines_when_no_chain_agent_is_installed(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """No usable agent: decline before paying for a session."""
     calls = _install_pipeline_spy(monkeypatch)
     resolver, _registry, _display = _build_resolver(agent_config=None)
 
@@ -161,7 +130,6 @@ def test_resolver_declines_when_no_chain_agent_is_installed(
 def test_resolver_contains_a_pipeline_exception(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The resolver never raises into the integration step."""
 
     def _boom(**_kwargs: object) -> bool:
         raise RuntimeError("pipeline exploded")
@@ -171,7 +139,7 @@ def test_resolver_contains_a_pipeline_exception(
 
     try:
         resolved = resolver(tmp_path, "main")
-    except Exception as exc:  # pragma: no cover - the assertion below reports it
+    except Exception as exc:
         raise AssertionError(f"resolver must not raise: {exc}") from exc
     assert resolved is False
 
@@ -179,7 +147,6 @@ def test_resolver_contains_a_pipeline_exception(
 def test_resolver_issues_no_git_command_itself(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Aborting and committing the merge belong to the caller, not here."""
     _install_pipeline_spy(monkeypatch, result=False)
     run_git = MagicMock()
     monkeypatch.setattr("ralph.git.subprocess_runner.run_git", run_git, raising=True)

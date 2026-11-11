@@ -1,5 +1,3 @@
-"""Tests for ralph/mcp/tool_workspace.py — MCP workspace tool handlers."""
-
 from __future__ import annotations
 
 import json
@@ -22,8 +20,6 @@ DEFAULT_MAX_INLINE_BYTES = 5_242_880
 
 
 class TestHandleReadFileFullReadTruncation:
-    """Tests for oversize truncation in handle_read_file."""
-
     def test_small_file_returns_plain_text(self) -> None:
         ws = MagicMock()
         ws.stat.return_value = {"type": "file", "size_bytes": 100}

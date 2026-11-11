@@ -1,15 +1,3 @@
-"""Tests for the conflict-resolution pipeline's terminal outcome evidence.
-
-This module covers the typed ``ResolutionOutcome`` surface and the
-strategy-rotation session rules: how an invoker-returned failure cause
-propagates into the outcome, and why rotating strategies must not
-replenish the round budget or reset candidate state that the failure
-ledger still needs.
-
-Every test injects the round runner and the git seams, so nothing here
-launches a process or touches a repository.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -40,12 +28,10 @@ pytestmark = pytest.mark.timeout_seconds(5)
 
 @pytest.fixture(autouse=True)
 def _no_real_cooldown_waits(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A failed agent is benched and the driver waits out its cooldown; never for real here."""
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
 
 
 def _policy_bundle() -> PolicyBundle:
-    """Return the preloaded default policy that declares the resolution drain."""
     return _POLICY_BUNDLE
 
 
@@ -59,7 +45,6 @@ def _install_seams(
     unmerged: Sequence[str],
     surviving_per_round: Sequence[Sequence[str]],
 ) -> list[Sequence[str]]:
-    """Stub the two git queries the driver's verdict rests on."""
     scans: list[Sequence[str]] = []
     monkeypatch.setattr(driver_module, "unmerged_paths", lambda root: list(unmerged))
     monkeypatch.setattr(

@@ -1,4 +1,3 @@
-"""Run metrics model for pipeline state."""
 
 from __future__ import annotations
 
@@ -10,7 +9,6 @@ _FROZEN = ConfigDict(frozen=True)
 
 
 class RunMetrics(RalphBaseModel):
-    """Run-level execution metrics."""
 
     model_config = _FROZEN
 
@@ -20,7 +18,6 @@ class RunMetrics(RalphBaseModel):
     total_retries: int = 0
 
     def with_retry_increment(self) -> RunMetrics:
-        """Return a copy with total_retries incremented by 1."""
         return RunMetrics(
             total_agent_calls=self.total_agent_calls,
             total_continuations=self.total_continuations,
@@ -29,7 +26,6 @@ class RunMetrics(RalphBaseModel):
         )
 
     def with_fallback_increment(self) -> RunMetrics:
-        """Return a copy with total_fallbacks incremented by 1."""
         return RunMetrics(
             total_agent_calls=self.total_agent_calls,
             total_continuations=self.total_continuations,
@@ -38,7 +34,6 @@ class RunMetrics(RalphBaseModel):
         )
 
     def with_continuation_increment(self) -> RunMetrics:
-        """Return a copy with total_continuations incremented by 1."""
         return RunMetrics(
             total_agent_calls=self.total_agent_calls,
             total_continuations=self.total_continuations + 1,

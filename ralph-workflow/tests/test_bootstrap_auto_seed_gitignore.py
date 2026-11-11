@@ -1,10 +1,3 @@
-"""Black-box tests for ``auto_seed_default_gitignore`` in ``ralph.config.bootstrap``.
-
-The function must be idempotent, preserve user-added lines, and cover the
-prompt-named categories of common project structures (Python, Node, editor,
-OS). All tests use ``tmp_path`` for I/O.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -20,7 +13,6 @@ from ralph.config.bootstrap import (
 
 
 def test_auto_seed_creates_gitignore_when_missing(tmp_path: Path) -> None:
-    """Fresh tmp_path with no .gitignore: helper creates one and seeds every default pattern."""
     assert not (tmp_path / ".gitignore").exists()
 
     appended = auto_seed_default_gitignore(tmp_path)
@@ -38,7 +30,6 @@ def test_auto_seed_creates_gitignore_when_missing(tmp_path: Path) -> None:
 
 
 def test_auto_seed_is_idempotent(tmp_path: Path) -> None:
-    """Calling the helper twice with the same repo_root must return [] on the second call."""
     gitignore_path = tmp_path / ".gitignore"
     gitignore_path.write_text("\n".join(_DEFAULT_GITIGNORE_PATTERNS) + "\n", encoding="utf-8")
     pre_sha = hashlib.sha256(gitignore_path.read_bytes()).hexdigest()
@@ -51,7 +42,6 @@ def test_auto_seed_is_idempotent(tmp_path: Path) -> None:
 
 
 def test_auto_seed_preserves_user_patterns(tmp_path: Path) -> None:
-    """A user-customized .gitignore with a custom line + the full default set is preserved."""
     gitignore_path = tmp_path / ".gitignore"
     user_line = "# my custom ignore"
     custom_block = "\n".join((user_line, *_DEFAULT_GITIGNORE_PATTERNS))
@@ -71,14 +61,6 @@ def test_auto_seed_preserves_user_patterns(tmp_path: Path) -> None:
 def test_auto_seed_default_gitignore_uses_atomic_helper(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``auto_seed_default_gitignore`` must publish via the atomic helper.
-
-    The atomic helper ensures SIGKILL mid-write leaves the target
-    ``.gitignore`` intact (writes are staged to a sibling file, then
-    ``Path.replace()``d into place). Regression: the previous
-    implementation used a non-atomic ``open('a')`` write that could
-    truncate or corrupt the file on a concurrent reader or signal.
-    """
     captured: list[tuple[Path, str]] = []
     real_atomic = bs_module._atomic_append_text
 
@@ -99,54 +81,32 @@ def test_auto_seed_default_gitignore_uses_atomic_helper(
 
 
 def test_auto_seed_idempotent_repair_appends_child_rule_only_when_absent(tmp_path: Path) -> None:
-    """AC-05: ``.agent/ralph-explore/`` must be in the seeded default
-    gitignore. The second pass is a no-op when the explicit child
-    rule is already present; the first pass on a fresh tree seeds
-    the literal ``.agent/ralph-explore/`` line so the disposable
-    cache coverage is reported transparently. User content
-    already in ``.gitignore`` is preserved in both passes.
-    """
     appended_first = auto_seed_default_gitignore(tmp_path)
-    # The literal child rule must appear in the first-pass appended
-    # list so the disposable cache coverage is explicit.
     assert ".agent/ralph-explore/" in appended_first
     gitignore_text = (tmp_path / ".gitignore").read_text(encoding="utf-8")
     assert ".agent/ralph-explore/" in gitignore_text.splitlines()
 
-    # Add a user line above the defaults to make sure the seeder
-    # preserves it on the second pass.
     gitignore = tmp_path / ".gitignore"
     user_line = "# user custom line"
     existing = gitignore.read_text(encoding="utf-8")
     gitignore.write_text(user_line + "\n" + existing, encoding="utf-8")
 
-    # Second pass: idempotent; nothing new is appended. The user
-    # line and the explicit child rule are preserved.
     appended_second = auto_seed_default_gitignore(tmp_path)
     assert appended_second == []
     after = gitignore.read_text(encoding="utf-8").splitlines()
     assert after[0] == user_line
     assert ".agent/ralph-explore/" in after
 
-    # A subsequent pass that REMOVES the explicit child rule
-    # (simulating a regression / hand-edit) must repair it on the
-    # next call. The seeder is idempotent against the parent
-    # ``.agent/`` rule and additive against the explicit child
-    # rule; removing the child rule and re-seeding must restore
-    # the literal line without touching the parent.
     new_lines = [line for line in after if line.strip() != ".agent/ralph-explore/"]
     gitignore.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
     appended_third = auto_seed_default_gitignore(tmp_path)
     assert ".agent/ralph-explore/" in appended_third
     final_text = gitignore.read_text(encoding="utf-8")
     assert ".agent/ralph-explore/" in final_text.splitlines()
-    # The parent ``.agent/`` rule was already present and must NOT
-    # be re-appended.
     assert final_text.count(".agent/") >= 1
 
 
 def test_auto_seed_covers_common_project_structures(tmp_path: Path) -> None:
-    """The .gitignore covers the prompt-named categories: Python, Node, editor, OS."""
     auto_seed_default_gitignore(tmp_path)
     gitignore_text = (tmp_path / ".gitignore").read_text(encoding="utf-8")
 
@@ -159,15 +119,6 @@ def test_auto_seed_covers_common_project_structures(tmp_path: Path) -> None:
 def test_auto_seed_gitignore_warns_on_unreadable_existing_file(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """S-8: a read OSError on existing .gitignore must surface as a visible warning.
-
-    Before the fix the read was a bare ``except OSError: existing = set()``,
-    which silently treated an unreadable .gitignore as if it were empty
-    -- a permission failure would cause every default pattern to be
-    appended on the next run, producing duplicates. After the fix the
-    helper emits a ``logger.warning`` so the operator can investigate
-    the read failure without breaking the run.
-    """
     from loguru import logger
 
     gitignore = tmp_path / ".gitignore"
@@ -189,9 +140,6 @@ def test_auto_seed_gitignore_warns_on_unreadable_existing_file(
     finally:
         logger.remove(sink_id)
 
-    # The run still proceeds (best-effort) and the seeder returned the
-    # full default pattern list (because it could not read the existing
-    # lines).
     assert appended, (
         "best-effort seeder MUST still append defaults when the existing"
         " file cannot be read; got an empty appended list"
@@ -212,9 +160,6 @@ def test_auto_seed_gitignore_warns_on_unreadable_existing_file(
 def test_auto_seed_git_exclude_warns_on_unreadable_existing_file(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """S-8: a read OSError on existing .git/info/exclude must surface as a warning."""
-    # Build a real git repo so ``_resolve_git_exclude_path`` returns
-    # the canonical ``.git/info/exclude`` path.
     from git import Repo
     from loguru import logger
 
@@ -256,16 +201,8 @@ def test_auto_seed_git_exclude_warns_on_unreadable_existing_file(
     )
 
 
-# --- wt-012 DA-001/DA-008: the bootstrap writer commits immediately ----------
-
-
 @pytest.mark.timeout_seconds(5)
 def test_gitignore_seed_is_committed_immediately(tmp_git_repo: Path) -> None:
-    """DA-001/DA-008: the auto-seed leaves HEAD holding the seeded .gitignore.
-
-    The deterministic gitignore writer must commit before returning (in a
-    git workspace); after the call, ``git status`` must be clean.
-    """
     from git import Actor, Repo
 
     repo = Repo(tmp_git_repo)
@@ -294,7 +231,6 @@ def test_gitignore_seed_is_committed_immediately(tmp_git_repo: Path) -> None:
 
 @pytest.mark.timeout_seconds(5)
 def test_ensure_default_gitignore_commits_in_git_workspace(tmp_git_repo: Path) -> None:
-    """DA-001: the bootstrap support-config path commits the gitignore append."""
     from git import Actor, Repo
 
     repo = Repo(tmp_git_repo)

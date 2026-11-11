@@ -1,4 +1,3 @@
-"""Nanocoder interactive output parser."""
 
 from __future__ import annotations
 
@@ -34,14 +33,6 @@ def _status_signature(text: str) -> str:
 
 
 class NanocoderParser(GenericParser):
-    """Parser for Nanocoder's interactive PTY stream.
-
-    Nanocoder redraws a terminal UI while it works. Many PTY frames contain
-    only cursor movement, erase codes, or whitespace after VT normalization.
-    The generic parser turns those frames into visible ``raw`` events, which
-    floods operator output. Nanocoder keeps GenericParser's plain-text tool
-    marker support, but suppresses control-only frames.
-    """
 
     def __init__(
         self,

@@ -1,5 +1,3 @@
-"""Tests: analysis template payload contracts are correctly enforced."""
-
 from __future__ import annotations
 
 from pathlib import Path

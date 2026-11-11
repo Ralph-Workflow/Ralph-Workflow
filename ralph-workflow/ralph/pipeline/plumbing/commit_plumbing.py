@@ -1,30 +1,3 @@
-"""Commit plumbing: chain iteration + classifier routing for ``commit`` CLI.
-
-The ``commit`` / ``--generate-commit`` CLI command needs pipeline
-functionality (iteration across the effective ``commit`` drain, retry
-decisioning, session resume). Previously the CLI command reimplemented
-this orchestration inline — which kept failure-classification and
-``extract_transport_session_id(...)`` calls duplicated against the
-shared retry loop in :func:`ralph.agents.invoke._direct_mcp_recovery.run_with_direct_mcp_recovery`.
-
-This module is the SINGLE owner of commit-time chain iteration. The
-CLI surface in :mod:`ralph.cli.commands.commit` calls
-:func:`run_commit_plumbing` and stays thin (option parsing, output
-formatting, exit codes only).
-
-Inline classifier construction in the pre-fix ``commit.py`` is
-MOVED behind :func:`should_reset_tool_registry` so every recoverable
-failure in the commit path is routed through the same
-:func:`run_with_direct_mcp_recovery` retry loop the pipeline runner
-uses. The plumbing module does not construct the classifier
-directly (enforced by the anti-drift regression test).
-
-Public surface (kept narrow on purpose):
-
-- :class:`CommitAgentResult` — result dataclass with ``session_id``,
-  ``last_error``, ``output`` so the CLI can format the result.
-- :func:`run_commit_plumbing` — the chain-iteration entry point.
-"""
 
 from __future__ import annotations
 
@@ -133,7 +106,6 @@ if TYPE_CHECKING:
 
 
 def _commit_cli_module() -> types.ModuleType:
-    """Resolve the CLI patch surface lazily without creating an import cycle."""
     return importlib.import_module("ralph.cli.commands.commit")
 
 
@@ -156,16 +128,6 @@ _COMMIT_RUN_ID = "commit-plumbing"
 
 
 class CommitAgentOutcome(Enum):
-    """Single-source outcome category returned by :func:`run_commit_plumbing`.
-
-    The plumbing module is the only owner of which category a result
-    falls into. Callers use :attr:`CommitAgentResult.outcome` to render
-    the result without inferring failure from a missing ``message``
-    string -- the contract was previously ambiguous when a recoverable
-    retry failure produced both a ``message`` and ``failure_details``,
-    and a chain that yielded nothing left the CLI unable to tell apart
-    "completed" from "silent failure".
-    """
 
     COMPLETED = "completed"
     SKIPPED = "skipped"
@@ -174,19 +136,6 @@ class CommitAgentOutcome(Enum):
 
 @dataclass(frozen=True)
 class CommitAgentResult:
-    """Aggregated result returned after all commit-message agent attempts complete.
-
-    The CLI surface consumes this dataclass for output formatting and
-    exit code derivation. The new ``output`` field exposes the captured
-    agent lines so the CLI can render transcript content when
-    ``verbose`` is enabled.
-
-    The ``outcome`` field is the SINGLE authoritative completion
-    category (AC8). It is set by :func:`run_commit_plumbing` and never
-    left implicit -- the absence of a ``message`` is no longer the
-    only signal of failure, and the CLI must check ``outcome`` to
-    avoid displaying a failed commit as a completed one.
-    """
 
     message: str = ""
     skipped: bool = False
@@ -198,12 +147,6 @@ class CommitAgentResult:
 
     @property
     def failed(self) -> bool:
-        """True iff the commit phase did not produce a usable commit message.
-
-        Matches the legacy contract that distinguishes success from
-        failure by the presence of a message (a skip and a successful
-        message are both ``not failed``).
-        """
         if self.skipped:
             return False
         return not bool(self.message.strip())
@@ -226,20 +169,6 @@ def _apply_commit_deps_overrides(
     materializer: MaterializeMasterPromptFn | None,
     registry: object | None,
 ) -> PipelineDeps:
-    """Apply commit-specific overrides to a ``PipelineDeps`` bundle.
-
-    Composes the chain registry and swaps in the late-bound test-patch
-    bridge factory when the default production bridge is in use. Core
-    collaborators are replaced on the embedded :class:`PipelineCore`;
-    extended fields are replaced on ``deps`` itself.
-
-    The artifact contract is NOT wired through
-    ``core.artifact_requirements_resolver``: that resolver is only ever
-    consulted when the invocation carries a ``policy_bundle``, which the
-    standalone commit path never does. The contract is declared directly
-    on the ``execute_agent_effect`` call instead — see
-    :func:`_run_commit_agent_attempt_with_recovery`.
-    """
     core = deps.core
     if materializer is not None:
         core = dataclasses.replace(core, master_prompt_materializer=materializer)
@@ -250,11 +179,6 @@ def _apply_commit_deps_overrides(
             return registry
 
         deps = dataclasses.replace(deps, registry_factory=_registry_factory)
-    # Preserve the legacy late-bound test-patch surface when no explicit
-    # bridge factory was injected. Tests monkeypatch
-    # ``ralph.cli.commands.commit.start_commit_bridge``; the wrapper below
-    # resolves that attribute at call time so the patch is honored while
-    # still routing default commit bridge creation through PipelineDeps.
     if deps.bridge_factory is build_session_bridge:
         deps = dataclasses.replace(deps, bridge_factory=_default_commit_bridge_factory)
     if core is not deps.core:
@@ -269,11 +193,6 @@ def _commit_pipeline_deps(
     registry: object | None = None,
     pro_hooks: ProPipelineHooks | None = None,
 ) -> PipelineDeps:
-    """Build PipelineDeps for the commit plumbing fallback path.
-
-    Routes through :class:`DefaultPipelineFactory` so a Pro subclassed
-    factory is honored on the plumbing-direct-call path.
-    """
     deps = DefaultPipelineFactory().build(config, display_context, pro_hooks=pro_hooks)
     return _apply_commit_deps_overrides(deps, materializer=materializer, registry=registry)
 
@@ -287,7 +206,6 @@ def _resolve_effective_commit_deps(
     chain_config: CommitChainConfig,
     pro_hooks: ProPipelineHooks | None,
 ) -> tuple[PipelineDeps, DisplayContext]:
-    """Resolve effective pipeline deps and display context for commit plumbing."""
     if pipeline_deps is not None:
         effective_display = (
             pipeline_deps.display_context if display_context is None else display_context
@@ -319,7 +237,7 @@ def _resolve_effective_commit_deps(
     effective_pipeline_deps = _commit_pipeline_deps(
         cast(
             "UnifiedConfig", chain_config.general_config
-        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        ),
         display_context,
         materializer=None,
         registry=chain_config.registry,
@@ -329,7 +247,6 @@ def _resolve_effective_commit_deps(
 
 
 def _resolve_commit_evidence(repo_root: Path, fallback_diff: str) -> str | CommitEvidenceBundle:
-    """Resolve the commit evidence bundle or fallback diff for an agent attempt."""
     if (repo_root / ".git").exists():
         bundle = build_commit_evidence_bundle(repo_root)
         if bundle.diff.strip():
@@ -348,30 +265,6 @@ def run_commit_plumbing(
     pipeline_deps: PipelineDeps | None = None,
     pro_hooks: ProPipelineHooks | None = None,
 ) -> CommitAgentResult:
-    """Iterate the commit chain, delegating each agent to the shared execution core.
-
-    The chain iterates over each agent in ``chain_config.agents``; for
-    each agent, the actual invocation is delegated to
-    :func:`ralph.pipeline.effect_executor.execute_agent_effect` so the
-    commit path shares the same bridge lifecycle, retry, and output
-    handling as the main pipeline.
-
-    Callers may supply either the modular ``pipeline_core`` + ``bridge_factory``
-    surface or the legacy extended ``pipeline_deps`` bundle. When
-    ``pipeline_deps`` is provided it is used for backward compatibility and
-    its ``core`` and ``bridge_factory`` are derived automatically. When both
-    are omitted, production defaults are used and the legacy late-bound
-    bridge resolver is preserved so existing test monkeypatches continue to
-    work.
-
-    ``pro_hooks`` is forwarded to :class:`DefaultPipelineFactory` when the
-    fallback path builds a fresh ``PipelineDeps``, so Pro factory subclassing
-    is honored even for direct plumbing callers.
-
-    No inline failure-classifier construction sites live in this
-    module; recovery decisions are routed exclusively through the
-    shared execution core.
-    """
     effective_pipeline_deps, display_context = _resolve_effective_commit_deps(
         pipeline_deps=pipeline_deps,
         pipeline_core=pipeline_core,
@@ -413,13 +306,9 @@ def run_commit_plumbing(
         session_id_prefix="commit",
         agents_policy=chain_config.agents_policy,
         transport=commit_chain_transport(chain_config),
-        # A chain whose agents disagree has no honest provider, so the
-        # injected identity must not supply one for the whole chain.
         drop_injected_identity=commit_chain_is_ambiguous(chain_config),
     ) as bridge:
         extra_env = _commit_bridge_env(bridge)
-        # Normalize the key set so downstream consumers (and tests)
-        # observe string keys, never the ``McpEnvVar`` enum.
         if extra_env is not None:
             extra_env = _stringify_extra_env(extra_env)
         for agent_name in chain_config.agents:
@@ -482,14 +371,6 @@ def run_commit_plumbing(
                     outcome=CommitAgentOutcome.COMPLETED,
                 )
 
-    # AC8: a chain that completes every agent without yielding a message
-    # MUST NOT silently render as completed. Surface the gap with an
-    # explicit outcome=FAILED plus a non-empty failure_details entry so
-    # the CLI's "Failed to generate commit message" path has something
-    # concrete to print. The previous contract only inferred failure
-    # from ``not result.message``; a fully blank attempt today could
-    # masquerade as success in status-bar surfaces if the consumer
-    # forgot to check that field.
     if not failure_details:
         failure_details.append(_NO_COMMIT_MESSAGE_REASON)
     return CommitAgentResult(
@@ -685,13 +566,6 @@ def _run_commit_agent_attempt_with_recovery(
     materializer: MaterializeMasterPromptFn | None = None,
     pipeline_deps: PipelineDeps | None = None,
 ) -> tuple[CommitAgentAttempt, str | None, Exception | None]:
-    """Run a single commit-agent attempt through the shared execution core.
-
-    Returns ``(attempt, last_session_id, last_error)``. The session id
-    and last exception are captured so the chain orchestrator can thread
-    them into the next attempt (when ``recovery_action`` is ``resume``)
-    and report them in the final :class:`CommitAgentResult`.
-    """
     last_session_id: str | None = prior_session_id
     last_error: Exception | None = None
     commit_module = _commit_cli_module()
@@ -711,17 +585,6 @@ def _run_commit_agent_attempt_with_recovery(
         commit_module, "delete_commit_message_artifacts", delete_commit_message_artifacts
     )
     delete_artifacts(attempt_context.repo_root)
-    # The commit run_id is fixed ("commit-plumbing") and reused across
-    # attempts -- and across separate ``--generate-commit`` invocations --
-    # so the evidence ↔ gate key stays stable. Both kinds of durable
-    # evidence keyed on it must go: a submission receipt satisfies the
-    # gate's "already submitted → done" check, and a ``declare_complete``
-    # sentinel written by an earlier run makes the gate terminal on the
-    # first poll, killing the agent process milliseconds after spawn
-    # before it can emit a line. Clearing only receipts left the sentinel
-    # to poison every subsequent run permanently. Mirrors the AGY branch's
-    # per-attempt clear in :mod:`ralph.agents.invoke` so a reused
-    # ``run_id`` cannot inherit stale success state.
     _clear_session_completion_sentinel(attempt_context.repo_root, _COMMIT_RUN_ID)
 
     try:
@@ -755,16 +618,9 @@ def _run_commit_agent_attempt_with_recovery(
             workspace_scope,
             bridge=cast(
                 "RestartAwareMcpBridge", attempt_context.bridge
-            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            ),
             display_context=display_context,
             run_id=_COMMIT_RUN_ID,
-            # The commit path carries no ``policy_bundle``, so the effect
-            # executor cannot resolve the phase contract from policy and
-            # would fall through to ``required_artifact=None``. That makes
-            # the completion gate report ``artifact_required=False`` and
-            # settle for a bare sentinel, so nothing ever obliges the agent
-            # to submit. Declaring the contract here is what keeps a fresh
-            # submission receipt mandatory for this invocation.
             required_artifact=_commit_required_artifact(),
             session_id=prior_session_id,
             raw_output_sink=raw_output,
@@ -781,7 +637,7 @@ def _run_commit_agent_attempt_with_recovery(
                 agent.json_parser,
                 cast(
                     "AgentTransport", agent.transport
-                ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                ),
             ),
             agent_name=agent.cmd.split()[0],
             verbose=attempt_context.verbose,
@@ -892,18 +748,6 @@ def invoke_commit_agent_attempt(
     session_id_sink: typing.Callable[[str], None] | None = None,
     materializer: MaterializeMasterPromptFn | None = None,
 ) -> CommitAgentAttempt:
-    """Run one commit-agent invocation attempt and return its result.
-
-    .. deprecated::
-        Kept as a thin late-binding wrapper for tests that patch
-        ``ralph.cli.commands.commit.{materialize_master_prompt,invoke_agent,
-        delete_commit_message_artifacts,read_commit_message_artifact}``.
-        New code should call :func:`execute_agent_effect` through
-        :func:`_run_commit_agent_attempt_with_recovery`.
-    """
-    # Late-binding: tests patch ``ralph.cli.commands.commit.{X}``; look the
-    # names up at call time so the patches take effect even though this
-    # function lives in the plumbing module.
     commit_module = _commit_cli_module()
     materialize = _get_patched(
         commit_module,
@@ -979,7 +823,7 @@ def invoke_commit_agent_attempt(
                 agent.json_parser,
                 cast(
                     "AgentTransport", agent.transport
-                ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                ),
             ),
             agent_name=agent.cmd.split()[0],
             verbose=attempt_context.verbose,
@@ -987,9 +831,6 @@ def invoke_commit_agent_attempt(
             session_id_sink=session_id_sink,
         )
     except AgentInvocationError as exc:
-        # The shared classifier is consulted ONLY through the
-        # ``should_reset_tool_registry`` helper; we never construct
-        # the classifier inline (enforced by the anti-drift test).
         if should_reset_tool_registry(exc, phase="commit", agent=agent.cmd):
             raise _invocation_error_with_output(
                 exc, _parsed_output_from_invocation_error(exc)
@@ -1058,9 +899,6 @@ def _finalize_commit_attempt(
             last_error=last_error,
             outcome=CommitAgentOutcome.COMPLETED,
         )
-    # Attempt produced neither a message nor a skip response. Surface
-    # the failure explicitly so the chain orchestrator can stamp the
-    # result with outcome=FAILED.
     return CommitAgentResult(
         failure_details=[*failure_details, attempt.failure_detail]
         if attempt.failure_detail
@@ -1072,18 +910,10 @@ def _finalize_commit_attempt(
 
 
 def _is_missing_commit_artifact_failure(detail: str) -> bool:
-    # An empty / no-tool-call exit submitted nothing, so it is the same
-    # "unsubmitted artifact" condition the pipeline recovers from — route it to
-    # the shared detector instead of only matching the clean-exit string.
     return _MISSING_COMMIT_ARTIFACT_REASON in detail or is_unsubmitted_artifact_failure((detail,))
 
 
 def _summarized_retry_prompt(base_prompt: str, parsed_output: list[str], agent: AgentConfig) -> str:
-    """Commit's resubmit prompt — built by the SAME `build_retry_hint` the pipeline
-    phase gates use, so the artifact-missing retry guidance cannot drift between
-    the commit command and the pipeline. Only the commit-specific example payload
-    and submit-tool name are supplied here.
-    """
     required = _commit_required_artifact()
     example_content = "---\ntype: commit\nsubject: fix(auth): prevent token expiry race\n---"
     example_arguments: dict[str, str] = {
@@ -1104,10 +934,8 @@ def _summarized_retry_prompt(base_prompt: str, parsed_output: list[str], agent: 
 
 def _read_retry_prompt_text(prompt_file: str) -> str:
     path = Path(prompt_file)
-    # filesystem-read-ok: retry prompt reconstruction reads the requested prompt once for an explicit commit retry
     if not path.exists():
         return ""
-    # filesystem-read-ok: retry prompt reconstruction reads the requested prompt once for an explicit commit retry
     return path.read_text(encoding="utf-8")
 
 
@@ -1117,7 +945,6 @@ def _write_commit_prompt_file(repo_root: Path, prompt: str) -> str:
     for stale_path in prompt_dir.glob("commit_prompt*.md"):
         stale_path.unlink(missing_ok=True)
     prompt_path = prompt_dir / f"commit_prompt_{uuid.uuid4().hex}.md"
-    # filesystem-write-ok: UUID-keyed commit prompt under .agent/tmp; each call writes a fresh path
     prompt_path.write_text(prompt, encoding="utf-8")
     return str(prompt_path)
 
@@ -1131,7 +958,6 @@ def collect_commit_agent_output(
     display_context: DisplayContext,
     session_id_sink: typing.Callable[[str], None] | None = None,
 ) -> tuple[list[str], list[str], str | None]:
-    """Consume agent output lines, returning (parsed_lines, raw_lines, resume_session_id)."""
     parser = _resolve_commit_parser(parser_type)
     parsed_output: deque[str] = deque(maxlen=_MAX_COMMIT_PARSED_OUTPUT_LINES)
     raw_output: deque[str] = deque(maxlen=_MAX_COMMIT_RAW_OUTPUT_LINES)
@@ -1175,25 +1001,8 @@ def _resolve_commit_parser(parser_type: str) -> AgentParser:
 
 
 def _render_commit_agent_activity_line(output: AgentOutputLine, agent_name: str) -> Text | None:
-    """Render a parser line via the shared ``render_event`` registry.
-
-    DA-005 (wt-028-display S-20): the private commit renderer is
-    folded into the shared presentation pipeline. Every kind
-    (``text`` / ``tool_use`` / ``tool_result`` / ``error`` /
-    unknown) routes through
-    :func:`normalize_event_from_agent_output_line` and then
-    :func:`render_event`, so the commit path renders the same way
-    as every other code path that emits agent activity.
-
-    Returns ``None`` for kinds whose event carries no body to
-    surface (e.g. an empty ``text`` line), matching the legacy
-    contract that a ``None`` return means "skip this line".
-    """
     provider = provider_for_transport(agent_name)
     if provider is ActivityProvider.GENERIC and agent_name:
-        # The transport name didn't match any known provider; fall
-        # back to the agent's own normalized name so identity_color
-        # still picks the deterministic slot for it.
         provider = (
             ActivityProvider(agent_name)
             if agent_name in ActivityProvider.__members__
@@ -1333,17 +1142,6 @@ def _default_commit_bridge_factory(
     workspace_factory: object | None = None,
     conflict_activity_relay: bool = False,
 ) -> SessionBridgeLike:
-    """Default commit bridge factory that honors the test-patch surface.
-
-    Implements the :class:`ralph.pipeline.session_bridge.BridgeFactory`
-    protocol while forwarding to the legacy
-    ``ralph.cli.commands.commit.start_commit_bridge`` attribute. The
-    late-bound lookup lets tests monkeypatch the commit module's bridge
-    starter and have the patch propagate through the shared PipelineDeps
-    path. The injected ``model_identity`` is forwarded when the patched
-    starter accepts it, preserving the same model-context flow as the
-    main pipeline.
-    """
     del (
         drain,
         capabilities,
@@ -1360,17 +1158,6 @@ def _default_commit_bridge_factory(
     )
     bridge_fn = _resolve_commit_start_commit_bridge()
     policy = agents_policy or AgentsPolicy()
-    # ``transport`` must reach the session identity: the multimodal layer
-    # keys some delivery decisions on the agent CLI, and dropping it here
-    # left those guards blind for the whole commit session.
-    #
-    # The starter is late-bound so tests can patch it, and older patches
-    # have narrower signatures. Which keyword arguments it accepts is
-    # decided by INSPECTING it, not by calling and catching TypeError: a
-    # TypeError raised from inside the starter is indistinguishable from
-    # a signature mismatch, and retrying on one started the bridge twice
-    # and silently dropped the transport -- exactly the blind-guard
-    # session this argument exists to prevent.
     optional_kwargs: dict[str, object] = {
         "agents_policy": policy,
         "model_identity": model_identity,
@@ -1383,21 +1170,6 @@ def _supported_kwargs(
     func: _CommitStartBridgeProto,
     candidates: dict[str, object],
 ) -> dict[str, object]:
-    """Return the subset of ``candidates`` that ``func`` accepts.
-
-    Uses :func:`inspect.signature`, which understands the shapes this
-    late-bound seam actually sees -- ``functools.partial``, bound
-    methods, ``__call__`` objects, decorated functions, positional-only
-    parameters. Reading ``__code__.co_varnames`` instead looked simpler
-    and was wrong in both directions: it lists every local and nested
-    function name, so a starter with a local named like an argument was
-    handed one it cannot take, and a wrapped or partial-ed starter was
-    handed everything.
-
-    A callable taking ``**kwargs`` accepts everything. One whose
-    signature cannot be read (a C callable) also gets everything, since
-    guessing narrower would silently drop arguments.
-    """
     try:
         parameters = inspect.signature(func).parameters
     except (TypeError, ValueError):
@@ -1413,23 +1185,6 @@ def _supported_kwargs(
 
 
 def commit_chain_transport(chain_config: CommitChainConfig) -> AgentTransport | None:
-    """Return the transport this commit session should be tagged with.
-
-    One bridge serves the whole commit chain, but the chain is walked
-    only after the session exists -- so a heterogeneous chain has no
-    single correct answer. Resolve it conservatively: if ANY agent in
-    the chain is one the multimodal layer must restrict, tag the session
-    with that transport, because degrading a capable agent to a resource
-    reference is harmless while handing a restricted one an inline image
-    kills its turn. Deliberately the same rule as
-    :func:`ralph.mcp.multimodal.capabilities.select_session_transport`,
-    expressed over ``AgentTransport`` rather than its string values;
-    ``tests/test_codex_transport_reaches_the_session.py`` pins the two
-    against each other so a change to one that is not mirrored fails.
-
-    A homogeneous chain uses its own transport; a mixed
-    chain of unrestricted agents stays untagged.
-    """
     transports = _commit_chain_transports(chain_config)
     if not transports:
         return None
@@ -1441,7 +1196,6 @@ def commit_chain_transport(chain_config: CommitChainConfig) -> AgentTransport | 
 
 
 def _commit_chain_transports(chain_config: CommitChainConfig) -> list[AgentTransport]:
-    """Return the transport of each resolvable agent in the chain, in order."""
     transports: list[AgentTransport] = []
     for agent_name in chain_config.agents:
         cfg = chain_config.registry.get(agent_name)
@@ -1451,20 +1205,6 @@ def _commit_chain_transports(chain_config: CommitChainConfig) -> list[AgentTrans
 
 
 def commit_chain_is_ambiguous(chain_config: CommitChainConfig) -> bool:
-    """True when the chain's agents name different CLIs and none is restricted.
-
-    :func:`commit_chain_transport` answers ``None`` both when there is
-    nothing to go on and when the candidates DISAGREE, and the commit
-    session keeps its injected model identity verbatim in that case --
-    so a chain of ``claude`` then ``opencode`` resolved CLAUDE's
-    capabilities for the whole chain and minted ``PdfContent`` /
-    ``DocumentContent`` for whichever agent actually ran.
-
-    The same conflation was fixed for the fan-out phase session (see
-    ``ralph.mcp.multimodal.capabilities.session_transport_is_ambiguous``,
-    which this delegates to) and left in place here -- one rule, two
-    call sites, one of them still guessing.
-    """
     transports: list[str] = []
     model_flags: list[str] = []
     for agent_name in chain_config.agents:
@@ -1473,11 +1213,6 @@ def commit_chain_is_ambiguous(chain_config: CommitChainConfig) -> bool:
             continue
         transports.append(cfg.transport.value)
         model_flags.append((cfg.model_flag or "").strip())
-    # The MODEL half too. Delegating to the transport rule alone left
-    # this the "one rule, two call sites, one of them still guessing"
-    # that this function's own docstring criticises: two agents sharing
-    # a CLI and naming different models are just as unable to agree on a
-    # provider as two naming different CLIs.
     return session_transport_is_ambiguous(transports) or chain_disagrees_on_model(model_flags)
 
 
@@ -1496,10 +1231,6 @@ def _start_commit_bridge(
         session_id_prefix="commit",
         model_identity=model_identity,
         transport=transport,
-        # BINDING: the session's run_id is the same value the completion
-        # gate reads from MCP_RUN_ID_ENV (threaded via _commit_bridge_env
-        # → bridge.run_id). Pre-fix this was None → uuid4() and the receipt
-        # was stamped under a value the gate could never find.
         run_id=_COMMIT_RUN_ID,
     )
 
@@ -1508,25 +1239,9 @@ def _commit_bridge_env(bridge: SessionBridgeLike) -> dict[str, str]:
     return bridge_env_for(bridge)
 
 
-# Module-level alias so the test-patch surface in
-# ``tests/test_cli_commit_command.py`` (and friends) can patch
-# ``ralph.cli.commands.commit.start_commit_bridge`` and have the
-# patched value be honored at the canonical call site. The alias
-# is intentionally a separate object (not a reference) so
-# monkeypatching the commit module does not affect the plumbing
-# module's view (and vice versa). The call site uses the
-# ``plumbing.start_commit_bridge`` attribute so the patch
-# transparently propagates through both surfaces.
 start_commit_bridge = _start_commit_bridge
 
 
-# Resolver helpers: late-binding lookups into the commit module so
-# the test-patch surface (which monkeypatches
-# ``ralph.cli.commands.commit.start_commit_bridge`` and friends)
-# is honored at the canonical plumbing call site. We don't use
-# ``cast`` because the project's mypy config disallows explicit
-# ``Any``; instead we declare the protocol and assert the
-# attribute is callable at the call boundary.
 class _CommitStartBridgeProto(typing.Protocol):
     def __call__(self, repo_root: Path, **kwargs: object) -> SessionBridgeLike: ...
 
@@ -1550,14 +1265,6 @@ def _resolve_commit_write_prompt_file() -> _CommitWritePromptFileProto:
 
 
 def _stringify_extra_env(extra_env: object) -> dict[str, str] | None:
-    """Convert an ``extra_env`` mapping to a ``{str: str}`` mapping.
-
-    The plumbing module builds the ``extra_env`` mapping with
-    :data:`McpEnvVar` enum keys; downstream consumers (the tests
-    in particular) expect plain string keys. This helper preserves
-    the original mapping when the keys are already strings, and
-    converts enum keys via ``str()`` otherwise.
-    """
     if extra_env is None:
         return None
     if not isinstance(extra_env, typing.Mapping):
@@ -1574,19 +1281,10 @@ def _get_patched[T](
     name: str,
     fallback: T,
 ) -> T:
-    """Return ``getattr(module, name, fallback)`` with proper typing.
-
-    Tests patch the corresponding names on
-    ``ralph.cli.commands.commit`` at runtime. We can't statically type
-    ``getattr`` as ``T`` (mypy would warn) without an explicit cast,
-    so this helper centralises the cast pattern.
-    """
     value: T = getattr(module, name, fallback)
     if value is None:
         return fallback
     return value
 
 
-# Reference the dynamic ``_get_patched`` helper so mypy can verify the
-# fallback closure (the helper is also used at runtime).
 _ = _get_patched

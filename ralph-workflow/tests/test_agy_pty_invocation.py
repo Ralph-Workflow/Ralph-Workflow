@@ -1,5 +1,3 @@
-"""Focused regressions for AGY PTY routing and completion detection."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -32,7 +30,6 @@ def test_agy_invoke_uses_private_home_without_session_overlay(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """AGY launches with an invocation-owned HOME rather than a shared overlay."""
     prompt_file = _write_prompt(tmp_path)
     config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
     seen_home: Path | None = None
@@ -465,7 +462,6 @@ def test_run_pty_tears_down_live_process_when_iterator_is_closed(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Closing the public PTY iterator must not leave the child tree alive."""
     teardown_calls: list[int] = []
 
     class _FakeHandle:

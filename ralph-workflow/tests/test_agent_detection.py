@@ -1,5 +1,3 @@
-"""Behavior tests for built-in-agent discovery during init."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -15,7 +13,6 @@ if TYPE_CHECKING:
 def test_detect_installed_agents_returns_only_path_binaries(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Plan step 4: discovery checks each built-in command's executable."""
     monkeypatch.setattr(
         "ralph.config.agent_detection.builtin_supports",
         lambda: (
@@ -35,7 +32,6 @@ def test_detect_installed_agents_returns_only_path_binaries(
 def test_enable_detected_agents_activates_only_detected_and_is_idempotent(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Plan step 4: detected untouched blocks are activated once without editing active agents."""
     config = tmp_path / "ralph-workflow.toml"
     config.write_text(
         '[agents.claude]\ncmd = "custom-claude"\n\n'
@@ -60,7 +56,6 @@ def test_enable_detected_agents_activates_only_detected_and_is_idempotent(
 def test_autowire_chains_regression_replaces_pristine_defaults_for_detected_agent(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """S-1: pristine Claude chains switch to the detected CLI when Claude is absent."""
     from ralph.config.agent_detection import autowire_chains_to_detected_agent
 
     defaults = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
@@ -80,7 +75,6 @@ def test_autowire_chains_regression_replaces_pristine_defaults_for_detected_agen
 def test_autowire_chains_regression_preserves_user_customized_chains(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """S-1: a customized chain is never replaced by PATH detection."""
     from ralph.config.agent_detection import autowire_chains_to_detected_agent
 
     defaults = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"

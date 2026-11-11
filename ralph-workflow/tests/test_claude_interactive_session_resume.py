@@ -78,18 +78,6 @@ def test_claude_alias_resumable_exit_when_no_completion_evidence(
     alias: str,
     tmp_path: Path,
 ) -> None:
-    """Every ``claude/<alias>`` rc=0 exit without evidence stays resumable.
-
-    Regression pin for the production failure where ``claude/opus`` exited
-    cleanly (rc=0) with no artifact (``.agent/artifacts/plan.md absent``).
-    The PTY runner passes the runtime agent name derived by
-    ``_agent_command_name(ctx.config)`` to ``check_process_result``; for
-    every ``claude/<alias>`` dynamic alias the resolved ``cmd`` is
-    ``"claude"``, so the completion gate must classify the clean exit as
-    resumable -- raising ``OpenCodeResumableExitError`` with the session id
-    captured from the transcript marker -- instead of letting the alias
-    exit silently with no artifact and no resubmit hint.
-    """
     handle = _FakeInteractiveHandle()
     registry = AgentRegistry.from_config(UnifiedConfig())
     resolved = registry.get(f"claude/{alias}")

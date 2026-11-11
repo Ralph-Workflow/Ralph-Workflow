@@ -1,4 +1,3 @@
-"""Dataclass types for agent invocation."""
 
 from __future__ import annotations
 

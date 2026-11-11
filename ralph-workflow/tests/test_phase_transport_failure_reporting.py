@@ -1,20 +1,3 @@
-"""A turn that died at the transport must say so in the phase verdict.
-
-Measured 2026-08-20: a Codex work unit received an inline image block,
-its next Responses API request was rejected with a 400, and the CLI
-emitted ``turn.failed`` and exited. The phase verdict read::
-
-    Verdict: FAILED (no artifact) — no receipt for 'development_result';
-    .agent/artifacts/development_result.md absent
-
-Which is true and useless: it grades an infrastructure fault as an
-agent-quality outcome, and the operator has no signal that the turn was
-killed by an API rejection rather than by an agent that failed to write
-its artifact. The terminal transport failure is right there in the raw
-transcript; the verdict must fold it in, exactly as it already folds in
-a raw-transcript corruption break.
-"""
-
 from __future__ import annotations
 
 import json
@@ -47,12 +30,6 @@ def _codex_config() -> AgentConfig:
 
 
 def _capture_path(root: Path, config: AgentConfig | None = None) -> Path:
-    """Return the path the production writer and grader both derive.
-
-    DERIVED, not spelled out: the capture identity is keyed on the whole
-    invocation, so a hardcoded filename writes somewhere the code under
-    test never looks.
-    """
     from ralph.display.raw_overflow import raw_log_path_for, raw_log_unit_id_for
 
     resolved = config or _codex_config()
@@ -60,7 +37,6 @@ def _capture_path(root: Path, config: AgentConfig | None = None) -> Path:
 
 
 def _write_turn_failed_raw_log(workspace_root: Path) -> None:
-    """Write the measured Codex shape at the path ``cmd="codex"`` resolves to."""
     raw_path = _capture_path(workspace_root)
     raw_path.parent.mkdir(parents=True, exist_ok=True)
     lines = [
@@ -95,7 +71,6 @@ def _render_and_capture(
     *,
     shared_capture: bool = False,
 ) -> str:
-    """Render the FAILED phase report and return the verdict line."""
     captured: list[tuple[str, tuple[object, ...]]] = []
 
     def _fake_emit_via_display(
@@ -150,7 +125,6 @@ def _render_and_capture(
 def test_phase_verdict_names_the_terminal_transport_failure(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """The regression: a killed turn must be distinguishable from a lazy agent."""
     _write_turn_failed_raw_log(tmp_path)
 
     message = _render_and_capture(tmp_path, monkeypatch)
@@ -160,7 +134,6 @@ def test_phase_verdict_names_the_terminal_transport_failure(
 
 
 def test_phase_verdict_quotes_the_api_rejection(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
-    """The operator needs the actual cause, not just a category."""
     _write_turn_failed_raw_log(tmp_path)
 
     message = _render_and_capture(tmp_path, monkeypatch)
@@ -171,7 +144,6 @@ def test_phase_verdict_quotes_the_api_rejection(tmp_path: Path, monkeypatch: Mon
 def test_phase_verdict_omits_transport_failure_when_none_occurred(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """Negative case: a clean transcript must not gain a spurious cause."""
     _write_clean_raw_log(tmp_path)
 
     message = _render_and_capture(tmp_path, monkeypatch)
@@ -183,7 +155,6 @@ def test_phase_verdict_omits_transport_failure_when_none_occurred(
 def test_phase_verdict_omits_transport_failure_when_raw_log_absent(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """No transcript at all must not raise and must not invent a cause."""
     message = _render_and_capture(tmp_path, monkeypatch)
 
     assert "FAILED (no artifact)" in message, message
@@ -191,7 +162,6 @@ def test_phase_verdict_omits_transport_failure_when_raw_log_absent(
 
 
 def _write_recovered_turn_raw_log(workspace_root: Path) -> None:
-    """A turn that failed and was followed by a successful one."""
     raw_path = _capture_path(workspace_root)
     raw_path.parent.mkdir(parents=True, exist_ok=True)
     lines = [
@@ -204,12 +174,6 @@ def _write_recovered_turn_raw_log(workspace_root: Path) -> None:
 def test_recovered_turn_failure_is_not_reported_as_the_cause(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """A failure the unit recovered from must not be named as the cause.
-
-    One raw capture accumulates every attempt and every phase for an
-    ``(executable, model)`` pair, so an unconditional tail scan reports a
-    stale frame from an attempt that already succeeded.
-    """
     _write_recovered_turn_raw_log(tmp_path)
 
     message = _render_and_capture(tmp_path, monkeypatch)
@@ -220,12 +184,6 @@ def test_recovered_turn_failure_is_not_reported_as_the_cause(
 def test_transport_failure_detail_contains_terminal_escapes(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """Transcript text is agent-influenced; it must not steer the terminal.
-
-    The message is lifted verbatim out of the raw capture and rendered on
-    the operator's terminal, so control sequences have to be stripped at
-    this boundary like every other agent-origin string.
-    """
     raw_path = _capture_path(tmp_path)
     raw_path.parent.mkdir(parents=True, exist_ok=True)
     raw_path.write_text(
@@ -248,13 +206,6 @@ def test_transport_failure_detail_contains_terminal_escapes(
 def test_a_later_phases_verdict_does_not_inherit_an_earlier_failure(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """One capture spans phases and parallel units; causes must not bleed.
-
-    The raw capture is keyed only by ``(executable, model)``, so it
-    accumulates every retry, every phase, and every parallel work unit
-    using that agent. A failure from an earlier turn must not be
-    presented as this phase's cause.
-    """
     raw_path = _capture_path(tmp_path)
     raw_path.parent.mkdir(parents=True, exist_ok=True)
     raw_path.write_text(
@@ -262,8 +213,6 @@ def test_a_later_phases_verdict_does_not_inherit_an_earlier_failure(
             [
                 json.dumps({"type": "turn.started"}),
                 json.dumps({"type": "turn.failed", "error": {"message": _API_REJECTION}}),
-                # A later phase begins on the same agent and is killed
-                # before writing anything of its own.
                 json.dumps({"type": "turn.started"}),
             ]
         )
@@ -279,12 +228,6 @@ def test_a_later_phases_verdict_does_not_inherit_an_earlier_failure(
 def test_transport_failure_text_is_attributed_to_the_transcript(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """The capture is agent stdout, so the quote must read as a quote.
-
-    An agent can emit a frame shaped like a transport failure. Presenting
-    its text as Ralph Workflow's own finding would let it put words into
-    the operator's verdict line.
-    """
     _write_turn_failed_raw_log(tmp_path)
 
     message = _render_and_capture(tmp_path, monkeypatch)
@@ -296,13 +239,6 @@ def test_transport_failure_text_is_attributed_to_the_transcript(
 def test_a_shared_capture_suppresses_transport_attribution(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """Concurrent units share one capture, so no frame can be attributed.
-
-    Parallel workers key the capture by ``(executable, model)``, so
-    several interleave frames in one file. Quoting a sibling unit's API
-    rejection in this unit's verdict is materially wrong -- worse than
-    reporting no cause -- so attribution is suppressed for those callers.
-    """
     _write_turn_failed_raw_log(tmp_path)
 
     message = _render_and_capture(tmp_path, monkeypatch, shared_capture=True)

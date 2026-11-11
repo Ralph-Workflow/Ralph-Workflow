@@ -1,5 +1,3 @@
-"""Production-profile regressions for conflict-resolution supervision (S-2)."""
-
 from __future__ import annotations
 
 import os
@@ -23,7 +21,6 @@ from ralph.mcp.server._activity_sink import reset_active_sink, reset_subagent_si
 def test_conflict_resolution_regression_profile_uses_each_direct_activity_channel(
     recorder: str,
 ) -> None:
-    """S-2/R3: every direct production activity recorder resets conflict liveness."""
     clock = FakeClock()
     policy = policy_from_options(
         InvokeOptions(
@@ -43,7 +40,6 @@ def test_conflict_resolution_regression_profile_uses_each_direct_activity_channe
 
 
 def test_conflict_resolution_regression_workspace_activity_resets_production_profile() -> None:
-    """S-2/R3: weighted workspace-only work has the same liveness effect."""
     clock = FakeClock()
     policy = policy_from_options(
         InvokeOptions(idle_timeout_seconds=900.0, activity_only_supervision=True)
@@ -58,7 +54,6 @@ def test_conflict_resolution_regression_workspace_activity_resets_production_pro
 
 
 def test_conflict_resolution_regression_operator_cap_preempts_fresh_activity() -> None:
-    """S-2/R6: a configured cap has its own typed verdict while work remains active."""
     clock = FakeClock()
     policy = TimeoutPolicy(
         idle_timeout_seconds=900.0,
@@ -90,7 +85,6 @@ class _PtyHandle:
 
 
 def test_conflict_resolution_regression_pty_registers_relay_sink_for_mcp_liveness() -> None:
-    """S-3/R3: a PTY resolver transports standalone MCP activity to its watchdog."""
     read_fd, write_fd = os.pipe()
     registered: list[object] = []
     try:
@@ -124,7 +118,6 @@ def test_conflict_resolution_regression_pty_registers_relay_sink_for_mcp_livenes
 
 
 def test_conflict_resolution_regression_status_is_rate_limited_with_activity_metadata() -> None:
-    """S-2/R8: activity-only supervision emits low-cadence observable status."""
     events = []
     clock = FakeClock()
     watchdog = IdleWatchdog(
@@ -163,7 +156,6 @@ def test_conflict_resolution_regression_initial_activity_keeps_its_provenance(
     recorder: str,
     expected_kind: str,
 ) -> None:
-    """S-2/R7: a first-tick event is not misreported as baseline stdout."""
     clock = FakeClock()
     watchdog = IdleWatchdog(
         TimeoutPolicy(

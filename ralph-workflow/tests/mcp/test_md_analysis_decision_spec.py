@@ -1,12 +1,3 @@
-"""Focused tests for the free-form development-analysis-decision contract.
-
-The development analysis decision is free-form below the frontmatter: the
-only mechanically validated field is the closed ``status`` enum. The
-shared ``What Came Up Short`` / ``Criterion Verdicts`` shape, the per-field
-labels, and the per-rule identifiers (ANALYSIS002-019) belong to the
-prior structured contract and no longer apply.
-"""
-
 from __future__ import annotations
 
 from ralph.mcp.artifacts.markdown import parse_and_validate
@@ -80,9 +71,6 @@ status: failed
 
 
 def test_request_changes_missing_remaining_work_is_accepted() -> None:
-    """Free-form: the body is the next agent's reading matter. The validator
-    does not require ``Remaining work:`` or any other per-field label.
-    """
     finding = (
         "Criterion: tests pass. Expected observation: focused test passes. "
         "Verdict: not met. Evidence: `pytest -q` fails. Location: tests/test_foo.py."
@@ -95,7 +83,6 @@ def test_request_changes_missing_remaining_work_is_accepted() -> None:
 
 
 def test_request_changes_with_placeholder_location_is_accepted() -> None:
-    """Free-form: no per-finding location predicate. ``Location: unknown`` is prose."""
     finding = (
         "Criterion: tests pass. Expected observation: focused test passes. "
         "Verdict: not met. Evidence: `pytest -q` fails. Location: unknown. "
@@ -109,7 +96,6 @@ def test_request_changes_with_placeholder_location_is_accepted() -> None:
 
 
 def test_request_changes_without_criterion_or_plan_ref_is_accepted() -> None:
-    """Free-form: the body can take any shape; no Criterion / Plan reference predicate."""
     finding = (
         "Expected observation: focused test passes. "
         "Verdict: not met. Evidence: `pytest -q` fails. Location: tests/test_foo.py. "
@@ -136,7 +122,6 @@ def test_request_changes_with_plan_reference_accepted() -> None:
 
 
 def test_request_changes_per_finding_criterion_unconstrained() -> None:
-    """Free-form: a developer analysis decision is whatever prose the agent writes."""
     good_finding = (
         "Criterion: tests pass. Expected observation: focused test passes. "
         "Verdict: not met. Evidence: `pytest -q` fails. Location: tests/test_foo.py. "
@@ -168,7 +153,6 @@ def test_request_changes_per_finding_criterion_unconstrained() -> None:
 
 
 def test_request_changes_missing_location_is_accepted() -> None:
-    """Free-form: no per-finding Location predicate."""
     document = """---
 type: development_analysis_decision
 status: request_changes
@@ -189,7 +173,6 @@ status: request_changes
 
 
 def test_request_changes_all_findings_complete_accepted() -> None:
-    """Free-form: multi-finding request_changes passes regardless of body shape."""
     document = """---
 type: development_analysis_decision
 status: request_changes
@@ -212,7 +195,6 @@ status: request_changes
 
 
 def test_mismatched_mirrored_verdict_is_accepted() -> None:
-    """Free-form: no mirror predicate, so a "met"/"not met" mismatch is fine."""
     criterion = (
         "Criterion: tests pass. Expected observation: focused test passes. "
         "Verdict: not met. Evidence: `pytest -q` fails. Location: tests/test_foo.py."
@@ -240,7 +222,6 @@ def test_mismatched_mirrored_verdict_is_accepted() -> None:
 
 
 def test_free_form_plan_reference_only_finding_is_accepted() -> None:
-    """Free-form: any prose is fine, including Plan-reference-only findings."""
     finding_plan_ref_only = (
         "Expected observation: focused test passes. "
         "Verdict: not met. Evidence: `pytest -q` fails. Location: tests/test_foo.py. "
@@ -271,7 +252,6 @@ def test_free_form_plan_reference_only_finding_is_accepted() -> None:
 
 
 def test_orphan_plan_reference_only_finding_is_accepted() -> None:
-    """Free-form: no mirror predicate, so an orphan Plan-reference-only finding is fine."""
     document = """---
 type: development_analysis_decision
 status: request_changes
@@ -292,13 +272,6 @@ status: request_changes
 
 
 def test_plain_prose_without_sections_is_accepted() -> None:
-    """Free-form body: any markdown is accepted on the frontmatter status alone.
-
-    The validator only checks the closed ``status`` enum; the body
-    is the next agent's reading matter, not a structure the artifact
-    gates on. No section headings, no list items, no per-field
-    labels are required.
-    """
     document = """---
 type: development_analysis_decision
 status: completed
@@ -315,12 +288,6 @@ the body is the next agent's reading matter.
 
 
 def test_request_changes_with_plain_prose_is_accepted() -> None:
-    """Free-form: request_changes decisions are also body-free-form.
-
-    The body may describe the shortfall, evidence, and parallel fix
-    plan in the agent's own words without using the prior structured
-    section shape.
-    """
     document = """---
 type: development_analysis_decision
 status: request_changes
@@ -337,7 +304,6 @@ unit of work that can be dispatched to a worker.
 
 
 def test_invalid_status_is_rejected() -> None:
-    """Status-only validation: invalid statuses still fail closed."""
     document = """---
 type: development_analysis_decision
 status: done

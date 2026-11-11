@@ -1,5 +1,3 @@
-"""Baseline skill bundle installation and update checks."""
-
 from __future__ import annotations
 
 import hashlib
@@ -51,24 +49,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class ProjectSkillInstallOutcome:
-    """Producer-level result of a project-scope baseline install.
-
-    The deterministic auto-commit at the producer boundary consumes
-    ``written_paths`` and ``pre_contents`` to know exactly which paths
-    the install touched and what the pre-write content was. The
-    ``entry`` and ``failures`` fields are the legacy install return
-    values; callers that only care about install status can still
-    destructure them via ``outcome.entry`` / ``outcome.failures``.
-
-    ``written_paths`` is the byte-exact set of paths the install
-    actually changed. ``pre_contents`` maps each such path to its
-    pre-write git blob SHA (or ``None`` for a path that did not
-    exist before the install). Together they are the contract
-    :func:`ralph.git.scoped_auto_commit.commit_deterministic_writes`
-    consumes to keep the deterministic chore commit isolated from
-    agent and user changes.
-    """
-
     entry: CapabilityEntry
     failures: list[str]
     written_paths: list[str] = field(default_factory=list)
@@ -79,48 +59,11 @@ class ProjectSkillInstallOutcome:
 def install_project_baseline_skills_with_diff(
     workspace_root: Path,
 ) -> ProjectSkillInstallOutcome:
-    """Producer-level wrapper: install + record the byte-exact diff for the deterministic auto-commit.
-
-    Snapshots the pre-write content of every path the install could
-    touch BEFORE the install runs, runs the install, then narrows the
-    candidate set to the paths whose on-disk content actually changed.
-    The deterministic chore commit at the call site consumes
-    ``written_paths`` + ``pre_contents`` via
-    :func:`ralph.git.scoped_auto_commit.commit_deterministic_writes`.
-
-    The install itself is unchanged -- this is a thin wrapper around
-    :func:`install_project_baseline_skills` so the install logic stays
-    single-sourced. A containment-gate / conflict-gate short-circuit
-    still records an empty written set (the install did not touch
-    anything), so the deterministic commit at the call site is a
-    safe no-op.
-
-    ``intentional_transitions`` (wt-012 DA-003/DA-010/DA-012) is
-    the set of sibling-root paths whose dir→symlink transition the
-    install has authored WITHOUT a pre-write-dirty tracked
-    descendant. The deterministic commit helper uses this set to
-    opt those roots out of the post-install user-dirty descendant
-    guard -- the install's own canonical content legitimately
-    differs from the original tracked descendants, and the chore
-    commit must include the transition. Sibling roots that DO have
-    a pre-write-dirty tracked descendant are NOT in the set: the
-    chore commit must SKIP the transition there so the user's
-    dirty descendant is preserved (a deterministic chore commit
-    must never sweep user or agent changes).
-    """
     candidates = _candidate_skill_paths(workspace_root)
     pre_contents = capture_pre_write_contents(workspace_root, candidates)
     user_dirty_descendants = _detect_user_dirty_tracked_descendants(workspace_root, candidates)
     entry, failures = install_project_baseline_skills(workspace_root)
     written = _diff_written_paths(workspace_root, candidates, pre_contents)
-    # A "transition root" is a candidate X such that at least one
-    # other candidate starts with "X/" -- i.e. X is a sibling-root
-    # directory the install is about to replace with a symlink.
-    # A transition root that has a pre-write-dirty tracked
-    # descendant is excluded from the intentional set so the
-    # primitive's user-dirty descendant guard fires and the
-    # transition (and the dirty descendant's deletion) is
-    # skipped from the chore commit.
     transition_roots = {
         path
         for path in candidates
@@ -148,35 +91,8 @@ def _detect_user_dirty_tracked_descendants(
     workspace_root: Path,
     candidates: list[str],
 ) -> frozenset[str]:
-    """Return the candidate paths that are pre-write-dirty on disk.
-
-    A candidate is "pre-write-dirty" when its on-disk state at the
-    install boundary (BEFORE the install mutates anything) differs
-    from the HEAD blob hash. This catches the wt-012
-    DA-003/DA-010/DA-012 case where the user edits a tracked
-    descendant BETWEEN the producer's pre-write capture and the
-    install's dir→symlink replacement: the recorded ``pre_sha`` is
-    the pre-user-edit state, so the cheap HEAD-vs-pre-sha check in
-    :func:`commit_deterministic_writes` does not see the dirty
-    state. Detecting it here at the producer boundary lets the
-    install code exclude the affected transition root from
-    ``intentional_transitions``, which the commit primitive's
-    user-dirty descendant guard then picks up.
-
-    Implemented as ONE ``git status --porcelain`` snapshot (via
-    :func:`ralph.git.scoped_auto_commit.snapshot_dirty_paths_strict`)
-    intersected with the candidate set, so the check costs a single
-    git call per install and also covers user DELETIONS of tracked
-    descendants (a per-path hash probe cannot distinguish
-    "user deleted" from "never existed"). When the snapshot itself
-    fails (``None``), every candidate is conservatively reported as
-    dirty so no transition is whitelisted on unverifiable state.
-    """
     dirty = snapshot_dirty_paths_strict(workspace_root)
     if dirty is None:
-        # Cannot prove clean: report every candidate as dirty (safe
-        # default -- the install's transitions are then never
-        # whitelisted, and the commit primitive SKIPs them loudly).
         return frozenset(candidates)
     return frozenset(path for path in candidates if path in dirty)
 
@@ -186,12 +102,6 @@ def _now_iso() -> str:
 
 
 def _dedupe_failure_codes(codes: list[str]) -> list[str]:
-    """Return ``codes`` with duplicates removed, preserving the first order.
-
-    The same retired skill can be reported by more than one root (the
-    canonical root and a sibling that still holds a materialized copy), so
-    the installer collapses the repeats into one reportable code.
-    """
     unique: list[str] = []
     for code in codes:
         if code not in unique:
@@ -222,7 +132,6 @@ def _compute_skill_hash(name: str) -> str:
 
 
 def _create_symlink(path: Path, target: Path, *, target_is_directory: bool = False) -> None:
-    """Create a symlink without sharing mutable Path method state with tests."""
     path.symlink_to(target, target_is_directory=target_is_directory)
 
 
@@ -241,13 +150,11 @@ def _mirror_skill_to_sibling_root(
     if sibling_dir.is_symlink():
         sibling_dir.unlink()
     elif sibling_dir.is_dir():
-        # filesystem-write-ok: replace managed sibling skill mirror before relinking it to canonical content
         shutil.rmtree(sibling_dir)
     try:
         _create_symlink(sibling_dir, canonical_root / skill_name, target_is_directory=True)
     except OSError:
         try:
-            # filesystem-write-ok: fallback materialization preserves the managed sibling skill contract
             shutil.copytree(canonical_root / skill_name, sibling_dir)
         except OSError:
             return f"sibling-materialize-failed-{skill_name}"
@@ -259,20 +166,15 @@ def _mirror_baseline_skills_to_siblings(canonical_root: Path) -> list[str]:
     for sibling in sibling_agent_skill_roots():
         sibling_resolved = sibling.resolve()
         sibling_resolved.mkdir(parents=True, exist_ok=True)
-        # Mirror the canonical metadata.json at the sibling root so the
-        # check_skills_update_available() iteration can verify each registered
-        # root against the same source of truth.
         sibling_metadata = sibling_resolved / "metadata.json"
         if sibling_metadata.is_symlink() or sibling_metadata.is_file():
             sibling_metadata.unlink()
         elif sibling_metadata.is_dir():
-            # filesystem-write-ok: replace managed sibling metadata directory before relinking canonical metadata
             shutil.rmtree(sibling_metadata)
         try:
             _create_symlink(sibling_metadata, canonical_root / "metadata.json")
         except OSError:
             try:
-                # filesystem-write-ok: fallback materialization of managed sibling skill metadata
                 shutil.copy2(canonical_root / "metadata.json", sibling_metadata)
             except OSError:
                 failures.append("sibling-materialize-failed-metadata")
@@ -288,31 +190,6 @@ def _mirror_baseline_skills_to_siblings(canonical_root: Path) -> list[str]:
 def install_baseline_skills(
     target_dir: Path | None = None,
 ) -> tuple[CapabilityEntry, list[str]]:
-    """Install the baseline skill bundle.
-
-    Precedence contract (locked):
-      (1) If the canonical directory already has conflicting user-owned skill
-          files, return ``NEEDS_REPAIR`` with ``skills-conflict-*`` failures
-          and DO NOT materialize, mirror, or touch sibling roots. The user
-          keeps their files untouched.
-      (2) If canonical conflict detection passes, attempt to materialize the
-          bundle into the canonical root. On ``OSError`` during materialize,
-          return ``NEEDS_REPAIR`` with ``["skills-materialize-failed"]`` and
-          DO NOT run the sibling mirror.
-      (3) If canonical materialize succeeds, run the sibling mirror across
-          every supported agent's user-global skill root. Any sibling failure
-          (``sibling-conflict-*`` / ``sibling-materialize-failed-*``) is
-          appended to a flat ``failures`` list.
-
-      (4) Prune every REGISTERED user-global skill root: a retired
-          Ralph-managed skill whose content still matches its recorded
-          digest is removed; a user-owned, user-edited, universal-marked or
-          malformed entry is preserved and reported through
-          ``skills-prune-preserved-*`` / ``skills-prune-unknown-*``.
-
-    The returned ``failures`` list is therefore NEVER a mix of canonical and
-    sibling codes -- canonical is all-or-nothing.
-    """
     resolved_target_dir = _installed_skills_dir() if target_dir is None else target_dir
     canonical_failures = _find_conflicts(resolved_target_dir)
     if canonical_failures:
@@ -370,24 +247,9 @@ def install_baseline_skills(
     )
 
 
-# --- Project-scope baseline skill installation --------------------------------
-#
-# The project scope is a separate fan-out (./.opencode/skills/ canonical +
-# 3 project siblings). Same precedence contract as the user-global install
-# above: canonical is all-or-nothing, sibling failures are appended flatly.
-# The project canonical NEVER appears in the sibling list (see PA-007 in
-# _agent_paths.py).
-
-
 def _materialize_project_sibling_dir(
     sibling_dir: Path, canonical_root: Path, skill_name: str
 ) -> str | None:
-    """Materialize a single project-scope sibling entry as a symlink to the canonical.
-
-    Returns ``None`` on success or a failure code on conflict / hard failure.
-    Uses ``Path.resolve()``-aware checks for macOS ``/tmp`` -> ``/private/tmp``
-    indirection safety (PA-007).
-    """
     skill_file = sibling_dir / "SKILL.md"
     marker = sibling_dir / _MANAGED_MARKER
     if skill_file.exists() and not marker.exists():
@@ -402,7 +264,6 @@ def _materialize_project_sibling_dir(
     if sibling_dir.is_symlink():
         sibling_dir.unlink()
     elif sibling_dir.is_dir():
-        # filesystem-write-ok: replace managed project sibling skill mirror before relinking it
         shutil.rmtree(sibling_dir)
     elif sibling_dir.exists():
         sibling_dir.unlink()
@@ -415,7 +276,6 @@ def _materialize_project_sibling_dir(
         sibling_dir.symlink_to(relative_target, target_is_directory=True)
     except OSError:
         try:
-            # filesystem-write-ok: fallback materialization preserves the managed project sibling skill contract
             shutil.copytree(canonical_target, sibling_dir)
         except OSError:
             return f"sibling-materialize-failed-{skill_name}"
@@ -423,47 +283,6 @@ def _materialize_project_sibling_dir(
 
 
 def _materialize_canonical_skill(canonical: Path, skill_name: str) -> bool:
-    """Overwrite a single project-scope canonical skill with the bundled content.
-
-    Project-scope pre-pipeline sync (driven by ``_sync_shipped_skills_on_pipeline_run``)
-    requires a deterministic, single-pass overwrite of stale bundled content so the
-    auto-commit helper has exactly one diff to commit. This helper honours the
-    user-edit preservation contract as follows:
-
-      (1) First call ``materialize_skills_to_claude_dir(canonical)`` so every
-          skill whose stored ``.ralph-managed.json`` sha matches the on-disk
-          sha (i.e. the user has not edited it since install) is rewritten
-          with the bundled content. Skills whose stored sha DOES NOT match
-          the on-disk sha are preserved as user-edited (the existing contract
-          from ``materialize_skills_to_claude_dir``).
-      (2) Then for THIS ``skill_name`` specifically, compare the on-disk
-          ``SKILL.md`` hash against the bundled
-          ``hashlib.sha256(get_skill_content(skill_name).encode()).hexdigest()``.
-          If they still differ (meaning ``materialize_skills_to_claude_dir``
-          preserved the skill as user-edited, OR the bundled content has since
-          been refreshed and the on-disk copy is older), overwrite the
-          ``SKILL.md`` and the managed marker with the bundled content. This
-          reconciles the prompt's explicit rule 'If there is a conflict,
-          simply replace the old skill with new skill' with the existing
-          user-edit preservation contract: the user-global path remains
-          signal-only (see ``install_baseline_skills`` / ``SkillManager``),
-          but the project-scope pre-pipeline sync always wins for the
-          bundled SKILL.md content vs on-disk hash mismatch.
-
-    Args:
-        canonical: Resolved project-canonical skill directory
-            (e.g. ``workspace_root / '.opencode' / 'skills'``).
-        skill_name: Name of the skill whose canonical entry to overwrite.
-
-    Returns:
-        True when at least one of ``SKILL.md`` or the managed marker was
-        overwritten with bundled content; False when the on-disk content
-        already matches the bundled hash.
-
-    The helper is fail-closed: any ``OSError`` during read/write returns
-    False so the caller can treat overwrite failures as 'no change' and
-    still proceed with the rest of the install / auto-commit pipeline.
-    """
     try:
         bundled_content = get_skill_content(skill_name)
         bundled_sha = hashlib.sha256(bundled_content.encode("utf-8")).hexdigest()
@@ -476,13 +295,7 @@ def _materialize_canonical_skill(canonical: Path, skill_name: str) -> bool:
         )
         if on_disk_hash == bundled_sha:
             return False
-        # filesystem-write-ok: low-level skill materialization, gated by
-        # install_project_baseline_skills_with_diff's commit_skill_writes
-        # boundary at the install call site.
         write_text_if_changed(DEFAULT_FILE_BACKEND, skill_file, bundled_content, encoding="utf-8")
-        # filesystem-write-ok: low-level skill marker write, gated by
-        # install_project_baseline_skills_with_diff's commit_skill_writes
-        # boundary at the install call site.
         write_text_if_changed(
             DEFAULT_FILE_BACKEND,
             marker_file,
@@ -498,54 +311,6 @@ def _materialize_canonical_skill(canonical: Path, skill_name: str) -> bool:
 def install_project_baseline_skills(
     workspace_root: Path,
 ) -> tuple[CapabilityEntry, list[str]]:
-    """Install the baseline skill bundle into the project scope.
-
-    Mirrors the user-global ``install_baseline_skills`` precedence contract:
-      (1) If the project-canonical has conflicting user-owned skill files,
-          return ``NEEDS_REPAIR`` with ``skills-conflict-*`` failures and
-          DO NOT materialize or touch any sibling. The user keeps their
-          files untouched.
-      (2) If canonical conflict detection passes, materialize the bundle
-          into the project-canonical root. On ``OSError`` during materialize,
-          return ``NEEDS_REPAIR`` with ``["skills-materialize-failed"]`` and
-          DO NOT touch any sibling.
-      (3) If canonical materialize succeeds, OVERWRITE any REMAINING
-          hash-divergent skill with the bundled content via
-          ``_materialize_canonical_skill`` so the auto-commit has exactly
-          one diff to commit. This implements the project-scope branch of
-          the locked conflict-resolution policy: bundled content always
-          wins for project-scope pre-pipeline sync (the user-global path
-          remains signal-only per ``install_baseline_skills`` /
-          ``SkillManager.check_skills_for_updates``).
-      (4) Fan out the canonical to the 3 project-scope siblings (claude,
-          codex, agy). Any sibling failure
-          (``sibling-conflict-*`` / ``sibling-materialize-failed-*``) is
-          appended to a flat ``failures`` list.
-
-    CONTAINMENT GATE: a pre-flight ``_project_root_outside_workspace``
-    check runs FIRST (before any conflict detection, materialize, or
-    sibling fan-out). When the canonical (``.opencode/skills``) or any
-    sibling root resolves OUTSIDE ``workspace_root`` (e.g. the user
-    pre-created ``./.agents`` as a symlink to an external directory),
-    the install returns ``NEEDS_REPAIR`` with a single
-    ``skills-outside-workspace-<segment>`` failure code and DOES NOT
-    touch the filesystem. The user must manually remove the misdirected
-    symlink before the install can run safely. This prevents the
-    pre-pipeline sync from silently writing skill files into a
-    directory outside the project workspace.
-
-    Returns ``(CapabilityEntry, failures)`` — the failures list is NEVER a
-    mix of canonical and sibling codes (the containment gate uses its
-    own dedicated code family).
-    """
-    # Containment gate (analyzed bug): fail closed BEFORE any filesystem
-    # mutation when a pre-existing project skill root (canonical OR
-    # sibling) resolves outside ``workspace_root``. A symlink at
-    # ``workspace_root/.opencode`` (or any sibling root) pointing to an
-    # external directory would otherwise cause the install to silently
-    # write skill files into that external directory and return
-    # INSTALLED_HEALTHY. The user must manually remove the misdirected
-    # symlink before this function can run safely.
     containment_failure = _project_root_outside_workspace(workspace_root)
     if containment_failure is not None:
         return (
@@ -575,35 +340,14 @@ def install_project_baseline_skills(
             ),
             ["skills-materialize-failed"],
         )
-    # Project-scope bundle-update reconciliation (wt-025): after the
-    # user-edit-preserving materialize pass, overwrite any REMAINING
-    # hash-divergent skill with the bundled content so the auto-commit
-    # has exactly one diff to commit. The user-global path
-    # (install_baseline_skills) intentionally remains signal-only per
-    # the locked conflict-resolution policy.
     for skill_name in BASELINE_SKILL_NAMES:
         _materialize_canonical_skill(canonical, skill_name)
-    # Prune any managed skill directory that the baseline no longer
-    # ships. The materialize loop only touches BASELINE_SKILL_NAMES, so a
-    # retired bundled skill (one whose name is no longer in the baseline)
-    # stays on disk otherwise. Without this step, a stale retired skill
-    # directory from a prior release would persist in the canonical and
-    # every sibling symlink would continue to point at it. The prune is
-    # source-aware and hash-aware: it removes a retired directory ONLY
-    # when the directory's managed marker proves Ralph manages it AND its
-    # content still matches the digest the marker recorded. A user-owned,
-    # user-edited, universal-marked or malformed entry is preserved and
-    # reported through ``skills-prune-preserved-*`` /
-    # ``skills-prune-unknown-*``.
     prune_failures = _prune_failure_codes(_prune_removed_baseline_skills(canonical))
     sibling_failures: list[str] = []
     siblings: tuple[ProjectAgentSkillRoot, ...] = project_sibling_skill_roots(workspace_root)
     for sibling in siblings:
         sibling_root = sibling.resolve(workspace_root)
         sibling_root.mkdir(parents=True, exist_ok=True)
-        # The sibling fan-out runs the same prune so a stale symlink
-        # pointing at a now-removed canonical entry does not reappear
-        # after the canonical prune.
         sibling_failures.extend(_prune_failure_codes(_prune_removed_baseline_skills(sibling_root)))
         for skill_name in BASELINE_SKILL_NAMES:
             failure = _materialize_project_sibling_dir(
@@ -622,10 +366,6 @@ def install_project_baseline_skills(
             ),
             failures,
         )
-    # FUTURE: self-improving skills hook goes here — see docs/sphinx/agents.md
-    # §'Self-improving skills (future)'. The hook will fire after every
-    # project-canonical+symlink fan-out and let agents write back improvements
-    # to .opencode/skills/<name>/SKILL.md with a prompt-confirmation gate.
     self_improving_skills_hook(
         workspace_root=workspace_root,
         canonical_root=canonical,
@@ -640,42 +380,10 @@ def install_project_baseline_skills(
 
 
 def self_improving_skills_hook(*, workspace_root: Path, canonical_root: Path) -> None:
-    """No-op placeholder for the self-improving skills hook.
-
-    The future design calls agents back after every project-canonical +
-    sibling-symlink fan-out and lets them write back improvements to
-    ``./.opencode/skills/<name>/SKILL.md`` (sibling symlinks pick up the
-    change automatically because they are symlinks into the canonical).
-    A prompt-confirmation gate is the documented contract: the agent
-    MUST ask the user before mutating any ``SKILL.md``; this hook is the
-    single chokepoint where the prompt-confirmation step will be added.
-
-    Project-scope only by design; user-global is intentionally not wired
-    in this iteration to avoid silent home-dir mutation. See
-    ``docs/sphinx/agents.md`` §'Self-improving skills (future)' for the
-    full scope-decision rationale.
-
-    Args:
-        workspace_root: Project workspace root.
-        canonical_root: Resolved canonical skills root for the project
-            (e.g. ``workspace_root / ".opencode" / "skills"``).
-    """
     return None
 
 
 def _resolve_within_workspace(path: Path, workspace_root: Path) -> Path | None:
-    """Resolve ``path`` and verify it stays within ``workspace_root``.
-
-    Returns the resolved path when containment holds; ``None`` when
-    ``path`` resolves to a location outside ``workspace_root`` (e.g. a
-    pre-existing project skill root is a symlink to an external directory,
-    or the workspace_root itself cannot be resolved).
-
-    Uses ``Path.resolve(strict=False)`` on BOTH sides so macOS
-    ``/tmp`` -> ``/private/tmp`` symlink indirection is normalized
-    before the comparison. Returns ``None`` on ``OSError`` so a broken
-    state never propagates and silently bypasses the safety check.
-    """
     try:
         workspace_resolved = workspace_root.resolve(strict=False)
         path_resolved = path.resolve(strict=False)
@@ -693,16 +401,6 @@ def _resolve_within_workspace(path: Path, workspace_root: Path) -> Path | None:
 def _project_root_outside_workspace(
     workspace_root: Path,
 ) -> str | None:
-    """Return a failure code when a project skill root resolves outside the workspace.
-
-    Iterates the canonical (``.opencode/skills``) AND every sibling root
-    (``project_sibling_skill_roots``) and returns the first
-    ``skills-outside-workspace-<segment>`` code it finds. Returns ``None``
-    when every root resolves within the workspace. Used by BOTH
-    ``install_project_baseline_skills`` (to fail-closed before any
-    filesystem mutation) and ``_project_skills_need_install`` (to surface
-    the misdirected tree as needing repair).
-    """
     canonical = project_skill_root(workspace_root)
     if _resolve_within_workspace(canonical, workspace_root) is None:
         return "skills-outside-workspace-canonical"
@@ -715,46 +413,12 @@ def _project_root_outside_workspace(
 
 
 def _project_skills_need_install(workspace_root: Path) -> bool:
-    """Return True when the project-scope install should run.
-
-    Precise 'missing' predicate — the canonical must be a real directory
-    (PA-005: an ``is_dir()`` check explicitly guards the silent-misclassification
-    case where a regular file sits at the canonical path), every baseline
-    skill must have a SKILL.md under the canonical, and every baseline
-    skill must be a symlink under every project sibling AND that
-    symlink must point to the canonical skill entry for the same skill.
-
-    Two NEW containment / target checks added for the external-symlink
-    and wrong-target regression coverage (analysis feedback):
-
-      1. CONTAINMENT (analyzed bug): every project skill root
-         (``.opencode/skills`` AND every sibling) MUST resolve within
-         ``workspace_root``. A pre-existing symlink that points outside
-         the workspace is treated as 'install needed' so the repair
-         path fires and the symlink can be replaced. Mirrored by
-         ``install_project_baseline_skills`` which fails closed as
-         NEEDS_REPAIR (the user must manually fix the misdirected
-         symlink before the install can run safely).
-
-      2. WRONG-TARGET (analyzed bug): every sibling skill symlink MUST
-         resolve to the canonical skill entry for the same skill name.
-         A sibling symlink pointing at a wrong canonical (e.g. a stale
-         or malicious target) is treated as 'install needed' so the
-         repair path re-creates the symlink.
-    """
     reasons: list[str] = []
     _collect_project_skills_reasons(workspace_root, reasons)
     return bool(reasons)
 
 
 def _collect_project_skills_reasons(workspace_root: Path, reasons: list[str]) -> None:
-    """Append a reason string for every predicate miss in ``_project_skills_need_install``.
-
-    The predicate is 'install needed when at least one reason is present'.
-    Splitting collection from the boolean return keeps the per-check
-    semantics clear and lets the caller surface a list of missing pieces
-    for diagnostics without duplicating the iteration logic.
-    """
     if _project_root_outside_workspace(workspace_root) is not None:
         reasons.append("root-outside-workspace")
     canonical = project_skill_root(workspace_root)
@@ -815,14 +479,6 @@ def _root_skill_marker_valid(resolved: Path, name: str) -> bool:
 
 
 def check_skills_update_available() -> bool:
-    """Return True if any registered user-global skill root needs an update.
-
-    Iterates every entry returned by ``agent_skill_roots()`` and returns True
-    on the first missing or mismatched root. Each root is checked for:
-      - existence of the root directory and a valid ``metadata.json``
-      - a ``.ralph-managed.json`` marker for every baseline skill with the
-        correct ``managed_by`` and ``content_sha256`` hash
-    """
     for root in agent_skill_roots():
         resolved = root.resolve()
         if not resolved.exists():

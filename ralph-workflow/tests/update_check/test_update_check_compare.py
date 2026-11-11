@@ -1,5 +1,3 @@
-"""Version comparison for the update nagger."""
-
 from __future__ import annotations
 
 import pytest
@@ -14,9 +12,7 @@ from ralph.update_check.compare import is_newer
         ("0.8.24", "0.8.25", True),
         ("0.9.0", "0.8.24", False),
         ("0.8.24", "0.8.24", False),
-        # A pre-release is not "newer" than the matching final under PEP 440.
         ("0.9.0", "0.9.0rc1", False),
-        # A newer pre-release over an older final is newer.
         ("0.8.0", "0.9.0rc1", True),
     ],
 )

@@ -1,33 +1,3 @@
-"""Declarative registry of the nine built-in agent CLIs.
-
-This module is the single source of truth for the agents that Ralph Workflow
-ships with out of the box. Each entry is a :class:`~ralph.agents.builtin_spec.BuiltinAgentSpec`
-declaratively describing one CLI: the transport, the parser/strategy pair,
-the JSON parsing mode, the executable, the flags used for unattended
-("yolo") invocation, resume/session support, and whether the agent is allowed
-to author commits.
-
-The nine built-in agents are:
-
-- ``claude`` (Claude Code interactive / PTY transport)
-- ``claude-headless`` (Claude Code headless JSON-stream transport)
-- ``codex`` (Codex CLI)
-- ``opencode`` (OpenCode CLI)
-- ``nanocoder`` (Nanocoder CLI)
-- ``agy`` (AGY CLI; binary overridable via ``RALPH_AGY_BINARY``)
-- ``pi`` (Pi.dev CLI)
-- ``cursor`` (Cursor Agent CLI; binary overridable via ``RALPH_CURSOR_BINARY``)
-- ``kimi`` (Kimi Code CLI; binary overridable via ``RALPH_KIMI_BINARY``)
-
-Adding a new built-in agent requires editing this module only; the catalog
-picks the entries up via :func:`builtin_supports`. Custom agents configured
-via ``.agent/agents.toml`` are layered on top by the catalog and do not need
-to be declared here.
-
-Side effects: none at import time. The agent supports are returned as a
-fresh tuple on each call to :func:`builtin_supports` so callers can iterate
-without sharing state.
-"""
 
 from __future__ import annotations
 
@@ -58,10 +28,6 @@ from ralph.agents.parsers.kimi import KimiParser
 from ralph.agents.parsers.nanocoder import NanocoderParser
 from ralph.agents.parsers.opencode import OpenCodeParser
 from ralph.agents.parsers.pi import PiParser
-
-# Imported at module level (NOT lazily): ``ralph.agents.registry`` imports
-# this module lazily via ``_builtin_supports_lazy``, so the
-# builtin->registry edge keeps the module-level dependency graph acyclic.
 from ralph.agents.registry import agy_alias_help
 from ralph.config.enums import AgentTransport, JsonParserType
 
@@ -69,15 +35,6 @@ if TYPE_CHECKING:
     from ralph.agents.support import AgentSupport
 
 
-#: Capability stance set used for the four built-in agents whose
-#: smoke path is currently exercised end-to-end through committed
-#: wire-format fixtures and whose parser produces a metadata
-#: envelope the canonical ``payload_from_tool_event`` recognizes
-#: for read, write, and edit tool calls. The four agents using this
-#: constant are claude, claude-headless, agy, and cursor. codex and
-#: pi carry their own ``display_capabilities`` tuples because their
-#: respective parsers do not (yet) surface the full set; see the
-#: inline declarations below for the per-agent reasons.
 _CLAUDE_LEVEL_CAPABILITIES: tuple[DisplayCapabilityStance, ...] = (
     DisplayCapabilityStance.supported(
         DisplayCapability.SYNTAX_HIGHLIGHTING,
@@ -93,10 +50,6 @@ _CLAUDE_LEVEL_CAPABILITIES: tuple[DisplayCapabilityStance, ...] = (
     ),
 )
 
-#: Codex ships its own JSON envelope that the shared
-#: ``payload_from_tool_event`` does not yet recognize. The capability
-#: is ``UNIMPLEMENTED`` with a measurable reason so a future fix can
-#: promote it to SUPPORTED once the parser is extended.
 _CODEX_CAPABILITIES: tuple[DisplayCapabilityStance, ...] = (
     DisplayCapabilityStance.unimplemented(
         DisplayCapability.SYNTAX_HIGHLIGHTING,
@@ -112,14 +65,6 @@ _CODEX_CAPABILITIES: tuple[DisplayCapabilityStance, ...] = (
     ),
 )
 
-#: OpenCode is the agent whose parsing defect the S-1/S-3 plan exists to
-#: repair. The parser now normalizes the live 1.18.14 ``ralph_*`` tool
-#: names at the transport boundary so the canonical preview payload
-#: builder recognizes ``read_file`` / ``write_file`` / ``edit_file`` -- the
-#: three capabilities exercised by the captured fixture
-#: (``tests/display/_fixtures/opencode_wire_provenance.md``). The
-#: ``tests/test_opencode_display_fidelity.py`` regression tests pin each
-#: surface against the captured frame shape.
 _OPENCODE_CAPABILITIES: tuple[DisplayCapabilityStance, ...] = (
     DisplayCapabilityStance.supported(
         DisplayCapability.SYNTAX_HIGHLIGHTING,
@@ -135,12 +80,6 @@ _OPENCODE_CAPABILITIES: tuple[DisplayCapabilityStance, ...] = (
     ),
 )
 
-#: Nanocoder is a local-only TUI; its plain-text parser does not produce
-#: a structured tool envelope the preview builder recognizes. The agent
-#: is structurally capable of file operations through Ralph's local
-#: filesystem primitives but its parser surfaces no metadata that
-#: ``payload_from_tool_event`` can route, hence ``UNIMPLEMENTED`` with a
-#: specific reason rather than ``NOT_APPLICABLE``.
 _NANOCODER_CAPABILITIES: tuple[DisplayCapabilityStance, ...] = (
     DisplayCapabilityStance.unimplemented(
         DisplayCapability.SYNTAX_HIGHLIGHTING,
@@ -156,10 +95,6 @@ _NANOCODER_CAPABILITIES: tuple[DisplayCapabilityStance, ...] = (
     ),
 )
 
-#: Pi.dev emits a JSON envelope whose parser produces tool metadata
-#: with file paths, but the parser does not currently route through
-#: ``payload_from_tool_event``. ``UNIMPLEMENTED`` is the honest
-#: stance until a measured run confirms the renderer side.
 _PI_CAPABILITIES: tuple[DisplayCapabilityStance, ...] = (
     DisplayCapabilityStance.unimplemented(
         DisplayCapability.SYNTAX_HIGHLIGHTING,
@@ -176,12 +111,6 @@ _PI_CAPABILITIES: tuple[DisplayCapabilityStance, ...] = (
 )
 
 
-#: Kimi Code's parser preserves the upstream tool name verbatim in
-#: ``metadata["tool"]`` (the measured v0.36.1 wire carries kimi's native
-#: tool vocabulary with JSON-string ``arguments``), and does not yet
-#: normalize those names onto the canonical ``payload_from_tool_event``
-#: vocabulary. ``UNIMPLEMENTED`` with a measurable reason is the honest
-#: stance until a captured fixture proves the renderer side.
 _KIMI_CAPABILITIES: tuple[DisplayCapabilityStance, ...] = (
     DisplayCapabilityStance.unimplemented(
         DisplayCapability.SYNTAX_HIGHLIGHTING,
@@ -241,15 +170,6 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
         strategy_factory=OpenCodeExecutionStrategy,
         json_parser=JsonParserType.OPENCODE,
         cmd="opencode",
-        # No output_flag: opencode 1.18.25 exposes only
-        # ``--format default|json`` (``opencode run --help``) and has no
-        # ``--json-stream``. The command builder declares
-        # ``honors_output_flag=False`` for this transport, so any operator
-        # ``[agents.opencode].output_flag`` override is dropped by
-        # declaration rather than by accident.
-        # Unattended runs have nobody to answer a permission prompt, and
-        # OpenCode auto-REJECTS anything it cannot match. ``--auto`` approves
-        # what is not explicitly denied, so operator denies still win.
         yolo_flag="--auto",
         session_flag="--session {}",
         display_capabilities=_OPENCODE_CAPABILITIES,
@@ -262,17 +182,6 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
         cmd="nanocoder",
         interactive=True,
         no_default_session_flag=True,
-        # S-6 (Evidence Provenance G6 / DoD 20): the one documented False
-        # case. Upstream documentation review (see
-        # docs/superpowers/specs/2026-06-07-nanocoder-support-design.md's
-        # "Session and Retry Policy" section) found no documented
-        # unattended `run`-mode session/resume output of any kind, and
-        # NanocoderParser (plain-text PTY redraw, no JSON session
-        # protocol) confirms there is no mechanism to observe one --
-        # unlike AGY, which also has no_default_session_flag=True but
-        # DOES emit an observable conversation_id via its JSON init
-        # frame and is therefore NOT exempted from the smoke gate's
-        # session-id check.
         session_identifier_observable=False,
         display_capabilities=_NANOCODER_CAPABILITIES,
     ).to_support("nanocoder"),
@@ -286,11 +195,6 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
         print_flag="--print",
         interactive=True,
         no_default_session_flag=True,
-        # Generic data-driven seams (no name-typed control flow downstream):
-        # ``lookup_dynamic_alias_help`` serves this callable for unknown
-        # ``agy/<model>`` aliases, and ``lookup_empty_output_diagnostic_factory``
-        # routes empty-output diagnostics through it — any future agent
-        # registers the same kwargs to get the same behaviour.
         dynamic_alias_help=agy_alias_help,
         dynamic_alias_help_prefix=("agy",),
         empty_output_diagnostic_factory=agy_empty_output_reason,
@@ -340,5 +244,4 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
 
 
 def builtin_supports() -> tuple[AgentSupport, ...]:
-    """Return a fresh copy of the built-in agent supports."""
     return tuple(_BUILTIN_AGENT_SUPPORTS)

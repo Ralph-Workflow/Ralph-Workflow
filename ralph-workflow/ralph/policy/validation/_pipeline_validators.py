@@ -1,4 +1,3 @@
-"""Pipeline-level validation helpers for policy completeness checks."""
 
 from __future__ import annotations
 
@@ -117,16 +116,8 @@ def _route_budget_counter(
     phase_name: str,
     phase_def: PhaseDefinition,
 ) -> str | None:
-    """Return the budget counter post-commit routing will use for a phase.
-
-    Mirrors ``ralph.pipeline.handoffs._compute_budget_state``: a lifecycle
-    declaration wins, then the commit policy's route/increment counter.
-    """
     lifecycle = policy.lifecycle_phases.get(phase_name)
     if lifecycle is not None:
-        # Presence is authoritative, exactly as the runtime treats it: a
-        # lifecycle entry that declares no counter means no budget routing,
-        # not "fall back to the commit policy".
         counter = lifecycle.increments_counter
         return str(counter) if counter else None
     commit_policy = phase_def.commit_policy
@@ -142,13 +133,6 @@ def _validate_spent_budget_can_end_the_run(
     counter: str,
     errors: list[str],
 ) -> None:
-    """Require a spent budget to lead somewhere the run can actually finish.
-
-    Covering every budget state says nothing about where those routes GO. A
-    table whose spent-budget routes re-enter the cycle keeps incrementing a
-    counter that is already exhausted and never terminates — the mirror image
-    of ending early, and just as broken.
-    """
     terminals = policy.terminal_states()
     for state_name in ("exhausted", "no_review"):
         routes = [
@@ -158,8 +142,6 @@ def _validate_spent_budget_can_end_the_run(
         ]
         if not routes:
             continue
-        # Every outcome must have its OWN way out: a failure route reaching the
-        # failure terminal says nothing about where a completed cycle goes.
         for outcome in sorted({route.when.cycle_outcome for route in routes}, key=str):
             target = _routed_target(routes, outcome)
             if target is None or _terminal_is_reachable(policy, target, terminals, outcome=outcome):
@@ -173,20 +155,10 @@ def _validate_spent_budget_can_end_the_run(
             )
 
 
-#: Outcome an unrecorded cycle is routed as once the wildcard routes fail to
-#: match, mirroring the reducer's post-commit fallback. Pooling every declared
-#: route instead let a ``failed`` route supply a terminal that an unrecorded
-#: cycle can never reach.
 _UNRECORDED_FALLBACK_OUTCOME = "completed"
 
 
 def _routed_target(routes: Sequence[PostCommitRoute], outcome: str | None) -> str | None:
-    """Return the target post-commit routing would take, or ``None`` for no match.
-
-    Models the live matcher exactly: the first route in table order whose
-    declared outcome is the wildcard or the outcome under test, with an
-    unrecorded outcome retried as the forward outcome when nothing matched.
-    """
     candidates = (outcome,) if outcome is not None else (None, _UNRECORDED_FALLBACK_OUTCOME)
     for candidate in candidates:
         for route in routes:
@@ -202,16 +174,6 @@ def _terminal_is_reachable(
     *,
     outcome: str | None = None,
 ) -> bool:
-    """Return whether a terminal is reachable from a phase WITHOUT failing.
-
-    Only forward edges count — success transitions, analysis decisions, and
-    post-commit routes. Failure and loopback edges are excluded deliberately:
-    a workflow that can only stop by failing has no way to finish a run whose
-    budget is spent, which is what this is asked about. Post-commit routing
-    REPLACES the success transition for a phase it governs, so following
-    on_success there would let a table whose own routes all loop claim a
-    terminal it can never take.
-    """
     seen: set[str] = set()
     frontier = [start]
     while frontier:
@@ -222,9 +184,6 @@ def _terminal_is_reachable(
             continue
         seen.add(phase)
         phase_def = policy.phases[phase]
-        # Follow only the routes THIS outcome can take: pooling every route for
-        # the phase let a failure-outcome route supply a terminal the outcome
-        # under test could never reach.
         phase_routes = [route for route in policy.post_commit_routes if route.when.phase == phase]
         routed = _routed_target(phase_routes, outcome) if phase_routes else None
         if routed is not None:
@@ -244,11 +203,6 @@ def _validate_post_commit_routes_complete(
     for phase_name, phase_def in policy.phases.items():
         if phase_def.role != "commit":
             continue
-        # Resolve the counter exactly as the runtime does (lifecycle first,
-        # then commit policy). Reading only commit_policy let a phase whose
-        # counter lives in [lifecycle_phases.<name>] skip this check while the
-        # router still computed a budget state for it — so it fell through the
-        # route table to the success terminal with cycles unspent.
         counter = _route_budget_counter(policy, phase_name, phase_def)
         if not counter or counter == "none":
             continue

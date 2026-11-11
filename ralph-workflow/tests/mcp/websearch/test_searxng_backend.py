@@ -10,7 +10,7 @@ from tests.mcp.websearch._searxng_backend_helper__explodingresponse import _Expl
 def _import_searxng_module() -> object:
     try:
         return import_module("ralph.mcp.websearch.backends.searxng")
-    except ModuleNotFoundError as exc:  # pragma: no cover - exercised in RED phase
+    except ModuleNotFoundError as exc:
         raise AssertionError("ralph.mcp.websearch.backends.searxng should exist") from exc
 
 

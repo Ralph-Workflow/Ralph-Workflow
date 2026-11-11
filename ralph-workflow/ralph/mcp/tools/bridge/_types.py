@@ -1,4 +1,3 @@
-"""Shared type aliases for the bridge package."""
 
 from __future__ import annotations
 

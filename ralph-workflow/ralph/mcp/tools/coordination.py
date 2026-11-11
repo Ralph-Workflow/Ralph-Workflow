@@ -1,45 +1,3 @@
-"""MCP tool call coordination handlers.
-
-Ports the Rust coordination handlers that support progress reporting,
-completion declaration, workspace coordination, and environment reads.
-
-Exported surface:
-
-- ``handle_report_progress`` — emits a ``run.report_progress`` event to
-  the pipeline. Used by the agent to publish heartbeat / status updates
-  while it is still working. The text response is suffixed with
-  ``PROGRESS_PIPELINE_MARKER`` so the idle watchdog can key on it.
-- ``handle_declare_complete`` — finalizes the run with an
-  ``artifact.submit``-gated completion sentinel. Persists it in
-  ``.agent/state.db`` or the durable
-  ``.agent/completion_seen_<run_id>.json`` fallback (HMAC-signed when the
-  broker secret is provided) so the failure classifier / recovery
-  controller can verify completion even if the MCP JSON-RPC envelope is lost.
-- ``handle_coordinate`` — ``artifact.plan_write``-gated workspace
-  coordination: planning-drain agents publish actions / work-unit
-  payloads that the parent process observes. The text response is
-  suffixed with ``[Coordination event emitted to pipeline]``.
-- ``handle_read_env`` — ``env.read``-gated environment variable read.
-  Returns ``<name>=<value>`` or ``<name>=[not found]``. The agent
-  diagnostic / orchestrator uses this to inspect the run environment.
-- ``require_capability`` — the canonical capability check used by every
-  public handler in this module (and re-exported for ``exec.py``,
-  ``git_read.py``, ``websearch.py``, and ``webvisit.py``).
-- ``format_progress_text`` / ``format_coordination_text`` /
-  ``_write_completion_sentinel`` — formatting and persistence helpers.
-
-Trust boundary: every public handler is gated on a ``McpCapability``
-declared by the agent session. The four capability strings
-(``RUN_REPORT_PROGRESS_CAPABILITY``, ``ARTIFACT_SUBMIT_CAPABILITY``,
-``ARTIFACT_PLAN_WRITE_CAPABILITY``, ``ENV_READ_CAPABILITY``) are the
-contract between the agent's session declaration and the handler-side
-default-deny check.
-
-Side effects: ``handle_declare_complete`` persists a completion sentinel
-under ``.agent/``; the other handlers are pure with respect to the workspace
-and only emit pipeline events. No subprocess is spawned, no network call is
-made.
-"""
 
 from __future__ import annotations
 
@@ -74,21 +32,10 @@ if TYPE_CHECKING:
 
 RUN_REPORT_PROGRESS_CAPABILITY = "run.report_progress"
 ARTIFACT_SUBMIT_CAPABILITY = "artifact.submit"
-# Coordinate is planning/coordination-only — gated on plan_write so it matches the
-# coordinate tool spec's advertised capability (planning drains only), not the
-# broader artifact.submit held by every drain.
 ARTIFACT_PLAN_WRITE_CAPABILITY = "artifact.plan_write"
 ENV_READ_CAPABILITY = "env.read"
 COMPLETION_SENTINEL_RELPATHFMT = ".agent/completion_seen_{run_id}.json"
 
-#: Environment variable names whose values are broker-owned HMAC secrets.
-#: ``env.read`` MUST refuse to disclose these even when the variable is
-#: present in the injected environment; otherwise any session granted
-#: ``env.read`` can recover the secret used by ``session.broker_secret``
-#: and forge receipt/sentinel HMACs. Sourced from
-#: ``ralph/mcp/server/runtime_session.py`` (the same canonical secret
-#: that ``session.broker_secret`` exposes). Add to this frozen set when
-#: the broker pipeline extends the HMAC envelope.
 _BROKER_SECRET_ENV_NAMES: frozenset[str] = frozenset(
     {
         "RALPH_BROKER_SECRET",
@@ -97,15 +44,10 @@ _BROKER_SECRET_ENV_NAMES: frozenset[str] = frozenset(
     }
 )
 
-#: Returned by ``read_env_value`` when the requested name is in
-#: ``_BROKER_SECRET_ENV_NAMES``. The actual value is never disclosed;
-#: the agent can still detect the variable is configured (vs absent)
-#: by comparing against ``"[not found]"``.
 _BROKER_SECRET_DENIED_TEXT = "[redacted: broker-owned secret]"
 
 
 def _timestamp() -> int:
-    """Return the current UNIX timestamp in seconds."""
     return int(time.time())
 
 
@@ -121,7 +63,6 @@ def _is_approved(outcome: object) -> bool:
 
 
 def _serialize_payload(payload: object) -> str:
-    """Serialize coordination payloads with JSON, fallback to str()."""
     try:
         return json.dumps(payload, ensure_ascii=False)
     except TypeError:
@@ -137,38 +78,6 @@ def _write_completion_sentinel(
     _write_fn: Callable[[str, str], None] | None = None,
     sentinel_hmac: str | None = None,
 ) -> bool:
-    """Write a run-scoped completion sentinel with durable fallback.
-
-    When ``sentinel_hmac`` is provided the sentinel payload includes
-    an ``hmac`` field binding the run id to a broker-owned secret so a
-    model that can write under ``.agent/`` cannot forge a valid
-    sentinel. ``_check_completion_sentinel`` in
-    ``ralph.agents.completion_signals`` verifies the HMAC the same way
-    when the secret is provided.
-
-    Storage (RFC-013 P3): sentinels are written to ``.agent/state.db``
-    via ``RunStateDB`` (one row per ``run_id``). The legacy ``.agent/
-    completion_seen_<run_id>.json`` file path is preserved as a read
-    fallback during migration and as the durable write fallback when
-    database persistence fails.
-
-    Durable-fallback: when ``RunStateDB`` raises ``OSError``,
-    ``RuntimeError``, or ``sqlite3.Error`` (locked / corrupt /
-    unsupported WAL / disk full), this function falls back to writing
-    the legacy file path so the completion gate always has durable
-    evidence. The HMAC is included in both stores when ``sentinel_hmac``
-    is provided. When ``_write_fn`` is provided the test seam captures
-    the payload without performing any disk or DB I/O.
-
-    Returns:
-        ``True`` when a durable sentinel was persisted (DB row,
-        legacy file, or ``_write_fn`` test seam). ``False`` when no
-        durable sentinel was written \u2014 the workspace root is missing,
-        the DB open failed AND the legacy-file write failed, or the
-        workspace itself is ``None``. Callers that must fail closed
-        (e.g. ``handle_declare_complete``) MUST treat ``False`` as a
-        hard failure and refuse to report the task complete.
-    """
     if workspace is None:
         return False
     sentinel_payload: dict[str, str] = {"run_id": run_id}
@@ -181,8 +90,6 @@ def _write_completion_sentinel(
         sentinel_payload["hmac"] = digest
     payload = json.dumps(sentinel_payload, ensure_ascii=False)
     if _write_fn is not None:
-        # Test seam: keep the file-format assertion path working without
-        # touching the real workspace or DB.
         try:
             sentinel_relpath = COMPLETION_SENTINEL_RELPATHFMT.format(run_id=run_id)
             sentinel_abspath = workspace.absolute_path(sentinel_relpath)
@@ -207,7 +114,7 @@ def _write_completion_sentinel(
             db.upsert_completion_sentinel(run_id, hmac_hex_value)
             db_written = True
         except (OSError, RuntimeError, sqlite3.Error):
-            pass  # Will fall through to legacy-file durable fallback below.
+            pass
         finally:
             with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
                 db.close()
@@ -219,31 +126,11 @@ def _write_completion_sentinel(
 
 
 def _write_legacy_sentinel_fallback(workspace_root: Path, run_id: str, payload: str) -> bool:
-    """Write the legacy ``.agent/completion_seen_<run_id>.json`` fallback.
-
-    Used by ``_write_completion_sentinel`` only when the RunStateDB write
-    fails (sqlite3.Error / OSError on open or upsert). The payload is
-    already JSON-encoded by the caller; this helper only handles the
-    file creation path under ``.agent/``.
-
-    Returns:
-        ``True`` when the legacy sentinel file was written;
-        ``False`` when ``OSError`` blocked the write (either the
-        ``.agent`` mkdir or the file write). A ``False`` return is
-        the fail-closed signal that ``_write_completion_sentinel``
-        propagates upward so the caller can refuse to declare the
-        run complete without a durable sentinel.
-    """
     sentinel_path = workspace_root / COMPLETION_SENTINEL_RELPATHFMT.format(run_id=run_id)
     try:
-        # filesystem-write-ok: coordination state lockfile, runtime mutex not tracked
         sentinel_path.parent.mkdir(parents=True, exist_ok=True)
         write_text_if_changed(DEFAULT_FILE_BACKEND, sentinel_path, payload, encoding="utf-8")
     except OSError:
-        # Some filesystems can report a late write error after the complete
-        # payload became visible. Resolve that uncertain outcome by reading
-        # back the exact broker-authored bytes: success and gate evidence must
-        # agree, while a missing or partial file still fails closed.
         try:
             return sentinel_path.read_text(encoding="utf-8") == payload
         except (OSError, UnicodeDecodeError):
@@ -251,15 +138,10 @@ def _write_legacy_sentinel_fallback(workspace_root: Path, run_id: str, payload: 
     return True
 
 
-#: Stable machine-readable marker appended to every progress report. The idle
-#: watchdog's activity classifier keys on this to route repeated progress reports
-#: into the repeated-error circuit breaker (so a cosmetic "still stuck" heartbeat
-#: cannot keep a wedged agent alive forever). Keep it in sync with any consumer.
 PROGRESS_PIPELINE_MARKER = "[Progress event emitted to pipeline]"
 
 
 def format_progress_text(status: str, note: str, timestamp: int) -> str:
-    """Build the progress report response text."""
     return (
         f"Progress reported: status='{status}', note='{note}', timestamp={timestamp}\n"
         f"{PROGRESS_PIPELINE_MARKER}"
@@ -267,7 +149,6 @@ def format_progress_text(status: str, note: str, timestamp: int) -> str:
 
 
 def require_capability(session: CoordinationSessionLike, capability: str, action: str) -> None:
-    """Require a capability, raising a capability-denied error when missing."""
     outcome = session.check_capability(capability)
     if _is_approved(outcome):
         return
@@ -282,31 +163,6 @@ def handle_report_progress(
     *,
     now_fn: Callable[[], int] = _timestamp,
 ) -> ToolResult:
-    """Report agent progress to the Ralph pipeline.
-
-    Args:
-        session: Agent session; must declare ``run.report_progress``.
-        _workspace: Unused; kept for tool-handler signature parity.
-        params: Mapping with required ``status`` (string) and optional
-            ``note`` (string, defaults to empty).
-        now_fn: Optional injected wall-clock provider for the
-            ``unix_ts`` suffix in the formatted text. Defaults to
-            ``_timestamp``.
-
-    Returns:
-        A ``ToolResult`` whose text content is the formatted progress
-        line (suffixed with ``PROGRESS_PIPELINE_MARKER`` so the idle
-        watchdog can key on it).
-
-    Raises:
-        CapabilityDeniedError: When the session does not declare
-            ``run.report_progress``.
-
-    Side effects:
-        Pure with respect to the workspace. Emits a
-        ``run.report_progress`` event to the pipeline. No subprocess,
-        no network call.
-    """
     require_capability(session, RUN_REPORT_PROGRESS_CAPABILITY, "Progress reporting")
     status = _parameter_as_string(params, "status")
     note_value = params.get("note", "")
@@ -324,57 +180,12 @@ def handle_declare_complete(
     *,
     now_fn: Callable[[], int] = _timestamp,
 ) -> ToolResult:
-    """Declare that the agent has completed its assigned task.
-
-    Args:
-        session: Agent session; must declare ``artifact.submit`` and
-            carry a valid ``run_id`` used to name the sentinel file.
-        workspace: Workspace surface whose root resolves
-            ``.agent/completion_seen_<run_id>.json``.
-        params: Mapping with optional ``summary`` (string, defaults to
-            ``"No summary provided"``) and ``partial_reason`` (string), which
-            records the impossible external action blocking a partial result.
-        now_fn: Optional injected wall-clock provider for the timestamp
-            in the response. Defaults to ``_timestamp``.
-
-    Returns:
-        A ``ToolResult`` whose text content is the completion summary
-        line (suffixed with ``[Completion event emitted to pipeline]``).
-
-    Raises:
-        CapabilityDeniedError: When the session does not declare
-            ``artifact.submit``.
-
-    Side effects:
-        Persists the run-scoped sentinel in ``.agent/state.db`` or, when
-        database persistence fails, the legacy
-        ``.agent/completion_seen_<run_id>.json`` fallback. If neither
-        store succeeds, the handler returns ``ToolResult(is_error=True)``
-        and does not claim completion.
-    """
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Task completion")
     summary_value = params.get("summary", "No summary provided")
     summary = summary_value if isinstance(summary_value, str) else "No summary provided"
     partial_reason_value = params.get("partial_reason")
     partial_reason = partial_reason_value if isinstance(partial_reason_value, str) else None
-    # RFC-013 P3: thread the broker-owned secret through the live
-    # write path so the sentinel payload includes an HMAC binding the
-    # run id to the secret. ``session.broker_secret`` is ``None`` when
-    # the broker has not configured HMAC enforcement; the underlying
-    # ``_write_completion_sentinel`` treats ``sentinel_hmac=None`` as
-    # "no HMAC" (pre-P3 contract).
     broker_secret: str | None = getattr(session, "broker_secret", None)
-    # Fail-closed contract: ``_write_completion_sentinel`` returns a
-    # bool indicating whether a durable sentinel was actually persisted.
-    # If neither the RunStateDB row nor the legacy sentinel file was
-    # written (workspace missing, DB open failed AND legacy write
-    # failed), declare_complete MUST refuse to report success \u2014 a
-    # ``ToolResult(is_error=True)`` so the agent cannot falsely claim
-    # completion against a sentinel the completion gate cannot see.
-    # ``sqlite3.Error`` / ``OSError`` raised inside the sentinel helper
-    # are still swallowed at the helper boundary so a transient
-    # filesystem issue is reflected as a ``False`` return, not a
-    # propagated exception.
     sentinel_written = _write_completion_sentinel(
         workspace, session.run_id, sentinel_hmac=broker_secret
     )
@@ -389,9 +200,6 @@ def handle_declare_complete(
             content=[ToolContent.text_content(error_message)],
             is_error=True,
         )
-    # The validation banner constant sits behind the recovery module chain
-    # (about 0.15 CPU core-seconds). It is resolved at call time so that the
-    # MCP server module tree does not pull that module tree.
     from ralph.recovery.retry_prompt import (
         VALIDATION_FAILURE_BANNER,
     )
@@ -422,25 +230,10 @@ def handle_declare_complete(
 
 
 def _quotable_summary(summary: str) -> str:
-    """Return ``summary`` safe to place inside the emitted quoted field.
-
-    The summary is agent-authored free text and was interpolated raw, so
-    the emitted line had no grammar: a reader could not tell where the
-    summary ended, and the raw-transcript grader spent several rounds
-    guessing -- rejecting legitimate summaries that mentioned JSON while
-    still excusing a torn write glued to the next line.
-
-    A single quote inside the field is what makes it ambiguous, and a
-    newline would split one message into two lines. Both are replaced
-    rather than dropped, so nothing the agent wrote is lost: the reader
-    keeps every word and gains an unambiguous closing delimiter.
-    """
     flattened = _CONTROL_RUN.sub(" ", summary)
     return flattened.replace("'", '"')
 
 
-#: Newlines, tabs and other control characters, which would break the
-#: one-message-one-line contract this text is read back under.
 _CONTROL_RUN = re.compile(r"[\x00-\x1f\x7f]+")
 
 
@@ -451,7 +244,6 @@ def format_coordination_text(
     work_unit_id: str | None,
     payload: object | None,
 ) -> str:
-    """Format the coordination response text."""
     message = (
         f"Coordination action '{action}' processed: session_id={session_id}, timestamp={timestamp}"
     )
@@ -469,34 +261,6 @@ def handle_coordinate(
     *,
     now_fn: Callable[[], int] = _timestamp,
 ) -> ToolResult:
-    """Coordinate parallel worker activities.
-
-    Deprecated: Ralph-orchestrated workers are removed from the execution
-    model; parallelism is owned by the developer agent's own sub-agents.
-    See docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
-
-    Args:
-        session: Agent session; must declare ``artifact.plan_write``.
-        _workspace: Unused; kept for tool-handler signature parity.
-        params: Mapping with required ``action`` (string), optional
-            ``work_unit_id`` (string) and ``payload`` (object).
-        now_fn: Optional injected wall-clock provider for the timestamp
-            in the formatted text. Defaults to ``_timestamp``.
-
-    Returns:
-        A ``ToolResult`` whose text content is the formatted
-        coordination line (suffixed with
-        ``[Coordination event emitted to pipeline]``).
-
-    Raises:
-        CapabilityDeniedError: When the session does not declare
-            ``artifact.plan_write``.
-
-    Side effects:
-        Pure with respect to the workspace. Emits a workspace
-        coordination event for the planning drain to observe. No
-        subprocess, no network call.
-    """
     require_capability(session, ARTIFACT_PLAN_WRITE_CAPABILITY, "Workspace coordination")
     action = _parameter_as_string(params, "action")
     work_unit_value = params.get("work_unit_id")
@@ -519,27 +283,6 @@ def handle_read_env(
     *,
     env: dict[str, str] | os._Environ[str] = os.environ,
 ) -> ToolResult:
-    """Read an environment variable by name.
-
-    Args:
-        session: Agent session; must declare ``env.read``.
-        _workspace: Unused; kept for tool-handler signature parity.
-        params: Mapping with required ``name`` (string).
-        env: Optional injected environment mapping. Defaults to
-            ``os.environ`` (read-only ``os._Environ[str]``).
-
-    Returns:
-        A ``ToolResult`` whose text content is ``<name>=<value>`` or
-        ``<name>=[not found]`` when the variable is absent.
-
-    Raises:
-        CapabilityDeniedError: When the session does not declare
-            ``env.read``.
-
-    Side effects:
-        Pure read of the injected ``env`` mapping. No subprocess, no
-        network call, no workspace writes.
-    """
     require_capability(session, ENV_READ_CAPABILITY, "Environment variable read")
     name = _parameter_as_string(params, "name")
     value = read_env_value(env, name)
@@ -550,18 +293,6 @@ def handle_read_env(
 
 
 def read_env_value(env: dict[str, str] | os._Environ[str], name: str) -> str:
-    """Return the value of an environment variable, or '[not found]' if absent.
-
-    Broker-owned HMAC secrets (``_BROKER_SECRET_ENV_NAMES`` — currently
-    ``RALPH_BROKER_SECRET``) are NEVER disclosed via ``env.read`` even
-    when present in ``env``. Exposing the value would defeat the
-    anti-forgery contract under RFC-013 P3: the same secret is exposed
-    to the broker as ``session.broker_secret`` and is what binds
-    receipts / sentinels to the broker-owned identity. Returning
-    ``"[redacted: broker-owned secret]"`` lets the agent detect that
-    the variable IS configured (vs absent, which returns ``"[not
-    found]"``) without ever disclosing the secret value.
-    """
     if name in _BROKER_SECRET_ENV_NAMES:
         return _BROKER_SECRET_DENIED_TEXT
     return env.get(name, "[not found]")

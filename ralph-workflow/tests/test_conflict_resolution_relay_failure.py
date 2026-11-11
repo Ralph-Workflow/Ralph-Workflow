@@ -1,5 +1,3 @@
-"""Regression contracts for conflict-resolution relay infrastructure failure (S-4)."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -44,7 +42,6 @@ if TYPE_CHECKING:
 
 
 def test_conflict_resolution_relay_failure_precedes_inactivity_classification() -> None:
-    """S-4: a relay fault is typed infrastructure failure, never conflict inactivity."""
     reader = type(
         "Reader", (), {"_relay_health_error": lambda self: "relay acknowledgement timed out"}
     )()
@@ -128,9 +125,6 @@ def test_confirmed_relay_error_interrupts_resolution_despite_fresh_subagent_outp
     assert session.charge_conflict_budget is False
 
 
-#: The number of watchdog ticks a quoted fault must survive. The contract the
-#: test pins is that a fault the agent merely QUOTED never escalates, whatever
-#: the tick count, so the count is a property of the test and not of production.
 _REPEATED_WATCHDOG_TICKS = 6
 
 

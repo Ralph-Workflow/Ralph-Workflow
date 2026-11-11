@@ -1,4 +1,3 @@
-"""Validation result for a single upstream MCP server."""
 
 from __future__ import annotations
 
@@ -8,7 +7,6 @@ from typing import Literal
 
 @dataclass(frozen=True)
 class UpstreamServerReport:
-    """Validation result for a single upstream MCP server."""
 
     name: str
     transport: Literal["http", "stdio"]

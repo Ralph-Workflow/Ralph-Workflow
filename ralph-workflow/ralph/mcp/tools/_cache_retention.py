@@ -1,4 +1,3 @@
-"""Shared size-based retention helpers for agent-visible cache files."""
 
 from __future__ import annotations
 
@@ -12,7 +11,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class CachePruneResult:
-    """Summary of a cache prune operation."""
 
     removed_paths: tuple[Path, ...]
     retained_bytes: int
@@ -32,12 +30,6 @@ def prune_cache_files(
     max_total_bytes: int,
     keep_paths: Iterable[Path] = (),
 ) -> CachePruneResult:
-    """Remove oldest cache files until the remaining total fits the byte budget.
-
-    Paths in ``keep_paths`` are retained even when a single newly-created file is
-    larger than the whole budget. The caller should avoid writing such files when
-    that would be unsafe.
-    """
     entries = _read_cache_entries(files)
     total_bytes = sum(entry.size_bytes for entry in entries)
     if total_bytes <= max_total_bytes:

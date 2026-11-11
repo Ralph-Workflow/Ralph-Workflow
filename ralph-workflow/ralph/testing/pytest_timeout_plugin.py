@@ -1,11 +1,3 @@
-"""Pytest plugin enforcing Ralph's hard suite wall-clock timeout.
-
-This plugin complements the per-test timeout in ``tests/conftest.py`` by
-starting a session-wide watchdog in the controller process. Unlike cooperative
-session timeout plugins, the watchdog terminates descendant worker processes and
-exits the pytest process once the suite deadline is exceeded.
-"""
-
 from __future__ import annotations
 
 import os
@@ -47,9 +39,7 @@ _psutil: _PsutilMod | None
 try:
     import psutil as _psutil_imported
 
-    _psutil = cast(
-        "_PsutilMod", _psutil_imported
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    _psutil = cast("_PsutilMod", _psutil_imported)
 except ImportError:
     _psutil = None
 
@@ -77,7 +67,7 @@ def _emit_timeout_message(timeout_seconds: float) -> None:
 def _terminate_descendants() -> None:
     psutil_mod = _psutil
     if psutil_mod is None:
-        return  # psutil not available — cannot terminate descendants
+        return
 
     try:
         current_process = psutil_mod.Process(os.getpid())
@@ -109,13 +99,10 @@ def _watchdog_main(timeout_seconds: float, cancel_event: threading.Event) -> Non
 
 
 def pytest_sessionstart(session: pytest.Session) -> None:
-    """Start the controller-only watchdog that enforces the suite wall-clock cap."""
     config = session.config
     if _is_xdist_worker(config):
         return
 
-    # ``timeout_seconds_from_env`` rejects non-positive values, so the watchdog
-    # always runs: a cap cannot be disarmed through the environment.
     timeout_seconds = timeout_seconds_from_env(SUITE_TIMEOUT_ENV, DEFAULT_SUITE_TIMEOUT_SECONDS)
 
     cancel_event = threading.Event()
@@ -130,11 +117,8 @@ def pytest_sessionstart(session: pytest.Session) -> None:
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
-    """Cancel the suite watchdog when pytest finishes normally."""
     del exitstatus
-    watchdog = cast(
-        "_SuiteWatchdog | None", getattr(session.config, _WATCHDOG_ATTR, None)
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    watchdog = cast("_SuiteWatchdog | None", getattr(session.config, _WATCHDOG_ATTR, None))
     if watchdog is None:
         return
     watchdog.cancel_event.set()

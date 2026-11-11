@@ -1,4 +1,3 @@
-"""PhaseTransition Pydantic model."""
 
 from __future__ import annotations
 
@@ -8,7 +7,6 @@ from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 
 
 class PhaseTransition(_FrozenPolicyModel):
-    """Transition rules from a phase to other phases."""
 
     on_success: str = Field(..., description="Next phase on success")
     on_failure: str | None = Field(

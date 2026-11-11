@@ -1,5 +1,3 @@
-"""Tests for RingBuffer bounded ring buffer."""
-
 import threading
 
 from ralph.display.ring_buffer import PARALLEL_DISPLAY_BUFFER_SIZE, RingBuffer
@@ -8,9 +6,7 @@ DEFAULT_BUFFER_SIZE = 1000
 EXPECTED_DROPPED_ITEMS = 2
 EXPECTED_DRAINED_ITEMS = 3
 
-# For consume_drop_delta tests: 5 items into maxsize=2 → 3 dropped
 _DELTA_FIVE_INTO_TWO = 3
-# For accumulate test: enqueue 2 more after reset → 2 dropped
 _DELTA_ACCUMULATE = 2
 
 
@@ -39,8 +35,8 @@ def test_drop_oldest_on_overflow() -> None:
     buf.enqueue("1")
     buf.enqueue("2")
     buf.enqueue("3")
-    buf.enqueue("4")  # drops "1"
-    buf.enqueue("5")  # drops "2"
+    buf.enqueue("4")
+    buf.enqueue("5")
     items = buf.drain()
     assert items == ["3", "4", "5"]
 
@@ -67,7 +63,6 @@ def test_enqueue_five_drain_three() -> None:
 
 
 def test_thread_safety_conservation() -> None:
-    """10 threads x 1000 enqueues; dropped + drained == 10000."""
     buf = RingBuffer(maxsize=PARALLEL_DISPLAY_BUFFER_SIZE)
     num_threads = 10
     per_thread = 1000
@@ -92,9 +87,6 @@ def test_drain_returns_list_of_str() -> None:
     result = buf.drain()
     assert isinstance(result, list)
     assert all(isinstance(s, str) for s in result)
-
-
-# --- consume_drop_delta tests ---
 
 
 def test_consume_drop_delta_returns_correct_count() -> None:
@@ -124,17 +116,16 @@ def test_consume_drop_delta_accumulates_between_calls() -> None:
     buf = RingBuffer(maxsize=2)
     buf.enqueue("1")
     buf.enqueue("2")
-    buf.enqueue("3")  # drops 1 → delta=1
+    buf.enqueue("3")
     first_delta = buf.consume_drop_delta()
     assert first_delta == 1
-    buf.enqueue("4")  # drops 2 → delta=1
-    buf.enqueue("5")  # drops 3 → delta=2
+    buf.enqueue("4")
+    buf.enqueue("5")
     second_delta = buf.consume_drop_delta()
     assert second_delta == _DELTA_ACCUMULATE
 
 
 def test_consume_drop_delta_thread_safe() -> None:
-    """Multiple threads calling consume_drop_delta must not lose counts."""
     buf = RingBuffer(maxsize=10)
     for i in range(100):
         buf.enqueue(str(i))

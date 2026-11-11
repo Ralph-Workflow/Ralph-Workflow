@@ -1,5 +1,3 @@
-"""Regression coverage for the default harness-visible multimodal surface."""
-
 from __future__ import annotations
 
 from ralph.mcp.protocol._session_drain import SessionDrain
@@ -80,7 +78,6 @@ def _list_tool_names(server: McpServer, state: ServerState) -> set[str]:
 
 
 def test_mcp_multimodal_regression_default_harness_surface() -> None:
-    """Plan S-2: a normal harness handshake advertises enabled media tools."""
     server = _build_server()
     state = _initialize(server)
     tool_names = _list_tool_names(server, state)
@@ -90,7 +87,6 @@ def test_mcp_multimodal_regression_default_harness_surface() -> None:
 
 
 def test_prompt_multimodal_regression_advertises_media_tools() -> None:
-    """Plan S-2: media-capable prompt catalogs retain tool names and references."""
     visible = set(
         visible_tool_names_for_capabilities(
             _MEDIA_CAPABILITIES,

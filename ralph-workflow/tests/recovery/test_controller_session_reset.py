@@ -1,5 +1,3 @@
-"""Black-box tests: controller clears stale session state on reset_session failure."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -15,8 +13,6 @@ if TYPE_CHECKING:
 
 
 class _RecordingFileBackend(FileBackend):
-    """In-memory file backend that records physical writes."""
-
     def __init__(self) -> None:
         self.files: dict[Path, str] = {}
         self.write_text_calls = 0
@@ -67,7 +63,7 @@ def _session_reset_failure(session_id: str) -> ClassifiedFailure:
 
 
 class _AgentInvocationError(Exception):
-    """Simulates AgentInvocationError via class name."""
+    pass
 
 
 _AgentInvocationError.__name__ = "AgentInvocationError"
@@ -87,7 +83,6 @@ def _make_state(
 def test_stale_session_clears_last_agent_session_id(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """After stale-session failure, last_agent_session_id is cleared."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".agent" / "tmp").mkdir(parents=True)
 
@@ -107,7 +102,6 @@ def test_stale_session_clears_last_agent_session_id(
 def test_stale_session_clears_agent_retry_intent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """After stale-session failure, the next-attempt retry intent is cleared."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".agent" / "tmp").mkdir(parents=True)
 
@@ -127,7 +121,6 @@ def test_stale_session_clears_agent_retry_intent(
 def test_stale_session_writes_retry_hint_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """After stale-session failure, a retry hint file exists with relevant content."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".agent" / "tmp").mkdir(parents=True)
 
@@ -147,7 +140,6 @@ def test_stale_session_writes_retry_hint_file(
 
 
 def test_session_reset_hint_regression_skips_byte_identical_rewrite() -> None:
-    """S-3: repeated stale-session hints physically write once through the backend seam."""
     backend = _RecordingFileBackend()
     controller = RecoveryController()
     failure = _session_reset_failure("same-session")
@@ -161,7 +153,6 @@ def test_session_reset_hint_regression_skips_byte_identical_rewrite() -> None:
 
 
 def test_session_reset_hint_regression_writes_changed_failure_detail() -> None:
-    """S-3: changed stale-session detail replaces the retry hint through the backend seam."""
     backend = _RecordingFileBackend()
     controller = RecoveryController()
 
@@ -180,7 +171,6 @@ def test_session_reset_hint_regression_writes_changed_failure_detail() -> None:
 def test_stale_session_is_charged_to_the_agent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A stale-session failure is charged against the agent by the failure ledger."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".agent" / "tmp").mkdir(parents=True)
 
@@ -193,12 +183,10 @@ def test_stale_session_is_charged_to_the_agent(
     _, _, evt = controller.handle(state, exc, FailureContext(phase="development", agent="claude"))
 
     assert evt.counted_against_budget is True
-    # One charged attempt does not demote the agent, so it stays selectable.
     assert controller.ledger.is_available("development", "claude") is True
 
 
 def test_stale_session_allows_retry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """After stale-session failure, the pipeline remains in the current phase for retry."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".agent" / "tmp").mkdir(parents=True)
 

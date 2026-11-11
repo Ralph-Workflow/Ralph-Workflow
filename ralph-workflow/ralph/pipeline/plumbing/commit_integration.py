@@ -1,4 +1,3 @@
-"""Recover owned integration before standalone commit generation."""
 
 from __future__ import annotations
 
@@ -40,12 +39,6 @@ def prepare_commit_integration(
     conflict_resolver: ConflictResolver | None = None,
     rebase_stop_resolver: RebaseStopResolver | None = None,
 ) -> IntegrationResolutionVerdict:
-    """Finish an existing obligation or return its visible dispatch blocker.
-
-    This seam never starts integration in an unowned workspace. Recovery uses
-    the same supervised resolvers and Git proof as pipeline startup, including
-    when new integration is disabled. Unresolved evidence remains on disk.
-    """
     scope = WorkspaceScope(root)
     state = RebaseState()
     if retained_integration_reason(root) is not None:

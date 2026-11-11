@@ -1,12 +1,3 @@
-"""Contract test: BudgetCounterConfig.default_max must be required.
-
-The silent fallback to _DEFAULT_BUDGET_CAP=5 is being removed.
-BudgetCounterConfig must require an explicit default_max so the runtime
-never invents a hidden cap. Additionally, tracked budget counters with
-default_max=0 are rejected at policy completeness validation because a
-zero budget means the pipeline can never start.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -31,7 +22,6 @@ from ralph.policy.validation import PolicyValidationError, validate_policy_compl
 
 
 def _bundle_with_tracked_zero_counter(counter_name: str) -> PolicyBundle:
-    """Build a minimal policy bundle where a tracked counter has default_max=0."""
     pipeline = PipelinePolicy(
         entry_phase="work",
         terminal_phase="done",
@@ -85,25 +75,21 @@ def _bundle_with_tracked_zero_counter(counter_name: str) -> PolicyBundle:
 
 
 def test_budget_counter_config_requires_default_max() -> None:
-    """Constructing BudgetCounterConfig without default_max must raise ValidationError."""
     with pytest.raises((ValidationError, TypeError)):
         BudgetCounterConfig(tracks_budget=True, description="test counter")
 
 
 def test_budget_counter_config_with_explicit_default_max_succeeds() -> None:
-    """Constructing BudgetCounterConfig with an explicit default_max succeeds."""
     cfg = BudgetCounterConfig(tracks_budget=True, description="test", default_max=5)
     assert cfg.default_max == 5
 
 
 def test_budget_counter_config_zero_default_max_is_valid_for_untracked() -> None:
-    """A default_max of 0 is accepted for non-tracking counters."""
     cfg = BudgetCounterConfig(tracks_budget=False, description="untracked", default_max=0)
     assert cfg.default_max == 0
 
 
 def test_validate_policy_completeness_rejects_tracked_zero_budget_counter() -> None:
-    """validate_policy_completeness rejects tracks_budget=True with default_max=0."""
     bundle = _bundle_with_tracked_zero_counter("my_counter")
     with pytest.raises(PolicyValidationError) as exc_info:
         validate_policy_completeness(bundle)
@@ -113,7 +99,6 @@ def test_validate_policy_completeness_rejects_tracked_zero_budget_counter() -> N
 
 
 def test_validate_policy_completeness_rejects_custom_named_zero_tracked_counter() -> None:
-    """The tracked-zero check applies to any counter name, not just canonical names."""
     bundle = _bundle_with_tracked_zero_counter("cycles")
     with pytest.raises(PolicyValidationError) as exc_info:
         validate_policy_completeness(bundle)
@@ -121,7 +106,6 @@ def test_validate_policy_completeness_rejects_custom_named_zero_tracked_counter(
 
 
 def test_validate_policy_completeness_accepts_untracked_zero_counter() -> None:
-    """A zero default_max is allowed when tracks_budget=False."""
 
     pipeline = PipelinePolicy(
         entry_phase="work",
@@ -162,5 +146,4 @@ def test_validate_policy_completeness_accepts_untracked_zero_counter() -> None:
         },
     )
     bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy())
-    # Should not raise
     validate_policy_completeness(bundle)

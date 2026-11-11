@@ -1,20 +1,3 @@
-"""Acceptance tests for the immutable per-attempt agent-failure observation.
-
-Contract under test (RU-FACTS):
-
-* The observation is captured ONCE per attempt at the invocation boundary
-  and is immutable.
-* It reaches the ordinary reducer route as an attempt-scoped payload; the
-  reducer hands the fact to the single ledger owner
-  (``RecoveryController.record_attempt_fact``).
-* No mutable global (enum member, exception attribute) carries the fact,
-  so an attempt can never inherit a previous attempt's fact and two
-  attempts (other phase / other agent) never contaminate one another.
-
-Every assertion here is on OBSERVABLE behaviour: the captured payload, the
-ledger's public status, and the reducer's routing decisions.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -42,12 +25,6 @@ _AGENT_B = "agent_b"
 
 
 class _ScriptedProbe:
-    """Workspace-change probe whose measurement the test scripts.
-
-    It records every phase it was asked to observe so the test can prove
-    the baseline was taken for the attempt it belongs to.
-    """
-
     def __init__(self, changed: bool) -> None:
         self._changed = changed
         self.observed_phases: list[str] = []
@@ -85,11 +62,6 @@ def _capture_observation(
     phase: str = _PHASE,
     agent: str = _AGENT_A,
 ) -> AgentFailureEvent:
-    """Run the REAL invocation boundary with a fake process and capture the payload.
-
-    The fake process replaces the subprocess launcher only; the observation
-    is captured by the production boundary code around it.
-    """
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("do the work\n", encoding="utf-8")
     captured: list[AgentFailureEvent] = []
@@ -121,12 +93,6 @@ def _capture_observation(
 
 
 def test_workspace_changing_failure_is_demoted_at_total_nine_not_three(tmp_path: Path) -> None:
-    """A workspace-changing failure is demoted at total=9, not at consecutive=3.
-
-    The observation is captured at the real invocation boundary (fake probe
-    + fake process), travels on the ordinary reducer route, and the ledger
-    owner resets the consecutive counter because the workspace changed.
-    """
     probe = _ScriptedProbe(changed=True)
     observation = _capture_observation(tmp_path, probe=probe)
 
@@ -158,14 +124,6 @@ def test_workspace_changing_failure_is_demoted_at_total_nine_not_three(tmp_path:
 def test_unchanged_and_missing_observations_never_inherit_a_previous_fact(
     tmp_path: Path,
 ) -> None:
-    """An unchanged or missing observation never inherits the previous fact.
-
-    Three attempts that all FAIL to observe a change put the agent into
-    cooldown (the consecutive counter reaches its limit). If the missing
-    observation had inherited the previous attempt's "changed" fact, the
-    consecutive counter would have been reset and the agent would still be
-    eligible.
-    """
     changed = _capture_observation(tmp_path, probe=_ScriptedProbe(changed=True))
     unchanged = _capture_observation(tmp_path, probe=_ScriptedProbe(changed=False))
     missing = _capture_observation(tmp_path, probe=None)
@@ -184,8 +142,6 @@ def test_unchanged_and_missing_observations_never_inherit_a_previous_fact(
         "the unchanged and missing attempts were treated as changed"
     )
 
-    # The mirror case: four attempts that each OBSERVED a change reset the
-    # consecutive counter every time, so the agent stays eligible.
     changed_controller = _controller()
     changed_state = _state()
     for _attempt in range(4):
@@ -194,7 +150,6 @@ def test_unchanged_and_missing_observations_never_inherit_a_previous_fact(
 
 
 def test_other_phase_attempts_do_not_contaminate_one_another(tmp_path: Path) -> None:
-    """Two attempts in different phases carry independent facts."""
     development = _capture_observation(
         tmp_path, probe=_ScriptedProbe(changed=True), phase=_PHASE, agent=_AGENT_A
     )
@@ -221,7 +176,6 @@ def test_other_phase_attempts_do_not_contaminate_one_another(tmp_path: Path) -> 
 
 
 def test_bare_agent_failure_event_fails_closed_without_an_observation() -> None:
-    """The bare enum carries no fact, so the attempt is recorded as unchanged."""
     controller = _controller()
     state = _state()
     state, _ = reduce(state, PipelineEvent.AGENT_FAILURE, None, controller)

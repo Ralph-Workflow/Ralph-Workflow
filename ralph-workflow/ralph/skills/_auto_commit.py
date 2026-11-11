@@ -1,38 +1,3 @@
-"""Deterministic auto-commit helper for project-scope skill-tree changes.
-
-When Ralph Workflow installs a fresh skill bundle via the pre-pipeline sync
-(``_sync_shipped_skills_on_pipeline_run`` in ``ralph/cli/commands/run.py``),
-the project-canonical and its sibling fan-out entries can drift away from
-HEAD. Without an auto-commit, the development agent sees those changes in
-its working tree on the next ``ralph`` run and the ``development_commit_review``
-phase logs a WARNING for every tracked ``.agents/skills/<name>`` symlink.
-
-This module provides the deterministic single-commit resolution:
-
-* ``SKILL_AUTO_COMMIT_SUBJECT`` -- the LITERAL conventional-commit subject
-  line ``chore(skills): sync baseline bundle``. Pinned by
-  ``ralph.testing.audit_skill_auto_commit`` so a future rename is a
-  contract change that updates both the helper and the audit in the same
-  commit.
-
-* ``commit_skill_updates`` -- the legacy dirty-discovery helper, kept
-  for the dirty-tree post-condition used by tests that simulate a
-  pre-existing dirty tree. New callers should use
-  :func:`commit_skill_writes` (the producer-level deterministic writer
-  primitive) instead, because it consumes the byte-exact set of
-  paths the install actually wrote plus their pre-write content
-  hashes, and routes through the shared
-  :func:`ralph.git.scoped_auto_commit.commit_deterministic_writes`
-  isolation primitive. A path the user or agent dirtied in between
-  the install's pre-write snapshot and the commit attempt is
-  SKIPPED (with a warning) and never enters the chore commit.
-
-The deterministic commit message always carries the Ralph Workflow coauthor
-trailer via the production ``create_commit`` flow; that is the documented
-contract for every Ralph-managed commit (see the existing ``e4b47d2fb``
-``chore(skills): ...`` and ``c2465d497`` ``feat(skills-package): ...``
-commits).
-"""
 
 from __future__ import annotations
 
@@ -62,20 +27,10 @@ if TYPE_CHECKING:
         ) -> CommitCreationResult: ...
 
 
-# The deterministic conventional-commit subject line. Pinned by
-# ralph.testing.audit_skill_auto_commit.
 SKILL_AUTO_COMMIT_SUBJECT: str = "chore(skills): sync baseline bundle"
 
 
 def _extract_skill_names(dirty_paths: list[str]) -> list[str]:
-    """Extract the sorted unique skill names from a list of dirty paths.
-
-    A skill path is any path under one of the FIVE ``_SKILL_ROOT_PREFIXES``.
-    The skill name is the first path segment after the prefix
-    (e.g. ``.opencode/skills/brainstorming/SKILL.md`` -> ``brainstorming``).
-    Paths that do not have at least one segment after the prefix are
-    skipped defensively.
-    """
     names: set[str] = set()
     for path in dirty_paths:
         for prefix in _SKILL_ROOT_PREFIXES:
@@ -107,23 +62,6 @@ def commit_skill_updates(
     *,
     stage_fn: Callable[[Path | str, list[str]], None] | None = None,
 ) -> str | None:
-    """Create a deterministic auto-commit for project-scope skill-tree changes.
-
-    Legacy dirty-discovery wrapper. Scans the FIVE ``_SKILL_ROOT_PREFIXES``
-    for dirty paths, stages via the injected ``stage_fn``, and creates a
-    chore commit with the deterministic subject
-    ``chore(skills): sync baseline bundle``.
-
-    New callers should prefer :func:`commit_skill_writes` (producer-level
-    isolation primitive). This legacy helper is retained for callers that
-    only have dirty-tree visibility (e.g. legacy tests that simulate a
-    pre-existing dirty state without going through the install boundary).
-
-    Returns the commit SHA on ``CREATED``, else ``None``. The explicit
-    result type used internally is :class:`ScopedCommitResult`; this
-    legacy signature keeps the ``str | None`` return for the existing
-    call sites and tests.
-    """
     if stage_fn is None:
         stage_fn = stage_files
     result = commit_scoped_updates(
@@ -137,8 +75,6 @@ def commit_skill_updates(
     if result.status is ScopedCommitStatus.CREATED:
         return result.sha
     if result.status is ScopedCommitStatus.FAILED:
-        # Surface failure as a DEBUG log; the legacy contract is
-        # ``None`` for every non-CREATED outcome (best-effort).
         logger.debug("commit_skill_updates: failed ({}); returning None", result.error)
     return None
 
@@ -152,33 +88,6 @@ def commit_skill_writes(
     stage_fn: Callable[[Path | str, list[str]], None] | None = None,
     intentional_transitions: frozenset[str] | None = None,
 ) -> ScopedCommitResult:
-    """Producer-level deterministic auto-commit for the skill install.
-
-    Routes the byte-exact set of paths the install actually wrote
-    (recorded by :func:`ralph.skills._installer.install_project_baseline_skills_with_diff`)
-    through the shared
-    :func:`ralph.git.scoped_auto_commit.commit_deterministic_writes`
-    isolation primitive. A path that was already dirty at HEAD
-    before the install (HEAD blob hash != recorded pre-write hash)
-    is SKIPPED with a warning so the user or agent flow owns it --
-    the deterministic chore commit can never sweep their work into
-    a fixed-message commit.
-
-    ``intentional_transitions`` (optional) is the set of sibling-root
-    paths whose dir→symlink transition the install code has authored.
-    The shared primitive's user-dirty descendant guard
-    (wt-012 DA-003/DA-010/DA-012) bypasses these roots so the
-    install's own canonical content -- which legitimately differs
-    from the original tracked descendants -- can land in the chore
-    commit without being mistaken for a user edit. The install code
-    is responsible for excluding any sibling root that has a
-    pre-write-dirty tracked descendant (see
-    :func:`ralph.skills._installer.install_project_baseline_skills_with_diff`).
-
-    No-op (``NOOP`` or ``SKIPPED``) when ``written_paths`` is empty.
-    Returns a :class:`ScopedCommitResult`; ``result.sha`` is the
-    commit SHA on ``CREATED``, else ``None``.
-    """
     if stage_fn is None:
         stage_fn = stage_files
     return commit_deterministic_writes(

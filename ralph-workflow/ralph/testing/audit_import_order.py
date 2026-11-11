@@ -1,63 +1,3 @@
-"""Import-order audit: every ``ralph`` module must be importable first.
-
-Python resolves ``from pkg.mod import name`` by reading ``name`` off the
-module object. When an import cycle re-enters ``pkg.mod`` while it is still
-executing, the module exists but is only partially initialised, and the
-lookup fails with ``ImportError: cannot import name 'name' from partially
-initialized module``. Whether that happens depends on WHICH module of the
-cycle is imported first, so a cycle can pass every test -- whose import order
-``conftest.py`` and earlier tests fix -- and still break the one entry point
-that reaches it from the other side.
-
-That is how ``make install`` broke: ``ralph.install`` reaches
-``ralph.display`` first, and ``ralph.recovery.controller`` had started
-importing the conflict-resolution package, whose status surface imports
-``ralph.display.parallel_display`` back. Every test imported the pipeline
-first and passed. A fresh interpreter importing each of the 1,425 modules on
-its own showed 375 of them failing the same way.
-
-The audit replays CPython's import machinery statically, once per module as
-the first import of a fresh interpreter, over the module-level statements of
-every file under ``ralph/``:
-
-  * importing ``a.b.c`` imports ``a`` and ``a.b`` first, each to completion
-    unless it is already executing;
-  * a submodule becomes an attribute of its parent only once the submodule
-    has finished executing;
-  * ``from pkg import sub`` succeeds for a submodule that is still executing,
-    because the import system falls back to ``sys.modules``;
-  * a module that already defines a PEP 562 ``__getattr__`` resolves any name;
-  * ``if TYPE_CHECKING:`` and ``if __name__ == "__main__":`` bodies never run
-    (their ``else:`` arms do; ``if not TYPE_CHECKING:`` runs only its body),
-    and imports inside functions run later, so none of them take part;
-  * class bodies run at import time, so their imports take part;
-  * a call made at import time to a function defined earlier in the same
-    module (``VALUE = _load()``, a bare ``@_register`` decorator, a default
-    argument) runs that function's body, so its imports take part too --
-    followed through further local calls, with a recursion guard, and bound
-    in the function's own scope rather than the module's;
-  * ``importlib.import_module("ralph.x")`` with a literal absolute name
-    (through ``import importlib [as alias]`` or ``from importlib import
-    import_module [as alias]``) imports ``ralph.x`` like an import statement;
-  * an import inside a ``try`` whose handler catches ``ImportError`` cannot
-    fail the module, because the handler runs instead.
-
-Other branches (``if``/``try``/``with``/loops) are treated as executing
-every arm. Modules outside ``ralph`` are opaque: they never import ``ralph``
-back, so they cannot take part in a ``ralph`` cycle. Calls the audit cannot
-resolve statically are not followed: methods and instantiated classes,
-functions imported from other modules or reached through a variable,
-``async def`` (calling one runs nothing), ``global`` rebinding inside a
-called function, and ``import_module`` with a computed or relative name.
-
-Usage:
-    python -m ralph.testing.audit_import_order
-
-Exit codes:
-  0 = clean.
-  1 = violations found, or a module could not be parsed.
-"""
-
 from __future__ import annotations
 
 import ast
@@ -82,19 +22,11 @@ __all__ = [
     "main",
 ]
 
-#: The audited top-level package.
 PACKAGE = "ralph"
 
 
 @dataclass(frozen=True)
 class Violation:
-    """One module-level lookup of ``name`` on ``target`` while ``target`` is partially initialised.
-
-    ``access`` is ``"from-import"`` for ``from target import name`` (an
-    ``ImportError``) or ``"attribute"`` for a module-level ``target.name`` read
-    through a bound module (an ``AttributeError``).
-    """
-
     entry: str
     importer: str
     lineno: int
@@ -151,8 +83,6 @@ class _DynamicImport:
 
 @dataclass(frozen=True)
 class _Call:
-    """The operations a module-local function's body runs when called at import time."""
-
     ops: tuple[_Op, ...]
 
 
@@ -173,10 +103,8 @@ def _is_negated_type_checking_guard(test: ast.expr) -> bool:
     )
 
 
-#: Handler types that catch the ``ImportError`` a partially initialised module raises.
 _IMPORT_ERROR_CATCHERS: frozenset[str] = frozenset({"ImportError", "Exception", "BaseException"})
 
-#: Handler types that catch the ``AttributeError`` a partially initialised module raises.
 _ATTRIBUTE_ERROR_CATCHERS: frozenset[str] = frozenset(
     {"AttributeError", "Exception", "BaseException"}
 )
@@ -193,11 +121,6 @@ def _catches(handler_type: ast.expr | None, catchers: frozenset[str]) -> bool:
 
 
 def _evaluated_expressions(node: ast.stmt) -> list[ast.expr]:
-    """Return the expressions a module-level statement evaluates when it runs.
-
-    Function bodies, lambda bodies and annotations are not evaluated at import
-    time and are not returned; assignment targets are written, not read.
-    """
     evaluated: list[ast.expr] = []
     if isinstance(node, (ast.Assign, ast.AugAssign, ast.Expr)) or (
         isinstance(node, ast.AnnAssign) and node.value is not None
@@ -222,7 +145,6 @@ def _evaluated_expressions(node: ast.stmt) -> list[ast.expr]:
 
 
 def _attribute_chains(node: ast.AST) -> list[tuple[str, tuple[str, ...], int]]:
-    """Return every ``name.attr[.attr...]`` read in ``node`` as ``(name, attrs, lineno)``."""
     if isinstance(node, ast.Lambda):
         return []
     if isinstance(node, ast.Attribute):
@@ -238,7 +160,6 @@ def _attribute_chains(node: ast.AST) -> list[tuple[str, tuple[str, ...], int]]:
 
 
 def _calls(node: ast.AST) -> list[ast.Call]:
-    """Return every call ``node`` makes, innermost first (arguments run before the call)."""
     if isinstance(node, ast.Lambda):
         return []
     found = [call for child in ast.iter_child_nodes(node) for call in _calls(child)]
@@ -290,13 +211,9 @@ class _OpCollector:
     ops: list[_Op] = field(default_factory=list)
     guarded: bool = False
     attribute_guarded: bool = False
-    #: Module-local ``def`` statements bound so far, by name: a call to one runs its body.
     functions: dict[str, ast.FunctionDef] = field(default_factory=dict)
-    #: Names bound to the ``importlib`` module.
     importlib_names: set[str] = field(default_factory=set)
-    #: Names bound to ``importlib.import_module``.
     import_module_names: set[str] = field(default_factory=set)
-    #: The functions whose bodies are being followed: the recursion guard.
     calling: frozenset[str] = frozenset()
 
     def statements(self, body: Iterable[ast.stmt]) -> None:
@@ -328,7 +245,6 @@ class _OpCollector:
             self.nested(node)
 
     def rebind(self, name: str, *, importlib: bool = False, import_module: bool = False) -> None:
-        """Forget what ``name`` was bound to before; record it if it is now importlib."""
         self.functions.pop(name, None)
         self.importlib_names.discard(name)
         self.import_module_names.discard(name)
@@ -338,7 +254,6 @@ class _OpCollector:
             self.import_module_names.add(name)
 
     def reads(self, node: ast.stmt) -> None:
-        """Record the ``module.attr`` reads and the calls a statement performs when it runs."""
         expressions = _evaluated_expressions(node)
         for expression in expressions:
             self.ops.extend(
@@ -349,13 +264,11 @@ class _OpCollector:
             for call in _calls(expression):
                 self.call(call.func, call)
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            # A bare decorator is called with the decorated object.
             for decorator in reversed(node.decorator_list):
                 if isinstance(decorator, ast.Name):
                     self.call(decorator, None)
 
     def call(self, func: ast.expr, call: ast.Call | None) -> None:
-        """Record what calling ``func`` at import time runs, when that is known statically."""
         is_import_module = (isinstance(func, ast.Name) and func.id in self.import_module_names) or (
             isinstance(func, ast.Attribute)
             and func.attr == "import_module"
@@ -386,7 +299,6 @@ class _OpCollector:
         self.ops.append(_Call(tuple(body.ops)))
 
     def binds(self, node: ast.stmt) -> None:
-        """Record the names a non-import statement binds at module level."""
         targets: list[ast.expr] = []
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             self.ops.append(_Bind(node.name))
@@ -408,7 +320,6 @@ class _OpCollector:
             self.rebind(name)
 
     def nested(self, node: ast.stmt) -> None:
-        """Run the bodies of loops, ``with`` blocks and ``match`` cases."""
         if isinstance(node, (ast.For, ast.AsyncFor, ast.While)):
             self.statements(node.body)
             self.statements(node.orelse)
@@ -419,7 +330,6 @@ class _OpCollector:
                 self.statements(case.body)
 
     def class_body(self, node: ast.ClassDef) -> None:
-        """Run a class body: its imports execute, but its names bind on the class."""
         body = _OpCollector(
             self.module,
             self.is_package,
@@ -445,8 +355,6 @@ class _OpCollector:
             self.statements(node.orelse)
 
     def try_block(self, node: ast.Try | ast.TryStar) -> None:
-        # A failing import inside a ``try`` whose handler catches ImportError
-        # does not fail the module: the handler runs instead.
         outer = (self.guarded, self.attribute_guarded)
         self.guarded = outer[0] or any(
             _catches(h.type, _IMPORT_ERROR_CATCHERS) for h in node.handlers
@@ -482,11 +390,6 @@ class _OpCollector:
 
 
 def collect_ops(source: str, module: str, *, is_package: bool, label: str) -> tuple[_Op, ...]:
-    """Return the module-level import and binding operations of one module, in order.
-
-    Raises:
-        AuditParseError: when ``source`` is not valid Python.
-    """
     try:
         tree = ast.parse(source, filename=label)
     except SyntaxError as exc:
@@ -504,8 +407,6 @@ class _Simulation:
     aliases: dict[str, dict[str, str]] = field(default_factory=dict)
     executing: list[str] = field(default_factory=list)
     violations: list[Violation] = field(default_factory=list)
-    #: One entry per running scope: ``None`` for a module body, else the local
-    #: names (and the modules they alias) of a function called at import time.
     frames: list[dict[str, str | None] | None] = field(default_factory=list)
 
     def import_module(self, name: str) -> None:
@@ -593,8 +494,6 @@ class _Simulation:
                 return
             submodule = f"{target}.{attr}"
             if attr not in names:
-                # A submodule only becomes its parent's attribute once it has
-                # finished executing, so reading a still-executing one fails too.
                 partial = target in self.executing or submodule in self.executing
                 if partial and "__getattr__" not in names and not op.guarded:
                     self.report(module, op.lineno, target, attr, "attribute")
@@ -616,13 +515,6 @@ class _Simulation:
 
 
 def audit_modules(modules: Mapping[str, tuple[_Op, ...]]) -> list[Violation]:
-    """Return the first-import violations of every module in ``modules``.
-
-    ``modules`` maps each dotted module name to its :func:`collect_ops`
-    result; every package on a module's path must be present (an empty op
-    tuple stands for a namespace package). Each distinct failing statement is
-    reported once, with the first entry point (in sorted order) that reaches it.
-    """
     seen: set[tuple[str, int, str, str]] = set()
     violations: list[Violation] = []
     for entry in sorted(modules):
@@ -637,7 +529,6 @@ def audit_modules(modules: Mapping[str, tuple[_Op, ...]]) -> list[Violation]:
 
 
 def audit_sources(sources: Mapping[str, str]) -> list[Violation]:
-    """Audit in-memory sources keyed by repository-relative path (``ralph/x.py``)."""
     modules: dict[str, tuple[_Op, ...]] = {}
     for label, source in sources.items():
         parts = Path(label).with_suffix("").parts
@@ -650,12 +541,6 @@ def audit_sources(sources: Mapping[str, str]) -> list[Violation]:
 
 
 def audit_tree(package_root: Path) -> tuple[list[Violation], int]:
-    """Return the violations under ``package_root / ralph`` and the module count.
-
-    Raises:
-        FileNotFoundError: when ``package_root / ralph`` is not a directory.
-            Silently skipping it would report a vacuous clean run.
-    """
     base = package_root / PACKAGE
     if not base.is_dir():
         raise FileNotFoundError(f"audit root is not a directory: {base}")
@@ -667,7 +552,6 @@ def audit_tree(package_root: Path) -> tuple[list[Violation], int]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the audit over ``ralph/`` in the current directory and report violations."""
     del argv
     try:
         violations, scanned = audit_tree(Path.cwd())

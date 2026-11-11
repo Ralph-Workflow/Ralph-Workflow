@@ -1,4 +1,3 @@
-"""PythonVersionInfo dataclass for structured Python runtime version metadata."""
 
 from __future__ import annotations
 
@@ -12,7 +11,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class PythonVersionInfo:
-    """Structured Python runtime version metadata."""
 
     major: int
     minor: int
@@ -25,7 +23,6 @@ class PythonVersionInfo:
 
     @classmethod
     def from_sys(cls, sys_module: SysModuleProtocol) -> PythonVersionInfo:
-        """Build version metadata from a sys-like module."""
         return cls(
             major=sys_module.version_info.major,
             minor=sys_module.version_info.minor,

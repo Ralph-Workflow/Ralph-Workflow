@@ -1,15 +1,3 @@
-"""A server subprocess that never becomes ready must report WHY, not just refuse.
-
-The MCP server subprocess writes its stdout and stderr to
-``<workspace>/.agent/tmp/mcp-server.log``. When the child died during startup --
-for example because a configured custom MCP server was unreachable -- the parent
-discarded that log and raised a bare ``did not become ready: ... Connection
-refused``, which names the symptom and hides the cause.
-
-The parent now appends the output the child produced during THIS spawn (bytes
-appended after the spawn began, so a restart never replays a previous crash).
-"""
-
 from __future__ import annotations
 
 import socket
@@ -41,8 +29,6 @@ _created_sockets: list[socket.socket] = []
 
 
 class _LiveProcess:
-    """A child that is still running when preflight gives up."""
-
     def __init__(self) -> None:
         self.pid = 4321
 

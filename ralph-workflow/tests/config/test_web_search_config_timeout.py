@@ -1,19 +1,3 @@
-"""Tests for the timeout-centralization contract in the websearch config layer.
-
-Asserts the new ``web_search_default_timeout_seconds`` and per-backend
-``timeout_seconds`` fields:
-
-- the field default matches the central ``ralph.timeout_defaults`` constant;
-- the per-backend default is ``None`` (inherit-from-default semantics);
-- positive ``timeout_seconds`` are accepted, zero/negative rejected by
-  the pydantic ``gt=0.0`` invariant;
-- a per-backend override smaller than the default is rejected by the
-  ``WebSearchConfig`` model_validator (mirrors the import-time invariant
-  in ``ralph.timeout_defaults``);
-- the configured timeout flows through ``_build_backend`` into every
-  backend's ``timeout_seconds`` attribute.
-"""
-
 from __future__ import annotations
 
 from importlib import import_module

@@ -1,4 +1,3 @@
-"""LoggingConfig — logging configuration for a Ralph Workflow run."""
 
 from __future__ import annotations
 
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class LoggingConfig:
-    """Logging configuration used to create handlers and run directories."""
 
     verbosity: int = 1
     log_directory: Path | None = None

@@ -1,11 +1,3 @@
-"""Deterministic contract tests for hostile Git configuration pinning.
-
-The former tests built five repositories to prove five tokens reached Git.
-These tests inject the single subprocess seam and verify the complete argv and
-environment contract in one pass, while retaining separate assertions for the
-observable hazards each pin prevents.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -27,7 +19,6 @@ if TYPE_CHECKING:
 def test_rebase_executor_pins_hostile_config_per_invocation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Rerere/signing/backend pins and scrubbed env reach the process boundary."""
     observed: list[tuple[tuple[str, ...], Mapping[str, str] | None]] = []
 
     def run_git(
@@ -88,11 +79,6 @@ def test_rebase_executor_pins_hostile_config_per_invocation(
 
 
 def test_pinned_config_closes_each_hostile_config_hazard() -> None:
-    """Each documented hostile-config hazard has an explicit override.
-
-    These cases share one immutable tuple lookup, so keeping them in one test
-    avoids repeated pytest scheduling without reducing behavioral coverage.
-    """
     expected = [
         ("rerere.enabled=false", "recorded resolution replay"),
         ("commit.gpgsign=false", "commit signing prompt"),
@@ -105,11 +91,6 @@ def test_pinned_config_closes_each_hostile_config_hazard() -> None:
 
 
 def test_rebase_shape_explicitly_disables_user_config_behavior() -> None:
-    """The replay argv names every config-sensitive behavior.
-
-    The flags are one command contract, so asserting them together catches the
-    same omissions with one process-independent test item.
-    """
     expected = [
         ("--no-autostash", "stranded stash"),
         ("--no-autosquash", "editor-opening autosquash"),

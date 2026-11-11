@@ -1,5 +1,3 @@
-"""Tests for same-workspace parallel worker behaviour."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -28,7 +26,6 @@ def _make_unit(unit_id: str, allowed_directories: list[str] | None = None) -> Wo
 
 class TestMcpToolBoundaryEnforcement:
     def test_mcp_write_tool_denied_outside_allowed_roots(self, tmp_path: Path) -> None:
-        """handle_write_file raises ToolError when FsWorkspace rejects out-of-scope write."""
 
         allowed_dir = tmp_path / "src" / "allowed"
         allowed_dir.mkdir(parents=True)
@@ -49,7 +46,6 @@ class TestMcpToolBoundaryEnforcement:
             )
 
     def test_mcp_write_tool_succeeds_inside_allowed_roots(self, tmp_path: Path) -> None:
-        """handle_write_file succeeds when FsWorkspace allows the target path."""
 
         allowed_dir = tmp_path / "src" / "allowed"
         allowed_dir.mkdir(parents=True)

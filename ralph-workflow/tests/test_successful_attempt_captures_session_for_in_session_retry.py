@@ -1,21 +1,3 @@
-"""A successful agent attempt must record its session id for in-session retry.
-
-Artifact-validation failures are raised AFTER the agent exits successfully:
-the phase handler reads the submitted artifact, finds it invalid, and emits a
-recoverable ``PhaseFailureEvent`` with ``retry_in_session=True`` so the agent
-resumes its own session and repairs the artifact instead of re-running the
-whole phase from a blank prompt.
-
-That resume is conditional on ``state.last_agent_session_id`` being populated,
-which only happens when the successful attempt records the transport session
-id. When the recording is lost, every artifact-validation retry silently
-degrades into a fresh session and the agent redoes the entire phase.
-
-The reducer's ``retry_in_session`` -> resume branch is pinned separately by
-``tests/test_phases_retry_in_session_reducer_session_preserving_retry.py``;
-this module pins the producer that branch depends on.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -78,7 +60,6 @@ def _run_successful_attempt(tmp_path: Path) -> PipelineEvent:
 
 
 def test_successful_attempt_records_session_id_in_state(tmp_path: Path) -> None:
-    """Without this, an in-session retry has no session to resume."""
     assert _run_successful_attempt(tmp_path) == PipelineEvent.AGENT_SUCCESS
 
     state = apply_session_capture(PipelineState(phase="planning"))

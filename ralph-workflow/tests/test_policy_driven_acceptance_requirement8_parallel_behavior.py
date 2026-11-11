@@ -1,13 +1,3 @@
-"""Policy-driven acceptance tests — Product Requirements 1-10 and Criteria A-H.
-
-These tests assert every product requirement and acceptance criterion against a
-fully renamed PolicyBundle (no canonical phase names). Any regression that
-re-introduces hidden phase name knowledge in the runtime will fail here.
-
-Scope: pure functions only. No I/O.
-Runtime budget: ≤ 5 seconds for the full module.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -36,17 +26,6 @@ from ralph.policy.models import (
 
 @pytest.fixture(scope="module")
 def policy_with_renamed_phases() -> PolicyBundle:
-    """Fully custom-named PolicyBundle — no canonical Ralph phase names.
-
-    Custom name mappings (canonical → custom):
-      planning          → design
-      development       → build
-      development_analysis → audit
-      development_commit → sign_off
-      review            → inspect
-      complete          → done
-      failed_terminal   → aborted
-    """
     agents = AgentsPolicy(
         agent_chains={
             "design_chain": AgentChainConfig(agents=["fake-agent"]),
@@ -174,16 +153,10 @@ def policy_with_renamed_phases() -> PolicyBundle:
     return PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
 
 
-# =============================================================================
-# Requirement 1: Policy must fully define user-visible routing semantics
-# =============================================================================
-
-
 class TestRequirement8ParallelBehavior:
     def test_has_parallelization_reflects_policy(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """has_parallelization field comes from the policy declaration per phase."""
         exp = explain_policy(policy_with_renamed_phases)
         for phase in exp.phases:
             phase_def = policy_with_renamed_phases.pipeline.phases.get(phase.name)
@@ -195,7 +168,6 @@ class TestRequirement8ParallelBehavior:
     def test_no_phase_has_parallelization_in_custom_bundle(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """Custom bundle declares no parallelization — all phases correctly report False."""
         exp = explain_policy(policy_with_renamed_phases)
         for phase in exp.phases:
             assert not phase.has_parallelization

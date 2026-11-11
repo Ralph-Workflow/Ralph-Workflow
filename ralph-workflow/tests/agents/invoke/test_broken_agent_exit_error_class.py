@@ -1,5 +1,3 @@
-"""Tests for the typed broken-agent failure signal."""
-
 from __future__ import annotations
 
 import pytest

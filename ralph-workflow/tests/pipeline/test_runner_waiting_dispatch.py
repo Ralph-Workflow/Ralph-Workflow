@@ -1,5 +1,3 @@
-"""Tests for _dispatch_waiting_event subscriber forwarding."""
-
 from __future__ import annotations
 
 import queue
@@ -95,13 +93,6 @@ def test_subscriber_exception_does_not_propagate(tmp_path: Path) -> None:
 def test_dispatch_preserves_subagent_activity_for_hard_stop(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A HARD_STOP event with subagent_activity is forwarded to the subscriber.
-
-    Dispatching a HARD_STOP event with ``subagent_activity='active task'``
-    invokes the subscriber with the same ``subagent_activity`` value
-    preserved on the ``WaitingStatusEvent`` (the subscriber then formats
-    the ``subagent=`` suffix into the waiting status line).
-    """
     calls: list[WaitingStatusEvent] = []
     sub = _make_subscriber(tmp_path)
 

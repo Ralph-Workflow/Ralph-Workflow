@@ -1,10 +1,3 @@
-"""Pipeline phases must route artifact submission through the canonical path.
-
-This file verifies that every artifact write during a pipeline-runner phase
-goes through the canonical submit machinery (receipt + sentinel) and that
-bypass detection and fallback promotion work correctly.
-"""
-
 from __future__ import annotations
 
 import importlib
@@ -57,13 +50,6 @@ def test_pipeline_phase_stamps_canonical_receipt(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """A successful pipeline phase leaves a receipt and sentinel via the canonical path.
-
-    The pipeline runner imports ~50 modules and walks the canonical
-    receipt/sentinel fixtures; on a loaded xdist worker this can take
-    marginally over 1 s, so the per-test cap is widened to 3 s to match
-    the sibling audit test in this file.
-    """
 
     def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
         del args, kwargs
@@ -104,13 +90,6 @@ def test_pipeline_phase_stamps_canonical_receipt(
 @pytest.mark.timeout_seconds(3)
 @pytest.mark.subprocess_e2e
 def test_pipeline_audit_finds_no_bypasses_in_isolation() -> None:
-    """The pipeline layer has zero canonical-path bypasses when audited in isolation.
-
-    The audit walks every ``.py`` under ``ralph/pipeline`` and AST-parses each
-    file (the bypass rules live in AST node text). On a loaded worker the scan
-    can take ~1.5 s, so a 3 s per-test cap is required to keep this from
-    tripping the 1 s default and stalling the xdist scheduler.
-    """
     pipeline_root = Path(__file__).parent.parent / "ralph" / "pipeline"
     findings = audit(codebase_root=pipeline_root)
     assert findings == [], f"Pipeline bypasses found: {findings}"
@@ -121,7 +100,6 @@ def test_pipeline_fallback_promotion_uses_canonical_helper(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """A fallback artifact written without canonical submit is promoted by is_artifact_submitted."""
     del monkeypatch
     backend = MemoryBackend()
     run_id = "pipeline-fallback-test"

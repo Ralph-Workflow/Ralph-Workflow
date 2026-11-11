@@ -1,5 +1,3 @@
-"""Markdown validator errors remain structured for tool clients."""
-
 from __future__ import annotations
 
 import json

@@ -1,24 +1,3 @@
-"""Root-cause real-child bridge proof (C1-C5 integration test).
-
-Pins:
-- C1: Tool hash mismatch between candidate and active bridge detected and rejected before
-  handover (E1.9). Matching tool hash candidate promoted. Private readiness tool hash ==
-  served tools/list hash. Preflight identity metadata mismatch rejected (E1.1).
-- C2: Child stdout/stderr buffering and pipe hygiene (drained pipes without deadlock).
-  Failed-candidate survival (old child still _inner, serving, attempt counted, no crash).
-  Budget exhaustion with dead old child (documented max_restarts count, typed terminal error).
-- C3: Timeout-only deferral (TimeoutError deferred under contention, ConnectionResetError
-  non-deferred real failure). Confirm-before-replace (confirm probe before kill).
-  Probe-overrun contention self-measurement. Deferral ceiling trips replacement.
-  Dead child never deferred. E5.3 SIGSTOPped child detected via zero CPU progress.
-- C4: File-based pause/ack/resume handover protocol (single acceptor invariant, promotion
-  continuity without split-brain).
-- C5: Enriched diagnostic reporting on abnormal termination (psutil status, stage attribution,
-  handover_step attribution on McpServerError, empty log suffix).
-  E2.2 parametrized candidate stage failures.
-- E5.1 / E5.4 cited-impossibility pins: PID reuse and zombie child liveness.
-"""
-
 from __future__ import annotations
 
 import contextlib
@@ -68,27 +47,12 @@ pytestmark = [
 ]
 
 
-# ---------------------------------------------------------------------------
-# Fixtures and Test Helpers
-# ---------------------------------------------------------------------------
-
-
 def _descendant_pids() -> set[int]:
-    """Return the PIDs of every live descendant of the test process.
-
-    The leak invariants below diff against a snapshot taken before the test
-    spawns anything: the test process is a long-lived pytest worker, and
-    earlier tests legitimately leave process-lifetime descendants behind
-    (``multiprocessing`` resource tracker, GitPython ``git cat-file --batch``
-    readers awaiting GC). Those are not candidate leaks, and counting them
-    made the assertion depend on which files ran earlier in the same worker.
-    """
     return {d.pid for d in psutil.Process(os.getpid()).children(recursive=True)}
 
 
 @pytest.fixture
 def managed_spawner(tmp_path: Path) -> Iterator[Callable[..., ManagedProcess]]:
-    """Fixture that tracks spawned processes and ensures all children are reaped."""
     spawned: list[ManagedProcess] = []
     pm = get_process_manager()
 
@@ -126,21 +90,14 @@ def managed_spawner(tmp_path: Path) -> Iterator[Callable[..., ManagedProcess]]:
                     p.wait(timeout=2.0)
 
 
-#: Bound for the first tools/list from a child started with a no-op
-#: preflight. ``start_mcp_server`` then returns as soon as the child is
-#: spawned; the bridge-owned listener queues the request until the child has
-#: booted, imported, and started serving -- several-fold slower on a
-#: saturated host. Bounds only the failure path.
 _CHILD_SERVING_TIMEOUT_S = 15.0
 
 
 def _wait_child_serving(endpoint: str) -> list[str]:
-    """Return the served tool names once the freshly started child answers."""
     return _http_tools_list_names(endpoint, timeout=_CHILD_SERVING_TIMEOUT_S)
 
 
 def _write_responder_script(tmp_path: Path) -> Path:
-    """Create script for candidate real child responding to private readiness socket."""
     script_path = tmp_path / "readiness_child.py"
     if not script_path.exists():
         script = """import json
@@ -205,7 +162,6 @@ def _make_real_standalone(
     handover_parent_sock: socket.socket | None = None,
     port: int = 9100,
 ) -> StandaloneMcpProcess:
-    """Wrap a ManagedProcess into a StandaloneMcpProcess."""
     session_file = tmp_path / f"session_{uuid.uuid4().hex[:8]}.json"
     session_file.write_text("{}", encoding="utf-8")
     return StandaloneMcpProcess(
@@ -217,20 +173,10 @@ def _make_real_standalone(
     )
 
 
-# ---------------------------------------------------------------------------
-# C1: Tool-Set Hash Carried State & Drift Refusal (E1.9, E1.1)
-# ---------------------------------------------------------------------------
-
-
 def test_c1_tool_hash_mismatch_rejected_real_child(
     managed_spawner: Callable[..., ManagedProcess],
     tmp_path: Path,
 ) -> None:
-    """Pins C1 / E1.9: Tool hash mismatch between candidate and active bridge is rejected.
-
-    The live old child continues serving while the candidate is discarded, attempt
-    is counted, and the candidate process group is reaped without leaks.
-    """
     old_proc = managed_spawner(
         [sys.executable, "-c", "import time; time.sleep(300)"],
         label="c1-old-child",
@@ -276,35 +222,24 @@ def test_c1_tool_hash_mismatch_rejected_real_child(
     bridge._expected_tool_hash = expected_hash
     bridge._expected_tool_entries = tools_old
 
-    # Restart attempt executes make-before-break
     result = bridge._run_with_make_before_break()
 
-    # Invariant: Drifted candidate was refused promotion
     assert result is False
     assert len(cand_procs) == 1
     cand_proc = cand_procs[0]
 
-    # Invariant: Live old child remains the active serving process
     assert bridge.process.pid == old_proc.pid
     assert old_proc.poll() is None
 
-    # Invariant: Candidate process was shut down / reaped
     cand_proc.wait(timeout=2.0)
     assert cand_proc.poll() is not None
 
 
-# Above the module 10 s: covers the real start-up preflight plus the
-# widened candidate readiness bound below (both failure-path-only bounds).
 @pytest.mark.timeout_seconds(60)
 def test_c1_matching_tool_hash_promoted_and_private_hash_equals_served_tools(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Pins C1: When candidate tool schema matches active tool hash, candidate is promoted.
-
-    Proves shared-endpoint service continuity: repeated endpoint tools/list calls
-    succeed with zero refusal/failure during make-before-break handover.
-    """
     session = AgentSession(
         session_id=f"session-c1-prom-{uuid.uuid4().hex[:8]}",
         run_id=f"run-c1-prom-{uuid.uuid4().hex[:8]}",
@@ -312,15 +247,7 @@ def test_c1_matching_tool_hash_promoted_and_private_hash_equals_served_tools(
         capabilities={"WorkspaceRead"},
     )
     workspace = FsWorkspace(tmp_path)
-    # Real start-up preflight: ``start_mcp_server`` captures the C1 drift
-    # baseline right after preflight. With a no-op preflight the baseline
-    # fetch raced the still-booting child (5 s), and on a loaded host the
-    # baseline was missing, so the candidate was refused by design.
     deps = lifecycle._default_lifecycle_deps()
-    # The candidate is a real ``python -m ralph.mcp.server`` child; the
-    # production private-readiness deadline (5 s) covers its interpreter boot
-    # and imports, which a saturated test host stretches past 5 s. Only that
-    # wall-clock bound is widened; the readiness/hash checks are production.
     monkeypatch.setattr(
         lifecycle,
         "check_candidate_readiness",
@@ -335,7 +262,6 @@ def test_c1_matching_tool_hash_promoted_and_private_hash_equals_served_tools(
         old_pid = bridge.process.pid
         endpoint = bridge.endpoint_uri()
 
-        # Concurrent client burst over shared endpoint
         stop_burst = threading.Event()
         burst_results: list[bool] = []
         burst_errors: list[Exception] = []
@@ -355,24 +281,20 @@ def test_c1_matching_tool_hash_promoted_and_private_hash_equals_served_tools(
         burst_thread = threading.Thread(target=_burst_worker, daemon=True)
         burst_thread.start()
 
-        # Perform make-before-break restart
         promoted = bridge._perform_restart(process_exited=False, probe_duration_s=0.1)
 
         stop_burst.set()
         burst_thread.join(timeout=5.0)
 
-        # Invariant: Handover succeeded and candidate is promoted
         assert promoted is True, "Candidate with matching hash must be promoted"
         new_pid = bridge.process.pid
         assert new_pid != old_pid, f"PID must change on promotion: old={old_pid}, new={new_pid}"
         assert bridge.restart_count == 1
 
-        # Service continuity: repeated endpoint tools/list calls with zero failures/refusals
         assert len(burst_errors) == 0, f"tools/list burst encountered errors: {burst_errors}"
         assert len(burst_results) > 0, "tools/list burst must have executed at least one request"
         assert all(burst_results), "Every tools/list request during handover must succeed"
 
-        # Final verification: new child serves tools/list
         final_names = _http_tools_list_names(endpoint, timeout=5.0)
         assert isinstance(final_names, list)
         assert len(final_names) > 0
@@ -385,11 +307,9 @@ def test_c1_preflight_identity_metadata_mismatch_rejected(
     managed_spawner: Callable[..., ManagedProcess],
     tmp_path: Path,
 ) -> None:
-    """Pins C1 / E1.1: Preflight identity check rejects mismatched candidate pid/spawn_id."""
     parent_sock, child_sock = create_handover_socketpair()
     fd = child_sock.fileno()
 
-    # Script returning mismatched pid and spawn_id
     mismatch_script = tmp_path / "mismatch_child.py"
     mismatch_script.write_text(
         """import json, os, socket, sys
@@ -431,25 +351,14 @@ while True:
     )
     parent_sock.close()
 
-    # Invariant: Preflight identity mismatch detected before any handover
     assert ok is False
     assert stage == "pid_mismatch"
     assert "999999" in str(err)
 
 
-# ---------------------------------------------------------------------------
-# C2: Buffering, Pipe Hygiene, Single-Failure & Budget Exhaustion
-# ---------------------------------------------------------------------------
-
-
 def test_c2_child_stdout_stderr_buffering_and_pipe_hygiene(
     managed_spawner: Callable[..., ManagedProcess],
 ) -> None:
-    """Pins C2: Child stdout/stderr pipe hygiene (large volume drained without deadlock).
-
-    A child writing 128KB to stdout and 128KB to stderr exceeds standard 64KB OS pipe
-    buffers. Pipe draining via ManagedProcess.communicate() must drain without deadlock.
-    """
     pipe_script = """import sys
 data = b"D" * (128 * 1024)
 sys.stdout.buffer.write(data)
@@ -468,28 +377,16 @@ sys.stderr.buffer.flush()
     stdout, stderr = proc.communicate(timeout=5.0)
     elapsed = time.monotonic() - t0
 
-    # Invariant: Both streams fully drained without deadlock within bounded time
     assert elapsed < 5.0
     assert stdout is not None and len(stdout) == 128 * 1024
     assert stderr is not None and len(stderr) == 128 * 1024
     assert proc.poll() == 0
 
 
-# Above the module 10 s: includes the 15 s child-serving start-up bound.
 @pytest.mark.timeout_seconds(30)
 def test_c2_failed_candidate_survival_and_single_failure_not_terminal(
     tmp_path: Path,
 ) -> None:
-    """Pins C2: A failed candidate spawn on the production bridge path does not kill a live old child.
-
-    Real MCP subprocess is started by ``start_mcp_server`` (parent-owned listening
-    FD, no-op preflight). The bridge's ``_restart_fn`` is patched to raise
-    ``RuntimeError`` so the candidate never reaches a verified-ready state.
-    Asserts the live old child actually answers a real JSON-RPC ``tools/list``
-    request over the shared endpoint, the bridge does not raise
-    ``McpServerError`` (so the agent run is not interrupted), ``restart_count
-    == 1``, and the candidate + its whole process group are reaped (no leak).
-    """
     session = AgentSession(
         session_id="session-c2-survival-real",
         run_id="run-c2-survival-real",
@@ -520,26 +417,16 @@ def test_c2_failed_candidate_survival_and_single_failure_not_terminal(
 
         endpoint = bridge.endpoint_uri()
 
-        # Before the failed restart: old child already serves tools/list over the
-        # shared endpoint (baseline). This proves the bridge is on a real
-        # production path with a live inheritor child.
         names_before = _wait_child_serving(endpoint)
         assert isinstance(names_before, list)
 
-        # Replace restart_fn with a function that simulates a failed candidate
-        # spawn (e.g. the subprocess factory is wedged). The bridge must keep
-        # the live old child serving and not raise McpServerError.
         def failing_candidate_spawn() -> StandaloneMcpProcess:
             raise RuntimeError("simulated candidate spawn failure")
 
         bridge._restart_fn = failing_candidate_spawn
 
-        # Perform restart: candidate spawn raises; bridge keeps old child and
-        # returns False (does NOT raise McpServerError — only BUDGET_EXHAUSTED
-        # raises, per the C2 contract).
         promoted = bridge._perform_restart(process_exited=False, probe_duration_s=0.5)
 
-        # C2 invariants on the production path:
         assert promoted is False, "failed candidate spawn must not report promotion"
         assert bridge.restart_count == 1, "failed attempt counts once toward budget"
         assert bridge.process.pid == old_pid, "old child PID must remain _inner"
@@ -547,8 +434,6 @@ def test_c2_failed_candidate_survival_and_single_failure_not_terminal(
         old_inner_proc = bridge._inner.process
         assert old_inner_proc.poll() is None, "old child must remain alive"
 
-        # Old child still serves tools/list over the SHARED endpoint (no
-        # candidate promotion, no swap). This is the live-bridge survival proof.
         names_after = _http_tools_list_names(endpoint, timeout=2.0)
         assert isinstance(names_after, list)
         assert names_after == names_before, (
@@ -556,10 +441,6 @@ def test_c2_failed_candidate_survival_and_single_failure_not_terminal(
             "restart — the old child was never replaced"
         )
 
-        # No leaked candidate process: bridge's _inner is the original old
-        # child, and the candidate spawn path raised before any new process was
-        # spawned. No additional processes or process groups are alive beyond
-        # the bridge's child.
         descendants_before = _descendant_pids() - preexisting_pids - {old_pid}
         assert descendants_before == set(), (
             f"failed candidate spawn leaked unrelated child PIDs: {descendants_before}"
@@ -570,23 +451,10 @@ def test_c2_failed_candidate_survival_and_single_failure_not_terminal(
             bridge.shutdown()
 
 
-# Above the module 10 s: includes the 15 s child-serving start-up bound.
 @pytest.mark.timeout_seconds(30)
 def test_c2_live_old_child_serves_tools_list_during_failed_candidate(
     tmp_path: Path,
 ) -> None:
-    """C2 black-box: the SHARED endpoint serves tools/list while a candidate
-    spawn fails, with no McpServerError escaping the bridge.
-
-    Drives the production ``start_mcp_server`` path. Substitutes ``restart_fn``
-    to raise ``RuntimeError`` so a candidate is never started. Asserts the
-    existing live child answers a real JSON-RPC ``tools/list`` over HTTP and
-    the bridge does not raise ``McpServerError`` (so the supervisor stays
-    non-terminal — the agent run is not interrupted). The candidate is never
-    spawned, so the candidate-process-group-reaped invariant is vacuously
-    satisfied and we verify it with a bounded psutil scan of the test
-    process's children.
-    """
     session = AgentSession(
         session_id="session-c2-live-serving",
         run_id="run-c2-live-serving",
@@ -611,16 +479,11 @@ def test_c2_live_old_child_serves_tools_list_during_failed_candidate(
     bridge = lifecycle.start_mcp_server(session, workspace, deps=deps, extras=extras)
 
     try:
-        # Snapshot live-state invariants BEFORE the failed restart.
         endpoint = bridge.endpoint_uri()
         assert bridge.process.poll() is None
         live_pid = bridge.process.pid
-        # No-op preflight: wait until the child really serves, so "STILL
-        # serves" below is measured against a child that was serving before
-        # the failed restarts rather than racing its start-up.
         assert isinstance(_wait_child_serving(endpoint), list)
 
-        # Drive the restart attempt with a wedged restart_fn.
         attempts = [0]
 
         def failing_spawn() -> StandaloneMcpProcess:
@@ -629,7 +492,6 @@ def test_c2_live_old_child_serves_tools_list_during_failed_candidate(
 
         bridge._restart_fn = failing_spawn
 
-        # Two failed attempts must stay non-terminal (budget remains).
         first = bridge._perform_restart(process_exited=False, probe_duration_s=0.5)
         assert first is False
         assert bridge.restart_count == 1
@@ -642,12 +504,9 @@ def test_c2_live_old_child_serves_tools_list_during_failed_candidate(
         assert bridge.process.pid == live_pid
         assert bridge.process.poll() is None
 
-        # Old child is STILL the active bridge child and STILL serves HTTP.
         names = _http_tools_list_names(endpoint, timeout=2.0)
         assert isinstance(names, list)
 
-        # Foreign bind must fail with EADDRINUSE — the bridge still owns the
-        # listening socket for its full lifetime, so the port is held.
         port = int(endpoint.split(":")[-1].split("/")[0])
         foreign = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
@@ -657,10 +516,6 @@ def test_c2_live_old_child_serves_tools_list_during_failed_candidate(
         finally:
             foreign.close()
 
-        # No candidate was ever spawned (restart_fn raised before the bridge
-        # could invoke the subprocess factory), so the candidate's process
-        # group is vacuously reaped. The old child's process group is the
-        # bridge's only descendant.
         descendants = _descendant_pids() - preexisting_pids
         assert live_pid in descendants, "old child must be alive under the bridge"
         candidate_pids = descendants - {live_pid}
@@ -677,7 +532,6 @@ def test_c2_budget_exhaustion_with_dead_old_child(
     managed_spawner: Callable[..., ManagedProcess],
     tmp_path: Path,
 ) -> None:
-    """Pins C2: When old child is dead, repeated failures exhaust budget with McpServerError."""
     dead_proc = managed_spawner(
         [sys.executable, "-c", "import sys; sys.exit(0)"],
         label="c2-dead-child",
@@ -700,12 +554,10 @@ def test_c2_budget_exhaustion_with_dead_old_child(
     )
 
     t0 = time.monotonic()
-    # Attempts 1, 2, 3 fail non-terminally
     for _ in range(max_restarts):
         res = bridge._attempt_restart_with_candidate(process_exited=True, probe_duration_s=None)
         assert res == RestartAttemptResult.ATTEMPT_FAILED
 
-    # Attempt 4 exceeds budget and raises typed McpServerError
     with pytest.raises(McpServerError) as exc_info:
         bridge._attempt_restart_with_candidate(process_exited=True, probe_duration_s=None)
 
@@ -715,23 +567,16 @@ def test_c2_budget_exhaustion_with_dead_old_child(
     assert exc_info.value.restart_count == max_restarts
 
 
-# ---------------------------------------------------------------------------
-# C3: Timeout-Only Deferral, Confirm-Before-Replace & SIGSTOP (E5.3)
-# ---------------------------------------------------------------------------
-
-
 def test_c3_timeout_only_deferral_vs_connection_reset(
     managed_spawner: Callable[..., ManagedProcess],
     tmp_path: Path,
 ) -> None:
-    """Pins C3: TimeoutError probe is deferred under contention; ConnectionResetError is not."""
     proc = managed_spawner(
         [sys.executable, "-c", "import time; time.sleep(300)"],
         label="c3-probe-child",
     )
     inner = _make_real_standalone(proc, tmp_path, stage_id="c3-probe-stage")
 
-    # Case A: TimeoutError with contention signal -> deferred
     def timing_out_probe(endpoint: str, timeout: timedelta) -> None:
         raise TimeoutError("probe timed out")
 
@@ -747,9 +592,8 @@ def test_c3_timeout_only_deferral_vs_connection_reset(
     restarted = bridge_timeout.check_health_and_restart_if_needed()
     assert restarted is False
     assert bridge_timeout._consecutive_probe_failures_deferred == 1
-    assert proc.poll() is None  # Child not killed
+    assert proc.poll() is None
 
-    # Case B: ConnectionResetError with contention signal -> NOT deferred (real failure)
     def reset_probe(endpoint: str, timeout: timedelta) -> None:
         raise ConnectionResetError("Connection reset by peer")
 
@@ -770,7 +614,6 @@ def test_c3_timeout_only_deferral_vs_connection_reset(
         sleep_fn=lambda s: None,
     )
 
-    # 3 reset misses trigger restart
     bridge_reset.check_health_and_restart_if_needed()
     bridge_reset.check_health_and_restart_if_needed()
     bridge_reset.check_health_and_restart_if_needed()
@@ -782,7 +625,6 @@ def test_c3_confirm_before_replace_and_probe_overrun(
     managed_spawner: Callable[..., ManagedProcess],
     tmp_path: Path,
 ) -> None:
-    """Pins C3: Confirm probe runs before kill; probe overrun records contention."""
     proc = managed_spawner(
         [sys.executable, "-c", "import time; time.sleep(300)"],
         label="c3-confirm-child",
@@ -794,8 +636,6 @@ def test_c3_confirm_before_replace_and_probe_overrun(
     def probe_fn(endpoint: str, timeout: timedelta) -> None:
         nonlocal probe_attempts
         probe_attempts += 1
-        # Calls 1, 2, 3: ordinary probe misses
-        # Call 4: confirm probe with 2x timeout succeeds!
         if probe_attempts <= 3:
             raise TimeoutError("ordinary probe timed out")
 
@@ -811,10 +651,8 @@ def test_c3_confirm_before_replace_and_probe_overrun(
 
     bridge.check_health_and_restart_if_needed()
     bridge.check_health_and_restart_if_needed()
-    # 3rd ordinary miss triggers confirm probe, which succeeds
     restarted = bridge.check_health_and_restart_if_needed()
 
-    # Invariant: Server was NOT replaced; reclassified as deferral
     assert restarted is False
     assert bridge._consecutive_probe_failures_deferred == 1
     assert proc.poll() is None
@@ -824,7 +662,6 @@ def test_c3_deferral_ceiling_and_dead_child_never_deferred(
     managed_spawner: Callable[..., ManagedProcess],
     tmp_path: Path,
 ) -> None:
-    """Pins C3: Deferral ceiling forces replacement; dead child is never deferred."""
     proc = managed_spawner(
         [sys.executable, "-c", "import time; time.sleep(300)"],
         label="c3-ceiling-child",
@@ -848,12 +685,10 @@ def test_c3_deferral_ceiling_and_dead_child_never_deferred(
         sleep_fn=lambda s: None,
     )
 
-    # Trip deferral ceiling
     bridge._consecutive_probe_failures_deferred = lifecycle._DEFERRAL_COUNT_CEILING
     bridge.check_health_and_restart_if_needed()
     assert restart_count == 1
 
-    # Dead child: immediately restarts without deferral
     proc.kill()
     proc.wait(timeout=2.0)
     assert proc.poll() is not None
@@ -874,14 +709,12 @@ def test_c3_e53_sigstopped_child_detected_and_reaped(
     managed_spawner: Callable[..., ManagedProcess],
     tmp_path: Path,
 ) -> None:
-    """Pins C3 / E5.3: SIGSTOPped child has zero CPU progress and is reaped on replacement."""
     proc = managed_spawner(
         [sys.executable, "-c", "import time; time.sleep(300)"],
         label="c3-sigstop-child",
     )
     inner = _make_real_standalone(proc, tmp_path, stage_id="c3-sigstop-stage")
 
-    # Send SIGSTOP
     os.kill(proc.pid, signal.SIGSTOP)
     time.sleep(0.02)
 
@@ -894,7 +727,6 @@ def test_c3_e53_sigstopped_child_detected_and_reaped(
             sleep_fn=lambda s: None,
         )
 
-        # Invariant: Zero CPU progress detected on SIGSTOPped child
         prog = bridge._check_child_cpu_progress(proc.pid, sample_duration_s=0.01)
         assert prog is False
     finally:
@@ -904,24 +736,15 @@ def test_c3_e53_sigstopped_child_detected_and_reaped(
         proc.wait(timeout=2.0)
 
 
-# ---------------------------------------------------------------------------
-# C4: File-Based Pause/Ack/Resume Handover Protocol
-# ---------------------------------------------------------------------------
-
-
 def test_c4_file_based_pause_ack_resume_handover_protocol(
     managed_spawner: Callable[..., ManagedProcess],
     tmp_path: Path,
 ) -> None:
-    """Pins C4: Single-acceptor pause/ack/resume file protocol executes without split-brain."""
     run_id = f"test-c4-handover-{uuid.uuid4().hex[:8]}"
     snap_dir = snapshot_dir(tmp_path, run_id)
     pause_file = snap_dir / "accept.pause.old-c4"
     resume_file = snap_dir / "accept.resume.cand-c4"
 
-    # Old child watches pause_file and creates pause_file.ack. It announces
-    # itself with a ready sentinel BEFORE entering the watch loop so the
-    # parent never has to charge interpreter startup to the ack bound.
     old_ready = tmp_path / "old_child_c4.ready"
     old_script = tmp_path / "old_child_c4.py"
     old_script.write_text(
@@ -947,17 +770,11 @@ while True:
     )
     old_inner = _make_real_standalone(old_proc, tmp_path, stage_id="old-c4")
 
-    # Startup barrier: ``_HANDOVER_ACK_TIMEOUT_S`` is a PRODUCTION bound the
-    # test must not relax, so the window it measures has to be the protocol
-    # alone, not CPython startup on a cold or oversubscribed host. Same
-    # readiness pattern the in-flight handover test drives before calling
-    # ``_hand_over_accept`` (test_handover_inflight_real_child.py).
     ready_deadline = time.monotonic() + 5.0
     while time.monotonic() < ready_deadline and not old_ready.exists():
         time.sleep(0.02)
     assert old_ready.exists(), "old child never reached its pause-watch loop"
 
-    # Candidate child waits for resume_file
     cand_script = tmp_path / "cand_child_c4.py"
     cand_script.write_text(
         """import time, sys, pathlib
@@ -988,30 +805,19 @@ while True:
 
     bridge._hand_over_accept(old_inner, cand_inner)
 
-    # Invariants: Old child acknowledged pause; resume file created for candidate.
-    # A missed ack takes the production escalation path (lifecycle kills the old
-    # child), so liveness here is what distinguishes "acknowledged" from
-    # "acknowledged too late to observe".
     ack_file = pause_file.with_name(pause_file.name + ".ack")
     assert ack_file.exists()
     assert resume_file.exists()
     assert old_proc.poll() is None, "old child was killed: the ack was not observed"
 
 
-# ---------------------------------------------------------------------------
-# C5: Enriched Diagnostic Reporting & Parametrized Stage Failures (E2.2)
-# ---------------------------------------------------------------------------
-
-
 def test_c5_enriched_diagnostic_reporting_abnormal_termination(
     managed_spawner: Callable[..., ManagedProcess],
     tmp_path: Path,
 ) -> None:
-    """Pins C5: Abnormal termination reports psutil status, stage attribution, and suffix."""
     spawn_id = f"c5-stage-{uuid.uuid4().hex[:8]}"
     ralph_root = Path(__file__).resolve().parents[2]
 
-    # Child writes stage and sleeps
     child_script = tmp_path / "c5_stage_child.py"
     child_script.write_text(
         f"""import sys, time
@@ -1031,26 +837,21 @@ while True:
         label="c5-diag-child",
     )
 
-    # Wait until child has recorded its stage before killing
     deadline = time.monotonic() + 3.0
     while time.monotonic() < deadline:
         if read_last_stage(tmp_path, spawn_id=spawn_id) is not None:
             break
         time.sleep(0.02)
 
-    # Check psutil status while running
     p = psutil.Process(proc.pid)
     assert p.status() in (psutil.STATUS_RUNNING, psutil.STATUS_SLEEPING)
 
-    # Abnormally terminate child via SIGKILL
     proc.kill()
     proc.wait(timeout=2.0)
 
-    # Invariant: Stage attribution records exact last stage written
     last_stage = read_last_stage(tmp_path, spawn_id=spawn_id)
     assert last_stage == "ready_to_serve"
 
-    # Invariant: McpServerError preserves handover_step and psutil_status
     err = McpServerError(
         "abnormal termination",
         restart_count=1,
@@ -1060,7 +861,6 @@ while True:
     assert err.handover_step == "spawn_candidate"
     assert err.psutil_status == "killed"
 
-    # Invariant: Empty diagnostic suffix handles missing log gracefully
     suffix = lifecycle._startup_diagnostic_suffix(tmp_path, 0)
     assert "child wrote no log output" in suffix
 
@@ -1084,33 +884,9 @@ def _spawn_e22_stage_failure_child(
     fd: int,
     tools_json: str,
 ) -> tuple[list[str], dict[str, str], tuple[int, ...]]:
-    """Return (argv, env, pass_fds) for a real subprocess that fails at the given stage.
-
-    Each mode drives a real Python interpreter that simulates the failure mode at
-    that exact stage of the candidate spawn lifecycle:
-    - pre_socket_exit: process exits immediately (``sys.exit(42)``) before any
-      handshake — the spawn itself fails.
-    - import_fail: process tries to import a module that cannot exist; the import
-      error is propagated as a non-zero exit before the process can wire the
-      handover socket.
-    - session_fail: process tries to read a session file that has been deleted
-      between parent spawn and child read.
-    - config_fail: process tries to load an mcp.toml at a path the parent deleted.
-    - catalog_fail: process simulates a missing tool catalog source.
-    - registry_fail: process simulates a stub registry build that raises
-      immediately.
-    - init_fail: process wires the handover socket and closes it before
-      responding to initialize (the make-before-break ``_verify_candidate_socket``
-      reads timeout).
-    - tools_drift: process responds with tools that differ from the bridge's
-      ``_expected_tool_hash``, so the bridge refuses the promotion on tool-set
-      drift (E1.9).
-    """
     if fail_mode == "pre_socket_exit":
         return [sys.executable, "-c", "import sys; sys.exit(42)"], {}, ()
 
-    # Body fragments that wire the handover socket (via fd / tools argv) then
-    # fail at the requested stage. Each builder receives the shared preamble.
     common_preamble = (
         "import json, os, socket, sys\n"
         "fd = int(sys.argv[1])\n"
@@ -1119,8 +895,6 @@ def _spawn_e22_stage_failure_child(
         "sock.settimeout(5.0)\n"
     )
 
-    # Per-stage builder maps ``fail_mode`` to ``(body_fragment, needs_fd)`` so
-    # the dispatch logic stays one short helper call per failure stage.
     body_for: dict[str, tuple[str, bool]] = {
         "import_fail": (
             "import sys\n"
@@ -1157,9 +931,6 @@ def _spawn_e22_stage_failure_child(
         return argv, {}, (fd,) if needs_fd else ()
 
     if fail_mode == "session_fail":
-        # Session stage: child reads a session file path the parent deleted
-        # between spawn and read. FileNotFoundError surfaces as the candidate's
-        # "session failed" exit before any handshake is sent.
         session_path = tmp_path / "session_to_delete.json"
         session_path.write_text("{}", encoding="utf-8")
         session_path.unlink()
@@ -1176,7 +947,6 @@ def _spawn_e22_stage_failure_child(
         return [sys.executable, "-c", body], {}, ()
 
     if fail_mode == "config_fail":
-        # Config stage: child tries to load an mcp.toml at a non-existent path.
         missing_toml = tmp_path / "mcp_toml_deleted.toml"
         body = (
             "import sys\n"
@@ -1190,8 +960,6 @@ def _spawn_e22_stage_failure_child(
         return [sys.executable, "-c", body], {}, ()
 
     if fail_mode == "tools_drift":
-        # Drift stage: respond correctly to ``initialize`` but advertise tools
-        # that do not match the bridge's expected_tool_hash.
         responder_script = _write_responder_script(tmp_path)
         env = {"RALPH_MCP_STAGE_ID": f"c5-cand-{fail_mode}"}
         return (
@@ -1210,26 +978,6 @@ def test_c5_e22_candidate_stage_failures_parametrized(
     tmp_path: Path,
     fail_mode: str,
 ) -> None:
-    """Pins C5 / E2.2: Every candidate stage failure must be non-terminal.
-
-    The catalogue requires that a candidate failing at ANY of the eight stages —
-    spawn, import, session, config, catalog, registry, preflight/handshake-init,
-    ack (tool-set drift) — leaves the live old child intact, is counted as one
-    non-terminal attempt, and reaps the failed candidate (entire process group,
-    including stdio grandchildren).
-
-    For each ``fail_mode`` the test:
-    1. Spawns a real long-lived "old" child (``time.sleep(10)``) and makes it the
-       bridge's ``_inner``.
-    2. Spawns a REAL subprocess child that fails at the given stage (no fake
-       processes, no in-process fakes).
-    3. Runs the production ``_run_with_make_before_break`` and asserts:
-       - result is ``False`` (non-terminal)
-       - bridge.process.pid == old_proc.pid (old child intact)
-       - old_proc.poll() is None
-       - all candidate processes are reaped (poll() is not None)
-       - no leaked children of the test process besides the old child
-    """
     preexisting_pids = _descendant_pids()
 
     old_proc = managed_spawner(
@@ -1243,9 +991,6 @@ def test_c5_e22_candidate_stage_failures_parametrized(
     cand_procs: list[ManagedProcess] = []
     cand_stage_for = f"c5-cand-{fail_mode}"
     parent_sock: socket.socket | None = None
-    # Only catalog_fail / registry_fail / init_fail / tools_drift wire the
-    # handover socketpair; the others die before the handshake so the simple
-    # "alive" poll path in ``_verify_candidate`` is enough.
     needs_handover = fail_mode in {"catalog_fail", "registry_fail", "init_fail", "tools_drift"}
 
     def make_candidate() -> StandaloneMcpProcess:
@@ -1272,12 +1017,6 @@ def test_c5_e22_candidate_stage_failures_parametrized(
             if csock is not None:
                 with contextlib.suppress(Exception):
                     csock.close()
-        # For spawn-stage failure (pre_socket_exit), wait for the candidate to
-        # actually die before handing back — otherwise ``_verify_candidate``
-        # races the spawn and may see poll()==None, after which the bridge
-        # tries to do a make-before-break handover against an already-dead
-        # candidate. The pre-spawn-stage modes (``import_fail``, ``session_fail``,
-        # ``config_fail``) also exit fast enough that we can drain them in line.
         if not needs_handover:
             with contextlib.suppress(Exception):
                 cand_proc.wait(timeout=3.0)
@@ -1309,13 +1048,11 @@ def test_c5_e22_candidate_stage_failures_parametrized(
             with contextlib.suppress(Exception):
                 parent_sock.close()
 
-    # Invariant 1: Every failure mode is non-terminal (C2 contract) and counted.
     assert result is False, f"fail_mode={fail_mode}: expected non-terminal result, got promotion"
     assert bridge.restart_count == 1, (
         f"fail_mode={fail_mode}: restart attempt was not counted (got {bridge.restart_count})"
     )
 
-    # Invariant 2: Old child intact — bridge still points at the live server.
     assert bridge.process.pid == old_proc.pid, (
         f"fail_mode={fail_mode}: bridge swapped to a candidate after a stage failure"
     )
@@ -1323,7 +1060,6 @@ def test_c5_e22_candidate_stage_failures_parametrized(
         f"fail_mode={fail_mode}: old child was killed by the bridge after a stage failure"
     )
 
-    # Invariant 3: Every candidate process is reaped (no leaked candidate or PIDs).
     assert cand_procs, f"fail_mode={fail_mode}: no candidate was spawned"
     for cp in cand_procs:
         with contextlib.suppress(Exception):
@@ -1333,44 +1069,24 @@ def test_c5_e22_candidate_stage_failures_parametrized(
             f"fail_mode={fail_mode}: candidate PID={cp.pid} still alive after stage failure"
         )
 
-    # Invariant 4: No unrelated descendants of the test process besides the old child.
     descendants = _descendant_pids() - preexisting_pids - {old_proc.pid}
     assert descendants == set(), (
         f"fail_mode={fail_mode}: unrelated descendant PIDs leaked: {sorted(descendants)}"
     )
 
 
-# ---------------------------------------------------------------------------
-# E5.1 / E5.4 Cited Impossibility Pins
-# ---------------------------------------------------------------------------
-
-
 def test_cited_impossibility_pins(
     managed_spawner: Callable[..., ManagedProcess],
 ) -> None:
-    """Pins E5.1 and E5.4 cited impossibility guarantees.
-
-    E5.1 PID Reuse Impossibility:
-    All process signaling in Ralph goes through ManagedProcess / Popen handles
-    with create-time checks in ProcessManager._escalate_termination_sync; bare-pid
-    os.kill is never used in the replacement or termination path.
-
-    E5.4 Zombie Child Impossibility:
-    Liveness is strictly Popen.poll()-based, which returns the termination returncode
-    for a zombie process (detecting it as dead), unlike bare os.kill(pid, 0) which
-    returns 0 for zombie processes (falsely reporting liveness).
-    """
     proc = managed_spawner(
         [sys.executable, "-c", "import sys; sys.exit(0)"],
         label="zombie-pin-child",
     )
     proc.wait(timeout=2.0)
 
-    # Invariant: poll() correctly reports exited/dead state
     poll_result = proc.poll()
     assert poll_result is not None
     assert poll_result == 0
 
-    # Bare os.kill(pid, 0) after reap raises ProcessLookupError
     with pytest.raises(ProcessLookupError):
         os.kill(proc.pid, 0)

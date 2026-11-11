@@ -1,4 +1,3 @@
-"""Markdown specification for commit-review artifacts."""
 
 from __future__ import annotations
 
@@ -20,7 +19,6 @@ _TREE_SHA_PATTERN: re.Pattern[str] = re.compile(r"^[0-9a-fA-F]{40}$")
 
 
 def _to_content(document: ParsedDocument) -> dict[str, object]:
-    """Map the closed commit review document grammar to the payload shape."""
     actions = document.section("Actions")
     action_items = actions.items if actions is not None else ()
     return {
@@ -50,7 +48,6 @@ def _reason_content(section: ParsedSection | None) -> dict[str, object]:
 
 
 def _validate_commit_review_document(document: ParsedDocument) -> list[Diagnostic]:
-    """Validate document-level constraints: tree_sha format and conditional reason section."""
     diagnostics: list[Diagnostic] = []
 
     tree_sha = document.frontmatter.get("tree_sha")
@@ -96,11 +93,6 @@ COMMIT_REVIEW_SPEC = MdArtifactSpec(
         "type": FrontmatterVocabulary(("commit_review",), "SPEC010"),
         "verdict": FrontmatterVocabulary(("approve", "reject"), "SPEC010"),
     },
-    # ``reason`` is the payload field the ``## Reason`` section carries. It
-    # stays an explicitly allowed frontmatter key so a rejected review that
-    # only has a frontmatter reason is still diagnosed with the actionable
-    # "missing required section 'Reason'" error instead of being reported as
-    # an unknown field.
     optional_frontmatter=frozenset({"reason"}),
     sections={
         "Reason": SectionRule(required=False),
@@ -109,9 +101,6 @@ COMMIT_REVIEW_SPEC = MdArtifactSpec(
     to_content=_to_content,
     normalize_content=normalize_commit_review_content,
     validate_document=_validate_commit_review_document,
-    # The frontmatter grammar is closed: the contract has a single verdict
-    # field, so the retired ``analysis_complete`` field is rejected as an
-    # unknown frontmatter field instead of being silently discarded.
     allow_unknown_frontmatter=False,
     allow_unknown_sections=True,
 )

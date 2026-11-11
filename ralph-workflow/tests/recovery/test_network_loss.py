@@ -1,5 +1,3 @@
-"""Black-box test: network loss is not counted against agent budget."""
-
 from __future__ import annotations
 
 from ralph.pipeline.events import PhaseFailureEvent
@@ -19,7 +17,6 @@ def _make_state(agents: list[str]) -> PipelineState:
 
 
 def test_environmental_failure_does_not_debit_budget() -> None:
-    """Connection errors must not count against the agent budget."""
     collected: list[FailureEvent] = []
     bus = FailureEventBus()
     bus.subscribe(lambda evt: collected.append(evt) if isinstance(evt, FailureEvent) else None)
@@ -42,7 +39,6 @@ def test_environmental_failure_does_not_debit_budget() -> None:
 
 
 def test_environmental_failure_via_message_substring() -> None:
-    """Failures with transport substrings in the message are classified environmental."""
     controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
     state = _make_state(["claude"])
 
@@ -59,7 +55,6 @@ def test_environmental_failure_via_message_substring() -> None:
 
 
 def test_environmental_failure_via_reducer_with_controller() -> None:
-    """PhaseFailureEvent with env error routes via controller, no budget debit."""
     controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
     state = _make_state(["claude"])
 
@@ -75,7 +70,6 @@ def test_environmental_failure_via_reducer_with_controller() -> None:
 
 
 def test_connectivity_monitor_state_transitions() -> None:
-    """FakeConnectivityMonitor emits state transitions correctly."""
     monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.ONLINE)
     transitions: list[ConnectivityState] = []
 
@@ -93,7 +87,6 @@ def test_connectivity_monitor_state_transitions() -> None:
 
 
 def test_environmental_failure_no_fallover_record() -> None:
-    """Environmental failures must not produce fallover records."""
     controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
     state = _make_state(["claude", "opencode"])
 
@@ -107,7 +100,6 @@ def test_environmental_failure_no_fallover_record() -> None:
 
 
 def test_offline_monitor_resumes_online_state() -> None:
-    """Connectivity state moves from offline back to online without a budget event."""
     monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.ONLINE)
 
     monitor.go_offline("test")
@@ -118,21 +110,17 @@ def test_offline_monitor_resumes_online_state() -> None:
 
 
 def test_offline_state_tracked_in_state() -> None:
-    """Pipeline state tracks connectivity state changes."""
     monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.ONLINE)
 
-    # Record initial state
     assert monitor.current_state == ConnectivityState.ONLINE
 
-    # Go offline
     monitor.go_offline("test network failure")
     assert monitor.current_state == ConnectivityState.OFFLINE
 
-    # Transitions are tracked
     transitions = []
     monitor.add_listener(lambda evt: transitions.append(evt.state))
 
-    monitor.go_offline("already offline")  # No transition
+    monitor.go_offline("already offline")
     assert len(transitions) == 0
 
     monitor.go_online("restored")
@@ -141,13 +129,6 @@ def test_offline_state_tracked_in_state() -> None:
 
 
 def test_offline_inhibits_agent_invocation_via_recovery_controller() -> None:
-    """RecoveryController pauses invocations when monitor reports OFFLINE.
-
-    This is a black-box test that verifies the offline pause mechanism
-    works through the RecoveryController + ConnectivityMonitor integration:
-    when the monitor is OFFLINE, the runner (via controller) should not
-    debit any budget because no actual invocation was attempted.
-    """
     monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.ONLINE)
     collected_events: list[FailureEvent] = []
 
@@ -159,42 +140,28 @@ def test_offline_inhibits_agent_invocation_via_recovery_controller() -> None:
     controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10, event_bus=bus))
     state = _make_state(["claude"])
 
-    # Start offline
     monitor.go_offline("network down")
     assert monitor.current_state == ConnectivityState.OFFLINE
 
-    # The runner observes OFFLINE before invoking, then resumes only after ONLINE.
     monitor.go_online("network restored")
     assert monitor.current_state == ConnectivityState.ONLINE
 
-    # No failure events should be emitted during offline period
-    # because no agent was actually invoked
     environmental_failures = [e for e in collected_events if e.category == "environmental"]
     assert len(environmental_failures) == 0
 
-    # Now simulate an invocation after going back online
-    # This should succeed without any offline penalty
     _, _, evt = controller.handle(
         state,
         ConnectionError("pre-existing connection reset"),
         FailureContext(phase="development", agent="claude"),
     )
 
-    # Environmental failure - no budget debit
     assert evt.counted_against_budget is False
     assert evt.category == "environmental"
 
-    # The agent is not charged, so it stays available for the phase.
     assert controller.ledger.is_available("development", "claude") is True
 
 
 def test_offline_period_does_not_debit_budget_on_recovery_resume() -> None:
-    """Time spent offline does not count against any agent's budget.
-
-    This verifies that the offline period is truly silent - no FailureEvent
-    is emitted, no budget is debited, and the pipeline resumes cleanly
-    when connectivity returns.
-    """
     monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.ONLINE)
     collected: list[FailureEvent] = []
 
@@ -204,22 +171,16 @@ def test_offline_period_does_not_debit_budget_on_recovery_resume() -> None:
     controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10, event_bus=bus))
     state = _make_state(["claude"])
 
-    # Simulate: go offline, wait, come back online, then invoke
     monitor.go_offline("ISP outage")
 
     assert monitor.current_state == ConnectivityState.OFFLINE
     monitor.go_online("ISP restored")
     assert monitor.current_state == ConnectivityState.ONLINE
 
-    # No failure events during offline
     assert len(collected) == 0
 
-    # The agent was never charged during the offline period
     assert controller.ledger.is_available("development", "claude") is True
 
-    # Now simulate a successful agent invocation after resume
-    # (no failure - just a state update showing no budget consumed)
     new_state = state.copy_with(last_retry_delay_ms=0)
     assert new_state.phase == "development"
-    # No budget was consumed during offline period
     assert controller.ledger.is_available("development", "claude") is True

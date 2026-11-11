@@ -1,4 +1,3 @@
-"""CapabilitySet — lightweight set of Ralph capabilities."""
 
 from __future__ import annotations
 
@@ -13,7 +12,6 @@ if TYPE_CHECKING:
 
 
 class CapabilitySet:
-    """Lightweight set of Ralph capabilities."""
 
     def __init__(self, values: Iterable[RalphCapability] | None = None) -> None:
         self._values = frozenset(values or ())

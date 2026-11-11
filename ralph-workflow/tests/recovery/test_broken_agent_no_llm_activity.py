@@ -1,5 +1,3 @@
-"""Regression coverage for agents that emit activity without LLM output."""
-
 from __future__ import annotations
 
 from collections import deque
@@ -64,11 +62,6 @@ def _watchdog(clock: FakeClock) -> IdleWatchdog:
     return watchdog
 
 
-#: The broken-agent deadline the reader actually uses:
-#: ``max(floor, configured_startup_grace - 3)``. Derived rather than written as
-#: a literal so raising the startup grace (as it was, to stop killing agents
-#: that are legitimately silent before their first tool call) cannot silently
-#: turn these tests into no-ops.
 _DERIVED_BROKEN_AGENT_GRACE_SECONDS = max(
     BROKEN_AGENT_OUTPUT_GRACE_SECONDS, NO_OUTPUT_AT_START_SECONDS - 3.0
 )
@@ -76,10 +69,6 @@ _DERIVED_BROKEN_AGENT_GRACE_SECONDS = max(
 
 def _lifecycle_only_watchdog(clock: FakeClock) -> IdleWatchdog:
     watchdog = _watchdog(clock)
-    # Two harness-only lifecycle frames keep the observed stream inside the
-    # shared structurally-small envelope (<= 2 nonblank output signals), so
-    # this remains a genuinely tiny harness-only run. The clock advances far
-    # past the broken-agent grace window either way.
     for _ in range(2):
         clock.advance((_DERIVED_BROKEN_AGENT_GRACE_SECONDS + 10.0) / 2)
         watchdog.record_lifecycle_activity()
@@ -87,12 +76,6 @@ def _lifecycle_only_watchdog(clock: FakeClock) -> IdleWatchdog:
 
 
 def _substantial_unclassified_watchdog(clock: FakeClock) -> IdleWatchdog:
-    """Reproduce the reported shape: many output lines, none meaningful.
-
-    The run emitted dozens of tool-result/status lines the watchdog could
-    not classify as meaningful LLM output, yet the agent clearly produced
-    substantial output before exiting without the required plan receipt.
-    """
     watchdog = _watchdog(clock)
     for index in range(40):
         clock.advance(0.5)
@@ -102,8 +85,6 @@ def _substantial_unclassified_watchdog(clock: FakeClock) -> IdleWatchdog:
 
 
 class _ExitedPollingHandle:
-    """Dead-process seam: ``poll`` reports the exit, like a real handle."""
-
     returncode = 0
     pid = None
 
@@ -147,14 +128,6 @@ def test_live_timer_classifies_lifecycle_only_run_as_no_llm_activity() -> None:
 
 
 def test_live_timer_spares_substantial_unclassified_output() -> None:
-    """Reported regression: substantial non-meaningful output is not silence.
-
-    The MiniMax-3 planning run emitted hundreds of output lines (grep tool
-    results, status frames) yet never submitted the required plan artifact.
-    The live broken-agent timer must NOT terminate the process or mark the
-    provider broken; the completion gate owns that classification once the
-    agent exits on its own.
-    """
     clock = FakeClock(start=0.0)
     handle = _LiveHandle()
     watchdog = _substantial_unclassified_watchdog(clock)
@@ -169,12 +142,6 @@ def test_live_timer_spares_substantial_unclassified_output() -> None:
 
 
 def test_live_timer_spares_substantial_output_after_process_exit() -> None:
-    """A dead process with substantial observed output is not provider silence.
-
-    The dead-process fast-fail branch may only fire for structurally small
-    output; substantial output must flow to the completion gate so the run
-    is retried as a missing-artifact failure instead of failing over.
-    """
     clock = FakeClock(start=0.0)
     watchdog = _substantial_unclassified_watchdog(clock)
 
@@ -220,15 +187,6 @@ def test_pty_completion_classifies_lifecycle_only_run_as_no_llm_activity() -> No
 
 
 def test_completion_gate_pi_substantial_output_missing_plan_receipt_is_resumable() -> None:
-    """Reported regression: exit-0 with substantial output but no plan receipt.
-
-    The planning run streamed a large transcript (tool results, status
-    frames), never called the plan submission endpoint, and exited 0. That
-    is a failure to submit the required artifact, not provider
-    unavailability: the completion gate must raise the resumable
-    completion-evidence error, and the failure classifier must not mark
-    the provider unavailable.
-    """
     output_lines = [
         '{"type":"tool_result","text":"chunk ' + str(index) + ": " + "t" * 90 + '"}'
         for index in range(20)

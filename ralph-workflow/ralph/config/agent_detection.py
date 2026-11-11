@@ -1,5 +1,3 @@
-"""Enable bundled agent configuration blocks for CLIs found on PATH."""
-
 from __future__ import annotations
 
 import logging
@@ -54,81 +52,12 @@ def _commit_deterministic_config_write(
     create_commit_fn: _CreateCommitFn | None = None,
     stage_fn: Callable[[Path | str, list[str]], None] | None = None,
 ) -> ScopedCommitResult | None:
-    """Wrap a project-local config write with the deterministic auto-commit contract.
-
-    This is the shared producer-side wiring the Ralph-owned config write
-    sites that AUTO-COMMIT their change route through after wt-012
-    (the ``ralph --init`` chain autowire
-    ``autowire_chains_to_detected_agent`` and the ``ralph --init``
-    starter-prompt creation). Write sites that publish
-    WITHOUT a commit do not route through this helper: ``enable_detected_agents``
-    publishes the agents file through ``write_agents_toml`` (atomic replace plus
-    ``.bak`` backup) and deliberately creates no chore commit. Read paths
-    are not write sites at all: ``load_toml`` migrates the retired
-    ``agent_can_commit`` keys in memory only, so it never writes and
-    never routes through this helper. The contract
-    mirrors the skill / policy ``commit_deterministic_writes`` callers:
-
-    * the pre-write content hash of ``config_path`` is captured BEFORE
-      ``write_fn`` runs, so the deterministic commit can isolate the
-      change from any user / agent edit that races the call;
-    * ``write_fn`` is always invoked -- the write must land on disk
-      even when the path is outside a git repo, so a non-repo config
-      write is the documented silent-NOOP contract (a clean write,
-      no commit, no error);
-    * ``commit_deterministic_writes`` is only called when the path
-      is inside a git working tree; the production
-      ``create_commit`` / ``stage_files`` are the default wiring and
-      tests inject stubs via ``create_commit_fn`` / ``stage_fn``;
-    * the ``ScopedCommitResult`` is logged at the documented level
-      per status (``DEBUG`` for ``CREATED`` / ``NOOP`` / ``NOT_REPO``,
-      ``WARNING`` for ``SKIPPED`` to name the path that was already
-      dirty at HEAD, ``ERROR`` for ``FAILED`` to surface
-      ``result.error`` to the operator). The helper never raises on
-      a FAILED commit -- a broken git state must not block the
-      pipeline; the failure is visible to the operator via the
-      log line.
-
-    Args:
-        config_path: The file the config write touches. Absolute or
-            cwd-relative; both are resolved before the repo-relative
-            path is computed.
-        subject: The conventional-commit subject line for the
-            deterministic chore commit. Pinned per site.
-        write_fn: The zero-arg callable that performs the actual write
-            (typically a closure that calls ``write_text_if_changed``
-            or ``atomic_write_text_if_changed`` with the right
-            arguments). It is called exactly once, AFTER the pre-write
-            content hash is captured.
-        create_commit_fn: Optional override for the production
-            ``create_commit`` (used by tests that inject a
-            failing / recording stub).
-        stage_fn: Optional override for the production
-            ``stage_files`` (used by tests).
-
-    Returns:
-        The :class:`ScopedCommitResult` on every path that called
-        ``commit_deterministic_writes``; ``None`` when the path is
-        outside a git working tree (silent NOOP).
-    """
     cc = create_commit_fn if create_commit_fn is not None else create_commit
     sf = stage_fn if stage_fn is not None else stage_files
-    # When ``config_path`` does not exist yet (a fresh starter file on
-    # first ``ralph --init``), ``Repo(path)`` raises ``NoSuchPathError``
-    # even with ``search_parent_directories=True``. Fall back to the
-    # parent directory so the producer can locate the owning repo via
-    # the parent search rather than the (non-existent) file path. If
-    # the parent itself is not in a repo, ``find_repo_root`` raises and
-    # the documented silent-NOOP branch below runs.
     repo_root_search_anchor = config_path if config_path.exists() else config_path.parent
     try:
         repo_root = find_repo_root(repo_root_search_anchor)
     except (GitOperationError, OSError) as exc:
-        # GitOperationError is the documented ``find_repo_root`` failure
-        # when neither ``config_path`` nor its parent is inside a git
-        # working tree. OSError is the secondary guard for broken
-        # filesystem access. Both collapse to the documented silent-NOOP
-        # contract: write the file, skip the commit, do not raise.
         logger.debug(
             "config write at {} not eligible for auto-commit ({}); skipping",
             config_path,
@@ -148,21 +77,6 @@ def _commit_deterministic_config_write(
         )
         write_fn()
         return None
-    # wt-012 DA-001/DA-008/DA-011: when ``config_path`` is a symlink, the
-    # actual file the write mutates depends on the backend primitive:
-    # a ``Path.replace`` swaps the symlink for a regular file, so the
-    # change lands at the LEXICAL ``rel_path``; ``write_text_if_changed``
-    # (autowire) opens the path with
-    # ``path.open("w")`` which FOLLOWS the symlink and writes through
-    # to the RESOLVED target. We cannot tell at compile time which
-    # primitive the caller's ``write_fn`` uses, so capture BOTH the
-    # lexical and the resolved paths in ``pre_contents`` and pass them
-    # to the deterministic commit helper. The helper dedupes and
-    # stages whichever path actually changed -- the lexical for the
-    # atomic case (replacement), the resolved for the through-link
-    # case (target rewrite). The single-path writers
-    # (non-symlinked config_path) capture only the lexical path as
-    # before; the extra entry is no-op.
     candidate_rel: list[str] = [rel_path]
     resolved_rel: str | None = None
     if abs_config.is_symlink():
@@ -188,16 +102,6 @@ def _commit_deterministic_config_write(
 
 
 def _log_commit_result(result: ScopedCommitResult, config_path: Path, rel_path: str) -> None:
-    """Surface the ``commit_deterministic_writes`` outcome at the documented level.
-
-    ``CREATED`` / ``NOOP`` / ``NOT_REPO``: DEBUG (success / expected
-    silent skip).
-    ``SKIPPED``: WARNING with the path that was already dirty at HEAD
-    so an operator can attribute the file to the agent flow that
-    dirtied it.
-    ``FAILED``: ERROR with ``result.error`` and the path list, but
-    never raises -- a broken git state must not block the pipeline.
-    """
     if result.status is ScopedCommitStatus.CREATED:
         logger.debug(
             "config write at {} auto-committed: subject head={}",
@@ -231,7 +135,6 @@ def _log_commit_result(result: ScopedCommitResult, config_path: Path, rel_path: 
 
 
 def _binary_for(name: str, cmd: str) -> str:
-    """Return the PATH binary for a built-in command, honoring documented overrides."""
     override_name = {"agy": "RALPH_AGY_BINARY", "cursor": "RALPH_CURSOR_BINARY"}.get(name)
     override = (
         opencode_binary_override()
@@ -244,7 +147,6 @@ def _binary_for(name: str, cmd: str) -> str:
 
 
 def detect_installed_agents() -> list[str]:
-    """Return built-in agent names whose command binary is available on PATH."""
     return [
         support.name
         for support in builtin_supports()
@@ -252,19 +154,16 @@ def detect_installed_agents() -> list[str]:
     ]
 
 
-#: Trigger label of the ``autowire_chains_to_detected_agent`` write on agents targets.
 _AUTOWIRE_TRIGGER = "ralph --init: autowire agent chains"
 
 
 def _agents_config_filename(name: str) -> bool:
-    """Return True if *name* is the filename of an agents configuration file."""
     from ralph.config._config_filenames import _GLOBAL_AGENTS_FILENAME
 
     return name in {_GLOBAL_AGENTS_FILENAME, "agents.toml"} or name.endswith("-agents.toml")
 
 
 def _safe_resolved_path(path: Path) -> Path | None:
-    """Return the canonical identity of *path*, or None when it cannot be resolved."""
     try:
         return path.resolve()
     except (OSError, RuntimeError):
@@ -272,7 +171,6 @@ def _safe_resolved_path(path: Path) -> Path | None:
 
 
 def _same_file_identity(left: Path, right: Path) -> bool:
-    """Return True when both paths denote ONE file on disk."""
     try:
         return left.samefile(right)
     except (OSError, ValueError):
@@ -280,7 +178,6 @@ def _same_file_identity(left: Path, right: Path) -> bool:
 
 
 def _agents_config_candidate_paths(target: Path) -> list[Path]:
-    """Return candidate active agents configuration paths."""
     from ralph.config._config_filenames import _GLOBAL_AGENTS_FILENAME
 
     candidates = [
@@ -299,7 +196,6 @@ def _agents_config_candidate_paths(target: Path) -> list[Path]:
 
 
 def _find_matching_agents_config(path: Path) -> Path | None:
-    """Return the active agents configuration file *path* aliases, or None."""
     resolved_path = _safe_resolved_path(path)
     for candidate in _agents_config_candidate_paths(path):
         if candidate == path:
@@ -319,12 +215,6 @@ def _find_matching_agents_config(path: Path) -> Path | None:
 
 
 def _is_agents_config_path(path: Path) -> bool:
-    """Return True if *path* names an agents configuration file or aliases one.
-
-    The RESOLVED target counts as well as the requested name, and identity
-    matching (device and inode) against candidate agents configuration files
-    detects hardlinks and arbitrary symlink aliases to the active agents config.
-    """
     if _agents_config_filename(path.name):
         return True
     resolved = _safe_resolved_path(path)
@@ -334,16 +224,6 @@ def _is_agents_config_path(path: Path) -> bool:
 
 
 def _agents_write_target(path: Path) -> Path:
-    """Return the file the agents write must publish for *path*.
-
-    Callers reach this only for a path :func:`_is_agents_config_path`
-    accepted. A requested name that does NOT name an agents file but
-    whose resolved target or file identity matches an active agents config
-    is an alias: the write lands on the active agents configuration target,
-    so the ``.bak`` belongs next to that target. Every other path keeps its
-    requested location, so an agents file that is itself a symlink still
-    keeps the backup where the operator configured it.
-    """
     if _agents_config_filename(path.name):
         return path
     resolved = _safe_resolved_path(path)
@@ -356,7 +236,6 @@ def _agents_write_target(path: Path) -> Path:
 
 
 def _agent_chains_from_toml(text: str) -> dict[str, list[str]]:
-    """Read the flat chain mapping from a bundled or user main config."""
     parsed = cast("dict[str, object]", tomllib.loads(text))
     raw_chains = parsed.get("agent_chains")
     if not isinstance(raw_chains, dict):
@@ -371,7 +250,6 @@ def _agent_chains_from_toml(text: str) -> dict[str, list[str]]:
 def autowire_chains_to_detected_agent(
     main_config_path: Path, *, detected: list[str] | None = None
 ) -> list[str] | Literal["kept-default-agent", "chains-customized"] | None:
-    """Point untouched default chains at a detected CLI when Claude is unavailable."""
     defaults_path = Path(__file__).parents[1] / "policy" / "defaults" / "ralph-workflow.toml"
     text = main_config_path.read_text(encoding="utf-8")
     default_text = defaults_path.read_text(encoding="utf-8")
@@ -424,14 +302,6 @@ def autowire_chains_to_detected_agent(
                 main_config_path.unlink()
                 os.link(target, main_config_path)
     else:
-        # wt-012: route the project-local config write through the shared
-        # deterministic auto-commit primitive so a chore commit with the
-        # fixed ``chore(config): update agent configuration`` subject
-        # captures the chain rewrite, never leaking it into a later
-        # agent's commit. A path outside a git repo (e.g. a global
-        # ``~/.config/`` config) is the documented silent-NOOP path --
-        # the write still lands on disk so the operator's config is
-        # always current, and no commit is attempted.
         _commit_deterministic_config_write(
             main_config_path,
             subject="chore(config): update agent configuration",
@@ -445,14 +315,10 @@ def autowire_chains_to_detected_agent(
     return sorted(default_agents)
 
 
-#: Trigger label of the ``enable_detected_agents`` write. The same label
-#: names the trigger in the warning that reports a skipped block, so the
-#: operator can attribute the skip to the flow that asked for it.
 _ENABLE_TRIGGER = "ralph --init: enable detected agents"
 
 
 def _agent_block_pattern(name: str) -> re.Pattern[str]:
-    """Return the pattern that matches the commented ``@AGENT-BLOCK`` of *name*."""
     return re.compile(
         rf"^# @AGENT-BLOCK-START: {re.escape(name)}\n"
         rf"(?P<content>.*?)"
@@ -462,7 +328,6 @@ def _agent_block_pattern(name: str) -> re.Pattern[str]:
 
 
 def _uncomment_block(content: str) -> str:
-    """Return the block body with its leading comment markers removed."""
     return "\n".join(
         line[2:] if line.startswith("# ") else line[1:] if line.startswith("#") else line
         for line in content.splitlines()
@@ -470,12 +335,6 @@ def _uncomment_block(content: str) -> str:
 
 
 def _configured_agent_names(text: str) -> set[str]:
-    """Return the agent names the configuration in *text* already defines.
-
-    A document that does not parse defines nothing: the caller then reports
-    the parse failure of the candidate document instead of guessing which
-    agent is already configured.
-    """
     try:
         parsed = cast("dict[str, object]", tomllib.loads(text))
     except ValueError:
@@ -487,29 +346,6 @@ def _configured_agent_names(text: str) -> set[str]:
 
 
 def enable_detected_agents(config_path: Path | None = None) -> list[str]:
-    """Activate untouched bundled blocks for installed agents, without changing active ones.
-
-    Every detected agent is activated one block at a time. The block is
-    uncommented, validated on its own, and the WHOLE candidate document --
-    the current file with that one block enabled -- is validated with
-    ``tomllib`` before it is accepted. A block that conflicts with what the
-    file already carries (an ``[agents.<name>]`` table the operator
-    configured, for instance) would make the whole document invalid, so it
-    is skipped with a warning that names the agent and the trigger, while
-    every other block is still applied. The operator's own lines are never
-    rewritten: a skipped block stays commented and the rest of the file is
-    left byte-identical.
-
-    The file is written once, at the end, and only when at least one block
-    was applied.
-
-    Args:
-        config_path: The agents configuration to activate blocks in. Defaults
-            to ``<global config dir>/ralph-workflow-agents.toml``.
-
-    Returns:
-        The names of the agents whose block was activated, in detection order.
-    """
     path = config_path or resolve_global_config_dir() / "ralph-workflow-agents.toml"
     try:
         text = path.read_text(encoding="utf-8")
@@ -527,9 +363,7 @@ def enable_detected_agents(config_path: Path | None = None) -> list[str]:
         match = _agent_block_pattern(name).search(text)
         if match is None:
             continue
-        content = cast(
-            "str", match.group("content")
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        content = cast("str", match.group("content"))
         uncommented = _uncomment_block(content)
         try:
             tomllib.loads(uncommented)

@@ -1,8 +1,3 @@
-"""Markdown artifact validation and canonical persistence for MCP.
-
-This sub-package contains the canonical Markdown submission backend, file
-backend, per-type validators, and audit adapter used by MCP tool handlers.
-"""
 
 from __future__ import annotations
 

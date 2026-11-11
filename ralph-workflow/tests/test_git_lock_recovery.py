@@ -1,12 +1,3 @@
-"""Tests for git stale lock recovery and the bounded backoff it applies.
-
-Split out of ``tests/test_git_lock_recovery.py``'s sibling
-``tests/test_git_lock_liveness_probe.py`` to keep both modules under the
-1000-line repo-structure limit. This module covers the recovery GATE: the
-age floor, the negative liveness proof and the bounded backoff retry that
-runs when a lock is held.
-"""
-
 from __future__ import annotations
 
 import os
@@ -56,7 +47,6 @@ def fake_unknown(*args: object, **kwargs: object) -> Literal["live", "dead", "un
 def test_recover_stale_git_lock_fails_closed_when_young(
     tmp_path: Path,
 ) -> None:
-    """A lock younger than 10s is NOT unlinked even with dead holder (age gate)."""
     lock_path = tmp_path / "index.lock"
     lock_path.write_bytes(b"index content\x00")
     young_time = time.time() - 2
@@ -73,7 +63,6 @@ def test_recover_stale_git_lock_fails_closed_when_young(
 def test_recover_stale_git_lock_fails_closed_when_holder_is_live(
     tmp_path: Path,
 ) -> None:
-    """A 60s-old lock with live holder is NOT unlinked (liveness gate)."""
     lock_path = tmp_path / "index.lock"
     lock_path.write_bytes(b"index content\x00")
     stale_time = time.time() - 60
@@ -90,7 +79,6 @@ def test_recover_stale_git_lock_fails_closed_when_holder_is_live(
 def test_recover_stale_git_lock_recovers_when_holder_is_dead(
     tmp_path: Path,
 ) -> None:
-    """A 60s-old lock with dead holder IS unlinked (both age and liveness met)."""
     (tmp_path / ".git").mkdir()
     lock_path = tmp_path / ".git" / "index.lock"
     lock_path.write_bytes(b"binary index content\x00")
@@ -106,7 +94,6 @@ def test_recover_stale_git_lock_recovers_when_holder_is_dead(
 
 
 def test_recover_stale_git_lock_returns_false_for_non_lock_error() -> None:
-    """A non-lock GitCommandError does NOT trigger recovery."""
     error = GitCommandError(
         ["git", "status"],
         128,
@@ -119,7 +106,6 @@ def test_recover_stale_git_lock_returns_false_for_non_lock_error() -> None:
 def test_liveness_probe_non_git_process_in_cwd_does_not_block_recovery(
     tmp_path: Path,
 ) -> None:
-    """Non-git process (e.g. Ralph/python) running in repo cwd without open fd returns 'dead'."""
     repo_dir = tmp_path / "repo"
     repo_dir.mkdir()
     gitdir = repo_dir / ".git"
@@ -131,9 +117,9 @@ def test_liveness_probe_non_git_process_in_cwd_does_not_block_recovery(
     fake_proc.mkdir()
     ralph_pid_dir = fake_proc / "42"
     ralph_pid_dir.mkdir()
-    (ralph_pid_dir / "cwd").symlink_to(str(repo_dir.resolve()))  # cwd -> repo dir
-    (ralph_pid_dir / "fd").mkdir()  # empty fd dir (no lock file open)
-    (ralph_pid_dir / "comm").write_text("python3\n", encoding="utf-8")  # NOT git
+    (ralph_pid_dir / "cwd").symlink_to(str(repo_dir.resolve()))
+    (ralph_pid_dir / "fd").mkdir()
+    (ralph_pid_dir / "comm").write_text("python3\n", encoding="utf-8")
     (ralph_pid_dir / "cmdline").write_bytes(b"/usr/bin/python3\x00-m\x00ralph\x00")
     (ralph_pid_dir / "environ").write_bytes(b"PATH=/bin\x00")
 
@@ -142,7 +128,6 @@ def test_liveness_probe_non_git_process_in_cwd_does_not_block_recovery(
         "Non-git process in repo cwd with no open fd must return 'dead' so orphan lock can be recovered"
     )
 
-    # Also verify recover_stale_git_lock removes the stale lock
     stale_time = time.time() - 60
     os.utime(lock_path, (stale_time, stale_time))
 
@@ -157,7 +142,6 @@ def test_liveness_probe_proc_less_returns_unknown(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """On /proc-less platform, probe returns 'unknown' and refuses to unlink with logged reason."""
     gitdir = tmp_path / ".git"
     gitdir.mkdir()
     lock_path = gitdir / "index.lock"
@@ -199,25 +183,7 @@ def test_liveness_probe_proc_less_returns_unknown(
 
 
 class TestLockBackoff:
-    """Tests for bounded backoff in run_git_operation_with_stale_lock_recovery.
-
-    The operation retries with backoff (0.2s, 0.5s, 1.0s; total ≤ 1.7s; up to 3
-    retry attempts) when a git lock is held by a live process. The sleep_fn seam
-    allows tests to avoid real delays.
-
-    The backoff is triggered when recover_stale_git_lock returns False
-    (lock is held by a live process). To test this reliably without a real
-    lock file, we pass recover_fn.
-    """
-
     def test_backoff_sleeps_then_retries(self) -> None:
-        """First attempt refused, second refused, third refused, fourth fails — GitCommandError re-raised.
-
-        A fake sleep_fn records the backoff sequence so we can verify the
-        schedule without real time passing. recover_fn is passed
-        to always return False (live holder) so backoff is always triggered.
-        Records delays (0.2, 0.5, 1.0).
-        """
         sleep_durations: list[float] = []
 
         def fake_sleep(seconds: float) -> None:
@@ -247,20 +213,12 @@ class TestLockBackoff:
                 recover_fn=fake_recover,
             )
 
-        # 4 attempts total: 1 initial attempt + 3 retries
         assert attempt_count == 4, f"Expected 4 attempts, got {attempt_count}"
         assert sleep_durations == [0.2, 0.5, 1.0], (
             f"Expected backoff [0.2, 0.5, 1.0], got {sleep_durations}"
         )
 
     def test_backoff_eventually_succeeds_when_holder_clears(self) -> None:
-        """Live holder cleared between attempt 1 and 2 — action succeeds.
-
-        First attempt fails with a lock error; recover_fn returns
-        False (live holder) on the first call so backoff sleeps 0.2s. On
-        the second attempt the lock holder has cleared, action succeeds, and
-        the operation completes without further backoff.
-        """
         sleep_durations: list[float] = []
 
         def fake_sleep(seconds: float) -> None:
@@ -271,7 +229,7 @@ class TestLockBackoff:
         def fake_recover(operation: str, error: Exception) -> bool:
             nonlocal recover_calls
             recover_calls += 1
-            return recover_calls > 1  # False on first, True on second
+            return recover_calls > 1
 
         lock_error = GitCommandError(
             ["git", "add", "-A"],
@@ -301,7 +259,6 @@ class TestLockBackoff:
         assert sleep_durations == [0.2], f"Expected single backoff [0.2], got {sleep_durations}"
 
     def test_backoff_exhausted_raises_git_command_error(self) -> None:
-        """Exhausted backoff re-raises the original GitCommandError."""
 
         def fake_sleep(_seconds: float) -> None:
             pass
@@ -329,13 +286,6 @@ class TestLockBackoff:
         assert exc_info.value is lock_error
 
     def test_backoff_total_under_budget(self) -> None:
-        """Total backoff budget is ≤ 1.7s (sum of 0.2 + 0.5 + 1.0).
-
-        The constant LOCK_BACKOFF_S is (0.2, 0.5, 1.0). The test verifies
-        the declared budget without relying on the implementation sum.
-        recover_fn is passed to always return False so every
-        retry triggers a backoff.
-        """
         sleep_durations: list[float] = []
 
         def fake_sleep(seconds: float) -> None:
@@ -376,7 +326,6 @@ class TestLockBackoff:
 def test_liveness_probe_live_and_absent_holders(
     tmp_path: Path,
 ) -> None:
-    """Distinct proof paths for live holders (refuse) vs absent holders (recover)."""
     gitdir = tmp_path / ".git"
     gitdir.mkdir()
     lock_path = gitdir / "index.lock"
@@ -385,7 +334,6 @@ def test_liveness_probe_live_and_absent_holders(
     fake_proc = tmp_path / "proc"
     fake_proc.mkdir()
 
-    # Process 55 holds open fd to lock_path
     holder_dir = fake_proc / "55"
     holder_dir.mkdir()
     (holder_dir / "comm").write_text("editor\n", encoding="utf-8")
@@ -401,18 +349,15 @@ def test_liveness_probe_live_and_absent_holders(
     os.utime(lock_path, (stale_time, stale_time))
     error = make_index_lock_error(lock_path)
 
-    # When live holder exists, recovery refuses
     assert recover_stale_git_lock("stage_all", error, liveness_fn=fake_live) is False
     assert lock_path.exists(), "Lock with live holder must not be unlinked"
 
-    # Now absent holder: remove process 55's link to lock_path
     (holder_fd / "3").unlink()
     (holder_fd / "3").symlink_to("/dev/null")
 
     result_absent = lock_has_no_live_holder(lock_path, gitdir, proc_root=fake_proc)
     assert result_absent == "dead", "Process not holding lock fd must yield 'dead'"
 
-    # When holder is absent and age is >10s, recovery succeeds
     assert recover_stale_git_lock("stage_all", error, liveness_fn=fake_dead) is True
     assert not lock_path.exists(), "Stale lock with absent holder must be unlinked"
 
@@ -420,13 +365,11 @@ def test_liveness_probe_live_and_absent_holders(
 def test_recover_stale_git_lock_old_binary_and_young_locks(
     tmp_path: Path,
 ) -> None:
-    """Old binary lock unlinks when holder absent; young lock refuses even when absent."""
     gitdir = tmp_path / ".git"
     gitdir.mkdir()
     lock_path = gitdir / "index.lock"
     binary_content = b"DIRC\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00"
 
-    # Case 1: Young binary lock (2s old)
     lock_path.write_bytes(binary_content)
     young_time = time.time() - 2.0
     os.utime(lock_path, (young_time, young_time))
@@ -436,7 +379,6 @@ def test_recover_stale_git_lock_old_binary_and_young_locks(
     assert recovered is False, "Young binary lock must NOT be unlinked"
     assert lock_path.exists(), "Young binary lock must remain on disk"
 
-    # Case 2: Old binary lock (60s old)
     old_time = time.time() - 60.0
     os.utime(lock_path, (old_time, old_time))
 

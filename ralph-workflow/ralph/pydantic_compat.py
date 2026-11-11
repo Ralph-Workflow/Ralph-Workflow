@@ -1,14 +1,3 @@
-"""First-party Pydantic typing compatibility helpers.
-
-Ralph intentionally keeps strict mypy enabled without enabling the
-``pydantic.mypy`` plugin. Some upstream Pydantic surfaces still expose ``Any``
-in ways that trip ``disallow_any_explicit`` / ``disallow_any_expr`` when a
-module subclasses ``pydantic.BaseModel`` directly.
-
-``RalphBaseModel`` keeps runtime behavior identical to ``pydantic.BaseModel``
-while providing an Any-free type-checking facade for the small subset of the
-BaseModel API that Ralph actually relies on.
-"""
 
 from __future__ import annotations
 
@@ -19,7 +8,6 @@ from pydantic import ConfigDict
 if TYPE_CHECKING:
 
     class RalphBaseModel:
-        """Any-free static facade for ``pydantic.BaseModel`` used by Ralph."""
 
         model_config: ClassVar[ConfigDict]
         model_fields: ClassVar[dict[str, object]]

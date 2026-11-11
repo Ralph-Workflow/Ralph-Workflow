@@ -1,4 +1,3 @@
-"""Activity stream rendering and artifact handoff for the pipeline runner."""
 
 from __future__ import annotations
 
@@ -48,7 +47,7 @@ _MAX_RETAINED_TOOL_TARGETS = 128
 def _parallel_display_cls() -> type[ParallelDisplay]:
     module = cast(
         "_ParallelDisplayModule", import_module("ralph.display.parallel_display")
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     return module.ParallelDisplay
 
 
@@ -69,27 +68,18 @@ def stream_parsed_agent_activity(
     agent_config: AgentConfig | None = None,
     **kwargs: object,
 ) -> None:
-    """Stream and render parsed agent output lines.
-
-    Accepts and forwards the per-invocation
-    ``subagent_pid_registry=`` and ``subagent_source_label=`` kwargs
-    into the resolved parser so the parser's structured-event hook
-    registers any embedded PID into the shared registry (R1 / R5 of
-    the Trustworthy Idle Watchdog spec). Both kwargs are optional;
-    legacy callers continue to work without them.
-    """
     transport = cast(
         "AgentTransport | None", kwargs.get("transport")
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     display_context = cast(
         "DisplayContext | None", kwargs.get("display_context")
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     raw_output_sink = cast(
         "deque[str] | list[str] | None", kwargs.get("raw_output_sink")
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     rendered_output_sink = cast(
         "deque[str] | list[str] | None", kwargs.get("rendered_output_sink")
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     session_id_sink = cast("Callable[[str], None] | None", kwargs.get("session_id_sink"))
     raw_line_sink = cast("Callable[[str], None] | None", kwargs.get("raw_line_sink"))
     subagent_pid_registry = cast(
@@ -107,7 +97,7 @@ def stream_parsed_agent_activity(
             agent_config.json_parser,
             cast(
                 "AgentTransport", agent_config.transport
-            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            ),
         )
     else:
         parser_key = (
@@ -124,13 +114,6 @@ def stream_parsed_agent_activity(
             text = str(line)
             if raw_output_sink is not None:
                 raw_output_sink.append(text)
-            # G1/S-1 (Evidence Provenance F3): a named observer fired as
-            # each raw line streams in, independent of raw_output_sink's
-            # own append -- the same "act on a line while it streams"
-            # pattern session_id_sink already uses below. This lets a
-            # caller (the smoke gate's evidence-ceiling check) react to
-            # the init frame the moment it appears, not after the whole
-            # turn's output is exhausted.
             if raw_line_sink is not None:
                 raw_line_sink(text)
             session_id = extract_transport_session_id((text,))
@@ -141,21 +124,10 @@ def stream_parsed_agent_activity(
     parallel_display_cls = _parallel_display_cls()
     subscriber = subscriber_for_display(display)
     emit_hook_raw: object = getattr(parser, "emit_subagent_activity", None)
-    # Cache for the latest sanitized subagent summary so the
-    # SUBAGENT_PROGRESS display event can re-use the exact string the
-    # sink received (avoids re-sanitizing or re-emitting raw payload).
     last_subagent_summary: list[str] = []
     tool_targets: dict[str, dict[str, object]] = {}
     for parsed_line in parser.parse(_iter_lines()):
         retained_line = _retain_tool_result_target(parsed_line, tool_targets)
-        # Forward parsed lines to the per-parser subagent sink so the
-        # idle watchdog's per-channel evidence surface stays fresh for
-        # ALL parsers (Claude, OpenCode, Codex, Gemini, Pi, Agy,
-        # Generic, ClaudeInteractive).  The contextvar is bound by the
-        # line readers (_process_reader / _pty_line_reader) before the
-        # first yield so the sink reaches the per-run watchdog
-        # closure.  The call is wrapped in try/except so a buggy
-        # parser hook cannot crash the activity stream.
         if callable(emit_hook_raw):
             emit_hook = cast(
                 "Callable[[AgentOutputLine, Callable[[str], None]], None]",
@@ -171,13 +143,6 @@ def stream_parsed_agent_activity(
             rendered_output_sink.append(rendered.plain)
         if isinstance(display, parallel_display_cls):
             kind = map_parser_type_to_kind(retained_line.type)
-            # DA-002 (wt-028-display S-2 / AC-01): the parser-to-display
-            # handoff forwards the source-event timestamp the parser
-            # extracted so the rendered record carries ``[hh:mm:ss]``
-            # from the agent's own clock rather than the display
-            # clock. ``None`` keeps the pre-fix display-clock
-            # fallback for any parser that does not yet yield a
-            # source timestamp.
             display.emit_parsed_event(
                 agent_name,
                 kind,
@@ -185,10 +150,6 @@ def stream_parsed_agent_activity(
                 retained_line.metadata or {},
                 timestamp=retained_line.timestamp,
             )
-            # emit_parsed_event already records a tool_use on the display's
-            # subscriber; recording it again here would double-count the repeat
-            # counter (a single call would render "(x2)"). Record only non-tool
-            # lines here on the parallel path.
             record_on_subscriber = retained_line.type != "tool_use"
         else:
             if rendered is not None:
@@ -199,14 +160,12 @@ def stream_parsed_agent_activity(
 
 
 def _tool_correlation_key(metadata: dict[str, object], tool_name: str) -> str:
-    """Return the documented cross-parser call identifier, falling back to tool name."""
     return tool_call_id(metadata) or tool_name
 
 
 def _retain_tool_result_target(
     line: AgentOutputLine, tool_targets: dict[str, dict[str, object]]
 ) -> AgentOutputLine:
-    """Carry a tool call's structured target into its matching result metadata."""
     metadata = line.metadata
     tool = metadata.get("tool")
     tool_name = tool if isinstance(tool, str) else (line.content or "")
@@ -250,14 +209,6 @@ def _capture_summary_into(
     emit_hook: Callable[[AgentOutputLine, Callable[[str], None]], None],
     sink_buffer: list[str],
 ) -> None:
-    """Invoke the parser hook with a capturing sink that records the summary.
-
-    Mirrors the activity-stream ``emit_subagent_activity`` invocation
-    but records the emitted summary into ``sink_buffer`` so the
-    parallel display can re-use the same sanitized string for the
-    ``SUBAGENT_PROGRESS`` display event.  A buggy hook that raises
-    is swallowed here too so the activity stream continues.
-    """
 
     def _capturing_sink(summary: str) -> None:
         sink_buffer.append(summary)
@@ -314,24 +265,6 @@ def _resolve_parser(
     subagent_pid_registry: SubagentPidRegistry | None = None,
     subagent_source_label: str | None = None,
 ) -> AgentParser:
-    """Resolve a parser instance by ``parser_type``.
-
-    R1 / R5 (Trustworthy Idle Watchdog spec): when the caller threads a
-    shared ``SubagentPidRegistry`` plus a per-transport source label
-    through this helper, the registry is forwarded into
-    ``get_parser`` so the parser's structured-event handler can
-    register any embedded PID into the registry. The registration
-    flows back to ``ProcessMonitor.spawned_subagent_count()`` through
-    the existing per-transport ``SubagentPidSource`` seam, so the
-    watchdog sees real subagent PIDs as they appear in the agent's
-    stream (defense-in-depth against the broader
-    ``descendant_snapshot()`` count).
-
-    Both kwargs are keyword-only and default to ``None`` so legacy
-    callers (the smoke plumbing, commit plumbing) that invoke
-    ``_resolve_parser(parser_type)`` continue to work without
-    changes.
-    """
     try:
         return get_parser(
             parser_type,
@@ -354,47 +287,12 @@ def _truncate(text: str, max_length: int) -> str:
 
 
 def _render_agent_activity_line(output: AgentOutputLine, agent_name: str) -> Text | None:
-    """Render an agent event through the single registry.
-
-    After the wt-028-display consolidation, this function constructs a
-    canonical :class:`AgentActivityEvent` from the parser-shaped
-    :class:`AgentOutputLine` via the shared normalizer
-    (:func:`ralph.display.agent_event_renderer.normalize_event_from_agent_output_line`)
-    so agent-specific quirks (claude / codex / opencode / ...) are
-    removed BEFORE rendering. It then delegates every presentation
-    decision to the single registry via
-    :func:`ralph.display.agent_event_renderer.render_event` and
-    extracts the plain text from the returned :class:`rich.text.Text`
-    so downstream callers that expect a styled Text keep working
-    unchanged.
-
-    The previous per-type helpers (``_render_text_line`` /
-    ``_render_tool_use_line`` / ``_render_tool_result_line`` /
-    ``_render_error_line`` / ``_render_metadata_event_line`` /
-    ``_tool_input_summary`` / ``_metadata_summary`` / ``_kv_summary``
-    / ``_styled_prefix``) were the pipeline runner's competing
-    formatter; they have been deleted and this function is the
-    single rendering seam on the pipeline-runnner side.
-
-    Production call sites construct typed events at ingestion and call
-    :func:`render_event` directly. The plain-text adapter
-    ``render_event_kind_text`` is kept only at the final presentation
-    boundary (for paths that don't carry a Console / unit_id and need
-    a plain string back), not in the rendering seam.
-    """
     from ralph.display.activity_provider import ActivityProvider
     from ralph.display.agent_event_renderer import (
         normalize_event_from_agent_output_line,
         render_event,
     )
 
-    # The pipeline runner's caller chain does not always carry a
-    # parser-shaped ``provider`` hint (it predates the typed-event
-    # boundary). Use ``UNKNOWN`` so the canonical normalizer never has
-    # to invent one; backend-specific quirks are already removed by
-    # ``make_event`` -> ``map_parser_type_to_kind`` so the registry
-    # renders the same line regardless of which provider fed the
-    # ``AgentOutputLine`` here.
     event = normalize_event_from_agent_output_line(
         output, provider=ActivityProvider.UNKNOWN, unit_id=agent_name
     )
@@ -408,11 +306,6 @@ def _render_agent_activity_line(output: AgentOutputLine, agent_name: str) -> Tex
 
 
 def _format_metadata_value(value: object) -> str | None:
-    """Return the metadata value if it's a non-empty string, else ``None``.
-
-    Used by :func:`_record_activity_on_subscriber` to extract clean
-    string values for ``path`` / ``workdir`` / ``command`` slots.
-    """
     if value is None:
         return None
     if isinstance(value, str) and value:
@@ -420,46 +313,19 @@ def _format_metadata_value(value: object) -> str | None:
     return None
 
 
-# NOTE: the per-type render helpers ``_render_text_line``,
-# ``_render_tool_use_line``, ``_render_tool_result_line``,
-# ``_render_error_line``, ``_render_metadata_event_line``,
-# ``_tool_input_summary``, ``_metadata_summary``, ``_kv_summary``,
-# ``_styled_prefix`` were the pipeline runner's competing
-# agent-output formatter. After the wt-028-display consolidation
-# they are deleted; :mod:`ralph.display.agent_event_renderer` is
-# the single source of truth for agent-event presentation
-# decisions.
 
 
 render_agent_activity_line = _render_agent_activity_line
 record_activity_on_subscriber = _record_activity_on_subscriber
-# ``truncate`` / ``available_width`` / ``terminal_width`` / ``MAX_*``
-# were removed when the per-type render helpers were consolidated into
-# the agent-event renderer registry. External callers should use
-# :mod:`ralph.display.agent_event_renderer` directly instead.
 truncate = _truncate
 available_width = _available_width
 terminal_width = _terminal_width
-# Truncation limits exposed for backward compatibility with tests that
-# assert the legacy ``MAX_TEXT_LENGTH`` / ``MAX_TOOL_RESULT_BRIEF``
-# constants. The registry's own cell-aware truncation uses 200 cells
-# by default (see ``_METADATA_SUMMARY_MAX_CHARS`` and the
-# ``_truncate_to_cells`` helper); these aliases pin the historical
-# values so the suite's outer surface stays unchanged.
 MAX_TEXT_LENGTH = _MAX_TEXT_LENGTH
 MAX_TOOL_RESULT_BRIEF = _MAX_TOOL_RESULT_BRIEF
 MAX_METADATA_SUMMARY_LENGTH = _MAX_METADATA_SUMMARY_LENGTH
 
 
 def metadata_summary(metadata: dict[str, object]) -> str:
-    """Backwards-compatible metadata summary shim.
-
-    Returns the registry's stable ``key=value, ...`` summary for the
-    preferred metadata keys (status / summary / phase / decision /
-    message / event / tool / path / workdir / command). Kept as a
-    free function so the existing pipeline-runner test that asserts
-    ``runner_module.metadata_summary`` still works.
-    """
     from ralph.display.agent_event_renderer import _metadata_summary
 
     return _metadata_summary(metadata)

@@ -1,10 +1,3 @@
-"""PHP-specific review guideline categories.
-
-Ported from the canonical Rust implementation in
-``ralph-workflow/src/guidelines/php.rs`` and adapted for the Python port.
-The module models core PHP guidance plus optional Laravel and Symfony
-extensions.
-"""
 
 from __future__ import annotations
 
@@ -16,7 +9,6 @@ if TYPE_CHECKING:
     from typing import Protocol
 
     class ReviewGuidelines(Protocol):
-        """Protocol for language-specific guideline containers."""
 
         quality_checks: tuple[str, ...]
         security_checks: tuple[str, ...]
@@ -32,11 +24,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class PHPGuidelines:
-    """Review guidelines for PHP codebases.
-
-    Args:
-        frameworks: Optional framework names that activate stack-specific checks.
-    """
 
     frameworks: tuple[str, ...] = ()
     quality_checks: tuple[str, ...] = field(init=False)
@@ -100,7 +87,6 @@ class PHPGuidelines:
             self._apply_framework(framework)
 
     def _apply_framework(self, framework: str) -> None:
-        """Add framework-specific guideline extensions."""
         framework_name = framework.casefold()
 
         if framework_name == "laravel":
@@ -142,7 +128,6 @@ class PHPGuidelines:
             )
 
     def summary(self) -> str:
-        """Return a short human-readable summary."""
         return (
             f"{len(self.quality_checks)} quality checks, "
             f"{len(self.security_checks)} security checks, "
@@ -150,7 +135,6 @@ class PHPGuidelines:
         )
 
     def total_checks(self) -> int:
-        """Return the total number of configured checks."""
         return sum(
             [
                 len(self.quality_checks),

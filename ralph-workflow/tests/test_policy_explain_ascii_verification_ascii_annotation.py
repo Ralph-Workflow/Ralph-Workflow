@@ -1,16 +1,3 @@
-"""Unit tests for ASCII workflow diagram rendering in ralph --explain-policy.
-
-Tests cover:
-- Default pipeline diagram contains entry marker
-- Default pipeline diagram contains decision branches
-- Default pipeline diagram contains loopback arrows
-- Default pipeline diagram contains fanout annotation
-- Default pipeline diagram contains success terminal markers
-- Non-terminal phases do NOT have failure terminal markers
-- Minimal two-phase pipeline diagram
-- Minimal pipeline contains expected structural elements
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -33,11 +20,6 @@ from ralph.policy.render import render_explanation_ascii
 
 
 def _get_default_policy_path() -> Path:
-    """Find the default policy directory.
-
-    Searches in multiple locations to find the bundled defaults.
-    """
-    # Try relative to this test file
     candidates = [
         Path(__file__).parent.parent / "ralph" / "policy" / "defaults",
         Path(__file__).parent.parent.parent / "ralph" / "policy" / "defaults",
@@ -49,8 +31,6 @@ def _get_default_policy_path() -> Path:
 
 
 class TestVerificationAsciiAnnotation:
-    """Tests that verification phases produce [verify: ...] annotation in ASCII output."""
-
     def _bundle_with_verification(self) -> PolicyBundle:
 
         return PolicyBundle(
@@ -87,7 +67,6 @@ class TestVerificationAsciiAnnotation:
         )
 
     def test_ascii_includes_verify_annotation(self) -> None:
-        """Verification block must produce '[verify: kind=...' annotation in ASCII output."""
         bundle = self._bundle_with_verification()
         explanation = explain_policy(bundle)
         output = render_explanation_ascii(explanation)

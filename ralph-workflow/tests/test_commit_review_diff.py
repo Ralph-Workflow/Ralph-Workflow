@@ -1,5 +1,3 @@
-"""Tests for commit_review_diff function."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -30,16 +28,10 @@ from ralph.workspace.memory import MemoryWorkspace
 if TYPE_CHECKING:
     from pathlib import Path
 
-# Most tests in this module exercise real git operations against the
-# ``tmp_git_repo`` fixture (per-test process-isolated git repository).
-# Under parallel xdist load, the default 1-second ceiling intermittently
-# fires on busy machines even though individual tests normally complete
-# quickly, so this module uses a slightly higher per-test timeout.
 pytestmark = pytest.mark.timeout_seconds(5)
 
 
 def test_commit_review_diff_includes_untracked_binary(tmp_git_repo: Path) -> None:
-    """Untracked binary files now appear in the cleanup diff helper output."""
     (tmp_git_repo / "accidental_binary.exe").write_bytes(b"\x00MZ")
     diff = commit_review_diff(tmp_git_repo)
     assert "accidental_binary.exe" in diff
@@ -49,7 +41,6 @@ def test_commit_review_diff_includes_untracked_binary(tmp_git_repo: Path) -> Non
 def test_commit_review_diff_includes_untracked_temp_name_text(
     tmp_git_repo: Path,
 ) -> None:
-    """Untracked ``.txt`` files with a temporary marker appear in the diff."""
     (tmp_git_repo / "scratch-note.txt").write_text("notes")
     diff = commit_review_diff(tmp_git_repo)
     assert "scratch-note.txt" in diff
@@ -57,7 +48,6 @@ def test_commit_review_diff_includes_untracked_temp_name_text(
 
 
 def test_commit_review_diff_includes_untracked_log_file(tmp_git_repo: Path) -> None:
-    """Untracked log files appear in the cleanup diff helper output."""
     (tmp_git_repo / "debug.log").write_text("debug output")
     diff = commit_review_diff(tmp_git_repo)
     assert "debug.log" in diff
@@ -65,7 +55,6 @@ def test_commit_review_diff_includes_untracked_log_file(tmp_git_repo: Path) -> N
 
 
 def test_commit_review_diff_fallback_on_non_repo_path(tmp_path: Path) -> None:
-    """Non-git directory returns sentinel '(no diff available)'."""
     diff = commit_review_diff(tmp_path)
     assert diff == "(no diff available)"
 
@@ -73,7 +62,6 @@ def test_commit_review_diff_fallback_on_non_repo_path(tmp_path: Path) -> None:
 def test_commit_review_prompt_includes_untracked_files_in_header(
     tmp_git_repo: Path,
 ) -> None:
-    """Rendered cleanup prompt lists untracked files under the shared header."""
     (tmp_git_repo / "accidental_binary.exe").write_bytes(b"\x00MZ")
     p = PipelinePolicy(
         phases={
@@ -123,12 +111,10 @@ def test_commit_review_prompt_includes_untracked_files_in_header(
     assert _UNTRACKED_HEADER in rendered
 
 
-# ponytail: this end-to-end secret-redaction path commits with GitPython then renders the diff twice; 10s covers xdist filesystem contention without affecting the 60s suite budget.
 @pytest.mark.timeout_seconds(10)
 def test_commit_review_diff_and_prompt_redact_recognized_secrets(
     tmp_git_repo: Path,
 ) -> None:
-    """Cleanup agents see safe work and a content-free secret remediation signal."""
     tracked_secret = tmp_git_repo / "private" / ".env"
     tracked_secret.parent.mkdir()
     tracked_secret.write_text("TOKEN=tracked-old-placeholder\n", encoding="utf-8")
@@ -206,7 +192,6 @@ def test_commit_review_diff_and_prompt_redact_recognized_secrets(
 
 
 def test_commit_review_diff_respects_gitignore(tmp_git_repo: Path) -> None:
-    """``git ls-files --others --exclude-standard`` honors ``.gitignore``."""
     (tmp_git_repo / ".gitignore").write_text("*.generated\n")
     (tmp_git_repo / "noise.generated").write_text("ignored noise")
     (tmp_git_repo / "visible.tmp").write_text("visible noise")
@@ -217,28 +202,20 @@ def test_commit_review_diff_respects_gitignore(tmp_git_repo: Path) -> None:
 
 
 def test_commit_review_diff_caps_untracked_list(tmp_git_repo: Path) -> None:
-    """Untracked file list is capped and a truncation footer is emitted."""
     for i in range(600):
         (tmp_git_repo / f"filler_{i}.tmp").write_text("x")
     diff = commit_review_diff(tmp_git_repo)
     assert _UNTRACKED_HEADER in diff
-    # Exactly 500 paths should be visible.
     visible_count = sum(1 for line in diff.splitlines() if line.startswith("filler_"))
     assert visible_count == 500
-    # Truncation footer reports the remaining count.
     assert "and 100 more untracked files not shown" in diff
-    # The first visible path is present.
     assert "filler_0.tmp" in diff
-    # Files with zzz_ prefix sort after the 500 cutoff so they are never visible.
     for i in range(10):
         (tmp_git_repo / f"zzz_after_cap_{i}.tmp").write_text("x")
     diff = commit_review_diff(tmp_git_repo)
     assert _UNTRACKED_HEADER in diff
     visible_after = sum(1 for line in diff.splitlines() if line.startswith("filler_"))
     assert visible_after == 500
-    # The 10 zzz_after_cap files sort lexically after all filler files, so
-    # they must be in the truncated tail (the footer reports 110 more, not
-    # 100, because the zzz files are now also untracked).
     assert "and 110 more untracked files not shown" in diff
     assert "zzz_after_cap_0.tmp" not in diff
     assert "zzz_after_cap_9.tmp" not in diff

@@ -1,4 +1,3 @@
-"""McpServerHandle dataclass — the value returned by McpServerFactory.build."""
 
 from __future__ import annotations
 
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class McpServerHandle:
-    """Return value from McpServerFactory.build carrying endpoint, PID, and shutdown hook."""
 
     endpoint: str
     pid: int

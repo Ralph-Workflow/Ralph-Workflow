@@ -1,26 +1,3 @@
-"""Tests for ``ralph.testing.audit_terminal_escape_containment``.
-
-The audit enforces literal-string AND AST-scoped invariants that
-keep the terminal-escape containment contract wired across the
-seven files the wt-036 rework touches. Each test mirrors
-``tests/test_audit_parallelization_dormant.py`` in structure:
-clean-tree assertions, regression-flavor assertions with
-monkey-patched sources, and a violation case for the most
-important invariants (the ``[0-9;?]`` narrowing regression and
-each per-sink adversarial mutation).
-
-The AST-scoped invariants use ``FunctionBodyInvariant`` and
-``CallSiteInvariant`` so the audit cannot be satisfied by a
-helper name appearing anywhere in the file -- the strip call
-must actually live inside the wired sink.
-
-The adversarial regressions share one recipe (patch a file, narrow
-the audit to the invariant that owns that seam, run the audit, assert
-it fails and says why), so they are driven from a single table: the
-row carries the source edit, the seam to narrow to, and the fragments
-the audit output must name. A failure message always names the row.
-"""
-
 from __future__ import annotations
 
 from functools import partial
@@ -40,45 +17,13 @@ from ralph.testing.audit_terminal_escape_containment import main as audit_main
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-# NOTE: ``test_audit_returns_zero_when_all_invariants_satisfied`` and
-# ``test_audit_module_path`` were removed in the wt-05-test-opti pass.
-# The clean-tree check duplicates the audit already executed by
-# ``make verify`` (the ``audit_terminal_escape_containment`` step in
-# ``_VERIFY_STEPS``), and the module-path test is a pure import smoke
-# that the same verify step implicitly proves. The remaining tests
-# cover the AST + literal-string regression contract with monkey-patched
-# sources.
 
-#: The audit's UNPATCHED source reader, captured at import time. A
-#: table-driven regression test patches several files in sequence; each
-#: patch must start from the REAL source, not from the previous row's
-#: already-patched reader.
 _REAL_READ = audit_module._read
 
-#: The audit's FULL invariant table, captured at import time. The same
-#: reasoning applies to the narrowing helper: every row must narrow from
-#: the complete table, not from the previous row's narrowed tuple.
 _REAL_INVARIANTS = audit_module._INVARIANTS
 
 
 class _RegressionCase(NamedTuple):
-    """One adversarial regression row for the terminal-containment audit.
-
-    Attributes:
-        name: Human-readable label used in the failure messages.
-        rel_path: The production file the regression is injected into.
-        invariant_cls: The invariant class that owns the patched seam.
-        expected_fragments: Fragments the audit output must name.
-        qualname: Seam filter for the narrowing helper (``None`` = no filter).
-        callee_name: Callee filter for the narrowing helper (``None`` = no filter).
-        narrow_rel_path: Whether the narrowing filters on ``rel_path``.
-        edits: ``(old_literal, new_literal)`` replacements applied to the source.
-        appended: Text appended to the source after the replacements.
-        narrow_package_files: Whether the package-wide file list must be
-            narrowed to the patched file (the package-wide invariant would
-            otherwise walk the whole tree).
-    """
-
     name: str
     rel_path: str
     invariant_cls: type[object]
@@ -91,7 +36,6 @@ class _RegressionCase(NamedTuple):
     narrow_package_files: bool = False
 
 
-#: The adversarial regressions the audit must catch, one row per seam.
 _REGRESSION_CASES: tuple[_RegressionCase, ...] = (
     _RegressionCase(
         name="activity_model.render_event_line drops the strip",
@@ -294,8 +238,6 @@ _REGRESSION_CASES: tuple[_RegressionCase, ...] = (
     ),
 )
 
-#: Line separators that Python's tokenizer treats as ordinary characters
-#: inside a line even though ``str.splitlines`` breaks on them.
 _UNICODE_SEPARATORS: tuple[str, ...] = (
     "",
     "\u2028",
@@ -304,8 +246,6 @@ _UNICODE_SEPARATORS: tuple[str, ...] = (
     "\u0085",
 )
 
-#: ``(rel_path, qualname, required_literal)`` rows: the safe-restoration
-#: literals whose removal must be caught by the audit.
 _TERMINAL_RESTORE_REQUIRED_LITERALS: tuple[tuple[str, str | None, str], ...] = (
     ("display/terminal_restore.py", "terminal_restore_sequence", "?25h"),
     ("display/terminal_restore.py", "terminal_restore_sequence", "[0m"),
@@ -328,8 +268,6 @@ _TERMINAL_RESTORE_REQUIRED_LITERALS: tuple[tuple[str, str | None, str], ...] = (
     ("display/context.py", "install_sigwinch_refresher", "signal.SIG_DFL"),
 )
 
-#: Literals the parent cleanup must never use: switching buffers, repainting
-#: or repositioning the display, or discarding queued operator input.
 _DESTRUCTIVE_CLEANUP_LITERALS: tuple[str, ...] = (
     "?1049l",
     "?1047l",
@@ -341,9 +279,6 @@ _DESTRUCTIVE_CLEANUP_LITERALS: tuple[str, ...] = (
     "tcflush",
 )
 
-#: Every seam the audit must own, in the form ``rel_path::qualname``. The
-#: count alone does not pin WHICH sinks are covered, so the audit's
-#: invariant table is compared against this list seam by seam.
 _EXPECTED_INVARIANT_SEAMS: tuple[str, ...] = (
     "MarkupParseInvariant",
     "NarrowCsiParameterInvariant",
@@ -384,7 +319,6 @@ _EXPECTED_INVARIANT_SEAMS: tuple[str, ...] = (
 
 
 def _seam_key(invariant: object) -> str:
-    """Return the ``rel_path::qualname`` seam an invariant owns."""
     rel_path = getattr(invariant, "rel_path", None)
     if not isinstance(rel_path, str):
         return type(invariant).__name__
@@ -398,18 +332,10 @@ def _seam_key(invariant: object) -> str:
 
 
 def test_audit_invariant_count_matches_table() -> None:
-    """The audit pins every sink (file-level, function-body, and SpawnOptions call-site)."""
-    # 22 escape-containment invariants (including the package-wide narrow
-    # CSI ban) + 4 markup-parse containment invariants and 9 terminal
-    # restoration wiring invariants, including the Status Bar fallback gate.
     expected = 35
     invariants = audit_module._INVARIANTS
     assert len(invariants) == expected
 
-    # The count alone does not pin WHICH sinks are covered: a dropped or
-    # duplicated invariant would keep the count at 35. The seam list below
-    # names every sink the audit must own, so a sink cannot disappear (or
-    # be replaced by a duplicate of another sink) without this test failing.
     seams = sorted(_seam_key(invariant) for invariant in invariants)
     assert seams == sorted(_EXPECTED_INVARIANT_SEAMS), (
         f"the audit must own exactly these seams; "
@@ -420,7 +346,6 @@ def test_audit_invariant_count_matches_table() -> None:
 
 
 def test_audit_line_sanitizer_invariant_pins_full_csi_class() -> None:
-    """The line_sanitizer invariant pins the [0-?] class explicitly."""
     ls_invariant = next(
         inv
         for inv in audit_module._INVARIANTS
@@ -435,16 +360,6 @@ def test_audit_blocks_regression_when_csi_class_is_narrowed(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Regression: the line_sanitizer invariant must catch a narrowing back to a digit-only class.
-
-    Drives the ``Invariant`` class directly with an in-memory fake source
-    that omits ``[0-?]`` and carries the narrower ``[0-9;?]`` form. No file
-    on disk is touched. Asserts:
-
-      - ``violations()`` reports the missing required literal AND the
-        forbidden literal,
-      - ``main([])`` exits 1 and prints a banner naming the file.
-    """
     fake_source = (
         "# intentionally narrow -- regression test\n"
         "def strip_terminal_control(text):\n"
@@ -461,19 +376,6 @@ def test_audit_blocks_regression_when_csi_class_is_narrowed(
         "_read",
         lambda rel_path: fake_source if rel_path == "display/line_sanitizer.py" else "",
     )
-    # DA-001: the previous shape ``(fake_invariant, *audit_module._INVARIANTS[1:])``
-    # kept every other invariant (including MarkupParseInvariant and
-    # PackageWideCallSiteInvariant, both of which walk the entire package)
-    # in the audit's iteration. The first such walk per pytest worker
-    # process performs an uncached ``os.walk(_PACKAGE_ROOT)`` plus an AST
-    # parse of every ``from_markup`` / ``SpawnOptions`` call site in
-    # the tree; under xdist contention that cold walk exceeded the 1 s
-    # SIGALRM cap and aborted the test. Narrowing the audit to ONLY the
-    # targeted ``fake_invariant`` keeps the same exit-code and banner
-    # assertions (``display/line_sanitizer.py`` is named by the targeted
-    # violation, ``TERMINAL-ESCAPE-CONTAINMENT AUDIT FAILED`` is the
-    # canonical banner) while paying zero package-walk cost. The other
-    # invariants remain covered by their own adversarial tests below.
     monkeypatch.setattr(audit_module, "_INVARIANTS", (fake_invariant,))
 
     violations = fake_invariant.violations()
@@ -493,7 +395,6 @@ def test_audit_blocks_regression_when_csi_class_is_narrowed(
 
 
 def test_process_reader_stdin_regression_accepts_conditional_pipe_or_devnull() -> None:
-    """S-3: prompt PIPE and non-prompt DEVNULL are both isolated child-stdin choices."""
     invariant = next(
         inv
         for inv in audit_module._INVARIANTS
@@ -505,26 +406,11 @@ def test_process_reader_stdin_regression_accepts_conditional_pipe_or_devnull() -
     assert invariant.violations() == []
 
 
-# ---------------------------------------------------------------------------
-# AST-scoped invariants: prove the audit inspects FUNCTION BODIES, not just
-# whether the helper name appears anywhere in the file. Each test below
-# strips the call from the wired sink and keeps the helper name present
-# elsewhere (docstring, import, etc.) -- a whole-file literal check would
-# still pass, the AST check must fail.
-# ---------------------------------------------------------------------------
-
-
 def _patch_rel(
     monkeypatch: pytest.MonkeyPatch,
     rel_path: str,
     transform: Callable[[str], str],
 ) -> None:
-    """Patch the audit's source reader for ONE file.
-
-    The reader always delegates to the REAL reader captured at import
-    time, so patching several files in sequence never compounds the
-    previous row's transformation.
-    """
     cached_transformed: str | None = None
 
     def _read(rel_path_arg: str) -> str:
@@ -546,19 +432,6 @@ def _narrow_invariants(
     callee_name: str | None = None,
     invariant_cls: type | None = None,
 ) -> None:
-    """Replace ``_INVARIANTS`` with the single invariant matching the given filters.
-
-    Each adversarial test drives exactly one regression; running the full
-    35-invariant sweep inside every adversarial test costs ~10-15 s of
-    per-shard wall time because the two package-wide invariants re-scan
-    the entire package on every call. Narrowing the audit's invariant
-    list to the targeted invariant keeps the same banner / assertion
-    shape but executes only the seam under test.
-
-    The filter always runs over the FULL invariant table captured at
-    import time, so a table-driven test that narrows once per row never
-    narrows an already-narrowed table.
-    """
     matching = []
     for inv in _REAL_INVARIANTS:
         if rel_path is not None and getattr(inv, "rel_path", None) != rel_path:
@@ -580,7 +453,6 @@ def _narrow_invariants(
 
 
 def _apply_case_edits(case: _RegressionCase, source: str) -> str:
-    """Apply one regression row's literal replacements and append to the source."""
     for old, new in case.edits:
         assert old in source, (
             f"{case.name}: {case.rel_path!r} must contain {old!r} for the "
@@ -593,7 +465,6 @@ def _apply_case_edits(case: _RegressionCase, source: str) -> str:
 
 
 def _narrow_to_case(monkeypatch: pytest.MonkeyPatch, case: _RegressionCase) -> None:
-    """Narrow the audit to the invariant that owns the row's seam."""
     _narrow_invariants(
         monkeypatch,
         rel_path=case.rel_path if case.narrow_rel_path else None,
@@ -602,11 +473,6 @@ def _narrow_to_case(monkeypatch: pytest.MonkeyPatch, case: _RegressionCase) -> N
         invariant_cls=case.invariant_cls,
     )
     if case.narrow_package_files:
-        # This case exercises the driver's violation rendering for an
-        # injected package member. The invariant's package-walk behavior
-        # is covered below with a synthetic path list; avoiding a full
-        # source-tree rescan here keeps this adversarial test
-        # deterministic under xdist I/O.
         monkeypatch.setattr(
             audit_module.PackageWideCallSiteInvariant,
             "_package_files",
@@ -619,12 +485,6 @@ def test_audit_blocks_each_injected_regression(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Every adversarial regression must make the audit fail and say why.
-
-    Each row injects ONE regression into ONE production file, narrows the
-    audit to the invariant that owns that seam, and asserts the audit
-    exits 1 while naming the patched file and the offending literal.
-    """
     for case in _REGRESSION_CASES:
         _patch_rel(monkeypatch, case.rel_path, partial(_apply_case_edits, case))
         _narrow_to_case(monkeypatch, case)
@@ -645,7 +505,6 @@ def test_audit_blocks_each_injected_regression(
 def test_function_body_invariant_returns_violations_for_missing_target(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """FunctionBodyInvariant reports the missing target as a violation."""
     inv = FunctionBodyInvariant(
         rel_path="display/parallel_display.py",
         qualname="ParallelDisplay.does_not_exist",
@@ -657,7 +516,6 @@ def test_function_body_invariant_returns_violations_for_missing_target(
 
 
 def test_call_site_invariant_reports_missing_callee() -> None:
-    """CallSiteInvariant reports no callee as a violation."""
     inv = CallSiteInvariant(
         rel_path="agents/invoke/_process_reader.py",
         callee_name="NoSuchCallable",
@@ -669,40 +527,15 @@ def test_call_site_invariant_reports_missing_callee() -> None:
     ), violations
 
 
-# ---------------------------------------------------------------------------
-# Adversarial cases for the new invariants added in the wt-036 rework:
-#   * SpawnOptions.devnull default restored to None
-#   * SpawnOptions(stdin=None) injected anywhere under ralph/
-#   * ralph.logging.configure_logging reintroduces sys.stderr or colorize=True
-#   * ralph.cli.main._configure_logging reintroduces sys.stderr
-#   * ralph.cli.main.main drops make_sanitizing_log_sink
-#   * ralph.display.log_sink.make_sanitizing_log_sink drops the stripper
-#   * ralph.display.log_sink.make_stderr_log_sink drops the stripper
-#   * ralph.display.log_sink constructs a Console inline
-#   * ralph.process.pty.spawn_pty_process drops os.setsid() / TIOCSCTTY
-# Each adversarial case is one row of ``_REGRESSION_CASES`` above: it
-# monkeypatches the source via _patch_rel, runs the audit, and asserts
-# it exits 1 and prints the relevant violation banner.
-# ---------------------------------------------------------------------------
-
-
 def test_package_wide_call_site_invariant_flags_stdin_none_in_any_file(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """PackageWideCallSiteInvariant can be driven directly with a fake source.
-
-    Pins the contract in isolation -- even without a call site
-    already present in the package, the invariant must report a
-    forbidden ``stdin=None`` when one is injected.
-    """
     fake_source = "SpawnOptions(stdin=None,)\n"
     inv = PackageWideCallSiteInvariant(
         callee_name="SpawnOptions",
         absent=("stdin=None",),
     )
 
-    # Use the audit's _read so the invariant reads our fake source everywhere;
-    # the package file list (cached) still drives which rel_paths are scanned.
     monkeypatch.setattr(audit_module, "_read", lambda rel_path: fake_source)
     monkeypatch.setattr(
         audit_module.PackageWideCallSiteInvariant,
@@ -711,13 +544,10 @@ def test_package_wide_call_site_invariant_flags_stdin_none_in_any_file(
     )
 
     violations = inv.violations()
-    # We don't assert on the absolute number (depends on file count), only
-    # that AT LEAST ONE violation names the offending literal.
     assert any("stdin=None" in v for v in violations), (
         f"PackageWideCallSiteInvariant must flag stdin=None violations; got {violations!r}"
     )
 
-    # Reset the cache so other tests see the real source again.
     audit_module.PackageWideCallSiteInvariant.reset_cache()
 
 
@@ -725,14 +555,6 @@ def test_package_wide_call_site_invariant_flags_stdin_none_in_any_file(
 def test_package_wide_call_site_invariant_flags_stdin_none_despite_unicode_separators(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Line-splitting must match Python AST line semantics for every separator.
-
-    ``str.splitlines`` also breaks on U+2028/U+2029, NEL, and form feed,
-    but Python's tokenizer does not: a call preceded by such a character
-    is on AST line 3 while a naive split puts it on line 4, so extraction
-    silently missed the forbidden literal. The audit must flag it for all
-    of them.
-    """
     for separator in _UNICODE_SEPARATORS:
         fake_source = f'x = "a{separator}"\nSpawnOptions(stdin=None,)\n'
         inv = PackageWideCallSiteInvariant(
@@ -758,13 +580,11 @@ def test_package_wide_call_site_invariant_flags_stdin_none_despite_unicode_separ
 def test_package_wide_call_site_invariant_passes_when_no_stdin_none(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """PackageWideCallSiteInvariant returns no violations when the package is clean."""
     inv = PackageWideCallSiteInvariant(
         callee_name="SpawnOptions",
         absent=("stdin=None",),
     )
 
-    # No-op read: every file looks empty, so no SpawnOptions call is found at all.
     monkeypatch.setattr(audit_module, "_read", lambda rel_path: "")
     violations = inv.violations()
     assert violations == [], (
@@ -774,7 +594,6 @@ def test_package_wide_call_site_invariant_passes_when_no_stdin_none(
 
 
 def _remove_literal(source: str, literal: str) -> str:
-    """Return the source with every occurrence of ``literal`` removed."""
     assert literal in source, (
         f"the source must contain {literal!r} for this regression to be injectable"
     )
@@ -782,7 +601,6 @@ def _remove_literal(source: str, literal: str) -> str:
 
 
 def _replace_literal(source: str, old: str, new: str) -> str:
-    """Return the source with the FIRST occurrence of ``old`` replaced by ``new``."""
     assert old in source, f"the source must contain {old!r} for this regression to be injectable"
     return source.replace(old, new, 1)
 
@@ -792,7 +610,6 @@ def test_terminal_restore_audit_regression_rejects_missing_safe_restoration(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """S-3: each owned restore or probe-timeout operation remains load-bearing."""
     for rel_path, qualname, required_literal in _TERMINAL_RESTORE_REQUIRED_LITERALS:
         _patch_rel(monkeypatch, rel_path, partial(_remove_literal, literal=required_literal))
         _narrow_invariants(
@@ -809,7 +626,6 @@ def test_terminal_restore_audit_regression_rejects_missing_safe_restoration(
 
 
 def _destructive_cleanup_edit(forbidden_literal: str) -> tuple[str, str, str]:
-    """Return the ``(qualname, old_literal, new_literal)`` edit for a forbidden literal."""
     if forbidden_literal == "tcflush":
         return (
             "restore_terminal",
@@ -828,7 +644,6 @@ def test_terminal_restore_audit_regression_rejects_destructive_parent_cleanup(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """S-3: parent cleanup may not switch buffers, repaint, reposition, or flush input."""
     path = "display/terminal_restore.py"
 
     for forbidden_literal in _DESTRUCTIVE_CLEANUP_LITERALS:

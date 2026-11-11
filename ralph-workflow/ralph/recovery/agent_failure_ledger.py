@@ -1,12 +1,3 @@
-"""Agent failure ledger: single-owner component for agent failure and demotion decisions.
-
-This component tracks consecutive and total unproductive execution attempts per
-(phase, agent) pair and decides whether an agent remains eligible, enters cooldown,
-or becomes permanently spent.
-
-All decisions are pure functions of observed facts and injected time; no ambient
-system reads (clock, filesystem, process table) are performed.
-"""
 
 from __future__ import annotations
 
@@ -19,16 +10,12 @@ if TYPE_CHECKING:
     from ralph.agents.clock import Clock
 
 LEGACY_DEFAULT_AGENT: Final[str] = "claude"
-"""Agent name assumed when a legacy checkpoint carries no recoverable agent identity."""
 
 _LEGACY_MALFORMED_REASON: Final[str] = "legacy_guard_malformed"
-"""Demotion reason recorded when legacy failure history cannot be read."""
 
 LEGACY_IDENTITY_UNATTRIBUTABLE_REASON: Final[str] = "legacy_identity_unattributable"
-"""Demotion reason recorded when legacy history belongs to no recoverable agent."""
 
 LEDGER_SNAPSHOT_MALFORMED_REASON: Final[str] = "ledger_snapshot_malformed"
-"""Demotion reason recorded when the stored ledger snapshot itself is unreadable."""
 
 _DEFAULT_CONSECUTIVE_LIMIT: Final[int] = 3
 _DEFAULT_TOTAL_LIMIT: Final[int] = 9
@@ -39,7 +26,6 @@ _DEFAULT_BACKOFF_FACTOR: Final[float] = 2.0
 
 @dataclass(frozen=True)
 class _AttemptFact:
-    """Observed facts about an execution attempt."""
 
     phase: str
     agent: str
@@ -49,32 +35,27 @@ class _AttemptFact:
 
 
 class _AgentStatus:
-    """Base class for agent availability status."""
 
     @property
     def is_eligible(self) -> bool:
-        """Return True if the agent is eligible to execute."""
         return isinstance(self, _Eligible)
 
     @property
     def is_cooldown(self) -> bool:
-        """Return True if the agent is in cooldown."""
         return isinstance(self, _Cooldown)
 
     @property
     def is_spent(self) -> bool:
-        """Return True if the agent is demoted/spent."""
         return isinstance(self, _Spent)
 
 
 @dataclass(frozen=True)
 class _Eligible(_AgentStatus):
-    """Agent is eligible to run."""
+    pass
 
 
 @dataclass(frozen=True)
 class _Cooldown(_AgentStatus):
-    """Agent is temporarily cooling down until monotonic timestamp `until_ms`."""
 
     until_ms: int
     reason: str
@@ -82,14 +63,12 @@ class _Cooldown(_AgentStatus):
 
 @dataclass(frozen=True)
 class _Spent(_AgentStatus):
-    """Agent is demoted/spent for the rest of the phase or run."""
 
     reason: str
 
 
 @dataclass(frozen=True)
 class _AttemptOutcome:
-    """Outcome of recording an attempt fact."""
 
     status: _AgentStatus
     consecutive_unproductive: int
@@ -97,12 +76,10 @@ class _AttemptOutcome:
 
     @property
     def demoted(self) -> bool:
-        """Return True if the agent is no longer eligible (in cooldown or spent)."""
         return not isinstance(self.status, _Eligible)
 
     @property
     def reason(self) -> str | None:
-        """Return the demotion reason if not eligible, else None."""
         if isinstance(self.status, (_Cooldown, _Spent)):
             return self.status.reason
         return None
@@ -118,7 +95,6 @@ AttemptOutcome = _AttemptOutcome
 
 @dataclass
 class _LedgerEntry:
-    """Internal mutable state for a single (phase, agent) pair."""
 
     consecutive_unproductive: int = 0
     total_unproductive: int = 0
@@ -135,24 +111,6 @@ _SPENT_REASON_TOTAL = "total_unproductive_limit_reached"
 
 @dataclass(frozen=True)
 class _LegacyGuardSource:
-    """A legacy failure-history payload together with its recovered identity.
-
-    Legacy checkpoints stored one ``progress_guard`` payload per phase chain
-    plus a top-level copy describing the active phase. Every payload described
-    the failure history of exactly ONE agent, so each source is migrated
-    independently into its own ledger entry.
-
-    Attributes:
-        payload: Raw legacy payload (a mapping for well-formed checkpoints).
-        phase: Canonical phase name the payload belongs to.
-        agent: Recovered agent name, or ``None`` when the identity could not
-            be recovered from the legacy chain.
-        candidate_agents: Agents declared by the legacy chain. Used when the
-            current agent of that chain cannot be recovered, so the recorded
-            history is preserved for the agent that actually failed.
-        fail_closed_reason: When set, the affected identity is failed closed
-            with this reason instead of being translated.
-    """
 
     payload: object
     phase: str
@@ -162,11 +120,6 @@ class _LegacyGuardSource:
 
 
 class AgentFailureLedger:
-    """Single owner of agent failure, cooldown, and demotion decisions.
-
-    Tracks consecutive and total unproductive attempts per (phase, agent) and
-    determines agent eligibility.
-    """
 
     def __init__(
         self,
@@ -206,35 +159,29 @@ class AgentFailureLedger:
         self._lock = threading.Lock()
         self._entries: dict[
             tuple[str, str], _LedgerEntry
-        ] = {}  # bounded-accumulator-ok: per-(phase, agent) failure tracking bounded by agent chain size
+        ] = {}
 
     @property
     def consecutive_limit(self) -> int:
-        """Configured consecutive unproductive attempt limit."""
         return self._consecutive_limit
 
     @property
     def total_limit(self) -> int:
-        """Configured total unproductive attempt limit."""
         return self._total_limit
 
     @property
     def base_cooldown_seconds(self) -> float:
-        """Configured base cooldown in seconds."""
         return self._base_cooldown_seconds
 
     @property
     def max_cooldown_seconds(self) -> float:
-        """Configured maximum cooldown in seconds."""
         return self._max_cooldown_seconds
 
     @property
     def backoff_factor(self) -> float:
-        """Configured exponential backoff multiplier."""
         return self._backoff_factor
 
     def _sync_cooldown_expiry(self, entry: _LedgerEntry, now_ms: int) -> None:
-        """Check if an active cooldown has elapsed, resetting consecutive count."""
         if entry.is_spent:
             return
         if entry.cooldown_until_ms is not None and now_ms >= entry.cooldown_until_ms:
@@ -243,7 +190,6 @@ class AgentFailureLedger:
             entry.consecutive_unproductive = 0
 
     def _status_locked(self, phase: str, agent: str, now_ms: int) -> AgentStatus:
-        """Return status for an agent under lock."""
         entry = self._entries.get((phase, agent))
         if entry is None:
             return Eligible()
@@ -261,23 +207,14 @@ class AgentFailureLedger:
         return Eligible()
 
     def status(self, phase: str, agent: str) -> AgentStatus:
-        """Return the current status of an agent for the specified phase."""
         with self._lock:
             now_ms = int(self._clock.monotonic() * 1000)
             return self._status_locked(phase, agent, now_ms)
 
     def is_available(self, phase: str, agent: str) -> bool:
-        """Return True when the agent is eligible to run."""
         return isinstance(self.status(phase, agent), Eligible)
 
     def earliest_wait_ms(self, phase: str, agents: Sequence[str]) -> int | None:
-        """Return milliseconds until the earliest cooling-down agent becomes eligible.
-
-        Returns 0 if any agent is currently eligible or if ``agents`` is empty.
-        Returns a positive integer of milliseconds if at least one agent is
-        cooling down and no agent is currently eligible.
-        Returns None if ``agents`` is non-empty and every agent is spent/demoted.
-        """
         if not agents:
             return 0
         with self._lock:
@@ -295,11 +232,6 @@ class AgentFailureLedger:
             return None
 
     def all_exhausted(self, phase: str, agents: Sequence[str]) -> bool:
-        """Return True if every agent in ``agents`` is demoted/spent.
-
-        Returns False if ``agents`` is empty, or if any agent is currently
-        eligible or cooling down.
-        """
         if not agents:
             return False
         with self._lock:
@@ -311,14 +243,12 @@ class AgentFailureLedger:
             return True
 
     def failure_reason(self, phase: str, agent: str) -> str | None:
-        """Return the failure or demotion reason if not eligible, else None."""
         st = self.status(phase, agent)
         if isinstance(st, (Cooldown, Spent)):
             return st.reason
         return None
 
     def record(self, fact: AttemptFact) -> AttemptOutcome:
-        """Record the observed facts of an attempt and return the outcome."""
         with self._lock:
             key = (fact.phase, fact.agent)
             now_ms = int(self._clock.monotonic() * 1000)
@@ -330,7 +260,6 @@ class AgentFailureLedger:
 
             self._sync_cooldown_expiry(entry, now_ms)
 
-            # Rule: artifact_valid == True clears both consecutive and total counts.
             if fact.artifact_valid:
                 entry.consecutive_unproductive = 0
                 entry.total_unproductive = 0
@@ -345,7 +274,6 @@ class AgentFailureLedger:
                     total_unproductive=0,
                 )
 
-            # Unproductive attempt (artifact_valid == False).
             if fact.workspace_changed:
                 entry.consecutive_unproductive = 0
                 entry.total_unproductive += 1
@@ -353,7 +281,6 @@ class AgentFailureLedger:
                 entry.consecutive_unproductive += 1
                 entry.total_unproductive += 1
 
-            # Check total limit first: demotes to Spent.
             if entry.total_unproductive >= self._total_limit:
                 entry.is_spent = True
                 entry.spent_reason = _SPENT_REASON_TOTAL
@@ -365,7 +292,6 @@ class AgentFailureLedger:
                     total_unproductive=entry.total_unproductive,
                 )
 
-            # Check consecutive limit: puts agent on Cooldown with growing backoff.
             if entry.consecutive_unproductive >= self._consecutive_limit:
                 exponent = min(entry.cooldown_count, 30)
                 duration_seconds = min(
@@ -393,13 +319,6 @@ class AgentFailureLedger:
             )
 
     def snapshot(self) -> dict[str, object]:
-        """Return a serializable dictionary snapshot of ledger state.
-
-        ``cooldown_until_ms`` is a deadline on this process's monotonic clock,
-        which restarts on reboot, so each active cooldown is also persisted as
-        a wall-clock deadline (``cooldown_until_epoch_ms``) that
-        :meth:`from_snapshot` re-anchors onto the restoring clock.
-        """
         with self._lock:
             now_ms = int(self._clock.monotonic() * 1000)
             now_epoch_ms = int(self._clock.epoch() * 1000)
@@ -439,7 +358,6 @@ class AgentFailureLedger:
         consecutive_limit: int = 3,
         total_limit: int = 9,
     ) -> dict[str, object]:
-        """Translate a legacy progress snapshot dict into a single ledger entry snapshot."""
         raw_streak = guard_data.get("streak", 0)
         streak = (
             int(raw_streak)
@@ -474,7 +392,6 @@ class AgentFailureLedger:
         consecutive_limit: int = 3,
         total_limit: int = 9,
     ) -> AgentFailureLedger:
-        """Construct an AgentFailureLedger translated from a legacy snapshot."""
         ledger = cls(
             clock=clock,
             consecutive_limit=consecutive_limit,
@@ -511,7 +428,6 @@ class AgentFailureLedger:
         *,
         clock: Clock,
     ) -> AgentFailureLedger:
-        """Reconstruct an AgentFailureLedger from a snapshot dictionary."""
         if "entries" not in snap and (
             "streak" in snap or "max_identical" in snap or "failed_closed" in snap
         ):
@@ -607,18 +523,6 @@ def _restored_cooldown_until_ms(
     now_epoch_ms: int,
     max_cooldown_ms: int,
 ) -> int | None:
-    """Re-anchor a persisted cooldown deadline onto the restoring monotonic clock.
-
-    The wall-clock deadline (``cooldown_until_epoch_ms``) survives a reboot,
-    so the remaining duration is measured against the restoring clock's
-    epoch. Legacy snapshots carry only the previous boot's monotonic deadline
-    (``cooldown_until_ms``); it is measured against the restoring monotonic
-    clock. Either way the remaining duration is clamped to
-    ``[0, max_cooldown_ms]`` -- no cooldown the ledger can grant outlasts its
-    maximum, so a deadline from a different clock domain can never strand an
-    agent for the previous uptime. A zero remainder restores as an elapsed
-    cooldown that the next status read expires normally.
-    """
     epoch_val = item.get("cooldown_until_epoch_ms")
     until_val = item.get("cooldown_until_ms")
     if isinstance(epoch_val, (int, float)) and not isinstance(epoch_val, bool):
@@ -634,7 +538,6 @@ def _restored_cooldown_until_ms(
 
 
 def _counter_value(raw: object) -> int:
-    """Return a non-negative counter value, or 0 when the value is unusable."""
     if isinstance(raw, bool):
         return 0
     if isinstance(raw, int):
@@ -650,7 +553,6 @@ def _counter_value(raw: object) -> int:
 
 
 def _float_value(raw: object, default: float) -> float:
-    """Return a float value, or the default when the value is unusable."""
     if isinstance(raw, bool):
         return default
     if isinstance(raw, int | float):
@@ -664,7 +566,6 @@ def _float_value(raw: object, default: float) -> float:
 
 
 def _readable_streak(raw: object) -> int | None:
-    """Return the streak count when the value is a readable non-negative count."""
     if isinstance(raw, bool):
         return None
     if isinstance(raw, int | float):
@@ -679,7 +580,6 @@ def _readable_streak(raw: object) -> int | None:
 
 
 def _readable_legacy_field(field: str, raw: object) -> bool:
-    """Return True when a recognised legacy field holds a usable value."""
     if field == "streak":
         return _readable_streak(raw) is not None
     if field == "max_identical":
@@ -690,13 +590,6 @@ def _readable_legacy_field(field: str, raw: object) -> bool:
 
 
 def _readable_legacy_payload(payload: object) -> Mapping[str, object] | None:
-    """Return the payload as a mapping when it carries readable failure history.
-
-    Returns ``None`` when the payload cannot be read: it is not a mapping, it
-    carries none of the recognised failure-history fields, or a recognised
-    field holds a value that cannot be interpreted (a non-numeric streak, a
-    non-positive cap, a non-boolean exhaustion flag).
-    """
     if not isinstance(payload, Mapping):
         return None
     fields = ("streak", "max_identical", "is_exhausted", "failed_closed")
@@ -709,14 +602,6 @@ def _readable_legacy_payload(payload: object) -> Mapping[str, object] | None:
 
 
 def _legacy_identities(source: _LegacyGuardSource) -> tuple[tuple[str, str], ...]:
-    """Return the (phase, agent) identities a legacy source applies to.
-
-    A recoverable agent identity wins. When the current agent of a legacy chain
-    cannot be recovered, the recorded history is applied to every agent the
-    chain declares, so the history is preserved for the agent that actually
-    failed. When the chain declares no agent at all, the legacy default agent
-    name is used so the history is never discarded.
-    """
     if source.agent:
         return ((source.phase, source.agent),)
     if source.candidate_agents:
@@ -732,7 +617,6 @@ def _failed_closed_entry(
     consecutive_limit: int,
     total_limit: int,
 ) -> dict[str, object]:
-    """Return a ledger entry that denies further attempts for an agent."""
     return {
         "phase": phase,
         "agent": agent,
@@ -752,13 +636,6 @@ def _entry_strictness(
     consecutive_limit: int,
     total_limit: int,
 ) -> tuple[int, int, int, int]:
-    """Return a sort key for a ledger entry where a smaller tuple is stricter.
-
-    Strictness is measured by how many further unproductive attempts the
-    agent can still absorb before it is demoted: a spent entry is strictest,
-    then the entry with the fewest remaining attempts, then the entry that
-    recorded the most failures.
-    """
     spent = 0 if bool(entry.get("is_spent")) else 1
     consecutive = _counter_value(entry.get("consecutive_unproductive"))
     total = _counter_value(entry.get("total_unproductive"))
@@ -769,7 +646,6 @@ def _entry_strictness(
 def _snapshot_limits(
     snapshot: Mapping[str, object] | None,
 ) -> tuple[int, int, float, float, float]:
-    """Return the ledger limits of a snapshot, falling back to the defaults."""
     if snapshot is None:
         return (
             _DEFAULT_CONSECUTIVE_LIMIT,
@@ -794,7 +670,6 @@ def _translate_legacy_source(
     consecutive_limit: int,
     total_limit: int,
 ) -> dict[str, object]:
-    """Translate one legacy payload into a ledger entry for a single identity."""
     if source.fail_closed_reason is not None:
         return _failed_closed_entry(
             phase,
@@ -830,20 +705,6 @@ def migrate_legacy_guard_history(
     *,
     existing_snapshot: Mapping[str, object] | None = None,
 ) -> dict[str, object] | None:
-    """Migrate legacy per-chain failure history into a durable ledger snapshot.
-
-    Each source is migrated independently into its own entry keyed
-    ``"{phase}:{agent}"``. When a stored ledger snapshot is present, the
-    stricter of the stored entry and the migrated entry is kept for every
-    identity, so translation can never lower demotion protection.
-
-    Unreadable legacy data fails closed: the affected agent is recorded as
-    spent with an explicit reason instead of being granted a fresh attempt
-    budget.
-
-    Returns:
-        The merged snapshot, or ``None`` when there is nothing to migrate.
-    """
     if not sources:
         return None
     consecutive_limit, total_limit, base, maximum, backoff = _snapshot_limits(existing_snapshot)

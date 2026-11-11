@@ -1,14 +1,3 @@
-"""Content-cache method mixin for :class:`ExploreStore`.
-
-Extracted from :mod:`ralph.mcp.explore._store_class` so the
-:class:`ExploreStore` implementation file stays under the
-per-file line ceiling.
-
-The methods live on a mixin class so the SQLite + cache logic
-remains cohesive (the cache owns a dedicated ``content_cache``
-table) while the main store class only imports a small
-``_ContentCacheMethods`` alias.
-"""
 
 from __future__ import annotations
 
@@ -25,30 +14,10 @@ from ralph.mcp.explore._store_types import (
 
 
 class _ContentCacheMethods:
-    """Mixin providing content-cache accessors for ``ExploreStore``.
 
-    The mixin assumes the host class exposes two private members:
-
-    * ``_conn`` — the SQLite connection (shared across all
-      methods on the same instance).
-    * ``_transaction()`` — a context manager yielding a cursor
-      bound to a short transaction.
-
-    These are part of the implementation contract between the
-    mixin and :class:`ExploreStore`; the runtime enforces them
-    through Python's duck typing while the type checker reads
-    them as ``Any`` via the explicit annotation below.
-    """
-
-    # Ponytail: declare the private members the mixin depends on
-    # as untyped attributes so mypy does not flag the cross-class
-    # access. The runtime contract is documented in the class
-    # docstring; a regression that breaks the contract would
-    # raise ``AttributeError`` at the first call.
     _conn: sqlite3.Connection
     _transaction: Callable[[], AbstractContextManager[sqlite3.Cursor]]
 
-    # --- Content cache (AC-05: deterministic extraction reuse) -------
 
     def lookup_content_cache(
         self,
@@ -56,14 +25,6 @@ class _ContentCacheMethods:
         content_hash: str,
         extractor_version: str,
     ) -> ContentCacheRow | None:
-        """Return the cached payload for ``content_hash`` when fresh.
-
-        AC-05/AC-06: a cache hit only counts when ``extractor_version``
-        matches the in-process constant; an older or newer version
-        forces a re-extract so the cache can never serve stale
-        payloads to callers. This is the only signal that drives
-        the reindex pipeline's copy/move reuse path.
-        """
         cur = self._conn.execute(
             """
             SELECT * FROM content_cache
@@ -81,12 +42,6 @@ class _ContentCacheMethods:
         *,
         row: ContentCacheRow,
     ) -> None:
-        """Insert or refresh the cache metadata for ``content_hash``.
-
-        Idempotent: a second insert with the same ``content_hash``
-        refreshes ``extracted_at`` and ``extractor_version`` while
-        retaining the prior ``extraction_status``.
-        """
         with self._transaction() as cur:
             cur.execute(
                 """
@@ -112,7 +67,6 @@ class _ContentCacheMethods:
             )
 
     def delete_content_cache(self, *, content_hash: str) -> None:
-        """Remove a single cache entry by hash."""
         with self._transaction() as cur:
             cur.execute(
                 "DELETE FROM content_cache WHERE content_hash = ?",
@@ -120,17 +74,15 @@ class _ContentCacheMethods:
             )
 
     def content_cache_size(self) -> int:
-        """Return the current cache row count (bounded O(1) aggregate)."""
         cur = self._conn.execute("SELECT COUNT(*) FROM content_cache")
         row: sqlite3.Row | None = cur.fetchone()
         return _row_int_opt(row, 0) if row is not None else 0
 
     def iter_content_cache(self) -> Iterator[ContentCacheRow]:
-        """Yield every ``ContentCacheRow`` for inspection/audit use only."""
         cur = self._conn.execute("SELECT * FROM content_cache")
         rows = cast(
             "list[sqlite3.Row]", cur.fetchall()
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         for cache_row in rows:
             yield _row_to_content_cache(cache_row)
 

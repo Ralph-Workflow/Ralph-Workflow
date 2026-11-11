@@ -1,13 +1,3 @@
-"""Authentic v4 consent-flow integration tests.
-
-Exercises the public _maybe_resolve_schema_upgrade route with an unmodified
-authentic v4 corpus (v4 schema marker, v1 portfolio) against the three
-supported paths: unattended refusal, interactive freeze-rewrite, and
-interactive upgrade-consent.
-
-No subprocess, no sleep, no real I/O — pure in-memory with MemoryWorkspace.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -21,8 +11,6 @@ V4_CORE_FILES = markers.core_files_for_version("v4")
 
 
 class _Selector:
-    """Scripted select seam: returns each queued answer in order."""
-
     def __init__(self, *answers: str) -> None:
         self._answers = list(answers)
         self.questions: list[str] = []
@@ -42,7 +30,6 @@ class _Selector:
 
 
 def _clean_policy_prose(body: str) -> str:
-    """Strip starter banner and resolve placeholder tokens in v4 starter prose."""
     import re
 
     body = re.sub(r"<!--\s*RALPH-STARTER-TEMPLATE:.*?-->\s*", "", body, flags=re.DOTALL)
@@ -55,13 +42,6 @@ def _clean_policy_prose(body: str) -> str:
 
 
 def _build_unmodified_v4_pack() -> MemoryWorkspace:
-    """Build MemoryWorkspace with authentic v4 starters — v4 marker kept as-is.
-
-    Unlike _build_v4_pack in test_v4_corpus_authentic.py, this does NOT
-    rewrite the schema marker to "freeze v4". The v4 marker stays unchanged
-    so _maybe_resolve_schema_upgrade sees outdated files and exercises
-    the upgrade-or-freeze consent gate.
-    """
     ws = MemoryWorkspace()
     for name in V4_CORE_FILES:
         raw_body = V4_STARTERS[name]
@@ -81,18 +61,13 @@ def _build_unmodified_v4_pack() -> MemoryWorkspace:
 
 
 def test_unmodified_v4_refuses_unattended_continuation() -> None:
-    """Non-TTY path refuses continuation when outdated v4 files are present.
-
-    _maybe_resolve_schema_upgrade returns False and emits the rerun message
-    without rewriting any marker.
-    """
     ws = _build_unmodified_v4_pack()
     messages: list[str] = []
 
     resolved = _schema_upgrade._maybe_resolve_schema_upgrade(
         ws,
         messages.append,
-        select=_Selector("upgrade"),  # would upgrade if TTY were True
+        select=_Selector("upgrade"),
         is_tty=lambda: False,
     )
 
@@ -103,7 +78,6 @@ def test_unmodified_v4_refuses_unattended_continuation() -> None:
         f"Expected refusal message about schema choice; got: {messages}"
     )
 
-    # Verify no marker was rewritten
     for name in V4_CORE_FILES:
         path = f"{markers.CANONICAL_DIR}{name}"
         first_line = ws.read(path).splitlines()[0]
@@ -113,12 +87,6 @@ def test_unmodified_v4_refuses_unattended_continuation() -> None:
 
 
 def test_interactive_v4_freeze_rewrite_pins_first_line() -> None:
-    """Interactive freeze choice rewrites every outdated file's marker to freeze v4.
-
-    The rest of each file must be byte-identical to the input — only the
-    first-line marker changes. validate_readiness must still accept the
-    frozen v4 workspace (v4 manifest validates frozen v4 without v5 fields).
-    """
     ws = _build_unmodified_v4_pack()
     messages: list[str] = []
 
@@ -138,9 +106,6 @@ def test_interactive_v4_freeze_rewrite_pins_first_line() -> None:
         assert lines[0] == "<!-- ralph-policy-schema: freeze v4 -->", (
             f"Expected freeze v4 marker; got: {lines[0]!r} in {path}"
         )
-        # Rest of file must be unchanged — compare the raw v4 starter prose
-        # (with banner stripped and placeholders resolved) against everything
-        # after the rewritten first line.
         raw_body = V4_STARTERS[name]
         expected_body = _clean_policy_prose(raw_body)
         expected_rest = "\n".join(expected_body.splitlines()[1:])
@@ -149,18 +114,11 @@ def test_interactive_v4_freeze_rewrite_pins_first_line() -> None:
             f"Non-marker content of {path} must be byte-identical after freeze"
         )
 
-    # Confirm validators still accept the frozen v4 workspace
     findings = validators.validate_readiness(ws, ProjectStack(primary_language="Python"))
     assert findings == [], f"Frozen v4 pack must validate READY; got: {findings}"
 
 
 def test_interactive_v4_upgrade_consent_returns_true_no_marker_rewrite() -> None:
-    """Interactive upgrade consent returns True without rewriting any marker.
-
-    The upgrade path in _maybe_resolve_schema_upgrade returns True and lets
-    the downstream remediation agent apply the actual file upgrades; it does
-    NOT rewrite files itself.
-    """
     ws = _build_unmodified_v4_pack()
 
     resolved = _schema_upgrade._maybe_resolve_schema_upgrade(
@@ -172,7 +130,6 @@ def test_interactive_v4_upgrade_consent_returns_true_no_marker_rewrite() -> None
 
     assert resolved is True, "Interactive upgrade consent must return True"
 
-    # No marker should be rewritten on upgrade consent
     for name in V4_CORE_FILES:
         path = f"{markers.CANONICAL_DIR}{name}"
         first_line = ws.read(path).splitlines()[0]
@@ -182,7 +139,6 @@ def test_interactive_v4_upgrade_consent_returns_true_no_marker_rewrite() -> None
 
 
 def test_upgrade_matrix_v4_and_v5_to_v6() -> None:
-    """Freeze choice freezes both v4 and v5 policy files with appropriate markers."""
     ws = MemoryWorkspace()
     ws.write(
         f"{markers.CANONICAL_DIR}testing-policy.md", "<!-- ralph-policy-schema: v4 -->\n# Test\n"

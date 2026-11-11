@@ -1,5 +1,3 @@
-"""Configuration contracts for fixed conflict-resolution supervision (S-3)."""
-
 from __future__ import annotations
 
 import uuid
@@ -15,7 +13,6 @@ from ralph.config.models import UnifiedConfig
 
 
 def test_default_conflict_resolution_configuration_has_fixed_documented_values() -> None:
-    """S-3: all runtime conflict-routing limits come from one typed model."""
     config = UnifiedConfig.model_validate({})
     resolution = config.conflict_resolution
     assert resolution.inactivity_timeout_seconds == 900.0
@@ -27,7 +24,6 @@ def test_default_conflict_resolution_configuration_has_fixed_documented_values()
 
 
 def test_conflict_resolution_configuration_rejects_removed_resolver_attempts() -> None:
-    """Removed retry setting fails with migration guidance."""
     expected_message = (
         r"Configuration setting\(s\) \['max_consecutive_resolver_attempts'\] have been removed\. "
         r"Use 'agent_max_consecutive_unproductive' and 'agent_max_total_unproductive' in \[general\] instead\."
@@ -56,7 +52,6 @@ def test_conflict_resolution_configuration_rejects_removed_resolver_attempts() -
 def test_conflict_resolution_configuration_rejects_invalid_fields(
     field: str, value: object
 ) -> None:
-    """S-3: invalid supervision bounds fail during configuration validation."""
     with pytest.raises(ValidationError, match=field):
         UnifiedConfig.model_validate({"conflict_resolution": {field: value}})
 
@@ -64,7 +59,6 @@ def test_conflict_resolution_configuration_rejects_invalid_fields(
 def test_config_loader_warns_when_operator_enables_active_resolution_cap(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """S-3/R6: configured elapsed cap is admitted but honestly announced."""
     config_path = tmp_path / "ralph-workflow.toml"
     config_path.write_text(
         "[conflict_resolution]\ntotal_resolution_cap_seconds = 60.0\n",
@@ -89,7 +83,6 @@ def test_config_loader_warns_when_operator_enables_active_resolution_cap(
 
 
 def test_config_loader_identifies_unknown_conflict_resolution_field() -> None:
-    """S-3/R10: an accidental independent bound is a load-time diagnostic."""
     from ralph.config.loader import collect_unknown_config_fields
 
     messages = collect_unknown_config_fields(
@@ -99,14 +92,12 @@ def test_config_loader_identifies_unknown_conflict_resolution_field() -> None:
 
 
 def test_max_fallback_agents_is_documented_as_unused_for_chain_breadth() -> None:
-    """R3: max_fallback_agents must not be a second answer to chain length."""
     field = ConflictResolutionConfig.model_fields["max_fallback_agents"]
     description = field.description or ""
     assert "does not cap" in description.lower() or "not a candidate cap" in description.lower()
 
 
 def test_conflict_resolution_config_has_no_elapsed_progress_kill_except_operator_cap() -> None:
-    """R49: load has no elapsed kill of a progressing resolver besides the opt-in cap."""
     names = set(ConflictResolutionConfig.model_fields)
     elapsed_kills = {
         name
@@ -118,11 +109,6 @@ def test_conflict_resolution_config_has_no_elapsed_progress_kill_except_operator
 
 
 def test_one_agent_conflict_chain_is_warned_at_policy_load(tmp_path: Path) -> None:
-    """R3/B1: a one-agent rebase_conflict_resolution chain is warned at policy load.
-
-    The warning is emitted once per process per chain name, so the chain gets a
-    unique name instead of depending on whether another test loaded it first.
-    """
     from ralph.policy.loader import load_policy
     from tests._support.policy_dirs import policy_dir_with_resolver_chain
 

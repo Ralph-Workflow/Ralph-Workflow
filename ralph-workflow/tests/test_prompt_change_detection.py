@@ -1,25 +1,3 @@
-"""Tests for the prompt-equality (st_size, st_mtime_ns) fast path.
-
-The wt-024 P4 fix introduces a shared helper
-``_prompt_files_differ(source, current, *, stat_fn, read_source,
-read_current) -> tuple[bool, str | None]`` that both
-``master_prompt._sync_product_criteria_file`` and
-``pipeline.prompt_prep._prompt_changed_since_last_materialization``
-call instead of doing TWO full file reads just to string-compare.
-
-The fast-path rules are:
-
-  - current does not exist -> changed (caller may write source).
-  - (st_size, st_mtime_ns) match -> unchanged, NO content reads.
-  - sizes differ -> changed (source read only if caller passed read_source).
-  - sizes match but mtime differs -> read both, compare content.
-
-Tests cover the four required cases (a)-(d) plus the missing-file
-edge cases. Tests inject a fake ``stat_fn`` so no real Path.stat()
-runs and inject ``read_source``/``read_current`` to count content
-reads.
-"""
-
 from __future__ import annotations
 
 import os
@@ -39,11 +17,6 @@ def _make_stat_fn(
     current: Path,
     current_meta: tuple[int, int] | None,
 ) -> Callable[[Path], tuple[int, int] | None]:
-    """Build a stat_fn that returns a controlled (size, mtime_ns) tuple.
-
-    ``source`` / ``current`` are the actual paths and ``source_meta`` /
-    ``current_meta`` are the controlled metadata to return for each.
-    """
 
     def stat_fn(path: Path) -> tuple[int, int] | None:
         if path == source:
@@ -56,7 +29,6 @@ def _make_stat_fn(
 
 
 def test_equal_size_and_mtime_is_unchanged_with_zero_reads() -> None:
-    """Case (a): equal (st_size, st_mtime_ns) -> unchanged with zero reads."""
 
     source = Path("/fake/source.md")
     current = Path("/fake/current.md")
@@ -91,11 +63,6 @@ def test_equal_size_and_mtime_is_unchanged_with_zero_reads() -> None:
 
 
 def test_different_size_is_changed_no_current_read() -> None:
-    """Case (b): sizes differ -> changed. CURRENT not read.
-
-    Source IS read (caller passed read_source) so the returned
-    source_text is populated. CURRENT is never read.
-    """
 
     source = Path("/fake/source.md")
     current = Path("/fake/current.md")
@@ -130,7 +97,6 @@ def test_different_size_is_changed_no_current_read() -> None:
 
 
 def test_same_size_different_mtime_same_content_is_unchanged() -> None:
-    """Case (c): sizes match, mtime differs, content same -> unchanged."""
 
     source = Path("/fake/source.md")
     current = Path("/fake/current.md")
@@ -165,7 +131,6 @@ def test_same_size_different_mtime_same_content_is_unchanged() -> None:
 
 
 def test_same_size_different_mtime_different_content_is_changed() -> None:
-    """Case (d): sizes match, mtime differs, content differs -> changed."""
 
     source = Path("/fake/source.md")
     current = Path("/fake/current.md")
@@ -200,7 +165,6 @@ def test_same_size_different_mtime_different_content_is_changed() -> None:
 
 
 def test_missing_source_is_not_changed() -> None:
-    """Source missing -> not changed (caller has nothing to compare)."""
 
     source = Path("/fake/source.md")
     current = Path("/fake/current.md")
@@ -235,7 +199,6 @@ def test_missing_source_is_not_changed() -> None:
 
 
 def test_missing_current_is_changed() -> None:
-    """Current missing -> changed; source IS read."""
 
     source = Path("/fake/source.md")
     current = Path("/fake/current.md")
@@ -264,12 +227,6 @@ def test_missing_current_is_changed() -> None:
 
 
 def test_sizes_differ_no_read_source_returns_none_text() -> None:
-    """Case (b) with read_source=None: 0 reads, source_text is None.
-
-    The caller (prompt_prep) doesn't need the source text, only the
-    boolean. The helper still avoids reading both files for the
-    size-mismatch fast path.
-    """
 
     source = Path("/fake/source.md")
     current = Path("/fake/current.md")
@@ -296,9 +253,6 @@ def test_sizes_differ_no_read_source_returns_none_text() -> None:
 
 
 def test_prompt_prep_uses_helper_when_stats_match(tmp_path: Path) -> None:
-    """prompt_prep._prompt_changed_since_last_materialization returns
-    False on equal size+mtime WITHOUT reading the content of either
-    file (the fast-path perf claim)."""
 
     prompt_path = tmp_path / "PROMPT.md"
     product_criteria_path = tmp_path / ".agent" / "PRODUCT_CRITERIA.md"
@@ -306,10 +260,8 @@ def test_prompt_prep_uses_helper_when_stats_match(tmp_path: Path) -> None:
     prompt_path.write_text("BODY-CONTENT", encoding="utf-8")
     product_criteria_path.write_text("BODY-CONTENT", encoding="utf-8")
 
-    # Force mtime equality by setting both to the same mtime_ns.
     target_mtime_ns = 1_700_000_000_000_000_000
     for path in (prompt_path, product_criteria_path):
-        # Use os.utime to set both atime and mtime to identical values.
         os.utime(path, ns=(target_mtime_ns, target_mtime_ns))
 
     result = _prompt_changed_since_last_materialization(tmp_path)
@@ -317,7 +269,6 @@ def test_prompt_prep_uses_helper_when_stats_match(tmp_path: Path) -> None:
 
 
 def test_prompt_prep_uses_helper_when_size_differs(tmp_path: Path) -> None:
-    """prompt_prep returns True on different sizes (no need to read content)."""
 
     prompt_path = tmp_path / "PROMPT.md"
     product_criteria_path = tmp_path / ".agent" / "PRODUCT_CRITERIA.md"

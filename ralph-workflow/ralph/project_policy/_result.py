@@ -1,4 +1,3 @@
-"""ReadinessResult dataclass."""
 
 from __future__ import annotations
 
@@ -15,7 +14,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class ReadinessResult:
-    """The orchestrator's return value."""
 
     status: ReadinessStatus
     findings: list[PolicyFinding] = field(default_factory=list)
@@ -23,15 +21,7 @@ class ReadinessResult:
     migrated_sources: list[str] = field(default_factory=list)
     commands_run: list[str] = field(default_factory=list)
     report_lines: list[str] = field(default_factory=list)
-    # Optional: the strict execution-evidence ledger ingested from the
-    # analysis-phase artifact. Empty tuple when no ledger is supplied
-    # (the default) so existing call sites that never emit the section
-    # keep working unchanged.
     command_outcomes: tuple[CommandOutcome, ...] = field(default_factory=tuple)
-    # Optional: the three-dimension readiness assessment. ``None`` means
-    # no assessment was computed for this run; an explicit all-false
-    # :class:`ReadinessAssessment` is what a run that DID compute one
-    # reports when every dimension is unverified.
     assessment: ReadinessAssessment | None = None
 
     def is_ready(self) -> bool:

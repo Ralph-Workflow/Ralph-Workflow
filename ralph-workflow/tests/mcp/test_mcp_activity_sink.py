@@ -1,35 +1,3 @@
-"""Black-box tests for the MCP activity sink and the subagent work shim.
-
-Three concerns exercised here:
-
-1. **ContextVar isolation**: the per-task contextvar that holds the
-   active activity sink must NOT stomp on a sibling task's sink. Two
-   threads run concurrently, each registering a distinct sink, and
-   verify their own sink is observed (and the other is not).
-
-2. **Per-server sink on success**: a McpServer constructed with a
-   per-server ``mcp_activity_sink`` parameter invokes the sink once
-   per successful ``tools/call`` invocation, with the canonical tool
-   name (after alias resolution).
-
-3. **Per-server sink on error**: a McpServer constructed with a
-   per-server ``mcp_activity_sink`` parameter still invokes the sink
-   when the handler raises; a recorded error is also activity (a
-   wedged tool that fails repeatedly is still a tool that was called).
-
-4. **Upstream proxy sink coverage**: upstream-proxied tool calls are
-   recorded on the same ``mcp_tool`` evidence channel as in-process
-   calls, but the single emission point is ``McpServer._handle_tools_call``;
-   ``UpstreamProxyHandler`` itself must not emit again, otherwise a
-   logical upstream call would be double-counted. Tests cover both the
-   negative case (proxy alone does not invoke the sink) and the
-   end-to-end case (a full ``McpServer`` dispatch with an upstream proxy
-   records activity exactly once on success and on failure).
-
-All tests use FakeClock where applicable, no real I/O, no real
-subprocess. Total wall-clock for the file is well under 1s.
-"""
-
 from __future__ import annotations
 
 import threading
@@ -56,10 +24,6 @@ from ralph.mcp.tools.bridge._upstream_proxy_handler import UpstreamProxyHandler
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-# ---------------------------------------------------------------------------
-# Test helpers
-# ---------------------------------------------------------------------------
-
 
 class _NoopHandler:
     def __call__(
@@ -81,12 +45,6 @@ def _build_server_with_tool(
     sink: Callable[[str], None] | None = None,
     handler: Callable[[object, object, dict[str, object]], dict[str, object]] | None = None,
 ) -> McpServer:
-    """Build a McpServer with a single registered tool.
-
-    Mirrors the test fixture in
-    tests/test_live_post_tool_result_wedge.py::_build_server_with_tool
-    so the MCP server tests can reuse the same shape.
-    """
     bridge = ToolBridge()
     if handler is None:
         handler = _NoopHandler()
@@ -109,24 +67,7 @@ def _build_server_with_tool(
     )
 
 
-# ---------------------------------------------------------------------------
-# (a) ContextVar isolation across threads
-# ---------------------------------------------------------------------------
-
-
 def test_activity_sink_contextvar_isolation() -> None:
-    """The per-task contextvar holding the active sink must isolate
-    concurrent agent runs in the same process. Two threads register
-    distinct sinks; each thread sees ONLY its own sink, never the
-    sibling's.
-
-    This is the regression net for the documented 'concurrent agent
-    runs do not stomp on each other' invariant. The test runs the
-    threads concurrently (synchronized by barriers) and checks that
-    the sink observed by ``invoke_active_sink`` in each thread is the
-    per-thread sink the thread itself registered, not the sibling
-    thread's.
-    """
     sink_a_calls: list[str] = []
     sink_b_calls: list[str] = []
     barrier_a = threading.Barrier(2)
@@ -143,23 +84,14 @@ def test_activity_sink_contextvar_isolation() -> None:
         try:
             token = set_active_sink(sink_a)
             try:
-                # Synchronize with thread_b so both threads are inside
-                # their own contextvar scope at the same instant.
                 barrier_a.wait(timeout=1.0)
-                # Verify our own sink is observed (the other thread's
-                # set_active_sink must not have stomped on us).
                 assert get_active_sink() is sink_a
-                # Invoke and check the per-thread sink was called.
                 invoke_active_sink("tool_for_a")
                 barrier_b.wait(timeout=1.0)
                 assert sink_a_calls == ["tool_for_a"], (
                     f"thread A: sink_a should have been called with "
                     f"['tool_for_a'], got {sink_a_calls}"
                 )
-                # The KEY isolation check: thread B's invocation
-                # ('tool_for_b') must NOT be in sink_a_calls (because
-                # thread B's invoke should have routed to sink_b_calls,
-                # not sink_a_calls).
                 assert "tool_for_b" not in sink_a_calls, (
                     f"thread A: thread B's invocation leaked into sink_a_calls: {sink_a_calls}"
                 )
@@ -173,8 +105,6 @@ def test_activity_sink_contextvar_isolation() -> None:
             token = set_active_sink(sink_b)
             try:
                 barrier_a.wait(timeout=1.0)
-                # Verify our own sink is observed (the other thread's
-                # set_active_sink must not have stomped on us).
                 assert get_active_sink() is sink_b
                 invoke_active_sink("tool_for_b")
                 barrier_b.wait(timeout=1.0)
@@ -182,8 +112,6 @@ def test_activity_sink_contextvar_isolation() -> None:
                     f"thread B: sink_b should have been called with "
                     f"['tool_for_b'], got {sink_b_calls}"
                 )
-                # The KEY isolation check: thread A's invocation
-                # ('tool_for_a') must NOT be in sink_b_calls.
                 assert "tool_for_a" not in sink_b_calls, (
                     f"thread B: thread A's invocation leaked into sink_b_calls: {sink_b_calls}"
                 )
@@ -201,16 +129,7 @@ def test_activity_sink_contextvar_isolation() -> None:
     assert not errors, f"thread errors: {errors}"
 
 
-# ---------------------------------------------------------------------------
-# (b) Per-server sink called on successful tools/call
-# ---------------------------------------------------------------------------
-
-
 def test_mcp_server_invokes_sink_on_successful_tools_call() -> None:
-    """A McpServer constructed with a per-server sink invokes the sink
-    once per successful ``tools/call`` invocation, with the canonical
-    tool name (after alias resolution).
-    """
     sinks_called: list[str] = []
 
     def sink(name: str) -> None:
@@ -230,18 +149,7 @@ def test_mcp_server_invokes_sink_on_successful_tools_call() -> None:
     )
 
 
-# ---------------------------------------------------------------------------
-# (c) Per-server sink called on failed tools/call
-# ---------------------------------------------------------------------------
-
-
 def test_mcp_server_invokes_sink_on_failed_tools_call() -> None:
-    """A McpServer constructed with a per-server sink still invokes the
-    sink when the handler raises. A recorded error is also activity
-    (a wedged tool that fails repeatedly is still a tool that was
-    called, and the watchdog treats both as evidence of demonstrable
-    work).
-    """
     sinks_called: list[str] = []
 
     def sink(name: str) -> None:
@@ -261,16 +169,7 @@ def test_mcp_server_invokes_sink_on_failed_tools_call() -> None:
     )
 
 
-# ---------------------------------------------------------------------------
-# (d) Per-server sink exception does not crash dispatch
-# ---------------------------------------------------------------------------
-
-
 def test_mcp_server_sink_exception_does_not_crash_dispatch() -> None:
-    """A buggy sink must not crash the JSON-RPC dispatch path. The
-    per-server sink is invoked in a try/except so a raised exception
-    is swallowed and the response is still produced.
-    """
 
     def bad_sink(name: str) -> None:
         raise RuntimeError("buggy sink")
@@ -286,21 +185,12 @@ def test_mcp_server_sink_exception_does_not_crash_dispatch() -> None:
     assert response.error is None, response.error
 
 
-# ---------------------------------------------------------------------------
-# (e) Contextvar sink (production path) also called
-# ---------------------------------------------------------------------------
-
-
 def test_mcp_server_invokes_contextvar_sink_on_tools_call() -> None:
-    """The contextvar sink (production wiring) is invoked by the
-    McpServer's tools/call path when no per-server sink is set.
-    """
     sinks_called: list[str] = []
 
     def sink(name: str) -> None:
         sinks_called.append(name)
 
-    # No per-server sink.
     server = _build_server_with_tool("read_file", sink=None)
     token = set_active_sink(sink)
     try:
@@ -317,31 +207,13 @@ def test_mcp_server_invokes_contextvar_sink_on_tools_call() -> None:
         reset_active_sink(token)
 
 
-# ---------------------------------------------------------------------------
-# (f) invoke_subagent_sink: no-op when no sink
-# ---------------------------------------------------------------------------
-
-
 def test_subagent_sink_invoke_is_noop_when_unset() -> None:
-    """``invoke_subagent_sink`` is a no-op when no sink is registered;
-    it must not raise and must not call any user code.
-    """
     assert get_subagent_sink() is None
-    # No raise even with arbitrary input.
     invoke_subagent_sink("anything")
     invoke_subagent_sink("")
 
 
-# ---------------------------------------------------------------------------
-# (g) Subagent sink: set and reset round-trip
-# ---------------------------------------------------------------------------
-
-
 def test_subagent_sink_set_reset_roundtrip() -> None:
-    """``set_subagent_sink`` returns a token that ``reset_subagent_sink``
-    uses to restore the previous sink value. The round-trip is the
-    canonical pattern the per-run readers use.
-    """
     assert get_subagent_sink() is None
     token = set_subagent_sink(lambda line: None)
     assert get_subagent_sink() is not None
@@ -349,21 +221,7 @@ def test_subagent_sink_set_reset_roundtrip() -> None:
     assert get_subagent_sink() is None
 
 
-# ---------------------------------------------------------------------------
-# (h) Upstream proxy does NOT double-count activity when called directly
-# ---------------------------------------------------------------------------
-
-
 class _FakeUpstreamRegistry:
-    """Minimal stub for ``UpstreamRegistry`` used by the upstream proxy tests.
-
-    The stub records the (alias, arguments) tuples it is called with and
-    returns a configured result (or raises a configured exception). It
-    intentionally implements only the surface ``UpstreamProxyHandler``
-    actually consumes (``call_tool``); the real ``UpstreamRegistry`` is
-    not constructed because the test does not exercise any I/O.
-    """
-
     def __init__(
         self,
         result: object | None = None,
@@ -393,7 +251,6 @@ def _build_server_with_upstream_tool(
     upstream_result: object | None = None,
     upstream_exc: BaseException | None = None,
 ) -> tuple[McpServer, _FakeUpstreamRegistry]:
-    """Build a McpServer whose registry contains one upstream-proxied tool."""
     bridge = ToolBridge()
     upstream = _FakeUpstreamRegistry(result=upstream_result, exc=upstream_exc)
     handler = UpstreamProxyHandler(alias=alias, upstream_registry=upstream)
@@ -418,14 +275,6 @@ def _build_server_with_upstream_tool(
 
 
 def test_upstream_proxy_does_not_invoke_sink_when_called_directly() -> None:
-    """``UpstreamProxyHandler`` itself must NOT invoke the activity sink.
-
-    The single emission point for a logical tools/call is
-    ``McpServer._handle_tools_call``. The proxy is just another
-    dispatched handler; if it also emitted, upstream-proxied calls
-    would be double-counted on the ``mcp_tool`` channel. This test
-    proves the proxy is a pure pass-through when invoked directly.
-    """
     sinks_called: list[str] = []
     upstream = _FakeUpstreamRegistry(result={"content": [{"type": "text", "text": "ok"}]})
 
@@ -447,16 +296,7 @@ def test_upstream_proxy_does_not_invoke_sink_when_called_directly() -> None:
         reset_active_sink(token)
 
 
-# ---------------------------------------------------------------------------
-# (i) Upstream proxy failure does not double-count activity
-# ---------------------------------------------------------------------------
-
-
 def test_upstream_proxy_failure_does_not_invoke_sink_when_called_directly() -> None:
-    """Even when the upstream transport raises, the proxy itself must
-    not emit an activity signal. The logical tools/call boundary in
-    ``McpServer._handle_tools_call`` is the single emission point.
-    """
     sinks_called: list[str] = []
     upstream = _FakeUpstreamRegistry(exc=TimeoutError("upstream transport timed out"))
 
@@ -480,18 +320,7 @@ def test_upstream_proxy_failure_does_not_invoke_sink_when_called_directly() -> N
         reset_active_sink(token)
 
 
-# ---------------------------------------------------------------------------
-# (j) Upstream proxy ignores any registered sink
-# ---------------------------------------------------------------------------
-
-
 def test_upstream_proxy_ignores_registered_sink() -> None:
-    """The proxy must not call a registered sink, even a buggy one.
-
-    Because the proxy no longer emits activity, a buggy sink cannot
-    crash the proxy path. This is the negative counterpart to the
-    previous ``test_upstream_proxy_sink_exception_does_not_crash_proxy``.
-    """
     upstream = _FakeUpstreamRegistry(result={"content": [{"type": "text", "text": "ok"}]})
 
     def bad_sink(name: str) -> None:
@@ -507,18 +336,7 @@ def test_upstream_proxy_ignores_registered_sink() -> None:
         reset_active_sink(token)
 
 
-# ---------------------------------------------------------------------------
-# (k) Upstream proxy without a sink still works
-# ---------------------------------------------------------------------------
-
-
 def test_upstream_proxy_without_sink_does_not_raise() -> None:
-    """When no watchdog is bound (default ``_active_sink`` contextvar
-    is ``None``), the upstream proxy must still dispatch the tool
-    call and return the result. The proxy is a pure pass-through,
-    so it must remain a no-op wrapper from the dispatch path's
-    perspective.
-    """
     assert get_active_sink() is None
     upstream = _FakeUpstreamRegistry(result={"content": [{"type": "text", "text": "ok"}]})
     handler = UpstreamProxyHandler(alias="mcp__upstream__search", upstream_registry=upstream)
@@ -527,19 +345,7 @@ def test_upstream_proxy_without_sink_does_not_raise() -> None:
     assert upstream.calls == [("mcp__upstream__search", {"k": "v"}, None)]
 
 
-# ---------------------------------------------------------------------------
-# (l) McpServer records upstream-proxied tool activity exactly once (success)
-# ---------------------------------------------------------------------------
-
-
 def test_mcp_server_records_upstream_tool_activity_exactly_once() -> None:
-    """A logical upstream-proxied ``tools/call`` must record activity
-    exactly once. ``McpServer._handle_tools_call`` is the single
-    emission point; ``UpstreamProxyHandler`` must not emit again.
-
-    This guards the double-counting regression where both the server
-    boundary and the proxy handler invoked the activity sink.
-    """
     sinks_called: list[str] = []
 
     def sink(name: str) -> None:
@@ -566,15 +372,7 @@ def test_mcp_server_records_upstream_tool_activity_exactly_once() -> None:
     assert upstream.calls[0][1] == {"query": "hello"}
 
 
-# ---------------------------------------------------------------------------
-# (m) McpServer records upstream-proxied tool activity exactly once (failure)
-# ---------------------------------------------------------------------------
-
-
 def test_mcp_server_records_upstream_tool_activity_exactly_once_on_failure() -> None:
-    """Even when the upstream transport raises, the logical tools/call
-    is recorded exactly once by the ``McpServer`` boundary.
-    """
     sinks_called: list[str] = []
 
     def sink(name: str) -> None:

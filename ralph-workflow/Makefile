@@ -1,76 +1,16 @@
 .PHONY: help install stable dev install-dev rdev uv-preflight test test-fast test-unit test-integration test-subprocess-e2e test-auto-integrate-e2e test-verification-smoke test-install-make-smoke test-multimodal-smoke test-visual-capture test-visual-verdict test-visual-smoke lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck route-linkcheck policy-citation-linkcheck serve-docs packaging-smoke
 
-# pytest-xdist worker count for parallel test execution.
-#
-# Default: auto selects the CPU-capped 8-shard profile. This keeps the
-# primary suite inside the immutable combined verification budget before the
-# budget-tracked smoke suites start. Nested xdist remains disabled because its
-# coordination overhead exceeds the gain for this shard-saturated profile.
-# Operators may override after measuring their own host:
-#   PYTEST_WORKERS=auto make test # CPU-capped auto profile
-#   PYTEST_WORKERS=2 make test    # may exceed the suite budget
-#   PYTEST_WORKERS=8 make test    # explicit reduced parallelism
-#
-# Multimodal smoke tests are I/O-bound and use an independently bounded
-# worker pool so their parallelism remains configurable without changing the
-# primary suite policy.
 MULTIMODAL_SMOKE_WORKERS ?= 8
 VERIFICATION_SMOKE_WORKERS ?= 2
-#
-# The raw targets (test-unit / test-integration / test-subprocess-e2e /
-# test-cov / test-auto-integrate-e2e) interpolate ``-n $(PYTEST_WORKERS)``
-# literally, so this exported default governs both ralph.test_suites and
-# the raw-target paths. Keep conditional assignment so operators can
-# override (examples above).
-#
-# The combined test budget (60s wall clock net of host contention, 700 CPU
-# core-seconds) is pinned and enforced by ralph/verify.py. This per-suite
-# timeout is a SECONDARY cap only. PYTEST_WORKERS is parallelism, not a budget
-# extension — increasing parallelism keeps wall-clock under the budget,
-# but past a saturation point it starves individual workers past the
-# per-test 1 s SIGALRM cap instead.
 PYTEST_WORKERS ?= auto
 export PYTEST_WORKERS
-# In-shard xdist fan-out used by ralph.test_suites ONLY (not the raw
-# Make targets above, which already pass ``-n $(PYTEST_WORKERS)`` to
-# a single pytest invocation). The runner fans out into N shards and
-# then spawns M xdist workers per shard, so the total pytest worker
-# count is N * M. The default ``0`` keeps each shard on plain pytest
-# (no in-shard xdist); the auto profile uses eight
-# shards * 1 worker = 8 parallel pytest workers. Setting the variable
-# to ``auto`` selects the CPU-capped profile: M is sized so N * M does
-# not exceed the host's available CPU count. The measured runner profile
-# shows that additional xdist coordination cannot offset the startup and
-# filesystem contention of higher shard counts. The combined 60s budget
-# remains immutable: changing PYTEST_XDIST_WORKERS_PER_SHARD does NOT
-# raise that budget.
 PYTEST_XDIST_WORKERS_PER_SHARD ?= 0
 export PYTEST_XDIST_WORKERS_PER_SHARD
 export PYTHONPATH := $(shell realpath .)
-# ``uv run`` refuses an inherited ``VIRTUAL_ENV`` that points outside
-# the project (``warning: VIRTUAL_ENV=... does not match .venv``).
-# Make always targets the canonical project-local environment, including
-# before its first creation, so every package target is warning-free.
 export VIRTUAL_ENV := $(abspath .venv)
-# NOTE: PYTEST_SUITE_TIMEOUT_SECONDS is a PER-SUITE timeout only.
-# The combined total test budget (60 s wall clock net of host contention,
-# 700 CPU core-seconds) for `make verify` is enforced in ralph/verify.py,
-# not here. Do NOT raise this to work around slow tests — fix the test
-# design instead.
 PYTEST_SUITE_TIMEOUT_SECONDS ?= 60
 COVERAGE_SUITE_TIMEOUT_SECONDS ?= 120
-# LIVE_AGY_SUITE_TIMEOUT_SECONDS is the per-suite timeout for the
-# `test-live-agy` target. Live AGY invocations require real network
-# round-trips to the Antigravity backend and run well past the 60s
-# per-suite cap that gates `test-subprocess-e2e`. The live tests
-# are marked `live_agy` and run under this target only.
-#
-# This is a PER-SUITE timeout only; the 60s combined
-# `_TOTAL_TEST_BUDGET_SECONDS` cap on `make verify` does NOT include
-# this target. Raising it does NOT raise the verify budget.
 LIVE_AGY_SUITE_TIMEOUT_SECONDS ?= 600
-# Always select the project-managed interpreter. Setting VIRTUAL_ENV alone does
-# not alter PATH, so a bare `python` can bypass .venv and miss dependencies.
 RUN_PYTHON = uv run --locked --project . python
 help:
 	@echo "Ralph Workflow - Makefile commands"
@@ -123,7 +63,6 @@ help:
 	@echo "  run            Run ralph CLI directly"
 	@echo "  check          Run all checks (lint, typecheck, test)"
 
-# Installation delegates to the tested installer; `rdev` runs copied snapshots.
 uv-preflight:
 	@uv_path=$$(command -v uv) || { echo "uv >= 0.7.0 is required; install it: https://docs.astral.sh/uv/getting-started/installation/" >&2; exit 1; }; uv_version=$$($$uv_path --version 2>/dev/null) || { echo "uv >= 0.7.0 is required; install it: https://docs.astral.sh/uv/getting-started/installation/" >&2; exit 1; }; printf '%s\n' "$$uv_version" | awk '$$1 == "uv" && $$2 ~ /^[0-9]+\.[0-9]+\.[0-9]+([.+-][0-9A-Za-z.-]+)?$$/ { split($$2, v, /[.+-]/); if (v[1] > 0 || (v[1] == 0 && (v[2] > 7 || (v[2] == 7 && v[3] >= 0)))) exit 0 } { exit 1 }' || { echo "uv >= 0.7.0 is required; install it: https://docs.astral.sh/uv/getting-started/installation/" >&2; exit 1; }
 
@@ -138,10 +77,8 @@ stable: uv-preflight
 
 install-dev: dev
 
-# `rdev` is the launcher these targets install; accept it as the target name too.
 rdev: dev
 
-# Testing
 test:
 	$(RUN_PYTHON) -m ralph.test_suites
 
@@ -154,115 +91,33 @@ test-unit:
 test-integration:
 	uv run --locked --project . python -m ralph.test_suites --profile integration
 
-# Uses the maintained static file selector, avoiding full-suite collection
-# merely to deselect non-E2E tests. The selector preserves the canonical
-# subprocess-E2E marker expression inside each explicit shard.
 test-subprocess-e2e:
 	$(RUN_PYTHON) -m ralph.test_suites --subprocess-e2e
 
-# Live AGY tests are excluded from `test-subprocess-e2e` because they
-# require real network round-trips to the Antigravity backend and run
-# well past the 60s suite cap. The live tests are marked BOTH
-# `subprocess_e2e` AND `live_agy`; this target collects only the
-# `live_agy`-marked tests and gives them a sized per-suite timeout.
-#
-# The marker exclusion for `test-subprocess-e2e` is enforced by
-# `tests/test_makefile_verification_workflow.py::test_test_subprocess_e2e_uses_same_timeout_wrapper`
-# so any drift fails CI.
 test-live-agy:
 	uv run python -m ralph.verify_timeout --suite-timeout $(LIVE_AGY_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/ -q -n 1 -m "live_agy"
 
-# One invocation retains every installer, multimodal, and visual smoke case
-# while sharing pytest imports and workers. The entire invocation is charged
-# to the same immutable combined verification budget.
 test-verification-smoke:
 	$(RUN_PYTHON) -m pytest tests/test_install_make_smoke.py tests/test_smoke_multimodal_end_to_end.py tests/test_visual_smoke.py tests/agents/invoke/test_real_pty_completion_no_terminal_lost.py -q -n $(VERIFICATION_SMOKE_WORKERS) --dist worksteal -m "smoke and subprocess_e2e"
 
-# Offline installer smoke. The checked-in fake ``uv`` accepts only the locked
-# installer argv forms and exits before any network path; this target drives
-# ``make install`` in an isolated HOME/PATH and is budget-tracked in verify.py.
 test-install-make-smoke:
 	$(RUN_PYTHON) -m pytest tests/test_install_make_smoke.py -q -m "smoke and subprocess_e2e"
 
-# Multimodal smoke suite (criterion 5). Drives all nine non-GENERIC harness
-# identities (claude / claude-headless / agy / nanocoder / cursor / opencode /
-# codex / pi / kimi)
-# through the deterministic multimodal stub agent, asserting the
-# multimodal fact grades WIRE on every harness. Excluded from the
-# default pytest profile by the `smoke` marker (kept in `pytestmark`
-# alongside `subprocess_e2e`) and folded into the `make test-verification-smoke`
-# aggregate invocation in `make verify` (see `_VERIFY_STEPS` in
-# `ralph/verify.py`, where the `make test-verification-smoke` step's
-# `_BUDGET_TRACKED_STEPS` index charges the whole aggregate against the
-# immutable 60s combined budget).
-# No paid backend is dialled -- the stub consumes zero live tokens --
-# so the suite stays inside the 60s combined budget headroom even when
-# both `make test` and `make test-verification-smoke` run sequentially
-# under `make verify`.
-#
-# The trailing `-m "smoke and subprocess_e2e"` overrides the
-# `-m "not smoke"` selector in pytest.ini's `addopts`, collecting the
-# file the regular profile deliberately skips.
-#
-# The smoke tests are I/O-bound (each spawns a stub subprocess). One xdist
-# worker per harness row avoids a second serial wave and keeps the combined
-# verification budget below 60 seconds after the default suite completes.
-#
-# wt-056: the ``ralph.verify_timeout`` wrapper is intentionally omitted
-# here -- its ~1 s of Python import / arg-parse startup is pure overhead
-# for 19 I/O-bound tests. Per-test timeout enforcement is handled by
-# ``ralph.testing.pytest_timeout_plugin`` (loaded via ``conftest.py``);
-# the suite-level cap is provided by the verify runner's cumulative
-# tracker.
 test-multimodal-smoke:
 	$(RUN_PYTHON) -m pytest tests/test_smoke_multimodal_end_to_end.py -q -n $(MULTIMODAL_SMOKE_WORKERS) --dist worksteal -m "smoke and subprocess_e2e"
 
-# Visual capture suite (criteria 6 and 7). These public-contract tests cover
-# server-minted capture matrices, immutable before-state lifecycle behavior,
-# and conditional MCP tool visibility without a real renderer.
 test-visual-capture:
 	$(RUN_PYTHON) -m pytest tests/test_visual_capture.py tests/test_visual_capture_lifecycle.py tests/test_mcp_server_multimodal_tool_visibility_1.py -q -n $(PYTEST_WORKERS) --dist worksteal
 
-# Visual verdict suite (criterion 8). Black-box tests for
-# ``DesignVerdict``: the three-input boundary, the matrix-parity
-# invariant, the closed visual vocabulary, and the closed finding
-# severities. No paid backend, no live model — pure in-memory tests
-# over the typed verdict surface. Excluded from the default pytest
-# profile (no `smoke` / `subprocess_e2e` markers) so it stays fast
-# and deterministic. Wired into `make verify` indirectly via the
-# `make test` step; the dedicated target exists so a developer can
-# run it on demand without scanning the full suite.
 test-visual-verdict:
 	$(RUN_PYTHON) -m pytest tests/test_visual_verdict.py -q -n $(PYTEST_WORKERS) --dist worksteal
 
-# Visual-smoke fixture suite (criterion 12). The capture and lifecycle
-# contracts run in the regular `make test` profile; this target runs only
-# the smoke-marked fixture judge. No real subprocess, renderer, or paid
-# backend is used. The immutable 60-second cap applies across `make test`,
-# `make test-multimodal-smoke`, and `make test-visual-smoke` together.
-#
-# wt-056: the ``ralph.verify_timeout`` wrapper is intentionally omitted
-# here — its ~1 s of Python import / arg-parse startup is pure overhead
-# for 3 fixtures that complete in < 0.3 s. Per-test timeout enforcement
-# is handled by ``ralph.testing.pytest_timeout_plugin`` (loaded via
-# ``conftest.py``) with the default 1.0 s budget; the suite-level cap is
-# provided by the verify runner's cumulative tracker.
 test-visual-smoke:
 	$(RUN_PYTHON) -m pytest tests/test_visual_smoke.py -q -m "smoke and subprocess_e2e"
 
-# Focused profile over the same explicit registry used by the
-# combined ``make test`` invocation.
 test-auto-integrate-e2e:
 	$(RUN_PYTHON) -m ralph.test_suites --auto-integrate-e2e
 
-# Real-runtime budget test that runs ``make test`` to assert the 60 s combined
-# test budget. This test consumes ~25 s of wall-clock time by design (it
-# runs the full pytest suite as a subprocess to assert the budget holds),
-# so it is excluded from ``test-subprocess-e2e`` and the 60 s per-suite cap
-# via the ``verify_budget_real_time`` marker. Run on demand before/after a
-# release to confirm the 60 s budget still holds; the test budget is
-# otherwise pinned by the import-time invariants in ``ralph/verify.py``
-# and the per-test/per-suite invariants in ``tests/test_verify_invariants.py``.
 test-verify-budget:
 	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/test_verify_budget_real_time.py -v
 
@@ -273,7 +128,6 @@ test-cov:
 	RALPH_PYTEST_SUITE_TIMEOUT_SECONDS=$(COVERAGE_SUITE_TIMEOUT_SECONDS) uv run python -m pytest tests/ -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e and not smoke" --cov=ralph --cov-report= --basetemp=$${TMPDIR:-/tmp}/ralph-coverage --no-header --tb=no --maxfail=1
 	uv run coverage report --data-file=.coverage.pytest --fail-under=80
 
-# Linting
 lint:
 	uv run ruff check ralph/ tests/
 
@@ -292,11 +146,9 @@ ruff-fix:
 mypy-fix:
 	uv run python -m mypy ralph/
 
-# Pre-commit
 pre-commit:
 	pre-commit run --all-files
 
-# Building
 build: clean-dist
 	uv run --with hatchling hatch build
 
@@ -306,7 +158,6 @@ build-wheel: clean-dist
 build-sdist: clean-dist
 	uv run --with hatchling hatch build -t sdist
 
-# Publishing
 twine-upload: build
 	uv run --with twine python -m twine upload dist/*
 
@@ -322,7 +173,6 @@ test-pypi: build
 test-pypi-upload: build
 	uv run --with twine python -m twine upload --repository testpypi dist/*
 
-# Cleaning
 clean:
 	rm -rf build/
 	rm -rf .pytest_cache/
@@ -337,25 +187,15 @@ clean-dist:
 	rm -rf build/
 	rm -rf *.egg-info/
 
-# Homebrew
 dist-homebrew: build-wheel
 	@bash scripts/packaging_operations.sh dist-homebrew
 
-# Distribution targets
-# Combined 60s test budget enforced by ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS (IMMUTABLE).
-# `docs` is a Make prerequisite (NOT a `_VERIFY_STEPS` entry) so the Sphinx
-# build stays non-budget-tracked and the immutable 60s test budget is
-# unchanged. `make docs` uses `uv run --extra docs sphinx-build -W` so any
-# Sphinx warning fails the build before the python-verify step runs.
 verify: formula-check verify-drift docs
 	@uv run python -m ralph.verify
 
-# Drift detection delegates to the bounded, fail-closed policy script.
 verify-drift:
 	@bash scripts/verify_drift.sh
 
-# Convenience wrapper for operators; the verifier's evidence path is the
-# direct script invocation `python scripts/record_verify_run.py`.
 verify-evidence:
 	@cd .. && uv run --project ralph-workflow python scripts/record_verify_run.py
 
@@ -393,11 +233,6 @@ docs-linkcheck:
 route-linkcheck:
 	cd .. && python3 scripts/check_route_page_links.py README.md START_HERE.md docs/README.md ralph-workflow/docs/README.md
 
-# Verify that every research-citation URL in the bundled project-policy
-# starters resolves (HTTP < 400), satisfying the PROMPT's
-# 'verify that every cited URL resolves' link-verification requirement.
-# On-demand maintenance gate; not wired into 'make verify' because it
-# requires network I/O.
 policy-citation-linkcheck:
 	cd .. && python3 scripts/check_route_page_links.py ralph-workflow/ralph/project_policy/starters/*.md
 
@@ -405,7 +240,6 @@ serve-docs: docs
 	@echo "Serving docs at http://localhost:8080"
 	cd docs/sphinx/_build/html && python -m http.server 8080
 
-# Development helpers
 run:
 	python -m ralph
 

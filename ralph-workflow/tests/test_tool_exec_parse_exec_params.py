@@ -1,5 +1,3 @@
-"""Tests for ralph/mcp/tool_exec.py — MCP exec tool handler."""
-
 from __future__ import annotations
 
 import pytest
@@ -55,15 +53,11 @@ class TestParseExecParams:
         assert result.timeout_ms == DEFAULT_TIMEOUT_MS
 
     def test_zero_timeout_uses_default_not_unbounded(self) -> None:
-        # timeout_ms=0 must NOT mean "no timeout": it would become an unbounded
-        # blocking call on the MCP server thread (an agent-controllable hang).
         params = {"command": "ls", "args": [], "timeout_ms": 0}
         result = parse_exec_params(params)
         assert result.timeout_ms == DEFAULT_TIMEOUT_MS
 
     def test_timeout_is_capped_at_max(self) -> None:
-        # An over-large timeout_ms must be capped so a tool call can never outrun
-        # the MCP client request timeout (which would re-trigger -32001).
         params = {"command": "ls", "args": [], "timeout_ms": EXEC_MAX_TIMEOUT_MS * 10}
         result = parse_exec_params(params)
         assert result.timeout_ms == EXEC_MAX_TIMEOUT_MS
@@ -115,10 +109,6 @@ class TestParseExecParams:
         assert result.args == ["-m", "pytest", "-q", "tests/test_tool_exec.py"]
 
     def test_shell_operator_command_string_becomes_shell_command(self) -> None:
-        """A pipe in a command STRING routes through ``sh -c``: the raw
-        string is preserved in ``shell_command`` and ``command`` / ``args``
-        carry the first pipeline segment for a readable result header.
-        """
         result = parse_exec_params({"command": "ls | grep py"})
         assert result.shell_command == "ls | grep py"
         assert result.command == "ls"
@@ -143,8 +133,6 @@ class TestParseExecParams:
         assert result.args == ["safe"]
 
     def test_argv_list_operator_stays_literal_not_shell(self) -> None:
-        """An argv LIST is explicit argv: operator tokens stay literal and
-        the invocation is NOT shell-interpreted (shell_command is None)."""
         result = parse_exec_params({"command": ["ls", "|", "grep", "py"]})
         assert result.shell_command is None
         assert result.command == "ls"
@@ -178,32 +166,18 @@ class TestParseExecParams:
             parse_exec_params(params)
 
     def test_quoted_metacharacter_remains_valid_argv(self) -> None:
-        """AC-11 backward compatibility: ``printf '>'`` and other
-        quoted literals are valid argv and must NOT be rejected.
-        The previous raw-character precheck broke this case by
-        treating any ``| & ; < >`` in the input as compound
-        shell. The quote-aware walker allows the literal ``>``
-        because it sits inside single quotes.
-        """
         params = {"command": "printf '>'"}
         result = parse_exec_params(params)
         assert result.command == "printf"
         assert result.args == [">"]
 
     def test_double_quoted_metacharacter_remains_valid_argv(self) -> None:
-        """AC-11: ``grep "a|b"`` (double-quoted shell
-        metacharacter inside the argument) must parse without
-        rejection.
-        """
         params = {"command": 'grep "a|b"'}
         result = parse_exec_params(params)
         assert result.command == "grep"
         assert result.args == ["a|b"]
 
     def test_unquoted_compound_command_becomes_shell(self) -> None:
-        """An unquoted ``;`` produces a shell command; the blacklist that
-        guards the embedded ``curl`` is enforced later, per pipeline
-        segment, in ``handle_exec_command`` (not at parse time)."""
         result = parse_exec_params({"command": "echo safe; ls -la"})
         assert result.shell_command == "echo safe; ls -la"
         assert result.command == "echo"
@@ -215,16 +189,12 @@ class TestParseExecParams:
         assert result.args == ["-r", "foo", "."]
 
     def test_quoted_operator_is_not_shell(self) -> None:
-        """A fully-quoted operator is literal argv, not shell: ``shell_command``
-        stays None so the command runs argv-direct."""
         result = parse_exec_params({"command": "printf '>'"})
         assert result.shell_command is None
         assert result.command == "printf"
         assert result.args == [">"]
 
     def test_rejects_an_embedded_nul_that_would_hide_a_blacklisted_command(self) -> None:
-        """``check_command`` sees ``su<NUL>do`` as unknown, but the spawn strips
-        the NUL and runs ``sudo``: the denylist boundary must fail closed."""
         for params in (
             {"command": "su\x00do rm -rf /"},
             {"command": ["su\x00do", "-i"]},
@@ -287,7 +257,6 @@ class TestParseExecParams:
         assert result.args == expected_args
 
     def test_stringified_argv_cannot_smuggle_a_nul_past_the_nul_guard(self) -> None:
-        """A JSON ``\\u0000`` escape decodes after the raw-string NUL check ran."""
         for command in ('["su\\u0000do", "-i"]', "['su\\x00do', '-i']"):
             with pytest.raises(InvalidParamsError, match="embedded NUL"):
                 parse_exec_params({"command": command})

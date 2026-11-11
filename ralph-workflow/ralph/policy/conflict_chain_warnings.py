@@ -1,4 +1,3 @@
-"""Load-time warnings for conflict-resolution agent chains."""
 
 from __future__ import annotations
 
@@ -14,7 +13,6 @@ if TYPE_CHECKING:
 
 _MIN_CONFLICT_FALLBACK_CHAIN_LENGTH = 2
 _CONFLICT_RESOLUTION_DRAIN = RESOLUTION_DRAIN_NAME
-#: Distinct chain names warned about per process; far above any real config.
 _MAX_WARNED_CHAINS = 32
 
 
@@ -26,19 +24,12 @@ def _warn_chain_has_no_fallback_uncached(chain: str) -> None:
     )
 
 
-#: Memoised so the warning is emitted once per process for each chain name.
 _warn_chain_has_no_fallback = lru_cache(maxsize=_MAX_WARNED_CHAINS)(
     _warn_chain_has_no_fallback_uncached
 )
 
 
 def warn_if_conflict_resolution_chain_has_no_fallback(bundle: PolicyBundle) -> None:
-    """Warn at load when rebase_conflict_resolution has no fallback agent.
-
-    A long-lived orchestrator reloads policy for every phase invocation, so
-    the warning is emitted once per process for each chain name instead of on
-    every load.
-    """
     drain_binding = bundle.agents.agent_drains.get(_CONFLICT_RESOLUTION_DRAIN)
     if drain_binding is None:
         return

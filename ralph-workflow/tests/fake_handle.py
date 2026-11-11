@@ -1,5 +1,3 @@
-"""Shared _FakeHandle for opencode session execution tests."""
-
 from __future__ import annotations
 
 

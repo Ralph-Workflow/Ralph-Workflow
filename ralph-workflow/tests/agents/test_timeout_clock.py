@@ -1,5 +1,3 @@
-"""Tests for the clock protocol and timeout clock implementations."""
-
 from __future__ import annotations
 
 import threading
@@ -71,7 +69,6 @@ _FAKE_WAIT_SHORT_S = 5.0
 
 
 def test_system_clock_wait_for_event_returns_immediately_when_set() -> None:
-    """wait_for_event returns True immediately when event is pre-set."""
     clock = SystemClock()
     event = threading.Event()
     event.set()
@@ -83,7 +80,6 @@ def test_system_clock_wait_for_event_returns_immediately_when_set() -> None:
 
 
 def test_system_clock_wait_for_event_times_out_when_unset() -> None:
-    """wait_for_event returns False after timeout when event is never set."""
     clock = SystemClock()
     event = threading.Event()
     before = time.monotonic()
@@ -95,16 +91,14 @@ def test_system_clock_wait_for_event_times_out_when_unset() -> None:
 
 
 def test_fake_clock_wait_for_event_advances_time() -> None:
-    """FakeClock.wait_for_event advances logical time without real wait."""
     clock = FakeClock(start=0.0)
     event = threading.Event()
     result = clock.wait_for_event(event, _FAKE_WAIT_LONG_S)
     assert clock.monotonic() == _FAKE_WAIT_LONG_S
-    assert result is False  # event not set
+    assert result is False
 
 
 def test_fake_clock_wait_for_event_returns_true_when_event_set() -> None:
-    """FakeClock.wait_for_event returns True when event is already set."""
     clock = FakeClock(start=0.0)
     event = threading.Event()
     event.set()

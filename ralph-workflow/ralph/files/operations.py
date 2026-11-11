@@ -1,4 +1,3 @@
-"""File capture and state-tracking helpers for Ralph checkpoints."""
 
 from __future__ import annotations
 
@@ -29,16 +28,13 @@ _READ_CHUNK_SIZE = 1024 * 1024
 
 @dataclass(frozen=True)
 class FileSystemState:
-    """Snapshots for tracked Ralph files rooted at a workspace path."""
 
     root: Path
     files: dict[Path, FileSnapshot]
 
 
 def calculate_checksum(path: Path | str) -> str:
-    """Return the SHA-256 checksum for a file."""
     digest = hashlib.sha256()
-    # filesystem-read-ok: bounded streaming checksum avoids materializing tracked files
     with Path(path).open("rb") as handle:
         for chunk in iter(lambda: handle.read(_READ_CHUNK_SIZE), b""):
             digest.update(chunk)
@@ -46,20 +42,16 @@ def calculate_checksum(path: Path | str) -> str:
 
 
 def capture_file_snapshot(path: Path | str, *, root: Path | str | None = None) -> FileSnapshot:
-    """Capture the current state of a file relative to a workspace root."""
     candidate = Path(path)
     workspace_root = Path(root) if root is not None else candidate.parent
     relative_path = _relative_path(candidate, workspace_root)
 
-    # filesystem-read-ok: checksum snapshot needs one existence-and-size observation for change detection
     if not candidate.exists():
         return FileSnapshot(path=relative_path, checksum="", size=0, exists=False)
 
-    # filesystem-read-ok: checksum snapshot needs size metadata paired with the digest observation
     return FileSnapshot(
         path=relative_path,
         checksum=calculate_checksum(candidate),
-        # filesystem-read-ok: checksum snapshot needs size metadata paired with the digest observation
         size=candidate.stat().st_size,
         exists=True,
     )
@@ -70,7 +62,6 @@ def capture_file_system_state(
     *,
     tracked_paths: list[Path | str] | tuple[Path | str, ...] = DEFAULT_TRACKED_FILES,
 ) -> FileSystemState:
-    """Capture snapshots for tracked files under a workspace root."""
     workspace_root = Path(root)
     snapshots = {
         relative_path: capture_file_snapshot(workspace_root / relative_path, root=workspace_root)
@@ -83,7 +74,6 @@ def validate_file_system_state(
     state: FileSystemState,
     root: Path | str | None = None,
 ) -> list[FileStateIssue]:
-    """Compare current tracked files with a captured checkpoint snapshot."""
     workspace_root = Path(root) if root is not None else state.root
     issues: list[FileStateIssue] = []
 
@@ -109,7 +99,6 @@ def validate_file_system_state(
 
 
 def _relative_path(path: Path, root: Path) -> Path:
-    """Normalize a path to be relative to the workspace root when possible."""
     if path.is_absolute():
         return path.relative_to(root)
     return path

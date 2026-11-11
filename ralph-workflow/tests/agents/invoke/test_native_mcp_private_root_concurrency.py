@@ -1,5 +1,3 @@
-"""Concurrency regressions for native MCP transports with private config roots."""
-
 from __future__ import annotations
 
 import importlib.util
@@ -45,7 +43,6 @@ def _config_path(transport: AgentTransport, runtime: ResolvedInvocationRuntime) 
 def test_overlapping_native_sessions_keep_distinct_private_endpoints(
     transport: AgentTransport, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Two simultaneously live runtimes never share or mutate operator configuration."""
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     operator_home = tmp_path / "operator-home"
@@ -83,5 +80,4 @@ def test_overlapping_native_sessions_keep_distinct_private_endpoints(
 
 
 def test_shared_config_overlay_module_is_absent() -> None:
-    """The serialized operator-global overlay design cannot return unnoticed."""
     assert importlib.util.find_spec("ralph.mcp.transport.config_overlay") is None

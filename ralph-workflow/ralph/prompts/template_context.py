@@ -1,4 +1,3 @@
-"""Template registry/ context for prompt generation."""
 
 from __future__ import annotations
 
@@ -19,7 +18,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class TemplateContext:
-    """Bundled registry and partials for prompt template rendering."""
 
     registry: TemplateRegistry
     partials: Mapping[str, str]

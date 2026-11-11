@@ -1,5 +1,3 @@
-"""Unit tests for the shared plumbing bridge-lifetime context manager."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -29,7 +27,6 @@ def _fake_pipeline_core(model_identity: object | None = None) -> PipelineCore:
 
 
 def test_with_bridge_lifetime_creates_and_yields_bridge() -> None:
-    """The context manager yields the bridge created by the injected factory."""
     bridge = MagicMock()
     bridge_factory = MagicMock(return_value=bridge)
     core = _fake_pipeline_core()
@@ -50,15 +47,12 @@ def test_with_bridge_lifetime_creates_and_yields_bridge() -> None:
         agents_policy=None,
         session_id_prefix="commit",
         model_identity=core.model_identity,
-        # The lifetime primitive forwards the agent transport so the
-        # session identity can carry it; None when the caller omits it.
         transport=None,
     )
     assert bridge.shutdown.call_count == 1
 
 
 def test_with_bridge_lifetime_shuts_down_on_body_raise() -> None:
-    """``bridge.shutdown()`` is called even when the body raises."""
     bridge = MagicMock()
     bridge_factory = MagicMock(return_value=bridge)
     core = _fake_pipeline_core()
@@ -82,7 +76,6 @@ def test_with_bridge_lifetime_shuts_down_on_body_raise() -> None:
 
 
 def test_with_bridge_lifetime_shuts_down_exactly_once_on_success() -> None:
-    """On successful body completion, ``shutdown`` is called exactly once."""
     bridge = MagicMock()
     bridge_factory = MagicMock(return_value=bridge)
     core = _fake_pipeline_core()
@@ -100,7 +93,6 @@ def test_with_bridge_lifetime_shuts_down_exactly_once_on_success() -> None:
 
 
 def test_with_bridge_lifetime_forwards_model_identity() -> None:
-    """The bridge factory receives ``model_identity`` from ``pipeline_core``."""
     model_identity = MagicMock()
     core = _fake_pipeline_core(model_identity=model_identity)
     bridge_factory = MagicMock(return_value=MagicMock())
@@ -118,7 +110,6 @@ def test_with_bridge_lifetime_forwards_model_identity() -> None:
 
 
 def test_with_bridge_lifetime_forwards_run_id() -> None:
-    """The bridge factory receives an explicit run id for receipt alignment."""
     core = _fake_pipeline_core()
     bridge_factory = MagicMock(return_value=MagicMock())
 
@@ -136,10 +127,8 @@ def test_with_bridge_lifetime_forwards_run_id() -> None:
 
 
 def test_with_bridge_lifetime_accepts_real_callable_and_magicmock() -> None:
-    """Both a real ``BridgeFactory`` callable and a ``MagicMock`` work as factories."""
     core = _fake_pipeline_core()
 
-    # MagicMock satisfies the call shape without running real bridge code.
     magicmock_bridge = MagicMock()
     with with_bridge_lifetime(
         core,
@@ -150,13 +139,10 @@ def test_with_bridge_lifetime_accepts_real_callable_and_magicmock() -> None:
     ) as yielded:
         assert yielded is magicmock_bridge
 
-    # The real production factory is also accepted (we do not invoke start-up).
-    # Just verify the callable is accepted by the type system at import time.
     assert callable(build_session_bridge)
 
 
 def test_with_bridge_lifetime_shutdown_is_idempotent() -> None:
-    """An explicit body shutdown does not prevent the finally shutdown."""
     bridge = MagicMock()
     bridge_factory = MagicMock(return_value=bridge)
     core = _fake_pipeline_core()

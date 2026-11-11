@@ -1,4 +1,3 @@
-"""_IssueEntry — validated issue entry for the issues artifact."""
 
 from __future__ import annotations
 

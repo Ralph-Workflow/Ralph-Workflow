@@ -1,5 +1,3 @@
-"""Unit tests for the publication state machine (Authority 5)."""
-
 from __future__ import annotations
 
 from typing import Literal

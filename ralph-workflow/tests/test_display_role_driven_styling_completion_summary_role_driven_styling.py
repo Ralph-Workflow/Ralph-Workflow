@@ -1,9 +1,3 @@
-"""Regression tests: display layer uses role-derived styling, not canonical phase names.
-
-Verifies that completion_summary and phase_banner derive styles from phase roles
-when pipeline_policy is provided, rather than from hardcoded canonical phase names.
-"""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -28,7 +22,6 @@ from ralph.policy.models import (
 
 
 def _make_custom_pipeline_policy() -> PipelinePolicy:
-    """Custom PipelinePolicy: design (execution), sign_off (commit), done/failed (terminal)."""
     return PipelinePolicy(
         entry_phase="design",
         terminal_phase="done",
@@ -102,10 +95,7 @@ def _console() -> Console:
 
 
 class TestCompletionSummaryRoleDrivenStyling:
-    """render_completion_summary_group uses role-derived section styles when policy provided."""
-
     def test_renders_without_error_with_custom_policy(self) -> None:
-        """render_completion_summary_group accepts pipeline_policy and renders without error."""
         policy = _make_custom_pipeline_policy()
         snapshot = _minimal_snapshot(plan_summary="Test plan", last_error="Test error")
         console = _console()
@@ -119,7 +109,6 @@ class TestCompletionSummaryRoleDrivenStyling:
                 include_context_sections=True,
             ),
         )
-        # Just verifying it renders without exception
         console.print(group, markup=False, highlight=False)
         file_obj = console.file
         assert isinstance(file_obj, StringIO)
@@ -127,7 +116,6 @@ class TestCompletionSummaryRoleDrivenStyling:
         assert "Pipeline" in output
 
     def test_renders_without_error_without_policy(self) -> None:
-        """render_completion_summary_group still works when pipeline_policy is None."""
         snapshot = _minimal_snapshot()
         console = _console()
         ctx = make_display_context(console=console)

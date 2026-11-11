@@ -5,8 +5,6 @@ from dataclasses import dataclass, field
 
 @dataclass
 class FakePsutilProcess:
-    """Minimal psutil.Process-like fake for descendant_snapshot tests."""
-
     pid: int
     ppid: int = 0
     _running: bool = True

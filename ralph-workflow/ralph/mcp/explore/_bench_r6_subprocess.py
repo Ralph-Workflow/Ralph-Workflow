@@ -1,12 +1,3 @@
-"""Subprocess-based R6.2 build measurement helpers.
-
-Extracted from :mod:`ralph.mcp.explore._bench_r6_metrics` so the
-hub module stays under the repository file-size limit. The helpers
-own the ``python -c`` runner script and the ``subprocess.run`` glue
-that isolates each benchmark build in a fresh process so the
-reported peak RSS depends on the build alone -- not on prior
-activity in the parent process.
-"""
 
 from __future__ import annotations
 
@@ -15,35 +6,6 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Final
-
-# ---------------------------------------------------------------------------
-# Subprocess-based R6.2 build measurement
-# ---------------------------------------------------------------------------
-#
-# R6.6 requires the benchmark gate to "run reliably ... without flaky
-# results". The previous harness measured peak RSS via
-# ``resource.getrusage(resource.RUSAGE_SELF).ru_maxrss``, which is the
-# *process-lifetime* resident-set high-water mark. When the gate runs
-# in the same pytest process after hundreds of prior explore tests,
-# that high-water mark reflects prior memory use, not the build's
-# peak -- a direct measurement hazard that failed the gate on
-# developer machines once the harness ran late in the suite.
-#
-# The fix is to isolate the build inside a fresh subprocess: each
-# build phase runs in a short-lived child that performs the work and
-# prints its own peak RSS plus the build's wall/CPU time. The parent
-# parses that value, so the reported peak RSS depends only on the
-# build, never on prior activity in the benchmark process.
-#
-# For refresh metrics the child does a one-shot cold build as a
-# warm-up pass so the measured refresh wall/CPU excludes the
-# process-startup cost (FTS5 cache, page-cache fill, etc.) that the
-# first reindex call in any process pays. The warm-up pass is the
-# same shape as ``measure_cold_build``; only the measured phase
-# after it is reported to the parent.
-#
-# The child script is intentionally tiny and string-substituted with
-# the caller's parameters; it emits a single JSON line on stdout.
 
 _BUILD_RUNNER_SCRIPT: Final[str] = (
     "import json\n"
@@ -127,21 +89,6 @@ def run_build_subprocess(
     do_warmup: bool,
     timeout_ms: int = 120_000,
 ) -> dict[str, float]:
-    """Run the build phase in a fresh subprocess and return its metrics.
-
-    The child performs the build and prints ``{wall, cpu, peak_rss,
-    index_size, files_read}`` on stdout as a single JSON object. The
-    parent parses the last non-empty line, so any incidental logging
-    the child emits cannot shadow the JSON payload. The subprocess
-    is bounded by ``timeout_ms`` (converted to seconds) plus a small
-    grace window; any timeout raises ``subprocess.TimeoutExpired``
-    which the caller surfaces as a test failure.
-
-    ``do_warmup`` controls whether the child runs a one-shot full
-    reindex before the measured phase. The cold build does not set
-    this flag (its warm-up pass IS the measured phase); the changed
-    refresh does set it so the steady-state reindex path is measured.
-    """
     script = (
         _BUILD_RUNNER_SCRIPT.replace("__WORKSPACE_PATH__", repr(str(workspace)))
         .replace("__INDEX_DIR_PATH__", repr(str(index_dir)))
@@ -150,12 +97,7 @@ def run_build_subprocess(
         .replace("__DO_WARMUP__", "True" if do_warmup else "False")
         .replace("__TIMEOUT_MS__", str(timeout_ms))
     )
-    # mcp-timeout-ok: subprocess bounded by timeout; benchmark build is the
-    # workload, the deadline is the wall budget.
-    # resource-lifecycle-ok: short-lived benchmark subprocess; the parent
-    # blocks on .run()'s timeout so the child cannot outlive the call, no
-    # fd or process leaks across the harness.
-    proc = subprocess.run(  # resource-lifecycle-ok: short-lived benchmark subprocess; parent blocks on .run()'s timeout so the child cannot outlive the call, no fd or process leaks across the harness.  # filesystem-poll-ok: same short-lived subprocess; the parent blocks on the bounded timeout, so this is not a poll loop.
+    proc = subprocess.run(
         [sys.executable, "-c", script],
         capture_output=True,
         text=True,

@@ -1,4 +1,3 @@
-"""Protocol for signal getter callables."""
 
 from __future__ import annotations
 
@@ -9,7 +8,6 @@ if TYPE_CHECKING:
 
 
 class SignalGetter(Protocol):
-    """Protocol for ``signal.getsignal``-compatible callables."""
 
     def __call__(self, _signalnum: int, /) -> SignalHandler: ...
 

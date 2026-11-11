@@ -1,22 +1,3 @@
-"""Reducer uses typed FailureCategory to gate the conflict-strategy ladder.
-
-The reducer's L1/L2 sites used to gate on a substring in the human-readable
-``reason``: any reason containing ``"integration conflict requires
-resolution:"`` would advance the durable strategy ladder and resume the
-phase. That coupling was word-brittle -- a rewording of the reason could
-silently turn the ladder on or off -- so the reducer now consults a typed
-:class:`FailureCategory` instead and the substring is gone. These tests
-prove three properties:
-
-* the ladder advances under :attr:`FailureCategory.INTEGRATION` regardless
-  of the prose reason (wording-independence);
-* the ladder does NOT advance for any other failure category, including
-  the legacy ``None`` default the other call sites still pass;
-* the typed path and the previously-substring path produce identical
-  post-state, so the migration is observation-equivalent at the durable
-  surface.
-"""
-
 from __future__ import annotations
 
 from ralph.pipeline.events import PhaseFailureEvent
@@ -75,8 +56,6 @@ def _recoverable_state() -> PipelineState:
 
 
 class TestReducerTypedFailureCategory:
-    """All four prior test groupings combined into one top-level test class."""
-
     _REASONS: tuple[str, ...] = (
         "integration conflict requires resolution: unresolved shared.txt",
         "Integration conflict requires resolution: please resolve this.",
@@ -95,10 +74,7 @@ class TestReducerTypedFailureCategory:
         FailureCategory.AMBIGUOUS,
     )
 
-    # ----- Wording independence via the public reducer entry point -----
-
     def test_each_reason_advances_strategy_ladder_once(self) -> None:
-        """Every reason advances the index by 1, sets the same retry delay, and resumes the phase."""
         policy = _basic_policy()
         for reason in self._REASONS:
             state = _recoverable_state()
@@ -118,13 +94,6 @@ class TestReducerTypedFailureCategory:
             assert effects == [], reason
 
     def test_all_reasons_produce_identical_structural_state(self) -> None:
-        """Identical behaviour means identical index, exhaustion flag, retry delay, and phase.
-
-        The ``conflict_strategies_tried`` tuple is expected to differ
-        because it embeds the reason; that is the point. The
-        structural knobs the rest of the pipeline consults must be
-        word-independent.
-        """
         policy = _basic_policy()
         snapshots: list[tuple[int, bool, int, str]] = []
         for reason in self._REASONS:
@@ -149,7 +118,6 @@ class TestReducerTypedFailureCategory:
             assert other == first, "All wording variants must produce identical structural state"
 
     def test_typed_path_advances_even_when_legacy_substring_absent(self) -> None:
-        """The typed gate is sufficient: a reason without the legacy substring still advances."""
         policy = _basic_policy()
         state = _recoverable_state()
         reason = "totally different operator wording, no substring match at all"
@@ -162,8 +130,6 @@ class TestReducerTypedFailureCategory:
         new_state, _ = reducer_reduce(state, event, policy)
         assert new_state.rebase.conflict_strategy_index == 1
         assert new_state.last_retry_delay_ms == 2000
-
-    # ----- Typed parameter is the sole gate -----
 
     def test_non_integration_categories_skip_strategy_advance(self) -> None:
         policy = _basic_policy()
@@ -183,7 +149,6 @@ class TestReducerTypedFailureCategory:
             assert new_state.last_retry_delay_ms == 0, category
 
     def test_default_event_failure_category_does_not_advance_ladder(self) -> None:
-        """Existing events that omit failure_category must stay inert at the strategy layer."""
         policy = _basic_policy()
         state = _recoverable_state()
         event = PhaseFailureEvent(
@@ -197,7 +162,6 @@ class TestReducerTypedFailureCategory:
         assert new_state.last_retry_delay_ms == 0
 
     def test_substring_in_reason_is_no_longer_sufficient(self) -> None:
-        """A reason containing the legacy substring without the typed category does NOT advance."""
         policy = _basic_policy()
         state = _recoverable_state()
         reason = "integration conflict requires resolution: shared.txt"
@@ -209,8 +173,6 @@ class TestReducerTypedFailureCategory:
         new_state, _ = reducer_reduce(state, event, policy)
         assert new_state.rebase.conflict_strategy_index == 0
         assert new_state.rebase.conflict_strategies_tried == ()
-
-    # ----- Invocation counter across sequential calls -----
 
     def test_four_sequential_non_integration_calls_keep_counter_zero(self) -> None:
         policy = _basic_policy()
@@ -248,9 +210,6 @@ class TestReducerTypedFailureCategory:
     def test_mixed_categories_only_advance_on_integration(self) -> None:
         policy = _basic_policy()
         state = _recoverable_state()
-        # Two integration events bookend one non-integration event; the
-        # public reducer route pins the strategy index to 2 because the
-        # non-integration call leaves the ladder untouched.
         for i in range(3):
             category = FailureCategory.INTEGRATION if i % 2 == 0 else FailureCategory.AGENT
             event = PhaseFailureEvent(
@@ -262,8 +221,6 @@ class TestReducerTypedFailureCategory:
             state, _ = reducer_reduce(state, event, policy)
         assert state.rebase.conflict_strategy_index == 1
         assert len(state.rebase.conflict_strategies_tried) == 1
-
-    # ----- PhaseFailureEvent routed through the public reducer entry point -----
 
     def test_phase_failure_event_recoverable_integration_advances_ladder(self) -> None:
         policy = _basic_policy()

@@ -1,10 +1,3 @@
-"""Tests for landing, remote publication, and remote boundary (Unit U6).
-
-Verifies the Boundary 6 RemoteClient protocol, isolation of local landing
-from remote publication, state machine decisions, and fail-closed handling
-of unreachable or degraded remotes.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -38,8 +31,6 @@ from ralph.pipeline.rebase_state import RebaseState
 
 @dataclass
 class _FakeRemoteClient:
-    """Injected fake implementing the RemoteClient protocol."""
-
     refresh_outcome: str = REFRESH_LOCAL_FLEET
     push_status: PushStatus = PushStatus.PUSHED
     push_detail: str = "pushed successfully"
@@ -116,11 +107,9 @@ def _landed_record(
 
 
 def test_remote_client_protocol_conformance() -> None:
-    """Verify _FakeRemoteClient strictly conforms to the RemoteClient Protocol."""
     fake = _FakeRemoteClient()
     client: RemoteClient = fake
 
-    # Observers return typed values without mutating state
     refresh_result = client.refresh_target(
         Path("/repo"), "main", timeout_seconds=10.0, remote="origin"
     )
@@ -131,7 +120,6 @@ def test_remote_client_protocol_conformance() -> None:
     assert sha_result == "abcdef1234567890"
     assert len(fake.sha_calls) == 1
 
-    # Mutators return typed PushResult
     push_result = client.push_branch(Path("/repo"), "main", remote="origin", timeout_seconds=10.0)
     assert isinstance(push_result, PushResult)
     assert push_result.status == PushStatus.PUSHED
@@ -139,11 +127,6 @@ def test_remote_client_protocol_conformance() -> None:
 
 
 def test_scenario_6_local_landing_completed_remote_unavailable() -> None:
-    """Scenario 6: local landing completes, remote is unavailable.
-
-    push_target_after_landing preserves local landing (fast_forwarded=True)
-    and records last_publication_decision="publish_deferred_remote".
-    """
     record = _landed_record(fast_forwarded=True)
     client = _FakeRemoteClient(
         push_status=PushStatus.UNREACHABLE,
@@ -158,11 +141,9 @@ def test_scenario_6_local_landing_completed_remote_unavailable() -> None:
         remote_client=client,
     )
 
-    # Local landing obligation remains fulfilled and is NEVER reverted
     assert result.fast_forwarded is True
     assert result.last_target == "main"
 
-    # Publication obligation remains open and deferred
     assert result.last_publication_decision == "publish_deferred_remote"
     assert result.last_remote_sync == REMOTE_REMOTE_UNREACHABLE
     assert result.last_push_status == "unreachable"
@@ -171,7 +152,6 @@ def test_scenario_6_local_landing_completed_remote_unavailable() -> None:
 
 
 def test_scenario_6_local_landing_completed_remote_timeout() -> None:
-    """Remote push timeout is treated as remote unavailable (deferred)."""
     record = _landed_record(fast_forwarded=True)
     client = _FakeRemoteClient(
         push_status=PushStatus.TIMEOUT,
@@ -194,7 +174,6 @@ def test_scenario_6_local_landing_completed_remote_timeout() -> None:
 
 
 def test_policy_governs_result_when_remote_disabled() -> None:
-    """When remote_sync_enabled is False, publication completes terminally without pushing."""
     record = _landed_record(fast_forwarded=True)
     client = _FakeRemoteClient()
 
@@ -208,12 +187,10 @@ def test_policy_governs_result_when_remote_disabled() -> None:
 
     assert result.fast_forwarded is True
     assert result.last_publication_decision == "publication_terminal"
-    # Mutator is NEVER invoked when remote sync is disabled
     assert len(client.push_calls) == 0
 
 
 def test_policy_governs_result_successful_push_is_terminal() -> None:
-    """When remote_sync_enabled is True and push succeeds, decision is terminal."""
     record = _landed_record(fast_forwarded=True)
     client = _FakeRemoteClient(push_status=PushStatus.PUSHED)
 
@@ -234,11 +211,9 @@ def test_policy_governs_result_successful_push_is_terminal() -> None:
 
 
 def test_clean_worktree_never_proves_landing_when_not_fast_forwarded() -> None:
-    """Clean worktree or agent success never proves landing without fast_forwarded=True."""
     record = _landed_record(fast_forwarded=False, last_action="fast_forward")
     client = _FakeRemoteClient()
 
-    # In push_single_remote, next_publication_action blocks the push
     push_res, decision = push_single_remote(
         Path("/repo"),
         "main",
@@ -250,7 +225,6 @@ def test_clean_worktree_never_proves_landing_when_not_fast_forwarded() -> None:
     assert decision.value == "publication_pending"
     assert len(client.push_calls) == 0
 
-    # In push_target_after_landing, publication decision remains pending and push is skipped
     result = push_target_after_landing(
         _config(),
         Path("/repo"),
@@ -263,7 +237,6 @@ def test_clean_worktree_never_proves_landing_when_not_fast_forwarded() -> None:
 
 
 def test_pull_and_reconcile_target_unreachable_returns_typed_unknown() -> None:
-    """An unreachable remote in pull_and_reconcile returns UNKNOWN (never proven negative)."""
     client = _FakeRemoteClient(refresh_outcome=REFRESH_UNREACHABLE)
 
     result = pull_and_reconcile_target(
@@ -281,16 +254,6 @@ def test_pull_and_reconcile_target_unreachable_returns_typed_unknown() -> None:
 
 
 def test_retry_pending_remote_publish_retries_deferred_push() -> None:
-    """retry_pending_remote_publish retries a deferred push using the remote_client.
-
-    The new reconciler is the sole publication entry point. The
-    shim forwards unconditionally; the result depends on the
-    ref comparison (local vs remote SHA) rather than on the
-    in-memory ``last_push_status``. The fake client reports a
-    matching remote SHA so the reconciler's no-op convergence
-    branch returns ``REMOTE_ALREADY_CURRENT`` and the call does
-    not push.
-    """
     deferred_record = RebaseState(
         last_action="remote_failed",
         last_target="main",
@@ -309,23 +272,10 @@ def test_retry_pending_remote_publish_retries_deferred_push() -> None:
         remote_client=client,
     )
 
-    # The shim returns a RebaseState (possibly with the
-    # ``REMOTE_ALREADY_CURRENT`` annotation) rather than None;
-    # the call did not raise.
     assert retried is not None
 
 
 def test_retry_pending_remote_publish_skips_already_terminal() -> None:
-    """retry_pending_remote_publish delegates to the reconciler regardless of state.
-
-    The OLD contract returned ``None`` when ``last_push_status``
-    was already terminal. The NEW shim forwards unconditionally;
-    terminal status is detected by the reconciler's own
-    ``local_sha == remote_sha`` short-circuit, not by an in-memory
-    flag. When the fake client reports an unreachable remote the
-    shim returns a ``RebaseState`` with the unreachable annotation;
-    the caller treats it as a retry.
-    """
     terminal_record = RebaseState(
         last_action="remote_pushed",
         last_target="main",
@@ -344,17 +294,12 @@ def test_retry_pending_remote_publish_skips_already_terminal() -> None:
         remote_client=client,
     )
 
-    # The shim no longer returns None for terminal status; it
-    # delegates to the reconciler, which observes the ref state
-    # directly.
     assert retried is not None
 
 
 def test_catchup_fast_forward_unreachable_remote_does_not_advance() -> None:
-    """When catchup encounters an unreachable remote, it returns CATCHUP_REMOTE_SKIPPED."""
     client = _FakeRemoteClient(refresh_outcome=REFRESH_UNREACHABLE)
 
-    # When auto_integrate is disabled, it returns CATCHUP_DISABLED
     disabled_config = UnifiedConfig.model_validate({"general": {"auto_integrate_enabled": False}})
     assert (
         attempt_catchup_fast_forward(disabled_config, Path("/repo"), remote_client=client)
@@ -363,7 +308,6 @@ def test_catchup_fast_forward_unreachable_remote_does_not_advance() -> None:
 
 
 def test_catchup_worker_wires_remote_client() -> None:
-    """AutoIntegrateCatchupWorker stores and passes the injected remote client."""
     client = _FakeRemoteClient()
     config = UnifiedConfig.model_validate({"general": {"auto_integrate_enabled": False}})
     worker = AutoIntegrateCatchupWorker(
@@ -373,7 +317,6 @@ def test_catchup_worker_wires_remote_client() -> None:
     )
     assert worker._remote_client is client
 
-    # start_catchup_worker_if_enabled returns None when disabled
     assert (
         start_catchup_worker_if_enabled(
             config,

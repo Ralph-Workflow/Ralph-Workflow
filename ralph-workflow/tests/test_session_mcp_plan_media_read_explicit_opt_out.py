@@ -1,19 +1,3 @@
-"""Retired opt-out regression: explicit ``[media] enabled = false`` is inert.
-
-The multimodal MCP endpoints always stay enabled (criterion 1).
-``MediaConfig.enabled`` is retained on the schema and a config asking
-for ``enabled = false`` is accepted and ignored: ``media.read`` is
-granted to every drain and both ``read_media`` / ``read_image`` are
-always listed in ``tools/list``. Specifying ``enabled = false`` emits
-a single ``logger.warning`` naming the ignored key.
-
-This file keeps the original filename as the anchor for the retired
-behavior (the plan calls for "turn the four test files that certify
-the opt-out into regressions against it, keeping their filenames").
-The assertions here invert every prior opt-out assertion so a future
-regression that re-introduces ``enabled = false`` would visibly fail.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -79,8 +63,6 @@ def _default_agents_policy(_workspace_path: Path) -> AgentsPolicy:
 
 
 class TestMediaReadExplicitOptOutRetired:
-    """``[media] enabled = false`` is INERT: ``media.read`` is granted to every drain."""
-
     @pytest.mark.parametrize(
         "drain",
         [
@@ -103,14 +85,6 @@ class TestMediaReadExplicitOptOutRetired:
         drain: str,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """``[media] enabled = false`` is INERT -- ``media.read`` is granted to every drain.
-
-        Per criterion 1 (no supported configuration disables the
-        multimodal endpoints), a config that asks for
-        ``enabled = false`` parses, emits exactly one warning
-        naming the ignored key, and the resolved plan still grants
-        ``media.read``. The opt-out is retired.
-        """
         del isolated_home
         agent_dir = tmp_path / ".agent"
         agent_dir.mkdir()
@@ -119,7 +93,6 @@ class TestMediaReadExplicitOptOutRetired:
             encoding="utf-8",
         )
 
-        # The validator emits one warning -- not zero (silent), not two (double-fire).
         with caplog.at_level(logging.WARNING, logger="ralph.config.media"):
             plan = build_session_mcp_plan(
                 transport=AgentTransport.CLAUDE,
@@ -132,7 +105,6 @@ class TestMediaReadExplicitOptOutRetired:
             f"drain {drain!r} must retain media.read even when [media] "
             "enabled = false is configured (criterion 1)"
         )
-        # Exactly one warning must have been emitted for the ignored key.
         matching = [
             record
             for record in caplog.records

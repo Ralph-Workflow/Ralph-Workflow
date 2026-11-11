@@ -1,25 +1,3 @@
-"""Single end-to-end test exercising all 3 user-prompt bullets in one ``run()`` invocation.
-
-This is the consolidated 'one test, three bullets' verification. A
-reviewer can run this single test to confirm the engine honors the
-Pro contract holistically:
-
-- **Bullet 1 (heartbeat always happening)**: a late-arriving marker
-  is adopted by an inlined ``_LateMarkerWatcher`` factory; the
-  heartbeat is started in ``start()`` and stopped during cleanup.
-- **Bullet 2 (modular state observability)**: a real
-  ``SnapshotRegistry`` receives a published ``PipelineStateSnapshot``
-  at the inner-loop exit boundary.
-- **Bullet 3 (custom pipeline DI)**: a ``policy_bundle_override``
-  with a distinct identity is observed in the inner loop's
-  ``ctx.policy_bundle``.
-
-The test is a black-box call to ``ralph.pipeline.run_loop.run(...)``
-with ``pro_hooks=ProPipelineHooks(...)``. No real I/O, no real
-``time.sleep``, no real network. All helpers are inlined into this
-file (no cross-file test imports).
-"""
-
 from __future__ import annotations
 
 import importlib
@@ -68,7 +46,6 @@ def _load_runner() -> object:
 
 
 def _fake_bundle() -> PolicyBundle:
-    """Build the smallest bundle that satisfies ``run``'s contract."""
     pipeline = PipelinePolicy(
         phases={
             "planning": PhaseDefinition(
@@ -112,7 +89,6 @@ def _fake_bundle() -> PolicyBundle:
 
 
 def _seed_workspace(workspace_root: Path) -> None:
-    """Write the minimum files the run loop expects on the workspace."""
     workspace_root.mkdir(parents=True, exist_ok=True)
     (workspace_root / "PROMPT.md").write_text("# test\n", encoding="utf-8")
 
@@ -136,7 +112,6 @@ def _patch_runner_dependencies(
     state: PipelineState,
     bundle: PolicyBundle,
 ) -> None:
-    """Patch heavy entry points so the run loop walks to the inner loop and exits cleanly."""
     runner_module = _load_runner()
     monkeypatch.setattr(
         runner_module,
@@ -156,7 +131,6 @@ def _patch_runner_dependencies(
 
 
 def _install_display_context(monkeypatch: pytest.MonkeyPatch, run_loop_module: object) -> None:
-    """Force display-context helpers to return deterministic fakes."""
     ctx = make_display_context()
     runner_module = _load_runner()
     monkeypatch.setattr(runner_module, "make_display_context", lambda **_kwargs: ctx)
@@ -169,8 +143,6 @@ def _install_display_context(monkeypatch: pytest.MonkeyPatch, run_loop_module: o
 
 
 class _RecordingHeartbeat:
-    """Tracks start/stop calls for assertion in the test body."""
-
     def __init__(self) -> None:
         self.started = False
         self.stopped = False
@@ -186,14 +158,6 @@ class _RecordingHeartbeat:
 
 
 class _LateMarkerWatcher:
-    """In-process watcher that adopts the marker only after N polls.
-
-    Mirrors the public ``ProMarkerWatcher`` surface that the run
-    loop touches (``heartbeat_client``, ``stop()``) so the test
-    can be exercised end-to-end without a real watcher thread.
-    Drives polls synchronously so the test stays deterministic.
-    """
-
     def __init__(
         self,
         workspace_root: Path,
@@ -225,38 +189,10 @@ class _LateMarkerWatcher:
         self._stopped = True
 
 
-# ``test_pro_invocation_end_to_end_satisfies_all_three_bullets`` exercises a
-# single ``run()`` invocation across three pro_support bullets (heartbeat,
-# state observability, custom pipeline DI). Under parallel xdist load the
-# full ``run()`` path can exceed the 1s default test timeout even though
-# the test itself is correct. 5s is the documented minimum for non-trivial
-# tests (see ``ralph/verify_timeout.py``) and is well under the 60s
-# combined ``make verify`` budget. The 1s default policy is preserved
-# globally; this marker only relaxes the cap for this specific test.
 @pytest.mark.timeout_seconds(5)
 def test_pro_invocation_end_to_end_satisfies_all_three_bullets(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """One black-box ``run()`` invocation exercises all 3 user-prompt bullets.
-
-    - Bullet 1 (heartbeat always happening): an inlined
-      ``_LateMarkerWatcher`` factory adopts the marker on the
-      1st non-None poll; the heartbeat is started via the
-      watcher's ``heartbeat_factory`` and stopped during
-      cleanup. Asserted via ``recording.started`` and
-      ``recording.stopped``.
-    - Bullet 2 (modular state observability): a real
-      ``SnapshotRegistry`` is supplied via
-      ``ProPipelineHooks.snapshot_registry``; the patched
-      ``_run_inner_loop`` publishes a ``PipelineStateSnapshot``
-      via ``build_pipeline_state_snapshot`` before returning.
-      Asserted via ``registry.get_latest()``.
-    - Bullet 3 (custom pipeline DI): a ``policy_bundle_override``
-      with a distinct identity is supplied via
-      ``ProPipelineHooks.policy_bundle_override``; the patched
-      ``_run_inner_loop`` captures ``ctx.policy_bundle``.
-      Asserted via ``captured_bundle[0] is override_bundle``.
-    """
     run_loop_module = _load_run_loop()
     monkeypatch.delenv("RALPH_WORKFLOW_PRO", raising=False)
     _seed_workspace(tmp_path)

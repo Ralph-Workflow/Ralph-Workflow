@@ -11,7 +11,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class CommitChainConfig:
-    """Configuration bundle for the commit message chain invocation."""
 
     registry: AgentRegistry
     agents: list[str]

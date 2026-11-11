@@ -1,5 +1,3 @@
-"""Tests for the verbose-by-default CLI behavior and --quiet opt-out contract."""
-
 from __future__ import annotations
 
 import sys
@@ -35,8 +33,6 @@ def test_legacy_normal_is_mapped_to_verbose() -> None:
 
 
 def test_quiet_wins_over_debug() -> None:
-    # --quiet takes precedence over --debug so silent wrapper scripts
-    # remain silent when both are passed.
     assert resolve_effective_verbosity(Verbosity.VERBOSE, quiet=True, debug=True) == Verbosity.QUIET
 
 
@@ -45,7 +41,6 @@ def test_explicit_full_is_preserved() -> None:
 
 
 def test_dead_verbosity_option_class_is_not_part_of_cli_surface() -> None:
-    """Cleanup should remove the unused custom option class from the CLI module."""
     cli_pkg = sys.modules.get("ralph.cli")
     options_module = getattr(cli_pkg, "options", None)
     if options_module is None:

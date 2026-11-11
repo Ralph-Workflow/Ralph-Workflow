@@ -1,18 +1,3 @@
-"""Authority audit — acceptance scenarios 7, 8, and 10 (entry points, legacy, display).
-
-Acceptance scenario 7: exercise startup, phase-boundary, commit, cooldown,
-parallel-join, and terminal entry points against the same underlying state.
-Every entry point must produce the same lifecycle decision.
-
-Acceptance scenario 8: load legacy checkpoint and integration representations.
-Migration must produce one authoritative state or explicit intervention,
-never merge contradictory truths heuristically.
-
-Acceptance scenario 10: confirm the operator surface distinguishes conflict
-resolution, evidence diagnosis, integration, landing, publication, waiting,
-and intervention.
-"""
-
 from __future__ import annotations
 
 import json
@@ -50,32 +35,26 @@ def _integrated_record() -> IntegrationRecord:
 
 
 def _write_unreadable_record(tmp_path: Path) -> None:
-    """Write a corrupt record (UNREADABLE outcome)."""
     record_file = tmp_path / ".agent" / AUTO_INTEGRATE_RECORD_FILENAME
     record_file.parent.mkdir(parents=True, exist_ok=True)
     record_file.write_text("{not valid json", encoding="utf-8")
 
 
 def _write_present_unreadable_record(tmp_path: Path) -> None:
-    """Write a present-but-unreadable record (UNREADABLE outcome)."""
     record_file = tmp_path / ".agent" / AUTO_INTEGRATE_RECORD_FILENAME
     record_file.parent.mkdir(parents=True, exist_ok=True)
-    # Valid JSON, but missing required 'phase' field -> UNREADABLE.
     record_file.write_text('{"target": "main"}', encoding="utf-8")
 
 
 def test_entry_points_agree_on_unreadable_record(tmp_path: Path) -> None:
-    """Scenario 7: every entry point produces the same decision on UNREADABLE."""
     _write_unreadable_record(tmp_path)
 
-    # Startup (recovery boundary).
     outcome = recover_incomplete_integration(WorkspaceScope(tmp_path))
     assert outcome is not None
     assert outcome.last_outcome == RebaseOutcomeKind.LADDER_ESCALATION
     assert outcome.last_decision == PhaseDecision.BLOCK_FOR_RECOVERY.value
     assert outcome.recovery_record_retained is True
 
-    # Phase boundary.
     state = PipelineState(phase="development", rebase=outcome)
     decision = decide_phase_transition(state, None, integration_record=None, rebase_state=outcome)
     assert decision is PhaseDecision.BLOCK_FOR_RECOVERY
@@ -84,15 +63,6 @@ def test_entry_points_agree_on_unreadable_record(tmp_path: Path) -> None:
 def test_legacy_checkpoint_migration_yields_one_authoritative_state(
     tmp_path: Path,
 ) -> None:
-    """Scenario 8: legacy global-evidence record -> one authoritative state.
-
-    Authoritative starting state: a record JSON file containing
-    ``diagnostic_evidence: [["for-each-ref", "deadbeef"]]``.
-    Expected typed state (new contract): the legacy global key is
-    dropped silently; the loaded record carries no held evidence and
-    ``diagnostic_intervention_required is False`` so the diagnostic
-    can re-derive state from Git on the next seam.
-    """
     record_file = tmp_path / ".agent" / AUTO_INTEGRATE_RECORD_FILENAME
     record_file.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -108,17 +78,13 @@ def test_legacy_checkpoint_migration_yields_one_authoritative_state(
     loaded = read_record(tmp_path)
     assert loaded is not None
     assert loaded.diagnostic_intervention_required is False
-    # The dropped legacy key is no longer carried as live evidence.
     assert ("for-each-ref", "deadbeef") not in dict(loaded.diagnostic_evidence)
 
 
 def test_operator_surface_distinguishes_seven_labels() -> None:
-    """Scenario 10: the seven display labels are distinct closed vocabulary."""
     assert len(IntegrationDisplayLabel) == 7
-    # Each label is distinct.
     values = {label.value for label in IntegrationDisplayLabel}
     assert len(values) == 7
-    # The seven expected labels.
     assert IntegrationDisplayLabel.CONFLICT_RESOLUTION.value == "conflict resolution"
     assert IntegrationDisplayLabel.EVIDENCE_DIAGNOSIS.value == "evidence diagnosis"
     assert IntegrationDisplayLabel.INTEGRATION.value == "integration"
@@ -126,7 +92,6 @@ def test_operator_surface_distinguishes_seven_labels() -> None:
     assert IntegrationDisplayLabel.PUBLICATION.value == "publication"
     assert IntegrationDisplayLabel.WAITING.value == "waiting"
     assert IntegrationDisplayLabel.INTERVENTION.value == "intervention"
-    # The dispatch map routes each producer-side string to its label.
     assert DISPLAY_LABEL_MAP["conflict_resolution"] == "conflict resolution"
     assert DISPLAY_LABEL_MAP["diagnosing"] == "evidence diagnosis"
     assert DISPLAY_LABEL_MAP["integrating"] == "integration"

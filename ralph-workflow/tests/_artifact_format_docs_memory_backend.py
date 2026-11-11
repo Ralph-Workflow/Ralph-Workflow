@@ -1,5 +1,3 @@
-"""MemoryBackend helper for test_artifact_format_docs.py."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -63,14 +61,13 @@ class MemoryBackend(FileBackend):
                 if str(candidate).startswith(prefix) and candidate.suffix == ".json"
             ]
         elif pattern == "*/*.json":
-            # Match files in immediate subdirectories with .json extension
             prefix = f"{path}/"
             return [
                 candidate
                 for candidate in self._files
                 if str(candidate).startswith(prefix)
                 and candidate.suffix == ".json"
-                and candidate.parent != path  # Ensure it's in a subdirectory
+                and candidate.parent != path
             ]
         else:
             return []

@@ -1,5 +1,3 @@
-"""Tests for ralph/workspace/fs.py — Filesystem workspace implementation."""
-
 from __future__ import annotations
 
 import tempfile

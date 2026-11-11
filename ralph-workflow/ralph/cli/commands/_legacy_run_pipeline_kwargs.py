@@ -1,4 +1,3 @@
-"""_LegacyRunPipelineKwargs — TypedDict for backward-compatible run_pipeline kwargs."""
 
 from __future__ import annotations
 

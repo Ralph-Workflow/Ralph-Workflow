@@ -1,15 +1,3 @@
-"""Tests for :mod:`ralph.testing.audit_dependency_integrity`.
-
-The dependency-integrity gate answers one question: may a change add a
-dependency that nobody can verify? A NEW package must name a resolvable
-source and a publisher, must be locked with artifact hashes, and must not
-introduce an install script.
-
-The gate is a pure function over two content sets (baseline manifests and
-current manifests), so every case here is synthetic: no network, no
-package manager, no version control.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -65,16 +53,11 @@ def _categories(findings: list[DependencyFinding]) -> set[str]:
     return {finding.category for finding in findings}
 
 
-# --- the clean tree ---------------------------------------------------------
-
-
 def test_unchanged_tree_is_clean() -> None:
-    """A change that adds nothing must produce no findings."""
     assert audit_dependency_change(_baseline(), _baseline()) == []
 
 
 def test_version_bump_of_an_existing_package_is_clean() -> None:
-    """Raising the floor of an existing dependency is not a new package."""
     current = _current(
         '[project]\nname = "demo"\ndependencies = [\n  "typer>=0.13",\n]\n',
         _BASE_LOCK,
@@ -82,11 +65,7 @@ def test_version_bump_of_an_existing_package_is_clean() -> None:
     assert audit_dependency_change(_baseline(), current) == []
 
 
-# --- the hallucinated package ----------------------------------------------
-
-
 def test_hallucinated_package_without_source_or_publisher_fails() -> None:
-    """A bare new package name is unresolvable and unowned: both findings."""
     current = _current(
         '[project]\nname = "demo"\ndependencies = [\n'
         '  "typer>=0.12",\n'
@@ -112,7 +91,6 @@ def test_hallucinated_package_without_source_or_publisher_fails() -> None:
 
 
 def test_new_package_with_publisher_but_without_source_still_fails() -> None:
-    """The two attributes are independent: a publisher alone is not enough."""
     current = _current(
         '[project]\nname = "demo"\ndependencies = [\n'
         '  "typer>=0.12",\n'
@@ -127,7 +105,6 @@ def test_new_package_with_publisher_but_without_source_still_fails() -> None:
 
 
 def test_new_package_with_source_but_without_publisher_still_fails() -> None:
-    """A registry reference alone does not prove who publishes the package."""
     current = _current(
         '[project]\nname = "demo"\ndependencies = [\n'
         '  "typer>=0.12",\n'
@@ -141,14 +118,11 @@ def test_new_package_with_source_but_without_publisher_still_fails() -> None:
     )
     findings = audit_dependency_change(_baseline(), current)
 
-    # The index is declared but the requirement does not select it, so the
-    # package still resolves against an unnamed registry.
     assert CATEGORY_MISSING_SOURCE in _categories(findings)
     assert CATEGORY_MISSING_PUBLISHER in _categories(findings)
 
 
 def test_new_package_with_source_and_publisher_passes() -> None:
-    """A fully evidenced new package is accepted."""
     current = _current(
         '[project]\nname = "demo"\ndependencies = [\n'
         '  "typer>=0.12",\n'
@@ -167,7 +141,6 @@ def test_new_package_with_source_and_publisher_passes() -> None:
 
 
 def test_evidence_table_records_the_publisher() -> None:
-    """The dependency-evidence table is an accepted publisher reference."""
     current = _current(
         '[project]\nname = "demo"\ndependencies = [\n'
         '  "typer>=0.12",\n'
@@ -186,7 +159,6 @@ def test_evidence_table_records_the_publisher() -> None:
 
 
 def test_source_control_url_carries_the_publisher() -> None:
-    """A VCS URL names its owning organisation, so it doubles as evidence."""
     current = _current(
         '[project]\nname = "demo"\ndependencies = [\n'
         '  "typer>=0.12",\n'
@@ -200,11 +172,7 @@ def test_source_control_url_carries_the_publisher() -> None:
     assert CATEGORY_MISSING_SOURCE not in _categories(findings)
 
 
-# --- install scripts --------------------------------------------------------
-
-
 def test_new_setup_py_is_an_install_script_finding() -> None:
-    """``setup.py`` runs at install time: its arrival is a finding."""
     baseline = _baseline()
     current = _current(_BASE_PYPROJECT, _BASE_LOCK)
     current["setup.py"] = "from setuptools import setup\nsetup()\n"
@@ -217,7 +185,6 @@ def test_new_setup_py_is_an_install_script_finding() -> None:
 
 
 def test_new_postinstall_hook_is_an_install_script_finding() -> None:
-    """A ``postinstall``-style TOML key is an install-time execution hook."""
     current = _current(
         '[project]\nname = "demo"\ndependencies = [\n  "typer>=0.12",\n]\n'
         "\n"
@@ -231,7 +198,6 @@ def test_new_postinstall_hook_is_an_install_script_finding() -> None:
 
 
 def test_preexisting_install_hook_is_not_a_new_finding() -> None:
-    """A hook that the baseline already had is pre-existing debt, not a regression."""
     hook = (
         '[project]\nname = "demo"\ndependencies = [\n  "typer>=0.12",\n]\n'
         "\n"
@@ -244,11 +210,7 @@ def test_preexisting_install_hook_is_not_a_new_finding() -> None:
     assert CATEGORY_INSTALL_SCRIPT not in _categories(audit_dependency_change(baseline, current))
 
 
-# --- lockfile hashes --------------------------------------------------------
-
-
 def test_new_lock_entry_without_a_hash_is_a_finding() -> None:
-    """A lock entry with no artifact hash cannot pin the installed bytes."""
     lock_without_hash = """\
 version = 1
 
@@ -268,7 +230,6 @@ sdist = { url = "https://example.invalid/halfgated.tar.gz" }
 
 
 def test_new_lock_entry_with_a_hash_is_clean() -> None:
-    """A hash-pinned lock entry satisfies the reproducibility rule."""
     lock_with_hash = """\
 version = 1
 
@@ -283,11 +244,7 @@ sdist = { url = "https://example.invalid/halfgated.tar.gz", hash = "sha256:ccc" 
     assert CATEGORY_MISSING_HASH not in _categories(audit_dependency_change(_baseline(), current))
 
 
-# --- lockfile missing / malformed / transitive ------------------------------
-
-
 def test_new_package_with_deleted_current_lockfile_fails() -> None:
-    """When a new package is declared but uv.lock is absent, lock check fails."""
     baseline = _baseline()
     current = _current(
         '[project]\nname = "demo"\ndependencies = [\n'
@@ -307,7 +264,6 @@ def test_new_package_with_deleted_current_lockfile_fails() -> None:
 
 
 def test_new_package_with_malformed_current_lockfile_fails() -> None:
-    """When a new package is declared but uv.lock is malformed, lock check fails."""
     baseline = _baseline()
     current = _current(
         '[project]\nname = "demo"\ndependencies = [\n'
@@ -326,7 +282,6 @@ def test_new_package_with_malformed_current_lockfile_fails() -> None:
 
 
 def test_new_package_with_valid_locked_entry_passes() -> None:
-    """When a new package has source, publisher, and valid lock entry, audit is clean."""
     baseline = _baseline()
     lock_with_pkg = (
         _BASE_LOCK
@@ -353,7 +308,6 @@ sdist = { url = "https://example.invalid/halfgated.tar.gz", hash = "sha256:ccc" 
 
 
 def test_transitive_dependency_in_lockfile_requires_hash_not_publisher() -> None:
-    """Transitive packages in uv.lock require artifact hashes, not direct publisher evidence."""
     baseline = _baseline()
     lock_with_transitive = (
         _BASE_LOCK
@@ -372,11 +326,7 @@ wheels = [
     assert findings == []
 
 
-# --- CLI contract -----------------------------------------------------------
-
-
 def test_main_returns_one_on_findings(tmp_path: Path) -> None:
-    """A hallucinated package fails the CLI."""
     baseline_root = tmp_path / "baseline"
     current_root = tmp_path / "current"
     baseline_root.mkdir()
@@ -396,7 +346,6 @@ def test_main_returns_one_on_findings(tmp_path: Path) -> None:
 
 
 def test_main_returns_zero_when_clean(tmp_path: Path) -> None:
-    """An unchanged tree passes the CLI."""
     root = tmp_path / "tree"
     root.mkdir()
     (root / "pyproject.toml").write_text(_BASE_PYPROJECT, encoding="utf-8")
@@ -406,7 +355,6 @@ def test_main_returns_zero_when_clean(tmp_path: Path) -> None:
 
 
 def test_main_returns_two_when_a_root_is_missing(tmp_path: Path) -> None:
-    """A missing root is an error, not a silent pass."""
     root = tmp_path / "tree"
     root.mkdir()
 

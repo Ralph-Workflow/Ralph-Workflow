@@ -1,4 +1,3 @@
-"""Rebase-specific helpers for git operations."""
 
 from __future__ import annotations
 
@@ -47,17 +46,6 @@ from .rebase_state_machine import (
     RebaseStateMachine,
     RecoveryAction,
 )
-
-# NOTE: ``rebase_in_progress`` is imported from ``.rebase_continuation``
-# (above). It is intentionally NOT re-exported from ``.rebase`` because
-# ``.rebase`` ALSO defines a private ``rebase_in_progress`` (used by
-# ``abort_rebase``/``continue_rebase``), and importing the same name
-# from both modules would produce a ruff F811 redefinition that fails
-# ``make verify``. The auto-integrate consumer imports
-# ``rebase_in_progress`` directly from ``ralph.git.rebase.rebase`` (the
-# repo-root-explicit module) when it needs the local-resolving variant
-# and from ``ralph.git.rebase.rebase_continuation`` for the
-# auto-detecting variant.
 
 __all__ = [
     "ConflictRemainingError",

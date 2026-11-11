@@ -1,11 +1,3 @@
-"""Dependency-injected interrupt orchestration helpers.
-
-This module centralizes what should happen when Ralph receives a user interrupt:
-record it, stop optional connectivity waits, try a graceful shutdown first, and
-escalate to a forced kill plus hard exit on a second interrupt. Keeping these
-actions behind an injectable controller makes the behavior testable without
-real signals.
-"""
 
 from __future__ import annotations
 
@@ -32,10 +24,10 @@ if TYPE_CHECKING:
 
 _DEFAULT_SIGNAL_GETTER = cast(
     "SignalGetter", signal.getsignal
-)  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+)
 _DEFAULT_SIGNAL_SETTER = cast(
     "SignalSetter", signal.signal
-)  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+)
 
 INTERRUPT_EXIT_CODE = 130
 _INTERRUPT_EXIT_CODE_REQUIRED: int = 130
@@ -47,7 +39,6 @@ if INTERRUPT_EXIT_CODE != _INTERRUPT_EXIT_CODE_REQUIRED:
 
 @dataclass(frozen=True)
 class InterruptController:
-    """Coordinate graceful and forced interrupt handling through injected seams."""
 
     shutdown_all: Callable[[float], None]
     record_interrupt: Callable[[], None] = request_user_interrupt
@@ -55,14 +46,6 @@ class InterruptController:
     kill_process_group: Callable[[int, int], None] | None = None
     hard_exit: Callable[[int], None] | None = None
     restore_terminal: Callable[[], None] | None = None
-    # Optional label-targeted shutdown. When set, ``begin_interrupt`` with
-    # a non-empty ``kill_label`` calls this closure INSTEAD of the
-    # generic ``shutdown_all``. The closure is built by
-    # ``controller_from_process_manager`` to wrap
-    # ``manager.shutdown_all_for_label(label_prefix, grace_period_s=...)``
-    # so the FIRST SIGINT can target the agent's process group
-    # directly instead of the generic tracked-process shutdown. The
-    # label is the agent's process label (e.g. ``"invoke:claude"``).
     shutdown_all_for_label: Callable[[str, float], None] | None = None
 
     def begin_interrupt(
@@ -71,19 +54,6 @@ class InterruptController:
         grace_period_s: float,
         kill_label: str = "",
     ) -> None:
-        """Record the interrupt and attempt graceful tracked-process shutdown.
-
-        When ``kill_label`` is non-empty AND ``shutdown_all_for_label`` is
-        set, the controller calls the label-targeted closure INSTEAD of
-        the generic ``shutdown_all``. This lets the FIRST SIGINT route
-        through a path that targets a specific agent process group
-        rather than the generic tracked-process shutdown.
-
-        The empty-label fallback preserves the existing behavior for
-        callers that don't pass a label: ``self.shutdown_all(grace_period_s)``
-        is called exactly as before. This is the backward-compatible
-        path; the new kill_label kwarg is optional and defaults to "".
-        """
         self.record_interrupt()
         if self.stop_connectivity is not None:
             with suppress(Exception):
@@ -99,21 +69,9 @@ class InterruptController:
         bridge_pgids: Iterable[int] = (),
         **kwargs: object,
     ) -> None:
-        """Escalate to immediate tracked-process termination.
-
-        The ``bridge_pgids`` parameter is the new canonical name; it
-        is forwarded to ``kill_process_group`` as PGIDs. The legacy
-        ``bridge_pids`` keyword is accepted via ``**kwargs`` for
-        backward compatibility and emits a single loguru warning
-        when used. The per-pgid kill loop has been dropped: the
-        real :class:`ProcessManager`'s ``shutdown_all(0)`` already
-        escalates to SIGKILL every active record, so the
-        per-pgid loop was redundant. Callers MUST pass
-        ``bridge_pgids`` in new code.
-        """
         bridge_pids_legacy = cast(
             "Iterable[int]", kwargs.pop("bridge_pids", ())
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         if bridge_pids_legacy:
             logger.warning("bridge_pids is deprecated; pass bridge_pgids instead")
         del bridge_pgids, bridge_pids_legacy
@@ -129,16 +87,9 @@ class InterruptController:
         bridge_pgids: Iterable[int] = (),
         **kwargs: object,
     ) -> None:
-        """Force-kill tracked work and exit with the canonical interrupt code.
-
-        The ``bridge_pgids`` parameter is the new canonical name;
-        the legacy ``bridge_pids`` keyword is accepted via
-        ``**kwargs`` for backward compatibility and emits a single
-        loguru warning when used.
-        """
         bridge_pids_legacy = cast(
             "Iterable[int]", kwargs.pop("bridge_pids", ())
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         if bridge_pids_legacy:
             logger.warning("bridge_pids is deprecated; pass bridge_pgids instead")
         pgids: Iterable[int] = list(bridge_pgids) if bridge_pgids else list(bridge_pids_legacy)
@@ -156,16 +107,6 @@ def install_force_kill_handler(
     signal_setter: SignalSetter = _DEFAULT_SIGNAL_SETTER,
     signum: int = signal.SIGINT,
 ) -> Callable[[], None]:
-    """Install a temporary signal handler that escalates to forced termination.
-
-    The optional ``signum`` kwarg defaults to ``signal.SIGINT`` so the
-    existing call sites keep their prior behavior. Passing
-    ``signal.SIGTERM`` installs a parallel handler so a SIGTERM
-    delivered to the engine triggers the same on_force_interrupt
-    closure (the run-loop finally still runs normal cleanup, then a
-    repeated SIGTERM escalates to ``force_exit`` like the second
-    SIGINT).
-    """
     previous = signal_getter(signum)
 
     def _handler(received_signum: int, frame: FrameType | None) -> None:
@@ -188,13 +129,6 @@ def controller_from_process_manager(
     kill_process_group: Callable[[int, int], None] | None = None,
     hard_exit: Callable[[int], None] | None = None,
 ) -> InterruptController:
-    """Build an :class:`InterruptController` from a ProcessManager instance.
-
-    Wires both ``shutdown_all`` and ``shutdown_all_for_label`` closures
-    so ``begin_interrupt(kill_label=...)`` can target a specific agent
-    process group instead of the generic tracked-process shutdown.
-    The label is the agent's process label (e.g. ``"invoke:claude"``).
-    """
     manager = process_manager or get_process_manager()
 
     def _shutdown_all(grace_period_s: float) -> None:

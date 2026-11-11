@@ -1,4 +1,3 @@
-"""PTY process handle for the parent side of a pseudo-terminal."""
 
 from __future__ import annotations
 
@@ -15,7 +14,6 @@ _READ_CHUNK_SIZE = 4096
 
 @dataclass
 class PtyProcess:
-    """Tracked PTY child process owned by the parent master file descriptor."""
 
     pid: int
     master_fd: int
@@ -64,7 +62,7 @@ class PtyProcess:
                 return rc
             if time.monotonic() >= deadline:
                 raise TimeoutError from None
-            time.sleep(0.01)  # filesystem-poll-ok: bounded PTY process-exit wait
+            time.sleep(0.01)
 
     def terminate(self) -> None:
         with _SuppressMissingProcess():

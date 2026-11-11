@@ -1,32 +1,3 @@
-"""End-to-end regression tests for transcript shape after S-7.
-
-S-7 (wt-028-display P1): one entry per event in the live log.
-
-The pre-S-7 transcript duplicated streaming content up to four times
-(per-fragment lines + open preview + close summary + ai-summary), and
-the per-fragment lines carried internal vocabulary
-(``[output][activity]``, ``message_delta`` / ``status=requesting``
-lifecycle tokens, etc.). The defect shape looked like:
-
-  INFO CONT [output][activity] claude/sonnet tool: mcp__ralph__read_file ...
-  INFO META [activity] agent=claude/sonnet tool=mcp__ralph__read_file
-  INFO META [activity-line] claude/sonnet tool: mcp__ralph__read_file ...
-  INFO CONT [output][activity] claude/sonnet: message_delta
-  INFO CONT [output][activity] claude/sonnet: thinking
-
-Post-S-7, these patterns cannot surface because:
-
-* the streaming layer is silent during open / continue, so per-fragment
-  emissions are impossible;
-* the close path emits exactly one entry per block, so per-block
-  duplication is impossible;
-* bare lifecycle tokens still go through the lifecycle filter.
-
-This file pins the post-S-7 shape end-to-end against real
-``ActivityRouter`` input (no test stubs that would let a regression
-slip through the seams).
-"""
-
 from __future__ import annotations
 
 import json
@@ -78,7 +49,6 @@ def _assert_no_internal_vocabulary(out: str) -> None:
 
 
 def test_bare_lifecycle_tokens_produce_no_content_activity_lines(tmp_path: Path) -> None:
-    """Lifecycle tokens must produce zero output lines (still suppressed)."""
     pd, buf = _make_display(tmp_path)
 
     lifecycle_lines = [
@@ -100,7 +70,6 @@ def test_bare_lifecycle_tokens_produce_no_content_activity_lines(tmp_path: Path)
 
 
 def test_tool_use_emits_one_line_with_tool_name_and_path(tmp_path: Path) -> None:
-    """A tool_use event must produce one logical [call] entry with tool name and path=."""
     pd, buf = _make_display(tmp_path)
 
     tool_event = json.dumps(
@@ -126,10 +95,6 @@ def test_tool_use_emits_one_line_with_tool_name_and_path(tmp_path: Path) -> None
     )
     _assert_no_internal_vocabulary(out)
 
-    # One logical [call] entry. Long paths fold into physical continuation rows,
-    # each retaining the grep carrier ([call][main]) on the row that actually
-    # carries the path= payload — this is the fix from commit 5c69d13b4
-    # ("preserve tool event markers on wrapped paths").
     tool_starts = [line for line in out.splitlines() if "[call][main]" in line and "RUN" in line]
     assert len(tool_starts) == 1, f"Expected exactly 1 [call] start, got {len(tool_starts)}:\n{out}"
     assert any(
@@ -138,8 +103,6 @@ def test_tool_use_emits_one_line_with_tool_name_and_path(tmp_path: Path) -> None
         f"Expected at least one [call][main] row to carry the path= payload "
         f"(grep carrier must survive wrapping):\n{out}"
     )
-    # Continuation rows with the [call][main] marker (if any) must hang, not
-    # stand on their own — preserves left-edge alignment of the body column.
     continuation_lines = [
         line for line in out.splitlines() if "[call][main]" in line and "RUN" not in line
     ]
@@ -149,7 +112,6 @@ def test_tool_use_emits_one_line_with_tool_name_and_path(tmp_path: Path) -> None
 
 
 def test_lifecycle_and_tool_use_together_produce_clean_output(tmp_path: Path) -> None:
-    """Interleaved lifecycle tokens and tool_use: only the tool line surfaces."""
     pd, buf = _make_display(tmp_path)
 
     tool_event = json.dumps(
@@ -184,12 +146,6 @@ def test_lifecycle_and_tool_use_together_produce_clean_output(tmp_path: Path) ->
 
 
 def test_thinking_block_emits_exactly_one_close_entry(tmp_path: Path) -> None:
-    """A real thinking stream through the router closes with one coalesced entry.
-
-    S-7 / AC-04: a multi-fragment thinking block produces exactly one
-    emitted line on close. This is the end-to-end version of the unit
-    test, exercising the same router the live display uses.
-    """
     pd, buf = _make_display(tmp_path)
 
     real_delta = (
@@ -223,14 +179,12 @@ def test_thinking_block_emits_exactly_one_close_entry(tmp_path: Path) -> None:
     pd.stop()
     out = buf.getvalue()
 
-    # The joined passage appears exactly once.
     joined = "first thought. second thought. third thought."
     assert joined in out, f"Joined passage missing from output:\n{out}"
     assert out.count(joined) == 1, (
         f"Joined passage must appear exactly once, got {out.count(joined)}:\n{out}"
     )
 
-    # One logical close entry retains its carrier on the header row.
     thinking_lines = [line for line in out.splitlines() if "[reasoning][main]" in line]
     assert len(thinking_lines) == 1, (
         f"Expected exactly 1 thinking entry, got {len(thinking_lines)}:\n{out}"
@@ -239,11 +193,6 @@ def test_thinking_block_emits_exactly_one_close_entry(tmp_path: Path) -> None:
 
 
 def test_whitespace_only_thinking_delta_produces_no_thinking_output(tmp_path: Path) -> None:
-    """Whitespace-only thinking delta must not produce [reasoning] output.
-
-    A whitespace-only block has zero accumulated fragments after close
-    and the close path returns early, so no [reasoning] entry surfaces.
-    """
     pd, buf = _make_display(tmp_path)
 
     ws_delta = (
@@ -268,7 +217,6 @@ def test_whitespace_only_thinking_delta_produces_no_thinking_output(tmp_path: Pa
 
 
 def test_non_empty_thinking_close_entry_carries_joined_passage(tmp_path: Path) -> None:
-    """A non-empty thinking stream closes with one entry carrying the joined passage."""
     pd, buf = _make_display(tmp_path)
 
     real_delta = (
@@ -291,7 +239,6 @@ def test_non_empty_thinking_close_entry_carries_joined_passage(tmp_path: Path) -
 
     assert "deep reasoning here" in out, f"thinking content not found in:\n{out}"
 
-    # One logical close entry retains its carrier on the header row.
     thinking_lines = [line for line in out.splitlines() if "[reasoning][main]" in line]
     assert len(thinking_lines) == 1, (
         f"Expected exactly 1 thinking entry, got {len(thinking_lines)}:\n{out}"

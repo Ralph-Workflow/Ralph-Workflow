@@ -1,5 +1,3 @@
-"""Tests for freshness-aware LivenessProbe with ChildLivenessRegistry."""
-
 from __future__ import annotations
 
 from ralph.process.child_liveness import ChildActivitySnapshot, ChildLivenessRegistry
@@ -31,7 +29,6 @@ def test_default_probe_child_snapshot_fresh_label_when_registered_without_heartb
     reg.register_child("c1", "scope/a")
     probe = DefaultLivenessProbe(registry=reg)
     snap = probe.child_snapshot("scope/a")
-    # Registered at t=0, queried at t=0: label age=0 <= stale_label_ttl=10
     assert snap.has_fresh_label is True
     assert snap.has_fresh_progress is False
 
@@ -94,7 +91,6 @@ def test_fake_probe_any_agent_active_with_labels() -> None:
 
 
 def test_fake_probe_child_snapshot_empty_prefix_with_active_labels_returns_no_process() -> None:
-    """Empty scope_prefix must not match active_labels — mirrors DefaultLivenessProbe."""
     probe = FakeLivenessProbe(active_labels=frozenset({"agent:other-session:worker"}))
     snap = probe.child_snapshot("")
     assert snap.has_process is False
@@ -102,7 +98,6 @@ def test_fake_probe_child_snapshot_empty_prefix_with_active_labels_returns_no_pr
 
 
 def test_fake_probe_child_snapshot_empty_prefix_with_active_flag_returns_process() -> None:
-    """Empty scope_prefix with active=True (no label set) should still return has_process."""
     probe = FakeLivenessProbe(active=True)
     snap = probe.child_snapshot("")
     assert snap.has_process is True

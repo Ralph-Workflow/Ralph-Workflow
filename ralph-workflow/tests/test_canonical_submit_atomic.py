@@ -1,5 +1,3 @@
-"""Atomic persistence regressions for canonical artifact submission."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -16,8 +14,6 @@ if TYPE_CHECKING:
 
 
 class _AtomicityBackend(MemoryBackend):
-    """Memory backend that exposes canonical writes and replace faults."""
-
     def __init__(self, *, fail_replace: bool = False, corrupt_replace: bool = False) -> None:
         super().__init__()
         self.fail_replace = fail_replace
@@ -51,7 +47,6 @@ def _submit(tmp_path: Path, backend: MemoryBackend, markdown: str) -> None:
 def test_canonical_submit_regression_writes_artifact_and_handoff_via_replace(
     tmp_path: Path,
 ) -> None:
-    """S-1: destination write faults prove both canonical files use replacement."""
     backend = _AtomicityBackend()
 
     _submit(tmp_path, backend, DEVELOPMENT_RESULT)
@@ -66,7 +61,6 @@ def test_canonical_submit_regression_writes_artifact_and_handoff_via_replace(
 def test_canonical_submit_regression_interrupted_replace_keeps_previous_complete_files(
     tmp_path: Path,
 ) -> None:
-    """S-1: a kill before replace leaves existing artifact and handoff intact."""
     backend = _AtomicityBackend()
     _submit(tmp_path, backend, DEVELOPMENT_RESULT)
     backend.fail_replace = True
@@ -85,7 +79,6 @@ def test_canonical_submit_regression_interrupted_replace_keeps_previous_complete
 def test_canonical_submit_regression_corrupt_write_rolls_back_without_receipt(
     tmp_path: Path,
 ) -> None:
-    """S-1: corrupted replacement raises and restores both prior complete documents."""
     backend = _AtomicityBackend()
     _submit(tmp_path, backend, DEVELOPMENT_RESULT)
     backend.corrupt_replace = True

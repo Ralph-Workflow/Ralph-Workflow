@@ -1,4 +1,3 @@
-"""Capability status enum."""
 
 from __future__ import annotations
 
@@ -6,7 +5,6 @@ from enum import StrEnum
 
 
 class CapabilityStatus(StrEnum):
-    """Six-state capability lifecycle."""
 
     NOT_INSTALLED = "not_installed"
     INSTALLED_HEALTHY = "installed_healthy"

@@ -1,4 +1,3 @@
-"""Concrete web-search backend implementations."""
 
 from __future__ import annotations
 

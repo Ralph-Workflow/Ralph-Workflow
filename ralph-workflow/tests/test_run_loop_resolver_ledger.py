@@ -1,5 +1,3 @@
-"""The run loop hands its agent cooldown ledger to every integration resolver path."""
-
 from __future__ import annotations
 
 import dataclasses

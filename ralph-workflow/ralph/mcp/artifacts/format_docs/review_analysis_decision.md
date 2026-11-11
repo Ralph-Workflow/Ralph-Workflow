@@ -72,6 +72,6 @@ status: request_changes
 Hard errors: missing or multiple Summary items; `request_changes`/`failed`
 without non-empty What Came Up Short and How To Fix; wrong `type`; duplicate
 item IDs; any grammar violation; or a `status` outside `completed`,
-`request_changes`, and `failed`. A `completed` decision that includes either
+`request_changes`, and `failed`. A `completed` verdict that includes either
 remediation section is a hard error. Remediation sections with missing, extra,
 or mismatched IDs are also hard errors.

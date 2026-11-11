@@ -1,25 +1,3 @@
-"""Boundary execution seam: owner cleanup-ladder rung consumption.
-
-:func:`ralph.pipeline.run_loop._post_recovery_verdict` runs the
-boundary's recovery pass. Before any mutation it consumes the typed
-owner verdict exactly as the planning-sync gate does: when the verdict
-selects a cleanup-ladder rung, the rung dispatches through the SAME
-shared seam helpers (:func:`run_loop._dispatch_owner_ladder_rung` /
-:func:`run_loop._execute_owner_ladder_rung`) exactly once per decision,
-with the decision-time ``expected_target_sha``, and the seam re-observes
-after each dispatch. A failed cleanup advances to the next real rung —
-never a repeated identical action — and when the ladder heals the tree
-the conflict resolver is never dispatched. A verdict whose durable
-record facts failed closed (``record_fact`` set) carries the
-preserve-first escalation rung and dispatches it like any ladder
-verdict — preservation precedes any reset, never a person.
-
-Everything is stubbed at the module boundary: the owner seam serves
-canned verdicts, the ladder executor and the conflict resolver are
-recorders, the resolution gate is a controllable flag. No real Git, no
-subprocess, no sleeps; tmp_path only satisfies the ``.git`` probe.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -80,7 +58,6 @@ def _rung_verdict(
     action: IntegrationAction = IntegrationAction.CONTINUE_GIT_OPERATION,
     record_fact: RecordFactOutcome | None = None,
 ) -> PlanningSyncVerdict:
-    """Build the typed owner verdict the boundary seam consumes."""
     return PlanningSyncVerdict(
         action=action,
         record_fact=record_fact,
@@ -110,15 +87,11 @@ def _rung_verdict(
 
 
 class _GateVerdict:
-    """Minimal stand-in for the resolution gate's verdict."""
-
     def __init__(self, *, dispatch_allowed: bool) -> None:
         self.dispatch_allowed = dispatch_allowed
 
 
 class _Gate:
-    """Controllable resolution gate standing in for the live re-inspection."""
-
     def __init__(self, *, dispatch_allowed: bool) -> None:
         self.dispatch_allowed = dispatch_allowed
         self.inspections = 0
@@ -130,7 +103,6 @@ class _Gate:
 
 @pytest.fixture
 def boundary_env(monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    """Install the recorder stubs every boundary test uses; returns the event log."""
     events: list[str] = []
     monkeypatch.setattr(run_loop, "announce_conflict_resolution_entry", lambda *_a, **_k: None)
     monkeypatch.setattr(run_loop, "read_record", lambda _root: None)
@@ -152,11 +124,6 @@ def _drive_boundary(
     *,
     heal_after: int | None,
 ) -> tuple[object, _Gate]:
-    """Drive one _post_recovery_verdict call with canned owner verdicts.
-
-    ``heal_after`` dispatches flip the re-inspection gate to
-    ``dispatch_allowed`` (``None`` never heals: the ladder fails).
-    """
     gate = _Gate(dispatch_allowed=False)
 
     def _dispatch(_ctx: object, _root: object, _verdict: object, _target: object) -> None:
@@ -182,7 +149,6 @@ def test_boundary_ladder_heals_without_resolver_dispatch(
     tmp_path: Path,
     boundary_env: list[str],
 ) -> None:
-    """One selected rung: dispatched once, re-observed, resolver never runs."""
     result, gate = _drive_boundary(
         monkeypatch,
         tmp_path,
@@ -191,7 +157,7 @@ def test_boundary_ladder_heals_without_resolver_dispatch(
         heal_after=1,
     )
 
-    assert result is None  # dispatch allowed: the caller proceeds
+    assert result is None
     assert boundary_env == ["dispatch"]
     assert gate.inspections == 1
 
@@ -201,7 +167,6 @@ def test_boundary_failed_cleanup_advances_to_next_rung_without_repeating(
     tmp_path: Path,
     boundary_env: list[str],
 ) -> None:
-    """Failed rung 3 → rung 4 executes; the identical rung is never re-run."""
     result, gate = _drive_boundary(
         monkeypatch,
         tmp_path,
@@ -212,9 +177,6 @@ def test_boundary_failed_cleanup_advances_to_next_rung_without_repeating(
                 CleanupLadderRung.FRESH_WORKTREE,
                 action=IntegrationAction.REINTEGRATE_AGAINST_TARGET,
             ),
-            # The observation did not change: the saturated answer must
-            # not re-dispatch rung 4; the ladder yields to the recovery
-            # pass, which runs exactly once.
             _rung_verdict(
                 CleanupLadderRung.FRESH_WORKTREE,
                 action=IntegrationAction.REINTEGRATE_AGAINST_TARGET,
@@ -223,9 +185,9 @@ def test_boundary_failed_cleanup_advances_to_next_rung_without_repeating(
         heal_after=None,
     )
 
-    assert result is not None  # still blocking: the verdict is returned
+    assert result is not None
     assert boundary_env == ["dispatch", "dispatch", "resolver"]
-    assert gate.inspections == 3  # one re-inspection per dispatch, one post-recovery
+    assert gate.inspections == 3
 
 
 def test_boundary_record_fact_verdict_dispatches_the_preserve_first_rung(
@@ -233,15 +195,6 @@ def test_boundary_record_fact_verdict_dispatches_the_preserve_first_rung(
     tmp_path: Path,
     boundary_env: list[str],
 ) -> None:
-    """A fail-closed record-fact verdict carries the escalation rung and dispatches it.
-
-    The verdict's ``record_fact`` names why the durable record could not
-    prove a next step; its ladder rung (the preserve-first rung) is
-    dispatched exactly once like any ladder verdict — work is preserved
-    to backup refs before any destructive step, never handed to a
-    person. A repeat under the unchanged observation breaks the climb
-    and yields to the recovery pass.
-    """
     result, gate = _drive_boundary(
         monkeypatch,
         tmp_path,
@@ -269,7 +222,6 @@ def test_shared_ladder_helper_is_used_by_both_seams(
     tmp_path: Path,
     boundary_env: list[str],
 ) -> None:
-    """Planning gate and boundary seam both route through dispatch_owner_ladder_rung."""
     del boundary_env
     helper_calls: list[str] = []
     real_helper = run_loop.dispatch_owner_ladder_rung
@@ -280,7 +232,6 @@ def test_shared_ladder_helper_is_used_by_both_seams(
 
     monkeypatch.setattr(run_loop, "dispatch_owner_ladder_rung", _recording_helper)
 
-    # Boundary seam drive: a rung verdict that heals on re-observation.
     _result, boundary_gate = _drive_boundary(
         monkeypatch,
         tmp_path,
@@ -291,8 +242,6 @@ def test_shared_ladder_helper_is_used_by_both_seams(
     assert boundary_gate.inspections == 1
     assert helper_calls == ["call"]
 
-    # Planning-sync gate drive: one dispatch, then the identical rung
-    # re-selected under the unchanged observation breaks the loop.
     monkeypatch.setattr(
         "ralph.git.merge.observe_branch_sha",
         lambda _root, _name: ("f" * 40, True),

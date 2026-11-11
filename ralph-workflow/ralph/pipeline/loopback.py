@@ -1,4 +1,3 @@
-"""Shared loopback handlers for policy-driven phases."""
 
 from __future__ import annotations
 
@@ -37,7 +36,6 @@ def handle_capped_phase_loopback_policy_driven(
         _EffectResult,
     ],
 ) -> _EffectResult:
-    """Handle capped loopback using policy-declared loop_policy."""
     loop_policy = phase_def.loop_policy
     if not isinstance(loop_policy, PhaseLoopPolicy):
         return resolve_or_terminal(state, "loopback", policy, "phase loopback")

@@ -1,18 +1,3 @@
-"""Tests for :mod:`ralph.testing.audit_instruction_integrity`.
-
-The gate answers one question: does the tree keep the data/instruction
-boundary intact? Two rules are machine-checked offline:
-
-* every third-party MCP server declaration carries a pinned
-  version/revision reference and a review trigger;
-* no instruction file embeds an imperative that promotes tool output, file
-  content or an MCP response to instruction status.
-
-Every case here is synthetic: the fixture tree is written under ``tmp_path``
-and the gate is a pure function over the tree's bytes. No network, no
-subprocess, no version control.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -87,7 +72,6 @@ _PINNED_JSON = """\
 
 
 def _write(root: Path, relative: str, text: str) -> Path:
-    """Write *text* to *relative* under *root* and return the path."""
     path = root / relative
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
@@ -95,15 +79,10 @@ def _write(root: Path, relative: str, text: str) -> Path:
 
 
 def _categories(root: Path) -> set[str]:
-    """Return the finding categories reported for the tree at *root*."""
     return {finding.category for finding in audit_instruction_integrity(root)}
 
 
-# --- the MCP server pin rule ------------------------------------------------
-
-
 def test_unpinned_third_party_server_reports_a_missing_pin(tmp_path: Path) -> None:
-    """A third-party server without a version reference is a finding."""
     _write(tmp_path, "ralph/policy/defaults/mcp.toml", _UNPINNED_TOML)
 
     findings = audit_instruction_integrity(tmp_path)
@@ -118,21 +97,18 @@ def test_unpinned_third_party_server_reports_a_missing_pin(tmp_path: Path) -> No
 
 
 def test_exact_version_in_args_satisfies_the_pin(tmp_path: Path) -> None:
-    """An exact version in ``args`` is the pin the runtime honours."""
     _write(tmp_path, "ralph/policy/defaults/mcp.toml", _PINNED_TOML)
 
     assert CATEGORY_MISSING_PIN not in _categories(tmp_path)
 
 
 def test_explicit_version_key_satisfies_the_pin(tmp_path: Path) -> None:
-    """An explicit ``version`` key is the declaration-level pin record."""
     _write(tmp_path, "ralph/policy/defaults/mcp.toml", _VERSION_KEY_TOML)
 
     assert CATEGORY_MISSING_PIN not in _categories(tmp_path)
 
 
 def test_pip_style_exact_version_satisfies_the_pin(tmp_path: Path) -> None:
-    """A pip-style ``pkg==1.2.3`` argument is an exact version reference."""
     _write(
         tmp_path,
         "ralph/policy/defaults/mcp.toml",
@@ -144,7 +120,6 @@ def test_pip_style_exact_version_satisfies_the_pin(tmp_path: Path) -> None:
 
 
 def test_missing_review_trigger_is_reported(tmp_path: Path) -> None:
-    """A pinned server still needs a recorded re-review condition."""
     _write(
         tmp_path,
         "ralph/policy/defaults/mcp.toml",
@@ -161,35 +136,30 @@ def test_missing_review_trigger_is_reported(tmp_path: Path) -> None:
 
 
 def test_review_trigger_comment_satisfies_the_review_rule(tmp_path: Path) -> None:
-    """A comment that names the re-review condition is a review trigger."""
     _write(tmp_path, "ralph/policy/defaults/mcp.toml", _PINNED_TOML)
 
     assert CATEGORY_MISSING_REVIEW_TRIGGER not in _categories(tmp_path)
 
 
 def test_review_trigger_key_satisfies_the_review_rule(tmp_path: Path) -> None:
-    """An explicit ``review`` key is a review trigger."""
     _write(tmp_path, "ralph/policy/defaults/mcp.toml", _REVIEW_KEY_TOML)
 
     assert CATEGORY_MISSING_REVIEW_TRIGGER not in _categories(tmp_path)
 
 
 def test_ralph_own_server_is_exempt_from_the_pin_rule(tmp_path: Path) -> None:
-    """Ralph's own in-process server is not a third-party dependency."""
     _write(tmp_path, "ralph/policy/defaults/mcp.toml", _OWN_SERVER_TOML)
 
     assert audit_instruction_integrity(tmp_path) == []
 
 
 def test_commented_example_block_is_not_a_declaration(tmp_path: Path) -> None:
-    """A commented-out example is an inert template, not a live declaration."""
     _write(tmp_path, "ralph/policy/defaults/mcp.toml", _COMMENTED_TOML)
 
     assert audit_instruction_integrity(tmp_path) == []
 
 
 def test_json_mcp_server_declaration_is_audited(tmp_path: Path) -> None:
-    """A ``*.mcp.json`` declaration is audited like a TOML declaration."""
     _write(tmp_path, "config/server.mcp.json", _UNPINNED_JSON)
 
     categories = _categories(tmp_path)
@@ -199,7 +169,6 @@ def test_json_mcp_server_declaration_is_audited(tmp_path: Path) -> None:
 
 
 def test_pinned_json_mcp_server_declaration_is_clean(tmp_path: Path) -> None:
-    """A pinned JSON declaration with a review trigger reports nothing."""
     _write(tmp_path, "config/server.mcp.json", _PINNED_JSON)
     _write(
         tmp_path,
@@ -211,11 +180,7 @@ def test_pinned_json_mcp_server_declaration_is_clean(tmp_path: Path) -> None:
     assert audit_instruction_integrity(tmp_path) == []
 
 
-# --- the instruction-promotion rule -----------------------------------------
-
-
 def test_output_treated_as_instructions_is_reported(tmp_path: Path) -> None:
-    """An imperative that promotes tool output to instructions is a finding."""
     _write(
         tmp_path,
         "ralph/prompts/templates/plan.jinja",
@@ -233,7 +198,6 @@ def test_output_treated_as_instructions_is_reported(tmp_path: Path) -> None:
 
 
 def test_negated_promotion_statement_is_not_reported(tmp_path: Path) -> None:
-    """A statement of the RULE is not a violation of it."""
     _write(
         tmp_path,
         "ralph/prompts/templates/plan.jinja",
@@ -244,7 +208,6 @@ def test_negated_promotion_statement_is_not_reported(tmp_path: Path) -> None:
 
 
 def test_data_boundary_statement_is_not_reported(tmp_path: Path) -> None:
-    """The canonical data-boundary sentence is not a promotion."""
     _write(
         tmp_path,
         "ralph/skills/content/boundary.md",
@@ -255,7 +218,6 @@ def test_data_boundary_statement_is_not_reported(tmp_path: Path) -> None:
 
 
 def test_instructions_followed_from_output_are_reported(tmp_path: Path) -> None:
-    """Following instructions found in tool output is a promotion."""
     _write(
         tmp_path,
         "ralph/skills/content/follow.md",
@@ -266,7 +228,6 @@ def test_instructions_followed_from_output_are_reported(tmp_path: Path) -> None:
 
 
 def test_commands_executed_from_output_are_reported(tmp_path: Path) -> None:
-    """Executing commands found in an MCP response is a promotion."""
     _write(
         tmp_path,
         "ralph/skills/content/commands.md",
@@ -277,7 +238,6 @@ def test_commands_executed_from_output_are_reported(tmp_path: Path) -> None:
 
 
 def test_output_issuing_directives_is_reported(tmp_path: Path) -> None:
-    """An output that issues directives to the agent is a promotion."""
     _write(
         tmp_path,
         "ralph/skills/content/directives.md",
@@ -288,7 +248,6 @@ def test_output_issuing_directives_is_reported(tmp_path: Path) -> None:
 
 
 def test_managed_agents_block_is_audited(tmp_path: Path) -> None:
-    """The managed AGENTS.md block is instruction content and is audited."""
     _write(
         tmp_path,
         "AGENTS.md",
@@ -306,7 +265,6 @@ def test_managed_agents_block_is_audited(tmp_path: Path) -> None:
 
 
 def test_agents_md_outside_the_managed_block_is_not_audited(tmp_path: Path) -> None:
-    """Only the managed block is the shipped instruction surface."""
     _write(
         tmp_path,
         "AGENTS.md",
@@ -320,7 +278,6 @@ def test_agents_md_outside_the_managed_block_is_not_audited(tmp_path: Path) -> N
 
 
 def test_clean_tree_reports_no_findings(tmp_path: Path) -> None:
-    """A tree that honours the boundary reports nothing."""
     _write(tmp_path, "ralph/policy/defaults/mcp.toml", _PINNED_TOML)
     _write(
         tmp_path,
@@ -338,47 +295,32 @@ def test_clean_tree_reports_no_findings(tmp_path: Path) -> None:
     assert audit_instruction_integrity(tmp_path) == []
 
 
-# --- the CLI contract -------------------------------------------------------
-
-
 def test_main_returns_zero_on_a_clean_tree(tmp_path: Path) -> None:
-    """Exit code 0 means no findings."""
     assert main([str(tmp_path)]) == 0
 
 
 def test_main_returns_one_when_the_tree_has_findings(tmp_path: Path) -> None:
-    """Exit code 1 means findings were reported."""
     _write(tmp_path, "ralph/policy/defaults/mcp.toml", _UNPINNED_TOML)
 
     assert main([str(tmp_path)]) == 1
 
 
 def test_main_returns_two_when_the_root_is_missing(tmp_path: Path) -> None:
-    """Exit code 2 means the root was not found."""
     assert main([str(tmp_path / "absent")]) == 2
 
 
 def test_main_rejects_more_than_one_root(tmp_path: Path) -> None:
-    """More than one positional argument is a usage error."""
     assert main([str(tmp_path), str(tmp_path)]) == 2
 
 
-# --- the advisory rules -----------------------------------------------------
-
-
 def test_advisory_rules_are_declared_and_not_enforced(tmp_path: Path) -> None:
-    """The two unenforceable rules are declared, and they enforce nothing."""
     rules = {rule for rule, _reason in advisory_rules()}
 
     assert rules == {RULE_REVIEWED_COMMIT_ONLY, RULE_TOOL_DESCRIPTION_REREVIEW}
     assert audit_instruction_integrity(tmp_path) == []
 
 
-# --- MCP server pin and review trigger regressions (TOML & JSON) ---
-
-
 def test_toml_floating_declaration_reports_missing_pin(tmp_path: Path) -> None:
-    """A floating argument list without an exact version pin is rejected."""
     _write(
         tmp_path,
         "mcp.toml",
@@ -392,7 +334,6 @@ def test_toml_floating_declaration_reports_missing_pin(tmp_path: Path) -> None:
 
 
 def test_toml_empty_fields_report_missing_pin_and_review_trigger(tmp_path: Path) -> None:
-    """Empty string pin and review fields are rejected as missing."""
     _write(
         tmp_path,
         "mcp.toml",
@@ -404,7 +345,6 @@ def test_toml_empty_fields_report_missing_pin_and_review_trigger(tmp_path: Path)
 
 
 def test_toml_metadata_only_pin_rejected_for_command_server(tmp_path: Path) -> None:
-    """A declaration-level version key on a command runner does not satisfy the pin."""
     _write(
         tmp_path,
         "mcp.toml",
@@ -418,7 +358,6 @@ def test_toml_metadata_only_pin_rejected_for_command_server(tmp_path: Path) -> N
 
 
 def test_toml_subtable_env_metadata_not_collected_as_server_keys(tmp_path: Path) -> None:
-    """Subtable keys such as [mcp_servers.x.env] do not bleed into the server."""
     _write(
         tmp_path,
         "mcp.toml",
@@ -431,7 +370,6 @@ def test_toml_subtable_env_metadata_not_collected_as_server_keys(tmp_path: Path)
 
 
 def test_toml_unsupported_runtime_form_preserves_advisory_pin(tmp_path: Path) -> None:
-    """HTTP/remote declarations preserve advisory treatment via explicit version key."""
     _write(
         tmp_path,
         "mcp.toml",
@@ -442,7 +380,6 @@ def test_toml_unsupported_runtime_form_preserves_advisory_pin(tmp_path: Path) ->
 
 
 def test_json_floating_declaration_reports_missing_pin(tmp_path: Path) -> None:
-    """A floating JSON server declaration is rejected."""
     _write(
         tmp_path,
         "servers.mcp.json",
@@ -455,7 +392,6 @@ def test_json_floating_declaration_reports_missing_pin(tmp_path: Path) -> None:
 
 
 def test_json_empty_and_null_fields_report_missing_pin_and_review(tmp_path: Path) -> None:
-    """Empty string and null pin and review fields in JSON are rejected."""
     _write(
         tmp_path,
         "servers.mcp.json",
@@ -468,7 +404,6 @@ def test_json_empty_and_null_fields_report_missing_pin_and_review(tmp_path: Path
 
 
 def test_json_metadata_only_pin_rejected_for_command_server(tmp_path: Path) -> None:
-    """Metadata-only version key on a command runner in JSON is rejected."""
     _write(
         tmp_path,
         "servers.mcp.json",
@@ -482,7 +417,6 @@ def test_json_metadata_only_pin_rejected_for_command_server(tmp_path: Path) -> N
 
 
 def test_json_nested_env_metadata_not_collected_as_server_keys(tmp_path: Path) -> None:
-    """Nested env dictionary keys in JSON do not satisfy server pin or review."""
     _write(
         tmp_path,
         "servers.mcp.json",
@@ -495,7 +429,6 @@ def test_json_nested_env_metadata_not_collected_as_server_keys(tmp_path: Path) -
 
 
 def test_json_unsupported_runtime_form_preserves_advisory_pin(tmp_path: Path) -> None:
-    """HTTP/remote declarations in JSON preserve advisory treatment via version key."""
     _write(
         tmp_path,
         "servers.mcp.json",
@@ -505,9 +438,7 @@ def test_json_unsupported_runtime_form_preserves_advisory_pin(tmp_path: Path) ->
     assert audit_instruction_integrity(tmp_path) == []
 
 
-# RALPH-TEST-REASON: refactored private helper assertions to black-box audit_instruction_integrity checks
 def test_main_cli_fails_on_metadata_only_or_subtable_configurations(tmp_path: Path) -> None:
-    """CLI exits 1 when tree contains metadata-only command runner or subtable keys."""
     _write(
         tmp_path,
         "mcp.toml",
@@ -519,7 +450,6 @@ def test_main_cli_fails_on_metadata_only_or_subtable_configurations(tmp_path: Pa
 
 
 def test_audit_instruction_integrity_skips_probe_ws(tmp_path: Path) -> None:
-    """The audit skips non-canonical fixture directories like probe-ws and tmp."""
     _write(tmp_path, "probe-ws/mcp.json", _UNPINNED_JSON)
     _write(tmp_path, "tmp/mcp.json", _UNPINNED_JSON)
     assert audit_instruction_integrity(tmp_path) == []

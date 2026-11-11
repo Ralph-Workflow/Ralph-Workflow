@@ -1,5 +1,3 @@
-"""Markdown artifact contracts emitted by pipeline plumbing prompts."""
-
 from __future__ import annotations
 
 import json

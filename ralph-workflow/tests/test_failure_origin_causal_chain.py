@@ -82,7 +82,6 @@ def test_plain_agent_failure_stays_agent_owned() -> None:
 
 
 def test_direct_mcp_recovery_records_reset_for_following_watchdog() -> None:
-    """S-3: real reset producer reaches the next attempt's watchdog consumer."""
     calls = 0
     observed: list[IdleWatchdogKilledError] = []
 
@@ -127,7 +126,6 @@ def test_inactivity_error_retains_watchdog_runtime_event() -> None:
 
 
 def test_direct_mcp_recovery_regression_does_not_leak_runtime_events() -> None:
-    """S-3: a fresh recovery loop starts with no prior invocation event."""
     observed: list[object] = []
 
     def attempt(_session_id: str | None, _capture: object) -> str:
@@ -139,7 +137,6 @@ def test_direct_mcp_recovery_regression_does_not_leak_runtime_events() -> None:
 
 
 def test_oversized_spawn_payload_records_runtime_launch_event() -> None:
-    """S-3: validation-side E2BIG is a real runtime-launch producer."""
     from ralph.runtime_events import RuntimeEventRecorder, runtime_event_scope
 
     recorder = RuntimeEventRecorder()

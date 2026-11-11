@@ -1,10 +1,3 @@
-"""Registry that aggregates tools from multiple upstream MCP servers.
-
-``UpstreamRegistry`` is built from a list of configured ``UpstreamMcpServer`` entries;
-it contacts each server, collects its tool list, assigns stable alias names via
-``upstream_proxy_tool_name``, and exposes ``tool_definitions`` and ``call_tool`` for
-use by the MCP bridge. Alias collisions raise ``RegistryCollisionError`` immediately.
-"""
 
 from __future__ import annotations
 
@@ -39,17 +32,7 @@ if TYPE_CHECKING:
 _AnyUpstreamClient = HttpUpstreamClient | StdioUpstreamClient
 UpstreamClientFactory = Callable[[UpstreamMcpServer], _AnyUpstreamClient]
 
-#: Maximum number of probe workers the registry fans out to. Bounded so a
-#: pathological config (hundreds of upstream servers) cannot spawn an
-#: unbounded number of threads during first-start discovery. The per-call
-#: pool size is ``min(_MAX_PROBE_WORKERS, len(servers_list))`` so small
-#: server counts do not over-allocate threads. The bound is checked at
-#: import time via ``if``/``raise`` (not ``assert``) so it survives
-#: ``python -O``.
 _MAX_PROBE_WORKERS: int = 8
-#: Inclusive upper bound for the worker pool. The number is the same as
-#: Python's default ``concurrent.futures.ThreadPoolExecutor`` ceiling
-#: (``os.cpu_count() + 4`` capped at 32 on common systems).
 _MAX_PROBE_WORKERS_MAX: int = 32
 if not (1 <= _MAX_PROBE_WORKERS <= _MAX_PROBE_WORKERS_MAX):
     raise RuntimeError(
@@ -59,20 +42,7 @@ if not (1 <= _MAX_PROBE_WORKERS <= _MAX_PROBE_WORKERS_MAX):
 
 class _BudgetExhaustedError(
     Exception
-):  # name ends in ``Error`` per N818; private to the registry module
-    """Per-worker sentinel: the aggregate deadline was already gone when this
-    worker reached its budget check, so no probe was attempted.
-
-    Subclasses ``Exception`` (not ``BaseException``) so the collector's
-    ``try/except Exception`` defensive path treats it the same as a
-    real probe error, and so the union type ``BaseException | Sentinel``
-    in the worker's return type is well-formed. The collector
-    distinguishes this from a real probe failure via
-    ``isinstance(error, _BudgetExhaustedError)`` and routes it to
-    the budget-exhausted logging branch (``reason=budget_exhausted``,
-    the same reason the sequential code emitted for the pre-loop
-    skip).
-    """
+):
 
     __slots__ = ("server",)
 
@@ -88,7 +58,6 @@ def _log_probe_outcome(
     outcome: str,
     reason: str,
 ) -> None:
-    """Log a structured probe outcome line (no env-value or secret leakage)."""
     msg = (
         f"ralph-mcp upstream probe: server={server_name} "
         f"elapsed_ms={elapsed_ms:.1f} outcome={outcome} reason={reason}"
@@ -136,7 +105,6 @@ def _handle_completed_probe(
     logged_servers: set[str],
 ) -> None:
     logged_servers.add(server.name)
-    # Late-result rejection: genuine probe completed, but budget expired while in flight.
     if not isinstance(error, _BudgetExhaustedError) and clock() > deadline:
         _log_probe_outcome(
             server.name,
@@ -294,7 +262,6 @@ def _log_unreached_servers_on_expiry(
 
 
 class UpstreamRegistry:
-    """Aggregates tools from multiple upstream MCP servers under stable proxy aliases."""
 
     def __init__(
         self,
@@ -314,54 +281,15 @@ class UpstreamRegistry:
         on_unreachable: Literal["raise", "warn_and_skip"] = "raise",
         _monotonic: Callable[[], float] | None = None,
     ) -> UpstreamRegistry:
-        """Build a registry by probing each server for its tool list.
-
-        Args:
-            servers: iterable of configured upstream servers.
-            client_factory: optional factory for creating upstream clients.
-            on_unreachable: when to raise vs. warn-and-skip.
-            _monotonic: injectable clock for testing (defaults to time.monotonic).
-
-        The aggregate first-start discovery budget is ``mcp_discovery_budget_from_env``,
-        which is strictly below the preflight timeout by construction. When the
-        deadline expires, remaining servers are warned-and-skipped rather than
-        probed, guaranteeing the worst-case discovery time is bounded below the
-        preflight timeout.
-
-        Probes fan out concurrently on a bounded thread pool
-        (``min(_MAX_PROBE_WORKERS, len(servers_list))`` workers) so a slow
-        upstream does not pay its latency serially against every other
-        configured server. The aggregate deadline is captured ONCE before
-        the fan-out; each worker computes its own per-probe ``timeout_s``
-        against that shared deadline at the moment of the call, and the
-        collector recomputes its ``as_completed`` wait on every iteration
-        so it cannot block past the deadline. Late results — those that
-        land after the shared deadline — are dropped, preserving the
-        existing late-result-rejection invariant. Under
-        ``on_unreachable="raise"`` a deadline that elapses before every
-        server is probed surfaces ``UpstreamValidationError`` (a partial
-        registry is a runtime hazard, not a warning).
-        """
 
         _factory = client_factory if client_factory is not None else make_upstream_client
         _clock = _monotonic if _monotonic is not None else time.monotonic
 
-        # Materialize the iterable once: the empty-input fast path below
-        # would otherwise have to consume ``servers`` twice, and the
-        # fan-out itself needs an indexable sequence to submit. An empty
-        # input MUST short-circuit BEFORE the executor is constructed so
-        # the ``test_zero_servers_returns_empty_registry`` invariant
-        # (the clock never advances) is preserved.
         servers_list = list(servers)
         if len(servers_list) == 0:
             return cls([], {})
 
         discovery_budget_seconds = mcp_discovery_budget_from_env().total_seconds()
-        # Captured once: every worker and every collector iteration
-        # computes its remaining budget against this same ``deadline``.
-        # Re-evaluating ``mcp_discovery_budget_from_env()`` mid-build
-        # would let a slow probe re-read the env and extend the budget
-        # it is itself burning.
         deadline = _clock() + discovery_budget_seconds
 
         seen_aliases: dict[str, tuple[str, str]] = {}
@@ -418,17 +346,9 @@ class UpstreamRegistry:
                     executor.shutdown(wait=False, cancel_futures=True)
                     break
                 pending.discard(future)
-                # Fetch the result FIRST: a worker that returned a
-                # ``_BudgetExhaustedError`` is the canonical "the
-                # pre-loop check would have skipped this server" signal
-                # and must be processed even if the post-probe clock
-                # has since advanced past the deadline. The
-                # late-result rejection check (below) only applies to
-                # genuine probe completions (errors or successful
-                # tools).
                 try:
                     server, server_kind, client, tools, error, probe_elapsed_ms = future.result()
-                except Exception as exc:  # defensive: any future exception becomes a probe error
+                except Exception as exc:
                     error = exc
                     client = None
                     tools = None
@@ -455,10 +375,6 @@ class UpstreamRegistry:
                     logged_servers=logged_servers,
                 )
         finally:
-            # ``wait=False, cancel_futures=True`` so we never block the
-            # build on a stuck worker after the deadline has elapsed:
-            # the contract is bounded discovery time, not waiting for a
-            # slow upstream that the deadline has already excluded.
             executor.shutdown(wait=False, cancel_futures=True)
 
         if collector_expired:
@@ -468,9 +384,6 @@ class UpstreamRegistry:
                     servers_list, clients, logged_servers, discovery_budget_seconds
                 )
 
-        # Strict-mode completeness: if any server was not reached within
-        # budget (collector expiry, discarded late result, cancelled future,
-        # or probe failure), raise UpstreamValidationError.
         if on_unreachable == "raise":
             _check_strict_completeness(servers_list, clients, discovery_budget_seconds)
 
@@ -484,7 +397,6 @@ class UpstreamRegistry:
         *,
         client_factory: UpstreamClientFactory | None = None,
     ) -> UpstreamRegistry:
-        """Build a registry from pre-discovered tools without probing upstreams."""
 
         _factory = client_factory if client_factory is not None else make_upstream_client
         seen_aliases: dict[str, tuple[str, str]] = {}
@@ -534,25 +446,10 @@ class UpstreamRegistry:
         session: HasMediaManifest | None,
         workspace: Workspace | None,
     ) -> object:
-        """Normalise an upstream result WHATEVER shape it arrives in.
-
-        Normalising only a ``dict`` left other shapes untouched, and
-        they reach the agent verbatim: a bare LIST or TUPLE of content
-        blocks (the server layer accepts either), and a result nested
-        under ``{"result": {...}}`` -- which the server
-        layer unwraps AFTER this runs, so normalisation had inspected an
-        outer dict with no ``content`` key and found nothing to do.
-
-        Either one delivered a raw base64 ``image`` block to a codex
-        caller: the exact wire shape of the incident this contract
-        exists to prevent, arriving by the one route that skipped the
-        contract. An upstream server has to be non-conforming to produce
-        them, which is precisely when a guard has to hold.
-        """
         if isinstance(raw_result, (list, tuple)):
             blocks: list[object] = list(
                 cast("Sequence[object]", raw_result)
-            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            )
             wrapper: JsonObject = {"content": blocks}
             normalize_upstream_content_blocks(
                 wrapper, proxied.server_name, proxied.tool.name, session, workspace
@@ -562,15 +459,6 @@ class UpstreamRegistry:
         if not isinstance(raw_result, dict):
             return raw_result
         result: JsonObject = raw_result
-        # Normalised UNCONDITIONALLY when present. The previous guard
-        # was ``and "content" not in result``, the exact OPPOSITE of the
-        # server layer's rule: ``_build_tools_call_payload`` unwraps
-        # ``result`` whenever it is a dict and DISCARDS the outer
-        # content. So a payload carrying both -- an outer text block
-        # beside a nested image -- was declined here and served there,
-        # putting raw base64 image bytes in front of a codex agent by
-        # the one route that skips this contract. The comment claimed
-        # the two orders matched; they did not.
         nested: object = result.get("result")
         if isinstance(nested, dict):
             normalize_upstream_content_blocks(

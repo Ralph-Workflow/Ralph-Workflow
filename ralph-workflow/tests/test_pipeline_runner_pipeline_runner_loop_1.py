@@ -1,12 +1,3 @@
-"""Tests for ralph/pipeline/runner.py — pipeline runner.
-
-Consolidated from ``test_pipeline_runner_pipeline_runner_loop_1.py`` and
-``test_pipeline_runner_pipeline_runner_loop_2.py``. Both files exercise
-``ralph.pipeline.runner`` against the same workspace/policy helpers, so
-sharing the imports and helper functions across one module cuts the
-per-shard collection cost without changing the observed behavior.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Iterator
@@ -122,21 +113,6 @@ def _install_runner_display_context(
 
 
 def _unknown_connectivity_monitor() -> MagicMock:
-    """Return a mock connectivity monitor stuck in the ``unknown`` state.
-
-    The real :class:`ralph.recovery.connectivity.ConnectivityMonitor` runs
-    a background probe loop. Under heavy parallel load that probe can
-    transition to ``online`` between the call to ``run()`` and the first
-    ``_apply_connectivity_check`` iteration, which mutates the pipeline
-    state via ``copy_with(last_connectivity_state='online')`` and breaks
-    tests that assert the original state object is passed untouched to
-    ``reducer_reduce`` (e.g. ``is planning_state``) or that count a
-    specific number of ``copy_with`` calls.
-
-    Returning a monitor that reports ``unknown`` makes
-    ``_apply_connectivity_check`` a no-op, so the tests stay deterministic
-    regardless of parallel scheduling.
-    """
     monitor = MagicMock()
     monitor.current_state = "unknown"
     return monitor
@@ -153,8 +129,6 @@ def _stub_workspace_scope_and_policy(monkeypatch: MonkeyPatch, tmp_path: Path) -
         "_apply_connectivity_check",
         _unchanged_state,
     )
-    # Runner-loop unit tests own their injected effects, not startup Git
-    # recovery; integration recovery has its own behavioral test modules.
     monkeypatch.setattr(
         run_loop_module,
         "_apply_startup_rebase_outcomes",
@@ -290,7 +264,6 @@ class TestPipelineRunnerLoop:
         assert result == 0
         ckpt_save.assert_called_once_with(state, ANY)
         assert reducer_events == [PipelineEvent.CHECKPOINT_SAVED]
-        # Verify success message was printed (among other display calls)
         printed = captured_console.export_text()
         assert "Pipeline completed successfully" in printed
 
@@ -680,8 +653,6 @@ class TestPipelineRunnerLoop:
         )
 
         assert result == 0
-        # Advancing to a different phase must also clear the next-attempt session
-        # action so a stale resume id/intent cannot leak into the new phase.
         assert len(saved) == 1
         assert saved[0].phase == "development"
         assert saved[0].current_drain == "development"
@@ -858,13 +829,6 @@ class TestPipelineRunnerLoop:
     def test_run_notifies_subscriber_with_initial_state_before_loop(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """run() must seed the subscriber with initial state before executing any effects.
-
-        Without this seed call, DashboardSubscriber._last_state is None during the first
-        long-running phase (e.g., planning). record_activity() calls during that phase
-        cannot build snapshots, leaving the dashboard stuck on 'Starting…' for the entire
-        phase duration. Seeding before the loop fixes the blank dashboard bug.
-        """
         notify_calls: list[object] = []
 
         class _RecordingSubscriber:

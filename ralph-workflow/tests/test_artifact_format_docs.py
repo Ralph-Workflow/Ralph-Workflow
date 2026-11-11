@@ -1,5 +1,3 @@
-"""Consistency checks for bundled markdown artifact format documentation."""
-
 from __future__ import annotations
 
 from importlib import import_module
@@ -42,7 +40,6 @@ _CLOSED_STATUS_VOCABULARIES = {
 
 @pytest.fixture
 def materialized_format_doc_contents(tmp_path: Path) -> dict[str, str]:
-    """Materialize bundled docs in an isolated workspace for the surface check."""
     materialize_all_format_docs(tmp_path)
     formats_root = tmp_path / ".agent" / "artifact-formats"
     return {
@@ -58,10 +55,6 @@ def test_every_supported_type_has_a_nonempty_format_doc(artifact_type: str) -> N
     assert doc.startswith(f"# {artifact_type} artifact format")
     assert "ralph_submit_md_artifact" in doc
     if artifact_type in {"development_result", "development_analysis_decision"}:
-        # The free-form contract shows a single example block in the
-        # body; that block is fenced ````` ``` ```` rather than
-        # ```````markdown``. Verify the format doc carries a code
-        # fence in either form.
         assert "```" in doc
     else:
         assert "```markdown" in doc
@@ -99,10 +92,6 @@ def test_analysis_format_docs_teach_evidence_first_decision_invariants(
     assert doc is not None
     normalized = " ".join(doc.split())
     if artifact_type == "development_analysis_decision":
-        # The development analysis decision is free-form below the
-        # frontmatter; the structured ``## Criterion Verdicts`` /
-        # ``Criterion:`` / ``Expected observation:`` vocabulary belongs
-        # to the planning / review / policy analysis contracts only.
         assert "free-form" in normalized.lower()
         return
     if artifact_type != "review_analysis_decision":
@@ -124,7 +113,6 @@ def test_analysis_format_docs_teach_evidence_first_decision_invariants(
 
 
 def test_development_analysis_decision_doc_is_free_form() -> None:
-    """The development analysis decision doc teaches the free-form contract."""
     doc = load_bundled_format_doc("development_analysis_decision")
 
     assert doc is not None
@@ -157,10 +145,6 @@ def test_every_bundled_example_validates_with_the_registered_spec(artifact_type:
     example = load_bundled_example(artifact_type)
     assert example is not None
     if artifact_type == "development_result":
-        # The development_result example is now free-form below the
-        # frontmatter. Validate that the example parses cleanly and
-        # reports the free-form shape; the validator only checks the
-        # frontmatter ``status`` enum.
         _, diagnostics = parse_and_validate(example, get_spec(artifact_type))
         assert [d for d in diagnostics if d.severity == "error"] == [], [
             d for d in diagnostics if d.severity == "error"
@@ -183,11 +167,6 @@ def test_every_bundled_example_validates_with_the_registered_spec(artifact_type:
 
 
 def test_format_doc_types_match_the_spec_registry_exactly() -> None:
-    """Every registered markdown spec has a format doc, and vice versa.
-
-    Guards against a future spec silently escaping format-doc/example
-    validation because the hardcoded tuple was not extended.
-    """
     import_module("ralph.mcp.artifacts.markdown.specs")
     registered = {spec.artifact_type for spec in registered_specs()}
     assert set(FORMAT_DOC_ARTIFACT_TYPES) == registered
@@ -249,7 +228,6 @@ def test_materialize_all_includes_docs_examples_and_index() -> None:
 def test_materialized_surface_regression_stale_docs_match_bundled_markdown(
     materialized_format_doc_contents: dict[str, str],
 ) -> None:
-    """Regression: every agent-facing generated file must match its bundled source."""
     expected_content = {
         **{
             format_doc_workspace_path(item): load_bundled_format_doc(item)
@@ -357,9 +335,6 @@ def test_consumed_status_docs_teach_closed_vocabulary(
     doc = load_bundled_format_doc(artifact_type)
     assert doc is not None
     if artifact_type == "development_analysis_decision":
-        # Development analysis decisions are free-form: the format doc
-        # teaches the routing enum and the three meanings without
-        # carrying the planning-only ``not evaluable`` rule.
         assert "request_changes" in doc
         assert "completed" in doc
         assert "failed" in doc

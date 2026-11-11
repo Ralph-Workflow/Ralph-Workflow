@@ -1,9 +1,3 @@
-"""Black-box contract tests for BaseExecutionStrategy defaults.
-
-All tests use in-memory fakes — no real subprocesses, no real wall-clock waits,
-no real psutil.
-"""
-
 from __future__ import annotations
 
 from ralph.agents.activity import AgentActivityKind
@@ -18,8 +12,6 @@ from tests.fake_handle import _FakeHandle
 
 
 class TestBaseExecutionStrategyDefaults:
-    """BaseExecutionStrategy defaults match historical single-process semantics."""
-
     def test_classify_activity_line_empty_returns_none(self) -> None:
         strategy = BaseExecutionStrategy()
         assert strategy.classify_activity_line("") is None
@@ -72,15 +64,6 @@ class TestBaseExecutionStrategyDefaults:
     def test_observe_line_does_not_invoke_sink_without_signal(
         self,
     ) -> None:
-        """observe_line with a non-child line does NOT invoke the subagent sink.
-
-        The base ``observe_line`` only invokes the sink when the
-        generic child-signal classifier recognises the line. A
-        plain ``"hello world"`` line produces no signal, so the
-        sink MUST NOT be invoked. This pins the no-op behaviour
-        for non-child lines through the public ``set_subagent_sink``
-        seam (no private-attribute or _conn inspection).
-        """
         recorded: list[str] = []
 
         def _sink(line: str) -> None:
@@ -98,13 +81,6 @@ class TestBaseExecutionStrategyDefaults:
             reset_subagent_sink(token)
 
     def test_observe_line_invokes_sink_on_child_signal(self) -> None:
-        """observe_line with a child-progress signal invokes the sink once.
-
-        Pins the positive contract for the base strategy: the
-        generic classifier routes child-progress lines through
-        to the active subagent sink exactly once, observable
-        through the public ``set_subagent_sink`` seam.
-        """
         recorded: list[str] = []
 
         def _sink(line: str) -> None:

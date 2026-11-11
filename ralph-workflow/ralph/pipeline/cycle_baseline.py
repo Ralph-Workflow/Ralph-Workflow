@@ -1,10 +1,3 @@
-"""Development-cycle diff baseline management.
-
-The baseline SHA is written once when a dev cycle begins (after planning
-succeeds, before any development phase invocation) and is never updated by
-mid-cycle commits. It is cleared at cycle boundaries so that the next cycle
-starts fresh.
-"""
 
 from __future__ import annotations
 
@@ -27,29 +20,9 @@ def write_cycle_baseline(
     force: bool = False,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> None:
-    """Record ``sha`` as the diff baseline for the current dev cycle.
-
-    When ``force`` is False (the default), an existing baseline is preserved
-    and this call is a no-op. Callers that open a fresh cycle must pass
-    ``force=True`` to overwrite any stale baseline.
-
-    The ``backend`` seam defaults to :data:`DEFAULT_FILE_BACKEND` so an
-    in-memory backend can exercise the idempotent guard without touching
-    real filesystem I/O. ``force`` and ``backend`` are keyword-only so
-    existing positional callers and ``runner_module`` monkeypatch spies
-    are unaffected.
-
-    A byte-identical rewrite of an existing baseline short-circuits the
-    physical write so per-cycle baseline markers do not advance the
-    file's mtime or generate an additional fseventsd notification. The
-    post-condition "baseline file contains ``sha.strip()+'\\n'``" still
-    holds because the fail-open ``write_text_if_changed`` guard falls
-    through to a real write on any read uncertainty or content mismatch.
-    """
     baseline_path = workspace_root / _BASELINE_FILENAME
     if not force and backend.exists(baseline_path):
         return
-    # filesystem-write-ok: cycle baseline snapshot under .agent/cycle_baseline, runtime baseline metadata not tracked
     write_text_if_changed(
         backend,
         baseline_path,
@@ -59,7 +32,6 @@ def write_cycle_baseline(
 
 
 def read_cycle_baseline(workspace_root: Path) -> str | None:
-    """Return the recorded baseline SHA, or None if no baseline is set."""
     baseline_path = workspace_root / _BASELINE_FILENAME
     try:
         if not baseline_path.exists():
@@ -71,7 +43,6 @@ def read_cycle_baseline(workspace_root: Path) -> str | None:
 
 
 def clear_cycle_baseline(workspace_root: Path) -> None:
-    """Remove the baseline file so the next cycle starts fresh."""
     baseline_path = workspace_root / _BASELINE_FILENAME
     with suppress(OSError):
         baseline_path.unlink(missing_ok=True)

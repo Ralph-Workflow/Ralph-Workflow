@@ -1,14 +1,3 @@
-"""Static and behavioral guards for the diagnostic transition helpers.
-
-Every ``BUMP_DIAGNOSTIC_ATTEMPT`` emission must route through
-``_bump_attempt`` in ``ralph.pipeline._integration_diagnostic`` (or the
-``budget_spent_record`` stamp in
-``ralph.pipeline._integration_diagnostic_handoff``) so the
-``DIAGNOSTIC_REPAIR_ATTEMPT_CAP`` enforcement has a single owner, and
-the retired ``RAISE_DIAGNOSTIC_INTERVENTION`` transition must have no
-production emitter left.
-"""
-
 from __future__ import annotations
 
 import re
@@ -23,7 +12,6 @@ _HELPER_FILE = _EMIT_FILES[0]
 
 
 def test_no_direct_diagnostic_transition_emit_outside_helpers() -> None:
-    """Static scan: the bump transition appears only inside the helper functions."""
     helper_src = _HELPER_FILE.read_text(encoding="utf-8")
     helper_start = helper_src.index("def _bump_attempt(")
     helper_end = helper_src.index("def diagnostic_needed(")
@@ -42,7 +30,6 @@ def test_no_direct_diagnostic_transition_emit_outside_helpers() -> None:
 
 
 def test_no_producer_of_retired_intervention_transition() -> None:
-    """Static scan: no production module emits the retired hand-off transition."""
     scanned = (
         *_EMIT_FILES,
         REPO_ROOT / "ralph" / "pipeline" / "_integration_diagnostic_handoff.py",
@@ -55,7 +42,6 @@ def test_no_producer_of_retired_intervention_transition() -> None:
 
 
 def test_bump_attempt_stamps_typed_budget_spent_at_cap() -> None:
-    """Behavior: the over-cap handoff stamps the typed budget-spent outcome."""
     from ralph.pipeline._integration_diagnostic import (
         DIAGNOSTIC_BUDGET_SPENT_REASON,
         DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
@@ -73,8 +59,6 @@ def test_bump_attempt_stamps_typed_budget_spent_at_cap() -> None:
     )
     bumped = _bump_attempt(record, "boom")
     assert bumped.merge_commit_repair_attempts == DIAGNOSTIC_REPAIR_ATTEMPT_CAP
-    # The retired human-hand-off flag is never set; the typed outcome
-    # names the next autonomous action (the fallback ladder).
     assert bumped.diagnostic_intervention_required is False
     assert bumped.repair_cap_reason == DIAGNOSTIC_BUDGET_SPENT_REASON
 
@@ -89,7 +73,6 @@ def test_bump_attempt_stamps_typed_budget_spent_at_cap() -> None:
 
 
 def test_pending_merge_repair_bump_routes_through_shared_helper() -> None:
-    """The pending-merge-repair module must import the shared bump helper."""
     src = (REPO_ROOT / "ralph" / "pipeline" / "_pending_merge_repair.py").read_text(
         encoding="utf-8"
     )

@@ -1,12 +1,3 @@
-"""Tests proving workspace changes are routed and observed during conflict resolution.
-
-When an agent makes filesystem modifications in the workspace without resolving
-the conflict, FsWorkspace and DefaultWorkspaceChangeProbe observe the changes,
-setting workspace_changed=True on the AttemptFact. This allows the agent to run
-up to the total unproductive limit (9 attempts) rather than being cut off by the
-consecutive unproductive limit (3 attempts).
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -41,7 +32,6 @@ def _config() -> UnifiedConfig:
 def test_conflict_resolution_observes_workspace_changes_allowing_total_limit(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """When an agent changes files on disk, workspace_changed=True allows 9 attempts before demotion."""
     conflicted_file = "src/example.py"
     monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: [conflicted_file])
     monkeypatch.setattr(
@@ -69,12 +59,10 @@ def test_conflict_resolution_observes_workspace_changes_allowing_total_limit(
         nonlocal markers_remaining
         invocations.append(agent_name)
         if agent_name == "agentA":
-            # Agent makes progress on disk on each attempt, but does not resolve conflict markers
             progress_file = tmp_path / f"change_{len(invocations)}.txt"
             progress_file.write_text(f"work done in invocation {len(invocations)}")
             return False
 
-        # Fallback candidate agentB succeeds and clears conflict markers
         markers_remaining = False
         return True
 
@@ -95,8 +83,6 @@ def test_conflict_resolution_observes_workspace_changes_allowing_total_limit(
 
         monkeypatch.setattr(ledger, "record", _spy_record)
 
-        # Do not provide workspace or workspace_probe to ResolutionSession.
-        # Driver must instantiate session.workspace from workspace_scope.
         session = ResolutionSession(ledger=ledger, max_rounds_per_stop=15)
 
         succeeded = driver_module.run_conflict_resolution_pipeline(
@@ -115,19 +101,15 @@ def test_conflict_resolution_observes_workspace_changes_allowing_total_limit(
 
         assert succeeded is True
 
-        # Agent A ran 9 times (total limit, NOT 3 consecutive) because workspace_changed was True
         agent_a_invocations = [name for name in invocations if name == "agentA"]
         assert len(agent_a_invocations) == 9
 
-        # Agent B was invoked on attempt 10 after Agent A reached total limit and became Spent
         assert invocations == ["agentA"] * 9 + ["agentB"]
 
-        # Verify recorded facts observed workspace_changed=True for all Agent A attempts
         agent_a_facts = [f for f in facts_recorded if f.agent == "agentA"]
         assert len(agent_a_facts) == 9
         assert all(f.workspace_changed for f in agent_a_facts)
 
-        # Agent A is spent due to total limit, not in temporary cooldown
         agent_a_status = ledger.status(PHASE_RESOLUTION, "agentA")
         assert agent_a_status.is_spent is True
     finally:
@@ -137,7 +119,6 @@ def test_conflict_resolution_observes_workspace_changes_allowing_total_limit(
 def test_conflict_resolution_without_workspace_changes_stops_at_consecutive_limit(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """When an agent does not change files on disk, consecutive limit (3) triggers demotion."""
     conflicted_file = "src/example.py"
     monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: [conflicted_file])
     monkeypatch.setattr(
@@ -165,10 +146,8 @@ def test_conflict_resolution_without_workspace_changes_stops_at_consecutive_limi
         nonlocal markers_remaining
         invocations.append(agent_name)
         if agent_name == "agentA":
-            # Agent fails without modifying any workspace files
             return False
 
-        # Fallback candidate agentB succeeds
         markers_remaining = False
         return True
 
@@ -207,14 +186,12 @@ def test_conflict_resolution_without_workspace_changes_stops_at_consecutive_limi
 
         assert succeeded is True
 
-        # Agent A ran only 3 times (consecutive limit) because workspace_changed was False
         assert invocations == ["agentA"] * 3 + ["agentB"]
 
         agent_a_facts = [f for f in facts_recorded if f.agent == "agentA"]
         assert len(agent_a_facts) == 3
         assert all(not f.workspace_changed for f in agent_a_facts)
 
-        # Agent A is in cooldown due to consecutive limit, not spent
         agent_a_status = ledger.status(PHASE_RESOLUTION, "agentA")
         assert agent_a_status.is_cooldown is True
     finally:

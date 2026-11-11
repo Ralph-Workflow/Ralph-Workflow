@@ -194,7 +194,6 @@ def test_unsupported_content_type_returns_error(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_extraction_failure_returns_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    """When extract_readable raises an exception, handle_visit_url returns an error."""
     monkeypatch.setattr(tool_webvisit, "fetch_url", lambda *a, **kw: _GOOD_OUTCOME)
     monkeypatch.setattr(
         tool_webvisit,

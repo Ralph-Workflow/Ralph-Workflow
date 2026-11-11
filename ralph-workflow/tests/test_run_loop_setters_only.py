@@ -1,12 +1,3 @@
-"""Static scan: no direct is_waiting_state / recovery_record_retained writers.
-
-Contract: ``is_waiting_state`` may only be written inside
-``ralph/pipeline/state.py`` (via ``set_waiting`` / ``clear_waiting``) and
-``recovery_record_retained`` only inside ``ralph/pipeline/rebase_state.py``
-(via ``set_recovery_record_retained`` / ``clear_recovery_record_retained``).
-This test scans ``run_loop.py`` and ``runner.py`` for direct writer sites.
-"""
-
 from __future__ import annotations
 
 import ast
@@ -24,7 +15,6 @@ _TARGETS = [
 
 
 def _offender_lines(path: Path, flag: str) -> list[tuple[int, str]]:
-    """(lineno, text) of calls writing ``flag`` via copy_with/model_copy."""
     offenders: list[tuple[int, str]] = []
     lines = path.read_text(encoding="utf-8").splitlines()
     try:
@@ -91,13 +81,6 @@ def test_setter_usage_present_in_run_loop() -> None:
 def test_apply_step_integration_outcome_surfaces_waiting_display_state(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Behavior regression: the reduction path pins the post-state.
-
-    After ``_apply_step_integration_outcome`` handles a fail-closed
-    record fact (no record + retained recovery => typed STALE_INTENT
-    verdict, routed to the autonomous cleanup ladder), the final rebase
-    display state names the bounded wait — never ``intervention_required``.
-    """
     from types import SimpleNamespace
 
     from ralph.pipeline import runner as runner_module
@@ -111,7 +94,6 @@ def test_apply_step_integration_outcome_surfaces_waiting_display_state(
     monkeypatch.setattr(runner_module, "read_record", lambda _root: None)
     rebase = RebaseState(recovery_record_retained=True)
     state = PipelineState(phase="development", rebase=rebase)
-    # _reconcile_rebase_if_live_resolved reads disk; stub to no-op.
     monkeypatch.setattr(
         runner_module,
         "_reconcile_rebase_if_live_resolved",

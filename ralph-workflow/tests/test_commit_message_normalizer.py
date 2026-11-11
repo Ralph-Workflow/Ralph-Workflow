@@ -66,7 +66,6 @@ def test_normalizer_rejects_ambiguous_intent() -> None:
 
 
 def test_normalizer_accepts_paraphrased_body_claim_without_token_overlap() -> None:
-    """Body claims are not a hard validation boundary: paraphrases must survive."""
     result = normalize_commit_message_draft(
         "fix: preserve evidence\n\n## Body\n- [B-1] Retains the user-visible retry result.",
         EVIDENCE,
@@ -107,7 +106,6 @@ def test_normalizer_preserves_authored_prose_without_keyword_classification() ->
 
 
 def test_normalizer_treats_changed_path_anchor_as_high_support() -> None:
-    """Contiguous path/area anchors are structural relevance, not token overlap."""
     result = normalize_commit_message_draft(
         "fix: preserve evidence\n\n## Changes\n* Touches ralph/app.py scheduling owner write.",
         _fact_evidence(),
@@ -183,7 +181,6 @@ def test_normalizer_accepts_nonstandard_list_heading() -> None:
 
 
 def test_normalizer_regression_extracts_grounded_numbered_list_claim() -> None:
-    """DA-004/S-5: numbered candidates follow the same evidence reconciliation path."""
     result = normalize_commit_message_draft(
         "fix: preserve evidence\n\n## Notes\n1. Preserve retry evidence for submit artifacts.",
         _fact_evidence(),
@@ -193,7 +190,6 @@ def test_normalizer_regression_extracts_grounded_numbered_list_claim() -> None:
 
 
 def test_normalizer_regression_accepts_architectural_numbered_list_claim() -> None:
-    """DA-004/S-5: numbered architectural summaries survive without fact alignment."""
     result = normalize_commit_message_draft(
         "fix: preserve evidence\n\n## Notes\n1. Restructures write paths so drift is unrepresentable.",
         _fact_evidence(),
@@ -245,7 +241,6 @@ def test_normalizer_is_idempotent() -> None:
 
 
 def test_normalizer_regression_reconciles_canonical_stale_files() -> None:
-    """DA-004/DA-005: canonical markers must not bypass live-file normalization."""
     result = normalize_commit_message_draft(
         "---\ntype: commit\nsubject: fix: preserve evidence\n---\n\n## Body\n"
         "- [B-1] Preserve retry evidence for submit artifacts.\n\n## Files\n- [F-1] old.py\n",
@@ -257,7 +252,6 @@ def test_normalizer_regression_reconciles_canonical_stale_files() -> None:
 
 
 def test_normalizer_regression_repairs_canonical_subject_without_separator() -> None:
-    """DA-004/DA-006: canonical structure still receives deterministic subject repair."""
     result = normalize_commit_message_draft(
         "---\ntype: commit\nsubject: FIX Preserve evidence\n---\n",
         EVIDENCE,
@@ -267,11 +261,6 @@ def test_normalizer_regression_repairs_canonical_subject_without_separator() -> 
 
 
 def test_normalizer_regression_accepts_uppercase_subject_without_separator() -> None:
-    """DA-001: uppercase conventional kinds remain recoverable without a colon.
-
-    Portfolio decision: KEEP the existing pure normalizer regression family;
-    this case adds distinct case-insensitive extraction fault sensitivity.
-    """
     result = normalize_commit_message_draft(
         "FIX Preserve retry evidence\n\nPreserve retry evidence for submit artifacts.",
         _fact_evidence(),
@@ -281,7 +270,6 @@ def test_normalizer_regression_accepts_uppercase_subject_without_separator() -> 
 
 
 def test_normalizer_regression_accepts_canonical_architectural_claim() -> None:
-    """DA-005: canonical markers must still accept non-overlapping architectural prose."""
     result = normalize_commit_message_draft(
         "---\ntype: commit\nsubject: fix: preserve evidence\n---\n\n## Body\n"
         "- [B-1] Restructures write paths so drift is unrepresentable.\n",
@@ -293,7 +281,6 @@ def test_normalizer_regression_accepts_canonical_architectural_claim() -> None:
 
 
 def test_normalizer_accepts_planning_architecture_summary_without_diff_keyword_match() -> None:
-    """Regression: write-time schedule derivation prose must not fail keyword grounding."""
     evidence = CommitEvidenceBundle(
         "diff",
         ("app/services/planning/plan_scheduling.rb", "app/models/plan_activity.rb"),

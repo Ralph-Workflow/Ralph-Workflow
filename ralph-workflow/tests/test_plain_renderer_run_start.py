@@ -1,5 +1,3 @@
-"""Tests for ParallelDisplay.emit_run_start (consolidated from PlainLogRenderer)."""
-
 from __future__ import annotations
 
 from io import StringIO
@@ -27,15 +25,6 @@ def _orientation(**kwargs: object) -> RunStartOrientation:
 
 
 def test_emit_run_start_prints_milestone_header() -> None:
-    """emit_run_start prints a [run-start] header line.
-
-    wt-028-display S-4: the chrome prefix no longer carries the
-    ``MILESTONE`` LEVEL or ``META`` category badges. The
-    run-start header line is now identified by the [run-start] tag
-    and the "Ralph Workflow run start" body text. The milestone
-    glyph (◆ Unicode / ``*`` ASCII) is the surviving severity
-    carrier.
-    """
     pd, buf = _make_display()
     pd.emit_run_start(_orientation(plan_present=True))
     out = buf.getvalue()
@@ -87,7 +76,6 @@ def test_emit_run_start_includes_parallel_when_present() -> None:
 
 
 def test_emit_run_start_names_volatile_target_worktree() -> None:
-    """The run banner makes target-worktree reclamation visible before it happens."""
     pd, buf = _make_display()
     pd.emit_run_start(_orientation(target_worktree_path="/workspace/main"))
     assert (
@@ -141,7 +129,6 @@ def test_emit_run_start_verbosity_omitted_when_none() -> None:
 
 
 def test_emit_run_start_milestone_glyph_ascii_fallback() -> None:
-    """RALPH_FORCE_ASCII=1 uses ASCII milestone glyph (* not ◆) in run-start header."""
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, highlight=False, color_system=None, width=200)
     pd = ParallelDisplay(make_display_context(console=console, env={"RALPH_FORCE_ASCII": "1"}))
@@ -163,16 +150,6 @@ def _filter_run_start_content(lines: list[str]) -> list[str]:
 
 
 def test_emit_run_start_plan_verbosity_each_on_own_line() -> None:
-    """Default mode: plan= and verbosity= each render on their own line.
-
-    DA-003 (wt-028-display S-6 / AC-05): the run-start body now
-    emits one ``key=value`` row per supplied field on every console
-    size, so a long ``workspace_root`` cannot clip later fields
-    the way the legacy single-row grouping did. The structured
-    layout is the new contract; the pre-fix grouped-on-one-line
-    tests are intentionally retired in favor of the field-level
-    per-row pins.
-    """
     pd, buf = _make_display()
     pd.emit_run_start(_orientation(plan_present=True, verbosity="verbose"))
     out = buf.getvalue()
@@ -190,12 +167,6 @@ def test_emit_run_start_plan_verbosity_each_on_own_line() -> None:
 
 
 def test_emit_run_start_prompt_workspace_each_on_own_line() -> None:
-    """Default mode: prompt= and workspace= each render on their own line.
-
-    DA-003 (wt-028-display S-6 / AC-05): same per-row contract as
-    the plan/verbosity pair -- a long ``workspace_root`` no longer
-    drags the rest of the orientation off the row.
-    """
     pd, buf = _make_display()
     pd.emit_run_start(_orientation(prompt_path="PROMPT.md", workspace_root="/workspace"))
     out = buf.getvalue()
@@ -213,14 +184,6 @@ def test_emit_run_start_prompt_workspace_each_on_own_line() -> None:
 
 
 def _make_height_constrained_display(*, height: int) -> tuple[ParallelDisplay, StringIO]:
-    """Build a ParallelDisplay whose Console reports the requested ``height``.
-
-    The Console is constructed with ``height=...`` so
-    :meth:`DisplayContext.is_height_constrained` returns
-    ``True`` at-or-below the canonical 12-row floor (the
-    documented accessibility path for large-text / magnified /
-    braille displays).
-    """
     buf = StringIO()
     console = Console(
         file=buf,
@@ -234,13 +197,6 @@ def _make_height_constrained_display(*, height: int) -> tuple[ParallelDisplay, S
 
 
 def test_emit_run_start_suppresses_section_rule_at_12_rows() -> None:
-    """DA-005: at the canonical 12-row floor the run-start section rule is suppressed.
-
-    The visual chrome (blank section rule + glyph banner) compresses
-    before any information is dropped. The orientation rows stay
-    visible, condensed into a single unboxed headed block, so the
-    same information reaches the operator on a 12-row split pane.
-    """
     pd, buf = _make_height_constrained_display(height=12)
     pd.emit_run_start(
         _orientation(
@@ -251,16 +207,9 @@ def test_emit_run_start_suppresses_section_rule_at_12_rows() -> None:
         )
     )
     out = buf.getvalue()
-    # The section rule line is the canonical visual chrome and must
-    # be suppressed on the height-constrained surface; the rule
-    # itself is the blank line + rule glyph block emitted by
-    # ``_emit_section_rule``.
     assert "─── [run-start]" not in out, (
         f"section rule must be suppressed at 12 rows (the floor):\n{out!r}"
     )
-    # The information is preserved: the milestone header line
-    # still carries the run-start banner title; the condensed
-    # orientation body still surfaces every key=value field.
     assert "Ralph Workflow run start" in out, f"banner title missing at 12 rows:\n{out!r}"
     assert "prompt=PROMPT.md" in out
     assert "workspace=/workspace" in out
@@ -269,11 +218,9 @@ def test_emit_run_start_suppresses_section_rule_at_12_rows() -> None:
 
 
 def test_emit_run_start_keeps_section_rule_at_24_rows() -> None:
-    """DA-005: at height=24 the section rule is preserved (default layout)."""
     pd, buf = _make_height_constrained_display(height=24)
     pd.emit_run_start(_orientation())
     out = buf.getvalue()
-    # The default-mode visual hierarchy keeps the section rule.
     assert "─── [run-start]" in out, (
         f"section rule must survive at 24 rows (default layout):\n{out!r}"
     )

@@ -1,5 +1,3 @@
-"""Static audit to prevent agent registry and catalog drift."""
-
 from __future__ import annotations
 
 import ast
@@ -8,8 +6,6 @@ from pathlib import Path
 
 
 class RegistrySyncViolation:
-    """Represents a registry sync violation."""
-
     def __init__(self, file_path: str, line: int, category: str, detail: str) -> None:
         self.file_path = file_path
         self.line = line
@@ -326,8 +322,6 @@ def audit_invoke_file(content: str, rel_path: str) -> list[RegistrySyncViolation
         )
         return violations
 
-    # Check for legacy fallback branches: If statement inside invoke_agent_func
-    # referencing CLAUDE_INTERACTIVE/AGY but not inside requires_pty_if_node.body
     allowed_if_nodes = set()
     for stmt in requires_pty_if_node.body:
         for subnode in ast.walk(stmt):

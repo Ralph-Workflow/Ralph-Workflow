@@ -1,4 +1,3 @@
-"""Frozen sub-models used by the immutable pipeline state model."""
 
 from __future__ import annotations
 
@@ -17,7 +16,6 @@ _FROZEN = ConfigDict(frozen=True)
 
 
 class _FrozenPipelineStateModel(RalphBaseModel):
-    """Private base for frozen pipeline state models."""
 
     model_config = _FROZEN
 

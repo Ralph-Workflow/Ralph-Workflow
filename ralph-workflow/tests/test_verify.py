@@ -1,8 +1,7 @@
-"""Tests for the verify command wrapper."""
-
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph import verify as verify_module
@@ -15,9 +14,11 @@ from ralph.verify_timeout import (
     TEST_TIMEOUT_ENV,
 )
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "verify module docstring": "the verification marker expression is now read from the module source because module docstrings are banned",
+}
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from pathlib import Path
 
     import pytest
 
@@ -73,23 +74,15 @@ def _result(
     )
 
 
-def test_verify_module_docs_describe_integrated_required_real_git_e2e() -> None:
-    """The module contract must match the test profile implemented below."""
-    module_doc = verify_module.__doc__ or ""
+def test_verification_marker_expression_covers_required_real_git_e2e() -> None:
+    module_path = Path(str(verify_module.__file__))
+    source = (module_path.parent / "test_suites.py").read_text(encoding="utf-8")
 
-    assert "required_auto_integrate_e2e" in module_doc
-    assert "make test-auto-integrate-e2e" not in module_doc
+    assert "required_auto_integrate_e2e" in source
+    assert "make test-auto-integrate-e2e" not in source
 
 
 def _all_steps_success_responses() -> dict[tuple[str, tuple[str, ...]], ProcessResult]:
-    """Canonical ``StubRunner`` responses for the full success path.
-
-    Every test that needs ``run_verify`` to walk the entire
-    ``_VERIFY_STEPS`` list without any step failing consumes this
-    dict.  Centralizing it keeps the per-test bodies small (the
-    verify-step list and this dict share one source of truth for
-    the command/args/returncode tuples).
-    """
     return {
         ("uv", ("run", "ruff", "format", "--check", "ralph/", "tests/")): _result(
             command="uv",
@@ -209,12 +202,6 @@ def _all_steps_success_responses() -> dict[tuple[str, tuple[str, ...]], ProcessR
             args=("run", "python", "-m", "ralph.testing.audit_artifact_skill_types"),
             returncode=0,
             stdout="artifact skill types audit ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_public_docstrings")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_public_docstrings"),
-            returncode=0,
-            stdout="public docstring audit ok\n",
         ),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_terminal_escape_containment")): _result(
             command="uv",
@@ -402,11 +389,6 @@ def _all_steps_success_responses() -> dict[tuple[str, tuple[str, ...]], ProcessR
     }
 
 
-# ---------------------------------------------------------------------------
-# Existing main()-driven tests
-# ---------------------------------------------------------------------------
-
-
 def test_main_runs_all_verify_steps_when_successful(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -438,7 +420,6 @@ def test_main_runs_all_verify_steps_when_successful(
         ("uv", ("run", "python", "-m", "ralph.testing.audit_resource_lifecycle")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_skill_auto_commit")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_artifact_skill_types")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_public_docstrings")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_terminal_escape_containment")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_repo_structure")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_project_policy")),
@@ -505,8 +486,6 @@ def test_main_runs_all_verify_steps_when_successful(
     assert runner.calls[32][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[33][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[34][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    # The aggregate smoke invocation is charged to the same remaining hang cap.
-    # Tiny clock deltas in this fake-runner scenario may shave microseconds.
     last_timeout = runner.calls[-2][3]
     assert last_timeout is not None
     assert abs(last_timeout - verify_module._TOTAL_TEST_HANG_CAP_SECONDS) < 0.001, (
@@ -595,7 +574,6 @@ def test_main_rejects_positional_arguments(tmp_path: Path) -> None:
 
 
 def test_verify_regression_inherited_loguru_level_is_overridden(tmp_path: Path) -> None:
-    """S-3: verification children must not inherit a warning-only Loguru level."""
     runner = StubRunner(_all_steps_success_responses())
 
     assert verify_module.run_verify(cwd=tmp_path, runner=runner) == 0
@@ -611,7 +589,6 @@ def test_verify_regression_inherited_loguru_level_is_overridden(tmp_path: Path) 
 def test_verify_regression_exported_timeout_overrides_cannot_reach_the_steps(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """An exported ``RALPH_PYTEST_*_TIMEOUT_SECONDS=0`` must not disarm verify's timers."""
     monkeypatch.setenv(TEST_TIMEOUT_ENV, "0")
     monkeypatch.setenv(SUITE_TIMEOUT_ENV, "0")
     runner = StubRunner(_all_steps_success_responses())
@@ -631,21 +608,7 @@ def test_hang_cap_matches_suite_timeout_policy() -> None:
     )
 
 
-# ---------------------------------------------------------------------------
-# Cumulative budget tracking tests
-# ---------------------------------------------------------------------------
-
-
 class _NoOpOrphanTracker:
-    """Deterministic orphan-tracker stand-in for tests that script the clock.
-
-    The production ``orphaned_cpu_tracker`` spawns a daemon thread whose
-    ``threading.Event.wait`` calls the real ``time.monotonic``; when a test
-    monkeypatches ``time.monotonic`` that background thread races the scripted
-    timeline. This stand-in spawns nothing and reports zero orphaned CPU, so
-    the only consumer of a scripted clock is the code under test.
-    """
-
     orphaned_cpu_seconds = 0.0
 
     def __enter__(self) -> _NoOpOrphanTracker:
@@ -660,11 +623,8 @@ def test_run_verify_single_step_within_budget(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """run_verify() with one test step that appears to finish in 1s → passes."""
     runner = StubRunner(_all_steps_success_responses())
 
-    # Derive the fixture from the real step list so a new non-test audit cannot
-    # desynchronize budget coverage. make test takes 1s; every other step 0s.
     times = [0.0] * (2 * len(verify_module._VERIFY_STEPS))
     times[5:] = [1.0] * (len(times) - 5)
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0) if times else 1.0)
@@ -683,8 +643,6 @@ def test_run_verify_single_step_exceeds_budget(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Test step appears to take 65s → run_verify() returns 124 and emits
-    'budget exhausted — cumulative test time exceeded' banner."""
     runner = StubRunner(
         {
             ("uv", ("run", "ruff", "check", "ralph/", "tests/")): _result(
@@ -706,7 +664,6 @@ def test_run_verify_single_step_exceeds_budget(
         }
     )
 
-    # make test appears to take 65s (budget is 60s).
     times = [0.0, 0.0, 0.0, 0.0, 0.0, 65.0]
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0) if times else 1.0)
 
@@ -724,9 +681,6 @@ def test_run_verify_multiple_steps_combined_exceeds(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Two test steps appearing to take 55s + 10s under 60s budget → second
-    step fails because cumulative time exceeds budget."""
-    # Simulate two tracked test suites.
     fake_steps: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         ("suite A", "make", ("test-a",), 30.0),
         ("suite B", "make", ("test-b",), 30.0),
@@ -751,9 +705,6 @@ def test_run_verify_multiple_steps_combined_exceeds(
         }
     )
 
-    # Suite A: start=0.0, end=55.0 (55s elapsed)
-    # Suite B: start=55.0, end=65.0 (10s elapsed, effective_timeout was 5s)
-    # Cumulative = 65.0 > 60.0 → cumulative_exhausted
     times = [0.0, 55.0, 55.0, 65.0]
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0) if times else 1.0)
 
@@ -772,7 +723,6 @@ def test_run_verify_multiple_steps_combined_within(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Two 10s test steps → both pass, cumulative stays within 60s."""
     fake_steps: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         ("suite A", "make", ("test-a",), 30.0),
         ("suite B", "make", ("test-b",), 30.0),
@@ -797,7 +747,6 @@ def test_run_verify_multiple_steps_combined_within(
         }
     )
 
-    # Each suite takes 10s → total 20s < 60s
     times = [0.0, 10.0, 10.0, 20.0]
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0) if times else 1.0)
 
@@ -817,15 +766,10 @@ def test_run_verify_non_test_steps_not_counted(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """ruff/mypy steps do NOT consume test budget — their elapsed time is
-    NOT added to cumulative."""
-    # Set no tracked steps — nothing counts against the budget.
     monkeypatch.setattr(verify_module, "_BUDGET_TRACKED_STEPS", frozenset())
 
     runner = StubRunner(_all_steps_success_responses())
 
-    # Every non-test step takes 100s — all pass because nothing is tracked.
-    # Derive the fixture from the real step list so audit additions stay covered.
     times = [100.0 * (index // 2) for index in range(2 * len(verify_module._VERIFY_STEPS))]
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0) if times else 1.0)
 
@@ -843,8 +787,6 @@ def test_run_verify_cumulative_equals_budget_boundary(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When cumulative test time equals the budget exactly (60.0s), the
-    >= boundary check correctly flags cumulative exhaustion."""
     runner = StubRunner(
         {
             ("uv", ("run", "ruff", "check", "ralph/", "tests/")): _result(
@@ -866,8 +808,6 @@ def test_run_verify_cumulative_equals_budget_boundary(
         }
     )
 
-    # make test appears to take exactly 60.0s — equals budget boundary.
-    # With the >= check, this should be flagged as cumulative_exhausted.
     times = [0.0, 0.0, 0.0, 0.0, 0.0, 60.0]
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0) if times else 60.0)
 
@@ -877,7 +817,6 @@ def test_run_verify_cumulative_equals_budget_boundary(
 
     captured = capsys.readouterr()
     assert exit_code == TIMEOUT_EXIT_CODE, f"expected 124, got {exit_code}"
-    # The >= boundary: exactly 60.0s must trigger cumulative exhaustion.
     assert "budget exhausted — cumulative test time exceeded" in captured.err
 
 
@@ -886,8 +825,6 @@ def test_run_verify_policy_message_correctness(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When cumulative budget is exhausted, the failure banner explicitly
-    states 'budget exhausted — cumulative test time exceeded'."""
     runner = StubRunner(
         {
             ("uv", ("run", "ruff", "check", "ralph/", "tests/")): _result(
@@ -909,7 +846,6 @@ def test_run_verify_policy_message_correctness(
         }
     )
 
-    # make test appears to take 70s → cumulative exhausted.
     times = [0.0, 0.0, 0.0, 0.0, 0.0, 70.0]
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0) if times else 70.0)
 
@@ -919,7 +855,5 @@ def test_run_verify_policy_message_correctness(
 
     captured = capsys.readouterr()
     assert exit_code == TIMEOUT_EXIT_CODE
-    # The banner must explicitly mention cumulative test time exceeded,
-    # not just a per-step timeout.
     assert "budget exhausted — cumulative test time exceeded" in captured.err
     assert captured.err.count("budget exhausted") >= 1

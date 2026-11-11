@@ -1,9 +1,3 @@
-"""Sanitize uncaught exception output and restore the terminal.
-
-This boundary is intentionally output-only: it preserves exception type, message,
-and traceback text while removing terminal-control bytes before they can reach
-the user's terminal.  Both interpreter and worker-thread hooks are installed.
-"""
 
 from __future__ import annotations
 
@@ -38,7 +32,6 @@ def install_sanitizing_excepthook(
     thread_setter: Callable[[Callable[[threading.ExceptHookArgs], None]], object] | None = None,
     restore: Callable[[], None] | None = None,
 ) -> None:
-    """Install idempotent total-guarded hooks for main and worker crashes."""
     try:
         if _STATE.installed:
             return

@@ -1,433 +1,368 @@
-"""Tests for :mod:`ralph.testing.audit_comments`.
-
-The comment-policy gate reports banned comment shapes on NEW or CHANGED
-lines only, honours an inline bypass marker, and keeps the over-commenting
-rule advisory.
-
-Every fixture below is a synthetic string, so the cases are black box: no
-network, no version control, no repository file is read. The planted
-banned comments live inside string literals, so this file does not flag
-itself when the gate scans the repository.
-"""
-
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import runpy
+from pathlib import Path
 
-from ralph.testing import audit_comments as audit_comments_module
-from ralph.testing.audit_comments import (
-    COMMENT_BYPASS_MARKER,
-    RULE_CHANGE_NARRATION,
-    RULE_COMMENTED_OUT_CODE,
-    RULE_EMPTY_BYPASS_REASON,
-    RULE_OWNERLESS_MARKER,
-    RULE_RESTATES_CODE,
-    RULE_REVIEWER_NOTE,
-    RULE_SECTION_BANNER,
-    RULE_SEVERITIES,
-    SEVERITY_ADVISORY,
-    SEVERITY_BLOCKING,
-    CommentFinding,
-    audit_comment_roots,
-    audit_comments,
-    main,
-    scan_comment_lines,
-)
+import pytest
 
-if TYPE_CHECKING:
-    from pathlib import Path
+from ralph.testing.audit_comments import FIX_HINT, main
 
-    import pytest
 
-#: A comment that records what the code cannot say.
-_CLEAN_COMMENT = "# The upstream contract caps the payload at 64 KiB."
+def _write(root: Path, name: str, content: str) -> Path:
+    target = root / name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
+    return target
 
-#: A comment that records an invariant.
-_CLEAN_INVARIANT = "# The count is never negative once the loop completes."
 
-#: A comment that records a workaround and its removal trigger.
-_CLEAN_WORKAROUND = "# Workaround for the 3.11 bug; remove when 3.12 lands."
+def _run(
+    root: Path,
+    name: str,
+    content: str,
+    capsys: pytest.CaptureFixture[str],
+) -> tuple[int, str]:
+    target = _write(root, name, content)
+    code = main(["--paths", str(target)])
+    return code, capsys.readouterr().out
 
-#: A comment that records intent.
-_CLEAN_INTENT = "# We retry once so a transient transport blip does not fail the run."
 
-#: The mandated type-ignore marker, split so this file does not flag itself.
-_TYPE_IGNORE_MARKER = "# type:" + " ignore[arg-type]"
+def test_a_python_comment_token_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    code, output = _run(tmp_path, "mod.py", "value = 1  # a comment\n", capsys)
 
+    assert code == 1, reason
+    assert "# a comment" in output, reason
 
-def _rules(findings: list[CommentFinding]) -> set[str]:
-    return {finding.rule_id for finding in findings}
 
-
-def _scan(text: str) -> list[CommentFinding]:
-    """Scan every line of *text* for banned comment shapes."""
-    return scan_comment_lines("fixture.py", text, set(range(1, len(text.splitlines()) + 1)))
-
-
-# --- one failing fixture per banned rule ------------------------------------
-
-
-def test_change_narration_fails() -> None:
-    """A comment that narrates a change is reported."""
-    findings = _scan("# added for the retry budget\nx = 1\n")
-
-    assert RULE_CHANGE_NARRATION in _rules(findings)
-    assert RULE_SEVERITIES[RULE_CHANGE_NARRATION] == SEVERITY_BLOCKING
-
-
-def test_restating_the_code_fails() -> None:
-    """A comment that repeats the code is reported as advisory."""
-    findings = _scan("# total = compute_total(items)\ntotal = compute_total(items)\n")
-
-    assert RULE_RESTATES_CODE in _rules(findings)
-    assert RULE_SEVERITIES[RULE_RESTATES_CODE] == SEVERITY_ADVISORY
-
-
-def test_commented_out_code_fails() -> None:
-    """A comment that holds code is reported."""
-    findings = _scan("# result = compute()\n")
-
-    assert RULE_COMMENTED_OUT_CODE in _rules(findings)
-    assert RULE_SEVERITIES[RULE_COMMENTED_OUT_CODE] == SEVERITY_BLOCKING
-
-
-def test_section_banner_fails() -> None:
-    """A comment-only banner line is reported."""
-    findings = _scan("# =====\nx = 1\n")
-
-    assert RULE_SECTION_BANNER in _rules(findings)
-    assert RULE_SEVERITIES[RULE_SECTION_BANNER] == SEVERITY_BLOCKING
-
-
-def test_reviewer_note_fails() -> None:
-    """A note addressed to the reviewer is reported."""
-    findings = _scan("# note: check the retry budget\n")
-
-    assert RULE_REVIEWER_NOTE in _rules(findings)
-    assert RULE_SEVERITIES[RULE_REVIEWER_NOTE] == SEVERITY_BLOCKING
-
-
-def test_ownerless_marker_fails() -> None:
-    """A deferred-work marker with no owner and no trigger is reported."""
-    findings = _scan("# TODO: refactor the parser\n")
-
-    assert RULE_OWNERLESS_MARKER in _rules(findings)
-    assert RULE_SEVERITIES[RULE_OWNERLESS_MARKER] == SEVERITY_BLOCKING
-
-
-def test_empty_bypass_reason_fails() -> None:
-    """A bypass marker with no reason is reported as its own finding."""
-    findings = _scan(f"# {COMMENT_BYPASS_MARKER}:\n")
-
-    assert RULE_EMPTY_BYPASS_REASON in _rules(findings)
-    assert RULE_SEVERITIES[RULE_EMPTY_BYPASS_REASON] == SEVERITY_BLOCKING
-
-
-# --- negative cases: every clean comment passes ----------------------------
-
-
-def test_a_clean_constraint_comment_passes() -> None:
-    """A comment that records a constraint passes every rule."""
-    assert _scan(_CLEAN_COMMENT + "\n") == []
-
-
-def test_a_clean_invariant_comment_passes() -> None:
-    """A comment that records an invariant passes every rule."""
-    assert _scan(_CLEAN_INVARIANT + "\n") == []
-
-
-def test_a_clean_workaround_comment_passes() -> None:
-    """A comment that records a workaround and its trigger passes."""
-    assert _scan(_CLEAN_WORKAROUND + "\n") == []
-
-
-def test_a_clean_intent_comment_passes() -> None:
-    """A comment that records intent passes."""
-    assert _scan(_CLEAN_INTENT + "\n") == []
-
-
-def test_a_clean_module_passes() -> None:
-    """A module whose comments all carry intent passes."""
-    text = f'"""Module docstring."""\n\n\ndef run() -> int:\n    {_CLEAN_INTENT}\n    return 0\n'
-
-    assert _scan(text) == []
-
-
-def test_a_marker_with_an_owner_and_a_trigger_passes() -> None:
-    """A deferred-work marker that names an owner and a trigger passes."""
-    findings = _scan("# TODO(@alice): remove when the parser lands\n")
-
-    assert RULE_OWNERLESS_MARKER not in _rules(findings)
-    assert RULE_REVIEWER_NOTE not in _rules(findings)
-
-
-def test_a_docstring_is_not_a_comment() -> None:
-    """A "#" inside a docstring is never a comment."""
-    text = '"""A ``#`` inside a docstring is prose."""\nx = 1\n'
-
-    assert _scan(text) == []
-
-
-def test_a_hash_inside_a_string_is_not_a_comment() -> None:
-    """A "#" inside a string literal is never a comment."""
-    text = 'marker = "# TODO: not a comment"\n'
-
-    assert _scan(text) == []
-
-
-# --- the suppression forms the typechecking and linting policies mandate -----
-
-
-def test_a_type_ignore_with_a_reason_is_not_commented_out_code() -> None:
-    """The mandated type-ignore form is a suppression, not commented-out code."""
-    text = f"x = 1  {_TYPE_IGNORE_MARKER}  # reason: external library has no type support\n"
-
-    assert RULE_COMMENTED_OUT_CODE not in _rules(_scan(text))
-
-
-def test_a_noqa_with_a_reason_is_not_commented_out_code() -> None:
-    """The mandated noqa form is a suppression, not commented-out code."""
-    text = "x = 1  # noqa: RUF022  # reason: intentional per-file order\n"
-
-    assert RULE_COMMENTED_OUT_CODE not in _rules(_scan(text))
-
-
-def test_a_suppression_with_a_reason_is_not_reported_at_all() -> None:
-    """A documented suppression passes every comment rule."""
-    text = (
-        f"x = 1  {_TYPE_IGNORE_MARKER}  # reason: external library has no type support\n"
-        "y = 2  # noqa: RUF022  # reason: intentional per-file order\n"
-    )
-
-    assert _scan(text) == []
-
-
-def test_the_module_docstring_documents_the_suppression_directive_forms() -> None:
-    """The literal directive forms stay documented where no linter reads them.
-
-    A linter reads the text after a comment's last ``#`` as a pragma, so
-    prose that ends that segment with the ``noqa`` token makes the linter
-    report an invalid directive. The module docstring therefore carries the
-    literal forms, and the module's own comments describe the same forms in
-    prose.
-    """
-    docstring = audit_comments_module.__doc__ or ""
-
-    assert "# noqa[:<code>]" in docstring
-    assert "# reason: <text>" in docstring
-
-
-# --- baseline-diff mode ----------------------------------------------------
-
-
-def test_a_baseline_comment_is_not_reported() -> None:
-    """A banned comment the baseline already had is pre-existing debt."""
-    text = "# TODO: refactor the parser\nx = 1\n"
-
-    findings = audit_comments({"fixture.py": text}, {"fixture.py": text})
-
-    assert findings == []
-
-
-def test_a_new_banned_comment_is_reported() -> None:
-    """A banned comment on a NEW line is a regression and is reported."""
-    baseline = {"fixture.py": "x = 1\n"}
-    current = {"fixture.py": "x = 1\n# TODO: refactor the parser\n"}
-
-    findings = audit_comments(baseline, current)
-
-    assert RULE_OWNERLESS_MARKER in _rules(findings)
-
-
-def test_a_changed_banned_comment_is_reported() -> None:
-    """A banned comment on a CHANGED line is a regression and is reported."""
-    baseline = {"fixture.py": "# TODO: old note\nx = 1\n"}
-    current = {"fixture.py": "# TODO: new note\nx = 1\n"}
-
-    findings = audit_comments(baseline, current)
-
-    assert RULE_OWNERLESS_MARKER in _rules(findings)
-
-
-def test_an_unchanged_comment_next_to_a_changed_line_is_not_reported() -> None:
-    """Only the changed line is reported; its neighbours stay quiet."""
-    baseline = {"fixture.py": "# TODO: refactor the parser\nx = 1\n"}
-    current = {"fixture.py": "# TODO: refactor the parser\nx = 2\n"}
-
-    findings = audit_comments(baseline, current)
-
-    assert findings == []
-
-
-def test_a_new_file_is_fully_scanned() -> None:
-    """A file the baseline does not have is entirely new."""
-    findings = audit_comments({}, {"fixture.py": "# TODO: refactor the parser\n"})
-
-    assert RULE_OWNERLESS_MARKER in _rules(findings)
-
-
-def test_a_non_python_file_is_not_scanned() -> None:
-    """The gate reads Python source only."""
-    findings = audit_comments({}, {"notes.md": "# TODO: refactor the parser\n"})
-
-    assert findings == []
-
-
-def test_an_unchanged_empty_bypass_reason_is_not_reported() -> None:
-    """An unchanged empty-reason marker is pre-existing debt, not a regression."""
-    text = f"# {COMMENT_BYPASS_MARKER}:\n"
-
-    findings = audit_comments({"fixture.py": text}, {"fixture.py": text})
-
-    assert findings == []
-
-
-def test_a_new_empty_bypass_reason_is_reported() -> None:
-    """An empty-reason marker on a NEW line is a regression and is reported."""
-    baseline = {"fixture.py": "x = 1\n"}
-    current = {"fixture.py": "x = 1\n# comment-ok:\n"}
-
-    findings = audit_comments(baseline, current)
-
-    assert RULE_EMPTY_BYPASS_REASON in _rules(findings)
-
-
-def test_identical_baseline_and_current_sets_report_nothing() -> None:
-    """Identical baseline and current content sets produce no finding at all."""
-    text = f"# {COMMENT_BYPASS_MARKER}:\n# TODO: refactor the parser\n"
-
-    findings = audit_comments({"fixture.py": text}, {"fixture.py": text})
-
-    assert findings == []
-
-
-# --- the bypass marker -----------------------------------------------------
-
-
-def test_the_bypass_marker_on_the_line_suppresses_the_finding() -> None:
-    """An inline marker with a reason waives the comment on its own line."""
-    text = f"# TODO: refactor the parser  # {COMMENT_BYPASS_MARKER}: tracked in issue 42\n"
-
-    assert _scan(text) == []
-
-
-def test_the_bypass_marker_above_the_line_suppresses_the_finding() -> None:
-    """A marker on the line immediately above waives the comment below it."""
-    text = f"# {COMMENT_BYPASS_MARKER}: tracked in issue 42\n# TODO: refactor the parser\n"
-
-    assert _scan(text) == []
-
-
-def test_an_empty_bypass_reason_is_not_a_bypass() -> None:
-    """An empty reason waives nothing and is reported."""
-    text = f"# {COMMENT_BYPASS_MARKER}:\n# TODO: refactor the parser\n"
-
-    findings = _scan(text)
-
-    assert RULE_EMPTY_BYPASS_REASON in _rules(findings)
-    assert RULE_OWNERLESS_MARKER in _rules(findings)
-
-
-def test_a_whitespace_only_bypass_reason_is_not_a_bypass() -> None:
-    """A reason made of whitespace is still an empty reason."""
-    text = f"# {COMMENT_BYPASS_MARKER}:   \n# TODO: refactor the parser\n"
-
-    findings = _scan(text)
-
-    assert RULE_EMPTY_BYPASS_REASON in _rules(findings)
-
-
-def test_the_bypass_marker_waives_only_the_next_line() -> None:
-    """A marker waives its own line and the line below it, and no further."""
-    text = (
-        f"# {COMMENT_BYPASS_MARKER}: tracked in issue 42\n"
-        "# TODO: refactor the parser\n"
-        "# TODO: and the other one\n"
-    )
-
-    findings = _scan(text)
-
-    assert [finding.line for finding in findings] == [3]
-
-
-# --- the CLI contract ------------------------------------------------------
-
-
-def test_main_returns_one_on_a_blocking_finding(tmp_path: Path) -> None:
-    """The CLI fails on a banned comment."""
-    root = tmp_path / "tree"
-    root.mkdir()
-    (root / "mod.py").write_text("# TODO: refactor the parser\n", encoding="utf-8")
-
-    assert main([str(root)]) == 1
-
-
-def test_main_returns_zero_on_a_clean_tree(tmp_path: Path) -> None:
-    """The CLI passes on a clean tree."""
-    root = tmp_path / "tree"
-    root.mkdir()
-    (root / "mod.py").write_text(f"{_CLEAN_INTENT}\nvalue = 1\n", encoding="utf-8")
-
-    assert main([str(root)]) == 0
-
-
-def test_main_returns_zero_when_only_the_baseline_carries_the_comment(
+def test_a_hash_inside_a_python_string_passes(
     tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Baseline-diff mode keeps a pre-existing comment out of the report."""
-    baseline = tmp_path / "baseline"
-    current = tmp_path / "current"
-    baseline.mkdir()
-    current.mkdir()
-    (baseline / "mod.py").write_text("# TODO: refactor the parser\n", encoding="utf-8")
-    (current / "mod.py").write_text("# TODO: refactor the parser\n", encoding="utf-8")
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    code, _output = _run(tmp_path, "mod.py", 'marker = "# not a comment"\n', capsys)
 
-    assert main([str(baseline), str(current)]) == 0
+    assert code == 0, reason
 
 
-def test_main_returns_two_when_a_root_is_missing(tmp_path: Path) -> None:
-    """A missing root is an error, not a silent pass."""
-    root = tmp_path / "tree"
-    root.mkdir()
+def test_a_module_docstring_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    code, output = _run(tmp_path, "mod.py", '"""Module docstring."""\n', capsys)
 
-    assert main([str(root), str(tmp_path / "absent")]) == 2
-
-
-def test_main_returns_two_when_baseline_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A missing baseline when invoked with no arguments fails closed with exit code 2."""
-
-    def _absent_head_tree(_root: Path) -> Path | None:
-        return None
-
-    monkeypatch.setattr("ralph.testing.audit_comments.head_tree", _absent_head_tree)
-    assert main([]) == 2
+    assert code == 1, reason
+    assert "Module docstring." in output, reason
 
 
-def test_audit_comment_roots_reports_the_baseline_count(tmp_path: Path) -> None:
-    """The roots seam reports how many findings the committed baseline carries."""
-    baseline = tmp_path / "baseline"
-    current = tmp_path / "current"
-    baseline.mkdir()
-    current.mkdir()
-    (baseline / "mod.py").write_text("# TODO: refactor the parser\n", encoding="utf-8")
-    (current / "mod.py").write_text("# TODO: refactor the parser\n", encoding="utf-8")
+def test_a_class_docstring_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    source = 'class Thing:\n    """Class docstring."""\n'
 
-    findings, baseline_count = audit_comment_roots(baseline, current)
+    code, output = _run(tmp_path, "mod.py", source, capsys)
 
-    assert findings == []
-    assert baseline_count == 1
+    assert code == 1, reason
+    assert "Class docstring." in output, reason
 
 
-def test_main_prints_the_baseline_count(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """The CLI reports the burn-down count the clean-code policy promises."""
-    baseline = tmp_path / "baseline"
-    current = tmp_path / "current"
-    baseline.mkdir()
-    current.mkdir()
-    (baseline / "mod.py").write_text("# TODO: refactor the parser\n", encoding="utf-8")
-    (current / "mod.py").write_text("# TODO: refactor the parser\n", encoding="utf-8")
+def test_a_function_docstring_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    source = 'def run() -> int:\n    """Function docstring."""\n    return 0\n'
 
-    assert main([str(baseline), str(current)]) == 0
+    code, output = _run(tmp_path, "mod.py", source, capsys)
 
+    assert code == 1, reason
+    assert "Function docstring." in output, reason
+
+
+def test_a_bare_string_statement_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    source = 'value = 1\n"documentation for the next reader"\n'
+
+    code, output = _run(tmp_path, "mod.py", source, capsys)
+
+    assert code == 1, reason
+    assert "documentation for the next reader" in output, reason
+
+
+def test_a_line_one_shebang_passes(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    source = "#!/usr/bin/env python\nvalue = 1\n"
+
+    code, _output = _run(tmp_path, "mod.py", source, capsys)
+
+    assert code == 0, reason
+
+
+def test_a_hash_on_a_later_line_is_not_a_shebang(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    source = "value = 1\n#!not a shebang\n"
+
+    code, _output = _run(tmp_path, "mod.py", source, capsys)
+
+    assert code == 1, reason
+
+
+def test_a_noqa_directive_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    source = "value = 1  # no" + "qa\n"
+
+    code, output = _run(tmp_path, "mod.py", source, capsys)
+
+    assert code == 1, reason
+    assert "no" + "qa" in output, reason
+
+
+def test_a_type_ignore_directive_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    source = "value = 1  # type:" + " ignore[arg-type]\n"
+
+    code, output = _run(tmp_path, "mod.py", source, capsys)
+
+    assert code == 1, reason
+    assert "type:" in output, reason
+
+
+def test_a_pragma_directive_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    source = "value = 1  # pragma:" + " no cover\n"
+
+    code, output = _run(tmp_path, "mod.py", source, capsys)
+
+    assert code == 1, reason
+    assert "pragma:" in output, reason
+
+
+def test_a_comment_ok_bypass_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    source = "# comment-ok: tracked in issue 42\nvalue = 1\n"
+
+    code, output = _run(tmp_path, "mod.py", source, capsys)
+
+    assert code == 1, reason
+    assert "comment-ok" in output, reason
+
+
+def test_the_finding_shape_is_path_line_text_and_hint(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    target = _write(tmp_path, "mod.py", "value = 1  # a comment\n")
+
+    code = main(["--paths", str(target)])
     output = capsys.readouterr().out
-    assert "1 pre-existing finding(s) in the baseline" in output
+
+    assert code == 1, reason
+    assert f"{target}:1: # a comment — {FIX_HINT}" in output, reason
+
+
+def test_a_shell_comment_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    code, _output = _run(tmp_path, "run.sh", "echo ready # a comment\n", capsys)
+
+    assert code == 1, reason
+
+
+def test_a_shell_hash_inside_quotes_passes(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    code, _output = _run(tmp_path, "run.sh", 'echo "a # b"\n', capsys)
+
+    assert code == 0, reason
+
+
+def test_a_toml_comment_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    code, _output = _run(tmp_path, "config.toml", 'key = "value" # a comment\n', capsys)
+
+    assert code == 1, reason
+
+
+def test_a_toml_hash_inside_quotes_passes(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    code, _output = _run(tmp_path, "config.toml", 'key = "a # b"\n', capsys)
+
+    assert code == 0, reason
+
+
+def test_a_yaml_comment_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    code, _output = _run(tmp_path, "config.yaml", "key: value # a comment\n", capsys)
+
+    assert code == 1, reason
+
+
+def test_a_yaml_hash_inside_quotes_passes(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    code, _output = _run(tmp_path, "config.yaml", 'key: "a # b"\n', capsys)
+
+    assert code == 0, reason
+
+
+def test_a_makefile_comment_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    source = "all:\n\t@echo ready # a comment\n"
+
+    code, _output = _run(tmp_path, "Makefile", source, capsys)
+
+    assert code == 1, reason
+
+
+def test_a_makefile_hash_inside_quotes_passes(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    source = 'all:\n\t@echo "a # b"\n'
+
+    code, _output = _run(tmp_path, "Makefile", source, capsys)
+
+    assert code == 0, reason
+
+
+def test_a_jinja_block_comment_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    source = "{# a jinja comment #}\n<prompt></prompt>\n"
+
+    code, output = _run(tmp_path, "prompt.jinja", source, capsys)
+
+    assert code == 1, reason
+    assert "a jinja comment" in output, reason
+
+
+def test_a_jinja_text_hash_passes(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    source = "<prompt># a markdown heading</prompt>\n"
+
+    code, _output = _run(tmp_path, "prompt.jinja", source, capsys)
+
+    assert code == 0, reason
+
+
+@pytest.mark.parametrize(
+    "marker",
+    ["decision", "decided", "do not reopen", "rationale", "non-adoption", "we chose"],
+)
+def test_a_docs_decision_marker_fails(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    marker: str,
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    source = f"This text carries the word {marker} in prose.\n"
+
+    code, output = _run(tmp_path, "notes.md", source, capsys)
+
+    assert code == 1, reason
+    assert marker in output, reason
+
+
+def test_a_docs_marker_inside_a_fenced_block_passes(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    source = "```\nthe decision is quoted code\n```\n"
+
+    code, _output = _run(tmp_path, "notes.md", source, capsys)
+
+    assert code == 0, reason
+
+
+def test_a_docs_marker_inside_an_inline_code_span_passes(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    source = "Use the `decision` marker in the template.\n"
+
+    code, _output = _run(tmp_path, "notes.md", source, capsys)
+
+    assert code == 0, reason
+
+
+def test_the_cli_returns_zero_on_a_clean_tree(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    _write(tmp_path, "mod.py", "value = 1\n")
+    _write(tmp_path, "notes.md", "Current facts only.\n")
+
+    code = main(["--paths", str(tmp_path)])
+    output = capsys.readouterr().out
+
+    assert code == 0, reason
+    assert "No comment, docstring or documentation-decision findings." in output, reason
+
+
+def test_the_cli_returns_one_when_a_finding_exists(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    _write(tmp_path, "mod.py", "value = 1  # a comment\n")
+
+    code = main(["--paths", str(tmp_path)])
+    output = capsys.readouterr().out
+
+    assert code == 1, reason
+    assert "COMMENT-POLICY FINDINGS" in output, reason
+
+
+def test_the_cli_exclude_flag_drops_a_path(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    bad = _write(tmp_path, "bad.py", "value = 1  # a comment\n")
+    _write(tmp_path, "good.py", "value = 2\n")
+
+    code = main(["--paths", str(tmp_path), "--exclude", str(bad)])
+    output = capsys.readouterr().out
+
+    assert code == 0, reason
+    assert "COMMENT-POLICY FINDINGS" not in output, reason
+
+
+def test_the_cli_paths_flag_accepts_a_directory(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    (nested / "mod.py").write_text("value = 1  # a comment\n", encoding="utf-8")
+
+    code = main(["--paths", str(nested)])
+    output = capsys.readouterr().out
+
+    assert code == 1, reason
+    assert "COMMENT-POLICY FINDINGS" in output, reason
+
+
+def test_the_module_runs_as_a_script(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    target = _write(tmp_path, "mod.py", "value = 1  # a comment\n")
+    module_path = Path(__file__).resolve().parents[2] / "ralph" / "testing" / "audit_comments.py"
+    monkeypatch.setattr("sys.argv", ["audit_comments", "--paths", str(target)])
+
+    with pytest.raises(SystemExit) as excinfo:
+        runpy.run_path(str(module_path), run_name="__main__")
+    output = capsys.readouterr().out
+
+    assert excinfo.value.code == 1, reason
+    assert "COMMENT-POLICY FINDINGS" in output, reason

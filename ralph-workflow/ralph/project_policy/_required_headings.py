@@ -1,22 +1,9 @@
-"""Required headings per policy file for the project-policy readiness contract.
-
-Extracted from ralph.project_policy.markers to keep both modules under
-the repository's 1000-line cap. Re-exported by markers for backwards compatibility.
-"""
 
 from __future__ import annotations
 
 from typing import Final
 
-# Required headings per policy file. Every starter AND every
-# project-customized policy must include the listed headings
-#   ... (6 more lines)
 REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
-    # The execution kernel (v5+) carries the five generic rules once
-    # (truthful evidence, fail-closed verification, bounded execution,
-    # no weakening of checks, explicit unverified-claim reporting), the
-    # precedence over domain policies, the selective-applicability rule,
-    # the claim-scope rule, and the guard inventory for kernel rules.
     "execution-kernel.md": (
         "Purpose and scope",
         "Kernel rules",
@@ -30,11 +17,6 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
         "Research basis",
         "Ralph markers",
     ),
-    # The testing policy additionally requires "Suite admission": the section
-    # that decides which acceptance criteria become automated tests at all.
-    # Without it the policy is a one-way ratchet — every rule obliges MORE
-    # coverage and none routes a perceptual, third-party, or unrepeatable
-    # criterion to the lane that actually owns it.
     "testing-policy.md": (
         "Purpose and scope",
         "Default requirements",
@@ -85,11 +67,6 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
         "Research basis",
         "Ralph markers",
     ),
-    # The verification policy additionally requires "Gate lanes": the declared
-    # home for a check that cannot meet the default gate's constraints (live
-    # third-party service, device matrix, long soak). Without a lane that
-    # demands an owner and a trigger, "wire it in or delete it" leaves such a
-    # check nowhere legitimate to live, so it lands in the default gate.
     "verification-policy.md": (
         "Purpose and scope",
         "Default requirements",
@@ -104,11 +81,6 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
         "Research basis",
         "Ralph markers",
     ),
-    # The gate-script policy additionally requires "Security" and
-    # "Cross-platform" headings: a gate script is an execution surface
-    # (secrets, remote code, temp files) and a portability surface
-    # (a bash-only gate on a Windows-supporting project is a broken
-    # gate). Both sections must survive every amendment.
     "gate-script-policy.md": (
         "Purpose and scope",
         "Default requirements",

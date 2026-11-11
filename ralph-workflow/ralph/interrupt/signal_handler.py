@@ -1,4 +1,3 @@
-"""Shared signal handler typing helpers."""
 
 from __future__ import annotations
 

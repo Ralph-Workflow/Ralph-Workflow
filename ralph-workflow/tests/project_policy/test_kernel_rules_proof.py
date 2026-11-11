@@ -1,23 +1,3 @@
-"""Tests for the v5 kernel rules and A2 protection-to-starter map.
-
-The plan's A1 and A2 requirements anchor five kernel rules and six
-A2 named protections in specific starter homes:
-
-1. Truthful evidence
-2. Fail-closed verification
-3. Bounded execution
-4. No weakening of checks
-5. Explicit unverified-claim reporting
-
-A2 protections:
-* (1) security                -> security-policy.md
-* (2) authorization / scope   -> security-policy.md
-* (3) destructive operations  -> security-policy.md
-* (4) process / resource      -> architecture-policy.md
-* (5) deterministic seams     -> testing-policy.md
-* (6) schema / data integrity -> data-storage-policy.md
-"""
-
 from __future__ import annotations
 
 import re
@@ -27,9 +7,6 @@ import pytest
 
 from ralph.project_policy import markers, starters
 
-# The five kernel rule phrases (lowercased). Each must appear in
-# the kernel starter, ideally as a heading or as the rule's
-# canonical phrase.
 KERNEL_RULES: tuple[str, ...] = (
     "truthful evidence",
     "run every gate",
@@ -38,10 +15,6 @@ KERNEL_RULES: tuple[str, ...] = (
     "report failures honestly",
 )
 
-# Substantive mandatory obligation phrases required for each kernel rule.
-# A rule is not satisfied merely by its title; its statement must carry
-# the substantive requirement phrasing so that substituting retirement or
-# placeholder prose causes a test failure (A1).
 KERNEL_RULE_SUBSTANTIVE_OBLIGATIONS: dict[str, tuple[str, ...]] = {
     "truthful evidence": ("must be backed by a record",),
     "run every gate": (
@@ -56,8 +29,6 @@ KERNEL_RULE_SUBSTANTIVE_OBLIGATIONS: dict[str, tuple[str, ...]] = {
     "report failures honestly": ("report the failure honestly",),
 }
 
-# Negation, retirement, and deprecation phrases that MUST NOT appear
-# in any kernel rule statement.
 KERNEL_RULE_RETIREMENT_PHRASES: tuple[str, ...] = (
     "retired",
     "deprecated",
@@ -65,33 +36,19 @@ KERNEL_RULE_RETIREMENT_PHRASES: tuple[str, ...] = (
     "optional",
 )
 
-# The canonical load-order statement. The brief's loading direction is
-# "kernel, then role slice, then triggered domain file"; the root pack
-# and the starter state it once, in the same words.
 LOAD_ORDER_STATEMENT = "Load order: kernel → role slice → triggered domain file → stop."
 
-# The two load steps the '## AI execution instructions' sections name.
-# The role slice is read before the domain file the change triggers.
 LOAD_STEP_SLICE_MARKER = "LOAD only the rule slice"
 LOAD_STEP_DOMAIN_MARKER = "LOAD only the domain polic"
 
-# The evidence tags the brief assigns to the rules whose shipped tag
-# contradicted it: rule 4 (Regression tests from the spec) is `moderate`,
-# rule 8 (Smallest change) is practitioner experience (`anecdotal`), and
-# rule 9 (Context hygiene) is `strong`.
 BRIEF_EVIDENCE_TAGS: dict[str, str] = {
     "Regression tests from the spec": "moderate",
     "Smallest change": "anecdotal",
     "Context hygiene": "strong",
 }
 
-# Only a `strong` or a `moderate` rule may carry a `deterministic`
-# enforcement status. The shipped text must anchor that rule, because
-# the tags decide which enforcements are allowed.
 DETERMINISTIC_TAG_ANCHOR = "Only a rule tagged `strong` or `moderate` may carry a `deterministic`"
 
-# The twelve agent rules, in shipped order, with the number the
-# rule-to-phase table and the rule-to-enforcer ladder use.
 AGENT_RULES: tuple[tuple[int, str], ...] = (
     (1, "Check first"),
     (2, "Real-artifact evidence"),
@@ -107,9 +64,6 @@ AGENT_RULES: tuple[tuple[int, str], ...] = (
     (12, "Rule-to-enforcer ladder"),
 )
 
-# The instruction-audit requirement: on a model or harness generation
-# change, the policy is re-audited for stale, dead-path, or contradictory
-# rules.
 INSTRUCTION_AUDIT_TRIGGER = "A model or harness generation change"
 INSTRUCTION_AUDIT_REQUIREMENTS: tuple[str, ...] = (
     "re-audit",
@@ -118,7 +72,6 @@ INSTRUCTION_AUDIT_REQUIREMENTS: tuple[str, ...] = (
     "contradictory",
 )
 
-# The evidence tag a rule statement carries.
 EVIDENCE_TAG_PATTERN = re.compile(r"\(evidence:\s*(strong|moderate|anecdotal|none)\)")
 
 
@@ -170,7 +123,6 @@ def _extract_kernel_rules_section(content: str) -> str:
 
 
 def _extract_rule_statements(section: str) -> dict[str, str]:
-    """Extract individual rule statements mapped by their normalized rule name."""
     pattern = re.compile(r"((?:\d+\.|\*)\s+\*\*(.*?)\*\*[\s\S]*?)(?=\n(?:\d+\.|\*)\s+\*\*|\Z)")
     rules: dict[str, str] = {}
     for match in pattern.finditer(section):
@@ -187,7 +139,6 @@ def _verify_rule_statement(
     obligations: tuple[str, ...],
     retirement_phrases: tuple[str, ...] = KERNEL_RULE_RETIREMENT_PHRASES,
 ) -> None:
-    """Verify that a single rule statement carries substantive obligations and no retirement phrases."""
     normalized = statement.lower()
     for obligation in obligations:
         assert obligation.lower() in normalized, (
@@ -200,13 +151,6 @@ def _verify_rule_statement(
 
 
 def test_kernel_starter_carries_all_five_rules() -> None:
-    """The execution-kernel starter carries the five kernel rule
-    phrases within its '## Kernel rules' section. Extracting that
-    section must yield all five rules, assert substantive mandatory
-    obligations for EACH rule, and verify that negation/retirement
-    phrases do not appear in the rule statements (A1 fault-sensitive
-    regression proof).
-    """
     content = _kernel()
     section = _extract_kernel_rules_section(content)
     rules = _extract_rule_statements(section)
@@ -222,7 +166,6 @@ def test_kernel_starter_carries_all_five_rules() -> None:
 
 
 def test_kernel_rules_proof_is_fault_sensitive_to_missing_rule() -> None:
-    """Fault sensitivity: omitting any of the 5 rules fails the proof."""
     content = _kernel()
     section = _extract_kernel_rules_section(content)
     rules = _extract_rule_statements(section)
@@ -234,7 +177,6 @@ def test_kernel_rules_proof_is_fault_sensitive_to_missing_rule() -> None:
 
 
 def test_kernel_rules_proof_is_fault_sensitive_to_stripped_obligation() -> None:
-    """Fault sensitivity: replacing substantive obligations with generic prose fails the proof."""
     for rule, obligations in KERNEL_RULE_SUBSTANTIVE_OBLIGATIONS.items():
         hollow_statement = f"1. **{rule.title()}.** Generic filler without substantive obligation."
         with pytest.raises(AssertionError, match="missing substantive mandatory obligation"):
@@ -245,7 +187,6 @@ def test_kernel_rules_proof_is_fault_sensitive_to_stripped_obligation() -> None:
 def test_kernel_rules_proof_is_fault_sensitive_to_retirement_phrases(
     retirement_phrase: str,
 ) -> None:
-    """Fault sensitivity: inserting retirement/negation phrases fails the proof."""
     content = _kernel()
     section = _extract_kernel_rules_section(content)
     rules = _extract_rule_statements(section)
@@ -258,11 +199,6 @@ def test_kernel_rules_proof_is_fault_sensitive_to_retirement_phrases(
 
 
 def test_kernel_starter_declares_precedence_over_domain_policies() -> None:
-    """The kernel explicitly states it has precedence over domain
-    policies. Without precedence the ``B10`` reduction (one
-    versioned execution kernel) has no authority and the
-    domain starters can re-derive the rules.
-    """
     content = _kernel()
     normalized = " ".join(content.split()).lower()
     assert "precedence" in normalized
@@ -270,25 +206,14 @@ def test_kernel_starter_declares_precedence_over_domain_policies() -> None:
 
 
 def test_kernel_starter_declares_selective_applicability() -> None:
-    """The kernel says agents load the kernel plus policies
-    triggered by the changed surfaces, not every policy. This is
-    the B2 anchor.
-    """
     content = _kernel()
     normalized = " ".join(content.split()).lower()
     assert "selective" in normalized or "trigger" in normalized
 
 
 def test_kernel_starter_declares_claim_scope_rule() -> None:
-    """The kernel says a broad-guarantee phrase in a control's
-    ``protected_outcome`` that does NOT also appear in
-    ``detects`` is rejected. This is the B7 anchor.
-    """
     content = _kernel()
     normalized = " ".join(content.split()).lower()
-    # The substring predicate is enforced in
-    # ``markers.CLAIM_SCOPE_PHRASES``; the kernel starter
-    # MUST name the predicate or its consequence.
     has_claim_scope = "claim-scope" in normalized or "claim scope" in normalized
     has_broad_phrase = any(phrase.lower() in normalized for phrase in markers.CLAIM_SCOPE_PHRASES)
     assert has_claim_scope or has_broad_phrase, (
@@ -297,16 +222,9 @@ def test_kernel_starter_declares_claim_scope_rule() -> None:
 
 
 def test_a2_security_protection_in_security_starter() -> None:
-    """A2 protection (1): the security starter names the security
-    protection in its body AND owns a guard-inventory row whose
-    ``Protected outcome`` names security.
-    """
     content = _starter("security-policy.md")
     normalized = " ".join(content.split()).lower()
-    # The starter names the protection directly.
     assert "security" in normalized
-    # The guard inventory carries a row that names security in
-    # the ``Protected outcome`` cell.
     rows = _parse_inventory("security-policy.md")
     security_rows = [row for row in rows if "security" in row["protected_outcome"].lower()]
     assert security_rows, (
@@ -317,9 +235,6 @@ def test_a2_security_protection_in_security_starter() -> None:
 
 
 def test_a2_authorization_protection_in_security_starter() -> None:
-    """A2 protection (2): authorization / tenant / scope rules
-    are owned by the security starter.
-    """
     content = _starter("security-policy.md")
     normalized = " ".join(content.split()).lower()
     assert "authorization" in normalized or "tenant" in normalized or "scope" in normalized, (
@@ -342,9 +257,6 @@ def test_a2_authorization_protection_in_security_starter() -> None:
 
 
 def test_a2_destructive_operations_protection_in_security_starter() -> None:
-    """A2 protection (3): destructive-operation safety rules are
-    owned by the security starter.
-    """
     content = _starter("security-policy.md")
     normalized = " ".join(content.split()).lower()
     assert "destructive" in normalized
@@ -356,9 +268,6 @@ def test_a2_destructive_operations_protection_in_security_starter() -> None:
 
 
 def test_a2_process_resource_ownership_in_architecture_starter() -> None:
-    """A2 protection (4): process / resource ownership rules are
-    owned by the architecture starter.
-    """
     content = _starter("architecture-policy.md")
     normalized = " ".join(content.split()).lower()
     assert "process" in normalized or "resource" in normalized
@@ -375,15 +284,8 @@ def test_a2_process_resource_ownership_in_architecture_starter() -> None:
 
 
 def test_a2_deterministic_seams_in_testing_starter() -> None:
-    """A2 protection (5): deterministic clock / network / DNS /
-    filesystem / process seams are owned by the testing starter.
-    Every named seam MUST be present, not just one — DNS is
-    required alongside the four I/O seams.
-    """
     content = _starter("testing-policy.md")
     normalized = " ".join(content.split()).lower()
-    # Every deterministic seam is required in the body, not any
-    # one. A starter that names only clock is not A2-compliant.
     seam_words = ("clock", "network", "filesystem", "process", "dns")
     missing = [w for w in seam_words if w not in normalized]
     assert not missing, (
@@ -403,9 +305,6 @@ def test_a2_deterministic_seams_in_testing_starter() -> None:
 
 
 def test_a2_schema_data_integrity_in_data_storage_starter() -> None:
-    """A2 protection (6): schema / data-integrity rules are
-    owned by the data-storage starter.
-    """
     content = _starter("data-storage-policy.md")
     normalized = " ".join(content.split()).lower()
     assert "schema" in normalized or "data integrity" in normalized
@@ -425,11 +324,6 @@ def test_a2_schema_data_integrity_in_data_storage_starter() -> None:
 
 
 def test_domain_starters_deduplicate_living_document_contract_to_kernel_pointer() -> None:
-    """B10: Domain starters must not repeat the generic 'weakened to obtain a
-    passing result' phrase in their living document contracts (or anywhere in prose).
-    Instead, they must point to execution-kernel.md (§Kernel rules) as the single
-    authority for non-weakening and generic rule protection.
-    """
     domain_starters = [
         name
         for name in starters.STARTER_NAMES
@@ -449,14 +343,12 @@ def test_domain_starters_deduplicate_living_document_contract_to_kernel_pointer(
         lower_content = " ".join(content.split()).lower()
         normalized_content = " ".join(content.split())
 
-        # 1. Must NOT contain the generic duplicated phrase
         assert generic_weakened_phrase not in lower_content, (
             f"{name} duplicates the generic kernel rule phrase "
             f"{generic_weakened_phrase!r} in its body; B10 requires pointing "
             f"to execution-kernel.md instead"
         )
 
-        # 2. Must contain the kernel pointer in the Living document contract section
         assert "execution-kernel.md" in normalized_content, (
             f"{name} missing execution-kernel.md pointer"
         )
@@ -465,7 +357,6 @@ def test_domain_starters_deduplicate_living_document_contract_to_kernel_pointer(
             f"{pointer_sentence!r}"
         )
 
-    # 3. execution-kernel.md remains the single authority that retains the rule
     kernel_content = _kernel()
     normalized_kernel = " ".join(kernel_content.split()).lower()
     assert generic_weakened_phrase in normalized_kernel, (
@@ -473,41 +364,22 @@ def test_domain_starters_deduplicate_living_document_contract_to_kernel_pointer(
     )
 
 
-# Phrase patterns that paraphrase a kernel rule. Each is a low-friction
-# rewrite that survives a literal-keyword filter but still re-derives the
-# rule in domain starter body prose. The test below forbids them in
-# every starter except execution-kernel.md, and except inside the two
-# sections that legitimately name the kernel (## AI execution
-# instructions pointer, ## Living document contract footer).
 KERNEL_RULE_PARAPHRASE_PATTERNS: tuple[str, ...] = (
-    # Rule 1 (Truthful evidence) paraphrases
     "i think it works",
     "actual command and outcome",
     "report the actual command",
     "report the actual outcome",
-    # Rule 2 (Fail-closed verification) paraphrase
     "report failures accurately",
-    # Rule 4 (No weakening of checks) paraphrases
     "obtain a passing result",
     "obtaining a passing result",
     "weaken a check to obtain",
     "weakening a check to obtain",
-    # Rule 5 (Explicit unverified-claim reporting) paraphrase
     "avoid unsupported claims",
     "must not make unsupported claims",
 )
 
 
 def _body_sans_kernel_pointer_sections(content: str) -> str:
-    """Return the starter body with the two kernel-reference
-    sections removed.
-
-    The ``## AI execution instructions`` section is the canonical
-    pointer location; the ``## Living document contract`` footer is
-    the canonical single-source-of-truth attribution. Both
-    legitimately name the kernel rules; the dedup test must not
-    fire on text inside either.
-    """
     excluded = (
         "## AI execution instructions",
         "## Living document contract",
@@ -526,20 +398,6 @@ def _body_sans_kernel_pointer_sections(content: str) -> str:
 
 
 def test_domain_starters_do_not_paraphrase_kernel_rules_in_body() -> None:
-    """B10 body-level dedup: a domain starter MUST NOT paraphrase any
-    of the five kernel rules in body prose. The ``## AI execution
-    instructions`` pointer section and the ``## Living document
-    contract`` footer are the only two locations where the kernel is
-    legitimately named; both are excluded by ``_body_sans_kernel_pointer_sections``.
-
-    The existing phrase-list test in ``test_v5_starter_proof.py`` only
-    catches a narrow set of verbatim phrases. This test catches the
-    semantic restatements (e.g. ``I think it works``, ``obtain a
-    passing result``, ``avoid unsupported claims``) that a future
-    editor would naturally reach for when collapsing the body. A
-    regression is a future starter edit that re-introduces one of
-    the paraphrased rules in any non-pointer, non-footer section.
-    """
     domain_starters = [
         name
         for name in starters.STARTER_NAMES
@@ -562,7 +420,6 @@ def test_domain_starters_do_not_paraphrase_kernel_rules_in_body() -> None:
 
 
 def test_kernel_starter_and_root_rule_names_parity() -> None:
-    """Starter and root execution-kernel.md define the exact same five kernel rules."""
     starter_rules = _extract_rule_statements(_extract_kernel_rules_section(_kernel()))
     root_rules = _extract_rule_statements(_extract_kernel_rules_section(_root_kernel()))
 
@@ -575,7 +432,6 @@ def test_kernel_starter_and_root_rule_names_parity() -> None:
 
 
 def test_kernel_starter_and_root_step_3_names() -> None:
-    """Step 3 in ## AI execution instructions of both starter and root names the 5 kernel rules."""
     step_3_pattern = re.compile(
         r"3\.\s+ENFORCE the five kernel rules[^\n]*\n(?:[ \t]+[^\n]*\n)*",
         re.MULTILINE,
@@ -594,7 +450,6 @@ def test_kernel_starter_and_root_step_3_names() -> None:
 
 
 def test_kernel_starter_and_root_rule_to_phase_table_covers_all_numbered_rules() -> None:
-    """The rule-to-phase table in both starter and root must cover all 12 numbered rules (1 through 12)."""
     table_heading = "## Rule-to-phase table"
     for source_name, content in (("starter", _kernel()), ("root", _root_kernel())):
         assert table_heading in content, f"{source_name} missing {table_heading!r}"
@@ -603,7 +458,6 @@ def test_kernel_starter_and_root_rule_to_phase_table_covers_all_numbered_rules()
         next_heading = rest.find("\n## ")
         section = rest[:next_heading] if next_heading != -1 else rest
 
-        # Look for parenthesized rule numbers (1) through (12) in table cells
         found_rules: set[int] = set()
         for num in range(1, 13):
             pattern = re.compile(rf"\({num}\)")
@@ -616,24 +470,11 @@ def test_kernel_starter_and_root_rule_to_phase_table_covers_all_numbered_rules()
         )
 
 
-# ---------------------------------------------------------------------------
-# v6 kernel contract: the canonical pack and the starter agree, and the
-# shipped text matches the brief's evidence assignment.
-# ---------------------------------------------------------------------------
-
-
 def _normalized(text: str) -> str:
-    """Collapse whitespace so a wrapped sentence compares as one line."""
     return " ".join(text.split())
 
 
 def _section(content: str, heading: str) -> str:
-    """Return the body of the section whose heading line is *heading*.
-
-    The heading is matched on a line boundary: a starter names another
-    file's section inline (`` `## AI execution instructions` ``), and an
-    inline mention must not be mistaken for the section itself.
-    """
     marker = f"\n{heading}\n"
     assert marker in content, f"missing {heading!r} section"
     start = content.index(marker) + len(marker)
@@ -643,7 +484,6 @@ def _section(content: str, heading: str) -> str:
 
 
 def _rule_body(statement: str, rule: str) -> str:
-    """Return a rule statement without its enumerator and bold title."""
     index = statement.lower().find(f"**{rule.lower()}")
     assert index != -1, f"rule {rule!r} has no bold title in its statement"
     body = statement[index + len(rule) + 2 :]
@@ -651,19 +491,16 @@ def _rule_body(statement: str, rule: str) -> str:
 
 
 def _agent_rule_statements(content: str) -> dict[str, str]:
-    """Extract the numbered agent rules of the '## Agent rules' section."""
     return _extract_rule_statements(_section(content, "## Agent rules"))
 
 
 def _evidence_tag(statement: str) -> str:
-    """Return the evidence tag a rule statement carries."""
     match = EVIDENCE_TAG_PATTERN.search(statement)
     assert match is not None, "rule statement carries no evidence tag"
     return match.group(1)
 
 
 def _research_basis_blocks(content: str) -> list[str]:
-    """Split the Research basis section into its citation blocks."""
     section = _section(content, "## Research basis")
     blocks: list[str] = []
     current: list[str] = []
@@ -681,7 +518,6 @@ def _research_basis_blocks(content: str) -> list[str]:
 
 
 def _supports_text(block: str) -> str:
-    """Return the normalized `supports:` text of one citation block."""
     collected: list[str] = []
     collecting = False
     for raw_line in block.splitlines():
@@ -699,12 +535,6 @@ def _supports_text(block: str) -> str:
 
 
 def test_kernel_root_and_starter_carry_the_same_five_rule_bodies() -> None:
-    """The five kernel rules read the same in the root pack and the starter.
-
-    A project bootstrapped from the starter inherits the kernel rules;
-    when the two copies drift, the project enforces a different contract
-    than the canonical pack states.
-    """
     root_rules = _extract_rule_statements(_extract_kernel_rules_section(_root_kernel()))
     starter_rules = _extract_rule_statements(_extract_kernel_rules_section(_kernel()))
 
@@ -725,12 +555,6 @@ def test_kernel_root_and_starter_carry_the_same_five_rule_bodies() -> None:
 
 
 def test_kernel_root_and_starter_state_the_same_load_order() -> None:
-    """Both kernel files state the brief's loading direction exactly once.
-
-    The direction is kernel, then role slice, then triggered domain file.
-    Stating it in two different orders in two files is how a cold agent
-    ends up loading a domain file it never needed.
-    """
     for source_name, content in (("root", _root_kernel()), ("starter", _kernel())):
         assert content.count(LOAD_ORDER_STATEMENT) == 1, (
             f"{source_name} kernel must state the load order exactly once "
@@ -742,7 +566,6 @@ def test_kernel_root_and_starter_state_the_same_load_order() -> None:
 
 
 def test_kernel_load_steps_read_the_role_slice_before_the_domain_file() -> None:
-    """The AI execution instructions load the role slice before the domain file."""
     for source_name, content in (("root", _root_kernel()), ("starter", _kernel())):
         section = _section(content, "## AI execution instructions")
         slice_at = section.find(LOAD_STEP_SLICE_MARKER)
@@ -761,7 +584,6 @@ def test_kernel_load_steps_read_the_role_slice_before_the_domain_file() -> None:
 
 
 def test_kernel_evidence_tags_match_the_brief() -> None:
-    """The shipped evidence tags match the brief's assignment."""
     for source_name, content in (("root", _root_kernel()), ("starter", _kernel())):
         statements = _agent_rule_statements(content)
         for rule, tag in BRIEF_EVIDENCE_TAGS.items():
@@ -775,7 +597,6 @@ def test_kernel_evidence_tags_match_the_brief() -> None:
 
 
 def test_kernel_anchors_the_deterministic_evidence_rule() -> None:
-    """Both kernel files anchor the rule that only strong/moderate rules may be deterministic."""
     for source_name, content in (("root", _root_kernel()), ("starter", _kernel())):
         assert DETERMINISTIC_TAG_ANCHOR in content, (
             f"{source_name} kernel does not anchor the rule that only a `strong` "
@@ -784,11 +605,6 @@ def test_kernel_anchors_the_deterministic_evidence_rule() -> None:
 
 
 def test_every_agent_rule_has_a_research_basis_supports_line() -> None:
-    """Every one of the twelve agent rules is named by a research-basis supports line.
-
-    A rule with no source behind it cannot carry an evidence tag that means
-    anything, so the research basis must name every rule.
-    """
     for source_name, content in (("root", _root_kernel()), ("starter", _kernel())):
         blocks = _research_basis_blocks(content)
         assert blocks, f"{source_name} kernel research basis has no citation blocks"
@@ -805,12 +621,6 @@ def test_every_agent_rule_has_a_research_basis_supports_line() -> None:
 
 
 def test_instruction_audit_requirement_is_stated_once_in_both_kernels() -> None:
-    """Both kernel files state the instruction-audit requirement once.
-
-    On a model or harness generation change the policy is re-audited for
-    stale, dead-path, or contradictory rules; the requirement has to live
-    in the kernel, because the kernel is what every cold agent loads.
-    """
     for source_name, content in (("root", _root_kernel()), ("starter", _kernel())):
         assert content.count(INSTRUCTION_AUDIT_TRIGGER) == 1, (
             f"{source_name} kernel must state the instruction-audit requirement exactly "
@@ -823,16 +633,12 @@ def test_instruction_audit_requirement_is_stated_once_in_both_kernels() -> None:
             )
 
 
-#: The clause that resolves a conflict between a shipped skill's technique
-#: and the kernel's policy: the kernel wins.
 SKILL_TECHNIQUE_PRECEDENCE = "the kernel (policy) wins"
 
-#: The clause that points a third-party behaviour at its own documentation.
 LIBRARY_DOCUMENTATION_CLAUSE = "that library's own documentation"
 
 
 def test_kernels_declare_exactly_the_twelve_agent_rules() -> None:
-    """Both kernel files declare the twelve shipped agent rules and no more."""
     for source_name, content in (("root", _root_kernel()), ("starter", _kernel())):
         statements = _agent_rule_statements(content)
         assert len(statements) == len(AGENT_RULES), (
@@ -846,7 +652,6 @@ def test_kernels_declare_exactly_the_twelve_agent_rules() -> None:
 
 
 def test_kernels_do_not_state_the_retired_premise_check_rule() -> None:
-    """Neither kernel file states the retired premise-check rule."""
     for source_name, content in (("root", _root_kernel()), ("starter", _kernel())):
         assert "premise" not in content.lower(), (
             f"{source_name} kernel still states the retired premise-check rule"
@@ -854,7 +659,6 @@ def test_kernels_do_not_state_the_retired_premise_check_rule() -> None:
 
 
 def test_kernels_state_that_a_shipped_skill_technique_wins_on_conflict() -> None:
-    """Both kernel files resolve a skill-versus-kernel conflict once."""
     for source_name, content in (("root", _root_kernel()), ("starter", _kernel())):
         normalized = _normalized(content)
         assert normalized.count(SKILL_TECHNIQUE_PRECEDENCE) == 1, (
@@ -864,7 +668,6 @@ def test_kernels_state_that_a_shipped_skill_technique_wins_on_conflict() -> None
 
 
 def test_kernels_point_a_third_party_behaviour_at_its_own_documentation() -> None:
-    """Both kernel files tell the agent to check a library's own documentation."""
     for source_name, content in (("root", _root_kernel()), ("starter", _kernel())):
         normalized = _normalized(content)
         assert normalized.count(LIBRARY_DOCUMENTATION_CLAUSE) == 1, (

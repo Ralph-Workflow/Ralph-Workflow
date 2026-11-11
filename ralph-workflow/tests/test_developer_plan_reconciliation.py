@@ -1,5 +1,3 @@
-"""Behavioral prompt contracts for inaccurate and differently sized plans."""
-
 from pathlib import Path
 
 import pytest
@@ -39,10 +37,6 @@ def test_developer_prompts_reconcile_plan_items_without_weakening_request(
     assert "request and its acceptance criteria as authoritative" in prompt
     assert "execution plan's steps" in prompt
     assert "performed broad exploration" in prompt
-    # Parallel-by-default rewrite replaced "dispatch independent ready
-    # groups" with the mandatory "dispatch every ready unit concurrently
-    # in one wave" wording. The new anchor is the shared-wording
-    # contract proof that the rewrite took.
     assert "dispatch every ready unit concurrently" in prompt
     assert "### FIRST ACTION: dispatch the initial wave" in prompt
     assert "Before editing any implementation file" in prompt
@@ -76,7 +70,6 @@ def test_developer_prompts_default_to_completion_over_early_stopping(
     assert "Physical-world action" in prompt
     assert "Difficulty, elapsed time" in prompt
     assert "exhausted run budget" in prompt
-    # The general persistence directive precedes the detailed disposition rules.
     assert prompt.index("Completion is the default outcome") < prompt.index("Plan fidelity")
 
 
@@ -151,10 +144,6 @@ def test_development_analyzer_separates_request_criteria_from_plan_routes() -> N
 
     assert "plan step is an implementation route" in prompt
     assert "not a new product requirement" in prompt
-    # Free-form contract: the prompt no longer hard-codes per-step
-    # classifications (``adapted`` / ``not_applicable`` / ``blocked``) as
-    # required disposition vocabulary. The whole-change review and the
-    # parallel-unit fix-plan shape still survive.
     assert "Independently classify" not in prompt
     assert "Do not reject a correct implementation only because" not in prompt
     assert "validator only checks the frontmatter" in prompt

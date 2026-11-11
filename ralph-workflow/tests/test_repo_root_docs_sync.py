@@ -1,13 +1,3 @@
-"""Regression tests for repo-root entry/policy docs synchronization.
-
-Ensures that repo-root README.md, CONTRIBUTING.md, and the canonical
-docs/code-style/index.md point to the maintained Python workflow,
-canonical verification, and current docs/agents family.
-
-wt-026 consolidation removed repo-root CODE_STYLE.md; the canonical home
-for the strict-typing contract is docs/code-style/index.md.
-"""
-
 from tests.doc_roots import (
     REPO_ROOT_CODE_STYLE,
     REPO_ROOT_CONTRIBUTING,
@@ -17,57 +7,40 @@ from tests.doc_roots import (
 
 
 def test_repo_root_readme_points_to_maintained_workflow() -> None:
-    """Repo-root README must direct readers to the maintained Python workflow."""
     content = REPO_ROOT_README.read_text()
-    # Should reference ralph-workflow as the maintained package
     assert "ralph-workflow" in content, (
         "Repo-root README.md must reference ralph-workflow as the maintained package"
     )
-    # Should reference the maintained Sphinx/manual entrypoints
     assert "docs/sphinx" in content or "sphinx" in content.lower(), (
         "Repo-root README.md should point to maintained Sphinx/manual entrypoints"
     )
 
 
 def test_repo_root_contributing_points_to_ralph_workflow() -> None:
-    """Repo-root CONTRIBUTING must point contributors to the maintained Python workflow."""
     content = REPO_ROOT_CONTRIBUTING.read_text()
-    # Should reference the maintained package
     assert "ralph-workflow" in content, "Repo-root CONTRIBUTING.md must reference ralph-workflow"
-    # Should reference canonical verification
     assert "make verify" in content or "verify" in content.lower(), (
         "Repo-root CONTRIBUTING.md should reference canonical verification"
     )
 
 
 def test_code_style_encodes_documentation_contract() -> None:
-    """CODE_STYLE.md (legacy) or docs/code-style/index.md (canonical) must encode
-    the live documentation policy.
-
-    wt-026 consolidation removed CODE_STYLE.md; the canonical home is
-    docs/code-style/index.md. The legacy path is preserved as a regression
-    guard.
-    """
     candidates = [REPO_ROOT_CODE_STYLE, REPOSITORY_ROOT / "docs" / "code-style" / "index.md"]
     primary = next((p for p in candidates if p.exists()), None)
     assert primary is not None, (
         f"Neither CODE_STYLE.md nor docs/code-style/index.md exists; checked: {candidates}"
     )
     content = primary.read_text()
-    # Public docstrings should be self-sufficient
     assert "docstring" in content.lower() or "pydoc" in content.lower(), (
         f"{primary} should address public docstring expectations"
     )
-    # Documentation expectations - pydoc is the key indicator
     assert "pydoc" in content.lower() or "api" in content.lower(), (
         f"{primary} should address documentation/self-sufficiency expectations"
     )
 
 
 def test_repo_root_readme_has_no_stale_rust_references() -> None:
-    """Repo-root README must not contain stale Rust-era workflow references."""
     content = REPO_ROOT_README.read_text().lower()
-    # Should not reference cargo/xtask
     assert "cargo" not in content, (
         "Repo-root README.md should not reference Rust-era cargo workflow"
     )
@@ -75,26 +48,16 @@ def test_repo_root_readme_has_no_stale_rust_references() -> None:
 
 
 def test_contributing_has_no_stale_verification_flags() -> None:
-    """Repo-root CONTRIBUTING must not document stale verification flags.
-
-    The canonical verification story is `make verify` which includes docs and
-    subprocess E2E, not just a narrowed subset like `ruff + mypy + pytest` alone.
-    """
     content = REPO_ROOT_CONTRIBUTING.read_text()
-    # Must point to make verify as canonical, not a narrower subset
     assert "make verify" in content, (
         "Repo-root CONTRIBUTING.md must reference 'make verify' as canonical verification"
     )
-    # Must document that make verify includes docs build
     assert "make docs" in content or "docs" in content.lower(), (
         "Repo-root CONTRIBUTING.md must document that 'make verify' includes the docs build"
     )
-    # Must document that make verify includes subprocess E2E
     assert "subprocess" in content.lower() or "e2e" in content.lower(), (
         "Repo-root CONTRIBUTING.md must document that 'make verify' includes subprocess E2E"
     )
-    # Must NOT present a narrow subset as if it were the full canonical path
-    # If ruff/mypy/pytest appear without make verify context, that's a narrow-subset presentation
     lines = content.split("\n")
     in_required_verification = False
     has_make_verify = False
@@ -103,10 +66,8 @@ def test_contributing_has_no_stale_verification_flags() -> None:
             in_required_verification = True
         if in_required_verification and "make verify" in line:
             has_make_verify = True
-        # Check for narrow subset without make verify
         if in_required_verification and "ruff" in line.lower() and "make verify" not in line:
-            # This could be the narrow list - ensure make verify is mentioned nearby
-            pass  # The above assertions catch this
+            pass
     assert has_make_verify, (
         "Repo-root CONTRIBUTING.md must document 'make verify' as the "
         "canonical verification command"

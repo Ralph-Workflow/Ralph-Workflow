@@ -1,5 +1,3 @@
-"""Shared _Session mock for MCP artifact rollback tests."""
-
 from __future__ import annotations
 
 

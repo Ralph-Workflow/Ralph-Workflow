@@ -1,17 +1,3 @@
-"""AC-8 equivalence test: wiping the explore store on disk and
-rebuilding it produces an equivalent search-result set for a
-deterministic query.
-
-The companion ``tests/unit/test_explore_pipeline_invariants.py``
-checks that the *parse count* survives a wipe + rebuild. This test
-goes deeper: it verifies that the actual **search-result sets**
-(ranked ``handle_search_files`` paths and focused
-``handle_grep_files`` span hits) are equal before and after wiping
-the explore store on disk and rebuilding from scratch. Path-set
-equality (not internal row IDs) is asserted so the proof rests on
-what an agent observes, not on volatile storage details.
-"""
-
 from __future__ import annotations
 
 import json
@@ -30,14 +16,10 @@ from ralph.mcp.tools.workspace._read_handlers import handle_search_files
 if TYPE_CHECKING:
     from ralph.mcp.tools.tool_result import ToolResult
 
-# Shared literal token embedded in every corpus file so the literal
-# grep query has a deterministic, FTS-eligible hit set.
 _SENTINEL = "rebuild_equivalence_sentinel"
 
 
 class _FakeSession:
-    """Minimal coordination session for handler tests."""
-
     def __init__(self, explore_index: object | None = None) -> None:
         self.explore_index = explore_index
 
@@ -49,8 +31,6 @@ class _FakeSession:
 
 
 class _Workspace:
-    """Minimal workspace adapter for handler tests."""
-
     def __init__(self, root: Path) -> None:
         self.root = root
 
@@ -67,7 +47,6 @@ def _decode(result: ToolResult) -> dict[str, object]:
 
 
 def _seed_corpus(tmp_path: Path) -> Path:
-    """Seed a workspace with 12 Python files of mixed case and dotted names."""
     workspace = tmp_path / "ws"
     workspace.mkdir()
     files: dict[str, str] = {
@@ -92,7 +71,6 @@ def _seed_corpus(tmp_path: Path) -> Path:
 
 
 def _capture_search_paths(session: _FakeSession, ws: _Workspace) -> set[str]:
-    """Run a ranked handle_search_files and return the matched path set."""
     result = handle_search_files(
         session,
         ws,
@@ -105,7 +83,6 @@ def _capture_search_paths(session: _FakeSession, ws: _Workspace) -> set[str]:
 
 
 def _capture_grep_spans(session: _FakeSession, ws: _Workspace) -> set[tuple[str, int]]:
-    """Run a focused handle_grep_files and return the (path, line) span set."""
     result = handle_grep_files(
         session,
         ws,
@@ -121,16 +98,9 @@ def _capture_grep_spans(session: _FakeSession, ws: _Workspace) -> set[tuple[str,
 def test_wipe_and_rebuild_produces_equivalent_search_results(
     tmp_path: Path,
 ) -> None:
-    """AC-8: wiping the explore store on disk and rebuilding produces an
-    equivalent search-result set for a deterministic query.
-
-    Asserts path-set equality (not internal row IDs) so a wipe + rebuild
-    is observationally equivalent to the prior live state.
-    """
     workspace = _seed_corpus(tmp_path)
     store_dir = tmp_path / ".agent" / "ralph-explore"
 
-    # --- Initial build ---
     store = ExploreStore(store_dir)
     try:
         first = reindex(store, workspace, options=ReindexOptions(timeout_ms=5000))
@@ -145,11 +115,9 @@ def test_wipe_and_rebuild_produces_equivalent_search_results(
     finally:
         store.close()
 
-    # Sanity: both probes returned non-trivial sets.
     assert len(search_paths_before) >= 8
     assert len(grep_spans_before) >= 8
 
-    # --- Wipe the derived intelligence directory and rebuild from scratch ---
     shutil.rmtree(store_dir)
     store = ExploreStore(store_dir)
     try:
@@ -169,9 +137,5 @@ def test_wipe_and_rebuild_produces_equivalent_search_results(
     finally:
         store.close()
 
-    # AC-8: path-set equality -- a wipe + rebuild is observationally
-    # equivalent to the prior live state. We compare path-sets and
-    # (path, line) span-sets, NOT internal row IDs, so the proof
-    # rests on what an agent observes.
     assert search_paths_before == search_paths_after
     assert grep_spans_before == grep_spans_after

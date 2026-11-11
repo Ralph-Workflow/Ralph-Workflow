@@ -1,10 +1,3 @@
-"""Ruby-specific review guideline categories.
-
-Ported from the canonical Rust implementation in
-``ralph-workflow/src/guidelines/ruby.rs`` and adapted for the Python port.
-The module models core Ruby guidance plus optional Rails and Sinatra
-extensions.
-"""
 
 from __future__ import annotations
 
@@ -16,7 +9,6 @@ if TYPE_CHECKING:
     from typing import Protocol
 
     class ReviewGuidelines(Protocol):
-        """Protocol for guideline-like bundles used by the review prompts."""
 
         quality_checks: tuple[str, ...]
         security_checks: tuple[str, ...]
@@ -33,11 +25,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class RubyGuidelines:
-    """Ruby review checks.
-
-    Args:
-        frameworks: Optional framework names used to add stack-specific guidance.
-    """
 
     frameworks: tuple[str, ...] = ()
     quality_checks: tuple[str, ...] = field(init=False)
@@ -97,7 +84,6 @@ class RubyGuidelines:
             self._apply_framework(framework)
 
     def _apply_framework(self, framework: str) -> None:
-        """Add framework-specific guideline extensions."""
         framework_name = framework.casefold()
 
         if framework_name == "rails":
@@ -136,7 +122,6 @@ class RubyGuidelines:
             )
 
     def summary(self) -> str:
-        """Return a short human-readable summary."""
         return (
             f"{len(self.quality_checks)} quality checks, "
             f"{len(self.security_checks)} security checks, "
@@ -144,7 +129,6 @@ class RubyGuidelines:
         )
 
     def total_checks(self) -> int:
-        """Return the total number of configured checks."""
         return sum(
             [
                 len(self.quality_checks),
@@ -158,7 +142,6 @@ class RubyGuidelines:
         )
 
     def as_review_guidelines(self) -> ReviewGuidelines:
-        """Return this instance typed as a review guidelines bundle."""
 
         return self
 

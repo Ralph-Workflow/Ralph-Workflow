@@ -1,10 +1,3 @@
-"""Focused CLI command tests for commit, diagnose, init, and option helpers.
-
-These tests are subprocess_e2e: they exercise the real CLI entry points
-and their full filesystem path. They cannot be mocked down to the
-per-test 1 s budget without losing the end-to-end contract they assert.
-"""
-
 from __future__ import annotations
 
 import dataclasses
@@ -44,7 +37,6 @@ from ralph.workspace.scope import WorkspaceScope
 
 
 def _write_commit_message_doc(repo_root: Path, message: str) -> None:
-    """Write the markdown commit_message artifact the way MCP submission does."""
     if message.upper().startswith("SKIP:"):
         reason = message[len("SKIP:") :].strip()
         document = f"---\ntype: skip\nreason: {reason}\n---\n"
@@ -56,19 +48,6 @@ def _write_commit_message_doc(repo_root: Path, message: str) -> None:
 
 
 def _stub_baseline_capabilities(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Replace init_command's baseline-skill-install path with a fast no-op.
-
-    The default branch of ``init_command`` invokes
-    ``_ensure_baseline_capabilities`` which constructs a real
-    ``SkillManager``, walks every registered agent root, copies bundled
-    skill files into the user-global directory, and prints the full
-    capability summary. For unit tests that only assert on file creation
-    or pre-existing-file preservation this is overkill — the public
-    behaviour covered here is the bootstrap files (``PROMPT.md`` and the
-    per-support-config toml files), not the skill installer. Replacing
-    the private helper with a no-op returning ``(CapabilityState(), [])``
-    skips the slow real-IO work without changing what these tests pin.
-    """
     monkeypatch.setattr(
         init_module,
         "_ensure_baseline_capabilities",
@@ -507,8 +486,6 @@ def test_generate_commit_msg_surfaces_structured_tool_results_when_artifact_miss
     output = stream.getvalue()
     assert "ralph_submit_md_artifact" in output
     assert 'result={"reason": "invalid' in output
-    # The status surface folds long structured payloads at terminal width;
-    # physical line wrapping must not lose any diagnostic content.
     assert 'payload", "status": "failed"}' in output.replace("\n", "")
 
 
@@ -641,7 +618,6 @@ def test_check_workspace_files_reports_status(
 def test_check_workspace_files_shows_distinct_linked_worktree_config_paths(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Plan S-4: diagnose shows each linked-worktree config layer by absolute path."""
     main_checkout = tmp_path / "main"
     linked_worktree = tmp_path / "feature"
     main_checkout.mkdir()
@@ -676,16 +652,13 @@ def test_check_workspace_files_shows_distinct_linked_worktree_config_paths(
 def test_diagnose_uses_display_context_console(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """diagnose_command uses the injected DisplayContext's console for all output."""
 
     stream = StringIO()
     console = Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME)
     ctx = make_display_context(env={"COLUMNS": "120"})
-    # Override the context's console with our recording one
 
     recording_ctx = dataclasses.replace(ctx, console=console)
 
-    # Stub out external dependencies so the command finishes quickly
     monkeypatch.setattr(diagnose_module, "find_repo_root", lambda: tmp_path)
     monkeypatch.setattr(diagnose_module, "is_repo_clean", lambda root: True)
     monkeypatch.setattr(
@@ -724,7 +697,6 @@ def test_diagnose_uses_display_context_console(
 def test_diagnose_command_displays_capability_state_table(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """diagnose_command should display a Baseline Capabilities table."""
 
     stream = StringIO()
     console = Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME)
@@ -760,22 +732,13 @@ def test_diagnose_command_displays_capability_state_table(
 
     output = stream.getvalue()
     assert "Baseline Capabilities" in output
-    # Should show Built-in capabilities (always available)
     assert "Built-in" in output
-    # Should show Managed capabilities
     assert "Managed" in output
 
 
 def test_diagnose_command_displays_filesystem_health_section(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """RFC-013 P4: ``ralph --diagnose`` must surface FsHealth diagnostics.
-
-    Pins the contract documented in docs/sphinx/diagnostics.md
-    ("External-volume filesystem hygiene"): the diagnose command has
-    to render an FsHealth section built from a real FsHealth.gather()
-    call against the workspace root.
-    """
     stream = StringIO()
     console = Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME)
     ctx = make_display_context(env={"COLUMNS": "120"})
@@ -850,13 +813,6 @@ def test_init_command_creates_files(monkeypatch: pytest.MonkeyPatch, tmp_path: P
 
 @pytest.mark.timeout_seconds(3)
 def test_init_command_keeps_existing_files(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """``init`` short-circuits when every config file already exists.
-
-    On a loaded worker the ``init`` short-circuit checks can take ~1.1 s (the
-    capability refresh and skill installer both touch disk), so a 3 s per-test
-    cap is required to keep this from tripping the 1 s default and stalling
-    the xdist scheduler.
-    """
     xdg_dir = tmp_path / "xdg"
     xdg_dir.mkdir()
     (xdg_dir / "ralph-workflow.toml").write_text("# global", encoding="utf-8")
@@ -885,7 +841,6 @@ def test_init_command_keeps_existing_files(monkeypatch: pytest.MonkeyPatch, tmp_
 def test_init_command_does_not_create_missing_custom_config_path(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Plan S-1: a custom ``--config`` path is a selector, not a generation request."""
     stream = _attach_console(monkeypatch, init_module)
     _stub_baseline_capabilities(monkeypatch)
     monkeypatch.chdir(tmp_path)
@@ -1049,7 +1004,6 @@ def test_regenerate_config_regression_refreshes_only_the_existing_local_file(
     tmp_path: Path,
     local_filename: str,
 ) -> None:
-    """Plan S-1: regeneration must never fill in missing local overrides."""
     xdg_dir = tmp_path / "xdg"
     monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_dir))
     monkeypatch.chdir(tmp_path)
@@ -1122,7 +1076,6 @@ def test_init_command_unknown_template_label_errors(
 def test_init_command_regression_does_not_create_missing_explicit_config_path(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Plan S-1: ``--init --config`` must not bypass the local-config generator boundary."""
     xdg_dir = tmp_path / "xdg"
     monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_dir))
     stream = _attach_console(monkeypatch, init_module)
@@ -1160,7 +1113,6 @@ def test_cli_non_local_config_commands_leave_missing_local_tomls_absent(
     needs_missing_config: bool,
     handler_name: str | None,
 ) -> None:
-    """Plan S-1: ordinary CLI paths must not implicitly opt projects into local config."""
     xdg_dir = tmp_path / "xdg"
     monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_dir))
     _stub_baseline_capabilities(monkeypatch)
@@ -1185,7 +1137,6 @@ def test_cli_non_local_config_commands_leave_missing_local_tomls_absent(
 def test_cli_init_with_missing_custom_config_keeps_local_config_absent(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Plan S-1: the public ``--init --config`` route is not a local-config generator."""
     xdg_dir = tmp_path / "xdg"
     monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_dir))
     _stub_baseline_capabilities(monkeypatch)
@@ -1211,7 +1162,6 @@ def test_cli_init_with_missing_custom_config_keeps_local_config_absent(
 def test_local_config_aliases_create_the_complete_parseable_override_set(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, alias: str
 ) -> None:
-    """Plan S-1: only the explicit local-config aliases materialize local TOMLs."""
     xdg_dir = tmp_path / "xdg"
     monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_dir))
     monkeypatch.setenv("COLUMNS", "500")
@@ -1268,7 +1218,6 @@ def test_local_config_scope_selects_the_requested_linked_worktree_layer(
     target_name: str,
     scope_label: str,
 ) -> None:
-    """Plan S-1: linked-worktree generation selects and reports the requested layer."""
     main_checkout = tmp_path / "main"
     worktree = tmp_path / "feature"
     main_checkout.mkdir()
@@ -1305,7 +1254,6 @@ def test_local_config_scope_selects_the_requested_linked_worktree_layer(
 def test_local_config_scope_values_use_the_project_layer_in_a_plain_checkout(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, scope_argument: str
 ) -> None:
-    """Plan S-1: both explicit scopes remain project-scoped outside linked worktrees."""
     monkeypatch.setenv("COLUMNS", "500")
     monkeypatch.chdir(tmp_path)
 
@@ -1323,7 +1271,6 @@ def test_local_config_scope_values_use_the_project_layer_in_a_plain_checkout(
 def test_local_config_scope_rejects_unknown_value(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Plan S-3: scope validation names the two accepted values."""
     monkeypatch.chdir(tmp_path)
 
     result = typer.testing.CliRunner().invoke(
@@ -1336,7 +1283,6 @@ def test_local_config_scope_rejects_unknown_value(
 
 
 def test_local_config_help_describes_scope_auto_detection() -> None:
-    """Plan S-3: the local-config help text exposes scope auto-detection."""
     help_text = init_local_config_help_text()
 
     assert "{worktree,project}" in help_text
@@ -1344,17 +1290,6 @@ def test_local_config_help_describes_scope_auto_detection() -> None:
 
 
 class TestCheckPolicyCommand:
-    """check_policy_command validates the active policy and reports results.
-
-    P0 (wt-028-display S-14): the command now routes its success and
-    warning output through the shared ``display.emit_status`` /
-    ``display.emit_warning`` surface so the drift-prevention suite can
-    verify no command reaches the terminal through a private print
-    path. Tests use ``_attach_console`` to inject a StringIO-backed
-    Rich console (the canonical display seam) and read the captured
-    output from the returned stream.
-    """
-
     def test_success_returns_zero_and_prints_ok(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -1373,7 +1308,6 @@ class TestCheckPolicyCommand:
         stream = _attach_console(monkeypatch, check_policy_module)
         check_policy_command(tmp_path)
         out = stream.getvalue()
-        # All count lines are present
         for label in (
             "phases:",
             "drains:",
@@ -1397,7 +1331,6 @@ class TestCheckPolicyCommand:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _copy_defaults(tmp_path)
-        # Overwrite pipeline.toml with an invalid transition target
         (tmp_path / "pipeline.toml").write_text(
             "[phases.planning]\n"
             'drain = "planning"\n'

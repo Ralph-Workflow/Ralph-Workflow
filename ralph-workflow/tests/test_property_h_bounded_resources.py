@@ -1,14 +1,3 @@
-# property-test: H — bounded resources, no orphans, terminating cleanup
-"""Three property H invariants:
-
-1. RestartAwareMcpBridge always calls shutdown() on the dead inner BEFORE
-   assigning the new inner (no orphans serving stale code).
-2. The _SaturatedDispatch free function exists (the no-op pass-through landed
-   first per merge-order constraints) and is callable from do_POST.
-3. An adversarial respawn that raises during restart terminates the cleanup
-   loop without spinning indefinitely.
-"""
-
 from __future__ import annotations
 
 import concurrent.futures
@@ -46,8 +35,7 @@ class _RecordingInner:
 
 
 def test_shutdown_called_on_dead_inner_before_respawn() -> None:
-    """When the inner is dead, the bridge shuts it down BEFORE assigning new inner."""
-    old_inner = _RecordingInner(exit_code=1)  # process exited
+    old_inner = _RecordingInner(exit_code=1)
     new_inner = _RecordingInner(exit_code=None)
     new_inner.endpoint = "http://127.0.0.1:8766/mcp"
 
@@ -67,17 +55,13 @@ def test_shutdown_called_on_dead_inner_before_respawn() -> None:
     restarted = bridge.check_health_and_restart_if_needed()
     assert restarted is True
     assert bridge.restart_count == 1
-    # The old inner was shut down
     assert old_inner.shutdown_calls, "old inner must be shut down before respawn"
-    # And the new inner is now in place
     assert bridge._inner is new_inner
-    # The restart_fn was called exactly once
     assert len(restart_calls) == 1
 
 
 def test_no_restart_when_process_is_healthy() -> None:
-    """When the inner is healthy, the bridge does NOT restart."""
-    healthy_inner = _RecordingInner(exit_code=None)  # process alive
+    healthy_inner = _RecordingInner(exit_code=None)
 
     def restart_fn() -> _RecordingInner:
         return _RecordingInner(exit_code=None)
@@ -94,33 +78,16 @@ def test_no_restart_when_process_is_healthy() -> None:
 
 
 def test_saturated_dispatch_free_function_exists() -> None:
-    """_SaturatedDispatch.submit exists at ralph.mcp.server._saturated_dispatch.
-
-    The free function is the public seam the do_POST handler imports; it
-    must exist and be callable. The merge-order constraint (Unit 4 lands
-    this first, Unit 1 wires it into do_POST second) is satisfied by
-    the helper's existence, not its current behavior.
-    """
     assert hasattr(_saturated_dispatch, "submit")
     assert callable(_saturated_dispatch.submit)
 
 
 def test_saturated_dispatch_returns_callable_result() -> None:
-    """_SaturatedDispatch.submit invokes the callable and returns its result.
-
-    The bounded executor runs the callable; a result is returned to the
-    caller.
-    """
     result = _saturated_dispatch.submit(lambda: 42)
     assert result == 42
 
 
 def test_saturated_dispatch_propagates_callable_exceptions() -> None:
-    """A raising callable surfaces its exception to the caller.
-
-    The transport-repetition breaker observes the exception in the
-    handler's outer try/except; the helper must NOT swallow it.
-    """
 
     def raise_value_error() -> None:
         raise ValueError("boom")
@@ -130,15 +97,7 @@ def test_saturated_dispatch_propagates_callable_exceptions() -> None:
 
 
 def test_adversarial_restart_fn_raises_does_not_propagate() -> None:
-    """A restart_fn that raises is logged and absorbed (C2 fix).
-
-    The cleanup loop in the bridge is bounded: it makes ONE call to
-    restart_fn and on failure logs at WARNING and returns ``False``
-    (non-terminal). It does not propagate the exception (which would
-    kill the agent run on a single transient failure). Only when the
-    budget is exhausted does the bridge raise :class:`McpServerError`.
-    """
-    old_inner = _RecordingInner(exit_code=1)  # process exited
+    old_inner = _RecordingInner(exit_code=1)
 
     def broken_restart_fn() -> _RecordingInner:
         raise RuntimeError("respawn failed")
@@ -149,17 +108,11 @@ def test_adversarial_restart_fn_raises_does_not_propagate() -> None:
         restart_policy=McpRestartPolicy(max_restarts=2, cooldown_seconds=0.0),
         run_id="test-run",
     )
-    # C2: a single failing restart_fn is non-terminal — the bridge
-    # logs at WARNING and returns ``False``. The agent run continues.
     assert bridge.check_health_and_restart_if_needed() is False
-    # The first failed attempt advanced the counter (S1 invariant).
     assert bridge.restart_count == 1
-    # The old inner was shut down before the failure
     assert old_inner.shutdown_calls
-    # Second failing attempt — still non-terminal.
     assert bridge.check_health_and_restart_if_needed() is False
     assert bridge.restart_count == 2
-    # The third call exhausts the budget (max_restarts=2 reached).
     with pytest.raises(McpServerError) as excinfo:
         bridge.check_health_and_restart_if_needed()
     assert excinfo.value.restart_count == 2
@@ -167,7 +120,6 @@ def test_adversarial_restart_fn_raises_does_not_propagate() -> None:
 
 
 def test_restart_count_caps_at_max_restarts() -> None:
-    """The bridge raises McpServerError when restart_count reaches max_restarts."""
     inner_a = _RecordingInner(exit_code=1)
     inner_b = _RecordingInner(exit_code=1)
     inner_b.endpoint = "http://127.0.0.1:8766/mcp"
@@ -188,30 +140,15 @@ def test_restart_count_caps_at_max_restarts() -> None:
         restart_policy=McpRestartPolicy(max_restarts=1, cooldown_seconds=0.0),
         run_id="test-run",
     )
-    # First restart succeeds
     bridge.check_health_and_restart_if_needed()
     assert bridge.restart_count == 1
-    # Now make the new inner dead too — the second restart is over the cap
     inners[1].process._exit_code = 1
     with pytest.raises(McpServerError):
         bridge.check_health_and_restart_if_needed()
 
 
 def test_saturated_dispatch_overflow_returns_saturation_response() -> None:
-    """When the bounded executor is shut down, submit returns SaturatedResponse.
-
-    The current implementation is backed by a ThreadPoolExecutor; once
-    the executor is shut down, submit returns a SaturatedResponse (not
-    the callable's result) and does NOT raise. The handler converts the
-    SaturatedResponse into an HTTP 503 + JSON-RPC -32001 frame.
-
-    Uses an isolated _SaturatedDispatch instance (not the process
-    singleton) so the test does not race with concurrent tests that
-    depend on the singleton's executor.
-    """
     isolated = _saturated_dispatch._SaturatedDispatch(max_workers=2)
-    # Install an executor and immediately shut it down so the next
-    # submit() observes the post-shutdown state.
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
     executor.shutdown(wait=False)
     isolated.install_executor(executor)
@@ -225,15 +162,6 @@ def test_saturated_dispatch_overflow_returns_saturation_response() -> None:
 
 
 def test_singleton_atexit_shutdown_calls_executor_shutdown() -> None:
-    """The atexit hook for the saturated-dispatch singleton must call
-    ``executor.shutdown(wait=False)`` on the CURRENT singleton so a
-    wedged worker cannot stall interpreter exit (AC-03).
-
-    We do not want the production hook to fire during the test
-    (it would tear down the singleton and break subsequent tests).
-    Instead we call the registered hook callback directly via the
-    module-level ``atexit.register`` symbol.
-    """
     shutdown_calls: list[bool] = []
 
     class _RecordingExecutor:
@@ -242,29 +170,21 @@ def test_singleton_atexit_shutdown_calls_executor_shutdown() -> None:
         def shutdown(self, wait: bool = True) -> None:
             shutdown_calls.append(wait)
 
-    # Force the singleton to install a real executor first.
     _saturated_dispatch.submit(lambda: 1)
-    # Then swap in a recording executor that tracks the shutdown args.
     recording = _RecordingExecutor()
     _saturated_dispatch._default_dispatch.install_executor(recording)
 
-    # Invoke the registered atexit hook directly.
     assert callable(_saturated_dispatch._atexit_shutdown)
     _saturated_dispatch._atexit_shutdown()
 
-    # The recording executor must have been shut down with wait=False.
     assert shutdown_calls == [False], (
         f"atexit hook must call executor.shutdown(wait=False); got {shutdown_calls!r}"
     )
 
-    # Restore the singleton so subsequent tests see a fresh executor.
     _saturated_dispatch.reset_default()
 
 
 def test_bounded_sdk_call_singleton_atexit_shutdown() -> None:
-    """The atexit hook for the bounded-sdk-call singleton must call
-    ``executor.shutdown(wait=False)`` on the CURRENT singleton.
-    """
     shutdown_calls: list[bool] = []
 
     class _RecordingExecutor:
@@ -273,8 +193,6 @@ def test_bounded_sdk_call_singleton_atexit_shutdown() -> None:
         def shutdown(self, wait: bool = True) -> None:
             shutdown_calls.append(wait)
 
-    # The bounded-sdk-call singleton is lazy — trigger materialization
-    # by running a single submit with a non-None timeout.
     _bounded_sdk_call.with_timeout(lambda: 1, 5.0)
     recording = _RecordingExecutor()
     _bounded_sdk_call._default_call.install_executor(recording)
@@ -290,10 +208,6 @@ def test_bounded_sdk_call_singleton_atexit_shutdown() -> None:
 
 
 def test_singleton_atexit_uses_current_singleton_not_captured() -> None:
-    """The atexit hook must look up the CURRENT singleton at call time
-    (not capture it at registration) so test-driven install_executor swaps
-    are respected on interpreter exit (AC-03 acceptance criterion).
-    """
     shutdown_calls: list[bool] = []
 
     class _RecordingExecutor:

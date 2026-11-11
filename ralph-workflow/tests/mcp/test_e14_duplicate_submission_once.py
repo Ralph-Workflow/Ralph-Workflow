@@ -1,11 +1,3 @@
-"""WU-U3a: Edge case E1.4 duplicate submission runs exactly once.
-
-Pins catalogue requirement:
-- E1.4: Duplicate submission runs exactly once (idempotent / deduplicated execution).
-  In-flight retry or duplicated client dispatch must not duplicate execution,
-  corrupt the canonical artifact store, or produce spurious history archives.
-"""
-
 from __future__ import annotations
 
 import concurrent.futures
@@ -59,7 +51,6 @@ status: completed
 
 
 def test_duplicate_canonical_submission_runs_exactly_once(tmp_path: Path) -> None:
-    """Duplicate canonical submission produces exactly one artifact and no spurious history."""
     spec = get_spec("development_result")
     parsed, diagnostics = parse_and_validate(VALID_DEVELOPMENT_RESULT, spec)
     assert not any(d.severity == "error" for d in diagnostics)
@@ -67,7 +58,6 @@ def test_duplicate_canonical_submission_runs_exactly_once(tmp_path: Path) -> Non
     run_id = "run-e14-dedupe"
     deps = ArtifactHandlerDeps(history_enabled=True)
 
-    # 1. First submission
     res1 = submit_artifact_canonical(
         workspace_root=tmp_path,
         artifact_type="development_result",
@@ -86,7 +76,6 @@ def test_duplicate_canonical_submission_runs_exactly_once(tmp_path: Path) -> Non
     first_content = canonical_file.read_text(encoding="utf-8")
     assert first_content == VALID_DEVELOPMENT_RESULT
 
-    # 2. Duplicate submission with identical content and run_id
     res2 = submit_artifact_canonical(
         workspace_root=tmp_path,
         artifact_type="development_result",
@@ -100,20 +89,16 @@ def test_duplicate_canonical_submission_runs_exactly_once(tmp_path: Path) -> Non
     assert res2.receipt_path is not None
     assert res2.receipt_path.exists()
 
-    # Invariant: Duplicate submission leaves exactly one canonical artifact file
     second_content = canonical_file.read_text(encoding="utf-8")
     assert second_content == first_content
 
-    # Invariant: Idempotent replay must NOT create a history snapshot or archive directory
     history_dir = history_dir_for_artifact(_artifact_dir(tmp_path), "development_result")
     assert not history_dir.exists(), "Duplicate submission created spurious history directory!"
 
-    # Invariant: Receipt exists on disk for this run and artifact
     assert artifact_receipt_present(tmp_path, run_id, "development_result") is True
 
 
 def test_duplicate_submission_via_handle_submit_md_artifact(tmp_path: Path) -> None:
-    """Invoking handle_submit_md_artifact multiple times with identical payload is idempotent."""
     session = MockSession(drain="development")
     workspace = MockWorkspace(tmp_path)
     params = {
@@ -121,26 +106,21 @@ def test_duplicate_submission_via_handle_submit_md_artifact(tmp_path: Path) -> N
         "content": VALID_DEVELOPMENT_RESULT,
     }
 
-    # First submission
     result1: ToolResult = handle_submit_md_artifact(session, workspace, params)
     assert result1.is_error is False
 
-    # Second submission (duplicate / retry)
     result2: ToolResult = handle_submit_md_artifact(session, workspace, params)
     assert result2.is_error is False
 
-    # Staged draft matches submitted document
     draft = load_md_draft(_artifact_dir(tmp_path), "development_result")
     assert draft == VALID_DEVELOPMENT_RESULT
 
-    # Canonical file is unchanged and matches content
     canonical_file = _artifact_dir(tmp_path) / "development_result.md"
     assert canonical_file.exists()
     assert canonical_file.read_text(encoding="utf-8") == VALID_DEVELOPMENT_RESULT
 
 
 def test_concurrent_duplicate_submissions_run_safely(tmp_path: Path) -> None:
-    """Concurrent duplicate submissions from multiple threads serialize cleanly without corruption."""
     spec = get_spec("development_result")
     parsed, diagnostics = parse_and_validate(VALID_DEVELOPMENT_RESULT, spec)
     assert not any(d.severity == "error" for d in diagnostics)
@@ -148,7 +128,6 @@ def test_concurrent_duplicate_submissions_run_safely(tmp_path: Path) -> None:
     run_id = "run-e14-concurrent"
     deps = ArtifactHandlerDeps(history_enabled=True)
 
-    # Initial submission establishes baseline
     submit_artifact_canonical(
         workspace_root=tmp_path,
         artifact_type="development_result",
@@ -168,17 +147,14 @@ def test_concurrent_duplicate_submissions_run_safely(tmp_path: Path) -> None:
             deps=deps,
         )
 
-    # Launch 5 concurrent duplicate submission workers
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         futures = [executor.submit(_worker) for _ in range(5)]
         for f in concurrent.futures.as_completed(futures):
             f.result()
 
-    # Invariant: Artifact file is intact and valid
     canonical_file = _artifact_dir(tmp_path) / "development_result.md"
     assert canonical_file.exists()
     assert canonical_file.read_text(encoding="utf-8") == VALID_DEVELOPMENT_RESULT
 
-    # Invariant: No history directory created for identical duplicate submissions
     history_dir = history_dir_for_artifact(_artifact_dir(tmp_path), "development_result")
     assert not history_dir.exists()

@@ -1,15 +1,3 @@
-"""Pins E2.6: code changes mid-run; generation-dir interpreter + PYTHONPATH/_PACKAGE_ROOT ordering.
-
-Catalogue requirement E2.6:
-- Code under the child changes mid-run: The generation directory
-  (~/.local/share/ralph-workflow-dev/generations/...) gets updated or garbage-collected,
-  or Ralph is working on its own repository and the agent edits ralph/ in the workspace.
-- Required: the candidate runs the same interpreter and the same code as the first child.
-  Generation GC must never remove a generation a live run uses. The existing
-  PYTHONPATH/_PACKAGE_ROOT ordering in _subprocess_env must be covered by a test in which
-  the workspace contains a broken ralph/ package.
-"""
-
 from __future__ import annotations
 
 import os
@@ -19,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-# Pre-import workspace to prevent circular import between process.manager and workspace
 from ralph import workspace as _workspace
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
@@ -56,7 +43,6 @@ class _DummyProcess(ProcessLike):
 def test_subprocess_env_sanitizes_broken_workspace_ralph(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """_subprocess_env replaces any PYTHONPATH entry providing a broken ralph package with _PACKAGE_ROOT."""
     broken_workspace = tmp_path / "broken_workspace"
     broken_pkg = broken_workspace / "ralph"
     broken_pkg.mkdir(parents=True, exist_ok=True)
@@ -68,7 +54,6 @@ def test_subprocess_env_sanitizes_broken_workspace_ralph(
     other_dir = tmp_path / "other_site_packages"
     other_dir.mkdir(parents=True, exist_ok=True)
 
-    # Simulate ambient PYTHONPATH injected with the broken workspace path ahead of anything else
     ambient_pythonpath = f"{broken_workspace}{os.pathsep}{other_dir}"
     monkeypatch.setenv("PYTHONPATH", ambient_pythonpath)
 
@@ -80,22 +65,17 @@ def test_subprocess_env_sanitizes_broken_workspace_ralph(
     pythonpath_val = env.get("PYTHONPATH", "")
     entries = pythonpath_val.split(os.pathsep)
 
-    # Invariant: The broken workspace path is completely sanitized out
     assert str(broken_workspace) not in entries
 
-    # Invariant: _PACKAGE_ROOT comes first deterministically
     package_root_str = str(lifecycle._PACKAGE_ROOT)
     assert entries[0] == package_root_str
 
-    # Invariant: No duplicate entries for _PACKAGE_ROOT
     assert entries.count(package_root_str) == 1
 
-    # Invariant: Other non-ralph entries are preserved after _PACKAGE_ROOT
     assert str(other_dir) in entries
 
 
 def test_candidate_spawn_uses_same_interpreter_as_parent(tmp_path: Path) -> None:
-    """The candidate process is spawned using sys.executable (the generation-dir interpreter)."""
     spawned_commands: list[list[str]] = []
 
     def capture_spawn(
@@ -142,7 +122,6 @@ def test_candidate_spawn_uses_same_interpreter_as_parent(tmp_path: Path) -> None
     assert len(spawned_commands) == 1
     cmd = spawned_commands[0]
 
-    # Invariant: Command starts with sys.executable (same interpreter as parent)
     assert cmd[0] == sys.executable
     assert cmd[1:3] == ["-m", "ralph.mcp.server"]
 
@@ -150,7 +129,6 @@ def test_candidate_spawn_uses_same_interpreter_as_parent(tmp_path: Path) -> None
 def test_real_child_imports_package_root_despite_broken_ralph_in_workspace(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A real subprocess running with _subprocess_env imports the genuine ralph package without error."""
     broken_workspace = tmp_path / "workspace"
     broken_pkg = broken_workspace / "ralph"
     broken_pkg.mkdir(parents=True, exist_ok=True)
@@ -159,7 +137,6 @@ def test_real_child_imports_package_root_despite_broken_ralph_in_workspace(
         encoding="utf-8",
     )
 
-    # Injected ambient PYTHONPATH
     monkeypatch.setenv("PYTHONPATH", str(broken_workspace))
 
     session_file = tmp_path / "session.json"
@@ -203,5 +180,4 @@ def test_real_child_imports_package_root_despite_broken_ralph_in_workspace(
             proc.wait(timeout=2)
 
     assert rc == 0
-    # Leak check
     assert proc.poll() is not None

@@ -1,5 +1,3 @@
-"""B1-B6: conflict resolution must follow the pipeline chain, not a local loop."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -23,10 +21,7 @@ if TYPE_CHECKING:
 
 
 class _CooldownClock(FakeClock):
-    """Fake clock compatible with the recovery and integration clock seams."""
-
     def now(self) -> float:
-        """Return current monotonic time for the integration executor seam."""
         return self.monotonic()
 
 

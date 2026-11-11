@@ -253,7 +253,6 @@ def _eval_terminal_handling(
 
 
 def test_entry_point_matrix_evaluates_consistent_phase_decision(tmp_path: Path) -> None:
-    # Set up a single integration scenario with an active record on disk
     (tmp_path / ".git").mkdir()
     record = IntegrationRecord(
         phase="integrating",
@@ -291,7 +290,6 @@ def test_entry_point_matrix_evaluates_consistent_phase_decision(tmp_path: Path) 
         decision_parallel_join,
         decision_terminal,
     ]
-    # All 6 must agree on the exact same PhaseDecision
     assert all(d == PhaseDecision.BLOCK_FOR_RECOVERY for d in decisions)
     assert len(set(decisions)) == 1
 
@@ -439,14 +437,12 @@ def test_public_runner_run_loop_boundary_parity(
     bundle = load_policy(Path(__file__).parents[1] / "ralph" / "policy" / "defaults")
     bundle = bundle.model_copy(update={"pipeline": policy})
 
-    # 1. Authoritative state machine decisions
     authority_decision = decide_phase_transition(
         state, policy, integration_record=record, rebase_state=rebase
     )
     assert authority_decision == expected_decision
     assert is_terminal_success_eligible(state, record, rebase) is expected_terminal_eligible
 
-    # 2. Public run_loop boundary
     latest_states: list[PipelineState] = [state]
     fake_sleep = MagicMock(side_effect=_StopInnerLoopError)
     ctx = run_loop._LoopContext(
@@ -467,9 +463,6 @@ def test_public_runner_run_loop_boundary_parity(
         is_quiet=True,
         latest_state=latest_states,
     )
-    # WU-G6 parity contract: the reducer is the sole last_decision writer, so
-    # every public boundary must agree with the authority decision computed in
-    # step 1 rather than re-asserting a run_loop-side persisted write.
     if initial_phase == "complete":
         if expected_decision == PhaseDecision.REPORT_TERMINAL_SUCCESS:
             exit_code = run_loop._execute_with_cleanup(
@@ -507,19 +500,11 @@ def test_public_runner_run_loop_boundary_parity(
             rebase_state=st_inner.rebase,
         )
         if expected_decision is PhaseDecision.REPORT_INTERVENTION_REQUIRED:
-            # WU-1 contract: the live run loop never preserves the retired
-            # operator hand-off. A legacy INTERVENTION_REQUIRED checkpoint
-            # is re-escalated to the typed LADDER_ESCALATION outcome, which
-            # the authority maps to BLOCK_FOR_RECOVERY — the autonomous
-            # fallback ladder owns the next action, never a person. (The
-            # at-rest authority answer for the untouched legacy state in
-            # step 1 stays REPORT_INTERVENTION_REQUIRED.)
             assert live_decision is PhaseDecision.BLOCK_FOR_RECOVERY
             assert st_inner.rebase.last_outcome is RebaseOutcomeKind.LADDER_ESCALATION
         else:
             assert live_decision == expected_decision
 
-    # 3. Public runner boundary
     if initial_phase == "complete" and expected_terminal_eligible:
         runner_result = runner.run_pipeline_step(
             state=state,
@@ -556,11 +541,6 @@ def test_public_runner_run_loop_boundary_parity(
         assert "IntegrationDispatchBlockedError" in str(runner_result.last_error)
 
 
-# ---------------------------------------------------------------------------
-# U4d: unreadable durable record routes startup through the intervention path
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize(
     ("cause", "payload"),
     [
@@ -573,11 +553,7 @@ def test_unreadable_record_startup_reports_intervention(
     cause: str,
     payload: bytes,
 ) -> None:
-    """Startup recovery on an unreadable record yields the typed intervention decision."""
     (tmp_path / ".git").mkdir()
-    # A minimal VALID repository: the integration lease requires
-    # `git rev-parse --absolute-git-dir` to succeed, and an empty .git
-    # directory fails closed to "worktree busy".
     for sub in ("objects", "refs/heads"):
         (tmp_path / ".git" / sub).mkdir(parents=True)
     (tmp_path / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
@@ -610,11 +586,6 @@ def test_unreadable_record_startup_reports_intervention(
 
 
 def test_integrating_record_empty_sha_blocks_at_all_six_seams(tmp_path: Path) -> None:
-    """Inv-7: an unresolved integrating record blocks every public workflow seam.
-
-    ``complete_commit`` is not called here. Terminal eligibility is the
-    combination decision; a workerless ``JOIN_COMPLETE`` is not success.
-    """
     (tmp_path / ".git").mkdir()
     record = IntegrationRecord(
         phase="integrating",
@@ -682,11 +653,6 @@ def test_integrating_record_empty_sha_blocks_at_all_six_seams(tmp_path: Path) ->
     assert len(set(seam_decisions.values())) == 1
 
 
-# ---------------------------------------------------------------------------
-# PARALLEL-7: explicit matrix fixtures covering the 6 entry points
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize(
     (
         "scenario",
@@ -712,20 +678,7 @@ def test_entry_point_matrix_six_seams_agree(
     record_kwargs: dict[str, object],
     rebase_kwargs: dict[str, object],
 ) -> None:
-    """Every public entry point must agree on the typed decision.
-
-    For every (state, record, rebase) triple where the durable record
-    and the rebase state both say ``BLOCK_FOR_RECOVERY``, the same
-    typed answer must come out of: startup, phase boundary, commit,
-    cooldown, parallel join, and terminal handling. The fixture table
-    mirrors the audit tables produced by PARALLEL-1/2/3 so any new
-    typed authority surface in the runner / run_loop / recovery layers
-    must surface as a failure here.
-    """
     (tmp_path / ".git").mkdir()
-    # The matrix tests with a real record on disk; the startup
-    # inspection depends on the integration-resolution verdict, which
-    # requires a record to be in the durable store.
     record = IntegrationRecord(
         phase="integrating",
         target="main",
@@ -763,9 +716,6 @@ def test_entry_point_matrix_six_seams_agree(
         "terminal": decision_terminal,
     }
 
-    # Every entry point must agree on the typed decision. The
-    # active-integration cases all flow to BLOCK_FOR_RECOVERY: that
-    # is the audit-table assertion the existing matrix test makes.
     for seam, decision in seam_decisions.items():
         assert decision == PhaseDecision.BLOCK_FOR_RECOVERY, (
             scenario,

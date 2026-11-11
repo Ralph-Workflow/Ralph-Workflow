@@ -1,5 +1,3 @@
-"""Tests for PlainLogRenderer single canonical [activity] tag across snapshots."""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -42,16 +40,8 @@ def _base_snapshot(**kwargs: object) -> PipelineSnapshot:
 
 
 def test_plain_renderer_emits_single_activity_tag_across_snapshots() -> None:
-    """Two-snapshot sequence for the same tool call produces exactly one [activity] line total.
-
-    Snapshot N has structured fields only (no last_activity_line).
-    Snapshot N+1 has the same structured fields PLUS last_activity_line.
-    The renderer must emit exactly ONE [activity] line across BOTH snapshots,
-    proving that the second snapshot is deduplicated against the first.
-    """
     pd, buf = _make_display()
 
-    # Snapshot N: structured fields only, no last_activity_line
     snap_n = _base_snapshot(
         active_agent="claude/sonnet",
         active_tool="mcp__ralph__read_file",
@@ -60,7 +50,6 @@ def test_plain_renderer_emits_single_activity_tag_across_snapshots() -> None:
     )
     pd.emit_snapshot(snap_n)
 
-    # Snapshot N+1: same structured fields, now with last_activity_line
     activity_line = "claude/sonnet tool: mcp__ralph__read_file (path=ralph/pipeline/runner.py)"
     snap_n1 = _base_snapshot(
         active_agent="claude/sonnet",
@@ -70,7 +59,6 @@ def test_plain_renderer_emits_single_activity_tag_across_snapshots() -> None:
     )
     pd.emit_snapshot(snap_n1)
 
-    # Combined output from both snapshots - must have exactly ONE [activity] line
     out = buf.getvalue()
     activity_count = out.count("[activity]")
     assert activity_count == 1, (
@@ -78,13 +66,11 @@ def test_plain_renderer_emits_single_activity_tag_across_snapshots() -> None:
         f"Output:\n{out}"
     )
     assert "[activity-line]" not in out, f"[activity-line] must not appear:\n{out}"
-    # The free-form line must be preferred and contain the friendly tool name and path
     assert "mcp__ralph__read_file" in out or "ralph.read_file" in out
     assert "ralph/pipeline/runner.py" in out
 
 
 def test_activity_line_content_uses_last_activity_line_when_set() -> None:
-    """When last_activity_line is set, its content appears in the [activity] line."""
     pd, buf = _make_display()
     snap = _base_snapshot(
         active_agent="claude/sonnet",
@@ -98,7 +84,6 @@ def test_activity_line_content_uses_last_activity_line_when_set() -> None:
 
 
 def test_activity_line_uses_structured_fields_when_no_last_activity_line() -> None:
-    """When last_activity_line is absent, structured key=value fields appear in [activity]."""
     pd, buf = _make_display()
     snap = _base_snapshot(
         active_agent="claude/sonnet",
@@ -114,7 +99,6 @@ def test_activity_line_uses_structured_fields_when_no_last_activity_line() -> No
 
 
 def test_activity_line_no_duplication_when_same_snapshot_repeated() -> None:
-    """Identical back-to-back snapshots emit the [activity] line only once."""
     pd, buf = _make_display()
     snap = _base_snapshot(
         active_agent="claude/sonnet",
@@ -123,18 +107,10 @@ def test_activity_line_no_duplication_when_same_snapshot_repeated() -> None:
     pd.emit_snapshot(snap)
     pd.emit_snapshot(snap)
     out = buf.getvalue()
-    # Only one [activity] line total across both snapshots
     assert out.count("[activity]") == 1
 
 
 def test_repeated_tool_call_keeps_status_fresh_with_count() -> None:
-    """A repeated identical tool call (new call, not a re-render) must refresh the
-    live [activity] status with a running count, never freeze/hide.
-
-    The repeat count comes from the subscriber (incremented per actual call), so a
-    higher active_tool_repeat means a NEW call of the same tool — the status must
-    update with xN rather than being suppressed by signature dedup.
-    """
     pd, buf = _make_display()
     for n in (1, 2, 3):
         snap = _base_snapshot(
@@ -147,14 +123,11 @@ def test_repeated_tool_call_keeps_status_fresh_with_count() -> None:
         pd.emit_snapshot(snap)
 
     out = buf.getvalue()
-    # The status must update on repeats with a visible count (not frozen/hidden).
     assert "x2" in out, f"second identical call must refresh status with x2:\n{out}"
     assert "x3" in out, f"third identical call must refresh status with x3:\n{out}"
 
 
 def test_same_repeat_count_is_still_deduplicated() -> None:
-    """A re-rendered snapshot with the SAME repeat count (no new call) is still
-    deduplicated — only an increased count (a new call) refreshes the status."""
     pd, buf = _make_display()
     snap = _base_snapshot(
         active_agent="opencode/minimax",

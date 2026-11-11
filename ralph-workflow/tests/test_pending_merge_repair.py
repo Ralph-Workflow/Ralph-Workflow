@@ -1,5 +1,3 @@
-"""Pending commit repair hands off Git's failure without restarting resolution."""
-
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from io import StringIO
@@ -235,7 +233,6 @@ def test_runtime_retained_resolution_retries_owner_before_dispatch(
     operation: str,
     evidence: str,
 ) -> None:
-    """The durable owner reaches continuation even when porcelain and markers are clean."""
     from ralph.git.merge import MERGE_STATE_IN_PROGRESS, MERGE_STATE_NONE
     from ralph.pipeline import run_loop
     from ralph.pipeline.integration_resolution import inspect_integration_resolution

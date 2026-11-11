@@ -1,16 +1,9 @@
-"""Integration tests for the standalone Python MCP server runtime."""
-
-# Property A: there is no alternate FastMCP path. The single production
-# _FallbackStandaloneServer (via build_standalone_http_server) is the
-# only server construction surface. This test pins the shipped path.
-
 from __future__ import annotations
 
 from pathlib import Path
 
 import pytest
 
-# Config imports for multimodal tests
 from ralph.mcp.protocol import startup
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import runtime as server_runtime
@@ -31,8 +24,6 @@ from tests._support.typed_accessors import (
     must_str,
 )
 
-# Lazy imports for multimodal tests that require optional dependencies
-# These are only available when the multimodal feature is fully configured
 _lazy_imports: dict[str, object] = {}
 
 HTTP_OK = 200
@@ -41,8 +32,6 @@ HTTP_ACCEPTED = 202
 
 @pytest.fixture(autouse=True)
 def _isolate_from_upstream_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Prevent real upstream MCP servers (configured in dev env) from being
-    # loaded during tests. Each test provides its own upstream config if needed.
     monkeypatch.delenv(UPSTREAM_MCP_CONFIG_ENV, raising=False)
 
 
@@ -158,16 +147,8 @@ No changes are needed because all requested behavior already works correctly tod
     assert (tmp_path / ".agent" / "artifacts" / "plan.md").exists()
 
 
-# =============================================================================
-# Image content serialization tests (Task 3)
-# =============================================================================
-
-
 class TestImageContentSerialization:
-    """Tests for image content block serialization (Task 3)."""
-
     def test_legacy_text_content_to_dict_format(self) -> None:
-        """Legacy ToolContent.text_content().to_dict() yields {'type':'text','text':...}."""
         text_block = ToolContent.text_content("hello world")
         result = text_block.to_dict()
 
@@ -178,7 +159,6 @@ class TestImageContentSerialization:
         assert result["text"] == "hello world"
 
     def test_image_content_to_dict_format(self) -> None:
-        """ImageContent serializes to {'type':'image','data':<base64>,'mimeType':<str>}."""
         image_block = ImageContent(data="SGVsbG8gV29ybGQ=", mime_type="image/png")
         result = image_block.to_dict()
 
@@ -190,13 +170,11 @@ class TestImageContentSerialization:
         assert "mimeType" in result
 
     def test_image_content_type_is_explicit_image(self) -> None:
-        """ImageContent.type field is always 'image', not derived from mime_type."""
         block = ImageContent(data="abc123", mime_type="image/jpeg")
         assert block.type == "image"
         assert block.to_dict()["type"] == "image"
 
     def test_tool_result_with_text_and_image_content(self) -> None:
-        """ToolResult.to_dict() with [text, image] preserves order and correct shapes."""
         result = ToolResult(
             content=[
                 ToolContent.text_content("header"),
@@ -219,7 +197,6 @@ class TestImageContentSerialization:
         assert content_list[2] == {"type": "text", "text": "footer"}
 
     def test_tool_result_serialize_content_blocks_no_stringify_fallback(self) -> None:
-        """Runtime serialization does not silently stringify image blocks."""
         result = ToolResult(
             content=[
                 ToolContent.text_content("hello"),
@@ -230,14 +207,11 @@ class TestImageContentSerialization:
         serialized = result.to_dict()
         content_list = must_dict_list(serialized["content"])
 
-        # First block should be text with correct structure
         assert content_list[0] == {"type": "text", "text": "hello"}
-        # Second block should be image with correct structure, NOT stringified
         expected_image_block = {
             "type": "image",
             "data": "SGVsbG8gV29ybGQ=",
             "mimeType": "image/png",
         }
         assert content_list[1] == expected_image_block
-        # Verify keys are correct - no stray 'text' key in image block
         assert "text" not in content_list[1]

@@ -1,4 +1,3 @@
-"""Invocation-local runtime-event attribution for causal failure records."""
 
 from __future__ import annotations
 
@@ -15,7 +14,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class RuntimeEventRecorder:
-    """Retain the latest bounded runtime event for one invocation."""
 
     _latest: FailureOrigin | None = None
     detail: str | None = None
@@ -35,7 +33,6 @@ _RECORDER: ContextVar[RuntimeEventRecorder | None] = ContextVar(
 
 @contextmanager
 def runtime_event_scope(recorder: RuntimeEventRecorder) -> Iterator[RuntimeEventRecorder]:
-    """Make ``recorder`` available only for this invocation's context."""
     token = _RECORDER.set(recorder)
     try:
         yield recorder
@@ -44,14 +41,12 @@ def runtime_event_scope(recorder: RuntimeEventRecorder) -> Iterator[RuntimeEvent
 
 
 def record_runtime_event(origin: FailureOrigin, detail: str) -> None:
-    """Record a real runtime event when an invocation scope is active."""
     recorder = _RECORDER.get()
     if recorder is not None:
         recorder.record(origin, detail)
 
 
 def current_runtime_event() -> FailureOrigin | None:
-    """Return the current invocation's most recent runtime event."""
     recorder = _RECORDER.get()
     return recorder.latest() if recorder is not None else None
 

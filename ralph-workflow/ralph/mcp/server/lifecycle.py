@@ -1,202 +1,3 @@
-"""MCP server lifecycle helpers using a standalone localhost HTTP process.
-
-Design note: bridge state machine (wt-16 make-before-break work).
-
-The ``RestartAwareMcpBridge`` owns the parent-owned listening socket for
-its full lifetime. Restart is ordered and single-acceptor:
-
-1. Spawn the candidate while the old child keeps serving on the inherited
-   listening fd.
-2. Verify the candidate ONLY over a private channel (a parent-owned
-   socketpair). A preflight over the shared endpoint is meaningless
-   during the overlap because the old child may answer it.
-3. Tell the old child to stop accepting (the pause file
-   ``MCP_ACCEPT_PAUSE_FILE``). Wait for its acknowledgement — a FILE
-   sentinel ``<pause>.ack`` created by the old child after it drops its
-   accepting FD, NOT a message on the handover socketpair — bounded by
-   ``_HANDOVER_ACK_TIMEOUT_S``; on timeout, kill the old child and confirm
-   it is gone (``_HANDOVER_KILL_WAIT_S``) before promotion.
-4. Tell the candidate to start accepting (the resume file
-   ``MCP_ACCEPT_RESUME_FILE``). At no moment do two children accept.
-5. Promote (_inner swap) under lock, then drain the old child inside
-   ``_DRAIN_S`` (bounded by ``_HANDOVER_DRAIN_S``). Connections queued in
-   the kernel backlog are served by the new child.
-6. Probation: a candidate death after promotion is counted as
-   ``process_exited`` and replaced immediately.
-
-Handover bounds and deadlines:
-The make-before-break transition is strictly bounded by named constants:
-
-* ``_HANDOVER_ACK_TIMEOUT_S = 1.0``: maximum duration to wait for old child's
-  pause acknowledgement file (``<pause>.ack``) after writing ``accept.pause``.
-* ``_HANDOVER_KILL_WAIT_S = 1.0``: maximum duration to wait for old child process
-  to exit after issuing SIGKILL if pause ack timed out.
-* ``_HANDOVER_DRAIN_S = 0.5`` (defined in ``_handover_protocol.py:37``): drain policy
-  deadline constant bounding old child
-  drain period during graceful handover.
-
-Drain policy deadline constant:
-``_HANDOVER_DRAIN_S`` governs the drain phase duration where the retiring
-child processes in-flight requests before hard shutdown.
-
-Single-acceptor graceful handover verification:
-Single-acceptor invariant and graceful handover sequencing are verified in
-``tests/mcp/test_single_acceptor_instrumented.py::test_e43_single_acceptor_graceful_handover``.
-
-Backoff enforcement:
-Backoff cooldown is enforced unconditionally via ``_cooldown_after_failure()``
-prior to every restart attempt (``McpRestartPolicy.cooldown_seconds``), guaranteeing
-the bridge cannot storm or spin-loop even with a wedged ``restart_fn``.
-
-E1.6 Concurrency arguments across all 8 state stores:
-During make-before-break replacement, candidate and serving children overlap.
-State integrity across both processes is preserved across all 8 state stores.
-Each entry below names the module that ACTUALLY performs the write and the
-mechanism that ACTUALLY serialises it. The writer location is load-bearing:
-three of these stores are written from the CHILD process, not from the parent
-bridge, so a note claiming single-writer safety would be false.
-
-1. Wire ledger: written by the CHILD request-dispatch path, NOT by the parent
-   bridge. ``McpServer._dispatch_request`` (``_mcp_server.py:275,283,303``)
-   reaches ``_append_wire_record_best_effort`` -> ``append_wire_record`` for
-   every dispatched JSON-RPC frame, ``_record_wire_ledger_before_dispatch``
-   (``_mcp_server.py:712``) does the same for ``tools/call``, and media
-   capture appends from inside the child (``_media_capture.py:434``). The
-   cross-process mechanism lives entirely in the lock critical section of
-   ``append_wire_record`` (defined at ``_wire_ledger.py:294``; the locked
-   section is ``_wire_ledger.py:345-407``): a sidecar ``<ledger>.lock`` file is
-   opened, an exclusive non-blocking ``fcntl.flock`` is taken with a bounded 0.2 s
-   retry, and the chain head (``_read_last_hmac``) is read UNDER that lock
-   immediately before the append-only JSONL write, then released. The chain
-   head is never cached in memory between appends: a stale head is exactly how
-   the chain forks into two children of one parent. Candidate and serving
-   children append to the same file concurrently; the ledger is correct
-   because of the lock, not because there is only one writer.
-2. Session file: parent-written only. ``_create_session_file``
-   (``lifecycle.py:2934``) creates it atomically via ``tempfile.mkstemp`` in
-   the system temporary directory before the spawn and passes the path through
-   ``MCP_SESSION_FILE_ENV``; ``FileBackedSession``
-   (``runtime_session.py:144``) is a read-only view that performs no writes at
-   all. The parent removes it when the spawn fails
-   (``lifecycle.py:2754``). It does NOT live under
-   ``.agent/snapshots/<run_id>/``, so no stage or generation isolation is
-   needed or provided for it.
-3. Durable sink: isolated by a PER-BRIDGE UNIQUE FILE, not by a cross-process
-   lock. ``configure_bridge_sink`` (``_mcp_health_event.py:284``) assigns each
-   bridge its own ``.agent/mcp-health-events-<bridge_id>.jsonl``
-   (``lifecycle.py:2480``), and only the parent appends
-   (``lifecycle.py:1293`` via ``record_restart_decision``). ``_DURABLE_SINK_LOCK`` is a
-   ``threading.Lock`` (``_mcp_health_event.py:54``): it serialises threads
-   inside the parent process and cannot protect across processes. The
-   cross-instance isolation comes from the unique filename. Entries are
-   append-only JSONL, persisted for post-mortem analysis.
-4. Activity relay: in-memory only, no store. ``ActivityRelay``
-   (``_activity_relay.py:53``) guards its state with a ``threading.Lock``
-   (``_activity_relay.py:80``); sender threads enqueue events and ``close()``
-   drops them after bridge shutdown. Nothing here is shared with the child.
-5. Stage files: written by the CHILD, isolated per spawn. Each spawn gets a
-   fresh ``MCP_STAGE_ID_ENV`` (``lifecycle.py:2692``) and ``stage_file_path``
-   (``_start_stage_tracker.py:70``) scopes the file to that spawn id, so two
-   overlapping children cannot clobber each other's stage file. The record is
-   committed by temp file plus an atomic replace with a directory fsync
-   (``_start_stage_tracker.py:116``); the per-spawn startup-overrun journal is
-   append-mode JSONL (``_start_stage_tracker.py:271``).
-6. Artifact stores: managed in the workspace filesystem under task-isolated
-   staging directories, so a candidate writes only into its own directory and
-   never into the serving child's path.
-7. Coordination state: the handover sentinels are STAGE-SUFFIXED, not fixed
-   names. The parent passes ``accept.pause.<stage_id>``
-   (``lifecycle.py:1595``) and ``accept.resume.<stage_id>``
-   (``lifecycle.py:1604``) through the environment and addresses the same
-   files by ``stage_id`` when it pauses the old child and resumes the
-   candidate (``lifecycle.py:1594-1606``), falling back to the unsuffixed
-   name only when a stage id is unknown. ``<pause>.ack`` is created by the old
-   child after it drops its accepting FD, so a stale ack from a previous
-   generation can never satisfy this one. In-memory bridge transitions occur
-   under ``self._lock`` (reentrant).
-8. Transport-repetition sidecar (E1.7): a persistent advisory-lock sidecar,
-   NOT append-only. ``_transport_repetition_tracker.py:386`` opens a
-   ``<state>.lock`` companion and takes the same bounded non-blocking
-   ``flock`` (``:262``); the carried state is read UNDER the lock and rewritten
-   whole by temp file plus rename (``_write_carried_state``, ``:446``). Because
-   it is a whole-file replace under a lock rather than an append, two writers
-   cannot interleave partial lines into it.
-
-Attempt result classification (C2): ``_attempt_restart_with_candidate``
-returns a typed ``RestartAttemptResult``. Only
-``BUDGET_EXHAUSTED`` may set ``_mcp_error`` or be re-raised from
-``McpSupervisor.__exit__``. All other outcomes (``ATTEMPT_FAILED``,
-``DEFERRAL_CEILING_TRIPPED``, ``REPLACED``, ``KEPT_OLD``) are
-non-terminal while the budget remains.
-
-Probe overrun (C3): ``_run_health_probe`` records its own elapsed
-time. A probe that takes longer than ``probe_timeout +
-_PROBE_DEADLINE_SLACK_S`` is treated as host contention
-(``overrun=True``), not server death. Probe failures are classified so
-only timeout-class outcomes are deferrable under contention; connection
-resets, malformed responses, HTTP 5xx, and wrong-spawn-id responses
-are real non-deferrable failures. Before replacing a live child,
-confirm-before-replace runs a second 2x probe with CPU-progress fallback.
-The deferral counter has both a count ceiling (``_DEFERRAL_COUNT_CEILING``)
-and a wall-time ceiling (``_DEFERRAL_WALL_TIME_CEILING_S``).
-
-Tool-set drift (C1/E1.9): ``_verify_candidate`` verifies tool-set hash
-equality against carried state (``_expected_tool_hash``). The reference is
-real, not a parent-side guess: ``start_mcp_server`` performs ONE bounded
-served ``tools/list`` over the shared endpoint of the FIRST live child —
-before any candidate can overlap — and seeds both the hash and the catalogue
-behind it. After every successful candidate verification the candidate's own
-served catalogue replaces that reference. Drift is refused while the old child
-is alive (the refusal WARNING names the added/removed/changed tools, the
-attempt is counted, and the old child keeps serving); if the old child is dead
-there is nothing left to preserve, so the drifted candidate is promoted with a
-WARNING that names the diff.
-
-Handover stage attribution (C5/DEC-002): every ``McpServerError`` raised from
-the make-before-break path carries ``handover_step`` naming the failing stage
-(``spawn_candidate``, ``verify_candidate``, ``pause_ack``, ``resume_candidate``,
-``promote_candidate``, ``drain_old_child``). The innermost stage wins, so a
-drain failure is not relabelled as a promotion failure on its way out.
-
-Why this design cannot double-serve, double-write, hang, or storm:
-
-* The parent owns the only listening socket; children accept only on
-  an FD they explicitly drop after the pause-file acknowledgement.
-* Parent and child both append to the wire ledger, and it stays a valid
-  chain because ``append_wire_record`` takes an exclusive ``fcntl.flock``
-  and reads the chain head under that lock; the two-child interleave test
-  verifies an interleaved append sequence still validates.
-* ``_attempt_restart_with_candidate`` is bounded by the rolling
-  window from ``McpRestartPolicy``; ``ATTEMPT_FAILED`` does not
-  escalate.
-* Backoff is enforced unconditionally before every restart attempt, so
-  the bridge cannot storm even with a wedged ``restart_fn``.
-
-Replacement initiation (E4.1 / E2.7 / E1.1 / E1.9):
-Every replacement initiator — the health probe, the failed-probe handler
-and ``reset_tool_registry`` — routes into ONE generation-checked,
-single-candidate state machine (``_run_with_make_before_break`` ->
-``_claim_candidate_slot`` + ``_replace_with_candidate``). A replacement
-is initiated OFF the bridge lock:
-
-1. Under the lock, briefly: claim the ONE candidate slot (a second
-   concurrent initiator is refused, so exactly one candidate can exist)
-   and capture the generation token.
-2. Off the lock: cooldown, candidate spawn, and PRIVATE-channel
-   verification (spawn id, pid, session id/broker fingerprint, tool-set
-   schema hash). No agent read of ``bridge.process`` or of the shared
-   endpoint can queue behind this.
-3. Under the lock, briefly: re-validate BOTH the generation token and the
-   slot reservation. If either moved, the candidate is abandoned and its
-   whole process group is reaped without touching ``_inner``.
-4. Ordered handover, promotion, then the slot is cleared in a
-   ``finally`` on every path, success or failure.
-
-A verification failure is never terminal: the candidate is reaped, the old
-child keeps serving, and the attempt stays charged to the budget.
-
-This module contains no async; all I/O is bounded and fails closed.
-"""
 
 from __future__ import annotations
 
@@ -329,7 +130,6 @@ from ralph.process.manager import (
 )
 from ralph.workspace.fs import FsWorkspace
 
-#: Env var carrying the session_id for snapshot-based persistence across respawns.
 MCP_SESSION_ID_ENV = "MCP_SESSION_ID"
 
 if TYPE_CHECKING:
@@ -340,62 +140,20 @@ if TYPE_CHECKING:
     from ralph.mcp.server._activity_relay import ActivityRelay
     from ralph.mcp.upstream.registry import UpstreamRegistry
 
-# Additive cap on the tool-registry-reset counter. The recovery
-# controller's `max_recovery_attempts` and the MCP restart policy's
-# `max_restarts` are independent. This cap bounds the third retry
-# surface — when a tool-availability failure recurs after the bridge
-# has rebuilt its visible tool list, the orchestrator needs a
-# distinguishable cap error so the operator can diagnose which bound
-# fired. The error message MUST contain the substring
-# 'tool-registry-reset exhausted' so the orchestrator can branch on it.
 _TOOL_REGISTRY_MAX_RESETS: int = 3
-# Hard cap on the exponent for the sustained-contention probe-timeout
-# backoff. A live child kept deferring past this cap would otherwise
-# raise ``OverflowError`` from ``timedelta * 2**N`` and tear down the
-# health-check path — the exact incident class. The cap is far past
-# the realistic ceiling (the timeout is min'd against the preflight
-# ceiling below, so any exponent above ~10 already saturates the
-# observable probe timeout). 32 keeps 2**N < 2**32 = 4.3e9, well
-# below the timedelta microsecond range.
 _PROBE_TIMEOUT_EXPAWN_CAP: int = 32
 
 
-# RestartAttemptResult lives in its own module
-# (ralph.mcp.server._mcp_attempt_result) so lifecycle.py can stay
-# within the repo-structure one-class-per-module policy. Imported here
-# so the rest of the lifecycle module and existing callers see the
-# same name.
 
 
 def _bridge_clock(self_or_bridge: object) -> Callable[[], float]:
-    """Return the bridge's monotonic-clock seam, defaulting to ``time.monotonic``.
-
-    Module-level helper used by ``RestartAwareMcpBridge._run_health_probe``
-    so the probe's elapsed-time accounting honours the ``clock_fn`` test
-    injection without open-coding ``getattr(...)`` at every probe site.
-    The narrowing is via ``callable()`` + the type annotation on
-    ``self._clock_fn`` (``Callable[[], float] | None``); if a
-    non-callable slips in, the fallback ``time.monotonic`` keeps the
-    production path fail-closed (an injected non-callable cannot
-    crash the probe).
-    """
     raw: object = getattr(self_or_bridge, "_clock_fn", None)
     if callable(raw):
-        # callable() is a runtime narrowing check; the typed
-        # ``Callable[[], float] | None`` annotation on the
-        # ``_clock_fn`` attribute means the value is already
-        # typed at the source. Returning ``raw`` (typed ``object``)
-        # to a function annotated ``-> Callable[[], float]`` is
-        # not flagged by mypy because the attribute type and
-        # the return type both flow from the bridge's own
-        # declaration; the test seam is fail-closed (time.monotonic
-        # is the fallback when the test seam is unused).
         return raw
     return time.monotonic
 
 
 def _restart_error_fields(exc: BaseException) -> tuple[str | None, float | None]:
-    """Checked boundary: pull optional restart diagnostics off a foreign exception."""
     last_stage: object = getattr(exc, "last_stage", None)
     elapsed_s: object = getattr(exc, "elapsed_s", None)
     return (
@@ -409,11 +167,6 @@ if not _TOOL_REGISTRY_MAX_RESETS > 0:
         f"_TOOL_REGISTRY_MAX_RESETS must be positive (got {_TOOL_REGISTRY_MAX_RESETS})"
     )
 
-# Alias-verify timeout for the post-respawn tools/list probe. The
-# probe is HTTP-based and bounded so a wedged inner process does
-# not stall the recovery path. The invariant below is enforced at
-# import time via `if`/`raise RuntimeError` (NOT `assert`) so it
-# survives `python -O`.
 _RESPAWN_ALIAS_VERIFY_TIMEOUT_S: float = 2.0
 _RESPAWN_ALIAS_VERIFY_TIMEOUT_MAX_S: float = 30.0
 if not (
@@ -426,23 +179,10 @@ if not (
         f" (got {_RESPAWN_ALIAS_VERIFY_TIMEOUT_S})"
     )
 
-# Reset-wrapup timeout for the per-attempt session-budget reset POST.
-# Same bounded, fail-closed contract as the alias-verify timeout so
-# ``audit_mcp_timeout`` stays green: a wedged inner process or a
-# just-respawned one that has not finished binding its HTTP socket
-# must not stall the attempt boundary. The invariant below is
-# enforced at import time via `if`/`raise RuntimeError` (NOT
-# `assert`) so it survives `python -O`.
 _RESET_WRAPUP_TIMEOUT_S: float = 2.0
 if not _RESET_WRAPUP_TIMEOUT_S > 0:
     raise RuntimeError(f"_RESET_WRAPUP_TIMEOUT_S must be positive (got {_RESET_WRAPUP_TIMEOUT_S})")
 
-# Timeout for the ONE baseline ``tools/list`` the parent performs over the
-# shared endpoint during initial bridge startup. It runs after the first
-# child's preflight already proved the endpoint is serving, so it is a small
-# confirmation read, not a startup wait; the bound keeps a wedged child from
-# stalling bridge construction. The invariant is enforced at import time via
-# `if`/`raise RuntimeError` (NOT `assert`) so it survives `python -O`.
 _INITIAL_TOOL_HASH_TIMEOUT_S: float = 5.0
 _INITIAL_TOOL_HASH_TIMEOUT_MAX_S: float = 30.0
 if not (
@@ -455,11 +195,6 @@ if not (
         f" (got {_INITIAL_TOOL_HASH_TIMEOUT_S})"
     )
 
-# Make-before-break handover stage names (C5 / DEC-002). Every McpServerError
-# raised from the make-before-break path carries exactly one of these on its
-# ``handover_step`` field so an operator can name the failing handover stage
-# without replaying the full traceback. The stages are ordered as the protocol
-# executes them: spawn -> verify -> pause/ack -> resume -> promote -> drain.
 _HANDOVER_STEP_SPAWN: Final[str] = "spawn_candidate"
 _HANDOVER_STEP_VERIFY: Final[str] = "verify_candidate"
 _HANDOVER_STEP_PAUSE_ACK: Final[str] = "pause_ack"
@@ -467,17 +202,9 @@ _HANDOVER_STEP_RESUME: Final[str] = "resume_candidate"
 _HANDOVER_STEP_PROMOTE: Final[str] = "promote_candidate"
 _HANDOVER_STEP_DRAIN: Final[str] = "drain_old_child"
 
-#: ``_handle_failed_probe_under_lock`` outcomes that require a replacement.
-#: The accounting that decides between them runs entirely under the bridge
-#: lock; the replacement itself runs AFTER the lock is released, so the
-#: values double as "what kind of restart to start once we are off-lock".
 _RESTART_BECAUSE_PROBE_FAILED: Final[int] = 0
 _RESTART_BECAUSE_PROCESS_EXITED: Final[int] = 1
 
-#: Deadline (seconds) for confirming that an un-acknowledging old child is gone
-#: after its kill is issued. Bounded and import-time-checked for the same reason
-#: as the other handover deadlines: an unbounded confirmation poll would hang
-#: the make-before-break path on a child that ignores SIGKILL.
 _HANDOVER_KILL_WAIT_S: float = 1.0
 _HANDOVER_KILL_WAIT_MAX_S: float = 30.0
 if not (_HANDOVER_KILL_WAIT_S > 0 and _HANDOVER_KILL_WAIT_S <= _HANDOVER_KILL_WAIT_MAX_S):
@@ -486,11 +213,6 @@ if not (_HANDOVER_KILL_WAIT_S > 0 and _HANDOVER_KILL_WAIT_S <= _HANDOVER_KILL_WA
         f" {_HANDOVER_KILL_WAIT_MAX_S:g}] seconds (got {_HANDOVER_KILL_WAIT_S})"
     )
 
-# E5.2 unkillable-survivor reaper. A survivor that refused SIGKILL inside the
-# bounded pause-kill window (e.g. D-state pinned to uninterruptible I/O) is
-# registered for deferred reap at this interval. The interval is import-time
-# bounded; the registry is FIFO-capped on the bridge instance so a long stream
-# of survivors cannot grow the bridge's footprint.
 _UNKILLABLE_REAP_BACKOFF_S: float = 0.5
 _UNKILLABLE_REAP_BACKOFF_MAX_S: float = 30.0
 _UNKILLABLE_REAP_RETRY_S: float = 1.0
@@ -506,25 +228,10 @@ if not (
     )
 
 
-# ---------------------------------------------------------------------------
-# Worst-case arithmetic bounds and import-time invariants (E6.4 + E2.3)
-# ---------------------------------------------------------------------------
-#: Candidate private-channel readiness verification deadline, measured from
-#: spawn: the candidate's interpreter boot plus the readiness exchange.
 _CANDIDATE_DEADLINE_S: Final[float] = _CANDIDATE_BOOT_ALLOWANCE_S + _PRIVATE_READINESS_TIMEOUT_S
-#: Candidate whole startup budget from environment.
 _CANDIDATE_STARTUP_DEADLINE_S: Final[float] = mcp_whole_startup_budget_from_env()
-#: Preflight deadline ceiling in seconds.
 _PREFLIGHT_DEADLINE_S: Final[float] = mcp_preflight_timeout_from_env().total_seconds()
 
-#: Bound (a): Worst-case time to terminal exhaustion with old child dead,
-#: computed from restart policy max_restarts, cooldown, the preflight
-#: deadline, and the bounded teardown of each failed attempt's child.
-#: The teardown term was the omission the acceptance review found: a failed
-#: startup calls ``bridge.shutdown()`` (``lifecycle._start_bridge``), which
-#: escalates SIGTERM -> SIGKILL and then reaps, so an attempt that misses its
-#: preflight deadline still costs that bounded window before the next attempt.
-#: Every term is read from the constant that the runtime path actually uses.
 _FAILED_ATTEMPT_CLEANUP_S: Final[float] = (
     SHUTDOWN_TERMINATE_GRACE_S + ProcessManagerPolicy.kill_followup_timeout_s + SHUTDOWN_REAP_WAIT_S
 )
@@ -532,11 +239,6 @@ _WORST_CASE_TERMINAL_EXHAUSTION_DEAD_CHILD_S: Final[float] = McpRestartPolicy.ma
     McpRestartPolicy.cooldown_seconds + _PREFLIGHT_DEADLINE_S + _FAILED_ATTEMPT_CLEANUP_S
 )
 
-#: Bound (b): Candidate delay bound with old child alive, computed as
-#: (candidate deadline + handover ack + kill wait + drain). A candidate that
-#: fails before the accept handover is torn down with the same bounded
-#: ``StandaloneMcpProcess.shutdown`` window, and that teardown is charged to
-#: the agent because it runs on the agent's own replacement path.
 _CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S: Final[float] = (
     _CANDIDATE_DEADLINE_S
     + _HANDOVER_ACK_TIMEOUT_S
@@ -555,28 +257,14 @@ if not (_CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S > 0):
     )
 
 
-# ---------------------------------------------------------------------------
-# E6.4 arithmetic-dominance proof (not vacuous positivity)
-# ---------------------------------------------------------------------------
-#: The arithmetic-dominance predicate has ONE implementation, published by
-#: ``ralph.mcp.bridge_diagnostics`` so callers can evaluate the same
-#: contract without reaching into private lifecycle helpers. The import-time
-#: restart-budget guard below evaluates it through this alias.
 _e64_bound_dominates = bound_dominates
 
 
-#: Per-attempt worst-case durations bound (a) is composed of: the
-#: unconditional pre-restart cooldown, one preflight deadline, and the
-#: bounded teardown of the attempt's own child.
 _E64_BOUND_A_COMPONENTS_S: Final[tuple[float, ...]] = (
     float(McpRestartPolicy.cooldown_seconds),
     _PREFLIGHT_DEADLINE_S,
     _FAILED_ATTEMPT_CLEANUP_S,
 )
-#: Handover stage durations bound (b) is composed of, in protocol order:
-#: candidate boot and private-channel readiness, old-child pause acknowledgement
-#: (or its kill), the kill confirmation, the drain window, and the bounded
-#: teardown of a candidate that failed before the accept handover.
 _E64_BOUND_B_COMPONENTS_S: Final[tuple[float, ...]] = (
     _CANDIDATE_DEADLINE_S,
     _HANDOVER_ACK_TIMEOUT_S,
@@ -605,30 +293,17 @@ if not _e64_bound_dominates(_CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S, _E64_BOUND_B_C
         f" {_CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S:g}s"
         f" < sum{_E64_BOUND_B_COMPONENTS_S}={sum(_E64_BOUND_B_COMPONENTS_S):g}s"
     )
-# E2.3 candidate startup deadline bounds validation
 if not (0 < _CANDIDATE_STARTUP_DEADLINE_S < _PREFLIGHT_DEADLINE_S):
     raise RuntimeError(
         f"E2.3 candidate startup deadline ({_CANDIDATE_STARTUP_DEADLINE_S}s) must be positive "
         f"and strictly less than preflight deadline ({_PREFLIGHT_DEADLINE_S}s)"
     )
 
-#: Probe-overrun slack (seconds). A probe that exceeds its deadline by more
-#: than this is classified as host contention (C3) rather than server death.
 _PROBE_DEADLINE_SLACK_S: float = 0.5
-#: Multiplier applied to base probe timeout for confirm-before-replace (C3).
 _CONFIRM_PROBE_MULTIPLIER: int = 2
-#: CPU sample duration in seconds for fallback confirmation (C3).
 _CONFIRM_CPU_SAMPLE_S: float = 0.5
-#: CPU progress threshold in seconds of total (user + sys) CPU time.
 _CPU_PROGRESS_THRESHOLD: Final[float] = 0.001
-#: Hard ceiling on consecutive probe-failure deferrals. When the deferral
-#: counter reaches this the bridge forces a restart regardless of whether
-#: a fresh contention signal is present, preventing indefinite deferral of
-#: a genuinely wedged child.
 _DEFERRAL_COUNT_CEILING: int = 30
-#: Wall-time ceiling on the accumulated probe deferral time. A probe that
-#: overruns by more than this in aggregate (even if individual overruns
-#: are small) is treated as sustained contention and forces replacement.
 _DEFERRAL_WALL_TIME_CEILING_S: float = 60.0
 if not (
     _PROBE_DEADLINE_SLACK_S > 0
@@ -645,24 +320,8 @@ if not (
         f"_DEFERRAL_WALL_TIME_CEILING_S={_DEFERRAL_WALL_TIME_CEILING_S} must all be positive"
     )
 
-#: Hard upper bound (bytes) on a single ``response.read()`` call in this
-#: module. Both the reset_session_budget path (which discards the body) and
-#: the ``_http_tools_list_names`` path (which parses the body as JSON) cap
-#: the read at this value so a misbehaving upstream that streams an
-#: unbounded response body cannot OOM the parent. 1 MiB is well above any
-#: realistic ``tools/list`` JSON payload and matches the size budget an
-#: operator would expect for a discardable wrap-up response (AC-08).
 
-# Canonical tool name whose alias is verified after every
-# ``reset_tool_registry()`` call. ``read_file`` is the most common
-# wedge surface: a regression that strips the alias from the
-# post-respawn tools/list re-introduces the post-tool-result wedge
-# even though ``reset_tool_registry()`` returned successfully.
 _ALIAS_VERIFY_TOOL_NAME: str = "read_file"
-# MCP server name used to build the alias. The companion constant
-# lives in ``ralph.mcp.tools.names``; we hard-code ``"ralph"`` here
-# to keep the lifecycle module import-light and avoid a circular
-# dependency through ``ralph.mcp.tools.bridge``.
 _ALIAS_VERIFY_SERVER_NAME: str = RALPH_MCP_SERVER_NAME
 
 _PACKAGE_ROOT = Path(__file__).resolve().parents[3]
@@ -675,30 +334,18 @@ if TYPE_CHECKING:
 
 _PACKAGE_ROOT = Path(__file__).resolve().parents[3]
 
-#: Consecutive failed probes required before an otherwise-running MCP server
-#: is restarted. A single bounded probe window is not evidence of death: on a
-#: loaded machine a healthy server misses one routinely, and restarting on the
-#: first miss tore down working servers in the middle of agent calls.
 _PROBE_FAILURES_BEFORE_RESTART = 3
 
-#: Consecutive successful probes required to clear accumulated probe failure
-#: history (E6.3). A flapping server alternating between success and failure
-#: must not clear its failure streak on a single lucky probe.
 _PROBE_SUCCESS_HYSTERESIS_COUNT = 3
 if not _PROBE_SUCCESS_HYSTERESIS_COUNT > 0:
     raise RuntimeError(
         f"_PROBE_SUCCESS_HYSTERESIS_COUNT must be positive (got {_PROBE_SUCCESS_HYSTERESIS_COUNT})"
     )
 
-#: Filename of the durable JSONL sink for restart decisions, stored under
-#: ``<workspace>/.agent/`` so it is workspace-local and bounded by the
-#: bridge lifecycle.  "ralph_mcp_restart_decisions" is distinctive enough
-#: to identify the file in incident triage without polluting the root.
 _DURABLE_SINK_FILENAME = "ralph_mcp_restart_decisions.jsonl"
 
 
 def _process_is_dead(target: StandaloneMcpProcess) -> bool:
-    """Return True if process has exited or if target lacks a process (e.g. MagicMock)."""
     proc: object = getattr(target, "process", None)
     if proc is None:
         return True
@@ -712,17 +359,6 @@ def _process_is_dead(target: StandaloneMcpProcess) -> bool:
 
 
 def _is_alive_pid(pid: int | None) -> bool:
-    """Return True if pid is a valid, currently alive OS process.
-
-    E5.4 / E5.2 mandate identity-safe liveness on the HOLDER (Popen/pidfd
-    handle), never a bare ``os.kill(pid, 0)`` — the latter cannot
-    distinguish a still-alive D-state process from a yet-unreaped zombie
-    and is sensitive to PID recycling. New callers MUST prefer
-    :func:`is_alive_process`; the pid-only form is retained for narrow
-    migration sites where a process handle is not yet in scope and is
-    paired at the call site with a process-identity check before any
-    termination or handover decision.
-    """
     if pid is None or pid <= 0:
         return False
     try:
@@ -735,17 +371,6 @@ def _is_alive_pid(pid: int | None) -> bool:
 
 
 def is_alive_process(proc: object) -> bool:
-    """Canonical E5.4 liveness check using the ``Popen`` handle's ``poll()``.
-
-    Returns ``True`` iff ``proc.poll() is None``: the process is still
-    running (including a D-state process holding uninterruptible I/O),
-    and the result is anchored to the handle we own rather than a bare
-    pid that the kernel may have recycled. ``poll()`` itself reaps a
-    zombie and returns its exit code, so this function naturally returns
-    ``False`` for zombies the moment they are reaped. Failing-closed on
-    an unusable ``proc`` (no ``poll`` callable) protects against
-    ``MagicMock`` and other incomplete test doubles leaking through.
-    """
     poll_fn = cast("Callable[[], object] | None", getattr(proc, "poll", None))
     if poll_fn is None or not callable(poll_fn):
         return False
@@ -756,44 +381,15 @@ def is_alive_process(proc: object) -> bool:
 
 
 def _has_stage(exc: BaseException) -> bool:
-    """Return True when ``exc`` carries the supervisor ``last_stage`` attribute.
-
-    Runtime predicate that gates the typed ``last_stage`` / ``elapsed_s``
-    read in :func:`_optional_attr_str` and :func:`_optional_attr_float`.
-    The restart loop catches a generic :class:`BaseException`; only
-    subclasses that declare the supervisor contract (in practice
-    :class:`McpServerError`) contribute values to the rewrap.
-    """
     return hasattr(exc, "last_stage") and hasattr(exc, "elapsed_s")
 
 
 def _read_supervisor_field(exc: BaseException, name: str) -> object:
-    """Read a single attribute from ``exc.__dict__`` as ``object``.
-
-    The returned value is intentionally typed as :class:`object`: it is
-    an untyped read that the caller narrows with ``isinstance``. The
-    helper exists so the ``__dict__`` access (which mypy types as
-    ``dict[str, Any]``) lives in one place, gated by the ``_has_stage``
-    runtime predicate, instead of being open-coded at every rewrap call
-    site. Returning :class:`object` keeps the expression typed and
-    avoids ``disallow_any_expr`` violations at the call site.
-    """
     storage: dict[str, object] = exc.__dict__
     return storage[name]
 
 
 def _optional_attr_str(exc: BaseException) -> str | None:
-    """Return ``exc.last_stage`` if it is a non-empty :class:`str`, else ``None``.
-
-    Typed boundary helper for the supervisor's exception-rewrap path.
-    The ``_has_stage`` gate confines the dynamic attribute read to a
-    narrow surface: any exception that does not declare the supervisor
-    contract short-circuits to ``None``. The read goes through
-    :func:`_read_supervisor_field` so the only ``Any``-typed value
-    lives behind a single typed boundary, and ``isinstance(raw, str)``
-    narrows to a typed :class:`str` at the call site without an
-    unchecked downcast.
-    """
     if not _has_stage(exc):
         return None
     raw = _read_supervisor_field(exc, "last_stage")
@@ -803,13 +399,6 @@ def _optional_attr_str(exc: BaseException) -> str | None:
 
 
 def _optional_attr_float(exc: BaseException) -> float | None:
-    """Return ``exc.elapsed_s`` if it is a non-bool numeric, else ``None``.
-
-    Mirror of :func:`_optional_attr_str` for the elapsed-time field. The
-    ``isinstance`` check accepts both :class:`float` and :class:`int` so
-    a JSON-derived numeric that arrives as ``int`` (whole seconds) is
-    not silently dropped at the typed boundary.
-    """
     if not _has_stage(exc):
         return None
     raw = _read_supervisor_field(exc, "elapsed_s")
@@ -818,50 +407,29 @@ def _optional_attr_float(exc: BaseException) -> float | None:
     return float(raw)
 
 
-#: Number of child log lines captured for a restart incident record.
 _LOG_TAIL_LINES: int = 10
 _LOG_TAIL_MAX_BYTES: int = 16 * 1024
 
 
 def _is_non_deferrable_probe_failure(exc: Exception | None) -> bool:
-    """Return True if exc represents a definitive, non-deferrable failure."""
     return classify_probe_failure(exc) == "fatal"
 
 
 def _is_timeout_class_probe_outcome(exc: Exception | None, overrun: bool) -> bool:
-    """Return True if the failure is deferrable under contention."""
     return classify_probe_failure(exc, overrun=overrun) == "timeout"
 
 
 def _is_saturated_dispatch_outcome(exc: Exception | None) -> bool:
-    """Return True if the probe reported a saturated (busy) dispatch."""
     return classify_probe_failure(exc) == "saturated"
 
 
 def _stamp_handover_step(exc: BaseException, step: str) -> BaseException:
-    """Record the failing make-before-break stage on an escaping error.
-
-    INNESTEST WINS: a stage only stamps an error that is not already stamped,
-    so an error raised deep inside the handover (e.g. ``drain_old_child``)
-    keeps its own precise stage instead of being relabelled by the outer
-    ``promote_candidate`` guard on the way out.
-
-    Non-:class:`McpServerError` exceptions pass through untouched; they carry
-    no ``handover_step`` field for the supervisor to read.
-    """
     if isinstance(exc, McpServerError) and exc.handover_step is None:
         exc.handover_step = step
     return exc
 
 
 def _child_process_diagnostics(inner: object) -> tuple[int | None, str | None]:
-    """Return ``(child_pid, psutil_status)`` for the live child behind ``inner``.
-
-    Best-effort and fail-closed: a missing pid, a foreign process object, or a
-    pid that already exited all yield ``(pid, None)`` rather than raising, so
-    constructing a diagnostic-bearing error can never fail to report the error
-    it was raised for.
-    """
     proc: object = getattr(inner, "process", None)
     raw_pid: object = getattr(proc, "pid", None)
     if not isinstance(raw_pid, int) or isinstance(raw_pid, bool):
@@ -878,18 +446,6 @@ class _RestartFnProtocol(Protocol):
 
 
 class RestartAwareMcpBridge:
-    """SessionBridgeLike wrapper that auto-restarts the MCP server on crash.
-
-    Bounded restart budget prevents unbounded retry loops. All process
-    spawning continues to flow through ProcessManager via the injected
-    LifecycleDeps so ProcessManager remains the single process authority.
-
-    The endpoint URI is stable for the full bridge lifetime: the same host/port
-    is reused on every restart so agents never see a changed MCP_ENDPOINT_ENV.
-    Thread-safe: a lock guards all inner-process mutations so the background
-    McpSupervisor can safely call check_health_and_restart_if_needed() while
-    the main thread is executing agent output streaming.
-    """
 
     def __init__(
         self,
@@ -919,22 +475,12 @@ class RestartAwareMcpBridge:
         self._inner = inner
         self._restart_fn = restart_fn
         self._restart_policy = restart_policy
-        # The session's run_id is the single identity the receipt and the
-        # gate share. Storing it on the bridge lets ``bridge_env_for``
-        # derive ``MCP_RUN_ID_ENV`` from the same value the submission
-        # handler stamps receipts with — drift is structurally impossible
-        # because there is no separate label parameter to disagree.
         self._run_id = run_id
         self._probe_fn = probe_fn
         self._probe_timeout_fn = probe_timeout_fn
         self._preflight_timeout_fn = preflight_timeout_fn
         self._activity_relay = activity_relay
-        # S4: tests inject a ``FakeClock``/sentinel sleep so the
-        # production 2.0-second default does not stall the suite.
-        # Production uses ``time.sleep`` (default below).
         self._sleep_fn: Callable[[float], object] | None = sleep_fn
-        # Handover timing is constructor-injected so an operational caller can
-        # choose a different bounded policy without mutating module globals.
         self._handover_ack_timeout_s = (
             _HANDOVER_ACK_TIMEOUT_S
             if handover_ack_timeout_s is None
@@ -964,40 +510,13 @@ class RestartAwareMcpBridge:
             and self._unkillable_reap_retry_s >= 0.0
         ):
             raise ValueError("handover timing values must be positive and bounded")
-        # Test seam: a fake ``time.monotonic`` substitute used by
-        # ``_run_health_probe`` and the deferral wall-clock ceiling
-        # accumulator. Production uses ``time.monotonic`` (the default
-        # below). Probe-overrun and deferral-ceiling tests pass a
-        # ``FakeClock``/sentinel so 30+ iter cycles exercise the
-        # production code without blocking a CPU for 33 real seconds.
         self._clock_fn: Callable[[], float] | None = clock_fn
         self._session_id: str | None = session_id
         self._broker_fingerprint: str | None = broker_fingerprint
-        # C1 step 2: secret-safe ``effective_config_fingerprint`` of the
-        # merged McpConfig captured before the first spawn. ``None`` means
-        # the parent had no fingerprint baseline (no tomllib, empty layers).
-        # A non-None baseline is REQUIRED for promotion when one exists.
         self._effective_config_fingerprint: str | None = effective_config_fingerprint
-        # E1.9 drift reference for the CURRENT serving child. Seeded once by
-        # ``capture_tool_hash_baseline`` from the served ``tools/list`` of the
-        # first live child, then replaced by the hash each successfully
-        # verified candidate proved. ``_expected_tool_entries`` is the
-        # catalogue behind the hash so a refusal can name the tools that
-        # differ instead of only reporting that two hashes disagree.
         self._expected_tool_hash: str | None = None
         self._expected_tool_entries: list[dict[str, object]] | None = None
-        # C1/E1.9 fail-closed gate: ``True`` while the bridge has no usable
-        # baseline (the initial capture failed or was never performed).
-        # ``_verify_candidate_socket`` reads this to force
-        # ``expected_tool_hash_required=True`` so a drifted candidate cannot
-        # replace a living child without a drift reference. Cleared to
-        # ``False`` the moment a verified candidate (or a fresh successful
-        # capture) provides a real hash. The dead-old-child escape still
-        # allows promotion even while this flag is ``True`` — see
-        # ``_verify_candidate_socket``.
         self._baseline_capture_failed: bool = False
-        # Test seam: the served-tool-list fetcher used to seed the baseline.
-        # Production uses ``served_tool_entries`` (the default ``None``).
         self._tool_entries_fn: Callable[[str, float], list[dict[str, object]]] | None = (
             tool_entries_fn
         )
@@ -1008,70 +527,17 @@ class RestartAwareMcpBridge:
             clock_fn() if clock_fn is not None else time.monotonic()
         )
         self._restart_count = 0
-        # Consecutive failed probes. A probe that times out proves the
-        # server is slow, not dead: under load a healthy server routinely
-        # misses one bounded probe window. Restarting on the first miss
-        # killed working servers mid-call, so a restart needs
-        # _PROBE_FAILURES_BEFORE_RESTART misses in a row. A process that
-        # has actually exited still restarts immediately — that signal is
-        # unambiguous.
         self._consecutive_probe_failures = 0
         self._consecutive_probe_successes = 0
-        # Tool-registry resets are tracked separately from crash
-        # restarts so the orchestrator can distinguish a "tool-registry
-        # rebuild" event from a "MCP server crashed" event. The cap
-        # (_TOOL_REGISTRY_MAX_RESETS) is independent of the MCP restart
-        # policy's max_restarts. See _tool_registry_resets property.
         self._tool_registry_resets = 0
-        # Bridge identity counter: increments on every reset_tool_registry
-        # and on every successful _perform_restart. The producer result
-        # in check_health_and_restart_if_needed is anchored to
-        # (self._inner.process.pid, self._bridge_generation) so a stale
-        # probe can be discarded if the bridge changed while the
-        # producer ran outside the lock.
         self._bridge_generation = 0
         self._lock = threading.RLock()
-        # E4.2 single-winner gate for the dead-child route. Held (OFF
-        # ``self._lock``) for the whole observe-dead -> replace sequence so a
-        # second concurrent health check waits for the first replacement and
-        # then sees the swapped ``_inner`` instead of also observing the same
-        # dead child and replacing the freshly promoted one. Only health-check
-        # callers take it; ``bridge.process`` readers never do (E4.1).
         self._dead_child_replace_lock = threading.Lock()
-        # Workspace root used to locate the child MCP server log for the
-        # durable restart-decision evidence.  Stored on the bridge so the
-        # log tail can be captured at the r3-sink call site (which is
-        # deep inside check_health_and_restart_if_needed, not on the
-        # start_mcp_server call path).  None is safe: log_tail will be
-        # None when the workspace root is unavailable.
         self._workspace_root: Path | None = workspace_root
-        # R1: the parent-owned listening socket; set by
-        # start_mcp_server after the spawn succeeds, closed in
-        # shutdown. The field is declared on the instance (not the
-        # class) so existing RestartAwareMcpBridge(...) call sites
-        # stay backward-compatible.
         self._listening_socket: _socket_type | None = None
-        # R3-durability: the path to this bridge's unique health-event
-        # sink file. Set by start_mcp_server; never cleared on shutdown
-        # so evidence is retained after bridge shutdown for incident triage.
         self._durable_sink_path: Path | None = None
-        # R3 host-contention guard: consecutive probe-failures deferred
-        # because a fresh workspace-monitor ``watch_capacity_predicted``
-        # signal (or a producer-injected signal) suggests the host is
-        # saturated, not the server. Reset on every successful probe.
-        # Independent of ``_consecutive_probe_failures`` so a regular
-        # three-miss policy still applies when no contention signal is
-        # present.
         self._consecutive_probe_failures_deferred: int = 0
-        # Test seam: a callable that returns True when the host is
-        # currently under contention. Production calls
-        # ``current_host_is_contended`` (the default) so the bounded
-        # /proc reader is exercised. ``None`` means "use the default
-        # production probe".
         self._contention_signal_producer: Callable[[], bool] | None = contention_signal_producer
-        # Sliding window (seconds) for ``watch_capacity_predicted``
-        # signals. Read from the policy when present; default 10.0 s
-        # when the policy is a mock or predates the field.
         window_attr: object = getattr(restart_policy, "host_contention_window_seconds", 10.0)
         self._host_contention_window_seconds: float = (
             float(window_attr)
@@ -1083,40 +549,20 @@ class RestartAwareMcpBridge:
             maxlen=16
         )
         self._current_candidate: StandaloneMcpProcess | None = None
-        # E2.7 single-candidate gate. True from the moment a replacement
-        # initiator claims the candidate slot until it clears it in a
-        # ``finally``. Every initiator (health probe, failed-probe handler,
-        # tool-registry reset) claims this ONE slot, so a second concurrent
-        # initiator is refused instead of spawning a rival candidate that
-        # would race the first for the shared accepting FD.
         self._candidate_in_flight: bool = False
         self._drain_threads: list[
             threading.Thread
-        ] = []  # bounded-accumulator-ok: drain workers capped at maxlen 16 matching draining_inners and joined at shutdown
+        ] = []
         self._is_shutting_down: bool = False
-        # E5.2: bounded reaper pool for unkillable / D-state survivors. A
-        # survivor that refuses both SIGTERM and SIGKILL inside the bounded
-        # pause-kill window is registered here; each entry is reaped at most
-        # ``_UNKILLABLE_REAP_BACKOFF_S`` seconds later and the registry is
-        # capped at ``_MAX_UNKILLABLE_REAPERS`` (FIFO truncation) so a long
-        # stream of D-state processes cannot grow the accumulator without
-        # bound. The truncation is safe because the bridge shutdown path
-        # unconditionally walks this list once more before returning.
         self._unkillable_reapers: collections.deque[tuple[object, int]] = collections.deque(
             maxlen=8
         )
         self._unkillable_reap_threads: list[
             threading.Thread
-        ] = []  # bounded-accumulator-ok: reapers capped at maxlen 8 matching _unkillable_reapers and joined at shutdown
+        ] = []
 
     @property
     def run_id(self) -> str:
-        """The session's run identity — the receipt key the gate reads.
-
-        See :class:`ralph.mcp.protocol._session_bridge_like.SessionBridgeLike`
-        for the full contract; the property is the bridge-side realization
-        of the protocol declaration.
-        """
         return self._run_id
 
     @property
@@ -1125,23 +571,9 @@ class RestartAwareMcpBridge:
 
     @property
     def tool_registry_resets(self) -> int:
-        """Number of times `reset_tool_registry()` has been called.
-
-        Independent of `restart_count` (which tracks crash restarts) and
-        the recovery controller's `max_recovery_attempts` (which tracks
-        agent-invocation retries). The orchestrator can inspect this
-        counter to diagnose which cap fired on a wedged run.
-        """
         return self._tool_registry_resets
 
     def diagnostics(self) -> BridgeDiagnostics:
-        """Return an immutable snapshot of the bridge's public operational state.
-
-        The snapshot exposes restart-budget accounting, probe classification
-        state, carried identity/tool-catalogue references, and the timing bounds
-        that govern replacement.  It is intentionally the only supported way to
-        inspect those values; callers do not need to couple to private fields.
-        """
         with self._lock:
             entries = tuple(dict(entry) for entry in (self._expected_tool_entries or ()))
             return BridgeDiagnostics(
@@ -1185,13 +617,6 @@ class RestartAwareMcpBridge:
 
     @property
     def process(self) -> ProcessLike:
-        """The currently running MCP server process.
-
-        Satisfies the ``_BridgeWithProcess`` protocol so consumers (e.g. the
-        parallel worker session factory) can read the server pid. Reads the
-        inner process under the lock because a concurrent health-check
-        restart may swap it.
-        """
         with self._lock:
             return self._inner.process
 
@@ -1244,41 +669,14 @@ class RestartAwareMcpBridge:
                 if t is not threading.current_thread():
                     t.join(timeout=1.0)
         self._inner.shutdown()
-        # R1: close the parent-owned listening socket last so the
-        # FD stays live for every other concurrent call site. The
-        # bridge holds the listening socket for its full lifetime;
-        # shutdown is the only path that releases it.
         listening_socket: _socket_type | None = getattr(self, "_listening_socket", None)
         if listening_socket is not None:
-            # Best-effort: a foreign close on a shared FD is not
-            # actionable from the bridge; the kernel has already
-            # released the port.
             with contextlib.suppress(OSError):
                 listening_socket.close()
             self._listening_socket = None
-        # R3-durability: the durable health-event sink is per-bridge and
-        # never deleted on shutdown. Each bridge owns a unique file so
-        # evidence is retained after shutdown for incident triage.
 
     def _cooldown_after_failure(self) -> None:
-        """Sleep for the policy cooldown, driven by an injectable clock.
-
-        S4: the lifecycle spaces consecutive ``McpServerError``-class
-        restarts by ``McpRestartPolicy.cooldown_seconds``. The
-        function takes no argument: the policy is read off the
-        bridge and the injected clock/sleep seam is used. Tests pass
-        a ``FakeClock`` / sentinel ``sleep_fn`` so the production
-        2.0-second default does not stall the suite. Called before
-        EVERY restart attempt (healthy or failed): fresh child
-        processes spike the same host load regardless of why the
-        previous one died.
-        """
         seconds = self._restart_policy.cooldown_seconds
-        # Defensive: tests may inject a MagicMock as the policy
-        # (the existing bridge tests pre-date the cooldown
-        # field). Skip the sleep when the value is not a real
-        # positive number so the failure path is exercised
-        # without the bridge tripping on a non-numeric mock.
         if not isinstance(seconds, (int, float)) or not seconds > 0:
             return
         sleep_fn = cast("Callable[[float], object] | None", getattr(self, "_sleep_fn", None))
@@ -1288,30 +686,17 @@ class RestartAwareMcpBridge:
 
     @property
     def activity_relay(self) -> ActivityRelay | None:
-        """Conflict-only relay owned by this bridge, when one was configured."""
         return self._activity_relay
 
     def relay_health_error(self) -> str | None:
-        """Return a latched relay fault before an invocation can be classified as idle."""
         return None if self._activity_relay is None else self._activity_relay.health_error()
 
     def register_activity_sink(self, sink: Callable[[str], None]) -> Callable[[], None]:
-        """Register the parent watchdog for authenticated standalone MCP events."""
         if self._activity_relay is None:
             return lambda: None
         return self._activity_relay.register_sink(sink)
 
     def _read_mcp_log_tail(self) -> tuple[str, ...] | None:
-        """Read the last 10 lines of the child MCP server log, if accessible.
-
-        Returns ``None`` when the workspace root is not set, the log file
-        does not exist, or the read fails.  ``None`` (not an empty tuple)
-        signals "log was unavailable" so the durable record distinguishes
-        "unavailable" from "log was present but empty".
-
-        Reads only the bounded tail of the file, so a subprocess that
-        logged megabytes before dying cannot flood this path.
-        """
         root = self._workspace_root
         if root is None:
             return None
@@ -1319,31 +704,22 @@ class RestartAwareMcpBridge:
         try:
             size = mcp_server_log_size(root)
             if size == 0:
-                # Empty file is readable-but-empty: []. Only a MISSING file
-                # (stat fails) yields the unavailable sentinel None.
                 if log_path.exists():
                     return ()
                 return None
             with log_path.open("rb") as fh:
-                # Bounded tail: seek near the end and read at most the
-                # last chunk; a partial first line is dropped below.
                 fh.seek(max(0, size - _LOG_TAIL_MAX_BYTES))
                 chunk = fh.read().decode("utf-8", errors="replace")
         except OSError:
             return None
         lines = chunk.split("\n")
         if size > _LOG_TAIL_MAX_BYTES and len(lines) > 1:
-            # Drop the possibly-truncated leading line.
             lines = lines[1:]
         if lines and lines[-1] == "":
-            lines.pop()  # trailing newline, not a line of content
+            lines.pop()
         return tuple(lines[-_LOG_TAIL_LINES:])
 
     def _run_health_probe(self) -> tuple[bool, float | None, bool, bool]:
-        """Run the configured probe under lock.
-
-        Returns (probe_failed, probe_duration_s, infra_error, overrun).
-        """
         if self._probe_fn is None:
             return False, None, False, False
         base_timeout: timedelta = (
@@ -1355,12 +731,6 @@ class RestartAwareMcpBridge:
             else mcp_preflight_timeout_from_env()
         )
         ceiling: timedelta = max(base_timeout, preflight_timeout - timedelta(seconds=1.0))
-        # Cap the exponent so the timedelta multiply cannot overflow at very
-        # high deferral counts (sustained host contention: a live child kept
-        # deferring past 2**31 would otherwise raise ``OverflowError`` and
-        # tear down the health-check path). The cap is far past the
-        # realistic ceiling anyway: probe timeout is min'd against the
-        # ``ceiling`` below, so anything above ~2**10 already saturates.
         deferred_count = max(0, self._consecutive_probe_failures_deferred)
         safe_exponent = min(deferred_count, _PROBE_TIMEOUT_EXPAWN_CAP)
         multiplier: int = 2**safe_exponent
@@ -1393,7 +763,6 @@ class RestartAwareMcpBridge:
         deferral_count: int,
         stage: str = "probe_deferred_contention",
     ) -> None:
-        """Write a durable sink record when a probe failure is deferred under contention."""
         target = (
             self._durable_sink_path
             if self._durable_sink_path is not None
@@ -1405,7 +774,7 @@ class RestartAwareMcpBridge:
             with _DURABLE_SINK_LOCK:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 with (
-                    target.open(  # filesystem-write-ok: append-only durable JSONL stream; each contention deferral must append
+                    target.open(
                         "a", encoding="utf-8"
                     ) as fh
                 ):
@@ -1428,39 +797,12 @@ class RestartAwareMcpBridge:
         process_exited: bool,
         probe_duration_s: float | None,
     ) -> bool:
-        """Perform an MCP server restart and record the decision.
-
-        E4.1: this method must NOT be called with ``self._lock`` held. The
-        candidate startup (spawn + private readiness preflight) and the
-        policy cooldown both run OFF the lock so an agent reading
-        ``bridge.process`` or the shared endpoint is never blocked behind a
-        replacement. The three phases are:
-
-        1. :meth:`_begin_restart_attempt` — short, under the lock: budget
-           accounting, the durable restart-decision record, and the attempt
-           counter. This is the ONLY phase that needs the lock, and it does
-           no I/O beyond the bounded durable-sink append.
-        2. :meth:`_cooldown_after_failure` and, for the make-before-break
-           route, :meth:`_run_with_make_before_break` — off the lock.
-        3. :meth:`_replace_dead_child` — back under the lock, because a cold
-           replacement mutates ``self._inner`` in place and a concurrent
-           reader must never observe a torn ``_inner``.
-
-        C2 contract: only ``BUDGET_EXHAUSTED`` raises :class:`McpServerError`.
-        A failed ``restart_fn`` call returns ``False`` and logs at WARNING
-        while the budget remains (the agent run continues; the next health
-        check retries after the cooldown). The previous design raised on
-        the first failed attempt and ended the agent run; the new design
-        keeps the working child alive while a candidate can be retried.
-        """
         attempt_index = self._begin_restart_attempt(
             process_exited=process_exited,
             probe_duration_s=probe_duration_s,
         )
         self._cooldown_after_failure()
 
-        # If old child is dead (process_exited is True or poll() is not None),
-        # cold replacement is required because make-before-break overlap cannot occur.
         if process_exited or _process_is_dead(self._inner):
             return self._replace_dead_child(attempt_index=attempt_index)
 
@@ -1472,14 +814,6 @@ class RestartAwareMcpBridge:
         process_exited: bool,
         probe_duration_s: float | None,
     ) -> int:
-        """Charge one restart attempt to the rolling budget (short, under the lock).
-
-        Returns the 1-based attempt index. Raises
-        :class:`McpServerError` with ``BUDGET_EXHAUSTED`` — the only
-        terminal outcome of the C2 contract — when the rolling window is
-        full. The durable restart-decision record is appended here too, so
-        the decision is on disk before any candidate exists.
-        """
         with self._lock:
             clock_fn = _bridge_clock(self)
             now = clock_fn()
@@ -1551,13 +885,6 @@ class RestartAwareMcpBridge:
         return attempt_index
 
     def _replace_dead_child(self, *, attempt_index: int) -> bool:
-        """Cold-replace an already-dead child (make-before-break cannot overlap).
-
-        Runs under the lock because ``self._inner`` is mutated in place: the
-        shutdown and the ``restart_fn`` spawn must be one atomic swap from a
-        concurrent reader's point of view. No candidate exists on this route,
-        so nothing here can overlap with a serving child.
-        """
         with self._lock:
             if self._workspace_root is not None:
                 snap = snapshot_dir(self._workspace_root, self._run_id)
@@ -1568,13 +895,6 @@ class RestartAwareMcpBridge:
                 self._inner.shutdown()
                 self._inner = self._restart_fn()
             except Exception as restart_exc:
-                # C2 fix: a single failed restart attempt is NOT terminal.
-                # Log at WARNING with attempt count, last stage, and elapsed
-                # time so an operator can diagnose; the budget remains and
-                # the next health check retries after the cooldown. The old
-                # child was already shut down above, so we keep the closed
-                # fd reference but mark the bridge state so the next attempt
-                # spawns a fresh child rather than crashing on the dead fd.
                 last_stage, elapsed_s = _restart_error_fields(restart_exc)
                 logger.warning(
                     "MCP restart attempt {}/{} failed (non-terminal, budget remains): "
@@ -1585,15 +905,8 @@ class RestartAwareMcpBridge:
                     elapsed_s,
                     restart_exc,
                 )
-                # Old child was shut down; reset the in-flight counters so
-                # the next health check doesn't accumulate stale state.
-                # ``_restart_count`` is left at ``attempt_index`` so the
-                # budget accounting is correct (this attempt counted).
                 self._reset_probe_counters()
                 return False
-            # Bump generation on every successful restart so a stale probe
-            # captured against the prior inner is discarded by
-            # _handle_failed_probe_under_lock.
             self._bridge_generation += 1
             self._reset_probe_counters()
             logger.info(
@@ -1604,43 +917,21 @@ class RestartAwareMcpBridge:
             return True
 
     def _reset_probe_counters(self) -> None:
-        """Clear every probe-outcome counter (caller holds or takes the lock)."""
         self._consecutive_probe_failures = 0
         self._consecutive_probe_successes = 0
         self._consecutive_probe_failures_deferred = 0
         self._first_probe_deferred_at = None
 
     def _spawn_candidate(self) -> StandaloneMcpProcess:
-        """Spawn the candidate process via restart_fn while old child serves."""
         fn = cast(
             "_RestartFnProtocol", self._restart_fn
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         try:
             return fn(make_before_break=True)
         except TypeError:
             return self._restart_fn()
 
     def capture_tool_hash_baseline(self) -> None:
-        """Seed the E1.9 drift reference from the SERVED ``tools/list`` of the live child.
-
-        Called once during initial bridge startup, after the first child's
-        preflight has proved the endpoint is serving and BEFORE any candidate
-        can overlap it. Reading the wire response (rather than a parent-side
-        catalogue snapshot) is the whole point: the served list is what an agent
-        actually sees, so it is the only sound drift reference. Both channels
-        canonicalise through
-        :func:`~ralph.mcp.server._handover_protocol.canonical_tool_entries`
-        before hashing, so a baseline captured here is byte-comparable with the
-        hash a candidate proves over the private readiness channel.
-
-        Fails CLOSED: a transport failure leaves the baseline unset AND flips
-        ``self._baseline_capture_failed`` to ``True`` so the next candidate
-        verification must refuse promotion unless the old child is already
-        dead (the only legal escape). Refusing to start the bridge because a
-        confirmation read raced a restart would still fail bridge construction;
-        the WARNING plus fail-closed gate keep the bridge usable while making
-        drift-invisible promotions structurally impossible.
-        """
         endpoint = self._inner.endpoint
         if not isinstance(endpoint, str) or not endpoint:
             self._expected_tool_hash = None
@@ -1684,14 +975,6 @@ class RestartAwareMcpBridge:
         )
 
     def _apply_baseline_unavailable(self, result: CandidateReadiness, old_dead: bool) -> bool:
-        """Decide promotion when no tool-hash drift reference exists (C1/E1.9).
-
-        With no baseline there is nothing to compare a candidate's served tool
-        set against, so the gate is fail-closed: promotion is refused while the
-        old child still serves. The single escape is the old child already
-        being dead, where there is nothing left to preserve and the candidate
-        is promoted with a WARNING so the agent keeps running.
-        """
         if old_dead:
             logger.warning(
                 "Tool-hash baseline unavailable and old child is dead. "
@@ -1702,8 +985,6 @@ class RestartAwareMcpBridge:
             if result.tool_hash is not None:
                 self._absorb_verified_tool_set(result)
             return True
-        # Old child is alive and serving: refuse the promotion — there is no
-        # drift reference, so we cannot prove safety.
         logger.warning(
             "Candidate verification refused: tool-hash baseline unavailable "
             "(no drift reference) and old child is alive. Keeping old "
@@ -1715,16 +996,6 @@ class RestartAwareMcpBridge:
     def _apply_config_fingerprint_mismatch(
         self, result: CandidateReadiness, old_dead: bool
     ) -> bool:
-        """Decide promotion for an effective-config fingerprint mismatch.
-
-        C1 step 2: the candidate's effective MCP configuration diverged from
-        the parent's snapshot, so it may have been started with a stale
-        catalog, a partially-merged ``mcp.toml``, or a different env override
-        layer. This is a fail-closed refusal while the old child still serves;
-        the single escape is the old child already being dead, where the
-        drifted candidate is promoted with a WARNING so the agent keeps
-        running. Only the digest is logged — never configuration values.
-        """
         if old_dead:
             logger.warning(
                 "Effective-config fingerprint mismatch but old child is "
@@ -1762,30 +1033,19 @@ class RestartAwareMcpBridge:
                 expected_effective_config_fingerprint=cfg_fp,
                 expected_tool_hash=self._expected_tool_hash,
                 expected_tool_hash_required=self._baseline_capture_failed,
-                # The clock starts at spawn, so it must cover the candidate's
-                # interpreter boot as well as the readiness exchange.
                 timeout=_CANDIDATE_DEADLINE_S,
             )
             if result.ok:
-                # Retain the VALIDATED candidate catalogue as the new drift
-                # reference BEFORE the ``finally`` closes the handover channel,
-                # so a later candidate is judged against what the serving child
-                # actually advertises rather than against a stale baseline.
                 if result.tool_hash is not None:
                     self._absorb_verified_tool_set(result)
                 verified = True
             else:
-                # Probe the old child's liveness once so both refusal /
-                # dead-old-child-escape branches share the same view of
-                # "old_dead".
                 old_dead = self._is_old_child_dead()
                 if result.failure_stage == "tool_set_drift":
                     diff = describe_tool_set_diff(
                         self._expected_tool_entries, list(result.tools) or None
                     )
                     if old_dead:
-                        # Dead-old-child exception: nothing left to preserve, so
-                        # the drifted candidate is promoted — but never silently.
                         logger.warning(
                             "Tool-set drift detected during candidate verification, but old "
                             "child is dead; promoting candidate with warning: {} | {}",
@@ -1796,8 +1056,6 @@ class RestartAwareMcpBridge:
                             self._absorb_verified_tool_set(result)
                         verified = True
                     else:
-                        # Old child is alive and serving: refuse the promotion,
-                        # name the tools that differ, and keep the old child intact.
                         logger.warning(
                             "Candidate verification refused on tool-set drift: stage={} "
                             "detail={} tool_set_diff={}",
@@ -1806,9 +1064,6 @@ class RestartAwareMcpBridge:
                             diff,
                         )
                 elif result.failure_stage == "baseline_unavailable":
-                    # C1/E1.9 fail-closed gate: there is no drift reference at
-                    # all. Refuse unless the old child is already dead (the
-                    # only legal escape — there is nothing left to preserve).
                     verified = self._apply_baseline_unavailable(result, old_dead)
                 elif result.failure_stage == "effective_config_fingerprint_mismatch":
                     verified = self._apply_config_fingerprint_mismatch(result, old_dead)
@@ -1827,12 +1082,6 @@ class RestartAwareMcpBridge:
         return verified
 
     def _is_old_child_dead(self) -> bool:
-        """Return True if the bridge's currently-serving child has exited.
-
-        A ``None`` poll means the child is still running. Any non-None return
-        (including ``0`` for a clean exit and any negative sentinel for a
-        signal) counts as dead — the only legal escape from drift refusal.
-        """
         proc_old: object = getattr(self._inner, "process", None)
         poll_fn: object = getattr(proc_old, "poll", None)
         if not callable(poll_fn):
@@ -1841,19 +1090,11 @@ class RestartAwareMcpBridge:
         return poll_result is not None
 
     def _absorb_verified_tool_set(self, result: CandidateReadiness) -> None:
-        """Adopt the validated candidate's tool set as the next drift reference.
-
-        Called after a successful verification OR after a dead-old-child
-        exception promotion. Stores the hash and catalogue, and clears the
-        fail-closed gate (``_baseline_capture_failed``) because the reference
-        is now demonstrably live.
-        """
         self._expected_tool_hash = result.tool_hash
         self._expected_tool_entries = list(result.tools)
         self._baseline_capture_failed = False
 
     def _verify_candidate(self, candidate: StandaloneMcpProcess) -> bool:
-        """Verify candidate process is alive and un-exited before promotion."""
         proc: object = getattr(candidate, "process", None)
         if proc is None:
             return True
@@ -1874,25 +1115,6 @@ class RestartAwareMcpBridge:
     def _hand_over_accept(
         self, old_inner: StandaloneMcpProcess, candidate: StandaloneMcpProcess
     ) -> None:
-        """Execute single-acceptor pause-ack-resume handover between children.
-
-        Errors escaping either stage carry ``handover_step`` naming the exact
-        stage, so a supervisor report distinguishes "the old child never
-        acknowledged the pause" from "the candidate never got its resume
-        sentinel" — the two have completely different operator responses.
-        On any escape (KeyboardInterrupt, SIGTERM, ordinary failure) the
-        candidate is reaped before the exception propagates, so a hard cancel
-        during the handshake cannot leak the candidate process.
-
-        E5.2 (D-state / unkillable survivor): if the pause ack times out
-        AND a kill+wait cannot confirm the old child gone (D-state),
-        the candidate is NOT abandoned — single-acceptor safety is
-        preserved because (a) the pause sentinel was written, so a still-
-        serving old child drops its accepting FD on its next pass; (b) a
-        D-state survivor cannot run user code and so cannot accept new
-        connections; (c) the surviving handle is scheduled for bounded
-        background reap so bridge shutdown stays idempotent.
-        """
         if self._workspace_root is not None:
             snap = snapshot_dir(self._workspace_root, self._run_id)
             old_stage_obj: object = getattr(old_inner, "stage_id", None)
@@ -1914,9 +1136,6 @@ class RestartAwareMcpBridge:
                 else snap / "accept.resume"
             )
             proc: object = getattr(old_inner, "process", None)
-            # E5.4: identity-safe liveness on the OWNED Popen handle so a
-            # PID-recycled replacement cannot fool us into treating a fresh
-            # process as the bridge's old child.
             if is_alive_process(proc):
                 try:
                     request_old_child_pause(pause_file)
@@ -1926,10 +1145,6 @@ class RestartAwareMcpBridge:
                         sleep_fn=self._sleep_fn,
                     )
                 except BaseException as pause_exc:
-                    # On any escape here the candidate is not yet attached
-                    # to bridge state; reap it before propagating so a hard
-                    # cancel cannot leak the process. The reap is idempotent
-                    # against any subsequent ``shutdown`` call.
                     with contextlib.suppress(Exception):
                         candidate.shutdown()
                     raise _stamp_handover_step(pause_exc, _HANDOVER_STEP_PAUSE_ACK) from pause_exc
@@ -1942,14 +1157,9 @@ class RestartAwareMcpBridge:
                     if callable(kill_fn):
                         with contextlib.suppress(Exception):
                             kill_fn()
-                    # Bound the SIGKILL observation window so a SIGKILL'd
-                    # SIGSTOPped child has time for the kernel to advance
-                    # from "kill signal sent" to "process reaped by poll()".
-                    # The bounded wait is import-time-checked via
-                    # ``_HANDOVER_KILL_WAIT_S``.
                     poll_fn = cast(
                         "Callable[[], object] | None", getattr(proc, "poll", None)
-                    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol confinee)
+                    )
                     old_exited = False
                     if poll_fn is not None and callable(poll_fn):
                         deadline = time.monotonic() + self._handover_kill_wait_s
@@ -1964,13 +1174,6 @@ class RestartAwareMcpBridge:
                         old_exited = not is_alive_process(proc)
 
                     if not old_exited:
-                        # E5.2: an unkillable / D-state survivor must NOT
-                        # block promotion. The pause sentinel was written,
-                        # so a still-serving old child drops its accepting
-                        # FD on its next pass; a D-state survivor cannot
-                        # run user code and so cannot accept. Promotion
-                        # proceeds; bounded background reap re-attempts
-                        # shutdown at bridge teardown.
                         logger.warning(
                             "Old child survived SIGKILL after pause ack timeout; "
                             "promoting candidate (D-state/nonkillable survivor, "
@@ -1988,7 +1191,6 @@ class RestartAwareMcpBridge:
                 raise _stamp_handover_step(resume_exc, _HANDOVER_STEP_RESUME) from resume_exc
 
     def _drain_old(self, old_inner: StandaloneMcpProcess) -> None:
-        """Drain old child in background up to _HANDOVER_DRAIN_S then shut it down."""
         drain_s = self._handover_drain_s
         sleep_fn = cast("Callable[[float], object] | None", getattr(self, "_sleep_fn", None))
         proc: object = getattr(old_inner, "process", None)
@@ -2023,13 +1225,6 @@ class RestartAwareMcpBridge:
     def _promote_and_reap(
         self, candidate: StandaloneMcpProcess, old_inner: StandaloneMcpProcess
     ) -> None:
-        """Promote candidate to _inner under lock and schedule old child drain.
-
-        The two halves are stamped separately: a failure while swapping the
-        inner is a promotion failure, while a failure while retiring the old
-        child is a drain failure. :func:`_stamp_handover_step` is
-        innermost-wins, so the drain stamp survives the outer promote guard.
-        """
         try:
             self._inner = candidate
             self._bridge_generation += 1
@@ -2045,29 +1240,6 @@ class RestartAwareMcpBridge:
             raise _stamp_handover_step(drain_exc, _HANDOVER_STEP_DRAIN) from drain_exc
 
     def _claim_candidate_slot(self, *, bump_generation: bool = False) -> int | None:
-        """Claim the ONE in-flight candidate slot and capture the generation token.
-
-        E2.7: there is exactly one candidate at a time. This is the whole
-        mutual-exclusion primitive every replacement initiator shares — the
-        health probe, the failed-probe handler and the tool-registry reset all
-        go through it, so two concurrent initiators can never spawn rival
-        candidates that would race for the shared accepting FD.
-
-        Must be called with ``self._lock`` held. It performs no I/O and holds
-        no lock of its own, so the claim is atomic with the bookkeeping the
-        caller interleaves it with (notably the tool-registry reset's
-        generation bump and cap checks, which must not happen when the reset
-        is going to be refused anyway).
-
-        Returns the generation token the off-lock work must re-validate before
-        promoting, or ``None`` when a candidate is already in flight or the
-        bridge is shutting down.
-
-        ``bump_generation`` exists only for the tool-registry reset, whose
-        documented contract is to invalidate stale probe results *before* any
-        other step. The health route leaves the generation alone because its
-        promotion already bumps it.
-        """
         if self._is_shutting_down or self._candidate_in_flight:
             return None
         if bump_generation:
@@ -2076,29 +1248,16 @@ class RestartAwareMcpBridge:
         return self._bridge_generation
 
     def _release_candidate_slot(self) -> None:
-        """Release the candidate slot so the next initiator can claim it."""
         with self._lock:
             self._candidate_in_flight = False
 
     def _schedule_unkillable_reap(self, proc: object) -> None:
-        """Spawn a bounded background reap for an unkillable / D-state survivor.
-
-        The survivor is a ``Popen`` handle we already own (the bridge acquired
-        it via spawn), so identity-safe liveness (``proc.poll()`` / kernel wait)
-        is anchored to the handle itself rather than a bare pid (E5.4). The
-        thread takes one final ``proc.terminate()`` / ``proc.kill()`` /
-        ``proc.wait()`` cycle after the backoff so the bridge shutdown path
-        always sees a clean exit. The entry is FIFO-tracked on the bridge
-        ``_unkillable_reapers`` deque (capped at 8) and reaped threads are
-        joined at bridge shutdown.
-        """
         handle_id = id(proc)
         with self._lock:
             self._unkillable_reapers.append((proc, handle_id))
 
         def _reap_worker() -> None:
             try:
-                # filesystem-poll-ok: bounded unkillable-child reap backoff
                 sleep_fn = self._sleep_fn or time.sleep
                 sleep_fn(self._unkillable_reap_backoff_s)
                 terminate_fn = cast("Callable[[], object] | None", getattr(proc, "terminate", None))
@@ -2112,7 +1271,6 @@ class RestartAwareMcpBridge:
                         with contextlib.suppress(Exception):
                             if poll_fn() is not None:
                                 return
-                    # filesystem-poll-ok: bounded child-exit retry before forced kill
                     sleep_fn(0.05)
                 kill_fn = cast("Callable[[], object] | None", getattr(proc, "kill", None))
                 if callable(kill_fn):
@@ -2137,14 +1295,6 @@ class RestartAwareMcpBridge:
         t.start()
 
     def _reservation_is_current(self, token: int) -> bool:
-        """Return True while this attempt still owns an uncorrupted reservation.
-
-        Re-validated under the lock immediately before every promotion. A
-        candidate whose generation has moved (a tool-registry reset bumped it,
-        a concurrent cold replacement promoted) or whose slot was taken is
-        abandoned and reaped rather than promoted: promoting it would swap
-        ``_inner`` from a stale snapshot of the world.
-        """
         with self._lock:
             return (
                 not self._is_shutting_down
@@ -2153,26 +1303,10 @@ class RestartAwareMcpBridge:
             )
 
     def _abandon_candidate(self, candidate: StandaloneMcpProcess) -> None:
-        """Reap an unpromoted candidate's WHOLE process group, fail-closed.
-
-        ``StandaloneMcpProcess.shutdown`` escalates SIGTERM to SIGKILL on the
-        child's POSIX process group and then kills descendants, so an abandoned
-        candidate can never leave a live process behind holding the inherited
-        listening FD. ``_inner`` is deliberately untouched: the old child keeps
-        serving. Callers log the reason; this helper stays silent so a reap can
-        never be the source of a spurious failure.
-        """
         with contextlib.suppress(Exception):
             candidate.shutdown()
 
     def _run_with_make_before_break(self) -> bool:
-        """Claim the candidate slot and run the replacement state machine.
-
-        Every replacement initiator on this class funnels through here or
-        through :meth:`_replace_with_candidate`, so the E2.7 single-candidate
-        gate, the generation re-validation and the non-terminal cleanup are
-        shared rather than re-implemented per call site.
-        """
         with self._lock:
             token = self._claim_candidate_slot()
         if token is None:
@@ -2194,42 +1328,6 @@ class RestartAwareMcpBridge:
         initiator: str = "mcp-restart",
         pre_promotion_gate: Callable[[StandaloneMcpProcess], None] | None = None,
     ) -> bool:
-        """Replace the serving child with a privately verified candidate.
-
-        The caller MUST already hold the candidate slot for ``token``; this
-        method releases neither the slot nor the generation, and is called
-        from a ``finally``-guarded wrapper that does.
-
-        E4.1: the whole body runs OFF the bridge lock except for four short
-        critical sections (read ``_inner``, publish the candidate so
-        ``shutdown()`` can reap it, the two reservation re-validations, and
-        the candidate-slot cleanup). The expensive parts — the candidate spawn
-        and the private readiness preflight — hold no lock at all, so
-        ``bridge.process`` and shared-endpoint reads stay prompt while a
-        candidate boots.
-
-        The ordering is fixed:
-
-        1. clear stale handover sentinels;
-        2. spawn the candidate while the old child keeps serving;
-        3. publish the candidate for reaping, then re-validate the reservation;
-        4. verify the candidate over the PRIVATE channel only
-           (:meth:`_verify_candidate` -> ``check_candidate_readiness``: spawn
-           id, pid, session id/broker fingerprint, tool-set schema hash);
-        5. re-validate the reservation again, immediately before the swap;
-        6. ordered handover, then promotion.
-
-        A pre-promotion gate (``pre_promotion_gate``) runs after step 4 and
-        before step 6. The tool-registry reset uses it for its alias check.
-        Note that this gate can only ever be a *secondary* signal: during the
-        overlap the shared endpoint is answered by the OLD child, so identity
-        and tool-set equivalence are established by step 4 alone.
-
-        Every failure path is non-terminal under the C2 contract: the candidate
-        is fully reaped, the old child is left serving, and the attempt stays
-        charged to the budget. :class:`McpServerError` raised here names the
-        handover stage that produced it.
-        """
         if self._workspace_root is not None:
             snap = snapshot_dir(self._workspace_root, self._run_id)
             (snap / "accept.resume").unlink(missing_ok=True)
@@ -2345,13 +1443,11 @@ class RestartAwareMcpBridge:
         return True
 
     def _mark_probe_misses_consumed(self) -> None:
-        """Record that an attempt was spent, so the next probe miss retries sooner."""
         self._consecutive_probe_failures = _PROBE_FAILURES_BEFORE_RESTART - 1
         self._consecutive_probe_failures_deferred = 0
         self._first_probe_deferred_at = None
 
     def _forget_candidate(self, candidate: StandaloneMcpProcess) -> None:
-        """Drop the published candidate so ``shutdown()`` stops trying to reap it."""
         with self._lock:
             if self._current_candidate is candidate:
                 self._current_candidate = None
@@ -2362,35 +1458,12 @@ class RestartAwareMcpBridge:
         process_exited: bool,
         probe_duration_s: float | None,
     ) -> str:
-        """Typed-result wrapper around :meth:`_perform_restart` (C2 contract).
-
-        Returns the :class:`RestartAttemptResult` string for the attempt:
-
-        * ``RestartAttemptResult.BUDGET_EXHAUSTED`` when the rolling or
-          absolute budget is exhausted. ``_perform_restart`` raises
-          :class:`McpServerError`; this wrapper re-raises the same
-          error and is the ONLY path that does so.
-        * ``RestartAttemptResult.ATTEMPT_FAILED`` when ``restart_fn``
-          raised. The bridge keeps the old inner (now shut down) and
-          the budget remains; the next health check retries after the
-          cooldown. Non-terminal.
-        * ``RestartAttemptResult.REPLACED`` when the candidate was
-          spawned and the generation swap succeeded. The bridge now
-          points at the new child.
-
-        The helper exists so call sites that need to consume the typed
-        outcome (e.g. supervisor-side cancel hooks, instrumented
-        callers) can branch on a stable enum-like string without
-        depending on the ``bool`` return type of the legacy
-        :meth:`_perform_restart` method.
-        """
         try:
             replaced = self._perform_restart(
                 process_exited=process_exited,
                 probe_duration_s=probe_duration_s,
             )
         except McpServerError:
-            # Budget exhausted: the legacy path raises typed error.
             raise
         if replaced:
             return RestartAttemptResult.REPLACED
@@ -2418,18 +1491,6 @@ class RestartAwareMcpBridge:
         probed_generation: int,
         deferrable: bool = True,
     ) -> bool:
-        """Handle contention and failure accounting after a failed probe.
-
-        ``probed_pid`` and ``probed_generation`` are the bridge identity
-        captured under the lock BEFORE the contention producer ran. If
-        either changed while the producer was off the lock, the B-signal
-        we hold belongs to a different bridge state and is discarded
-        without touching any counter.
-
-        E4.1: all the accounting runs under the lock, but the replacement
-        itself is dispatched AFTER the lock is released, so a candidate
-        startup never blocks ``bridge.process`` or a shared-endpoint read.
-        """
         restart_because: int | None = None
         with self._lock:
             if (
@@ -2449,9 +1510,6 @@ class RestartAwareMcpBridge:
                     if self._first_probe_deferred_at is not None
                     else 0.0
                 )
-                # Sustained contention ceiling: if the deferral counter has reached
-                # the count cap or wall-time ceiling, force a restart even when a fresh
-                # contention signal is present, preventing indefinite deferral.
                 if (
                     self._consecutive_probe_failures_deferred >= _DEFERRAL_COUNT_CEILING
                     or deferral_wall_time >= _DEFERRAL_WALL_TIME_CEILING_S
@@ -2506,18 +1564,6 @@ class RestartAwareMcpBridge:
         )
 
     def _restart_observed_dead_child(self, observed_inner: StandaloneMcpProcess) -> bool:
-        """Replace ``observed_inner`` (seen exited) unless a rival already did.
-
-        E4.2: the dead-child observation and its replacement are serialized
-        by ``_dead_child_replace_lock``. Without it two supervisors could both
-        read the same exited child before either swapped ``_inner``, and the
-        second would charge a second attempt and shut down the healthy child
-        the first had just spawned. A caller that finds the observed dead
-        child already replaced returns ``False`` (no-op); one that finds it
-        still in place (the first attempt failed or exhausted the budget)
-        retries it, so a terminal budget error still reaches every caller.
-        Must be called WITHOUT ``self._lock`` held (E4.1).
-        """
         with self._dead_child_replace_lock:
             with self._lock:
                 already_replaced = self._inner is not observed_inner
@@ -2526,25 +1572,6 @@ class RestartAwareMcpBridge:
             return self._perform_restart(process_exited=True, probe_duration_s=None)
 
     def check_health_and_restart_if_needed(self) -> bool:
-        """Check if MCP server is alive and responsive; restart if not.
-
-        Treats the bridge as unhealthy when either (a) the subprocess has exited
-        or (b) the subprocess is alive but the responsiveness probe times out or
-        fails. On an unhealthy result the stale process is terminated, a new one
-        is spawned via restart_fn (which reruns full preflight), and the bounded
-        restart counter is incremented.
-
-        Returns True when a restart was performed.
-        Raises McpServerError when the restart budget is exhausted.
-        Thread-safe: may be called from a background McpSupervisor thread.
-
-        E4.1: the dead-child liveness read happens under the lock, but the
-        replacement it triggers runs OFF it, so an agent reading
-        ``bridge.process`` is never queued behind a candidate startup.
-
-        E4.2: concurrent dead-child replacements are single-winner; see
-        :meth:`_restart_observed_dead_child`.
-        """
         with self._lock:
             observed_inner, inner_exited = self._inner, self._inner.process.poll() is not None
         if inner_exited:
@@ -2578,17 +1605,9 @@ class RestartAwareMcpBridge:
             self._consecutive_probe_successes = 0
             self._healthy_period_started_at = None
 
-            # Capture the probed bridge identity BEFORE releasing the
-            # lock. The producer below runs OFF the lock; while it
-            # runs, the main thread may call reset_tool_registry or a
-            # concurrent probe may succeed and reset counters. The
-            # helper revalidates this identity under the lock and
-            # discards the result if the bridge changed.
             probed_pid = self._inner.process.pid
             probed_generation = self._bridge_generation
 
-        # Probe failed: lock is RELEASED before calling producer()
-        # A probe overrun is classified as host contention (C3).
         deferrable = _is_timeout_class_probe_outcome(self._last_probe_error, overrun)
         fresh_b_signal_from_overrun = False
         if probe_failed and overrun and deferrable:
@@ -2601,7 +1620,6 @@ class RestartAwareMcpBridge:
             fresh_b_signal = False
         fresh_b_signal = (fresh_b_signal or fresh_b_signal_from_overrun) if deferrable else False
 
-        # Confirm-before-replace: before replacing a live child
         clock_fn = _bridge_clock(self)
         now = clock_fn()
         deferral_wall_time = (
@@ -2655,46 +1673,7 @@ class RestartAwareMcpBridge:
         )
 
     def reset_tool_registry(self) -> None:
-        """Rebuild the visible tool list by rerunning the restart path.
-
-        Called by the recovery controller when the failure classifier
-        flags a tool-availability failure (the post-tool-result wedge:
-        live server reports ``No such tool available: mcp__<server>__<tool>``
-        because the agent's ``tools/list`` snapshot lost the alias after
-        a prior restart, retry, or transient recovery).
-
-        This is a separate counter from ``_restart_count`` so the
-        orchestrator can distinguish a tool-registry rebuild from a
-        crash restart, while also charging against the shared
-        ``_restart_count`` and obeying ``_restart_policy.max_restarts``.
-        The reset cap is ``_TOOL_REGISTRY_MAX_RESETS``.
-
-        Raises:
-            McpServerError: when the reset cap or shared restart budget
-                is exhausted. The message contains the substring
-                ``'tool-registry-reset exhausted'`` or
-                ``'restart budget exhausted'``.
-
-        E2.7/E4.1/E1.1/E1.9: the reset claims the same single candidate slot
-        as the health route (so a concurrent health replacement wins and the
-        reset is refused without consuming budget), and it then hands the
-        candidate to the shared :meth:`_replace_with_candidate` state machine.
-        That means the candidate is verified over the PRIVATE channel — spawn
-        id, pid, session id/broker fingerprint and tool-set schema hash —
-        BEFORE promotion, which the old shared-endpoint-only check could not
-        prove while the previous child was still answering on that endpoint.
-        The whole candidate phase runs off the bridge lock.
-
-        Returns:
-            None. A reset that is refused because a candidate replacement is
-                already in flight is a no-op, not an error: the in-flight
-                replacement is already rebuilding the registry.
-        """
         with self._lock:
-            # Claim the candidate slot FIRST and bump the generation as part of
-            # the same atomic step. A reset that cannot claim the slot must not
-            # bump the generation: doing so would invalidate the in-flight
-            # candidate's reservation and lose both replacements.
             token = self._claim_candidate_slot(bump_generation=True)
             if token is None:
                 logger.info(
@@ -2702,9 +1681,6 @@ class RestartAwareMcpBridge:
                     "in flight and will rebuild the registry"
                 )
                 return
-            # Cap checks stay after the bump so a reset that fails here has
-            # still invalidated stale probe results captured against the
-            # previous inner.
             if self._tool_registry_resets >= _TOOL_REGISTRY_MAX_RESETS:
                 cap_pid, cap_status = _child_process_diagnostics(self._inner)
                 self._release_candidate_slot()
@@ -2729,8 +1705,6 @@ class RestartAwareMcpBridge:
                     child_pid=budget_pid,
                     psutil_status=budget_status,
                 )
-            # S1: increment FIRST so a raise from _restart_fn is
-            # reflected in the counts.
             self._tool_registry_resets += 1
             self._restart_count += 1
             attempt_index = self._tool_registry_resets
@@ -2743,17 +1717,6 @@ class RestartAwareMcpBridge:
             old_exited = _process_is_dead(self._inner)
 
         try:
-            # Reuse the same restart path so preflight runs again and
-            # the tools/list snapshot is rebuilt. We do NOT call
-            # self._restart_fn() directly here because that would skip
-            # the preflight (the restart_fn is a private seam used by
-            # check_health_and_restart_if_needed). Instead, the caller
-            # is expected to invoke the bridge's preflight + spawn path
-            # via a small wrapper. For now, the simplest correct
-            # behavior is: rotate the inner process via the same
-            # _restart_fn so a fresh registry is built. The same
-            # endpoint is reused (the port is reserved at bridge
-            # construction and stays stable across resets).
             self._cooldown_after_failure()
             if old_exited:
                 self._reset_cold_child(attempt_index=attempt_index)
@@ -2768,25 +1731,11 @@ class RestartAwareMcpBridge:
             self._release_candidate_slot()
 
     def _reset_cold_child(self, *, attempt_index: int) -> None:
-        """Cold-replace a dead child on the reset route (no candidate overlap).
-
-        Runs under the lock for the same reason as :meth:`_replace_dead_child`:
-        ``self._inner`` is swapped in place and a concurrent reader must never
-        observe a torn ``_inner``. The alias verification targets the NEW inner
-        (it takes no argument), which is the only state where it proves
-        anything about the child that will actually serve.
-        """
         with self._lock:
             try:
                 self._inner.shutdown()
                 self._inner = self._restart_fn()
             except Exception as restart_exc:
-                # C2 fix: a single failed tool-registry reset is NOT
-                # terminal. Log at WARNING with attempt count and the
-                # underlying error; the reset counters are left at the
-                # advanced values so the budget accounting is correct
-                # (this attempt counted). The next reset call will
-                # either succeed or detect budget exhaustion.
                 last_stage, elapsed_s = _restart_error_fields(restart_exc)
                 logger.warning(
                     "MCP tool-registry-reset attempt {}/{} failed "
@@ -2802,48 +1751,11 @@ class RestartAwareMcpBridge:
         self._verify_alias_present()
 
     def _verify_alias_present(self, target: StandaloneMcpProcess | None = None) -> None:
-        """Verify the canonical mcp alias is present after a respawn.
-
-        Sends a JSON-RPC ``tools/list`` request to the inner process's
-        HTTP endpoint via ``urllib.request`` and parses the response.
-        If the alias ``mcp__<server>__<tool>`` is absent in the
-        response, raises :class:`McpServerError` with the distinct
-        substring ``'mcp alias missing after respawn'`` so the
-        orchestrator can branch on it independently of the existing
-        ``'tool-registry-reset exhausted'`` cap error.
-
-        When the inner process is a MagicMock (e.g. in unit tests
-        that do not exercise the HTTP path), the method logs a
-        debug line and returns without raising. The error path
-        is pinned by
-        ``tests/test_live_tool_unavailable_recovery.py::test_bridge_reset_tool_registry_fails_closed_when_alias_probe_fails``,
-        which drives ``reset_tool_registry()`` with a
-        monkeypatched ``_http_tools_list_names`` raising
-        ``TimeoutError`` and asserts the resulting
-        ``McpServerError`` matches the ``'alias verify probe
-        failed after respawn'`` substring.
-
-        The HTTP round-trip is bounded by
-        ``_RESPAWN_ALIAS_VERIFY_TIMEOUT_S`` so a wedged inner
-        process does not stall the recovery path.
-
-        NOT an identity proof. This is a SHARED-endpoint probe, so while a
-        candidate overlaps a live old child the answer comes from the OLD
-        child. Candidate identity, session identity and tool-set schema
-        equivalence are established by :meth:`_verify_candidate` over the
-        PRIVATE channel; this check is only the secondary gate that keeps a
-        failed reset from swapping ``_inner`` at all.
-        """
         active = target if target is not None else self._inner
         endpoint = active.endpoint
         if not isinstance(endpoint, str) or not endpoint:
             logger.debug("alias-verify skipped: inner process endpoint is not a string")
             return
-        # MagicMock detection: a MagicMock inner process returns a
-        # MagicMock for any attribute access. If ``endpoint`` is
-        # not a real string or the inner process does not have a
-        # ``process`` attribute, skip the HTTP call and return
-        # silently so unit tests using MagicMock do not break.
         inner_process: object = getattr(active, "process", None)
         if inner_process is None or not hasattr(inner_process, "poll"):
             logger.debug("alias-verify skipped: inner process lacks poll() (MagicMock?)")
@@ -2880,56 +1792,10 @@ class RestartAwareMcpBridge:
         )
 
     def reset_session_budget(self) -> None:
-        """Clear the inner subprocess's pending completion admissions.
-
-        The McpServer is a per-subprocess singleton; the bridge is its only
-        client. Each attempt boundary (e.g. the start of every
-        ``effect_executor._run_attempt``) clears pending identity-scoped
-        completion admissions. Phase-wide elapsed time is unaffected by attempt
-        resets. The reset is exposed as the custom JSON-RPC method
-        ``notifications/reset_wrapup`` over HTTP; the McpServer handles it
-        via ``McpServer._dispatch_request`` by calling
-        ``McpServer.reset_session_budget()``.
-
-        Best-effort: transport errors are logged and swallowed (the
-        recovery controller's attempt loop will retry on the next attempt
-        boundary). The HTTP POST is bounded by ``_RESET_WRAPUP_TIMEOUT_S``
-        so ``audit_mcp_timeout`` stays green; a wedged or just-respawned
-        inner process does not stall the attempt.
-
-        When the inner process is a MagicMock (e.g. in unit tests that do
-        not exercise the HTTP path) the reset is a no-op. Same pattern as
-        :meth:`_verify_alias_present` so the bridge tests stay hermetic
-        (a real HTTP POST against a fake endpoint would otherwise hit the
-        1.0-second per-test timeout and time out the suite).
-
-        Thread-safe: holds ``self._lock`` to serialize with concurrent
-        ``check_health_and_restart_if_needed`` and ``reset_tool_registry``
-        calls so a respawn and a reset cannot interleave.
-
-        Note: the intra-bridge respawn paths
-        (:meth:`check_health_and_restart_if_needed` and
-        :meth:`reset_tool_registry`) do NOT call this method. A fresh
-        subprocess starts with ``elapsed=0`` by construction, so the next
-        attempt boundary's reset is sufficient — adding a second reset
-        inside the bridge would only matter on a tight crash-respawn cycle
-        and would risk blocking on a 1.0s test-timeout-budget in unit
-        tests that use a ``FakeProcess`` (which has ``poll()`` but no
-        real HTTP endpoint). The attempt-boundary wire-up at the top of
-        :func:`effect_executor._run_attempt` is the single production
-        seam that drives the reset.
-        """
         endpoint = self._inner.endpoint
         if not isinstance(endpoint, str) or not endpoint:
             logger.debug("reset_session_budget skipped: inner process endpoint is not a string")
             return
-        # MagicMock / fake-bridge detection: a MagicMock inner process
-        # (e.g. ``MagicMock(spec=StandaloneMcpProcess)``) does NOT have
-        # ``.process.poll()`` because the spec excludes instance
-        # attributes. A real ``_NoopProcess`` test fake DOES have poll.
-        # The check below matches the same pattern as
-        # :meth:`_verify_alias_present` so the respawn paths stay
-        # hermetic in unit tests.
         inner_process: object = getattr(self._inner, "process", None)
         if inner_process is None or not hasattr(inner_process, "poll"):
             logger.debug("reset_session_budget skipped: inner process lacks poll() (MagicMock?)")
@@ -2954,15 +1820,10 @@ class RestartAwareMcpBridge:
                     urllib.request.urlopen(request, timeout=_RESET_WRAPUP_TIMEOUT_S),
                 )
                 try:
-                    # Bound the read so a misbehaving upstream cannot OOM the
-                    # parent by streaming an unbounded response body (AC-08).
-                    # The body is opaque here and discarded, so truncation is
-                    # harmless.
                     response_data = response.read(_LIFECYCLE_MAX_RESPONSE_BYTES)
                 finally:
                     response.close()
-                _ = response_data  # payload is opaque; the wire-level seam
-                # is the method dispatch, not the response body.
+                _ = response_data
             except (
                 urllib.error.URLError,
                 OSError,
@@ -2978,11 +1839,6 @@ class RestartAwareMcpBridge:
 
 
 def check_mcp_bridge_health(bridge: SessionBridgeLike) -> None:
-    """Perform a health check on the MCP bridge, restarting if it crashed.
-
-    Only has an effect when ``bridge`` is a :class:`RestartAwareMcpBridge`.
-    Raises :class:`McpServerError` when the restart budget is exhausted.
-    """
     if isinstance(bridge, RestartAwareMcpBridge):
         bridge.check_health_and_restart_if_needed()
 
@@ -2995,24 +1851,6 @@ def start_mcp_server(
     deps: LifecycleDeps | None = None,
     extras: McpServerExtras | None = None,
 ) -> RestartAwareMcpBridge:
-    """Start a standalone Ralph MCP HTTP subprocess and verify tool reachability.
-
-    Returns a :class:`RestartAwareMcpBridge` that can auto-restart the server
-    on crash up to the ``extras.restart_policy`` budget (default: 20 restarts,
-    defined by :class:`McpRestartPolicy`).
-
-    R1: the bridge holds ONE listening socket for its full lifetime
-    (created by ``deps.reserve_listening_socket`` or the default
-    ``_reserve_listening_socket``). Every spawned child inherits the
-    FD by number, so a client connecting during a respawn queues in
-    the kernel backlog instead of being refused with
-    ``ECONNREFUSED``. Production paths always use the listening-socket hook.
-
-    R2: the bridge hands the cached tool catalog to every respawn
-    via ``UPSTREAM_MCP_TOOL_CATALOG_ENV`` so the respawn path does
-    no network discovery. The first start still probes upstreams
-    once and the parent reuses the catalog thereafter.
-    """
     effective_extras = extras or McpServerExtras()
     lifecycle_deps = deps or _default_lifecycle_deps()
     root = _workspace_root(workspace)
@@ -3020,35 +1858,18 @@ def start_mcp_server(
         session, workspace, upstream_registry=upstream_registry
     )
 
-    # I1b: each spawn resolves the catalog snapshot fresh from the
-    # parent-owned cache, so a restart never re-uses a stale snapshot.
     def _resolve_catalog_snapshot() -> UpstreamToolCatalogSnapshot:
         try:
             return get_tool_catalog_snapshot(root)
         except ImportError:
-            # Import error is a structural defect that should never
-            # reach production, but keep the spawn path alive by
-            # treating the catalog as absent.
             return UpstreamToolCatalogSnapshot(present=False)
 
-    # R1: bind the listening socket ONCE in the parent and reuse it
-    # across every respawn. The port comes from a live LISTEN socket
-    # the parent owns for the bridge's full lifetime; a bind-then-
-    # release port number is never used, so a client connecting
-    # during a respawn queues in the backlog instead of receiving
-    # ECONNREFUSED.
     reserve = (
         lifecycle_deps.reserve_listening_socket
         if lifecycle_deps.reserve_listening_socket is not None
         else _reserve_listening_socket
     )
     _host, port, listening_socket = reserve()
-    # Listening-socket cleanup invariant: if anything fails between
-    # the reservation and handing the socket to the bridge, the
-    # parent closes it here; otherwise the FD (and the bound port)
-    # leak for the lifetime of the process. Once the bridge owns the
-    # socket (``bridge._listening_socket``), its ``shutdown`` closes
-    # it deterministically.
     try:
         inner = _spawn_mcp_process(
             root,
@@ -3097,21 +1918,8 @@ def start_mcp_server(
             broker_fingerprint=_finger(broker_secret_val),
             effective_config_fingerprint=compute_effective_config_fingerprint(root),
         )
-        # Stash the listening socket on the bridge so ``shutdown`` can
-        # close it deterministically (R1 invariant: the port stays ours
-        # until bridge shutdown, never released early).
         bridge._listening_socket = listening_socket
-        # R3-durability: each bridge owns a unique health-event sink file.
-        # The path is persisted on the bridge object so shutdown does not
-        # delete it (evidence is retained across shutdown for incident triage).
         bridge._durable_sink_path = _configure_bridge_sink(root, uuid.uuid4().hex[:12])
-        # C1/E1.9 baseline: ONE bounded, real ``tools/list`` over the shared
-        # endpoint of the first (and only) live child. This runs after that
-        # child's preflight proved the endpoint is serving and before any
-        # candidate can overlap it, so the very first make-before-break
-        # replacement has a real drift reference to refuse against. Without it
-        # ``_expected_tool_hash`` stayed ``None`` and tool-set drift was
-        # undetectable on the first replacement.
         bridge.capture_tool_hash_baseline()
     except BaseException:
         with contextlib.suppress(OSError):
@@ -3121,14 +1929,6 @@ def start_mcp_server(
 
 
 def startup_diagnostic_suffix(root: Path, log_offset: int) -> str:
-    """Render the child's own startup output as a suffix for the parent's error.
-
-    NEVER returns an empty string. A child that died before writing anything
-    used to leave the parent's error message with a bare log path and no
-    statement of what was missing, which reads as "no diagnostics exist" rather
-    than "the child produced nothing" — two very different incidents. An empty
-    read therefore renders the explicit ``child wrote no log output`` phrase.
-    """
 
     diagnostic = read_mcp_server_log_since(root, log_offset)
     if not diagnostic:
@@ -3140,7 +1940,6 @@ _startup_diagnostic_suffix = startup_diagnostic_suffix
 
 
 def _boot_allowance_seconds(deps: LifecycleDeps) -> float:
-    """Return the configured child-boot allowance, ``0.0`` when none is wired."""
     if deps.boot_allowance is None:
         return 0.0
     try:
@@ -3163,12 +1962,6 @@ def _await_mcp_startup_or_failure(
     stage_id: str,
     clock: Callable[[], float] = time.monotonic,
 ) -> None:
-    """Observe preflight and child process termination under the startup deadlines.
-
-    ``spawn_start`` and ``clock`` share one time base (``time.monotonic`` in
-    production); tests inject both to drive the BOOT and ENVELOPE phases
-    deterministically.
-    """
     preflight_timeout_td = deps.preflight_timeout()
     preflight_timeout_s = preflight_timeout_td.total_seconds()
     try:
@@ -3186,8 +1979,6 @@ def _await_mcp_startup_or_failure(
         read_stage=lambda: _read_start_stage(root, spawn_id=stage_id),
         clock=clock,
     )
-    # The preflight probe must outlive the whole budget the watch can grant,
-    # otherwise it would give up on a slow-but-booting child first.
     preflight_budget_td = preflight_timeout_td + timedelta(seconds=max(0.0, boot_allowance_s))
 
     preflight_error: list[Exception] = []
@@ -3255,7 +2046,6 @@ def _raise_startup_failure(
     startup_deadline_s: float,
     boot_allowance_s: float,
 ) -> NoReturn:
-    """Tear the child down and raise the typed error matching how startup failed."""
     returncode = bridge.process.poll()
     child_pid, psutil_status = _child_process_diagnostics(bridge)
     bridge.shutdown()
@@ -3315,30 +2105,12 @@ def _spawn_mcp_process(
     tool_catalog_snapshot: UpstreamToolCatalogSnapshot | None = None,
     activity_relay: ActivityRelay | None = None,
 ) -> StandaloneMcpProcess:
-    """Spawn a fresh MCP server process and run preflight validation.
-
-        R1: when ``inherited_fd`` is set, the child is given the FD by
-        number (``pass_fds=``) and the ``RALPH_MCP_INHERITED_FD`` env
-        var; the child adopts the listening socket without re-binding.
-    R2: when ``respawn`` is set, ``RALPH_MCP_RESPAWN=1`` is added so the
-        runtime takes the catalog-only path (zero network I/O before
-        serving). ``_extra_env`` is merged first and every parent-owned
-        value is assigned after it, so worker-injected env vars can never
-        overwrite the session id, snapshot dir, per-spawn stage id, accept
-        pause/resume path, inherited fd or catalog state (E2.4).
-    """
     endpoint = f"http://127.0.0.1:{port}/mcp"
-    # Recorded BEFORE the spawn so a startup failure reports only what THIS
-    # child wrote; the log is append-only and shared across restarts.
     log_offset = mcp_server_log_size(root)
     session_file: Path | None = None
-    # PA-003 cleanup ownership: keep these declared in the OUTER function so
-    # the single ``except BaseException`` below is the only cleanup point and
-    # the optional socketpair (acquired conditionally below) cannot leak.
     parent_sock: socket.socket | None = None
     child_sock: socket.socket | None = None
     bridge_run_id = session.run_id
-    # Ensure session_id is available; raise early rather than falling back silently.
     session_id_value: str = session.session_id
     if not session_id_value:
         raise McpServerError(
@@ -3348,18 +2120,9 @@ def _spawn_mcp_process(
         )
     snap_dir = snapshot_dir(root, bridge_run_id)
     snap_session_file: Path = snap_dir / "session.json"
-    # Compute broker_secret_fingerprint using the helper.
     broker_secret_val: str | None = getattr(session, "broker_secret", None)
     broker_fingerprint: str | None = _finger(broker_secret_val)
-    # C1 step 2: compute the parent's effective-config fingerprint BEFORE
-    # the first spawn so the snapshot baseline is anchored to the merged
-    # layers at the moment of spawning. The fingerprint persists in
-    # ``session.json`` and the candidate echoes it on the private readiness
-    # channel. Returns ``None`` on hosts without ``tomllib`` or with a
-    # malformed merged config; the candidate comparison tolerates ``None``
-    # without rejecting legitimate candidates (no baseline == no check).
     effective_config_fingerprint: str | None = compute_effective_config_fingerprint(root)
-    # Write snapshot on first spawn (when session.json does not yet exist).
     if not snap_session_file.exists():
         write_snapshot(
             snap_dir,
@@ -3368,27 +2131,11 @@ def _spawn_mcp_process(
             broker_secret_fingerprint=broker_fingerprint,
             effective_config_fingerprint=effective_config_fingerprint,
         )
-    # Use the injection seam when provided (tests + production seam); otherwise
-    # use the snapshot file so cross-respawn session_id persistence works.
-    # Every resource owned by the caller is pre-initialized so any exception
-    # path inside the try block sees bound names — no UnboundLocalError from
-    # the except handler even if the helper fails early.
     env: dict[str, str] | None = None
     pass_fds: tuple[int, ...] = ()
-    # ``parent_sock`` / ``child_sock`` are deliberately NOT re-annotated here:
-    # the PA-003 block above already declared each name exactly once, before
-    # the first fallible call. Re-declaring them here only masked that single
-    # ownership site (and tripped mypy ``no-redef``).
     stage_id: str = ""
     spawn_start: float = 0.0
     try:
-        # Session-file resolution stays in the OUTER (PA-003): it is the FIRST
-        # fallible step inside the try, so the outer ``session_file`` must be
-        # bound before the next fallible call. Had the helper resolved it and
-        # only returned it on success, any failure during env assembly would
-        # leave the outer name at its pre-try ``None`` and the single
-        # ``except BaseException`` below would skip the unlink, leaking the
-        # freshly created handshake file.
         session_file = (
             deps.create_session_file(root, session)
             if deps.create_session_file is not None
@@ -3406,19 +2153,10 @@ def _spawn_mcp_process(
             respawn=respawn,
             make_before_break=make_before_break,
         )
-        # Socketpair creation also stays in the OUTER (PA-003): the helper owns
-        # no open FD, so a single ``except BaseException`` remains the sole
-        # cleanup point for both child_sock and parent_sock.
         if make_before_break:
             parent_sock, child_sock = create_handover_socketpair()
             child_fd = child_sock.fileno()
             env[MCP_BRIDGE_PARENT_SOCK] = str(child_fd)
-            # C1 step 2: bind the candidate to the configuration snapshot the
-            # parent captured BEFORE this spawn. The candidate echoes the
-            # digest on the private readiness channel and the parent compares
-            # it against its own baseline, so a candidate started from a
-            # stale/divergent configuration is refused while the old child
-            # keeps serving. Only a SHA-256 digest crosses the boundary.
             if effective_config_fingerprint is not None:
                 env[MCP_EFFECTIVE_CONFIG_FINGERPRINT] = effective_config_fingerprint
             pass_fds = (*pass_fds, child_fd)
@@ -3483,14 +2221,6 @@ def _spawn_mcp_process(
 
 
 def resolve_mcp_runtime(*, executable: Path, package_root: Path) -> tuple[Path, Path]:
-    """Return one coherent interpreter/package pair for an MCP child.
-
-    Checkout installs are immutable generations. Older installers could delete
-    a generation while a process from it was still alive; in that case only,
-    recover through the install's atomic ``current`` pointer. The candidate's
-    existing private readiness and tool-hash checks remain the compatibility
-    gate before it can replace the serving child.
-    """
     original = (executable, package_root)
     if executable.is_file() and (package_root / "ralph" / "__init__.py").is_file():
         return original
@@ -3529,7 +2259,6 @@ def resolve_mcp_runtime(*, executable: Path, package_root: Path) -> tuple[Path, 
 
 
 def _env_for_mcp_package_root(env: dict[str, str], package_root: Path) -> dict[str, str]:
-    """Pin a child environment to the package tree paired with its interpreter."""
     updated = dict(env)
     entries = [
         entry
@@ -3553,39 +2282,10 @@ def _build_spawn_env(
     respawn: bool,
     make_before_break: bool,
 ) -> tuple[dict[str, str], str, tuple[int, ...]]:
-    """Build the parent-owned child environment for :func:`_spawn_mcp_process`.
-
-    Pure env-construction companion extracted to keep ``_spawn_mcp_process``
-    under the ruff PLR0912/PLR0915 caps. Every parent-owned spawn identity
-    is assigned in the same order as the inlined block it replaced.
-
-    PA-003: this helper owns NO resource. The session file is created and
-    bound by the CALLER before the call, and the handover socketpair is
-    created by the caller after it, so the outer ``except BaseException``
-    in ``_spawn_mcp_process`` remains the single cleanup point for the
-    handshake file and both socket halves.
-    """
     env = deps.subprocess_env(session_file)
     if _extra_env:
-        # Merge extra_env so the subprocess inherits worker-specific env vars
-        # (e.g. WORKER_ARTIFACT_DIR for parallel workers). This happens
-        # BEFORE every parent-owned assignment below so a reused extra
-        # mapping cannot overwrite a value this bridge owns (E2.4): the
-        # session id, the snapshot dir, the per-spawn stage id and the
-        # accept-pause path must never be inherited from a stale caller.
         env.update(_extra_env)
-    # The session-FILE path is parent-owned exactly like every other spawn
-    # identity. ``subprocess_env`` assigned it BEFORE the merge above, so a
-    # reused extras mapping would otherwise redirect the child's session
-    # file to a foreign path on every spawn.
     env[SESSION_FILE_ENV] = str(session_file)
-    # Presence-aware ownership for every key that is valid on only one spawn
-    # branch (E2.4). A reused extras mapping can carry a stale handover
-    # resume sentinel or a foreign parent-socket fd; ``_fallback_standalone_server``
-    # waits on a PRESENT resume value and adopts whatever fd the parent-socket
-    # value names, so a leaked key would block a cold or initial child for
-    # the full resume deadline. Absent -> pop; the branch blocks below then
-    # re-set the fresh, parent-minted values.
     for _branch_owned_key in (
         MCP_INHERITED_FD_ENV,
         MCP_RESPAWN_ENV,
@@ -3594,16 +2294,11 @@ def _build_spawn_env(
         MCP_EFFECTIVE_CONFIG_FINGERPRINT,
     ):
         env.pop(_branch_owned_key, None)
-    # Persist session_id in the subprocess environment so runtime_session.py
-    # can read it on respawn without falling back to a new factory.
     env[MCP_SESSION_ID_ENV] = session_id_value
     env[MCP_SNAPSHOT_DIR_ENV] = str(snap_dir)
     stage_id = str(uuid.uuid4())
     env[MCP_STAGE_ID_ENV] = stage_id
     env[MCP_ACCEPT_PAUSE_FILE] = str(snap_dir / f"accept.pause.{stage_id}")
-    # I1b: the parent-owned catalog snapshot takes precedence over
-    # anything merged from extra_env (present -> set even if empty,
-    # absent -> pop).
     if tool_catalog_snapshot is not None:
         apply_tool_catalog_env(env, tool_catalog_snapshot)
     if activity_relay is not None:
@@ -3619,7 +2314,6 @@ def _build_spawn_env(
 
 
 def shutdown_mcp_server(bridge: SessionBridgeLike) -> None:
-    """Shutdown MCP server process."""
     bridge.shutdown()
 
 
@@ -3642,7 +2336,7 @@ def _workspace_root(workspace: WorkspaceLike) -> Path:
         return workspace.root
     root_value = cast(
         "Path | str | None", getattr(workspace, "root", None)
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     if isinstance(root_value, Path):
         return root_value.resolve()
     if isinstance(root_value, str):
@@ -3655,26 +2349,8 @@ def _subprocess_env(session_file: Path) -> dict[str, str]:
     env = dict(os.environ)
     env[SESSION_FILE_ENV] = str(session_file)
     env[MCP_OWNER_PID_ENV] = str(os.getpid())
-    # R4 / R4-b: set in the parent so the child inherits unbuffered
-    # streams from the start — setting it inside the already-running
-    # child cannot reconfigure its own stdio.
     env["PYTHONUNBUFFERED"] = "1"
     package_root = str(_PACKAGE_ROOT)
-    # The MCP server subprocess runs ``sys.executable -m ralph.mcp.server``
-    # and MUST resolve the SAME package tree the parent imported
-    # (``_PACKAGE_ROOT``). An ambient PYTHONPATH exported by an outer
-    # launcher (e.g. a pipx-installed copy of this same package's
-    # site-packages, observed live when an outer Ralph orchestrates a
-    # development cycle inside a worktree) sorts AHEAD of the cwd on a
-    # plain ``python -m`` invocation, so merely prepending the package
-    # root is not sufficient for every entry: the outer launcher can
-    # inject the same path first. Replace every inherited entry that
-    # already provides the ``ralph`` package with the package root, and
-    # drop duplicates, so the spawned server deterministically imports
-    # the worktree's code (measured regression: the spawned server served
-    # the stale pipx tree, which predates the Kimi schema-flavor
-    # negotiation, and Moonshot rejected the composed root schemas with
-    # HTTP 400 on every live smoke).
     seen: set[str] = set()
     entries: list[str] = []
     for raw in env.get("PYTHONPATH", "").split(os.pathsep):
@@ -3701,23 +2377,12 @@ def _spawn_process(
     pass_fds: tuple[int, ...] = (),
 ) -> ProcessLike:
     label = f"phase:{phase}:mcp-server" if phase else "mcp-server"
-    # Persist server output instead of discarding it: with DEVNULL, a crash
-    # inside a request handler (e.g. an AttributeError after SSE headers) left
-    # no trace anywhere while the client hung to its request timeout (-32001).
     log_path = mcp_server_log_path(cwd)
-    # Diagnostic log setup is fail-open on environmental OSErrors (ENOSPC,
-    # EROFS, EACCES, EPERM): the live diagnostic stream is best-effort, so the
-    # spawn proceeds and serving can continue with /dev/null. The
-    # integrity/ledger stores elsewhere remain typed fail-closed; only this
-    # diagnostic-stream seam degrades, preserving the fail-closed ledger
-    # contract. Stage attribution falls back to "unknown" via
-    # ``_read_start_stage`` when no log was written by the child.
     log_fd: int = -1
     try:
         try:
-            # filesystem-write-ok: MCP server live diagnostic log directory
             log_path.parent.mkdir(parents=True, exist_ok=True)
-            log_fd = os.open(  # filesystem-write-ok: append-only live MCP diagnostic stream; resource-lifecycle-ok: fd closed in finally
+            log_fd = os.open(
                 log_path,
                 os.O_WRONLY | os.O_CREAT | os.O_APPEND,
                 0o644,
@@ -3730,11 +2395,7 @@ def _spawn_process(
                 errno.EPERM,
             ):
                 raise
-            # Degrade gracefully: the spawn proceeds, output is dropped to
-            # /dev/null, and the operator gets a WARNING. The server can
-            # still serve; the stage stays "unknown" until/unless the
-            # child writes its own stage-tracker file.
-            log_fd = os.open(  # filesystem-write-ok: devnull fallback stream; resource-lifecycle-ok: fd closed in finally
+            log_fd = os.open(
                 os.devnull, os.O_WRONLY
             )
             logger.warning(
@@ -3756,13 +2417,10 @@ def _spawn_process(
                 pass_fds=pass_fds,
                 allow_activity_relay_controls=True,
                 allow_broker_secret=True,
-                # The server's owner watch requires the owner as its parent.
                 require_direct_parent=True,
             ),
         )
     finally:
-        # The child holds its own duplicate of the fd from spawn time; the
-        # parent's copy must be released or each restart leaks a descriptor.
         if log_fd >= 0:
             os.close(log_fd)
 
@@ -3782,52 +2440,25 @@ def _default_lifecycle_deps() -> LifecycleDeps:
 
 
 def _create_session_file(root: Path, session: SessionLike) -> Path:
-    """Create one run-scoped MCP handshake file outside the watched workspace.
-
-    The subprocess receives the absolute path through ``MCP_SESSION_FILE_ENV``;
-    no user-visible or resume-facing contract requires this transient handshake
-    payload to live below ``root``. Keeping it in the system temporary directory
-    prevents a server start or restart from emitting workspace watch events.
-    """
     del root
     fd, temp_path = tempfile.mkstemp(prefix="ralph-mcp-session-", suffix=".json")
     path = Path(temp_path)
     try:
-        with os.fdopen(  # filesystem-write-ok: transient handshake stream
+        with os.fdopen(
             fd, "w", encoding="utf-8"
         ) as stream:
             stream.write(session_payload_json(session))
         return path
     except BaseException:
-        # filesystem-write-ok: cleanup of an unpublished transient handshake file after write failure
         path.unlink(missing_ok=True)
         raise
 
 
 def identity_is_serialisable(identity: MultimodalModelIdentity) -> bool:
-    """Decide whether provider or transport identity crosses the subprocess boundary."""
     return identity.is_known() or identity.transport is not None
 
 
 def session_payload_json(session: SessionLike) -> str:
-    """Serialize the session metadata to a compact JSON string for MCP handshake.
-
-    IN-PROCESS ONLY: ``delegated_agent_id``,
-    ``delegated_model_identity`` and ``delegated_capability_profile`` are
-    deliberately NOT written here. Nothing in production sets them --
-    they exist for a sub-agent delegation path that is not wired -- so
-    serialising them would invent a wire format for a feature that has
-    no producer.
-
-    The consequence, stated so it is not discovered the hard way: a
-    delegated identity set on a parent session does not survive this
-    boundary, and the child resolves as the session itself. Anyone
-    wiring delegation must add the three keys here AND to
-    ``FileBackedSession``, or the guards in
-    :func:`ralph.mcp.multimodal.capabilities.caller_identity_for` will
-    silently judge the parent instead of the delegate on the far side.
-    ``tests/test_delegated_identity_boundary.py`` pins this.
-    """
     session_payload: dict[str, object] = {
         "session_id": session.session_id,
         "run_id": session.run_id,
@@ -3853,21 +2484,7 @@ def session_payload_json(session: SessionLike) -> str:
     if isinstance(raw_allowed_roots, tuple) and raw_allowed_roots:
         session_payload["allowed_roots"] = [str(path) for path in raw_allowed_roots]
     raw_identity: object = getattr(session, "model_identity", None)
-    # An identity is worth serialising when EITHER half is resolved. The
-    # gate used to be ``is_known()`` alone (provider resolved), which
-    # dropped a transport-tagged unknown-provider identity on the way to
-    # the subprocess -- and the multimodal layer keys some delivery
-    # decisions on the transport, so those guards died at this boundary
-    # even though the parent session had the information.
     if isinstance(raw_identity, MultimodalModelIdentity) and identity_is_serialisable(raw_identity):
-        # Canonicalised on the way OUT, like every other seam that
-        # writes a transport spelling. This one writes what it was
-        # handed, so a hand-constructed parent identity of ``'CODEX'``
-        # or ``'  codex  '`` was recorded verbatim and carried into the
-        # verdict ``reason`` strings, giving one run several different
-        # capability digests. Every production constructor normalises
-        # upstream, so this changes no delivery decision -- it makes the
-        # last seam agree with the claim the others already meet.
         session_payload["model_identity"] = {
             "provider": raw_identity.provider,
             "model_id": raw_identity.model_id,
@@ -3875,11 +2492,6 @@ def session_payload_json(session: SessionLike) -> str:
         }
     raw_profile: object = getattr(session, "capability_profile", None)
     if isinstance(raw_profile, ResolvedCapabilityProfile):
-        # Re-based on the identity being serialised beside it. A profile
-        # whose own identity predates a declared transport would
-        # otherwise record verdicts the runtime does not act on, so the
-        # child's payload and the wire ledger disagreed with what was
-        # actually delivered.
         identity_for_profile = (
             raw_identity
             if isinstance(raw_identity, MultimodalModelIdentity)
@@ -3894,12 +2506,6 @@ def session_payload_json(session: SessionLike) -> str:
         session_payload["capability_profile"] = resolve_capability_profile(
             raw_identity
         ).to_payload()
-    # AC-11: when the parent session owns an exec resource resolver,
-    # serialize the trusted spill roots so the subprocess session
-    # (FileBackedSession) can re-construct a matching resolver. This is
-    # the only path through which ``ralph://exec/<spill-name>`` URIs
-    # returned by ``format=summary`` exec calls are re-readable inside
-    # the production subprocess path.
     exec_resolver: object = getattr(session, "exec_resource_resolver", None)
     if exec_resolver is not None:
         resolver_roots: list[str] = []

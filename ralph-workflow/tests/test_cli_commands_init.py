@@ -1,5 +1,3 @@
-"""Tests for ralph.cli.commands.init baseline capability integration."""
-
 from __future__ import annotations
 
 from io import StringIO
@@ -56,13 +54,6 @@ def _attach_console(monkeypatch: pytest.MonkeyPatch, module: object) -> StringIO
         return ctx
 
     monkeypatch.setattr(module, "make_display_context", fake_make_display_context)
-    # Skip the project-scope skill install path: every test in this file
-    # already stubs ``SkillManager.ensure_baseline_capabilities`` and the
-    # install path is incidental to the assertions. ``_ensure_baseline_capabilities``
-    # lazy-imports these symbols from ``ralph.skills._installer`` and binds
-    # them locally, so patching the source module is the only seam that
-    # takes effect for the lazy import.
-    # Reference the name so the import isn't flagged as unused.
     _ = install_project_baseline_skills
     monkeypatch.setattr("ralph.skills._installer._project_skills_need_install", lambda _root: False)
     monkeypatch.setattr(
@@ -76,7 +67,6 @@ def _attach_console(monkeypatch: pytest.MonkeyPatch, module: object) -> StringIO
 def test_init_warns_when_current_worktree_owns_main(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Initialization warns before Ralph may reclaim the target-owner worktree."""
     stream = _attach_console(monkeypatch, init_module)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
@@ -103,7 +93,6 @@ def test_init_warns_when_current_worktree_owns_main(
 def test_init_ownership_warning_uses_configured_target(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The volatile-worktree warning names the configured mainline, not main."""
     observed: list[str] = []
     monkeypatch.setattr(
         init_module,
@@ -132,7 +121,6 @@ def test_init_ownership_warning_uses_configured_target(
 def test_try_load_registry_uses_the_current_workspace_scope(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """First-run registry loading must use the workspace-aware config path."""
     expected_scope = object()
     received_scope: object | None = None
 
@@ -163,7 +151,6 @@ def test_try_load_registry_uses_the_current_workspace_scope(
 def test_init_command_calls_ensure_baseline_capabilities(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """init_command should call SkillManager.ensure_baseline_capabilities()."""
     _attach_console(monkeypatch, init_module)
     monkeypatch.chdir(tmp_path)
 
@@ -189,7 +176,6 @@ def test_init_command_calls_ensure_baseline_capabilities(
 def test_init_command_prints_capability_summary(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """init_command output should include Built-in and Managed capability labels."""
     stream = _attach_console(monkeypatch, init_module)
     monkeypatch.chdir(tmp_path)
 
@@ -222,7 +208,6 @@ def test_init_command_prints_capability_summary(
 def test_init_command_skill_failure_does_not_block_init(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """If skill installation fails, init should still create files and complete."""
     stream = _attach_console(monkeypatch, init_module)
     monkeypatch.chdir(tmp_path)
 
@@ -235,14 +220,11 @@ def test_init_command_skill_failure_does_not_block_init(
         fake_ensure_that_raises,
     )
 
-    # Should not raise
     init_module.init_command(template=None)
 
-    # Prompt and global configuration setup still complete.
     assert (tmp_path / "PROMPT.md").exists()
     assert not (tmp_path / ".agent").exists()
 
-    # Error should be silently swallowed (no crash)
     output = stream.getvalue()
     assert "Ralph" in output
     assert "Created" in output
@@ -252,13 +234,6 @@ def test_init_command_skill_failure_does_not_block_init(
 def test_init_command_runs_capability_refresh_on_every_run(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Capability refresh MUST run on every ralph --init invocation, including re-runs.
-
-    The previous test name `test_init_command_fallback_path_skips_capability_refresh`
-    pinned the buggy behavior (skip on re-run). The new contract is the
-    always-on auto-skill-install — every invocation triggers the skill
-    installer + the full capability summary table.
-    """
     stream = _attach_console(monkeypatch, init_module)
     monkeypatch.chdir(tmp_path)
 
@@ -278,7 +253,6 @@ def test_init_command_runs_capability_refresh_on_every_run(
     init_module.init_command(template=None)
     assert calls == 1
 
-    # Re-run also runs the capability refresh.
     init_module.init_command(template=None)
     assert calls == 2
 
@@ -290,17 +264,9 @@ def test_init_command_runs_capability_refresh_on_every_run(
 def test_init_label_over_existing_prompt_warns_not_applied(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """``ralph --init <label>`` over an existing PROMPT.md must NOT silently ignore the label.
-
-    AC-03: an explicit valid label must print a clear "template was not applied"
-    warning that names the label and tells the operator how to apply it,
-    instead of silently doing nothing. PROMPT.md content must be unchanged.
-    """
     stream = _attach_console(monkeypatch, init_module)
     monkeypatch.chdir(tmp_path)
 
-    # Pre-create PROMPT.md with a sentinel-free marker so we can verify
-    # the init path leaves it alone (no overwrite).
     (tmp_path / "PROMPT.md").write_text("# my task\ndo the thing\n", encoding="utf-8")
 
     def fake_ensure(_self_obj: object, *, workspace_root: object) -> object:
@@ -315,18 +281,15 @@ def test_init_label_over_existing_prompt_warns_not_applied(
     init_module.init_command(template="refactor")
 
     output = stream.getvalue()
-    # The warning names the label so the operator can act on it.
     assert "refactor" in output, (
         f"Expected the label 'refactor' to be quoted in the warning so "
         f"the operator can act on it, got: {output}"
     )
-    # The warning points the operator at the remediation.
     assert (
         "edit PROMPT.md directly" in output
         or "remove/rename PROMPT.md" in output
         or "ralph --init refactor" in output
     ), f"Expected the warning to point the operator at the remediation path, got: {output}"
-    # The original PROMPT.md content was preserved (no overwrite).
     assert (tmp_path / "PROMPT.md").read_text(encoding="utf-8") == "# my task\ndo the thing\n", (
         "PROMPT.md must NOT be overwritten when an explicit label is passed over an existing file"
     )
@@ -336,13 +299,6 @@ def test_init_label_over_existing_prompt_warns_not_applied(
 def test_init_label_over_existing_prompt_unknown_label_exits_nonzero(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """``ralph --init <bad-label>`` over an existing PROMPT.md must still error non-zero.
-
-    AC-03: an UNKNOWN label over an existing PROMPT.md must NOT silently
-    succeed (the typo'd label still has to be flagged). The init path
-    resolves the template first to surface unknown labels, then prints
-    the same warning a valid label would emit.
-    """
     stream = _attach_console(monkeypatch, init_module)
     monkeypatch.chdir(tmp_path)
     (tmp_path / "PROMPT.md").write_text("# existing\n", encoding="utf-8")
@@ -357,11 +313,9 @@ def test_init_label_over_existing_prompt_unknown_label_exits_nonzero(
     )
 
     with pytest.raises(typer.Exit):
-        init_module.init_command(template="feature-specs")  # plural — typo
+        init_module.init_command(template="feature-specs")
 
     output = stream.getvalue()
-    # Unknown label must surface the same it/why/fix envelope as the
-    # bare ``ralph --init feature-specs`` path.
     assert "feature-specs" in output or "Unknown PROMPT.md template" in output, (
         f"Expected the unknown-label name to appear in the warning, got: {output}"
     )
@@ -371,7 +325,6 @@ def test_init_label_over_existing_prompt_unknown_label_exits_nonzero(
 def test_init_rerun_without_agents_warns_with_install_and_rerun_steps(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """S-1: re-running init must not silently leave an operator without an agent CLI."""
     stream = _attach_console(monkeypatch, init_module)
     monkeypatch.setattr(init_module, "detect_installed_agents", lambda: [])
 
@@ -405,11 +358,6 @@ def test_init_rerun_without_agents_warns_with_install_and_rerun_steps(
 def test_init_no_template_over_existing_prompt_stays_silent(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A bare ``ralph --init`` (no template) over an existing PROMPT.md stays silent.
-
-    AC-03: only an EXPLICIT --init <label> triggers the new warning; a bare
-    re-run keeps its existing behavior (no spurious warning).
-    """
     stream = _attach_console(monkeypatch, init_module)
     monkeypatch.chdir(tmp_path)
     (tmp_path / "PROMPT.md").write_text("# existing\n", encoding="utf-8")
@@ -426,7 +374,6 @@ def test_init_no_template_over_existing_prompt_stays_silent(
     init_module.init_command(template=None)
 
     output = stream.getvalue()
-    # The AC-03 warning should NOT appear for a bare re-run.
     assert "starter template was not applied" not in output, (
         f"A bare re-run must not print the template-not-applied warning, got: {output}"
     )

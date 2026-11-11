@@ -1,4 +1,3 @@
-"""Command building for agent invocation."""
 
 from __future__ import annotations
 
@@ -26,7 +25,7 @@ if TYPE_CHECKING:
 def _agent_transport(config: AgentConfig) -> AgentTransport:
     return cast(
         "AgentTransport", config.transport
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
 
 
 def _shell_single_quote(value: str) -> str:
@@ -124,21 +123,6 @@ def _build_command(
     *,
     options: _BuildCommandOptions | None = None,
 ) -> list[str]:
-    """Build the command line for agent invocation.
-
-    A caller may replace the builder for the duration of a scope with
-    :meth:`ralph.agents.invoke.InvokeOptions.command_builder_override`;
-    the override then owns the whole argv.  Without an override the
-    per-transport builder is used.
-
-    Args:
-        config: Agent configuration.
-        prompt_file: Path to prompt file.
-        options: Resolved build options for the invocation.
-
-    Returns:
-        List of command arguments.
-    """
     build_options = options or _BuildCommandOptions()
     override = _COMMAND_BUILDER_OVERRIDE.get()
     if override is not None:
@@ -176,14 +160,6 @@ def _command_for_log(config: AgentConfig, cmd: list[str], prompt_file: str) -> s
 
 
 def check_agent_available(config: AgentConfig) -> bool:
-    """Check if an agent command is available.
-
-    Args:
-        config: Agent configuration.
-
-    Returns:
-        True if agent command exists and is executable.
-    """
     cmd = config.cmd.split()
     if not cmd:
         return False

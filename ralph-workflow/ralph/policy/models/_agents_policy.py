@@ -1,4 +1,3 @@
-"""AgentsPolicy Pydantic model."""
 
 from typing import Self
 
@@ -10,7 +9,6 @@ from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 
 
 class AgentsPolicy(_FrozenPolicyModel):
-    """Top-level agents.toml policy document."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 

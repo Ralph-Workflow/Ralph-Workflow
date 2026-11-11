@@ -1,14 +1,3 @@
-"""Tests verifying immutability of the agents configuration file.
-
-Two contracts are proven here:
-
-* the agents file is never rewritten implicitly -- a normal load, a
-  ``--diagnose`` run and a pipeline run leave it byte-identical;
-* an EXPLICIT rewrite never damages the file it replaces -- a symlinked
-  agents path stays a symlink (the real file behind it is updated), and an
-  existing file keeps its permission mode.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -40,18 +29,12 @@ if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
 
 
-# This module crosses the real Git boundary on purpose: the agents-file
-# immutability proofs assert on the repo HEAD sha after a config load. It is
-# registered in ``REQUIRED_AUTO_INTEGRATE_E2E_FILES`` so the real-Git proof
-# stays on the default ``make test`` lane instead of rotting behind an
-# opt-in gate.
 pytestmark = pytest.mark.subprocess_e2e
 
 
 def test_loader_leaves_agents_file_immutable_when_migrating_retired_key(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Loading config with agent_can_commit in agents file leaves sha256 unchanged and removes key in memory."""
     reset_retired_agent_key_warnings()
     config_home = tmp_path / "xdg-config"
     config_home.mkdir()
@@ -78,24 +61,19 @@ def test_loader_leaves_agents_file_immutable_when_migrating_retired_key(
     finally:
         logger.remove(sink_id)
 
-    # Returns config with the key removed
     assert config.agents["claude"].cmd == "claude"
     assert config.agents["claude"].display_name == "Claude Code"
     assert not hasattr(config.agents["claude"], "can_commit")
 
-    # Leaves the file's sha256 unchanged and byte-identical
     final_sha256 = hashlib.sha256(agents_path.read_bytes()).hexdigest()
     assert final_sha256 == initial_sha256
     assert agents_path.read_text(encoding="utf-8") == content
 
-    # Produces no extra files
     final_dir_contents = set(config_home.iterdir())
     assert final_dir_contents == initial_dir_contents
 
-    # Deduplicated warning emitted
     assert any("regenerate-config" in r and "agent_can_commit" in r for r in records)
 
-    # Second load does not produce duplicate warning
     records.clear()
     sink_id2 = logger.add(records.append, level="WARNING", format="{message}")
     try:
@@ -108,7 +86,6 @@ def test_loader_leaves_agents_file_immutable_when_migrating_retired_key(
 def test_normal_load_config_leaves_agents_file_byte_identical(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Normal load_config leaves ralph-workflow-agents.toml sha256 byte-identical."""
     config_home = tmp_path / "xdg-config"
     config_home.mkdir(parents=True, exist_ok=True)
     home_dir = tmp_path / "home"
@@ -154,7 +131,6 @@ def test_normal_load_config_leaves_agents_file_byte_identical(
 def test_diagnose_leaves_agents_file_byte_identical(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Running ralph --diagnose leaves ralph-workflow-agents.toml sha256 byte-identical."""
     config_home = tmp_path / "xdg-config"
     config_home.mkdir(parents=True, exist_ok=True)
     home_dir = tmp_path / "home"
@@ -194,13 +170,6 @@ def test_diagnose_leaves_agents_file_byte_identical(
 def test_diagnose_with_explicit_config_leaves_user_global_agents_file_byte_identical(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """`ralph --diagnose --config <path>` leaves the user-global agents file byte-identical.
-
-    The explicit config path selects the project-local main config, while the
-    user-global agents file is still read. Its retired ``agent_can_commit``
-    key is migrated in memory only, so the file keeps its exact bytes and no
-    backup, temp, or migration scratch artifact appears next to it.
-    """
     config_home = tmp_path / "xdg-config"
     config_home.mkdir(parents=True, exist_ok=True)
     home_dir = tmp_path / "home"
@@ -231,8 +200,6 @@ def test_diagnose_with_explicit_config_leaves_user_global_agents_file_byte_ident
     result = CliRunner().invoke(app, ["--diagnose", "--config", str(local_path)])
     assert result.exit_code in (0, 1)
 
-    # The file on disk is untouched: same bytes, same digest, and no
-    # backup, temp, or migration scratch artifact next to it.
     final_bytes = agents_path.read_bytes()
     final_sha256 = hashlib.sha256(final_bytes).hexdigest()
     assert final_bytes == initial_bytes
@@ -247,7 +214,6 @@ def test_diagnose_with_explicit_config_leaves_user_global_agents_file_byte_ident
 def test_pipeline_run_leaves_agents_file_byte_identical(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A pipeline run with stubbed agent execution leaves ralph-workflow-agents.toml byte-identical."""
     config_home = tmp_path / "xdg-config"
     config_home.mkdir(parents=True, exist_ok=True)
     home_dir = tmp_path / "home"
@@ -284,7 +250,6 @@ def test_pipeline_run_leaves_agents_file_byte_identical(
     )
 
     bundle = load_policy(default_dir())
-    # Strip invocation gates so phases execute deterministically
     phases = dict(bundle.pipeline.phases)
     for name, phase_def in phases.items():
         if phase_def.invocation_gate is not None:
@@ -342,7 +307,6 @@ def test_pipeline_run_leaves_agents_file_byte_identical(
 def test_diagnose_does_not_create_missing_agents_file(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A normal command does not create a missing user-global agents file."""
     config_home = tmp_path / "xdg-config"
     config_home.mkdir(parents=True, exist_ok=True)
     home_dir = tmp_path / "home"
@@ -368,7 +332,6 @@ def test_diagnose_does_not_create_missing_agents_file(
 def test_write_through_symlinked_agents_path_preserves_symlink_and_updates_real_file(
     tmp_path: Path,
 ) -> None:
-    """A write through a symlinked agents path keeps the symlink and updates the real file."""
     real_file = tmp_path / "real-agents.toml"
     link_path = tmp_path / "ralph-workflow-agents.toml"
     real_file.write_text('[agents.claude]\ncmd = "claude-old"\n', encoding="utf-8")
@@ -376,17 +339,14 @@ def test_write_through_symlinked_agents_path_preserves_symlink_and_updates_real_
 
     write_agents_toml(link_path, '[agents.claude]\ncmd = "claude-new"\n', trigger="symlink-proof")
 
-    # The symlink is still a symlink pointing at the same real file.
     assert link_path.is_symlink()
     assert link_path.readlink() == real_file
     assert link_path.resolve() == real_file.resolve()
 
-    # The real file behind the link carries the new content.
     assert real_file.read_text(encoding="utf-8") == '[agents.claude]\ncmd = "claude-new"\n'
 
 
 def test_rewrite_preserves_existing_agents_file_mode(tmp_path: Path) -> None:
-    """A rewrite keeps the mode of an existing agents file (0644 stays 0644)."""
     target_path = tmp_path / "ralph-workflow-agents.toml"
     target_path.write_text('[agents.claude]\ncmd = "claude-old"\n', encoding="utf-8")
     target_path.chmod(0o644)
@@ -399,7 +359,6 @@ def test_rewrite_preserves_existing_agents_file_mode(tmp_path: Path) -> None:
 
 
 def _init_repo_with_initial_commit(repo_root: Path) -> None:
-    """Create a fresh git repo with one initial empty commit so HEAD exists."""
     repo = Repo.init(repo_root)
     try:
         repo.config_writer().set_value("user", "name", "Test Author").release()
@@ -413,7 +372,6 @@ def _init_repo_with_initial_commit(repo_root: Path) -> None:
 def test_load_config_with_explicit_agents_path_leaves_file_immutable_when_migrating(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Loading explicit config containing retired can_commit leaves sha256 byte-identical and creates no commit."""
     repo_dir = tmp_path / "repo"
     repo_dir.mkdir()
     config_home = tmp_path / "xdg-config"
@@ -443,22 +401,18 @@ def test_load_config_with_explicit_agents_path_leaves_file_immutable_when_migrat
 
     config = load_config(config_path=agents_path)
 
-    # Key removed in memory
     assert config.agents["claude"].cmd == "claude"
     assert config.agents["claude"].display_name == "Claude Code"
     assert not hasattr(config.agents["claude"], "can_commit")
 
-    # Asserts sha256 byte-identical
     final_bytes = agents_path.read_bytes()
     final_sha256 = hashlib.sha256(final_bytes).hexdigest()
     assert final_bytes == initial_bytes
     assert final_sha256 == initial_sha256
 
-    # No .migration temp files and no .bak file
     assert not any(".migration" in p.name for p in repo_dir.iterdir())
     assert not any(p.name.endswith(".bak") for p in repo_dir.iterdir())
 
-    # No Git commit created
     repo = Repo(repo_dir)
     try:
         assert repo.head.commit.hexsha == initial_head
@@ -469,7 +423,6 @@ def test_load_config_with_explicit_agents_path_leaves_file_immutable_when_migrat
 def test_diagnose_with_explicit_agents_config_leaves_file_immutable_when_migrating(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Running ralph --diagnose --config leaves agents file sha256 byte-identical and creates no commit."""
     repo_dir = tmp_path / "repo"
     repo_dir.mkdir()
     config_home = tmp_path / "xdg-config"
@@ -501,17 +454,14 @@ def test_diagnose_with_explicit_agents_config_leaves_file_immutable_when_migrati
     result = CliRunner().invoke(app, ["--diagnose", "--config", str(agents_path)])
     assert result.exit_code in (0, 1)
 
-    # Asserts sha256 byte-identical
     final_bytes = agents_path.read_bytes()
     final_sha256 = hashlib.sha256(final_bytes).hexdigest()
     assert final_bytes == initial_bytes
     assert final_sha256 == initial_sha256
 
-    # No .migration temp files and no .bak file
     assert not any(".migration" in p.name for p in repo_dir.iterdir())
     assert not any(p.name.endswith(".bak") for p in repo_dir.iterdir())
 
-    # No Git commit created
     repo = Repo(repo_dir)
     try:
         assert repo.head.commit.hexsha == initial_head

@@ -1,4 +1,3 @@
-"""Exhausted-analysis skip details."""
 
 from __future__ import annotations
 
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class ExhaustedAnalysisSkip:
-    """Details for a single exhausted analysis phase that was bypassed."""
 
     phase: PipelinePhase
     target_phase: PipelinePhase

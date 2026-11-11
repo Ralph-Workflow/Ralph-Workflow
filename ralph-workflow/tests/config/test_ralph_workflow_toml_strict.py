@@ -1,10 +1,3 @@
-"""Tests for strict error behavior on malformed ralph-workflow.toml files.
-
-ralph-workflow.toml (global, local, propagated) must fail loudly with
-ConfigTomlError (What/Why/Fix envelope) on syntax/encoding errors, and SystemExit(1)
-on schema validation failures. It never falls back to defaults.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -19,7 +12,6 @@ from ralph.workspace.scope import WorkspaceScope
 def test_global_ralph_workflow_toml_malformed_raises_config_toml_error(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A malformed global ralph-workflow.toml must raise ConfigTomlError."""
     config_home = tmp_path / "xdg-config"
     config_home.mkdir(parents=True)
     global_path = config_home / "ralph-workflow.toml"
@@ -42,7 +34,6 @@ def test_global_ralph_workflow_toml_malformed_raises_config_toml_error(
 def test_local_ralph_workflow_toml_malformed_raises_config_toml_error(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A malformed project-local ralph-workflow.toml must raise ConfigTomlError."""
     config_home = tmp_path / "xdg-config"
     config_home.mkdir(parents=True)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
@@ -63,7 +54,6 @@ def test_local_ralph_workflow_toml_malformed_raises_config_toml_error(
 def test_propagated_ralph_workflow_toml_malformed_raises_config_toml_error(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A malformed propagated ancestor ralph-workflow.toml must raise ConfigTomlError."""
     config_home = tmp_path / "xdg-config"
     config_home.mkdir(parents=True)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
@@ -100,7 +90,6 @@ def test_propagated_ralph_workflow_toml_malformed_raises_config_toml_error(
 def test_ralph_workflow_toml_bad_encoding_raises_config_toml_error(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A ralph-workflow.toml with invalid UTF-8 encoding must raise ConfigTomlError."""
     config_home = tmp_path / "xdg-config"
     config_home.mkdir(parents=True)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
@@ -121,7 +110,6 @@ def test_ralph_workflow_toml_bad_encoding_raises_config_toml_error(
 def test_schema_invalid_ralph_workflow_toml_fails_loudly_with_system_exit(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A schema-invalid ralph-workflow.toml must fail loudly with SystemExit(1)."""
     config_home = tmp_path / "xdg-config"
     config_home.mkdir(parents=True)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
@@ -148,7 +136,6 @@ def test_schema_invalid_ralph_workflow_toml_fails_loudly_with_system_exit(
 def test_unreadable_config_finding_strict_file_fails_loudly_never_defaults(
     tmp_path: Path,
 ) -> None:
-    """Unreadable ralph-workflow.toml finding reports strict failure and never defaults."""
     from unittest.mock import MagicMock
 
     from ralph.config import reset_fallback_warning_registry
@@ -173,22 +160,16 @@ def test_unreadable_config_finding_strict_file_fails_loudly_never_defaults(
     assert findings[0].path == local_path
     assert findings[0].kind == "ralph-workflow"
 
-    # Assert the logger warning emitted during collection:
-    # 1. Names strict configuration behaviour
-    # 2. Emphasizes no built-in default fallback exists
-    # 3. NEVER claims it is using built-in default
     warn_text = "\n".join(records)
     assert "strict configuration behaviour in effect" in warn_text
     assert "(this file has no built-in default fallback)" in warn_text
     assert "using built-in default" not in warn_text
 
-    # Assert the display warning also reports strict failure and never defaults
     mock_display.emit_warning.assert_called_once()
     display_msg = str(mock_display.emit_warning.call_args[0][0])
     assert "strict configuration behaviour in effect" in display_msg
     assert "using built-in default" not in display_msg
 
-    # Ensure malformed ralph-workflow.toml still raises ConfigTomlError
     with pytest.raises(ConfigTomlError) as exc_info:
         load_config(config_path=local_path)
     assert "What failed: Ralph could not read" in str(exc_info.value)

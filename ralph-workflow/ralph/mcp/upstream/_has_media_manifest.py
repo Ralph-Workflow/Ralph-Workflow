@@ -1,4 +1,3 @@
-"""HasMediaManifest — protocol for upstream clients that expose a media artifact manifest."""
 
 from __future__ import annotations
 
@@ -9,7 +8,6 @@ if TYPE_CHECKING:
 
 
 class HasMediaManifest(Protocol):
-    """Protocol for upstream clients that expose a media artifact manifest."""
 
     @property
     def media_manifest(self) -> MediaManifest: ...

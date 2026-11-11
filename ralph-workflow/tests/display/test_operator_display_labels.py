@@ -1,5 +1,3 @@
-"""Tests for the seven distinct operator display labels and IntegrationAction derivations."""
-
 from __future__ import annotations
 
 from typing import NamedTuple
@@ -107,7 +105,6 @@ def _case_id(c: StateTestCase) -> str:
 
 @pytest.mark.parametrize("case", SEVEN_STATES, ids=_case_id)
 def test_format_integration_label_from_display_state(case: StateTestCase) -> None:
-    """Each of the seven states produces its canonical distinct label from display state."""
     label = format_integration_label(case.display_state, is_diagnosis=case.is_diagnosis)
     assert label == case.expected_label
     assert label == case.expected_label.lower()
@@ -115,7 +112,6 @@ def test_format_integration_label_from_display_state(case: StateTestCase) -> Non
 
 @pytest.mark.parametrize("case", SEVEN_STATES, ids=_case_id)
 def test_format_integration_label_from_action(case: StateTestCase) -> None:
-    """Each of the seven states derives its canonical distinct label from IntegrationAction."""
     if case.action is not None:
         label = format_integration_label(case.action, is_diagnosis=case.is_diagnosis)
         assert label == case.expected_label
@@ -123,7 +119,6 @@ def test_format_integration_label_from_action(case: StateTestCase) -> None:
 
 @pytest.mark.parametrize("case", SEVEN_STATES, ids=_case_id)
 def test_format_integration_phase_label(case: StateTestCase) -> None:
-    """Phase label formatting titles the label and appends optional detail."""
     base_title = format_integration_phase_label(case.display_state, is_diagnosis=case.is_diagnosis)
     assert base_title == case.expected_label.title()
 
@@ -135,14 +130,12 @@ def test_format_integration_phase_label(case: StateTestCase) -> None:
 
 @pytest.mark.parametrize("case", SEVEN_STATES, ids=_case_id)
 def test_status_bar_phase_abbreviation_per_state(case: StateTestCase) -> None:
-    """_abbreviated_phase_label renders distinct abbreviation for each of the seven states."""
     abbrev = _abbreviated_phase_label(case.expected_label, budget=4, width=60)
     assert abbrev == case.expected_abbrev
 
 
 @pytest.mark.parametrize("case", SEVEN_STATES, ids=_case_id)
 def test_status_bar_distinct_attention_per_state(case: StateTestCase) -> None:
-    """Status bar resolves attention presentation from operation_display_state distinctly."""
     ctx = _make_context(width=100)
     model = StatusBarModel(
         workspace_root="/home/user/repo",
@@ -153,7 +146,6 @@ def test_status_bar_distinct_attention_per_state(case: StateTestCase) -> None:
     rendered = render_status_bar(model, ctx, home="/home/user")
     plain = rendered.plain
 
-    # Ensure evidence diagnosis and conflict resolution are mutually exclusive
     if case.state_key == "evidence_diagnosis":
         assert "EVIDENCE_DIAGNOSIS" in plain
         assert "CONFLICT_RESOLUTION" not in plain
@@ -165,20 +157,16 @@ def test_status_bar_distinct_attention_per_state(case: StateTestCase) -> None:
 
 
 def test_evidence_diagnosis_never_shown_as_conflict_resolution() -> None:
-    """Evidence diagnosis is never mislabeled or displayed as conflict resolution."""
-    # From action with diagnosis
     action_label = format_integration_label(
         IntegrationAction.RESOLVE_ACTIVE_OPERATION, is_diagnosis=True
     )
     assert action_label == "evidence diagnosis"
     assert "conflict" not in action_label
 
-    # From display state
     state_label = format_integration_label(OperationDisplayState.EVIDENCE_DIAGNOSIS)
     assert state_label == "evidence diagnosis"
     assert "conflict" not in state_label
 
-    # From object with retained recovery record
     class FakeRecoveryRecord:
         recovery_record_retained = True
         next_action = IntegrationAction.RESOLVE_ACTIVE_OPERATION
@@ -187,7 +175,6 @@ def test_evidence_diagnosis_never_shown_as_conflict_resolution() -> None:
     assert record_label == "evidence diagnosis"
     assert "conflict" not in record_label
 
-    # From object with diagnostic ownership
     class FakeDiagnosticRecord:
         diagnostic_ownership = "hash123"
         next_action = IntegrationAction.RESOLVE_ACTIVE_OPERATION
@@ -198,7 +185,6 @@ def test_evidence_diagnosis_never_shown_as_conflict_resolution() -> None:
 
 
 def test_format_auto_integrate_message_with_integration_action() -> None:
-    """format_auto_integrate_message derives directly from integration_action."""
     msg = format_auto_integrate_message(
         integration_action=IntegrationAction.CONTINUE_GIT_OPERATION,
         target="main",
@@ -220,19 +206,16 @@ def test_format_auto_integrate_message_with_integration_action() -> None:
 
 
 def test_integration_resolution_status_display_labels() -> None:
-    """IntegrationResolutionStatus projects to the canonical distinct labels."""
     assert IntegrationResolutionStatus.RESOLVED.to_display_label() == "landing"
     assert IntegrationResolutionStatus.RECOVERABLE.to_display_label() == "waiting"
     assert IntegrationResolutionStatus.EXHAUSTED.to_display_label() == "intervention"
 
-    # Also via format_integration_label
     assert format_integration_label(IntegrationResolutionStatus.RESOLVED) == "landing"
     assert format_integration_label(IntegrationResolutionStatus.RECOVERABLE) == "waiting"
     assert format_integration_label(IntegrationResolutionStatus.EXHAUSTED) == "intervention"
 
 
 def test_integration_action_reintegrate_distinct_from_conflict() -> None:
-    """Reintegrating against target produces 'integration' label, not 'conflict resolution'."""
     label = format_integration_label(IntegrationAction.REINTEGRATE_AGAINST_TARGET)
     assert label == "integration"
 
@@ -243,7 +226,6 @@ def test_integration_action_reintegrate_distinct_from_conflict() -> None:
 
 
 def test_integration_display_label_enum_has_seven_states() -> None:
-    """IntegrationDisplayLabel contains exactly seven distinct labels."""
     assert len(IntegrationDisplayLabel) == 7
     expected = {
         "conflict resolution",

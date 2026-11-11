@@ -1,5 +1,3 @@
-"""Tests for ``ralph.checked_accessors`` — the production boundary accessors."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -21,10 +19,6 @@ from ralph.checked_accessors import (
     optional_str,
     optional_str_list,
 )
-
-# ---------------------------------------------------------------------------
-# Raising variants
-# ---------------------------------------------------------------------------
 
 
 class TestAsStr:
@@ -53,7 +47,6 @@ class TestAsInt:
         assert as_int(7) == 7
 
     def test_rejects_bool(self) -> None:
-        # bool is a subclass of int but must be rejected
         with pytest.raises(TypeError, match="expected int"):
             as_int(True)
 
@@ -74,7 +67,6 @@ class TestAsBool:
         assert as_bool(False) is False
 
     def test_rejects_int(self) -> None:
-        # 0 and 1 are int, not bool
         with pytest.raises(TypeError):
             as_bool(1)
 
@@ -168,18 +160,12 @@ class TestAsSequence:
         assert tuple(as_sequence((1, 2, 3))) == (1, 2, 3)
 
     def test_rejects_string(self) -> None:
-        # strings ARE sequences but must be rejected
         with pytest.raises(TypeError):
             as_sequence("abc")
 
     def test_rejects_bytes(self) -> None:
         with pytest.raises(TypeError):
             as_sequence(b"abc")
-
-
-# ---------------------------------------------------------------------------
-# Absent-returning variants
-# ---------------------------------------------------------------------------
 
 
 class TestOptionalStr:
@@ -241,13 +227,7 @@ class TestOptionalStrList:
         assert optional_str_list([]) == []
 
 
-# ---------------------------------------------------------------------------
-# Cross-cutting smoke
-# ---------------------------------------------------------------------------
-
-
 def test_all_helpers_are_pure() -> None:
-    """Calling helpers does not mutate their inputs."""
     data = {"k": "v"}
     as_mapping(data)
     assert data == {"k": "v"}
@@ -258,7 +238,6 @@ def test_all_helpers_are_pure() -> None:
 
 
 def test_helpers_compose_for_realistic_payload() -> None:
-    """A realistic deserialized payload can be walked without any cast."""
     payload: object = {
         "name": "agent-1",
         "max_retries": 3,

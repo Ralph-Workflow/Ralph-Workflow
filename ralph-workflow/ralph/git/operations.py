@@ -1,45 +1,3 @@
-"""Git operations for ralph pipeline via GitPython.
-
-This module provides a high-level interface for git operations,
-wrapping GitPython to provide the functionality needed by the pipeline.
-
-Serialized git queue:
-
-Every git interaction this module performs -- the ``run_git`` subprocess
-path AND every ``repo.git.*`` dispatch (the ``git status`` fallback in
-:func:`list_changed_paths`, ``git add`` in :func:`stage_all` /
-:func:`stage_files`, ``git push`` in :func:`push`) -- is dispatched
-through :mod:`ralph.git.git_command_queue`. GitPython takes no
-process-wide repository lock, so an unserialized ``git add`` can race a
-sibling ``git commit`` on ``.git/index``; routing both through the same
-per-common-dir queue makes them mutually exclusive and gives them one
-shared health/backoff signal. :func:`_queued_git_call` is the single
-GitPython dispatch point; :func:`_queued_remote_push` covers
-``Remote.push``, which drives git through GitPython's own dispatch rather
-than through the router.
-
-Stale Git Lock Recovery:
-A lock file is removed only by ``ralph.git._lock_recovery`` and only when it is
-old enough (10s) AND provably has no live holder:
-
-* An open fd on the lock -- matched by path or by (dev, inode), so a bind mount
-  or symlinked checkout does not hide it -- is the one positive proof of a holder.
-* A process whose fd table cannot be read is ruled out only by a sound fact: none
-  of its uids is the lock owner's, or it is an infrastructure daemon that is not a
-  git client. Anything else stays "unknown" until the lock outlives
-  ``_UNPROVABLE_LOCK_CEILING_S`` (no git operation holds a lock that long).
-* ``lsof``/``fuser`` can only veto ("live"); their silence proves nothing on a
-  ``/proc`` platform. A nested pid namespace (container, bwrap) is never trusted.
-* The path must be a real git lock inside a real git dir (no symlinks, no
-  ``..``, no Ralph-owned locks), and the file is re-verified (same inode) and
-  moved aside under a cross-process mutex before it is unlinked.
-
-Every ``run_git`` and ``repo.git.*`` call gets the same treatment: provably dead
-locks are cleared before the command runs, and a lock failure is cleared or
-waited out (without holding the repository's queue lock) and the command is
-repeated only if it is safe to repeat. Contention that outlives a call is retried
-in place by the reducer and never ends the run.
-"""
 
 from __future__ import annotations
 
@@ -114,41 +72,21 @@ def _close_repo(repo: Repo | None) -> None:
 
 @dataclass(frozen=True)
 class _RepoQueueView:
-    """Structural ``Repo`` stand-in carrying the queue-routing seam attributes.
-
-    :func:`~ralph.git.git_command_queue.route_git_method` reads exactly two
-    attributes off the object it is handed: ``git`` (the dynamic
-    ``repo.git.<method>`` dispatch handle) and ``git_dir`` (the
-    per-repository queue key). A live :class:`~git.Repo` carries both and is
-    passed through untouched. A duck-typed ``Repo`` double -- the shape the
-    operations tests use to stay off the git binary -- carries only ``git``,
-    so this view supplies the key from the repo root the caller already
-    holds. Both shapes normalize to the SAME common-dir, so the double
-    serializes against the live repository exactly as the real object does.
-    """
 
     git: object
     git_dir: str
 
 
 def _is_queue_view(candidate: object) -> bool:
-    """Return whether ``candidate`` is a queue-routing view wrapper."""
     return isinstance(candidate, _RepoQueueView)
 
 
 def _queue_routing_target(repo_root: Path | str, repo: Repo) -> Repo:
-    """Return the object whose git-dir identifies this repository's queue.
-
-    Live :class:`~git.Repo` objects are returned unchanged (their ``git_dir``
-    is already the canonical worktree git-dir). Anything else is wrapped in
-    :class:`_RepoQueueView` keyed on ``repo_root``, so the queue key never
-    depends on a double exposing ``git_dir``.
-    """
     if not _is_queue_view(repo) and not hasattr(repo, "git_dir"):
         view = _RepoQueueView(git=repo.git, git_dir=str(repo_root))
         return cast(
             "Repo", view
-        )  # cast-policy: seam: structural boundary (queue-routing view exposes exactly the two attributes route_git_method reads)
+        )
     return repo
 
 
@@ -159,29 +97,10 @@ def _queued_git_call(
     args: Sequence[object] = (),
     kwargs: Mapping[str, object] | None = None,
 ) -> object:
-    """Run ``repo.git.<method_name>(...)`` inside the shared git queue.
-
-    Routing every GitPython dispatch in this module through
-    :func:`~ralph.git.git_command_queue.route_git_method` is what makes a
-    ``git add`` / ``git status`` issued here serialize against the
-    ``run_git`` subprocess path: both resolve the same per-common-dir
-    :class:`~ralph.git.git_command_queue.GitCommandQueue` and therefore share
-    one lock and one health/backoff signal. Return value and exception
-    behaviour are exactly the underlying dispatch's.
-    """
     return route_git_method(_queue_routing_target(repo_root, repo), method_name, args, kwargs)
 
 
 def _queued_remote_push(repo_root: Path | str, repo: Repo, remote: str, branch: str) -> None:
-    """Push ``branch`` to ``remote`` while holding the shared git queue lock.
-
-    :meth:`git.Remote.push` drives ``git push`` through GitPython's own
-    dispatch rather than through :func:`route_git_method`, so the lock -- and
-    the outcome this repository's shared health signal records -- is taken
-    here. The queue is keyed on ``repo_root`` for the same reason
-    :func:`_queue_routing_target` supplies a key: the caller may hold a
-    duck-typed ``Repo`` double.
-    """
     queue = get_queue_for_repo(Path(repo_root))
     with queue.execute_lock:
         try:
@@ -192,7 +111,6 @@ def _queued_remote_push(repo_root: Path | str, repo: Repo, remote: str, branch: 
         queue.record_outcome("success")
 
 
-# Test seams overrideable via monkeypatch
 _LOCK_BACKOFF_S: tuple[float, ...] = _BASE_LOCK_BACKOFF_S
 _STALE_GIT_LOCK_AGE_SECONDS: float = _BASE_STALE_GIT_LOCK_AGE_SECONDS
 _sleep_fn: Callable[[float], None] = _base_sleep_fn
@@ -240,9 +158,6 @@ def _run_git_operation_with_stale_lock_recovery[T](
     action: Callable[[], T],
     repo_root: Path | str | None = None,
 ) -> T:
-    # git prints a lock path relative to the cwd it ran in (the repo root);
-    # tell the recovery where that is so a relative path is never resolved
-    # against Ralph's own working directory.
     token = _lock_base_dir.set(Path(repo_root).resolve() if repo_root is not None else None)
     try:
         return _base_run_git_operation_with_stale_lock_recovery(
@@ -309,17 +224,6 @@ def _run_commit_hooks(
 
 
 def find_repo_root(start: Path | str = Path()) -> Path:
-    """Locate git repo root from start path.
-
-    Args:
-        start: Starting path for the search.
-
-    Returns:
-        Path to the repository root.
-
-    Raises:
-        GitOperationError: If not inside a git repository.
-    """
     repo: Repo | None = None
     try:
         repo = Repo(start, search_parent_directories=True)
@@ -333,18 +237,6 @@ def find_repo_root(start: Path | str = Path()) -> Path:
 
 
 def find_main_worktree_root(start: Path | str = Path()) -> Path:
-    """Find the primary worktree root for the current repository.
-
-    For linked worktrees, this resolves to the main checkout that owns the
-    shared git common directory. For ordinary repositories, it matches the
-    active repository root.
-
-    This helper detects linked git worktrees only as a workspace-root resolver
-    and is NEVER used by the same-workspace parallel worker path. Parallel v1
-    workers always share the canonical repo_root; this function MUST NOT be
-    invoked by ``ralph.pipeline.parallel.*`` modules. Callers in that package
-    violate the same-workspace isolation contract.
-    """
     repo: Repo | None = None
     try:
         repo = Repo(start, search_parent_directories=True)
@@ -357,14 +249,6 @@ def find_main_worktree_root(start: Path | str = Path()) -> Path:
 
 
 def is_repo_clean(repo_root: Path | str) -> bool:
-    """Check if repository has uncommitted changes.
-
-    Args:
-        repo_root: Path to the repository root.
-
-    Returns:
-        True if repository is clean (no uncommitted changes).
-    """
     repo_root_path = Path(repo_root)
     try:
         result = run_git(
@@ -386,12 +270,6 @@ def is_repo_clean(repo_root: Path | str) -> bool:
 
 
 def has_uncommitted_changes(repo_root: Path | str) -> bool:
-    """Return True when the working tree has uncommitted work.
-
-    Includes staged diff, unstaged diff, and untracked files. This is the
-    authoritative skip check for commit phases: if this returns False, there
-    is literally nothing for a commit agent to package up.
-    """
     repo_root_path = Path(repo_root)
     try:
         result = run_git(("status", "--porcelain"), cwd=repo_root_path, label="git-status")
@@ -409,11 +287,6 @@ def has_uncommitted_changes(repo_root: Path | str) -> bool:
 
 
 def has_commits_since(repo_root: Path | str, baseline_sha: str | None) -> bool:
-    """Return True when HEAD is ahead of ``baseline_sha``.
-
-    When ``baseline_sha`` is None the caller has no prior baseline (first run),
-    so we conservatively return True to allow the caller to proceed.
-    """
     if baseline_sha is None:
         return True
     repo_root_path = Path(repo_root)
@@ -439,16 +312,6 @@ def has_commits_since(repo_root: Path | str, baseline_sha: str | None) -> bool:
 
 
 def has_staged_changes(repo_root: Path | str) -> bool:
-    """Check if repository has staged changes.
-
-    Args:
-        repo_root: Path to the repository root.
-
-    Returns:
-        True if there are staged changes. Untracked-only worktrees
-        return False -- this helper is the staged-only contract used by
-        ``commit`` to decide whether a commit can proceed.
-    """
     try:
         status_lines = _git_status_porcelain_lines(Path(repo_root))
     except (OSError, GitOperationError):
@@ -462,12 +325,6 @@ def has_staged_changes(repo_root: Path | str) -> bool:
 
 
 def list_changed_paths(repo_root: Path | str) -> list[str]:
-    """Return unique dirty paths from ``git status --porcelain`` in output order.
-
-    Commit-message scopes are resolved before their paths are staged, so this
-    deliberately includes both staged and unstaged changes (including
-    untracked files). ``get_staged_files`` remains the staged-only API.
-    """
     try:
         status_lines = _git_status_porcelain_lines(Path(repo_root))
     except (OSError, GitOperationError):
@@ -476,7 +333,7 @@ def list_changed_paths(repo_root: Path | str) -> list[str]:
             repo = Repo(repo_root)
             status_output = cast(
                 "str", _queued_git_call(repo_root, repo, "status", ("--porcelain",))
-            )  # cast-policy: seam: structural boundary (git stdout probe; CLI returns plain text)
+            )
             status_lines = status_output.splitlines()
         finally:
             _close_repo(repo)
@@ -495,14 +352,6 @@ def list_changed_paths(repo_root: Path | str) -> list[str]:
 
 
 def get_staged_files(repo_root: Path | str) -> list[str]:
-    """Get list of staged files.
-
-    Args:
-        repo_root: Path to the repository root.
-
-    Returns:
-        List of staged file paths. Untracked-only worktrees return ``[]``.
-    """
     try:
         status_lines = _git_status_porcelain_lines(Path(repo_root))
     except (OSError, GitOperationError):
@@ -528,12 +377,6 @@ def get_staged_files(repo_root: Path | str) -> list[str]:
 
 
 def _line_is_staged(line: str) -> bool:
-    """Return True iff ``line`` (from ``git status --porcelain``) represents a staged change.
-
-    Untracked files (``??``) are explicitly excluded -- the staged-only
-    contract does NOT include them. ``has_uncommitted_changes`` is the
-    API for the broader dirty-state check.
-    """
     if not line:
         return False
     if line.startswith("??"):
@@ -542,17 +385,6 @@ def _line_is_staged(line: str) -> bool:
 
 
 def _git_status_porcelain_lines(repo_root: Path) -> list[str]:
-    """Run ``git status --porcelain`` and return the split output lines.
-
-    Raises:
-        GitOperationError: when ``git status --porcelain`` exits with a
-            non-zero return code. Earlier versions silently collapsed a
-            non-zero return into ``[]`` which made downstream helpers
-            (``has_staged_changes`` / ``list_changed_paths`` /
-            ``get_staged_files``) report a false-clean repo. The
-            failure now surfaces so callers can route through the
-            GitPython fallback path or fail loud.
-    """
     result = run_git(("status", "--porcelain"), cwd=repo_root, label="git-status")
     if result.returncode != 0:
         raise GitOperationError(
@@ -564,21 +396,12 @@ def _git_status_porcelain_lines(repo_root: Path) -> list[str]:
 
 
 def stage_all(repo_root: Path | str) -> None:
-    """Stage all changes (git add -A).
-
-    Args:
-        repo_root: Path to the repository root.
-    """
     repo: Repo | None = None
     try:
         repo = Repo(repo_root)
         active_repo = repo
 
         def _stage() -> None:
-            # Index mutation: ``git add -A`` rewrites the SHARED index, so it
-            # runs inside the per-repository queue lock. Two producers staging
-            # the same repository -- or a ``git status`` racing the stage --
-            # are serialized instead of interleaving on ``.git/index``.
             _ = _queued_git_call(repo_root, active_repo, "add", kwargs={"A": True})
 
         _run_git_operation_with_stale_lock_recovery("stage_all", _stage, repo_root)
@@ -590,17 +413,6 @@ def stage_all(repo_root: Path | str) -> None:
 
 
 def write_tree(repo_root: Path | str) -> str:
-    """Write the current index to a tree object and return its 40-character hex SHA.
-
-    Args:
-        repo_root: Path to the repository root.
-
-    Returns:
-        The 40-character hex SHA of the written tree object.
-
-    Raises:
-        GitOperationError: If write-tree fails.
-    """
     repo: Repo | None = None
     try:
         repo = Repo(repo_root)
@@ -620,11 +432,6 @@ def write_tree(repo_root: Path | str) -> str:
 
 
 def stage_files(repo_root: Path | str, files: list[str]) -> None:
-    """Stage only the provided repository-relative paths.
-
-    Uses ``git add --all -- <paths>`` so modified, untracked, and deleted files
-    are all handled consistently for the selected scope.
-    """
     if not files:
         logger.debug("No files requested for selective staging in {}", repo_root)
         return
@@ -634,9 +441,6 @@ def stage_files(repo_root: Path | str, files: list[str]) -> None:
         active_repo = repo
 
         def _stage() -> None:
-            # As with ``stage_all``: the selective add shares the index, so it
-            # runs inside the per-repository queue lock and cannot interleave
-            # with a sibling stage or a concurrent ``git status``/``git commit``.
             _ = _queued_git_call(repo_root, active_repo, "add", ("--all", "--", *files))
 
         _run_git_operation_with_stale_lock_recovery("stage_files", _stage, repo_root)
@@ -648,7 +452,6 @@ def stage_files(repo_root: Path | str, files: list[str]) -> None:
 
 
 def _current_head_sha(repo_root: Path) -> str | None:
-    """Return the SHA at HEAD or ``None`` if HEAD cannot be resolved."""
     direct = _read_head_sha_direct(repo_root)
     if direct is not None:
         return direct
@@ -664,29 +467,6 @@ def _current_head_sha(repo_root: Path) -> str | None:
 
 
 def _resolve_detached_head_reattach_branch(repo_root: Path) -> str | None:
-    """Find a branch name to safely reattach a detached HEAD to.
-
-    Resolves the same way the commit reattach fallback does (reflog,
-    worktree metadata, branches whose tip equals HEAD). The
-    authoritative resolver lives in
-    :mod:`ralph.pipeline.commit_executor`; this helper provides the
-    operations-layer fallback so :func:`create_commit` can reattach
-    a detached HEAD discovered inside the seam itself, without taking
-    a dependency on the pipeline module.
-
-    Search order:
-
-    1. ``git for-each-ref --points-at=HEAD refs/heads/`` -- returns any
-       branch whose tip equals HEAD. This is the exact-tip match that
-       ``git symbolic-ref HEAD refs/heads/<branch>`` cannot clobber.
-    2. The raw ``.git/HEAD`` file when it still contains
-       ``ref: refs/heads/<branch>`` (the residual written back by
-       ``git checkout <branch>`` prior to the detach).
-    3. The reflog's most recent ``checkout: moving from ...`` /
-       ``switch branch to ...`` destination.
-
-    Returns ``None`` when no safe branch can be resolved.
-    """
     head_sha = _current_head_sha(repo_root)
     if not head_sha:
         return None
@@ -740,7 +520,6 @@ def _resolve_detached_head_reattach_branch(repo_root: Path) -> str | None:
 
 
 def _head_tree_sha(repo_root: Path, head_sha: str) -> str | None:
-    """Return the tree SHA at ``head_sha``, or ``None`` if not resolvable."""
     try:
         repo = Repo(repo_root)
         try:
@@ -761,7 +540,6 @@ def _head_tree_sha(repo_root: Path, head_sha: str) -> str | None:
 
 
 def _tree_matches_head(repo_root: Path, current_head_sha: str, candidate_tree: str) -> bool:
-    """True iff HEAD's tree already equals the candidate tree (content committed)."""
     if not current_head_sha:
         return False
     head_tree = _head_tree_sha(repo_root, current_head_sha)
@@ -769,14 +547,6 @@ def _tree_matches_head(repo_root: Path, current_head_sha: str, candidate_tree: s
 
 
 def _reattach_or_resolve_ref_name(repo_root: Path) -> str:
-    """Resolve the ref name to commit onto, reattaching a detached HEAD first.
-
-    Detached HEAD at the seam (AC8) is repaired here -- not failed: the
-    feature branch is resolved from branches pointing at HEAD, the
-    ``.git/HEAD`` residual, or the reflog, then ``HEAD`` is reattached
-    atomically so the commit lands on the feature branch instead of
-    orphaning the work.
-    """
     ref_result = run_git(
         ("symbolic-ref", "--quiet", "HEAD"),
         cwd=repo_root,
@@ -804,16 +574,13 @@ def _reattach_or_resolve_ref_name(repo_root: Path) -> str:
 
 
 def _run_prepare_commit_hooks(repo_root: Path, repo_git_dir: str, message_path: Path) -> str:
-    """Run pre-commit hooks over ``message_path`` and return the final message."""
     hook_env = {"GIT_REFLOG_ACTION": "ralph create_commit"}
     hooks_dir = Path(repo_git_dir) / "hooks"
     _run_commit_hooks(repo_root, hooks_dir, message_path, hook_env)
-    # filesystem-read-ok: Git hooks mutate this owned temporary commit-message file in place
     return message_path.read_text(encoding="utf-8")
 
 
 def _candidate_commit_tree(repo_root: Path) -> str:
-    """Write the index as a tree object and return its SHA."""
     tree_result = run_git(("write-tree",), cwd=repo_root, label="git-write-tree")
     if tree_result.returncode != 0:
         raise GitOperationError("create_commit", tree_result.stderr.strip())
@@ -828,14 +595,6 @@ def _cas_publish_or_detect_advance(
     hooks_dir: Path | None,
     hook_env: dict[str, str],
 ) -> CommitCreationResult:
-    """CAS-publish ``candidate_sha`` onto ``ref_name``; detect concurrent advance.
-
-    On a CAS failure the current HEAD is re-read: when it moved past
-    ``expected_head`` the commit was created concurrently (or Ralph
-    already advanced the branch) and the result is idempotent
-    ``ALREADY_ADVANCED`` rather than an error -- preventing a duplicate
-    commit and a commit/review loop on re-dispatch.
-    """
     update_ref = run_git(
         ("update-ref", ref_name, candidate_sha, expected_head),
         cwd=repo_root,
@@ -874,31 +633,10 @@ def create_commit(
     author_email: str | None = None,
     expected_head: str,
 ) -> CommitCreationResult:
-    """Create a git commit.
-
-    Args:
-        repo_root: Path to the repository root.
-        message: Commit message.
-        author_name: Optional author name override.
-        author_email: Optional author email override.
-        expected_head: HEAD SHA required for the ref compare-and-swap.
-
-    Returns:
-        Typed result describing commit creation.
-
-    Raises:
-        GitOperationError: If commit fails.
-    """
     repo: Repo | None = None
     try:
         repo = Repo(repo_root)
         message = _append_ralph_workflow_coauthor_trailer(message)
-        # Every git invocation in this function (the detached-HEAD reattach,
-        # the tree-based idempotency short-circuit, the commit-tree + CAS
-        # publish) already runs through ``run_git`` -> ``route_run_git``, so
-        # the whole body is serialized on this repository's shared queue. The
-        # steps stay in that order: the idempotency short-circuit must observe
-        # HEAD's tree and the candidate tree inside the same serialized run.
         current_head_sha = repo.head.commit.hexsha if hasattr(repo, "head") else ""
         if not hasattr(repo, "git_dir"):
             if current_head_sha and current_head_sha != expected_head:
@@ -921,22 +659,12 @@ def create_commit(
         try:
             message = _run_prepare_commit_hooks(Path(repo_root), str(repo.git_dir), message_path)
         finally:
-            message_path.unlink(  # filesystem-write-ok: transient hook message scratch
+            message_path.unlink(
                 missing_ok=True
             )
 
         candidate_tree_sha = _candidate_commit_tree(Path(repo_root))
 
-        # Idempotency short-circuit (AC11): a commit "already exists" iff the
-        # content is already in place -- HEAD's tree equals the tree we are
-        # about to commit. Matching by tree content (not by SHA) covers both
-        # re-dispatch after an interrupt (HEAD still == expected_head) and a
-        # commit Ralph rewrote or moved (rebase / cherry-pick / amend changed
-        # the SHAs without changing the tree). A SHA-only match must NEVER
-        # short-circuit on its own: after a detached-HEAD reattach the
-        # reattached branch tip equals the pre-stage ``expected_head`` while
-        # the index still holds pending changes -- short-circuiting there
-        # dropped the work and routed the phase to ``failed_terminal``.
         if _tree_matches_head(Path(repo_root), current_head_sha, candidate_tree_sha):
             return CommitCreationResult.already_advanced(current_head_sha)
 
@@ -984,25 +712,12 @@ def create_commit(
 
 
 class CommitTreeMismatchError(GitOperationError):
-    """The commit that was created does not carry the approved tree SHA.
-
-    Raised by :func:`create_commit_with_hooks` when the tree recorded by the
-    created commit differs from the tree the commit review approved -- for
-    example because a repository hook rewrote the index while the commit was
-    being created. The mismatched commit is never left published: the branch
-    is moved back to the commit's parent and the index is restored to the
-    approved tree before this error is raised. When that undo itself fails
-    (a locked ref, a concurrent ref update), the error message names the
-    published commit so it can be removed manually instead of claiming an
-    undo that did not happen.
-    """
 
     def __init__(self, message: str) -> None:
         super().__init__("create_commit", message)
 
 
 def _commit_parent_sha(repo_root: Path, commit_sha: str) -> str:
-    """Return the first parent of ``commit_sha``, or ``""`` for a root commit."""
     try:
         repo = Repo(repo_root)
         try:
@@ -1029,17 +744,6 @@ def _undo_unapproved_commit(
     parent_sha: str,
     approved_tree_sha: str,
 ) -> bool:
-    """Move the branch back to the commit's parent and restore the index.
-
-    The branch is restored to the commit's PARENT (not to a remembered
-    ``expected_head``) so a concurrent commit that landed before this one
-    survives the undo. The index is restored to the approved tree so a hook's
-    index rewrite cannot leak into the next attempt.
-
-    Returns:
-        True when both the branch and the index were restored, False when
-        either step failed (the caller reports the still-published commit).
-    """
     if parent_sha:
         undo = run_git(
             ("update-ref", ref_name, parent_sha, created_sha),
@@ -1087,39 +791,6 @@ def create_commit_with_hooks(
     author_name: str | None = None,
     author_email: str | None = None,
 ) -> CommitCreationResult:
-    """Create the approved commit through a real ``git commit`` invocation.
-
-    ``git commit`` runs the repository's own hooks (``pre-commit``,
-    ``prepare-commit-msg``, ``commit-msg``, ``post-commit``), so a hook can
-    block the commit: a non-zero hook exit aborts the commit, no commit is
-    created, and the failure is surfaced to the caller.
-
-    The commit stays bound to the approved tree. The staged tree is checked
-    against ``expected_tree_sha`` BEFORE the commit is allowed, and the tree
-    recorded by the CREATED commit is checked against ``expected_tree_sha``
-    AFTER the commit: a hook that rewrote the index cannot smuggle a
-    different tree into the published history, because the post-check reads
-    the tree of the commit object git itself created, and a mismatch undoes
-    the commit (the branch moves back to the commit's parent and the index is
-    restored to the approved tree).
-
-    Args:
-        repo_root: Path to the repository root.
-        message: Commit message.
-        expected_head: HEAD SHA the commit attempt is bound to.
-        expected_tree_sha: The tree SHA the commit review approved.
-        author_name: Optional author name override.
-        author_email: Optional author email override.
-
-    Returns:
-        Typed result describing commit creation.
-
-    Raises:
-        CommitTreeMismatchError: If the created commit does not carry the
-            approved tree (the commit is undone before this is raised).
-        GitOperationError: If the commit fails (including a hook that blocks
-            it).
-    """
     repo: Repo | None = None
     try:
         repo = Repo(repo_root)
@@ -1141,7 +812,7 @@ def create_commit_with_hooks(
 
         with tempfile.TemporaryDirectory(prefix="ralph-commit-") as scratch:
             message_path = Path(scratch) / "COMMIT_EDITMSG"
-            message_path.write_text(  # filesystem-write-ok: transient commit-message scratch file inside a TemporaryDirectory that is removed when the block exits
+            message_path.write_text(
                 message, encoding="utf-8"
             )
             commit_result = run_git(
@@ -1193,9 +864,6 @@ def create_commit_with_hooks(
                 f"{expected_tree_sha}"
             )
         if parent_sha and expected_head and parent_sha != expected_head:
-            # HEAD advanced between the attempt and the commit: the created
-            # commit is not bound to the approved head, so it is undone and
-            # the attempt is reported as idempotently already advanced.
             _undo_unapproved_commit(
                 Path(repo_root),
                 ref_name,
@@ -1223,24 +891,11 @@ def push(
     remote: str,
     branch: str | None = None,
 ) -> None:
-    """Push current branch to remote.
-
-    Args:
-        repo_root: Path to the repository root.
-        remote: Remote name to push to.
-        branch: Optional branch name override.
-
-    Raises:
-        GitOperationError: If push fails.
-    """
     repo: Repo | None = None
     try:
         repo = Repo(repo_root)
         active_branch = branch or repo.active_branch.name
         repo.remote(remote)
-        # Publish idempotency (AC11): skip the push when the local SHA equals
-        # the remote-tracking SHA. A re-dispatch, an interrupted run, or a
-        # repeated fan-out must not re-issue a non-fast-forward push.
         local_sha_result = run_git(
             ("rev-parse", "--verify", active_branch),
             cwd=Path(repo_root),
@@ -1262,10 +917,6 @@ def push(
                 active_branch,
             )
             return
-        # The already-pushed short-circuit stays ABOVE the queue: a re-dispatch
-        # that finds the local and remote-tracking SHAs already in sync never
-        # re-issues a push. The push itself is taken through the shared queue
-        # so it cannot interleave with a concurrent git call on this repository.
         _queued_remote_push(repo_root, repo, remote, active_branch)
         logger.info("Pushed {} to {}/{}", active_branch, remote, active_branch)
     except Exception as exc:
@@ -1327,7 +978,6 @@ def _read_ref_from_disk(ref: str, search_dirs: list[Path]) -> str | None:
 
 
 def _read_head_sha_direct(repo_root: Path | str) -> str | None:
-    """Read current HEAD commit SHA directly from disk without spawning GitPython."""
     try:
         gitdir, commondir = _resolve_gitdir_paths(Path(repo_root))
         if gitdir is None:
@@ -1350,23 +1000,6 @@ def _read_head_sha_direct(repo_root: Path | str) -> str | None:
 
 
 def get_head_sha(repo_root: Path | str) -> str:
-    """Return current HEAD commit SHA.
-
-    Args:
-        repo_root: Path to the repository root.
-
-    Returns:
-        SHA of the current HEAD commit.
-
-    Raises:
-        GitOperationError: If HEAD cannot be read.
-
-    The wrapping is deliberate and matches :func:`find_repo_root` and
-    :func:`merge_base` in this module. Raw GitPython exceptions used to
-    escape into the auto-integrate skip table, where they were recorded
-    as an opaque ``unexpected failure`` that named neither the operation
-    nor the repository.
-    """
     direct_sha = _read_head_sha_direct(repo_root)
     if direct_sha is not None:
         return direct_sha
@@ -1386,19 +1019,6 @@ def merge_base(
     ref_a: str,
     ref_b: str,
 ) -> str:
-    """Return merge-base SHA between two refs.
-
-    Args:
-        repo_root: Path to the repository root.
-        ref_a: First ref (branch, tag, SHA).
-        ref_b: Second ref (branch, tag, SHA).
-
-    Returns:
-        SHA of the merge base commit.
-
-    Raises:
-        GitOperationError: If merge base cannot be determined.
-    """
     repo: Repo | None = None
     try:
         repo = Repo(repo_root)
@@ -1414,14 +1034,6 @@ def merge_base(
 
 
 def get_current_branch(repo_root: Path | str) -> str:
-    """Get the current branch name.
-
-    Args:
-        repo_root: Path to the repository root.
-
-    Returns:
-        Name of the current branch.
-    """
     repo: Repo | None = None
     try:
         repo = Repo(repo_root)
@@ -1435,16 +1047,6 @@ def get_commits_between(
     from_ref: str,
     to_ref: str,
 ) -> list[str]:
-    """Get list of commit SHAs between two refs.
-
-    Args:
-        repo_root: Path to the repository root.
-        from_ref: Starting ref (exclusive).
-        to_ref: Ending ref (inclusive).
-
-    Returns:
-        List of commit SHAs in reverse chronological order.
-    """
     repo: Repo | None = None
     try:
         repo = Repo(repo_root)
@@ -1455,12 +1057,6 @@ def get_commits_between(
 
 
 def append_to_gitignore(repo_root: Path | str, patterns: list[str]) -> None:
-    """Append patterns to .gitignore.
-
-    Args:
-        repo_root: Path to the repository root.
-        patterns: List of patterns to add.
-    """
     gitignore_path = Path(repo_root) / ".gitignore"
     existing = set()
     if gitignore_path.exists():
@@ -1479,51 +1075,6 @@ def _atomic_append_text(
     *,
     encoding: str = "utf-8",
 ) -> None:
-    """Append ``payload`` to ``path`` atomically via sibling-staging + ``Path.replace``.
-
-    Mirrors the pattern from ``ralph/mcp/transport/agy.py:99-127`` so a
-    SIGKILL mid-write leaves the target file intact -- the new content is
-    staged in a sibling file (with a sha256(payload)-derived hash plus
-    os.getpid() suffix), then ``Path.replace()``-published atomically.
-
-    Boundary normalization: when ``path`` exists and its content does NOT
-    end with ``\\n``, the helper inserts a single ``\\n`` separator before
-    the appended payload. Without this, appending ``"*.cache\\n"`` to a
-    file containing ``"existing-without-newline"`` would publish
-    ``"existing-without-newline*.cache\\n"`` -- a malformed single-line
-    rule rather than two separate rules.
-
-    Byte-preserving round-trip: the helper reads the existing file via
-    ``Path.read_bytes()`` and writes the staged file via
-    ``Path.write_bytes()``. This preserves CRLF (``\\r\\n``), BOM, and
-    any other byte-level content the caller wrote -- a text-mode round
-    trip via ``read_text``/``write_text`` would normalize CRLF to LF
-    on POSIX (universal-newlines mode) and silently corrupt
-    Windows-style or gitattributes-style content. The payload string
-    is encoded with the same ``encoding`` argument for the write so the
-    boundary insert (when needed) does not double-encode the existing
-    bytes.
-
-    Read-failure policy: when ``path.exists()`` is True but the read
-    raises ``OSError`` (permission denied, broken FS, transient I/O), the
-    helper fails closed by re-raising the underlying ``OSError``. A
-    silent fallback to ``existing = ""`` would publish ``payload`` over
-    the original content via ``Path.replace()`` -- exactly the silent
-    corruption the atomic helper exists to prevent. Callers that want a
-    best-effort fallback (e.g. bootstrap auto-seed) wrap the call in
-    their own try/except. A missing ``path`` is treated as empty
-    (legitimate creation case).
-
-    If the staging write or replace fails, the staging file is removed
-    before re-raising so the helper never leaves a dangling sibling.
-
-    Args:
-        path: Target file path. Parent directory must already exist (or
-            be creatable via ``path.parent.mkdir(parents=True, exist_ok=True)``).
-        payload: Text to append. The helper normalizes the boundary
-            against the existing content (see above).
-        encoding: Text encoding for the staging write. Default ``utf-8``.
-    """
     path.parent.mkdir(parents=True, exist_ok=True)
     existing = b""
     if path.exists():
@@ -1535,7 +1086,6 @@ def _atomic_append_text(
     _staging_pid = os.getpid()
     staging = path.with_suffix(path.suffix + f".ralph-staging.{_staging_pid}.{_staging_hash}")
     try:
-        # filesystem-write-ok: temp staging file (atomic replace target below)
         staging.write_bytes(existing + separator + payload.encode(encoding))
         staging.replace(path)
     except BaseException:
@@ -1550,5 +1100,4 @@ def atomic_append_text(
     *,
     encoding: str = "utf-8",
 ) -> None:
-    """Append text through Ralph's atomic sibling-staging publication path."""
     _atomic_append_text(path, payload, encoding=encoding)

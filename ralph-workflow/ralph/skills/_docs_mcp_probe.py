@@ -1,4 +1,3 @@
-"""Docs MCP server reachability probe with URL-shape-first validation."""
 
 from __future__ import annotations
 
@@ -11,7 +10,6 @@ _HTTP_OK = 200
 
 
 def is_supported_docs_mcp_url(url: str) -> bool:
-    """Return True if the URL matches the supported docs-MCP endpoint shape."""
     parsed = urlparse(url)
     return (
         parsed.scheme == "http"
@@ -21,7 +19,6 @@ def is_supported_docs_mcp_url(url: str) -> bool:
 
 
 def probe_docs_mcp(url: str, *, timeout: float = 2.0) -> bool:
-    """Return True if the URL is a reachable docs-MCP server returning HTTP 200."""
     if not is_supported_docs_mcp_url(url):
         return False
     try:

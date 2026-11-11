@@ -1,25 +1,3 @@
-"""Policy compliance audit for test files.
-
-Uses AST analysis (not regex) to detect policy violations in test code:
-- sleep() calls with non-zero arguments
-- Real I/O operations (file I/O, network, subprocess)
-- GitPython real-Git boundary crossings (``Repo.init``, ``git.Repo``) in
-  tests outside the ``subprocess_e2e`` profile and the sanctioned
-  real-git registry
-- White-box coupling to private ``ralph`` production internals
-- White-box counts above the frozen baseline ceiling
-
-It also reconciles the frozen baseline against the WHOLE tree, so a baseline
-row that no longer corresponds to any coupling fails the gate instead of
-rotting silently (see :mod:`ralph.testing.whitebox_reconciliation`).
-
-Usage:
-    python -m ralph.testing.audit_test_policy [tests_root]
-    python -m ralph.testing.audit_test_policy --emit-baseline [tests_root]
-
-Returns exit code 0 if no policy violations found, 1 otherwise.
-"""
-
 from __future__ import annotations
 
 import ast
@@ -81,12 +59,6 @@ def _split_names(value: str) -> set[str]:
 
 
 def _git_bound_names(tree: ast.AST) -> frozenset[str]:
-    """Return the names bound by imports of the ``git`` (GitPython) module.
-
-    Covers ``import git[.sub]``, ``from git[.sub] import X`` and their
-    aliased forms; the returned names are the roots that calls are
-    matched against in :meth:`TestPolicyAuditor._check_git_call`.
-    """
     names: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -102,25 +74,11 @@ def _git_bound_names(tree: ast.AST) -> frozenset[str]:
 
 
 def _is_git_crossing_root(root: str) -> bool:
-    """Return True when an imported ``git`` name crosses the real-Git boundary."""
     lowered = root.lower()
     return lowered in _GIT_CROSSING_ROOTS or lowered.endswith("repo")
 
 
 def _is_registered_real_git_file(file_path: str) -> bool:
-    """Return True when ``file_path`` is a sanctioned default-lane real-git file.
-
-    The canonical testing policy (docs/ralph-workflow-policy/testing-policy.md)
-    names two registries as the sanctioned exceptions that keep real-git
-    tests on the default ``make test`` profile: the
-    ``REQUIRED_AUTO_INTEGRATE_E2E_FILES`` selection registry and the
-    ``SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES`` audit-exception registry
-    (the latter holds default-lane files pytest cannot select, starting
-    with ``tests/conftest.py``). The audit honours both so the sanction
-    and the selection requirement cannot drift. Paths outside the project
-    tree (e.g. the temporary files the audit's own unit tests write) are
-    never registered.
-    """
     try:
         relative = Path(file_path).resolve().relative_to(_PROJECT_ROOT).as_posix()
     except ValueError:
@@ -173,41 +131,22 @@ _NETWORK_CALLS: frozenset[str] = frozenset(
 _SLEEP_CALLS: frozenset[str] = frozenset({"time.sleep", "asyncio.sleep"})
 _WALL_CLOCK_CALLS: frozenset[str] = frozenset({"time.monotonic", "time.perf_counter"})
 
-#: Every module-qualified call a category check matches by name. A call
-#: written through an import alias (``import time as t``, ``from time
-#: import sleep``) is resolved to one of these before it is checked.
 _ALIAS_RESOLVED_CALLS: frozenset[str] = (
     _SLEEP_CALLS | _WALL_CLOCK_CALLS | _SUBPROCESS_CALLS | _NETWORK_CALLS
 )
 
-#: Roots of dotted call names that cross the real-Git boundary when the
-#: root is bound by a ``git`` (GitPython) import. ``Repo``/``Git`` entry
-#: points shell out to the real git binary, so ``Repo.init(...)``,
-#: ``Repo(path)``, ``git.Repo(...)`` and every call rooted at such a name
-#: are real subprocess work. Aliases are recognised by the ``repo`` suffix
-#: (``from git import Repo as GitRepo``). Exception and data classes
-#: (``GitCommandError``, ``Actor``, ...) never touch a process and are not
-#: crossing roots.
 _GIT_CROSSING_ROOTS: frozenset[str] = frozenset({"repo", "git"})
 
-# Files marked subprocess_e2e skip only subprocess and network checks.
 _SUBPROCESS_E2E_FILES: set[str] = set()
 
-# Sleep exemptions apply only to the sleep category.
-_SLEEP_ALLOWLIST: set[str] = set()  # none currently — all sleep() in tests is a design defect
+_SLEEP_ALLOWLIST: set[str] = set()
 
-# Files in this list skip only the real-I/O category. The entries and
-# the reason each one exists live in ralph.testing.policy_allowlists.
 _IO_ALLOWLIST = IO_ALLOWLIST
 
-# Files that may read only shipped repository source files. The entries
-# and the reason each one exists live in ralph.testing.policy_allowlists.
 _SOURCE_READ_ALLOWLIST = SOURCE_READ_ALLOWLIST
 
 _PATH_READ_METHODS: frozenset[str] = frozenset({"read_text", "read_bytes"})
 
-# Files that may measure real wall-clock time. The entries and the
-# reason each one exists live in ralph.testing.policy_allowlists.
 _WALL_CLOCK_ALLOWLIST = WALL_CLOCK_ALLOWLIST
 
 _SMOKE_NAME_ALLOWLIST: set[str] = {
@@ -220,7 +159,6 @@ _PATH_IO_METHODS: frozenset[str] = frozenset(
 )
 _PATH_IO_CALLS: frozenset[str] = frozenset(f"Path.{method}" for method in _PATH_IO_METHODS)
 
-# Patch calls are exemptions only for their exact dotted target.
 _MONKEYPATCH_PATTERNS: set[str] = _split_names(
     """
     monkeypatch.setattr monkeypatch.setenv monkeypatch.delenv monkeypatch.setitem
@@ -239,8 +177,6 @@ WhiteboxBaseline = Mapping[str, Mapping[str, int]]
 
 
 class TestPolicyViolation:
-    """A single policy violation found in a test file."""
-
     __test__ = False
 
     def __init__(
@@ -261,35 +197,14 @@ class TestPolicyViolation:
 
 @dataclass
 class AuditInventory:
-    """What the single per-file audit pass learns about the tree.
-
-    The audit walks every test module ONCE. This collector receives what
-    that walk learns, so the whole-tree reconciliation of the frozen
-    baseline can run afterwards WITHOUT a second scan of the tree.
-    """
-
-    #: Fresh white-box counts keyed by project-relative test path. Only
-    #: files with at least one non-zero count are present.
     counts: dict[str, WhiteboxCounts] = field(default_factory=dict)
 
-    #: Every audited test path that still exists in the tree. It tells a
-    #: DELETED file apart from a file whose coupling was converted away.
     existing_paths: set[str] = field(default_factory=set)
 
-    #: The pytest markers declared by the most recently audited module.
     module_markers: set[str] = field(default_factory=set)
 
 
 class TestPolicyAuditor:
-    """Evaluate the test-policy categories of ONE parsed test module.
-
-    Every fact the checks need — the white-box counts, the patched targets
-    and the call sites — comes from ONE AST traversal
-    (:func:`ralph.testing.whitebox_detectors.analyze_module`), so the
-    whole-tree audit walks every test module once instead of once per
-    detector.
-    """
-
     def __init__(
         self,
         file_path: str,
@@ -306,21 +221,6 @@ class TestPolicyAuditor:
         parsed_tree = tree if tree is not None else ast.parse(source, filename=file_path)
         patterns = _MONKEYPATCH_PATTERNS if monkeypatch_patterns is None else monkeypatch_patterns
         self.facts = analyze_module(parsed_tree, monkeypatch_patterns=patterns)
-        # The ``subprocess_e2e`` marker is the repository's declared profile for
-        # tests that drive REAL subprocesses and sockets. Per the canonical
-        # testing policy (docs/ralph-workflow-policy/testing-policy.md):
-        # "An agent MUST NOT introduce real ``time.sleep()``, real filesystem
-        # I/O, or real network I/O in tests not marked ``subprocess_e2e`` or
-        # ``live_agy``", and the audit "fails the gate on real
-        # ``time.sleep()`` with non-zero arguments, real file ``open()``, real
-        # subprocess calls, and real socket/``urllib``/``requests``/``httpx``
-        # calls in any test that is not marked ``subprocess_e2e``".
-        #
-        # A marked test therefore owns the real-time and real-process
-        # categories: waiting for a real child to exit, measuring real elapsed
-        # time, and touching real sockets are the SUBJECT UNDER TEST there.
-        # The marker exempts those categories ONLY. The three white-box
-        # detectors are unconditional and still run on every test file.
         self._is_subprocess_e2e = (
             stem in _SUBPROCESS_E2E_FILES or self.facts.has_subprocess_e2e_marker
         )
@@ -328,11 +228,6 @@ class TestPolicyAuditor:
         self._skip_io = stem in _IO_ALLOWLIST or self._is_subprocess_e2e
         self._skip_wall_clock = stem in _WALL_CLOCK_ALLOWLIST or self._is_subprocess_e2e
         self._skip_subprocess_network = self._is_subprocess_e2e
-        # GitPython crossings join the subprocess/network category: a
-        # ``Repo.init``/``git.Repo`` call shells out to the real git
-        # binary. The ``subprocess_e2e`` marker owns the category, and so
-        # does the sanctioned real-git registry that keeps the registered
-        # default-lane integration proofs on the ``make test`` profile.
         self._git_roots = _git_bound_names(parsed_tree)
         self._skip_git = self._is_subprocess_e2e or _is_registered_real_git_file(file_path)
         self._uses_tmp_path = "tmp_path" in "\n".join(self.source_lines)
@@ -350,7 +245,6 @@ class TestPolicyAuditor:
         )
 
     def _check_calls(self) -> None:
-        """Check every call site of the module, in source order."""
         for node, written_name, inside_wait_for in self.facts.call_sites:
             func_name = self._resolve_call_name(written_name)
             self._check_sleep_call(node, func_name)
@@ -360,13 +254,6 @@ class TestPolicyAuditor:
             self._check_blocking_wait_call(node, func_name, inside_wait_for)
 
     def _resolve_call_name(self, written_name: str | None) -> str | None:
-        """Return the module-qualified banned call ``written_name`` denotes.
-
-        A name that resolves through the module's import aliases to a call
-        some category bans (``t.sleep`` -> ``time.sleep``, a bare ``run``
-        imported from ``subprocess`` -> ``subprocess.run``) is checked as
-        that call; any other name is checked as written.
-        """
         if written_name is None:
             return None
         for candidate in sorted(resolve_dotted_name(written_name, self.facts.import_aliases)):
@@ -375,7 +262,6 @@ class TestPolicyAuditor:
         return written_name
 
     def _check_sleep_call(self, node: ast.Call, func_name: str | None) -> None:
-        """Detect time.sleep(N) and asyncio.sleep(N) where N > 0."""
         if func_name is None:
             return
         if func_name not in _SLEEP_CALLS:
@@ -389,7 +275,7 @@ class TestPolicyAuditor:
             first_arg = node.args[0]
             if isinstance(first_arg, ast.Constant):
                 if isinstance(first_arg.value, (int, float)) and first_arg.value <= 0:
-                    return  # asyncio.sleep(0) is allowed
+                    return
                 if isinstance(first_arg.value, (int, float)) and first_arg.value > 0:
                     self._add_violation(
                         node,
@@ -405,7 +291,6 @@ class TestPolicyAuditor:
             )
 
     def _check_io_call(self, node: ast.Call, func_name: str | None) -> None:
-        """Detect real I/O operations."""
         if self._skip_io:
             return
         if func_name is None:
@@ -445,15 +330,6 @@ class TestPolicyAuditor:
             )
 
     def _check_git_call(self, node: ast.Call, func_name: str | None) -> None:
-        """Detect GitPython calls that cross the real-Git boundary.
-
-        GitPython's ``Repo``/``Git`` entry points spawn the real git
-        binary, so in a test outside the ``subprocess_e2e`` profile they
-        are real subprocess work (the fixture-shaped violation: a helper
-        module that builds a repository with ``Repo.init`` /
-        ``repo.index.commit`` for a suite that never declares the
-        marker).
-        """
         if self._skip_git or func_name is None:
             return
         root = func_name.split(".", 1)[0]
@@ -470,11 +346,9 @@ class TestPolicyAuditor:
         )
 
     def _is_source_read_exempt(self, method_name: str) -> bool:
-        """Return True when this file may read shipped repository files."""
         return self._source_read_exempt and method_name in _PATH_READ_METHODS
 
     def _check_anonymous_path_io_call(self, node: ast.Call) -> None:
-        """Detect I/O on an inline Path expression without a dotted name."""
         if not (isinstance(node.func, ast.Attribute) and node.func.attr in _PATH_IO_METHODS):
             return
         if self._is_source_read_exempt(node.func.attr):
@@ -489,7 +363,6 @@ class TestPolicyAuditor:
         )
 
     def _check_wall_clock_call(self, node: ast.Call, func_name: str | None) -> None:
-        """Detect time.monotonic()/time.perf_counter() in elapsed-time loops."""
         if func_name is None:
             return
         if func_name in _WALL_CLOCK_CALLS:
@@ -508,16 +381,12 @@ class TestPolicyAuditor:
         func_name: str | None,
         inside_wait_for: bool,
     ) -> None:
-        """Detect .wait() calls without a timeout argument."""
         if func_name is None:
             return
         if func_name.endswith(".wait") and not node.args and not node.keywords:
             if inside_wait_for:
                 return
             if self._is_subprocess_e2e:
-                # A real child process is waited on for real; the marker owns
-                # the blocking-wait category for the same reason it owns the
-                # sleep and wall-clock categories.
                 return
             self._add_violation(
                 node,
@@ -526,13 +395,11 @@ class TestPolicyAuditor:
             )
 
     def _is_target_patched(self, target: str) -> bool:
-        """Return whether the exact dotted ``target`` is patched in this file."""
         canonical = canonical_target_string(target)
         return canonical in self.facts.patched_targets
 
 
 def _collect_subprocess_e2e_files(tests_root: Path) -> set[str]:
-    """Find all test files marked with @pytest.mark.subprocess_e2e."""
     e2e_files: set[str] = set()
     for py_file in tests_root.rglob("*.py"):
         if any(part in _SKIP_DIRS for part in py_file.relative_to(tests_root).parts):
@@ -554,7 +421,6 @@ def _collect_subprocess_e2e_files(tests_root: Path) -> set[str]:
 
 
 def _iter_test_files(tests_root: Path) -> list[Path]:
-    """Return auditable Python files below ``tests_root`` in stable order."""
     return [
         path
         for path in sorted(tests_root.rglob("*.py"))
@@ -563,7 +429,6 @@ def _iter_test_files(tests_root: Path) -> list[Path]:
 
 
 def _baseline_key(file_path: Path, tests_root: Path | None = None) -> str:
-    """Return the project-relative baseline key for ``file_path``."""
     resolved = file_path.resolve()
     try:
         return resolved.relative_to(_PROJECT_ROOT).as_posix()
@@ -580,7 +445,6 @@ def _baseline_key(file_path: Path, tests_root: Path | None = None) -> str:
 
 
 def collect_whitebox_inventory(tests_root: Path) -> dict[str, WhiteboxCounts]:
-    """Return current white-box counts for every non-zero test file."""
     inventory: dict[str, WhiteboxCounts] = {}
     for path in _iter_test_files(tests_root):
         try:
@@ -595,7 +459,6 @@ def collect_whitebox_inventory(tests_root: Path) -> dict[str, WhiteboxCounts]:
 
 
 def render_whitebox_baseline(inventory: Mapping[str, Mapping[str, int]]) -> str:
-    """Render a deterministic frozen-baseline Python module."""
     docstring = test_whitebox_baseline.__doc__
     if docstring is None:
         raise RuntimeError("frozen white-box baseline is missing its module docstring")
@@ -649,7 +512,6 @@ def audit_whitebox_ratchet(
     baseline: WhiteboxBaseline,
     baseline_key: str | None = None,
 ) -> list[TestPolicyViolation]:
-    """Compare one file's white-box counts with its frozen ceiling."""
     if not any(count > 0 for count in counts.values()):
         return []
     key = baseline_key or _baseline_key(file_path)
@@ -690,24 +552,10 @@ def audit_test_file(
     baseline_key: str | None = None,
     inventory: AuditInventory | None = None,
 ) -> list[TestPolicyViolation]:
-    """Audit a single test file for policy violations.
-
-    Args:
-        file_path: The test file to audit.
-        baseline: The frozen ceilings to compare against.
-        baseline_key: The project-relative key of ``file_path`` in the
-            frozen baseline.
-        inventory: The collector that receives what this pass learns
-            (the fresh white-box counts, the audited path and the declared
-            pytest markers). It lets the whole-tree reconciliation run
-            afterwards without a SECOND scan of the tree.
-    """
     if not file_path.is_file() or file_path.suffix != ".py":
         return []
     key = baseline_key or _baseline_key(file_path)
     if inventory is not None:
-        # The file exists, so it is not a DELETED baseline row, and it
-        # declares no marker the audit could read.
         inventory.existing_paths.add(key)
         inventory.module_markers = set()
     try:
@@ -739,7 +587,6 @@ def audit_tests_directory(
     baseline: WhiteboxBaseline | None = None,
     inventory: AuditInventory | None = None,
 ) -> tuple[list[TestPolicyViolation], int]:
-    """Audit all test files in a directory."""
     _SUBPROCESS_E2E_FILES.clear()
     _SUBPROCESS_E2E_FILES.update(_collect_subprocess_e2e_files(tests_root))
 
@@ -788,14 +635,6 @@ def audit_tests_directory(
 
 
 def _describes_baseline_tree(tests_root: Path) -> bool:
-    """Return True when ``tests_root`` is the tree the frozen baseline describes.
-
-    The frozen baseline records paths relative to the ``ralph-workflow/``
-    project root (``tests/...``). A whole-tree reconciliation therefore only
-    makes sense for the project's canonical ``tests/`` tree: auditing a
-    temporary directory (as the unit tests do) describes a DIFFERENT tree,
-    and every frozen row would look like a removed file.
-    """
     return tests_root.resolve() == (_PROJECT_ROOT / "tests").resolve()
 
 
@@ -804,14 +643,6 @@ def reconcile_baseline(
     inventory: AuditInventory,
     baseline: WhiteboxBaseline,
 ) -> list[WhiteboxDrift]:
-    """Return the baseline rows that disagree with the whole tree.
-
-    The per-file ratchet only ever sees ONE file at a time, so it cannot
-    see a baseline row that no longer corresponds to any coupling. This
-    whole-tree pass closes that gap. The ``whitebox-regression`` direction
-    is deliberately left out: the per-file ratchet already reports it, and
-    the audit must not print it twice.
-    """
     if not _describes_baseline_tree(tests_root):
         return []
     drifts = reconcile_whitebox_baseline(
@@ -827,7 +658,6 @@ def main(
     *,
     baseline: WhiteboxBaseline | None = None,
 ) -> int:
-    """Run the policy audit and return an exit code."""
     args = argv if argv is not None else sys.argv[1:]
     emit_baseline = "--emit-baseline" in args
     positional = [argument for argument in args if argument != "--emit-baseline"]

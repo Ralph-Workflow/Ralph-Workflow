@@ -46,12 +46,9 @@ def test_fastmcp_exec_family_returns_inline_text_result(
             returncode=0,
         )
 
-    # Both exec and the unsafe/raw family run through the bounded `run_command`;
-    # patch it in each module's namespace (unsafe_exec imports it by name).
     monkeypatch.setattr(exec_tool, "run_command", _fake_run_command)
     monkeypatch.setattr(unsafe_exec_tool, "run_command", _fake_run_command)
 
-    # when exec runs through the production _FallbackHttpHandler (McpServer.handle_request).
     session = AgentSession(
         session_id="test-exec-family",
         run_id="run-family",
@@ -89,8 +86,6 @@ def test_fastmcp_exec_family_returns_inline_text_result(
 
 
 def test_exec_sse_streaming_post_sends_notification_frames_then_response() -> None:
-    """exec_sse_streaming_post emits SSE notification frames before the final
-    response frame, then restores the session sink."""
     session = AgentSession(
         session_id="test-stream",
         run_id="run-1",
@@ -173,8 +168,6 @@ def test_fastmcp_exec_session_sink_receives_output_chunks_before_result(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AgentSession.tool_output_sink receives chunk events before the final result
-    when exec runs through the production _FallbackHttpHandler (McpServer.handle_request)."""
     session = AgentSession(
         session_id="test-fastmcp-stream",
         run_id="run-2",
@@ -187,9 +180,6 @@ def test_fastmcp_exec_session_sink_receives_output_chunks_before_result(
     def _capture_sink(event: dict[str, object]) -> None:
         received_events.append(event)
 
-    # Owner None = "any thread": the streaming path dispatches on the request
-    # thread but the exec reader threads call into the sink cross-thread, so
-    # the handler installs an unowned sink entry for the duration of the call.
     session.tool_output_sink_entry = (None, _capture_sink)
 
     def fake_run_command(
@@ -235,8 +225,6 @@ def test_fastmcp_exec_session_sink_receives_output_chunks_before_result(
 
 
 def test_fallback_handler_exec_streaming_post_via_handler_seam() -> None:
-    """_handle_exec_streaming_post sends SSE notification frames before the final
-    response frame, does not set Content-Length, and restores AgentSession.tool_output_sink."""
     session = AgentSession(
         session_id="test-handler-seam",
         run_id="run-seam",
@@ -329,11 +317,6 @@ def test_fallback_handler_exec_streaming_post_via_handler_seam() -> None:
 
 
 def test_exec_sse_streaming_post_clears_sink_on_dispatch_error() -> None:
-    """exec_sse_streaming_post clears its sink entry even when dispatch raises.
-
-    Clearing (rather than restoring a predecessor) guarantees a sink bound to
-    a finished request can never be resurrected and capture later output.
-    """
     session = AgentSession(
         session_id="test-error",
         run_id="run-3",

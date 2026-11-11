@@ -1,5 +1,3 @@
-"""Tests for process_phase_scope: verifies phase-labeled processes are reaped on scope exit."""
-
 from __future__ import annotations
 
 import contextlib
@@ -12,7 +10,7 @@ import pytest
 
 import ralph.process.manager as _mgr
 from ralph.git.subprocess_runner import GitRunOptions, run_git
-from ralph.process import process_phase_scope  # validates public package export
+from ralph.process import process_phase_scope
 from ralph.process.manager import (
     ProcessManager,
     ProcessManagerPolicy,
@@ -44,7 +42,6 @@ def _reset_pm() -> object:
 
 
 def test_phase_scope_kills_labeled_processes() -> None:
-    """All processes labeled 'phase:review' are killed when the scope exits."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
     pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory, psutil=FakePsutil())
     handles = [
@@ -68,7 +65,6 @@ def test_phase_scope_kills_labeled_processes() -> None:
 
 
 def test_phase_scope_does_not_kill_other_labels() -> None:
-    """Processes with non-matching labels are not affected by the phase scope."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
     pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory, psutil=FakePsutil())
     target = pm.spawn(
@@ -95,7 +91,6 @@ def test_phase_scope_does_not_kill_other_labels() -> None:
 
 
 def test_run_git_phase_parameter_constructs_phase_scoped_label(tmp_git_repo: Path) -> None:
-    """run_git with phase= creates a 'phase:<phase>:git:<label>' record label."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)
     pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory, psutil=FakePsutil())
     original_singleton = _mgr._pm_state.instance
@@ -117,7 +112,6 @@ def test_run_git_phase_parameter_constructs_phase_scoped_label(tmp_git_repo: Pat
 
 
 def test_run_git_without_phase_uses_plain_label(tmp_git_repo: Path) -> None:
-    """run_git without phase= uses the label as-is."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)
     pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory, psutil=FakePsutil())
     original_singleton = _mgr._pm_state.instance
@@ -136,11 +130,6 @@ def test_run_git_without_phase_uses_plain_label(tmp_git_repo: Path) -> None:
 
 
 def test_run_git_timeout_terminates_managed_process() -> None:
-    """run_git raises TimeoutExpired and leaves the managed process in a terminal state.
-
-    Regression for AO-001: without the fix, the except block re-raises without
-    calling proc.terminate(), leaving the git subprocess in RUNNING state.
-    """
     pid_iter = itertools.count(1)
 
     def timeout_factory(command: object, opts: object) -> FakeTimeoutPopen:

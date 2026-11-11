@@ -1,5 +1,3 @@
-"""Tests for render_completion_summary_group — rule-delimited section layout."""
-
 from __future__ import annotations
 
 import re
@@ -98,7 +96,6 @@ def _render_group_full(
     elapsed_seconds: float | None = None,
     overflow_path: str | None = None,
 ) -> str:
-    """Render group with all activity counter parameters."""
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, width=120, color_system=None)
     ctx = make_display_context(console=console, env={})
@@ -119,7 +116,6 @@ def _render_group_full(
 
 
 def test_completion_summary_colours_the_exit_carrier_in_terminal_output() -> None:
-    """S-3/S-6: the standalone closing summary colours its durable exit state."""
     buffer = StringIO()
     console = make_console(
         file=buffer,
@@ -158,7 +154,6 @@ def test_group_contains_pipeline_failed_title_on_failure() -> None:
 
 
 def test_group_active_artifact_validation_never_renders_success_headline() -> None:
-    """An active artifact validation failure overrides terminal success presentation."""
     snapshot = _make_snapshot(last_error="SPEC008 missing proof")
     snapshot = replace(snapshot, last_failure_category="artifact_validation")
 
@@ -169,7 +164,6 @@ def test_group_active_artifact_validation_never_renders_success_headline() -> No
 
 
 def test_group_active_artifact_validation_uses_error_role() -> None:
-    """Active validation failures use the same error role as terminal failures."""
     snapshot = replace(
         _make_snapshot(last_error="SPEC008 missing proof"),
         last_failure_category="artifact_validation",
@@ -200,7 +194,6 @@ def test_group_active_artifact_validation_uses_error_role() -> None:
 
 
 def test_group_validation_recovery_preserves_recovered_activity_and_completion() -> None:
-    """Clearing artifact validation restores the normal completion representation."""
     snapshot = _make_snapshot()
     recovered_snapshot = replace(
         snapshot,
@@ -216,7 +209,6 @@ def test_group_validation_recovery_preserves_recovered_activity_and_completion()
 
 
 def test_group_cleared_artifact_validation_restores_normal_completion() -> None:
-    """A cleared validation category cannot leave a stale failure heading behind."""
     snapshot = replace(
         _make_snapshot(),
         last_failure_category=None,
@@ -269,7 +261,6 @@ def test_group_cause_section_shown_on_failure() -> None:
 
 
 def test_completion_summary_regression_failure_phase_and_cause_precede_metrics() -> None:
-    """S-6: failure context is visible before secondary metrics in cold output."""
     out = _render_group(
         _make_snapshot(
             phase="verification",
@@ -306,7 +297,6 @@ def test_emit_completion_summary_uses_group_format() -> None:
 
 
 def test_group_renders_remote_sync_outcome() -> None:
-    """S-7: the completion renderer exposes the same remote outcome as live activity."""
     out = _render_group(_make_snapshot(auto_integrate_remote_sync="pushed"))
     assert "auto-integrate:" in out
     assert "remote: pushed" in out
@@ -319,9 +309,6 @@ def test_group_no_markup_tags_in_output() -> None:
     assert "[green]" not in out
 
 
-# --- Activity Summary section tests ---
-
-
 def test_group_contains_activity_summary_section() -> None:
     out = _render_group(_make_snapshot())
     assert "Activity" in out
@@ -329,7 +316,6 @@ def test_group_contains_activity_summary_section() -> None:
 
 def test_group_activity_summary_shows_agent_calls() -> None:
     out = _render_group(_make_snapshot())
-    # agent_calls appears in both Metrics and Activity Summary
     assert "agent_calls=4" in out
 
 
@@ -365,47 +351,37 @@ def test_emit_completion_summary_accepts_thinking_and_overflow_params() -> None:
     assert "raw_overflow=.agent/raw/u.log" in out
 
 
-# --- New Activity Summary counter tests (parity with run-end block) ---
-
-
 def test_completion_panel_renders_elapsed_seconds_when_provided() -> None:
-    """elapsed_seconds renders as elapsed=<value>s when provided."""
     out = _render_group_full(_make_snapshot(), elapsed_seconds=12.4)
     assert "elapsed=12.4s" in out
 
 
 def test_completion_panel_skips_elapsed_when_none() -> None:
-    """elapsed_seconds=None produces no elapsed= line."""
     out = _render_group_full(_make_snapshot(), elapsed_seconds=None)
     assert "elapsed=" not in out
 
 
 def test_completion_panel_renders_content_blocks_even_when_zero() -> None:
-    """content_block_count=0 renders content_blocks=0 (not hidden)."""
     out = _render_group_full(_make_snapshot(), content_block_count=0)
     assert "content_blocks=0" in out
 
 
 def test_completion_panel_renders_thinking_blocks_even_when_zero() -> None:
-    """thinking_block_count=0 renders thinking_blocks=0 (not hidden)."""
     out = _render_group_full(_make_snapshot(), thinking_block_count=0)
     assert "thinking_blocks=0" in out
 
 
 def test_completion_panel_renders_tool_calls() -> None:
-    """tool_call_count=7 renders tool_calls=7."""
     out = _render_group_full(_make_snapshot(), tool_call_count=7)
     assert "tool_calls=7" in out
 
 
 def test_completion_panel_renders_errors_even_when_zero() -> None:
-    """error_count=0 renders errors=0 (not hidden)."""
     out = _render_group_full(_make_snapshot(), error_count=0)
     assert "errors=0" in out
 
 
 def test_completion_panel_parity_with_run_end() -> None:
-    """Activity Summary shows all five counter fields that run-end emits."""
     out = _render_group_full(
         _make_snapshot(),
         content_block_count=3,
@@ -420,9 +396,6 @@ def test_completion_panel_parity_with_run_end() -> None:
     assert "tool_calls=7" in out
     assert "errors=0" in out
     assert "agent_calls=4" in out
-
-
-# --- Elapsed and Iteration Context placement tests ---
 
 
 def _make_snapshot_with_outer_dev(outer_dev_iteration: int = 3) -> PipelineSnapshot:
@@ -456,26 +429,20 @@ def _make_snapshot_with_outer_dev(outer_dev_iteration: int = 3) -> PipelineSnaps
 
 
 def test_elapsed_appears_before_metrics_in_default_mode() -> None:
-    """elapsed= line appears before the Metrics section in default mode output."""
     out = _render_group_full(_make_snapshot(), elapsed_seconds=12.4)
     assert "elapsed=12.4s" in out
     assert out.index("elapsed=12.4s") < out.index("Metrics")
 
 
 def test_iteration_context_section_appears_with_outer_dev() -> None:
-    """Default mode shows an 'Iteration Context' section when outer_dev_iteration is set."""
     out = _render_group_full(_make_snapshot_with_outer_dev(outer_dev_iteration=3))
     assert "Iteration Context" in out
     assert "Cycle #3" in out
 
 
 def test_iteration_context_section_absent_without_context() -> None:
-    """Default mode omits 'Iteration Context' section when no iteration fields are set."""
     out = _render_group_full(_make_snapshot())
     assert "Iteration Context" not in out
-
-
-# --- Budget Progress section tests ---
 
 
 def _make_snapshot_with_budget_bp(budget_progress: dict) -> PipelineSnapshot:
@@ -501,7 +468,6 @@ def _make_snapshot_with_budget_bp(budget_progress: dict) -> PipelineSnapshot:
 
 
 def test_default_mode_budget_progress_never_shown() -> None:
-    """Default mode never shows 'Budget Progress' or 'remaining' budget wording."""
     snap = _make_snapshot_with_budget_bp(
         {
             "dev_cycles": BudgetProgress(
@@ -515,7 +481,6 @@ def test_default_mode_budget_progress_never_shown() -> None:
 
 
 def test_default_mode_budget_progress_absent_when_no_tracked_counters() -> None:
-    """Default mode omits 'Budget Progress' section when no budget-tracked counters exist."""
     snap = _make_snapshot_with_budget_bp(
         {
             "dev_cycles": BudgetProgress(
@@ -527,17 +492,12 @@ def test_default_mode_budget_progress_absent_when_no_tracked_counters() -> None:
     assert "Budget Progress" not in out
 
 
-# --- Exit trigger tests ---
-
-
 def test_group_exit_trigger_shown_in_default_mode() -> None:
-    """Default mode shows exit= label after header rule."""
     out = _render_group(_make_snapshot())
     assert "exit=completed" in out
 
 
 def test_group_exit_trigger_failed_shown_in_default_mode() -> None:
-    """Default mode shows exit=failed when is_terminal_failure=True."""
     out = _render_group(
         _make_snapshot(
             phase="failed",
@@ -550,7 +510,6 @@ def test_group_exit_trigger_failed_shown_in_default_mode() -> None:
 
 
 def test_group_exit_trigger_appears_before_metrics_in_default_mode() -> None:
-    """exit= line appears before the Metrics section in default mode output."""
     out = _render_group(_make_snapshot())
     assert "exit=completed" in out
     assert "Metrics" in out

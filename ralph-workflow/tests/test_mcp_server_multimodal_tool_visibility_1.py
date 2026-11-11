@@ -1,5 +1,3 @@
-"""Integration tests for the standalone Python MCP server runtime."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -75,7 +73,6 @@ def _tool_names(server: server_runtime.McpServer) -> set[str]:
 
 
 def test_default_media_surface_is_visible_without_client_capability(tmp_path: Path) -> None:
-    """A default empty MCP handshake exposes reads but not policy-gated capture."""
     tool_names = _tool_names(_server(tmp_path, McpConfig()))
 
     assert "read_media" in tool_names
@@ -84,7 +81,6 @@ def test_default_media_surface_is_visible_without_client_capability(tmp_path: Pa
 
 
 def test_capture_is_visible_only_with_a_resolved_design_system_policy(tmp_path: Path) -> None:
-    """The capture tool is listed only after the complete policy facts resolve."""
     policy_path = tmp_path / "docs/ralph-workflow-policy/design-system-policy.md"
     policy_path.parent.mkdir(parents=True)
     policy_path.write_text(
@@ -106,7 +102,6 @@ def test_capture_is_visible_only_with_a_resolved_design_system_policy(tmp_path: 
 
 
 def test_capture_requires_the_media_capture_capability(tmp_path: Path) -> None:
-    """Capture is capability-owned rather than granted by media-read access."""
     policy_path = tmp_path / "docs/ralph-workflow-policy/design-system-policy.md"
     policy_path.parent.mkdir(parents=True)
     policy_path.write_text(
@@ -130,7 +125,6 @@ def test_capture_requires_the_media_capture_capability(tmp_path: Path) -> None:
 
 
 def test_explicit_media_disabled_keeps_media_tools(tmp_path: Path) -> None:
-    """The [media] enabled=false key is INERT -- media tools always stay listed (criterion 1)."""
     config = McpConfig(media=MediaConfig(enabled=False))
     tool_names = _tool_names(_server(tmp_path, config))
 
@@ -140,14 +134,6 @@ def test_explicit_media_disabled_keeps_media_tools(tmp_path: Path) -> None:
 
 
 def test_explicit_disabled_media_surface_matches_default(tmp_path: Path) -> None:
-    """The visible tool surface is identical whether ``enabled = false`` is set or not (criterion 1).
-
-    The retired opt-out used to subtract four media-tool names from
-    ``tools/list``; with the opt-out closed the surface is invariant
-    under the ``[media]`` key. Both surfaces include ``read_file``
-    (text-tool regression) and BOTH include ``read_media`` /
-    ``read_image`` (media-tool regression).
-    """
     default_names = _tool_names(_server(tmp_path, McpConfig()))
     disabled_names = _tool_names(_server(tmp_path, McpConfig(media=MediaConfig(enabled=False))))
 

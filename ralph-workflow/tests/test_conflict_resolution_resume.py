@@ -1,12 +1,3 @@
-"""Landed rebase stops survive a later failure via the progress sidecar.
-
-The sidecar is scoped to ONE rebase, identified by the ``(orig-head,
-onto)`` pair git pins for the whole replay. These tests cover both
-directions of that scope: stops of the rebase in progress are kept (and
-keep it off the abort path), while a record left by another rebase is
-discarded so the current unresolved stop still reaches its next agent.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -24,7 +15,6 @@ from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop, record_la
 
 pytestmark = pytest.mark.timeout_seconds(5)
 
-#: Identity of the rebase these tests pretend is paused in the worktree.
 _FEATURE_SHA = "feature000000000000000000000000000000001"
 _TARGET_SHA = "target0000000000000000000000000000000002"
 
@@ -45,7 +35,6 @@ def _pretend_rebase_paused(
     feature_sha: str | None = _FEATURE_SHA,
     target_sha: str | None = _TARGET_SHA,
 ) -> None:
-    """Answer the rebase-identity probe without a real paused rebase."""
 
     def identity(_root: Path) -> tuple[str | None, str | None]:
         return feature_sha, target_sha
@@ -79,13 +68,6 @@ def test_landed_stops_are_stamped_with_the_rebase_that_landed_them(
 def test_landing_the_final_stop_removes_the_sidecar(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A replay that finished has no remaining stops, so it keeps no record.
-
-    ``git rebase --continue`` past the last stop leaves no rebase in
-    progress, so there is no identity to stamp and nothing left to
-    resume. Writing a record anyway is what outlived the rebase and
-    wedged every later conflicted rebase in the same worktree.
-    """
     _pretend_rebase_paused(monkeypatch)
     record_landed_stop(tmp_path, _stop("aaa1", 1))
     assert progress_path(tmp_path).is_file()
@@ -119,7 +101,6 @@ def test_interrupted_resolution_resumes_current_stop_without_aborting(
     tmp_path: Path,
     identity: str,
 ) -> None:
-    """Sidecar scope controls skipped stops; an interrupted agent never destroys this replay."""
     from ralph.git.rebase.rebase import RebaseConflicts
     from ralph.pipeline import auto_integrate_rebase_merge as merge_module
     from ralph.pipeline.auto_integrate_record import IntegrationRecord
@@ -209,7 +190,6 @@ def _decline(*_args: object, **_kwargs: object) -> bool:
 def _install_current_stop_seams(
     monkeypatch: pytest.MonkeyPatch, paused: list[bool], events: list[str]
 ) -> None:
-    """Inject Git observations while exercising the real resolution loop and sidecar I/O."""
     loop = rebase_loop_module
 
     def identity(_root: Path) -> tuple[str | None, str | None]:
@@ -253,14 +233,6 @@ def _install_current_stop_seams(
 def test_aborting_a_rebase_discards_its_progress_record(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The record must not outlive the abort that threw its commits away.
-
-    Scoping cannot cover this case. ``git rebase --abort`` restores HEAD
-    to ``orig-head``, so retrying the same rebase onto an unmoved target
-    reproduces a byte-identical identity -- verified against real git --
-    and the stale record passes the very check meant to reject it while
-    the commits it names no longer exist.
-    """
     from ralph.pipeline.conflict_resolution import abort as abort_module
 
     save_progress(
@@ -288,7 +260,6 @@ def test_aborting_a_rebase_discards_its_progress_record(
 def test_a_failed_abort_keeps_the_progress_record(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """An abort that raised left the rebase in place, so its record still applies."""
     from ralph.pipeline.conflict_resolution import abort as abort_module
 
     save_progress(

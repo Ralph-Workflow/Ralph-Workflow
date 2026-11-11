@@ -1,4 +1,3 @@
-"""ChildLivenessRecord — immutable snapshot of a single child's liveness state."""
 
 from __future__ import annotations
 
@@ -7,7 +6,6 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class ChildLivenessRecord:
-    """Immutable snapshot of a single child's liveness state."""
 
     child_id: str
     scope_prefix: str

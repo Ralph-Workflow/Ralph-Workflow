@@ -1,5 +1,3 @@
-"""Regression coverage for auto-integration after a fan-out join."""
-
 from __future__ import annotations
 
 from io import StringIO

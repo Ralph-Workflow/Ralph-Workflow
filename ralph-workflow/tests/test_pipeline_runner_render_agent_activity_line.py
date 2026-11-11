@@ -1,5 +1,3 @@
-"""Tests for ralph/pipeline/runner.py — pipeline runner."""
-
 from __future__ import annotations
 
 import io
@@ -33,9 +31,9 @@ DEVELOPER_ITERATIONS = 5
 REVIEWER_PASSES = 2
 SECOND_ITERATION = 2
 INTERRUPT_EXIT_CODE = 130
-_TRUNCATED_METADATA_MAX = runner_module.MAX_METADATA_SUMMARY_LENGTH + 1  # content + ellipsis
+_TRUNCATED_METADATA_MAX = runner_module.MAX_METADATA_SUMMARY_LENGTH + 1
 _AVAILABLE_WIDTH_FLOOR = 40
-_TRUNCATE_RESULT_LEN = 6  # 5 chars + 1 ellipsis char
+_TRUNCATE_RESULT_LEN = 6
 
 
 @lru_cache(maxsize=1)
@@ -180,13 +178,6 @@ class TestRenderAgentActivityLine:
 
         assert rendered is not None
         assert isinstance(rendered, Text)
-        # After wt-028-display the pipeline-runner path delegates to
-        # the canonical registry; a successful TOOL_RESULT carries the
-        # PASS carrier (✓ + "PASS" label) and the agent prefix. The
-        # legacy "result <content>" prefix word is replaced by the
-        # carrier label which carries the same semantic meaning
-        # (success-state tool result) under the redundant label
-        # contract (AC-10).
         assert "{'matches': 3, 'path': 'src'}" in rendered.plain
         assert "PASS" in rendered.plain or "✓" in rendered.plain
 
@@ -211,11 +202,6 @@ class TestRenderAgentActivityLine:
             if rendered_line is not None:
                 rendered.append(rendered_line)
 
-        # After wt-028-display the pipeline runner routes through the
-        # agent-event renderer registry. Claude ``assistant`` text events
-        # carry the registry's INFO carrier (icon + ``INFO`` label) plus
-        # the agent_name prefix and the body. The body still surfaces
-        # without a duplicate ``assistant`` summary line.
         assert len(rendered) == 1
         rendered_plain = rendered[0].plain
         assert "Final response" in rendered_plain
@@ -309,11 +295,8 @@ class TestRenderAgentActivityLine:
 
         assert rendered is not None
         assert "…" in rendered.plain
-        # Text rows retain their inline identity for compatibility; tool
-        # results instead use the shared live chrome as their sole identity.
         assert "dev" in rendered.plain
-        # Total plain length stays within the registry's 200-cell cap.
-        assert len(rendered.plain) <= 250  # body + icon + label + agent prefix + ts
+        assert len(rendered.plain) <= 250
 
     def test_tool_input_truncation(self) -> None:
         long_value = "x" * 200
@@ -366,7 +349,6 @@ class TestRenderAgentActivityLine:
 
         assert rendered is not None
         assert "…" in rendered.plain
-        # Tool-result identity belongs to the shared live chrome, not its body.
         assert "dev" not in rendered.plain
         assert len(rendered.plain) <= 250
 

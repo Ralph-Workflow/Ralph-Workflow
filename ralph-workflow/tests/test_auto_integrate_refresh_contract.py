@@ -1,5 +1,3 @@
-"""Deterministic contracts for auto-integration refresh propagation."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -42,7 +40,6 @@ def _inject_integration_runner(
     initial_refresh: str = REFRESH_ALREADY_CURRENT,
     result: RebaseState | None = None,
 ) -> list[str]:
-    """Inject context and integration runners, returning observed events."""
     events: list[str] = []
     monkeypatch.setattr(
         auto_integrate,

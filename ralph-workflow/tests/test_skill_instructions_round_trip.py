@@ -1,5 +1,3 @@
-"""Round-trip the plan skill's native-markdown worked example."""
-
 from __future__ import annotations
 
 import json
@@ -30,12 +28,6 @@ def test_installed_planning_skills_match_packaged_content() -> None:
 
 
 def test_plan_skill_example_validates_with_zero_errors() -> None:
-    """submit-plan-artifact.md no longer embeds a worked example inline.
-
-    It points readers at the bundled validator-backed example instead (see
-    ``ralph/mcp/artifacts/format_docs/plan.md``'s "Example" section); prove
-    that bundled example is itself real and valid.
-    """
     example = load_bundled_example("plan")
     assert example is not None
 
@@ -50,17 +42,6 @@ def test_plan_skill_example_validates_with_zero_errors() -> None:
 
 
 def test_plan_skill_documents_the_complete_markdown_workflow() -> None:
-    """The condensed skill documents the core submit/edit loop it actually teaches.
-
-    ``submit-plan-artifact.md`` was condensed to the mandatory executor-ready
-    contract and no longer walks through the full staging toolkit
-    (``ralph_stage_md_artifact`` / ``ralph_get_md_draft`` /
-    ``ralph_finalize_md_artifact``) inline -- ``ralph_edit_md_artifact``
-    covers the staged-repair path and auto-submits, and
-    ``ralph_discard_md_draft`` covers the wholesale-restart path. This
-    mirrors ``ralph/mcp/artifacts/format_docs/plan.md``'s own condensed
-    "Submission" section.
-    """
     body = SKILL_PATH.read_text(encoding="utf-8")
 
     for tool in (

@@ -1,10 +1,3 @@
-"""Shared multimodal failure taxonomy for Ralph's managed MCP runtime path.
-
-All code that needs to emit or classify a multimodal failure must use these
-types rather than constructing ad hoc error strings. This keeps failure
-messages consistent and machine-inspectable across capability detection,
-tool handlers, upstream normalization, and invoke-time checks.
-"""
 
 from __future__ import annotations
 
@@ -15,7 +8,6 @@ from ralph.mcp.multimodal._failure_kind import MultimodalFailureKind
 
 @dataclass(frozen=True)
 class MultimodalFailure:
-    """A structured description of why a multimodal operation could not complete."""
 
     kind: MultimodalFailureKind
     message: str
@@ -24,7 +16,6 @@ class MultimodalFailure:
     model_id: str | None = None
 
     def user_message(self) -> str:
-        """Return a human-readable failure message suitable for tool output."""
         parts = [self.message]
         if self.modality:
             parts.append(f"modality: {self.modality}")

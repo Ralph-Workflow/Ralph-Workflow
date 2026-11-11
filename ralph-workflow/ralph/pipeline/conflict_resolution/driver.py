@@ -1,12 +1,3 @@
-"""Conflict-resolution driver governed by liveness rather than elapsed time.
-
-The round-execution machinery (candidate spending, per-attempt outcome
-recording, the on-disk unresolved-path scan) lives in the private
-companion module :mod:`ralph.pipeline.conflict_resolution._driver_rounds`
-so this module stays under the repo-structure file-size cap; the session
-lifecycle, the round-loop orchestration, and the public entry points
-stay here and re-export every moved name unchanged.
-"""
 
 from __future__ import annotations
 
@@ -158,7 +149,6 @@ def _sleep_seconds(
     *,
     sleep: Callable[[float], None] | None = None,
 ) -> None:
-    """Wait through the injected clock seam (the real clock in production)."""
     (sleep if sleep is not None else current_clock().sleep)(seconds)
 
 
@@ -179,7 +169,6 @@ def run_conflict_resolution_outcome(
     observer: WorktreeConflictObserver | None = None,
     prompt_materializer: PromptMaterializer | None = None,
 ) -> ResolutionOutcome:
-    """Resolve an in-progress merge through fixed-window liveness supervision."""
     active_session = session or _new_resolution_session(config)
     previous_model = capture_status_bar_model(display)
     try:
@@ -229,7 +218,6 @@ def run_rebase_conflict_resolution_outcome(
     observer: WorktreeConflictObserver | None = None,
     prompt_materializer: PromptMaterializer | None = None,
 ) -> ResolutionOutcome:
-    """Resolve one paused rebase stop with typed terminal evidence."""
     active_session = (
         session or active_rebase_resolution_session() or _new_resolution_session(config)
     )
@@ -261,7 +249,6 @@ def run_rebase_conflict_resolution_outcome(
 
 
 def _new_resolution_session(config: UnifiedConfig) -> ResolutionSession:
-    """Snapshot typed limits once when a standalone merge resolution begins."""
     limits = config.conflict_resolution
     return ResolutionSession(
         inactivity_timeout_seconds=limits.inactivity_timeout_seconds,
@@ -279,16 +266,12 @@ def _prepare_conflicted_paths(
     display: ParallelDisplay | None,
     observer: WorktreeConflictObserver,
 ) -> tuple[tuple[str, ...], bool | None, tuple[str, ...]]:
-    """Classify on sight; return remaining paths, an early verdict, and decisions."""
     conflicted = (
         stop.conflicted_files
         if stop is not None
         else observer.retained_merge_paths(root, tuple(observer.unmerged_paths(root)))
     )
     if _QUERY_FAILED_SENTINEL in conflicted:
-        # Ralph cannot see the conflict. Typed, or this exit reports a
-        # failure with no reason at all and the merge seam then calls it
-        # "conflict resolution failed".
         session.terminal_reason = ResolutionTerminationReason.OUT_OF_REACH
         session.last_failure_cause = ResolutionFailureCause.CONTEXT_FAILURE
         session.unresolved_paths = tuple(conflicted)
@@ -298,8 +281,6 @@ def _prepare_conflicted_paths(
         )
         return (), False, ()
     if not conflicted:
-        # Nothing unmerged: there is no conflict to resolve, which is not
-        # a failure of anything and must not be reported as one.
         emit_conflict_phase_line(display, "no conflicted paths; nothing for a resolver to repair")
         return (), False, ()
     session.out_of_reach_paths = ()
@@ -307,8 +288,6 @@ def _prepare_conflicted_paths(
     unreachable = out_of_reach_paths(kinds)
     reachable = tuple(path for path in conflicted if path not in set(unreachable))
     if unreachable and not reachable:
-        # Nothing here an agent could carry out. Escalate on sight rather
-        # than spending the chain to prove it.
         session.terminal_reason = ResolutionTerminationReason.OUT_OF_REACH
         session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
         session.unresolved_paths = unreachable
@@ -331,11 +310,6 @@ def _prepare_conflicted_paths(
         )
         return (), False, ()
     if unreachable:
-        # Escalating the WHOLE set on one unreachable path meant an
-        # ordinary text conflict beside a submodule pointer was never
-        # offered to anyone -- on every run, forever, because nothing
-        # about the repository changed in between. The reachable paths
-        # are resolved; the rest is escalated afterwards, named.
         session.out_of_reach_paths = unreachable
         emit_conflict_phase_line(
             display,
@@ -352,11 +326,6 @@ def _prepare_conflicted_paths(
     if remaining:
         return remaining, None, decisions
     if session.out_of_reach_paths:
-        # Staging the mechanical paths emptied the REACHABLE set, but a
-        # path nobody can repair is still unmerged. Returning success
-        # here reported `unresolved_paths=()` for a conflict the driver
-        # had just classified unrepairable, invoked nobody, and let the
-        # seam commit it -- silently taking one side of a submodule bump.
         _escalate_unreachable_remainder(session, display)
         return (), False, ()
     emit_conflict_phase_line(
@@ -383,7 +352,6 @@ def _run_rounds(
     observer: WorktreeConflictObserver | None,
     prompt_materializer: PromptMaterializer | None,
 ) -> bool:
-    """Execute completed-work routing while one session owns all timing context."""
     active_observer = observer if observer is not None else GitWorktreeConflictObserver()
     materialize_prompt = (
         prompt_materializer if prompt_materializer is not None else materialize_round_prompt
@@ -392,9 +360,6 @@ def _run_rounds(
     round_cap = session.max_rounds_per_stop or limits.max_rounds_per_stop
     inactivity_timeout = session.inactivity_timeout_seconds or limits.inactivity_timeout_seconds
     is_rotation = bool(strategy_history)
-    # Before anything can return: every early exit below reports through
-    # the session, and an unreset session reports the LAST conflict's
-    # verdict for a stop that never invoked anybody.
     begin_resolution_stop(session, is_strategy_rotation=is_rotation)
     if pipeline_deps is not None and session.unavailability_store is None:
         session.unavailability_store = pipeline_deps.unavailability_store
@@ -456,10 +421,6 @@ def _run_rounds(
         f"entering rebase conflict resolution for '{target}' ({len(conflicted)} conflicted file(s))"
         + (f" replaying {stop.sha[:8]} {stop.subject}" if stop is not None else ""),
     )
-    # Snapshotted once for the STOP, not per round: a file deleted in
-    # round 1 is already absent when round 2 starts, so a per-round
-    # snapshot stopped calling it vanished -- and the empty marker scan
-    # (it cannot read a file that is gone) then credited the deletion.
     present_at_entry = frozenset(
         path for path in conflicted if active_observer.path_exists(root / path)
     )
@@ -487,10 +448,6 @@ def _run_rounds(
     )
     if resolved:
         return True
-    # NOT `or conflicted`: an empty scan means the markers are gone, and
-    # falling back to the original list named paths the scan had just
-    # cleared -- directly contradicting the line above it, which reported
-    # `unresolved_count=0`.
     unresolved = session.unresolved_paths
     session.exhaustion_reason = _resolution_exhaustion_reason(session, unresolved)
     emit_conflict_phase_line(
@@ -567,24 +524,9 @@ def _execute_round_loop(
                 display,
                 session,
                 policy_bundle,
-                # The repair decision rides on the SAME single observation
-                # that preceded the attempt's classify/ledger charge:
-                # ``observe_unresolved`` (passed alongside) has already
-                # stored the post-attempt unresolved set in
-                # ``session.unresolved_paths`` before ``_check_worktree_repair``
-                # runs, so no second observer scan happens here and the
-                # health fact and the repair fact can never diverge
-                # (analysis WU-1, §11 Design item 4).
                 worktree_resolved=lambda: not decision_paths and not session.unresolved_paths,
                 observe_unresolved=_unresolved,
             )
-            # The per-attempt observation boundary already ran INSIDE
-            # ``_run_one_round``: ``session.unresolved_paths`` holds the
-            # single observed unresolved set, and the attempt carries the
-            # observation facts (a count drop restarts the
-            # consecutive-unproductive streak exactly like a workspace
-            # change while the total still accrues — §11, Design item 4).
-            # No second scan happens here.
             if attempt.succeeded and session.unresolved_paths and attempt.agent_name is not None:
                 logger.warning(
                     "conflict_resolution: round {} with '{}' reported success, but unresolved paths remain in worktree",
@@ -803,13 +745,4 @@ def _escalate_unreachable_remainder(
     return True
 
 
-# ----- AC-14 catalog evidence -----
-# This file is the authoritative source for the catalog entries listed
-# below. Each ``# AC-14 rationale: <ID>`` line is the code-adjacent
-# marker the AC-14 audit looks for; each ``# ladder rung: <N>``
-# names the rung the entry sits on. Adding a new entry here requires
-# BOTH lines or the audit fails.
 
-# AC-14 rationale: F5
-# ladder rung: 3
-# ----- end AC-14 catalog evidence -----

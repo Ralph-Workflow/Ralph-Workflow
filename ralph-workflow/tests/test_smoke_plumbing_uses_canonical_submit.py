@@ -1,16 +1,3 @@
-"""Smoke plumbing must produce canonical receipts for Claude and AGY branches.
-
-The smoke harness has two submission paths:
-
-- Claude branch: the agent calls ``handle_submit_md_artifact``.
-- AGY branch: the agent writes ``.agent/tmp/smoke_test_result.md`` directly
-  because AGY headless mode does not reliably call Ralph's MCP tools.
-
-Both paths must end with a run-scoped canonical receipt as artifact-persistence
-evidence. Completion remains a separate durable ``declare_complete`` sentinel;
-neither the receipt nor a transcript marker is sufficient on its own.
-"""
-
 from __future__ import annotations
 
 from collections import deque
@@ -47,14 +34,6 @@ pytestmark = pytest.mark.smoke
 
 @pytest.fixture(autouse=True)
 def _no_ambient_broker_secret(monkeypatch: MonkeyPatch) -> None:
-    """Pin the unsigned-evidence boundary this module asserts on.
-
-    An earlier in-process smoke-command test mints ``RALPH_BROKER_SECRET``
-    into the real ``os.environ`` (the composition root mints one when the
-    operator exported none). These tests deliberately run with
-    ``broker_secret = None``; an ambient secret flips receipt/sentinel HMAC
-    verification and fails them order-dependently.
-    """
     monkeypatch.delenv("RALPH_BROKER_SECRET", raising=False)
 
 
@@ -150,7 +129,6 @@ def test_smoke_plumbing_claude_branch_stamps_canonical_receipt(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """Claude branch: a submitted smoke_test_result artifact yields a receipt."""
     workspace = MockWorkspace(tmp_path)
     params = _make_params(tmp_path, "claude/haiku", _claude_config())
     run_id = "interactive-claude-smoke"
@@ -193,15 +171,6 @@ def test_smoke_plumbing_agy_branch_promotes_direct_write_to_canonical_receipt(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """AGY branch: a direct artifact file write is promoted to a canonical receipt.
-
-    Post F7/DoD 19, a fallback promotion alone no longer earns the completion
-    sentinel -- the host no longer writes completion evidence for any
-    transport. The receipt is stamped (the artifact is promoted), but
-    ``explicit_completion_seen`` stays False until the agent itself calls
-    ``declare_complete`` (regression covered by
-    ``test_agy_branch_with_completion_call_passes_completion_check`` below).
-    """
     params = _make_params(tmp_path, "agy/test-model", _agy_config())
     run_id = "interactive-agy-smoke-test-model"
 
@@ -354,7 +323,6 @@ def test_smoke_tmp_fallback_promotion_consistent_with_errors(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    ".agent/tmp fallback promoted by canonical helper should not report submission error."
     params = _make_params(tmp_path, "claude/haiku", _claude_config())
     run_id = "interactive-claude-smoke"
     artifact_type = SMOKE_TEST_RESULT_ARTIFACT_TYPE
@@ -384,43 +352,16 @@ def test_agy_tool_activity_must_not_come_from_artifact(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """A model-authored ``headless_guide_checks`` self-report must not be trusted.
-
-    Regression test for the AGY smoke self-certification bug: the smoke run
-    used to read the persisted artifact's ``headless_guide_checks`` field and
-    return ``tool_activity_seen=True`` whenever the agent wrote
-    ``"tool activity"`` into the artifact, even when the transcript contained
-    no parser-classified tool events and no workspace file was written. Tool
-    activity must now come from authoritative runtime evidence only:
-    parser-classified tool events, or actual workspace file-write side
-    effects.
-
-    This test drives ``_run_smoke_agent`` with a transcript that contains NO
-    ``[plain] tool:`` line and deletes the pre-existing
-    ``todo-list.js`` (which the ``_make_params`` helper would otherwise
-    create) so the agent's only "evidence" of tool activity is the
-    self-reporting ``headless_guide_checks`` field in the persisted
-    artifact. The smoke run must fail with
-    ``"no tool activity was observed"`` so a self-certified artifact can
-    never produce a green parity result.
-    """
     params = _make_params(tmp_path, "agy/test-model", _agy_config())
     run_id = "interactive-agy-smoke-test-model"
     artifact_path = tmp_path / ".agent" / "tmp" / "smoke_test_result.md"
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
-    # The ``_make_params`` helper pre-creates the output file so the
-    # smoke harness's ``file_created`` check has a path to inspect. The
-    # agent's authoritative tool-activity signal is the file write, so a
-    # pre-created file would mask the regression. Delete the pre-created
-    # file and assert the agent does NOT recreate it.
     params.output_file.unlink()
     assert not params.output_file.exists(), (
         f"Test setup invariant: {params.output_file} should NOT exist before the run"
     )
 
     def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
-        # Transcript contains plain text only — no ``[plain] tool:`` line
-        # for the parser to classify as ``type='tool_use'``.
         raw_sink = kwargs.get("raw_output_sink")
         if isinstance(raw_sink, deque):
             raw_sink.append("I am just talking, not invoking a tool.")
@@ -429,7 +370,6 @@ def test_agy_tool_activity_must_not_come_from_artifact(
         if isinstance(rendered_sink, deque):
             rendered_sink.append("I am just talking, not invoking a tool.")
             rendered_sink.append("I would have written a file but I did not.")
-        # Artifact self-reports tool activity. The harness must NOT trust this.
         markdown = (
             _smoke_markdown()
             .replace(
@@ -442,8 +382,6 @@ def test_agy_tool_activity_must_not_come_from_artifact(
             )
         )
         artifact_path.write_text(markdown, encoding="utf-8")
-        # CRUCIALLY: do NOT write the workspace output file. The harness
-        # must NOT trust the self-reported tool activity in the artifact.
         return PipelineEvent.AGENT_SUCCESS
 
     monkeypatch.setattr(
@@ -453,11 +391,7 @@ def test_agy_tool_activity_must_not_come_from_artifact(
 
     result = _run_smoke_agent(params, run_id=run_id)
 
-    # The artifact was promoted to a receipt, so ``artifact_submitted`` is True.
     assert result.artifact_submitted.holds is True
-    # BUT the self-reported ``tool activity`` in headless_guide_checks must
-    # NOT be trusted. The transcript had no parser-classified tool events
-    # AND the agent did not write the workspace output file.
     assert result.file_created is False, (
         "Test invariant: the agent should not have written the workspace file"
     )
@@ -475,15 +409,6 @@ def test_agy_smoke_regression_promotes_fallback_but_does_not_earn_completion(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """AGY fallback artifacts earn the receipt but NOT the completion sentinel.
-
-    Post F7/DoD 19, a clean agent exit with a fallback artifact and parser-
-    classified tool activity is no longer enough to satisfy the completion
-    contract: the host writes no completion evidence for any transport, so
-    AGY runs that reach the fallback path must call ``declare_complete``
-    themselves (regression covered by
-    ``test_agy_branch_with_completion_call_passes_completion_check`` below).
-    """
     params = _make_params(tmp_path, "agy/test-model", _agy_config())
     run_id = "interactive-agy-smoke-test-model"
     artifact_path = tmp_path / ".agent" / "tmp" / "smoke_test_result.md"
@@ -518,29 +443,15 @@ def test_agy_branch_with_completion_call_passes_completion_check(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """AGY branch earns the completion sentinel when the agent itself calls ``declare_complete``.
-
-    Companion regression to
-    ``test_smoke_plumbing_agy_branch_promotes_direct_write_to_canonical_receipt``
-    and ``test_agy_smoke_regression_promotes_fallback_but_does_not_earn_completion``.
-    Together they pin the post-F7/DoD-19 invariant: AGY takes the same
-    completion path as every other transport -- the agent must call
-    ``declare_complete`` to write the durable sentinel; the host never writes
-    it on AGY's behalf.
-    """
     workspace = MockWorkspace(tmp_path)
     params = _make_params(tmp_path, "agy/test-model", _agy_config())
     run_id = "interactive-agy-smoke-test-model"
 
     def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
-        # Fallback artifact path is the same one AGY exercises in the live
-        # 2026-08-05 capture.
         artifact_type = SMOKE_TEST_RESULT_ARTIFACT_TYPE
         artifact_path = tmp_path / ".agent" / "tmp" / f"{artifact_type}.md"
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
         artifact_path.write_text(_smoke_markdown(), encoding="utf-8")
-        # The agent itself calls ``declare_complete`` -- the canonical path
-        # every transport must take post F7/DoD 19.
         completion = handle_declare_complete(
             _AgySmokeSession(), workspace, {"summary": "smoke done"}
         )
@@ -560,16 +471,6 @@ def test_agy_branch_with_completion_call_passes_completion_check(
 
 
 def test_opencode_smoke_prompt_names_the_ralph_prefixed_tools() -> None:
-    """DA-001: the prompt must preempt the live-model hallucination of a
-    bare ``read_file`` / ``write_file`` / ``edit_file`` tool name.
-
-    A live ``opencode/minimax/MiniMax-M3`` run repeatedly called an
-    unavailable bare ``read_file`` tool and never recovered -- no file
-    created, no artifact submitted, no completion. The prompt must name
-    the actual ``ralph_``-prefixed tool names explicitly so the model has
-    the correct spelling in context, not just the generic "use the
-    transport's tool names" bullet that measurably did not prevent this.
-    """
     prompt = _build_smoke_prompt(
         "tmp/interactive-opencode-smoke/todo-list.js",
         submit_artifact_tool_name="ralph_submit_md_artifact",
@@ -582,11 +483,6 @@ def test_opencode_smoke_prompt_names_the_ralph_prefixed_tools() -> None:
 
 
 def test_non_opencode_smoke_prompt_omits_the_opencode_tool_naming_bullet() -> None:
-    """The DA-001 bullet is opencode-specific -- it must not leak into
-    other transports' prompts (they never advertise a bare ``read_file``
-    tool to guard against, and the bullet's `ralph_read_file` example would
-    be a non sequitur for a transport whose parser vocabulary differs).
-    """
     prompt = _build_smoke_prompt(
         "tmp/interactive-claude-smoke/todo-list.js",
         submit_artifact_tool_name="ralph_submit_md_artifact",
@@ -600,21 +496,12 @@ def test_agy_smoke_regression_missing_artifact_is_reported_without_submit_instru
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """S-2: stripping artifact instructions must still surface the artifact error."""
     params = _make_params(tmp_path, "agy/test-model", _agy_config())
     prompt = _build_smoke_prompt(
         "tmp/interactive-agy-smoke/todo-list.js",
         submit_artifact_tool_name="ralph_submit_md_artifact",
         transport=AgentTransport.AGY,
     )
-    # The AGY prompt names `call_mcp_tool` instead of calling the tool
-    # directly (post-A1). Strip the entire AGY-shaped submission bullet
-    # -- including the bullet marker and the ``ralph_submit_md_artifact``
-    # mention before the dispatcher instruction -- so the prompt has no
-    # submission route at all and the run must surface the artifact error.
-    # ``call_mcp_tool`` MAY still appear in the stripped prefix: the prompt
-    # also routes ordinary file writes through it (Ralph's `write_file`),
-    # which is not an artifact-submission route.
     stripped_prompt = prompt.split(
         "- `ralph_submit_md_artifact` is a Ralph Workflow MCP tool",
         maxsplit=1,
@@ -648,7 +535,6 @@ def test_claude_smoke_regression_missing_artifact_is_reported_without_submit_ins
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """S-3: stripped Claude submission instructions still report the missing artifact."""
     params = _make_params(tmp_path, "claude/haiku", _claude_config())
     prompt = _build_smoke_prompt(
         "tmp/interactive-claude-smoke/todo-list.js",
@@ -685,21 +571,6 @@ def test_agy_smoke_completion_rejects_transcript_marker_without_durable_evidence
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """A transcript completion marker alone must not be accepted as completion for AGY.
-
-    Regression test for the AGY completion-spoofing bug: the prompt used to
-    instruct AGY to print ``Task declared complete:`` and the detector used
-    to accept any line containing the substring. The substring check is
-    spoofable — an agent that prints the marker without writing the artifact
-    would have been reported as completed. The prompt no longer tells AGY to
-    print a marker, and the completion detector now requires the durable,
-    run-scoped completion sentinel for every transport.
-
-    This test drives ``_run_smoke_agent`` with a transcript that contains
-    ``Task declared complete:`` but writes no artifact. The smoke run must
-    fail with ``"smoke_test_result artifact was not submitted"`` so a
-    transcript-only marker can never produce a green parity result.
-    """
     params = _make_params(tmp_path, "agy/test-model", _agy_config())
     run_id = "interactive-agy-smoke-test-model"
     artifact_path = tmp_path / ".agent" / "tmp" / "smoke_test_result.md"
@@ -710,15 +581,12 @@ def test_agy_smoke_completion_rejects_transcript_marker_without_durable_evidence
             raw_sink.append("I will create the todo list implementation.")
             raw_sink.append("[plain] tool: createTodoList")
             raw_sink.append("File created at tmp/interactive-agy-smoke/todo-list.js.")
-            # Transcript marker — MUST NOT be trusted on its own.
             raw_sink.append("Task declared complete:")
         rendered_sink = kwargs.get("rendered_output_sink")
         if isinstance(rendered_sink, deque):
             rendered_sink.append("I will create the todo list implementation.")
             rendered_sink.append("tool_use: createTodoList")
             rendered_sink.append("File created at tmp/interactive-agy-smoke/todo-list.js.")
-        # CRUCIALLY: no artifact is written. The harness must report a failure.
-        # Remove any pre-existing artifact so receipt promotion does not see one.
         if artifact_path.exists():
             artifact_path.unlink()
         return PipelineEvent.AGENT_SUCCESS
@@ -730,9 +598,6 @@ def test_agy_smoke_completion_rejects_transcript_marker_without_durable_evidence
 
     result = _run_smoke_agent(params, run_id=run_id)
 
-    # The transcript marker MUST NOT satisfy the AGY completion check.
-    # The marker is in the transcript (raw output line emitted by the fake),
-    # but no durable completion sentinel was persisted.
     assert result.explicit_completion_seen.holds is False, (
         "AGY explicit completion must require the durable sentinel, not the "
         "transcript 'Task declared complete:' marker. The marker alone is a "
@@ -746,16 +611,6 @@ def test_agy_smoke_completion_rejects_transcript_marker_without_durable_evidence
 
 
 def test_subagent_smoke_evidence_replays_live_multi_subagent_capture() -> None:
-    """S-4: replay agy_wire_subagent.jsonl and assert dispatch/result counts match.
-
-    The measured live capture dispatches exactly two real subagents via
-    ``define_subagent`` + ``invoke_subagent`` (ordinary tool calls, correctly
-    excluded from the subagent count per D3) and monitors them via
-    ``manage_subagents`` (also excluded). Prior to the S-3/S-4 fixes this
-    fixture replayed as ``dispatch_count=3`` through the old
-    ``_subagent_smoke_evidence`` (the pre-fix parser normalized
-    ``define_subagent`` to ``subagent``, inflating the count).
-    """
     fixture = Path(__file__).parent / "display" / "_fixtures" / "agy_wire_subagent.jsonl"
     lines = fixture.read_text(encoding="utf-8").splitlines()
     config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)

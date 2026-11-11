@@ -1,5 +1,3 @@
-"""Cursor authentication failures are user configuration errors."""
-
 from __future__ import annotations
 
 import tempfile
@@ -113,7 +111,6 @@ def test_generic_broken_agent_exit_remains_agent_failure() -> None:
 
 
 def test_mcp_server_error_classified_as_environmental() -> None:
-    """McpServerError is classified as ENVIRONMENTAL, not charged to the agent."""
     failure = FailureClassifier().classify(
         McpServerError("MCP server crashed", restart_count=0),
         phase="development",
@@ -126,26 +123,6 @@ def test_mcp_server_error_classified_as_environmental() -> None:
 
 
 def test_mcp_server_error_preserves_chain_cap_in_recovery_controller() -> None:
-    """Bug 1 AC 5: a McpServerError does NOT debit the agent chain cap.
-
-    ``RecoveryController.handle`` runs the typed McpServerError through
-    the failure classifier, which routes it as
-    ``(FailureCategory.ENVIRONMENTAL, False, False)``. The
-    ``with_retry_increment`` path in
-    ``recovery/controller.py`` is gated on
-    ``failure.counts_against_budget``; an environmental failure leaves
-    ``chain.current_index`` untouched, and the controller emits a
-    ``FailureEvent(counted_against_budget=False,
-    chain_capacity_remaining=N)``.
-
-    The technical-retry path at ``controller.py:705-721, 1370-1378``
-    may still increment the in-session ``retries`` counter on
-    ``chain_for_phase(...)``; that is a separate counter and is
-    allowed to increment. This test pins the chain cap
-    (``chain.current_index``) — the agent-budget counter that gates
-    agent selection across phases — which is what must NOT decrement
-    for an environmental failure.
-    """
     bus = FailureEventBus()
     collected: list[FailureEvent] = []
     bus.subscribe(lambda evt: collected.append(evt) if isinstance(evt, FailureEvent) else None)
@@ -164,16 +141,12 @@ def test_mcp_server_error_preserves_chain_cap_in_recovery_controller() -> None:
         FailureContext(phase="development", agent="claude"),
     )
 
-    # The FailureEvent reports uncounted (no chain cap debit).
     assert evt.category == str(FailureCategory.ENVIRONMENTAL)
     assert evt.counted_against_budget is False
     assert any(e is evt for e in collected), (
         "FailureEvent must be published on the bus so the run-loop can log counted=False"
     )
 
-    # The chain cap is preserved: the same agent (claude at index 0)
-    # remains the current selection across the failure. The next
-    # attempt re-invokes claude, NOT codex.
     new_chain = new_state.phase_chains["development"]
     assert new_chain.current_index == 0, (
         "Chain cap (current_index) must be preserved for an environmental "

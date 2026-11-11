@@ -77,9 +77,6 @@ def test_declare_complete_uses_session_run_id_for_sentinel_key(
 def test_declare_complete_threads_broker_secret_to_sentinel(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """RFC-013 P3: when the session carries a broker_secret,
-    handle_declare_complete threads it through to _write_completion_sentinel
-    so the sentinel payload is HMAC-signed against the secret."""
     captured: dict[str, object] = {}
 
     def capture_write(
@@ -107,8 +104,6 @@ def test_declare_complete_threads_broker_secret_to_sentinel(
 def test_declare_complete_without_broker_secret_omits_hmac(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When the session has no broker_secret, sentinel_hmac=None so the
-    pre-P3 contract (no HMAC enforcement) applies."""
     captured: dict[str, object] = {}
 
     def capture_write(
@@ -164,12 +159,6 @@ def test_declare_complete_reports_partial_reason(
 def test_declare_complete_fails_closed_when_sentinel_cannot_be_persisted(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Fail-closed contract: when ``_write_completion_sentinel`` reports
-    no durable sentinel was written, ``handle_declare_complete`` MUST
-    return ``ToolResult(is_error=True)`` instead of masquerading as a
-    success. A successful return without a durable sentinel would
-    let the agent falsely claim completion against a sentinel the
-    completion gate cannot see."""
 
     def returning_false_write_completion_sentinel(*args: object, **kwargs: object) -> bool:
         del args, kwargs
@@ -209,12 +198,6 @@ def test_report_progress_accepts_injected_timestamp() -> None:
 def test_write_completion_sentinel_durable_fallback_when_db_unavailable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """RFC-013 P3 durable-fallback: when ``RunStateDB`` raises
-    ``sqlite3.Error`` (locked / corrupt / unsupported WAL), the
-    completion sentinel MUST land in the legacy
-    ``.agent/completion_seen_<run_id>.json`` file path so the completion
-    gate still has durable evidence.
-    """
 
     class _RootWorkspace:
         def __init__(self, root: Path) -> None:
@@ -230,7 +213,6 @@ def test_write_completion_sentinel_durable_fallback_when_db_unavailable(
 
     monkeypatch.setattr(coordination_module, "RunStateDB", _raise_sqlite)
 
-    # Must not raise; the durable fallback is the legacy file.
     coordination_module._write_completion_sentinel(workspace, "run-fallback-1")
 
     legacy_path = tmp_path / ".agent" / "completion_seen_run-fallback-1.json"
@@ -242,7 +224,6 @@ def test_write_completion_sentinel_durable_fallback_when_db_unavailable(
 def test_write_completion_sentinel_falls_back_when_db_upsert_raises_oserror(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """An OS failure during DB upsert still produces durable file evidence."""
 
     class _RootWorkspace:
         def __init__(self, root: Path) -> None:
@@ -278,7 +259,6 @@ def test_write_completion_sentinel_falls_back_when_db_upsert_raises_oserror(
 def test_completion_sentinel_accepts_verified_fallback_after_write_reports_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A persist-then-raise file API must not create contradictory evidence."""
 
     class _RootWorkspace:
         def __init__(self, root: Path) -> None:
@@ -325,8 +305,6 @@ def test_completion_sentinel_accepts_verified_fallback_after_write_reports_error
 def test_write_completion_sentinel_durable_fallback_with_hmac(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Same durable-fallback contract, but threaded with the broker secret
-    so the HMAC is bound and a forged secret cannot read it back."""
 
     class _RootWorkspace:
         def __init__(self, root: Path) -> None:
@@ -394,10 +372,6 @@ def test_read_env_requires_capability() -> None:
 
 
 def test_read_env_refuses_broker_secret() -> None:
-    """A session granted ``env.read`` MUST NOT be able to recover the
-    broker-owned HMAC secret even when ``RALPH_BROKER_SECRET`` is in
-    the injected environment. Exposing it would let any agent forge
-    receipt/sentinel HMACs."""
     result = handle_read_env(
         MockCapableSession(),
         MockWorkspace(),
@@ -411,9 +385,6 @@ def test_read_env_refuses_broker_secret() -> None:
 
 
 def test_read_env_value_redacts_broker_secret_when_present() -> None:
-    """``read_env_value`` is the seam the handler uses; pin the
-    broker-secret redaction there so a future refactor cannot
-    accidentally bypass it."""
     assert "topsecret" not in coordination_module.read_env_value(
         {"RALPH_BROKER_SECRET": "topsecret-broker-key"}, "RALPH_BROKER_SECRET"
     )
@@ -426,9 +397,6 @@ def test_read_env_value_redacts_broker_secret_when_present() -> None:
 
 
 def test_read_env_value_redacts_broker_secret_even_when_absent() -> None:
-    """The redacted sentinel is returned even when the variable is
-    absent from ``env`` — confirming presence vs absence is preserved
-    (the redacted marker is distinct from ``"[not found]"``)."""
     assert (
         coordination_module.read_env_value({}, "RALPH_BROKER_SECRET")
         == coordination_module._BROKER_SECRET_DENIED_TEXT
@@ -436,18 +404,11 @@ def test_read_env_value_redacts_broker_secret_even_when_absent() -> None:
 
 
 def test_read_env_value_discloses_non_broker_secrets() -> None:
-    """The deny-list in ``_BROKER_SECRET_ENV_NAMES`` is narrowly
-    scoped: non-broker env vars are still disclosed normally so the
-    agent's diagnostic / orchestrator can keep using ``env.read``
-    for unrelated lookups."""
     assert "hello" in coordination_module.read_env_value({"MY_VAR": "hello"}, "MY_VAR")
     assert coordination_module.read_env_value({}, "MY_VAR") == "[not found]"
 
 
 def test_write_completion_sentinel_returns_true_when_workspace_uses_test_seam() -> None:
-    """The ``_write_fn`` test seam persists the payload in memory
-    only; the helper must return ``True`` to honor the durable-sentinel
-    contract for fail-closed callers like ``handle_declare_complete``."""
     seen: list[tuple[str, str]] = []
 
     class _Workspace:
@@ -465,8 +426,6 @@ def test_write_completion_sentinel_returns_true_when_workspace_uses_test_seam() 
 
 
 def test_write_completion_sentinel_returns_false_when_workspace_is_none() -> None:
-    """When the workspace surface is missing (no root to write to),
-    the helper returns ``False`` so callers fail closed."""
     result = coordination_module._write_completion_sentinel(None, "run-no-ws")
     assert result is False
 
@@ -474,11 +433,6 @@ def test_write_completion_sentinel_returns_false_when_workspace_is_none() -> Non
 def test_write_completion_sentinel_returns_false_when_db_and_legacy_both_fail(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """When ``RunStateDB`` raises AND the legacy-file write also
-    fails (the workspace filesystem is unwritable), the helper MUST
-    return ``False`` so the handler can refuse to declare the run
-    complete. Silent return paths let the agent falsely claim
-    completion against a sentinel the completion gate cannot see."""
 
     class _RootWorkspace:
         def __init__(self, root: Path) -> None:
@@ -494,7 +448,6 @@ def test_write_completion_sentinel_returns_false_when_db_and_legacy_both_fail(
 
     monkeypatch.setattr(coordination_module, "RunStateDB", _raise_sqlite)
 
-    # Force every OS-level mkdir/write to fail too.
     original_mkdir = Path.mkdir
     original_write_text = Path.write_text
 
@@ -514,5 +467,4 @@ def test_write_completion_sentinel_returns_false_when_db_and_legacy_both_fail(
         monkeypatch.setattr(Path, "write_text", original_write_text)
 
     assert result is False
-    # And neither side wrote anything.
     assert not (tmp_path / ".agent" / "completion_seen_run-fail-closed.json").exists()

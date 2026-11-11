@@ -1,5 +1,3 @@
-"""CLI tests verifying that ralph --diagnose renders PATH availability."""
-
 from __future__ import annotations
 
 import gc
@@ -27,16 +25,6 @@ pytestmark = [pytest.mark.timeout_seconds(5)]
 
 
 class BootstrapResultStub:
-    """Lightweight duck-typed stand-in for ``BootstrapResult`` used by test stubs.
-
-    The real ``BootstrapResult`` is a frozen dataclass; we use a tiny class
-    with the same attribute surface (``path``, ``action``, ``backup``) so
-    tests that patch the bootstrap functions to skip the on-disk work do
-    not need to import the real dataclass via the ralph.config.bootstrap
-    module (which itself triggers policy/loader imports that slow the
-    test session down).
-    """
-
     def __init__(
         self,
         *,
@@ -54,7 +42,6 @@ KNOWN_DEFAULT_AGENTS = ("claude", "opencode")
 
 @pytest.fixture
 def clean_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
-    """Set up a clean environment with temporary config and home directories."""
     env = {
         "XDG_CONFIG_HOME": str(tmp_path / ".config"),
         "HOME": str(tmp_path / ".home"),
@@ -66,29 +53,6 @@ def clean_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, str]
 
 
 def _stub_init_bootstrap(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Replace the bootstrap ensure_* functions with no-ops returning skipped.
-
-    The ``ralph --init`` codepath exercises the ``ensure_global_config``,
-    ``ensure_global_mcp_config``, ``ensure_global_policy_configs``, and
-    ``ensure_local_support_configs`` functions in ``ralph.config.bootstrap``.
-    These perform real file copies (``shutil.copy2``) over potentially
-    many bundled policy files and dominate the test's wall-clock in the
-    parallel suite. Tests that only care about a downstream CLI command
-    (``--diagnose``) calling ``init_command`` first can patch these to
-    skip without losing the contract: the function is still hit and
-    returns ``BootstrapResult(action='skipped')``.
-
-    The functions must be patched at their source module
-    (``ralph.config.bootstrap``) because ``ralph.cli.commands.init``
-    imports them as local names; patching the ``init_module`` namespace
-    is a no-op once the import has resolved.
-
-    .. note::
-       Skill installation (SkillManager.ensure_baseline_capabilities)
-       is NOT stubbed here because it is invoked via an explicit
-       project-level path that some of the affected tests assert on
-       indirectly. Stubbing it would change observable behavior.
-    """
     skipped = BootstrapResultStub(action="skipped")
 
     monkeypatch.setattr(bootstrap_module, "ensure_global_config", lambda *a, **kw: skipped)
@@ -120,7 +84,6 @@ def test_diagnose_renders_agent_path_column(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """ralph --diagnose must render an agent name with a PATH status on the same row."""
     del clean_env
     _stub_init_bootstrap(monkeypatch)
     runner = CliRunner()
@@ -128,11 +91,6 @@ def test_diagnose_renders_agent_path_column(
 
     runner.invoke(app, ["--init", "default"], catch_exceptions=False)
 
-    # Force a young-generation GC to flush any deferred file-buffer cleanup
-    # from shutil.copy2 that Python 3.14's stricter ResourceWarning would
-    # otherwise surface under xdist process recycling. A full collection is
-    # unnecessarily expensive under heavy parallel load and can exceed the
-    # test timeout; generation-0 is sufficient for freshly closed buffers.
     gc.collect(0)
 
     result = runner.invoke(app, ["--diagnose"], catch_exceptions=False)
@@ -156,11 +114,6 @@ def test_diagnose_renders_agent_path_column(
 def test_diagnose_alias_with_different_display_name_shows_correct_path_status(
     clean_env: dict[str, str],
 ) -> None:
-    """Configured alias whose registry key differs from cmd must show correct PATH status.
-
-    Guards against the keying bug where path_by_name was keyed by display_name
-    while diagnose iterated by registry name, causing aliases to always show 'missing'.
-    """
     del clean_env
     custom_agent = AgentConfig(
         cmd="python",
@@ -193,11 +146,6 @@ def test_diagnose_alias_with_different_display_name_shows_correct_path_status(
 def test_diagnose_alias_path_status_rendered_in_cli(
     clean_env: dict[str, str],
 ) -> None:
-    """ralph --diagnose must show correct PATH status for a custom alias agent.
-
-    The alias registry key 'my-alias' with cmd 'python' (on PATH) must render
-    'on PATH', not 'missing', even though its registry key differs from the cmd name.
-    """
     del clean_env
     custom_agent = AgentConfig(
         cmd="python",
@@ -243,7 +191,6 @@ def test_diagnose_alias_path_status_rendered_in_cli(
 
 
 def test_diagnose_preflight_keeps_literal_config_sections() -> None:
-    """Missing-agent preflight guidance must preserve its TOML section names."""
     output = StringIO()
     ctx = make_display_context(
         console=Console(file=output, force_terminal=False, theme=RALPH_THEME, width=200), env={}
@@ -272,7 +219,6 @@ def test_diagnose_preflight_keeps_literal_config_sections() -> None:
 def test_diagnose_missing_agent_shows_install_link_and_config_section(
     clean_env: dict[str, str],
 ) -> None:
-    """Each missing agent row must name its install page and TOML section."""
     del clean_env
     agent = AgentConfig(cmd="codex")
     registry = AgentRegistry.from_config(UnifiedConfig())
@@ -299,7 +245,6 @@ def test_diagnose_missing_agent_shows_install_link_and_config_section(
 
 
 def test_build_next_steps_no_prompt_recommends_init() -> None:
-    """_build_next_steps must recommend ralph --init when PROMPT.md is absent."""
     steps = build_next_steps(
         validation_ok=True,
         agent_missing=False,
@@ -313,7 +258,6 @@ def test_build_next_steps_no_prompt_recommends_init() -> None:
 
 
 def test_build_next_steps_sentinel_recommends_edit() -> None:
-    """_build_next_steps must recommend editing PROMPT.md when sentinel is present."""
     steps = build_next_steps(
         validation_ok=True,
         agent_missing=False,
@@ -336,7 +280,6 @@ def test_build_next_steps_sentinel_recommends_edit() -> None:
 
 
 def test_build_next_steps_agent_missing_recommends_install() -> None:
-    """_build_next_steps must recommend agent installation when an agent is missing."""
     steps = build_next_steps(
         validation_ok=True,
         agent_missing=True,
@@ -353,7 +296,6 @@ def test_build_next_steps_agent_missing_recommends_install() -> None:
 
 
 def test_build_next_steps_agent_missing_includes_agy_url() -> None:
-    """_build_next_steps must include the AGY install URL in missing-agent guidance."""
     steps = build_next_steps(
         validation_ok=True,
         agent_missing=True,
@@ -365,7 +307,6 @@ def test_build_next_steps_agent_missing_includes_agy_url() -> None:
 
 
 def test_build_next_steps_validation_failed_recommends_regenerate() -> None:
-    """_build_next_steps must mention regenerate-config when validation failed."""
     steps = build_next_steps(
         validation_ok=False,
         agent_missing=False,
@@ -379,7 +320,6 @@ def test_build_next_steps_validation_failed_recommends_regenerate() -> None:
 
 
 def test_build_next_steps_all_ok_recommends_run() -> None:
-    """_build_next_steps must recommend running ralph when everything is ready."""
     steps = build_next_steps(
         validation_ok=True,
         agent_missing=False,
@@ -398,46 +338,29 @@ def test_diagnose_flags_unknown_config_field(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """``ralph --diagnose`` must surface typo'd config keys as a warning row.
-
-    Without the unknown-field surfacing, the Configuration table reports
-    ``Config loaded: Success`` while silently dropping the typo — the
-    exact pre-first-run footgun AC-01 names.
-    """
     del clean_env
     _stub_init_bootstrap(monkeypatch)
     runner = CliRunner()
     monkeypatch.chdir(tmp_path)
 
-    # Bootstrap a project-local config with a typo'd nested-subtable
-    # (`general.wrokflow`). The typo is close to canonical so the
-    # suggestion path also fires.
     local_path = tmp_path / ".agent" / "ralph-workflow.toml"
     local_path.parent.mkdir(parents=True)
     local_path.write_text(
         "[general]\nverbosity = 2\nwrokflow = { checkpoint_enabled = true }\n",
         encoding="utf-8",
     )
-    # Mirror the patched local path into the loader's expectations.
     monkeypatch.setattr("ralph.config.loader.LOCAL_CONFIG_PATH", local_path)
 
     result = runner.invoke(app, ["--diagnose"], catch_exceptions=False)
 
     output = result.output
-    # The Configuration table must still report "Config loaded: Success" so
-    # the gate keeps its normal shape; the unknown-field row is an
-    # additional warning row, not a flipped config_ok.
     assert "Config loaded" in output, (
         f"Expected 'Config loaded' status row in --diagnose output, got: {output}"
     )
-    # The flat string-list of unknown-field rows exposes the field name in
-    # column 1 of the row.
     assert "general.wrokflow" in output, (
         f"Expected the typo'd 'general.wrokflow' field to be surfaced in "
         f"--diagnose output, got: {output}"
     )
-    # The fix-it suggestion must include the canonical field name so the
-    # operator can correct the typo without grep'ing the docs.
     assert "workflow" in output, (
         f"Expected the canonical 'workflow' suggestion in --diagnose output, got: {output}"
     )
@@ -449,20 +372,11 @@ def test_diagnose_flags_unknown_field_in_propagated_config(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """``ralph --diagnose`` must surface a typo in an inherited/propagated ancestor config.
-
-    AC-01 follow-up: ``load_config`` merges every
-    ``workspace_scope.propagated_config_paths`` file into the effective
-    configuration and ``_collect_unknown_field_rows`` must read every
-    propagated path so a typo in an effective ancestor config surfaces
-    in the diagnose Configuration table (not just the local config).
-    """
     del clean_env
     _stub_init_bootstrap(monkeypatch)
     runner = CliRunner()
     monkeypatch.chdir(tmp_path)
 
-    # Stage a propagated ancestor config with a typo, and a clean local config.
     propagated_path = tmp_path / "parent" / ".agent" / "ralph-workflow.toml"
     propagated_path.parent.mkdir(parents=True)
     propagated_path.write_text(
@@ -472,7 +386,6 @@ def test_diagnose_flags_unknown_field_in_propagated_config(
     local_path = tmp_path / ".agent" / "ralph-workflow.toml"
     local_path.parent.mkdir(parents=True)
     local_path.write_text("", encoding="utf-8")
-    # Patch the workspace scope resolver to inject the propagated path.
     from ralph.workspace.scope import WorkspaceScope
 
     monkeypatch.setattr(
@@ -499,7 +412,6 @@ def test_diagnose_next_steps_panel_rendered_in_cli(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """ralph --diagnose must render a 'Next steps' panel in its output."""
     del clean_env
     _stub_init_bootstrap(monkeypatch)
     runner = CliRunner()
@@ -524,13 +436,11 @@ def test_diagnose_next_steps_points_to_getting_started_when_no_prompt(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """ralph --diagnose next steps must mention ralph --init when PROMPT.md is absent."""
     del clean_env
     _stub_init_bootstrap(monkeypatch)
     runner = CliRunner()
     monkeypatch.chdir(tmp_path)
 
-    # Initialize global configs but do NOT create PROMPT.md
     runner.invoke(app, ["--check-config"], catch_exceptions=False)
 
     result = runner.invoke(app, ["--diagnose"], catch_exceptions=False)

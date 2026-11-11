@@ -1,5 +1,3 @@
-"""Tests for same-workspace parallel worker behaviour."""
-
 from __future__ import annotations
 
 import json
@@ -30,8 +28,6 @@ def _make_unit(unit_id: str, allowed_directories: list[str] | None = None) -> Wo
 
 class TestConcurrentWorkerArtifactIsolation:
     def test_concurrent_workers_write_to_separate_artifact_dirs(self, tmp_path: Path) -> None:
-        """Each worker gets its own artifact directory;
-        writing to one never appears in the other."""
         unit_a = _make_unit("unit-A")
         unit_b = _make_unit("unit-B", ["src/b"])
         mock_executor = MagicMock()
@@ -43,20 +39,16 @@ class TestConcurrentWorkerArtifactIsolation:
         assert ns_a is not None
         assert ns_b is not None
 
-        # Write distinct artifacts to each namespace.
         artifact_a = ns_a / "artifacts" / "result.json"
         artifact_b = ns_b / "artifacts" / "result.json"
         artifact_a.write_text(json.dumps({"unit_id": "unit-A"}))
         artifact_b.write_text(json.dumps({"unit_id": "unit-B"}))
 
-        # Each artifact decodes to its own unit_id.
         assert json.loads(artifact_a.read_text())["unit_id"] == "unit-A"
         assert json.loads(artifact_b.read_text())["unit_id"] == "unit-B"
 
-        # The two paths are distinct directories.
         assert artifact_a.parent != artifact_b.parent
 
-        # unit-A's artifact does NOT appear in unit-B's directory.
         assert (
             not (ns_b / "artifacts" / "result.json").read_text().startswith('{"unit_id": "unit-A"}')
         )

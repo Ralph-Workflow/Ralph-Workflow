@@ -1,30 +1,3 @@
-"""Strict execution-evidence ledger parser for the readiness assessment.
-
-The validator can only check FORM. The analysis agent can only check what
-the LLM chose to write about. Neither proves a gate was actually run.
-
-This module closes that gap with a strict, fail-closed ingestion contract:
-
-* The :class:`ralph.project_policy._command_outcome.CommandOutcome` data
-  class (defined in its own module per the class-per-module policy)
-  records ONE gate's actual run: the command, its exit code, how long
-  it took, and a SHA-256 of the policy content the agent claims to have
-  validated.
-* The :class:`ralph.project_policy._readiness_assessment.ReadinessAssessment`
-  (also in its own module) exposes three default-false dimensions that
-  downstream consumers surface alongside the existing status.
-* :func:`parse_execution_evidence` is the only ingestion surface. It
-  parses a list of ``RALPH-EVIDENCE:`` JSON lines (the exact convention
-  the analysis agent is required to emit) into a strict, ordered tuple
-  of :class:`CommandOutcome`. A malformed line is a hard parse error;
-  there is no partial credit, no default-success fallback, and no
-  "close enough" coercion.
-
-The contract is additive: structural readiness continues to be the
-authoritative gate for caching. The three dimensions are
-*supplementary* signals surfaced alongside the existing status, never
-substitutes for it.
-"""
 
 from __future__ import annotations
 
@@ -34,14 +7,8 @@ import re
 from ralph.project_policy._assessment_error import EvidenceParseError
 from ralph.project_policy._command_outcome import CommandOutcome
 
-# Strict surface markers. Keep these string literals in lockstep with the
-# analysis-prompt convention documented in
-# ``ralph/policy/defaults/prompts/policy_remediation_analysis.jinja``.
 _EVIDENCE_LINE_PREFIX: str = "RALPH-EVIDENCE:"
 
-# Allowed JSON value types. We accept only a small flat object: any extra
-# key raises a strict parse error so the producer cannot smuggle a
-# self-justifying field past the consumer.
 _REQUIRED_OUTCOME_KEYS: frozenset[str] = frozenset(
     {"command", "exit_code", "duration_seconds", "policy_content_hash"}
 )
@@ -55,12 +22,6 @@ _EVIDENCE_LINE_RE = re.compile(r"^RALPH-EVIDENCE:\s*(.*?)\s*$")
 
 
 def _parse_single_line(line: str) -> CommandOutcome:
-    """Parse one ``RALPH-EVIDENCE:`` line into a :class:`CommandOutcome`.
-
-    The JSON payload MUST be a flat object whose keys are exactly
-    :data:`_REQUIRED_OUTCOME_KEYS`. Every value is type-checked; any
-    deviation raises :class:`EvidenceParseError`.
-    """
     match = _EVIDENCE_LINE_RE.match(line)
     if match is None:
         raise EvidenceParseError(f"line is not a well-formed RALPH-EVIDENCE: line: {line[:80]!r}")
@@ -118,16 +79,6 @@ def _parse_single_line(line: str) -> CommandOutcome:
 
 
 def parse_execution_evidence(text: str) -> tuple[CommandOutcome, ...]:
-    """Parse the ``RALPH-EVIDENCE:`` lines in ``text`` into outcomes.
-
-    The function is strict: a single malformed line raises
-    :class:`EvidenceParseError`. Blank lines and lines that do NOT
-    start with the ``RALPH-EVIDENCE:`` prefix are ignored (so the
-    artifact's prose body -- headings, summaries, criterion verdicts --
-    can live in the same document). The order of the returned outcomes
-    preserves the line order in ``text`` so consumers can correlate
-    each outcome with the producer's intent.
-    """
     outcomes: list[CommandOutcome] = []
     for line in text.splitlines():
         if not line.startswith(_EVIDENCE_LINE_PREFIX):
@@ -139,15 +90,6 @@ def parse_execution_evidence(text: str) -> tuple[CommandOutcome, ...]:
 
 
 def extract_evidence_section(artifact_text: str) -> str:
-    """Return the slice of ``artifact_text`` under the ``## Execution evidence`` heading.
-
-    The analysis agent appends a Markdown section by that exact name and
-    writes the ``RALPH-EVIDENCE:`` ledger under it. The section is
-    optional in the artifact shape (artifacts without it simply yield an
-    empty string), so callers pass the result directly to
-    :func:`parse_execution_evidence` and let the strict parser decide
-    whether the lines are valid.
-    """
     lines = artifact_text.splitlines()
     start_idx: int | None = None
     for idx, line in enumerate(lines):

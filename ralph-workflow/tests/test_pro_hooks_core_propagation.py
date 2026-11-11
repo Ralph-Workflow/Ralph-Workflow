@@ -1,5 +1,3 @@
-"""Unit tests for ``apply_pro_hooks_to_core`` collaborator propagation."""
-
 from __future__ import annotations
 
 import dataclasses
@@ -20,7 +18,6 @@ def _fake_display_context() -> DisplayContext:
 
 
 def test_apply_pro_hooks_to_core_propagates_display_context() -> None:
-    """A non-None ``display_context`` override is propagated into the returned core."""
     core = build_minimal_pipeline_core(UnifiedConfig(), _fake_display_context())
     new_display_context = _fake_display_context()
 
@@ -31,7 +28,6 @@ def test_apply_pro_hooks_to_core_propagates_display_context() -> None:
 
 
 def test_apply_pro_hooks_to_core_propagates_model_identity() -> None:
-    """A non-None ``model_identity`` override is propagated into the returned core."""
     core = build_minimal_pipeline_core(UnifiedConfig(), _fake_display_context())
     new_model_identity = MagicMock()
 
@@ -41,7 +37,6 @@ def test_apply_pro_hooks_to_core_propagates_model_identity() -> None:
 
 
 def test_apply_pro_hooks_to_core_propagates_master_prompt_materializer() -> None:
-    """A non-None ``master_prompt_materializer`` override is propagated."""
     core = build_minimal_pipeline_core(UnifiedConfig(), _fake_display_context())
     new_materializer = MagicMock()
 
@@ -53,7 +48,6 @@ def test_apply_pro_hooks_to_core_propagates_master_prompt_materializer() -> None
 
 
 def test_apply_pro_hooks_to_core_propagates_phase_prompt_materializer() -> None:
-    """A non-None ``phase_prompt_materializer`` override is propagated."""
     core = build_minimal_pipeline_core(UnifiedConfig(), _fake_display_context())
     new_materializer = MagicMock()
 
@@ -65,7 +59,6 @@ def test_apply_pro_hooks_to_core_propagates_phase_prompt_materializer() -> None:
 
 
 def test_apply_pro_hooks_to_core_propagates_artifact_requirements_resolver() -> None:
-    """A non-None ``artifact_requirements_resolver`` override is propagated."""
     core = build_minimal_pipeline_core(UnifiedConfig(), _fake_display_context())
     new_resolver = MagicMock()
 
@@ -77,7 +70,6 @@ def test_apply_pro_hooks_to_core_propagates_artifact_requirements_resolver() -> 
 
 
 def test_apply_pro_hooks_to_core_identity_when_all_none() -> None:
-    """When all core overrides are ``None``, the input core is returned unchanged."""
     core = build_minimal_pipeline_core(UnifiedConfig(), _fake_display_context())
     pro_hooks = ProPipelineHooks(
         policy_bundle_override=MagicMock(),
@@ -95,7 +87,6 @@ def test_apply_pro_hooks_to_core_identity_when_all_none() -> None:
 
 
 def test_apply_pro_hooks_to_core_does_not_touch_extended_fields() -> None:
-    """Extended fields on ``ProPipelineHooks`` are NOT propagated to ``PipelineCore``."""
     core = build_minimal_pipeline_core(UnifiedConfig(), _fake_display_context())
     new_display_context = _fake_display_context()
     new_resolver = MagicMock()
@@ -120,10 +111,8 @@ def test_apply_pro_hooks_to_core_does_not_touch_extended_fields() -> None:
 
     assert result.display_context is new_display_context
     assert result.artifact_requirements_resolver is new_resolver
-    # Extended fields have no representation on PipelineCore.
     assert dataclasses.fields(PipelineCore) == tuple(_core_fields_before())
 
 
 def _core_fields_before() -> list[dataclasses.Field[object]]:
-    """Return the current fields of ``PipelineCore`` (used as a stable reference)."""
     return list(dataclasses.fields(PipelineCore))

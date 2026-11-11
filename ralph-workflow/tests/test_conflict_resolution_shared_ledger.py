@@ -1,5 +1,3 @@
-"""Conflict resolution sessions share one agent ledger with the rest of the run."""
-
 from __future__ import annotations
 
 import dataclasses
@@ -32,7 +30,6 @@ pytestmark = pytest.mark.timeout_seconds(5)
 
 @pytest.fixture(autouse=True)
 def _no_real_cooldown_waits(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A failed agent is benched and the driver waits out its cooldown; never for real here."""
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
 
 
@@ -66,10 +63,6 @@ def _resolve(tmp_path: Path, deps: PipelineDeps, calls: list[str]) -> bool:
 def test_resolver_that_failed_in_an_earlier_session_is_not_offered_first(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # Per-attempt observation (clamps to the last entry once exhausted):
-    # primary's three exceptions leave the markers in place (no progress, so
-    # the consecutive streak accrues), fallback's success clears them; the
-    # reused seam then keeps reporting "cleared" for the second resolve.
     _install_seams(
         monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[list(_CONFLICTED)] * 3 + [[]]
     )
@@ -84,7 +77,6 @@ def test_resolver_that_failed_in_an_earlier_session_is_not_offered_first(
     assert _resolve(tmp_path, deps, first) is True
     assert _resolve(tmp_path, deps, second) is True
 
-    # Primary fails 3 times (the ledger consecutive limit), then falls over to fallback.
     assert first == ["primary", "primary", "primary", "fallback"]
     assert second == ["fallback"]
 

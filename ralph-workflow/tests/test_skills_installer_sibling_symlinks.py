@@ -1,5 +1,3 @@
-"""Black-box tests for the sibling-root symlinking in ralph.skills._installer."""
-
 from __future__ import annotations
 
 import os
@@ -16,7 +14,6 @@ from ralph.skills._installer import (
     install_baseline_skills,
 )
 
-# ponytail: sibling fan-out performs real recursive filesystem I/O under xdist; 5s avoids SIGALRM turning into a caught OSError while the 60s suite cap remains authoritative.
 pytestmark = pytest.mark.timeout_seconds(5)
 
 if TYPE_CHECKING:
@@ -27,7 +24,6 @@ if TYPE_CHECKING:
 def fake_roots(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> Iterator[tuple[Path, tuple[AgentSkillRoot, ...]]]:
-    """Redirect every agent skill root under tmp_path and yield (canonical, all)."""
     canonical_dir = tmp_path / "canonical"
     codex_dir = tmp_path / "codex"
     opencode_dir = tmp_path / "opencode"
@@ -98,7 +94,6 @@ def test_install_baseline_skills_creates_symlink_in_sibling_roots(
         for name in BASELINE_SKILL_NAMES:
             entry_path = sibling_dir / name
             assert entry_path.is_symlink(), f"Expected {entry_path} to be a symlink"
-            # Resolving through the symlink should land in the canonical root.
             target = entry_path.resolve()
             expected = (canonical_dir / name).resolve()
             assert target == expected, (
@@ -113,9 +108,6 @@ def test_install_baseline_skills_falls_back_to_copy_when_symlink_fails(
 ) -> None:
     canonical_dir, all_roots = fake_roots
 
-    # Force the installer's symlink step to raise OSError so we exercise its
-    # shutil.copytree fallback. Only the sibling-root destinations fail; the
-    # canonical materialization keeps using the real symlink.
     real_symlink = os.symlink
     sibling_dirs = tuple(str(root.resolve()) for root in all_roots[1:])
 
@@ -140,14 +132,12 @@ def test_install_baseline_skills_falls_back_to_copy_when_symlink_fails(
             assert entry_path.is_dir()
             assert not entry_path.is_symlink()
             assert (entry_path / "SKILL.md").read_text(encoding="utf-8") == get_skill_content(name)
-    # shutil.copytree was used; canonical install still happened.
     for name in BASELINE_SKILL_NAMES:
         assert (canonical_dir / name / "SKILL.md").exists()
 
 
 def test_install_baseline_skills_preserves_user_owned_sibling_skill(
     fake_roots: tuple[Path, tuple[AgentSkillRoot, ...]],
-    # RALPH-TEST-REASON: the retired default skills are no longer shipped, so the fixture uses a retained artifact skill
 ) -> None:
     _, all_roots = fake_roots
     codex_dir = all_roots[1].resolve()
@@ -159,7 +149,6 @@ def test_install_baseline_skills_preserves_user_owned_sibling_skill(
     entry, failures = install_baseline_skills()
     assert entry.status.value == "needs_repair"
     assert "sibling-conflict-submit-plan-artifact" in failures
-    # The user file is preserved.
     assert user_md.read_text(encoding="utf-8") == "# user override\n"
 
 
@@ -169,10 +158,8 @@ def test_install_baseline_skills_replaces_existing_managed_symlink(
 ) -> None:
     canonical_dir, all_roots = fake_roots
     codex_dir = all_roots[1].resolve()
-    # RALPH-TEST-REASON: the retired default skills are no longer shipped, so the fixture uses a retained artifact skill
     stale_target = tmp_path / "stale-canonical"
     stale_target.mkdir(parents=True)
-    # Pre-create a stale symlink that points nowhere useful.
     (codex_dir / "submit-plan-artifact").symlink_to(stale_target, target_is_directory=True)
 
     entry, failures = install_baseline_skills()
@@ -186,10 +173,6 @@ def test_install_baseline_skills_replaces_existing_managed_symlink(
 def test_install_baseline_skills_replaces_existing_real_directory_at_sibling(
     fake_roots: tuple[Path, tuple[AgentSkillRoot, ...]],
 ) -> None:
-    """Regression guard: a real (non-symlink) directory at the sibling path must
-        be rmtree'd and replaced with a fresh symlink.
-    # RALPH-TEST-REASON: the retired default skills are no longer shipped, so the fixture uses a retained artifact skill
-    """
     canonical_dir, all_roots = fake_roots
     codex_dir = all_roots[1].resolve()
     user_skill = codex_dir / "submit-plan-artifact"
@@ -200,11 +183,8 @@ def test_install_baseline_skills_replaces_existing_real_directory_at_sibling(
     assert entry.status.value == "installed_healthy"
     assert failures == []
     entry_path = codex_dir / "submit-plan-artifact"
-    # The directory was replaced — it is now a symlink, not a real dir.
     assert entry_path.is_symlink()
-    # Resolves into the canonical copy.
     assert entry_path.resolve() == (canonical_dir / "submit-plan-artifact").resolve()
-    # The stale file is gone (replaced by the symlink target, not a leftover real dir).
     assert not (canonical_dir / "submit-plan-artifact" / "stale.txt").exists()
 
 
@@ -213,10 +193,8 @@ def test_install_baseline_skills_check_update_iterates_all_roots(
 ) -> None:
     _canonical_dir, all_roots = fake_roots
     install_baseline_skills()
-    # Sanity: nothing missing yet.
     assert check_skills_update_available() is False
 
-    # Delete a sibling root entirely.
     codex_dir = all_roots[1].resolve()
     shutil.rmtree(codex_dir)
     assert check_skills_update_available() is True

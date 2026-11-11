@@ -1,9 +1,3 @@
-"""Planning requires bidirectional synchronization with its integration target.
-
-Dirty completed work routes through normal policy commit phases. An unchanged
-integration refusal suspends dispatch and yields to cooldown before retrying.
-"""
-
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -54,8 +48,6 @@ def _ctx(tmp_path: Path, *, enabled: bool = True, target: str = "main") -> Simpl
 
 
 class _Repo:
-    """Fake git ground truth: is the target in HEAD, and does it exist."""
-
     def __init__(self, *, contained: bool | None, target_exists: bool = True) -> None:
         self.contained = contained
         self.landed = True
@@ -242,18 +234,12 @@ def test_non_planning_phase_and_disabled_integration_are_not_gated(
     assert repo.integrations == 0
 
 
-# ---------------------------------------------------------------------------
-# Owner-selected cleanup-ladder rung dispatch (WU-1 wiring).
-# ---------------------------------------------------------------------------
-
-
 def _ladder_verdict(
     rung: CleanupLadderRung | None,
     *,
     action: IntegrationAction = IntegrationAction.CONTINUE_GIT_OPERATION,
     record_fact: RecordFactOutcome | None = None,
 ) -> PlanningSyncVerdict:
-    """Build the typed owner verdict the gate consumes."""
     return PlanningSyncVerdict(
         action=action,
         record_fact=record_fact,
@@ -285,7 +271,6 @@ def _ladder_verdict(
 def test_selected_ladder_rung_executes_once_and_the_gate_reobserves(
     repo: _Repo, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Each selected rung dispatches exactly once; a repeat selects the next."""
     repo.contained = False
     _integrate_with(monkeypatch, repo, lands=False, reason="residue blocks landing")
     verdicts = iter(
@@ -295,8 +280,6 @@ def test_selected_ladder_rung_executes_once_and_the_gate_reobserves(
                 CleanupLadderRung.FRESH_WORKTREE,
                 action=IntegrationAction.REINTEGRATE_AGAINST_TARGET,
             ),
-            # The observation did not change: the same rung must never be
-            # re-dispatched; the gate gives up instead.
             _ladder_verdict(
                 CleanupLadderRung.FRESH_WORKTREE,
                 action=IntegrationAction.REINTEGRATE_AGAINST_TARGET,
@@ -321,14 +304,12 @@ def test_selected_ladder_rung_executes_once_and_the_gate_reobserves(
 
     assert dispatched == [CleanupLadderRung.QUARANTINE, CleanupLadderRung.FRESH_WORKTREE]
     assert blocked is not None
-    # One startup-integration re-observation followed each dispatched rung.
     assert repo.integrations == 3
 
 
 def test_ladder_rung_is_never_dispatched_twice_without_a_state_change(
     repo: _Repo, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A repeated identical rung under an unchanged observation is not re-run."""
     repo.contained = False
     _integrate_with(monkeypatch, repo, lands=False, reason="residue blocks landing")
     verdicts = iter(
@@ -358,15 +339,6 @@ def test_ladder_rung_is_never_dispatched_twice_without_a_state_change(
 def test_record_fact_overlaid_ladder_rung_dispatches_preserve_first(
     repo: _Repo, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A fail-closed record-fact verdict dispatches the preserve-first rung.
-
-    The verdict's ``record_fact`` names why the durable record could not
-    prove a next step; its ladder rung (the preserve-first rung) reaches
-    the rung dispatcher exactly once like any ladder verdict — the work
-    is preserved to backup refs before any destructive step, never
-    handed to a person. A repeat under the unchanged observation breaks
-    the climb and the gate returns the blocked verdict.
-    """
     repo.contained = False
     _integrate_with(monkeypatch, repo, lands=False, reason="residue blocks landing")
     verdicts = iter(

@@ -1,4 +1,3 @@
-"""Process liveness detection utilities."""
 
 from __future__ import annotations
 
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 
 class LivenessResult(enum.Enum):
-    """Result of a process liveness check."""
 
     ALIVE = "alive"
     GONE = "gone"
@@ -44,36 +42,16 @@ def verify_process_liveness(
     *,
     psutil_mod: _PsutilModuleLike | None = None,
 ) -> LivenessResult:
-    """Check whether a PID is still alive, gone, zombie, or unknown.
-
-    When psutil_mod is available, uses it as the primary liveness check
-    (pid_exists + zombie detection). Falls back to os.kill(pid, 0) on
-    POSIX only when psutil_mod is None.
-
-    Does NOT use _SuppressMissingProcess — each exception type is handled
-    explicitly to avoid conflating "process gone" with "no permission".
-
-    Args:
-        pid: Process ID to check.
-        psutil_mod: Optional psutil module-like object for extended checks.
-
-    Returns:
-        LivenessResult indicating the process state.
-    """
     if psutil_mod is not None:
-        # Zombie detection via psutil
         try:
             proc = psutil_mod.process_from_pid(pid)
             if proc.status() == "zombie":
                 return LivenessResult.ZOMBIE
         except Exception:
-            # process_from_pid failed — fall through to OS-level check
             pass
         else:
-            # process_from_pid succeeded — use psutil for primary liveness check
             return _psutil_pid_exists_liveness(psutil_mod, pid)
 
-    # No psutil — fall back to OS-level check
     if hasattr(os, "kill"):
         return _posix_liveness(pid)
     return LivenessResult.UNKNOWN

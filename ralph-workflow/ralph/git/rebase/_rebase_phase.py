@@ -1,4 +1,3 @@
-"""RebasePhase — lifecycle phase enum for an in-progress rebase operation."""
 
 from __future__ import annotations
 
@@ -6,7 +5,6 @@ from enum import StrEnum
 
 
 class RebasePhase(StrEnum):
-    """Lifecycle phase of an in-progress rebase operation."""
 
     NotStarted = "not_started"
     PreRebaseCheck = "pre_rebase_check"

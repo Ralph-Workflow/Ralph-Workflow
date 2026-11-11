@@ -1,19 +1,3 @@
-"""Loader-level regression for the closed transition table.
-
-The plan's UNIT 1 closes the loader's intervention bypass:
-``_migrate_payload_evidence`` currently authors
-``diagnostic_intervention_required=True`` and ``repair_cap_reason``
-through a bare ``dict(**data_raw, ...)``. The new contract
-constructs an :class:`IntegrationRecord` from the migrated dict
-and applies ``RAISE_DIAGNOSTIC_INTERVENTION`` so the only path
-that flips the intervention flag is the closed transition table.
-
-These tests observe the loadable public surface of the loader and
-the closed transition table. They never walk the source AST or
-read private helpers directly. They run RED on the unfixed
-loader and GREEN once UNIT 1 lands.
-"""
-
 from __future__ import annotations
 
 import json
@@ -55,29 +39,14 @@ def _global_evidence_payload() -> dict[str, object]:
 def test_legacy_global_evidence_loader_raises_through_transition_table(
     tmp_path: Path,
 ) -> None:
-    """Public entry point: ``read_record`` on a legacy global-evidence record.
-
-    The new diagnostic path drops the legacy global evidence key
-    silently and re-derives state from Git; surfacing intervention
-    here was the production livelock. The test now pins the
-    contract: legacy keys load with no intervention and no
-    held evidence.
-    """
     _write_legacy_record(tmp_path, _global_evidence_payload())
     loaded = read_record(tmp_path)
     assert loaded is not None
     assert loaded.diagnostic_intervention_required is False
-    # The legacy key is dropped from the live evidence tuple.
     assert dict(loaded.diagnostic_evidence) == {}
 
 
 def test_legacy_failure_cause_coercer_preserves_typed_default() -> None:
-    """Re-runs the existing ``test_legacy_record_last_failure_cause_migration`` regression pin.
-
-    Confirms the audit-visible ``RAISE_DIAGNOSTIC_INTERVENTION`` does NOT
-    clobber ``last_failure_cause`` (NONE / AGENT_FAILURE / UNRESOLVED_CONFLICT)
-    when the new loader is exercised via ``parse_record_payload``.
-    """
     payload1: dict[str, object] = {
         "phase": "integrating",
         "target": "main",
@@ -112,13 +81,6 @@ def test_legacy_failure_cause_coercer_preserves_typed_default() -> None:
 
 
 def test_audit_visible_transition_observable_through_with_transition() -> None:
-    """The closed transition table is the only path to ``RAISE_DIAGNOSTIC_INTERVENTION``.
-
-    Asserts that :meth:`IntegrationRecord.with_transition` flips the
-    intervention flag through the transition table, returns a NEW record
-    (the original is unchanged), and refuses to apply a transition with
-    an unregistered field.
-    """
     record = IntegrationRecord(
         phase="integrating",
         target="main",
@@ -136,13 +98,11 @@ def test_audit_visible_transition_observable_through_with_transition() -> None:
     assert new_record is not record
     assert new_record.diagnostic_intervention_required is True
     assert new_record.repair_cap_reason == "closed-transition table applied"
-    # Original is frozen and unchanged.
     assert record.diagnostic_intervention_required is False
     assert record.repair_cap_reason is None
 
-    # The transition table refuses unregistered fields.
     with pytest.raises(ValueError, match="does not accept field"):
         record.with_transition(
             RAISE_DIAGNOSTIC_INTERVENTION,
-            phase="integrated",  # phase is not a field of this transition
+            phase="integrated",
         )

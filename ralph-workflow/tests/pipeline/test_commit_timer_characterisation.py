@@ -1,10 +1,3 @@
-"""Black-box characterisation tests for timer behaviour around commit phases.
-
-These tests pin the frozen timer and progress behaviour around commit entry and
-commit outcome across the transition from legacy commit phases to future
-pipeline phases, without relying on phase-name string literals.
-"""
-
 from __future__ import annotations
 
 import functools
@@ -38,19 +31,16 @@ def _policy() -> PipelinePolicy:
 
 
 def _dev_commit_entry(policy: PipelinePolicy) -> str:
-    """Return the configured commit boundary phase for development timebox."""
     assert policy.development_timebox is not None
     return policy.development_timebox.end_entry
 
 
 def _cycle_commit_entry(policy: PipelinePolicy) -> str:
-    """Return the configured commit boundary phase for cycle timebox."""
     assert policy.cycle_timebox is not None
     return policy.cycle_timebox.end_entry
 
 
 def _phase_before_dev_commit(policy: PipelinePolicy) -> str:
-    """Resolve the phase that transitions on success to the dev commit phase."""
     target = _dev_commit_entry(policy)
     for name, phase in policy.phases.items():
         if phase.transitions.on_success == target:
@@ -60,7 +50,6 @@ def _phase_before_dev_commit(policy: PipelinePolicy) -> str:
 
 
 def _phase_before_cycle_commit(policy: PipelinePolicy) -> str:
-    """Resolve the phase that transitions on success to the cycle final commit phase."""
     target = _cycle_commit_entry(policy)
     for name, phase in policy.phases.items():
         if phase.transitions.on_success == target:
@@ -70,10 +59,6 @@ def _phase_before_cycle_commit(policy: PipelinePolicy) -> str:
 
 
 def _analysis_phase_looping_back_to_development(policy: PipelinePolicy) -> str:
-    """Return the analysis phase whose request_changes decision routes to development.
-
-    Resolved from the policy so the characterisation stays name-neutral.
-    """
     dev_start = policy.development_timebox.start_entry if policy.development_timebox else None
     for name, phase in policy.phases.items():
         route = phase.decisions.get("request_changes")
@@ -88,7 +73,6 @@ def _sample_timing(
     iteration: int = 0,
     elapsed_seconds: int = 10,
 ) -> PhaseTimingRecord:
-    """Construct a simple PhaseTimingRecord for testing cycle timing boundaries."""
     return PhaseTimingRecord(
         phase=phase,
         iteration=iteration,
@@ -99,11 +83,6 @@ def _sample_timing(
 
 
 def _outer_budget_counter(policy: PipelinePolicy) -> str:
-    """Return the tracked budget counter charged by the commit phases.
-
-    The name is read from the policy so this characterisation stays
-    name-neutral.
-    """
     for name, counter in policy.budget_counters.items():
         if counter.tracks_budget:
             return name
@@ -117,13 +96,6 @@ def _commit_accounting(
     reset_fields: tuple[str, ...],
     counter_name: str,
 ) -> tuple[tuple[int, ...], int, int]:
-    """Return the (loop resets, charged counter, timing window) triple of a state.
-
-    The three values are the whole commit-outcome accounting: the ``loop_resets``
-    counters, the policy ``increments_counter`` and the
-    ``cycle_timing_start_index`` that restarts the cumulative-elapsed window.
-    Comparing two of these tuples compares the accounting of two routes.
-    """
     return (
         tuple(state.get_loop_iteration(field) for field in reset_fields),
         state.get_outer_progress(counter_name),
@@ -131,13 +103,7 @@ def _commit_accounting(
     )
 
 
-# ---------------------------------------------------------------------------
-# 1. Development timebox conclusion on commit entry
-# ---------------------------------------------------------------------------
-
-
 def test_development_timebox_concludes_on_entry_to_commit_phase_via_reducer() -> None:
-    """Entering the commit phase concludes the dev timebox (active=False, zeroed, epoch cleared)."""
     policy = _policy()
     pre_commit = _phase_before_dev_commit(policy)
     commit_phase = _dev_commit_entry(policy)
@@ -163,7 +129,6 @@ def test_development_timebox_concludes_on_entry_to_commit_phase_via_reducer() ->
 
 
 def test_development_timebox_conclude_function_pure_semantics() -> None:
-    """conclude_development_timebox_on_route_out_of_development only concludes for end_entry."""
     policy = _policy()
     commit_phase = _dev_commit_entry(policy)
 
@@ -194,7 +159,6 @@ def test_development_timebox_conclude_function_pure_semantics() -> None:
 
 
 def test_development_timebox_remains_active_when_routing_to_pre_commit_phase() -> None:
-    """Transition from development to the pre-commit phase preserves active development timer."""
     policy = _policy()
     pre_commit = _phase_before_dev_commit(policy)
 
@@ -217,13 +181,7 @@ def test_development_timebox_remains_active_when_routing_to_pre_commit_phase() -
     assert next_state.dev_timebox_consumed_seconds == 800.0
 
 
-# ---------------------------------------------------------------------------
-# 2. Cycle timebox conclusion on commit entry
-# ---------------------------------------------------------------------------
-
-
 def test_cycle_timebox_concludes_on_entry_to_final_commit_via_reducer() -> None:
-    """Entering the final commit phase concludes cycle timing but preserves consumed seconds."""
     policy = _policy()
     pre_final_commit = _phase_before_cycle_commit(policy)
     final_commit = _cycle_commit_entry(policy)
@@ -248,7 +206,6 @@ def test_cycle_timebox_concludes_on_entry_to_final_commit_via_reducer() -> None:
 
 
 def test_cycle_timebox_conclude_function_pure_semantics() -> None:
-    """conclude_cycle_on_route_out_of_cycle only concludes on entry to ct.end_entry."""
     policy = _policy()
     final_commit = _cycle_commit_entry(policy)
 
@@ -277,7 +234,6 @@ def test_cycle_timebox_conclude_function_pure_semantics() -> None:
 
 
 def test_cycle_timebox_remains_active_entering_pre_final_commit_phase() -> None:
-    """Routing from analysis to pre-final-commit phase keeps the cycle timer active."""
     policy = _policy()
     pre_final_commit = _phase_before_cycle_commit(policy)
 
@@ -297,13 +253,7 @@ def test_cycle_timebox_remains_active_entering_pre_final_commit_phase() -> None:
     assert next_state.cycle_timebox_consumed_seconds == 2100.0
 
 
-# ---------------------------------------------------------------------------
-# 3. Commit completion loop_resets / iteration increment / cycle_timing_start_index
-# ---------------------------------------------------------------------------
-
-
 def test_commit_completion_resets_lifecycle_phase_counters_and_timing_window() -> None:
-    """Commit completion on a lifecycle phase zeroes loop_resets, advances counter, sets cycle_timing_start_index."""
     policy = _policy()
     final_commit = _cycle_commit_entry(policy)
     lifecycle = policy.lifecycle_phases.get(final_commit)
@@ -330,19 +280,15 @@ def test_commit_completion_resets_lifecycle_phase_counters_and_timing_window() -
 
     result = apply_commit_outcome(state, state, skipped=False, policy=policy)
 
-    # 1. All loop_resets declared for the lifecycle phase are zeroed
     for reset_field in lifecycle.loop_resets:
         assert result.get_loop_iteration(reset_field) == 0
 
-    # 2. Outer progress counter advances by 1
     assert result.get_outer_progress(counter_name) == 3
 
-    # 3. cycle_timing_start_index advances to len(phase_timings)
     assert result.cycle_timing_start_index == len(timings)
 
 
 def test_commit_completion_via_reducer_applies_lifecycle_resets() -> None:
-    """Reducer handling of COMMIT_SUCCESS runs apply_commit_outcome for lifecycle commit."""
     policy = _policy()
     final_commit = _cycle_commit_entry(policy)
     lifecycle = policy.lifecycle_phases.get(final_commit)
@@ -375,7 +321,6 @@ def test_commit_completion_via_reducer_applies_lifecycle_resets() -> None:
 
 
 def test_intermediate_commit_completion_resets_commit_policy_loop_counters() -> None:
-    """Commit completion on an intermediate commit phase zeroes loop_resets from commit_policy."""
     policy = _policy()
     dev_commit = _dev_commit_entry(policy)
     phase_def = policy.phases.get(dev_commit)
@@ -397,17 +342,10 @@ def test_intermediate_commit_completion_resets_commit_policy_loop_counters() -> 
     for reset_field in commit_policy.loop_resets:
         assert result.get_loop_iteration(reset_field) == 0
 
-    # Intermediate commit does not alter cycle_timing_start_index
     assert result.cycle_timing_start_index == 0
 
 
-# ---------------------------------------------------------------------------
-# 4. Commit-then-development restarts the dev timer
-# ---------------------------------------------------------------------------
-
-
 def test_commit_then_development_restarts_development_timer_from_zero() -> None:
-    """Concluded dev timer restarts from zero when re-entering development from commit/analysis."""
     policy = _policy()
     assert policy.development_timebox is not None
     dev_start = policy.development_timebox.start_entry
@@ -439,7 +377,6 @@ def test_commit_then_development_restarts_development_timer_from_zero() -> None:
 
 
 def test_apply_development_timebox_starts_inactive_timer_on_entry_to_start_phase() -> None:
-    """apply_development_timebox starts an inactive timer on target_phase == dt.start_entry."""
     policy = _policy()
     assert policy.development_timebox is not None
     dev_start = policy.development_timebox.start_entry
@@ -469,7 +406,6 @@ def test_apply_development_timebox_starts_inactive_timer_on_entry_to_start_phase
 
 
 def test_development_reentry_while_already_active_preserves_consumed_seconds() -> None:
-    """Re-entering development while dev timer is already active does not zero consumed seconds."""
     policy = _policy()
     assert policy.development_timebox is not None
     dev_start = policy.development_timebox.start_entry
@@ -499,14 +435,6 @@ def test_development_reentry_while_already_active_preserves_consumed_seconds() -
 
 
 def test_commit_then_development_route_concludes_and_restarts_the_development_timer() -> None:
-    """The commit-then-development route concludes the timer at the commit entry and restarts it at zero.
-
-    This is the whole route in one test, not two isolated rules: the commit
-    entry concludes the development timer (zeroing the consumed seconds and
-    clearing the start epoch), and the development window that opens after the
-    route therefore starts from zero instead of resuming the pre-commit elapsed
-    time. The cycle timer keeps running: it concludes at its own end_entry.
-    """
     policy = _policy()
     assert policy.development_timebox is not None
     dev_start = policy.development_timebox.start_entry
@@ -514,8 +442,6 @@ def test_commit_then_development_route_concludes_and_restarts_the_development_ti
     review_phase = _phase_before_dev_commit(policy)
     analysis_phase = _analysis_phase_looping_back_to_development(policy)
 
-    # A development timing of 1000s admits the development_analysis invocation
-    # gate (minimum_elapsed_seconds), so the route below is the real one.
     timings = (_sample_timing("development", iteration=0, elapsed_seconds=1000),)
     state = PipelineState(
         phase=review_phase,
@@ -540,12 +466,10 @@ def test_commit_then_development_route_concludes_and_restarts_the_development_ti
         ),
     )
 
-    # Entering the commit entry concludes the development timer ...
     assert committed.phase == commit_phase
     assert committed.dev_timebox_active is False
     assert committed.dev_timebox_consumed_seconds == 0.0
     assert committed.dev_timebox_started_at_epoch is None
-    # ... while the cycle timer keeps running until its own end_entry.
     assert committed.cycle_timebox_active is True
     assert committed.cycle_timebox_consumed_seconds == 2100.0
 
@@ -574,21 +498,13 @@ def test_commit_then_development_route_concludes_and_restarts_the_development_ti
         ),
     )
 
-    # The development window after the route starts from zero, not from the
-    # 1500 seconds the pre-commit development had already consumed.
     assert looped_back.phase == dev_start
     assert looped_back.dev_timebox_active is True
     assert looped_back.dev_timebox_consumed_seconds == 0.0
     assert looped_back.dev_timebox_started_at_epoch == 7500.0
 
 
-# ---------------------------------------------------------------------------
-# 5. Rollback preserves the iteration reset triple and commit_review_rejections survives
-# ---------------------------------------------------------------------------
-
-
 def test_rollback_via_apply_commit_outcome_preserves_iteration_reset_triple() -> None:
-    """apply_commit_outcome for a review phase or its commit phase zeroes loop_resets, advances counter, sets cycle_timing_start_index."""
     policy = _policy()
     final_commit = _cycle_commit_entry(policy)
     lifecycle = policy.lifecycle_phases.get(final_commit)
@@ -615,22 +531,17 @@ def test_rollback_via_apply_commit_outcome_preserves_iteration_reset_triple() ->
 
     result = apply_commit_outcome(state, state, skipped=False, policy=policy)
 
-    # 1. All loop_resets are zeroed
     for reset_field in lifecycle.loop_resets:
         assert result.get_loop_iteration(reset_field) == 0
 
-    # 2. Outer progress counter advances by 1
     assert result.get_outer_progress(counter_name) == 3
 
-    # 3. cycle_timing_start_index advances to len(phase_timings)
     assert result.cycle_timing_start_index == len(timings)
 
-    # 4. commit_review_rejections survives iteration resets
     assert result.commit_review_rejections == 1
 
 
 def test_rollback_via_reducer_applies_iteration_reset_triple_and_increments_rejections() -> None:
-    """Reducer handling of CommitReviewRejected runs apply_commit_outcome and preserves rejections counter."""
     policy = _policy()
     final_commit = _cycle_commit_entry(policy)
     lifecycle = policy.lifecycle_phases.get(final_commit)
@@ -665,26 +576,21 @@ def test_rollback_via_reducer_applies_iteration_reset_triple_and_increments_reje
         routing_timing=RoutingTiming(total_elapsed_seconds=100.0),
     )
 
-    # 1. Routes to development (on_reject)
     assert next_state.phase == "development"
 
-    # 2. Iteration reset triple preserved:
     for reset_field in lifecycle.loop_resets:
         assert next_state.get_loop_iteration(reset_field) == 0
     assert next_state.get_outer_progress(counter_name) == 2
     assert next_state.cycle_timing_start_index == len(timings)
 
-    # 3. commit_review_rejections counter survived reset AND incremented
     assert next_state.commit_review_rejections == 1
 
-    # 4. Rollback pending is flagged for crash safety
     assert next_state.rollback_pending is True
     assert next_state.rollback_ref == "refs/ralph/proposals/test-run/1"
     assert next_state.last_review_rejection_reason == "Detected mass deletion"
 
 
 def test_rollback_reentering_development_restarts_development_timer_from_zero() -> None:
-    """Rollback returning to development restarts concluded development timer from zero."""
     policy = _policy()
     assert policy.development_timebox is not None
     dev_start = policy.development_timebox.start_entry
@@ -721,12 +627,6 @@ def test_rollback_reentering_development_restarts_development_timer_from_zero() 
 
 
 def test_commit_review_rejection_limit_exhaustion_transitions_to_failed_terminal() -> None:
-    """When commit_review_rejections reaches the limit (default 2), fail to failed_terminal.
-
-    The run fails once the counter REACHES its limit: with the default limit of
-    2 the second consecutive rejection is terminal. The terminal transition
-    performs no rollback and keeps the rejected proposal ref.
-    """
     policy = _policy()
     pre_dev_commit = _phase_before_dev_commit(policy)
 
@@ -748,10 +648,8 @@ def test_commit_review_rejection_limit_exhaustion_transitions_to_failed_terminal
     )
 
     assert next_state.phase == policy.recovery.failed_route
-    # RALPH-TEST-REASON: Rejection limit is now >= policy limit (reaches 2) instead of > 2
     assert next_state.commit_review_rejections == 2
     assert next_state.rollback_pending is False
-    # The rejected proposal ref is kept, so the rejected work stays recoverable.
     assert next_state.rollback_ref == "refs/ralph/proposals/run-1/1"
     assert "limit reached" in (next_state.last_error or "")
 
@@ -759,7 +657,6 @@ def test_commit_review_rejection_limit_exhaustion_transitions_to_failed_terminal
 def test_commit_review_rejection_after_cycle_timebox_expired_transitions_to_failed_terminal() -> (
     None
 ):
-    """When cycle timebox has expired, rejection routes to failed_terminal rather than development."""
     policy = _policy()
     assert policy.cycle_timebox is not None
     pre_dev_commit = _phase_before_dev_commit(policy)
@@ -792,12 +689,6 @@ def test_commit_review_rejection_after_cycle_timebox_expired_transitions_to_fail
 
 
 def _per_iteration_review_and_commit_phases(policy: PipelinePolicy) -> tuple[str, str]:
-    """Return the per-iteration review phase and the commit phase it feeds.
-
-    The per-iteration review path is the one whose commit phase is not a
-    lifecycle phase and declares its own ``commit_policy``. It is resolved
-    from the policy so this characterisation stays name-neutral.
-    """
     for name, phase in policy.phases.items():
         if phase.role != "commit_review":
             continue
@@ -812,12 +703,6 @@ def _per_iteration_review_and_commit_phases(policy: PipelinePolicy) -> tuple[str
 
 
 def test_cycle_timebox_remains_active_entering_per_iteration_commit_phase() -> None:
-    """Entering the per-iteration commit phase concludes only the development timer.
-
-    The cycle timer is concluded at its own ``end_entry`` (the final commit
-    phase), so the per-iteration commit boundary leaves it running with its
-    consumed seconds intact.
-    """
     policy = _policy()
     pre_commit = _phase_before_dev_commit(policy)
     commit_phase = _dev_commit_entry(policy)
@@ -840,24 +725,14 @@ def test_cycle_timebox_remains_active_entering_per_iteration_commit_phase() -> N
     )
 
     assert next_state.phase == commit_phase
-    # The development timer concludes at this boundary ...
     assert next_state.dev_timebox_active is False
     assert next_state.dev_timebox_consumed_seconds == 0.0
     assert next_state.dev_timebox_started_at_epoch is None
-    # ... while the cycle timer keeps running until its own end_entry.
     assert next_state.cycle_timebox_active is True
     assert next_state.cycle_timebox_consumed_seconds == 2100.0
 
 
 def test_rollback_on_per_iteration_review_path_resets_only_the_review_loop_counter() -> None:
-    """A rejection on the per-iteration review path resets the review loop counter only.
-
-    The per-iteration commit phase is not a lifecycle phase and declares no
-    ``increments_counter``, so the rollback charges no budget counter and does
-    not move ``cycle_timing_start_index`` — the very accounting a successful
-    commit on that path performs. ``commit_review_rejections`` still survives
-    the reset and is incremented.
-    """
     policy = _policy()
     review_phase, commit_phase = _per_iteration_review_and_commit_phases(policy)
     commit_def = policy.phases[commit_phase]
@@ -890,25 +765,16 @@ def test_rollback_on_per_iteration_review_path_resets_only_the_review_loop_count
         routing_timing=RoutingTiming(total_elapsed_seconds=100.0),
     )
 
-    # The loop counter declared by the fed commit phase is reset.
     for reset_field in commit_policy.loop_resets:
         assert next_state.get_loop_iteration(reset_field) == 0
-    # No budget counter is charged on this path.
     assert next_state.get_outer_progress(outer_counter) == 1
-    # The cumulative-elapsed window is not restarted on this path.
     assert next_state.cycle_timing_start_index == 0
-    # The rejection counter survives the reset and is incremented.
     assert next_state.commit_review_rejections == 1
     assert next_state.rollback_pending is True
     assert next_state.rollback_ref == "refs/ralph/proposals/test-run/0"
 
 
 def test_successful_commit_on_per_iteration_review_path_charges_the_same_accounting() -> None:
-    """A successful commit on the per-iteration path charges exactly the same accounting.
-
-    The rollback and the commit are the same accounting path, so the rejection
-    characterisation above is identical to the commit characterisation.
-    """
     policy = _policy()
     review_phase, commit_phase = _per_iteration_review_and_commit_phases(policy)
     commit_def = policy.phases[commit_phase]

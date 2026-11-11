@@ -1,21 +1,3 @@
-"""S-8: setup-time seeding failures surface as visible warnings.
-
-Before the fix the five ``logger.debug`` best-effort catches in
-``_sync_shipped_skills_on_pipeline_run`` swallowed every failure at
-default log level, so a broken user-global skill root, a failed
-project-scope install, an unreadable ``.gitignore``, a failed
-auto-commit, or a failed retention sweep were all invisible. After the
-fix the run still proceeds (best-effort by design) but each failure
-emits a ``logger.warning`` with the remediation hint so the operator
-can investigate without re-running with ``--verbose``.
-
-This test pins the post-fix behavior: monkeypatch each collaborator
-to raise and assert the warning message is emitted and no exception
-propagates. No real subprocess, no real sleep (per
-``ralph.testing.audit_test_policy``); the test runs in well under the
-1 s per-test budget.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -28,12 +10,6 @@ from ralph.cli.commands import run as run_module
 
 
 def _capture_warnings() -> tuple[list[str], int]:
-    """Return a (records, sink_id) pair for warning capture.
-
-    The caller is responsible for ``logger.remove(sink_id)`` in a
-    ``finally`` block. Captures at WARNING level so we never miss the
-    post-fix upgrade from ``logger.debug``.
-    """
     records: list[str] = []
 
     def _sink(message: object) -> None:
@@ -46,16 +22,13 @@ def _capture_warnings() -> tuple[list[str], int]:
 def test_user_global_skill_update_check_failure_emits_visible_warning(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A broken user-global skill root surfaces as a warning, not a silent debug line."""
     mock_manager = MagicMock()
     mock_manager.check_skills_for_updates.side_effect = RuntimeError("user-global broken")
     monkeypatch.setattr(run_module, "SkillManager", lambda *a, **kw: mock_manager)
-    # RALPH-TEST-REASON: mock project skill install to eliminate disk I/O and preserve per-test CPU budget
     monkeypatch.setattr(run_module, "install_project_baseline_skills", lambda *a, **kw: None)
 
     records, sink_id = _capture_warnings()
     try:
-        # Must not raise.
         run_module._sync_shipped_skills_on_pipeline_run(workspace_root=tmp_path)
     finally:
         logger.remove(sink_id)
@@ -72,7 +45,6 @@ def test_user_global_skill_update_check_failure_emits_visible_warning(
 def test_project_skill_install_failure_emits_visible_warning(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A project-scope skill install error surfaces as a warning."""
     mock_manager = MagicMock()
     mock_manager.check_skills_for_updates.return_value = False
     monkeypatch.setattr(run_module, "SkillManager", lambda *a, **kw: mock_manager)
@@ -102,7 +74,6 @@ def test_project_skill_install_failure_emits_visible_warning(
 def test_gitignore_autoseed_failure_emits_visible_warning(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A .gitignore/.git/info/exclude auto-seed error surfaces as a warning."""
     mock_manager = MagicMock()
     mock_manager.check_skills_for_updates.return_value = False
     monkeypatch.setattr(run_module, "SkillManager", lambda *a, **kw: mock_manager)
@@ -139,7 +110,6 @@ def test_gitignore_autoseed_failure_emits_visible_warning(
 def test_retention_sweep_failure_emits_visible_warning(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A retention sweep error surfaces as a warning, never as a swallowed debug line."""
     mock_manager = MagicMock()
     mock_manager.check_skills_for_updates.return_value = False
     monkeypatch.setattr(run_module, "SkillManager", lambda *a, **kw: mock_manager)

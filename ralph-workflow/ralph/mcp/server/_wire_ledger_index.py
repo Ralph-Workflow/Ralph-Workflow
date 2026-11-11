@@ -1,23 +1,3 @@
-"""Incremental chain verifier over one wire-ledger file.
-
-The ledger is append-only and grows for the whole life of a run: the
-bridge's periodic health probe alone chains three frames every few
-seconds, so a long run reaches tens of thousands of rows. Re-reading and
-re-HMACing the whole file on every lookup made each completion check
-(run once per reader tick) cost O(ledger) -- measured at ~1.3 s for a
-56k-row ledger -- so Ralph got steadily slower the longer it ran.
-
-:class:`WireLedgerIndex` verifies each appended byte once. It remembers
-how far it has verified, the chain head at that point, and the
-``tools/call`` rows seen so far, and on the next lookup only reads what
-was appended since. Any sign the verified prefix was rewritten -- a new
-inode, a shorter file, a same-size rewrite, or the last verified line no
-longer matching on disk -- discards the cache and re-verifies from the
-start, so a tampered ledger still fails closed.
-
-Lives in its own module so the repository's one-class-per-file policy
-keeps ``_wire_ledger.py`` focused on the append / verify API.
-"""
 
 from __future__ import annotations
 
@@ -37,7 +17,6 @@ GENESIS_HMAC = "0" * 64
 
 
 def parse_ledger_line(line: bytes) -> dict[str, object] | None:
-    """Return the JSON object on ``line``, or ``None`` for a blank/unparseable line."""
     stripped = line.strip()
     if not stripped:
         return None
@@ -51,13 +30,6 @@ def parse_ledger_line(line: bytes) -> dict[str, object] | None:
 
 
 class WireLedgerIndex:
-    """Append-aware verified view of one ledger file under one secret.
-
-    ``expected_hmac(row, prior)`` returns the HMAC the appender would
-    have sealed ``row`` with given chain head ``prior``, or ``None`` when
-    the row is malformed. Thread-safe: concurrent lookups serialize on an
-    internal lock.
-    """
 
     def __init__(
         self,
@@ -75,16 +47,9 @@ class WireLedgerIndex:
         self._intact = True
         self._calls: list[
             dict[str, object]
-        ] = []  # bounded-accumulator-ok: one entry per verified tools/call row in this ledger file
+        ] = []
 
     def snapshot(self) -> tuple[bool, tuple[dict[str, object], ...]]:
-        """Return ``(chain_intact, tools/call rows)`` for the ledger as it is now.
-
-        An absent or unreadable ledger trivially verifies with no rows,
-        matching the full-read verifier this replaces. A trailing line
-        with no newline yet (an append in flight) is evaluated but not
-        committed, so it is re-read once the writer finishes it.
-        """
         with self._lock:
             try:
                 data = self._read_unverified()
@@ -105,7 +70,6 @@ class WireLedgerIndex:
             return intact, (*calls, call) if call is not None else calls
 
     def _read_unverified(self) -> bytes:
-        # filesystem-read-ok: incremental tail read of the MCP wire ledger; FileBackend has no offset-read API
         with self._path.open("rb") as handle:
             stat = os.fstat(handle.fileno())
             identity = (stat.st_dev, stat.st_ino)
@@ -138,7 +102,6 @@ class WireLedgerIndex:
     def _step(
         self, line: bytes, head: str, intact: bool
     ) -> tuple[str, bool, dict[str, object] | None]:
-        """Advance the chain over one line; return ``(head, intact, tools/call row)``."""
         if not intact:
             return head, False, None
         row = parse_ledger_line(line)

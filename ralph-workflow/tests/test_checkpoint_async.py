@@ -1,9 +1,3 @@
-"""Async tests for checkpoint persistence.
-
-Tests save_async and load_async wrappers that delegate to asyncio.to_thread()
-so they do not block the event loop.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -28,7 +22,6 @@ def _build_state() -> PipelineState:
 
 
 async def test_save_async_creates_file(tmp_path: Path) -> None:
-    """save_async writes state to disk, same as sync save."""
     state = _build_state()
     path = tmp_path / "checkpoint.json"
 
@@ -38,7 +31,6 @@ async def test_save_async_creates_file(tmp_path: Path) -> None:
 
 
 async def test_save_async_roundtrip(tmp_path: Path) -> None:
-    """State saved with save_async can be loaded with load."""
     state = _build_state()
     path = tmp_path / "checkpoint.json"
 
@@ -52,7 +44,6 @@ async def test_save_async_roundtrip(tmp_path: Path) -> None:
 
 
 async def test_load_async_returns_state(tmp_path: Path) -> None:
-    """load_async reads a checkpoint written by sync save."""
     state = _build_state()
     path = tmp_path / "checkpoint.json"
 
@@ -65,14 +56,12 @@ async def test_load_async_returns_state(tmp_path: Path) -> None:
 
 
 async def test_load_async_returns_none_when_missing(tmp_path: Path) -> None:
-    """load_async returns None when no checkpoint exists."""
     path = tmp_path / "nonexistent.json"
     result = await ckpt.load_async(path)
     assert result is None
 
 
 async def test_save_async_and_load_async_roundtrip(tmp_path: Path) -> None:
-    """save_async + load_async round-trip preserves full state."""
     state = _build_state()
     path = tmp_path / "checkpoint.json"
 

@@ -1,5 +1,3 @@
-"""Black-box invariants for commit-review termination, safety, and accounting."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -40,7 +38,6 @@ pytestmark = [pytest.mark.timeout_seconds(5), pytest.mark.required_auto_integrat
 
 
 def _resolve_verdict(content: dict[str, object]) -> str:
-    """Return the verdict carried by the artifact content (approve by default)."""
     verdict = content.get("verdict")
     if verdict is None:
         return "approve"
@@ -158,9 +155,6 @@ def test_missing_artifact_identical_replay_is_bounded(tmp_git_repo: Path) -> Non
     events = [_run(workspace)[0] for _ in range(4)]
     assert isinstance(events[0], PhaseFailureEvent)
     assert events[0].failure_category is FailureCategory.ARTIFACT_VALIDATION
-    # The identical no-progress bound is a reviewer malfunction: it fails the
-    # gate instead of handing the commit phase an unbound tree to commit.
-    # RALPH-TEST-REASON: Phase returns CommitReviewGateFailed on bounded identical replay failure instead of AGENT_SUCCESS
     assert isinstance(events[-1], CommitReviewGateFailed)
     assert not any(
         isinstance(event, PhaseFailureEvent) and event.phase == "failed_terminal"
@@ -175,7 +169,6 @@ def test_unparseable_artifact_identical_replay_is_bounded(tmp_git_repo: Path) ->
     path.write_text("not a commit_review artifact\n", encoding="utf-8")
     events = [_run(workspace)[0] for _ in range(4)]
     assert isinstance(events[0], PhaseFailureEvent)
-    # RALPH-TEST-REASON: Phase returns CommitReviewGateFailed on unparseable artifact replay bound instead of AGENT_SUCCESS
     assert isinstance(events[-1], CommitReviewGateFailed)
 
 
@@ -183,14 +176,6 @@ def test_all_throw_apply_identical_replay_is_bounded(
     tmp_git_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An apply-time failure loops the agent back and stays bounded.
-
-    Every requested action failed while applying, so the phase must loop
-    the agent back with a hint naming the failed pattern. The replay is
-    bounded: the consumed artifact leaves the next attempt with nothing to
-    grade, and the identical no-progress bound eventually lets the phase
-    proceed instead of spinning forever.
-    """
     workspace = FsWorkspace(tmp_git_repo)
     _write_commit_review_artifact(
         workspace,
@@ -210,7 +195,6 @@ def test_all_throw_apply_identical_replay_is_bounded(
     assert "*.bin" in events[0].hint, (
         f"The loopback hint must name the failed pattern, got: {events[0].hint!r}"
     )
-    # RALPH-TEST-REASON: Phase returns CommitReviewGateFailed on apply failure replay bound instead of AGENT_SUCCESS
     assert isinstance(events[-1], CommitReviewGateFailed)
 
 
@@ -314,13 +298,6 @@ def test_mixed_declined_delete_and_throwing_ignore_is_not_applied_work(
     tmp_git_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A declined delete plus a throwing ignore loops back naming both problems.
-
-    The batch applied no work at all: one delete was refused by the safety
-    classifier and the ignore pattern threw while applying. The phase must
-    loop the agent back with a hint that names BOTH the declined path and
-    the pattern that failed, so the agent can correct itself in one retry.
-    """
     workspace = FsWorkspace(tmp_git_repo)
     workspace.write("lib.py", "pass\n")
     _write_commit_review_artifact(
@@ -492,7 +469,6 @@ def test_stale_identical_artifact_is_not_a_new_attempt(tmp_git_repo: Path) -> No
     fourth = _run(workspace)[0]
     assert isinstance(first, PhaseFailureEvent)
     assert isinstance(second, PhaseFailureEvent)
-    # RALPH-TEST-REASON: Phase returns CommitReviewGateFailed on third/fourth stale attempts instead of AGENT_SUCCESS
     assert isinstance(third, (PhaseFailureEvent, CommitReviewGateFailed))
     assert isinstance(fourth, CommitReviewGateFailed)
 

@@ -1,20 +1,4 @@
 #!/usr/bin/env python3
-"""Emit baseline measurements for the six required scenarios (S-5 phase 3).
-
-Each scenario runs against a small synthetic workspace under ``tmp_path``
-so the total runtime stays inside the 60s combined budget. Each scenario
-reads its value from the S-3/S-4 production seams (no hard-coded
-literals) so a regression in the wiring surfaces as a real signal.
-
-Emits one ``<scenario> <metric> <value>`` line per measurement:
-
-1. unchanged: parse_count 0, fs_events 0
-2. localized_change: parse_count 1
-3. large_workspace: bytes_indexed <int>, reindex_elapsed_seconds <float>
-4. long_running: steady_state_parse_count 0
-5. interrupted: status cancelled, committed_generation_preserved True
-6. concurrent: mark_count 50, fire_count 1
-"""
 
 from __future__ import annotations
 
@@ -53,8 +37,6 @@ def _scenario_unchanged(root: Path) -> None:
         reindex(store, workspace, options=ReindexOptions(timeout_ms=5000))
         second = reindex(store, workspace, options=ReindexOptions(timeout_ms=5000))
         print(f"unchanged parse_count {second.parse_count}")
-        # A settled read with no mutation generates no filesystem events
-        # from Ralph's awareness path (the dirty scheduler holds nothing).
         print("unchanged fs_events 0")
     finally:
         store.close()
@@ -111,7 +93,6 @@ def _scenario_interrupted(root: Path) -> None:
     try:
         first = reindex(store, workspace, options=ReindexOptions(timeout_ms=5000))
         committed_generation = int(store.get_setting("current_generation") or 0)
-        # Cancel immediately: the writer preserves the prior generation.
         cancelled = reindex(
             store,
             workspace,
@@ -129,7 +110,6 @@ def _scenario_interrupted(root: Path) -> None:
 
 
 def _scenario_concurrent(root: Path) -> None:
-    """50 parallel mark_path calls coalesce into one fire."""
     from ralph.mcp.explore import dirty_paths
 
     clock = _FakeClock()

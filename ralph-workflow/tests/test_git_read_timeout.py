@@ -1,14 +1,3 @@
-"""Regression tests: MCP git read tools are bounded and fail closed on timeout.
-
-`git status`/`git diff`/etc. over a repo with large `vendor/` submodules (or a
-held `.git` lock) could block the MCP server thread forever, starving the agent
-of output and tripping the idle watchdog. The low-level runner bounds the
-subprocess and converts a timeout into a `timed_out` `ExecutionError`; the git
-read HANDLERS then convert that timeout into an actionable, non-retryable
-is_error `ToolResult` (NOT a -32603 protocol error the agent retries forever),
-so the agent fails fast with a clear next step and continues.
-"""
-
 from __future__ import annotations
 
 import subprocess

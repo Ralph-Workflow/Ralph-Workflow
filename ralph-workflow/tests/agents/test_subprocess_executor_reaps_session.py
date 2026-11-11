@@ -1,17 +1,3 @@
-"""``SubprocessAgentExecutor.run`` must end with the agent and reap its session.
-
-The run awaited ``gather(drain_output(), handle.wait())`` and the drain ends
-only at stdout EOF. A grandchild that inherited stdout (a backgrounded tool, an
-MCP server) kept it open after the agent itself exited, so ``run()`` blocked
-until that grandchild died -- and the parallel coordinator calls ``run()`` with
-no timeout. A grandchild that detached from stdout let ``run()`` return, but
-nothing reaped it: the agent was spawned in its own session and registered for
-teardown, yet no exit path ever called ``teardown_subtree``.
-
-These tests run real ``/bin/sh`` children (never a coding agent), so they carry
-the ``subprocess_e2e`` marker.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -26,8 +12,6 @@ from ralph.pipeline.work_unit import WorkUnit
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
 
-#: Long past any reasonable post-exit drain grace, so a run that waits for the
-#: grandchild cannot finish inside ``_RUN_DEADLINE_SECONDS``.
 _GRANDCHILD_SECONDS = 60
 _RUN_DEADLINE_SECONDS = 15.0
 _REAP_DEADLINE_SECONDS = 3.0

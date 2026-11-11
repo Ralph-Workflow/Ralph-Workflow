@@ -1,20 +1,3 @@
-"""Deterministic project-policy validator.
-
-This module is the ONLY authority on whether a project is policy-ready.
-There is no AI, no network, no prose NLP — every check is a structural
-pattern match against the canonical file content. Each failure emits a
-:class:`~ralph.project_policy.models.PolicyFinding` with a stable
-``requirement_id`` (one of the ``ID_*`` constants in
-:mod:`ralph.project_policy.markers`), the affected path, the missing
-evidence, and the required remediation outcome.
-
-The validator is the consumer of the shared readiness-evidence inventory
-in :mod:`ralph.project_policy._evidence`. The inventory enumerates every
-file the validator needs to read; the cache hashes the same inventory so
-the cache cannot drift from the validator.
-
-A project is ready iff ``validate_readiness`` returns an empty list.
-"""
 
 from __future__ import annotations
 
@@ -62,16 +45,6 @@ if TYPE_CHECKING:
 
 
 def _check_agents_md(workspace: Workspace) -> list[PolicyFinding]:
-    """Validate the AGENTS.md contract (managed block + canonical-dir reference).
-
-    The managed block contract is unique-count: exactly one
-    :data:`markers.AGENTS_BLOCK_BEGIN` AND exactly one
-    :data:`markers.AGENTS_BLOCK_END` must appear, the begin must precede the
-    end, and the block body must reference :data:`markers.CANONICAL_DIR`. A
-    duplicate begin/end, mismatched counts, or a begin-after-end pairing is
-    rejected with a stable ``RWP-MARKER:agents-block-*`` finding so the
-    remediation agent must reconcile the file before development can begin.
-    """
     findings: list[PolicyFinding] = []
     if not workspace.exists(markers.AGENTS_MD):
         return [
@@ -85,11 +58,6 @@ def _check_agents_md(workspace: Workspace) -> list[PolicyFinding]:
     content = workspace.read(markers.AGENTS_MD)
     findings.extend(_check_managed_block_uniqueness(content))
     if not findings:
-        # Only check the canonical-dir reference when the managed block is
-        # structurally valid (unique begin/end + begin before end). A
-        # malformed block already emits its own finding; adding a
-        # canonical-dir-ref finding on top of multiple marker findings would
-        # bury the actionable defect.
         findings.extend(_check_managed_block_canonical_dir(content))
     findings.extend(agents_md.check_agents_md_line_budgets(content))
     findings.extend(agents_md.check_agents_md_path_citations(workspace, content))
@@ -98,12 +66,6 @@ def _check_agents_md(workspace: Workspace) -> list[PolicyFinding]:
 
 
 def _check_managed_block_uniqueness(content: str) -> list[PolicyFinding]:
-    """Validate the managed block has exactly one begin AND exactly one end.
-
-    Emits a stable RWP-MARKER:agents-block-* finding for every malformed
-    case so the user sees precise pointers for duplicates, missing halves,
-    or begin-after-end pairing.
-    """
     findings: list[PolicyFinding] = []
     begin_count = content.count(markers.AGENTS_BLOCK_BEGIN)
     end_count = content.count(markers.AGENTS_BLOCK_END)
@@ -183,16 +145,6 @@ def _check_managed_block_uniqueness(content: str) -> list[PolicyFinding]:
 
 
 def _extract_managed_block_body(content: str) -> str | None:
-    """Return the body text strictly between the unique begin/end markers.
-
-    The validator slices AGENTS.md between the validated unique
-    :data:`markers.AGENTS_BLOCK_BEGIN` and
-    :data:`markers.AGENTS_BLOCK_END` markers and returns the body. A
-    :keyword:`None` return means the block is malformed (no unique pair)
-    and the caller has already emitted its own marker finding; this helper
-    is a no-op for malformed blocks so the canonical-dir gate does not
-    produce duplicate or buried findings.
-    """
     if content.count(markers.AGENTS_BLOCK_BEGIN) != 1:
         return None
     if content.count(markers.AGENTS_BLOCK_END) != 1:
@@ -205,15 +157,6 @@ def _extract_managed_block_body(content: str) -> str | None:
 
 
 def _check_managed_block_canonical_dir(content: str) -> list[PolicyFinding]:
-    """Validate the managed block BODY references the canonical policy dir.
-
-    The check is scoped strictly to the body sliced between the validated
-    unique begin/end markers so a CANONICAL_DIR reference OUTSIDE the
-    managed block (e.g. in user-authored prose before or after the block)
-    cannot satisfy the gate. A malformed block returns no finding here
-    because :func:`_check_managed_block_uniqueness` already surfaces the
-    precise marker finding.
-    """
     body = _extract_managed_block_body(content)
     if body is None:
         return []
@@ -238,7 +181,6 @@ def _check_managed_block_canonical_dir(content: str) -> list[PolicyFinding]:
 
 
 def _check_claude_md(workspace: Workspace) -> list[PolicyFinding]:
-    """Validate the CLAUDE.md contract (AGENTS.md pointer when CLAUDE.md exists)."""
     if not workspace.exists(markers.CLAUDE_MD):
         return [
             PolicyFinding(
@@ -262,7 +204,6 @@ def _check_claude_md(workspace: Workspace) -> list[PolicyFinding]:
 
 
 def _extract_verify_step_labels(source: str) -> set[str]:
-    """Parse verify.py AST to extract step labels from _VERIFY_STEPS."""
     labels: set[str] = set()
     try:
         tree = ast.parse(source)
@@ -289,15 +230,6 @@ def _extract_verify_step_labels(source: str) -> set[str]:
 
 
 def _collect_known_enforcers(workspace: Workspace) -> frozenset[str]:
-    """Collect known enforcer ids across policy files and verify.py steps.
-
-    Deterministic exact-string resolution for the guard inventory
-    ``Enforcement`` column:
-    1. Every ``RALPH-COMMAND:`` value declared in any policy file in the
-       canonical directory.
-    2. In Ralph's own repository (detected by ``ralph-workflow/ralph/verify.py``
-       or ``ralph/verify.py``), every step label in ``_VERIFY_STEPS``.
-    """
     enforcers: set[str] = set()
     all_files = (*markers.CORE_POLICY_FILES, *markers.CONDITIONAL_POLICY_FILES.values())
     for filename in all_files:
@@ -328,7 +260,6 @@ def _check_core_policy_file(
     *,
     known_enforcers: frozenset[str] | None = None,
 ) -> list[PolicyFinding]:
-    """Validate one canonical core policy file."""
     path = f"{markers.CANONICAL_DIR}{filename}"
     return _check_policy_file(workspace, path, filename, known_enforcers=known_enforcers)
 
@@ -340,10 +271,6 @@ def _check_policy_file(
     *,
     known_enforcers: frozenset[str] | None = None,
 ) -> list[PolicyFinding]:
-    """Validate one canonical policy file (presence, structure, fields, markers).
-
-    Composed from small focused helpers to keep the branch count low.
-    """
     if not workspace.exists(path):
         return [
             PolicyFinding(
@@ -364,7 +291,6 @@ def _check_policy_file(
 
 
 def get_citation_workspace_slot() -> Workspace | None:
-    """Return the current workspace bound to the citation-path check slot."""
     return (
         _content_checks._CITATION_PATH_WORKSPACE[0]
         if _content_checks._CITATION_PATH_WORKSPACE
@@ -373,7 +299,6 @@ def get_citation_workspace_slot() -> Workspace | None:
 
 
 def set_citation_workspace_slot(workspace: Workspace | None) -> None:
-    """Set the workspace bound to the citation-path check slot (for testing/isolation)."""
     if _content_checks._CITATION_PATH_WORKSPACE:
         _content_checks._CITATION_PATH_WORKSPACE[0] = workspace
     else:
@@ -388,13 +313,6 @@ def _validate_existing_policy_file_with_workspace(
     *,
     known_enforcers: frozenset[str] | None = None,
 ) -> list[PolicyFinding]:
-    """Like :func:`_validate_existing_policy_file` but also publishes the workspace seam.
-
-    The workspace seam is required by the citation ``path:`` existence
-    check (see :data:`_content_checks._CITATION_PATH_WORKSPACE`). The
-    publication is scoped to the lifetime of the call so concurrent
-    validators and unit tests do not see a stale reference.
-    """
     previous = _content_checks._CITATION_PATH_WORKSPACE[0]
     _content_checks._CITATION_PATH_WORKSPACE[0] = workspace
     try:
@@ -413,11 +331,10 @@ def _validate_existing_policy_file_with_workspace(
 _MAX_POLICY_VALIDATION_CACHE_ENTRIES = 256
 _POLICY_VALIDATION_CACHE: OrderedDict[
     tuple[str, str, str, frozenset[str] | None], list[PolicyFinding]
-] = OrderedDict()  # bounded-accumulator-ok: FIFO cap 256
+] = OrderedDict()
 
 
 def clear_policy_validation_cache() -> None:
-    """Clear the policy validation result cache."""
     _POLICY_VALIDATION_CACHE.clear()
 
 
@@ -428,7 +345,6 @@ def _validate_existing_policy_file(
     *,
     known_enforcers: frozenset[str] | None = None,
 ) -> list[PolicyFinding]:
-    """Validate every check that operates on an existing policy file's content."""
     can_cache = "path:" not in content
     cache_key = (content, path, filename, known_enforcers) if can_cache else None
     if cache_key is not None and cache_key in _POLICY_VALIDATION_CACHE:
@@ -445,10 +361,6 @@ def _validate_existing_policy_file(
     findings.extend(_check_commands(content, path, filename))
     findings.extend(_check_template_banner(content, path, filename))
     findings.extend(instruction_surface.check_hidden_unicode(content, path))
-    # Guard-inventory check (B9). Every applicable starter (core and
-    # conditional) MUST carry a `## Guard inventory` table when required
-    # by its schema version. Frozen packs whose spec has no guard_inventory_header
-    # (such as v4) are exempt.
     frozen_v = _frozen_schema_version(content)
     file_version = f"v{frozen_v}" if frozen_v is not None else markers.SCHEMA_VERSION
     expected_header = markers.guard_inventory_header_for_version(file_version)
@@ -489,13 +401,6 @@ def _validate_existing_policy_file(
 def _check_research_basis_with_workspace(
     workspace: Workspace, content: str, path: str, filename: str
 ) -> list[PolicyFinding]:
-    """Run the research-basis check with the workspace seam in scope for the citation path check.
-
-    The workspace is published to the module-level slot
-    (:data:`_content_checks._CITATION_PATH_WORKSPACE`) only for the
-    duration of the call, so unit tests that bypass the validator
-    ingress are not perturbed.
-    """
     previous = _content_checks._CITATION_PATH_WORKSPACE[0]
     _content_checks._CITATION_PATH_WORKSPACE[0] = workspace
     try:
@@ -505,27 +410,10 @@ def _check_research_basis_with_workspace(
 
 
 def _check_verification_bypass(workspace: Workspace) -> list[PolicyFinding]:
-    """Validate the verification-policy bypass-detection gate.
-
-    The gate requires the 'Bypass detection' heading AND at least one
-    non-empty, placeholder-free, approved-tools RALPH-COMMAND line under
-    it. The check is identical to the per-policy command gate except the
-    finding id is namespaced under ``:bypass-cmd:<kind>`` so the user
-    sees a precise pointer for an unusable bypass-detection gate:
-
-    * ``:bypass-cmd:empty`` — the only command in the section is empty.
-    * ``:bypass-cmd:placeholder`` — the value contains a placeholder
-      token.
-    * ``:bypass-cmd:unapproved`` — the value's first token is not on the
-      fixed :data:`markers.APPROVED_GATE_TOOLS` allowlist (analysis
-      feedback regression: arbitrary text such as ``definitely-not-a-command``
-      must NOT satisfy the bypass-detection contract).
-    * ``:bypass-cmd`` — no ``RALPH-COMMAND:`` line at all.
-    """
     path = f"{markers.CANONICAL_DIR}verification-policy.md"
     findings: list[PolicyFinding] = []
     if not workspace.exists(path):
-        return findings  # core-file presence check covers it.
+        return findings
     content = workspace.read(path)
     headings_present = _headings(content)
     if "bypass detection" not in headings_present:
@@ -544,11 +432,6 @@ def _check_verification_bypass(workspace: Workspace) -> list[PolicyFinding]:
             )
         )
         return findings
-    # The bypass-detection block must include at least one non-empty,
-    # placeholder-free, approved-tools command. Empty RALPH-COMMAND:
-    # markers are NOT accepted; the value after the marker must contain
-    # non-whitespace text, no placeholder token, and a first token on the
-    # approved allowlist.
     in_section = False
     saw_real_command = False
     saw_empty_command = False
@@ -650,7 +533,6 @@ def _check_conditional_domain(
     *,
     known_enforcers: frozenset[str] | None = None,
 ) -> list[PolicyFinding]:
-    """Validate a required or already-present conditional policy file."""
     path = f"{markers.CANONICAL_DIR}{filename}"
     if not required and not workspace.exists(path):
         return []
@@ -658,7 +540,6 @@ def _check_conditional_domain(
 
 
 def _check_migration(workspace: Workspace) -> list[PolicyFinding]:
-    """Emit a finding for every unresolved migration candidate."""
     findings: list[PolicyFinding] = []
     for candidate in evidence.migration_candidates(workspace):
         if candidate.resolved:
@@ -683,7 +564,6 @@ def _check_migration(workspace: Workspace) -> list[PolicyFinding]:
 
 
 def _check_applicability_overrides(workspace: Workspace) -> list[PolicyFinding]:
-    """Validate explicit conditional-domain decisions without silent fallback."""
     path = markers.APPLICABILITY_OVERRIDES_PATH
     if not workspace.exists(path):
         return []
@@ -744,7 +624,6 @@ def _check_applicability_overrides(workspace: Workspace) -> list[PolicyFinding]:
 
 
 def _is_unfrozen_current_pack(workspace: Workspace, frozen_version: str | None) -> bool:
-    """Return True if workspace represents an active, unfrozen current-schema policy pack."""
     if frozen_version is not None:
         return False
     if workspace.exists(f"{markers.CANONICAL_DIR}execution-kernel.md"):
@@ -762,7 +641,6 @@ def _check_portfolio(
     frozen_version: str | None = None,
     known_enforcers: frozenset[str] | None = None,
 ) -> list[PolicyFinding]:
-    """Require a valid bounded portfolio manifest."""
     path = markers.PORTFOLIO_PATH
     if not workspace.exists(path):
         return [
@@ -821,15 +699,6 @@ def _check_portfolio(
 
 
 def _detect_frozen_version(workspace: Workspace) -> str | None:
-    """Return the frozen schema version across the canonical policy files.
-
-    Walks every core and conditional file in the current manifest and returns the
-    highest ``freeze vN`` marker it finds (or ``None`` when no file
-    is frozen). The validator uses this to switch the manifest a
-    frozen pack is validated against: a v4-frozen pack is checked
-    against the v4 manifest, not the v5 one, so it can stay on its
-    own frozen schema.
-    """
     highest: str | None = None
     all_files = (*markers.CORE_POLICY_FILES, *markers.CONDITIONAL_POLICY_FILES.values())
     for filename in all_files:
@@ -846,22 +715,6 @@ def _detect_frozen_version(workspace: Workspace) -> str | None:
 
 
 def validate_readiness(workspace: Workspace, stack: ProjectStack) -> list[PolicyFinding]:
-    """Run every deterministic readiness check and return the findings list.
-
-    The function is pure: it does NOT mutate the workspace and it does NOT
-    consult any AI. Every check reads through the workspace seam and emits
-    zero or more findings. A project is ready iff the returned list is
-    empty.
-
-    The core-file manifest is version-aware (v5): when a project has
-    any ``freeze vN`` marker across the canonical core files, the
-    manifest switches to ``markers.core_files_for_version(v)`` so a
-    frozen v4 pack is validated against the v4 manifest (the original
-    eleven core files) and not the v5 manifest (twelve files including
-    ``execution-kernel.md``). The check stays the binding gate: a
-    frozen v4 pack missing ``security-policy.md`` is NOT READY because
-    the v4 manifest still requires it.
-    """
     findings: list[PolicyFinding] = []
     findings.extend(_check_agents_md(workspace))
     findings.extend(_check_claude_md(workspace))
@@ -874,9 +727,6 @@ def validate_readiness(workspace: Workspace, stack: ProjectStack) -> list[Policy
             known_enforcers=known_enforcers,
         )
     )
-    # Manifest selection: a frozen pack is validated against its own
-    # version's manifest. An unfrozen pack (or a fresh v5 pack) uses
-    # the current CORE_POLICY_FILES.
     core_manifest = (
         markers.core_files_for_version(frozen_version)
         if frozen_version is not None
@@ -917,20 +767,6 @@ def check_capture_command_fact(
     path: str,
     filename: str,
 ) -> list[PolicyFinding]:
-    """Check one document for the declared capture-command fact.
-
-    Public seam over the content-check implementation so a caller (and a
-    black-box test) can assert the finding without importing the private
-    content-check module.
-
-    Args:
-        content: The document text to inspect.
-        path: The document path recorded on each finding.
-        filename: The document filename recorded on each finding.
-
-    Returns:
-        Every policy finding raised by the capture-command fact check.
-    """
     return _check_capture_command_fact(content, path, filename)
 
 
@@ -941,21 +777,6 @@ def check_policy_citations(
     *,
     workspace: Workspace | None = None,
 ) -> list[PolicyFinding]:
-    """Check one document's Research basis section and citation review freshness.
-
-    Public seam over the content-check implementation so callers and black-box
-    tests can assert citation and freshness findings without importing private
-    content-check functions.
-
-    Args:
-        content: The document text to inspect.
-        path: The document path recorded on each finding.
-        filename: Optional document filename recorded on each finding.
-        workspace: Optional workspace providing path resolution.
-
-    Returns:
-        Every policy finding raised by citation and freshness checks.
-    """
     if workspace is None:
         workspace = MemoryWorkspace()
     resolved_filename = filename if filename is not None else path.rsplit("/", 1)[-1]

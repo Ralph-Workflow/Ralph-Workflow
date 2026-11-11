@@ -1,5 +1,3 @@
-"""Tests for the process monitor module."""
-
 from __future__ import annotations
 
 import subprocess
@@ -27,7 +25,6 @@ def _wait_for_descendants(
     recursive: bool = False,
     timeout: float = 0.5,
 ) -> list[psutil.Process]:
-    """Poll until the host has enough children instead of sleeping a fixed delay."""
     deadline = time.monotonic() + timeout
     last: list[psutil.Process] = []
     while time.monotonic() < deadline:
@@ -45,14 +42,6 @@ def _wait_for_descendants(
 
 @pytest.mark.skipif(sys.platform == "win32", reason="psutil cross-platform tests")
 def test_default_monitor_default_classifier_is_conservative() -> None:
-    """Without an injected role_classifier, no descendant is promoted to subagent.
-
-    The built-in default must not rely on broad substring heuristics such as
-    matching ``worker``, ``task``, ``agent``, ``claude``, or ``opencode`` in the
-    command line. Those tokens appear in incidental helpers (tool subprocesses,
-    MCP servers, shells) and would misclassify them as spawned subagents.
-    """
-    # Host process spawns a child whose command line contains subagent-y tokens.
     child_script = "import time; time.sleep(600)"
     host_script = (
         "import subprocess, sys, time; "
@@ -83,7 +72,6 @@ def test_default_monitor_default_classifier_is_conservative() -> None:
 
 @pytest.mark.skipif(sys.platform == "win32", reason="psutil cross-platform tests")
 def test_default_monitor_classifies_subagent_with_injected_classifier() -> None:
-    """An injected role_classifier can still promote descendants to subagents."""
     host_script = (
         "import subprocess, sys, time; "
         "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(600)']); "
@@ -118,7 +106,6 @@ def test_default_monitor_classifies_subagent_with_injected_classifier() -> None:
 
 @pytest.mark.skipif(sys.platform == "win32", reason="psutil cross-platform tests")
 def test_default_monitor_includes_host_classification() -> None:
-    """The host process itself is classified with ProcessRole.HOST."""
     host_script = (
         "import subprocess, sys, time; "
         "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(600)']); "
@@ -155,7 +142,6 @@ def test_default_monitor_includes_host_classification() -> None:
 
 
 def test_default_monitor_handles_missing_host() -> None:
-    """A missing host process results in zero live subagents and no host entry."""
     monitor = DefaultProcessMonitor(999_999, poll_interval_seconds=0.0)
     assert monitor.live_subagent_count() == 0
     assert monitor.classified_processes() == ()
@@ -177,13 +163,6 @@ def test_transport_role_classifier_is_conservative(
     transport: AgentTransport,
     expected_cmdline: list[str],
 ) -> None:
-    """Every documentation-grounded transport classifier degrades conservatively.
-
-    No supported agent CLI documents a stable external signal for identifying
-    spawned subagents by command line or process tree. Each classifier must
-    therefore return INCIDENTAL_HELPER for descendants, avoiding the false
-    positives produced by broad substring heuristics.
-    """
     classifier = role_classifier_for_transport(transport)
     assert classifier(123, expected_cmdline) == ProcessRole.INCIDENTAL_HELPER
     assert classifier(123, ["worker", "--task", "agent"]) == ProcessRole.INCIDENTAL_HELPER
@@ -192,20 +171,12 @@ def test_transport_role_classifier_is_conservative(
 
 
 def test_role_classifier_for_unknown_transport_is_conservative() -> None:
-    """An unknown transport falls back to the conservative classifier."""
     classifier = role_classifier_for_transport(object())
     assert classifier(123, ["worker", "subagent"]) == ProcessRole.INCIDENTAL_HELPER
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals only")
 def test_default_monitor_classifies_subagent_via_child_liveness_registry() -> None:
-    """AC-06/AC-10/AC-11: shipped OpenCode PID source classifies real descendants.
-
-    OpenCode emits structured child lifecycle events on stdout that carry the
-    child PID. ``ChildLivenessSubagentPidSource`` exposes those registered PIDs
-    to ``DefaultProcessMonitor`` so a real descendant process is classified as
-    ``SPAWNED_SUBAGENT`` without injecting a substitute lambda classifier.
-    """
     host_script = (
         "import subprocess, sys, time; "
         "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(600)']); "
@@ -220,7 +191,6 @@ def test_default_monitor_classifies_subagent_via_child_liveness_registry() -> No
     assert len(children) >= 1, "host should have spawned at least one child"
 
     try:
-        # Find the real child PID spawned by host_script.
         child_pid = children[0].pid
 
         registry = ChildLivenessRegistry(
@@ -229,7 +199,6 @@ def test_default_monitor_classifies_subagent_via_child_liveness_registry() -> No
             stale_label_ttl=60.0,
             exit_reconcile=5.0,
         )
-        # Register the spawned child as a known OpenCode subagent.
         registry.register_child("child-A", "agent:test-scope:", pid=child_pid)
         pid_source = ChildLivenessSubagentPidSource(registry, "agent:test-scope:")
 

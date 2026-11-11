@@ -1,20 +1,3 @@
-"""A stdin-delivered prompt must not run outside the reader and its watchdog.
-
-Codex and OpenCode take their prompt on stdin. It was written with one blocking
-``write()`` on the calling thread BEFORE the line reader and idle watchdog
-existed, so:
-
-* a child that never reads stdin, given a prompt larger than the pipe buffer
-  (64 KiB), blocked Ralph forever -- ``idle_timeout_seconds`` and
-  ``max_session_seconds`` never got a chance to apply;
-* a child that exited early (bad model name, missing credentials) made the
-  write raise ``BrokenPipeError``, which escaped instead of the child's own
-  exit code and stderr.
-
-These tests run real ``/bin/sh`` children (never a coding agent), so they carry
-the ``subprocess_e2e`` marker.
-"""
-
 from __future__ import annotations
 
 import threading
@@ -32,11 +15,8 @@ if TYPE_CHECKING:
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(15)]
 
-#: Far past the 64 KiB pipe buffer, so an unread write cannot complete.
 _PROMPT = "x" * 300_000
 _EXIT_CODE = 3
-#: How long the caller waits for the run to finish before declaring a hang;
-#: comfortably past the session ceiling below.
 _HANG_DEADLINE_SECONDS = 8.0
 
 
@@ -51,7 +31,6 @@ def _ctx(workspace: Path, policy: TimeoutPolicy) -> AgentRunCtx:
 
 
 def _drive(cmd: list[str], ctx: AgentRunCtx) -> tuple[bool, BaseException | None]:
-    """Run the reader on a worker thread; return (finished, raised)."""
     outcome: list[BaseException | None] = []
 
     def _consume() -> None:

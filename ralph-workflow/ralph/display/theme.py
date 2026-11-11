@@ -1,23 +1,3 @@
-"""Monokai Pro-derived theme helpers for Ralph CLI display.
-
-Background-aware Rich and Pygments theme helpers built from a deterministic
-palette generator (:mod:`ralph.display._palette`). Every semantic colour is
-solved against the resolved terminal surface -- rather than read from a fixed
-RGB table -- so contrast and hue identity are preserved on light, dark, and
-unknown terminal backgrounds.
-
-All semantic colors are selected from the resolved terminal background and
-must preserve contrast and non-color structural carriers.
-
-Semantic states are distinguished by hue, using OKLCh hue anchors seeded
-from Monokai Pro's measured characteristics
-(``ralph.display._palette.ROLE_ANCHORS``). ``STATUS_STYLES`` carries a
-``(rich_style, unicode_icon, ascii_label)`` tuple per semantic state so
-display code can retain every meaning carrier on colorblind and no-color
-consoles. Semantic roles are defined once here; background-aware role
-tables preserve contrast and hue identity on light, dark, and unknown
-terminal backgrounds.
-"""
 
 from __future__ import annotations
 
@@ -110,44 +90,20 @@ _RALPH_FORCE_ASCII_TRUTHY: frozenset[str] = frozenset({"1", "true", "yes", "on"}
 
 
 def detect_glyph_capability(stream: object, env: Mapping[str, str]) -> bool:
-    """Return False when glyphs should fall back to ASCII, True for Unicode.
-
-    Heuristic order (highest to lowest precedence):
-    1. RALPH_FORCE_ASCII env var (any truthy value) \u2192 ASCII
-    2. stream.encoding exists and 'utf' not in encoding.lower() \u2192 ASCII
-    3. TERM=dumb \u2192 ASCII
-    4. Otherwise \u2192 Unicode
-    """
-    # Check explicit env override first
     force_ascii = env.get("RALPH_FORCE_ASCII", "").lower().strip()
     if force_ascii in _RALPH_FORCE_ASCII_TRUTHY:
         return False
 
-    # Check stream encoding
     encoding: object = getattr(stream, "encoding", None)
     if encoding is not None:
         encoding_str = str(encoding).lower()
         if "utf" not in encoding_str:
             return False
 
-    # Check TERM=dumb
     term = env.get("TERM", "")
     return term != "dumb"
 
 
-#: Representative realistic terminal surfaces used to solve the
-#: measurement-free canonical palettes -- the boolean-only dark/light
-#: tables, the identity palette, and the ``RALPH_TERMINAL_BG=dark``/
-#: ``light`` fallback used when no OSC 11 measurement is available
-#: (see :func:`detect_terminal_background_hex`). Solving against the
-#: pure endpoints (``#000000`` / ``#FFFFFF``) left zero contrast
-#: headroom: a pigment solved to exactly 4.5:1 on ``#000000`` measures
-#: only ~3.04:1 on a realistic ``#2D2A2E`` terminal (DA-001).
-#: ``#2D2A2E`` (Y=0.0242) is the lightest -- hardest -- of the common
-#: dark surfaces (``#1E1E1E`` Y=0.013 and ``#282C34`` Y=0.0238 are
-#: both covered because they are darker still); ``#FAF8F5`` (Y=0.9405)
-#: is the corresponding hardest common light surface, just under pure
-#: white.
 _pal_dark = _palette.resolve_palette(_CANONICAL_DARK_SURFACE_HEX)
 _pal_light = _palette.resolve_palette(_CANONICAL_LIGHT_SURFACE_HEX)
 _pal_unknown = _palette.resolve_palette(None)
@@ -187,7 +143,6 @@ _DISPLAY_STYLES_ON_LIGHT_BG: Final[dict[str, str]] = _build_display_styles(_pal_
 _DISPLAY_STYLES_ON_UNKNOWN_BG: Final[dict[str, str]] = _build_display_styles(_pal_unknown)
 
 
-#: The six Monokai Pro accent roles the identity palette is seeded from.
 _IDENTITY_ACCENT_ROLES: Final[tuple[str, ...]] = (
     "error",
     "warning",
@@ -198,31 +153,8 @@ _IDENTITY_ACCENT_ROLES: Final[tuple[str, ...]] = (
 )
 
 
-#: Two naive pairwise midpoints, at the two accents' averaged hue and/or
-#: reference lightness, land in the same 6x6x6 colour-cube index as a
-#: neighbouring anchor -- across all three of the dark, light, and
-#: dual-safe (unknown) tables together, not any single one of them alone:
-#: warning->skipped (hue ~68.3, L 0.834) collides with skipped itself
-#: (L 0.894) on the dark and unknown tables, both pinning the red channel
-#: at 255 in the saturated yellow-orange corner; skipped->success
-#: (hue 110.6, L 0.865) collides with success (L 0.836) on the light table,
-#: where mirroring the large skipped offset pushes both into the same
-#: too-dark corner. Pulling warning->skipped further toward warning (both
-#: hue and lightness) and skipped->success down to success's own reference
-#: lightness clears every collision on all three tables and all three CVD
-#: matrices at once -- verified directly against
-#: ``solve_for_surface``/``solve_dual_safe``. This is the tuning PLAN.md S-7
-#: anticipates budgeting for -- equal-spaced midpoints alone are measured to
-#: be insufficient.
 _IDENTITY_HUE_OVERRIDES: Final[dict[tuple[str, str], float]] = {
     ("warning", "skipped"): 55.0,
-    # A-6 re-tune: once solve_for_surface re-solves chroma per surface
-    # instead of holding it fixed (PLAN.md S-2), the naive success->info
-    # midpoint (hue ~168.2) collides with `success` itself in the
-    # 256-colour cube on the light table. Lifting the midpoint's l_ref
-    # toward info's own (below) moves it decisively into a distinct cube
-    # cell on all three tables and all three CVD matrices at once --
-    # verified directly against solve_for_surface/solve_dual_safe.
     ("success", "info"): 180.0,
 }
 _IDENTITY_L_REF_OVERRIDES: Final[dict[tuple[str, str], float]] = {
@@ -233,21 +165,10 @@ _IDENTITY_L_REF_OVERRIDES: Final[dict[tuple[str, str], float]] = {
 
 
 def _named_anchor_hue(pair: tuple[str, _palette.RoleAnchor]) -> float:
-    """Sort key: order a (role, anchor) pair by the anchor's hue."""
     return pair[1].hue
 
 
 def _identity_seed_anchors() -> tuple[_palette.RoleAnchor, ...]:
-    """Build twelve identity slots from the six Monokai Pro accent anchors:
-    the six anchors themselves, plus their six pairwise midpoints -- hue,
-    chroma AND reference lightness together, not hue/chroma alone -- closing
-    the full hue wheel including the wrap segment from ``pending`` back
-    around to ``error``. Carrying reference lightness through the
-    interpolation is what gives the identity palette the accents' own
-    lightness spread (L 0.706-0.894) instead of the flat single-plane
-    chroma-only interpolation that left neighbouring slots colliding after
-    256-colour quantisation (see PLAN.md S-7's Characterize measurements).
-    """
     named: list[tuple[str, _palette.RoleAnchor]] = [
         (role, _palette.ROLE_ANCHORS[role]) for role in _IDENTITY_ACCENT_ROLES
     ]
@@ -257,8 +178,6 @@ def _identity_seed_anchors() -> tuple[_palette.RoleAnchor, ...]:
     for index in range(count):
         first_role, first = named[index]
         second_role, second = named[(index + 1) % count]
-        # Unwrap the wrap segment (pending -> error) past 360 degrees so the
-        # midpoint lands between them rather than on the short way around.
         second_hue = second.hue + 360.0 if second.hue <= first.hue else second.hue
         midpoint_hue = _IDENTITY_HUE_OVERRIDES.get(
             (first_role, second_role), (first.hue + second_hue) / 2.0
@@ -303,9 +222,6 @@ IDENTITY_PALETTE_ON_LIGHT_BG: Final[tuple[str, ...]] = _generate_identity_palett
 )
 IDENTITY_PALETTE_ON_UNKNOWN_BG: Final[tuple[str, ...]] = _generate_identity_palette(None)
 
-# The shipped roster is the baseline active set for shared surfaces. Rendering
-# it collision-aware prevents a hash collision before a particular display
-# has observed every peer in the current run.
 _DISPLAY_IDENTITY_ACTIVE_SET: Final[tuple[str, ...]] = (
     "claude",
     "claude-headless",
@@ -322,12 +238,10 @@ def _simulate_cvd(
     hex_color: str,
     matrix: tuple[tuple[float, float, float], ...],
 ) -> str:
-    """Return the documented color-vision-deficiency simulation for a hex color."""
     return identity_helpers.simulate_cvd(hex_color, matrix, rgb=_rgb)
 
 
 def _identity_slot(name: str) -> int:
-    """Return the deterministic palette slot for ``name``."""
     return identity_helpers.identity_slot(name, len(IDENTITY_PALETTE))
 
 
@@ -363,7 +277,6 @@ def identity_color(
     terminal_bg_is_light: bool | None,
     surface_hex: str | None = None,
 ) -> str:
-    """Return the hex color for an identity, with collision-nudge."""
     if surface_hex is not None:
         palette = _generate_identity_palette(surface_hex)
     elif terminal_bg_is_light is True:
@@ -382,9 +295,6 @@ def _build_theme_styles(palette: Mapping[str, str]) -> dict[str, str]:
         "theme.level.warn": f"bold {palette['warning']}",
         "theme.level.success": f"bold {palette['success']}",
         "theme.level.error": f"bold {palette['error']}",
-        # E-2: milestone is a structural chrome cue (a rare beat marker),
-        # not the semantic info state -- repointed to disp["chrome"] along
-        # with the rest of this block's structural roles below.
         "theme.level.milestone": f"bold {disp['chrome']}",
         "theme.cat.meta": disp["chrome"],
         "theme.cat.cont": disp["agent_text"],
@@ -394,14 +304,6 @@ def _build_theme_styles(palette: Mapping[str, str]) -> dict[str, str]:
         "theme.log.milestone": f"bold {disp['chrome']}",
         "theme.log.success": f"bold {palette['success']}",
         "theme.log.warn": f"bold {palette['warning']}",
-        # E-2: panel chrome, banner chrome, phase labels below, text emphasis,
-        # and outer_dev are all structural (tier 2) -- they previously shared
-        # `info`'s full tier-3 chroma, which made the single most-rendered
-        # accent on screen also mean "the info status". Repointed to
-        # disp["chrome"] (a distinct, lower-chroma pigment on the same hue --
-        # see _palette.ROLE_ANCHORS["chrome"]'s docstring). The semantic
-        # `info` STATE (theme.status.info / theme.log.info / STATUS_STYLES)
-        # keeps palette["info"]'s full chroma unchanged.
         "theme.panel.border": disp["chrome"],
         "theme.panel.title": f"bold {disp['chrome']}",
         "theme.phase.commit": disp["chrome"],
@@ -459,7 +361,6 @@ RALPH_THEME_ON_UNKNOWN_BG: Final[Theme] = Theme(_THEME_STYLES_ON_UNKNOWN_BG)
 
 
 def _fresh_style(style: str) -> Style:
-    """Build one style whose mutable ANSI cache cannot cross consoles."""
     tokens = style.split()
     background_index = tokens.index("on") + 1 if "on" in tokens else None
     fresh = Style(
@@ -479,7 +380,6 @@ def _fresh_style(style: str) -> Style:
         reverse=True if "reverse" in tokens else None,
         strike=True if "strike" in tokens else None,
     )
-    # Per-instance hash isolates Rich's ANSI cache; equality differs, so adjacent segments may not merge.
     fresh._hash = id(fresh)
     return fresh
 
@@ -491,7 +391,6 @@ def _fresh_theme(styles: Mapping[str, str]) -> Theme:
 def theme_for_background(
     terminal_bg_is_light: bool | None, surface_hex: str | None = None
 ) -> Theme:
-    """Return a new theme so ANSI caching cannot downgrade another console."""
     if surface_hex is not None:
         return _fresh_theme(_build_theme_styles(_palette.resolve_palette(surface_hex)))
     if terminal_bg_is_light is True:
@@ -528,19 +427,6 @@ def _srgb_channel_to_linear(value: float) -> float:
 
 
 def relative_luminance(hex_color: str) -> float:
-    """Compute the WCAG relative luminance of a hex color.
-
-    Accepts ``#rgb`` or ``#rrggbb`` hex strings and returns the
-    sRGB-gamma-corrected luminance in [0, 1]. Used by the contrast
-    and palette helpers to verify that status styles remain
-    readable on dark and light terminal backgrounds.
-
-    Parameters:
-        hex_color: Color string in ``#rgb`` or ``#rrggbb`` form.
-
-    Returns:
-        The relative luminance as a float in [0, 1].
-    """
     raw = hex_color.strip()
     if not raw.startswith("#"):
         raise ValueError(f"expected hex color starting with '#', got {hex_color!r}")
@@ -560,21 +446,6 @@ def relative_luminance(hex_color: str) -> float:
 
 
 def contrast_ratio(fg_hex: str, bg_hex: str) -> float:
-    """Compute the WCAG contrast ratio between two hex colors.
-
-    The ratio is ``(lighter + 0.05) / (darker + 0.05)`` where
-    ``lighter`` and ``darker`` are the relative luminances of the
-    two colors. A value of 1.0 means no contrast; 21.0 is the
-    theoretical maximum. The display subsystem targets >= 4.5
-    for body text and >= 3.0 for large text.
-
-    Parameters:
-        fg_hex: Foreground color hex string.
-        bg_hex: Background color hex string.
-
-    Returns:
-        The contrast ratio as a float >= 1.0.
-    """
     fg = relative_luminance(fg_hex)
     bg = relative_luminance(bg_hex)
     lighter, darker = (fg, bg) if fg >= bg else (bg, fg)
@@ -589,21 +460,10 @@ def _extract_hex(style: str) -> str:
     return ""
 
 
-# DoD #6: single-sourced from _palette._PURE_BLACK_HEX/_PURE_WHITE_HEX --
-# the same two literals solve_dual_safe checks against -- rather than a
-# second, independent "#000000"/"#FFFFFF" declaration.
 _DARK_BG_HEX: Final[str] = _PURE_BLACK_HEX
 _LIGHT_BG_HEX: Final[str] = _PURE_WHITE_HEX
 
 
-#: WCAG crossover luminance. Below this value light foregrounds
-#: out-contrast dark ones against the background; above it, dark
-#: foregrounds win. Derived by solving
-#: ``(L + 0.05) / 0.05 == 1.05 / (L + 0.05)`` -- the exact luminance at
-#: which the preference flips. Using the crossover rather than a
-#: hand-picked "is it brighter than grey" threshold means an arbitrary
-#: background colour (a warm cream, a deep teal, a mid-tone slate) is
-#: classified by measured contrast, not by assumption.
 _LIGHT_BG_LUMINANCE_CROSSOVER: Final[float] = 0.1791
 
 
@@ -624,7 +484,6 @@ def _colorfgbg_is_light(env: Mapping[str, str]) -> bool | None:
 
 
 def background_hex_is_light(bg_hex: str) -> bool | None:
-    """Classify a measured terminal background by WCAG luminance."""
     try:
         return relative_luminance(bg_hex) > _LIGHT_BG_LUMINANCE_CROSSOVER
     except ValueError:
@@ -634,13 +493,6 @@ def background_hex_is_light(bg_hex: str) -> bool | None:
 def terminal_background_is_light(
     env: Mapping[str, str], *, measured_bg_hex: str | None = None
 ) -> bool | None:
-    """Resolve measured OSC 11 colour, then override, then the COLORFGBG hint.
-
-    B-1: the measured background wins. A successful probe outranks an
-    explicit ``RALPH_TERMINAL_BG`` override -- the override is a fallback
-    for terminals that cannot be measured, not a veto over a real
-    measurement.
-    """
     if measured_bg_hex:
         measured = background_hex_is_light(measured_bg_hex)
         if measured is not None:
@@ -652,7 +504,6 @@ def terminal_background_is_light(
 
 
 def _terminal_background_timeout_seconds(env: Mapping[str, str]) -> float:
-    """Return the bounded OSC 11 deadline, accepting a positive ms override."""
     try:
         milliseconds = int(env.get("RALPH_TERMINAL_BG_TIMEOUT_MS", "100"))
     except ValueError:
@@ -661,16 +512,6 @@ def _terminal_background_timeout_seconds(env: Mapping[str, str]) -> float:
 
 
 def detect_terminal_background_is_light(env: Mapping[str, str]) -> bool | None:
-    """Resolve the terminal background, OSC 11 first, then any override.
-
-    B-1: the probe always runs first -- a successful measurement wins even
-    over an explicit ``RALPH_TERMINAL_BG`` override. The override (or a
-    malformed one) is only consulted once the probe fails to produce a
-    usable measurement, the same fallback tier
-    :func:`detect_terminal_background_hex` uses. The probe result is
-    cached for the process lifetime (see ``_terminal_bg_query``), so
-    running it unconditionally does not add a second measurement cost.
-    """
     from ralph.display._terminal_bg_query import query_terminal_background_hex
 
     return terminal_background_is_light(
@@ -682,31 +523,6 @@ def detect_terminal_background_is_light(env: Mapping[str, str]) -> bool | None:
 
 
 def detect_terminal_background_hex(env: Mapping[str, str]) -> str | None:
-    """Resolve the measured or explicitly declared terminal background surface hex.
-
-    B-1: the OSC 11 probe runs first -- a successful measurement wins over
-    an explicit ``RALPH_TERMINAL_BG`` override. The probe result is cached
-    for the process lifetime (see ``_terminal_bg_query``), so trying it
-    before consulting the override does not add a second measurement cost.
-
-    Only when the probe cannot measure the surface (``None``) does the
-    override become the surface hex. A ``RALPH_TERMINAL_BG`` hex is only
-    trusted when it is a valid ``#RGB`` / ``#RRGGBB`` colour
-    (``relative_luminance`` already raises ``ValueError`` for malformed or
-    wrong-length bodies) -- a malformed override falls through to the
-    dual-safe fallback rather than being threaded, unvalidated, into the
-    palette solver.
-
-    A non-hex explicit declaration (``light`` / ``dark`` / ``1`` / ``true`` /
-    ``yes`` / ``0`` / ``false`` / ``no``) resolves to the same representative
-    surface the measurement-free canonical tables are solved against
-    (``_CANONICAL_LIGHT_SURFACE_HEX`` / ``_CANONICAL_DARK_SURFACE_HEX``,
-    i.e. ``#FAF8F5`` / ``#2D2A2E``) so this function and
-    :func:`terminal_background_is_light` can never disagree about a
-    declared background, and this declared-but-unmeasured path keeps the
-    same contrast headroom DA-001 gave the canonical tables rather than
-    resolving fresh against a pure endpoint with none.
-    """
     from ralph.display._terminal_bg_query import query_terminal_background_hex
 
     measured = query_terminal_background_hex(timeout=_terminal_background_timeout_seconds(env))
@@ -728,19 +544,12 @@ def detect_terminal_background_hex(env: Mapping[str, str]) -> str | None:
     return None
 
 
-#: Monokai-derived syntax palettes solved for each terminal background.
 SYNTAX_THEME_ON_DARK_BG: Final[SyntaxTheme] = PygmentsSyntaxTheme(SyntaxThemes.dark())
 SYNTAX_THEME_ON_LIGHT_BG: Final[SyntaxTheme] = PygmentsSyntaxTheme(SyntaxThemes.light())
 SYNTAX_THEME_ON_UNKNOWN_BG: Final[SyntaxTheme] = PygmentsSyntaxTheme(SyntaxThemes.unknown())
 
-#: Rich's transparent syntax-background sentinel.
 SYNTAX_BACKGROUND_TRANSPARENT: Final[str] = "default"
 
-# Known backgrounds own previews; unknown terminals stay transparent. Both
-# single-source through _palette.derive_preview_background against the same
-# canonical surfaces the measured path (preview_background_for_background's
-# surface_hex branch) uses, so the boolean and measured paths can no longer
-# disagree (S-6 / DA-002).
 _PREVIEW_BACKGROUND_ON_DARK_BG: Final[str] = _palette.derive_preview_background(
     _CANONICAL_DARK_SURFACE_HEX
 )
@@ -750,7 +559,6 @@ _PREVIEW_BACKGROUND_ON_LIGHT_BG: Final[str] = _palette.derive_preview_background
 
 
 def _derive_diff_fills(surface_hex: str) -> tuple[str, str]:
-    """Derive removed/added diff fills from the single-sourced preview fill."""
     preview_hex = _palette.derive_preview_background(surface_hex)
     lab_l, a, b_lab = _palette.rgb_to_oklab(*_palette.hex_to_rgb(preview_hex))
     rem_r, rem_g, rem_b = _palette.oklab_to_rgb(lab_l, a + 0.012, b_lab)
@@ -763,16 +571,10 @@ def _preview_foreground_for_surface_uncached(surface_hex: str) -> str:
     return _palette.solve_for_surface(_palette.ROLE_ANCHORS["chrome"], fill)
 
 
-# Call form (rather than decorator form) keeps mypy's disallow_any_explicit /
-# disallow_any_decorated settings clean without a type: ignore suppression, and
-# resolves a per-surface foreground once instead of on every rendered row --
-# the same first-party idiom used by ralph.display.language_inference._cached_infer.
 _preview_foreground_for_surface_cached = lru_cache(maxsize=8)(
     _preview_foreground_for_surface_uncached
 )
 
-# Boolean and unknown-background preview foregrounds single-source through
-# the same measured resolvers as surface_hex callers (S-6).
 _PREVIEW_FOREGROUND_ON_DARK_BG: Final[str] = _preview_foreground_for_surface_cached(
     _CANONICAL_DARK_SURFACE_HEX
 )
@@ -787,12 +589,6 @@ _PREVIEW_FOREGROUND_ON_UNKNOWN_BG: Final[str] = _palette.solve_dual_safe(
 def preview_foreground_for_background(
     terminal_bg_is_light: bool | None, surface_hex: str | None = None
 ) -> str:
-    """Return the body foreground for an owned or transparent preview.
-
-    Solved against the actual owned preview fill (not the raw terminal
-    surface) so the result clears contrast on the surface it is really
-    painted on.
-    """
     if surface_hex is not None:
         return _preview_foreground_for_surface_cached(surface_hex)
     if terminal_bg_is_light is True:
@@ -805,7 +601,6 @@ def preview_foreground_for_background(
 def preview_background_for_background(
     terminal_bg_is_light: bool | None, surface_hex: str | None = None
 ) -> str:
-    """Return the complete owned preview surface for a resolved background."""
     if surface_hex is not None:
         return _palette.derive_preview_background(surface_hex)
     if terminal_bg_is_light is True:
@@ -815,9 +610,6 @@ def preview_background_for_background(
     return SYNTAX_BACKGROUND_TRANSPARENT
 
 
-# Unknown-background diffs remain transparent. The known-background fills
-# single-source through _derive_diff_fills against the same canonical
-# surfaces the measured path uses (S-6).
 _DIFF_REMOVED_FILL_ON_DARK_BG, _DIFF_ADDED_FILL_ON_DARK_BG = _derive_diff_fills(
     _CANONICAL_DARK_SURFACE_HEX
 )
@@ -829,7 +621,6 @@ _DIFF_REMOVED_FILL_ON_LIGHT_BG, _DIFF_ADDED_FILL_ON_LIGHT_BG = _derive_diff_fill
 def display_styles_for_background(
     terminal_bg_is_light: bool | None, surface_hex: str | None = None
 ) -> Mapping[str, str]:
-    """Return meaning pigments for named console categories."""
     if surface_hex is not None:
         return _build_display_styles(_palette.resolve_palette(surface_hex))
     if terminal_bg_is_light is True:
@@ -846,10 +637,6 @@ def _diff_token_foregrounds_for_surface_uncached(surface_hex: str) -> tuple[str,
     return removed, added
 
 
-# Call form (rather than decorator form) keeps mypy's disallow_any_explicit /
-# disallow_any_decorated settings clean without a type: ignore suppression, and
-# resolves a per-surface diff palette once instead of on every rendered row --
-# the same first-party idiom used by ralph.display.language_inference._cached_infer.
 _diff_token_foregrounds_for_surface_cached = lru_cache(maxsize=8)(
     _diff_token_foregrounds_for_surface_uncached
 )
@@ -858,15 +645,6 @@ _diff_token_foregrounds_for_surface_cached = lru_cache(maxsize=8)(
 def diff_token_foregrounds(
     terminal_bg_is_light: bool | None, surface_hex: str | None = None
 ) -> tuple[str, str]:
-    """Return deleted and inserted foregrounds distinct from failure/success states.
-
-    On a known background (canonical boolean or measured ``surface_hex``)
-    the markers are painted on their owned diff fill
-    (:func:`diff_fill_styles`), so each foreground is solved against that
-    fill rather than against the raw terminal surface. On an unknown
-    background there is no owned fill -- the markers fall back to the
-    dual-safe display-style pigments.
-    """
     if surface_hex is not None:
         return _diff_token_foregrounds_for_surface_cached(surface_hex)
     fills = diff_fill_styles(terminal_bg_is_light)
@@ -882,7 +660,6 @@ def diff_token_foregrounds(
 def diff_fill_styles(
     terminal_bg_is_light: bool | None, surface_hex: str | None = None
 ) -> tuple[str, str] | None:
-    """Return derived removed/added diff fills, or transparent for unknown backgrounds."""
     if surface_hex is not None:
         return _derive_diff_fills(surface_hex)
     if terminal_bg_is_light is True:
@@ -896,17 +673,12 @@ def _syntax_theme_for_surface_uncached(surface_hex: str) -> SyntaxTheme:
     return PygmentsSyntaxTheme(SyntaxThemes.for_surface(surface_hex))
 
 
-# Call form (rather than decorator form) keeps mypy's disallow_any_explicit /
-# disallow_any_decorated settings clean without a type: ignore suppression, and
-# resolves a per-surface syntax theme once instead of on every rendered row --
-# the same first-party idiom used by ralph.display.language_inference._cached_infer.
 _syntax_theme_for_surface_cached = lru_cache(maxsize=8)(_syntax_theme_for_surface_uncached)
 
 
 def syntax_theme_for_background(
     terminal_bg_is_light: bool | None, surface_hex: str | None = None
 ) -> SyntaxTheme:
-    """Return the syntax theme resolved for this background."""
     if surface_hex is not None:
         return _syntax_theme_for_surface_cached(surface_hex)
     if terminal_bg_is_light is True:
@@ -919,7 +691,6 @@ def syntax_theme_for_background(
 def pick_status_styles(
     terminal_bg_is_light: bool | None, surface_hex: str | None = None
 ) -> dict[str, tuple[str, str, str]]:
-    """Return the status style table for the given background."""
     if surface_hex is not None:
         return _build_status_styles(_palette.resolve_palette(surface_hex))
     if terminal_bg_is_light is True:
@@ -946,21 +717,6 @@ def _state_payload_for_background(
 def status_styles_for_context(
     terminal_bg_is_light: bool | None,
 ) -> dict[str, tuple[str, str, str]]:
-    """Return the status style table for the current background.
-
-    Convenience wrapper around :func:`pick_status_styles` that
-    names the operation by intent ("styles for the current
-    context") rather than by parameter. Used by callers that
-    want the resolved table without choosing between the light
-    and dark variants.
-
-    Parameters:
-        terminal_bg_is_light: ``True`` for light backgrounds,
-            ``False`` for dark, ``None`` for unknown.
-
-    Returns:
-        A mapping from status name to ``(label, glyph, style)``.
-    """
     return pick_status_styles(terminal_bg_is_light)
 
 
@@ -969,24 +725,6 @@ def assert_status_styles_meet_contrast(
     terminal_bg_is_light: bool | None,
     min_ratio: float = _MIN_CONTRAST_RATIO,
 ) -> None:
-    """Assert that every status style meets the contrast minimum.
-
-    Iterates the resolved status style table and verifies that
-    the foreground hex color (extracted from the Rich style
-    string) reaches at least ``min_ratio`` against the implied
-    background color. Raises ``RuntimeError`` listing every
-    failure when any style fails the test.
-
-    Parameters:
-        terminal_bg_is_light: ``True`` for light backgrounds,
-            ``False`` for dark, ``None`` for unknown (checks both).
-        min_ratio: Minimum acceptable contrast ratio (default
-            ``_MIN_CONTRAST_RATIO``).
-
-    Raises:
-        RuntimeError: When one or more status styles fail the
-            contrast check.
-    """
     table = pick_status_styles(terminal_bg_is_light)
     backgrounds = (
         (_LIGHT_BG_HEX,)
@@ -1012,21 +750,6 @@ def assert_status_styles_meet_contrast(
 
 
 def format_status(status_name: str) -> str:
-    """Format a status name as a Rich-markup string.
-
-    Looks up the status in the default ``STATUS_STYLES`` table
-    and returns a string of the form ``[style]icon label[]``
-    that Rich can render with the linked style and inline icon.
-    Raises ``KeyError`` listing the known statuses when the name
-    is unknown.
-
-    Parameters:
-        status_name: The status key (e.g. ``"running"``).
-
-    Returns:
-        A Rich-markup-formatted string carrying the icon and
-        label of the status.
-    """
     try:
         style, icon, label = STATUS_STYLES[status_name]
     except KeyError as exc:
@@ -1046,7 +769,6 @@ def make_console(
     terminal_bg_is_light: bool | None = None,
     surface_hex: str | None = None,
 ) -> Console:
-    """Construct a Rich ``Console`` wired with the Ralph theme."""
     resolved_no_color = no_color if no_color is not None else False
     resolved_force_terminal = force_terminal if force_terminal is not None else True
     resolved_color_system: Literal["auto", "standard", "256", "truecolor", "windows"] | None = (
@@ -1082,7 +804,6 @@ __all__ = [
     "SYNTAX_THEME_ON_LIGHT_BG",
     "SYNTAX_THEME_ON_UNKNOWN_BG",
     "UNICODE_GLYPHS",
-    # Backwards-compatible CVD-matrix aliases (see imports near top).
     "_DEUTERANOPIA_MATRIX",
     "_DIFF_ADDED_FILL_ON_DARK_BG",
     "_DIFF_ADDED_FILL_ON_LIGHT_BG",

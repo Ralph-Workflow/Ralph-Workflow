@@ -1,4 +1,3 @@
-"""Single planning work unit declaration."""
 
 from __future__ import annotations
 
@@ -28,7 +27,6 @@ def _validate_relative_subpath(path: str) -> str:
 
 
 class WorkUnit(RalphBaseModel):
-    """Single planning work unit declaration."""
 
     model_config = ConfigDict(frozen=True)
 

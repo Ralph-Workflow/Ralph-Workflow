@@ -1,12 +1,3 @@
-"""Unit tests for the diagnostics module.
-
-Tests cover:
-- SystemInfo.gather() populates all fields
-- run_diagnostics() returns a DiagnosticReport
-- AgentDiagnostics with mocked AgentRegistry
-- Agent availability check logic
-"""
-
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -20,21 +11,13 @@ from ralph.diagnostics import (
 )
 from tests._diagnostics_git_probe import stub_git_probe
 
-# SystemInfo.gather() shells out to git (rev-parse, branch, status)
-# unless a probe is injected. This test asserts on DiagnosticReport's
-# fields, not on git, so it injects ``stub_git_probe``. Real-probe
-# coverage lives in
-# ``tests/test_diagnostics_system_info.py::TestSystemInfo``.
 pytestmark = pytest.mark.timeout_seconds(5)
 
 MULTI_AGENT_COUNT = 2
 
 
 class TestDiagnosticReport:
-    """Tests for DiagnosticReport dataclass."""
-
     def test_diagnostic_report_has_system_and_agents(self) -> None:
-        """Test that DiagnosticReport contains system and agents fields."""
         system_info = SystemInfo.gather(git_probe=stub_git_probe)
         mock_registry = MagicMock()
         mock_registry.list_agents.return_value = []

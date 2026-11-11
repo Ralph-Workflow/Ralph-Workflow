@@ -1,5 +1,3 @@
-"""Regression coverage for strengthened deterministic harness echo detection (S-4)."""
-
 from __future__ import annotations
 
 from ralph.agents.execution_state import is_prompt_echo_line
@@ -7,7 +5,6 @@ from ralph.agents.execution_state import is_prompt_echo_line as implementation
 
 
 def test_harness_echo_detector_rejects_harness_framing_and_prompt_fragments() -> None:
-    """S-4: deterministic CLI framing and opening/closing prompt echoes are not LLM output."""
     prompt = "First sentence here. Second sentence there."
 
     assert is_prompt_echo_line("<|user|> hello", prompt) is True

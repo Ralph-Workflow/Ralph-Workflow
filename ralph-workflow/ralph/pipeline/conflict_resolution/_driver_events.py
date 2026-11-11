@@ -1,4 +1,3 @@
-"""Event and status emission helpers for the conflict resolution driver."""
 
 from __future__ import annotations
 
@@ -38,7 +37,6 @@ def _emit(display: ParallelDisplay | None, line: str) -> None:
 def announce_declared_decisions(
     display: ParallelDisplay | None, decision_paths: tuple[str, ...]
 ) -> None:
-    """Name the paths whose resolution Ralph cannot read off the file."""
     if not decision_paths:
         return
     _emit(
@@ -54,7 +52,6 @@ def emit_expired_operator_cap(
     conflicted: tuple[str, ...],
     clock: MonotonicClock,
 ) -> None:
-    """Report a rebase-wide cap before another resolver process is launched."""
     session.terminal_reason = ResolutionTerminationReason.OPERATOR_CAP_REACHED
     session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
     session.last_activity_kind = None
@@ -86,7 +83,6 @@ def emit_success(
 
 
 def emit_attempt_outcome(display: ParallelDisplay | None, outcome: ResolutionOutcome) -> None:
-    """Render a typed non-success outcome without misclassifying it as a hang."""
     if outcome.succeeded or outcome.reason is None:
         return
     reason_label = (
@@ -115,7 +111,6 @@ def render_round_prompt(
     stop: RebaseStop | None,
     strategy_history: tuple[str, ...],
 ) -> Path | None:
-    """Render one round without breaking legacy spy seams on empty history."""
     from ralph.pipeline.conflict_resolution import driver as driver_mod
 
     render_fn = driver_mod.render_conflict_prompt

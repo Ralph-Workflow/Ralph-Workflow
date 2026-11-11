@@ -1,4 +1,3 @@
-"""Process-level protection for the MCP broker secret."""
 
 from __future__ import annotations
 
@@ -54,13 +53,13 @@ def _protect_windows_process() -> None:
     kernel32 = windows_library_loader("kernel32", use_last_error=True)
     initialize_acl = cast(
         "_NativeFunction", advapi32.InitializeAcl
-    )  # cast-policy: seam: ctypes resolves Win32 functions dynamically
+    )
     set_security_info = cast(
         "_NativeFunction", advapi32.SetSecurityInfo
-    )  # cast-policy: seam: ctypes resolves Win32 functions dynamically
+    )
     get_current_process = cast(
         "_GetCurrentProcess", kernel32.GetCurrentProcess
-    )  # cast-policy: seam: ctypes resolves Win32 functions dynamically
+    )
     initialize_acl.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_ulong]
     initialize_acl.restype = ctypes.c_int
     set_security_info.argtypes = [
@@ -124,7 +123,6 @@ def mint_and_protect_broker_secret(
     token_factory: Callable[[int], str] = secrets.token_hex,
     protector: Callable[[], None] = protect_broker_secret,
 ) -> str:
-    """Replace any inherited broker secret and protect its owning process."""
     target = os.environ if environment is None else environment
     secret = token_factory(32)
     target["RALPH_BROKER_SECRET"] = secret

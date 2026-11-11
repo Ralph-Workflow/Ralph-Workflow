@@ -1,4 +1,3 @@
-"""_DetectedStackLike — structural protocol for language detector results."""
 
 from __future__ import annotations
 
@@ -10,7 +9,6 @@ if TYPE_CHECKING:
 
 @runtime_checkable
 class _DetectedStackLike(Protocol):
-    """Structural protocol for language detector results."""
 
     primary_language: str
     secondary_languages: Sequence[str]

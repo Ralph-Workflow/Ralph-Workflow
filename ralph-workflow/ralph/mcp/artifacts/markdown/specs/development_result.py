@@ -1,14 +1,3 @@
-"""Markdown mapping and validation rules for ``development_result`` artifacts.
-
-Frontmatter ``status`` always has the closed vocabulary ``completed`` |
-``partial`` | ``failed`` (routing and continuation prompts read it — a wrong
-status such as ``done`` is a hard error naming the valid values). Everything
-below the frontmatter is free-form: the next agent reads it, never a
-validator. Plan/analysis/visual-proof machinery and per-item ID matching,
-dispositions, rationales, and the timebox-warned ``Incomplete Work`` CLOSED
-grammar are all removed; coverage is judged by development analysis, not
-checked mechanically here.
-"""
 
 from __future__ import annotations
 
@@ -36,16 +25,6 @@ def _clean_line_text(text: str) -> str:
 
 
 def _to_content(document: ParsedDocument) -> Content:
-    """Map any development_result body to a free-form content dict.
-
-    The body below the frontmatter is the next agent's reading matter;
-    status is the only field the validator gates. Legacy-shaped sections
-    (Summary, Files Changed, Next Steps, Continuation) are extracted
-    best-effort and on a strict opt-in basis: when present they are
-    preserved so continuation prompts and history snapshots keep
-    working, but no section is required, and a free-form prose body
-    that omits every section is the default and accepted shape.
-    """
     content: Content = {
         "status": document.frontmatter["status"],
         "summary": "",
@@ -105,7 +84,7 @@ DEVELOPMENT_RESULT_SPEC = MdArtifactSpec(
     normalize_content=normalize_development_result_content,
     allow_unknown_frontmatter=True,
     allow_unknown_sections=True,
-    structured_body=lambda document: False,  # pragma: no cover - body is always free-form
+    structured_body=lambda document: False,
 )
 
 register_spec(DEVELOPMENT_RESULT_SPEC)

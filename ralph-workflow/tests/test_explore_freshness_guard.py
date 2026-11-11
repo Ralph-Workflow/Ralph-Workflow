@@ -1,24 +1,3 @@
-"""Black-box tests for the S-3 pre-query freshness guard.
-
-The freshness guard is a cheap bounded check executed before an
-indexed query in ``auto`` mode. It compares the persisted
-dirty-path queue and deleted-file count against the total file
-count and returns ``index_stale_scope`` when any dirty path falls
-inside the query scope OR the stale share exceeds the documented
-threshold (``DEFAULT_STALENESS_THRESHOLD`` = 5%).
-
-These tests assert:
-
-* ``staleness_probe`` returns the documented shape with truthful
-  values for fresh / stale indexes.
-* ``handle_grep_files`` falls through to live grep with reason
-  ``index_stale_scope`` when the probe is stale.
-* ``use_index='always'`` still serves live grep when stale (the
-  reason code is reported so the caller can see why).
-* The fallback preserves parity with the live branch (live
-  matches are returned, not an empty indexed result).
-"""
-
 from __future__ import annotations
 
 import json
@@ -98,12 +77,10 @@ def _attach_session(store: ExploreStore, workspace: Path) -> _FakeSession:
 
 
 def test_staleness_probe_default_threshold_is_5_percent() -> None:
-    """The default threshold is the documented 5% share."""
     assert DEFAULT_STALENESS_THRESHOLD == 0.05
 
 
 def test_staleness_probe_no_handle_is_not_stale() -> None:
-    """Without an explore handle the probe is a no-op."""
     probe = staleness_probe(_FakeSession(), workspace_root=None)
     assert probe["stale"] is False
     assert probe["reason"] is None
@@ -111,7 +88,6 @@ def test_staleness_probe_no_handle_is_not_stale() -> None:
 
 
 def test_staleness_probe_fresh_index_is_not_stale(tmp_path: Path) -> None:
-    """A freshly populated index with no dirty paths is not stale."""
     workspace = _seed_workspace(tmp_path)
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     try:
@@ -125,14 +101,11 @@ def test_staleness_probe_fresh_index_is_not_stale(tmp_path: Path) -> None:
 
 
 def test_staleness_probe_dirty_path_falls_through(tmp_path: Path) -> None:
-    """A dirty path in the workspace triggers ``index_stale_scope``."""
     workspace = _seed_workspace(tmp_path)
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     try:
         reindex(store, workspace, options=ReindexOptions(timeout_ms=5000))
         session = _attach_session(store, workspace)
-        # Mutate a file outside the indexer to simulate an external
-        # edit and mark the path dirty via the store.
         (workspace / "hello.py").write_text("def hello():\n    return 'changed'\n")
         store.mark_dirty("hello.py", reason="test_extern", source_tool="test")
         probe = staleness_probe(session, workspace_root=workspace)
@@ -144,20 +117,11 @@ def test_staleness_probe_dirty_path_falls_through(tmp_path: Path) -> None:
 
 
 def test_staleness_probe_custom_threshold(tmp_path: Path) -> None:
-    """The probe honours a caller-supplied threshold for the share signal.
-
-    The probe fires on EITHER ``scope_affected`` (any dirty path) OR
-    ``stale_share > threshold``. The two are independent signals;
-    setting a high threshold only suppresses the share-based firing,
-    not the scope-based one. We verify the share path here by using
-    a fresh index with no dirty paths and a custom threshold.
-    """
     workspace = _seed_workspace(tmp_path)
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     try:
         reindex(store, workspace, options=ReindexOptions(timeout_ms=5000))
         session = _attach_session(store, workspace)
-        # No dirty paths -> both probes are fresh regardless of threshold.
         probe_high = staleness_probe(session, workspace_root=workspace, threshold=0.5)
         assert probe_high["stale"] is False
         probe_low = staleness_probe(session, workspace_root=workspace, threshold=0.01)
@@ -167,7 +131,6 @@ def test_staleness_probe_custom_threshold(tmp_path: Path) -> None:
 
 
 def test_grep_files_falls_through_when_stale(tmp_path: Path) -> None:
-    """Stale indexes fall through to live grep with reason code."""
     workspace = _seed_workspace(tmp_path)
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     try:
@@ -188,8 +151,6 @@ def test_grep_files_falls_through_when_stale(tmp_path: Path) -> None:
         payload = _decode(result)
         assert payload["index_used"] is False
         assert payload["fallback_reason"] == "index_stale_scope"
-        # Live grep still returned the match; freshness block
-        # reflects the staleness.
         assert any("hello" in (m.get("text") or "") for m in payload["matches"])
         assert payload["stale_paths_count"] >= 1
     finally:
@@ -197,13 +158,6 @@ def test_grep_files_falls_through_when_stale(tmp_path: Path) -> None:
 
 
 def test_grep_files_use_index_always_returns_structured_error_when_stale(tmp_path: Path) -> None:
-    """``use_index='always'`` against a stale index returns a structured error.
-
-    Acceptance criterion 2: ``use_index='always'`` failures return a
-    structured reason-coded error, never an empty success. The error
-    message must contain the canonical reason code
-    ``index_stale_scope`` so the caller can recover programmatically.
-    """
     import pytest
 
     from ralph.mcp.tools.coordination import InvalidParamsError
@@ -226,7 +180,6 @@ def test_grep_files_use_index_always_returns_structured_error_when_stale(tmp_pat
                     "use_index": "always",
                 },
             )
-        # The error message must carry the canonical reason code.
         assert "index_stale_scope" in str(excinfo.value)
         assert "reason_code" in str(excinfo.value)
     finally:

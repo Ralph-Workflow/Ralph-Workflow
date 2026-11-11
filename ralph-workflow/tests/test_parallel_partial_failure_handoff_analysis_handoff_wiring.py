@@ -1,5 +1,3 @@
-"""Tests for honest partial-failure reporting in the parallel development summary."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -39,11 +37,7 @@ def _write_fake_artifact(tmp_path: Path, unit_id: str) -> None:
 
 
 class TestAnalysisHandoffWiring:
-    """Verify that the parallel summary is wired into the analysis handoff path."""
-
     def test_development_result_md_written_after_fanout(self, tmp_path: Path) -> None:
-        """After _write_parallel_development_summary runs, .agent/DEVELOPMENT_RESULT.md
-        must exist so the analysis phase can read it through the normal fallback path."""
         effect = _make_effect(("unit-a", ["src/a"]), ("unit-b", ["src/b"]))
         _write_fake_artifact(tmp_path, "unit-a")
         _write_fake_artifact(tmp_path, "unit-b")
@@ -72,7 +66,6 @@ class TestAnalysisHandoffWiring:
         assert "unit-b" in content
 
     def test_development_result_md_content_reflects_failure(self, tmp_path: Path) -> None:
-        """The DEVELOPMENT_RESULT.md handoff must truthfully reflect partial failure."""
         effect = _make_effect(("unit-a", ["src/a"]), ("unit-b", ["src/b"]))
         _write_fake_artifact(tmp_path, "unit-a")
 
@@ -101,7 +94,6 @@ class TestAnalysisHandoffWiring:
         assert "all_succeeded: false" in content
 
     def test_analysis_handoff_not_clobbered_by_parallel_summary(self, tmp_path: Path) -> None:
-        """The normal development-result Markdown is not overwritten by the parallel summary."""
         dev_result_path = tmp_path / ".agent" / "artifacts" / "development_result.md"
         dev_result_path.parent.mkdir(parents=True, exist_ok=True)
         original_content = (

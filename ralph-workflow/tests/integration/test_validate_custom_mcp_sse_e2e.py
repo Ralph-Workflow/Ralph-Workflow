@@ -1,9 +1,3 @@
-"""Integration tests for legacy HTTP+SSE upstream MCP validation.
-
-Tests the full chain from mcp.toml parsing through _validate_custom_mcp_servers
-for SSE-type server entries, without spawning real subprocess servers.
-"""
-
 from __future__ import annotations
 
 from io import StringIO
@@ -67,7 +61,6 @@ def _stub_successful_tool_catalog(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_validate_sse_server_healthy_returns_zero(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """_validate_custom_mcp_servers returns 0 when SSE server preflight and probe pass."""
     _write_sse_mcp_toml(tmp_path, 9999)
     monkeypatch.setenv("HOME", str(tmp_path / "fake-home"))
     monkeypatch.delenv("RALPH_MCP_STRICT", raising=False)
@@ -95,7 +88,6 @@ def test_validate_sse_server_healthy_returns_zero(
 def test_validate_sse_server_healthy_logs_no_errors(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """No error-level logs are emitted when SSE server validation succeeds."""
     _write_sse_mcp_toml(tmp_path, 9999)
     monkeypatch.setenv("HOME", str(tmp_path / "fake-home"))
     monkeypatch.delenv("RALPH_MCP_STRICT", raising=False)

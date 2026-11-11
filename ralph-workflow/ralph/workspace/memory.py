@@ -1,8 +1,3 @@
-"""In-memory workspace for testing.
-
-This module provides the MemoryWorkspace implementation that
-stores file contents in memory for test isolation.
-"""
 
 from __future__ import annotations
 
@@ -13,54 +8,28 @@ from ralph.workspace.skip import RECURSIVE_SKIP_DIRECTORY_NAMES
 
 
 class MemoryWorkspace:
-    """In-memory workspace for test isolation.
-
-    This workspace stores all file contents in a dictionary,
-    making it suitable for unit testing without filesystem
-    operations.
-
-    All paths are normalized to POSIX-style relative paths.
-    """
 
     def __init__(self, root: str = "/workspace") -> None:
-        """Initialize empty in-memory workspace."""
         self._storage: dict[
             str, str
-        ] = {}  # bounded-accumulator-ok: MemoryWorkspace test double drained by clear()
-        self._dirs: set[str] = {""}  # Root is always present
+        ] = {}
+        self._dirs: set[str] = {""}
         self._root = PurePosixPath(root)
-        # Optional ExploreIndex handle attached by the production
-        # session bridge; ``None`` keeps the legacy contract.
         self.explore_index: object | None = None
 
     @property
     def root(self) -> Path:
-        """Return the logical workspace root for root-aware consumers."""
         return Path(str(self._root))
 
     @root.setter
     def root(self, value: Path | str) -> None:
-        """Update the logical root, matching :class:`FsWorkspace` mutability."""
         self._root = PurePosixPath(value)
 
     def _normalize(self, path: str) -> str:
-        """Normalize path to POSIX-style relative path.
-
-        Args:
-            path: Input path.
-
-        Returns:
-            Normalized path.
-        """
         normalized = str(PurePosixPath(path))
         return "" if normalized == "." else normalized
 
     def _ensure_parent(self, path: str) -> None:
-        """Ensure parent directory exists.
-
-        Args:
-            path: File path.
-        """
         p = PurePosixPath(path)
         if p.parent == PurePosixPath("."):
             return
@@ -70,17 +39,6 @@ class MemoryWorkspace:
                 self._dirs.add(normalized_parent)
 
     def read(self, path: str) -> str:
-        """Read file contents.
-
-        Args:
-            path: Relative path to the file.
-
-        Returns:
-            File contents as string.
-
-        Raises:
-            FileNotFoundError: If file doesn't exist.
-        """
         normalized = self._normalize(path)
         if normalized not in self._storage:
             msg = f"File not found: {path}"
@@ -88,12 +46,6 @@ class MemoryWorkspace:
         return self._storage[normalized]
 
     def snapshot(self, path: str, *, max_bytes: int | None = None) -> WorkspaceSnapshot:
-        """Return one coherent in-memory observation for a logical request.
-
-        Read directly from the storage boundary rather than composing ``stat``
-        and ``read`` calls, so consumers needing both metadata and content do
-        not make redundant observations.
-        """
         normalized = self._normalize(path)
         if normalized in self._dirs:
             return WorkspaceSnapshot(
@@ -122,23 +74,11 @@ class MemoryWorkspace:
         return WorkspaceSnapshot(stat={"type": "missing"}, content=None)
 
     def write(self, path: str, content: str) -> None:
-        """Write content to file.
-
-        Args:
-            path: Relative path to the file.
-            content: Content to write.
-        """
         normalized = self._normalize(path)
         self._ensure_parent(normalized)
         self._storage[normalized] = content
 
     def append(self, path: str, content: str) -> None:
-        """Append content to file.
-
-        Args:
-            path: Relative path to the file.
-            content: Content to append.
-        """
         normalized = self._normalize(path)
         self._ensure_parent(normalized)
         if normalized in self._storage:
@@ -147,34 +87,13 @@ class MemoryWorkspace:
             self._storage[normalized] = content
 
     def exists(self, path: str) -> bool:
-        """Check if file exists.
-
-        Args:
-            path: Relative path to check.
-
-        Returns:
-            True if file exists.
-        """
         return self._normalize(path) in self._storage
 
     def remove(self, path: str) -> None:
-        """Remove a file.
-
-        Args:
-            path: Relative path to the file.
-        """
         normalized = self._normalize(path)
         self._storage.pop(normalized, None)
 
     def list_dir(self, path: str) -> list[str]:
-        """List directory contents.
-
-        Args:
-            path: Relative path to the directory.
-
-        Returns:
-            List of file/directory names.
-        """
         normalized = self._normalize(path)
         if normalized and not normalized.endswith("/"):
             normalized += "/"
@@ -189,7 +108,6 @@ class MemoryWorkspace:
                 if first_part and first_part not in result:
                     result.append(first_part)
 
-        # Also check directories
         for d in self._dirs:
             if normalized == "" or d.startswith(normalized):
                 if d == normalized:
@@ -203,45 +121,22 @@ class MemoryWorkspace:
         return sorted(result)
 
     def is_dir(self, path: str) -> bool:
-        """Check if path is a directory.
-
-        Args:
-            path: Relative path to check.
-
-        Returns:
-            True if path is a directory.
-        """
         normalized = self._normalize(path)
         return normalized in self._dirs
 
     def is_file(self, path: str) -> bool:
-        """Check if path is a file.
-
-        Args:
-            path: Relative path to check.
-
-        Returns:
-            True if path is a file.
-        """
         return self.exists(path)
 
     def clear(self) -> None:
-        """Clear all stored contents."""
         self._storage.clear()
         self._dirs = {""}
 
     def create_dir(self, path: str) -> None:
-        """Create a directory.
-
-        Args:
-            path: Relative path to the directory.
-        """
         normalized = self._normalize(path)
         if normalized:
             self._dirs.add(normalized)
 
     def absolute_path(self, path: str) -> str:
-        """Return an absolute-like path string for the workspace."""
         return str(self._root / self._normalize(path))
 
     def read_lines(
@@ -254,27 +149,6 @@ class MemoryWorkspace:
         tail: int | None = None,
         max_bytes: int | None = None,
     ) -> tuple[str, dict[str, object]]:
-        """Read lines from a file with slicing support.
-
-        Args:
-            path: Relative path to the file.
-            start: 1-based line number to start from (inclusive).
-            end: 1-based line number to end at (inclusive).
-            head: Return only the first N lines.
-            tail: Return only the last N lines.
-            max_bytes: Ceiling for an unbounded full-file read. Partial
-                line windows remain available above this limit.
-
-        Returns:
-            Tuple of (text content, metadata dict) where metadata has
-            total_lines, returned_lines, truncated keys.
-
-        Raises:
-            ValueError: If conflicting params are supplied or an unbounded
-                read exceeds ``max_bytes``.
-            FileNotFoundError: If file doesn't exist.
-        """
-        # Count how many mode groups are specified
         has_range = (start is not None) or (end is not None)
         has_head = head is not None
         has_tail = tail is not None
@@ -328,7 +202,6 @@ class MemoryWorkspace:
         limit: int | None = None,
         max_bytes: int | None = None,
     ) -> tuple[str, dict[str, object]]:
-        """Read a byte window from a file, decoded as UTF-8."""
         if offset < 0:
             raise ValueError("offset must not be negative")
         if limit is not None and limit < 0:
@@ -358,15 +231,6 @@ class MemoryWorkspace:
         }
 
     def stat(self, path: str) -> dict[str, object]:
-        """Get file metadata/stat data.
-
-        Args:
-            path: Relative path to the file.
-
-        Returns:
-            Dict with type ('file'|'dir'|'missing'), size_bytes,
-            created_unix, modified_unix, mode.
-        """
         normalized = self._normalize(path)
         if normalized in self._dirs:
             return {
@@ -387,11 +251,6 @@ class MemoryWorkspace:
         return {"type": "missing"}
 
     def mkdirs(self, path: str) -> None:
-        """Create a directory and all parent directories.
-
-        Args:
-            path: Relative path to the directory to create.
-        """
         normalized = self._normalize(path)
         if normalized:
             parts = normalized.split("/")
@@ -399,16 +258,6 @@ class MemoryWorkspace:
                 self._dirs.add("/".join(parts[: i + 1]))
 
     def move(self, src: str, dest: str, *, overwrite: bool = False) -> None:
-        """Move a file or directory.
-
-        Args:
-            src: Source path.
-            dest: Destination path.
-            overwrite: Whether to overwrite existing destination.
-
-        Raises:
-            FileExistsError: If dest exists and overwrite is False.
-        """
         src_norm = self._normalize(src)
         dest_norm = self._normalize(dest)
         if (dest_norm in self._storage or dest_norm in self._dirs) and not overwrite:
@@ -422,16 +271,6 @@ class MemoryWorkspace:
             raise FileNotFoundError(f"Source '{src}' not found")
 
     def copy(self, src: str, dest: str, *, overwrite: bool = False) -> None:
-        """Copy a file or directory.
-
-        Args:
-            src: Source path.
-            dest: Destination path.
-            overwrite: Whether to overwrite existing destination.
-
-        Raises:
-            FileExistsError: If dest exists and overwrite is False.
-        """
         src_norm = self._normalize(src)
         dest_norm = self._normalize(dest)
         if (dest_norm in self._storage or dest_norm in self._dirs) and not overwrite:
@@ -444,15 +283,6 @@ class MemoryWorkspace:
             raise FileNotFoundError(f"Source '{src}' not found")
 
     def delete(self, path: str, *, recursive: bool = False) -> None:
-        """Delete a file or directory.
-
-        Args:
-            path: Relative path to delete.
-            recursive: If True, delete directories recursively.
-
-        Raises:
-            IsADirectoryError: If path is a directory and recursive is False.
-        """
         normalized = self._normalize(path)
         if normalized in self._dirs:
             if not recursive:
@@ -465,22 +295,9 @@ class MemoryWorkspace:
             raise FileNotFoundError(f"Path '{path}' not found")
 
     def allowed_roots(self) -> list[str]:
-        """Return the list of allowed workspace root paths.
-
-        Returns:
-            List of string paths from configured allowed roots.
-        """
         return [str(self._root)]
 
     def iter_files(self, base: str) -> tuple[str, ...]:
-        """Iterate over file paths under a base directory.
-
-        Args:
-            base: Base directory path to search under.
-
-        Yields:
-            File paths relative to workspace root, honoring skip patterns.
-        """
         normalized = self._normalize(base)
         base_parts = PurePosixPath(normalized).parts
         if any(part in RECURSIVE_SKIP_DIRECTORY_NAMES for part in base_parts):

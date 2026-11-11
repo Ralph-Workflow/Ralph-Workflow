@@ -1,5 +1,3 @@
-"""Tests for the free-form development_result artifact validation."""
-
 from __future__ import annotations
 
 import pytest
@@ -44,7 +42,6 @@ def test_development_result_accepts_bare_failed_status() -> None:
 
 
 def test_development_result_tolerates_unknown_body_keys() -> None:
-    """Free-form body: any extra keys are accepted as a free-form payload."""
     result = DevelopmentResult.model_validate(
         {
             "status": "completed",
@@ -102,7 +99,6 @@ def test_normalize_development_result_still_rejects_unknown_status() -> None:
 
 
 def test_normalize_development_result_passes_unstructured_body_through() -> None:
-    """The body of any development result is the next agent's reading matter."""
     normalized = normalize_development_result_content(
         {
             "status": "completed",
@@ -113,5 +109,4 @@ def test_normalize_development_result_passes_unstructured_body_through() -> None
     )
 
     assert normalized["status"] == "completed"
-    # Extra keys are accepted; the model is no longer strict about body shape.
     assert "what_i_did" in normalized or normalized == {"status": "completed"}

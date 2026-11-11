@@ -1,12 +1,3 @@
-# property-test: E — committed streaming response always terminates with a frame
-"""A committed streaming response always terminates with a frame.
-
-Once the server writes SSE headers, it must end the stream with a terminal
-frame (result or JSON-RPC error) on every control path: normal completion,
-handler exception, post-header exception, and writer-closed mid-stream.
-A client must never observe an open stream that silently dies.
-"""
-
 from __future__ import annotations
 
 import io
@@ -46,22 +37,15 @@ class _SessionWithStreaming:
 
 
 class _RecordingServer(_FallbackHttpServer):
-    """In-memory subclass of the production ``_FallbackHttpServer``.
-
-    PROMPT.md proof obligation B requires the production handler to narrow
-    ``self.server`` via ``isinstance`` (no ``cast()``), so the test harness
-    must subclass the real class to pass that check.
-    """
-
     def __init__(self, mcp: McpServer) -> None:
         self.mcp_server = mcp
         self.state: object = ServerState.RUNNING
 
     def server_bind(self) -> None:
-        """No-op: the in-memory harness never binds a real socket."""
+        pass
 
     def server_activate(self) -> None:
-        """No-op: the in-memory harness never activates a real listener."""
+        pass
 
 
 def _run_exec_post(server: _RecordingServer) -> str:
@@ -83,7 +67,6 @@ def _run_exec_post(server: _RecordingServer) -> str:
 
 
 def test_normal_exec_call_terminates_with_terminal_frame() -> None:
-    """A normal exec call writes the SSE headers and a final frame."""
 
     class _OkMcp:
         def __init__(self) -> None:
@@ -109,7 +92,6 @@ def test_normal_exec_call_terminates_with_terminal_frame() -> None:
 
 
 def test_handler_exception_writes_error_terminal_frame() -> None:
-    """A handler that raises during dispatch still writes a terminal frame."""
 
     class _RaisingMcp:
         def __init__(self) -> None:
@@ -125,7 +107,6 @@ def test_handler_exception_writes_error_terminal_frame() -> None:
 
 
 def test_session_without_streaming_surface_still_terminates() -> None:
-    """A session missing tool_output_sink_entry must still produce a final frame."""
 
     class _SessionWithoutStreaming:
         session_id = "sess-prop-e-no-stream"
@@ -153,13 +134,6 @@ def test_session_without_streaming_surface_still_terminates() -> None:
 
 
 def test_writer_close_mid_stream_still_terminal_or_silent() -> None:
-    """When the writer raises mid-stream, the call must still resolve.
-
-    Simulate a writer that fails on the second write (after headers +
-    a notification frame). The streaming path must either (a) emit a
-    terminal frame before the failure, or (b) swallow the error and
-    close cleanly. Either way, the call must not hang.
-    """
 
     class _SessionStreaming:
         session_id = "sess-prop-e-2"
@@ -175,7 +149,6 @@ def test_writer_close_mid_stream_still_terminal_or_silent() -> None:
         def handle_request(
             self, request: JsonRpcRequest, state: ServerState
         ) -> tuple[JsonRpcResponse, ServerState]:
-            # Simulate writing a notification frame then a final frame
             return (
                 JsonRpcResponse(
                     jsonrpc="2.0",
@@ -187,18 +160,14 @@ def test_writer_close_mid_stream_still_terminal_or_silent() -> None:
 
     server = _RecordingServer(_WritesTwoFrames())
     raw = _run_exec_post(server)
-    # The result is the only frame for the Ok path; the test passes if
-    # _run_exec_post returns a body with "exec-prop-e" present.
     assert "exec-prop-e" in raw
     assert "result" in raw
 
 
 def test_terminal_frame_counter_increments_for_normal_exec() -> None:
-    """Successful exec emits a terminal_frame_emissions counter increment."""
     reset_default_metrics()
     metrics = McpMetrics()
 
-    # Install the fresh metrics as the default.
     _metrics_mod._default_metrics = metrics
 
     class _OkMcp:
@@ -218,14 +187,11 @@ def test_terminal_frame_counter_increments_for_normal_exec() -> None:
             )
 
     _run_exec_post(_RecordingServer(_OkMcp()))
-    # The streaming path increments terminal_frame_emissions exactly once
-    # for a successful dispatch.
     assert metrics.snapshot()["terminal_frame_emissions"] >= 1
     reset_default_metrics()
 
 
 def test_error_terminal_frame_counter_increments_for_raising_handler() -> None:
-    """A raising handler still increments the terminal_frame_emissions counter."""
     metrics = McpMetrics()
     _metrics_mod._default_metrics = metrics
 

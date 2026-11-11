@@ -1,10 +1,3 @@
-"""Unit tests for ``PipelineDeps`` composition with fake collaborators.
-
-These tests verify that the pipeline dependency bundle can be built from
-production defaults, overridden field-by-field, and wired to fake
-collaborators without real subprocess, network, or wall-clock delays.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -35,9 +28,6 @@ def _fake_display_context() -> DisplayContext:
 
 
 def test_build_default_pipeline_deps_returns_valid_pipeline_deps() -> None:
-    """``build_default_pipeline_deps`` returns a ``PipelineDeps`` with all
-    required fields wired to production defaults.
-    """
     config = UnifiedConfig()
     display_context = _fake_display_context()
 
@@ -64,7 +54,6 @@ def test_build_default_pipeline_deps_returns_valid_pipeline_deps() -> None:
 
 
 def test_test_pipeline_deps_fakes_external_runtime_boundaries() -> None:
-    """The shared test bundle never starts network or process-tree I/O."""
     deps = make_test_pipeline_deps(_fake_display_context())
 
     assert deps.connectivity_monitor.current_state.value == "online"
@@ -79,7 +68,6 @@ def test_test_pipeline_deps_fakes_external_runtime_boundaries() -> None:
 
 
 def test_build_default_pipeline_deps_applies_pro_hooks() -> None:
-    """``build_default_pipeline_deps`` applies ``ProPipelineHooks`` overrides."""
     config = UnifiedConfig()
     display_context = _fake_display_context()
     registry_factory = MagicMock()
@@ -105,7 +93,6 @@ def test_build_default_pipeline_deps_applies_pro_hooks() -> None:
 
 
 def test_pipeline_deps_replace_overrides_individual_fields() -> None:
-    """``dataclasses.replace`` correctly overrides individual collaborators."""
     config = UnifiedConfig()
     display_context = _fake_display_context()
     deps = build_default_pipeline_deps(config, display_context)
@@ -127,14 +114,12 @@ def test_pipeline_deps_replace_overrides_individual_fields() -> None:
     assert overridden.registry_factory is new_registry_factory
     assert overridden.master_prompt_materializer is new_master_prompt_materializer
     assert overridden.bridge_factory is new_bridge_factory
-    # Unchanged fields retain production defaults.
     assert overridden.model_identity is None
     assert overridden.phase_prompt_materializer is deps.phase_prompt_materializer
     assert overridden.artifact_requirements_resolver is deps.artifact_requirements_resolver
 
 
 def test_pipeline_deps_replace_preserves_immutability() -> None:
-    """Replacing a field returns a new instance; the original is unchanged."""
     config = UnifiedConfig()
     display_context = _fake_display_context()
     deps = build_default_pipeline_deps(config, display_context)
@@ -148,7 +133,6 @@ def test_pipeline_deps_replace_preserves_immutability() -> None:
 
 
 def test_pro_pipeline_hooks_to_runner_kwargs_returns_six_fields() -> None:
-    """``ProPipelineHooks.to_runner_kwargs`` returns the six factory kwargs."""
     hooks = ProPipelineHooks(
         policy_bundle_factory=MagicMock(),
         registry_factory=MagicMock(),
@@ -177,7 +161,6 @@ def test_pro_pipeline_hooks_to_runner_kwargs_returns_six_fields() -> None:
 
 
 def test_pro_pipeline_hooks_override_excludes_policy_bundle_override() -> None:
-    """``policy_bundle_override`` is intentionally excluded from runner kwargs."""
     policy_bundle = MagicMock()
     hooks = ProPipelineHooks(policy_bundle_override=policy_bundle)
 
@@ -188,9 +171,6 @@ def test_pro_pipeline_hooks_override_excludes_policy_bundle_override() -> None:
 
 
 def test_snapshot_registry_publish_and_get_latest() -> None:
-    """``SnapshotRegistry`` stores the latest snapshot and returns it via
-    ``get_latest``.
-    """
     registry = SnapshotRegistry()
     snapshot = PipelineStateSnapshot(
         phase="development",
@@ -215,9 +195,6 @@ def test_snapshot_registry_publish_and_get_latest() -> None:
 
 
 def test_snapshot_registry_publish_defensive_copy() -> None:
-    """``publish`` stores a field-by-field copy, isolating the registry from
-    later mutations of the published snapshot.
-    """
     registry = SnapshotRegistry()
     mutable_metrics: dict[str, int] = {"iterations": 1}
     snapshot = PipelineStateSnapshot(
@@ -243,11 +220,6 @@ def test_snapshot_registry_publish_defensive_copy() -> None:
 
 
 def test_pipeline_deps_accepts_fake_collaborators() -> None:
-    """``PipelineDeps`` can be constructed entirely from fake collaborators.
-
-    This test wires every field to a lightweight fake so the bundle can be
-    passed to execution paths in tests without real I/O or subprocesses.
-    """
     workspace = MemoryWorkspace()
     display_context = _fake_display_context()
 
@@ -290,9 +262,6 @@ def test_pipeline_deps_accepts_fake_collaborators() -> None:
 
 
 def test_pipeline_deps_fake_registry_factory_return_value() -> None:
-    """``registry_factory`` can return a fake registry that satisfies the
-    ``get(name)`` protocol used by ``execute_agent_effect``.
-    """
     agent_config = AgentConfig(cmd="fake-agent")
 
     class FakeRegistry:
@@ -315,13 +284,6 @@ def test_pipeline_deps_fake_registry_factory_return_value() -> None:
 
 
 def test_pipeline_deps_fake_agent_executor_seam() -> None:
-    """``PipelineDeps`` composes with ``FakeAgentExecutor`` to replay agent
-    output into a ``MemoryWorkspace`` without subprocesses or real I/O.
-
-    This exercises the required fake executor seam end-to-end: the registry
-    factory resolves an agent config, and a seeded ``FakeAgentExecutor``
-    drives the agent boundary deterministically.
-    """
     workspace = MemoryWorkspace()
     agent_config = AgentConfig(
         cmd="fake-agent",

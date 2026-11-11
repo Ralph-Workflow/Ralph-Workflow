@@ -1,11 +1,3 @@
-"""Tests for the SIGINT/SIGTERM interrupt handling in the pipeline runner.
-
-These tests are subprocess_e2e: they exercise the real pipeline runner
-entry point and its full subprocess + checkpoint path. They cannot be
-mocked down to the per-test 1 s budget without losing the end-to-end
-contract they assert.
-"""
-
 from __future__ import annotations
 
 import importlib
@@ -192,11 +184,6 @@ def test_run_pipeline_saves_interrupted_resume_checkpoint(
     )
     monkeypatch.setattr(run_command_module.ckpt, "load", lambda: resumed_state)
     monkeypatch.setattr(run_command_module.ckpt, "save", saved_states.append)
-    # Phase 2c runs the real project-policy-readiness preflight. Against this
-    # empty tmp_path workspace it finds the project unready and invokes a REAL
-    # remediation agent (a `claude` subprocess plus an MCP server), which never
-    # returns — hanging the whole suite. Stub the documented seam: the subject
-    # here is KeyboardInterrupt checkpointing, not policy readiness.
     monkeypatch.setattr(run_command_module, "_run_project_policy_readiness", lambda **_kwargs: 0)
 
     def raise_keyboard_interrupt(

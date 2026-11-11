@@ -1,11 +1,3 @@
-"""Tests for the shared extract_error_message helper.
-
-These tests verify that error extraction is consolidated into a single
-shared helper at ralph.agents.parsers.base.extract_error_message, covering
-the union of all per-parser error shapes from claude, codex, opencode, gemini,
-and generic parsers.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -15,8 +7,6 @@ from ralph.agents.parsers.base import extract_error_message
 
 
 class TestExtractErrorMessage:
-    """Test the shared extract_error_message helper."""
-
     @pytest.mark.parametrize(
         "parser_factory,case",
         [
@@ -28,7 +18,6 @@ class TestExtractErrorMessage:
         ],
     )
     def test_error_message_from_error_dict(self, parser_factory: str, case: dict) -> None:
-        """{'error': {'message': 'boom'}} -> 'boom'."""
         assert extract_error_message(case) == "boom"
 
     @pytest.mark.parametrize(
@@ -42,7 +31,6 @@ class TestExtractErrorMessage:
         ],
     )
     def test_error_type_fallback(self, parser_factory: str, case: dict) -> None:
-        """{'error': {'type': 'teapot'}} -> 'teapot' (codex/claude fallback)."""
         assert extract_error_message(case) == "teapot"
 
     @pytest.mark.parametrize(
@@ -56,7 +44,6 @@ class TestExtractErrorMessage:
         ],
     )
     def test_error_name_fallback(self, parser_factory: str, case: dict) -> None:
-        """{'error': {'name': 'X'}} -> 'X' (opencode fallback)."""
         assert extract_error_message(case) == "X"
 
     @pytest.mark.parametrize(
@@ -70,7 +57,6 @@ class TestExtractErrorMessage:
         ],
     )
     def test_error_raw_string(self, parser_factory: str, case: dict) -> None:
-        """{'error': 'raw-fail'} -> 'raw-fail' (generic and codex)."""
         assert extract_error_message(case) == "raw-fail"
 
     @pytest.mark.parametrize(
@@ -84,7 +70,6 @@ class TestExtractErrorMessage:
         ],
     )
     def test_message_fallback(self, parser_factory: str, case: dict) -> None:
-        """{'message': 'alt'} -> 'alt' (codex's obj.get('message') fallback)."""
         assert extract_error_message(case) == "alt"
 
     @pytest.mark.parametrize(
@@ -92,7 +77,6 @@ class TestExtractErrorMessage:
         ["ClaudeParser", "CodexParser", "OpenCodeParser", "GeminiParser", "GenericParser"],
     )
     def test_empty_object_returns_unknown_error(self, parser_factory: str) -> None:
-        """{} -> 'unknown error'."""
         assert extract_error_message({}) == "unknown error"
 
     @pytest.mark.parametrize(
@@ -100,21 +84,9 @@ class TestExtractErrorMessage:
         ["ClaudeParser", "CodexParser", "OpenCodeParser", "GeminiParser", "GenericParser"],
     )
     def test_msg_field_fallback(self, parser_factory: str) -> None:
-        """{'msg': 'msg-fallback'} -> 'msg-fallback' (generic's obj.get('msg') fallback)."""
         assert extract_error_message({"msg": "msg-fallback"}) == "msg-fallback"
 
     def test_opencode_api_error_reports_nested_data_message(self) -> None:
-        """OpenCode nests the actionable text at ``error.data.message``.
-
-        A live capture of the real shape::
-
-            {"type": "error", "error": {"name": "APIError",
-             "data": {"message": "This request requires more credits ...",
-                      "statusCode": 402}}}
-
-        Falling straight through to ``name`` reported the operator-useless
-        string "APIError" and dropped the only diagnosable part.
-        """
         case = {
             "type": "error",
             "error": {
@@ -131,10 +103,8 @@ class TestExtractErrorMessage:
         )
 
     def test_error_name_still_used_when_no_nested_message(self) -> None:
-        """``error.name`` stays the last resort when nothing deeper exists."""
         assert extract_error_message({"error": {"name": "APIError"}}) == "APIError"
 
     def test_helper_lives_at_ralph_agents_parsers_base(self) -> None:
-        """The helper must be importable from ralph.agents.parsers.base."""
         assert hasattr(base_module, "extract_error_message")
         assert callable(base_module.extract_error_message)

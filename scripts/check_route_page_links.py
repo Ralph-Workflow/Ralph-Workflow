@@ -1,26 +1,4 @@
 #!/usr/bin/env python3
-"""Link checker for non-Sphinx route pages.
-
-Validates links in:
-- README.md
-- START_HERE.md
-- docs/README.md
-- ralph-workflow/docs/README.md
-
-For each page, parses three link forms:
-- '[text](url)' standard links
-- '<url>' angle-bracket autolinks
-- bare URLs (e.g. https://codeberg.org/...)
-
-Internal relative links must resolve to a file on disk.
-External http(s) links are checked with HTTP HEAD (fall back to GET on 405).
-A bounded 10-second per-request timeout applies to all external requests.
-
-The two exclusions inherited from ralph-workflow/docs/sphinx/conf.py are
-also honored here: 'http://PROMPT.md' and 'https://docs.claude.com/'.
-
-Exits non-zero on any broken link with a clear per-file, per-line report.
-"""
 
 from __future__ import annotations
 
@@ -34,21 +12,16 @@ try:
     import urllib.request
     import urllib.error
 except ImportError:
-    urllib = None  # type: ignore[assignment]
+    urllib = None
 
 try:
     import ssl
 except ImportError:
-    ssl = None  # type: ignore[assignment]
+    ssl = None
 
 
 EXTERNAL_LINK_TIMEOUT_SECONDS = 10.0
 EXTERNAL_IGNORES = {"http://PROMPT.md", "https://docs.claude.com/"}
-# Many CDNs (img.shields.io, pi.dev, etc.) reject requests from the default
-# Python-urllib User-Agent with HTTP 403 even though the same URLs work from
-# a normal browser. Send a Mozilla-like User-Agent so the link checker can
-# reach the same surfaces a human reader would. The actual URLs and content
-# are still validated as before (HEAD with 405->GET fallback on each request).
 _USER_AGENT = "Mozilla/5.0 (compatible; RalphWorkflow-route-linkcheck/1.0)"
 
 LINK_PATTERNS: tuple[re.Pattern[str], ...] = (
@@ -83,17 +56,6 @@ def is_external(url: str) -> bool:
 
 
 def _split_fragment(url: str) -> tuple[str, str]:
-    """Split a URL into (path, fragment).
-
-    Internal link URLs may carry a Markdown anchor fragment
-    (e.g. ``README.md#first-run``); the fragment is NOT part of the
-    filesystem path and MUST be stripped before path resolution, or
-    ``Path.exists()`` will treat the fragment as a literal filename
-    and report every anchored internal link as broken.
-
-    Returns the path part and the fragment (with leading ``#``) or
-    empty string when no fragment is present.
-    """
     if url.startswith(("/", "#")):
         return url, ""
     hash_idx = url.find("#")
@@ -105,11 +67,6 @@ def _split_fragment(url: str) -> tuple[str, str]:
 def check_internal(link_file: Path, url: str) -> str | None:
     if url.startswith(("/", "#")):
         return None
-    # Strip the fragment: README.md#first-run is a path to README.md
-    # with a Markdown anchor; Path.exists() must see the path only,
-    # never the fragment. The fragment is preserved in the original
-    # URL for the error message so the agent sees exactly what the
-    # doc said.
     path_part, _fragment = _split_fragment(url)
     if not path_part:
         return None
@@ -135,12 +92,12 @@ def _is_ssl_error(exc: BaseException) -> bool:
     return False
 
 
-def _check_external_once(  # type: ignore[name-defined]
+def _check_external_once(
     url: str, context: "ssl.SSLContext | None"
 ) -> str | None:
     try:
         req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": _USER_AGENT})
-        with urllib.request.urlopen(  # noqa: S310 - URL is operator-supplied doc reference
+        with urllib.request.urlopen(
             req, timeout=EXTERNAL_LINK_TIMEOUT_SECONDS, context=context
         ) as resp:
             status = getattr(resp, "status", 200)
@@ -150,17 +107,17 @@ def _check_external_once(  # type: ignore[name-defined]
         if exc.code == 405:
             try:
                 req = urllib.request.Request(url, method="GET", headers={"User-Agent": _USER_AGENT})
-                with urllib.request.urlopen(  # noqa: S310 - URL is operator-supplied doc reference
+                with urllib.request.urlopen(
                     req, timeout=EXTERNAL_LINK_TIMEOUT_SECONDS, context=context
                 ) as resp:
                     status = getattr(resp, "status", 200)
                     if status >= 400:
                         return f"HTTP {status} on GET fallback {url}"
-            except Exception as get_exc:  # noqa: BLE001
+            except Exception as get_exc:
                 return f"GET fallback failed for {url}: {get_exc}"
         else:
             return f"HTTP {exc.code} on HEAD {url}"
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return f"request failed for {url}: {exc}"
     return None
 
@@ -172,7 +129,7 @@ def check_external(url: str) -> str | None:
         return None
     try:
         req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": _USER_AGENT})
-        with urllib.request.urlopen(  # noqa: S310 - URL is operator-supplied doc reference
+        with urllib.request.urlopen(
             req, timeout=EXTERNAL_LINK_TIMEOUT_SECONDS
         ) as resp:
             status = getattr(resp, "status", 200)
@@ -180,15 +137,10 @@ def check_external(url: str) -> str | None:
                 return f"HTTP {status} on HEAD {url}"
     except urllib.error.HTTPError as exc:
         if exc.code == 405:
-            # 405 is a legitimate method-not-allowed case, NOT a TLS issue;
-            # use the system default SSL context (no unverified fallback).
             return _check_external_once(url, None)
         return f"HTTP {exc.code} on HEAD {url}"
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         if _is_ssl_error(exc):
-            # SECURITY: fail closed on TLS errors rather than falling back
-            # to an unverified SSL context. The certificate chain is
-            # authoritative; an unverifiable host is reported.
             return f"TLS verification failed for {url}: {exc}"
         return f"request failed for {url}: {exc}"
     return None

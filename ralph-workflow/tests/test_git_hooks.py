@@ -1,5 +1,3 @@
-"""Unit tests for git hook management."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -20,7 +18,6 @@ if TYPE_CHECKING:
 
 
 def test_install_hooks_creates_hook_files(tmp_git_repo: Path) -> None:
-    """Hooks should be created for every managed name."""
     install_hooks_in_repo(tmp_git_repo)
 
     hooks_dir = get_hooks_dir(tmp_git_repo)
@@ -32,7 +29,6 @@ def test_install_hooks_creates_hook_files(tmp_git_repo: Path) -> None:
 
 
 def test_reinstall_hooks_if_tampered_recreates_hook(tmp_git_repo: Path) -> None:
-    """Tampering should trigger hook reinstallation."""
     install_hooks_in_repo(tmp_git_repo)
     hooks_dir = get_hooks_dir(tmp_git_repo)
     pre_commit = hooks_dir / "pre-commit"
@@ -49,7 +45,6 @@ def test_reinstall_hooks_if_tampered_recreates_hook(tmp_git_repo: Path) -> None:
 
 
 def test_uninstall_hooks_removes_managed_files(tmp_git_repo: Path) -> None:
-    """Uninstall should clean up managed hooks."""
     install_hooks_in_repo(tmp_git_repo)
 
     hooks_dir = get_hooks_dir(tmp_git_repo)

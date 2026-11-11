@@ -1,9 +1,3 @@
-"""PhaseCloseOptions dataclass.
-
-Internal leaf module (wt-007-consolidate-display). Re-exports
-:class:`PhaseCloseOptions` from the previous
-``ralph.display.plain_renderer._phase_close_options`` location.
-"""
 
 from __future__ import annotations
 
@@ -17,7 +11,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class PhaseCloseOptions:
-    """Optional parameters for emit_phase_close."""
 
     phase_role: str | None = None
     iteration_context: PhaseIterationContext | None = None

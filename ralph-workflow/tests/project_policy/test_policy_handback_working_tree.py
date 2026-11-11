@@ -1,33 +1,3 @@
-"""Working-tree hand-back regression (S-3) and footer neutralisation (S-7).
-
-The pre-S-4 build leaves the policy surfaces the bootstrap seeded dirty
-for the next phase to trip over. On the BLOCKED hand-back the helper
-never reaches the auto-commit; on the post-remediation READY route the
-helper DOES reach the auto-commit, but ``pre_run_dirty`` is taken AFTER
-the bootstrap has already dirtied every policy surface, so the
-deterministic ``commit_scoped_updates(..., exclude=pre_run_dirty)``
-commits nothing. The pre_run_dirty snapshot must move ABOVE the
-bootstrap so the policy surfaces the run actually authored are
-committed, and the auto-commit must run on BOTH hand-back routes.
-
-The S-7 case extends the same contract to the footer: a phase label
-left pinned after its loop ended reads exactly like the hang this
-phase label exists to rule out. The S-4 fix wraps the ``with display``
-block in :func:`remediation_status_bar_session`, which captures the
-pre-policy footer model on entry and restores it (or pushes the
-neutral ``Running`` label) on exit.
-
-The cases assert only the user-observable behavior: after the
-hand-back, ``list_dirty_paths(workspace_scope.root)`` reports no
-policy-scope path, and the pty-backed console's post-preflight
-transcript does not redirect the operator's status bar at a
-remediation label that has already finished. ``StatusBar._live`` and
-every other private display attribute stay off limits. The cases use
-the same real bundle the production closure resolves, so the chain
-agent that runs is the ``policy_remediation`` chain from the bundled
-defaults.
-"""
-
 from __future__ import annotations
 
 import json
@@ -77,14 +47,12 @@ _POLICY_SCOPE_SEEDS: tuple[str, ...] = (
 
 
 def _policy_paths_in_scopes(paths: frozenset[str]) -> frozenset[str]:
-    """Return the subset of ``paths`` that fall under the auto-commit scopes."""
     return frozenset(paths) & frozenset(_POLICY_SCOPE_SEEDS)
 
 
 def _load_git_run_result(
     tmp_git_repo: Path,
 ) -> tuple[FsWorkspace, WorkspaceScope, run_module._LoadResult]:
-    """Build the workspace + workspace_scope + load result on the same git root."""
     workspace = FsWorkspace(tmp_git_repo, allowed_roots=[tmp_git_repo])
     workspace_scope = WorkspaceScope(
         root=str(tmp_git_repo),
@@ -102,7 +70,6 @@ def _load_git_run_result(
 
 
 def _ensure_run_func_state_unset() -> None:
-    """Reset ``_state.run_func`` to ``_RUN_FUNC_UNSET`` before each test."""
     run_module._state.run_func = run_module._RUN_FUNC_UNSET
 
 
@@ -112,7 +79,6 @@ def _build_handback_run_pipeline_stubs_for_git_root(
     preflight_order: list[str],
     captured_pipeline_state: list[PipelineState],
 ) -> dict[str, object]:
-    """Build the run_module stubs the dirty-tree cases need."""
     from ralph.pipeline._runner_session import apply_session_capture
 
     def stub_load_configuration(*args: object, **kwargs: object) -> run_module._LoadResult:
@@ -186,7 +152,6 @@ if TYPE_CHECKING:
 def test_blocked_handback_leaves_no_policy_scope_path_dirty(
     tmp_git_repo: Path,
 ) -> None:
-    """The BLOCKED hand-back must commit the policy surfaces the bootstrap seeded."""
     _ensure_run_func_state_unset()
     _workspace, _workspace_scope, load_result = _load_git_run_result(tmp_git_repo)
 
@@ -274,7 +239,6 @@ def test_blocked_handback_leaves_no_policy_scope_path_dirty(
 def test_post_remediation_ready_handback_leaves_no_policy_scope_path_dirty(
     tmp_git_repo: Path,
 ) -> None:
-    """The post-remediation READY hand-back must commit the policy surfaces."""
     _ensure_run_func_state_unset()
     workspace, _workspace_scope, load_result = _load_git_run_result(tmp_git_repo)
 
@@ -399,7 +363,6 @@ def test_post_remediation_ready_handback_leaves_no_policy_scope_path_dirty(
 def test_post_preflight_footer_is_neutralized_after_handback(
     tmp_git_repo: Path,
 ) -> None:
-    """The post-preflight footer does not still advertise a remediation loop."""
     _ensure_run_func_state_unset()
 
     workspace, _workspace_scope, load_result = _load_git_run_result(tmp_git_repo)

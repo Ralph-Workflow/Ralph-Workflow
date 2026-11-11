@@ -1,23 +1,3 @@
-"""Fake-driven adversity proofs for the background catch-up ticker.
-
-Every proof here runs against the shared simulated Git environment: no
-real git, no subprocess, no sleep and no wall clock. The four properties
-the ticker must hold are proven:
-
-* (a) no worktree mutation while an agent is active, with the refusal
-  naming the CURRENT observation;
-* (b) repeated timeouts against one state charge the durable budget once
-  per attempt and escalate a ladder rung instead of retrying forever;
-* (c) a lock left by a force-killed Ralph child does not block the next
-  observation, while a live or unprovable lock is never deleted;
-* (d) a tick that stops progressing surfaces an accurate, visible stall
-  state instead of a single WARNING line.
-
-The catch-up collaborators are replaced through their PUBLIC seams only,
-so the proofs stay black-box: the repository double answers the ref,
-status and ancestry questions the tick asks of it.
-"""
-
 from __future__ import annotations
 
 import subprocess
@@ -46,49 +26,36 @@ _HEAD = "feature"
 
 
 def _config() -> UnifiedConfig:
-    """Return a config with the catch-up ticker enabled and the remote off."""
     return UnifiedConfig.model_validate(
         {"general": {"auto_integrate_enabled": True, "auto_integrate_remote_enabled": False}}
     )
 
 
 def _ledger(tmp_path: Path) -> AttemptLedger:
-    """Return a durable ledger rooted in the temporary workspace."""
     return AttemptLedger(tmp_path, ledger_path=tmp_path / ".agent" / "catchup-ledger.json")
 
 
 class _FakeCommit:
-    """Commit double exposing the tip SHA the tick reads."""
-
     def __init__(self, sha: str) -> None:
         self.hexsha = sha
 
 
 class _FakeHead:
-    """Branch double exposing the name and tip the tick observes."""
-
     def __init__(self, name: str, sha: str) -> None:
         self.name = name
         self.commit = _FakeCommit(sha)
 
 
 class _FakeBranch:
-    """Branch double for the attached branch the tick reads."""
-
     name = _HEAD
 
 
 class _FakeGit:
-    """GitPython's dynamic dispatch double for the porcelain status probe."""
-
     def status(self, *_args: object, **_kwargs: object) -> str:
-        """Return an empty porcelain status: the tracked worktree is clean."""
         return ""
 
 
 class _FakeRepo:
-    """Repository double answering every read the catch-up tick performs."""
-
     def __init__(self, root: Path, *_args: object, **_kwargs: object) -> None:
         self.git_dir = root / ".git"
         self.common_dir = root / ".git"
@@ -97,29 +64,23 @@ class _FakeRepo:
         self.heads = [_FakeHead(_TARGET, _TARGET_SHA), _FakeHead(_HEAD, _HEAD_SHA)]
 
     def commit(self, sha: str) -> _FakeCommit:
-        """Return the commit double for the given SHA."""
         return _FakeCommit(sha)
 
     def is_ancestor(self, _ancestor: _FakeCommit, _descendant: _FakeCommit) -> bool:
-        """Report the target as a descendant: the checkout is strictly behind."""
         return True
 
     def close(self) -> None:
-        """Match GitPython's close contract."""
+        pass
 
 
 class _LockEnvironment:
-    """Maps the simulated lock ownership onto the catch-up liveness seam."""
-
     def __init__(self, state: SimulatedGitEnvironment) -> None:
         self._state = state
 
     def candidates(self, _git_dir: Path, _common_dir: Path) -> list[Path]:
-        """Return every lock the simulated repository currently holds."""
         return [Path(name) for name in self._state.locks]
 
     def verdict(self, lock_path: Path, _git_dir: Path, _common_dir: Path) -> str:
-        """Return the liveness verdict the probe would reach for the lock."""
         owner = self._state.locks.get(lock_path.name)
         if owner == STALE_OWNER:
             return "dead"
@@ -128,7 +89,6 @@ class _LockEnvironment:
         return "unknown"
 
     def remove(self, lock_path: Path, _identity: tuple[int, int, int] | None) -> bool:
-        """Remove the lock and report the removal to the simulated state."""
         self._state.locks.pop(lock_path.name, None)
         return True
 
@@ -139,7 +99,6 @@ def _install_seams(
     *,
     merge_fault: BaseException | None = None,
 ) -> list[str]:
-    """Patch every catch-up collaborator; return the recorded merge calls."""
     merges: list[str] = []
     locks = _LockEnvironment(state)
 
@@ -169,7 +128,6 @@ def _install_seams(
 
 
 def _capture_warnings(monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    """Capture the ticker's warnings as formatted text."""
     messages: list[str] = []
 
     def _record(message: str, *args: object, **_kwargs: object) -> None:
@@ -180,7 +138,6 @@ def _capture_warnings(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
 
 def _tick(state: SimulatedGitEnvironment, ledger: AttemptLedger, root: Path) -> str:
-    """Run one catch-up tick against the simulated repository."""
     return catchup.attempt_catchup_fast_forward(
         _config(),
         root,
@@ -193,7 +150,6 @@ def _tick(state: SimulatedGitEnvironment, ledger: AttemptLedger, root: Path) -> 
 def test_agent_active_refuses_without_mutation_and_names_the_observation(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """(a) An active agent blocks the tick and the refusal names the state."""
     state = SimulatedGitEnvironment()
     state.agent_active = True
     merges = _install_seams(monkeypatch, state)
@@ -221,7 +177,6 @@ def test_agent_active_refuses_without_mutation_and_names_the_observation(
 def test_repeated_timeouts_charge_the_budget_once_per_attempt_then_escalate(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """(b) The same timeout charges the budget once and then climbs the ladder."""
     state = SimulatedGitEnvironment()
     merges = _install_seams(
         monkeypatch,
@@ -244,7 +199,6 @@ def test_repeated_timeouts_charge_the_budget_once_per_attempt_then_escalate(
 def test_stale_lock_from_a_killed_child_is_recovered_before_the_mutation(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """(c) A lock proven owner-dead is removed and never blocks the tick."""
     state = SimulatedGitEnvironment()
     state.leave_stale_lock("index.lock")
     merges = _install_seams(monkeypatch, state)
@@ -266,7 +220,6 @@ def test_live_or_uncertain_lock_is_kept_and_the_tick_backs_off(
     owner: str,
     expected: str,
 ) -> None:
-    """(c) A lock that cannot be proven free is kept and the tick backs off."""
     state = SimulatedGitEnvironment()
     state.locks["index.lock"] = owner
     merges = _install_seams(monkeypatch, state)
@@ -282,7 +235,6 @@ def test_live_or_uncertain_lock_is_kept_and_the_tick_backs_off(
 
 
 def test_no_progress_window_surfaces_a_visible_stall_state(tmp_path: Path) -> None:
-    """(d) A ticker that stops progressing reports an accurate stall state."""
     state = SimulatedGitEnvironment()
     outcome = f"{catchup.CATCHUP_TIMEOUT}; target={_TARGET}@{_TARGET_SHA}; head={_HEAD}@{_HEAD_SHA}"
     waits: Iterator[bool] = iter((False, True))
@@ -308,16 +260,10 @@ def test_no_progress_window_surfaces_a_visible_stall_state(tmp_path: Path) -> No
     assert stall.elapsed_seconds >= stall.window_seconds
 
 
-# ---------------------------------------------------------------------------
-# The tick asks the single owner through the completed seam (remote + record).
-# ---------------------------------------------------------------------------
-
-
 def _spy_seam(
     monkeypatch: pytest.MonkeyPatch,
     verdict: IntegrationAction | RecordFactOutcome,
 ) -> list[dict[str, object]]:
-    """Record the bindings the tick hands the owner seam; answer ``verdict``."""
     calls: list[dict[str, object]] = []
 
     def _spy(root: Path, **kwargs: object) -> IntegrationAction | RecordFactOutcome:
@@ -331,12 +277,6 @@ def _spy_seam(
 def test_tick_asks_the_owner_seam_with_the_remote_and_the_loaded_record(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The completed seam call carries ``remote`` and the durable ``record``.
-
-    The catch-up ticker holds no private view of the durable record: it
-    loads the record from disk and hands it, together with the configured
-    remote, to the single owner — the same facts every other seam supplies.
-    """
     state = SimulatedGitEnvironment()
     merges = _install_seams(monkeypatch, state)
     calls = _spy_seam(monkeypatch, IntegrationAction.WAIT_FOR_BOUNDED_RETRY)
@@ -365,7 +305,6 @@ def test_tick_asks_the_owner_seam_with_the_remote_and_the_loaded_record(
     assert seam_kwargs["root"] == tmp_path
     assert seam_kwargs["remote"] == "upstream"
     assert seam_kwargs["target"] == _TARGET
-    # The mutation lease is held, so the observation records no active agent.
     assert seam_kwargs["agent_active"] is False
     passed_record = seam_kwargs["record"]
     assert isinstance(passed_record, IntegrationRecord)
@@ -375,7 +314,6 @@ def test_tick_asks_the_owner_seam_with_the_remote_and_the_loaded_record(
 def test_tick_seam_remote_falls_back_to_the_configured_remote_name(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Without an explicit ``remote`` the seam observes the configured name."""
     state = SimulatedGitEnvironment()
     _install_seams(monkeypatch, state)
     calls = _spy_seam(monkeypatch, IntegrationAction.WAIT_FOR_BOUNDED_RETRY)
@@ -406,12 +344,6 @@ def test_tick_seam_remote_falls_back_to_the_configured_remote_name(
 def test_owner_seam_refusal_blocks_the_merge_without_a_ledger_charge(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A fail-closed seam verdict refuses the mutation before any charge.
-
-    The typed STALE_INTENT verdict escalates through the autonomous
-    cleanup ladder — the catch-up mutation defers to it, never to a
-    person.
-    """
     state = SimulatedGitEnvironment()
     merges = _install_seams(monkeypatch, state)
     _spy_seam(monkeypatch, RecordFactOutcome.STALE_INTENT)
@@ -432,17 +364,7 @@ def test_owner_seam_refusal_blocks_the_merge_without_a_ledger_charge(
     assert ledger.read().repeat_counts == {}
 
 
-# ---------------------------------------------------------------------------
-# (e) A broken attempt ledger fails closed: the mutation is refused with a
-# typed reason, the failure is counted against a bounded budget, and the
-# refusal escalates through the ladder path once the bound trips. The tick
-# itself never stops running and never proceeds unledgered.
-# ---------------------------------------------------------------------------
-
-
 class _BrokenLedger(AttemptLedger):
-    """Ledger double whose read/charge calls raise, like a broken store."""
-
     def __init__(self, fault: BaseException) -> None:
         super().__init__(Path("/nonexistent-workspace"))
         self._fault = fault
@@ -455,8 +377,6 @@ class _BrokenLedger(AttemptLedger):
 
 
 class _SwitchableLedger(AttemptLedger):
-    """Ledger double that delegates to a real ledger unless marked broken."""
-
     def __init__(self, root: Path, fault: BaseException) -> None:
         super().__init__(root, ledger_path=root / ".agent" / "switchable-ledger.json")
         self._fault = fault
@@ -479,7 +399,6 @@ def _tick_with_budget(
     root: Path,
     budget: catchup.CatchupLedgerFailureBudget,
 ) -> str:
-    """Run one catch-up tick with a shared ledger-failure budget."""
     return catchup.attempt_catchup_fast_forward(
         _config(),
         root,
@@ -493,7 +412,6 @@ def _tick_with_budget(
 def test_ledger_read_failure_refuses_the_mutation_with_a_typed_reason(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """(e) One ledger failure refuses the mutation, named, without merging."""
     state = SimulatedGitEnvironment()
     merges = _install_seams(monkeypatch, state)
     ledger = _BrokenLedger(OSError("ledger store gone"))
@@ -512,7 +430,6 @@ def test_ledger_read_failure_refuses_the_mutation_with_a_typed_reason(
 def test_ledger_failures_escalate_to_the_ladder_once_the_bound_trips(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """(e) Repeated ledger failures escalate instead of retrying forever."""
     state = SimulatedGitEnvironment()
     merges = _install_seams(monkeypatch, state)
     ledger = _BrokenLedger(OSError("ledger store gone"))
@@ -532,7 +449,6 @@ def test_ledger_failures_escalate_to_the_ladder_once_the_bound_trips(
 def test_ledger_failures_reset_after_a_successful_charge(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """(e) A healed ledger resets the failure budget instead of accumulating."""
     state = SimulatedGitEnvironment()
     merges = _install_seams(monkeypatch, state)
     ledger = _SwitchableLedger(tmp_path, OSError("ledger store gone"))
@@ -555,7 +471,6 @@ def test_ledger_failures_reset_after_a_successful_charge(
 def test_a_ledger_outage_never_stops_the_catchup_run(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """(e) The worker keeps ticking through a ledger outage and names it."""
     state = SimulatedGitEnvironment()
     merges = _install_seams(monkeypatch, state)
     warnings = _capture_warnings(monkeypatch)
@@ -582,7 +497,6 @@ def test_a_ledger_outage_never_stops_the_catchup_run(
 
 
 def test_a_settled_tick_never_reports_a_stall(tmp_path: Path) -> None:
-    """(d) A healthy ticker stays silent: settled outcomes reset the clock."""
     state = SimulatedGitEnvironment()
     waits: Iterator[bool] = iter((False, True))
 

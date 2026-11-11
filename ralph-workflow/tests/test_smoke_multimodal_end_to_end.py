@@ -1,50 +1,3 @@
-"""Per-harness multimodal smoke end-to-end suite (S-9 / S-12 / criterion 5).
-
-The plan calls for two distinct end-to-end suites that exercise every
-major coding harness against Ralph's multimodal MCP endpoints:
-
-- **S-9** -- the AGY proof. The harness drives a deterministic
-  ``mock_multimodal_agent.py`` subprocess through the production
-  executor with AGY's ``--print --output-format=stream-json`` frame
-  vocabulary and asserts the multimodal grade reaches WIRE on the
-  positive case, fires a named break on the no-call and
-  ignored-response cases.
-
-- **S-12** -- parameterises the same harness across all nine
-  transports (``smoke-interactive-claude``,
-  ``smoke-headless-claude``, ``smoke-interactive-agy``,
-  ``smoke-interactive-nanocoder``, ``smoke-interactive-cursor``,
-  ``smoke-interactive-opencode``, ``smoke-interactive-codex``,
-  ``smoke-interactive-pi``, ``smoke-interactive-kimi``), each with
-  its redirect seam
-  recorded in S-13. The positive case runs on every transport that can receive perceptible
-media delivery (see ``_WIRE_POSITIVE_TRANSPORT_IDS``); the
-  ignore-response case runs on one transport per redirect method
-  (see ``_IGNORE_RESPONSE_TRANSPORTS`` -- S-7 consolidation), with
-  the grader-level causality pinned by
-  ``tests/test_multimodal_evidence.py`` in the default profile.
-
-Every test in this file is marked ``smoke`` AND ``subprocess_e2e``
-so the default production suite (``make test``) skips it via the
-``-m "not smoke"`` pytest selector. ``make verify`` DOES run this
-file via the budget-tracked ``make test-verification-smoke`` step
-(see ``Makefile:177-178``), which collects this file with
-``-m "smoke and subprocess_e2e"``; the same shape is also reachable
-standalone via ``make test-multimodal-smoke``. To run the suite
-manually:
-
-    pytest tests/test_smoke_multimodal_end_to_end.py \\
-        -m "smoke and subprocess_e2e"
-
-The harness plumbing relies on a healthy
-``tests/_support/mock_agy.py`` (and the matching mock fixtures for
-the other five transports). In environments where that fixture is
-broken (the canonical mock AGY binary is environment-bound), the
-test surfaces that as a clear failure rather than silently
-downgrading the run to the basic scenario (per S-14 / criterion 5
-product criterion).
-"""
-
 from __future__ import annotations
 
 import functools
@@ -84,17 +37,6 @@ if TYPE_CHECKING:
     from ralph.config.models import AgentConfig, UnifiedConfig
 
 
-# Per-harness redirect seams (S-13). Each entry maps:
-#   (transport_prefix, cli_command, default_agent_name, redirect_method)
-# ``redirect_method`` is one of:
-#   ``"<transport>_env"`` - via that transport's ``RALPH_*_BINARY`` env
-#     override, resolved from the single table in
-#     ``ralph.cli.commands.smoke_binary_override``
-#   ``"cmd_override"`` - via in-place ``AgentConfig.cmd`` rewrite to the
-#     stub (the production harness's command builders let
-#     ``agents.<name>.cmd`` override the resolved argv, so a rewrite
-#     keeps the transport's argv shape intact without needing a PATH
-#     shim for ``nanocoder``).
 _TRANSPORTS: tuple[tuple[str, str, str, str], ...] = (
     ("claude", "smoke-interactive-claude", "claude/haiku", "cmd_override"),
     ("claude-headless", "smoke-headless-claude", "claude-headless/haiku", "cmd_override"),
@@ -109,40 +51,16 @@ _TRANSPORTS: tuple[tuple[str, str, str, str], ...] = (
 
 _TRANSPORT_IDS: tuple[str, ...] = tuple(t[0] for t in _TRANSPORTS)
 
-#: Transports that keep the end-to-end ignore-response (poisoned-receipt)
-#: case after the S-7 consolidation. The causal-use break is graded
-#: **server-side** from the wire ledger and the media registry, so its
-#: mechanics are transport-independent; the transport-specific surface
-#: (redirect seam + frame vocabulary) is exercised by the positive case
-#: on *every* transport above. ``tests/test_multimodal_evidence.py``
-#: pins the forged-receipt -> ``WORKSPACE_EFFECT`` causality at the
-#: grader unit level in the default profile, so the poisoned e2e keeps
-#: exactly one transport per redirect method (``agy_env`` / ``cmd_override``
-#: / ``cursor_env``) -- every seam stays covered without paying the
-#: full-harness spawn cost on all nine transports.
 _IGNORE_RESPONSE_TRANSPORTS: tuple[str, ...] = ("agy", "claude", "cursor")
 
-#: Transports Ralph Workflow deliberately denies perceptible image
-#: delivery, because their CLI cannot round-trip an inline image block
-#: back into its own API request (see
-#: ``ralph.mcp.multimodal.capabilities._INLINE_IMAGE_ROUNDTRIP_UNSAFE_TRANSPORTS``).
-#: Their media calls are answered with a resource reference, which the
-#: grader correctly refuses to count as WIRE -- the model can skip
-#: reading it. These transports therefore CANNOT satisfy the positive
-#: WIRE contract, and asserting they do would be asserting a capability
-#: the product does not ship. They are covered by
-#: :func:`test_restricted_transport_cannot_grade_wire` instead, which
-#: pins the denial and its reason.
 _INLINE_IMAGE_RESTRICTED_TRANSPORTS: tuple[str, ...] = ("codex",)
 
-#: Transports that must satisfy the positive WIRE contract.
 _WIRE_POSITIVE_TRANSPORT_IDS: tuple[str, ...] = tuple(
     t for t in _TRANSPORT_IDS if t not in _INLINE_IMAGE_RESTRICTED_TRANSPORTS
 )
 
 
 def test_smoke_transport_table_covers_every_non_generic_transport() -> None:
-    """Every covered transport has a deterministic multimodal smoke row."""
     assert set(_TRANSPORT_IDS) == {
         "claude",
         "claude-headless",
@@ -164,14 +82,12 @@ def _resolve_transport_entry(transport: str) -> tuple[str, str, str, str]:
 
 
 def _stub_script_path() -> Path:
-    """Return the filesystem path to the multimodal smoke stub agent."""
     from pathlib import Path
 
     return Path(__file__).resolve().parent / "_support" / "mock_multimodal_agent.py"
 
 
 def _stub_is_executable() -> bool:
-    """Return True iff the stub agent script exists with executable bits set."""
     import stat
 
     path = _stub_script_path()
@@ -191,19 +107,6 @@ def _apply_redirect(
     agent_config: AgentConfig,
     config: UnifiedConfig,
 ) -> tuple[AgentConfig, UnifiedConfig]:
-    """Apply the per-transport redirect that wires the stub into the harness.
-
-    Each ``redirect_method`` branch rewrites ``agent_config`` and/or
-    ``config`` so the harness spawns the multimodal stub instead of
-    the real transport binary. AGY / Cursor / Kimi / OpenCode use the
-    dedicated ``RALPH_*_BINARY`` env override -- resolved through the
-    ONE table in ``ralph.cli.commands.smoke_binary_override``, the same
-    seam the shared harness applies -- while the remaining transports
-    use an in-place ``AgentConfig.cmd`` rewrite (the production
-    harness's command builders honor that override, so the transport's
-    argv shape stays intact without needing a PATH shim for
-    ``nanocoder``).
-    """
     if redirect_method.endswith("_env"):
         env_var = smoke_binary_override_env_var(AgentTransport(redirect_method[: -len("_env")]))
         assert env_var is not None, f"transport {transport!r}: no binary override entry"
@@ -252,24 +155,6 @@ def _end_to_end_test_for_harness(
     cursor_credential: str = "api_key",
     skip_media: bool = False,
 ) -> SmokeRunResult:
-    """Drive the multimodal stub through ``run_smoke_plumbing`` for one transport.
-
-    Configures the harness's ``AgentConfig.cmd`` (or ``RALPH_AGY_BINARY`` /
-    ``RALPH_CURSOR_BINARY`` / ``RALPH_OPENCODE_BINARY`` / ``RALPH_KIMI_BINARY``
-    env overrides for those four transports) so the harness spawns the
-    multimodal stub as the agent. Three negative shapes are pin-tested:
-
-    - ``positive=True`` (default): the stub issues a full media-call sequence
-      and the multimodal fact grades WIRE.
-    - ``positive=False`` (default): the stub dials the endpoint once and
-      then forges the receipt via ``MOCK_MULTIMODAL_IGNORE_RESPONSE=1``;
-      the multimodal fact must NOT grade WIRE and a named break must fire.
-    - ``skip_media=True``: the stub makes NO media calls at all via
-      ``MOCK_MULTIMODAL_SKIP_MEDIA=1``; the multimodal fact must NOT grade
-      WIRE and a named break must fire. This is a distinct case from the
-      ignore-response shape, and is exercised by the dedicated
-      ``test_skip_media_multimodal_run_exits_nonzero`` case.
-    """
     transport_prefix, _cli_cmd, agent_name, redirect_method = _resolve_transport_entry(transport)
     stub_path = _stub_script_path()
     if not stub_path.is_file():
@@ -344,8 +229,6 @@ def _end_to_end_test_for_harness(
     spec = resolve_smoke_harness_spec(agent_name)
     prompt_file = workspace / spec.relative_dir / "PROMPT.md"
     output_file = workspace / spec.output_file
-    # The stub receives the harness's expected output path so the
-    # multimodal token lines land in the file the harness grades.
     monkeypatch.setenv("MOCK_MULTIMODAL_OUTPUT_FILE", str(output_file))
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
     prompt_file.write_text(
@@ -376,14 +259,6 @@ def test_positive_multimodal_run_grades_wire(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Positive contract: a multimodal smoke run on every harness grades WIRE (criterion 5).
-
-    The stub issues a full sequence of media-tool calls (read_media
-    on the fixture path, replay of the server-minted handle, read_image
-    metadata envelope for geometry + sha256), writes the receipts
-    into the smoke output file, submits the artifact, and declares
-    completion. The harness must grade the multimodal fact at WIRE.
-    """
     monitor_factories: list[object] = []
     original_start_workspace_monitor = invoke_module._start_workspace_monitor
 
@@ -429,19 +304,6 @@ def test_restricted_transport_cannot_grade_wire(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A transport denied inline images cannot -- and must not -- grade WIRE.
-
-    This is a deliberate capability denial, not a defect: the CLI cannot
-    carry an inline image block back into its own API request, and
-    sending one kills the turn outright. Ralph Workflow answers with a
-    resource reference instead, which the grader refuses to count as
-    perceptible delivery because the model can skip reading it.
-
-    Pinning the denial here keeps it honest in both directions. If a
-    future change starts handing these transports inline bytes again,
-    this test fails; and the positive WIRE contract above stays a real
-    assertion for every transport that can actually meet it.
-    """
     result = _end_to_end_test_for_harness(
         tmp_path, transport, positive=True, monkeypatch=monkeypatch
     )
@@ -464,15 +326,6 @@ def test_ignore_response_multimodal_run_exits_nonzero(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Poisoned-response case: dial the endpoint but discard the response (criterion 5 causal use).
-
-    The stub issues a real ``read_media`` call (so a verified
-    wire-ledger record exists for the run), then DISCARDS the
-    response and fabricates a UUID-based receipt with a guessed
-    geometry / sha256. The graded multimodal fact must read the
-    receipt from the server registry, so the fact grades
-    ``WORKSPACE_EFFECT`` and the run fails the multimodal contract.
-    """
     result = _end_to_end_test_for_harness(
         tmp_path, transport, positive=False, monkeypatch=monkeypatch
     )
@@ -493,13 +346,6 @@ def test_ignore_response_multimodal_run_exits_nonzero(
 def test_skip_media_multimodal_run_exits_nonzero(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """No-call case: skipping the media tool call entirely fails the smoke run with a named break.
-
-    Distinct from the ignore-response case (``positive=False``): the stub
-    here never issues a media call at all, so the wire-ledger has no
-    verified record. The multimodal fact must still NOT grade WIRE and a
-    named break must fire.
-    """
     result = _end_to_end_test_for_harness(
         tmp_path,
         "agy",
@@ -520,14 +366,7 @@ def test_skip_media_multimodal_run_exits_nonzero(
     )
 
 
-# ---------------------------------------------------------------------------
-# Stub-agent shape regression -- pinned locally so S-9 / S-12 can rely on the
-# stub without re-implementing the transport-vocabulary each time.
-# ---------------------------------------------------------------------------
-
-
 def test_stub_agent_module_imports_cleanly() -> None:
-    """The multimodal stub imports cleanly and exposes a runnable ``main``."""
     spec_path = _stub_script_path()
     if not spec_path.exists():
         pytest.skip("stub agent not on disk")

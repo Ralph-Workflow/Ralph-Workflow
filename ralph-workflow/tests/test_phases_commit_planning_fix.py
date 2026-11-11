@@ -47,7 +47,6 @@ def _default_policy() -> object:
 
 
 def _mk_policy_context(workspace: object = None) -> PhaseContext:
-    """Context with real policy and mocked (nothing-exists) workspace."""
     policy = _default_policy()
     ws = workspace if workspace is not None else MagicMock()
     if workspace is None:
@@ -177,7 +176,6 @@ def _stub_context(*, commit_message_present: bool = False) -> PhaseContext:
 
 
 def _stub_context_no_exists() -> PhaseContext:
-    """Stub context where nothing exists."""
     workspace = MagicMock()
     workspace.exists.return_value = False
     return PhaseContext.construct(
@@ -418,11 +416,6 @@ def test_review_commit_missing_commit_message_emits_retry_in_session(
 def test_development_commit_emits_skip_when_agent_submits_skip_artifact(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When the agent submits a skip artifact, handle_commit_phase must return COMMIT_SKIPPED.
-
-    This prevents the runner from creating a git commit whose subject is literally
-    'SKIP: reason' — the skip response must be honoured at the phase-handler layer.
-    """
     ctx = _commit_context(
         monkeypatch,
         has_uncommitted_changes=True,
@@ -441,7 +434,6 @@ def test_development_commit_emits_skip_when_agent_submits_skip_artifact(
 def test_review_commit_emits_skip_when_agent_submits_skip_artifact(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Same as above but for a review-role commit phase."""
     ctx = _commit_context(
         monkeypatch,
         has_uncommitted_changes=True,
@@ -522,7 +514,6 @@ def test_handle_planning_prepare_prompt_preserves_resumable_plan_draft(
 
 
 def test_clear_stale_plan_draft_preserves_seeded_repair_draft(tmp_path: Path) -> None:
-    """S-4: a canonical-seeded loopback draft stays available for repair."""
     workspace = MemoryWorkspace()
     workspace.write(".agent/artifacts/.plan.draft.md", "submitted plan")
     workspace.write(".agent/artifacts/.plan.draft.seeded", "")
@@ -717,7 +708,6 @@ def test_handle_phase_raises_when_handler_missing() -> None:
 
 
 def test_handle_development_analysis_skips_when_plan_is_noop() -> None:
-    """handle_generic_analysis_phase emits a completed decision when plan is a no-op."""
     ctx = _stub_context_no_exists()
     workspace = ctx.workspace
     workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.md"
@@ -735,7 +725,6 @@ def test_handle_development_analysis_skips_when_plan_is_noop() -> None:
 
 
 def test_handle_development_analysis_skips_minimal_noop_plan() -> None:
-    """The explicit minimal no-op document short-circuits analysis."""
     ctx = _stub_context_no_exists()
     workspace = ctx.workspace
     workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.md"
@@ -753,15 +742,8 @@ def test_handle_development_analysis_skips_minimal_noop_plan() -> None:
 
 
 def test_handle_dev_analysis_non_noop_missing_decision_is_recoverable() -> None:
-    """Missing analysis evidence should retry instead of terminally failing.
-
-    When a real development run finishes without submitting
-    development_analysis_decision.md, Ralph should treat that as an incomplete
-    agent attempt and route it through normal retry/fallback handling.
-    """
     ctx = _stub_context_no_exists()
     workspace = ctx.workspace
-    # plan.md exists but is not a no-op.
     workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.md"
     workspace.read.return_value = _PLAN_DOC
 
@@ -785,7 +767,6 @@ def _invoke(phase: str = "planning") -> InvokeAgentEffect:
 
 
 def test_replan_rejects_plan_the_agent_never_rewrote(tmp_path: Path) -> None:
-    """A re-plan whose agent exits without submitting must not reuse the old plan."""
     workspace = FsWorkspace(tmp_path)
     workspace.write(".agent/artifacts/plan.md", _PLAN_DOC)
     ctx = _mk_policy_context(workspace)
@@ -810,12 +791,6 @@ def test_replan_accepts_plan_rewritten_by_the_agent(tmp_path: Path) -> None:
 
 
 def test_stale_plan_rejections_put_the_planning_agent_into_cooldown(tmp_path: Path) -> None:
-    """End to end: a planner that never rewrites the plan is demoted, not credited.
-
-    The handler's rejection is a PhaseFailureEvent; fed to the reducer with the
-    real recovery controller it must charge the agent, fall over to the next
-    one, and wait once every agent is cooling down -- never advance the phase.
-    """
     from ralph.pipeline.reducer import reduce as reducer_reduce
     from ralph.pipeline.state import AgentChainState, PipelineState
     from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
@@ -853,6 +828,6 @@ def test_stale_plan_rejections_put_the_planning_agent_into_cooldown(tmp_path: Pa
         assert chain is not None
         seen_agents.append(chain.current_index)
 
-    assert 1 in seen_agents  # fell over from the first agent
-    assert state.is_waiting_state is True  # every agent cooling down -> wait
+    assert 1 in seen_agents
+    assert state.is_waiting_state is True
     assert controller.ledger.status("planning", "a").is_cooldown

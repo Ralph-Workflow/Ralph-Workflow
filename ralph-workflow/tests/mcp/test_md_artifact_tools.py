@@ -1,5 +1,3 @@
-"""MCP endpoint behavior for markdown artifact authoring."""
-
 from __future__ import annotations
 
 import json
@@ -50,7 +48,6 @@ def _payload(result: object) -> dict[str, object]:
 
 
 def test_markdown_artifact_handlers_verify_and_submit_through_the_same_gate(tmp_path) -> None:
-    """PLAN step 11: check-only and submit report identical diagnostics."""
     session = MockSession()
     workspace = MockWorkspace(tmp_path)
     params = {"artifact_type": "product_spec", "content": _product_spec()}
@@ -85,7 +82,6 @@ def test_markdown_artifact_handlers_verify_and_submit_through_the_same_gate(tmp_
 
 
 def test_markdown_artifact_submission_rejects_the_verify_diagnostics(tmp_path) -> None:
-    """PLAN step 11: invalid documents are never persisted by submission."""
     session = MockSession()
     workspace = MockWorkspace(tmp_path)
     params = {"artifact_type": "product_spec", "content": "---\ntype: product_spec\n---\n"}
@@ -119,7 +115,6 @@ def test_markdown_artifact_submission_rejects_the_verify_diagnostics(tmp_path) -
 def test_md_artifact_regression_validation_failure_persists_retry_context(
     tmp_path, operation: str
 ) -> None:
-    """S-2: submission-capable validation failures retain exact retry context."""
     session = MockSession(drain="development")
     workspace = MockWorkspace(tmp_path)
     backend = MemoryBackend()
@@ -197,11 +192,6 @@ def test_commit_message_validation_failure_requires_rewriting_the_message(tmp_pa
 
 
 def test_development_result_completed_body_is_free_form(tmp_path) -> None:
-    """A completed development result with a free-form body still validates.
-
-    Only the frontmatter ``status`` is checked; the body is the next
-    agent's reading matter, not a structure the validator gates.
-    """
     session = MockSession(drain="development")
     workspace = MockWorkspace(tmp_path)
     backend = MemoryBackend()
@@ -229,7 +219,6 @@ def test_development_result_completed_body_is_free_form(tmp_path) -> None:
 def test_md_artifact_regression_validation_retry_keeps_all_attempt_headlines(
     tmp_path,
 ) -> None:
-    """S-4: repeated failures retain every ordered attempt and escalate."""
     session = MockSession(drain="development")
     workspace = MockWorkspace(tmp_path)
     backend = MemoryBackend()
@@ -267,7 +256,6 @@ def test_md_artifact_regression_validation_retry_keeps_all_attempt_headlines(
 
 
 def test_md_artifact_regression_worker_validation_hint_uses_worker_namespace(tmp_path) -> None:
-    """S-3: worker validation context is isolated in the worker retry namespace."""
     session = MockSession(drain="development")
     session.worker_namespace = tmp_path / ".agent" / "workers" / "unit-1"
     workspace = MockWorkspace(tmp_path)
@@ -288,7 +276,6 @@ def test_md_artifact_regression_worker_validation_hint_uses_worker_namespace(tmp
 
 
 def test_md_artifact_regression_success_clears_stale_validation_retry_context(tmp_path) -> None:
-    """S-2: a successful resubmission removes obsolete validator context."""
     session = MockSession(drain="development")
     workspace = MockWorkspace(tmp_path)
     backend = MemoryBackend()
@@ -313,7 +300,6 @@ def test_md_artifact_regression_success_clears_stale_validation_retry_context(tm
 
 
 def test_md_artifact_preview_keeps_invalid_diagnostics_non_gating(tmp_path) -> None:
-    """A dry-run exposes validation state without a blocking error envelope."""
     session = MockSession()
     workspace = MockWorkspace(tmp_path)
     backend = MemoryBackend()
@@ -364,7 +350,6 @@ def test_markdown_artifact_tools_are_registered() -> None:
     ],
 )
 def test_plan_verify_accepts_malformed_frontmatter_as_prose(tmp_path, label, content) -> None:
-    """Plan sanity does not judge duplicate or malformed metadata."""
     session = MockSession()
     workspace = MockWorkspace(tmp_path)
     params = {"artifact_type": "plan", "content": content}

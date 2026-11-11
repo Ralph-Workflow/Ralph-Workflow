@@ -1,5 +1,3 @@
-"""Deterministic wrapper coverage for opt-in auto-integration publication."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -39,7 +37,6 @@ def _record() -> RebaseState:
 def test_enabled_remote_sync_delegates_landing_to_push_hook(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The public landing wrapper forwards its configured target to the push seam."""
     from ralph.git.remote_push import PushResult, PushStatus
     from ralph.pipeline._publication_state_machine import PublicationDecision
     from ralph.pipeline.auto_integrate_remote_sync import push_target_after_landing
@@ -87,7 +84,6 @@ def test_enabled_remote_sync_delegates_landing_to_push_hook(
 def test_disabled_remote_sync_preserves_landing_without_calling_hook(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The public wrapper leaves a local landing untouched when sync is disabled."""
     from unittest.mock import MagicMock
 
     from ralph.pipeline.auto_integrate_remote_sync import push_target_after_landing
@@ -113,7 +109,6 @@ def test_disabled_remote_sync_preserves_landing_without_calling_hook(
 
 
 def test_push_hook_exception_preserves_local_landing(monkeypatch: pytest.MonkeyPatch) -> None:
-    """An unexpected remote-hook failure never rolls back a successful local landing."""
     from ralph.git.remote_push import PushResult, PushStatus
     from ralph.pipeline._publication_state_machine import PublicationDecision
 
@@ -173,7 +168,6 @@ class _ExceptionRaisingRemoteClient(auto_integrate_ff.RemoteClient):
 
 
 def test_push_single_remote_catches_push_branch_exception_and_projects_unreachable() -> None:
-    """Unexpected push_branch exception is caught and projected to UNREACHABLE without escaping."""
     from ralph.git.remote_push import PushStatus
     from ralph.pipeline._publication_state_machine import PublicationDecision
     from ralph.pipeline.auto_integrate_remote_push import push_single_remote
@@ -198,7 +192,6 @@ def test_push_single_remote_catches_push_branch_exception_and_projects_unreachab
 
 
 def test_push_single_remote_catches_timeout_and_projects_timeout() -> None:
-    """Timeout during push_branch is caught and projected to TIMEOUT without escaping."""
     from ralph.git.remote_push import PushStatus
     from ralph.pipeline._publication_state_machine import PublicationDecision
     from ralph.pipeline.auto_integrate_remote_push import push_single_remote
@@ -222,7 +215,6 @@ def test_push_single_remote_catches_timeout_and_projects_timeout() -> None:
 
 
 def test_push_target_after_landing_handles_push_branch_exception_without_losing_landing() -> None:
-    """AC5, AC8: push_target_after_landing catches unexpected push exceptions and preserves landing."""
     from ralph.config.models import GeneralConfig
     from ralph.pipeline._integration_action import RebaseOutcomeKind
     from ralph.pipeline.auto_integrate_remote_sync import push_target_after_landing
@@ -258,7 +250,6 @@ def test_push_target_after_landing_handles_push_branch_exception_without_losing_
 def test_retry_pending_remote_publish_forwards_resolver_and_preserves_landing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AC5, AC9: retry_pending_remote_publish forwards rebase_stop_resolver and preserves landing."""
     resolver_called = False
 
     def dummy_resolver(root: Path, target: str, stop: RebaseStop) -> bool:

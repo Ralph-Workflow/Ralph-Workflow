@@ -1,5 +1,3 @@
-"""Regression tests: visit_url is enabled out-of-the-box for non-commit drains."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -17,7 +15,6 @@ from ralph.prompts.template_variables import DEFAULT_CAPABILITIES
 if TYPE_CHECKING:
     from pathlib import Path
 
-# Commit-class drains are read-only and do not receive web capabilities.
 _COMMIT_CLASS_DRAINS = (
     SessionDrain.DEVELOPMENT_COMMIT,
     SessionDrain.REVIEW_COMMIT,

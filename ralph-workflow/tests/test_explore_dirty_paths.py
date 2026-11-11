@@ -1,5 +1,3 @@
-"""Black-box tests for dirty-path tracking in workspace write handlers."""
-
 from __future__ import annotations
 
 import json
@@ -32,13 +30,10 @@ pytestmark = pytest.mark.timeout_seconds(5)
 
 
 class _FakeSession:
-    """Minimal session stub exposing explore_index."""
-
     def __init__(self, explore_index: Any | None) -> None:
         self.explore_index = explore_index
 
     def check_capability(self, capability: str) -> object:
-        # All capabilities are allowed in tests.
         return {"status": "approved", "capability": capability}
 
     def check_edit_area(self, path: str) -> object:
@@ -46,8 +41,6 @@ class _FakeSession:
 
 
 class _Workspace:
-    """In-memory workspace stub backed by a tmp_path directory tree."""
-
     def __init__(self, root: Path) -> None:
         self.root = root
 
@@ -120,21 +113,15 @@ def test_handle_write_file_marks_dirty(tmp_path: Path) -> None:
         assert payload["bytes_written"] == 6
         assert payload["status"] == "ok"
         assert payload["index_used"] is True
-        # AC-04 contract: ``changed_paths`` is the prompt-exact name
-        # for the list of paths this mutation just touched (was
-        # ``marked_paths`` in the original draft).
         assert payload["changed_paths"] == ["a.py"]
         assert "stale_paths_count" in payload
         assert "reindex_in_progress" in payload
-        # The dirty-path queue records the same path so the next
-        # reindex picks it up.
         assert store.peek_dirty_paths() == ["a.py"]
     finally:
         store.close()
 
 
 def test_mutation_freshness_reports_deleted_index_rows(tmp_path: Path) -> None:
-    """A mutation exposes deleted indexed files as stale freshness metadata."""
     workspace_root = tmp_path / "ws"
     workspace_root.mkdir()
     deleted_path = workspace_root / "deleted.py"
@@ -153,9 +140,6 @@ def test_mutation_freshness_reports_deleted_index_rows(tmp_path: Path) -> None:
         )
 
         payload = _decode(result)
-        # The reindex already processed the deletion (the files row is
-        # purged, not tombstoned), so no deleted rows remain to report.
-        # Staleness comes from the written path being marked dirty.
         assert payload["stale_paths_count"] == 0
         assert payload["dirty_paths_count"] == 1
         assert payload["is_stale"] is True
@@ -173,7 +157,6 @@ def test_handle_write_file_returns_plain_text_without_index(tmp_path: Path) -> N
         {"path": "a.py", "content": "x = 2\n"},
     )
     text = result.content[0].text
-    # Plain-text confirmation (current behavior).
     assert "Successfully wrote" in text
     assert "a.py" in text
 
@@ -259,7 +242,6 @@ def test_handle_move_file_marks_both_paths(tmp_path: Path) -> None:
         payload = _decode(result)
         assert payload["src"] == "a.py"
         assert payload["dest"] == "b.py"
-        # Both src and dest are dirty.
         dirty = sorted(store.peek_dirty_paths())
         assert dirty == ["a.py", "b.py"]
     finally:
@@ -314,7 +296,6 @@ def test_failed_write_does_not_mark_dirty(tmp_path: Path) -> None:
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     try:
         session = _FakeSession(build_sqlite_index_handle(store))
-        # No path -> InvalidParamsError before any write happens.
         from ralph.mcp.tools.coordination import InvalidParamsError
 
         with suppress(InvalidParamsError):
@@ -342,7 +323,7 @@ def test_resolve_explore_index_returns_handle_when_set() -> None:
 
 def test_noop_explore_index_mark_dirty_is_silent() -> None:
     noop = NoOpExploreIndex()
-    noop.mark_dirty(["a.py"], source_tool="write_file")  # no error
+    noop.mark_dirty(["a.py"], source_tool="write_file")
 
 
 def test_mark_path_helper_normalizes() -> None:
@@ -352,7 +333,6 @@ def test_mark_path_helper_normalizes() -> None:
 
 
 def test_reindex_preserves_failed_dirty_paths(tmp_path: Path) -> None:
-    """AC-05: failed dirty paths must remain in the queue for the next pass."""
     from ralph.mcp.explore.pipeline import (
         DEFAULT_TIMEOUT_MS,
         ReindexOptions,
@@ -366,17 +346,13 @@ def test_reindex_preserves_failed_dirty_paths(tmp_path: Path) -> None:
 
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     try:
-        # First pass seeds the index.
         reindex(
             store,
             workspace,
             options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS),
         )
-        # Mark both paths dirty, then make bad.py unreadable.
         store.mark_dirty("good.py", reason="write", source_tool="write_file")
         store.mark_dirty("bad.py", reason="write", source_tool="write_file")
-        # Replace the bad.py path with a directory to force an
-        # extraction failure during reindex.
         (workspace / "bad.py").rmdir() if (workspace / "bad.py").is_dir() else None
         (workspace / "bad.py").unlink()
         (workspace / "bad.py").mkdir()
@@ -386,8 +362,6 @@ def test_reindex_preserves_failed_dirty_paths(tmp_path: Path) -> None:
             workspace,
             options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS),
         )
-        # good.py is in scope and processed, so it's removed; bad.py
-        # failed and stays in the queue.
         remaining = sorted(store.peek_dirty_paths())
         assert "bad.py" in remaining, f"failed path should remain in queue, got {remaining!r}"
         assert "good.py" not in remaining, f"processed path should be removed, got {remaining!r}"

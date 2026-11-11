@@ -32,13 +32,10 @@ def test_push_three_lines_produces_three_buffer_entries() -> None:
 
 
 def test_malformed_line_produces_error_event_no_crash() -> None:
-    # Non-JSON lines are now passed to the parser, which handles them as raw content.
-    # The router does not crash; malformed lines appear as content entries.
     router = ActivityRouter()
     router.push_raw_line("unit-b", "bad-json")
     entries = router.get_buffer("unit-b").snapshot()
     assert len(entries) == 1
-    # The entry should contain the raw content (not an "invalid ndjson" error marker)
     assert "bad-json" in entries[0]
 
 

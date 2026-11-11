@@ -1,5 +1,3 @@
-"""Tests for enriched McpServerError fields (C5)."""
-
 from __future__ import annotations
 
 from ralph.mcp.server._mcp_server_error import McpServerError
@@ -7,7 +5,6 @@ from ralph.mcp.server._mcp_server_error import McpServerError
 
 class TestMcpServerErrorEnriched:
     def test_all_12_fields_populated(self) -> None:
-        """All 12 fields are present and accessible on a fully-populated instance."""
         err = McpServerError(
             "probe overrun",
             restart_count=1,
@@ -35,7 +32,6 @@ class TestMcpServerErrorEnriched:
         assert err.failure_kind == "budget_exhausted"
 
     def test_str_contains_restart_reason_and_handover_step(self) -> None:
-        """__str__ renders restart_reason and handover_step."""
         err = McpServerError(
             "x",
             restart_count=1,
@@ -47,7 +43,6 @@ class TestMcpServerErrorEnriched:
         assert "handover_step=spawn" in s
 
     def test_str_contains_probe_durations(self) -> None:
-        """__str__ renders probe_duration_s and probe_timeout_s."""
         err = McpServerError(
             "x",
             restart_count=1,
@@ -59,7 +54,6 @@ class TestMcpServerErrorEnriched:
         assert "probe_timeout_s=5.0" in s
 
     def test_str_contains_psutil_status_and_failure_kind(self) -> None:
-        """__str__ renders psutil_status and failure_kind."""
         err = McpServerError(
             "x",
             restart_count=1,
@@ -71,7 +65,6 @@ class TestMcpServerErrorEnriched:
         assert "failure_kind=budget_exhausted" in s
 
     def test_existing_call_site_still_works(self) -> None:
-        """A call site that only passes message + restart_count continues to work."""
         err = McpServerError("x", restart_count=1)
         assert err.restart_count == 1
         assert err.last_stage is None
@@ -84,11 +77,9 @@ class TestMcpServerErrorEnriched:
         assert err.psutil_status is None
         assert err.startup_diagnostic == ""
         assert err.failure_kind == "transient"
-        # message is in the string
         assert "x" in str(err)
 
     def test_str_renders_all_populated_fields_semicolon_separated(self) -> None:
-        """__str__ renders all populated fields in a clean semicolon-separated format."""
         err = McpServerError(
             "child process died",
             restart_count=2,

@@ -1,9 +1,3 @@
-"""Normalize recognized file-activity events into bounded preview payloads.
-
-The display layer consumes these parser-agnostic values rather than branching
-on agent parser identity. Unknown tools and malformed envelopes deliberately
-return ``None``.
-"""
 
 from __future__ import annotations
 
@@ -22,7 +16,6 @@ PreviewOperation = Literal["read", "write", "append", "replace", "patch"]
 
 @dataclass(frozen=True)
 class _PreviewHunk:
-    """One ordered old/new fragment with an optional absolute new-file line."""
 
     old_text: str = ""
     new_text: str = ""
@@ -32,7 +25,6 @@ class _PreviewHunk:
 
 @dataclass(frozen=True)
 class _PreviewPayload:
-    """Canonical, display-safe description of recognized file activity."""
 
     path: str | None
     language_hint: str | None
@@ -44,19 +36,16 @@ class _PreviewPayload:
 
 
 def _json_value(value: str) -> object:
-    """Parse JSON at one typed boundary."""
     parsed: object = json.loads(value)
     return parsed
 
 
 def _python_literal(value: str) -> object:
-    """Parse Gemini's documented Python-style argument mapping at one boundary."""
     parsed: object = ast.literal_eval(value)
     return parsed
 
 
 def _mapping(value: object) -> dict[str, object] | None:
-    """Return a string-keyed mapping from a mapping, JSON, or Python literal."""
     parsed: object = value
     if isinstance(value, str):
         if len(value) > _MAX_LITERAL_PARSE_CHARS:
@@ -78,11 +67,6 @@ def _mapping(value: object) -> dict[str, object] | None:
 
 
 def _tool_info_parameters(mapping: dict[str, object]) -> dict[str, object] | None:
-    """Return parameters nested under a ``tool_info`` envelope, when present.
-
-    AGY's parser emits ``metadata = {"tool": ..., "tool_info": {"name": ...,
-    "parameters": {...}}}`` instead of flattening parameters under ``input``.
-    """
     tool_info = mapping.get("tool_info")
     if isinstance(tool_info, dict):
         return _mapping(tool_info.get("parameters"))
@@ -90,13 +74,6 @@ def _tool_info_parameters(mapping: dict[str, object]) -> dict[str, object] | Non
 
 
 def _input(metadata: dict[str, object]) -> dict[str, object] | None:
-    """Extract documented parser input/args envelopes without guessing keys.
-
-    AGY's ``tool_info.parameters`` envelope is recognized both at the top level
-    (a direct parser-real call) and when a caller wraps a raw AGY metadata
-    envelope under ``input`` (the display preview path): an extracted mapping
-    that itself carries a ``tool_info`` key is unwrapped to its parameters.
-    """
     for key in ("input", "args", "arguments"):
         payload = _mapping(metadata.get(key))
         if payload is not None:
@@ -106,7 +83,6 @@ def _input(metadata: dict[str, object]) -> dict[str, object] | None:
 
 
 def _path(payload: dict[str, object]) -> str | None:
-    """Return a documented path field, if present."""
     for key in ("path", "file_path", "filePath", "filename", "TargetFile", "notebook_path"):
         value = payload.get(key)
         if isinstance(value, str) and value:
@@ -115,12 +91,10 @@ def _path(payload: dict[str, object]) -> str | None:
 
 
 def _line(value: object) -> int | None:
-    """Return a positive source line while rejecting bool."""
     return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
 
 
 def _patch_hunks(patch: str) -> tuple[_PreviewHunk, ...]:
-    """Extract unified-diff hunks with their new-file source line and label."""
     matches = list(_PATCH_HUNK_RE.finditer(patch))
     hunks: list[_PreviewHunk] = []
     for index, match in enumerate(matches):
@@ -142,7 +116,6 @@ def _patch_hunks(patch: str) -> tuple[_PreviewHunk, ...]:
 
 
 def _edit_hunks(payload: dict[str, object], *, multiple: bool) -> tuple[_PreviewHunk, ...]:
-    """Normalize one replacement or the documented ordered ``edits`` list."""
     edits = payload.get("edits")
     items: tuple[object, ...] = (
         tuple(edits) if isinstance(edits, list) else (() if multiple else (payload,))
@@ -201,7 +174,6 @@ PreviewPayload = _PreviewPayload
 
 
 def payload_from_tool_event(tool_name: str, metadata: dict[str, object]) -> PreviewPayload | None:
-    """Normalize a recognized Ralph/native file event; otherwise return ``None``."""
     payload = _input(metadata)
     if payload is None:
         return None

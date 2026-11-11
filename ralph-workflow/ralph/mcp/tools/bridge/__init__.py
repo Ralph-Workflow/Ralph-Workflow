@@ -1,10 +1,3 @@
-"""MCP tool registry and handler dispatch.
-
-This module ports the Rust `mcp_server::tool_bridge` registry layer into Python.
-It owns tool metadata registration, duplicate protection, lookup, and dispatch.
-The default registry builder mirrors the Rust bridge by registering lazy handler
-wrappers for the Ralph MCP tool modules.
-"""
 
 from __future__ import annotations
 

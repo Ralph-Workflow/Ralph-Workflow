@@ -1,5 +1,3 @@
-"""Tests for safe agents TOML write in enable_detected_agents."""
-
 from __future__ import annotations
 
 import logging
@@ -13,13 +11,6 @@ from ralph.config.agent_detection import enable_detected_agents
 
 
 def _capture_loguru_records(level: str = "DEBUG") -> tuple[list[tuple[str, int]], int]:
-    """Attach a loguru sink that records every emitted message.
-
-    Returns the captured ``(message, level number)`` pairs and the sink id
-    so the caller can remove the sink again. loguru is the operator-visible
-    sink the CLI wires, so a record captured here is a line the operator
-    can actually see.
-    """
     records: list[tuple[str, int]] = []
 
     def sink(message: object) -> None:
@@ -39,7 +30,6 @@ def test_enable_detected_agents_creates_backup_preserving_operator_edits(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Operator edits in the file are preserved in a .bak file and the write is logged."""
     config_path = tmp_path / "ralph-workflow-agents.toml"
     initial_content = (
         "# Custom operator header\n"
@@ -63,7 +53,6 @@ def test_enable_detected_agents_creates_backup_preserving_operator_edits(
     assert bak_path.exists()
     assert bak_path.read_text(encoding="utf-8") == initial_content
 
-    # The updated file has the activated block and operator edit intact
     new_content = config_path.read_text(encoding="utf-8")
     assert 'operator_custom_key = "custom_value"' in new_content
     assert "[agents.codex]" in new_content
@@ -74,7 +63,6 @@ def test_enable_detected_agents_creates_backup_preserving_operator_edits(
     assert "codex" in agents
     assert "claude" in agents
 
-    # Log output names trigger and .bak path
     assert "ralph --init: enable detected agents" in caplog.text
     assert str(bak_path) in caplog.text
     assert str(config_path) in caplog.text
@@ -85,7 +73,6 @@ def test_enable_detected_agents_skips_invalid_toml_block_with_warning(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """An agent block with invalid TOML syntax is skipped with a warning, keeping remaining valid blocks."""
     config_path = tmp_path / "ralph-workflow-agents.toml"
     initial_content = (
         "[agents.claude]\n"
@@ -108,15 +95,12 @@ def test_enable_detected_agents_skips_invalid_toml_block_with_warning(
     with caplog.at_level(logging.WARNING):
         enabled = enable_detected_agents(config_path)
 
-    # codex had invalid syntax, so only pi was enabled
     assert enabled == ["pi"]
 
-    # Warning logged for codex
     assert any(
         "codex" in record.message for record in caplog.records if record.levelno >= logging.WARNING
     )
 
-    # Resulting file is valid TOML
     new_content = config_path.read_text(encoding="utf-8")
     data = tomllib.loads(new_content)
     assert isinstance(data, dict)
@@ -131,7 +115,6 @@ def test_enable_detected_agents_all_invalid_produces_no_backup_and_no_write(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """When all detected blocks have invalid syntax, nothing is enabled, no backup is made, and no write occurs."""
     config_path = tmp_path / "ralph-workflow-agents.toml"
     initial_content = (
         "[agents.claude]\n"
@@ -162,7 +145,6 @@ def test_enable_detected_agents_unchanged_content_produces_no_backup_and_no_writ
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """When agents are already enabled or none are detected, no backup is made and no write occurs."""
     config_path = tmp_path / "ralph-workflow-agents.toml"
     initial_content = '[agents.claude]\ncmd = "claude"\n\n[agents.codex]\ncmd = "codex exec"\n'
     config_path.write_text(initial_content, encoding="utf-8")
@@ -178,7 +160,6 @@ def test_enable_detected_agents_unchanged_content_produces_no_backup_and_no_writ
     assert enabled == []
     assert not bak_path.exists()
     assert config_path.read_text(encoding="utf-8") == initial_content
-    # write_agents_toml should not have logged a write
     assert "Wrote" not in caplog.text
 
 
@@ -186,7 +167,6 @@ def test_enable_detected_agents_emits_trigger_line_to_operator_visible_loguru_si
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The enable-detected path's trigger line reaches the loguru sink the operator sees."""
     config_path = tmp_path / "ralph-workflow-agents.toml"
     config_path.write_text(
         '[agents.claude]\ncmd = "claude"\n\n'
@@ -218,7 +198,6 @@ def test_enable_detected_agents_emits_trigger_line_to_operator_visible_loguru_si
         "no operator-visible trigger line for the enable-detected path; captured: "
         f"{[text for text, _ in records]}"
     )
-    # The line is emitted at INFO or above, so it is visible without debug verbosity.
     assert max(level_no for _, level_no in matching) >= 20
 
 
@@ -239,7 +218,6 @@ CONFLICTING_AGENTS_FILE = (
 
 
 def _skip_warnings(caplog: pytest.LogCaptureFixture) -> list[str]:
-    """Return the warning messages that name the enable-detected trigger."""
     return [
         record.message
         for record in caplog.records
@@ -253,7 +231,6 @@ def test_enable_detected_agents_skips_block_conflicting_with_existing_table(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """A block that would duplicate an existing table is skipped; the file stays byte-identical."""
     config_path = tmp_path / "ralph-workflow-agents.toml"
     config_path.write_text(CONFLICTING_AGENTS_FILE, encoding="utf-8")
     original_bytes = config_path.read_bytes()
@@ -264,17 +241,14 @@ def test_enable_detected_agents_skips_block_conflicting_with_existing_table(
     with caplog.at_level(logging.WARNING):
         enabled = enable_detected_agents(config_path)
 
-    # The conflicting agent is NOT enabled and nothing is written.
     assert enabled == []
     assert config_path.read_bytes() == original_bytes
     assert not bak_path.exists()
 
-    # The warning names the agent and the trigger.
     skip_warnings = _skip_warnings(caplog)
     assert len(skip_warnings) == 1
     assert "claude" in skip_warnings[0]
 
-    # The operator's data survives and the file still parses as TOML.
     data = tomllib.loads(config_path.read_text(encoding="utf-8"))
     agents = data.get("agents", {})
     assert isinstance(agents, dict)
@@ -286,7 +260,6 @@ def test_enable_detected_agents_applies_non_conflicting_block_beside_a_conflict(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Only the conflicting block is skipped; a valid block in the same file is enabled."""
     config_path = tmp_path / "ralph-workflow-agents.toml"
     config_path.write_text(CONFLICTING_AGENTS_FILE, encoding="utf-8")
     original_bytes = config_path.read_bytes()
@@ -299,7 +272,6 @@ def test_enable_detected_agents_applies_non_conflicting_block_beside_a_conflict(
     with caplog.at_level(logging.WARNING):
         enabled = enable_detected_agents(config_path)
 
-    # The conflicting agent is skipped, the valid one is enabled.
     assert enabled == ["codex"]
 
     new_text = config_path.read_text(encoding="utf-8")
@@ -308,14 +280,11 @@ def test_enable_detected_agents_applies_non_conflicting_block_beside_a_conflict(
     assert isinstance(agents, dict)
     assert agents["codex"]["cmd"] == "codex exec"
 
-    # The operator's table and the skipped block are preserved verbatim.
     assert '[agents.claude]\ncmd = "claude"\noperator_custom_key = "custom_value"\n' in new_text
     assert "# @AGENT-BLOCK-START: claude\n# [agents.claude]\n" in new_text
 
-    # The backup holds the operator's previous bytes.
     assert bak_path.read_bytes() == original_bytes
 
-    # Only the conflicting agent is reported as skipped.
     skip_warnings = _skip_warnings(caplog)
     assert len(skip_warnings) == 1
     assert "claude" in skip_warnings[0]
@@ -327,7 +296,6 @@ def test_enable_detected_agents_does_not_raise_on_a_conflicting_table(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """A table the operator spelled differently still conflicts; the write never raises."""
     config_path = tmp_path / "ralph-workflow-agents.toml"
     initial_content = (
         '[agents."claude"]\n'
@@ -370,7 +338,6 @@ def test_enable_detected_agents_on_invalid_utf8_file_reports_and_keeps_bytes(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """An agents file that is not valid UTF-8 is reported, never crashed on."""
     config_path = tmp_path / """ralph-workflow-agents.toml"""
     original_bytes = b"""[agents.claude]\ncmd = "\xff\xfe"\n"""
     config_path.write_bytes(original_bytes)

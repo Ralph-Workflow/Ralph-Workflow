@@ -1,5 +1,3 @@
-"""Behavioral tests for bounded shared workspace awareness."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -33,7 +31,6 @@ def test_awareness_fallback_is_explicit_and_has_safe_next_action(tmp_path: Path)
 
 
 def test_awareness_recovery_returns_to_watch_mode(tmp_path: Path) -> None:
-    """S-3 regression: a successful observer retry is observable as recovered."""
     awareness = awareness_for_workspace(tmp_path)
     awareness.set_live_fallback("watch_capacity")
 
@@ -45,7 +42,6 @@ def test_awareness_recovery_returns_to_watch_mode(tmp_path: Path) -> None:
 
 
 def test_awareness_reports_all_required_non_current_states(tmp_path: Path) -> None:
-    """S-3: a knowledge boundary exposes every closed freshness state."""
     awareness = awareness_for_workspace(tmp_path)
 
     awareness.set_freshness("partial", cause="parse_gap")
@@ -60,7 +56,6 @@ def test_awareness_reports_all_required_non_current_states(tmp_path: Path) -> No
 
 
 def test_awareness_requeues_unacknowledged_paths_without_claiming_current(tmp_path: Path) -> None:
-    """S-4 regression: a failed dirty-queue handoff cannot lose an observed change."""
     awareness = awareness_for_workspace(tmp_path)
     awareness.record(str(tmp_path / "src" / "app.py"))
 

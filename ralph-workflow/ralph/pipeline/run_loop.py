@@ -1,4 +1,3 @@
-"""Pipeline event loop: the run() entry point and connectivity helpers."""
 
 from __future__ import annotations
 
@@ -192,7 +191,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class LoopContext:
-    """Execution context for the inner pipeline loop."""
 
     policy_bundle: PolicyBundle
     workspace_scope: WorkspaceScope
@@ -211,81 +209,23 @@ class LoopContext:
     is_quiet: bool
     heartbeat_client: ProHeartbeatClient | None = None
     pro_watcher: ProMarkerWatcher | None = None
-    # Single-slot sink holding the most recent state the inner loop reached.
-    # An interrupt unwinds past every binding inside that loop, so without this
-    # the caller's ``state`` is still the one the run STARTED with, and the
-    # end-of-run report described a run that spent hours in development as
-    # having ended in planning with no phases and no cycle.
     latest_state: list[PipelineState] = field(default_factory=list)
-    # Background catch-up fast-forward worker (see
-    # ``ralph.pipeline.auto_integrate_catchup``). Started at run start
-    # when auto-integration is enabled; stopped in ``_cleanup_pipeline``
-    # on every exit path.
     catchup_worker: AutoIntegrateCatchupWorker | None = None
     snapshot_registry: SnapshotRegistry | None = None
     pipeline_deps: PipelineDeps | None = None
     last_waiting_state_phase: str | None = None
     last_waiting_state_sig: tuple[str, str] | None = None
     config_failure_watcher: ConfigFileFingerprintWatcher | None = None
-    # Session-wide process teardown. Defaults to
-    # ``ProcessManager.shutdown_all`` from the run-loop construction
-    # site so non-phase-labeled children are reaped on every exit
-    # (normal, error, SIGINT, SIGTERM). Wired from
-    # ``pipeline_deps.process_teardown`` when provided.
     process_teardown: Callable[[], None] | None = None
-    # Session-scoped one-shot flag that prevents the
-    # ladder-escalation path from re-dispatching
-    # ``_handoff_retained_failure`` after the first automated
-    # resolution attempt. The first time the cap is reached in this
-    # session the flag flips to True; subsequent retries within the
-    # same session skip the handoff (avoiding the operator-visible
-    # rotation that the original guard was designed to prevent). A
-    # cold-loaded capped record resets the flag because
-    # ``LoopContext`` is constructed fresh per run.
     _session_handoff_dispatched: bool = False
-    # Session-scoped one-shot flag that prevents the cold-capped
-    # conflict-resolution escalation from running more than once
-    # per session. Distinct from ``_session_handoff_dispatched``
-    # (which guards the ladder-escalation handoff path); this
-    # flag guards the cold-capped path that fires when the
-    # consecutive-conflict budget is already spent BEFORE the
-    # ordinary resolver ever runs. Without this flag, every cold
-    # retry would re-invoke the escalation resolver against an
-    # exhausted conflict -- unbounded spin. With it, the
-    # escalation runs at most once per session and any subsequent
-    # cold-capped call falls through to the existing
-    # budget-spent branch (which already escalates to the typed
-    # LADDER_ESCALATION outcome). A cold-loaded capped record
-    # resets the flag because ``LoopContext`` is constructed fresh
-    # per run.
     cold_capped_escalation_attempted: bool = False
-    # Injectable collaborators for the integration-retry path.  The
-    # defaults use the production implementations; a caller that owns the
-    # surrounding resources substitutes an equivalent collaborator so the
-    # retry path stays observable through a public surface.
     hooks: RetryDiagnosticHooks = field(default_factory=RetryDiagnosticHooks)
 
 
-# Backwards-compatible alias for the historical private name.  The class
-# itself is public (``LoopContext``) because it is part of the supported
-# retry-diagnostic surface; the alias keeps existing importers working.
 _LoopContext = LoopContext
 
 
 def _retry_hooks(ctx: LoopContext) -> RetryDiagnosticHooks:
-    """Resolve the injectable retry collaborators for this context.
-
-    The retry path is driven by the inner loop, but the collaborators it
-    uses (checkpoint persistence, the automated-resolver handoff, the
-    recovery preamble, the conflict resolver, the live-state re-deriver)
-    are exactly the seams a caller that owns the surrounding resources
-    needs to substitute.  Reading them from the context keeps that
-    substitution on a public surface instead of inside module internals.
-
-    A context that carries no hooks -- or carries something that is not a
-    :class:`~ralph.pipeline.retry_diagnostic.RetryDiagnosticHooks` -- uses
-    the production implementations.
-    """
     hooks = _context_hooks(ctx)
     if isinstance(hooks, RetryDiagnosticHooks):
         return hooks
@@ -293,13 +233,6 @@ def _retry_hooks(ctx: LoopContext) -> RetryDiagnosticHooks:
 
 
 def _context_hooks(ctx: LoopContext) -> object:
-    """Read the retry hooks the context carries, if it carries any.
-
-    A context built by the inner loop always carries a
-    :class:`~ralph.pipeline.retry_diagnostic.RetryDiagnosticHooks`.  A
-    duck-typed context that does not (or carries something else) is
-    handled here so the retry path never fails on the lookup itself.
-    """
     try:
         return ctx.hooks
     except AttributeError:
@@ -310,12 +243,6 @@ def _recovery_preamble_for(
     ctx: LoopContext,
     backend: FileBackend,
 ) -> Callable[[WorkspaceScope, UnifiedConfig | None], RebaseState | None]:
-    """Resolve the recovery preamble this context must run.
-
-    The injected preamble replaces the whole preamble call, so it takes
-    the workspace and the configuration; the production implementation
-    additionally receives the file backend that is in use.
-    """
     hooks = _retry_hooks(ctx)
     if hooks.recovery_preamble is not None:
         return hooks.recovery_preamble
@@ -412,50 +339,21 @@ def _recovery_preamble_for(
 
 
 def _sync_live_display_context(display: _DisplayContextOwner, ctx: DisplayContext) -> None:
-    """Keep the runner's active display on the same context as the runner.
-
-    Mutates the existing ``display._ctx`` in place (via
-    ``object.__setattr__`` to bypass :class:`DisplayContext`'s
-    ``frozen=True`` constraint) so the *identity* of the context object
-    is preserved across width refreshes. Callers holding a reference
-    to the original context (e.g. ``LoopContext.display_context``)
-    therefore see the updated width automatically, with no need to
-    re-fetch ``active._ctx`` after every refresh. Mutating in place
-    avoids the staleness bug where the refresher would otherwise
-    replace ``display._ctx`` with a new object, leaving the caller's
-    separate reference pointing at the stale original.
-    """
     existing = display._ctx
     object.__setattr__(existing, "width", ctx.width)
 
 
 def _signal_if_now_online(monitor: _ConnectivityMonitorLike, wake: threading.Event) -> None:
-    """Wake the event if connectivity has been restored (race-condition guard)."""
     if monitor.current_state != ConnectivityState.OFFLINE:
         wake.set()
 
 
-#: Re-poll interval for the offline pause. The pause is normally released by
-#: the monitor's ONLINE transition event; the poll only covers the case where
-#: no event can arrive any more.
 _OFFLINE_REPOLL_INTERVAL_SECONDS: Final[float] = 5.0
 
-#: How often the offline pause reports that it is still waiting. Without this
-#: the run looks identical to a hang: one warning line, then silence.
 _OFFLINE_HEARTBEAT_INTERVAL_SECONDS: Final[float] = 60.0
 
 
 def _wait_for_connectivity(monitor: _ConnectivityMonitorLike, wake: threading.Event) -> None:
-    """Block until connectivity returns, re-polling instead of waiting forever.
-
-    An unbounded ``wake.wait()`` here is a silent-hang vector: the pause is
-    released only by an ONLINE transition event, so if the connectivity
-    monitor thread dies or its probe wedges, no event can ever arrive and the
-    pipeline blocks forever behind a single "Pipeline paused" warning — no
-    timeout, no watchdog, no further output. Polling the monitor's own state
-    on each wake-up makes the pause self-healing, and the periodic heartbeat
-    keeps a legitimately long outage distinguishable from a wedge.
-    """
     waited = 0.0
     next_heartbeat = _OFFLINE_HEARTBEAT_INTERVAL_SECONDS
     while not wake.wait(timeout=_OFFLINE_REPOLL_INTERVAL_SECONDS):
@@ -472,7 +370,6 @@ def _wait_for_connectivity(monitor: _ConnectivityMonitorLike, wake: threading.Ev
 def _apply_connectivity_check(
     state: PipelineState, monitor: _ConnectivityMonitorLike | None
 ) -> PipelineState:
-    """Block synchronously if offline; return updated state when online."""
     if monitor is None:
         return state
     if monitor.current_state == ConnectivityState.ONLINE:
@@ -504,7 +401,6 @@ def _apply_connectivity_check(
 def _setup_connectivity_monitor(
     connectivity_monitor: _ConnectivityMonitorLike | None,
 ) -> tuple[_ConnectivityMonitorLike, Callable[[], None] | None]:
-    """Start connectivity monitor if one was not provided; return (monitor, stop_fn)."""
     if connectivity_monitor is not None:
         return connectivity_monitor, None
 
@@ -551,19 +447,6 @@ def compose_display_stop(
     refresher_stop: Callable[[], None],
     display: ParallelDisplay,
 ) -> Callable[[], None]:
-    """Return a cleanup callable that also flushes the display's writers.
-
-    A serial run ends with neither ``drop_unit`` (parallel-only) nor
-    ``ParallelDisplay.stop()`` -- the cleanup step named "display stop"
-    invokes the width refresher's stop, which is what ``refresher_stop``
-    holds. Composing the display's own run-end flush onto it is what
-    makes buffered rendered entries and condensed bodies reach disk on
-    the primary run path; without it the condensation markers advertise
-    files that were never written.
-
-    The flush runs in a ``finally`` so a refresher failure cannot skip
-    it, and is suppressed so cleanup never raises.
-    """
 
     def _stop_with_run_end_flush() -> None:
         try:
@@ -582,16 +465,6 @@ def _setup_active_display(
     workspace_scope: WorkspaceScope,
     policy_bundle: PolicyBundle,
 ) -> tuple[ParallelDisplay, DisplayContext, Callable[[], None]]:
-    """Resolve active display and display context; return (display, ctx, stop_fn).
-
-    The returned ``DisplayContext`` is ``active._ctx`` itself (the same
-    Python object, not a snapshot copy). The width refresher mutates
-    that object in place via
-    :func:`_sync_live_display_context` so callers holding the
-    returned reference automatically see the post-refresh width —
-    there is no divergence between ``LoopContext.display_context``
-    and ``active._ctx`` after a SIGWINCH or poll-refresh tick.
-    """
     if display is not None:
         resolved_ctx = display._ctx
     elif display_context is not None:
@@ -619,23 +492,12 @@ def _setup_active_display(
             ctx_holder,
             on_refresh=lambda ctx: _sync_live_display_context(
                 cast("_DisplayContextOwner", active),
-                ctx,  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                ctx,
             ),
         )
 
-    # A serial run ends with neither ``drop_unit`` (parallel-only) nor
-    # ``ParallelDisplay.stop()`` -- the cleanup step named "display stop"
-    # runs the width refresher's stop, which is what ``_stop`` holds
-    # here. Compose the display's own run-end flush onto it so buffered
-    # rendered entries and condensed bodies reach disk, instead of the
-    # markers advertising files that were never written.
     _stop = compose_display_stop(_stop, active)
 
-    # Return ``active._ctx`` so the caller holds the SAME Python object
-    # the refresher mutates in place. This way, after a refresh tick
-    # both ``LoopContext.display_context`` and ``active._ctx`` observe
-    # the same updated width (the in-place mutation preserves object
-    # identity across refreshes; see ``_sync_live_display_context``).
     live_ctx: DisplayContext = active._ctx if ctx_holder is not None else resolved_ctx
     return active, live_ctx, _stop
 
@@ -644,14 +506,13 @@ def _emit_run_start(
     ctx: LoopContext,
     state: PipelineState,
 ) -> None:
-    """Emit run-start banner to display if it supports it."""
     if not hasattr(ctx.active_display, "emit_run_start"):
         return
     with suppress(Exception):
         _prompt_path_raw: object = getattr(ctx.effective_pipeline_subscriber, "_prompt_path", None)
         _prompt_path: str | None = cast(
             "str | None", _prompt_path_raw
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         _dev_para = next(
             (
                 p.parallelization
@@ -676,10 +537,10 @@ def _emit_run_start(
             prompt_path=_prompt_path,
             developer_agent=cast(
                 "str | None", _dev_agent_raw
-            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            ),
             developer_model=cast(
                 "str | None", _dev_model_raw
-            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            ),
             developer_iters=ctx.config.general.developer_iters,
             parallel_max_workers=_parallel_max_workers,
             plan_present=_plan_present,
@@ -691,7 +552,6 @@ def _emit_run_start(
 
 
 def _target_worktree_path(ctx: LoopContext) -> str | None:
-    """Return the target-owner path for the run banner, if it can be safely resolved."""
     target: object = getattr(ctx.config.general, "auto_integrate_target", None)
     if not isinstance(target, str) or not target:
         return None
@@ -706,7 +566,6 @@ def log_waiting_state(
     unavail_reason: str,
     delay_ms: int,
 ) -> None:
-    """Log the one-shot WAITING entry for an all-agents-unavailable phase."""
     sig = (phase_str, unavail_reason)
     if ctx.last_waiting_state_sig == sig:
         return
@@ -715,11 +574,6 @@ def log_waiting_state(
     chain = state.chain_for_phase(state.phase)
     agent_cooldowns: list[tuple[str, int, int]] = []
     if chain is not None:
-        # Public surface only: the controller exposes a structured payload
-        # that wraps the unavailability-store access so the run loop does
-        # not reach through to the private ``_unavailability_tracker`` or
-        # the tracker's ``_clock``. This is the seam for a future
-        # persistent (sqlite, redis, file) store.
         agent_cooldowns = ctx.controller.waiting_state_payload(phase_str, chain.agents)
 
     logger.bind(recovery=True).info(
@@ -740,12 +594,6 @@ def _log_waiting_state(
     unavail_reason: str,
     delay_ms: int,
 ) -> None:
-    """Compatibility seam over :func:`log_waiting_state`.
-
-    The private name is the established call surface of the run loop
-    (and of the suites that replace it), so it stays and delegates to
-    the public seam; either name can therefore be replaced by a caller.
-    """
     log_waiting_state(state, ctx, phase_str, unavail_reason, delay_ms)
 
 
@@ -761,10 +609,6 @@ def _log_resumed_state(
     chain = state.chain_for_phase(state.phase)
     agents_now_available: list[str] = []
     if chain is not None:
-        # Public surface only: the controller exposes
-        # ``agents_now_available`` so the run loop does not reach through
-        # to the private ``_unavailability_tracker``. This is the seam
-        # for a future persistent (sqlite, redis, file) store.
         agents_now_available = ctx.controller.agents_now_available(phase_str, chain.agents)
     logger.bind(recovery=True).info(
         "Phase '{phase}' RESUMED: cooldown expired. "
@@ -787,31 +631,6 @@ def _build_status_bar_model(
     run_started_monotonic: float | None = None,
     attention: str | None = None,
 ) -> StatusBarModel:
-    """Build a :class:`StatusBarModel` from the live pipeline state.
-
-    Display-only: does not change workflow routing, phase semantics, or
-    iteration budgets. The 1-indexed ``outer_dev_iteration`` comes from
-    :func:`build_phase_entry_model_from_state` (completed+1) and is the
-    same value the phase-start banner surfaces; ``inner_analysis`` comes from
-    ``AnalysisLoopCounter.display_iteration``. The status bar at the bottom
-    of the terminal reads from this model so operators can see the active
-    working directory, phase, and applicable cycle counts without scrolling.
-
-    P0 (wt-028-display AC-01): ``run_started_monotonic`` is the
-    ``time.monotonic`` anchor captured when the run started. When
-    present, the renderer recomputes elapsed on every Live tick so
-    the bar keeps ticking during quiet agent turns without a model
-    re-push. ``None`` keeps the existing snapshot-elapsed contract.
-
-    wt-047-stall-label: the ``last_activity_monotonic`` parameter was
-    removed (zero dead code). The watchdog is the sole owner of the
-    STALLED label and surfaces its state via the host's
-    ``watchdog_attention`` slot (``StatusBar._model_with_live_attention``);
-    a separate display-side 30s gap derivation is no longer needed.
-    ``attention`` carries the explicit attention state (``waiting`` /
-    ``retrying`` / ``terminated``) so a run-end or operator-pushed
-    state can take precedence over the watchdog-sourced stall.
-    """
     entry = build_phase_entry_model_from_state(state.phase, state, policy_bundle.pipeline)
     phase_style = phase_style_for_phase(state.phase, policy_bundle.pipeline)
     entry_agent_name: object = getattr(entry, "agent_name", None)
@@ -833,21 +652,12 @@ def _build_status_bar_model(
 
 
 def integration_alert_for_state(state: PipelineState) -> str | None:
-    """Alert text while the last auto-integrate outcome blocks integration.
-
-    A typed ladder escalation (a spent conflict cap or an exhausted
-    resolution ladder) names the next autonomous ladder rung and the
-    preserved copy's location — never a person.
-    """
     rebase = state.rebase
     if (
         rebase.is_intervention_required
         or rebase.last_decision == PhaseDecision.REPORT_INTERVENTION_REQUIRED.value
         or rebase.operation_display_state == "intervention_required"
     ):
-        # Legacy checkpoints may still carry the retired hand-off
-        # outcome; the live escalation is the typed LADDER_ESCALATION.
-        # Either way the fallback ladder owns the next action.
         return (
             "autonomous fallback ladder escalation — preserved copy: backup refs; "
             "next autonomous rung: preserve the work, then climb the cleanup ladder"
@@ -868,44 +678,16 @@ def integration_alert_for_state(state: PipelineState) -> str | None:
 
 
 def _integration_alert_for_state(state: PipelineState) -> str | None:
-    """Compatibility seam over :func:`integration_alert_for_state`.
-
-    The private name is the established call surface of the run loop
-    (and of the suites that replace it), so it stays and delegates to
-    the public seam; either name can therefore be replaced by a caller.
-    """
     return integration_alert_for_state(state)
 
 
 def _attention_state_for_state(state: PipelineState) -> str | None:
-    """Return the explicit attention state to push to the Status Bar.
-
-    P0 (wt-028-display S-2 / AC-01): the run loop owns the truth
-    about whether the run is healthy, waiting, retrying, or has
-    terminated. Here we report operator-pushed states that must
-    take precedence over the watchdog-sourced stall: a pushed
-    ``waiting`` / ``retrying`` / ``terminated`` always wins so a
-    run-end or operator-visible state can override the watchdog
-    signal. ``None`` leaves the attention slot empty so the Status
-    Bar host can substitute the watchdog-sourced attention in
-    (see :func:`_build_status_bar_model` and
-    :meth:`ralph.display.status_bar.StatusBar._model_with_live_attention`).
-    There is NO display-side activity-gap derivation -- the
-    watchdog is the single source of truth for ``stalled`` and
-    surfaces it through the host's ``watchdog_attention`` slot.
-
-    The mapping is read defensively from ``state`` so a fake /
-    legacy state object without the new slots never breaks the
-    status bar push.
-    """
     run_outcome: object = getattr(state, "run_outcome", None)
     outcome_attention = {
         "failed": "failed",
         "error": "failed",
         "cancelled": "cancelled",
         "completed": "completed",
-        # The final run-loop push uses this phase-neutral outcome; it must
-        # occupy the terminal attention slot even for failed_terminal.
         "terminated": "terminated",
     }
     if isinstance(run_outcome, str) and run_outcome in outcome_attention:
@@ -930,17 +712,6 @@ def _push_status_bar_if_changed(
     last_sig: tuple[str, int | None, int | None, str | None, str | None, str | None, str | None]
     | None,
 ) -> tuple[str, int | None, int | None, str | None, str | None, str | None, str | None] | None:
-    """Push a fresh :class:`StatusBarModel` only when the (phase, cycle, alert, label) signature changes.
-
-    The integration alert participates in the signature so the bar
-    repushes the moment a conflict appears or clears, not only on the
-    next phase change. ``outer_label`` is in the signature too so a
-    label transition (e.g. ``Cycle`` -> ``Remediation`` -> ``Round``)
-    forces a repaint instead of silently inheriting the previous label.
-    Returns the new signature so the caller's closure-local
-    ``last_status_sig`` stays current. Defensive: any failure is
-    swallowed. Pass ``last_sig=None`` for an unconditional initial push.
-    """
     with suppress(Exception):
         elapsed_seconds = (
             active_display.run_elapsed_seconds
@@ -952,15 +723,6 @@ def _push_status_bar_if_changed(
             if isinstance(active_display, ParallelDisplay)
             else None
         )
-        # wt-047-stall-label: forward the watchdog-sourced attention
-        # via the host's ``watchdog_attention`` slot only (the
-        # display-side ``last_activity_monotonic`` plumbing is gone,
-        # zero dead code). ``attention`` carries the explicit
-        # operator-pushed state when the run loop pushes one
-        # (waiting / retrying / terminated); ``None`` keeps the
-        # existing snapshot-only contract for pushed attention and
-        # lets the host's ``_model_with_live_attention`` substitute
-        # the watchdog-sourced value on each Live tick.
         attention = _attention_state_for_state(state)
         model = _build_status_bar_model(
             state,
@@ -986,13 +748,6 @@ def _push_status_bar_if_changed(
 
 
 def _sweep_orphaned_git_locks(workspace_scope: WorkspaceScope) -> None:
-    """Clear git locks orphaned by a crashed previous run before any phase runs.
-
-    A ``kill -9``, OOM kill or power loss cannot be made graceful, so a run
-    must start from a repository whose dead locks are gone. Each lock passes the
-    same age + proven-no-live-holder + unchanged-identity gate as in-call
-    recovery; a held or unprovable lock is left alone. Never blocks startup.
-    """
     try:
         from ralph.git._lock_recovery import reap_stale_locks
         from ralph.pipeline._auto_integrate_recovery_git_state import (
@@ -1013,32 +768,13 @@ def _sweep_orphaned_git_locks(workspace_scope: WorkspaceScope) -> None:
 def run_auto_integrate_recovery_preamble(
     workspace_scope: WorkspaceScope,
     config: UnifiedConfig | None = None,
-    *,  # keyword-only seam for backend injection
+    *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
     force_retry: bool = False,
     conflict_resolver: ConflictResolver | None = None,
     rebase_stop_resolver: RebaseStopResolver | None = None,
     recovery_controller: RecoveryController | None = None,
 ) -> RebaseState | None:
-    """Crash-recovery preamble: reconcile any interrupted auto-integrate step.
-
-    Called from :func:`_run_inner_loop` BEFORE the pipeline starts.
-    The recover function aborts any owned engine rebase / merge,
-    then either restores the feature branch to its pre-integration
-    SHA (phase='integrating') or safely continues the unfinished
-    fast-forward (phase='integrated'). It must never abort startup
-    -- a defensive try/except keeps any unexpected failure from
-    blocking the run.
-
-    Returns the recovery :class:`RebaseState` (or ``None`` when no
-    record existed / the recovery was a no-op) so the caller can
-    thread the outcome into ``state.copy_with(rebase=recovered)``
-    and persist it via the existing checkpoint path. Discarding the
-    recovery outcome here would mean the resume run continues with
-    the pre-crash ``PipelineState.rebase`` and the operator never
-    sees the recovered / skipped / restored verdict in the next
-    receipt.
-    """
     _sweep_orphaned_git_locks(workspace_scope)
     try:
         from ralph.pipeline.auto_integrate import recover_incomplete_integration
@@ -1063,7 +799,7 @@ def run_auto_integrate_recovery_preamble(
             recovery_controller=recovery_controller,
             force_retry=force_retry,
         )
-    except Exception as recover_exc:  # pragma: no cover -- defensive
+    except Exception as recover_exc:
         logger.warning("auto_integrate recovery preamble failed: {}", recover_exc)
         return None
     if recovered is not None:
@@ -1077,15 +813,6 @@ _run_auto_integrate_recovery_preamble = run_auto_integrate_recovery_preamble
 def _run_startup_integration(
     ctx: LoopContext, state: RebaseState | None = None
 ) -> RebaseState | None:
-    """Integrate the branch onto the target BEFORE the first phase runs.
-
-    A run started (or resumed) on a stale branch must not plan or
-    develop against old code: the same clean-worktree boundary hook
-    used at phase transitions runs once at startup so the feature
-    branch begins from the current target tip. Silent no-op when the
-    worktree is dirty, the feature is disabled, or nothing moved.
-    Never raises.
-    """
     try:
         resolver = build_agent_conflict_resolver(
             policy_bundle=ctx.policy_bundle,
@@ -1122,16 +849,13 @@ def _run_startup_integration(
             ),
             display=ctx.active_display,
         )
-    except Exception as startup_exc:  # pragma: no cover -- defensive
+    except Exception as startup_exc:
         logger.warning("startup auto-integrate failed: {}", startup_exc)
         return None
     with suppress(Exception):
         if outcome is not None:
             _runner_module._log_auto_integrate_outcome(ctx.active_display, outcome)
         else:
-            # The startup check must never be invisible: even the
-            # nothing-to-do outcome prints one line so an operator can
-            # tell the sync ran (vs. silently not existing).
             ctx.active_display.emit(
                 "run",
                 "[cyan]auto-integrate:[/cyan] startup check: nothing to"
@@ -1144,7 +868,6 @@ def _run_startup_integration(
 def run_startup_integration(
     ctx: LoopContext, state: RebaseState | None = None
 ) -> RebaseState | None:
-    """Public seam for startup integration."""
     if _run_startup_integration is not _run_startup_integration_dispatch:
         return _run_startup_integration(ctx, state)
     return _run_startup_integration_impl(ctx, state)
@@ -1167,19 +890,6 @@ def _save_recovered_rebase_checkpoint(
     state: PipelineState,
     ctx: LoopContext,
 ) -> None:
-    """Persist the recovery-threaded ``state`` to the same checkpoint path the runner uses.
-
-    The recovery preamble in :func:`_run_auto_integrate_recovery_preamble`
-    can return a :class:`RebaseState` that must be persisted before
-    the main loop starts -- otherwise the resume run continues with
-    the pre-crash ``state.rebase`` and the recovered verdict is
-    dropped on the floor. The runner's
-    ``_save_checkpoint_or_log(next_state, ...)`` is the canonical
-    writer; we delegate through ``_runner_module`` so the same
-    formatting / fallback / path-resolution behavior is reused. The
-    failure mode (log + continue) mirrors the runner's contract: a
-    failed save must never abort the run.
-    """
     hooks = _retry_hooks(ctx)
     if hooks.save_checkpoint is not None:
         hooks.save_checkpoint(state, ctx)
@@ -1200,7 +910,7 @@ def _save_recovered_rebase_checkpoint(
             message=("Checkpoint save failed while persisting auto-integrate recovery: {err}"),
             path=_runner_module._checkpoint_path(ctx.workspace_scope),
         )
-    except Exception as save_exc:  # pragma: no cover -- defensive
+    except Exception as save_exc:
         logger.warning("auto_integrate recovery checkpoint save failed: {}", save_exc)
 
 
@@ -1208,7 +918,6 @@ def save_recovered_rebase_checkpoint(
     state: PipelineState,
     ctx: LoopContext,
 ) -> None:
-    """Public seam for saving recovered rebase checkpoint."""
     if _save_recovered_rebase_checkpoint is not _save_recovered_rebase_checkpoint_dispatch:
         _save_recovered_rebase_checkpoint(state, ctx)
         return
@@ -1232,14 +941,6 @@ _public_save_recovered_rebase_checkpoint_dispatch = save_recovered_rebase_checkp
 
 @dataclass(frozen=True)
 class _RunCollaborators:
-    """Resolved collaborators for :func:`run`.
-
-    Bundles the dependency-injection output of
-    :func:`_resolve_run_collaborators` so :func:`run` stays narrow
-    -- the precedence cascade (pipeline_deps > pro_hooks > defaults
-    vs the legacy factory kwargs) is the bulk of the function's
-    complexity and lives in the helper.
-    """
 
     policy_bundle: PolicyBundle
     registry: _RegistryLike
@@ -1261,12 +962,6 @@ def _resolve_policy_bundle(
     pro_hooks: ProPipelineHooks | None,
     policy_bundle_factory: Callable[[WorkspaceScope, UnifiedConfig], PolicyBundle] | None,
 ) -> PolicyBundle:
-    """Resolve the :class:`PolicyBundle` with the standard DI precedence.
-
-    Precedence: ``pipeline_deps.policy_bundle`` (or its factory) >
-    ``pro_hooks.policy_bundle_override`` (or its factory) > legacy
-    ``policy_bundle_factory`` kwarg > production default.
-    """
     if pipeline_deps is not None:
         if pipeline_deps.policy_bundle is not None:
             return pipeline_deps.policy_bundle
@@ -1287,15 +982,14 @@ def _resolve_registry(
     pro_hooks: ProPipelineHooks | None,
     registry_factory: Callable[[UnifiedConfig], _RegistryLike] | None,
 ) -> _RegistryLike:
-    """Resolve the agent registry with the standard DI precedence."""
     if pipeline_deps is not None and pipeline_deps.registry_factory is not None:
         return cast(
             "_RegistryLike", pipeline_deps.registry_factory(config)
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
     if pro_hooks is not None and pro_hooks.registry_factory is not None:
         return cast(
             "_RegistryLike", pro_hooks.registry_factory(config)
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
     if registry_factory is not None:
         return registry_factory(config)
     return _runner_module.AgentRegistry.from_config(config)
@@ -1305,7 +999,6 @@ def _with_counter_overrides(
     state: PipelineState,
     counter_overrides: dict[str, int] | None,
 ) -> PipelineState:
-    """Return the state with any explicitly requested budget caps applied."""
     if not counter_overrides:
         return state
     updated = {**state.budget_caps, **counter_overrides}
@@ -1336,46 +1029,18 @@ def _initialize_resumed_timeboxes(
     return state
 
 
-#: Namespace the run-start baseline seal lives under. The baseline is
-#: deliberately OUTSIDE the proposal namespace (``refs/ralph/proposals``) so
-#: the proposal sweep can never prune it and no commit can source a tree
-#: from it.
 _BASELINE_REF_NAMESPACE: Final = "refs/ralph/baselines"
 
 
 def _capture_rollback_baseline(state: PipelineState, root: Path | None) -> PipelineState:
-    """Record the run-start baseline seal when the working tree is dirty.
-
-    A run that starts on a dirty tree must not lose the user's pre-existing
-    uncommitted work when a commit-review rejection rolls the tree back: a
-    ``reset``-style restore to ``HEAD`` deletes exactly that work. The
-    baseline seal captures the dirty state in an isolated ref
-    (``refs/ralph/baselines/<run id>``) through the temporary-index route,
-    so the real ``.git/index`` is never written.
-
-    Args:
-        state: The state the run starts from.
-        root: The workspace root, or ``None`` when the run has no workspace
-            (a non-Git workspace cannot hold a baseline).
-
-    Returns:
-        The state with ``rollback_baseline_ref`` pointing at the sealed
-        baseline, or the state unchanged when the tree was clean.
-    """
     if root is None or state.rollback_baseline_ref:
         return state
     run_id = uuid.uuid4().hex
     try:
         seal = seal_baseline(root, run_id, force=False)
     except (InvalidGitRepositoryError, NoSuchPathError):
-        # Not a Git workspace: there is no tree to protect, and no rollback
-        # is possible there either.
         return state
     except Exception as exc:
-        # The tree was dirty and could not be sealed. Record the ref the seal
-        # WOULD have created: it does not resolve, so the rollback fails
-        # closed as a gate failure instead of restoring to HEAD and
-        # destroying the very work the baseline was meant to protect.
         logger.error("Failed to seal the run-start baseline: {}", exc)
         return state.copy_with(rollback_baseline_ref=f"{_BASELINE_REF_NAMESPACE}/{run_id}")
     if seal is None:
@@ -1396,7 +1061,6 @@ def _create_initial_state(
     | None,
     counter_overrides: dict[str, int] | None,
 ) -> PipelineState:
-    """Create the state a fresh run starts from (standard DI precedence)."""
     if pipeline_deps is not None and pipeline_deps.state_factory is not None:
         return pipeline_deps.state_factory(
             config,
@@ -1441,18 +1105,6 @@ def _resolve_initial_state(
     *,
     workspace_root: Path | None = None,
 ) -> PipelineState:
-    """Resolve the initial :class:`PipelineState` with the standard DI precedence.
-
-    A resumed run adopts the checkpoint's state, but explicit counter
-    overrides are the operator's newest instruction and outrank the caps
-    frozen into it — without this a resumed run silently ignored a raised
-    budget, reported it as spent, and terminated at the next final commit.
-
-    A FRESH run records the run-start baseline (see
-    :func:`_capture_rollback_baseline`); a resumed run keeps the baseline
-    its checkpoint already carries, so the user's pre-existing uncommitted
-    work survives a rejection rollback across a restart.
-    """
     if initial_state is not None:
         resumed = initial_state
         if (
@@ -1462,27 +1114,12 @@ def _resolve_initial_state(
             and resumed.rollback_ref
         ):
             root = workspace_root if workspace_root is not None else Path()
-            # A pending rollback that cannot be preflighted is a GATE
-            # FAILURE, never a rollback attempt: the tree keeps the state it
-            # had, the proposal ref is kept, and the run stops on the
-            # policy's failure route instead of restoring blindly.
-            #
-            # The resumed restore is guarded by the SAME durable contract as
-            # the runner's: the pending marker is persisted before the
-            # destructive restore and the durable clear after it, in the ONE
-            # file the restore cannot delete (see
-            # ``ralph.pipeline.runner.rollback_checkpoint_path_for_root``).
             resumed = _runner_module.execute_pending_rollback(
                 resumed,
                 root,
                 policy_bundle.pipeline,
             )
 
-        # Legacy checkpoints carry no cycle timing; initialize it HERE, in the
-        # one seam every resumed run passes through, so the wiring cannot be
-        # deleted while the tests that cover resuming stay green. Guarded: this
-        # seam is also reached with stub policy bundles that carry no phase
-        # graph, and a resumed run must never fail to start over timing setup.
         with suppress(AttributeError, TypeError):
             current_epoch = _resume_epoch(pipeline_deps)
             resumed = _initialize_resumed_timeboxes(resumed, policy_bundle.pipeline, current_epoch)
@@ -1503,7 +1140,6 @@ def _resolve_recovery_sleep(
     pro_hooks: ProPipelineHooks | None,
     recovery_sleep_kwarg: Callable[[float], None] | None,
 ) -> Callable[[float], None]:
-    """Resolve the recovery-sleep callable with the standard DI precedence."""
     if pipeline_deps is not None and pipeline_deps.recovery_sleep is not None:
         return pipeline_deps.recovery_sleep
     if pro_hooks is not None and pro_hooks.recovery_sleep is not None:
@@ -1525,7 +1161,6 @@ def _resolve_recovery_controller(
     ]
     | None,
 ) -> RecoveryController:
-    """Resolve the :class:`RecoveryController` with the standard DI precedence."""
     if pipeline_deps is not None and pipeline_deps.recovery_controller_factory is not None:
         controller, _ = pipeline_deps.recovery_controller_factory(state, policy_bundle, config)
         return controller
@@ -1535,11 +1170,6 @@ def _resolve_recovery_controller(
     if recovery_controller_factory is not None:
         controller, _ = recovery_controller_factory(state, policy_bundle, config)
         return controller
-    # The default builder restores the ledger from the checkpoint's
-    # ledger_snapshot; only the clock is injectable (default SystemClock).
-    # When no clock is injected, call with the exact pre-seam signature so
-    # legacy patch-based callers (lambdas without a ``clock`` parameter)
-    # keep working.
     clock = pipeline_deps.recovery_clock if pipeline_deps is not None else None
     if clock is not None:
         controller, _ = _build_recovery_controller(state, policy_bundle, config, clock=clock)
@@ -1553,7 +1183,6 @@ def _resolve_marker_watcher_factory(
     pro_hooks: ProPipelineHooks | None,
     marker_watcher_factory: Callable[[Path], ProMarkerWatcher] | None,
 ) -> Callable[[Path], ProMarkerWatcher] | None:
-    """Resolve the marker-watcher factory with the standard DI precedence."""
     if pipeline_deps is not None:
         return pipeline_deps.marker_watcher_factory
     if pro_hooks is not None and pro_hooks.marker_watcher_factory is not None:
@@ -1566,7 +1195,6 @@ def _resolve_snapshot_registry(
     pro_hooks: ProPipelineHooks | None,
     snapshot_registry: SnapshotRegistry | None,
 ) -> SnapshotRegistry | None:
-    """Resolve the snapshot registry with the standard DI precedence."""
     if pipeline_deps is not None:
         return pipeline_deps.snapshot_registry
     if pro_hooks is not None and pro_hooks.snapshot_registry is not None:
@@ -1600,12 +1228,6 @@ def _resolve_run_collaborators(
     verbosity: Verbosity | None = None,
     connectivity_monitor: _ConnectivityMonitorLike | None = None,
 ) -> _RunCollaborators:
-    """Resolve every run-loop collaborator via the standard DI precedence cascade.
-
-    Extracted from :func:`run` so the entrypoint's branch / statement
-    count stays sensible while keeping the precedence table in one
-    auditable place.
-    """
     policy_bundle = _resolve_policy_bundle(
         workspace_scope, config, pipeline_deps, pro_hooks, policy_bundle_factory
     )
@@ -1659,13 +1281,6 @@ def _normalize_run_verbosity(
     *,
     verbosity: Verbosity | None,
 ) -> Verbosity:
-    """Normalize the verbosity for :func:`run`.
-
-    Honours the explicit ``verbosity`` kwarg when supplied; otherwise
-    reads ``config.general.verbosity``. ``normalize_verbosity`` accepts
-    both ``Verbosity`` enums and integer ranks and returns the
-    canonical ``Verbosity`` instance.
-    """
     if verbosity is not None:
         return normalize_verbosity(verbosity)
     return normalize_verbosity(config.general.verbosity)
@@ -1675,15 +1290,6 @@ def _apply_legacy_heartbeat_override(
     workspace_root: Path,
     default_client: ProHeartbeatClient | None,
 ) -> ProHeartbeatClient | None:
-    """Apply the monkey-patch override of ``_start_pro_heartbeat_if_active``.
-
-    The legacy public helper is monkey-patched in many tests to inject
-    a recording heartbeat. When the test replaced it, honour that
-    override so the run loop's heartbeat_client matches what the test
-    observed when the monkey-patch was applied. The watcher above is
-    kept running so late-marker adoption still works when no override
-    is supplied.
-    """
     _module_legacy_obj: object
     _self_dict: dict[str, object] = sys.modules[__name__].__dict__
     try:
@@ -1701,7 +1307,6 @@ def _apply_legacy_heartbeat_override(
 
 
 def _resolve_recovery_display_interval(config: UnifiedConfig) -> float:
-    """Resolve the recovery-display interval from config (fallback to default)."""
     raw: object = getattr(
         config.general,
         "agent_waiting_status_interval_seconds",
@@ -1713,14 +1318,6 @@ def _resolve_recovery_display_interval(config: UnifiedConfig) -> float:
 
 
 def _announce_deferred_startup_integration(ctx: LoopContext, recovered: RebaseState) -> None:
-    """Tell the operator why the startup catch-up was skipped this run.
-
-    A deferral that only appeared in the log file would read exactly
-    like the reported "auto rebase silently does nothing", so the
-    retained-record reason goes to the transcript through the same
-    duck-typed warn seam every other integration decline uses. Never
-    raises: a display that cannot take the line must not abort startup.
-    """
     with suppress(Exception):
         emit_integration_warn_line(
             ctx.active_display,
@@ -1732,35 +1329,9 @@ def _announce_deferred_startup_integration(ctx: LoopContext, recovered: RebaseSt
 def _apply_startup_rebase_outcomes(
     state: PipelineState,
     ctx: LoopContext,
-    *,  # keyword-only seam for backend injection
+    *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> PipelineState:
-    """Run crash recovery + startup integration; thread outcomes into state.
-
-    The recovery outcome is threaded into the persisted checkpoint
-    BEFORE the loop starts, mirroring the post-commit auto-integrate
-    wiring in ``runner._run_pipeline_step`` — otherwise a resume run
-    continues with the pre-crash ``state.rebase`` and the operator
-    never sees the recovered verdict in the next receipt. The startup
-    catch-up then integrates a stale branch onto the target BEFORE the
-    first phase so planning never reads old code.
-
-    The catch-up is SKIPPED when recovery came back still owning the
-    durable integration record
-    (:func:`~ralph.pipeline.auto_integrate_recovery.recovery_retained_record`).
-    Integrating there would write a fresh
-    ``IntegrationRecord(phase='integrating', ...)`` over the retained
-    one before any git mutation, destroying the pre-integration feature
-    SHA the next recovery attempt needs.
-
-    That skip is scoped to THIS seam only. The in-run seams -- the
-    commit seam and the phase boundaries -- are deliberately not gated
-    on it: gating them would disable auto-integration for the whole run
-    over a transient recovery fault and strand this agent off the
-    shared mainline, which is the failure auto-integration exists to
-    prevent. The retained record is retried by recovery at the next
-    process startup.
-    """
     from ralph.pipeline.factory import PipelineDeps
     from ralph.pipeline.state import PipelineState as RuntimePipelineState
 
@@ -1785,13 +1356,6 @@ def _apply_startup_rebase_outcomes(
             state = state.copy_with(rebase=reconcile_stale_unresolved_state(state.rebase))
         _save_recovered_rebase_checkpoint(state, ctx)
         if recovery_retained_record(state.rebase):
-            # Recovery could not reconcile the interrupted integration
-            # and left its durable record on disk for the next startup.
-            # That record is still the only description of the
-            # interrupted operation, and the startup catch-up below
-            # would overwrite it with a record of its OWN before
-            # touching git. Hand this startup back to recovery instead;
-            # the checkpoint already carries the retained outcome.
             _announce_deferred_startup_integration(ctx, recovered_rebase)
             return state
     startup_rebase = _run_startup_integration(ctx, state.rebase)
@@ -1808,7 +1372,6 @@ def _reselect_preferred_agent(
     *,
     allow_wait: bool = True,
 ) -> PipelineState:
-    """Select the highest-priority available agent for the state's phase."""
     chain = state.chain_for_phase(state.phase)
     if chain is not None and hasattr(ctx.controller, "preferred_agent_index"):
         selection = ctx.controller.preferred_agent_index(str(state.phase), chain.agents)
@@ -1843,7 +1406,6 @@ def _resume_after_cooldown_wait(
     unavailability_reason: str,
     delay_ms: int,
 ) -> PipelineState:
-    """Emit resume status and select the highest-priority available agent."""
     emit_activity_line(
         ctx.active_display,
         None,
@@ -1861,7 +1423,6 @@ def _announce_conflict_resolution_entry(
     ctx: LoopContext,
     verdict: IntegrationResolutionVerdict,
 ) -> None:
-    """Tell the operator that blocking evidence is entering conflict resolution."""
     detail = "; ".join(reason for reason in verdict.reasons if isinstance(reason, str))
     with suppress(Exception):
         emit_integration_warn_line(
@@ -1875,7 +1436,6 @@ def announce_conflict_resolution_entry(
     ctx: LoopContext,
     verdict: IntegrationResolutionVerdict,
 ) -> None:
-    """Public seam for announcing conflict resolution entry."""
     if _announce_conflict_resolution_entry is not _announce_conflict_resolution_entry_dispatch:
         _announce_conflict_resolution_entry(ctx, verdict)
         return
@@ -1901,12 +1461,11 @@ _public_announce_conflict_resolution_entry_dispatch = announce_conflict_resoluti
 
 
 def _integration_target_or_none(ctx: LoopContext) -> str | None:
-    """Resolve the integration target, or ``None`` when it cannot be read."""
     from ralph.pipeline.auto_integrate import resolve_integration_target
 
     try:
         return resolve_integration_target(ctx.config, ctx.workspace_scope.root)
-    except Exception as target_exc:  # pragma: no cover -- defensive
+    except Exception as target_exc:
         logger.warning("integration resolution: unable to resolve target: {}", target_exc)
         return None
 
@@ -1942,7 +1501,6 @@ def run_integration_conflict_resolution(
     ctx: LoopContext,
     rebase: RebaseState | None = None,
 ) -> bool:
-    """Public seam for integration conflict resolution."""
     if _run_integration_conflict_resolution is not _run_integration_conflict_resolution_dispatch:
         return _run_integration_conflict_resolution(ctx, rebase)
     return _run_integration_conflict_resolution_impl(ctx, rebase)
@@ -1966,19 +1524,6 @@ _public_run_integration_conflict_resolution_dispatch = run_integration_conflict_
 
 
 def _conflict_identity_or_default(ctx: LoopContext, target: str) -> ConflictIdentity:
-    """Read the conflict identity this seam is standing in.
-
-    The budget is spent on ONE conflict, and this seam can see which
-    one: it is standing in the worktree that holds it. Consulting the
-    budget without an identity spends the default that matches every
-    conflict, so a genuinely NEW conflict inherits the exhausted count
-    of an older one and is escalated without a resolver ever running --
-    while the operator line calls it "this unchanged conflict".
-
-    Observation reads git, so it can fail; this seam never raises, and
-    an unreadable identity keeps the conservative default that matches
-    every conflict rather than handing out a budget on a guess.
-    """
     from ralph.pipeline.auto_integrate_budget_seam import observe_conflict_identity
     from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity
 
@@ -1998,29 +1543,6 @@ def _cold_capped_escalation_due(
     ledger: AgentFailureLedger | None = None,
     candidates: tuple[str, ...] = (),
 ) -> bool:
-    """Whether the session-scoped cold-capped escalation must run now.
-
-    Cold-capped escalation (O1 retry-progress rule, distinct from the
-    ordinary resolver suppression). The previous behaviour returned False
-    at this point WITHOUT consulting a resolver, leaving a cold-capped
-    ``RebaseState`` (one that loaded with ``resolution_exhausted=True``)
-    as an unresolvable dead end. The O1 contract requires that a cold-capped
-    state still receive ONE session-scoped automated escalation that
-    re-derives from live Git (the cached state may be stale -- a
-    concurrent push or a previous worktree's resolution may already have
-    cleared the conflict) and adopts a successful resolver result.
-
-    The ``cold_capped_escalation_attempted`` flag makes this a
-    one-shot per session, so a subsequent cold-capped call falls through
-    to the ordinary suppressed branch (which already escalates to the
-    typed LADDER_ESCALATION outcome without spinning). The cap is NEVER reset or
-    raised -- the escalation is purely additive, distinct from the
-    ordinary resolver suppression. The cold-capped condition is
-    identity-aware (the same identity that already exhausted its
-    resolution ladder must still be the conflict on disk now): a
-    different conflict is not refused by ``resolver_allowed`` and falls
-    through to the ordinary path.
-    """
     from ralph.pipeline.auto_integrate_conflict_budget import resolver_allowed
 
     if not rebase.resolution_exhausted:
@@ -2035,8 +1557,6 @@ def _cold_capped_escalation_due(
         return False
     session_attempted: bool = getattr(ctx, "cold_capped_escalation_attempted", False)
     if session_attempted:
-        # Same-session re-entry: the escalation already ran. Do not
-        # spin -- the budget gate handles the escalation.
         return False
     ctx.cold_capped_escalation_attempted = True
     logger.warning(
@@ -2058,16 +1578,6 @@ def _resolve_blocking_conflict(
     target: str,
     rebase: RebaseState | None,
 ) -> bool:
-    """Run the resolver that matches the live blocking evidence.
-
-    A paused REBASE is not a merge, and it is the commoner blocking
-    state. Handing it the merge resolver built one and dropped it: the
-    seam returned False having invoked nobody, the startup seam then
-    deferred on the (always dirty) conflicted worktree, and the run
-    exited with zero resolution attempts against a conflict a resolver
-    was standing right there to fix. Decide WHICH resolver is needed
-    before building one, so the wrong one cannot be the fallback.
-    """
     paused_probe = _retry_hooks(ctx).paused_rebase_at or _paused_rebase_at
     if paused_probe(ctx.workspace_scope.root):
         return _resolve_paused_rebase_with_history(ctx, target, rebase)
@@ -2087,19 +1597,12 @@ def _resolve_blocking_conflict(
                 else ()
             ),
         )
-    except Exception as build_exc:  # pragma: no cover -- defensive
+    except Exception as build_exc:
         logger.warning("integration resolution executor failed: {}", build_exc)
         return False
     complete_merge = _retry_hooks(ctx).complete_in_progress_merge or _complete_in_progress_merge
     if complete_merge(ctx.workspace_scope.root, target, resolver):
         return True
-    # Unmerged paths with NO operation in progress. Ralph's own recovery
-    # makes this state: quitting a foreign cherry-pick or revert removes
-    # CHERRY_PICK_HEAD and leaves the conflicted index behind. It is not
-    # a rebase and not a merge, so both branches above decline it and the
-    # run used to exit having invoked nobody -- against a verdict that
-    # named a resolver as its executor. Nothing needs continuing here:
-    # repairing the files and staging them IS the whole resolution.
     return _resolve_orphaned_unmerged_index(ctx, target)
 
 
@@ -2107,27 +1610,6 @@ def _run_owned_integration_conflict_resolution(
     ctx: LoopContext,
     rebase: RebaseState | None = None,
 ) -> bool:
-    """Invoke the out-of-graph conflict resolver against live blocking evidence.
-
-    ``_run_startup_integration`` cannot serve as the recovery executor for
-    conflict evidence. It routes through
-    :func:`~ralph.pipeline.auto_integrate.auto_integrate_on_phase_transition`,
-    which defers the whole boundary when the worktree is dirty -- and a
-    worktree holding an unfinished rebase or merge is ALWAYS dirty. Handing
-    that seam the resolver therefore guaranteed the resolver was never
-    called for exactly the evidence it exists to clear, and the run exited
-    instead. Call the resolver directly so unresolved integration always
-    reaches conflict resolution.
-
-    The call is still gated by the SAME authority the post-commit seam
-    uses
-    (:func:`~ralph.pipeline.auto_integrate_conflict_budget.resolver_allowed`):
-    the failure ledger decides whether an eligible resolver exists, and
-    the recorded conflict state refuses a resolver whose durable
-    resolution ladder is already exhausted. The stored conflict count
-    decides neither. A fresh state always allows the first attempt.
-    Suppression is announced, never silent. Never raises.
-    """
     from ralph.pipeline.auto_integrate_conflict_budget import resolver_allowed
 
     target = _integration_target_or_none(ctx)
@@ -2178,7 +1660,6 @@ def _run_owned_integration_conflict_resolution(
 
 
 def _resolve_orphaned_unmerged_index(ctx: LoopContext, target: str) -> bool:
-    """Resolve a conflicted index that no rebase or merge owns. Never raises."""
     hooks = _retry_hooks(ctx)
     if hooks.resolve_orphaned_unmerged_index is not None:
         return bool(hooks.resolve_orphaned_unmerged_index(ctx, target))
@@ -2186,7 +1667,6 @@ def _resolve_orphaned_unmerged_index(ctx: LoopContext, target: str) -> bool:
 
 
 def _resolve_orphaned_unmerged_index_in_place(ctx: LoopContext, target: str) -> bool:
-    """Repair and stage the unmerged paths no rebase or merge owns."""
     from ralph.git.merge import stage_paths, unmerged_paths
     from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_pipeline
 
@@ -2223,7 +1703,7 @@ def _resolve_orphaned_unmerged_index_in_place(ctx: LoopContext, target: str) -> 
             logger.warning("integration resolution: could not stage the resolved paths")
             return False
         return not [path for path in unmerged_paths(root) if path != "<unmerged-path-query-failed>"]
-    except Exception as exc:  # pragma: no cover -- defensive
+    except Exception as exc:
         logger.warning("integration resolution: orphaned index resolution failed: {}", exc)
         return False
 
@@ -2234,22 +1714,15 @@ def _rederive_live_conflict_state_or_none(
     target: str,
     rebase: RebaseState,
 ) -> RebaseState | None:
-    """Re-derive the live conflict state; ``None`` when it cannot be read.
-
-    An unreadable live state is the conservative answer that lets the
-    escalation resolver run rather than silently clearing the cached
-    exhaustion.
-    """
     try:
         derive = _retry_hooks(ctx).rederive_live_conflict_state or _rederive_live_conflict_state
         return derive(root, target, rebase)
-    except Exception as derive_exc:  # pragma: no cover -- defensive
+    except Exception as derive_exc:
         logger.warning("integration resolution: live re-derivation failed: {}", derive_exc)
         return None
 
 
 def _adopt_live_rebase(ctx: LoopContext, live_rebase: RebaseState) -> None:
-    """Adopt the cleared live state on the caller's latest state."""
     if not ctx.latest_state:
         return
     ctx.latest_state[:] = [ctx.latest_state[0].copy_with(rebase=live_rebase)]
@@ -2261,51 +1734,15 @@ def _run_cold_capped_escalation(
     target: str,
     rebase: RebaseState,
 ) -> bool:
-    """Run the cold-capped escalation: re-derive live Git state, then escalate.
-
-    Distinct from the ordinary ``_run_owned_integration_conflict_resolution``
-    budget-guarded path. The O1 retry-progress rule requires that a
-    cold-capped ``RebaseState`` (one that loaded with
-    ``resolution_exhausted=True`` and / or ``consecutive_conflicts``
-    already at the cap) still receive ONE session-scoped automated
-    escalation that:
-
-    1. Re-derives the conflict state from live Git. The cached state
-       in ``rebase`` may be stale -- a concurrent push, a previous
-       worktree's resolution, or a recovery preamble that succeeded
-       between the cold-load and this call may already have cleared
-       the conflict. When the live state is clear, the cached
-       ``is_intervention_required`` / ``resolution_exhausted`` /
-       ``consecutive_conflicts`` flags are cleared on the
-       ``ctx.latest_state`` rebase so the rest of the pipeline
-       observes a clean state.
-    2. If the live state confirms a conflict, picks the right
-       resolver for the live evidence (paused rebase vs. in-progress
-       merge vs. orphaned unmerged index), builds it, and runs it
-       ONCE.
-    3. If the resolver succeeds, returns True so the cold-capped state
-       can be cleared by the caller. If the resolver fails, returns
-       False WITHOUT spinning (the caller already escalates to the
-       typed ``LADDER_ESCALATION`` outcome on the next cold-capped
-       call).
-    4. Never raises. The cap is NEVER reset or raised -- the
-       escalation is purely additive.
-    """
-    # Step 1: re-derive from live Git. A clean live state means the
-    # cached record is stale; clear it and adopt the live result.
     live_rebase = _rederive_live_conflict_state_or_none(
         ctx, ctx.workspace_scope.root, target, rebase
     )
     if live_rebase is not None and not live_rebase.is_intervention_required:
         _adopt_live_rebase(ctx, live_rebase)
         return True
-    # Step 2: live state still shows a conflict. Pick the resolver that
-    # matches the live evidence -- the paused-rebase path is the commoner
-    # blocking state, and the merge / unmerged-index paths handle the
-    # rest. Same decision tree as the ordinary path, but no budget gate.
     try:
         return _resolve_blocking_conflict(ctx, target, rebase)
-    except Exception as resolve_exc:  # pragma: no cover -- defensive
+    except Exception as resolve_exc:
         logger.warning(
             "integration resolution: cold-capped escalation resolver failed: {}",
             resolve_exc,
@@ -2318,39 +1755,18 @@ def _rederive_live_conflict_state(
     target: str,
     rebase: RebaseState,
 ) -> RebaseState | None:
-    """Re-derive the live conflict state from Git.
-
-    Returns a cleared ``RebaseState`` (with ``is_intervention_required``,
-    ``resolution_exhausted`` and ``consecutive_conflicts`` reset) when
-    the live Git state shows no conflict -- the cached record is stale
-    and the run can resume without invoking the resolver. Returns
-    ``None`` when the live state still shows a conflict (the caller
-    should invoke the escalation resolver). Never raises: an unreadable
-    live state returns ``None`` (the conservative answer that lets the
-    escalation resolver run rather than silently clearing the cached
-    exhaustion).
-
-    Uses the typed setters on ``RebaseState`` (single-writer
-    ownership of the decision fields), and the central ``_last_reason``
-    projection for the headline text. ``is_intervention_required``
-    and ``integration_unresolved`` are derived from ``last_outcome``
-    -- setting ``last_outcome=COMPLETED`` clears both, so the
-    cached intervention / unresolved flags do not need direct
-    writers.
-    """
     from ralph.pipeline._integration_action import RebaseOutcomeKind
     from ralph.pipeline.integration_resolution import inspect_integration_resolution
 
     try:
         verdict = inspect_integration_resolution(root, rebase)
-    except Exception as exc:  # pragma: no cover -- defensive
+    except Exception as exc:
         logger.debug(
             "integration resolution: live re-derivation verdict unreadable: {}",
             exc,
         )
         return None
     if not verdict.dispatch_allowed:
-        # Live conflict still exists -- let the resolver run.
         return None
     return (
         rebase.clear_resolution_exhausted()
@@ -2365,14 +1781,6 @@ def _rederive_live_conflict_state(
 
 
 def _paused_rebase_at(root: Path) -> bool:
-    """Whether a rebase is paused in ``root``. Never raises.
-
-    An unreadable rebase state must not answer "no": that answer sends a
-    paused rebase down the merge path, which has nothing to finish and
-    returns having invoked no resolver at all. git's own on-disk marker
-    is the fallback, so the only way to reach the merge path is a
-    directory that genuinely holds no paused rebase.
-    """
     try:
         from ralph.git.rebase.rebase_continuation import rebase_in_progress_at
 
@@ -2387,20 +1795,16 @@ def _paused_rebase_at(root: Path) -> bool:
 
 
 def _rebase_markers_on_disk(root: Path) -> bool:
-    """Last-resort probe for git's own paused-rebase directories."""
     try:
         from ralph.git.rebase.rebase_continuation import REBASE_STATE_DIRS
 
         git_dir = Path(root) / ".git"
-        # filesystem-read-ok: git metadata probe -- a worktree's .git is a pointer file, not workspace content
         if git_dir.is_file():
-            # A worktree's .git is a file pointing at the real git dir.
-            # filesystem-read-ok: reads the worktree gitdir pointer, git metadata outside FileBackend scope
             pointer = git_dir.read_text(encoding="utf-8").strip()
             _, _, path = pointer.partition("gitdir:")
             git_dir = Path(path.strip() or str(git_dir))
         return any((git_dir / name).exists() for name in REBASE_STATE_DIRS)
-    except Exception as exc:  # pragma: no cover -- defensive
+    except Exception as exc:
         logger.warning("integration resolution: rebase markers unreadable: {}", exc)
         return False
 
@@ -2412,12 +1816,6 @@ def _resolve_paused_rebase_with_history(
     *,
     executor: RebaseContinuationExecutor | None = None,
 ) -> bool:
-    """Keep the historical two-argument resolver seam intact for empty state.
-
-    The executor is threaded only when the caller supplies one, so the
-    historical call shape (two arguments, or two arguments plus the
-    rebase state) stays intact for the callers that inject nothing.
-    """
     if executor is None:
         if rebase is None:
             return _resolve_paused_rebase(ctx, target)
@@ -2434,18 +1832,6 @@ def resolve_paused_rebase(
     *,
     executor: RebaseContinuationExecutor | None = None,
 ) -> bool:
-    """Drive a paused rebase to completion through the stop resolver.
-
-    The rebase counterpart of :func:`_complete_in_progress_merge`, and it
-    needs the SEPARATE stop resolver: a rebase stop carries which commit
-    is being replayed, which the two-argument merge resolver has no way
-    to express. Ralph stages and continues; the agent only edits.
-
-    The mutation itself runs through the injectable EXECUTOR SEAM
-    (:class:`ralph.pipeline._integration_executor.RebaseContinuationExecutor`).
-    The production default drives live Git; a caller (or a test) can
-    inject a double that answers without a repository. Never raises.
-    """
     from ralph.pipeline.auto_integrate_agent import build_agent_rebase_stop_resolver
 
     try:
@@ -2474,7 +1860,7 @@ def resolve_paused_rebase(
             ctx.config.conflict_resolution,
         )
         resolved, reason, failure_cause = res
-    except Exception as resolve_exc:  # pragma: no cover -- defensive
+    except Exception as resolve_exc:
         logger.warning("integration resolution: paused rebase resolution failed: {}", resolve_exc)
         return False
     if not resolved:
@@ -2494,37 +1880,18 @@ def _resolve_paused_rebase(
     *,
     executor: RebaseContinuationExecutor | None = None,
 ) -> bool:
-    """Compatibility seam over :func:`resolve_paused_rebase`.
-
-    The private name is the established call surface of the run loop
-    (and of the suites that replace it), so it stays and delegates to
-    the public seam; either name can therefore be replaced by a caller.
-    """
     return resolve_paused_rebase(ctx, target, rebase, executor=executor)
 
 
 def _complete_in_progress_merge(root: Path, target: str, resolver: ConflictResolver) -> bool:
-    """Resolve AND finish an in-progress merge, not just run the agent.
-
-    ``build_agent_conflict_resolver`` only repairs the working tree; it
-    never stages, never commits, and never continues a rebase --
-    ``conflict_resolution.driver`` explicitly leaves that to its caller.
-    Invoking the bare resolver therefore burned a full agent session and
-    left ``MERGE_HEAD`` in place, so the re-inspection still blocked and
-    the run exited anyway. Reuse the canonical resolve-stage-verify-commit
-    routine that the post-commit seam uses, so a resolved merge actually
-    clears the blocking evidence. Never raises.
-    """
     from ralph.git.merge import MERGE_STATE_IN_PROGRESS, merge_state
     from ralph.pipeline.auto_integrate_resolve import _resolve_and_commit
 
     try:
         if merge_state(root) != MERGE_STATE_IN_PROGRESS:
-            # No merge to finish. An in-progress rebase is reconciled by
-            # the crash-recovery preamble, which owns the rebase stops.
             return False
         return _resolve_and_commit(root, target, resolver)
-    except Exception as resolve_exc:  # pragma: no cover -- defensive
+    except Exception as resolve_exc:
         logger.warning("integration resolution executor failed: {}", resolve_exc)
         return False
 
@@ -2533,17 +1900,6 @@ def _announce_blocked_dispatch(
     ctx: LoopContext,
     verdict: IntegrationResolutionVerdict,
 ) -> None:
-    """Report the ACTUAL evidence that is terminating this run.
-
-    The terminating seam used to reuse
-    :func:`_announce_deferred_startup_integration`, which names the
-    crash-recovery record regardless of what actually blocked. For a
-    verdict built from live git evidence that record is empty, so the run
-    died announcing "crash recovery still owns the durable integration
-    record (None)" while the real cause was an unmerged path or an
-    in-progress rebase. Print the verdict's own reasons and the executor
-    that was asked to clear them. Never raises.
-    """
     detail = "; ".join(reason for reason in verdict.reasons if isinstance(reason, str))
     executor = verdict.recovery_executor or "no recovery executor"
     with suppress(Exception):
@@ -2555,7 +1911,6 @@ def _announce_blocked_dispatch(
 
 
 def _is_planning_entry(state: PipelineState, ctx: LoopContext) -> bool:
-    """Whether ``state`` is about to dispatch a planning phase."""
     pipeline = ctx.policy_bundle.pipeline
     phase = str(state.phase)
     if pipeline.entry_phase == phase:
@@ -2565,7 +1920,6 @@ def _is_planning_entry(state: PipelineState, ctx: LoopContext) -> bool:
 
 
 def _configured_sync_target(ctx: LoopContext) -> tuple[Path, str] | None:
-    """The (repo root, integration target) planning must contain, if any."""
     config: object = getattr(ctx, "config", None)
     general: object = getattr(config, "general", None)
     if general is None:
@@ -2575,7 +1929,6 @@ def _configured_sync_target(ctx: LoopContext) -> tuple[Path, str] | None:
     if not enabled or not isinstance(target, str) or not target:
         return None
     root = Path(ctx.workspace_scope.root)
-    # filesystem-read-ok: git metadata probe -- a non-repository context has no branch to sync
     if not (root / ".git").exists():
         return None
     return root, target
@@ -2584,14 +1937,6 @@ def _configured_sync_target(ctx: LoopContext) -> tuple[Path, str] | None:
 def _capture_planning_baseline_if_entry(
     state: PipelineState, ctx: LoopContext
 ) -> PlanningBaseline | None:
-    """Capture the residue executor's baseline when this iteration dispatches planning.
-
-    Planning is read-only for source files; the baseline recorded here is
-    the restore target the residue executor compares the post-dispatch tree
-    against. ``None`` both when this iteration dispatches another phase and
-    when the baseline is unreadable — an unreadable baseline disables
-    residue enforcement for that dispatch, never reports it as clean.
-    """
     if not _is_planning_entry(state, ctx):
         return None
     from ralph.pipeline.auto_integrate_planning import capture_pre_planning_baseline
@@ -2605,18 +1950,6 @@ def _resolve_planning_residue_after_dispatch(
     ctx: LoopContext,
     baseline: PlanningBaseline,
 ) -> None:
-    """Clear tracked residue a planning dispatch left outside its artifact contract.
-
-    Save-to-backup-ref, restore-to-baseline, one WARNING; charged against
-    the repository-wide attempt ledger with ladder escalation on repeats.
-    Never raises: cleanup is the dispatch's own janitor, not a new crash path.
-
-    The typed outcome is consumed, not discarded: when an in-progress
-    git operation blocked cleanup (the operation owns the index and any
-    staged resolution), the operation state is routed to the operation
-    ladder through the ONE owner seam — the residue seam never restores
-    against an operation's state and never treats the dispatch as clean.
-    """
     from ralph.pipeline.auto_integrate_planning import resolve_planning_residue
 
     configured = _configured_sync_target(ctx)
@@ -2637,13 +1970,6 @@ def _resolve_planning_residue_after_dispatch(
 
 
 def _planning_sync_gap(ctx: LoopContext) -> str | None:
-    """Why committed feature work and the integration target are not synchronized.
-
-    Ground truth only: ``git merge-base --is-ancestor <target> HEAD``. No
-    integration record, skip reason or stale verdict can stand in for it --
-    a clean tree after an aborted or refused merge is still a stale branch.
-    An unreadable answer is a gap, never "in sync".
-    """
     from ralph.git.branch_relation import BranchRelation, branch_relation
     from ralph.git.merge import observe_branch_sha
 
@@ -2680,7 +2006,6 @@ def _reconcile_dispatch_state(state: PipelineState) -> PipelineState:
 
 
 def _route_planning_commit(state: PipelineState, ctx: LoopContext) -> PipelineState:
-    """Route dirty completed work through policy cleanup and commit phases."""
     from ralph.git.operations import has_uncommitted_changes
     from ralph.pipeline._planning_obstruction import (
         PlanningObstructionKind,
@@ -2688,15 +2013,6 @@ def _route_planning_commit(state: PipelineState, ctx: LoopContext) -> PipelineSt
     )
     from ralph.pipeline.progress import advance_phase
 
-    # The planning-obstruction kind is the single authority: it is
-    # produced by the planning producer (see ``_planning_obstruction``)
-    # and persisted on ``state.rebase.last_planning_obstruction``.
-    # Reading it here means the run loop no longer parses free-form
-    # reason text. The kind may ALSO be derived from ``last_reason``
-    # via the helper, but ONLY as a fallback for legacy checkpoints
-    # that predate the typed field -- the helper is the single
-    # allowed prose-to-kind translator and the run loop itself never
-    # parses prose.
     kind_str = state.rebase.last_planning_obstruction
     if kind_str:
         try:
@@ -2743,10 +2059,9 @@ def _resume_planning_after_commit(
     state: PipelineState | int,
     ctx: LoopContext,
     previous: PipelineState,
-    *,  # keyword-only seam for backend injection
+    *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> PipelineState | int:
-    """Keep integration commit recovery inside its original planning boundary."""
     from ralph.git.operations import has_uncommitted_changes
     from ralph.pipeline.progress import advance_phase
 
@@ -2773,19 +2088,6 @@ def _execute_owner_ladder_rung(
     sync_verdict: PlanningSyncVerdict,
     target: str | None,
 ) -> None:
-    """Dispatch the owner's selected cleanup-ladder rung exactly once.
-
-    The rung executes through the one owner seam
-    (:func:`~ralph.pipeline._integration_owner_seam.execute_planning_ladder_rung`)
-    with the repo-wide attempt ledger, the workspace state dir and the
-    observed target sha captured at decision time (``expected_target_sha``
-    is what the fresh-worktree rung fails closed against when the target
-    moved concurrently). The rung records its own outcome evidence into
-    the ledger; this seam consumes the typed result for the log and the
-    caller re-observes before deciding again. Never raises: a rung
-    dispatch failure degrades to "no escalation signal" exactly as an
-    owner-seam outage does.
-    """
     from ralph.git.merge import observe_branch_sha
     from ralph.pipeline._integration_owner_seam import execute_planning_ladder_rung
     from ralph.pipeline.integration_attempt_ledger import AttemptLedger
@@ -2803,7 +2105,7 @@ def _execute_owner_ladder_rung(
             target=target,
             expected_target_sha=expected_sha,
         )
-    except Exception as rung_exc:  # pragma: no cover -- defensive
+    except Exception as rung_exc:
         logger.warning("cleanup-ladder rung dispatch failed: {}", rung_exc)
         return
     if result is None:
@@ -2823,7 +2125,6 @@ def execute_owner_ladder_rung(
     sync_verdict: PlanningSyncVerdict,
     target: str | None,
 ) -> None:
-    """Public seam for executing an owner ladder rung."""
     if _execute_owner_ladder_rung is not _execute_owner_ladder_rung_dispatch:
         _execute_owner_ladder_rung(ctx, root, sync_verdict, target)
         return
@@ -2857,23 +2158,6 @@ def _dispatch_owner_ladder_rung(
 ) -> tuple[
     CleanupLadderRung | None, IntegrationAction | None, Literal["continue", "break", "fall"]
 ]:
-    """Consume one owner verdict's cleanup-ladder selection.
-
-    This is the ONE rung-consumption step both mutation-adjacent seams
-    (the planning-sync gate and the boundary execution seam) use: the
-    owner has already charged the durable ledger for this decision, so
-    a repeat under the unchanged observation is answered with the NEXT
-    rung. The selected rung therefore dispatches through
-    :func:`_execute_owner_ladder_rung` exactly once here and the caller
-    re-observes — that is the ledger-charged escalation, never a re-run
-    of the same action. The same rung re-selected with no state change
-    answers ``"break"`` (never dispatch a rung twice); every non-ladder
-    verdict answers ``"fall"``. A verdict whose durable record facts
-    failed closed (``record_fact`` set) CARRIES the escalation rung
-    (the first rung: preserve the work to backup refs) and dispatches
-    it like any ladder verdict — the ladder, never a terminal block on
-    an operator, owns the escalation.
-    """
     if sync_verdict is None or sync_verdict.ladder_rung is None:
         return executed_rung, previous_action, "fall"
     if sync_verdict.ladder_rung is executed_rung:
@@ -2892,7 +2176,6 @@ def dispatch_owner_ladder_rung(
 ) -> tuple[
     CleanupLadderRung | None, IntegrationAction | None, Literal["continue", "break", "fall"]
 ]:
-    """Public seam for dispatching an owner ladder rung."""
     if _dispatch_owner_ladder_rung is not _dispatch_owner_ladder_rung_dispatch:
         return _dispatch_owner_ladder_rung(
             ctx, root, target, sync_verdict, executed_rung, previous_action
@@ -2927,7 +2210,6 @@ _public_dispatch_owner_ladder_rung_dispatch = dispatch_owner_ladder_rung
 
 
 def _configured_sync_remote(ctx: LoopContext) -> str | None:
-    """The CONFIGURED remote name for the owner seam's observation, if any."""
     config_obj: object = getattr(ctx, "config", None)
     general_obj: object = getattr(config_obj, "general", None)
     remote_obj: object = getattr(general_obj, "auto_integrate_remote", None)
@@ -2941,13 +2223,6 @@ def _ask_owner_planning_sync(
     target: str | None,
     remote: str | None,
 ) -> PlanningSyncVerdict | None:
-    """Ask the owner for the typed planning verdict; degrade to None on outage.
-
-    The call charges the durable ledger exactly once through the single
-    owner charge path. An unreadable seam degrades to "no escalation
-    signal" — both mutation-adjacent seams must survive an owner-seam
-    outage exactly as they survive an unreadable integration probe.
-    """
     try:
         return decide_planning_sync(
             root,
@@ -2955,7 +2230,7 @@ def _ask_owner_planning_sync(
             target=target,
             remote=remote,
         )
-    except Exception as seam_exc:  # pragma: no cover -- defensive
+    except Exception as seam_exc:
         logger.debug("owner seam unreadable: {}", seam_exc)
         return None
 
@@ -2965,36 +2240,8 @@ def _ensure_planning_in_sync(
     ctx: LoopContext,
     prev_phase: str,
 ) -> tuple[PipelineState, tuple[PipelineState, str, int] | None]:
-    """Synchronize safely before using normal commit recovery for obstructions.
-
-    Dirty work is committed only after integration reports that it obstructs
-    synchronization; cleanup and commit retain their existing artifact contracts.
-
-    The retry loop is driven by the typed planning-sync seam
-    (:func:`~ralph.pipeline._integration_owner_seam.decide_planning_sync`),
-    not by prose parsing: every iteration asks the owner for the typed
-    verdict, which charges the durable attempt ledger through the single
-    owner charge path. A hold that repeats the same observation therefore
-    climbs the owner's escalation ladder instead of re-running the
-    identical action forever: when the verdict selects a cleanup-ladder
-    rung the gate dispatches that rung exactly once through the shared
-    :func:`_dispatch_owner_ladder_rung` seam, records/consumes its
-    outcome and re-observes at the top of the loop; a rung is never dispatched twice
-    for one unchanged observation — the next decision under it is
-    answered with the next rung, and a repeated rung selection breaks the
-    loop. When the verdict leaves the ladder (a wait or a non-ladder
-    action change), the gate stops re-running integration and returns the
-    blocked verdict so the caller alarms and cools down before the next
-    bounded retry.
-    """
     if not _is_planning_entry(state, ctx):
         return state, None
-    # _planning_sync_gap is the SOLE gate authority: whether the gate
-    # applies at all is decided there and only there. The configuration
-    # resolved below only parameterises the owner seam's observation
-    # (target / remote / record) -- it must never gate control flow, or
-    # a caller that drives the gap through its own seam (tests, exotic
-    # configurations) would be second-guessed here.
     gap = _planning_sync_gap(ctx)
     if gap is None:
         return state, None
@@ -3002,17 +2249,12 @@ def _ensure_planning_in_sync(
     configured = _configured_sync_target(ctx)
     target = configured[1] if configured is not None else None
     remote = _configured_sync_remote(ctx)
-    # The durable record the owner reconciles against the live
-    # observation; the seam's own record-fact overlay is applied inside
-    # the verdict exactly as every other boundary's seam call does.
     record = read_record(root)
     attempts = 3
     previous_failure: tuple[str, str | None, str | None] | None = None
     previous_action: IntegrationAction | None = None
     executed_rung: CleanupLadderRung | None = None
     for attempt in range(1, attempts + 1):
-        # Log-hygiene rule (observability catalogue F): a repeated
-        # identical outcome logs once with a count, not once per retry.
         held_line = (
             f"planning held until the branch is in sync ({gap});"
             f" integrating now (attempt {attempt}/{attempts})"
@@ -3033,23 +2275,7 @@ def _ensure_planning_in_sync(
         routed = _route_planning_commit(state, ctx)
         if routed is not state:
             return routed, None
-        # The typed owner verdict is the gate's escalation oracle. The
-        # call charges the durable ledger exactly once through the
-        # single owner charge path, so a hold that repeats the same
-        # observation accumulates evidence even when the integration
-        # attempt itself defers silently (busy worktree, unreadable
-        # probe): the owner's answer moves off the repeated action and
-        # the loop stops instead of re-running it. An unreadable seam
-        # degrades to "no escalation signal" -- the gate must survive
-        # an owner-seam outage exactly as it survives an unreadable
-        # integration probe.
         sync_verdict = _ask_owner_planning_sync(root, record=record, target=target, remote=remote)
-        # A rung-level verdict is consumed BEFORE the identical-failure
-        # check below: the owner has already charged the durable ledger
-        # for this decision, so a repeat under the unchanged observation
-        # is answered with the NEXT rung — executing the selected rung
-        # once and re-observing at the top of the loop is the
-        # ledger-charged escalation, never a re-run of the same action.
         executed_rung, previous_action, rung_step = _dispatch_owner_ladder_rung(
             ctx, root, target, sync_verdict, executed_rung, previous_action
         )
@@ -3063,10 +2289,6 @@ def _ensure_planning_in_sync(
         previous_failure = failure
         if sync_verdict is not None:
             if previous_action is not None and sync_verdict.action is not previous_action:
-                # The owner escalated for the same observation: the
-                # verdict moved to the next action, so the gate moves
-                # with it instead of re-running the action observation
-                # shows cannot change the state.
                 break
             previous_action = sync_verdict.action
     outcome = (
@@ -3083,8 +2305,6 @@ def _ensure_planning_in_sync(
         with suppress(Exception):
             emit_integration_warn_line(ctx.active_display, message)
 
-    # Log-hygiene rule (observability catalogue F): the identical
-    # blocked outcome logs once with a count, not once per retry tick.
     integration_outcome_log().record(_emit_planning_blocked, alarm)
     state = state.copy_with(last_error=alarm)
     _save_recovered_rebase_checkpoint(state, ctx)
@@ -3096,7 +2316,6 @@ def ensure_planning_in_sync(
     ctx: LoopContext,
     prev_phase: str,
 ) -> tuple[PipelineState, tuple[PipelineState, str, int] | None]:
-    """Public seam for ensure_planning_in_sync."""
     if _ensure_planning_in_sync is not _ensure_planning_in_sync_dispatch:
         return _ensure_planning_in_sync(state, ctx, prev_phase)
     return _ensure_planning_in_sync_impl(state, ctx, prev_phase)
@@ -3118,18 +2337,6 @@ _public_ensure_planning_in_sync_dispatch = ensure_planning_in_sync
 
 
 def _exhaustion_still_binds(ctx: LoopContext, rebase: RebaseState | None) -> bool:
-    """Whether a recorded exhaustion still describes the conflict on disk.
-
-    The conflict budget already owns this judgement for the post-commit
-    seam: it compares the recorded ``(feature tip, target tip, paths,
-    stage oids)`` against what the worktree holds now and refuses the
-    resolver only when the recorded conflict is the one on disk AND its
-    durable resolution ladder is exhausted. Reusing it here is what lets
-    a NEW conflict -- or one the failure ledger still has an eligible
-    resolver for -- reach a resolver instead of being refused by evidence
-    recorded about a different conflict. Never raises: an unreadable
-    identity keeps the record binding, which is the fail-closed answer.
-    """
     from ralph.pipeline.auto_integrate import resolve_integration_target
     from ralph.pipeline.auto_integrate_budget_seam import observe_conflict_identity
     from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity, resolver_allowed
@@ -3242,7 +2449,7 @@ def _handoff_retained_failure(
             config = cast(
                 "UnifiedConfig | None",
                 getattr(ctx, "config", None),
-            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            )
             resolved = _run_integration_conflict_resolution(
                 ctx,
                 ctx.latest_state[0].rebase if ctx.latest_state else None,
@@ -3273,7 +2480,7 @@ def _handoff_retained_failure(
         config_absent = cast(
             "UnifiedConfig | None",
             getattr(ctx, "config", None),
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         resolved = _run_integration_conflict_resolution(
             ctx,
             ctx.latest_state[0].rebase if ctx.latest_state else None,
@@ -3298,17 +2505,6 @@ def _handoff_retained_failure(
             ctx.latest_state[:] = [ctx.latest_state[0].copy_with(rebase=rebase_resolved)]
             _save_recovered_rebase_checkpoint(ctx.latest_state[0], ctx)
         elif outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE:
-            # A corrupt or unsupported record cannot answer
-            # `diagnostic_needed`, so re-running the diagnostic would
-            # loop forever. The corrupt bytes stay untouched on disk --
-            # they are the only evidence of the interrupted
-            # integration, i.e. the preserved copy. Escalation is
-            # autonomous: the owner seam fails closed on the unreadable
-            # durable fact and the cleanup ladder preserves the work to
-            # backup refs before any destructive step. One
-            # rate-limited line names what is wrong, where the
-            # preserved copy lives and which rung runs next -- never a
-            # terminal block on a person.
             rung = ladder_rung_for_record_fact_outcome(RecordFactOutcome.STALE_INTENT)
             if recovered is not None and ctx.latest_state:
                 ctx.latest_state[:] = [ctx.latest_state[0].copy_with(rebase=recovered)]
@@ -3335,7 +2531,6 @@ def _dispatch_retained_handoff(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> None:
-    """Dispatch automated resolver handoff with optional backend support."""
     if backend is DEFAULT_FILE_BACKEND:
         _handoff_retained_failure(ctx, detail)
         return
@@ -3350,24 +2545,15 @@ def _handle_retained_integration(
     ctx: LoopContext,
     prev_phase: str,
 ) -> tuple[PipelineState, tuple[PipelineState, str, int] | None]:
-    """Handle retained integration reason on disk."""
     if retained_integration_reason(ctx.workspace_scope.root) is None:
         return state, None
     continued = _run_startup_integration(ctx, state.rebase)
     if continued is not None:
         state = state.copy_with(rebase=continued)
         _save_recovered_rebase_checkpoint(state, ctx)
-    # Pass 2: re-read both signals after the owner ran. The disk is the
-    # retention authority: when it is clear, the caller's guarded inspect
-    # (plus its reconcile) owns any stale in-memory evidence. Re-latching
-    # the blocking handoff from a memory-only flag would loop forever on
-    # a repository whose durable evidence has already resolved.
     disk_after = retained_integration_reason(ctx.workspace_scope.root)
     if not disk_after:
         return state, None
-    # Blocking path: the durable record is still retained after the owner
-    # ran, so the durable owner keeps dispatch -- regardless of the
-    # in-memory flag (which may or may not have been latched yet).
     remaining = disk_after or state.rebase.last_reason or "durable integration record retained"
     if not state.rebase.recovery_record_retained:
         state = state.copy_with(
@@ -3376,10 +2562,6 @@ def _handle_retained_integration(
             ).model_copy(update={"last_reason": remaining})
         )
         _save_recovered_rebase_checkpoint(state, ctx)
-    # The retained block is never the terminal operator hand-off: the
-    # typed ladder escalation (and any legacy-parsed hand-off value)
-    # displays as evidence diagnosis — the autonomous fallback ladder
-    # owns the next action.
     state = state.copy_with(
         rebase=state.rebase.set_operation_display_state(OperationDisplayState.EVIDENCE_DIAGNOSIS)
     )
@@ -3392,38 +2574,16 @@ def _block_unresolved_integration(
     ctx: LoopContext,
     prev_phase: str,
 ) -> tuple[PipelineState, str, int] | None:
-    """Route blocking evidence through recovery before ordinary dispatch.
-
-    A recoverable verdict is not a failed pipeline phase.  It is an explicit
-    request for the sole out-of-graph recovery executor, which the startup
-    integration seam owns.  Re-entering that seam is intentional: it binds
-    the configured resolver chain and gives every candidate its normal
-    fallback/retry opportunity. An exhausted or still-blocked verdict keeps
-    ordinary dispatch suspended while the caller cools down before retrying.
-    """
     from ralph.pipeline.integration_resolution_types import (
         IntegrationResolutionVerdict,
     )
 
     record, busy_expired = _blocking_record(ctx)
     if busy_expired:
-        # The durable record is locked past its bounded retry deadline:
-        # the read outcome is a record fact, so the canonical
-        # ``busy_refusal_outcome`` helper decided it (a missing or
-        # expired deadline fails closed to the typed STALE_INTENT
-        # verdict). The escalation runs through the autonomous cleanup
-        # ladder (preserve the work to backup refs, then re-enter the
-        # rebase-first path) — the run defers with a bounded retry
-        # while the boundary ladder recovery dispatches the rung; the
-        # display names the wait, never an operator hand-off.
         state = state.copy_with(
             rebase=state.rebase.set_operation_display_state(OperationDisplayState.WAITING)
         )
     if record is not None:
-        # The blocking seam asks the SINGLE owner for the mutation ladder
-        # and overlays the durable record facts. The reducer is the single
-        # last_decision writer; the typed authority derives the blocking
-        # decision from current evidence and the next reduce re-persists it.
         target = ctx.config.general.auto_integrate_target
         remote = ctx.config.general.auto_integrate_remote
         record_action = decide_seam_action(
@@ -3432,14 +2592,6 @@ def _block_unresolved_integration(
             target=target,
             remote=remote,
         )
-        # A fail-closed record fact (typed RecordFactOutcome) names what
-        # is wrong and escalates through the cleanup ladder; the
-        # boundary ladder recovery below dispatches the rung (preserve
-        # the work to backup refs, then re-enter the rebase-first
-        # path). One rate-limited user-visible line names the verdict,
-        # where the preserved copy lands and which rung runs next; the
-        # run falls through to the retained/recovery handling — it
-        # never ends blocked on a person.
         if isinstance(record_action, RecordFactOutcome):
             rung = ladder_rung_for_record_fact_outcome(record_action)
             message = (
@@ -3463,12 +2615,6 @@ def _block_unresolved_integration(
     if retained_result is not None:
         return retained_result
 
-    # AC-11(f): the gate pass is the ONE canonical observation point whose
-    # verdict is followed by a checkpoint save on every resume, so it owns
-    # the write-back sink: when the live tree provably overtakes the
-    # persisted record (integration-ready, no unreadable probes), the
-    # corrected state — not merely the plain containment release — is what
-    # a restart reads.
     corrected: list[RebaseState] = []
     verdict = inspect_integration_resolution(
         ctx.workspace_scope.root,
@@ -3478,10 +2624,6 @@ def _block_unresolved_integration(
     if verdict.dispatch_allowed:
         reconciled = reconcile_stale_unresolved_state(state.rebase)
         if corrected:
-            # The observation layer minted the typed correction: it is the
-            # stronger durable rewrite (it also clears in-flight resolution
-            # flags and diagnostic ownership and records the completed
-            # outcome), so it is what gets persisted.
             reconciled = corrected[0]
         if reconciled != state.rebase:
             state = state.copy_with(rebase=reconciled)
@@ -3507,34 +2649,10 @@ def _block_unresolved_integration(
 
 
 def _blocking_record(ctx: LoopContext) -> tuple[IntegrationRecord | None, bool]:
-    """Read the durable integration record for the blocking decision.
-
-    The read OUTCOME is a durable record fact, so it is decided by the
-    canonical helpers rather than by a private table here:
-
-    * a BUSY record is bounded by its persisted retry deadline. The
-      canonical :func:`busy_refusal_outcome` decides it -- an absent,
-      malformed or expired deadline fails closed to the typed
-      :attr:`RecordFactOutcome.STALE_INTENT` verdict (routed to the
-      autonomous cleanup ladder) because the architecture forbids an
-      unbounded wait. The second return value reports that verdict so
-      the caller can surface the escalation line and the bounded
-      retry.
-    * an UNREADABLE record is never silently dropped: it stays on disk
-      as evidence and the unreadable-record seam owns it.
-    * every other disposition yields the readable record.
-
-    Returns:
-        ``(record, busy_expired)``. ``record`` is ``None`` whenever the
-        read outcome is not a readable record.
-    """
     outcome = read_record_outcome(ctx.workspace_scope.root)
     if outcome.disposition is RecordReadOutcomeDisposition.BUSY:
         expired = isinstance(busy_refusal_outcome(outcome.busy_deadline), RecordFactOutcome)
         if expired:
-            # One line per escalation (rate-limited by the outcome log):
-            # what is wrong, where the work is preserved, which rung
-            # runs next. Never a terminal block on a person.
             rung = ladder_rung_for_record_fact_outcome(RecordFactOutcome.STALE_INTENT)
             message = (
                 "durable integration record busy past its bounded retry deadline; "
@@ -3549,8 +2667,6 @@ def _blocking_record(ctx: LoopContext) -> tuple[IntegrationRecord | None, bool]:
 
             with suppress(Exception):
                 integration_outcome_log().record(_emit_busy_expired_line, message)
-        # The record is not actionable while it is locked; the
-        # retained-integration seam owns the bounded wait.
         return None, expired
     if outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE:
         return None, False
@@ -3561,28 +2677,6 @@ def _boundary_ladder_recovery(
     ctx: LoopContext,
     state: PipelineState,
 ) -> tuple[PipelineState, IntegrationResolutionVerdict | None]:
-    """Consume the owner's cleanup-ladder selection at the boundary seam.
-
-    Runs BEFORE any boundary mutation, with the SAME shared
-    rung-consumption step the planning-sync gate uses
-    (:func:`_dispatch_owner_ladder_rung`): each owner decision charges
-    the durable ledger, so a repeat under an unchanged observation is
-    answered with the NEXT rung — a failed preservation or restore
-    climbs the real ledgered rungs, never re-runs the identical action
-    and never asks for a human. After every dispatch the seam re-observes
-    (startup integration re-runs, then the resolution gate re-inspects
-    the live tree); once dispatch is allowed the ladder has healed the
-    tree and the conflict resolver must not run.
-
-    Returns ``(state, verdict)`` — the re-inspection that allowed
-    dispatch — when the ladder healed the tree, and     ``(state, None)``
-    when the owner selected no rung, the climb saturated under an
-    unchanged observation, or integration is not configured: the caller
-    then runs the recovery pass the boundary has always run.
-    A verdict whose durable record facts failed closed carries the
-    escalation rung (``record_fact`` set) and dispatches it like any
-    ladder verdict: preservation precedes any reset, never a person.
-    """
     configured = _configured_sync_target(ctx)
     if configured is None:
         return state, None
@@ -3590,14 +2684,10 @@ def _boundary_ladder_recovery(
     remote = _configured_sync_remote(ctx)
     try:
         record = read_record(root)
-    except Exception:  # pragma: no cover -- defensive: the seam must not crash the boundary
+    except Exception:
         record = None
     executed_rung: CleanupLadderRung | None = None
     previous_action: IntegrationAction | None = None
-    # The cleanup ladder is finite: the repeat guard inside the shared
-    # consumption step breaks the climb once the observation stops
-    # changing the table's answer, and the iteration bound is the
-    # rung count itself — one dispatch per rung at most.
     for _rung_slot in CLEANUP_LADDER_ORDER:
         sync_verdict = _ask_owner_planning_sync(root, record=record, target=target, remote=remote)
         executed_rung, previous_action, rung_step = _dispatch_owner_ladder_rung(
@@ -3621,24 +2711,6 @@ def _post_recovery_verdict(
     prev_phase: str,
     verdict: IntegrationResolutionVerdict,
 ) -> IntegrationResolutionVerdict | tuple[PipelineState, str, int] | None:
-    """Run one recovery pass, then re-inspect.
-
-    Before any mutation the owner's cleanup-ladder selection is consumed
-    through :func:`_boundary_ladder_recovery`: a rung-level verdict
-    dispatches exactly once per decision (ledger-charged escalation,
-    never the same rung twice under an unchanged observation; a verdict
-    whose record facts failed closed carries the escalation rung and
-    dispatches it like any ladder verdict) and the
-    seam re-observes after each dispatch. Only when the ladder did not
-    heal the tree does the boundary fall through to the
-    conflict-resolver recovery pass it has always run.
-
-    Returns ``None`` when dispatch is allowed after recovery (with the
-    reconciled state threaded through ``ctx.latest_state`` and the
-    checkpoint), or the still-blocking verdict when recovery did not
-    land. Returning a RESOLVED verdict would make the caller treat a
-    successful recovery as another block.
-    """
     _announce_conflict_resolution_entry(ctx, verdict)
     state, ladder_verdict = _boundary_ladder_recovery(ctx, state)
     post_recovery: IntegrationResolutionVerdict
@@ -3656,8 +2728,6 @@ def _post_recovery_verdict(
         if reconciled != state.rebase:
             state = state.copy_with(rebase=reconciled)
             _save_recovered_rebase_checkpoint(state, ctx)
-        # Propagate the reconciled state so the caller (and the interrupt
-        # unwinding path) sees the post-recovery rebase, not the pre-recovery one.
         ctx.latest_state[:] = [state]
         return None
     ctx.latest_state[:] = [state]
@@ -3670,7 +2740,6 @@ def post_recovery_verdict(
     prev_phase: str,
     verdict: IntegrationResolutionVerdict,
 ) -> IntegrationResolutionVerdict | tuple[PipelineState, str, int] | None:
-    """Public seam for post_recovery_verdict."""
     if _post_recovery_verdict is not _post_recovery_verdict_dispatch:
         return _post_recovery_verdict(ctx, state, prev_phase, verdict)
     return _post_recovery_verdict_impl(ctx, state, prev_phase, verdict)
@@ -3696,24 +2765,14 @@ def _run_inner_loop(
     state: PipelineState,
     ctx: LoopContext,
     prev_phase: str,
-    *,  # keyword-only seam for backend injection
+    *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> tuple[PipelineState, str, int | None]:
-    """Apply startup integration before entering the phase-dispatch loop."""
     workspace_root_raw: object = getattr(ctx, "workspace_root", ctx.workspace_scope.root)
     if isinstance(workspace_root_raw, Path):
         legacy_block = legacy_rebase_startup_block(workspace_root_raw)
         if legacy_block is not None:
             state = state.copy_with(rebase=legacy_block)
-    # Crash recovery and startup integration run BEFORE the dispatch block
-    # is evaluated. The previous order asked _block_unresolved_integration
-    # first, so a checkpoint carrying a persisted conflict record blocked
-    # the run before `recover_incomplete_integration` -- the ONE routine
-    # that reconciles such a record -- ever got to run. Both integrate
-    # seams then short-circuit on that same record, so the checkpoint could
-    # never be cleared and every later run exited with zero agent calls.
-    # Neither seam below dispatches an ordinary phase; the fail-closed
-    # check still guards dispatch, from _continue_after_startup_integration.
     state = _apply_startup_rebase_outcomes(state, ctx, backend=backend)
     return _continue_after_startup_integration(state, ctx, prev_phase, backend=backend)
 
@@ -3722,17 +2781,12 @@ def _continue_after_startup_integration(
     state: PipelineState,
     ctx: LoopContext,
     prev_phase: str,
-    *,  # keyword-only seam for backend injection
+    *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> tuple[PipelineState, str, int | None]:
-    """Validate startup integration before entering ordinary dispatch."""
     blocked_startup = _block_unresolved_integration(state, ctx, prev_phase)
     if blocked_startup is not None:
         state = _wait_for_integration_retry(blocked_startup[0], ctx, backend=backend)
-        # A typed ladder escalation (or an exhausted resolution ladder)
-        # never ends the run here on a person: fall through to the inner
-        # loop so the autonomous fallback ladder keeps dispatching
-        # recovery rungs with bounded retries.
     return _run_inner_loop_after_startup(state, ctx, prev_phase)
 
 
@@ -3740,7 +2794,6 @@ def _with_run_ledger(
     pipeline_deps: PipelineDeps | None,
     controller: RecoveryController,
 ) -> PipelineDeps | None:
-    """Make the run controller's unavailability store and ledger the ones resolver paths share."""
     if pipeline_deps is None:
         return None
     return dataclasses.replace(
@@ -3756,7 +2809,6 @@ def _iteration_pipeline_deps(
     connectivity_provider: Callable[[], str | None],
     waiting_provider: Callable[[], bool],
 ) -> PipelineDeps | None:
-    """Attach live loop-state providers to optional pipeline dependencies."""
     if ctx.pipeline_deps is None:
         return None
     return dataclasses.replace(
@@ -3776,7 +2828,6 @@ def _initialize_loop_timeboxes(state: PipelineState, ctx: LoopContext) -> Pipeli
 
 
 def _publish_state_snapshot(ctx: LoopContext, state: PipelineState) -> None:
-    """Publish the step's state to the snapshot registry, when one is attached."""
     if ctx.snapshot_registry is None:
         return
     from ralph.pro_support.state_query import build_pipeline_state_snapshot
@@ -3785,24 +2836,6 @@ def _publish_state_snapshot(ctx: LoopContext, state: PipelineState) -> None:
 
 
 def _render_current_observation_detail(rebase: RebaseState) -> str:
-    """Render an alarm detail phrase from the CURRENT typed observation.
-
-    Single source for the alarm detail emitted by
-    :func:`_wait_for_integration_retry`. The phrase is derived from
-    the LIVE :attr:`RebaseState.last_publication_decision` (a typed
-    value owned by :class:`PublicationDecision`) and never replays
-    the persisted :attr:`RebaseState.last_reason` prose. That is the
-    O2 fix: a stale ``"remote unreachable"`` string persisted by an
-    earlier seam cannot leak into the next seam's alarm when the live
-    observation has since moved on. The fallback phrase names the
-    publication obligation in a verb, not a remote name, so a
-    configured ``tacos`` never reports as ``origin``.
-
-    The helpers' branches are deliberately closed on
-    :class:`PublicationDecision` values -- not prose strings -- so
-    the function is single-decision-driven and never parses the
-    :attr:`RebaseState.last_reason` field.
-    """
     from ralph.pipeline._publication_state_machine import PublicationDecision
 
     decision = rebase.last_publication_decision
@@ -3819,23 +2852,10 @@ def _render_current_observation_detail(rebase: RebaseState) -> str:
     return "target synchronization remains unproven"
 
 
-#: Bounded retry pace for a REPEAT ladder escalation within one session.
-#: The first escalation never sleeps (the automated handoff was just
-#: dispatched, O1/O3); repeats pace the loop so the recovery preamble and
-#: the fallback-ladder seam re-observe on each wake instead of busy
-#: spinning. The run-level budgets (retry-progress guard, cycle cap) still
-#: bound the total recovery work.
 _REPEAT_ESCALATION_RETRY_SECONDS = 5.0
 
 
 def _ladder_escalation_reason(detail: str) -> str:
-    """Reason text for the typed ladder escalation.
-
-    Names the preserved copy's location and the next autonomous ladder
-    rung — never a person. ``detail`` is the bare observation detail
-    (see :func:`_render_current_observation_detail`); the suffix is
-    fixed so the persisted reason cannot grow across repeated calls.
-    """
     return (
         f"{detail}; preserved copy: backup refs; "
         "next autonomous rung: preserve the work, then climb the cleanup ladder"
@@ -3845,7 +2865,7 @@ def _ladder_escalation_reason(detail: str) -> str:
 def _wait_for_integration_retry(
     state: PipelineState,
     ctx: LoopContext,
-    *,  # keyword-only seam for backend injection
+    *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> PipelineState:
     rebase = state.rebase
@@ -3857,30 +2877,9 @@ def _wait_for_integration_retry(
         with suppress(Exception):
             emit_integration_warn_line(ctx.active_display, message)
 
-    # Log-hygiene rule (observability catalogue F): the identical
-    # unlanded outcome logs once with a count, not once per retry tick.
     integration_outcome_log().record(_emit_retry_alarm, alarm)
     rebase = rebase.set_operation_display_state(OperationDisplayState.WAITING)
 
-    # When the resolver is exhausted or the consecutive-conflict cap
-    # is reached, dispatch ONE session-scoped automated resolver
-    # handoff (guarded by ``ctx._session_handoff_dispatched`` so a
-    # repeated call in the same process does not spin), then escalate
-    # to the persistent typed LADDER_ESCALATION transition through the
-    # typed single-writer setter. The previous behaviour rotated the
-    # strategy ladder modulo ``len(CONFLICT_RESOLUTION_STRATEGIES)``,
-    # reset the consecutive counter to 0, slept, and re-ran the
-    # recovery preamble -- a silent replenishment of the attempt
-    # budget that violated bounded-progress and let unbounded
-    # rotation hide a real exhaustion. The new behaviour: dispatch
-    # the handoff once per session (O1 / O3 -- cold durable
-    # ``resolution_exhausted=True`` states with a still-binding live
-    # conflict must receive one fresh automated-resolution attempt,
-    # not be a permanent operator-only dead end), retain the carried
-    # counters and resolution_exhausted flag across the checkpoint
-    # save when the handoff does not clear them, and refuse to call
-    # the recovery preamble after the single handoff has been
-    # dispatched.
     from ralph.pipeline._publication_state_machine import (
         PublicationDecision as _PubDec,
     )
@@ -3924,35 +2923,16 @@ def _wait_for_integration_retry(
             if handoff_rebase is not None and handoff_rebase != rebase_before:
                 rebase = handoff_rebase
         rebase = rebase.record_consecutive_conflicts(rebase.consecutive_conflicts)
-        # The reason must be the ORIGINAL failure detail, not a
-        # concatenation of the previous ``last_reason`` (which would
-        # grow without bound across repeated calls). Use ``detail``
-        # which is the bare human-readable reason computed above; the
-        # typed ladder-escalation reason adds the preserved copy's
-        # location and the next autonomous ladder rung.
         rebase = rebase.set_ladder_escalation(_ladder_escalation_reason(detail))
         state = state.copy_with(rebase=rebase, last_error=alarm).set_waiting(
             WaitReason.EXHAUSTED_RETRY, None
         )
         _save_recovered_rebase_checkpoint(state, ctx)
         ctx.latest_state[:] = [state]
-        # At cap: persist the typed ladder escalation. The first
-        # escalation never sleeps (the automated handoff was just
-        # dispatched, O1/O3); a repeat escalation paces the loop with
-        # the bounded retry so the ladder seam re-observes without a
-        # busy spin — never an operator-only dead end.
         if session_attempted:
             ctx.sleep(_REPEAT_ESCALATION_RETRY_SECONDS)
         return state.clear_waiting()
 
-    # A durable record whose diagnostic repair budget is spent no
-    # longer gates this retry path: the fail-closed record fact is a
-    # typed RecordFactOutcome verdict (DIAGNOSTIC_BUDGET_SPENT) routed
-    # to the autonomous cleanup ladder by the owner seam, and the
-    # boundary ladder recovery preserves the work to backup refs before
-    # any destructive step. The in-memory intervention retry below owns
-    # the RebaseState-level escalation; neither path ends blocked on a
-    # person.
     if rebase.is_intervention_required:
         return _handle_intervention_required_retry(state, ctx, rebase, alarm, detail, backend)
 
@@ -3972,25 +2952,6 @@ def _handle_intervention_required_retry(
     detail: str,
     backend: FileBackend,
 ) -> PipelineState:
-    """Handle retry when ``rebase.is_intervention_required`` is set.
-
-    O1 retry-progress rule (D3): the durable escalation flag means
-    Ralph is in a state without an in-process satisfier. The recovery
-    preamble is invoked once; if it makes progress the iteration
-    returns. Otherwise the consecutive-conflict counter is charged
-    and the typed single-writer setter escalates to LADDER_ESCALATION.
-    The first escalation never sleeps (the automated handoff was just
-    dispatched); a repeat escalation paces the loop with the bounded
-    retry so the ladder seam re-observes without a busy spin.
-
-    Cold-loaded capped escalation (O1 retry rule): a durable record
-    that already carries ``is_intervention_required=True`` and is at
-    the consecutive-conflict cap when this session loaded it must
-    still receive a fresh automated-resolution handoff this session,
-    otherwise the previous session's exhausted attempt becomes a
-    permanent dead end. The flag ``ctx._session_handoff_dispatched``
-    guards against repeat handoffs within the same session.
-    """
     recovered = _recovery_preamble_for(ctx, backend)(ctx.workspace_scope, ctx.config)
     if (
         recovered is not None
@@ -4032,22 +2993,7 @@ def _handle_intervention_required_retry(
         if handoff_rebase is not None and handoff_rebase != rebase_before:
             rebase = handoff_rebase
     rebase = rebase.record_consecutive_conflicts(bumped_conflicts)
-    # Persist the typed LADDER_ESCALATION transition through the
-    # single-writer setter (never the retired INTERVENTION_REQUIRED /
-    # DIAGNOSTIC_INTERVENTION_REQUIRED operator hand-off): a legacy
-    # checkpoint carrying one of those retired outcomes is re-escalated
-    # here so the typed authority maps the live state to
-    # BLOCK_FOR_RECOVERY — the autonomous fallback ladder owns the next
-    # action. The reason is the bare observation detail plus the fixed
-    # preserved-copy / next-rung suffix, never a concatenation of the
-    # previous ``last_reason`` (which would grow without bound across
-    # repeated calls).
     rebase = rebase.set_ladder_escalation(_ladder_escalation_reason(detail))
-    # Repeat-escalation pacing (O1/O3): the first escalation never
-    # sleeps (the automated handoff was just dispatched); a repeat
-    # escalation (the session handoff already ran) paces the loop with
-    # the bounded retry so the ladder seam re-observes without a busy
-    # spin — never an operator-only dead end.
     repeat_escalation = session_attempted
     state = state.copy_with(rebase=rebase, last_error=alarm).set_waiting(
         WaitReason.EXHAUSTED_RETRY, None
@@ -4059,13 +3005,10 @@ def _handle_intervention_required_retry(
     return state.clear_waiting()
 
 
-#: Longest single pause while waiting for a resolver cooldown; keeps the loop
-#: responsive to interrupts and to cooldowns that end early.
 _MAX_COOLDOWN_SLEEP_SECONDS = 30.0
 
 
 def _resolver_cooldown_wait_ms(ctx: LoopContext) -> int:
-    """Milliseconds until an installed resolver is selectable; 0 when one already is."""
     from ralph.pipeline.conflict_resolution.resolver_health import choose_resolver
     from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
 
@@ -4085,25 +3028,8 @@ def handle_pending_retry(
     detail: str,
     backend: FileBackend,
 ) -> PipelineState:
-    """Handle retry when no durable intervention flag is set.
-
-    O1 retry-progress rule (D3): the recovery preamble is the
-    live-Git re-derivation paired with an in-process satisfier (the
-    same preamble on the next iteration). Below the conflict cap,
-    the iteration pairs a bounded sleep with the recovery preamble
-    so an in-progress recovery (e.g. busy worktree lock) has time
-    to advance state on the next iteration. At the cap, we escalate
-    WITHOUT sleeping (D3: never loop forever on a fixed-interval
-    wait). Recovery returning ``None`` or an unresolved/blocked state
-    is treated as no progress and charges the attempt counter.
-    """
     cooldown_ms = _resolver_cooldown_wait_ms(ctx) if rebase.integration_unresolved else 0
     if cooldown_ms > 0:
-        # The blocker needs a resolver and every installed one is cooling down,
-        # so nothing could run this pass: it is a wait, not a failed attempt, and
-        # must not be charged to the conflict cap (that would hand the run to the
-        # operator while the cooldown is still ticking). Passes that need no
-        # resolver (publication retries, Git-side re-derivation) are never held.
         waiting = rebase.set_operation_display_state(OperationDisplayState.WAITING)
         state = state.copy_with(rebase=waiting).set_waiting(WaitReason.EXHAUSTED_RETRY, None)
         _save_recovered_rebase_checkpoint(state, ctx)
@@ -4112,15 +3038,6 @@ def handle_pending_retry(
         return state.clear_waiting()
     recovered = _recovery_preamble_for(ctx, backend)(ctx.workspace_scope, ctx.config)
     if recovered is not None and not recovered.integration_unresolved:
-        # The remote-publication authority is a separate obligation from
-        # Git-side integration. A nonterminal publication decision
-        # (PUBLISH_DEFERRED_REMOTE / PUBLISH_DEFERRED_FRESHNESS /
-        # PUBLICATION_PENDING / PUBLISH_NOW / PUBLICATION_BLOCKED) means
-        # the configured remote push is still owed (O2 / AC8 -- a pending
-        # push must be retried, never silently dropped). Only a terminal
-        # publication decision (or no decision at all, e.g. remote sync
-        # disabled by policy) closes the retry loop; otherwise the loop
-        # must sleep and let the recovery preamble re-observe the remote.
         from ralph.pipeline._publication_state_machine import (
             PublicationDecision as _PubDec,
         )
@@ -4140,11 +3057,6 @@ def handle_pending_retry(
             _PubDec.PUBLICATION_PENDING,
             _PubDec.PUBLISH_NOW,
         ):
-            # Connectivity/publication retry accounting is separate from
-            # bounded Git-conflict/resolver accounting (O1/O2/AC8). A remote
-            # that is unreachable or deferred with a durable pending
-            # publication obligation must remain automatically retried and
-            # must not consume the Git-conflict cap or set intervention.
             rebase = recovered.set_operation_display_state(OperationDisplayState.WAITING)
             state = state.copy_with(rebase=rebase).set_waiting(WaitReason.EXHAUSTED_RETRY, None)
             _save_recovered_rebase_checkpoint(state, ctx)
@@ -4206,17 +3118,10 @@ def _handle_pending_retry(
     detail: str,
     backend: FileBackend,
 ) -> PipelineState:
-    """Compatibility seam over :func:`handle_pending_retry`.
-
-    The private name is the established call surface of the run loop
-    (and of the suites that replace it), so it stays and delegates to
-    the public seam; either name can therefore be replaced by a caller.
-    """
     return handle_pending_retry(state, ctx, rebase, detail, backend)
 
 
 def _handle_cooldown_delay(state: PipelineState, ctx: LoopContext) -> PipelineState:
-    """Handle cooldown wait when last_retry_delay_ms is set."""
     delay_ms = state.last_retry_delay_ms
     if not isinstance(delay_ms, int) or delay_ms <= 0:
         return state
@@ -4289,7 +3194,6 @@ _MAX_RECOVERY_EPOCHS: int = 3
 
 
 def ledger_requires_intervention(state: PipelineState, controller: RecoveryController) -> bool:
-    """Whether the ledger or recovery state demands a hard stop at ``failed_route``."""
     target_phase = state.previous_phase or state.phase
     chain = state.chain_for_phase(target_phase)
     agents = chain.agents if chain is not None and chain.agents else ()
@@ -4298,9 +3202,6 @@ def ledger_requires_intervention(state: PipelineState, controller: RecoveryContr
         from ralph.recovery.agent_failure_ledger import Cooldown, Spent
 
         statuses = tuple(ledger.status(target_phase, agent) for agent in agents)
-        # Cooldown is explicitly recoverable. It outranks generic failure and
-        # recovery-epoch bookkeeping so a temporary provider outage can never
-        # turn the failed-route recovery hop into a terminal pipeline exit.
         if any(isinstance(status, Cooldown) for status in statuses):
             return False
         if all(isinstance(status, Spent) for status in statuses):
@@ -4321,14 +3222,6 @@ def ledger_requires_intervention(state: PipelineState, controller: RecoveryContr
 
 
 def _cycle_cap_exhausted(state: PipelineState, ctx: LoopContext) -> bool:
-    """Whether the recovery controller's cycle cap is exceeded at ``failed_route``.
-
-    When the controller emits ``ExitFailureEffect`` for a cap-exceeded cycle,
-    the inline handler still routes it into ``failed_route`` recovery; without
-    this check the loop would re-enter the failing phase forever. The cap —
-    not the loop shape — is the bound, so the loop consults the same
-    ``CycleCap`` condition the controller used to decide to exit.
-    """
     count = state.recovery_cycle_count
     return isinstance(count, int) and count >= ctx.controller.cycle_cap
 
@@ -4337,15 +3230,9 @@ def _run_inner_loop_after_startup(
     state: PipelineState,
     ctx: LoopContext,
     prev_phase: str,
-    *,  # keyword-only seam for backend injection
+    *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> tuple[PipelineState, str, int | None]:
-    """Dispatch pipeline phases after startup has established a safe state."""
-    # State holder so the providers captured by run_pipeline_step can
-    # read the LIVE PipelineState / ConnectivityMonitor on every agent
-    # invocation. The list is rebound every loop iteration so the
-    # is_waiting_state_provider returns the current state's value, not
-    # a snapshot from when the loop was entered.
     state_holder: list[PipelineState] = [state]
 
     def _live_connectivity() -> str | None:
@@ -4357,23 +3244,9 @@ def _run_inner_loop_after_startup(
     last_status_sig: (
         tuple[str, int | None, int | None, str | None, str | None, str | None, str | None] | None
     ) = None
-    # Mutable box holding the last monotonic sample for the cycle
-    # timebox per-step fold. Persists across loop iterations so the
-    # runner can compute wall-clock delta on every step. A fresh ``None``
-    # on (re)start is correct: the first active step establishes the
-    # baseline sample and the serialized ``cycle_timebox_consumed_seconds``
-    # already carries the budget accumulated before the restart.
     cycle_sample_box: list[float | None] = [None]
     development_sample_box: list[float | None] = [None]
-    # Initialize cycle timing for an older checkpoint resumed directly inside
-    # the development loop so the timer is tracked from the resume time
-    # without charging pre-resume downtime.
     state = _initialize_loop_timeboxes(state, ctx)
-    # ``failed_route`` (e.g. ``failed_terminal``) is a *recoverable* terminal:
-    # the effect router's ``_recovery_prepare_effect`` turns it back into a
-    # PreparePromptEffect on the pre-failure phase. Only recovery exhaustion
-    # or the ledger status (exhausted / cooldown / spent) converts it
-    # into a hard stop, so the budget — not the loop shape — bounds recovery.
     while (
         (
             state.phase != ctx.policy_bundle.pipeline.terminal_phase
@@ -4400,20 +3273,11 @@ def _run_inner_loop_after_startup(
         blocked_integration = _block_unresolved_integration(state, ctx, prev_phase)
         if blocked_integration is not None:
             state = _wait_for_integration_retry(blocked_integration[0], ctx, backend=backend)
-            # The wait either deferred below the cap (bounded sleep) or
-            # escalated to the typed LADDER_ESCALATION outcome; neither
-            # ends the run on a person. Loop again so the autonomous
-            # fallback ladder keeps dispatching recovery rungs; repeat
-            # escalations pace themselves with the bounded retry inside
-            # ``_wait_for_integration_retry``.
             continue
         state = _reconcile_dispatch_state(state)
         state, blocked_sync = _ensure_planning_in_sync(state, ctx, prev_phase)
         if blocked_sync is not None:
             state = _wait_for_integration_retry(state, ctx, backend=backend)
-            # Same contract as the blocked-integration branch: the typed
-            # ladder escalation never returns an exit code here — the
-            # run stays alive for the autonomous fallback ladder.
             continue
         if (
             ctx.policy_bundle.pipeline.terminal_phase == state.phase
@@ -4435,20 +3299,13 @@ def _run_inner_loop_after_startup(
             ):
                 return state, prev_phase, 1
             state = _wait_for_integration_retry(state, ctx, backend=backend)
-            # A blocking wait at the terminal-success gate is the typed
-            # ladder escalation, NEVER an exit code 1 dead end on a
-            # person: loop again; the wait paces repeat escalations with
-            # the bounded retry while the fallback ladder works.
             continue
         state = _apply_connectivity_check(state, ctx.connectivity_monitor)
         state_holder[:] = ctx.latest_state[:] = [state]
-        # Per-iteration pipeline_deps with the live providers so the
-        # watchdog inside the agent invocation can consult the
-        # classifier on every evaluate() call.
         iter_pipeline_deps = _iteration_pipeline_deps(ctx, _live_connectivity, _live_is_waiting)
         runner_step = cast(
             "_RunPipelineStepFn", _runner_module.run_pipeline_step
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         planning_baseline = _capture_planning_baseline_if_entry(state, ctx)
         step_result = runner_step(
             state=state,
@@ -4469,18 +3326,12 @@ def _run_inner_loop_after_startup(
             _development_sample_box=development_sample_box,
         )
         if planning_baseline is not None and not isinstance(step_result, int):
-            # The planning dispatch actually ran; clear whatever tracked
-            # residue it left before the next phase reads the tree.
             with suppress(Exception):
                 _resolve_planning_residue_after_dispatch(ctx, planning_baseline)
         step_result = _resume_planning_after_commit(step_result, ctx, state, backend=backend)
         if isinstance(step_result, int):
             return state, prev_phase, step_result
         state = step_result
-        # Push a fresh status-bar model when the (phase, cycle) signature
-        # changes. The dedupe var is a closure-local scalar tuple (NOT
-        # module-level state, NOT a self.X slot) so this stays compliant
-        # with the resource-accumulator audit.
         last_status_sig = _push_status_bar_if_changed(
             ctx.active_display,
             state,
@@ -4503,7 +3354,7 @@ def _run_inner_loop_after_startup(
             with suppress(Exception):
                 cast("_PhaseAwareDisplay", ctx.active_display).begin_phase(
                     state.phase
-                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                )
     return state, prev_phase, None
 
 
@@ -4514,12 +3365,11 @@ def _emit_post_loop_result(
     exit_code: int,
     policy_bundle: PolicyBundle,
 ) -> None:
-    """Emit run-end summary after the pipeline loop finishes."""
     if not is_quiet and hasattr(active_display, "emit_run_end"):
         with suppress(Exception):
             total_agent_calls = cast(
                 "int", getattr(state.metrics, "total_agent_calls", 0)
-            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            )
             _exit_trigger = "completed" if exit_code == 0 else "failed"
             _outer_dev = next(
                 (
@@ -4531,7 +3381,7 @@ def _emit_post_loop_result(
             )
             cast(
                 "_RunEndDisplay", active_display
-            ).emit_run_end(  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            ).emit_run_end(
                 phase=state.phase,
                 total_agent_calls=total_agent_calls,
                 pr_url=state.pr_url,
@@ -4553,7 +3403,6 @@ def _build_recovery_controller(
     clock: Clock | None = None,
     workspace_probe: WorkspaceChangeProbe | None = None,
 ) -> tuple[RecoveryController, int]:
-    """Build recovery controller from policy bundle; return (controller, cycle_cap)."""
     _cycle_cap: int = 200
     _raw_cycle_cap: object = getattr(state, "recovery_cycle_cap", 200)
     if isinstance(_raw_cycle_cap, int) and _raw_cycle_cap >= 1:
@@ -4611,18 +3460,12 @@ def build_recovery_controller(
     clock: Clock | None = None,
     workspace_probe: WorkspaceChangeProbe | None = None,
 ) -> tuple[RecoveryController, int]:
-    """Build a recovery controller from runtime configuration.
-
-    This public seam exposes the configuration-to-controller wiring for
-    deterministic callers without bypassing the runtime's canonical builder.
-    """
     return _build_recovery_controller(
         state, policy_bundle, config, clock=clock, workspace_probe=workspace_probe
     )
 
 
 def _subscribe_recovery_logger(controller: RecoveryController) -> Callable[[], None]:
-    """Subscribe a recovery event logger to controller; return the unsubscribe callable."""
 
     def _log_recovery_event(evt: object) -> None:
         if isinstance(evt, _FailureEvent):
@@ -4681,40 +3524,6 @@ def _subscribe_recovery_display(
     interval_seconds: float,
     now: Callable[[], float],
 ) -> Callable[[], None]:
-    """Subscribe a cadenced recovery/stopping display emitter to the bus.
-
-    Returns the unsubscribe callable. The subscriber is read-only and
-    defensive:
-
-    * ``isinstance`` checks reuse the module-imported ``_FailureEvent``
-      and ``_FalloverEvent`` aliases (do NOT add a new event-class import).
-    * The callback body is fully wrapped in ``try/except`` so a display
-      rendering exception (a buggy renderer, a closed Rich console, etc.)
-      is swallowed to a debug log and never escapes the
-      ``FailureEventBus.publish`` dispatch. This mirrors the existing
-      ``_log_recovery_event`` precedent at ``_subscribe_recovery_logger``.
-    * The cadence gate reads time via the injected ``now`` callable so
-      tests drive it with ``FakeClock.monotonic``. Production passes
-      ``time.monotonic``. Hardcoded ``time.monotonic()`` inside the
-      callback would make the AC-03 cadence test non-deterministic and
-      is therefore forbidden.
-    * The cadence map is a closure-local dict keyed by event-kind tag,
-      not a module-level or ``self.X`` accumulator, so it falls outside
-      the ``audit_resource_lifecycle`` 4th-contract scope.
-
-    The caller (``run()``) MUST register this subscriber AFTER
-    ``active_display`` is built (so a non-``None`` display is available)
-    and MUST call the returned unsubscribe in ``_cleanup_pipeline`` so a
-    long-running daemon mode does not accumulate listeners across runs.
-
-    Args:
-        controller: ``RecoveryController`` whose ``event_bus`` is
-            subscribed. Must expose a public ``event_bus`` property.
-        display: ``ParallelDisplay`` to route through ``emit_activity_line``.
-        interval_seconds: Cadence window per event-kind tag in seconds.
-        now: Callable returning a monotonic float. Production passes
-            ``time.monotonic``; tests inject ``FakeClock.monotonic``.
-    """
     cadence_map: dict[str, float] = {}
 
     def _maybe_emit(tag: str, now_ts: float, *, build: Callable[[], str]) -> None:
@@ -4789,7 +3598,6 @@ def _resolve_effective_subscriber(
     pipeline_subscriber: _PipelineSubscriberProtocol | None,
     active_display: ParallelDisplay,
 ) -> _PipelineSubscriberProtocol | None:
-    """Resolve which subscriber receives pipeline state change notifications."""
     effective = dashboard_subscriber or pipeline_subscriber
     if effective is None and hasattr(active_display, "subscriber"):
         effective = cast(
@@ -4803,7 +3611,6 @@ def _handle_keyboard_interrupt(
     state: PipelineState,
     loop_ctx: LoopContext,
 ) -> int:
-    """Handle KeyboardInterrupt during pipeline execution; return exit_code 130."""
     logger.warning("Interrupted by user; shutting down tracked processes.")
     emit_activity_line(
         loop_ctx.active_display,
@@ -4826,13 +3633,6 @@ def _handle_keyboard_interrupt(
 
 
 def _run_cleanup_step(resource: str, stage: str, action: Callable[[], None]) -> None:
-    """Run one cleanup action; log and continue on failure.
-
-    A reclamation failure must not discard the run outcome or abort
-    sibling cleanup. The diagnostic log is the only runtime channel
-    for recording what could not be reclaimed (resource identity +
-    reclamation stage).
-    """
     try:
         action()
     except Exception:
@@ -4850,22 +3650,8 @@ def _cleanup_pipeline(
     display_stop: Callable[[], None],
     state: PipelineState,
 ) -> None:
-    """Run all cleanup steps regardless of how the pipeline exited.
-
-    The session-wide ``process_teardown`` (defaulting to
-    ``get_process_manager().shutdown_all``) runs LAST so every
-    spawned child is reaped on every exit (normal, error, SIGINT,
-    SIGTERM). Each step is isolated: a failure is logged to the
-    diagnostic channel and sibling cleanup continues so a
-    refusing-to-die process cannot discard the run outcome.
-    """
     _run_cleanup_step("unsubscribe_bus", "unsubscribe", unsubscribe_bus)
     _run_cleanup_step("unsubscribe_display", "unsubscribe", unsubscribe_display)
-    # wt-047-stall-label: clear the host's watchdog attention at
-    # run cleanup so a stale ``stalled`` value never outlives the
-    # run. The pushed ``terminated`` state already wins during
-    # shutdown rendering, so clearing the watchdog attention here
-    # is the safest cleanup step (no leaked state across runs).
     active_display_obj = loop_ctx.active_display
     if active_display_obj is not None and hasattr(active_display_obj, "set_watchdog_attention"):
 
@@ -4889,7 +3675,7 @@ def _cleanup_pipeline(
             loop_ctx.workspace_scope.root,
             subscriber=cast(
                 "PipelineSubscriber | None", loop_ctx.effective_pipeline_subscriber
-            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            ),
             display=loop_ctx.active_display,
             display_context=loop_ctx.display_context,
         )
@@ -4900,12 +3686,6 @@ def _cleanup_pipeline(
         "clear",
         lambda: _runner_module.clear_cycle_baseline(loop_ctx.workspace_scope.root),
     )
-    # Session-wide process teardown: run last so non-phase-labeled
-    # children (invoke:/agent:) are reaped on every exit path. The
-    # teardown is wired through ``loop_ctx.process_teardown`` so
-    # tests can inject a recording callable. When unset, fall back
-    # to ``get_process_manager().shutdown_all`` so production
-    # behavior is unchanged.
     teardown = loop_ctx.process_teardown
     if teardown is None:
 
@@ -4916,7 +3696,6 @@ def _cleanup_pipeline(
 
 
 def _report_pending_remote_publication(state: PipelineState, ctx: LoopContext) -> PipelineState:
-    """Record a final unpublished remote result without retrying or waiting."""
     pending_status = state.rebase.last_push_status
     if pending_status in (None, "pushed", "created"):
         return state
@@ -4928,11 +3707,6 @@ def _report_pending_remote_publication(state: PipelineState, ctx: LoopContext) -
     from ralph.pipeline.auto_integrate_remote_sync import remote_target_name
 
     remote = remote_target_name(ctx.config)
-    # The report must reflect the CURRENT observation, never stored prose:
-    # a stale ``last_reason`` persisted by an earlier seam (e.g. an
-    # unreachable-then-recovering remote) must not be replayed as the
-    # final state's explanation. Derive the detail from the typed
-    # publication decision instead.
     reason = (
         _render_current_observation_detail(state.rebase) or state.rebase.last_push or pending_status
     )
@@ -4957,7 +3731,6 @@ def _execute_with_cleanup(
     *,
     display_is_active: bool = False,
 ) -> int:
-    """Run the display block and guarantee cleanup; return exit_code."""
     exit_code = 0
     state = initial_state
     started_at = time.monotonic()
@@ -4971,11 +3744,7 @@ def _execute_with_cleanup(
                 with suppress(Exception):
                     cast("_PhaseAwareDisplay", loop_ctx.active_display).begin_phase(
                         state.phase
-                    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-            # Seed the persistent bottom Status Bar with the active directory +
-            # phase + iteration context for the initial phase. Defensive push
-            # (matches _emit_run_start / emit_activity_line precedent). Pass
-            # last_sig=None so the first push is unconditional.
+                    )
             _push_status_bar_if_changed(
                 loop_ctx.active_display,
                 state,
@@ -4991,18 +3760,10 @@ def _execute_with_cleanup(
                     exit_code = early_exit
                     return exit_code
             except KeyboardInterrupt:
-                # Adopt the interrupted run's own state: the checkpoint, the
-                # report and the cleanup below all read this binding, and an
-                # interrupt unwinds past every state the loop had reached.
                 state = loop_ctx.latest_state[0]
                 exit_code = _handle_keyboard_interrupt(state, loop_ctx)
                 return exit_code
             except BaseException:
-                # Same correction for every other way out of the loop. Reaching
-                # the report with the exit code still 0 and the initial state
-                # still bound wrote a run that crashed hours into development
-                # up as `outcome: completed` in phase `planning` — a success
-                # report for a failure. The exception still propagates.
                 state = loop_ctx.latest_state[0]
                 exit_code = 1
                 raise
@@ -5019,8 +3780,6 @@ def _execute_with_cleanup(
                 and retained_integration_reason(loop_ctx.workspace_scope.root) is None
                 and is_terminal_success_eligible(state, record, state.rebase)
             ):
-                # The reducer re-persists last_decision from the typed
-                # authority on the next reduce; no direct write here.
                 state = state.copy_with(
                     rebase=state.rebase.set_operation_display_state(OperationDisplayState.TERMINAL)
                 )
@@ -5034,8 +3793,6 @@ def _execute_with_cleanup(
                     "run", "[green]Pipeline completed successfully.[/green]"
                 )
             else:
-                # The reducer re-persists last_decision from the typed
-                # authority on the next reduce; no direct write here.
                 state = state.copy_with(
                     rebase=state.rebase.set_operation_display_state(OperationDisplayState.TERMINAL)
                 )
@@ -5071,14 +3828,6 @@ def _execute_with_cleanup(
 
 
 def _run_startup_sequence(pipeline_deps: PipelineDeps | None) -> WorkspaceScope | None:
-    """Run the startup collaborator sequence; return the workspace scope.
-
-    Each collaborator resolves through the standard DI precedence: an
-    explicitly injected ``pipeline_deps`` field wins; when the field is
-    ``None`` the runner module's production function is called directly —
-    the exact pre-seam call, in the same order. Returns ``None`` when the
-    custom-MCP-servers validation fails (the caller exits with code 1).
-    """
     if pipeline_deps is None:
         workspace_scope = _runner_module.resolve_workspace_scope()
         _runner_module.write_start_commit_if_absent(workspace_scope.root)
@@ -5088,9 +3837,6 @@ def _run_startup_sequence(pipeline_deps: PipelineDeps | None) -> WorkspaceScope 
         and pipeline_deps.write_start_commit_fn is None
         and pipeline_deps.validate_custom_mcp_servers_fn is None
     ):
-        # All seam fields unset: run the exact pre-seam calls so legacy
-        # patch-based callers (zero-arg ``resolve_workspace_scope`` lambdas)
-        # keep working.
         workspace_scope = _runner_module.resolve_workspace_scope()
         _runner_module.write_start_commit_if_absent(workspace_scope.root)
         validator = _runner_module.validate_custom_mcp_servers
@@ -5152,47 +3898,6 @@ def run(
     snapshot_registry: SnapshotRegistry | None = None,
     pipeline_deps: PipelineDeps | None = None,
 ) -> int:
-    """Execute the pipeline event loop.
-
-    Args:
-        config: Unified configuration for the pipeline.
-        initial_state: Optional initial state (for resume from checkpoint).
-        display: Optional pre-built display. When omitted, a ParallelDisplay
-            is constructed by default unless ``verbosity`` is QUIET.
-        pipeline_subscriber: Optional subscriber that will receive notify(state)
-            calls after each reduce.
-        verbosity: Optional explicit verbosity. Defaults to the configured
-            value in ``config.general.verbosity`` (mapped from int rank).
-        pro_hooks: Optional ``ProPipelineHooks`` carrying Pro overrides.
-            Ignored when ``pipeline_deps`` is provided; prefer passing
-            ``pro_hooks`` to :func:`build_default_pipeline_deps` instead.
-        pipeline_deps: Optional ``PipelineDeps`` carrying injected
-            collaborators. This is the single authoritative injection
-            surface for the run loop. When provided, its values take
-            precedence over ``pro_hooks`` and production defaults.
-        policy_bundle_factory: (DEPRECATED) Use ``pipeline_deps``.
-        registry_factory: (DEPRECATED) Use ``pipeline_deps``.
-        state_factory: (DEPRECATED) Use ``pipeline_deps``.
-        recovery_controller_factory: (DEPRECATED) Use ``pipeline_deps``.
-        marker_watcher_factory: (DEPRECATED) Use ``pipeline_deps``.
-        snapshot_registry: (DEPRECATED) Use ``pipeline_deps``.
-        _recovery_sleep: (DEPRECATED) Use ``pipeline_deps.recovery_sleep``
-            (or pass ``recovery_sleep`` to :func:`build_default_pipeline_deps`).
-
-    Migration Notes:
-        ``run()`` previously accepted individual factory kwargs such as
-        ``policy_bundle_factory``, ``registry_factory``, etc. These are now
-        deprecated. Construct a :class:`PipelineDeps` bundle via
-        :func:`build_default_pipeline_deps` (optionally passing
-        ``pro_hooks`` or ``recovery_sleep`` to it) and pass only
-        ``pipeline_deps``. Passing any deprecated factory kwarg alongside
-        ``pipeline_deps`` raises ``ValueError``. Callers using only the old
-        factory kwargs (without ``pipeline_deps``) continue to work for
-        backward compatibility.
-
-    Returns:
-        Exit code (0 for success, non-zero for failure).
-    """
     workspace_scope = _run_startup_sequence(pipeline_deps)
     if workspace_scope is None:
         return 1
@@ -5265,13 +3970,6 @@ def run(
         _resolve_recovery_display_interval(config),
         now=time.monotonic,
     )
-    # The catch-up worker starts as the LAST setup step, inside the
-    # LoopContext construction that feeds straight into
-    # _execute_with_cleanup's try/finally -- nothing may run between
-    # the worker starting and the cleanup guarantee attaching, or a
-    # setup exception would strand the ticking thread (it is daemonic,
-    # so the process could still exit, but the guarantee should not
-    # have gaps).
     loop_ctx = LoopContext(
         policy_bundle=policy_bundle,
         workspace_scope=workspace_scope,
@@ -5315,20 +4013,6 @@ def _start_pro_marker_watcher(
     *,
     watcher_factory: Callable[[Path], ProMarkerWatcher] | None = None,
 ) -> tuple[ProMarkerWatcher | None, ProHeartbeatClient | None]:
-    """Construct and start a Pro marker watcher (with its embedded heartbeat).
-
-    The watcher polls for the marker and adopts it on first
-    appearance. The heartbeat client (if any) is the one created
-    by the watcher's heartbeat_factory on adoption. Both are
-    returned so the run loop can attach them to LoopContext.
-
-    When the marker is missing at engine start time, the watcher
-    is started in daemon mode and will adopt the marker later.
-    The heartbeat client is None until adoption; the
-    cleanup path stops the watcher first (so the watcher's poll
-    loop cannot race the heartbeat), then the heartbeat client
-    (so its daemon drain completes).
-    """
     from ralph.pro_support.watcher import ProMarkerWatcher
 
     def _default_factory(ws_root: Path) -> ProMarkerWatcher:
@@ -5343,18 +4027,6 @@ def _start_pro_marker_watcher(
 def _start_pro_heartbeat_if_active(
     workspace_root: Path,
 ) -> ProHeartbeatClient | None:
-    """Thin one-line wrapper that preserves the legacy public API.
-
-    Existing tests and call sites (e.g.
-    test_run_loop_pro_integration.py,
-    test_pro_support_contract.py) monkey-patch this name to
-    substitute a recording heartbeat. Returning None when the
-    marker is missing or Pro mode is inactive matches the prior
-    contract.
-
-    New code should use :func:`_start_pro_marker_watcher` directly
-    so the watcher is also wired up.
-    """
     _watcher, client = _start_pro_marker_watcher(workspace_root)
     _ = _watcher
     return client

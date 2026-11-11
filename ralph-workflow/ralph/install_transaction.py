@@ -1,4 +1,3 @@
-"""Atomic publication primitives for immutable checkout-install generations."""
 
 import fcntl
 import os
@@ -18,15 +17,14 @@ class InstallLockUnavailableError(RuntimeError):
 
 @contextmanager
 def install_lock(path: Path) -> Iterator[None]:
-    """Acquire the installer-specific advisory lock without waiting."""
     _ensure_private_root(path.parent)
     if path.is_symlink():
         raise InstallLockUnavailableError(f"installer lock must not be a symlink: {path}")
-    descriptor = os.open(  # filesystem-write-ok: lock must be created without following a symlink.
+    descriptor = os.open(
         path, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600
     )
     path.chmod(0o600)
-    with os.fdopen(  # filesystem-write-ok: exclusively-created descriptor remains open for flock.
+    with os.fdopen(
         descriptor, "w", encoding="utf-8"
     ) as handle:
         acquired = False
@@ -45,18 +43,16 @@ def install_lock(path: Path) -> Iterator[None]:
 
 
 def create_candidate(staging: Path) -> Path:
-    """Allocate one unique disposable candidate directory under ``staging``."""
     _ensure_private_root(staging)
     return Path(tempfile.mkdtemp(prefix="generation-", dir=staging))
 
 
 def finalize_generation(candidate: Path, generations: Path) -> Path:
-    """Atomically turn a fully prepared candidate into an immutable generation."""
     _ensure_private_root(generations)
     generation = generations / candidate.name
     candidate.replace(
         generation
-    )  # filesystem-write-ok: atomically publish a prepared immutable generation.
+    )
     return generation
 
 
@@ -66,7 +62,6 @@ def publish_generation(
     *,
     publish_launcher: Callable[[Path], None],
 ) -> Path:
-    """Publish the launcher only after atomically finalizing the candidate generation."""
     generation = finalize_generation(candidate, generations)
     try:
         publish_launcher(generation)
@@ -78,7 +73,6 @@ def publish_generation(
 
 
 def cleanup_staging(staging: Path) -> None:
-    """Discard abandoned candidates; immutable generations are never recovery input."""
     _remove_tree(staging)
 
 
@@ -90,7 +84,7 @@ def point_current(current: Path, generation: Path) -> None:
     staging.symlink_to(generation, target_is_directory=True)
     staging.replace(
         current
-    )  # filesystem-write-ok: atomically refresh the compatibility generation pointer.
+    )
 
 
 def _ensure_private_root(root: Path) -> None:
@@ -104,5 +98,4 @@ def _ensure_private_root(root: Path) -> None:
 
 def _remove_tree(path: Path) -> None:
     if path.exists():
-        # filesystem-write-ok: staging and unpublished generations are installer-owned.
         shutil.rmtree(path)

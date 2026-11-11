@@ -1,4 +1,3 @@
-"""Fake test clock for the agent timeout subsystem."""
 
 from __future__ import annotations
 
@@ -15,7 +14,6 @@ __all__ = ["Clock", "FakeClock", "SystemClock"]
 
 
 class FakeClock:
-    """Test Clock: advances logical time synchronously without real waits."""
 
     def __init__(
         self,
@@ -48,7 +46,6 @@ class FakeClock:
         self._now += seconds
 
     def advance(self, seconds: float) -> None:
-        """Advance logical time by seconds without blocking."""
         self._now += seconds
 
     def wait_for_event(self, event: threading.Event, seconds: float) -> bool:
@@ -56,10 +53,8 @@ class FakeClock:
         return event.is_set()
 
     def set_wall_time(self, dt: datetime) -> None:
-        """Set current wall time."""
         effective_dt = dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
         self._epoch_offset = effective_dt.timestamp() - self._now
 
     def set_epoch(self, seconds: float) -> None:
-        """Set current epoch timestamp."""
         self._epoch_offset = seconds - self._now

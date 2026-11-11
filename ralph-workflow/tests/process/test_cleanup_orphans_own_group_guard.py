@@ -1,13 +1,3 @@
-"""Regression: ``cleanup_orphans`` must never signal Ralph's own process group.
-
-``ProcessManager``'s group sweep (a SIGKILL of the whole process group) only refused
-PGIDs 0 and 1. A record can carry Ralph's OWN group -- a PTY child that never
-became a session leader, or a caller handing a raw PGID to
-``cleanup_orphans`` -- and ``killpg`` on it SIGKILLs Ralph itself plus every
-sibling in its terminal group. ``ralph.process.teardown`` already refuses that
-group; the manager's sweep must refuse it too.
-"""
-
 from __future__ import annotations
 
 import os
@@ -34,7 +24,6 @@ def _record_killpg(monkeypatch: pytest.MonkeyPatch) -> list[tuple[int, int]]:
 
 
 def test_cleanup_orphans_refuses_own_process_group(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Passing Ralph's own PGID is a no-op, never a group kill."""
     calls = _record_killpg(monkeypatch)
     pm = ProcessManager(psutil=None)
 
@@ -44,7 +33,6 @@ def test_cleanup_orphans_refuses_own_process_group(monkeypatch: pytest.MonkeyPat
 
 
 def test_cleanup_orphans_still_kills_a_foreign_group(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The guard is narrow: any other valid PGID is still swept."""
     calls = _record_killpg(monkeypatch)
     pm = ProcessManager(psutil=None)
     foreign_pgid = os.getpgid(0) + 100_000

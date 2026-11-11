@@ -1,5 +1,3 @@
-"""Tests for the single-owner failure ledger audit (audit_agent_failure_single_owner)."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -224,8 +222,6 @@ def test_get_counters(snap):
 def test_transitional_allowed_file_bypasses_check(monkeypatch: pytest.MonkeyPatch) -> None:
     from ralph.testing import audit_agent_failure_single_owner as audit_mod
 
-    # The transitional rules live in the rule engine the audit imports, so the
-    # allowance is added to the shared mapping the engine reads.
     monkeypatch.setitem(
         audit_mod.TEMPORARY_TRANSITIONAL_RULES,
         "ralph/recovery/controller.py",
@@ -378,8 +374,6 @@ def _retry_failure_signature(exc: Exception) -> tuple[str, str]:
 
 
 def test_agents_invoke_is_in_production_scan_scope() -> None:
-    # The §11 fix (rev 2) widened the production scan to all of ralph/, which
-    # necessarily covers ralph/agents/invoke.
     assert "ralph" in PRODUCTION_SCAN_SUBTREES
 
 
@@ -447,18 +441,14 @@ import ralph.pipeline._retry_progress_guard
 
 
 def test_transitional_rules_consolidated() -> None:
-    # Only surviving conflict resolution files with legitimate needs remain
     assert set(TEMPORARY_TRANSITIONAL_RULES.keys()) == {
         "ralph/pipeline/conflict_resolution/session.py",
         "ralph/pipeline/conflict_resolution/chain_candidates.py",
     }
-    # No test files are in transitional rules
     assert not any(k.startswith("tests/") for k in TEMPORARY_TRANSITIONAL_RULES)
-    # _driver_rounds.py was fully cleaned up
     assert (
         "ralph/pipeline/conflict_resolution/_driver_rounds.py" not in TEMPORARY_TRANSITIONAL_RULES
     )
-    # No deleted U4b modules are in transitional rules
     assert not any("retry_progress_guard" in k for k in TEMPORARY_TRANSITIONAL_RULES)
 
 
@@ -474,7 +464,6 @@ def test_u4b_bans_permanently_promoted() -> None:
 
 
 def test_local_retry_cap_deciding_agent_fate_is_flagged() -> None:
-    """A local retry cap compared against a retry counter must be rejected."""
     source = """
 def _retry_or_fall_over(state, chain):
     max_retries = 3
@@ -495,7 +484,6 @@ def _retry_or_fall_over(state, chain):
 
 
 def test_local_retry_cap_with_advance_branch_is_flagged() -> None:
-    """The advance branch of a local retry cap decision is rejected too."""
     source = """
 def _retry_or_fall_over(state, chain):
     max_retries = 3
@@ -512,7 +500,6 @@ def _retry_or_fall_over(state, chain):
 
 
 def test_repository_safety_bound_is_not_flagged() -> None:
-    """A merge-repair attempt cap bounds repository state, not agent health."""
     source = """
 MAX_MERGE_REPAIR_ATTEMPTS = 3
 
@@ -526,7 +513,6 @@ def repair_pending_merge(record):
 
 
 def test_retry_budget_without_agent_fate_action_is_not_flagged() -> None:
-    """The rule is a decision rule, not a blanket ban on retry identifiers."""
     source = """
 MAX_RETRIES = 3
 
@@ -539,7 +525,6 @@ def report_retry_budget(metrics):
 
 
 def test_transport_retry_budget_is_not_flagged() -> None:
-    """A transport repetition budget is not an agent-health decision."""
     source = """
 def _invocation_retry_allowed_or_raise(retries_used, max_retries):
     if retries_used < max_retries:
@@ -554,7 +539,6 @@ def _invocation_retry_allowed_or_raise(retries_used, max_retries):
 
 
 def test_test_reading_serialised_ledger_counter_is_flagged() -> None:
-    """A test that indexes into the serialised ledger snapshot must be rejected."""
     source = """
 def test_snapshot(state):
     assert state.ledger_snapshot["entries"]["development:claude"]["is_spent"] is True
@@ -569,7 +553,6 @@ def test_snapshot(state):
 
 
 def test_test_reading_serialised_ledger_counter_via_get_is_flagged() -> None:
-    """Reading a serialised ledger counter through .get() must be rejected."""
     source = """
 def test_snapshot(state):
     reason = state.ledger_snapshot["entries"]["development:claude"].get("spent_reason")
@@ -582,7 +565,6 @@ def test_snapshot(state):
 
 
 def test_test_reading_private_ledger_entry_counter_is_flagged() -> None:
-    """A test that reaches a ledger counter through a private attribute is rejected."""
     source = """
 def test_private(ledger):
     assert ledger._entries["development:claude"]["is_spent"] is True
@@ -594,7 +576,6 @@ def test_private(ledger):
 
 
 def test_test_public_ledger_answers_are_accepted() -> None:
-    """The owner's public answers stay the only facts a test may observe."""
     source = """
 def test_public_seam(ledger, fact):
     status = ledger.status("development", "claude")
@@ -611,7 +592,6 @@ def test_public_seam(ledger, fact):
 
 
 def test_test_private_backoff_counter_access_is_flagged() -> None:
-    """A test reading the controller's private backoff counter is rejected."""
     source = """
 def test_backoff(controller):
     assert controller._backoff_attempts.get("development:claude") == 2
@@ -623,7 +603,6 @@ def test_backoff(controller):
 
 
 def test_test_private_unavailability_tracker_access_is_flagged() -> None:
-    """A test reading the controller's private unavailability store is rejected."""
     source = """
 def test_tracker(controller):
     assert controller._unavailability_tracker.is_available("development", "claude")
@@ -635,7 +614,6 @@ def test_tracker(controller):
 
 
 def test_test_private_unavailable_marker_call_is_flagged_in_assignment_context() -> None:
-    """The private unavailable marker is rejected outside an assert too."""
     source = """
 def test_marker(controller, reason):
     cooldown_ms = controller._mark_agent_unavailable("development", "claude", reason)
@@ -648,7 +626,6 @@ def test_marker(controller, reason):
 
 
 def test_test_private_backoff_counter_access_via_getattr_is_flagged() -> None:
-    """Reading the private backoff counter through getattr() is rejected."""
     source = """
 def test_getattr(controller):
     attempts = getattr(controller, "_backoff_attempts")
@@ -660,12 +637,6 @@ def test_getattr(controller):
 
 
 def test_test_controller_snapshot_private_backoff_read_is_flagged() -> None:
-    """Reading the controller's private backoff counter through the snapshot is rejected.
-
-    The serialised snapshot publishes the controller's private failure-owner
-    state under a public key name, so indexing that key couples the test to
-    the same private state the direct-access rule already rejects.
-    """
     source = """
 def test_controller_public_seam(controller):
     assert controller.snapshot()["backoff_attempts"] == {}
@@ -680,7 +651,6 @@ def test_controller_public_seam(controller):
 
 
 def test_test_controller_snapshot_private_backoff_get_is_flagged() -> None:
-    """Reading the serialised private backoff counter through .get() is rejected."""
     source = """
 def test_snapshot(controller):
     attempts = controller.snapshot().get("backoff_attempts")
@@ -696,7 +666,6 @@ def test_snapshot(controller):
 
 
 def test_test_controller_snapshot_unavailable_timeouts_read_is_flagged() -> None:
-    """The serialised unavailability timeout history is rejected too."""
     source = """
 def test_snapshot(controller):
     timeouts = controller.snapshot()["unavailable_timeouts"]
@@ -712,7 +681,6 @@ def test_snapshot(controller):
 
 
 def test_test_bare_snapshot_private_backoff_read_is_flagged() -> None:
-    """The bare snapshot() spelling reaches the same private state and is rejected."""
     source = """
 def test_snapshot():
     attempts = snapshot()["backoff_attempts"]
@@ -724,7 +692,6 @@ def test_snapshot():
 
 
 def test_test_direct_and_serialised_private_failure_owner_reads_are_flagged() -> None:
-    """Both coupling forms are rejected: the private attribute and its snapshot key."""
     source = """
 def test_backoff(controller):
     assert controller._backoff_attempts.get("development:claude") == 2
@@ -741,7 +708,6 @@ def test_backoff(controller):
 
 
 def test_test_public_controller_seam_is_accepted() -> None:
-    """The controller's public seam stays observable from a test."""
     source = """
 def test_controller_public_seam(controller):
     controller.handle(event)
@@ -755,7 +721,6 @@ def test_controller_public_seam(controller):
 
 
 def test_test_controller_snapshot_non_failure_owner_key_is_accepted() -> None:
-    """A snapshot key that is not private failure-owner state stays legal."""
     source = """
 def test_controller_snapshot(controller):
     assert controller.snapshot()["cycle_cap"] == 5
@@ -765,7 +730,6 @@ def test_controller_snapshot(controller):
 
 
 def test_test_unrelated_private_reads_are_not_flagged() -> None:
-    """Private reads that are not failure-owner state stay accepted."""
     source = """
 class FakeRunner:
     def __init__(self):

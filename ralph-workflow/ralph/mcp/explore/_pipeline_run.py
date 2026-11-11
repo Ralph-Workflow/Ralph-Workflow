@@ -1,12 +1,3 @@
-"""Incremental reindex path for the indexed exploration substrate.
-
-Extracted from :mod:`ralph.mcp.explore.pipeline` so the hub module
-stays under the per-file line ceiling. This module owns the
-warm-no-op / warm-small-edit / warm-changed paths, the bounded
-manifest update, the per-path extraction, and the deadline-aware
-worker loop. The staged full path lives in
-:mod:`ralph.mcp.explore._pipeline_staged`.
-"""
 
 from __future__ import annotations
 
@@ -58,22 +49,11 @@ def _run_reindex(
     state: _ReindexState,
     cancel: Callable[[], bool] | None = None,
 ) -> str:
-    """Inner reindex logic. Returns a status string (without finalize)."""
 
-    # AC-05: bounded cancel contract. Polled at the file-loop
-    # boundary, at the FTS commit, and at the row-insert boundary
-    # so cancellation latency is bounded by the duration of one
-    # phase. The prior committed generation is preserved.
     def _check_cancel() -> None:
         if cancel is not None and cancel():
             raise _ReindexCancelledError("cancelled by caller")
 
-    # ``_run_reindex`` runs in ``changed`` mode only. The public
-    # ``reindex()`` entry point dispatches ``mode='full'`` to
-    # ``_staged_full_reindex`` so the live store is never
-    # partially modified. The change-replay path always
-    # increments the generation so the prior committed state
-    # is visibly distinct from the new one.
     current_generation = _current_generation(store)
     target_generation = current_generation + 1 if current_generation else 1
 
@@ -90,28 +70,14 @@ def _run_reindex(
 
     seen_paths: set[str] = set()
 
-    # Reuse the dirty list already pulled above. The previous
-    # implementation re-issued ``peek_dirty_paths`` per file (a
-    # SELECT per path on top of the per-file ``get_file``
-    # SELECT). The set is bounded by the dirty queue length, not
-    # the workspace size.
     dirty_set: frozenset[str] = frozenset(dirty_paths)
 
     manifest_items = sorted(next_manifest.items())
     for batch_start in range(0, len(manifest_items), _BATCH_SIZE):
         batch = manifest_items[batch_start : batch_start + _BATCH_SIZE]
-        # One bulk SELECT replaces the per-file ``get_file`` call so
-        # an unchanged workspace only issues one ``files`` lookup
-        # per batch instead of N. The bulk reader skips missing
-        # paths (new files), so the in-memory prefilter below is
-        # sufficient.
         batch_paths = [relative_path for relative_path, _ in batch]
         previous_by_path = store.get_file_many(batch_paths)
 
-        # Accumulate the no-op manifest rows for this batch so the
-        # write side stays at O(1) statements per refresh instead
-        # of O(N). Per-file extraction below still touches
-        # ``upsert_file`` exactly once per changed path.
         no_op_paths: list[str] = []
         no_op_hashes: list[str] = []
         no_op_sizes: list[int] = []
@@ -122,10 +88,6 @@ def _run_reindex(
                 _ensure_deadline(state, now_fn)
                 _check_cancel()
                 seen_paths.add(relative_path)
-                # Ponytail: size+mtime prefilter first. The content hash is
-                # authoritative, but skipping the read+hash for unchanged
-                # files keeps warm no-op refresh work-proportional to the
-                # manifest, not to the workspace bytes.
                 previous = previous_by_path.get(relative_path)
                 if (
                     previous is not None
@@ -157,7 +119,6 @@ def _run_reindex(
                     and previous.content_hash == content_hash
                     and not previous.is_deleted
                 ):
-                    # No-op reuse; the manifest rows stay.
                     _update_manifest(
                         store,
                         relative_path,
@@ -168,9 +129,6 @@ def _run_reindex(
                     )
                     continue
 
-                # Either new file or content changed. Phase 1 supports diff
-                # content with same path (the deletion happens before the
-                # insert in upsert_chunks_for_file).
                 try:
                     _re_extract_path(
                         store,
@@ -183,26 +141,12 @@ def _run_reindex(
                         structure_extractor=options.structure_extractor,
                     )
                 except PythonExtractionError as exc:
-                    # PA-001 / AC-02: the typed structure-extraction failure
-                    # is translated to the same per-path failure path as
-                    # any other FileReadError. Prior lexical/structure
-                    # rows are preserved (the preflight refused to write),
-                    # the path stays dirty, and the loop continues.
                     state.failed_paths.append(relative_path)
                     state.error_summary = f"extract_failed:python_syntax: {exc}"
                     continue
                 except FileReadError as exc:
                     state.failed_paths.append(relative_path)
                     state.error_summary = f"extract_failed: {exc}"
-                    # AC-15: write both the manifest row AND the files row
-                    # for F15 hard files (binary, invalid-encoding,
-                    # oversize, unreadable, etc.) so the staleness probe
-                    # recognises the path as a known hard file (not a new
-                    # unindexed file) and does not spuriously fall through
-                    # on the next query. The files row is upserted with
-                    # ``is_deleted=0`` and the current content hash so the
-                    # FTS5 search cannot serve matches from the file while
-                    # the next rebuild still has the same bytes.
                     _update_manifest(
                         store,
                         relative_path,
@@ -235,9 +179,6 @@ def _run_reindex(
                     last_seen_generation=target_generation,
                 )
 
-            # One bulk write for the entire no-op manifest batch.
-            # Bypasses per-file INSERTs so the warm unchanged path
-            # is O(1) SQLite statements per refresh.
             if no_op_paths:
                 store.upsert_manifest_many(
                     no_op_paths,
@@ -247,14 +188,6 @@ def _run_reindex(
                     target_generation,
                 )
 
-    # Mark deleted paths. AC-05/AC-06: a removed file must drop its
-    # chunks, FTS rows, evidence, spans, symbols, and edges so graph
-    # queries and indexed text search cannot return facts about
-    # files that no longer exist in the workspace. We tombstone the
-    # path-level evidence before deletion (same contract as the
-    # change-replacement path) and then physically delete the
-    # per-path rows. Deletion history lives in the evidence tombstone;
-    # the file row is removed outright (see below).
     existing_files = list(store.iter_files())
     for batch_start in range(0, len(existing_files), _BATCH_SIZE):
         batch_existing = existing_files[batch_start : batch_start + _BATCH_SIZE]
@@ -263,7 +196,6 @@ def _run_reindex(
                 _ensure_deadline(state, now_fn)
                 _check_cancel()
                 if existing.path not in seen_paths and existing.path not in path_scope:
-                    # File is no longer on disk.
                     store.record_tombstone(
                         evidence_id=derive_evidence_id(
                             path=existing.path,
@@ -279,22 +211,10 @@ def _run_reindex(
                         content_hash=existing.content_hash,
                         generation=existing.indexed_generation,
                         stale_reason="file_deleted",
-                        # record_tombstone prunes by wall clock
-                        # (time.time()) internally; now_fn is a
-                        # monotonic clock, so passing it here would
-                        # make every tombstone look 30+ days old and
-                        # get purged instantly.
                         stale_at=time.time(),
                         replacement_evidence_id=None,
                     )
                     store.delete_chunks_for_path(existing.path)
-                    # delete_file_rows removes files/chunks/chunks_fts/evidence
-                    # for the path; we still need to drop structure rows
-                    # (spans, symbols, edges). The deletion history lives in
-                    # the evidence tombstone above -- a files-row tombstone
-                    # would be counted by count_deleted_files() forever and
-                    # permanently wedge the staleness probe, so the row is
-                    # removed outright.
                     store.replace_structure_rows(
                         path=existing.path,
                         spans=(),
@@ -302,16 +222,10 @@ def _run_reindex(
                         edges=(),
                     )
                     store.delete_file_rows(existing.path)
-    # wt-11: purge tombstone rows (is_deleted=1) left by older reindexes.
-    # They wedge the staleness probe the same way and are pure diagnostics;
-    # the evidence table carries the deletion history.
     with store.transaction():
         store._conn.execute("DELETE FROM files WHERE is_deleted = 1")
 
     store.set_setting("current_generation", str(target_generation))
-    # AC-05/AC-06: persist the schema/extractor versions so a future
-    # open can detect a mismatched persisted index and force a safe
-    # cold rebuild. The keys are stable across reindex calls.
     from ralph.mcp.explore.store import SCHEMA_VERSION as _SCHEMA_VERSION
     from ralph.mcp.explore.structure import (
         EXTRACTOR_VERSION as _STRUCTURE_EXTRACTOR_VERSION,
@@ -320,12 +234,6 @@ def _run_reindex(
     store.set_setting("schema_version", _SCHEMA_VERSION)
     store.set_setting("extractor_version", EXTRACTOR_VERSION)
     store.set_setting("structure_extractor_version", _STRUCTURE_EXTRACTOR_VERSION)
-    # AC-05 dirty-path safety: only consume dirty paths that were
-    # actually processed (visited during this reindex pass) and that
-    # are not in the failed set. Out-of-scope manual refreshes
-    # consume their own paths so the queue does not grow over
-    # repeated partial reindexes. Failed paths stay in the queue so
-    # the next reindex retries them.
     out_of_scope: set[str] = set()
     if path_scope:
         dirty = store.peek_dirty_paths()
@@ -348,10 +256,6 @@ def _ensure_deadline(state: _ReindexState, now_fn: Callable[[], float]) -> None:
 
 
 def _path_in_scope(path: str, path_scope: Sequence[str]) -> bool:
-    """Return True when ``path`` falls within one of the ``path_scope`` roots.
-
-    An empty ``path_scope`` is treated as "everything is in scope".
-    """
     if not path_scope:
         return True
     for raw_scope in path_scope:
@@ -379,7 +283,6 @@ def _update_manifest(
     mtime_ns: int,
     last_seen_generation: int,
 ) -> None:
-    """Insert/update a single manifest row inside the same generation."""
     store._conn.execute(
         """
         INSERT INTO manifest (
@@ -413,56 +316,15 @@ def _re_extract_path(
     generation: int,
     structure_extractor: str = "scalar",
 ) -> None:
-    """Re-extract chunks and evidence for ``relative_path``.
-
-    PA-001 / AC-02: this function follows a strict preflight-then-
-    replace ordering. Every per-path destructive store write
-    (tombstone, chunk delete, structure delete, file upsert,
-    chunk/FTS insert, evidence insert, structure upsert) happens
-    only AFTER a successful read + decode + lexical chunk build +
-    structure extraction preflight. If any preflight step raises
-    (e.g. ``PythonSyntaxError`` for malformed Python), no
-    destructive write fires, prior lexical/structure rows remain
-    queryable, and the failure is reported to ``_run_reindex`` so
-    the path lands in ``failed_files`` and stays dirty for a
-    later retry.
-
-    AC-05 content cache: when ``content_hash`` already has a
-    fresh-enough cache row (matching ``EXTRACTOR_VERSION``), the
-    lexical preflight reuses the cached chunks and skips the
-    file read + chunk_text build. Structure rows (spans/symbols/
-    edges) are still re-derived for the new path because their
-    identifiers are path-dependent. The cache is then repopulated
-    so a future copy/move of an equivalent file can reuse it
-    again.
-
-    Existing rows for this path are tombstoned (bounded) and then
-    replaced. The caller (``_run_reindex``) handles the file-row
-    update so the manifest reflects the new generation.
-    """
     full = (Path(workspace_root) / relative_path).resolve()
     root = Path(workspace_root).resolve()
     try:
         is_relative = full.is_relative_to(root)
-    except AttributeError:  # pragma: no cover — Python <3.9 fallback
+    except AttributeError:
         is_relative = str(full).startswith(str(root) + os.sep) or full == root
     if not is_relative:
         raise FileReadError(f"path escapes workspace: {relative_path!r}")
 
-    # --- Preflight phase: read + decode + build lexical + structure.
-    # These calls happen BEFORE any destructive write so a failure
-    # (malformed Python, OS read error, OOM) preserves every
-    # prior row in the live store. The caller treats a raised
-    # exception as a per-path failure recorded in failed_files;
-    # the path stays dirty and is retried on the next pass.
-    #
-    # AC-15: invalid-encoding files (F15 hard files) must be
-    # skipped by the indexed path so the indexed and live paths
-    # agree on which files to scan. We do a strict UTF-8 decode
-    # first; only fall back to ``errors="replace"`` when the
-    # strict decode succeeds (i.e. when there is no invalid byte
-    # to replace). Files with invalid UTF-8 raise
-    # ``FileReadError`` and are recorded as a per-path failure.
     raw_bytes = full.read_bytes()
     try:
         text = raw_bytes.decode("utf-8")
@@ -474,10 +336,6 @@ def _re_extract_path(
         chunk_text(text, lines_per_chunk=DEFAULT_CHUNK_LINES)
     )
     extracted_at: float = time.time()
-    # ``extract_structure`` raises ``PythonSyntaxError`` for
-    # malformed Python; the typed exception propagates so the
-    # caller fails-closed without losing prior rows. Structure is
-    # always rederived because symbol/span/edge ids are path-bound.
     prepared_extraction = extract_structure(
         path=relative_path,
         content=text,
@@ -486,13 +344,8 @@ def _re_extract_path(
         structure_extractor=structure_extractor,
     )
 
-    # --- Replacement phase: tombstone + delete + upsert only after
-    # the preflight succeeds.
     previous = store.get_file(relative_path)
     if previous is not None:
-        # Write a bounded tombstone for the prior evidence rows
-        # before deleting them. We do not enumerate every prior row
-        # — we record one tombstone per path/generation transition.
         store.record_tombstone(
             evidence_id=derive_evidence_id(
                 path=relative_path,
@@ -512,9 +365,6 @@ def _re_extract_path(
             replacement_evidence_id=None,
         )
     store.delete_chunks_for_path(relative_path)
-    # Phase 2 (AC-06): also drop prior structure rows for this path
-    # so the new generation replaces them atomically with no stale
-    # graph rows left behind.
     store.replace_structure_rows(
         path=relative_path,
         spans=(),
@@ -576,9 +426,6 @@ def _re_extract_path(
                 is_stale=False,
             )
         )
-    # Phase 2 (AC-06): persist deterministic structure rows for
-    # Python and Markdown files. Unsupported languages keep their
-    # lexical rows only — no graph edges are emitted for them.
     if prepared_extraction.spans or prepared_extraction.symbols or prepared_extraction.edges:
         store.replace_structure_rows(
             path=relative_path,
@@ -587,7 +434,6 @@ def _re_extract_path(
             edges=prepared_extraction.edges,
         )
 
-    # AC-05: update content cache metadata for the fresh extraction.
     try:
         store.insert_content_cache(
             row=ContentCacheRow(
@@ -599,12 +445,11 @@ def _re_extract_path(
                 error_summary=None,
             )
         )
-    except Exception:  # bounded: cache writes never block reindex
+    except Exception:
         logger.warning("content_cache write failed for %s", relative_path)
 
 
 def _detect_language(path: str) -> str | None:
-    """Best-effort language detection for the file row."""
     lower = path.lower()
     if lower.endswith(".py"):
         return "python"

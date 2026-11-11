@@ -1,46 +1,3 @@
-"""PRODUCT_CRITERIA §11 proofs: a known unresolved-conflict failure is typed, never AMBIGUOUS.
-
-§11 headline: a resolver that exits "success" while the same 6 paths stay
-conflicted did an **unproductive attempt**. Every fact needed to say so is
-already typed in the driver (``ResolutionFailureCause.UNRESOLVED_CONFLICT``,
-``ResolutionTerminationReason.RESOLUTION_INCOMPLETE``); the owner must be
-handed a typed fact, not a prose sentence to re-match. Post-fix:
-
-* the failure classifies as ``FailureCategory.AGENT`` — not a free retry,
-  not ambiguous — with the typed reason
-  ``"agent reported success but {N} conflicted path(s) remain"``; the typed
-  classification does not debit the classified retry budget
-  (``counts_against_budget=False``), while the ledger's SEPARATE
-  unproductive-attempt accounting still accrues the attempt toward the
-  consecutive (3) and total (9) limits;
-* nothing is logged as ambiguous or "flagged for review";
-* progress is a fact: an attempt after which the unresolved count dropped (or
-  the workspace probe changed) restarts the consecutive-unproductive streak;
-* a genuinely unrecognised *external* error still classifies AMBIGUOUS and is
-  bounded by the same consecutive (3) and total (9) unproductive limits.
-
-TDD gate (U1 of the §11 fix): every scenario drives the public entry points
-:func:`run_conflict_resolution_outcome` /
-:func:`run_rebase_conflict_resolution_outcome` with a fake ``invoke`` runner,
-U0's injectable :class:`WorktreeConflictObserver` scripting per-round
-surviving marker sets, and a FakeClock :class:`RecoveryController` attached
-through the session. No monkeypatch, no private counter reads, no import of
-the typed enum U3 introduces. Assertions are on captured log text, agent
-invocation order, and public terminal fields only.
-
-Status: A/B/C/E, D1, and D2 pass — the driver observes the round-level
-unresolved set exactly ONCE through the injected observer before every
-classification/ledger charge (success-with-unresolved, false return, and
-raised exception alike), and hands the ledger
-``workspace_changed=(probe_changed or count_dropped)`` on every branch, so
-a count drop restarts only the consecutive streak while the total still
-accrues. D3/D4 prove the exception and false-return branches carry
-``count_dropped`` progress; D5 proves the active-failed-outcome repair
-decision reuses that same single observation instead of scanning the
-worktree a second time; D1 pins the RAW/external bounding that must not
-change.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
@@ -78,7 +35,6 @@ from tests._resolver_controller import make_resolver_controller
 if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
 
-#: The 6 paths the §11 incident observed staying conflicted every round.
 _CONFLICTED: tuple[str, ...] = (
     "src/alpha.py",
     "src/beta.py",
@@ -96,49 +52,28 @@ _RESOLUTION_CHAIN = "rebase_conflict_resolution"
 pytestmark = pytest.mark.timeout_seconds(5)
 
 
-# ---------------------------------------------------------------------------
-# Observable-boundary doubles (the only things this suite supplies)
-# ---------------------------------------------------------------------------
-
-
 class _FrozenSleepClock:
-    """Installed wall-clock seam whose ``sleep`` never advances.
-
-    A demotion that nothing brings back inside the scenario is what makes
-    the recorded invocation order the order production chose, not the
-    order a timer happened to allow. Mirrors ``FrozenClock`` in
-    ``tests/pipeline/_auto_integrate_agent_failure_fixtures.py`` and is
-    installed through the public :func:`install_executors` seam, exactly
-    like the §7.5 suite.
-    """
-
     def __init__(self) -> None:
         self._now = 1_000.0
 
     def now(self) -> float:
-        """Return the frozen wall-clock reading."""
         return self._now
 
     def monotonic(self) -> float:
-        """Return the frozen monotonic reading."""
         return self._now
 
     def epoch(self) -> float:
-        """Return the frozen epoch reading."""
         return self._now
 
     def now_utc(self) -> datetime:
-        """Return the frozen UTC wall-clock reading."""
         return datetime.fromtimestamp(self._now, tz=UTC)
 
     def sleep(self, seconds: float) -> None:
-        """Wait without advancing: a frozen clock expires no cooldown."""
         del seconds
 
 
 @pytest.fixture
 def frozen_clock() -> Iterator[_FrozenSleepClock]:
-    """Install the never-advancing clock seam for the duration of one test."""
     clock = _FrozenSleepClock()
     token = install_executors(clock=clock)
     try:
@@ -148,15 +83,6 @@ def frozen_clock() -> Iterator[_FrozenSleepClock]:
 
 
 class _ScriptedObserver(WorktreeConflictObserver):
-    """Scripts every worktree read the round loop's verdict rests on.
-
-    ``surviving`` is the set of paths the on-disk marker re-scan reports;
-    the scripted runner shrinks it to script count drops and clears it to
-    script a resolution. Existence/emptiness checks delegate to the
-    production observer's content checks (they read the real temporary
-    workspace and touch no git).
-    """
-
     def __init__(self, unmerged: Sequence[str]) -> None:
         self._unmerged = tuple(unmerged)
         self.surviving: tuple[str, ...] = self._unmerged
@@ -200,8 +126,6 @@ class _ScriptedObserver(WorktreeConflictObserver):
 
 
 class _FakeMaterializer(PromptMaterializer):
-    """Writes a real prompt file per round and records the request."""
-
     def __init__(self, workspace: Path) -> None:
         self._workspace = workspace
         self.rounds: list[int] = []
@@ -228,20 +152,6 @@ class _FakeMaterializer(PromptMaterializer):
 
 @dataclass(frozen=True)
 class _AttemptStep:
-    """One scripted invocation of one resolution agent.
-
-    ``surviving`` is the unresolved set the on-disk re-scan reports AFTER
-    this invocation (``None`` = leave unchanged); it is applied BEFORE
-    ``raw_error`` is raised, so an exception can carry observable progress
-    (the D2-exception interleave). ``raw_error`` turns the invocation into
-    an exception whose text is genuinely unrecognised external output —
-    the external half of the §11.4 rewording proof. ``report_success=False``
-    scripts a bare unsuccessful return (the generic attempt-failed shape)
-    instead of the default success claim. ``active_failure=True`` scripts a
-    failed :class:`ResolutionOutcome` that still reports agent activity
-    (the §11.11 active-failure shape) instead of a bare return.
-    """
-
     surviving: tuple[str, ...] | None = None
     raw_error: str | None = None
     report_success: bool = True
@@ -249,8 +159,6 @@ class _AttemptStep:
 
 
 class _ScriptedRunner:
-    """Fake ``invoke`` runner playing each agent's scripted per-attempt steps."""
-
     def __init__(
         self,
         observer: _ScriptedObserver,
@@ -288,14 +196,8 @@ class _ScriptedRunner:
         return step.report_success
 
 
-# ---------------------------------------------------------------------------
-# Capture + shared assertions
-# ---------------------------------------------------------------------------
-
-
 @contextmanager
 def _captured_logs() -> Iterator[list[str]]:
-    """Collect everything production logged while the block runs."""
     captured: list[str] = []
     sink_id = loguru_logger.add(lambda message: captured.append(str(message)), level="INFO")
     try:
@@ -305,12 +207,10 @@ def _captured_logs() -> Iterator[list[str]]:
 
 
 def _typed_reason(unresolved_count: int) -> str:
-    """The §11.2 typed reason string U3 implements (Design item 3)."""
     return f"agent reported success but {unresolved_count} conflicted path(s) remain"
 
 
 def _assert_not_ambiguous(logs: Sequence[str]) -> None:
-    """A typed AGENT failure is never logged as ambiguous / flagged for review."""
     assert not any("flagged_for_review" in line for line in logs), (
         "an owner-known failure fact must never reach the ambiguous text fall-through"
     )
@@ -320,16 +220,6 @@ def _assert_not_ambiguous(logs: Sequence[str]) -> None:
 
 
 def _assert_agent_failure_charged(logs: Sequence[str], unresolved_count: int) -> None:
-    """The owner charged the attempt as an AGENT failure, not any free retry.
-
-    Excludes every free-retry log shape — ambiguous and artifact-validation
-    failures log "retry without budget debit", environmental failures log
-    "not counted against budget" — and positively requires the typed-attempt
-    log line carrying the §11.2 reason. Only non-RAW typed outcomes emit that
-    line, and by the public contract they map to FailureCategory.AGENT, never
-    to a free-retry category, so a regression of the category (with the
-    reason preserved) still fails this assertion.
-    """
     assert not any("retry without budget debit" in line for line in logs), (
         "an owner-known failure fact must never be routed as a free retry"
     )
@@ -345,7 +235,6 @@ def _assert_agent_failure_charged(logs: Sequence[str], unresolved_count: int) ->
 
 
 def _assert_demoted(logs: Sequence[str], agent: str, *, consecutive: int, total: int) -> None:
-    """The ledger demoted ``agent`` at exactly the asserted unproductive counts."""
     needle = (
         f"Agent '{agent}' demoted in phase '{_RESOLUTION_PHASE}' "
         f"(consecutive={consecutive}, total={total},"
@@ -355,13 +244,7 @@ def _assert_demoted(logs: Sequence[str], agent: str, *, consecutive: int, total:
     )
 
 
-# ---------------------------------------------------------------------------
-# Scenario drivers
-# ---------------------------------------------------------------------------
-
-
 def _resolution_policy_bundle(candidates: Sequence[str]) -> PolicyBundle:
-    """Shipped policy with only the resolution chain's agent list overridden."""
     bundle = _POLICY_BUNDLE
     chains = dict(bundle.agents.agent_chains)
     chains[_RESOLUTION_CHAIN] = AgentChainConfig(
@@ -375,7 +258,6 @@ def _resolution_policy_bundle(candidates: Sequence[str]) -> PolicyBundle:
 
 
 def _session_with_controller() -> ResolutionSession:
-    """A fresh session whose recovery ledger runs on a FakeClock."""
     session = ResolutionSession()
     session.recovery_controller = make_resolver_controller(FakeClock(start=0.0))
     return session
@@ -390,7 +272,6 @@ def _drive(
     stop: RebaseStop | None = None,
     clock: _FrozenSleepClock | None = None,
 ) -> tuple[ResolutionOutcome, list[str], ResolutionSession]:
-    """Drive one full resolution through a public entry point; return observable facts."""
     active_observer = observer or _ScriptedObserver(_CONFLICTED)
     materializer = _FakeMaterializer(workspace)
     invocations: list[str] = []
@@ -442,7 +323,6 @@ def _drive_captured(
     observer: _ScriptedObserver | None = None,
     clock: _FrozenSleepClock | None = None,
 ) -> tuple[ResolutionOutcome, list[str], list[str], ResolutionSession]:
-    """Drive one resolution while capturing every log line production emitted."""
     with _captured_logs() as logs:
         outcome, invocations, session = _drive(
             workspace,
@@ -456,27 +336,12 @@ def _drive_captured(
 
 
 def _no_progress(count: int = 6) -> tuple[_AttemptStep, ...]:
-    """Steps that report success while leaving ``count`` paths conflicted."""
     return tuple(_AttemptStep() for _ in range(count))
-
-
-# ---------------------------------------------------------------------------
-# Scenario A — same 6 paths, three rounds: AGENT, typed reason, demoted, next runs
-# ---------------------------------------------------------------------------
 
 
 def test_A_success_with_unchanged_conflicted_set_is_typed_agent_failure(
     tmp_path: Path, frozen_clock: _FrozenSleepClock
 ) -> None:
-    """§11 proof 1: resolver exits success, the same 6 paths stay conflicted.
-
-    Pre-U3 RED evidence: each round logs ``Ambiguous failure ...`` with
-    ``[flagged_for_review=true]`` and the typed reason never appears, so
-    the not-ambiguous and typed-reason assertions fail. Post-U3: category
-    AGENT, the typed reason is logged, the resolver is demoted exactly at
-    the consecutive limit (3, total 3), the next candidate lands, and
-    nothing is ambiguous or "flagged for review".
-    """
     outcome, invocations, logs, _ = _drive_captured(
         tmp_path,
         candidates=("agentA", "agentB"),
@@ -494,21 +359,9 @@ def test_A_success_with_unchanged_conflicted_set_is_typed_agent_failure(
     _assert_agent_failure_charged(logs, 6)
 
 
-# ---------------------------------------------------------------------------
-# Scenario B1 — count drops 6 -> 4 -> 2: the streak restarts, nobody is demoted
-# ---------------------------------------------------------------------------
-
-
 def test_B1_count_drop_restarts_the_consecutive_streak(
     tmp_path: Path, frozen_clock: _FrozenSleepClock
 ) -> None:
-    """§11 proof 2 (drops): progress restarts the unproductive streak.
-
-    Post-U3: agentA alone resolves (6 -> 4 -> 0) and is never demoted.
-    Pre-U3 RED evidence: rounds 1-2 log the ambiguous free-retry lines and
-    the typed reason is absent, so the not-ambiguous and typed-reason
-    assertions fail (the invocation order alone cannot distinguish).
-    """
     outcome, invocations, logs, _ = _drive_captured(
         tmp_path,
         candidates=("agentA", "agentB"),
@@ -532,22 +385,9 @@ def test_B1_count_drop_restarts_the_consecutive_streak(
     _assert_not_ambiguous(logs)
 
 
-# ---------------------------------------------------------------------------
-# Scenario B2 — drop, then no progress: demotion only after 3 FURTHER attempts
-# ---------------------------------------------------------------------------
-
-
 def test_B2_demotion_requires_three_no_progress_attempts_after_a_drop(
     tmp_path: Path, frozen_clock: _FrozenSleepClock
 ) -> None:
-    """§11 proof 2 (restart + disjunction): 6 -> 4, then count frozen at 4.
-
-    Post-U3: the drop restarts the streak, so demotion fires only on the
-    third no-progress attempt afterwards — four agentA invocations, then
-    agentB lands. Pre-U3 RED evidence: the probe-only fact means the drop
-    never restarts anything, agentA is demoted on its third invocation,
-    and only three agentA invocations are recorded.
-    """
     outcome, invocations, logs, _ = _drive_captured(
         tmp_path,
         candidates=("agentA", "agentB"),
@@ -572,10 +412,6 @@ def test_B2_demotion_requires_three_no_progress_attempts_after_a_drop(
     _assert_not_ambiguous(logs)
 
 
-# ---------------------------------------------------------------------------
-# Scenario C — selection after demotion (§11.5) + §7 pending, cross-phase identity
-# ---------------------------------------------------------------------------
-
 _CANDIDATES_C = (
     "lead",
     "second",
@@ -588,7 +424,6 @@ _CANDIDATES_C = (
 
 
 def _rebase_stop() -> RebaseStop:
-    """One paused rebase stop conflicting on the six §11 paths."""
     return RebaseStop(
         sha="c0ffee1234",
         subject="replay me",
@@ -601,17 +436,6 @@ def _rebase_stop() -> RebaseStop:
 def test_C_demoted_resolver_is_skipped_and_the_next_eligible_lands(
     tmp_path: Path, frozen_clock: _FrozenSleepClock
 ) -> None:
-    """§11.5: the demoted resolver is skipped for a stated reason; the next
-    eligible candidate lands; a demotion in the resolution phase does not
-    touch the same agent's standing in other phases.
-
-    With seven candidates, the round-4 selection line must name the
-    demoted ``lead`` with its cooldown reason and exactly five
-    ``lower_priority`` skips (third..seventh). Pre-U3 RED evidence: the
-    ambiguous free-retry lines replace the typed reason, so the
-    not-ambiguous and typed-reason assertions fail while the selection
-    and demotion mechanics already behave.
-    """
     outcome, invocations, logs, session = _drive_captured(
         tmp_path,
         candidates=_CANDIDATES_C,
@@ -637,8 +461,6 @@ def test_C_demoted_resolver_is_skipped_and_the_next_eligible_lands(
     assert any(_typed_reason(6) in line for line in logs)
     _assert_not_ambiguous(logs)
 
-    # §7: the (phase, agent) ledger key is independent — the resolution-phase
-    # demotion of ``lead`` must not change its development-phase standing.
     controller = session.recovery_controller
     assert controller is not None
     selection = controller.preferred_agent_index("development", ("lead", "second"))
@@ -649,14 +471,6 @@ def test_C_demoted_resolver_is_skipped_and_the_next_eligible_lands(
 def test_C_all_resolvers_demoted_reports_pending_not_failed(
     tmp_path: Path, frozen_clock: _FrozenSleepClock
 ) -> None:
-    """§11.5/§7: every resolver demoted -> the rebase stop is reported
-    pending (unresolved, not an operator handoff).
-
-    Post-U3: both candidates are demoted at the consecutive limit, the
-    outcome is unsuccessful with the full unresolved set preserved, and
-    no escalation names the operator. Pre-U3 RED evidence: the ambiguous
-    free-retry lines and the absent typed reason.
-    """
     outcome, invocations, logs, _ = _drive_captured(
         tmp_path,
         candidates=("agentA", "agentB"),
@@ -680,11 +494,6 @@ def test_C_all_resolvers_demoted_reports_pending_not_failed(
     )
 
 
-# ---------------------------------------------------------------------------
-# Scenario D1 — RAW external errors: still AMBIGUOUS, bounded by the consecutive limit
-# ---------------------------------------------------------------------------
-
-#: Genuinely unrecognised EXTERNAL error texts (§11.4): nothing Ralph wrote.
 _RAW_EXTERNAL_TEXTS = (
     "provider transient fault 0xA4: azimuth thruster miscalibration",
     "upstream relay hung up mid-frame: reason code QZZ-77 (undocumented)",
@@ -695,16 +504,6 @@ _RAW_EXTERNAL_TEXTS = (
 def test_D1_unrecognised_external_error_stays_ambiguous_and_hits_consecutive_limit(
     tmp_path: Path, frozen_clock: _FrozenSleepClock
 ) -> None:
-    """§11 proof 4 (consecutive half): RAW failures with varied external
-    text, unchanged workspace, unchanged unresolved set.
-
-    This must pass BOTH before and after U3: unrecognised external output
-    keeps classifying AMBIGUOUS (``flagged_for_review=true`` is expected
-    here) and the ledger demotes at exactly 3 consecutive unproductive
-    attempts, then the next candidate lands. The varied texts are the
-    external half of the rewording proof: the category rides on the
-    external text, never on a Ralph-authored sentence.
-    """
     outcome, invocations, logs, _ = _drive_captured(
         tmp_path,
         candidates=("agentA", "agentB"),
@@ -726,32 +525,9 @@ def test_D1_unrecognised_external_error_stays_ambiguous_and_hits_consecutive_lim
     _assert_demoted(logs, "agentA", consecutive=3, total=3)
 
 
-# ---------------------------------------------------------------------------
-# Scenario D2 — RAW interleaved with progress: the TOTAL limit bounds it (U3 gate)
-# ---------------------------------------------------------------------------
-
-
 def test_D2_raw_failures_interleaved_with_progress_hit_the_total_limit(
     tmp_path: Path, frozen_clock: _FrozenSleepClock
 ) -> None:
-    """§11 proof 4 (total half) + §11.3: the disjunction ``probe_changed or
-    count_dropped`` makes count-drop progress restart the streak.
-
-    Pattern: RAW, drop (6->5), RAW, drop (5->4), RAW, drop (4->3), RAW,
-    drop (3->2), RAW. The count drop after every RAW restarts the
-    consecutive streak, so the resolver is NOT demoted at 3 consecutive;
-    it is demoted (spent) at the 9th total unproductive attempt, and only
-    then does the next candidate run.
-
-    U3 acceptance gate — PRE-U3 RED evidence (observed 2026-10-29): the
-    RAW exception branch charges the ledger with probe-only
-    ``workspace_changed=False`` BEFORE the round-level unresolved
-    observation, so the count drops never restart the streak; agentA is
-    demoted (cooldown) on its 3rd invocation, ``invocations`` is
-    ``["agentA"] * 3 + ["agentB"]``, and the demotion line reads
-    ``consecutive=3, total=3, reason=consecutive_unproductive_limit_reached``
-    instead of ``total=9, reason=total_unproductive_limit_reached``.
-    """
     drops = (
         _AttemptStep(surviving=_CONFLICTED[:5]),
         _AttemptStep(surviving=_CONFLICTED[:4]),
@@ -796,24 +572,9 @@ def test_D2_raw_failures_interleaved_with_progress_hit_the_total_limit(
     )
 
 
-# ---------------------------------------------------------------------------
-# Scenario D3 — an exception that CARRIES progress: the drop restarts the streak
-# ---------------------------------------------------------------------------
-
-
 def test_D3_exception_that_drops_the_unresolved_set_restarts_the_streak(
     tmp_path: Path, frozen_clock: _FrozenSleepClock
 ) -> None:
-    """§11 proof 4 (exception branch): the single observation runs BEFORE the
-    exception's charge, so an exception that repaired 6 -> 4 paths is
-    observable progress.
-
-    Pattern: RAW-with-drop (6->4), then three RAW no-progress attempts. The
-    drop must restart the consecutive streak even though the attempt raised,
-    so agentA is demoted only on its fourth invocation (consecutive=3,
-    total=4) and agentB then lands. The exception text is still genuinely
-    external: every RAW attempt keeps classifying AMBIGUOUS.
-    """
     observer = _ScriptedObserver(_CONFLICTED)
     outcome, invocations, logs, _ = _drive_captured(
         tmp_path,
@@ -847,23 +608,9 @@ def test_D3_exception_that_drops_the_unresolved_set_restarts_the_streak(
     )
 
 
-# ---------------------------------------------------------------------------
-# Scenario D4 — a false return that CARRIES progress: the drop restarts the streak
-# ---------------------------------------------------------------------------
-
-
 def test_D4_false_return_with_count_drop_restarts_the_streak(
     tmp_path: Path, frozen_clock: _FrozenSleepClock
 ) -> None:
-    """§11 proof 4 (false-return branch): a bare unsuccessful return whose
-    attempt still repaired 6 -> 4 paths is observable progress.
-
-    The false-return charge used to ride on the workspace probe only; with
-    the single observation boundary it carries ``count_dropped`` too, so
-    the streak restarts and agentA is demoted only on its fourth invocation
-    (consecutive=3, total=4) before agentB lands. A bare unsuccessful
-    return is the typed generic attempt-failed shape, never AMBIGUOUS.
-    """
     observer = _ScriptedObserver(_CONFLICTED)
     outcome, invocations, logs, _ = _drive_captured(
         tmp_path,
@@ -895,27 +642,9 @@ def test_D4_false_return_with_count_drop_restarts_the_streak(
     )
 
 
-# ---------------------------------------------------------------------------
-# Scenario D5 — an active FAILED outcome whose attempt repaired the worktree:
-# the repair decision reuses the single observed set, never a second scan
-# ---------------------------------------------------------------------------
-
-
 def test_D5_active_failed_outcome_reuses_the_single_observation_for_repair(
     tmp_path: Path, frozen_clock: _FrozenSleepClock
 ) -> None:
-    """§11.11/analysis WU-1: an active failed ``ResolutionOutcome`` that
-    reported activity must not trigger a second unresolved-set scan.
-
-    The analysis reproduction (2026-10-29) drove this shape through the
-    public seam and observed ``INVOCATIONS 3 SCANS 6``: the per-attempt
-    observation ran, then ``_check_worktree_repair`` invoked
-    ``worktree_resolved`` — a fresh observer scan — leaving a
-    time-of-check/time-of-use gap between the fact that decided health
-    and the fact that decided repair. The repair decision must ride on
-    the SAME single observation, so one invocation accounts for exactly
-    one scan, and the worktree-repair acceptance still lands.
-    """
     observer = _ScriptedObserver(_CONFLICTED)
     outcome, invocations, _, _session = _drive_captured(
         tmp_path,
@@ -936,21 +665,9 @@ def test_D5_active_failed_outcome_reuses_the_single_observation_for_repair(
     )
 
 
-# ---------------------------------------------------------------------------
-# Scenario E — sole resolver demoted: pending with a clear message, no operator handoff
-# ---------------------------------------------------------------------------
-
-
 def test_E_sole_resolver_demoted_reports_pending_without_operator_handoff(
     tmp_path: Path, frozen_clock: _FrozenSleepClock
 ) -> None:
-    """§11/§7: the only resolver does nothing three times and is demoted.
-
-    The phase stops with the full unresolved set preserved, the demotion
-    is named for the sole agent, and nothing escalates to the operator.
-    Pre-U3 RED evidence: the ambiguous free-retry lines replace the typed
-    reason, so the not-ambiguous and typed-reason assertions fail.
-    """
     outcome, invocations, logs, _ = _drive_captured(
         tmp_path,
         candidates=("solo",),

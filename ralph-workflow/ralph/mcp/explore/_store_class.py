@@ -1,11 +1,3 @@
-"""ExploreStore class implementation for the indexed exploration substrate.
-
-Extracted from :mod:`ralph.mcp.explore.store` so the hub module
-stays under the per-file line ceiling. The class depends on the
-dataclasses and helpers in :mod:`ralph.mcp.explore._store_types`;
-the hub :mod:`ralph.mcp.explore.store` re-exports this class for
-backward compatibility with existing callers.
-"""
 
 from __future__ import annotations
 
@@ -41,13 +33,8 @@ from ralph.mcp.explore._store_types import (
 logger = logging.getLogger(__name__)
 
 
-#: Rows fetched per page while a glob-filtered FTS search pages through hits.
 _FTS_GLOB_PAGE_ROWS = 256
 
-# Both FTS queries take the same bindings (see ``_scoped_fts_rows``). The
-# prefix clause is a no-op for an empty prefix; ``substr`` instead of
-# ``LIKE`` keeps the comparison literal and case-sensitive. ``LIMIT -1`` is
-# SQLite for "no limit".
 _FTS_SEARCH_SQL = """
     SELECT path, chunk_id, snippet(chunks_fts, 0, '', '', '...', 8) AS snippet
     FROM chunks_fts
@@ -84,12 +71,6 @@ class ExploreStore(
     _InitializeMethods,
     _RetentionMethods,
 ):
-    """Owns the SQLite connection and DDL for the index.
-
-    Construct with an explicit index directory. WAL mode + busy
-    timeout are configured at construction time so every subsequent
-    call inherits the bounded-subprocess contract.
-    """
 
     def __init__(
         self,
@@ -98,7 +79,6 @@ class ExploreStore(
         busy_timeout_ms: int = DEFAULT_BUSY_TIMEOUT_MS,
     ) -> None:
         self.index_dir = Path(index_dir)
-        # filesystem-write-ok: engine-internal SQLite directory creation is required before durable index publication.
         self.index_dir.mkdir(parents=True, exist_ok=True)
         self._db_path = self.index_dir / DEFAULT_INDEX_DB
         self._busy_timeout_ms = busy_timeout_ms
@@ -108,17 +88,6 @@ class ExploreStore(
             self._db_inode = self._db_path.stat().st_ino
         except OSError:
             self._db_inode = None
-        # AC-02/AC-05: open with ``check_same_thread=False`` so
-        # concurrent reindex claims (public ``ralph_reindex`` and
-        # lifecycle hooks) can each hold their own connection
-        # without blocking the cross-thread single-writer seam.
-        # Without this, a second thread touching the same
-        # ``ExploreStore`` instance raises
-        # ``ProgrammingError: SQLite objects created in a thread
-        # can only be used in that same thread`` and the call
-        # hangs forever on the GIL-released busy_timeout wait.
-        # WAL mode + the ``ReindexWriter.claim`` lock serialize
-        # writers, so cross-thread access is safe.
         self._conn = sqlite3.connect(
             str(self._db_path),
             timeout=busy_timeout_ms / 1000.0,
@@ -128,15 +97,9 @@ class ExploreStore(
         self._conn.row_factory = sqlite3.Row
         self._initialize()
 
-    # ``_initialize`` and the S-4 concurrency helpers
-    # (``_schema_version_matches``, ``_initialize_with_bounded_retry``,
-    # ``_INIT_LOCK_ATTEMPTS``, ``_INIT_LOCK_BACKOFF_SECONDS``) live
-    # in :mod:`ralph.mcp.explore._store_class_init` and are mixed
-    # in via ``_InitializeMethods``.
 
     @contextmanager
     def _transaction(self) -> Iterator[sqlite3.Cursor]:
-        """Run a transaction with explicit BEGIN/COMMIT (reentrant)."""
         if self._in_transaction:
             cur = self._conn.cursor()
             try:
@@ -161,7 +124,6 @@ class ExploreStore(
 
     transaction = _transaction
 
-    # --- Lifecycle ---------------------------------------------------
 
     @property
     def db_path(self) -> Path:
@@ -171,18 +133,7 @@ class ExploreStore(
         self._conn.close()
 
     def reopen(self) -> None:
-        """Close the live connection and reopen it against the same file.
-
-        Used by the staged ``mode='full'`` reindex after the
-        staging database is swapped in at the file level: the
-        connection must be re-opened to observe the new file
-        content. Pragmas are reapplied because the prior
-        connection is gone; the DDL is left to ``_initialize``
-        and is idempotent (the staging file already contains
-        the DDL).
-        """
         with suppress(sqlite3.ProgrammingError):
-            # Already closed; safe to ignore.
             self._conn.close()
         self._conn = sqlite3.connect(
             str(self._db_path),
@@ -195,34 +146,12 @@ class ExploreStore(
         self._conn.execute(f"PRAGMA busy_timeout={self._busy_timeout_ms}")
         self._conn.execute("PRAGMA synchronous=NORMAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
-        # S-3 (wt-11): record the current on-disk inode so the
-        # next ``maybe_reopen_after_swap`` call can detect a
-        # cross-process atomic-rename swap. The inode is the
-        # cheapest stable identity: the OLD inode is preserved
-        # while any fd holds it, but the on-disk path resolves
-        # to the NEW inode after the swap.
         try:
             self._db_inode = self._db_path.stat().st_ino
         except OSError:
             self._db_inode = None
 
     def maybe_reopen_after_swap(self) -> bool:
-        """Reopen the connection if the on-disk database was swapped.
-
-        S-3 (wt-11): the live connection points to the inode
-        that was current when ``__init__`` ran. A cross-process
-        atomic-rename swap (the staged full rebuild path)
-        unlinks the OLD inode from the directory but keeps it
-        alive via the open fd, so the OLD inode still serves
-        the OLD generation. ``stat()`` on the db path
-        resolves to the NEW inode, so a single ``stat`` lets
-        the next caller reopen against the fresh data.
-
-        Returns True iff a reopen actually fired. The check
-        is bounded and fail-open: any OSError returns False
-        and leaves the existing connection in place so a
-        transient stat failure cannot poison the handle.
-        """
         try:
             current_inode = self._db_path.stat().st_ino
         except OSError:
@@ -232,10 +161,8 @@ class ExploreStore(
         self.reopen()
         return True
 
-    # --- Chunk + FTS5 -------------------------------------------------
 
     def upsert_chunk(self, chunk: ChunkRow, text: str) -> None:
-        """Insert or replace a chunk and its FTS5 row."""
         with self._transaction() as cur:
             cur.execute(
                 """
@@ -261,9 +188,6 @@ class ExploreStore(
                     chunk.generation,
                 ),
             )
-            # FTS5 external-content table: delete the prior FTS row by
-            # its stored rowid (O(log n)); the UNINDEXED columns cannot
-            # serve a WHERE chunk_id lookup without a full FTS scan.
             cur.execute(
                 """DELETE FROM chunks_fts WHERE rowid = (
                     SELECT fts_rowid FROM chunks
@@ -287,7 +211,6 @@ class ExploreStore(
             )
 
     def delete_chunks_for_path(self, path: str) -> None:
-        """Delete all chunks and FTS rows for ``path``."""
         with self._transaction() as cur:
             cur.execute(
                 """
@@ -308,20 +231,6 @@ class ExploreStore(
         include_globs: Sequence[str] | None = None,
         exclude_globs: Sequence[str] | None = None,
     ) -> list[sqlite3.Row]:
-        """Run an FTS5 MATCH query and return rows.
-
-        Returns ``chunks_fts`` rows (path, chunk_id, text). Callers
-        are expected to translate chunk_id to evidence handles.
-
-        AC-02 indexed-grep filter parity: ``path_prefix`` restricts
-        matches to paths that equal the prefix or start with
-        ``prefix + '/'``. ``include_globs`` / ``exclude_globs`` apply
-        the same glob semantics as the legacy live grep so the
-        indexed branch cannot leak out-of-scope matches. Scope is
-        applied BEFORE ``limit``: the result holds up to ``limit``
-        in-scope rows in bm25 order, however many better-ranked rows
-        fall outside the scope.
-        """
         return self._scoped_fts_rows(
             _FTS_SEARCH_SQL,
             query,
@@ -340,24 +249,6 @@ class ExploreStore(
         include_globs: Sequence[str] | None = None,
         exclude_globs: Sequence[str] | None = None,
     ) -> list[sqlite3.Row]:
-        """Run an FTS5 MATCH and return rows pre-joined for grep post-processing.
-
-        Returns one row per FTS5 hit with the full chunk ``text``,
-        the chunk's ``start_line``/``end_line``/``text_hash``/
-        ``generation``, and the parent file's ``content_hash``. The
-        single JOIN removes the per-candidate ``chunks_fts.text``
-        and ``chunks.start_line`` lookups the grep handler used to
-        do inside the candidate loop -- a 3-queries-per-candidate
-        cost that dominated indexed-grep latency on large
-        ``chunks_fts`` corpora (R6.4 indexed-vs-live speed ratio).
-
-        AC-02 indexed-grep filter parity: ``path_prefix``,
-        ``include_globs``, ``exclude_globs`` apply the same
-        semantics as :meth:`fts_search`, and likewise BEFORE
-        ``limit``. The path filter is evaluated against the FTS
-        row's ``path`` so the index can never return out-of-scope
-        matches.
-        """
         return self._scoped_fts_rows(
             _FTS_SEARCH_GREP_SQL,
             query,
@@ -377,15 +268,6 @@ class ExploreStore(
         include_globs: Sequence[str] | None,
         exclude_globs: Sequence[str] | None,
     ) -> list[sqlite3.Row]:
-        """Return up to ``limit`` bm25-ranked rows of ``sql`` that are in scope.
-
-        ``sql`` binds ``(query, prefix, prefix, len(prefix + '/'),
-        prefix + '/', limit)``. The prefix is compared in SQL, literally
-        and case-sensitively, so it narrows the ranked rows before the
-        ``LIMIT``. Globs have no SQL equivalent, so with globs the query
-        runs unlimited and rows are paged through, in rank order, until
-        ``limit`` of them pass the glob filter or the rows run out.
-        """
         from ralph.mcp.explore.path_filter import (
             compile_path_filter,
         )
@@ -410,12 +292,12 @@ class ExploreStore(
             if glob_filter is None:
                 return cast(
                     "list[sqlite3.Row]", cur.fetchall()
-                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                )
             selected: list[sqlite3.Row] = []
             while len(selected) < limit:
                 page = cast(
                     "list[sqlite3.Row]", cur.fetchmany(_FTS_GLOB_PAGE_ROWS)
-                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                )
                 if not page:
                     break
                 for row in page:
@@ -428,7 +310,6 @@ class ExploreStore(
         finally:
             cur.close()
 
-    # --- Evidence -----------------------------------------------------
 
     def insert_evidence(self, row: EvidenceRow) -> None:
         with self._transaction() as cur:
@@ -469,18 +350,6 @@ class ExploreStore(
             )
 
     def insert_evidence_batch(self, rows: Sequence[EvidenceRow]) -> None:
-        """Insert or refresh many evidence rows in a single transaction.
-
-        The grep handler emits one evidence row per indexed match
-        (R1/R2 per-line evidence span). Calling
-        :meth:`insert_evidence` per row paid an N-round-trip cost
-        on large result sets -- a fresh ``BEGIN IMMEDIATE`` and
-        ``COMMIT`` for every match dominated indexed-grep latency
-        on the ralph_self workload. This batches every row into
-        one ``executemany`` under a single transaction so a
-        100-match response makes one SQL round-trip instead of
-        100.
-        """
         if not rows:
             return
         payload: list[tuple[object, ...]] = [
@@ -531,7 +400,6 @@ class ExploreStore(
             return None
         return _row_to_evidence(row)
 
-    # --- Structure (Phase 2: spans, symbols, edges) ---------------------
 
     def replace_structure_rows(
         self,
@@ -541,13 +409,6 @@ class ExploreStore(
         symbols: Sequence[SymbolRow],
         edges: Sequence[EdgeRow],
     ) -> None:
-        """Atomically replace the structure rows for ``path``.
-
-        Deletes any prior spans/symbols/edges that point at this
-        path's previous generation, then inserts the new ones. Used
-        by the reindex pipeline after extraction; AC-06 requires that
-        changed-file reindex leaves no stale graph rows behind.
-        """
         with self._transaction() as cur:
             cur.execute("DELETE FROM spans WHERE path = ?", (path,))
             cur.execute("DELETE FROM symbols WHERE path = ?", (path,))
@@ -658,12 +519,11 @@ class ExploreStore(
             )
         rows = cast(
             "list[sqlite3.Row]", cur.fetchall()
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         for span_row in rows:
             yield _row_to_span(span_row)
 
     def get_span(self, span_id: str) -> SpanRow | None:
-        """Return the unique ``SpanRow`` for ``span_id`` or ``None``."""
         cur = self._conn.execute("SELECT * FROM spans WHERE span_id = ?", (span_id,))
         row: sqlite3.Row | None = cur.fetchone()
         if row is None:
@@ -677,15 +537,6 @@ class ExploreStore(
         qualified_name: str | None = None,
         path: str | None = None,
     ) -> list[SymbolRow]:
-        """Return symbols filtered by ``name`` / ``qualified_name`` / ``path``.
-
-        The query is conjunctive (every filter must match). Empty
-        filters are ignored so callers can pass just one selector
-        without supplying the others. Multiple symbols may match the
-        same ``qualified_name`` (e.g. nested functions in different
-        scopes), so this returns a list rather than a single row;
-        callers must disambiguate by path or generation when needed.
-        """
         clauses: list[str] = []
         params: list[object] = []
         if name is not None:
@@ -704,7 +555,7 @@ class ExploreStore(
         cur = self._conn.execute(sql, tuple(params))
         rows = cast(
             "list[sqlite3.Row]", cur.fetchall()
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         return [_row_to_symbol(row) for row in rows]
 
     def iter_symbols(self, path: str | None = None) -> Iterator[SymbolRow]:
@@ -717,7 +568,7 @@ class ExploreStore(
             )
         rows = cast(
             "list[sqlite3.Row]", cur.fetchall()
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         for sym_row in rows:
             yield _row_to_symbol(sym_row)
 
@@ -742,7 +593,7 @@ class ExploreStore(
         cur = self._conn.execute(sql, params)
         rows = cast(
             "list[sqlite3.Row]", cur.fetchall()
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         for edge_row in rows:
             yield _row_to_edge(edge_row)
 
@@ -754,7 +605,6 @@ class ExploreStore(
             counts[table] = _row_int_opt(row, 0) if row is not None else 0
         return counts
 
-    # --- Dirty paths --------------------------------------------------
 
     def mark_dirty(
         self,
@@ -764,7 +614,6 @@ class ExploreStore(
         source_tool: str,
         now: float | None = None,
     ) -> None:
-        """Persist ``path`` in the dirty queue. Idempotent."""
         normalized = normalize_index_path(path)
         marked_at = real_clock_seconds() if now is None else now
         with self._transaction() as cur:
@@ -784,18 +633,16 @@ class ExploreStore(
             )
 
     def consume_dirty_paths(self) -> list[str]:
-        """Atomically return + clear all currently dirty paths."""
         with self._transaction() as cur:
             cur.execute("SELECT path FROM dirty_paths")
             rows = cast(
                 "list[sqlite3.Row]", cur.fetchall()
-            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            )
             paths = [_row_str(row, "path") for row in rows]
             cur.execute("DELETE FROM dirty_paths")
             return paths
 
     def _remove_dirty_path(self, path: str) -> None:
-        """Remove a single dirty path (used by selective reindex consume)."""
         try:
             normalized = normalize_index_path(path)
         except ValueError:
@@ -807,17 +654,11 @@ class ExploreStore(
         cur = self._conn.execute("SELECT path FROM dirty_paths")
         rows = cast(
             "list[sqlite3.Row]", cur.fetchall()
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         return [_row_str(row, "path") for row in rows]
 
-    # --- Settings -----------------------------------------------------
 
     def get_setting(self, key: str) -> str | None:
-        # S-3 (wt-11): detect a cross-process atomic-rename swap
-        # and reopen the connection before reading. The check is
-        # a single ``stat()`` and only fires a reopen when the
-        # inode actually changed; the steady-state cost is one
-        # syscall per read.
         self.maybe_reopen_after_swap()
         cur = self._conn.execute("SELECT value FROM settings WHERE key = ?", (key,))
         row: sqlite3.Row | None = cur.fetchone()

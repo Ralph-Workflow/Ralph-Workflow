@@ -1,24 +1,3 @@
-"""Shared oldText/newText replacement engine for Ralph's editing tools.
-
-``edit_file`` (workspace files) and ``ralph_edit_md_artifact`` (persisted
-markdown artifact drafts) offer the same editing contract, so the semantics
-live here once rather than in each handler:
-
-* edits apply sequentially against the running content, each replacing the
-  **first** occurrence of its ``oldText``;
-* a single miss rejects the **whole batch** — callers write nothing, so an
-  edit call is all-or-nothing;
-* rejections carry a unified diff of the work completed before the miss, so
-  the caller can see how far the batch got.
-
-The engine is pure: it neither reads nor writes storage. Callers supply the
-current text and persist the result, which keeps the semantics testable
-independently of the workspace and draft backends.
-
-Line-anchored matching (``anchor``) exists for ``edit_file``'s indexed
-evidence/span/symbol targets. Draft editing passes ``anchor=None``: a draft
-is not in the explore index, so there is no span to anchor to.
-"""
 
 from __future__ import annotations
 

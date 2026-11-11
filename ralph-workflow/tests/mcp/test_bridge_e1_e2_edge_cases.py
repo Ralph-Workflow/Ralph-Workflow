@@ -1,26 +1,3 @@
-"""WU-T1: Edge cases E1.x (handover & split-brain) and E2.x (candidate lifecycle).
-
-Catalogue coverage:
-- E1.1: Preflight hits wrong child -> private readiness channel verifies spawn_id & pid.
-- E1.2: Two acceptors -> single-acceptor pause-ack protocol, timeout triggers escalation.
-- E1.3: Hung old child -> bounded drain deadline _HANDOVER_DRAIN_S, proven
-        behaviourally against a real wedged child (accepted request never
-        completes, child reaped at the deadline, typed error surfaces).
-- E1.4: In-flight non-idempotent tool calls & deduplication.
-- E1.5: In-flight calls across retirement handled cleanly during drain.
-- E1.6: Interleaved wire ledger appends from two children verify afterwards.
-- E1.7: In-memory per-child state handover / snapshot persistence.
-- E1.8: Session id stability across respawns.
-- E1.9: Tool-set drift detected via compute_tool_set_hash.
-- E2.1: Candidate dies after promotion counted as process_exited.
-- E2.2: Candidate fails at spawn/preflight -> non-terminal, old child intact.
-- E2.3: Startup deadline bounded.
-- E2.4: Stage-file identity fresh per spawn.
-- E2.5: Snapshot survives workspace cleanup.
-- E2.6: Broken workspace ralph/ does not affect candidate.
-- E2.7: Bridge lock serializes candidate spawn.
-"""
-
 from __future__ import annotations
 
 import contextlib
@@ -119,13 +96,9 @@ def _ledger_append_worker(
         )
 
 
-# ---------------------------------------------------------------------------
-# E1.1: Preflight hits wrong child -> private readiness channel verifies spawn id
-# ---------------------------------------------------------------------------
 def test_e11_private_readiness_rejects_spawn_id_mismatch() -> None:
     parent_sock, child_sock = create_handover_socketpair()
     try:
-        # 1. Unresponsive child times out fail-closed
         ok, stage, _err = verify_candidate_readiness(
             parent_sock,
             expected_spawn_id="spawn-123",
@@ -140,7 +113,6 @@ def test_e11_private_readiness_rejects_spawn_id_mismatch() -> None:
         parent_sock.close()
         child_sock.close()
 
-    # 2. Child responds with wrong spawn_id -> caught immediately by metadata validator
     parent_sock2, child_sock2 = create_handover_socketpair()
     try:
 
@@ -187,16 +159,12 @@ def test_e11_private_readiness_rejects_spawn_id_mismatch() -> None:
         child_sock2.close()
 
 
-# ---------------------------------------------------------------------------
-# E1.2: Two acceptors -> pause-ack protocol; timeout triggers escalation
-# ---------------------------------------------------------------------------
 def test_e12_pause_ack_timeout_triggers_escalation(tmp_path: pathlib.Path) -> None:
     pause_file = tmp_path / "accept.pause"
     request_old_child_pause(pause_file)
     assert pause_file.exists()
     assert pause_file.read_text(encoding="utf-8") == "PAUSE\n"
 
-    # Ack file does not exist -> timeout triggers within _HANDOVER_ACK_TIMEOUT_S
     start = time.monotonic()
     ack = wait_for_old_child_pause_ack(pause_file, timeout=0.1)
     elapsed = time.monotonic() - start
@@ -212,9 +180,6 @@ def test_e12_pause_ack_received_promptly(tmp_path: pathlib.Path) -> None:
     assert wait_for_old_child_pause_ack(pause_file, timeout=1.0) is True
 
 
-# ---------------------------------------------------------------------------
-# E1.3: Drain deadline bounds hung old child retirement
-# ---------------------------------------------------------------------------
 def test_e13_drain_deadline_is_bounded() -> None:
     assert _HANDOVER_DRAIN_S > 0
     assert _HANDOVER_DRAIN_S <= 5.0
@@ -222,27 +187,12 @@ def test_e13_drain_deadline_is_bounded() -> None:
     assert _HANDOVER_ACK_TIMEOUT_S <= 2.0
 
 
-#: How long the wedged real child holds its ONE accepted request open. Chosen
-#: far beyond any bound the bridge enforces so "the bridge waited for the
-#: request" and "the bridge enforced the drain deadline" are distinguishable
-#: outcomes rather than coincident ones.
 _WEDGED_CHILD_HOLD_S = 30.0
 
-#: Upper bound for the reap, generous over ``_HANDOVER_DRAIN_S`` (drain window
-#: plus the shutdown that follows it) but far below ``_WEDGED_CHILD_HOLD_S``.
 _DRAIN_REAP_BOUND_S = _HANDOVER_DRAIN_S + 2.0
 
 
 def _write_wedged_child_script(tmp_path: pathlib.Path) -> tuple[pathlib.Path, ...]:
-    """Write a REAL child server that wedges itself on its first accepted request.
-
-    The child is a single-threaded :class:`HTTPServer`: once it accepts the
-    request it parks inside the handler for ``_WEDGED_CHILD_HOLD_S`` and can
-    neither finish that request nor accept/ACK anything else. It writes
-    ``serving_file`` only after the request is ACCEPTED, which is how the
-    parent knows the request is genuinely in-flight (not merely queued in the
-    accept backlog) before it starts the drain.
-    """
     port_file = tmp_path / "e13_wedged_port.txt"
     serving_file = tmp_path / "e13_wedged_serving.txt"
     script = tmp_path / "e13_wedged_child.py"
@@ -285,7 +235,6 @@ def _write_wedged_child_script(tmp_path: pathlib.Path) -> tuple[pathlib.Path, ..
 def _issue_wedged_inflight_request(
     port: int, errors: list[Exception], done: threading.Event
 ) -> None:
-    """Issue one non-idempotent POST and record the typed error the drain produces."""
     conn = http.client.HTTPConnection("127.0.0.1", port, timeout=_WEDGED_CHILD_HOLD_S + 10.0)
     try:
         conn.request(
@@ -314,29 +263,6 @@ def _wait_for_path(path: pathlib.Path, timeout_s: float = 5.0) -> bool:
 
 @pytest.mark.timeout_seconds(10)
 def test_e13_hung_old_child_reaped_at_drain_deadline(tmp_path: pathlib.Path) -> None:
-    """A wedged old child's already-accepted request never completes; the drain deadline reaps it.
-
-    The catalogue entry for E1.3 requires four things at once, and the constant
-    guard above proves none of them:
-
-    1. requests already accepted by a wedged old child NEVER complete,
-    2. a drain deadline exists and is enforced,
-    3. after it expires the old child is killed and those requests surface as a
-       typed error,
-    4. nothing waits forever.
-
-    This test drives all four against a REAL child process that wedges itself:
-    a single-threaded HTTP server that has already ACCEPTED one non-idempotent
-    ``tools/call`` POST and then parks inside the handler for
-    ``_WEDGED_CHILD_HOLD_S``. The bridge is the real
-    :meth:`RestartAwareMcpBridge._drain_old` path with no injected sleeper, so
-    the only thing bounding the retirement is ``_HANDOVER_DRAIN_S``.
-
-    ``_WEDGED_CHILD_HOLD_S`` (30 s) is deliberately far larger than
-    ``_DRAIN_REAP_BOUND_S`` (drain window + 2 s): a regression that removed the
-    deadline — or waited for the in-flight request instead of killing the child
-    — fails here rather than silently degrading to "eventually".
-    """
     script, port_file, serving_file = _write_wedged_child_script(tmp_path)
     child = get_process_manager().spawn(
         [sys.executable, str(script)],
@@ -356,9 +282,6 @@ def test_e13_hung_old_child_reaped_at_drain_deadline(tmp_path: pathlib.Path) -> 
         )
         worker.start()
 
-        # (1) The child ACCEPTED the request and is now wedged on it: the
-        # serving marker appears only from inside the handler, and the request
-        # has neither completed nor errored at this point.
         assert _wait_for_path(serving_file), "child never accepted the in-flight request"
         assert not inflight_done.is_set(), (
             "accepted request on the wedged child completed; it must never complete"
@@ -380,11 +303,8 @@ def test_e13_hung_old_child_reaped_at_drain_deadline(tmp_path: pathlib.Path) -> 
             run_id="run-e13-wedged",
             workspace_root=tmp_path,
         )
-        # No injected sleeper: the drain must run on the real clock, so the
-        # only bound on this retirement is the drain deadline itself.
         assert bridge._sleep_fn is None
 
-        # (2) Drive the REAL drain/retirement path against the wedged child.
         started = time.monotonic()
         bridge._drain_old(old_inner)
         assert old_inner in bridge._draining_inners, "wedged child was not registered as draining"
@@ -394,25 +314,20 @@ def test_e13_hung_old_child_reaped_at_drain_deadline(tmp_path: pathlib.Path) -> 
             time.sleep(0.03)
         elapsed = time.monotonic() - started
 
-        # (3) After the drain deadline expires the old child is killed.
         assert child.poll() is not None, (
             f"wedged old child was not reaped within {_DRAIN_REAP_BOUND_S}s "
             f"(drain deadline {_HANDOVER_DRAIN_S}s was not enforced)"
         )
-        # The drain window was honoured before the kill, not bypassed.
         assert elapsed >= _HANDOVER_DRAIN_S * 0.9, (
             f"child was reaped after {elapsed:.3f}s, before the "
             f"{_HANDOVER_DRAIN_S}s drain deadline elapsed"
         )
-        # (4) Nothing waited for the wedged request to finish.
         assert elapsed < _WEDGED_CHILD_HOLD_S, (
             f"retirement waited {elapsed:.3f}s for a request the wedged child "
             f"would hold for {_WEDGED_CHILD_HOLD_S}s"
         )
         assert old_inner not in bridge._draining_inners
 
-        # The severed accepted request surfaces as a typed network error at the
-        # ``http.client`` boundary that the agent uses.
         assert inflight_done.wait(timeout=2.0), "in-flight request never surfaced an outcome"
         assert len(inflight_errors) == 1, (
             f"in-flight request on the reaped child must surface exactly one typed error; "
@@ -430,13 +345,7 @@ def test_e13_hung_old_child_reaped_at_drain_deadline(tmp_path: pathlib.Path) -> 
             child.wait(timeout=2.0)
 
 
-# ---------------------------------------------------------------------------
-# E1.4: In-flight non-idempotent tool calls & deduplication
-# ---------------------------------------------------------------------------
 def test_e14_inflight_non_idempotent_tool_calls_no_duplicate_dispatch() -> None:
-    # Code invariant: HTTP connections are bound to an existing child socket;
-    # make-before-break handover drains active connections on the retiring child
-    # via _drain_old without transferring or duplicating in-flight requests to candidate.
     old_inner = _make_inner(poll_result=None, pid=1001)
     candidate = _make_inner(poll_result=None, pid=2002)
 
@@ -448,7 +357,6 @@ def test_e14_inflight_non_idempotent_tool_calls_no_duplicate_dispatch() -> None:
         sleep_fn=lambda s: None,
     )
 
-    # In-flight calls remain isolated to the draining old inner
     promoted = bridge._perform_restart(process_exited=False, probe_duration_s=1.0)
     assert promoted is True
     assert bridge._inner is candidate
@@ -456,11 +364,7 @@ def test_e14_inflight_non_idempotent_tool_calls_no_duplicate_dispatch() -> None:
     assert old_inner.process.pid == 1001
 
 
-# ---------------------------------------------------------------------------
-# E1.5: In-flight calls across retirement handled cleanly during drain
-# ---------------------------------------------------------------------------
 def test_e15_inflight_calls_handled_cleanly_during_drain() -> None:
-    # Old inner remains alive in _draining_inners during the drain grace period
     drain_completed = threading.Event()
 
     def slow_drain_sleep(seconds: float) -> None:
@@ -478,25 +382,17 @@ def test_e15_inflight_calls_handled_cleanly_during_drain() -> None:
     )
 
     bridge._perform_restart(process_exited=False, probe_duration_s=1.0)
-    # Candidate is active
     assert bridge._inner is candidate
-    # Old inner is retained in _draining_inners while drain worker sleeps
     assert old_inner in bridge._draining_inners
     assert old_inner.process.poll() is None
 
-    # Complete drain, then join the drain worker instead of sleeping: a fixed
-    # 50 ms grace raced the worker thread's wake-up on a saturated host.
     (drain_thread,) = tuple(bridge._drain_threads)
     drain_completed.set()
     drain_thread.join(timeout=5.0)
     assert not drain_thread.is_alive(), "drain worker did not finish after drain completed"
-    # Drain worker removes old_inner and shuts it down
     assert old_inner.process.poll() is not None
 
 
-# ---------------------------------------------------------------------------
-# E1.6: Shared on-disk wire ledger written by two children serializes cleanly
-# ---------------------------------------------------------------------------
 def test_e16_two_child_ledger_interleave(tmp_path: pathlib.Path) -> None:
     secret = "test-secret-12345"
     run_id = "test-run"
@@ -517,15 +413,10 @@ def test_e16_two_child_ledger_interleave(tmp_path: pathlib.Path) -> None:
 
     assert p1.exitcode == 0
     assert p2.exitcode == 0
-    # Whole chain must verify despite interleaved writes from two real children
     assert verify_chain(tmp_path, secret) is True
 
 
-# ---------------------------------------------------------------------------
-# E1.7: In-memory per-child state handover / snapshot persistence
-# ---------------------------------------------------------------------------
 def test_e17_in_memory_state_handover_via_snapshot(tmp_path: pathlib.Path) -> None:
-    # State handover persists across process boundary via snapshot
     snap = snapshot_dir(tmp_path, "run-e17")
     write_snapshot(
         snap,
@@ -539,9 +430,6 @@ def test_e17_in_memory_state_handover_via_snapshot(tmp_path: pathlib.Path) -> No
     assert data["broker_secret_fingerprint"] == "sha256-fingerprint"
 
 
-# ---------------------------------------------------------------------------
-# E1.8: MCP session id stability across respawns
-# ---------------------------------------------------------------------------
 def test_e18_session_id_persisted_across_respawn(tmp_path: pathlib.Path) -> None:
     snap_dir = snapshot_dir(tmp_path, "run-1")
     write_snapshot(
@@ -556,9 +444,6 @@ def test_e18_session_id_persisted_across_respawn(tmp_path: pathlib.Path) -> None
     assert data2["session_id"] == "stable-session-id"
 
 
-# ---------------------------------------------------------------------------
-# E1.9: Tool-set drift detected via hash
-# ---------------------------------------------------------------------------
 def test_e19_tool_set_drift_detection() -> None:
     tools_a: list[dict[str, object]] = [
         {"name": "tool1", "description": "desc1", "inputSchema": {}},
@@ -571,14 +456,10 @@ def test_e19_tool_set_drift_detection() -> None:
     hash_a = compute_tool_set_hash(tools_a)
     hash_b = compute_tool_set_hash(tools_b)
     assert hash_a != hash_b
-    # Determinism: same tools in different list order produce identical hash
     hash_a_reversed = compute_tool_set_hash(list(reversed(tools_a)))
     assert hash_a == hash_a_reversed
 
 
-# ---------------------------------------------------------------------------
-# E2.1: Candidate death after promotion counted as process_exited
-# ---------------------------------------------------------------------------
 def test_e21_candidate_death_after_promotion_counted() -> None:
     old_inner = _make_inner(poll_result=None, pid=1001)
     candidate = _make_inner(poll_result=None, pid=2002)
@@ -595,12 +476,10 @@ def test_e21_candidate_death_after_promotion_counted() -> None:
     assert promoted is True
     assert bridge._inner is candidate
 
-    # Candidate dies after promotion
     cast_proc = candidate.process
     assert isinstance(cast_proc, _FakeProcess)
     cast_proc._poll_result = 137
 
-    # Next health check detects process_exited
     replacement = _make_inner(poll_result=None, pid=3003)
     bridge._restart_fn = lambda: replacement
     restarted = bridge.check_health_and_restart_if_needed()
@@ -609,9 +488,6 @@ def test_e21_candidate_death_after_promotion_counted() -> None:
     assert bridge.process.pid == 3003
 
 
-# ---------------------------------------------------------------------------
-# E2.2: Candidate fails at spawn/preflight -> non-terminal, old child kept
-# ---------------------------------------------------------------------------
 def test_e22_candidate_spawn_failure_keeps_old_child() -> None:
     old_inner = _make_inner(poll_result=None, pid=1001)
 
@@ -630,13 +506,7 @@ def test_e22_candidate_spawn_failure_keeps_old_child() -> None:
     assert old_inner.process.poll() is None
 
 
-# ---------------------------------------------------------------------------
-# E2.3: Startup deadline bounded
-# ---------------------------------------------------------------------------
 def test_e23_startup_deadline_bounded() -> None:
-    # Code invariant: ralph/mcp/protocol/_startup_timeouts.py:576-586 enforces
-    # 0 < _CONFIG_LOAD_CUMULATIVE_S < _REGISTRY_BUILT_CUMULATIVE_S < _WHOLE_STARTUP_BUDGET_S
-    # and mcp_preflight_timeout_from_env().total_seconds() > _WHOLE_STARTUP_BUDGET_S.
     assert _CONFIG_LOAD_CUMULATIVE_S > 0
     assert _REGISTRY_BUILT_CUMULATIVE_S > _CONFIG_LOAD_CUMULATIVE_S
     assert _WHOLE_STARTUP_BUDGET_S > _REGISTRY_BUILT_CUMULATIVE_S
@@ -644,18 +514,12 @@ def test_e23_startup_deadline_bounded() -> None:
     assert preflight_timeout > _WHOLE_STARTUP_BUDGET_S
 
 
-# ---------------------------------------------------------------------------
-# E2.4: Stage-file identity fresh per spawn
-# ---------------------------------------------------------------------------
 def test_e24_stage_id_fresh_per_spawn() -> None:
     id1 = str(uuid.uuid4())
     id2 = str(uuid.uuid4())
     assert id1 != id2
 
 
-# ---------------------------------------------------------------------------
-# E2.5: Snapshot directory outside workspace survives commit_review
-# ---------------------------------------------------------------------------
 def test_e25_snapshot_survives_tmp_cleanup(tmp_path: pathlib.Path) -> None:
     snap_dir = snapshot_dir(tmp_path, "run-e25")
     write_snapshot(
@@ -666,7 +530,6 @@ def test_e25_snapshot_survives_tmp_cleanup(tmp_path: pathlib.Path) -> None:
     )
     assert (snap_dir / "session.json").exists()
 
-    # Workspace .agent/tmp simulated cleanup
     workspace_tmp = tmp_path / ".agent" / "tmp"
     workspace_tmp.mkdir(parents=True, exist_ok=True)
     (workspace_tmp / "junk.txt").write_text("junk", encoding="utf-8")
@@ -675,14 +538,10 @@ def test_e25_snapshot_survives_tmp_cleanup(tmp_path: pathlib.Path) -> None:
 
     shutil.rmtree(workspace_tmp)
 
-    # Snapshot directory outside workspace is completely unharmed
     assert (snap_dir / "session.json").exists()
     assert read_snapshot(snap_dir)["session_id"] == "sess-e25"
 
 
-# ---------------------------------------------------------------------------
-# E2.6: Broken workspace ralph/ does not infect child
-# ---------------------------------------------------------------------------
 def test_e26_broken_workspace_ralph_does_not_affect_candidate(tmp_path: pathlib.Path) -> None:
     broken_pkg = tmp_path / "ralph"
     broken_pkg.mkdir(parents=True, exist_ok=True)
@@ -696,13 +555,9 @@ def test_e26_broken_workspace_ralph_does_not_affect_candidate(tmp_path: pathlib.
 
     pythonpath = env.get("PYTHONPATH", "")
     entries = pythonpath.split(":")
-    # Package root must come first before any workspace or other entries
     assert entries[0] == str(lifecycle._PACKAGE_ROOT)
 
 
-# ---------------------------------------------------------------------------
-# E2.7: Bridge lock serializes candidate spawn
-# ---------------------------------------------------------------------------
 def test_e27_bridge_lock_serializes_restart() -> None:
     inner = _make_inner(poll_result=None, pid=1001)
     bridge = lifecycle.RestartAwareMcpBridge(
@@ -713,6 +568,5 @@ def test_e27_bridge_lock_serializes_restart() -> None:
         sleep_fn=lambda s: None,
     )
 
-    # Assert lock exists and is acquireable
     assert bridge._lock.acquire(timeout=1.0) is True
     bridge._lock.release()

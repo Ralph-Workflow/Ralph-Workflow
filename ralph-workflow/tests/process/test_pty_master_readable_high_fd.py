@@ -1,11 +1,3 @@
-"""``wait_for_master_readable`` must work for descriptors numbered >= 1024.
-
-``select.select`` cannot watch a descriptor at or above ``FD_SETSIZE`` (1024)
-and raises ``ValueError`` instead. Hosts routinely raise ``RLIMIT_NOFILE`` far
-past that (this one: 1048576), so a long run whose PTY master lands high made
-the PTY read thread's ``except Exception`` treat a live agent as finished.
-"""
-
 from __future__ import annotations
 
 import errno
@@ -20,14 +12,12 @@ from ralph.process.pty import read_master_chunk, wait_for_master_readable
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-#: First descriptor number ``select.select`` refuses (FD_SETSIZE).
 _FD_SETSIZE = 1024
 _HIGH_FD = _FD_SETSIZE + 476
 
 
 @pytest.fixture
 def high_pty_master() -> Iterator[tuple[int, int]]:
-    """Yield ``(master, slave)`` with the master duplicated onto a high fd number."""
     soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
     raised = soft <= _HIGH_FD
     if raised:
@@ -69,7 +59,6 @@ def test_high_fd_master_reports_hangup_as_readable(high_pty_master: tuple[int, i
 
 
 def test_closed_descriptor_still_raises_ebadf() -> None:
-    """Callers treat EBADF as "the handle was closed"; that contract must hold."""
     read_fd, write_fd = os.pipe()
     os.close(write_fd)
     os.close(read_fd)

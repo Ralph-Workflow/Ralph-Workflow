@@ -1,12 +1,3 @@
-"""Status-bar push helper for the project-policy-readiness pipeline.
-
-Lives in its own module so :mod:stays under the 1000-line repository cap while still letting the
-remediation phase surface a live Remediation N/Max label in the
-persistent footer (the operator-grade fix the wt-028-display consolidation
-introduced for policy-remediation). The helper is intentionally
-defensive: any display failure is swallowed -- presentation must NEVER
-block remediation.
-"""
 
 from __future__ import annotations
 
@@ -23,27 +14,10 @@ if TYPE_CHECKING:
 
     from ralph.workspace.scope import WorkspaceScope
 
-#: Neutral footer label pushed when the policy pipeline exits and there
-#: was no prior model to restore. Mirrors the same hand-back contract the
-#: conflict-resolution pipeline uses: deliberately generic because this
-#: module cannot know which phase the run will resume into, and any
-#: label is better than leaving the footer claiming a remediation that
-#: has finished.
 NEUTRAL_PHASE_LABEL: str = "Running"
 
 
 def format_readiness_footer_label(assessment: object | None) -> str:
-    """Render the three readiness dimensions as a compact footer label.
-
-    The footer shows ``Policy: S/I/O`` where ``S`` is structure complete,
-    ``I`` is implementation verified, and ``O`` is outcome evidence
-    reviewed. A dash (``-``) means false and a dot (``*``) means true, so
-    the operator reads the three-state gate at a glance. ``None`` falls
-    back to ``-- -`` so a missing assessment is visible rather than
-    silently collapsed to all-true. The label is always prefixed
-    ``Policy:`` so it composes with the existing remediation / pipeline
-    labels the rest of the run loop emits.
-    """
     if assessment is None:
         return "Policy: -- -"
     s_attr: object = getattr(assessment, "structure_complete", False)
@@ -65,15 +39,6 @@ def push_readiness_assessment_status_bar(
     *,
     run_started_monotonic: float | None = None,
 ) -> None:
-    """Render the readiness assessment in the persistent footer.
-
-    Distinct from the remediation label: a run that finishes READY but
-    has not been implementation-verified or outcome-evidence-reviewed
-    still shows a footer line that says so, so the operator never
-    confuses a structural READY (the cache gate) with semantic
-    correctness (the agent's job). Defensive: any display failure is
-    swallowed -- presentation must NEVER block the run.
-    """
     label = _format_readiness_footer_label(assessment)
     try:
         model = StatusBarModel(
@@ -88,7 +53,7 @@ def push_readiness_assessment_status_bar(
         )
         if update is not None:
             update(model)
-    except Exception as exc:  # defensive: presentation must never block remediation
+    except Exception as exc:
         logger.debug("readiness assessment status-bar push failed (non-fatal): {}", exc)
 
 
@@ -102,15 +67,6 @@ def push_remediation_status_bar(
     agent_name: str | None = None,
     run_started_monotonic: float | None = None,
 ) -> None:
-    """Seed the persistent status bar for the remediation phase.
-
-    Mirrors the run loop phase push so the footer shows the working
-    directory and the active phase during remediation instead of nothing.
-    attempt is the 1-indexed live attempt (1 on the first try, 2 on
-    the first re-try, etc.) so the bar surfaces real progress instead
-    of a hardcoded Dev 1/N placeholder. Defensive: any display
-    failure is swallowed -- presentation must never block remediation.
-    """
     try:
         model = StatusBarModel(
             workspace_root=str(workspace_scope.root),
@@ -127,7 +83,7 @@ def push_remediation_status_bar(
         update = cast("Callable[[object], None] | None", update_raw)
         if update is not None:
             update(model)
-    except Exception as exc:  # defensive: presentation must never block remediation
+    except Exception as exc:
         logger.debug("remediation status-bar push failed (non-fatal): {}", exc)
 
 
@@ -138,7 +94,6 @@ def push_resumed_pipeline_status_bar(
     *,
     run_started_monotonic: float | None = None,
 ) -> None:
-    """Hand a caller-owned footer directly to the selected pipeline phase."""
     try:
         model = StatusBarModel(
             workspace_root=str(workspace_scope.root),
@@ -156,13 +111,6 @@ def push_resumed_pipeline_status_bar(
 
 
 def capture_status_bar_model(display: object) -> object | None:
-    """Read the footer model currently displayed so it can be restored.
-
-    Returns ``None`` when the display exposes no readable status bar,
-    in which case the run loop re-pushes its own model on the next
-    iteration. Mirrors the same shape the conflict-resolution
-    pipeline uses for the same hand-back contract.
-    """
     try:
         status_bar: object = getattr(display, "status_bar", None)
         if status_bar is None:
@@ -175,13 +123,6 @@ def capture_status_bar_model(display: object) -> object | None:
 
 
 def restore_status_bar(display: object, model: object | None) -> None:
-    """Put the pre-remediation footer model back. Never raises.
-
-    A ``None`` model means the display exposed no readable footer to
-    capture, so there is nothing to restore verbatim; the caller uses
-    :func:`clear_remediation_status_bar` for that case rather than
-    leaving the remediation label stranded.
-    """
     if model is None:
         return
     try:
@@ -202,16 +143,6 @@ def clear_remediation_status_bar(
     elapsed_seconds: float | None = None,
     run_started_monotonic: float | None = None,
 ) -> None:
-    """Push a neutral footer when there is no prior model to restore.
-
-    The policy pipeline is entered from the run-loop startup seam,
-    where the next run-loop status-bar push can be a whole phase
-    away. Leaving the footer on ``Policy Remediation`` for that long
-    tells the operator a remediation is still running when it has
-    already finished -- which reads exactly like the hang this phase
-    label exists to rule out. Defensive: a display that raises is
-    logged at DEBUG and otherwise ignored.
-    """
     try:
         model = StatusBarModel(
             workspace_root=str(workspace_scope.root),
@@ -237,22 +168,6 @@ def remediation_status_bar_session(
     *,
     resumed_phase: str | None = None,
 ) -> Iterator[None]:
-    """Own the footer for a whole policy pipeline: capture once, restore once.
-
-    The policy pipeline pushes its own footer model on every
-    remediation iteration (so the live ``Remediation N/Max`` label
-    updates). Capturing AFTER those pushes would capture the
-    remediation label itself, and the final restore would put the
-    label back and leave it pinned after the pipeline ended -- the
-    display equivalent of the hang this phase label exists to rule
-    out. Entering the context once around the entire pipeline (i.e.
-    BEFORE the first push) captures the genuinely pre-policy model.
-
-    Restores on exception too, so a failing policy run hands the
-    footer back exactly like a successful one. Mirrors the shape
-    ``conflict_status_bar_session`` already settled on for the other
-    out-of-graph seam.
-    """
     previous = capture_status_bar_model(display)
     try:
         yield

@@ -1,5 +1,3 @@
-"""Interactive agent startup/configuration error handling tests."""
-
 from __future__ import annotations
 
 import ast
@@ -62,7 +60,6 @@ def _build_nanocoder_reader() -> PtyLineReader:
 
 
 def _hook_command_source(command: str) -> str:
-    """Extract the ``-c`` source from a ``python -c <source>`` hook command."""
     tokens = shlex.split(command)
     assert len(tokens) == 3
     assert tokens[1] == "-c"
@@ -70,14 +67,6 @@ def _hook_command_source(command: str) -> str:
 
 
 def test_claude_interactive_settings_envelope_pins_required_hooks(tmp_path: Path) -> None:
-    """The ``--settings`` payload pins the Claude Code hook envelope.
-
-    Future Claude Code settings-schema breakage — the ``Stop`` hook no
-    longer writing the sentinel file, the ``PermissionRequest`` hook no
-    longer emitting the always-allow JSON envelope, or the
-    ``skipDangerousModePermissionPrompt`` flag disappearing — surfaces
-    as this focused failure instead of a silent production regression.
-    """
     sentinel = tmp_path / "ralph-claude-interactive-sess-envelope.done"
     settings_json = _interactive_stop_hook_settings(sentinel)
 
@@ -131,7 +120,6 @@ def test_claude_interactive_settings_envelope_pins_required_hooks(tmp_path: Path
 
 
 def test_nanocoder_provider_error_line_raises_agent_invocation_error() -> None:
-    """Nanocoder startup/config errors must fail fast instead of waiting for idle timeout."""
     reader = _build_nanocoder_reader()
     line = "Provider 'minimax' not found in agents.config.json. Available providers: \n"
     iterator = reader._handle_queued_line(line, _RecordingWatchdog())

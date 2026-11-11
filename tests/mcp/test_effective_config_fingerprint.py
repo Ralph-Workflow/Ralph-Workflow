@@ -31,7 +31,6 @@ class _LiveProcess:
 
 
 class _LiveInner:
-    """Minimal serving ``_inner`` double whose process is alive."""
 
     def __init__(self, pid: int) -> None:
         self.process = _LiveProcess(pid)
@@ -71,12 +70,6 @@ def _refuse_readiness(monkeypatch: pytest.MonkeyPatch, stage: str) -> None:
 def test_c1_config_fingerprint_mismatch_refuses_promotion_and_keeps_old_child(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """D4/C1 step 2: a diverged candidate configuration must NOT be promoted.
-
-    Drives the real ``RestartAwareMcpBridge._verify_candidate_socket`` seam and
-    asserts the observable contract: promotion is refused and the old child
-    stays installed as ``_inner``, never shut down or signalled.
-    """
     _refuse_readiness(monkeypatch, "effective_config_fingerprint_mismatch")
     bridge, old_inner = _bridge_with_old_child("cfg-refusal-run")
     parent_sock, child_sock = socket.socketpair()
@@ -91,11 +84,6 @@ def test_c1_config_fingerprint_mismatch_refuses_promotion_and_keeps_old_child(
 def test_c1_config_fingerprint_mismatch_promotes_only_when_old_child_is_dead(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The single legal escape: with no old child left, promotion stays possible.
-
-    Without this, a permanently diverged configuration would wedge a bridge
-    whose old child is already gone and cost the agent its MCP server.
-    """
     _refuse_readiness(monkeypatch, "effective_config_fingerprint_mismatch")
     dead_inner = _LiveInner(4103)
     dead_inner.process = _DeadProcess()
@@ -116,13 +104,6 @@ def test_c1_config_fingerprint_mismatch_promotes_only_when_old_child_is_dead(
 
 
 def test_candidate_reports_parent_bound_config_fingerprint_over_readiness_channel() -> None:
-    """The child must actually TRANSPORT the fingerprint (D4 production seam).
-
-    A previous revision added the readiness field but never fed it, so the
-    child raised ``TypeError`` and the whole C1 private preflight silently
-    never answered. This drives the real listener with the production-shaped
-    call and asserts the digest comes back.
-    """
     digest = hashlib.sha256(b"effective-config").hexdigest()
     parent_sock, child_sock = socket.socketpair()
     parent_sock.settimeout(5.0)

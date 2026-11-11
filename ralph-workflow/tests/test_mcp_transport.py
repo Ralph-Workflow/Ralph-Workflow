@@ -1,5 +1,3 @@
-"""Tests for MCP transport layer: StdioTransport and upstream clients."""
-
 from __future__ import annotations
 
 import contextlib
@@ -58,7 +56,6 @@ class _FakeProcess:
 
 
 def test_stdio_transport_uses_injected_process_and_thread_factories() -> None:
-    """StdioTransport accepts custom process and thread factories for testing."""
     created: dict[str, object] = {}
     events: list[str] = []
     daemon_args: list[bool] = []
@@ -93,11 +90,6 @@ def test_stdio_transport_uses_injected_process_and_thread_factories() -> None:
     assert created["command"] == ["python", "-m", "demo"]
     assert created["cwd"] == "/tmp/demo"
     assert events == ["create:1", "create:2", "start:1", "start:2"]
-    # Resource-lifecycle precondition: BOTH reader and writer threads
-    # MUST be requested with daemon=True so the ``# resource-lifecycle-ok:
-    # bounded-daemon factory`` marker on ``_default_thread_factory`` holds.
-    # If start() ever stops passing daemon=True, the audit's escape-hatch
-    # would silently mask a real non-daemon thread leak.
     assert daemon_args == [True, True], (
         f"StdioTransport.start() must request daemon=True for both threads; "
         f"observed daemon args: {daemon_args}"
@@ -106,19 +98,6 @@ def test_stdio_transport_uses_injected_process_and_thread_factories() -> None:
 
 @pytest.mark.asyncio
 async def test_stdio_transport_close_joins_threads() -> None:
-    """AC-03 regression: StdioTransport.close() joins reader/writer threads.
-
-    The close() must call join(timeout=_CLOSE_THREAD_JOIN_SECONDS) on both
-    the reader and writer thread doubles with a NON-None timeout. Black-box
-    assertion on the INJECTED thread_factory doubles only: never reads
-    production private attributes. The ``_FakeThread`` double
-    (``tests/test_mcp_transport_helper__fakethread.py``) records every
-    ``join(timeout=...)`` call so we can assert deterministically.
-
-    Why this matters: a long-lived MCP client process that opens/closes
-    transports in tight loops would otherwise leak dangling daemon threads,
-    defeating the bounded-resource contract.
-    """
     captured: list[_FakeThread] = []
 
     def fake_process_factory(command: list[str], cwd: str | None = None) -> _FakeProcess:
@@ -143,8 +122,6 @@ async def test_stdio_transport_close_joins_threads() -> None:
 
     await transport.close()
 
-    # Black-box: assert against the captured thread_factory doubles only.
-    # Both reader and writer MUST have been joined with a NON-None timeout.
     reader, writer = captured[0], captured[1]
     assert len(reader.join_calls) >= 1, "reader thread was never joined"
     assert len(writer.join_calls) >= 1, "writer thread was never joined"
@@ -154,12 +131,6 @@ async def test_stdio_transport_close_joins_threads() -> None:
     for recorded in writer.join_calls:
         assert recorded is not None, "writer join() called without a timeout"
         assert recorded > 0, f"writer join() called with non-positive timeout: {recorded}"
-    # Resource-lifecycle precondition: BOTH threads MUST have been requested
-    # as daemon threads. This is the precondition for the
-    # ``# resource-lifecycle-ok: bounded-daemon factory`` marker on
-    # ``_default_thread_factory``. If start() ever stops passing daemon=True,
-    # close()'s bounded join would no longer be the only safety net against
-    # process-exit-blocking non-daemon threads.
     assert reader.daemon_arg is True, (
         f"reader thread MUST be requested with daemon=True; got {reader.daemon_arg!r}"
     )
@@ -170,20 +141,6 @@ async def test_stdio_transport_close_joins_threads() -> None:
 
 @pytest.mark.asyncio
 async def test_stdio_transport_close_warns_when_thread_still_alive() -> None:
-    """AC-03 warning-path regression: StdioTransport.close() logs a warning when a
-    reader/writer daemon thread is still alive after the bounded ``join()``.
-
-    The plan explicitly required: "a still-alive thread logs a warning but
-    does NOT raise". ``close()`` MUST observe ``is_alive()`` is True and log a
-    warning, but MUST NOT raise — interpreter exit will still reap the daemon
-    thread, so ``close()`` returning cleanly is the correct contract.
-
-    Black-box assertion on the INJECTED thread_factory doubles only. The
-    ``_FakeThread`` double is configured with ``alive_after_join=True`` to
-    simulate a wedged reader/writer; ``is_alive_calls`` proves ``close()``
-    consulted liveness. The loguru output is captured via a string sink so
-    we can deterministically assert the warning text.
-    """
     captured: list[_FakeThread] = []
 
     def fake_process_factory(command: list[str], cwd: str | None = None) -> _FakeProcess:
@@ -224,11 +181,8 @@ async def test_stdio_transport_close_warns_when_thread_still_alive() -> None:
         loguru_logger.remove(sink_id)
 
     reader, writer = captured[0], captured[1]
-    # Both threads were joined AND still alive — close() consulted is_alive() on each.
     assert reader.is_alive_calls >= 1, "close() never called is_alive() on the reader thread"
     assert writer.is_alive_calls >= 1, "close() never called is_alive() on the writer thread"
-    # close() must not raise even when threads are wedged.
-    # loguru text contains the WARNING-level message identifying each thread role.
     text = sink.getvalue()
     assert "WARNING" in text, f"no WARNING logged by close(); captured text: {text!r}"
     assert "_reader_thread" in text, (
@@ -237,10 +191,6 @@ async def test_stdio_transport_close_warns_when_thread_still_alive() -> None:
     assert "_writer_thread" in text, (
         f"close() did not warn about the still-alive _writer_thread; captured: {text!r}"
     )
-    # Resource-lifecycle precondition: BOTH threads MUST have been requested
-    # as daemon threads, even when they will eventually wedge (the daemon-ness
-    # is the safety net that lets interpreter exit still reap them when the
-    # bounded join returns with is_alive()=True).
     assert reader.daemon_arg is True, (
         f"reader thread MUST be requested with daemon=True; got {reader.daemon_arg!r}"
     )
@@ -251,16 +201,8 @@ async def test_stdio_transport_close_warns_when_thread_still_alive() -> None:
 
 @pytest.mark.asyncio
 async def test_stdio_transport_default_factory_tracks_process_in_manager() -> None:
-    """StdioTransport default factory registers the spawned process with ProcessManager.
-
-    After start(), a record with label 'mcp-stdio:<cmd>' appears as RUNNING.
-    After close(), the record transitions to a terminal state (EXITED or KILLED).
-
-    Uses fake process factories to avoid real subprocess I/O.
-    """
     reset_process_manager()
     try:
-        # Build a ProcessManager with fake process factories
         sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)
         async_factory = make_async_process_factory(itertools.count(1), returncode=0)
         pm = ProcessManager(
@@ -269,7 +211,6 @@ async def test_stdio_transport_default_factory_tracks_process_in_manager() -> No
             async_process_factory=async_factory,
         )
 
-        # Replace singleton with our fake-injecting PM
         original = _mgr._pm_state.instance
         _mgr._pm_state.instance = pm
 
@@ -277,7 +218,6 @@ async def test_stdio_transport_default_factory_tracks_process_in_manager() -> No
             transport = StdioTransport([PYTHON, "-c", "pass"])
             transport.start()
 
-            # ProcessManager.spawn() registers the record synchronously before returning
             active = [r for r in pm.list_active() if r.label and r.label.startswith("mcp-stdio:")]
 
             assert len(active) == 1, f"Expected 1 mcp-stdio record, got {active}"
@@ -391,8 +331,6 @@ def test_stdio_upstream_client_lists_tools() -> None:
 
 
 class _FakeRaisingUpstreamPopen:
-    """Fake Popen whose communicate() raises OSError to exercise the stdio caller cleanup path."""
-
     def __init__(self, pid: int) -> None:
         self.pid = pid
         self._returncode: int | None = None
@@ -427,13 +365,6 @@ class _FakeRaisingUpstreamPopen:
 
 
 def test_stdio_caller_terminates_handle_on_communicate_exception() -> None:
-    """Communicate OSError in the stdio caller must terminate the handle and propagate.
-
-    Proves the new try/finally in _make_stdio_caller:
-    - The underlying OSError is re-raised (caught and re-wrapped by StdioUpstreamClient).
-    - The ProcessManager record reaches ProcessStatus.KILLED.
-    - The fake Popen's terminate() is called exactly once.
-    """
     fake = _FakeRaisingUpstreamPopen(pid=1)
 
     def factory(command: object, opts: object) -> object:

@@ -1,12 +1,3 @@
-"""Cleanup command — remove stale parallel worker namespaces after a hard-kill.
-
-P2 (wt-028-display S-14): all visible output routes through the shared
-``ParallelDisplay`` surface (``emit_status`` / ``emit_warning`` /
-``emit_blank_line``) so the drift-prevention suite can verify no
-command reaches the terminal through its own path. The interactive
-confirmation prompt (``typer.confirm``) is the only side-channel that
-remains — the prompt is operator input, not display output.
-"""
 
 from __future__ import annotations
 
@@ -30,16 +21,6 @@ def cleanup(
         typer.Option("--force", help="Remove without prompting for confirmation"),
     ] = False,
 ) -> None:
-    """Remove stale per-worker namespaces under .agent/workers/ after a hard-kill.
-
-    Deprecated: Ralph-orchestrated workers are removed from the execution model;
-    parallelism is owned by the developer agent's own sub-agents. See
-    docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
-
-    In same-workspace parallel mode, each worker writes to .agent/workers/<unit_id>/.
-    These directories are normally cleaned up automatically, but a hard-kill may
-    leave them behind.
-    """
     ctx = make_display_context()
     display = resolve_active_display(None, ctx)
     try:
@@ -66,9 +47,6 @@ def cleanup(
         raise typer.Exit(0)
 
     if not force:
-        # ``typer.confirm`` is operator input (interactive prompt), not
-        # display output. Per S-14 the only allowed side-channel is the
-        # interactive confirmation, so we keep this verbatim.
         confirmed = typer.confirm(f"Remove {len(stale)} stale worker namespace(s)?")
         if not confirmed:
             display.emit_status("Aborted")
@@ -77,7 +55,6 @@ def cleanup(
     removed = 0
     for unit_id in stale:
         target = workers_dir / unit_id
-        # filesystem-write-ok: explicit CLI removal of user-selected Ralph Workflow run data
         shutil.rmtree(target, ignore_errors=True)
         removed += 1
 

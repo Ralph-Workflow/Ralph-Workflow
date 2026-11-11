@@ -1,4 +1,3 @@
-"""Audit seed entries for the markdown-only artifact tool family."""
 
 from __future__ import annotations
 

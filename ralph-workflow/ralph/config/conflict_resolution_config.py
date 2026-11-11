@@ -1,4 +1,3 @@
-"""Typed configuration for conflict-resolution supervision and routing."""
 
 from __future__ import annotations
 
@@ -10,13 +9,6 @@ from ralph.pydantic_compat import RalphBaseModel
 
 
 class ConflictResolutionConfig(RalphBaseModel):
-    """``[conflict_resolution]`` settings.
-
-    The resolver is supervised by one fixed inactivity window.  The optional
-    total cap is deliberately different: it is an explicit operator override
-    that can stop active work and is therefore reported as an operator cap,
-    never as an idle timeout.
-    """
 
     model_config = ConfigDict(frozen=True)
 

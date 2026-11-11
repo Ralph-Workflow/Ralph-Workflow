@@ -24,10 +24,6 @@ from ralph.prompts.materialize import (
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace.memory import MemoryWorkspace
 
-# All tests in this module exercise real git operations against the
-# ``tmp_git_repo`` fixture (per-test process-isolated git repository).
-# Wall-clock cost under parallel xdist load is regularly > 1 s on busy
-# machines, so the default 1-second per-test ceiling is unsafe.
 pytestmark = pytest.mark.timeout_seconds(5)
 
 
@@ -242,7 +238,7 @@ def test_git_diff_strips_lone_surrogates_from_gitpython_output(
     diff = materialize_module._git_diff(tmp_path)
 
     assert "\udca4" not in diff
-    diff.encode("utf-8")  # must not raise
+    diff.encode("utf-8")
 
 
 def test_materialize_commit_phase_handles_surrogate_diff(
@@ -271,7 +267,7 @@ def test_materialize_commit_phase_handles_surrogate_diff(
 
     rendered = workspace.read(prompt_path)
     assert "\udca4" not in rendered
-    rendered.encode("utf-8")  # must not raise
+    rendered.encode("utf-8")
 
 
 def test_materialize_commit_phase_with_oversized_surrogate_diff(
@@ -309,18 +305,10 @@ def test_materialize_commit_phase_with_oversized_surrogate_diff(
 def test_development_analysis_prompt_renders_without_development_result(
     tmp_path: Path,
 ) -> None:
-    """development_analysis prompt must render even when development_result is absent.
-
-    development_result is required by default policy, but prompt generation must not
-    crash when the artifact is absent on disk. This test exercises template rendering
-    only, not artifact validation — the analysis agent must still receive a complete
-    prompt even when the development_result markdown artifact is missing.
-    """
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "implement the feature")
     _write_plan_handoff(workspace)
-    # Intentionally do NOT write a development_result artifact
 
     prompt_path = materialize_prompt_for_phase(
         PromptPhaseContext(
@@ -337,11 +325,9 @@ def test_development_analysis_prompt_renders_without_development_result(
 
     rendered = workspace.read(prompt_path)
     assert rendered, "Prompt must not be empty"
-    # render_payload_path emits a file reference, not inlined content — check the path appears
     assert str(tmp_path / ".agent" / "PRODUCT_CRITERIA.md") in rendered, (
         "Prompt must reference the PRODUCT_CRITERIA path"
     )
-    # Plan is referenced via its Markdown handoff (.agent/PLAN.md), not the JSON artifact path
     assert str(tmp_path / ".agent" / "PLAN.md") in rendered, (
         "Prompt must reference the plan handoff path"
     )
@@ -350,13 +336,11 @@ def test_development_analysis_prompt_renders_without_development_result(
 def test_fresh_planning_clears_all_artifact_history_on_entry(
     tmp_path: Path,
 ) -> None:
-    """Fresh planning entry clears all artifact history before a new planning cycle."""
 
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Plan the new feature")
 
-    # Create history files on disk (bypass MemoryWorkspace)
     artifact_dir = tmp_path / ".agent" / "artifacts"
     plan_hist_dir = history_dir_for_artifact(artifact_dir, "plan")
     plan_hist_dir.mkdir(parents=True, exist_ok=True)
@@ -402,7 +386,6 @@ def test_planning_regression_omits_prior_history_on_fresh_and_resume_entries(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """[S-3] Fresh planning must not expose archived prior-plan history."""
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Plan the new feature")
@@ -451,7 +434,6 @@ def test_planning_regression_fresh_entry_omits_prior_work_payloads_and_retry_con
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-3: a new planning cycle cannot inherit retained plan-loop context."""
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
     prior_plan = "prior plan secret\n" + ("P" * (100 * 1024 + 1))
@@ -498,13 +480,11 @@ def test_planning_regression_fresh_entry_omits_prior_work_payloads_and_retry_con
 def test_planning_loopback_from_analysis_preserves_history(
     tmp_path: Path,
 ) -> None:
-    """Planning loopback from planning_analysis must not clear artifact history."""
 
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Plan the new feature")
 
-    # Write plan + analysis feedback so the loopback prompt can render
     _write_plan_handoff(workspace)
     feedback_doc = (
         "---\ntype: planning_analysis_decision\nstatus: request_changes\n---\n"
@@ -515,7 +495,6 @@ def test_planning_loopback_from_analysis_preserves_history(
     workspace.write(".agent/artifacts/planning_analysis_decision.md", feedback_doc)
     workspace.write(".agent/PLANNING_ANALYSIS_DECISION.md", feedback_doc)
 
-    # Create history files on disk (bypass MemoryWorkspace)
     artifact_dir = tmp_path / ".agent" / "artifacts"
     hist_dir = history_dir_for_artifact(artifact_dir, "plan")
     hist_dir.mkdir(parents=True, exist_ok=True)
@@ -545,12 +524,10 @@ def test_planning_loopback_from_analysis_preserves_history(
 def test_missing_history_does_not_break_fresh_planning(
     tmp_path: Path,
 ) -> None:
-    """Fresh planning entry with no prior history directory must not raise."""
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Plan the new feature")
 
-    # No history files exist at all — history directory does not exist
     artifact_dir = tmp_path / ".agent" / "artifacts"
     assert not (artifact_dir / "history").exists()
 
@@ -567,7 +544,6 @@ def test_missing_history_does_not_break_fresh_planning(
             previous_phase=None,
         ),
     )
-    # Must complete without error; no history is also fine
     assert not (artifact_dir / "history").exists()
 
 
@@ -729,7 +705,6 @@ def test_stale_sidecar_is_cleared_on_text_only_run(
     workspace.write("PROMPT.md", "Build the feature")
     workspace.write(".agent/PLAN.md", "# Execution Plan\n\nStep 1.\n")
 
-    # First run: multimodal
     entry = _make_sidecar_entry()
     materialize_prompt_for_phase(
         PromptPhaseContext(
@@ -748,7 +723,6 @@ def test_stale_sidecar_is_cleared_on_text_only_run(
     sidecar_path = multimodal_sidecar_path("development")
     assert workspace.exists(sidecar_path)
 
-    # Second run: text-only (no entries)
     materialize_prompt_for_phase(
         PromptPhaseContext(
             phase="development",
@@ -770,7 +744,6 @@ def test_stale_sidecar_is_cleared_on_text_only_run(
 def test_v1_sidecar_is_read_with_defaults_for_new_fields(
     tmp_path: Path,
 ) -> None:
-    """v1 sidecars (no source_path/cache_path/source_uri/block_type) must load without error."""
     workspace = MemoryWorkspace(root=str(tmp_path))
     v1_payload = json.dumps(
         {
@@ -806,7 +779,6 @@ def test_v1_sidecar_is_read_with_defaults_for_new_fields(
 def test_v2_sidecar_persists_all_new_fields(
     tmp_path: Path,
 ) -> None:
-    """v2 entries must round-trip all new metadata fields through sidecar."""
     workspace = MemoryWorkspace(root=str(tmp_path))
     v2_payload = json.dumps(
         {
@@ -844,12 +816,6 @@ def test_v2_sidecar_persists_all_new_fields(
 def test_materialize_sidecar_preserves_delivery_reason_and_block_type_for_mixed_modalities() -> (
     None
 ):
-    """Sidecar round-trip must preserve delivery, reason, and block_type for all modality classes.
-
-    The managed-runtime path carries these fields from the MCP session index through
-    the sidecar so prompt-materialization and invoke-time appendix code can use them
-    without re-deriving capability information.
-    """
 
     workspace = MemoryWorkspace()
     payload = json.dumps(
@@ -907,13 +873,11 @@ def test_materialize_sidecar_preserves_delivery_reason_and_block_type_for_mixed_
 
     by_modality = {e.modality: e for e in entries}
 
-    # Image: resource_reference_replay delivery + empty block_type
     img = by_modality["image"]
     assert img.delivery == "resource_reference_replay"
     assert img.reason != "", "reason must not be empty for image entry"
     assert img.block_type == ""
 
-    # PDF: typed_block delivery + non-empty block_type + source_path preserved
     pdf = by_modality["pdf"]
     assert pdf.delivery == "typed_block"
     assert pdf.block_type == "pdf"
@@ -921,7 +885,6 @@ def test_materialize_sidecar_preserves_delivery_reason_and_block_type_for_mixed_
     assert pdf.source_path == "docs/spec.pdf"
     assert pdf.cache_path == ".agent/tmp/media/spec.pdf"
 
-    # Audio: resource_reference_replay delivery preserved
     aud = by_modality["audio"]
     assert aud.delivery == "resource_reference_replay"
     assert aud.modality == "audio"

@@ -1,5 +1,3 @@
-"""Regression tests for the chain binary preflight."""
-
 from __future__ import annotations
 
 import pytest
@@ -16,7 +14,6 @@ def _agents_policy() -> AgentsPolicy:
 
 
 def test_chain_availability_regression_fails_before_spawn_when_every_entry_is_missing() -> None:
-    """S-1: a used chain with no CLI on PATH names install and config fixes."""
     with pytest.raises(PolicyValidationError) as excinfo:
         validate_chain_agents_on_path(_agents_policy(), available=lambda _: False)
 
@@ -32,7 +29,6 @@ def test_chain_availability_regression_fails_before_spawn_when_every_entry_is_mi
 
 
 def test_chain_availability_regression_allows_available_primary_with_missing_fallback() -> None:
-    """S-1: one available chain entry permits the run despite a missing fallback."""
     warnings: list[str] = []
 
     validate_chain_agents_on_path(

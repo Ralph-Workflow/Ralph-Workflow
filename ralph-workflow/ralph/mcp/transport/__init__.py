@@ -1,8 +1,3 @@
-"""Public transport helpers for per-agent MCP wiring.
-
-Grouped by agent: claude, codex, opencode, nanocoder, agy.
-Shared helpers (mcp.toml merging, env serialization) live in common.
-"""
 
 from __future__ import annotations
 

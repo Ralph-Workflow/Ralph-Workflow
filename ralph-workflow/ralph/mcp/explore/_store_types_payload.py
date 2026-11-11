@@ -1,9 +1,3 @@
-"""Content-cache payload representation for the indexed exploration substrate.
-
-Extracted from :mod:`ralph.mcp.explore._store_types` so the hub
-module stays under the per-file line ceiling. This module owns
-the path-independent ``ContentCachePayload`` dataclass.
-"""
 
 from __future__ import annotations
 
@@ -14,12 +8,6 @@ from ralph.mcp.explore._store_types_chunk import ContentCacheChunk
 
 @dataclass(frozen=True, slots=True)
 class ContentCachePayload:
-    """Path-independent extraction payload keyed by content hash.
-
-    Multiple workspace files may share the same payload when they
-    are exact-content copies or moves; the store deduplicates by
-    ``content_hash`` so the disk footprint stays bounded.
-    """
 
     content_hash: str
     extractor_version: str

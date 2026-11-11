@@ -1,48 +1,3 @@
-"""Pin the CCS smoke command surface and harness-spec resolution.
-
-Before this change, ``resolve_smoke_harness_spec`` had no branch for
-``ccs/<alias>`` and raised ``ValueError: No smoke harness spec defined
-for agent 'ccs/glm'`` for every CCS alias, and there was no
-``ralph smoke-interactive-ccs`` command at all (unlike every other
-supported agent transport -- agy, codex, cursor, nanocoder, opencode,
-pi all have a dedicated ``smoke-interactive-*`` command). ``ccs/glm``
-could not be smoke tested through the ``ralph`` CLI in any way.
-
-The tests below pin:
-
-  1. ``resolve_smoke_harness_spec("ccs/glm")`` resolves to a
-     sanitized, alias-scoped directory (mirrors the ``codex/<model>``
-     and ``pi/<model>`` layout) instead of raising.
-  2. Two different CCS aliases (``ccs/glm`` vs ``ccs/work``) resolve
-     to different directories so concurrent smoke runs do not
-     collide on completion-sentinel / receipt paths.
-  3. ``ccs/`` with an empty alias still raises (no smoke harness
-     spec defined) rather than silently degrading to a shared path.
-  4. ``smoke_interactive_ccs_command`` exits 2 when the ``ccs``
-     binary is missing.
-  5. ``smoke_interactive_ccs_command`` exits 2 when the agent name
-     does not resolve to a CCS command.
-  6. ``smoke_interactive_ccs_command`` delegates to the shared
-     harness when the binary is present and the alias resolves.
-  7. ``ralph smoke-interactive-ccs --help`` advertises ``--agent``,
-     ``--subagents``, and ``--subagent-prompt-file``.
-  8. ``resolve_smoke_harness_spec("ccs/mm")`` -- the multi-word alias
-     the registry synthesizes to ``cmd="ccs mm"`` -- resolves to its
-     own sanitized, alias-scoped layout and does not collide with the
-     ``ccs/glm`` or ``ccs/work`` layouts.
-  9. ``smoke_interactive_ccs_command`` delegates a multi-word alias
-     (``ccs/mm`` -> ``cmd="ccs mm"``) to the shared harness, so the
-     ``cmd.startswith("ccs")`` guard accepts the space-separated
-     command form, not only single-word aliases.
-
-Test isolation guarantees (per ``docs/agents/testing-guide.md``):
-
-  - No real subprocess (the harness plumbing is monkeypatched).
-  - No real filesystem outside ``CliRunner``'s in-memory virtual FS.
-  - No real wall-clock waits.
-  - No module-level mutable accumulators.
-"""
-
 from __future__ import annotations
 
 import shutil
@@ -149,7 +104,6 @@ def test_ccs_smoke_regression_exits_when_policy_lacks_ccs_agent(
 
 
 def test_resolve_smoke_harness_spec_ccs_glm() -> None:
-    """AC #1: ``ccs/glm`` resolves to a sanitized, alias-scoped layout."""
     spec = resolve_smoke_harness_spec("ccs/glm")
 
     assert spec.agent_name == "ccs/glm"
@@ -159,7 +113,6 @@ def test_resolve_smoke_harness_spec_ccs_glm() -> None:
 
 
 def test_resolve_smoke_harness_spec_ccs_aliases_do_not_collide() -> None:
-    """AC #2: two CCS aliases resolve to distinct directories and run ids."""
     glm_spec = resolve_smoke_harness_spec("ccs/glm")
     work_spec = resolve_smoke_harness_spec("ccs/work")
 
@@ -169,7 +122,6 @@ def test_resolve_smoke_harness_spec_ccs_aliases_do_not_collide() -> None:
 
 
 def test_resolve_smoke_harness_spec_ccs_mm_scoped_without_collision() -> None:
-    """AC #8: the multi-word ``ccs/mm`` alias gets its own sanitized layout."""
     spec = resolve_smoke_harness_spec("ccs/mm")
 
     assert spec.agent_name == "ccs/mm"
@@ -185,7 +137,6 @@ def test_resolve_smoke_harness_spec_ccs_mm_scoped_without_collision() -> None:
 
 
 def test_resolve_smoke_harness_spec_ccs_empty_alias_raises() -> None:
-    """AC #3: ``ccs/`` with no alias still raises rather than degrading silently."""
     with pytest.raises(ValueError, match="No smoke harness spec defined"):
         resolve_smoke_harness_spec("ccs/")
 
@@ -193,7 +144,6 @@ def test_resolve_smoke_harness_spec_ccs_empty_alias_raises() -> None:
 def test_smoke_interactive_ccs_command_exits_when_ccs_binary_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AC #4: missing ``ccs`` binary is a hard exit(2), not a crash."""
     monkeypatch.setattr(shutil, "which", lambda _name: None)
 
     exit_code = smoke_module.smoke_interactive_ccs_command(display_context=None)
@@ -205,7 +155,6 @@ def test_smoke_interactive_ccs_command_exits_when_agent_resolves_to_wrong_transp
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """AC #5: an alias that does not resolve to a ``ccs``-cmd is rejected."""
     monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/ccs")
 
     scope = WorkspaceScope(tmp_path)
@@ -237,7 +186,6 @@ def test_smoke_interactive_ccs_command_runs_harness_when_binary_present_and_alia
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """AC #6: a resolvable ``ccs/<alias>`` delegates to the shared harness."""
     monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/ccs")
 
     scope = WorkspaceScope(tmp_path)
@@ -281,7 +229,6 @@ def test_smoke_interactive_ccs_command_runs_harness_for_multi_word_alias(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """AC #9: the multi-word ``ccs/mm`` alias delegates to the shared harness."""
     monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/ccs")
 
     scope = WorkspaceScope(tmp_path)
@@ -322,7 +269,6 @@ def test_smoke_interactive_ccs_command_runs_harness_for_multi_word_alias(
 
 
 def test_cli_help_advertises_ccs_smoke_options() -> None:
-    """AC #7: ``ralph smoke-interactive-ccs --help`` advertises the CCS option surface."""
     result = _RUNNER.invoke(app, ["smoke-interactive-ccs", "--help"])
     assert result.exit_code == 0
     output = result.stdout
@@ -332,16 +278,6 @@ def test_cli_help_advertises_ccs_smoke_options() -> None:
 
 
 def test_ccs_mm_uses_headless_visible_output_ceiling() -> None:
-    """``ccs/mm`` headless output is graded against the headless ceiling.
-
-    CCS aliases run Claude in headless ``stream-json`` mode
-    (``ccs <alias> --output-format=stream-json --print ...``), which emits
-    one visible line per partial message exactly like ``claude -p``. Before
-    this regression the harness classified the command by its bare ``ccs``
-    name and applied the interactive 80-line ceiling, causing the subagent
-    smoke scenario to fail with ``82 > 80`` even though every contract fact
-    (artifact, completion, tool activity, subagent lifecycle) passed.
-    """
     config = AgentConfig(
         cmd="ccs mm --output-format=stream-json --print --include-partial-messages",
         transport=AgentTransport.CLAUDE,
@@ -351,7 +287,6 @@ def test_ccs_mm_uses_headless_visible_output_ceiling() -> None:
 
 
 def test_ccs_mm_subagent_visible_line_count_does_not_overrun() -> None:
-    """The observed ``ccs/mm`` subagent visible line count fits the headless ceiling."""
     config = AgentConfig(
         cmd="ccs mm --output-format=stream-json --print --include-partial-messages",
         transport=AgentTransport.CLAUDE,

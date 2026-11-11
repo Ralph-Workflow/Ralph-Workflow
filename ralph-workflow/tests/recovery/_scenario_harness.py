@@ -1,30 +1,3 @@
-"""Shared black-box scenario harness for agent failure and recovery tests.
-
-PRODUCT_CRITERIA.md §3 and §6 public seam:
-- Scripted fake agent through public interfaces.
-- MemoryWorkspace / tmp_path.
-- FakeClock.
-- Pipeline dependencies via make_test_pipeline_deps and a RecoveryController
-  that owns the production workspace-change probe.
-- Assert ONLY observable behavior: invocation sequence, run end state, and logs.
-
-The workspace-change fact is NEVER written by the harness. The scripted agent
-only performs the file writes a real agent would perform; Ralph observes the
-change itself through the production observation seam:
-
-- :class:`ralph.workspace.probe.DefaultWorkspaceChangeProbe` is injected into
-  the recovery controller, so the production phase handler asks the probe
-  (``ralph/phases/execution.py:_apply_workspace_changes``) whether the
-  workspace changed during the attempt, and
-- the scripted attempt calls ``probe.observe_before(...)`` -- the same
-  production protocol call the real ``ralph.agents.invoke`` boundary makes --
-  so the baseline covers exactly the attempt.
-
-The observation therefore comes from a real diff of the real temporary
-workspace; nothing in this module mutates an enum singleton or stamps an
-attribute onto an exception to carry the fact.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
@@ -72,20 +45,11 @@ if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
     from ralph.pipeline.factory import PipelineDeps
 
-#: The phase every scenario drives; the scripted agent runs in it.
 SCENARIO_PHASE = "development"
 
 
 @dataclass(frozen=True)
 class AgentAttemptResult:
-    """Configured outcome for a single agent invocation in a scenario.
-
-    ``modify_workspace`` describes what the SCRIPTED AGENT does (it writes a
-    file), never what Ralph observed. Whether the attempt counts as a
-    workspace change is decided by the production probe over the real
-    workspace.
-    """
-
     produce_artifact: bool = False
     modify_workspace: bool = False
     exit_code: int = 0
@@ -102,8 +66,6 @@ ScriptedAgent = ScriptedAgentFn | dict[tuple[str, int], AgentAttemptResult]
 
 @dataclass(frozen=True)
 class ScenarioOutcome:
-    """Observable outcome of a scenario execution run."""
-
     invocations: list[str]
     final_state: PipelineState
     logs: list[str]
@@ -112,18 +74,14 @@ class ScenarioOutcome:
     workspace_root: Path
     cooldown_durations: dict[str, list[float]] = field(default_factory=dict)
     agent_outputs: list[str] = field(default_factory=list)
-    """Every line the scripted agent actually emitted, in emission order."""
 
 
 class _ScenarioRegistry:
-    """In-memory agent registry returning basic configs for test agents."""
-
     def get(self, name: str) -> AgentConfig:
         return AgentConfig(cmd=name)
 
 
 def _seed_valid_plan(workspace: FsWorkspace) -> None:
-    """Seed minimal valid plan documents so execution phase validation proceeds."""
     plan_content = (
         "---\n"
         "type: plan\n"
@@ -136,7 +94,6 @@ def _seed_valid_plan(workspace: FsWorkspace) -> None:
 
 
 def _build_policy_bundle(agents: list[str] | tuple[str, ...]) -> PolicyBundle:
-    """Construct policy bundle with development execution phase and complete terminal phase."""
     agent_chains = {"dev": AgentChainConfig(agents=list(agents))}
     agent_drains = {"development": AgentDrainConfig(chain="dev")}
     agents_policy = AgentsPolicy(agent_chains=agent_chains, agent_drains=agent_drains)
@@ -184,12 +141,6 @@ def _build_policy_bundle(agents: list[str] | tuple[str, ...]) -> PolicyBundle:
 
 
 def _raise_configured_failure(category: FailureCategory, agent: str) -> None:
-    """Raise the exception configured for the attempt's failure category.
-
-    Categories without a configured exception (for example ``INTEGRATION`` or
-    ``USER_CONFIG``) return without raising, so the caller keeps its original
-    control flow.
-    """
     if category == FailureCategory.ENVIRONMENTAL:
         raise ConnectionRefusedError(f"Simulated environmental connection refusal for {agent}")
     if category == FailureCategory.AMBIGUOUS:
@@ -209,7 +160,6 @@ def _apply_attempt_side_effects(
     attempt_num: int,
     workspace: FsWorkspace,
 ) -> None:
-    """Apply simulated workspace and artifact actions and raise configured exceptions."""
     if result.custom_action is not None:
         result.custom_action(workspace)
 
@@ -326,14 +276,6 @@ def run_scenario(
     advance_clock_on_wait: bool = True,
     on_cooldown_advance: Callable[[FakeClock, float], None] | None = None,
 ) -> ScenarioOutcome:
-    """Execute a scenario run through the public pipeline seam with fake clock and scripted agent.
-
-    ``controller`` may be supplied to resume a run with a restored ledger. A
-    supplied controller owns its own workspace-change probe (or none at all);
-    the baseline the harness records for the legacy snapshot path is always
-    refreshed before every attempt, so no attempt can inherit the previous
-    attempt's observation.
-    """
     effective_clock = clock if clock is not None else FakeClock(start=0.0)
     workspace = FsWorkspace(tmp_path)
     workspace_scope = WorkspaceScope(tmp_path)
@@ -351,11 +293,6 @@ def run_scenario(
     bundle = _build_policy_bundle(agents)
     runner_module.register_role_handlers(bundle.pipeline)
 
-    # The production workspace-change probe. The recovery controller hands it to
-    # the phase handler, which asks it whether the workspace changed during the
-    # attempt; the scripted attempt calls ``observe_before`` through the same
-    # protocol the real invoke boundary uses. The fact is therefore a real
-    # diff of the real temporary workspace, never a value the harness writes.
     probe = DefaultWorkspaceChangeProbe()
 
     effective_controller = (
@@ -390,13 +327,6 @@ def run_scenario(
         attempt_num: int,
         result: AgentAttemptResult,
     ) -> Iterator[str]:
-        """Emit the attempt's output, then apply its side effects.
-
-        The observation baseline is taken first, so the probe window covers
-        exactly this attempt. The output lines are yielded BEFORE the attempt
-        fails, so the prose a scripted agent "said" really reached the
-        pipeline.
-        """
         probe.observe_before(SCENARIO_PHASE, workspace)
         record_workspace_snapshot(workspace, SCENARIO_PHASE)
         lines = result.output_lines or (f"Output from {agent} attempt {attempt_num}",)
@@ -428,11 +358,6 @@ def run_scenario(
         registry_factory=lambda _cfg: _ScenarioRegistry(),
         artifact_requirements_resolver=resolve_phase_required_artifact,
     )
-    # The scripted agent reaches the executor through the supported
-    # PipelineDeps.invoke_agent seam — never by patching production symbols.
-    # Applied via ``dataclasses.replace`` (the same idiom the test factory
-    # uses for optional kwargs) so wrapped factories with narrower signatures
-    # keep working.
     deps = replace(deps, invoke_agent=fake_invoke_agent)
 
     state = initial_state or PipelineState(

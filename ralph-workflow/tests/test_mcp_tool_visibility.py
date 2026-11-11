@@ -1,9 +1,3 @@
-"""Tests for MCP tool visibility and config-driven filtering.
-
-These tests drive the tool registry directly, without spawning any subprocess
-or opening network connections.
-"""
-
 from __future__ import annotations
 
 import sys
@@ -52,7 +46,6 @@ def _visible_tool_names(registry: ToolBridge) -> set[str]:
 
 
 def test_default_registry_schemas_are_isolated_between_instances() -> None:
-    """A caller cannot mutate the next bridge instance through its schema."""
     first = build_ralph_tool_registry(_make_session(), MemoryWorkspace())
     first_definition = first.list_definitions()[0]
     first_definition.input_schema["cache_probe"] = True
@@ -64,7 +57,6 @@ def test_default_registry_schemas_are_isolated_between_instances() -> None:
 
 
 def test_prompt_catalog_reuses_profile_without_leaking_mutations() -> None:
-    """Repeated prompt rendering preserves the capability-filtered catalog."""
     first = visible_tool_names_for_capabilities(_CAPABILITIES, drain="development")
     first.clear()
 
@@ -90,7 +82,6 @@ def test_multimodal_tools_are_visible_by_default() -> None:
 
 
 def test_explicit_media_disabled_keeps_read_image() -> None:
-    """``[media] enabled = false`` is INERT -- multimodal tools always stay visible (criterion 1)."""
     config = McpConfig(media=MediaConfig(enabled=False))
     registry = build_ralph_tool_registry(_make_session(), MemoryWorkspace(), mcp_config=config)
     visible = _visible_tool_names(registry)

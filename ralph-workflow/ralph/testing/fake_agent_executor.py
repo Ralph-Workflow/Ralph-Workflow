@@ -1,11 +1,3 @@
-"""In-process fake executor for unit-testing parallel pipeline logic.
-
-Provides ``FakeAgentExecutor`` and ``FakeRun``. Seed a ``FakeAgentExecutor`` with a
-mapping of ``unit_id`` to ``FakeRun`` instances; the executor replays the seeded
-output lines and exit code, emitting the correct ``WorkerStatus`` transitions, without
-spawning any subprocess or real agent process.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -22,8 +14,6 @@ if TYPE_CHECKING:
 
 
 class FakeAgentExecutor:
-    """In-process agent executor that replays seeded FakeRun scripts without subprocesses."""
-
     def __init__(self, runs: dict[str, FakeRun]) -> None:
         self._runs = runs
         self.calls: list[WorkUnit] = []
@@ -57,7 +47,7 @@ class FakeAgentExecutor:
         for line in seed.outputs:
             on_output(line)
             emitted_outputs.append(line)
-            await asyncio.sleep(0)  # filesystem-poll-ok: cooperative fake-executor yield
+            await asyncio.sleep(0)
 
         final_status = WorkerStatus.SUCCEEDED if seed.exit_code == 0 else WorkerStatus.FAILED
         on_status(final_status)

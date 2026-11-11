@@ -1,4 +1,3 @@
-"""Public media handler functions: read_media, read_image, persist_upstream_media."""
 
 from __future__ import annotations
 
@@ -47,14 +46,6 @@ if TYPE_CHECKING:
 
 
 def _parse_format_param(params: dict[str, object]) -> str:
-    """Parse the optional ``format`` parameter.
-
-    ``read_image`` / ``read_media`` accept ``format='inline'`` (default,
-    preserves the legacy block) or ``format='metadata'`` (bounded
-    metadata envelope with no inline bytes). An unknown value returns
-    ``'__invalid__'`` so callers can raise ``InvalidParamsError`` with
-    a structured message naming the closed enum.
-    """
     raw = params.get("format", "inline")
     if raw is None or raw == "inline":
         return "inline"
@@ -64,15 +55,6 @@ def _parse_format_param(params: dict[str, object]) -> str:
 
 
 def _png_dimensions(raw_bytes: bytes) -> tuple[int | None, int | None]:
-    """Return the (width, height) of a PNG payload, or (None, None).
-
-    The parser inspects only the IHDR chunk so it does not require
-    PIL/Pillow; only the ``width`` (4 bytes, big-endian, offset 16)
-    and ``height`` (4 bytes, big-endian, offset 20) are read. Returns
-    (None, None) for any payload that is not a recognizable PNG
-    signature so callers never raise on a malformed header.
-    """
-    # PNG signature (8) + IHDR length (4) + IHDR type (4) + width (4) + height (4).
     png_header_size = 24
     if len(raw_bytes) < png_header_size:
         return (None, None)
@@ -81,10 +63,6 @@ def _png_dimensions(raw_bytes: bytes) -> tuple[int | None, int | None]:
     if raw_bytes[12:16] != b"IHDR":
         return (None, None)
     try:
-        # ``int.from_bytes`` is the stdlib alternative to ``struct.unpack``
-        # and avoids the ``tuple[Any, ...]`` Any-leak from the
-        # ``struct`` typeshed. ``byteorder="big"`` matches the PNG
-        # big-endian format.
         width = int.from_bytes(raw_bytes[16:20], byteorder="big", signed=False)
         height = int.from_bytes(raw_bytes[20:24], byteorder="big", signed=False)
     except ValueError:
@@ -101,14 +79,6 @@ def _build_media_metadata_envelope(
     resource_handle: str | None,
     title: str,
 ) -> ToolResult:
-    """Build the ``format='metadata'`` envelope for ``handle_read_media``.
-
-    For non-image media the existing ``_handle_workspace_media`` path
-    has already registered a Ralph-owned ``ralph://media/{artifact_id}``
-    artifact (because the original delivery was a resource reference),
-    so the resource_handle is preserved. For inline images the
-    artifact was never persisted, so the handle is ``None``.
-    """
     base_envelope: dict[str, object] = {
         "format": "metadata",
         "media_kind": modality,
@@ -134,7 +104,6 @@ def _build_media_metadata_envelope(
 
 
 def _raise_invalid_format(value: object) -> ToolResult:
-    """Return a structured ``InvalidParamsError`` for an unknown format."""
     from ralph.mcp.tools.coordination import InvalidParamsError
 
     raise InvalidParamsError(f"Invalid format: {value!r}; expected 'inline' or 'metadata'")
@@ -147,37 +116,12 @@ def handle_read_media(
     *,
     max_inline_bytes: int = 5_242_880,
 ) -> ToolResult:
-    """Read a media file or replay a stored artifact handle.
-
-    Accepts either:
-    - a workspace file path (e.g., ``screenshots/shot.png``)
-    - a ``ralph://media/{artifact_id}`` replay handle from a prior session
-
-    When given a replay handle, rehydrates the artifact from the live session
-    manifest and returns the same typed block that was originally emitted
-    (``format='inline'``) or a bounded metadata envelope (``format='metadata'``).
-    Invalid or unrecognised handles return an explicit structured failure.
-
-    For workspace paths, delivery mode is determined by the session's model
-    identity via the capability matrix: INLINE_IMAGE, TYPED_BLOCK,
-    RESOURCE_REFERENCE_REPLAY, or UNSUPPORTED.
-
-    The optional ``format`` argument (``'inline'|'metadata'``) selects
-    between the legacy block shape and a bounded metadata envelope. The
-    metadata envelope drops inline media bytes and exposes a replayable
-    ``resource_handle`` when the underlying delivery registered one.
-    """
     require_capability(session, MEDIA_READ_CAPABILITY, "Media read")
     path = required_string_param(params, "path")
     format_value = _parse_format_param(params)
     if format_value == "__invalid__":
         _raise_invalid_format(params.get("format"))
     if path.startswith("ralph://media/"):
-        # Replay handles never go through ``format='metadata'`` because
-        # they rehydrate from the persisted artifact bytes, which would
-        # defeat the bounded-bytes contract. We still allow metadata
-        # mode so callers can inspect a known artifact without
-        # downloading its body again.
         if format_value == "metadata":
             return _build_replay_metadata_envelope(session, workspace, path)
         return _handle_replay_uri(session, workspace, path)
@@ -191,7 +135,6 @@ def _build_replay_metadata_envelope(
     workspace: Workspace,
     path: str,
 ) -> ToolResult:
-    """Return a bounded metadata envelope for a replay handle."""
     from ralph.mcp.multimodal.errors import MultimodalFailureKind
     from ralph.mcp.tools.workspace._media_io import (
         _load_artifact_bytes,
@@ -253,14 +196,6 @@ def _build_workspace_media_metadata(
     path: str,
     max_inline_bytes: int,
 ) -> ToolResult:
-    """Return a bounded metadata envelope for a workspace media file.
-
-    Ponytail: the inline delivery path is bypassed entirely; only the
-    minimum amount of work needed to emit the envelope is performed.
-    For inline-image-eligible files we still need to read the file
-    bytes to compute sha256 + size; for resource-reference deliveries
-    we run the same workspace path but never emit the inline block.
-    """
     from ralph.mcp.multimodal.capabilities import (
         DeliveryMode,
         inline_image_requires_text_handle,
@@ -325,19 +260,6 @@ def _build_workspace_media_metadata(
             is_error=True,
         )
     title = PurePosixPath(path).name
-    # If the original delivery would have registered a Ralph-owned
-    # artifact (resource_reference_replay path), register it here too
-    # so the resource_handle in the metadata envelope is replayable.
-    # Inline-image deliveries never persist an artifact.
-    #
-    # The ``modality != "image"`` clause used to be unconditional
-    # because an image ALWAYS resolved to ``INLINE_IMAGE``, making
-    # "resource-reference image" unreachable. It is reachable now: a
-    # transport that cannot round-trip an inline image block (see
-    # ``_INLINE_IMAGE_ROUNDTRIP_UNSAFE_TRANSPORTS``) gets
-    # ``RESOURCE_REFERENCE_REPLAY`` for images too, and its metadata
-    # envelope must still carry a dereferenceable handle -- otherwise
-    # the degraded path hands back an envelope pointing at nothing.
     resource_handle: str | None = None
     if (
         verdict.delivery == DeliveryMode.RESOURCE_REFERENCE_REPLAY
@@ -407,26 +329,6 @@ def handle_read_image(
     *,
     max_inline_bytes: int = 5_242_880,
 ) -> ToolResult:
-    """Read an image file and return it as a capability-aware content block.
-
-    Requires MediaRead capability. Validates that the file is a supported image
-    format, then delegates to the shared workspace media handler for delivery
-    decision (inline image, typed block, or explicit unsupported/error).
-
-    The optional ``format`` argument (``'inline'|'metadata'``) selects
-    between the legacy image content block (``format='inline'``, default)
-    and a bounded metadata envelope (``format='metadata'``). The metadata
-    envelope drops the image bytes inline and exposes size, sha256,
-    width, height, and an ``inline_only`` flag. ``resource_handle`` is
-    ``None`` whenever the image was inline-deliverable, because that path
-    persists no artifact; a delivery that degrades to a resource
-    reference (a handle-only provider, or a transport that cannot accept
-    an inline image) does register one and reports it here.
-
-    This is a compatibility alias over ``_handle_workspace_media`` that restricts
-    inputs to image formats only while preserving the same truthful delivery
-    contract as ``read_media``.
-    """
     require_capability(session, MEDIA_READ_CAPABILITY, "Image read")
     path = required_string_param(params, "path")
     format_value = _parse_format_param(params)
@@ -456,7 +358,6 @@ def handle_read_image(
 def _extract_resource_reference_replay_blocks(
     result: object,
 ) -> list[dict[str, str]]:
-    """Extract resource_reference_replay blocks from a normalized upstream result."""
     if not isinstance(result, dict):
         return []
     raw_content: object = result.get("content")
@@ -478,12 +379,6 @@ def _extract_resource_reference_replay_blocks(
 def _extract_resource_reference_blocks(
     result: object,
 ) -> list[dict[str, str]]:
-    """Extract URI-backed resource_reference blocks from a normalized upstream result.
-
-    These blocks reference external URIs (not Ralph-owned artifacts) and cannot
-    be replayed across sessions. They are synthesized as unsupported_runtime_seam
-    entries at the cross-session handoff boundary.
-    """
     if not isinstance(result, dict):
         return []
     raw_content: object = result.get("content")
@@ -507,18 +402,6 @@ def persist_upstream_media_artifacts(
     session: object,
     workspace: Workspace,
 ) -> None:
-    """Persist upstream embedded media artifacts to the durable cache and session index.
-
-    Called after normalize_upstream_content_blocks so that:
-
-    - resource_reference_replay blocks (backed by ralph://media/... URIs stored in
-      the session manifest) are written to the durable cache and session index,
-      enabling cross-session replay of artifacts from upstream embedded-data blocks.
-
-    - URI-backed resource_reference blocks (delivery='resource_reference') reference
-      external URIs and cannot be replayed across sessions. These are synthesized
-      as unsupported_runtime_seam entries so the failure is explicit at invoke time.
-    """
     replay_blocks = _extract_resource_reference_replay_blocks(result)
     uri_blocks = _extract_resource_reference_blocks(result)
 

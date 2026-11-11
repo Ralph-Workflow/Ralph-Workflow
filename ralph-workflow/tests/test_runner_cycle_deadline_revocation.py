@@ -1,13 +1,3 @@
-"""Where a published cycle deadline is revoked, and where it must still be readable.
-
-The deadline lives in the process-global environment, so every exit path from a
-pipeline step has to clear it or the next unrelated agent inherits a nag about a
-cycle it never joined. It must equally survive until the agent's result has been
-graded: grading promotes and validates the result artifact, whose warned
-incomplete-work gate asks the runtime -- not the agent -- whether the cycle had
-warned, and an environment already cleared answers "no" every time.
-"""
-
 from __future__ import annotations
 
 import os
@@ -44,8 +34,6 @@ def _bundle() -> PolicyBundle:
     return load_policy(defaults_dir)
 
 
-# Warm the policy parse at collection time: these tests share the repo's
-# per-test timeout and the cold TOML parse alone can exhaust it under xdist.
 _ = _bundle()
 
 
@@ -65,7 +53,6 @@ def _drive_step(
     after_agent_run: object = None,
     raise_missing_plan_handoff: bool = False,
 ) -> object:
-    """Run one real pipeline step whose invocation publishes a deadline."""
     state = _guarded_state()
     effect = InvokeAgentEffect(
         agent_name="claude",
@@ -81,8 +68,6 @@ def _drive_step(
     )
 
     def _materialize(*_args: object, **_kwargs: object) -> None:
-        # Stands in for real materialization, whose only relevant effect here
-        # is publishing the deadline for the invocation about to start.
         runner_module.publish_cycle_deadline_env(state, "development", _bundle(), _ELAPSED_SECONDS)
         if raise_missing_plan_handoff:
             raise MissingPlanHandoffError("no plan handoff at .agent/PLAN.md")
@@ -122,7 +107,6 @@ def _drive_step(
 
 @pytest.fixture(autouse=True)
 def _reserve_published_names(monkeypatch: MonkeyPatch) -> None:
-    """Register the published names so pytest restores the real environment."""
     monkeypatch.setenv(CYCLE_WARN_EPOCH_ENV, "stale-value")
     monkeypatch.setenv(CYCLE_DEADLINE_EPOCH_ENV, "stale-value")
 
@@ -130,7 +114,6 @@ def _reserve_published_names(monkeypatch: MonkeyPatch) -> None:
 def test_a_crashing_invocation_does_not_leave_the_deadline_published(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """An agent invocation that raises must not leak its deadline to the run."""
 
     def _boom(*_args: object, **_kwargs: object) -> None:
         raise RuntimeError("agent transport died")
@@ -144,7 +127,6 @@ def test_a_crashing_invocation_does_not_leave_the_deadline_published(
 def test_a_keyboard_interrupt_does_not_leave_the_deadline_published(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """Ctrl-C propagates, so only a finally-clause revocation covers it."""
 
     def _interrupt(*_args: object, **_kwargs: object) -> None:
         raise KeyboardInterrupt
@@ -159,7 +141,6 @@ def test_a_keyboard_interrupt_does_not_leave_the_deadline_published(
 def test_a_missing_plan_handoff_does_not_leave_the_deadline_published(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """Publication precedes the failure, so the early return must revoke too."""
     _drive_step(
         monkeypatch,
         tmp_path,
@@ -174,11 +155,6 @@ def test_a_missing_plan_handoff_does_not_leave_the_deadline_published(
 def test_the_deadline_is_readable_while_the_agents_result_is_graded(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """Grading promotes and validates the result artifact, which asks the clock.
-
-    Revoking before this point silently disabled the warned incomplete-work
-    gate for every promoted artifact — the exact invocation it exists for.
-    """
     seen: list[bool] = []
 
     def _grade(**_kwargs: object) -> PipelineEvent:
@@ -199,7 +175,6 @@ def test_the_deadline_is_readable_while_the_agents_result_is_graded(
 def test_conflict_resolution_regression_suspends_inherited_cycle_deadline(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """S-1/S-4: main-run auto-integration cannot pass a cycle deadline to a resolver."""
     seen: list[bool] = []
     state = PipelineState(phase="development")
     config = MagicMock()
@@ -231,7 +206,6 @@ def test_conflict_resolution_regression_suspends_inherited_cycle_deadline(
 
 
 def test_suspending_the_deadline_hides_it_and_restores_it_exactly() -> None:
-    """A worker reconciles its siblings mid-cycle and still needs its deadline."""
     runner_module.publish_cycle_deadline_env(
         _guarded_state(), "development", _bundle(), _ELAPSED_SECONDS
     )
@@ -246,7 +220,6 @@ def test_suspending_the_deadline_hides_it_and_restores_it_exactly() -> None:
 
 
 def test_suspending_the_deadline_restores_it_when_the_block_raises() -> None:
-    """A failed reconciliation must not cost the worker its own deadline."""
     runner_module.publish_cycle_deadline_env(
         _guarded_state(), "development", _bundle(), _ELAPSED_SECONDS
     )

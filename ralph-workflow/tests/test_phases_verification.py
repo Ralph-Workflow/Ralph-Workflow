@@ -1,19 +1,3 @@
-"""Tests for ralph/phases/verification.py — verification phase handler.
-
-Consolidated from a previous split of 6 per-target files
-(``test_phases_verification_verification_artifact_gate.py``,
-``test_phases_verification_verification_make_target_kind.py``,
-``test_phases_verification_verification_missing_block.py``,
-``test_phases_verification_verification_none_kind.py``,
-``test_phases_verification_verification_prepare_prompt_effect.py``,
-``test_phases_verification_verification_role_dispatch.py``).
-
-The split family cost one extra file-collection + import per shard on every
-``make test`` invocation; merging them into a single module preserves every
-existing test class (names kept stable so any external ref still resolves)
-while reclaiming 5 module-level imports per shard.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -97,11 +81,6 @@ def _invoke_effect(drain: str) -> InvokeAgentEffect:
     return InvokeAgentEffect(agent_name="claude", phase=drain, prompt_file="prompt.txt")
 
 
-# =============================================================================
-# Artifact gate
-# =============================================================================
-
-
 class TestVerificationArtifactGate:
     def test_artifact_gate_passes_when_present_and_nonempty(self, tmp_path: Path) -> None:
         drain = "gate"
@@ -171,11 +150,6 @@ class TestVerificationArtifactGate:
         assert event.recoverable is False
 
 
-# =============================================================================
-# Make-target kind rejection
-# =============================================================================
-
-
 class TestVerificationMakeTargetKind:
     def test_make_target_kind_is_rejected_by_policy(self) -> None:
 
@@ -183,11 +157,6 @@ class TestVerificationMakeTargetKind:
             PhaseVerificationPolicy(
                 **{"kind": "make_target", "gate_for": "advancement", "on_failure_route": None}
             )
-
-
-# =============================================================================
-# Missing verification block
-# =============================================================================
 
 
 class TestVerificationMissingBlock:
@@ -210,11 +179,6 @@ class TestVerificationMissingBlock:
         assert any("no verification policy" in m.lower() for m in messages)
 
 
-# =============================================================================
-# None kind
-# =============================================================================
-
-
 class TestVerificationNoneKind:
     def test_none_kind_passes_through(self, tmp_path: Path) -> None:
         drain = "gate"
@@ -227,11 +191,6 @@ class TestVerificationNoneKind:
 
         result = handle_verification_phase(_invoke_effect(drain), ctx)
         assert result == [PipelineEvent.AGENT_SUCCESS]
-
-
-# =============================================================================
-# Prepare-prompt effect
-# =============================================================================
 
 
 class TestVerificationPreparePromptEffect:
@@ -248,11 +207,6 @@ class TestVerificationPreparePromptEffect:
 
         result = handle_verification_phase(effect, ctx)
         assert result == [PipelineEvent.PROMPT_PREPARED]
-
-
-# =============================================================================
-# Role dispatch
-# =============================================================================
 
 
 class TestVerificationRoleDispatch:

@@ -1,5 +1,3 @@
-"""Behavioral tests for side-effect-free workspace storage lifecycle planning."""
-
 from __future__ import annotations
 
 import json
@@ -16,11 +14,6 @@ from ralph.workspace.agent_dir_retention import (
 )
 from ralph.workspace.storage_lifecycle import inventory_storage, plan_cleanup
 
-# The AST writer-discovery walk parses three production trees on its first
-# call; under a saturated shard that one-time cost can brush the default
-# 1.0 s per-test ceiling, so the two tests that trigger the cold walk carry
-# an explicit 10 s marker (the walk itself is ~0.5 s warm; the headroom is
-# for shard load, not real work).
 _AST_WALK_TIMEOUT = pytest.mark.timeout_seconds(20)
 
 
@@ -71,7 +64,6 @@ def test_cleanup_plan_only_selects_recreatable_inactive_storage(tmp_path: Path) 
 
 
 def test_operational_records_become_cleanup_eligible_after_age_bound(tmp_path: Path) -> None:
-    """Aged operational logs past the max-age bound are cleanup candidates."""
     aged_log = tmp_path / ".agent" / "logs" / "stale-run.log"
     _write(aged_log)
     current = time.time()
@@ -89,9 +81,7 @@ def test_operational_records_become_cleanup_eligible_after_age_bound(tmp_path: P
 
 
 def test_operational_records_keep_concurrent_active_run(tmp_path: Path) -> None:
-    """Aged logs for a run registered by another process are retained."""
     register_active_run(tmp_path, "run-current")
-    # Simulate a second process persisting its own run id to the shared registry.
     active_runs_path = tmp_path / ".agent" / "active_runs.json"
     _write(active_runs_path, json.dumps({"run_ids": ["run-current", "run-other"]}))
 
@@ -113,7 +103,6 @@ def test_operational_records_keep_concurrent_active_run(tmp_path: Path) -> None:
 
 
 def test_operational_records_keep_current_run(tmp_path: Path) -> None:
-    """A fresh log for an active run is never a cleanup candidate."""
     fresh_log = tmp_path / ".agent" / "logs" / "current-run.log"
     _write(fresh_log)
 
@@ -127,10 +116,6 @@ def test_operational_records_keep_current_run(tmp_path: Path) -> None:
     assert fresh_log not in candidate_paths
 
 
-# ---------------------------------------------------------------------------
-# W7: AST-derived accumulating-writer discovery
-# ---------------------------------------------------------------------------
-
 _PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 _SCAN_ROOTS = (
     _PACKAGE_ROOT / "ralph" / "workspace",
@@ -138,10 +123,8 @@ _SCAN_ROOTS = (
     _PACKAGE_ROOT / "ralph" / "mcp" / "explore",
 )
 
-#: Single-line literals above this length are docstrings or prose, not paths.
 _MAX_PATH_LITERAL_LENGTH = 120
 
-#: String literals that name an accumulating path under the workspace.
 _ACCUMULATING_MARKERS: frozenset[str] = frozenset(
     {
         ".agent",
@@ -159,9 +142,6 @@ _ACCUMULATING_MARKERS: frozenset[str] = frozenset(
     }
 )
 
-#: Canonical accumulating path segments the inventory must account for; each
-#: is matched against an inventory path's parts rather than a substring so a
-#: prose mention cannot register.
 _CANONICAL_SEGMENTS: tuple[str, ...] = (
     "receipts",
     "tmp",
@@ -171,9 +151,6 @@ _CANONICAL_SEGMENTS: tuple[str, ...] = (
     "state.db",
 )
 
-#: Scratch-prefix patterns (glob forms and the ``completion_seen_<run>``
-#: template) all live under ``.agent`` itself or its ``tmp`` child; the
-#: inventory's owning root is the ``.agent`` segment.
 _SCRATCH_PREFIXES: tuple[str, ...] = (
     "agent_retry_",
     "completion_seen_",
@@ -183,7 +160,6 @@ _SCRATCH_PREFIXES: tuple[str, ...] = (
 
 
 def _inventory_covers(literal: str, inventory_paths: tuple[Path, ...]) -> bool:
-    """True when one canonical accumulating segment of ``literal`` is inventoried."""
     for segment in _CANONICAL_SEGMENTS:
         if segment not in literal:
             continue
@@ -199,21 +175,10 @@ def _inventory_covers(literal: str, inventory_paths: tuple[Path, ...]) -> bool:
     return False
 
 
-#: Process-local cache for the AST walk; the scanned tree is immutable
-#: mid-suite and the per-test budget cannot afford a second walk.
-#: bounded-accumulator-ok: populated once per process by the AST walk
 _LITERAL_CACHE: list[tuple[str, str]] = []
 
 
 def _iter_accumulating_literals() -> list[tuple[str, str]]:
-    """Walk the scanned roots in-process and return (literal, relative source path).
-
-    Never invokes a subprocess: ``docs/ralph-workflow-policy/testing-policy.md``
-    prohibits real subprocesses in default tests, so this AST walk replaces
-    the prior ``git grep`` discovery baseline. Results are cached per
-    process: the scanned source tree does not change mid-suite, and the
-    1.0 s per-test budget cannot afford two full AST walks.
-    """
     if _LITERAL_CACHE:
         return list(_LITERAL_CACHE)
     import ast
@@ -237,7 +202,6 @@ def _iter_accumulating_literals() -> list[tuple[str, str]]:
 
 @_AST_WALK_TIMEOUT
 def test_ast_discovery_finds_the_canonical_writer_literals() -> None:
-    """The scanned roots still name every canonical accumulating literal."""
     literals = {value for value, _source in _iter_accumulating_literals()}
     canonical = (
         "receipts",
@@ -259,7 +223,6 @@ def test_ast_discovery_finds_the_canonical_writer_literals() -> None:
 
 @_AST_WALK_TIMEOUT
 def test_every_accumulating_literal_maps_to_an_inventory_entry(tmp_path: Path) -> None:
-    """W7: every discovered writer-path literal resolves under an inventory path."""
     inventory = inventory_storage(tmp_path)
     inventory_paths = tuple(path for entry in inventory for path in entry["paths"])
     for literal, source in _iter_accumulating_literals():
@@ -269,7 +232,6 @@ def test_every_accumulating_literal_maps_to_an_inventory_entry(tmp_path: Path) -
 
 
 def test_inventory_exposes_the_five_category_contract(tmp_path: Path) -> None:
-    """Every category row carries the five-category contract fields."""
     inventory = inventory_storage(tmp_path)
     assert {entry["category"] for entry in inventory} == {
         "project_content",

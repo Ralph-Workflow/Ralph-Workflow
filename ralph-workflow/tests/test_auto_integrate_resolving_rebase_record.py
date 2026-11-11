@@ -1,25 +1,3 @@
-"""The in-flight rebase resolution must be durably recorded before it starts.
-
-``resolving_rebase`` is the ONLY thing that lets startup recovery tell an
-interrupted conflict resolution apart from an ordinary crashed rebase
-(:mod:`ralph.pipeline.auto_integrate_recovery` branches on it to emit a
-distinct warning). A resolution session runs for as long as an agent
-takes, so the window in which that distinction matters is the widest
-window auto-integration has.
-
-:func:`ralph.pipeline.auto_integrate_record.set_resolving_rebase` used to
-swallow every record I/O error and return ``None``, and
-``_resolve_conflicted_rebase`` started the resolver regardless -- so a
-run killed mid-resolution left a record still saying ``false`` and the
-operator lost the warning entirely. These tests pin the two halves of the
-fix: the writer REPORTS whether the durable state agrees with the caller,
-and the caller refuses to start a resolution it could not record, taking
-the pre-existing abort-then-endpoint-merge path instead.
-
-Every seam is injected, so nothing here launches git or touches a
-repository beyond one JSON file under ``tmp_path``.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -65,7 +43,6 @@ def _integrating_record() -> IntegrationRecord:
 
 
 def test_set_resolving_rebase_reports_a_persisted_flag(tmp_path: Path) -> None:
-    """The happy path both writes the flag AND says that it did."""
     write_record(tmp_path, _integrating_record())
 
     assert set_resolving_rebase(tmp_path, True) is True
@@ -78,13 +55,6 @@ def test_set_resolving_rebase_reports_a_persisted_flag(tmp_path: Path) -> None:
 def test_set_resolving_rebase_reports_success_when_there_is_no_record(
     tmp_path: Path,
 ) -> None:
-    """No record means recovery has nothing to act on, so nothing is lost.
-
-    A missing record -- which is also how :func:`read_record` reports a
-    corrupt one -- is not a durability gap: recovery reads the same
-    absent record and takes no action either way, so there is no
-    interrupted-resolution warning that failing here would preserve.
-    """
     assert set_resolving_rebase(tmp_path, True) is True
     assert read_record(tmp_path) is None
 
@@ -92,15 +62,6 @@ def test_set_resolving_rebase_reports_success_when_there_is_no_record(
 def test_set_resolving_rebase_reports_failure_when_a_present_record_is_unreadable(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """An existing-but-unreadable record is not the same as no record.
-
-    :func:`read_record` collapses absent, corrupt and transiently
-    unreadable into one ``None``, so the file's EXISTENCE is what
-    separates "nothing to record" from "something is there and we could
-    not see it". Reporting the second as a persisted flag would reopen
-    exactly the gap this guard closes: the record on disk still says
-    ``false`` while the caller believes it says ``true``.
-    """
     write_record(tmp_path, _integrating_record())
     monkeypatch.setattr("ralph.pipeline.auto_integrate_record.read_record", _unreadable_record)
 
@@ -110,7 +71,6 @@ def test_set_resolving_rebase_reports_failure_when_a_present_record_is_unreadabl
 def test_set_resolving_rebase_reports_failure_when_the_write_fails(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A record that could not be updated must be reported, not swallowed."""
     write_record(tmp_path, _integrating_record())
 
     def _boom(_root: Path, _record: IntegrationRecord) -> None:
@@ -126,7 +86,6 @@ def test_set_resolving_rebase_reports_failure_when_the_write_fails(
 
 
 def _install_fallback_seams(monkeypatch: pytest.MonkeyPatch, resolver_calls: list[str]) -> None:
-    """Fake every git seam ``run_rebase_or_merge`` reaches after a conflict."""
 
     def no_range_reason(_root: Path, _target: str) -> None:
         return None
@@ -156,12 +115,6 @@ def _install_fallback_seams(monkeypatch: pytest.MonkeyPatch, resolver_calls: lis
 def test_an_unrecordable_resolution_is_never_started(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Fail closed: no durable flag, no long-lived resolution session.
-
-    Starting the resolver anyway would leave a paused rebase under an
-    agent whose crash the record could not describe. The fallback aborts
-    the rebase here and now, while this process is still alive to do it.
-    """
     resolver_calls: list[str] = []
     _install_fallback_seams(monkeypatch, resolver_calls)
 
@@ -169,10 +122,6 @@ def test_an_unrecordable_resolution_is_never_started(
         return False
 
     monkeypatch.setattr(merge_module, "set_resolving_rebase", cannot_record)
-    # The paused rebase is real until the fallback aborts it, so the
-    # abort must be OBSERVED rather than assumed: "handed to the
-    # fallback" is only safe because the fallback tears the rebase down
-    # while this process is still alive.
     aborted: list[Path] = []
 
     def _abort(repo_root: Path) -> None:
@@ -204,7 +153,6 @@ def test_an_unrecordable_resolution_is_never_started(
 def test_conflict_resolution_regression_normal_rebase_binds_one_session_to_all_three_argument_resolver_calls(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """S-1/S-2: the integration path creates one rebase-wide session before its loop."""
     resolver_calls: list[str] = []
     _install_fallback_seams(monkeypatch, resolver_calls)
     sessions: list[ResolutionSession] = []
@@ -251,12 +199,6 @@ def test_conflict_resolution_regression_normal_rebase_binds_one_session_to_all_t
 def test_a_recordable_resolution_is_started(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The guard is the write's ANSWER, not the presence of the guard.
-
-    Companion to the fail-closed case: with the flag persisted, the same
-    conflicted rebase reaches the resolution loop and never touches the
-    endpoint merge.
-    """
     resolver_calls: list[str] = []
     _install_fallback_seams(monkeypatch, resolver_calls)
     flags: list[bool] = []
@@ -282,7 +224,6 @@ def test_a_recordable_resolution_is_started(
 def test_resolver_chain_exhaustion_retains_progress_for_next_agent(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """S-4/DA-006: exhausted recovery is persisted, never sent to merge fallback."""
     _install_fallback_seams(monkeypatch, [])
     monkeypatch.setattr(merge_module, "set_resolving_rebase", _persisted_flag)
 
@@ -310,7 +251,6 @@ def test_resolver_chain_exhaustion_retains_progress_for_next_agent(
 def test_an_unparseable_record_is_preserved_without_authorizing_new_resolution(
     tmp_path: Path,
 ) -> None:
-    """Unreadable ownership cannot authorize a fresh operation or evidence deletion."""
     from ralph.pipeline.auto_integrate_record import record_path
 
     for content in ("{not json at all", '{"phase": "a-phase-from-the-future"}'):
@@ -323,7 +263,6 @@ def test_an_unparseable_record_is_preserved_without_authorizing_new_resolution(
 def test_an_intact_record_is_never_discarded_by_a_transient_read_failure(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Fail closed where failing closed is right: the file is still good."""
     from ralph.pipeline.auto_integrate_record import record_path
 
     write_record(tmp_path, _integrating_record())

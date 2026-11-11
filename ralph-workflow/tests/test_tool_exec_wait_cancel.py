@@ -1,5 +1,3 @@
-"""Tests for exec_wait and exec_cancel MCP tool handlers (WU-4)."""
-
 from __future__ import annotations
 
 import json
@@ -31,8 +29,6 @@ from tests.mock_workspace_root import MockWorkspaceRoot
 
 
 class _MockExecJobRegistry(ExecJobRegistry):
-    """Mock ExecJobRegistry for deterministic unit tests."""
-
     def __init__(
         self,
         *,
@@ -90,8 +86,6 @@ class _MockExecJobRegistry(ExecJobRegistry):
 
 
 class TestExecWaitAndCancelHandlers:
-    """Unit tests for handle_exec_wait and handle_exec_cancel."""
-
     def test_exec_wait_snapshot_when_still_running(self, tmp_path: Path) -> None:
         verdict = LivenessVerdict(
             score=0.2,
@@ -223,7 +217,6 @@ class TestExecWaitAndCancelHandlers:
         assert isinstance(content, ToolContent)
         text = content.text.lower()
         assert "stall" in text or "terminated: stalled" in text
-        # Must not contain dead-end advice to run in background
         assert "run it in the background" not in text
 
     def test_exec_wait_kill_cause_hard_cap_renders_error(self, tmp_path: Path) -> None:
@@ -277,7 +270,6 @@ class TestExecWaitAndCancelHandlers:
 
     def test_exec_wait_capability_mismatch_returns_is_error(self, tmp_path: Path) -> None:
         reg = _MockExecJobRegistry(job_capabilities={"job_unbounded": "ProcessExecUnbounded"})
-        # Session only holds bounded capability
         session = MockSession({"ProcessExecBounded"})
         workspace = MockWorkspaceRoot(tmp_path)
 
@@ -328,8 +320,6 @@ class TestExecWaitAndCancelHandlers:
         )
 
         assert reg.waited_calls[0]["wait_ms"] == EXEC_SOFT_REPLY_BUDGET_MS
-
-    # --- Exec Cancel Tests ---
 
     def test_exec_cancel_running_job_succeeds(self, tmp_path: Path) -> None:
         cancel_result = JobResult(
@@ -416,32 +406,13 @@ class TestExecWaitAndCancelHandlers:
 
 
 def test_tool_constants() -> None:
-    """Tool name constants match canonical tool names."""
     assert EXEC_WAIT_TOOL == "exec_wait"
     assert EXEC_CANCEL_TOOL == "exec_cancel"
-
-
-# ---------------------------------------------------------------------------
-# WU-4: exec_wait restart-loss contract end-to-end
-# ---------------------------------------------------------------------------
-#
-# After an MCP server restart, ``exec_wait`` against an old job_id must
-# return ``is_error=True`` carrying the contractual "lost in server restart"
-# wording. The contract is idempotent (never retryable, never hangs) and
-# the response is plain TEXT, NOT a fabricated JSON JobSnapshot/JobResult
-# payload — the lost job must NEVER come back as a running snapshot.
 
 
 def test_exec_wait_for_restart_lost_job_id_returns_idempotent_nonretryable_error(
     tmp_path: Path,
 ) -> None:
-    """WU-4: After MCP server restart, ``exec_wait`` on an old job_id returns
-    ``is_error=True`` with the 'lost in server restart' wording.
-
-    The response is plain text (NOT a fabricated JSON JobSnapshot/JobResult
-    payload). The contract is idempotent — repeated calls yield the same
-    error; the MCP client must NOT retry on this error.
-    """
     reg = _MockExecJobRegistry(
         wait_outcome=ExecJobError(
             "job_old_server_id",
@@ -451,9 +422,6 @@ def test_exec_wait_for_restart_lost_job_id_returns_idempotent_nonretryable_error
     session = MockSession({"ProcessExecBounded"})
     workspace = MockWorkspaceRoot(tmp_path)
 
-    # 1. First call returns is_error=True with the lost-in-server-restart
-    # wording. The content is plain text (NOT a JSON payload — no
-    # fabricated JobResult/JobSnapshot sneaks through).
     result = handle_exec_wait(
         session,
         workspace,
@@ -464,19 +432,12 @@ def test_exec_wait_for_restart_lost_job_id_returns_idempotent_nonretryable_error
     content = result.content[0]
     assert isinstance(content, ToolContent)
     text = content.text
-    # The lost-in-server-restart wording MUST be present (this is the
-    # contractual signal that the prior server lost the job on restart).
     assert "lost in server restart" in text, text
     assert "unknown or expired job" in text
-    # MUST be plain text — ``str(ExecJobError(...))`` produces a free-form
-    # sentence that is not valid JSON.
     with pytest.raises(ValueError):
         json.loads(text)
     assert reg.waited_calls[-1]["job_id"] == "job_old_server_id"
 
-    # 2. Idempotent: a second wait with the same (stale) job_id returns
-    # is_error=True, no fabricated payload, and the same lost-in-server-restart
-    # wording. The contract is non-retryable — the client must back off.
     result2 = handle_exec_wait(
         session,
         workspace,
@@ -491,9 +452,6 @@ def test_exec_wait_for_restart_lost_job_id_returns_idempotent_nonretryable_error
     with pytest.raises(ValueError):
         json.loads(text2)
 
-    # 3. The registry was called exactly twice with the same job_id — proving
-    # every call yields the same observable error (the MCP client must NOT
-    # retry on this error; further retries do not change the outcome).
     assert [c["job_id"] for c in reg.waited_calls] == [
         "job_old_server_id",
         "job_old_server_id",

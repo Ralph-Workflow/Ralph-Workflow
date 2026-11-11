@@ -1,9 +1,3 @@
-"""All-mock contracts for the post-commit auto-integrate runner seam.
-
-Drives the real runner loop through the commit phase while every external
-collaborator is mocked; no test in this file starts git or writes a repository.
-"""
-
 from __future__ import annotations
 
 import dataclasses
@@ -31,9 +25,6 @@ if TYPE_CHECKING:
 
     from ralph.policy.models import PolicyBundle
 
-# The runner-loop drives below cold-import the real pipeline runner and default
-# policy bundle; under a fully loaded 8-shard parallel run that exceeds the
-# default 1s per-test budget without indicating any defect.
 pytestmark = pytest.mark.timeout_seconds(5)
 
 
@@ -61,7 +52,6 @@ def _run_commit_phase(
     *,
     integration: object,
 ) -> tuple[MagicMock, MagicMock]:
-    """Run one mocked commit phase and then exit the real runner loop."""
     commit_effect = CommitEffect(message_file="/dev/null")
     calls = 0
 
@@ -104,7 +94,6 @@ def _run_commit_phase(
 
 
 def test_commit_success_threads_rebase_state_into_next_state(monkeypatch: MonkeyPatch) -> None:
-    """Plan step 5: a successful integration outcome is persisted through the runner."""
     outcome = RebaseState(last_action="rebased", last_target="main", fast_forwarded=True)
     state, reducer = _run_commit_phase(monkeypatch, integration=lambda *_args, **_kwargs: outcome)
 
@@ -114,7 +103,6 @@ def test_commit_success_threads_rebase_state_into_next_state(monkeypatch: Monkey
 
 
 def test_commit_skipped_does_not_invoke_auto_integrate(monkeypatch: MonkeyPatch) -> None:
-    """Plan step 5: COMMIT_SKIPPED does not call the integration boundary."""
     integration = MagicMock()
     commit_effect = CommitEffect(message_file="/dev/null")
     state = MagicMock()
@@ -161,7 +149,6 @@ def test_commit_skipped_does_not_invoke_auto_integrate(monkeypatch: MonkeyPatch)
 def test_commit_conflict_outcome_routes_the_phase_through_recovery(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """S-1 regression: an unresolved integration conflict cannot reduce success."""
     conflict = RebaseState(
         last_action="conflict",
         last_reason="rebase and endpoint merge both conflicted",
@@ -178,7 +165,6 @@ def test_commit_conflict_outcome_routes_the_phase_through_recovery(
 
 
 def test_auto_integrate_exception_does_not_halt_run(monkeypatch: MonkeyPatch) -> None:
-    """Prompt AC-07, plan step 6: an integration exception is swallowed by the runner."""
     integration = MagicMock(side_effect=RuntimeError("integration blew up"))
     state, reducer = _run_commit_phase(monkeypatch, integration=integration)
 
@@ -190,7 +176,6 @@ def test_auto_integrate_exception_does_not_halt_run(monkeypatch: MonkeyPatch) ->
 def test_commit_success_passes_conflict_resolver_to_integration(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """The seam hands auto_integrate_after_commit a dev-agent conflict resolver."""
     captured: dict[str, object] = {}
 
     def _integration(*_args: object, **kwargs: object) -> RebaseState:
@@ -207,7 +192,6 @@ def test_commit_success_passes_conflict_resolver_to_integration(
 def test_phase_transition_event_runs_boundary_integration(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """A successful non-commit phase event triggers the boundary hook."""
     outcome = RebaseState(last_action="rebased", last_target="main", fast_forwarded=True)
     hook = MagicMock(return_value=outcome)
     monkeypatch.setattr(runner_module, "auto_integrate_on_phase_transition", hook)
@@ -234,15 +218,6 @@ def test_phase_transition_event_runs_boundary_integration(
 def test_phase_transition_no_longer_sweeps_skill_root(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """wt-012: the phase seam no longer carries a skill auto-commit.
-
-    The previous behavior swept a ``commit_skill_updates`` over
-    whatever was dirty in the FIVE skill roots at every phase
-    transition, which could sweep in agent or user changes the
-    deterministic writer did not author. wt-012 replaced that
-    with a producer-level commit at each install boundary; the
-    phase seam now only runs the integration hook.
-    """
     calls: list[str] = []
     monkeypatch.setattr(
         runner_module,
@@ -272,13 +247,6 @@ def test_phase_transition_no_longer_sweeps_skill_root(
 def test_commit_skipped_still_integrates_via_boundary_hook(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """COMMIT_SKIPPED means a clean tree: the boundary hook must catch up.
-
-    The commit-boundary integration (rebase triggered by a NEW commit)
-    stays COMMIT_SUCCESS-only, but a skipped commit still re-integrates
-    via the phase-transition hook so a target that moved during the
-    cycle is caught immediately.
-    """
     outcome = RebaseState(last_action="rebased", last_target="main", fast_forwarded=True)
     hook = MagicMock(return_value=outcome)
     monkeypatch.setattr(runner_module, "auto_integrate_on_phase_transition", hook)
@@ -348,7 +316,6 @@ def test_empty_commit_success_still_integrates_via_boundary_hook(
 def test_additional_transition_events_trigger_boundary_hook(
     monkeypatch: MonkeyPatch, event: PipelineEvent
 ) -> None:
-    """Review-issues, fan-out completion, and run completion also integrate."""
     hook = MagicMock(return_value=None)
     monkeypatch.setattr(runner_module, "auto_integrate_on_phase_transition", hook)
     state = MagicMock()
@@ -373,17 +340,6 @@ def test_additional_transition_events_trigger_boundary_hook(
 def test_phase_transition_hook_is_event_agnostic(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """AC-01: every PipelineEvent (other than COMMIT_SUCCESS) triggers
-    the boundary integration hook.
-
-    The hook used to gate on a success-only whitelist; the new
-    contract is event-agnostic, and the safety invariants
-    (clean-worktree guard + rebase-preconditions check) live
-    downstream. A failure / retry event with a clean worktree
-    now reaches ``auto_integrate_on_phase_transition`` exactly
-    once -- the seam hands the event verbatim so the downstream
-    skip table decides what to record.
-    """
     hook = MagicMock()
     monkeypatch.setattr(runner_module, "auto_integrate_on_phase_transition", hook)
     state = MagicMock()
@@ -407,19 +363,11 @@ def test_phase_transition_hook_is_event_agnostic(
             policy_bundle=_load_default_policy_bundle(),
             registry=MagicMock(),
         )
-        # The seam's return is whatever the mocked hook produced
-        # (a MagicMock in this test), which proves the seam
-        # forwarded the event to the integration call. The
-        # contract under test is that the seam DOES forward
-        # failure events now, not that the result is None.
         assert result is not None
-    # The hook was reached for every failure event; the
-    # event-agnostic seam is the contract under test.
     assert hook.call_count == 4
 
 
 def test_log_outcome_skip_emits_warn_line() -> None:
-    """A skipped integration is surfaced as a WARN line, not an info line."""
     display = MagicMock()
     outcome = RebaseState(
         last_action="skipped",
@@ -439,7 +387,6 @@ def test_log_outcome_skip_emits_warn_line() -> None:
 
 
 def test_log_outcome_conflict_emits_warn_line() -> None:
-    """A conflict outcome is surfaced as a WARN line."""
     display = MagicMock()
     outcome = RebaseState(
         last_action="conflict",
@@ -455,7 +402,6 @@ def test_log_outcome_conflict_emits_warn_line() -> None:
 
 
 def test_log_outcome_success_emits_info_line() -> None:
-    """A successful integration keeps the ordinary activity line."""
     display = MagicMock()
     outcome = RebaseState(last_action="rebased", last_target="main", fast_forwarded=True)
 
@@ -466,12 +412,6 @@ def test_log_outcome_success_emits_info_line() -> None:
 
 
 def test_startup_integration_runs_before_loop(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
-    """An old branch is integrated onto the target at run start.
-
-    The loop preamble must run the boundary-integration hook BEFORE the
-    first phase executes so a run started on a stale branch begins from
-    the current target tip (planning must never read stale code).
-    """
     from ralph.pipeline import run_loop as run_loop_module
 
     outcome = RebaseState(last_action="rebased", last_target="main", fast_forwarded=True)
@@ -487,7 +427,7 @@ def test_startup_integration_runs_before_loop(monkeypatch: MonkeyPatch, tmp_path
     state.rebase = RebaseState()
     state.copy_with = MagicMock(return_value=state)
     ctx = MagicMock()
-    ctx.pipeline_deps = None  # loop entry path must not require runtime deps
+    ctx.pipeline_deps = None
     ctx.workspace_scope = WorkspaceScope(tmp_path)
     ctx.policy_bundle.pipeline.terminal_phase = "complete"
     saved = MagicMock()
@@ -507,7 +447,6 @@ def test_startup_integration_runs_before_loop(monkeypatch: MonkeyPatch, tmp_path
 def test_startup_integration_nothing_to_do_still_prints_a_line(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The startup check is never invisible, even when it does nothing."""
     from ralph.pipeline import run_loop as run_loop_module
 
     monkeypatch.setattr(
@@ -528,7 +467,6 @@ def test_startup_integration_nothing_to_do_still_prints_a_line(
 def test_recovery_outcome_persisted_to_state_and_checkpoint(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Plan step 5: recovery result reaches state and the canonical checkpoint writer."""
     from ralph.pipeline import run_loop as run_loop_module
 
     recovered = RebaseState(last_action="recovered", last_target="main")
@@ -538,7 +476,7 @@ def test_recovery_outcome_persisted_to_state_and_checkpoint(
     state.rebase = RebaseState()
     state.copy_with = MagicMock(return_value=state)
     ctx = MagicMock()
-    ctx.pipeline_deps = None  # loop entry path must not require runtime deps
+    ctx.pipeline_deps = None
     ctx.workspace_scope = WorkspaceScope(tmp_path)
     ctx.policy_bundle.pipeline.terminal_phase = "complete"
     saved = MagicMock()
@@ -563,8 +501,6 @@ def test_recovery_outcome_persisted_to_state_and_checkpoint(
 
 
 class _RecordingDisplay:
-    """Minimal display that records the operator lines pushed at it."""
-
     def __init__(self) -> None:
         self.warn_lines: list[tuple[str, str, str]] = []
 
@@ -573,26 +509,20 @@ class _RecordingDisplay:
 
 
 class _MuteDisplay:
-    """A display exposing no ``emit_warn_line`` at all."""
+    pass
 
 
 class _RaisingDisplay:
-    """A display whose warn-line surface is broken."""
-
     def emit_warn_line(self, unit_id: str, tag: str, message: str) -> None:
         raise RuntimeError("terminal gone")
 
 
 class _EmptyRegistry:
-    """Registry in which no agent is installed."""
-
     def get(self, _name: str) -> None:
         return None
 
 
 class _EmptyAgentRegistry:
-    """Empty AgentRegistry returned for the TARGET workspace scope."""
-
     def get(self, _name: str) -> None:
         return None
 
@@ -621,7 +551,6 @@ def _build_merge_resolver(
 def test_missing_pipeline_deps_tells_the_operator_which_dependency(
     tmp_path: Path,
 ) -> None:
-    """The reason must reach the transcript, not just the log file."""
     display = _RecordingDisplay()
     resolver = _build_merge_resolver(display=display, pipeline_deps=None)
 
@@ -634,7 +563,6 @@ def test_missing_pipeline_deps_tells_the_operator_which_dependency(
 def test_missing_workspace_scope_tells_the_operator_which_dependency(
     tmp_path: Path,
 ) -> None:
-    """The other half of the same decline names the other dependency."""
     display = _RecordingDisplay()
     resolver = _build_merge_resolver(display=display, workspace_scope=None)
 
@@ -645,7 +573,6 @@ def test_missing_workspace_scope_tells_the_operator_which_dependency(
 def test_no_installed_resolution_agent_is_reported_to_the_operator(
     tmp_path: Path,
 ) -> None:
-    """'Nothing happened' is indistinguishable from a bug without this line."""
     display = _RecordingDisplay()
     resolver = _build_merge_resolver(display=display, registry=_EmptyRegistry())
 
@@ -656,7 +583,6 @@ def test_no_installed_resolution_agent_is_reported_to_the_operator(
 def test_a_raising_resolution_pipeline_is_reported_to_the_operator(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The outer net still declines, and now it says why."""
 
     def _explode(**_kwargs: object) -> bool:
         raise RuntimeError("session bridge unavailable")
@@ -671,14 +597,12 @@ def test_a_raising_resolution_pipeline_is_reported_to_the_operator(
 
 
 def test_a_display_without_a_warn_surface_is_a_silent_no_op(tmp_path: Path) -> None:
-    """Presentation must never be able to raise into the integration step."""
     resolver = _build_merge_resolver(display=_MuteDisplay(), pipeline_deps=None)
 
     assert resolver(tmp_path, "main") is False
 
 
 def test_a_display_whose_warn_surface_raises_is_swallowed(tmp_path: Path) -> None:
-    """Same contract for a display that is present but broken."""
     resolver = _build_merge_resolver(display=_RaisingDisplay(), pipeline_deps=None)
 
     assert resolver(tmp_path, "main") is False
@@ -687,7 +611,6 @@ def test_a_display_whose_warn_surface_raises_is_swallowed(tmp_path: Path) -> Non
 def test_the_rebase_stop_resolver_reports_its_declines_too(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The rebase twin of every branch above shares the same visibility."""
     display = _RecordingDisplay()
     stop = RebaseStop(
         sha="abc1234",
@@ -709,10 +632,6 @@ def test_the_rebase_stop_resolver_reports_its_declines_too(
     assert "pipeline_deps not threaded" in _resolver_messages(display)
 
     display.warn_lines.clear()
-    # The resolver now enters workspace_context for the target and uses
-    # the TARGET's registry for chain availability, not the caller's.
-    # Monkeypatch the target registry to be empty so the resolver
-    # declines with the same operator-facing message.
     from ralph.agents import registry as agents_registry_module
 
     monkeypatch.setattr(

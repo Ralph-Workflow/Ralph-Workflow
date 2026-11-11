@@ -1,4 +1,3 @@
-"""ArtifactContract Pydantic model."""
 
 from __future__ import annotations
 
@@ -10,7 +9,6 @@ from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 
 
 class ArtifactContract(_FrozenPolicyModel):
-    """Contract for an artifact type submitted by an agent at a given drain."""
 
     drain: str = Field(..., description="Drain this artifact is submitted at")
     artifact_type: str = Field(

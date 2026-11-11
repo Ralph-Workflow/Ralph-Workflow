@@ -1,5 +1,3 @@
-"""Regression coverage for deterministic harness tool-result echoes."""
-
 from __future__ import annotations
 
 from ralph.agents.idle_watchdog import IdleWatchdog, TimeoutPolicy
@@ -7,7 +5,6 @@ from ralph.agents.timeout_clock import FakeClock
 
 
 def test_watchdog_regression_harness_echo_tool_results_do_not_advance_meaningful_output() -> None:
-    """S-2: repeated prompt echoes must not satisfy the LLM-output watchdog."""
     clock = FakeClock(start=100.0)
     watchdog = IdleWatchdog(
         TimeoutPolicy(

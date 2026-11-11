@@ -1,11 +1,3 @@
-"""Black-box regressions for terminal agent quota exhaustion.
-
-KEEP: existing unavailable-agent tests cover temporary provider limits. This
-module covers the distinct terminal failure contract: recognized quota output
-must name its agent, avoid authentication/timeout/ambiguous routing, skip a
-same-agent retry, and be surfaced by the completion gate.
-"""
-
 from __future__ import annotations
 
 from typing import IO

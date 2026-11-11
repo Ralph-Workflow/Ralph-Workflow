@@ -1,10 +1,3 @@
-"""Pure behavior tests for the free-form development-result markdown spec.
-
-Status-only validation: the body is the next agent's reading matter and is
-never checked for structure, evidence, dispositions, or the prior
-timebox-warned ``Incomplete Work`` CLOSED grammar.
-"""
-
 from ralph.mcp.artifacts.markdown import parse_and_validate
 from ralph.mcp.artifacts.markdown.registry import get_spec
 from ralph.mcp.artifacts.markdown.specs import DEVELOPMENT_RESULT_SPEC
@@ -84,7 +77,6 @@ Work stopped; the next agent reads whatever was written.
 
 
 def test_development_result_accepts_arbitrary_section_headings() -> None:
-    """Free-form body: any heading is allowed without shape validation."""
     content, diagnostics = parse_and_validate(
         """---
 type: development_result
@@ -107,7 +99,6 @@ status: completed
 
 
 def test_development_result_does_not_require_proof_sections() -> None:
-    """No `## Plan Items Proven` / `## Analysis Items Addressed` sections required."""
     content, diagnostics = parse_and_validate(
         """---
 type: development_result
@@ -123,7 +114,6 @@ Wrote what I did, what changed, and what was verified. No structured proof.
 
 
 def test_development_result_does_not_require_disposition() -> None:
-    """`Disposition:` was a structured proof field; free-form results omit it."""
     _content, diagnostics = parse_and_validate(
         """---
 type: development_result
@@ -138,7 +128,6 @@ Done. The plan's S-1 step shipped in src/main.py and pytest passes.
 
 
 def test_development_result_ignores_incomplete_work_field() -> None:
-    """The prior CLOSED-grammar `Incomplete Work` gate is removed; any prose is fine."""
     content, diagnostics = parse_and_validate(
         """---
 type: development_result

@@ -1,5 +1,3 @@
-"""Fresh-interpreter regression for public workspace exports."""
-
 from __future__ import annotations
 
 import os
@@ -15,7 +13,6 @@ from ralph.process.manager import SpawnOptions, get_process_manager
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(5)
 def test_workspace_protocol_is_importable_before_mcp_startup() -> None:
-    """Public workspace imports must not depend on an earlier MCP import."""
     package_root = Path(__file__).resolve().parents[1]
     environment = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
 

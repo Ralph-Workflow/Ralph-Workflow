@@ -1,5 +1,3 @@
-"""Hermetic scoring and opt-in execution seams for verification-prompt evaluations."""
-
 from __future__ import annotations
 
 import json
@@ -41,8 +39,6 @@ _CASE_KEYS = frozenset(
 
 @dataclass(frozen=True, slots=True)
 class EvaluationCase:
-    """One immutable verification fixture and its measurable expected outcomes."""
-
     case_id: str
     criterion_ids: frozenset[str]
     defect_locations: frozenset[str]
@@ -54,7 +50,6 @@ class EvaluationCase:
 
 
 def load_evaluation_cases(path: Path) -> tuple[EvaluationCase, ...]:
-    """Load and validate frozen evaluation cases without accepting ambient workspace data."""
     try:
         raw_cases: object = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -149,7 +144,6 @@ def _safe_relative_path(value: str) -> bool:
 
 
 def render_evaluation_prompt(case: EvaluationCase, workspace_path: Path | None = None) -> str:
-    """Render the mapped production verifier with only frozen fixture paths."""
     context = TemplateContext.default()
     template = context.registry.get_template(case.template_name)
     session = SessionCapabilities.defaults_for_drain(SessionDrain.ANALYSIS)
@@ -198,7 +192,6 @@ def run_evaluation(
     *,
     runs_per_agent: int = 1,
 ) -> dict[str, dict[str, dict[str, float]]]:
-    """Run opt-in callbacks in isolated fixture workspaces and score their validated decisions."""
     if runs_per_agent < 1:
         raise ValueError("runs_per_agent must be positive")
     results: dict[str, dict[str, dict[str, float]]] = {}
@@ -229,7 +222,6 @@ def score_decisions(
     case: EvaluationCase,
     decisions: Iterable[Mapping[str, object]],
 ) -> dict[str, float]:
-    """Score validated decision content without invoking an agent."""
     runs = tuple(decisions)
     if not runs:
         raise ValueError("at least one validated decision is required")
@@ -266,14 +258,6 @@ def score_decisions(
 def _verdicts(
     case: EvaluationCase, decision: Mapping[str, object]
 ) -> dict[str, tuple[str, str, bool, str]]:
-    """Parse one validator output into a criterion-id-keyed verdict map.
-
-    Structured artifacts (planning, review, policy-remediation) carry
-    ``criterion_verdicts`` / ``criterion_verdict_ids`` keys; the free-form
-    development decision does not, so the body is read as a single free-form
-    string and the verdict is inferred from the closed ``status`` enum plus
-    any text-level evidence the body contains.
-    """
     entries = decision.get("criterion_verdicts")
     identifiers = decision.get("criterion_verdict_ids")
     if isinstance(entries, list) and isinstance(identifiers, list) and entries:
@@ -295,13 +279,6 @@ def _verdicts(
             )
             parsed[identifier_text] = (identifier_text, verdict, evidence, location)
         return parsed
-    # Free-form development analysis: synthesize a single ``status``-only
-    # verdict and mark the evidence as missing so the scoring reduces to
-    # the structural agreement checks (false-rejection rate, disagreement
-    # rate) without expecting per-criterion localization. The free-form
-    # contract does not require structured evidence fields, so the
-    # evidence flag is False; the scoring suite only uses this to
-    # confirm weak agents that say ``met`` are unsupported.
     if decision.get("type") == "development_analysis_decision":
         status = str(decision.get("status", "")).casefold()
         verdict = {

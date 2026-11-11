@@ -1,8 +1,3 @@
-"""Transport-aware execution state model for agent lifecycle management.
-
-Provides AgentExecutionState (active/waiting/resumable/terminal),
-the execution strategies, and OpenCode registry routing helpers.
-"""
 
 from ._base import BaseExecutionStrategy, with_prompt_echo_flag
 from ._completion_mixin import CompletionEnforcingStrategy

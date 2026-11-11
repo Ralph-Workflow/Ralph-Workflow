@@ -1,4 +1,3 @@
-"""Shared closed-grammar validation entry point for markdown artifacts."""
 
 from __future__ import annotations
 
@@ -33,15 +32,6 @@ _BODY_GRAMMAR_RULES = frozenset({"MD001", "MD002", "MD003", "MD004"})
 
 @dataclass(frozen=True)
 class MdArtifactSpec:
-    """Declarative schema and injected canonical validator for one artifact type.
-
-    ``structured_body`` decides, per document, whether the body must
-    satisfy this spec's section grammar. When it returns False the body
-    is free-form prose: section rules, the spec's ``validate_document``
-    hook, and body markdown grammar are all skipped, while frontmatter
-    rules (required fields, closed vocabularies, duplicates) still
-    apply. Leaving it unset keeps every document structured.
-    """
 
     artifact_type: str
     required_frontmatter: frozenset[str]
@@ -63,7 +53,6 @@ class MdArtifactSpec:
 
 
 def parse_and_validate(text: str, spec: MdArtifactSpec) -> tuple[Content, list[Diagnostic]]:
-    """Parse and validate markdown through one shared, pure artifact gate."""
     if spec.artifact_type == "plan":
         return _parse_plan_sanity_only(text, spec)
     document, diagnostics = parse_markdown_document(
@@ -76,12 +65,7 @@ def parse_and_validate(text: str, spec: MdArtifactSpec) -> tuple[Content, list[D
 def _parse_non_plan(
     text: str, spec: MdArtifactSpec, document: ParsedDocument, diagnostics: list[Diagnostic]
 ) -> tuple[Content, list[Diagnostic]]:
-    """Run the shared closed grammar for every non-plan artifact."""
     if spec.validate_text is not None:
-        # Spec-level text validators run after the parser so the document
-        # state is available, but before structure validation so a
-        # text-level rejection short-circuits before any other check
-        # fires. Plans use their separate raw-text sanity boundary.
         diagnostics.extend(spec.validate_text(text))
     _teach_duplicate_closed_frontmatter_vocabulary(diagnostics, spec)
     structured_body = spec.structured_body is None or spec.structured_body(document)
@@ -125,7 +109,6 @@ def _parse_non_plan(
 
 
 def _parse_plan_sanity_only(text: str, spec: MdArtifactSpec) -> tuple[Content, list[Diagnostic]]:
-    """Check raw UTF-8 text before spending work on optional extraction."""
     diagnostics = spec.validate_text(text) if spec.validate_text is not None else []
     if _has_errors(diagnostics):
         return {}, diagnostics
@@ -134,8 +117,6 @@ def _parse_plan_sanity_only(text: str, spec: MdArtifactSpec) -> tuple[Content, l
         return {}, [Diagnostic(1, None, "SPEC010", str(size_error))]
     document, parser_diagnostics = parse_markdown_document(text, allow_nested_headings=True)
     content = spec.normalize_content(spec.to_content(document))
-    # Keep prose discarded before the first heading in the main session.
-    # The parser already distinguishes frontmatter from body text.
     if document.sections and any(item.rule_id == "MD002" for item in parser_diagnostics):
         content["unextractable_work_units"] = True
     return content, []
@@ -236,19 +217,6 @@ def _teach_duplicate_closed_frontmatter_vocabulary(
     diagnostics: list[Diagnostic],
     spec: MdArtifactSpec,
 ) -> None:
-    """Rewrite MD006 duplicate-frontmatter diagnostics into the consumer convention.
-
-    The parser already attaches a generic routing-consumer phrase to every
-    MD006 message; when the duplicated field has a closed vocabulary in
-    the spec, the teach pass replaces the generic ``resolve by`` line with
-    the closed-vocabulary acceptance list so the agent sees the exact
-    set of values the consumer can route. Plain ``type`` duplicates and
-    other non-closed fields keep the generic spec-registry phrase.
-
-    Detection: the message starts with ``duplicate frontmatter field <key>``
-    (followed by the parser's appended consumer phrase), so the prefix
-    regex anchors the look-up to the start of the message.
-    """
     for index, diagnostic in enumerate(diagnostics):
         if diagnostic.rule_id != "MD006":
             continue
@@ -269,8 +237,6 @@ def _teach_duplicate_closed_frontmatter_vocabulary(
             )
             break
         else:
-            # Plain ``type`` (or any other non-closed field with a hint):
-            # name the spec-registry consumer without inventing a vocabulary.
             field_match = re.match(r"duplicate frontmatter field ('.*?')", diagnostic.message)
             if field_match is None:
                 continue
@@ -309,7 +275,6 @@ def _validate_closed_frontmatter(
 
 
 def _validate_section_shapes(section: ParsedSection, rule: SectionRule) -> list[Diagnostic]:
-    """Enforce which content shapes (body, items, blocks) one section admits."""
     diagnostics: list[Diagnostic] = []
     if rule.allow_blocks:
         diagnostics.extend(
@@ -378,7 +343,6 @@ def _normalizer_diagnostic(
 
 
 def _spec010_message(message: str, artifact_type: str) -> str:
-    """Name the non-plan normalizer that rejected the document."""
     what = message.strip() or "canonical validation failed"
     return (
         f"{what}; blocking because the canonical {artifact_type} normalizer rejects "

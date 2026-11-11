@@ -1,4 +1,3 @@
-"""Bounded checkpoint execution history models."""
 
 from __future__ import annotations
 
@@ -10,18 +9,15 @@ from ralph.checkpoint.execution_step import ExecutionStep
 
 @dataclass(frozen=True)
 class ExecutionHistory:
-    """Bounded execution history plus checkpoint-relevant file snapshots."""
 
     steps: tuple[ExecutionStep, ...] = ()
     file_snapshots: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def new(cls, file_snapshots: dict[str, str] | None = None) -> ExecutionHistory:
-        """Create an empty execution history."""
         return cls(file_snapshots=file_snapshots or {})
 
     def add_step_bounded(self, step: ExecutionStep, limit: int) -> ExecutionHistory:
-        """Return a copy with the step appended and bounded to the given limit."""
         if limit <= 0:
             bounded_steps: tuple[ExecutionStep, ...] = ()
         else:
@@ -34,7 +30,6 @@ class ExecutionHistory:
         )
 
     def clone_bounded(self, limit: int) -> ExecutionHistory:
-        """Clone the history while keeping only the most recent steps."""
         if limit <= 0:
             bounded_steps: tuple[ExecutionStep, ...] = ()
         else:
@@ -45,7 +40,6 @@ class ExecutionHistory:
         )
 
     def to_dict(self) -> dict[str, object]:
-        """Return a JSON-safe dictionary representation."""
         return {
             "steps": [step.to_dict() for step in self.steps],
             "file_snapshots": dict(self.file_snapshots),
@@ -53,7 +47,6 @@ class ExecutionHistory:
 
     @classmethod
     def from_dict(cls, data: dict[str, object]) -> ExecutionHistory:
-        """Construct ExecutionHistory from dictionary representation."""
         raw_steps = data.get("steps")
         steps: list[ExecutionStep] = []
         if isinstance(raw_steps, list):

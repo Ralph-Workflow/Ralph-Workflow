@@ -1,5 +1,3 @@
-"""Tests for ralph/workspace/memory.py — In-memory workspace implementation."""
-
 from __future__ import annotations
 
 import pytest
@@ -54,7 +52,6 @@ class TestMemoryWorkspaceReadBytes:
             ws.read_bytes("nonexistent.txt")
 
     def test_read_bytes_rejects_a_negative_window_limit(self) -> None:
-        """S-4: the in-memory workspace matches the public window validation contract."""
         ws = MemoryWorkspace()
         ws.write("large.txt", "abcdefghijk")
 

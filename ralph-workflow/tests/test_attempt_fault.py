@@ -1,5 +1,3 @@
-"""Tests for conflict-resolution AttemptFault typing and classification."""
-
 from __future__ import annotations
 
 import pytest
@@ -15,7 +13,6 @@ from ralph.pipeline.conflict_resolution.attempt_fault import (
 
 
 def test_attempt_fault_enum_values() -> None:
-    """Verify that all AttemptFault values exist."""
     expected = {
         "AGENT_HEALTHY",
         "AGENT_EXITED",
@@ -37,7 +34,6 @@ def test_attempt_fault_enum_values() -> None:
     ],
 )
 def test_classify_attempt_fault_round_trip_enum(fault: AttemptFault) -> None:
-    """Round-trip: classify_attempt_fault(fault) is fault."""
     assert classify_attempt_fault(fault) is fault
     assert classify_attempt_fault(fault.value) is fault
     assert classify_attempt_fault(fault.name) is fault
@@ -60,7 +56,6 @@ def test_attempt_fault_termination_reason_round_trip(
     fault: AttemptFault,
     expected_reason: ResolutionTerminationReason | None,
 ) -> None:
-    """Round-trip from AttemptFault to ResolutionTerminationReason and back."""
     reason = attempt_fault_to_termination_reason(fault)
     assert reason == expected_reason
     classified = classify_attempt_fault(reason)
@@ -100,13 +95,11 @@ def test_classify_attempt_fault_matches_existing_termination_reasons(
     reason: ResolutionTerminationReason,
     expected_fault: AttemptFault,
 ) -> None:
-    """Test that typed classification matches existing ResolutionTerminationReason."""
     assert classify_attempt_fault(reason) is expected_fault
     assert classify_attempt_fault(reason.value) is expected_fault
 
 
 def test_classify_attempt_fault_from_payload_strings() -> None:
-    """Classify attempt faults from evidence strings."""
     assert (
         classify_attempt_fault("transport_loop_detected")
         is AttemptFault.AGENT_INFRASTRUCTURE_FAILURE
@@ -128,7 +121,6 @@ def test_classify_attempt_fault_from_payload_strings() -> None:
 
 
 def test_attempt_fault_to_termination_reason_with_specific_evidence() -> None:
-    """Specific Ralph origin evidence maps to the exact infrastructure reason."""
     assert (
         attempt_fault_to_termination_reason(
             AttemptFault.AGENT_INFRASTRUCTURE_FAILURE, "transport_loop_detected"

@@ -1,10 +1,3 @@
-"""Bounded, failure-safe lexer inference for file-content previews.
-
-Path names are preferred over content because a short file fragment is often
-ambiguous.  Content is consulted only when no meaningful path hint exists.
-Every public call degrades to ``"text"`` rather than exposing Pygments or
-parser failures to the display path.
-"""
 
 from __future__ import annotations
 
@@ -15,7 +8,6 @@ from typing import Final
 
 from pygments.lexers import get_lexer_for_filename, guess_lexer
 
-# Compound endings precede their shorter counterparts after sorting below.
 _SUFFIXES: Final[dict[str, str]] = {
     ".d.ts": "typescript",
     ".spec.ts": "typescript",
@@ -167,7 +159,6 @@ _TEMPLATE_SUFFIXES: Final[tuple[str, ...]] = (
 
 
 def _suffix_length(item: tuple[str, str]) -> int:
-    """Return a suffix length for longest-suffix precedence."""
     return len(item[0])
 
 
@@ -177,7 +168,6 @@ _SUFFIXES_BY_LENGTH: Final[tuple[tuple[str, str], ...]] = tuple(
 
 
 def _sniff(prefix: str) -> str:
-    """Return a conservative lexer hint from a bounded content prefix."""
     stripped = prefix.lstrip()
     first_line = prefix.splitlines()[0] if prefix.startswith("#!") and prefix.splitlines() else ""
     lowered_shebang = first_line.lower()
@@ -206,7 +196,6 @@ def _sniff(prefix: str) -> str:
 
 
 def _infer_uncached(filename: str, prefix: str) -> str:
-    """Infer one alias, allowing Pygments to make the final best-effort guess."""
     lowered = filename.lower()
     basename = PurePath(lowered).name
     if lowered.endswith(_BINARY_SUFFIXES):
@@ -245,21 +234,10 @@ def _infer_uncached(filename: str, prefix: str) -> str:
     return lexer or "text"
 
 
-# The 4 KiB caller cap and finite LRU bound prevent unbounded retention of
-# agent-provided content while retaining repeated preview lookups.
 _cached_infer = lru_cache(maxsize=512)(_infer_uncached)
 
 
 def lexer_for_path(path: str | None, content: str = "") -> str:
-    """Return a lexer alias for arbitrary path/content without raising.
-
-    Args:
-        path: Optional source filename.
-        content: Optional text used only when the path is inconclusive.
-
-    Returns:
-        A Pygments lexer alias or ``"text"``.
-    """
     try:
         return _cached_infer(path or "", content[:4096])
     except Exception:

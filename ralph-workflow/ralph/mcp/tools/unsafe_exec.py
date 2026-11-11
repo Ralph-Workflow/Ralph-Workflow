@@ -1,19 +1,3 @@
-"""MCP unsafe_exec tool handler.
-
-Executes unrestricted shell commands in the real workspace directory. The
-only policy enforcement left on this surface is the VCS policy:
-``hg`` and ``svn`` are never allowed. Known high-risk ``git`` operations are
-blocked when invoked directly; scripts containing one run with a warning.
-``git worktree`` is allowed.
-
-Execution goes through the SAME bounded process-manager path as ``exec``
-(``run_command``): output is capped (and spilled to a file when oversized rather
-than buffered unbounded in memory) and the process tree is killed on timeout. The
-sync handler is dispatched off the asyncio event loop by the production
-``_FallbackHttpHandler`` via the saturated-dispatch seam
-(``ralph.mcp.server._saturated_dispatch``), so a long shell command cannot
-freeze the server.
-"""
 
 from __future__ import annotations
 
@@ -65,22 +49,6 @@ PROCESS_EXEC_UNBOUNDED_CAPABILITY: Final = "ProcessExecUnbounded"
 
 
 def _enforce_vcs_blacklist(command: str, workspace: object) -> str | None:
-    """Deny the command when it uses a VCS tool anywhere, however nested.
-
-    ``hg`` / ``svn`` are denied unconditionally. Known high-risk ``git``
-    operations and write-producing ``diff`` flags are denied by the shared
-    ``_scan_text_for_vcs_violation`` scanner. It enforces the same policy as
-    ``exec`` and walks the
-    whole joined text, so a VCS call hidden in a quoted ``sh -c`` string or
-    across newline-separated sequences is still caught.
-
-    It is a static text scan, not a shell: a name the shell only assembles
-    at runtime is NOT caught (``gi$(echo)t tag``, ``X=; gi${X}t tag``).
-    Like the per-segment blacklist in ``exec``, this is defense-in-depth,
-    not a sandbox — the trust boundary is the ``ProcessExecUnbounded``
-    capability. Executed scripts are additionally content-scanned and
-    produce a warning when a blocked operation is found.
-    """
     segments = _shell_command_segments(command)
     for segment_command, segment_args in segments:
         reason = _scan_text_for_vcs_violation(" ".join([segment_command, *segment_args]))
@@ -101,7 +69,6 @@ def handle_unsafe_exec(
     *,
     registry: ExecJobRegistry | None = None,
 ) -> ToolResult:
-    """Execute an unrestricted shell command in the real workspace directory."""
     require_capability(session, PROCESS_EXEC_UNBOUNDED_CAPABILITY, "Unsafe command execution")
 
     command_value = params.get("command")
@@ -109,12 +76,6 @@ def handle_unsafe_exec(
         raise InvalidParamsError("'command' must be a non-empty string")
 
     command = command_value.strip()
-    # An embedded NUL is rejected BEFORE the VCS denylist below, and before the
-    # command reaches ``sh -c``. ``ProcessManager`` strips NULs out of argv
-    # (execve cannot carry one), so a command accepted here with a NUL inside
-    # would run WITHOUT it: ``gi<NUL>t init`` scans as an unknown word, passes
-    # the denylist, and executes as ``git init``. Nothing legitimate puts a NUL
-    # in a shell command, so this fails closed at the boundary that decides.
     if "\x00" in command:
         raise InvalidParamsError("'command' must not contain an embedded NUL")
     script_warning = _enforce_vcs_blacklist(command, workspace)
@@ -218,9 +179,6 @@ def handle_unsafe_exec(
         f"Stdout:\n{stdout}\n\n"
         f"Stderr:\n{stderr}"
     )
-    # Mirror exec: append usage hints so an allowed ``git status`` result
-    # mentions the dedicated git_* MCP read tools and a ``grep`` result
-    # warns that the MCP explore endpoint is more efficient.
     hints = exec_usage_hints(_shell_command_segments(command))
     if script_warning is not None:
         hints.insert(0, script_warning)

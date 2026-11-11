@@ -1,5 +1,3 @@
-"""Tests for the rebase continuation helpers."""
-
 from __future__ import annotations
 
 import subprocess
@@ -25,9 +23,6 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.subprocess_e2e
 
-#: What git's sequencer actually prints when a replayed commit is empty.
-#: The empty-stop classifier matches git's own message lines, never a bare
-#: ``is empty`` substring (which also matches a commit SUBJECT).
 _GIT_EMPTY_CHERRY_PICK_STDERR = (
     "The previous cherry-pick is now empty, possibly due to conflict resolution.\n"
 )
@@ -41,7 +36,6 @@ def test_continue_rebase_finishes_conflicted_rebase(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Continuing after resolving conflicts completes the rebase."""
 
     state = {"in_progress": True}
     fake_repo = SimpleNamespace(
@@ -77,7 +71,6 @@ def test_continue_rebase_requires_clean_index(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """The continuation helper refuses to run until conflicts are resolved."""
 
     monkeypatch.setattr(
         continuation_module,
@@ -94,7 +87,6 @@ def test_continue_rebase_requires_clean_index(
 
 
 def test_continue_rebase_requires_active_rebase(tmp_git_repo: Path) -> None:
-    """Continuing without a rebase in progress is an error."""
 
     with pytest.raises(NoRebaseInProgressError):
         continue_rebase_at(tmp_git_repo)
@@ -150,7 +142,6 @@ def _resolve_conflict(repo_root: Path) -> None:
 def test_continue_rebase_at_answers_empty_commit_stop_with_skip(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """C15 regression: an empty resolved replay is skipped instead of abandoned."""
     state = {"in_progress": True, "skip_calls": 0}
     repo = SimpleNamespace(head=SimpleNamespace(is_detached=False))
     monkeypatch.setattr(continuation_module, "open_repo", lambda _root: repo)
@@ -179,7 +170,6 @@ def test_continue_rebase_at_answers_empty_commit_stop_with_skip(
 def test_continue_rebase_at_skips_consecutive_empty_commits(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """C15 regression: consecutive empty stops remain bounded and land."""
     state = {"in_progress": True, "continue_calls": 0, "skip_calls": 0}
     repo = SimpleNamespace(head=SimpleNamespace(is_detached=False))
     monkeypatch.setattr(continuation_module, "open_repo", lambda _root: repo)
@@ -213,7 +203,6 @@ def test_continue_rebase_at_skips_consecutive_empty_commits(
 def test_continue_rebase_at_preserves_nonempty_failure(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A genuine continuation failure still reports the original error."""
     repo = SimpleNamespace(head=SimpleNamespace(is_detached=False))
     monkeypatch.setattr(continuation_module, "open_repo", lambda _root: repo)
     monkeypatch.setattr(continuation_module, "rebase_in_progress_impl", lambda _repo: True)

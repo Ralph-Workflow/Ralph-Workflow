@@ -1,5 +1,3 @@
-"""Regression tests for stdio transport close failure handling."""
-
 from __future__ import annotations
 
 import contextlib
@@ -32,7 +30,6 @@ _FAST_POLICY = ProcessManagerPolicy(
 
 @pytest.mark.asyncio
 async def test_stdio_transport_close_surfaces_managed_process_termination_failure() -> None:
-    """Transport close must not silently report success when terminate() fails."""
     reset_process_manager()
 
     def immortal_factory(command: object, opts: object) -> FakeImmortalPopen:

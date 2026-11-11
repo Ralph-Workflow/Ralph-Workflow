@@ -1,4 +1,3 @@
-"""Build and persist the bounded, comparable end-of-run time report."""
 
 from __future__ import annotations
 
@@ -31,7 +30,6 @@ _MAX_DEGRADED_REASON_CHARACTERS = 500
 
 
 class _RunTimeReportValidationError(ValueError):
-    """A validation failure with its actionable diagnostic reason preserved."""
 
     def __init__(self, reason: str) -> None:
         self.reason = reason
@@ -43,12 +41,6 @@ def _safe_text(value: str) -> str:
 
 
 def _safe_reason(value: str) -> str:
-    """Cap a redirect reason without cutting the phase name it ends with.
-
-    The phase-name cap is far too short for a sentence: the bundled reason runs
-    to 92 characters and ends with the finalization target, so trimming at 80
-    handed the operator a truncated phase name that does not exist.
-    """
     return value.replace("\n", " ")[:_MAX_REDIRECT_REASON_CHARACTERS]
 
 
@@ -57,7 +49,6 @@ def _safe_item_text(value: str) -> str:
 
 
 def _memory_findings(getenv: Callable[[str], str | None]) -> tuple[list[str], bool]:
-    """Return the findings to report, and whether the cap dropped any."""
     findings = getenv("RALPH_RUN_TIME_REPORT_MEMORY_FINDINGS") or ""
     parsed = [
         _safe_item_text(finding) for finding in findings.splitlines() if _safe_item_text(finding)
@@ -82,12 +73,6 @@ def _format_count(value: int) -> str:
 
 
 def _slowest_phases(state: PipelineState) -> tuple[list[tuple[str, str]], bool]:
-    """Return the slowest phases to report, and whether the cap dropped any.
-
-    The duration is a phase's slowest SINGLE execution, not its total across
-    the run — this is the "slowest steps" question. The caller announces the
-    cap: dropping phases silently reads as a complete list.
-    """
     elapsed_by_phase: dict[str, int] = {}
     for timing in state.phase_timings:
         phase = _safe_text(timing.phase)
@@ -102,12 +87,6 @@ def _slowest_phases(state: PipelineState) -> tuple[list[tuple[str, str]], bool]:
 
 
 def _cycle_timebox_was_used(state: PipelineState) -> bool:
-    """Return whether this run ever had a cycle timer worth reporting.
-
-    Consumed seconds alone are not the test: they are exactly zero for the
-    whole first step of every cycle, so a run ending there dropped the section
-    entirely while the live phase banner was concurrently showing its budget.
-    """
     return bool(
         state.cycle_timebox_active
         or state.cycle_timebox_consumed_seconds > 0
@@ -117,7 +96,6 @@ def _cycle_timebox_was_used(state: PipelineState) -> bool:
 
 
 def _development_timebox_was_used(state: PipelineState) -> bool:
-    """Return whether an independent development timer ran in this process."""
     return bool(
         state.dev_timebox_active
         or state.dev_timebox_consumed_seconds > 0
@@ -132,27 +110,12 @@ def _development_consumed_text(state: PipelineState) -> str:
 
 
 def _cycle_consumed_text(state: PipelineState) -> str:
-    """Render the consumed figure and how the cycle it belongs to ended.
-
-    "active" is never right here: the report is written after the run is over.
-    A run that exits from inside its cycle -- an exhausted recovery, an
-    interrupt -- never routes out of it, so the flag is still set and the
-    report described a finished run as still running.
-    """
     consumed = _format_elapsed(state.cycle_timebox_consumed_seconds)
     ending = " open at exit." if state.cycle_timebox_active else " concluded."
     return f"{consumed}s;{ending}"
 
 
 def _redirect_line(state: PipelineState) -> str:
-    """Render the deadline-redirect line, counting redirects across the run.
-
-    The count is printed as recorded rather than floored to one. Flooring it
-    made a never-incremented counter indistinguishable from a correct one, so
-    a report could claim a redirect total it had never actually counted. A
-    checkpoint written before the counter existed carries a reason with no
-    count, and is reported without one.
-    """
     count = state.cycle_timebox_redirects
     reason = state.cycle_timebox_redirect_reason
     if reason and not count:
@@ -172,7 +135,6 @@ def render_run_time_report(
     cycle_timebox: CycleTimeboxPolicy | None = None,
     development_timebox: DevelopmentTimeboxPolicy | None = None,
 ) -> str:
-    """Return the stable, bounded Markdown report for one pipeline execution."""
     safe_phase = _safe_text(state.phase)
     elapsed = max(0.0, elapsed_seconds)
     elapsed_text = _format_elapsed(elapsed)
@@ -193,8 +155,6 @@ def render_run_time_report(
                 for index, (phase, duration) in enumerate(reported_phases, start=1)
             )
             if truncated or dropped_for_cap:
-                # Announced in BOTH sections: Slowest Steps lost the same
-                # entries silently, which reads as a complete list.
                 notice = (
                     "Phase timing list truncated to fit the reporting budget."
                     if truncated
@@ -203,8 +163,6 @@ def render_run_time_report(
                 phase_lines.append(f"- [P-8] {notice}")
                 slowest_lines.append(f"- [SS-8] {notice}")
         elif state.phase_timings:
-            # Recorded, then dropped to fit the budget. Saying none were
-            # recorded is a different — and false — statement.
             phase_lines.append("- [P-2] All phase timings were dropped to fit the budget.")
             slowest_lines.append("- [SS-1] All phase timings were dropped to fit the budget.")
         else:
@@ -262,10 +220,6 @@ def render_run_time_report(
                 else ""
             )
             + (
-                # The degraded report carries this fact, so the full report
-                # carries it too: a run that ends with an unresolved
-                # integration must not look like a run that ended without
-                # one just because the full report validated.
                 "- [SG-3] Integration status: unresolved at report time.\n"
                 if state.rebase.integration_unresolved
                 else ""
@@ -312,8 +266,6 @@ def render_run_time_report(
             truncated = True
             continue
         if memory_findings:
-            # Announced like the phase list is: a findings list that quietly
-            # loses entries reads as the complete set.
             memory_findings.pop()
             memory_findings_truncated = True
             continue
@@ -321,7 +273,6 @@ def render_run_time_report(
 
 
 def _validation_failure_reason(diagnostics: list[Diagnostic]) -> str:
-    """Return the first line-anchored validation reason for the failed report."""
     for diagnostic in diagnostics:
         if diagnostic.severity != "error":
             continue
@@ -333,7 +284,6 @@ def _validation_failure_reason(diagnostics: list[Diagnostic]) -> str:
 
 
 def _safe_failure_reason(value: str) -> str:
-    """Collapse an exception message into one bounded report body line."""
     compact = " ".join(value.split())
     if not compact:
         return "unspecified failure"
@@ -349,7 +299,6 @@ def _render_degraded_run_time_report(
     elapsed_seconds: float,
     failure_reason: str,
 ) -> str:
-    """Render the smallest truthful report that can still carry a failure."""
     elapsed_text = _format_elapsed(max(0.0, elapsed_seconds))
     safe_phase = _safe_text(state.phase) or "unknown"
     safe_outcome = _safe_text(outcome) or "unknown"
@@ -399,7 +348,6 @@ def _render_degraded_run_time_report(
 
 
 def _submit_validated_markdown(workspace_root: Path, markdown: str) -> None:
-    """Validate one report and persist it only when the closed grammar accepts it."""
     __import__("ralph.mcp.artifacts.markdown.specs")
 
     content, diagnostics = parse_and_validate(markdown, get_spec("run_time_report"))
@@ -422,7 +370,6 @@ def _emit_degraded_run_time_report(
     elapsed_seconds: float,
     failure_reason: str,
 ) -> None:
-    """Persist a still-valid minimal report after the full report was rejected."""
     markdown = _render_degraded_run_time_report(
         state=state,
         outcome=outcome,
@@ -433,13 +380,6 @@ def _emit_degraded_run_time_report(
 
 
 def _guarded_final_phase(state: PipelineState) -> str:
-    """Read the final phase without letting a broken state lose the report.
-
-    The last-resort report is the only report left when both renderers
-    already failed, so it must not depend on a state that just proved it
-    can fail. An unreadable phase is reported as unknown rather than
-    taking the report with it.
-    """
     try:
         return _safe_text(state.phase) or "unknown"
     except Exception:
@@ -447,12 +387,6 @@ def _guarded_final_phase(state: PipelineState) -> str:
 
 
 def _guarded_signals_line(state: PipelineState) -> str:
-    """Render the counts line without letting a broken state lose the report.
-
-    Zero counts are evidence, not a failure: a run that stalled before
-    any agent call reports zero calls. When the counts cannot be read at
-    all, the report says so instead of claiming a number it never saw.
-    """
     try:
         metrics = state.metrics
         return (
@@ -480,15 +414,6 @@ def _render_minimal_run_time_report(
     failure_reason: str,
     signals_line: str,
 ) -> str:
-    """Render the smallest spec-conformant report that still carries a reason.
-
-    This is the last tier of the emission chain: it is reached only when
-    both the full and the degraded report failed. It therefore depends on
-    no pipeline state at all -- every value it carries is a bounded
-    scalar or a caller-supplied line -- so a state that already broke two
-    renderers cannot break this one. The document carries every section
-    the closed grammar requires, so it validates.
-    """
     elapsed_text = _format_elapsed(max(0.0, elapsed_seconds))
     safe_outcome = _safe_text(outcome) or "unknown"
     safe_phase = _safe_text(final_phase) or "unknown"
@@ -523,7 +448,6 @@ def _emit_minimal_run_time_report(
     failure_reason: str,
     signals_line: str,
 ) -> None:
-    """Persist the last-resort report after the degraded report was rejected."""
     markdown = _render_minimal_run_time_report(
         outcome=outcome,
         elapsed_seconds=elapsed_seconds,
@@ -546,7 +470,6 @@ def emit_run_time_report(
     cycle_timebox: CycleTimeboxPolicy | None = None,
     development_timebox: DevelopmentTimeboxPolicy | None = None,
 ) -> None:
-    """Validate and persist a report without changing the pipeline's outcome."""
     markdown = render_run_time_report(
         state=state,
         outcome=outcome,
@@ -570,7 +493,6 @@ def emit_run_time_report_safely(
     cycle_timebox: CycleTimeboxPolicy | None = None,
     development_timebox: DevelopmentTimeboxPolicy | None = None,
 ) -> None:
-    """Write the report while preserving the original pipeline exit status."""
     try:
         emit_run_time_report(
             workspace_root,
@@ -602,10 +524,6 @@ def emit_run_time_report_safely(
                 exc,
                 degraded_exc,
             )
-            # Last tier: the degraded report failed too, so the report
-            # would be lost. The minimal report depends on no pipeline
-            # state and carries the reason, so a validation failure
-            # never loses the report.
             try:
                 _emit_minimal_run_time_report(
                     workspace_root,

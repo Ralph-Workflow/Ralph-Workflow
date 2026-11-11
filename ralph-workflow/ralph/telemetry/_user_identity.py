@@ -1,4 +1,3 @@
-"""User identity helpers for anonymous telemetry — userId and sessionId generation."""
 
 from __future__ import annotations
 
@@ -61,12 +60,6 @@ def _read_valid_user_id(config_path: Path) -> str | None:
 
 
 def get_or_create_user_id(config_dir: Path | None = None) -> str:
-    """Return the persistent anonymous user ID, creating it if needed.
-
-    The default location is independent of ``XDG_CONFIG_HOME`` so separate
-    terminal environments share one identity. A valid legacy XDG file is
-    migrated to the canonical location on first use.
-    """
     base = _config_dir_path(config_dir)
     config_path = base / _CONFIG_FILENAME
     legacy_path = _legacy_config_path(config_path)
@@ -87,19 +80,16 @@ def get_or_create_user_id(config_dir: Path | None = None) -> str:
 
 
 def generate_session_id() -> str:
-    """Return a fresh random sessionId for the current run."""
     return _alphanum_token(_SESSION_ID_LENGTH)
 
 
 @contextmanager
 def _identity_lock(lock_path: Path) -> Iterator[None]:
-    """Acquire a short-lived cross-process lock for identity publication."""
     started = time.monotonic()
     lock_fd: int | None = None
     while lock_fd is None:
         try:
-            # filesystem-write-ok: cross-process exclusive identity publication lock
-            lock_fd = os.open(  # resource-lifecycle-ok: exclusive lock file via O_EXCL; fd closed before yield
+            lock_fd = os.open(
                 lock_path,
                 os.O_CREAT | os.O_EXCL | os.O_WRONLY,
                 0o600,
@@ -116,7 +106,7 @@ def _identity_lock(lock_path: Path) -> Iterator[None]:
                 continue
             if time.monotonic() - started >= _LOCK_TIMEOUT_SECONDS:
                 raise OSError("timed out acquiring telemetry identity lock") from None
-            time.sleep(  # filesystem-poll-ok: bounded cross-process lock acquisition
+            time.sleep(
                 _LOCK_POLL_SECONDS
             )
     try:
@@ -171,17 +161,12 @@ def _write_user_id_file(config_path: Path, user_id: str) -> None:
     temp_path = Path(temp_name)
     try:
         if os.name != "nt":
-            # filesystem-write-ok: persistent telemetry identity staging must remain owner-readable only before publication
             temp_path.chmod(0o600)
-        # filesystem-write-ok: durable telemetry identity staging is atomically published below
         with os.fdopen(temp_fd, "w", encoding="utf-8") as stream:
             stream.write(content)
             stream.flush()
-            # filesystem-write-ok: durable publication of persistent telemetry identity configuration
             os.fsync(stream.fileno())
-        # filesystem-write-ok: atomically publish durable telemetry identity configuration
         temp_path.replace(config_path)
     finally:
         with contextlib.suppress(OSError):
-            # filesystem-write-ok: remove uncommitted telemetry configuration staging on failure
             temp_path.unlink()

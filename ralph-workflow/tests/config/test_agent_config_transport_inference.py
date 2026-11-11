@@ -1,5 +1,3 @@
-"""Transport inference must recognise the agent binary however ``cmd`` spells it."""
-
 from __future__ import annotations
 
 import pytest
@@ -27,5 +25,4 @@ from ralph.config.enums import AgentTransport
 def test_transport_is_inferred_from_the_command_binary_name(
     cmd: str, expected: AgentTransport
 ) -> None:
-    """An absolute path, ``env`` prefix or ``VAR=value`` assignment must not hide the binary."""
     assert AgentConfig(cmd=cmd).transport == expected

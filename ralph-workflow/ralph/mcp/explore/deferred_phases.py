@@ -1,15 +1,3 @@
-"""Tracked deferral register for Phase 5 of the indexed exploration plan.
-
-Each entry records the phase, its deliverables, a non-empty rationale
-(gated on Phase 1 measurement passing / Phase 2 structure existing /
-benchmark justification), the risk of staying deferred, and the
-baseline_counters snapshot. The latter is filled by Phase 1 benchmark
-harness (see :mod:`ralph.mcp.explore.bench`).
-
-This is a pure data module; it has no I/O and is fully black-box
-testable. Tests assert every deferred phase has a non-empty rationale
-and a baseline_counters reference.
-"""
 
 from __future__ import annotations
 
@@ -21,7 +9,6 @@ from ralph.mcp.explore.audit_register import AUDIT_REGISTER
 
 @dataclass(frozen=True, slots=True)
 class DeferredPhase:
-    """A single deferred phase tracked under the audit register."""
 
     phase_id: str
     title: str
@@ -46,7 +33,6 @@ class DeferredPhase:
 
 
 def _audit_baselines() -> dict[str, int | float | None]:
-    """Snapshot the Phase 0 audit register into a baseline-counts dict."""
     snapshot: dict[str, int | float | None] = {}
     for entry in AUDIT_REGISTER:
         snapshot[entry.tool] = entry.counters.transcript_tokens if entry.counters else None
@@ -91,15 +77,9 @@ _DEFERRED: tuple[DeferredPhase, ...] = (
 
 
 DEFERRED_PHASES: Final[tuple[DeferredPhase, ...]] = _DEFERRED
-"""Immutable Phase 5 deferral register, snapshot at module import."""
 
 
 class DeferredPhaseRegistry:
-    """Public read-only view of the deferred phase register.
-
-    Wrapped as a class to leave room for late-bound baseline updates
-    without changing the call sites.
-    """
 
     @staticmethod
     def phases() -> tuple[DeferredPhase, ...]:

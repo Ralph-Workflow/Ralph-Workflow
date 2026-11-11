@@ -1,5 +1,3 @@
-"""Tests for the run-start .agent retention sweep."""
-
 from __future__ import annotations
 
 import os
@@ -20,7 +18,6 @@ def _make_aged(path: Path, age_seconds: float, now: float) -> None:
     path.write_text("{}", encoding="utf-8")
     stamp = now - age_seconds
     os.utime(path, (stamp, stamp))
-    # Walk up the parent chain so the test dir itself is aged.
     cursor = path.parent
     while cursor.parent != cursor:
         try:
@@ -40,8 +37,8 @@ def test_removes_old_completion_sentinels_keeps_current(tmp_path: Path) -> None:
     removed = sweep_agent_dir(tmp_path, keep_run_id="current", now=lambda: now)
 
     assert not (agent / "completion_seen_old.json").exists()
-    assert (agent / "completion_seen_current.json").exists()  # current run kept
-    assert (agent / "completion_seen_fresh.json").exists()  # too young
+    assert (agent / "completion_seen_current.json").exists()
+    assert (agent / "completion_seen_fresh.json").exists()
     assert removed == 1
 
 
@@ -66,12 +63,10 @@ def test_removes_old_agent_retry_scratch(tmp_path: Path) -> None:
 
     assert not (tmp_path / ".agent" / "tmp" / "agent_retry_abc.md").exists()
     assert not (tmp_path / ".agent" / "tmp" / "agent_retry_context_abc.md").exists()
-    # non-matching files untouched
     assert (tmp_path / ".agent" / "tmp" / "development_prompt.md").exists()
 
 
 def test_sweep_regression_reclaims_only_aged_codex_home_dirs(tmp_path: Path) -> None:
-    """S-2: workspace Codex homes are reclaimed only after the age gate."""
     now = 1_000_000_000.0
     tmp_dir = tmp_path / ".agent" / "tmp"
     aged_home = tmp_dir / "codex-home-aged"
@@ -92,7 +87,6 @@ def test_sweep_regression_reclaims_only_aged_codex_home_dirs(tmp_path: Path) -> 
 def test_sweep_regression_reclaims_aged_codex_home_with_fresh_symlink_target(
     tmp_path: Path,
 ) -> None:
-    """S-2: Codex-home age checks use the directory metadata, not symlink targets."""
     now = 1_000_000_000.0
     target = tmp_path / "live-codex-file"
     target.write_text("fresh", encoding="utf-8")
@@ -110,7 +104,6 @@ def test_sweep_regression_reclaims_aged_codex_home_with_fresh_symlink_target(
 
 
 def test_sweep_regression_reclaims_only_aged_mcp_session_files(tmp_path: Path) -> None:
-    """S-2: stale MCP session metadata is reclaimed without touching other JSON."""
     now = 1_000_000_000.0
     agent_dir = tmp_path / ".agent"
     aged = agent_dir / "ralph-mcp-session-aged.json"
@@ -134,15 +127,11 @@ def test_missing_agent_dir_is_noop(tmp_path: Path) -> None:
 
 @pytest.mark.timeout_seconds(2.0)
 def test_sweep_also_prunes_aged_db_rows(tmp_path: Path) -> None:
-    """RFC-013 P3: the sweep also prunes aged rows in ``.agent/state.db``
-    so DB rows do not accumulate alongside file bookkeeping."""
     db = RunStateDB(tmp_path)
     db.upsert_receipt("old-run", "plan", "sig")
     db.upsert_completion_sentinel("old-run", "sig")
     db.close()
 
-    # Move the clock forward so the inserted rows look aged relative
-    # to the DB's real-time ``unixepoch('subsec')`` stamps.
     future_now = time.time() + _WEEK * 2 + 60
 
     sweep_agent_dir(tmp_path, keep_run_id=None, now=lambda: future_now)
@@ -154,9 +143,6 @@ def test_sweep_also_prunes_aged_db_rows(tmp_path: Path) -> None:
 
 
 def test_db_sweep_preserves_current_run_rows(tmp_path: Path) -> None:
-    """RFC-013 P3 + keep_run_id contract: aged DB rows for the current
-    run are preserved so the in-flight run does not lose its own
-    completion sentinels and receipts at run-start."""
     db = RunStateDB(tmp_path)
     db.upsert_receipt("current", "plan", "sig-current-plan")
     db.upsert_receipt("current", "commit_message", "sig-current-commit")
@@ -170,26 +156,20 @@ def test_db_sweep_preserves_current_run_rows(tmp_path: Path) -> None:
     sweep_agent_dir(tmp_path, keep_run_id="current", now=lambda: future_now)
 
     db2 = RunStateDB(tmp_path)
-    # current-run rows are preserved despite their age
     assert db2.get_receipt_hmac("current", "plan") == "sig-current-plan"
     assert db2.get_receipt_hmac("current", "commit_message") == ("sig-current-commit")
     assert db2.get_completion_sentinel_hmac("current") == "sig-current-sentinel"
-    # other-run rows are still pruned
     assert db2.get_receipt_hmac("old-run", "plan") is MISSING
     assert db2.get_completion_sentinel_hmac("old-run") is MISSING
     db2.close()
 
 
 def test_runstate_db_prune_preserves_keep_run_id(tmp_path: Path) -> None:
-    """RunStateDB.prune_older_than honours ``keep_run_id`` keyword — keeps
-    the in-flight run's rows regardless of age even when invoked
-    directly (no sweep_agent_dir wrapper)."""
     db = RunStateDB(tmp_path)
     db.upsert_receipt("current", "plan", "sig-c")
     db.upsert_receipt("old", "plan", "sig-o")
     db.close()
 
-    # Both rows are aged (cutoff is large), but ``current`` is kept.
     cutoff = time.time() + 1000.0
     db2 = RunStateDB(tmp_path)
     try:
@@ -197,7 +177,7 @@ def test_runstate_db_prune_preserves_keep_run_id(tmp_path: Path) -> None:
     finally:
         db2.close()
 
-    assert removed == 1  # only the old-row delete; current-run row skipped
+    assert removed == 1
     db3 = RunStateDB(tmp_path)
     try:
         assert db3.get_receipt_hmac("current", "plan") == "sig-c"
@@ -207,14 +187,6 @@ def test_runstate_db_prune_preserves_keep_run_id(tmp_path: Path) -> None:
 
 
 def test_sweep_does_not_create_state_db_when_absent(tmp_path: Path) -> None:
-    """sweep_agent_dir must NOT create ``.agent/state.db`` as a side effect.
-
-    RFC-013 P3: ``RunStateDB.__init__`` creates the database on open.
-    The retention sweep is intended to reduce filesystem churn, not
-    introduce new state files. The DB prune must short-circuit when
-    ``state.db`` does not already exist so workspace bootstrapping on
-    a fresh repo does not suddenly gain a sqlite WAL pair.
-    """
     agent = tmp_path / ".agent"
     agent.mkdir(parents=True, exist_ok=True)
 
@@ -229,7 +201,6 @@ def test_sweep_does_not_create_state_db_when_absent(tmp_path: Path) -> None:
 
 
 def test_retention_coordinator_is_process_local(tmp_path: Path) -> None:
-    """S-4: one coordinator coalesces threads, while another owns its own pass."""
     coordinator = RetentionPassCoordinator(on_wave_acquired=threading.Barrier(4).wait)
     results: list[int] = []
     results_lock = threading.Lock()
@@ -246,7 +217,6 @@ def test_retention_coordinator_is_process_local(tmp_path: Path) -> None:
         thread.join(timeout=1.0)
 
     assert len(results) == 4
-    # The coordinator only coalesces callers within this process.
     assert coordinator.passes == 1
     other = RetentionPassCoordinator()
     assert sweep_agent_dir(tmp_path, keep_run_id=None, coordinator=other) == 0
@@ -254,7 +224,6 @@ def test_retention_coordinator_is_process_local(tmp_path: Path) -> None:
 
 
 def test_sweep_consults_shared_active_run_registry(tmp_path: Path) -> None:
-    """S-3/B6: another process's active run protects aged durable records."""
     now = 1_000_000_000.0
     agent_dir = tmp_path / ".agent"
     run_id = "shared-run"
@@ -277,7 +246,6 @@ def test_sweep_consults_shared_active_run_registry(tmp_path: Path) -> None:
 
 
 def test_sweep_consults_ownership_map_for_scratch_and_codex_home(tmp_path: Path) -> None:
-    """S-3/B6: active owners protect scratch while inactive entries are reclaimed."""
     now = 1_000_000_000.0
     tmp_dir = tmp_path / ".agent" / "tmp"
     owned_scratch = tmp_dir / "agent_retry_owned.md"
@@ -314,13 +282,6 @@ def test_sweep_consults_ownership_map_for_scratch_and_codex_home(tmp_path: Path)
 
 @pytest.mark.timeout_seconds(5)
 def test_registered_active_runs_survive_parallel_sweeps(tmp_path: Path) -> None:
-    """AC-9 (in-process): the active-run registry protects both registered
-    runs from every parallel sweep, even when each caller passes a single
-    overlapping ``keep_run_id``.
-
-    This exercises the public registry seam within one process; separate
-    tests cover the shared-file boundary used across processes.
-    """
     import threading
 
     from ralph.workspace.agent_dir_retention import (
@@ -329,12 +290,10 @@ def test_registered_active_runs_survive_parallel_sweeps(tmp_path: Path) -> None:
     )
 
     now = 1_000_000_000.0
-    # Both runs carry aged bookkeeping that a naive sweep would reclaim.
     _make_aged(tmp_path / ".agent" / "completion_seen_run-a.json", _WEEK + 10, now)
     _make_aged(tmp_path / ".agent" / "completion_seen_run-b.json", _WEEK + 10, now)
     _make_aged(tmp_path / ".agent" / "receipts" / "run-a" / "plan.json", _WEEK + 10, now)
     _make_aged(tmp_path / ".agent" / "receipts" / "run-b" / "plan.json", _WEEK + 10, now)
-    # An unregistered run's aged bookkeeping is still reclaimable.
     _make_aged(tmp_path / ".agent" / "completion_seen_run-dead.json", _WEEK + 10, now)
 
     register_active_run(tmp_path, "run-a")
@@ -361,16 +320,11 @@ def test_registered_active_runs_survive_parallel_sweeps(tmp_path: Path) -> None:
         for thread in threads:
             thread.join(timeout=10)
 
-        # Neither registered run lost data to either sweep.
         assert (tmp_path / ".agent" / "completion_seen_run-a.json").exists()
         assert (tmp_path / ".agent" / "completion_seen_run-b.json").exists()
         assert (tmp_path / ".agent" / "receipts" / "run-a" / "plan.json").exists()
         assert (tmp_path / ".agent" / "receipts" / "run-b" / "plan.json").exists()
-        # The unregistered run was reclaimed by the first sweep that saw it.
         assert not (tmp_path / ".agent" / "completion_seen_run-dead.json").exists()
-        # The two sweep bodies raced for the same aged entry: each body
-        # removed it when it won the race, so the total removed count is
-        # at least 1 and at most one per caller.
         assert 1 <= sum(results) <= 2
     finally:
         unregister_active_run(tmp_path, "run-a")

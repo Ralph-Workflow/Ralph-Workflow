@@ -1,5 +1,3 @@
-"""Open-mode coverage for the filesystem-write consolidation audit."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -9,9 +7,13 @@ import pytest
 from ralph.testing import audit_filesystem_write_consolidation as audit
 from tests.test_audit_filesystem_write_consolidation import _write_fake_package
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "marker exemption": "the inline marker comment no longer waives a write finding",
+    "raw open detection": "the raw-open detection message now names the structural exemption registry",
+}
+
 
 def test_flags_raw_os_fdopen_with_write_mode(tmp_path: Path) -> None:
-    """S-1 regression: descriptor-backed writes cannot evade enforcement."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -22,11 +24,10 @@ def test_flags_raw_os_fdopen_with_write_mode(tmp_path: Path) -> None:
         package_root, module_paths=(module_rel,)
     )
     assert [violation.kind for violation in violations] == ["raw_fdopen_write"]
-    assert "filesystem-write-ok" in violations[0].message
+    assert "EXEMPT_CALL_SITES" in violations[0].message
 
 
 def test_flags_aliased_os_fdopen_with_write_mode(tmp_path: Path) -> None:
-    """S-1 regression: aliased descriptor-backed writes remain in scope."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -40,7 +41,6 @@ def test_flags_aliased_os_fdopen_with_write_mode(tmp_path: Path) -> None:
 
 
 def test_does_not_flag_os_fdopen_with_read_mode(tmp_path: Path) -> None:
-    """Descriptor-backed read access remains outside mutation enforcement."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path, module_rel, 'import os\ndef read(fd):\n    return os.fdopen(fd, "rb").read()\n'
@@ -51,7 +51,6 @@ def test_does_not_flag_os_fdopen_with_read_mode(tmp_path: Path) -> None:
 
 
 def test_flags_direct_workspace_resolver_unlink(tmp_path: Path) -> None:
-    """S-2 regression: direct workspace-resolver deletion cannot evade the audit."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -65,7 +64,6 @@ def test_flags_direct_workspace_resolver_unlink(tmp_path: Path) -> None:
 
 
 def test_regression_flags_workspace_resolver_parent_mkdir(tmp_path: Path) -> None:
-    """S-1: chaining a workspace resolver through ``parent`` cannot evade D1."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -87,7 +85,6 @@ def test_regression_flags_workspace_resolver_parent_mkdir(tmp_path: Path) -> Non
 
 
 def test_regression_flags_workspace_resolver_parent_variable_mkdir(tmp_path: Path) -> None:
-    """S-3: parent preparation derived from a resolved workspace path remains audited."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -110,7 +107,6 @@ def test_regression_flags_workspace_resolver_parent_variable_mkdir(tmp_path: Pat
 
 
 def test_flags_raw_builtin_open_write_mode(tmp_path: Path) -> None:
-    """``open(path, "w")`` is a raw write that bypasses the canonical primitive."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -125,7 +121,6 @@ def test_flags_raw_builtin_open_write_mode(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("mode", ["r", "rb", None])
 def test_does_not_flag_builtin_open_read_modes(tmp_path: Path, mode: str | None) -> None:
-    """Default and explicit read modes are reads, never false-positive mutations."""
     module_rel = "alpha/example.py"
     call = "open(path)" if mode is None else f'open(path, "{mode}")'
     package_root = _write_fake_package(
@@ -137,7 +132,6 @@ def test_does_not_flag_builtin_open_read_modes(tmp_path: Path, mode: str | None)
 
 
 def test_does_not_flag_builtin_open_keyword_read_mode(tmp_path: Path) -> None:
-    """Keyword read modes remain read-only."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path, module_rel, 'def load(path):\n    return open(path, mode="r").read()\n'
@@ -147,34 +141,37 @@ def test_does_not_flag_builtin_open_keyword_read_mode(tmp_path: Path) -> None:
     )
 
 
-def test_marker_suppresses_raw_os_replace(tmp_path: Path) -> None:
-    """A ``# filesystem-write-ok:`` marker suppresses ``os.replace`` too."""
+def test_marker_no_longer_suppresses_raw_os_replace(tmp_path: Path) -> None:
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
         module_rel,
-        "import os\ndef swap(src, dst):\n    # filesystem-write-ok: atomic-replace boundary for the canonical primitive\n    os.replace(src, dst)\n",
+        "import os\ndef swap(src, dst):\n    # filesystem-write-ok: atomic-replace boundary\n    os.replace(src, dst)\n",
     )
-    assert (
-        audit.audit_filesystem_write_consolidation(package_root, module_paths=(module_rel,)) == []
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+    assert [violation.kind for violation in violations] == ["raw_replace"], (
+        "an inline marker comment MUST NOT silence the filesystem-write audit"
     )
 
 
-def test_marker_suppresses_raw_shutil_rmtree(tmp_path: Path) -> None:
-    """A ``# filesystem-write-ok:`` marker suppresses ``shutil.rmtree``."""
+def test_marker_no_longer_suppresses_raw_shutil_rmtree(tmp_path: Path) -> None:
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
         module_rel,
-        "import shutil\ndef drop(p):\n    # filesystem-write-ok: bounded retention cleanup of agent home directory\n    shutil.rmtree(p)\n",
+        "import shutil\ndef drop(p):\n    # filesystem-write-ok: bounded retention cleanup\n    shutil.rmtree(p)\n",
     )
-    assert (
-        audit.audit_filesystem_write_consolidation(package_root, module_paths=(module_rel,)) == []
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+    assert [violation.kind for violation in violations] == ["raw_rmtree"], (
+        "an inline marker comment MUST NOT silence the filesystem-write audit"
     )
 
 
 def test_synthetic_unknown_writer_in_production_would_fail(tmp_path: Path) -> None:
-    """DA-001 invariant: a synthetic unknown ``os.replace`` call must be flagged."""
     module_rel = "sneaky/example.py"
     package_root = _write_fake_package(
         tmp_path, module_rel, "import os\ndef install(tmp, final):\n    os.replace(tmp, final)\n"
@@ -187,7 +184,6 @@ def test_synthetic_unknown_writer_in_production_would_fail(tmp_path: Path) -> No
 
 
 def test_pathlib_path_unlink_detected(tmp_path: Path) -> None:
-    """``pathlib.Path.unlink`` (chained attribute) is detected."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path, module_rel, "import pathlib\ndef drop(p):\n    pathlib.Path(p).unlink()\n"

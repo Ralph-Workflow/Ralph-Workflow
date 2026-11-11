@@ -1,5 +1,3 @@
-"""MockWorkspace helper for test_artifact_format_docs.py."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

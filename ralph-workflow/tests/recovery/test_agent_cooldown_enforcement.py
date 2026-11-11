@@ -1,11 +1,3 @@
-"""Regression for the Cursor auth failure that bypassed agent cooldown.
-
-The observed incident classified ``cursor/auto`` authentication failure as
-``USER_CONFIG`` with ``counted=False`` and ended the phase without marking the
-agent unavailable. The next selection therefore chose the configured head
-agent again instead of the fallback.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -148,7 +140,6 @@ def test_cursor_auth_backoff_history_survives_a_phase_transition() -> None:
 
 
 def test_non_cursor_auth_message_cools_agent_before_fallback_selection() -> None:
-    """Plan S-1: authentication messages cool every configured agent."""
     clock = FakeClock(start=0.0)
     controller = _controller(clock)
 

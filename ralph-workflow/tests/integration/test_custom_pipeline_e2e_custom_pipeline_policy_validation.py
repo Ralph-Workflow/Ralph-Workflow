@@ -1,14 +1,3 @@
-"""End-to-end test: custom-named pipeline with no canonical phase names.
-
-Proves that the runtime no longer depends on built-in phase names.
-A workflow with phases named:
-  kickoff → build → gate (analysis loop) → seal (commit) → verify (verification)
-  → done (terminal success) or crashed (terminal failure)
-exercises every role type and all routing transitions using only policy-declared names.
-
-All phase transitions are driven through the reducer. No real agents are invoked.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -40,17 +29,6 @@ _BUILD_LOOP_MAX = 3
 
 
 def _build_custom_bundle() -> PolicyBundle:
-    """Build a custom policy bundle with no canonical phase names.
-
-    The pipeline exercises every phase role:
-    - kickoff: execution
-    - build: execution
-    - gate: analysis (with build_loop counter)
-    - seal: commit (increments build_pass, resets build_loop)
-    - verify: verification (routes to done on success, crashed on failure)
-    - crashed: terminal (failure outcome)
-    - done: terminal (success outcome)
-    """
     pipeline = PipelinePolicy(
         phases={
             "kickoff": PhaseDefinition(
@@ -162,7 +140,6 @@ def _build_custom_bundle() -> PolicyBundle:
 
 
 def _initial_state(policy: PipelinePolicy) -> PipelineState:
-    """Build initial PipelineState for the custom pipeline."""
     return PipelineState(
         phase="kickoff",
         phase_chains={
@@ -181,11 +158,9 @@ def custom_bundle() -> PolicyBundle:
 
 
 class TestCustomPipelinePolicyValidation:
-    """Policy completeness validation passes for the custom bundle."""
-
     def test_validate_policy_completeness_passes(self, custom_bundle: PolicyBundle) -> None:
 
-        validate_policy_completeness(custom_bundle)  # must not raise
+        validate_policy_completeness(custom_bundle)
 
     def test_failed_route_is_custom_phase(self, custom_bundle: PolicyBundle) -> None:
         assert custom_bundle.pipeline.recovery.failed_route == "crashed"

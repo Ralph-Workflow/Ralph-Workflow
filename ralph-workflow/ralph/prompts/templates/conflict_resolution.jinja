@@ -38,7 +38,6 @@ proposed resolution with exact file:line evidence. Re-read cited regions
 before relying on a lead. Reconcile coupled decisions, edit listed files,
 and declare completion only in this session under the hard rules below.
 
-## Conflicted files
 
 {{ conflicted_block }}
 {{ feedback_block }}
@@ -64,7 +63,6 @@ These earlier strategies did not resolve this conflict. Use their outcomes to av
    round with such a file that ends without it is failed and handed to the next
    candidate.
 
-## Hard rules
 
 - DO NOT run any git command. Ralph Workflow stages the resolved files and
   {% if replaying_commit_sha %}continues the rebase{% else %}creates the merge commit{% endif %} itself. You only edit file contents. Git is
@@ -83,7 +81,6 @@ These earlier strategies did not resolve this conflict. Use their outcomes to av
   that is why those need the completion call, and why an untouched one is
   landed exactly as you left it.
 
-## Completion contract
 
 When every listed file is resolved and marker-free, call the
 {{ DECLARE_COMPLETE_TOOL_REFERENCE }} MCP tool with a short

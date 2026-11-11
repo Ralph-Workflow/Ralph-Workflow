@@ -1,9 +1,3 @@
-"""Black-box regression tests for OpenCode session-aware execution.
-
-All tests use in-memory fakes — no real subprocesses, no real wall-clock waits,
-no real psutil. Verifies five acceptance scenarios and two edge cases.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -18,16 +12,11 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# Poll interval used in the wait helper - matches _DESCENDANT_WAIT_POLL_SECONDS
 _DESCENDANT_WAIT_POLL_SECONDS = 0.5
-
-# Local aliases: tests call the same public functions but under the private-looking names
-# that were used when this module was monolithic (pre-package split).
 
 
 class TestOpenCodeSessionReuse:
     def test_opencode_run_with_session_id_reuses_session(self, tmp_path: Path) -> None:
-        """OpencodeCommandBuilder includes the session flag when session_id is provided."""
         config = builtin_agents()["opencode"]
 
         assert config.session_flag is not None, (

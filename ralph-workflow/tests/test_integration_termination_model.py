@@ -1,59 +1,3 @@
-"""Termination-bounded fault model for Ralph's auto-integration.
-
-Acceptance Criterion 2 of the integration adversity request asks for a
-MODEL-based test: seeded histories with injected faults must, for EVERY
-history, make progress or escalate a ladder rung within a fixed bound, and
-once the faults stop the local target, the remote target and the feature
-must agree. Acceptance Criterion 8 asks for the observed 2026-10-24 case:
-a hung ``merge --ff-only`` while an agent is active.
-
-What is PRODUCTION under test here:
-
-* :func:`ralph.pipeline.integration_decision.decide` -- the pure, total
-  decision table that chooses the next integration action;
-* :class:`ralph.pipeline.integration_decision.AttemptState` -- the
-  escalation ladder, its repeat counters and its finite unknown budget;
-* the executor protocols of :mod:`ralph.pipeline.integration_actions` --
-  the mutations run through the installed Git-ops and agent-runner seams.
-
-What is SIMULATED here: the repository. The simulated Git environment
-(:mod:`tests._fake_git_env`) holds the target, the feature tip, HEAD, the
-backup refs, the locks, the remote and the fault controller, and the fake
-Git-ops double implements the production :class:`GitOps` protocol against
-it. Every mutation the model performs therefore goes through the SAME
-protocol the production pipeline uses, and every decision goes through the
-SAME decision table.
-
-The model is deliberately small: one observation, one decision, one
-mutation per step. That is what makes the history replayable from its
-seed: the seed selects the fault sequence, and nothing else is random.
-
-Bounds (all fixed, none of them wall-clock):
-
-* ``_MAX_STEPS`` -- the number of steps one history may take;
-* ``_MAX_STALLED_STEPS`` -- how many consecutive steps may pass without
-  progress AND without a ladder rung;
-* ``_CONVERGENCE_STEPS`` -- how many steps the clean phase may take to
-  reach ``<target> == <remote>/<target>`` with the feature contained.
-
-Known production behaviour this model pins
---------------------------------------------
-
-The model surfaces two properties of the production decision table that
-the caller, not the table, has to honour:
-
-* For a target-moved observation the table answers ``REINTEGRATE``
-  without consulting the escalation ladder
-  (``_ladder_action_for``): the rung advances underneath, but the ACTION
-  does not change with it, so a persistently failing replay keeps the
-  same action.
-* The table may answer ``DISPATCH_RESOLVER`` for a repairable record or a
-  detached HEAD -- conflict-class signatures it deliberately keeps
-  (``_ladder_action_skipping_resolver``) -- even though an agent cannot
-  repair a record or a HEAD. This model gates the dispatch on a real
-  content conflict, so the agent is never spent on one.
-"""
-
 from __future__ import annotations
 
 import random
@@ -98,22 +42,14 @@ from tests._fake_git_ops import _SimulatedCrashError
 
 pytestmark = [pytest.mark.timeout_seconds(10)]
 
-#: The fixed seed set. Every history is reproducible from its seed, so a
-#: failure names the seed that produced it and replays exactly.
 _SEEDS: tuple[int, ...] = (1, 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31)
 
-#: The number of steps one faulted history may take.
 _MAX_STEPS = 24
 
-#: How many consecutive steps may pass with neither progress nor a ladder
-#: rung. The bound is the "progress OR a ladder rung within a fixed
-#: bound" clause of the acceptance criterion.
 _MAX_STALLED_STEPS = 4
 
-#: How many steps the clean phase may take to converge both tiers.
 _CONVERGENCE_STEPS = 12
 
-#: The bound on the number of resolver dispatches one history may make.
 _MAX_DISPATCHES = 2
 
 
@@ -123,12 +59,6 @@ def _faults_matching(
     effect: FaultEffect | None = None,
     outcome: FaultOutcome | None = None,
 ) -> tuple[FaultKind, ...]:
-    """Return every fault kind whose registration matches the filters.
-
-    The catalogue registry IS the inventory: the pools below are derived
-    from it, so a newly named fault kind joins the model without a
-    second list to keep in step.
-    """
 
     return tuple(
         kind
@@ -139,44 +69,28 @@ def _faults_matching(
     )
 
 
-#: The faults that make an OBSERVATION unreadable. An unreadable
-#: observation is unknown, never a conflict.
 _UNKNOWN_FAULTS = _faults_matching(phase="observation", effect="defer", outcome="unknown")
 
-#: The faults the next OBSERVATION recovers from. A recovery is progress:
-#: the lock a killed child left is gone and the replay can run again.
 _RECOVER_FAULTS = _faults_matching(phase="observation", effect="recover")
 
-#: The faults that make a REPLAY fail. The replay is the mutation the
-#: integration ladder drives first.
 _REPLAY_FAULTS = tuple(
     kind for kind in _faults_matching(phase="rebase") if kind is not FaultKind.REAL_CONFLICT
 )
 
-#: The faults that make the LANDING fail or be refused.
 _LANDING_FAULTS = _faults_matching(phase="landing")
 
-#: The faults that make the REMOTE refuse the push.
 _REMOTE_FAULTS = _faults_matching(phase="remote")
 
-#: The faults that kill Ralph itself, before or after a step.
 _CRASH_FAULTS = _faults_matching(effect="crash_before") + _faults_matching(effect="crash_after")
 
-#: The one fault an agent can change.
 _CONFLICT_FAULT = FaultKind.REAL_CONFLICT
 
 
 def _contains(container: str, tip: str) -> bool:
-    """True when ``container`` holds ``tip`` (the environment's own rule)."""
     return container == tip or container.startswith(f"{tip}-")
 
 
 def _is_real_conflict(observation: Observation) -> bool:
-    """True when the observation carries a genuine content conflict.
-
-    This mirrors the decision table's own notion of a real conflict: an
-    unmerged worktree, or a FOREIGN in-progress operation.
-    """
     return observation.worktree is WorktreeState.UNMERGED or (
         observation.in_progress_kind is not InProgressKind.NONE
         and observation.in_progress_ownership is InProgressOwnership.FOREIGN
@@ -184,11 +98,6 @@ def _is_real_conflict(observation: Observation) -> bool:
 
 
 def _is_boring(observation: Observation) -> bool:
-    """True when the observation holds nothing an agent could change.
-
-    A boring observation is clean, attached and consistent: dispatching a
-    resolver for it would do no useful work.
-    """
     return not (
         _is_real_conflict(observation)
         or observation.head is HeadState.DETACHED
@@ -203,17 +112,10 @@ def _is_boring(observation: Observation) -> bool:
 
 
 def _resolver(_root: Path, _target: str, _stop: object) -> bool:
-    """A resolver that always claims the conflict is resolved."""
     return True
 
 
 class _TerminationModel:
-    """One seeded history over the simulated Git environment.
-
-    Every step is: observe, decide (production table), mutate (production
-    protocol), charge (production ladder).
-    """
-
     def __init__(self, seed: int, root: Path) -> None:
         self.seed = seed
         self.root = root
@@ -236,10 +138,7 @@ class _TerminationModel:
         self.crash_steps: list[int] = []
         self.inject_faults = True
 
-    # -- state ---------------------------------------------------------------
-
     def state_vector(self) -> tuple[object, ...]:
-        """Return the observable repository state the model progresses on."""
         env = self.env
         return (
             env.target_sha,
@@ -255,17 +154,12 @@ class _TerminationModel:
         )
 
     def rung(self) -> int:
-        """Return the ladder position the model currently stands on."""
         return LADDER_ORDER.index(self.attempts.rung)
 
     def converged(self) -> bool:
-        """True when both tiers hold the feature's work."""
         return self.env.is_converged()
 
-    # -- the history ---------------------------------------------------------
-
     def pick_fault(self) -> FaultKind | None:
-        """Choose the fault for the next step, or ``None`` for a clean step."""
         if not self.inject_faults:
             return None
         roll = self.rng.random()
@@ -283,7 +177,6 @@ class _TerminationModel:
         return self.rng.choice(pool)
 
     def step(self) -> NextAction:
-        """Run one observe-decide-mutate-charge cycle; return the action."""
         fault = self.pick_fault()
         if fault is not None and not self.env.active_faults:
             self.env.set_faults([fault])
@@ -294,9 +187,6 @@ class _TerminationModel:
         try:
             self._apply(action)
         except _SimulatedCrashError:
-            # Ralph died inside the step. The work that was already
-            # committed stays committed; the next observation is what has
-            # to make progress.
             self.crash_steps.append(len(self.actions) - 1)
         self.attempts = self.attempts.with_attempt(
             observation,
@@ -306,7 +196,6 @@ class _TerminationModel:
         return action
 
     def _observe(self) -> Observation:
-        """Observe the simulated repository and project it onto the model."""
         env = self.env
         before = len(env.outcomes)
         env.observe()
@@ -326,7 +215,6 @@ class _TerminationModel:
             self.record = IntegrationRecordState.NONE
 
         if fault is FaultKind.HEAD_DETACHED:
-            # The agent moved HEAD; Ralph's own observation reattaches it.
             self.git_ops.reattach_head(self.root, env.feature_branch)
 
         worktree = WorktreeState.CLEAN
@@ -360,7 +248,6 @@ class _TerminationModel:
         )
 
     def _relation(self, target: str, feature: str) -> TargetVsFeature:
-        """Project the target/feature relation onto the observation vocabulary."""
         if target == feature:
             return TargetVsFeature.EQUAL
         if _contains(target, feature):
@@ -370,7 +257,6 @@ class _TerminationModel:
         return TargetVsFeature.DIVERGED
 
     def _remote_relation(self) -> TargetVsRemote:
-        """Project the local/remote relation onto the observation vocabulary."""
         env = self.env
         remote = env.remote_sha
         if remote is None:
@@ -383,10 +269,7 @@ class _TerminationModel:
             return TargetVsRemote.AHEAD
         return TargetVsRemote.DIVERGED
 
-    # -- the mutations -------------------------------------------------------
-
     def _apply(self, action: NextAction) -> None:
-        """Run the mutation the decided action asks for."""
         env = self.env
         if action is NextAction.LAND:
             self._land()
@@ -408,14 +291,12 @@ class _TerminationModel:
             self._repair()
 
     def _replay(self) -> None:
-        """Replay the feature onto the target through the Git-ops seam."""
         result = self.git_ops.rebase_onto(self.root, self.env.target)
         if isinstance(result, RebaseConflicts):
             self.conflict = True
             self.in_progress = InProgressKind.REBASE
 
     def _land(self) -> None:
-        """Move the target ref onto the feature through the Git-ops seam."""
         landed, _reason = self.git_ops.fast_forward_target(
             self.root,
             self.env.target,
@@ -426,7 +307,6 @@ class _TerminationModel:
             self.in_progress = InProgressKind.NONE
 
     def _continue_operation(self) -> None:
-        """Advance the in-progress operation with the MATCHING command."""
         self.git_ops.stage_all(self.root)
         if self.in_progress is InProgressKind.MERGE:
             self.git_ops.continue_merge(self.root)
@@ -438,13 +318,11 @@ class _TerminationModel:
         self.in_progress = InProgressKind.NONE
 
     def _dispatch_resolver(self) -> None:
-        """Dispatch the resolver agent, and only for a real conflict."""
         observation = self.observation
         assert observation is not None
         self.resolver_observations.append(observation)
         calls_before = len(self.env.calls)
         if not _is_real_conflict(observation):
-            # A condition an agent cannot change never reaches an agent.
             self.agent_git_calls.append(len(self.env.calls) - calls_before)
             return
         resolved = self.agent_runner.resolve_rebase(
@@ -460,7 +338,6 @@ class _TerminationModel:
             self.in_progress = InProgressKind.NONE
 
     def _repair(self) -> None:
-        """Repair what the observation proved repairable."""
         env = self.env
         if env.head_branch is None:
             self.git_ops.reattach_head(self.root, env.feature_branch)
@@ -469,7 +346,6 @@ class _TerminationModel:
 
 
 def _run_history(model: _TerminationModel, steps: int) -> list[tuple[object, ...]]:
-    """Run ``steps`` faulted steps; return the state vector after each step."""
     states: list[tuple[object, ...]] = []
     for _ in range(steps):
         model.step()
@@ -477,24 +353,11 @@ def _run_history(model: _TerminationModel, steps: int) -> list[tuple[object, ...
     return states
 
 
-# ---------------------------------------------------------------------------
-# AC-2: the termination model
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize("seed", _SEEDS, ids=lambda seed: f"seed-{seed}")
 def test_a_seeded_history_progresses_or_escalates_a_ladder_rung(
     tmp_path: Path,
     seed: int,
 ) -> None:
-    """AC-2: every faulted history makes progress or escalates a rung.
-
-    No more than ``_MAX_STALLED_STEPS`` consecutive steps may pass with
-    neither a change in the repository state nor a movement of the
-    escalation ladder, and the identical action is never issued against
-    an unchanged state more often than that. Work is never discarded, and
-    the agent is only ever dispatched for a real content conflict.
-    """
     model = _TerminationModel(seed, tmp_path)
     token = install_executors(model.git_ops, model.agent_runner, clock=model.clock)
     try:
@@ -549,7 +412,6 @@ def test_a_seeded_history_converges_once_the_faults_stop(
     tmp_path: Path,
     seed: int,
 ) -> None:
-    """AC-2: once the faults stop, both tiers converge and the work survives."""
     model = _TerminationModel(seed, tmp_path)
     token = install_executors(model.git_ops, model.agent_runner, clock=model.clock)
     try:
@@ -583,11 +445,6 @@ def test_a_seeded_history_never_dispatches_an_agent_for_a_non_conflict(
     tmp_path: Path,
     seed: int,
 ) -> None:
-    """AC-2/AC-9: an agent is dispatched only for a real content conflict.
-
-    Every dispatch was for an observation the production decision table
-    considers conflict-class, and the number of dispatches is bounded.
-    """
     model = _TerminationModel(seed, tmp_path)
     token = install_executors(model.git_ops, model.agent_runner, clock=model.clock)
     try:
@@ -616,7 +473,6 @@ def test_a_seeded_history_never_dispatches_an_agent_for_a_non_conflict(
 def test_a_history_of_environment_faults_alone_never_dispatches_an_agent(
     tmp_path: Path,
 ) -> None:
-    """AC-9: an environment failure never consumes an agent run."""
     model = _TerminationModel(101, tmp_path)
     token = install_executors(model.git_ops, model.agent_runner, clock=model.clock)
     try:
@@ -629,19 +485,9 @@ def test_a_history_of_environment_faults_alone_never_dispatches_an_agent(
         reset_executors(token)
 
 
-# ---------------------------------------------------------------------------
-# AC-8: the observed 2026-10-24 case
-# ---------------------------------------------------------------------------
-
-
 def test_observed_case_no_merge_is_issued_while_an_agent_is_active(
     tmp_path: Path,
 ) -> None:
-    """AC-8(a): a fast-forward is refused while an agent runs in the worktree.
-
-    The 2026-10-24 run issued ``merge --ff-only`` from the catch-up tick
-    while three agent sessions worked in the same worktree.
-    """
     model = _TerminationModel(7, tmp_path)
     token = install_executors(model.git_ops, model.agent_runner, clock=model.clock)
     try:
@@ -666,10 +512,6 @@ def test_observed_case_no_merge_is_issued_while_an_agent_is_active(
 def test_observed_case_bounded_timeouts_escalate_the_ladder(
     tmp_path: Path,
 ) -> None:
-    """AC-8(b): repeated timeouts escalate the ladder instead of looping.
-
-    A hung replay is an environment failure: it never dispatches an agent.
-    """
     model = _TerminationModel(11, tmp_path)
     token = install_executors(model.git_ops, model.agent_runner, clock=model.clock)
     try:
@@ -693,11 +535,6 @@ def test_observed_case_bounded_timeouts_escalate_the_ladder(
 def test_observed_case_a_stale_lock_from_a_killed_child_does_not_block(
     tmp_path: Path,
 ) -> None:
-    """AC-8(c): the lock a force-killed Ralph child left is recoverable.
-
-    The owner is proven dead, the lock is removed, and the attempt
-    proceeds: the stale lock never blocks the next observation.
-    """
     model = _TerminationModel(13, tmp_path)
     token = install_executors(model.git_ops, model.agent_runner, clock=model.clock)
     try:
@@ -718,11 +555,6 @@ def test_observed_case_a_stale_lock_from_a_killed_child_does_not_block(
 def test_observed_case_an_interrupted_run_still_emits_a_valid_report(
     tmp_path: Path,
 ) -> None:
-    """AC-8(d): an interrupted stalled run still produces a valid report.
-
-    Zero counts are evidence, not a validation error: the report of an
-    interrupted run must validate, and the emission path must not lose it.
-    """
     state = PipelineState(phase="development")
     report = render_run_time_report(
         state=state,
@@ -734,7 +566,6 @@ def test_observed_case_an_interrupted_run_still_emits_a_valid_report(
     assert not errors, "the interrupted run's report did not validate"
     assert "Agent calls: 0" in report, "the report does not carry the zero counts"
 
-    # The emission path itself must not lose the report.
     emit_run_time_report_safely(
         tmp_path,
         state=state,
@@ -743,19 +574,9 @@ def test_observed_case_an_interrupted_run_still_emits_a_valid_report(
     )
 
 
-# ---------------------------------------------------------------------------
-# The in-progress operation sequences
-# ---------------------------------------------------------------------------
-
-
 def test_the_resolver_only_edits_files_while_ralph_issues_the_git_operations(
     tmp_path: Path,
 ) -> None:
-    """The agent edits files; every Git operation is issued by Ralph.
-
-    The agent runner never holds a Git-ops handle: the recorded mutations
-    around a dispatch are zero.
-    """
     model = _TerminationModel(17, tmp_path)
     token = install_executors(model.git_ops, model.agent_runner, clock=model.clock)
     try:
@@ -778,11 +599,6 @@ def test_the_resolver_only_edits_files_while_ralph_issues_the_git_operations(
 def test_an_agent_that_changes_nothing_is_not_redispatched_and_the_ladder_advances(
     tmp_path: Path,
 ) -> None:
-    """A resolver that changes nothing is not redispatched forever.
-
-    The agent declines, so the conflict is unchanged: the dispatches stay
-    bounded and the ladder moves on.
-    """
     env, git_ops, _agent_runner, clock = make_fake_environment(
         remote_sha="target-v1",
         remote_enabled=True,
@@ -814,11 +630,6 @@ def test_an_agent_that_changes_nothing_is_not_redispatched_and_the_ladder_advanc
 def test_the_stage_and_continue_loop_reobserves_between_steps(
     tmp_path: Path,
 ) -> None:
-    """The owned operation is continued one step at a time, re-observed.
-
-    The observation between the steps is a FRESH one: the model re-reads
-    the repository instead of carrying the previous reading forward.
-    """
     model = _TerminationModel(23, tmp_path)
     token = install_executors(model.git_ops, model.agent_runner, clock=model.clock)
     try:
@@ -835,7 +646,6 @@ def test_the_stage_and_continue_loop_reobserves_between_steps(
         assert model.observation is not None
         assert model.observation.in_progress_kind is InProgressKind.REBASE
 
-        # The NEXT observation is a fresh one: the operation is gone.
         model.step()
         assert model.observation is not None
         assert model.observation.in_progress_kind is InProgressKind.NONE
@@ -856,12 +666,6 @@ def test_an_abort_uses_the_matching_command_and_reintegrates_the_saved_work(
     kind: InProgressKind,
     expected_call: str,
 ) -> None:
-    """An abort uses the MATCHING command and keeps the saved work.
-
-    The operation is aborted with the command that matches ITS kind, and
-    the work the abort would have thrown away is preserved on a backup
-    ref, so the reintegrate that follows discards nothing.
-    """
     model = _TerminationModel(29, tmp_path)
     token = install_executors(model.git_ops, model.agent_runner, clock=model.clock)
     try:
@@ -882,7 +686,6 @@ def test_an_abort_uses_the_matching_command_and_reintegrates_the_saved_work(
         assert not model.env.has_work_loss(), "the abort discarded the saved work"
         assert model.env.backup_refs, "the abort discarded the backup ref"
 
-        # The reintegrate that follows brings the work back onto the target.
         model.step()
         assert not model.env.has_work_loss()
     finally:
@@ -892,11 +695,6 @@ def test_an_abort_uses_the_matching_command_and_reintegrates_the_saved_work(
 def test_conflicts_already_resolved_go_straight_to_continue(
     tmp_path: Path,
 ) -> None:
-    """A conflict that is already resolved needs no resolver agent.
-
-    The operation is owned and the paths are already resolved: the run
-    continues the operation and dispatches no agent at all.
-    """
     model = _TerminationModel(31, tmp_path)
     token = install_executors(model.git_ops, model.agent_runner, clock=model.clock)
     try:
@@ -915,11 +713,6 @@ def test_conflicts_already_resolved_go_straight_to_continue(
         reset_executors(token)
 
 
-# ---------------------------------------------------------------------------
-# The typed outcome of every fault the model can inject
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize(
     "fault",
     sorted(FaultKind, key=lambda kind: kind.name),
@@ -929,13 +722,11 @@ def test_an_injected_fault_is_typed_and_never_dispatches_an_agent(
     tmp_path: Path,
     fault: FaultKind,
 ) -> None:
-    """Every injected fault is typed and never spends an agent run."""
     model = _TerminationModel(37, tmp_path)
     token = install_executors(model.git_ops, model.agent_runner, clock=model.clock)
     try:
         model.env.set_faults([fault])
         if classification_for(fault).phase == "shutdown":
-            # The shutdown phase is not part of a step: the run ends there.
             model.env.shutdown()
         else:
             model.step()
@@ -956,14 +747,6 @@ def test_an_injected_fault_is_typed_and_never_dispatches_an_agent(
         reset_executors(token)
 
 
-# ---------------------------------------------------------------------------
-# AC-9: the catalogue sub-rows that had no named fault kind
-# ---------------------------------------------------------------------------
-
-
-#: The catalogue sub-rows this unit named, mapped to the member that now
-#: names them. The key is the catalogue text of the sub-row, so the
-#: table is reviewable against the request's failure-mode catalogue.
 _NEW_CATALOGUE_ROWS = SIMULATED_CATALOGUE_ROWS
 
 
@@ -977,12 +760,6 @@ def test_a_newly_named_catalogue_sub_row_has_a_bounded_typed_outcome(
     sub_row: str,
     kind: FaultKind,
 ) -> None:
-    """AC-9: a newly named sub-row is typed, bounded and dispatches no agent.
-
-    The sub-row now has a named fault, so it has a typed outcome, an
-    accurate user-facing reason, a bounded outcome and no agent dispatch
-    for a condition an agent cannot change.
-    """
     model = _TerminationModel(41, tmp_path)
     token = install_executors(model.git_ops, model.agent_runner, clock=model.clock)
     try:

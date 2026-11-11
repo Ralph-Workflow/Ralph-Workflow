@@ -1,10 +1,3 @@
-"""Twelve-cycle regression harness for pipeline retained memory.
-
-Twelve invocations make a linear 1 MiB/cycle leak exceed 10 MiB after the
-warmup window, well above tracemalloc noise while remaining fast enough for the
-60-second verification budget.
-"""
-
 from __future__ import annotations
 
 import gc

@@ -1,15 +1,3 @@
-"""Regression coverage for remote-sync target refresh.
-
-Auto-integration resolves targets from local refs only, then uses a configured
-remote to prove freshness at each seam. The read-only probe reports the remote
-position; the shared worktree-aware sync seam applies a safe fast-forward or
-reconciliation before feature integration. Local-only operation remains an
-explicit opt-out and never fetches.
-
-Every remote in this module is a local bare repository path or a path
-that does not exist: no test reaches a real network host.
-"""
-
 from __future__ import annotations
 
 import subprocess
@@ -35,9 +23,6 @@ from ralph.pipeline.auto_integrate_sync import (
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
 
-#: A fast-forward skip reason the bounded retry loop treats as a
-#: transient concurrent target move (asserted below, so the literal
-#: cannot silently drift away from the production set).
 _CONCURRENT_MOVE = "target advanced concurrently (CAS mismatch)"
 
 
@@ -68,7 +53,7 @@ def _commit(repo_root: Path, filename: str, content: str, message: str) -> str:
     try:
         repo.index.add([filename])
         commit = repo.index.commit(message)
-        assert commit.hexsha  # RALPH-TEST-REASON: GitPython commit replaces subprocess git add/commit to reduce CPU overhead
+        assert commit.hexsha
         return commit.hexsha
     finally:
         repo.close()
@@ -85,11 +70,9 @@ def _build_config(*, remote_enabled: bool = False, target: str | None = None) ->
 
 
 def _make_clone(bare: Path, path: Path, main: str, *, branch: str) -> Path:
-    """Clone-topology checkout with a materialized local ``main``."""
     path.mkdir()
     from git import Repo
 
-    # RALPH-TEST-REASON: GitPython init/config replaces subprocess git to reduce CPU overhead
     repo = Repo.init(path)
     with repo.config_writer() as cfg:
         cfg.set_value("user", "email", "test@example.com")
@@ -107,7 +90,6 @@ def _make_clone(bare: Path, path: Path, main: str, *, branch: str) -> Path:
 
 
 def _seed_bare_origin(tmp_git_repo: Path) -> tuple[Path, str]:
-    """Return ``(bare_origin_path, main_branch_name)``."""
     main = _run(tmp_git_repo, "branch", "--show-current").stdout.strip()
     bare = tmp_git_repo.parent / "origin.git"
     assert _run(tmp_git_repo, "clone", "--bare", str(tmp_git_repo), str(bare)).returncode == 0
@@ -119,7 +101,6 @@ def _seed_bare_origin(tmp_git_repo: Path) -> tuple[Path, str]:
 def test_remote_ahead_refresh_keeps_the_local_target_unchanged(
     tmp_git_repo: Path,
 ) -> None:
-    """A real fetch observes origin ahead without moving the local target."""
     bare, main = _seed_bare_origin(tmp_git_repo)
     agent = _make_clone(bare, tmp_git_repo.parent / "agent-a", main, branch="feature")
 
@@ -141,7 +122,6 @@ def test_remote_ahead_refresh_keeps_the_local_target_unchanged(
 def test_remote_divergence_regression_resolver_reconciles_target_then_lands_feature(
     tmp_git_repo: Path,
 ) -> None:
-    """S-3: a resolved target rebase preserves remote history and lands the feature."""
     bare, main = _seed_bare_origin(tmp_git_repo)
     agent = _make_clone(bare, tmp_git_repo.parent / "agent", main, branch="feature")
     owner = tmp_git_repo.parent / "agent-main"
@@ -181,26 +161,10 @@ def test_remote_divergence_regression_resolver_reconciles_target_then_lands_feat
 def test_remote_divergence_regression_clean_abort_conflict_still_lands_feature_locally(
     tmp_git_repo: Path,
 ) -> None:
-    """S-2/S-4: cleanly aborted target conflict does not strand feature integration.
-
-    The new diagnostic lease logic writes the durable record more
-    often (load-time clamp + UNKNOWN auto-release). The test now
-    asserts the worktree is free of the durable record file
-    ``.agent/auto_integrate_in_progress.json`` rather than a
-    porcelain-clean tree, since the .agent/ directory itself is
-    a runtime artifact of the integration seam.
-    """
     bare, main = _seed_bare_origin(tmp_git_repo)
     agent = _make_clone(bare, tmp_git_repo.parent / "agent-conflict", main, branch="feature")
     owner = tmp_git_repo.parent / "agent-conflict-main"
     assert _run(agent, "worktree", "add", str(owner), main).returncode == 0
-    # Ignore the runtime ``.agent/`` directory in the agent's
-    # worktree-private gitdir. The OLD test asserted a
-    # porcelain-clean tree which worked by accident; the NEW
-    # code's load-time clamp and UNKNOWN auto-release write the
-    # record more often. Owner is a linked worktree; its ``.git``
-    # is a file pointing at the agent's gitdir, so a single
-    # exclude in the agent's gitdir covers both.
     info_exclude = agent / ".git" / "info" / "exclude"
     info_exclude.parent.mkdir(parents=True, exist_ok=True)
     info_exclude.write_text(".agent/\n")
@@ -233,13 +197,10 @@ def test_remote_divergence_regression_clean_abort_conflict_still_lands_feature_l
 def test_remote_divergence_regression_reclaims_dirty_owner_then_lands_feature_after_clean_abort(
     tmp_git_repo: Path,
 ) -> None:
-    """S-2/S-3: a reclaimed dirty owner and restored conflict still land locally."""
     bare, main = _seed_bare_origin(tmp_git_repo)
     agent = _make_clone(bare, tmp_git_repo.parent / "agent-dirty-conflict", main, branch="feature")
     owner = tmp_git_repo.parent / "agent-dirty-conflict-main"
     assert _run(agent, "worktree", "add", str(owner), main).returncode == 0
-    # Ignore the runtime ``.agent/`` directory in the agent's
-    # worktree-private gitdir (covers owner too via worktree link).
     info_exclude = agent / ".git" / "info" / "exclude"
     info_exclude.parent.mkdir(parents=True, exist_ok=True)
     info_exclude.write_text(".agent/\n")
@@ -274,13 +235,10 @@ def test_remote_divergence_regression_reclaims_dirty_owner_then_lands_feature_af
 def test_remote_divergence_regression_rebases_target_and_lands_feature(
     tmp_git_repo: Path,
 ) -> None:
-    """S-5: a non-conflicting target rebase automatically lands and publishes the feature."""
     bare, main = _seed_bare_origin(tmp_git_repo)
     agent = _make_clone(bare, tmp_git_repo.parent / "agent-clean", main, branch="feature")
     owner = tmp_git_repo.parent / "agent-clean-main"
     assert _run(agent, "worktree", "add", str(owner), main).returncode == 0
-    # Ignore the runtime ``.agent/`` directory in the agent's
-    # worktree-private gitdir (covers owner too via worktree link).
     info_exclude = agent / ".git" / "info" / "exclude"
     info_exclude.parent.mkdir(parents=True, exist_ok=True)
     info_exclude.write_text(".agent/\n")
@@ -310,7 +268,6 @@ def test_remote_divergence_regression_rebases_target_and_lands_feature(
 def test_unreachable_remote_degrades_to_local_integration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AC-03 fail-open: an unreachable origin must not fail the run."""
     monkeypatch.setattr(auto_integrate_sync, "_has_remote", lambda _root, _remote="origin": True)
     monkeypatch.setattr(
         auto_integrate_sync,
@@ -329,7 +286,6 @@ def test_refresh_regression_git_observation_failure_degrades_without_raising(
     monkeypatch: pytest.MonkeyPatch,
     seam: str,
 ) -> None:
-    """S-4/E12: every failed observation is a typed degraded freshness result."""
     if seam == "remote lookup":
         monkeypatch.setattr(
             auto_integrate_sync,
@@ -356,7 +312,6 @@ def _inject_remote_position(
     *,
     ancestor: bool,
 ) -> None:
-    """Inject a successful fetch and deterministic local/remote tips."""
     monkeypatch.setattr(auto_integrate_sync, "_has_remote", lambda _root, _remote="origin": True)
     monkeypatch.setattr(
         auto_integrate_sync,
@@ -379,7 +334,6 @@ def _inject_remote_position(
 def test_diverged_remote_is_not_force_moved(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AC-03: a diverged origin must never force-move the local mainline."""
     _inject_remote_position(monkeypatch, ancestor=False)
     assert (
         refresh_target_from_remote(Path("/workspace"), "main", timeout_seconds=2.0)
@@ -390,12 +344,6 @@ def test_diverged_remote_is_not_force_moved(
 def test_retry_attempt_refetches_and_reclassifies_the_remote_base(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Regression S-4: every retry refreshes the configured remote base.
-
-    A first landing can lose its CAS race after a healthy fetch. The retry must
-    re-run the same remote freshness pipeline before it rebases again rather
-    than treating a local ref observation as proof that origin is still fresh.
-    """
     assert is_retryable_fast_forward_failure(_CONCURRENT_MOVE) is True
 
     root = Path("/workspace")
@@ -460,13 +408,6 @@ def test_retry_attempt_refetches_and_reclassifies_the_remote_base(
 def test_refresh_observation_never_moves_the_local_ref_even_when_origin_is_ahead(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The read-only probe reports an ahead remote; its caller applies it safely.
-
-    Remote target movement belongs exclusively to the worktree-aware
-    ``pull_and_reconcile_target`` seam. The observation helper itself remains
-    read-only, preserving local-target resolution and preventing a fetch from
-    silently changing the base before the shared advancement contract runs.
-    """
     _inject_remote_position(monkeypatch, ancestor=True)
     assert (
         refresh_target_from_remote(Path("/workspace"), "main", timeout_seconds=2.0)
@@ -477,15 +418,6 @@ def test_refresh_observation_never_moves_the_local_ref_even_when_origin_is_ahead
 def test_refresh_regression_failed_fetch_never_claims_a_fresh_origin_read(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A cached remote-tracking ref is not evidence of a fresh origin read.
-
-    The refresh used to fall through to the advance whenever
-    ``refs/remotes/origin/<target>`` existed, even when the fetch meant
-    to update it had just failed. It then advanced the shared local ref
-    and reported ``refreshed from origin`` -- a freshness claim about a
-    pointer that can be arbitrarily old. The only outcome an
-    unreachable origin may produce is ``origin unreachable``.
-    """
     monkeypatch.setattr(auto_integrate_sync, "_has_remote", lambda _root, _remote="origin": True)
     monkeypatch.setattr(
         auto_integrate_sync,

@@ -1,5 +1,3 @@
-"""Focused tests for the fail-closed integration dispatch invariant."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -44,7 +42,6 @@ from ralph.workspace.scope import WorkspaceScope
     ),
 )
 def test_unmerged_paths_block_non_resolution_dispatch(tmp_path: Path, porcelain: str) -> None:
-    """Every unmerged porcelain code is blocking integration evidence."""
     verdict = inspect_integration_resolution(
         tmp_path,
         RebaseState(),
@@ -60,12 +57,6 @@ def test_unmerged_paths_block_non_resolution_dispatch(tmp_path: Path, porcelain:
 
 
 def test_c_quoted_unmerged_path_is_decoded_in_blocking_reason(tmp_path: Path) -> None:
-    """Line-oriented porcelain C-quotes non-ASCII paths; the reason must be raw.
-
-    ``git status --porcelain`` quotes paths per ``core.quotePath``, so a
-    conflicted file with non-ASCII bytes appears as ``UU "conf\\303\\251lict.py"``.
-    The user-facing blocking reason must carry the decoded spelling.
-    """
     verdict = inspect_integration_resolution(
         tmp_path,
         RebaseState(),
@@ -94,13 +85,6 @@ def test_c_quoted_unmerged_path_is_decoded_in_blocking_reason(tmp_path: Path) ->
     ),
 )
 def test_ordinary_uncommitted_work_never_blocks_dispatch(tmp_path: Path, porcelain: str) -> None:
-    """Uncommitted work is the normal development state, not integration evidence.
-
-    Regression guard: classifying any non-empty porcelain as unresolved
-    integration deadlocked every run in a dirty worktree. The verdict named
-    a recovery executor that itself defers on a dirty worktree, so the block
-    could never clear and the pipeline exited with zero agent calls.
-    """
     verdict = inspect_integration_resolution(
         tmp_path,
         RebaseState(),
@@ -125,7 +109,6 @@ def test_ordinary_uncommitted_work_never_blocks_dispatch(tmp_path: Path, porcela
 def test_in_progress_integration_blocks_even_with_clean_porcelain(
     tmp_path: Path, rebase_active: bool, merge_status: str, expected_reason: str
 ) -> None:
-    """An in-progress rebase or merge blocks regardless of porcelain output."""
     verdict = inspect_integration_resolution(
         tmp_path,
         RebaseState(),
@@ -140,12 +123,6 @@ def test_in_progress_integration_blocks_even_with_clean_porcelain(
 
 
 def test_unreadable_porcelain_is_unknown_not_blocking(tmp_path: Path) -> None:
-    """An inspection that cannot run is UNKNOWN, never a blocking reason.
-
-    Treating a timed-out or unreadable probe as evidence of a conflict is
-    what deadlocked runs: the recovery executor the verdict named had no
-    conflict to repair and no way to prove the repository was repaired.
-    """
     verdict = inspect_integration_resolution(
         tmp_path,
         RebaseState(),
@@ -164,7 +141,6 @@ def test_unreadable_porcelain_is_unknown_not_blocking(tmp_path: Path) -> None:
 
 
 def test_clean_live_inspection_reconciles_stale_resolution_evidence(tmp_path: Path) -> None:
-    """Clean Git state clears persisted conflict evidence before dispatch resumes."""
     stale = RebaseState(
         last_action="conflict",
         unresolved_integration_carried=True,
@@ -201,7 +177,6 @@ def test_clean_live_inspection_reconciles_stale_resolution_evidence(tmp_path: Pa
 
 
 def test_final_agent_invocation_fence_rejects_forced_ordinary_phase_bypass(tmp_path: Path) -> None:
-    """The final fence raises before a blocked ordinary agent can start."""
     effect = InvokeAgentEffect(
         agent_name="developer",
         phase="development",
@@ -224,7 +199,6 @@ def test_final_agent_invocation_fence_rejects_forced_ordinary_phase_bypass(tmp_p
 def test_final_fence_checks_live_verdict_without_pipeline_state(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Standalone plumbing cannot bypass the final fence by omitting state."""
     effect = InvokeAgentEffect(
         agent_name="developer", phase="development", prompt_file="PROMPT.md", drain="development"
     )
@@ -255,7 +229,6 @@ def test_final_fence_checks_live_verdict_without_pipeline_state(
 def test_runner_dispatch_funnel_ignores_auto_integration_toggle(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The earlier runner funnel cannot bypass the invariant when disabled."""
     blocked = IntegrationResolutionVerdict(
         RECOVERABLE,
         ("unmerged paths remain from an unfinished rebase or merge: a.py",),
@@ -274,7 +247,6 @@ def test_runner_dispatch_funnel_ignores_auto_integration_toggle(
 def test_final_fence_ignores_auto_integration_toggle(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Disabling auto-integration cannot disable the dispatch invariant."""
     effect = InvokeAgentEffect(
         agent_name="developer", phase="planning", prompt_file="PROMPT.md", drain="planning"
     )
@@ -340,7 +312,6 @@ def test_live_git_evidence_blocks_stale_resolved_state(
     merge_status: str,
     reason: str,
 ) -> None:
-    """Live Git evidence outranks a stale checkpoint that says resolved."""
     git_dir = tmp_path / ".git"
     git_dir.mkdir()
     monkeypatch.setattr(
@@ -389,15 +360,6 @@ def test_exhaustion_is_terminal_while_the_conflict_is_still_there(tmp_path: Path
 
 
 def test_exhaustion_does_not_outlive_the_conflict_it_describes(tmp_path: Path) -> None:
-    """A record of an exhausted chain must not block a clean repository.
-
-    Nothing is unmerged, no rebase or merge is in progress, and every
-    probe answered -- so the conflict the record describes is gone,
-    however it went. Letting the record win anyway was a latch with no
-    exit: it is cleared only by an integration landing, and it blocked
-    the run before anything could land, so every later run exited
-    against a clean tree until someone edited the record by hand.
-    """
     verdict = inspect_integration_resolution(
         tmp_path,
         RebaseState(
@@ -413,7 +375,6 @@ def test_exhaustion_does_not_outlive_the_conflict_it_describes(tmp_path: Path) -
 
 
 def test_a_stale_record_still_blocks_when_the_tree_cannot_be_read(tmp_path: Path) -> None:
-    """Fail closed: only a VERIFIABLY clean tree may overrule the record."""
     verdict = inspect_integration_resolution(
         tmp_path,
         RebaseState(
@@ -441,7 +402,6 @@ def test_clean_repository_permits_dispatch(tmp_path: Path) -> None:
 
 
 def test_tree_readiness_assessment_fields(tmp_path: Path) -> None:
-    """Readiness assessment provides separate development_dispatch_allowed and integration_ready."""
     assessment = assess_tree_readiness(
         tmp_path,
         porcelain=lambda _: (True, "M  staged.py\n"),
@@ -471,7 +431,6 @@ def test_tree_readiness_assessment_fields(tmp_path: Path) -> None:
 def test_uncommitted_work_allows_development_dispatch_but_not_integration(
     tmp_path: Path, code: str
 ) -> None:
-    """Ordinary uncommitted work permits development dispatch while integration is not ready."""
     readiness = assess_tree_readiness(
         tmp_path,
         porcelain=lambda _root: (True, code),

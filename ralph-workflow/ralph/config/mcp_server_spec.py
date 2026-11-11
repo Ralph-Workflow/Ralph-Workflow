@@ -1,4 +1,3 @@
-"""MCP server configuration model for `mcp.toml`."""
 
 from __future__ import annotations
 
@@ -11,7 +10,6 @@ from ralph.pydantic_compat import RalphBaseModel
 
 
 class McpServerSpec(RalphBaseModel):
-    """Schema for a single MCP server entry in `mcp.toml`."""
 
     model_config = ConfigDict(frozen=True)
 

@@ -1,11 +1,3 @@
-"""Integration test: default `ralph` run wires ParallelDisplay + transcript surfaces.
-
-Drives a single planning → development → development_analysis → development_commit
-cycle through the runner using a fake agent-execute seam, asserting the
-display surfaces (phase banner, decision log, completion summary) reflect
-real pipeline state.
-"""
-
 from __future__ import annotations
 
 import importlib
@@ -55,7 +47,6 @@ def _config() -> UnifiedConfig:
 def test_default_run_constructs_parallel_display_and_renders_surfaces(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Calling runner.run() without a display constructs exactly one ParallelDisplay."""
     policy_bundle = load_policy(DEFAULT_POLICY_DIR)
 
     constructed: list[object] = []
@@ -147,9 +138,7 @@ def test_default_run_constructs_parallel_display_and_renders_surfaces(
     )
 
     assert exit_code == 0
-    # Default verbose path constructs exactly one ParallelDisplay.
     assert len(constructed) == 1
-    # Pipeline ran through planning -> development -> dev_analysis -> dev_commit.
     assert "planning" in invoked_phases
     assert "development" in invoked_phases
     assert "development_analysis" in invoked_phases
@@ -158,7 +147,6 @@ def test_default_run_constructs_parallel_display_and_renders_surfaces(
 def test_default_run_propagates_display_subscriber(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """When no display is provided, the runner uses the ParallelDisplay subscriber."""
     policy_bundle = load_policy(DEFAULT_POLICY_DIR)
 
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
@@ -189,12 +177,8 @@ def test_default_run_propagates_display_subscriber(
 
     monkeypatch.setattr(pd_module.ParallelDisplay, "__init__", plain_init)
 
-    # Short-circuit immediately: enter -> exit by going straight to complete.
     state = MagicMock()
     state.phase = "complete"
-    # Terminal-success eligibility recomputes the canonical fan-out
-    # decision from the loaded state, so the fake state carries a real
-    # (idle, join-complete) RebaseState and an empty worker_states map.
     state.rebase = RebaseState()
     state.worker_states = {}
     monkeypatch.setattr(
@@ -215,12 +199,6 @@ def test_default_run_propagates_display_subscriber(
 def test_width_refresher_updates_live_display_context(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Width refresher must update the display object the runner keeps using.
-
-    The runner now uses install_width_refresher (cross-platform: SIGWINCH on
-    POSIX, poll thread on Windows) instead of the POSIX-only
-    install_sigwinch_refresher.
-    """
     policy_bundle = load_policy(DEFAULT_POLICY_DIR)
     base_console = Console(record=True, width=120, force_terminal=True)
     wide_ctx = make_display_context(console=base_console, env={"COLUMNS": "120"})
@@ -292,5 +270,4 @@ def test_width_refresher_updates_live_display_context(
     )
 
     assert exit_code == 0
-    # The stop callback returned by install_width_refresher must be called on shutdown
     assert stop_called, "Runner did not call the width refresher stop callback on shutdown"

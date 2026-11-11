@@ -1,5 +1,3 @@
-"""Black-box coverage for the independent development hard-stop timer."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -317,7 +315,6 @@ def test_default_watchdog_ceiling_cannot_preempt_development_redirect() -> None:
 
 
 def test_development_timebox_regression_cycle_only_timing_is_a_noop() -> None:
-    """S-1: a missing development clock must never borrow the cycle clock."""
     policy = _policy()
     state = PipelineState(phase="development", dev_timebox_active=True)
     cycle_only_timing = RoutingTiming(total_elapsed_seconds=36_000.0)
@@ -502,8 +499,6 @@ def test_agent_failure_fallback_preserves_development_elapsed_time() -> None:
         dev_timebox_consumed_seconds=4100.0,
         phase_chains={"development": AgentChainState(agents=["first", "fallback"], retries=3)},
     )
-    # The owner demotes the first agent (three unproductive attempts put it
-    # on cooldown), so its verdict is the fallover to the second agent.
     ledger = AgentFailureLedger(clock=FakeClock(start=0.0))
     for _ in range(3):
         ledger.record(AttemptFact(phase="development", agent="first", artifact_valid=False))

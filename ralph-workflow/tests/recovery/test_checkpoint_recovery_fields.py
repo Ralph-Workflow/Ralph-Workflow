@@ -1,5 +1,3 @@
-"""Black-box test: recovery fields round-trip through checkpoint save/load."""
-
 from __future__ import annotations
 
 import json
@@ -37,7 +35,6 @@ def _make_state_with_recovery_fields() -> PipelineState:
 
 
 def test_recovery_fields_round_trip(tmp_path: Path) -> None:
-    """All recovery fields survive a save/load cycle with exact equality."""
     ckpt_path = tmp_path / "checkpoint.json"
     original = _make_state_with_recovery_fields()
 
@@ -58,7 +55,6 @@ def test_recovery_fields_round_trip(tmp_path: Path) -> None:
 
 
 def test_recovery_fields_full_equality(tmp_path: Path) -> None:
-    """Saved and loaded recovery fields are exactly equal."""
     ckpt_path = tmp_path / "checkpoint.json"
     original = _make_state_with_recovery_fields()
 
@@ -75,9 +71,7 @@ def test_recovery_fields_full_equality(tmp_path: Path) -> None:
 
 
 def test_older_checkpoint_missing_recovery_fields_loads_with_defaults(tmp_path: Path) -> None:
-    """A checkpoint JSON without recovery fields loads cleanly using defaults."""
     ckpt_path = tmp_path / "checkpoint.json"
-    # Write a minimal checkpoint JSON without recovery fields (simulating an older checkpoint)
     minimal_json = json.dumps(
         {
             "phase": "development",
@@ -104,7 +98,6 @@ def test_older_checkpoint_missing_recovery_fields_loads_with_defaults(tmp_path: 
 
 
 def test_multiple_fallover_records_preserved(tmp_path: Path) -> None:
-    """Multiple fallover history entries are all preserved through save/load."""
     ckpt_path = tmp_path / "checkpoint.json"
     state = PipelineState(
         phase="fix",
@@ -136,7 +129,6 @@ def test_multiple_fallover_records_preserved(tmp_path: Path) -> None:
 
 
 def test_zero_recovery_fields_round_trip(tmp_path: Path) -> None:
-    """Default (zero/empty) recovery fields survive save/load unchanged."""
     ckpt_path = tmp_path / "checkpoint.json"
     state = PipelineState(phase="planning")
 
@@ -153,7 +145,6 @@ def test_zero_recovery_fields_round_trip(tmp_path: Path) -> None:
 
 
 def test_over_cap_recovery_history_loads_with_newest_records_only(tmp_path: Path) -> None:
-    """An over-cap checkpoint payload loads back with exactly the newest retained records."""
     ckpt_path = tmp_path / "checkpoint.json"
     payload = json.dumps(
         {

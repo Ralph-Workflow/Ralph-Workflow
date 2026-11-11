@@ -10,7 +10,6 @@ from ralph.mcp.server import lifecycle
 
 
 def test_session_metadata_uses_system_temporary_storage_outside_workspace(tmp_path: Path) -> None:
-    """S-3 regression: transient MCP metadata never creates a workspace-tree file."""
     session = AgentSession(session_id="session", run_id="run", drain="planning", capabilities=set())
 
     session_file = lifecycle._create_session_file(tmp_path, session)

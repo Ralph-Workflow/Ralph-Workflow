@@ -1,23 +1,3 @@
-"""Regression tests for client-flavored tool-schema advertisement.
-
-The live failure mode (kimi-code 0.36.1, Moonshot API, verified on the
-wire 2026-08-16): the Kimi Code CLI forwards every MCP ``tools/list``
-entry verbatim as OpenAI-style ``tools[].function.parameters``, and
-Moonshot rejects a ROOT schema that mixes ``type`` with composition
-keywords::
-
-    400 tools.function.parameters is not a valid moonshot flavored json
-    schema, details: <At path 'root': when using anyOf, type should be
-    defined in anyOf items instead of the parent schema>
-
-Ralph advertises three composed roots (``read_file``,
-``read_multiple_files``, ``exec``). The server negotiates the schema
-flavor at the MCP ``initialize`` handshake and flattens ONLY the
-advertised root for clients that need the OpenAI function flavor,
-leaving the registered ``ToolDefinition.input_schema`` and every other
-client's advertisement untouched.
-"""
-
 from __future__ import annotations
 
 from typing import Any
@@ -46,9 +26,6 @@ class _NoopHandler:
         return {"content": [{"type": "text", "text": "ok"}]}
 
 
-#: Root schema mirroring the shipped ``read_file`` contract: a top-level
-#: ``oneOf`` selector split plus ``allOf``/``not`` mutual-exclusion pairs —
-#: exactly the shapes Moonshot's OpenAI-function flavor rejects.
 _COMPOSED_ROOT_SCHEMA: dict[str, object] = {
     "type": "object",
     "allOf": [{"not": {"required": ["line_start", "offset"]}}],
@@ -136,16 +113,10 @@ def test_flatten_root_schema_drops_composition_and_keeps_plain_vocabulary() -> N
     }
     assert flattened["type"] == "object"
     assert flattened["required"] == ["path"]
-    # Direct property sub-schemas are flattened one deliberate level down:
-    # Moonshot's check is NOT root-only (re-measured 2026-08-17 — the
-    # composition-only ``command``/``argv``/``args`` union on ``exec`` kept
-    # rejecting after root-only flattening shipped), so the string/array
-    # union becomes a JSON Schema ``type`` array.
     command = dict(must_mapping(flattened["properties"]["command"]))
     assert "oneOf" not in command
     assert command["type"] == ["array", "string"]
     assert command["items"] == {"type": "string"}
-    # Untouched properties keep their identity.
     assert flattened["properties"]["path"] is _COMPOSED_ROOT_SCHEMA["properties"]["path"]
 
 
@@ -168,11 +139,6 @@ def test_flatten_root_schema_does_not_mutate_input() -> None:
 
 
 def test_flatten_root_schema_repairs_untyped_string_enum_property() -> None:
-    """Moonshot rejects ``{"enum": [...]}`` without a sibling ``type``
-    (measured live 2026-08-17: ``At path 'properties.mode': type is not
-    defined`` for ``ralph_stage_md_artifact``). The flattening repairs an
-    all-string enum by adding ``"type": "string"`` and leaves every other
-    property shape untouched."""
     schema: dict[str, object] = {
         "type": "object",
         "properties": {
@@ -186,11 +152,9 @@ def test_flatten_root_schema_repairs_untyped_string_enum_property() -> None:
     flattened = normalize_schema_for_function_calling(schema)
     properties = dict(must_mapping(flattened["properties"]))
     assert properties["mode"] == {"enum": ["append", "replace_all"], "type": "string"}
-    # Already-typed or non-string enums are not rewritten.
     assert properties["typed"] == {"type": "integer", "enum": [1, 2]}
     assert properties["mixed"] == {"enum": ["a", 1]}
     assert properties["plain"] == {"type": "string"}
-    # The input is never mutated.
     assert schema["properties"]["mode"] == {"enum": ["append", "replace_all"]}
 
 
@@ -223,13 +187,6 @@ def test_unknown_client_handshake_keeps_full_json_schema() -> None:
 
 
 def test_re_handshake_without_client_info_keeps_sticky_flavor() -> None:
-    """The flavor is sticky once negotiated: a later handshake that does
-    not identify a flavor (Ralph's own preflight probe, or a kimi-code
-    reconnect that arrives between turns) must NOT reset the flattened
-    advertisement — measured on the wire (kimi-code 0.36.1, 2026-08-17),
-    a nameless re-handshake between initialize and tools/list made the
-    server re-advertise the composed roots and Moonshot rejected them
-    with the exact 400 the flavor exists to prevent."""
     server = _build_server_with_composed_tool()
     _initialize(server, "kimi-code")
     _initialize(server, None)
@@ -240,8 +197,6 @@ def test_re_handshake_without_client_info_keeps_sticky_flavor() -> None:
 
 
 def test_nameless_handshake_before_any_flavor_keeps_full_schema() -> None:
-    """A server that has only ever seen nameless handshakes still
-    advertises the full JSON Schema contract."""
     server = _build_server_with_composed_tool()
     _initialize(server, None)
     tools = _tools_list(server)

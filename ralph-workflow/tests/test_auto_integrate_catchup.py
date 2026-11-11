@@ -1,15 +1,3 @@
-"""Unit tests for the background catch-up fast-forward worker.
-
-The catch-up tick (:func:`attempt_catchup_fast_forward`) is a chain of
-stateless gates over injected-by-monkeypatch collaborators; every gate
-gets a test proving it short-circuits with the right outcome tag and
-that only the fully-open chain reaches the ``merge --ff-only`` call.
-The worker class is exercised with an injected recording ``tick`` and a
-millisecond interval so no test performs git I/O or sleeps near the
-per-test budget. The real-git proof lives in
-``tests/test_auto_integrate_catchup_e2e.py``.
-"""
-
 from __future__ import annotations
 
 import threading
@@ -36,12 +24,10 @@ _FEATURE_SHA = "a" * 40
 
 @dataclass(frozen=True)
 class _FakeRemoteLease:
-    """Minimal remote-sync lease used by focused catch-up tests."""
-
     fetch_allowed: bool = True
 
     def record_fetch(self) -> None:
-        """Record the synthetic fetch without touching the filesystem."""
+        pass
 
 
 @contextmanager
@@ -77,7 +63,6 @@ def _open_all_gates(
     ancestor: bool = True,
     ff_ok: bool = True,
 ) -> list[tuple[Path, str]]:
-    """Patch every collaborator in the tick chain; return the ff call log."""
     ff_calls: list[tuple[Path, str]] = []
 
     def _fake_resolve(config: UnifiedConfig, root: Path) -> str | None:
@@ -142,12 +127,7 @@ def _stop_and_wait(worker: catchup.AutoIntegrateCatchupWorker) -> None:
     assert not worker.is_running
 
 
-# Each test section remains flat so the repo-structure audit enforces one public class.
-
-
 class TestAutoIntegrateCatchup:
-    """Catch-up tick gates and bounded worker lifecycle."""
-
     def test_disabled_short_circuits_before_any_git(self, tmp_path: Path) -> None:
         outcome = catchup.attempt_catchup_fast_forward(_config(enabled=False), tmp_path)
         assert outcome == catchup.CATCHUP_DISABLED
@@ -256,9 +236,6 @@ class TestAutoIntegrateCatchup:
         ff_calls = _open_all_gates(monkeypatch)
         outcome = catchup.attempt_catchup_fast_forward(_config(), tmp_path)
         assert outcome == catchup.CATCHUP_FAST_FORWARDED
-        # The merge is handed the OBSERVED SHA, not the ref name, so a
-        # concurrently-advancing target can never turn this into a
-        # non-fast-forward.
         assert ff_calls == [(tmp_path, _TARGET_SHA)]
 
     def test_remote_refresh_uses_configured_remote_before_observing_unchanged_target(
@@ -369,10 +346,10 @@ class TestAutoIntegrateCatchup:
             tick=lambda: catchup.CATCHUP_UP_TO_DATE,
         )
         worker.start()
-        worker.start()  # idempotent while alive
+        worker.start()
         worker.stop()
         _stop_and_wait(worker)
-        worker.start()  # a stopped worker can be restarted
+        worker.start()
         assert worker.is_running
         _stop_and_wait(worker)
 
@@ -404,8 +381,6 @@ class TestAutoIntegrateCatchup:
         assert catchup.start_catchup_worker_if_enabled(_config(enabled=False), tmp_path) is None
 
     def test_enabled_returns_running_worker(self, tmp_path: Path) -> None:
-        # The default 30 s interval guarantees no tick (and therefore no
-        # git subprocess) fires within this test's lifetime.
         worker = catchup.start_catchup_worker_if_enabled(_config(), tmp_path)
         assert worker is not None
         try:

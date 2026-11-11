@@ -8,8 +8,6 @@ from ralph.testing._process_streams import ProcessStreams
 
 
 class FakePopen:
-    """Minimal subprocess.Popen-like fake for testing."""
-
     def __init__(
         self,
         pid: int,
@@ -60,24 +58,16 @@ def _stubborn_init(self: object, pid: int, *, final_returncode: int = -9) -> Non
 
 
 def _stubborn_returncode(self: object) -> int | None:
-    return cast(
-        "int | None", object.__getattribute__(self, "_returncode")
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    return cast("int | None", object.__getattribute__(self, "_returncode"))
 
 
 def _stubborn_poll(self: object) -> int | None:
-    return cast(
-        "int | None", object.__getattribute__(self, "_returncode")
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    return cast("int | None", object.__getattribute__(self, "_returncode"))
 
 
 def _stubborn_wait(self: object, timeout: float | None = None) -> int:
-    if cast(
-        "bool", object.__getattribute__(self, "_killed")
-    ):  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-        final_returncode = cast(
-            "int", object.__getattribute__(self, "_final_returncode")
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    if cast("bool", object.__getattribute__(self, "_killed")):
+        final_returncode = cast("int", object.__getattribute__(self, "_final_returncode"))
         object.__setattr__(self, "_returncode", final_returncode)
         return final_returncode
     raise subprocess.TimeoutExpired(cmd="fake-stubborn", timeout=timeout or 0.0)
@@ -107,15 +97,11 @@ def _immortal_init(self: object, pid: int) -> None:
 
 
 def _immortal_returncode(self: object) -> int | None:
-    return cast(
-        "int | None", object.__getattribute__(self, "_returncode")
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    return cast("int | None", object.__getattribute__(self, "_returncode"))
 
 
 def _immortal_poll(self: object) -> int | None:
-    return cast(
-        "int | None", object.__getattribute__(self, "_returncode")
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    return cast("int | None", object.__getattribute__(self, "_returncode"))
 
 
 def _immortal_wait(self: object, timeout: float | None = None) -> int:

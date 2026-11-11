@@ -1,5 +1,3 @@
-"""Tests for ParallelDisplay.emit_run_end (consolidated from PlainLogRenderer)."""
-
 from __future__ import annotations
 
 import re
@@ -19,12 +17,6 @@ def _make_display() -> tuple[ParallelDisplay, StringIO]:
 
 
 def test_emit_run_end_emits_milestone_header() -> None:
-    """emit_run_end emits a MILESTONE [run-end] header line.
-
-    wt-028-display S-4: the chrome prefix no longer carries the
-    INFO/MILESTONE LEVEL badge or the META category badge; the
-    milestone glyph in the body is the only severity carrier.
-    """
     pd, buf = _make_display()
     pd.emit_run_end(phase="complete", total_agent_calls=0)
     out = buf.getvalue()
@@ -42,7 +34,6 @@ def test_emit_run_end_emits_milestone_header() -> None:
 
 
 def test_emit_run_end_emits_phase_and_elapsed() -> None:
-    """emit_run_end includes phase= and elapsed= lines."""
     pd, buf = _make_display()
     pd.emit_run_end(phase="complete", total_agent_calls=5)
     out = buf.getvalue()
@@ -53,17 +44,14 @@ def test_emit_run_end_emits_phase_and_elapsed() -> None:
 
 
 def test_run_end_tag_is_registered_in_tags() -> None:
-    """'run-end' is present in TAGS."""
     assert "run-end" in TAGS
 
 
 def test_run_end_tag_maps_to_meta_category() -> None:
-    """'run-end' maps to 'META' in TAG_CATEGORY."""
     assert TAG_CATEGORY.get("run-end") == "META"
 
 
 def test_emit_run_end_pr_url_none_omits_pr_line() -> None:
-    """When pr_url is None, no pr= line is emitted."""
     pd, buf = _make_display()
     pd.emit_run_end(phase="complete", total_agent_calls=0, pr_url=None)
     out = buf.getvalue()
@@ -71,7 +59,6 @@ def test_emit_run_end_pr_url_none_omits_pr_line() -> None:
 
 
 def test_emit_run_end_pr_url_reduces_rich_markup() -> None:
-    """When pr_url is set, Rich markup is reduced while the URL is preserved."""
     pd, buf = _make_display()
     pd.emit_run_end(
         phase="complete",
@@ -84,7 +71,6 @@ def test_emit_run_end_pr_url_reduces_rich_markup() -> None:
 
 
 def test_emit_run_end_no_ansi_escapes() -> None:
-    """emit_run_end output contains no ANSI escape sequences."""
     pd, buf = _make_display()
     pd.emit_run_end(
         phase="complete",
@@ -96,24 +82,12 @@ def test_emit_run_end_no_ansi_escapes() -> None:
 
 
 def test_emit_run_end_flushes_open_streaming_block() -> None:
-    """Calling emit_run_end with an open streaming block closes it before emitting [run-end].
-
-    S-7 (wt-028-display P1): the close line for a streaming block carries
-    ``[output]`` (not ``[content-end]``); the lifecycle suffix is part of
-    the retired per-fragment vocabulary.
-    """
     pd, buf = _make_display()
-    # Open a streaming block
     pd.emit_activity_line("u", "text", "partial content")
     buf.truncate(0)
     buf.seek(0)
-    # emit_run_end should close the block first
     pd.emit_run_end(phase="complete", total_agent_calls=0)
     out = buf.getvalue()
-    # The streaming-block close line ([output] · 1 fragments) must
-    # appear before the [run-end] header. wt-028-display S-4: the
-    # header no longer carries the MILESTONE META badge; the
-    # match anchors on the [run-end] tag and the body text.
     assert "[output][u]" in out
     run_end_line = next(
         (ln for ln in out.splitlines() if "[run-end]" in ln and "Ralph Workflow run end" in ln),
@@ -124,9 +98,7 @@ def test_emit_run_end_flushes_open_streaming_block() -> None:
 
 
 def test_emit_run_end_includes_all_counter_lines() -> None:
-    """emit_run_end emits content_blocks, thinking_blocks, tool_calls, errors, agent_calls."""
     pd, buf = _make_display()
-    # Add some activity first so counters are non-zero
     pd.emit_activity_line("u", "text", "content block 1")
     pd.emit_activity_line("u", "thinking", "thinking block 1")
     pd.emit_activity_line("u", "tool_use", "bash")
@@ -143,14 +115,6 @@ def test_emit_run_end_includes_all_counter_lines() -> None:
 
 
 def test_emit_run_end_continuation_lines_carry_no_level_badge() -> None:
-    """Continuation lines after the [run-end] header carry no LEVEL chrome.
-
-    wt-028-display S-4: the chrome prefix no longer carries a
-    level/category badge; severity is carried by the body text
-    (the counter suffix, the milestone glyph, etc.). The
-    continuation lines must not leak retired INFO/WARN/ERROR/
-    MILESTONE/META/OUT chrome.
-    """
     pd, buf = _make_display()
     pd.emit_run_end(phase="complete", total_agent_calls=1)
     out = buf.getvalue()
@@ -169,7 +133,6 @@ def test_emit_run_end_continuation_lines_carry_no_level_badge() -> None:
 
 
 def test_emit_run_end_milestone_glyph_ascii_fallback() -> None:
-    """RALPH_FORCE_ASCII=1 uses ASCII milestone glyph (* not ◆) in run-end header."""
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, highlight=False, color_system=None, width=200)
     pd = ParallelDisplay(make_display_context(console=console, env={"RALPH_FORCE_ASCII": "1"}))
@@ -182,7 +145,6 @@ def test_emit_run_end_milestone_glyph_ascii_fallback() -> None:
 
 
 def test_emit_run_end_exit_trigger_shown_in_default_mode_output() -> None:
-    """exit_trigger='completed' is surfaced as exit=completed in default mode output."""
     pd, buf = _make_display()
     pd.emit_run_end(phase="complete", total_agent_calls=0, exit_trigger="completed")
     out = buf.getvalue()
@@ -190,7 +152,6 @@ def test_emit_run_end_exit_trigger_shown_in_default_mode_output() -> None:
 
 
 def test_emit_run_end_exit_trigger_none_omits_exit_field() -> None:
-    """When exit_trigger is None, no exit= field is emitted."""
     pd, buf = _make_display()
     pd.emit_run_end(phase="complete", total_agent_calls=0, exit_trigger=None)
     out = buf.getvalue()
@@ -198,7 +159,6 @@ def test_emit_run_end_exit_trigger_none_omits_exit_field() -> None:
 
 
 def test_emit_run_end_outer_dev_iteration_shown_when_set() -> None:
-    """outer_dev_iteration is surfaced as dev_cycle=N in default mode output."""
     pd, buf = _make_display()
     pd.emit_run_end(phase="complete", total_agent_calls=0, outer_dev_iteration=3)
     out = buf.getvalue()
@@ -206,7 +166,6 @@ def test_emit_run_end_outer_dev_iteration_shown_when_set() -> None:
 
 
 def test_emit_run_end_outer_dev_iteration_none_omits_field() -> None:
-    """When outer_dev_iteration is None, no dev_cycle= field is emitted."""
     pd, buf = _make_display()
     pd.emit_run_end(phase="complete", total_agent_calls=0, outer_dev_iteration=None)
     out = buf.getvalue()

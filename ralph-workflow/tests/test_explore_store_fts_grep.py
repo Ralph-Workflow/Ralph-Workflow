@@ -1,5 +1,3 @@
-"""Black-box tests for ExploreStore fts_search_grep and batch evidence insertion."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -31,7 +29,6 @@ def _make_indexed_file(
     text_hash: str,
     content_hash: str,
 ) -> None:
-    """Insert one file row + one chunk + one FTS row for a test path."""
     store.upsert_file(
         FileRow(
             path=path,
@@ -64,10 +61,6 @@ def _make_indexed_file(
 
 
 def test_fts_search_grep_returns_joined_chunk_metadata(tmp_path: Path) -> None:
-    """``fts_search_grep`` returns path, chunk_id, full text, start_line,
-    end_line, text_hash, generation, and the file's content_hash in one
-    row, so the grep handler can post-filter + build evidence rows
-    without per-candidate SELECTs."""
     store = _build_store(tmp_path)
     try:
         _make_indexed_file(
@@ -93,9 +86,6 @@ def test_fts_search_grep_returns_joined_chunk_metadata(tmp_path: Path) -> None:
 
 
 def test_fts_search_grep_excludes_deleted_files(tmp_path: Path) -> None:
-    """The JOIN's ``f.is_deleted = 0`` filter must drop deleted-file
-    matches so the index never surfaces a path the file row already
-    marked as gone."""
     store = _build_store(tmp_path)
     try:
         _make_indexed_file(
@@ -112,7 +102,6 @@ def test_fts_search_grep_excludes_deleted_files(tmp_path: Path) -> None:
             text_hash="ee" * 32,
             content_hash="ff" * 32,
         )
-        # Mark gone.py deleted in file record to test JOIN filter.
         store.upsert_file(
             FileRow(
                 path="gone.py",
@@ -133,9 +122,6 @@ def test_fts_search_grep_excludes_deleted_files(tmp_path: Path) -> None:
 
 
 def test_insert_evidence_batch_inserts_and_refreshes(tmp_path: Path) -> None:
-    """``insert_evidence_batch`` persists every row in a single
-    transaction and ON CONFLICT refreshes the existing row, so the
-    grep handler can call it once per response instead of N times."""
     store = _build_store(tmp_path)
     try:
         evidence_id = derive_evidence_id(
@@ -183,8 +169,6 @@ def test_insert_evidence_batch_inserts_and_refreshes(tmp_path: Path) -> None:
         fetched_a = store.get_evidence(evidence_id)
         assert fetched_a is not None and fetched_a.path == "a.py"
         assert store.get_evidence(rows[1].evidence_id) is not None
-        # ON CONFLICT refresh: same evidence_id, updated path
-        # should overwrite via the batch call.
         refreshed = EvidenceRow(
             evidence_id=evidence_id,
             path="a-renamed.py",
@@ -205,14 +189,9 @@ def test_insert_evidence_batch_inserts_and_refreshes(tmp_path: Path) -> None:
 
 
 def test_insert_evidence_batch_empty_is_noop(tmp_path: Path) -> None:
-    """An empty batch must not open a transaction at all so a query
-    that produces no matches pays zero round-trips on the evidence
-    table."""
     store = _build_store(tmp_path)
     try:
-        # Should not raise and should leave the table empty.
         store.insert_evidence_batch([])
-        # Verify no evidence was inserted.
         assert store.get_evidence("nonexistent") is None
     finally:
         store.close()

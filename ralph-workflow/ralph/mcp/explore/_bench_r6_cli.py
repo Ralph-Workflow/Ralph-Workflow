@@ -1,13 +1,3 @@
-"""Module-level CLI for the R6.2 baseline harness.
-
-Split from :mod:`ralph.mcp.explore._bench_r6_metrics` so the hub module
-stays under the repository file-size cap (the 1000-line audit limit
-in :mod:`ralph.testing.audit_repo_structure`). Re-exports the public
-``main`` entry point and keeps the argparse plumbing in one place so
-operators running ``python -m ralph.mcp.explore._bench_r6_metrics``
-get every R6.2 capture / validate flag (capture / validation / cross-
-check) from a small, dedicated module.
-"""
 
 from __future__ import annotations
 
@@ -27,11 +17,6 @@ from ralph.process._spawn_env import sanitize_process_environment
 
 
 def _positive_int(raw: str, *, flag: str) -> int:
-    """argparse ``type=`` callback that requires a positive integer.
-
-    ``--repeat 0`` would degenerate into a no-op capture; we fail
-    closed at parse time so a typo cannot run silently.
-    """
     try:
         value = int(raw)
     except (TypeError, ValueError) as exc:
@@ -42,7 +27,6 @@ def _positive_int(raw: str, *, flag: str) -> int:
 
 
 class _BenchArgs(argparse.Namespace):
-    """Typed argparse namespace for the R6.2 baseline CLI."""
 
     workloads: str
     out: str | None
@@ -57,7 +41,6 @@ class _BenchArgs(argparse.Namespace):
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    """Build the argparse parser; shared between ``main`` and the test."""
     parser = argparse.ArgumentParser(
         prog="python -m ralph.mcp.explore._bench_r6_metrics",
         description=(
@@ -169,7 +152,6 @@ _DEFAULT_ARGS: Final[tuple[tuple[str, object], ...]] = (
 
 
 def _empty_args() -> _BenchArgs:
-    """Return a fully-defaulted ``_BenchArgs`` namespace."""
     args = _BenchArgs()
     for field, value in _DEFAULT_ARGS:
         setattr(args, field, value)
@@ -177,7 +159,6 @@ def _empty_args() -> _BenchArgs:
 
 
 def _dispatch_validate_report(args: _BenchArgs) -> int:
-    """Dispatch ``--validate-report`` with mandatory companion gates."""
     if (args.baseline is None) != (args.targets is None):
         print(
             "FAIL: --baseline and --targets must be supplied together",
@@ -194,7 +175,6 @@ def _dispatch_validate_report(args: _BenchArgs) -> int:
 
 
 def _dispatch_capture(parser: argparse.ArgumentParser, args: _BenchArgs) -> int:
-    """Dispatch capture / capture-list / workload-validation paths."""
     requested = [
         _WORKLOAD_ALIASES.get(w.strip(), w.strip()) for w in args.workloads.split(",") if w.strip()
     ]
@@ -220,21 +200,6 @@ def _dispatch_capture(parser: argparse.ArgumentParser, args: _BenchArgs) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Module-level CLI for ``python -m ralph.mcp.explore._bench_r6_metrics``.
-
-    S-8 (wt-11) wires the missing CLI surface so the verify command
-
-        python -m ralph.mcp.explore._bench_r6_metrics \\
-            --workloads small,ralph_self,large_synthetic,multi_session \\
-            --out docs/performance/explore-index-baseline-pre.json
-
-    captures the pre-change baseline. ``--workloads`` filters by
-    R6.3 workload name (default: all four) and ``--out`` writes
-    the canonical baseline JSON. ``--validate-baseline`` and
-    ``--validate-report`` (with mandatory ``--baseline`` and
-    ``--targets`` companions) keep the post-capture validators
-    available from this same module.
-    """
     sanitize_process_environment()
     parser = _build_parser()
     args = _empty_args()

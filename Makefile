@@ -1,5 +1,3 @@
-# Ralph (Python) Makefile
-# Root convenience wrapper around ralph-workflow/Makefile
 
 PY_DIR := ralph-workflow
 

@@ -1,27 +1,3 @@
-"""Unit tests for the RawOverflowLog class.
-
-Testing-policy white-box exception (finalizer handle box):
-
-The cases marked ``# policy: white-box-exception`` below reach into the
-private symbols ``RawOverflowLog._handle_box`` and
-``ParallelDisplay._condensed_logs``.
-
-Quoted policy clause -- docs/ralph-workflow-policy/testing-policy.md,
-"Default requirements":
-  "White-box tests that reach into private internals are permitted only
-   when no observable surface can express the regression."
-
-Why no public observable expresses this regression: the regression is the
-CLOSE EVENT performed by the ``weakref.finalize`` callback AFTER the owner
-has been collected. The owner is gone by then, so the writer's own public
-readings (``size_bytes``, ``is_disabled``) can no longer be taken (they
-need a live instance), and the buffered handle itself has no public
-accessor; the shared one-element box is the only place where the
-finalizer's effect stays observable after the collection. The
-condensed-log registry is a private per-display registry with no public
-getter.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -50,14 +26,13 @@ def test_append_writes_lines(tmp_path: Path) -> None:
 
 
 def test_first_write_of_a_run_truncates_previous_content(tmp_path: Path) -> None:
-    """Each run starts a clean capture."""
     from ralph.display.raw_overflow import reset_raw_overflow_path_state
 
     log1 = RawOverflowLog(tmp_path, "unit-1")
     log1.append("run1 line")
     log1.close()
 
-    reset_raw_overflow_path_state()  # a new run
+    reset_raw_overflow_path_state()
 
     log2 = RawOverflowLog(tmp_path, "unit-1")
     log2.append("run2 line")
@@ -70,14 +45,6 @@ def test_first_write_of_a_run_truncates_previous_content(tmp_path: Path) -> None
 
 
 def test_a_later_writer_in_one_run_continues_the_file(tmp_path: Path) -> None:
-    """Within a run, a second writer for a path must not erase the first.
-
-    A writer is per-acquisition: ``drop_unit`` forgets a unit's log, the
-    readers build one per agent invocation, and the weak registry evicts
-    an instance once nothing holds it. Truncating on each acquisition
-    left a run's transcript holding only its last invocation, and erased
-    condensed bodies the rendered records still point at by path.
-    """
     log1 = RawOverflowLog(tmp_path, "unit-1")
     log1.append("wave1 line")
     log1.close()
@@ -93,20 +60,13 @@ def test_a_later_writer_in_one_run_continues_the_file(tmp_path: Path) -> None:
 
 
 def test_the_byte_cap_survives_a_new_writer(tmp_path: Path) -> None:
-    """The cap belongs to the FILE, not to whichever writer holds it.
-
-    Resetting the byte count on each acquisition let a run exceed the
-    ceiling arbitrarily by re-acquiring the log.
-    """
     log1 = RawOverflowLog(tmp_path, "unit-1", max_bytes=40)
     log1.append("x" * 30)
     log1.close()
 
     log2 = RawOverflowLog(tmp_path, "unit-1", max_bytes=40)
 
-    # ``size_bytes`` is this writer's own count, not the file's.
     assert log2.size_bytes == 0
-    # ...but the cap still knows about the 31 bytes already on disk.
     assert log2.append("y" * 30) is False
     assert log2.is_disabled
 
@@ -115,34 +75,21 @@ def test_unit_id_sanitization(tmp_path: Path) -> None:
     log = RawOverflowLog(tmp_path, "unit/with:special chars!")
     log.append("test")
     log.flush()
-    # S-23 (wt-028-display): the verbatim capture derives its id from
-    # ``safe_id_for(unit_id, model)`` so it pairs with the rendered
-    # record. ``safe_id_for`` strips leading AND trailing underscores,
-    # so the trailing ``_`` from the historical sanitizer is gone.
     assert log.path.name == "unit_with_special_chars.log"
     assert log.path.exists()
     log.close()
 
 
 def test_unit_id_with_model_pairs_with_rendered_record(tmp_path: Path) -> None:
-    """S-23 (wt-028-display): the verbatim capture and the rendered record
-    share the same ``safe_id_for(agent, model)`` id so condensation
-    markers in the rendered record point at a real file on disk.
-    """
     from ralph.display.record_writer import rendered_record_path, safe_id_for
 
     log = RawOverflowLog(tmp_path, "pi", model="minimax-MiniMax-3")
     log.append("verbatim line")
     log.flush()
     rendered = rendered_record_path(tmp_path, "pi", model="minimax-MiniMax-3")
-    # Both files share the same ``safe_id_for`` id; the verbatim
-    # capture adds ``.log`` and the rendered record adds ``.rendered.log``.
     shared_id = safe_id_for("pi", "minimax-MiniMax-3")
     assert log.path.name == f"{shared_id}.log"
     assert rendered.name == f"{shared_id}.rendered.log"
-    # The two files have the same parent directory -- the rendered
-    # record's condensation markers can point at the verbatim capture
-    # by relative path (``safe_id_for(pi, model).log``).
     assert log.path.parent == rendered.parent
     log.close()
 
@@ -161,17 +108,13 @@ def test_relative_reference_absolute_fallback(tmp_path: Path) -> None:
 
 
 def test_silent_noop_when_parent_is_a_file(tmp_path: Path) -> None:
-    # Create a file where the .agent/raw directory should be
     agent_dir = tmp_path / ".agent"
     agent_dir.mkdir()
     raw_file = agent_dir / "raw"
     raw_file.write_text("not a directory", encoding="utf-8")
 
     log = RawOverflowLog(tmp_path, "unit-1")
-    # Should not raise even though the path is a file, not a directory
     log.append("test line")
-    # Black-box check: the per-unit log file should not exist as a regular file
-    # since mkdir failed; the append silently no-oped.
     assert not log.path.is_file()
 
 
@@ -210,8 +153,8 @@ def test_append_hard_stops_at_max_bytes(tmp_path: Path) -> None:
     max_bytes = 16
     log = RawOverflowLog(tmp_path, "unit-1", max_bytes=max_bytes)
 
-    assert log.append("1234567") is True  # 8 bytes with trailing newline
-    assert log.append("abcdefg") is True  # 8 bytes with trailing newline
+    assert log.append("1234567") is True
+    assert log.append("abcdefg") is True
     assert log.append("overflow") is False
 
     log.flush()
@@ -243,10 +186,6 @@ def test_size_bytes_returns_bytes_written_when_disabled(tmp_path: Path) -> None:
 def test_size_bytes_authoritative_even_when_file_unlinked_after_write(
     tmp_path: Path,
 ) -> None:
-    """Watchdog liveness contract: size_bytes must advance on every append,
-    independent of on-disk visibility. A file that an operator, a sanitizer,
-    or a chmod-000 directory just unlinked must NOT zero the counter back.
-    """
     log = RawOverflowLog(tmp_path, "unit-1")
     log.append("some content")
     log.flush()
@@ -254,19 +193,11 @@ def test_size_bytes_authoritative_even_when_file_unlinked_after_write(
     assert log.path.exists()
     log.path.unlink()
     assert not log.path.exists()
-    # The in-memory counter is the authoritative liveness signal;
-    # the watchdog must still see growth.
     assert log.size_bytes == expected
     log.close()
 
 
 def test_size_bytes_returns_zero_when_prior_run_file_exists(tmp_path: Path) -> None:
-    """``size_bytes`` counts what THIS writer wrote, never the file.
-
-    The idle watchdog's log-growth probe reads this and treats a nonzero
-    value as "this invocation has produced output", so a writer that
-    inherits an earlier invocation's bytes must still start at zero.
-    """
     log1 = RawOverflowLog(tmp_path, "unit-1")
     log1.append("prior run content")
     log1.flush()
@@ -318,14 +249,9 @@ def test_is_disabled_true_after_io_error(tmp_path: Path, monkeypatch: pytest.Mon
     assert log.is_disabled is True
 
 
-# New tests for buffered handle, time-based flush, and explicit close().
-
-
 def test_append_keeps_handle_open_and_buffers(tmp_path: Path) -> None:
-    """Writes are buffered; flush() makes them visible on disk."""
     log = RawOverflowLog(tmp_path, "unit-1", flush_interval_seconds=3600.0)
     log.append("buffered line")
-    # size_bytes must track appends immediately (watchdog liveness contract)
     assert log.size_bytes == len(b"buffered line\n")
     log.flush()
     assert "buffered line\n" in log.path.read_text(encoding="utf-8")
@@ -337,7 +263,7 @@ def test_time_based_flush(tmp_path: Path) -> None:
     log = RawOverflowLog(tmp_path, "unit-1", flush_interval_seconds=5.0, now=lambda: fake_time[0])
     log.append("first")
     fake_time[0] = 6.0
-    log.append("second")  # crosses the interval -> flush
+    log.append("second")
     log.close()
     content = log.path.read_text(encoding="utf-8")
     assert "first\n" in content
@@ -349,7 +275,7 @@ def test_close_flushes_and_reopen_appends(tmp_path: Path) -> None:
     log.append("before close")
     log.close()
     assert "before close\n" in log.path.read_text(encoding="utf-8")
-    log.append("after close")  # reopens in append mode
+    log.append("after close")
     log.close()
     content = log.path.read_text(encoding="utf-8")
     assert "before close\n" in content
@@ -360,32 +286,17 @@ def test_close_is_idempotent(tmp_path: Path) -> None:
     log = RawOverflowLog(tmp_path, "unit-1")
     log.append("x")
     log.close()
-    log.close()  # no raise
+    log.close()
 
 
 @pytest.mark.asyncio
 async def test_executor_drop_unit_closes_raw_log(tmp_path: Path) -> None:
-    """``SubprocessAgentExecutor.drop_unit()`` must close the unit's raw
-    capture and flush its buffered tail to disk (RFC-013 P1).
-
-    Black-box: the executor is built through its PUBLIC constructor and
-    driven through the PUBLIC ``run()`` with an injected fake process
-    manager, so no real subprocess is spawned and no private attribute is
-    touched. The assertions read observable state only -- the bytes the
-    writer counted, and the bytes on disk.
-    """
     from ralph.display.activity_router import ActivityRouter
     from ralph.display.raw_overflow import get_or_create_raw_overflow_log
     from ralph.pipeline.work_units import WorkUnit
     from ralph.process import ProcessManager, ProcessManagerPolicy
     from ralph.testing.fake_process import FakeControllableAsyncProcess, FakePsutil
 
-    # The registry hands out ONE writer per resolved path, and the first
-    # caller's flush interval wins (documented in
-    # ``get_or_create_raw_overflow_log``). Acquiring the capture here with
-    # an hour-long flush interval pins the periodic flush out of the way,
-    # so the tail can only reach disk when ``drop_unit`` closes the
-    # capture -- the behaviour under test, not a timer.
     capture = get_or_create_raw_overflow_log(tmp_path, "unit-x", flush_interval_seconds=3600.0)
     capture_path = capture.path
     assert capture_path == tmp_path / ".agent" / "raw" / "unit-x.log"
@@ -433,10 +344,6 @@ async def test_executor_drop_unit_closes_raw_log(tmp_path: Path) -> None:
         on_status=lambda _status: None,
     )
 
-    # The run appended the agent's line to the capture and left it
-    # BUFFERED -- the bytes are still in the writer's buffer, so the
-    # capture file on disk is still empty. That empty file IS the
-    # observable proof the writer still holds its buffered handle open.
     assert capture.size_bytes > 0, "the run must have appended the agent's line to the capture"
     assert capture_path.read_text(encoding="utf-8") == "", (
         "the agent's line must still be buffered, not on disk, before the unit is dropped"
@@ -444,60 +351,22 @@ async def test_executor_drop_unit_closes_raw_log(tmp_path: Path) -> None:
 
     executor.drop_unit("unit-x")
 
-    # drop_unit closed the capture, and that close flushed the buffered
-    # tail to disk.
     assert "pending line\n" in capture_path.read_text(encoding="utf-8")
 
 
-# ---------------------------------------------------------------------------
-# DA-001: registry teardown closes buffered handles before finalization.
-#
-# Pre-fix: ``_REGISTRY`` held strong ``dict`` references to every
-# ``RawOverflowLog`` ever constructed, so a test or run that ended
-# without an explicit ``drop_unit`` / ``stop()`` reached interpreter
-# finalization with the buffered file handle still open. ``python -W
-# error::ResourceWarning`` (the ``make verify`` invariant) raised
-# ``ResourceWarning: unclosed file ...`` for every such case.
-#
-# Post-fix: the registry is a ``WeakValueDictionary`` and each instance
-# registers a ``weakref.finalize`` callback that closes the handle
-# before the instance is collected. A test that lets go of its last
-# strong reference MUST NOT leave the buffered handle open.
-# ---------------------------------------------------------------------------
-
-
 def test_weakref_finalize_closes_handle_on_gc(tmp_path: Path) -> None:
-    """An orphaned ``RawOverflowLog`` closes its handle when collected.
-
-    Constructs an instance via ``RawOverflowLog(...)`` directly (i.e.
-    the pre-fix-style direct constructor that bypasses the registry),
-    appends a line to force the buffered handle to open, drops the
-    last strong reference, and asserts the handle is closed after
-    releasing its final strong reference -- without ever calling ``close()`` /
-    ``drop_unit`` / ``stop()``.
-    """
     import weakref
 
     log = RawOverflowLog(tmp_path, "u1")
     assert log.append("survive until GC\n") is True
     log.flush()
     path = log.path
-    # The handle is open and buffered: ``append`` reported success only
-    # after writing THROUGH a live handle, and the explicit flush pushed
-    # those bytes to disk.
     assert log.size_bytes == len(b"survive until GC\n")
     assert path.read_bytes() == b"survive until GC\n"
 
-    # Capture a WEAK reference so we can read the post-finalize
-    # state without keeping the instance alive ourselves.
     weak_log: weakref.ref[RawOverflowLog] = weakref.ref(log)
     del log
 
-    # The instance has been collected; ``weak_log()`` resolves to
-    # None. Confirm the handle's on-disk file is intact (the append
-    # before finalization must have flushed), and confirm a fresh
-    # registry call returns a NEW instance -- proving the previous
-    # one was actually reaped.
     assert weak_log() is None, (
         "the instance must be garbage-collected after dropping the last strong reference"
     )
@@ -508,10 +377,6 @@ def test_weakref_finalize_closes_handle_on_gc(tmp_path: Path) -> None:
     fresh = RawOverflowLog(tmp_path, "u1")
     try:
         assert fresh is not None
-        # A fresh writer has written nothing and holds no open handle:
-        # the capture on disk still holds EXACTLY the previous writer's
-        # payload, so the fresh writer neither appended to it nor
-        # truncated it.
         assert fresh.size_bytes == 0
         assert path.read_bytes() == b"survive until GC\n"
     finally:
@@ -519,24 +384,12 @@ def test_weakref_finalize_closes_handle_on_gc(tmp_path: Path) -> None:
 
 
 def test_registry_holds_weak_reference_only(tmp_path: Path) -> None:
-    """The per-path registry must NOT keep instances alive on its own.
-
-    Pre-fix: a strong ``dict`` entry kept the instance reachable
-    across test boundaries, leaking the buffered handle past the
-    test's lifetime. Post-fix: the registry is a
-    ``WeakValueDictionary`` whose strong reference count on the
-    stored value is zero; once the caller releases its reference,
-    a subsequent ``get_or_create_raw_overflow_log`` returns a NEW
-    instance (the old one was reaped).
-    """
     from ralph.display.raw_overflow import get_or_create_raw_overflow_log
 
     first = get_or_create_raw_overflow_log(tmp_path, "u-weak-registry")
     first.append("register check\n")
     first.flush()
 
-    # Drop the only strong reference and force collection. A second
-    # lookup MUST return a fresh instance, not the same one.
     weak_first: weakref.ref[RawOverflowLog] = weakref.ref(first)
     del first
     assert weak_first() is None, (
@@ -546,8 +399,6 @@ def test_registry_holds_weak_reference_only(tmp_path: Path) -> None:
 
     second = get_or_create_raw_overflow_log(tmp_path, "u-weak-registry")
     assert second is not None
-    # A second append must succeed (i.e. the instance is fresh, the
-    # file handle is closed, no stale state blocks the write).
     assert second.append("after-reap\n") is True
     second.flush()
     on_disk = second.path.read_bytes()
@@ -556,9 +407,6 @@ def test_registry_holds_weak_reference_only(tmp_path: Path) -> None:
 
 
 def test_close_all_raw_overflow_logs_closes_all_handles(tmp_path: Path) -> None:
-    """Explicit teardown via ``close_all_raw_overflow_logs()`` closes
-    every registered handle, even when the caller has not yet dropped
-    its own strong reference."""
     from ralph.display.raw_overflow import (
         close_all_raw_overflow_logs,
         get_or_create_raw_overflow_log,
@@ -566,22 +414,16 @@ def test_close_all_raw_overflow_logs_closes_all_handles(tmp_path: Path) -> None:
 
     log_a = get_or_create_raw_overflow_log(tmp_path, "u-a")
     log_b = get_or_create_raw_overflow_log(tmp_path, "u-b")
-    # Force the buffered handle open on each.
     assert log_a.append("a\n") is True
     assert log_b.append("b\n") is True
 
     close_all_raw_overflow_logs()
 
-    # The buffered payload must have hit disk before the close.
     a_on_disk = log_a.path.read_bytes()
     b_on_disk = log_b.path.read_bytes()
     assert b"a\n" in a_on_disk
     assert b"b\n" in b_on_disk
 
-    # A subsequent append on the now-disabled instance must be a
-    # no-op (the close_all path also called ``disable()``).
-    # PUBLIC observation of the same contract: a disabled writer holds
-    # no open handle and accepts no further bytes.
     assert log_a.is_disabled is True, (
         "close_all_raw_overflow_logs must release every buffered handle"
     )
@@ -596,24 +438,6 @@ def test_close_all_raw_overflow_logs_closes_all_handles(tmp_path: Path) -> None:
 def test_long_thinking_emits_one_close_line_no_checkpoints_handle_closed(
     tmp_path: Path,
 ) -> None:
-    """Regression for the measured 2026-08-06 unclosed-handle finding.
-
-    ``test_long_thinking_emits_one_close_line_no_checkpoints`` (in
-    ``test_display_thinking_preview_reproduction_thinking_preview_and_transcript_cleanup.py``)
-    exercises the thinking-block close path with a payload large
-    enough to trigger ``condensed_flag`` -- the condenser writes the
-    verbatim block to the raw overflow log via ``overflow.append()``,
-    opening a buffered file handle. Pre-fix, the test never called
-    ``drop_unit`` / ``stop()`` and the handle leaked past finalization,
-    triggering ``ResourceWarning`` under ``-W error::ResourceWarning``.
-
-    This regression constructs the same scenario directly (a
-    ``ParallelDisplay`` whose thinking block exceeds the condenser
-    soft limit, no explicit stop) and asserts the buffered payload
-    hits disk (so the close happened with the buffered bytes still
-    intact) and a subsequent ``get_or_create_raw_overflow_log``
-    returns a fresh instance -- proving the previous one was reaped.
-    """
     from rich.console import Console
 
     from ralph.display.activity_model import ActivityEventKind
@@ -647,17 +471,8 @@ def test_long_thinking_emits_one_close_line_no_checkpoints_handle_closed(
     out = buf.getvalue()
     assert "00 " + long_content in out, "joined passage must be in the rendered output"
 
-    # Confirm the fixture actually exercised the regression surface:
-    # the raw overflow log was appended to, opening a buffered handle.
-    # Force a flush first so the buffered bytes hit disk before we
-    # release the strong references.
-    # Condensed bodies are display-authored, so they land in the
-    # ``.overflow.log`` sibling rather than the verbatim capture.
-    # policy: white-box-exception
     overflow = pd._condensed_logs.get(unit_id)
     assert overflow is not None
-    # The writer counted the bytes it buffered, so the append path ran
-    # and the buffered handle is open at this point.
     assert overflow.size_bytes > 0, (
         "fixture must trigger the raw-overflow append path so the "
         "buffered handle is open at this point"
@@ -669,18 +484,11 @@ def test_long_thinking_emits_one_close_line_no_checkpoints_handle_closed(
 
     pd.drop_unit(unit_id)
 
-    # drop_unit released the capture: the writer is disabled, so it
-    # holds no open handle and accepts no further bytes.
     assert overflow.is_disabled is True
     assert overflow.append("after-drop\n") is False
 
 
 def test_cap_warning_is_emitted_once_per_file(tmp_path: Path) -> None:
-    """The 'log full' warning belongs to the file, not to each writer.
-
-    A writer is per agent invocation, so a per-instance warning meant one
-    WARNING per invocation for the rest of a run once a capture filled.
-    """
     from loguru import logger
 
     from ralph.display.raw_overflow import reset_raw_overflow_path_state
@@ -702,21 +510,8 @@ def test_cap_warning_is_emitted_once_per_file(tmp_path: Path) -> None:
 
 
 def test_gc_actually_closes_the_buffered_handle(tmp_path: Path) -> None:
-    """The finalizer must close the handle, not merely be registered.
-
-    It used to receive a weak reference to its owner. ``weakref.finalize``
-    runs AFTER the referent is cleared, so that reference always resolved
-    to ``None`` and the callback did nothing -- the handle stayed open
-    until CPython's buffered-writer destructor reached it, and the
-    ``ResourceWarning`` the hook exists to prevent came back.
-
-    Asserting on the handle itself is the point: the previous tests
-    checked only that GC had run and that flushed bytes were on disk,
-    both of which stay true with the hook completely broken.
-    """
     log = RawOverflowLog(tmp_path, "unit-finalize")
     log.append("payload")
-    # policy: white-box-exception
     handle_box = log._handle_box
     assert handle_box[0] is not None, "precondition: the handle is open"
     assert not handle_box[0].closed
@@ -727,7 +522,6 @@ def test_gc_actually_closes_the_buffered_handle(tmp_path: Path) -> None:
 
 
 def test_dropping_a_log_emits_no_resource_warning(tmp_path: Path) -> None:
-    """The DA-001 contract, stated as the warning it exists to prevent."""
     import warnings
 
     with warnings.catch_warnings():
@@ -738,13 +532,6 @@ def test_dropping_a_log_emits_no_resource_warning(tmp_path: Path) -> None:
 
 
 def test_detection_is_bounded_on_a_badly_corrupted_capture(tmp_path: Path) -> None:
-    """A corrupt capture must not cost more than the run it is grading.
-
-    Unbounded, this measured 5.2 million break objects in 119 s and
-    1.5 GB for a 10 MB file -- inside phase close, in exactly the case
-    the detector exists for. Every consumer reads the first break; the
-    rest was pure cost.
-    """
     from ralph.config.enums import AgentTransport
     from ralph.display.raw_overflow import MAX_REPORTED_BREAKS, detect_raw_log_breaks
 
@@ -759,14 +546,6 @@ def test_detection_is_bounded_on_a_badly_corrupted_capture(tmp_path: Path) -> No
 
 
 def test_a_nul_hole_yields_one_chunk_not_one_per_byte(tmp_path: Path) -> None:
-    """A NUL hole is the measured corruption shape; it must stay cheap.
-
-    Splitting the payload on every NUL allocated one object per byte
-    before any grading ran, so the break cap could not bound it -- 7.9 s
-    and 517 MB at the file cap, inside phase close. The invariant is
-    structural, not timing: a run of NULs is ONE step, however long it
-    is.
-    """
     del tmp_path
     from ralph.display.raw_overflow import nul_separated_chunks
 
@@ -777,12 +556,10 @@ def test_a_nul_hole_yields_one_chunk_not_one_per_byte(tmp_path: Path) -> None:
     assert len(chunks) == 2, f"a NUL run must not yield a chunk per byte: {len(chunks)}"
     assert chunks[0][1] == b'{"ok":1}\n'
     assert chunks[1][1] == b'{"after":1}\n'
-    # Offsets stay absolute so a reported break names a real byte.
     assert chunks[1][0] == len(b'{"ok":1}\n') + 100_000
 
 
 def test_a_nul_hole_is_still_reported_as_corruption(tmp_path: Path) -> None:
-    """Cheapness must not cost detection."""
     from ralph.config.enums import AgentTransport
     from ralph.display.raw_overflow import detect_raw_log_breaks
 
@@ -796,14 +573,6 @@ def test_a_nul_hole_is_still_reported_as_corruption(tmp_path: Path) -> None:
 
 
 def test_two_agents_never_share_one_graded_capture() -> None:
-    """``--output-format=stream-json`` is not unique to Claude.
-
-    kimi ships it as its default output flag and every ccs alias
-    inherits it, so an ungated check filed those transcripts under
-    ``claude-headless`` -- the same path headless Claude is graded on.
-    One agent then grades another's corruption and quotes another's
-    transport failures into its own verdict.
-    """
     from ralph.config.enums import AgentTransport
     from ralph.config.models import AgentConfig
     from ralph.display.raw_overflow import raw_log_unit_id_for
@@ -818,10 +587,6 @@ def test_two_agents_never_share_one_graded_capture() -> None:
         output_flag="--output-format=stream-json",
         transport=AgentTransport.GENERIC,
     )
-    # The registry SYNTHESIZES this shape for every ``ccs/<alias>`` name
-    # (``registry._resolve_dynamic_ccs_agent`` builds ``f"ccs {alias}"``).
-    # A bare ``cmd="glm"`` is a shape it never produces, and asserting on
-    # it hid the fact that all these aliases shared one ``ccs.log``.
     ccs_alias = AgentConfig(
         cmd="ccs glm",
         output_flag="--output-format=stream-json",
@@ -837,7 +602,6 @@ def test_two_agents_never_share_one_graded_capture() -> None:
     assert raw_log_unit_id_for(kimi).startswith("kimi-")
     assert raw_log_unit_id_for(ccs_alias).startswith("ccs-glm-")
     assert raw_log_unit_id_for(other_ccs_alias).startswith("ccs-mm-")
-    # The point of all of it: no two of these may share a capture.
     identities = {
         raw_log_unit_id_for(config)
         for config in (headless_claude, kimi, ccs_alias, other_ccs_alias)
@@ -846,14 +610,6 @@ def test_two_agents_never_share_one_graded_capture() -> None:
 
 
 def test_an_evicted_queue_line_still_reaches_the_capture() -> None:
-    """The bounded queue must not be able to lose agent output silently.
-
-    It drops its oldest entry when the producer outruns the consumer,
-    and the capture is written consumer-side -- so a dropped line never
-    reached the transcript. Measured before the sink: a 1000-line burst
-    reached the consumer as 256, and the missing 744 left a file that
-    still parsed, so nothing reported the loss.
-    """
     from ralph.agents.invoke import BoundedLinesQueue
 
     evicted: list[str] = []
@@ -871,15 +627,6 @@ def test_an_evicted_queue_line_still_reaches_the_capture() -> None:
 
 
 def test_an_agent_invoked_by_path_keeps_its_identity() -> None:
-    """The identity is keyed on the executable BASENAME.
-
-    Agents are commonly invoked by absolute path or through a version
-    manager's shim. Keying on the raw command token made those miss
-    every executable-gated clause -- a path-invoked headless Claude was
-    filed as plain ``claude``, i.e. into the INTERACTIVE agent's
-    capture, which is the collision this identity exists to prevent --
-    and it put path separators into a filename.
-    """
     from ralph.config.enums import AgentTransport
     from ralph.config.models import AgentConfig
     from ralph.display.raw_overflow import raw_log_unit_id_for
@@ -900,12 +647,6 @@ def test_an_agent_invoked_by_path_keeps_its_identity() -> None:
 
 
 def test_a_codex_subcommand_is_not_treated_as_a_dispatcher_alias() -> None:
-    """``exec`` is a subcommand of one runtime, not a choice of runtime.
-
-    Only a multiplexer's first positional names a different agent. Folding
-    every subcommand into the identity would rename existing captures for
-    no gain.
-    """
     from ralph.config.enums import AgentTransport
     from ralph.config.models import AgentConfig
     from ralph.display.raw_overflow import raw_log_unit_id_for
@@ -916,16 +657,6 @@ def test_a_codex_subcommand_is_not_treated_as_a_dispatcher_alias() -> None:
 
 
 def test_the_nul_scan_is_lazy_by_construction() -> None:
-    """The scan must yield, not materialise.
-
-    The point of replacing ``payload.split(b"\x00")`` was that the split
-    allocated one object per NUL BEFORE any grading ran, so
-    ``MAX_REPORTED_BREAKS`` could not bound the work. A version that
-    collects its chunks into a list and returns it produces identical
-    output for every payload -- and reintroduces exactly the cost the
-    replacement removed. Laziness is the contract, so it is asserted
-    directly rather than inferred from a wall clock.
-    """
     import inspect
 
     from ralph.display.raw_overflow import nul_separated_chunks
@@ -934,13 +665,6 @@ def test_the_nul_scan_is_lazy_by_construction() -> None:
 
 
 def test_a_nul_run_spanning_window_boundaries_keeps_offsets_absolute() -> None:
-    """The run is skipped in windows; the arithmetic must not drift.
-
-    ``_skip_nul_run`` advances through a hole in 64 KiB windows so the
-    scan runs inside ``bytes.lstrip`` instead of a Python loop. Each
-    window boundary is a place for an off-by-one to hide, and the offset
-    it corrupts is the byte number quoted to an operator.
-    """
     from ralph.display.raw_overflow import nul_separated_chunks
 
     window = 1 << 16
@@ -955,13 +679,6 @@ def test_a_nul_run_spanning_window_boundaries_keeps_offsets_absolute() -> None:
 
 
 def test_a_payload_that_is_entirely_nul_yields_no_content() -> None:
-    """The degenerate hole must terminate, and must not invent content.
-
-    Two ways this went wrong before: stepping one byte at a time turned
-    a 128 KiB hole into 128 Ki empty chunks, and a bad terminator left
-    the scan looping. A single empty tail chunk is fine -- it grades as
-    nothing -- but no chunk may carry bytes that are not in the payload.
-    """
     from ralph.display.raw_overflow import nul_separated_chunks
 
     chunks = list(nul_separated_chunks(b"\x00" * (1 << 17)))

@@ -1,4 +1,3 @@
-"""SessionDrain — pipeline drain identity for a Ralph session."""
 
 from __future__ import annotations
 
@@ -6,7 +5,6 @@ from enum import StrEnum
 
 
 class SessionDrain(StrEnum):
-    """Pipeline drain identity for a Ralph session."""
 
     PLANNING = "planning"
     DEVELOPMENT = "development"

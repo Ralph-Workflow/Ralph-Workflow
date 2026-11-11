@@ -18,7 +18,7 @@ IMPORT_ERROR_MATCH = "pip install ralph-workflow\\[web-search\\]"
 def _import_tavily_module() -> object:
     try:
         return import_module("ralph.mcp.websearch.backends.tavily")
-    except ModuleNotFoundError as exc:  # pragma: no cover - exercised in RED phase
+    except ModuleNotFoundError as exc:
         raise AssertionError("ralph.mcp.websearch.backends.tavily should exist") from exc
 
 

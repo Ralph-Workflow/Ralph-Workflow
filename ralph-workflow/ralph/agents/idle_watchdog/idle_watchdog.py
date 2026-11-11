@@ -1,82 +1,3 @@
-"""Idle watchdog for detecting stalled agents.
-
-Two-State Invariant
--------------------
-
-The watchdog is one half of the recovery contract; the recovery
-controller is the other. The pipeline can only enter TWO recovery
-states; no third state is allowed:
-
-  1. **Exponential backoff to the next agent** -- driven by
-     ``AgentUnavailabilityTracker.mark_unavailable`` in
-     ``ralph/recovery/agent_unavailability_tracker.py``. The current
-     agent is marked unavailable for a per-reason backoff; the chain
-     advances to the preferred available agent whose cooldown has expired.
-     Priority agent selection in ``select_preferred_agent`` reconsiders
-     earlier agents whose cooldown has expired.
-
-  2. **Retry with the same agent** -- driven by
-     ``AgentChain.record_retry``. The same agent is retried in-place
-     (chain.retries is incremented; the budget is debited but the
-     chain index does not advance).
-
-The watchdog contributes to state (1) only indirectly: when the
-watchdog fires and the controller classifies the failure as
-unavailable, the tracker applies the per-reason backoff. The
-watchdog contributes to state (2) when it fires and the controller
-classifies the failure as retryable.
-
-Hard rules
-----------
-
-  - The watchdog NEVER calls ``sys.exit``, ``os._exit``, or
-    ``raise SystemExit``. The run loop owns the exit decision.
-  - The watchdog NEVER marks an agent as permanently unavailable.
-    Every fire reason is transient; the cooldown math is owned by
-    ``AgentUnavailabilityTracker`` and the only way for an agent to
-    leave the unavailable set is for the cooldown to expire.
-  - Every non-absolute fire is gated by the ``StuckClassifier``
-    (``_stuck_classifier.py``) returning ``StuckKind.STUCK``. The
-    absolute ``SESSION_CEILING_EXCEEDED`` reason is the ONLY reason
-    that bypasses the gate (it is an operator-set hard cap, not a
-    stuck-detection signal). Every other reason -- including
-    ``CHILDREN_PERSIST_TOO_LONG`` -- is gated: the watchdog consults
-    ``classify_stuck`` and returns CONTINUE for any non-STUCK kind
-    so a productive session that has not yet been classified as
-    "stuck" is not killed.
-  - The watchdog is the sole owner of in-stream fire decisions;
-    ``PostExitWatchdog`` is the sole owner of post-exit fire
-    decisions. The import-time assertion on
-    ``WatchdogFireReason.__members__`` (below) locks the enum set
-    so a future PR cannot silently widen or narrow the fire set
-    without updating the watchdog owner.
-
-Channel freshness gate
-----------------------
-
-The ``evaluate()`` method consults a per-channel evidence summary
-before returning ``WatchdogVerdict.FIRE``. A fire is deferred
-(``WatchdogVerdict.CONTINUE``) when any of the following are true:
-
-  - ``state.is_waiting_state`` is True (the pipeline has already
-    committed to a wait -- this is the strongest signal and is
-    checked first).
-  - The connectivity monitor reports ``offline``.
-  - A first-party channel (``mcp_tool`` or ``subagent_output``) is
-    fresher than ``activity_evidence_ttl_seconds``.
-  - The subagent-liveness side-channel is fresh.
-  - The ``classify_quiet`` strategy returns ``WAITING_ON_CHILD`` or
-    ``RESUMABLE_CONTINUE`` (these branches are evaluated by the
-    live ``classify_quiet`` callable the watchdog receives from
-    ``evaluate()`` -- the watchdog stores the most recent callable
-    in ``self._classify_quiet_provider`` so the gate can consult it
-    on every ``_classify_stuck_now`` call).
-
-The classifier is a deterministic 7-kind enum (THINKING, LOADING,
-WAITING_ON_CONNECTIVITY, TRANSITIONING, STUCK, DUPLICATE_KILL,
-SILENT_SUBAGENT) and is a pure function of its inputs.
-See ``_stuck_classifier.py`` for the full contract.
-"""
 
 from __future__ import annotations
 
@@ -187,11 +108,6 @@ if TYPE_CHECKING:
     from .watchdog_verdict import WatchdogVerdict
 
 
-# Lock the WatchdogFireReason enum set. IdleWatchdog is the sole owner of
-# in-stream fire decisions; PostExitWatchdog is the sole owner of post-exit
-# fire decisions. Any future addition (or removal) of a reason requires
-# updating this assertion AND the watchdog owner's classification logic
-# so a future PR cannot silently widen (or narrow) the fire set.
 EXPECTED_FIRE_REASONS: frozenset[str] = frozenset(
     {
         WatchdogFireReason.NO_OUTPUT_DEADLINE.value,
@@ -226,60 +142,6 @@ if _actual != EXPECTED_FIRE_REASONS:
 
 @dataclass
 class IdleWatchdog:
-    """Tracks agent idle time and decides when to fire the timeout.
-
-    The watchdog owns the last_activity timestamp; the caller's loop must NEVER
-    mutate `_last_activity` directly. Activity must flow through `record_activity()`,
-    which preserves the cumulative WAITING_ON_CHILD ceiling while advancing the
-    idle baseline. Direct resets here previously caused a false-negative bug where
-    WAITING_ON_CHILD deferred the deadline forever.
-
-    Cumulative WAITING_ON_CHILD time is an absolute ceiling that is preserved across
-    every transition (heartbeat activity, drain windows, classify_quiet outcomes).
-    Once recorded, cumulative time never decays during the session — this mirrors
-    max_session_seconds semantics so neither ceiling can be defeated by a process
-    that alternates between producing output and waiting on children.
-
-    The session ceiling (max_session_seconds) is checked first on every evaluate()
-    call and cannot be defeated by activity — record_activity() does not reset it.
-
-    Status events are emitted via the optional listener.
-
-    - ENTERED once when WAITING_ON_CHILD deferral begins.
-    - PROGRESS at most once per waiting_status_interval_seconds (rate-limited).
-    - SUSPECTED_FROZEN once per WAITING run when suspect threshold is crossed.
-    - EXITED when transitioning out of WAITING_ON_CHILD.
-    - HARD_STOP immediately before returning FIRE for CHILDREN_PERSIST_TOO_LONG.
-
-    Listener exceptions are caught and logged at DEBUG; they never propagate.
-
-    Per-channel activity evidence (NEW): the watchdog tracks three non-stdout
-    channels in addition to the stdout baseline.
-
-      - mcp_tool: MCP tools/call invocations/completions routed via the
-        Ralph MCP server. Updated by ``record_mcp_tool_call``.
-      - subagent: subagent progress signals (heartbeat, phase change) routed
-        from the opencode child_liveness registry. Updated by
-        ``record_subagent_work``.
-      - workspace: workspace file change events captured by
-        WorkspaceMonitor. Updated by ``record_workspace_event``, which is
-        invoked by the readers' ``on_event`` callback passed to
-        ``WorkspaceMonitor.set_on_event`` (the monitor is constructed in
-        ``invoke_agent`` before the per-run watchdog exists, so the
-        readers register the callback on the monitor immediately after
-        the watchdog is created in ``read_lines``; the binding is
-        cleared in the ``finally`` block so a stale callback can never
-        fire after the run ends).
-
-    The three recorders do NOT touch ``_last_activity`` (the stdout baseline);
-    the existing "stdout only resets idle baseline" invariant is preserved.
-    Instead, they update per-channel ``_last_at`` timestamps and counters. The
-    verdict hook in ``evaluate()`` defers a NO_OUTPUT_DEADLINE fire when ANY
-    non-stdout channel is fresher than ``activity_evidence_ttl_seconds``,
-    returning CONTINUE with a debug log. Absolute ceilings
-    (SESSION_CEILING_EXCEEDED, CHILDREN_PERSIST_TOO_LONG) are checked before
-    the deferral hook and remain absolute.
-    """
 
     _config: TimeoutPolicy
     _clock: Clock
@@ -288,217 +150,50 @@ class IdleWatchdog:
     _last_meaningful_output_at: float | None = field(default=None, init=False)
     _has_meaningful_output: bool = field(default=False, init=False)
     _any_output_count: int = field(default=0, init=False)
-    # Cumulative byte size of the observed output signals (the same lines
-    # ``_any_output_count`` counts). Feeds the shared bounded-output
-    # significance rule so the live broken-agent timer can distinguish a
-    # genuinely tiny harness-only stream from a large transcript that was
-    # merely never classified as meaningful LLM output.
     _observed_output_bytes: int = field(default=0, init=False)
     _captured_session_id: str | None = field(default=None, init=False)
     _process_alive: bool = field(default=True, init=False)
-    #: When the process was FIRST observed dead, so a caller can tell a
-    #: settled exit from one sampled the instant it happened.
     _process_exit_observed_at: float | None = field(default=None, init=False)
     _invocation_started_at: float | None = field(default=None, init=False)
     _waiting_on_child_started_at: float | None = field(default=None, init=False)
     _cumulative_waiting_on_child_seconds: float = field(default=0.0, init=False)
-    # STRICTLY_STUCK run counter. Set when the corroborator reports an
-    # alive_by in the strictly-stuck set so the next call can compute
-    # the elapsed run. Reset to None on transitions OUT of the strictly-
-    # stuck alive_by set so a brief liveness gap does not accumulate.
     _strictly_stuck_run_started_at: float | None = field(default=None, init=False)
     _in_drain_window: bool = field(default=False, init=False)
     _drain_started_at: float | None = field(default=None, init=False)
     _last_fire_reason: WatchdogFireReason | None = field(default=None, init=False)
-    # The ``StuckKind`` the gate used to defer the most recent
-    # would-be fire.  ``None`` when the watchdog has not deferred a
-    # fire yet OR when the most recent fire actually fired (the
-    # kind is only set when ``_gate_fire`` returns CONTINUE).  The
-    # field is the runtime surface for the SILENT_SUBAGENT
-    # diagnostic described in AC-05: the watchdog's
-    # ``last_fire_reason`` property collapses every non-FIRE
-    # deferral to ``DEFERRED_BY_STUCK_CLASSIFIER``, but
-    # ``last_deferred_kind`` retains the precise kind (e.g.
-    # ``StuckKind.SILENT_SUBAGENT``) so an operator can see WHY a
-    # would-be fire was deferred ("a subagent dispatched then went
-    # silent for >180s").
     _last_deferred_kind: StuckKind | None = field(default=None, init=False)
-    # Per-(fire_reason, deferred_kind) log throttle map. The PROMPT log showed
-    # ~10 DEBUG records/sec at ``_gate_fire:949`` while a fire was deferred
-    # (SILENT_SUBAGENT or generic non-STUCK kind) -- per-tick log spam. The
-    # map keys on ``(fire_reason.value, deferred_kind.value)`` and stores the
-    # monotonic timestamp of the most recent emission so a subsequent call
-    # within ``watchdog_log_throttle_seconds`` is suppressed. Reset to empty
-    # in ``record_invocation_start`` so a new invocation starts with an empty
-    # throttle map; the throttle MUST survive long-lived WAITING runs but
-    # MUST NOT carry state across invocations.
     _last_deferred_log_at: dict[tuple[str, str], float] = field(default_factory=dict, init=False)
-    # Coarse single-key log throttle map for ``_gate_fire``. The PROMPT log
-    # showed that ``_last_deferred_log_at`` (keyed on the tuple
-    # ``(fire_reason, deferred_kind)``) cycles to a fresh key when the
-    # ``deferred_kind`` transitions (e.g. SILENT_SUBAGENT -> LOADING ->
-    # SILENT_SUBAGENT) which causes the per-tuple throttle to MISS and
-    # re-emit a DEBUG record on every transition. This coarse map is keyed
-    # on ``fire_reason.value`` ALONE and caps emissions to one DEBUG
-    # record per ``watchdog_log_throttle_seconds`` per fire_reason,
-    # regardless of how the deferred_kind cycles. The fine-grained
-    # per-tuple throttle is still consulted FIRST so the kind label is
-    # preserved in the throttle map; the coarse throttle ONLY suppresses
-    # the duplicate emission when the per-tuple key has already been
-    # logged within the throttle window. Reset to empty in
-    # ``record_invocation_start`` so a new invocation starts with an
-    # empty map (the coarse throttle must NOT carry state across
-    # invocations).
     _last_any_deferred_log_at: dict[str, float] = field(default_factory=dict, init=False)
-    # Per-channel log throttle map for ``_handle_evidence_deferral``.
-    # Mirrors ``_last_deferred_log_at`` (which throttles ``_gate_fire``
-    # DEBUG spam) but keys on the active channel name (mcp_tool /
-    # subagent / workspace / none). The PROMPT log showed per-tick
-    # debug spam at ``_handle_evidence_deferral`` while a session
-    # stayed active only through non-stdout evidence; the same
-    # ``watchdog_log_throttle_seconds`` window is reused so the
-    # emission cadence stays aligned with the gate-throttle cadence.
-    # Reset to empty in ``record_invocation_start`` so a new
-    # invocation starts with an empty throttle map.
     _last_evidence_deferral_log_at: dict[str, float] = field(default_factory=dict, init=False)
-    # Corroborator's alive_by signal at the moment of the most recent
-    # NO_PROGRESS_QUIET fire. ``None`` when the watchdog has not fired
-    # yet OR when the most recent fire was not NO_PROGRESS_QUIET
-    # (other fire helpers do not capture alive_by because the
-    # live-child vs dead-child differentiation only matters for the
-    # NO_PROGRESS_QUIET path). Surfaced via ``last_alive_by`` and
-    # consumed by ``IdleWatchdogKilledError.child_alive`` so the
-    # failure classifier can read the live-child signal end-to-end
-    # via the typed exception's ``__cause__`` chain.
     _last_alive_by: AliveBy | None = field(default=None, init=False)
     _last_waiting_status_at: float | None = field(default=None, init=False)
     _suspicion_announced_for_run: bool = field(default=False, init=False)
-    # Post-tool-result progression state. The watchdog tracks when a
-    # TOOL_RESULT activity was last recorded and whether we are still
-    # waiting for the follow-up STREAM_DELTA/OUTPUT_LINE activity. When
-    # ``_awaiting_post_tool_result_progression`` is True and the
-    # configured ``post_tool_result_progression_seconds`` budget elapses
-    # without a follow-up activity, the watchdog fires
-    # STALLED_AFTER_TOOL_RESULT. This is a NEW BEHAVIOR: pre-fix, the
-    # watchdog only fired NO_OUTPUT_DEADLINE at the full idle timeout,
-    # which let the post-tool-result wedge linger for ~300s.
     _last_tool_result_at: float | None = field(default=None, init=False)
     _awaiting_post_tool_result_progression: bool = field(default=False, init=False)
-    # Per-channel activity evidence state (NEW). The three recorders
-    # ``record_mcp_tool_call``, ``record_subagent_work``, and
-    # ``record_workspace_event`` only update these fields; they do NOT
-    # touch ``_last_activity`` (the stdout baseline) or the cumulative
-    # waiting-on-child ceiling. The verdict hook in ``evaluate()``
-    # consults these fields via ``_channel_evidence_active`` and
-    # ``last_evidence_summary``.
     _mcp_tool_call_count: int = field(default=0, init=False)
     _last_mcp_tool_call_at: float | None = field(default=None, init=False)
     _subagent_progress_count: int = field(default=0, init=False)
     _last_subagent_progress_at: float | None = field(default=None, init=False)
-    # Throttle timestamp for the SUBAGENT_PROGRESS waiting-status emit
-    # in ``_handle_waiting_branch``. Separate from
-    # ``_last_subagent_progress_at`` (which is the channel-evidence
-    # timestamp): this field tracks the LAST EMIT TIME so the emit
-    # cadence is bounded by
-    # ``TimeoutPolicy.watchdog_subagent_progress_interval_seconds``.
     _last_subagent_progress_emit_at: float | None = field(default=None, init=False)
     _subagent_output_count: int = field(default=0, init=False)
     _last_subagent_output_at: float | None = field(default=None, init=False)
     _workspace_event_count_internal: int = field(default=0, init=False)
     _last_workspace_event_at: float | None = field(default=None, init=False)
     _last_workspace_event_weight: float = field(default=0.0, init=False)
-    # Subagent output capture state. The watchdog polls the injected
-    # DiscoveryStrategy for output paths and reuses capture instances per
-    # worker so only new lines are ingested as first-party evidence.
-    # The cache is hard-bounded at ``_MAX_SUBAGENT_OUTPUT_CAPTURES``
-    # (private constant in ``_activity_methods``). FIFO workers are
-    # evicted when the cap binds (the OLDEST-INSERTED worker is
-    # dropped first; there is no LRU refresh on poll). To prevent
-    # the evicted workers' stateful captures from being immediately
-    # recreated (which would re-emit historical lines), evicted
-    # worker IDs are recorded in ``_evicted_worker_tombstones`` and
-    # skipped on the next poll. The tombstone is itself bounded at
-    # ``_MAX_EVICTED_TOMBSTONES`` and uses FIFO eviction. Tests
-    # exercise the bound by generating enough workers to trigger the
-    # production cap -- no DI seam is exposed on the public
-    # ``IdleWatchdog`` constructor.
     _subagent_output_captures: OrderedDict[str, SubagentOutputCapture] = field(
         default_factory=OrderedDict, init=False
     )
     _evicted_worker_tombstones: OrderedDict[str, None] = field(
         default_factory=OrderedDict, init=False
     )
-    # Per-kind workspace event counter. The watchdog tracks how many
-    # file changes have been observed for each WorkspaceChangeKind
-    # (source / log / cache / artifact / other) so the post-mortem
-    # can see WHICH kinds were most active at the moment of a fire.
-    # The workspace_kind_counts property returns a defensive copy.
     _workspace_kind_counts: dict[str, int] = field(default_factory=dict, init=False)
-    # Smart-verdict gate state. The watchdog consults the StuckClassifier
-    # before every non-absolute fire; the classifier returns one of six
-    # kinds and the gate returns CONTINUE for any non-STUCK kind so a
-    # productive session that does not look productive is not killed.
-    # The two state fields below are the inputs the classifier needs
-    # from the run-loop / connectivity monitor (the watchdog does not
-    # own these signals itself):
-    #   - is_waiting_state: True when the pipeline has already entered a
-    #     wait state (the run loop will sleep and re-enter the phase).
-    #     The classifier returns DUPLICATE_KILL when this is True so a
-    #     second FIRE during a wait is impossible.
-    #   - connectivity_state_provider: optional callable returning the
-    #     current connectivity state label ("online" / "offline" /
-    #     "unknown" / "degraded"). When "offline" the classifier returns
-    #     WAITING_ON_CONNECTIVITY and the gate defers the fire. The
-    #     callable is optional so the watchdog is constructible in tests
-    #     without a real ConnectivityMonitor.
     _is_waiting_state: bool = field(default=False, init=False)
     _connectivity_state_provider: Callable[[], str | None] | None = field(default=None, init=False)
-    # The most recent ``classify_quiet`` callable received by
-    # ``evaluate()``. The gate (``_gate_fire``) consults the classifier
-    # on every non-absolute fire, and the classifier's
-    # ``WAITING_ON_CHILD`` / ``RESUMABLE_CONTINUE`` branches require a
-    # live callable (a noop stub would always return ACTIVE and the
-    # branches would never fire). Storing the callable here lets the
-    # gate consult the same state the rest of ``evaluate()`` is
-    # already consulting. ``None`` means ``evaluate()`` has not been
-    # called yet; the gate falls back to a noop ACTIVE stub in that
-    # case.
     _classify_quiet_provider: Callable[[], AgentExecutionState] | None = field(
         default=None, init=False
     )
-    # Tick-scoped corroboration cache. ``evaluate()`` captures one
-    # ``CorroborationSnapshot`` and reuses it for ALL sub-evaluators on
-    # that tick (``_evaluate_no_output_at_start``,
-    # ``_evaluate_strictly_stuck``, ``_evaluate_no_progress_quiet``,
-    # ``_handle_waiting_branch``, etc.) so a single corroborator call
-    # drives both the decision path and the diagnostic surface. Without
-    # this cache the watchdog would call the corroborator once per
-    # sub-evaluator, and a flaky corroborator that rotates alive_by
-    # values on each call would produce inconsistent decisions vs.
-    # diagnostics on the same tick (the bug the regression test
-    # ``test_single_tick_corroboration_snapshot_reused_for_all_decisions_and_diagnostics``
-    # pins). The cache is only consulted while ``_evaluate_tick_active``
-    # is ``True``; outside an ``evaluate()`` call ``_safe_corroborate()``
-    # bypasses the cache and invokes the corroborator directly so stale
-    # out-of-band reads cannot feed into later watchdog probes
-    # (``test_safe_corroborate_bypasses_cache_outside_evaluate`` pins
-    # this contract).
     _tick_corroboration: CorroborationSnapshot | None = field(default=None, init=False)
-    # Explicit "evaluate tick active" flag. The cache alone is not a
-    # sufficient sentinel because ``_tick_corroboration is None`` is
-    # overloaded: it means BOTH "no tick active" AND "tick active, cache
-    # not yet populated". Storing a snapshot on the bypass path
-    # (outside ``evaluate()``) would poison subsequent bypass-path reads
-    # with stale liveness evidence. This flag makes the "tick active"
-    # state unambiguous so ``_safe_corroborate()`` can route outside
-    # calls to the raw corroborator without touching the cache.
     _evaluate_tick_active: bool = field(default=False, init=False)
-    # wt-047-stall-label: stall-state flag. The watchdog is the sole
-    # owner of the STALLED label; the flag is the single source of
-    # truth for the Status Bar's ``STALLED`` slot. ``_set_stall``
-    # emits one ``WaitingStatusKind.STALLED`` event on transition
-    # into a stall and one ``WaitingStatusKind.STALL_RESUMED`` event
-    # on transition out (deduplicated by the flag; no per-tick spam).
     _stall_active: bool = field(default=False, init=False)
 
     def __init__(
@@ -535,9 +230,9 @@ class IdleWatchdog:
         self._last_fire_reason = None
         self._last_activity_only_status_at: float | None = None
         self._last_deferred_kind = None
-        self._last_deferred_log_at = {}  # bounded-accumulator-ok: drained on removal
-        self._last_any_deferred_log_at = {}  # bounded-accumulator-ok: drained on removal
-        self._last_evidence_deferral_log_at = {}  # bounded-accumulator-ok: drained on removal
+        self._last_deferred_log_at = {}
+        self._last_any_deferred_log_at = {}
+        self._last_evidence_deferral_log_at = {}
         self._last_waiting_status_at = None
         self._suspicion_announced_for_run = False
         self._last_tool_result_at = None
@@ -546,36 +241,20 @@ class IdleWatchdog:
         self._last_mcp_tool_call_at = None
         self._subagent_progress_count = 0
         self._last_subagent_progress_at = None
-        # Optional human-readable description of the most recent subagent
-        # observation (truncated to 200 chars). Surfaced via the
-        # ``subagent_activity`` field on ``WaitingStatusEvent``s so
-        # operators see what the subagent was doing at the moment of
-        # the event (transition, suspicion, fire). Reset to ``None`` in
-        # ``record_invocation_start`` and updated by ``record_subagent_work``.
         self._last_subagent_progress_description: str | None = None
         self._default_subagent_activity_listener: WaitingStatusListener | None = None
         self._subagent_output_count = 0
         self._last_subagent_output_at = None
-        # bounded-accumulator-ok: FIFO cap _MAX_SUBAGENT_OUTPUT_CAPTURES=128
-        # (OrderedDict.popitem(last=False) eviction in poll_subagent_output)
         self._subagent_output_captures: OrderedDict[str, SubagentOutputCapture] = (
             OrderedDict()
-        )  # bounded-accumulator-ok  # type: ignore[var-annotated]  # reason: autogenerated code has no type support, see docs/agents/type-ignore-policy.md#autogenerated-code
-        # wt-024 iteration-4 (AC-04): bounded eviction tombstone
-        # for the hard-FIFO subagent output capture cache. Tracks
-        # recently-evicted worker IDs so they cannot be immediately
-        # re-added (which would re-emit historical lines). See
-        # ``_activity_methods.poll_subagent_output`` for the
-        # eviction policy.
-        # bounded-accumulator-ok: FIFO cap _MAX_EVICTED_TOMBSTONES
-        # (OrderedDict.popitem(last=False) eviction in poll_subagent_output)
+        )
         self._evicted_worker_tombstones: OrderedDict[str, None] = (
             OrderedDict()
-        )  # bounded-accumulator-ok  # type: ignore[var-annotated]  # reason: autogenerated code has no type support, see docs/agents/type-ignore-policy.md#autogenerated-code
+        )
         self._workspace_event_count_internal = 0
         self._last_workspace_event_at = None
         self._last_workspace_event_weight = 0.0
-        self._workspace_kind_counts = {}  # bounded-accumulator-ok: drained on removal
+        self._workspace_kind_counts = {}
         self._entry_corroboration: CorroborationSnapshot | None = None
         self._repetition_tracker = RepetitionTracker(
             clock,
@@ -586,119 +265,34 @@ class IdleWatchdog:
         self._last_progress_fingerprint: str | None = None
         self._is_waiting_state = False
         self._classify_quiet_provider = None
-        # wt-047-stall-label: stall-state flag initializer.
         self._stall_active = False
-        # Most recent verdict returned by ``evaluate()`` (None before the
-        # first evaluation). Exposed via the public ``last_verdict``
-        # property so black-box callers can assert the watchdog's
-        # decision without reaching into private state.
         self._last_verdict: WatchdogVerdict | None = None
         self._log = logger.bind(component="idle_watchdog")
 
     @property
     def last_fire_reason(self) -> WatchdogFireReason | None:
-        """The reason the watchdog fired, or None if it hasn't fired yet."""
         return self._last_fire_reason
 
     @property
     def last_verdict(self) -> WatchdogVerdict | None:
-        """The verdict returned by the most recent ``evaluate()`` call.
-
-        ``None`` before the first evaluation. This is the public
-        decision accessor: black-box callers can assert the watchdog's
-        last decision (``FIRE`` / ``CONTINUE`` / ``WAITING_ON_CHILD``)
-        without inspecting private state or re-deriving the verdict
-        from the diagnostic snapshot.
-        """
         return self._last_verdict
 
     @property
     def last_deferred_kind(self) -> StuckKind | None:
-        """The ``StuckKind`` that deferred the most recent would-be fire.
-
-        ``None`` when the watchdog has not deferred a fire yet OR
-        when the most recent fire actually FIREd (the gate only sets
-        this when it returns ``WatchdogVerdict.CONTINUE`` to defer).
-
-        The diagnostic surface for the SILENT_SUBAGENT label
-        described in AC-05: ``last_fire_reason`` collapses every
-        non-FIRE deferral to ``WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER``,
-        but ``last_deferred_kind`` retains the precise
-        ``StuckKind`` (e.g. ``StuckKind.SILENT_SUBAGENT``) so an
-        operator can see WHY a would-be fire was deferred ("a
-        subagent dispatched then went silent for >180s").  See
-        ``tests/agents/idle_watchdog/test_silent_subagent_runtime.py``
-        for the runtime-facing contract test.
-        """
         return self._last_deferred_kind
 
     @property
     def last_alive_by(self) -> AliveBy | None:
-        """The corroborator's ``alive_by`` signal at the most recent fire.
-
-        ``None`` when the watchdog has not fired yet OR when the most
-        recent fire was not ``NO_PROGRESS_QUIET`` (the
-        live-child vs dead-child differentiation only matters for the
-        NO_PROGRESS_QUIET path; other fire helpers do not capture
-        ``alive_by``).
-
-        Consumed by ``IdleWatchdogKilledError.child_alive`` so the
-        failure classifier can read the live-child signal end-to-end
-        via the typed exception's ``__cause__`` chain.
-        """
         return self._last_alive_by
 
     @property
     def is_stalled(self) -> bool:
-        """Whether the watchdog currently considers the run stalled.
-
-        wt-047-stall-label: the watchdog is the sole owner of the
-        STALLED label. The flag here is the runtime stall state and
-        the Status Bar's ``STALLED`` slot reads the watchdog-sourced
-        event stream (NOT a display-side 30s gap derivation). The
-        flag transitions only via ``_set_stall`` so the
-        ``STALLED`` / ``STALL_RESUMED`` events fire exactly once per
-        transition.
-        """
         return self._stall_active
 
     def set_stall_state(self, active: bool, *, now: float, idle_elapsed: float) -> None:
-        """Public seam for the stall-state transition.
-
-        The watchdog owns the ``STALLED`` / ``STALL_RESUMED`` label
-        transitions; this method exposes that transition as a public
-        operation so callers (and black-box tests) can drive the
-        stall state machine without reaching into private state.
-
-        Semantics are identical to the internal transition: the event
-        fires exactly once per transition and repeated calls with the
-        same ``active`` value are no-ops.
-
-        Args:
-            active: ``True`` to enter the stall state, ``False`` to leave it.
-            now: Monotonic timestamp used for the emitted event payload.
-            idle_elapsed: Idle seconds carried on the emitted event payload.
-        """
         self._set_stall(active, now=now, idle_elapsed=idle_elapsed)
 
     def _set_stall(self, active: bool, *, now: float, idle_elapsed: float) -> None:
-        """Transition the watchdog's stall state and emit the matching event.
-
-        wt-047-stall-label: the watchdog is the sole owner of the
-        STALLED label. ``_set_stall`` fires exactly once per
-        transition: ``WaitingStatusKind.STALLED`` on entry into a
-        stall, ``WaitingStatusKind.STALL_RESUMED`` on exit. Repeated
-        calls with the same ``active`` value are no-ops (no per-tick
-        spam).
-
-        The ``now`` and ``idle_elapsed`` arguments are threaded into
-        the existing ``_emit`` path so the emitted event carries the
-        same diagnostic payload as the watchdog's other emissions.
-        They are NOT used for any gating logic in the helper itself:
-        the stall transition is purely a state-machine flip triggered
-        by the caller (the SUSPECTED_FROZEN / HARD_STOP / FIRE
-        emission sites inside the watchdog's single evaluation path).
-        """
         if active == self._stall_active:
             return
         self._stall_active = active
@@ -719,48 +313,34 @@ class IdleWatchdog:
         return activity_diagnostic_snapshot(self, now)
 
     def repetition_diagnostic(self) -> dict[str, str | int]:
-        """Return bounded repeated-error/tool-call diagnostic context."""
         return self._repetition_tracker.diagnostic()
 
     @property
     def cumulative_waiting_on_child_seconds(self) -> float:
-        """Cumulative seconds spent in WAITING_ON_CHILD state across all runs."""
         return self._cumulative_waiting_on_child_seconds
 
     @property
     def last_subagent_progress_description(self) -> str | None:
-        """The most recent subagent progress description.
-
-        Set by ``record_subagent_work`` and reset to ``None`` by
-        ``record_invocation_start``. Surfaced publicly so operators and
-        tooling can see what the subagent was doing at any moment without
-        needing to supply a full ``WaitingStatusListener``.
-        """
         return self._last_subagent_progress_description
 
     @property
     def clock(self) -> Clock:
-        """The clock used for monotonic timing."""
         return self._clock
 
     @property
     def config(self) -> TimeoutPolicy:
-        """The active timeout policy configuration."""
         return self._config
 
     @property
     def last_progress_fingerprint(self) -> str | None:
-        """The fingerprint of the most recent progress report, or None."""
         return self._last_progress_fingerprint
 
     @property
     def last_subagent_progress_emit_at(self) -> float | None:
-        """Timestamp of the most recent subagent progress waiting-status event."""
         return self._last_subagent_progress_emit_at
 
     @property
     def has_active_deferral_throttles(self) -> bool:
-        """Whether any deferred-log throttle entries are currently active."""
         return bool(
             self._last_deferred_log_at
             or self._last_any_deferred_log_at
@@ -769,92 +349,73 @@ class IdleWatchdog:
 
     @property
     def deferred_throttle_reasons(self) -> frozenset[str]:
-        """Fire reason keys currently tracked in the coarse deferral throttle map."""
         return frozenset(self._last_any_deferred_log_at.keys())
 
     @property
     def subagent_output_count(self) -> int:
-        """Total lines of subagent output recorded during the current run."""
         return self._subagent_output_count
 
     @property
     def subagent_output_captures(self) -> Mapping[str, SubagentOutputCapture]:
-        """Read-only view of active subagent output captures."""
         return MappingProxyType(self._subagent_output_captures)
 
     @property
     def evicted_worker_tombstones(self) -> Mapping[str, None]:
-        """Read-only view of tombstoned evicted workers."""
         return MappingProxyType(self._evicted_worker_tombstones)
 
     @property
     def subagent_progress_count(self) -> int:
-        """Total subagent progress events recorded during the current run."""
         return self._subagent_progress_count
 
     @property
     def last_subagent_progress_at(self) -> float | None:
-        """Timestamp of the most recent recorded subagent progress event."""
         return self._last_subagent_progress_at
 
     @property
     def in_drain_window(self) -> bool:
-        """Whether the watchdog is currently inside an output drain window."""
         return self._in_drain_window
 
     @property
     def last_activity(self) -> float:
-        """Monotonic timestamp of the most recent stdout activity."""
         return self._last_activity
 
     @property
     def last_mcp_tool_call_at(self) -> float | None:
-        """Timestamp of the most recent recorded MCP tool call."""
         return self._last_mcp_tool_call_at
 
     @property
     def mcp_tool_call_count(self) -> int:
-        """Total MCP tool calls recorded during the current run."""
         return self._mcp_tool_call_count
 
     @property
     def last_workspace_event_at(self) -> float | None:
-        """Timestamp of the most recent recorded workspace change event."""
         return self._last_workspace_event_at
 
     @property
     def workspace_event_count(self) -> int:
-        """Total workspace events recorded during the current run."""
         return self._workspace_event_count_internal
 
     @property
     def evaluate_tick_active(self) -> bool:
-        """Whether evaluate() is currently actively running a tick."""
         return self._evaluate_tick_active
 
     @property
     def tick_corroboration(self) -> CorroborationSnapshot | None:
-        """Snapshot cached for the active evaluate() tick, if any."""
         return self._tick_corroboration
 
     def safe_corroborate(self) -> CorroborationSnapshot:
-        """Call the corroborator safely, returning an empty snapshot on None or error."""
         return self._safe_corroborate()
 
     def channel_evidence_active(self, now: float) -> bool:
-        """Return True when any quality-filtered channel is fresher than the TTL."""
         return self._channel_evidence_active(now)
 
     def handle_evidence_deferral(self, now: float, idle_elapsed: float) -> WatchdogVerdict:
-        """Evaluate deferral when idle deadline elapsed but evidence channel is fresh."""
         return self._handle_evidence_deferral(now, idle_elapsed)
 
     def handle_active_branch(self, now: float) -> WatchdogVerdict:
-        """Execute the active fire branch at monotonic time now."""
         return self._handle_active_branch(now)
 
     def build_evidence_summary_diag(self, now: float) -> tuple[dict[str, object], float | None]:
-        """Build diagnostic summary across channels and return (diagnostic, freshest_age)."""
         return self._build_evidence_summary_diag(now)
 
     def emit_waiting_status(
@@ -866,7 +427,6 @@ class IdleWatchdog:
         ceiling_seconds: float | None = None,
         diagnostic: dict[str, str | int | float | bool | list[object]] | None = None,
     ) -> None:
-        """Public seam for emitting waiting-status events without reaching into private methods."""
         self._emit(
             kind,
             current_run_seconds=current_run_seconds,
@@ -879,58 +439,24 @@ class IdleWatchdog:
         self,
         listener: WaitingStatusListener | None,
     ) -> None:
-        """Register a listener that receives every subagent activity event.
-
-        The listener is invoked from ``_emit`` for every ``WaitingStatusEvent``
-        whose ``subagent_activity`` field is non-None. This gives a cheap,
-        real-time view of what the subagent is doing (e.g. the last child
-        progress line) without requiring callers to implement a full
-        ``WaitingStatusListener``.
-
-        The listener is reset to ``None`` on ``record_invocation_start`` so
-        state does not leak across invocations. Listener exceptions are
-        caught and logged at DEBUG; they never propagate.
-        """
         self._default_subagent_activity_listener = listener
 
     def record_invocation_start(self) -> None:
         activity_record_invocation_start(self)
 
     def record_invocation_end(self) -> None:
-        """Clear an active stall as this watchdog's invocation ends."""
         activity_record_invocation_end(self)
 
     def set_is_waiting_state(self, is_waiting_state: bool) -> None:
-        """Update the pipeline's wait-state flag for the StuckClassifier gate.
-
-        The run loop calls this once per phase iteration with the live
-        ``state.is_waiting_state`` value. The watchdog does not own this
-        state; it only mirrors it so the classifier can return
-        DUPLICATE_KILL when a candidate fire would land during a wait.
-        """
         self._is_waiting_state = is_waiting_state
 
     def set_connectivity_state_provider(
         self,
         provider: Callable[[], str | None] | None,
     ) -> None:
-        """Inject a callable returning the current connectivity state label.
-
-        The watchdog does not own connectivity; it only mirrors the live
-        state so the classifier can return WAITING_ON_CONNECTIVITY when
-        the network is offline. None disables the connectivity branch
-        of the classifier (returns None for the connectivity_state
-        input, which the classifier treats as "online" - the gate does
-        not defer on the connectivity branch).
-        """
         self._connectivity_state_provider = provider
 
     def _current_connectivity_state(self) -> str | None:
-        """Return the current connectivity state label, or None.
-
-        Calls the injected provider if available; otherwise returns None
-        (the classifier treats None as "online" / no deferral).
-        """
         if self._connectivity_state_provider is None:
             return None
         try:
@@ -951,19 +477,6 @@ class IdleWatchdog:
         )
 
     def classify_stuck_now(self, *, now: float, idle_elapsed: float) -> StuckKind:
-        """Public decision accessor for the stuck classifier.
-
-        Returns the ``StuckKind`` the watchdog's classifier assigns to
-        the current tick.  ``StuckKind.STUCK`` is the only kind that
-        lets a fire through the gate; every other kind defers it.
-
-        Args:
-            now: Monotonic timestamp of the tick being classified.
-            idle_elapsed: Seconds since the last recorded activity.
-
-        Returns:
-            The classifier's verdict for this tick.
-        """
         return self._classify_stuck_now(now=now, idle_elapsed=idle_elapsed)
 
     def evaluate_fire_gate(
@@ -974,23 +487,6 @@ class IdleWatchdog:
         idle_elapsed: float,
         corroboration: CorroborationSnapshot | None = None,
     ) -> WatchdogVerdict:
-        """Public decision accessor for the fire gate.
-
-        The gate is the watchdog's smart-verdict block: it consults the
-        stuck classifier and the activity-evidence summary and returns
-        ``WatchdogVerdict.FIRE`` (kill) or ``WatchdogVerdict.CONTINUE``
-        (defer).  Exposing it publicly lets callers assert the fire
-        decision without re-deriving it from the diagnostic snapshot.
-
-        Args:
-            fire_reason: The reason the caller wants to fire for.
-            now: Monotonic timestamp of the tick being evaluated.
-            idle_elapsed: Seconds since the last recorded activity.
-
-        Returns:
-            ``WatchdogVerdict.FIRE`` when the fire is allowed,
-            ``WatchdogVerdict.CONTINUE`` when the fire is deferred.
-        """
         return self._gate_fire(
             fire_reason,
             now=now,
@@ -1028,47 +524,25 @@ class IdleWatchdog:
 
     @property
     def invocation_elapsed_seconds(self) -> float:
-        """Return the seconds elapsed since the start of the invocation."""
         if self._invocation_started_at is None:
             return 0.0
         return self._clock.monotonic() - self._invocation_started_at
 
     @property
     def drain_window_seconds(self) -> float:
-        """Configured window for output still in flight after a stop.
-
-        Read live, like :attr:`no_output_at_start_seconds`: an operator
-        who widens the drain window is saying this host needs longer for
-        a reader to deliver what a process already wrote, and every rule
-        that waits on in-flight output has to hear that.
-        """
         return self._config.drain_window_seconds
 
     @property
     def seconds_since_process_exit(self) -> float | None:
-        """Seconds since the process was first observed dead, or ``None``.
-
-        ``None`` means it has not been observed dead at all -- distinct
-        from ``0.0``, which means it was observed dead just now and its
-        remaining output may still be in flight.
-        """
         if self._process_exit_observed_at is None:
             return None
         return self._clock.monotonic() - self._process_exit_observed_at
 
     @property
     def no_output_at_start_seconds(self) -> float | None:
-        """Configured startup grace for the NO_OUTPUT_AT_START watchdog reason.
-
-        The broken-agent timer in the process reader reads this live policy
-        value so a deliberately extended startup grace (e.g. for slow-
-        initializing interactive Claude) can delay the fast broken-agent
-        kill while the historical floor remains the default.
-        """
         return self._config.no_output_at_start_seconds
 
     def circumstantial_evidence(self) -> CircumstantialEvidence:
-        """Return an independent snapshot of the current silent-agent evidence."""
         return CircumstantialEvidence(
             process_alive=self._process_alive,
             has_stdout_bytes=self._any_output_count > 0,
@@ -1080,23 +554,6 @@ class IdleWatchdog:
         )
 
     def record_process_liveness(self, is_alive: bool, *, observed: bool = True) -> None:
-        """Record the current liveness of the agent process for the next snapshot.
-
-        The FIRST observation of a dead process is stamped, so a caller
-        can distinguish "exited a moment ago" from "exited and has since
-        stayed silent". An agent's last line is recorded only once the
-        reader thread has been scheduled, so the two facts a
-        just-exited-with-no-output verdict rests on are not observable at
-        the same instant.
-
-        ``observed=False`` says the probe did not answer. The caller
-        still passes the SAFE liveness (alive), because an unavailable
-        probe must not manufacture a clean-exit diagnosis -- but a probe
-        that failed is not evidence the process came back, and treating
-        it as such discarded the whole accumulated settle window on
-        every intermittent failure. Before the window existed a failed
-        probe cost one tick; it must not now cost more.
-        """
         self._process_alive = is_alive
         if not observed:
             return
@@ -1106,50 +563,23 @@ class IdleWatchdog:
             self._process_exit_observed_at = self._clock.monotonic()
 
     def record_session_id_capture(self, session_id: str) -> None:
-        """Record the transport session id that proves a session was established."""
         self._captured_session_id = session_id
 
     def record_any_output(self, byte_size: int = 0) -> None:
-        """Record one classified output signal without changing activity semantics.
-
-        ``byte_size`` is the UTF-8 size of the observed line (0 when the
-        caller has no text, e.g. cosmetic lifecycle frames recorded via
-        ``record_lifecycle_activity``). It only feeds the bounded-output
-        significance rule; it never changes activity or idle semantics.
-        """
         self._any_output_count += 1
         self._observed_output_bytes += max(0, byte_size)
 
     def record_prompt_echo(self, line: str) -> None:
-        """Record a deterministic harness echo of the input prompt.
-
-        An echoed prompt is NOT meaningful LLM output: it keeps the idle
-        baseline current via the lifecycle channel without flipping
-        ``has_meaningful_output``. Both line readers route prompt echoes
-        through this public seam so the rule stays transport-neutral.
-        """
         del line
         self.record_lifecycle_activity()
 
     def has_meaningful_output(self) -> bool:
-        """Return whether this invocation has emitted non-harness output."""
         return self._has_meaningful_output
 
     def has_any_output(self) -> bool:
-        """Return whether this invocation has emitted any classified output."""
         return self._any_output_count > 0
 
     def observed_output_is_structurally_small(self) -> bool:
-        """Return whether observed output is tiny enough to support a broken-agent call.
-
-        Applies the shared bounded-output significance rule
-        (:func:`ralph.agents.idle_watchdog._circumstantial_evidence.is_structurally_small_output`)
-        to the watchdog's observed-output evidence: the count of classified
-        output signals and their cumulative byte size. Substantial observed
-        output must NOT be reclassified as provider silence by the live
-        broken-agent timer; the completion gate owns that classification
-        once the agent exits.
-        """
         return is_structurally_small_output(
             nonblank_line_count=self._any_output_count,
             total_bytes=self._observed_output_bytes,
@@ -1180,35 +610,16 @@ class IdleWatchdog:
         return evaluate_no_output_at_start(self, now, idle_elapsed, classify_quiet)
 
     def idle_elapsed_seconds(self, now: float) -> float:
-        """Seconds since the last recorded activity (the idle duration).
-
-        Public accessor so callers (e.g. the process-reader fire log) can report
-        a meaningful idle-elapsed value instead of the raw monotonic clock.
-        """
         return now - self._last_activity
 
     def record_activity(self) -> None:
         activity_record_activity(self)
 
     def record_lifecycle_activity(self) -> None:
-        """Record cosmetic, non-meaningful activity (e.g. lifecycle frames).
-
-        Resets the idle baseline exactly like ``record_activity()`` so the
-        agent is not declared idle, but does NOT reset the repeated-error
-        circuit breaker: cosmetic output interleaved between identical errors
-        must not mask a wedged retry loop. LIFECYCLE frames are deliberately
-        excluded from the NO_OUTPUT_AT_START baseline.
-        """
         self.record_any_output()
         self._reset_idle_baseline()
 
     def record_tool_use_activity(self) -> None:
-        """Record tool-use activity without clearing retry-loop evidence.
-
-        A tool-use event is real activity for idle timing, but the invocation
-        itself is not proof of forward progress. Clearing the repetition tracker
-        here would make repeated identical tool-call loops invisible.
-        """
         self._reset_idle_baseline()
         self._last_meaningful_output_at = self._clock.monotonic()
         self._has_meaningful_output = True
@@ -1217,27 +628,11 @@ class IdleWatchdog:
         activity_record_tool_call_activity(self, tool_name, tool_args)
 
     def record_error_activity(self, message: str) -> None:
-        """Record an error/repeat line for the repeated-error circuit breaker.
-
-        Deliberately does NOT reset the idle baseline: a stream of identical
-        errors must still let the idle deadline advance (so a silent-after-errors
-        agent is also caught), while the repeated-error rule catches a fast retry
-        storm well before the idle timeout. The cumulative WAITING_ON_CHILD run is
-        still flushed for bookkeeping parity.
-        """
         now = self._clock.monotonic()
         self._accumulate_waiting_run(now)
         self._repetition_tracker.note_error(message)
 
     def record_progress_report(self, message: str) -> None:
-        """Record an explicit ``report_progress`` heartbeat from the agent.
-
-        A report that REPEATS the previous status (same fingerprint) is a cosmetic
-        heartbeat: it feeds the repeated-error circuit breaker and does NOT reset
-        the idle baseline, so an agent narrating "still stuck" forever can no
-        longer keep itself alive. A report whose status CHANGES is treated as
-        genuine forward progress (resets the idle baseline and the streak).
-        """
         fingerprint = RepetitionTracker.fingerprint(message)
         if fingerprint == self._last_progress_fingerprint:
             now = self._clock.monotonic()
@@ -1254,31 +649,12 @@ class IdleWatchdog:
         self._in_drain_window = False
         self._drain_started_at = None
         self._awaiting_post_tool_result_progression = False
-        # wt-047-stall-label: clear the stall state on any baseline
-        # reset (real activity). The flag is the single source of
-        # truth for the Status Bar's STALLED slot; ``_set_stall``
-        # dedupes so a redundant call is a no-op.
         self._set_stall(active=False, now=now, idle_elapsed=0.0)
 
     def record_tool_result_activity(self, *, is_harness_echo: bool = False) -> None:
         activity_record_tool_result_activity(self, is_harness_echo=is_harness_echo)
 
     def record_mcp_tool_call(self, now: float | None = None) -> None:
-        """Record an MCP tool-call activity signal (new channel).
-
-        Increments the mcp_tool channel counter and updates the per-channel
-        ``_last_at`` timestamp. Does NOT touch ``_last_activity`` (the stdout
-        baseline) — the existing 'stdout only resets idle baseline' invariant
-        is preserved. The verdict hook in ``evaluate()`` consults the per-channel
-        ``_last_at`` via ``_channel_evidence_active`` and defers a
-        NO_OUTPUT_DEADLINE fire while the channel is fresher than the configured
-        ``activity_evidence_ttl_seconds``.
-
-        Args:
-            now: Optional monotonic timestamp override; tests use this to
-                drive FakeClock without time travel. Defaults to the
-                watchdog's injected clock.
-        """
         timestamp = now if now is not None else self._clock.monotonic()
         self._mcp_tool_call_count += 1
         self._last_mcp_tool_call_at = timestamp
@@ -1289,16 +665,6 @@ class IdleWatchdog:
         activity_record_subagent_work(self, now, description=description)
 
     def record_subagent_output(self, line_count: int = 1, now: float | None = None) -> None:
-        """Record fresh subagent output as first-party evidence.
-
-        This is the channel that captures a subagent's own output/log stream
-        when it is observable. Each new line read from the subagent's output
-        advances the ``subagent_output`` first-party channel timestamp.
-
-        Args:
-            line_count: Number of new lines observed; defaults to 1.
-            now: Optional monotonic timestamp override.
-        """
         timestamp = now if now is not None else self._clock.monotonic()
         self._subagent_output_count += line_count
         self._last_subagent_output_at = timestamp
@@ -1324,44 +690,17 @@ class IdleWatchdog:
 
     @property
     def workspace_kind_counts(self) -> dict[str, int]:
-        """Defensive copy of the per-kind workspace event counter.
-
-        Returns a fresh dict on every access so callers (the
-        post-mortem diagnostic, the operator UX) can mutate the
-        result without affecting the watchdog's internal state. The
-        keys are the five ``WorkspaceChangeKind`` string values
-        (``source``, ``log``, ``cache``, ``artifact``, ``other``);
-        kinds that have never been observed are absent from the
-        returned dict.
-        """
         return dict(self._workspace_kind_counts)
 
     def last_evidence_summary(self, now: float | None = None) -> EvidenceSummary:
         return activity_last_evidence_summary(self, now)
 
     def _workspace_kind_breakdown_for_summary(self) -> dict[str, int] | None:
-        """Return the per-kind workspace counter snapshot for the summary.
-
-        Returns ``None`` when no workspace activity has been observed
-        yet (so the resulting ``ChannelEvidenceSummary.kind_breakdown``
-        is ``None`` and is omitted from ``to_dict()`` for
-        backward-compat with consumers that assert on the dict shape).
-        Returns a fresh defensive copy when at least one kind has
-        been observed (so the frozen dataclass invariant is preserved
-        and the watchdog's internal state is not exposed).
-        """
         if not self._workspace_kind_counts:
             return None
         return dict(self._workspace_kind_counts)
 
     def _subagent_output_summary(self, now: float) -> ChannelEvidenceSummary:
-        """Build the first-party subagent_output summary.
-
-        Combines explicit subagent progress signals (``record_subagent_work``)
-        and captured subagent log-stream output (``record_subagent_output``).
-        Either source is first-party evidence of subagent work and can defer
-        the NO_OUTPUT_DEADLINE verdict while fresh.
-        """
         candidates = [
             self._last_subagent_progress_at,
             self._last_subagent_output_at,
@@ -1378,12 +717,6 @@ class IdleWatchdog:
         )
 
     def _workspace_summary(self, now: float) -> ChannelEvidenceSummary:
-        """Build the side-channel workspace summary with quality filtering.
-
-        A workspace event only defers the verdict when its weight is greater
-        than zero. The weight of the most recently recorded event determines
-        the ``can_defer`` flag for the channel summary.
-        """
         can_defer = self._last_workspace_event_weight > 0.0
         return self._channel_summary(
             ChannelName.WORKSPACE,
@@ -1399,26 +732,9 @@ class IdleWatchdog:
         return subagent_liveness_summary(self, now)
 
     def _subagent_count_for_heartbeat(self) -> int:
-        """Return the FILTERED subagent count for the waiting heartbeat.
-
-        Used by ``_waiting_branch.handle_waiting_branch`` to surface the
-        live subagent count in the human-readable heartbeat (R6, Trustworthy
-        Idle Watchdog spec). Prefers ``ProcessMonitor.spawned_subagent_count()``
-        (preferred name) and falls back to ``live_subagent_count()`` for
-        duck-typed monitors in legacy tests that pre-date the alias.
-        Returns 0 when no monitor is injected or when the call raises.
-
-        The filtered count is the canonical signal: a process in
-        ``psutil.children(recursive=True)`` but NOT in the
-        ``SubagentPidRegistry`` (e.g. a shell helper like ``npm test``)
-        MUST NOT contribute to this count.
-        """
         monitor: ProcessMonitor | None = self._process_monitor
         if monitor is None:
             return 0
-        # Prefer the canonical name; fall back to the legacy alias so
-        # existing duck-typed test fakes keep working without forcing
-        # every monitor to add the new method.
         for getter_name in ("spawned_subagent_count", "live_subagent_count"):
             getter: Callable[[], int] | None = getattr(monitor, getter_name, None)
             if getter is None:
@@ -1451,17 +767,6 @@ class IdleWatchdog:
         )
 
     def _channel_evidence_active(self, now: float) -> bool:
-        """Return True when any quality-filtered channel is fresher than the TTL.
-
-        Consults the full tier-aware evidence summary. First-party channels
-        (mcp_tool, subagent_output) always defer when fresh. Side-channel
-        channels (workspace, subagent_liveness) only defer when explicitly
-        marked ``can_defer=True`` by quality filtering.
-
-        The stdout channel is intentionally excluded: a quiet stdout is the
-        NORMAL state we are trying to detect, so it cannot itself defer the
-        verdict.
-        """
         summary = self.last_evidence_summary(now)
         ttl = self._config.activity_evidence_ttl_seconds
         fresh = summary.first_party_fresh(ttl)
@@ -1471,19 +776,6 @@ class IdleWatchdog:
         return fresh is not None
 
     def _accumulate_waiting_run(self, now: float) -> None:
-        """Add elapsed time from the current WAITING run to the cumulative total.
-
-        Called on every transition OUT of the WAITING_ON_CHILD state so the
-        cumulative total is preserved across WAITING<->ACTIVE oscillation.
-        Double-counting is prevented by only calling this on transitions (not on
-        consecutive WAITING evaluations).
-
-        Emits a EXITED event if we were actually in a WAITING run.
-        Also clears the watchdog's stall state on EXITED: the run is no
-        longer WAITING, so any SUSPECTED_FROZEN/HARD_STOP-driven stall
-        is now stale. ``_set_stall`` dedupes, so a no-op ``False`` set
-        is harmless.
-        """
         if self._waiting_on_child_started_at is not None:
             elapsed = now - self._waiting_on_child_started_at
             current_run_elapsed = max(0.0, elapsed)
@@ -1498,49 +790,9 @@ class IdleWatchdog:
             self._last_waiting_status_at = None
             self._suspicion_announced_for_run = False
             self._entry_corroboration = None
-            # wt-047-stall-label: clear stall on EXITED. The waiting
-            # run is over; any prior SUSPECTED_FROZEN/HARD_STOP-driven
-            # stall is stale. ``_set_stall`` dedupes redundant clears.
             self._set_stall(active=False, now=now, idle_elapsed=idle_elapsed)
 
     def _safe_corroborate(self) -> CorroborationSnapshot:
-        """Call the corroborator safely, returning an empty snapshot on None or error.
-
-        Fail-closed invariant: when the corroborator returns ``None``
-        (or any non-``CorroborationSnapshot`` value), normalize to an
-        empty ``CorroborationSnapshot`` so callers can safely read
-        ``corroboration.alive_by`` without a ``NoneType`` crash. An
-        empty snapshot is equivalent to "no live evidence", which is
-        the conservative no-defer signal. Callers such as
-        ``_evaluate_no_output_at_start`` read ``corroboration.alive_by``
-        directly, so a ``None`` return would otherwise raise
-        ``AttributeError`` mid-evaluation and break the watchdog
-        decision path instead of failing closed.
-
-        Tick-scoped cache: when ``evaluate()`` is running
-        (``_evaluate_tick_active`` is ``True``), the snapshot captured
-        at the top of the tick (``self._tick_corroboration``) is
-        returned on every subsequent ``_safe_corroborate()`` call so
-        all sub-evaluators (NO_OUTPUT_AT_START, STRICTLY_STUCK,
-        NO_PROGRESS_QUIET, WAITING_ON_CHILD) see the SAME alive_by
-        signal on a single tick. The cache is LAZILY populated on the
-        first ``_safe_corroborate()`` call inside ``evaluate()`` so the
-        strategy's first ``classify_quiet()`` read of shared state
-        (e.g. ``ChildLivenessRegistry.prune_stale`` inside the
-        corroborator) is NOT pre-empted.
-
-        Outside-evaluate bypass: when ``_evaluate_tick_active`` is
-        ``False`` (external probing, helper access from test code that
-        bypasses ``evaluate()``) this method invokes the corroborator
-        DIRECTLY without consulting or storing ``_tick_corroboration``.
-        A previous implementation stored the snapshot on the bypass
-        path, which poisoned subsequent bypass-path reads with stale
-        liveness evidence (the bug
-        ``test_safe_corroborate_bypasses_cache_outside_evaluate``
-        pins). The ``_evaluate_tick_active`` flag makes the "tick
-        active" state unambiguous so ``None`` is never ambiguous
-        between "no tick active" and "tick active, cache empty".
-        """
         if self._evaluate_tick_active:
             if self._tick_corroboration is not None:
                 return self._tick_corroboration
@@ -1550,25 +802,9 @@ class IdleWatchdog:
         return self._call_corroborator_raw()
 
     def _call_corroborator_raw(self) -> CorroborationSnapshot:
-        """Invoke the underlying corroborator and normalize the result.
-
-        No caching: this is the bypass path used by ``evaluate()`` to
-        populate the tick-scoped cache (``self._tick_corroboration``)
-        at the start of every tick. Returns an empty
-        ``CorroborationSnapshot`` on ``None``, exceptions, or
-        non-``CorroborationSnapshot`` returns (fail-closed).
-        """
         if self._corroborator is None:
             return CorroborationSnapshot()
         try:
-            # Cast to ``object`` so mypy doesn't narrow ``snapshot`` to
-            # ``CorroborationSnapshot`` and reject the defensive
-            # ``isinstance`` check below as unreachable. At runtime the
-            # corroborator IS typed as ``Callable[[], CorroborationSnapshot]``
-            # but the fail-closed invariant requires the isinstance
-            # check to remain reachable so a misbehaving corroborator
-            # (e.g. one that returns ``None``) is normalized to an empty
-            # snapshot instead of crashing downstream callers.
             snapshot = cast("object", self._corroborator())
         except Exception:
             self._log.debug("idle watchdog: corroborator raised (suppressed)")
@@ -1585,7 +821,6 @@ class IdleWatchdog:
         self,
         current: CorroborationSnapshot,
     ) -> dict[str, str | int | float | bool]:
-        """Build a diagnostic dict comparing current corroboration snapshot to entry baseline."""
         diag: dict[str, str | int | float | bool] = {}
         entry = self._entry_corroboration
         if (
@@ -1598,16 +833,6 @@ class IdleWatchdog:
             )
         if current.oldest_child_seconds is not None:
             diag["oldest_child_seconds"] = current.oldest_child_seconds
-        # ALWAYS populate ``scoped_child_active`` (defaulting to False
-        # when the corroboration snapshot returns None). The PROMPT
-        # log showed the consumer sites (subscriber.py:114,
-        # _idle_stream_timeout_error.py:30,
-        # _agent_inactivity_timeout_error.py:30) falling through to
-        # the ``?`` fallback when the diag dict lacked the key --
-        # operators saw ``scoped_child_active=?`` instead of
-        # ``scoped_child_active=True/False``. Defaulting to False
-        # means the diagnostic is always concrete; a True value still
-        # requires the corroborator to report it.
         diag["scoped_child_active"] = (
             current.scoped_child_active if current.scoped_child_active is not None else False
         )
@@ -1631,7 +856,6 @@ class IdleWatchdog:
         self,
         diag: dict[str, str | int | float | bool],
     ) -> str:
-        """Compose a human-readable evidence label for a SUSPECTED_FROZEN event."""
         suspect = self._config.suspect_waiting_on_child_seconds
         tokens: list[str] = []
         ws_delta = diag.get("workspace_event_delta")
@@ -1703,16 +927,11 @@ class IdleWatchdog:
         return evaluate_inner(self, now=now, classify_quiet=classify_quiet)
 
     def activity_only_snapshot(self) -> tuple[str | None, float | None]:
-        """Return the latest liveness source and timestamp for conflict diagnostics."""
         now = self._clock.monotonic()
         summary = self.last_evidence_summary(now)
         latest_kind: str | None = None
         latest_at: float | None = None
         latest_priority = -1
-        # The stdout baseline is initialized at invocation start, which can
-        # share a timestamp with the first real liveness signal. Tie-breaking
-        # preserves that observed signal while keeping direct subagent output
-        # ahead of its derived process-liveness summary.
         priorities = {
             ChannelName.STDOUT: 0,
             ChannelName.MCP_TOOL: 1,
@@ -1769,19 +988,6 @@ class IdleWatchdog:
         ]
     )
 
-    # Stuck-but-alive ``AliveBy`` values for the ``stuck_job_sub_ceiling_seconds``
-    # sub-ceiling. This is a STRICT subset of ``_NON_PROGRESS_ALIVE_BY_VALUES``
-    # that EXCLUDES ``FRESH_HEARTBEAT_ONLY``: a productive heartbeat-only
-    # child is alive and may legitimately continue for the cumulative
-    # ``max_waiting_on_child_seconds`` ceiling (the ``no_progress_quiet_heartbeat_ceiling_seconds``
-    # knob is the dedicated detector for that case). The sub-ceiling is
-    # EXCLUSIVELY the stuck-but-alive detector: a child whose process tree
-    # entry or log file exists but is producing no progress, no heartbeat,
-    # and no CPU activity. The four stuck values map to the prompt's
-    # "2365s false negative" failure mode: the cumulative waiting time
-    # climbed past the 600s no-progress ceiling because ``classify_stuck``
-    # never returned STUCK while the corroborator reported one of these
-    # stale alive_by values.
     _STUCK_ALIVE_BY_VALUES: frozenset[AliveBy] = frozenset(
         {
             AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,

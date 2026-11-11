@@ -1,22 +1,3 @@
-"""Lock recovery for every ``run_git`` caller, applied at the single spawn point.
-
-``route_run_git`` is where all of Ralph's git subprocesses are serialised, so a
-lock that an orphan left behind is cleared here once instead of at each call
-site (rebase, merge, reset, update-ref, push, ...).
-
-Two defences, in order:
-
-* **Pre-flight**: before the command runs, remove locks that are provably dead.
-  Commands that write refs get the full sweep (refs, reflogs, worktrees,
-  submodules); the rest only check git's few top-level locks, which is a handful
-  of ``exists`` calls. This prevents the failure outright, so a command that
-  applies part of its work before hitting a lock never has to be re-run.
-* **Post-failure**: if git still reports a lock, clear or wait it out. The
-  wait happens WITHOUT the queue lock held, so other git work on the repository
-  is not frozen behind it. Only commands that are safe to repeat are re-run; a
-  stateful command (merge, rebase, ...) has the lock cleared for the caller's
-  next attempt and returns its ORIGINAL failure, never a confusing second one.
-"""
 
 from __future__ import annotations
 
@@ -38,7 +19,6 @@ if TYPE_CHECKING:
 
     from ralph.git.subprocess_runner import GitRunOptions
 
-#: Commands that write refs, reflogs or worktree metadata: they get the full pre-flight.
 _REF_WRITING = frozenset(
     {
         "merge",
@@ -63,8 +43,6 @@ _REF_WRITING = frozenset(
         "symbolic-ref",
     }
 )
-#: Commands whose single lock-taking step either happens or does not, so running
-#: them again after the lock is cleared is exactly what the first run meant.
 _SAFE_TO_REPEAT = frozenset(
     {
         "add",
@@ -87,7 +65,6 @@ _Attempt = tuple["GitRunResult | None", "subprocess.CalledProcessError | None"]
 
 
 class SpawnGit(Protocol):
-    """The raw git spawn ``route_run_git`` serialises (``_spawn_git``)."""
 
     def __call__(
         self,
@@ -108,7 +85,6 @@ def is_safe_to_repeat(subcommand: str | None) -> bool:
 
 
 def git_subcommand(args: Sequence[str]) -> str | None:
-    """Return the git subcommand in ``args``, skipping global options and their values."""
     skip = False
     for arg in args:
         if skip:
@@ -121,11 +97,6 @@ def git_subcommand(args: Sequence[str]) -> str | None:
 
 
 def _failure_text(subcommand: str | None, attempt: _Attempt) -> str:
-    """Return stderr when it reports a lock problem, else "".
-
-    ``push`` is included on success too: it can publish and still fail to move
-    the local tracking ref because of a lock, leaving ``<remote>/<branch>`` stale.
-    """
     result, error = attempt
     if error is not None:
         raw: object = error.stderr
@@ -159,12 +130,6 @@ def run_with_lock_recovery(
     label: str,
     options: GitRunOptions | None,
 ) -> GitRunResult:
-    """Run git through ``under_queue`` (which holds the repo's queue lock per call).
-
-    Returns the result, or raises the ``CalledProcessError`` a ``check=True``
-    call produced. Always reports the FIRST attempt's failure when recovery does
-    not turn it into a success.
-    """
     dirs = find_git_dirs(cwd) if cwd is not None else None
     subcommand = git_subcommand(args)
     operation = f"run_git:{label}"
@@ -186,8 +151,6 @@ def run_with_lock_recovery(
         return _unwrap(first)
 
     if subcommand not in _SAFE_TO_REPEAT:
-        # Leave the repository usable for the caller's next attempt, but do not
-        # re-run a command that may already have applied part of its work.
         reap_stale_locks(dirs[0], dirs[1], operation=operation)
         return _unwrap(first)
 

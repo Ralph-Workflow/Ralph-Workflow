@@ -76,26 +76,7 @@ def test_injected_subscriber_used_directly() -> None:
     assert pd.subscriber is sub
 
 
-# ---------------------------------------------------------------------------
-# wt-047-stall-label (DA-001): the injected-subscriber path must populate
-# the host's watchdog_attention surface so the bar mirrors STALLED.
-#
-# Pre-fix the constructor bound the sink only when it CONSTRUCTED its own
-# subscriber; the supported ``subscriber=`` path left the supplied
-# subscriber's ``watchdog_attention_sink`` slot unset, so a watchdog
-# STALLED transition was silently dropped on that path.
-# ---------------------------------------------------------------------------
-
-
 def test_injected_subscriber_receives_stalled_event(tmp_path: Path) -> None:
-    """DA-001 regression: an injected subscriber + STALLED event drives the host.
-
-    Sends a real ``WaitingStatusKind.STALLED`` event through an
-    injected subscriber and asserts the host's
-    ``watchdog_attention`` is ``"stalled"``. Pre-fix the supplied
-    subscriber's sink was never bound and ``display.watchdog_attention``
-    stayed ``None``.
-    """
     console = Console(force_terminal=True, width=120)
     q: Queue[PipelineSnapshot] = Queue(maxsize=8)
     sub = PipelineSubscriber(
@@ -105,16 +86,12 @@ def test_injected_subscriber_receives_stalled_event(tmp_path: Path) -> None:
     )
     pd = ParallelDisplay(make_display_context(console=console, env={}), subscriber=sub)
 
-    # Prime the subscriber with a state so record_waiting_status has
-    # something to snapshot from.
     state = PipelineState(
         phase="development",
         budget_caps={"iteration": 1, "reviewer_pass": 1},
     )
     sub.notify(state)
 
-    # Send a real STALLED event through the injected subscriber and
-    # assert the host picks it up.
     sub.record_waiting_status(
         WaitingStatusEvent(
             kind=WaitingStatusKind.STALLED,
@@ -129,7 +106,6 @@ def test_injected_subscriber_receives_stalled_event(tmp_path: Path) -> None:
     )
     assert pd.watchdog_attention == "stalled"
 
-    # Clear via STALL_RESUMED.
     sub.record_waiting_status(
         WaitingStatusEvent(
             kind=WaitingStatusKind.STALL_RESUMED,

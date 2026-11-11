@@ -1,26 +1,3 @@
-"""Negative tests for verify.py invariant enforcement.
-
-Verifies that the module-level RuntimeError checks in ralph.verify
-cannot be stripped by ``python -O`` and fire on invariant violations.
-
-Uses two batched subprocesses (one normal interpreter, one ``python -O``)
-because the invariants are checked at import time — modifying module
-globals after import is not possible since ``importlib.reload()``
-re-executes the full module body. Each case still gets its own patched
-temp copy; the child loops cases in-process so the suite pays two cold
-Python startups instead of ~18.
-
-.. note::
-
-    These tests are marked ``subprocess_e2e`` and excluded from the
-    main ``make test`` suite.  In Python 3.14, importing via
-    ``importlib.util.spec_from_file_location + exec_module`` triggers a
-    ``loguru`` / ``asyncio`` circular import (``AttributeError:
-    partially initialized module 'asyncio'``).  This is a test-harness
-    compatibility issue, not a verification defect — the invariants
-    are still enforced correctly in the main ``make verify`` path.
-"""
-
 from __future__ import annotations
 
 import json
@@ -32,12 +9,10 @@ from typing import TypedDict
 
 import pytest
 
-# Two cold starts (normal + -O); each child imports many patched copies.
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(15)]
 
 
 def _get_verify_path() -> Path:
-    """Return the absolute path to ralph/verify.py."""
     return Path(__file__).parent.parent / "ralph" / "verify.py"
 
 
@@ -50,14 +25,6 @@ class _CaseSpec(TypedDict):
 
 
 def _replace_once(source: str, old: str, new: str) -> str:
-    """Replace ``old`` in ``source``, failing loudly when it is absent.
-
-    These tests prove an import-time RuntimeError fires for a patched
-    constant. A silent no-op ``str.replace`` would import the PRISTINE
-    module instead, so the test would fail with a confusing "expected a
-    RuntimeError" rather than naming the real cause: the literal in
-    ``ralph/verify.py`` was reformatted and this patcher went stale.
-    """
     if old not in source:
         raise AssertionError(
             f"ralph/verify.py no longer contains the patch anchor {old!r};"
@@ -67,7 +34,6 @@ def _replace_once(source: str, old: str, new: str) -> str:
 
 
 def _invariant_cases() -> list[_CaseSpec]:
-    """All import-time invariant cases exercised by this module."""
     empty_labels = "_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset([])"
     other_labels = "_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset(['other test'])"
     empty_budget_steps = "_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset([])"
@@ -311,7 +277,6 @@ def _invariant_cases() -> list[_CaseSpec]:
 
 
 def _child_script(verify_path: Path, repo_root: Path, cases: list[_CaseSpec]) -> str:
-    """Build a child that imports each patched verify copy in-process."""
     cases_literal = repr(
         [
             {
@@ -414,7 +379,6 @@ def _child_script(verify_path: Path, repo_root: Path, cases: list[_CaseSpec]) ->
 
 
 def _run_batch(cases: list[_CaseSpec], *, minus_o: bool) -> list[dict[str, object]]:
-    """Run ``cases`` in one child interpreter (optionally under ``-O``)."""
     verify_path = _get_verify_path()
     repo_root = verify_path.parent.parent
     script = _child_script(verify_path, repo_root, cases)
@@ -445,7 +409,6 @@ def _run_batch(cases: list[_CaseSpec], *, minus_o: bool) -> list[dict[str, objec
 
 
 def _assert_results(cases: list[_CaseSpec], results: list[dict[str, object]]) -> None:
-    """Assert each case matched its expected import outcome."""
     assert len(results) == len(cases)
     failures: list[str] = []
     for case, result in zip(cases, results, strict=True):
@@ -468,11 +431,6 @@ def _assert_results(cases: list[_CaseSpec], results: list[dict[str, object]]) ->
 
 
 def test_verify_import_time_invariants_batched() -> None:
-    """All verify.py import-time invariants in two cold Python startups.
-
-    Non-``-O`` cases share one interpreter; ``-O`` survival cases share
-    another. Each case still patches a fresh temp copy of verify.py.
-    """
     verify_path = _get_verify_path()
     original = verify_path.read_text(encoding="utf-8")
     cases = _invariant_cases()

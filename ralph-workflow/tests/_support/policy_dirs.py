@@ -1,5 +1,3 @@
-"""Policy directories for tests that need a specific conflict-resolution chain."""
-
 from __future__ import annotations
 
 import shutil
@@ -7,12 +5,6 @@ from pathlib import Path
 
 
 def policy_dir_with_resolver_chain(target: Path, chain: str) -> Path:
-    """Copy the shipped policy, binding the rebase resolver drain to ``chain``.
-
-    A unique chain name keeps assertions about the once-per-process
-    one-agent-chain warning independent of what other tests in the same
-    process already loaded.
-    """
     defaults = Path(__file__).resolve().parents[2] / "ralph" / "policy" / "defaults"
     config_dir = target / ".agent"
     config_dir.mkdir(parents=True)

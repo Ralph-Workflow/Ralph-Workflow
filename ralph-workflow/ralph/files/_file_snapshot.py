@@ -1,4 +1,3 @@
-"""FileSnapshot — captured state for a single tracked file."""
 
 from __future__ import annotations
 
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class FileSnapshot:
-    """Captured state for a single tracked file."""
 
     path: Path
     checksum: str

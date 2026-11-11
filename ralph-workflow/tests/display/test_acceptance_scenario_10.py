@@ -1,18 +1,3 @@
-"""Scenario 10 acceptance: canonical display vocabularies yield distinct operator outputs.
-
-Every one of the eight ``OperationDisplayState`` values and the seven
-``IntegrationDisplayLabel`` values must produce a DISTINCT rendering on
-each operator surface:
-
-1. ``format_auto_integrate_message`` (the live line / completion summary),
-2. ``format_integration_label`` (the canonical phase label), and
-3. the persistent Status Bar render (``render_status_bar``).
-
-If any two inputs collapse to the same output on any surface, the
-vocabulary has drifted and these tests fail loudly rather than
-weakening the assertion.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -83,7 +68,6 @@ def test_integration_label_distinct_integration_label(label: IntegrationDisplayL
 
 @pytest.mark.parametrize("label", ALL_DISPLAY_LABELS, ids=_ids(ALL_DISPLAY_LABELS))
 def test_integration_label_distinct_auto_integrate_message(label: IntegrationDisplayLabel) -> None:
-    """Each of the seven labels also routes distinctly through the live-line formatter."""
     message = format_auto_integrate_message(operation_display_state=label)
     others = [
         format_auto_integrate_message(operation_display_state=v)

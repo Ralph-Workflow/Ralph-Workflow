@@ -1,18 +1,3 @@
-"""Pi's rc=0 exit after an exhausted retry ladder must name the cause.
-
-When the configured provider/model is unreachable, pi retries
-internally (``auto_retry_start`` / ``auto_retry_end``) and then exits
-**rc=0** having done nothing.  Before this contract the completion
-gate saw only "no completion evidence" and raised the generic
-:class:`OpenCodeResumableExitError`, so Ralph relaunched the agent
-against the same dead provider indefinitely -- each retry prompt
-carrying a growing wall of bodiless WARN lines and no cause.
-
-The failure text pi reports (``message.errorMessage`` /
-``auto_retry_end.finalError``) MUST reach the raised error so the
-failure classifier can route it to connectivity backoff.
-"""
-
 from __future__ import annotations
 
 import json
@@ -90,7 +75,6 @@ def test_pi_provider_failure_names_the_cause(tmp_path: Path) -> None:
 
 
 def test_pi_agent_end_failure_also_names_the_cause(tmp_path: Path) -> None:
-    """The failure may only ever appear on the ``agent_end`` messages array."""
     raw_output = [
         json.dumps({"type": "agent_end", "messages": [_FAILED_MESSAGE], "willRetry": False}),
     ]
@@ -107,7 +91,6 @@ def test_pi_agent_end_failure_also_names_the_cause(tmp_path: Path) -> None:
 
 
 def test_non_pi_agent_is_unaffected(tmp_path: Path) -> None:
-    """The pi-specific probe must not fire for other transports."""
     raw_output = [json.dumps({"type": "message_end", "message": _FAILED_MESSAGE})]
 
     with pytest.raises(OpenCodeResumableExitError):
@@ -115,7 +98,6 @@ def test_non_pi_agent_is_unaffected(tmp_path: Path) -> None:
 
 
 def test_pi_clean_run_without_evidence_stays_resumable(tmp_path: Path) -> None:
-    """A pi run with no provider failure keeps the existing resumable path."""
     raw_output = [
         json.dumps(
             {

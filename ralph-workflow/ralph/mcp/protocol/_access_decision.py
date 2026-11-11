@@ -1,4 +1,3 @@
-"""AccessDecision — result of an MCP access decision."""
 
 from __future__ import annotations
 
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class AccessDecision:
-    """Result of an MCP access decision."""
 
     allowed: bool
     reason: str | None = None
@@ -19,16 +17,13 @@ class AccessDecision:
 
     @classmethod
     def allow(cls) -> AccessDecision:
-        """Build an allow decision."""
         return cls(allowed=True)
 
     @classmethod
     def deny(cls, reason: str, code: AccessDeniedCode) -> AccessDecision:
-        """Build a deny decision."""
         return cls(allowed=False, reason=reason, code=code)
 
     def is_allowed(self) -> bool:
-        """Return whether access is allowed."""
         return self.allowed
 
 

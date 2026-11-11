@@ -59,19 +59,6 @@ def _get_default_policy():
     return load_policy(Path(__file__).parents[1] / "ralph" / "policy" / "defaults")
 
 
-# ---------------------------------------------------------------------------
-# Shared scenario setup.
-#
-# Every test in this module starts from the same repository shape: a
-# ``main`` branch carrying the base commit and a ``feature`` branch
-# carrying the feature commit, with ``feature`` checked out. Building
-# that shape costs eight git subprocess spawns, and this module used to
-# pay them once per test -- six times for two scenarios. The shapes are
-# built ONCE per session below and copied per test instead, so the
-# per-test setup is a filesystem copy rather than repeated spawns.
-# ---------------------------------------------------------------------------
-
-#: The feature-branch content each scenario starts from.
 _SCENARIO_FEATURE_CONTENT: dict[str, str] = {
     "completed_commit": "completed feature\n",
     "durable_ownership": "feature\n",
@@ -79,11 +66,6 @@ _SCENARIO_FEATURE_CONTENT: dict[str, str] = {
 
 
 def _current_branch(root: Path) -> str:
-    """Read the checked-out branch straight from the worktree's HEAD file.
-
-    ``git branch --show-current`` answers the same question, but it costs
-    a subprocess spawn per call; the HEAD file is the answer itself.
-    """
     head = (root / ".git" / "HEAD").read_text(encoding="utf-8").strip()
     prefix = "ref: refs/heads/"
     assert head.startswith(prefix), f"expected an attached HEAD, got: {head}"
@@ -91,11 +73,6 @@ def _current_branch(root: Path) -> str:
 
 
 def _branch_sha(root: Path, branch: str) -> str:
-    """Read a branch tip from the worktree's loose ref.
-
-    Same answer as ``git rev-parse <branch>`` for the fresh repositories
-    these scenarios build, without the subprocess spawn.
-    """
     ref = root / ".git" / "refs" / "heads" / branch
     if not ref.is_file():
         return _git(root, "rev-parse", branch).stdout.strip()
@@ -103,7 +80,6 @@ def _branch_sha(root: Path, branch: str) -> str:
 
 
 def _commit(root: Path, path: str, content: str) -> str:
-    """Commit a file and return the new tip's SHA."""
     from git import Repo
 
     FsWorkspace(root).write(path, content)
@@ -111,19 +87,13 @@ def _commit(root: Path, path: str, content: str) -> str:
     try:
         repo.index.add([path])
         commit = repo.index.commit(path)
-        assert commit.hexsha  # RALPH-TEST-REASON: GitPython commit replaces subprocess git add/commit to reduce CPU overhead
+        assert commit.hexsha
         return commit.hexsha
     finally:
         repo.close()
 
 
 def _seed_commit(root: Path, path: str, content: str) -> str:
-    """Write and commit a file with GitPython -- NO subprocess spawn.
-
-    Used to build the shared scenario templates: the commits only have
-    to exist as ordinary git objects, so writing them with GitPython
-    costs no process spawn at all.
-    """
     from git import Repo
 
     FsWorkspace(root).write(path, content)
@@ -137,12 +107,6 @@ def _seed_commit(root: Path, path: str, content: str) -> str:
 
 @dataclass(frozen=True)
 class _Scenario:
-    """One prepared scenario worktree plus the SHAs it starts from.
-
-    The SHAs are the same in every copy of the scenario: a copy carries
-    the same objects and the same refs.
-    """
-
     root: Path
     target: str
     base: str
@@ -154,7 +118,6 @@ def _scenario_templates(
     tmp_path_factory: pytest.TempPathFactory,
     _git_repo_template: Path,
 ) -> dict[str, _Scenario]:
-    """Build each scenario's git worktree ONCE per test session."""
     from git import Repo
 
     scenarios: dict[str, _Scenario] = {}
@@ -169,8 +132,6 @@ def _scenario_templates(
             repo.head.set_reference(repo.heads.feature)
         finally:
             repo.close()
-        # The feature branch exists and is checked out, exactly as the
-        # per-test `git switch -c feature` used to guarantee.
         assert _current_branch(root) == "feature"
         assert _branch_sha(root, "feature") == base
         feature = _seed_commit(root, "shared.txt", feature_content)
@@ -184,7 +145,6 @@ def _scenario_templates(
 
 
 def _scenario_repo(tmp_path: Path, scenarios: dict[str, _Scenario], scenario: str) -> _Scenario:
-    """Copy a prepared scenario worktree into this test's own directory."""
     prepared = scenarios[scenario]
     root = tmp_path / "repo"
     shutil.copytree(prepared.root, root)
@@ -198,13 +158,11 @@ def _scenario_repo(tmp_path: Path, scenarios: dict[str, _Scenario], scenario: st
 
 @pytest.fixture
 def completed_commit_repo(tmp_path: Path, _scenario_templates: dict[str, _Scenario]) -> _Scenario:
-    """A worktree with the base and feature commits the commit test starts from."""
     return _scenario_repo(tmp_path, _scenario_templates, "completed_commit")
 
 
 @pytest.fixture
 def durable_ownership_repo(tmp_path: Path, _scenario_templates: dict[str, _Scenario]) -> _Scenario:
-    """A worktree with the base and feature commits the receipt test starts from."""
     return _scenario_repo(tmp_path, _scenario_templates, "durable_ownership")
 
 

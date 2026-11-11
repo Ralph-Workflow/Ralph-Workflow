@@ -1,9 +1,3 @@
-"""Development-timebox wrap-up state shared by MCP tool dispatch.
-
-The pipeline publishes ``RALPH_DEV_WARN_EPOCH`` once for the uninterrupted
-development phase. MCP reads that epoch for the tool-result warning, so
-retries cannot restart the timer.
-"""
 
 from __future__ import annotations
 
@@ -32,18 +26,15 @@ _SESSION_BEFORE_WARNING: ContextVar[bool | None] = ContextVar(
 
 
 def session_before_warning() -> bool:
-    """Return whether the current dispatched tool call precedes the warning."""
     return _SESSION_BEFORE_WARNING.get() is True
 
 
 def session_warning_fired() -> bool:
-    """Return whether the current dispatched tool call follows the warning."""
     return _SESSION_BEFORE_WARNING.get() is False
 
 
 @contextmanager
 def session_warning_scope(before_warning: bool) -> Iterator[None]:
-    """Publish the epoch-derived warning state for one tool dispatch."""
     token = _SESSION_BEFORE_WARNING.set(before_warning)
     try:
         yield
@@ -52,12 +43,6 @@ def session_warning_scope(before_warning: bool) -> Iterator[None]:
 
 
 def development_wrapup_notice() -> str:
-    """Return the phase-wide development-timebox wind-down notice."""
-    # S-6: when the pipeline has published the development timebox, surface
-    # the concrete remaining minutes, suggest dispatching an independent
-    # ready group (instead of trimming scope), and instruct the developer
-    # to submit the development result before the cut. Without epochs, the
-    # notice stays the existing static text — a graceful fallback.
     deadline_epoch = read_published_epoch(DEV_DEADLINE_EPOCH_ENV, _os.environ.get)
     if deadline_epoch is None:
         return _STATIC_DEVELOPMENT_WRAPUP_NOTICE

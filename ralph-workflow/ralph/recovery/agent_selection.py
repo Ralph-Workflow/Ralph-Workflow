@@ -1,4 +1,3 @@
-"""Pure priority-order agent selection for recovery fallover."""
 
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -8,7 +7,6 @@ type AgentAvailability = tuple[str, bool, int, bool, str | None]
 
 @dataclass(frozen=True, slots=True)
 class AgentSelection:
-    """The selected agent and the reason each other agent was skipped."""
 
     index: int | None
     agent: str | None
@@ -22,12 +20,10 @@ def agent_availability(
     spent: bool,
     cooldown_reason: str | None = None,
 ) -> AgentAvailability:
-    """Create selection-relevant availability state for one agent."""
     return agent, available, cooldown_ms_remaining, spent, cooldown_reason
 
 
 def select_preferred_agent(rows: Sequence[AgentAvailability]) -> AgentSelection:
-    """Return the lowest-index agent that is available and has allowance left."""
     selected_index = next(
         (
             index
@@ -56,7 +52,6 @@ def select_preferred_agent(rows: Sequence[AgentAvailability]) -> AgentSelection:
 
 
 def format_selection_evidence(phase: str, selection: AgentSelection) -> str:
-    """Format a selection decision as one operator-readable transcript line."""
     skipped = "; ".join(f"{agent}: {reason}" for agent, reason in selection.skipped_reasons)
     if selection.agent is None:
         return (

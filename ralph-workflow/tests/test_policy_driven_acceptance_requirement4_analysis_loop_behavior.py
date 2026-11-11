@@ -1,13 +1,3 @@
-"""Policy-driven acceptance tests — Product Requirements 1-10 and Criteria A-H.
-
-These tests assert every product requirement and acceptance criterion against a
-fully renamed PolicyBundle (no canonical phase names). Any regression that
-re-introduces hidden phase name knowledge in the runtime will fail here.
-
-Scope: pure functions only. No I/O.
-Runtime budget: ≤ 5 seconds for the full module.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -36,17 +26,6 @@ from ralph.policy.models import (
 
 @pytest.fixture(scope="module")
 def policy_with_renamed_phases() -> PolicyBundle:
-    """Fully custom-named PolicyBundle — no canonical Ralph phase names.
-
-    Custom name mappings (canonical → custom):
-      planning          → design
-      development       → build
-      development_analysis → audit
-      development_commit → sign_off
-      review            → inspect
-      complete          → done
-      failed_terminal   → aborted
-    """
     agents = AgentsPolicy(
         agent_chains={
             "design_chain": AgentChainConfig(agents=["fake-agent"]),
@@ -174,21 +153,14 @@ def policy_with_renamed_phases() -> PolicyBundle:
     return PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
 
 
-# =============================================================================
-# Requirement 1: Policy must fully define user-visible routing semantics
-# =============================================================================
-
-
 class TestRequirement4AnalysisLoopBehavior:
     def test_loop_policy_declared_in_policy(self, policy_with_renamed_phases: PolicyBundle) -> None:
-        """The 'audit' phase has a loop_policy declared in policy."""
         audit_def = policy_with_renamed_phases.pipeline.phases["audit"]
         assert audit_def.loop_policy is not None
         assert audit_def.loop_policy.iteration_state_field == "audit_round"
         assert policy_with_renamed_phases.pipeline.loop_counters["audit_round"].default_max == 3
 
     def test_explain_exposes_loop_policy(self, policy_with_renamed_phases: PolicyBundle) -> None:
-        """explain_policy surfaces loop policy from the policy declaration."""
         exp = explain_policy(policy_with_renamed_phases)
         audit = next(p for p in exp.phases if p.name == "audit")
         assert audit.loop_policy is not None
@@ -197,7 +169,6 @@ class TestRequirement4AnalysisLoopBehavior:
     def test_loop_counter_is_policy_declared(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """Loop counter 'audit_round' is declared in policy, not hardcoded."""
         assert "audit_round" in policy_with_renamed_phases.pipeline.loop_counters
         lc = policy_with_renamed_phases.pipeline.loop_counters["audit_round"]
         assert lc.default_max == 3

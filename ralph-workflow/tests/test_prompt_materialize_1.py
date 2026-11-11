@@ -1,5 +1,3 @@
-"""Materialized prompts preserve markdown-artifact workflow context."""
-
 from __future__ import annotations
 
 from pathlib import Path

@@ -1,23 +1,3 @@
-"""Tests pinning the first-import cycle audit.
-
-The audit (``ralph.testing.audit_import_order``) is the gate that keeps the
-``make install`` breakage from recurring: ``ralph.install`` imported
-``ralph.display`` first, and a cycle through ``ralph.recovery.controller`` and
-the conflict-resolution package re-entered ``ralph.display.parallel_display``
-while it was still executing, so ``from ralph.display.parallel_display import
-...`` raised ``ImportError: cannot import name ... from partially initialized
-module``. The test suite never saw it because ``conftest.py`` fixes the import
-order, which is why the audit replays the import machinery once per module as
-the FIRST import of a fresh interpreter.
-
-Every "flags" case below is a fake package that a fresh ``python -I`` really
-fails to import with that ``ImportError``, and every "allows" case is one it
-really imports cleanly. The gate is only worth having if it agrees with the
-interpreter, so the cases are written from the interpreter's behaviour rather
-than from the rule's wording. Everything goes through the in-memory
-``audit_sources`` seam: nothing is written, imported, or executed.
-"""
-
 from __future__ import annotations
 
 import textwrap
@@ -46,12 +26,6 @@ def __getattr__(name: str) -> int:
 
 
 def _tree(files: Mapping[str, str]) -> dict[str, str]:
-    """Return a fake ``ralph.pkg`` source tree keyed by repo-relative path.
-
-    ``ralph/__init__.py`` and ``ralph/pkg/__init__.py`` default to empty, so a
-    case only spells out the modules it is about. Bodies are dedented and
-    their leading newline stripped, so line 1 is the first line written.
-    """
     sources = {"ralph/__init__.py": "", "ralph/pkg/__init__.py": ""}
     for path, body in files.items():
         sources[f"ralph/{path}"] = textwrap.dedent(body).lstrip("\n")
@@ -63,11 +37,7 @@ def _audit(files: Mapping[str, str]) -> list[Violation]:
 
 
 def _sites(violations: Sequence[Violation]) -> list[tuple[str, int, str, str]]:
-    """Return each violation's failing statement: importer, line, target, name."""
     return [(item.importer, item.lineno, item.target, item.name) for item in violations]
-
-
-# --- the basic two-module cycle ------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -81,7 +51,6 @@ def _sites(violations: Sequence[Violation]) -> list[tuple[str, int, str, str]]:
 def test_flags_a_cycle_entered_from_the_side_whose_name_is_not_yet_bound(
     a_imports_b: str, b_imports_a: str
 ) -> None:
-    """``import ralph.pkg.a`` fails; ``import ralph.pkg.b`` alone succeeds."""
     violations = _audit(
         {
             "pkg/a.py": f"{a_imports_b}\ny = 2\n",
@@ -117,7 +86,6 @@ def test_violation_report_names_the_entry_statement_and_chain() -> None:
 
 
 def test_flags_each_side_of_a_cycle_that_binds_both_names_late() -> None:
-    """Both entry points fail, at two different statements."""
     violations = _audit(
         {
             "pkg/a.py": "from ralph.pkg.b import x\ny = 2\n",
@@ -156,7 +124,6 @@ def test_allows_the_cycle_when_the_needed_name_is_bound_before_the_cycling_impor
 def test_allows_a_cycle_that_binds_the_module_and_reads_names_at_call_time(
     statement: str, reference: str
 ) -> None:
-    """A still-executing submodule is found through ``sys.modules``."""
     a_source = f"""
         {statement.format(mod="b")}
 
@@ -179,9 +146,6 @@ def test_allows_a_cycle_that_binds_the_module_and_reads_names_at_call_time(
     violations = _audit({"pkg/a.py": a_source, "pkg/b.py": b_source})
 
     assert violations == []
-
-
-# --- the package-__init__ shape behind the make-install breakage --------------
 
 
 _DISPLAY_LEAF = """
@@ -207,12 +171,6 @@ def run() -> str:
 
 
 def test_flags_a_leaf_import_whose_package_init_re_enters_the_importer() -> None:
-    """Importing the leaf runs ``display/__init__.py`` first, which loops back.
-
-    ``panel`` imports nothing, yet ``import ralph.pkg.controller`` fails:
-    the package ``__init__`` re-exports ``status``, and ``status`` imports
-    ``run`` from the controller that is still on its first line.
-    """
     violations = _audit(
         {
             "pkg/display/__init__.py": "from ralph.pkg.display.status import show\n",
@@ -247,13 +205,6 @@ def test_allows_the_same_leaf_import_when_the_package_init_is_empty() -> None:
     assert violations == []
 
 
-# --- statements that never run at import time ---------------------------------
-
-
-# ``b`` reads ``y`` from ``a`` before binding ``x``. Entered via ``b``, any
-# import of ``x`` that ``a`` RUNS at import time fails, so pairing it with an
-# ``a`` that imports ``x`` only where it never runs proves the audit skipped
-# that statement.
 _B_NEEDS_A_FIRST = "from ralph.pkg.a import y\nx = 1\n"
 
 _TYPE_CHECKING_GUARDS = pytest.mark.parametrize(
@@ -287,7 +238,6 @@ def test_ignores_imports_under_a_type_checking_guard(header: str, guard: str) ->
 
 @_TYPE_CHECKING_GUARDS
 def test_flags_imports_in_the_else_of_a_type_checking_guard(header: str, guard: str) -> None:
-    """The ``else:`` arm is exactly the code that runs at import time."""
     a_source = f"""
         {header}
 
@@ -379,14 +329,10 @@ def test_flags_imports_nested_in_blocks_that_run_at_import_time(a_source: str) -
     ]
 
 
-# --- PEP 562 module __getattr__ -----------------------------------------------
-
-
 _B_BINDS_X_THEN_READS_Y = "x = 1\nfrom ralph.pkg.a import y\n"
 
 
 def test_allows_a_partially_initialised_module_that_already_defines_getattr() -> None:
-    """``from a import y`` falls back to ``a.__getattr__("y")``."""
     a_source = f"{_GETATTR_HOOK.lstrip()}\n\nfrom ralph.pkg.b import x\n"
 
     violations = _audit({"pkg/a.py": a_source, "pkg/b.py": _B_BINDS_X_THEN_READS_Y})
@@ -395,7 +341,6 @@ def test_allows_a_partially_initialised_module_that_already_defines_getattr() ->
 
 
 def test_flags_a_module_whose_getattr_is_defined_after_the_cycling_import() -> None:
-    """A hook that is not defined yet cannot answer the lookup."""
     a_source = f"from ralph.pkg.b import x\n\n{_GETATTR_HOOK}"
 
     violations = _audit({"pkg/a.py": a_source, "pkg/b.py": _B_BINDS_X_THEN_READS_Y})
@@ -403,15 +348,7 @@ def test_flags_a_module_whose_getattr_is_defined_after_the_cycling_import() -> N
     assert _sites(violations) == [("ralph.pkg.b", 2, "ralph.pkg.a", "y")]
 
 
-# --- relative imports ---------------------------------------------------------
-
-
 def test_resolves_relative_imports_from_a_package_init_and_a_plain_module() -> None:
-    """``from .a`` in ``ralph/pkg/__init__.py`` is ``ralph.pkg.a``, not ``ralph.a``.
-
-    ``from . import helper`` in ``ralph/pkg/a.py`` reads ``helper`` off
-    ``ralph.pkg``, which is still executing its first line.
-    """
     violations = _audit(
         {
             "pkg/__init__.py": "from .a import y\nhelper = 1\n",
@@ -443,7 +380,6 @@ def test_allows_relative_imports_once_the_package_binds_the_name_first() -> None
 
 
 def test_allows_a_package_init_that_imports_its_submodules_relatively() -> None:
-    """``from . import a`` names a submodule, which the import system loads."""
     violations = _audit(
         {
             "pkg/__init__.py": "from . import a, b\n",
@@ -470,11 +406,7 @@ def test_resolves_parent_relative_imports_across_subpackages() -> None:
     ]
 
 
-# --- scope and reporting ------------------------------------------------------
-
-
 def test_ignores_imports_of_modules_outside_the_audited_tree() -> None:
-    """Non-``ralph`` modules never import ``ralph`` back, so they are opaque."""
     violations = _audit(
         {
             "pkg/a.py": """
@@ -500,7 +432,6 @@ def test_ignores_imports_of_modules_outside_the_audited_tree() -> None:
 
 
 def test_reports_each_failing_statement_once_for_the_first_entry_point() -> None:
-    """``a``, ``c`` and ``d`` all fail at the same line of ``b``."""
     violations = _audit(
         {
             "pkg/a.py": "from ralph.pkg.b import x\ny = 2\n",
@@ -515,7 +446,6 @@ def test_reports_each_failing_statement_once_for_the_first_entry_point() -> None
 
 
 def test_unparseable_source_raises_rather_than_reporting_clean() -> None:
-    """A module the audit cannot read must never be counted as cleared."""
     sources = _tree({"pkg/a.py": "y = 2\n", "pkg/broken.py": "def broken(:\n"})
 
     with pytest.raises(AuditParseError) as raised:
@@ -523,9 +453,6 @@ def test_unparseable_source_raises_rather_than_reporting_clean() -> None:
 
     assert isinstance(raised.value.__cause__, SyntaxError)
     assert "ralph/pkg/broken.py" in str(raised.value)
-
-
-# --- entry-point wiring -------------------------------------------------------
 
 
 _REPORTED = Violation(
@@ -586,8 +513,6 @@ def test_main_audits_the_working_directory_and_fails_closed(
 
 
 class _FailingStepRunner:
-    """Verify runner that succeeds every step except the one it is told to fail."""
-
     def __init__(self, failing_args: tuple[str, ...]) -> None:
         self.failing_args = failing_args
         self.calls: list[tuple[str, tuple[str, ...]]] = []
@@ -611,7 +536,6 @@ class _FailingStepRunner:
 def test_make_verify_runs_the_import_order_audit_under_its_label(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """A red audit must stop ``make verify`` and name the import-order step."""
     runner = _FailingStepRunner(_IMPORT_ORDER_STEP_ARGS)
 
     exit_code = run_verify(cwd=Path("ralph-workflow"), runner=runner)
@@ -623,16 +547,7 @@ def test_make_verify_runs_the_import_order_audit_under_its_label(
     )
 
 
-# --- shapes the first version of the audit got wrong --------------------------
-
-
 def test_flags_imports_in_the_else_of_a_main_guard() -> None:
-    """Only the ``__main__`` BODY is skipped on import; its ``else:`` runs.
-
-    A fresh ``import ralph.pkg.b`` raises ``ImportError: cannot import name
-    'x' from partially initialized module 'ralph.pkg.b'``, but the audit
-    drops the whole ``if`` statement, ``orelse`` included.
-    """
     a_source = """
         def y() -> int:
             return 1
@@ -650,12 +565,6 @@ def test_flags_imports_in_the_else_of_a_main_guard() -> None:
 
 
 def test_flags_imports_in_a_class_body() -> None:
-    """A class body executes at import time, so its imports take part.
-
-    A fresh ``import ralph.pkg.b`` raises ``ImportError: cannot import name
-    'x' from partially initialized module 'ralph.pkg.b'``, but the audit
-    never descends into class bodies.
-    """
     a_source = """
         def y() -> int:
             return 1
@@ -671,11 +580,6 @@ def test_flags_imports_in_a_class_body() -> None:
 
 
 def test_ignores_imports_in_the_else_of_a_negated_type_checking_guard() -> None:
-    """``if not TYPE_CHECKING: ... else:`` puts the type-only arm in ``else``.
-
-    A fresh ``import ralph.pkg.b`` succeeds, but the audit treats the
-    negated guard as an ordinary ``if`` and replays both arms.
-    """
     a_source = """
         from typing import TYPE_CHECKING
 
@@ -695,8 +599,6 @@ def test_ignores_imports_in_the_else_of_a_negated_type_checking_guard() -> None:
     assert violations == []
 
 
-# --- module-level reads through a bound module ---------------------------------
-
 _B_BINDS_A_THEN_X = "from ralph.pkg import a\nx = 1\n\n\nclass Base:\n    pass\n"
 
 
@@ -712,7 +614,6 @@ _B_BINDS_A_THEN_X = "from ralph.pkg import a\nx = 1\n\n\nclass Base:\n    pass\n
             "from ralph.pkg import b\n\n\ndef f(value: int = b.x) -> int:\n    return value\n",
             (4, "ralph.pkg.b", "x"),
         ),
-        # ``ralph.pkg.b`` is not yet an attribute of ``ralph.pkg`` while it runs.
         ("import ralph.pkg.b\nX = ralph.pkg.b.x\n", (2, "ralph.pkg", "b")),
     ],
     ids=["assignment", "class-base", "default-argument", "dotted-import"],
@@ -720,10 +621,6 @@ _B_BINDS_A_THEN_X = "from ralph.pkg import a\nx = 1\n\n\nclass Base:\n    pass\n
 def test_flags_module_level_reads_of_a_partially_initialised_module(
     a_source: str, site: tuple[int, str, str]
 ) -> None:
-    """Binding the module only defers the lookup if the read is deferred too.
-
-    A fresh ``import ralph.pkg.b`` raises ``AttributeError`` for each shape.
-    """
     violations = _audit({"pkg/a.py": a_source, "pkg/b.py": _B_BINDS_A_THEN_X})
 
     assert _sites(violations) == [("ralph.pkg.a", *site)]
@@ -732,7 +629,6 @@ def test_flags_module_level_reads_of_a_partially_initialised_module(
 
 
 def test_allows_reads_of_a_bound_module_inside_functions() -> None:
-    """The fix pattern itself: bind the module, read the name at call time."""
     a_source = "from ralph.pkg import b\n\n\ndef get() -> int:\n    return b.x\n"
 
     violations = _audit({"pkg/a.py": a_source, "pkg/b.py": _B_BINDS_A_THEN_X})
@@ -741,7 +637,6 @@ def test_allows_reads_of_a_bound_module_inside_functions() -> None:
 
 
 def test_star_import_binds_the_names_it_copies() -> None:
-    """``from m import *`` binds m's public names, so a later lookup finds them."""
     violations = _audit(
         {
             "pkg/helpers.py": "foo = 1\n",
@@ -754,7 +649,6 @@ def test_star_import_binds_the_names_it_copies() -> None:
 
 
 def test_allows_a_failing_import_caught_by_an_import_error_handler() -> None:
-    """The handler runs instead, so the module still imports."""
     a_source = """
         def y() -> int:
             return 1
@@ -770,8 +664,6 @@ def test_allows_a_failing_import_caught_by_an_import_error_handler() -> None:
 
     assert violations == []
 
-
-# --- imports run by calls made at import time -------------------------------
 
 _Y_NEEDS_X_FIRST = "from ralph.pkg.x import X\nY = 2\n"
 _W_NEEDS_Z_FIRST = "from ralph.pkg.z import Z\n"
@@ -819,14 +711,6 @@ _CALLED_AT_IMPORT_TIME = {
     "x_source", list(_CALLED_AT_IMPORT_TIME.values()), ids=list(_CALLED_AT_IMPORT_TIME)
 )
 def test_flags_imports_in_module_local_functions_called_at_import_time(x_source: str) -> None:
-    """``VALUE = _load()`` runs ``_load``'s imports while the module is executing.
-
-    A fresh interpreter fails both ways round: importing ``x`` first makes
-    ``y``'s ``from ralph.pkg.x import X`` see ``x`` partially initialised, and
-    importing ``y`` first makes ``_load``'s ``from ralph.pkg.y import Y`` see
-    ``y`` partially initialised. Calls are followed through other local
-    functions, and mutual recursion between them terminates.
-    """
     violations = _audit({"pkg/x.py": x_source, "pkg/y.py": _Y_NEEDS_X_FIRST})
 
     assert ("ralph.pkg.y", 1, "ralph.pkg.x", "X") in _sites(violations)
@@ -834,7 +718,6 @@ def test_flags_imports_in_module_local_functions_called_at_import_time(x_source:
 
 
 def test_flags_imports_in_a_local_function_used_as_a_decorator() -> None:
-    """A bare ``@_register`` calls ``_register`` when the decorated ``def`` runs."""
     x_source = """
         def _register(fn: object) -> object:
             from ralph.pkg.y import Y
@@ -855,12 +738,6 @@ def test_flags_imports_in_a_local_function_used_as_a_decorator() -> None:
 
 
 def test_allows_a_call_whose_failing_import_is_caught_by_an_import_error_handler() -> None:
-    """The ``try`` around the call guards the imports inside the called body too.
-
-    Importing ``y`` first re-enters ``x``, whose ``_load`` then fails on the
-    partially initialised ``y``; the handler runs instead, ``x`` finishes,
-    and ``y`` reads the ``X`` it needs.
-    """
     x_source = """
         def _load() -> int:
             from ralph.pkg.y import Y
@@ -880,7 +757,6 @@ def test_allows_a_call_whose_failing_import_is_caught_by_an_import_error_handler
 
 
 def test_names_a_called_function_imports_stay_local_to_it() -> None:
-    """A function's ``from m import y`` binds ``y`` in the function, not the module."""
     a_source = """
         def _f() -> int:
             from ralph.pkg.helpers import y
@@ -913,7 +789,6 @@ def test_names_a_called_function_imports_stay_local_to_it() -> None:
     ids=["importlib", "aliased-importlib", "imported-import-module"],
 )
 def test_flags_a_literal_import_module_call_at_import_time(z_source: str) -> None:
-    """``importlib.import_module("ralph.x")`` imports ``ralph.x`` like an import statement."""
     violations = _audit({"pkg/z.py": z_source, "pkg/w.py": _W_NEEDS_Z_FIRST})
 
     assert _sites(violations) == [("ralph.pkg.w", 1, "ralph.pkg.z", "Z")]

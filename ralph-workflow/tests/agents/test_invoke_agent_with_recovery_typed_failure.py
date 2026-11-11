@@ -1,10 +1,3 @@
-"""Behavioral regressions for direct-MCP retry-budget exhaustion.
-
-The retry loop preserves the original typed failure while attaching a factual
-attempt-budget diagnostic. It does not classify agent health or advise the
-caller to select another agent.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -14,8 +7,6 @@ from ralph.agents.invoke._direct_mcp_recovery import run_with_direct_mcp_recover
 
 
 class _SomeCustomError(Exception):
-    """Retryable non-agent-invocation failure used to verify type preservation."""
-
     agent_name = "custom-agent"
     stderr = "connection refused"
 

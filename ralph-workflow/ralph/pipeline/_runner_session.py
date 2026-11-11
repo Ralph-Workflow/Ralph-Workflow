@@ -1,4 +1,3 @@
-"""Session capture state for the pipeline runner."""
 
 from __future__ import annotations
 
@@ -34,22 +33,9 @@ def pop_last_captured_session_id() -> str | None:
 
 
 def apply_session_capture(state: PipelineState) -> PipelineState:
-    """Apply the captured agent-run side-effects to ``state``.
-
-    Pop the latest captured session id and the latest captured retry
-    intent from
-    the thread-locals in ``effect_executor`` and ``_runner_session``,
-    then merge them into ``state`` via ``copy_with``.
-
-    The retry intent is applied atomically so the next attempt does not
-    reconstruct resume behavior from split booleans and stale session state.
-    """
-    # Local import to avoid a circular dependency: effect_executor
-    # imports from runner.py (transitively), so we cannot import
-    # effect_executor at module load time.
     effect_executor = cast(
         "_EffectExecutorModule", import_module("ralph.pipeline.effect_executor")
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     pop_last_captured_retry_intent = effect_executor.pop_last_captured_retry_intent
 
     captured_session_id = pop_last_captured_session_id()

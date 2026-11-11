@@ -1,8 +1,3 @@
-"""Agent and system diagnostics.
-
-This module provides comprehensive diagnostic information for troubleshooting
-Ralph configuration and environment issues.
-"""
 
 from __future__ import annotations
 
@@ -23,15 +18,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class DiagnosticReport:
-    """Complete diagnostic report combining system and agent information.
-
-    Attributes:
-        system: System information.
-        agents: Agent availability diagnostics.
-        fs_health: Filesystem-environment health for the workspace
-            volume (RFC-013 P4). ``None`` when ``workspace_root`` was
-            not provided to ``run_diagnostics``.
-    """
 
     system: SystemInfo
     agents: AgentDiagnostics
@@ -46,22 +32,6 @@ def run_diagnostics(
     workspace_root: Path | None = None,
     git_probe: GitProbe = run_git_probe,
 ) -> DiagnosticReport:
-    """Run all diagnostics and return the combined report.
-
-    Args:
-        registry: Agent registry to check for diagnostics.
-        env: Environment mapping for diagnostic commands (defaults to os.environ).
-        is_available_fn: Callable to check if an agent command is available.
-        workspace_root: Optional workspace root. When supplied, the
-            report also includes an ``FsHealth`` snapshot for the volume
-            containing the workspace (Spotlight status, ``.fseventsd``
-            journal size, operator warnings).
-        git_probe: Seam forwarded to :meth:`SystemInfo.gather` for every
-            git query. Defaults to the real subprocess runner.
-
-    Returns:
-        DiagnosticReport containing all diagnostic information.
-    """
     system = SystemInfo.gather(env=env, git_probe=git_probe)
     agents = AgentDiagnostics.test(registry, is_available_fn=is_available_fn)
     fs_health = FsHealth.gather(workspace_root) if workspace_root is not None else None

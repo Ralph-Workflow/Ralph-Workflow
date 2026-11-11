@@ -1,4 +1,3 @@
-"""Phase artifact rendering and post-agent-run event handling."""
 
 from __future__ import annotations
 
@@ -71,14 +70,14 @@ if TYPE_CHECKING:
 def _read_latest_analysis_decision_func() -> _ReadLatestAnalysisDecisionFn:
     module = cast(
         "_ArtifactReaderModule", import_module("ralph.display.artifact_reader")
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     return module.read_latest_analysis_decision
 
 
 def _read_plan_artifact_func() -> _ReadPlanArtifactFn:
     module = cast(
         "_ArtifactReaderModule", import_module("ralph.display.artifact_reader")
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     return module.read_plan_artifact
 
 
@@ -88,18 +87,12 @@ def _emit_via_display(
     *args: object,
     **kwargs: object,
 ) -> bool:
-    """Resolve an active display and dispatch to the named method.
-
-    Returns True when a ParallelDisplay with the requested method was found
-    and invoked. Returns False when no active display is available, allowing
-    callers to fall back to the legacy free-function path if one exists.
-    """
     try:
         display: ParallelDisplay = resolve_active_display(None, display_context)
     except Exception:
         return False
-    method = getattr(display, method_name, None)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-    if method is None or not callable(method):  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    method = getattr(display, method_name, None)
+    if method is None or not callable(method):
         return False
     try:
         method(*args, **kwargs)
@@ -140,10 +133,6 @@ def _phase_event_after_agent_run(
         events = _hp(effect, ctx)
     except KeyboardInterrupt:
         raise
-    # ``SystemExit`` from library code is a recoverable phase failure under the
-    # recovery-first design; any other non-``Exception`` BaseException (harness
-    # deadline, ``GeneratorExit``, cancellation) is outside control flow and
-    # propagates unchanged.
     except (Exception, SystemExit) as exc:
         if isinstance(exc, McpServerError):
             logger.warning(
@@ -183,10 +172,6 @@ def _phase_event_after_agent_run(
             policy_bundle=policy_bundle,
             state=state,
             run_id=run_id,
-            # S-4 (G4 / DoD 15): the registry built above already resolves
-            # every agent from ``config``; reuse it here so the shared
-            # phase-verdict seam can name the exact raw log the real
-            # writer used for this phase's agent.
             agent_config=ctx.registry.get(effect.agent_name),
             shared_capture=shared_capture,
         )
@@ -280,17 +265,6 @@ def _render_phase_artifact_handoff(
 def _raw_transcript_break_detail(
     workspace_root: Path, agent_config: AgentConfig | None
 ) -> str | None:
-    """S-4 (G4 / DoD 15): the shared non-smoke phase-verdict seam.
-
-    Mirrors ``smoke_plumbing._raw_transcript_corruption_errors``'s path
-    formula exactly (``unit_id`` via ``shlex.split(agent_config.cmd)[0]``,
-    matching the private ``_agent_command_name`` helper in
-    ``_process_reader.py``, and ``model`` read directly from
-    ``agent_config.model``) so this reads the exact file the real
-    ``RawOverflowLog`` writer used. Returns ``None`` when no agent config is
-    available (the caller could not resolve one) or no break is found --
-    never raises.
-    """
     if agent_config is None:
         return None
     unit_id = raw_log_unit_id_for(agent_config)
@@ -303,51 +277,15 @@ def _raw_transcript_break_detail(
     return f"raw transcript corrupted: {breaks[0].detail}"
 
 
-#: Bytes of raw transcript tail scanned for a terminal transport failure.
-#: The frame is emitted immediately before the agent process exits, so the
-#: tail always carries it; bounding the read keeps the phase-close seam
-#: cheap on the multi-megabyte captures a long unit produces.
 _TRANSPORT_FAILURE_TAIL_BYTES: Final = 64 * 1024
 
-#: Longest transport-failure message folded into the verdict. Long enough
-#: for an API rejection with its parameter path, short enough that the
-#: verdict line stays readable in a terminal.
 _TRANSPORT_FAILURE_DETAIL_MAX_CHARS: Final = 240
 
 
-#: Frame types that END a unit's turn successfully. A failure frame
-#: followed by one of these was recovered from, so it is history rather
-#: than the cause of a missing artifact. One raw capture accumulates
-#: every attempt and every phase for an ``(executable, model)`` pair, so
-#: without this the scan reports stale frames from attempts that already
-#: succeeded.
-#:
-#: Both COMPLETION and START clear the pending cause, because the rule is
-#: "report the outcome of the last turn that BEGAN". One raw capture is
-#: keyed only by ``(executable, model)``, so it accumulates every retry,
-#: every phase, and every parallel work unit sharing that agent. Without
-#: the start clearing too, phase B's verdict inherits phase A's failure.
-#:
-#: The cost is silence when a retry is killed before writing anything.
-#: That is the right trade: a missing cause makes an operator look at the
-#: transcript, while a cause borrowed from a different phase makes them
-#: chase a fault that phase never had.
-#:
-#: This orders SEQUENTIAL turns. It cannot separate CONCURRENT ones: the
-#: capture is keyed by ``(executable, model)``, so same-workspace
-#: parallel workers running the same agent interleave their frames in one
-#: file and no ordering heuristic can attribute a failure to a unit.
-#: Separating those would need a per-unit capture path.
 _TRANSPORT_RECOVERY_FRAME_TYPES: Final = frozenset({"turn.completed", "turn.started"})
 
 
 def _terminal_transport_failure_message(obj: dict[str, object]) -> str | None:
-    """Return the human-readable message of a terminal transport frame.
-
-    Recognises the Codex ``turn.failed`` frame, whose ``error`` field is
-    either a string or an object carrying ``message``. Returns ``None``
-    for any other frame shape.
-    """
     if obj.get("type") != "turn.failed":
         return None
     error: object = obj.get("error")
@@ -356,29 +294,10 @@ def _terminal_transport_failure_message(obj: dict[str, object]) -> str | None:
         return str(message) if message else ""
     if isinstance(error, str) and error:
         return error
-    # A failure frame carrying no message. Returning the empty string
-    # says "a failure happened, with nothing to quote" -- synthesising
-    # words here would put them in quotation marks the caller attributes
-    # to the transcript.
     return ""
 
 
 def _transport_failure_detail(workspace_root: Path, agent_config: AgentConfig | None) -> str | None:
-    """Return a bounded description of a turn killed at the transport.
-
-    A work unit whose turn is rejected by the provider API never writes
-    its artifact, so completion evidence grades it ``FAILED (no
-    artifact)`` -- which reads as an agent-quality outcome and hides the
-    infrastructure fault that actually happened. Measured 2026-08-20: a
-    Codex turn died on a 400 (``Invalid value: 'output_text'``) and the
-    verdict said only that the receipt was missing.
-
-    Folding the transcript's terminal failure frame into the verdict
-    detail keeps the grade unchanged (no artifact IS no artifact) while
-    naming the cause. Returns ``None`` when no agent config is
-    available, the transcript is absent, or no terminal failure frame is
-    present -- never raises.
-    """
     if agent_config is None:
         return None
     unit_id = raw_log_unit_id_for(agent_config)
@@ -405,38 +324,22 @@ def _transport_failure_detail(workspace_root: Path, agent_config: AgentConfig | 
         if not isinstance(parsed, dict):
             continue
         if parsed.get("type") in _TRANSPORT_RECOVERY_FRAME_TYPES:
-            # The unit kept going after the failure; drop what we had.
             message = None
             continue
-        # Keep scanning: the LAST unrecovered failure frame is the one
-        # that ended the unit. ``""`` is a real result (a failure with no
-        # message), so test for None rather than truthiness.
         found = _terminal_transport_failure_message(parsed)
         if found is not None:
             message = found
     if message is None:
         return None
-    # The message is agent-influenced text lifted out of the transcript
-    # and rendered on the operator's terminal, so it goes through the
-    # same control-sequence stripper as every other agent-origin string.
-    # Pinned by
-    # ``tests/test_phase_transport_failure_reporting.py::
-    # test_transport_failure_detail_contains_terminal_escapes``.
     message = strip_terminal_control(message).replace("\n", " ").strip()
     if not message:
         return None
     if len(message) > _TRANSPORT_FAILURE_DETAIL_MAX_CHARS:
         message = message[: _TRANSPORT_FAILURE_DETAIL_MAX_CHARS - 1] + "..."
-    # Quoted and attributed on purpose. The raw capture is the agent's own
-    # stdout, so an agent can emit a frame shaped like a transport failure
-    # and put words in this line. Presenting the text as a quotation from
-    # the transcript -- rather than as Ralph Workflow's own finding --
-    # keeps the provenance honest.
     return _format_transport_failure_detail(message)
 
 
 def _format_transport_failure_detail(message: str) -> str:
-    """Render the operator-facing detail for a failure frame's message."""
     if not message:
         return "agent turn failed at the transport (the frame carried no message)"
     quoted = f'"{message}"'
@@ -451,23 +354,6 @@ def _compute_graded_phase_verdict(
     *,
     shared_capture: bool = False,
 ) -> tuple[str, Provenance, str]:
-    """Recompute graded completion evidence at the phase-close render boundary.
-
-    Safe recomputation, not unplanned/unsafe re-derivation: every input
-    ``evaluate_completion`` needs -- ``workspace_root``, the already-resolved
-    ``required_artifact``, the ``run_id`` threaded from the effect-execution
-    call site, and the broker secret via the sanctioned
-    ``_parent_broker_secret`` accessor -- is in scope here with no further
-    plumbing. This reads the same durable receipt/sentinel state the
-    completion-enforcement path already gated on; it does not derive a new
-    decision (S-2).
-
-    ``agent_config`` (S-4 / G4 / DoD 15) additionally folds a detected raw
-    transcript corruption into the returned detail string, so a corrupted or
-    truncated capture is a reported break at this shared phase-verdict seam,
-    not only at the smoke gate. Optional and additive: omitting it (the
-    default) reproduces the pre-S-4 behavior exactly.
-    """
     secret = _parent_broker_secret()
     signals = evaluate_completion(
         workspace_root,
@@ -477,22 +363,10 @@ def _compute_graded_phase_verdict(
         sentinel_secret=secret,
     )
     label, weakest, detail = graded_phase_verdict(signals, required_artifact=required_artifact)
-    # Only a phase that actually graded FAILED gets the transport cause
-    # folded in. A PASS or DEGRADED phase produced its artifact, so a
-    # failure frame in its transcript was recovered from and naming it
-    # would read as an alarm about a run that worked.
-    # ``shared_capture``: several concurrent units write one capture, so a
-    # failure frame in it cannot be attributed to this unit. Quoting a
-    # sibling's rejection here would be materially wrong, not merely
-    # unhelpful.
     if label == "FAILED" and not shared_capture:
         transport_detail = _transport_failure_detail(workspace_root, agent_config)
         if transport_detail is not None:
             detail = f"{detail}; {transport_detail}" if detail else transport_detail
-    # Deliberately NOT gated on ``shared_capture``. A transport failure
-    # is a fact about one unit's turn, so a shared capture cannot
-    # attribute it; corruption is a fact about the FILE, which every
-    # unit sharing it is equally entitled to report.
     break_detail = _raw_transcript_break_detail(workspace_root, agent_config)
     if break_detail is not None:
         detail = f"{detail}; {break_detail}" if detail else break_detail
@@ -500,14 +374,6 @@ def _compute_graded_phase_verdict(
 
 
 def _format_graded_phase_verdict(label: str, weakest: Provenance, detail: str) -> str:
-    """Format ``_compute_graded_phase_verdict``'s tuple as operator-facing text.
-
-    S-4 (G4 / DoD 15): a non-empty ``detail`` (e.g. a folded-in raw
-    transcript corruption break) is appended for EVERY label, not only
-    ``FAILED`` -- a corrupted transcript is a reported break regardless of
-    whether the phase otherwise graded PASS or DEGRADED on its completion
-    evidence alone. Empty ``detail`` reproduces the pre-S-4 text exactly.
-    """
     if label == "PASS":
         return f"PASS — {detail}" if detail else "PASS"
     if label == "FAILED":
@@ -533,18 +399,9 @@ def _render_success_artifact(
             with suppress(Exception):
                 cast("ParallelDisplay", display).record_artifact_outcome(
                     produced
-                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                )
 
     def _with_verdict(produced: str) -> str:
-        # Additive only (F6 / DoD 12): surfaces the graded PASS / DEGRADED
-        # (<rung>) / FAILED (no artifact) text alongside the existing
-        # step/risk-count string, never replacing it. Best-effort -- a
-        # grading failure must not blank out the artifact summary that
-        # already rendered successfully -- but the failure is LOGGED. A
-        # bare suppression here dropped the whole PASS/DEGRADED/FAILED
-        # label and any corruption detail with no trace, leaving an
-        # operator (and an investigator) a bare artifact summary and no
-        # way to learn that grading had raised at all.
         try:
             label, weakest, detail = _compute_graded_phase_verdict(
                 workspace_root,
@@ -622,37 +479,6 @@ def _render_phase_failure_report(
     config: UnifiedConfig | None = None,
     shared_capture: bool = False,
 ) -> None:
-    """Render ``Verdict: FAILED (no artifact)`` when an agent invocation did
-    not succeed for a required-artifact phase (F6 / DoD 12).
-
-    ``shared_capture`` marks a caller whose raw capture is shared with
-    other concurrently-running units -- parallel workers key the capture
-    by ``(executable, model)``, so several of them interleave frames in
-    one file. Transport-failure attribution is suppressed for those
-    callers: no ordering heuristic can tell which unit a failure frame
-    belongs to, and quoting a sibling unit's API rejection in this unit's
-    verdict is worse than reporting no cause at all.
-
-    ``config`` (S-4 / G4 / DoD 15) is optional and additive: when supplied,
-    ``effect.agent_name``'s :class:`AgentConfig` is resolved from it so the
-    shared phase-verdict seam can also fold a detected raw transcript
-    corruption into the rendered detail. Omitting it (the default)
-    reproduces the pre-S-4 behavior exactly.
-
-    Reachability (PA-001): called directly from the runner/worker call
-    sites' ``else`` branch on a non-``AGENT_SUCCESS`` event -- NOT through
-    ``_render_phase_artifact_handoff`` (which only ever runs on
-    ``AGENT_SUCCESS``) and NOT deferred to a later phase-transition-
-    triggered render (most retrying ``AGENT_FAILURE`` events never change
-    ``state.phase``, so that render never fires for them). This function is
-    a display-only side effect: it never calls ``handle_phase``, mutates
-    the pipeline event, or otherwise changes what the reducer sees
-    afterward.
-
-    An optional-artifact or artifact-free phase failing is out of this
-    feature's scope -- returns immediately when no required artifact is
-    registered for the phase, or the registered artifact is optional.
-    """
     effective_drain = effect.drain or effect.phase
     with suppress(Exception):
         required_artifact = resolve_phase_required_artifact(
@@ -678,10 +504,6 @@ def _render_phase_failure_report(
             return
         if verbosity == Verbosity.QUIET:
             return
-        # Resolve the active display the same way
-        # ``_render_phase_artifact_handoff`` does (some call sites, e.g.
-        # the parallel worker runtime, only have a ``DisplayContext`` in
-        # scope, not a live ``ParallelDisplay``).
         ctx = get_display_context(display, display_context)
         _emit_via_display(
             ctx,

@@ -1,4 +1,3 @@
-"""One stable-ID ``### [ID] Title`` block in a parsed markdown artifact."""
 
 from __future__ import annotations
 
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class ParsedBlock:
-    """A titled sub-heading block whose body is free lines the spec interprets."""
 
     identifier: str
     title: str

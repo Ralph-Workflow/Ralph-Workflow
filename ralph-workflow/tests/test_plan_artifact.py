@@ -1,11 +1,3 @@
-"""Black-box coverage for plan markdown artifacts.
-
-The plan spec is sanity-only. This module tests the new contract
-through the public parser entry point: prose plans and structure
-that does not match the legacy Pydantic schema are accepted, and
-no extraction produces an error.
-"""
-
 from __future__ import annotations
 
 from ralph.mcp.artifacts.format_docs import load_bundled_example
@@ -52,7 +44,6 @@ def test_plan_markdown_maps_to_the_canonical_execution_model() -> None:
 
 
 def test_plan_markdown_accepts_prose_plans_without_steps() -> None:
-    """A prose plan with no step blocks is accepted (best-effort)."""
     prose = """---
 type: plan
 ---
@@ -67,7 +58,6 @@ touch the spec, the validation module, and the tool side.
 
 
 def test_plan_markdown_accepts_dangling_dependencies() -> None:
-    """A dangling dependency is best-effort, not an error."""
     invalid = _plan_document().replace("Depends on: S-1", "Depends on: S-99")
 
     content, diagnostics = parse_and_validate(invalid, get_spec("plan"))
@@ -77,12 +67,9 @@ def test_plan_markdown_accepts_dangling_dependencies() -> None:
 
 
 def test_shipped_two_unit_example_is_accepted_as_a_plan() -> None:
-    """The format-doc example with two units round-trips without errors."""
     content = load_bundled_example("plan")
     assert content is not None
     spec = get_spec("plan")
     parsed, diagnostics = parse_and_validate(content, spec)
     assert not any(item.severity == "error" for item in diagnostics)
-    # The format-doc example may or may not declare units; either way
-    # the submission is accepted.
     assert isinstance(parsed, dict)

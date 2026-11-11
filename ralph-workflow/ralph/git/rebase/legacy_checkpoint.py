@@ -1,4 +1,3 @@
-"""Legacy persisted-rebase checkpoint classification types."""
 
 from __future__ import annotations
 
@@ -14,7 +13,6 @@ __all__ = ["LegacyCheckpointInspection"]
 
 @dataclass(frozen=True)
 class _LegacyCheckpointInspection:
-    """Validated legacy evidence, or a reason it must block startup."""
 
     status: LegacyCheckpointStatus
     checkpoint: RebaseCheckpoint | None = None
@@ -25,7 +23,6 @@ LegacyCheckpointInspection = _LegacyCheckpointInspection
 
 
 class LegacyCheckpointStatus(StrEnum):
-    """Fail-closed classification for legacy rebase persistence."""
 
     ABSENT = "absent"
     TERMINAL = "terminal"

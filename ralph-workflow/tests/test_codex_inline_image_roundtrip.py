@@ -1,27 +1,3 @@
-"""Regression: the Codex CLI must never receive an inline image block.
-
-Field evidence (2026-08-20, ``codex/gpt-5.6-terra`` dev loop): Ralph
-answered a ``read_media`` call with a base64 ``ImageContent`` block.
-The Codex CLI re-serialised that MCP tool result into its next
-Responses API request using the part type ``output_text``, which the
-API rejects::
-
-    [400]: Invalid value: 'output_text'. Supported values are:
-    'input_text', 'input_image', 'input_file', and 'scoped_content'.
-    (param: input[101].output[1])
-
-The turn died (``turn.failed``), the process was killed, and the run
-was graded ``FAILED (no artifact)`` because ``development_result.md``
-was never written. Ralph cannot fix the Codex CLI's serialisation, so
-it must not hand that transport an inline image in the first place.
-
-The delivery decision keys on the *transport*, not the provider: a
-Codex CLI run resolves to ``provider='openai'`` with
-``transport='codex'`` (see ``_TRANSPORT_FIXED_PROVIDER`` in
-``ralph/mcp/session_plan.py``), and the defect is in the CLI's wire
-serialisation rather than in any provider's API.
-"""
-
 from __future__ import annotations
 
 import json
@@ -50,8 +26,6 @@ MEDIA_READ_CAPABILITY = "media.read"
 
 pytestmark = pytest.mark.timeout_seconds(5)
 
-# Minimal valid PNG: 1x1 transparent pixel, generated inline so the
-# test stays hermetic (no file fixtures).
 _PNG_BYTES = (
     b"\x89PNG\r\n\x1a\n"
     b"\x00\x00\x00\rIHDR"
@@ -78,11 +52,6 @@ def _write_png(tmp_path: Path, name: str = "tiny.png") -> Path:
 
 
 def _set_profile(session: object, profile: object) -> None:
-    """Inject a capability profile onto a mock session.
-
-    The production path stores the profile on the session; the mock
-    exposes the same attribute so the production helper reads it.
-    """
     session.capability_profile = profile
 
 
@@ -93,18 +62,11 @@ def _codex_session() -> MockSessionWithManifest:
     )
 
 
-# ---------------------------------------------------------------------------
-# Capability layer — the single source of truth for delivery decisions
-# ---------------------------------------------------------------------------
-
-
 def test_codex_transport_is_flagged_inline_image_roundtrip_unsafe() -> None:
-    """The Codex CLI cannot round-trip an inline MCP image block."""
     assert inline_image_roundtrip_unsafe(_CODEX_IDENTITY)
 
 
 def test_codex_transport_image_verdict_is_not_inline_image() -> None:
-    """A Codex-transport image resolves to resource-reference delivery."""
     verdict = get_delivery_mode(_CODEX_IDENTITY, MODALITY_IMAGE)
 
     assert verdict.delivery is DeliveryMode.RESOURCE_REFERENCE_REPLAY
@@ -112,14 +74,12 @@ def test_codex_transport_image_verdict_is_not_inline_image() -> None:
 
 
 def test_codex_transport_image_verdict_reason_names_the_transport() -> None:
-    """The verdict explains why inline was withheld, for operator triage."""
     verdict = get_delivery_mode(_CODEX_IDENTITY, MODALITY_IMAGE)
 
     assert "codex" in verdict.reason.lower()
 
 
 def test_openai_provider_without_codex_transport_still_gets_inline_image() -> None:
-    """The guard keys on transport: a direct OpenAI identity is unaffected."""
     identity = MultimodalModelIdentity(provider="openai", model_id="gpt-5.6-terra")
 
     assert not inline_image_roundtrip_unsafe(identity)
@@ -127,7 +87,6 @@ def test_openai_provider_without_codex_transport_still_gets_inline_image() -> No
 
 
 def test_claude_transport_still_gets_inline_image() -> None:
-    """No regression for the transports that do round-trip images."""
     identity = MultimodalModelIdentity(
         provider="claude",
         model_id="claude-opus-5",
@@ -139,26 +98,13 @@ def test_claude_transport_still_gets_inline_image() -> None:
 
 
 def test_resolved_codex_identity_is_roundtrip_unsafe() -> None:
-    """The identity the runtime actually builds for Codex trips the guard.
-
-    Guards the provider/transport mismatch that made the ``"codex"``
-    key in ``_PROVIDER_UNSUPPORTED_MODALITIES`` dead code: a Codex CLI
-    run resolves to ``provider='openai'``, so a provider-keyed check
-    would never fire.
-    """
     identity = resolve_model_identity(AgentTransport.CODEX, "gpt-5.6-terra")
 
     assert identity.transport == "codex"
     assert inline_image_roundtrip_unsafe(identity)
 
 
-# ---------------------------------------------------------------------------
-# Tool layer — the surface that produced the 400
-# ---------------------------------------------------------------------------
-
-
 def test_read_media_on_codex_returns_no_inline_image_block(tmp_path: Path) -> None:
-    """The exact regression: no ImageContent reaches a Codex transport."""
     _write_png(tmp_path)
 
     result = handle_read_media(
@@ -172,7 +118,6 @@ def test_read_media_on_codex_returns_no_inline_image_block(tmp_path: Path) -> No
 
 
 def test_read_image_on_codex_returns_no_inline_image_block(tmp_path: Path) -> None:
-    """``read_image`` shares the delivery path and must be guarded too."""
     _write_png(tmp_path)
 
     result = handle_read_image(
@@ -188,7 +133,6 @@ def test_read_image_on_codex_returns_no_inline_image_block(tmp_path: Path) -> No
 def test_read_media_on_codex_returns_replayable_resource_reference(
     tmp_path: Path,
 ) -> None:
-    """Withholding inline bytes must not lose the artifact."""
     _write_png(tmp_path)
 
     result = handle_read_media(
@@ -204,12 +148,6 @@ def test_read_media_on_codex_returns_replayable_resource_reference(
 
 
 def test_codex_replay_of_media_uri_never_returns_inline_image(tmp_path: Path) -> None:
-    """Replaying the handle must not re-introduce the inline block.
-
-    Without this the guard would be a single-hop fix: the first read
-    returns a handle, and dereferencing that handle hands Codex the
-    ImageContent that kills the turn.
-    """
     _write_png(tmp_path)
     session = _codex_session()
     workspace = FsWorkspace(tmp_path)
@@ -225,12 +163,6 @@ def test_codex_replay_of_media_uri_never_returns_inline_image(tmp_path: Path) ->
 
 
 def test_codex_metadata_format_registers_a_replay_handle(tmp_path: Path) -> None:
-    """``format='metadata'`` must still hand Codex a dereferenceable handle.
-
-    The metadata path skipped artifact registration for images because
-    images were previously always inline-delivered; a Codex image is
-    resource-reference delivered, so the handle must be registered.
-    """
     _write_png(tmp_path)
 
     result = handle_read_media(
@@ -247,7 +179,6 @@ def test_codex_metadata_format_registers_a_replay_handle(tmp_path: Path) -> None
 
 
 def test_non_codex_transport_still_receives_inline_image(tmp_path: Path) -> None:
-    """Negative case: the fix must not degrade image-capable transports."""
     _write_png(tmp_path)
 
     result = handle_read_media(
@@ -270,12 +201,6 @@ def test_non_codex_transport_still_receives_inline_image(tmp_path: Path) -> None
 def test_codex_receives_a_warning_explaining_the_withheld_image(
     tmp_path: Path,
 ) -> None:
-    """A bare reference for an obvious PNG needs a stated reason.
-
-    Criterion 3's graceful-degradation contract: the agent gets a usable
-    payload AND an operator-visible explanation of why this is the
-    degraded path.
-    """
     _write_png(tmp_path)
 
     result = handle_read_media(
@@ -292,26 +217,11 @@ def test_codex_receives_a_warning_explaining_the_withheld_image(
     assert len(warnings) == 1, result.content
     text = warnings[0].lower()
     assert "codex" in text
-    # The message must not send the agent round a loop for bytes it
-    # cannot be given.
     assert "do not retry" in text
     assert "metadata" in text
 
 
-# ---------------------------------------------------------------------------
-# Runtime plumbing — the guard is worthless if the transport never arrives
-# ---------------------------------------------------------------------------
-
-
 def test_a_restricted_transport_gets_no_typed_blocks_either() -> None:
-    """A typed PDF block is the same construct as the image block.
-
-    The measured failure is the CLI re-serialising a Ralph-minted
-    non-standard content block into its own API request. The modality
-    differs between an image block and a pdf block; the hazard does not.
-    Inference from the measured case, in the conservative direction --
-    the artifact still arrives as a resource reference.
-    """
     from ralph.mcp.multimodal.artifacts import MODALITY_DOCUMENT, MODALITY_PDF
     from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity, get_delivery_mode
 
@@ -326,7 +236,6 @@ def test_a_restricted_transport_gets_no_typed_blocks_either() -> None:
 
 
 def test_an_unrestricted_transport_still_gets_typed_blocks() -> None:
-    """The withholding is transport-scoped, not a blanket downgrade."""
     from ralph.mcp.multimodal.artifacts import MODALITY_PDF
     from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity, get_delivery_mode
 
@@ -338,21 +247,6 @@ def test_an_unrestricted_transport_still_gets_typed_blocks() -> None:
 
 
 def test_a_reference_block_never_claims_a_typed_delivery(tmp_path: Path) -> None:
-    """A reference block must carry a reference delivery.
-
-    A stored verdict can name a ``typed_block`` this identity never
-    resolves -- ``profile_from_payload`` validates neither the delivery
-    nor the block type -- and what comes back is then a resource
-    reference. Stamping the verdict's own ``typed_block`` on it
-    contradicts the block's contract and makes the artifact invisible to
-    both handoff extractors, which filter on the two reference values.
-
-    The identity here is one whose FRESH pdf verdict is a reference, so
-    the stored verdict genuinely over-promises. An identity that does
-    resolve a typed block for the modality proves nothing about this:
-    ``verdict_for`` repairs the block type against the fresh answer and
-    the artifact is correctly delivered as that typed block.
-    """
     from ralph.mcp.multimodal.artifacts import MODALITY_PDF
     from ralph.mcp.multimodal.capabilities import (
         CapabilityVerdict,
@@ -390,12 +284,6 @@ def test_a_reference_block_never_claims_a_typed_delivery(tmp_path: Path) -> None
 
 
 def test_a_stored_typed_block_verdict_cannot_outrank_the_transport() -> None:
-    """A persisted verdict may not promise more than the identity allows.
-
-    Correcting only ``inline_image`` left the same hole one modality
-    over: a stored ``pdf -> typed_block`` handed a Ralph-minted typed
-    block to a CLI that cannot carry one.
-    """
     from ralph.mcp.multimodal.artifacts import MODALITY_PDF
     from ralph.mcp.multimodal.capabilities import (
         CapabilityVerdict,
@@ -421,27 +309,12 @@ def test_a_stored_typed_block_verdict_cannot_outrank_the_transport() -> None:
     )
 
     assert profile.verdict_for(MODALITY_PDF).delivery is (DeliveryMode.RESOURCE_REFERENCE_REPLAY)
-    # ...and the correction survives re-serialisation.
     verdicts = profile.to_payload()["verdicts"]
     assert isinstance(verdicts, dict)
     assert verdicts[MODALITY_PDF]["delivery"] == DeliveryMode.RESOURCE_REFERENCE_REPLAY.value
 
 
 def test_a_more_conservative_stored_verdict_is_respected() -> None:
-    """The correction runs one way only; deliberate restraint is kept.
-
-    Scope note, because the name overreaches on its own: this pins what
-    ``verdict_for`` RETURNS, which is a ceiling on what a stored verdict
-    may promise. It does not pin what any delivery path does with it.
-    The fresh-read image path deliberately ignores the verdict --
-    criterion 14 treats an unresolvable identity as capable for images
-    -- so with this very profile ``handle_read_media`` still returns an
-    ``ImageContent``. That is by design, and
-    ``test_a_sanitised_verdict_does_not_gate_the_fresh_image_path``
-    below states it out loud so nobody reads this test as the guarantee
-    it is not. The protection against a restricted transport comes from
-    the transport check, not from this correction.
-    """
     from ralph.mcp.multimodal.artifacts import MODALITY_IMAGE
     from ralph.mcp.multimodal.capabilities import (
         UNKNOWN_IDENTITY,

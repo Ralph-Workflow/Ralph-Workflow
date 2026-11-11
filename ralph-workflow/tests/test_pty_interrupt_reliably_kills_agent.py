@@ -1,26 +1,3 @@
-"""Regression tests for InterruptController's label-targeted kill path.
-
-The pre-fix code routed the FIRST SIGINT through
-``handle_keyboard_interrupt`` -> ``controller.begin_interrupt(grace_period_s=...)``,
-which called the generic ``shutdown_all`` callback. On a wedged PTY
-agent run, the generic shutdown may not kill the agent's process
-group quickly enough, so the FIRST SIGINT appears to be ignored and
-the user has to send a SECOND SIGINT (which the force-kill handler
-escalates to os._exit). This is the live bug.
-
-The fix:
-- ``InterruptController`` gains a new ``shutdown_all_for_label`` field
-  and a new ``kill_label`` keyword arg on ``begin_interrupt``.
-- ``controller_from_process_manager`` wires a closure that calls
-  ``manager.shutdown_all_for_label(label_prefix, grace_period_s=...)``
-  so the FIRST SIGINT targets the agent's process group.
-- ``handle_keyboard_interrupt`` passes ``kill_label="invoke:"`` so the
-  agent's specific label is the target.
-
-These tests pin the wiring so a regression that bypasses the
-label-targeted path is caught.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -37,17 +14,6 @@ if TYPE_CHECKING:
 
 
 class _CallRecorder:
-    """Helper to record InterruptController callback invocations.
-
-    Tests cannot use lambdas (the project forbids ``# noqa`` in test
-    files) so the recorder exposes the recording behavior as bound
-    methods. ``record_all`` and ``record_for_label`` are passed as the
-    ``shutdown_all`` and ``shutdown_all_for_label`` arguments to
-    ``InterruptController``. Each invocation appends to the
-    corresponding list so the test can assert on the recorded
-    sequence.
-    """
-
     def __init__(
         self,
         for_label_calls: list[tuple[str, float]],
@@ -64,8 +30,6 @@ class _CallRecorder:
 
 
 class _EventRecorder:
-    """Helper to record the InterruptController event sequence in order."""
-
     def __init__(self) -> None:
         self.events: list[tuple[str, object]] = []
 
@@ -113,9 +77,6 @@ def _build_controller(
 
 
 def test_begin_interrupt_with_kill_label_calls_shutdown_all_for_label() -> None:
-    """When ``kill_label`` is non-empty AND ``shutdown_all_for_label``
-    is set, the controller calls the label-targeted closure INSTEAD
-    of the generic ``shutdown_all``."""
     for_label_calls: list[tuple[str, float]] = []
     all_calls: list[float] = []
     recorder = _CallRecorder(for_label_calls, all_calls)
@@ -133,7 +94,6 @@ def test_begin_interrupt_with_kill_label_calls_shutdown_all_for_label() -> None:
 
 
 def test_begin_interrupt_without_kill_label_falls_back_to_shutdown_all() -> None:
-    """The empty-label fallback calls the generic ``shutdown_all``."""
     for_label_calls: list[tuple[str, float]] = []
     all_calls: list[float] = []
     recorder = _CallRecorder(for_label_calls, all_calls)
@@ -148,10 +108,6 @@ def test_begin_interrupt_without_kill_label_falls_back_to_shutdown_all() -> None
 
 
 def test_begin_interrupt_with_kill_label_falls_back_when_label_closure_unset() -> None:
-    """If ``kill_label`` is non-empty but ``shutdown_all_for_label`` is
-    None (e.g. a custom controller constructed without the field),
-    the controller must still call ``shutdown_all`` so the SIGINT is
-    not silently dropped."""
     all_calls: list[float] = []
     recorder = _CallRecorder([], all_calls)
     controller = _build_controller(
@@ -164,8 +120,6 @@ def test_begin_interrupt_with_kill_label_falls_back_when_label_closure_unset() -
 
 
 def test_begin_interrupt_records_interrupt_and_stops_connectivity() -> None:
-    """The record/stop steps run BEFORE the shutdown so the operator
-    sees a coherent sequence in the logs."""
     events = _EventRecorder()
     controller = _build_controller(
         shutdown_all=events.record_all,
@@ -181,10 +135,6 @@ def test_begin_interrupt_records_interrupt_and_stops_connectivity() -> None:
 
 
 def test_controller_from_process_manager_wires_shutdown_all_for_label() -> None:
-    """The factory must wire the new closure so the SIGINT path can
-    target a specific agent label. A regression that returns a
-    controller with ``shutdown_all_for_label=None`` would silently
-    disable the label-targeted path."""
 
     class FakeManager:
         def __init__(self) -> None:
@@ -208,9 +158,6 @@ def test_controller_from_process_manager_wires_shutdown_all_for_label() -> None:
 
 
 def test_controller_from_process_manager_empty_label_falls_back() -> None:
-    """Backward-compatible empty-label path: ``kill_label=""`` falls
-    through to ``shutdown_all`` so existing callers that don't pass a
-    label see the existing behavior."""
 
     class FakeManager:
         def __init__(self) -> None:
@@ -233,9 +180,6 @@ def test_controller_from_process_manager_empty_label_falls_back() -> None:
 
 
 def test_begin_interrupt_with_empty_kill_label_kwarg_uses_shutdown_all() -> None:
-    """Passing ``kill_label=""`` (the default) is identical to omitting
-    the kwarg. This guards against a regression that treats empty
-    string as a real label."""
     for_label_calls: list[tuple[str, float]] = []
     all_calls: list[float] = []
     recorder = _CallRecorder(for_label_calls, all_calls)

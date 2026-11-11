@@ -1,4 +1,3 @@
-"""Shared text delta accumulator for parser implementations."""
 
 from __future__ import annotations
 
@@ -11,16 +10,12 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 
-# Keep a single parser burst below the per-test and live-output latency budget.
-# The cap is deliberately small enough that a pathological no-boundary stream
-# yields a bounded record promptly instead of retaining thousands of raw events.
 _MAX_RAW_LINES: int = 512
 _MAX_BUFFER_CHARS: int = 1 << 20
 
 
 @dataclass(slots=True)
 class TextAccumulator:
-    """Shared delta accumulator for paragraph-boundary text flushing."""
 
     buffer: str = ""
     raw_lines: list[str] = field(default_factory=list)
@@ -33,16 +28,6 @@ class TextAccumulator:
         kind: str = "text",
         keep_current_when_empty: bool,
     ) -> Iterator[AgentOutputLine]:
-        """Append text/raw and yield an AgentOutputLine if a paragraph boundary is reached.
-
-        Args:
-            text: Text delta to append to the buffer.
-            raw: Raw JSON line to track.
-            kind: Output type for the emitted line ('text' or 'thinking').
-            keep_current_when_empty: When True, always keep the current raw line in the
-                tail after a flush even if remaining buffer is empty (unconditional rule).
-                When False, only keep it when remaining is non-empty.
-        """
         self.buffer += text
         self.raw_lines.append(raw)
         if len(self.raw_lines) > _MAX_RAW_LINES:
@@ -61,7 +46,6 @@ class TextAccumulator:
             self.raw_lines = [raw] if (remaining or keep_current_when_empty) else []
 
     def append_delta(self, text: str, raw: str, *, kind: str = "text") -> Iterator[AgentOutputLine]:
-        """Append a delta and flush only when either accumulation cap is exceeded."""
         self.buffer += text
         self.raw_lines.append(raw)
         if len(self.raw_lines) > _MAX_RAW_LINES or len(self.buffer) > _MAX_BUFFER_CHARS:
@@ -72,13 +56,6 @@ class TextAccumulator:
     def flush(
         self, *, kind: str = "text", require_strip: bool = False
     ) -> Iterator[AgentOutputLine]:
-        """Yield remaining buffer content as an AgentOutputLine if non-empty, then reset.
-
-        Args:
-            kind: Output type for the emitted line ('text' or 'thinking').
-            require_strip: When True, only emit if buffer.strip() is non-empty (for
-                thinking accumulators that should suppress whitespace-only content).
-        """
         check = self.buffer.strip() if require_strip else self.buffer
         if check:
             raw_joined = "\n".join(self.raw_lines) if self.raw_lines else ""

@@ -1,5 +1,3 @@
-"""Unit tests for Linux PTY fixes: EAGAIN handling and sentinel fd guard."""
-
 from __future__ import annotations
 
 import fcntl

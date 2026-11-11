@@ -1,11 +1,3 @@
-"""End-to-end tests: stale session failure triggers session reset and context-preserving retry.
-
-These tests operate at two levels:
-- RecoveryController / FailureClassifier level (pure logic tests)
-- effect_executor.execute_agent_effect level (true E2E: stale session is detected and retried
-  internally with a fresh session, without any manual stitching of steps)
-"""
-
 from __future__ import annotations
 
 import re
@@ -46,11 +38,6 @@ from tests._pipeline_deps_factory import make_test_pipeline_deps
 _EXPECTED_INVOCATION_COUNT = 2
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
 def _make_state(
     last_session_id: str | None = None,
 ) -> PipelineState:
@@ -75,8 +62,6 @@ def _make_config(
 
 
 class FakeBridge:
-    """Minimal MCP bridge stub for runner tests."""
-
     def shutdown(self) -> None:
         return
 
@@ -101,7 +86,6 @@ def _master_prompt_materializer(tmp_path: Path) -> MaterializeMasterPromptFn:
 
 
 def _registry_factory(agent_config: AgentConfig) -> type:
-    """Return a registry factory class stub that always resolves to agent_config."""
 
     class _Registry:
         @classmethod
@@ -112,27 +96,10 @@ def _registry_factory(agent_config: AgentConfig) -> type:
     return _Registry
 
 
-# ---------------------------------------------------------------------------
-# Runner-level E2E: execute_agent_effect internally retries stale session
-# ---------------------------------------------------------------------------
-
-
 def test_runner_stale_session_internal_retry_succeeds(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """execute_agent_effect internally retries with a fresh session after stale-session failure.
-
-    The real retry path inside execute_agent_effect detects the stale-session error,
-    produces a retry prompt carrying the failure context, and re-invokes with session_id=None.
-    No manual stitching is needed — the pipeline loop handles it automatically.
-
-    Assertions:
-    1. First invocation fails with stale-session error.
-    2. Second invocation (same execute_agent_effect call) uses session_id=None.
-    3. The retry prompt passed to the second invocation contains the stale-session context.
-    4. AGENT_SUCCESS is returned.
-    """
     (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
 
@@ -141,7 +108,7 @@ def test_runner_stale_session_internal_retry_succeeds(
 
     stale_session_id = "deadbeef-dead-dead-dead-deadbeefcafe"
 
-    captured_calls: list[tuple[str | None, str]] = []  # (session_id, prompt_file)
+    captured_calls: list[tuple[str | None, str]] = []
 
     def fake_invoke_agent(
         config: AgentConfig,
@@ -188,10 +155,8 @@ def test_runner_stale_session_internal_retry_succeeds(
         agent_invocation_error=AgentInvocationError,
     )
 
-    # (4) AGENT_SUCCESS: the internal retry succeeded
     assert result == PipelineEvent.AGENT_SUCCESS
 
-    # (1) + (2) Two invocations: first uses stale session, second uses None
     assert len(captured_calls) == _EXPECTED_INVOCATION_COUNT, (
         f"Expected {_EXPECTED_INVOCATION_COUNT} invocations, got {len(captured_calls)}"
     )
@@ -202,8 +167,6 @@ def test_runner_stale_session_internal_retry_succeeds(
         f"Second invocation must start with no resume session_id, got {second_session_id!r}"
     )
 
-    # (3) Retry prompt contains stale-session context — produced by _write_agent_retry_prompt,
-    # not by manual test-side construction
     retry_content = Path(second_prompt).read_text(encoding="utf-8")
     assert retry_content.splitlines()[0] == "ERROR RECOVERY REQUIRED"
     assert (
@@ -227,7 +190,6 @@ def test_runner_inactivity_timeout_with_captured_session_retries_same_session(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Claude interactive inactivity retry preserves the observed session ID."""
     (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
 
@@ -373,7 +335,6 @@ def test_runner_stale_session_with_parsed_session_id_retries_fresh(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Stale-session errors force a fresh retry even when output has another session ID."""
     (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
 
@@ -436,7 +397,6 @@ def test_runner_stale_session_exhausts_retries_returns_failure(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """When all retries fail with stale-session errors, AGENT_FAILURE is returned."""
     (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
 
@@ -488,26 +448,10 @@ def test_runner_stale_session_exhausts_retries_returns_failure(
     assert result == PipelineEvent.AGENT_FAILURE
 
 
-# ---------------------------------------------------------------------------
-# OpenCode-specific stale-session runner tests
-# ---------------------------------------------------------------------------
-
-
 def test_runner_opencode_stale_session_internal_retry_succeeds(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """OpenCode stale-session: execute_agent_effect retries with fresh session after failure.
-
-    OpenCode-specific variant using 'Session not found' stale-session message and
-    OpenCode transport. Proves the runner stale-session detection and session-reset
-    path works end-to-end for OpenCode agents, not only for Claude.
-
-    Assertions:
-    1. First invocation fails with OpenCode stale-session error ('Session not found').
-    2. Second invocation (same execute_agent_effect call) uses session_id=None.
-    3. AGENT_SUCCESS is returned.
-    """
     (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
 
@@ -516,7 +460,7 @@ def test_runner_opencode_stale_session_internal_retry_succeeds(
 
     opencode_stale_session_id = "opencode-stale-abc123"
 
-    captured_calls: list[tuple[str | None, str]] = []  # (session_id, prompt_file)
+    captured_calls: list[tuple[str | None, str]] = []
 
     def fake_invoke_agent(
         config: AgentConfig,
@@ -568,10 +512,8 @@ def test_runner_opencode_stale_session_internal_retry_succeeds(
         agent_invocation_error=AgentInvocationError,
     )
 
-    # (3) AGENT_SUCCESS: the internal retry with fresh session succeeded
     assert result == PipelineEvent.AGENT_SUCCESS
 
-    # (1) + (2) Two invocations: first uses stale session, second uses None
     assert len(captured_calls) == _EXPECTED_INVOCATION_COUNT, (
         f"Expected {_EXPECTED_INVOCATION_COUNT} invocations, got {len(captured_calls)}"
     )
@@ -586,7 +528,6 @@ def test_runner_opencode_unknown_session_stale_message_triggers_retry(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """OpenCode 'Unknown session' message also triggers stale-session retry with fresh session."""
     (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
 
@@ -650,7 +591,6 @@ def test_runner_opencode_lowercase_stale_message_in_parsed_output_triggers_retry
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Lowercase stale-session details in parsed_output still force a fresh retry session."""
     (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
 
@@ -711,13 +651,7 @@ def test_runner_opencode_lowercase_stale_message_in_parsed_output_triggers_retry
     assert captured_calls[1] is None
 
 
-# ---------------------------------------------------------------------------
-# Controller-level tests (pure logic, no runner)
-# ---------------------------------------------------------------------------
-
-
 def test_stale_session_path_full_sequence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Full sequence: stale-session failure leads to session cleared and retry hint written."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".agent" / "tmp").mkdir(parents=True)
 
@@ -748,14 +682,12 @@ def test_stale_session_path_full_sequence(tmp_path: Path, monkeypatch: pytest.Mo
     hint_content = hint_file.read_text(encoding="utf-8")
     assert "session" in hint_content.lower()
 
-    # The stale-session failure is charged against the agent by the ledger.
     assert controller.ledger.is_available("development", "claude") is True
 
 
 def test_stale_session_attempt2_uses_fresh_session(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """After controller session reset, the runner computes resume_session_id as None."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".agent" / "tmp").mkdir(parents=True)
 
@@ -781,7 +713,6 @@ def test_stale_session_attempt2_uses_fresh_session(
 
 
 def test_classifier_stale_session_only_on_exact_substring() -> None:
-    """Only the exact session-not-found substring triggers reset_session=True."""
     classifier = FailureClassifier()
 
     stale_exc = AgentInvocationError(
@@ -806,7 +737,6 @@ def test_default_same_agent_retry_cap_is_visible_and_global() -> None:
 def test_stale_session_phase_remains_active(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Stale-session failure does not advance to "failed" on first occurrence."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".agent" / "tmp").mkdir(parents=True)
 
@@ -826,23 +756,7 @@ def test_stale_session_phase_remains_active(
     assert effects == []
 
 
-# ---------------------------------------------------------------------------
-# Stale-session retry prompt: full prior-output (untruncated) regression suite
-#
-# These tests pin that when the failure surfaces a stale-session marker
-# (SESSION_NOT_FOUND_SUBSTRINGS), the retry prompt and its companion
-# ``agent_retry_context_<uuid>.md`` file both contain the FULL captured
-# prior output (no <previous log omitted> marker, no 12-line tail cap).
-#
-# Tests 1-5 are RED on the current code (12-line cap truncates regardless
-# of failure type) and GREEN after the untruncated flag is wired.
-# Tests 6-8 are GREEN on the current code (scope-confirmation: 12-line
-# cap is preserved for resume / non-stale-fresh / inactivity-not-resume-safe).
-# ---------------------------------------------------------------------------
-
-
 def _extract_context_path(retry_content: str) -> Path:
-    """Extract the ``agent_retry_context_<uuid>.md`` path from a retry prompt."""
     context_match = re.search(r"Previous context summary:\s*`([^`]+)`", retry_content)
     assert context_match is not None, (
         f"retry prompt is missing 'Previous context summary:' path line:\n{retry_content}"
@@ -854,7 +768,6 @@ def test_stale_session_retry_prompt_includes_full_prior_output_marker_in_stderr(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """OpenCode stale-session marker in stderr: full 30-line context preserved in retry prompt."""
     (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
 
@@ -918,18 +831,15 @@ def test_stale_session_retry_prompt_includes_full_prior_output_marker_in_stderr(
     _second_session_id, second_prompt = captured_calls[1]
     retry_content = Path(second_prompt).read_text(encoding="utf-8")
 
-    # No omission marker: the FULL captured prior output must be preserved.
     assert "<previous log omitted>" not in retry_content, (
         "stale-session retry must NOT inject <previous log omitted> marker"
     )
 
-    # Every line of the 30-line prior output must appear in the retry prompt.
     for line in prior_lines:
         assert line in retry_content, (
             f"stale-session retry prompt is missing prior output line {line!r}"
         )
 
-    # Same invariant must hold for the companion context file.
     context_path = _extract_context_path(retry_content)
     assert context_path.exists()
     context_text = context_path.read_text(encoding="utf-8")
@@ -942,13 +852,11 @@ def test_stale_session_retry_prompt_includes_full_prior_output_marker_in_stderr(
         )
 
 
-# ponytail: retry-context materialization writes full prior output and can exceed 1s under xdist; 5s preserves the recovery contract within the 60s suite cap.
 @pytest.mark.timeout_seconds(5)
 def test_stale_session_retry_prompt_includes_full_prior_output_marker_in_str_exc(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Claude 'No conversation found' marker in str(exc): full 30-line context preserved."""
     (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
 
@@ -1028,7 +936,6 @@ def test_stale_session_retry_prompt_includes_full_prior_output_marker_in_parsed_
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Stale-session marker surfaced via parsed_output: full 25-line context preserved."""
     (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
 
@@ -1110,12 +1017,6 @@ def test_stale_session_retry_with_rendered_output_includes_full_rendered_lines(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Stale-session with rendered_output fast-path: full 20 rendered lines preserved.
-
-    The fast-path in ``_recovery_context_lines`` prefers rendered_output over
-    parsed_output; this test pins that the untruncated branch still applies
-    when rendered_output is the chosen source.
-    """
     (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
 
@@ -1171,7 +1072,6 @@ def test_stale_session_retry_preserves_per_line_character_truncation(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Per-line 240-char cap still applies on stale-session retry, but line count is preserved."""
     (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
 
@@ -1255,7 +1155,6 @@ def test_resume_retry_still_uses_12_line_tail_for_non_stale_session(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Scope confirmation: resume path keeps the 12-line tail cap (no untruncated widening)."""
     (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
 
@@ -1330,7 +1229,6 @@ def test_non_stale_fresh_retry_still_uses_12_line_tail(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Scope confirmation: transient-connectivity fresh retry keeps the 12-line cap."""
     (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
 
@@ -1412,14 +1310,6 @@ def test_inactivity_timeout_with_session_resume_safe_false_still_uses_12_line_ta
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Scope confirmation: inactivity timeout with session_resume_safe=False keeps the 12-line cap.
-
-    ``_failure_requires_fresh_session`` returns True for this case (fresh session)
-    but ``_is_stale_session_failure`` (the new helper) returns False because no
-    SESSION_NOT_FOUND_SUBSTRINGS marker is present. The 12-line cap MUST still
-    apply -- the untruncated branch is scoped to stale-session markers ONLY per
-    the user prompt.
-    """
     (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
 
@@ -1491,30 +1381,10 @@ def test_inactivity_timeout_with_session_resume_safe_false_still_uses_12_line_ta
     assert " ... (truncated)" in retry_content
 
 
-# ---------------------------------------------------------------------------
-# End-to-end stale-session retry-prompt contract: the retry prompt
-# produced AFTER a stale-session failure must (a) be a fresh-mode prompt
-# (inlines the original task body), (b) include the structured
-# ``STALE SESSION RECOVERY`` block naming the rejected session id,
-# transport, and model. AC-01, AC-04.
-# ---------------------------------------------------------------------------
-
-
 def test_runner_stale_session_retry_prompt_includes_stale_session_recovery_block_with_session_id(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """End-to-end: execute_agent_effect -> retry prompt carries the structured stale-session block.
-
-    Pins the full pipeline path: ``_run_attempt`` captures
-    ``state.last_agent_session_id``, threads it as
-    ``AgentRecoveryInput.stale_session_id``, ``build_agent_recovery_plan``
-    threads it as ``AgentRecoveryPlan.stale_session_id``, and
-    ``_write_agent_retry_prompt`` appends the structured ``STALE SESSION
-    RECOVERY`` block naming the rejected session id, the transport, and
-    the model. The original task body is STILL inlined (fresh-mode
-    behavior preserved). AC-04.
-    """
     (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
 
@@ -1525,7 +1395,7 @@ def test_runner_stale_session_retry_prompt_includes_stale_session_recovery_block
     transport_name = "opencode"
     model_name = "zai-coding-plan/glm-5.2"
 
-    captured_calls: list[tuple[str | None, str]] = []  # (session_id, prompt_file)
+    captured_calls: list[tuple[str | None, str]] = []
 
     def fake_invoke_agent(
         config: AgentConfig,
@@ -1578,11 +1448,9 @@ def test_runner_stale_session_retry_prompt_includes_stale_session_recovery_block
         agent_invocation_error=AgentInvocationError,
     )
 
-    # (a) End-to-end success.
     assert result == PipelineEvent.AGENT_SUCCESS, (
         f"expected AGENT_SUCCESS after stale-session retry; got {result!r}"
     )
-    # (b) Two invocations: first uses stale session, second uses None.
     assert len(captured_calls) == _EXPECTED_INVOCATION_COUNT, (
         f"expected {_EXPECTED_INVOCATION_COUNT} invocations; got {len(captured_calls)}"
     )
@@ -1591,30 +1459,24 @@ def test_runner_stale_session_retry_prompt_includes_stale_session_recovery_block
         f"second invocation must use session_id=None; got {second_session_id!r}"
     )
 
-    # Read the retry prompt produced by the pipeline.
     retry_content = Path(second_prompt).read_text(encoding="utf-8")
 
-    # (c) Original task body inlined (fresh-mode behavior preserved).
     assert "ORIGINAL_TASK_BODY_E2E_TOKEN" in retry_content, (
         "retry prompt must STILL inline the original task body (fresh-mode behavior)"
     )
 
-    # (d) Structured ``STALE SESSION RECOVERY`` block present.
     assert "STALE SESSION RECOVERY" in retry_content, (
         "retry prompt must include the STALE SESSION RECOVERY block"
     )
 
-    # (e) Rejected session id named.
     assert stale_session_id in retry_content, (
         f"retry prompt must name the rejected session id {stale_session_id!r}"
     )
 
-    # (f) Transport named.
     assert transport_name in retry_content, (
         f"retry prompt must name the transport {transport_name!r}"
     )
 
-    # (g) Model named.
     assert model_name in retry_content, f"retry prompt must name the model {model_name!r}"
 
 
@@ -1622,27 +1484,6 @@ def test_runner_explicit_session_retry_emits_stale_session_block_without_state(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Explicit-session retry without pipeline state still emits the STALE SESSION RECOVERY block.
-
-    End-to-end companion to
-    ``test_runner_stale_session_retry_prompt_includes_stale_session_recovery_block_with_session_id``:
-    that test exercises the pipeline-state path (state=...); this one
-    exercises the explicit-session path used by
-    ``commit_plumbing.execute_agent_effect(..., session_id=prior_session_id, ...)``
-    where the caller passes ``session_id`` directly WITHOUT a pipeline
-    ``state`` object.
-
-    The earlier fix threaded ``stale_session_id`` from
-    ``state.last_agent_session_id`` ONLY, so when the caller omitted
-    ``state`` the retry prompt silently dropped the
-    ``STALE SESSION RECOVERY`` block even though the first failure was
-    a real stale-session failure (``Error: Session not found: <id>``).
-    The fix falls back to ``state.resume_session_id`` (which captures
-    the explicit ``session_id`` parameter) when
-    ``state.last_agent_session_id`` is absent, so the prompt carries the
-    rejected session id, the transport, the model, AND the original
-    task body. AC-01, AC-04.
-    """
     (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
 
@@ -1653,7 +1494,7 @@ def test_runner_explicit_session_retry_emits_stale_session_block_without_state(
     transport_name = "opencode"
     model_name = "zai-coding-plan/glm-5.2"
 
-    captured_calls: list[tuple[str | None, str]] = []  # (session_id, prompt_file)
+    captured_calls: list[tuple[str | None, str]] = []
 
     def fake_invoke_agent(
         config: AgentConfig,
@@ -1694,12 +1535,6 @@ def test_runner_explicit_session_retry_emits_stale_session_block_without_state(
         master_prompt_materializer=_master_prompt_materializer(tmp_path),
     )
 
-    # Explicit-session retry: ``session_id`` passed directly, ``state``
-    # omitted (commit_plumbing-style invocation). ``state`` default is
-    # ``None`` inside ``execute_agent_effect`` so
-    # ``_safe_last_agent_session_id(ctx.state)`` returns ``None`` -- the
-    # fallback to ``state.resume_session_id`` is the ONLY way the
-    # rejected session id surfaces in the prompt.
     result = effect_executor_module.execute_agent_effect(
         effect,
         config,
@@ -1707,16 +1542,13 @@ def test_runner_explicit_session_retry_emits_stale_session_block_without_state(
         WorkspaceScope(tmp_path),
         display_context=ctx,
         session_id=stale_session_id,
-        # state=...                # NO state passed (the bug surface)
         invoke_agent=fake_invoke_agent,
         agent_invocation_error=AgentInvocationError,
     )
 
-    # (a) End-to-end success.
     assert result == PipelineEvent.AGENT_SUCCESS, (
         f"expected AGENT_SUCCESS after stale-session retry; got {result!r}"
     )
-    # (b) Two invocations: first uses the explicit session id, second uses None.
     assert len(captured_calls) == _EXPECTED_INVOCATION_COUNT, (
         f"expected {_EXPECTED_INVOCATION_COUNT} invocations; got {len(captured_calls)}"
     )
@@ -1727,68 +1559,31 @@ def test_runner_explicit_session_retry_emits_stale_session_block_without_state(
 
     retry_content = Path(second_prompt).read_text(encoding="utf-8")
 
-    # (c) Original task body inlined (fresh-mode behavior preserved).
     assert "ORIGINAL_TASK_BODY_E2E_TOKEN_EXPLICIT_SESSION" in retry_content, (
         "retry prompt must STILL inline the original task body (fresh-mode behavior)"
     )
-    # (d) Structured STALE SESSION RECOVERY block present -- the fix that
-    # was missing on this path: the fallback to state.resume_session_id
-    # makes the rejected session id visible even when state was omitted.
     assert "STALE SESSION RECOVERY" in retry_content, (
         "explicit-session retry (no state) must include the STALE SESSION RECOVERY "
         "block via the state.resume_session_id fallback; got:\n" + retry_content
     )
-    # (e) Rejected session id named.
     assert stale_session_id in retry_content, (
         f"explicit-session retry (no state) must name the rejected session id {stale_session_id!r}"
     )
-    # (f) Transport named.
     assert transport_name in retry_content, (
         f"explicit-session retry (no state) must name the transport {transport_name!r}"
     )
-    # (g) Model named.
     assert model_name in retry_content, (
         f"explicit-session retry (no state) must name the model {model_name!r}"
     )
-
-
-# ---------------------------------------------------------------------------
-# Stale-session retry prompt: empty-prior-output source-of-truth regression
-#
-# These tests pin the strengthened retry-prompt wording implemented in
-# wt-030. When a stale-session failure surfaces with EMPTY prior output
-# (always true for stale-session errors because the transport rejected
-# the session id before any work was attempted), the retry prompt must
-# (a) include a structured STALE SESSION EMPTY PRIOR OUTPUT banner with
-# pinned explanation sentences, AND (b) the original task body is still
-# the sole source of truth -- not the (no output captured) placeholder
-# line.
-# ---------------------------------------------------------------------------
 
 
 def test_stale_session_retry_prompt_empty_prior_output_includes_explanation_note(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Stale-session failure with EMPTY prior output adds an empty-prior-output explanation.
-
-    Pins AC-01 at the end-to-end boundary: ``_write_agent_retry_prompt``
-    must insert the STALE SESSION EMPTY PRIOR OUTPUT note (banner + 4
-    pinned sentences) between the (no output captured) summary element
-    and the ORIGINAL TASK PROMPT: header when ``stale_session_id`` is set
-    AND ``context_lines`` is empty AND the recovery_action is fresh.
-    """
     (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
 
-    # Force the ``_recovery_context_lines`` helper to return an empty list so
-    # the pipeline-level enrichment cannot populate context_lines from the
-    # exception's stderr/str(exc)/parsed_output (the stale-session marker
-    # is detected separately via ``_is_stale_session_failure`` and routed
-    # into ``stale_session_id``, so the marker scan must still see the
-    # marker -- patching ``_recovery_context_lines`` only -- NOT
-    # ``_recovery_error_parts`` -- preserves the marker detection while
-    # wiping the context_lines enrichment path).
     monkeypatch.setattr(
         effect_executor_module,
         "_recovery_context_lines",
@@ -1798,7 +1593,7 @@ def test_stale_session_retry_prompt_empty_prior_output_includes_explanation_note
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("implement the change", encoding="utf-8")
 
-    captured_calls: list[tuple[str | None, str]] = []  # (session_id, prompt_file)
+    captured_calls: list[tuple[str | None, str]] = []
 
     def fake_invoke_agent(
         config: AgentConfig,
@@ -1860,38 +1655,31 @@ def test_stale_session_retry_prompt_empty_prior_output_includes_explanation_note
 
     retry_content = Path(second_prompt).read_text(encoding="utf-8")
 
-    # (i) New banner.
     assert "STALE SESSION EMPTY PRIOR OUTPUT" in retry_content, (
         "empty-prior-output stale-session retry must include the "
         "STALE SESSION EMPTY PRIOR OUTPUT banner; got:\n" + retry_content
     )
-    # (ii) Sentence 1 pinned prefix.
     assert "the transport rejected the prior session id" in retry_content.lower(), (
         "empty-prior-output stale-session retry must explain that the "
         "transport rejected the prior session id; got:\n" + retry_content
     )
-    # (iii) Sentence 2 pinned phrase.
     assert "do NOT interpret this as the prior agent having failed to do work" in retry_content, (
         "empty-prior-output stale-session retry must include the 'do NOT "
         "interpret this as the prior agent having failed to do work' note; "
         "got:\n" + retry_content
     )
-    # (iv) Sentence 3 pinned suffix substring.
     assert "ORIGINAL TASK PROMPT below is your ONLY source of truth" in retry_content, (
         "empty-prior-output stale-session retry must declare the original "
         "task prompt as the sole source of truth; got:\n" + retry_content
     )
 
-    # Original task body still inlined AFTER the new note.
     assert "implement the change" in retry_content, (
         "empty-prior-output stale-session retry must still inline the original task body"
     )
-    # Existing STALE SESSION RECOVERY block still present.
     assert "STALE SESSION RECOVERY" in retry_content, (
         "empty-prior-output stale-session retry must still carry the "
         "STALE SESSION RECOVERY block; got:\n" + retry_content
     )
-    # The opencode-stale-empty session id is named in the prompt.
     assert "opencode-stale-empty" in retry_content, (
         "empty-prior-output stale-session retry must name the rejected session id"
     )
@@ -1900,38 +1688,26 @@ def test_stale_session_retry_prompt_empty_prior_output_includes_explanation_note
 def test_stale_session_recovery_block_declares_original_task_as_source_of_truth(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``_stale_session_recovery_block`` pins source-of-truth framing in the recovered block.
-
-    Imports the helper directly so the contract is pinned at the helper
-    boundary (not just through the public surface). The returned string
-    MUST contain the four pinned new sentences (case-sensitive) AND the
-    four existing helper substring tokens. AC-02.
-    """
     rendered = _stale_session_recovery_block(
         stale_session_id="abc",
         transport="opencode",
         model="m",
     )
 
-    # (i) Sentence 2 pinned substring.
     assert "the prior output is INFORMATIONAL ONLY" in rendered, (
         "recovery block must warn that prior output is INFORMATIONAL ONLY; got:\n" + rendered
     )
-    # (ii) Sentence 3 pinned substring.
     assert "the ORIGINAL TASK PROMPT below is your ONLY source of truth" in rendered, (
         "recovery block must declare the original task prompt as the sole "
         "source of truth; got:\n" + rendered
     )
-    # (iii) Sentence 4 first pinned substring.
     assert "do not treat the prior attempt output as ground truth" in rendered, (
         "recovery block must warn against treating prior output as ground truth; got:\n" + rendered
     )
-    # (iv) Sentence 4 second pinned substring.
     assert "FRESH attempt" in rendered, (
         "recovery block must tell the retry agent to execute as a FRESH attempt; got:\n" + rendered
     )
 
-    # Existing helper invariants preserved.
     assert "STALE SESSION RECOVERY" in rendered, (
         "recovery block must keep the STALE SESSION RECOVERY header"
     )
@@ -1946,13 +1722,6 @@ def test_stale_session_retry_prompt_nonempty_prior_output_keeps_existing_block(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Stale-session failure with NON-EMPTY prior output: recovery block emitted; banner absent.
-
-    Pins AC-03 at the end-to-end boundary: prior_output is non-empty, so
-    the empty-output banner must NOT appear, BUT the strengthened
-    STALE SESSION RECOVERY block (with the four pinned new sentences) IS
-    emitted, AND the prior output is preserved as informational content.
-    """
     (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
 
@@ -2017,7 +1786,6 @@ def test_stale_session_retry_prompt_nonempty_prior_output_keeps_existing_block(
     _second_session_id, second_prompt = captured_calls[1]
     retry_content = Path(second_prompt).read_text(encoding="utf-8")
 
-    # Strengthened recovery block IS present (the four pinned new substrings).
     assert "STALE SESSION RECOVERY" in retry_content, (
         "nonempty-prior-output stale-session retry must include the "
         "STALE SESSION RECOVERY block; got:\n" + retry_content
@@ -2041,19 +1809,16 @@ def test_stale_session_retry_prompt_nonempty_prior_output_keeps_existing_block(
         "'FRESH attempt' substring; got:\n" + retry_content
     )
 
-    # Empty-prior-output banner is NOT present (negative case).
     assert "STALE SESSION EMPTY PRIOR OUTPUT" not in retry_content, (
         "nonempty-prior-output stale-session retry must NOT include the "
         "STALE SESSION EMPTY PRIOR OUTPUT banner; got:\n" + retry_content
     )
 
-    # Prior output is preserved as informational content.
     assert "some prior output line" in retry_content, (
         "nonempty-prior-output stale-session retry must preserve the prior "
         "output as informational content; got:\n" + retry_content
     )
 
-    # The original task body is still inlined (fresh-mode preserved).
     assert "implement the change" in retry_content, (
         "nonempty-prior-output stale-session retry must still inline the original task body"
     )

@@ -1,11 +1,3 @@
-"""Reproduction test verifying auto-integrate rebase resolver launches when agents TOML is corrupt.
-
-When ~/.config/ralph-workflow-agents.toml is corrupt (e.g. invalid syntax),
-the fallback seam (Unit 4) and loader (Unit 3a) ensure that entering
-workspace_context succeeds using default agents, the resolver launches, and
-the auto-integrate rebase does not decline into permanent WAITING.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -47,7 +39,6 @@ def _clear_fallback_registry() -> None:
 
 
 def _seed_workspace(root: Path, *, prompt: str = "Test project prompt\n") -> None:
-    """Create a minimal valid Ralph workspace."""
     agent_dir = root / ".agent"
     agent_dir.mkdir(parents=True, exist_ok=True)
     (agent_dir / "ralph-workflow.toml").write_text("[general]\n", encoding="utf-8")
@@ -59,7 +50,6 @@ def _setup_corrupt_agents_toml(
     tmp_path: Path,
     content: str = "[agents\ninvalid toml syntax = = =\n",
 ) -> tuple[Path, bytes]:
-    """Configure an isolated XDG_CONFIG_HOME containing a corrupt ralph-workflow-agents.toml."""
     config_home = tmp_path / "isolated-xdg-config"
     config_home.mkdir(parents=True, exist_ok=True)
     agents_file = config_home / "ralph-workflow-agents.toml"
@@ -72,7 +62,6 @@ def test_corrupt_agents_toml_rebase_stop_resolver_launches_with_default_agents(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """When ralph-workflow-agents.toml is corrupt, resolver launches with default agents."""
     repo_root = tmp_path / "repo"
     _seed_workspace(repo_root)
 
@@ -103,7 +92,6 @@ def test_corrupt_agents_toml_rebase_stop_resolver_launches_with_default_agents(
         _fake_run_pipeline,
     )
 
-    # Clear warning registry so entering workspace_context re-emits the fallback warning
     reset_fallback_warning_registry()
 
     warnings: list[str] = []
@@ -120,14 +108,11 @@ def test_corrupt_agents_toml_rebase_stop_resolver_launches_with_default_agents(
     finally:
         logger.remove(sink_id)
 
-    # 1. Resolver did not decline or return CONFIG_FAILURE
     assert outcome is True
     assert len(launched_pipeline_kwargs) == 1
 
-    # 2. Corrupt file on disk was preserved untouched
     assert agents_file.read_bytes() == original_bytes
 
-    # 3. Warning was emitted pointing to the corrupt file and built-in default
     warn_text = "\n".join(warnings)
     assert str(agents_file) in warn_text
     assert "using built-in default" in warn_text
@@ -136,7 +121,6 @@ def test_corrupt_agents_toml_rebase_stop_resolver_launches_with_default_agents(
     assert "line" in warn_text.lower()
     assert "column" in warn_text.lower()
 
-    # 4. Target context in the launched pipeline used default agents
     target_config = launched_pipeline_kwargs[0]["config"]
     assert target_config.agents == {}
     assert launched_pipeline_kwargs[0]["root"] == repo_root
@@ -146,7 +130,6 @@ def test_corrupt_agents_toml_auto_integrate_rebase_does_not_enter_waiting(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """When ralph-workflow-agents.toml is corrupt, conflicted rebase resolution avoids WAITING."""
     repo_root = tmp_path / "repo"
     _seed_workspace(repo_root)
 
@@ -208,7 +191,6 @@ def test_corrupt_agents_toml_auto_integrate_rebase_does_not_enter_waiting(
         agent_runner=mock_runner,
     )
 
-    # Resolution succeeded, no short circuit to CONFIG_FAILURE or WAITING
     assert run_result is not None
     assert isinstance(run_result.rebase_outcome, RebaseSuccess)
     assert run_result.short_circuit is None
@@ -219,7 +201,6 @@ def test_corrupt_agents_toml_paused_rebase_in_run_loop_does_not_enter_waiting(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """resolve_paused_rebase drives stop resolver successfully with corrupt agents TOML."""
     repo_root = tmp_path / "repo"
     _seed_workspace(repo_root)
 
@@ -284,7 +265,6 @@ def test_contrast_corrupt_ralph_workflow_toml_declines_and_enters_waiting(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """In contrast, corrupt ralph-workflow.toml fails loud, declines, and enters WAITING."""
     repo_root = tmp_path / "repo"
     agent_dir = repo_root / ".agent"
     agent_dir.mkdir(parents=True, exist_ok=True)
@@ -320,14 +300,12 @@ def test_contrast_corrupt_ralph_workflow_toml_declines_and_enters_waiting(
     with bind_active_rebase_resolution_session(session):
         outcome = resolver(repo_root, "main", stop)
 
-    # 1. Resolver declines with CONFIG_FAILURE, does not launch pipeline
     assert not isinstance(outcome, bool)
     assert outcome.succeeded is False
     assert outcome.failure_cause == ResolutionFailureCause.CONFIG_FAILURE
     assert len(pipeline_invocations) == 0
     assert session.terminal_reason == ResolutionTerminationReason.CONFIG_FAILURE
 
-    # 2. Rebase resolution records short circuit with CONFIG_FAILURE
     def _fake_resolve_rebase(
         root: Path,
         target: str,
@@ -358,7 +336,6 @@ def test_contrast_corrupt_ralph_workflow_toml_declines_and_enters_waiting(
     assert run_result is not None
     assert run_result.short_circuit is not None
     assert run_result.short_circuit.last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE
-    # Waiting state is triggered by CONFIG_FAILURE
     waiting_state = run_result.short_circuit.set_operation_display_state(
         OperationDisplayState.WAITING
     )
@@ -369,7 +346,6 @@ def test_corrupt_agents_toml_load_config_diagnose_and_runner_warn_with_recovery_
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """load_config, diagnose collection, and pipeline runner warn with path, line/col, and regenerate instructions."""
     repo_root = tmp_path / "repo"
     _seed_workspace(repo_root)
     agents_file, _ = _setup_corrupt_agents_toml(
@@ -378,7 +354,6 @@ def test_corrupt_agents_toml_load_config_diagnose_and_runner_warn_with_recovery_
         content="[agents]\ninvalid toml = = =\n",
     )
 
-    # 1. load_config returns fallback defaults without crashing, warns with line/col & recovery
     warnings: list[str] = []
     sink_id = logger.add(warnings.append, level="WARNING", format="{message}")
     try:
@@ -394,7 +369,6 @@ def test_corrupt_agents_toml_load_config_diagnose_and_runner_warn_with_recovery_
     assert "ralph --regenerate-config" in warn_text
     assert "using built-in default" in warn_text
 
-    # 2. Diagnose collection returns fallback finding without crashing, warns with line/col & recovery
     from ralph.config.bootstrap import collect_unreadable_config_files
 
     reset_fallback_warning_registry()
@@ -416,7 +390,6 @@ def test_corrupt_agents_toml_load_config_diagnose_and_runner_warn_with_recovery_
     assert "column" in diag_warn
     assert "ralph --regenerate-config" in diag_warn
 
-    # 3. Pipeline runner launches with fallback defaults and warns without crashing
     reset_fallback_warning_registry()
     warnings.clear()
     policy = load_policy(default_dir())
@@ -469,7 +442,6 @@ def test_corrupt_agents_toml_ordinary_pipeline_run_falls_back_without_crashing(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """The public ordinary runner survives corrupt agents TOML using defaults."""
     repo_root = tmp_path / "repo"
     _seed_workspace(repo_root)
     agents_file, original_bytes = _setup_corrupt_agents_toml(

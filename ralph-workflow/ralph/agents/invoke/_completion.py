@@ -1,4 +1,3 @@
-"""Process completion checking and post-exit waiting logic."""
 
 from __future__ import annotations
 
@@ -99,14 +98,9 @@ def _teardown_subtree_if_pid_available(
     issuer: str,
     teardown: ProcessTeardown | None = None,
 ) -> None:
-    """Best-effort subtree teardown when the handle exposes a PID.
-
-    Test fakes may not implement ``pid``; this helper ignores them so
-    unit tests stay isolated from real process signals.
-    """
     pid = cast(
         "int | None", getattr(handle, "pid", None)
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     if pid is not None:
         if teardown is None:
             teardown_subtree(pid, issuer=issuer)
@@ -189,18 +183,11 @@ class CompletionCheckOptions:
     liveness_probe: LivenessProbe | None = None
     policy: TimeoutPolicy = field(default_factory=lambda: TimeoutPolicy(idle_timeout_seconds=None))
     required_artifact: RequiredArtifact | None = None
-    #: False only for a session that can leave no completion evidence: it has
-    #: no artifact contract AND is not granted ``artifact.submit``, so
-    #: ``declare_complete`` is not in its tool surface. Demanding evidence
-    #: there would fail every clean exit on the completion-enforcing
-    #: transports. See ``InvokeAgentEffect.requires_completion_evidence``.
     requires_completion_evidence: bool = True
     explicit_completion_seen: bool = False
     captured_session_id: str | None = None
     completion_run_id: str | None = None
     evaluate_completion_fn: _EvalCompletionFn | None = None
-    # Watchdog diagnostic fields are keyword-only and preserve the original
-    # positional construction contract when absent.
     _: KW_ONLY
     last_observed_tool_call: str | None = None
     last_evidence_summary: str | None = None
@@ -209,32 +196,13 @@ class CompletionCheckOptions:
     input_prompt: str | None = None
     transcript_tail: tuple[str, ...] = ()
     _sentinel_check_fn: Callable[[Path, str | None], bool] | None = field(default=None)
-    #: RFC-013 P3: broker-owned secret threaded into the sentinel HMAC
-    #: verifier on the live read path. ``None`` means the pre-P3
-    #: contract (no HMAC verification). Threads only into the default
-    #: ``_check_completion_sentinel`` call; the unit-test
-    #: ``_sentinel_check_fn`` injection ignores it because the stub
-    #: returns a deterministic boolean rather than verifying the
-    #: production HMAC.
     sentinel_secret: str | None = None
-    #: RFC-013 P3: broker-owned secret threaded into the receipt HMAC
-    #: verifier on the live read path. ``None`` means the pre-P3
-    #: contract (no HMAC verification). Threads into every
-    #: ``evaluate_completion`` call so a forged receipt is rejected
-    #: when the broker configures HMAC enforcement.
     receipt_secret: str | None = None
     activity_only_supervision: bool = False
     agy_cli_log_path: Path | None = None
 
 
 def _has_verified_completion(output: list[str], opts: CompletionCheckOptions | None) -> bool:
-    """Return True when durable, run-scoped completion evidence holds.
-
-    The evidence is the verified ``declare_complete`` sentinel plus, when an
-    artifact is required, its submission receipt (see
-    :func:`completion_signals_terminal`). Transcript text never counts: it
-    can be echoed by the model.
-    """
     if opts is None or opts.workspace_path is None:
         return False
     evaluate = opts.evaluate_completion_fn or evaluate_completion
@@ -294,14 +262,6 @@ def _wait_for_completion_grace(
     clock: Clock | None = None,
     teardown: ProcessTeardown | None = None,
 ) -> AgentExecutionState:
-    """Wait up to policy.parent_exit_grace_seconds for completion signals or children to appear.
-
-    Polls evaluate_completion + classify_exit at policy.descendant_wait_poll_seconds intervals.
-    Returns:
-      TERMINAL_COMPLETE if completion signals appear during the grace window.
-      WAITING_ON_CHILD if children appear (caller must escalate to descendant wait).
-      RESUMABLE_CONTINUE if grace deadline elapses with no signals and no children.
-    """
     assert opts.workspace_path is not None
     workspace_path = opts.workspace_path
     execution_strategy = opts.execution_strategy
@@ -353,11 +313,6 @@ def _wait_for_descendants_then_recheck(
     clock: Clock | None = None,
     teardown: ProcessTeardown | None = None,
 ) -> AgentExecutionState:
-    """Wait for descendant processes to finish, then re-evaluate completion signals.
-
-    Supports the legacy public ``(handle, opts, parsed_output)`` form while
-    internal callers supply an agent name for teardown attribution.
-    """
     if isinstance(agent_name_or_opts, CompletionCheckOptions):
         agent_name = "unknown"
         opts = agent_name_or_opts
@@ -495,7 +450,6 @@ def _has_interactive_completion_bypass(
     parsed_output: list[str] | None,
     check_options: CompletionCheckOptions | None,
 ) -> bool:
-    """Return True if interactive completion evidence permits short-circuiting."""
     if check_options is None:
         return False
     with contextlib.suppress(Exception):
@@ -534,9 +488,6 @@ def _handle_non_zero_returncode(
         explicit_completion_seen=bool(check_options and check_options.explicit_completion_seen),
     )
     if _has_verified_completion(bounded_output, check_options):
-        # The agent finished and submitted; how its process then went away
-        # (Ralph's own SIGTERM, or a crash during shutdown) must not discard
-        # that work as a failure.
         logger.info(
             "Agent {} exited with code {} after verified completion; accepting as success",
             agent_name,
@@ -606,10 +557,6 @@ def check_process_result(
     _clock: Clock | None = None,
     process_teardown: ProcessTeardown | None = None,
 ) -> None:
-    """Validate one terminal agent process result and its completion evidence."""
-    # wt-16: completion-initiated stop with durable evidence short-circuits the fail-closed
-    # guard if handle has original_terminal_reason "interactive_completion" and evidence passes.
-    # The fail-closed guard below remains the primary path for every other case.
     if _has_interactive_completion_bypass(handle, parsed_output, check_options):
         return
 
@@ -649,8 +596,6 @@ def check_process_result(
             bounded_output,
             process_teardown,
         )
-        # The session had no way to leave completion evidence and no caller
-        # waiting to read it: a clean exit is the whole signal.
         return
     if (
         opts is not None
@@ -822,27 +767,10 @@ def check_process_result(
             )
 
 
-#: Canonical session-id character class, shared with the parsers in
-#: :mod:`ralph.agents.invoke._session`. Mirrors the
-#: ``[A-Za-z0-9._:-]+`` shape used by ``_TRANSPORT_TEXT_SESSION_PATTERNS``
-#: so the operator WARNING line surfaces session ids containing ``.`` and
-#: ``:`` (e.g. ``abc.def:ghi``) instead of silently dropping them. The
-#: minimum-length guard (>= 4 chars) prevents coincidental substrings
-#: (e.g. the bare word "session") from being picked up as an id.
 _SESSION_ID_TOKEN_REGEX = r"[A-Za-z0-9._:\-]{4,}"
 
 
 def _extract_rejected_session_id_from_failure(exc: AgentInvocationError) -> str | None:
-    # Match "<marker>(<optional label>)<sep><id>" where <marker> is one of
-    # the canonical SESSION_NOT_FOUND_SUBSTRINGS (case-insensitive),
-    # <optional label> is a bounded label such as " for ID" / " ID" /
-    # " for id" / " id" (the codebase emits label-separated shapes like
-    # "Session not found for ID: <id>" in addition to the direct
-    # colon-separated shape), <sep> is whitespace or a colon, and <id>
-    # is an id-shaped token. The id token regex requires at least 4
-    # id-shaped characters -- so a coincidental substring like
-    # "session not found" alone does not match, but a valid session id
-    # such as ``abc.def:ghi`` (containing ``.`` and ``:``) DOES match.
     _marker_pattern = "|".join(re.escape(m) for m in SESSION_NOT_FOUND_SUBSTRINGS)
     _pattern = re.compile(
         rf"(?i)(?:{_marker_pattern})"
@@ -861,16 +789,9 @@ def _extract_rejected_session_id_from_failure(exc: AgentInvocationError) -> str 
 
 
 def log_invocation_exit(exc: AgentInvocationError) -> None:
-    """Public seam for the completion-gate exit log.
-
-    Extracted so tests assert against the public surface instead of a
-    private helper; the implementation logs the same WARNING/ERROR lines
-    the private helper did.
-    """
     classified = FailureClassifier().classify(exc, phase="invoke", agent=exc.agent_name)
     retryable = _retry.retryable_agent_failure_reason(exc, AgentInactivityTimeoutError) is not None
     if classified.reset_session:
-        # Keep stale-session recovery distinct from generic retryable exits.
         stderr_has_session_marker = contains_casefolded_marker(
             [exc.stderr] if exc.stderr else [], SESSION_NOT_FOUND_SUBSTRINGS
         )
@@ -881,10 +802,6 @@ def log_invocation_exit(exc: AgentInvocationError) -> None:
         )
         stderr_field = condense_failure_text(exc.stderr) if exc.stderr.strip() else "(empty)"
         rejected_session_id = _extract_rejected_session_id_from_failure(exc)
-        # Append-only invariant: new fields are added at the tail of the
-        # WARNING line, never in the middle of the existing format string.
-        # When the helper returns ``None`` (no canonical marker present),
-        # omit the field entirely -- do NOT print ``session_id=None``.
         if rejected_session_id is not None:
             logger.warning(
                 "Stale session detected for agent={} (phase=invoke): "

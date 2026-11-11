@@ -1,16 +1,3 @@
-"""Tests for run-scoped artifact submission receipts.
-
-A receipt is the authoritative, drift-proof signal that an artifact of a given
-type was persisted during a given run. The submission handler writes it; the
-completion gate reads it. The gate never recomputes a storage path, so a receipt
-keyed on ``(run_id, artifact_type)`` cannot disagree with where the artifact
-actually landed.
-
-Storage is backed by ``.agent/state.db`` (RFC-013 P3). Legacy file paths are
-read fallbacks during migration and durable write fallbacks when DB persistence
-fails.
-"""
-
 from __future__ import annotations
 
 import json
@@ -85,7 +72,6 @@ def test_delete_artifact_receipt_removes_single_receipt(tmp_path: Path) -> None:
 
 
 def test_delete_artifact_receipt_is_idempotent(tmp_path: Path) -> None:
-    # Must not raise when no receipt exists (rollback of a failed first op).
     delete_artifact_receipt(tmp_path, "run-1", "commit_message")
 
 
@@ -96,22 +82,14 @@ def test_clear_run_receipts_scoped_to_run(tmp_path: Path) -> None:
     assert artifact_receipt_present(tmp_path, "run-2", "commit_message") is True
 
 
-# ----------------------------------------------------------------------------
-# RFC-013 P3: receipts are written to RunStateDB (no per-run receipt dir),
-# legacy file receipts are honored via DB-then-file dual-read.
-# ----------------------------------------------------------------------------
-
-
 def test_receipt_written_to_db_not_files(tmp_path: Path) -> None:
     write_artifact_receipt(tmp_path, "run-1", "plan", receipt_secret="s3cret")
-    # No per-run receipt directory should be created anymore
     assert not (tmp_path / ".agent" / "receipts").exists()
     assert artifact_receipt_present(tmp_path, "run-1", "plan", receipt_secret="s3cret")
     assert not artifact_receipt_present(tmp_path, "run-1", "plan", receipt_secret="wrong")
 
 
 def test_legacy_file_receipt_still_honored(tmp_path: Path) -> None:
-    # Simulate a receipt written by the previous release
     legacy = tmp_path / ".agent" / "receipts" / "run-1" / "plan.json"
     legacy.parent.mkdir(parents=True)
     legacy.write_text(json.dumps({"run_id": "run-1", "artifact_type": "plan"}))
@@ -119,7 +97,6 @@ def test_legacy_file_receipt_still_honored(tmp_path: Path) -> None:
 
 
 def test_legacy_file_receipt_with_secret_honored(tmp_path: Path) -> None:
-    """Legacy file receipts WITH a valid HMAC are honored end-to-end."""
     legacy = tmp_path / ".agent" / "receipts" / "run-1" / "plan.json"
     legacy.parent.mkdir(parents=True)
     legacy.write_text(
@@ -135,28 +112,19 @@ def test_legacy_file_receipt_with_secret_honored(tmp_path: Path) -> None:
 
 
 def test_dual_target_delete_removes_legacy_file(tmp_path: Path) -> None:
-    """delete_artifact_receipt removes both the DB row AND the legacy file."""
     legacy = tmp_path / ".agent" / "receipts" / "run-1" / "plan.json"
     legacy.parent.mkdir(parents=True)
     legacy.write_text(json.dumps({"run_id": "run-1", "artifact_type": "plan"}))
-    write_artifact_receipt(tmp_path, "run-1", "plan")  # DB row written
+    write_artifact_receipt(tmp_path, "run-1", "plan")
     delete_artifact_receipt(tmp_path, "run-1", "plan")
-    # legacy file is gone (dual-target), DB row gone
     assert not legacy.exists()
     assert artifact_receipt_present(tmp_path, "run-1", "plan") is False
-
-
-# ----------------------------------------------------------------------------
-# RFC-013 P3 risk mitigation: a DB persistence error must use the durable
-# legacy-file fallback, while a DB read error must use the same path.
-# ----------------------------------------------------------------------------
 
 
 def test_write_receipt_uses_fallback_when_db_unavailable(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """A DB-open error persists the receipt through the durable fallback."""
 
     def _raise_sqlite_error(*_args: object, **_kwargs: object) -> object:
         raise sqlite3.OperationalError("database is locked")
@@ -170,8 +138,6 @@ def test_write_receipt_uses_fallback_when_db_unavailable(
 def test_read_receipt_falls_back_to_legacy_when_db_unavailable(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """``artifact_receipt_present`` falls back to the legacy file path
-    when the DB raises (locked / corrupt / unsupported state)."""
     legacy = tmp_path / ".agent" / "receipts" / "run-1" / "commit_message.json"
     legacy.parent.mkdir(parents=True)
     legacy.write_text(json.dumps({"run_id": "run-1", "artifact_type": "commit_message"}))
@@ -181,15 +147,12 @@ def test_read_receipt_falls_back_to_legacy_when_db_unavailable(
 
     monkeypatch.setattr(receipts_module, "_open_db", _raise_sqlite_error)
 
-    # Legacy file path is honored despite the DB failure.
     assert artifact_receipt_present(tmp_path, "run-1", "commit_message") is True
 
 
 def test_delete_receipt_silent_when_db_unavailable(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """``delete_artifact_receipt`` swallows ``sqlite3.Error`` from the
-    DB open path and still unlinks the legacy file (dual-target)."""
     legacy = tmp_path / ".agent" / "receipts" / "run-1" / "commit_message.json"
     legacy.parent.mkdir(parents=True)
     legacy.write_text(json.dumps({"run_id": "run-1", "artifact_type": "commit_message"}))
@@ -199,8 +162,6 @@ def test_delete_receipt_silent_when_db_unavailable(
 
     monkeypatch.setattr(receipts_module, "_open_db", _raise_sqlite_error)
 
-    # Must not raise; legacy file is still removed by the dual-target
-    # unlink path below the DB block.
     delete_artifact_receipt(tmp_path, "run-1", "commit_message")
     assert not legacy.exists()
 
@@ -208,12 +169,6 @@ def test_delete_receipt_silent_when_db_unavailable(
 def test_write_receipt_falls_back_to_legacy_when_db_write_fails(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """Durable-fallback contract: when the DB write raises ``sqlite3.Error``
-    (locked / corrupt / unsupported), the receipt MUST land in the legacy
-    file path so the completion gate still has durable evidence. A
-    silent no-op under DB failure would report success while leaving no
-    authoritative completion marker.
-    """
 
     class _FakeFailingDB:
         def upsert_receipt(self, *args: object, **kwargs: object) -> None:
@@ -227,10 +182,8 @@ def test_write_receipt_falls_back_to_legacy_when_db_write_fails(
 
     monkeypatch.setattr(receipts_module, "_open_db", _open_failing_db)
 
-    # Call should NOT raise \u2014 the durable fallback is the legacy file.
     write_artifact_receipt(tmp_path, "run-1", "commit_message")
 
-    # Legacy file now holds the authoritative receipt.
     legacy_path = tmp_path / ".agent" / "receipts" / "run-1" / "commit_message.json"
     assert legacy_path.exists()
     payload = json.loads(legacy_path.read_text(encoding="utf-8"))
@@ -254,7 +207,6 @@ def test_legacy_fallback_stores_normalization_audit(
 def test_write_receipt_falls_back_to_legacy_when_db_upsert_raises_oserror(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """A filesystem failure during DB upsert uses the same durable fallback."""
 
     class _FakeFailingDB:
         def upsert_receipt(self, *args: object, **kwargs: object) -> None:
@@ -288,20 +240,15 @@ def test_write_receipt_falls_back_to_legacy_when_db_upsert_raises_oserror(
 def test_write_receipt_uses_db_without_redundant_legacy_write(
     tmp_path: Path,
 ) -> None:
-    """A successful DB write does not also create the failure fallback."""
     write_artifact_receipt(tmp_path, "run-1", "commit_message")
-    # Success path: legacy file is NOT created (production writes go to DB only).
     legacy_path = tmp_path / ".agent" / "receipts" / "run-1" / "commit_message.json"
     assert not legacy_path.exists()
-    # Read returns True: DB row is present.
     assert artifact_receipt_present(tmp_path, "run-1", "commit_message") is True
 
 
 def test_write_receipt_legacy_file_with_hmac_round_trips(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """Durable fallback path stores the HMAC so a read with a different
-    secret is still rejected."""
 
     def _open_failing_db(*_args: object, **_kwargs: object) -> object:
         raise sqlite3.DatabaseError("locked")
@@ -313,38 +260,17 @@ def test_write_receipt_legacy_file_with_hmac_round_trips(
     legacy_path = tmp_path / ".agent" / "receipts" / "run-1" / "commit_message.json"
     payload = json.loads(legacy_path.read_text(encoding="utf-8"))
     assert payload["hmac"] == _receipt_hmac("s3cret", "run-1", "commit_message")
-    # HMAC must verify under the same secret:
     assert (
         artifact_receipt_present(tmp_path, "run-1", "commit_message", receipt_secret="s3cret")
         is True
     )
-    # ... and reject under a mismatching secret:
     assert (
         artifact_receipt_present(tmp_path, "run-1", "commit_message", receipt_secret="wrong")
         is False
     )
 
 
-# ----------------------------------------------------------------------------
-# Fail-closed contract: ``write_artifact_receipt`` MUST raise
-# ``ReceiptPersistenceError`` when BOTH the RunStateDB write AND the
-# legacy-file fallback fail. A silent success in this path would let an
-# artifact submit continue against a missing receipt, producing a silent
-# downstream failure when the completion gate reads it.
-# ``submit_artifact_canonical`` propagates the exception and restores the
-# artifact, handoff, history, and any receipt created by the failed attempt.
-# Completion sentinels are separate and are never written by submission.
-# ----------------------------------------------------------------------------
-
-
 class _AlwaysFailingBackend:
-    """FileBackend that always raises ``OSError`` on every write-related op.
-
-    Used in fail-closed tests to simulate a workspace filesystem that is
-    unwritable for both ``.agent/state.db`` (via the DB stub) AND for
-    ``.agent/receipts/<run_id>/<type>.json`` (the legacy fallback).
-    """
-
     def mkdir(self, *args: object, **kwargs: object) -> None:
         del args, kwargs
         raise OSError("disk full (mock)")
@@ -376,9 +302,6 @@ class _AlwaysFailingBackend:
 def test_write_artifact_receipt_raises_when_db_open_and_legacy_fallback_both_fail(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """Fail-closed contract: when ``_open_db`` raises AND the legacy
-    backend also cannot write, ``write_artifact_receipt`` MUST raise
-    ``ReceiptPersistenceError`` so the artifact submit fails closed."""
 
     def _raise_sqlite(*_args: object, **_kwargs: object) -> object:
         raise sqlite3.OperationalError("database is locked")
@@ -400,10 +323,6 @@ def test_write_artifact_receipt_raises_when_db_open_and_legacy_fallback_both_fai
 def test_write_artifact_receipt_raises_when_db_upsert_and_legacy_both_fail(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """Same fail-closed contract, but the DB is reachable yet the
-    ``upsert_receipt`` row write raises ``sqlite3.Error`` AND the
-    legacy backend cannot write. Both paths are exhausted so the
-    receipt cannot be persisted and the call MUST raise."""
 
     class _FakeFailingDB:
         def upsert_receipt(self, *args: object, **kwargs: object) -> None:
@@ -424,8 +343,6 @@ def test_write_artifact_receipt_raises_when_db_upsert_and_legacy_both_fail(
 
 
 class _RecordingReceiptBackend:
-    """In-memory legacy-receipt boundary that records observable mutations."""
-
     def __init__(self, files: dict[Path, str]) -> None:
         self.files = files
         self.mkdir_calls: list[Path] = []
@@ -448,7 +365,6 @@ class _RecordingReceiptBackend:
 def test_legacy_receipt_fallback_regression_identical_replay_skips_parent_mutation(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """S-3: replaying a fallback receipt does not recreate its existing parent directory."""
 
     def _raise_sqlite(*_args: object, **_kwargs: object) -> object:
         raise sqlite3.OperationalError("database is locked")
@@ -469,38 +385,18 @@ def test_legacy_receipt_fallback_regression_identical_replay_skips_parent_mutati
 def test_write_artifact_receipt_does_not_raise_when_legacy_fallback_writes(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """Regression guard for the dual-read window: when the DB write
-    fails BUT the legacy-file backend succeeds, ``write_artifact_receipt``
-    MUST continue to succeed (no ``ReceiptPersistenceError``) so existing
-    dual-read callers are not broken by the fail-closed tightening."""
 
     def _raise_sqlite(*_args: object, **_kwargs: object) -> object:
         raise sqlite3.OperationalError("database is locked")
 
     monkeypatch.setattr(receipts_module, "_open_db", _raise_sqlite)
 
-    # ``DEFAULT_FILE_BACKEND`` writes to ``tmp_path`` so the legacy
-    # fallback succeeds.
     write_artifact_receipt(tmp_path, "run-legacy-only", "commit_message")
-
-
-# ----------------------------------------------------------------------------
-# ``clear_run_receipts`` is best-effort across BOTH the DB-clear path
-# AND the legacy-file-glob path. A single failure mode (DB clear raises)
-# MUST NOT abort the rerun / session cleanup \u2014 the legacy cleanup below
-# always runs. Pin the contract with explicit regression coverage.
-# ----------------------------------------------------------------------------
 
 
 def test_clear_run_receipts_does_not_raise_when_db_clear_fails(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """``clear_run_receipts`` MUST be best-effort across the DB-clear
-    path: a transient ``sqlite3.Error`` during ``RunStateDB.clear_run_-
-    receipts`` is suppressed so the legacy-file cleanup below still
-    runs. Without this guard, a DB-clear failure aborts rerun/session
-    cleanup instead of falling through to the legacy path described
-    by the docstring and RFC-013 retention contract."""
 
     legacy = tmp_path / ".agent" / "receipts" / "run-1" / "commit_message.json"
     legacy.parent.mkdir(parents=True)
@@ -516,20 +412,14 @@ def test_clear_run_receipts_does_not_raise_when_db_clear_fails(
 
     monkeypatch.setattr(receipts_module, "_open_db", lambda _: _FakeFailingClearDB())
 
-    # Must NOT raise; the legacy glob below must still get to run.
     clear_run_receipts(tmp_path, "run-1")
 
-    # Legacy file is cleaned up by the glob path (dual-target).
     assert not legacy.exists()
 
 
 def test_clear_run_receipts_does_not_raise_when_db_open_fails(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """Even when the DB open itself fails (locked/corrupt), the
-    legacy-file cleanup MUST still run. Regression test for the
-    RFC-013 retention / best-effort contract.
-    """
     legacy_a = tmp_path / ".agent" / "receipts" / "run-1" / "a.json"
     legacy_b = tmp_path / ".agent" / "receipts" / "run-1" / "b.json"
     legacy_a.parent.mkdir(parents=True)

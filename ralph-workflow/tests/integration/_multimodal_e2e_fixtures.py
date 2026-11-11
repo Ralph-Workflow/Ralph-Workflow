@@ -1,5 +1,3 @@
-"""In-memory fixtures for the default-gate multimodal linkage test."""
-
 from __future__ import annotations
 
 import json as json_module
@@ -55,8 +53,6 @@ MEDIA_CAPABILITIES = frozenset(
 
 
 class _MemoryFileBackend:
-    """FileBackend implementation backed by the same MemoryWorkspace as the server."""
-
     def __init__(self, workspace: MemoryWorkspace) -> None:
         self._workspace = workspace
 
@@ -116,7 +112,6 @@ def build_multimodal_harness() -> tuple[
     FileBackend,
     AgentSession,
 ]:
-    """Build one real McpServer with in-memory workspace and media files."""
     workspace = MemoryWorkspace()
     backend = _MemoryFileBackend(workspace)
     backend.write_bytes(Path(workspace.absolute_path("screenshot.png")), TINY_PNG_BYTES)
@@ -139,7 +134,6 @@ def install_media_backend(
     monkeypatch: pytest.MonkeyPatch,
     backend: FileBackend,
 ) -> None:
-    """Install one in-memory backend at every media I/O import site."""
     import ralph.mcp.tools.workspace._media_blocks as media_blocks
     import ralph.mcp.tools.workspace._media_handlers as media_handlers
     import ralph.mcp.tools.workspace._media_io as media_io
@@ -174,7 +168,6 @@ def make_in_process_post_fn(
     server: McpServer,
     state_box: list[ServerState],
 ) -> Callable[..., httpx.Response]:
-    """Route HTTP-shaped JSON-RPC posts through one real in-process server."""
     session_id = "multimodal-linkage-http-session"
 
     def post(

@@ -5,7 +5,6 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class CLIOverrideInput:
-    """Input for building CLI overrides."""
 
     developer_agent: str | None = None
     developer_model: str | None = None

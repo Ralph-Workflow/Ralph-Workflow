@@ -1,16 +1,3 @@
-"""Real-Git end-to-end acceptance tests for the O2 publication reconciler.
-
-The drift-recovery tests in :mod:`tests.test_auto_integrate_drift_recovery`
-use in-memory fakes to pin the contract. This module exercises the
-real ``reconcile_remote_publication`` path against a real bare remote
-so the acceptance criteria (AC5-AC9) are proven against actual Git
-refs, not synthesised SHA strings. Real ref equality is observed
-before and after each operation, not just push callbacks.
-
-The tests are marked ``subprocess_e2e`` and ``timeout_seconds(60)`` so
-they run inside the 60-second combined ``make verify`` budget.
-"""
-
 from __future__ import annotations
 
 import functools
@@ -76,8 +63,6 @@ def _fast_rev_parse(root: Path, ref_name: str) -> str | None:
 
 
 def _run(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    """Run ``git <args>`` in ``repo_root``."""
-    # RALPH-TEST-REASON: fast-paths for rev-parse and branch reduce test subprocess CPU overhead
     if args == ("branch", "--show-current"):
         name = _fast_branch_name(repo_root)
         if name is not None:
@@ -109,16 +94,14 @@ def _commit(repo_root: Path, filename: str, content: str, message: str) -> str:
     repo = Repo(repo_root)
     repo.index.add([filename])
     commit = repo.index.commit(message)
-    assert commit.hexsha  # RALPH-TEST-REASON: GitPython commit replaces subprocess git add/commit to reduce CPU overhead
+    assert commit.hexsha
     return commit.hexsha
 
 
 def _init_repo(path: Path, default_branch: str = _TARGET) -> None:
-    """Seed a repository whose default branch is ``default_branch``."""
     path.mkdir(parents=True, exist_ok=True)
     from git import Repo
 
-    # RALPH-TEST-REASON: GitPython config replaces subprocess git config to reduce CPU overhead
     repo = Repo.init(path)
     with repo.config_writer() as cfg:
         cfg.set_value("user", "email", "test@example.com")
@@ -132,25 +115,11 @@ def _init_repo(path: Path, default_branch: str = _TARGET) -> None:
     assert _run(path, "branch", "-M", default_branch).returncode == 0
 
 
-#: Session-scoped pristine seed repository, populated by the
-#: ``_seed_repo_template`` session fixture. The container is empty only
-#: before the fixture has run (the fixture is autouse, so every test sees
-#: a populated template).
 _SEED_TEMPLATE: list[Path] = []
 
 
 @pytest.fixture(scope="session", autouse=True)
 def _seed_repo_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Create the pristine seed repository once per session.
-
-    Every acceptance scenario needs a repository holding exactly one seed
-    commit on ``release``. Building it per scenario costs a real ``git init``
-    plus a real ``git commit`` (object write, index refresh, zlib
-    compression) on every call, and none of that work varies between
-    scenarios. The template is built once; each scenario copies the
-    directory, so every scenario still starts from its own pristine,
-    independently mutable repository.
-    """
     template_root = tmp_path_factory.mktemp("acceptance-seed")
     _init_repo(template_root)
     _SEED_TEMPLATE.append(template_root)
@@ -158,12 +127,6 @@ def _seed_repo_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 def _seed_repo(path: Path, default_branch: str = _TARGET) -> None:
-    """Seed ``path`` from the session template when one is available.
-
-    Falls back to building the repository from scratch when no template
-    exists (before the session fixture has run), so the helper stays
-    usable outside a pytest session.
-    """
     template = _SEED_TEMPLATE[0] if _SEED_TEMPLATE else None
     if template is None:
         _init_repo(path, default_branch)
@@ -200,15 +163,6 @@ def _build_config(
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(60)
 def test_concurrent_remote_advance_converges_to_ref_equality(tmp_path: Path) -> None:
-    """AC9 real-Git: a concurrent remote advance ends with ref equality.
-
-    The reconciler detects a concurrent remote advance, reintegrates,
-    and pushes; both the local and the remote ref end at the same
-    SHA. The test exercises a real bare remote and a real second
-    worktree that pushes an independent commit, so the divergence
-    is real and the convergence proof is a real ``rev-parse``
-    equality check.
-    """
     repo = tmp_path / "repo"
     bare = tmp_path / "tacos.git"
     writer = tmp_path / "writer"
@@ -218,14 +172,8 @@ def test_concurrent_remote_advance_converges_to_ref_equality(tmp_path: Path) -> 
     assert _run(repo, "remote", "add", _REMOTE, str(bare)).returncode == 0
     assert _run(repo, "config", "user.email", "test@example.com").returncode == 0
     assert _run(repo, "config", "user.name", "Test User").returncode == 0
-    # Push the seed so the bare has the target branch.
     assert _run(repo, "push", _REMOTE, _TARGET).returncode == 0
 
-    # Concurrent remote advance: a second worktree clones the bare
-    # at the seed, adds its own commit, and pushes to the bare
-    # BEFORE the local repo makes any advance. The local repo then
-    # lands a divergent commit. The local and the remote are now
-    # strictly diverged (each has a unique commit the other lacks).
     assert _run(tmp_path, "clone", str(bare), str(writer)).returncode == 0
     assert _run(writer, "config", "user.email", "test@example.com").returncode == 0
     assert _run(writer, "config", "user.name", "Test User").returncode == 0
@@ -233,22 +181,14 @@ def test_concurrent_remote_advance_converges_to_ref_equality(tmp_path: Path) -> 
     remote_advance_sha = _commit(writer, "remote.txt", "remote work\n", "remote advance")
     assert _run(writer, "push", _REMOTE, _TARGET).returncode == 0
 
-    # Local lands a divergent commit (after the writer's push).
     local_sha = _commit(repo, "local.txt", "local work\n", "local advance")
-    # Note: the local cannot push its commit (the bare is now
-    # ahead on the remote_advance_sha and the local is not a
-    # fast-forward of it). The push is intentionally not attempted.
 
-    # Bring the local repo's view of the remote forward.
     assert _run(repo, "fetch", _REMOTE).returncode == 0
 
-    # Pre-state: local and remote are strictly diverged.
     assert _head_sha(repo, f"refs/heads/{_TARGET}") == local_sha
     assert _head_sha(repo, f"refs/remotes/{_REMOTE}/{_TARGET}") == remote_advance_sha
-    # The local and remote SHAs must be different (diverged).
     assert local_sha != remote_advance_sha
 
-    # Drive the reconciler: divergence detected -> reconcile -> push.
     state = remote_sync.reconcile_remote_publication(
         _build_config(),
         repo,
@@ -256,13 +196,9 @@ def test_concurrent_remote_advance_converges_to_ref_equality(tmp_path: Path) -> 
         remote=_REMOTE,
     )
 
-    # Convergence proof: the local and remote refs are now equal
-    # after the reconciler ran.
     local_ref = _head_sha(repo, f"refs/heads/{_TARGET}")
     remote_ref = _run(bare, "rev-parse", _TARGET).stdout.strip()
     assert local_ref == remote_ref, f"local {local_ref} != remote {remote_ref} after reconciliation"
-    # The reconciled SHA must incorporate both the local advance
-    # and the remote advance (strict descendants of each).
     out_local = _run(
         repo,
         "log",
@@ -285,13 +221,6 @@ def test_concurrent_remote_advance_converges_to_ref_equality(tmp_path: Path) -> 
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(60)
 def test_throttle_deferred_probe_publishes_to_configured_release_tacos(tmp_path: Path) -> None:
-    """AC5, AC6 real-Git: fetch throttle armed at 60s suppresses probe during landing, but publication converges release/tacos.
-
-    Uses non-default target 'release' and remote 'tacos'. Arms the real
-    fetch throttle so the landing-seam probe is suppressed, lands a commit,
-    and demonstrates that publication pushes and converges release and tacos/release
-    with no origin or main branches/remotes accessed or created.
-    """
     repo = tmp_path / "repo"
     bare = tmp_path / "tacos.git"
 
@@ -305,10 +234,8 @@ def test_throttle_deferred_probe_publishes_to_configured_release_tacos(tmp_path:
 
     cfg = _build_config(interval_seconds=60.0)
 
-    # Arm the real fetch throttle
     remote_sync._REMOTE_PULL_THROTTLE.arm(repo, _REMOTE, _TARGET, clock=time.monotonic)
 
-    # Demonstrate that fetch probe is suppressed during landing
     pull_record = remote_sync.pull_and_reconcile_target(
         cfg,
         repo,
@@ -318,10 +245,8 @@ def test_throttle_deferred_probe_publishes_to_configured_release_tacos(tmp_path:
     assert pull_record.last_remote_sync == "refresh suppressed"
     assert pull_record.last_refresh == "refresh suppressed by throttle"
 
-    # Local lands a commit
     local_sha = _commit(repo, "local.txt", "local work\n", "local advance")
 
-    # Publication converges release and tacos/release
     state = remote_sync.reconcile_remote_publication(
         cfg,
         repo,
@@ -329,7 +254,6 @@ def test_throttle_deferred_probe_publishes_to_configured_release_tacos(tmp_path:
         source_state=pull_record,
     )
 
-    # Convergence proof: real ref equality
     local_ref = _head_sha(repo, f"refs/heads/{_TARGET}")
     bare_ref = _run(bare, "rev-parse", _TARGET).stdout.strip()
     assert local_ref == bare_ref == local_sha
@@ -339,7 +263,6 @@ def test_throttle_deferred_probe_publishes_to_configured_release_tacos(tmp_path:
         RebaseOutcomeKind.FAST_FORWARDED,
     )
 
-    # No origin or main accessed or created
     remotes = _run(repo, "remote").stdout.split()
     assert "origin" not in remotes
     branches = _run(repo, "branch", "-a").stdout
@@ -349,13 +272,6 @@ def test_throttle_deferred_probe_publishes_to_configured_release_tacos(tmp_path:
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(60)
 def test_throttle_deferred_probe_still_publishes_concrete_refs(tmp_path: Path) -> None:
-    """AC6 real-Git: a fetch suppressed by the throttle still allows the push.
-
-    The reconciler must attempt the push when the local SHA is
-    strictly ahead of the remote, regardless of probe freshness or
-    previous in-memory state. After the push, the local and remote
-    refs are equal in the real bare remote.
-    """
     repo = tmp_path / "repo"
     bare = tmp_path / "tacos.git"
 
@@ -364,21 +280,15 @@ def test_throttle_deferred_probe_still_publishes_concrete_refs(tmp_path: Path) -
     assert _run(repo, "remote", "add", _REMOTE, str(bare)).returncode == 0
     assert _run(repo, "config", "user.email", "test@example.com").returncode == 0
     assert _run(repo, "config", "user.name", "Test User").returncode == 0
-    # Push the seed so the bare has the target branch.
     assert _run(repo, "push", _REMOTE, _TARGET).returncode == 0
-    # Initial fetch so the remote tracking ref exists.
     assert _run(repo, "fetch", _REMOTE).returncode == 0
 
-    # Local lands a commit, does NOT push yet (simulates a probe
-    # suppression by an upstream throttle).
     local_sha = _commit(repo, "local.txt", "local work\n", "local advance")
 
-    # Pre-state: the bare remote is behind.
     assert _head_sha(repo, f"refs/heads/{_TARGET}") == local_sha
     bare_pre = _run(bare, "rev-parse", _TARGET).stdout.strip()
     assert bare_pre != local_sha
 
-    # Drive the reconciler: the throttle did not stop the push.
     state = remote_sync.reconcile_remote_publication(
         _build_config(),
         repo,
@@ -386,7 +296,6 @@ def test_throttle_deferred_probe_still_publishes_concrete_refs(tmp_path: Path) -
         remote=_REMOTE,
     )
 
-    # Convergence proof: real ref equality after the push.
     local_ref = _head_sha(repo, f"refs/heads/{_TARGET}")
     bare_ref = _run(bare, "rev-parse", _TARGET).stdout.strip()
     assert local_ref == bare_ref == local_sha
@@ -400,12 +309,6 @@ def test_throttle_deferred_probe_still_publishes_concrete_refs(tmp_path: Path) -
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(60)
 def test_killed_between_landing_and_push_publishes_on_recovery(tmp_path: Path) -> None:
-    """AC7 real-Git: a process killed between local land and push is recovered.
-
-    The local repo carries a commit on the target branch but the
-    remote is behind. The startup reconciler publishes the
-    pending commit on the next call.
-    """
     repo = tmp_path / "repo"
     bare = tmp_path / "tacos.git"
 
@@ -414,21 +317,15 @@ def test_killed_between_landing_and_push_publishes_on_recovery(tmp_path: Path) -
     assert _run(repo, "remote", "add", _REMOTE, str(bare)).returncode == 0
     assert _run(repo, "config", "user.email", "test@example.com").returncode == 0
     assert _run(repo, "config", "user.name", "Test User").returncode == 0
-    # Push the seed so the bare has the target branch.
     assert _run(repo, "push", _REMOTE, _TARGET).returncode == 0
-    # Initial fetch so the remote tracking ref exists.
     assert _run(repo, "fetch", _REMOTE).returncode == 0
 
-    # Land a commit locally but DO NOT push (simulates a process
-    # killed between the local landing and the push).
     local_sha = _commit(repo, "local.txt", "local work\n", "local advance")
 
-    # Pre-state: the local ref is ahead of the bare remote.
     assert _head_sha(repo, f"refs/heads/{_TARGET}") == local_sha
     bare_ref_before = _run(bare, "rev-parse", _TARGET).stdout.strip()
     assert bare_ref_before != local_sha
 
-    # Drive the startup reconciler.
     state = remote_sync.reconcile_remote_publication(
         _build_config(),
         repo,
@@ -436,7 +333,6 @@ def test_killed_between_landing_and_push_publishes_on_recovery(tmp_path: Path) -
         remote=_REMOTE,
     )
 
-    # Convergence proof: the bare remote ref has caught up.
     bare_ref_after = _run(bare, "rev-parse", _TARGET).stdout.strip()
     assert bare_ref_after == local_sha
     assert state.last_outcome in (
@@ -448,28 +344,6 @@ def test_killed_between_landing_and_push_publishes_on_recovery(tmp_path: Path) -
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(60)
 def test_killed_between_landing_and_push_recovers_from_linked_worktree(tmp_path: Path) -> None:
-    """AC7 real-Git: a process killed between local land and push is recovered from ANY worktree.
-
-    Criterion 7 requires the next Ralph start in **any** worktree to push
-    pending commits that landed locally before a crash.
-
-    This test:
-      1. Lands a commit in the primary repository via a subprocess that
-         invokes the real Ralph publication reconciler
-         (:func:`reconcile_remote_publication`) -- the same Ralph entry
-         point the post-landing seam uses -- so the subprocess exercises
-         actual Ralph landing semantics, not a hand-rolled git add/commit.
-      2. Hard-kills the subprocess before it can finish pushing (mimicking
-         the production crash window between local landing and the push
-         attempt).
-      3. Creates a linked worktree and starts a **fresh Ralph process**
-         (different PID) in that worktree that calls the real startup
-         recovery entry point. The recovery reconciler observes the
-         pending local commit and pushes it to the bare remote.
-
-    The bare remote must converge to the committed target SHA after the
-    fresh process in the linked worktree completes.
-    """
     repo = tmp_path / "repo"
     bare = tmp_path / "tacos.git"
     wt = tmp_path / "wt-sibling"
@@ -477,17 +351,9 @@ def test_killed_between_landing_and_push_recovers_from_linked_worktree(tmp_path:
     _seed_repo(repo)
     assert _run(tmp_path, "clone", "--bare", str(repo), str(bare)).returncode == 0
     assert _run(repo, "remote", "add", _REMOTE, str(bare)).returncode == 0
-    # Push the seed so the bare has the target branch.
     assert _run(repo, "push", _REMOTE, _TARGET).returncode == 0
-    # Initial fetch so the remote tracking ref exists.
     assert _run(repo, "fetch", _REMOTE).returncode == 0
 
-    # Prepare feature work on a feature branch in the primary repository.
-    # The subprocess invokes Ralph's authentic landing entry point
-    # (:func:`auto_integrate_after_commit`), which lands the feature
-    # onto the target branch and pauses at the publication seam. The
-    # subprocess is hard-killed before the push can complete (AC7: real
-    # interruption between local landing and push).
     import sys
 
     assert _run(repo, "switch", "-c", "feature").returncode == 0
@@ -534,28 +400,20 @@ def test_killed_between_landing_and_push_recovers_from_linked_worktree(tmp_path:
         text=True,
     )
     if proc.stdout is not None:
-        # Wait until the subprocess reaches its pre-push hook (the
-        # local landing is complete and the push is about to begin).
         before_push = proc.stdout.readline()
         assert before_push.strip() == "BEFORE_PUSH"
-    # Hard-kill the landing subprocess before it can complete the push.
     proc.kill()
     proc.wait()
 
     local_sha = _head_sha(repo, f"refs/heads/{_TARGET}")
 
-    # Pre-state: local ref has landed ahead of bare remote.
     bare_ref_before = _run(bare, "rev-parse", _TARGET).stdout.strip()
     assert bare_ref_before != local_sha
 
-    # Create a linked worktree at wt-sibling on a separate feature branch.
     assert _run(repo, "worktree", "add", "-b", "wt-feature", str(wt), _TARGET).returncode == 0
     assert _run(wt, "config", "user.email", "test@example.com").returncode == 0
     assert _run(wt, "config", "user.name", "Test User").returncode == 0
 
-    # Run the real Ralph startup recovery entry point against the linked
-    # worktree (which has a different PID than the killed landing subprocess).
-    # The recovery detects the pending local commit and pushes it to the bare remote.
     recovery_config = UnifiedConfig.model_validate(
         {
             "general": {
@@ -573,8 +431,6 @@ def test_killed_between_landing_and_push_recovers_from_linked_worktree(tmp_path:
     assert rec_state is not None and rec_state.last_outcome is not None
     out_line = str(rec_state.last_outcome)
 
-    # Convergence proof: the bare remote ref has caught up to the local
-    # target SHA via the fresh recovery subprocess in the linked worktree.
     bare_ref_after = _run(bare, "rev-parse", _TARGET).stdout.strip()
     assert bare_ref_after == local_sha
     assert out_line in (
@@ -586,23 +442,12 @@ def test_killed_between_landing_and_push_recovers_from_linked_worktree(tmp_path:
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(60)
 def test_unreachable_then_reachable_auto_pushes_real_refs(tmp_path: Path) -> None:
-    """AC8 real-Git: a remote that becomes reachable is published to.
-
-    The first reconciler call has no remote bare available (the bare
-    path is empty or unconfigured), so the call returns a
-    REMOTE_PULL_FAILED. After the bare remote is brought online and
-    the local is configured to point at it, the second call
-    publishes the local commit and the real refs converge.
-    """
     repo = tmp_path / "repo"
 
     _seed_repo(repo)
     assert _run(repo, "config", "user.email", "test@example.com").returncode == 0
     assert _run(repo, "config", "user.name", "Test User").returncode == 0
 
-    # Configure a remote that points at a non-existent bare (the
-    # remote is "unreachable"). The reconciler cannot fetch and
-    # returns a recoverable failure.
     unreachable_bare = tmp_path / "tacos_unreachable.git"
     assert _run(repo, "remote", "add", _REMOTE, str(unreachable_bare)).returncode == 0
     local_sha = _commit(repo, "local.txt", "local work\n", "local advance")
@@ -617,9 +462,6 @@ def test_unreachable_then_reachable_auto_pushes_real_refs(tmp_path: Path) -> Non
         remote_sync.REMOTE_REMOTE_UNREACHABLE,
     )
 
-    # Now bring the remote online (simulates the remote becoming
-    # reachable after a network blip) and push the seed so the bare
-    # has the target branch.
     bare = tmp_path / "tacos.git"
     init = subprocess.run(
         ("git", "init", "--bare", str(bare)),
@@ -630,12 +472,9 @@ def test_unreachable_then_reachable_auto_pushes_real_refs(tmp_path: Path) -> Non
     )
     assert init.returncode == 0
     assert _run(repo, "remote", "set-url", _REMOTE, str(bare)).returncode == 0
-    # Seed the bare with the parent commit so the target branch exists.
     seed_sha = _run(repo, "rev-parse", "HEAD~1").stdout.strip()
     assert _run(repo, "push", _REMOTE, f"{seed_sha}:refs/heads/{_TARGET}").returncode == 0
 
-    # Second reconciler call: the remote is reachable, the local
-    # commit is published, refs converge.
     state_second = remote_sync.reconcile_remote_publication(
         _build_config(),
         repo,
@@ -777,7 +616,6 @@ else:
 
 
 def _read_line_bounded(stream: TextIO, timeout: float = 30.0) -> str:
-    """Read a single line from a text stream within bounded timeout."""
     import select
 
     rlist, _, _ = select.select([stream], [], [], timeout)
@@ -801,7 +639,6 @@ def _read_line_bounded(stream: TextIO, timeout: float = 30.0) -> str:
 def test_unreachable_then_reachable_production_retry_succeeds_across_subprocess(
     tmp_path: Path, mode: str, skip_second: bool
 ) -> None:
-    """AC8: production recovery entry point automatically retries and publishes once reachable."""
     import os
     import sys
     import tempfile
@@ -815,7 +652,6 @@ def test_unreachable_then_reachable_production_retry_succeeds_across_subprocess(
     local_sha = _commit(repo, "feature.txt", "feature advance\n", "feature advance")
     seed_sha = _head_sha(repo, "HEAD~1")
 
-    # Pre-seed the bare remote with seed_sha (HEAD~1) before launching subprocess
     subprocess.run(["git", "init", "--bare", str(bare)], check=True, capture_output=True)
     subprocess.run(
         ["git", "-C", str(repo), "push", str(bare), f"{seed_sha}:refs/heads/release"],
@@ -841,10 +677,6 @@ def test_unreachable_then_reachable_production_retry_succeeds_across_subprocess(
             assert proc.stdout is not None
             assert proc.stdin is not None
 
-            # Conflict cap is configured to 2 in subprocess.
-            # We simulate a prolonged outage by letting retry occur for 3 attempts (> cap of 2).
-            # At attempts 1 and 2, tacos remains unreachable and we send RETRY.
-            # At attempt 3 (> cap 2), we restore tacos to bare, then send RESTORED.
             for attempt_expected in (1, 2, 3):
                 line = _read_line_bounded(proc.stdout, timeout=30.0).strip()
                 assert line == f"DEFERRED:{attempt_expected}:{local_sha}", (

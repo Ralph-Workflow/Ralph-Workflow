@@ -1,12 +1,3 @@
-"""Tests for retained resolution reason durable gate when resolver is None.
-
-Verifies:
-1. recover_pending_merge driven three times with rebase_stop_resolver=None
-   emits exactly one WAITING line and zero repeated CRITICAL lines.
-2. A second in-process reload of the durable record produces no new attempt.
-3. Backward compatibility: missing resolution_gate_key in record is treated as ungated.
-"""
-
 from __future__ import annotations
 
 import json
@@ -86,11 +77,6 @@ def _setup_controller(clock: FakeClock | None = None) -> tuple[RecoveryControlle
 def test_retained_rebase_resolution_without_resolver_gates_durable_record(
     tmp_path: Path,
 ) -> None:
-    """Driving recover_pending_merge three times with rebase_stop_resolver=None
-
-    asserts exactly one WAITING line and zero repeated CRITICAL lines,
-    and a second in-process reload of the durable record produces no new attempt.
-    """
     root, _cfg = _setup_repo_and_config(tmp_path)
     ctrl, _clk = _setup_controller()
     ctrl.unavailability_store.mark_unavailable("rebase_conflict_resolution", "agent1", "cooldown")
@@ -107,7 +93,6 @@ def test_retained_rebase_resolution_without_resolver_gates_durable_record(
 
     captured, sink_id = _capture_loguru_records()
     try:
-        # --- Round 1: first attempt with rebase_stop_resolver=None ---
         outcome1 = recover_pending_merge(
             root,
             read_record(root) or record,
@@ -123,12 +108,10 @@ def test_retained_rebase_resolution_without_resolver_gates_durable_record(
         assert len(critical_logs_r1) == 1
         assert len(waiting_logs_r1) == 0
 
-        # Persisted integration record preserves the computed resolution gate key.
         record_after_r1 = read_record(root)
         assert record_after_r1 is not None
         assert record_after_r1.resolution_gate_key is not None
 
-        # --- Round 2: retry with unchanged state and rebase_stop_resolver=None ---
         outcome2 = recover_pending_merge(
             root,
             record_after_r1,
@@ -139,15 +122,12 @@ def test_retained_rebase_resolution_without_resolver_gates_durable_record(
         assert outcome2.recovery_record_retained is True
         assert "WAITING" in outcome2.last_reason
 
-        # Exactly one WAITING line emitted across both rounds
         waiting_logs_r2 = [r for r in captured if "WAITING" in r["message"]]
         assert len(waiting_logs_r2) == 1
 
-        # Zero repeated CRITICAL logs (count remains 1)
         critical_logs_r2 = [r for r in captured if r["level"].name == "CRITICAL"]
         assert len(critical_logs_r2) == 1
 
-        # --- Round 3: third tick with unchanged key ---
         outcome3 = recover_pending_merge(
             root,
             read_record(root) or record,
@@ -158,11 +138,9 @@ def test_retained_rebase_resolution_without_resolver_gates_durable_record(
         assert outcome3.recovery_record_retained is True
         assert "WAITING" in outcome3.last_reason
 
-        # Still exactly one WAITING line and zero repeated CRITICAL lines
         assert len([r for r in captured if r["level"].name == "CRITICAL"]) == 1
         assert len([r for r in captured if "WAITING" in r["message"]]) == 1
 
-        # --- Second in-process reload of the durable record ---
         reloaded_record = read_record(root)
         assert reloaded_record is not None
         assert reloaded_record.resolution_gate_key is not None
@@ -175,7 +153,6 @@ def test_retained_rebase_resolution_without_resolver_gates_durable_record(
             rebase_stop_resolver=None,
             recovery_controller=ctrl,
         )
-        # Produces no new attempt; hits gate directly
         assert outcome_reload.recovery_record_retained is True
         assert "WAITING" in outcome_reload.last_reason
         assert len([r for r in captured if r["level"].name == "CRITICAL"]) == 1
@@ -187,10 +164,6 @@ def test_retained_rebase_resolution_without_resolver_gates_durable_record(
 def test_second_process_reload_without_resolver_gates_immediately(
     tmp_path: Path,
 ) -> None:
-    """A fresh process reloading the durable record with rebase_stop_resolver=None
-
-    sees the durable gate key, emits exactly one WAITING line, and emits zero CRITICAL logs.
-    """
     root, _cfg = _setup_repo_and_config(tmp_path)
     ctrl1, clock = _setup_controller()
     ctrl1.unavailability_store.mark_unavailable("rebase_conflict_resolution", "agent1", "cooldown")
@@ -205,7 +178,6 @@ def test_second_process_reload_without_resolver_gates_immediately(
     )
     write_record(root, record)
 
-    # Process 1 runs initial tick (ungated -> writes gate key)
     recover_pending_merge(
         root,
         record,
@@ -217,7 +189,6 @@ def test_second_process_reload_without_resolver_gates_immediately(
     assert persisted_record is not None
     assert persisted_record.resolution_gate_key is not None
 
-    # Process 2 starts fresh: new controller, new clock at same time, reset in-process gate state
     reset_continuation_gate_state()
     ctrl2 = RecoveryController(options=RecoveryControllerOptions(clock=clock))
     ctrl2.register_phase_chain("rebase_conflict_resolution", ["agent1", "agent2"])
@@ -235,7 +206,6 @@ def test_second_process_reload_without_resolver_gates_immediately(
         assert outcome_p2.recovery_record_retained is True
         assert "WAITING" in outcome_p2.last_reason
 
-        # Exactly one WAITING line emitted in Process 2, zero CRITICAL logs
         waiting_logs = [r for r in captured if "WAITING" in r["message"]]
         critical_logs = [r for r in captured if r["level"].name == "CRITICAL"]
         assert len(waiting_logs) == 1
@@ -247,7 +217,6 @@ def test_second_process_reload_without_resolver_gates_immediately(
 def test_missing_resolution_gate_key_is_ungated(
     tmp_path: Path,
 ) -> None:
-    """Missing resolution_gate_key in record is treated as ungated (backward compatibility)."""
     root, _cfg = _setup_repo_and_config(tmp_path)
     ctrl, _clk = _setup_controller()
     _setup_rebase_state(root, "feat1", "target1", "stop_sha_1")
@@ -277,7 +246,6 @@ def test_missing_resolution_gate_key_is_ungated(
     assert outcome.recovery_record_retained is True
     assert outcome.last_reason == "rebase resolution retained; continuation resolver required"
 
-    # After the refusal, gate key is persisted for subsequent ticks
     saved = read_record(root)
     assert saved is not None
     assert saved.resolution_gate_key is not None

@@ -1,4 +1,3 @@
-"""ChildActivitySnapshot — freshness-aware aggregate snapshot for a scope prefix."""
 
 from __future__ import annotations
 
@@ -7,7 +6,6 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class ChildActivitySnapshot:
-    """Freshness-aware aggregate snapshot for a scope prefix."""
 
     scope_prefix: str
     has_process: bool

@@ -1,5 +1,3 @@
-"""Parse round-trip tests for @EXAMPLE blocks in the bundled default mcp.toml."""
-
 from __future__ import annotations
 
 import re

@@ -1,33 +1,3 @@
-"""Verification of rejection citations against sealed proposal diffs.
-
-Provides functions to verify that rejection reason citations in a commit_review
-artifact legitimately reference actual modified paths or findings from the
-proposal diff, preventing unjustified rejections or hallucinated citations.
-
-Citation verification is a safety boundary: an unverifiable citation is a
-reviewer malfunction (a gate failure), never a rollback.  The verifier
-therefore fails closed.
-
-* A cited path is verified only when its normalized repository-relative form
-  equals a diff entry path exactly.  A basename, a path suffix, a substring,
-  or a path that is merely absent from the diff never verifies.
-* A cited count is verified only when it is typed and backed by the diff:
-  ``N deleted files`` needs exactly ``N`` deleted entries, ``N binary files``
-  exactly ``N`` binary entries, ``N added files`` exactly ``N`` added
-  entries, and ``N modified files`` exactly ``N`` modified entries.  A count
-  whose category has no matching entry fails, and so does a count whose
-  category cannot be determined.
-* Every count-like noun is a count, not only the noun ``file``: ``N paths``,
-  ``N deletions``, ``N entries``, ``N changes``, ``N lines``, ``N items`` and
-  ``N modifications`` assert quantities of the diff too.  A count the diff
-  cannot back, and a count whose noun or qualifier names a category the
-  verifier does not know, are unverifiable and fail closed.
-* A number that names no count is not a count claim: a path that carries
-  digits, a ``path:line`` suffix, and a bare line number are references to
-  a place in the tree.
-* Every cited path and every cited count of a reason must verify, and a
-  reason without a single verified citation fails.
-"""
 
 from __future__ import annotations
 
@@ -38,16 +8,12 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-# Punctuation to strip from token boundaries when extracting path candidates.
 _STRIP_PUNCT: str = ".,;:()[]{}'\"`<>!?"
 
-# Characters that may wrap a cited path (quotes, backticks, markdown emphasis).
 _WRAPPER_CHARS: str = "\"'`*~"
 
-#: The shortest text that can carry a matching wrapper pair.
 _MIN_WRAPPED_TEXT_LENGTH: int = 2
 
-# Common abbreviations and non-path tokens that should not be mistaken for file paths.
 _EXCLUDED_TOKENS: frozenset[str] = frozenset(
     {
         "e.g.",
@@ -64,7 +30,6 @@ _EXCLUDED_TOKENS: frozenset[str] = frozenset(
     }
 )
 
-# Known file extensions to recognize when a token represents a path.
 _COMMON_EXTENSIONS: frozenset[str] = frozenset(
     {
         ".a",
@@ -120,8 +85,6 @@ _COMMON_EXTENSIONS: frozenset[str] = frozenset(
     }
 )
 
-# Diff categories a count claim may be typed against.  The word is the one a
-# reviewer writes; the category is the diff fact the count must be backed by.
 _COUNT_KIND_BY_WORD: dict[str, str] = {
     "added": "added",
     "binary": "binary",
@@ -134,13 +97,8 @@ _COUNT_KIND_BY_WORD: dict[str, str] = {
     "untracked": "added",
 }
 
-# The category used when a count names no category at all ("3 files").
 _TOTAL_COUNT_KIND: str = "total"
 
-# The nouns a reviewer may write to assert a quantity of the diff, mapped to
-# the diff category the noun asserts.  A noun whose value is None names a
-# quantity the diff summary cannot back at all: such a count is
-# unverifiable, so it fails closed instead of passing unexamined.
 _COUNT_NOUN_CATEGORY: dict[str, str | None] = {
     "addition": "added",
     "additions": "added",
@@ -172,8 +130,6 @@ _COUNT_NOUN_CATEGORY: dict[str, str | None] = {
     "removals": "deleted",
 }
 
-# The words that name a place inside a file rather than a quantity of the
-# diff.  A number that follows one of them is a reference, not a count.
 _COUNT_REFERENCE_WORDS: frozenset[str] = frozenset(
     {
         "byte",
@@ -195,11 +151,8 @@ _COUNT_REFERENCE_WORDS: frozenset[str] = frozenset(
     }
 )
 
-# How many tokens may sit between a number and the noun it counts.
 _COUNT_NOUN_WINDOW: int = 3
 
-# The filler words that may sit between a counted noun and a trailing
-# category word ("2 files were deleted").
 _COUNT_FILLER_WORDS: frozenset[str] = frozenset(
     {
         "are",
@@ -291,36 +244,15 @@ _ITEM_ID_PREFIX_RE: re.Pattern[str] = re.compile(r"^\[[A-Za-z0-9_-]+\]\s*")
 _MULTI_SLASH_RE: re.Pattern[str] = re.compile(r"/{2,}")
 _LINE_SUFFIX_RE: re.Pattern[str] = re.compile(r":\d+(?:-\d+)?(?::\d+)?$")
 
-# The characters that are stripped from the edges of a token before it is
-# read as a word.
 _TOKEN_EDGE_RE: re.Pattern[str] = re.compile(r"^[^0-9A-Za-z_-]+|[^0-9A-Za-z_-]+$")
 
-# A token made of word characters only: a plain word a count phrase may
-# span ("999 secret files").  A token that carries a path separator ends
-# the phrase.
 _PLAIN_WORD_RE: re.Pattern[str] = re.compile(r"^[A-Za-z_-]+$")
 
-# A token that is a bare number, optionally grouped with thousands separators.
 _NUMBER_TOKEN_RE: re.Pattern[str] = re.compile(r"^(?:\d+|\d{1,3}(?:,\d{3})+)$")
 
 
 @dataclass(frozen=True)
 class _DiffSummary:
-    """Normalized diff facts a citation is verified against.
-
-    Attributes:
-        paths: Every repository-relative path in the diff.
-        basenames: The bare file names of those paths.  They are used to
-            recognize a path citation at all; they never verify one.
-        deleted: Paths whose diff entry has deletion status.
-        added: Paths whose diff entry has added status.
-        modified: Paths whose diff entry has modified status.
-        binary: Paths whose diff entry is marked binary.
-        tracked: The repository paths the base tree holds.  A token that
-            names one of them is a path citation even when it carries no
-            file extension, so an absent tracked file can never be cited
-            silently.
-    """
 
     paths: frozenset[str]
     basenames: frozenset[str]
@@ -331,7 +263,6 @@ class _DiffSummary:
     tracked: frozenset[str] = frozenset()
 
     def count_for(self, kind: str) -> int:
-        """Return how many diff entries back a count of the given category."""
         if kind == "deleted":
             return len(self.deleted)
         if kind == "added":
@@ -344,7 +275,6 @@ class _DiffSummary:
 
 
 def _strip_wrappers(text: str) -> str:
-    """Remove surrounding quotes, backticks, and markdown emphasis markers."""
     previous: str | None = None
     while previous != text:
         previous = text
@@ -359,20 +289,6 @@ def _strip_wrappers(text: str) -> str:
 
 
 def _normalize_path(raw: str) -> str:
-    """Normalize a cited or diff path to its repository-relative form.
-
-    Surrounding quotes, backticks, and markdown emphasis are stripped, Windows
-    separators become POSIX separators, a ``:line`` citation suffix is dropped,
-    and a leading ``./`` or ``/`` is removed.  Two paths are the same path
-    only when their normalized forms are equal.
-
-    Args:
-        raw: The raw path text.
-
-    Returns:
-        The normalized repository-relative path, or an empty string when the
-        text does not name a path.
-    """
     text = _strip_wrappers(raw)
     if not text:
         return ""
@@ -386,15 +302,6 @@ def _normalize_path(raw: str) -> str:
 
 
 def _entry_fields(entry: object) -> tuple[str, str, bool]:
-    """Extract ``(path, status, is_binary)`` from a diff entry of any shape.
-
-    Args:
-        entry: A diff entry object, a mapping with the same keys, or a path.
-
-    Returns:
-        The raw path, the raw status, and the binary flag.  Missing or
-        wrongly typed fields fall back to their empty value.
-    """
     if isinstance(entry, dict):
         raw_path: object = entry.get("path")
         raw_status: object = entry.get("status")
@@ -411,14 +318,6 @@ def _entry_fields(entry: object) -> tuple[str, str, bool]:
 
 
 def _entry_tracked_paths(entry: object) -> frozenset[str]:
-    """Return the base tree's tracked paths carried by a diff entry.
-
-    Args:
-        entry: A diff entry object or a mapping with the same keys.
-
-    Returns:
-        The tracked paths, or an empty set when the entry carries none.
-    """
     if isinstance(entry, dict):
         raw: object = entry.get("base_tree_paths")
     else:
@@ -429,7 +328,6 @@ def _entry_tracked_paths(entry: object) -> frozenset[str]:
 
 
 def _status_kind(status: str) -> str:
-    """Classify a git diff status into the category a count is typed against."""
     code = status.strip().upper()
     if not code:
         return ""
@@ -443,14 +341,6 @@ def _status_kind(status: str) -> str:
 
 
 def _extract_diff_info(diff_entries: Sequence[object]) -> _DiffSummary:
-    """Collect the normalized diff facts citations are verified against.
-
-    Args:
-        diff_entries: Sequence of diff entry objects, mappings, or path strings.
-
-    Returns:
-        The normalized summary of the diff.
-    """
     paths: set[str] = set()
     deleted: set[str] = set()
     added: set[str] = set()
@@ -492,15 +382,11 @@ def _extract_diff_info(diff_entries: Sequence[object]) -> _DiffSummary:
 
 
 def _is_path_candidate(token: str, summary: _DiffSummary) -> bool:
-    """Determine whether a normalized token should be read as a cited path."""
     if not token:
         return False
     if token in summary.paths or token in summary.basenames:
         return True
     if token in summary.tracked:
-        # The token names a tracked repository file, so it IS a path
-        # citation even without a file extension.  A tracked file that is
-        # absent from the diff cannot verify, so it must not pass silently.
         return True
     if "/" in token:
         return True
@@ -517,7 +403,6 @@ def _is_path_candidate(token: str, summary: _DiffSummary) -> bool:
 
 
 def _candidate_from_token(raw: str, summary: _DiffSummary) -> str | None:
-    """Return the normalized path a token cites, or None when it cites none."""
     token = raw.strip()
     if not token or token in _EXCLUDED_TOKENS:
         return None
@@ -535,27 +420,12 @@ def _candidate_from_token(raw: str, summary: _DiffSummary) -> str | None:
 
 
 def _matches_diff_path(candidate: str, summary: _DiffSummary) -> bool:
-    """Check whether a normalized candidate is exactly a diff entry path.
-
-    Only equality verifies a citation: a basename, a path suffix, and a
-    substring all fail.
-    """
     return candidate in summary.paths
 
 
 def _extract_candidates_from_text(text: str, summary: _DiffSummary) -> list[str]:
-    """Extract cited paths from a reason line.
-
-    Args:
-        text: The reason line.
-        summary: The normalized diff facts.
-
-    Returns:
-        The normalized paths the line cites.
-    """
     candidates: list[str] = []
 
-    # 1. Markdown links: [text](target)
     for match in _MARKDOWN_LINK_RE.finditer(text):
         target = str(match.group(2)).strip()
         if target.startswith("file://"):
@@ -565,13 +435,11 @@ def _extract_candidates_from_text(text: str, summary: _DiffSummary) -> list[str]
         if candidate is not None:
             candidates.append(candidate)
 
-    # 2. Backtick code spans: `code`
     for match in _INLINE_CODE_RE.finditer(text):
         candidate = _candidate_from_token(match.group(1), summary)
         if candidate is not None:
             candidates.append(candidate)
 
-    # 3. Quoted strings: 'path' or "path"
     for match in _QUOTED_STR_RE.finditer(text):
         g1 = match.group(1)
         g2 = match.group(2)
@@ -580,7 +448,6 @@ def _extract_candidates_from_text(text: str, summary: _DiffSummary) -> list[str]
         if candidate is not None:
             candidates.append(candidate)
 
-    # 4. Words/tokens in line
     clean_text = _ITEM_ID_PREFIX_RE.sub("", text)
     for word in clean_text.split():
         clean_word = word.strip(_STRIP_PUNCT)
@@ -598,11 +465,6 @@ def _verify_path_candidates(
     lines: list[str],
     summary: _DiffSummary,
 ) -> tuple[set[str], set[str]]:
-    """Partition extracted path citations into matched and unmatched sets.
-
-    A cited path that is absent from the diff is never excused: it lands in
-    the unmatched set and fails the whole reason.
-    """
     matched: set[str] = set()
     unmatched: set[str] = set()
 
@@ -617,34 +479,10 @@ def _verify_path_candidates(
 
 
 def _word_tokens(text: str) -> list[str]:
-    """Split a reason line into the lower-case words it carries.
-
-    Args:
-        text: The reason line.
-
-    Returns:
-        One token per whitespace-separated word, with the markdown and
-        punctuation wrappers removed from its edges and its letters folded
-        to lower case, so a count claim is recognised whatever case the
-        reviewer wrote it in.
-    """
     return [_TOKEN_EDGE_RE.sub("", token).lower() for token in text.split()]
 
 
 def _count_noun_index(index: int, tokens: list[str]) -> int | None:
-    """Return the index of the noun a number counts, if it names one.
-
-    The counted noun is the word that follows the number, optionally behind
-    other words ("999 secret files").  The scan stops at a token that is
-    not a plain word, because a path or a symbol ends the phrase.
-
-    Args:
-        index: The index of the number token.
-        tokens: The word tokens of the reason line.
-
-    Returns:
-        The index of the counted noun, or None when the number names none.
-    """
     for offset in range(1, _COUNT_NOUN_WINDOW + 1):
         position = index + offset
         if position >= len(tokens):
@@ -658,15 +496,6 @@ def _count_noun_index(index: int, tokens: list[str]) -> int | None:
 
 
 def _trailing_category(noun_index: int, tokens: list[str]) -> str | None:
-    """Return the category word that follows a counted noun, if any.
-
-    Args:
-        noun_index: The index of the counted noun.
-        tokens: The word tokens of the reason line.
-
-    Returns:
-        The category word, or None when the noun carries no trailing one.
-    """
     position = noun_index + 1
     while position < len(tokens) and tokens[position] in _COUNT_FILLER_WORDS:
         position += 1
@@ -678,18 +507,6 @@ def _trailing_category(noun_index: int, tokens: list[str]) -> str | None:
 
 
 def _count_category(index: int, tokens: list[str]) -> tuple[bool, str | None]:
-    """Return the diff category a number asserts, and whether it asserts one.
-
-    Args:
-        index: The index of the number token.
-        tokens: The word tokens of the reason line.
-
-    Returns:
-        Whether the number asserts a count at all, and the diff category the
-        count must be backed by.  The category is None when the claim cannot
-        be typed: the noun names a quantity the diff cannot back, an unknown
-        word qualifies the noun, or two categories conflict.
-    """
     noun_index = _count_noun_index(index, tokens)
     if noun_index is None:
         return (False, None)
@@ -703,8 +520,6 @@ def _count_category(index: int, tokens: list[str]) -> tuple[bool, str | None]:
     for word in tokens[index + 1 : noun_index]:
         category = _COUNT_KIND_BY_WORD.get(word)
         if category is None:
-            # An unknown word qualifies the noun, so the claim names a
-            # category the verifier does not know.
             return (True, None)
         typed.append(category)
 
@@ -720,14 +535,6 @@ def _count_category(index: int, tokens: list[str]) -> tuple[bool, str | None]:
 
 
 def _parse_number_or_quantifier(token: str) -> tuple[int | None, bool]:
-    """Parse a token into an integer count and whether it is a concrete number.
-
-    Returns:
-        (value, is_concrete):
-        - (int, True) for digits or spelled-out numbers like "999" or "nine".
-        - (-1, False) for vague quantifiers like "several" or "many".
-        - (None, False) if the token is not a number or quantifier.
-    """
     if _NUMBER_TOKEN_RE.match(token):
         return (int(token.replace(",", "")), True)
     if token in _SPELLED_NUMBERS:
@@ -741,20 +548,10 @@ def _parse_number_or_quantifier(token: str) -> tuple[int | None, bool]:
     return (None, False)
 
 
-#: Maximum qualifier words to inspect preceding a count noun.
 _MAX_QUALIFIER_STEPS: int = 2
 
 
 def _reversed_noun_qualifiers(pos: int, tokens: list[str]) -> list[str] | None:
-    """Return qualifier categories preceding a reversed count noun.
-
-    Args:
-        pos: The token index of the count noun.
-        tokens: The word tokens of the reason line.
-
-    Returns:
-        List of diff categories, or None if an unknown qualifier is found.
-    """
     q_pos = pos - 1
     while q_pos >= 0 and tokens[q_pos] in _COUNT_BACKWARD_FILLER_WORDS:
         q_pos -= 1
@@ -775,7 +572,6 @@ def _reversed_noun_qualifiers(pos: int, tokens: list[str]) -> list[str] | None:
 
 
 def _reversed_category_word(pos: int, tokens: list[str]) -> tuple[bool, str | None]:
-    """Resolve diff category from a preceding category word (e.g. 'deleted: 999')."""
     category = _COUNT_KIND_BY_WORD[tokens[pos]]
     q_pos = pos - 1
     while q_pos >= 0 and tokens[q_pos] in _COUNT_BACKWARD_FILLER_WORDS:
@@ -790,19 +586,6 @@ def _reversed_category_word(pos: int, tokens: list[str]) -> tuple[bool, str | No
 
 
 def _reversed_count_category(index: int, tokens: list[str]) -> tuple[bool, str | None]:
-    """Return the diff category a preceding noun or category word asserts.
-
-    Handles reversed count order such as "deleted files: 999", "deletions: 999",
-    "paths: 999", "files deleted: 999", "deleted: 999", or "modified files was 999".
-
-    Args:
-        index: The index of the number/quantifier token.
-        tokens: The word tokens of the reason line.
-
-    Returns:
-        Whether a reversed count is asserted, and the category it must be
-        backed by. The category is None when the claim cannot be typed.
-    """
     pos = index - 1
     while pos >= 0 and tokens[pos] in _COUNT_BACKWARD_FILLER_WORDS:
         pos -= 1
@@ -828,21 +611,6 @@ def _reversed_count_category(index: int, tokens: list[str]) -> tuple[bool, str |
 
 
 def _count_claims(tokens: list[str]) -> list[tuple[int, str | None]]:
-    """Return the count claims one reason line makes.
-
-    A claim is a number that asserts a quantity of the diff: it names a
-    counted noun ("999 paths", "999 deleted files", "deleted files: 999",
-    "nine deleted files").  A number that names a place in a file instead
-    of a quantity is a reference, not a claim.
-
-    Args:
-        tokens: The word tokens of the reason line.
-
-    Returns:
-        The count of every claim and the diff category it must be backed
-        by.  The category is None when the claim cannot be typed, which
-        makes the count unverifiable.
-    """
     claims: list[tuple[int, str | None]] = []
     for index, token in enumerate(tokens):
         num_val, is_concrete = _parse_number_or_quantifier(token)
@@ -870,12 +638,6 @@ def _verify_count_citations(
     lines: list[str],
     summary: _DiffSummary,
 ) -> tuple[set[int], set[int]]:
-    """Partition extracted count citations into matched and unmatched sets.
-
-    A count is backed only when the diff holds exactly that many entries of
-    the claimed category.  A category with no entry never backs a count, and
-    a count without a determinable category is unverifiable.
-    """
     matched: set[int] = set()
     unmatched: set[int] = set()
 
@@ -908,23 +670,6 @@ def verify_reject_citations(
     reason_items: list[str] | str | None,
     diff_entries: Sequence[object],
 ) -> bool:
-    """Verify that citations in a reject reason reference actual diff evidence.
-
-    Every cited path must equal a diff entry path exactly after
-    normalization, and every cited count must be typed and backed by exactly
-    that many diff entries of the claimed category.  One unverifiable claim
-    fails the whole reason, and a reason without a single verified citation
-    fails too.
-
-    Args:
-        reason_items: List of reason bullet strings, a single reason string, or None.
-        diff_entries: Sequence of diff entry objects, mappings with 'path',
-            or path strings.
-
-    Returns:
-        True if all citations are verified against the diff and at least one
-        concrete citation exists; False otherwise.
-    """
     if reason_items is None:
         return False
     if isinstance(reason_items, str):

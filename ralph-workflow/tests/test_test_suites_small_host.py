@@ -1,13 +1,3 @@
-"""The real-git lane's parallelism never exceeds the host's cores.
-
-The required auto-integrate lane runs as up to ten plain-pytest shards
-alongside the general shards. On a 4-core CI runner the twelve shards
-this cap used to allow oversubscribed the host three times over, so the
-wall clock measured scheduler thrash rather than the suite. These tests
-drive ``run_test_suites`` with a stub spawner and an injected core count
-and read how many shards the real-git lane was launched with.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -47,13 +37,8 @@ def _dedicated_lane_shard_count(
     )
 
     assert exit_code == 0
-    # The first manifest is the single general shard; the real-git lane's
-    # own shards follow it and hold every registered real-git file exactly
-    # once between them.
     lane_manifests = spawner.manifest_files[1:]
     lane_files = tuple(path for manifest in lane_manifests for path in manifest)
-    # RALPH-TEST-REASON: the lane's manifests hold every registered
-    # real-git file exactly once.
     assert sorted(lane_files) == sorted(EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES)
     assert len(lane_files) == len(set(lane_files))
     return len(lane_manifests)
@@ -69,8 +54,6 @@ def test_real_git_lane_shards_are_capped_by_the_host_cores(
     cpu_count: int | None,
     expected_shards: int,
 ) -> None:
-    # RALPH-TEST-REASON: the lane's parallelism never exceeds the host's
-    # core count.
     assert (
         _dedicated_lane_shard_count(tmp_path, monkeypatch, cpu_count, expected_shards)
         == expected_shards

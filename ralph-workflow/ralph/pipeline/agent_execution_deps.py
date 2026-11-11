@@ -1,4 +1,3 @@
-"""Injectable dependencies for executing an agent-invocation effect."""
 
 from __future__ import annotations
 
@@ -48,12 +47,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class AgentExecutionDeps:
-    """Invoke-specific dependencies bundled with the shared PipelineDeps.
-
-    Lifecycle collaborators (bridge factory, prompt materializers, MCP
-    supervisor, etc.) live in ``pipeline_deps``. This dataclass carries only
-    the callbacks and registries that vary per invocation context.
-    """
 
     pipeline_deps: PipelineDeps
     invoke_agent: _InvokeAgentFn
@@ -72,7 +65,6 @@ def build_agent_execution_deps(
     show_phase_start_cb: _ShowPhaseStartFn | None = None,
     set_session_id_cb: Callable[[str | None], None] | None = None,
 ) -> AgentExecutionDeps:
-    """Build an ``AgentExecutionDeps`` from a ``PipelineDeps`` and invoke callbacks."""
     return AgentExecutionDeps(
         pipeline_deps=pipeline_deps,
         invoke_agent=invoke_agent,

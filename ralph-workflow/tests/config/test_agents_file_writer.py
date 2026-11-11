@@ -1,5 +1,3 @@
-"""Unit tests for the safe agents TOML writer."""
-
 from __future__ import annotations
 
 import ast
@@ -21,7 +19,6 @@ from ralph.config.bootstrap import ensure_global_config
 
 @contextmanager
 def _capture_loguru_lines() -> Iterator[list[str]]:
-    """Capture the loguru records emitted inside the block."""
     lines: list[str] = []
     sink_id = loguru_logger.add(lines.append, level="INFO", format="{message}")
     try:
@@ -33,7 +30,6 @@ def _capture_loguru_lines() -> Iterator[list[str]]:
 def test_invalid_toml_raises_value_error_and_does_not_create_file(
     tmp_path: Path,
 ) -> None:
-    """When text is not valid TOML, ValueError is raised and no file is created."""
     target_path = tmp_path / "ralph-workflow-agents.toml"
     invalid_toml = "agents: invalid_syntax = [unclosed"
 
@@ -45,7 +41,6 @@ def test_invalid_toml_raises_value_error_and_does_not_create_file(
 
 
 def test_invalid_toml_leaves_existing_file_untouched(tmp_path: Path) -> None:
-    """When text is not valid TOML, any existing file and backup are untouched."""
     target_path = tmp_path / "ralph-workflow-agents.toml"
     initial_content = '[agents.claude]\nmodel = "claude-3"\n'
     target_path.write_text(initial_content, encoding="utf-8")
@@ -62,7 +57,6 @@ def test_write_creates_new_file_and_logs(
     tmp_path: Path,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """A fresh target file is written atomically and logged with trigger and .bak path."""
     target_path = tmp_path / "ralph-workflow-agents.toml"
     content = '[agents.claude]\nmodel = "claude-3-5-sonnet"\n'
     bak_path = target_path.with_name(f"{target_path.name}.bak")
@@ -75,7 +69,6 @@ def test_write_creates_new_file_and_logs(
     assert target_path.read_text(encoding="utf-8") == content
     assert not bak_path.exists()
 
-    # Log must include path, trigger, and .bak path
     assert str(target_path) in caplog.text
     assert "initial_creation" in caplog.text
     assert str(bak_path) in caplog.text
@@ -85,7 +78,6 @@ def test_write_creates_backup_when_content_differs(
     tmp_path: Path,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """When existing file differs, a .bak copy of original is made before writing."""
     target_path = tmp_path / "ralph-workflow-agents.toml"
     bak_path = target_path.with_name(f"{target_path.name}.bak")
     old_content = '[agents.claude]\nmodel = "old-model"\n'
@@ -110,7 +102,6 @@ def test_write_identical_content_returns_false_and_no_backup_or_log(
     tmp_path: Path,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Identical content returns False immediately without creating a backup or logging."""
     target_path = tmp_path / "ralph-workflow-agents.toml"
     bak_path = target_path.with_name(f"{target_path.name}.bak")
     content = '[agents.claude]\nmodel = "same-model"\n'
@@ -130,7 +121,6 @@ def test_write_atomic_cleanup_on_replace_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Unique temp file is cleaned up if os.replace fails."""
     target_path = tmp_path / "ralph-workflow-agents.toml"
     content = '[agents.claude]\nmodel = "temp-test"\n'
 
@@ -169,7 +159,6 @@ def test_write_atomic_cleanup_on_replace_failure(
 
 
 def test_write_recovers_existing_file_with_invalid_utf8(tmp_path: Path) -> None:
-    """A file with invalid UTF-8 counts as different and its raw bytes are backed up."""
     target_path = tmp_path / "ralph-workflow-agents.toml"
     original_bytes = b'[agents.claude]\nmodel = "\xff\xfe-broken"\n'
     target_path.write_bytes(original_bytes)
@@ -186,7 +175,6 @@ def test_write_recovers_existing_file_with_invalid_utf8(tmp_path: Path) -> None:
 
 
 def test_write_preserves_symlinked_target(tmp_path: Path) -> None:
-    """Writing through a symlink updates the real file and keeps the symlink a symlink."""
     real_dir = tmp_path / "real"
     real_dir.mkdir()
     real_file = real_dir / "agents.toml"
@@ -207,7 +195,6 @@ def test_write_preserves_symlinked_target(tmp_path: Path) -> None:
 
 
 def test_write_preserves_existing_file_mode(tmp_path: Path) -> None:
-    """Rewriting an existing file keeps its 0644 mode."""
     target_path = tmp_path / "ralph-workflow-agents.toml"
     target_path.write_text('[agents.claude]\nmodel = "old"\n', encoding="utf-8")
     target_path.chmod(0o644)
@@ -221,7 +208,6 @@ def test_write_preserves_existing_file_mode(tmp_path: Path) -> None:
 
 
 def test_write_preserves_restrictive_existing_file_mode(tmp_path: Path) -> None:
-    """Rewriting an existing file keeps its restrictive 0600 mode."""
     target_path = tmp_path / "ralph-workflow-agents.toml"
     target_path.write_text('[agents.claude]\nmodel = "old"\n', encoding="utf-8")
     target_path.chmod(0o600)
@@ -235,7 +221,6 @@ def test_write_preserves_restrictive_existing_file_mode(tmp_path: Path) -> None:
 
 
 def test_new_file_is_created_with_mode_0644(tmp_path: Path) -> None:
-    """A newly created file gets mode 0644 instead of mkstemp's 0600."""
     target_path = tmp_path / "ralph-workflow-agents.toml"
 
     written = write_agents_toml(
@@ -247,7 +232,6 @@ def test_new_file_is_created_with_mode_0644(tmp_path: Path) -> None:
 
 
 def test_write_emits_operator_visible_loguru_line(tmp_path: Path) -> None:
-    """The trigger line reaches an operator-visible loguru sink in one line."""
     target_path = tmp_path / "ralph-workflow-agents.toml"
     content = '[agents.claude]\nmodel = "visible"\n'
     bak_path = target_path.with_name(f"{target_path.name}.bak")
@@ -267,7 +251,6 @@ def test_failed_write_retains_pre_write_backup_and_cleans_temp_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A failed target replace retains the pre-write backup and cleans scratch temp files."""
     target_path = tmp_path / "ralph-workflow-agents.toml"
     original_content = '[agents.claude]\nmodel = "old"\n'
     target_path.write_text(original_content, encoding="utf-8")
@@ -288,7 +271,6 @@ def test_failed_write_retains_pre_write_backup_and_cleans_temp_file(
         write_agents_toml(target_path, '[agents.claude]\nmodel = "new"\n', trigger="failed_write")
 
     assert excinfo.value.args == ("Simulated replace failure",)
-    # RALPH-TEST-REASON: pre-write backup is retained as safe recovery data on failure
     assert bak_path.read_text(encoding="utf-8") == original_content
     assert target_path.read_text(encoding="utf-8") == original_content
     assert sorted(entry.name for entry in tmp_path.iterdir()) == sorted(
@@ -300,7 +282,6 @@ def test_backup_exists_before_the_replace_overwrites_the_target(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The previous bytes are recoverable on disk before the target is replaced."""
     target_path = tmp_path / "ralph-workflow-agents.toml"
     original_content = '[agents.claude]\nmodel = "old"\n'
     target_path.write_text(original_content, encoding="utf-8")
@@ -319,11 +300,6 @@ def test_backup_exists_before_the_replace_overwrites_the_target(
 
     write_agents_toml(target_path, '[agents.claude]\nmodel = "new"\n', trigger="backup_order")
 
-    # RALPH-TEST-REASON: the backup publication is an atomic move of its own,
-    # so the recorded moves are keyed by destination and the move onto the
-    # target file must observe the backup already holding the operator's bytes.
-    # The backup is published before the target replace, so the bytes the
-    # operator had are recoverable on disk at the moment the target moves.
     target_moves = [entry for entry in observed if entry[0] == str(target_path)]
     assert len(target_moves) == 1
     assert target_moves[0][1] == original_content.encode("utf-8")
@@ -332,8 +308,7 @@ def test_backup_exists_before_the_replace_overwrites_the_target(
 
 
 def test_module_imports_only_stdlib_and_loguru() -> None:
-    """Module must import only standard library and loguru, never a ralph module."""
-    import ralph.config.agents_file_writer as writer_mod  # probe-marker
+    import ralph.config.agents_file_writer as writer_mod
 
     assert writer_mod.__file__ is not None
     source_path = Path(writer_mod.__file__)
@@ -369,7 +344,6 @@ def test_migrate_legacy_global_config_skips_symlink_to_agents_config(
     tmp_path: Path,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Calling ensure_global_config on a symlink to ralph-workflow-agents.toml skips migration."""
     agents_file = tmp_path / "ralph-workflow-agents.toml"
     content = '[agent_drains]\nanalysis = "legacy_analysis"\ncommit = "legacy_commit"\n'
     agents_file.write_text(content, encoding="utf-8")
@@ -397,7 +371,6 @@ def test_migrate_legacy_global_config_skips_shared_custom_name_alias(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """A main config aliasing the agents file via a shared custom-named file is skipped."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
 
     shared_file = tmp_path / "shared-custom.toml"
@@ -415,13 +388,6 @@ def test_migrate_legacy_global_config_skips_shared_custom_name_alias(
     with caplog.at_level(logging.WARNING), _capture_loguru_lines() as log_lines:
         result = ensure_global_config(global_dir=tmp_path)
 
-    # RALPH-TEST-REASON: the operators own the agents configuration file, so the
-    # legacy-drain migration must never write to any file that IS the agents
-    # configuration. Both names here are symlinks to ONE shared backing file
-    # whose own name is neither the main nor the agents filename, so a
-    # basename-only comparison cannot see the alias. The bytes of the shared
-    # file, the absence of any backup, and the skip warning are therefore the
-    # observable contract of "the migration refused to touch the agents file".
     assert result.action == "skipped"
     assert result.backup is None
     assert shared_file.read_bytes() == original_bytes
@@ -439,7 +405,6 @@ def test_migrate_legacy_global_config_skips_hard_linked_agents_config(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """A main config hard-linked to the agents file is skipped."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
 
     shared_file = tmp_path / "shared-custom.toml"
@@ -457,11 +422,6 @@ def test_migrate_legacy_global_config_skips_hard_linked_agents_config(
     with caplog.at_level(logging.WARNING), _capture_loguru_lines() as log_lines:
         result = ensure_global_config(global_dir=tmp_path)
 
-    # RALPH-TEST-REASON: a hard link is the same inode under two names, so the
-    # migration would rewrite the operator-owned agents file through the main
-    # config path without any resolved-path difference to notice. The shared
-    # bytes, the absence of any backup, and the skip warning are the
-    # observable contract of the refusal.
     assert result.action == "skipped"
     assert result.backup is None
     assert shared_file.read_bytes() == original_bytes
@@ -476,13 +436,10 @@ def test_migrate_legacy_global_config_skips_xdg_agents_config_alias(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """A main config aliasing the XDG-configured agents file is skipped."""
     xdg_dir = tmp_path / "xdg-config"
     xdg_dir.mkdir()
     monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_dir))
 
-    # The active agents file is itself an alias, so its own name never
-    # reveals the identity: only the XDG-configured path can find it.
     backing_file = xdg_dir / "shared-custom.toml"
     backing_file.write_text(
         '[agent_drains]\nanalysis = "legacy_analysis"\ncommit = "legacy_commit"\n',
@@ -498,10 +455,6 @@ def test_migrate_legacy_global_config_skips_xdg_agents_config_alias(
     with caplog.at_level(logging.WARNING), _capture_loguru_lines() as log_lines:
         result = ensure_global_config(global_dir=tmp_path)
 
-    # RALPH-TEST-REASON: the active agents configuration can live outside the
-    # main config's directory (XDG_CONFIG_HOME), so the identity check has to
-    # consider that path too. Here the co-located candidate does not exist,
-    # so only the XDG-configured path can recognise the alias.
     assert result.action == "skipped"
     assert result.backup is None
     assert backing_file.read_bytes() == original_bytes
@@ -516,7 +469,6 @@ def test_migrate_legacy_global_config_migrates_plain_main_config(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An ordinary main config with legacy drain keys is still migrated."""
     xdg_dir = tmp_path / "xdg-config"
     xdg_dir.mkdir()
     monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_dir))
@@ -528,12 +480,6 @@ def test_migrate_legacy_global_config_migrates_plain_main_config(
 
     result = ensure_global_config(global_dir=tmp_path)
 
-    # RALPH-TEST-REASON: the alias guard must refuse only files that ARE the
-    # agents configuration. A plain main config that shares no identity with
-    # any agents file must still be migrated, and the migration must publish
-    # the three new drain keys plus a backup holding the operator's original
-    # bytes -- otherwise the guard would silently disable the feature it
-    # protects.
     assert result.action == "regenerated"
     assert result.backup is not None
     assert result.backup.read_bytes() == original_bytes
@@ -547,9 +493,7 @@ def test_migrate_legacy_global_config_rejects_invalid_candidate_toml(
     tmp_path: Path,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """When candidate text produces invalid TOML syntax, migration is rejected without backup or write."""
     target_path = tmp_path / "ralph-workflow.toml"
-    # Eligible legacy [agent_drains] with a valid TOML literal containing a double quote
     content = '[agent_drains]\nanalysis = \'val"quote\'\ncommit = "some_chain"\n'
     target_path.write_text(content, encoding="utf-8")
     original_bytes = target_path.read_bytes()

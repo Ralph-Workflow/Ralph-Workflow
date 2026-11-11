@@ -1,4 +1,3 @@
-"""Phase transition display logic for the pipeline runner."""
 
 from __future__ import annotations
 
@@ -70,21 +69,6 @@ def _find_commit_counter_from_phase(
     phase_name: str,
     policy: PipelinePolicy,
 ) -> str | None:
-    """Trace on_success transitions to the nearest lifecycle or commit counter owner.
-
-    Returns the lifecycle-owned counter name when the phase graph declares one,
-    otherwise falls back to the nearest commit phase increments_counter.
-
-    When a commit-role phase declares ``commit_policy`` with no
-    ``increments_counter``, the trace CONTINUES along ``on_success`` rather
-    than returning ``None`` -- the counter belongs to a later lifecycle
-    phase (e.g. ``development_final_commit``), and earlier phases
-    (``planning``, ``development``, ``development_commit``) must still
-    resolve the counter so the Status Bar shows an outer cycle while in
-    them. Terminal phases (``complete``, ``failed_terminal``) self-loop
-    and the trace exhausts naturally, so the function still returns
-    ``None`` for genuine terminals.
-    """
     visited: set[str] = set()
     current: str | None = phase_name
     while current and current not in visited:
@@ -96,17 +80,10 @@ def _find_commit_counter_from_phase(
         if lifecycle is not None:
             counter = lifecycle.increments_counter
             return counter if counter and counter != "none" else None
-        # Commit-role phases: if they own the counter, return it; otherwise
-        # continue the trace to find the lifecycle owner downstream
-        # (development_commit, which has no increments_counter, advances to
-        # development_analysis -> development_final_commit_review ->
-        # development_final_commit which DOES declare increments_counter).
         if phase_def.role == "commit" and phase_def.commit_policy is not None:
             counter = phase_def.commit_policy.increments_counter
             if counter and counter != "none":
                 return counter
-            # fall through to the on_success trace -- the lifecycle
-            # counter is owned by a later phase this phase transitions into.
         current = phase_def.transitions.on_success if phase_def.transitions else None
     return None
 
@@ -125,7 +102,6 @@ def _build_phase_entry_model_from_state(
     *,
     agent_name: str | None = None,
 ) -> PhaseEntryModel:
-    """Build the canonical phase-entry model from pipeline state."""
     phase_role: str | None = None
     inner_analysis: int | None = None
     inner_analysis_cap: int | None = None
@@ -175,16 +151,15 @@ def _show_phase_start_with_context(
     *,
     pipeline_policy: PipelinePolicy,
 ) -> None:
-    """Display the canonical model-based phase-start banner for the live runner."""
     entry = _build_phase_entry_model_from_state(
         phase,
         state,
         pipeline_policy,
         agent_name=agent_name,
     )
-    console = getattr(display_context, "console", None)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    console = getattr(display_context, "console", None)
     display_obj: ParallelDisplay | None = None
-    if console is not None:  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    if console is not None:
         try:
             display_obj = resolve_active_display(None, display_context)
         except Exception:
@@ -362,14 +337,6 @@ def _phase_transition_context(
     pipeline_policy: PipelinePolicy,
     metadata: _PendingPhaseTransitionMetadata | None = None,
 ) -> dict[str, object] | None:
-    """Build the context items rendered beside a phase-change banner.
-
-    The cycle-timebox item is merged onto whichever context the transition
-    itself produced, rather than only onto the transitions that happen to
-    carry routing metadata. Note the display renders context only on MAJOR
-    transitions, so in the bundled workflow the item reaches the operator on
-    entries into development — not on the commit legs.
-    """
     timebox_item = cycle_timebox_status_item(state, policy=pipeline_policy)
     if metadata is not None:
         return _merged_context(metadata.transition_context, timebox_item)
@@ -394,7 +361,6 @@ def _merged_context(
     context: dict[str, object] | None,
     timebox_item: dict[str, object] | None,
 ) -> dict[str, object] | None:
-    """Return the transition context with the timebox item appended, if any."""
     if timebox_item is None:
         return context
     if context is None:
@@ -448,7 +414,7 @@ def _build_phase_change_render_data(
     artifact_outcome = ""
     raw_outcome = cast(
         "str | None", getattr(display, "last_phase_artifact_outcome", None)
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     artifact_outcome = raw_outcome if raw_outcome else ""
     entry = _build_phase_entry_model_from_state(previous_phase, state, pipeline_policy)
     prev_phase_def = pipeline_policy.phases.get(previous_phase)
@@ -506,7 +472,6 @@ def _build_phase_change_render_data(
 
 
 def _clear_phase_materialization_outputs(workspace: FsWorkspace, phase: str) -> None:
-    """Remove stale prompt-materialization outputs for a phase when it is skipped."""
     for path in (prompt_dump_path(phase), multimodal_sidecar_path(phase)):
         with suppress(Exception):
             workspace.remove(path)
@@ -548,11 +513,6 @@ def _emit_phase_transition_if_changed(
     verbosity: Verbosity,
     pipeline_policy: PipelinePolicy,
 ) -> str:
-    """Emit the canonical close+transition display when the phase changes.
-
-    Returns the new previous_phase value (always state.phase). Quiet mode
-    is a no-op except for state tracking.
-    """
     if previous_phase == state.phase:
         return previous_phase
     if verbosity_rank(verbosity) <= VERBOSITY_RANK[Verbosity.QUIET]:
@@ -573,7 +533,7 @@ def _emit_phase_transition_if_changed(
             display_context=ctx,
             pipeline_policy=pipeline_policy,
         )
-    except Exception:  # pragma: no cover - defensive
+    except Exception:
         logger.debug("phase change emission failed", exc_info=True)
 
     return state.phase

@@ -1,30 +1,3 @@
-"""The closed registry of auto-rebase skip reasons, and its drift guard.
-
-The product rule (Axis 2) is that the automatic rebase is ALWAYS the
-first attempt of an integration, and that the ONLY ways an attempt may
-skip it are a closed, registered set of named reasons:
-
-* ``merge_commits_in_range`` -- a merge commit sits in the replay range;
-* ``root_commits_in_range`` -- a root commit sits in the replay range;
-* ``all_empty_replay`` -- the replay has nothing to replay;
-* ``case_folding_collision`` -- two replay paths collide under case folding;
-* ``retry_after_merge_commit`` -- the previous attempt produced a merge commit.
-
-Every skip must NAME its reason from the CURRENT observation and
-RECORD it, so the operator can tell a prescribed skip from a fallback
-that ran after the rebase failed.
-
-This module is the drift guard for that contract. It fails when
-
-* the registry stops being the product's closed set (a silent expansion);
-* a reason is used in production without being registered;
-* a registered reason has no production use site (a dead registry entry);
-* an entry path stops being rebase-first.
-
-The guard is AST-based and reads the production modules only -- no
-repository, no subprocess, no clock.
-"""
-
 from __future__ import annotations
 
 import ast
@@ -84,9 +57,6 @@ _TARGET = "main"
 _FEATURE_SHA = "feature-sha-1234"
 _TARGET_SHA = "target-sha-5678"
 
-#: The product's closed set of allowed rebase skips. A sixth reason is a
-#: product decision: it must be registered AND reflected here, so an
-#: expansion cannot happen silently.
 _PRODUCT_ALLOWED_SKIP_SLUGS = frozenset(
     {
         "merge_commits_in_range",
@@ -97,54 +67,39 @@ _PRODUCT_ALLOWED_SKIP_SLUGS = frozenset(
     }
 )
 
-#: The production modules that can decide to skip the automatic rebase.
 _SKIP_DECISION_MODULES = (
     "ralph.pipeline.auto_integrate_rebase_merge",
     "ralph.pipeline.auto_integrate",
     "ralph.pipeline.auto_integrate_planning",
 )
 
-#: Cap on the mutations one trace recorder remembers. The recorder keeps
-#: the ORDER of the attempt, and the cap keeps it from growing with the
-#: number of mutations an attempt performs.
 _MAX_RECORDED_MUTATIONS = 64
 
 
 def _no_sleep(_delay: float) -> None:
-    """The wait seam: the back-off is proven, never waited for."""
     return None
 
 
 def _no_jitter() -> float:
-    """A constant jitter source, so the back-off schedule is deterministic."""
     return 0.0
 
 
-# ---------------------------------------------------------------------------
-# The registry itself
-# ---------------------------------------------------------------------------
-
-
 def test_the_registry_is_exactly_the_product_allowed_skip_set() -> None:
-    """The closed set is the product's five reasons -- no more, no fewer."""
     assert registered_skip_slugs() == _PRODUCT_ALLOWED_SKIP_SLUGS
 
 
 def test_every_registered_reason_names_its_observation_and_description() -> None:
-    """Each entry says WHICH observation justifies it and what it means."""
     for slug in registered_skip_slugs():
         assert skip_reason_observation(slug).strip(), f"{slug} names no observation"
         assert skip_reason_description(slug).strip(), f"{slug} names no description"
 
 
 def test_an_unregistered_reason_is_rejected() -> None:
-    """The registry is closed at runtime, not only by convention."""
     with pytest.raises(ValueError, match="unregistered auto-rebase skip reason"):
         skip_reason_text("not_a_registered_reason")
 
 
 def test_the_recorded_reason_text_names_its_slug() -> None:
-    """Every recorded reason starts with the slug, so it can be read back."""
     for slug in registered_skip_slugs():
         text = skip_reason_text(slug)
         assert text.startswith(f"{slug}: ")
@@ -153,23 +108,15 @@ def test_the_recorded_reason_text_names_its_slug() -> None:
 
 
 def test_an_unnamed_reason_is_not_mistaken_for_a_registered_one() -> None:
-    """An ordinary skip reason never claims a registered slug."""
     assert skip_reason_slug("detached HEAD") is None
     assert not is_registered_skip_reason("detached HEAD")
 
 
-# ---------------------------------------------------------------------------
-# The drift guard
-# ---------------------------------------------------------------------------
-
-
 def _module_source(module_name: str) -> str:
-    """Return the source of a production module."""
     return inspect.getsource(importlib.import_module(module_name))
 
 
 def _module_constants(module_name: str) -> dict[str, str]:
-    """Return the module-level string constants of a production module."""
     constants: dict[str, str] = {}
     tree = ast.parse(_module_source(module_name))
     for node in tree.body:
@@ -190,7 +137,6 @@ def _module_constants(module_name: str) -> dict[str, str]:
 
 
 def _call_name(node: ast.Call) -> str:
-    """Return the called name of a call expression."""
     func = node.func
     if isinstance(func, ast.Attribute):
         return func.attr
@@ -200,17 +146,11 @@ def _call_name(node: ast.Call) -> str:
 
 
 def _is_reason_constant(name: str) -> bool:
-    """Whether a module-level constant name reads as a skip reason."""
     upper = name.upper()
     return "REASON" in upper or "SKIP" in upper
 
 
 def test_every_reason_constant_is_registered() -> None:
-    """A new reason constant that is not registered fails here.
-
-    This is the load-bearing "complete skip set" proof: production may
-    not introduce a reason the closed registry does not know.
-    """
     slugs = registered_skip_slugs()
     descriptions = {skip_reason_description(slug) for slug in slugs}
     for module_name in _SKIP_DECISION_MODULES:
@@ -224,7 +164,6 @@ def test_every_reason_constant_is_registered() -> None:
 
 
 def test_every_production_skip_reason_names_a_registered_slug() -> None:
-    """Every ``skip_reason_text`` call names a registered slug constant."""
     slugs = registered_skip_slugs()
     for module_name in _SKIP_DECISION_MODULES:
         constants = _module_constants(module_name)
@@ -245,11 +184,6 @@ def test_every_production_skip_reason_names_a_registered_slug() -> None:
 
 
 def test_no_rebase_skip_reason_is_an_unnamed_literal() -> None:
-    """A ``RebaseNoOp`` marker never carries a hand-written reason string.
-
-    The marker IS the record of why the rebase did not run, so it has
-    to come from the registry -- otherwise the skip is unnamed.
-    """
     for module_name in _SKIP_DECISION_MODULES:
         tree = ast.parse(_module_source(module_name))
         for node in ast.walk(tree):
@@ -265,7 +199,6 @@ def test_no_rebase_skip_reason_is_an_unnamed_literal() -> None:
 
 
 def test_every_registered_reason_has_a_production_use_site() -> None:
-    """No registry entry is dead: each slug is used outside the registry."""
     referenced: set[str] = set()
     slugs = registered_skip_slugs()
     for module_name in _SKIP_DECISION_MODULES:
@@ -295,12 +228,6 @@ def test_every_registered_reason_has_a_production_use_site() -> None:
 
 
 def test_no_entry_point_exposes_a_merge_only_switch() -> None:
-    """A bare "force the merge" parameter is what let a skip go unnamed.
-
-    The only merge-only switch left is ``prefer_merge``, and it maps to
-    the registered ``retry_after_merge_commit`` reason inside
-    :func:`run_rebase_or_merge`.
-    """
     for module_name, function_name in (
         ("ralph.pipeline.auto_integrate", "_integrate_once"),
         ("ralph.pipeline.auto_integrate", "_integrate_once_owned"),
@@ -315,12 +242,6 @@ def test_no_entry_point_exposes_a_merge_only_switch() -> None:
 
 
 def test_no_entry_path_forces_the_endpoint_merge() -> None:
-    """No integration call asks for a merge-only attempt by literal.
-
-    A merge is reached through a REGISTERED skip reason or through the
-    fallback that runs when the rebase cannot land -- never by asking
-    the integration entry point to skip the rebase outright.
-    """
     for module_name in _SKIP_DECISION_MODULES:
         tree = ast.parse(_module_source(module_name))
         for node in ast.walk(tree):
@@ -339,12 +260,6 @@ def test_no_entry_path_forces_the_endpoint_merge() -> None:
 
 
 def test_the_crash_recovery_replay_does_not_force_the_endpoint_merge() -> None:
-    """The retained-record replay re-enters the ordinary rebase-first path.
-
-    Crash recovery of a retained record is an entry path like any
-    other: the replay clears the stale intent and starts the ordinary
-    integration again, so the rebase is the first attempt.
-    """
     source = inspect.getsource(
         importlib.import_module("ralph.pipeline._owned_landing_reintegration")
     )
@@ -366,18 +281,8 @@ def test_the_crash_recovery_replay_does_not_force_the_endpoint_merge() -> None:
             )
 
 
-# ---------------------------------------------------------------------------
-# Entry paths: every one of them is rebase-first or names a registered skip
-# ---------------------------------------------------------------------------
-
-
 class _TraceRecorder:
-    """Git-mutation double that records the order of an attempt."""
-
     def __init__(self) -> None:
-        # A bounded FIFO: the recorder keeps the ORDER of the attempt, and
-        # the cap keeps the recorder from growing with the number of
-        # mutations an attempt performs.
         self.mutations: deque[str] = deque(maxlen=_MAX_RECORDED_MUTATIONS)
         self.rebase_result: RebaseResult = RebaseSuccess()
         self.landed = True
@@ -484,7 +389,6 @@ class _TraceRecorder:
 
 @pytest.fixture(autouse=True)
 def _stub_repository_reads(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Replace every git READ the integration seams perform."""
     monkeypatch.setattr(
         "ralph.pipeline.auto_integrate.resolve_integration_target",
         lambda *_args, **_kwargs: _TARGET,
@@ -598,8 +502,6 @@ def _stub_repository_reads(monkeypatch: pytest.MonkeyPatch) -> None:
         _fake_transaction,
     )
 
-    # Planning seams: the tree is integration-ready and the target moved
-    # ahead, so the planning catch-up runs.
     monkeypatch.setattr(
         "ralph.pipeline.auto_integrate_planning.resolve_integration_target",
         lambda *_args, **_kwargs: _TARGET,
@@ -646,7 +548,6 @@ def _config() -> UnifiedConfig:
 
 
 def test_the_planning_catch_up_attempts_the_rebase_first(tmp_path: Path) -> None:
-    """The planning catch-up replays onto the target; it never forces a merge."""
     recorder = _TraceRecorder()
     token = install_executors(recorder, recorder)
     try:
@@ -664,7 +565,6 @@ def test_the_planning_catch_up_attempts_the_rebase_first(tmp_path: Path) -> None
 
 
 def test_the_conflict_strategy_escalation_attempts_the_rebase_first(tmp_path: Path) -> None:
-    """Escalating the conflict ladder changes the strategy, not the order."""
     recorder = _TraceRecorder()
     token = install_executors(recorder, recorder)
     try:
@@ -686,11 +586,6 @@ def test_the_conflict_strategy_escalation_attempts_the_rebase_first(tmp_path: Pa
 def test_the_retry_after_a_merge_commit_records_the_registered_skip(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A retry straight after a merge commit names the registered reason.
-
-    The skip is the only one the product allows outside the range
-    observations, so it has to be visible in the durable state.
-    """
     recorder = _TraceRecorder()
     recorder.rebase_result = RebaseConflicts(files=["shared.txt"])
     recorder.land_failures = 1
@@ -713,12 +608,10 @@ def test_the_retry_after_a_merge_commit_records_the_registered_skip(
     assert outcome.last_reason is not None
     assert skip_reason_slug(outcome.last_reason) == SKIP_RETRY_AFTER_MERGE_COMMIT
     assert is_registered_skip_reason(outcome.last_reason)
-    # The retry took the named skip: the rebase was not attempted twice.
     assert recorder.mutations.count("rebase_onto") == 1
 
 
 def test_the_registry_entry_for_the_retry_names_the_previous_merge_commit() -> None:
-    """The retry skip says WHICH observation justifies it."""
     assert "merge commit" in skip_reason_observation(SKIP_RETRY_AFTER_MERGE_COMMIT)
     assert skip_reason_observation(SKIP_MERGE_COMMITS_IN_RANGE) != (
         skip_reason_observation(SKIP_RETRY_AFTER_MERGE_COMMIT)
@@ -726,7 +619,6 @@ def test_the_registry_entry_for_the_retry_names_the_previous_merge_commit() -> N
 
 
 def test_the_registry_covers_every_range_observation() -> None:
-    """Each range observation has its own registered reason."""
     assert set(SKIP_REASON_REGISTRY) == registered_skip_slugs()
     assert SKIP_MERGE_COMMITS_IN_RANGE in registered_skip_slugs()
     assert SKIP_ROOT_COMMITS_IN_RANGE in registered_skip_slugs()

@@ -1,16 +1,3 @@
-"""Production adapters for the integration fallback ladder's seams.
-
-The git-plumbing, filesystem-quarantine and environment-probe adapters
-that :mod:`ralph.pipeline.integration_ladder` resolves when a caller
-runs a rung without injecting its own seams. Every git mutation goes
-through :func:`ralph.git.subprocess_runner.run_git`, which serializes
-through the per-repository git command queue; hooks are disabled where
-git allows; large dirt is streamed (``git diff --output=`` writes the
-patch straight to disk, ``tarfile`` streams entries). The adapters are
-kept in this private companion module so
-:mod:`ralph.pipeline.integration_ladder` stays under the repo-structure
-file-size cap; the public constructors live there.
-"""
 
 from __future__ import annotations
 
@@ -38,8 +25,6 @@ _HOOKS_DISABLED: Final[tuple[str, ...]] = ("-c", "core.hooksPath=/dev/null")
 _HEX_LEN: Final[int] = 40
 
 
-#: Top-level locks of a PRIVATE git dir: they guard this checkout's own
-#: index, HEAD and operation state.
 _PRIVATE_TOP_LEVEL_LOCKS: Final[tuple[str, ...]] = (
     "index.lock",
     "HEAD.lock",
@@ -48,7 +33,6 @@ _PRIVATE_TOP_LEVEL_LOCKS: Final[tuple[str, ...]] = (
     "FETCH_HEAD.lock",
 )
 
-#: Top-level locks of the COMMON git dir that every worktree shares.
 _SHARED_TOP_LEVEL_LOCKS: Final[tuple[str, ...]] = (
     "packed-refs.lock",
     "config.lock",
@@ -60,7 +44,6 @@ _STALE_LOCK_AGE_S: Final[float] = 10.0
 
 
 def _walk_lock_files(base: Path) -> list[Path]:
-    """Return ``*.lock`` files under ``base`` without following a symlink."""
     found: list[Path] = []
     if base.is_symlink() or not base.is_dir():
         return found
@@ -68,7 +51,7 @@ def _walk_lock_files(base: Path) -> list[Path]:
         dirpath,
         dirnames,
         filenames,
-    ) in os.walk(  # filesystem-read-ok: enumerate git ref/reflog lock files under this worktree's git dir without following symlinks
+    ) in os.walk(
         base, followlinks=False, onerror=lambda _e: None
     ):
         here = Path(dirpath)
@@ -78,16 +61,6 @@ def _walk_lock_files(base: Path) -> list[Path]:
 
 
 def _ladder_lock_candidates(git_dir: Path, common_dir: Path) -> list[Path]:
-    """Return the locks rung 6 may consider: this worktree's, never a sibling's.
-
-    * the private git dir's top-level locks and its ``refs``/``logs`` locks;
-    * the common dir's SHARED top-level locks and its ``refs`` locks.
-
-    ``worktrees/`` (sibling linked worktrees' private git dirs) and
-    ``modules/`` are never walked, and from a linked worktree the common
-    dir's ``index.lock``/``HEAD.lock`` belong to the main checkout, so
-    they are never candidates either.
-    """
     same_dir = git_dir == common_dir
     names = _PRIVATE_TOP_LEVEL_LOCKS + (_SHARED_TOP_LEVEL_LOCKS if same_dir else ())
     candidates = [git_dir / name for name in names]
@@ -106,20 +79,6 @@ def _ladder_lock_candidates(git_dir: Path, common_dir: Path) -> list[Path]:
 
 
 def reap_ladder_stale_locks(git_dir: Path, common_dir: Path) -> tuple[str, ...]:
-    """Remove the provably orphaned git locks of ONE worktree; return those removed.
-
-    Every candidate (see :func:`_ladder_lock_candidates`) must first be
-    proven to have no live holder by
-    :func:`ralph.git.lock_recovery.lock_has_no_live_holder` (checked against
-    both the private and the common git dir), and is then handed to the
-    shared stale-lock reaper through
-    :func:`ralph.git.lock_recovery.recover_stale_git_lock`, which refuses a
-    lock that is too young, still held, unprovable, or changed between the
-    probe and the unlink. A held, young or unprovable lock is left alone.
-
-    Returned names are relative to the git dir that owns the lock
-    (``git_dir`` when the lock sits under it, else ``common_dir``).
-    """
     from ralph.git.lock_recovery import (
         lock_has_no_live_holder,
         lock_path_is_reapable,
@@ -132,13 +91,10 @@ def reap_ladder_stale_locks(git_dir: Path, common_dir: Path) -> tuple[str, ...]:
             if not lock_path.exists() or not lock_path_is_reapable(lock_path):
                 continue
             if (time.time() - lock_path.stat().st_mtime) < _STALE_LOCK_AGE_S:
-                continue  # young lock is never stale; refuse without expensive liveness probe
+                continue
             owner = git_dir if lock_path.is_relative_to(git_dir) else common_dir
             if lock_has_no_live_holder(lock_path, owner, common_dir) != "dead":
-                continue  # a live or unprovable holder's lock is never removed
-            # The shared reaper is addressed with git's own wording for the
-            # lock it names, so age, identity and its serialized unlink all
-            # apply exactly as they do to an in-call recovery.
+                continue
             contention = FileExistsError(
                 errno.EEXIST, f"Unable to create '{lock_path}': File exists."
             )
@@ -153,15 +109,11 @@ def reap_ladder_stale_locks(git_dir: Path, common_dir: Path) -> tuple[str, ...]:
 
 
 class _ProductionGitPlumbing:
-    """Production :data:`GitPlumbing` over the queue-routed git runner."""
 
     def changed_paths(self, root: Path) -> tuple[str, ...] | None:
         from ralph.git.hardening import parse_porcelain_z
         from ralph.git.subprocess_runner import run_git
 
-        # Config flags MUST precede the subcommand: ``git status ... -c
-        # key=val`` makes git exit 129 (unknown switch), and a failed
-        # probe must read as UNKNOWN (``None``), never as "clean".
         result = run_git(
             (
                 "-c",
@@ -179,7 +131,7 @@ class _ProductionGitPlumbing:
         paths: list[str] = []
         for entry in parse_porcelain_z(result.stdout):
             if entry.path.startswith(".agent/"):
-                continue  # Ralph's own artifacts are never residue.
+                continue
             if entry.rename_source is not None and entry.rename_source.startswith(".agent/"):
                 continue
             paths.append(entry.path)
@@ -257,8 +209,6 @@ class _ProductionGitPlumbing:
     def write_patch(self, root: Path, paths: tuple[str, ...], dest: Path) -> bool:
         from ralph.git.subprocess_runner import run_git
 
-        # ``--output`` streams the diff straight to disk: no captured
-        # buffer, so multi-GB dirt never lands in memory.
         result = run_git(
             ("diff", "--binary", f"--output={dest}", "HEAD", "--", *paths),
             cwd=root,
@@ -268,7 +218,6 @@ class _ProductionGitPlumbing:
 
     def archive_paths(self, root: Path, paths: tuple[str, ...], dest: Path) -> bool:
         try:
-            # filesystem-write-ok: ladder tar sidecar under the Ralph state dir
             with tarfile.open(dest, "w") as archive:
                 for path in paths:
                     archive.add(root / path, arcname=path)
@@ -303,8 +252,6 @@ class _ProductionGitPlumbing:
             InProgressKind.CHERRY_PICK: ("cherry-pick", "--abort"),
             InProgressKind.REVERT: ("revert", "--abort"),
             InProgressKind.AM: ("am", "--abort"),
-            # A multi-step sequencer owns the state files, not a single
-            # operation: ``--quit`` forgets the sequence without committing.
             InProgressKind.SEQUENCER: ("cherry-pick", "--quit"),
         }.get(kind)
         if command is None:
@@ -332,7 +279,6 @@ class _ProductionGitPlumbing:
                 if target.is_dir():
                     import shutil
 
-                    # filesystem-write-ok: git-owned in-progress operation-state dir; git recreates it, no Ralph artifact is lost
                     shutil.rmtree(target)
                     removed = True
                 elif target.is_file():
@@ -378,7 +324,7 @@ class _ProductionGitPlumbing:
             cwd=root,
             label="integration-ladder:worktree-remove",
         )
-        del removed  # best-effort: a missing worktree is fine
+        del removed
         created = run_git(
             ("worktree", "add", str(root), branch),
             cwd=root,
@@ -397,9 +343,6 @@ class _ProductionGitPlumbing:
         return result.returncode == 0
 
     def repair_gitdir(self, root: Path) -> bool:
-        # A linked worktree whose gitdir target vanished cannot be
-        # relinked without the main repository's layout; report whether
-        # the gitdir answers at all so the degrade rung can re-observe.
         return self._git_dir(root) is not None
 
     def create_worktree(self, root: Path, path: Path, target: str) -> bool:
@@ -425,14 +368,6 @@ class _ProductionGitPlumbing:
     def land_in_worktree(
         self, root: Path, path: Path, target: str, expected_sha: str
     ) -> LandResult:
-        """Compare-and-swap the target ref onto the fresh tip; never overwrite a race.
-
-        Reads the current target sha fresh and moves the ref only while it
-        still equals ``expected_sha`` (the sha observed at rung start), via
-        an old-value ``update-ref`` (atomic at the ref level, ``--no-deref``
-        so a symbolic ref can never redirect the write), then re-verifies.
-        A concurrent advance returns ``target-moved`` with NO update issued.
-        """
         from ralph.git.subprocess_runner import run_git
 
         sha: str | None = None
@@ -455,29 +390,17 @@ class _ProductionGitPlumbing:
         if current is None:
             return "target-unreadable"
         if current != expected_sha:
-            return "target-moved"  # a concurrent writer advanced the target: no overwrite
+            return "target-moved"
         landed = run_git(
             ("update-ref", "--no-deref", f"refs/heads/{target}", sha, current),
             cwd=path,
             label="integration-ladder:land-from-fresh",
         )
-        # Re-verify after the CAS: a non-zero exit or a ref that does not
-        # read back as the tip is the same typed failure.
         if landed.returncode != 0 or self.target_sha(root, target) != sha:
             return "update-failed"
         return "landed"
 
     def repoint_original(self, root: Path, path: Path, observed_sha: str | None) -> RepointResult:
-        """Reset the original checkout onto the fresh result, ONLY when safe.
-
-        The reset runs only when the original worktree still exists and
-        its HEAD is where the ladder observed it — or, when the HEAD
-        moved, a fresh probe shows the worktree detached and clean (no
-        checked-out branch work another owner would lose). Any probe
-        failure fails closed; any other state means another
-        worktree/agent owns the checkout, reported as a typed not-now
-        outcome with the tree untouched.
-        """
         from ralph.git.subprocess_runner import run_git
 
         sha: str | None = None
@@ -494,8 +417,6 @@ class _ProductionGitPlumbing:
             sha = tip.stdout.strip()
             if tip.returncode != 0 or not sha:
                 return "tip-unreadable"
-        # Fail closed: without the observed sha, "is it where we left it"
-        # cannot be answered, and an unanswered question is never a yes.
         if observed_sha is None:
             return "head-unreadable"
         unsafe = self._repoint_precheck(root, observed_sha)
@@ -506,7 +427,6 @@ class _ProductionGitPlumbing:
         return "repointed"
 
     def _repoint_precheck(self, root: Path, observed_sha: str) -> RepointResult | None:
-        """Return the not-now outcome when resetting ``root`` is unsafe, else ``None``."""
         from ralph.git.subprocess_runner import run_git
 
         if not (Path(root) / ".git").exists():
@@ -516,7 +436,6 @@ class _ProductionGitPlumbing:
             return "head-unreadable"
         if current == observed_sha:
             return None
-        # Fresh probe: only a detached, clean worktree is safe to reset.
         detached = run_git(
             ("rev-parse", "--abbrev-ref", "HEAD"),
             cwd=root,
@@ -524,9 +443,9 @@ class _ProductionGitPlumbing:
         )
         paths = self.changed_paths(root)
         if detached.returncode != 0 or paths is None:
-            return "head-unreadable"  # probe failure fails closed
+            return "head-unreadable"
         if detached.stdout.strip() != "HEAD" or paths:
-            return "head-moved"  # another checkout/agent owns the worktree
+            return "head-moved"
         return None
 
     def remote_reachable(self, root: Path, remote: str) -> bool:
@@ -561,13 +480,11 @@ class _ProductionGitPlumbing:
 
 
 class _ProductionFileQuarantine:
-    """Production :data:`FileQuarantine` over the real filesystem."""
 
     def rename_into_quarantine(self, root: Path, quarantine_dir: Path, path: str) -> str | None:
         source = root / path
         dest = quarantine_dir / path
         try:
-            # filesystem-write-ok: quarantine move of residue out of the worktree; the destination is a fresh path, not a stable artifact
             os.renames(source, dest)
         except OSError:
             return None
@@ -585,7 +502,6 @@ class _ProductionFileQuarantine:
                     if entry.is_dir():
                         import shutil
 
-                        # filesystem-write-ok: transient regenerable .staging/tmp scratch under the ladder state dir
                         shutil.rmtree(entry)
                     else:
                         entry.unlink()
@@ -603,7 +519,7 @@ class _ProductionFileQuarantine:
         return True
 
     def alternative_state_dir(self, root: Path) -> Path | None:
-        del root  # the alternative is intentionally outside the worktree
+        del root
         try:
             return Path(tempfile.mkdtemp(prefix="ralph-ladder-state-"))
         except OSError:
@@ -611,7 +527,6 @@ class _ProductionFileQuarantine:
 
 
 class _ProductionEnvironmentProbe:
-    """Production :data:`EnvironmentProbe` over bounded git/fs probes."""
 
     def failure_class(self, root: Path, *, remote: str) -> EnvironmentFailure | None:
         from ralph.git.subprocess_runner import run_git
@@ -641,11 +556,9 @@ class _ProductionEnvironmentProbe:
 
     @staticmethod
     def _write_failure(root: Path) -> EnvironmentFailure | None:
-        """Return the write-probe failure class (read-only fs / disk full), if any."""
         write_probe = Path(root) / ".agent" / ".ladder-write-probe"
         try:
             write_probe.parent.mkdir(parents=True, exist_ok=True)
-            # filesystem-write-ok: transient write probe byte; the file is unlinked immediately
             with write_probe.open("wb") as handle:
                 handle.write(b"probe")
             write_probe.unlink()

@@ -1,9 +1,3 @@
-"""Shared state and exception types for the indexed exploration reindex pipeline.
-
-Extracted from :mod:`ralph.mcp.explore.pipeline` so the pipeline
-sub-modules can import state types without re-entering the pipeline
-hub. The hub re-exports these symbols for backward compatibility.
-"""
 
 from __future__ import annotations
 
@@ -21,7 +15,6 @@ DEFAULT_FULL_TIMEOUT_MS: Final[int] = 60_000
 
 @dataclass(frozen=True, slots=True)
 class ReindexResult:
-    """Result of a reindex invocation."""
 
     job_id: str
     generation: int
@@ -36,18 +29,6 @@ class ReindexResult:
 
 @dataclass(frozen=True, slots=True)
 class ReindexOptions:
-    """Options for a reindex call.
-
-    ``structure_extractor`` selects between the historical
-    four-pass Python walker (``"scalar"``) and the single-pass
-    fused walker (``"accelerated"``). ``"auto"`` selects
-    ``accelerated`` for files at or above the runtime AST-node
-    crossover and ``scalar`` otherwise. The default is
-    ``"auto"`` so callers see the optimal walker without any
-    configuration; the bench CLI measures the real crossover
-    and publishes it back via
-    :func:`ralph.mcp.explore._structure_extractor.set_runtime_crossover`.
-    """
 
     mode: str = "changed"
     timeout_ms: int = DEFAULT_TIMEOUT_MS
@@ -57,12 +38,11 @@ class ReindexOptions:
 
 
 class FileReadError(Exception):
-    """A file failed to read during reindex."""
+    pass
 
 
 @dataclass
 class _ReindexState:
-    """Mutable per-job scratch state."""
 
     job_id: str
     started_at: float
@@ -81,6 +61,5 @@ class _ReindexTimeoutError(Exception):
 
 
 class _ReindexCancelledError(Exception):
-    """Raised by the reindex writer when the cancel callable returns True."""
 
     pass

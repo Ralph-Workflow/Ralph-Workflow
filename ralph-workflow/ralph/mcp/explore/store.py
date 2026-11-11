@@ -1,23 +1,3 @@
-"""Indexed exploration substrate store hub.
-
-Re-exports :class:`ExploreStore` and the surrounding store
-helpers from their per-concern sub-modules so the hub stays under
-the per-file line ceiling. Each sub-module owns a focused slice of
-the SQLite + workspace contract:
-
-* :mod:`ralph.mcp.explore._store_types` -- row dataclasses,
-  Clock + SystemClock, row-converter helpers, chunk/evidence-id
-  helpers, workspace hashing utilities, ``normalize_index_path``.
-* :mod:`ralph.mcp.explore._store_class` -- the
-  :class:`ExploreStore` class implementation.
-
-The public surface (``ExploreStore``, ``DEFAULT_INDEX_ROOT``,
-``DEFAULT_INDEX_DB``, dataclasses, ``Clock``/``SystemClock``,
-``row_str``, hashing helpers, ``chunk_text``, ``derive_*``,
-``chunk_id``, workspace helpers, ``sha256_text``/``sha256_bytes``)
-continues to be importable as ``from ralph.mcp.explore.store
-import X`` for backward compatibility.
-"""
 
 from __future__ import annotations
 

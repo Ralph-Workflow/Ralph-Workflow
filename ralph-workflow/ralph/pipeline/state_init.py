@@ -1,4 +1,3 @@
-"""Initial pipeline state creation."""
 
 from __future__ import annotations
 
@@ -41,7 +40,6 @@ def create_initial_state(
     pipeline_policy: PipelinePolicy,
     counter_overrides: dict[str, int] | None = None,
 ) -> PipelineState:
-    """Create initial pipeline state from configuration."""
     entry_phase = pipeline_policy.entry_phase
     phase_chains = _initial_phase_chains(
         config,

@@ -1,4 +1,3 @@
-"""Minimal rendering engine for RFC-009 prompt templates."""
 
 from __future__ import annotations
 
@@ -39,23 +38,14 @@ _TOOL_VARIABLE_REFERENCE = re.compile(r"\b[A-Z][A-Z0-9_]*_TOOL_(?:NAME|REFERENCE
 
 
 def _tool_variable_names(text: str) -> set[str]:
-    """Return every ``*_TOOL_NAME`` / ``*_TOOL_REFERENCE`` name ``text`` mentions."""
     return {match.group() for match in _TOOL_VARIABLE_REFERENCE.finditer(text)}
 
 
 def _raise_template_error(message: str) -> str:
-    """Global callable for Jinja2 macros to raise a rendering error explicitly."""
     raise TemplateRenderingError(message)
 
 
 class TemplateRenderer:
-    """Reusable Jinja renderer for one immutable partial-template set.
-
-    Imports are normalized to consume the current render context, so cached
-    macro templates never retain variables from an earlier render. The
-    compiled-main cache is LRU-bounded so a long-running process cannot
-    accumulate arbitrary prompt sources.
-    """
 
     def __init__(self, partials: Mapping[str, str]) -> None:
         templates = {
@@ -63,7 +53,7 @@ class TemplateRenderer:
         }
         strict_undefined = cast(
             "type[Undefined]", StrictUndefined
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         self._environment = Environment(
             loader=DictLoader(templates),
             autoescape=False,
@@ -74,11 +64,7 @@ class TemplateRenderer:
         filters = cast("dict[str, object]", self._environment.filters)
         filters["split_items"] = self._split_items
         self._environment.globals["raise_error"] = _raise_template_error
-        self._compiled_templates: _TemplateCache = OrderedDict()  # bounded-accumulator-ok: cap=64
-        # ``_active_blank_line_token`` is per-render state reached by the
-        # ``split_items`` filter, so a renderer shared between threads
-        # (see ``_RENDERERS``) must serialize whole renders or one render
-        # would strip the other's sentinel.
+        self._compiled_templates: _TemplateCache = OrderedDict()
         self._render_lock = threading.RLock()
         self._active_blank_line_token = ""
         self._partial_tool_variables: frozenset[str] = frozenset(
@@ -86,12 +72,10 @@ class TemplateRenderer:
         )
 
     def render(self, template_text: str, variables: Mapping[str, str]) -> str:
-        """Render one template with the renderer's immutable partial set."""
         with self._render_lock:
             return self._render_locked(template_text, variables)
 
     def _render_locked(self, template_text: str, variables: Mapping[str, str]) -> str:
-        """Render with ``_render_lock`` already held."""
         try:
             protected_variables, blank_line_token = _protect_variable_blank_lines(
                 template_text,
@@ -111,11 +95,8 @@ class TemplateRenderer:
         except TemplateError as exc:
             raise TemplateRenderingError(str(exc)) from exc
         except TimeoutError:
-            # A timeout (e.g. an async SIGALRM test-timeout interrupting a
-            # cold render) is not a template defect; converting it here would
-            # silently downgrade the caller to the static fallback template.
             raise
-        except Exception as exc:  # pragma: no cover - defensive wrapper
+        except Exception as exc:
             raise TemplateRenderingError(str(exc)) from exc
 
     def _with_absent_tool_variables(
@@ -123,23 +104,6 @@ class TemplateRenderer:
         template_text: str,
         variables: Mapping[str, str],
     ) -> Mapping[str, str]:
-        """Supply an empty value for every tool variable the caller did not.
-
-        Packaged templates are read from disk when a prompt is rendered, but
-        the capability variables feeding them are fixed when the process
-        imports :mod:`ralph.prompts`. A run in flight while its checkout
-        moves underneath it therefore renders *newer* templates against
-        *older* variables, and a strict-undefined failure there kills the
-        run outright — the static fallback template fails the same way, so
-        the pipeline has no recovery path.
-
-        A tool variable the running build has never heard of means exactly
-        "that tool is not available in this session", which is what the
-        empty string already encodes everywhere else and what the
-        templates' own ``{% if %}`` guards are written against. Every other
-        undefined name still raises, so ordinary typos keep failing the
-        render-integrity audit.
-        """
         referenced = self._partial_tool_variables | _tool_variable_names(template_text)
         missing = referenced - set(variables)
         if not missing:
@@ -147,12 +111,10 @@ class TemplateRenderer:
         return {**dict.fromkeys(missing, ""), **variables}
 
     def _split_items(self, values: str) -> list[str]:
-        """Split list input without exposing payload blank-line sentinels."""
         clean_values = values.replace(self._active_blank_line_token, "")
         return _split_loop_items(clean_values)
 
     def _compiled_template(self, template_text: str) -> Template:
-        """Return a cached compiled main template."""
         normalized = _normalize_static_spacing(template_text)
         cached = self._compiled_templates.get(normalized)
         if cached is not None:
@@ -166,18 +128,11 @@ class TemplateRenderer:
         return template
 
 
-#: Renderers keyed by their partial set. A ``TemplateRenderer`` owns an
-#: immutable partial set, so two calls with equal partials are
-#: interchangeable -- yet every ``render_template`` call used to build a
-#: fresh Jinja ``Environment`` and re-normalize every partial, which is
-#: the dominant cost of rendering a prompt (~20ms per call). Reusing the
-#: renderer also reuses its bounded compiled-template cache.
-_RENDERERS: _RendererCache = OrderedDict()  # bounded-accumulator-ok: cap=_MAX_CACHED_RENDERERS
+_RENDERERS: _RendererCache = OrderedDict()
 _RENDERERS_LOCK = threading.Lock()
 
 
 def _renderer_for(partials: Mapping[str, str]) -> TemplateRenderer:
-    """Return a cached renderer for ``partials``, building one if needed."""
     key = tuple(sorted(partials.items()))
     with _RENDERERS_LOCK:
         cached = _RENDERERS.get(key)
@@ -196,24 +151,20 @@ def render_template(
     variables: Mapping[str, str],
     partials: Mapping[str, str],
 ) -> str:
-    """Render the provided template text with partials and variables."""
     return _renderer_for(partials).render(template_text, variables)
 
 
 def _split_loop_items(values: str) -> list[str]:
-    """Split a comma- or newline-separated template value into trimmed items."""
     if "," in values:
         return [item.strip() for item in values.split(",")]
     return [line.strip() for line in values.splitlines() if line.strip()]
 
 
 def _normalize_static_spacing(template_source: str) -> str:
-    """Collapse static blank runs outside fenced examples and payloads."""
     return _collapse_unfenced_blank_runs(_imports_with_context(template_source))
 
 
 def _imports_with_context(template_source: str) -> str:
-    """Make imported macros consume the current render's variables."""
 
     def add_context(match: re.Match[str]) -> str:
         body = match.group("body")
@@ -228,7 +179,6 @@ def _protect_variable_blank_lines(
     template_text: str,
     variables: Mapping[str, str],
 ) -> tuple[dict[str, str], str]:
-    """Mark payload-owned blank lines so Jinja filters cannot hide their origin."""
     token_number = 917340286
     token = f"\ue000{token_number}\ue001"
     values = tuple(variables.values())
@@ -243,13 +193,11 @@ def _protect_variable_blank_lines(
 
 
 def _restore_variable_blank_lines(rendered: str, token: str) -> str:
-    """Restore marked payload blank lines, including indentation added by filters."""
     token_line = re.compile(rf"(?m)^[ \t]*{re.escape(token)}[ \t]*(?=\r?$)")
     return token_line.sub("", rendered)
 
 
 def _collapse_unfenced_blank_runs(text: str) -> str:
-    """Collapse blank runs outside fenced blocks while preserving fenced payloads."""
     output: list[str] = []
     outside: list[str] = []
     fence_character = ""
@@ -274,7 +222,7 @@ def _collapse_unfenced_blank_runs(text: str) -> str:
             flush_outside()
             fence = cast(
                 "str", match.group("fence")
-            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            )
             fence_character = fence[0]
             fence_length = len(fence)
             output.append(line)
@@ -285,7 +233,7 @@ def _collapse_unfenced_blank_runs(text: str) -> str:
             continue
         fence = cast(
             "str", match.group("fence")
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         if fence[0] == fence_character and len(fence) >= fence_length:
             fence_character = ""
             fence_length = 0
@@ -295,5 +243,4 @@ def _collapse_unfenced_blank_runs(text: str) -> str:
 
 
 def _normalize_rendered_spacing(rendered: str) -> str:
-    """Collapse render-created blank runs without mutating supplied payload text."""
     return _collapse_unfenced_blank_runs(rendered)

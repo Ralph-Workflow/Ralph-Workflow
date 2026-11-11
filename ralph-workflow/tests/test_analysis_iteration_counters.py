@@ -1,31 +1,3 @@
-"""Analysis-iteration counter behaviour, consolidated into one parametrized module.
-
-This module replaces the eleven per-scenario modules that each carried a
-private copy of the same policy fixture plus one or two counter assertions.
-Those modules were named with pytest's conventional ``test_`` file prefix
-followed by ``analysis_iteration_new_<scenario>``. Every original test
-function survives as exactly one parameter case; the parameter id records the
-original module stem and the original function name, so a failure still points
-straight at the original scenario.
-
-Scenarios covered (one parameter case each):
-
-1. ``iteration`` increments on development commit success
-2. ``reviewer_pass`` increments on review commit success
-3. analysis loop counters increment on loopback
-4. capped loopbacks still route through the correction phase without
-   exceeding the configured cap
-5. counters reset on commit success and on analysis success
-6. ``AnalysisDecisionEvent(request_changes)`` mirrors ``ANALYSIS_LOOPBACK``
-   counter accounting
-7. ``AnalysisDecisionEvent(completed)`` mirrors ``ANALYSIS_SUCCESS`` counter
-   reset
-
-Every assertion is made through the public reducer seam: the reduced
-``PipelineState`` exposes the resulting phase, the loop counters via
-``get_loop_iteration`` and the budget counters via ``get_outer_progress``.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -61,12 +33,6 @@ _DECISION_REQUEST_CHANGES = AnalysisDecisionEvent(
 
 
 def _analysis_phases() -> dict[str, PhaseDefinition]:
-    """Phase graph shared by the development/review analysis policies.
-
-    Ordinary analysis loopbacks route to development/fix, and capped loopbacks
-    still take one final correction pass without letting the counter exceed the
-    configured cap -- matching the intended default ``pipeline.toml`` behavior.
-    """
     return {
         "development": PhaseDefinition(
             drain="development",
@@ -124,7 +90,7 @@ def _analysis_phases() -> dict[str, PhaseDefinition]:
         "fix": PhaseDefinition(
             drain="fix",
             transitions=PhaseTransition(
-                on_success="review_analysis",  # fix success goes to review_analysis
+                on_success="review_analysis",
                 on_failure=None,
                 on_loopback="review",
             ),
@@ -146,7 +112,6 @@ def _analysis_phases() -> dict[str, PhaseDefinition]:
 
 
 def _post_commit_routes() -> list[PostCommitRoute]:
-    """Budget-guarded routes taken when a commit phase exhausts its budget."""
     return [
         PostCommitRoute(
             when=PostCommitRouteWhen(
@@ -166,7 +131,6 @@ def _post_commit_routes() -> list[PostCommitRoute]:
 
 
 def _dev_analysis_policy(*, with_loop_counters: bool) -> PipelinePolicy:
-    """Policy with analysis phases that route to correction on ordinary loopback."""
     return PipelinePolicy(
         phases=_analysis_phases(),
         entry_phase="development",
@@ -177,7 +141,6 @@ def _dev_analysis_policy(*, with_loop_counters: bool) -> PipelinePolicy:
 
 
 def _review_commit_policy() -> PipelinePolicy:
-    """Minimal policy for review_commit counter accounting only."""
     return PipelinePolicy(
         phases={
             "review": PhaseDefinition(
@@ -209,25 +172,6 @@ def _review_commit_policy() -> PipelinePolicy:
 
 @dataclass(frozen=True, eq=False)
 class _CounterCase:
-    """One consolidated counter scenario (mirrors one original test function).
-
-    Attributes:
-        policy: Which policy fixture to build -- ``"analysis_with_caps"``,
-            ``"analysis_without_caps"`` or ``"review_commit"``.
-        phase: Starting phase of the pipeline state.
-        event: Event handed to the reducer.
-        loop_iterations: Seeded loop counters of the starting state.
-        budget_caps: Seeded budget caps of the starting state.
-        expected_phase: Phase the reducer must route to, or ``None`` when the
-            original test made no phase assertion.
-        expected_outer_progress: ``(counter, value)`` the reducer must record on
-            the outer budget counter, or ``None``.
-        expected_loop_iteration: ``(counter, value)`` the reducer must record on
-            the loop counter, or ``None``.
-        expected_loop_iteration_at_cap: Loop counter whose value must equal the
-            policy's configured ``default_max``, or ``None``.
-    """
-
     policy: str
     phase: str
     event: PipelineEvent | AnalysisDecisionEvent
@@ -354,8 +298,6 @@ _CASES: tuple[_CounterCase, ...] = (
     ),
 )
 
-# One id per original test function: ``<original module stem without pytest's
-# test_ file prefix>__<original function name without its test_ prefix>``.
 _CASE_IDS: tuple[str, ...] = (
     "analysis_iteration_new_analysis_decision_event_completed__completed_resets_loop_counter_to_zero",
     "analysis_iteration_new_analysis_decision_event_completed__completed_routes_to_commit_phase",
@@ -375,7 +317,6 @@ _CASE_IDS: tuple[str, ...] = (
 
 
 def _build_policy(kind: str) -> PipelinePolicy:
-    """Build the policy fixture named by ``kind``."""
     if kind == "analysis_with_caps":
         return _dev_analysis_policy(with_loop_counters=True)
     if kind == "analysis_without_caps":
@@ -385,7 +326,6 @@ def _build_policy(kind: str) -> PipelinePolicy:
 
 @pytest.mark.parametrize("case", _CASES, ids=_CASE_IDS)
 def test_analysis_iteration_counter(case: _CounterCase) -> None:
-    """Reducer keeps the analysis-iteration and budget counters in the expected shape."""
     policy = _build_policy(case.policy)
     state = PipelineState(
         phase=case.phase,

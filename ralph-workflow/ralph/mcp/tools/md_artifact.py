@@ -1,4 +1,3 @@
-"""MCP handlers for validated markdown artifact documents."""
 
 from __future__ import annotations
 
@@ -72,10 +71,6 @@ if TYPE_CHECKING:
 
     from ralph.mcp.tools.text_edits import TextEdit
 _PLAN_READ_CAPABILITY = "artifact.plan_read"
-#: Every validating endpoint returns this so a rejected document is repaired
-#: in place rather than re-transcribed in full. Submission always leaves the
-#: submitted text staged as the draft, so the repair path is available even
-#: after a one-shot whole-document submit.
 REPAIR_HINT: str = (
     f"The submitted document is staged as this artifact's draft. Repair it in place with "
     f"`{EDIT_MD_ARTIFACT_TOOL}` (oldText/newText edits) instead of resending the whole "
@@ -90,7 +85,6 @@ def handle_verify_md_artifact(
     workspace: WorkspaceLike,
     params: dict[str, object],
 ) -> ToolResult:
-    """Check a markdown artifact without writing it."""
     require_capability(session, _PLAN_READ_CAPABILITY, "Markdown artifact verification")
     artifact_type, content = _params(params)
     parsed_content, diagnostics = _parse_artifact(artifact_type, content)
@@ -110,11 +104,6 @@ def handle_submit_md_artifact(
     *,
     deps: ArtifactHandlerDeps | None = None,
 ) -> ToolResult:
-    """Validate and canonically persist a markdown artifact atomically.
-    The submitted text is staged as the artifact's draft first, whether or
-    not it validates, so a rejected document can be repaired in place with
-    ``ralph_edit_md_artifact`` rather than re-transcribed in full.
-    """
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Markdown artifact submission")
     artifact_type, content = _params(params)
     unstageable = _unstageable_plan_result(artifact_type, content)
@@ -156,23 +145,6 @@ def handle_edit_md_artifact(
     *,
     deps: ArtifactHandlerDeps | None = None,
 ) -> ToolResult:
-    """Apply oldText/newText edits to the staged draft and submit it when it validates.
-    This is ``ralph_submit_md_artifact`` starting from the existing draft
-    instead of a whole retyped document: whenever the edited draft passes the
-    submission gate it is persisted through the same canonical path submission
-    uses, with no separate finalize call. An edited draft that still has errors
-    is kept as a draft for further repair and nothing is submitted. Submission
-    does not end the phase — ``declare_complete`` remains separate — so a later
-    edit in the same phase attempt simply resubmits.
-
-    Edits apply sequentially, each replacing the first occurrence of its
-    ``oldText``; a single miss rejects the whole batch and writes nothing.
-    ``dry_run`` previews the diff without persisting or submitting, and
-    ``expected_content_hash`` fails closed when the draft changed underneath
-    the caller. The response carries the refreshed draft diagnostics and a
-    ``submitted`` flag, so one call shows what changed, whether the artifact
-    now validates, and whether it was submitted.
-    """
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Markdown draft editing")
     artifact_type = _artifact_type_param(params)
     edits = parse_text_edits(params)
@@ -192,8 +164,6 @@ def handle_edit_md_artifact(
 
     label = f".{artifact_type}.draft.md"
     cap = md_draft_character_cap(get_spec(artifact_type))
-    # Reject edits whose replacement alone must breach the cap before paying
-    # the edit engine's cost; aggregate check below still covers multi-edit cases.
     draft_len = len(draft)
     for index, edit in enumerate(edits):
         if draft_len - len(edit.old_text) + len(edit.new_text) > cap:
@@ -276,7 +246,6 @@ def handle_stage_md_artifact(
     *,
     deps: ArtifactHandlerDeps | None = None,
 ) -> ToolResult:
-    """Append to (or replace) a persisted markdown draft without gating on validity."""
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Markdown draft staging")
     artifact_type, content = _params(params)
     mode = params.get("mode", "append")
@@ -316,7 +285,6 @@ def handle_get_md_draft(
     *,
     deps: ArtifactHandlerDeps | None = None,
 ) -> ToolResult:
-    """Return the persisted draft and its diagnostics for resumable authoring."""
     require_capability(session, _PLAN_READ_CAPABILITY, "Markdown draft inspection")
     artifact_type = _artifact_type_param(params)
     backend = (deps or DEFAULT_ARTIFACT_HANDLER_DEPS).backend
@@ -331,7 +299,6 @@ def handle_discard_md_draft(
     *,
     deps: ArtifactHandlerDeps | None = None,
 ) -> ToolResult:
-    """Discard the entire persisted draft; use editing to repair validation errors."""
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Markdown draft discard")
     artifact_type = _artifact_type_param(params)
     backend = (deps or DEFAULT_ARTIFACT_HANDLER_DEPS).backend
@@ -353,13 +320,6 @@ def handle_finalize_md_artifact(
     *,
     deps: ArtifactHandlerDeps | None = None,
 ) -> ToolResult:
-    """Validate the assembled draft with the submission gate and submit it canonically.
-
-    The draft is retained either way: on failure so it can be repaired, and
-    on success so the submitted document remains the editable substrate for a
-    later revision within the same phase attempt. Fresh phase entry — not
-    submission — is what clears it.
-    """
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Markdown draft finalization")
     artifact_type = _artifact_type_param(params)
     backend = (deps or DEFAULT_ARTIFACT_HANDLER_DEPS).backend
@@ -404,7 +364,6 @@ def _submit_canonical(
     deps: ArtifactHandlerDeps | None,
     normalization_audit: dict[str, object] | None = None,
 ) -> None:
-    """Persist one validated markdown document through the canonical path."""
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
     workspace_root = _workspace_root(workspace)
     effective_deps = ArtifactHandlerDeps(
@@ -417,10 +376,10 @@ def _submit_canonical(
     )
     worker_namespace = cast(
         "Path | None", getattr(session, "worker_namespace", None)
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     worker_artifact_dir = cast(
         "Path | None", getattr(session, "worker_artifact_dir", None)
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     if worker_namespace is None and worker_artifact_dir is not None:
         worker_namespace = worker_artifact_dir.parent
     submit_artifact_canonical(
@@ -477,7 +436,6 @@ def _artifact_type_param(params: dict[str, object]) -> str:
 
 
 def _unstageable_plan_result(artifact_type: str, content: str) -> ToolResult | None:
-    """Reject text that cannot fit in a UTF-8 draft through the shared sanity gate."""
     if artifact_type != "plan":
         return None
     try:
@@ -498,12 +456,6 @@ def _write_draft(
     *,
     label: str = "submitted",
 ) -> None:
-    """Persist ``content`` as the artifact's draft, enforcing the character cap.
-
-    Raises:
-        InvalidParamsError: when the content exceeds the artifact's draft
-            cap. The existing draft is left untouched.
-    """
     cap = md_draft_character_cap(get_spec(artifact_type))
     if len(content) > cap:
         raise InvalidParamsError(
@@ -517,13 +469,11 @@ def _write_draft(
 
 
 def _with_hint(payload: dict[str, object]) -> dict[str, object]:
-    """Attach the in-place repair hint to a tool payload."""
     payload["repair_hint"] = REPAIR_HINT
     return payload
 
 
 def _stale_draft_result(artifact_type: str, expected: str, current: str) -> ToolResult:
-    """Report a draft that changed since the caller last read it."""
     return ToolResult(
         content=[
             ToolContent.json_content(
@@ -554,13 +504,6 @@ def _edit_result(
     analysis: list[Diagnostic] | None = None,
     validation_recovered: bool = False,
 ) -> ToolResult:
-    """Return the edit outcome alongside the refreshed draft diagnostics.
-
-    ``submitted`` reports whether the edited draft went through the canonical
-    submission path, so a green result is never mistaken for a submission that
-    did not happen. ``analysis`` reuses the diagnostics the submit decision was
-    already made from rather than validating the same draft a second time.
-    """
     payload = _draft_status_payload(artifact_type, draft, analysis=analysis)
     payload["status"] = status
     payload["diff"] = diff
@@ -586,7 +529,6 @@ edit_result = _edit_result
 
 
 def _ambiguous_edits(draft: str, edits: list[TextEdit]) -> list[dict[str, int]]:
-    """Report sequential edits whose oldText has multiple current matches."""
     current = draft
     ambiguous: list[dict[str, int]] = []
     for index, edit in enumerate(edits):
@@ -609,13 +551,6 @@ def _draft_status_payload(
     exists: bool | None = None,
     analysis: list[Diagnostic] | None = None,
 ) -> dict[str, object]:
-    """Describe the draft-so-far: length, section outline, check-only diagnostics.
-
-    Diagnostics come from the same validator submission uses, but never gate
-    the result — a partial document is expected to report missing sections.
-    Staging omits the ``exists``/``content`` echo; ``ralph_get_md_draft``
-    passes ``exists`` and gets the full draft back for resumption.
-    """
     document, _ = parse_markdown_document(draft)
     diagnostics = analysis if analysis is not None else _validate_artifact(artifact_type, draft)
     payload: dict[str, object] = {"artifact_type": artifact_type, "submitted": False}
@@ -636,7 +571,6 @@ def _draft_status_payload(
 def _draft_status_result(
     artifact_type: str, draft: str, *, exists: bool | None = None
 ) -> ToolResult:
-    """Return the draft-status payload as a non-gating tool result."""
     return ToolResult(
         content=[
             ToolContent.json_content(_draft_status_payload(artifact_type, draft, exists=exists))
@@ -646,7 +580,6 @@ def _draft_status_result(
 
 
 def _document_summary(content: str) -> dict[str, object]:
-    """Return the persisted document outline without reparsing validation."""
     document, _ = parse_markdown_document(content)
     return {
         "characters": len(content),
@@ -662,7 +595,6 @@ def _submitted_validation_result(
     *,
     validation_recovered: bool = False,
 ) -> ToolResult:
-    """Return successful validation plus the exact document summary persisted."""
     result = _validation_result(artifact_type, diagnostics)
     payload = _with_hint(
         {
@@ -703,7 +635,6 @@ def _validation_result(
 def _add_validation_failure_envelope(
     payload: dict[str, object], artifact_type: str, diagnostics: list[Diagnostic]
 ) -> None:
-    """Mark an invalid result as a canonical repair action."""
     payload["status"] = "validation_failed"
     payload["severity"] = "error"
     payload["corrective_action"] = validation_corrective_action(artifact_type, diagnostics)
@@ -714,13 +645,11 @@ validation_result = _validation_result
 
 
 def _validate_artifact(artifact_type: str, content: str) -> list[Diagnostic]:
-    """Return draft diagnostics from the shared acceptance boundary."""
     _, diagnostics = parse_and_validate(content, get_spec(artifact_type))
     return diagnostics
 
 
 def _parse_artifact(artifact_type: str, content: str) -> tuple[dict[str, object], list[Diagnostic]]:
-    """Use the registered acceptance boundary for every artifact entry point."""
     parsed_content, diagnostics = parse_and_validate(content, get_spec(artifact_type))
     return parsed_content, diagnostics
 
@@ -732,7 +661,6 @@ def _current_context_diagnostics(
     parsed_content: dict[str, object],
     deps: ArtifactHandlerDeps | None,
 ) -> list[Diagnostic]:
-    """Apply authenticated active-run evidence checks after structural parsing."""
     if artifact_type == "design_verdict":
         return _design_verdict_context_diagnostics(session, workspace, parsed_content)
     return []
@@ -801,7 +729,6 @@ def _planning_finding_target_diagnostics(
     content: str,
     deps: ArtifactHandlerDeps | None,
 ) -> list[Diagnostic]:
-    """Reject planning findings that cannot bind to the submitted plan's steps."""
     if artifact_type != "planning_analysis_decision":
         return []
     decision, _ = parse_markdown_document(content)

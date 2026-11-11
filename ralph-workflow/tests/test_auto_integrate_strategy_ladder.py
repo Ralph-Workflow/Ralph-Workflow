@@ -1,5 +1,3 @@
-"""Regression coverage for the durable per-strategy conflict bookkeeping."""
-
 from __future__ import annotations
 
 from ralph.agents.timeout_clock import FakeClock
@@ -13,12 +11,10 @@ from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 
 
 def _available_ledger() -> AgentFailureLedger:
-    """A ledger with no recorded agent failure: every candidate is eligible."""
     return AgentFailureLedger(clock=FakeClock())
 
 
 def test_suppressed_attempts_saturate_at_the_configured_strategy_budget() -> None:
-    """Repeated suppressed seams cannot churn an ever-growing attempt count."""
     identity = ConflictIdentity(feature_sha="feature", target_sha="target")
     state = RebaseState(
         last_action="conflict",
@@ -46,14 +42,6 @@ def test_suppressed_attempts_saturate_at_the_configured_strategy_budget() -> Non
 
 
 def test_auto_integrate_regression_next_persisted_strategy_receives_budget() -> None:
-    """DA-002: one exhausted rung cannot suppress a distinct strategy after restart.
-
-    The recorded rung is repository state: it refuses the resolver while
-    the SAME rung is still the conflict on disk. The next rung is a
-    different rung, so the recorded exhaustion does not carry over and
-    the resolver is reachable again. Agent health is a separate
-    question, and the failure ledger answers it.
-    """
     identity = ConflictIdentity(feature_sha="feature", target_sha="target")
     spent = apply_conflict_budget(
         RebaseState(last_action="conflict", last_target="main"),

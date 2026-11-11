@@ -1,4 +1,3 @@
-"""FixResult — validated schema for a fix_result artifact payload."""
 
 from __future__ import annotations
 
@@ -8,7 +7,6 @@ from ralph.pydantic_compat import RalphBaseModel
 
 
 class FixResult(RalphBaseModel):
-    """Validated schema for a fix_result artifact payload."""
 
     model_config = ConfigDict(extra="forbid")
 

@@ -1,12 +1,3 @@
-"""Black-box tests for lifecycle model-driven rendering APIs.
-
-Covers:
-- show_phase_start_from_entry (phase_banner.py)
-- emit_phase_close_from_exit (PlainLogRenderer / ParallelDisplay)
-- debug breadcrumbs in text-mode render_completion_summary
-- section ordering in render_completion_summary_group
-"""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -18,10 +9,6 @@ from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay, resolve_active_display
 from ralph.display.phase_lifecycle import PhaseEntryModel
 from ralph.display.snapshot import PipelineSnapshot
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 _CREATED_AT = datetime(2026, 5, 4, tzinfo=UTC)
 
@@ -50,7 +37,6 @@ def _blank_snapshot(
     waiting_status_line: str | None = None,
     last_failure_category: str | None = None,
 ) -> PipelineSnapshot:
-    """Return a minimal PipelineSnapshot with all optional fields defaulted."""
     return PipelineSnapshot(
         phase=phase,
         previous_phase=None,
@@ -74,11 +60,6 @@ def _blank_snapshot(
         waiting_status_line=waiting_status_line,
         last_failure_category=last_failure_category,
     )
-
-
-# ---------------------------------------------------------------------------
-# show_phase_start_from_entry
-# ---------------------------------------------------------------------------
 
 
 class TestShowPhaseStartFromEntry:
@@ -123,7 +104,6 @@ class TestShowPhaseStartFromEntry:
         assert "claude-dev" in buf.getvalue()
 
     def test_outer_dev_before_inner_analysis(self) -> None:
-        """Outer dev cycle label appears before inner analysis label."""
         console, buf = _make_console()
         ctx = make_display_context(console=console, env={})
         entry = PhaseEntryModel(
@@ -139,14 +119,12 @@ class TestShowPhaseStartFromEntry:
         assert out.index("Cycle") < out.index("iter")
 
     def test_ascii_fallback_mode(self) -> None:
-        """In force_glyphs=ascii mode, glyphs are ASCII safe."""
         console, buf = _make_console()
         ctx = make_display_context(console=console, env={}, force_glyphs="ascii")
         entry = PhaseEntryModel(phase_name="development", outer_dev_iteration=1, inner_analysis=2)
         display = resolve_active_display(None, ctx)
         display.emit_phase_start_from_entry(entry)
         out = buf.getvalue()
-        # ASCII fallback should not emit multi-byte unicode glyphs for iteration context
         assert "Development" in out
 
     def test_no_optional_fields_shows_phase_only(self) -> None:
@@ -157,7 +135,6 @@ class TestShowPhaseStartFromEntry:
         display.emit_phase_start_from_entry(entry)
         out = buf.getvalue()
         assert "Planning" in out
-        # Should not include iteration context keywords when all None
         assert "Cycle" not in out
         assert "Analysis" not in out
         assert "Budget" not in out

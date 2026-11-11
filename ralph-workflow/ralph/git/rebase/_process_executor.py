@@ -1,4 +1,3 @@
-"""ProcessExecutor Protocol for running external git processes."""
 
 from __future__ import annotations
 
@@ -12,7 +11,6 @@ if TYPE_CHECKING:
 
 
 class ProcessExecutor(Protocol):
-    """Executor that runs external processes."""
 
     def execute(
         self,

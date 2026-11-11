@@ -1,5 +1,3 @@
-"""Reject retired cross-surface boilerplate in prompt templates."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -15,7 +13,6 @@ _POLICY_ONLY_STATEMENTS = (
 
 
 def collect_violations() -> list[str]:
-    """Return policy statements that leaked back into prompt templates."""
     policy = _POLICY_PATH.read_text(encoding="utf-8")
     templates = (
         "\n".join(
@@ -34,7 +31,6 @@ def collect_violations() -> list[str]:
 
 
 def main() -> int:
-    """Print violations and return a conventional audit exit code."""
     violations = collect_violations()
     for statement in violations:
         print(f"prompt single-sourcing audit: missing canonical statement: {statement}")

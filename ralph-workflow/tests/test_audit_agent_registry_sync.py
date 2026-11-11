@@ -1,5 +1,3 @@
-"""Unit tests for the agent registry sync static audit."""
-
 from __future__ import annotations
 
 from ralph.testing.audit_agent_registry_sync import (
@@ -10,12 +8,10 @@ from ralph.testing.audit_agent_registry_sync import (
 
 
 def test_audit_builtin_violations() -> None:
-    # Test builtins without _BUILTIN_AGENT_SUPPORTS tuple
     violations = audit_builtin_file("x = 1", "test_builtin.py")
     assert len(violations) >= 1
     assert violations[0].category == "missing_constant"
 
-    # Test duplicates and invalid entries
     code = """
 _BUILTIN_AGENT_SUPPORTS = (
     AgentSupport.from_registration_kwargs("claude", cmd="claude"),
@@ -28,7 +24,6 @@ _BUILTIN_AGENT_SUPPORTS = (
 
 
 def test_audit_registry_violations() -> None:
-    # Test missing unregister and missing seed
     code = """
 class AgentRegistry:
     def __init__(self):
@@ -45,7 +40,6 @@ def builtin_agents():
 
 
 def test_audit_invoke_violations() -> None:
-    # Test missing requires_pty ladder
     code = """
 def invoke_agent():
     pass
@@ -53,7 +47,6 @@ def invoke_agent():
     violations = audit_invoke_file(code, "test_invoke.py")
     assert any(v.category == "invalid_dispatch_ladder" for v in violations)
 
-    # Test legacy CLAUDE_INTERACTIVE or AGY branches
     code = """
 def invoke_agent():
     if requires_pty:

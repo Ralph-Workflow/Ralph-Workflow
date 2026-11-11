@@ -1,11 +1,3 @@
-"""Regression tests: indexed grep's include/exclude globs match live grep's.
-
-``compile_path_filter`` used ``fnmatch`` over the whole path while live grep
-uses the segment-aware ``match_glob`` (``**`` spans directories, a bare name
-matches any segment, ``*`` stays within one segment). The same grep call
-returned different files depending on whether the index answered it.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -14,7 +6,6 @@ from ralph.mcp.explore.path_filter import compile_path_filter
 from ralph.mcp.tools.workspace import match_glob
 
 _CASES = [
-    # (kind, pattern, path, path is returned)
     ("include", "**/*.py", "setup.py", True),
     ("include", "**/*.py", "src/pkg/mod.py", True),
     ("include", "tests", "tests/test_a.py", True),

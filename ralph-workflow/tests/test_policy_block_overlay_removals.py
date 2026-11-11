@@ -1,12 +1,3 @@
-"""Block-authored overlays may rename and remove blocks.
-
-A workspace `pipeline.toml` is merged over the bundled defaults. Phases the
-overlay omits are treated as removed, but blocks were deep-unioned, so every
-bundled block survived into a renamed graph and compiled to phases nothing
-reaches. The runtime load path then rejected the workflow, while
-`--check-config` — which does not merge — reported it as fine.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -35,7 +26,6 @@ def test_overlay_block_still_inherits_fields_it_does_not_restate() -> None:
 
 
 def test_a_deleted_optional_section_stays_deleted(tmp_path: Path) -> None:
-    """An overlay that drops `[cycle_timebox]` must not have it merged back in."""
     bundled = (_DEFAULTS_DIR / "pipeline.toml").read_text(encoding="utf-8")
     kept: list[str] = []
     skipping = False

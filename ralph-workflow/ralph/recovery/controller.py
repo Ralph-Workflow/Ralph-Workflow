@@ -1,39 +1,3 @@
-"""RecoveryController: single owner of failure classification, retry, and fallover.
-
-Never-Exit Invariant
---------------------
-
-The recovery controller is the second half of the recovery contract
-documented in ``ralph.agents.idle_watchdog``. The pipeline NEVER exits
-because of agent unavailability. This is enforced by the
-all-agents-unavailable wait branch (in
-``_handle_retry_progression``) and priority agent selection in
-``preferred_agent_index``:
-
-  - **All-agents-unavailable wait branch**: when every agent in the
-    chain is on cooldown, the controller returns
-    ``state.copy_with(last_retry_delay_ms=<earliest cooldown>,
-    is_waiting_state=True)`` and does NOT call
-    ``_enter_phase_failed``. The run loop sleeps on
-    ``last_retry_delay_ms`` and re-enters the same phase. The
-    ``is_waiting_state`` flag is the structured contract the run
-    loop keys off; ``last_error`` text is operator-readable context
-    only and is not parsed by the run loop.
-
-  - **Priority Agent Selection**: after any failure, agent selection
-    evaluates the chain in priority order and picks the highest-priority
-    agent that is available and not spent. Earlier agents whose cooldown
-    has expired are preferred over lower-priority agents.
-
-The pipeline has recovery states: exponential backoff to
-the next available agent (``AgentUnavailabilityTracker.mark_unavailable``) and
-retry with the same agent. The
-all-agents-unavailable wait branch is a third observable effect
-(``is_waiting_state=True``) but it is NOT a third state -- it is a
-transient holding pattern that the run loop interprets as
-"continue the same phase after the cooldown expires". The
-controller never reaches ``failed_terminal`` via this path.
-"""
 
 from __future__ import annotations
 
@@ -98,39 +62,13 @@ __all__ = [
 ]
 
 
-# ---------------------------------------------------------------------------
-# Two-state invariant (locked at import time)
-# ---------------------------------------------------------------------------
-#
-# There are two types of retries: exponential backoff to the next agent, OR
-# retry with the same agent. There is NEVER a state where we skip an agent
-# permanently. All agents are recoverable. We never exit the pipeline because
-# of agent unavailability.
-#
-# This invariant is enforced at module import time by walking the
-# ``RecoveryController`` class source via ``ast`` and asserting that the
-# two recovery paths are still wired. The check uses ``if/raise RuntimeError``
-# (NOT ``assert``) so the invariant survives ``python -O`` per AGENTS.md.
-# A future PR that needs to introduce a new recovery state MUST update this
-# check and the test in ``tests/recovery/test_two_state_invariant.py`` in the
-# same commit.
 
 _REQUIRED_TWO_STATE_METHODS: frozenset[str] = frozenset(
     {"_mark_agent_unavailable", "_apply_chain_retry"}
 )
 
 
-# Module-level cache slot for the self-source AST tree shared by the
-# two import-time invariant functions below. Reading + parsing the
-# controller's own source twice (once per invariant) is wasteful; the
-# helper ``_controller_source_tree`` memoizes the tuple so both
-# invariant calls share a single read+parse per process import.
-# ``_reset_controller_source_tree_cache`` is the test seam: it drops
-# the cached tuple so each test starts from a clean slate. A dict is
-# used (rather than a bare ``Optional`` global) so the cache can be
-# mutated without ``global`` statements (which ruff ``PLW0603``
-# discourages).
-_CONTROLLER_SOURCE_TREE_CACHE: dict[  # bounded-accumulator-ok: cleared
+_CONTROLLER_SOURCE_TREE_CACHE: dict[
     str, tuple[str, ast.Module]
 ] = {}
 
@@ -140,20 +78,6 @@ def _controller_source_tree(
     parse_fn: Callable[[str], ast.Module],
     read_fn: Callable[[], str],
 ) -> tuple[str, ast.Module]:
-    """Return ``(source, tree)`` for the controller module, cached.
-
-    Reads ``read_fn()`` and parses it with ``parse_fn`` only on the
-    first invocation (or after ``_reset_controller_source_tree_cache``);
-    subsequent calls return the cached tuple. The two invariant
-    functions call this with ``read_fn=lambda: Path(__file__).read_text(...)``
-    and ``parse_fn=_parse_source`` so the source is read and parsed exactly
-    ONCE per process import instead of twice.
-
-    ``parse_fn`` and ``read_fn`` are injected (no ambient open/
-    Path.read_text) so the helper stays deterministic and testable.
-    ``SyntaxError`` is wrapped in ``RuntimeError`` so the existing
-    import-time invariant contract is preserved verbatim.
-    """
     if _CONTROLLER_SOURCE_TREE_CACHE:
         return next(iter(_CONTROLLER_SOURCE_TREE_CACHE.values()))
     source = read_fn()
@@ -172,47 +96,16 @@ def _controller_source_tree(
 
 
 def _parse_source(source: str) -> ast.Module:
-    """Thin wrapper around ``ast.parse`` to avoid mypy's overload warnings
-    when passed as a ``Callable[[str], ast.Module]`` argument."""
     return ast.parse(source)
 
 
 def _reset_controller_source_tree_cache() -> None:
-    """Clear the cached ``(source, tree)`` tuple for tests.
-
-    Production callers should not need to call this: the cache is
-    correct for the whole process lifetime because the controller
-    module is the same source the cache holds. Tests inject custom
-    ``parse_fn``/``read_fn`` and need a fresh slot per case.
-    """
     _CONTROLLER_SOURCE_TREE_CACHE.clear()
 
 
 def _assert_two_state_invariant() -> None:
-    """Verify the two-state recovery invariant is wired into ``RecoveryController``.
-
-    The check reads the controller's source file from disk (not a compiled
-    bytecode cache) so it always reflects the current source. The only
-    methods required to be present on ``RecoveryController`` are the two
-    that correspond to the two MAIN RULES:
-
-      1. ``_mark_agent_unavailable`` -- exponential backoff to the next
-         agent via ``AgentUnavailabilityTracker.mark_unavailable``.
-      2. ``_apply_chain_retry`` -- same-agent retry via
-         ``AgentChain.with_retry_increment``.
-
-    Any future addition to this set MUST be paired with an update to the
-    import-time invariant and the test in
-    ``tests/recovery/test_two_state_invariant.py`` so the locked contract
-    is always in sync with the production code.
-
-    The read+parse is shared with ``_assert_never_exit_invariant`` via
-    ``_controller_source_tree`` so the controller source is read and
-    parsed exactly ONCE per process import (wt-024 P1 perf fix).
-    """
     _source, tree = _controller_source_tree(
         parse_fn=_parse_source,
-        # filesystem-read-ok: import-time self-inspection is cached once by _controller_source_tree.
         read_fn=lambda: Path(__file__).resolve().read_text(encoding="utf-8"),
     )
     class_node: ast.ClassDef | None = None
@@ -248,55 +141,9 @@ def _assert_two_state_invariant() -> None:
 _assert_two_state_invariant()
 
 
-# ---------------------------------------------------------------------------
-# Never-exit invariant (locked at import time)
-# ---------------------------------------------------------------------------
-#
-# The pipeline NEVER exits because of agent unavailability. This is
-# enforced by the all-agents-unavailable wait branch in
-# ``_handle_retry_progression``: the branch sets
-# ``state.is_waiting_state=True`` and ``state.last_retry_delay_ms``
-# and returns BEFORE the ``_enter_phase_failed`` call is reachable.
-# The run loop sleeps on ``last_retry_delay_ms`` and re-enters the
-# same phase. The pipeline never reaches ``failed_terminal`` via
-# this path.
-#
-# This invariant is enforced at module import time by walking the
-# ``RecoveryController._handle_retry_progression`` function source
-# via ``ast`` and asserting that:
-#   1. The all-agents-unavailable ``if`` statement (the
-#      ``if all(not self._is_agent_available(phase, agent) for
-#      agent in chain.agents):`` block) appears at a LOWER body
-#      index (i.e. earlier in the function body) than the
-#      ``_enter_phase_failed`` call. The all-agents-unavailable
-#      branch MUST be reached first so the return statement
-#      inside it short-circuits before the failure call.
-#   2. The all-agents-unavailable branch itself contains at least
-#      one ``ast.Return`` node (the existing source has
-#      ``return state.copy_with(...), [], updated_evt`` inside
-#      the branch).
-#
-# The check uses ``if/raise RuntimeError`` (NOT ``assert``) so the
-# invariant survives ``python -O`` per AGENTS.md 'Non-negotiables'.
-# A future PR that introduces a third state that exits the
-# pipeline when all agents are on cooldown will fail at import
-# time with a ``RuntimeError`` naming both invariants and pointing
-# to ``tests/recovery/test_two_state_invariant.py`` for the
-# test-level pin.
 
 
 def _find_all_agents_unavailable_if(func_body: list[ast.stmt]) -> ast.If | None:
-    """Find the all-agents-unavailable ``if`` statement in a function body.
-
-    The branch is identified by unparsing its test and checking for
-    the substrings ``self._is_agent_available`` and ``all(`` -- the
-    canonical source form of the wait branch's test is
-    ``all((not self._is_agent_available(phase, agent) for agent in
-    chain.agents))`` (the outer parens wrap the generator
-    expression). The function returns the FIRST such ``ast.If`` in
-    the body (lowest body index, i.e. the one closest to the top of
-    the function).
-    """
     for stmt in func_body:
         if not isinstance(stmt, ast.If):
             continue
@@ -310,18 +157,6 @@ def _find_all_agents_unavailable_if(func_body: list[ast.stmt]) -> ast.If | None:
 
 
 def _find_enter_phase_failed_call(func_body: list[ast.stmt]) -> ast.stmt | None:
-    """Find the STATEMENT containing the ``_enter_phase_failed`` call.
-
-    Returns the top-level statement in ``func_body`` that contains
-    an ``_enter_phase_failed`` call (typically an ``ast.Assign``
-    like ``failed_state = self._enter_phase_failed(...)``). The
-    check asserts the all-agents-unavailable branch is at a LOWER
-    body index than this statement so the branch's return
-    short-circuits before the failure call.
-
-    Returns the LAST such statement in source order (the deepest
-    call site in the function body).
-    """
     found_stmt: ast.stmt | None = None
     for stmt in func_body:
         for node in ast.walk(stmt):
@@ -334,22 +169,8 @@ def _find_enter_phase_failed_call(func_body: list[ast.stmt]) -> ast.stmt | None:
 
 
 def _assert_never_exit_invariant() -> None:
-    """Verify the never-exit invariant is wired into ``_handle_retry_progression``.
-
-    Asserts the all-agents-unavailable ``if`` statement in
-    ``_handle_retry_progression`` appears at a LOWER body index
-    than the ``_enter_phase_failed`` call AND the branch itself
-    contains a ``Return`` statement. A future PR that introduces
-    a third state that exits the pipeline when all agents are on
-    cooldown will fail this check at module import time.
-
-    The read+parse is shared with ``_assert_two_state_invariant`` via
-    ``_controller_source_tree`` so the controller source is read and
-    parsed exactly ONCE per process import (wt-024 P1 perf fix).
-    """
     _source, tree = _controller_source_tree(
         parse_fn=_parse_source,
-        # filesystem-read-ok: import-time self-inspection is cached once by _controller_source_tree.
         read_fn=lambda: Path(__file__).resolve().read_text(encoding="utf-8"),
     )
     class_node: ast.ClassDef | None = None
@@ -466,12 +287,6 @@ def _typed_conflict_attempt_reason(
     outcome: ConflictAttemptOutcome,
     unresolved_count: int,
 ) -> str:
-    """Return the human-readable reason for a typed conflict-attempt outcome.
-
-    These strings are classifier OUTPUT (diagnostics), never classifier
-    input: they are composed from the typed outcome and observed counts,
-    not re-matched from prose.
-    """
     if outcome.value == "unresolved_remaining":
         return f"agent reported success but {unresolved_count} conflicted path(s) remain"
     if outcome.value == "no_activity":
@@ -499,49 +314,29 @@ def _build_fallover_record(
 
 
 class _RetryHintPath(Protocol):
-    """Lazy-imported retry hint path function with policy-aware resolution."""
 
     def __call__(self, phase: str, *, pipeline_policy: PipelinePolicy | None = None) -> str: ...
 
 
 def _get_required_artifact_helpers() -> tuple[Callable[[str, str], str], _RetryHintPath]:
-    # Lazy import to avoid circular dependency via ralph.phases import chain
     module = import_module("ralph.phases.required_artifacts")
     namespace = cast("dict[str, object]", module.__dict__)
     build_retry_hint = cast(
         "Callable[[str, str], str]", namespace["build_retry_hint"]
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     retry_hint_path = cast(
         "_RetryHintPath", namespace["retry_hint_path"]
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     return build_retry_hint, retry_hint_path
 
 
 def compute_backoff_ms(base_ms: int, attempt: int, max_ms: int = 30_000) -> int:
-    """Compute exponential backoff delay with cap.
-
-    Args:
-        base_ms: Base delay in milliseconds.
-        attempt: Current retry attempt (0-indexed).
-        max_ms: Maximum delay cap in milliseconds.
-
-    Returns:
-        Delay in milliseconds, capped at max_ms.
-    """
     exponent_factor: int = 2**attempt
     delay: int = base_ms * exponent_factor
     return min(delay, max_ms)
 
 
 class RecoveryController:
-    """Single conceptual owner of recovery logic.
-
-    Handles classification, chain fallover, and cycle cap. The
-    :class:`~ralph.recovery.agent_failure_ledger.AgentFailureLedger` is the
-    single owner of agent health; this controller records attempt facts
-    into it and acts on its answers.
-    Delegates nothing to the reducer's internal retry counter when active.
-    """
 
     def __init__(
         self,
@@ -556,10 +351,10 @@ class RecoveryController:
         )
         self._phase_chains: dict[
             str, tuple[str, ...]
-        ] = {}  # bounded-accumulator-ok: bounded by pipeline phase count
+        ] = {}
         self._last_selection_state: dict[
             str, tuple[str | None, tuple[tuple[str, bool, bool, bool, str | None], ...]]
-        ] = {}  # bounded-accumulator-ok: bounded by pipeline phase count
+        ] = {}
         self._cap = CycleCap(cap=opts.cycle_cap)
         self._classifier = opts.classifier or FailureClassifier()
         self._bus = opts.event_bus or FailureEventBus()
@@ -567,7 +362,7 @@ class RecoveryController:
         self._clock: Clock = opts.clock or SystemClock()
         self._backoff_attempts: dict[str, int] = dict(
             opts.backoff_attempts or {}
-        )  # bounded-accumulator-ok: bounded by agent count, updated from tracker
+        )
         self._consecutive_unproductive_limit = (
             opts.agent_max_consecutive_unproductive
             if opts.agent_max_consecutive_unproductive is not None
@@ -591,7 +386,7 @@ class RecoveryController:
         self._workspace_probe: WorkspaceChangeProbe | None = opts.workspace_probe
         self._spent_agents: dict[str, set[str]] = {
             k: set(v) for k, v in (opts.spent_agents or {}).items()
-        }  # bounded-accumulator-ok: keyed by phase, drained by reset_backoff
+        }
         if opts.unavailability_store is not None:
             self._unavailability_tracker: UnavailabilityStore = opts.unavailability_store
         else:
@@ -611,41 +406,22 @@ class RecoveryController:
 
     @property
     def ledger(self) -> AgentFailureLedger:
-        """Single-owner agent failure and recovery ledger."""
         return self._ledger
 
     @property
     def clock(self) -> Clock:
-        """The injected time source every decision in this controller uses.
-
-        Clients that must reach the same owner (the agent-invocation
-        executor, for instance) borrow this clock instead of reading
-        ambient time, so a cooldown expires against the same timeline the
-        owner recorded it on.
-        """
         return self._clock
 
     @property
     def workspace_probe(self) -> WorkspaceChangeProbe | None:
-        """Probe for detecting filesystem changes across invocations."""
         return self._workspace_probe
 
     @property
     def unavailability_store(self) -> UnavailabilityStore:
-        """Public access to the unavailability store (Protocol-typed).
-
-        Callers MUST consume the store through this property, not through
-        the private ``_unavailability_tracker`` attribute. The Protocol is
-        the seam for a future persistent (sqlite, redis, file)
-        implementation; the in-memory ``AgentUnavailabilityTracker`` is the
-        default when ``RecoveryControllerOptions.unavailability_store`` is
-        not provided.
-        """
         return self._unavailability_tracker
 
     @property
     def cycle_cap(self) -> int:
-        """Maximum number of recovery cycles before the controller exits."""
         return self._cap.cap
 
     def handle(
@@ -657,18 +433,6 @@ class RecoveryController:
         workspace_changed: bool = False,
         artifact_valid: bool = False,
     ) -> tuple[PipelineState, list[Effect], FailureEvent]:
-        """Classify a failure and compute the recovery transition.
-
-        Args:
-            state: Current pipeline state.
-            raw_failure: The raw exception or string error message.
-            context: Phase/agent context and optional pre-classified failure.
-            workspace_changed: Whether workspace files changed during the attempt.
-            artifact_valid: Whether the phase output artifact was valid.
-
-        Returns:
-            Tuple of (new_state, effects, failure_event).
-        """
         phase = context.phase
         agent = context.agent
         failure = context.classified_failure or self._classifier.classify(
@@ -695,7 +459,6 @@ class RecoveryController:
         return self._phase_chains.get(phase)
 
     def register_phase_chain(self, phase: str, agents: Sequence[str]) -> None:
-        """Register the known agents for a phase chain (seam for testing sole-agent scenarios)."""
         self._phase_chains[phase] = tuple(agents)
 
     def record_attempt_fact(
@@ -707,7 +470,6 @@ class RecoveryController:
         workspace_changed: bool,
         free_retry_category: bool = False,
     ) -> str | None:
-        """Record attempt fact in the ledger; return a demotion error message if sole agent demoted."""
         fact = AttemptFact(
             phase=phase,
             agent=agent,
@@ -747,7 +509,6 @@ class RecoveryController:
         workspace_changed: bool,
         artifact_valid: bool,
     ) -> str | None:
-        """Record attempt fact in the ledger; return a demotion error message if sole agent demoted."""
         if current_agent is None:
             return None
         if chain is not None:
@@ -784,9 +545,6 @@ class RecoveryController:
         if chain is not None:
             chain_capacity = max(0, len(chain.agents) - chain.current_index - 1)
 
-            # Compute retry delay from chain config only when the failing
-            # agent is currently available. An unavailable agent is skipped
-            # (not retried), so no retry delay is charged for it.
             if agent is not None and failure.counts_against_budget and not is_agent_unavailable:
                 retry_delay_ms = self._compute_retry_delay(phase, agent)
 
@@ -807,11 +565,6 @@ class RecoveryController:
         )
         self._bus.publish(failure_evt)
 
-        # ALWAYS set last_failure_category and last_retry_delay_ms on state first.
-        # Also clear the structured wait-state flag: the wait state is a
-        # per-handle-call outcome, so each new failure classification starts
-        # from a clean slate. The wait branch (further down) re-asserts
-        # ``is_waiting_state=True`` when it actually enters the wait state.
         new_state = state.copy_with(
             last_failure_category=str(failure.category),
             last_retry_delay_ms=retry_delay_ms,
@@ -901,7 +654,6 @@ class RecoveryController:
                 failure_evt,
             )
 
-        # AGENT category: charge the ledger and handle chain progression
         if failure.is_unavailable and agent is not None:
             cooldown_ms = self._mark_agent_unavailable(
                 phase, agent, reason=failure.unavailability_reason
@@ -930,25 +682,10 @@ class RecoveryController:
             )
             self._write_session_reset_hint(phase, failure)
         elif retry_in_session and failure.resumable_session_id:
-            # Populate ``last_agent_session_id`` from the watchdog's
-            # captured session id so the downstream ``_apply_chain_retry``
-            # consumer (which already does
-            # ``resume_agent_retry_intent(state.last_agent_session_id)``)
-            # emits a resume intent with the captured id instead of
-            # starting a fresh session. The branch is mutually exclusive
-            # with ``failure.reset_session`` above (a stale-session reset
-            # means the captured id is irrelevant and the chain retry
-            # uses ``cleared_agent_retry_intent()`` -- the pre-fix
-            # behavior). When ``retry_in_session`` is False the resume
-            # path is not taken anyway, so this branch must not populate
-            # ``last_agent_session_id`` for an unrelated retry.
             new_state = new_state.copy_with(
                 last_agent_session_id=failure.resumable_session_id,
             )
 
-        # Track backoff attempt for retry-delay growth on non-unavailable
-        # agent failures. Unavailable attempts are tracked inside
-        # _mark_agent_unavailable because they use a separate cooldown.
         if agent is not None and not is_agent_unavailable and failure.counts_against_budget:
             key = f"{phase}:{agent}"
             self._backoff_attempts[key] = self._backoff_attempts.get(key, 0) + 1
@@ -969,7 +706,6 @@ class RecoveryController:
                 failure.reason[:200],
             )
             logger.error("Recovery cycle cap exceeded: {}", exit_reason)
-            # Cycle exceeded: no retry delay
             return (
                 new_state.copy_with(last_retry_delay_ms=0),
                 [_build_exit_failure_effect(reason=exit_reason)],
@@ -979,7 +715,6 @@ class RecoveryController:
         return new_state, effects, failure_evt
 
     def _log_technical_failure(self, phase: str, failure: ClassifiedFailure) -> None:
-        """Log a failure the ledger does not charge before routing it to technical retry."""
         if failure.category == FailureCategory.ENVIRONMENTAL:
             logger.info(
                 "Environmental failure in phase={} (not counted against budget): {}",
@@ -1012,26 +747,17 @@ class RecoveryController:
         agent: str,
         reason: UnavailabilityReason | None = None,
     ) -> int:
-        """Mark an agent as unavailable until the computed backoff expires.
-
-        Uses exponential backoff based on the per-reason policy, capped at
-        the reason's max_backoff_ms. Returns the computed backoff in ms
-        (also capped at max_backoff_ms so callers that consume the return
-        value get the same value the store recorded).
-        """
         entry = self._unavailability_tracker.mark_unavailable(phase, agent, reason)
         multiplier: int = pow(2, entry.attempt)
         computed = entry.base_backoff_ms * multiplier
         return min(computed, entry.max_backoff_ms)
 
     def _is_agent_available(self, phase: str, agent: str) -> bool:
-        """Return True when the agent is not currently marked unavailable or demoted."""
         if not self._ledger.is_available(phase, agent):
             return False
         return self._unavailability_tracker.is_available(phase, agent)
 
     def _increment_chain_retries(self, state: PipelineState, phase: str) -> PipelineState:
-        """Increment chain.retries for the given phase without debiting a budget."""
         chain = state.chain_for_phase(phase)
         if chain is None:
             return state
@@ -1045,7 +771,6 @@ class RecoveryController:
         *,
         retry_in_session: bool,
     ) -> PipelineState:
-        """Apply a single retry to the chain and optionally preserve the agent session."""
         retried_state = state.with_phase_chain(phase, chain.with_retry_increment())
         if retry_in_session and state.last_agent_session_id:
             return retried_state.copy_with(
@@ -1056,7 +781,6 @@ class RecoveryController:
         return retried_state.copy_with(agent_retry_intent=cleared_agent_retry_intent())
 
     def _chain_config_for_phase(self, phase: str) -> AgentChainConfig | None:
-        """Resolve the AgentChainConfig backing the given phase, or None."""
         if self._policy_bundle is None:
             return None
         phase_def = self._policy_bundle.pipeline.phases.get(phase)
@@ -1100,7 +824,6 @@ class RecoveryController:
         )
 
     def _integration_retry_delay(self, state: PipelineState, phase: str) -> int:
-        """Back off owned continuation without consuming the completed phase's agent budget."""
         chain_config = self._chain_config_for_phase(phase)
         configured = chain_config.retry_delay_ms if chain_config is not None else 0
         base = configured or PhaseRetryPolicy().retry_delay_ms
@@ -1117,22 +840,16 @@ class RecoveryController:
         phase: str,
         agent: str | None,
     ) -> int:
-        """Compute the retry delay for a given phase and agent.
-
-        Uses the chain's retry_delay_ms from policy configuration.
-        """
         chain_config = self._chain_config_for_phase(phase)
         if chain_config is None:
             return 0
 
-        # Get backoff attempt count for this phase:agent
         key = f"{phase}:{agent}" if agent else phase
         attempt = self._backoff_attempts.get(key, 0)
 
         return compute_backoff_ms(chain_config.retry_delay_ms, attempt)
 
     def reset_backoff(self, phase: str, agent: str | None) -> None:
-        """Reset backoff counter for a phase/agent after successful invocation."""
         key = f"{phase}:{agent}" if agent else phase
         self._backoff_attempts.pop(key, None)
         self._spent_agents.pop(phase, None)
@@ -1141,7 +858,6 @@ class RecoveryController:
             self._unavailability_tracker.reset_backoff(phase, agent)
 
     def note_retry_exhaustion(self, phase: str, agent: str) -> None:
-        """Mark an agent's retry allowance as spent for the current round of a phase."""
         self._spent_agents.setdefault(phase, set()).add(agent)
 
     def classify_conflict_attempt(
@@ -1154,18 +870,6 @@ class RecoveryController:
         outcome: ConflictAttemptOutcome | None = None,
         unresolved_count: int = 0,
     ) -> ClassifiedFailure:
-        """Classify a failed conflict-resolution invoke without pipeline state.
-
-        ``outcome`` carries the typed §11 fact: shapes Ralph itself can
-        describe typed (``UNRESOLVED_REMAINING`` — the resolver exited
-        success while conflicted paths remain — and the launcher-observed
-        ``NO_ACTIVITY`` / ``ATTEMPT_FAILED`` shapes) bypass the text
-        classifier entirely and return a typed :class:`ClassifiedFailure`,
-        so Ralph-authored prose can never fall through to AMBIGUOUS.
-        Only genuinely unrecognised EXTERNAL output takes the ``RAW``
-        default through the text classifier. ``unresolved_count`` is the
-        observed on-disk count for ``UNRESOLVED_REMAINING``.
-        """
         effective = outcome if outcome is not None else ConflictAttemptOutcome.RAW
         if effective is not ConflictAttemptOutcome.RAW:
             reason = _typed_conflict_attempt_reason(effective, unresolved_count)
@@ -1191,7 +895,6 @@ class RecoveryController:
         )
 
     def next_conflict_candidate(self, candidates: Sequence[str], *, failed_index: int) -> int:
-        """Advance past a failed candidate; never restart at the head of the chain."""
         if not candidates:
             return 0
         return min(failed_index + 1, len(candidates))
@@ -1204,17 +907,6 @@ class RecoveryController:
         current_index: int | None = None,
         current_allowance_spent: bool = False,
     ) -> AgentSelection:
-        """Select the highest-priority selectable agent for a phase.
-
-        Builds AgentAvailability rows for all agents in phase, evaluates priority selection,
-        and logs the selection decision to the transcript.
-
-        The ledger is the single owner of agent health: an agent is skipped
-        only when the unavailability tracker puts it on cooldown or the
-        ledger reports it as spent. ``current_allowance_spent`` is the
-        caller's statement that the agent currently running has used its
-        allowance for this round; it carries no independent authority.
-        """
         snap = self._unavailability_tracker.snapshot()
         self._phase_chains[phase] = tuple(agents)
         cooldowns_dict = snap.get("unavailable_timeouts", {})
@@ -1280,13 +972,6 @@ class RecoveryController:
         *,
         backend: FileBackend | None = None,
     ) -> None:
-        """Write a retry hint file describing the stale-session failure.
-
-        Args:
-            phase: Pipeline phase where the failure occurred.
-            failure: Classified failure with stale-session detail.
-            backend: Optional filesystem backend; defaults to injected backend.
-        """
         file_backend = backend or self._reset_hint_backend
         build_retry_hint, retry_hint_path = _get_required_artifact_helpers()
 
@@ -1304,7 +989,6 @@ class RecoveryController:
             )
         )
         try:
-            # filesystem-write-ok: recovery controller state under .agent/recovery, runtime recovery metadata not tracked
             file_backend.mkdir(hint_file.parent, parents=True, exist_ok=True)
             write_text_if_changed(file_backend, hint_file, hint_content, encoding="utf-8")
         except OSError:
@@ -1329,8 +1013,6 @@ class RecoveryController:
             if chain.agents and chain.current_index < len(chain.agents)
             else None
         )
-        # The ledger is the single owner of agent health: the next agent is
-        # chosen from the ledger's cooldown/spent answers alone.
         selection = self.preferred_agent_index(
             phase,
             chain.agents,
@@ -1372,16 +1054,6 @@ class RecoveryController:
                 current_index=next_available_index,
                 retries=0,
             )
-            # Defense-in-depth: a resumable watchdog kill carries a
-            # captured session id, and the PROMPT requires the killed
-            # session to be resumed in place rather than starting a
-            # fresh session. The classifier now routes resumable
-            # ``no_output_at_start`` kills to ``is_unavailable=False``
-            # so the same-agent retry path is taken in the common
-            # case; the fallover branch here also preserves the
-            # captured session id so a defensive miss (e.g. a chain
-            # of length 1 that always falls over) does not silently
-            # drop the captured id and start a fresh session.
             preserve_session_id = failure.watchdog_reason == "no_output_at_start" and bool(
                 failure.resumable_session_id
             )
@@ -1398,11 +1070,6 @@ class RecoveryController:
             )
             return new_state, [], failure_evt
 
-        # If every agent in the chain is temporarily unavailable, preserve the
-        # session and wait until the earliest cooldown expires instead of
-        # terminating the run. The run loop will sleep on last_retry_delay_ms
-        # and then retry the same phase. Otherwise the chain is truly exhausted
-        # (the ledger reports every available agent as demoted), so fail the phase.
         if all(not self._is_agent_available(phase, agent) for agent in chain.agents):
             wait_ms = self._earliest_unavailable_wait_ms(phase, chain)
             if wait_ms > 0:
@@ -1428,13 +1095,6 @@ class RecoveryController:
                     state.copy_with(
                         last_error=reason,
                         last_retry_delay_ms=wait_ms,
-                        # Structured wait-state flag: the run loop keys off this
-                        # boolean to detect the wait state. ``last_error`` text
-                        # is operator-readable context only and is NOT a contract
-                        # the run loop parses. The flag is the single source of
-                        # truth; setting it here ensures the WAITING / RESUMED
-                        # structured log path is taken on the next loop
-                        # iteration.
                     ).set_waiting(WaitReason.ALL_AGENTS_UNAVAILABLE, None),
                     [],
                     updated_evt,
@@ -1459,23 +1119,6 @@ class RecoveryController:
 
         new_state = state.copy_with(recovery_cycle_count=state.recovery_cycle_count + 1)
         failed_state = self._enter_phase_failed(new_state, exhaustion_reason, failure.category)
-        # Enforce the cap HERE, at the single funnel where a phase gives up and
-        # the cycle counter advances, not only on the AGENT path in ``handle``.
-        # The technical categories (ENVIRONMENTAL / ARTIFACT_VALIDATION /
-        # AMBIGUOUS) return to their caller before reaching that check, so the
-        # count they increment was never read. ``_enter_phase_failed`` routes to
-        # ``failed_route``, whose recovery hop re-enters ``previous_phase`` and
-        # resets the chain's retry counter, so nothing else bounded them: the
-        # pipeline ping-ponged between the two forever. A ``TypeError`` in the
-        # commit effect did exactly that -- an unclassifiable failure roughly
-        # ten times a second, unbounded. ``CycleCap`` documents itself as the
-        # guard against "a persistently-failing handler looping silently
-        # forever", and this is the funnel where it has to fire to mean it.
-        #
-        # The phase still advances to ``failed_route`` first: the exit effect
-        # reports why the run is stopping, and the state must describe where it
-        # stopped. This mirrors the AGENT-path check, which likewise runs after
-        # the phase has been failed.
         if self._cap.is_exceeded(failed_state.recovery_cycle_count):
             exit_reason = self._cap.exit_reason(
                 failed_state.recovery_cycle_count,
@@ -1483,7 +1126,6 @@ class RecoveryController:
                 failure.reason[:200],
             )
             logger.error("Recovery cycle cap exceeded: {}", exit_reason)
-            # Cycle exceeded: no retry delay
             return (
                 failed_state.copy_with(last_retry_delay_ms=0),
                 [_build_exit_failure_effect(reason=exit_reason)],
@@ -1492,7 +1134,6 @@ class RecoveryController:
         return failed_state, [], failure_evt
 
     def earliest_available_wait_ms(self, phase: str, agents: list[str]) -> int:
-        """Return milliseconds until any agent in ``agents`` becomes available."""
         if any(self._is_agent_available(phase, agent) for agent in agents):
             return 0
         tracker_wait = self._unavailability_tracker.earliest_unavailable_wait_ms(phase, agents)
@@ -1501,7 +1142,6 @@ class RecoveryController:
         return min(waits) if waits else 0
 
     def all_exhausted(self, phase: str, agents: Sequence[str]) -> bool:
-        """Return True if every agent in ``agents`` is demoted or spent."""
         if not agents:
             return False
         if any(self._is_agent_available(phase, agent) for agent in agents):
@@ -1521,16 +1161,14 @@ class RecoveryController:
         phase: str,
         chain: AgentChainState,
     ) -> int:
-        """Return milliseconds until the first unavailable chain agent becomes available."""
         return self.earliest_available_wait_ms(phase, chain.agents)
 
     def snapshot(self) -> dict[str, object]:
-        """Return a runtime observability snapshot of recovery state."""
         tracker_snapshot = self._unavailability_tracker.snapshot()
         merged_attempts = dict(self._backoff_attempts)
         merged_attempts.update(
             cast("dict[str, int]", tracker_snapshot.get("backoff_attempts", {}))
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         return {
             "cycle_cap": self._cap.cap,
             "backoff_attempts": merged_attempts,
@@ -1551,7 +1189,6 @@ class RecoveryController:
         classifier: FailureClassifier | None = None,
         event_bus: FailureEventBus | None = None,
     ) -> RecoveryController:
-        """Construct a RecoveryController from an exported state snapshot."""
         options = RecoveryControllerOptions.from_snapshot(
             snapshot,
             policy_bundle=policy_bundle,
@@ -1562,35 +1199,10 @@ class RecoveryController:
         return cls(options=options)
 
     def waiting_state_payload(self, phase: str, agents: list[str]) -> list[tuple[str, int, int]]:
-        """Return the per-agent cooldown payload for the all-agents-unavailable
-        WAITING / RESUMED structured logs.
-
-        Each tuple is ``(agent, attempt, cooldown_ms_remaining)`` where
-        ``cooldown_ms_remaining`` is the time in milliseconds until the
-        agent becomes available (0 if the agent is already available).
-        This is the single public surface for the run loop's WAITING
-        log; the run loop MUST NOT reach through to the private
-        ``_unavailability_tracker`` or the tracker's ``_clock``.
-
-        Args:
-            phase: The pipeline phase (e.g. "development").
-            agents: The agent chain in policy order.
-
-        Returns:
-            A list of ``(agent, attempt, cooldown_ms_remaining)`` tuples,
-            one per agent in the chain. Order matches ``agents`` input
-            order. Each cooldown is a non-negative int.
-        """
         snap = self._unavailability_tracker.snapshot()
         self._phase_chains[phase] = tuple(agents)
         cooldowns_dict = snap.get("unavailable_timeouts", {})
         attempts_dict = snap.get("backoff_attempts", {})
-        # Derive the wall-clock from the controller's clock seam so the
-        # payload is consistent with the in-memory tracker. The tracker's
-        # ``_clock`` is private; ``snapshot()`` is the public surface, and
-        # the controller's own ``_clock`` is the seam. This keeps the
-        # tracker swappable behind the UnavailabilityStore Protocol
-        # without leaking its internal clock field.
         now_ms = int(self._clock.monotonic() * 1000)
         result: list[tuple[str, int, int]] = []
         for agent in agents:
@@ -1608,20 +1220,6 @@ class RecoveryController:
         return result
 
     def agents_now_available(self, phase: str, agents: list[str]) -> list[str]:
-        """Return the subset of ``agents`` that are currently available.
-
-        Convenience wrapper around the public store surface for the run
-        loop's RESUMED log. Callers MUST use this method instead of
-        reaching through to the private ``_unavailability_tracker``.
-
-        Args:
-            phase: The pipeline phase.
-            agents: The agent chain in policy order.
-
-        Returns:
-            A list of agent names that are currently available, preserving
-            the input order.
-        """
         return [a for a in agents if self._is_agent_available(phase, a)]
 
     def _enter_phase_failed(
@@ -1630,11 +1228,6 @@ class RecoveryController:
         reason: str,
         category: object,
     ) -> PipelineState:
-        """Enter the terminal failure phase.
-
-        Uses policy.declared.failed_route when available, falling back to
-        failed_terminal when running without a policy bundle.
-        """
         self._spent_agents.pop(state.phase, None)
         if self._policy_bundle is not None:
             failed_route = self._policy_bundle.pipeline.recovery.failed_route

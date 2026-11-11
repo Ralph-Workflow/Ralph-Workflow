@@ -1,9 +1,3 @@
-"""Tests for budget_caps seeding in PipelineState initial construction.
-
-Asserts that _create_initial_state seeds budget_caps from policy-declared
-budget_counters using their default_max values and counter_overrides.
-"""
-
 from __future__ import annotations
 
 from unittest.mock import MagicMock

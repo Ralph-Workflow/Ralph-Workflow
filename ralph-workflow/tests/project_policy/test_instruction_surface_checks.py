@@ -1,12 +1,3 @@
-"""Tests for Unit-3 instruction-surface checks and policy freshness.
-
-Covers:
-- AGENTS.md line-budget warnings (managed block >40 lines, total >200 lines).
-- AGENTS.md path-citation existence check.
-- Zero-width and bidirectional Unicode character detection.
-- Research basis citation freshness (>365 days review date) with clock injection.
-"""
-
 from __future__ import annotations
 
 from datetime import date
@@ -31,7 +22,6 @@ from tests.project_policy.policy_corpus import seed_complete_corpus, stack
 
 
 def test_managed_block_line_budget_passes_at_or_below_limit() -> None:
-    # 40 lines inside managed block is within budget
     block_lines = ["Line inside block"] * 38
     content = (
         f"{markers.AGENTS_BLOCK_BEGIN}\n"
@@ -45,7 +35,6 @@ def test_managed_block_line_budget_passes_at_or_below_limit() -> None:
 
 
 def test_managed_block_line_budget_fires_above_limit() -> None:
-    # 41 lines inside managed block exceeds budget of 40
     block_lines = ["Line inside block"] * 41
     content = (
         f"{markers.AGENTS_BLOCK_BEGIN}\n"
@@ -125,7 +114,6 @@ def test_agents_md_path_citations_ignores_external_urls_and_git_refs() -> None:
 
 
 def test_find_hidden_unicode_detects_zero_width_and_bidi_characters() -> None:
-    # \u200b is zero-width space, \u202e is right-to-left override
     dirty_text = "clean line\nsecret\u200bhidden\noverride\u202eRTL\n"
     occurrences = instruction_surface.find_hidden_unicode(dirty_text)
     assert len(occurrences) == 2
@@ -165,7 +153,6 @@ def test_research_freshness_passes_within_365_days() -> None:
 
 
 def test_research_freshness_fires_when_older_than_365_days() -> None:
-    # 2024-01-01 to 2026-11-09 is > 1000 days (> 365)
     set_research_freshness_clock(lambda: date(2026, 11, 9))
     try:
         content = (
@@ -198,7 +185,6 @@ def test_research_freshness_clock_injection_restores_default() -> None:
 
 
 def test_instruction_integrity_audit_finds_hidden_unicode(tmp_path: Path) -> None:
-    # Create an instruction file containing a zero-width space
     prompts_dir = tmp_path / "ralph" / "prompts" / "templates"
     prompts_dir.mkdir(parents=True)
     dirty_template = prompts_dir / "test.jinja"
@@ -212,13 +198,11 @@ def test_instruction_integrity_audit_finds_hidden_unicode(tmp_path: Path) -> Non
 
 
 def test_validate_readiness_nonexistent_cited_path_is_blocking_silent_for_existing_path() -> None:
-    """Nonexistent cited path in AGENTS.md is blocking; silent for existing path."""
     ws = MemoryWorkspace()
     seed_complete_corpus(ws)
     ws.write("docs/existing-runbook.md", "# Runbook\n")
     agents_base = ws.read(markers.AGENTS_MD)
 
-    # Existing path citation: silent
     ws.write(markers.AGENTS_MD, agents_base + "\nSee [Runbook](docs/existing-runbook.md).\n")
     findings = validators.validate_readiness(ws, stack())
     cited_findings = [
@@ -226,7 +210,6 @@ def test_validate_readiness_nonexistent_cited_path_is_blocking_silent_for_existi
     ]
     assert cited_findings == []
 
-    # Nonexistent path citation: blocking
     ws.write(markers.AGENTS_MD, agents_base + "\nSee [Missing](docs/nonexistent-runbook.md).\n")
     findings = validators.validate_readiness(ws, stack())
     cited_findings = [
@@ -238,11 +221,9 @@ def test_validate_readiness_nonexistent_cited_path_is_blocking_silent_for_existi
 
 
 def test_validate_readiness_line_budget_fires_above_threshold_silent_below_non_blocking() -> None:
-    """Line-budget warning fires above threshold, silent below, and is non-blocking."""
     ws = MemoryWorkspace()
     seed_complete_corpus(ws)
 
-    # Silent below threshold
     findings_below = validators.validate_readiness(ws, stack())
     budget_findings_below = [
         f
@@ -255,7 +236,6 @@ def test_validate_readiness_line_budget_fires_above_threshold_silent_below_non_b
     ]
     assert budget_findings_below == []
 
-    # Above project AGENTS.md threshold (> 200 lines): non-blocking finding
     long_content = (
         ws.read(markers.AGENTS_MD) + "\n" + "\n".join(f"# Section {i}" for i in range(210))
     )
@@ -269,7 +249,6 @@ def test_validate_readiness_line_budget_fires_above_threshold_silent_below_non_b
     assert len(proj_budget_findings) == 1
     assert proj_budget_findings[0].blocking is False
 
-    # Above managed block threshold (> 40 lines): non-blocking finding
     ws_block = MemoryWorkspace()
     seed_complete_corpus(ws_block)
     long_block = (
@@ -290,11 +269,9 @@ def test_validate_readiness_line_budget_fires_above_threshold_silent_below_non_b
 
 
 def test_validate_readiness_freshness_fires_beyond_365_days_silent_within_non_blocking() -> None:
-    """Citation review freshness check fires beyond 365 days, silent within, non-blocking."""
     ws = MemoryWorkspace()
     seed_complete_corpus(ws)
 
-    # Seeded corpus has review date 2026-07-13. Setting clock to 2026-08-01 is within 365 days: silent.
     set_research_freshness_clock(lambda: date(2026, 8, 1))
     try:
         findings_within = validators.validate_readiness(ws, stack())
@@ -305,7 +282,6 @@ def test_validate_readiness_freshness_fires_beyond_365_days_silent_within_non_bl
         ]
         assert freshness_within == []
 
-        # Setting clock to 2028-01-01 is > 365 days: fires, non-blocking
         set_research_freshness_clock(lambda: date(2028, 1, 1))
         findings_beyond = validators.validate_readiness(ws, stack())
         freshness_beyond = [

@@ -1,13 +1,3 @@
-"""Policy-driven acceptance tests — Product Requirements 1-10 and Criteria A-H.
-
-These tests assert every product requirement and acceptance criterion against a
-fully renamed PolicyBundle (no canonical phase names). Any regression that
-re-introduces hidden phase name knowledge in the runtime will fail here.
-
-Scope: pure functions only. No I/O.
-Runtime budget: ≤ 5 seconds for the full module.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -40,17 +30,6 @@ from ralph.policy.models import (
 
 @pytest.fixture(scope="module")
 def policy_with_renamed_phases() -> PolicyBundle:
-    """Fully custom-named PolicyBundle — no canonical Ralph phase names.
-
-    Custom name mappings (canonical → custom):
-      planning          → design
-      development       → build
-      development_analysis → audit
-      development_commit → sign_off
-      review            → inspect
-      complete          → done
-      failed_terminal   → aborted
-    """
     agents = AgentsPolicy(
         agent_chains={
             "design_chain": AgentChainConfig(agents=["fake-agent"]),
@@ -178,25 +157,17 @@ def policy_with_renamed_phases() -> PolicyBundle:
     return PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
 
 
-# =============================================================================
-# Requirement 1: Policy must fully define user-visible routing semantics
-# =============================================================================
-
-
 class TestAcceptanceEDocumentation:
     def test_custom_drain_class_overrides_name_inference(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """Drain 'design' has explicit drain_class='planning'; resolution uses policy."""
         agents_policy = policy_with_renamed_phases.agents
-        # 'design' would NOT match via substring because 'planning' is not in 'design'
         dc = drain_class_for_session("design", agents_policy)
         assert dc == DrainClass.PLANNING
 
     def test_custom_bundle_explains_without_canonical_knowledge(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """explain_policy works on the custom bundle without any built-in phase knowledge."""
         exp = explain_policy(policy_with_renamed_phases)
         assert exp.entry_phase == "design"
         assert exp.terminal_phase == "done"

@@ -1,4 +1,3 @@
-"""Terminal-state and backup-reference helpers for integration recovery."""
 
 from __future__ import annotations
 
@@ -24,7 +23,7 @@ _TERMINAL_MARKER_FILES: frozenset[str] = frozenset(
 
 
 class TerminalStateViolationError(RuntimeError):
-    """Raised when an integration leaves git in a non-terminal state."""
+    pass
 
 
 def post_attempt_verify(
@@ -33,7 +32,6 @@ def post_attempt_verify(
     expected_head_sha: str | None,
     owns_resolution: bool,
 ) -> None:
-    """Raise when rebase markers remain or HEAD differs from the expected SHA."""
     git_dir = _rebase_bookkeeping_dir(root)
     if git_dir is None:
         return
@@ -94,17 +92,10 @@ def _head_matches_sha(root: Path, expected_sha: str) -> bool:
     return _read_head_sha(root) == expected_sha
 
 
-_MIN_QUALIFIED_BACKUP_REF_SEGMENTS = 3  # <wt8>-<sha8>-<sha> segments in a qualified ref name
+_MIN_QUALIFIED_BACKUP_REF_SEGMENTS = 3
 
 
 def delete_rebase_backup_refs(root: Path, backup_ref: str | None) -> None:
-    """Best-effort delete of THIS operation's exact worktree-qualified ref.
-
-    Deletion is by exact name only -- never namespace enumeration. Shared
-    ``refs/rebase-backup/`` refs from other worktrees, and legacy SHA-only
-    refs (``refs/rebase-backup/<sha8>-<sha>``), are never touched
-    (fail-closed under-delete).
-    """
     if backup_ref is None:
         logger.warning("recovery: no backup ref recorded; legacy or foreign refs left in place")
         return
@@ -124,7 +115,7 @@ def delete_rebase_backup_refs(root: Path, backup_ref: str | None) -> None:
             cwd=root,
             label=f"recovery:delete-backup-ref:{backup_ref}",
         )
-    except Exception as exc:  # pragma: no cover -- defensive logging
+    except Exception as exc:
         logger.warning("recovery: backup-ref deletion failed for {}: {}", backup_ref, exc)
         return
     if deletion.returncode not in (0, 1):

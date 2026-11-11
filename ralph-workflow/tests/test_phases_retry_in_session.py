@@ -1,18 +1,3 @@
-"""Tests for session-preserving retry contract through reducer and RecoveryController.
-
-Consolidated from a previous split of 5 per-target files
-(``test_phases_retry_in_session_phase_advance_clears_session_fields.py``,
-``test_phases_retry_in_session_phase_failure_event_retry_in_session_flag.py``,
-``test_phases_retry_in_session_phase_handler_retry_in_session_flags.py``,
-``test_phases_retry_in_session_recovery_controller_session_preserving_retry.py``,
-``test_phases_retry_in_session_reducer_session_preserving_retry.py``).
-
-The split family cost one extra file-collection + import per shard on every
-``make test`` invocation; merging them into a single module preserves every
-existing test method (names kept stable so any external ref still resolves)
-while reclaiming 4 module-level imports per shard.
-"""
-
 from __future__ import annotations
 
 import tempfile
@@ -163,14 +148,7 @@ def _workflow_fallback_policy() -> PipelinePolicy:
     )
 
 
-# =============================================================================
-# Phase advance clears session fields
-# =============================================================================
-
-
 class TestPhaseAdvanceClearsSessionFields:
-    """Phase advance must clear session fields to prevent cross-phase session leaks."""
-
     def test_advance_phase_clears_last_agent_session_id(self) -> None:
         state = PipelineState(
             phase="development_analysis",
@@ -266,11 +244,6 @@ class TestPhaseAdvanceClearsSessionFields:
         assert new_state.agent_retry_intent.action is None
 
 
-# =============================================================================
-# PhaseFailureEvent retry_in_session flag
-# =============================================================================
-
-
 class TestPhaseFailureEventRetryInSessionFlag:
     def test_retry_in_session_false_by_default(self) -> None:
         event = PhaseFailureEvent(
@@ -290,14 +263,7 @@ class TestPhaseFailureEventRetryInSessionFlag:
         assert event.retry_in_session is True
 
 
-# =============================================================================
-# Phase handler retry_in_session flags
-# =============================================================================
-
-
 class TestPhaseHandlerRetryInSessionFlags:
-    """Phase handlers must emit retry_in_session=True for missing artifact failures."""
-
     def test_development_missing_planning_artifact_is_retry_in_session(self) -> None:
 
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.txt")
@@ -362,14 +328,7 @@ class TestPhaseHandlerRetryInSessionFlags:
         assert failure_events[0].retry_in_session is True
 
 
-# =============================================================================
-# RecoveryController session-preserving retry
-# =============================================================================
-
-
 class TestRecoveryControllerSessionPreservingRetry:
-    """Via RecoveryController.handle() directly."""
-
     def _make_controller(self) -> RecoveryController:
         return RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
 
@@ -411,19 +370,7 @@ class TestRecoveryControllerSessionPreservingRetry:
         assert new_state.agent_retry_intent.action is None
 
 
-# =============================================================================
-# Reducer session-preserving retry (legacy path)
-# =============================================================================
-
-
 class TestReducerSessionPreservingRetry:
-    """Via the reducer with the recovery owner.
-
-    The reducer no longer owns a local retry counter: the recovery
-    controller (the single owner of agent health) decides the retry, and the
-    reducer applies that verdict. The observable contract is unchanged.
-    """
-
     def _make_controller(self) -> RecoveryController:
         return RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
 

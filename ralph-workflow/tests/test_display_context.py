@@ -1,11 +1,3 @@
-"""Black-box tests for DisplayContext factory and terminal-mode detection.
-
-After the wt-028-display consolidation, ``DisplayContext.mode`` is
-always the literal string ``"default"``. There is no width-based
-dispatch. The adaptive limits come from a single fixed
-``_DEFAULT_LIMITS`` set.
-"""
-
 from __future__ import annotations
 
 import re
@@ -25,12 +17,10 @@ _WIDE_WIDTH = 120
 
 
 def _recording_console(width: int = _WIDE_WIDTH) -> Console:
-    """Create a wide recording console for deterministic test output."""
     return Console(file=StringIO(), force_terminal=False, width=width, theme=RALPH_THEME)
 
 
 def test_default_context_has_themed_console_and_positive_width() -> None:
-    """make_display_context() with no overrides yields a themed console and positive width."""
     ctx = make_display_context(env={})
     assert isinstance(ctx, DisplayContext)
     assert ctx.width > 0
@@ -44,13 +34,6 @@ def test_default_context_has_themed_console_and_positive_width() -> None:
 
 @pytest.mark.parametrize("columns", ["40", "50", "60", "80", "99", "100", "120", "200", "300"])
 def test_any_columns_width_gives_default_mode(columns: str) -> None:
-    """Any COLUMNS width produces the single default mode (no width-based dispatch).
-
-    Locks the AC-02 invariant: ``DisplayContext.mode`` is always the
-    literal string ``"default"`` regardless of COLUMNS width. The mode
-    is a single Literal["default"] value — there is no width-based
-    dispatch.
-    """
     ctx = make_display_context(env={"COLUMNS": columns})
     assert ctx.width == int(columns)
     mode_attr = vars(ctx)["mode"]
@@ -62,13 +45,6 @@ def test_any_columns_width_gives_default_mode(columns: str) -> None:
 
 @pytest.mark.parametrize("columns", ["40", "50", "60", "80", "99", "100", "120", "200", "300"])
 def test_any_columns_width_adaptive_limits_are_constant(columns: str) -> None:
-    """All COLUMNS widths share the same fixed adaptive limits.
-
-    After the wt-028-display consolidation, ``_DEFAULT_LIMITS`` is the
-    single constant owned by ``ralph/display/_mode_adaptive_limits.py``
-    and consumed by ``ralph/display/context.py``. The width-independent
-    invariant means a single display mode has a single set of limits.
-    """
     ctx = make_display_context(env={"COLUMNS": columns})
     assert ctx.headline_max_chars == 120
     assert ctx.condenser_soft_limit == 400
@@ -78,7 +54,6 @@ def test_any_columns_width_adaptive_limits_are_constant(columns: str) -> None:
 
 
 def test_default_limits_owner_is_mode_adaptive_limits_module() -> None:
-    """_DEFAULT_LIMITS lives in ralph.display._mode_adaptive_limits (single owner)."""
     assert limits_module._DEFAULT_LIMITS is context_module._DEFAULT_LIMITS, (
         "_DEFAULT_LIMITS must be a single shared object identity owned by "
         "ralph.display._mode_adaptive_limits and consumed by ralph.display.context."
@@ -86,13 +61,11 @@ def test_default_limits_owner_is_mode_adaptive_limits_module() -> None:
 
 
 def test_no_color_env_disables_color() -> None:
-    """NO_COLOR=1 should produce color_enabled=False."""
     ctx = make_display_context(env={"NO_COLOR": "1", "COLUMNS": str(_WIDE_WIDTH)})
     assert ctx.color_enabled is False
 
 
 def test_display_context_regression_force_color_redirect_emits_semantic_ansi() -> None:
-    """S-1/S-2: FORCE_COLOR colours Ralph-built redirected consoles."""
     stream = StringIO()
     ctx = make_display_context(
         env={"FORCE_COLOR": "1", "RALPH_TERMINAL_BG": "dark"},
@@ -106,14 +79,11 @@ def test_display_context_regression_force_color_redirect_emits_semantic_ansi() -
 
 
 class _TtyLikeStringIO(StringIO):
-    """In-memory stream that models a colour-capable terminal."""
-
     def isatty(self) -> bool:
         return True
 
 
 def test_display_context_regression_normal_tty_emits_semantic_ansi() -> None:
-    """S-1/S-2: ordinary colour-capable TTY output stays visibly coloured."""
     stream = _TtyLikeStringIO()
     ctx = make_display_context(
         env={"RALPH_TERMINAL_BG": "dark"},
@@ -127,7 +97,6 @@ def test_display_context_regression_normal_tty_emits_semantic_ansi() -> None:
 
 
 def test_output_stream_cannot_override_an_injected_console() -> None:
-    """The factory rejects ambiguous output ownership."""
     with pytest.raises(ValueError, match="output_stream cannot be combined"):
         make_display_context(
             env={},
@@ -137,7 +106,6 @@ def test_output_stream_cannot_override_an_injected_console() -> None:
 
 
 def test_display_context_regression_empty_colour_overrides_are_ignored() -> None:
-    """S-1: empty NO_COLOR/FORCE_COLOR values do not change colour policy."""
     no_color = make_display_context(
         env={"NO_COLOR": "", "COLUMNS": str(_WIDE_WIDTH)},
         console=Console(file=StringIO(), force_terminal=True, width=_WIDE_WIDTH, theme=RALPH_THEME),
@@ -151,14 +119,12 @@ def test_display_context_regression_empty_colour_overrides_are_ignored() -> None
 
 
 def test_no_color_wins_over_force_color() -> None:
-    """NO_COLOR wins over FORCE_COLOR per standard CLI conventions."""
     env = {"NO_COLOR": "1", "FORCE_COLOR": "1", "COLUMNS": str(_WIDE_WIDTH)}
     ctx = make_display_context(env=env)
     assert ctx.color_enabled is False
 
 
 def test_injected_console_is_reused() -> None:
-    """A provided console should be stored on the context unchanged."""
     console = _recording_console(width=200)
     ctx = make_display_context(env={"COLUMNS": "200"}, console=console)
     assert ctx.console is console
@@ -168,13 +134,11 @@ _FORCE_WIDTH = 150
 
 
 def test_force_width_overrides_columns_env() -> None:
-    """force_width takes precedence over COLUMNS env."""
     ctx = make_display_context(env={"COLUMNS": str(_NARROW_WIDTH)}, force_width=_FORCE_WIDTH)
     assert ctx.width == _FORCE_WIDTH
 
 
 def test_default_mode_uses_single_fixed_limits() -> None:
-    """Single default-mode uses one fixed set of adaptive limits regardless of width."""
     narrow = make_display_context(env={"COLUMNS": str(_NARROW_WIDTH)})
     medium = make_display_context(env={"COLUMNS": str(_MEDIUM_WIDTH)})
     wide = make_display_context(env={"COLUMNS": str(_WIDE_WIDTH)})
@@ -184,7 +148,6 @@ def test_default_mode_uses_single_fixed_limits() -> None:
 
 
 def test_injected_no_color_console_disables_color() -> None:
-    """Injected console with no_color=True reports color_enabled=False even without NO_COLOR env."""
     no_color_console = Console(
         file=StringIO(),
         force_terminal=False,
@@ -197,7 +160,6 @@ def test_injected_no_color_console_disables_color() -> None:
 
 
 def test_injected_color_console_with_no_color_env_disables_color() -> None:
-    """NO_COLOR env overrides even an explicitly color-enabled injected console."""
     color_console = Console(
         file=StringIO(),
         force_terminal=True,

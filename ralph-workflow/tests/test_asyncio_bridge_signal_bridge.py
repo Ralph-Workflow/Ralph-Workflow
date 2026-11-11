@@ -1,9 +1,3 @@
-"""Unit tests for ralph.interrupt.asyncio_bridge.
-
-Tests the SignalBridge dataclass and install_signal_handlers() function.
-No real subprocesses are spawned — os.killpg and os._exit are mocked.
-"""
-
 from __future__ import annotations
 
 import signal
@@ -29,7 +23,6 @@ def _install_and_get_first_handler(
     bridge: SignalBridge,
     controller: InterruptController | None = None,
 ) -> object:
-    """Install handlers and return the first SIGINT callback."""
     install_signal_handlers(loop, task, bridge, controller)
     first_call_args = loop.add_signal_handler.call_args_list[0][0]
     assert first_call_args[0] == signal.SIGINT

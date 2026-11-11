@@ -1,4 +1,3 @@
-"""Claude-specific MCP transport helpers."""
 
 from __future__ import annotations
 
@@ -26,42 +25,14 @@ _PLUGINS_DIRNAME = "plugins"
 _INSTALLED_PLUGINS_FILENAME = "installed_plugins.json"
 _PLUGIN_ALIAS_UNSAFE = re.compile(r"[^A-Za-z0-9_-]")
 _CLAUDE_EXECUTABLE = "claude"
-#: ``claude mcp list`` health-checks every server before printing, so it is
-#: slower than a plain config read. It runs at most once per run (see
-#: :func:`report_claude_mcp_servers_ralph_cannot_proxy`), and a CLI that has not
-#: answered within this budget is treated as "could not be consulted" rather
-#: than allowed to stall the run.
 _MCP_LIST_TIMEOUT_SECONDS: Final = 20.0
 _ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
-#: ``claude mcp list`` prints one ``<name>: <command-or-url> - <status>`` line
-#: per server. The name runs up to the first colon, so it survives the ``://``
-#: in a remote server's URL.
 _MCP_LIST_ENTRY = re.compile(r"^(?P<name>[^:]+): \S")
-#: Claude spells a plugin-provided server ``plugin:<plugin>:<server>``; Ralph
-#: re-exposes it as ``plugin_<plugin>_<server>`` because ``:`` cannot appear in
-#: a ``ralph_upstream__*`` tool alias. Comparing the two spellings literally
-#: would report every plugin server as lost on every run.
 _ALIAS_UNSAFE_IN_CLI_NAME = ":"
 
 
-#: Milliseconds of headroom above ``EXEC_SOFT_REPLY_BUDGET_MS`` when the
-#: transport writes a client-side per-server MCP timeout. Matches the 30 s
-#: headroom the timing-safety check in ``ralph/mcp/server/_timing_safety.py``
-#: requires. Claude Code honours a per-server ``timeout`` field (ms) per
-#: https://code.claude.com/docs/en/mcp and the ``MCP_TIMEOUT`` env variant
-#: per https://code.claude.com/docs/en/env-vars. We write the per-server
-#: field explicitly so the value tracks our constant instead of falling
-#: through to the 28 h ``MCP_TOOL_TIMEOUT`` default.
 _CLAUDE_TOOL_TIMEOUT_HEADROOM_MS: Final[int] = 30_000
 
-#: Claude per-server ``timeout`` override (milliseconds). Written into the
-#: ``mcpServers.<name>.timeout`` field by :func:`claude_mcp_config`. Sized
-#: at soft-budget + headroom so a legitimately long ``tools/call`` round
-#: trip cannot outrun the Claude MCP deadline. The CompanionHTTP/SSE
-#: "request timer" the Claude docs name (max(60 s, per-server timeout,
-#: ``MCP_TIMEOUT``)) -- a second, independent timer -- is bounded by the
-#: per-server value we write here, so the overall transport deadline
-#: inherits this number.
 _CLAUDE_TOOL_TIMEOUT_MS: Final[int] = EXEC_SOFT_REPLY_BUDGET_MS + _CLAUDE_TOOL_TIMEOUT_HEADROOM_MS
 CLAUDE_TOOL_TIMEOUT_MS: Final[int] = _CLAUDE_TOOL_TIMEOUT_MS
 
@@ -72,7 +43,6 @@ def claude_mcp_config(
     workspace_path: Path | None = None,
     unsafe_mode: bool = False,
 ) -> str:
-    """Return the Claude MCP JSON config string pointing to the given endpoint."""
     ralph_entry = {
         RALPH_MCP_SERVER_NAME: {
             "type": "http",
@@ -93,33 +63,6 @@ def claude_mcp_config(
 def load_existing_claude_upstream_servers(
     workspace_path: Path | None = None,
 ) -> tuple[UpstreamMcpServer, ...]:
-    """Read every place Claude takes MCP servers from and return them as upstreams.
-
-    Ralph runs Claude with ``--strict-mcp-config``, which makes the generated
-    ``--mcp-config`` the *only* MCP source Claude sees. Every server this
-    function fails to find is therefore deleted from the operator's session
-    rather than re-exposed as a ``ralph_upstream__*`` proxy, so the source list
-    below has to match Claude's own, lowest precedence first:
-
-    1. enabled plugins' ``<plugin-root>/.mcp.json``
-    2. ``~/.claude.json`` -> ``mcpServers`` (user scope)
-    3. ``<workspace>/.mcp.json`` (project scope)
-    4. ``<workspace>/.claude.json``
-    5. ``~/.claude.json`` -> ``projects.<workspace>.mcpServers`` (local scope,
-       where a plain ``claude mcp add`` writes)
-
-    A project-scope server the operator explicitly declined -- recorded in
-    ``~/.claude.json`` under ``projects.<workspace>.disabledMcpjsonServers`` --
-    is dropped from the ``.mcp.json`` contribution ALONE. That list names
-    ``.mcp.json`` entries, so a same-named user-scope or local-scope server is
-    a different server that Claude still runs and Ralph must still proxy.
-
-    Ralph's own entry is dropped first. ``ralph`` is a reserved upstream name
-    and ``normalize_upstream_mcp_servers`` raises on it, so an operator config
-    that already names it -- one written by hand, or copied back from a config
-    Ralph synthesized -- used to abort every Claude invocation instead of being
-    replaced by the live endpoint.
-    """
     servers: dict[str, object] = dict(_enabled_plugin_mcp_servers(workspace_path))
     servers.update(_mcp_servers_from_file(Path.home() / _USER_CONFIG_FILENAME))
     servers.update(_project_scope_mcp_servers(workspace_path))
@@ -131,15 +74,6 @@ def load_existing_claude_upstream_servers(
 
 
 def list_claude_cli_mcp_server_names() -> tuple[str, ...] | None:
-    """Ask the Claude CLI which MCP servers it actually has.
-
-    ``claude mcp list`` is the only source that sees everything Claude sees --
-    including the claude.ai account connectors that exist in no file. It is a
-    subprocess, so it is bounded by a timeout and every failure mode (CLI
-    absent, non-zero exit, hung, unreadable output) returns ``None`` meaning
-    "could not be consulted". Reporting nothing is always preferable to
-    failing an operator's run over a diagnostic.
-    """
     try:
         completed = run_process(
             _CLAUDE_EXECUTABLE,
@@ -157,23 +91,18 @@ def list_claude_cli_mcp_server_names() -> tuple[str, ...] | None:
     return parse_claude_mcp_list_names(completed.stdout)
 
 
-#: Injectable seam for :func:`list_claude_cli_mcp_server_names`. Reassign it to
-#: keep a caller off the locally installed ``claude`` binary.
 claude_cli_mcp_server_lister: Callable[[], tuple[str, ...] | None] = (
     list_claude_cli_mcp_server_names
 )
 
 
 def parse_claude_mcp_list_names(output: str) -> tuple[str, ...]:
-    """Return the server names in ``claude mcp list`` output, in printed order."""
     names: list[str] = []
     for raw_line in output.splitlines():
         line = _ANSI_ESCAPE.sub("", raw_line).strip()
         match = _MCP_LIST_ENTRY.match(line)
         if match is None:
             continue
-        # Narrowed, not cast: the group comes from external CLI output, and
-        # ``audit_cast_policy`` rejects asserting a shape over that.
         matched = match.group("name")
         if not isinstance(matched, str):
             continue
@@ -187,13 +116,6 @@ def claude_mcp_servers_ralph_cannot_proxy(
     cli_server_names: tuple[str, ...] | None,
     discovered: tuple[UpstreamMcpServer, ...],
 ) -> tuple[str, ...]:
-    """Return the servers Claude has that Ralph found no definition for.
-
-    ``--strict-mcp-config`` replaces Claude's own MCP discovery wholesale, so
-    every name in this result is a capability the operator installed and this
-    run does not have. ``None`` for ``cli_server_names`` means the CLI could not
-    be consulted, which is not evidence of a gap.
-    """
     if cli_server_names is None:
         return ()
     proxied = {server.name for server in discovered}
@@ -208,33 +130,16 @@ def _cli_name_as_ralph_alias(cli_server_name: str) -> str:
     return cli_server_name.replace(_ALIAS_UNSAFE_IN_CLI_NAME, "_")
 
 
-#: One-slot memo of ``(workspace key, missing server names)``. A run drives one
-#: workspace, so one slot makes the report a once-per-run notice instead of a
-#: ``claude mcp list`` subprocess on every agent cycle, and it cannot grow.
-#: ``functools.lru_cache`` would say the same thing more briefly but erases the
-#: signature to ``Any``, which mypy rejects under ``disallow_any_expr``.
 _PROXY_REPORT_MEMO: list[tuple[str, tuple[str, ...]] | None] = [None]
 
 
 def reset_claude_mcp_proxy_report() -> None:
-    """Forget the memo so the next report re-probes the Claude CLI."""
     _PROXY_REPORT_MEMO[0] = None
 
 
 def report_claude_mcp_servers_ralph_cannot_proxy(
     workspace_path: Path | None,
 ) -> tuple[str, ...]:
-    """Warn the operator, by name, about the MCP servers this run has taken away.
-
-    Ralph may gate an operator's tools and it may add its own, but it must not
-    quietly delete what they installed. Where the ``ralph_upstream__*`` proxy
-    contract cannot be honoured -- a claude.ai account connector, a session-only
-    ``--plugin-dir`` plugin -- the least Ralph owes them is to say which servers
-    went missing and why.
-
-    The warning is emitted once per run. Call :func:`reset_claude_mcp_proxy_report`
-    to force a fresh probe.
-    """
     memo_key = "" if workspace_path is None else str(workspace_path)
     memoized = _PROXY_REPORT_MEMO[0]
     if memoized is not None and memoized[0] == memo_key:
@@ -260,14 +165,6 @@ def report_claude_mcp_servers_ralph_cannot_proxy(
 
 
 def _project_scope_mcp_servers(workspace_path: Path | None) -> dict[str, object]:
-    """Return ``<workspace>/.mcp.json`` minus the servers the operator declined.
-
-    Claude does not trust a checked-in ``.mcp.json`` on sight: it asks, and
-    records the answer per project in ``~/.claude.json`` as
-    ``enabledMcpjsonServers`` / ``disabledMcpjsonServers``. Re-exposing a
-    declined server as a ``ralph_upstream__*`` proxy would hand the agent the
-    capability the operator refused it.
-    """
     if workspace_path is None:
         return {}
     servers = _mcp_servers_from_file(workspace_path / _MCP_JSON_FILENAME)
@@ -278,7 +175,6 @@ def _project_scope_mcp_servers(workspace_path: Path | None) -> dict[str, object]
 
 
 def _declined_mcpjson_server_names(workspace_path: Path) -> frozenset[str]:
-    """Return ``projects.<workspace>.disabledMcpjsonServers`` from ``~/.claude.json``."""
     entry = _user_config_project_entry(workspace_path)
     if entry is None:
         return frozenset()
@@ -311,7 +207,6 @@ def _mcp_servers_map(config: dict[str, object], path: Path) -> dict[str, object]
 
 
 def _read_json_object(path: Path) -> dict[str, object] | None:
-    """Parse ``path`` as a JSON object, warning rather than failing silently."""
     if not path.exists():
         return None
     try:
@@ -335,12 +230,6 @@ def _read_json_object(path: Path) -> dict[str, object] | None:
 
 
 def _local_scope_mcp_servers(workspace_path: Path | None) -> dict[str, object]:
-    """Return ``~/.claude.json`` -> ``projects.<workspace>.mcpServers``.
-
-    This is where a plain ``claude mcp add`` puts a server: ``--scope`` defaults
-    to ``local``, which is per-project and stored in the user config rather than
-    in the workspace.
-    """
     if workspace_path is None:
         return {}
     entry = _user_config_project_entry(workspace_path)
@@ -350,7 +239,6 @@ def _local_scope_mcp_servers(workspace_path: Path | None) -> dict[str, object]:
 
 
 def _user_config_project_entry(workspace_path: Path) -> tuple[dict[str, object], Path] | None:
-    """Return ``~/.claude.json`` -> ``projects.<workspace>`` and the file it came from."""
     user_config_path = Path.home() / _USER_CONFIG_FILENAME
     config = _read_json_object(user_config_path)
     if config is None:
@@ -367,7 +255,6 @@ def _user_config_project_entry(workspace_path: Path) -> tuple[dict[str, object],
 
 
 def _workspace_config_keys(workspace_path: Path) -> tuple[str, ...]:
-    """Return the keys Claude may have stored this workspace under."""
     literal = str(workspace_path)
     resolved = str(workspace_path.resolve())
     if resolved == literal:
@@ -376,13 +263,6 @@ def _workspace_config_keys(workspace_path: Path) -> tuple[str, ...]:
 
 
 def _enabled_plugin_mcp_servers(workspace_path: Path | None) -> dict[str, object]:
-    """Return the MCP servers shipped by the plugins the operator has enabled.
-
-    A plugin declares them in ``<plugin-root>/.mcp.json`` and Claude exposes
-    them as ``plugin:<plugin>:<server>``. Dropping them is the defect that made
-    Ralph run OpenCode with ``--pure``: a plugin is often what supplies the
-    capability the operator depends on.
-    """
     enabled_keys = _enabled_plugin_keys(workspace_path)
     if not enabled_keys:
         return {}
@@ -398,20 +278,12 @@ def _enabled_plugin_mcp_servers(workspace_path: Path | None) -> dict[str, object
 
 
 def _plugin_server_alias(plugin_name: str, server_name: str) -> str:
-    """Namespace a plugin server the way Claude does, with a tool-name-safe separator.
-
-    Claude calls it ``plugin:<plugin>:<server>``; ``:`` cannot appear in the
-    ``ralph_upstream__<server>__<tool>`` alias Ralph re-exposes it under, so the
-    same namespacing is spelled with ``_``. Without it a plugin's ``playwright``
-    would silently replace the operator's own ``playwright``.
-    """
     safe_plugin = _PLUGIN_ALIAS_UNSAFE.sub("_", plugin_name)
     safe_server = _PLUGIN_ALIAS_UNSAFE.sub("_", server_name)
     return f"plugin_{safe_plugin}_{safe_server}"
 
 
 def _enabled_plugin_keys(workspace_path: Path | None) -> frozenset[str]:
-    """Return the ``<plugin>@<marketplace>`` keys enabled across the settings files."""
     enabled: dict[str, bool] = {}
     for path in _claude_settings_paths(workspace_path):
         config = _read_json_object(path)
@@ -431,7 +303,6 @@ def _enabled_plugin_keys(workspace_path: Path | None) -> frozenset[str]:
 
 
 def _claude_settings_paths(workspace_path: Path | None) -> tuple[Path, ...]:
-    """Return the settings files that record which plugins are enabled."""
     home_settings_dir = Path.home() / _CLAUDE_HOME_DIRNAME
     paths = [home_settings_dir / name for name in _SETTINGS_FILENAMES]
     if workspace_path is not None:
@@ -441,7 +312,6 @@ def _claude_settings_paths(workspace_path: Path | None) -> tuple[Path, ...]:
 
 
 def _installed_plugin_paths() -> dict[str, tuple[Path, ...]]:
-    """Map each installed ``<plugin>@<marketplace>`` key to its install directories."""
     installed_path = (
         Path.home() / _CLAUDE_HOME_DIRNAME / _PLUGINS_DIRNAME / _INSTALLED_PLUGINS_FILENAME
     )

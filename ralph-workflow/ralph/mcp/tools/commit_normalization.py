@@ -1,4 +1,3 @@
-"""Fresh-evidence normalization helpers for commit-message artifact handlers."""
 
 from __future__ import annotations
 
@@ -14,7 +13,6 @@ if TYPE_CHECKING:
 def normalize_commit_submission(
     artifact_type: str, content: str, workspace_root: Path, *, draft_revision: int = 0
 ) -> tuple[str, dict[str, object] | None]:
-    """Normalize once and return the exact receipt audit for that pass."""
     if artifact_type != "commit_message" or not (workspace_root / ".git").exists():
         return content, None
     evidence = _build_evidence(workspace_root)
@@ -38,7 +36,6 @@ def normalize_commit_submission(
 
 
 def normalize_commit_content(artifact_type: str, content: str, workspace_root: Path) -> str:
-    """Compatibility wrapper for callers that need only normalized markdown."""
     normalized, _ = normalize_commit_submission(artifact_type, content, workspace_root)
     return normalized
 
@@ -46,7 +43,6 @@ def normalize_commit_content(artifact_type: str, content: str, workspace_root: P
 def commit_normalization_audit(
     artifact_type: str, content: str, workspace_root: Path
 ) -> dict[str, object] | None:
-    """Compatibility wrapper that returns one fresh normalization audit."""
     try:
         _, audit = normalize_commit_submission(artifact_type, content, workspace_root)
     except ValueError as exc:

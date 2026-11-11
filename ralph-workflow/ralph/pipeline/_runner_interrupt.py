@@ -1,4 +1,3 @@
-"""Keyboard interrupt handling for the pipeline runner."""
 
 from __future__ import annotations
 
@@ -26,10 +25,10 @@ if TYPE_CHECKING:
 
 _DEFAULT_SIGNAL_GETTER = cast(
     "SignalGetter", signal.getsignal
-)  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+)
 _DEFAULT_SIGNAL_SETTER = cast(
     "SignalSetter", signal.signal
-)  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+)
 
 
 def handle_keyboard_interrupt(
@@ -41,32 +40,6 @@ def handle_keyboard_interrupt(
     signal_getter: SignalGetter | None = None,
     signal_setter: SignalSetter | None = None,
 ) -> None:
-    """Gracefully stop tracked children, escalating on a second SIGINT.
-
-    The first SIGINT routes through the dispatcher's ``begin_interrupt``
-    (which injects ``kill_label='invoke:'`` and routes through the
-    label-targeted shutdown). A poll thread monitors the agent's
-    process group for no-progress and escalates to SIGKILL before
-    ``INTERRUPT_HARD_KILL_BUDGET_SECONDS`` elapses.
-
-    The second SIGINT invokes ``dispatcher.force_exit(...)`` against
-    the records still tracked by the process manager. The
-    ``dispatcher`` is idempotent on ``force_exit``, so a third or
-    fourth SIGINT is a no-op.
-
-    The optional ``signal_getter``/``signal_setter`` kwargs are the
-    test seam: production callers omit them and the module defaults
-    (``signal.getsignal``/``signal.signal``) are used; tests pass
-    fakes to assert handler install/restore.
-
-    The optional ``process_manager`` and ``poll_interval_s`` kwargs
-    close the entry-point seam a real Ctrl+C reaches inside the
-    pipeline loop. ``process_manager`` replaces the
-    ``get_process_manager()`` singleton (production callers omit it
-    and the singleton is used; tests inject a fake). ``poll_interval_s``
-    replaces the literal ``0.05`` busy-wait timeout; the default is
-    unchanged from production behavior. See ADR-0001 D5.
-    """
     if dispatcher is not None and monitor_stop is not None:
         raise RuntimeError(
             "handle_keyboard_interrupt: monitor_stop is ignored when dispatcher "
@@ -102,8 +75,6 @@ def handle_keyboard_interrupt(
                 error_log_message="Interrupt controller raised during KeyboardInterrupt",
             )
         except Exception as exc:
-            # Exception not BaseException: KeyboardInterrupt and SystemExit
-            # must propagate. See AGENTS.md and ADR-0001 D6.
             interrupt_error.append(exc)
         finally:
             interrupt_done.set()

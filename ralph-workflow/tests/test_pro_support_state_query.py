@@ -1,5 +1,3 @@
-"""Black-box unit tests for :mod:`ralph.pro_support.state_query`."""
-
 from __future__ import annotations
 
 import dataclasses
@@ -155,14 +153,6 @@ def test_snapshot_metrics_is_a_plain_dict_copy_of_run_metrics(
     assert id(snapshot.metrics) != id(expected)
 
 
-# ``PipelineState`` is a heavy pydantic model with deep ``model_validator``
-# chains. Under heavy shard load the snapshot tests above the
-# ``DEFAULT_TEST_TIMEOUT_SECONDS`` (1 s) SIGALRM set in ``tests/conftest.py``;
-# the default cap is too tight for two ``PipelineState`` constructions
-# back-to-back under the heavy-xdist profile. The marker is the documented
-# per-test override (see ``tests/test_liveness_pa002_properties.py:60`` for
-# the same module-level shape); the underlying snapshot logic and assertions
-# remain unchanged.
 @pytest.mark.timeout_seconds(5)
 def test_snapshot_iteration_sourced_from_outer_progress(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -176,9 +166,6 @@ def test_snapshot_iteration_sourced_from_outer_progress(
     assert snapshot2.iteration == 0
 
 
-# See ``test_snapshot_iteration_sourced_from_outer_progress`` for the
-# rationale on the timeout marker (heavy ``PipelineState`` pydantic model
-# under heavy-xdist shard load).
 @pytest.mark.timeout_seconds(5)
 def test_snapshot_analysis_iteration_sourced_from_loop_iterations(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -193,13 +180,10 @@ def test_snapshot_analysis_iteration_sourced_from_loop_iterations(
 
 
 def _attempt_mutation(snap: PipelineStateSnapshot) -> None:
-    """Attempt to delete an attribute on a frozen snapshot; the
-    frozen-with-slots dataclass raises ``FrozenInstanceError``."""
     delattr(snap, "phase")
 
 
 def _assign_publish(registry: object, fn: object) -> None:
-    """Bind ``fn`` to ``registry.publish`` (typed as object to avoid method-assign)."""
     object.__setattr__(registry, "publish", fn)
 
 

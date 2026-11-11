@@ -1,5 +1,3 @@
-"""Tests for long_content_summary — headline extraction for oversized content."""
-
 from __future__ import annotations
 
 from ralph.display.long_content_summary import (
@@ -11,8 +9,8 @@ from ralph.display.long_content_summary import (
 _LONG = "x" * 5000
 _SHORT = "x" * 100
 
-_MAX_HEADLINE_LEN = 51  # max_chars=50 plus one ellipsis character
-_MAX_CONTENT_SUMMARY_LEN = 201  # max_chars=200 plus one ellipsis character
+_MAX_HEADLINE_LEN = 51
+_MAX_CONTENT_SUMMARY_LEN = 201
 _EXPECTED_2TUPLE = 2
 _EXPECTED_4TUPLE = 4
 
@@ -70,7 +68,7 @@ class TestAiSummaryHook:
         set_ai_summary_hook(hook)
         result = build_ai_summary("x" * 5000, {"RALPH_LONG_CONTENT_AI_SUMMARY": "1"})
         assert result is not None
-        assert len(result) <= AI_SUMMARY_MAX_CHARS + 1  # cap + ellipsis
+        assert len(result) <= AI_SUMMARY_MAX_CHARS + 1
         assert result.endswith("…")
 
     def test_ai_summary_not_invoked_below_threshold(self) -> None:

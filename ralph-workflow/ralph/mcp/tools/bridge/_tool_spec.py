@@ -1,4 +1,3 @@
-"""ToolSpec dataclass."""
 
 from __future__ import annotations
 
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class ToolSpec:
-    """Full registration spec, including lazy import target."""
 
     metadata: ToolMetadata
     module_name: str

@@ -1,4 +1,3 @@
-"""Result contract for one on-demand visual judgement request."""
 
 from __future__ import annotations
 
@@ -7,7 +6,6 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class OnDemandJudgementResult:
-    """The submitted verdict reference or actionable blocker from review."""
 
     verdict_id: str | None = None
     status: str | None = None

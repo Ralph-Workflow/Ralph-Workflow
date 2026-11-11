@@ -1,5 +1,3 @@
-"""Fast wiring contracts for the four auto-integration entry seams."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -21,7 +19,6 @@ if TYPE_CHECKING:
 
 
 def auto_integrate_after_commit(*args: Any, **kwargs: Any) -> Any:
-    """Test-only wrapper that skips real CAS backoff sleeps."""
     kwargs.setdefault("sleep", lambda _seconds: None)
     kwargs.setdefault("jitter", lambda: 0.0)
     return _auto_integrate_after_commit(*args, **kwargs)
@@ -49,7 +46,6 @@ def _outcome() -> RebaseState:
 def test_startup_seam_returns_injected_integration_outcome(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """Startup forwards its config, scope, state, and resolver contract."""
     expected = _outcome()
     integration = MagicMock(return_value=expected)
     monkeypatch.setattr(auto_integrate_planning, "integrate_before_planning", integration)
@@ -88,7 +84,6 @@ def test_startup_seam_returns_injected_integration_outcome(
 def test_startup_seam_forwards_restored_strategy_history(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """Only the durable history-aware rung reaches both resolver builders."""
     integration = MagicMock(return_value=None)
     conflict_builder = MagicMock(return_value=object())
     stop_builder = MagicMock(return_value=object())
@@ -118,7 +113,6 @@ def test_startup_seam_forwards_restored_strategy_history(
 def test_phase_transition_seam_returns_injected_outcome(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """A boundary event reaches the integration adapter exactly once."""
     expected = _outcome()
     integration = MagicMock(return_value=expected)
     monkeypatch.setattr(runner, "auto_integrate_on_phase_transition", integration)
@@ -142,7 +136,6 @@ def test_phase_transition_seam_returns_injected_outcome(
 def test_fan_out_join_threads_injected_outcome_into_state(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """The coordinator join preserves state and replaces only rebase outcome."""
     expected = _outcome()
     integration = MagicMock(return_value=expected)
     monkeypatch.setattr(runner, "auto_integrate_on_phase_transition", integration)

@@ -1,5 +1,3 @@
-"""Tests for the deterministic project-policy validator."""
-
 from __future__ import annotations
 
 import functools
@@ -25,7 +23,6 @@ def _stack_with(
 
 @functools.cache
 def _complete_policy_body(*, filename: str, lang: str | None = None) -> str:
-    """Build a policy body that satisfies every structural check (no placeholder)."""
     lines = [
         markers.POLICY_SCHEMA_MARKER,
         f"{markers.POLICY_ID_PREFIX} {filename} -->",
@@ -38,9 +35,6 @@ def _complete_policy_body(*, filename: str, lang: str | None = None) -> str:
         for line in starters.read_starter(filename).splitlines()
         if line.startswith(markers.FACT_MARKER)
     ]
-    # Iterate the required headings for this filename and emit each
-    # section with the right shape (so the v5 guard-inventory check
-    # passes and so every starter-specific heading remains satisfied).
     for heading in markers.REQUIRED_HEADINGS.get(filename, ()):
         lines.append(f"## {heading}")
         if heading == "Research basis":
@@ -57,12 +51,6 @@ def _complete_policy_body(*, filename: str, lang: str | None = None) -> str:
         elif heading == "Bypass detection":
             lines.extend(("Real content.", "RALPH-COMMAND: make bypass-audit", ""))
         elif heading == markers.GUARD_INVENTORY_HEADING.removeprefix("## "):
-            # v5: every applicable starter (core and conditional) carries
-            # a Guard inventory table with the pinned header and at
-            # least one data row whose Protected outcome names a real
-            # detector observation (so the deterministic claim-scope
-            # substring predicate passes). The sixth cell is the
-            # ``Claim scope`` field required by B7.
             lines.extend(
                 (
                     "",
@@ -76,9 +64,6 @@ def _complete_policy_body(*, filename: str, lang: str | None = None) -> str:
             lines.extend(("Real content.", ""))
     lines.append("")
     lines.extend(facts)
-    # Every complete policy must declare at least one resolved project
-    # fact so the validator's no-fact gate cannot be silently satisfied by
-    # the surrounding structural completeness.
     lines.append(f"RALPH-FACT: {filename}: path = docs/ralph-workflow-policy/{filename}")
     lines.append("RALPH-FACT: owner = test-owner")
     lines.append("")
@@ -188,7 +173,6 @@ def _seeded_core_files() -> tuple[tuple[str, str], ...]:
 
 
 def _seed_all_core_complete(workspace: MemoryWorkspace, stack: ProjectStack) -> None:
-    """Seed every core + required-conditional file as fully complete."""
     workspace.mkdirs(markers.CANONICAL_DIR.rstrip("/"))
     for path, content in _seeded_core_files():
         workspace.write(path, content)
@@ -245,7 +229,6 @@ def test_missing_core_file_emits_finding(ready_workspace: MemoryWorkspace) -> No
 
 
 def test_heading_missing_emits_finding(ready_workspace: MemoryWorkspace) -> None:
-    # Remove one heading
     path = f"{markers.CANONICAL_DIR}testing-policy.md"
     content = ready_workspace.read(path)
     content = content.replace("## Purpose and scope", "## Different heading")
@@ -267,7 +250,6 @@ def test_placeholder_token_emits_finding(ready_workspace: MemoryWorkspace) -> No
 def test_missing_command_and_inapplicable_emits_finding(ready_workspace: MemoryWorkspace) -> None:
     path = f"{markers.CANONICAL_DIR}testing-policy.md"
     content = ready_workspace.read(path)
-    # Strip the RALPH-COMMAND line
     lines = content.splitlines()
     lines = [line for line in lines if not line.startswith(markers.COMMAND_MARKER)]
     ready_workspace.write(path, "\n".join(lines) + "\n")
@@ -278,9 +260,6 @@ def test_missing_command_and_inapplicable_emits_finding(ready_workspace: MemoryW
 
 
 def test_no_completion_marker_is_required_for_readiness(ready_workspace: MemoryWorkspace) -> None:
-    """Completion is the absence of unresolved markers, not a certification
-    comment: a fully-resolved project reaches READY without any completion
-    marker, and the validator never emits a completion finding."""
     findings = validators.validate_readiness(ready_workspace, _stack_with())
     assert findings == []
     for filename in markers.CORE_POLICY_FILES:
@@ -292,7 +271,6 @@ def test_no_completion_marker_is_required_for_readiness(ready_workspace: MemoryW
 def test_per_language_coverage_required_for_secondary_language(
     ready_workspace: MemoryWorkspace,
 ) -> None:
-    # Stack has Python + TypeScript but neither policy declares TypeScript.
     stack = _stack_with(primary="Python", secondary=["TypeScript"])
     findings = validators.validate_readiness(ready_workspace, stack)
     ids = {f.requirement_id for f in findings}
@@ -335,7 +313,6 @@ def test_migration_candidate_resolution(
 def test_citation_field_missing_emits_finding(ready_workspace: MemoryWorkspace) -> None:
     path = f"{markers.CANONICAL_DIR}testing-policy.md"
     content = ready_workspace.read(path)
-    # Replace the citation block to be missing the URL field.
     content = content.replace("http: https://example.com", "url: missing")
     ready_workspace.write(path, content)
     findings = validators.validate_readiness(ready_workspace, _stack_with())
@@ -346,15 +323,6 @@ def test_citation_field_missing_emits_finding(ready_workspace: MemoryWorkspace) 
 
 
 def _insert_citation_into_research_basis(ws: MemoryWorkspace, path: str, addition: str) -> None:
-    """Insert a citation block inside the ``## Research basis`` section.
-
-    The validator's :func:`_citation_blocks` helper slices the file
-    between ``## Research basis`` and the next H2 heading. Appending
-    the new block at the END of the file places it past the next
-    H2 and the validator never sees it; the helpers below insert
-    the block immediately after the existing first citation block,
-    still inside the Research basis section.
-    """
     content = ws.read(path)
     lines = content.splitlines()
     start_idx: int | None = None
@@ -363,12 +331,8 @@ def _insert_citation_into_research_basis(ws: MemoryWorkspace, path: str, additio
             start_idx = idx + 1
             break
     if start_idx is None:
-        # No Research basis section: append one at the end.
         ws.write(path, content.rstrip("\n") + "\n\n## Research basis\n\n" + addition.lstrip())
         return
-    # Find the end of the first citation block: walk forward until a
-    # blank line followed by either another citation (starts with
-    # ``-``) or the next H2. Insert just before the H2 boundary.
     end_idx = len(lines)
     for idx in range(start_idx, len(lines)):
         line = lines[idx]
@@ -433,14 +397,12 @@ def test_citation_explicit_path_variants(
 def test_design_system_required_emits_design_system_finding(
     ready_workspace: MemoryWorkspace,
 ) -> None:
-    # Stack has a UI framework but no design-system policy file.
     stack = _stack_with(secondary=["CSS"])
     findings = validators.validate_readiness(ready_workspace, stack)
     assert any("design-system-policy.md" in f.path for f in findings)
 
 
 def test_starter_content_fails_validation_until_customized() -> None:
-    """A freshly-seeded starter has a banner and placeholders -> failing."""
     ws = MemoryWorkspace()
     starters.seed_starter_into(ws, "testing-policy.md")
     findings = validators.validate_readiness(ws, _stack_with())
@@ -451,13 +413,6 @@ def test_starter_content_fails_validation_until_customized() -> None:
 def test_removed_fact_lines_emits_no_fact_finding_per_policy(
     ready_workspace: MemoryWorkspace,
 ) -> None:
-    """AC-05/AC-08: removing every RALPH-FACT line from a complete policy MUST
-    surface a stable :data:`RWP-PLACEHOLDER:<filename>:no-fact` finding and
-    the project MUST NOT reach READY. This is the regression for the
-    analyzer-found defect where a fully-structured file with no
-    machine-checkable project facts still validated as complete.
-    """
-    # Strip every RALPH-FACT line from every core policy.
     stripped_paths: list[str] = []
     for filename in markers.CORE_POLICY_FILES:
         path = f"{markers.CANONICAL_DIR}{filename}"
@@ -468,9 +423,6 @@ def test_removed_fact_lines_emits_no_fact_finding_per_policy(
     findings = validators.validate_readiness(ready_workspace, _stack_with())
     ids_by_path = {(f.path, f.requirement_id) for f in findings}
     for path in stripped_paths:
-        # Stable id suffix ``:no-fact`` so the user can grep for it; the
-        # analyzer's repro produced exactly this missing finding for each
-        # affected policy.
         assert (path, f"{markers.ID_PLACEHOLDER}:{path.split('/')[-1]}:no-fact") in ids_by_path, (
             f"missing RWP-PLACEHOLDER:no-fact finding for {path}; "
             f"observed ids: {[i for p, i in ids_by_path if p == path]}"
@@ -478,40 +430,21 @@ def test_removed_fact_lines_emits_no_fact_finding_per_policy(
 
 
 def test_empty_general_inapplicable_emits_finding(ready_workspace: MemoryWorkspace) -> None:
-    """AC-06: an empty ``RALPH-INAPPLICABLE:`` line at file scope MUST be
-    rejected by the validator and emit a stable unusable-command finding
-    (id suffix ``:empty-inapplicable-N``).
-    """
     path = f"{markers.CANONICAL_DIR}testing-policy.md"
     content = ready_workspace.read(path)
-    # Replace the runnable command with an empty inapplicable marker so the
-    # file no longer declares a runnable command and the empty inapplicable
-    # marker should fail the empty-inapplicable check.
     lines = [line for line in content.splitlines() if not line.startswith(markers.COMMAND_MARKER)]
     lines.append("RALPH-INAPPLICABLE:")
     ready_workspace.write(path, "\n".join(lines) + "\n")
     findings = validators.validate_readiness(ready_workspace, _stack_with())
     ids = {f.requirement_id for f in findings}
-    # Stable id suffix marks the offending empty-inapplicable line.
     assert any(
         i.startswith(f"{markers.ID_CMD_UNUSABLE}:testing-policy.md:empty-inapplicable-")
         for i in ids
     ), f"missing empty-inapplicable finding; observed: {ids}"
-    # The file also lost its RALPH-COMMAND; the missing-command finding
-    # must still fire so the user sees the dual defect.
     assert any(i == f"{markers.ID_CMD_UNUSABLE}:testing-policy.md:missing" for i in ids)
 
 
 def test_empty_per_language_inapplicable_emits_finding(ready_workspace: MemoryWorkspace) -> None:
-    """AC-06: an empty ``RALPH-INAPPLICABLE:`` line inside a per-language
-    block of typecheck/lint policies MUST be rejected with a stable
-    ``:empty-inapplicable`` language-coverage finding, regardless of
-    whether the same block also declares a real command.
-    """
-    # Append an empty inapplicable declaration to the existing Python block
-    # in typechecking-policy.md. The block already has a real command, so
-    # only the empty-inapplicable gate is expected to fire (no
-    # :empty-language finding, which is the *absence* gate).
     path = f"{markers.CANONICAL_DIR}typechecking-policy.md"
     content = ready_workspace.read(path)
     ready_workspace.write(path, content + "\nRALPH-INAPPLICABLE:\n")
@@ -554,7 +487,6 @@ def test_empty_per_language_inapplicable_emits_finding(ready_workspace: MemoryWo
 def test_managed_block_marker_variants_emit_finding(
     ready_workspace: MemoryWorkspace, agents_md_content: str, expected_suffix: str
 ) -> None:
-    """AGENTS.md marker errors (duplicate, unmatched, misordered, missing) emit stable findings."""
     ready_workspace.write(markers.AGENTS_MD, agents_md_content)
     findings = validators.validate_readiness(ready_workspace, _stack_with())
     ids = {f.requirement_id for f in findings}
@@ -599,7 +531,6 @@ def test_canonical_dir_reference_location(
 def test_verification_bypass_command_variants_emit_finding(
     ready_workspace: MemoryWorkspace, replacement_command: str, expected_suffix: str
 ) -> None:
-    """An invalid RALPH-COMMAND under 'Bypass detection' must emit the appropriate bypass-cmd finding."""
     path = f"{markers.CANONICAL_DIR}verification-policy.md"
     content = ready_workspace.read(path)
     lines = content.splitlines()
@@ -630,16 +561,6 @@ def test_verification_bypass_command_variants_emit_finding(
 def test_unapproved_command_at_normal_policy_scope_emits_finding(
     ready_workspace: MemoryWorkspace,
 ) -> None:
-    """Regression (analysis feedback): a non-empty, placeholder-free
-    RALPH-COMMAND whose first whitespace-separated token is NOT on the
-    :data:`markers.APPROVED_GATE_TOOLS` allowlist MUST be rejected by the
-    validator at normal policy scope (i.e. ANY RALPH-COMMAND line in ANY
-    policy file). The previously buggy check accepted arbitrary text such
-    as ``definitely-not-a-command`` and produced ``[]`` findings for an
-    ostensibly-ready project, violating the executor-gate contract. The
-    validator must now emit a stable
-    ``RWP-CMD:<filename-with-no-allowlist-cmd>:unapproved-cmd-N`` finding.
-    """
     path = f"{markers.CANONICAL_DIR}testing-policy.md"
     content = ready_workspace.read(path)
     lines = content.splitlines()
@@ -656,7 +577,6 @@ def test_unapproved_command_at_normal_policy_scope_emits_finding(
         f"missing unapproved-cmd-1 finding at normal policy scope for "
         f"'definitely-not-a-command'; observed: {sorted(ids)}"
     )
-    # Project must NOT be ready.
     assert any(f.path == path for f in findings)
 
 
@@ -713,10 +633,6 @@ def test_guard_inventory_pipe_grammar_and_empty_fields(
     findings = _content_checks._check_guard_inventory(
         content, "docs/ralph-workflow-policy/testing-policy.md", "testing-policy.md"
     )
-    # The empty-Claim-scope cell maps to the stable v5 contract id
-    # ``RWP-INVENTORY:CLAIM-SCOPE-MISSING`` (no filename/row
-    # suffix); every other finding keeps the per-row
-    # ``RWP-INVENTORY:<file>:<suffix>`` shape.
     if expected_suffix == "CLAIM-SCOPE-MISSING":
         expected_id = markers.CLAIM_SCOPE_MISSING_FINDING_ID
     else:

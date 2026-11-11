@@ -1,4 +1,3 @@
-"""Context manager that suppresses OSError on file descriptor close."""
 
 from __future__ import annotations
 

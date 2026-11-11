@@ -1,5 +1,3 @@
-"""Machine-readable validation state for markdown artifact tools."""
-
 from __future__ import annotations
 
 import json

@@ -1,5 +1,3 @@
-"""Focused CLI command tests for commit, diagnose, init, and option helpers."""
-
 from __future__ import annotations
 
 from io import StringIO

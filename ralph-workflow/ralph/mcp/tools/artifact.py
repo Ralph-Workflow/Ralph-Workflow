@@ -1,9 +1,3 @@
-"""Shared dependencies for markdown artifact submission.
-
-JSON artifact authoring was removed.  The markdown handlers own the public MCP
-surface; this module deliberately keeps only the small persistence seam they
-share with canonical submission.
-"""
 
 from __future__ import annotations
 
@@ -30,7 +24,6 @@ def _noop_now_iso() -> str:
 
 @dataclass(frozen=True)
 class ArtifactHandlerDeps:
-    """Injectable filesystem and timestamp dependencies for artifact writes."""
 
     backend: FileBackend = DEFAULT_FILE_BACKEND
     now_iso: Callable[[], str] = _noop_now_iso
@@ -39,7 +32,6 @@ class ArtifactHandlerDeps:
 
     @property
     def artifact_persistence(self) -> ArtifactPersistence:
-        """Return the matching persistence bundle for compatibility callers."""
         return ArtifactPersistence(backend=self.backend, now_iso=self.now_iso)
 
 
@@ -74,10 +66,9 @@ def _workspace_root(workspace: WorkspaceLike) -> Path:
 
 
 def _resolve_artifact_dir(session: CoordinationSessionLike, workspace: WorkspaceLike) -> Path:
-    """Use a worker-specific directory when a parallel worker has one."""
     worker = cast(
         "Path | None", getattr(session, "worker_artifact_dir", None)
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     return worker if worker is not None else _artifact_dir(workspace)
 
 
@@ -96,7 +87,6 @@ def _session_drain(session: CoordinationSessionLike) -> str | None:
 
 
 def _resolve_history_enabled(artifact_type: str, workspace_root: Path, drain: str | None) -> bool:
-    """Read the opt-in history policy without making submission depend on policy I/O."""
     del artifact_type
     try:
         policy = load_policy(workspace_root / ".agent")

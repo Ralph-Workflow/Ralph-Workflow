@@ -1,5 +1,3 @@
-"""Transactional durability regressions for canonical artifact submission."""
-
 from __future__ import annotations
 
 import sqlite3

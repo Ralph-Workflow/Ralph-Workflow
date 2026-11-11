@@ -1,4 +1,3 @@
-"""Helpers for platform and environment detection."""
 
 from __future__ import annotations
 
@@ -20,7 +19,6 @@ if TYPE_CHECKING:
 
 
 class DetectPlatformKwargs(TypedDict, total=False):
-    """Keyword arguments accepted by detect_platform for dependency injection."""
 
     system_name: str | None
     machine_name: str | None
@@ -48,7 +46,6 @@ def _normalize(value: str | None) -> str:
 
 
 def detect_operating_system(system_name: str | None = None) -> OperatingSystem:
-    """Normalize ``platform.system()`` into a stable OS enum."""
     normalized = _normalize(system_name or platform.system())
     if normalized == "darwin":
         return OperatingSystem.MACOS
@@ -60,7 +57,6 @@ def detect_operating_system(system_name: str | None = None) -> OperatingSystem:
 
 
 def detect_architecture(machine_name: str | None = None) -> Architecture:
-    """Normalize ``platform.machine()`` into a stable architecture enum."""
     normalized = _normalize(machine_name or platform.machine())
     if normalized in {"x86_64", "amd64"}:
         return Architecture.X86_64
@@ -87,7 +83,6 @@ def detect_environment(
     cgroup_text: str | None = None,
     proc_root: Path = Path("/proc"),
 ) -> EnvironmentInfo:
-    """Detect runtime environment markers such as CI, containers, and WSL."""
     env_map = env or os.environ
     detected_os = os_name or detect_operating_system()
     normalized_release = _normalize(release or platform.release())
@@ -124,7 +119,6 @@ def detect_package_manager(
     search_path: str | None = None,
     command_lookup: Callable[[str, str | None], bool] | None = None,
 ) -> str | None:
-    """Detect the first supported package manager available on the current OS."""
     detected_os = os_name or detect_operating_system()
     lookup = command_lookup or _default_command_lookup
 
@@ -135,7 +129,6 @@ def detect_package_manager(
 
 
 def detect_platform(**kwargs: Unpack[DetectPlatformKwargs]) -> PlatformInfo:
-    """Build a complete platform profile for the current runtime."""
     system_name = kwargs.get("system_name")
     machine_name = kwargs.get("machine_name")
     env = kwargs.get("env")
@@ -162,5 +155,4 @@ def detect_platform(**kwargs: Unpack[DetectPlatformKwargs]) -> PlatformInfo:
 
 
 def current_platform() -> PlatformInfo:
-    """Return the detected platform for the current runtime."""
     return detect_platform()

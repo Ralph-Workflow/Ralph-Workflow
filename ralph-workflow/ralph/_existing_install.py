@@ -1,4 +1,3 @@
-"""Value object for one detected global Ralph installation."""
 
 from __future__ import annotations
 
@@ -13,7 +12,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class ExistingInstall:
-    """A global executable and the installation type that owns it."""
 
     executable: Path
     package_file: Path
@@ -21,7 +19,6 @@ class ExistingInstall:
 
     @property
     def remove_command(self) -> tuple[str, ...] | None:
-        """Return the safe package-manager removal command, when one exists."""
         if self.kind is InstallKind.PIPX:
             return ("pipx", "uninstall", "ralph-workflow")
         if self.kind is InstallKind.UV_TOOL:

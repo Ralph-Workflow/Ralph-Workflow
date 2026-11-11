@@ -1,12 +1,3 @@
-"""Three-valued contract for every git probe on the integration dispatch path.
-
-A probe that timed out, was killed, lost a lock, or stalled on I/O answers
-UNKNOWN.  It must never mint a blocking reason, dispatch the conflict
-resolver, or leave "unresolved" persisted behind it -- and a genuinely
-conflicted tree must still be blocked, so the guarantee is a typed
-distinction rather than a blanket loosening.
-"""
-
 from __future__ import annotations
 
 import subprocess
@@ -45,7 +36,7 @@ if TYPE_CHECKING:
 
 
 class _ProbeError(Exception):
-    """Stand-in for a killed, timed-out, or lock-blocked git probe."""
+    pass
 
 
 def _raises(exc: Exception) -> Callable[[Path], object]:
@@ -64,7 +55,6 @@ def _nonzero(_args: object, **_kwargs: object) -> GitRunResult:
 
 
 def _assert_unknown(verdict: IntegrationResolutionVerdict) -> None:
-    """No blocking reason, no resolver, nothing persisted, dispatch still open."""
     assert verdict.integration_state is IntegrationState.UNKNOWN
     assert verdict.status is RESOLVED
     assert verdict.dispatch_allowed is True
@@ -76,7 +66,6 @@ def _assert_unknown(verdict: IntegrationResolutionVerdict) -> None:
 
 
 def test_timing_out_porcelain_probe_is_unknown_not_blocking(tmp_path: Path) -> None:
-    """A probe that raised is UNKNOWN: dispatchable, unblocked, resolver-free."""
     state = RebaseState()
     verdict = inspect_integration_resolution(
         tmp_path,
@@ -94,7 +83,6 @@ def test_timing_out_porcelain_probe_is_unknown_not_blocking(tmp_path: Path) -> N
 
 
 def test_unreadable_porcelain_exit_is_unknown(tmp_path: Path) -> None:
-    """A non-zero git exit is the same UNKNOWN, not a proven conflict."""
     verdict = inspect_integration_resolution(
         tmp_path,
         RebaseState(),
@@ -108,7 +96,6 @@ def test_unreadable_porcelain_exit_is_unknown(tmp_path: Path) -> None:
 
 
 def test_timing_out_merge_state_read_is_unknown_not_blocking(tmp_path: Path) -> None:
-    """A raised merge-state probe must not become "merge is in progress"."""
     verdict = inspect_integration_resolution(
         tmp_path,
         RebaseState(),
@@ -122,7 +109,6 @@ def test_timing_out_merge_state_read_is_unknown_not_blocking(tmp_path: Path) -> 
 
 
 def test_merge_state_unknown_verdict_is_unknown_not_blocking(tmp_path: Path) -> None:
-    """``MERGE_STATE_UNKNOWN`` used to be reported as an unreadable merge."""
     verdict = inspect_integration_resolution(
         tmp_path,
         RebaseState(),
@@ -149,7 +135,6 @@ def test_timing_out_rebase_state_read_is_unknown_not_blocking(tmp_path: Path) ->
 
 
 def test_proven_block_outranks_a_failed_probe(tmp_path: Path) -> None:
-    """An unreadable probe beside a proven conflict still blocks."""
     verdict = inspect_integration_resolution(
         tmp_path,
         RebaseState(),
@@ -166,7 +151,6 @@ def test_proven_block_outranks_a_failed_probe(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("porcelain_code", ("UU", "AA", "DD", "AU", "UD", "DU", "UA"))
 def test_genuinely_conflicted_tree_is_still_blocked(tmp_path: Path, porcelain_code: str) -> None:
-    """Guard against over-correction: a real conflict keeps its typed kind."""
     verdict = inspect_integration_resolution(
         tmp_path,
         RebaseState(),
@@ -222,7 +206,6 @@ def test_active_rebase_still_blocks_with_its_own_kind(tmp_path: Path) -> None:
 def test_timing_out_unmerged_paths_query_is_unknown_not_a_conflict(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A broken repository is UNKNOWN, never reported as a conflicted path."""
     monkeypatch.setattr("ralph.git.merge.run_git", _timeout)
 
     observed = observe_unmerged_paths(tmp_path)
@@ -235,7 +218,6 @@ def test_timing_out_unmerged_paths_query_is_unknown_not_a_conflict(
 def test_failed_unmerged_paths_query_never_reaches_the_dispatch_verdict(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The failure marker stays out of the blocking reasons it used to enter."""
     monkeypatch.setattr("ralph.git.merge.run_git", _nonzero)
 
     verdict = inspect_integration_resolution(
@@ -253,13 +235,6 @@ def test_failed_unmerged_paths_query_never_reaches_the_dispatch_verdict(
 def test_landed_durable_receipt_does_not_outrank_live_git_facts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A receipt whose landing the target already carries is stale evidence.
-
-    The receipt names an integrated feature SHA and the integration target
-    already points at exactly that SHA, so the only work it describes has
-    demonstrably happened. Live Git facts decide, and the dispatch gate
-    opens even though the receipt is still on disk.
-    """
     record = IntegrationRecord(
         phase="integrated",
         target="main",
@@ -328,7 +303,6 @@ def test_landed_durable_receipt_does_not_outrank_live_git_facts(
 def test_unproven_receipts_still_own_dispatch(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record: IntegrationRecord
 ) -> None:
-    """Only a positive proof retires a receipt; everything else keeps owning."""
     monkeypatch.setattr(
         "ralph.pipeline.auto_integrate_record.read_record_outcome",
         lambda *_args, **_kwargs: RecordReadOutcome(
@@ -354,7 +328,6 @@ def test_unproven_receipts_still_own_dispatch(
 
 
 def test_durable_resolution_exhaustion_outranks_an_unreadable_tree(tmp_path: Path) -> None:
-    """An exhausted chain is a recorded fact, not an environmental failure."""
     state = RebaseState(
         resolution_exhausted=True, resolution_exhaustion_reason="all candidates failed"
     )

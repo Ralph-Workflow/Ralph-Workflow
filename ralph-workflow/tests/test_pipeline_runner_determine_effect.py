@@ -1,5 +1,3 @@
-"""Tests for ralph/pipeline/runner.py — pipeline runner."""
-
 from __future__ import annotations
 
 from functools import lru_cache
@@ -50,11 +48,11 @@ DEVELOPER_ITERATIONS = 5
 REVIEWER_PASSES = 2
 SECOND_ITERATION = 2
 INTERRUPT_EXIT_CODE = 130
-_TRUNCATED_TEXT_MAX = runner_module.MAX_TEXT_LENGTH + 1  # content + ellipsis
-_TRUNCATED_RESULT_BRIEF_MAX = runner_module.MAX_TOOL_RESULT_BRIEF + 1  # content + ellipsis
-_TRUNCATED_METADATA_MAX = runner_module.MAX_METADATA_SUMMARY_LENGTH + 1  # content + ellipsis
+_TRUNCATED_TEXT_MAX = runner_module.MAX_TEXT_LENGTH + 1
+_TRUNCATED_RESULT_BRIEF_MAX = runner_module.MAX_TOOL_RESULT_BRIEF + 1
+_TRUNCATED_METADATA_MAX = runner_module.MAX_METADATA_SUMMARY_LENGTH + 1
 _AVAILABLE_WIDTH_FLOOR = 40
-_TRUNCATE_RESULT_LEN = 6  # 5 chars + 1 ellipsis char
+_TRUNCATE_RESULT_LEN = 6
 pytestmark = pytest.mark.timeout_seconds(5)
 
 
@@ -65,13 +63,6 @@ def _load_default_policy_bundle() -> PolicyBundle:
 
 
 def _legacy_fan_out_policy_bundle() -> PolicyBundle:
-    """Bundle that opts into the legacy ``ralph_fan_out`` dispatch mode.
-
-    The bundled default in ``ralph/policy/defaults/pipeline.toml`` sets
-    ``dispatch_mode = 'agent_subagents'`` on the development phase, so
-    the existing routing tests that assert ``FanOutEffect`` must opt
-    into the legacy path explicitly on their policy fixture.
-    """
     bundle = _load_default_policy_bundle()
     dev_phase = bundle.pipeline.phases["development"]
     assert dev_phase.parallelization is not None
@@ -363,7 +354,6 @@ class TestDetermineEffect:
         assert {u.unit_id for u in effect.work_units} == {"unit-a", "unit-b"}
 
     def test_development_phase_with_single_work_unit_uses_invoke_agent_effect(self) -> None:
-        """Single work unit must not trigger fan-out — fan-out requires >=2 units."""
         bundle = _load_default_policy_bundle()
         state = PipelineState(
             phase="development",

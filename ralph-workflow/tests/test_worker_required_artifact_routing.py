@@ -1,5 +1,3 @@
-"""Worker completion must resolve fallback evidence in the worker namespace."""
-
 from pathlib import Path
 
 from ralph.phases.required_artifacts import RequiredArtifact

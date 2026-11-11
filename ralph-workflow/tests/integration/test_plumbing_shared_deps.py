@@ -1,13 +1,3 @@
-"""Integration test verifying plumbing commands use the shared PipelineDeps path.
-
-Both ``commit_plumbing`` and ``smoke_plumbing`` accept an injectable
-``PipelineDeps`` bundle and use ``pipeline_deps.bridge_factory`` to create
-their session bridge. They also forward the same dependency bundle to the
-shared ``execute_agent_effect`` execution core. These tests exercise both
-plumbing commands with fake collaborators and confirm that no real bridge
-or subprocess is started.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -47,7 +37,6 @@ def _fake_display_context() -> DisplayContext:
 
 
 def _make_mixed_commit_chain_config() -> CommitChainConfig:
-    """A commit chain whose fallback agent is inline-image restricted."""
     registry = AgentRegistry()
     registry.register(
         "claude-headless",
@@ -106,9 +95,6 @@ def _fake_commit_prompt_for_opencode(
 
 
 def _exercise_fake_executor_seam(agent_name: str) -> None:
-    """Run a seeded ``FakeAgentExecutor`` to prove the fake agent boundary
-    is available in a plumbing integration test.
-    """
     unit = WorkUnit(
         unit_id=agent_name,
         description="plumbing integration work",
@@ -135,10 +121,6 @@ def _exercise_fake_executor_seam(agent_name: str) -> None:
 def test_commit_plumbing_uses_shared_pipeline_deps_path(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """``run_commit_plumbing`` builds deps via the shared factory and forwards
-    the same bundle to ``execute_agent_effect`` through
-    ``PipelineDeps.bridge_factory``.
-    """
     workspace_root = Path("/workspace")
     display_context = _fake_display_context()
     bridge = MagicMock()
@@ -222,8 +204,6 @@ def test_commit_plumbing_uses_shared_pipeline_deps_path(
         agents_policy=_make_commit_chain_config().agents_policy,
         session_id_prefix="commit",
         model_identity=None,
-        # The commit session is tagged with its chain's transport so the
-        # multimodal delivery guards are not blind on this path.
         transport=AgentTransport.CLAUDE,
     )
     assert bridge.shutdown.call_count == 1
@@ -234,14 +214,6 @@ def test_commit_plumbing_uses_shared_pipeline_deps_path(
 def test_commit_bridge_is_tagged_with_the_restricted_chain_transport(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """A restricted agent anywhere in the chain tags the whole session.
-
-    One bridge serves the entire commit chain but is built before the
-    chain is walked, so a mixed chain has no single correct transport.
-    The restricted one wins: degrading a capable agent to a resource
-    reference is harmless, while handing a restricted agent an inline
-    image kills its turn.
-    """
     workspace_root = Path("/workspace")
     display_context = _fake_display_context()
     bridge = MagicMock()
@@ -325,8 +297,6 @@ def test_commit_bridge_is_tagged_with_the_restricted_chain_transport(
         agents_policy=_make_mixed_commit_chain_config().agents_policy,
         session_id_prefix="commit",
         model_identity=None,
-        # The commit session is tagged with its chain's transport so the
-        # multimodal delivery guards are not blind on this path.
         transport=AgentTransport.CODEX,
     )
     assert bridge.shutdown.call_count == 1
@@ -335,8 +305,6 @@ def test_commit_bridge_is_tagged_with_the_restricted_chain_transport(
 
 
 class _FakeOutputPath(Path):
-    """Path stand-in that avoids real filesystem I/O for the smoke output file."""
-
     def exists(self) -> bool:
         return True
 
@@ -347,10 +315,6 @@ class _FakeOutputPath(Path):
 def test_commit_default_bridge_forwards_model_identity(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """The default commit bridge wrapper forwards the injected ``model_identity``
-    to ``start_commit_bridge`` so the commit plumbing path preserves model
-    context the same way the main pipeline does.
-    """
     workspace_root = Path("/workspace")
     display_context = _fake_display_context()
     model_identity = MultimodalModelIdentity(provider="claude", model_id="sonnet")
@@ -454,10 +418,6 @@ def test_commit_default_bridge_forwards_model_identity(
 def test_smoke_plumbing_uses_shared_pipeline_deps_path(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """``run_smoke_plumbing`` creates the bridge through the injected
-    ``PipelineDeps.bridge_factory`` and forwards the same bundle to
-    ``execute_agent_effect``.
-    """
     workspace = MemoryWorkspace()
     workspace.write("PROMPT.md", "smoke prompt")
     workspace_root = Path("/workspace")
@@ -563,10 +523,6 @@ def test_smoke_plumbing_uses_shared_pipeline_deps_path(
 def test_commit_plumbing_resolves_display_context_from_pipeline_deps(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """When no separate ``display_context`` is supplied, commit plumbing falls
-    back to the one inside the injected ``PipelineDeps`` bundle, and it does
-    not discard an injected ``artifact_requirements_resolver``.
-    """
     workspace_root = Path("/workspace")
     deps_display_context = _fake_display_context()
     custom_resolver = MagicMock(return_value=None)
@@ -641,9 +597,6 @@ def test_commit_plumbing_resolves_display_context_from_pipeline_deps(
 def test_smoke_plumbing_resolves_display_context_from_pipeline_deps(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """When no separate ``display_context`` is supplied, smoke plumbing falls
-    back to the one inside the injected ``PipelineDeps`` bundle.
-    """
     workspace = MemoryWorkspace()
     workspace.write("PROMPT.md", "smoke prompt")
     workspace_root = Path("/workspace")
@@ -750,8 +703,6 @@ def test_smoke_plumbing_resolves_display_context_from_pipeline_deps(
 
 
 class _RecordingPipelineFactoryForSharedDeps:
-    """Conforms to ``PipelineFactory`` and records every ``build`` call."""
-
     def __init__(self, deps: PipelineDeps) -> None:
         self._deps = deps
         self.calls: list[dict[str, object]] = []
@@ -788,10 +739,6 @@ def _make_fake_smoke_registry() -> object:
 
     class _FakeCatalog:
         def get(self, _name: str) -> None:
-            # No support declared for these tests' synthetic agent names --
-            # matches the real ``AgentCatalog.get``'s "nobody has said"
-            # contract (S-3's Branch A of ``_detect_capability_breaks``
-            # grades a ``None`` support as ungraded, never crashes).
             return None
 
     class FakeRegistry:
@@ -813,12 +760,6 @@ def _make_fake_smoke_registry() -> object:
 def test_default_commit_bridge_factory_forwards_transport(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """The transport must survive the commit factory, not die one frame in.
-
-    Tagging the session at the lifetime seam is inert if the production
-    commit factory drops the argument on the way to
-    ``build_session_bridge`` -- which is exactly what it used to do.
-    """
     from ralph.pipeline.plumbing import commit_plumbing as commit_plumbing_module
 
     captured: dict[str, object] = {}
@@ -853,14 +794,6 @@ def test_default_commit_bridge_factory_forwards_transport(
 def test_commit_bridge_factory_does_not_retry_a_failing_starter(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """A starter that raises internally must not be called twice.
-
-    The factory used to widen its call by catching TypeError, which
-    cannot tell a signature mismatch from a TypeError raised inside the
-    starter. Retrying on the latter started the bridge a second time and
-    silently dropped the transport -- producing exactly the blind-guard
-    session the argument exists to prevent.
-    """
     from ralph.pipeline.plumbing import commit_plumbing as commit_plumbing_module
 
     calls: list[object] = []
@@ -896,7 +829,6 @@ def test_commit_bridge_factory_does_not_retry_a_failing_starter(
 def test_commit_bridge_factory_omits_arguments_a_narrow_starter_rejects(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """An older patched starter with a narrower signature still works."""
     from ralph.pipeline.plumbing import commit_plumbing as commit_plumbing_module
 
     seen: dict[str, object] = {}
@@ -925,21 +857,11 @@ def test_commit_bridge_factory_omits_arguments_a_narrow_starter_rejects(
 def test_commit_bridge_factory_reads_wrapped_and_partial_starters(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """Signature inspection must survive the shapes this seam actually sees.
-
-    The starter is late-bound so tests can patch it, which is exactly
-    where partials, decorated functions and callable objects live.
-    Reading ``__code__.co_varnames`` instead listed every local and
-    nested name, so a starter with a local named like an argument was
-    handed one it cannot take.
-    """
     import functools
 
     from ralph.pipeline.plumbing import commit_plumbing as commit_plumbing_module
 
     def _narrow(repo_root: Path, *, agents_policy: object) -> object:
-        # A local sharing a candidate argument's name: this is what made
-        # the co_varnames reading hand it an argument it cannot accept.
         transport = None
         del transport
         return object()
@@ -954,7 +876,6 @@ def test_commit_bridge_factory_reads_wrapped_and_partial_starters(
             "_resolve_commit_start_commit_bridge",
             lambda starter=starter: starter,
         )
-        # Must not raise "unexpected keyword argument".
         commit_plumbing_module._default_commit_bridge_factory(
             workspace_root=Path("/workspace"),
             drain="commit",

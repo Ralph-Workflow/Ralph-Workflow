@@ -1,6 +1,3 @@
-"""Tests that the advanced-pipeline-configuration.md parallel section
-accurately reflects same-workspace v1 behaviour."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -177,7 +174,6 @@ _WHITELIST_CONTAINS = [
 
 
 def _collect_checked_md_files() -> list[Path]:
-    """Collect all .md files that the banned-phrase test must check."""
     repo_root = Path(__file__).parent.parent.parent
     rw_root = Path(__file__).parent.parent
 
@@ -223,7 +219,6 @@ class TestBannedPhrasesAcrossAllDocs:
         ],
     )
     def test_no_banned_phrase_in_doc(self, doc_path: Path) -> None:
-        """Each checked .md file must not contain any banned worktree/merge-back phrases."""
         content = doc_path.read_text(encoding="utf-8").lower()
         violations = [phrase for phrase in _EXTENDED_BANNED_PHRASES if phrase.lower() in content]
         assert violations == [], (

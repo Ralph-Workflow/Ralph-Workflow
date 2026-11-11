@@ -1,13 +1,3 @@
-"""check_policy command — validate the active policy and report results.
-
-The command routes its success and error output through the shared
-display surface (``display.emit_status`` / ``display.emit_warning``)
-so the same vocabulary and rhythm Ralph uses during a live run also
-applies to ad-hoc ``ralph check-policy`` invocations. P0 (wt-028-display
-S-14) folds the previously-private ``print(..., file=sys.stderr)``
-escape hatches into the consolidated display so the drift-prevention
-suite can verify no command reaches the terminal through its own path.
-"""
 
 from __future__ import annotations
 
@@ -31,27 +21,6 @@ def check_policy_command(
     *,
     display_context: DisplayContext | None = None,
 ) -> int:
-    """Validate the active policy and print a pass/fail summary to stdout.
-
-    Resolves the policy directory the same way as --explain-policy, loads and
-    validates the policy, then prints a summary of what was found or the
-    validation error. When counter_overrides are supplied, validates that every
-    key is declared in pipeline.budget_counters.
-
-    Args:
-        policy_dir: Directory containing policy TOML files. Defaults to the
-            workspace-local .agent directory (if it contains TOML files),
-            then the bundled defaults.
-        counter_overrides: Budget counter overrides from --counter flags. Any key
-            not declared in pipeline.budget_counters raises a PolicyValidationError.
-        display_context: Optional ``DisplayContext`` to use for the shared
-            display emit surface. When ``None`` (the default), a context is
-            created via :func:`make_display_context` so the command runs
-            stand-alone (the contract ``ralph check-policy`` callers expect).
-
-    Returns:
-        Exit code: 0 on success, 1 on general error, 2 on policy validation error.
-    """
     from ralph.display.parallel_display import resolve_active_display
 
     ctx = display_context if display_context is not None else make_display_context()

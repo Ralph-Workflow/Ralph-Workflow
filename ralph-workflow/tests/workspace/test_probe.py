@@ -1,12 +1,3 @@
-"""Focused tests for WorkspaceChangeProbe and snapshot observation.
-
-Verifies:
-- Dotfile preservation (.env modification detected, correct path keys)
-- Internal roots ignored (.agent, .git, caches, temp files)
-- Unchanged workspace yields False
-- Bounded observation (max_files, tracked dirty paths, explore_index, version)
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -95,7 +86,6 @@ def test_probe_ignores_agent_and_git_internal_roots() -> None:
     probe = DefaultWorkspaceChangeProbe()
     probe.observe_before("dev", workspace)
 
-    # Modify various ignored paths
     workspace.write(".agent/state.db", "state")
     workspace.write(".agent/logs/execution.log", "log")
     workspace.write(".git/HEAD", "ref: refs/heads/main")
@@ -109,7 +99,6 @@ def test_probe_ignores_agent_and_git_internal_roots() -> None:
     workspace.write("src/app.py.swp", "swap")
     workspace.write("src/app.py~", "backup")
 
-    # Has changed should be False because only ignored files were added/modified
     assert probe.has_changed("dev", workspace) is False
 
     snapshot = take_workspace_snapshot(workspace)
@@ -155,10 +144,8 @@ def test_probe_bounded_observation_with_tracked_dirty_paths() -> None:
     probe = DefaultWorkspaceChangeProbe()
     probe.observe_before("dev", workspace)
 
-    # When no dirty paths are tracked, has_changed is False
     assert probe.has_changed("dev", workspace) is False
 
-    # Observe again, now track .env
     probe.observe_before("dev", workspace)
     workspace.write(".env", "PORT=3000\n")
     workspace.tracked.append(".env")
@@ -176,7 +163,6 @@ def test_probe_bounded_observation_with_explore_index() -> None:
 
     assert probe.has_changed("dev", workspace) is False
 
-    # Simulate index tracking changes
     probe.observe_before("dev", workspace)
     workspace.write(".env", "NEW=1\n")
     dirty_list.append(".env")
@@ -190,10 +176,8 @@ def test_probe_bounded_observation_with_workspace_version() -> None:
     probe = DefaultWorkspaceChangeProbe()
     probe.observe_before("dev", workspace)
 
-    # Same version
     assert probe.has_changed("dev", workspace) is False
 
-    # Bumping version triggers change detection
     probe.observe_before("dev", workspace)
     workspace.version_val = 2
     assert probe.has_changed("dev", workspace) is True

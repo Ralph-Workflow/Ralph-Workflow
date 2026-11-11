@@ -1,4 +1,3 @@
-"""explain command — render the active policy as a human-readable explanation."""
 
 from __future__ import annotations
 
@@ -82,7 +81,7 @@ def _load_policy_loader() -> tuple[_LoadPolicyFn, _LoadPolicyForWorkspaceScopeFn
     return (
         cast(
             "_LoadPolicyFn", _module_attr(module, "load_policy")
-        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        ),
         cast(
             "_LoadPolicyForWorkspaceScopeFn",
             _module_attr(module, "load_policy_for_workspace_scope"),
@@ -102,10 +101,10 @@ def _load_renderers() -> tuple[_RenderExplanationFn, _RenderExplanationFn]:
     return (
         cast(
             "_RenderExplanationFn", _module_attr(module, "render_explanation_ascii")
-        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        ),
         cast(
             "_RenderExplanationFn", _module_attr(module, "render_explanation_text")
-        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        ),
     )
 
 
@@ -117,11 +116,6 @@ def _load_policy_validation_error_type() -> type[Exception]:
 
 
 def _resolve_policy_dir() -> tuple[Path, bool]:
-    """Resolve the default policy directory to describe to the user.
-
-    Linked worktrees inherit from the main checkout unless the current worktree
-    has an explicit local override file.
-    """
     try:
         scope = _load_resolve_workspace_scope()()
         policy_dir = scope.resolve_agent_file("pipeline.toml").parent
@@ -137,29 +131,6 @@ def explain_command(
     *,
     display_context: DisplayContext | None = None,
 ) -> int:
-    """Print a human-readable explanation of the active policy to stdout.
-
-    The output starts with the policy source directory, then a WORKFLOW DIAGRAM
-    section showing a deterministic pure-ASCII diagram of the pipeline, followed
-    by a RALPH WORKFLOW section with the structured policy breakdown.
-
-    Args:
-        policy_dir: Directory containing policy TOML files. Defaults to the
-            workspace-local .agent directory (if it contains TOML files),
-            then the bundled defaults.
-        display_context: Optional :class:`DisplayContext` to use for the
-            shared display emit surface. When ``None`` (the default), a
-            context is created via :func:`make_display_context` so the
-            command runs stand-alone (the contract ``ralph explain``
-            callers expect). P0 (wt-028-display S-14) folds the
-            previously-private ``print(..., file=sys.stderr)`` escape
-            hatches into the consolidated display so the drift-prevention
-            suite can verify no command reaches the terminal through its
-            own path.
-
-    Returns:
-        Exit code: 0 on success, 1 on general error, 2 on policy validation error.
-    """
     load_policy, _load_policy_for_workspace_scope = _load_policy_loader()
     explain_policy = _load_explain_policy()
     render_explanation_ascii, render_explanation_text = _load_renderers()
@@ -201,27 +172,14 @@ def explain_command(
 
 
 def _load_make_display_context() -> _MakeDisplayContextFn:
-    """Return :func:`make_display_context` via the canonical loader.
-
-    A test monkeypatch can swap the implementation at the
-    ``ralph.cli.commands.explain`` module namespace without
-    touching the underlying ``ralph.display.context`` module, so
-    unit tests can inject a StringIO-backed context the same way
-    they already do for ``init`` and the commit plumbing commands.
-    """
     return cast(
         "_MakeDisplayContextFn",
         _module_attr(import_module("ralph.display.context"), "make_display_context"),
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
 
 
 def _load_resolve_active_display() -> _ResolveActiveDisplayFn:
-    """Return :func:`resolve_active_display` via the canonical loader.
-
-    Mirrors :func:`_load_make_display_context` so a test can
-    swap the seam in one place.
-    """
     return cast(
         "_ResolveActiveDisplayFn",
         _module_attr(import_module("ralph.display.parallel_display"), "resolve_active_display"),
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )

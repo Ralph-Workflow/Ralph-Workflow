@@ -1,18 +1,3 @@
-"""Black-box regression tests for AGY incomplete-exit bounded reprompt behavior.
-
-Contract under test (see
-``ralph/agents/invoke/_agy_incomplete_exit_error.py``):
-
-  * An AGY run that exits rc=0 WITHOUT the required completion evidence
-    gets exactly ONE automatic recovery reprompt: a fresh invocation
-    carrying the original task plus an explicit completion instruction.
-  * The reprompt is spent once per invocation — a second incomplete exit
-    is terminal (``AGENT_FAILURE``), never an unbounded retry loop.
-  * When same-agent retries are disabled, no reprompt happens.
-  * A reprompt that leaves the required evidence succeeds; the reprompt
-    itself is never treated as completion evidence.
-"""
-
 from __future__ import annotations
 
 import types
@@ -51,10 +36,6 @@ def _agy_check_options(tmp_path: Path) -> CompletionCheckOptions:
             parent_exit_grace_seconds=0.0,
         ),
         completion_run_id="agy",
-        # Isolate from the real, shared, host-global
-        # ~/.gemini/antigravity-cli/cli.log: agy_empty_output_reason's
-        # fallback reads that ambient file when no path is injected and
-        # the (here, empty) bounded output gives it no other evidence.
         agy_cli_log_path=tmp_path / "cli.log",
     )
 
@@ -120,7 +101,6 @@ def _setup(tmp_path: Path) -> None:
 
 
 def test_agy_missing_completion_reprompts_exactly_once_then_fails(tmp_path: Path) -> None:
-    """One bounded reprompt: 2 invocations total, then terminal AGENT_FAILURE."""
     _setup(tmp_path)
     invoke_count = [0]
     prompt_files: list[str] = []
@@ -140,7 +120,6 @@ def test_agy_missing_completion_reprompts_exactly_once_then_fails(tmp_path: Path
 def test_agy_reprompt_prompt_carries_completion_instruction_and_original_task(
     tmp_path: Path,
 ) -> None:
-    """The reprompt is a fresh invocation: original task plus explicit completion instruction."""
     _setup(tmp_path)
     invoke_count = [0]
     prompt_files: list[str] = []
@@ -164,7 +143,6 @@ def test_agy_reprompt_prompt_carries_completion_instruction_and_original_task(
 def test_agy_missing_completion_does_not_reprompt_when_retries_disabled(
     tmp_path: Path,
 ) -> None:
-    """With a zero same-agent retry budget the incomplete exit is immediately terminal."""
     _setup(tmp_path)
     invoke_count = [0]
     prompt_files: list[str] = []
@@ -180,7 +158,6 @@ def test_agy_missing_completion_does_not_reprompt_when_retries_disabled(
 
 
 def test_agy_reprompt_with_completion_evidence_succeeds(tmp_path: Path) -> None:
-    """A reprompt that leaves the sentinel succeeds — the evidence is re-earned, never assumed."""
     _setup(tmp_path)
     invoke_count = [0]
     prompt_files: list[str] = []
@@ -199,7 +176,6 @@ def test_agy_reprompt_with_completion_evidence_succeeds(tmp_path: Path) -> None:
             declare_line = "Task declared complete: session_id=agy, summary=done, timestamp=1"
             output: list[str] = []
             if invoke_count[0] == 2:
-                # The reprompt earns the completion evidence for real.
                 _write_completion_sentinel(tmp_path)
                 output.append(declare_line)
             yield "output line"
@@ -219,7 +195,6 @@ def test_agy_reprompt_with_completion_evidence_succeeds(tmp_path: Path) -> None:
 
 
 def test_agy_completion_evidenced_run_does_not_fail(tmp_path: Path) -> None:
-    """A first attempt that leaves the evidence never triggers the reprompt."""
     _setup(tmp_path)
     invoke_count = [0]
 

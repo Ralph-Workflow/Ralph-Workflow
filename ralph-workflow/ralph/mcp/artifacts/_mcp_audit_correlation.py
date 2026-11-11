@@ -1,4 +1,3 @@
-"""McpAuditCorrelation — correlation metadata from the MCP dispatch layer."""
 
 from __future__ import annotations
 
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class McpAuditCorrelation:
-    """Correlation metadata that comes from the MCP dispatch layer."""
 
     run_id: str | None = None
     generation: int | None = None

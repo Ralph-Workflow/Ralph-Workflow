@@ -1,28 +1,3 @@
-"""Shared direct-invocation recovery with an invocation-local retry budget.
-
-This module repeats ONE direct MCP request inside ONE agent invocation.
-The budget it enforces is TRANSPORT-level plumbing: it bounds how many
-PHYSICAL transport attempts one invocation may make, and it never judges
-an agent's health, never demotes an agent, never puts an agent in
-cooldown, never excludes an agent, and never selects the next agent.
-
-Agent health has exactly ONE owner:
-:class:`ralph.recovery.agent_failure_ledger.AgentFailureLedger`. The
-CALLER owns the charge: the pipeline executor records the attempt fact
-through the ledger's public seam (``record`` with an ``AttemptFact``, or
-``RecoveryController.record_attempt_fact``) and this module charges
-nothing itself. The pipeline-level same-agent health bound is the
-ledger's consecutive and total limits, NOT the budget enforced here.
-
-The one real coupling is documented rather than removed: every transport
-repetition is a PHYSICAL attempt, so the budget multiplies how many
-charges one pipeline-level invocation can produce (up to
-``1 + max_retries``). The ledger decides what those charges mean.
-
-Exhausting the budget preserves the ORIGINAL failure type: the failure
-leaves this module as the same exception type it arrived as, carrying
-only a factual diagnostic -- and nothing about the agent that made it.
-"""
 
 from __future__ import annotations
 
@@ -56,16 +31,6 @@ class _DirectMcpRetryPlan:
 
 
 def default_direct_mcp_retry_limit(raw_limit: object) -> int:
-    """Return the automatic-retry budget for one direct invocation.
-
-    Callers normally supply ``general.max_same_agent_retries`` (default 10).
-    The value bounds only the attempts inside one invocation; it never decides
-    whether an agent is healthy, should be demoted, or should be replaced.
-
-    The value is a TRANSPORT budget, not a health bound: the CALLER charges
-    each physical repetition to the failure ledger, and the ledger's
-    consecutive and total limits remain the only same-agent health bound.
-    """
 
     if isinstance(raw_limit, int) and raw_limit >= 0:
         return raw_limit
@@ -92,14 +57,6 @@ def _retry_budget_exhausted_error(
     attempts_used: int,
     retries_used: int,
 ) -> Exception:
-    """Attach a factual invocation-budget diagnostic without changing failure type.
-
-    The ORIGINAL failure is returned unchanged in type: the diagnostic is
-    appended to the parsed output of an :class:`AgentInvocationError` -- whose
-    type the pipeline's failure classification keys on -- or attached as a
-    note on any other exception. Nothing here decides what the failure MEANS
-    for the agent; the caller charges the failure ledger.
-    """
 
     diagnostic = (
         "Direct-MCP invocation retry budget exhausted after "
@@ -120,18 +77,6 @@ def _invocation_retry_allowed_or_raise(
     retries_used: int,
     max_retries: int,
 ) -> bool:
-    """Return whether this invocation may make another technical retry.
-
-    ``max_retries`` is the invocation-local budget (normally
-    ``general.max_same_agent_retries``). Exhausting it stops this invocation
-    only; it is not an agent-health verdict or an agent-selection decision.
-
-    Every repetition is a PHYSICAL transport attempt the CALLER charges to
-    the failure ledger, so the budget multiplies how many charges one
-    pipeline-level invocation can produce (up to ``1 + max_retries``). The
-    ledger's consecutive and total limits remain the only same-agent health
-    bound.
-    """
 
     if reset_tool_registry is None:
         return False
@@ -145,12 +90,6 @@ def _invocation_retry_allowed_or_raise(
 
 
 def _mcp_operation_error(exc: Exception, mcp_exc: Exception) -> AgentInvocationError:
-    """Attach the recovery boundary when its registry operation fails.
-
-    The failure stays an invocation failure; the recovery boundary is
-    recorded as the origin so the CALLER's ledger charge describes the real
-    cause.
-    """
     if isinstance(exc, AgentInvocationError):
         return AgentInvocationError(
             exc.agent_name,
@@ -175,14 +114,6 @@ def _retry_plan_for_exception(
     attempt_lines: list[str],
     current_session_id: str | None,
 ) -> _DirectMcpRetryPlan | None:
-    """Return the transport plan for one failed attempt, or None.
-
-    ``None`` means the failure is not a transport-level fault another
-    physical attempt could survive. The plan describes the NEXT TRANSPORT
-    attempt only -- the session to reuse and whether the tool registry must
-    be reset -- and carries no agent-health meaning: which agent runs next
-    is the pipeline's decision, made by the failure ledger and the selector.
-    """
     raw_resumable_session_id: object = getattr(exc, "resumable_session_id", None)
     resumable_session_id = (
         raw_resumable_session_id
@@ -220,21 +151,8 @@ def _run_with_direct_mcp_recovery[T](
     on_session_observed: Callable[[str], object] | None = None,
     retry_resumable_exit: bool = False,
 ) -> T:
-    """Repeat one direct attempt while the invocation-local budget allows.
-
-    The loop owns transport repetition only: it re-issues the same request,
-    optionally resets the tool registry, and stops when the budget is
-    exhausted. It holds no agent-health state and reaches no failure ledger;
-    the CALLER charges the failed attempt through the ledger's public seam.
-    """
     current_session_id: str | None = None
     retries_used = 0
-    # One-reprompt bound (enforcement point 2 of 2) for
-    # ``AgyIncompleteExitError``: an AGY invocation gets exactly ONE
-    # automatic completion reprompt. The plan-level bound in
-    # ``build_agent_recovery_plan`` is enforcement point 1; this loop
-    # bound keeps non-pipeline callers (commit plumbing, session
-    # runtime) on the same invariant.
     agy_incomplete_exit_reprompted = False
     while True:
         observed_session_id = current_session_id
@@ -281,7 +199,6 @@ def _run_with_direct_mcp_recovery[T](
                 try:
                     reset_tool_registry()
                 except McpServerError:
-                    # Callback failures keep their typed identity.
                     raise
                 except Exception as mcp_exc:
                     raise _mcp_operation_error(exc, mcp_exc) from mcp_exc
@@ -289,7 +206,7 @@ def _run_with_direct_mcp_recovery[T](
             retries_used += 1
 
 
-def _iter_with_direct_mcp_recovery(  # noqa: PLR0912  # recovery loop; branches are intentional
+def _iter_with_direct_mcp_recovery(
     run_attempt: Callable[[str | None], Iterable[str]],
     *,
     max_retries: int,
@@ -299,22 +216,12 @@ def _iter_with_direct_mcp_recovery(  # noqa: PLR0912  # recovery loop; branches 
 ) -> Iterator[str]:
     current_session_id: str | None = None
     retries_used = 0
-    # One-reprompt bound for ``AgyIncompleteExitError`` — same invariant
-    # as ``run_with_direct_mcp_recovery`` above.
     agy_incomplete_exit_reprompted = False
     while True:
         attempt_lines: deque[str] = deque(maxlen=_MAX_RECOVERY_ATTEMPT_LINES)
         try:
             for line in run_attempt(current_session_id):
                 attempt_lines.append(line)
-                # Use the visible-TUI-aware extractor so a session id
-                # carried in a PTY banner line (with ANSI codes) is
-                # captured into ``current_session_id`` and threaded
-                # into the recovery plan. The plain
-                # ``extract_transport_session_id_from_line`` would
-                # miss the id because the anchored text patterns in
-                # ``_session._TRANSPORT_TEXT_SESSION_PATTERNS`` do not
-                # match TUI lines that contain ANSI escape codes.
                 observed_session_id = extract_transport_session_id_with_visible_tui(line)
                 if observed_session_id is not None:
                     current_session_id = observed_session_id
@@ -355,7 +262,6 @@ def _iter_with_direct_mcp_recovery(  # noqa: PLR0912  # recovery loop; branches 
                 try:
                     reset_tool_registry()
                 except McpServerError:
-                    # Callback failures keep their typed identity.
                     raise
                 except Exception as mcp_exc:
                     raise _mcp_operation_error(exc, mcp_exc) from mcp_exc
@@ -372,21 +278,6 @@ def run_with_direct_mcp_recovery[T](
     on_session_observed: Callable[[str], object] | None = None,
     retry_resumable_exit: bool = False,
 ) -> T:
-    """Run one recovery loop with invocation-local runtime attribution.
-
-    ``max_retries`` (normally ``general.max_same_agent_retries``) bounds the
-    automatic retries inside this invocation only. It does not decide agent
-    health, demote an agent, or select the next agent.
-
-    The budget is transport-level: it bounds the PHYSICAL repetitions of one
-    request, so the CALLER may end up charging the failure ledger up to
-    ``1 + max_retries`` times for one pipeline-level invocation. The ledger
-    (:class:`ralph.recovery.agent_failure_ledger.AgentFailureLedger`) stays
-    the single owner of what those charges mean.
-
-    Exhausting the budget re-raises the ORIGINAL failure, unchanged in type,
-    with only a factual diagnostic added to it.
-    """
     with runtime_event_scope(RuntimeEventRecorder()):
         return _run_with_direct_mcp_recovery(
             run_attempt,
@@ -406,21 +297,6 @@ def iter_with_direct_mcp_recovery(
     on_retry_failure: Callable[[list[str]], object] | None = None,
     on_session_observed: Callable[[str], object] | None = None,
 ) -> Iterator[str]:
-    """Yield one recovery loop with invocation-local runtime attribution.
-
-    ``max_retries`` (normally ``general.max_same_agent_retries``) bounds the
-    automatic retries inside this invocation only. It does not decide agent
-    health, demote an agent, or select the next agent.
-
-    The budget is transport-level: it bounds the PHYSICAL repetitions of one
-    streamed request, so the CALLER may end up charging the failure ledger up
-    to ``1 + max_retries`` times for one pipeline-level invocation. The ledger
-    (:class:`ralph.recovery.agent_failure_ledger.AgentFailureLedger`) stays
-    the single owner of what those charges mean.
-
-    Exhausting the budget re-raises the ORIGINAL failure TYPE, enriched with
-    the output captured while it streamed.
-    """
     with runtime_event_scope(RuntimeEventRecorder()):
         yield from _iter_with_direct_mcp_recovery(
             run_attempt,
@@ -442,12 +318,6 @@ def _invocation_error_with_output(
         if line not in merged_lines:
             merged_lines.append(line)
     if type(exc).__name__ == "AgyIncompleteExitError":
-        # Preserve the typed error: the one-reprompt bound and the
-        # failure classifier's typed-cause branch key on the class
-        # name, so rebuilding a plain AgentInvocationError here would
-        # silently disable the bounded AGY reprompt. Enrich in place
-        # (parsed_output is a mutable list, same as
-        # ``effect_executor._enrich_invocation_error``).
         exc.parsed_output = merged_lines
         return exc
     if merged_lines:
@@ -467,12 +337,6 @@ _EVIDENCE_LINE_MAX_CHARS = 200
 
 
 def condense_failure_text(text: str, *, max_chars: int = _EVIDENCE_LINE_MAX_CHARS) -> str:
-    """Collapse ``text`` to one whitespace-normalised line of at most ``max_chars``.
-
-    Raw agent stderr and transcript lines are multi-line and unbounded; logging
-    them verbatim buries the one line that explains the failure. The full text
-    stays available on the exception for classifiers.
-    """
     flat = " ".join(text.split())
     if len(flat) <= max_chars:
         return flat
@@ -480,12 +344,6 @@ def condense_failure_text(text: str, *, max_chars: int = _EVIDENCE_LINE_MAX_CHAR
 
 
 def summarize_retry_failure_evidence(lines: list[str]) -> str:
-    """Return a bounded one-line digest of the tail of a failed agent's output.
-
-    The last lines carry the failure cause, so only the final
-    ``_EVIDENCE_MAX_LINES`` are kept, each condensed, with a count of the
-    omitted earlier lines.
-    """
     meaningful = [line for line in lines if line.strip()]
     if not meaningful:
         return "(no output captured)"

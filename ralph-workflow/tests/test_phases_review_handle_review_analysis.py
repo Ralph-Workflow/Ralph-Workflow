@@ -1,5 +1,3 @@
-"""Tests for ralph/phases/review.py — review phase handler."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

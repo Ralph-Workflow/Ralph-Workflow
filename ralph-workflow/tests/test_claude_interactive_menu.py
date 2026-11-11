@@ -135,7 +135,6 @@ def test_permission_prompt_action_message_describes_selected_option() -> None:
 
 
 def test_extract_menu_state_parses_linux_block_prefix() -> None:
-    """Linux Claude uses \u258c (LEFT HALF BLOCK) instead of \u276f for selection."""
     screen = """
     \u258c1. Yes, I trust this folder
     2. No, exit
@@ -154,7 +153,6 @@ def test_extract_menu_state_parses_linux_block_prefix() -> None:
 
 
 def test_auto_response_picks_yes_for_linux_trust_prompt() -> None:
-    """Auto-response selects 'Yes' for the Linux trust prompt using \u258c prefix."""
     screen = """
     \u258c1. Yes, I trust this folder
     2. No, exit
@@ -171,7 +169,6 @@ def test_auto_response_picks_yes_for_linux_trust_prompt() -> None:
 
 
 def test_auto_response_navigates_to_allow_option_with_linux_prefix() -> None:
-    """When the affirmative option isn't pre-selected, navigate to it."""
     screen = """
     Allow this action?
 

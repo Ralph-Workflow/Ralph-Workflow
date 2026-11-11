@@ -1,49 +1,7 @@
-"""Shared Pydantic ValidationError formatter.
-
-Converts ``pydantic.ValidationError`` exceptions into agent-friendly,
-field-level messages. The formatter is consumed by every typed artifact
-normalizer (plan, issues, fix_result, development_result, etc.) so the
-hints an agent sees are uniform across all artifact types.
-
-The exported helpers are:
-
-- :func:`format_validation_error_messages` — top-level entry point that
-  returns a list of ``"location: message"`` strings for every error
-  attached to a ``ValidationError``.
-- :func:`format_validation_error_detail` — format a single pydantic
-  ``ErrorDetails`` mapping into one ``"location: message"`` string.
-- :func:`format_validation_location` — convert a pydantic ``loc`` tuple
-  to a dotted path string (e.g. ``"summary.intent"``).
-- :func:`format_validation_message` — pull the human-readable ``msg``
-  out of an error detail, substituting a placeholder if the message is
-  missing.
-- :func:`suggest_canonical_field` — when a model declares an unknown
-  key, suggest the closest existing field name (via
-  :func:`difflib.get_close_matches`).
-
-The formatter is plan-agnostic: it only depends on pydantic and the
-standard library, so it can be imported from any artifact normalizer
-without creating circular imports.
-
-The decision to use this module (rather than re-implementing
-formatting in every normalizer) is driven by the recurring failure mode
-of cheap models: a raw ``str(exc)`` of a pydantic
-``ValidationError`` shows errors like::
-
-    7 validation errors for Summary
-    intent
-      String should have at most 200 characters [type=string_too_long, ...]
-
-which does not name the actual length, the actual value, or the valid
-options for closed-enum fields. The formatter produced here adds those
-three pieces of information (location, rejected value, allowed shape)
-to every error line so an agent can act without guessing.
-"""
-
 from __future__ import annotations
 
 import difflib
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
@@ -64,47 +22,17 @@ __all__ = [
 
 
 def format_validation_error_messages(exc: ValidationError) -> list[str]:
-    """Format all pydantic ValidationError errors into human-readable strings.
-
-    Args:
-        exc: The ``pydantic.ValidationError`` raised by ``model_validate``.
-
-    Returns:
-        A list of ``"location: message"`` strings, one per error in the
-        exception. The location is the dotted field path; the message
-        includes the rejected value and the allowed shape.
-    """
-    details = cast(
-        "ValidationErrorDetails", exc.errors()
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    details = cast("ValidationErrorDetails", exc.errors())
     return [format_validation_error_detail(detail) for detail in details]
 
 
 def format_validation_error_detail(detail: ValidationErrorDetail) -> str:
-    """Format a single pydantic validation error detail as ``location: message``.
-
-    Args:
-        detail: One entry from ``ValidationError.errors()``.
-
-    Returns:
-        A single ``"  location: message"`` string.
-    """
     loc = detail.get("loc")
     msg = _format_message_with_value(detail)
     return f"  {format_validation_location(loc)}: {msg}"
 
 
 def format_validation_location(raw_loc: object | None) -> str:
-    """Format a pydantic error location tuple to a dotted path string.
-
-    Args:
-        raw_loc: The ``loc`` field from a pydantic error detail. May be
-            a tuple, a list, a string, or ``None``.
-
-    Returns:
-        A dotted path (e.g. ``"summary.intent"``) or a sentinel
-        ``"<root>"`` when the location is empty/missing.
-    """
     if raw_loc is None:
         return "<root>"
     if isinstance(raw_loc, (list, tuple)):
@@ -115,18 +43,6 @@ def format_validation_location(raw_loc: object | None) -> str:
 
 
 def format_validation_message(raw_msg: object | None) -> str:
-    """Return the validation error message string.
-
-    Substitutes ``"<missing message>"`` if the message is ``None`` so
-    callers always get a non-empty string back.
-
-    Args:
-        raw_msg: The ``msg`` field from a pydantic error detail.
-
-    Returns:
-        The message string, ``"<missing message>"``, or the string form
-        of the value.
-    """
     if isinstance(raw_msg, str):
         return raw_msg
     if raw_msg is None:
@@ -140,22 +56,6 @@ def suggest_canonical_field(
     *,
     cutoff: float = 0.6,
 ) -> str | None:
-    """Suggest the closest canonical field name for an unknown key.
-
-    Used by callers that detect an ``extra_forbidden`` error to point
-    the agent at the field they probably meant. The suggestion is
-    computed via :func:`difflib.get_close_matches` with the supplied
-    cutoff (default 0.6, the difflib default).
-
-    Args:
-        unknown_key: The rejected key (e.g. ``"design_constraints"``).
-        candidate_fields: The list of valid field names on the model.
-        cutoff: Match cutoff in the range [0, 1]. Default ``0.6``.
-
-    Returns:
-        The closest matching field name, or ``None`` if no candidate
-        scores above the cutoff.
-    """
     if not candidate_fields:
         return None
     matches = difflib.get_close_matches(unknown_key, list(candidate_fields), n=1, cutoff=cutoff)
@@ -167,38 +67,54 @@ def suggest_canonical_field(
 _INT_ERROR_TYPES: frozenset[str] = frozenset({"int_parsing", "int_type", "int_from_float"})
 
 
-def _format_message_with_value(detail: ValidationErrorDetail) -> str:  # noqa: PLR0911
-    """Build a context-rich message from a single pydantic error detail.
+def _format_int_entry(base: str, detail: ValidationErrorDetail, err_type: str) -> str:
+    return _format_int(base, detail.get("input"))
 
-    For known error types the rejected value and the allowed shape are
-    appended to the base message. Unknown error types fall through to
-    the raw pydantic ``msg`` so no information is lost.
-    """
+
+_MESSAGE_FORMATTERS: dict[str, Callable[[str, ValidationErrorDetail, str], str]] = {
+    "string_too_long": lambda base, detail, err_type: _format_string_too_long(
+        base, _as_mapping(detail.get("ctx")), detail.get("input")
+    ),
+    "string_too_short": lambda base, detail, err_type: _format_string_too_short(
+        base, _as_mapping(detail.get("ctx")), err_type
+    ),
+    "missing": lambda base, detail, err_type: _format_string_too_short(
+        base, _as_mapping(detail.get("ctx")), err_type
+    ),
+    "literal_error": lambda base, detail, err_type: _format_literal_error(
+        base, _as_mapping(detail.get("ctx")), detail.get("input")
+    ),
+    "enum": lambda base, detail, err_type: _format_enum(
+        base, _as_mapping(detail.get("ctx")), detail.get("input")
+    ),
+    "enum_member": lambda base, detail, err_type: _format_enum(
+        base, _as_mapping(detail.get("ctx")), detail.get("input")
+    ),
+    "too_short": lambda base, detail, err_type: _format_too_short_or_long(
+        base, _as_mapping(detail.get("ctx")), detail.get("input"), err_type
+    ),
+    "too_long": lambda base, detail, err_type: _format_too_short_or_long(
+        base, _as_mapping(detail.get("ctx")), detail.get("input"), err_type
+    ),
+    "extra_forbidden": lambda base, detail, err_type: _format_extra_forbidden(
+        base, detail.get("input"), _as_mapping(detail.get("ctx")), detail.get("loc")
+    ),
+    "missing_keyword_only_argument": lambda base, detail, err_type: _format_missing_field(
+        base, detail.get("input"), _as_mapping(detail.get("ctx"))
+    ),
+    **dict.fromkeys(_INT_ERROR_TYPES, _format_int_entry),
+}
+
+
+def _format_message_with_value(detail: ValidationErrorDetail) -> str:
     err_type_obj = detail.get("type")
-    raw_msg = detail.get("msg")
-    base = format_validation_message(raw_msg)
-    ctx_obj = detail.get("ctx")
-    input_value = detail.get("input")
-    ctx = _as_mapping(ctx_obj)
+    base = format_validation_message(detail.get("msg"))
     if not isinstance(err_type_obj, str):
         return base
-    if err_type_obj == "string_too_long":
-        return _format_string_too_long(base, ctx, input_value)
-    if err_type_obj in {"string_too_short", "missing"}:
-        return _format_string_too_short(base, ctx, err_type_obj)
-    if err_type_obj == "literal_error":
-        return _format_literal_error(base, ctx, input_value)
-    if err_type_obj in {"enum", "enum_member"}:
-        return _format_enum(base, ctx, input_value)
-    if err_type_obj in {"too_short", "too_long"}:
-        return _format_too_short_or_long(base, ctx, input_value, err_type_obj)
-    if err_type_obj == "extra_forbidden":
-        return _format_extra_forbidden(base, input_value, ctx, detail.get("loc"))
-    if err_type_obj in _INT_ERROR_TYPES:
-        return _format_int(base, input_value)
-    if err_type_obj == "missing_keyword_only_argument":
-        return _format_missing_field(base, input_value, ctx)
-    return base
+    formatter = _MESSAGE_FORMATTERS.get(err_type_obj)
+    if formatter is None:
+        return base
+    return formatter(base, detail, err_type_obj)
 
 
 def _format_string_too_long(base: str, ctx: Mapping[str, object], input_value: object) -> str:
@@ -292,13 +208,6 @@ def _format_extra_forbidden(
 
 
 def _extra_forbidden_key(input_value: object, loc: object | None) -> str | None:
-    """Return the rejected key for an ``extra_forbidden`` error if known.
-
-    Pydantic puts the rejected key in ``loc`` (the last component) and
-    the rejected value in ``input``. Callers that want to name the
-    key (e.g. to suggest a canonical field name) should prefer this
-    helper over inspecting ``input`` directly.
-    """
     if isinstance(loc, (list, tuple)) and loc:
         last = loc[-1]
         if isinstance(last, str):
@@ -322,14 +231,12 @@ def _format_missing_field(base: str, input_value: object, ctx: Mapping[str, obje
 
 
 def _string_length(value: object) -> int | None:
-    """Return the length of *value* if it is a string, else ``None``."""
     if isinstance(value, str):
         return len(value)
     return None
 
 
 def _as_mapping(value: object) -> Mapping[str, object]:
-    """Coerce a value to a read-only mapping, defaulting to empty."""
     if isinstance(value, Mapping):
         return cast("Mapping[str, object]", value)
     return {}

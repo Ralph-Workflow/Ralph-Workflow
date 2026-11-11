@@ -1,71 +1,3 @@
-"""Dependency-integrity audit — a NEW dependency must be verifiable offline.
-
-The gate answers one question: *may this change add a dependency that
-nobody can verify?* A hallucinated package name — one that was never
-published, or that resolves to an attacker-controlled name — is the
-classic supply-chain failure this audit exists to close. The gate is
-therefore strict about the two attributes a NEW package must carry:
-
-``resolvable source``
-    An index URL / registry reference (or a direct URL / VCS reference)
-    that says *where* the package comes from. A bare name in
-    ``dependencies = [...]`` resolves against whatever index happens to be
-    configured, so it proves nothing.
-
-``publisher``
-    An owner / maintainer reference — the human or organisation that
-    publishes and maintains the package. Without it, "the package exists"
-    is unverifiable, because anybody can publish a package under a name
-    that looks legitimate.
-
-Missing either attribute produces a finding that names the package, names
-the missing element, and carries the fix hint.
-
-Two further rules come straight from the dependency policy:
-
-``install script``
-    A new package that introduces an install-time execution hook
-    (``setup.py``/``setup.cfg``, a ``postinstall``-style TOML key, a
-    custom build hook, a local ``backend-path``) is flagged: an install
-    script runs arbitrary code with the developer's privileges.
-
-``lockfile hash``
-    A new lockfile entry with no artifact hash is flagged: without the
-    hash the lockfile cannot pin the bytes that will be installed.
-
-``lockfile resolution``
-    A new direct dependency must resolve in the current lockfile
-    (``uv.lock``). An unpinned direct package, or an absent or malformed
-    current lockfile, fails closed with a missing-lock-entry finding.
-
-DIRECT VS TRANSITIVE DEPENDENCIES
-
-Top-level direct requirements declared in ``pyproject.toml`` require
-a resolvable source, publisher evidence, and lockfile resolution.
-Transitive dependencies resolved into ``uv.lock`` are governed by
-lockfile reproducibility and artifact hash pinning rather than direct
-publisher declarations, matching ``transitive_dependency_policy`` in the
-project dependency policy.
-
-INPUT SEAM
-
-The gate is a pure function over two *content sets* — a mapping of
-manifest path to manifest text — one for the BASELINE and one for the
-CURRENT tree:
-
-    audit_dependency_change(baseline, current) -> list[DependencyFinding]
-
-The caller supplies both sets (the coordinator wires a git-diff based
-baseline). The gate itself never shells out, never reads version control
-and never touches the network, so a synthetic input exercises every rule
-offline and deterministically.
-
-Usage:
-    python -m ralph.testing.audit_dependency_integrity <baseline_root> <current_root>
-
-Exit 0 = clean, 1 = findings, 2 = a root was not found.
-"""
-
 from __future__ import annotations
 
 import re
@@ -94,29 +26,18 @@ __all__ = [
     "main",
 ]
 
-#: The package-manager manifest and its lockfile. Both are TOML, both are
-#: parsed with the stdlib TOML reader, and both are the only inputs the
-#: gate reads.
 PYPROJECT_MANIFEST = "pyproject.toml"
 LOCKFILE_MANIFEST = "uv.lock"
 MANIFEST_NAMES: frozenset[str] = frozenset({PYPROJECT_MANIFEST, LOCKFILE_MANIFEST})
 
-#: Files whose mere PRESENCE in a change means an install script entered
-#: the project: ``setup.py`` executes at install time, ``setup.cfg`` can
-#: declare the commands that do.
 SETUP_SCRIPT_FILES: frozenset[str] = frozenset({"setup.py", "setup.cfg"})
 
-#: Finding categories. They are stable strings: the coordinator's verify
-#: step and any waiver record key on them.
 CATEGORY_MISSING_SOURCE = "missing-source"
 CATEGORY_MISSING_PUBLISHER = "missing-publisher"
 CATEGORY_INSTALL_SCRIPT = "install-script"
 CATEGORY_MISSING_HASH = "missing-hash"
 CATEGORY_MISSING_LOCK_ENTRY = "missing-lock-entry"
 
-#: Manifest sections that declare dependencies. A section value that is a
-#: list is read directly; a section value that is a table is read group by
-#: group (``[project.optional-dependencies]``, ``[dependency-groups]``).
 DEPENDENCY_SECTIONS: tuple[tuple[str, ...], ...] = (
     ("project", "dependencies"),
     ("project", "optional-dependencies"),
@@ -124,10 +45,6 @@ DEPENDENCY_SECTIONS: tuple[tuple[str, ...], ...] = (
     ("build-system", "requires"),
 )
 
-#: TOML keys that declare an install-time or build-time execution hook.
-#: Matched case-insensitively against the LAST segment of every key path
-#: in the manifest, so ``[tool.uv] post-install`` and
-#: ``[tool.hatch.build.hooks.custom]`` are both covered.
 INSTALL_HOOK_KEYS: frozenset[str] = frozenset(
     {
         "build-hook",
@@ -144,8 +61,6 @@ INSTALL_HOOK_KEYS: frozenset[str] = frozenset(
     }
 )
 
-#: Manifest tables whose presence means arbitrary commands run at build
-#: or install time.
 INSTALL_HOOK_TABLES: frozenset[str] = frozenset(
     {
         "tool.hatch.build.hooks.custom",
@@ -154,24 +69,17 @@ INSTALL_HOOK_TABLES: frozenset[str] = frozenset(
     }
 )
 
-#: ``[build-system] backend-path`` makes the build backend a local file:
-#: project code that runs at build time.
 BUILD_BACKEND_PATH_KEY = "build-system.backend-path"
 
-#: Evidence table that records the publisher / owner of a dependency.
 EVIDENCE_TABLE_PREFIX = "tool.ralph.dependency-evidence"
 
-#: Keys inside the evidence table that carry the publisher reference.
 PUBLISHER_EVIDENCE_KEYS: frozenset[str] = frozenset({"publisher", "maintainer", "owner"})
 
-#: Inline comment keys that carry the publisher reference.
 PUBLISHER_COMMENT_PATTERN = re.compile(
     r"(?:publisher|maintainer|owner)\s*[:=]\s*(?P<value>[^\s#]+)",
     re.IGNORECASE,
 )
 
-#: A PEP 508 requirement: name, optional extras, then the rest (version
-#: specifier, direct URL, environment marker).
 REQUIREMENT_PATTERN = re.compile(
     r"^(?P<name>[A-Za-z0-9][A-Za-z0-9._-]*)"
     r"(?:\[(?P<extras>[^\]]*)\])?"
@@ -179,14 +87,8 @@ REQUIREMENT_PATTERN = re.compile(
     re.DOTALL,
 )
 
-#: Lockfile ``source`` keys that resolve to a REGISTRY or a remote
-#: artifact. Local sources (``editable``, ``path``, ``directory``) do not
-#: prove the package came from a published registry.
 RESOLVABLE_SOURCE_KEYS: frozenset[str] = frozenset({"registry", "url", "git"})
 
-#: Source-control hosts whose URL path names the owning organisation.
-#: A dependency pinned to one of these hosts carries its publisher in the
-#: URL itself, so the URL doubles as the publisher reference.
 SOURCE_CONTROL_HOSTS: frozenset[str] = frozenset(
     {
         "bitbucket.org",
@@ -196,19 +98,14 @@ SOURCE_CONTROL_HOSTS: frozenset[str] = frozenset(
     }
 )
 
-#: Minimum number of ``/``-separated segments a source-control URL must
-#: carry before its first segment can be read as the owning organisation.
 MIN_SOURCE_CONTROL_URL_SEGMENTS = 2
 
 
-#: Accepted root-argument count for the CLI: baseline plus current.
 REQUIRED_CLI_ROOT_ARGUMENTS = 2
 
 
 @dataclass(frozen=True)
 class DependencyFinding:
-    """One dependency-integrity finding."""
-
     file_path: str
     line: int
     category: str
@@ -220,8 +117,6 @@ class DependencyFinding:
 
 @dataclass(frozen=True)
 class _Requirement:
-    """One parsed PEP 508 requirement."""
-
     name: str
     raw: str
     url: str | None
@@ -229,7 +124,6 @@ class _Requirement:
 
 
 def _regex_group_str(match: re.Match[str], group: str) -> str:
-    """Return a named regex group as ``str`` (never ``Any``)."""
     value = match.group(group)
     if not isinstance(value, str):
         msg = "expected regex capture group to be str"
@@ -238,13 +132,11 @@ def _regex_group_str(match: re.Match[str], group: str) -> str:
 
 
 def _regex_optional_group_str(match: re.Match[str], group: str) -> str | None:
-    """Return an optional named regex group, or None when it did not match."""
     value: str | None = match.group(group)
     return value
 
 
 def _parse_toml(text: str) -> dict[str, object] | None:
-    """Parse TOML text into a plain mapping, or return None when invalid."""
     try:
         parsed_obj: object = tomllib.loads(text)
     except (OSError, ValueError):
@@ -255,12 +147,10 @@ def _parse_toml(text: str) -> dict[str, object] | None:
 
 
 def _normalize_name(name: str) -> str:
-    """Return the PEP 503 normalized form of a distribution name."""
     return re.sub(r"[-_.]+", "-", name).lower()
 
 
 def _parse_requirement(raw: str) -> _Requirement | None:
-    """Parse one PEP 508 requirement string, or return None when unusable."""
     text = raw.strip()
     if not text:
         return None
@@ -281,7 +171,6 @@ def _parse_requirement(raw: str) -> _Requirement | None:
 
 
 def _nested_table(data: Mapping[str, object], *keys: str) -> Mapping[str, object]:
-    """Return the nested mapping at *keys*, or an empty mapping."""
     current: Mapping[str, object] = data
     for key in keys:
         value = current.get(key)
@@ -292,7 +181,6 @@ def _nested_table(data: Mapping[str, object], *keys: str) -> Mapping[str, object
 
 
 def _collect_requirement_strings(data: Mapping[str, object]) -> list[str]:
-    """Return every raw requirement string declared by the manifest."""
     requirements: list[str] = []
     for path in DEPENDENCY_SECTIONS:
         node: object = data
@@ -311,12 +199,6 @@ def _collect_requirement_strings(data: Mapping[str, object]) -> list[str]:
 
 
 def _iter_key_paths(data: Mapping[str, object], prefix: str = "") -> Iterable[tuple[str, str]]:
-    """Yield ``(dotted key path, leaf key)`` for every key in the manifest.
-
-    Table paths are yielded too, so a hook declared as a whole table (for
-    example ``[tool.hatch.build.hooks.custom]``) is visible to the
-    install-script rule and not only its leaf values.
-    """
     for key, value in data.items():
         path = f"{prefix}.{key}" if prefix else key
         yield path, key
@@ -325,7 +207,6 @@ def _iter_key_paths(data: Mapping[str, object], prefix: str = "") -> Iterable[tu
 
 
 def _find_line(text: str, needle: str) -> int:
-    """Return the 1-based line number of the first line containing *needle*."""
     stripped = needle.strip()
     if not stripped:
         return 0
@@ -336,7 +217,6 @@ def _find_line(text: str, needle: str) -> int:
 
 
 def _comment_segment(line: str) -> str:
-    """Return the trailing comment of *line* (everything after the first ``#``)."""
     marker = line.find("#")
     if marker < 0:
         return ""
@@ -344,7 +224,6 @@ def _comment_segment(line: str) -> str:
 
 
 def _publisher_from_comment(line: str) -> str | None:
-    """Return the publisher reference carried by an inline comment, if any."""
     match = PUBLISHER_COMMENT_PATTERN.search(_comment_segment(line))
     if match is None:
         return None
@@ -352,7 +231,6 @@ def _publisher_from_comment(line: str) -> str | None:
 
 
 def _publisher_from_url(url: str) -> str | None:
-    """Return the owning organisation named by a source-control URL."""
     without_scheme = url.split("://", 1)[-1]
     host_and_path = without_scheme.split("/", 1)
     host = host_and_path[0].split("@")[-1].split(":")[0].lower()
@@ -367,7 +245,6 @@ def _publisher_from_url(url: str) -> str | None:
 
 
 def _lock_packages(text: str) -> dict[tuple[str, str], Mapping[str, object]]:
-    """Return ``{(name, version): package entry}`` for a uv lockfile."""
     data = _parse_toml(text)
     if data is None:
         return {}
@@ -388,7 +265,6 @@ def _lock_packages(text: str) -> dict[tuple[str, str], Mapping[str, object]]:
 
 
 def _lock_source(entry: Mapping[str, object]) -> str | None:
-    """Return the resolvable source of a lockfile entry, or None."""
     source = entry.get("source")
     if not isinstance(source, Mapping):
         return None
@@ -400,7 +276,6 @@ def _lock_source(entry: Mapping[str, object]) -> str | None:
 
 
 def _lock_entry_has_hash(entry: Mapping[str, object]) -> bool:
-    """Return True when a lockfile entry pins at least one artifact hash."""
     sdist = entry.get("sdist")
     if isinstance(sdist, Mapping):
         value = cast("Mapping[str, object]", sdist).get("hash")
@@ -418,12 +293,10 @@ def _lock_entry_has_hash(entry: Mapping[str, object]) -> bool:
 
 
 def _lock_entry_is_downloaded(entry: Mapping[str, object]) -> bool:
-    """Return True when the entry downloads an artifact (so it needs a hash)."""
     return _lock_source(entry) is not None
 
 
 def _index_sources(data: Mapping[str, object]) -> dict[str, str]:
-    """Return ``{index name: url}`` declared by ``[tool.uv.index]``."""
     indexes: dict[str, str] = {}
     uv_table = _nested_table(data, "tool", "uv")
     raw_index = uv_table.get("index")
@@ -440,7 +313,6 @@ def _index_sources(data: Mapping[str, object]) -> dict[str, str]:
 
 
 def _tool_source(data: Mapping[str, object], package: str) -> str | None:
-    """Return the source declared for *package* by ``[tool.uv.sources]``."""
     sources = _nested_table(data, "tool", "uv", "sources")
     entry = sources.get(package)
     if not isinstance(entry, Mapping):
@@ -453,7 +325,6 @@ def _tool_source(data: Mapping[str, object], package: str) -> str | None:
 
 
 def _evidence_publisher(data: Mapping[str, object], package: str) -> str | None:
-    """Return the publisher recorded by the dependency-evidence table."""
     table = _nested_table(data, "tool", "ralph", "dependency-evidence", package)
     for key in sorted(PUBLISHER_EVIDENCE_KEYS):
         value = table.get(key)
@@ -463,7 +334,6 @@ def _evidence_publisher(data: Mapping[str, object], package: str) -> str | None:
 
 
 def _evidence_source(data: Mapping[str, object], package: str) -> str | None:
-    """Return the source recorded by the dependency-evidence table."""
     table = _nested_table(data, "tool", "ralph", "dependency-evidence", package)
     for key in ("registry", "source", "url"):
         value = table.get(key)
@@ -476,7 +346,6 @@ def _new_requirements(
     baseline_data: Mapping[str, object],
     current_data: Mapping[str, object],
 ) -> list[_Requirement]:
-    """Return the requirements declared now that the baseline did not declare."""
     baseline_names = {
         requirement.name
         for requirement in (
@@ -503,7 +372,6 @@ def _resolve_source(
     lock_sources: Mapping[tuple[str, str], str | None],
     lock_names: Mapping[str, tuple[str, ...]],
 ) -> str | None:
-    """Return the resolvable source of *requirement*, or None when absent."""
     if requirement.url:
         return f"url={requirement.url}"
     source = _tool_source(current_data, requirement.name)
@@ -529,7 +397,6 @@ def _resolve_publisher(
     current_data: Mapping[str, object],
     manifest_text: str,
 ) -> str | None:
-    """Return the publisher reference of *requirement*, or None when absent."""
     publisher = _evidence_publisher(current_data, requirement.name)
     if publisher is not None:
         return publisher
@@ -552,7 +419,6 @@ def _new_install_signals(
     baseline_setup_files: frozenset[str],
     current_setup_files: frozenset[str],
 ) -> list[str]:
-    """Return the install-time execution hooks the change introduces."""
     signals: list[str] = []
     signals.extend(
         f"{name} added (install script)"
@@ -580,17 +446,6 @@ def audit_dependency_change(
     baseline: Mapping[str, str],
     current: Mapping[str, str],
 ) -> list[DependencyFinding]:
-    """Audit a dependency change and return every finding.
-
-    Args:
-        baseline: Content set of the BASELINE tree. Only the manifest names
-            in :data:`MANIFEST_NAMES` are read.
-        current: Content set of the CURRENT tree, same shape.
-
-    Returns:
-        The findings, ordered by manifest, then by line, then by category.
-        An empty list means the change is clean.
-    """
     findings: list[DependencyFinding] = []
     baseline_pyproject = baseline.get(PYPROJECT_MANIFEST)
     current_pyproject = current.get(PYPROJECT_MANIFEST)
@@ -651,9 +506,6 @@ def audit_dependency_change(
                     ),
                 )
             )
-        # Every newly added direct dependency must resolve in the current
-        # lockfile. If uv.lock is absent, malformed, or lacks the package,
-        # lock_names will not contain it, failing closed.
         if requirement.name not in lock_names:
             findings.append(
                 DependencyFinding(
@@ -689,9 +541,6 @@ def audit_dependency_change(
             ]
         )
 
-    # Check newly added lockfile entries (both direct and transitive).
-    # Per transitive_dependency_policy, transitive packages in uv.lock
-    # are governed by artifact hash pinning, not by direct publisher declarations.
     for key in sorted(set(current_packages) - set(baseline_packages)):
         entry = current_packages[key]
         if not _lock_entry_is_downloaded(entry):
@@ -717,7 +566,6 @@ def audit_dependency_change(
 
 
 def audit_dependency_roots(baseline_root: Path, current_root: Path) -> list[DependencyFinding]:
-    """Audit the dependency change between two repository roots."""
     baseline = read_manifests(baseline_root, MANIFEST_NAMES)
     current = read_manifests(current_root, MANIFEST_NAMES)
     baseline_files = read_manifests(baseline_root, SETUP_SCRIPT_FILES)
@@ -728,11 +576,6 @@ def audit_dependency_roots(baseline_root: Path, current_root: Path) -> list[Depe
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the dependency-integrity audit and return an exit code.
-
-    Exit code 0: no findings. Exit code 1: findings. Exit code 2: a root
-    was not found.
-    """
     args = argv if argv is not None else sys.argv[1:]
     if not args:
         current_root = Path(__file__).resolve().parents[2]

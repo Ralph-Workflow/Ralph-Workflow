@@ -1,19 +1,3 @@
-"""Typed planning-sync seam tests.
-
-:func:`ralph.pipeline._integration_owner_seam.decide_planning_sync` is
-the planning gate's single owner seam: it charges the durable ledger
-through the owner (a repeated hold escalates instead of looping), asks
-the ONE worktree classifier for the tree verdict, and returns a typed
-:class:`PlanningSyncVerdict` whose ``may_plan`` is DERIVED from the same
-observation every gate sees — never a prose reason string parsed by the
-caller.
-
-The director is replaced by a recording stand-in and the porcelain
-probe by a canned reading; the durable ledger is written by the
-production code under ``tmp_path``. No real Git, no subprocess, no
-sleeps. This is the ``audit_test_policy`` contract.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -56,7 +40,6 @@ def _observation(
     target_vs_feature: TargetVsFeature = TargetVsFeature.EQUAL,
     worktree: WorktreeState = WorktreeState.CLEAN,
 ) -> Observation:
-    """Build the observation the recording director will serve."""
     return Observation(
         target_vs_feature=target_vs_feature,
         target_vs_remote=TargetVsRemote.EQUAL,
@@ -70,8 +53,6 @@ def _observation(
 
 
 class _RecordingDirector:
-    """Director stand-in serving one canned observation."""
-
     def __init__(
         self,
         root: Path,
@@ -88,7 +69,6 @@ class _RecordingDirector:
         self.observation = observation
 
     def observe(self) -> Observation:
-        """Return the canned observation the test installed."""
         return self.observation
 
 
@@ -98,8 +78,7 @@ def _install(
     observation: Observation,
     porcelain: str,
 ) -> None:
-    """Install the director stand-in and the canned porcelain probe."""
-    del tmp_path  # the stand-in does not read the filesystem
+    del tmp_path
 
     def _factory(
         root: Path,
@@ -128,18 +107,12 @@ def _ledger_path(tmp_path: Path) -> Path:
     return tmp_path / ".agent" / "integration_attempt_ledger.json"
 
 
-# ---------------------------------------------------------------------------
-# may_plan derivation.
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize("target_vs_feature", _TARGET_CONTAINED)
 def test_in_sync_clean_tree_allows_planning(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     target_vs_feature: TargetVsFeature,
 ) -> None:
-    """The feature contains the target tip and the gate allows dispatch."""
     _install(monkeypatch, tmp_path, _observation(target_vs_feature=target_vs_feature), "")
 
     verdict = decide_planning_sync(tmp_path, ledger_path=_ledger_path(tmp_path))
@@ -157,7 +130,6 @@ def test_tracked_dirt_holds_planning_with_a_typed_shape(
     tmp_path: Path,
     target_vs_feature: TargetVsFeature,
 ) -> None:
-    """Blocking dirt holds planning; the verdict names the shape, not prose."""
     _install(
         monkeypatch,
         tmp_path,
@@ -177,7 +149,6 @@ def test_out_of_sync_branch_holds_planning(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """A branch behind the target holds planning and says integration runs."""
     _install(
         monkeypatch,
         tmp_path,
@@ -196,7 +167,6 @@ def test_untracked_only_does_not_hold_planning(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Scratch untracked files never hold planning (AC-10 untracked case)."""
     _install(monkeypatch, tmp_path, _observation(), "?? notes.txt\n")
 
     verdict = decide_planning_sync(tmp_path, ledger_path=_ledger_path(tmp_path))
@@ -209,7 +179,6 @@ def test_unknown_probe_holds_planning_without_a_verdict_guess(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """An unreadable probe holds planning: back off, never guess."""
     observation = _observation(worktree=WorktreeState.UNKNOWN)
     _install(monkeypatch, tmp_path, observation, " M src/app.py\n")
     monkeypatch.setattr(
@@ -225,16 +194,10 @@ def test_unknown_probe_holds_planning_without_a_verdict_guess(
     assert verdict.worktree.needs_reobservation is True
 
 
-# ---------------------------------------------------------------------------
-# One owner, one charge.
-# ---------------------------------------------------------------------------
-
-
 def test_every_call_charges_the_durable_ledger_once(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """A repeated hold spends the durable budget instead of looping."""
     _install(
         monkeypatch,
         tmp_path,
@@ -261,7 +224,6 @@ def test_the_verdict_carries_the_owner_action(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """The seam action is the owner's ladder answer the boundary must act on."""
     _install(
         monkeypatch,
         tmp_path,
@@ -280,7 +242,6 @@ def test_configured_target_reaches_the_observation(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """The seam carries the configured target into the observation layer."""
     created: list[_RecordingDirector] = []
 
     def _factory(
@@ -318,13 +279,7 @@ def test_configured_target_reaches_the_observation(
     assert created[0].remote == "tacos"
 
 
-# ---------------------------------------------------------------------------
-# Cleanup-ladder rung dispatch (the owner contract in integration_owner.py).
-# ---------------------------------------------------------------------------
-
-
 def _verdict_with_rung(rung: CleanupLadderRung | None) -> PlanningSyncVerdict:
-    """Build the typed planning verdict a boundary consumes."""
     return PlanningSyncVerdict(
         action=IntegrationAction.CONTINUE_GIT_OPERATION,
         observation=_observation(),
@@ -344,7 +299,6 @@ def _verdict_with_rung(rung: CleanupLadderRung | None) -> PlanningSyncVerdict:
 
 
 def test_the_verdict_carries_the_selected_cleanup_ladder_rung() -> None:
-    """A rung-selected verdict exposes it; a non-ladder verdict carries None."""
     assert _verdict_with_rung(CleanupLadderRung.QUARANTINE).ladder_rung is (
         CleanupLadderRung.QUARANTINE
     )
@@ -354,7 +308,6 @@ def test_the_verdict_carries_the_selected_cleanup_ladder_rung() -> None:
 def test_execute_planning_ladder_rung_dispatches_the_selected_rung_once(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The rung executes through run_ladder_rung exactly once, sha forwarded."""
     calls: list[tuple[CleanupLadderRung, dict[str, object]]] = []
     result = LadderStepResult(CleanupLadderRung.QUARANTINE, "succeeded", "succeeded:test")
 
@@ -387,7 +340,6 @@ def test_execute_planning_ladder_rung_dispatches_the_selected_rung_once(
 def test_execute_planning_ladder_rung_without_a_rung_is_a_no_op(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A non-ladder verdict dispatches nothing and returns None."""
 
     def _boom(rung: CleanupLadderRung, **kwargs: object) -> LadderStepResult:
         raise AssertionError(f"run_ladder_rung must not run for {rung!r} / {kwargs!r}")
@@ -401,7 +353,6 @@ def test_execute_planning_ladder_rung_without_a_rung_is_a_no_op(
 def test_execute_planning_ladder_rung_forwards_the_observation_operation_kind(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The verdict's typed in-progress state reaches the rung dispatcher."""
     seen: list[object] = []
 
     def _fake_run_ladder_rung(rung: CleanupLadderRung, **kwargs: object) -> LadderStepResult:
@@ -442,11 +393,6 @@ def test_execute_planning_ladder_rung_forwards_the_observation_operation_kind(
 def test_planning_seam_reaches_rung6_only_as_an_explicitly_disabled_reset(
     tmp_path: Path,
 ) -> None:
-    """The planning seam holds no re-observed signature, so rung 6 never resets.
-
-    The rung answers with the named ``disabled`` verdict (not a misleading
-    precondition miss) and no git mutation runs.
-    """
     ledger = AttemptLedger(tmp_path, ledger_path=_ledger_path(tmp_path))
     git = _FakePlumbing()
 

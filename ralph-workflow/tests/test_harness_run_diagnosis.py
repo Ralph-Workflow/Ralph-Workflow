@@ -1,9 +1,3 @@
-"""Tests for the smoke-test plumbing core.
-
-These tests are black-box and use injected fakes only: no real subprocess,
-no real network, no time.sleep, no real file I/O.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -40,9 +34,6 @@ if TYPE_CHECKING:
     )
     from ralph.policy.models import AgentsPolicy
 
-# Smoke-turn tests stream long synthetic agent output; under full-suite
-# worksteal parallelism the default 1s wall-clock alarm intermittently
-# fires on a loaded machine even though each test normally finishes fast.
 pytestmark = pytest.mark.timeout_seconds(5)
 
 
@@ -192,7 +183,6 @@ def test_subagent_smoke_evidence_reports_first_missing_signal(
 
 
 def test_subagent_smoke_evidence_rejects_dispatch_without_correlated_result() -> None:
-    """S-4: two real dispatches are valid; one still needs its own correlated result."""
     config = AgentConfig(
         cmd="claude",
         json_parser=JsonParserType.CLAUDE,
@@ -217,15 +207,6 @@ def test_subagent_smoke_evidence_rejects_dispatch_without_correlated_result() ->
 
 
 def test_subagent_smoke_evidence_collapses_streamed_opencode_task() -> None:
-    """A single OpenCode ``task`` streamed as running THEN completed is ONE dispatch.
-
-    OpenCode may emit an intermediate (non-completed) tool state before the
-    terminal one, and for a completed tool the parser now surfaces both the
-    dispatch and the result. Counting raw ``tool_use`` events would see the same
-    ``callID`` twice and misreport a genuine single subagent as two dispatches.
-    Dispatches are counted by distinct call ID, so a streamed call collapses to
-    one.
-    """
     config = AgentConfig(
         cmd="opencode",
         json_parser=JsonParserType.OPENCODE,
@@ -325,33 +306,6 @@ def test_detect_smoke_errors_enforces_subagent_evidence_only_for_requested_scena
 
 
 def test_subagent_smoke_evidence_detects_headless_claude_agent_dispatch() -> None:
-    """Headless-Claude parser's ``tool_use: Agent`` block must register as a dispatch.
-
-    Regression (wt-04-claude-parsing R8): the headless-Claude NDJSON parser
-    threads the raw ``content_block`` dict as ``metadata``, so the tool
-    name lives at ``metadata["name"]`` rather than the canonical
-    ``metadata["tool"]``. The pre-fix ``_normalized_tool_name`` helper
-    only consulted ``tool``, which surfaced ``subagent dispatch was not
-    observed`` on a transcript that plainly dispatched an ``Agent`` call
-    (confirmed by reading the captured headless smoke jsonl at
-    ``~/.claude/projects/-home-mistlight-Projects-Ralph-Workflow-wt-04-
-    claude-parsing/04f64659-...jsonl`` -- the Assistant record's
-    ``message.content`` carries a ``tool_use`` block whose keys are
-    ``{'type', 'id', 'name', 'input', 'caller'}`` and ``name == 'Agent'``).
-
-    The fix has ``_normalized_tool_name`` fall through ``tool`` ->
-    ``tool_name`` -> ``toolName`` -> ``name``, the same ordered
-    fall-through used by the canonical helper in
-    :mod:`ralph.agents.parsers._template`. The headless-Claude parser
-    resolves through ``JsonParserType.CLAUDE`` with
-    ``AgentTransport.CLAUDE`` -- which still lands on the
-    ``ClaudeParser`` (NDJSON) instance under
-    :func:`ralph.agents.parsers.resolve_parser_key` (the interactive
-    transport is special-cased; everything else with the ``claude``
-    command falls through to the headless NDJSON parser), so the test
-    below exercises the full dispatch / result / post-activity chain
-    against the same parser that a live ``claude -p`` run uses.
-    """
     config = AgentConfig(
         cmd="claude",
         json_parser=JsonParserType.CLAUDE,
@@ -418,31 +372,16 @@ def test_subagent_smoke_evidence_detects_headless_claude_agent_dispatch() -> Non
 
 
 def test_normalized_tool_name_falls_through_to_name_field() -> None:
-    """``_normalized_tool_name`` consults ``tool`` then falls through to ``name``.
-
-    Pins the headless-Claude regression at the helper level: the field
-    Claude's content blocks carry is ``name`` (the block's
-    ``{"type": "tool_use", "id": ..., "name": "Agent", "input": ...}``
-    shape), so the helper must read it directly. This pins the contract
-    independent of which parser populates ``metadata`` -- a future
-    parser that emits ``tool_name`` instead of ``name`` still works
-    because the helper walks the full ordered fall-through.
-    """
     assert smoke_plumbing_module._normalized_tool_name({"tool": "Agent"}) == "agent"
-    # Headless-Claude parser block shape: only ``name`` is present.
     assert smoke_plumbing_module._normalized_tool_name({"name": "Agent"}) == "agent"
-    # Pi legacy / camelCase slots fall through too.
     assert smoke_plumbing_module._normalized_tool_name({"tool_name": "Task"}) == "task"
     assert smoke_plumbing_module._normalized_tool_name({"toolName": "Task"}) == "task"
-    # First non-empty key wins (``tool`` beats ``name`` when both exist).
     assert (
         smoke_plumbing_module._normalized_tool_name({"tool": "Agent", "name": "SOMETHING_ELSE"})
         == "agent"
     )
-    # Empty / whitespace / non-string values are skipped.
     assert smoke_plumbing_module._normalized_tool_name({"tool": "  "}) == ""
     assert smoke_plumbing_module._normalized_tool_name({"tool": None}) == ""
-    # All keys absent returns the empty string (a non-match, not a crash).
     assert smoke_plumbing_module._normalized_tool_name({}) == ""
 
 
@@ -468,14 +407,6 @@ def test_resolve_smoke_harness_spec_nanocoder_alias_uses_unique_run_id() -> None
 
 
 def test_resolve_smoke_harness_spec_cursor_bare_uses_cursor_layout() -> None:
-    """Bare ``cursor`` resolves to the shared cursor harness layout.
-
-    Pins AC-26: ``ralph smoke-interactive-cursor --agent cursor`` must NOT
-    raise ``ValueError: No smoke harness spec defined for agent 'cursor'``
-    from ``resolve_smoke_harness_spec``. Bare ``cursor`` uses the base
-    cursor harness layout (no per-alias run_id suffix) so on-disk artifacts
-    stay co-located with the shared output directory.
-    """
     spec = smoke_plumbing_module.resolve_smoke_harness_spec("cursor")
     assert spec.relative_dir == Path("tmp/interactive-cursor-smoke")
     assert spec.output_file == Path("tmp/interactive-cursor-smoke/todo-list.js")
@@ -483,20 +414,11 @@ def test_resolve_smoke_harness_spec_cursor_bare_uses_cursor_layout() -> None:
 
 
 def test_resolve_smoke_harness_spec_cursor_alias_uses_unique_run_id() -> None:
-    """``cursor/<model>`` resolves to a sanitized unique run_id.
-
-    Pins AC-26: a smoke run with a non-default model alias (e.g.
-    ``cursor/auto`` or ``cursor/gpt-5.3-codex-high``) MUST NOT collide on
-    the completion-sentinel / receipt paths of the base cursor run. The
-    suffix is sanitized the same way the agy/nanocoder branches sanitize it
-    (run-id-safe characters only).
-    """
     spec = smoke_plumbing_module.resolve_smoke_harness_spec("cursor/auto")
     assert spec.relative_dir == Path("tmp/interactive-cursor-smoke")
     assert spec.output_file == Path("tmp/interactive-cursor-smoke/todo-list.js")
     assert spec.run_id == "interactive-cursor-smoke-auto"
 
-    # Bracket-parameterized model ids sanitize the brackets to a single dash.
     spec_bracket = smoke_plumbing_module.resolve_smoke_harness_spec(
         "cursor/claude-opus-4-8[context=1m]"
     )
@@ -504,7 +426,6 @@ def test_resolve_smoke_harness_spec_cursor_alias_uses_unique_run_id() -> None:
 
 
 def test_resolve_smoke_harness_spec_opencode_aliases_isolate_output_paths() -> None:
-    """S-6: concurrent OpenCode aliases must not erase one another's smoke output."""
     minimax = smoke_plumbing_module.resolve_smoke_harness_spec("opencode/minimax/MiniMax-M3")
     alternate = smoke_plumbing_module.resolve_smoke_harness_spec("opencode/omnirouter/auto/cheap")
 
@@ -581,7 +502,6 @@ def test_run_smoke_plumbing_multimodal_forwards_workspace_monitor_bypass(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """The deterministic multimodal path sends its observer bypass to execution."""
     captured_invocation_options: list[InvokeOptions | None] = []
 
     def fake_execute_agent_effect(*_args: object, **kwargs: object) -> PipelineEvent:
@@ -712,7 +632,6 @@ def test_detect_smoke_errors_uses_parser_fallback_for_meaningful_output(
 def test_smoke_diagnosis_regression_reports_empty_opencode_transcript_actionably(
     tmp_path: Path,
 ) -> None:
-    """S-6: an OpenCode process failure must name the next diagnostic step."""
     output_file = tmp_path / "tmp" / "interactive-opencode-smoke" / "todo-list.js"
     params = SmokeRunParams(
         agent_name="opencode/minimax-coding-plan/MiniMax-M3",
@@ -756,10 +675,6 @@ def test_smoke_diagnosis_regression_accepts_one_agy_parser_visible_result(
         bridge=None,
     )
 
-    # Post F7/DoD 17: AGY clears the same meaningful-output bar as every
-    # other transport -- the AGY-only "any non-blank line is enough"
-    # exemption has been removed. Three meaningful output lines satisfy
-    # the shared three-tier check.
     errors = smoke_plumbing_module._detect_smoke_errors(
         params,
         [
@@ -779,8 +694,6 @@ def test_smoke_diagnosis_regression_accepts_one_agy_parser_visible_result(
 
 
 class TestSmokePlumbingCharacterization:
-    """Characterization tests pinning smoke plumbing behavior."""
-
     def test_run_smoke_plumbing_consumes_pipeline_deps_bridge_factory(
         self,
         monkeypatch: pytest.MonkeyPatch,
@@ -867,10 +780,6 @@ def _make_fake_registry(agent_name: str = "claude/haiku") -> object:
 
     class _FakeCatalog:
         def get(self, _name: str) -> None:
-            # No support declared for these tests' synthetic agent names --
-            # matches the real ``AgentCatalog.get``'s "nobody has said"
-            # contract (S-3's Branch A of ``_detect_capability_breaks``
-            # grades a ``None`` support as ungraded, never crashes).
             return None
 
     class FakeRegistry:
@@ -929,7 +838,6 @@ def _fake_execute_agent_effect_for_config(
         )
         workspace_root = kwargs.get("workspace_root")
         if workspace_root is None:
-            # Fallback: the SmokeRunParams are passed positionally after the effect.
             params = _args[2] if len(_args) >= 3 else None
             if isinstance(params, SmokeRunParams):
                 workspace_root = params.workspace_root
@@ -1065,7 +973,6 @@ def test_run_smoke_plumbing_enforces_ordered_subagent_lifecycle(
 
 
 def test_detect_break_indicators_uses_anchored_crash_patterns() -> None:
-    """Incidental words like 'crash' in prose must not flag the detector."""
     assert smoke_plumbing_module._detect_break_indicators(["this should not crash"]) == []
     assert (
         "crash-like transcript output observed"
@@ -1091,7 +998,6 @@ def test_agent_session_ceilings_opencode_gets_360s_agy_gets_360s_claude_gets_120
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """OpenCode and AGY get 360s; Claude retains the 120s smoke ceiling."""
     captured_params: list[SmokeRunParams] = []
 
     def fake_run_smoke_agent(
@@ -1187,13 +1093,6 @@ def test_agent_session_ceilings_opencode_gets_360s_agy_gets_360s_claude_gets_120
 
 
 def _nanocoder_support() -> AgentSupport:
-    """Return the real registered nanocoder ``AgentSupport`` (S-6 / G6 / DoD 20).
-
-    Used by direct ``_detect_smoke_errors`` calls in this module so they
-    reproduce the ``support`` resolution ``_run_smoke_agent`` performs in
-    production, rather than a hand-built double that could drift from the
-    real registered ``session_identifier_observable`` value.
-    """
     return next(
         support for support in builtin_supports() if support.transport == AgentTransport.NANOCODER
     )
@@ -1254,17 +1153,9 @@ def _make_completion_sentinel(tmp_path: Path, run_id: str) -> None:
 def test_detect_smoke_errors_agy_without_artifact_reports_missing_completion(
     tmp_path: Path,
 ) -> None:
-    """AGY with no artifact write still fails the completion check.
-
-    Required smoke completion needs both a canonical receipt and the durable
-    sentinel. A transcript substring satisfies neither.
-    """
     output_file = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.write_text("export const todos = [];\n", encoding="utf-8")
-    # CRUCIALLY: do NOT write the artifact. The smoke run must report the
-    # missing-receipt completion failure, not the legacy transcript-marker
-    # failure.
     artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.md"
     if artifact_path.exists():
         artifact_path.unlink()
@@ -1290,10 +1181,6 @@ def test_detect_smoke_errors_agy_without_artifact_reports_missing_completion(
 
     assert "smoke_test_result artifact was not submitted" in errors
     assert "completion sentinel was not observed" in errors
-    # The transcript-only marker path must NOT satisfy completion.
-    # Drive the harness with a transcript that contains the substring
-    # and confirm the failure still fires (i.e. the substring is not
-    # trusted as a completion signal for AGY).
     transcript_with_marker = ["I will create the todo list.", "Task declared complete:"]
     errors_with_marker = smoke_plumbing_module._detect_smoke_errors(
         params, transcript_with_marker, transcript_with_marker, None, None
@@ -1308,8 +1195,6 @@ def test_detect_smoke_errors_agy_without_artifact_reports_missing_completion(
         "With no artifact and no receipt, AGY completion must fail for "
         f"missing receipt. Got errors: {errors_with_marker}"
     )
-    # Post F7/DoD 17: AGY no longer has a session-ID exemption. The
-    # session ID check applies uniformly to every transport.
     assert "session ID was not observed" in errors
     assert "session ID was not observed" in errors_with_marker
 
@@ -1317,30 +1202,10 @@ def test_detect_smoke_errors_agy_without_artifact_reports_missing_completion(
 def test_detect_smoke_errors_agy_self_reported_tool_activity_does_not_count(
     tmp_path: Path,
 ) -> None:
-    """AGY tool activity must come from authoritative sources, not the artifact.
-
-    Replaces the prior test that pinned the removed self-certifying
-    contract (artifact ``headless_guide_checks`` declaring
-    ``"tool activity"`` was treated as proof of tool activity). The
-    authoritative sources for AGY are: (a) a ``[plain] tool: NAME`` parser
-    event in the transcript, or (b) the expected workspace file
-    ``tmp/interactive-agy-smoke/todo-list.js`` being written. The
-    artifact's self-report is NEVER trusted; see the regression test
-    ``test_agy_tool_activity_must_not_come_from_artifact`` in
-    ``tests/test_smoke_plumbing_uses_canonical_submit.py`` for the full
-    contract.
-    """
     output_file = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
     output_file.parent.mkdir(parents=True, exist_ok=True)
-    # CRUCIALLY: do NOT write the workspace file. The file write is the
-    # authoritative AGY tool-activity signal, so a pre-created file would
-    # mask the regression.
     artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.md"
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
-    # Self-reporting artifact: a spec-valid canonical Markdown document whose
-    # Headless Guide Checks declare "tool activity" while no actual tool
-    # activity is observed (no parser event, no file write). The harness
-    # must NOT trust the self-report.
     artifact_path.write_text(
         """\
 ---
@@ -1377,7 +1242,6 @@ output_file: tmp/interactive-agy-smoke/todo-list.js
         bridge=None,
     )
 
-    # Empty transcript: no [plain] tool: events for the parser to classify.
     errors = smoke_plumbing_module._detect_smoke_errors(params, [], [], None, None)
 
     assert "no tool activity was observed" in errors
@@ -1387,11 +1251,6 @@ output_file: tmp/interactive-agy-smoke/todo-list.js
 def test_detect_smoke_errors_agy_artifact_with_breaks_satisfies_artifact_check(
     tmp_path: Path,
 ) -> None:
-    """AGY with receipt and sentinel may report non-blocking observed breaks.
-
-    The receipt is independent of the model-authored ``observed_breaks``
-    field. Completion still comes from the separate durable sentinel.
-    """
     output_file = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.write_text("export const todos = [];\n", encoding="utf-8")
@@ -1419,9 +1278,6 @@ def test_detect_smoke_errors_agy_artifact_with_breaks_satisfies_artifact_check(
         bridge=None,
     )
 
-    # Pre-compute the receipt status the way ``_run_smoke_agent`` would:
-    # call ``_is_smoke_artifact_submitted`` to promote the fallback artifact
-    # to a canonical receipt, mirroring the live runtime.
     artifact_submitted = smoke_plumbing_module._is_smoke_artifact_submitted(params.workspace_root)
     assert artifact_submitted is True, (
         "Test setup invariant: the artifact must be promoted to a receipt"
@@ -1433,24 +1289,12 @@ def test_detect_smoke_errors_agy_artifact_with_breaks_satisfies_artifact_check(
 
     assert "completion sentinel was not observed" not in errors
     assert "smoke_test_result artifact was not submitted" not in errors
-    # Post F7/DoD 17: AGY no longer has a session-ID exemption.
     assert "session ID was not observed" in errors
 
 
 def test_detect_smoke_errors_nanocoder_receipt_and_sentinel_satisfy_completion(
     tmp_path: Path,
 ) -> None:
-    """Nanocoder uses the same receipt-plus-sentinel completion contract.
-
-    S-6 (Evidence Provenance G6 / DoD 20): the NANOCODER-only fallback that
-    treated a submitted artifact as tool-activity evidence was removed --
-    it was the exact self-report-as-evidence shape DoD 19 removed for AGY,
-    and NanocoderParser DOES emit authoritative parser-classified tool
-    events (the shared ``[plain] tool: NAME`` convention). This test now
-    supplies a real tool-activity line, matching what every other
-    transport's smoke run must provide, rather than relying on the
-    deleted artifact-submitted fallback.
-    """
     output_file = tmp_path / "tmp" / "interactive-nanocoder-smoke" / "todo-list.js"
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.write_text("export const todos = [];\n", encoding="utf-8")
@@ -1495,11 +1339,6 @@ def test_detect_smoke_errors_nanocoder_receipt_and_sentinel_satisfy_completion(
         None,
         artifact_submitted=artifact_submitted,
         run_id=run_id,
-        # S-6 (G6 / DoD 20): the session-ID exemption is now resolved from
-        # the registered AgentSupport's session_identifier_observable
-        # property, not a literal transport comparison -- thread the real
-        # registered nanocoder support so this direct call reproduces what
-        # _run_smoke_agent resolves in production.
         support=_nanocoder_support(),
     )
 
@@ -1512,10 +1351,6 @@ def test_detect_smoke_errors_nanocoder_receipt_and_sentinel_satisfy_completion(
 def test_detect_smoke_errors_nanocoder_requires_authoritative_tool_activity_evidence(
     tmp_path: Path,
 ) -> None:
-    """S-6 (G6 / DoD 20): a submitted artifact alone no longer satisfies the
-    tool-activity check for NANOCODER -- authoritative parser-classified
-    evidence is required, the same bar every other transport must clear.
-    """
     output_file = tmp_path / "tmp" / "interactive-nanocoder-smoke" / "todo-list.js"
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.write_text("export const todos = [];\n", encoding="utf-8")
@@ -1570,7 +1405,6 @@ def test_detect_smoke_errors_nanocoder_requires_authoritative_tool_activity_evid
 def test_detect_smoke_errors_nanocoder_banner_without_progress_reports_prompt_submission_failure(
     tmp_path: Path,
 ) -> None:
-    """Nanocoder's welcome banner alone must not look like successful startup."""
     output_file = tmp_path / "tmp" / "interactive-nanocoder-smoke" / "todo-list.js"
     config = AgentConfig(
         cmd="nanocoder",
@@ -1613,7 +1447,6 @@ def test_detect_smoke_errors_nanocoder_banner_without_progress_reports_prompt_su
 def test_detect_smoke_errors_non_agy_transport_keeps_missing_signal_checks(
     tmp_path: Path,
 ) -> None:
-    """The declare_complete and session ID gates are per-agent, not global."""
     output_file = tmp_path / "tmp" / "interactive-claude-smoke" / "todo-list.js"
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.write_text("export const todos = [];\n", encoding="utf-8")
@@ -1667,8 +1500,6 @@ def test_detect_smoke_errors_agy_empty_output_reports_quota_diagnostic(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """When AGY emits no stdout and the CLI log shows quota exhaustion, the
-    smoke report includes an actionable upstream diagnostic."""
     log_path = tmp_path / "cli.log"
     log_path.write_text(
         "...\n"
@@ -1689,8 +1520,6 @@ def test_detect_smoke_errors_agy_empty_output_includes_quota_reset_window(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """When the CLI log contains a 'Resets in ...' window, the diagnostic
-    includes it so the operator knows how long to wait."""
     log_path = tmp_path / "cli.log"
     log_path.write_text(
         "...\n"
@@ -1711,8 +1540,6 @@ def test_detect_smoke_errors_agy_empty_output_reports_model_diagnostic(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """When AGY emits no stdout and the CLI log shows an unknown model ID, the
-    smoke report names the rejected model."""
     log_path = tmp_path / "cli.log"
     log_path.write_text(
         "...\n"
@@ -1735,8 +1562,6 @@ def test_detect_smoke_errors_agy_empty_output_reports_generic_diagnostic_when_lo
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """When AGY emits no stdout and no CLI log is present, a generic pointer
-    to the CLI log is still reported."""
     missing_log = tmp_path / "no_such_cli.log"
     monkeypatch.setattr(smoke_plumbing_module, "_AGY_CLI_LOG_PATH", missing_log)
 
@@ -1752,7 +1577,6 @@ def test_detect_smoke_errors_agy_empty_output_reports_generic_diagnostic_when_lo
 def test_detect_smoke_errors_agy_no_diagnostic_when_stdout_present(
     tmp_path: Path,
 ) -> None:
-    """The upstream diagnostic is only added when AGY produced zero stdout."""
     errors = smoke_plumbing_module._detect_smoke_errors(
         _make_agy_params(tmp_path),
         ["some stdout line\n"],
@@ -1767,7 +1591,6 @@ def test_detect_smoke_errors_agy_no_diagnostic_when_stdout_present(
 def test_read_smoke_test_result_artifact_returns_none_for_invalid_content(
     tmp_path: Path,
 ) -> None:
-    """An artifact with invalid content (missing required field) returns None."""
     artifact_dir = tmp_path / ".agent" / "artifacts"
     artifact_path = artifact_dir / "smoke_test_result.md"
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1783,7 +1606,6 @@ def test_read_smoke_test_result_artifact_returns_none_for_invalid_content(
 def test_read_smoke_test_result_artifact_returns_none_for_missing_file(
     tmp_path: Path,
 ) -> None:
-    """A missing artifact file returns None."""
 
     result = read_smoke_test_result_artifact(tmp_path)
     assert result is None
@@ -1792,7 +1614,6 @@ def test_read_smoke_test_result_artifact_returns_none_for_missing_file(
 def test_read_smoke_test_result_artifact_returns_validated_content(
     tmp_path: Path,
 ) -> None:
-    """A fully valid artifact returns the validated content dict."""
     artifact_dir = tmp_path / ".agent" / "artifacts"
     artifact_path = artifact_dir / "smoke_test_result.md"
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1825,7 +1646,6 @@ def test_detect_smoke_errors_agy_no_diagnostic_when_artifact_present(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """The upstream diagnostic is not added when AGY wrote the artifact file."""
     _make_artifact(tmp_path, observed_breaks=[])
     log_path = tmp_path / "cli.log"
     log_path.write_text("RESOURCE_EXHAUSTED (code 429)\n", encoding="utf-8")
@@ -1839,18 +1659,6 @@ def test_detect_smoke_errors_agy_no_diagnostic_when_artifact_present(
 
 
 def test_clear_smoke_artifact_also_clears_stale_wire_ledger(tmp_path: Path) -> None:
-    """The smoke harness MUST NOT inherit a wire ledger from a prior run.
-
-    ``mcp-wire-ledger.jsonl`` is an append-only HMAC chain keyed by the
-    run-scoped broker secret. A ledger written under a previous run's
-    secret (or with no secret at all) cannot verify under the current
-    run's secret, so ``verify_chain`` fails closed and every fact grades
-    below WIRE forever (measured 2026-08-17 live AGY smoke: all facts
-    demoted to TRANSCRIPT/WORKSPACE_EFFECT with ``DEGRADED`` verdict and
-    EXIT_CODE=1 even with ``RALPH_BROKER_SECRET`` set). The artifact
-    clear at smoke setup MUST drop the stale ledger alongside the
-    stale artifact so each run's chain starts at genesis.
-    """
     from ralph.mcp.server._wire_ledger import WIRE_LEDGER_RELPATH
 
     artifact = tmp_path / ".agent" / "artifacts" / "smoke_test_result.md"

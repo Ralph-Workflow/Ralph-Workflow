@@ -1,5 +1,3 @@
-"""Black-box regression tests for idempotent capability-state persistence."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -48,7 +46,6 @@ class _CountingBackend(FileBackend):
 
 
 def test_capability_state_regression_first_save_writes_serialized_state() -> None:
-    """Step 4: a first save performs one backend write with unchanged JSON bytes."""
     backend = _CountingBackend()
     path = Path("/virtual-config/ralph-workflow-capabilities.json")
     state = CapabilityState()
@@ -61,7 +58,6 @@ def test_capability_state_regression_first_save_writes_serialized_state() -> Non
 
 
 def test_capability_state_regression_identical_save_skips_physical_write() -> None:
-    """Step 4: a byte-identical second save performs no additional backend write."""
     backend = _CountingBackend()
     path = Path("/virtual-config/ralph-workflow-capabilities.json")
     state = CapabilityState()
@@ -74,7 +70,6 @@ def test_capability_state_regression_identical_save_skips_physical_write() -> No
 
 
 def test_capability_state_regression_changed_save_writes_updated_state() -> None:
-    """Step 4: changing the state performs a second write with the new JSON bytes."""
     backend = _CountingBackend()
     path = Path("/virtual-config/ralph-workflow-capabilities.json")
     initial = CapabilityState()

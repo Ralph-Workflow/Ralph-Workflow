@@ -1,20 +1,3 @@
-"""E2.4 (second half): parent-owned spawn identity cannot be inherited from extras.
-
-``tests/mcp/test_e24_fresh_stage_id.py`` pins that every spawn mints a fresh
-stage id, but it feeds the reused extras only as ``None`` and the
-``subprocess_env`` mapper. The acceptance review found the remaining hole: the
-parent-owned keys were assigned *before* ``_extra_env`` was merged, so a caller
-that reuses one extra-env mapping across spawns (the ``restart_fn`` pattern the
-catalogue describes) could overwrite them, and every candidate would then write
-the old child's stage file while ``last_stage`` reported the old child's
-"serving".
-
-This module drives the production ``lifecycle._spawn_mcp_process`` preparation
-path with a deliberately poisoned, reused extra-env mapping and asserts the
-parent wins. It uses only injected fakes (no real process, no clock), so it
-stays inside the default ``make test`` profile.
-"""
-
 from __future__ import annotations
 
 import uuid
@@ -23,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-# Pre-import workspace to prevent circular import between process.manager and workspace
 from ralph import workspace as _workspace
 from ralph.mcp.protocol.env import (
     MCP_ACCEPT_PAUSE_FILE,
@@ -38,13 +20,10 @@ from ralph.mcp.server._process_like import ProcessLike
 pytestmark = pytest.mark.timeout_seconds(10)
 _ = _workspace
 
-#: Parent-owned key defined on the lifecycle module (not the protocol env map).
 _SESSION_ID_ENV = lifecycle.MCP_SESSION_ID_ENV
 
 
 class _DummyProcess(ProcessLike):
-    """A spawn double that is already terminal, so no reaping is required."""
-
     def __init__(self, pid: int = 4321) -> None:
         self._pid = pid
         self._poll: int | None = 0
@@ -92,7 +71,6 @@ def _deps(
 
 
 def test_e24_reused_extra_env_cannot_overwrite_parent_owned_spawn_identity(tmp_path: Path) -> None:
-    """A reused, poisoned extra-env mapping loses every parent-owned key."""
     captured_envs: list[dict[str, str]] = []
     session_file = tmp_path / "session.json"
     session_file.write_text("{}", encoding="utf-8")
@@ -102,7 +80,6 @@ def test_e24_reused_extra_env_cannot_overwrite_parent_owned_spawn_identity(tmp_p
     session = AgentSession(session_id=session_id_value, run_id="run-e24-extras", drain="standalone")
 
     poisoned = "reused-poison-value"
-    # The catalogue's failure mode: one mapping handed to every spawn.
     reused_extra_env = {
         MCP_STAGE_ID_ENV: poisoned,
         MCP_ACCEPT_PAUSE_FILE: poisoned,
@@ -140,7 +117,6 @@ def test_e24_reused_extra_env_cannot_overwrite_parent_owned_spawn_identity(tmp_p
         assert env[MCP_ACCEPT_PAUSE_FILE] != poisoned
         assert env[_SESSION_ID_ENV] == session_id_value
         assert env[MCP_SNAPSHOT_DIR_ENV] != poisoned
-        # The value workers actually contributed is still inherited.
         assert env["WORKER_ARTIFACT_DIR"] == "tmp/worker-7"
 
     assert captured_envs[0][MCP_STAGE_ID_ENV] != captured_envs[1][MCP_STAGE_ID_ENV]

@@ -1,21 +1,3 @@
-"""Acceptance catalog test for the filesystem-proportional run traceability page.
-
-The maintained criterion map
-``docs/agents/filesystem-activity-traceability.md`` records, for every W/R/P/B/D/E
-criterion in ``.agent/PRODUCT_CRITERIA.md``, the public boundary, current
-evidence, and remaining gap. This test enforces two compact invariants so the
-catalog itself cannot silently lose coverage:
-
-* Every ``W1``-``W8``, ``R1``-``R5``, ``P1``-``P4``, ``B1``-``B6``, ``D1``-``D3``,
-  and ``E1``-``E4`` row is present in the matrix (no criterion can disappear).
-* Every ``COVERED`` row names a test path that actually exists in the test tree
-  so a "covered by accident" claim is reverted by deleting the test.
-
-A row that legitimately lacks a test reference must be tagged ``GAP``. The
-catalog does not assert on production source — only on the test path strings
-the document references.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -25,7 +7,6 @@ import pytest
 from ralph.workspace.fs import FsWorkspace
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-# The ``scripts/`` tree lives one level up from the Python package.
 WORKSPACE_ROOT = REPO_ROOT.parent
 TRACEABILITY_DOC = REPO_ROOT / "docs" / "agents" / "filesystem-activity-traceability.md"
 TESTS_ROOT = REPO_ROOT / "tests"
@@ -46,7 +27,6 @@ def _traceability_text() -> str:
 
 
 def _row_for_criterion(text: str, criterion: str) -> str:
-    """Return the matrix row whose first column starts with ``criterion``."""
     for line in text.splitlines():
         stripped = line.strip()
         if not stripped.startswith("|"):
@@ -58,7 +38,6 @@ def _row_for_criterion(text: str, criterion: str) -> str:
 
 
 def test_regression_rejects_noncommittal_matrix_status() -> None:
-    """S-2: every criterion is either evidenced or an explicit discovery gap."""
     malformed = "| W1 | FsWorkspace.write | no evidence | pending review |"
 
     with pytest.raises(AssertionError, match="COVERED or GAP"):
@@ -66,29 +45,18 @@ def test_regression_rejects_noncommittal_matrix_status() -> None:
 
 
 def _assert_explicit_status(row: str, criterion: str) -> None:
-    """Require each row to claim evidence or retain an explicit discovery gap."""
     assert "COVERED" in row or "GAP" in row, (
         f"{criterion} must be explicitly marked COVERED or GAP, got row: {row!r}"
     )
 
 
 def _referenced_test_paths(row: str) -> list[str]:
-    """Return every path reference that appears in ``row``.
-
-    The matrix may use either ``tests/...`` or the shorter ``test_*.py`` form
-    when the reference is unambiguous inside the tests tree. Treat any
-    ``test_*.py`` token as an implicit relative path inside ``tests/``. A
-    ``::test_name`` suffix selects a particular test within the file but the
-    file itself still counts as the canonical reference. ``scripts/...``
-    references are also accepted for documentation-only criteria.
-    """
     cells = row.split("|")
     collected: list[str] = []
     for cell in cells:
         tokens = cell.replace("`", " ").split()
         for token in tokens:
             stripped = token.rstrip(",.;:)")
-            # Drop a `::test_id` selector; the file path is what we need.
             if "::" in stripped:
                 stripped = stripped.split("::", 1)[0]
             if (stripped.startswith("tests/") and stripped.endswith(".py")) or (
@@ -108,26 +76,17 @@ def _referenced_test_paths(row: str) -> list[str]:
 
 @pytest.mark.parametrize("criterion", _EXPECTED_CRITERIA)
 def test_matrix_lists_every_criterion(criterion: str) -> None:
-    """The traceability matrix must enumerate every product criterion."""
     row = _row_for_criterion(_traceability_text(), criterion)
     assert "|" in row, f"criterion {criterion} row malformed: {row!r}"
 
 
 def test_matrix_rows_use_explicit_coverage_or_gap_status() -> None:
-    """Keep each criterion an evidenced claim or an explicit implementation backlog item."""
     text = _traceability_text()
     for criterion in _EXPECTED_CRITERIA:
         _assert_explicit_status(_row_for_criterion(text, criterion), criterion)
 
 
 def test_covered_rows_reference_real_test_files() -> None:
-    """``COVERED`` claims must point to tests that exist on disk.
-
-    The catalog accepts either ``tests/...`` references (behavioral proof) or
-    ``scripts/...`` references for documentation-only criteria (E3) where the
-    proof is a static guard rather than a behavioral test. The path must
-    resolve inside the repository either way.
-    """
     text = _traceability_text()
     for criterion in _EXPECTED_CRITERIA:
         row = _row_for_criterion(text, criterion)
@@ -147,7 +106,6 @@ def test_covered_rows_reference_real_test_files() -> None:
 
 
 def test_covered_rows_resolve_inside_tests_tree() -> None:
-    """Every reference must live inside the repository's test or scripts tree."""
     text = _traceability_text()
     for criterion in _EXPECTED_CRITERIA:
         row = _row_for_criterion(text, criterion)
@@ -167,7 +125,6 @@ def test_covered_rows_resolve_inside_tests_tree() -> None:
 
 
 def test_covered_rows_cover_canonical_boundaries() -> None:
-    """Sanity check that the canonical W1/W2/R1/P1 boundaries have evidence."""
     text = _traceability_text()
     for criterion, expected_suffix in (
         ("W1", "test_fs_workspace_idempotent_write.py"),
@@ -184,7 +141,6 @@ def test_covered_rows_cover_canonical_boundaries() -> None:
 
 
 def test_w8_b1_e2_b6_row_outcomes() -> None:
-    """S-6: the four planned matrix outcomes cannot silently drift."""
     text = _traceability_text()
     expected = (
         ("W8", "COVERED", "tests/agents/test_workspace_watch_scoping.py"),
@@ -203,7 +159,6 @@ def test_w8_b1_e2_b6_row_outcomes() -> None:
 
 
 def test_canonical_seam_imports_still_resolve() -> None:
-    """The public seams named in the traceability matrix must still import."""
     from ralph.agents.invoke._workspace import WorkspaceMonitor
     from ralph.agents.invoke._workspace_change_classifier import (
         WorkspaceChangeClassifier,

@@ -1,25 +1,3 @@
-"""S-9 / F5: the wire-ledger-backed AGY capture table exporter.
-
-Brief ``.agent/PRODUCT_CRITERIA.md`` F5 -- the wire ledger is the
-fixture dividend. A live run deposits replayable frames with their
-capture method already attached, so the provenance record in
-``tests/display/_fixtures/agy_wire_provenance.md`` is written by the
-recorder rather than by hand, and the B7 ``error``-frame label
-flips to measured the first time a real ``error`` frame crosses the
-wire.
-
-These tests pin the deterministic export contract:
-- ``collect_captures`` returns verified rows from the ledger (an
-  unverifiable ledger returns ``[]`` and backs nothing).
-- ``render_capture_table_markdown`` produces a stable, parseable
-  markdown table that the fixture file can include verbatim.
-- The B7 ``error``-frame entry stays labelled ``synthetic`` until a
-  real ``error`` row is observed in a verified ledger.
-
-The tests run with hand-built ledgers (no live MCP dispatch), so
-the export contract is pinned without any external network.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -43,7 +21,6 @@ def _append_record(
     run_id: str,
     secret: str,
 ) -> None:
-    """Append one HMAC-chained record to the workspace ledger."""
     record = append_wire_record(
         tmp_path,
         method=method,
@@ -56,12 +33,6 @@ def _append_record(
 
 
 def test_collect_captures_returns_verified_rows(tmp_path: Path) -> None:
-    """``collect_captures`` returns every verified capture in the ledger.
-
-    S-9 / F5: the export source of truth. An unverifiable ledger backs
-    nothing -- ``collect_captures`` returns ``[]`` so the exporter
-    cannot promote a tampered row to the fixture file.
-    """
     secret = "fixture-secret"
     _append_record(
         tmp_path,
@@ -97,12 +68,6 @@ def test_collect_captures_returns_verified_rows(tmp_path: Path) -> None:
 
 
 def test_collect_captures_returns_empty_for_unverifiable_ledger(tmp_path: Path) -> None:
-    """An unverifiable ledger backs no captures -- ``collect_captures`` returns ``[]``.
-
-    Pin the F2 invariant from the exporter side: an unchained ledger
-    cannot promote its rows to a fixture file, the same way it cannot
-    grade ``Provenance.WIRE``.
-    """
     secret = "fixture-secret"
     _append_record(
         tmp_path,
@@ -112,7 +77,6 @@ def test_collect_captures_returns_empty_for_unverifiable_ledger(tmp_path: Path) 
         run_id="run-1",
         secret=secret,
     )
-    # Tamper with the row to break the chain.
     ledger_path = _ledger_path(tmp_path, secret)
     import json
 
@@ -127,24 +91,10 @@ def test_collect_captures_returns_empty_for_unverifiable_ledger(tmp_path: Path) 
 
 
 def test_collect_captures_returns_empty_without_secret(tmp_path: Path) -> None:
-    """No broker secret means no captures -- the unsigned-server invariant.
-
-    F2 / A5: an unchained ledger is not a ledger. ``collect_captures``
-    returns ``[]`` when ``secret`` is ``None`` so the exporter cannot
-    accidentally promote unsigned rows to a "measured" fixture entry.
-    """
     assert collect_captures(tmp_path, None) == []
 
 
 def test_render_capture_table_markdown_is_deterministic(tmp_path: Path) -> None:
-    """``render_capture_table_markdown`` produces a stable, parseable table.
-
-    The fixture file embeds the rendered table verbatim, so any
-    formatting drift is a fixture regeneration that breaks the
-    deterministic contract. The output is byte-stable for an
-    ordered input: rows are emitted in input order, with the
-    ISO-8601 UTC timestamp rendered to second precision.
-    """
     secret = "fixture-secret"
     _append_record(
         tmp_path,
@@ -170,7 +120,6 @@ def test_render_capture_table_markdown_is_deterministic(tmp_path: Path) -> None:
     assert "| --- | --- | --- | --- |" in rendered
     assert "tools/call" in rendered
     assert "ralph_submit_md_artifact" in rendered
-    # The exporter must NOT invent rows for non-existent captures.
     assert "error" not in rendered, (
         "B7 / F5: the ``error``-frame row is synthetic until a real "
         "capture exists. The exporter must not invent one."
@@ -178,12 +127,6 @@ def test_render_capture_table_markdown_is_deterministic(tmp_path: Path) -> None:
 
 
 def test_render_capture_table_markdown_filters_by_run_id(tmp_path: Path) -> None:
-    """A scoped ``run_id`` keeps multi-run ledgers from bleeding into each other.
-
-    The MCP ledger is shared across runs in a single workspace. The
-    exporter's ``run_id=`` filter ensures the planning phase's capture
-    table does not include the smoke phase's frames (and vice versa).
-    """
     secret = "fixture-secret"
     _append_record(
         tmp_path,
@@ -214,13 +157,6 @@ def test_render_capture_table_markdown_filters_by_run_id(tmp_path: Path) -> None
 
 
 def test_wire_ledger_capture_keeps_b7_error_frame_synthetic(tmp_path: Path) -> None:
-    """B7: an ``error``-frame capture entry stays labelled synthetic until a real one is recorded.
-
-    The brief's explicit instruction: do not invent a payload shape
-    and present it as measured. The exporter only emits rows for
-    verified wire-ledger captures; an absent ``error`` row in the
-    ledger therefore means no ``error`` entry in the fixture table.
-    """
     secret = "fixture-secret"
     _append_record(
         tmp_path,
@@ -239,25 +175,11 @@ def test_wire_ledger_capture_keeps_b7_error_frame_synthetic(tmp_path: Path) -> N
         "no real ``error`` frame has been captured for AGY; the "
         "fixture must keep the ``error`` row labelled synthetic."
     )
-    # The rendered table does not invent an ``error`` row.
     assert "| error |" not in rendered
 
 
 def test_wire_ledger_capture_from_row_rejects_malformed() -> None:
-    """``WireLedgerCapture.from_row`` returns ``None`` for malformed rows.
 
-    The chain verifier already rejects unparseable rows, but the
-    exporter is the second line of defence: a malformed row that
-    somehow slipped past the verifier cannot promote to a fixture
-    capture either.
-    """
-
-    # Missing hmac -- build the row via the ledger writer so the
-    # typing is consistent with the production code path. We then
-    # strip the hmac field before handing the dict to ``from_row``
-    # so the malformed-row path is exercised without type-ignore
-    # suppression markers (which the type-ignore policy forbids in
-    # test files).
     secret = "fixture-secret"
     import tempfile
 
@@ -275,8 +197,6 @@ def test_wire_ledger_capture_from_row_rejects_malformed() -> None:
 
         ledger_path = _ledger_path(tmp_path, secret)
         good_row = _json.loads(ledger_path.read_text(encoding="utf-8").splitlines()[0])
-        # Build two intentionally-malformed variants from the real
-        # row, keeping the type system happy.
         bad_missing_hmac = {k: v for k, v in good_row.items() if k != "hmac"}
         bad_wrong_timestamp = dict(good_row)
         bad_wrong_timestamp["timestamp"] = "not-a-number"
@@ -286,7 +206,6 @@ def test_wire_ledger_capture_from_row_rejects_malformed() -> None:
 
 
 def test_wire_ledger_capture_from_row_accepts_well_formed() -> None:
-    """A well-formed row produces a ``WireLedgerCapture`` instance."""
     row = {
         "method": "tools/call",
         "tool_name": "ralph_submit_md_artifact",

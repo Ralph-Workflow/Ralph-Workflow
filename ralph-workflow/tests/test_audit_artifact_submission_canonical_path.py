@@ -1,17 +1,3 @@
-"""Tests for ralph.testing.audit_artifact_submission_canonical_path.
-
-The canonical-path audit enforces that all artifact submission side effects
-(receipts, completion sentinels, canonical artifact files, and the lower-level
-submit/receipt helpers) route through ``submit_artifact_canonical``. These tests
-pin the detection rules and the allow-list behavior.
-
-Only the ``test_audit_invariants_*`` cases spawn a fresh ``python`` /
-``python -O`` subprocess to verify import-time invariants; those carry
-``subprocess_e2e`` + a sized per-test timeout. The parser / write-detection
-unit tests stay in the default suite (tmp_path AST fixtures, no real
-subprocess) so they do not inflate the 60 s ``test-subprocess-e2e`` cap.
-"""
-
 from __future__ import annotations
 
 import contextlib
@@ -288,13 +274,7 @@ def test_main_returns_nonzero_when_bypass_exists(tmp_path: Path) -> None:
     assert main([str(tmp_path)]) == 1
 
 
-# =============================================================================
-# Step 5 — Import-time invariant enforcement
-# =============================================================================
-
-
 def _get_audit_module_path() -> str:
-    """Return the absolute path to ralph/testing/audit_artifact_submission_canonical_path.py."""
     test_dir = Path(__file__).parent
     return str(
         test_dir.parent / "ralph" / "testing" / "audit_artifact_submission_canonical_path.py"
@@ -304,22 +284,15 @@ def _get_audit_module_path() -> str:
 def _run_patched_audit_import(
     patch_pattern: str, patch_replacement: str, *, minus_o: bool = False
 ) -> subprocess.CompletedProcess[str]:
-    """Run a subprocess that patches the audit module and imports it.
-
-    Creates a temporary copy of the audit module with the given pattern
-    replaced, then tries to import it. Returns the subprocess result.
-    """
     audit_path = _get_audit_module_path()
     repo_root = str(Path(audit_path).parent.parent.parent)
     original = Path(audit_path).read_text(encoding="utf-8")
 
-    # Also patch _AUDIT_MODULE_ROOT so the patched module finds files correctly
     patched = original.replace(
         "_AUDIT_MODULE_ROOT = Path(__file__).parent.parent.parent",
         f"_AUDIT_MODULE_ROOT = Path({repo_root!r})",
     )
 
-    # Apply the user-provided patch
     patched = patched.replace(patch_pattern, patch_replacement)
 
     with tempfile.NamedTemporaryFile(
@@ -330,7 +303,6 @@ def _run_patched_audit_import(
         tmp_path = f.name
 
     try:
-        # Create a runner script that imports the patched audit module
         runner = (
             "import sys\n"
             f"sys.path.insert(0, {repo_root!r})\n"
@@ -361,13 +333,9 @@ def _run_patched_audit_import(
             Path(tmp_path).unlink()
 
 
-# --- Positive: clean import works ---
-
-
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(5)
 def test_audit_invariants_import_clean_via_subprocess() -> None:
-    """Importing audit module with correct constants should succeed."""
     result = _run_patched_audit_import(
         "_CANONICAL_TYPES: frozenset[str] = KNOWN_ARTIFACT_TYPES",
         "_CANONICAL_TYPES: frozenset[str] = KNOWN_ARTIFACT_TYPES",
@@ -381,7 +349,6 @@ def test_audit_invariants_import_clean_via_subprocess() -> None:
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(5)
 def test_audit_invariants_import_clean_under_minus_o() -> None:
-    """Importing audit module under -O with correct constants should succeed."""
     result = _run_patched_audit_import(
         "_CANONICAL_TYPES: frozenset[str] = KNOWN_ARTIFACT_TYPES",
         "_CANONICAL_TYPES: frozenset[str] = KNOWN_ARTIFACT_TYPES",
@@ -393,13 +360,9 @@ def test_audit_invariants_import_clean_under_minus_o() -> None:
     assert "OK" in result.stdout
 
 
-# --- Negative: invariant violations ---
-
-
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(5)
 def test_audit_invariants_fire_when_canonical_types_is_empty() -> None:
-    """_CANONICAL_TYPES = frozenset() should raise RuntimeError at import time."""
     result = _run_patched_audit_import(
         "_CANONICAL_TYPES: frozenset[str] = KNOWN_ARTIFACT_TYPES",
         "_CANONICAL_TYPES: frozenset[str] = frozenset()",
@@ -412,8 +375,6 @@ def test_audit_invariants_fire_when_canonical_types_is_empty() -> None:
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(5)
 def test_audit_invariants_fire_when_required_canonical_type_missing() -> None:
-    """Missing 'commit_message' from _CANONICAL_TYPES should raise RuntimeError at import time."""
-    # Replace the _CANONICAL_TYPES assignment with one missing 'commit_message'
     result = _run_patched_audit_import(
         "_CANONICAL_TYPES: frozenset[str] = KNOWN_ARTIFACT_TYPES",
         "_CANONICAL_TYPES: frozenset[str] = frozenset({'plan', 'development_result'})",
@@ -426,7 +387,6 @@ def test_audit_invariants_fire_when_required_canonical_type_missing() -> None:
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(5)
 def test_audit_invariants_fire_when_file_allowlist_is_empty() -> None:
-    """_FILE_ALLOWLIST = frozenset() should raise RuntimeError at import time."""
     result = _run_patched_audit_import(
         (
             "_FILE_ALLOWLIST: frozenset[str] = frozenset(\n"
@@ -446,7 +406,6 @@ def test_audit_invariants_fire_when_file_allowlist_is_empty() -> None:
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(5)
 def test_audit_invariants_fire_when_allowlist_file_missing() -> None:
-    """Non-existent _FILE_ALLOWLIST entry should raise RuntimeError at import time."""
     result = _run_patched_audit_import(
         '"ralph/mcp/artifacts/canonical_submit.py",',
         '"ralph/mcp/artifacts/nonexistent.py",',
@@ -459,7 +418,6 @@ def test_audit_invariants_fire_when_allowlist_file_missing() -> None:
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(5)
 def test_audit_invariants_survive_minus_o() -> None:
-    """Invariant violations must still raise RuntimeError under python -O."""
     result = _run_patched_audit_import(
         "_CANONICAL_TYPES: frozenset[str] = KNOWN_ARTIFACT_TYPES",
         "_CANONICAL_TYPES: frozenset[str] = frozenset()",
@@ -472,11 +430,6 @@ def test_audit_invariants_survive_minus_o() -> None:
 
 def test_canonical_types_equals_known_artifact_types() -> None:
     assert _CANONICAL_TYPES == KNOWN_ARTIFACT_TYPES
-
-
-# =============================================================================
-# Step 7 — shutil, os.rename, Path.replace bypass detection
-# =============================================================================
 
 
 def test_shutil_copy_into_receipts_is_flagged(tmp_path: Path) -> None:

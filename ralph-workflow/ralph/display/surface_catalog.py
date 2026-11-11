@@ -1,4 +1,3 @@
-"""Structural entitlement and format metadata for user-visible display surfaces."""
 
 from __future__ import annotations
 
@@ -8,7 +7,6 @@ from typing import Final
 
 @dataclass(frozen=True)
 class SurfaceSpec:
-    """One user-visible display surface and its production entry points."""
 
     name: str
     owner: str

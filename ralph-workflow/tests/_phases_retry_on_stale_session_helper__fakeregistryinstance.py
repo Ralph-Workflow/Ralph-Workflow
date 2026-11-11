@@ -7,8 +7,6 @@ if TYPE_CHECKING:
 
 
 class _FakeRegistryInstance:
-    """Minimal AgentRegistry instance stub that always returns a fixed config."""
-
     def __init__(self, agent_config: AgentConfig) -> None:
         self._agent_config = agent_config
 

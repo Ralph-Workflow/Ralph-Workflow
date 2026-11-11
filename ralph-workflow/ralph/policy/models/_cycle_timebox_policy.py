@@ -1,4 +1,3 @@
-"""CycleTimeboxPolicy Pydantic model."""
 
 from __future__ import annotations
 
@@ -9,38 +8,12 @@ from pydantic import ConfigDict, Field, model_validator
 
 from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 
-# Bundled default cycle deadline: 600 minutes (36,000 seconds).
 DEFAULT_CYCLE_TIMEBOX_SECONDS: float = 36000.0
-# The soft-warning point is derived as 80% of the configured duration; it is
-# never stored as an independent second duration so a custom deadline keeps the
-# same warning ratio without runtime code changes.
 WARNING_THRESHOLD_RATIO: float = 0.8
-# A deadline redirect records the eventual cycle outcome while the timer stays
-# active until the configured final-commit entry.
 DEFAULT_FINALIZATION_CYCLE_OUTCOME: Literal["completed", "failed"] = "completed"
 
 
 class CycleTimeboxPolicy(_FrozenPolicyModel):
-    """Transition-bounded wall-clock timebox for a plan-to-final-commit cycle.
-
-    Declares a generic cycle deadline that starts on the configured
-    ``start_source`` -> ``start_entry`` transition (while a cycle is inactive),
-    softly warns development agents once 80% of the duration has elapsed, and
-    redirects expired re-entries through the finalization target so the
-    workflow enters its existing final-commit path instead of starting another
-    development invocation.
-
-    The start transition is identified by its source AND target so an
-    unrelated route into the same phase cannot start or reset a cycle. The
-    warning point is derived as ``WARNING_THRESHOLD_RATIO`` of
-    ``duration_seconds`` and is never stored as a second independent duration,
-    so a custom deadline retains the same 80% behavior without code changes.
-
-    Unknown keys are rejected rather than ignored. Every field here decides how
-    a cycle ends, so a dropped key is silent misconfiguration: an operator who
-    misspells ``finalization_cycle_outcome`` gets the default outcome and no
-    indication their setting did nothing.
-    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -109,5 +82,4 @@ class CycleTimeboxPolicy(_FrozenPolicyModel):
 
     @property
     def warning_threshold_seconds(self) -> float:
-        """Return the elapsed-seconds point at which the soft warning begins."""
         return self.duration_seconds * WARNING_THRESHOLD_RATIO

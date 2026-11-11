@@ -1,5 +1,3 @@
-"""Measured AGY v1.2.17 model-alias resolution regressions."""
-
 from __future__ import annotations
 
 import pytest
@@ -23,9 +21,6 @@ def test_agy_model_resolution_rejects_unknown_or_conflicting_alias(alias: str) -
 @pytest.mark.parametrize(
     "alias",
     [
-        # Measured rule (tmp/agy-source-of-truth.txt, v1.1.8 probe):
-        # ``--effort`` is accepted only without an explicit model, so any
-        # ``agy/<model>:<effort>`` alias is rejected before invocation.
         "agy/gemini-3.6-flash-low:low",
         "agy/gemini-3.6-flash-low:high",
         "agy/gemini-3.6-flash-medium:medium",
@@ -44,7 +39,6 @@ def test_agy_model_resolution_rejects_effort_suffix(alias: str) -> None:
 @pytest.mark.parametrize(
     ("alias", "model_flag"),
     [
-        # Only bare published model IDs are accepted.
         ("agy/gemini-3.6-flash-low", "--model gemini-3.6-flash-low"),
         ("agy/claude-sonnet-5-5-high", "--model claude-sonnet-5-5-high"),
     ],

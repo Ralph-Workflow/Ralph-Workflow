@@ -1,5 +1,3 @@
-"""Regression coverage for Cursor credentials under Ralph's private HOME."""
-
 from __future__ import annotations
 
 import json
@@ -28,7 +26,6 @@ if TYPE_CHECKING:
 
 
 def _no_workspace_monitor(_workspace_path: Path, _classifier: object) -> None:
-    """Skip workspace monitoring so a test never starts a real observer."""
     return None
 
 
@@ -36,7 +33,6 @@ def _no_workspace_monitor(_workspace_path: Path, _classifier: object) -> None:
 def test_cursor_runtime_regression_projects_xdg_auth_into_private_config_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, use_explicit_xdg: bool
 ) -> None:
-    """Regression: Cursor auth lives at XDG_CONFIG_HOME/cursor/auth.json, not ~/.cursor."""
     operator_home = tmp_path / "operator-home"
     source_config_home = (
         tmp_path / "operator-xdg-config" if use_explicit_xdg else operator_home / ".config"
@@ -95,7 +91,6 @@ def test_cursor_runtime_regression_projects_xdg_auth_into_private_config_root(
 def test_cursor_runtime_regression_defaults_to_file_store_without_api_key(
     tmp_path: Path,
 ) -> None:
-    """S-4: Cursor runs avoid the macOS keychain unless an operator overrides the store."""
     runtime = resolve_invocation_runtime(
         AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
         extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
@@ -168,7 +163,6 @@ def test_cursor_runtime_regression_preserves_credential_override_precedence(
     expected_store: str,
     expected_api_key: str,
 ) -> None:
-    """S-4: invocation credentials override ambient values, which override defaults."""
     runtime = resolve_invocation_runtime(
         AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
         extra_env=extra_env,
@@ -198,7 +192,6 @@ def test_cursor_invocation_uses_only_private_non_keychain_runtime(
     extra_env: dict[str, str],
     credential: str,
 ) -> None:
-    """S-3: both Cursor invocation shapes isolate credentials before spawn."""
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("task", encoding="utf-8")
     operator_home = tmp_path / "operator-home"
@@ -244,7 +237,6 @@ def test_cursor_invocation_uses_only_private_non_keychain_runtime(
 def test_cursor_invocation_without_credentials_fails_before_spawn(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, ambient_store: str | None
 ) -> None:
-    """S-2: keychain-only Cursor runs never reach the subprocess."""
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("task", encoding="utf-8")
     monkeypatch.setenv("HOME", str(tmp_path / "operator-home"))
@@ -281,7 +273,6 @@ def test_cursor_invocation_without_credentials_fails_before_spawn(
 def test_cursor_invocation_with_unusable_auth_fails_before_spawn(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, auth_payload: str
 ) -> None:
-    """S-3: empty and wrong-schema logins never launch Cursor."""
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("task", encoding="utf-8")
     operator_home = tmp_path / "operator-home"
@@ -314,7 +305,6 @@ def test_cursor_invocation_with_unusable_auth_fails_before_spawn(
 def test_cursor_parallel_worker_environment_cannot_restore_keychain(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """S-4: a worker inherits hostile ambient env but its Cursor child cannot."""
     monkeypatch.setenv("HOME", str(tmp_path / "operator-home"))
     monkeypatch.setenv("AGENT_CLI_CREDENTIAL_STORE", "keychain")
     worker_extra_env = {str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"}
@@ -339,7 +329,6 @@ def test_cursor_parallel_worker_environment_cannot_restore_keychain(
 def test_cursor_invocation_accepts_dot_cursor_auth_json_when_xdg_auth_missing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """S-2: a standard ~/.cursor file login is sufficient for unattended Cursor."""
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("task", encoding="utf-8")
     operator_home = tmp_path / "operator-home"
@@ -388,7 +377,6 @@ def test_cursor_invocation_accepts_dot_cursor_auth_json_when_xdg_auth_missing(
 def test_cursor_invocation_with_unusable_dot_cursor_auth_fails_before_spawn(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, auth_payload: str
 ) -> None:
-    """S-2: unusable ~/.cursor auth cannot fall through to a keychain prompt."""
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("task", encoding="utf-8")
     operator_home = tmp_path / "operator-home"
@@ -418,7 +406,6 @@ def test_cursor_invocation_with_unusable_dot_cursor_auth_fails_before_spawn(
 
 
 def test_cursor_file_credentials_helper_recognizes_private_dot_cursor(tmp_path: Path) -> None:
-    """S-2: the preflight recognizes valid auth in either Cursor file location."""
     config_home = tmp_path / "config"
     home = tmp_path / "home"
     config_auth = config_home / "cursor" / "auth.json"
@@ -480,7 +467,6 @@ def test_cursor_home_mirror_excludes_mcp_config_and_ralph_sidecar_locks(tmp_path
 def test_cursor_runtime_uses_valid_home_auth_when_xdg_auth_is_malformed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A malformed XDG file cannot suppress a usable ~/.cursor login."""
     operator_home = tmp_path / "operator-home"
     source_config_home = tmp_path / "operator-config"
     xdg_auth = source_config_home / "cursor" / "auth.json"
@@ -516,7 +502,6 @@ def test_cursor_runtime_uses_valid_home_auth_when_xdg_auth_is_malformed(
 def test_cursor_runtime_extracts_ide_auth_when_file_auth_is_unusable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, platform: str
 ) -> None:
-    """Cursor IDE SQLite login supplies both private file-store locations."""
     import sqlite3
 
     operator_home = tmp_path / "operator-home"
@@ -570,7 +555,6 @@ def test_cursor_invocation_projects_ide_credentials_before_spawn(
     platform: str,
     credential_store: str,
 ) -> None:
-    """Unattended macOS/Linux launches pass projected IDE auth without Keychain."""
     import sqlite3
 
     prompt_file = tmp_path / "PROMPT.md"
@@ -633,7 +617,6 @@ def test_cursor_invocation_projects_ide_credentials_before_spawn(
 def test_cursor_runtime_replaces_mirrored_auth_without_touching_operator_home(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """SQLite fallback replaces a mirrored auth symlink only in the private home."""
     import sqlite3
 
     operator_home = tmp_path / "operator-home"
@@ -674,7 +657,6 @@ def test_cursor_runtime_replaces_mirrored_auth_without_touching_operator_home(
 def test_cursor_runtime_regression_strips_ssh_markers_for_each_credential_source(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, credential_source: str
 ) -> None:
-    """S-1: Cursor never receives SSH markers that trigger Keychain mode."""
     import sqlite3
 
     operator_home = tmp_path / "operator-home"

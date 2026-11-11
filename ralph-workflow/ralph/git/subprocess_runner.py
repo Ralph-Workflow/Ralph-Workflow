@@ -1,4 +1,3 @@
-"""Synchronous git helper backed by ProcessManager."""
 
 from __future__ import annotations
 
@@ -18,22 +17,6 @@ from ralph.process.manager._managed_process_output_limit_exceeded_error import (
 )
 from ralph.timeout_defaults import GIT_SUBPROCESS_TIMEOUT_SECONDS
 
-#: Non-interactive git environment baseline. Ensures git never blocks on a
-#: credential prompt, a pager, or an editor — so a missing credential or network
-#: failure fails fast instead of hanging the process forever (a real agent-hang
-#: vector for any network git op). Merged into the parent environment for every
-#: ``run_git`` call; caller-supplied env still takes precedence.
-#:
-#: Per the auto-integration hardening spec (D1/D14), the baseline also pins
-#: ``LC_ALL=C`` (so stderr substring classification is stable across locales),
-#: ``VISUAL=`` / ``EDITOR=`` (some tools consult these directly rather than
-#: through git's own ``GIT_EDITOR``), and ``GIT_NO_REPLACE_OBJECTS=1`` (H4:
-#: produced history must never silently depend on ``refs/replace/*``). The
-#: ``GIT_*`` family location variables (``GIT_DIR``, ``GIT_WORK_TREE``,
-#: ``GIT_INDEX_FILE``, ``GIT_COMMON_DIR``) are scrubbed from inherited
-#: environments inside :func:`_build_spawn_env` rather than from this dict;
-#: a default-empty value would still win against the inherited one and
-#: silently redirect a subprocess into the wrong repository.
 _GIT_BATCH_MODE_ENV: dict[str, str] = {
     "GIT_TERMINAL_PROMPT": "0",
     "GCM_INTERACTIVE": "Never",
@@ -46,9 +29,6 @@ _GIT_BATCH_MODE_ENV: dict[str, str] = {
     "GIT_NO_REPLACE_OBJECTS": "1",
 }
 
-#: Reported exit status for a git child that was torn down without ever
-#: answering. Nonzero so every ``if result.returncode:`` fail-closed gate
-#: refuses, and ``check=True`` raises rather than returning a silent success.
 _UNREPORTED_RETURNCODE: int = -9
 
 if TYPE_CHECKING:
@@ -76,14 +56,6 @@ if TYPE_CHECKING:
         ) -> object: ...
 
 
-#: ``GIT_*`` family location variables scrubbed from every spawned
-#: environment. A non-empty inherited ``GIT_DIR`` would silently
-#: redirect a subprocess into a different repository than the one
-#: the caller asked for; defaulting these to empty in
-#: :data:`_GIT_BATCH_MODE_ENV` would still lose to a non-empty
-#: inherited value. Removing them at every precedence level
-#: (caller / baseline / inherited environ) is the only way the
-#: scrub survives any caller.
 _SCRUBBED_GIT_ENV_KEYS: frozenset[str] = frozenset(
     {"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"}
 )
@@ -92,25 +64,6 @@ _SCRUBBED_GIT_ENV_KEYS: frozenset[str] = frozenset(
 def _build_spawn_env(
     caller_env: Mapping[str, str] | None,
 ) -> dict[str, str]:
-    """Build the environment handed to the git subprocess.
-
-    Order of precedence (highest first):
-
-    1. The caller-supplied env (when provided through
-       :class:`GitRunOptions`).
-    2. The non-interactive batch baseline in
-       :data:`_GIT_BATCH_MODE_ENV`.
-    3. The inherited :data:`os.environ`.
-
-    ``GIT_DIR``, ``GIT_WORK_TREE``, ``GIT_INDEX_FILE`` and
-    ``GIT_COMMON_DIR`` are scrubbed at every precedence level: a
-    fleet agent that inherited any of them from a parent process
-    would silently redirect every later ``git`` call into a
-    different repository (D13). Removing the inherited value BEFORE
-    the batch baseline is applied is the only way a downstream
-    caller cannot re-introduce it through
-    :class:`GitRunOptions`.
-    """
     merged: dict[str, str] = {}
     for source in (os.environ, _GIT_BATCH_MODE_ENV):
         for key, value in source.items():
@@ -127,24 +80,6 @@ def _build_spawn_env(
 
 @dataclass(frozen=True)
 class GitRunOptions:
-    """Options for run_git beyond the required args, cwd, and label.
-
-    ``output_limit_bytes``: cap on stdout/stderr captured from the git
-    subprocess. ``None`` (default) preserves the legacy unbounded
-    behavior. The default when callers do pass a non-None value is the
-    module-level ``GIT_OUTPUT_LIMIT_BYTES`` (10 MiB) — matching the
-    existing ``SPILL_OUTPUT_LIMIT_BYTES`` precedent at
-    ``ralph/mcp/tools/_exec_output_spill.py:33`` and well above any
-    realistic single-file diff. Outputs exceeding the cap are truncated
-    with a marker (the
-    ``ManagedProcessOutputLimitExceededError`` semantics in
-    ``_communicate_with_output_limit``).
-
-    ``call_class``: the operational class selected from the shared git
-    call-policy table. The queue applies its deadline unless ``timeout``
-    is an explicit override and the runner uses the same row for the
-    termination grace.
-    """
 
     phase: str | None = None
     timeout: float | None = None
@@ -165,33 +100,6 @@ def run_git(
     options: GitRunOptions | None = None,
     call_class: GitCallClass | None = None,
 ) -> GitRunResult:
-    """Spawn a git subprocess through ProcessManager and return the result.
-
-    When ``options.phase`` is provided the process label becomes
-    ``phase:<phase>:git:<label>`` so process_phase_scope can terminate it.
-
-    Every call is routed through the per-common-dir
-    :class:`~ralph.git.git_command_queue.GitCommandQueue` so subprocess-path
-    git invocations serialize against every GitPython adapter call that goes
-    through :func:`route_git_method`, and a run of consecutive
-    ``subprocess.TimeoutExpired`` outcomes raises the queue's shared
-    consecutive-timeout health counter (read via
-    ``get_queue_for_repo(...).health_factor()``) that all callers back off
-    on. The ``GIT_SUBPROCESS_TIMEOUT_SECONDS`` ceiling remains the hard
-    per-command wall; the queue adds no additional wait.
-
-    Args:
-        args: The git arguments to run.
-        cwd: The working directory of the call.
-        label: The process label used for supervision.
-        options: The spawn options.
-        call_class: The operational class of the call. When supplied, the
-            queue applies that class's deadline unless ``options.timeout``
-            is an explicit override.
-
-    Raises subprocess.TimeoutExpired if timeout is exceeded.
-    Raises subprocess.CalledProcessError if options.check is True and returncode != 0.
-    """
     queued_mod = sys.modules.get("ralph.git.git_command_queue")
     if queued_mod is None:
         queued_mod = importlib.import_module("ralph.git.git_command_queue")
@@ -213,20 +121,11 @@ def _spawn_git(
     label: str,
     options: GitRunOptions | None = None,
 ) -> GitRunResult:
-    """Raw git spawn; called only by :func:`route_run_git` under the queue lock.
-
-    Kept separate from :func:`run_git` so every caller — including internal
-    ones — provably passes through the queue (the public symbol is the only
-    spawn entry point).
-    """
     effective_options = options or GitRunOptions()
     phase = effective_options.phase
     terminate_grace_seconds = effective_terminate_grace_seconds(effective_options.call_class)
     effective_label = f"phase:{phase}:git:{label}" if phase is not None else label
     cmd = ("git", *args)
-    # Fail closed: bound every git call with a default timeout when the caller
-    # gives none, and always run git non-interactively so it cannot hang on a
-    # credential/editor/pager prompt.
     effective_timeout = (
         effective_options.timeout
         if effective_options.timeout is not None
@@ -280,23 +179,9 @@ def _spawn_git(
         proc.terminate(grace_period_s=terminate_grace_seconds)
         raise
     except ManagedProcessOutputLimitExceededError:
-        # Output-cap hit — kill the proc tree and propagate.
         proc.terminate(grace_period_s=terminate_grace_seconds)
         raise
     except BaseException:
-        # Any other exception escaping ``communicate_and_cleanup`` — a signal
-        # the caller turned into an error (SIGALRM test timeout, SIGINT,
-        # ``CancelledError``), or an I/O fault on the pipes — still leaves a
-        # live git child. Without this branch the ``finally`` below closes the
-        # pipes and ``__exit__``s the Popen WITHOUT killing that child, so an
-        # interrupted git is orphaned mid-write: a real observation is that
-        # SIGALRM landing inside a git index write left ``.git/index``
-        # truncated, and the NEXT ``run_git`` enumeration then exits 128 with
-        # "index file smaller than expected" / "index file corrupt". The
-        # survivor also keeps writing into a repository nobody is reaping.
-        # Terminate the whole tree before unwinding. The guard suppresses a
-        # failing ``terminate`` so the original exception — the one the caller
-        # must see — is never masked.
         with contextlib.suppress(Exception):
             proc.terminate(grace_period_s=terminate_grace_seconds)
         raise
@@ -310,7 +195,7 @@ def _spawn_git(
         if hasattr(raw_proc_obj, "__exit__"):
             raw_proc = cast(
                 "_PopenExitProtocol", raw_proc_obj
-            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            )
             with contextlib.suppress(Exception):
                 raw_proc.__exit__(None, None, None)
 
@@ -321,13 +206,6 @@ def _spawn_git(
 
     stdout = _str(raw_stdout)
     stderr = _str(raw_stderr)
-    # Fail closed when the child never reported an exit status: the enumeration
-    # is unproven, and reporting success would let callers treat "I could not
-    # ask git" as "git said there is nothing here". Every consumer of this
-    # result is a safety gate — unswept-work capture, staged-patch proofs,
-    # protected-path prompts — so an unreadable answer must read as failure.
-    # ``_UNREPORTED_RETURNCODE`` is SIGKILL's conventional code: the process is
-    # gone and never answered, which is exactly the state being reported.
     returncode = proc.returncode if proc.returncode is not None else _UNREPORTED_RETURNCODE
 
     if effective_options.check and returncode != 0:
@@ -338,23 +216,4 @@ def _spawn_git(
 
 __all__ = ["GitRunOptions", "run_git"]
 
-# ----- AC-14 catalog evidence -----
-# This file is the authoritative source for the catalog entries listed
-# below. Each ``# AC-14 rationale: <ID>`` line is the code-adjacent
-# marker the AC-14 audit looks for; each ``# ladder rung: <N>``
-# names the rung the entry sits on. Adding a new entry here requires
-# BOTH lines or the audit fails.
 
-# AC-14 rationale: C10
-# ladder rung: 3
-# AC-14 rationale: D1
-# ladder rung: 1
-# AC-14 rationale: D14
-# ladder rung: 1
-# AC-14 rationale: D15
-# ladder rung: 1
-# AC-14 rationale: D9
-# ladder rung: 3
-# AC-14 rationale: H4
-# ladder rung: 1
-# ----- end AC-14 catalog evidence -----

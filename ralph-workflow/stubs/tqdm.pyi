@@ -1,7 +1,6 @@
 from collections.abc import Iterable, Iterator
 
-class tqdm[T]:  # noqa: N801  # reason: external package exports lowercase class name.
-    """Minimal stub for the tqdm progress-bar iterator."""
+class tqdm[T]:
 
     def __init__(
         self,

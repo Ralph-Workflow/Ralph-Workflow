@@ -1,5 +1,3 @@
-"""Tests for commit executor detached HEAD reattachment and git state repair."""
-
 from __future__ import annotations
 
 import functools
@@ -29,13 +27,8 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.timeout_seconds(5)
 
-#: Branch the shared template repository is created on.
 _TEMPLATE_BRANCH = "main"
 
-#: Settings applied once, while the shared template is built. ``gc.auto=0``
-#: keeps git from packing refs behind the tests' back, ``core.fsync=none``
-#: takes the per-write fsync out of the commit path, and
-#: ``commit.gpgSign=false`` keeps the commit path free of a signing prompt.
 _TEMPLATE_CONFIG: tuple[tuple[str, str, str], ...] = (
     ("user", "name", "Test User"),
     ("user", "email", "test@example.com"),
@@ -44,25 +37,11 @@ _TEMPLATE_CONFIG: tuple[tuple[str, str, str], ...] = (
     ("commit", "gpgSign", "false"),
 )
 
-#: Entries that never need to travel with a repository copy. ``git init``
-#: writes a directory of inert sample hooks plus a description file; none of
-#: them take part in the behaviour under test, and dropping them keeps the
-#: per-test copy small.
 _COPY_IGNORE = shutil.ignore_patterns("hooks", "*.sample", "description", "branches")
 
 
 @pytest.fixture(autouse=True)
 def _without_unobserved_commit_evidence(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Keep the unobserved commit-evidence snapshot out of every test.
-
-    ``execute_commit_effect`` snapshots the changed paths through
-    ``build_commit_evidence_bundle``. That snapshot exists to feed the
-    residual-work comparison, which runs only when a caller supplies
-    ``has_residual_work_fn`` -- no test in this module does -- and it also
-    renders the pending diff, which no assertion here reads. Replacing the
-    two snapshot helpers therefore removes six ``git`` subprocesses per
-    commit without changing any observable outcome.
-    """
     from ralph.prompts import commit_evidence
 
     monkeypatch.setattr(commit_evidence, "commit_generation_diff", lambda _root: "")
@@ -71,12 +50,6 @@ def _without_unobserved_commit_evidence(monkeypatch: pytest.MonkeyPatch) -> None
 
 @functools.lru_cache(maxsize=1)
 def _get_commit_executor_template() -> Path:
-    """Build the shared template repository once per session.
-
-    The template already carries the commit identity, the ``.agent/`` ignore
-    rule every Ralph workspace has, and the initial commit, so a test pays
-    for a copy instead of for ``git init`` plus a fresh commit.
-    """
     base = Path(tempfile.mkdtemp(prefix="commit-executor-template-"))
     repo = Repo.init(base, initial_branch=_TEMPLATE_BRANCH)
     writer = repo.config_writer()
@@ -85,9 +58,6 @@ def _get_commit_executor_template() -> Path:
     writer.release()
     actor = Actor("Test User", "test@example.com")
     (base / "initial.txt").write_text("initial content", encoding="utf-8")
-    # ``.agent/`` is gitignored in every Ralph workspace: the pipeline's
-    # runtime state enters neither the sealed tree nor the commit, so the
-    # sealed tree and the committed tree stay comparable.
     (base / ".gitignore").write_text(".agent/\n", encoding="utf-8")
     repo.index.add(["initial.txt", ".gitignore"])
     repo.index.commit("initial commit", author=actor, committer=actor)
@@ -97,11 +67,6 @@ def _get_commit_executor_template() -> Path:
 
 @functools.cache
 def _template_for_branch(branch: str) -> Path:
-    """Return a template repository whose only branch is ``branch``.
-
-    The branch rename is paid once per distinct branch name for the whole
-    session instead of once per test.
-    """
     base = _get_commit_executor_template()
     if branch == _TEMPLATE_BRANCH:
         return base
@@ -115,7 +80,6 @@ def _template_for_branch(branch: str) -> Path:
 
 
 def _init_test_git_repo(repo_root: Path, branch: str = "main") -> Repo:
-    """Copy the shared template for ``branch`` into ``repo_root`` and open it."""
     template = _template_for_branch(branch)
     shutil.copytree(template, repo_root, dirs_exist_ok=True, ignore=_COPY_IGNORE)
     return Repo(repo_root)
@@ -132,13 +96,6 @@ def _create_commit_message_artifact(repo_root: Path, message: str = "fix: update
 
 
 def _proposal_refs(repo_root: Path) -> list[str]:
-    """Return the proposal refs that exist in ``repo_root``.
-
-    The proposal namespace is written by the commit sweep and by the
-    proposal seal, and both keep their refs loose, so the refs are read
-    straight from the repository instead of paying for a
-    ``git for-each-ref`` subprocess on every observation.
-    """
     git_dir = repo_root / ".git"
     proposals = git_dir / "refs" / "ralph" / "proposals"
     refs: set[str] = set()
@@ -159,18 +116,12 @@ def _proposal_refs(repo_root: Path) -> list[str]:
 
 
 def _write_proposal_ref(repo_root: Path, ref: str, sha: str) -> None:
-    """Create the loose ref ``ref`` pointing at ``sha``.
-
-    Equivalent to ``git update-ref`` for this namespace: git keeps such
-    refs loose and records no reflog for them.
-    """
     path = repo_root / ".git" / ref
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(f"{sha}\n", encoding="utf-8")
 
 
 def _policy_bundle_with_retention(retention: int) -> PolicyBundle:
-    """Return the bundled default policy with ``proposal_retention`` overridden."""
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     bundle = load_policy(defaults_dir)
     commit_review = bundle.pipeline.commit_review.model_copy(
@@ -184,11 +135,9 @@ def test_detached_head_reattaches_to_branch_before_commit(tmp_path: Path) -> Non
     repo = _init_test_git_repo(tmp_path, "feature-branch")
     initial_sha = repo.head.commit.hexsha
 
-    # Detach HEAD
     repo.git.checkout(initial_sha)
     assert repo.head.is_detached
 
-    # Add uncommitted tracked file changes
     test_file = tmp_path / "initial.txt"
     test_file.write_text("modified content", encoding="utf-8")
 
@@ -266,14 +215,8 @@ def test_repairable_git_state_stale_index_lock_repaired_and_retried(
     work_file = tmp_path / "initial.txt"
     work_file.write_text("updated work", encoding="utf-8")
 
-    # Create stale index.lock with dead PID. The age-gated recovery
-    # refuses to unlink locks younger than ``_STALE_GIT_LOCK_AGE_SECONDS``
-    # (10s) because the holder cannot be proven dead from the file
-    # contents alone, so backdate the mtime past the 10s threshold
-    # rather than waiting in the test body.
     git_dir = tmp_path / ".git"
     index_lock = git_dir / "index.lock"
-    # Write stale index.lock (older than 10s age gate)
     index_lock.write_text("99999999\n", encoding="utf-8")
     stale_time = time.time() - 60
     os.utime(index_lock, (stale_time, stale_time))
@@ -320,7 +263,6 @@ def test_commit_creation_failure_records_last_error(tmp_path: Path) -> None:
 def test_detached_head_commit_failure_not_routed_to_failed_terminal_and_clears_completed(
     tmp_path: Path,
 ) -> None:
-    """Criterion 11: commit failure on detached HEAD is not routed to failed_terminal and does not report completed."""
     from ralph.pipeline.reducer import reduce
     from ralph.pipeline.state import PipelineState
     from ralph.policy.loader import load_policy
@@ -331,7 +273,6 @@ def test_detached_head_commit_failure_not_routed_to_failed_terminal_and_clears_c
     repo = _init_test_git_repo(tmp_path, "feature-branch")
     initial_sha = repo.head.commit.hexsha
 
-    # Detach HEAD
     repo.git.checkout(initial_sha)
     assert repo.head.is_detached
 
@@ -339,7 +280,6 @@ def test_detached_head_commit_failure_not_routed_to_failed_terminal_and_clears_c
     work_file.write_text("modified for failure test", encoding="utf-8")
     message_file = _create_commit_message_artifact(tmp_path, "feat: failing commit")
 
-    # Simulate commit failure even after repair attempt
     mock_create_commit = MagicMock(
         return_value=CommitCreationResult.failed("GitOperationError: detached HEAD commit failure")
     )
@@ -355,7 +295,6 @@ def test_detached_head_commit_failure_not_routed_to_failed_terminal_and_clears_c
     last_err = get_last_commit_error()
     assert last_err is not None
 
-    # Verify reducer routing: not failed_terminal, and pending_cycle_outcome is cleared
     state = PipelineState(
         phase="development_commit",
         previous_phase="development_commit_review",
@@ -376,7 +315,6 @@ def test_detached_head_commit_failure_not_routed_to_failed_terminal_and_clears_c
 def test_detached_head_auto_repaired_commit_succeeds_without_failed_terminal(
     tmp_path: Path,
 ) -> None:
-    """Criterion 11: commit on detached HEAD that is auto-repaired succeeds and does not route to failed_terminal."""
     from ralph.pipeline.reducer import reduce
     from ralph.pipeline.state import PipelineState
     from ralph.policy.loader import load_policy
@@ -387,7 +325,6 @@ def test_detached_head_auto_repaired_commit_succeeds_without_failed_terminal(
     repo = _init_test_git_repo(tmp_path, "feature-branch")
     initial_sha = repo.head.commit.hexsha
 
-    # Detach HEAD
     repo.git.checkout(initial_sha)
     assert repo.head.is_detached
 
@@ -480,8 +417,6 @@ def test_execute_commit_effect_prunes_proposals_on_success(tmp_path: Path) -> No
     )
     assert event == PipelineEvent.COMMIT_SUCCESS
     assert pruned is True
-    # The sweep receives the retention limit from
-    # ``commit_review.proposal_retention`` and the run scope it covers.
     assert captured["root"] == tmp_path
     assert captured["max_retained"] == 10
     assert captured["run_id"] is None
@@ -489,21 +424,10 @@ def test_execute_commit_effect_prunes_proposals_on_success(tmp_path: Path) -> No
 
 
 def test_rejected_proposal_ref_survives_a_later_successful_commit(tmp_path: Path) -> None:
-    """A rejected iteration's proposal ref must survive the next successful commit.
-
-    The documented recovery for a wrongly rejected iteration is
-    ``git checkout <ref> -- .``. The post-commit proposal sweep must
-    therefore never delete the ref that recovery depends on.
-    """
     _init_test_git_repo(tmp_path, "main")
-    # ``.agent/`` is gitignored in every Ralph workspace (the shared
-    # template carries the rule): the pipeline's runtime state enters
-    # neither the sealed tree nor the commit, so the sealed tree and the
-    # committed tree stay comparable.
     tracked = tmp_path / "initial.txt"
     rejected_extra = tmp_path / "rejected_extra.bin"
 
-    # --- iteration 1: the commit review rejects the work ------------------
     tracked.write_text("rejected content\n", encoding="utf-8")
     rejected_extra.write_bytes(b"rejected\x00bytes\x01")
     rejected_seal = seal_pending(tmp_path, "run-reject", 1)
@@ -512,7 +436,6 @@ def test_rejected_proposal_ref_survives_a_later_successful_commit(tmp_path: Path
     assert tracked.read_text(encoding="utf-8") == "initial content"
     assert not rejected_extra.exists()
 
-    # --- iteration 2: a later iteration commits successfully ---------------
     tracked.write_text("approved content\n", encoding="utf-8")
     approved_seal = seal_pending(tmp_path, "run-reject", 2)
     message_file = _create_commit_message_artifact(tmp_path, "feat: approved work")
@@ -526,10 +449,8 @@ def test_rejected_proposal_ref_survives_a_later_successful_commit(tmp_path: Path
     )
     assert event == PipelineEvent.COMMIT_SUCCESS
 
-    # The rejected iteration's ref survived the successful commit.
     assert "refs/ralph/proposals/run-reject/1" in _proposal_refs(tmp_path)
 
-    # The documented recovery still restores the rejected tree byte-for-byte.
     repo = Repo(tmp_path)
     repo.git.checkout(rejected_seal.ref, "--", ".")
     assert tracked.read_text(encoding="utf-8") == "rejected content\n"
@@ -537,7 +458,6 @@ def test_rejected_proposal_ref_survives_a_later_successful_commit(tmp_path: Path
 
 
 def test_commit_prune_honours_the_policy_proposal_retention_limit(tmp_path: Path) -> None:
-    """``commit_review.proposal_retention`` bounds the refs the sweep keeps."""
     repo_root = tmp_path / "repo"
     _init_test_git_repo(repo_root, "main")
 
@@ -594,24 +514,14 @@ def test_commit_prune_honours_the_policy_proposal_retention_limit(tmp_path: Path
 def test_a_rejected_proposal_ref_survives_a_later_commit_of_the_same_tree(
     tmp_path: Path,
 ) -> None:
-    """A rejected ref stays protected even when its tree is committed later.
-
-    The REJECTION is what makes the ref recoverable, not the tree it
-    carries: a later iteration that reproduces the same content and gets
-    approved must not make the rejected ref prunable. Without the explicit
-    rejection mark the sweep would prune it, because its tree is now part of
-    the commit history.
-    """
     _init_test_git_repo(tmp_path, "main")
     tracked = tmp_path / "initial.txt"
 
-    # --- iteration 1: the commit review rejects the work ------------------
     tracked.write_text("shared content\n", encoding="utf-8")
     rejected_seal = seal_pending(tmp_path, "run-reject", 1)
     rollback(tmp_path, rejected_seal.ref)
     assert tracked.read_text(encoding="utf-8") == "initial content"
 
-    # --- iteration 2: a later iteration commits the SAME content ----------
     tracked.write_text("shared content\n", encoding="utf-8")
     approved_seal = seal_pending(tmp_path, "run-reject", 2)
     assert approved_seal.tree_sha == rejected_seal.tree_sha
@@ -626,12 +536,9 @@ def test_a_rejected_proposal_ref_survives_a_later_commit_of_the_same_tree(
     )
     assert event == PipelineEvent.COMMIT_SUCCESS
 
-    # The rejected iteration's ref survived even though its tree was
-    # committed by the later iteration.
     surviving = _proposal_refs(tmp_path)
     assert "refs/ralph/proposals/run-reject/1" in surviving
 
-    # The documented recovery still restores the rejected tree.
     repo = Repo(tmp_path)
     try:
         repo.git.checkout(rejected_seal.ref, "--", ".")
@@ -641,12 +548,6 @@ def test_a_rejected_proposal_ref_survives_a_later_commit_of_the_same_tree(
 
 
 def test_the_proposal_identity_advances_with_every_rejection_attempt() -> None:
-    """Two rejections must seal two DIFFERENT proposal refs.
-
-    The iteration segment of a proposal ref must never be reused: a second
-    rejection overwriting the first one's ref would destroy the recovery
-    path (``git checkout <ref> -- .``) of the first rejection.
-    """
     from ralph.pipeline.effect_router import commit_review_proposal_identity
     from ralph.pipeline.state import PipelineState
 
@@ -663,7 +564,6 @@ def test_the_proposal_identity_advances_with_every_rejection_attempt() -> None:
 
 
 def test_two_rejections_seal_two_distinct_restorable_proposal_refs(tmp_path: Path) -> None:
-    """Two rejections seal two refs that both stay resolvable and restorable."""
     _init_test_git_repo(tmp_path, "main")
     tracked = tmp_path / "initial.txt"
 

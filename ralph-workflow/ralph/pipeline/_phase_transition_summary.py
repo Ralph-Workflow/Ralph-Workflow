@@ -1,4 +1,3 @@
-"""Completion-summary helpers for pipeline phase transitions."""
 
 from __future__ import annotations
 
@@ -42,7 +41,7 @@ if TYPE_CHECKING:
 def _snapshot_from_state_func() -> _SnapshotFromStateFn:
     module = cast(
         "_SnapshotModule", import_module("ralph.display.snapshot")
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     return module.snapshot_from_state
 
 
@@ -54,7 +53,6 @@ def emit_final_summary(
     display: ParallelDisplay | None = None,
     display_context: DisplayContext,
 ) -> None:
-    """Emit an end-of-run completion summary panel."""
     try:
         snapshot_from_state = _snapshot_from_state_func()
 
@@ -96,11 +94,6 @@ def emit_final_summary(
             elapsed_seconds=elapsed_seconds,
             pipeline_policy=pipeline_policy,
         )
-        # Route the end-of-run completion panel through the consolidated
-        # ParallelDisplay surface (37th emit_* method). When a ParallelDisplay
-        # is in scope we call directly; otherwise we resolve one from the
-        # DisplayContext so the panel is rendered through the same console
-        # and theme as the rest of the transcript.
         target_display = display if isinstance(display, ParallelDisplay) else None
         if target_display is None:
             target_display = resolve_active_display(None, ctx)

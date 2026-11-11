@@ -1,9 +1,3 @@
-"""Black-box tests for run_loop.run consuming PipelineDeps.
-
-Uses injected fakes only: no real subprocess, no real network, no time.sleep,
-no real file I/O.
-"""
-
 from __future__ import annotations
 
 import importlib
@@ -151,8 +145,6 @@ def _patch_runner_dependencies(
 
 
 class TestRunLoopPipelineDeps:
-    """Tests for run_loop.run(pipeline_deps=...)."""
-
     @pytest.mark.timeout_seconds(5)
     def test_run_with_pipeline_deps_none_uses_agent_registry_from_config(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -339,7 +331,6 @@ def _capture_run_ctx(
     provide_initial_state: bool = True,
     **run_kwargs: object,
 ) -> tuple[object, PipelineState]:
-    """Run ``run_loop.run`` with heavy dependencies stubbed and return (ctx, state)."""
     run_loop_module = _load_run_loop()
     runner_module = _load_runner()
 
@@ -380,15 +371,7 @@ def _capture_run_ctx(
         "_build_recovery_controller",
         lambda _state, _pp, _cfg: (_build_recovery_controller_mock(), 1),
     )
-    # Prevent the legacy heartbeat helper from invoking the watcher a second time.
     monkeypatch.setattr(run_loop_module, "_start_pro_heartbeat_if_active", lambda _ws: None)
-    # NOTE: ``_start_pro_marker_watcher`` is intentionally NOT stubbed here.
-    # Some tests in this class need to install their own
-    # ``_start_pro_marker_watcher`` recording fake (see the
-    # ``marker_watcher_factory`` precedence cases); pytest's monkeypatch
-    # is LIFO, so a stub applied here would shadow those recorders. The
-    # recovery-controller precedence cases (which do NOT install their
-    # own recorder) install a local stub at the test site.
 
     captured: list[tuple[PipelineState, object, str]] = []
 
@@ -415,8 +398,6 @@ def _capture_run_ctx(
 
 
 class TestInjectionPrecedence:
-    """Tests verifying injection precedence: pipeline_deps > pro_hooks > defaults."""
-
     def test_pipeline_deps_registry_wins_over_pro_hooks(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
@@ -657,13 +638,6 @@ class TestInjectionPrecedence:
         )
 
         captured_ctx: list[object] = []
-        # ``_start_pro_marker_watcher`` spawns a real ``ProMarkerWatcher``
-        # daemon thread by default, which would block past the 1 s per-test
-        # SIGALRM cap under full-suite load. Stub it locally; the
-        # ``_capture_run_ctx`` helper intentionally does not stub this
-        # because other tests in this class need to install their own
-        # recording fake. The recovery-controller factory precedence
-        # assertion is unaffected.
         monkeypatch.setattr(
             run_loop_module, "_start_pro_marker_watcher", lambda *_a, **_kw: (None, None)
         )
@@ -1028,23 +1002,9 @@ class TestInjectionPrecedence:
             )
 
 
-# --- AC-04: lifecycle refresh at the runner seam -------------------------
-
-
 def test_runner_wires_pre_post_refresh_around_development_agent(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """AC-04: the public runner seam in ``ralph/pipeline/runner.py``
-    must call ``before_agent_refresh`` exactly once BEFORE invoking
-    the agent and ``after_agent_refresh`` exactly once AFTER, but
-    only for the development/fix execution drain. Planning,
-    review, and commit drains must observe no refresh calls.
-
-    The test drives the actual runner code (not direct hook
-    imports) by calling ``_invoke_execute_effect_with_optional_display``
-    with a fake ``InvokeAgentEffect`` and patches the lifecycle
-    hooks so the test observes the observable event sequence.
-    """
     from ralph.mcp.explore import lifecycle as lifecycle_module
     from ralph.mcp.explore.lifecycle import LifecycleHookResult
 
@@ -1059,15 +1019,12 @@ def test_runner_wires_pre_post_refresh_around_development_agent(
         events.append("after")
         return LifecycleHookResult(invoked=True, timed_out=False)
 
-    # Patch via module __dict__ to satisfy the test-file
-    # type-ignore ban and the B010 lint rule while still
-    # exercising the real runner seam.
     original_before = lifecycle_module.before_agent_refresh
     original_after = lifecycle_module.after_agent_refresh
     lifecycle_module.__dict__["before_agent_refresh"] = _spy_before
     lifecycle_module.__dict__["after_agent_refresh"] = _spy_after
     try:
-        # Avoid the agent actually running.
+
         def _fake_execute_effect_with_optional_display(*_args: object, **_kwargs: object) -> object:
             events.append("invocation")
             return MagicMock()
@@ -1081,7 +1038,6 @@ def test_runner_wires_pre_post_refresh_around_development_agent(
         bundle = _make_fake_bundle()
         workspace_scope = MagicMock(root=tmp_path, allowed_roots=[tmp_path])
 
-        # Pre-workspace with an explore_index attribute.
         pre_workspace = MagicMock()
         pre_workspace.explore_index = MagicMock()
 
@@ -1096,7 +1052,6 @@ def test_runner_wires_pre_post_refresh_around_development_agent(
             drain="development",
         )
 
-        # DEVELOPMENT drain: must observe pre + invocation + post.
         runner_module._invoke_execute_effect_with_optional_display(
             agent_effect,
             config,
@@ -1114,7 +1069,6 @@ def test_runner_wires_pre_post_refresh_around_development_agent(
         assert events.count("after") == 1
         assert events == ["before", "invocation", "after"]
 
-        # PLANNING drain: must observe no refresh events.
         events.clear()
         runner_module._invoke_execute_effect_with_optional_display(
             agent_effect,
@@ -1132,7 +1086,6 @@ def test_runner_wires_pre_post_refresh_around_development_agent(
             f"planning drain should not trigger refresh; got {events!r}"
         )
 
-        # REVIEW drain: must observe no refresh events.
         events.clear()
         runner_module._invoke_execute_effect_with_optional_display(
             agent_effect,
@@ -1148,7 +1101,6 @@ def test_runner_wires_pre_post_refresh_around_development_agent(
         )
         assert events == ["invocation"], f"review drain should not trigger refresh; got {events!r}"
 
-        # COMMIT drain: must observe no refresh events.
         events.clear()
         runner_module._invoke_execute_effect_with_optional_display(
             agent_effect,

@@ -1,12 +1,3 @@
-"""Drive the conflict status bar from where the resolution has got to.
-
-Thin adapters between the driver's loop counters and
-:mod:`ralph.pipeline.conflict_resolution.status`, kept together because
-they share the one awkward detail: the elapsed-time clock is read off
-the display object itself and may not be there at all.
-
-Split out of :mod:`ralph.pipeline.conflict_resolution.driver`.
-"""
 
 from __future__ import annotations
 
@@ -34,12 +25,6 @@ __all__ = [
 def restore_previous_status_bar(
     display: ParallelDisplay | None, root: Path, previous_model: object | None
 ) -> None:
-    """Put back whatever the status bar showed before the resolution began.
-
-    ``None`` means there was nothing to put back, so the conflict label
-    is cleared rather than restored -- leaving it up would report a
-    resolution that is over as still running.
-    """
     if previous_model is None:
         clear_conflict_status_bar(
             display,
@@ -58,12 +43,6 @@ def push_round_status(
     round_cap: int,
     stop: RebaseStop | None,
 ) -> None:
-    """Show where the resolution is: which round, and which rebase stop.
-
-    Every field a stop contributes is optional because the same driver
-    runs for a standalone merge, which has no stop and therefore no
-    replay position to report.
-    """
     push_conflict_status_bar(
         display,
         root,
@@ -79,12 +58,6 @@ def push_round_status(
 
 
 def display_run_started_monotonic(display: ParallelDisplay | None) -> float | None:
-    """The display's own run-start timestamp, or ``None`` if it has none.
-
-    Read defensively: the attribute is absent on the fakes a test
-    injects, and a missing elapsed clock must not stop the status bar
-    from rendering.
-    """
     if display is None:
         return None
     try:

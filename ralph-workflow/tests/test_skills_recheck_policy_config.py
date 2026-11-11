@@ -1,5 +1,3 @@
-"""Tests for ralph.skills._recheck_policy RecheckPolicy configuration."""
-
 from ralph.skills._recheck_policy import DEFAULT_POLICY, RecheckPolicy
 
 

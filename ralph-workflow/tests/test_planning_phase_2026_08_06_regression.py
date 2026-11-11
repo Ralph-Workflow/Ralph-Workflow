@@ -1,27 +1,3 @@
-"""S-6 / DoD 16: replay the 2026-08-06 planning run and assert phase failure.
-
-Brief ``.agent/PRODUCT_CRITERIA.md`` -- the measured 2026-08-06
-planning run against AGY made twenty-one tool calls, never invoked a
-Ralph tool, wrote no plan artifact, and finished with the agent's own
-prose asserting ``agy result SUCCESS (3.58s, 1 turn)``. The harness
-displayed that transcript line as the operator's verdict; per F6 /
-DoD 12 + DoD 16, the graded verdict must instead be a failure naming
-the missing plan artifact.
-
-This test rebuilds a minimal synthetic-but-faithful transcript
-mirroring the measured shape (init frame with no ralph_* / no
-call_mcp_tool route, 21 step_update frames with parser-classified tool
-events, no artifact file, no completion sentinel) and asserts the
-phase grades as ``DEGRADED (absent)`` -- never ``PASS`` and never
-``SUCCESS``. The synthetic lines are deliberately short so the test
-runs within the per-suite budget. The measured 2026-08-06
-``.agent/raw/agy.log`` was never committed to this repo (see
-``tests/display/_fixtures/agy_wire_provenance.md`` for the provenance
-note); this test reproduces the brief's own documented measurements of
-that run rather than replaying the original captured file byte for
-byte.
-"""
-
 from __future__ import annotations
 
 import json
@@ -64,7 +40,6 @@ def _agy_config() -> AgentConfig:
 
 
 def _2026_08_06_init_frame() -> str:
-    """AGY init frame mirroring the measured shape (no ralph_* tools)."""
     return json.dumps(
         {
             "event": "init",
@@ -89,14 +64,6 @@ def _2026_08_06_init_frame() -> str:
 
 
 def _2026_08_06_step_update_lines() -> Iterator[str]:
-    """Step-update frames mirroring the measured shape (no ``call_mcp_tool``).
-
-    The measured run had 21 tool calls, all ordinary workspace reads /
-    searches / a single ``run_command`` (``make test``); zero of them
-    were ``call_mcp_tool``. Reconstructed faithfully here so the
-    parser-derived tool-activity evidence and the resulting graded
-    verdict match the measured run.
-    """
     base = {
         "conversation_id": "00000000-0000-0000-0000-000000000000",
     }
@@ -144,7 +111,6 @@ def _2026_08_06_step_update_lines() -> Iterator[str]:
 
 
 def _agy_result_success_frame() -> str:
-    """AGY ``result`` frame claiming SUCCESS -- the transcript echo that misled the operator."""
     return json.dumps(
         {
             "event": "result",
@@ -158,14 +124,6 @@ def _agy_result_success_frame() -> str:
 
 
 def test_2026_08_06_planning_run_phases_as_failure() -> None:
-    """Replay the 2026-08-06 shape through the parser and grading functions.
-
-    The transcript carries ``"agy result SUCCESS (3.58s, 1 turn)"`` --
-    the agent's own success claim. The graded verdict must be
-    ``DEGRADED (absent)`` because the agent never wrote a plan
-    artifact and never called ``declare_complete``. The operator must
-    never see ``SUCCESS`` as the phase outcome.
-    """
     lines = [_2026_08_06_init_frame()]
     lines.extend(_2026_08_06_step_update_lines())
     lines.append(_agy_result_success_frame())
@@ -173,20 +131,11 @@ def test_2026_08_06_planning_run_phases_as_failure() -> None:
     parser = AgyParser()
     events = list(parser.parse(iter(lines)))
 
-    # The transcript carries the agent's claim of success. The
-    # operator-facing display path now qualifies it as transcript-
-    # sourced (S-5); the graded verdict is what Ralph reports.
     stop_events = [e for e in events if e.type == "stop"]
     assert stop_events, "AGY parser must emit a stop event for the result frame"
     assert stop_events[0].metadata.get("_transcript_claimed_outcome") is True
     assert "agy result SUCCESS" in stop_events[0].content
 
-    # The agent never wrote a plan artifact and never called
-    # ``declare_complete``. ``CompletionSignals`` evaluates the
-    # post-run state and grades the phase. Per F6, the graded verdict
-    # must downgrade: required_artifact_present is False (no receipt),
-    # completion_sentinel_present is False (no sentinel). The weakest
-    # provenance is ABSENT, the verdict is DEGRADED.
     signals = CompletionSignals(
         explicit_complete=False,
         required_artifact_present=False,
@@ -200,8 +149,6 @@ def test_2026_08_06_planning_run_phases_as_failure() -> None:
     assert weakest == Provenance.ABSENT
     assert format_phase_verdict(signals) == "DEGRADED (absent)"
 
-    # The verdict text must explicitly name the missing artifact so
-    # the operator knows what to fix -- it is not a bare FAILURE.
     assert "absent" in format_phase_verdict(signals).lower()
 
 
@@ -209,15 +156,6 @@ def test_2026_08_06_planning_run_through_smoke_agent_grades_degraded(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """End-to-end: drive the smoke harness with the 2026-08-06 shape and assert DEGRADED.
-
-    Drives ``_run_smoke_agent`` via the same monkeypatched-``execute_agent_effect``
-    pattern used by ``tests/test_smoke_plumbing_uses_canonical_submit.py``. The
-    fake agent emits only the parser-classified tool events (no artifact, no
-    completion sentinel) so the harness's grading functions must derive the
-    truth from the transcript, and the resulting ``SmokeRunResult`` must
-    reflect that the phase is not a pass.
-    """
     from collections import deque
 
     params = SmokeRunParams(
@@ -251,20 +189,12 @@ def test_2026_08_06_planning_run_through_smoke_agent_grades_degraded(
 
     result = _run_smoke_agent(params, run_id=run_id)
 
-    # Tool activity was observed (parser-classified), but the agent
-    # never wrote the artifact and never called ``declare_complete``.
-    # The completion contract fails; the harness must report DEGRADED.
     assert result.artifact_submitted.holds is False
     assert result.explicit_completion_seen.holds is False
     assert (
         "smoke_test_result artifact was not submitted" in result.errors
         or ("no tool activity was observed" in result.errors)
-        or (
-            # The fake emits parser-classified tool events so the
-            # tool-activity gate can pass; the artifact-submitted gate is
-            # the load-bearing one for this regression.
-            result.tool_activity_seen.holds is True
-        )
+        or (result.tool_activity_seen.holds is True)
     )
 
 
@@ -272,28 +202,6 @@ def test_2026_08_06_planning_run_through_real_phase_verdict_path_grades_failed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-5 (DoD 16): the exact measured shape grades FAILED through the real
-    phase-verdict path, not only through smoke grading.
-
-    The companion test above (``..._through_smoke_agent_grades_degraded``)
-    proves the smoke gate's own grading path derives DEGRADED from this
-    shape. DoD 16's literal ask is stronger -- "the phase grades as a
-    failure" -- and the DoD-12 ``FAILED (no artifact)`` machinery lives in
-    ``phase_agent_handler.graded_phase_verdict`` / ``render_phase_failure_report``,
-    which neither existing test in this module exercises. This test drives
-    the reconstructed 2026-08-06 transcript's defining fact -- a 'plan'
-    phase that produced tool calls (no artifact, no receipt, no completion
-    sentinel) -- through that real render path and asserts the rendered
-    report contains ``"FAILED (no artifact)"`` naming the missing plan
-    artifact, exactly the shape the brief's "What the operator sees" section
-    specifies for this run.
-
-    ``tmp_path`` has no ``.agent/artifacts/plan.md`` and no receipt/sentinel
-    for ``run_id`` -- the same absence the measured run left behind.
-    ``resolve_phase_required_artifact`` is monkeypatched to the plan
-    contract directly (mirroring ``tests/pipeline/test_phase_close_failed_no_artifact.py``'s
-    established pattern) so this test does not need a full ``PolicyBundle``.
-    """
     required_artifact = RequiredArtifact(
         phase="plan",
         artifact_type="plan",
@@ -347,8 +255,6 @@ def test_2026_08_06_planning_run_through_real_phase_verdict_path_grades_failed(
     assert args[0] == "agy/gemini-3.6-flash-low"
     message = str(args[1])
 
-    # The exact operator-facing shape DoD 16 requires: never
-    # "agy result SUCCESS", always a named-failure verdict.
     assert "FAILED (no artifact)" in message, message
     assert "plan" in message, message
     assert "SUCCESS" not in message, message

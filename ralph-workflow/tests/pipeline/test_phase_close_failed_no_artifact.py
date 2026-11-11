@@ -1,22 +1,3 @@
-"""Regression tests for F6 phase-close grading (S-3, closes
-PLANNING_ANALYSIS_DECISION.md PA-001's reachability finding).
-
-PA-001 found that the prior draft's render branch was nested inside
-``_render_phase_artifact_handoff``, a function only ever called on
-``PipelineEvent.AGENT_SUCCESS`` (both ``runner.py:1220`` and
-``worker_runtime.py:440`` gate the call on that event) -- so a branch added
-inside it could never fire for the exact 2026-08-06-shaped run the brief
-names (an agent invocation that never produces the required artifact).
-
-S-2 fixed the reachability defect by restructuring the OUTER call sites
-themselves (``runner.py``'s ``_finalize_agent_invocation`` helper and
-``worker_runtime.py``'s ``run_parallel_worker_from_manifest``) to call the
-new ``render_phase_failure_report`` directly on a non-success event, not
-through the success-gated function. These tests exercise that restructured
-call site -- not the render helper in isolation -- so a regression that
-re-nests the branch inside the success-only path fails here.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -56,8 +37,6 @@ def _required_development_result_artifact(*, artifact_required: bool = True) -> 
 
 
 class _CapturingDisplay:
-    """Minimal display double exposing only ``record_artifact_outcome``."""
-
     def __init__(self) -> None:
         self.outcomes: list[str] = []
 
@@ -66,10 +45,6 @@ class _CapturingDisplay:
 
 
 class _StubPolicyBundle:
-    """``resolve_phase_required_artifact`` is monkeypatched in these tests, so
-    ``.pipeline`` / ``.artifacts`` only need to exist as attributes -- the
-    real function is never called with them."""
-
     pipeline = object()
     artifacts = object()
 
@@ -78,13 +53,6 @@ def test_render_phase_failure_report_emits_failed_no_artifact_for_missing_receip
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """``render_phase_failure_report`` grades a missing receipt as FAILED (F6 / DoD 12).
-
-    No receipt, no sentinel, and no wire-ledger row exist for ``run_id`` in
-    ``tmp_path`` -- ``evaluate_completion`` must return
-    ``required_artifact_present.holds is False`` and ``graded_phase_verdict``
-    must report ``FAILED``, naming the missing artifact type.
-    """
     required_artifact = _required_development_result_artifact()
     monkeypatch.setattr(
         phase_agent_handler_module,
@@ -133,7 +101,6 @@ def test_render_phase_failure_report_is_silent_when_artifact_not_required(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """An optional-artifact phase failing is out of scope (S-2 item 8)."""
     required_artifact = _required_development_result_artifact(artifact_required=False)
     monkeypatch.setattr(
         phase_agent_handler_module,
@@ -170,23 +137,11 @@ def test_render_success_artifact_reports_pass_when_wire_backed(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """A receipt + sentinel each backed by a matching wire-ledger record grades PASS.
-
-    Proves S-2's WIRE upgrade in ``evaluate_completion`` (via the extracted
-    ``grade_artifact_submission_evidence`` / ``grade_completion_sentinel_evidence``
-    helpers) is reachable from the phase-close success render, not only from
-    the smoke gate.
-    """
     secret = "phase-close-wire-secret"
     run_id = "phase-close-wire-run"
     artifact_type = "development_result"
     monkeypatch.setenv("RALPH_BROKER_SECRET", secret)
 
-    # Recompute the receipt HMAC locally rather than importing
-    # ``completion_receipts._receipt_hmac`` (a private symbol) -- this is
-    # the exact formula that module's public ``artifact_receipt_present``
-    # verifies against (``hmac.new(secret, f"{run_id}\n{artifact_type}",
-    # sha256)``), inlined so this test only imports public API.
     db = RunStateDB(tmp_path)
     receipt_hmac = hmac.new(
         secret.encode(), f"{run_id}\n{artifact_type}".encode(), hashlib.sha256
@@ -237,15 +192,6 @@ def test_render_success_artifact_reports_pass_when_wire_backed(
 def test_finalize_agent_invocation_reaches_failure_report_on_agent_failure(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """The real runner.py call site reaches the FAILED render on AGENT_FAILURE.
-
-    Drives ``runner_module._finalize_agent_invocation`` -- the exact function
-    ``_run_pipeline_step``'s loop calls unconditionally for an
-    ``InvokeAgentEffect`` -- with ``event=AGENT_FAILURE``, and asserts
-    ``render_phase_failure_report`` (not ``phase_event_after_agent_run``) is
-    reached, carrying the same ``run_id``. This is the property PA-001
-    flagged as unproven under the prior draft's nesting.
-    """
     captured: dict[str, object] = {}
 
     def _fake_phase_event_after_agent_run(**kwargs: object) -> PipelineEvent:
@@ -301,7 +247,6 @@ def test_finalize_agent_invocation_reaches_failure_report_on_agent_failure(
 def test_finalize_agent_invocation_threads_run_id_on_success_branch(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """The success branch still threads run_id and does not call the failure report."""
     captured: dict[str, object] = {}
 
     def _fake_phase_event_after_agent_run(**kwargs: object) -> PipelineEvent:

@@ -1,4 +1,3 @@
-"""Closed vocabulary for rebase/merge integration outcomes."""
 
 from __future__ import annotations
 
@@ -6,16 +5,6 @@ from enum import StrEnum
 
 
 class RebaseOutcomeKind(StrEnum):
-    """The closed vocabulary for rebase/merge integration outcomes.
-
-    The values represent the lossless union of all outcome verbs written
-    and asserted across the Ralph pipeline. ``INTERVENTION_REQUIRED`` and
-    ``DIAGNOSTIC_INTERVENTION_REQUIRED`` are retained ONLY for parsing
-    legacy checkpoints and receipts; no production path produces them
-    after the diagnostic-cap hand-off was replaced by the typed
-    ``LADDER_ESCALATION`` outcome (the autonomous fallback ladder,
-    rung 6 hard reset as the last resort — never a person).
-    """
 
     REBASED = "rebased"
     MERGED = "merged"
@@ -40,7 +29,6 @@ class RebaseOutcomeKind(StrEnum):
     UNKNOWN = "unknown"
 
     def is_terminal(self) -> bool:
-        """Whether this outcome kind signals the operation is closed."""
         return self in (
             RebaseOutcomeKind.TERMINAL,
             RebaseOutcomeKind.COMPLETED,
@@ -49,7 +37,6 @@ class RebaseOutcomeKind(StrEnum):
 
     @classmethod
     def from_legacy(cls, action: str | None) -> RebaseOutcomeKind | None:
-        """Round-trip migration entry point for legacy action strings."""
         if action is None:
             return None
         normalized = action.strip().lower()

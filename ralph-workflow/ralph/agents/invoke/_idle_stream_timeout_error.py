@@ -1,4 +1,3 @@
-"""_IdleStreamTimeoutError — raised when an agent process stops producing output."""
 
 from __future__ import annotations
 
@@ -6,7 +5,6 @@ from ralph.agents.idle_watchdog import WatchdogFireReason
 
 
 class _IdleStreamTimeoutError(RuntimeError):
-    """Raised when an agent process stops producing output for too long."""
 
     def __init__(
         self,

@@ -1,13 +1,3 @@
-"""Rung 6 (last resort) executor tests: the hard reset behind six preconditions.
-
-Pure fake-driven tests over the shared doubles in
-:mod:`tests._integration_ladder_fakes` and the real
-:class:`~ralph.pipeline.integration_attempt_ledger.AttemptLedger` on the
-per-test ``tmp_path``: the reset runs ONLY when every precondition in
-:data:`LAST_RESORT_PRECONDITIONS` holds, preservation runs immediately
-before it, and a healed re-observation cancels it.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -37,11 +27,6 @@ from tests._integration_ladder_fakes import (
 pytestmark = pytest.mark.timeout_seconds(30)
 
 
-# ---------------------------------------------------------------------------
-# Rung 6 — last resort.
-# ---------------------------------------------------------------------------
-
-
 def _seed_all_preconditions(ledger: AttemptLedger) -> None:
     _seed_terminal_rungs(ledger)
     _seed_salvage(ledger)
@@ -49,7 +34,6 @@ def _seed_all_preconditions(ledger: AttemptLedger) -> None:
 
 
 def test_rung6_never_resets_when_any_precondition_is_unmet(tmp_path: Path) -> None:
-    """An empty ledger means no rung was ever tried: the reset MUST NOT run."""
     ledger = _ledger(tmp_path)
     git = _FakePlumbing()
 
@@ -70,9 +54,6 @@ def test_rung6_never_resets_when_any_precondition_is_unmet(tmp_path: Path) -> No
     assert result.outcome == "failed"
     assert result.reason.startswith("failed:precondition-unmet:")
     assert not any(call.startswith("reset_hard") for call in git.calls)
-    # Every precondition's evidence is recorded all the same; the
-    # re-observation one IS met here (the signatures match) — the reset
-    # is still refused by the five unmet rung/salvage/budget ones.
     evidence = _evidence(tmp_path)
     for name in LAST_RESORT_PRECONDITIONS:
         if name == "fresh_reobservation_confirms_blocking_state":
@@ -82,7 +63,6 @@ def test_rung6_never_resets_when_any_precondition_is_unmet(tmp_path: Path) -> No
 
 
 def test_rung6_healed_state_cancels_the_reset(tmp_path: Path) -> None:
-    """A fresh re-observation that no longer matches cancels the reset."""
     ledger = _ledger(tmp_path)
     _seed_all_preconditions(ledger)
     git = _FakePlumbing()
@@ -132,7 +112,6 @@ def test_rung6_resets_only_after_all_six_preconditions_hold(tmp_path: Path) -> N
     assert "reset_hard:tipsha" in git.calls
     assert "clean_untracked" in git.calls
     assert "remove_stale_locks" in git.calls
-    # Preserved copies are never pruned by the reset.
     assert "prune_landed_backup_refs" not in git.calls
     evidence = _evidence(tmp_path)
     for name in LAST_RESORT_PRECONDITIONS:
@@ -248,12 +227,6 @@ def test_evaluate_preconditions_reports_every_one() -> None:
 
 
 def test_rung6_without_a_blocking_signature_is_explicitly_disabled(tmp_path: Path) -> None:
-    """A caller that supplies no reconfirmed blocking signature cannot run the reset.
-
-    Even with every ledger precondition seeded, the rung refuses with a
-    named ``disabled`` verdict rather than a misleading precondition miss,
-    and never touches the tree.
-    """
     ledger = _ledger(tmp_path)
     _seed_all_preconditions(ledger)
     git = _FakePlumbing(readable_refs=frozenset({"tipsha"}))

@@ -1,20 +1,3 @@
-"""Tests for ``ralph.testing.audit_template_render_integrity``.
-
-The audit renders every packaged top-level prompt template and every shared
-partial through the real rendering path (registry + partials +
-``TemplateRenderer``) across reachable capability profiles and explicit
-optional-input scenarios. It enforces five render-integrity checks: no
-unrendered Jinja markers, include resolution, no duplicated headings, no
-duplicated >=120-char paragraphs, and no blank-line/doubled-label defects.
-
-The clean-template render check (``test_audit_clean_on_current_templates``)
-used to live here as the verify-gate wiring, but it duplicates the
-``audit_template_render_integrity`` step in ``_VERIFY_STEPS`` so it was
-removed in the wt-05-test-opti pass. The remaining fixture-driven tests
-below cover every audit branch on synthetic inputs without touching the
-packaged templates.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -200,15 +183,12 @@ def test_every_shared_partial_has_an_independent_render_target() -> None:
 
 
 def test_audit_module_exposes_main_entry_point() -> None:
-    """Audit must be runnable as ``python -m ralph.testing.audit_template_render_integrity``."""
     assert hasattr(audit_module, "main")
 
 
 def test_main_exit_codes_follow_collect_violations(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """``main()`` must exit 0 on a clean run and 1 with the violation list
-    printed when violations exist (the contract ``make verify`` relies on)."""
     monkeypatch.setattr(audit_module, "collect_violations", lambda: [])
     assert audit_main([]) == 0
     monkeypatch.setattr(
@@ -221,15 +201,3 @@ def test_main_exit_codes_follow_collect_violations(
     assert "duplicated heading" in captured.out
     assert "x.jinja" in captured.out
     assert captured.out.count("Every packaged prompt template must render") == 1
-
-
-# NOTE: ``test_audit_clean_on_current_templates`` was deleted in the
-# wt-05-test-opti pass. That audit is already invoked as a dedicated
-# ``_VERIFY_STEPS`` entry inside ``make verify`` (via
-# ``python -m ralph.testing.audit_template_render_integrity``), so
-# the same clean-template render check runs in the same gate. The
-# pytest version added ~1 s of template-rendering cost to the
-# default profile while proving nothing the verify step does not
-# already prove. The remaining tests in this file cover every
-# audit branch on synthetic inputs without touching the packaged
-# templates, preserving the audit's behavior contract.

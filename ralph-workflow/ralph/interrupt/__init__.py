@@ -1,9 +1,3 @@
-"""Interrupt-handling helpers for unattended runs.
-
-The orchestrator uses this module to install a process-wide SIGINT handler and
-record whether a user interruption has been requested. The state is intentionally
-simple so both CLI code and long-running loops can check it safely.
-"""
 
 from __future__ import annotations
 

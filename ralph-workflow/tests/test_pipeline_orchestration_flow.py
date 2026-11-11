@@ -1,5 +1,3 @@
-"""Focused orchestration-flow tests for the policy-driven pipeline."""
-
 from __future__ import annotations
 
 from datetime import timedelta
@@ -27,18 +25,6 @@ from ralph.policy.loader import load_policy
 
 _EXPECTED_RECOVERY_DETERMINE_CALLS = 2
 
-# ``test_pipeline_orchestration_flow.py`` exercises the full
-# policy-driven ``runner.run`` loop with MagicMock-heavy state
-# setup (resolve_workspace_scope, load_policy_or_die,
-# AgentRegistry, FsWorkspace, materialize_*_prompt_if_needed,
-# execute_effect, ckpt.save). Under parallel xdist CPU
-# contention the mock construction + ``runner.run`` invocation
-# has been observed to intermittently exceed the 1s default test
-# timeout. 5s is the documented minimum for non-trivial tests
-# (see ``ralph/verify_timeout.py``) and is well under the 60s
-# combined ``make verify`` budget. The 1s default policy is
-# preserved globally; this module-level marker only relaxes the
-# cap for the orchestration-flow tests in this file.
 pytestmark = pytest.mark.timeout_seconds(5)
 
 
@@ -96,9 +82,6 @@ def test_full_pipeline_transitions_from_planning_to_complete() -> None:
         determine_next_effect(state, bundle.pipeline, bundle.agents), PreparePromptEffect
     )
 
-    # The default planning_analysis loop counter is 3, so a successful
-    # planning phase routes through a planning-analysis pass before
-    # development.
     state = _apply(state, PipelineEvent.AGENT_SUCCESS)
     visited_phases.append(state.phase)
     assert state.phase == "planning_analysis"

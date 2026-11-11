@@ -1,5 +1,3 @@
-"""Tests for same-workspace parallel worker behaviour."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -37,7 +35,6 @@ class TestEditAreaEnforcement:
             worker_namespace=worker_ns,
         )
         workspace = FsWorkspace(tmp_path, allowed_roots=scope.allowed_roots)
-        # Should succeed
         workspace.write("src/foo/output.txt", "hello")
         assert (tmp_path / "src" / "foo" / "output.txt").read_text() == "hello"
 
@@ -65,7 +62,6 @@ class TestEditAreaEnforcement:
             worker_namespace=worker_ns,
         )
         workspace = FsWorkspace(tmp_path, allowed_roots=scope.allowed_roots)
-        # Writing to the per-worker namespace must succeed
         workspace.write(".agent/workers/unit-x/artifacts/plan.json", "{}")
         assert (worker_ns / "artifacts" / "plan.json").exists()
 

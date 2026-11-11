@@ -1,11 +1,3 @@
-"""Contract tests for MCP E2E test suite registration (U0b).
-
-Enforces repository policy that every subprocess_e2e-marked test file under
-tests/mcp/ is registered in REQUIRED_AUTO_INTEGRATE_E2E_FILES (so it runs
-under the default `make test` verification gate) or explicitly documented
-in an exemption allowlist with justification.
-"""
-
 from __future__ import annotations
 
 import ast
@@ -19,12 +11,10 @@ from ralph.test_suites import (
     validate_required_auto_integrate_selection,
 )
 
-# Explicitly exempt files (none currently, but allowlist exists with strict typing)
 _EXEMPT_MCP_SUBPROCESS_E2E_FILES: frozenset[str] = frozenset()
 
 
 def _is_file_marked_subprocess_e2e(file_path: Path) -> bool:
-    """Return True if file_path defines pytestmark containing subprocess_e2e."""
     try:
         text = file_path.read_text(encoding="utf-8")
     except UnicodeDecodeError:
@@ -45,9 +35,6 @@ def _is_file_marked_subprocess_e2e(file_path: Path) -> bool:
     return False
 
 
-# The AST scan of the full tests/mcp/ tree costs >2s, which blows the 1.0s
-# per-test SIGALRM budget, so it is computed once at module import
-# (collection time) — outside the per-test timeout — instead of per test.
 _SUBPROCESS_E2E_MCP_FILES: frozenset[str] = frozenset(
     f"tests/mcp/{p.name}"
     for p in (Path(__file__).resolve().parent.parent / "tests" / "mcp").glob("test_*.py")
@@ -56,7 +43,6 @@ _SUBPROCESS_E2E_MCP_FILES: frozenset[str] = frozenset(
 
 
 def test_every_subprocess_e2e_mcp_file_is_registered_or_exempt() -> None:
-    """Every test file under tests/mcp/ marked subprocess_e2e must be registered in REQUIRED_AUTO_INTEGRATE_E2E_FILES."""
     repo_root = Path(__file__).resolve().parent.parent
     mcp_tests_dir = repo_root / "tests" / "mcp"
     assert mcp_tests_dir.is_dir()
@@ -73,7 +59,6 @@ def test_every_subprocess_e2e_mcp_file_is_registered_or_exempt() -> None:
 
 
 def test_required_auto_integrate_all_files_exist_on_disk() -> None:
-    """Every file in REQUIRED_AUTO_INTEGRATE_E2E_FILES must exist on disk."""
     repo_root = Path(__file__).resolve().parent.parent
     missing_files: list[str] = []
 
@@ -88,7 +73,6 @@ def test_required_auto_integrate_all_files_exist_on_disk() -> None:
 
 
 def test_sanctioned_default_lane_real_git_files_exist_on_disk() -> None:
-    """Every file in SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES must exist on disk."""
     repo_root = Path(__file__).resolve().parent.parent
     missing_files: list[str] = []
 
@@ -103,19 +87,16 @@ def test_sanctioned_default_lane_real_git_files_exist_on_disk() -> None:
 
 
 def test_required_auto_integrate_selection_accepts_registered_files() -> None:
-    """validate_required_auto_integrate_selection accepts the registered list."""
     validate_required_auto_integrate_selection(REQUIRED_AUTO_INTEGRATE_E2E_FILES)
 
 
 def test_required_auto_integrate_selection_rejects_omissions() -> None:
-    """validate_required_auto_integrate_selection fails when a registered file is omitted."""
     omitted = REQUIRED_AUTO_INTEGRATE_E2E_FILES[1:]
     with pytest.raises(RuntimeError, match="combined pytest selection omitted required"):
         validate_required_auto_integrate_selection(omitted)
 
 
 def test_all_wt16_edge_case_and_root_cause_files_registered() -> None:
-    """Verify that all wt-16 MCP make-before-break edge-case test files are registered."""
     expected_wt16_files = {
         "tests/mcp/test_e17_state_continuity.py",
         "tests/mcp/test_e18_old_session_id_accepted.py",

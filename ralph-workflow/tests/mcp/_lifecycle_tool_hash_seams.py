@@ -1,11 +1,3 @@
-"""Shared test seams for tool-set hash, probe-classification and handover-step tests.
-
-Private-by-convention scaffolding (fake processes, fake registries, the deterministic
-synthetic private channel and its responder lifecycle) used by both
-``test_lifecycle_tool_hash_and_classification.py`` and
-``test_bridge_handover_step_errors.py``.
-"""
-
 import contextlib
 import functools
 import json
@@ -26,13 +18,8 @@ from ralph.mcp.server._handover_protocol import (
 from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
 from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
 
-#: Bound on the attach barrier — how long ``_handover_candidate`` waits for
-#: the responder thread to take ownership of its socket end.
 _RESPONDER_ATTACH_TIMEOUT_S: float = 5.0
 
-#: Bound on the teardown join of a synthetic responder thread. The thread is
-#: woken by the parent-end close that precedes the join, so this only bounds
-#: how long teardown WAITS; it is never the reason a test passes.
 _RESPONDER_JOIN_TIMEOUT_S: float = 5.0
 
 
@@ -79,22 +66,16 @@ def _make_inner(
 
 
 class _FakeRegistry:
-    """Registry double exposing the ``tools`` list the private channel reads."""
-
     def __init__(self, tools: list[dict[str, object]]) -> None:
         self.tools = tools
 
 
 class _FakeMcpServer:
-    """Minimal ``_registry`` holder shaped like the live MCP server."""
-
     def __init__(self, tools: list[dict[str, object]]) -> None:
         self._registry = _FakeRegistry(tools)
 
 
 class _FakeListeningSocket:
-    """Stand-in for the parent-owned listening socket (no real bind)."""
-
     def __init__(self) -> None:
         self.closed = False
 
@@ -107,7 +88,6 @@ class _FakeListeningSocket:
 
 @contextlib.contextmanager
 def _captured_logs() -> Iterator[list[str]]:
-    """Collect loguru WARNING+ records emitted inside the block."""
     records: list[str] = []
     sink_id = logger.add(lambda message: records.append(str(message)), level="WARNING")
     try:
@@ -125,21 +105,6 @@ def _serve_tool_list(
     session_id: str = "",
     attached: threading.Event,
 ) -> None:
-    """Answer one ``initialize`` + ``tools/list`` exchange on the private channel.
-
-    ``attached`` is set the moment this thread owns ``child_sock`` and is about
-    to read, which is the barrier ``_handover_candidate`` waits on before
-    handing the caller a candidate. Without it the parent's request/response
-    exchange races thread start-up and its success depends on the responder
-    being scheduled inside the production readiness deadline
-    (``_PRIVATE_READINESS_TIMEOUT_S``) — a wall-clock assumption whose
-    satisfaction degrades under parallel host load, where a starved responder
-    silently converts a drift refusal into a transport-timeout refusal.
-
-    The thread's lifetime is bounded by the parent end being closed, which
-    delivers EOF and ends the read loop; the ``synthetic_responders`` fixture
-    guarantees that close happens at teardown.
-    """
     with child_sock:
         attached.set()
         buf = b""
@@ -176,27 +141,10 @@ def _serve_tool_list(
 
 @dataclass
 class _SyntheticResponder:
-    """Test-owned teardown handle for one synthetic candidate's private channel.
-
-    A synthetic responder thread that outlives its test is the load-sensitive
-    hazard this type exists to remove. It parks in ``recv`` on a file-descriptor
-    number; if it is still parked when a LATER test allocates its own
-    ``socketpair``, the kernel hands out the same number, and the stale thread's
-    eventual ``with child_sock`` close then closes the *later* test's socket.
-    Whether that happens before or after the later test's exchange is pure
-    thread-scheduling luck, and it gets worse the busier the host is.
-    """
-
     parent_sock: socket.socket
     worker: threading.Thread
 
     def release(self) -> None:
-        """Close the parent end, then join the responder. Teardown only.
-
-        Never call this before the candidate has been verified:
-        ``_verify_candidate`` skips the private-channel drift check for a
-        candidate with no live ``handover_parent_sock`` and promotes it.
-        """
         with contextlib.suppress(OSError):
             self.parent_sock.close()
         self.worker.join(timeout=_RESPONDER_JOIN_TIMEOUT_S)
@@ -208,11 +156,6 @@ def _release_all(responders: list[_SyntheticResponder]) -> None:
 
 
 def register_synthetic_responders(request: pytest.FixtureRequest) -> list[_SyntheticResponder]:
-    """Build the per-test responder registry and bind its teardown to the test.
-
-    Each test module exposes it as a local ``synthetic_responders`` fixture because a
-    fixture imported from another module is not discoverable by name.
-    """
     responders: list[_SyntheticResponder] = []
     request.addfinalizer(functools.partial(_release_all, responders))
     return responders
@@ -227,13 +170,6 @@ def _handover_candidate(
     label: str,
     responders: list[_SyntheticResponder],
 ) -> StandaloneMcpProcess:
-    """Build a candidate whose private channel serves ``tools``.
-
-    Returns only once the responder thread is provably attached, so the
-    caller never starts the readiness exchange against an unscheduled
-    responder. ``responders`` is the test-owned teardown registry supplied by
-    the ``synthetic_responders`` fixture.
-    """
     parent_sock, child_sock = create_handover_socketpair()
     candidate = _make_inner(
         poll_result=None,
@@ -272,7 +208,6 @@ def _bridge_with_old_child(
     restart_fn: object = None,
     tool_entries_fn: object = None,
 ) -> lifecycle.RestartAwareMcpBridge:
-    """Build a bridge whose old child is fake but lives under ``tmp_path``."""
     inner = _make_inner(
         poll_result=None,
         pid=old_pid,

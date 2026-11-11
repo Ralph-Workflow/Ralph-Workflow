@@ -1,11 +1,3 @@
-"""Integration tests for serialized post-fanout verification.
-
-Verifies that when run_post_fanout_verification=True:
-- Workspace-wide verification runs exactly once, after all workers finish.
-- Verification is skipped when any worker fails.
-- Concurrent invocation is impossible by construction (serialized after coordinator returns).
-"""
-
 from __future__ import annotations
 
 import time
@@ -69,7 +61,6 @@ class TestSerializedPostFanoutVerification:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """Post-fanout verification runs exactly once after all workers finish."""
         unit = _make_work_unit("unit-a")
         effect = FanOutEffect(
             work_units=(unit,),
@@ -140,7 +131,6 @@ class TestSerializedPostFanoutVerification:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """Verification must run after coordinator.run_fan_out returns, never before."""
         unit = _make_work_unit("unit-a")
         effect = FanOutEffect(
             work_units=(unit,),
@@ -206,7 +196,6 @@ class TestSerializedPostFanoutVerification:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """When run_post_fanout_verification=False, no verification command is called."""
         unit = _make_work_unit("unit-a")
         effect = FanOutEffect(
             work_units=(unit,),
@@ -269,7 +258,6 @@ class TestSerializedPostFanoutVerification:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """_determine_effect_from_policy sets run_post_fanout_verification=True for >=2 units."""
         unit_a = _make_work_unit("unit-a")
         unit_b = _make_work_unit("unit-b")
         state = PipelineState(phase="development", work_units=(unit_a, unit_b))
@@ -288,7 +276,6 @@ class TestSerializedPostFanoutVerification:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """Post-fanout verification must not run when a worker has failed."""
 
         unit = _make_work_unit("unit-a")
         effect = FanOutEffect(
@@ -355,16 +342,12 @@ class TestSerializedPostFanoutVerification:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """When verification fails, the returned state must be "failed"
-        with last_error containing the verification failure message."""
         unit = _make_work_unit("unit-a")
         effect = FanOutEffect(
             work_units=(unit,),
             max_workers=1,
             run_post_fanout_verification=True,
         )
-        # Exhaust the dev_chain retries so the reducer transitions to "failed"
-        # rather than scheduling another retry attempt.
         exhausted_chain = AgentChainState(agents=[], current_index=0, retries=_MAX_AGENT_RETRIES)
         state = PipelineState(
             phase="development",
@@ -438,14 +421,6 @@ class TestSerializedPostFanoutVerification:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """Verification starts only after the last worker finishes; never overlaps workers.
-
-        Captures the sequence of events: fan_out_started, fan_out_ended, verify_started,
-        verify_ended. Asserts that verify_started >= fan_out_ended (no overlap).
-        By construction, _execute_fan_out_sync is synchronous — it awaits the coordinator
-        before running verification — so overlap is architecturally impossible. This test
-        proves that guarantee holds through the call chain.
-        """
 
         units = tuple(
             WorkUnit(
@@ -526,13 +501,11 @@ class TestSerializedPostFanoutVerification:
         assert [entry for entry in call_order if entry.startswith("worker:")] == [
             f"worker:{unit.unit_id}" for unit in units
         ]
-        # Verify started at or after fan_out ended (no overlap)
         assert timestamps["verify_started"] >= timestamps["fan_out_ended"], (
             f"verify must not start before fan_out ends: "
             f"fan_out_ended={timestamps['fan_out_ended']}, "
             f"verify_started={timestamps['verify_started']}"
         )
-        # Verify ran exactly once
         verify_calls = [c for c in call_order if c == "verify"]
         assert len(verify_calls) == 1, (
             f"verify must run exactly once, got {len(verify_calls)} calls: {call_order}"

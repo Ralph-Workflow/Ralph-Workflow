@@ -1,4 +1,3 @@
-"""PhaseLoopPolicy Pydantic model."""
 
 from __future__ import annotations
 
@@ -8,7 +7,6 @@ from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 
 
 class PhaseLoopPolicy(_FrozenPolicyModel):
-    """Loop linkage for analysis phases."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 

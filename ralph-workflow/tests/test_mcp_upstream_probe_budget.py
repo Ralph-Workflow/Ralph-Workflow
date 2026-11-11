@@ -1,18 +1,3 @@
-"""The upstream discovery probe budget must fit inside the server-readiness budget.
-
-A Ralph MCP server subprocess enumerates every configured upstream MCP server
-BEFORE it binds its HTTP port. The parent gives that subprocess
-``mcp_preflight_timeout_from_env()`` to become reachable. When one upstream
-probe was allowed to consume that entire window, the parent killed the child
-mid-probe: the child never reached the line where it reports WHICH upstream is
-unreachable, and the operator was handed a bare ``[Errno 61] Connection
-refused`` for a misconfigured docs server.
-
-The probe budget is therefore derived from -- and clamped strictly below -- the
-readiness budget, so a stalled upstream always leaves the child enough time to
-fail loudly and name itself.
-"""
-
 from __future__ import annotations
 
 from datetime import timedelta
@@ -61,8 +46,6 @@ def test_explicit_probe_budget_is_clamped_below_the_readiness_budget() -> None:
 
 
 class _RecordingUpstreamPopen:
-    """A Popen stand-in that records the communicate timeout it was handed."""
-
     def __init__(self, pid: int, seen: dict[str, object]) -> None:
         self.pid = pid
         self._seen = seen
@@ -140,11 +123,6 @@ def test_stdio_upstream_discovery_uses_the_bounded_probe_budget(
 def test_stdio_upstream_tool_call_keeps_the_full_call_budget(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Only DISCOVERY runs inside the startup window; a real tool call does not.
-
-    Shortening tool calls to the probe budget would time out slow-but-healthy
-    upstream tools, which is a different failure from the startup stall.
-    """
     seen: dict[str, object] = {}
 
     _stdio_client_recording_timeouts(monkeypatch, seen).call_tool("search", {})

@@ -1,18 +1,3 @@
-"""A persisted registry row must not choose the content block type.
-
-Replaying an artifact that has aged out of the in-memory manifest reads
-it back from ``.agent/tmp/media_registry.json``. That file is persisted,
-untrusted input exactly like a stored capability verdict: a legacy or
-hand-edited row can name a ``block_type`` that disagrees with what the
-live identity actually accepts.
-
-The branch was gated on the VERDICT's delivery while building whatever
-block the ROW named, so a row saying ``video`` produced a ``VideoContent``
-for a PDF, with no corrupt capability profile involved at all. A mutation
-sweep confirmed nothing covered this path -- the guard could be reverted
-with the entire 14k-test suite green.
-"""
-
 from __future__ import annotations
 
 import json
@@ -36,7 +21,6 @@ _CLAUDE = MultimodalModelIdentity(
 
 
 def _persist_row(root: Path, *, block_type: str) -> str:
-    """Write one registry row for a PDF, naming ``block_type``."""
     artifact_id = str(uuid.uuid4())
     source = root / "doc.pdf"
     source.write_bytes(_PDF_BYTES)
@@ -70,7 +54,6 @@ def _block_types(result: object) -> list[str | None]:
 
 
 def test_a_registry_row_naming_the_wrong_block_type_is_overruled(tmp_path: Path) -> None:
-    """The row says ``video``; the identity resolves pdf -> ``pdf``."""
     uri = _persist_row(tmp_path, block_type="video")
     session = MockSessionWithManifest(_MEDIA_READ_CAPABILITY, model_identity=_CLAUDE)
 
@@ -82,7 +65,6 @@ def test_a_registry_row_naming_the_wrong_block_type_is_overruled(tmp_path: Path)
 
 
 def test_a_registry_row_that_agrees_still_replays_normally(tmp_path: Path) -> None:
-    """Not vacuous: the honest row produces the same typed block."""
     uri = _persist_row(tmp_path, block_type="pdf")
     session = MockSessionWithManifest(_MEDIA_READ_CAPABILITY, model_identity=_CLAUDE)
 

@@ -1,19 +1,3 @@
-"""Proof / head-match / ownership / marker / gitdir / clean-diff / index-tree branches.
-
-Split-out of ``test_integration_diagnostic.py`` to keep each file under the
-1000-line cap enforced by ``ralph.testing.audit_repo_structure``. These tests
-exercise the diagnostic's per-proof branches:
-
-* identity routing via ``diagnostic_needed``;
-* positive completion proof releases evidence;
-* unreachable merge object takes the intervention path;
-* reachable merge head with unreadable index preserves markers;
-* no positive proof routes to intervention without consuming the attempt;
-* ownership proof requires a non-empty matching worktree;
-* index-tree proof treats unknown return codes and exceptions as ``UNKNOWN``;
-* uncertain marker query persists intervention while preserving on-disk markers.
-"""
-
 import time
 from pathlib import Path
 
@@ -90,10 +74,6 @@ def test_positive_completion_proof_releases_evidence(tmp_path: Path) -> None:
     record = record.model_copy(
         update={"diagnostic_ownership": f"{identity_fingerprint(record)}:{time.time()}"}
     )
-    # The release path now routes through apply_record_transition, which
-    # requires the on-disk record to be the transition source. Persist
-    # the record first; the function then reads it, applies the
-    # transition, and writes back the cleared result.
     write_record(root, record)
     collector = InMemoryOperationEvidenceCollector(reachability={"MERGE_HEAD": True})
     diagnostic.set_operation_evidence_collector(collector)
@@ -166,8 +146,6 @@ def test_unreachable_merge_object_spends_bounded_attempt_preserving_markers(tmp_
     assert not agent_called
     saved = read_record(root)
     assert saved is not None
-    # The unreachable-marker pre-pass failure spends ONE bounded repair
-    # attempt; the retired operator hand-off flag is never set.
     assert saved.diagnostic_intervention_required is False
     assert saved.merge_commit_repair_attempts == 3
     assert "unreachable marker object" in (saved.repair_last_error or "")
@@ -225,8 +203,6 @@ def test_reachable_merge_head_with_unreadable_index_preserves_metadata(tmp_path:
     assert not agent_called
     saved = read_record(root)
     assert saved is not None
-    # The missing positive proof spends ONE bounded repair attempt; the
-    # retired operator hand-off flag is never set.
     assert saved.diagnostic_intervention_required is False
     assert saved.merge_commit_repair_attempts == 2
     assert (gitdir / "MERGE_HEAD").read_bytes() == original_merge_head_bytes
@@ -271,8 +247,6 @@ def test_no_positive_proof_spends_one_bounded_attempt(tmp_path: Path) -> None:
     assert not agent_called
     saved = read_record(root)
     assert saved is not None
-    # The missing positive proof spends ONE bounded repair attempt (the
-    # diagnostic budget), never the retired operator hand-off.
     assert saved.diagnostic_intervention_required is False
     assert saved.merge_commit_repair_attempts == 1
 
@@ -291,12 +265,10 @@ def test_ownership_proof_requires_nonempty_matching_worktree(tmp_path: Path) -> 
         update={"diagnostic_ownership": f"{identity_fingerprint(record)}:{time.time()}"}
     )
 
-    # Valid matching nonempty ownership
     ok, reason = diagnostic._check_ownership_proof(root, record)
     assert ok is True
     assert reason == "ownership verified"
 
-    # Missing / empty owning_worktree
     no_wt = record.model_copy(update={"owning_worktree": None})
     ok, reason = diagnostic._check_ownership_proof(root, no_wt)
     assert ok is False
@@ -307,7 +279,6 @@ def test_ownership_proof_requires_nonempty_matching_worktree(tmp_path: Path) -> 
     assert ok is False
     assert "missing or empty" in reason
 
-    # Mismatched owning_worktree
     other = tmp_path / "other"
     other.mkdir()
     mismatched = record.model_copy(update={"owning_worktree": str(other)})
@@ -315,13 +286,11 @@ def test_ownership_proof_requires_nonempty_matching_worktree(tmp_path: Path) -> 
     assert ok is False
     assert "does not match" in reason
 
-    # Missing diagnostic_ownership
     no_fingerprint = record.model_copy(update={"diagnostic_ownership": None})
     ok, reason = diagnostic._check_ownership_proof(root, no_fingerprint)
     assert ok is False
     assert "missing or empty" in reason
 
-    # Forged diagnostic_ownership (no colon separator -> unparseable)
     forged = record.model_copy(update={"diagnostic_ownership": "0" * 64})
     ok, reason = diagnostic._check_ownership_proof(root, forged)
     assert ok is False
@@ -334,7 +303,6 @@ def test_index_tree_proof_treats_unknown_returncodes_and_exceptions_as_unknown(
     root = tmp_path / "repo"
     root.mkdir()
 
-    # 1. Unexpected exit code on MERGE_HEAD
     def mock_run_git_merge_head_error(
         args: tuple[str, ...] | list[str],
         cwd: Path | None = None,
@@ -350,7 +318,6 @@ def test_index_tree_proof_treats_unknown_returncodes_and_exceptions_as_unknown(
     assert ok is False
     assert "MERGE_HEAD status is UNKNOWN (unexpected exit code 128)" in reason
 
-    # 2. Exception on MERGE_HEAD
     def mock_run_git_merge_head_exc(*_args: object, **_kwargs: object) -> GitRunResult:
         raise RuntimeError("git merge-head subprocess crashed")
 
@@ -359,7 +326,6 @@ def test_index_tree_proof_treats_unknown_returncodes_and_exceptions_as_unknown(
     assert ok is False
     assert "MERGE_HEAD status is UNKNOWN (git merge-head subprocess crashed)" in reason
 
-    # 3. Unexpected exit code on REBASE_HEAD
     def mock_run_git_rebase_head_error(
         args: tuple[str, ...] | list[str],
         cwd: Path | None = None,
@@ -377,7 +343,6 @@ def test_index_tree_proof_treats_unknown_returncodes_and_exceptions_as_unknown(
     assert ok is False
     assert "REBASE_HEAD status is UNKNOWN (unexpected exit code 128)" in reason
 
-    # 4. Exception on diff
     def mock_run_git_diff_exc(
         args: tuple[str, ...] | list[str],
         cwd: Path | None = None,
@@ -467,12 +432,9 @@ def test_handoff_uncertain_marker_query_spends_bounded_attempt_preserving_marker
     assert not agent_called
     saved = read_record(root)
     assert saved is not None
-    # The uncertain marker query spends ONE bounded repair attempt; the
-    # retired operator hand-off flag is never set.
     assert saved.diagnostic_intervention_required is False
     assert "UNKNOWN" in (saved.repair_last_error or "")
     assert saved.merge_commit_repair_attempts == 1
-    # Marker on disk preserved!
     assert (gitdir / "MERGE_HEAD").exists()
     assert (gitdir / "MERGE_HEAD").read_bytes() == marker_content
 
@@ -482,14 +444,6 @@ def test_handoff_uncertain_marker_query_spends_bounded_attempt_preserving_marker
 def test_interrupted_diagnostic_dead_owner_releases_and_makes_automated_progress(
     tmp_path: Path,
 ) -> None:
-    """AC3: Killing the owning process mid-diagnostic releases automatically on next run.
-
-    Runs a diagnostic in a real subprocess until ``HOLD_DIAGNOSTIC_EVIDENCE``
-    is durably written with owner identity (PID/boot ID), hard-kills the owning
-    process with SIGKILL, restarts recovery in a NEW subprocess (different
-    PID), and verifies automated progress is made (hold released, no operator
-    intervention, no retained skip).
-    """
     import os
     import signal
     import subprocess
@@ -506,11 +460,6 @@ def test_interrupted_diagnostic_dead_owner_releases_and_makes_automated_progress
     assert _git(root, "switch", "-c", "feature").returncode == 0
     feature = _commit(root, "shared.txt", "feature\n")
 
-    # 1. Run a real subprocess that exercises the diagnostic hold
-    # seam via the actual ``diagnose_retained_integration`` entry point.
-    # The subprocess writes a held record with its own PID/boot id,
-    # then sleeps inside its invoke callback so the test can SIGKILL it
-    # before the diagnostic completes (mimicking the production crash window).
     diag_script = (
         "import os, sys, time\n"
         "from pathlib import Path\n"
@@ -576,21 +525,14 @@ def test_interrupted_diagnostic_dead_owner_releases_and_makes_automated_progress
     sync_line = proc.stdout.readline()
     assert sync_line.strip() == "HELD"
 
-    # Confirm the hold is durably on disk with proc.pid
     held_on_disk = read_record(root)
     assert held_on_disk is not None
     assert held_on_disk.diagnostic_ownership is not None
     assert held_on_disk.diagnostic_owner_pid == proc.pid
 
-    # 2. Hard-kill the owning process (real SIGKILL, not simulated)
     os.kill(proc.pid, signal.SIGKILL)
     proc.wait()
 
-    # 3. Start a NEW subprocess (fresh PID) and run recovery there.
-    # The recovery entry point must execute in a process different
-    # from the killed diagnostic owner to faithfully reproduce the
-    # production crash-recovery path: a fresh Ralph start in any
-    # worktree picks up where the killed run left off.
     recovery_script = (
         "import sys\n"
         "from pathlib import Path\n"
@@ -625,9 +567,6 @@ def test_interrupted_diagnostic_dead_owner_releases_and_makes_automated_progress
     assert rec_line == "rebased:0"
     rec_proc.wait(timeout=15)
 
-    # 4. Assert next run made automated progress: hold released, no
-    # intervention, no retained skip. The fresh subprocess had a
-    # different PID than the killed diagnostic owner.
     after = read_record(root)
     assert after is None or (
         after.diagnostic_ownership is None

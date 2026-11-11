@@ -1,4 +1,3 @@
-"""Run one conflict-resolution attempt through the normal MCP invocation seam."""
 
 from __future__ import annotations
 
@@ -53,16 +52,11 @@ __all__ = [
 
 _MIN_FALLBACK_CHAIN_LENGTH = 2
 
-#: Evidence text for an invocation that ran and came back unsuccessful
-#: with nothing more specific to say. It is not a refusal: the agent has
-#: no way to refuse, so this is a FAILED attempt and the chain answers it
-#: by trying again.
 ATTEMPT_FAILED_EVIDENCE = "conflict attempt failed"
 
 
 @dataclass
 class ResolutionSession:
-    """Timing and unresolved-path context spanning one complete resolution."""
 
     started_at: float | None = None
     unresolved_paths: tuple[str, ...] = ()
@@ -77,20 +71,10 @@ class ResolutionSession:
     last_duration_seconds: float | None = None
     chain_cursor: int = 0
     charge_conflict_budget: bool = True
-    #: Candidates this workspace cannot produce at all. Deterministic, so
-    #: it holds for the whole rebase: the name will not appear mid-run.
     dead_tool_surfaces: tuple[str, ...] = ()
-    #: Candidates whose TOOL SURFACE faulted -- a transport loop, an
-    #: unanswered supervision relay. That is Ralph's own plumbing and the
-    #: recovery layer calls it retryable, so it is scoped to the stop it
-    #: happened on rather than killing the agent for the whole rebase.
-    #: Paths of this stop that no resolver can repair. The rest are still
-    #: resolved; these are escalated afterwards, by name.
     out_of_reach_paths: tuple[str, ...] = ()
     last_recovery_reason: str | None = None
     recovery_controller: RecoveryController | None = None
-    #: The run's shared cooldown ledger, adopted from ``PipelineDeps`` when the
-    #: driver starts. The session's own controller is built on top of it.
     unavailability_store: UnavailabilityStore | None = None
     ledger: AgentFailureLedger | None = None
     recovery_state: object | None = None
@@ -100,11 +84,6 @@ class ResolutionSession:
     skip_same_agent_retries: bool = False
     last_attempt_evidence: str | None = None
     last_attempt_failure: BaseException | str | None = None
-    #: Typed outcome of the last attempt (§11): set by the launcher on the
-    #: shapes Ralph observes itself (no-activity, attempt-failed); the
-    #: driver forwards it so the classifier never re-matches Ralph-authored
-    #: prose. ``None`` means the caller must decide (RAW for exception
-    #: objects, ATTEMPT_FAILED for a bare unsuccessful return).
     last_attempt_outcome: ConflictAttemptOutcome | None = None
     last_attempt_saw_activity: bool = False
     rounds_spent: int = 0
@@ -118,26 +97,6 @@ def begin_resolution_stop(
     *,
     is_strategy_rotation: bool = False,
 ) -> None:
-    """Reset the state that describes ONE conflict before resolving another.
-
-    A session spans a whole rebase, so everything here would otherwise
-    arrive at the next stop still describing the last one: a chain
-    cursor parked past the end starves the new stop of every candidate,
-    and a terminal reason left over from the previous conflict is
-    reported as this conflict's verdict even when no resolver ran.
-
-    When ``is_strategy_rotation`` is True, the session is retrying the
-    SAME conflict under a new strategy; retry budgets, spent rounds and
-    dead tool surfaces must not be replenished.
-
-    ``dead_tool_surfaces`` deliberately survives -- a tool surface that
-    died is still dead -- and so does the RecoveryController itself,
-    with the budgets and cooldowns that are meant to span the rebase.
-    What is reset is the POSITION: this stop starts at the head of the
-    chain, and the controller's chain state is re-synced to say so, so a
-    candidate it had already stepped past earlier in the rebase is
-    offered again for a conflict it has not seen.
-    """
     from ralph.pipeline.agent_chain_state import AgentChainState
     from ralph.pipeline.state import PipelineState
 
@@ -172,7 +131,6 @@ def begin_resolution_stop(
 
 
 def resolution_chain_agents(policy_bundle: PolicyBundle) -> tuple[str, ...]:
-    """Return the configured conflict-resolution candidate chain."""
     if not hasattr(policy_bundle, "agents"):
         return ()
     agents_policy = policy_bundle.agents
@@ -203,11 +161,6 @@ def ensure_session_controller(
     *,
     pipeline_deps: PipelineDeps | None = None,
 ) -> RecoveryController:
-    """Return the session's recovery controller, building it on the shared ledger.
-
-    The controller's failure ledger is partitioned by phase
-    (``PHASE_RESOLUTION``) to maintain strict phase isolation.
-    """
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
     from ralph.recovery.controller import RecoveryController
     from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
@@ -262,15 +215,6 @@ def classify_failed_resolution_attempt(
     outcome: ConflictAttemptOutcome | None = None,
     unresolved_count: int = 0,
 ) -> None:
-    """Route a failed conflict invoke through RecoveryController.handle.
-
-    ``outcome`` carries the typed §11 fact for shapes Ralph observes
-    itself; ``raw_failure`` is only classified as text when the outcome is
-    ``RAW`` (the default), which is reserved for genuinely external
-    runtime output (exception objects, subprocess stderr). Typed outcomes
-    ignore ``raw_failure`` for classification — it is kept only as
-    diagnostic context.
-    """
     del bench
     from ralph.pipeline.agent_chain_state import AgentChainState
     from ralph.pipeline.state import PipelineState
@@ -299,9 +243,6 @@ def classify_failed_resolution_attempt(
                 )
             },
         )
-    # ``handle`` only reads ``raw_failure`` when no pre-classified failure
-    # is supplied; typed outcomes always supply one, so a None raw failure
-    # is passed as inert diagnostic context only.
     handle_failure: BaseException | str = raw_failure if raw_failure is not None else ""
     try:
         new_state, _effects, _event = controller.handle(
@@ -358,7 +299,6 @@ def classify_failed_resolution_attempt(
 
 
 def conflict_chain_max_retries(policy_bundle: PolicyBundle | None) -> int:
-    """Return the bound conflict chain's max_retries, or 2 when unbound."""
     if policy_bundle is None:
         return 2
     drain = policy_bundle.agents.agent_drains.get(PHASE_RESOLUTION)
@@ -388,26 +328,11 @@ def invoke_resolution_agent(
     session: ResolutionSession | None = None,
     require_completion_evidence: bool = False,
 ) -> bool:
-    """Run one activity-only conflict attempt using the chain's retry budget.
-
-    ``require_completion_evidence`` is set when the stop contains a
-    conflict whose resolution cannot be seen in the file: a modify/delete
-    carries no markers, so the usual textual proof is satisfied before
-    anyone touches it and only the resolver saying it decided can tell a
-    decision from an untouched file.
-    """
     if session is not None:
         session.last_attempt_evidence = None
         session.last_attempt_failure = None
         session.last_attempt_outcome = None
         session.last_attempt_saw_activity = False
-    # The retry intent is a thread-local the executor writes on failure
-    # and clears only on SUCCESS, so a candidate that failed through one
-    # of the exception paths below parks its intent there. Discarding it
-    # on entry is what stops the NEXT candidate from being reported with
-    # the last one's exit reason -- and from inheriting its
-    # ``skip_same_agent_retries``, which would spend that healthy
-    # candidate's whole retry budget on somebody else's failure.
     _effect_executor_module.pop_last_captured_retry_intent()
     if _candidate_cannot_be_launched(agent_name, session):
         return False
@@ -490,18 +415,6 @@ def _candidate_cannot_be_launched(
     agent_name: str,
     session: ResolutionSession | None,
 ) -> bool:
-    """Whether this candidate must not be launched, with the reason recorded.
-
-    Ralph's own refusal, decided before any agent runs, so it must not
-    reach the driver as a resolver's verdict.
-
-    The ledger is consulted FIRST, and through
-    :func:`~ralph.pipeline.conflict_resolution.chain_candidates.session_ledger`
-    -- the ONE resolver of "which ledger speaks for agent health" --
-    so this seam and the chain cannot judge the same agent against
-    two different ledgers. The registry-capability exclusion is checked
-    second and never overrides the ledger.
-    """
     if session is not None:
         ledger = session_ledger(session)
         if ledger is not None and not ledger.is_available(PHASE_RESOLUTION, agent_name):
@@ -509,12 +422,6 @@ def _candidate_cannot_be_launched(
                 "conflict_resolution: refusing to launch unavailable agent '{}'",
                 agent_name,
             )
-            # The tool surface is alive: the OWNER refused the launch
-            # because the agent is cooling down or spent. That is not a
-            # dead surface and not an agent failure -- the agent never
-            # ran -- so it is recorded as an unavailable candidate and
-            # charges no conflict budget. The agent's standing is the
-            # ledger's decision, not this session's.
             session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
             session.last_failure_cause = ResolutionFailureCause.NONE
             session.charge_conflict_budget = False
@@ -532,81 +439,32 @@ def _candidate_cannot_be_launched(
 
 
 def _record_attempt_without_agent_work(session: ResolutionSession | None) -> None:
-    """Refuse to call it a decline when the agent never did anything.
-
-    ``execute_agent_effect`` answers with a non-success EVENT for
-    failures that happen BEFORE any agent runs -- a name the registry
-    cannot produce, a dispatch the policy refuses, a session bridge that
-    will not build. Those came back indistinguishable from a resolver
-    that had run: "invoking X", then X apparently reading the conflict
-    and giving up, in the time it takes to look up a dict.
-
-    The signal that separates them is the supervision stream: while an
-    agent session is up, the watchdog ticks activity events through this
-    invocation's listener. A tick is not proof the agent did useful
-    work, but the COMPLETE absence of one means the invocation never
-    reached a supervised session at all, so there was nothing there to
-    answer with. Such a round reports an exit and the chain moves on to
-    the next candidate.
-    """
     if session is None or session.last_attempt_saw_activity:
         return
     session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
     if session.terminal_reason is None:
         session.terminal_reason = ResolutionTerminationReason.CANDIDATE_EXITED
-    # Typed, never prose: the no-activity shape is Ralph's own observation
-    # of the supervision stream, so it reaches the classifier as a typed
-    # outcome rather than a sentence to re-match.
     session.last_attempt_outcome = ConflictAttemptOutcome.NO_ACTIVITY
 
 
 def _record_attempt_failure(
     session: ResolutionSession | None, failure: BaseException | str
 ) -> None:
-    """Hand the real failure to the caller that knows the chain.
-
-    Classifying here as WELL as in the driver ran every failure through
-    RecoveryController twice, and the second verdict was decided against
-    a session the first had already charged: a transient provider error
-    spent its whole same-agent retry budget on one attempt and failed
-    over immediately, which is the opposite of what the budget is for.
-    The driver classifies once, and it is the one that knows which
-    candidate index failed out of which chain.
-    """
     if session is not None:
         session.last_attempt_failure = failure
 
 
 def _failed_attempt_evidence(session: ResolutionSession | None, agent_name: str) -> str:
-    """Say what actually failed rather than blaming the resolver for it.
-
-    ``execute_agent_effect`` swallows a terminal invocation error and
-    hands back a non-success EVENT, parking the real cause in the
-    captured retry intent: pi exiting on an exhausted context or a dead
-    provider, a broken agent, missing credentials. Reading it here is
-    the difference between "the provider is down" and "the attempt ran
-    and failed" -- and only the second is ``ATTEMPT_FAILED``. The
-    intent is popped rather than peeked so a
-    conflict attempt cannot leave its verdict behind for the next phase
-    to inherit.
-    """
     intent = _effect_executor_module.pop_last_captured_retry_intent()
     if session is not None and intent.skip_same_agent_retries:
         session.skip_same_agent_retries = True
     if session is not None:
-        # The attempt ran and failed: typed, never prose. ``failure_reason``
-        # stays on the session fields as diagnostic context (it names the
-        # agent process's exit class), but the classifier verdict rides on
-        # the typed outcome rather than a re-match of that text.
         session.last_attempt_outcome = ConflictAttemptOutcome.ATTEMPT_FAILED
     if not intent.failure_reason:
         return ATTEMPT_FAILED_EVIDENCE
     if session is not None:
         session.last_attempt_evidence = intent.failure_reason
         if intent.failure_reason == _effect_executor_module.AGENT_NOT_FOUND_REASON:
-            # The registry could not produce this name: nothing ran, and
-            # nothing will. Skip it for the rest of the rebase rather
-            # than paying for it again, and never call it an answer.
             session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
             logger.warning(
                 "conflict_resolution: candidate '{}' is not installed in this "
@@ -617,7 +475,6 @@ def _failed_attempt_evidence(session: ResolutionSession | None, agent_name: str)
 
 
 def _record_resolution_termination(session: ResolutionSession | None, exc: Exception) -> None:
-    """Persist typed invocation failure metadata for the driver's outcome line."""
     if session is None:
         return
     session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
@@ -647,14 +504,12 @@ def _record_resolution_termination(session: ResolutionSession | None, exc: Excep
 
 
 def _record_resolution_exception(session: ResolutionSession | None) -> None:
-    """Preserve a launch failure rather than relabeling it as a declined candidate."""
     if session is not None:
         session.terminal_reason = ResolutionTerminationReason.EXCEPTION
         session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
 
 
 def _log_resolution_termination(exc: Exception, unresolved_paths: tuple[str, ...]) -> None:
-    """Emit an operator-actionable resolution termination diagnostic."""
     fields: dict[str, str | int | float | bool | list[object]]
     if isinstance(exc, AgentInactivityTimeoutError):
         reason_value = (
@@ -684,10 +539,6 @@ def _log_resolution_termination(exc: Exception, unresolved_paths: tuple[str, ...
     )
 
 
-#: Diagnostic keys the WATCHDOG writes from its own typed state. Every
-#: other field of an activity event -- ``subagent_activity``,
-#: ``current_subagent_tool_call``, ``last_subagent_progress_description``,
-#: ``evidence_summary`` -- is the agent's own output quoted back.
 _RALPH_AUTHORED_DIAGNOSTIC_KEYS = (
     "last_activity_kind",
     "last_fire_reason",
@@ -696,20 +547,6 @@ _RALPH_AUTHORED_DIAGNOSTIC_KEYS = (
 
 
 def _ralph_authored_fault_text(event: object) -> str:
-    """Project the part of an activity event Ralph itself wrote.
-
-    Scanning ``str(event)`` scanned the agent's own progress text, and a
-    match here marks that agent a dead tool surface for the whole
-    rebase. Ralph's fault markers are strings that live in Ralph's
-    source, so a resolver reading, grepping or quoting this repository
-    -- the commonest thing it does when the conflict IS this repository
-    -- got itself killed for repeating a token it had just read, and
-    with the shipped one-agent chain that ended conflict resolution for
-    the rest of the run. An agent cannot author these keys: the watchdog
-    fills them from its own typed state, which is the same projection
-    :class:`~ralph.pipeline.conflict_resolution.status.ResolutionStatusReporter`
-    already judges liveness from.
-    """
     diagnostic: object = getattr(event, "diagnostic", None)
     if not isinstance(diagnostic, dict):
         return ""
@@ -724,13 +561,6 @@ def _ralph_authored_fault_text(event: object) -> str:
 def _observed_ralph_fault(
     event: object, session: ResolutionSession | None
 ) -> ResolutionTerminationReason | None:
-    """Classify an activity event as Ralph's own fault, on evidence.
-
-    Only Ralph-authored diagnostic fields represent observable infrastructure
-    events. Raw agent activity text is unobservable and cannot be trusted for
-    exclusion decisions, but any fault pattern found in it is logged for
-    diagnostic reporting.
-    """
     del session
     observed = classify_ralph_origin_fault(_ralph_authored_fault_text(event))
     if observed is not None:
@@ -756,12 +586,8 @@ def wrap_activity_listener(
     agent_name: str,
     on_fault: Callable[[ResolutionTerminationReason], None] | None = None,
 ) -> Callable[[object], None] | None:
-    """Escalate Ralph-origin faults from activity events instead of treating them as life."""
 
     def _observe(event: object) -> None:
-        # An event is activity whatever else it carries: the agent is
-        # alive and working. Recording that FIRST is what stops a fault
-        # tick from discarding a conflict the agent had already resolved.
         if session is not None:
             session.last_attempt_saw_activity = True
         reason = _observed_ralph_fault(event, session)

@@ -1,5 +1,3 @@
-"""Codex completion liveness regression coverage."""
-
 from __future__ import annotations
 
 import threading

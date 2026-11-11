@@ -1,12 +1,3 @@
-"""Centralized required-artifact metadata for all pipeline phases.
-
-Artifact metadata is split across two policy surfaces. ``artifacts.toml`` owns
-artifact type, canonical artifact path, markdown handoff path, and normalizer lookup.
-``pipeline.toml`` owns whether a phase's output artifact is required for
-success. There are no built-in override tables — artifact paths must be
-declared in ``artifacts.toml`` and requiredness must be declared on the phase
-definition.
-"""
 
 from __future__ import annotations
 
@@ -35,7 +26,6 @@ if TYPE_CHECKING:
     from ralph.policy.models import ArtifactsPolicy
     from ralph.workspace.protocol import Workspace
 
-# Normalizers keyed by artifact_type — used by build_required_artifacts()
 _ARTIFACT_TYPE_NORMALIZERS: dict[str, Callable[[dict[str, object]], dict[str, object]]] = {
     "development_result": normalize_development_result_content,
     "fix_result": normalize_fix_result_content,
@@ -45,11 +35,6 @@ _ARTIFACT_TYPE_NORMALIZERS: dict[str, Callable[[dict[str, object]], dict[str, ob
 
 @dataclass(frozen=True)
 class RequiredArtifact:
-    """Metadata about an artifact contract for a pipeline phase.
-
-    When artifact_required is False, an absent artifact does not fail the phase;
-    a present artifact is still validated.
-    """
 
     phase: str
     artifact_type: str
@@ -62,16 +47,10 @@ class RequiredArtifact:
 def build_required_artifacts(
     artifacts_policy: ArtifactsPolicy,
 ) -> dict[str, RequiredArtifact]:
-    """Build a drain-keyed artifact registry from ArtifactsPolicy.
-
-    The registry contains artifact identity and path metadata only. Callers that
-    need phase-specific requiredness must use resolve_phase_required_artifact().
-    """
     result: dict[str, RequiredArtifact] = {}
     for contract in artifacts_policy.artifacts.values():
         drain = str(contract.drain)
         artifact_type = contract.artifact_type
-        # Migrated artifacts are markdown source documents at one canonical path.
         artifact_path = f".agent/artifacts/{artifact_type}.md"
         markdown_path = contract.markdown_summary_path
         normalizer = _ARTIFACT_TYPE_NORMALIZERS.get(artifact_type)
@@ -92,7 +71,6 @@ def resolve_required_artifact(
     *,
     drain: str,
 ) -> RequiredArtifact | None:
-    """Resolve artifact identity/path metadata for a drain from artifacts.toml."""
     try:
         registry = build_required_artifacts(artifacts_policy)
         return registry.get(drain)
@@ -107,7 +85,6 @@ def resolve_phase_required_artifact(
     phase: str,
     drain: str | None = None,
 ) -> RequiredArtifact | None:
-    """Resolve the artifact contract for a phase, including phase-owned requiredness."""
     phase_def = pipeline_policy.phases.get(phase)
     effective_drain = drain or (phase_def.drain if phase_def is not None else phase)
     ra = resolve_required_artifact(artifacts_policy, drain=effective_drain)
@@ -125,7 +102,6 @@ def resolve_phase_required_artifact(
 
 
 def retry_hint_path(phase: str, *, pipeline_policy: object | None = None) -> str:
-    """Return the workspace-relative retry-hint path keyed by the effective drain."""
     phase_def = (
         pipeline_policy.phases.get(phase) if isinstance(pipeline_policy, PipelinePolicy) else None
     )
@@ -139,7 +115,6 @@ def read_validation_retry_hint(
     *,
     worker_namespace: Path | None = None,
 ) -> str:
-    """Read validation retry context without consuming phase-reentry state."""
     hint_path = (
         worker_namespace / "tmp" / f"last_retry_error_{drain}.txt"
         if worker_namespace is not None
@@ -158,7 +133,6 @@ def clear_validation_retry_hint(
     pipeline_policy: PipelinePolicy | None = None,
     hint_path_override: str | None = None,
 ) -> None:
-    """Clear a phase's retained validation context after its gate accepts the artifact."""
     hint_path = hint_path_override or retry_hint_path(phase, pipeline_policy=pipeline_policy)
     legacy_path = retry_hint_path(phase)
     try:
@@ -176,7 +150,6 @@ _MINIMUM_VALIDATION_RETRY_ATTEMPTS = 2
 
 
 def validation_corrective_action(artifact_type: str, diagnostics: list[Diagnostic]) -> str:
-    """Return the corrective action the retry prompt must demand."""
     if artifact_type == "commit_message":
         return (
             "Rewrite the commit message itself (subject and body) so it satisfies "
@@ -210,7 +183,6 @@ def build_validation_retry_hint(
     *,
     prior_hint: str = "",
 ) -> str:
-    """Build actionable retry context from canonical validator diagnostics."""
     lines = [
         "PREVIOUS ATTEMPT FAILED: artifact validation rejected the retained draft.",
         f"Artifact type: {artifact_type}",
@@ -238,7 +210,6 @@ def build_validation_retry_hint(
         _number_validation_retry_attempt(attempt, index)
         for index, attempt in enumerate(attempts, start=1)
     ]
-    # bounded-accumulator-ok: old validation bodies share a 16384-character cap while every headline remains.
     bounded_attempts = _bound_validation_retry_attempts(numbered_attempts)
     header = (
         f"THIS VALIDATION HAS FAILED {len(attempts)} TIMES - FIX THE UNDERLYING ISSUE, "
@@ -256,7 +227,6 @@ def build_validation_retry_hint(
 
 
 def _validation_retry_attempts(hint: str) -> list[str]:
-    """Extract complete validation attempts from a prior retry hint."""
     marker = "PREVIOUS ATTEMPT FAILED: artifact validation rejected the retained draft."
     attempt_pattern: Pattern[str] = re.compile(
         rf"ATTEMPT \d+\n({re.escape(marker)}.*?)(?=\n\nATTEMPT \d+\n|\Z)",
@@ -269,13 +239,11 @@ def _validation_retry_attempts(hint: str) -> list[str]:
 
 
 def _number_validation_retry_attempt(attempt: str, index: int) -> str:
-    """Attach the current ordinal to one complete validation retry attempt."""
     marker = "PREVIOUS ATTEMPT FAILED: artifact validation rejected the retained draft."
     return f"ATTEMPT {index}\n{marker}{attempt.removeprefix(marker)}"
 
 
 def _bound_validation_retry_attempts(attempts: list[str]) -> list[str]:
-    """Bound old attempt bodies while retaining every current headline."""
     if len(attempts) < _MINIMUM_VALIDATION_RETRY_ATTEMPTS:
         return attempts
     newest = attempts[-1]
@@ -293,13 +261,11 @@ def _bound_validation_retry_attempts(attempts: list[str]) -> list[str]:
 
 
 def _validation_retry_headline(attempt: str) -> str:
-    """Keep ordinal and first diagnostic visible when trimming old bodies."""
     lines = attempt.splitlines()
     return "\n".join(lines[:5])
 
 
 def _bound_validation_retry_attempt(headline: str, attempt: str, body_budget: int) -> str:
-    """Trim an old attempt only after its retained headline."""
     body = attempt.removeprefix(headline).lstrip("\n")
     if len(body) <= body_budget:
         return attempt
@@ -317,24 +283,6 @@ def build_retry_hint(
     unsubmitted_draft: bool = False,
     validation: bool = False,
 ) -> str:
-    """Build the retry hint for an agent that failed to submit a required artifact.
-
-    This is the SINGLE source of artifact-missing retry guidance — every caller
-    (pipeline phase gates AND the commit command) routes through it, so the
-    recovery cannot drift. When ``prior_output``/``submit_tool_name`` are given,
-    the hint additionally echoes the agent's own prior analysis back and tells it
-    to submit via the named tool, so a model that already drafted the artifact
-    submits it instead of restarting.
-
-    Args:
-        phase: Pipeline phase / drain name.
-        detail: Error detail message.
-        registry: Optional artifact registry; when provided the hint names the
-            specific artifact type and canonical path.
-        prior_output: The agent's prior output lines, echoed back as context.
-        submit_tool_name: The submit-artifact tool the agent must call.
-        example_payload: An example submit-tool arguments payload, if available.
-    """
     ra = registry.get(phase) if registry is not None else None
     if ra is None:
         block = build_retry_error_block(
@@ -392,14 +340,6 @@ def build_retry_hint(
 
 
 def build_missing_input_hint(phase: str, upstream_phase: str, artifact_path: str) -> str:
-    """Build a retry hint for a phase that is missing a required upstream input artifact.
-
-    Unlike build_retry_hint (which describes a missing *output*), this function
-    describes a missing *input* — i.e., a handoff that a prior phase should have
-    produced. The hint is written to the phase's retry-hint file so the agent
-    sees an explanation on the next attempt, but the message correctly names the
-    upstream producer rather than blaming the current agent.
-    """
     return (
         f"PIPELINE INPUT MISSING: The '{upstream_phase}' phase did not produce the "
         f"required artifact at '{artifact_path}'. This artifact is a required input "

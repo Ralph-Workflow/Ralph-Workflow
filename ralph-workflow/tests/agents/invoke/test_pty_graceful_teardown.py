@@ -1,14 +1,3 @@
-"""Regression coverage for graceful interactive PTY teardown (S-6).
-
-The pre-fix bug: ``PtyLineReader._request_interactive_exit`` sent SIGTERM
-immediately after typing ``/exit``, so a completed Claude session that was
-still flushing output was force-killed with
-"survived graceful terminate, escalating to force kill".
-
-These tests exercise the helper via a hand-crafted ``PtyLineReader`` so no
-real subprocess, PTY, sleep, or network is needed.
-"""
-
 from __future__ import annotations
 
 import threading
@@ -25,8 +14,6 @@ from ralph.agents.invoke._session import TURN_BOUNDARY_MARKER
 
 
 class _FakeExitedHandle:
-    """A process handle that has already exited naturally."""
-
     def __init__(self) -> None:
         self.terminate_calls: list[Any] = []
         self.wait_calls: list[float | None] = []
@@ -44,8 +31,6 @@ class _FakeExitedHandle:
 
 
 class _FakeLiveHandle:
-    """A process handle that ignores ``/exit`` and must be terminated."""
-
     def __init__(self) -> None:
         self.terminate_calls: list[Any] = []
         self.wait_calls: list[float | None] = []
@@ -82,7 +67,6 @@ def _make_reader(handle: object) -> PtyLineReader:
 
 @pytest.mark.timeout_seconds(3)
 def test_request_interactive_exit_waits_for_natural_exit_before_terminate() -> None:
-    """A handle that already exited must not be terminated after ``/exit``."""
     handle = _FakeExitedHandle()
     reader = _make_reader(handle)
 
@@ -97,7 +81,6 @@ def test_request_interactive_exit_waits_for_natural_exit_before_terminate() -> N
 
 @pytest.mark.timeout_seconds(3)
 def test_request_interactive_exit_escalates_when_handle_ignores_exit() -> None:
-    """A handle that ignores ``/exit`` still reaches terminate after the grace."""
     handle = _FakeLiveHandle()
     reader = _make_reader(handle)
 
@@ -109,7 +92,6 @@ def test_request_interactive_exit_escalates_when_handle_ignores_exit() -> None:
 
 @pytest.mark.timeout_seconds(3)
 def test_request_interactive_exit_uses_default_grace_when_policy_missing() -> None:
-    """Without a policy, the helper uses the module default grace."""
     handle = _FakeExitedHandle()
     reader = _make_reader(handle)
     reader._policy = None

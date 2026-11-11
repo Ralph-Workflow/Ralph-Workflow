@@ -1,12 +1,3 @@
-"""Black-box tests for lifecycle model-driven rendering APIs.
-
-Covers:
-- show_phase_start_from_entry (phase_banner.py)
-- emit_phase_close_from_exit (PlainLogRenderer / ParallelDisplay)
-- debug breadcrumbs in text-mode render_completion_summary
-- section ordering in render_completion_summary_group
-"""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -20,10 +11,6 @@ from ralph.display.completion_summary import (
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.snapshot import PipelineSnapshot
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 _CREATED_AT = datetime(2026, 5, 4, tzinfo=UTC)
 
@@ -52,7 +39,6 @@ def _blank_snapshot(
     waiting_status_line: str | None = None,
     last_failure_category: str | None = None,
 ) -> PipelineSnapshot:
-    """Return a minimal PipelineSnapshot with all optional fields defaulted."""
     return PipelineSnapshot(
         phase=phase,
         previous_phase=None,
@@ -78,11 +64,6 @@ def _blank_snapshot(
     )
 
 
-# ---------------------------------------------------------------------------
-# show_phase_start_from_entry
-# ---------------------------------------------------------------------------
-
-
 class TestGroupedSectionOrdering:
     def _render(self, snapshot: PipelineSnapshot) -> str:
         buf = StringIO()
@@ -106,13 +87,10 @@ class TestGroupedSectionOrdering:
     def test_debug_before_footer_rule(self) -> None:
         snapshot = _blank_snapshot(last_activity_line="some activity")
         out = self._render(snapshot)
-        # Debug section should appear, and it should be before the final footer
         assert "Debug" in out
-        # The footer rule is the last Rule. Confirm Debug section is not the last content.
         debug_pos = out.index("Debug")
-        # Footer rule appears after Debug
         remaining = out[debug_pos:]
-        assert "─" in remaining  # Footer rule contains dash characters
+        assert "─" in remaining
 
     def test_debug_absent_when_no_breadcrumbs(self) -> None:
         out = self._render(_blank_snapshot())

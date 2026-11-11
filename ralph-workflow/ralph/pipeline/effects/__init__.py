@@ -1,11 +1,3 @@
-"""Effect types: what the pipeline wants to do next.
-
-Effects are emitted by the orchestrator and describe the next action
-to be taken. They carry all necessary data for the effect handler
-to execute the action.
-
-No I/O is performed in this module - effects are pure data descriptions.
-"""
 
 from __future__ import annotations
 

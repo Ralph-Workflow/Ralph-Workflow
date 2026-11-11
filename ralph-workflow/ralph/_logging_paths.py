@@ -1,4 +1,3 @@
-"""LoggingPaths — resolved file paths for a configured logging session."""
 
 from __future__ import annotations
 
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class LoggingPaths:
-    """Resolved file paths for a configured logging session."""
 
     run_directory: Path | None
     text_log_path: Path | None

@@ -1,35 +1,3 @@
-"""Agent-assisted conflict resolution for the auto-integrate endpoint merge.
-
-When the endpoint merge of the mainline into the feature branch
-conflicts, the pipeline can hand the conflicted working tree to a
-conflict resolver — in production a focused dev-agent invocation whose
-ONLY job is to rewrite the conflicted files in place. The resolver
-never runs a git command: Ralph stages the previously-conflicted paths
-itself and verifies the result, because an agent running under Ralph's
-own MCP exec policy is denied every git invocation. The merge commit
-itself is always created deterministically by
-:func:`ralph.git.merge.commit_merge_in_progress`, never by the agent,
-so the integration flow (fast-forward of the mainline, crash records,
-state receipts) stays byte-deterministic around the agent call.
-
-Fault-tolerance contract:
-
-* A resolver failure or interruption retains its partial edits and merge
-  metadata so the next agent continues the same resolution.
-* A merge that conflicts without leaving ``MERGE_HEAD`` (refused
-  pre-start) is returned as a plain conflict — there is nothing for a
-  resolver to repair. That verdict is read through
-  :func:`ralph.git.merge.merge_state`, never its boolean projection:
-  when the git query itself fails the merge state is UNKNOWN, which is
-  not evidence of a clean tree, so the abort is attempted rather than
-  assumed unnecessary.
-* A resolution that leaves a conflict marker in any previously
-  conflicted file is REFUSED. ``git add`` on a marker-bearing file
-  silently clears its unmerged state, so the git-authoritative
-  ``unmerged_paths`` check alone cannot prove a real resolution.
-* A verified resolution whose commit fails retains its index, merge state,
-  and durable ownership record for a commit-only retry.
-"""
 
 from __future__ import annotations
 
@@ -66,30 +34,18 @@ from ralph.pipeline.conflict_resolution.attempt_fault import (
 )
 from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 
-#: Sentinel :func:`unmerged_paths` reports when the git query itself
-#: failed, so a broken repository is never mistaken for "resolved".
 _UNMERGED_QUERY_FAILED = "<unmerged-path-query-failed>"
 
-#: Signature of a conflict resolver: ``(repo_root, target_branch) ->``
-#: :class:`ResolutionOutcome`. The typed result preserves terminal failure
-#: evidence for the integration producer instead of collapsing it to a bool.
 ConflictResolver = Callable[[Path, str], ResolutionOutcome | bool]
 
 
 def _resolution_succeeded(result: ResolutionOutcome | bool) -> bool:
-    """Project legacy injected boolean fakes onto the typed resolver contract."""
     return result.succeeded if isinstance(result, ResolutionOutcome) else result
 
 
-#: MergeResult outcome recorded when a resolver was given the conflict
-#: and could not (or did not) fully resolve it. Distinct from plain
-#: ``'conflict'`` so the operator-facing reason names the failed
-#: resolution attempt.
 RESOLUTION_FAILED = "resolution_failed"
 MERGE_COMMIT_PENDING = "merge_commit_pending"
 
-#: A resolver-agent failure is handled by conflict-resolution recovery
-#: (cooldown/fallover), not charged as a repository conflict attempt.
 RESOLUTION_AGENT_FAILURE = "resolution_agent_failure"
 
 
@@ -98,15 +54,6 @@ def endpoint_merge_with_resolution(
     target: str,
     resolver: ConflictResolver | None,
 ) -> MergeResult | None:
-    """Attempt the endpoint merge; on conflict, optionally resolve it.
-
-    Returns the final :class:`MergeResult` or ``None`` when the merge
-    attempt itself raised (the caller records the exception headline).
-    With a resolver, a conflicted merge is left in progress, the
-    resolver runs, and on full resolution (no unmerged paths) the
-    merge is committed deterministically; unfinished resolution retains
-    progress for supervised continuation.
-    """
     keep = resolver is not None
     try:
         result = merge_target_into_current(root, target, keep_conflicts=keep)
@@ -121,8 +68,6 @@ def endpoint_merge_with_resolution(
             return _retain_uncertain_merge(
                 root, target, "merge state unreadable; progress retained"
             )
-        # The merge refused to start (no MERGE_HEAD): there are no
-        # conflict markers on disk for a resolver to repair.
         return result
     resolved = _resolve_and_commit_with_reason(root, target, resolver)
     if resolved.outcome not in {"success", MERGE_COMMIT_PENDING}:
@@ -145,7 +90,6 @@ def _resolve_and_commit(
     target: str,
     resolver: ConflictResolver,
 ) -> bool:
-    """Backwards-compatible boolean projection of the typed result."""
     return _resolve_and_commit_with_reason(root, target, resolver).outcome == "success"
 
 
@@ -154,14 +98,6 @@ def resolve_and_commit_with_reason(
     target: str,
     resolver: ConflictResolver,
 ) -> MergeResult:
-    """Run the resolver against the in-progress merge and commit it.
-
-    True only when the resolver reported success, Ralph staged every
-    previously-conflicted path, no conflict marker survived, no
-    unmerged path remains, and the deterministic merge commit landed.
-    Resolver exceptions retain the durable resolution ownership and edits
-    so the next supervised invocation can continue the same work.
-    """
     conflicted = unmerged_paths(root) or staged_conflict_marker_paths(root)
     retained = read_record(root)
     if retained is not None and retained.resolving_merge:
@@ -218,23 +154,6 @@ def handle_unsuccessful_resolution(
     reason: str | None,
     conflicted: tuple[str, ...] = (),
 ) -> MergeResult:
-    """Map an unsuccessful conflict resolution attempt onto a typed MergeResult.
-
-    Translates resolver outcomes and failure reasons into the appropriate
-    MergeResult outcome and failure cause: resolver-not-spent terminations
-    (such as tool dead or unavailable) map to RESOLUTION_AGENT_FAILURE with
-    AGENT_FAILURE; candidate exhaustion maps to UNRESOLVED_CONFLICT with an
-    actionable operator command naming conflicted paths; other failures
-    preserve retained progress for supervised continuation.
-
-    Args:
-        result: Outcome object from the resolver, or boolean indicating success.
-        reason: Optional descriptive reason string for the failure.
-        conflicted: Tuple of unmerged file paths from the conflict.
-
-    Returns:
-        The mapped :class:`MergeResult` with status and failure cause.
-    """
     if (
         isinstance(result, ResolutionOutcome)
         and result.reason == ResolutionTerminationReason.OUT_OF_REACH
@@ -311,18 +230,11 @@ _resolve_and_commit_with_reason = resolve_and_commit_with_reason
 
 
 def _clear_ort_residue(root: Path, conflicted: tuple[str, ...]) -> None:
-    """Drop the ``path~LABEL`` files git's ort backend leaves behind.
-
-    A file-vs-directory conflict makes ort park a side under an invented
-    name. The rebase loop has always removed them; the merge seam did
-    not, so `x~HEAD` -- a path no one wrote and no side has -- was
-    staged and committed as a real file. Never raises.
-    """
     from ralph.pipeline.conflict_resolution.rebase_loop import _remove_ort_residue
 
     try:
         _remove_ort_residue(root, conflicted)
-    except Exception as exc:  # pragma: no cover -- defensive
+    except Exception as exc:
         logger.warning("auto_integrate: could not clear ort residue: {}", exc)
 
 
@@ -338,16 +250,6 @@ def _stage_verify_and_commit(root: Path, conflicted: list[str], target: str) -> 
 
 
 def _stage_and_verify(root: Path, conflicted: list[str], target: str) -> MergeResult:
-    """Stage the conflicted paths, prove the resolution, commit the merge.
-
-    Staging is scoped to exactly the paths that were unmerged BEFORE
-    the resolver ran — never ``git add -A`` — so an unrelated file the
-    agent touched is not swept into the merge commit. The marker scan
-    runs AFTER staging on purpose: ``git add`` clears the unmerged bit,
-    so the textual scan is the only remaining proof of a real
-    resolution. The git-authoritative unmerged check is retained as a
-    second gate before the deterministic commit.
-    """
     _clear_ort_residue(root, tuple(conflicted))
     if not stage_paths(root, conflicted):
         logger.warning("auto_integrate: failed to stage resolved paths: {}", conflicted)
@@ -382,7 +284,6 @@ def _stage_and_verify(root: Path, conflicted: list[str], target: str) -> MergeRe
 
 
 def _commit_verified_merge(root: Path, target: str) -> MergeResult:
-    """Commit only after durable preparation; retain the merge on any commit failure."""
     try:
         prepared_error = prepare_pending_merge(root, target)
         if prepared_error is not None:
@@ -415,16 +316,6 @@ def _commit_verified_merge(root: Path, target: str) -> MergeResult:
 
 
 def _abort_merge_safely(root: Path) -> None:
-    """Abort any in-progress merge; never raises.
-
-    A refused abort is reported rather than assumed successful: a
-    stranded ``MERGE_HEAD`` blocks every subsequent integration, so the
-    operator needs to see it the moment it happens. ``abort_merge``
-    also returns False for the benign "there was nothing to abort"
-    case, which is why the warning is gated on the post-abort state
-    NOT being a positive :data:`MERGE_STATE_NONE`. An unreadable state
-    warns too: it does not prove the merge is gone.
-    """
     try:
         if abort_merge(root):
             return

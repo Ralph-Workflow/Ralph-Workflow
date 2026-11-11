@@ -1,44 +1,3 @@
-"""AC-10 "Further edge cases": typed outcomes for the remaining dirt edge cases.
-
-Every criterion below is asserted through a typed production outcome — a
-closed-vocabulary value a caller matches on, never a prose string — and
-every test is fake-based: no real git, no subprocess, no sleep, no wall
-clock. The only real I/O is the durable attempt ledger's own tmp file,
-exactly as in ``tests/test_integration_cleanup.py``.
-
-* ``assume-unchanged`` / ``skip-worktree`` flags — verified against git
-  itself, these flags hide a path from ``git status --porcelain``, from
-  ``git diff HEAD`` and from ``git stash create``, but never from
-  ``git ls-files -v``. The bounded typed index-flag probe
-  (:func:`~ralph.pipeline.integration_observation.read_index_flag_dirt`)
-  closes the blind spot: flagged paths whose content changed classify
-  as ``DirtShape.INDEX_FLAG_HIDDEN`` (blocking, never CLEAN), are
-  unhidden before the backup ref so the snapshot captures the real
-  content, are restored to the baseline, and are named with the ref in
-  exactly one WARNING — the same preserve-then-clean ladder as ordinary
-  residue. An unreadable probe aborts the baseline capture and reports
-  the typed ``flag_probe_unknown`` outcome: back off, never certify
-  clean.
-* Two Ralph processes cleaning the same tree — the repository lease
-  payload carries the owner identity and a MONOTONIC stamp
-  (:func:`~ralph.git._worktree_lease.lease_payload`); the liveness
-  check answers a typed :class:`~ralph.git._worktree_lease.LeaseStealDecision`:
-  a live winner refuses the steal (the loser re-observes, touching
-  nothing) and a dead winner's lease is reclaimed, after which the
-  resumed cleanup takes NO second backup of the same content.
-* The clock-jump property — ``WALL_CLOCK_JUMP`` is a named catalogue
-  fault; with the injectable clock, a backwards jump never extends a
-  scheduled wait, never ages a lease negatively, and never un-spends
-  the durable attempt budget (the budget is repeat COUNTS, not wall
-  time, so winding the clock back cannot resurrect a spent rung).
-* Commit-hook rejection — a hook failure classifies to the typed
-  :attr:`~ralph.git.rebase._rebase_kind.RebaseKind.HOOK_REJECTION`;
-  once the rejection is recorded the dirt loop re-decides the SAME
-  observation through the cleanup ladder (``SAVE_AND_RESTORE`` first),
-  never a commit-class action (the hook is never retried) and never a
-  resolver dispatch (dirt is a condition no agent can change).
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -103,27 +62,10 @@ from tests.test_integration_cleanup import (
 
 pytestmark = pytest.mark.timeout_seconds(10)
 
-#: The wait the production back-off takes before the FIRST retry at zero
-#: jitter: the exponential step with FULL jitter, drawn at its lowest
-#: spread.
 _EXPECTED_FIRST_BACKOFF = RETRY_BASE_DELAY_SECONDS * 0.5
 
 
 class _FlagAwareGit(_FakeCleanupGit):
-    """Cleanup fake emulating git's index-flag semantics exactly.
-
-    Verified against git itself: ``git update-index --assume-unchanged``
-    and ``git update-index --skip-worktree`` both hide a path from
-    ``git status --porcelain``, from ``git diff HEAD`` and from
-    ``git stash create``, while ``git ls-files -v`` still names the
-    flagged paths and ``git hash-object`` still reads their real content.
-    The fake therefore hides the flagged paths from the porcelain blob
-    and the tracked-diff hash, answers the typed index-flag probe from
-    the flagged set, and models ``git update-index --no-assume-unchanged
-    --no-skip-worktree`` (the unhide the cleanup runs before its backup)
-    by simply unflagging the paths.
-    """
-
     def __init__(self, flagged: tuple[str, ...]) -> None:
         super().__init__()
         self._flagged = set(flagged)
@@ -142,7 +84,6 @@ class _FlagAwareGit(_FakeCleanupGit):
         return _diff_hash(visible, self.committed)
 
     def index_flag_dirt(self, root: Path) -> Reading[IndexFlagDirt]:
-        """The typed probe: flagged paths, their kinds, content hashes, changes."""
         del root
         if self.flag_probe_unreadable:
             return Reading[IndexFlagDirt].unknown("git ls-files -v unreadable: exit=128")
@@ -165,7 +106,6 @@ class _FlagAwareGit(_FakeCleanupGit):
         )
 
     def clear_index_flags(self, root: Path, paths: Sequence[str]) -> bool:
-        """``git update-index --no-assume-unchanged --no-skip-worktree``."""
         del root
         self.clear_flags_calls.append(tuple(paths))
         self._flagged.difference_update(paths)
@@ -173,14 +113,6 @@ class _FlagAwareGit(_FakeCleanupGit):
 
 
 class _JumpingClock:
-    """An injectable monotonic clock the test can wind BACKWARDS.
-
-    Models ``FaultKind.WALL_CLOCK_JUMP``: a wall-clock jump moves the
-    reading of "now" without any real waiting. ``sleep`` records the
-    scheduled waits, so the wait schedule is asserted without ever
-    sleeping for real.
-    """
-
     def __init__(self, start: float = 10_000.0) -> None:
         self._now = start
         self.slept: list[float] = []
@@ -201,32 +133,12 @@ class _JumpingClock:
 
 @pytest.mark.parametrize("flag", ["assume-unchanged", "skip-worktree"])
 def test_flag_hidden_dirt_is_preserved_restored_and_warned(flag: str) -> None:
-    """Flag-hidden dirt routes through the SAME preserve-then-clean ladder.
-
-    Real git hides ``assume-unchanged`` / ``skip-worktree`` paths from
-    porcelain, from the tracked diff and from the stash snapshot — but
-    ``git ls-files -v`` still names them and ``git hash-object`` still
-    reads their content, so the bounded typed index-flag probe closes
-    the blind spot: flagged paths whose content changed type as
-    :attr:`DirtShape.INDEX_FLAG_HIDDEN`, a blocking verdict, never
-    CLEAN. The cleanup unhides the paths (``git update-index
-    --no-assume-unchanged --no-skip-worktree``) so the ordinary backup
-    ref captures the real content, restores the baseline, and names the
-    paths and the ref in exactly one WARNING — the identical ladder
-    ordinary residue climbs, never a resolver dispatch.
-    """
-    del flag  # both flags behave identically at every observation seam
+    del flag
     git = _FlagAwareGit(flagged=("src/app.py",))
-    # Baseline: the flagged path matches HEAD — clean under the flag.
     baseline = _baseline(git)
     assert baseline.human_work_ref is None
     assert baseline.flag_hashes != ()
 
-    # Porcelain alone stays blind (git itself hides the path); the typed
-    # probe is what proves the hidden edit. The seam contract: the
-    # classifier with the probe reading is blocked, the classifier on
-    # the raw blob keeps its legacy answer and must never be consulted
-    # without the probe where flags may exist.
     git.worktree["src/app.py"] = "edited under the flag"
     verdict = classify_worktree(
         Reading.known(git.porcelain_status_z(_ROOT) or ""),
@@ -238,9 +150,6 @@ def test_flag_hidden_dirt_is_preserved_restored_and_warned(flag: str) -> None:
     assert not verdict.is_clean
     assert "src/app.py" in verdict.reason
 
-    # The decision table routes the shape to the cleanup ladder: the
-    # first rung is SAVE_AND_RESTORE and no rung is ever a resolver
-    # dispatch (dirt is a condition no agent can change).
     residue = detect_planning_residue(
         baseline,
         git.porcelain_status_z(_ROOT) or "",
@@ -266,9 +175,6 @@ def test_flag_hidden_dirt_is_preserved_restored_and_warned(flag: str) -> None:
     assert decided == [NextAction.SAVE_AND_RESTORE] * 3
     assert NextAction.DISPATCH_RESOLVER not in decided
 
-    # The cleanup itself: flags cleared BEFORE the backup so the
-    # snapshot sees the real content, one snapshot, baseline restored,
-    # exactly one WARNING naming the path and the backup ref.
     warns: list[str] = []
     outcome = _run(git, baseline, _FakeLedger(), warns)
     assert not outcome.clean
@@ -286,13 +192,6 @@ def test_flag_hidden_dirt_is_preserved_restored_and_warned(flag: str) -> None:
 
 
 def test_flag_probe_unreadable_backs_off_and_never_certifies_clean() -> None:
-    """An unknown index-flag reading is not "clean": baseline and cleanup fail closed.
-
-    The unreadable probe aborts the baseline capture (the dispatch never
-    starts on an uncertified tree) and any cleanup run reports the typed
-    ``flag_probe_unknown`` outcome: no snapshot, no restore, no flag
-    cleared, one WARNING, tree untouched.
-    """
     git = _FlagAwareGit(flagged=("src/app.py",))
     git.flag_probe_unreadable = True
     assert capture_planning_baseline(_ROOT, git=git) is None
@@ -313,34 +212,18 @@ def test_flag_probe_unreadable_backs_off_and_never_certifies_clean() -> None:
 
 
 def test_two_cleaners_one_lease_loser_reobserves_and_never_reshoots() -> None:
-    """A live winner refuses the steal; a dead winner's lease is reclaimed.
-
-    The repository lease's liveness check answers a typed
-    :class:`~ralph.git.git_command_queue.LeaseStealDecision` (the payload
-    owner identity and its monotonic stamp are pinned by
-    ``tests/test_integration_fault_model.py``). The loser, refused while
-    the winner is live, takes no cleanup action at all; it re-observes
-    after the winner dies, and the resumed cleanup finds the winner's
-    backup ref still recorded — NO second backup of the same content.
-    """
-    # The loser arrives while the winner is live: the typed verdict
-    # refuses the steal, naming the evidence.
     refused = git_command_queue.decide_lease_steal(
         age_seconds=0.0, liveness="live", stale_seconds=300.0
     )
     assert not refused.allowed
     assert refused.reason == "holder_alive"
 
-    # A liveness probe that cannot prove the holder dead fails closed.
     indeterminate = git_command_queue.decide_lease_steal(
         age_seconds=10_000.0, liveness="unknown", stale_seconds=300.0
     )
     assert not indeterminate.allowed
     assert indeterminate.reason == "liveness_indeterminate"
 
-    # The winner cleans, and is killed between the backup and the
-    # restore: progress is persisted mid-cleanup (fail_restore models
-    # the interrupted restore), the tree is still dirty.
     git = _FakeCleanupGit()
     baseline = _baseline(git)
     git.worktree["src/app.py"] = "planning wrote here"
@@ -351,10 +234,6 @@ def test_two_cleaners_one_lease_loser_reobserves_and_never_reshoots() -> None:
     persisted_progress: dict[str, object] | None = git.state
     assert persisted_progress is not None, "progress persisted mid-cleanup"
 
-    # The loser re-observes after the winner dies: the liveness probe
-    # names a dead holder and the reclaim is allowed — the age evidence
-    # is read from the injected monotonic clock, so a wall-clock jump
-    # cannot age or de-age it.
     allowed = git_command_queue.decide_lease_steal(
         age_seconds=0.0, liveness="dead", stale_seconds=300.0
     )
@@ -373,32 +252,16 @@ def test_two_cleaners_one_lease_loser_reobserves_and_never_reshoots() -> None:
 def test_backwards_clock_jump_never_extends_a_wait_or_unspends_the_budget(
     tmp_path: Path,
 ) -> None:
-    """WALL_CLOCK_JUMP property: a backwards jump changes no schedule, no budget.
-
-    Three assertions on the injectable clock:
-
-    * the production back-off's scheduled wait is a pure function of the
-      attempt index and the jitter — a backwards jump between two waits
-      leaves the schedule byte-identical (a wait is never extended);
-    * a lease age is clamped at zero, never negative, on the injected
-      monotonic clock — a wait derived from an age is never extended by
-      a jump (pinned by ``tests/test_integration_fault_model.py``);
-    * the durable attempt budget is repeat COUNTS, not wall time —
-      winding the wall clock back and re-reading the ledger returns the
-      same counts, and charging after the jump continues upward.
-    """
     clock = _JumpingClock()
     jump_backwards = 3600.0
     clock.jump_backwards(jump_backwards)
 
-    # The schedule is unchanged by the jump: same delay, twice.
     wait_before_retry(1, sleep=clock.sleep, jitter=lambda: 0.0)
     clock.jump_backwards(jump_backwards)
     wait_before_retry(1, sleep=clock.sleep, jitter=lambda: 0.0)
     assert clock.slept == [_EXPECTED_FIRST_BACKOFF, _EXPECTED_FIRST_BACKOFF]
     assert compute_retry_delay(1, jitter=lambda: 0.0) == _EXPECTED_FIRST_BACKOFF
 
-    # The budget is counts: jump the wall clock back, re-read, charge on.
     ledger_path = tmp_path / ".agent" / "edge-cases-ledger.json"
     observation = Observation(
         target_vs_feature=TargetVsFeature.EQUAL,
@@ -416,7 +279,6 @@ def test_backwards_clock_jump_never_extends_a_wait_or_unspends_the_budget(
             tmp_path, observation=observation, next_action=action, ledger_path=ledger_path
         )
     before = AttemptLedger(tmp_path, ledger_path=ledger_path).read()
-    # ... the wall clock jumps backwards an hour ...
     after = AttemptLedger(tmp_path, ledger_path=ledger_path).read()
     assert after.repeat_counts == before.repeat_counts, "a jump must never un-spend the budget"
     charge_integration_attempt(
@@ -427,7 +289,6 @@ def test_backwards_clock_jump_never_extends_a_wait_or_unspends_the_budget(
 
 
 def test_wall_clock_jump_is_a_named_fault_with_a_typed_outcome() -> None:
-    """The named fault defers the observation and moves the simulated clock."""
     outcome = registered_outcome(FaultKind.WALL_CLOCK_JUMP)
     assert outcome.outcome == "unknown"
     assert outcome.effect == "defer"
@@ -444,16 +305,6 @@ def test_wall_clock_jump_is_a_named_fault_with_a_typed_outcome() -> None:
 def test_commit_hook_rejection_moves_the_loop_to_save_and_restore(
     tmp_path: Path,
 ) -> None:
-    """Hook failure: typed HOOK_REJECTION, work preserved, hook never retried.
-
-    The pre-rejection decision for phase-owned dirt is the commit-phase
-    action — the one whose executor retries the hook. Once the hook
-    rejects (classified, not string-matched), the same observation is
-    re-decided with residue attribution: the loop moves to
-    ``SAVE_AND_RESTORE`` and climbs the cleanup ladder rung by rung,
-    saturating at ``LAST_RESORT_RECOVERY`` — never a commit-class action
-    and never ``DISPATCH_RESOLVER`` for the dirt.
-    """
     rejection = classify_rebase_error("error: pre-commit hook rejected the commit\n", "")
     assert rejection.kind is RebaseKind.HOOK_REJECTION
     assert rejection.metadata["hook_name"] == "pre-commit"
@@ -495,9 +346,6 @@ def test_commit_hook_rejection_moves_the_loop_to_save_and_restore(
             tmp_path, observation=observation, next_action=action, ledger_path=ledger_path
         )
 
-    # The ladder climb: direct action twice (first contact is never a
-    # repeat), then one rung per charged repeat, saturating at the
-    # terminal rung — never a re-run of a failed action.
     assert decided == [
         NextAction.SAVE_AND_RESTORE,
         NextAction.SAVE_AND_RESTORE,
@@ -512,8 +360,6 @@ def test_commit_hook_rejection_moves_the_loop_to_save_and_restore(
     assert [action for action in decided if action in commit_class] == []
     assert NextAction.DISPATCH_RESOLVER not in decided
 
-    # Work preserved: the first cleanup run saves the hook-rejected
-    # content to a backup ref BEFORE any restore touches the tree.
     git = _FakeCleanupGit()
     baseline = _baseline(git)
     git.worktree["src/app.py"] = "hook rejected this edit"
@@ -528,8 +374,6 @@ def test_commit_hook_rejection_moves_the_loop_to_save_and_restore(
 
 
 class _ScriptedLedger:
-    """Residue ledger port serving one pre-decided action per charge."""
-
     def __init__(self, action: NextAction) -> None:
         self._action = action
 
@@ -541,23 +385,6 @@ class _ScriptedLedger:
 def test_repeated_refusal_preserves_the_same_residue_once_not_unboundedly(
     tmp_path: Path,
 ) -> None:
-    """AC-11 edge: a refusal recurring after preservation never re-preserves.
-
-    The 2026-10-27 loop re-attempted the same state every ~7 s. Here the
-    merge refusal recurs because the restore keeps failing, so the SAME
-    residue faces the decision table again and again, charged through
-    the real owner charge path each time (the owner's residue seam
-    projects the residue onto the same observation regardless of root,
-    so the durable ledger is anchored at ``tmp_path``):
-
-    * the direct cleanup rung answers twice (first contact is never a
-      repeat), the alternate-preservation rung once — then every later
-      charge is a STRONGER rung that moves the residue aside instead of
-      taking another copy of the same content;
-    * the preserve-shaped decisions are therefore bounded (3, the two
-      direct rungs plus the alternate rung) — never one per retry;
-    * no resolver is dispatched for the dirt at any depth.
-    """
     from ralph.pipeline.integration_cleanup import residue_observation
     from ralph.pipeline.integration_decision import DecisionContext, DirtAttribution, decide
     from ralph.pipeline.integration_owner import charge_integration_attempt
@@ -565,7 +392,7 @@ def test_repeated_refusal_preserves_the_same_residue_once_not_unboundedly(
     git = _FakeCleanupGit()
     baseline = _baseline(git)
     git.worktree["src/app.py"] = "merge refused to overwrite this"
-    git.fail_restore = True  # the restore keeps failing: the refusal recurs
+    git.fail_restore = True
 
     actions: list[NextAction] = []
     for _ in range(8):
@@ -587,8 +414,6 @@ def test_repeated_refusal_preserves_the_same_residue_once_not_unboundedly(
         )
         charge_integration_attempt(tmp_path, observation=observation, next_action=action)
         actions.append(action)
-        # The rung's executor acts on the tree; the restore fails, so the
-        # residue remains and the refusal recurs at the next merge.
         warns: list[str] = []
         run_residue_cleanup(
             _ROOT,
@@ -599,8 +424,6 @@ def test_repeated_refusal_preserves_the_same_residue_once_not_unboundedly(
             warn=warns.append,
         )
 
-    # The climb: direct cleanup twice, then one different, stronger rung
-    # per charged repeat — the identical preserve-and-retry never loops.
     assert actions[0] is NextAction.SAVE_AND_RESTORE
     assert actions[1] is NextAction.SAVE_AND_RESTORE
     assert actions[2] is NextAction.PRESERVE_VIA_TEMP_INDEX
@@ -611,8 +434,6 @@ def test_repeated_refusal_preserves_the_same_residue_once_not_unboundedly(
         NextAction.LAST_RESORT_RECOVERY,
         NextAction.LAST_RESORT_RECOVERY,
     ]
-    # Preserve-shaped decisions are bounded; the stronger rungs never
-    # take another copy of the same content.
     preserve_shaped = (NextAction.SAVE_AND_RESTORE, NextAction.PRESERVE_VIA_TEMP_INDEX)
     assert sum(1 for action in actions if action in preserve_shaped) == 3
     assert NextAction.DISPATCH_RESOLVER not in actions

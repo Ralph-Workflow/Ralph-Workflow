@@ -1,4 +1,3 @@
-"""Entry point for `python -m ralph.main`."""
 
 from ralph.cli.main import app
 

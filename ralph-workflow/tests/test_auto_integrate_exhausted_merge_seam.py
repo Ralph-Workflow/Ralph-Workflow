@@ -1,12 +1,3 @@
-"""Tests for auto-integrate merge seam under candidate exhaustion (Defects 8 & 11).
-
-When conflict resolution terminates due to candidate exhaustion:
-1. Merge seam must NOT yield the misleading 'conflict resolution incomplete; progress retained' narrative.
-2. It must return a MergeResult with failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT.
-3. The reason message must name the operator action command and paths.
-4. Resolver reasons in RESOLVER_NOT_SPENT_TERMINATION_REASONS still return RESOLUTION_AGENT_FAILURE.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path

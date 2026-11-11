@@ -1,33 +1,3 @@
-"""Configured-target and Git-outranks-the-record tests for the single owner.
-
-The owner (:mod:`ralph.pipeline.integration_owner`) is the ONE place an
-integration decision is produced, so it is also the ONE place the
-CONFIGURED target branch and remote name must enter the observation
-layer. These tests pin two contracts:
-
-* **The configured target/remote reach the director.** A configured
-  non-default pair (``release`` / ``tacos``) must be handed to the
-  director instead of the hardcoded ``main`` / ``origin`` defaults,
-  otherwise the observation is taken against a branch the operator
-  never configured and a configured target could never converge.
-* **Git outranks the record.** The durable record holds intent,
-  ownership, attempt history and legacy-format identity -- never a fact
-  Git can answer. A stale durable claim (a record that still says "a
-  repair is stuck" after the work landed, or a record another worktree
-  owns) must NOT turn a current, healthy Git observation into
-  ``REQUIRE_INTERVENTION``, which is a terminal block the boundary can
-  never leave.
-
-The legitimate record facts keep working: the live ownership projection
-still decides who resumes an operation, the durable attempt history
-still advances the escalation ladder, and a live intervention claim
-still fails closed.
-
-No real Git, no subprocess, no sleeps: the director is replaced by a
-recording stand-in and the durable ledger is written by the production
-code under ``tmp_path``. This is the ``audit_test_policy`` contract.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -62,10 +32,6 @@ from ralph.pipeline.integration_owner import (
     ladder_rung_for_record_fact_outcome,
 )
 
-# ---------------------------------------------------------------------------
-# Helpers.
-# ---------------------------------------------------------------------------
-
 
 def _observation(
     *,
@@ -78,7 +44,6 @@ def _observation(
     record: IntegrationRecordState = IntegrationRecordState.NONE,
     agent_active: bool = False,
 ) -> Observation:
-    """Build a synthetic seven-dimension observation."""
     return Observation(
         target_vs_feature=target_vs_feature,
         target_vs_remote=target_vs_remote,
@@ -92,8 +57,6 @@ def _observation(
 
 
 class _RecordingDirector:
-    """Director stand-in that records the names it was constructed with."""
-
     def __init__(
         self,
         root: Path,
@@ -110,7 +73,6 @@ class _RecordingDirector:
         self.observation = observation
 
     def observe(self) -> Observation:
-        """Return the canned observation the test installed."""
         return self.observation
 
 
@@ -118,7 +80,6 @@ def _install_director(
     monkeypatch: pytest.MonkeyPatch,
     observation: Observation,
 ) -> list[_RecordingDirector]:
-    """Replace the director with a recording stand-in; return the instances."""
     created: list[_RecordingDirector] = []
 
     def _factory(
@@ -143,17 +104,14 @@ def _install_director(
 
 
 def _ledger_path(tmp_path: Path) -> Path:
-    """Return the durable attempt-ledger path used by one test."""
     return tmp_path / ".agent" / "integration_attempt_ledger.json"
 
 
 def _ledger_state(tmp_path: Path) -> AttemptLedgerState:
-    """Read the durable ledger state back from disk."""
     return AttemptLedger(tmp_path, ledger_path=_ledger_path(tmp_path)).read()
 
 
 def _signature(observation: Observation) -> str:
-    """Return the durable state signature the ledger charges against."""
     return AttemptState().signature(observation)
 
 
@@ -162,7 +120,6 @@ def _record(
     target: str = "release",
     diagnostic_intervention_required: bool = False,
 ) -> IntegrationRecord:
-    """Build a durable integration record for the record-fact tests."""
     return IntegrationRecord(
         phase="integrating",
         target=target,
@@ -172,16 +129,10 @@ def _record(
     )
 
 
-# ---------------------------------------------------------------------------
-# The configured target and remote reach the director.
-# ---------------------------------------------------------------------------
-
-
 def test_configured_target_and_remote_reach_the_director(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """The owner observes the CONFIGURED names, not the hardcoded pair."""
     created = _install_director(monkeypatch, _observation())
 
     decide_integration(
@@ -202,7 +153,6 @@ def test_the_seam_forwards_the_configured_target_and_remote(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """The seam carries the configured names into the owner's observation."""
     created = _install_director(monkeypatch, _observation())
 
     decide_seam_action(
@@ -221,7 +171,6 @@ def test_without_configured_names_the_director_defaults_apply(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """A caller with no configured name gets the director's own defaults."""
     created = _install_director(monkeypatch, _observation())
 
     decide_integration(tmp_path, ledger_path=_ledger_path(tmp_path))
@@ -231,22 +180,10 @@ def test_without_configured_names_the_director_defaults_apply(
     assert created[0].remote == integration_director.DEFAULT_REMOTE
 
 
-# ---------------------------------------------------------------------------
-# Git outranks the record.
-# ---------------------------------------------------------------------------
-
-
 def test_a_stale_record_claim_does_not_block_a_healthy_git_observation(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """A durable "intervention required" flag cannot outrank a landed tree.
-
-    The record still claims the repair is stuck, but the live Git state
-    proves the work landed: the feature is contained in the target, the
-    worktree is clean and no Git operation is in flight. The durable
-    claim is stale intent, so the owner's answer stands.
-    """
     _install_director(monkeypatch, _observation())
     stale = _record(diagnostic_intervention_required=True)
 
@@ -263,14 +200,6 @@ def test_a_live_intervention_claim_still_fails_closed_to_the_ladder(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """A live durable claim still escalates while its obligation is live.
-
-    The target has NOT received the feature, so the durable repair-cap
-    fact still describes a real situation: the boundary fails closed to
-    the typed ``DIAGNOSTIC_BUDGET_SPENT`` verdict, routed to the
-    preserve-first cleanup rung — never to ``REQUIRE_INTERVENTION``,
-    which no production path may produce.
-    """
     _install_director(
         monkeypatch,
         _observation(target_vs_feature=TargetVsFeature.BEHIND),
@@ -291,13 +220,6 @@ def test_a_record_owned_by_another_worktree_does_not_block_this_workspace(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """A foreign record's claim is not about this workspace.
-
-    The observation projects the durable record as ``FOREIGN`` (another
-    worktree owns it), so its repair-cap fact describes another
-    workspace's operation and must not escalate this workspace into a
-    terminal block. The live owner still decides the rung.
-    """
     _install_director(
         monkeypatch,
         _observation(
@@ -320,11 +242,6 @@ def test_an_unknown_environment_never_releases_a_durable_claim(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Only a PROVEN healthy Git state may release a fail-closed verdict.
-
-    An unreadable probe is not proof of health: the durable claim keeps
-    the fail-closed verdict.
-    """
     _install_director(
         monkeypatch,
         _observation(
@@ -344,16 +261,10 @@ def test_an_unknown_environment_never_releases_a_durable_claim(
     assert ladder_rung_for_record_fact_outcome(action) is CleanupLadderRung.NORMAL_CLEANUP
 
 
-# ---------------------------------------------------------------------------
-# The legitimate record facts keep working.
-# ---------------------------------------------------------------------------
-
-
 def test_live_ownership_decides_who_resumes_the_operation(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """The owner honours the live ownership projection of the operation."""
     _install_director(
         monkeypatch,
         _observation(
@@ -371,7 +282,6 @@ def test_attempt_history_still_advances_the_escalation_ladder(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """The durable attempt history still drives the escalation ladder."""
     observation = _observation(worktree=WorktreeState.UNMERGED)
     _install_director(monkeypatch, observation)
     ledger_path = _ledger_path(tmp_path)
@@ -388,7 +298,6 @@ def test_the_seam_persists_exactly_one_charge_per_mutation_class_decision(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """One mutation-class decision persists exactly one escalation charge."""
     observation = _observation(worktree=WorktreeState.UNMERGED)
     _install_director(monkeypatch, observation)
 
@@ -404,16 +313,10 @@ def test_the_seam_persists_exactly_one_charge_per_mutation_class_decision(
     assert state.repeat_counts == {(_signature(observation), "dispatch_resolver"): 1}
 
 
-# ---------------------------------------------------------------------------
-# The owner path does not re-derive the rung from a durable record.
-# ---------------------------------------------------------------------------
-
-
 def test_the_public_owner_path_does_not_invoke_the_retired_record_decider(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """The public owner seam never delegates to the retired record decider."""
     _install_director(monkeypatch, _observation())
 
     def _retired_decider(*_args: object, **_kwargs: object) -> Never:

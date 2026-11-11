@@ -1,4 +1,3 @@
-"""_PreflightRequest — parameters for all preflight validation checks."""
 
 from __future__ import annotations
 

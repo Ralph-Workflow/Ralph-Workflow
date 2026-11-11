@@ -1,18 +1,3 @@
-"""Contract tests for the git call-class policy table and outcome classification.
-
-These tests pin the properties the integration path depends on:
-
-* the policy table is a SMALL table of call classes (not a per-command
-  explosion) and every lookup over it is pure;
-* the quarantine rung is a pure decision over the durable attempt count --
-  "a command that has timed out twice against the same observed state is
-  not run a third time";
-* the classification of a call is a closed typed union: an ambiguous
-  reading is ``"unknown"`` and NEVER ``"failed"``;
-* the production runner threads a call class into the queue, so the table's
-  deadline and termination grace are the values the child actually receives.
-"""
-
 from __future__ import annotations
 
 import subprocess
@@ -60,7 +45,6 @@ _OUTCOME_KINDS = {"succeeded", "failed", "timed_out", "killed", "unknown"}
 
 
 def test_policy_table_is_a_small_table_of_call_classes() -> None:
-    """The table has one row per call class -- never one row per command."""
     assert set(GIT_CALL_POLICIES) == set(_EXPECTED_CALL_CLASSES)
     for call_class, policy in GIT_CALL_POLICIES.items():
         assert policy.call_class == call_class
@@ -70,7 +54,6 @@ def test_policy_table_is_a_small_table_of_call_classes() -> None:
 
 
 def test_policy_for_is_a_pure_lookup() -> None:
-    """Looking a class up twice yields the same row and changes nothing."""
     first = policy_for("mutation")
     second = policy_for("mutation")
     assert first is second
@@ -78,14 +61,12 @@ def test_policy_for_is_a_pure_lookup() -> None:
 
 
 def test_effective_deadline_prefers_an_explicit_request() -> None:
-    """The table supplies the default; an explicit request always wins."""
     policy = policy_for("read_only_verify")
     assert effective_deadline_seconds("read_only_verify") == policy.deadline_seconds
     assert effective_deadline_seconds("read_only_verify", 7.5) == 7.5
 
 
 def test_terminate_grace_has_one_numeric_source() -> None:
-    """Every policy projects the live cleanup floor; no row stores a rival."""
     assert "terminate_grace_seconds" not in GitCallPolicy.__dataclass_fields__
     for call_class in _EXPECTED_CALL_CLASSES:
         assert policy_for(call_class).terminate_grace_seconds == GIT_TERMINATE_GRACE_SECONDS
@@ -94,7 +75,6 @@ def test_terminate_grace_has_one_numeric_source() -> None:
 
 
 def test_quarantine_rung_blocks_the_third_same_state_run() -> None:
-    """Two same-state attempts exhaust the rung; the third run is quarantined."""
     assert quarantine_reason("mutation", "state-a", same_state_attempts=0) is None
     assert quarantine_reason("mutation", "state-a", same_state_attempts=1) is None
     assert (
@@ -104,18 +84,15 @@ def test_quarantine_rung_blocks_the_third_same_state_run() -> None:
 
 
 def test_quarantine_rung_ignores_a_negative_attempt_count() -> None:
-    """A negative count is not evidence of anything."""
     assert quarantine_reason("mutation", "state-a", same_state_attempts=-5) is None
 
 
 def test_quarantine_rung_requires_a_signature() -> None:
-    """An empty signature cannot identify an observed state."""
     with pytest.raises(ValueError):
         quarantine_reason("mutation", "", same_state_attempts=2)
 
 
 def test_classification_of_a_finished_call() -> None:
-    """Every observed call maps onto exactly one member of the closed union."""
     assert classify_git_outcome(returncode=0).kind is GitOutcomeKind.SUCCEEDED
     assert classify_git_outcome(returncode=1).kind is GitOutcomeKind.FAILED
     assert classify_git_outcome(returncode=1).cause == "nonzero_exit"
@@ -129,7 +106,6 @@ def test_classification_of_a_finished_call() -> None:
 
 
 def test_ambiguous_reading_is_never_reported_as_failed() -> None:
-    """An indeterminate result reads as unknown, never as a git failure."""
     ambiguous = [
         classify_git_outcome(returncode=1, indeterminate=True),
         classify_git_exception(OSError("git vanished")),
@@ -139,7 +115,6 @@ def test_ambiguous_reading_is_never_reported_as_failed() -> None:
 
 
 def test_exception_classification() -> None:
-    """A timeout is a timeout, a kill is a kill, a non-zero exit is a failure."""
     assert classify_git_exception(subprocess.TimeoutExpired("git", 1.0)).kind is (
         GitOutcomeKind.TIMED_OUT
     )
@@ -153,7 +128,6 @@ def test_exception_classification() -> None:
 
 
 def test_outcome_union_is_closed_and_str_valued() -> None:
-    """The enum exposes exactly the five documented string-valued members."""
     assert {member.value for member in GitOutcomeKind} == _OUTCOME_KINDS
     assert len(tuple(GitOutcomeKind)) == len(_OUTCOME_KINDS)
     assert isinstance(GitOutcomeKind.SUCCEEDED, str)
@@ -162,7 +136,6 @@ def test_outcome_union_is_closed_and_str_valued() -> None:
 
 
 def test_constructors_cover_exactly_the_union_members() -> None:
-    """Every constructor produces one member of the canonical enum."""
     kinds = {
         succeeded_outcome().kind,
         failed_outcome("nonzero_exit").kind,
@@ -174,7 +147,6 @@ def test_constructors_cover_exactly_the_union_members() -> None:
 
 
 def test_git_run_result_carries_the_typed_outcome() -> None:
-    """The result exposes the canonical member through ``outcome_kind``."""
     result = GitRunResult(args=("git", "status"), returncode=0, stdout="ok", stderr="")
     assert result.outcome_kind is GitOutcomeKind.UNKNOWN
     classified = replace(result, outcome=succeeded_outcome())
@@ -183,7 +155,6 @@ def test_git_run_result_carries_the_typed_outcome() -> None:
 
 
 def test_a_failed_outcome_always_names_a_cause() -> None:
-    """A failure without a cause is not a definite failure."""
     with pytest.raises(ValueError):
         failed_outcome("")
     with pytest.raises(ValueError):
@@ -200,7 +171,6 @@ def test_run_git_threads_call_class_to_the_production_queue(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """The public runner forwards the class that selects the policy row."""
     captured: dict[str, object] = {}
 
     def fake_route(
@@ -234,7 +204,6 @@ def test_route_run_git_applies_the_call_class_deadline(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """The queue applies the selected table deadline to the real spawn."""
     captured: dict[str, GitRunOptions | None] = {}
 
     def fake_spawn(

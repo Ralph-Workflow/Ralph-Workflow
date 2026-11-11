@@ -1,5 +1,3 @@
-"""Black-box subprocess tests for the deterministic AGY simulator."""
-
 from __future__ import annotations
 
 import json
@@ -109,7 +107,6 @@ def _run_mock_agy_batch(
 def mock_agy_batch(
     tmp_path_factory: pytest.TempPathFactory,
 ) -> dict[str, _MockAgyCaseResult]:
-    """Run every mock AGY scenario once in a single Python subprocess."""
     base = tmp_path_factory.mktemp("mock_agy_batch")
     case_dirs = {
         name: base / name
@@ -218,7 +215,6 @@ def mock_agy_batch(
 def test_mock_normal_prints_and_writes_artifact(
     mock_agy_batch: dict[str, _MockAgyCaseResult],
 ) -> None:
-    """Normal behavior emits stream-json tool-use evidence and writes the artifact."""
     result = mock_agy_batch["normal"]
     assert result.returncode == 0
     assert result.stdout.strip()
@@ -242,7 +238,6 @@ def test_mock_normal_prints_and_writes_artifact(
 def test_mock_quota_exhausted_prints_resource_exhausted_and_exits(
     mock_agy_batch: dict[str, _MockAgyCaseResult],
 ) -> None:
-    """Quota-exhausted behavior reports the observed terminal provider signal."""
     result = mock_agy_batch["quota_exhausted"]
     assert result.returncode != 0
     assert result.stdout == ""
@@ -252,7 +247,6 @@ def test_mock_quota_exhausted_prints_resource_exhausted_and_exits(
 def test_mock_invalid_model_returns_empty(
     mock_agy_batch: dict[str, _MockAgyCaseResult],
 ) -> None:
-    """Invalid-model behavior exits 0 with empty stdout."""
     result = mock_agy_batch["invalid_model"]
     assert result.returncode == 0
     assert result.stdout == ""
@@ -261,7 +255,6 @@ def test_mock_invalid_model_returns_empty(
 def test_mock_missing_print_exits_2(
     mock_agy_batch: dict[str, _MockAgyCaseResult],
 ) -> None:
-    """Without --print the mock exits 2 and complains on stderr."""
     result = mock_agy_batch["missing_print"]
     assert result.returncode == 2
     assert "mock AGY: --print is required" in result.stderr
@@ -270,7 +263,6 @@ def test_mock_missing_print_exits_2(
 def test_mock_different_canonical_model_name(
     mock_agy_batch: dict[str, _MockAgyCaseResult],
 ) -> None:
-    """The mock accepts any published model ID from ``agy models``."""
     result = mock_agy_batch["gemini_model"]
     assert result.returncode == 0
     assert '"step_type":"tool"' in result.stdout
@@ -282,7 +274,6 @@ def test_mock_different_canonical_model_name(
 def test_mock_artifact_schema_validates(
     mock_agy_batch: dict[str, _MockAgyCaseResult],
 ) -> None:
-    """The written Markdown document validates against the smoke_test_result spec."""
     result = mock_agy_batch["normal"]
     artifact_path = result.artifact_dir / ".agent" / "tmp" / "smoke_test_result.md"
     markdown = artifact_path.read_text(encoding="utf-8")
@@ -300,7 +291,6 @@ def test_mock_artifact_schema_validates(
 def test_mock_rejects_non_canonical_model(
     mock_agy_batch: dict[str, _MockAgyCaseResult],
 ) -> None:
-    """A non-canonical ``--model`` is rejected (empty stdout, no artifact)."""
     result = mock_agy_batch["bad_model"]
     assert result.returncode == 0
     assert result.stdout == ""
@@ -311,7 +301,6 @@ def test_mock_rejects_non_canonical_model(
 def test_mock_writes_todo_list_file(
     mock_agy_batch: dict[str, _MockAgyCaseResult],
 ) -> None:
-    """Normal behavior creates the todo-list.js output file."""
     result = mock_agy_batch["normal"]
     todo_path = result.artifact_dir / "tmp" / "interactive-agy-smoke" / "todo-list.js"
     assert todo_path.exists()
@@ -323,7 +312,6 @@ def test_mock_writes_todo_list_file(
 def test_mock_v1_1_10_flags_accepted(
     mock_agy_batch: dict[str, _MockAgyCaseResult],
 ) -> None:
-    """The mock accepts v1.1.10 flags without exit code 2."""
     result = mock_agy_batch["v1_1_10_flags"]
     assert result.returncode == 0
     assert '"step_type":"tool"' in result.stdout
@@ -332,13 +320,6 @@ def test_mock_v1_1_10_flags_accepted(
 def test_mock_output_format_text_emits_plain_text(
     mock_agy_batch: dict[str, _MockAgyCaseResult],
 ) -> None:
-    """The mock emits plain text transcript when --output-format text is passed.
-
-    DA-004: the text branch must emit only plain model prose that a
-    recorded probe supports — not Ralph's own ``[plain] tool:`` marker,
-    which is a GenericParser convention (``_tool_call_extraction.py``)
-    that real AGY plain-text output never produces.
-    """
     result = mock_agy_batch["output_format_text"]
     assert result.returncode == 0
     assert "I will create the todo list implementation." in result.stdout

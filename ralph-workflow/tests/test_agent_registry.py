@@ -1,5 +1,3 @@
-"""Tests for the agent registry."""
-
 from __future__ import annotations
 
 import pytest
@@ -112,10 +110,6 @@ def test_agent_registry_from_config_includes_builtin_agents() -> None:
     assert codex.output_flag == "--json"
     assert codex.yolo_flag == "--dangerously-bypass-approvals-and-sandbox"
     assert codex.transport == AgentTransport.CODEX
-    # OpenCode used to be the only agent with no permission flag, so in an
-    # unattended run it auto-REJECTED any permission request it could not
-    # match. "--auto" approves what is not explicitly denied, so an
-    # operator's own denies still win.
     assert opencode.yolo_flag == "--auto"
     assert opencode.transport == AgentTransport.OPENCODE
 
@@ -188,14 +182,6 @@ def test_agent_registry_resolves_table_ccs_alias_with_overrides() -> None:
 
 
 def test_agent_registry_resolves_direct_opencode_model_reference() -> None:
-    """A dynamic ``opencode/<provider>/<model>`` alias resolves to the built-in.
-
-    ``output_flag`` is asserted to be ``None``: it used to carry
-    ``--json-stream``, a flag opencode 1.18.25 does not have. It never
-    reached the command line (the builder dropped it), so the constant was
-    dead. The one output selector Ralph passes is ``--format json``, which
-    the command builder emits unconditionally for this transport.
-    """
     registry = AgentRegistry.from_config(UnifiedConfig())
 
     agent = registry.get("opencode/minimax/MiniMax-M2.7-highspeed")
@@ -234,13 +220,6 @@ def test_agent_registry_resolves_direct_claude_model_reference() -> None:
 
 
 def test_claude_haiku_alias_builds_interactive_argv_end_to_end() -> None:
-    """``claude/haiku`` flows from the registry to a correct PTY argv.
-
-    Regression pin for the dynamic-alias → command-builder pipeline on
-    the interactive transport: the built argv must contain the claude
-    PTY binary, the yolo flag, and ``--model haiku`` as two clean
-    consecutive argv tokens.
-    """
     registry = AgentRegistry.from_config(UnifiedConfig())
 
     agent = registry.get("claude/haiku")
@@ -258,16 +237,6 @@ def test_claude_haiku_alias_builds_interactive_argv_end_to_end() -> None:
 
 @pytest.mark.parametrize("alias", ["haiku", "sonnet", "opus"])
 def test_claude_alias_argv_end_to_end(alias: str) -> None:
-    """``claude/<alias>`` builds correct interactive and headless argv.
-
-    Covers all three Anthropic short aliases end to end: the dynamic-alias
-    resolver must synthesize ``model_flag == "--model <alias>"`` on the
-    interactive transport with the yolo flag in the built PTY argv, and the
-    headless transport must agree -- ``--model`` followed by the bare alias
-    as two consecutive argv tokens. A regression that flips an alias's
-    transport or strips the yolo flag surfaces here instead of as a silent
-    CLI failure.
-    """
     registry = AgentRegistry.from_config(UnifiedConfig())
 
     agent = registry.get(f"claude/{alias}")
@@ -290,15 +259,6 @@ def test_claude_alias_argv_end_to_end(alias: str) -> None:
 
 
 def test_claude_whitespace_model_id_survives_as_single_argv_token() -> None:
-    """A model id containing whitespace stays one argv token on both transports.
-
-    Future-proofing pin: the dynamic Claude family resolver shell-quotes
-    the model segment and both Claude command builders tokenize with
-    ``shlex.split``, so ``claude/<model with space>`` and
-    ``claude-headless/<model with space>`` each emit ``--model`` and the
-    full id as exactly two consecutive argv tokens instead of splitting
-    the id across multiple argv elements.
-    """
     registry = AgentRegistry.from_config(UnifiedConfig())
 
     agent = registry.get("claude/model with space")
@@ -347,21 +307,6 @@ def test_claude_whitespace_model_id_survives_as_single_argv_token() -> None:
 def test_claude_versioned_model_ids_stay_single_argv_tokens(
     model_id: str, expected_model_flag: str
 ) -> None:
-    """Anthropic full-id and bracketed-effort forms resolve to one argv token.
-
-    Every documented Anthropic model family (Haiku, Sonnet, Opus) is
-    pinned with three id-form variants: a short version-segment alias
-    (``claude-opus-4-6``), a dating-suffix full id
-    (``claude-sonnet-4-6-20250909``), and a bracketed-effort form
-    (``claude-opus-4-6[effort=high]``).
-
-    ``claude/<model>`` and ``claude-headless/<model>`` accept versioned
-    full ids (``claude-haiku-4-5-20251001``) and bracketed effort
-    parameters (``[effort=high]``); the registry shell-quotes the value
-    when it contains shell-special characters and both Claude command
-    builders emit ``--model`` and the full id as exactly two consecutive
-    argv tokens.
-    """
     registry = AgentRegistry.from_config(UnifiedConfig())
 
     interactive = registry.get(f"claude/{model_id}")
@@ -405,12 +350,6 @@ def test_claude_headless_model_reference_resolves() -> None:
 
 @pytest.mark.parametrize("alias", ["haiku", "sonnet", "opus"])
 def test_claude_headless_argv_includes_verbose_for_stream_json(alias: str) -> None:
-    """Headless Claude stream-json output requires --verbose (Claude CLI 2.1+).
-
-    The command builder must emit --verbose unconditionally for the
-    stream-json headless transport so the CLI does not exit with
-    ``--output-format=stream-json requires --verbose``.
-    """
     registry = AgentRegistry.from_config(UnifiedConfig())
 
     agent = registry.get(f"claude-headless/{alias}")
@@ -421,7 +360,6 @@ def test_claude_headless_argv_includes_verbose_for_stream_json(alias: str) -> No
     )
 
     assert "--verbose" in argv
-    # --verbose should appear exactly once even when options.verbose is False.
     assert argv.count("--verbose") == 1
 
 
@@ -436,7 +374,6 @@ def test_claude_headless_argv_includes_verbose_for_stream_json(alias: str) -> No
 def test_claude_dynamic_alias_preserves_model_field(
     transport: AgentTransport, prefix: str, alias: str
 ) -> None:
-    """S-3 regression: dynamic aliases retain retry-model provenance."""
     registry = AgentRegistry.from_config(UnifiedConfig())
 
     agent = registry.get(f"{prefix}/{alias}")

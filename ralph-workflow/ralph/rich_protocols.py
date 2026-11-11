@@ -1,4 +1,3 @@
-"""Protocol shims for lazily imported Rich classes."""
 
 from __future__ import annotations
 
@@ -9,7 +8,6 @@ from ralph._rich_panel_proto import RichPanelProto
 
 
 class RichTextProto(Protocol):
-    """Protocol for rich.Text class."""
 
     def __call__(self, text: str = "", *, style: str = "") -> object: ...
 

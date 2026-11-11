@@ -1,11 +1,3 @@
-"""Local-fleet freshness contracts with one representative real worktree race.
-
-Refresh classification is proven through the bounded Git adapter seam, so those
-cases do not repeatedly create repositories and worktrees. The sole E2E case
-retains the unique interaction: a sibling moves a shared branch ref while a
-linked worktree is paused in a conflicted rebase.
-"""
-
 from __future__ import annotations
 
 import subprocess
@@ -42,7 +34,6 @@ def _git_result(args: tuple[str, ...], *, stdout: str = "", returncode: int = 0)
 def test_no_origin_classifies_an_observable_local_target_as_a_fleet(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A local branch is fresh evidence even when no remote exists."""
     import ralph.pipeline.auto_integrate_sync as sync
 
     def _run_git(args: tuple[str, ...], **_kwargs: object) -> GitRunResult:
@@ -61,7 +52,6 @@ def test_no_origin_classifies_an_observable_local_target_as_a_fleet(
 def test_no_origin_without_a_local_target_remains_unobservable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """No remote and no branch reports the distinct no-origin outcome."""
     import ralph.pipeline.auto_integrate_sync as sync
 
     def _run_git(args: tuple[str, ...], **_kwargs: object) -> GitRunResult:
@@ -84,7 +74,6 @@ def test_fetch_disabled_still_observes_the_local_pointer(
     observed_sha: str | None,
     expected: str,
 ) -> None:
-    """The fetch flag governs network access, not shared-ref observation."""
     import ralph.pipeline.auto_integrate_refresh as refresh
 
     def _observe_target_sha(_root: Path, _target: str) -> str | None:
@@ -106,7 +95,6 @@ def test_fetch_disabled_still_observes_the_local_pointer(
 def test_observation_returns_the_latest_adapter_value(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Each observation performs a fresh read through the Git adapter."""
     import ralph.pipeline.auto_integrate_sync as sync
 
     values = iter(("before\n", "after\n"))
@@ -140,7 +128,7 @@ def _commit(repo_root: Path, filename: str, content: str, message: str) -> str:
     try:
         repo.index.add([filename])
         commit = repo.index.commit(message)
-        assert commit.hexsha  # RALPH-TEST-REASON: GitPython commit replaces subprocess git add/commit to reduce CPU overhead
+        assert commit.hexsha
         return commit.hexsha
     finally:
         repo.close()
@@ -151,7 +139,6 @@ def _commit(repo_root: Path, filename: str, content: str, message: str) -> str:
 def test_sibling_target_move_during_rebase_is_reobserved_and_landed(
     tmp_git_repo: Path, tmp_path: Path
 ) -> None:
-    """A shared target moving mid-rebase triggers a linear retry and landing."""
     target = (
         _run(tmp_git_repo, "symbolic-ref", "--quiet", "HEAD")
         .stdout.strip()
@@ -195,7 +182,6 @@ def test_sibling_target_move_during_rebase_is_reobserved_and_landed(
     assert advanced
     feature_tip = _run(feature, "rev-parse", "HEAD").stdout.strip()
     assert branch_sha(feature, target) == feature_tip
-    # A linked worktree observes the same target ref after the retry and landing.
     assert branch_sha(tmp_git_repo, target) == feature_tip
     assert _run(feature, "merge-base", "--is-ancestor", advanced[0], feature_tip).returncode == 0
     assert _run(feature, "log", "--merges", "--format=%H").stdout.strip() == ""

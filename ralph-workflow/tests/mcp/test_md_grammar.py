@@ -1,5 +1,3 @@
-"""Behavior tests for the closed markdown artifact grammar."""
-
 from ralph.mcp.artifacts.markdown import parse_markdown_document
 
 

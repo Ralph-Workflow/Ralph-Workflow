@@ -1,5 +1,3 @@
-"""Deterministic contracts for the standalone-MCP conflict activity relay (S-4)."""
-
 from __future__ import annotations
 
 import pytest
@@ -8,7 +6,6 @@ from ralph.mcp.server._activity_relay import ActivityRelay, ActivityRelayError, 
 
 
 def test_activity_relay_delivers_authenticated_mcp_event_once_after_parent_registers() -> None:
-    """S-4/R3: a standalone MCP-only event refreshes the parent exactly once."""
     relay = ActivityRelay()
     try:
         sender = ActivityRelaySender.from_environment(relay.server_environment())
@@ -27,7 +24,6 @@ def test_activity_relay_delivers_authenticated_mcp_event_once_after_parent_regis
 
 
 def test_activity_relay_rejects_forged_credential_without_refreshing_liveness() -> None:
-    """S-4: a forged event is rejected and latches infrastructure failure."""
     relay = ActivityRelay()
     try:
         observed: list[str] = []
@@ -46,7 +42,6 @@ def test_activity_relay_rejects_forged_credential_without_refreshing_liveness() 
 
 
 def test_activity_relay_sender_fails_closed_when_parent_is_unavailable() -> None:
-    """S-4: a missing receiver cannot be silently accepted as liveness."""
     relay = ActivityRelay()
     endpoint = relay.endpoint
     env = relay.server_environment()
@@ -60,14 +55,6 @@ def test_activity_relay_sender_fails_closed_when_parent_is_unavailable() -> None
 
 
 def test_activity_relay_ignores_stale_sequence_without_killing_the_run() -> None:
-    """S-4: a replayed sequence cannot refresh the watchdog twice -- nor kill it.
-
-    The credential is checked first, so a replay that reaches the sequence
-    check is from a process holding our own secret.  It is dropped
-    idempotently (no second refresh) and stays non-fatal; latching a
-    supervision failure here hard-killed healthy agents whose concurrent
-    ``tools/call`` threads raced through one sender.
-    """
     relay = ActivityRelay()
     try:
         observed: list[str] = []

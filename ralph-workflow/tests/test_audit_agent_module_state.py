@@ -1,5 +1,3 @@
-"""Unit tests for the agent module state static audit."""
-
 from __future__ import annotations
 
 import textwrap
@@ -17,21 +15,18 @@ from ralph.testing.audit_agent_module_state import (
 
 
 def test_forbidden_prefix_includes_legacy_module_state_names() -> None:
-    """The audit must watch for the 3 historical module-level state prefixes."""
     assert "_PARSER_REGISTRY" in _FORBIDDEN_NAME_PREFIXES
     assert "_CUSTOM_COMMAND_REGISTRY" in _FORBIDDEN_NAME_PREFIXES
     assert "_STRATEGY_DISPATCH" in _FORBIDDEN_NAME_PREFIXES
 
 
 def test_name_violates_matches_forbidden_prefix() -> None:
-    """A name starting with a forbidden prefix is a violation."""
     for prefix in _FORBIDDEN_NAME_PREFIXES:
         assert _name_violates(f"{prefix}_DATA"), f"{prefix}_DATA must be flagged"
         assert _name_violates(prefix), f"{prefix} must be flagged"
 
 
 def test_name_violates_matches_registry_plus_agent_or_parser() -> None:
-    """A name containing both 'registry' and ('agent' or 'parser') is a violation."""
     assert _name_violates("AGENT_REGISTRY")
     assert _name_violates("agent_registry_dict")
     assert _name_violates("PARSER_REGISTRY")
@@ -45,7 +40,6 @@ def test_name_violates_matches_registry_plus_agent_or_parser() -> None:
 
 
 def test_clean_module_passes_scan() -> None:
-    """A module without forbidden dict assignments has zero violations."""
     content = textwrap.dedent(
         """
         CONSTANT = 42
@@ -58,7 +52,6 @@ def test_clean_module_passes_scan() -> None:
 
 
 def test_parser_registry_dict_assignment_is_violation() -> None:
-    """A ``_PARSER_REGISTRY = {...}`` module-level dict assignment is flagged."""
     content = textwrap.dedent(
         """
         _PARSER_REGISTRY = {
@@ -72,7 +65,6 @@ def test_parser_registry_dict_assignment_is_violation() -> None:
 
 
 def test_strategy_dispatch_dict_assignment_is_violation() -> None:
-    """A ``_STRATEGY_DISPATCH = {...}`` module-level dict assignment is flagged."""
     content = textwrap.dedent(
         """
         _STRATEGY_DISPATCH = {
@@ -86,7 +78,6 @@ def test_strategy_dispatch_dict_assignment_is_violation() -> None:
 
 
 def test_custom_command_registry_dict_assignment_is_violation() -> None:
-    """A ``_CUSTOM_COMMAND_REGISTRY = {...}`` assignment is flagged."""
     content = textwrap.dedent(
         """
         _CUSTOM_COMMAND_REGISTRY = {
@@ -99,7 +90,6 @@ def test_custom_command_registry_dict_assignment_is_violation() -> None:
 
 
 def test_parser_registry_entry_class_not_flagged() -> None:
-    """A ``class _PARSER_REGISTRY_ENTRY`` class declaration is NOT a violation."""
     content = textwrap.dedent(
         """
         class _PARSER_REGISTRY_ENTRY:
@@ -111,7 +101,6 @@ def test_parser_registry_entry_class_not_flagged() -> None:
 
 
 def test_mapping_proxy_type_view_not_flagged() -> None:
-    """A ``_PARSER_REGISTRY = types.MappingProxyType(...)`` is NOT a dict assignment."""
     content = textwrap.dedent(
         """
         import types
@@ -123,7 +112,6 @@ def test_mapping_proxy_type_view_not_flagged() -> None:
 
 
 def test_function_local_dict_not_flagged() -> None:
-    """A dict assignment inside a function is NOT a module-level violation."""
     content = textwrap.dedent(
         """
         def helper():
@@ -136,7 +124,6 @@ def test_function_local_dict_not_flagged() -> None:
 
 
 def test_class_attribute_dict_not_flagged() -> None:
-    """A dict assignment inside a class body is NOT a module-level violation."""
     content = textwrap.dedent(
         """
         class Foo:
@@ -148,7 +135,6 @@ def test_class_attribute_dict_not_flagged() -> None:
 
 
 def test_frozenset_assignment_not_flagged() -> None:
-    """A frozenset assignment with a forbidden prefix is NOT a violation (not a dict)."""
     content = textwrap.dedent(
         """
         _PARSER_REGISTRY_PREFIXES = frozenset({"claude"})
@@ -159,7 +145,6 @@ def test_frozenset_assignment_not_flagged() -> None:
 
 
 def test_agent_registry_class_not_flagged() -> None:
-    """A module-level class named ``AgentRegistry`` is NOT a violation (not a dict)."""
     content = textwrap.dedent(
         """
         class AgentRegistry:
@@ -170,20 +155,9 @@ def test_agent_registry_class_not_flagged() -> None:
     assert violations == []
 
 
-# Green-path production-tree coverage: ``make verify`` runs
-# ``python -m ralph.testing.audit_agent_module_state``.
-
-
 def test_run_audit_fails_closed_on_unreadable_file(
     tmp_path: Path,
 ) -> None:
-    """An unreadable ``.py`` file produces a ``file_read_error`` violation.
-
-    The audit is a prevention gate — silently skipping unreadable files
-    would let a forbidden module-level dict hide behind a permission
-    error.  The audit must report the failure as a violation so CI
-    fails closed.
-    """
     bad_dir = tmp_path / "ralph" / "agents"
     bad_dir.mkdir(parents=True)
     target = bad_dir / "unreadable.py"
@@ -203,7 +177,6 @@ def test_run_audit_fails_closed_on_unreadable_file(
 def test_run_audit_fails_closed_on_unicode_decode_error(
     tmp_path: Path,
 ) -> None:
-    """A ``UnicodeDecodeError`` during read also produces a violation."""
     bad_dir = tmp_path / "ralph" / "agents"
     bad_dir.mkdir(parents=True)
     target = bad_dir / "bad_encoding.py"
@@ -218,13 +191,6 @@ def test_run_audit_fails_closed_on_unicode_decode_error(
 
 
 def test_annotated_parser_registry_dict_assignment_is_violation() -> None:
-    """An annotated ``_PARSER_REGISTRY: dict[...] = {...}`` is flagged.
-
-    Regression test for the case where the AST scanner only handled
-    ``ast.Assign`` and silently missed ``ast.AnnAssign`` annotated
-    assignments.  Such an annotated assignment would let a forbidden
-    module-level dict sneak past the audit, defeating its purpose.
-    """
     content = textwrap.dedent(
         """
         _PARSER_REGISTRY: dict[str, object] = {"claude": object}
@@ -240,7 +206,6 @@ def test_annotated_parser_registry_dict_assignment_is_violation() -> None:
 
 
 def test_annotated_strategy_dispatch_dict_assignment_is_violation() -> None:
-    """An annotated ``_STRATEGY_DISPATCH: dict[...] = {...}`` is flagged."""
     content = textwrap.dedent(
         """
         _STRATEGY_DISPATCH: dict[str, object] = {"claude": object}
@@ -253,13 +218,6 @@ def test_annotated_strategy_dispatch_dict_assignment_is_violation() -> None:
 
 
 def test_allowlist_suppresses_violation() -> None:
-    """An entry in :data:`AUDIT_MODULE_STATE_ALLOWLIST` suppresses the violation.
-
-    This is the allowlist contract: a documented entry in
-    ``AUDIT_MODULE_STATE_ALLOWLIST`` lets a module-level dict
-    assignment through the audit.  Without this contract, there is
-    no way to opt out of the audit for legitimate exceptions.
-    """
     content = textwrap.dedent(
         """
         _PARSER_REGISTRY = {"claude": object}
@@ -281,11 +239,6 @@ def test_allowlist_suppresses_violation() -> None:
 
 
 def test_allowlist_does_not_unrelatedly_suppress() -> None:
-    """A line that is NOT in the allowlist still produces a violation.
-
-    Ensures the allowlist check is keyed on (file, line) and does not
-    become a blanket bypass for all entries in an allowlisted file.
-    """
     content = textwrap.dedent(
         """
         _PARSER_REGISTRY = {"claude": object}

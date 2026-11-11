@@ -1,13 +1,3 @@
-"""``ralph.mcp.server``'s lazy attribute hook must not mask a broken submodule.
-
-The package's PEP 562 ``__getattr__`` falls back to importing
-``ralph.mcp.server.<name>``. It used to swallow every ``ImportError`` from
-that import, so a submodule that EXISTS but fails while importing -- for
-instance on a circular import -- surfaced only as ``AttributeError: module
-'ralph.mcp.server' has no attribute ...``, and the real cause was lost. Only a
-submodule that genuinely does not exist may become ``AttributeError``.
-"""
-
 from __future__ import annotations
 
 import importlib.abc

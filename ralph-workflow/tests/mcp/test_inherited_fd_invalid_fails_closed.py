@@ -1,13 +1,3 @@
-"""Tests for fail-closed invalid inherited FD adoption contract.
-
-When ``RALPH_MCP_INHERITED_FD`` is set in the environment but the FD fails
-validation (not a digit, closed FD, or not a socket) or adoption, the child
-server MUST fail closed by raising typed ``McpServerError`` with
-``last_stage="fd_inherit_failed"`` and recording it to the stage file.
-When the environment variable is absent, the server keeps its fallback to a
-fresh bind.
-"""
-
 from __future__ import annotations
 
 import contextlib
@@ -47,7 +37,6 @@ def _setup_session(tmp_path: Path) -> dict[str, str]:
 
 
 def test_invalid_inherited_fd_non_digit_fails_closed(tmp_path: Path) -> None:
-    """When MCP_INHERITED_FD_ENV is not a non-negative integer string, raise McpServerError."""
     env = _setup_session(tmp_path)
     env[MCP_INHERITED_FD_ENV] = "not_a_digit"
 
@@ -60,7 +49,6 @@ def test_invalid_inherited_fd_non_digit_fails_closed(tmp_path: Path) -> None:
 
 
 def test_invalid_inherited_fd_closed_fd_fails_closed(tmp_path: Path) -> None:
-    """When MCP_INHERITED_FD_ENV points to a closed/invalid FD number, raise McpServerError."""
     env = _setup_session(tmp_path)
     env[MCP_INHERITED_FD_ENV] = "99999"
 
@@ -73,7 +61,6 @@ def test_invalid_inherited_fd_closed_fd_fails_closed(tmp_path: Path) -> None:
 
 
 def test_invalid_inherited_fd_not_a_socket_fails_closed(tmp_path: Path) -> None:
-    """When MCP_INHERITED_FD_ENV points to a regular file descriptor, raise McpServerError."""
     env = _setup_session(tmp_path)
     file_path = tmp_path / "sample.txt"
     file_path.write_text("hello", encoding="utf-8")
@@ -92,9 +79,7 @@ def test_invalid_inherited_fd_not_a_socket_fails_closed(tmp_path: Path) -> None:
 
 
 def test_absent_inherited_fd_falls_back_to_fresh_bind(tmp_path: Path) -> None:
-    """When MCP_INHERITED_FD_ENV is absent, the server binds freshly without error."""
     env = _setup_session(tmp_path)
-    # Ensure MCP_INHERITED_FD_ENV is not in env
     env.pop(MCP_INHERITED_FD_ENV, None)
 
     ready_event = threading.Event()
@@ -120,15 +105,6 @@ def test_absent_inherited_fd_falls_back_to_fresh_bind(tmp_path: Path) -> None:
 
 
 def test_empty_inherited_fd_fails_closed(tmp_path: Path) -> None:
-    """When MCP_INHERITED_FD_ENV is set but blank, the server fails closed.
-
-    A parent bridge that promised an inherited listening FD and handed
-    us a blank string has lost its endpoint contract: silently falling
-    back to a fresh bind would reintroduce the ECONNREFUSED window
-    R1 eliminates. The only safe behavior is a typed ``McpServerError``
-    with ``last_stage="fd_inherit_failed"``. The absent-variable
-    fallback (no env var at all) is preserved by a separate test.
-    """
     env = _setup_session(tmp_path)
     env[MCP_INHERITED_FD_ENV] = ""
 
@@ -141,7 +117,6 @@ def test_empty_inherited_fd_fails_closed(tmp_path: Path) -> None:
 
 
 def test_valid_inherited_fd_is_adopted_successfully(tmp_path: Path) -> None:
-    """When MCP_INHERITED_FD_ENV is a live listening socket, adoption succeeds."""
     env = _setup_session(tmp_path)
     parent_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     parent_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -180,7 +155,6 @@ def test_valid_inherited_fd_is_adopted_successfully(tmp_path: Path) -> None:
 @pytest.mark.timeout_seconds(20)
 @pytest.mark.subprocess_e2e
 def test_real_subprocess_invalid_inherited_fd_fails_closed(tmp_path: Path) -> None:
-    """A real child subprocess with invalid RALPH_MCP_INHERITED_FD fails closed."""
     spawn_id = str(uuid.uuid4())
     env = _setup_session(tmp_path)
     child_env = dict(os.environ)
@@ -210,16 +184,6 @@ def test_real_subprocess_invalid_inherited_fd_fails_closed(tmp_path: Path) -> No
 @pytest.mark.timeout_seconds(20)
 @pytest.mark.subprocess_e2e
 def test_real_subprocess_empty_inherited_fd_fails_closed(tmp_path: Path) -> None:
-    """A real child subprocess with empty RALPH_MCP_INHERITED_FD fails closed end-to-end.
-
-    Regression for D-01: a parent bridge that promised an inherited
-    listening FD and handed the child a blank string must surface
-    typed ``McpServerError`` (last_stage="fd_inherit_failed") rather
-    than silently rebind and reintroduce the ECONNREFUSED window R1
-    eliminates. The real subprocess path proves the typed error
-    reaches the parent's pipe as a non-zero exit, matching the
-    in-process contract asserted by ``test_empty_inherited_fd_fails_closed``.
-    """
     spawn_id = str(uuid.uuid4())
     env = _setup_session(tmp_path)
     child_env = dict(os.environ)

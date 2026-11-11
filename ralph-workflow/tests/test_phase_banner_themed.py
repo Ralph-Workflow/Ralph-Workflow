@@ -1,5 +1,3 @@
-"""ANSI-vs-plain regression tests for ParallelDisplay phase methods."""
-
 from __future__ import annotations
 
 from io import StringIO
@@ -14,7 +12,6 @@ from ralph.display.theme import RALPH_THEME
 
 
 def _themed_context(buf: StringIO) -> object:
-    """Create a DisplayContext for themed (color) output."""
     console = Console(
         file=buf,
         force_terminal=True,
@@ -28,7 +25,6 @@ def _themed_context(buf: StringIO) -> object:
 
 
 def _plain_context(buf: StringIO) -> object:
-    """Create a DisplayContext for plain (no color) output."""
     console = Console(
         file=buf,
         force_terminal=False,

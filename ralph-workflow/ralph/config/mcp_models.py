@@ -1,4 +1,3 @@
-"""Pydantic models for `mcp.toml`."""
 
 from __future__ import annotations
 
@@ -14,7 +13,6 @@ from .web_service_configs import WebVisitConfig
 
 
 class McpConfig(RalphBaseModel):
-    """Top-level `mcp.toml` document."""
 
     model_config = ConfigDict(frozen=True)
 

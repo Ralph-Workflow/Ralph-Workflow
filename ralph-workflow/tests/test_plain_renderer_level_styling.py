@@ -1,16 +1,3 @@
-"""Tests for the activity-line chrome contract after wt-028-display S-4.
-
-wt-028-display S-4 retires the LEVEL and CAT plumbing-vocabulary
-badges on the activity-line chrome prefix. Severity is now carried
-exactly once per entry by the renderer's own icon+label carrier
-(sketch H), not by a duplicated level/category badge. This file
-pins the new contract: the activity line carries the timestamp, the
-[tag][unit] bracket, the body, and the color the theme applies via
-the surviving carrier -- nothing else. The retired ``INFO``,
-``WARN``, ``ERROR``, ``SUCCESS``, ``MILESTONE``, ``META``, ``OUT``
-text must NEVER appear on the chrome prefix.
-"""
-
 from __future__ import annotations
 
 from io import StringIO
@@ -55,7 +42,6 @@ def _make_plain_renderer() -> tuple[ParallelDisplay, StringIO]:
 
 
 def _emit(renderer: ParallelDisplay, kind: str, body: str) -> None:
-    """Drive the activity-line seam end-to-end so the chrome is captured."""
     renderer.start()
     renderer.emit_activity_line("u", kind, body)
     renderer.stop()
@@ -65,13 +51,6 @@ def _emit(renderer: ParallelDisplay, kind: str, body: str) -> None:
     "kind", ["text", "thinking", "tool_use", "tool_result", "error", "progress"]
 )
 def test_activity_line_chrome_carries_no_level_badge_plain(kind: str) -> None:
-    """The plain (color-off) activity line never carries a LEVEL badge.
-
-    The chrome prefix is now just the timestamp + the [tag][unit]
-    bracket + the body. ``INFO``/``WARN``/``ERROR``/``SUCCESS``/
-    ``MILESTONE`` are retired chrome vocabulary and must never
-    reach the operator surface.
-    """
     renderer, buf = _make_plain_renderer()
     _emit(renderer, kind, "msg")
     out = buf.getvalue()
@@ -86,7 +65,6 @@ def test_activity_line_chrome_carries_no_level_badge_plain(kind: str) -> None:
     "kind", ["text", "thinking", "tool_use", "tool_result", "error", "progress"]
 )
 def test_activity_line_chrome_carries_no_cat_badge_plain(kind: str) -> None:
-    """The plain activity line never carries a CAT (META/OUT) badge either."""
     renderer, buf = _make_plain_renderer()
     _emit(renderer, kind, "msg")
     out = buf.getvalue()
@@ -98,7 +76,6 @@ def test_activity_line_chrome_carries_no_cat_badge_plain(kind: str) -> None:
 
 
 def test_activity_line_body_survives_with_tag_and_unit() -> None:
-    """The [tag][unit] bracket and the body are still on every line."""
     renderer, buf = _make_plain_renderer()
     _emit(renderer, "text", "hello world")
     out = buf.getvalue()
@@ -107,7 +84,6 @@ def test_activity_line_body_survives_with_tag_and_unit() -> None:
 
 
 def test_activity_line_keeps_no_plumbing_chrome_under_truecolor() -> None:
-    """The truecolor renderer's activity line retains semantic colour, not LEVEL/CAT text."""
     renderer, buf = _make_color_renderer()
     _emit(renderer, "error", "bad")
     out = buf.getvalue()
@@ -121,7 +97,6 @@ def test_activity_line_keeps_no_plumbing_chrome_under_truecolor() -> None:
 
 @pytest.mark.parametrize("kind", ["text", "thinking", "tool_use", "tool_result", "error"])
 def test_activity_lines_have_nondefault_truecolor_carriers(kind: str) -> None:
-    """Every production activity kind colours its timestamp, badge, identity, and body."""
     renderer, buf = _make_color_renderer()
     _emit(renderer, kind, "visible activity body")
     out = buf.getvalue()
@@ -132,7 +107,6 @@ def test_activity_lines_have_nondefault_truecolor_carriers(kind: str) -> None:
 
 
 def test_activity_line_plain_output_has_no_ansi() -> None:
-    """The plain renderer emits no ANSI escape sequences."""
     renderer, buf = _make_plain_renderer()
     _emit(renderer, "progress", "50%")
     out = buf.getvalue()

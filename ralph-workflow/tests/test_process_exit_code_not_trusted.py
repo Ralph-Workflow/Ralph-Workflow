@@ -1,5 +1,3 @@
-"""Worker process exit failures must not be masked by artifact evidence."""
-
 from __future__ import annotations
 
 import contextlib
@@ -68,7 +66,6 @@ def _reset_pm() -> object:
 
 @pytest.mark.asyncio
 async def test_exit_code_7_is_exited_not_failed(tmp_path: Path) -> None:
-    """ProcessManager records EXITED (not FAILED) even when returncode != 0."""
     pm = ProcessManager(
         policy=_FAST_POLICY,
         sync_process_factory=lambda _command, _opts: FakePopen(
@@ -81,7 +78,6 @@ async def test_exit_code_7_is_exited_not_failed(tmp_path: Path) -> None:
 
     assert handle.record.status == ProcessStatus.EXITED
     assert handle.record.returncode == _EXPECTED_EXIT_CODE
-    # FAILED is reserved for spawn-time failures (e.g., binary not found)
     assert handle.record.status != ProcessStatus.FAILED
 
 
@@ -126,7 +122,6 @@ def _make_ctx(module: _CoordinatorModule, same_workspace: object) -> object:
 async def test_parallel_coordinator_regression_nonzero_exit_with_artifact_fails(
     tmp_path: Path,
 ) -> None:
-    """Regression: a failed agent process cannot advance a fan-out wave."""
     module = _load_coordinator()
     unit = _make_unit("unit-a")
     effect = FanOutEffect(work_units=(unit,), max_workers=1)
@@ -160,7 +155,6 @@ async def test_parallel_coordinator_regression_nonzero_exit_with_artifact_fails(
 
 @pytest.mark.asyncio
 async def test_zero_exit_without_artifact_is_treated_as_failure(tmp_path: Path) -> None:
-    """Worker coordinator: exit_code == 0 but no artifact still fails."""
     module = _load_coordinator()
     unit = _make_unit("unit-a")
     effect = FanOutEffect(work_units=(unit,), max_workers=1)

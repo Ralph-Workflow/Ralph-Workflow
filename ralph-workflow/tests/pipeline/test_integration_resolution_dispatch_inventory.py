@@ -1,11 +1,3 @@
-"""Executable inventory of every integration-resolution dispatch route.
-
-This test is deliberately structural: it keeps the plan's route inventory
-co-located with executable proof that the only ordinary-phase verdict owner is
-``integration_resolution.inspect_integration_resolution``.  Resolver routes
-are listed separately because they are the sole legal recovery executor.
-"""
-
 from __future__ import annotations
 
 import inspect
@@ -47,7 +39,6 @@ EXPECTED_EFFECT_EXECUTOR_CALLER_MODULES = {
 
 
 def test_dispatch_inventory_reconciles_every_named_route() -> None:
-    """Every ordinary route delegates to the shared verdict or final fence."""
     assert inspect_integration_resolution.__module__ == "ralph.pipeline.integration_resolution"
     for route, owner in ORDINARY_DISPATCH_ROUTES:
         assert owner in inspect.getsource(route), (
@@ -56,7 +47,6 @@ def test_dispatch_inventory_reconciles_every_named_route() -> None:
 
 
 def test_every_live_effect_executor_caller_is_inventoried() -> None:
-    """Adding an ordinary executor caller requires an explicit inventory decision."""
     callers = {
         module.__name__
         for module in (
@@ -73,7 +63,6 @@ def test_every_live_effect_executor_caller_is_inventoried() -> None:
 
 
 def test_resolution_routes_are_explicitly_out_of_graph_recovery() -> None:
-    """Resolver invocations remain distinct from ordinary phase dispatch."""
     for route in RESOLUTION_ROUTES:
         source = inspect.getsource(route)
         assert "PHASE_RESOLUTION" in source or "_run_rounds" in source

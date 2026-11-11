@@ -1,18 +1,3 @@
-"""Verification phase handler.
-
-The verification phase enforces a policy-defined gating check before the pipeline
-can advance. The gate is declarative — it is validated at runtime against the
-configured verification kind.
-
-Verification kinds:
-- artifact: the configured artifact path must exist and be non-empty
-- none: purely declarative gate; always passes
-
-On gate failure, when on_failure_route is set, the handler emits
-PhaseFailureEvent(recoverable=False) so the reducer routes through
-_enter_failed_recovery to the policy-declared failure route.
-When on_failure_route is unset, the pipeline halts at the terminal failure route.
-"""
 
 from __future__ import annotations
 
@@ -39,11 +24,6 @@ def _check_artifact_gate(
     phase_name: str,
     phase_def: PhaseDefinition,
 ) -> tuple[bool, str | None]:
-    """Check artifact verification gate.
-
-    Returns:
-        Tuple of (gate_passed, failure_reason). failure_reason is None if gate passed.
-    """
     registry = build_required_artifacts(ctx.artifacts_policy)
     ra = registry.get(phase_def.drain)
     artifact_path = (
@@ -75,23 +55,6 @@ def _check_artifact_gate(
 
 
 def handle_verification_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
-    """Generic handler for verification-role phases.
-
-    Dispatches on phase_def.verification.kind:
-    - 'artifact': requires the configured artifact path to exist and be non-empty
-    - 'none': purely declarative; emits AGENT_SUCCESS to advance
-
-    On gate failure, when on_failure_route is set, emits
-    PhaseFailureEvent(recoverable=False) so the reducer routes to that target.
-    When on_failure_route is unset, recoverable=False halts at the terminal failure.
-
-    Args:
-        effect: The effect that triggered this phase.
-        ctx: Phase context with workspace and policy.
-
-    Returns:
-        List of events to emit.
-    """
     if isinstance(effect, PreparePromptEffect):
         return [PipelineEvent.PROMPT_PREPARED]
 
@@ -105,7 +68,6 @@ def _handle_verification_invoke(
     effect: InvokeAgentEffect,
     ctx: PhaseContext,
 ) -> list[Event]:
-    """Handle InvokeAgentEffect for verification phases."""
     phase_name = str(effect.phase)
     phase_def = ctx.pipeline_policy.phases.get(phase_name)
 
@@ -140,13 +102,12 @@ def _gate_result_for_kind(
     phase_name: str,
     phase_def: PhaseDefinition,
 ) -> tuple[bool, str | None]:
-    """Compute gate result for a verification kind."""
     match v.kind:
         case "artifact":
             return _check_artifact_gate(ctx, phase_name, phase_def)
         case "none":
             return True, None
-        case _ as unreachable:  # pragma: no cover
+        case _ as unreachable:
             _assert_never(unreachable)
 
 
@@ -155,7 +116,6 @@ def _emit_verification_failure(
     failure_reason: str | None,
     on_failure_route: str | None,
 ) -> list[Event]:
-    """Emit PhaseFailureEvent for verification gate failure."""
     reason = failure_reason or "verification gate failed"
     if on_failure_route:
         logger.warning(

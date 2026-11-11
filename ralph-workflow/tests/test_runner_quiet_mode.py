@@ -1,5 +1,3 @@
-"""Regression tests: --quiet suppresses dashboard surfaces but keeps completion summary."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -27,15 +25,6 @@ from tests._pipeline_deps_factory import make_test_pipeline_deps
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
-# ``test_runner_quiet_mode.py`` runs the full pipeline
-# (``runner_module.run``) end-to-end with stubbed effects so it
-# exercises the entire state-machine + display path. Under parallel
-# xdist CPU contention the per-test wall time can exceed the 1s
-# default cap. 5s is the documented minimum for non-trivial tests
-# (see ``ralph/verify_timeout.py``) and is well under the 60s
-# combined ``make verify`` budget. The 1s default policy is
-# preserved globally; this module-level marker only relaxes the
-# cap for the pipeline-runner regression tests in this file.
 pytestmark = pytest.mark.timeout_seconds(5)
 
 
@@ -102,7 +91,6 @@ def _install_runner_stubs(
 def test_quiet_mode_suppresses_dashboard_header_and_phase_banners(
     monkeypatch: MonkeyPatch, tmp_path: Path, policy_bundle: object
 ) -> None:
-    """In quiet mode no dashboard header or phase-transition banner appears."""
     monkeypatch.setenv("CI", "1")
     captured_console = Console(record=True, force_terminal=False, width=120, color_system=None)
     _install_runner_display_context(monkeypatch, captured_console)
@@ -133,25 +121,20 @@ def test_quiet_mode_suppresses_dashboard_header_and_phase_banners(
     )
     assert exit_code == 0
 
-    # ParallelDisplay is the only display; in quiet mode it is constructed
-    # once with `is_quiet=True` so its dashboard surfaces stay silent.
     assert len(constructed_displays) == 1
     quiet_display = constructed_displays[0]
     assert getattr(quiet_display, "_is_quiet", False) is True
 
     out = captured_console.export_text()
-    # Dashboard header and phase-transition banner text should be absent.
     assert "Ralph Workflow" not in out
     assert "Planning → Development" not in out
 
-    # The completion summary panel still renders.
     assert ("Pipeline Complete" in out) or ("Pipeline Failed" in out)
 
 
 def test_quiet_mode_renders_completion_summary_on_failure(
     monkeypatch: MonkeyPatch, tmp_path: Path, policy_bundle: object
 ) -> None:
-    """When the pipeline ends in 'failed' phase, quiet mode still renders a Failed panel."""
     monkeypatch.setenv("CI", "1")
     policy_bundle = load_policy(DEFAULT_POLICY_DIR)
 

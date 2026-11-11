@@ -1,5 +1,3 @@
-"""Cache persistence and refresh throttling for the update nagger."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -20,8 +18,6 @@ from ralph.update_check.state import (
 
 
 class _RecordingBackend(FileBackend):
-    """In-memory persistence boundary exposing stable-cache mutations."""
-
     def __init__(self) -> None:
         self.files: dict[Path, str] = {}
         self.writes: list[tuple[Path, str]] = []
@@ -79,7 +75,6 @@ def test_cache_path_defaults_to_home_cache(monkeypatch: pytest.MonkeyPatch, tmp_
 
 
 def test_save_state_regression_identical_replay_skips_cache_and_parent_mutations() -> None:
-    """S-3: unchanged update state does not rewrite its cache or parent directory."""
     backend = _RecordingBackend()
     path = Path("/virtual-cache/ralph-workflow/version-check.json")
     state = VersionCheckState(last_checked=123.5, latest_version="0.9.1")

@@ -1,14 +1,3 @@
-"""End-to-end test: custom-named pipeline with no canonical phase names.
-
-Proves that the runtime no longer depends on built-in phase names.
-A workflow with phases named:
-  kickoff → build → gate (analysis loop) → seal (commit) → verify (verification)
-  → done (terminal success) or crashed (terminal failure)
-exercises every role type and all routing transitions using only policy-declared names.
-
-All phase transitions are driven through the reducer. No real agents are invoked.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -41,17 +30,6 @@ _BUILD_LOOP_MAX = 3
 
 
 def _build_custom_bundle() -> PolicyBundle:
-    """Build a custom policy bundle with no canonical phase names.
-
-    The pipeline exercises every phase role:
-    - kickoff: execution
-    - build: execution
-    - gate: analysis (with build_loop counter)
-    - seal: commit (increments build_pass, resets build_loop)
-    - verify: verification (routes to done on success, crashed on failure)
-    - crashed: terminal (failure outcome)
-    - done: terminal (success outcome)
-    """
     pipeline = PipelinePolicy(
         phases={
             "kickoff": PhaseDefinition(
@@ -163,7 +141,6 @@ def _build_custom_bundle() -> PolicyBundle:
 
 
 def _initial_state(policy: PipelinePolicy) -> PipelineState:
-    """Build initial PipelineState for the custom pipeline."""
     return PipelineState(
         phase="kickoff",
         phase_chains={
@@ -182,36 +159,28 @@ def custom_bundle() -> PolicyBundle:
 
 
 class TestCustomPipelineHappyPath:
-    """Full happy path through a custom-named pipeline."""
-
     def test_happy_path_kickoff_to_done(self, custom_bundle: PolicyBundle) -> None:
         policy = custom_bundle.pipeline
         state = _initial_state(policy)
         assert state.phase == "kickoff"
 
-        # kickoff → build (AGENT_SUCCESS)
         state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
         assert state.phase == "build", f"Expected build, got {state.phase}"
 
-        # build → gate (AGENT_SUCCESS)
         state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
         assert state.phase == "gate", f"Expected gate, got {state.phase}"
 
-        # gate → seal (ANALYSIS_SUCCESS)
         state, _ = reducer_reduce(state, PipelineEvent.ANALYSIS_SUCCESS, policy)
         assert state.phase == "seal", f"Expected seal, got {state.phase}"
 
-        # seal → verify (COMMIT_SUCCESS)
         state, _ = reducer_reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
         assert state.phase == "verify", f"Expected verify, got {state.phase}"
         assert state.get_outer_progress("build_pass") == 1
 
-        # verify → done (AGENT_SUCCESS)
         state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
         assert state.phase == "done", f"Expected done, got {state.phase}"
 
     def test_phases_never_reference_canonical_names(self, custom_bundle: PolicyBundle) -> None:
-        """Verify no canonical phase name is hard-required by the custom pipeline."""
         canonical = {
             "planning",
             "development",
@@ -226,5 +195,4 @@ class TestCustomPipelineHappyPath:
         }
         phase_names = set(custom_bundle.pipeline.phases.keys())
         overlap = phase_names & canonical
-        # The drain names map to canonical drains but phase NAMES should be custom
         assert overlap == set(), f"Custom phases overlap with canonical: {overlap}"

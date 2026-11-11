@@ -1,5 +1,3 @@
-"""Black-box test: pre-flight validation catches configuration errors at startup."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -34,8 +32,6 @@ from tests.recovery._preflight_validation_helper__fakechainconfig import _FakeCh
 
 
 class _FakeAgentRegistry:
-    """Minimal fake registry for test injection."""
-
     def __init__(self, known_agents: set[str]) -> None:
         self._known = known_agents
 
@@ -44,19 +40,16 @@ class _FakeAgentRegistry:
 
 
 def test_validate_agent_chains_satisfiable_passes_with_known_agents() -> None:
-    """Validation passes when all chain agents exist in the registry."""
     bundle = _FakeBundle(
         chains={"main": _FakeChainConfig(agents=["claude"])},
         drains={},
         phases={},
     )
     registry = _FakeAgentRegistry(known_agents={"claude"})
-    # Should not raise
     validate_agent_chains_satisfiable(bundle, registry)
 
 
 def test_validate_agent_chains_satisfiable_fails_with_unknown_agent() -> None:
-    """Validation raises PolicyValidationError when chain references unknown agent."""
     bundle = _FakeBundle(
         chains={"main": _FakeChainConfig(agents=["nonexistent-agent"])},
         drains={},
@@ -69,7 +62,6 @@ def test_validate_agent_chains_satisfiable_fails_with_unknown_agent() -> None:
 
 
 def test_validate_agent_chains_satisfiable_regression_names_available_agy_models() -> None:
-    """DA-002: invalid AGY aliases explain the published model and effort vocabulary."""
     bundle = _FakeBundle(
         chains={"development": _FakeChainConfig(agents=["agy/gemini-3.7-flash-low"])},
         drains={},
@@ -85,7 +77,6 @@ def test_validate_agent_chains_satisfiable_regression_names_available_agy_models
 def test_unknown_model_alias_error_lists_live_published_models_not_a_stale_copy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The model list in the error must track ``agy models``, never a hardcoded copy."""
     from ralph.agents import registry as registry_module
 
     measured_stdout = "\n".join(
@@ -130,18 +121,15 @@ def test_validate_agent_chains_satisfiable_accepts_dynamic_aliases(agent: str) -
 
 
 def test_validate_recovery_config_passes_with_valid_config() -> None:
-    """Validation passes when all chains have max_retries >= 0."""
     bundle = _FakeBundle(
         chains={"main": _FakeChainConfig(agents=["claude"], max_retries=3)},
         drains={},
         phases={},
     )
-    # Should not raise
     validate_recovery_config(bundle)
 
 
 def test_validate_recovery_config_fails_with_negative_retries() -> None:
-    """Validation raises PolicyValidationError when max_retries < 0."""
     bundle = _FakeBundle(
         chains={"main": _FakeChainConfig(agents=["claude"], max_retries=-1)},
         drains={},
@@ -153,7 +141,6 @@ def test_validate_recovery_config_fails_with_negative_retries() -> None:
 
 
 def test_validate_checkpoint_against_policy_passes_when_phase_exists() -> None:
-    """Checkpoint validation passes when phase is in the current policy."""
     state = PipelineState(phase="planning")
     bundle = _FakeBundle(
         chains={},
@@ -161,17 +148,15 @@ def test_validate_checkpoint_against_policy_passes_when_phase_exists() -> None:
         phases={"planning": object()},
     )
 
-    # Should not raise
     validate_checkpoint_against_policy(state, bundle)
 
 
 def test_validate_checkpoint_against_policy_fails_when_phase_missing() -> None:
-    """Checkpoint validation raises when phase is not in the current policy."""
     state = PipelineState(phase="planning")
     bundle = _FakeBundle(
         chains={},
         drains={},
-        phases={"development": object()},  # planning is missing
+        phases={"development": object()},
     )
 
     with pytest.raises(CheckpointPolicyMismatchError):
@@ -179,7 +164,6 @@ def test_validate_checkpoint_against_policy_fails_when_phase_missing() -> None:
 
 
 def test_validate_checkpoint_against_policy_rejects_obsolete_checkpoint_format() -> None:
-    """Block-authored policies reject checkpoints saved without the new format marker."""
     bundle = PolicyBundle(
         agents=AgentsPolicy(
             agent_chains={"main": AgentChainConfig(agents=["claude"])},
@@ -215,7 +199,6 @@ def test_validate_checkpoint_against_policy_rejects_obsolete_checkpoint_format()
 
 
 def test_validation_error_message_is_actionable() -> None:
-    """Validation error messages should tell the user what to fix."""
     bundle = _FakeBundle(
         chains={"main": _FakeChainConfig(agents=["unknown-agent"])},
         drains={},
@@ -227,15 +210,9 @@ def test_validation_error_message_is_actionable() -> None:
         validate_agent_chains_satisfiable(bundle, registry)
 
     error_msg = str(exc_info.value)
-    # Should mention the unknown agent
     assert "unknown-agent" in error_msg
-    # Should mention it references an unknown agent
     assert "unknown agent" in error_msg.lower()
 
-
-# ---------------------------------------------------------------------------
-# Run-command preflight integration tests
-# ---------------------------------------------------------------------------
 
 _EXIT_PREFLIGHT = 2
 
@@ -285,11 +262,6 @@ def _fail_if_runner_reached(*args: object, **kwargs: object) -> int:
 def test_run_pipeline_returns_2_on_unknown_agent_in_chain(
     tmp_path: Path,
 ) -> None:
-    """run_pipeline returns 2 when the main config references an unknown agent.
-
-    This keeps the assertion at the command boundary while using fast fakes so
-    the test cannot fall through into a real pipeline run.
-    """
     workspace = Path(tmp_path)
     (workspace / "PROMPT.md").write_text("Test prompt\n")
     (workspace / ".agent").mkdir()
@@ -315,22 +287,14 @@ def test_run_pipeline_returns_2_on_unknown_agent_in_chain(
 def test_run_pipeline_returns_2_on_checkpoint_phase_mismatch(
     tmp_path: Path,
 ) -> None:
-    """run_pipeline returns 2 when checkpoint phase is not in current policy.
-
-    A checkpoint saved at phase 'planning' but the current policy only defines
-    'development' should fail preflight before pipeline execution.
-    """
     workspace = Path(tmp_path)
 
-    # Create required PROMPT.md
     prompt = workspace / "PROMPT.md"
     prompt.write_text("Test prompt\n")
 
-    # Create .agent directory with policy and checkpoint
     agent_dir = workspace / ".agent"
     agent_dir.mkdir()
 
-    # Policy only defines 'development' phase (not 'planning')
     agents_toml = agent_dir / "agents.toml"
     agents_toml.write_text(
         "[agent_chains.development]\n"
@@ -356,7 +320,6 @@ def test_run_pipeline_returns_2_on_checkpoint_phase_mismatch(
         'transitions.on_loopback = "complete"\n'
     )
 
-    # Create checkpoint with phase 'planning' (not in current policy)
     checkpoint_json = agent_dir / "checkpoint.json"
     checkpoint_json.write_text(
         '{"phase": "planning", "recovery_cycle_count": 2, '
@@ -365,7 +328,6 @@ def test_run_pipeline_returns_2_on_checkpoint_phase_mismatch(
         '"last_retry_delay_ms": 0}'
     )
 
-    # Set environment variable to use our checkpoint
     with pytest.MonkeyPatch().context() as mp:
         mp.setenv("RALPH_CHECKPOINT_PATH", str(checkpoint_json))
 
@@ -376,7 +338,6 @@ def test_run_pipeline_returns_2_on_checkpoint_phase_mismatch(
 def test_run_pipeline_returns_2_on_negative_max_retries(
     tmp_path: Path,
 ) -> None:
-    """run_pipeline returns 2 when recovery policy is invalid."""
     workspace = Path(tmp_path)
     (workspace / "PROMPT.md").write_text("Test prompt\n")
     (workspace / ".agent").mkdir()

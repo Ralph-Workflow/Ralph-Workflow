@@ -1,4 +1,3 @@
-"""Categories of pipeline failures for attribution and routing."""
 
 from __future__ import annotations
 
@@ -6,7 +5,6 @@ from enum import StrEnum
 
 
 class FailureCategory(StrEnum):
-    """Categories of pipeline failures for attribution and routing."""
 
     INTEGRATION = "integration"
     ENVIRONMENTAL = "environmental"

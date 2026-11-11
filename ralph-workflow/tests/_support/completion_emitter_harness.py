@@ -1,5 +1,3 @@
-"""Minimal session and workspace for driving the completion emitter."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -13,8 +11,6 @@ if TYPE_CHECKING:
 
 
 class _CompletionSession:
-    """The surface ``handle_declare_complete`` reads."""
-
     session_id = "sess-completion-roundtrip"
     run_id = "completion-roundtrip-run"
     drain = "development"
@@ -28,7 +24,6 @@ class _CompletionSession:
 def build_completion_context(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> tuple[object, FsWorkspace]:
-    """Return a session and workspace the completion emitter accepts."""
     monkeypatch.chdir(tmp_path)
     return _CompletionSession(), FsWorkspace(tmp_path)
 

@@ -1,7 +1,3 @@
-"""Exit pause — decide whether to hold the terminal open before process exit.
-
-Ported from ralph-workflow/src/exit_pause/io.rs.
-"""
 
 from __future__ import annotations
 
@@ -21,13 +17,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class LaunchContext:
-    """Context about how Ralph was launched.
-
-    Attributes:
-        is_windows: Whether running on Windows.
-        has_terminal_session_marker: Whether a terminal session marker is present.
-        parent_process_name: Name of the parent process if detectable.
-    """
 
     is_windows: bool
     has_terminal_session_marker: bool
@@ -46,14 +35,6 @@ TERMINAL_MARKERS: list[str] = [
 
 
 def _has_terminal_session_marker(env: Mapping[str, str]) -> bool:
-    """Check if any terminal session marker environment variable is set.
-
-    Args:
-        env: Environment mapping to check.
-
-    Returns:
-        True if any terminal marker is present and non-empty.
-    """
     for marker in TERMINAL_MARKERS:
         value = env.get(marker)
         if value is not None and value.strip():
@@ -62,7 +43,6 @@ def _has_terminal_session_marker(env: Mapping[str, str]) -> bool:
 
 
 def _normalize_process_name(name: str) -> str:
-    """Normalize a process name for comparison."""
     normalized = name.strip().lower()
     if "." in normalized:
         ext = normalized.rsplit(".", 1)[-1]
@@ -73,7 +53,6 @@ def _normalize_process_name(name: str) -> str:
 
 
 def _is_probably_standalone_windows_launch(ctx: LaunchContext) -> bool:
-    """Check if this looks like a standalone Windows launch (e.g., from Explorer)."""
     if not ctx.is_windows or ctx.has_terminal_session_marker:
         return False
     if ctx.parent_process_name is None:
@@ -86,33 +65,14 @@ def should_pause_before_exit(
     outcome: ExitOutcome,
     launch_context: LaunchContext,
 ) -> bool:
-    """Determine if we should pause before exiting.
-
-    Args:
-        mode: The pause mode setting.
-        outcome: The exit outcome (success/failure/interrupted).
-        launch_context: Information about how Ralph was launched.
-
-    Returns:
-        True if we should pause, False otherwise.
-    """
     if mode == PauseOnExitMode.NEVER:
         return False
     if mode == PauseOnExitMode.ALWAYS:
         return True
-    # AUTO mode: pause on failure if launched standalone on Windows
     return outcome == ExitOutcome.FAILURE and _is_probably_standalone_windows_launch(launch_context)
 
 
 def detect_launch_context(*, env: Mapping[str, str] | None = None) -> LaunchContext:
-    """Detect the launch context for the current process.
-
-    Args:
-        env: Optional environment mapping. Uses os.environ if None.
-
-    Returns:
-        LaunchContext with information about how Ralph was launched.
-    """
     is_windows = sys.platform == "win32" or os.name == "nt"
     env_map = os.environ if env is None else env
     has_marker = _has_terminal_session_marker(env_map)
@@ -129,7 +89,6 @@ def detect_launch_context(*, env: Mapping[str, str] | None = None) -> LaunchCont
 
 
 def _detect_parent_on_windows() -> str | None:
-    """Detect parent process name using psutil."""
     try:
         parent = psutil.Process(os.getpid()).parent()
         if parent is None:
@@ -140,25 +99,12 @@ def _detect_parent_on_windows() -> str | None:
 
 
 def exit_pause(mode: PauseOnExitMode = PauseOnExitMode.AUTO) -> None:
-    """Pause before exit if conditions require it.
-
-    On Windows standalone launches (e.g., double-clicked .exe), it's helpful
-    to pause so the user can read any error messages before the window closes.
-
-    Args:
-        mode: The pause mode setting (default: AUTO).
-    """
     ctx = detect_launch_context()
     if should_pause_before_exit(mode, ExitOutcome.FAILURE, ctx):
         input("Press Enter to exit...")
 
 
 def exit_with_sigint_code() -> None:
-    """Exit with SIGINT exit code (130).
-
-    Called when the pipeline was interrupted by Ctrl+C and all cleanup
-    has completed.
-    """
     sys.exit(130)
 
 

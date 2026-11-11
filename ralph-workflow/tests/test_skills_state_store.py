@@ -1,5 +1,3 @@
-"""Tests for ralph.skills._state_store."""
-
 from __future__ import annotations
 
 import json
@@ -67,7 +65,6 @@ def test_save_and_load_roundtrip(tmp_path: Path) -> None:
 def test_load_capability_state_with_legacy_json_without_ralph_version(
     tmp_path: Path,
 ) -> None:
-    """Legacy JSON without ralph_version field should load gracefully."""
     path = tmp_path / "legacy.json"
     path.write_text(
         json.dumps(
@@ -102,7 +99,7 @@ def test_load_capability_state_with_legacy_json_without_ralph_version(
     )
     loaded = load_capability_state(path)
     assert loaded.web_search.status == CapabilityStatus.INSTALLED_HEALTHY
-    assert loaded.web_search.ralph_version == ""  # Default for missing field
+    assert loaded.web_search.ralph_version == ""
 
 
 def test_save_creates_parent_directories(tmp_path: Path) -> None:

@@ -1,5 +1,3 @@
-"""Unit tests for CLI."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -22,13 +20,10 @@ _BUNDLED_POLICY_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" /
 
 
 def _make_display_context_for_console(console: Console) -> DisplayContext:
-    """Create a DisplayContext for a given console."""
     return make_display_context(console=console, env={})
 
 
 class TestPrepareInitArgs:
-    """Tests for _prepare_init_args sys.argv fallback."""
-
     def test_none_falls_back_to_sys_argv(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("sys.argv", ["ralph", "-Q", "do a quick change", "--dry-run"])
         result = prepare_init_args(None)

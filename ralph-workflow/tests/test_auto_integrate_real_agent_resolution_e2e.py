@@ -1,11 +1,3 @@
-"""Minimal live-session proof for auto-integration conflict resolution.
-
-The real-Git rebase/fast-forward composition is covered by the injected-resolver
-E2E. This file retains the unique reality check: a deterministic executable is
-launched through the production effect executor, edits a conflicted file through
-Ralph's live MCP endpoint, and declares completion.
-"""
-
 from __future__ import annotations
 
 import json
@@ -67,21 +59,6 @@ print(\"resolution complete\")
 
 
 def _write_target_agent_config(root: Path, script: Path) -> None:
-    """Install the script as the TARGET workspace's ``claude`` agent.
-
-    ``build_agent_rebase_stop_resolver`` resolves every path-bound value
-    -- config, registry, policy -- from the TARGET worktree through
-    ``workspace_context(root)``, not from the injected ``config``/
-    ``registry`` arguments (those only gate the pre-session
-    chain-installed check). An override that lives only in the in-memory
-    config therefore never reaches the invocation: the target loads its
-    own ``.agent/ralph-workflow.toml``, finds the DEFAULT ``claude``
-    definition, and launches the real interactive CLI -- which can
-    neither finish inside the 30 s watchdog nor write the deterministic
-    marker the test asserts. Writing the override into the target's
-    project-local config layer is what makes this test's ``cmd`` the one
-    the production effect executor actually runs.
-    """
     cmd = f"{shlex.quote(sys.executable)} {shlex.quote(str(script))}"
     agent_dir = root / ".agent"
     agent_dir.mkdir(parents=True, exist_ok=True)
@@ -127,7 +104,6 @@ def _config(command: Path) -> UnifiedConfig:
 def test_auto_integrate_regression_live_agent_resolves_conflict_through_mcp(
     tmp_path: Path,
 ) -> None:
-    """Step 7 / AC-01..AC-04: a live MCP session clears conflict markers."""
     shared = tmp_path / "shared.txt"
     shared.write_text(
         "<<<<<<< HEAD\ntarget\n=======\nfeature\n>>>>>>> feature\n",

@@ -1,5 +1,3 @@
-"""Tests for Nanocoder interactive output parsing."""
-
 from __future__ import annotations
 
 from ralph.agents.parsers import NanocoderParser, get_parser, resolve_parser_key
@@ -135,9 +133,6 @@ def test_nanocoder_activity_stream_renders_visible_tui_snapshot() -> None:
         agent_config=config,
     )
 
-    # After wt-028-display the pipeline runner routes through the single
-    # agent-event renderer registry; the output carries the registry's
-    # INFO carrier (icon + INFO label) plus the agent prefix and body.
     assert len(rendered) == 1
     assert "nanocoder" in rendered[0]
     assert "yolo mode on" in rendered[0]

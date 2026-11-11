@@ -1,13 +1,3 @@
-# Deprecated: Ralph-orchestrated workers are removed from the execution model;
-# parallelism is owned by the developer agent's own sub-agents.
-# See docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
-"""Immutable projection of a single worker's execution state.
-
-.. deprecated::
-    Deprecated: Ralph-orchestrated workers are removed from the execution model;
-    parallelism is owned by the developer agent's own sub-agents. See
-    docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
-"""
 
 from __future__ import annotations
 
@@ -20,12 +10,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class WorkerSnapshot:
-    """Immutable projection of a single worker's execution state.
-
-    Deprecated: Ralph-orchestrated workers are removed from the execution model;
-    parallelism is owned by the developer agent's own sub-agents. See
-    docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
-    """
 
     unit_id: str
     description: str

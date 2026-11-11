@@ -1,4 +1,3 @@
-"""Exhausted-analysis bypass result model."""
 
 from __future__ import annotations
 
@@ -13,7 +12,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class ExhaustedAnalysisBypassResult:
-    """Resolved exhausted-analysis bypass outcome for a phase handoff."""
 
     state: PipelineState
     target_phase: PipelinePhase

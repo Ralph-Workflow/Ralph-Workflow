@@ -7,7 +7,7 @@ markdown with `ralph_submit_md_artifact`
 ## Free-form body
 
 The frontmatter `status` is the only field the validator mechanically
-checks; routing reads it. Below the frontmatter, write the decision in
+checks; routing reads it. Below the frontmatter, write the verdict in
 your own words. The body is the next agent's reading matter: a useful
 shape describes what fell short, the evidence that supports the
 judgement, and (for `request_changes`) the leftover work the next
@@ -28,7 +28,7 @@ meanings are:
   integrated verification and replanning triggers, and finish with an explicit
   capacity-aware dispatch manifest. Split independent remaining work and
   dispatch it in parallel rather than handing each unit back as a separate
-  `partial` decision. Total size is acceptable when the bounded critical path
+  `partial` verdict. Total size is acceptable when the bounded critical path
   fits the remaining development budget.
 - `failed` — a criterion is impossible, contradictory, or not
   evaluable, or necessary work has no safe actionable route. `failed`
@@ -36,7 +36,7 @@ meanings are:
   the label itself never fails the pipeline.
 
 Bundled policy routes both `request_changes` and `failed` back to
-development. A `failed` decision adds an explicit mandate to
+development. A `failed` verdict adds an explicit mandate to
 determine whether and how the failure can be resolved, without
 treating the label itself as a pipeline failure. Terminal failure
 remains reserved for real pipeline or recovery exhaustion.
@@ -77,13 +77,13 @@ unit back as a separate `partial`:
 
 The body is the next agent's reading matter; the validator only
 checks the frontmatter `status` enum. The shape above is a useful
-example, not a required form. For a `request_changes` decision the
+example, not a required form. For a `request_changes` verdict the
 useful shape is a planner-style fix plan: name the gap, cite fresh evidence,
 map remaining requirements to changes and proof, explain consequential
 contracts and risks, and split the work into independent units with ownership
 and per-unit checks. End with the initial and queued dispatch waves plus the
 integration and full-verification reserve.
-A `failed` decision follows the same shape but explains why no safe
+A `failed` verdict follows the same shape but explains why no safe
 actionable continuation exists.
 
 See `.agent/artifact-formats/examples/development_analysis_decision.md`

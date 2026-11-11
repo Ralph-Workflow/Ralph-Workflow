@@ -1,5 +1,3 @@
-"""Dirty planning synchronization uses the normal cleanup and commit dispatches."""
-
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -145,4 +143,4 @@ def test_dirty_sync_dispatches_normal_commit_before_planning(
 
 
 class _ObservedCooldownError(Exception):
-    """Stop after proving a declined commit enters bounded retry waiting."""
+    pass

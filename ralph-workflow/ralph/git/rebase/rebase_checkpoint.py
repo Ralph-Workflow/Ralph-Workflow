@@ -1,4 +1,3 @@
-"""Rebase checkpoint persistence and locking utilities."""
 
 from __future__ import annotations
 
@@ -47,7 +46,6 @@ def _current_timestamp() -> str:
 
 
 def _ensure_agent_dir() -> None:
-    # filesystem-write-ok: rebase recovery directory is required before durable checkpoint publication
     AGENT_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -81,7 +79,6 @@ def _load_checkpoint_payload(path: Path) -> dict[str, object]:
 
 
 def _validated_string_list(data: Mapping[str, object], key: str) -> list[str]:
-    """Return a checkpoint string collection after validating every entry."""
     value = data.get(key, [])
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise ValueError(f"Checkpoint {key} must be a list of strings")
@@ -89,7 +86,6 @@ def _validated_string_list(data: Mapping[str, object], key: str) -> list[str]:
 
 
 def _validated_nonnegative_int(data: Mapping[str, object], key: str) -> int:
-    """Return a non-boolean non-negative checkpoint counter."""
     value = data.get(key, 0)
     if not isinstance(value, int) or isinstance(value, bool) or value < 0:
         raise ValueError(f"Checkpoint {key} must be a non-negative integer")
@@ -112,7 +108,6 @@ def _int_value(data: Mapping[str, object], key: str, default: int = 0) -> int:
 
 @dataclass
 class RebaseCheckpoint:
-    """Persisted state for a rebase operation, written to ``.agent/rebase_checkpoint.json``."""
 
     phase: RebasePhase = field(default_factory=lambda: RebasePhase.NotStarted)
     upstream_branch: str = ""
@@ -169,7 +164,6 @@ class RebaseCheckpoint:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, object]) -> RebaseCheckpoint:
-        """Decode a checkpoint without silently normalizing corrupt evidence."""
         phase_value = data.get("phase")
         if not isinstance(phase_value, str):
             raise ValueError("Checkpoint phase must be a string")
@@ -217,11 +211,6 @@ class RebaseCheckpoint:
 def inspect_legacy_rebase_checkpoint(
     workspace_root: Path | None = None,
 ) -> LegacyCheckpointInspection:
-    """Inspect legacy persistence once, preserving every unsafe byte in place.
-
-    This function never clears, repairs, or replaces a checkpoint.  Startup
-    callers use its result as a fail-closed gate before prompt dispatch.
-    """
     agent_dir = (workspace_root / AGENT_DIR) if workspace_root is not None else AGENT_DIR
     primary = agent_dir / CHECKPOINT_FILE
     backup = agent_dir / f"{CHECKPOINT_FILE}{BACKUP_SUFFIX}"
@@ -257,7 +246,6 @@ def inspect_legacy_rebase_checkpoint(
 
 
 def save_rebase_checkpoint(checkpoint: RebaseCheckpoint) -> None:
-    """Atomically persist ``checkpoint`` to the agent rebase checkpoint file."""
     _ensure_agent_dir()
     path = _checkpoint_path()
     checkpoint_existed = path.exists()
@@ -272,14 +260,10 @@ def save_rebase_checkpoint(checkpoint: RebaseCheckpoint) -> None:
     os.close(fd)
     temp_path = Path(temp_name)
     try:
-        # filesystem-write-ok: atomic temp+replace target for checkpoint persist
         temp_path.write_text(json.dumps(checkpoint.to_dict(), indent=2), encoding="utf-8")
-        # filesystem-write-ok: atomic checkpoint publication after staged durable write
         temp_path.replace(path)
     finally:
-        # filesystem-read-ok: failure cleanup only removes staging that this recovery operation created
         if temp_path.exists():
-            # filesystem-write-ok: remove uncommitted checkpoint staging on publication failure
             temp_path.unlink()
 
     if not checkpoint_existed:
@@ -288,7 +272,6 @@ def save_rebase_checkpoint(checkpoint: RebaseCheckpoint) -> None:
 
 def _backup_checkpoint() -> None:
     path = _checkpoint_path()
-    # filesystem-read-ok: backup recovery checks whether the dedicated checkpoint exists
     if not path.exists():
         return
 
@@ -301,21 +284,15 @@ def _backup_checkpoint() -> None:
     os.close(fd)
     temp_path = Path(temp_name)
     try:
-        # filesystem-write-ok: backup staging preserves rebase recovery bytes before atomic publication
         shutil.copy2(path, temp_path)
-        # filesystem-write-ok: atomically publish recovery backup from completed staging copy
         temp_path.replace(backup)
     finally:
-        # filesystem-read-ok: failure cleanup only removes staging that this recovery operation created
         if temp_path.exists():
-            # filesystem-write-ok: remove uncommitted recovery backup staging after failure
             temp_path.unlink()
 
 
 def load_rebase_checkpoint() -> RebaseCheckpoint | None:
-    """Load and validate the rebase checkpoint, falling back to backup on error."""
     path = _checkpoint_path()
-    # filesystem-read-ok: checkpoint recovery checks its single canonical path before loading
     if not path.exists():
         return None
 
@@ -332,19 +309,16 @@ def load_rebase_checkpoint() -> RebaseCheckpoint | None:
 
 
 def clear_rebase_checkpoint() -> None:
-    """Delete the rebase checkpoint file if it exists."""
     path = _checkpoint_path()
     if path.exists():
         path.unlink()
 
 
 def rebase_checkpoint_exists() -> bool:
-    """Return True if a rebase checkpoint file exists on disk."""
     return _checkpoint_path().exists()
 
 
 def validate_checkpoint(checkpoint: RebaseCheckpoint) -> None:
-    """Raise ``ValueError`` if ``checkpoint`` contains invalid or inconsistent data."""
     if checkpoint.phase != RebasePhase.NotStarted and not checkpoint.upstream_branch:
         raise ValueError("Checkpoint must contain upstream branch once the rebase starts")
 
@@ -359,7 +333,6 @@ def validate_checkpoint(checkpoint: RebaseCheckpoint) -> None:
 
 
 def restore_from_backup() -> RebaseCheckpoint | None:
-    """Attempt to restore a valid checkpoint from the backup file."""
     backup = _backup_path()
     if not backup.exists():
         return None
@@ -367,13 +340,11 @@ def restore_from_backup() -> RebaseCheckpoint | None:
     payload = _load_checkpoint_payload(backup)
     checkpoint = RebaseCheckpoint.from_dict(payload)
     validate_checkpoint(checkpoint)
-    # filesystem-write-ok: recovery restores a validated rebase checkpoint from its backup
     shutil.copy2(backup, _checkpoint_path())
     return checkpoint
 
 
 def acquire_rebase_lock() -> None:
-    """Acquire the rebase lock file, raising ``OSError`` if another process holds it."""
     _ensure_agent_dir()
     path = _lock_path()
     if path.exists():
@@ -381,12 +352,10 @@ def acquire_rebase_lock() -> None:
             path.unlink()
         else:
             raise OSError("Rebase lock already held")
-    # filesystem-write-ok: rebase lock content embeds timestamp + pid; bytes differ per acquisition
     path.write_text(_lock_content())
 
 
 def release_rebase_lock() -> None:
-    """Release the rebase lock file if it exists."""
     path = _lock_path()
     if path.exists():
         path.unlink()

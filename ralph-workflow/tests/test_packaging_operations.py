@@ -1,5 +1,3 @@
-"""Black-box regression coverage for packaging gate behavior."""
-
 from __future__ import annotations
 
 import shutil
@@ -43,10 +41,6 @@ def _run_formula_check(bin_dir: Path) -> subprocess.CompletedProcess[str]:
 
 
 def _write_fake_ruby(bin_dir: Path, *, exit_code: int) -> None:
-    # The shebang is resolved from the real bash on PATH: a hardcoded
-    # ``#!/usr/bin/bash`` would bypass the isolated PATH entirely (shebang
-    # paths are absolute, never PATH-resolved) and fail on hosts whose bash
-    # lives elsewhere (e.g. ``/bin/bash`` on macOS).
     bash_path = shutil.which("bash")
     assert bash_path is not None
     ruby = bin_dir / "ruby"

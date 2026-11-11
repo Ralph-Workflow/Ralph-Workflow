@@ -1,4 +1,3 @@
-"""Shared helpers for extracting and matching rich failure details."""
 
 from __future__ import annotations
 
@@ -9,7 +8,6 @@ if TYPE_CHECKING:
 
 
 def failure_detail_parts(exc: BaseException | str) -> list[str]:
-    """Return all textual detail surfaces associated with a failure."""
     if isinstance(exc, str):
         text = exc.strip()
         return [text] if text else []
@@ -36,7 +34,6 @@ def failure_detail_parts(exc: BaseException | str) -> list[str]:
 
 
 def contains_casefolded_marker(parts: Iterable[str], markers: Iterable[str]) -> bool:
-    """Return True when any marker appears in any part, case-insensitively."""
     folded_markers = tuple(marker.casefold() for marker in markers)
     for part in parts:
         folded_part = part.casefold()
@@ -49,7 +46,6 @@ def has_stale_session_details(
     exc: BaseException | str,
     markers: Iterable[str],
 ) -> bool:
-    """Return True when any failure surface carries a stale-session signal."""
     return contains_casefolded_marker(failure_detail_parts(exc), markers)
 
 

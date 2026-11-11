@@ -1,4 +1,3 @@
-"""Pipeline events representing all state transitions."""
 
 from __future__ import annotations
 

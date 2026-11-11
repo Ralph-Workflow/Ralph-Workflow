@@ -1,36 +1,3 @@
-"""MCP tool handler for web search across pluggable backends.
-
-Exposes ``handle_web_search``, which dispatches a search query through the
-configured backend (and optional fallbacks) and returns a ``ToolResult``.
-Backends are loaded lazily; the dispatch order is taken from ``WebSearchConfig``.
-
-Exported surface:
-
-- ``handle_web_search`` — the public MCP tool handler. Requires the
-  ``WebSearch`` capability on the session, parses a string ``query``
-  (and optional bounded ``limit`` clamped to ``[MIN_LIMIT, MAX_LIMIT]``
-  = ``[1, 25]``), and dispatches through the configured backend order
-  (default backend followed by the configured fallbacks).
-- ``build_backend`` / ``_build_backend`` — the public / private factory
-  that returns a ``WebSearchBackend`` instance for a given backend name
-  and config. The factory always uses a resolved ``timeout_seconds``
-  (per-backend override falls back to the global default).
-- ``WEB_SEARCH_CAPABILITY`` / ``MIN_LIMIT`` / ``MAX_LIMIT`` — the
-  capability string and the request-size bounds.
-
-Trust boundary: every handler is gated on the ``WebSearch``
-``McpCapability``. The backend is selected from a closed allowlist
-(``ddgs``, ``searxng``, ``tavily``, ``brave``, ``exa``); an unsupported
-backend name or a missing configuration returns ``WebSearchError``.
-
-Side effects (network contract): every backend implementation uses an
-injected ``timeout_seconds`` on the network call, so a misbehaving
-upstream cannot hang the MCP server thread. The dispatch loop falls
-back through the configured backend order and only returns an
-``is_error`` result after every backend has failed. ``loguru`` warnings
-are emitted on every backend failure so an operator can correlate
-upstream outages with retries.
-"""
 
 from __future__ import annotations
 
@@ -123,11 +90,6 @@ def _format_results(results: list[SearchResult]) -> str:
     return "\n\n".join(blocks)
 
 
-# Phase 4: snippet truncation cap for ``format='summary'``. The raw
-# snippet returned by the backend can be very long; the summary card
-# keeps the top of the snippet plus a ``...`` marker so the agent
-# knows the snippet was elided. The cap is conservative so callers
-# see a measurable byte-savings win.
 SUMMARY_SNIPPET_MAX_CHARS = 240
 
 
@@ -137,25 +99,11 @@ def _format_summary_envelope(
     backend_chain_used: list[str],
     query: str,
 ) -> str:
-    """Build the ``format='summary'`` JSON envelope for ``handle_web_search``.
-
-    The envelope mirrors the Phase-4 byte-savings contract used by
-    ``git_log``/``git_show``/``exec``: one compact card per result
-    plus ``bytes_in``/``bytes_out``/``backend_chain_used`` counters so
-    callers can verify the savings against the legacy shape. The
-    snippet is truncated to ``SUMMARY_SNIPPET_MAX_CHARS`` with a
-    ``...`` suffix so the agent can see the snippet was elided.
-    """
     cards: list[dict[str, object]] = []
     for r in results:
         snippet = r.snippet or ""
         if len(snippet) > SUMMARY_SNIPPET_MAX_CHARS:
             snippet = snippet[:SUMMARY_SNIPPET_MAX_CHARS] + "..."
-        # ponytail: ``snippet_budget_bytes`` records the actual
-        # UTF-8 bytes the agent would receive when this snippet is
-        # sent through JSON; counting characters would undercount
-        # multi-byte code points (emoji, CJK) by 2-4x and break
-        # byte-budget planning.
         cards.append(
             {
                 "title": r.title,
@@ -189,41 +137,6 @@ def handle_web_search(
     *,
     web_search_config: WebSearchConfig | None = None,
 ) -> ToolResult:
-    """Dispatch a web search query through the configured backend and return results.
-
-    Args:
-        session: Agent session; must declare ``WebSearch``.
-        _workspace: Unused; kept for tool-handler signature parity.
-        params: Mapping with required ``query`` (string), optional
-            ``limit`` (int, clamped to ``[MIN_LIMIT, MAX_LIMIT] = [1, 25]``),
-            and optional ``format`` (``'raw'|'summary'``, default ``'raw'``).
-        web_search_config: Optional injected ``WebSearchConfig`` for the
-            dispatch order and per-backend overrides. Defaults to
-            ``WebSearchConfig()``.
-
-    Returns:
-        A ``ToolResult`` whose text content is the formatted backend
-        result list (``Title / URL / Snippet`` blocks joined by blank
-        lines) when ``format='raw'`` (default), or a compact JSON
-        envelope with bounded snippets, ``bytes_in``/``bytes_out``
-        size counters, and the ``backend_chain_used`` list when
-        ``format='summary'``. Falls back through the configured
-        backend order and only returns ``is_error=True`` after every
-        backend has failed.
-
-    Raises:
-        CapabilityDeniedError: When the session does not declare
-            ``WebSearch``. The handler enforces default-deny.
-        InvalidParamsError: When ``params`` is missing ``query`` or
-            carries an unknown ``format`` value.
-
-    Side effects (network contract):
-        Every backend implementation uses an injected ``timeout_seconds``
-        on the network call so a misbehaving upstream cannot hang the
-        MCP server thread. ``loguru`` warnings are emitted on every
-        backend failure so an operator can correlate upstream outages
-        with retries. No workspace writes.
-    """
     config = web_search_config if web_search_config is not None else WebSearchConfig()
     try:
         require_capability(session, WEB_SEARCH_CAPABILITY, "Web search")

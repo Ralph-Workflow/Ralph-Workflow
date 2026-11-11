@@ -1,25 +1,3 @@
-"""Black-box tests for the workspace file-watcher (single recursive root watch).
-
-These tests prove ``WorkspaceMonitor.start()`` schedules exactly ONE
-recursive watchdog watch on the workspace root for any classifier
-configuration. Activity-counting behavior is preserved by the
-``record_event`` classify-drop backstop (independent of watch
-scheduling), so observable behavior is unchanged while the
-fseventsd footprint shrinks from the previous 4+ overlapping
-OS-recursive streams down to one.
-
-No real filesystem or watchdog observer is touched. The three watch
-collaborators ``WorkspaceMonitor`` reaches for -- the cross-process
-watch lock, the observer factory and the shared-awareness sidecar --
-are injected through the monitor's public constructor, so the tests
-drive the collaboration contract instead of patching module internals.
-The ``_FakeObserver`` records every ``schedule()`` call into a list
-and no-ops ``start``/``stop``/``join``. All events flow through the
-public ``monitor.dispatch_event`` seam (never the private handler)
-so the rewritten tests prove the production dispatch wiring without
-coupling to internals.
-"""
-
 from __future__ import annotations
 
 import errno
@@ -48,8 +26,6 @@ if TYPE_CHECKING:
 
 
 class _FakeCrossProcessWatchLock:
-    """In-memory stand-in for ``CrossProcessWatchLock`` that always succeeds."""
-
     def __init__(self) -> None:
         self._owner_id: str | None = None
         self._counter = 0
@@ -74,13 +50,6 @@ class _FakeCrossProcessWatchLock:
 
 
 class _FakeSharedAwarenessSidecar(SharedAwarenessSidecar):
-    """In-memory stand-in for the shared-awareness sidecar.
-
-    Every member the workspace monitor drives is overridden, so the
-    coordination contract stays observable without a sidecar file ever
-    being written.
-    """
-
     def __init__(self, workspace_root: Path) -> None:
         super().__init__(workspace_root)
         self.owner_id: str | None = None
@@ -90,7 +59,6 @@ class _FakeSharedAwarenessSidecar(SharedAwarenessSidecar):
 
     @property
     def epoch(self) -> int:
-        """Return the epoch the fake has published up to."""
         return self._current_epoch
 
     def begin_ownership(self, owner_id: str, *, prior_holder: str | None) -> int:
@@ -127,7 +95,6 @@ class _FakeSharedAwarenessSidecar(SharedAwarenessSidecar):
 
 
 def _fixed_directory_counter(count: int | None) -> DirectoryCounter:
-    """Return a counter that reports ``count`` directories without walking a tree."""
 
     def _counter(workspace: Path, *, cap: int) -> int | None:
         del workspace, cap
@@ -138,7 +105,6 @@ def _fixed_directory_counter(count: int | None) -> DirectoryCounter:
 
 @pytest.fixture(autouse=True)
 def _cleanup_shared_workspace_state() -> Iterator[None]:
-    """Clear shared watch and awareness state between tests."""
     yield
     release_workspace_awareness(Path("/ws"))
     release_shared_awareness(Path("/ws"))
@@ -155,12 +121,6 @@ def _monitor(
     directory_counter: DirectoryCounter | None = None,
     live_watch_total: int | None = 0,
 ) -> WorkspaceMonitor:
-    """Build a monitor whose watch collaborators are in-memory doubles.
-
-    The watch-scoping tests use synthetic workspace roots (``/ws``) that
-    cannot host a real lock sidecar; injecting the collaborators keeps
-    the coordination contract observable without filesystem access.
-    """
     resolved_sidecar = sidecar if sidecar is not None else _FakeSharedAwarenessSidecar(workspace)
     return WorkspaceMonitor(
         workspace,
@@ -179,14 +139,7 @@ def _monitor(
     )
 
 
-# ---------------------------------------------------------------------------
-# Test doubles
-# ---------------------------------------------------------------------------
-
-
 class _FakeEvent:
-    """Stand-in for watchdog events carrying the fields we duck-type on."""
-
     def __init__(
         self,
         src_path: str,
@@ -202,8 +155,6 @@ class _FakeEvent:
 
 
 class _FakeObserver:
-    """Stand-in for ``watchdog.observers.Observer`` recording schedule calls."""
-
     def __init__(self) -> None:
         self.scheduled: list[tuple[object, str, bool]] = []
         self.started: bool = False
@@ -224,16 +175,12 @@ class _FakeObserver:
 
 
 class _ScheduleFailingObserver(_FakeObserver):
-    """Observer whose first schedule attempt fails before monitoring starts."""
-
     def schedule(self, event_handler: object, path: str, recursive: bool = False) -> None:
         super().schedule(event_handler, path, recursive)
         raise OSError("watch registration failed")
 
 
 class _StartFailingObserver(_FakeObserver):
-    """Observer whose startup fails after a recursive watch is registered."""
-
     def __init__(self, message: str = "watch startup failed") -> None:
         super().__init__()
         self._message = message
@@ -243,45 +190,29 @@ class _StartFailingObserver(_FakeObserver):
 
 
 class _CapacityFailingObserver(_FakeObserver):
-    """Observer whose registration reports exhausted watch capacity."""
-
     def schedule(self, event_handler: object, path: str, recursive: bool = False) -> None:
         super().schedule(event_handler, path, recursive)
         raise OSError(errno.ENOSPC, "watch limit reached")
 
 
 class _InotifyInstanceLimitObserver(_FakeObserver):
-    """Observer whose startup exhausts the host inotify-instance limit."""
-
     def start(self) -> None:
         raise OSError(errno.EMFILE, "inotify instance limit reached")
 
 
 class _StopFailingObserver(_FakeObserver):
-    """Observer that raises during lifecycle release after joining."""
-
     def stop(self) -> None:
         self.stopped = True
         raise OSError("watch release failed")
 
 
 class _ScheduleAndStopFailingObserver(_ScheduleFailingObserver):
-    """Observer whose failed startup rollback also fails during stop."""
-
     def stop(self) -> None:
         self.stopped = True
         raise OSError("startup rollback release failed")
 
 
-# ---------------------------------------------------------------------------
-# AC-01: exactly one recursive root watch, every classifier config
-# ---------------------------------------------------------------------------
-
-
 def test_start_schedules_single_recursive_root_watch() -> None:
-    """With the default classifier, ``start()`` schedules exactly
-    one watchdog watch on the workspace root with ``recursive=True``.
-    The fseventsd footprint is the minimal single recursive stream."""
     fake = _FakeObserver()
 
     monitor = _monitor(
@@ -299,11 +230,6 @@ def test_start_schedules_single_recursive_root_watch() -> None:
 
 
 def test_start_single_recursive_root_watch_when_classifier_none() -> None:
-    """With ``classifier=None`` (default), ``start()`` also schedules
-    exactly one recursive watch on the workspace root. The default
-    source-only classifier drops Ralph-managed internal paths so internal
-    activity never recursively triggers workspace awareness (S-2).
-    Parity across configs."""
     fake = _FakeObserver()
 
     monitor = _monitor(
@@ -318,7 +244,6 @@ def test_start_single_recursive_root_watch_when_classifier_none() -> None:
     assert path == "/ws"
     assert recursive is True
     assert fake.started is True
-    # The default classifier drops internal paths, counts source paths.
     monitor.dispatch_event(_FakeEvent("/ws/.agent/tmp/foo.py"))
     assert monitor.event_count == 0
     monitor.dispatch_event(_FakeEvent("/ws/src/app.py"))
@@ -326,7 +251,6 @@ def test_start_single_recursive_root_watch_when_classifier_none() -> None:
 
 
 def test_start_failure_enters_live_fallback_and_allows_a_later_watch_registration_retry() -> None:
-    """S-2 regression: non-capacity observer failures degrade safely and remain retryable."""
     failing = _ScheduleFailingObserver()
     succeeding = _FakeObserver()
     observers = iter((failing, succeeding))
@@ -351,7 +275,6 @@ def test_start_failure_enters_live_fallback_and_allows_a_later_watch_registratio
 
 
 def test_start_failure_after_registration_enters_live_fallback_and_remains_retryable() -> None:
-    """S-2 regression: a post-registration startup failure degrades safely and remains retryable."""
     failing = _StartFailingObserver("watch registration failed")
     succeeding = _FakeObserver()
     observers = iter((failing, succeeding))
@@ -378,7 +301,6 @@ def test_start_failure_after_registration_enters_live_fallback_and_remains_retry
 def test_workspace_monitor_regression_start_failure_after_registration_releases_watch_for_retry() -> (
     None
 ):
-    """S-5 regression: partial startup does not strand a registered watch."""
     failing = _StartFailingObserver()
     succeeding = _FakeObserver()
     observers = iter((failing, succeeding))
@@ -403,7 +325,6 @@ def test_workspace_monitor_regression_start_failure_after_registration_releases_
 
 
 def test_start_rollback_stop_failure_releases_monitor_for_a_later_retry() -> None:
-    """S-5 regression: failed startup cleanup cannot strand watch ownership."""
     failing = _ScheduleAndStopFailingObserver()
     succeeding = _FakeObserver()
     observers = iter((failing, succeeding))
@@ -426,7 +347,6 @@ def test_start_rollback_stop_failure_releases_monitor_for_a_later_retry() -> Non
 
 
 def test_capacity_exhaustion_enters_observable_live_fallback() -> None:
-    """S-3: capacity failures are visible and retain bounded live fallback semantics."""
     fake = _CapacityFailingObserver()
 
     monitor = _monitor(
@@ -449,7 +369,6 @@ def test_capacity_exhaustion_enters_observable_live_fallback() -> None:
 
 
 def test_inotify_instance_limit_during_start_enters_live_fallback() -> None:
-    """An exhausted inotify-instance limit must not abort agent execution."""
     fake = _InotifyInstanceLimitObserver()
 
     monitor = _monitor(
@@ -466,7 +385,6 @@ def test_inotify_instance_limit_during_start_enters_live_fallback() -> None:
 
 
 def test_capacity_exhaustion_updates_shared_awareness_status() -> None:
-    """S-3 regression: public status never calls a failed observer current."""
     fake = _CapacityFailingObserver()
 
     monitor = _monitor(
@@ -487,7 +405,6 @@ def test_capacity_exhaustion_updates_shared_awareness_status() -> None:
 
 
 def test_predicted_watch_capacity_skips_observer_and_updates_shared_awareness() -> None:
-    """A predicted capacity breach falls back before constructing an observer."""
     workspace = Path("/synthetic-ws-predicted-capacity")
 
     monitor = _monitor(
@@ -512,7 +429,6 @@ def test_predicted_watch_capacity_skips_observer_and_updates_shared_awareness() 
 
 
 def test_predicted_watch_capacity_allows_an_under_budget_recursive_watch() -> None:
-    """An injected under-budget prediction keeps the existing recursive watch behavior."""
     workspace = Path("/synthetic-ws-predicted-under-budget")
     fake = _FakeObserver()
 
@@ -542,7 +458,6 @@ def test_predicted_watch_capacity_rejects_boundary_and_unbounded_counts(
     directory_count: int | None,
     live_watch_total: int,
 ) -> None:
-    """The combined per-user prediction rejects equality and unknown over-cap counts."""
     workspace = Path(f"/synthetic-ws-predicted-{directory_count}-{live_watch_total}")
 
     monitor = _monitor(
@@ -564,7 +479,6 @@ def test_predicted_watch_capacity_rejects_boundary_and_unbounded_counts(
 
 
 def test_predicted_watch_capacity_allows_retry_after_larger_budget() -> None:
-    """A later lease can schedule after a prior predicted capacity fallback."""
     workspace = Path("/synthetic-ws-predicted-retry")
     fake = _FakeObserver()
 
@@ -594,7 +508,6 @@ def test_predicted_watch_capacity_allows_retry_after_larger_budget() -> None:
 
 
 def test_start_replay_preserves_one_live_workspace_watch() -> None:
-    """S-6 regression: re-starting an active monitor does not add a duplicate watch."""
     fake = _FakeObserver()
 
     monitor = _monitor(
@@ -611,7 +524,6 @@ def test_start_replay_preserves_one_live_workspace_watch() -> None:
 
 
 def test_stop_failure_releases_monitor_for_a_later_watch_registration() -> None:
-    """S-5 regression: failed release still joins and clears stale watch ownership."""
     failing = _StopFailingObserver()
     succeeding = _FakeObserver()
     observers = iter((failing, succeeding))
@@ -631,10 +543,6 @@ def test_stop_failure_releases_monitor_for_a_later_watch_registration() -> None:
     assert len(succeeding.scheduled) == 1
     assert succeeding.started is True
 
-
-# ---------------------------------------------------------------------------
-# W8: engine-internal classifier boundary
-# ---------------------------------------------------------------------------
 
 ENGINE_INTERNAL_PATHS: tuple[str, ...] = (
     ".agent/tmp/foo.py",
@@ -661,7 +569,6 @@ ENGINE_INTERNAL_PATHS: tuple[str, ...] = (
 
 
 def test_engine_internal_paths_classify_as_drop() -> None:
-    """S-2: each enumerated engine-internal path is excluded from activity."""
     classifier = WorkspaceChangeClassifier()
 
     for path in ENGINE_INTERNAL_PATHS:
@@ -674,11 +581,6 @@ def test_engine_internal_paths_classify_as_drop() -> None:
 
 
 def test_user_source_paths_classify_as_source() -> None:
-    """S-2: receipts are run state, not relocatable engine bookkeeping.
-
-    Rule 6 classifies source extensions outside explicit cache/artifact/log
-    boundaries as source, so W8 cannot claim universal drop classification.
-    """
     classifier = WorkspaceChangeClassifier()
 
     for path in (
@@ -691,18 +593,7 @@ def test_user_source_paths_classify_as_source() -> None:
         assert classifier.classify(path) == (WorkspaceChangeKind.SOURCE, 1.0)
 
 
-# ---------------------------------------------------------------------------
-# AC-02: record_event classify-drop parity
-# ---------------------------------------------------------------------------
-
-
 def test_record_event_counts_unchanged_equivalence(tmp_path: Path) -> None:
-    """``record_event`` produces identical observable behavior:
-    ``src/app.py`` and ``README.md`` count; ``.git/index``,
-    ``.venv/lib/x.py``, ``.agent/PLAN.md`` (engine-owned bookkeeping),
-    ``.agent/raw/out.log``, ``.agent/artifacts/plan.json``, and
-    ``foo.log`` do NOT. ``last_event_at`` advances for the two counted
-    events only."""
     monitor = WorkspaceMonitor(
         tmp_path,
         classifier=WorkspaceChangeClassifier(),
@@ -730,17 +621,7 @@ def test_record_event_counts_unchanged_equivalence(tmp_path: Path) -> None:
     assert monitor.last_event_at is not None
 
 
-# ---------------------------------------------------------------------------
-# AC-03: production handler wired through the public seam, no dynamic
-# per-directory watch scheduling
-# ---------------------------------------------------------------------------
-
-
 def test_dispatched_file_event_counts_via_public_seam() -> None:
-    """A file event delivered through the public
-    ``monitor.dispatch_event`` seam is counted and adds no new
-    ``observer.schedule`` call. Exercises the production handler ->
-    ``record_event`` wiring through the public seam (PA-001)."""
     fake = _FakeObserver()
 
     monitor = _monitor(
@@ -759,7 +640,6 @@ def test_dispatched_file_event_counts_via_public_seam() -> None:
 
 
 def test_dispatched_outside_workspace_event_is_ignored_at_monitor_ingress() -> None:
-    """S-6 regression: events outside the subscribed root do not refresh activity."""
     fake = _FakeObserver()
 
     monitor = _monitor(
@@ -777,12 +657,6 @@ def test_dispatched_outside_workspace_event_is_ignored_at_monitor_ingress() -> N
 
 
 def test_dispatched_moved_in_workspace_file_counts_destination_at_monitor_ingress() -> None:
-    """S-5 regression: a file moved into the root refreshes workspace activity.
-
-    The observer reports the source outside the root and the destination inside
-    it. The monitor must classify the destination through its public dispatch
-    seam without adding another recursive watch.
-    """
     fake = _FakeObserver()
 
     monitor = _monitor(
@@ -801,10 +675,6 @@ def test_dispatched_moved_in_workspace_file_counts_destination_at_monitor_ingres
 
 
 def test_dispatched_directory_event_schedules_no_additional_watch() -> None:
-    """A created/moved-in directory event delivered through the public
-    ``monitor.dispatch_event`` seam produces ZERO additional
-    ``observer.schedule`` calls. The recursive root watch already
-    covers new subdirectories; no dynamic scheduling remains (AC-03)."""
     fake = _FakeObserver()
 
     monitor = _monitor(
@@ -825,17 +695,9 @@ def test_dispatched_directory_event_schedules_no_additional_watch() -> None:
     assert len(fake.scheduled) == initial_count
 
 
-# ---------------------------------------------------------------------------
-# The monitor must never observe its own shared-awareness sidecar
-# ---------------------------------------------------------------------------
-
-
 def test_record_event_ignores_the_monitors_own_sidecar_even_when_cache_counts(
     tmp_path: Path,
 ) -> None:
-    """The sidecar is published by ``record_event`` itself; observing that
-    publication as a change would feed the monitor its own output forever.
-    The guard must hold even for an operator who opted ``cache`` in."""
     seen: list[tuple[WorkspaceChangeKind, float]] = []
     monitor = WorkspaceMonitor(
         tmp_path,
@@ -854,7 +716,6 @@ def test_record_event_ignores_the_monitors_own_sidecar_even_when_cache_counts(
 
 
 def test_record_event_drops_the_runners_root_checkpoint_but_not_a_user_file(tmp_path: Path) -> None:
-    """The monitor passes its root so ``checkpoint.json`` at the root is engine-owned."""
     monitor = WorkspaceMonitor(
         tmp_path,
         classifier=WorkspaceChangeClassifier(),

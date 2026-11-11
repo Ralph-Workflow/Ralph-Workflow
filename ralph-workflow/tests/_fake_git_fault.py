@@ -1,33 +1,3 @@
-"""Integration adversity catalogue: named fault kinds and their classifications.
-
-Every member of :class:`FaultKind` names ONE failure mode of the
-integration adversity catalogue (the rows A-F of the product request) and
-every member is REGISTERED in the catalogue registry. A registration says:
-
-* the catalogue ROW the member belongs to;
-* the PHASE of the simulated environment that consumes it;
-* the EFFECT that phase has (refuse the mutation, fail it, recover from
-  it, defer it, crash before or after it, or do nothing);
-* the typed OUTCOME the member produces -- one of ``succeeded``,
-  ``definitely_failed``, ``timed_out``, ``killed`` or ``unknown``;
-* the user-facing REASON the simulated environment states;
-* whether a resolver AGENT may be dispatched for it (only a real content
-  conflict may dispatch one);
-* whether the LOCAL landing still succeeds despite the fault;
-* whether the INTEGRATION flow can reach the member at all.
-
-The registry is the single source of truth for the catalogue: the simulated
-environment states the registered reason, and the catalogue tests assert the
-registered reason. A member that is not registered cannot be classified into
-a typed outcome, so the completeness guard in
-``tests/test_integration_fault_catalogue.py`` fails on it -- adding a fault
-kind without classifying it can never pass silently.
-
-The catalogue SUB-ROWS that had no named fault kind until now are
-mapped to their member in ``tests._fake_git_env.SIMULATED_CATALOGUE_ROWS``,
-so the coverage of the catalogue is reviewable in one place.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -50,18 +20,12 @@ __all__ = [
     "registered_outcome",
 ]
 
-#: The catalogue rows of the product request. Every row carries at least one
-#: named fault kind in the registry.
 CATALOGUE_ROWS: tuple[str, ...] = ("A", "B", "C", "D", "E", "F")
 
-#: The typed outcome of one external call. Mirrors the product's typed
-#: outcome set: a caller matches on the kind, never on message text.
 FaultOutcome = Literal["succeeded", "definitely_failed", "timed_out", "killed", "unknown"]
 
-#: The phase of the simulated environment that consumes a fault kind.
 FaultPhase = Literal["rebase", "landing", "remote", "observation", "shutdown", "any"]
 
-#: What the consuming phase does with the fault.
 FaultEffect = Literal[
     "refuse",
     "fail",
@@ -75,13 +39,6 @@ FaultEffect = Literal[
 
 
 class FaultKind(Enum):
-    """Named failure modes from the integration adversity catalogue.
-
-    Each member names one catalogue row (A-F) and is registered in
-    :func:`catalogue`. The groups below follow the catalogue rows.
-    """
-
-    # -- Row A: a Git command misbehaves --------------------------------
     GIT_TIMEOUT = auto()
     GIT_TIMEOUT_PARTIAL_OUTPUT = auto()
     GIT_IGNORES_SIGTERM = auto()
@@ -99,7 +56,6 @@ class FaultKind(Enum):
     INTERACTIVE_PROMPT = auto()
     REAL_CONFLICT = auto()
 
-    # -- Row B: machine and filesystem ----------------------------------
     DISK_FULL = auto()
     INODE_EXHAUSTION = auto()
     QUOTA_EXCEEDED = auto()
@@ -119,7 +75,6 @@ class FaultKind(Enum):
     SUBMODULES_PRESENT = auto()
     CASE_INSENSITIVE_FILESYSTEM = auto()
 
-    # -- Row C: remote and network --------------------------------------
     REMOTE_OUTAGE = auto()
     REMOTE_DNS_FAILURE = auto()
     REMOTE_TLS_FAILURE = auto()
@@ -142,7 +97,6 @@ class FaultKind(Enum):
     REMOTE_PARTIAL_PACK = auto()
     REMOTE_LFS_FAILURE = auto()
 
-    # -- Row D: repository topology -------------------------------------
     TARGET_CHECKED_OUT_ELSEWHERE = auto()
     OTHER_WORKTREE_DIRTY = auto()
     OTHER_WORKTREE_MID_OPERATION = auto()
@@ -159,7 +113,6 @@ class FaultKind(Enum):
     RECORD_OTHER_FILESYSTEM = auto()
     FOREIGN_OPERATION = auto()
 
-    # -- Row E: agents and background work ------------------------------
     AGENT_ACTIVE = auto()
     AGENT_LEFT_LOCK = auto()
     AGENT_NO_CHANGE = auto()
@@ -168,27 +121,15 @@ class FaultKind(Enum):
     BACKGROUND_TICKER_OVERLAP = auto()
     TICKER_FOREVER_FAILING = auto()
 
-    # -- Row F: observability and shutdown ------------------------------
     STALL_WATCHDOG = auto()
     SHUTDOWN_STALL = auto()
     REPORT_VALIDATION_FAILURE = auto()
 
-    # -- Control: the no-fault baseline ---------------------------------
     NONE = auto()
 
 
 @dataclass(frozen=True)
 class _FaultClassification:
-    """How one fault kind behaves inside the simulated environment.
-
-    The three flags default to the SAFE value, so a registration states
-    only what differs from it: no fault dispatches an agent unless it
-    says so, a fault keeps the local landing unless it says otherwise,
-    and every fault is reachable by the integration unless it says
-    otherwise. The defaults are the policy of the catalogue, so a new
-    member cannot be registered by accident with the wrong flags.
-    """
-
     kind: FaultKind
     row: str
     phase: FaultPhase
@@ -202,8 +143,6 @@ class _FaultClassification:
 
 @dataclass(frozen=True)
 class _FaultOutcome:
-    """The typed outcome the simulated environment produced for one fault."""
-
     kind: FaultKind
     outcome: FaultOutcome
     reason: str
@@ -645,7 +584,6 @@ _ENTRIES: tuple[_FaultClassification, ...] = (
         reason="the run-time report failed validation; a degraded partial report was emitted",
         reachable_by_integration=False,
     ),
-    # -- Row A: the sub-rows that had no named fault kind yet -------------
     _FaultClassification(
         kind=FaultKind.CORRUPT_LOOSE_OBJECT,
         row="A",
@@ -672,7 +610,6 @@ _ENTRIES: tuple[_FaultClassification, ...] = (
         reason="git rebase timed out after 120.0s: the fsmonitor daemon is hung",
         local_landing_succeeds=False,
     ),
-    # -- Row B: the sub-rows that had no named fault kind yet -------------
     _FaultClassification(
         kind=FaultKind.QUOTA_EXCEEDED,
         row="B",
@@ -743,7 +680,6 @@ _ENTRIES: tuple[_FaultClassification, ...] = (
         reason="git rebase failed: the case-insensitive filesystem cannot represent both paths",
         local_landing_succeeds=False,
     ),
-    # -- Row C: the sub-rows that had no named fault kind yet -------------
     _FaultClassification(
         kind=FaultKind.REMOTE_CONNECTION_RESET,
         row="C",
@@ -832,7 +768,6 @@ _ENTRIES: tuple[_FaultClassification, ...] = (
         outcome="definitely_failed",
         reason="the remote is reachable for push but refuses fetches",
     ),
-    # -- Row D: the sub-rows that had no named fault kind yet -------------
     _FaultClassification(
         kind=FaultKind.OTHER_WORKTREE_DIRTY,
         row="D",
@@ -904,7 +839,6 @@ _ENTRIES: tuple[_FaultClassification, ...] = (
         outcome="unknown",
         reason="the durable integration record lives on another filesystem; Git is ground truth",
     ),
-    # -- Row E: the sub-rows that had no named fault kind yet -------------
     _FaultClassification(
         kind=FaultKind.AGENT_OUTSIDE_CONFLICT_PATHS,
         row="E",
@@ -922,19 +856,6 @@ _CATALOGUE: MappingProxyType[FaultKind, _FaultClassification] = MappingProxyType
 
 
 def classification_for(kind: FaultKind) -> _FaultClassification:
-    """Return the registered classification of ``kind``.
-
-    Args:
-        kind: The fault kind to classify.
-
-    Returns:
-        The registered classification.
-
-    Raises:
-        LookupError: When ``kind`` is not registered. An unregistered
-            fault kind cannot be classified into a typed outcome, and the
-            catalogue guard fails on it.
-    """
     try:
         return _CATALOGUE[kind]
     except KeyError as exc:
@@ -944,20 +865,10 @@ def classification_for(kind: FaultKind) -> _FaultClassification:
 
 
 def catalogue() -> Mapping[FaultKind, _FaultClassification]:
-    """Return the whole registry (read-only)."""
     return _CATALOGUE
 
 
 def registered_outcome(kind: FaultKind) -> _FaultOutcome:
-    """Return the typed outcome registered for ``kind``.
-
-    The outcome is built from the registration, so the simulated
-    environment and the catalogue tests can never disagree about what a
-    fault kind means.
-
-    Raises:
-        LookupError: When ``kind`` is not registered.
-    """
     classification = classification_for(kind)
     return _FaultOutcome(
         kind=kind,
@@ -969,5 +880,4 @@ def registered_outcome(kind: FaultKind) -> _FaultOutcome:
 
 
 def catalogue_rows() -> tuple[str, ...]:
-    """Return the catalogue rows that carry at least one named fault kind."""
     return tuple(row for row in CATALOGUE_ROWS if any(entry.row == row for entry in _ENTRIES))

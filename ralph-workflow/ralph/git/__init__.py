@@ -1,9 +1,3 @@
-"""Public Git helpers for Ralph.
-
-This package exposes the repository operations used by the Python orchestrator,
-including staging/commit helpers, managed hook installation, and rebase support.
-Implementation uses GitPython rather than the retired Rust/libgit2 stack.
-"""
 
 from ralph.git import lock_recovery
 from ralph.git.commit_result import CommitCreationResult, CommitCreationStatus

@@ -1,4 +1,3 @@
-"""Transcript parsing helpers for PTY-based agent sessions."""
 
 from __future__ import annotations
 
@@ -51,27 +50,6 @@ def find_claude_transcript_entry(
 
 
 def existing_transcript_names(project_path: Path) -> frozenset[str]:
-    """Snapshot the ``*.jsonl`` file names already present for ``project_path``.
-
-    wt-04-claude-parsing: ``find_latest_claude_transcript_entry``'s
-    ``min_mtime`` floor only proves a candidate file was *touched*
-    since the floor, not that it was *created* since the floor. Every
-    Claude session in the same workspace (the orchestrating session
-    itself included -- it lives in the exact same ``~/.claude/projects/<key>``
-    directory as any child session it spawns) shares that directory,
-    so an already-active, unrelated session that keeps appending after
-    the floor satisfies the ``mtime >= threshold`` filter just as well
-    as the freshly-spawned session actually being tailed, and "latest
-    mtime wins" can lock onto the wrong file for the entire run (the
-    reader never re-resolves once ``transcript_path`` is non-``None``
-    and no visible-TUI session id has been observed yet). Callers take
-    this snapshot BEFORE the child process starts and pass it back in
-    as ``find_latest_claude_transcript_entry(..., exclude_names=...)``
-    so a pre-existing, still-active sibling session cannot masquerade
-    as the new one. Returns an empty set (not an error) when the
-    project directory does not exist yet -- the child's first write
-    will create it, and every subsequent name is legitimately new.
-    """
     project_root = _project_transcript_root(project_path)
     if not project_root.exists():
         return frozenset()
@@ -107,28 +85,6 @@ def find_claude_transcript_path(session_id: str) -> Path | None:
 
 
 def find_claude_subagent_transcripts(session_id: str) -> list[tuple[Path, Path | None]]:
-    """Return the live ``agent-<id>.jsonl`` files for ``session_id``, with their sibling ``.meta.json`` when present.
-
-    RC1 (wt-04-claude-parsing): Claude Code writes subagent turns to a
-    sibling directory (``subagents/``) rather than inline. The discovery
-    helper resolves the parent ``<session-id>.jsonl`` location, then
-    lists the ``subagents/agent-*.jsonl`` files under it. Each entry is
-    a ``(transcript_path, meta_path_or_None)`` tuple; ``meta_path`` is
-    ``None`` when the sibling ``agent-<id>.meta.json`` is missing (the
-    tailer continues with best-effort correlation; see RC1 acceptance
-    test 3 in ``tests/agents/invoke/test_subagent_transcript_tail.py``).
-
-    Files are returned in mtime-ascending order (oldest first) so the
-    tailer processes them in deterministic order across runs. Files
-    whose mtime cannot be read are sorted to the end of the list so
-    they still get tailed (the tailer does not require a parseable
-    mtime; it reads the file regardless).
-
-    The function does not raise on a missing parent directory or
-    ``subagents/`` directory; an empty list is returned in those
-    cases. The caller (the R7 absent-layout probe) treats an empty
-    list as "layout absent" and emits the diagnostic.
-    """
     parent_path = find_claude_transcript_path(session_id)
     if parent_path is None:
         return []
@@ -147,12 +103,6 @@ def find_claude_subagent_transcripts(session_id: str) -> list[tuple[Path, Path |
 
 
 def _safe_mtime(path: Path) -> float:
-    """Return ``path``'s mtime or ``0.0`` when the stat call fails.
-
-    A failed stat on a transient file (e.g. an in-flight write) does
-    not stop the discovery; the file still gets tailed, just with an
-    arbitrary sort position.
-    """
     try:
         return float(path.stat().st_mtime)
     except OSError:
@@ -160,12 +110,6 @@ def _safe_mtime(path: Path) -> float:
 
 
 def _sort_subagent_key(path: Path) -> tuple[float, str]:
-    """Sort key for subagent transcripts: oldest-mtime first, name tie-breaker.
-
-    Extracted to a named function so the lambda parameter type is
-    explicit (mypy ``disallow_any_expr`` rejects the implicit ``Any``
-    that ``sorted``'s ``key=`` callable would otherwise infer).
-    """
     return (_safe_mtime(path), path.name)
 
 
@@ -173,23 +117,6 @@ def transcript_lines_from_events(
     raw_line: str,
     events: list[InteractiveTranscriptEvent],
 ) -> list[str]:
-    """Convert ALREADY-PARSED transcript events for one raw line into activity lines.
-
-    Pure function: takes the ``events`` a caller already produced via
-    ``ClaudeInteractiveTranscriptParser.feed(raw_line)`` instead of
-    calling ``feed`` itself. ``ClaudeInteractiveTranscriptParser`` is
-    stateful (``self.session_id``, the ``_last_emitted_signature`` dedup
-    cache) -- calling ``feed`` a SECOND time on the same raw line with
-    the same parser instance is not idempotent: the parser has already
-    advanced past that line's session id / dedup signature, so the
-    second call silently returns fewer (often zero) events, and every
-    line's activity is lost to the operator-facing output stream. This
-    is the pure half of ``transcript_lines_from_event`` (see below) so a
-    caller that ALREADY has the events (wt-04-claude-parsing:
-    ``_pty_line_reader._transcript_thread`` feeds every parent record to
-    the subagent tailer via one ``feed`` call) can reuse them instead of
-    feeding the same line again.
-    """
     if any(event.kind != "session" for event in events):
         return [raw_line if raw_line.endswith("\n") else f"{raw_line}\n"]
     for event in events:
@@ -203,20 +130,6 @@ def transcript_lines_from_event(
     raw_line: str,
     parser: ClaudeInteractiveTranscriptParser | None = None,
 ) -> list[str]:
-    """Convert one Claude transcript event into lossless activity lines.
-
-    Route transcript events through the same interactive parser used elsewhere to
-    decide whether the envelope carries activity. Structured activity keeps its
-    original JSON envelope so tool IDs, names, inputs, and result correlation
-    survive the PTY bridge. A session-only event retains the compact legacy line.
-
-    Convenience wrapper around ``transcript_lines_from_events`` for a caller
-    that has NOT already fed ``raw_line`` through ``parser`` (feeds it here,
-    exactly once). A caller that already has the events from its own
-    ``feed`` call MUST use ``transcript_lines_from_events`` directly instead
-    of calling this function -- see that function's docstring for why a
-    second ``feed`` call on the same line is not idempotent.
-    """
     event_parser = parser or ClaudeInteractiveTranscriptParser()
     events = event_parser.feed(raw_line)
     return transcript_lines_from_events(raw_line, events)

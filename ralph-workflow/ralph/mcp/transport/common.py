@@ -1,4 +1,3 @@
-"""Shared MCP transport helpers: mcp.toml loading, upstream merging, env serialization."""
 
 from __future__ import annotations
 
@@ -25,7 +24,6 @@ if TYPE_CHECKING:
 
 
 def mcp_toml_as_upstreams(workspace_path: Path | None) -> tuple[UpstreamMcpServer, ...]:
-    """Load .agent/mcp.toml and return the configured upstream MCP servers."""
     config_path = (workspace_path / ".agent" / "mcp.toml") if workspace_path is not None else None
     mcp_config = load_mcp_config(config_path=config_path)
     return mcp_config_as_upstreams(mcp_config)
@@ -67,7 +65,6 @@ def _load_mcpservers_from_paths(
 
 
 def mcp_config_as_upstreams(mcp_config: McpConfig) -> tuple[UpstreamMcpServer, ...]:
-    """Convert loaded MCP config into Ralph custom upstream server records."""
     return tuple(
         UpstreamMcpServer(
             name=spec.name,
@@ -86,7 +83,6 @@ def merge_mcp_toml_into_upstreams(
     agent_native: tuple[UpstreamMcpServer, ...],
     mcp_toml_servers: tuple[UpstreamMcpServer, ...],
 ) -> tuple[UpstreamMcpServer, ...]:
-    """Merge mcp.toml servers into agent-native upstreams, preferring mcp.toml on conflict."""
     merged: dict[str, UpstreamMcpServer] = {s.name: s for s in agent_native}
     for server in mcp_toml_servers:
         if server.name in merged:
@@ -101,7 +97,6 @@ def merge_mcp_toml_into_upstreams(
 def set_upstream_mcp_config(
     runtime_env: dict[str, str], upstreams: tuple[UpstreamMcpServer, ...]
 ) -> None:
-    """Inject upstream MCP config into the runtime environment dict."""
     if upstreams:
         runtime_env[UPSTREAM_MCP_CONFIG_ENV] = serialize_upstream_mcp_servers(upstreams)
         return
@@ -111,7 +106,6 @@ def set_upstream_mcp_config(
 def _load_opencode_mcp_servers_from_current_config(
     current_config: dict[str, object],
 ) -> dict[str, object]:
-    """Extract opencode mcp servers from a current_config dict."""
     mcp_entry = current_config.get("mcp")
     if not isinstance(mcp_entry, dict):
         return {}
@@ -119,12 +113,6 @@ def _load_opencode_mcp_servers_from_current_config(
 
 
 def _upstream_as_dict(s: UpstreamMcpServer, *, server_url_key: bool = False) -> dict[str, object]:
-    """Convert an UpstreamMcpServer to a plain dict.
-
-    Args:
-        s: UpstreamMcpServer to convert.
-        server_url_key: If True, use 'serverUrl' instead of 'url' (for AGY compatibility).
-    """
     result: dict[str, object] = {
         "name": s.name,
         "transport": s.transport if s.transport else "http",
@@ -186,27 +174,6 @@ def merge_existing_upstreams(
     unsafe_mode: bool,
     workspace_path: object = None,
 ) -> dict[str, object]:
-    """Merge existing upstream servers into current_config based on agent and unsafe_mode.
-
-    This helper consolidates the unsafe_mode merge logic across the JSON-based
-    transport files (claude, agy, nanocoder, opencode, cursor, kimi)
-    into one dispatcher.
-
-    When unsafe_mode=False: returns only the ralph entry (existing upstreams dropped).
-    When unsafe_mode=True: merges existing agent-native servers with the ralph entry.
-
-    Args:
-        agent_name: One of "claude", "agy", "nanocoder", "opencode", "cursor",
-            "kimi".
-        current_config: Agent-native config dict.
-            - claude/agy/nanocoder: {"mcpServers": {"<name>": {...}}}
-            - opencode: {"mcp": {"<name>": {"type", "url", "enabled", "timeout", ...}}}
-        unsafe_mode: Whether to preserve existing upstream servers.
-        workspace_path: Optional workspace path for workspace-level config files.
-
-    Returns:
-        Merged config dict with ralph entry and optionally existing upstreams.
-    """
     if agent_name == "opencode":
         return _merge_opencode(current_config, unsafe_mode)
     return _merge_default(agent_name, current_config, unsafe_mode, workspace_path)
@@ -217,33 +184,6 @@ def _load_upstreams_for_agent(
     current_config: dict[str, object],
     workspace_path: object = None,
 ) -> tuple[UpstreamMcpServer, ...]:
-    """Load existing UpstreamMcpServer tuple for agent_name (unsafe_mode=True path).
-
-    Uses importlib to defer imports and avoid circular dependency at module init time.
-    All agent transport modules import _load_mcpservers_from_paths from this module,
-    so top-level imports would create:
-      common -> claude/agy/nanocoder -> common (not yet fully initialized)
-
-    workspace_path is extracted from current_config if present, to allow callers
-    to specify which workspace config files to load.
-
-    opencode never reaches here: ``merge_existing_upstreams`` dispatches it to
-    ``_merge_opencode``, which merges the raw ``mcp`` maps directly. Its
-    upstreams are normalized by ``build_opencode_provider_config`` instead.
-
-    claude returns early through ``load_existing_claude_upstream_servers``, the
-    single public loader that also feeds strict mode. Re-implementing Claude
-    discovery here made unsafe mode -- the mode whose whole purpose is keeping
-    the operator's servers -- blind to the plugin-provided and local-scope
-    servers strict mode had learned to find.
-
-    For claude/agy/nanocoder: if current_config already contains a populated
-    "mcpServers" dict with non-ralph servers (from a prior merge by a native
-    runtime resolver or build_nanocoder_mcp_config), use those
-    directly instead of re-loading from disk. This preserves pre-merged env
-    servers that would otherwise be lost when the caller passes a
-    workspace_path but the file-based loader would only see file servers.
-    """
     _workspace_path = (
         workspace_path if workspace_path is not None else current_config.get("workspace_path")
     )
@@ -257,13 +197,13 @@ def _load_upstreams_for_agent(
             claude_loader = cast(
                 "Callable[[Path | None], tuple[UpstreamMcpServer, ...]]",
                 mod.load_existing_claude_upstream_servers,
-            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            )
             return claude_loader(_workspace_path if isinstance(_workspace_path, Path) else None)
         elif agent_name == "agy":
             mod = importlib.import_module("ralph.mcp.transport.agy")
             paths = cast(
                 "tuple[Path, ...]", mod._agy_mcp_config_paths(_workspace_path)
-            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            )
             normalizer = cast(
                 "Callable[[str, object], tuple[str, object] | None]",
                 mod._normalize_agy_server_entry,
@@ -276,7 +216,7 @@ def _load_upstreams_for_agent(
             mod = importlib.import_module("ralph.mcp.transport.cursor")
             paths = cast(
                 "tuple[Path, ...]", mod._cursor_paths_to_consider(_workspace_path)
-            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            )
             normalizer = cast(
                 "Callable[[str, object], tuple[str, object] | None]",
                 mod._normalize_cursor_server_entry,
@@ -289,7 +229,7 @@ def _load_upstreams_for_agent(
             mod = importlib.import_module("ralph.mcp.transport.kimi")
             paths = cast(
                 "tuple[Path, ...]", mod._kimi_paths_to_consider(_workspace_path)
-            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            )
             normalizer = cast(
                 "Callable[[str, object], tuple[str, object] | None]",
                 mod._normalize_kimi_server_entry,
@@ -298,11 +238,11 @@ def _load_upstreams_for_agent(
                 "dict[str, object]",
                 mod._load_mcpservers_from_paths(paths, normalizer),
             )
-        else:  # nanocoder
+        else:
             mod = importlib.import_module("ralph.mcp.transport.nanocoder")
             paths = cast(
                 "tuple[Path, ...]", mod._nanocoder_mcp_config_paths(_workspace_path)
-            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            )
             servers = cast("dict[str, object]", mod._load_mcpservers_from_paths(paths))
         servers.pop(RALPH_MCP_SERVER_NAME, None)
         return normalize_upstream_mcp_servers(servers)

@@ -1,5 +1,3 @@
-"""Black-box contract tests for deterministic project-policy portfolios."""
-
 from __future__ import annotations
 
 from datetime import date
@@ -247,11 +245,6 @@ def test_default_budget_overflow_fails_closed() -> None:
 
 
 def test_missing_cost_basis_fails_closed() -> None:
-    """A control without an explicit ``cost_basis`` field must be rejected
-    at parse time; the missing-keyword feedback is the regression for the
-    analysis finding that required the explicit cost-basis labelling to
-    be enforced by a regression test, not by the type system alone.
-    """
     stripped = _control("kernel").replace('\ncost_basis = "estimate"\n', "\n")
     with pytest.raises(PortfolioError, match="cost_basis"):
         parse_portfolio_toml(
@@ -261,9 +254,6 @@ def test_missing_cost_basis_fails_closed() -> None:
 
 
 def test_invalid_cost_basis_value_fails_closed() -> None:
-    """A control with a ``cost_basis`` outside the allowed enum
-    (``measured`` | ``estimate``) must be rejected at parse time.
-    """
     bogus = _control("kernel", cost_basis="guessed")
     with pytest.raises(PortfolioError, match="cost_basis"):
         parse_portfolio_toml(
@@ -273,9 +263,6 @@ def test_invalid_cost_basis_value_fails_closed() -> None:
 
 
 def test_measured_cost_basis_is_accepted() -> None:
-    """A control explicitly labelled ``cost_basis = "measured"`` parses
-    cleanly and is the positive case the regression defends.
-    """
     measured = _control("kernel", cost_basis="measured")
     portfolio = parse_portfolio_toml(
         _manifest(controls=measured),
@@ -285,9 +272,6 @@ def test_measured_cost_basis_is_accepted() -> None:
 
 
 def test_evidence_path_to_existing_file_passes() -> None:
-    """A control that adds an ``evidence_path`` field naming an existing
-    repository file is accepted; the existence check is positive.
-    """
     extra = 'evidence_path = "tests/test_portfolio.py"\n'
     injected = _control("kernel") + extra
     portfolio = parse_portfolio_toml(
@@ -299,10 +283,6 @@ def test_evidence_path_to_existing_file_passes() -> None:
 
 
 def test_evidence_path_to_missing_file_fails_closed() -> None:
-    """A control that names a non-existent ``evidence_path`` is rejected
-    at parse time; this is the production-side seam for the
-    citation-existence contract on portfolio evidence.
-    """
     injected = _control("kernel") + 'evidence_path = "tests/__nonexistent__.py"\n'
     with pytest.raises(PortfolioError, match="evidence_path"):
         parse_portfolio_toml(
@@ -313,9 +293,6 @@ def test_evidence_path_to_missing_file_fails_closed() -> None:
 
 
 def test_evidence_path_malformed_fails_closed() -> None:
-    """A control that names a non-relative ``evidence_path`` is rejected
-    at parse time; the strict regex matches the citation contract.
-    """
     injected = _control("kernel") + 'evidence_path = "https://example.com/foo.py"\n'
     with pytest.raises(PortfolioError, match="evidence_path"):
         parse_portfolio_toml(
@@ -342,13 +319,6 @@ def test_relabeled_duplicate_cost_in_another_lane_fails_closed() -> None:
 
 
 def test_unsupported_schema_version_reports_every_accepted_version() -> None:
-    """The rejection message MUST name every version the parser accepts.
-
-    The accepted set is the union of the portfolio schema versions across
-    the recognized policy versions (``v1``, ``v2``, ``v3``), so a message
-    that names only the current one tells the author that a frozen-v1 or
-    frozen-v2 portfolio is invalid when it is not.
-    """
     with pytest.raises(PortfolioError, match="schema_version must be one of") as exc_info:
         parse_portfolio_toml(
             _manifest(controls=_control("kernel"), schema_version="v9"),

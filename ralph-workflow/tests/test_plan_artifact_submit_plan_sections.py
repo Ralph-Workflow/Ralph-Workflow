@@ -1,5 +1,3 @@
-"""Incremental plan authoring through markdown staging tools."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -41,7 +39,6 @@ def _payload(result: ToolResult) -> dict[str, object]:
 
 
 def test_plan_chunks_append_into_one_resumable_markdown_draft(tmp_path: Path) -> None:
-    """A short opening remains editable until appended prose clears the word floor."""
     workspace = FsWorkspace(tmp_path)
     document = _plan_document()
     split_at = document.index("## Steps")
@@ -60,7 +57,6 @@ def test_plan_chunks_append_into_one_resumable_markdown_draft(tmp_path: Path) ->
     resumed = handle_get_md_draft(_session(), workspace, {"artifact_type": "plan"})
 
     assert first.is_error is False
-    # This fixture opening is under ten words; appending prose clears that floor.
     assert _payload(first)["valid"] is False
     first_diagnostics = _payload(first).get("diagnostics", [])
     assert any(
@@ -74,7 +70,6 @@ def test_plan_chunks_append_into_one_resumable_markdown_draft(tmp_path: Path) ->
 
 
 def test_plan_regression_seeded_draft_rejects_default_append(tmp_path: Path) -> None:
-    """S-4: restored canonical plans cannot silently concatenate with a new draft."""
     workspace = FsWorkspace(tmp_path)
     session = _session()
     plan_a = _plan_document()
@@ -107,9 +102,6 @@ def test_plan_regression_seeded_draft_rejects_default_append(tmp_path: Path) -> 
 
 
 def test_replace_all_repairs_a_staged_plan_before_finalization(tmp_path: Path) -> None:
-    """A dangling dependency no longer blocks finalization; the new contract
-    is sanity-only, so a draft with a dangling dependency is accepted and
-    replace_all can be used to swap in a corrected plan."""
     workspace = FsWorkspace(tmp_path)
     invalid = _plan_document().replace("Depends on: S-1", "Depends on: S-99")
     handle_stage_md_artifact(
@@ -133,8 +125,6 @@ def test_replace_all_repairs_a_staged_plan_before_finalization(tmp_path: Path) -
     assert (tmp_path / ".agent" / "artifacts" / "plan.md").read_text(
         encoding="utf-8"
     ) == _plan_document()
-    # The finalized document is retained as the draft so it stays editable for
-    # an in-phase revision; only fresh phase entry clears it.
     after = handle_get_md_draft(_session(), workspace, {"artifact_type": "plan"})
     assert _payload(after)["exists"] is True
     assert _payload(after)["content"] == _plan_document()

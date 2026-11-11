@@ -1,5 +1,3 @@
-"""Regression coverage for the process reader's watchdog-owned stall lifetime."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -20,10 +18,6 @@ if TYPE_CHECKING:
 
 
 class _FakeManagedProcess:
-    """In-memory process handle that supplies one completed output stream."""
-
-    # OpenCode's prompt is delivered on stdin, so a process fake must
-    # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
     stdin = None
 
     def __init__(self) -> None:
@@ -45,7 +39,6 @@ class _FakeProcessManager:
 def test_process_reader_stall_lifetime_regression_teardown_publishes_clear(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """DA-001/S-1: exhausting a stalled reader emits the watchdog clear event."""
     import ralph.agents.invoke._process_reader as process_reader
 
     events: list[WaitingStatusEvent] = []

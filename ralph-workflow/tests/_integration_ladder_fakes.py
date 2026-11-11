@@ -1,11 +1,3 @@
-"""Shared scripted doubles for the integration-ladder test modules.
-
-The git-plumbing, filesystem-quarantine and environment-probe fakes and
-the durable-ledger seeding helpers the ladder test modules share. Pure
-in-memory doubles: no real Git, no subprocess; the clock fake lives in
-:mod:`tests._fake_git_clock`.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -28,12 +20,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.integration_observation import InProgressKind
 
 
-# ---------------------------------------------------------------------------
-# Fakes.
-# ---------------------------------------------------------------------------
 class _FakePlumbing:
-    """Scripted :class:`GitPlumbing` double recording every mutation."""
-
     def __init__(
         self,
         *,
@@ -184,8 +171,6 @@ class _FakePlumbing:
 
 
 class _FakeQuarantineFs:
-    """Scripted :class:`FileQuarantine` double over an in-memory map."""
-
     def __init__(
         self,
         *,
@@ -223,8 +208,6 @@ class _FakeQuarantineFs:
 
 
 class _FakeEnvProbe:
-    """Scripted :class:`EnvironmentProbe` double."""
-
     def __init__(self, failure: EnvironmentFailure | None = None) -> None:
         self._failure = failure
 
@@ -232,9 +215,6 @@ class _FakeEnvProbe:
         return self._failure
 
 
-# ---------------------------------------------------------------------------
-# Helpers.
-# ---------------------------------------------------------------------------
 def _ledger(tmp_path: Path) -> AttemptLedger:
     return AttemptLedger(tmp_path)
 
@@ -259,7 +239,6 @@ def _record(ledger: AttemptLedger, key: str, value: str) -> None:
 
 
 def _seed_terminal_rungs(ledger: AttemptLedger) -> None:
-    """Record every rung 1-5 as tried-and-failed, as the ladder would."""
     outcomes = {
         "save_and_restore": "failed:restore-refused",
         "preserve_via_temp_index": "failed:no-durable-copy",
@@ -278,7 +257,6 @@ def _seed_salvage(ledger: AttemptLedger) -> None:
 
 
 def _seed_budget(ledger: AttemptLedger, signature: str = "sig") -> None:
-    """Charge the whole-ladder budget to the durable ledger."""
     while ladder_charge_count(ledger.read()) < LADDER_ATTEMPT_BUDGET:
         ledger.charge(signature, NextAction.SAVE_AND_RESTORE.value, is_unknown=False)
 
@@ -287,6 +265,5 @@ _SIG = "behind|tracked_changes|none|none|attached"
 
 
 def _observe_into(sink: list[str], signature: str) -> str:
-    """Record the re-observation and return it (a statement, not a value trick)."""
     sink.append(signature)
     return signature

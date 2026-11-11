@@ -1,16 +1,3 @@
-"""S-12: 6-scenario x 6-dimension filesystem baseline measurement.
-
-Every scenario drives a REAL production seam (WorkspaceMonitor,
-ExploreStore, ``reindex``, ``handle_search_files``,
-``register_active_run``, ``prune_lock_run_ids``,
-``inventory_storage``, ``awareness_for_workspace``).
-
-The watchdog observer is replaced with a recording fake
-(``_ActivityObserver``) because a real ``watchdog.Observer`` would
-consume host watch capacity.  No subprocess, no ``time.sleep``,
-no real host watchdog.
-"""
-
 from __future__ import annotations
 
 import contextlib
@@ -44,14 +31,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
 
-# ---------------------------------------------------------------------------
-# Recording fake observer (replaces real watchdog to avoid host watch capacity)
-# ---------------------------------------------------------------------------
-
-
 class _ActivityObserver:
-    """In-memory watch boundary exposing recursive registrations."""
-
     def __init__(self) -> None:
         self.registrations: list[tuple[str, bool]] = []
 
@@ -69,14 +49,7 @@ class _ActivityObserver:
         del timeout
 
 
-# ---------------------------------------------------------------------------
-# Minimal session / workspace fakes for handler invocation
-# ---------------------------------------------------------------------------
-
-
 class _FakeSession:
-    """Minimal coordination session with explore index and capability approval."""
-
     def __init__(self, explore_index: object | None = None) -> None:
         self.explore_index = explore_index
 
@@ -88,8 +61,6 @@ class _FakeSession:
 
 
 class _Workspace:
-    """Lightweight workspace wrapper for handler invocations."""
-
     def __init__(self, root: Path) -> None:
         self.root = root
 
@@ -125,8 +96,6 @@ class _Workspace:
 
 
 class _WriteTracker:
-    """Counts bytes and operations written during a scenario."""
-
     def __init__(self) -> None:
         self.bytes_written: int = 0
         self.operations: int = 0
@@ -137,10 +106,6 @@ class _WriteTracker:
         self.bytes_written += len(content.encode("utf-8"))
         self.operations += 1
 
-
-# ---------------------------------------------------------------------------
-# Shared helpers
-# ---------------------------------------------------------------------------
 
 _DIMENSIONS: tuple[str, ...] = (
     "watch use",
@@ -155,12 +120,10 @@ _VALID_FRESHNESS: frozenset[str] = frozenset(
     {"current", "pending", "partial", "stale", "unavailable", "live_fallback"}
 )
 
-# Row: (dimension, observed, threshold_human, source_seam)
 type _Row = tuple[str, object, str, str]
 
 
 def _seed_files(ws_root: Path, tracker: _WriteTracker, count: int = 3) -> list[str]:
-    """Seed *count* Python files; return the list of relative paths."""
     rels: list[str] = []
     for i in range(count):
         rel = f"src/module_{i}.py"
@@ -173,7 +136,6 @@ def _seed_files(ws_root: Path, tracker: _WriteTracker, count: int = 3) -> list[s
 
 
 def _build_index(store: ExploreStore, ws_root: Path) -> None:
-    """Cold-build the index for *ws_root*."""
     reindex(store, ws_root, options=ReindexOptions(timeout_ms=10_000))
 
 
@@ -183,7 +145,6 @@ def _total_inventory_bytes(ws_root: Path) -> int:
 
 
 def _make_event(src_path: str) -> object:
-    """Create a minimal watchdog-style event for dispatch_event."""
     return type("Event", (), {"src_path": src_path})()
 
 
@@ -193,10 +154,8 @@ def _measure_dimensions(
     tracker: _WriteTracker,
     store: ExploreStore,
 ) -> list[_Row]:
-    """Measure all 6 dimensions and return 6 rows."""
     rows: list[_Row] = []
 
-    # 1. watch use — observer.schedule registrations
     rows.append(
         (
             "watch use",
@@ -206,7 +165,6 @@ def _measure_dimensions(
         )
     )
 
-    # 2. filesystem activity — workload bytes written
     rows.append(
         (
             "filesystem activity",
@@ -216,7 +174,6 @@ def _measure_dimensions(
         )
     )
 
-    # 3. retained storage — inventory_storage
     rows.append(
         (
             "retained storage",
@@ -226,7 +183,6 @@ def _measure_dimensions(
         )
     )
 
-    # 4. freshness — awareness snapshot
     snap = awareness_for_workspace(ws_root).snapshot()
     rows.append(
         (
@@ -237,7 +193,6 @@ def _measure_dimensions(
         )
     )
 
-    # 5 + 6. relevance + responsiveness — timed reindex then search
     start = time.perf_counter()
     reindex(store, ws_root, options=ReindexOptions(timeout_ms=10_000))
     elapsed = time.perf_counter() - start
@@ -272,17 +227,11 @@ def _measure_dimensions(
     return rows
 
 
-# ---------------------------------------------------------------------------
-# Scenario implementations
-# ---------------------------------------------------------------------------
-
-
 def _scenario_unchanged(
     ws_root: Path,
     observer: _ActivityObserver,
     tracker: _WriteTracker,
 ) -> list[_Row]:
-    """Scenario 1: a settled workspace that is simply observed."""
     _seed_files(ws_root, tracker, count=3)
     (ws_root / ".agent").mkdir(exist_ok=True)
     store = ExploreStore(ws_root / ".agent" / "ralph-explore")
@@ -295,7 +244,6 @@ def _scenario_unchanged(
             seams=WorkspaceWatchSeams(observer_factory=lambda: observer),
         )
         monitor.start()
-        # No changes — simply observe the settled workspace.
         return _measure_dimensions(ws_root, observer, tracker, store)
     finally:
         if monitor is not None:
@@ -309,7 +257,6 @@ def _scenario_localized_change(
     observer: _ActivityObserver,
     tracker: _WriteTracker,
 ) -> list[_Row]:
-    """Scenario 2: a single file is edited after initial indexing."""
     _seed_files(ws_root, tracker, count=3)
     (ws_root / ".agent").mkdir(exist_ok=True)
     store = ExploreStore(ws_root / ".agent" / "ralph-explore")
@@ -323,7 +270,6 @@ def _scenario_localized_change(
         )
         monitor.start()
 
-        # Edit one file and dispatch the event so the monitor records it.
         changed = ws_root / "src/module_0.py"
         tracker.write(changed, "def func_0():\n    return 42  # edited\n")
         monitor.dispatch_event(_make_event(str(changed)))
@@ -341,7 +287,6 @@ def _scenario_large_workspace(
     observer: _ActivityObserver,
     tracker: _WriteTracker,
 ) -> list[_Row]:
-    """Scenario 3: a workspace with 100+ files, no changes after initial index."""
     _seed_files(ws_root, tracker, count=120)
     (ws_root / ".agent").mkdir(exist_ok=True)
     store = ExploreStore(ws_root / ".agent" / "ralph-explore")
@@ -367,7 +312,6 @@ def _scenario_long_running(
     observer: _ActivityObserver,
     tracker: _WriteTracker,
 ) -> list[_Row]:
-    """Scenario 4: many settle cycles (loop the observe/check cycle 25 times)."""
     _seed_files(ws_root, tracker, count=3)
     (ws_root / ".agent").mkdir(exist_ok=True)
     store = ExploreStore(ws_root / ".agent" / "ralph-explore")
@@ -381,7 +325,6 @@ def _scenario_long_running(
         )
         monitor.start()
 
-        # Loop observe/check cycle 25 times (no time.sleep; deterministic).
         for _ in range(25):
             awareness_for_workspace(ws_root).snapshot()
 
@@ -398,12 +341,6 @@ def _scenario_interrupted(
     observer: _ActivityObserver,
     tracker: _WriteTracker,
 ) -> list[_Row]:
-    """Scenario 5: start, mutate, then stop without full cleanup.
-
-    Simulated by: start monitor, mutate a file, register an active run,
-    measure the interrupted state, then stop the monitor WITHOUT
-    unregistering the active run.
-    """
     _seed_files(ws_root, tracker, count=3)
     (ws_root / ".agent").mkdir(exist_ok=True)
     store = ExploreStore(ws_root / ".agent" / "ralph-explore")
@@ -418,19 +355,14 @@ def _scenario_interrupted(
         )
         monitor.start()
 
-        # Mutate a file and dispatch the event.
         changed = ws_root / "src/module_1.py"
         tracker.write(changed, "def func_1():\n    return 99  # interrupted\n")
         monitor.dispatch_event(_make_event(str(changed)))
 
-        # Register an active run (simulating a workflow in progress).
         register_active_run(ws_root, run_id)
 
-        # Measure while the monitor is active (captures the interrupted state).
         rows = _measure_dimensions(ws_root, observer, tracker, store)
 
-        # Stop the monitor without unregistering the active run
-        # (simulating abrupt termination / interrupted cleanup).
         monitor.stop()
         monitor = None
 
@@ -448,12 +380,6 @@ def _scenario_concurrent(
     observer: _ActivityObserver,
     tracker: _WriteTracker,
 ) -> list[_Row]:
-    """Scenario 6: two threads with real WorkspaceMonitor + real ExploreStore.
-
-    Each thread starts its own WorkspaceMonitor on the same workspace,
-    registers a distinct run id, and calls ``prune_lock_run_ids``.
-    The shared-watch contract asserts exactly one ``observer.schedule``.
-    """
     _seed_files(ws_root, tracker, count=3)
     (ws_root / ".agent").mkdir(exist_ok=True)
     store = ExploreStore(ws_root / ".agent" / "ralph-explore")
@@ -462,13 +388,6 @@ def _scenario_concurrent(
         _build_index(store, ws_root)
 
         errors: list[str] = []
-        # Two barriers guarantee the two monitors are ACTIVE simultaneously.
-        # Neither thread may stop() until both have started() and completed
-        # their active-run work; otherwise one thread can tear down its
-        # watch (popping the shared-watch entry and releasing the cross-
-        # process lock) before the other calls start(), producing a second
-        # observer.schedule. The product coalescing only applies to
-        # genuinely-overlapping leases, so the test must guarantee overlap.
         start_barrier = threading.Barrier(2)
         stop_barrier = threading.Barrier(2)
         monitors: list[WorkspaceMonitor] = []
@@ -509,11 +428,9 @@ def _scenario_concurrent(
 
         assert not errors, f"concurrent scenario thread errors: {errors}"
 
-        # Assert the union of run ids is visible through prune_lock_run_ids.
         locked = prune_lock_run_ids(ws_root)
         assert run_ids <= locked, f"expected {run_ids} <= {locked}"
 
-        # Measure dimensions (monitors already stopped by threads).
         return _measure_dimensions(ws_root, observer, tracker, store)
     finally:
         for m in monitors:
@@ -525,16 +442,7 @@ def _scenario_concurrent(
         release_workspace_awareness(ws_root)
 
 
-# ---------------------------------------------------------------------------
-# Matrix renderer
-# ---------------------------------------------------------------------------
-
-
 def _render_matrix(path: Path, rows: Sequence[tuple[str, str, object, str, str]]) -> None:
-    """Render the 6x6 baseline matrix to *path* as markdown.
-
-    Each tuple in *rows* is ``(scenario, dimension, observed, threshold, source)``.
-    """
     lines: list[str] = [
         "# Filesystem Scenario Baseline Matrix",
         "",
@@ -548,13 +456,7 @@ def _render_matrix(path: Path, rows: Sequence[tuple[str, str, object, str, str]]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-# ---------------------------------------------------------------------------
-# Dimension validator
-# ---------------------------------------------------------------------------
-
-
 def _validate_dimension(dimension: str, observed: object) -> bool:
-    """Return True when *observed* satisfies the per-dimension threshold."""
     if dimension == "watch use":
         return isinstance(observed, int) and observed <= 1
     if dimension == "filesystem activity":
@@ -565,13 +467,8 @@ def _validate_dimension(dimension: str, observed: object) -> bool:
         return isinstance(observed, str) and observed in _VALID_FRESHNESS
     if dimension == "relevance":
         return isinstance(observed, int) and observed >= 0
-    # dimension == "responsiveness" or unknown
     return isinstance(observed, float) and observed <= 10.0
 
-
-# ---------------------------------------------------------------------------
-# Main test
-# ---------------------------------------------------------------------------
 
 _SCENARIOS: list[tuple[str, Callable[[Path, _ActivityObserver, _WriteTracker], list[_Row]]]] = [
     ("unchanged", _scenario_unchanged),
@@ -585,14 +482,6 @@ _SCENARIOS: list[tuple[str, Callable[[Path, _ActivityObserver, _WriteTracker], l
 
 @pytest.mark.timeout_seconds(60)
 def test_filesystem_scenario_baseline(tmp_path: Path) -> None:
-    """S-12: 6 scenarios x 6 dimensions baseline matrix.
-
-    Drives real production seams through every scenario.  The watchdog
-    observer is injected through the public ``observer_factory`` seam with
-    ``_ActivityObserver`` (no host watch capacity).  No subprocess, no
-    ``time.sleep``, no real host watchdog.
-    Renders the full 36-cell matrix to ``tmp_path/baseline-matrix.md``.
-    """
     observer = _ActivityObserver()
 
     all_rows: list[tuple[str, str, object, str, str]] = []
@@ -613,21 +502,17 @@ def test_filesystem_scenario_baseline(tmp_path: Path) -> None:
             for dim, observed, threshold, source in rows
         )
 
-    # Render matrix.
     matrix_path = tmp_path / "baseline-matrix.md"
     _render_matrix(matrix_path, all_rows)
 
-    # Assert 36 data rows (6 scenarios x 6 dimensions).
     assert len(all_rows) == 36, f"expected 36 cells, got {len(all_rows)}"
 
-    # Assert each observed value is within its threshold.
     failures: list[str] = []
     for scenario, dim, observed, threshold, _source in all_rows:
         if not _validate_dimension(dim, observed):
             failures.append(f"{scenario}/{dim}: observed={observed!r}, threshold={threshold}")
     assert not failures, "threshold violations:\n  " + "\n  ".join(failures)
 
-    # Assert the matrix file was written with the expected structure.
     assert matrix_path.exists(), "baseline-matrix.md was not written"
     matrix_text = matrix_path.read_text(encoding="utf-8")
     assert "| Scenario | Dimension | Observed | Threshold | Source Seam |" in matrix_text

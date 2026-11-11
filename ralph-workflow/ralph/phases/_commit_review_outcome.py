@@ -1,4 +1,3 @@
-"""Outcome calculation for the commit-review phase."""
 
 from __future__ import annotations
 
@@ -13,7 +12,6 @@ if TYPE_CHECKING:
 
 
 def build_commit_review_retry_hint(skipped_paths: list[str], safe_applied_count: int) -> str:
-    """Build a structured retry hint naming rejected paths."""
     if not skipped_paths:
         return (
             "Commit review retry hint: no delete actions were rejected, but the phase "
@@ -38,7 +36,6 @@ def build_commit_review_retry_hint(skipped_paths: list[str], safe_applied_count:
 
 
 def build_unapplied_retry_hint(report: CommitReviewApplyReport) -> str:
-    """Build the hint delivered to the next prompt for unapplied decisions."""
     lines: list[str] = ["Commit review retry hint: some requested actions were not applied."]
     if report.declined_delete_paths:
         lines.append("Declined delete_file paths:")
@@ -68,18 +65,6 @@ def decide_commit_review_outcome(
     phase_name: str,
     report: CommitReviewApplyReport,
 ) -> CommitReviewLoopback | None:
-    """Return the loopback event when the applied batch needs another attempt.
-
-    An apply-time failure and a safety-classifier rejection are different
-    problems, so they get different hints: a rejected delete names the paths
-    the classifier refused, while an apply-time failure names the paths that
-    were accepted but could not be applied.
-
-    A batch advances to the commit phase only when every requested action
-    either applied or was a safe no-op, so one failed apply operation is
-    enough to loop the agent back -- even when sibling actions applied
-    successfully.
-    """
     if _has_failed_applications(report):
         logger.warning(
             "{}: requested commit-review actions failed at apply time; looping back",
@@ -99,11 +84,6 @@ def decide_commit_review_outcome(
 
 
 def _has_failed_applications(report: CommitReviewApplyReport) -> bool:
-    """Return True when any requested action failed to apply.
-
-    ``failed_pattern_tokens`` carries the gitignore and exclude patterns
-    that threw while the rule was appended.
-    """
     return bool(report.failed_delete_paths or report.failed_pattern_tokens)
 
 

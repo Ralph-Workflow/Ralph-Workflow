@@ -1,5 +1,3 @@
-"""Observable line-window behavior for the in-memory workspace."""
-
 from __future__ import annotations
 
 import pytest
@@ -8,7 +6,6 @@ from ralph.workspace.memory import MemoryWorkspace
 
 
 def test_read_lines_regression_rejects_unbounded_content_above_byte_ceiling() -> None:
-    """S-4: full reads honor the same bounded-read contract as production."""
     workspace = MemoryWorkspace()
     workspace.write("large.txt", "first\nsecond\nthird\n")
 
@@ -17,7 +14,6 @@ def test_read_lines_regression_rejects_unbounded_content_above_byte_ceiling() ->
 
 
 def test_read_lines_regression_allows_bounded_head_above_byte_ceiling() -> None:
-    """S-4: a requested line window remains available above the full-read ceiling."""
     workspace = MemoryWorkspace()
     workspace.write("large.txt", "first\nsecond\nthird\n")
 
@@ -28,7 +24,6 @@ def test_read_lines_regression_allows_bounded_head_above_byte_ceiling() -> None:
 
 
 def test_read_lines_regression_tail_zero_returns_no_lines() -> None:
-    """S-5: zero-tail requests have the same observable window as FsWorkspace."""
     workspace = MemoryWorkspace()
     workspace.write("lines.txt", "one\ntwo\n")
 

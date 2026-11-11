@@ -1,35 +1,3 @@
-"""Execute the hardcoded policy pipeline.
-
-Drives the two-phase graph defined in :mod:`ralph.project_policy.pipeline_graph`:
-remediation writes the policy, the deterministic validator gates it, analysis
-reviews it, and the decision routes back to remediation or forward to done.
-
-THE INVARIANT THIS MODULE EXISTS TO PROTECT
--------------------------------------------
-
-**Policy readiness NEVER blocks the development run.** There is no code path in
-this module that aborts a run. Whatever happens -- the analysis budget runs out
-with findings still open, the agent chain has no configured agent, the agent
-subprocess cannot even be launched -- the driver reports it, declines to cache a
-false READY, and returns. The caller proceeds to planning.
-
-That is a deliberate inversion of the previous behavior, where a BLOCKED policy
-returned exit code 2 and killed the run. Policy is documentation about the
-project; a project with imperfect documentation is still a project you can do
-work on. Coupling the two meant a stale ``RALPH-LANG`` block for a language
-nobody uses could stop all development. Never again. The only place a non-zero
-exit survives is the ``--redo-policy-only`` / ``--run-policy-agents-only`` flags,
-which have no development run to proceed to, so their exit code is the only
-signal they can give.
-
-The loop, with the default cap of 3::
-
-    R  A  R  A  R  A  R  ->  done  ->  planning
-    ^                    ^
-    entry                the analysis budget is spent, so the driver runs one
-                         FINAL remediation (applying the last review's feedback)
-                         and then walks forward. It does not fail.
-"""
 
 from __future__ import annotations
 
@@ -61,7 +29,7 @@ EmitFn = Callable[[str], None]
 
 
 def _noop_emit(message: str) -> None:
-    """Default emit callback used when no display is injected."""
+    pass
 
 
 def _not_ready(
@@ -69,14 +37,6 @@ def _not_ready(
     reason: str,
     command_outcomes: tuple[CommandOutcome, ...] = (),
 ) -> ReadinessResult:
-    """Build the result for a policy that could not be made ready.
-
-    The status is BLOCKED, but BLOCKED does NOT mean "abort the run" -- it means
-    "this policy is not ready". The caller maps it to a warning and proceeds. The
-    still-open findings keep their stable ids so the next run resumes from here,
-    and the READY cache is deliberately NOT written, so the next run retries
-    rather than assuming success.
-    """
     return ReadinessResult(
         status=ReadinessStatus.BLOCKED,
         findings=findings,
@@ -90,7 +50,7 @@ AttemptCallback = Callable[[int], None]
 
 
 def _noop_attempt_callback(attempt: int) -> None:
-    """Default ``on_remediation_attempt`` no-op (no status bar to push)."""
+    pass
 
 
 def run_policy_pipeline(
@@ -104,48 +64,15 @@ def run_policy_pipeline(
     emit: EmitFn = _noop_emit,
     on_remediation_attempt: AttemptCallback = _noop_attempt_callback,
 ) -> ReadinessResult:
-    """Run the policy pipeline to a terminal state. Never blocks the run.
-
-    Args:
-        workspace: Injected workspace seam.
-        stack: Detected project stack.
-        findings: The findings currently open against the project. May be empty
-            when ``entry_phase`` is the analysis phase (``--run-policy-agents``
-            audits an already-valid policy).
-        invoke_agent: Callable that runs one phase's agent chain. Injected so
-            tests can substitute a fake drain.
-        entry_phase: Where to enter the graph. ``policy_remediation`` for the
-            normal path; ``policy_remediation_analysis`` for
-            ``--run-policy-agents``, which reviews the EXISTING policy in place
-            and only rewrites it if analysis routes ``request_changes``.
-        analysis_cap: The analysis loop budget.
-        emit: Display callback.
-        on_remediation_attempt: Callback invoked BEFORE each remediation
-            attempt with the 1-indexed attempt number so the persistent
-            status bar can surface the live ``Remediation N/Max`` label
-            instead of a hardcoded ``Dev 1/N`` placeholder. Defaults to a
-            no-op so existing callers/tests are unaffected.
-
-    Returns:
-        READY when the deterministic validator passes AND the analysis agent
-        returned ``completed``; the READY cache is written. BLOCKED otherwise --
-        which the caller reports and then proceeds past.
-    """
     phase = entry_phase
     iteration = 0
     current = list(findings)
     feedback: AnalysisDecision | None = None
     blessed = False
 
-    # A launch crash in EITHER phase is broken infrastructure, not a policy
-    # shortfall: retrying it burns the whole budget in milliseconds. Stop looping
-    # -- and still do NOT block the run.
     try:
         while phase != TERMINAL_DONE:
             if phase == PHASE_REMEDIATION:
-                # Notify the status bar of the upcoming attempt BEFORE the
-                # agent runs so the footer reflects the live progress (and
-                # not a hardcoded ``Dev 1/N`` placeholder).
                 on_remediation_attempt(iteration + 1)
                 current_assessment = _assess(
                     workspace, stack, current, _collect_command_outcomes(workspace)
@@ -165,19 +92,11 @@ def run_policy_pipeline(
                     iteration += 1
                 continue
 
-            # PHASE_ANALYSIS.
             if analysis_budget_spent(iteration, analysis_cap):
-                # Reachable only on an analysis ENTRY with a spent budget (a cap
-                # of 0). The bypass applies here too: walk forward, never fail.
                 phase = TERMINAL_DONE
                 continue
 
             if any(f.blocking for f in current):
-                # HARD GATE. The deterministic validator is still failing, so the
-                # analysis agent is never consulted: reviewing the QUALITY of a
-                # structurally invalid policy is wasted work, and an analysis
-                # agent must never be in a position where its 'completed' could
-                # launder a failing validator into a pass.
                 iteration += 1
                 phase = PHASE_REMEDIATION
                 continue
@@ -216,19 +135,10 @@ def _combined_policy_content_hash(
     workspace: Workspace,
     stack: ProjectStack,
 ) -> str:
-    """Return the hash the ledger's ``policy_content_hash`` must carry.
-
-    The value is the readiness-evidence signature (:func:`evidence.evidence_signature`)
-    over every canonical policy file: any edit to any policy produces a
-    different signature, so a ledger recorded against a pre-edit tree
-    cannot certify the post-edit policy. The agent computes the SAME
-    signature with the documented one-liner from the analysis prompt.
-    """
     return evidence.evidence_signature(workspace, stack)
 
 
 def _declared_gate_commands(workspace: Workspace) -> tuple[str, ...]:
-    """Return every ``RALPH-COMMAND:`` declared across the existing policy corpus."""
     commands: list[str] = []
     for path in (f"{markers.CANONICAL_DIR}{name}" for name in markers.CORE_POLICY_FILES):
         if not workspace.exists(path):
@@ -247,19 +157,6 @@ def _assess(
     findings: list[PolicyFinding],
     outcomes: tuple[CommandOutcome, ...],
 ) -> ReadinessAssessment:
-    """Compute the three-dimension readiness assessment.
-
-    Every dimension defaults to ``False``; the function only flips
-    booleans when the strict evidence contract is satisfied. The
-    assessment is additive: it travels with the result and the cache
-    alongside the existing structural and approval gates.
-
-    ``implementation_verified`` is HASH-BOUND: every recorded outcome
-    must exit 0 AND carry the ``policy_content_hash`` matching the
-    CURRENT readiness-evidence signature. A ledger recorded against a
-    policy tree that has since changed cannot certify the present
-    policy, so the dimension fails closed.
-    """
     structure_complete = not any(f.blocking for f in findings)
     implementation_verified = False
     if outcomes:
@@ -268,11 +165,6 @@ def _assess(
             outcome.exit_code == 0 and outcome.policy_content_hash == expected_hash
             for outcome in outcomes
         )
-    # ``outcome_evidence_reviewed`` is additive: it is True when the
-    # recorded outcomes all succeeded AND every ``RALPH-COMMAND:`` the
-    # existing corpus declares appears in the ledger (command-
-    # completeness). A declared gate that was never probed is an
-    # unreviewed gate; the assessment fails closed.
     outcome_evidence_reviewed = False
     if implementation_verified:
         recorded = {outcome.command for outcome in outcomes}
@@ -287,12 +179,6 @@ def _assess(
 
 
 def _collect_command_outcomes(workspace: Workspace) -> tuple[CommandOutcome, ...]:
-    """Read the analysis-artifact ledger through the strict parser.
-
-    A malformed ledger degrades to an empty tuple (no partial credit);
-    the producer is responsible for emitting well-formed lines, and
-    the driver treats a missing or invalid ledger as "not verified".
-    """
     raw_artifact = analysis.read_execution_outcomes(workspace)
     if raw_artifact:
         return raw_artifact
@@ -305,18 +191,6 @@ def _route_after_remediation(
     analysis_cap: int,
     emit: EmitFn,
 ) -> str:
-    """Return the phase to enter after a remediation phase completes.
-
-    Three outcomes, in priority order:
-
-    #. The analysis budget is spent -> the exhausted-analysis bypass fires. This
-       remediation was the FINAL one; walk forward to the terminal phase. Note
-       this is checked BEFORE the findings check, which is what guarantees the
-       loop always terminates and always ends on a remediation.
-    #. Findings remain -> loop back to remediation. Analysis is skipped (the hard
-       gate); a structurally invalid policy is not worth an AI review.
-    #. Otherwise -> the analysis phase, to review what was written.
-    """
     if analysis_budget_spent(iteration, analysis_cap):
         emit(
             f"project-policy-readiness: analysis cap reached "
@@ -326,7 +200,7 @@ def _route_after_remediation(
     if any(f.blocking for f in current):
         return PHASE_REMEDIATION
     on_success = phase_definition(PHASE_REMEDIATION).on_success
-    if on_success is None:  # pragma: no cover - the graph always defines it
+    if on_success is None:
         return TERMINAL_DONE
     return on_success
 
@@ -339,15 +213,6 @@ def _finish(
     blessed: bool,
     emit: EmitFn,
 ) -> ReadinessResult:
-    """Map the terminal state onto a :class:`ReadinessResult`.
-
-    READY requires BOTH halves of the gate: the analysis agent said ``completed``
-    AND the deterministic validator agrees. The validator is re-run one last time
-    rather than trusting ``current``: the analysis drain holds
-    ``process.exec_bounded``, so in principle a command it ran could have touched
-    the workspace after the last validation. Cheap insurance on the one decision
-    that gets cached.
-    """
     command_outcomes = _collect_command_outcomes(workspace)
     if not blessed:
         emit(
@@ -374,15 +239,6 @@ def _finish(
             ],
         )
 
-    # Cache write is owned by the OUTER boundary in
-    # ``_finalize_ready_state`` (cli_integration.py) so the cached
-    # signature is taken over the tree the run actually leaves
-    # behind -- after ``agents_md.condense_placeholder_block`` and
-    # the auto-commit. Writing here would race those post-READY
-    # mutations and produce a stale cache signature that flunks
-    # the very next preflight into a full re-validation. The
-    # deterministic re-validation above stays the gate that decides
-    # READY; only the write moves.
     clear_validation_retry_hint(workspace, PHASE_REMEDIATION)
     clear_validation_retry_hint(workspace, PHASE_ANALYSIS)
     emit("project-policy-readiness: ready (validator clean, analysis approved)")

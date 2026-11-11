@@ -1,5 +1,3 @@
-"""Tests for serialized post-fanout workspace verification."""
-
 from __future__ import annotations
 
 import typing
@@ -43,7 +41,6 @@ def _make_scope(tmp_path: Path) -> WorkspaceScope:
 
 class TestVerificationRunsSeriallyAfterAllWorkers:
     def test_post_fanout_verification_defined_in_events(self) -> None:
-        """PostFanoutVerificationEvent must be importable and have correct fields."""
         ev = PostFanoutVerificationEvent(success=True, exit_code=0)
         assert ev.success is True
         assert ev.exit_code == 0
@@ -55,7 +52,6 @@ class TestVerificationRunsSeriallyAfterAllWorkers:
         assert ev_fail.error == "failed"
 
     def test_post_fanout_verification_event_in_event_union(self) -> None:
-        """PostFanoutVerificationEvent must be part of the Event union type."""
 
         args = typing.get_args(Event)
         assert PostFanoutVerificationEvent in args, (
@@ -63,7 +59,6 @@ class TestVerificationRunsSeriallyAfterAllWorkers:
         )
 
     def test_verification_summary_entry_added_on_failure(self, tmp_path: Path) -> None:
-        """When verification ran and failed, parallel_development_summary must include it."""
 
         effect = FanOutEffect(
             work_units=(

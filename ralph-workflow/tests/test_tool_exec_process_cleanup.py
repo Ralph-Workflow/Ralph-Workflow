@@ -1,5 +1,3 @@
-"""Tests for process cleanup behaviour in the MCP exec tool."""
-
 from __future__ import annotations
 
 import itertools
@@ -88,32 +86,9 @@ def test_reusable_sandbox_does_not_skip_process_cleanup(tmp_path: Path) -> None:
 
 
 def test_shutdown_all_reaps_nested_descendant_tree_on_exit() -> None:
-    """ProcessManager.shutdown_all() reaps the host and every nested descendant.
-
-    Characterization test for the PRODUCT_CRITERIA.md requirement:
-    "properly killing processes that we spawned" and "gracefully
-    killing all child process when exiting". The pre-fix production
-    code already satisfies this contract (no production change is
-    required); this test pins the behaviour so future refactors
-    cannot silently regress the cleanup semantics.
-
-    The test wires a three-level tree: host (pid 100) -> child
-    (pid 101) -> grandchild (pid 102, ``stubborn=True`` so it
-    survives SIGTERM and requires SIGKILL escalation). The fake
-    psutil's ``children()`` does not auto-recurse, so the host
-    exposes both the child and the grandchild directly in its
-    ``_children`` list. After ``pm.shutdown_all()`` every node must
-    no longer be running, with the grandchild specifically marked
-    ``_killed=True`` to prove SIGTERM->SIGKILL escalation reaches
-    the stubborn descendant rather than bailing at the first
-    survivor.
-    """
     grandchild = FakePsutilProcess(pid=102, ppid=101, stubborn=True)
     child = FakePsutilProcess(pid=101, ppid=100)
     host = FakePsutilProcess(pid=100, ppid=1)
-    # Flatten the tree at the host level because FakePsutilProcess.children
-    # ignores the ``recursive`` flag (the production walk uses
-    # ``children(recursive=True)``).
     host._children = [child, grandchild]
     fake_psutil = FakePsutil()
     fake_psutil._processes = {100: host, 101: child, 102: grandchild}

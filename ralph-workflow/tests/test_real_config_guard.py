@@ -1,5 +1,3 @@
-"""Meta-tests verifying real-config guard enforcement across the test suite."""
-
 from __future__ import annotations
 
 import os
@@ -32,7 +30,6 @@ pytest_plugins = ("pytester",)
 
 
 def test_resolve_guarded_config_dirs_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Default guarded directories must include real user config and home paths."""
     monkeypatch.delenv("RALPH_TEST_GUARDED_CONFIG_DIRS", raising=False)
     dirs = _resolve_guarded_config_dirs()
     assert len(dirs) >= 1
@@ -43,7 +40,6 @@ def test_resolve_guarded_config_dirs_defaults(monkeypatch: pytest.MonkeyPatch) -
 def test_resolve_guarded_config_dirs_override(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """RALPH_TEST_GUARDED_CONFIG_DIRS overrides monitored directories."""
     custom_dir = tmp_path / "custom_config"
     custom_dir.mkdir()
     monkeypatch.setenv("RALPH_TEST_GUARDED_CONFIG_DIRS", str(custom_dir))
@@ -52,39 +48,32 @@ def test_resolve_guarded_config_dirs_override(
 
 
 def test_diff_config_snapshots_detection(tmp_path: Path) -> None:
-    """Snapshot diffing detects file creation, modification, and deletion."""
     file_a = tmp_path / "ralph-workflow-a.toml"
     file_b = tmp_path / "ralph-workflow-b.toml"
 
     snap_a1 = _ConfigPathSnapshot(file_a, is_dir=False, mtime_ns=1000, size=10, sha256="hash1")
     snap_b = _ConfigPathSnapshot(file_b, is_dir=False, mtime_ns=2000, size=20, sha256="hash2")
 
-    # Identical snapshots: no violations
     assert _diff_config_snapshots({file_a: snap_a1}, {file_a: snap_a1}) == []
 
-    # Created file
     diff_created = _diff_config_snapshots({file_a: snap_a1}, {file_a: snap_a1, file_b: snap_b})
     assert len(diff_created) == 1
     assert f"CREATED: {file_b}" in diff_created[0]
 
-    # Deleted file
     diff_deleted = _diff_config_snapshots({file_a: snap_a1, file_b: snap_b}, {file_a: snap_a1})
     assert len(diff_deleted) == 1
     assert f"DELETED: {file_b}" in diff_deleted[0]
 
-    # Modified content hash
     snap_a2 = _ConfigPathSnapshot(file_a, is_dir=False, mtime_ns=1001, size=12, sha256="hash_mod")
     diff_hash = _diff_config_snapshots({file_a: snap_a1}, {file_a: snap_a2})
     assert len(diff_hash) == 1
     assert f"MODIFIED (content hash changed): {file_a}" in diff_hash[0]
 
-    # Modified mtime only
     snap_a3 = _ConfigPathSnapshot(file_a, is_dir=False, mtime_ns=1002, size=10, sha256="hash1")
     diff_mtime = _diff_config_snapshots({file_a: snap_a1}, {file_a: snap_a3})
     assert len(diff_mtime) == 1
     assert f"MODIFIED (mtime changed): {file_a}" in diff_mtime[0]
 
-    # Modified mode only
     snap_a4 = _ConfigPathSnapshot(
         file_a, is_dir=False, mtime_ns=1000, size=10, sha256="hash1", mode=0o644
     )
@@ -97,7 +86,6 @@ def test_diff_config_snapshots_detection(tmp_path: Path) -> None:
 
 
 def test_scan_guarded_config_files_scans_recursively(tmp_path: Path) -> None:
-    """Guarded scanner captures files and nested directories matching ralph-workflow*."""
     config_dir = tmp_path / "config"
     config_dir.mkdir()
     top_file = config_dir / "ralph-workflow.toml"
@@ -108,7 +96,6 @@ def test_scan_guarded_config_files_scans_recursively(tmp_path: Path) -> None:
     nested_file = sub_dir / "state.json"
     nested_file.write_text("{}", encoding="utf-8")
 
-    # Unrelated file that does not match the pattern
     unrelated = config_dir / "other.toml"
     unrelated.write_text("x = 1\n", encoding="utf-8")
 
@@ -131,7 +118,6 @@ def test_real_config_guard_catches_created_file_in_pytester(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A test that creates a file under the guarded config path fails loudly."""
     guarded_dir = tmp_path / "guarded_config"
     guarded_dir.mkdir(parents=True)
     monkeypatch.setenv("RALPH_TEST_GUARDED_CONFIG_DIRS", str(guarded_dir))
@@ -171,7 +157,6 @@ def test_real_config_guard_catches_modified_file_in_pytester(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A test that modifies a file under the guarded config path fails loudly."""
     guarded_dir = tmp_path / "guarded_config"
     guarded_dir.mkdir(parents=True)
     existing_file = guarded_dir / "ralph-workflow.toml"
@@ -214,7 +199,6 @@ def test_real_config_guard_catches_deleted_file_in_pytester(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A test that deletes a file under the guarded config path fails loudly."""
     guarded_dir = tmp_path / "guarded_config"
     guarded_dir.mkdir(parents=True)
     existing_file = guarded_dir / "ralph-workflow.toml"
@@ -257,7 +241,6 @@ def test_real_config_guard_catches_chmod_in_pytester(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A test that chmods a file under the guarded config path fails loudly."""
     guarded_dir = tmp_path / "guarded_config"
     guarded_dir.mkdir(parents=True)
     existing_file = guarded_dir / "ralph-workflow.toml"
@@ -300,7 +283,6 @@ def test_real_config_guard_catches_read_in_pytester(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A test that reads a file under the guarded config path fails loudly."""
     guarded_dir = tmp_path / "guarded_config"
     guarded_dir.mkdir(parents=True)
     existing_file = guarded_dir / "ralph-workflow.toml"
@@ -343,7 +325,6 @@ def test_real_config_guard_clean_suite_passes_in_pytester(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A clean test suite that does not touch guarded files passes without errors."""
     guarded_dir = tmp_path / "guarded_config"
     guarded_dir.mkdir(parents=True)
     existing_file = guarded_dir / "ralph-workflow.toml"
@@ -372,32 +353,24 @@ def test_real_config_guard_clean_suite_passes_in_pytester(
 
 
 def test_per_test_isolation_redirects_import_time_constants() -> None:
-    """The autouse test environment isolates HOME, XDG_CONFIG_HOME, and config paths."""
-    # Under the autouse isolation fixture:
-    # 1. Path.home() is sandboxed
     home = Path.home()
     assert "autouse-home" in str(home)
 
-    # 2. GLOBAL_CONFIG_PATH is redirected to the sandboxed path
     assert "autouse-home" in str(config_loader.GLOBAL_CONFIG_PATH)
     assert config_loader.GLOBAL_CONFIG_PATH.name == "ralph-workflow.toml"
 
-    # 3. GLOBAL_AGENTS_CONFIG_PATH is redirected to the sandboxed path
     assert "autouse-home" in str(config_loader.GLOBAL_AGENTS_CONFIG_PATH)
     assert config_loader.GLOBAL_AGENTS_CONFIG_PATH.name == "ralph-workflow-agents.toml"
 
-    # 4. DEFAULT_STATE_PATH is redirected to the sandboxed path
     assert "autouse-home" in str(state_store.DEFAULT_STATE_PATH)
     assert state_store.DEFAULT_STATE_PATH.name == "ralph-workflow-capabilities.json"
 
 
 def test_autouse_isolation_registers_current_test_node(request: pytest.FixtureRequest) -> None:
-    """The autouse isolation fixture sets _STATE.current_test_node to request.node.nodeid."""
     assert _STATE.current_test_node == request.node.nodeid
 
 
 def test_read_violations_tracking_helpers(tmp_path: Path) -> None:
-    """_get_test_read_violations filters by node and _read_violations_count tracks total."""
     start = _read_violations_count()
     node_a = "test_file.py::test_a"
     node_b = "test_file.py::test_b"
@@ -413,7 +386,6 @@ def test_read_violations_tracking_helpers(tmp_path: Path) -> None:
     assert _get_test_read_violations(start, node_b) == [path_2]
     assert _get_test_read_violations(start, "test_file.py::non_existent") == []
 
-    # Clean up test-injected reads so session guard stays clean
     _clear_recorded_read_violations()
 
 
@@ -422,7 +394,6 @@ def test_real_config_guard_attributes_read_violation_to_node_in_pytester(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A test that reads a guarded file is explicitly named in the violation message."""
     guarded_dir = tmp_path / "guarded_config"
     guarded_dir.mkdir(parents=True)
     existing_file = guarded_dir / "ralph-workflow.toml"
@@ -475,7 +446,6 @@ def test_real_config_guard_catches_write_agents_toml_in_pytester(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """write_agents_toml targeting a guarded config directory is caught by the guard."""
     guarded_dir = tmp_path / "guarded_config"
     guarded_dir.mkdir(parents=True)
     existing_file = guarded_dir / "ralph-workflow-agents.toml"
@@ -520,7 +490,6 @@ def test_real_config_guard_catches_write_agents_toml_in_pytester(
 def test_extract_read_path_ignores_write_modes_and_non_guarded(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """_extract_read_path ignores write-mode opens and paths outside guarded dirs."""
     guarded_dir = tmp_path / "guarded_config"
     guarded_dir.mkdir(parents=True)
     target = guarded_dir / "ralph-workflow.toml"
@@ -528,13 +497,11 @@ def test_extract_read_path_ignores_write_modes_and_non_guarded(
 
     monkeypatch.setenv("RALPH_TEST_GUARDED_CONFIG_DIRS", str(guarded_dir))
 
-    # Read modes are identified as guarded reads
     assert _extract_read_path((str(target), "r")) == target.resolve()
     assert _extract_read_path((str(target), "rb")) == target.resolve()
     assert _extract_read_path((target, "r")) == target.resolve()
     assert _extract_read_path((os.fsencode(str(target)), "r")) == target.resolve()
 
-    # Write / append / update modes are ignored (handled by snapshot diffing)
     assert _extract_read_path((str(target), "w")) is None
     assert _extract_read_path((str(target), "a")) is None
     assert _extract_read_path((str(target), "x")) is None
@@ -542,12 +509,10 @@ def test_extract_read_path_ignores_write_modes_and_non_guarded(
     assert _extract_read_path((str(target), "rb+", os.O_RDWR)) is None
     assert _extract_read_path((str(target), "rb", os.O_WRONLY)) is None
 
-    # Files outside guarded directories are ignored in default mode
     monkeypatch.delenv("RALPH_TEST_GUARDED_CONFIG_DIRS", raising=False)
     assert _extract_read_path((str(tmp_path / "other.toml"), "r")) is None
     monkeypatch.setenv("RALPH_TEST_GUARDED_CONFIG_DIRS", str(guarded_dir))
 
-    # Files outside guarded directories are ignored even if named ralph-workflow
     outside_dir = tmp_path / "outside"
     outside_dir.mkdir()
     outside_file = outside_dir / "ralph-workflow.toml"
@@ -557,17 +522,14 @@ def test_extract_read_path_ignores_write_modes_and_non_guarded(
 def test_extract_read_path_handles_dotfile_and_nested_prefixes(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """_extract_read_path catches reads in .ralph-workflow and nested ralph-workflow directories."""
     guarded_dir = tmp_path / "guarded_config"
     guarded_dir.mkdir(parents=True)
 
-    # Dotfile directory .ralph-workflow
     dot_dir = guarded_dir / ".ralph-workflow"
     dot_dir.mkdir()
     dot_file = dot_dir / "state.json"
     dot_file.write_text("{}", encoding="utf-8")
 
-    # Nested directory ralph-workflow
     sub_dir = guarded_dir / "ralph-workflow"
     sub_dir.mkdir()
     nested_file = sub_dir / "config.toml"
@@ -580,7 +542,6 @@ def test_extract_read_path_handles_dotfile_and_nested_prefixes(
 
 
 def test_bundled_defaults_agents_toml_is_protected_and_valid() -> None:
-    """Bundled ralph-workflow-agents.toml defaults template exists and is valid TOML."""
     from ralph.policy.loader import default_dir
 
     bundled_dir = default_dir()
@@ -600,7 +561,6 @@ def test_bundled_defaults_agents_toml_is_protected_and_valid() -> None:
 
 
 def test_default_guard_snapshot_includes_bundled_agents_template() -> None:
-    """The session guard snapshots the bundled agents template against mutation."""
     snapshot = _scan_guarded_config_files()
 
     assert _BUNDLED_AGENTS_TEMPLATE.resolve() in snapshot
@@ -612,7 +572,6 @@ def test_default_guard_snapshot_includes_bundled_agents_template() -> None:
 def test_scan_guarded_config_files_with_explicit_dirs_includes_bundled_template(
     tmp_path: Path,
 ) -> None:
-    """Explicit guarded_dirs must still snapshot the bundled agents template."""
     snapshot = _scan_guarded_config_files(guarded_dirs=[tmp_path])
     assert _BUNDLED_AGENTS_TEMPLATE.resolve() in snapshot
     guarded = snapshot[_BUNDLED_AGENTS_TEMPLATE.resolve()]
@@ -624,11 +583,6 @@ def test_explicit_dir_scan_detects_bundled_template_content_mutation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Explicit-dir scan detects a content mutation of the bundled agents template."""
-    # RALPH-TEST-REASON: the shipped template must survive this scenario byte
-    # for byte, so its bytes are captured before the mutation runs and compared
-    # again afterwards. Comparing the raw bytes (not a re-derived hash) makes
-    # any write to the shipped file fail the test.
     real_template_bytes = _BUNDLED_AGENTS_TEMPLATE.read_bytes()
 
     synthetic = tmp_path / "synthetic-ralph-workflow-agents.toml"
@@ -636,30 +590,16 @@ def test_explicit_dir_scan_detects_bundled_template_content_mutation(
     mutated_content = "[agents.claude]\ncmd = 'Claude'\n"
     synthetic.write_text(original_content, encoding="utf-8")
 
-    # RALPH-TEST-REASON: the scanner resolves the bundled template from its own
-    # module globals at CALL time, so the stand-in has to be injected into that
-    # namespace for the duration of the test. Redirecting the global is what
-    # lets the composition be proved without writing to the shipped template.
-    # The globals mapping of the scanner function is that namespace, so the
-    # patch redirects the very lookup the production scan performs.
     monkeypatch.setitem(
         _scan_guarded_config_files.__globals__,
         "_BUNDLED_AGENTS_TEMPLATE",
         synthetic,
     )
 
-    # RALPH-TEST-REASON: the guarded-directory scan only collects files whose
-    # name matches the guarded pattern, and the synthetic stand-in deliberately
-    # does not match it. Clearing the override pins the scan to the production
-    # name patterns, so the ONLY way the synthetic path can enter the snapshot
-    # is the bundled-template branch this test is about.
     monkeypatch.delenv("RALPH_TEST_GUARDED_CONFIG_DIRS", raising=False)
 
     before = _scan_guarded_config_files(guarded_dirs=[tmp_path])
 
-    # RALPH-TEST-REASON: an explicit guarded_dirs scan must still protect the
-    # bundled template, so the stand-in has to be in the snapshot even though
-    # the caller named no directory for it.
     assert synthetic.resolve() in before
     before_snapshot = before[synthetic.resolve()]
     assert before_snapshot.sha256
@@ -667,18 +607,11 @@ def test_explicit_dir_scan_detects_bundled_template_content_mutation(
 
     original_stat = synthetic.stat()
     synthetic.write_text(mutated_content, encoding="utf-8")
-    # RALPH-TEST-REASON: the mutation must be a pure content change, so the
-    # mtime is restored afterwards. With size and mtime unchanged, the content
-    # hash is the only snapshot field that differs, which is what makes a
-    # content-hash violation the only possible detection.
     os.utime(synthetic, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
 
     after = _scan_guarded_config_files(guarded_dirs=[tmp_path])
     after_snapshot = after[synthetic.resolve()]
 
-    # RALPH-TEST-REASON: the mutation must change the content hash and nothing
-    # else, otherwise the detection below could be attributed to a metadata
-    # change instead of to the content change.
     assert before_snapshot.sha256 != after_snapshot.sha256
     assert before_snapshot.size == after_snapshot.size
     assert before_snapshot.mtime_ns == after_snapshot.mtime_ns
@@ -686,16 +619,11 @@ def test_explicit_dir_scan_detects_bundled_template_content_mutation(
     violations = _diff_config_snapshots(before, after)
     synthetic_violations = [v for v in violations if str(synthetic.resolve()) in v]
 
-    # RALPH-TEST-REASON: exactly one violation must be reported for the mutated
-    # template, and it must be the content-hash kind: the guard has to name the
-    # content change, not merely the mtime bump that a rewrite also causes.
     assert len(synthetic_violations) == 1
     assert synthetic_violations[0].startswith("MODIFIED (content hash changed): ")
     assert "content hash changed" in synthetic_violations[0]
     assert "mtime changed" not in synthetic_violations[0]
 
-    # RALPH-TEST-REASON: the whole point of the scenario is that the shipped
-    # template is never written to.
     assert _BUNDLED_AGENTS_TEMPLATE.read_bytes() == real_template_bytes
 
 
@@ -704,7 +632,6 @@ def test_real_config_guard_catches_symlink_unprefixed_and_transient_in_pytester(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A test accessing via symlink, unprefixed file, or transient mutation in guarded root fails loudly."""
     guarded_dir = tmp_path / "guarded_config"
     guarded_dir.mkdir(parents=True)
     real_file = guarded_dir / "target.toml"
@@ -767,7 +694,6 @@ def test_real_config_guard_catches_symlink_unprefixed_and_transient_in_pytester(
 def test_default_production_guard_detects_unprefixed_real_config_access(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Default production guard detects unprefixed files and symlink aliases under real config."""
     fake_home = tmp_path / "fake_home"
     fake_config = fake_home / ".config"
     fake_config.mkdir(parents=True)
@@ -788,17 +714,14 @@ def test_default_production_guard_detects_unprefixed_real_config_access(
     symlink_dir.symlink_to(fake_config)
     alias_child = symlink_dir / "unrelated-app.toml"
 
-    # Isolate to fake paths and ensure default production decision (no override)
     monkeypatch.delenv("RALPH_TEST_GUARDED_CONFIG_DIRS", raising=False)
     monkeypatch.setattr("tests._real_config_guard_support.REAL_HOME", fake_home)
     monkeypatch.setattr("tests._real_config_guard_support.REAL_XDG_CONFIG_HOME", fake_config)
 
-    # 1. Unprefixed read access under real config is detected
     assert _extract_read_path((str(unprefixed_file), "r")) == unprefixed_file.resolve()
     assert _extract_read_path((unprefixed_file, "rb")) == unprefixed_file.resolve()
     assert _extract_read_path((str(nested_unprefixed), "r")) == nested_unprefixed.resolve()
 
-    # 2. Unprefixed write/mutation access under real config is detected
     assert _extract_write_path((str(unprefixed_file), "w")) == unprefixed_file.resolve()
     assert _extract_write_path((str(unprefixed_file), "a")) == unprefixed_file.resolve()
     assert _extract_write_path((str(unprefixed_file), "r+", os.O_RDWR)) == unprefixed_file.resolve()
@@ -814,7 +737,6 @@ def test_default_production_guard_detects_unprefixed_real_config_access(
         == unprefixed_file.resolve()
     )
 
-    # 3. Symlink access (direct and directory alias) to unprefixed config is detected
     assert _extract_read_path((str(symlink_file), "r")) == unprefixed_file.resolve()
     assert _extract_write_path((str(symlink_file), "w")) == unprefixed_file.resolve()
     assert _extract_read_path((str(alias_child), "r")) == unprefixed_file.resolve()
@@ -824,26 +746,22 @@ def test_default_production_guard_detects_unprefixed_real_config_access(
 def test_default_production_guard_preserves_ralph_and_home_policy(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Default production guard detects Ralph paths and preserves narrow policy for non-config home."""
     fake_home = tmp_path / "fake_home"
     fake_config = fake_home / ".config"
     fake_config.mkdir(parents=True)
 
-    # Ralph paths under config
     ralph_config_file = fake_config / "ralph-workflow.toml"
     ralph_config_file.write_text("k = 1\n", encoding="utf-8")
     ralph_sub_file = fake_config / "ralph-workflow" / "config.toml"
     ralph_sub_file.parent.mkdir()
     ralph_sub_file.write_text("k = 2\n", encoding="utf-8")
 
-    # Ralph paths under home (non-config)
     home_ralph_file = fake_home / "ralph-workflow.toml"
     home_ralph_file.write_text("k = 3\n", encoding="utf-8")
     home_dot_ralph = fake_home / ".ralph-workflow" / "state.json"
     home_dot_ralph.parent.mkdir()
     home_dot_ralph.write_text("{}", encoding="utf-8")
 
-    # Non-config home paths (should NOT be guarded)
     home_unrelated = fake_home / "unrelated.txt"
     home_unrelated.write_text("hello\n", encoding="utf-8")
     home_bashrc = fake_home / ".bashrc"
@@ -852,7 +770,6 @@ def test_default_production_guard_preserves_ralph_and_home_policy(
     home_local.parent.mkdir(parents=True)
     home_local.write_text("data\n", encoding="utf-8")
 
-    # Outside paths (tmp_path outside fake_home)
     outside_file = tmp_path / "outside" / "other.toml"
     outside_file.parent.mkdir(parents=True, exist_ok=True)
     outside_file.write_text("x = 1\n", encoding="utf-8")
@@ -861,13 +778,11 @@ def test_default_production_guard_preserves_ralph_and_home_policy(
     monkeypatch.setattr("tests._real_config_guard_support.REAL_HOME", fake_home)
     monkeypatch.setattr("tests._real_config_guard_support.REAL_XDG_CONFIG_HOME", fake_config)
 
-    # Ralph paths remain detected in both config and home
     assert _extract_read_path((str(ralph_config_file), "r")) == ralph_config_file.resolve()
     assert _extract_read_path((str(ralph_sub_file), "r")) == ralph_sub_file.resolve()
     assert _extract_read_path((str(home_ralph_file), "r")) == home_ralph_file.resolve()
     assert _extract_read_path((str(home_dot_ralph), "r")) == home_dot_ralph.resolve()
 
-    # Non-config home paths are preserved as unmonitored by the narrow home policy
     assert _extract_read_path((str(home_unrelated), "r")) is None
     assert _extract_write_path((str(home_unrelated), "w")) is None
     assert _extract_read_path((str(home_bashrc), "r")) is None
@@ -875,7 +790,6 @@ def test_default_production_guard_preserves_ralph_and_home_policy(
     assert _extract_read_path((str(home_local), "r")) is None
     assert _extract_write_path((str(home_local), "w")) is None
 
-    # Outside paths are unmonitored
     assert _extract_read_path((str(outside_file), "r")) is None
     assert _extract_write_path((str(outside_file), "w")) is None
 
@@ -905,7 +819,6 @@ def test_default_production_session_guard_in_pytester(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Under default production mode, session guard detects unprefixed and symlink config access."""
     fake_home = tmp_path / "fake_home"
     fake_config = fake_home / ".config"
     fake_config.mkdir(parents=True)
@@ -968,5 +881,4 @@ def test_default_production_session_guard_in_pytester(
     assert "other_settings.json" in output
     assert "TRANSIENT MUTATION:" in output
     assert "transient_unprefixed.toml" in output
-    # .bashrc is a non-config home path, so it must NOT trigger a violation
     assert ".bashrc" not in output

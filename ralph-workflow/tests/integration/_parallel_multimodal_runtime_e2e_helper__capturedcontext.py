@@ -7,8 +7,6 @@ if TYPE_CHECKING:
 
 
 class _CapturedContext:
-    """Holds captured session contract values from the coordinator's run_fan_out call."""
-
     def __init__(self) -> None:
         self.session_drain: str | None = None
         self.session_capabilities: frozenset[str] | None = None

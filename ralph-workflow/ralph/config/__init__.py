@@ -1,26 +1,3 @@
-"""Configuration models and enums for Ralph.
-
-Use this package when you need to inspect or construct validated configuration
-objects, or when you need the public enums used by CLI/config plumbing.
-
-Typical entry points:
-
-- ``ralph.config.loader.load_config`` to build the merged runtime config
-- ``AgentConfig`` and ``UnifiedConfig`` for validated configuration objects
-- ``Verbosity`` and related enums for CLI/config values
-- ``ensure_global_config`` and friends to bootstrap user configs on first run
-- ``load_optional_toml`` and ``validate_or_default`` for the resilient TOML
-  fallback seam, ``emit_config_failure_warning`` for the shared
-  configuration-failure warning recorder, and
-  ``reset_fallback_warning_registry`` to clear its per-process
-  deduplication registry
-
-Public names resolve lazily, on first attribute access, from the module that
-defines them. Importing a leaf submodule such as ``ralph.config.models`` no
-longer pulls the bootstrap module (and through it the MCP stack) into the
-importing process, which keeps every interpreter that touches the config
-models cheap to start.
-"""
 
 from __future__ import annotations
 
@@ -80,7 +57,6 @@ __all__ = [
     "validate_or_default",
 ]
 
-#: Public name -> (defining module, attribute name in that module).
 _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     "AgentConfig": ("ralph.config.models", "AgentConfig"),
     "BootstrapResult": ("ralph.config.bootstrap", "BootstrapResult"),
@@ -118,12 +94,6 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
 
 
 def __getattr__(name: str) -> object:
-    """Resolve a public export from its defining module on first access.
-
-    The eager imports this replaces pulled ``ralph.config.bootstrap`` -- and
-    through it the MCP startup stack -- into every process that only needed
-    the configuration models.
-    """
     try:
         module_name, attr_name = _LAZY_EXPORTS[name]
     except KeyError as exc:

@@ -1,9 +1,3 @@
-"""Session implementations for the Ralph MCP server.
-
-Provides FileBackedSession (backed by a JSON file written by the parent
-Ralph process) and session_from_env (reads session state from environment
-variables).
-"""
 
 from __future__ import annotations
 
@@ -56,50 +50,11 @@ from ralph.mcp.tools._exec_resource_uri import ExecResourceResolver
 
 
 def reconcile_declared_transport(declared: str | None, persisted: object) -> str | None:
-    """Reconcile an operator's declaration with a session payload.
-
-    THE RESTRICTED SIDE WINS -- the same conservative rule
-    :func:`ralph.mcp.multimodal.capabilities.select_session_transport`
-    applies to a mixed chain, and for the same reason: degrading a
-    capable CLI to a resource reference is harmless, while handing a
-    restricted one an inline image kills its turn.
-
-    Order, and why:
-
-    1. A RESTRICTED side wins whichever side it is. Degrading a capable
-       CLI costs a resource reference; handing a restricted one an
-       inline image kills its turn.
-    2. Otherwise the DECLARATION wins. It names the process an operator
-       started this server for, and reading the payload first let a
-       stale or hand-written file defeat ``--agent-transport`` -- the
-       one thing that flag exists to do.
-    3. With no declaration the payload stands, because it is all there
-       is.
-
-    Rule 2 replaced an earlier "the payload knows better" reading. That
-    reading is defensible for a payload a parent Ralph process wrote,
-    and no production path passes ``--agent-transport`` alongside one;
-    it is indefensible for the stale file this rule is about. The
-    payload's PROVIDER does not travel with a transport it did not
-    state -- see :func:`session_identity_from_payload`.
-    """
     stated = payload_transport(persisted)
     declared_clean = payload_transport(declared)
-    # 1. Either side restricted wins, whichever it is: degrading a
-    #    capable CLI costs a resource reference, handing a restricted
-    #    one an inline image kills its turn.
     for candidate in (declared_clean, stated):
         if candidate is not None and transport_inline_image_roundtrip_unsafe(candidate):
             return candidate
-    # 2. Otherwise the DECLARATION names the process an operator started
-    #    this server for. Returning the payload's value here let a stale
-    #    or hand-written file naming another CLI stand -- a declared
-    #    ``claude`` session inheriting ``agy`` and minting an
-    #    AudioContent the claude CLI cannot take. The payload's provider
-    #    does not travel with it: the caller re-bases through
-    #    ``identity_on_transport``, which drops a provider that
-    #    described a different CLI.
-    # 3. With no declaration, the payload stands -- it is all there is.
     return declared_clean or stated
 
 
@@ -107,26 +62,6 @@ def session_identity_from_payload(
     raw_identity: Mapping[str, object],
     declared: str | None,
 ) -> MultimodalModelIdentity:
-    """Build the session identity a payload and a declaration agree on.
-
-    A payload's PROVIDER describes the CLI that payload named. It is
-    only trustworthy for the CLI we end up tagging if the payload named
-    that same CLI -- so a payload carrying ``{"provider": "gemini"}``
-    and NO transport cannot vouch for a session an operator declared as
-    ``claude``, and keeping it there resolved gemini's capabilities and
-    minted an AudioContent the claude CLI cannot take.
-
-    ``identity_on_transport`` alone does not cover this: it preserves
-    the provider when the stated transport is blank, deliberately, so a
-    DELEGATE that names a different model on the same CLI keeps its
-    provider. That is right for a delegate and wrong for a session
-    payload, which is a different question asked of the same function.
-
-    With no declaration the payload stands as written -- there is
-    nothing to contradict it.
-    """
-    # Read through the payload seams, NOT ``str(...)``: that turns a
-    # JSON ``null`` provider into the literal provider "none".
     stated_transport = payload_transport(raw_identity.get("transport"))
     resolved = reconcile_declared_transport(declared, raw_identity.get("transport"))
     stated = payload_identity(
@@ -134,15 +69,12 @@ def session_identity_from_payload(
     )
     if resolved is None or stated_transport == resolved:
         return identity_on_transport(stated, resolved)
-    # The payload did not name the CLI being tagged, so nothing it says
-    # about the provider applies to it.
     return MultimodalModelIdentity(
         provider=UNKNOWN_IDENTITY.provider, model_id=None, transport=resolved
     )
 
 
 class FileBackedSession:
-    """Session view backed by a JSON file updated by the parent Ralph process."""
 
     def __init__(
         self,
@@ -158,15 +90,6 @@ class FileBackedSession:
         declared_agent_transport: str | None = None,
         workspace_root: Path | None = None,
     ) -> None:
-        # The agent CLI an operator named on the command line. The
-        # payload is written by the parent process and cannot know it,
-        # so a standalone server's declaration would otherwise be
-        # dropped -- and some delivery guards key on the CLI. Only fills
-        # a gap: a payload that names a transport already came from a
-        # handshake that knew better.
-        # Normalised: an empty string is no declaration, and storing it
-        # verbatim would make the identity look transport-bearing and
-        # write ``"transport": ""`` into every downstream payload.
         self._declared_agent_transport = (declared_agent_transport or "").strip().lower() or None
         self._path = path
         self._explicit_workspace_root = (
@@ -178,91 +101,20 @@ class FileBackedSession:
         )
         self._run_id_factory = run_id_factory or (lambda: str(uuid.uuid4()))
         self._env_getter = env_getter if env_getter is not None else os.environ.get
-        # RFC-013 P3: broker-owned secret threaded into receipt / sentinel
-        # HMACs. ``None`` preserves the pre-P3 contract (no HMAC). The
-        # constructor accepts it explicitly so the broker process can
-        # supply the secret at MCP-server boot without re-routing it
-        # through the JSON session payload.
         self._broker_secret: str | None = broker_secret
         self._media_manifest = MediaManifest()
         self._created_at = time.time()
-        # wt-024 M3 (AC-06): parsed-payload cache keyed on (st_mtime_ns,
-        # st_size). The 17 session-view accessors all call _load() so the
-        # previous implementation re-read + re-parsed the JSON on every
-        # property access. With the cache, only the first access in a
-        # generation pays the parse cost; subsequent accessors reuse the
-        # cached dict. The parent writes via atomic temp+rename so both
-        # st_mtime_ns and st_size change on every update — the cache can
-        # never serve a stale payload in production.
         self._cache_key: tuple[int, int] | None = None
         self._cached_payload: dict[str, object] | None = None
-        # Streaming surface mirroring AgentSession: the exec SSE path swaps the
-        # atomic (owner thread, sink) entry per request and the exec handler
-        # captures it via current_thread_tool_output_sink. Production servers
-        # run with THIS class (via session_from_env), so it must carry the full
-        # session surface — enforced statically by session_from_env's McpSession
-        # return type and at runtime by
-        # tests/test_mcp_server_file_backed_session_agent_session_conformance.py.
         self.tool_output_sink_entry: ToolOutputSinkEntry | None = None
-        # AC-03 / S-4 fix: lazy-build one ExploreIndex per FileBackedSession
-        # so the MCP subprocess server's ``ralph_index_status`` /
-        # ``ralph_reindex`` / ``grep_files`` (indexed) handlers report an
-        # engaged index instead of the legacy ``enabled=False`` disabled
-        # payload. The orchestrator-side ``AgentSession`` in
-        # ``ralph.pipeline.session_bridge.build_session_bridge`` already
-        # attaches an ExploreIndex handle on its own session, but the
-        # subprocess MCP server only sees the on-disk session payload and
-        # does NOT inherit that handle. Build the handle from the derived
-        # ``_workspace_root`` (the session file's grandparent directory)
-        # so the index points at the same workspace. The build is
-        # bounded by SQLite open cost only — no cold-start reindex runs
-        # here, so cold-start latency is unchanged. ``None`` is the
-        # fail-open fallback when ``build_explore_index`` raises so a
-        # missing/corrupt index directory cannot wedge session boot.
         self.explore_index: object | None = self._lazy_build_explore_index()
-        # AC-11: optional resolver for ``ralph://exec/<spill-name>``
-        # resource URIs. ``None`` keeps the legacy contract: the
-        # ``resources/read`` handler returns a structured
-        # "resolver not attached" error. Production bridges attach
-        # one resolver so the AC-11 replayable stdout/stderr resource
-        # IDs are actually re-readable. The resolver is either
-        # injected directly (caller owns the object) or discovered
-        # lazily from the on-disk payload's ``exec_spill_roots`` so a
-        # subprocess session restored from the on-disk payload can
-        # replay parent-side spills.
         self._exec_resource_resolver: ExecResourceResolverLike | None = exec_resource_resolver
         if exec_spill_roots is not None:
             self._exec_spill_roots: tuple[Path, ...] | None = tuple(exec_spill_roots)
         else:
-            # AC-11: discover the on-disk payload's ``exec_spill_roots``
-            # so the subprocess MCP server path (which only sees the
-            # session file) can replay parent-side exec URIs. The
-            # discovery is best-effort: a missing or unparseable file
-            # keeps the legacy ``None`` resolver and the resources/read
-            # handler returns a structured "resolver not attached"
-            # error.
             self._exec_spill_roots = self._discover_exec_spill_roots_from_disk()
 
     def _lazy_build_explore_index(self) -> object | None:
-        """Construct one ``ExploreIndex`` for the derived workspace root.
-
-        AC-03 / S-4 wiring fix: the MCP subprocess server inherits the
-        ``FileBackedSession`` class which never had an explore index
-        attached, so ``ralph_index_status`` reported
-        ``enabled=False, files_indexed=0`` even when the orchestrator
-        owned a perfectly good index. The orchestrator-side session
-        already attaches the handle on the parent ``AgentSession``;
-        this constructor-time lazy build lets the subprocess MCP server
-        report an engaged index when one is on disk under
-        ``{workspace_root}/.agent/ralph-explore``.
-
-        The build is fail-open: any exception (missing index dir,
-        corrupt SQLite, schema-version mismatch wiped the index per
-        the existing ``build_explore_index`` contract) returns
-        ``None`` so the subprocess boots. ``build_explore_index``
-        itself wipes incompatible persisted indexes as part of its
-        contract, so a stale or hand-written index never wedges boot.
-        """
         try:
             workspace_root = self._workspace_root
         except Exception:
@@ -274,7 +126,6 @@ class FileBackedSession:
         return handle
 
     def current_thread_tool_output_sink(self) -> Callable[[dict[str, object]], None] | None:
-        """Return the sink only when the calling thread owns it (single atomic read)."""
         entry = self.tool_output_sink_entry
         if entry is None:
             return None
@@ -284,14 +135,6 @@ class FileBackedSession:
         return None
 
     def _load(self) -> dict[str, object]:
-        """Return the cached parsed payload when (mtime_ns, size) is unchanged.
-
-        Otherwise re-invoke ``self._loader`` and refresh the cache. If the
-        stat() call fails (file missing or unreadable), the cache is
-        discarded and the loader is invoked directly so the calling
-        accessor surfaces a normal FileNotFoundError rather than a stale
-        cached payload.
-        """
         try:
             stat = self._path.stat()
             key = (stat.st_mtime_ns, stat.st_size)
@@ -307,20 +150,6 @@ class FileBackedSession:
         return payload
 
     def _discover_exec_spill_roots_from_disk(self) -> tuple[Path, ...] | None:
-        """Read ``exec_spill_roots`` from the on-disk session payload.
-
-        AC-11 production subprocess path: the parent process serializes
-        the trusted spill roots via ``session_payload_json`` and the
-        subprocess MCP server reconstructs the resolver here. The
-        method is best-effort: a missing or unparseable file returns
-        ``None`` so the legacy "resolver not attached" error path
-        surfaces rather than a startup failure.
-
-        The payload is read through ``_load()`` so the parsed-payload
-        cache stays consistent: a duplicate read at init time would
-        otherwise inflate the loader's call count and break the
-        per-generation cache contract.
-        """
         try:
             payload_obj: object = self._load()
         except (OSError, ValueError):
@@ -337,45 +166,12 @@ class FileBackedSession:
 
     @property
     def _workspace_root(self) -> Path:
-        """Return the workspace root by locating the canonical ``.agent/`` marker.
-
-        Production places the session file at
-        ``{workspace}/.agent/ralph-mcp-session-XXXX.json``, so the
-        workspace is the parent of the directory holding the session
-        file. The earlier ``path.parent.parent.parent`` derivation was
-        off by one — it returned the workspace's parent, not the
-        workspace — and made the AC-02 / S-4 explore-index engagement
-        path look in the wrong directory for ``.agent/ralph-explore``.
-
-        Two layouts are accepted:
-
-        * Production: ``{workspace}/.agent/ralph-mcp-session-*.json``
-          (or any direct child of ``.agent/``). Workspace is
-          ``.agent/..``.
-        * Legacy / worker layout: ``{workspace}/.agent/tmp/session.json``.
-          Workspace is found by walking upward until we see a
-          directory containing ``.agent/`` (the workspace IS that
-          directory).
-        """
         if self._explicit_workspace_root is not None:
             return self._explicit_workspace_root
         return _resolve_workspace_root(self._path)
 
     @property
     def exec_resource_resolver(self) -> ExecResourceResolverLike | None:
-        """Lazily resolve the AC-11 ``ralph://exec/...`` resolver.
-
-        Order of preference:
-
-        #. A resolver injected at ``__init__`` time (production tests
-           and the in-process path that owns the resolver object).
-        #. Spill roots carried by the on-disk session payload's
-           ``exec_spill_roots`` key (subprocess MCP server path
-           restored via ``session_from_env``). The resolver is
-           re-constructed once and cached for the lifetime of the
-           session so repeated ``resources/read`` calls do not pay the
-           construction cost.
-        """
         if self._exec_resource_resolver is not None:
             return self._exec_resource_resolver
         if not self._exec_spill_roots:
@@ -385,24 +181,14 @@ class FileBackedSession:
 
     @exec_resource_resolver.setter
     def exec_resource_resolver(self, value: ExecResourceResolverLike | None) -> None:
-        """Allow callers to inject a resolver after construction.
-
-        The production session_from_env path uses this to attach a
-        resolver that was discovered lazily on first read; tests can
-        use it to swap in a fake. The lazy-discovery branch is
-        re-entered when ``value`` is ``None`` and spill roots are
-        present.
-        """
         self._exec_resource_resolver = value
 
     @property
     def session_id(self) -> str:
         loaded = self._load()
-        # 1) The session file already declared a session_id — return it.
         value = loaded.get("session_id")
         if isinstance(value, str):
             return value
-        # 2) Try snapshot file keyed on run_id for cross-respawn persistence.
         run_id_raw = loaded.get("run_id")
         if isinstance(run_id_raw, str):
             try:
@@ -414,7 +200,6 @@ class FileBackedSession:
                 snap_session_id = snap_data.get("session_id")
                 if isinstance(snap_session_id, str):
                     return snap_session_id
-        # 3) Fall back to the injected factory (kept for backward compatibility).
         factory_value = self._session_id_factory()
         if isinstance(factory_value, str) and factory_value:
             return factory_value
@@ -447,16 +232,6 @@ class FileBackedSession:
 
     @property
     def worker_artifact_dir(self) -> Path | None:
-        """Return worker artifact dir from environment variable.
-
-        Deprecated: Ralph-orchestrated workers are removed from the execution
-        model; parallelism is owned by the developer agent's own sub-agents.
-        See docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
-
-        For parallel workers, the parent process sets WORKER_ARTIFACT_DIR
-        in the subprocess environment. This property reads that value so that
-        artifact submission can route to the correct per-worker namespace.
-        """
         raw = self._env_getter(WORKER_ARTIFACT_DIR)
         if raw is not None:
             return Path(raw)
@@ -467,12 +242,6 @@ class FileBackedSession:
 
     @property
     def worker_namespace(self) -> Path | None:
-        """Return worker namespace path if configured.
-
-        Deprecated: Ralph-orchestrated workers are removed from the execution
-        model; parallelism is owned by the developer agent's own sub-agents.
-        See docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
-        """
         payload_raw = self._load().get("worker_namespace")
         if isinstance(payload_raw, str) and payload_raw:
             return Path(payload_raw)
@@ -480,11 +249,6 @@ class FileBackedSession:
 
     @property
     def broker_secret(self) -> str | None:
-        """RFC-013 P3: broker-owned secret threaded into the run-scoped
-        receipt / completion sentinel HMAC. The value is set at
-        ``FileBackedSession`` construction time and never round-trips
-        through the on-disk payload (the secret must not be visible to
-        the on-disk session file)."""
         return self._broker_secret
 
     @property
@@ -532,12 +296,6 @@ class FileBackedSession:
 
     @property
     def parallel_worker(self) -> bool:
-        """Return whether session is running as a parallel worker.
-
-        Deprecated: Ralph-orchestrated workers are removed from the execution
-        model; parallelism is owned by the developer agent's own sub-agents.
-        See docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
-        """
         return self.is_parallel_worker()
 
     @property
@@ -561,11 +319,6 @@ class FileBackedSession:
         raw = self._load().get("delegated_model_identity")
         if not isinstance(raw, dict):
             return None
-        # A delegate names a different MODEL, never a different CLI --
-        # the transport is a property of the process on the other end of
-        # this session. Inheriting it when the delegate payload omits it
-        # keeps a delegated call from silently escaping the guards that
-        # key on the CLI.
         raw_transport = payload_transport(raw.get("transport"))
         return payload_identity(raw.get("provider"), raw.get("model_id"), raw_transport)
 
@@ -580,16 +333,10 @@ class FileBackedSession:
 
     @property
     def caller_model_identity(self) -> MultimodalModelIdentity:
-        """Return the identity a delegated call is judged against.
-
-        The rule itself lives in :func:`caller_identity_for` so this
-        class, ``FileBackedSession``, and the test double cannot drift.
-        """
         return caller_identity_for(self.model_identity, self.delegated_model_identity)
 
     @property
     def caller_capability_profile(self) -> ResolvedCapabilityProfile:
-        """Resolve a fresh caller-specific profile for every ledgered tool call."""
         return caller_profile_for(
             self.model_identity,
             self.delegated_model_identity,
@@ -601,12 +348,6 @@ class FileBackedSession:
         return "approved" if session_has_capability(self.capabilities, capability) else "denied"
 
     def is_parallel_worker(self) -> bool:
-        """Return True if the session is a parallel-worker subprocess.
-
-        Deprecated: Ralph-orchestrated workers are removed from the execution
-        model; parallelism is owned by the developer agent's own sub-agents.
-        See docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
-        """
         payload_raw = self._load().get("parallel_worker", False)
         return bool(payload_raw) or self.worker_artifact_dir is not None
 
@@ -633,41 +374,14 @@ def _load_session_payload(path: Path) -> dict[str, object]:
 
 
 def _resolve_workspace_root(path: Path) -> Path:
-    """Return the workspace root for the given session-file path.
-
-    See :attr:`FileBackedSession._workspace_root` for the layout
-    contract. Two accepted layouts:
-
-    * ``{workspace}/.agent/<session-file>`` — workspace is
-      ``.agent/..`` (production layout).
-    * ``{workspace}/.agent/tmp/<session-file>`` — workspace is found
-      by walking upward until we see a directory containing
-      ``.agent/``.
-
-    The legacy three-parent derivation is preserved as the final
-    fallback so a deeply-nested or non-standard session path still
-    resolves to a best-effort value rather than crashing the
-    subprocess boot path.
-    """
     resolved_path = Path(path).resolve()
-    # Production layout: the session file lives directly under
-    # ``.agent/`` (named ``ralph-mcp-session-*.json`` in production,
-    # but the name is irrelevant — the parent directory name is the
-    # contract). Workspace is the parent of ``.agent/``.
     if resolved_path.parent.name == ".agent":
         return resolved_path.parent.parent.resolve()
-    # Worker / legacy layout: walk upward looking for a directory
-    # containing ``.agent/``. The first match is the workspace.
     cursor = resolved_path.parent
     while cursor != cursor.parent:
         if (cursor / ".agent").is_dir():
             return cursor.resolve()
         cursor = cursor.parent
-    # Fallback (best-effort): the prior 3-parent derivation. Off by
-    # one for the production layout but harmless for any
-    # path-of-last-resort; it returns ``resolved_path``s
-    # grandparent, which keeps a non-standard layout at least
-    # pointing inside an ancestor directory.
     return resolved_path.parent.parent.parent.resolve()
 
 
@@ -679,30 +393,10 @@ def session_from_env(
     declared_agent_transport: str | None = None,
     workspace_root: Path | None = None,
 ) -> McpSession | None:
-    """Load optional session metadata from the environment.
-
-    Returns the structural :class:`McpSession` protocol — NOT a cast. mypy
-    verifies both return branches (``FileBackedSession`` and ``AgentSession``)
-    against the full session contract, so a public member added to one
-    implementation but not the other is a type error in ``make verify``, not a
-    production AttributeError.
-    """
     env_map = os.environ if env is None else env
     broker_secret_value: str | None = env_map.get("RALPH_BROKER_SECRET") or None
     session_file = env_map.get(SESSION_FILE_ENV)
     if session_file:
-        # RFC-013 P3: the broker-owned secret is intentionally NOT read
-        # from the on-disk session payload (the secret must not be
-        # visible to the on-disk file). The orchestrator process
-        # supplies it via the ``BROKER_RECEIPT_SECRET`` /
-        # ``BROKER_SENTINEL_SECRET`` env vars at MCP-server boot; both
-        # are reduced to a single ``broker_secret`` value used by the
-        # HMAC contract.
-        # AC-11: the ``FileBackedSession`` discovers its exec resource
-        # resolver from the on-disk payload's ``exec_spill_roots`` so
-        # the subprocess MCP server can replay parent-side
-        # ``ralph://exec/<spill-name>`` URIs. The discovery is done
-        # inside the session so we do not double-read the payload here.
         return FileBackedSession(
             Path(session_file),
             session_id_factory=session_id_factory,
@@ -715,9 +409,6 @@ def session_from_env(
     raw = env_map.get(SESSION_ENV)
     if not raw:
         return None
-    # The declaration applies to this branch too: an ``AgentSession``
-    # rebuilt from a JSON payload is just as blind to the CLI on the
-    # other end as a file-backed one.
     payload_obj: object = json.loads(raw)
     if not isinstance(payload_obj, dict):
         raise ValueError(f"{SESSION_ENV} must encode an object")
@@ -731,8 +422,6 @@ def session_from_env(
     )
     raw_identity = payload.get("model_identity")
     if isinstance(raw_identity, dict):
-        # The same seam as the file-backed twin, so the two cannot
-        # answer this differently.
         model_identity = session_identity_from_payload(raw_identity, declared_agent_transport)
     else:
         model_identity = MultimodalModelIdentity(

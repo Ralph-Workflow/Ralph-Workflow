@@ -1,22 +1,3 @@
-"""Black-box tests for Codex home tempdir cleanup.
-
-wt-024 memory-perf GAP-RES-01: ``_allocate_codex_home_dir`` creates a
-fresh ``tempfile.mkdtemp`` on every Codex invocation that is never
-removed. The fix tracks allocated dirs in ``_allocated_codex_homes``
-and removes them via the standalone ``cleanup_codex_homes()`` (registered
-with ``atexit``).
-
-wt-024 memory-perf round 3: ``cleanup_codex_homes`` reaps homes still
-registered for atexit cleanup. The lifetime registry is independently
-hard-capped, so paths evicted from it remain on disk for their owner to
-release (or the branch-appropriate runtime cleanup to reclaim).
-
-These tests exercise ``_allocate_codex_home_dir`` + ``cleanup_codex_homes``
-DIRECTLY (NOT ``prepare_codex_home_with_upstreams``, which reads and
-mirrors ``~/.codex`` and would create an environment-dependent test).
-The ``tmp_path`` fixture scopes the tempdirs to the test.
-"""
-
 from __future__ import annotations
 
 import collections
@@ -35,7 +16,6 @@ if TYPE_CHECKING:
 
 
 def test_codex_home_tempdirs_cleaned_up(tmp_path: Path) -> None:
-    """cleanup_codex_homes must rmtree all directories this process allocated."""
     _allocated_codex_homes.clear()
     _all_allocated_codex_homes.clear()
 
@@ -59,7 +39,6 @@ def test_codex_home_tempdirs_cleaned_up(tmp_path: Path) -> None:
 
 
 def test_cleanup_codex_homes_is_idempotent(tmp_path: Path) -> None:
-    """Calling cleanup twice must not raise (ignore_errors + empty-after-clear)."""
     _allocated_codex_homes.clear()
     _all_allocated_codex_homes.clear()
 
@@ -67,7 +46,6 @@ def test_cleanup_codex_homes_is_idempotent(tmp_path: Path) -> None:
     assert d.exists()
 
     cleanup_codex_homes()
-    # Second call: list is already empty, no-op
     cleanup_codex_homes()
 
     assert not d.exists()
@@ -76,19 +54,15 @@ def test_cleanup_codex_homes_is_idempotent(tmp_path: Path) -> None:
 
 
 def test_cleanup_codex_homes_robust_to_missing_dirs(tmp_path: Path) -> None:
-    """If a registered dir was already removed externally, cleanup must not raise."""
     _allocated_codex_homes.clear()
     _all_allocated_codex_homes.clear()
 
     d = _allocate_codex_home_dir(workspace_path=tmp_path)
-    # Remove it out-of-band to simulate a partial-state shutdown
     d.rmdir()
-    # Sanity: dir is gone but still registered
     assert not d.exists()
     assert str(d) in _allocated_codex_homes
     assert str(d) in _all_allocated_codex_homes
 
-    # Should NOT raise (ignore_errors=True)
     cleanup_codex_homes()
 
     assert list(_allocated_codex_homes) == []
@@ -96,7 +70,6 @@ def test_cleanup_codex_homes_robust_to_missing_dirs(tmp_path: Path) -> None:
 
 
 def test_cleanup_codex_homes_keeps_lifetime_cap_evictions_on_disk(tmp_path: Path) -> None:
-    """S-10: capped lifetime eviction must never delete an active home."""
     small_cap = 2
     original_deque = codex_module._allocated_codex_homes
     original_set = codex_module._all_allocated_codex_homes
@@ -123,7 +96,6 @@ def test_cleanup_codex_homes_keeps_lifetime_cap_evictions_on_disk(tmp_path: Path
 
 
 def test_cleanup_codex_homes_reaps_fifo_evicted_orphans(tmp_path: Path) -> None:
-    """DA-004: atexit cleanup must reap homes evicted from the FIFO registry."""
     original_deque = codex_module._allocated_codex_homes
     original_set = codex_module._all_allocated_codex_homes
     codex_module._allocated_codex_homes = collections.deque(maxlen=2)

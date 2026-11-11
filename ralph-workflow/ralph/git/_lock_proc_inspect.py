@@ -1,13 +1,3 @@
-"""Per-process inspection primitives for the git lock liveness probe.
-
-Every function here answers ONE question about ONE process: does this PID
-hold the lock, can it be ruled out as a holder, or is it unknowable? The
-aggregation of those per-process verdicts into a single lock verdict lives in
-:mod:`ralph.git._lock_liveness`.
-
-Split out of ``ralph.git._lock_recovery`` to stay within the repo-structure
-line limits; the public surface is unchanged and re-exported from there.
-"""
 
 from __future__ import annotations
 
@@ -20,15 +10,7 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Literal
 
-#: A lock that no inspectable process holds, but that an uninspectable process
-#: could still hold, is reaped once it is this old. No git operation holds
-#: ``index.lock`` or a ref lock for an hour; the pipeline waits and retries
-#: until then, so an orphan is always eventually recoverable while a lock that
-#: might be live is never removed early.
 _UNPROVABLE_LOCK_CEILING_S = 3600.0
-#: Infrastructure daemons that cannot be git clients. When their fd table is
-#: unreadable (they run with elevated capabilities, so they are non-dumpable)
-#: they are ruled out by name instead of blocking recovery on every host.
 _INFRASTRUCTURE_DAEMONS = (
     "systemd",
     "(sd-pam)",
@@ -52,12 +34,6 @@ _INFRASTRUCTURE_DAEMONS = (
 
 
 def _is_git_process(proc_root: Path, pid_str: str) -> bool:
-    """Return True if the process identified by pid_str is a git process.
-
-    Checks ``/proc/<pid>/comm`` and ``/proc/<pid>/cmdline``. If either source
-    indicates the executable name is or contains "git", returns True.
-    Raises PermissionError if inspection is denied by permissions.
-    """
     comm_path = proc_root / pid_str / "comm"
     try:
         if comm_path.is_file():
@@ -93,25 +69,16 @@ def _git_binary_identity_uncached() -> tuple[int, int] | None:
     if git_binary is None:
         return None
     try:
-        # filesystem-read-ok: stat git executable to resolve identity
         st = Path(git_binary).stat()
         return (st.st_dev, st.st_ino)
     except OSError:
         return None
 
 
-# Call form (rather than decorator form) keeps mypy's disallow_any_expr /
-# disallow_any_decorated settings clean without a type: ignore suppression.
 _git_binary_identity = functools.lru_cache(maxsize=1)(_git_binary_identity_uncached)
 
 
 def _can_rule_out_non_git_process(proc_root: Path, pid_str: str) -> bool:
-    """Return True if we can positively prove the process is NOT a git process.
-
-    Every available name must agree: ``comm`` and argv[0] are attacker/wrapper
-    controlled (``ln -s /usr/bin/git g``), so the executable's own name from
-    ``/proc/<pid>/exe`` is consulted whenever it is readable.
-    """
     names: list[str] = []
     try:
         comm = (proc_root / pid_str / "comm").read_text(encoding="utf-8", errors="replace")
@@ -130,11 +97,9 @@ def _can_rule_out_non_git_process(proc_root: Path, pid_str: str) -> bool:
         names.append((proc_root / pid_str / "exe").readlink().name.lower())
     if any("git" in name for name in names):
         return False
-    # A copy or link of the git binary under another name is still git.
     git_ident = _git_binary_identity()
     if git_ident is not None:
         with suppress(OSError):
-            # filesystem-read-ok: stat procfs exe symlink to compare st_dev and st_ino
             exe_stat = (proc_root / pid_str / "exe").stat()
             if (exe_stat.st_dev, exe_stat.st_ino) == git_ident:
                 return False
@@ -144,13 +109,6 @@ def _can_rule_out_non_git_process(proc_root: Path, pid_str: str) -> bool:
 def _cmdline_targets_repo(
     proc_root: Path, pid_str: str, gitdir: bytes | Path, gitdir_common: bytes | Path
 ) -> bool:
-    """Return True when the process's argv names this repository's git dir.
-
-    ``git --git-dir=<repo>/.git ...`` run from an unrelated cwd works on the
-    repository without a matching cwd or ``GIT_DIR`` in its environment. Paths
-    are resolved against the process's own cwd and symlinks, so a relative
-    ``--git-dir=../r/.git`` or a symlinked path still matches.
-    """
     try:
         raw = (proc_root / pid_str / "cmdline").read_bytes()
     except OSError:
@@ -190,15 +148,7 @@ def _is_dead_process_os_error(e: OSError) -> bool:
 
 
 def _fd_is_lock(fd_link: Path, lock_resolved: str, lock_ident: tuple[int, int] | None) -> bool:
-    """Return True when ``fd_link`` is the lock file, by path OR by identity.
-
-    The path comparison alone misses a holder that sees the repository under a
-    different path (bind mount, container, symlinked checkout) or whose link
-    carries a `` (deleted)`` suffix. ``stat`` follows the magic link to the
-    open file itself, so ``(st_dev, st_ino)`` is the authoritative match.
-    """
     try:
-        # filesystem-read-ok: read procfs fd symlink
         target = str(fd_link.readlink())
     except OSError:
         return False
@@ -209,7 +159,6 @@ def _fd_is_lock(fd_link: Path, lock_resolved: str, lock_ident: tuple[int, int] |
     if not (target.endswith(".lock") or ".lock" in target):
         return False
     try:
-        # filesystem-read-ok: stat procfs magic link to compare open file identity
         st = fd_link.stat()
     except OSError:
         return False
@@ -221,7 +170,6 @@ def _pid_holds_lock_fd(
     lock_resolved: str,
     lock_ident: tuple[int, int] | None = None,
 ) -> Literal["live", "not_live", "unknown"]:
-    """Check if process has the lock file open in fd/."""
     try:
         for fd_link in (pid_dir / "fd").iterdir():
             try:
@@ -244,15 +192,6 @@ def _pid_in_repo_cwd(
     live_cwds: set[Path],
     common_worktrees_dir: Path,
 ) -> Literal["in_repo", "not_in_repo", "unknown"]:
-    """Check if process cwd is in the workspace repository or gitdirs.
-
-    A process is treated as "in the repo" when its cwd is ANY path inside the
-    repository: the worktree-private gitdir, the common gitdir, the worktree
-    working tree, the main-repo working tree, any subdirectory of any of those,
-    or any path under ``gitdir_common/worktrees/``. This covers the common case
-    of a developer running ``git status`` from a project subdirectory while a
-    long-running ``git gc`` holds a worktree-private lock.
-    """
     try:
         cwd_link = pid_dir / "cwd"
         if not (cwd_link.is_symlink() or cwd_link.exists()):
@@ -284,7 +223,6 @@ def _pid_in_repo_cwd(
 
 
 def _resolve_environ_gitdir(pid_dir: Path, raw_val: bytes) -> tuple[Path | None, bool]:
-    """Resolve raw GIT_DIR bytes against cwd; returns (resolved_path, resolution_failed)."""
     if not raw_val:
         return None, False
     try:
@@ -305,13 +243,6 @@ def _pid_has_gitdir_environ(
     gitdir: bytes | Path,
     gitdir_common: bytes | Path,
 ) -> Literal["matches", "no_match", "unknown"]:
-    """Check if process environ sets GIT_DIR matching the repository gitdir.
-
-    Parses exact NUL-separated GIT_DIR=... entries from /proc/<pid>/environ.
-    Relative GIT_DIR paths are resolved against the inspected process's cwd
-    (/proc/<pid>/cwd via readlink). If resolution cannot be established,
-    fails closed to 'unknown'.
-    """
     try:
         environ_path = pid_dir / "environ"
         if not environ_path.is_file():
@@ -342,9 +273,6 @@ def _pid_has_gitdir_environ(
     return "unknown" if resolution_failed else "no_match"
 
 
-#: Git subcommands that only read. They never take ``index.lock`` or a ref
-#: lock, so a long-lived one (a persistent ``cat-file --batch`` helper that
-#: GitPython or an IDE keeps in the repository cwd) is not evidence of a holder.
 _READ_ONLY_GIT_SUBCOMMANDS = frozenset(
     {
         "cat-file",
@@ -365,7 +293,6 @@ _GIT_OPTS_WITH_ARG = frozenset({"-C", "-c", "--git-dir", "--work-tree", "--names
 
 
 def _git_subcommand(proc_root: Path, pid_str: str) -> str | None:
-    """Return the git subcommand from ``/proc/<pid>/cmdline``, if parseable."""
     try:
         raw = (proc_root / pid_str / "cmdline").read_bytes()
     except OSError:
@@ -383,12 +310,6 @@ def _git_subcommand(proc_root: Path, pid_str: str) -> str | None:
 
 
 def _read_proc_status(pid_dir: Path) -> tuple[bool, tuple[int, ...] | None]:
-    """Return ``(is_zombie, uids)`` from one read of ``/proc/<pid>/status``.
-
-    ``status`` is world-readable, unlike ``fd/`` and ``environ``, so it is the
-    one source that classifies a process we are not allowed to inspect.
-    ``uids`` is the real, effective, saved and filesystem uid.
-    """
     is_zombie = False
     uids: tuple[int, ...] | None = None
     try:
@@ -414,12 +335,6 @@ def _check_git_liveness(
     gitdir: bytes | Path,
     gitdir_common: bytes | Path,
 ) -> Literal["live", "dead", "unknown"]:
-    """Resolve liveness for a git process whose fd table was readable and lacks the lock.
-
-    Git can hold a lock without an open fd for an instant (a ref transaction
-    between prepare and commit), so a read-WRITE git working inside the
-    repository is still treated as a holder. Read-only plumbing is not.
-    """
     if _git_subcommand(proc_root, pid_str) in _READ_ONLY_GIT_SUBCOMMANDS:
         return "dead"
     if _cmdline_targets_repo(proc_root, pid_str, gitdir, gitdir_common):
@@ -455,17 +370,6 @@ def _rule_out_unreadable(
     lock_uid: int | None,
     lock_age_s: float | None,
 ) -> Literal["dead", "unknown"]:
-    """Decide a process whose fd table we may not read, using only sound facts.
-
-    ``dead`` requires an affirmative reason this process cannot hold the lock:
-    none of its uids is the lock owner's (git creates the lock with its own
-    uid), it is an infrastructure daemon that is not a git client, or the lock
-    has outlived any operation that could legitimately hold it
-    (``_UNPROVABLE_LOCK_CEILING_S``). Everything else stays ``unknown`` and fails
-    closed. A name such as "python" or an executable merely not called git is
-    NOT a rule-out: a libgit2/dulwich host can hold the lock, and a start time
-    versus mtime comparison is not trusted either (mtime is mutable).
-    """
     if lock_uid is not None and uids is not None and lock_uid not in uids:
         return "dead"
     if _is_infrastructure_daemon(proc_root, pid_str):
@@ -484,12 +388,6 @@ def _non_git_touches_repo(
     gitdir: bytes | Path,
     gitdir_common: bytes | Path,
 ) -> bool:
-    """Return True when a non-git process works in, or names, this repository.
-
-    GitPython's ``LockFile`` creates the lock, closes the fd, and holds it by
-    presence alone, so "no open fd" does not clear a process that is operating
-    on the repository. Ralph's own process is excluded: it is the one asking.
-    """
     if pid_str == str(os.getpid()):
         return False
     return _pid_in_repo_cwd(
@@ -509,19 +407,6 @@ def _check_pid_liveness(
     lock_ident: tuple[int, int] | None = None,
     lock_mtime: float | None = None,
 ) -> Literal["live", "dead", "unknown"]:
-    """Check liveness signals for a single process PID.
-
-    An open fd on the lock (by path or identity) is the authoritative positive
-    proof and always wins. Only when the fd table cannot be read do the
-    uid / start-time / non-git rule-outs apply; only when it can be read and
-    lacks the lock does the git cwd/environ heuristic apply.
-
-    Returns:
-        "live" -- process holds the lock open, or is a read-write git process
-                  working inside the repository.
-        "dead" -- process cannot be holding the lock.
-        "unknown" -- process cannot be inspected and cannot be ruled out.
-    """
     pid_dir = proc_root / pid_str
 
     is_zombie, uids = _read_proc_status(pid_dir)
@@ -551,7 +436,6 @@ def _check_pid_liveness(
 
 
 def _list_pids(proc_root: Path) -> list[int]:
-    """Return the numeric entries of ``proc_root``; empty when it cannot be listed."""
     if not os.access(proc_root, os.R_OK):
         return []
     try:

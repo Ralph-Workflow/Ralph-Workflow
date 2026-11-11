@@ -1,25 +1,3 @@
-"""Tests for the multimodal smoke scenario module (S-2 / criterion 5).
-
-These tests pin the contract four facts together:
-
-1. The :func:`build_smoke_fixture_png` builder emits a valid PNG whose
-   IHDR reports the requested geometry and whose payload always
-   exceeds the inline-size cap (:data:`SMOKE_MEDIA_MAX_INLINE_BYTES`),
-   so every harness identity takes the handle-mint path the
-   multimodal grader grades.
-2. :func:`params_digest` reproduces the digest stored on an existing
-   wire-ledger row, so the replay-hop assertion can match what the
-   server actually signed.
-3. :func:`grade_multimodal_evidence` returns ``WIRE`` only when ALL
-   four contract conditions hold (verified ``read_media`` call,
-   server-persisted ``MEDIA_RECEIPT`` equal to the agent's written
-   token, verified replay-digest call matching the server-minted
-   handle, geometry and sha256 match the fixture).
-4. The poisoned-response case -- a stub that dials the media endpoint
-   but discards the response and fabricates the receipt -- grades
-   ``WORKSPACE_EFFECT``, not ``WIRE``.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -51,11 +29,6 @@ from ralph.pipeline.plumbing.smoke_multimodal import (
 
 
 def _png_ihdr_geometry(raw: bytes) -> tuple[int, int]:
-    """Return the (width, height) reported by a PNG's IHDR chunk.
-
-    Mirrors the parser in :mod:`ralph.mcp.tools.workspace._media_handlers`
-    and validates the fixture builder did not corrupt the IHDR.
-    """
     assert raw[:8] == b"\x89PNG\r\n\x1a\n", "fixture must start with the PNG signature"
     assert raw[12:16] == b"IHDR", "first chunk must be IHDR"
     width = int.from_bytes(raw[16:20], byteorder="big", signed=False)
@@ -64,28 +37,16 @@ def _png_ihdr_geometry(raw: bytes) -> tuple[int, int]:
 
 
 class TestSmokeFixtureBuilder:
-    """``build_smoke_fixture_png`` emits a valid PNG that always exceeds the inline cap."""
-
     @pytest.mark.parametrize(
         "geometry",
         [(24, 24), (32, 32), (48, 24), (60, 40)],
     )
     def test_fixture_payload_exceeds_inline_cap(self, geometry: tuple[int, int]) -> None:
-        """Every realistic smoke-geometry must exceed ``SMOKE_MEDIA_MAX_INLINE_BYTES``.
-
-        Pinning this keeps the handle-mint path uniform across all six
-        harness identities -- the inline cap is the only thing that
-        distinguishes inline-image delivery from the resource-reference
-        replay path the grader depends on. Geometries below 24x24 are
-        not in the per-run draw range and would short-circuit inline
-        delivery, so we do not require them to cross the cap.
-        """
         width, height = geometry
         payload = build_smoke_fixture_png(width, height)
         assert len(payload) > SMOKE_MEDIA_MAX_INLINE_BYTES
 
     def test_fixture_ihdr_reports_requested_geometry(self) -> None:
-        """The IHDR chunk reports the same (width, height) the builder was called with."""
         payload = build_smoke_fixture_png(43, 29)
         assert _png_ihdr_geometry(payload) == (43, 29)
 
@@ -97,20 +58,16 @@ class TestSmokeFixtureBuilder:
             build_smoke_fixture_png(32, dim)
 
     def test_fixture_sha256_is_deterministic_for_fixed_geometry(self) -> None:
-        """The fixture's SHA-256 is fully determined by ``width`` and ``height``."""
         first = build_smoke_fixture_png(40, 24)
         second = build_smoke_fixture_png(40, 24)
         assert hashlib.sha256(first).hexdigest() == hashlib.sha256(second).hexdigest()
         assert expected_fixture_sha256(40, 24) == hashlib.sha256(first).hexdigest()
 
     def test_fixture_sha256_changes_with_geometry(self) -> None:
-        """Different geometries must produce different SHA-256 digests."""
         assert expected_fixture_sha256(40, 24) != expected_fixture_sha256(24, 40)
 
 
 class TestParamsDigest:
-    """``params_digest`` reproduces the digest stored on an existing row."""
-
     def test_digest_matches_appended_record(self, tmp_path: Path) -> None:
         record = append_wire_record(
             tmp_path,
@@ -126,13 +83,11 @@ class TestParamsDigest:
         )
 
     def test_digest_is_stable_under_key_order(self) -> None:
-        """Identical parameter sets with reordered keys must produce identical digests."""
         left = params_digest({"path": "a", "format": "b"})
         right = params_digest({"format": "b", "path": "a"})
         assert left == right
 
     def test_wire_evidence_filters_by_params_digest(self, tmp_path: Path) -> None:
-        """``wire_evidence_for`` accepts the new ``params_digest=`` filter."""
         first_record = append_wire_record(
             tmp_path,
             method="tools/call",
@@ -162,7 +117,6 @@ class TestParamsDigest:
             )
             is True
         )
-        # A different params digest must NOT match.
         assert (
             wire_evidence_for(
                 tmp_path,
@@ -176,13 +130,10 @@ class TestParamsDigest:
 
 
 class TestMediaRegistryLookup:
-    """``read_media_registry_for_fixture`` reads what the server wrote."""
-
     def test_returns_none_when_registry_missing(self, tmp_path: Path) -> None:
         assert read_media_registry_for_fixture(tmp_path, SMOKE_FIXTURE_RELNAME) is None
 
     def test_returns_most_recent_entry_when_fixture_has_prior_runs(self, tmp_path: Path) -> None:
-        """The smoke grader must use the current run's persisted fixture handle."""
         registry_dir = tmp_path / ".agent/tmp"
         registry_dir.mkdir(parents=True)
         registry_path = tmp_path / ".agent/tmp/media_registry.json"
@@ -253,8 +204,6 @@ class TestMediaRegistryLookup:
 
 
 class TestGradeMultimodalEvidence:
-    """``grade_multimodal_evidence`` enforces the four-condition contract."""
-
     @staticmethod
     def _setup_full_wire_run(
         tmp_path: Path,
@@ -264,7 +213,6 @@ class TestGradeMultimodalEvidence:
         include_replay: bool = True,
         replay_tool_name: str = "read_media",
     ) -> tuple[Path, str]:
-        """Materialize the registry + ledger for the full positive contract."""
         width, height = fixture_size
         registry_dir = tmp_path / ".agent/tmp"
         registry_dir.mkdir(parents=True)
@@ -332,7 +280,6 @@ class TestGradeMultimodalEvidence:
                 secret=secret,
                 delivery_mode="inline_image",
             )
-            # Sanity: the recorded row carries that exact digest.
             assert (
                 wire_evidence_for(
                     tmp_path,
@@ -346,7 +293,6 @@ class TestGradeMultimodalEvidence:
         return output_file, secret
 
     def test_full_contract_grades_wire(self, tmp_path: Path) -> None:
-        """All four contract conditions grades WIRE."""
         fixture_size = (40, 24)
         output_file, secret = self._setup_full_wire_run(
             tmp_path,
@@ -365,7 +311,6 @@ class TestGradeMultimodalEvidence:
         assert evidence.provenance is Provenance.WIRE, evidence.detail
 
     def test_read_image_replay_hop_grades_wire(self, tmp_path: Path) -> None:
-        """The prompt permits read_image as the verified replay tool."""
         fixture_size = (40, 24)
         output_file, secret = self._setup_full_wire_run(
             tmp_path,
@@ -386,7 +331,6 @@ class TestGradeMultimodalEvidence:
         assert evidence.provenance is Provenance.WIRE, evidence.detail
 
     def test_ccs_text_handle_contract_does_not_require_pixel_secret(self, tmp_path: Path) -> None:
-        """CCS's schema-safe text handle still proves replay and metadata use."""
         fixture_size = (40, 24)
         output_file, secret = self._setup_full_wire_run(
             tmp_path,
@@ -413,7 +357,6 @@ class TestGradeMultimodalEvidence:
         assert evidence.provenance is Provenance.WIRE, evidence.detail
 
     def test_full_contract_without_pixel_secret_does_not_grade_wire(self, tmp_path: Path) -> None:
-        """Metadata and replay evidence alone are transport proof, not perception proof."""
         fixture_size = (40, 24)
         output_file, secret = self._setup_full_wire_run(
             tmp_path,
@@ -440,16 +383,6 @@ class TestGradeMultimodalEvidence:
         assert "PERCEPTION_SECRET" in evidence.detail
 
     def test_missing_replay_record_grades_workspace_effect(self, tmp_path: Path) -> None:
-        """The poisoned-response case -- a real ``read_media`` call but no replay hop.
-
-        The stub issued the first ``read_media`` call (leaving a genuine
-        verified wire-ledger record), then discarded the response and
-        wrote a fabricated receipt. The receipt equals the registry's
-        ``uri`` but there is NO second ``read_media`` call carrying the
-        replay handle, so the agent's claim of "I consumed the
-        response" is not actually proven -- the run grades
-        ``WORKSPACE_EFFECT``, NOT ``WIRE``.
-        """
         fixture_size = (40, 24)
         output_file, secret = self._setup_full_wire_run(
             tmp_path,
@@ -470,7 +403,6 @@ class TestGradeMultimodalEvidence:
         assert "replay" in evidence.detail.lower()
 
     def test_fabricated_receipt_grades_workspace_effect(self, tmp_path: Path) -> None:
-        """An agent that writes a fabricated ``MEDIA_RECEIPT`` (not in the registry) grades below WIRE."""
         fixture_size = (40, 24)
         width, height = fixture_size
         registry_dir = tmp_path / ".agent/tmp"
@@ -542,7 +474,6 @@ class TestGradeMultimodalEvidence:
         assert "fabricated" in evidence.detail.lower() or "match" in evidence.detail.lower()
 
     def test_no_token_line_grades_absent(self, tmp_path: Path) -> None:
-        """When the agent never writes a ``MEDIA_RECEIPT=`` line the fact is absent."""
         fixture_size = (40, 24)
         output_file = tmp_path / "tmp/interactive-claude-smoke/todo-list.js"
         output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -559,7 +490,6 @@ class TestGradeMultimodalEvidence:
         assert evidence.provenance is Provenance.ABSENT
 
     def test_no_media_call_no_registry_grades_workspace_effect(self, tmp_path: Path) -> None:
-        """A workspace with only tokens (no real ``read_media`` call, no registry entry) grades below WIRE."""
         fixture_size = (40, 24)
         width, height = fixture_size
         output_file = tmp_path / "tmp/interactive-claude-smoke/todo-list.js"
@@ -584,8 +514,6 @@ class TestGradeMultimodalEvidence:
 
 
 class TestPromptRequirements:
-    """``multimodal_prompt_requirements`` carries every required bullet."""
-
     def test_prompt_carries_required_tokens(self) -> None:
         prompt = multimodal_prompt_requirements(SMOKE_FIXTURE_RELNAME)
         assert SMOKE_FIXTURE_RELNAME in prompt
@@ -599,15 +527,12 @@ class TestPromptRequirements:
         assert "params_digest" in prompt or "second, fresh tool call" in prompt
 
     def test_config_toml_pins_inline_cap(self) -> None:
-        """The harness's mcp.toml fragment pins the inline cap low enough that every harness identity takes the handle-mint path."""
         config = smoke_media_config_toml()
         assert "[media]" in config
         assert f"max_inline_bytes = {SMOKE_MEDIA_MAX_INLINE_BYTES}" in config
 
 
 class TestGenerateFixtureGeometry:
-    """The geometry RNG makes the expected answer exist nowhere in the repo."""
-
     def test_generate_returns_width_and_height_in_range(self) -> None:
         for _ in range(10):
             width, height = generate_fixture_geometry()
@@ -615,7 +540,6 @@ class TestGenerateFixtureGeometry:
             assert 24 <= height <= 63
 
     def test_generate_does_not_expose_137x89(self) -> None:
-        """The deleted fixed geometry must never be returned by the RNG."""
         for _ in range(50):
             width, height = generate_fixture_geometry()
             assert (width, height) != (137, 89), (
@@ -623,7 +547,6 @@ class TestGenerateFixtureGeometry:
             )
 
     def test_geometry_is_at_least_24x24(self) -> None:
-        """The minimum geometry keeps the fixture comfortably above the inline cap."""
         width, height = generate_fixture_geometry()
         payload = build_smoke_fixture_png(width, height)
         assert len(payload) > SMOKE_MEDIA_MAX_INLINE_BYTES
@@ -631,16 +554,7 @@ class TestGenerateFixtureGeometry:
     @pytest.mark.parametrize(
         ("rng", "expected_geometry", "lower_bound"),
         [
-            # rng=lambda n: 0 returns the smallest draw on both axes
-            # (picker(40) -> 0, +24 -> 24). The 24x24 corner is the
-            # WORST case for the inline-cap invariant; a builder that
-            # degrades here silently takes the inline-image path on
-            # the smallest per-run geometry.
             (lambda n: 0, (24, 24), SMOKE_MEDIA_MAX_INLINE_BYTES),
-            # rng=lambda n: n - 1 returns the largest draw (picker
-            # returns n-1, +24 -> 39 -- wait, picker takes a 40-arg
-            # so n-1 is 39, +24 = 63). Confirms the upper bound
-            # still keeps the fixture comfortably above the cap.
             (lambda n: n - 1, (63, 63), SMOKE_MEDIA_MAX_INLINE_BYTES),
         ],
         ids=["lower-bound-24x24", "upper-bound-63x63"],
@@ -651,16 +565,6 @@ class TestGenerateFixtureGeometry:
         expected_geometry: tuple[int, int],
         lower_bound: int,
     ) -> None:
-        """Every geometry ``generate_fixture_geometry`` can pick exceeds the inline cap.
-
-        Pinned at the generator's bounds (24..63 on both axes) rather
-        than at a sample geometry, so widening the draw range in
-        :func:`generate_fixture_geometry` cannot silently regress
-        the inline-cap contract. The corners are the worst cases;
-        every interior point of the 24..63 square is comfortably
-        larger because the PNG payload grows monotonically with both
-        width and height.
-        """
         width, height = generate_fixture_geometry(rng=rng)
         assert (width, height) == expected_geometry
         payload = build_smoke_fixture_png(width, height)
@@ -672,18 +576,7 @@ class TestGenerateFixtureGeometry:
 
 
 class TestWireLedgerDeliveryModeMetadata:
-    """S-6 (criterion 17): the wire ledger carries the multimodal delivery metadata.
-
-    ``append_wire_record`` accepts four optional kwargs -- ``delivery_mode``,
-    ``provider``, ``model_id``, ``agent_id`` -- that flow into the
-    on-disk row and the HMAC. When every one is unset the on-disk
-    row and HMAC match the pre-S-6 shape byte-for-byte, so a
-    pre-S-6 ledger still verifies under the post-S-6 verifier
-    (backward compatibility).
-    """
-
     def test_wire_ledger_record_carries_delivery_mode_when_present(self, tmp_path: Path) -> None:
-        """When the optional kwargs are passed, the record and on-disk row carry them."""
         record = append_wire_record(
             tmp_path,
             method="tools/call",
@@ -701,9 +594,7 @@ class TestWireLedgerDeliveryModeMetadata:
         assert record.provider == "claude"
         assert record.model_id == "claude-opus-4-7"
         assert record.agent_id == "agent-42"
-        # The chain still verifies when the S-6 fields are present.
         assert verify_chain(tmp_path, "s3cr3t") is True
-        # The on-disk row carries every S-6 field as a top-level key.
         ledger_path = _ledger_path(tmp_path, "s3cr3t")
         import json as _json
 
@@ -720,13 +611,6 @@ class TestWireLedgerDeliveryModeMetadata:
         assert row["agent_id"] == "agent-42"
 
     def test_wire_ledger_record_omits_optional_fields_when_unset(self, tmp_path: Path) -> None:
-        """When the optional kwargs are not passed, the on-disk row omits them.
-
-        Backward compatibility: a row written by a post-S-6 server
-        with all four S-6 fields unset is byte-for-byte identical
-        in shape to a pre-S-6 row, and a pre-S-6 ledger still
-        verifies under the post-S-6 verifier.
-        """
         record = append_wire_record(
             tmp_path,
             method="tools/call",
@@ -740,10 +624,7 @@ class TestWireLedgerDeliveryModeMetadata:
         assert record.provider is None
         assert record.model_id is None
         assert record.agent_id is None
-        # The chain still verifies when the S-6 fields are absent.
         assert verify_chain(tmp_path, "s3cr3t") is True
-        # The on-disk row omits the S-6 fields entirely -- the
-        # pre-S-6 row shape is preserved.
         ledger_path = _ledger_path(tmp_path, "s3cr3t")
         import json as _json
 

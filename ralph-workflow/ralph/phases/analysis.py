@@ -1,17 +1,3 @@
-"""Shared analysis logic for parsing analysis decisions.
-
-The analysis phase reads a typed artifact submitted by the agent via MCP
-and extracts the decision field to route the pipeline.
-
-Decision routing is driven entirely by policy: the phase's decisions table
-in pipeline.toml maps raw status strings (from the agent artifact) to
-PhaseDecisionRoute targets. The reducer routes via decisions[status].target
-directly, so the raw status string is passed through as-is.
-
-Decisions are raw strings from the agent artifact mapped to routes in policy.
-The BaseModel AnalysisDecision in ralph.mcp.artifacts.typed_artifacts is the
-artifact schema; routing uses the raw status string, not a StrEnum.
-"""
 
 from __future__ import annotations
 
@@ -55,25 +41,6 @@ def parse_analysis_decision_status(
     *,
     phase_name: str | None = None,
 ) -> str | None:
-    """Parse the raw decision status string from the MCP artifact.
-
-    Reads the artifact file from the workspace and extracts the status field.
-    The raw status string is returned directly — the reducer looks up
-    the target in ``phase_def.decisions[status].target``.
-
-    The ``drain_name`` is used to locate the artifact and vocabulary; the
-    ``phase_name`` (defaults to ``drain_name`` when omitted) is used to look up
-    the phase's decisions table in pipeline policy.
-
-    Args:
-        ctx: Phase context with workspace and pipeline_policy.
-        drain_name: Name of the drain (used for artifact path and vocabulary lookup).
-        phase_name: Name of the phase in pipeline policy (defaults to drain_name).
-
-    Returns:
-        Raw status string, or None if parsing fails (caller should emit
-        PhaseFailureEvent).
-    """
     policy_phase_name = phase_name if phase_name is not None else drain_name
     artifact_type = f"{drain_name}_decision"
     ra = resolve_required_artifact(ctx.artifacts_policy, drain=drain_name)
@@ -105,7 +72,6 @@ def parse_analysis_decision_status(
             )
             return None
 
-        # Validate that the status exists in the policy decisions table.
         phase_def = ctx.pipeline_policy.phases.get(policy_phase_name)
         if phase_def is not None and phase_def.decisions and status not in phase_def.decisions:
             logger.warning(
@@ -128,12 +94,6 @@ def parse_analysis_decision_status(
 
 
 def _has_noop_plan(ctx: PhaseContext) -> bool:
-    """Return True if a noop plan artifact is present in the workspace.
-
-    Used to short-circuit analysis phases when the upstream execution produced
-    no meaningful work (e.g. a planning artifact that declares skip=True).
-    Only fires when the plan artifact exists and is parseable as a noop.
-    """
     if not ctx.workspace.exists(PLAN_ARTIFACT_PATH):
         return False
     with suppress(
@@ -150,7 +110,6 @@ def _has_noop_plan(ctx: PhaseContext) -> bool:
 def _missing_or_stale_detail(
     ctx: PhaseContext, phase_name: str, drain_name: str, artifact_path: str
 ) -> str | None:
-    """Return why the decision artifact cannot be credited to this run, else None."""
     if not ctx.workspace.exists(artifact_path):
         logger.warning(
             "Analysis phase '{}' completed without required artifact at {}",
@@ -185,24 +144,6 @@ def _write_analysis_retry_hint(
 
 
 def handle_generic_analysis_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
-    """Generic handler for analysis-role phases registered via register_role_handlers.
-
-    Used for policy-declared analysis phases whose names are not the canonical
-    ``development_analysis`` or ``review_analysis``. The handler:
-
-    - Uses ``effect.phase`` as the pipeline policy phase name.
-    - Uses ``effect.drain`` (if set) or ``effect.phase`` as the drain name for
-      artifact path and vocabulary lookup.
-    - Emits ``AnalysisDecisionEvent`` with the raw decision string, letting
-      the reducer route directly through ``phase_def.decisions[status].target``.
-
-    Args:
-        effect: The effect that triggered this phase.
-        ctx: Phase context with workspace and policy.
-
-    Returns:
-        List of events to emit.
-    """
     if isinstance(effect, PreparePromptEffect):
         return [PipelineEvent.PROMPT_PREPARED]
 
@@ -210,8 +151,6 @@ def handle_generic_analysis_phase(effect: Effect, ctx: PhaseContext) -> list[Eve
         phase_name = str(effect.phase)
         drain_name = effect.drain if effect.drain is not None else phase_name
 
-        # Short-circuit when the upstream execution was a noop. No analysis
-        # decision artifact will have been produced for a noop plan.
         if _has_noop_plan(ctx):
             logger.info("Analysis phase '{}': plan is a no-op — skipping analysis", phase_name)
             return [AnalysisDecisionEvent(phase=phase_name, decision="completed")]
@@ -232,7 +171,6 @@ def handle_generic_analysis_phase(effect: Effect, ctx: PhaseContext) -> list[Eve
 
         status = parse_analysis_decision_status(ctx, drain_name, phase_name=phase_name)
         if status is None:
-            # parse_analysis_decision_status already logged the warning
             return [
                 artifact_validation_failure_event(
                     phase=phase_name,

@@ -1,30 +1,3 @@
-"""Black-box tests for the all-agents-unavailable WAITING state structured logs.
-
-The run loop emits structured loguru INFO logs (with ``binding(recovery=True)``)
-on every WAITING/RESUMED transition. These logs are the operator-visible
-diagnostic surface for the never-crash wait state, so the structured fields
-(phase, reason, cooldown tuples, wait_ms, agents_now_available,
-waited_seconds) are part of the public contract.
-
-AC-08 contract:
-  - WAITING log: binding(recovery=True) + phase + last_unavailability_reason
-    + all (agent, attempt, cooldown_ms) tuples + wait_ms
-  - RESUMED log: binding(recovery=True) + phase + agents_now_available +
-    expired reason + total_seconds_waited
-
-The previous version of this test only asserted on the rendered message text
-and depended on private mock attributes (``mock_controller._unavailability_tracker``,
-``mock_tracker._clock``). That implementation would miss a regression where
-the structured ``extra`` payload disappears (e.g. someone replaces
-``logger.bind(recovery=True).info(..., phase=..., reason=..., ...)`` with a
-plain ``logger.info(plain_string)``) while similar-looking text remains.
-
-The new implementation captures the loguru record metadata directly via a
-sink callback, asserts on the ``record['extra']`` dict (the binding payload),
-and uses the public surface (``controller.snapshot()``) to seed the
-unavailability state instead of poking private tracker attributes.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
@@ -42,13 +15,6 @@ from ralph.workspace.scope import WorkspaceScope
 
 
 def _capture_loguru_records() -> tuple[list[dict[str, Any]], int]:
-    """Attach a loguru sink that captures full records and returns (records, sink_id).
-
-    The captured records are dicts; ``record['extra']`` is the binding payload
-    (kwargs passed to ``logger.bind(...).info(..., **kwargs)``), ``record['message']``
-    is the rendered message text, and ``record['level']`` is the loguru Level
-    instance (use ``.name`` to get the string).
-    """
     records: list[dict[str, Any]] = []
     sink_id = logger.add(lambda msg: records.append(dict(msg.record)), level="DEBUG")
     return records, sink_id
@@ -62,18 +28,6 @@ def _build_recovery_controller_with_unavailable(
     reason_value: str,
     attempts: dict[str, int] | None = None,
 ) -> MagicMock:
-    """Build a MagicMock RecoveryController whose public surface
-    (``waiting_state_payload`` and ``agents_now_available``) reports a
-    deterministic unavailable state for the given phase/agents.
-
-    The run loop consumes the unavailability state only through these
-    two public controller methods; the private ``_unavailability_tracker``
-    attribute is no longer touched. The mock's ``waiting_state_payload``
-    returns ``[(agent, attempt, cooldown_ms_remaining)]`` tuples with
-    ``cooldown_ms_remaining = unavailable_until_ms`` (the run loop
-    contract is non-negative, so the test asserts on a range, not the
-    exact value).
-    """
     attempts = attempts or {}
     timeouts = {f"{phase}:{a}": unavailable_until_ms for a in agents}
     backoff_attempts = {f"{phase}:{a}": attempts.get(a, 1) for a in agents}
@@ -83,10 +37,6 @@ def _build_recovery_controller_with_unavailable(
         "unavailable_timeouts": timeouts,
         "backoff_attempts": backoff_attempts,
     }
-    # Public surface only: the run loop calls these two methods. The
-    # implementation detail of how the controller derives the payload
-    # is irrelevant to the test; the run loop consumes only the public
-    # surface.
     mock_controller.waiting_state_payload.return_value = [
         (a, backoff_attempts[f"{phase}:{a}"], unavailable_until_ms) for a in agents
     ]
@@ -98,14 +48,6 @@ def _build_loop_context_and_state(
     *,
     mock_controller: MagicMock,
 ) -> tuple[_LoopContext, PipelineState, list[float], list[str]]:
-    """Build the run-loop context, the initial wait-state pipeline state,
-    and the empty emit/sleep capture lists.
-
-    Extracted helper to keep the top-level test under the PLR0915
-    statement-count budget. Returns ``(ctx, state, slept, emitted)``
-    where ``slept`` and ``emitted`` are list-typed sinks populated by
-    the monkeypatched ``ctx.sleep`` and ``emit_activity_line`` callables.
-    """
     policy_bundle = MagicMock()
     policy_bundle.pipeline.terminal_phase = "complete"
     policy_bundle.pipeline.terminal_states.return_value = {"complete", "failed_terminal"}
@@ -137,10 +79,6 @@ def _build_loop_context_and_state(
         phase="development",
         phase_chains={"development": chain_state},
     )
-    # Use the structured ``is_waiting_state`` flag as the wait-state signal;
-    # the previous ``last_error`` text parser was brittle and was replaced
-    # with this boolean. The ``last_error`` text remains as operator
-    # context only and is NOT a contract the run loop parses.
     state = state.copy_with(
         last_error=(
             "all agents unavailable (last reason: out_of_credits); waiting for cooldown expiry"
@@ -162,13 +100,6 @@ def _drive_run_loop_until_complete(
     slept: list[float],
     emitted: list[str],
 ) -> list[dict[str, Any]]:
-    """Wire the test's monkeypatches, drive ``_run_inner_loop`` to
-    completion, and return the captured loguru records.
-
-    Extracted helper to keep the top-level test under the PLR0915
-    statement-count budget. The mock setup is identical for every
-    assertion block.
-    """
 
     def mock_emit_activity_line(display: object, phase: str | None, text: str) -> None:
         emitted.append(text)
@@ -197,7 +128,6 @@ def _drive_run_loop_until_complete(
 
 
 def _assert_one_each(emitted: list[str], label: str) -> None:
-    """Assert exactly one emit containing ``label`` in ``emitted``."""
     matching = [s for s in emitted if label in s]
     assert len(matching) == 1, (
         f"expected exactly one {label} emit, got {len(matching)}: {emitted!r}"
@@ -205,7 +135,6 @@ def _assert_one_each(emitted: list[str], label: str) -> None:
 
 
 def _assert_waiting_record_shape(records: list[dict[str, Any]]) -> None:
-    """Assert the structured WAITING log has the AC-08 contract fields."""
     waiting_records = [
         r for r in records if "WAITING" in r["message"] and "all agents unavailable" in r["message"]
     ]
@@ -229,7 +158,6 @@ def _assert_waiting_record_shape(records: list[dict[str, Any]]) -> None:
 
 
 def _assert_resumed_record_shape(records: list[dict[str, Any]]) -> None:
-    """Assert the structured RESUMED log has the AC-08 contract fields."""
     resumed_records = [
         r for r in records if "RESUMED" in r["message"] and "cooldown expired" in r["message"]
     ]
@@ -246,7 +174,6 @@ def _assert_resumed_record_shape(records: list[dict[str, Any]]) -> None:
 
 
 def _assert_pre_sleep_debug_record(records: list[dict[str, Any]]) -> None:
-    """Assert the pre-sleep DEBUG log carries the structured recovery binding."""
     pre_sleep_records = [
         r
         for r in records
@@ -265,19 +192,6 @@ def _assert_pre_sleep_debug_record(records: list[dict[str, Any]]) -> None:
 
 
 def test_run_loop_waiting_state_logs(monkeypatch: pytest.MonkeyPatch) -> None:
-    """AC-08: the run loop emits structured WAITING and RESUMED logs with
-    ``binding(recovery=True)`` and the documented field set, when the
-    controller enters and exits the all-agents-unavailable wait state.
-
-    This test asserts on the loguru record metadata (``record['extra']``)
-    directly, not just the rendered message text, so a regression that
-    silently drops the structured payload (e.g. a plain ``logger.info``
-    with no ``bind`` and no kwargs) is caught immediately.
-
-    It also asserts on the pre-sleep DEBUG confirmation so a regression
-    that drops the ``recovery=True`` binding on the pre-sleep log is
-    caught immediately.
-    """
     mock_controller = _build_recovery_controller_with_unavailable(
         phase="development",
         agents=["claude"],
@@ -295,13 +209,10 @@ def test_run_loop_waiting_state_logs(monkeypatch: pytest.MonkeyPatch) -> None:
         slept=slept,
         emitted=emitted,
     )
-    # Display-level: exactly one WAITING emit and one RESUMED emit.
     _assert_one_each(emitted, "WAITING")
     _assert_one_each(emitted, "RESUMED")
-    # Structured logs.
     _assert_waiting_record_shape(records)
     _assert_resumed_record_shape(records)
     _assert_pre_sleep_debug_record(records)
-    # The run loop slept exactly once with the documented delay.
     assert len(slept) == 1
     assert slept[0] == 0.2

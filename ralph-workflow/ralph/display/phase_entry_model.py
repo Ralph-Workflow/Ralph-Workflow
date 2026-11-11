@@ -1,4 +1,3 @@
-"""Immutable view-model for phase-start banner data."""
 
 from __future__ import annotations
 
@@ -13,7 +12,6 @@ from ralph.display.phase_status import (
 
 @dataclass(frozen=True)
 class PhaseEntryModel:
-    """Immutable view-model for phase-start banner data."""
 
     phase_name: str
     phase_role: str | None = None
@@ -24,7 +22,6 @@ class PhaseEntryModel:
     inner_analysis_cap: int | None = None
 
     def to_iteration_context(self) -> PhaseIterationContext:
-        """Return a PhaseIterationContext for canonical label rendering."""
         return PhaseIterationContext(
             outer_dev=self.outer_dev_iteration,
             outer_dev_cap=self.outer_dev_cap,
@@ -33,11 +30,9 @@ class PhaseEntryModel:
         )
 
     def human_label(self) -> str:
-        """Return the human-readable phase label."""
         return self.phase_name.replace("_", " ").title()
 
     def iteration_label_parts(self) -> list[str]:
-        """Return ordered canonical label strings for the iteration context."""
         parts: list[str] = []
         if self.outer_dev_iteration is not None:
             parts.append(format_dev_cycle(self.outer_dev_iteration))

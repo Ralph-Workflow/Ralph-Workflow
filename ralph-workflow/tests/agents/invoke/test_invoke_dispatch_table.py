@@ -1,5 +1,3 @@
-"""Tests to verify invoke_agent routing decisions for different transports."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -19,7 +17,6 @@ if TYPE_CHECKING:
 
 @pytest.fixture(autouse=True)
 def setup_default_registry() -> None:
-    # This seeds the default catalog with builtins via registry creation
     AgentRegistry.from_config(UnifiedConfig())
 
 
@@ -40,17 +37,12 @@ def test_invoke_dispatch_table(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
         lambda cmd, ctx: sub_called.append(cmd) or iter(["sub line"]),
     )
 
-    # Skip the real WorkspaceMonitor watchdog observer: this test only
-    # exercises routing decisions (PTY vs subprocess), so the
-    # observer's start/stop cost would otherwise eat the 1-second
-    # per-test budget on a slow machine.
     options = InvokeOptions(
         workspace_path=tmp_path,
         show_progress=False,
         workspace_monitor_factory=lambda *args, **kwargs: None,
     )
 
-    # Helper to execute invoke and reset call tracking lists
     def check_routing(config: AgentConfig) -> str:
         pty_called.clear()
         sub_called.clear()
@@ -61,27 +53,21 @@ def test_invoke_dispatch_table(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
             return "subprocess"
         return "none"
 
-    # (a) transport=CLAUDE_INTERACTIVE (built-in claude, now in default_catalog()) routes to PTY
     config_claude = AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE)
     assert check_routing(config_claude) == "pty"
 
-    # (b) transport=AGY (built-in agy, now in default_catalog()) routes to PTY
     config_agy = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
     assert check_routing(config_agy) == "pty"
 
-    # (c) transport=NANOCODER (built-in nanocoder, now in default_catalog()) routes to PTY
     config_nanocoder = AgentConfig(cmd="nanocoder", transport=AgentTransport.NANOCODER)
     assert check_routing(config_nanocoder) == "pty"
 
-    # (d) transport=CLAUDE (built-in claude-headless, now in default_catalog()) routes to subprocess
     config_headless = AgentConfig(cmd="claude -p", transport=AgentTransport.CLAUDE)
     assert check_routing(config_headless) == "subprocess"
 
-    # (e) transport=CODEX (built-in codex, now in default_catalog()) routes to subprocess
     config_codex = AgentConfig(cmd="codex exec", transport=AgentTransport.CODEX)
     assert check_routing(config_codex) == "subprocess"
 
-    # (f) unregistered transport=CLAUDE_INTERACTIVE agent routes to subprocess (the new default)
     config_unregistered = AgentConfig(
         cmd="unregistered-claude", transport=AgentTransport.CLAUDE_INTERACTIVE
     )

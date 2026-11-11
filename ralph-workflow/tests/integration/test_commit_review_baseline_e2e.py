@@ -1,19 +1,3 @@
-"""End-to-end proof that a rejection rollback restores the run-start baseline.
-
-``HEAD`` is the restore point only for pipeline-made commits. A run that
-starts on a tree with uncommitted user changes would lose EXACTLY that work
-to a ``reset``-style restore, so the engine records a BASELINE SEAL at run
-start whenever the tree is dirty, and a rejection rollback restores to that
-baseline when one exists.
-
-The proofs drive the public run-loop seam
-(``ralph.pipeline.run_loop.resolve_initial_state``) and the public
-``ralph.git.proposal_seal`` primitives against real temporary Git
-repositories: no sleeps, no network, no private production imports, and no
-mutation of any repository's real ``.git/index`` beyond what the rollback
-itself performs.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -36,23 +20,17 @@ pytestmark = [pytest.mark.timeout_seconds(10), pytest.mark.required_auto_integra
 
 _DEFAULTS_DIR = Path(__file__).resolve().parents[2] / "ralph" / "policy" / "defaults"
 
-#: The content the temporary repository's initial commit holds.
 _HEAD_README = "test"
-#: The user's pre-existing uncommitted edit of a TRACKED file.
 _USER_README = "user's uncommitted edit\n"
-#: The user's pre-existing uncommitted NEW file.
 _USER_NOTES = "user's uncommitted new file\n"
-#: The file the rejected iteration added.
 _PROPOSAL_ONLY = "added by the rejected iteration\n"
 
 
 def _bundle() -> PolicyBundle:
-    """Return the bundled default policy."""
     return load_policy(_DEFAULTS_DIR)
 
 
 def _head_sha(repo_root: Path) -> str:
-    """Return the SHA HEAD points at, read from the loose ref file."""
     head_path = repo_root / ".git" / "HEAD"
     head = head_path.read_text(encoding="utf-8").strip()
     if head.startswith("ref: "):
@@ -62,12 +40,10 @@ def _head_sha(repo_root: Path) -> str:
 
 
 def _ref_file(repo_root: Path, ref: str) -> Path:
-    """Return the loose-ref file backing ``ref``."""
     return repo_root / ".git" / ref
 
 
 def _start_run(repo_root: Path) -> PipelineState:
-    """Start a fresh run against ``repo_root`` (the run-start baseline seam)."""
     return resolve_initial_state(
         config=UnifiedConfig(),
         policy_bundle=_bundle(),
@@ -81,12 +57,6 @@ def _start_run(repo_root: Path) -> PipelineState:
 
 
 def _reject(repo_root: Path, start_state: PipelineState, run_id: str) -> PipelineState:
-    """Seal the pending state, reject it, and return the rollback-pending state.
-
-    The developer changes a tracked file and adds a file of their own; the
-    gate rejects the sealed proposal, so the reducer asks the pipeline to
-    roll the tree back.
-    """
     readme = repo_root / "README.md"
     proposal_only = repo_root / "proposal_only.txt"
     readme.write_text("developer change\n", encoding="utf-8")
@@ -104,7 +74,6 @@ def _reject(repo_root: Path, start_state: PipelineState, run_id: str) -> Pipelin
 
 
 def _run_pending_rollback(repo_root: Path, state: PipelineState) -> PipelineState:
-    """Execute the pending rollback through the public run-loop seam."""
     return resolve_initial_state(
         config=UnifiedConfig(),
         policy_bundle=_bundle(),
@@ -118,7 +87,6 @@ def _run_pending_rollback(repo_root: Path, state: PipelineState) -> PipelineStat
 
 
 def test_dirty_run_start_rollback_restores_the_baseline_not_head(tmp_git_repo: Path) -> None:
-    """A run that starts dirty restores the user's work, not HEAD's content."""
     repo_root = Path(tmp_git_repo)
     readme = repo_root / "README.md"
     notes = repo_root / "user_notes.txt"
@@ -128,7 +96,6 @@ def test_dirty_run_start_rollback_restores_the_baseline_not_head(tmp_git_repo: P
     user_readme_bytes = readme.read_bytes()
     user_notes_bytes = notes.read_bytes()
 
-    # The run starts here, on the dirty tree: the baseline seal is captured.
     start_state = _start_run(repo_root)
     baseline_ref = start_state.rollback_baseline_ref
     assert baseline_ref is not None, "a dirty tree at run start must record a baseline seal"
@@ -142,19 +109,14 @@ def test_dirty_run_start_rollback_restores_the_baseline_not_head(tmp_git_repo: P
     rolled_back = _run_pending_rollback(repo_root, rejected_state)
     assert rolled_back.rollback_pending is False
 
-    # The user's pre-existing uncommitted work survives the rollback.
     assert readme.read_bytes() == user_readme_bytes
     assert notes.read_bytes() == user_notes_bytes
-    # The file the rejected iteration added is gone.
     assert not proposal_only.exists()
-    # The rollback restored the BASELINE, so the tracked file is NOT HEAD's.
     assert readme.read_text(encoding="utf-8") != _HEAD_README
-    # The rollback created no commit: the baseline is never a commit source.
     assert _head_sha(repo_root) == head_before
 
 
 def test_clean_run_start_rollback_restores_head(tmp_git_repo: Path) -> None:
-    """A run that starts clean has no baseline and restores to HEAD."""
     repo_root = Path(tmp_git_repo)
     readme = repo_root / "README.md"
     proposal_only = repo_root / "proposal_only.txt"
@@ -167,21 +129,15 @@ def test_clean_run_start_rollback_restores_head(tmp_git_repo: Path) -> None:
     rolled_back = _run_pending_rollback(repo_root, rejected_state)
     assert rolled_back.rollback_pending is False
 
-    # The tracked file is back to HEAD's content.
     assert readme.read_text(encoding="utf-8") == _HEAD_README
-    # The file the rejected iteration added is gone.
     assert not proposal_only.exists()
 
 
 def test_baseline_seal_never_writes_the_real_index(tmp_git_repo: Path) -> None:
-    """The baseline seal builds its tree through the temporary-index route."""
     repo_root = Path(tmp_git_repo)
     readme = repo_root / "README.md"
     notes = repo_root / "user_notes.txt"
     index_path = repo_root / ".git" / "index"
-    # The tracked file carries the user's uncommitted edit, so a seal that
-    # staged into the REAL index would change the index bytes: the entry for
-    # the edited file would be rewritten with the new content.
     readme.write_text(_USER_README, encoding="utf-8")
     notes.write_text(_USER_NOTES, encoding="utf-8")
     index_before = index_path.read_bytes()
@@ -196,7 +152,6 @@ def test_baseline_seal_never_writes_the_real_index(tmp_git_repo: Path) -> None:
 
 
 def test_the_baseline_ref_survives_the_proposal_sweep(tmp_git_repo: Path) -> None:
-    """The baseline ref lives outside the proposal namespace, so it is never pruned."""
     repo_root = Path(tmp_git_repo)
     notes = repo_root / "user_notes.txt"
     notes.write_text(_USER_NOTES, encoding="utf-8")

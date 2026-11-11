@@ -1,5 +1,3 @@
-"""Regression coverage for tool-result outcome severity."""
-
 from __future__ import annotations
 
 import pytest
@@ -11,7 +9,6 @@ from ralph.display.presented_entry import build_presented_entry, outcome_is_fail
 
 
 def _tool_result_severity(metadata: dict[str, object]) -> str:
-    """Render a tool result through the public entry-builder seam."""
     return build_presented_entry(
         AgentActivityEvent(
             provider=ActivityProvider.GENERIC,
@@ -22,7 +19,6 @@ def _tool_result_severity(metadata: dict[str, object]) -> str:
 
 
 def test_presented_entry_regression_stderr_without_failure_signal_is_info() -> None:
-    """S-1: diagnostic stderr on an exit-0 result is not a failure."""
     metadata = {"stderr": "warning: noisy but successful"}
 
     assert outcome_is_failure(metadata) is False
@@ -40,6 +36,5 @@ def test_presented_entry_regression_stderr_without_failure_signal_is_info() -> N
 def test_presented_entry_regression_explicit_failure_signals_remain_errors(
     metadata: dict[str, object],
 ) -> None:
-    """S-1: explicit command failure signals still render as errors."""
     assert outcome_is_failure(metadata) is True
     assert _tool_result_severity(metadata) == "error"

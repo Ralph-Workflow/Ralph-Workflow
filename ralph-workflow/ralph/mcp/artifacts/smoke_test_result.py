@@ -1,4 +1,3 @@
-"""Structured smoke_test_result artifact validation helpers."""
 
 from __future__ import annotations
 
@@ -20,7 +19,6 @@ SMOKE_TEST_RESULT_ARTIFACT_TYPE = "smoke_test_result"
 
 
 class SmokeTestResult(RalphBaseModel):
-    """Validated schema for a smoke_test_result artifact."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -43,7 +41,6 @@ class SmokeTestResult(RalphBaseModel):
 
 
 def normalize_smoke_test_result_content(content: dict[str, object]) -> dict[str, object]:
-    """Validate and normalize a raw smoke_test_result content dict."""
     try:
         validated = SmokeTestResult.model_validate(content)
         return validated.model_dump(mode="python", exclude_none=True)
@@ -55,12 +52,6 @@ def normalize_smoke_test_result_content(content: dict[str, object]) -> dict[str,
 
 
 def read_smoke_test_result_artifact(repo_root: Path) -> dict[str, object] | None:
-    """Read and validate the persisted smoke_test_result artifact content from the workspace.
-
-    Returns ``None`` when the artifact file does not exist, cannot be read,
-    or fails schema validation against :class:`SmokeTestResult`.  This prevents
-    a malformed or incomplete artifact from influencing pass/fail decisions.
-    """
     artifact_path = repo_root / ".agent" / "artifacts" / f"{SMOKE_TEST_RESULT_ARTIFACT_TYPE}.md"
     try:
         import_module("ralph.mcp.artifacts.markdown.specs")

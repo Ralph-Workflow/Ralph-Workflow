@@ -1,18 +1,3 @@
-"""Live operator-visible SUBAGENT_PROGRESS render-path test.
-
-The per-parser ``emit_subagent_activity`` hook feeds the watchdog's
-subagent sink.  The same parsed line MUST also surface on the
-``ParallelDisplay`` as a ``SUBAGENT_PROGRESS`` event so the operator
-sees real-time per-tool subagent progress on the console transcript
-(not only as a ``WaitingStatusEvent`` comma-suffix breadcrumb).
-
-This test pins the wiring: driving ClaudeParser through
-``stream_parsed_agent_activity`` with a tool_use line MUST cause
-``display.emit_parsed_event`` to receive an
-``ActivityEventKind.SUBAGENT_PROGRESS`` event with the sanitized tool
-name.  No subprocess, no real sleep, no FakeClock.
-"""
-
 from __future__ import annotations
 
 import json
@@ -48,13 +33,6 @@ def _make_display(tmp_path: Path) -> tuple[ParallelDisplay, StringIO]:
 
 
 def test_subagent_progress_event_emitted_for_tool_use(tmp_path: Path) -> None:
-    """A tool_use AgentOutputLine MUST produce a SUBAGENT_PROGRESS event.
-
-    Drives ClaudeParser with a single content_block_start tool_use
-    line.  ``display.emit_parsed_event`` is recorded and MUST contain
-    at least one ``SUBAGENT_PROGRESS`` event whose summary carries
-    the sanitized ``tool_use:Bash`` summary.
-    """
     pd, _buf = _make_display(tmp_path)
     captured: list[tuple[str, ActivityEventKind, str, dict[str, object]]] = []
     original_emit = _PD_EMIT
@@ -68,8 +46,6 @@ def test_subagent_progress_event_emitted_for_tool_use(tmp_path: Path) -> None:
     ) -> None:
         captured.append((unit_id, kind, content or "", metadata or {}))
 
-    # Monkey-patch via class-method assignment (the instance has
-    # __slots__ but we can rebind the class method for the test).
     def _capturing_emit(
         self: ParallelDisplay,
         unit_id: str,
@@ -180,7 +156,6 @@ _PROVIDER_TOOL_USE_LINES: dict[ActivityProvider, str] = {
 def test_subagent_progress_event_for_every_provider(
     tmp_path: Path, provider: ActivityProvider
 ) -> None:
-    """Every provider's parser MUST surface SUBAGENT_PROGRESS on ParallelDisplay."""
     pd, _buf = _make_display(tmp_path)
     captured: list[tuple[str, ActivityEventKind, str, dict[str, object]]] = []
     original_emit = _PD_EMIT

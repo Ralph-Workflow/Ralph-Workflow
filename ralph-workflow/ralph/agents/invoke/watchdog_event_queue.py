@@ -1,4 +1,3 @@
-"""Bound watchdog event ingestion without blocking its upstream reader."""
 
 from __future__ import annotations
 
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 
 class DroppingEventQueue(Queue[object]):
-    """Keep watchdog ingestion bounded by evicting the oldest queued event."""
 
     def __init__(self, maxsize: int) -> None:
         super().__init__(maxsize=maxsize)

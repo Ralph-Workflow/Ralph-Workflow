@@ -1,5 +1,3 @@
-"""Tests for ralph/pipeline/runner.py — pipeline runner."""
-
 from __future__ import annotations
 
 from functools import lru_cache
@@ -30,11 +28,11 @@ DEVELOPER_ITERATIONS = 5
 REVIEWER_PASSES = 2
 SECOND_ITERATION = 2
 INTERRUPT_EXIT_CODE = 130
-_TRUNCATED_TEXT_MAX = runner_module.MAX_TEXT_LENGTH + 1  # content + ellipsis
-_TRUNCATED_RESULT_BRIEF_MAX = runner_module.MAX_TOOL_RESULT_BRIEF + 1  # content + ellipsis
-_TRUNCATED_METADATA_MAX = runner_module.MAX_METADATA_SUMMARY_LENGTH + 1  # content + ellipsis
+_TRUNCATED_TEXT_MAX = runner_module.MAX_TEXT_LENGTH + 1
+_TRUNCATED_RESULT_BRIEF_MAX = runner_module.MAX_TOOL_RESULT_BRIEF + 1
+_TRUNCATED_METADATA_MAX = runner_module.MAX_METADATA_SUMMARY_LENGTH + 1
 _AVAILABLE_WIDTH_FLOOR = 40
-_TRUNCATE_RESULT_LEN = 6  # 5 chars + 1 ellipsis char
+_TRUNCATE_RESULT_LEN = 6
 
 
 @lru_cache(maxsize=1)
@@ -124,8 +122,6 @@ def _stub_workspace_scope_and_policy(monkeypatch: MonkeyPatch, tmp_path: Path) -
 
 
 class TestCycleBaselineLifecycle:
-    """Regression tests: cycle baseline is cleared at dev-cycle boundaries."""
-
     def test_run_clears_baseline_at_teardown_on_success(
         self, monkeypatch: MonkeyPatch, tmp_path: Path
     ) -> None:

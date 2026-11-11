@@ -1,10 +1,3 @@
-"""Tiny dedicated test surface for the plan-level cross-section validator.
-
-The full set of cross-reference tests lives in
-``tests/test_plan_artifact.py``; this file is a focused regression set for the
-two-link consistency contract between steps and acceptance criteria.
-"""
-
 from __future__ import annotations
 
 from ralph.mcp.artifacts.plan import normalize_plan_artifact_content

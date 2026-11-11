@@ -38,15 +38,7 @@ class SetupDependencies:
     install_project_skills: _InstallSkills
 
 
-def sync_shipped_skills(  # noqa: PLR0912
-    # PLR0912 (too many branches): the run-start flow has explicit
-    # gates for user-global, project-scope install, gitignore
-    # auto-seed, skill auto-commit (with pre-write hash discipline,
-    # pre-snapshot, diff capture, and CREATED/FAILED/SKIPPED
-    # outcome reporting), and the retention sweep. Each gate is a
-    # distinct stage with its own warning surface, so flattening
-    # them into a single branch would lose the per-stage
-    # non-fatal warning boundary the run contract depends on.
+def sync_shipped_skills(
     workspace_root: Path | None,
     *,
     keep_run_id: str | None,
@@ -63,37 +55,8 @@ def sync_shipped_skills(  # noqa: PLR0912
         update_available = False
     if update_available:
         dependencies.print_user_global_update_hint()
-    # The user-global retired-skill migration and the universal-skill update
-    # run BEFORE the project-scope install stage, so a project install
-    # failure can never suppress them. Each stage owns its own
-    # try/except: one failure can neither skip the other nor abort the run.
-    try:
-        _run_user_global_skill_migration(dependencies.emit_warning)
-    except Exception as exc:
-        logger.debug("User-global skill migration failed (non-fatal): {}", exc)
-    try:
-        _run_universal_skill_update(dependencies.emit_warning)
-    except Exception as exc:
-        logger.debug("Universal skill update failed (non-fatal): {}", exc)
-    # wt-012 DA-001/DA-008: capture the pre-write snapshot BEFORE the
-    # first install runs, then route the install through the
-    # ``with_diff`` wrapper so the byte-exact set of paths the install
-    # actually wrote is captured for the deterministic chore commit.
-    # The first install keeps the original ``_project_skills_need_install``
-    # gate so the test suite's monkeypatch on the plain
-    # ``install_project_baseline_skills`` still drives the call.
-    try:
-        from ralph.config.bootstrap import (
-            auto_seed_default_git_exclude,
-            auto_seed_default_gitignore,
-        )
-
-        auto_seed_default_gitignore(target_root)
-        auto_seed_default_git_exclude(target_root)
-    except Exception as exc:
-        dependencies.emit_warning(
-            f"Project .gitignore/.git/info/exclude auto-seed failed (non-fatal): {exc}. Re-run `ralph` or check file permissions on .gitignore and .git/info/exclude."
-        )
+    _run_user_global_skill_stages(dependencies.emit_warning)
+    _auto_seed_project_ignores(target_root, dependencies.emit_warning)
     try:
         from ralph.git.operations import (
             create_commit as create_commit_impl,
@@ -110,15 +73,6 @@ def sync_shipped_skills(  # noqa: PLR0912
         )
 
         create_commit = create_commit_impl
-        # wt-012 DA-001/DA-008: capture the pre-write hash for every
-        # candidate skill path BEFORE the install runs, then run the
-        # install (the dependency-injected ``install_project_skills``
-        # is the mockable surface the test suite patches), then
-        # compute the diff and commit. The install runs whenever
-        # ``_project_skills_need_install`` says so (preserving the
-        # original gate the test suite depends on); the chore commit
-        # is the only step that additionally requires a valid git
-        # pre-snapshot.
         try:
             if dependencies.project_skills_need_install(target_root):
                 pre_tree = snapshot_dirty_paths_strict(target_root)
@@ -177,18 +131,36 @@ def sync_shipped_skills(  # noqa: PLR0912
     )
 
 
-#: Name of the daemon thread that carries the universal-skill update.
+def _auto_seed_project_ignores(target_root: Path, emit_warning: Callable[[str], None]) -> None:
+    try:
+        from ralph.config.bootstrap import (
+            auto_seed_default_git_exclude,
+            auto_seed_default_gitignore,
+        )
+
+        auto_seed_default_gitignore(target_root)
+        auto_seed_default_git_exclude(target_root)
+    except Exception as exc:
+        emit_warning(
+            f"Project .gitignore/.git/info/exclude auto-seed failed (non-fatal): {exc}. Re-run `ralph` or check file permissions on .gitignore and .git/info/exclude."
+        )
+
+
+def _run_user_global_skill_stages(emit_warning: Callable[[str], None]) -> None:
+    try:
+        _run_user_global_skill_migration(emit_warning)
+    except Exception as exc:
+        logger.debug("User-global skill migration failed (non-fatal): {}", exc)
+    try:
+        _run_universal_skill_update(emit_warning)
+    except Exception as exc:
+        logger.debug("Universal skill update failed (non-fatal): {}", exc)
+
+
 _UNIVERSAL_SKILL_UPDATE_THREAD_NAME = "ralph-universal-skill-update"
 
 
 def _run_user_global_skill_migration(emit_warning: Callable[[str], None]) -> None:
-    """Migrate the user-global skill roots: prune retired managed skills.
-
-    The migration runs on EVERY ordinary run: a retired Ralph-managed skill
-    directory is removed only when its ``.ralph-managed.json`` marker proves
-    Ralph owns it AND the recorded digest still matches the on-disk content.
-    Every entry the prune cannot prove pristine is REPORTED, never deleted.
-    """
     try:
         from ralph.skills._prune import _prune_user_global_skill_roots
 
@@ -205,14 +177,6 @@ def _run_user_global_skill_migration(emit_warning: Callable[[str], None]) -> Non
 
 
 def _run_universal_skill_update(emit_warning: Callable[[str], None]) -> None:
-    """Start the universal-skill update, honouring the kill switches.
-
-    The kill switch is evaluated FIRST: when the user disabled the updates
-    the helper returns immediately, so it makes ZERO calls into the updater
-    and NEVER constructs an HTTP client (no network request at all).
-    When the updates are enabled the updater runs on a DAEMON THREAD, so the
-    run is never delayed by the network round trip.
-    """
     try:
         import os
         import threading
@@ -239,10 +203,6 @@ def _run_universal_skill_update(emit_warning: Callable[[str], None]) -> None:
 
 
 def _universal_skill_update_worker(emit_warning: Callable[[str], None]) -> None:
-    """Run the upstream updater and report its outcome to the operator.
-
-    The thread never leaks an exception.
-    """
     try:
         from datetime import UTC, datetime
 

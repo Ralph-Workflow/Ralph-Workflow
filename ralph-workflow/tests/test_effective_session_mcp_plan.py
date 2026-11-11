@@ -1,5 +1,3 @@
-"""Black-box contract tests for canonical effective session MCP resolution."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

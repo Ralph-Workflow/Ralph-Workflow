@@ -1,4 +1,3 @@
-"""Developer prompt helpers for MCP RFC-009 templates."""
 
 from __future__ import annotations
 
@@ -32,7 +31,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class PlanningPromptInputs:
-    """Inputs for rendering a planning-phase prompt."""
 
     prompt_content: str | None
     plan_content: str | None = None
@@ -57,7 +55,6 @@ def prompt_developer_iteration_xml_with_context(
     *,
     template_name: str = "developer_iteration.jinja",
 ) -> str:
-    """Render the developer-iteration prompt, falling back to a static template on error."""
     template_content = context.registry.get_template(template_name)
     product_criteria_path = inputs.product_criteria_path or workspace.absolute_path(
         ".agent/PRODUCT_CRITERIA.md"
@@ -82,10 +79,6 @@ def prompt_developer_iteration_xml_with_context(
         "ROLLBACK_REF": inputs.rollback_ref or inputs.last_proposal_ref,
         "LAST_PROPOSAL_REF": inputs.rollback_ref or inputs.last_proposal_ref,
     }
-    # remaining-minutes and force-cut sentence. The run-budget partial
-    # uses these to render the concrete countdown when the pipeline has
-    # published the timebox epochs; without epochs the partial stays in
-    # its no-partial-on-exhaustion shape.
     base_vars.update(
         timebox_template_variables(
             warn_epoch=inputs.dev_warn_epoch,
@@ -148,7 +141,6 @@ def prompt_planning_xml_with_context(
     *,
     template_name: str = "planning.jinja",
 ) -> str:
-    """Render the planning-phase prompt, falling back to a static template on error."""
     template_content = context.registry.get_template(template_name)
     product_criteria_path = inputs.product_criteria_path or workspace.absolute_path(
         ".agent/PRODUCT_CRITERIA.md"

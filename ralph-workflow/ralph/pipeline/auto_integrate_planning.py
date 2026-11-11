@@ -1,4 +1,3 @@
-"""Mandatory planning integration, including dirty-worktree-safe landing."""
 
 from __future__ import annotations
 
@@ -44,22 +43,13 @@ if TYPE_CHECKING:
 
 
 def capture_pre_planning_baseline(root: Path) -> PlanningBaseline | None:
-    """Record the pre-planning-dispatch baseline for the residue executor.
-
-    Called by the run loop immediately before every planning dispatch so
-    planning residue (tracked files a planning agent touched outside its
-    ``.agent/`` artifact contract) can be detected against the tree state
-    planning was given. ``None`` when the tree state is unreadable — the
-    run loop treats that as "no residue enforcement for this dispatch",
-    never as "clean". Never raises.
-    """
     from ralph.pipeline.integration_cleanup import RunGitCleanupPort, capture_planning_baseline
 
     try:
         return capture_planning_baseline(root, git=RunGitCleanupPort())
     except (
         Exception
-    ) as exc:  # pragma: no cover -- defensive: baseline capture never blocks planning
+    ) as exc:
         logger.warning("pre-planning baseline capture failed: {}", exc)
         return None
 
@@ -70,23 +60,6 @@ def resolve_planning_residue(
     *,
     target: str | None = None,
 ) -> ResidueCleanupOutcome | None:
-    """Detect and clear planning residue left by one planning dispatch.
-
-    Save-to-backup-ref, restore-to-baseline, one WARNING naming the paths
-    and the backup ref, charged against the repository-wide attempt ledger
-    with ladder escalation on repeat failure. Residue is never committed as
-    feature work and never discarded without the backup ref. Never raises:
-    cleanup is the dispatch's own janitor, not a new way to crash a run.
-
-    Returns the typed outcome so the caller consumes it instead of
-    assuming cleanup ran: an in-progress git operation
-    (``operation_blocked`` / ``operation_unknown``) means cleanup took NO
-    restore action — the operation owns the index — and the state routes
-    to the operation ladder through the ONE owner seam (the decision
-    table's typed continue/abort/rebuild actions), never to residue
-    restore and never to the conflict resolver. ``None`` only when the
-    defensive wrapper caught an unexpected executor failure.
-    """
     from ralph.pipeline.integration_cleanup import (
         OwnerResidueLedgerPort,
         RunGitCleanupPort,
@@ -101,7 +74,7 @@ def resolve_planning_residue(
             ledger=OwnerResidueLedgerPort(),
             target=target,
         )
-    except Exception as exc:  # pragma: no cover -- defensive: see module docstring contract
+    except Exception as exc:
         logger.warning("planning residue cleanup failed: {}", exc)
         return None
     if outcome.operation_blocked or outcome.operation_unknown:
@@ -115,21 +88,6 @@ def _route_blocked_operation(
     *,
     target: str | None,
 ) -> None:
-    """Route an in-progress operation to the operation ladder via the owner.
-
-    The operation owns the index and any staged resolution: residue
-    cleanup took no restore action (the executor's operation gate
-    guarantees it), and the operation state is never handed to the
-    conflict resolver — the owner observes the live tree and answers
-    with the decision table's typed operation action (continue /
-    repair / rebuild), charged to the durable ledger so a repeat climbs
-    the ladder instead of looping.     The route is logged for the operator. A fail-closed record fact is
-    a typed RecordFactOutcome verdict, never consumed as an operation
-    action: it escalates through the autonomous cleanup ladder (the
-    first rung preserves the work to backup refs), so the log line
-    names the verdict and the rung — never a terminal block on a
-    person.
-    """
     from ralph.pipeline._integration_owner_seam import decide_seam_action
     from ralph.pipeline.auto_integrate_record import read_record
     from ralph.pipeline.integration_owner import (
@@ -140,7 +98,7 @@ def _route_blocked_operation(
     label = "unknown-operation" if outcome.operation_kind is None else outcome.operation_kind.name
     try:
         action = decide_seam_action(root, record=read_record(root), target=target)
-    except Exception as exc:  # pragma: no cover -- defensive
+    except Exception as exc:
         logger.warning("planning residue: operation-ladder routing unreadable: {}", exc)
         return
     if isinstance(action, RecordFactOutcome):
@@ -174,14 +132,6 @@ def integrate_before_planning(
     sleep: Callable[[float], None] | None = None,
     jitter: Callable[[], float] | None = None,
 ) -> RebaseState | None:
-    """Land committed work without stashing or committing unfinished edits.
-
-    A tree that is not integration-ready (staged or modified tracked
-    changes) records a typed planning obstruction instead of starting an
-    integration, so unfinished edits are never swept into history. An
-    integration-ready tree that is behind the target catches up through
-    the ordinary rebase-first path.
-    """
     root = scope.root
     if retained_integration_reason(root) is not None:
         from ralph.pipeline._integration_continuation import config_for_owned_integration
@@ -241,15 +191,6 @@ def _finish_paused_rebase(
     target: str,
     resolver: RebaseStopResolver | None,
 ) -> RebaseState | None:
-    """Drive a rebase already underway to completion before planning.
-
-    A run that starts inside a paused rebase (its own interrupted one or an
-    operator's) must not plan on a detached, half-replayed tree, and must
-    not wait for a human: every stop goes to the resolver. ``None`` means
-    the rebase finished and normal integration continues; a conflict state
-    means it did not, and the next entry offers the same stop again, so
-    repeating the call is safe. ``None`` also when no rebase is paused.
-    """
     if resolver is None or not rebase_in_progress(root):
         return None
     if resolve_rebase_in_progress(
@@ -268,30 +209,6 @@ def _record_staged_block(
     *,
     readiness: TreeReadinessAssessment | None = None,
 ) -> RebaseState | None:
-    """Record a typed planning obstruction for any non-ready tree.
-
-    The planning, boundary, and integration-resolution gates all use
-    :data:`assess_tree_readiness` as the canonical predicate (AC-12):
-    for one tree state the three gates return the same
-    ``integration_ready`` boolean and the same first
-    ``blocking_reasons`` entry. The pre-fix code returned ``None``
-    for any non-staged non-ready state, so planning fell through
-    while boundary/resolution correctly blocked. That contradiction
-    is the three-gates-disagree symptom the criteria call out.
-
-    Returns ``None`` when ``readiness.integration_ready`` is True so
-    the caller falls through to the normal integration path. For
-    every other tree state the function records a typed
-    :class:`RebaseState` with the readiness reason as
-    ``last_reason`` and a closed-vocabulary
-    ``last_planning_obstruction`` kind selected from the readiness
-    reason via :func:`identify_planning_obstruction`. The
-    ``STAGED_BLOCKS_INTEGRATION`` kind is the special case the
-    run loop's force-merge path must NOT clobber; the closed
-    ``identify_planning_obstruction`` vocabulary covers every other
-    readiness reason (``local_overwrite``, ``untracked_overwrite``,
-    or ``NONE`` for the catch-all).
-    """
     if readiness is None:
         readiness = assess_tree_readiness(root)
     if readiness.integration_ready:
@@ -301,9 +218,6 @@ def _record_staged_block(
         if readiness.blocking_reasons
         else "worktree not clean; uncommitted tracked changes deferred catch-up integration"
     )
-    # The single-source-of-truth predicate decides the verdict. The
-    # kind is the closed-vocabulary routing signal the run loop reads;
-    # the reason is the operator-facing free-form text.
     kind = identify_planning_obstruction(reason)
     recorded = record_skip(reason=reason, target=target)
     return recorded.model_copy(update={"last_planning_obstruction": kind.value})
@@ -318,22 +232,6 @@ def _integrate_with_force_merge(
     rebase_stop_resolver: RebaseStopResolver | None,
     display: ParallelDisplay | None,
 ) -> RebaseState | None:
-    """Catch the branch up onto the target, rebase first.
-
-    The automatic rebase is ALWAYS the first attempt, so this path no
-    longer forces the endpoint merge. The tree is integration-ready
-    here -- :func:`_record_staged_block` returned no obstruction, so
-    the worktree holds no staged or modified tracked change -- which
-    makes ``rebase_onto`` safe without a snapshot.
-
-    ``require_in_sync`` is what this path still forces: the branch must
-    also ABSORB the target tip, so the "the target already holds every
-    feature commit" shortcut is refused. When the branch has commits of
-    its own the rebase replays them onto the target; when it has none
-    the replay range is empty, and the registered ``all_empty_replay``
-    skip routes the attempt to the endpoint merge, whose fast-forward
-    is the only operation that can move that ref.
-    """
     outcome, _retry = _integrate_once(
         config,
         root,

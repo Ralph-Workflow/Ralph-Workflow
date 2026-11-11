@@ -1,13 +1,3 @@
-"""Black-box integration tests for read_lines_from_process timeout behavior.
-
-These tests drive the read loop with a fake stdout pipe and FakeClock to prove:
-  (a) SESSION_CEILING_EXCEEDED fires under continuous output (false-negative fix).
-  (b) NO_OUTPUT_DEADLINE fires when classify_quiet raises (defensive-wrap fix).
-  (c) CHILDREN_PERSIST_TOO_LONG fires with oscillating heartbeat (absolute-ceiling fix).
-
-No real subprocesses are spawned; all timing is driven by FakeClock.
-"""
-
 from __future__ import annotations
 
 import json
@@ -50,8 +40,6 @@ from tests.agents._invoke_timeout_integration_helper__waitingstrategy import _Wa
 
 
 class _FakeManagedHandle:
-    """Minimal test double for ManagedProcess used by read_lines_from_process."""
-
     def __init__(
         self,
         stdout_lines: object,
@@ -98,7 +86,6 @@ class _FakeManagedHandle:
         return self._descendant_count > 0
 
     def descendant_snapshot(self) -> tuple[int, float]:
-        """Return (count, oldest_seconds) for corroborator to determine alive_by."""
         return (self._descendant_count, self._descendant_oldest_seconds)
 
     def __enter__(self) -> _FakeManagedHandle:
@@ -139,7 +126,6 @@ def _read_lines(
 
 
 def test_opencode_regression_verified_completion_stops_live_stdout_stream() -> None:
-    """S-4: durable completion ends an OpenCode stream that never closes stdout."""
     blocked = threading.Event()
 
     def live_stdout() -> Iterator[str]:
@@ -172,7 +158,6 @@ def test_opencode_regression_verified_completion_stops_live_stdout_stream() -> N
 
 
 def test_opencode_regression_verified_completion_stops_parent_after_stdout_eof() -> None:
-    """S-4: durable completion reaps a still-live OpenCode parent after stdout EOF."""
     handle = _FakeManagedHandle(iter(['{"type":"text","part":{"text":"complete"}}\n']))
     policy = TimeoutPolicy(
         idle_timeout_seconds=5.0,
@@ -194,16 +179,6 @@ def test_opencode_regression_verified_completion_stops_parent_after_stdout_eof()
 
 
 def test_session_ceiling_fires_under_continuous_output() -> None:
-    """SESSION_CEILING_EXCEEDED fires even when the agent produces continuous output.
-
-    Before the fix, evaluate() was skipped after each line yield via 'continue',
-    so SESSION_CEILING_EXCEEDED never fired during continuous output.  With the
-    fix, evaluate() runs on every loop iteration including the post-yield path.
-
-    The key assertion: the exception IS raised with SESSION_CEILING_EXCEEDED.
-    Without the fix, the generator returns normally (no exception) because the
-    'continue' bypasses all evaluate() calls and the reader exhausts stdout.
-    """
     policy = TimeoutPolicy(
         idle_timeout_seconds=_MAX_SESSION_SECONDS,
         max_session_seconds=_MAX_SESSION_SECONDS,
@@ -228,12 +203,6 @@ def test_session_ceiling_fires_under_continuous_output() -> None:
 
 
 def test_reader_fire_exception_carries_evidence_summary() -> None:
-    """IdleStreamTimeoutError raised by read_lines_from_process carries
-    per-channel evidence_summary in its diagnostic.
-
-    Mirrors test_session_ceiling_fires_under_continuous_output and adds
-    assertions on the exception payload's diagnostic.
-    """
     policy = TimeoutPolicy(
         idle_timeout_seconds=_MAX_SESSION_SECONDS,
         max_session_seconds=_MAX_SESSION_SECONDS,
@@ -272,17 +241,6 @@ def test_reader_fire_exception_carries_evidence_summary() -> None:
 
 
 def test_watchdog_fires_even_when_classify_quiet_raises() -> None:
-    """CHILDREN_PERSIST_TOO_LONG fires when classify_quiet raises repeatedly.
-
-    _safe_classify_quiet now returns WAITING_ON_CHILD on exception (not ACTIVE),
-    so the watchdog defers to the cumulative WAITING ceiling rather than firing
-    NO_OUTPUT_DEADLINE immediately. The read loop eventually fires once cumulative
-    WAITING time exceeds max_waiting_on_child_seconds.
-
-    The stdout is a blocking generator so the read loop takes only the empty-queue
-    path (where _safe_classify_quiet is invoked).  The _reader_release event is
-    set in a finally block so the reader daemon thread exits cleanly.
-    """
     idle_timeout = 0.05
     max_waiting = 0.1
     policy = TimeoutPolicy(
@@ -291,10 +249,8 @@ def test_watchdog_fires_even_when_classify_quiet_raises() -> None:
         drain_window_seconds=0.0,
         idle_poll_interval_seconds=0.01,
         suspect_waiting_on_child_seconds=None,
-        # Disable no-progress ceiling to avoid validation issues with small max_waiting
         max_waiting_on_child_no_progress_seconds=None,
         stuck_job_sub_ceiling_seconds=None,
-        # Disable OS-descendant-only ceiling (its default is larger than small max_waiting)
         os_descendant_only_ceiling_seconds=None,
     )
     clock = FakeClock(start=0.0)
@@ -302,8 +258,6 @@ def test_watchdog_fires_even_when_classify_quiet_raises() -> None:
     _reader_release = threading.Event()
 
     def _blocking_stdout() -> Iterator[str]:
-        # Blocks reader thread so main loop takes the empty-queue/evaluate path.
-        # Released in finally so reader thread exits cleanly after the test.
         _reader_release.wait(timeout=5.0)
         yield from ()
 
@@ -329,12 +283,6 @@ def test_watchdog_fires_even_when_classify_quiet_raises() -> None:
 
 
 def test_classify_quiet_exception_defers_not_fires() -> None:
-    """classify_quiet raising defers to WAITING ceiling, not NO_OUTPUT_DEADLINE.
-
-    _safe_classify_quiet returns WAITING_ON_CHILD (not ACTIVE) on exception, so
-    NO_OUTPUT_DEADLINE is never raised when classify_quiet always raises. Instead
-    the watchdog defers until the cumulative WAITING ceiling fires.
-    """
     idle_timeout = 0.05
     max_waiting = 0.1
     policy = TimeoutPolicy(
@@ -343,10 +291,8 @@ def test_classify_quiet_exception_defers_not_fires() -> None:
         drain_window_seconds=0.05,
         idle_poll_interval_seconds=0.01,
         suspect_waiting_on_child_seconds=None,
-        # Disable no-progress ceiling to avoid validation issues with small max_waiting
         max_waiting_on_child_no_progress_seconds=None,
         stuck_job_sub_ceiling_seconds=None,
-        # Disable OS-descendant-only ceiling (its default is larger than small max_waiting)
         os_descendant_only_ceiling_seconds=None,
     )
     clock = FakeClock(start=0.0)
@@ -370,19 +316,11 @@ def test_classify_quiet_exception_defers_not_fires() -> None:
         ):
             pass
 
-    # Must be CHILDREN_PERSIST_TOO_LONG, NOT NO_OUTPUT_DEADLINE.
     assert exc_info.value.reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
     assert exc_info.value.reason != WatchdogFireReason.NO_OUTPUT_DEADLINE
 
 
 def test_post_yield_evaluate_uses_real_classify_quiet() -> None:
-    """Whitespace-only line post-yield does not fire when children are alive.
-
-    Previously the post-yield evaluate forced classify_quiet=lambda: ACTIVE, so
-    a whitespace-only line (no record_activity call) past the idle deadline would
-    drive the watchdog into the ACTIVE branch and fire NO_OUTPUT_DEADLINE even when
-    children are present. Now the real classify_quiet is consulted.
-    """
     idle_timeout = 0.5
     policy = TimeoutPolicy(
         idle_timeout_seconds=idle_timeout,
@@ -392,17 +330,11 @@ def test_post_yield_evaluate_uses_real_classify_quiet() -> None:
     clock = FakeClock(start=0.0)
 
     def _stdout_gen() -> Iterator[str]:
-        # Advance clock past idle_timeout before line lands in queue so the
-        # post-yield evaluate sees idle_elapsed >= idle_timeout.
         clock.advance(3.0)
-        yield "   \n"  # whitespace-only: classify_activity_line returns None
-        # Generator exhausted; reader thread exits naturally.
+        yield "   \n"
 
     handle = _FakeManagedHandle(_stdout_gen())
 
-    # Should NOT raise IdleStreamTimeoutError: _WaitingStrategy.classify_quiet
-    # returns WAITING_ON_CHILD so the post-yield evaluate defers, and the reader
-    # exits cleanly before the cumulative ceiling is reached.
     lines = list(
         _read_lines(
             handle,
@@ -415,20 +347,6 @@ def test_post_yield_evaluate_uses_real_classify_quiet() -> None:
 
 
 def test_cumulative_ceiling_fires_with_oscillating_heartbeat() -> None:
-    """Black-box reproduction of the user's bug: an agent that produces a heartbeat
-    after every idle deadline must still trip the absolute CHILDREN_PERSIST_TOO_LONG
-    ceiling.
-
-    Design: the generator yields one meaningful line every (idle_timeout + 1) seconds
-    of fake-clock time by busy-waiting on clock.monotonic() (yielding CPU via
-    time.sleep(0) between checks so the main loop can advance the FakeClock through
-    wait_for_event calls).  classify_quiet always returns WAITING_ON_CHILD.
-
-    With the old code the heartbeat + drain_window quiet reset cumulative to 0 every
-    cycle, so the loop ran forever.  With the fix cumulative is absolute and grows by
-    ~1s per cycle; it eventually exceeds max_waiting_on_child_seconds and
-    CHILDREN_PERSIST_TOO_LONG fires.
-    """
     idle_timeout = 1.0
     max_waiting = 2.0
     drain_window = 0.05
@@ -440,27 +358,21 @@ def test_cumulative_ceiling_fires_with_oscillating_heartbeat() -> None:
         drain_window_seconds=drain_window,
         idle_poll_interval_seconds=poll_interval,
         suspect_waiting_on_child_seconds=None,
-        # Disable no-progress ceiling to avoid validation issues with small max_waiting
         max_waiting_on_child_no_progress_seconds=None,
         stuck_job_sub_ceiling_seconds=None,
-        # Disable OS-descendant-only ceiling (its default is larger than small max_waiting)
         os_descendant_only_ceiling_seconds=None,
     )
     clock = FakeClock(start=0.0)
 
     _release = threading.Event()
-    _max_heartbeats = 20  # safety: must fire long before this
+    _max_heartbeats = 20
 
     def _oscillating_stdout() -> Iterator[str]:
-        # Yield a meaningful heartbeat line every (idle_timeout + 1.0) fake-clock
-        # seconds. Between yields, busy-wait with time.sleep(0) to release the
-        # GIL so the main read-loop thread can advance the FakeClock.
         for heartbeat_num in range(_max_heartbeats):
             target_t = (heartbeat_num + 1) * (idle_timeout + 0.1)
             while clock.monotonic() < target_t:
-                time.sleep(0)  # release GIL; main thread advances clock
+                time.sleep(0)
             yield f"heartbeat {heartbeat_num}\n"
-        # Safety tail: release so reader thread exits cleanly if fire never fires.
         _release.wait(timeout=1.0)
         yield from ()
 
@@ -484,24 +396,11 @@ def test_cumulative_ceiling_fires_with_oscillating_heartbeat() -> None:
     assert exc_info.value.reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
 
 
-# ---------------------------------------------------------------------------
-# New integration test: listener wiring + no per-tick spam
-# ---------------------------------------------------------------------------
-
 _MAX_PROGRESS_EVENTS = 3
 _MAX_TOTAL_EVENTS = 6
 
 
 def test_invoke_emits_waiting_listener_events_not_per_tick_log() -> None:
-    """read_lines_from_process emits structured listener events, not per-tick debug spam.
-
-    Asserts:
-    - Exactly 1 ENTERED event.
-    - At least 1 PROGRESS event.
-    - At most 3 PROGRESS events (proves throttling — status_interval=1.0s over ~2s).
-    - Exactly 1 HARD_STOP event.
-    - Total events <= 6.
-    """
     idle_timeout = 0.05
     max_waiting = 0.2
     status_interval = 0.05
@@ -513,10 +412,8 @@ def test_invoke_emits_waiting_listener_events_not_per_tick_log() -> None:
         idle_poll_interval_seconds=0.05,
         waiting_status_interval_seconds=status_interval,
         suspect_waiting_on_child_seconds=None,
-        # Disable no-progress ceiling to avoid validation issues with small max_waiting
         max_waiting_on_child_no_progress_seconds=None,
         stuck_job_sub_ceiling_seconds=None,
-        # Disable OS-descendant-only ceiling (its default is larger than small max_waiting)
         os_descendant_only_ceiling_seconds=None,
     )
     clock = FakeClock(start=0.0)
@@ -524,7 +421,6 @@ def test_invoke_emits_waiting_listener_events_not_per_tick_log() -> None:
     _reader_release = threading.Event()
 
     def _blocking_stdout() -> Iterator[str]:
-        # Blocks the reader thread so the main loop takes the empty-queue path.
         _reader_release.wait(timeout=5.0)
         yield from ()
 
@@ -567,21 +463,10 @@ def test_invoke_emits_waiting_listener_events_not_per_tick_log() -> None:
     )
 
 
-# ---------------------------------------------------------------------------
-# Corroboration diagnostic in HARD_STOP (Phase 3 integration)
-# ---------------------------------------------------------------------------
-
-
 def test_children_persist_hard_stop_includes_corroboration_diagnostic() -> None:
-    """HARD_STOP event and IdleStreamTimeoutError message contain corroboration fields.
-
-    Asserts:
-    - IdleStreamTimeoutError message contains 'cumulative=' and 'scoped_child_active='.
-    - Captured HARD_STOP WaitingStatusEvent.diagnostic includes 'evidence' and 'cumulative'.
-    """
     idle_timeout = 0.05
     max_waiting = 0.15
-    status_interval = 100.0  # suppress PROGRESS noise
+    status_interval = 100.0
 
     policy = TimeoutPolicy(
         idle_timeout_seconds=idle_timeout,
@@ -590,10 +475,8 @@ def test_children_persist_hard_stop_includes_corroboration_diagnostic() -> None:
         idle_poll_interval_seconds=0.05,
         waiting_status_interval_seconds=status_interval,
         suspect_waiting_on_child_seconds=None,
-        # Disable no-progress ceiling to avoid validation issues with small max_waiting
         max_waiting_on_child_no_progress_seconds=None,
         stuck_job_sub_ceiling_seconds=None,
-        # Disable OS-descendant-only ceiling (its default is larger than small max_waiting)
         os_descendant_only_ceiling_seconds=None,
     )
     clock = FakeClock(start=0.0)
@@ -628,12 +511,10 @@ def test_children_persist_hard_stop_includes_corroboration_diagnostic() -> None:
 
     assert exc_info.value.reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
 
-    # Error message must contain core corroboration fields
     err_msg = str(exc_info.value)
     assert "cumulative=" in err_msg, f"Expected 'cumulative=' in: {err_msg}"
     assert "scoped_child_active=" in err_msg, f"Expected 'scoped_child_active=' in: {err_msg}"
 
-    # HARD_STOP event diagnostic must contain timing fields
     hard_stops = [e for e in captured_events if e.kind == WaitingStatusKind.HARD_STOP]
     assert len(hard_stops) == 1, f"Expected 1 HARD_STOP, got {len(hard_stops)}"
     diag = hard_stops[0].diagnostic
@@ -641,35 +522,13 @@ def test_children_persist_hard_stop_includes_corroboration_diagnostic() -> None:
     assert "evidence" in diag, f"Expected 'evidence' key in HARD_STOP diagnostic: {diag}"
 
 
-# ---------------------------------------------------------------------------
-# No-progress ceiling integration test (wt-97-timeout regression)
-# ---------------------------------------------------------------------------
-
-
 def test_no_progress_ceiling_fires_on_stale_child_liveness(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """CHILDREN_PERSIST_TOO_LONG fires at no-progress ceiling when child is alive but stale.
-
-    Regression test for wt-97-timeout: an agent in WAITING_ON_CHILD with
-    os_descendant_only_stale_progress evidence (alive child with stale/no fresh progress)
-    must fire at the shorter no-progress ceiling instead of the full ceiling.
-
-    Design:
-    - max_waiting_on_child_seconds=100.0 (full ceiling)
-    - max_waiting_on_child_no_progress_seconds=10.0 (no-progress ceiling)
-    - Handle reports active descendants but no fresh registry progress.
-    - Corroborator will set alive_by='os_descendant_only_stale_progress'.
-    - Watchdog must fire at ~10s (no-progress ceiling), not 100s (full ceiling).
-    """
     idle_timeout = 0.1
     max_waiting = 20.0
     no_progress_ceiling = 10.0
-    status_interval = 100.0  # suppress PROGRESS noise
-    # Keep the broken-agent grace timer (module default 12s) out of this
-    # scenario: the pinned 10s no-progress ceiling fires BEFORE the grace
-    # window, so the monkeypatch below documents the isolation explicitly
-    # and keeps the scenario robust to future default tuning.
+    status_interval = 100.0
     import ralph.agents.invoke._process_reader as _process_reader_module
 
     monkeypatch.setattr(_process_reader_module, "BROKEN_AGENT_OUTPUT_GRACE_SECONDS", 900.0)
@@ -683,20 +542,9 @@ def test_no_progress_ceiling_fires_on_stale_child_liveness(
         waiting_status_interval_seconds=status_interval,
         suspect_waiting_on_child_seconds=None,
         stuck_job_sub_ceiling_seconds=None,
-        # Disable OS-descendant-only ceiling (its default is larger than max_waiting)
         os_descendant_only_ceiling_seconds=None,
         no_progress_quiet_seconds=None,
-        # R1 (Trustworthy Idle Watchdog spec): the filtered subagent
-        # count is the canonical signal, not the broader descendant
-        # count. The handle's ``descendant_count=1`` represents a live
-        # descendant that is NOT registered as a subagent (it is an
-        # INCIDENTAL_HELPER). Disable the process monitor so the
-        # fallback path (which still reads ``descendant_snapshot``)
-        # is the source of ``scoped_child_active`` for this legacy
-        # test of the no-progress ceiling branch.
         process_monitor_enabled=False,
-        # The CPU-idle probe walks the real process table via psutil on every
-        # poll; irrelevant here and it blows the per-test CPU budget on busy hosts.
         cpu_idle_seconds=None,
     )
     clock = FakeClock(start=0.0)
@@ -707,8 +555,6 @@ def test_no_progress_ceiling_fires_on_stale_child_liveness(
         _reader_release.wait(timeout=5.0)
         yield from ()
 
-    # Fake handle with active descendants but no fresh progress.
-    # This triggers alive_by='os_descendant_only_stale_progress' in the corroborator.
     handle = _FakeManagedHandle(
         _blocking_stdout(),
         descendant_count=1,
@@ -735,11 +581,8 @@ def test_no_progress_ceiling_fires_on_stale_child_liveness(
 
     assert exc_info.value.reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
 
-    # Must have fired at the no-progress ceiling (~10s), NOT the full ceiling (~100s).
-    # The error message should indicate the no-progress ceiling was used.
     err_msg = str(exc_info.value)
     assert "cumulative=" in err_msg, f"Expected 'cumulative=' in: {err_msg}"
-    # Extract cumulative value to verify it fired before the full ceiling
     match = re.search(r"cumulative=([\d.]+)s", err_msg)
     assert match is not None, f"Could not find cumulative value in: {err_msg}"
     cumulative = float(match.group(1))
@@ -751,7 +594,6 @@ def test_no_progress_ceiling_fires_on_stale_child_liveness(
         f"but cumulative={cumulative}s"
     )
 
-    # HARD_STOP diagnostic must include effective_ceiling classification.
     hard_stops = [e for e in captured_events if e.kind == WaitingStatusKind.HARD_STOP]
     assert len(hard_stops) == 1, f"Expected 1 HARD_STOP, got {len(hard_stops)}"
     diag = hard_stops[0].diagnostic
@@ -768,14 +610,6 @@ def test_no_progress_ceiling_fires_on_stale_child_liveness(
 
 
 def test_stale_scoped_child_evidence_fires_no_output_deadline() -> None:
-    """Stale scoped child evidence + no fresh activity fires NO_OUTPUT_DEADLINE.
-
-    Regression for activity-aware idle watchdog: when OpenCode scoped child
-    evidence is stale (registry has records but no fresh progress/heartbeat)
-    and there is no fresh stdout, MCP tool, or workspace activity, the read
-    loop must fire NO_OUTPUT_DEADLINE on the normal idle path instead of
-    lingering under WAITING_ON_CHILD because raw OS descendants still exist.
-    """
     idle_timeout = 0.1
     policy = TimeoutPolicy(
         idle_timeout_seconds=idle_timeout,
@@ -787,7 +621,6 @@ def test_stale_scoped_child_evidence_fires_no_output_deadline() -> None:
         max_waiting_on_child_no_progress_seconds=None,
         activity_evidence_ttl_seconds=30.0,
         stuck_job_sub_ceiling_seconds=None,
-        # Disable OS-descendant-only ceiling (its default is larger than max_waiting)
         os_descendant_only_ceiling_seconds=None,
     )
     clock = FakeClock(start=0.0)
@@ -805,7 +638,6 @@ def test_stale_scoped_child_evidence_fires_no_output_deadline() -> None:
         on_terminate=_reader_release.set,
     )
 
-    # Build a registry with a stale scoped child record.
     stale_registry = ChildLivenessRegistry(
         progress_ttl=30.0,
         heartbeat_ttl=30.0,
@@ -845,13 +677,6 @@ def test_stale_scoped_child_evidence_fires_no_output_deadline() -> None:
 
 
 def test_fresh_then_stale_scoped_child_evidence_fires_no_output_deadline() -> None:
-    """OpenCode child freshness expires into the normal idle deadline.
-
-    This exercises the real strategy and watchdog with only FakeClock time.
-    A blocked reader thread previously made this unit scenario depend on a
-    0.5-second real teardown join, which is incompatible with the default
-    per-test deadline under shard contention.
-    """
     idle_timeout = 0.1
     max_waiting = 20.0
     clock = FakeClock(start=0.0)

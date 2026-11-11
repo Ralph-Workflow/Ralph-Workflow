@@ -1,5 +1,3 @@
-"""Tests to verify that invoke_agent routes to PTY vs subprocess using AgentSpec requires_pty."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -69,10 +67,6 @@ def test_spec_requires_pty_true_uses_pty(
         )
 
         config = AgentConfig(cmd="fake-pty-binary", transport=AgentTransport.GENERIC)
-        # Skip the real WorkspaceMonitor watchdog observer: this test
-        # only exercises routing decisions (PTY vs subprocess), so the
-        # observer's start/stop cost would otherwise eat the 1-second
-        # per-test budget on a slow machine.
         options = InvokeOptions(
             workspace_path=tmp_path,
             show_progress=False,
@@ -123,10 +117,6 @@ def test_spec_requires_pty_false_uses_subprocess(
         )
 
         config = AgentConfig(cmd="fake-sub-binary", transport=AgentTransport.CLAUDE_INTERACTIVE)
-        # Skip the real WorkspaceMonitor watchdog observer: this test
-        # only exercises routing decisions (PTY vs subprocess), so the
-        # observer's start/stop cost would otherwise eat the 1-second
-        # per-test budget on a slow machine.
         options = InvokeOptions(
             workspace_path=tmp_path,
             show_progress=False,
@@ -146,9 +136,6 @@ def test_unregistered_claude_interactive_uses_subprocess_default(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Registering through register_agent_support is the only path
-    to PTY routing for CLAUDE_INTERACTIVE.
-    """
     monkeypatch.delenv(str(MCP_ENDPOINT_ENV), raising=False)
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
@@ -166,10 +153,6 @@ def test_unregistered_claude_interactive_uses_subprocess_default(
     )
 
     config = AgentConfig(cmd="unregistered-binary", transport=AgentTransport.CLAUDE_INTERACTIVE)
-    # Skip the real WorkspaceMonitor watchdog observer: this test
-    # only exercises routing decisions (PTY vs subprocess), so the
-    # observer's start/stop cost would otherwise eat the 1-second
-    # per-test budget on a slow machine or under xdist contention.
     options = InvokeOptions(
         workspace_path=tmp_path,
         show_progress=False,
@@ -204,10 +187,6 @@ def test_unregistered_codex_uses_subprocess_fallback(
     )
 
     config = AgentConfig(cmd="unregistered-binary-codex", transport=AgentTransport.CODEX)
-    # Skip the real WorkspaceMonitor watchdog observer: this test
-    # only exercises routing decisions (PTY vs subprocess), so the
-    # observer's start/stop cost would otherwise eat the 1-second
-    # per-test budget on a slow machine.
     options = InvokeOptions(
         workspace_path=tmp_path,
         show_progress=False,

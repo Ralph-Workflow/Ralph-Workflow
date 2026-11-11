@@ -29,10 +29,6 @@ def test_status_styles_cover_expected_statuses() -> None:
 
 
 def test_structural_chrome_roles_no_longer_borrow_the_info_state_hex() -> None:
-    """E-2: panel/banner/emphasis/milestone/outer_dev chrome and the commit,
-    development_commit, planning, and review_commit phase labels must no
-    longer resolve to the same hex as the literal semantic info state --
-    they are structural (tier 2), not a state carrier."""
     palettes = {False: theme._pal_dark, True: theme._pal_light, None: theme._pal_unknown}
     for terminal_bg_is_light, palette in palettes.items():
         styles = theme._build_theme_styles(palette)
@@ -81,7 +77,6 @@ def test_make_console_respects_explicit_no_color() -> None:
 
 
 def test_make_console_respects_no_color_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    """make_display_context respects NO_COLOR env var and propagates to console.no_color."""
     monkeypatch.setenv("NO_COLOR", "1")
 
     ctx = make_display_context()
@@ -91,7 +86,6 @@ def test_make_console_respects_no_color_environment(monkeypatch: pytest.MonkeyPa
 
 
 def test_make_console_prefers_no_color_over_force_color(monkeypatch: pytest.MonkeyPatch) -> None:
-    """NO_COLOR takes precedence over FORCE_COLOR in make_display_context."""
     monkeypatch.setenv("NO_COLOR", "1")
     monkeypatch.setenv("FORCE_COLOR", "1")
 
@@ -102,7 +96,6 @@ def test_make_console_prefers_no_color_over_force_color(monkeypatch: pytest.Monk
 
 
 def test_make_console_regression_default_color_auto_detection_respects_no_color() -> None:
-    """S-2: default color detection emits truecolor while no_color wins."""
     color_console = theme.make_console(force_terminal=True)
     no_color_console = theme.make_console(force_terminal=True, no_color=True)
 
@@ -120,7 +113,6 @@ def test_make_console_regression_default_color_auto_detection_respects_no_color(
     (theme._THEME_STYLES, theme._THEME_STYLES_ON_LIGHT_BG, theme._THEME_STYLES_ON_UNKNOWN_BG),
 )
 def test_theme_regression_fresh_styles_preserve_rich_attributes(styles: dict[str, str]) -> None:
-    """S-6: per-console style rebuilding must preserve every supported style attribute."""
     for style in styles.values():
         expected = Style.parse(style)
         actual = theme._fresh_style(style)

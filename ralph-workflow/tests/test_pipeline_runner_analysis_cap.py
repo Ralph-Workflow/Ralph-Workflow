@@ -1,8 +1,3 @@
-"""Pipeline runner tests for analysis iteration cap behavior.
-
-These tests verify correction-phase routing at the analysis cap.
-"""
-
 from __future__ import annotations
 
 from datetime import timedelta
@@ -20,12 +15,9 @@ if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
 
 
-# Path to the default policy directory
 DEFAULT_POLICY_DIR = Path(__file__).parent.parent.parent / "ralph" / "policy" / "defaults"
 
-# Analysis iteration cap value for testing
 _DEV_MAX_ANALYSIS = 3
-# A below-cap analysis-iteration value under the bundled default policy.
 _DEV_ANALYSIS_BELOW_CAP = 1
 
 
@@ -40,7 +32,6 @@ def _reduce(
 
 
 def _load_default_policy() -> PolicyBundle:
-    """Load the default policy from the bundled defaults."""
     return load_policy(DEFAULT_POLICY_DIR)
 
 
@@ -56,14 +47,11 @@ def _policy_with_loop_counter_max(counter_name: str, default_max: int) -> Policy
 
 
 class TestDevAnalysisCapTriggeredCorrectionRouting:
-    """Test that analysis loopback at max still routes to development under the default policy."""
-
     def test_dev_analysis_at_max_routes_to_development(self) -> None:
-        """At max-1 iterations, ANALYSIS_LOOPBACK still routes to development."""
         policy = _policy_with_loop_counter_max("development_analysis_iteration", _DEV_MAX_ANALYSIS)
         state = PipelineState(
             phase="development_analysis",
-            loop_iterations={"development_analysis_iteration": 2},  # max-1 where max=3
+            loop_iterations={"development_analysis_iteration": 2},
             budget_caps={"iteration": 3},
         )
 
@@ -72,7 +60,6 @@ class TestDevAnalysisCapTriggeredCorrectionRouting:
         assert new_state.get_loop_iteration("development_analysis_iteration") == _DEV_MAX_ANALYSIS
 
     def test_dev_analysis_commit_routes_to_analysis_with_single_charge(self) -> None:
-        """Post-commit gate admits analysis and charges exactly one analysis cycle."""
         policy = _load_default_policy()
         state = PipelineState(
             phase="development_commit",

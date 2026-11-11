@@ -1,5 +1,3 @@
-"""Focused tests for commit command activity rendering."""
-
 from __future__ import annotations
 
 import io
@@ -54,7 +52,6 @@ def test_working_tree_diff_strips_lone_surrogates_from_git_output(
     *,
     head_valid: bool,
 ) -> None:
-    """Commit prompt diffs must always remain valid UTF-8 text."""
     (tmp_path / ".git").mkdir()
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -88,7 +85,6 @@ exit 2
 
 
 def _write_commit_message_doc(repo_root: Path, message: str) -> None:
-    """Write the markdown commit_message artifact the way MCP submission does."""
     if message.upper().startswith("SKIP:"):
         reason = message[len("SKIP:") :].strip()
         document = f"---\ntype: skip\nreason: {reason}\n---\n"
@@ -100,16 +96,9 @@ def _write_commit_message_doc(repo_root: Path, message: str) -> None:
 
 
 _OUTPUT_BATCH = 80
-#: ``collect_commit_agent_output`` uses deques bounded at 256 lines (see
-#: ``ralph.pipeline.plumbing.commit_plumbing``); this constant controls
-#: how many filler lines we synthesize to exercise the bounded-tail path.
-#: It must stay under 256 so the deque bound actually triggers; smaller
-#: values keep the test fast while still proving the tail is bounded.
 
 
 class _FakePipelineFactory:
-    """Conforms to ``PipelineFactory`` and records every build call."""
-
     def __init__(self, deps: PipelineDeps) -> None:
         self._deps = deps
         self.calls: list[dict[str, object]] = []
@@ -136,8 +125,6 @@ class _FakePipelineFactory:
 
 
 class _RecordingDisplay:
-    """Records the command-scoped display lifecycle without a real TTY."""
-
     def __init__(self) -> None:
         self.entered = 0
         self.exited = 0
@@ -249,7 +236,6 @@ def test_commit_invocation_passes_default_product_criteria_to_materialize_master
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
     prompt_file.write_text("Generate a commit message.", encoding="utf-8")
 
-    # Create a minimal display context for the internal function
     display_context = make_display_context()
 
     with (
@@ -447,14 +433,6 @@ def test_collect_commit_agent_output_keeps_early_session_id_with_bounded_tail() 
     )
 
     assert resume_session_id == "sess-early"
-    # The implementation's ``raw_output`` is a deque with
-    # ``maxlen=_MAX_COMMIT_RAW_OUTPUT_LINES`` (256 in production); we
-    # feed one session_line + _OUTPUT_BATCH filler items, so the tail is
-    # bounded by min(_OUTPUT_BATCH + 1, 256). The original assertion
-    # ``len(raw_output) < _OUTPUT_BATCH`` only held when _OUTPUT_BATCH
-    # exceeded the deque's maxlen; with smaller fixture sizes the
-    # assertion becomes a tautology. The honest bounded-tail contract is
-    # captured by ``<= _OUTPUT_BATCH + 1``.
     assert len(raw_output) <= _OUTPUT_BATCH + 1
     assert len(parsed_output) <= _OUTPUT_BATCH + 1
 
@@ -708,7 +686,6 @@ def test_handle_agent_commit_generation_reports_stage_failure_without_traceback(
 def test_commit_generation_regression_secrets_never_reach_message_agent(
     tmp_git_repo: Path,
 ) -> None:
-    """Regression for verifier finding: sanitize agent input without index mutation."""
     tracked_secret = tmp_git_repo / "credentials.json"
     tracked_secret.write_text('{"token":"placeholder-old"}\n', encoding="utf-8")
     safe_tracked = tmp_git_repo / "safe-tracked.txt"
@@ -774,7 +751,6 @@ def test_commit_generation_regression_secrets_never_reach_message_agent(
 def test_generate_commit_excludes_untracked_secret_while_staging_safe_work(
     tmp_git_repo: Path,
 ) -> None:
-    """Direct commit generation must never stage a recognized untracked secret."""
     secret = tmp_git_repo / ".env"
     safe_work = tmp_git_repo / "safe.txt"
     secret.write_text("TOKEN=placeholder\n", encoding="utf-8")
@@ -837,7 +813,6 @@ def test_generate_commit_excludes_untracked_secret_while_staging_safe_work(
 def test_generate_commit_untracks_recognized_tracked_secret_without_deleting_it(
     tmp_git_repo: Path,
 ) -> None:
-    """Direct commit generation stages secret removal, never modified secret content."""
     secret = tmp_git_repo / "credentials.json"
     secret.write_text('{"token":"placeholder-old"}\n', encoding="utf-8")
     with Repo(tmp_git_repo) as repo:
@@ -945,9 +920,6 @@ def test_handle_agent_commit_generation_surfaces_recovered_retry_evidence(
 def test_generate_commit_message_with_chain_routes_through_default_pipeline_factory(
     tmp_path: Path,
 ) -> None:
-    """The commit command routes pipeline construction through DefaultPipelineFactory
-    so plumbing uses the same composition root as the main pipeline.
-    """
     display_context = make_display_context()
     model_identity = MultimodalModelIdentity(provider="claude", model_id="sonnet")
     pro_hooks = ProPipelineHooks(snapshot_registry=SnapshotRegistry())

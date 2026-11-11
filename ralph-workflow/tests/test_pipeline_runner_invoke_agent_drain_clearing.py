@@ -1,5 +1,3 @@
-"""Runner regressions for fresh-entry drain clearing on InvokeAgentEffect paths."""
-
 from __future__ import annotations
 
 from functools import lru_cache
@@ -31,10 +29,6 @@ def _load_default_policy_bundle() -> PolicyBundle:
     return load_policy(defaults_dir)
 
 
-# Warm the policy TOML parse at module-import time so the first test to call
-# _load_default_policy_bundle does not bear the full cold-start parse cost
-# under 12-worker xdist contention (which can exceed the 1.0s per-test timeout).
-# This shifts the parse to collection time, before any per-test SIGALRM timer.
 _ = _load_default_policy_bundle()
 
 
@@ -68,9 +62,7 @@ def _run_pipeline_step(
         lambda *_args, **_kwargs: effect,
     )
     if raise_missing_plan_handoff:
-        # `raise` takes precedence: the new flag deliberately bypasses the
-        # stub-with-None short-circuit so the recovery helper's try/except
-        # branch can be exercised through the real seam.
+
         def _raise_missing_plan_handoff(*_args: object, **_kwargs: object) -> None:
             raise MissingPlanHandoffError(
                 "Template 'developer_iteration.jinja' requires an existing "
@@ -455,19 +447,6 @@ class TestPipelineRunnerInvokeAgentDrainClearing:
         monkeypatch: MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """An InvokeAgentEffect path that raises MissingPlanHandoffError recovers
-        to the entry phase instead of leaking to the failure classifier.
-
-        Anchors the real seam in ``_run_pipeline_step`` (the
-        ``materialize_agent_prompt_if_needed`` call). Before the recovery
-        helper is added, this test fails because the missing-handoff
-        exception escapes through the outer ``except BaseException`` arm
-        in ``_run_pipeline_step`` and routes to the recovery controller
-        instead of landing on the plan-handoff recovery path. After the
-        helper lands, the test passes: the recovered state advances to
-        planning (entry_phase), recovery_epoch increments to 1, and the
-        plan-handoff error text is recorded in last_error.
-        """
         workspace_scope = WorkspaceScope(tmp_path)
         effect = InvokeAgentEffect(
             agent_name="claude",
@@ -505,7 +484,6 @@ class TestPipelineRunnerInvokeAgentDrainClearing:
 def test_dispatch_synchronizes_selected_agent_before_reduction(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """An effect's selected agent must also own subsequent state attribution."""
     from ralph.pipeline.agent_chain_state import AgentChainState
 
     state = PipelineState(

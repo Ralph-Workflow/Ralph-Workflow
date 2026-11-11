@@ -1,5 +1,3 @@
-"""Black-box unit tests for :mod:`ralph.pro_support.heartbeat`."""
-
 from __future__ import annotations
 
 import threading
@@ -17,8 +15,6 @@ class _FakeResponse:
 
 
 class _FakeClient:
-    """Fake httpx-like client that records posts and returns a configurable status."""
-
     def __init__(
         self,
         status_code: int = 200,
@@ -49,8 +45,6 @@ class _FakeClient:
 
 
 class _Clock:
-    """Controllable monotonic clock for the heartbeat worker."""
-
     def __init__(self) -> None:
         self._now = 0.0
         self._lock = threading.Lock()
@@ -127,17 +121,12 @@ def test_heartbeat_401_is_hard_stop() -> None:
     )
     client.start()
     try:
-        # Wait for the first tick (which receives 401). The 401 must
-        # hard-stop the worker, so after the first tick the loop must
-        # not post again even if the clock advances.
         assert tick_signal.wait(timeout=2.0), "expected the first 401 tick"
         posts_after_first = len(fake.posts)
         assert posts_after_first == 1
-        # Clear the signal and advance the clock several intervals.
         tick_signal.clear()
         for _ in range(5):
             clock.advance(0.05)
-        # Give the daemon a chance to potentially re-post, bounded.
         end_ticks = tick_signal.wait(timeout=0.05)
         assert not end_ticks, "client must not POST after 401"
         assert len(fake.posts) == 1
@@ -161,9 +150,6 @@ def test_heartbeat_404_is_hard_stop() -> None:
     )
     client.start()
     try:
-        # Wait for the first tick (which receives 404). The 404 must
-        # hard-stop the worker, so after the first tick the loop must
-        # not post again even if the clock advances.
         assert tick_signal.wait(timeout=2.0), "expected the first 404 tick"
         posts_after_first = len(fake.posts)
         assert posts_after_first == 1
@@ -193,7 +179,6 @@ def test_heartbeat_transient_errors_continue_looping() -> None:
     )
     client.start()
     try:
-        # Drive several ticks; each posts then continues.
         for _ in range(2):
             tick_signal.clear()
             clock.advance(0.001)
@@ -231,12 +216,8 @@ def test_heartbeat_network_exception_is_transient() -> None:
 def test_stop_is_idempotent_and_does_not_block() -> None:
     client, _fake, _clock = _make_client(interval=0.001)
     client.start()
-    # Yield to the daemon briefly so it enters its first sleep.
-    # The daemon is daemonic so we cannot join it; we just assert that
-    # many stop() calls in a row return promptly and do not raise.
     for _ in range(10):
         client.stop()
-    # Calling stop after the thread has been signalled must remain a no-op.
     client.stop()
 
 

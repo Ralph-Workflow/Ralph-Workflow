@@ -1,13 +1,3 @@
-"""Comprehensive hardening tests for ProcessManager shutdown behavior.
-
-Tests cover every acceptance-criterion edge case: TOCTOU safety, zombie
-detection, escalation failure, descendant cleanup, idempotency, stale-state
-reconciliation, cross-platform behavior, concurrent readers/writers, lifetime
-categories, cleanup after abnormal exit, and error reporting fidelity.
-
-All tests use deterministic fake processes — no real OS processes are spawned.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -32,7 +22,7 @@ from ralph.process.manager import (
     SyncProcessLike,
 )
 from ralph.process.manager import (
-    _process_manager as pm_mod,  # policy: white-box-frozen
+    _process_manager as pm_mod,
 )
 from ralph.testing.fake_process import (
     FakeImmortalPopen,
@@ -48,37 +38,6 @@ if TYPE_CHECKING:
     from ralph.process.manager import ProcessEvent, ProcessRecord
     from ralph.testing.fake_process import SyncFactoryCallable
 
-# --- Testing-policy white-box exception (internal call ordering) ----------
-#
-# The private symbols involved are ``ProcessManager._sync_procs`` /
-# ``_pty_procs`` / ``_async_procs``, ``ProcessManager._reconcile_stale_entries``,
-# ``ProcessManager._mark_killed``, ``ProcessManager._reap_sync_and_mark`` /
-# ``_reap_async_in_sync_and_mark``, ``ProcessManager._kill_pgid``,
-# the managed handle's ``_proc`` / ``_record``
-# fields and the fake psutil module's ``_processes`` registry.
-#
-# The cases marked ``# policy: white-box-frozen`` below assert on the
-# ProcessManager's internal reconciliation contract: that the background
-# reaper reaps the OS-level zombie BEFORE the record is marked killed, that
-# a record without a live process object falls back to the mark-only path,
-# and that the descendant registry is consumed exactly once. These are
-# ordering / wiring contracts between two internal helpers; no public
-# surface reports "reap happened before mark" (the public surface only
-# reports the final terminal status and cause), so the regression cannot be
-# expressed through the public surface.
-#
-# Quoted policy clause -- docs/ralph-workflow-policy/testing-policy.md,
-# "Default requirements":
-#   "White-box tests that reach into private internals are permitted only
-#    when no observable surface can express the regression."
-#
-# Everything that CAN be observed publicly is asserted publicly: the
-# terminal status / cause of the record and the process-manager
-# termination outcome. The registered-descendant registry has NO public
-# read-back surface (its reader is the private
-# ``ProcessManager._registered_descendants``, listed above as part of
-# this file's white-box exception), because the registry is consumed by
-# the termination paths and no production code reads it back.
 POLICY_WHITE_BOX_EXCEPTION = (
     "White-box tests that reach into private internals are permitted only when "
     "no observable surface can express the regression."
@@ -91,17 +50,12 @@ _FAST_POLICY = ProcessManagerPolicy(
     enable_zombie_reaper=False,
 )
 
-# ────────────────────────────────────────────────────────────────────────────
-# Helpers
-# ────────────────────────────────────────────────────────────────────────────
-
 
 def _make_pm(
     *,
     sync_factory: SyncFactoryCallable | None = None,
     psutil_mod: FakePsutil | None = None,
 ) -> ProcessManager:
-    """Build a ProcessManager with injected fake process factories."""
     return ProcessManager(
         policy=_FAST_POLICY,
         sync_process_factory=sync_factory or make_sync_process_factory(itertools.count(1)),
@@ -110,18 +64,10 @@ def _make_pm(
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# TOCTOU Safety (Edge cases 1, 2, 6)
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_process_exits_before_graceful_terminate() -> None:
-    """Process exits before terminate() is called — marked KILLED as already gone."""
     with patch("os.kill", side_effect=ProcessLookupError):
         pm = _make_pm(psutil_mod=None)
         handle = pm.spawn([sys.executable, "-c", "pass"])
-        # Simulate: process already exited (returncode set)
-        # policy: white-box-frozen
         handle._proc._returncode = 0
 
         handle.terminate(grace_period_s=0.1)
@@ -131,7 +77,6 @@ def test_process_exits_before_graceful_terminate() -> None:
 
 
 def test_process_exits_between_liveness_check_and_kill() -> None:
-    """Process exits between liveness check and terminate attempt via psutil."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
 
     class _DisappearingPsutil(FakePsutil):
@@ -153,7 +98,6 @@ def test_process_exits_between_liveness_check_and_kill() -> None:
 
 
 def test_process_already_gone_before_kill() -> None:
-    """os.kill(pid, 0) raises ProcessLookupError — process marked already gone."""
 
     def _kill_raises_lookup(pid: int, sig: int) -> None:
         if sig == 0:
@@ -169,25 +113,18 @@ def test_process_already_gone_before_kill() -> None:
     assert handle.record.cause == "already_gone"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Zombie Detection (Edge case 12)
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_zombie_detected_after_force_kill() -> None:
-    """Process is zombie after force kill — marked KILLED with zombie_after_kill cause."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
 
     class _ZombieAfterKill(FakePsutilProcess):
         def terminate(self) -> None:
-            pass  # ignore SIGTERM
+            pass
 
         def kill(self) -> None:
-            self._status = "zombie"  # becomes zombie after kill
+            self._status = "zombie"
 
     parent_pid = 1
     fake_psutil = FakePsutil()
-    # policy: white-box-frozen
     fake_psutil._processes = {parent_pid: _ZombieAfterKill(pid=parent_pid)}
 
     pm = ProcessManager(
@@ -197,7 +134,6 @@ def test_zombie_detected_after_force_kill() -> None:
         psutil=fake_psutil,
     )
     handle = pm.spawn([sys.executable, "-c", "pass"])
-    # policy: white-box-frozen
     handle._record.pid = parent_pid
 
     handle.terminate(grace_period_s=0.01)
@@ -207,7 +143,6 @@ def test_zombie_detected_after_force_kill() -> None:
 
 
 def test_process_truly_reaped_after_force_kill() -> None:
-    """Normal cleanup path: process is terminated and reaped."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
     pm = _make_pm(sync_factory=sync_factory, psutil_mod=FakePsutil())
     handle = pm.spawn([sys.executable, "-c", "pass"])
@@ -218,13 +153,7 @@ def test_process_truly_reaped_after_force_kill() -> None:
     assert handle.record.cause == "killed"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Escalation Failure (Edge cases 4, 5, 19)
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_graceful_terminate_times_out_escalates_to_kill() -> None:
-    """Graceful terminate times out → escalates to force kill successfully."""
 
     def stubborn_factory(command: object, opts: object) -> FakeStubbornPopen:
         del command, opts
@@ -246,7 +175,6 @@ def test_graceful_terminate_times_out_escalates_to_kill() -> None:
 
 
 def test_force_kill_fails_raises_termination_error() -> None:
-    """Force kill fails → ProcessTerminationError with structured fields."""
 
     def immortal_factory(command: object, opts: object) -> FakeImmortalPopen:
         del command, opts
@@ -270,7 +198,6 @@ def test_force_kill_fails_raises_termination_error() -> None:
 
 
 def test_permission_error_during_terminate() -> None:
-    """Permission error during terminate → ProcessTerminationError with access_denied stage."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
 
     class _AccessDeniedPsutil(FakePsutil):
@@ -296,23 +223,17 @@ def test_permission_error_during_terminate() -> None:
     assert handle.record.status == ProcessStatus.FAILED
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Descendant Cleanup (Edge cases 3, 8, 9, 10)
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_parent_terminates_but_descendant_survives() -> None:
-    """Parent exits but one descendant survives → error raised."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
 
     parent_pid = 1
 
     class _ImmortalChild(FakePsutilProcess):
         def terminate(self) -> None:
-            pass  # Ignore SIGTERM
+            pass
 
         def kill(self) -> None:
-            pass  # Also ignore SIGKILL
+            pass
 
     stubborn_child = _ImmortalChild(pid=1001)
 
@@ -322,7 +243,6 @@ def test_parent_terminates_but_descendant_survives() -> None:
 
     root = _RootWithStubbornChild(pid=parent_pid)
     fake_psutil = FakePsutil()
-    # policy: white-box-frozen
     fake_psutil._processes = {parent_pid: root, 1001: stubborn_child}
 
     pm = ProcessManager(
@@ -332,7 +252,6 @@ def test_parent_terminates_but_descendant_survives() -> None:
         psutil=fake_psutil,
     )
     handle = pm.spawn([sys.executable, "-c", "pass"])
-    # policy: white-box-frozen
     handle._record.pid = parent_pid
 
     with pytest.raises(ProcessTerminationError):
@@ -342,7 +261,6 @@ def test_parent_terminates_but_descendant_survives() -> None:
 
 
 def test_late_spawning_descendant_during_shutdown() -> None:
-    """Descendant appears between snapshot and kill — still handled."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
 
     parent_pid = 1
@@ -354,7 +272,6 @@ def test_late_spawning_descendant_during_shutdown() -> None:
 
     root = _RootWithLateChild(pid=parent_pid)
     fake_psutil = FakePsutil()
-    # policy: white-box-frozen
     fake_psutil._processes = {parent_pid: root, 2001: late_child}
 
     pm = ProcessManager(
@@ -364,7 +281,6 @@ def test_late_spawning_descendant_during_shutdown() -> None:
         psutil=fake_psutil,
     )
     handle = pm.spawn([sys.executable, "-c", "pass"])
-    # policy: white-box-frozen
     handle._record.pid = parent_pid
 
     handle.terminate(grace_period_s=0.1)
@@ -373,7 +289,6 @@ def test_late_spawning_descendant_during_shutdown() -> None:
 
 
 def test_multiple_descendants_partial_termination() -> None:
-    """Only some descendants terminate on first attempt → escalation kills rest."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
 
     parent_pid = 1
@@ -394,7 +309,6 @@ def test_multiple_descendants_partial_termination() -> None:
 
     root = _RootWithMixedChildren(pid=parent_pid)
     fake_psutil = FakePsutil()
-    # policy: white-box-frozen
     fake_psutil._processes = {parent_pid: root, 1001: obedient, 1002: stubborn}
 
     pm = ProcessManager(
@@ -404,7 +318,6 @@ def test_multiple_descendants_partial_termination() -> None:
         psutil=fake_psutil,
     )
     handle = pm.spawn([sys.executable, "-c", "pass"])
-    # policy: white-box-frozen
     handle._record.pid = parent_pid
 
     with pytest.raises(ProcessTerminationError):
@@ -414,7 +327,6 @@ def test_multiple_descendants_partial_termination() -> None:
 
 
 def test_descendant_outlives_parent_and_is_detected() -> None:
-    """Orphan descendant detection: parent gone but descendant still alive."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
 
     parent_pid = 1
@@ -434,7 +346,6 @@ def test_descendant_outlives_parent_and_is_detected() -> None:
 
     root = _RootWithOrphan(pid=parent_pid)
     fake_psutil = FakePsutil()
-    # policy: white-box-frozen
     fake_psutil._processes = {parent_pid: root, 3001: orphan}
 
     pm = ProcessManager(
@@ -444,40 +355,29 @@ def test_descendant_outlives_parent_and_is_detected() -> None:
         psutil=fake_psutil,
     )
     handle = pm.spawn([sys.executable, "-c", "pass"])
-    # policy: white-box-frozen
     handle._record.pid = parent_pid
 
     with pytest.raises(ProcessTerminationError):
         handle.terminate(grace_period_s=0.0)
 
-    # Descendant tracking: orphan should be marked in error
     assert handle.record.status == ProcessStatus.FAILED
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Idempotency (Edge case 13)
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_double_terminate_is_idempotent() -> None:
-    """Calling terminate() twice on the same handle is safe and idempotent."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)
     pm = _make_pm(sync_factory=sync_factory)
 
     handle = pm.spawn([sys.executable, "-c", "pass"])
-    handle.wait(timeout=5.0)  # process exits
+    handle.wait(timeout=5.0)
 
-    # First terminate after exit
     handle.terminate(grace_period_s=0.1)
     assert handle.record.status == ProcessStatus.EXITED
 
-    # Second terminate should no-op (already terminal)
     handle.terminate(grace_period_s=0.1)
     assert handle.record.status == ProcessStatus.EXITED
 
 
 def test_double_shutdown_all_is_idempotent() -> None:
-    """Calling shutdown_all() twice does not raise or corrupt state."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
     pm = _make_pm(sync_factory=sync_factory)
 
@@ -485,24 +385,16 @@ def test_double_shutdown_all_is_idempotent() -> None:
     pm.shutdown_all(grace_period_s=0.1)
     assert handle.record.status == ProcessStatus.KILLED
 
-    # Second shutdown_all should not raise
     pm.shutdown_all(grace_period_s=0.1)
     assert handle.record.status == ProcessStatus.KILLED
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Stale State (Edge cases 7, 11)
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_stale_tracking_entry_reconciled_during_shutdown() -> None:
-    """PID in records but no OS process → reconciled as stale entry."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
     pm = _make_pm(sync_factory=sync_factory, psutil_mod=None)
 
     handle = pm.spawn([sys.executable, "-c", "pass"])
 
-    # Simulate: the process no longer exists at OS level
     def _fake_kill(pid: int, sig: int) -> None:
         raise ProcessLookupError(pid, sig)
 
@@ -514,33 +406,23 @@ def test_stale_tracking_entry_reconciled_during_shutdown() -> None:
 
 
 def test_rapid_spawn_exit_does_not_corrupt_tracking() -> None:
-    """Spawn then immediately poll exit — tracking stays consistent."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)
     pm = _make_pm(sync_factory=sync_factory)
 
     handle = pm.spawn([sys.executable, "-c", "pass"])
-    rc = handle.poll()  # immediate poll → exit
+    rc = handle.poll()
     assert rc == 0
     assert handle.record.status == ProcessStatus.EXITED
 
-    # Subsequent shutdown should not touch this record
     pm.shutdown_all(grace_period_s=0.1)
     assert handle.record.status == ProcessStatus.EXITED
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Cross-Platform (Edge cases 17, 18)
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_os_killpg_unavailable_uses_psutil_fallback() -> None:
-    """When os.killpg is unavailable, psutil handles termination correctly."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
     pm = _make_pm(sync_factory=sync_factory, psutil_mod=FakePsutil())
     handle = pm.spawn([sys.executable, "-c", "pass"])
 
-    # killpg is not used by ProcessManager (psutil handles it), but verify
-    # the system doesn't break when killpg is missing
     with patch.object(os, "killpg", None):
         pm.shutdown_all(grace_period_s=0.1)
 
@@ -548,7 +430,6 @@ def test_os_killpg_unavailable_uses_psutil_fallback() -> None:
 
 
 def test_process_group_termination_vs_single_process() -> None:
-    """Descendant enumeration via psutil children(recursive=True)."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
 
     parent_pid = 1
@@ -563,7 +444,6 @@ def test_process_group_termination_vs_single_process() -> None:
 
     root = _RootWithTree(pid=parent_pid)
     fake_psutil = FakePsutil()
-    # policy: white-box-frozen
     fake_psutil._processes = {
         parent_pid: root,
         1001: child,
@@ -577,7 +457,6 @@ def test_process_group_termination_vs_single_process() -> None:
         psutil=fake_psutil,
     )
     handle = pm.spawn([sys.executable, "-c", "pass"])
-    # policy: white-box-frozen
     handle._record.pid = parent_pid
 
     handle.terminate(grace_period_s=0.1)
@@ -585,13 +464,7 @@ def test_process_group_termination_vs_single_process() -> None:
     assert handle.record.status == ProcessStatus.KILLED
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Error Reporting (Edge case 21)
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_process_termination_error_includes_stage_and_reason() -> None:
-    """ProcessTerminationError has structured fields."""
     e = ProcessTerminationError(
         12345,
         12345,
@@ -609,7 +482,6 @@ def test_process_termination_error_includes_stage_and_reason() -> None:
 
 
 def test_cleanup_success_not_reported_as_failure() -> None:
-    """Successful cleanup with normal exit never emits FAILED event."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)
     pm = _make_pm(sync_factory=sync_factory, psutil_mod=FakePsutil())
 
@@ -627,13 +499,7 @@ def test_cleanup_success_not_reported_as_failure() -> None:
     assert len(failed_events) == 0
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Concurrent Readers/Writers (Edge case 14)
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_concurrent_readers_during_shutdown() -> None:
-    """Concurrent readers during shutdown see consistent state."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
     pm = _make_pm(sync_factory=sync_factory)
 
@@ -646,7 +512,6 @@ def test_concurrent_readers_during_shutdown() -> None:
             try:
                 pm.list_active()
                 record = pm.get_record(handle.pid)
-                # Records should either be active or terminal, never inconsistent
                 if record is not None:
                     assert record.status in (
                         ProcessStatus.SPAWNED,
@@ -661,10 +526,8 @@ def test_concurrent_readers_during_shutdown() -> None:
     t = threading.Thread(target=reader_loop, daemon=True)
     t.start()
 
-    # Give reader a moment to start
     t.join(timeout=0.1)
 
-    # Perform shutdown while reader is running
     pm.shutdown_all(grace_period_s=0.1)
     stop.set()
     t.join(timeout=2.0)
@@ -677,13 +540,7 @@ def test_concurrent_readers_during_shutdown() -> None:
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Different Lifetime Categories (Edge case 15)
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_exec_vs_mcp_server_lifetime_contract() -> None:
-    """Exec helper and MCP server both use the same tracking contract."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
     pm = _make_pm(sync_factory=sync_factory, psutil_mod=FakePsutil())
 
@@ -696,48 +553,34 @@ def test_exec_vs_mcp_server_lifetime_contract() -> None:
         SpawnOptions(label="mcp_server:test"),
     )
 
-    # Both should appear in list_active
     active_pids = {r.pid for r in pm.list_active()}
     assert exec_handle.pid in active_pids
     assert mcp_handle.pid in active_pids
 
-    # Both have correct labels
     assert exec_handle.record.label == "exec:python"
     assert mcp_handle.record.label == "mcp_server:test"
 
-    # Terminate exec helper first
     pm.shutdown_all_for_label("exec:", grace_period_s=0.1)
     assert exec_handle.record.status == ProcessStatus.KILLED
 
-    # MCP server still tracked
     active_pids = {r.pid for r in pm.list_active()}
     assert mcp_handle.pid in active_pids
 
-    # Now terminate MCP server
     pm.shutdown_all_for_label("mcp_server:", grace_period_s=0.1)
     assert mcp_handle.record.status == ProcessStatus.KILLED
 
-    # Both in terminal history with correct cause
     records = pm.list_records(include_active=False, include_terminal=True)
     record_pids = {r.pid for r in records}
     assert exec_handle.pid in record_pids
     assert mcp_handle.pid in record_pids
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Cleanup After Abnormal Exit (Edge case 20)
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_cleanup_after_abnormal_exit() -> None:
-    """Simulated agent crash: managed process is terminated, not orphaned."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
     pm = _make_pm(sync_factory=sync_factory, psutil_mod=FakePsutil())
 
     handle = pm.spawn([sys.executable, "-c", "pass"])
 
-    # Simulate crash by raising an exception inside a context manager that
-    # uses ProcessManager. The handle.__exit__ should still clean up.
     cleanup_occurred = False
     try:
         try:
@@ -745,50 +588,30 @@ def test_cleanup_after_abnormal_exit() -> None:
                 raise RuntimeError("simulated agent crash")
         except RuntimeError:
             cleanup_occurred = True
-            # The __exit__ should have called terminate()
     finally:
         pass
 
     assert cleanup_occurred
-    # Process should be terminated, not orphaned
     assert handle.record.status in (
         ProcessStatus.KILLED,
         ProcessStatus.EXITED,
         ProcessStatus.FAILED,
     )
-    # Should not be in active list
     assert handle.pid not in {r.pid for r in pm.list_active()}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# register_descendant and list_termination_outcomes API
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_register_descendant_registry_tracks_pid_until_teardown() -> None:
-    """register_descendant adds PID to _descendants and cleanup removes it."""
     pm = _make_pm()
     handle = pm.spawn([sys.executable, "-c", "pass"])
 
     pm.register_descendant(handle.pid, 99999)
-    # policy: white-box-frozen
     assert 99999 in pm._registered_descendants(handle.pid)
 
     handle.terminate(grace_period_s=0.1)
-    # After termination, descendant registry cleaned
-    # policy: white-box-frozen
     assert pm._registered_descendants(handle.pid) == ()
 
 
 class _TrackedDescendant(FakePsutilProcess):
-    """FakePsutilProcess subclass that records every terminate/kill call.
-
-    Used to verify that ProcessManager terminates descendants
-    registered via ``register_descendant`` when their parent is
-    terminated, even if the descendant re-sessioned and is invisible
-    to the psutil children() tree walk.
-    """
-
     def __init__(self, pid: int) -> None:
         super().__init__(pid=pid)
         self.terminate_calls = 0
@@ -796,8 +619,6 @@ class _TrackedDescendant(FakePsutilProcess):
 
     def terminate(self) -> None:
         self.terminate_calls += 1
-        # Honor the parent's terminate so the next wait_procs poll
-        # resolves immediately.
         self._terminated = True
 
     def kill(self) -> None:
@@ -806,25 +627,11 @@ class _TrackedDescendant(FakePsutilProcess):
 
 
 class _NoChildrenRoot(FakePsutilProcess):
-    """A parent process whose psutil tree walk finds no children."""
-
     def children(self, recursive: bool = False) -> list[FakePsutilProcess]:
         return []
 
 
 def test_register_descendant_adds_to_registry() -> None:
-    """``register_descendant`` stores the PID; the parent's teardown reaps it.
-
-    The registry's CONTENTS are private state, so the observable
-    contract is the EFFECT: a registered descendant is a PID the manager
-    signals when the parent dies. (The former
-    ``ProcessManager.registered_descendants`` accessor was a test-only
-    window onto the private registry and has been removed.)
-
-    The other half of the contract -- the registry entry is CONSUMED, so
-    a second teardown does not re-signal the descendant -- is pinned by
-    ``test_register_descendant_registry_consumed_once_on_terminate``.
-    """
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
     parent_pid = 1
     descendant_pid = 99999
@@ -832,7 +639,6 @@ def test_register_descendant_adds_to_registry() -> None:
     parent_proc = _NoChildrenRoot(pid=parent_pid)
     descendant_proc = _TrackedDescendant(pid=descendant_pid)
     fake_psutil = FakePsutil()
-    # policy: white-box-frozen
     fake_psutil._processes = {
         parent_pid: parent_proc,
         descendant_pid: descendant_proc,
@@ -842,44 +648,17 @@ def test_register_descendant_adds_to_registry() -> None:
     handle = pm.spawn([sys.executable, "-c", "pass"])
 
     pm.register_descendant(handle.pid, descendant_pid)
-    # Registration on its own signals nothing.
     assert descendant_proc.terminate_calls == 0
     assert descendant_proc.kill_calls == 0
 
     handle.terminate(grace_period_s=0.05)
 
-    # The registered descendant was reaped with its parent: that is the
-    # observable proof the PID was stored under the parent's key.
     assert descendant_proc.terminate_calls >= 1
     assert descendant_proc.kill_calls >= 1
     assert handle.record.status == ProcessStatus.KILLED
 
 
 def test_register_descendant_terminates_grandchild_hidden_from_psutil_tree() -> None:
-    """A registered descendant is terminated with its parent.
-
-    Reproduces the AC-03 regression scenario: a grandchild
-    re-sessioned (e.g. via ``setsid()`` or a double-fork) so it
-    does NOT appear in the parent's ``children(recursive=True)``
-    psutil tree. Without the registry wiring, this descendant
-    would escape teardown and remain as a leaked child.
-
-    The test:
-
-    1. Builds a ``FakePsutil`` whose parent process has NO psutil
-       children (so the psutil tree walk finds nothing).
-    2. Registers a descendant PID (a ``_TrackedDescendant`` that
-       counts ``terminate()`` / ``kill()`` calls) for the parent.
-    3. Calls ``handle.terminate()`` on the parent.
-    4. Asserts the tracked descendant received BOTH a graceful
-       ``terminate()`` and a force ``kill()``.
-
-    The registry's contents are private state, so the observable proof
-    that the PID was stored is the descendant actually being signalled.
-    The "the entry is consumed, so a second teardown does not re-signal"
-    contract is pinned by
-    ``test_register_descendant_registry_consumed_once_on_terminate``.
-    """
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
 
     parent_pid = 1
@@ -888,7 +667,6 @@ def test_register_descendant_terminates_grandchild_hidden_from_psutil_tree() -> 
     parent_proc = _NoChildrenRoot(pid=parent_pid)
     descendant_proc = _TrackedDescendant(pid=descendant_pid)
     fake_psutil = FakePsutil()
-    # policy: white-box-frozen
     fake_psutil._processes = {
         parent_pid: parent_proc,
         descendant_pid: descendant_proc,
@@ -898,19 +676,13 @@ def test_register_descendant_terminates_grandchild_hidden_from_psutil_tree() -> 
 
     handle = pm.spawn([sys.executable, "-c", "pass"])
 
-    # Register the re-sessioned grandchild BEFORE terminating the parent.
     pm.register_descendant(parent_pid, descendant_pid)
-    # policy: white-box-frozen
     assert descendant_pid in pm._registered_descendants(parent_pid)
 
-    # Sanity: the descendant is INVISIBLE to the psutil tree walk
-    # (this is the scenario the registry has to cover).
     assert parent_proc.children(recursive=True) == []
 
     handle.terminate(grace_period_s=0.05)
 
-    # The registered descendant MUST have received graceful terminate
-    # AND force kill — the registry is now wired into termination.
     assert descendant_proc.terminate_calls >= 1, (
         f"registered descendant should receive graceful terminate(),"
         f" got terminate_calls={descendant_proc.terminate_calls}"
@@ -919,23 +691,11 @@ def test_register_descendant_terminates_grandchild_hidden_from_psutil_tree() -> 
         f"registered descendant should receive force kill(),"
         f" got kill_calls={descendant_proc.kill_calls}"
     )
-    # Parent record transitioned to KILLED.
     assert handle.record.status == ProcessStatus.KILLED
-    # Registry entry consumed (no stale entries remain for parent_pid).
-    # policy: white-box-frozen
     assert pm._registered_descendants(parent_pid) == ()
 
 
 def test_register_descendant_registry_consumed_once_on_terminate() -> None:
-    """Calling terminate twice does not re-terminate the same descendants.
-
-    The registry is consumed (``pop(record.pid, [])``) by
-    ``_terminate_registered_descendants`` so a second terminate on
-    the same record cannot re-signal an already-dead descendant.
-    This avoids duplicate SIGTERMs / SIGKILLs to grandchild PIDs
-    and keeps the registry from accumulating stale entries across
-    repeated teardowns.
-    """
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
 
     parent_pid = 1
@@ -944,7 +704,6 @@ def test_register_descendant_registry_consumed_once_on_terminate() -> None:
     parent_proc = _NoChildrenRoot(pid=parent_pid)
     descendant_proc = _TrackedDescendant(pid=descendant_pid)
     fake_psutil = FakePsutil()
-    # policy: white-box-frozen
     fake_psutil._processes = {
         parent_pid: parent_proc,
         descendant_pid: descendant_proc,
@@ -960,9 +719,6 @@ def test_register_descendant_registry_consumed_once_on_terminate() -> None:
     first_terminate = descendant_proc.terminate_calls
     first_kill = descendant_proc.kill_calls
 
-    # A second terminate on the same record is a no-op (record is
-    # already in a terminal status) and MUST NOT re-signal the
-    # already-terminated descendant.
     handle.terminate(grace_period_s=0.05)
 
     assert descendant_proc.terminate_calls == first_terminate
@@ -970,12 +726,6 @@ def test_register_descendant_registry_consumed_once_on_terminate() -> None:
 
 
 def test_register_descendant_multiple_descendants_all_terminated() -> None:
-    """All registered descendants are terminated when the parent dies.
-
-    Verifies the loop body reaps every registered PID (not just the
-    first) and that one descendant that is already gone does NOT
-    prevent the rest from being terminated.
-    """
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
 
     parent_pid = 1
@@ -984,7 +734,6 @@ def test_register_descendant_multiple_descendants_all_terminated() -> None:
     parent_proc = _NoChildrenRoot(pid=parent_pid)
     descendants = [_TrackedDescendant(pid=pid) for pid in descendant_pids]
     fake_psutil = FakePsutil()
-    # policy: white-box-frozen
     fake_psutil._processes = {parent_pid: parent_proc, **{d.pid: d for d in descendants}}
 
     pm = _make_pm(sync_factory=sync_factory, psutil_mod=fake_psutil)
@@ -996,7 +745,6 @@ def test_register_descendant_multiple_descendants_all_terminated() -> None:
 
     handle.terminate(grace_period_s=0.05)
 
-    # All three registered descendants got graceful terminate AND force kill.
     for descendant in descendants:
         assert descendant.terminate_calls >= 1, (
             f"descendant PID {descendant.pid} should be terminated;"
@@ -1008,35 +756,21 @@ def test_register_descendant_multiple_descendants_all_terminated() -> None:
 
 
 def test_list_termination_outcomes_returns_dict() -> None:
-    """list_termination_outcomes returns a dict (placeholder implementation)."""
     pm = _make_pm()
     outcomes = pm.list_termination_outcomes()
     assert isinstance(outcomes, dict)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# LivenessResult enum verification
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_liveness_result_enum_has_all_states() -> None:
-    """LivenessResult enum has ALIVE, GONE, ZOMBIE, UNKNOWN."""
     assert LivenessResult.ALIVE.value == "alive"
     assert LivenessResult.GONE.value == "gone"
     assert LivenessResult.ZOMBIE.value == "zombie"
     assert LivenessResult.UNKNOWN.value == "unknown"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# purge_on_init behavior
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_purge_on_init_clears_terminal_records() -> None:
-    """purge_on_init=True clears terminal records on startup."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)
 
-    # First PM: spawn and let exit
     pm1 = ProcessManager(
         policy=ProcessManagerPolicy(
             default_grace_period_s=0.1,
@@ -1051,10 +785,8 @@ def test_purge_on_init_clears_terminal_records() -> None:
     pid = handle.pid
     handle.wait(timeout=5.0)
 
-    # Verify terminal record exists
     assert pm1.get_record(pid, include_terminal=True) is not None
 
-    # Second PM with purge_on_init=True — terminal records cleared
     pm2 = ProcessManager(
         policy=ProcessManagerPolicy(
             default_grace_period_s=0.1,
@@ -1066,17 +798,10 @@ def test_purge_on_init_clears_terminal_records() -> None:
         sync_process_factory=sync_factory,
         async_process_factory=make_sync_process_factory(itertools.count(100)),
     )
-    # Terminal records should have been cleared
     assert pm2.get_record(pid, include_terminal=True) is None
 
 
-# ---------------------------------------------------------------------------
-# Edge case tests for _process_manager.py uncovered paths
-# ---------------------------------------------------------------------------
-
-
 def test_spawn_async_factory_raises_oserror() -> None:
-    """Async factory OSError produces FAILED record and re-raises."""
 
     def raising_factory(*args: object, **kwargs: object) -> object:
         del args, kwargs
@@ -1098,7 +823,6 @@ def test_spawn_async_factory_raises_oserror() -> None:
 
 
 def test_terminate_by_pid_no_such_process_during_children_enum() -> None:
-    """_terminate_by_pid surfaces NoSuchProcess cleanly to a KILLED record."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
 
     class _NoSuchProcPsutil(FakePsutil):
@@ -1112,8 +836,7 @@ def test_terminate_by_pid_no_such_process_during_children_enum() -> None:
         psutil=_NoSuchProcPsutil(),
     )
     handle = pm.spawn([sys.executable, "-c", "pass"])
-    # Remove the proc dict to force _terminate_by_pid path
-    pm._sync_procs.pop(handle.pid)  # policy: white-box-frozen
+    pm._sync_procs.pop(handle.pid)
 
     pm.shutdown_all(grace_period_s=0.0)
 
@@ -1121,21 +844,18 @@ def test_terminate_by_pid_no_such_process_during_children_enum() -> None:
 
 
 def test_shutdown_all_with_no_records_is_noop() -> None:
-    """shutdown_all() on an empty registry is a no-op."""
     pm = _make_pm()
     pm.shutdown_all(grace_period_s=0.0)
     assert pm.list_active() == []
 
 
 def test_shutdown_all_for_label_with_empty_registry() -> None:
-    """shutdown_all_for_label() on an empty registry is a no-op."""
     pm = _make_pm()
     pm.shutdown_all_for_label("nonexistent:", grace_period_s=0.0)
     assert pm.list_active() == []
 
 
 def test_shutdown_all_dispatches_to_pty_proc() -> None:
-    """shutdown_all() uses _escalate_termination_pty for pty-backed records."""
 
     factory = _FakePtyFactory()
     psutil_mod = FakePsutil()
@@ -1147,7 +867,6 @@ def test_shutdown_all_dispatches_to_pty_proc() -> None:
         psutil=psutil_mod,
     )
     handle = pm.spawn_pty(["claude"], PtySpawnOptions(cwd="/tmp"))
-    # policy: white-box-frozen
     proc = handle._proc
     assert proc.closed is False
 
@@ -1158,7 +877,6 @@ def test_shutdown_all_dispatches_to_pty_proc() -> None:
 
 
 def test_mark_exited_idempotency_with_locked_status() -> None:
-    """_mark_exited is idempotent — second call does not change the record."""
 
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)
     pm = _make_pm(sync_factory=sync_factory)
@@ -1169,7 +887,6 @@ def test_mark_exited_idempotency_with_locked_status() -> None:
     first_returncode = handle.record.returncode
     first_cause = handle.record.cause
 
-    # Second call to wait() should no-op (already EXITED).
     handle.wait(timeout=0.1)
 
     assert handle.record.status == first_status
@@ -1183,7 +900,6 @@ def test_mark_exited_idempotency_with_locked_status() -> None:
 
 
 def test_list_records_includes_terminal_after_purge_on_init_false() -> None:
-    """list_records(include_terminal=True) returns terminal records when purge_on_init=False."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)
     pm = ProcessManager(
         policy=ProcessManagerPolicy(
@@ -1205,27 +921,10 @@ def test_list_records_includes_terminal_after_purge_on_init_false() -> None:
     assert pid in pids
 
 
-# ---------------------------------------------------------------------------
-# Zombie reaper and orphan cleanup tests
-# ---------------------------------------------------------------------------
-
-#: The name the ProcessManager gives its background zombie-reaper thread.
-#: The reaper is a real OS thread, so its liveness is observable through
-#: the standard library's thread registry -- no test-only accessor on the
-#: manager is needed (the former
-#: ``ProcessManager.zombie_reaper_running`` was exactly that and has been
-#: removed).
 _REAPER_THREAD_NAME_PREFIX = "ProcessManager-zombie-reaper-"
 
 
 def _reaper_thread_for(pm: ProcessManager) -> threading.Thread | None:
-    """Return the live zombie-reaper thread belonging to ``pm``, if any.
-
-    PUBLIC observation: ``threading.enumerate()`` lists every live thread,
-    and the manager names its reaper ``<prefix><manager id>``, so the
-    thread that belongs to THIS manager is identified without touching the
-    manager's private state.
-    """
     wanted = f"{_REAPER_THREAD_NAME_PREFIX}{id(pm)}"
     for thread in threading.enumerate():
         if thread.name == wanted:
@@ -1234,7 +933,6 @@ def _reaper_thread_for(pm: ProcessManager) -> threading.Thread | None:
 
 
 def test_zombie_reaper_starts_on_first_spawn_and_stops_on_shutdown() -> None:
-    """Reaper thread starts on first spawn and stops on shutdown_all."""
     real_policy = ProcessManagerPolicy(
         default_grace_period_s=0.1,
         kill_followup_timeout_s=0.1,
@@ -1258,7 +956,6 @@ def test_zombie_reaper_starts_on_first_spawn_and_stops_on_shutdown() -> None:
 
 
 def test_zombie_reaper_marks_zombie_records_as_killed() -> None:
-    """Reaper thread calls _reconcile_stale_entries which marks zombies KILLED."""
     real_policy = ProcessManagerPolicy(
         default_grace_period_s=0.1,
         kill_followup_timeout_s=0.1,
@@ -1278,8 +975,7 @@ def test_zombie_reaper_marks_zombie_records_as_killed() -> None:
             psutil=None,
         )
         handle = pm.spawn([sys.executable, "-c", "pass"])
-        # Manually invoke reconcile (reaper's job) — process is GONE
-        reconciled = pm._reconcile_stale_entries()  # policy: white-box-frozen
+        reconciled = pm._reconcile_stale_entries()
         assert reconciled >= 1
         assert handle.record.status in (
             ProcessStatus.KILLED,
@@ -1289,7 +985,6 @@ def test_zombie_reaper_marks_zombie_records_as_killed() -> None:
 
 
 def test_zombie_reaper_handles_stale_entries() -> None:
-    """Reaper detects GONE entries (not just zombies) and marks KILLED."""
     real_policy = ProcessManagerPolicy(
         default_grace_period_s=0.1,
         kill_followup_timeout_s=0.1,
@@ -1309,8 +1004,7 @@ def test_zombie_reaper_handles_stale_entries() -> None:
             psutil=None,
         )
         handle = pm.spawn([sys.executable, "-c", "pass"])
-        # Reconcile should mark stale as KILLED
-        pm._reconcile_stale_entries()  # policy: white-box-frozen
+        pm._reconcile_stale_entries()
         assert handle.record.status in (
             ProcessStatus.KILLED,
             ProcessStatus.EXITED,
@@ -1319,7 +1013,6 @@ def test_zombie_reaper_handles_stale_entries() -> None:
 
 
 def test_zombie_reaper_disabled_by_policy() -> None:
-    """When enable_zombie_reaper=False, no reaper thread is started."""
     pm = ProcessManager(
         policy=ProcessManagerPolicy(
             default_grace_period_s=0.1,
@@ -1337,7 +1030,6 @@ def test_zombie_reaper_disabled_by_policy() -> None:
 
 
 def test_process_manager_cleanup_orphans_kills_descendants() -> None:
-    """cleanup_orphans on a handle kills its process group via os.killpg."""
     sync_factory = make_sync_process_factory(itertools.count(2000), returncode=None)
     pm = ProcessManager(
         policy=_FAST_POLICY,
@@ -1346,15 +1038,12 @@ def test_process_manager_cleanup_orphans_kills_descendants() -> None:
         psutil=None,
     )
     handle = pm.spawn([sys.executable, "-c", "pass"])
-    # Verify os.killpg is called
     with patch("os.killpg") as mock_killpg:
         pm.cleanup_orphans(handle)
-        # killpg was called at least once
         assert mock_killpg.called
 
 
 def test_process_manager_cleanup_orphans_with_label_prefix() -> None:
-    """cleanup_orphans with label_prefix iterates _records and terminates by PID."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
     pm = ProcessManager(
         policy=_FAST_POLICY,
@@ -1369,15 +1058,12 @@ def test_process_manager_cleanup_orphans_with_label_prefix() -> None:
     with (
         patch("os.killpg"),
         patch.object(pm, "_terminate_by_pid") as mock_term,
-    ):  # policy: white-box-frozen
+    ):
         pm.cleanup_orphans(handle, label_prefix="mcp-exec:")
-        # The no-exception path is the contract; either killpg or _terminate_by_pid
-        # may be called depending on records state. Mock is the contract witness.
-        assert mock_term is not None  # verifies mock wired and call did not raise
+        assert mock_term is not None
 
 
 def test_process_manager_cleanup_orphans_with_int_pgid_posix() -> None:
-    """cleanup_orphans with int PGID on POSIX calls os.killpg."""
     pm = _make_pm(psutil_mod=None)
     with patch("os.killpg") as mock_killpg:
         pgid_int: int = 12345
@@ -1386,45 +1072,27 @@ def test_process_manager_cleanup_orphans_with_int_pgid_posix() -> None:
 
 
 def test_process_manager_kill_pgid_skips_invalid_pgid() -> None:
-    """_kill_pgid is a no-op for pgid<=1 or when os.killpg missing."""
     pm = _make_pm(psutil_mod=None)
     with patch("os.killpg") as mock_killpg:
-        pm._kill_pgid(0)  # policy: white-box-frozen
-        pm._kill_pgid(1)  # policy: white-box-frozen
-        pm._kill_pgid(-1)  # policy: white-box-frozen
+        pm._kill_pgid(0)
+        pm._kill_pgid(1)
+        pm._kill_pgid(-1)
         assert not mock_killpg.called
 
 
 def test_process_manager_kill_pgid_calls_os_killpg() -> None:
-    """_kill_pgid calls os.killpg for valid pgid."""
     pm = _make_pm(psutil_mod=None)
     with patch("os.killpg") as mock_killpg:
-        pm._kill_pgid(12345)  # policy: white-box-frozen
-        mock_killpg.assert_called_once_with(12345, 9)  # SIGKILL = 9
-
-
-# ---------------------------------------------------------------------------
-# AC-02 / AC-04: background reaper OS-level zombie reaping
-# ---------------------------------------------------------------------------
+        pm._kill_pgid(12345)
+        mock_killpg.assert_called_once_with(12345, 9)
 
 
 def test_reconcile_zombie_sync_record_runs_sync_reap_helper() -> None:
-    """Background reaper runs _reap_sync_and_mark for a sync zombie record.
-
-    Patches ``proc.wait`` on the fake sync process and the per-instance
-    ``_mark_killed`` to capture the call order. Asserts:
-      - ``_reap_sync_and_mark`` is invoked (proc.wait called),
-      - the reaping call happens BEFORE ``_mark_killed`` is invoked,
-      - the record ends ``ProcessStatus.KILLED`` with cause
-        ``zombie_reconciled`` (unchanged by the reaping helper).
-    """
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
     pm = _make_pm(sync_factory=sync_factory, psutil_mod=FakePsutil())
     handle = pm.spawn([sys.executable, "-c", "pass"])
-    # policy: white-box-frozen
     sync_proc: SyncProcessLike = handle._proc
 
-    # Patch proc.wait so the reap helper has something to call.
     wait_called = {"called": False}
     real_wait = sync_proc.wait
 
@@ -1434,7 +1102,6 @@ def test_reconcile_zombie_sync_record_runs_sync_reap_helper() -> None:
 
     sync_proc.wait = _spy_wait
 
-    # Force liveness to ZOMBIE for the reaper.
     real_verify = pm_mod.verify_process_liveness
 
     def _fake_verify(
@@ -1446,9 +1113,8 @@ def test_reconcile_zombie_sync_record_runs_sync_reap_helper() -> None:
             return LivenessResult.ZOMBIE
         return real_verify(p, psutil_mod=psutil_mod)
 
-    # Spy on _mark_killed to enforce ordering: reap runs first.
     mark_calls: list[tuple[object, object, str]] = []
-    real_mark_killed = pm._mark_killed  # policy: white-box-frozen
+    real_mark_killed = pm._mark_killed
 
     def _spy_mark_killed(
         rec: ProcessRecord,
@@ -1463,7 +1129,7 @@ def test_reconcile_zombie_sync_record_runs_sync_reap_helper() -> None:
         patch.object(pm_mod, "verify_process_liveness", _fake_verify),
         patch.object(pm, "_mark_killed", side_effect=_spy_mark_killed),
     ):
-        reconciled = pm._reconcile_stale_entries()  # policy: white-box-frozen
+        reconciled = pm._reconcile_stale_entries()
 
     assert reconciled == 1
     assert wait_called["called"] is True, (
@@ -1477,16 +1143,6 @@ def test_reconcile_zombie_sync_record_runs_sync_reap_helper() -> None:
 
 
 def test_reconcile_zombie_async_record_runs_async_reap_helper() -> None:
-    """Background reaper runs _reap_async_in_sync_and_mark for async zombies.
-
-    Patches ``os.waitpid`` (the POSIX reaping primitive used by
-    ``_reap_async_in_sync_and_mark``) and the per-instance ``_mark_killed``
-    to capture call ordering. Asserts the reaping helper is invoked
-    before ``_mark_killed`` and the record ends KILLED with cause
-    ``zombie_reconciled``.
-    """
-    # Build an async-spawned process via a real spawn_async so the
-    # async dicts are populated correctly.
     async_factory = make_async_process_factory(itertools.count(4001), returncode=None)
     pm = ProcessManager(
         policy=_FAST_POLICY,
@@ -1500,7 +1156,6 @@ def test_reconcile_zombie_async_record_runs_async_reap_helper() -> None:
             [sys.executable, "-c", "pass"],
             SpawnOptions(stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE),
         )
-        # policy: white-box-frozen
         return async_handle._proc
 
     handle_proc = asyncio.run(_spawn())
@@ -1530,7 +1185,7 @@ def test_reconcile_zombie_async_record_runs_async_reap_helper() -> None:
         return (0, 0)
 
     mark_calls: list[tuple[object, object, str]] = []
-    real_mark_killed = pm._mark_killed  # policy: white-box-frozen
+    real_mark_killed = pm._mark_killed
 
     def _spy_mark_killed(
         rec: ProcessRecord,
@@ -1546,7 +1201,7 @@ def test_reconcile_zombie_async_record_runs_async_reap_helper() -> None:
         patch.object(os, "waitpid", _fake_waitpid, create=True),
         patch.object(pm, "_mark_killed", side_effect=_spy_mark_killed),
     ):
-        reconciled = pm._reconcile_stale_entries()  # policy: white-box-frozen
+        reconciled = pm._reconcile_stale_entries()
 
     assert reconciled == 1
     assert waitpid_calls, "Reaper must invoke os.waitpid on the async record before _mark_killed"
@@ -1556,27 +1211,15 @@ def test_reconcile_zombie_async_record_runs_async_reap_helper() -> None:
     assert len(mark_calls) == 1
     called_rec, _called_rc, called_cause = mark_calls[0]
     assert called_cause == "zombie_reconciled"
-    # The record passed to _mark_killed is the actual ProcessRecord, so
-    # we can assert on it directly (it has already been moved to
-    # _terminal_records by _mark_killed at this point).
     assert called_rec.status == ProcessStatus.KILLED
     assert called_rec.cause == "zombie_reconciled"
 
 
 def test_reconcile_zombie_record_without_process_object_uses_mark_only_fallback() -> None:
-    """Records with no process object fall back to mark-only path.
-
-    When a record exists in ``_records`` but is missing from
-    ``_sync_procs``, ``_pty_procs`` and ``_async_procs`` (e.g. a
-    manually-registered record with no live process handle), the reaper
-    must NOT invoke any reaping helper; it must fall back to the
-    plain ``_mark_killed(..., cause='zombie_reconciled')`` call.
-    """
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
     pm = _make_pm(sync_factory=sync_factory, psutil_mod=FakePsutil())
     handle = pm.spawn([sys.executable, "-c", "pass"])
 
-    # Force-liveness to ZOMBIE
     real_verify = pm_mod.verify_process_liveness
 
     def _fake_verify(
@@ -1588,16 +1231,14 @@ def test_reconcile_zombie_record_without_process_object_uses_mark_only_fallback(
             return LivenessResult.ZOMBIE
         return real_verify(p, psutil_mod=psutil_mod)
 
-    # Strip process objects from all three dicts so the reaper sees
-    # "no process object present" and must fall back to mark-only.
-    pm._sync_procs.pop(handle.pid, None)  # policy: white-box-frozen
-    pm._pty_procs.pop(handle.pid, None)  # policy: white-box-frozen
-    pm._async_procs.pop(handle.pid, None)  # policy: white-box-frozen
+    pm._sync_procs.pop(handle.pid, None)
+    pm._pty_procs.pop(handle.pid, None)
+    pm._async_procs.pop(handle.pid, None)
 
     reap_sync_called = {"called": False}
     reap_async_called = {"called": False}
-    real_reap_sync = pm._reap_sync_and_mark  # policy: white-box-frozen
-    real_reap_async = pm._reap_async_in_sync_and_mark  # policy: white-box-frozen
+    real_reap_sync = pm._reap_sync_and_mark
+    real_reap_async = pm._reap_async_in_sync_and_mark
 
     def _spy_reap_sync(
         rec: ProcessRecord,
@@ -1618,7 +1259,7 @@ def test_reconcile_zombie_record_without_process_object_uses_mark_only_fallback(
         real_reap_async(rec, proc, cause=cause)
 
     mark_calls: list[tuple[object, object, str]] = []
-    real_mark_killed = pm._mark_killed  # policy: white-box-frozen
+    real_mark_killed = pm._mark_killed
 
     def _spy_mark_killed(
         rec: ProcessRecord,
@@ -1635,7 +1276,7 @@ def test_reconcile_zombie_record_without_process_object_uses_mark_only_fallback(
         patch.object(pm, "_reap_async_in_sync_and_mark", side_effect=_spy_reap_async),
         patch.object(pm, "_mark_killed", side_effect=_spy_mark_killed),
     ):
-        reconciled = pm._reconcile_stale_entries()  # policy: white-box-frozen
+        reconciled = pm._reconcile_stale_entries()
 
     assert reconciled == 1
     assert reap_sync_called["called"] is False, (

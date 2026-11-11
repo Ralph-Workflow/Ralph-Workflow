@@ -1,5 +1,3 @@
-"""Tests for the six-key auto-integration configuration surface."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -12,7 +10,6 @@ from ralph.config.loader import load_config, load_local_only
 
 
 def test_auto_integrate_config_exposes_exactly_six_live_fields() -> None:
-    """S-2: the public model admits the six supported auto-integrate keys."""
     fields = {name for name in GeneralConfig.model_fields if name.startswith("auto_integrate_")}
     assert fields == {
         "auto_integrate_enabled",
@@ -25,7 +22,6 @@ def test_auto_integrate_config_exposes_exactly_six_live_fields() -> None:
 
 
 def test_auto_integrate_defaults_refresh_every_seam_and_reclaim_target_owner() -> None:
-    """S-2: defaults enable local integration, every-seam refresh, and reclamation."""
     config = GeneralConfig()
     assert config.auto_integrate_enabled is True
     assert config.auto_integrate_target == "main"
@@ -37,7 +33,6 @@ def test_auto_integrate_defaults_refresh_every_seam_and_reclaim_target_owner() -
 
 @pytest.mark.parametrize("field", ["auto_integrate_target", "auto_integrate_remote"])
 def test_auto_integrate_branch_and_remote_reject_blank_values(field: str) -> None:
-    """S-2: target and remote must be concrete, non-blank names."""
     for value in ("", "   "):
         with pytest.raises(ValidationError):
             GeneralConfig.model_validate({field: value})
@@ -45,13 +40,11 @@ def test_auto_integrate_branch_and_remote_reject_blank_values(field: str) -> Non
 
 @pytest.mark.parametrize("value", [-0.1, -1.0])
 def test_auto_integrate_interval_rejects_negative_values(value: float) -> None:
-    """S-2: the refresh interval is zero or a bounded positive duration."""
     with pytest.raises(ValidationError):
         GeneralConfig(auto_integrate_remote_interval_seconds=value)
 
 
 def test_live_auto_integrate_keys_load_from_project_toml(tmp_path: Path) -> None:
-    """S-2: all live keys load through the project-local configuration boundary."""
     path = tmp_path / "ralph-workflow.toml"
     path.write_text(
         "[general]\n"
@@ -77,7 +70,6 @@ def test_live_auto_integrate_keys_load_from_project_toml(tmp_path: Path) -> None
 def test_live_auto_integrate_local_values_override_global(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """S-2: project-local live keys retain normal global-to-local precedence."""
     config_home = tmp_path / "config"
     config_home.mkdir()
     (config_home / "ralph-workflow.toml").write_text(

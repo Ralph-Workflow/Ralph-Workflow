@@ -160,7 +160,6 @@ def _generation_tree(tmp_path: Path, *names: str) -> Path:
 
 
 def test_published_generations_are_not_exposed_to_destructive_cleanup(tmp_path: Path) -> None:
-    """A published generation can still back a live process after ``rdev`` moves on."""
     generations = _generation_tree(tmp_path, "old", "current")
 
     cleanup_staging(tmp_path / ".staging")

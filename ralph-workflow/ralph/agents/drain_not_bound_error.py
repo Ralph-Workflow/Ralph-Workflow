@@ -1,13 +1,6 @@
-"""Errors raised when drain-to-chain binding is missing."""
 
 
 class DrainNotBoundError(Exception):
-    """Raised when a drain has no explicit chain binding.
-
-    Attributes:
-        drain: The unbound drain name.
-        available_drains: Names of all bound drains.
-    """
 
     def __init__(self, drain: str, available_drains: set[str]) -> None:
         self.drain = drain

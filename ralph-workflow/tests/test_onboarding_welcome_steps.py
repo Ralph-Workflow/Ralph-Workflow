@@ -1,5 +1,3 @@
-"""Black-box tests for the bundled-skill + gitignore copy in ralph.onboarding next steps."""
-
 from __future__ import annotations
 
 import pytest
@@ -31,10 +29,6 @@ def test_fallback_next_steps_mentions_skill_recheck_and_gitignore() -> None:
 
 
 def test_welcome_panel_next_steps_still_mentions_agy_and_nanocoder() -> None:
-    """Regression guard: the new bullet insertion must not drop the
-    claude/opencode/nanocoder/agy install-line copy that test_config_welcome
-    asserts on.
-    """
     output = "\n".join(welcome_panel_next_steps())
     for token in ("claude", "opencode", "nanocoder", "agy"):
         assert token in output, f"Expected {token!r} in welcome_panel_next_steps, got: {output!r}"
@@ -62,7 +56,6 @@ def test_welcome_panel_next_steps_lists_opencode_skills_exactly_once() -> None:
 
 
 def test_next_steps_name_global_agent_chains_config() -> None:
-    """S-1: model guidance names the exact global config and section to edit."""
     expected_path = resolve_global_config_dir() / "ralph-workflow.toml"
     for steps in (welcome_panel_next_steps(), fallback_next_steps()):
         output = "\n".join(steps)
@@ -73,7 +66,6 @@ def test_next_steps_name_global_agent_chains_config() -> None:
 def test_welcome_panel_next_steps_rejects_invalid_config_resolver(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """DA-001: dynamic bootstrap attributes are checked before invocation."""
     monkeypatch.setattr("ralph.config.bootstrap.resolve_global_config_dir", object())
 
     with pytest.raises(RuntimeError, match="resolve_global_config_dir"):
@@ -81,7 +73,6 @@ def test_welcome_panel_next_steps_rejects_invalid_config_resolver(
 
 
 def test_welcome_panel_next_steps_lead_with_first_run_path() -> None:
-    """S-3 regression: first-run guidance precedes optional setup detail."""
     steps = welcome_panel_next_steps()
     assert steps[:3] == (
         "Edit PROMPT.md with your implementation task",
@@ -92,7 +83,6 @@ def test_welcome_panel_next_steps_lead_with_first_run_path() -> None:
 
 
 def test_fallback_next_steps_lead_with_first_run_path() -> None:
-    """S-3 regression: a re-run keeps the actionable path ahead of optional notes."""
     assert fallback_next_steps()[:3] == (
         "Edit PROMPT.md with your implementation task",
         "Run `ralph --diagnose` to check your setup",

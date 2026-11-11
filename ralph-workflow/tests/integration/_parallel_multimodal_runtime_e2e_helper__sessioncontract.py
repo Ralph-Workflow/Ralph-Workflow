@@ -7,8 +7,6 @@ if TYPE_CHECKING:
 
 
 class _SessionContract(NamedTuple):
-    """Session contract parameters for parallel worker testing."""
-
     drain: str
     capabilities: frozenset[str]
     model_identity: MultimodalModelIdentity

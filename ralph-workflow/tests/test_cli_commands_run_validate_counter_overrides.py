@@ -1,5 +1,3 @@
-"""Unit tests for the run pipeline CLI command."""
-
 from __future__ import annotations
 
 from ralph.policy.models import (
@@ -56,8 +54,6 @@ def _policy_bundle_for_testing() -> PolicyBundle:
 
 
 class TestValidateCounterOverrides:
-    """Tests for CLI counter override validation via the shared policy validator."""
-
     def _pipeline_with_counters(self, *counter_names: str) -> PipelinePolicy:
 
         return PipelinePolicy(

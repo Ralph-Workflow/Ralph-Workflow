@@ -1,5 +1,3 @@
-"""Tests that _emit_final_summary extracts activity counters from display._plain_renderer."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -46,7 +44,6 @@ def _make_parallel_display(tmp_path: Path) -> tuple[ParallelDisplay, Console]:
 
 
 def test_final_summary_passes_plain_renderer_counters_to_emit(tmp_path: Path) -> None:
-    """_emit_final_summary forwards activity counters from display._plain_renderer."""
     display, _console = _make_parallel_display(tmp_path)
 
     plain_renderer = display._plain_renderer
@@ -86,7 +83,6 @@ def test_final_summary_passes_plain_renderer_counters_to_emit(tmp_path: Path) ->
 
 
 def test_final_summary_defaults_counters_to_zero_when_no_display(tmp_path: Path) -> None:
-    """_emit_final_summary uses zero defaults when display has no _plain_renderer."""
     state = PipelineState(phase="complete")
     console = Console(record=True, width=120, force_terminal=False, color_system=None)
     ctx = make_display_context(console=console, env={})

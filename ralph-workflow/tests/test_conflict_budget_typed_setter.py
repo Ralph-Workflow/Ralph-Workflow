@@ -1,17 +1,3 @@
-"""Tests for the five new typed setters on RebaseState.
-
-These setters are the single-writer contract for the conflict-strategy
-ladder, the bounded consecutive-conflict counter, the typed
-``INTERVENTION_REQUIRED`` transition, and the durable
-``retry_deadline`` field. The :file:`test_rebase_state_setters_owner.py`
-AST scan is the structural guarantee that no other module writes those
-fields through ``model_copy``/``copy_with``; this file proves the
-behavioural guarantees each setter is supposed to enforce.
-
-All setter behaviours are pinned in one top-level class to satisfy the
-repo-structure single-class invariant.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -27,10 +13,6 @@ from ralph.pipeline.rebase_state import RebaseState
 
 
 class TestConflictBudgetTypedSetters:
-    """Behavioural guarantees for the five typed setters on ``RebaseState``."""
-
-    # ----- set_retry_deadline -----
-
     def test_set_retry_deadline_accepts_none(self) -> None:
         state = RebaseState(retry_deadline=5.0)
         assert state.set_retry_deadline(None).retry_deadline is None
@@ -51,9 +33,7 @@ class TestConflictBudgetTypedSetters:
         state = RebaseState()
         new = state.set_retry_deadline(1.0)
         assert new is not state
-        assert state.retry_deadline is None  # original untouched
-
-    # ----- record_consecutive_conflicts -----
+        assert state.retry_deadline is None
 
     def test_record_consecutive_conflicts_zero_passes_through(self) -> None:
         assert RebaseState().record_consecutive_conflicts(0).consecutive_conflicts == 0
@@ -81,8 +61,6 @@ class TestConflictBudgetTypedSetters:
         new = state.record_consecutive_conflicts(5)
         assert new is not state
         assert state.consecutive_conflicts == 2
-
-    # ----- advance_conflict_strategy -----
 
     def test_advance_first_appends_strategy_and_increments_index(self) -> None:
         state = RebaseState(
@@ -131,8 +109,6 @@ class TestConflictBudgetTypedSetters:
         assert new.last_target == "main"
         assert new.consecutive_conflicts == 2
 
-    # ----- project_conflict_strategy_from -----
-
     def test_project_projects_all_four_fields(self) -> None:
         source = RebaseState(
             conflict_strategy_index=3,
@@ -178,8 +154,6 @@ class TestConflictBudgetTypedSetters:
         assert projected.last_target == "main"
         assert projected.consecutive_conflicts == 5
 
-    # ----- set_ladder_escalation -----
-
     def test_set_ladder_escalation_records_typed_outcome(self) -> None:
         new = RebaseState().set_ladder_escalation("conflict cap exhausted")
         assert new.last_outcome == RebaseOutcomeKind.LADDER_ESCALATION
@@ -190,8 +164,6 @@ class TestConflictBudgetTypedSetters:
         new = state.set_ladder_escalation("escalate autonomously")
         assert new is not state
         assert state.last_outcome == RebaseOutcomeKind.REBASED
-
-    # ----- Cross-setter immutability -----
 
     def test_setter_chain_preserves_frozen_contract(self) -> None:
         state = RebaseState()
@@ -204,7 +176,6 @@ class TestConflictBudgetTypedSetters:
         assert chained.retry_deadline == 1.0
         assert chained.consecutive_conflicts == 2
         assert chained.last_outcome == RebaseOutcomeKind.LADDER_ESCALATION
-        # Original remains untouched.
         assert state.retry_deadline is None
         assert state.consecutive_conflicts == 0
         assert state.last_outcome is None

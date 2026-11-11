@@ -1,16 +1,3 @@
-"""Concurrency tests for the explore index (acceptance criterion 4).
-
-Several sessions searching and refreshing one workspace at once all get correct
-results, run only one rebuild at a time, and never corrupt the index.
-
-The sessions run concurrently in threads. Each thread owns its production
-``ExploreStore`` connection and opens the advisory lock independently, so the
-``fcntl`` exclusion path is still exercised without creating OS subprocesses.
-A ``threading.Barrier`` releases every session at the same point and keeps the
-rebuild counter and peak-in-flight instrumentation in an injected in-memory
-fake.
-"""
-
 from __future__ import annotations
 
 import json
@@ -28,26 +15,20 @@ pytestmark = [pytest.mark.timeout_seconds(60)]
 
 @dataclass
 class _RebuildMetrics:
-    """Bounded in-memory instrumentation for concurrent rebuild attempts."""
-
     current: int = 0
     peak: int = 0
     rebuild_count: int = 0
 
     def rebuild_started(self) -> None:
-        """Record one active rebuild and update the observed peak."""
         self.current += 1
         self.peak = max(self.peak, self.current)
         self.rebuild_count += 1
 
     def rebuild_finished(self) -> None:
-        """Record completion of one active rebuild."""
         self.current -= 1
 
 
 class _FakeSession:
-    """Minimal MCP session surface required by the grep handler."""
-
     def __init__(self, explore_index: object) -> None:
         self.explore_index = explore_index
         self.session_id = "explore-concurrency-session"
@@ -147,7 +128,6 @@ def _reindex_once(
 
 
 def test_multiple_sessions_share_one_workspace(tmp_path: Path) -> None:
-    """Several sessions searching one workspace all return correct results."""
     workspace = _seed(tmp_path)
     start_barrier = threading.Barrier(4)
 
@@ -165,7 +145,6 @@ def test_multiple_sessions_share_one_workspace(tmp_path: Path) -> None:
 
 
 def test_concurrent_reindex_is_single_flight(tmp_path: Path) -> None:
-    """Concurrent refreshes only ever run one rebuild at a time."""
     workspace = _seed(tmp_path)
     metrics = _RebuildMetrics()
     metrics_lock = threading.Lock()
@@ -199,7 +178,6 @@ def test_concurrent_reindex_is_single_flight(tmp_path: Path) -> None:
 
 
 def test_concurrent_search_and_reindex_correct_for_all(tmp_path: Path) -> None:
-    """Concurrent search and reindex return correct results for every search."""
     workspace = _seed(tmp_path)
     metrics = _RebuildMetrics()
     metrics_lock = threading.Lock()
@@ -239,7 +217,6 @@ def test_concurrent_search_and_reindex_correct_for_all(tmp_path: Path) -> None:
 
 
 def test_concurrent_construction_no_database_is_locked(tmp_path: Path) -> None:
-    """Several sessions can construct a store against one fresh index directory."""
     from ralph.mcp.explore.store import ExploreStore
 
     index_dir = tmp_path / "shared_index"

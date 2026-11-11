@@ -1,9 +1,3 @@
-"""Best-effort PyPI lookup for the latest ``ralph-workflow`` release.
-
-Every failure path is swallowed and returns ``None``: a version check must never
-delay or break a user's run. The HTTP client is injectable so unit tests never
-touch the network.
-"""
 
 from __future__ import annotations
 
@@ -35,7 +29,6 @@ class _HttpClient(Protocol):
 
 
 def latest_version_from_payload(payload: object) -> str | None:
-    """Extract ``info.version`` from a decoded PyPI JSON payload."""
     if not isinstance(payload, dict):
         return None
     info = payload.get("info")
@@ -48,7 +41,6 @@ def latest_version_from_payload(payload: object) -> str | None:
 
 
 def fetch_latest_version(client: _HttpClient, *, url: str = PYPI_JSON_URL) -> str | None:
-    """Fetch the latest published version via ``client``, or ``None`` on any error."""
     try:
         response = client.get(url)
         response.raise_for_status()
@@ -60,7 +52,6 @@ def fetch_latest_version(client: _HttpClient, *, url: str = PYPI_JSON_URL) -> st
 def fetch_latest_version_over_network(
     *, url: str = PYPI_JSON_URL, timeout: float = DEFAULT_TIMEOUT_SECONDS
 ) -> str | None:
-    """Production fetch: build a short-lived, time-boxed httpx client and query PyPI."""
     try:
         with httpx.Client(timeout=timeout) as client:
             return fetch_latest_version(client, url=url)

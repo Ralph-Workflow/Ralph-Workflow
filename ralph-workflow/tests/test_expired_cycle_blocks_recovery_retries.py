@@ -1,14 +1,3 @@
-"""A spent cycle must not keep launching development invocations under recovery.
-
-The retry guard on the plain failure handler only runs when no recovery
-controller is supplied — and in production one always is, so the guard sat on
-a path only tests take. Every controller route (`_apply_chain_retry`,
-`_handle_retry_progression`) keeps the run in the same phase, crossing no
-routing boundary, so the deadline was never consulted: an artifact-validation
-failure could restart development ten times per agent after the budget was
-gone, leave the cycle armed at a terminal, and report none of it.
-"""
-
 from __future__ import annotations
 
 from functools import lru_cache
@@ -57,7 +46,6 @@ def _fail_with_recovery(state: PipelineState, elapsed: float) -> PipelineState:
 
 
 def test_a_recoverable_failure_in_a_spent_cycle_is_redirected() -> None:
-    """The controller's retry would be another full-length invocation."""
     redirected = _fail_with_recovery(_developing(_SPENT), _SPENT)
 
     assert redirected.phase == _TARGET
@@ -66,7 +54,6 @@ def test_a_recoverable_failure_in_a_spent_cycle_is_redirected() -> None:
 
 
 def test_a_recoverable_failure_inside_the_budget_still_recovers() -> None:
-    """With budget left the controller handles the failure as it always did."""
     recovered = _fail_with_recovery(_developing(1000.0), 1000.0)
 
     assert recovered.phase == "development"
@@ -74,7 +61,6 @@ def test_a_recoverable_failure_inside_the_budget_still_recovers() -> None:
 
 
 def test_repeated_failures_cannot_outlast_the_deadline() -> None:
-    """The premise: a persistently failing agent cannot mine the spent budget."""
     state = _developing(_SPENT)
 
     for _ in range(5):
@@ -86,13 +72,6 @@ def test_repeated_failures_cannot_outlast_the_deadline() -> None:
 
 
 def test_a_crash_in_a_spent_cycle_is_redirected_not_retried() -> None:
-    """The crash path bypasses the reducer, so it needs its own deadline check.
-
-    A step that raises hands the failure straight to the controller, skipping
-    `reduce` and therefore every guard inside it. With the budget gone that
-    still restarted development for each remaining retry and fallover, counted
-    no redirect, and set no reason — so the report said nothing.
-    """
     from ralph.pipeline import runner as runner_module
 
     recovered, _effects = runner_module._reduce_runtime_recovery(
@@ -109,7 +88,6 @@ def test_a_crash_in_a_spent_cycle_is_redirected_not_retried() -> None:
 
 
 def test_a_crash_inside_the_budget_still_recovers_normally() -> None:
-    """With budget left the controller handles the crash as it always did."""
     from ralph.pipeline import runner as runner_module
 
     recovered, _effects = runner_module._reduce_runtime_recovery(
@@ -125,13 +103,6 @@ def test_a_crash_inside_the_budget_still_recovers_normally() -> None:
 
 
 def test_a_typed_broken_agent_failure_in_a_spent_cycle_is_redirected() -> None:
-    """The typed broken-agent route needs its own guard, and had no test.
-
-    `BrokenAgentExitError` and its siblings reach the controller through a
-    different handler than an ordinary phase failure, and that handler's routes
-    also stay in the same phase — so a spent cycle started another full-length
-    development invocation through it.
-    """
     from ralph.pipeline.agent_retry_intent import AgentRetryIntent
 
     spent = _developing(_SPENT).copy_with(
@@ -155,12 +126,6 @@ def test_a_typed_broken_agent_failure_in_a_spent_cycle_is_redirected() -> None:
 
 
 def test_a_worker_failure_in_a_spent_cycle_is_redirected() -> None:
-    """The worker-failure route into the controller needs the same bound.
-
-    Its retries also stay in the guarded phase, so a spent cycle bought another
-    full-length invocation through it — uncounted and unreported, exactly like
-    the phase-failure and typed-failure routes did.
-    """
     from ralph.pipeline.events import WorkerFailedEvent
 
     redirected, _effects = reducer_reduce(

@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Packaging commands extracted from the Makefile.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

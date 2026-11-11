@@ -1,4 +1,3 @@
-"""Shared upstream MCP environment wiring."""
 
 from __future__ import annotations
 
@@ -19,7 +18,6 @@ def apply_upstream_env(
     runtime_env: dict[str, str],
     server_env: dict[str, str],
 ) -> None:
-    """Apply effective upstream MCP configuration to both environments."""
     effective_mcp = effective_session_mcp_plan_from_servers(
         mcp_toml_as_upstreams(workspace_path),
         agent_upstream_servers=upstreams,

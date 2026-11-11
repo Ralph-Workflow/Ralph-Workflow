@@ -1,5 +1,3 @@
-"""On-the-wire contracts for plan markdown tools."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -54,7 +52,6 @@ def test_staging_descriptions_cover_resume_repair_and_atomic_finalization() -> N
 
 
 def test_plan_edit_tool_is_not_exposed() -> None:
-    """Plan edits now go through the standard stage/replace_all/finalize flow."""
     specs = _specs()
     assert "ralph_edit_md_plan_step" not in specs
     assert (

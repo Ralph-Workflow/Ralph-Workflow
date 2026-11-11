@@ -1,16 +1,3 @@
-"""Tests for :mod:`ralph.testing.audit_secret_scan`.
-
-The secret-scan gate reports credential shapes on NEW or CHANGED lines
-only, honours an inline bypass marker, and fails closed when no
-committed baseline is available. Static analysis belongs to the Bandit
-gate (:mod:`ralph.testing.audit_sast`), so this module must not carry a
-SAST slice of its own.
-
-The planted credentials below are assembled from split literals on
-purpose: the gate scans this repository too, and a fixture that carried a
-contiguous credential literal would flag its own test file.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -21,7 +8,7 @@ from ralph.testing.audit_secret_scan import (
     GITHUB_FINE_GRAINED_TOKEN_PATTERN,
     GITHUB_TOKEN_PATTERN,
     PRIVATE_KEY_PEM_PATTERN,
-    SECRET_SCAN_BYPASS_MARKER,
+    SECRET_SCAN_EXEMPTIONS,
     SLACK_TOKEN_PATTERN,
     SecretFinding,
     audit_secret_scan,
@@ -29,12 +16,16 @@ from ralph.testing.audit_secret_scan import (
     scan_secret_lines,
 )
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "marker exemption": "the inline marker comment no longer waives a secret-scan finding",
+    "structural exemption": "the structural exemption registry now carries the waived value fingerprint",
+}
 if TYPE_CHECKING:
     from pathlib import Path
 
     import pytest
 
-#: Split literals: no contiguous credential shape appears in this file.
+
 _AWS_ACCESS_KEY_ID = "AKIA" + "Z7XY3QWERTY12345"
 _GITHUB_CLASSIC_TOKEN = "ghp_" + ("a1b2c3d4e5" * 4)[:36]
 _GITHUB_FINE_GRAINED_TOKEN = "github_pat_" + ("z9y8x7w6v5" * 3)[:22]
@@ -44,7 +35,6 @@ _HIGH_ENTROPY_VALUE = "sk_live_" + "4eC39HqLyjWDarjtT1zdp7dc"
 _ASSIGNMENT_KEY = "api" + "_key"
 _SECOND_ASSIGNMENT_KEY = "to" + "ken"
 
-#: A source file whose findings belong to the Bandit gate, not to this one.
 _BANDIT_OWNED_SOURCE = (
     "import subprocess\nsubprocess.run('ls', shell=True)\ndef run(value):\n    return eval(value)\n"
 )
@@ -54,8 +44,11 @@ def _categories(findings: list[SecretFinding]) -> set[str]:
     return {finding.category for finding in findings}
 
 
+def _fingerprint_of(value: str) -> str:
+    return secret_scan_gate.fingerprint(value)
+
+
 def _planted_secret_file() -> str:
-    """Return the text of a fixture that carries one real-shaped credential."""
     return (
         f'{_ASSIGNMENT_KEY} = "{_HIGH_ENTROPY_VALUE}"\n'
         f'aws_key = "{_AWS_ACCESS_KEY_ID}"\n'
@@ -67,15 +60,10 @@ def _planted_secret_file() -> str:
 
 
 def _clean_file() -> str:
-    """Return the text of a fixture that carries no credential."""
     return 'import os\n\n\ndef read_token() -> str:\n    return os.environ["TOKEN"]\n'
 
 
-# --- the planted secret fails, the clean tree passes ------------------------
-
-
 def test_planted_secret_in_a_fixture_fails(tmp_path: Path) -> None:
-    """A credential planted in a temporary fixture is reported."""
     root = tmp_path / "tree"
     root.mkdir()
     (root / "config.py").write_text(_planted_secret_file(), encoding="utf-8")
@@ -91,7 +79,6 @@ def test_planted_secret_in_a_fixture_fails(tmp_path: Path) -> None:
 
 
 def test_clean_tree_passes(tmp_path: Path) -> None:
-    """A tree without credentials produces no findings."""
     root = tmp_path / "tree"
     root.mkdir()
     (root / "config.py").write_text(_clean_file(), encoding="utf-8")
@@ -100,7 +87,6 @@ def test_clean_tree_passes(tmp_path: Path) -> None:
 
 
 def test_the_reported_secret_value_is_never_printed() -> None:
-    """The gate prints a fingerprint, never the credential itself."""
     findings = scan_secret_lines("config.py", _planted_secret_file(), {1})
 
     assert findings
@@ -110,11 +96,7 @@ def test_the_reported_secret_value_is_never_printed() -> None:
         assert "fingerprint" in finding.detail
 
 
-# --- baseline-diff mode -----------------------------------------------------
-
-
 def test_a_baseline_secret_is_not_reported() -> None:
-    """A credential that the baseline already had is pre-existing debt."""
     findings = audit_secret_scan(
         {"config.py": _planted_secret_file()},
         {"config.py": _planted_secret_file()},
@@ -124,7 +106,6 @@ def test_a_baseline_secret_is_not_reported() -> None:
 
 
 def test_a_changed_line_with_a_secret_is_reported() -> None:
-    """A credential on a CHANGED line is a regression and is reported."""
     baseline = {"config.py": f'{_ASSIGNMENT_KEY} = "old-value"\n'}
     current = {"config.py": f'{_ASSIGNMENT_KEY} = "{_HIGH_ENTROPY_VALUE}"\n'}
 
@@ -134,7 +115,6 @@ def test_a_changed_line_with_a_secret_is_reported() -> None:
 
 
 def test_an_unchanged_line_around_a_changed_line_is_not_reported() -> None:
-    """Only the changed line is reported; its neighbours stay quiet."""
     baseline = {"config.py": f'{_ASSIGNMENT_KEY} = "{_HIGH_ENTROPY_VALUE}"\nother = 1\n'}
     current = {"config.py": f'{_ASSIGNMENT_KEY} = "{_HIGH_ENTROPY_VALUE}"\nother = 2\n'}
 
@@ -144,39 +124,76 @@ def test_an_unchanged_line_around_a_changed_line_is_not_reported() -> None:
 
 
 def test_a_new_file_is_fully_scanned() -> None:
-    """A file that the baseline does not have is entirely new."""
     findings = audit_secret_scan({}, {"config.py": _planted_secret_file()})
 
     assert findings
 
 
-# --- the bypass marker ------------------------------------------------------
+def test_the_bypass_marker_no_longer_suppresses_a_finding() -> None:
+    line = f'{_ASSIGNMENT_KEY} = "{_HIGH_ENTROPY_VALUE}"  # secret-scan-ok: fixture\n'
+
+    findings = scan_secret_lines("config.py", line, {1})
+
+    assert findings, "an inline marker comment MUST NOT silence the secret scan"
 
 
-def test_the_bypass_marker_suppresses_a_finding() -> None:
-    """An inline ``# secret-scan-ok: <reason>`` marker waives the line."""
-    line = f'{_ASSIGNMENT_KEY} = "{_HIGH_ENTROPY_VALUE}"  # {SECRET_SCAN_BYPASS_MARKER}: fixture\n'
-
-    assert scan_secret_lines("config.py", line, {1}) == []
-
-
-def test_the_bypass_marker_is_scoped_to_its_line() -> None:
-    """The marker waives its own line only."""
+def test_the_bypass_marker_no_longer_silences_any_line() -> None:
     text = (
-        f'{_ASSIGNMENT_KEY} = "{_HIGH_ENTROPY_VALUE}"  # {SECRET_SCAN_BYPASS_MARKER}: fixture\n'
+        f'{_ASSIGNMENT_KEY} = "{_HIGH_ENTROPY_VALUE}"  # secret-scan-ok: fixture\n'
         f'{_SECOND_ASSIGNMENT_KEY} = "{_HIGH_ENTROPY_VALUE}"\n'
     )
 
     findings = scan_secret_lines("config.py", text, {1, 2})
 
-    assert [finding.line for finding in findings] == [2]
+    assert [finding.line for finding in findings] == [1, 2], (
+        "an inline marker comment MUST NOT silence the secret scan"
+    )
 
 
-# --- the individual detectors -----------------------------------------------
+def test_a_registered_exemption_suppresses_the_finding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    line = f'{_ASSIGNMENT_KEY} = "{_HIGH_ENTROPY_VALUE}"\n'
+    monkeypatch.setattr(
+        secret_scan_gate,
+        "SECRET_SCAN_EXEMPTIONS",
+        frozenset({("config.py", "generic-secret", _fingerprint_of(_HIGH_ENTROPY_VALUE))}),
+    )
+
+    assert scan_secret_lines("config.py", line, {1}) == []
+
+
+def test_a_registered_exemption_does_not_suppress_another_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    line = f'{_ASSIGNMENT_KEY} = "{_HIGH_ENTROPY_VALUE}"\n'
+    monkeypatch.setattr(
+        secret_scan_gate,
+        "SECRET_SCAN_EXEMPTIONS",
+        frozenset({("other.py", "generic-secret", _fingerprint_of(_HIGH_ENTROPY_VALUE))}),
+    )
+
+    assert scan_secret_lines("config.py", line, {1}) != []
+
+
+def test_a_registered_exemption_does_not_suppress_another_category(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    line = f'{_ASSIGNMENT_KEY} = "{_HIGH_ENTROPY_VALUE}"\n'
+    monkeypatch.setattr(
+        secret_scan_gate,
+        "SECRET_SCAN_EXEMPTIONS",
+        frozenset({("config.py", "aws-access-key-id", _fingerprint_of(_HIGH_ENTROPY_VALUE))}),
+    )
+
+    assert scan_secret_lines("config.py", line, {1}) != []
+
+
+def test_the_exemption_registry_is_empty_by_default() -> None:
+    assert frozenset() == SECRET_SCAN_EXEMPTIONS
 
 
 def test_each_named_detector_fires_on_its_own_shape() -> None:
-    """Every named detector recognises its own credential shape."""
     aws = scan_secret_lines("a.py", f'x = "{_AWS_ACCESS_KEY_ID}"\n', {1})
     github = scan_secret_lines("a.py", f'x = "{_GITHUB_CLASSIC_TOKEN}"\n', {1})
     fine_grained = scan_secret_lines("a.py", f'x = "{_GITHUB_FINE_GRAINED_TOKEN}"\n', {1})
@@ -191,7 +208,6 @@ def test_each_named_detector_fires_on_its_own_shape() -> None:
 
 
 def test_the_detector_constants_are_named_and_usable() -> None:
-    """The detector constants are module-level and directly usable."""
     assert AWS_ACCESS_KEY_ID_PATTERN.search(_AWS_ACCESS_KEY_ID) is not None
     assert GITHUB_TOKEN_PATTERN.search(_GITHUB_CLASSIC_TOKEN) is not None
     assert GITHUB_FINE_GRAINED_TOKEN_PATTERN.search(_GITHUB_FINE_GRAINED_TOKEN) is not None
@@ -200,14 +216,12 @@ def test_the_detector_constants_are_named_and_usable() -> None:
 
 
 def test_a_pem_header_inside_a_sentence_is_not_a_finding() -> None:
-    """Prose that mentions the header is not a leaked private key."""
     line = f'text = "key fragment {_PEM_HEADER} data"\n'
 
     assert scan_secret_lines("a.py", line, {1}) == []
 
 
 def test_placeholders_are_never_findings() -> None:
-    """Obvious placeholders must not trip the gate."""
     placeholders = (
         'api_key = "REPLACE-ME"',
         'api_key = "xxxxxxxxxxxxxxxxxxxx"',
@@ -223,30 +237,23 @@ def test_placeholders_are_never_findings() -> None:
 
 
 def test_a_low_entropy_credential_literal_is_not_a_finding() -> None:
-    """A long but low-entropy fixture string is test material, not a secret."""
     line = 'api_key = "live-broker-secret-12345"\n'
 
     assert scan_secret_lines("a.py", line, {1}) == []
 
 
-# --- static analysis belongs to the Bandit gate -----------------------------
-
-
 def test_the_module_carries_no_sast_slice() -> None:
-    """A second SAST implementation is dead code; Bandit owns static analysis."""
     assert not hasattr(secret_scan_gate, "scan_python_sast")
     assert "scan_python_sast" not in secret_scan_gate.__all__
 
 
 def test_a_bandit_finding_does_not_fire_from_the_secret_gate() -> None:
-    """``shell=True`` and a dynamic ``eval`` are Bandit findings, not this gate's."""
     findings = audit_secret_scan({}, {"ralph/mod.py": _BANDIT_OWNED_SOURCE})
 
     assert findings == []
 
 
 def test_the_cli_ignores_a_tree_that_only_carries_bandit_findings(tmp_path: Path) -> None:
-    """The CLI reports no finding for a file the Bandit gate owns."""
     baseline = tmp_path / "baseline"
     current = tmp_path / "current"
     baseline.mkdir()
@@ -256,14 +263,10 @@ def test_the_cli_ignores_a_tree_that_only_carries_bandit_findings(tmp_path: Path
     assert main([str(baseline), str(current)]) == 0
 
 
-# --- the gate fails closed without a committed baseline ----------------------
-
-
 def test_main_returns_two_when_no_committed_baseline_exists(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A tree with no committed baseline is an error, not a whole-tree scan."""
     root = tmp_path / "tree"
     root.mkdir()
     (root / "config.py").write_text(_planted_secret_file(), encoding="utf-8")
@@ -279,7 +282,6 @@ def test_main_returns_two_when_no_committed_baseline_exists(
 def test_main_returns_two_when_the_default_tree_has_no_baseline(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The default invocation fails closed when the package has no committed copy."""
 
     def _absent_head_tree(_root: Path) -> Path | None:
         return None
@@ -289,11 +291,7 @@ def test_main_returns_two_when_the_default_tree_has_no_baseline(
     assert main([]) == 2
 
 
-# --- CLI contract -----------------------------------------------------------
-
-
 def test_main_returns_one_when_a_secret_is_planted(tmp_path: Path) -> None:
-    """The CLI fails on a planted credential."""
     baseline = tmp_path / "baseline"
     current = tmp_path / "current"
     baseline.mkdir()
@@ -304,7 +302,6 @@ def test_main_returns_one_when_a_secret_is_planted(tmp_path: Path) -> None:
 
 
 def test_main_returns_zero_when_clean(tmp_path: Path) -> None:
-    """The CLI passes on a clean tree."""
     baseline = tmp_path / "baseline"
     current = tmp_path / "current"
     baseline.mkdir()
@@ -315,7 +312,6 @@ def test_main_returns_zero_when_clean(tmp_path: Path) -> None:
 
 
 def test_main_returns_zero_when_only_the_baseline_carries_the_secret(tmp_path: Path) -> None:
-    """Baseline-diff mode keeps a pre-existing credential out of the report."""
     baseline = tmp_path / "baseline"
     current = tmp_path / "current"
     baseline.mkdir()
@@ -327,7 +323,6 @@ def test_main_returns_zero_when_only_the_baseline_carries_the_secret(tmp_path: P
 
 
 def test_main_returns_two_when_a_root_is_missing(tmp_path: Path) -> None:
-    """A missing root is an error, not a silent pass."""
     root = tmp_path / "tree"
     root.mkdir()
 

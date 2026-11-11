@@ -1,4 +1,3 @@
-"""Explanation of a single phase."""
 
 from __future__ import annotations
 
@@ -13,7 +12,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class PhaseExplanation:
-    """Explanation of a single phase."""
 
     name: str
     role: str | None

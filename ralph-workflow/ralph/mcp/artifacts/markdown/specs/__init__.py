@@ -1,4 +1,3 @@
-"""Registered markdown artifact specifications."""
 
 from ralph.mcp.artifacts.markdown.specs.analysis_decision import ANALYSIS_DECISION_SPECS
 from ralph.mcp.artifacts.markdown.specs.commit_message import COMMIT_MESSAGE_SPEC

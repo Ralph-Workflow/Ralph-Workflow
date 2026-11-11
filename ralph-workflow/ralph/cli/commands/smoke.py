@@ -1,4 +1,3 @@
-"""CLI surface for manual, token-consuming agent-runtime smoke checks."""
 
 from __future__ import annotations
 
@@ -97,7 +96,6 @@ build_smoke_prompt = _build_smoke_prompt
 
 
 def _append_subagent_working_lines(result: SmokeRunResult, working: list[str]) -> None:
-    """Append observed ordered subagent signals for an opted-in smoke run."""
     if not result.subagents_requested:
         return
     signals = (
@@ -109,15 +107,6 @@ def _append_subagent_working_lines(result: SmokeRunResult, working: list[str]) -
 
 
 def _subagent_status(result: SmokeRunResult) -> str:
-    """Return the table status for the complete opted-in subagent contract.
-
-    S-4: relaxed from "exactly one dispatch" to "at least one dispatch, each
-    with a correlated result" -- a real multi-subagent run (e.g. AGY
-    dispatching two subagents in one frame) previously reported ``no`` here
-    even though every dispatch had its own result and post-activity followed.
-    ``subagent_result_seen`` already carries the "every dispatch correlated"
-    signal (see ``_subagent_smoke_evidence``), so this only needs >= 1.
-    """
     if not result.subagents_requested:
         return "not requested"
     complete = (
@@ -130,21 +119,6 @@ def _subagent_status(result: SmokeRunResult) -> str:
 
 
 def _required_evidence(result: SmokeRunResult) -> dict[str, Evidence]:
-    """Return the contract facts that back the run's overall verdict (F1).
-
-    The verdict is a pure function of the weakest provenance among
-    these required facts — not of ``file_created``, the transport
-    ceiling, or any other diagnostic-only signal.
-
-    The three canonical facts (``artifact_submitted``,
-    ``explicit_completion_seen``, ``tool_activity_seen``) are always
-    returned so the conformance matrix's column set is unchanged. When
-    the run requested the multimodal scenario a fourth fact,
-    ``multimodal_tool_used``, is added; it does NOT change the column
-    set for non-multimodal runs and never silently downgrades a
-    multimodal run to a passing verification: a missing fact holds at
-    ``ABSENT`` so the run still reports a non-PASS verdict.
-    """
     facts: dict[str, Evidence] = {
         "artifact_submitted": result.artifact_submitted,
         "explicit_completion_seen": result.explicit_completion_seen,
@@ -164,7 +138,6 @@ def _evidence_line(label: str, evidence: Evidence) -> str:
 
 
 def _evidence_cell(evidence: Evidence) -> str:
-    """Return the compact table-cell rendering of one graded fact."""
     if not evidence.holds:
         return "no"
     return f"yes ({evidence.provenance.name.lower()})"
@@ -175,7 +148,6 @@ def _render_smoke_report(
     *,
     agent_name: str = "claude",
 ) -> str:
-    """Render a human-readable parity report."""
     lines = [
         f"{agent_name} parity smoke report",
         "",
@@ -311,27 +283,6 @@ render_smoke_report = _render_smoke_report
 
 
 def _ensure_smoke_broker_secret() -> None:
-    """Ensure a protected run-scoped ``RALPH_BROKER_SECRET`` exists.
-
-    The smoke CLI runs as a fresh ``python -m ralph smoke-interactive-*``
-    process. When the operator's environment carries no broker secret,
-    ``build_session_bridge`` reads ``None`` and every wire-ledger append is
-    a documented no-op -- so a live run that genuinely dialled Ralph's MCP
-    tools (the measured 2026-08-17 Kimi smoke: file created, artifact
-    submitted, completion declared) still graded every required fact below
-    WIRE and exited 1. Minting a random, process-local secret here lets the
-    run's receipts, sentinel, and ledger rows HMAC-bind to this run so the
-    shared gate can grade them WIRE. The anti-forgery boundary is
-    preserved: ``_subprocess_env`` strips the variable from the agent's
-    environment, so the secret never reaches the model. An operator-exported
-    value is honored unchanged so external verifiers can authenticate the wire
-    ledger, while the owning process still applies the native secrecy boundary.
-
-    Reads the secret through the sanctioned composition-root accessor
-    ``_parent_broker_secret`` (the ``audit_di_seam`` allowlist entry for
-    ``agents/invoke/_process_reader.py``) so the drift gate's
-    ``RALPH_*`` env-var boundary keeps exactly one canonical reader.
-    """
     if not _parent_broker_secret():
         os.environ["RALPH_BROKER_SECRET"] = secrets.token_hex(32)
     protect_broker_secret()
@@ -343,13 +294,6 @@ def _resolve_smoke_agent_name(
     agents_policy: AgentsPolicy,
     registry: AgentRegistry,
 ) -> str | None:
-    """Return the explicit ``--agent`` value, or the operator's configured default.
-
-    An explicit ``--agent`` always wins. When the operator passed none, the
-    default comes from the effective policy's ``development`` drain rather
-    than a hardcoded provider/model literal or legacy config chain.
-    See :mod:`ralph.cli.commands.smoke_agent_defaults`.
-    """
     if agent_name is not None:
         return agent_name
     resolved_agent = resolve_default_smoke_agent(
@@ -378,10 +322,6 @@ def smoke_harness_agent_command(
     subagent_prompt_file: Path | None = None,
     multimodal: bool = False,
 ) -> int:
-    """Run the interactive smoke harness and report parity.
-
-    A missing multimodal fact is a hard break, not a downgrade to the basic scenario.
-    """
     workspace_scope = resolve_workspace_scope()
     workspace_root = workspace_scope.root
     _ensure_smoke_broker_secret()
@@ -417,28 +357,16 @@ def smoke_harness_agent_command(
     if agent_config is None:
         raise RuntimeError(f"Smoke test agent '{agent_name}' is unavailable in the registry")
 
-    # THE one place any RALPH_*_BINARY override is applied. Every transport in
-    # the override table is handled identically here, so a transport can never
-    # be silently omitted (a per-command application was dead code: the
-    # harness re-resolves everything from ``agent_name`` and discarded it).
     overridden_config = apply_smoke_binary_override(agent_config)
     if overridden_config is not agent_config:
         agent_config = overridden_config
         config = apply_smoke_binary_overrides_to_config(config)
-        # A dynamic ``<transport>/<model>`` alias resolves from the built-ins,
-        # not from ``config.agents``, and ``run_smoke_plumbing`` re-resolves
-        # the alias against the config it is handed. Injecting the overridden
-        # config under the exact alias is what makes the override reach the
-        # spawned process for EVERY transport, not just AGY.
         overridden_agents = dict(config.agents)
         overridden_agents[agent_name] = agent_config
         config = config.model_copy(update={"agents": overridden_agents})
         if agent_config.transport is AgentTransport.AGY and is_mock_agy_override():
-            # The bundled mock writes artifacts under the workspace; real
-            # wrappers manage their own cwd.
             os.environ.setdefault("MOCK_AGY_ARTIFACT_DIR", str(workspace_root))
 
-    # filesystem-write-ok: smoke test fixture write to tmp workspace, not a repo-tracked deliverable
     submit_artifact_tool_name = submit_artifact_tool_name_for_transport(agent_config.transport)
     write_text_if_changed(
         DEFAULT_FILE_BACKEND,
@@ -475,20 +403,16 @@ def smoke_harness_agent_command(
     )
 
     _render_smoke_table([result], display_context=ctx, agent_name=agent_name)
-    # Replace only this transport's row in the durable conformance matrix.
     record_conformance_matrix(
         workspace_root, transport=result.transport, evidence=_required_evidence(result)
     )
     verdict_label, _ = grade_verdict(_required_evidence(result))
-    # All errors, including incomplete subagent contracts, fail the run.
     exit_code = 0 if not result.errors and verdict_label == PASS else 1
-    # Preserve the unadorned machine-readable EXIT_CODE=N contract.
     _smoke_emit_exit_code_line(exit_code)
     return exit_code
 
 
 def _smoke_emit_exit_code_line(exit_code: int) -> None:
-    """Emit the literal machine-readable ``EXIT_CODE=N`` contract line."""
     with contextlib.suppress(Exception):
         sys.stdout.write(f"EXIT_CODE={exit_code}\n")
         sys.stdout.flush()
@@ -499,14 +423,6 @@ def _resolve_claude_smoke_agent(
     *,
     transport: AgentTransport,
 ) -> str | None:
-    """Return the Claude alias to smoke, defaulting to the operator's own chain entry.
-
-    Both Claude smokes used to hardcode ``claude/haiku`` / ``claude-headless/haiku``.
-    Because neither command exposed ``--agent``, they were exempt from the guard
-    that forbids a pinned ``<transport>/<model>`` default -- so they smoked a model
-    the operator's pipeline never runs, and would fail for reasons unrelated to
-    Ralph once that model id was retired.
-    """
     if agent_name is not None:
         return agent_name
     workspace_scope = resolve_workspace_scope()
@@ -526,12 +442,6 @@ def smoke_interactive_claude_command(
     subagent_prompt_file: Path | None = None,
     multimodal: bool = False,
 ) -> int:
-    """Run a token-consuming manual parity smoke test for interactive Claude.
-
-    ``multimodal=True`` drives the run from the multimodal-aware prompt
-    (criterion 5). See
-    :func:`smoke_harness_agent_command` for the wider contract.
-    """
     resolved_agent = _resolve_claude_smoke_agent(
         agent_name,
         transport=AgentTransport.CLAUDE_INTERACTIVE,
@@ -559,21 +469,6 @@ def smoke_headless_claude_command(
     subagent_prompt_file: Path | None = None,
     multimodal: bool = False,
 ) -> int:
-    """Run a token-consuming manual parity smoke test for headless Claude.
-
-    With no ``--agent``, the effective policy development drain selects the
-    headless-Claude alias. The
-    command exposes the same ``--subagents`` / ``--subagent-prompt-file``
-    options as ``smoke_interactive_claude`` so the two transports
-    share one scenario surface. The headless transport does NOT
-    emit a visible TUI; the harness detects the subagent dispatch
-    via the parsed tool metadata (see
-    ``ralph.pipeline.plumbing.smoke_evidence.SmokeRunResult``).
-
-    The command is OUTSIDE ``make verify`` per the headless smoke
-    exclusion (the harness only runs when an operator explicitly
-    invokes it).
-    """
     resolved_agent = _resolve_claude_smoke_agent(
         agent_name,
         transport=AgentTransport.CLAUDE,
@@ -601,17 +496,7 @@ def smoke_interactive_agy_command(
     subagent_prompt_file: Path | None = None,
     multimodal: bool = False,
 ) -> int:
-    """Run the manual AGY end-to-end smoke harness via the PTY contract.
-
-    This drives the live ``agy`` binary (or the ``RALPH_AGY_BINARY`` override
-    when set). With no ``--agent``, the alias comes from the operator's own
-    effective agents policy development drain. Use ``--agent`` to pin a published
-    ``agy/<model>`` alias.
-    """
     agy_binary = smoke_transport_binary(AgentTransport.AGY, "agy")
-    # filesystem-read-ok: external binary existence check via PATH
-    # override (RALPH_AGY_BINARY); operator-controlled system path,
-    # not project-filesystem state.
     if shutil.which(agy_binary) is None and not os.access(agy_binary, os.X_OK):
         logger.error(
             "agy binary not found at '{}'. Install Google Anti Gravity and "
@@ -666,23 +551,6 @@ def smoke_interactive_codex_command(
     subagent_prompt_file: Path | None = None,
     multimodal: bool = False,
 ) -> int:
-    """Run the manual smoke harness for the Codex CLI.
-
-    Bare ``codex`` passes no ``--model``, so Codex uses whatever model
-    the operator configured -- a default that cannot go stale as OpenAI
-    retires model ids. To pin one, pass the dynamic ``codex/<model>``
-    alias: the command builder strips the leading ``codex/`` and passes
-    ``<model>`` to ``codex exec``. This
-    command lives for parity with the other interactive smoke
-    commands; the production harness uses the same
-    ``smoke_harness_agent_command`` plumbing with a ``cmd_override``
-    redirect seam (set the operator-config ``[agents.<name>].cmd``
-    to the multimodal stub path before invoking).
-
-    Like every other ``smoke-interactive-*`` command this consumes
-    live tokens and is therefore OUTSIDE ``make verify``; it only
-    runs when an operator invokes it.
-    """
     if shutil.which("codex") is None:
         logger.error("codex binary not found. Install Codex CLI and ensure `codex` is on PATH.")
         return 2
@@ -733,18 +601,6 @@ def smoke_interactive_pi_command(
     subagent_prompt_file: Path | None = None,
     multimodal: bool = False,
 ) -> int:
-    """Run the manual smoke harness for the Pi coding agent.
-
-    The alias follows the dynamic ``pi/<model>`` pattern (e.g.
-    ``pi/<model>``); bare ``pi`` uses the base pi harness layout.
-    The production harness uses the same
-    ``smoke_harness_agent_command`` plumbing with a ``cmd_override``
-    redirect seam.
-
-    Like every other ``smoke-interactive-*`` command this consumes
-    live tokens and is therefore OUTSIDE ``make verify``; it only
-    runs when an operator invokes it.
-    """
     if shutil.which("pi") is None:
         logger.error("pi binary not found. Install Pi and ensure `pi` is on PATH.")
         return 2
@@ -793,7 +649,6 @@ def smoke_interactive_nanocoder_command(
     subagent_prompt_file: Path | None = None,
     multimodal: bool = False,
 ) -> int:
-    """Run the manual PTY smoke test for a Nanocoder interactive alias."""
     if shutil.which("nanocoder") is None:
         logger.error(
             "nanocoder binary not found. Install Nanocoder and ensure `nanocoder` is on PATH."
@@ -846,19 +701,7 @@ def smoke_interactive_cursor_command(
     subagent_prompt_file: Path | None = None,
     multimodal: bool = False,
 ) -> int:
-    """Run the manual end-to-end smoke harness via the Cursor headless contract.
-
-    This drives the live ``agent`` binary (or the ``RALPH_CURSOR_BINARY``
-    override when set).  With no ``--agent``, the alias comes from the
-    effective agents policy development drain. The
-    command is OUTSIDE ``make verify`` per the cursor non-goal of no
-    live-token-consuming smoke tests in verify (the harness only runs
-    when an operator explicitly invokes it).
-    """
     cursor_binary = smoke_transport_binary(AgentTransport.CURSOR, "agent")
-    # filesystem-read-ok: external binary existence check via PATH
-    # override (RALPH_CURSOR_BINARY); operator-controlled system path,
-    # not project-filesystem state.
     if shutil.which(cursor_binary) is None and not os.access(cursor_binary, os.X_OK):
         logger.error(
             "cursor binary not found at '{}'. Install Cursor Agent and "
@@ -915,21 +758,7 @@ def smoke_interactive_kimi_command(
     subagent_prompt_file: Path | None = None,
     multimodal: bool = False,
 ) -> int:
-    """Run the manual end-to-end smoke harness via the Kimi headless contract.
-
-    This drives the live ``kimi`` binary (or the ``RALPH_KIMI_BINARY``
-    override when set).  With no ``--agent``, the alias comes from the
-    effective agents policy development drain. To pin one, pass the full configured
-    id (the CLI rejects a bare ``-m kimi-for-coding`` with "Model ... is
-    not configured in config.toml"), e.g.
-    ``--agent kimi/kimi-code/kimi-for-coding``.  The command is OUTSIDE
-    ``make verify`` -- it consumes live tokens and only runs when an
-    operator explicitly invokes it.
-    """
     kimi_binary = smoke_transport_binary(AgentTransport.KIMI, "kimi")
-    # filesystem-read-ok: external binary existence check via PATH
-    # override (RALPH_KIMI_BINARY); operator-controlled system path,
-    # not project-filesystem state.
     if shutil.which(kimi_binary) is None and not os.access(kimi_binary, os.X_OK):
         logger.error(
             "kimi binary not found at '{}'. Install Kimi Code and "
@@ -984,31 +813,7 @@ def smoke_interactive_opencode_command(
     subagent_prompt_file: Path | None = None,
     multimodal: bool = False,
 ) -> int:
-    """Run the manual smoke harness against a live ``opencode`` provider/model.
-
-    With no ``--agent``, the alias comes from the effective agents policy
-    development drain. To pin one, the alias
-    carries BOTH the provider and the model (``opencode/<provider>/<model>``),
-    so a single ``--agent`` value selects the full routing target -- e.g.
-    ``--agent 'opencode/minimax/MiniMax-M3'`` or
-    ``--agent 'opencode/kimi-for-coding/k2p5'``. Run ``opencode models`` to
-    list the provider/model pairs your credentials can reach. The command
-    builder strips the leading ``opencode/`` and passes ``<provider>/<model>``
-    to ``opencode run --model``.
-
-    Pair with ``--subagents`` to drive the native subagent (``task``) tool and
-    assert the full dispatch -> result -> post-subagent-activity lifecycle is
-    visible to the parser. That lifecycle is what feeds the idle watchdog's
-    ``subagent_output`` channel; a parser that cannot see subagent progress
-    leaves the watchdog blind while a subagent works.
-
-    Like the other smoke commands this consumes live tokens and is therefore
-    OUTSIDE ``make verify``; it only runs when an operator invokes it.
-    """
     opencode_binary = smoke_transport_binary(AgentTransport.OPENCODE, "opencode")
-    # filesystem-read-ok: external binary existence check via PATH
-    # override (RALPH_OPENCODE_BINARY); operator-controlled system path,
-    # not project-filesystem state.
     if shutil.which(opencode_binary) is None and not os.access(opencode_binary, os.X_OK):
         logger.error(
             "opencode binary not found at '{}'. Install OpenCode and ensure "

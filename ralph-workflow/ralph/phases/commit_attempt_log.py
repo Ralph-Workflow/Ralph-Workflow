@@ -1,4 +1,3 @@
-"""CommitAttemptLog: per-attempt log for commit message generation."""
 
 from __future__ import annotations
 
@@ -8,7 +7,6 @@ from datetime import datetime
 
 @dataclass
 class CommitAttemptLog:
-    """Per-attempt log for commit message generation."""
 
     attempt_number: int
     agent: str

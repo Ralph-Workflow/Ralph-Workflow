@@ -1,12 +1,3 @@
-"""Commit-message artifact helpers.
-
-The canonical commit message is the markdown artifact the agent submits to
-`.agent/artifacts/commit_message.md` (written by
-:mod:`ralph.mcp.artifacts.canonical_submit`). The document declares its
-`commit` or `skip` variant in frontmatter and is validated by the registered
-``commit_message`` markdown spec; these helpers read that document and render
-the plain-text commit message consumers pass to git.
-"""
 
 from __future__ import annotations
 
@@ -52,21 +43,18 @@ _COMMIT_SUBJECT_PATTERN = re.compile(
 
 
 def commit_message_artifact_path(repo_root: Path) -> Path:
-    """Return the canonical markdown artifact path for the given repo root."""
     return repo_root / COMMIT_MESSAGE_ARTIFACT
 
 
 def read_commit_message_artifact(
     repo_root: Path, *, backend: FileBackend = DEFAULT_FILE_BACKEND
 ) -> str | None:
-    """Read the commit message from the canonical markdown artifact."""
     return read_commit_message_from_path(commit_message_artifact_path(repo_root), backend=backend)
 
 
 def read_commit_message_from_path(
     message_file: Path, *, backend: FileBackend = DEFAULT_FILE_BACKEND
 ) -> str | None:
-    """Read a commit message from a markdown artifact document at an arbitrary path."""
     payload = read_commit_message_payload_from_path(message_file, backend=backend)
     if payload is None:
         return None
@@ -76,14 +64,12 @@ def read_commit_message_from_path(
 def read_commit_message_payload_from_path(
     message_file: Path, *, backend: FileBackend = DEFAULT_FILE_BACKEND
 ) -> dict[str, object] | None:
-    """Read and normalize a commit message payload from a markdown artifact document."""
     if not backend.exists(message_file):
         return None
     return _payload_from_markdown_text(backend.read_text(message_file, encoding="utf-8"))
 
 
 def _payload_from_markdown_text(text: str) -> dict[str, object] | None:
-    """Validate a commit_message markdown document and return its normalized payload."""
     import_module("ralph.mcp.artifacts.markdown.specs")
     content, diagnostics = parse_and_validate(text, get_spec(COMMIT_MESSAGE_TYPE))
     if any(diagnostic.severity == "error" for diagnostic in diagnostics):
@@ -94,14 +80,12 @@ def _payload_from_markdown_text(text: str) -> dict[str, object] | None:
 def delete_commit_message_artifacts(
     repo_root: Path, *, backend: FileBackend = DEFAULT_FILE_BACKEND
 ) -> None:
-    """Remove the canonical commit-message artifact."""
     artifact_path = commit_message_artifact_path(repo_root)
     if backend.exists(artifact_path):
         backend.unlink(artifact_path)
 
 
 def normalize_commit_message_content(content: dict[str, object]) -> dict[str, object]:
-    """Validate and normalize a commit message payload to a canonical dict form."""
     if not isinstance(content, dict):
         raise ValueError("commit_message content must be a dictionary")
 
@@ -116,17 +100,16 @@ def normalize_commit_message_content(content: dict[str, object]) -> dict[str, ob
 
 
 def render_commit_message_content(content: dict[str, object]) -> str:
-    """Render normalized commit message content as a plain-text commit message string."""
     normalized = normalize_commit_message_content(content)
     kind = cast(
         "str", normalized["type"]
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     if kind == _SKIP_KIND:
-        return f"{_SKIP_PREFIX} {cast('str', normalized['reason'])}"  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        return f"{_SKIP_PREFIX} {cast('str', normalized['reason'])}"
 
     subject = cast(
         "str", normalized["subject"]
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     body = _render_commit_body(normalized)
     return subject if not body else f"{subject}\n\n{body}"
 
@@ -177,15 +160,10 @@ def _render_commit_body(content: dict[str, object]) -> str:
     return "\n\n".join(sections)
 
 
-#: Fields naming a file on disk. A NUL is dropped from prose (below) but a
-#: path is REJECTED: stripping ``src/se<NUL>cret.env`` would silently name
-#: ``src/secret.env`` -- a different, real file -- and quietly stage or
-#: exclude the wrong one.
 _PATH_FIELDS = frozenset({"path", "files"})
 
 
 def _reject_nul_path(value: str, field: str) -> str:
-    """Raise when a path field carries a NUL rather than rewriting the path."""
     if "\x00" in value:
         raise ValueError(
             f"commit_message field {field!r} must not contain an embedded NUL: {value!r}"
@@ -194,18 +172,6 @@ def _reject_nul_path(value: str, field: str) -> str:
 
 
 def _strip_nul(value: str, field: str) -> str:
-    """Drop NUL characters from prose, which git writes into a corrupt object.
-
-    A NUL reaches a commit body the same way it reached an agent prompt:
-    the agent quotes a line of source that holds a literal NUL. Git does
-    not reject it -- ``index.commit`` writes it through, ``git log``
-    truncates the message at that byte, and ``git fsck`` reports
-    ``nulInCommit`` forever after (a server with
-    ``fsck.nulInCommit=error`` then refuses the push). Nothing legitimate
-    puts one in a commit message, and rejecting the artifact would only
-    send the agent round the submission loop again, so drop them and say
-    so. Path fields take the opposite treatment -- see ``_PATH_FIELDS``.
-    """
     if field in _PATH_FIELDS:
         return _reject_nul_path(value, field)
     if "\x00" not in value:
@@ -239,11 +205,6 @@ def _validate_commit_subject(subject: str) -> None:
 
 
 def _diagnose_commit_subject(subject: str) -> str:
-    """Name the single reason this subject was rejected.
-
-    One generic message for every cause makes an agent guess and rewrite the
-    subject repeatedly; each branch below states the one edit that fixes it.
-    """
     if _QUOTED_VALUE_PATTERN.fullmatch(subject):
         return (
             "the value is wrapped in surrounding quotes, which frontmatter takes "
@@ -258,7 +219,6 @@ def _diagnose_commit_subject(subject: str) -> str:
 
 
 def _diagnose_commit_prefix(prefix: str) -> str | None:
-    """Return why the ``kind(scope)!`` half is invalid, or None when it is valid."""
     kind = prefix.removesuffix("!")
     scope = ""
     if kind.endswith(")"):
@@ -277,7 +237,6 @@ def _diagnose_commit_prefix(prefix: str) -> str | None:
 
 
 def _diagnose_commit_description(description: str) -> str:
-    """Return why the description half is invalid; the caller knows it is."""
     if not description:
         return "the description after the colon is empty"
     return "the description must start with a lowercase letter or digit"

@@ -1,21 +1,3 @@
-"""Guard-inventory parser and claim-scope validator (v5, B7 / B9).
-
-The v5 plan introduces a per-starter ``## Guard inventory`` markdown
-table whose header and column grammar are pinned in
-:mod:`ralph.project_policy.markers`. The parser lives in its own
-module to keep :mod:`ralph.project_policy._content_checks` under
-the repository's 1000-line cap. The parser exposes a small,
-deterministic API:
-
-* :func:`_parse_guard_inventory` returns the data rows of one
-  starter's table (or ``[]`` when the section is missing or
-  malformed).
-* :func:`_check_guard_inventory` runs the validator check and
-  returns a list of :class:`PolicyFinding` objects. The check
-  emits one finding for a missing section, one for a malformed
-  table, and per-row findings for empty cells and broad-guarantee
-  phrases (the claim-scope rule, B7).
-"""
 
 from __future__ import annotations
 
@@ -37,15 +19,6 @@ _MIN_TABLE_LINES = 3
 
 
 def _split_table_row(line: str) -> list[str] | None:
-    """Split a markdown table row into cells, requiring balanced pipes.
-
-    A leading pipe and unescaped trailing pipe are strictly required.
-    Backslash-pipe (``\\|``) is preserved as a literal pipe in the cell value.
-    If the row lacks a leading pipe or a trailing unescaped pipe, returns
-    ``None``. Empty cells (``||``) become empty strings; whitespace-only
-    cells are returned as whitespace strings so caller can flag empty-cell
-    violations.
-    """
     stripped = line.strip()
     if (
         len(stripped) < _MIN_TABLE_ROW_LENGTH
@@ -53,7 +26,6 @@ def _split_table_row(line: str) -> list[str] | None:
         or not stripped.endswith("|")
     ):
         return None
-    # Check that trailing pipe is not escaped by an odd number of backslashes.
     num_backslashes = 0
     k = len(stripped) - 2
     while k >= 0 and stripped[k] == "\\":
@@ -94,8 +66,6 @@ def _split_table_row(line: str) -> list[str] | None:
 
 
 def _is_table_separator(line: str, *, expected_columns: int) -> bool:
-    """Return True when ``line`` is a markdown table separator (a row of
-    pipes, dashes, and optional colons) with exactly ``expected_columns`` cells."""
     stripped = line.strip()
     if (
         len(stripped) < _MIN_TABLE_ROW_LENGTH
@@ -124,7 +94,6 @@ def _is_table_separator(line: str, *, expected_columns: int) -> bool:
 
 
 def _extract_table_lines(content: str) -> list[str] | None:
-    """Extract consecutive table lines from the guard inventory section."""
     lines = content.splitlines()
     start = -1
     for idx, line in enumerate(lines):
@@ -163,21 +132,6 @@ def _parse_guard_inventory(
     *,
     expected_header: Sequence[str] | None = None,
 ) -> list[dict[str, str]]:
-    """Parse the ``## Guard inventory`` table from a starter / project policy.
-
-    Returns one dict per data row, with keys derived from the header columns
-    (e.g. ``guard``, ``owner``, ``protected_outcome``, ``detected_condition``,
-    ``claim_scope``, ``enforcement``, ``retirement_trigger``) lowercased to
-    canonical form.
-    The header row is matched case-insensitively against ``expected_header``
-    (defaulting to :data:`markers.GUARD_INVENTORY_HEADER`); leading and trailing
-    pipes are required, and pipes must be balanced.
-    The function returns an empty list when the section is missing,
-    when the table has no header, when the header doesn't match,
-    when separators or trailing/leading pipes are missing, or when
-    any row is malformed — the caller emits a single RWP-INVENTORY:*
-    finding in those cases so malformed tables fail closed.
-    """
     table_lines = _extract_table_lines(content)
     if table_lines is None:
         return []
@@ -193,7 +147,6 @@ def _parse_guard_inventory(
     )
     canonical = [h.strip().lower() for h in header]
 
-    # 1. Header row & 2. Separator row
     header_cells = _split_table_row(table_lines[0])
     valid_header = (
         header_cells is not None
@@ -204,19 +157,17 @@ def _parse_guard_inventory(
     if not (valid_header and valid_sep):
         return []
 
-    # 3. Data rows: each must have leading/trailing pipe and balanced columns
     out: list[dict[str, str]] = []
     keys = [h.replace(" ", "_") for h in canonical]
     for line in table_lines[2:]:
         cells = _split_table_row(line)
         if cells is None or len(cells) != len(canonical):
-            return []  # malformed row; fail closed for whole table
+            return []
         out.append({k: cells[i].strip() for i, k in enumerate(keys)})
     return out
 
 
 def _starts_with_heading(content: str, heading: str) -> bool:
-    """Return True if ``content`` carries the ``## Heading`` line."""
     return any(line.strip() == heading for line in content.splitlines())
 
 
@@ -227,12 +178,6 @@ def _claim_scope_findings(
     outcome: str,
     detected: str,
 ) -> list[PolicyFinding]:
-    """Return per-phrase claim-scope findings for one row.
-
-    Extracted from :func:`_check_guard_inventory` to keep the per-row
-    branch readable; a broad phrase that does not also appear in the
-    detected condition is rejected with a stable RWP-INVENTORY finding.
-    """
     findings: list[PolicyFinding] = []
     for phrase in markers.CLAIM_SCOPE_PHRASES:
         if phrase not in outcome:
@@ -263,16 +208,6 @@ _CLAIM_SCOPE_SENTENCE_BOUNDARY_RE: Final[re.Pattern[str]] = re.compile(r"[.!?]+\
 
 
 def _claim_scope_sentence_count(cell: str) -> int:
-    """Return the number of sentences in a ``Claim scope`` cell.
-
-    The v5 plan freezes the cell to a single sentence. A sentence
-    boundary is sentence-ending punctuation (``.!?``) followed by
-    whitespace, or a line break. Filename-like tokens such as
-    ``items.py`` or ``foo.bar.txt`` do NOT count as boundaries because
-    their dots are not followed by whitespace. Empty cells return zero.
-    An unterminated final segment (e.g. ``Counts items. Second sentence``)
-    is preserved and counted as a sentence.
-    """
     stripped = cell.strip()
     if not stripped:
         return 0
@@ -281,7 +216,7 @@ def _claim_scope_sentence_count(cell: str) -> int:
         return 1
     raw_segments: list[str] = _CLAIM_SCOPE_SENTENCE_BOUNDARY_RE.split(
         clean
-    )  # cast-policy: seam: typed local ensures list[str] without cast()
+    )
     segments: list[str] = [s.strip() for s in raw_segments if s.strip()]
     return max(1, len(segments))
 
@@ -292,7 +227,6 @@ def _check_claim_scope_cell(
     path: str,
     canonical_keys: Sequence[str],
 ) -> list[PolicyFinding]:
-    """Validate one row's Claim scope cell per v5/v6 contract."""
     findings: list[PolicyFinding] = []
     if "claim_scope" not in canonical_keys:
         return findings
@@ -341,7 +275,6 @@ def _check_enforcement_cell(
     path: str,
     known_enforcers: frozenset[str] | None,
 ) -> list[PolicyFinding]:
-    """Validate one row's Enforcement cell per v6 contract."""
     findings: list[PolicyFinding] = []
     enforcement = row.get("enforcement", "").strip()
     if not enforcement:
@@ -462,55 +395,6 @@ def _check_guard_inventory(
     expected_header: Sequence[str] | None = None,
     known_enforcers: frozenset[str] | None = None,
 ) -> list[PolicyFinding]:
-    """Validate the ``## Guard inventory`` table per the v5/v6 contract (B9).
-
-    Findings emitted (the v5 finding ids stay stable across versions; the v6
-    ids add the ``Enforcement`` column checks):
-
-    * ``RWP-INVENTORY:<file>:missing`` when the section is missing
-      entirely.
-    * ``RWP-INVENTORY:<file>:malformed`` when the header row does not
-      match :data:`markers.GUARD_INVENTORY_HEADER`.
-    * ``RWP-INVENTORY:<file>:row-<n>:empty-<column>`` per row with an
-      empty cell in any of the base columns (every column except
-      ``Claim scope`` and ``Enforcement``, which use their own stable
-      finding ids instead, see below).
-    * ``RWP-INVENTORY:CLAIM-SCOPE-MISSING`` per row with an empty
-      ``Claim scope`` cell. The plan freezes the v5 contract id;
-      filename/row suffixes would break black-box tests that pin
-      the id.
-    * ``RWP-INVENTORY:CLAIM-SCOPE-MULTI-SENTENCE`` per row whose
-      ``Claim scope`` cell is more than one sentence. The plan
-      freezes the cell to a single sentence; multi-sentence prose
-      is rejected with a stable id.
-    * ``RWP-INVENTORY:<file>:row-<n>:claim-scope`` per row whose
-      ``Protected outcome`` or ``Claim scope`` cell carries a
-      broad-guarantee phrase from
-      :data:`markers.CLAIM_SCOPE_PHRASES` that does not also appear
-      in the row's ``Detected condition`` (the deterministic
-      claim-scope rule, B7).
-    * ``RWP-INVENTORY:RATCHET-UNCOVERED`` per body ratchet sentence
-      that has no inline ``<!-- ralph-control: <id> -->`` token
-      (filename suffix is intentionally absent so the id is stable
-      across files).
-    * ``RWP-INVENTORY:RATCHET-UNCOVERED:<id>`` per body ratchet
-      sentence whose control id does not appear at the start of any
-      Guard cell.
-    * ``RWP-INVENTORY:CONTROL-ORPHAN:<id>`` per Guard cell control
-      id that no body declaration names.
-    * ``RWP-INVENTORY:ENFORCEMENT-MISSING`` per row whose
-      ``Enforcement`` cell is empty, holds ``deterministic:`` without an
-      id, or holds a value outside the closed value set.
-    * ``RWP-INVENTORY:ENFORCEMENT-UNKNOWN-ID`` per row whose
-      ``deterministic: <id>`` does not resolve by exact string match
-      against the collected enforcer id set.
-    * ``RWP-INVENTORY:ENFORCEMENT-ADVISORY-NO-TRIGGER`` per row whose
-      ``advisory:`` entry lacks a ``; review: <trigger>`` clause or
-      carries an empty trigger.
-
-    The check returns an empty list when the table is well-formed:
-    no findings means the starter is B9-compliant.
-    """
     if expected_header is None:
         m = re.search(r"<!-- ralph-policy-schema:\s*(?:freeze\s+)?(v\d+)\s*-->", content)
         if m:
@@ -580,37 +464,19 @@ def _check_guard_inventory(
                     ),
                 )
             )
-        # Stable v5 contract: an empty ``Claim scope`` cell emits the
-        # plan-frozen finding id ``RWP-INVENTORY:CLAIM-SCOPE-MISSING``
-        # (no filename/row suffix). A multi-sentence ``Claim scope``
-        # cell emits ``RWP-INVENTORY:CLAIM-SCOPE-MULTI-SENTENCE`` for
-        # the same reason.
         findings.extend(_check_claim_scope_cell(row, index, path, canonical_keys))
         if "enforcement" in canonical_keys:
             findings.extend(_check_enforcement_cell(row, index, path, known_enforcers))
-        # Apply the deterministic claim-scope rule to each row's
-        # ``Protected outcome`` AND ``Claim scope`` cells. The same
-        # predicate fires on a broad phrase absent from the row's
-        # ``Detected condition`` for both cells.
         outcome = row.get("protected_outcome", "").lower()
         scope = row.get("claim_scope", "").lower()
         detected = row.get("detected_condition", "").lower()
         findings.extend(_claim_scope_findings(filename, path, index, outcome, detected))
         if scope:
             findings.extend(_claim_scope_findings(filename, path, index, scope, detected))
-        # Track the row's leading control id, if any, for the
-        # orphan / uncovered checks below. A row without a leading
-        # backticked id does NOT participate in the linkage scan.
         control_id = _control_id_for_guard_row(row.get("guard", ""))
         if control_id is not None:
             row_control_ids.add(control_id)
 
-    # Body ratchet declarations: every body sentence carrying one of
-    # the declared ratchet phrases MUST carry an inline control id,
-    # and the id MUST appear as a backticked control id at the start
-    # of some Guard cell. A body ratchet without a matching row is
-    # RATCHET-UNCOVERED (stable v5 contract id); a row's control id
-    # with no body declaration is CONTROL-ORPHAN.
     declarations = _ratchet_declarations(content)
     declared_ids = {control_id for _, control_id in declarations if control_id}
     for declaration_text, control_id in declarations:

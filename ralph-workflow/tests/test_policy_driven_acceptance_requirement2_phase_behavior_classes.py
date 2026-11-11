@@ -1,13 +1,3 @@
-"""Policy-driven acceptance tests — Product Requirements 1-10 and Criteria A-H.
-
-These tests assert every product requirement and acceptance criterion against a
-fully renamed PolicyBundle (no canonical phase names). Any regression that
-re-introduces hidden phase name knowledge in the runtime will fail here.
-
-Scope: pure functions only. No I/O.
-Runtime budget: ≤ 5 seconds for the full module.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -36,17 +26,6 @@ from ralph.policy.models import (
 
 @pytest.fixture(scope="module")
 def policy_with_renamed_phases() -> PolicyBundle:
-    """Fully custom-named PolicyBundle — no canonical Ralph phase names.
-
-    Custom name mappings (canonical → custom):
-      planning          → design
-      development       → build
-      development_analysis → audit
-      development_commit → sign_off
-      review            → inspect
-      complete          → done
-      failed_terminal   → aborted
-    """
     agents = AgentsPolicy(
         agent_chains={
             "design_chain": AgentChainConfig(agents=["fake-agent"]),
@@ -174,14 +153,8 @@ def policy_with_renamed_phases() -> PolicyBundle:
     return PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
 
 
-# =============================================================================
-# Requirement 1: Policy must fully define user-visible routing semantics
-# =============================================================================
-
-
 class TestRequirement2PhaseBehaviorClasses:
     def test_phase_role_comes_from_policy(self, policy_with_renamed_phases: PolicyBundle) -> None:
-        """The role of 'audit' is 'analysis' because the policy declares it, not the name."""
         phases = policy_with_renamed_phases.pipeline.phases
         assert phases["audit"].role == "analysis"
         assert phases["sign_off"].role == "commit"
@@ -191,7 +164,6 @@ class TestRequirement2PhaseBehaviorClasses:
     def test_explain_policy_reflects_policy_declared_roles(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """explain_policy produces role labels from policy, not from phase name recognition."""
         exp = explain_policy(policy_with_renamed_phases)
         audit = next(p for p in exp.phases if p.name == "audit")
         sign_off = next(p for p in exp.phases if p.name == "sign_off")

@@ -1,29 +1,3 @@
-# Deprecated: Ralph-orchestrated workers are removed from the execution model; parallelism is owned by the developer agent's own sub-agents. See docs/sphinx/concepts.md §"Deprecated: Ralph-orchestrated workers".
-"""Early worker-runtime seam for dedicated parallel worker execution.
-
-A manifest-launched worker deliberately does NOT enter the shared run
-loop in :mod:`ralph.pipeline.run_loop`, so it does not inherit that
-loop's auto-integration seams either. It therefore carries its own:
-:func:`run_worker_auto_integration` reproduces the run loop's
-``_run_auto_integrate_recovery_preamble`` + ``_run_startup_integration``
-preamble before the agent is invoked, and runs again as a boundary
-integration after the worker's phase succeeds.
-
-This matters because the manifest-worker topology is precisely the one
-auto-integration exists for -- several agents advancing one shared
-mainline at the same time. Without these hooks such a worker neither
-published its landings to its siblings nor picked theirs up, and the
-coordinator-side join that would otherwise have covered it
-(``runner._integrate_after_fan_out``, reached via ``FanOutEffect``) is
-dormant under the bundled ``dispatch_mode = "agent_subagents"``.
-
-The seam is wrapped so it can never abort a worker: if the policy
-bundle, the agent registry, the pipeline dependencies or the display
-context are unavailable, the conflict resolvers are simply not built and
-the integration runs without the ability to resolve a conflict in place
--- it still performs the cross-agent catch-up, which is the bulk of the
-value, and records a conflict rather than resolving one.
-"""
 
 from __future__ import annotations
 
@@ -100,7 +74,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class WorkerRuntimePaths:
-    """Worker-local filesystem paths for prompt and checkpoint runtime state."""
 
     checkpoint_path: Path
     product_criteria_path: Path
@@ -115,7 +88,6 @@ def build_worker_runtime_paths(
     worker_namespace: Path,
     phase: str,
 ) -> WorkerRuntimePaths:
-    """Return the namespaced runtime paths a parallel worker should own."""
 
     del workspace_root
     return WorkerRuntimePaths(
@@ -152,8 +124,6 @@ def _write_worker_prompt(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> None:
-    # filesystem-write-ok: parallel worker runtime state under .agent/worker_runtime, runtime worker metadata not tracked
-    """Persist a rendered worker prompt without rewriting identical content."""
     write_text_if_changed(
         backend,
         prompt_path,
@@ -166,12 +136,6 @@ def _write_worker_prompt(
 def _emit_deferred_integration_line(
     display_context: DisplayContext | None, recovered: RebaseState
 ) -> None:
-    """Tell the operator why this worker skipped its catch-up integration.
-
-    Uses the same duck-typed warn seam every other integration decline
-    uses, and is a silent no-op when the worker has no display context
-    at all. Never raises: a display problem must not abort the worker.
-    """
     if display_context is None:
         return
     with suppress(Exception):
@@ -192,28 +156,12 @@ def _worker_integration_resolvers(
     display_context: DisplayContext | None,
     strategy_history: tuple[str, ...] = (),
 ) -> tuple[ConflictResolver | None, RebaseStopResolver | None, ParallelDisplay | None]:
-    """Build the worker's conflict resolvers, or decline when it cannot.
-
-    Returns ``(conflict_resolver, rebase_stop_resolver, display)``, all
-    three ``None`` when any dependency an MCP-backed resolution session
-    needs is missing. Declining here rather than passing partially-built
-    collaborators matches
-    :mod:`ralph.pipeline.auto_integrate_agent`'s own contract: a
-    resolver that cannot open a Ralph MCP session must decline, never
-    fall back to invoking an agent without one.
-    """
     if (
         policy_bundle is None
         or registry is None
         or pipeline_deps is None
         or display_context is None
     ):
-        # WARNING, not DEBUG: a worker that integrates with no conflict
-        # resolution at all will abort on the first real conflict, and
-        # the operator needs that on the transcript rather than buried in
-        # a log file. The display is resolved defensively here because
-        # this branch is exactly the one where display_context may be the
-        # missing dependency.
         logger.warning(
             "auto_integrate: parallel worker has no resolution dependencies; "
             "integrating without in-place conflict resolution"
@@ -259,45 +207,6 @@ def run_worker_auto_integration(
     recover_first: bool,
     state: RebaseState | None = None,
 ) -> RebaseState | None:
-    """Run one auto-integration seam on behalf of a parallel worker.
-
-    Args:
-        config: The worker's own resolved run configuration.
-        workspace_scope: The worker's own scope. Its root is what keys
-            the boundary refresh throttle, so several workers in one
-            process cannot steal each other's refresh window.
-        policy_bundle: Resolved policy, or ``None`` to skip resolution.
-        registry: Agent registry, or ``None`` to skip resolution.
-        pipeline_deps: Pipeline dependencies, or ``None`` to skip
-            resolution.
-        display_context: Display context, or ``None`` to skip resolution.
-        recover_first: Whether to reconcile a durable crash record left
-            by an interrupted integration before integrating. True for
-            the startup seam, False for the per-phase boundary.
-        state: Prior integration outcome carried from the worker lifecycle.
-            Retained operations receive their resolvers before phase dispatch;
-            unresolved recovery prevents a fresh integration.
-
-    Returns:
-        The recorded :class:`~ralph.pipeline.rebase_state.RebaseState`,
-        or ``None`` when the hook decided there was nothing to do. When
-        ``recover_first`` recovery came back still owning the durable
-        integration record
-        (:func:`~ralph.pipeline.auto_integrate_recovery.recovery_retained_record`)
-        the recovery outcome is returned WITHOUT integrating: the
-        integration writes its own durable record before mutating git,
-        which would overwrite the unreconciled one and lose the
-        pre-integration feature SHA the next recovery needs.
-
-    Never raises: a failure anywhere in this seam is logged and
-    swallowed, because an integration problem must never abort the
-    worker whose actual job is the phase it was launched for.
-    """
-    # Cheap stat guard BEFORE anything else, mirroring the one
-    # ``auto_integrate_on_phase_transition`` opens with: a worker whose
-    # workspace is not a git checkout has nothing to recover and nothing
-    # to integrate, and must not pay for a crash-record read, a display
-    # or two resolver closures to find that out.
     if not (Path(workspace_scope.root) / ".git").exists():
         return None
     try:
@@ -335,15 +244,6 @@ def run_worker_auto_integration(
                     recovered.last_action,
                 )
                 if recovery_retained_record(recovered):
-                    # Recovery could not reconcile the interrupted
-                    # integration and left its durable record on disk
-                    # for the next startup. Integrating now would write
-                    # a fresh ``IntegrationRecord(phase='integrating',
-                    # ...)`` over it before any git mutation,
-                    # destroying the only record of the
-                    # pre-integration feature SHA. Return the retained
-                    # outcome so the worker's caller still sees the
-                    # verdict, and leave ownership with recovery.
                     _emit_deferred_integration_line(display_context, recovered)
                     return recovered
                 if recovered.fast_forwarded:
@@ -390,18 +290,6 @@ def run_parallel_worker_from_manifest(
     pro_hooks: ProPipelineHooks | None = None,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> int:
-    """Execute one manifest-backed worker flow without entering the shared run loop.
-
-    ``model_identity`` and ``pro_hooks`` are forwarded into the shared dependency
-    composition path so a parallel worker uses the same injected collaborators as
-    the direct run path. They are ignored when an explicit ``pipeline_deps`` bundle
-    is supplied.
-
-    .. deprecated::
-        Ralph-orchestrated workers are removed; retained only for the
-        ``ralph_fan_out`` dispatch-mode compatibility surface. See
-        ``docs/sphinx/concepts.md`` §'Deprecated: Ralph-orchestrated workers'.
-    """
 
     manifest = ParallelWorkerManifest.load(manifest_path)
     workspace_root = Path(manifest.workspace_root)
@@ -439,10 +327,6 @@ def run_parallel_worker_from_manifest(
         )
         return 1
 
-    # The worker bootstrap is trusted orchestrator code and must read shared
-    # inputs at the repo root (PROMPT.md, plan artifacts) to materialize the
-    # prompt — the agent-facing write restriction is enforced separately via
-    # workspace_scope, which execute_agent_effect uses for the MCP surface.
     workspace = FsWorkspace(workspace_root)
     legacy_block = legacy_rebase_startup_block(workspace_root)
     if legacy_block is not None:
@@ -450,16 +334,6 @@ def run_parallel_worker_from_manifest(
         return 1
     registry = AgentRegistry.from_config(config)
     agent = registry.get(effect.agent_name)
-    # Startup seam: reconcile any interrupted integration and catch up
-    # with whatever the sibling agents landed while this worker was being
-    # scheduled, BEFORE the prompt is materialized -- otherwise the
-    # worker plans and develops against code the fleet has already moved
-    # past.
-    #
-    # Suspended, not withdrawn: this worker inherited the coordinator's cycle
-    # deadline and rebuilds its own prompt warning from it further down, but
-    # the conflict-resolver agent reconciliation spawns never joined the cycle
-    # and must not be nagged to wrap up work it has no part in.
     with cycle_deadline_suspended():
         startup_outcome = run_worker_auto_integration(
             config=config,
@@ -506,10 +380,6 @@ def run_parallel_worker_from_manifest(
         drain=effect.drain,
         chain_name=effect.chain_name,
     )
-    # Generated once per attempt so the later render call (success
-    # PASS/DEGRADED banner or the FAILED-no-artifact report) grades the
-    # same run's evidence the agent invocation itself was scoped under
-    # (S-2 run_id threading, mirrors runner.py's run loop).
     run_id = str(uuid.uuid4())
     event: Event = execute_agent_effect(
         worker_effect,
@@ -540,16 +410,9 @@ def run_parallel_worker_from_manifest(
                 assigned_work_unit_id=manifest.unit_id,
             ),
             run_id=run_id,
-            # Parallel workers share one raw capture per (executable,
-            # model), so a transport-failure frame in it cannot be
-            # attributed to this worker.
             shared_capture=True,
         )
     else:
-        # F6 / DoD 12: mirror runner.py's failure-path render so a
-        # required-artifact phase failing under the parallel worker
-        # runtime also reports FAILED (no artifact) rather than silently
-        # returning 1 with no operator-facing verdict. Display-only.
         render_phase_failure_report(
             worker_effect,
             policy_bundle=policy_bundle,
@@ -559,19 +422,11 @@ def run_parallel_worker_from_manifest(
             verbosity=Verbosity.VERBOSE,
             run_id=run_id,
             config=config,
-            # Parallel workers share one raw capture per (executable,
-            # model), so a transport-failure frame in it cannot be
-            # attributed to this worker.
             shared_capture=True,
         )
     if isinstance(event, ExecutionResultEvent) and event.status == "completed":
         event = PipelineEvent.AGENT_SUCCESS
     if event == PipelineEvent.AGENT_SUCCESS:
-        # Boundary seam: publish whatever this worker just landed to the
-        # rest of the fleet, and pick up anything they landed meanwhile.
-        # This is the manifest-worker equivalent of the run loop's
-        # phase-transition hook, and the only place a worker's work
-        # reaches its siblings without waiting for the coordinator.
         with cycle_deadline_suspended():
             boundary_outcome = run_worker_auto_integration(
                 config=config,

@@ -51,7 +51,6 @@ def test_ir_renderer_consolidates_small_budget_without_losing_categories() -> No
 
 
 def test_ir_renderer_regression_expands_large_budget_into_category_items() -> None:
-    """DA-002/DA-008: available budget renders focused category items."""
     evidence = CommitEvidenceBundle(
         "diff",
         ("ralph/app.py", "ralph/mcp/tool.py", "ralph/pipeline/run.py", "tests/test_app.py"),

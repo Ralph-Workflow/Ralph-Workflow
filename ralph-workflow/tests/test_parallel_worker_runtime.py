@@ -31,8 +31,6 @@ if TYPE_CHECKING:
 
 
 class _FakePipelineFactory:
-    """Conforms to ``PipelineFactory`` and returns a pre-built test bundle."""
-
     def __init__(
         self,
         phase_prompt_materializer: PhasePromptMaterializerFn | None = None,
@@ -53,8 +51,6 @@ class _FakePipelineFactory:
 
 
 class _RecordingPipelineFactory:
-    """Conforms to ``PipelineFactory`` and records injected kwargs."""
-
     def __init__(self, captured: dict[str, object]) -> None:
         self._captured = captured
 
@@ -656,13 +652,6 @@ def test_run_parallel_worker_from_manifest_does_not_write_worker_checkpoint_with
 
 
 def _bundled_pipeline_policy() -> object:
-    """Return the real bundled pipeline policy.
-
-    A bare ``object()`` stub silently diverges from the ``PipelinePolicy``
-    contract these call sites declare: any field production starts reading —
-    ``cycle_timebox`` was the latest — turns into an AttributeError that says
-    nothing about the behavior under test.
-    """
     from ralph.policy.loader import load_policy
 
     defaults = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
@@ -716,7 +705,6 @@ def test_run_parallel_worker_from_manifest_preserves_injected_model_identity_and
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Injected ``model_identity`` and ``pro_hooks`` reach the shared deps composition path."""
     module = importlib.import_module("ralph.pipeline.parallel.worker_runtime")
     worker_ns = tmp_path / ".agent" / "workers" / "unit-a"
     worker_ns.mkdir(parents=True)

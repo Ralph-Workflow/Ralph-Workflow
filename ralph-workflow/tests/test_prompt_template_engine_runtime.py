@@ -1,5 +1,3 @@
-"""Direct tests for the runtime template engine helpers."""
-
 from __future__ import annotations
 
 import re

@@ -1,68 +1,3 @@
-"""Non-interactive merge, fast-forward, and worktree primitives for Ralph.
-
-These primitives back :mod:`ralph.pipeline.auto_integrate`. They wrap
-``ralph.git.subprocess_runner.run_git`` (which already enforces
-non-interactive git env: ``GIT_TERMINAL_PROMPT=0``, ``GIT_EDITOR=:"``,
-``GIT_PAGER=cat``) so a missing credential or hung pager can never
-block the integration step.
-
-The module never calls ``git push`` or ``repo.remote().push``: these are
-local primitives (AC-10). Remote publication lives in
-:mod:`ralph.git.remote_push` and runs only when remote sync
-(``auto_integrate_remote_enabled``) is enabled; with it disabled the
-auto-integrate contract is local-only. See ``docs/agents/remote-sync.md``.
-
-Public functions (every primitive has a docstring):
-
-* ``branch_exists`` — cheap ``git show-ref --verify`` check.
-* ``branch_sha`` — observed HEAD SHA of a branch (the value used as
-  the compare-and-swap ``<oldvalue>`` argument later).
-* ``is_ancestor`` — wraps ``git merge-base --is-ancestor``.
-* ``merge_state`` — three-valued merge check: in progress / none /
-  unknown (the git query itself failed). The third verdict is what
-  keeps ``abort_merge`` from silently doing nothing on a repository
-  it cannot read.
-* ``merge_in_progress`` — boolean projection of ``merge_state``.
-* ``merge_target_into_current`` — runs ``git merge --no-edit`` against
-  the current branch; aborts cleanly on conflict and reports
-  ``MergeResult(outcome='conflict', ...)``; ``keep_conflicts=True``
-  leaves a conflicted merge in progress for resolution.
-* ``unmerged_paths`` — lists paths still carrying conflict markers; a
-  failed query reports :data:`UNMERGED_PATH_QUERY_FAILED`, a marker and
-  never a path.
-* ``observe_unmerged_paths`` — three-valued unmerged-path probe: the paths
-  git named, or UNKNOWN when the query itself failed, so a repository
-  that cannot be read is never reported as conflicted.
-* ``stage_paths`` — ``git add -- <paths>``; Ralph stages a resolved
-  conflict itself so resolution never depends on the resolving
-  agent's git access.
-* ``paths_with_conflict_markers`` — textual scan proving a resolution
-  is real; ``git add`` on a marker-bearing file silently clears its
-  unmerged state, so ``unmerged_paths`` alone is not proof.
-* ``commit_merge_in_progress`` — deterministically commits a fully
-  resolved in-progress merge (``git commit --no-edit``).
-* ``abort_merge`` — guarded ``git merge --abort``; returns whether the
-  abort actually ran and succeeded.
-* ``reset_keep`` — guarded ``git reset --keep``; used by crash
-  recovery to restore the feature branch to its pre-integration SHA.
-* ``fast_forward_via_worktree`` — ``git -C <wt> merge --ff-only
-  <feature_sha>``. ``merge --ff-only`` is itself the atomic guard:
-  it refuses and returns non-zero when ``feature_sha`` is not a
-  fast-forward of the worktree's checked-out branch, so a
-  concurrently-advanced target is never force-moved (AC-08).
-* ``compare_and_swap_branch`` — ``git update-ref refs/heads/<target>
-  <new> <old>``. Git performs an atomic CAS: it updates the ref ONLY
-  if it still equals ``<old>``, returning rc==0; if the target moved
-  concurrently the rc is non-zero and the ref is left untouched.
-  This REPLACES the previous unconditional ``git branch -f`` and
-  closes the AC-08 TOCTOU race.
-* ``worktree_lookup`` — parses ``git worktree list --porcelain`` for
-  the worktree whose checked-out branch is ``refs/heads/<branch>``,
-  reporting ``found`` / ``not_checked_out`` / ``query_failed`` so a
-  failed query is never mistaken for "nobody holds it".
-* ``worktree_for_branch`` — Optional-returning wrapper over
-  ``worktree_lookup`` for callers that need no such distinction.
-"""
 
 from __future__ import annotations
 
@@ -83,36 +18,16 @@ from ralph.git.subprocess_runner import run_git
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
-#: Canonical git conflict-marker line prefixes. Matched as line
-#: PREFIXES, never substrings, so ordinary prose containing an
-#: ``=======`` markdown rule is not mistaken for a conflict.
 _CONFLICT_MARKER_PREFIXES: tuple[str, ...] = ("<<<<<<< ", "=======", ">>>>>>> ")
 
-#: The subset of :data:`_CONFLICT_MARKER_PREFIXES` that only ever
-#: appears in an unresolved conflict. ``=======`` is excluded on
-#: purpose: it is also ordinary heading punctuation in prose files.
 _UNRESOLVED_CONFLICT_FENCES: frozenset[str] = frozenset({"<<<<<<< ", ">>>>>>> "})
 
-#: git's default conflict fence width. ``conflict-marker-size`` is a
-#: documented gitattribute that moves it in EITHER direction, and every
-#: gate that proves a resolution real reads this one scan -- so a width
-#: the scan does not expect blinds all of them at once, and conflict
-#: markers get committed into history and reported as a success. The
-#: width is therefore asked of git per path rather than assumed.
 DEFAULT_CONFLICT_MARKER_SIZE = 7
 
-#: Fence widths below this are not guessed at: a narrow ``>`` fence is
-#: indistinguishable from a Markdown blockquote, so a path only gets a
-#: narrow pattern when git itself reports that width for it.
 _MIN_GUESSED_FENCE = DEFAULT_CONFLICT_MARKER_SIZE
 
 
 def _fence_pattern(size: int) -> re.Pattern[str]:
-    """Opening/closing fences at ``size`` characters or wider.
-
-    ``=======`` stays excluded whatever the width: it is ordinary
-    heading punctuation in prose.
-    """
     width = max(1, size)
     return re.compile(rf"^(?:<{{{width},}}|>{{{width},}})(?:[ \t]|$)")
 
@@ -121,26 +36,6 @@ _UNRESOLVED_FENCE_PATTERN = _fence_pattern(DEFAULT_CONFLICT_MARKER_SIZE)
 
 
 def staged_conflict_marker_paths(repo_root: Path | str) -> list[str]:
-    """Paths whose STAGED content git itself reports as marker-bearing.
-
-    ``git diff --cached --check`` is git's own detection, so it honours
-    everything our own scan cannot see from the outside: the effective
-    ``conflict-marker-size``, ``working-tree-encoding``, clean/smudge
-    ``filter`` drivers, and the exact bytes that would be committed
-    rather than whatever the worktree happens to hold. It is the
-    corroborating gate for the textual scan, not a replacement -- a
-    resolution has to pass both.
-
-    git reports a lone ``=======`` line (at the effective marker width)
-    as a "leftover conflict marker" too, but that is ordinary
-    reStructuredText/Markdown heading punctuation, and the textual scan
-    deliberately allows it. Counting it here blocked a fully resolved
-    merge forever whenever either side carried such a heading. Each
-    reported line is therefore read back from the STAGED blob -- the
-    bytes git checked -- and only an opening ``<`` or closing ``>``
-    fence counts. A line that cannot be read back still counts:
-    unverifiable is never clean.
-    """
     root = Path(repo_root)
     result = run_git(
         ("diff", "--cached", "--check"),
@@ -165,14 +60,7 @@ def staged_conflict_marker_paths(repo_root: Path | str) -> list[str]:
 
 
 def _staged_fence_reported(repo_root: Path, path: str, line_numbers: Sequence[int]) -> bool:
-    """Whether any reported line of ``path``'s staged blob is a ``<``/``>`` fence.
-
-    ``git diff --check`` already applied the effective
-    ``conflict-marker-size``, so the width is not re-checked: only the
-    fence CHARACTER decides between a conflict fence and a separator.
-    """
     if path.startswith('"'):
-        # A C-quoted name cannot be looked up verbatim; keep git's report.
         return True
     try:
         blob = run_git(
@@ -194,21 +82,10 @@ def _staged_fence_reported(repo_root: Path, path: str, line_numbers: Sequence[in
 
 
 def _readable_text(path: Path) -> str | None:
-    """Decode a worktree file for scanning, or ``None`` if it cannot be.
-
-    ``working-tree-encoding`` makes git write a UTF-16 worktree copy --
-    all NUL bytes to a naive probe, and unreadable as UTF-8 -- while
-    still writing ordinary conflict fences into it. Decoding with
-    ``errors="replace"`` hid those fences behind replacement
-    characters, so the markers were committed and reported as a success.
-    """
     try:
         data = path.read_bytes()
     except OSError:
         return None
-    # BOM first: an explicit mark is evidence, where guessing is not.
-    # Trying utf-16 on anything that merely FAILS utf-8 turned ordinary
-    # latin-1 text of even length into mojibake and hid its fences.
     for bom, encoding in (
         (b"\xff\xfe\x00\x00", "utf-32-le"),
         (b"\x00\x00\xfe\xff", "utf-32-be"),
@@ -222,24 +99,11 @@ def _readable_text(path: Path) -> str | None:
             except (UnicodeDecodeError, UnicodeError):
                 return None
     if b"\x00" in data:
-        # NULs and no BOM: either a BOM-less UTF-16/32 worktree copy --
-        # whose ASCII characters are valid UTF-8 with NULs interleaved,
-        # so the fences survive but never match -- or genuinely binary.
-        # Dropping the NULs reads the first correctly and cannot invent
-        # a fence in the second.
         return data.replace(b"\x00", b"").decode("utf-8", errors="replace")
     return data.decode("utf-8", errors="replace")
 
 
 def conflict_marker_sizes(repo_root: Path | str, paths: Sequence[str]) -> dict[str, int]:
-    """Return each path's effective ``conflict-marker-size``.
-
-    Asked of git, not inferred: the attribute can live in an untracked
-    ``.git/info/attributes`` or a ``core.attributesFile`` as easily as a
-    committed ``.gitattributes``, so reading files ourselves would miss
-    exactly the repositories that set it. Any path git does not answer
-    for keeps the default width.
-    """
     sizes: dict[str, int] = {}
     if not paths:
         return sizes
@@ -251,49 +115,29 @@ def conflict_marker_sizes(repo_root: Path | str, paths: Sequence[str]) -> dict[s
         )
         if result.returncode != 0:
             return sizes
-        # ``-z`` emits NUL-separated (path, attribute, value) triples.
-        # Without it git QUOTES a non-ASCII path, and the quoted key
-        # never matched the real path the caller looks up -- so the file
-        # silently fell back to the default width and its narrower
-        # fences were invisible.
         fields = [field for field in result.stdout.split("\0") if field != ""]
         for index in range(0, len(fields) - 2, 3):
             path, _attribute, value = fields[index], fields[index + 1], fields[index + 2]
             if value.isdigit():
                 sizes[path] = int(value)
-    except Exception as exc:  # pragma: no cover -- defensive
+    except Exception as exc:
         logger.debug("git: could not read conflict-marker-size: {}", exc)
     return sizes
 
 
-#: :func:`merge_state` verdicts. ``MERGE_STATE_UNKNOWN`` is the
-#: fail-closed answer: git could not be asked, so "there is no merge
-#: to abort" must NOT be inferred.
 MERGE_STATE_NONE = "none"
 MERGE_STATE_IN_PROGRESS = "in_progress"
 MERGE_STATE_UNKNOWN = "unknown"
 
-#: :func:`worktree_lookup` verdicts. ``WORKTREE_QUERY_FAILED`` is the
-#: fail-closed answer, kept distinct from ``WORKTREE_NOT_CHECKED_OUT``
-#: so a caller never treats "I could not look" as "nobody holds it".
 WORKTREE_FOUND = "found"
 WORKTREE_NOT_CHECKED_OUT = "not_checked_out"
 WORKTREE_QUERY_FAILED = "query_failed"
 
-#: Marker :func:`unmerged_paths` reports when the git query itself failed.
-#: It is a marker, never a path: :func:`observe_unmerged_paths` is the
-#: three-valued form, and its UNKNOWN verdict carries no path at all.
 UNMERGED_PATH_QUERY_FAILED = "<unmerged-path-query-failed>"
 
 
 @dataclass(frozen=True)
 class UnmergedPathsObservation:
-    """Three-valued unmerged-path probe result.
-
-    ``query_ok`` is True only when git gave a definite answer -- including
-    a definitive empty set. False means the repository could not be asked,
-    so ``paths`` is empty and no conflict may be inferred from it.
-    """
 
     paths: tuple[str, ...] = ()
     query_ok: bool = True
@@ -301,49 +145,14 @@ class UnmergedPathsObservation:
 
 @dataclass(frozen=True)
 class MergeResult:
-    """Outcome of a merge attempt.
-
-    ``outcome`` is one of ``'success'`` (merge completed cleanly;
-    may include a merge commit when both sides diverged, or may be
-    a fast-forward), ``'noop'`` (target already an ancestor of
-    HEAD or working tree unchanged), or ``'conflict'`` (merge
-    conflict; the in-progress merge has already been aborted so the
-    working tree is clean).
-    """
 
     outcome: str
-    #: Typed evidence from the resolver, when one ran and reported it.
-    #: Without it every unsuccessful resolution is reported to the
-    #: operator as "conflict resolution failed" -- including one that
-    #: was never attempted, which is the message a stalled run shows
-    #: while explaining nothing about why nobody resolved anything.
     reason: str | None = None
-    #: Paths git named when it REFUSED to start the merge (untracked files
-    #: or local changes it would overwrite). Non-empty only for a refusal:
-    #: no merge ran, so there is nothing for a resolver to repair until
-    #: the obstruction is reconciled without committing unfinished work.
     blocked_paths: tuple[str, ...] = ()
     failure_cause: ResolutionFailureCause = ResolutionFailureCause.NONE
 
 
 def merge_refusal_obstruction(result: MergeResult) -> tuple[str, ...] | None:
-    """Project a merge result onto its typed path-bearing obstruction.
-
-    Non-empty only for a merge git REFUSED to start: the outcome carries
-    the git-named ``blocked_paths`` AND the typed cause
-    :attr:`ResolutionFailureCause.CONTEXT_FAILURE` — a repository-state
-    obstruction, never a content conflict a resolver could repair and
-    never an in-progress merge conflict. That typed pair is what lets a
-    consumer preserve the named paths and repair the observation instead
-    of dispatching a resolver agent.
-
-    Records predating the typed classification (a refusal-shaped result
-    whose cause is :attr:`ResolutionFailureCause.UNRESOLVED_CONFLICT`,
-    or no cause at all) deliberately project to ``None``: their consumer
-    must flow them through safe re-observation of the repository — a
-    fresh ``MERGE_HEAD`` probe proving no merge began — before acting on
-    the blocked-path claim.
-    """
     if (
         result.outcome == "conflict"
         and result.blocked_paths
@@ -354,7 +163,6 @@ def merge_refusal_obstruction(result: MergeResult) -> tuple[str, ...] | None:
 
 
 def branch_exists(repo_root: Path | str, name: str) -> bool:
-    """Return True when ``refs/heads/<name>`` resolves in ``repo_root``."""
     repo_root_path = Path(repo_root)
     result = run_git(
         ("show-ref", "--verify", "--quiet", f"refs/heads/{name}"),
@@ -364,34 +172,10 @@ def branch_exists(repo_root: Path | str, name: str) -> bool:
     return result.returncode == 0
 
 
-#: ``git rev-parse --verify --quiet`` exits 1 for a ref that does not
-#: resolve, and 128 for a failure of the invocation itself (not a
-#: repository, a contended ref lock, a broken object store). Collapsing
-#: the two into one ``None`` is what made a transient failure caused by
-#: a concurrent agent look like a permanently absent branch.
 _REV_PARSE_REF_ABSENT_RETURNCODE = 1
 
 
 def observe_branch_sha(repo_root: Path | str, name: str) -> tuple[str | None, bool]:
-    """Read ``refs/heads/<name>``, distinguishing 'absent' from 'unreadable'.
-
-    Returns ``(sha, query_ok)``. ``query_ok`` is ``True`` when git gave a
-    definite answer -- either the SHA, or a confirmed 'no such ref' --
-    and ``False`` when the invocation itself failed and the ref's state
-    is therefore UNKNOWN.
-
-    This distinction is load-bearing under concurrency. Several agents
-    move ``refs/heads/<target>`` in one shared git common directory, and
-    a ref lock contended by a sibling makes ``rev-parse`` exit non-zero.
-    Reported as 'branch absent' that becomes a terminal, non-retryable
-    skip; reported as 'query failed' the bounded integration loop simply
-    tries again, which is what the situation actually calls for.
-
-    :func:`branch_sha` is the narrow legacy view of this call and keeps
-    its ``str | None`` contract byte-for-byte, so the many existing
-    callers that only ever needed 'the SHA, if there is one' are
-    untouched.
-    """
     repo_root_path = Path(repo_root)
     ref_spec = name if name.startswith("refs/") else f"refs/heads/{name}"
     try:
@@ -418,30 +202,11 @@ def observe_branch_sha(repo_root: Path | str, name: str) -> tuple[str | None, bo
 
 
 def branch_sha(repo_root: Path | str, name: str) -> str | None:
-    """Return the SHA of ``refs/heads/<name>`` or ``None`` when absent.
-
-    The returned SHA is the value to pass as the
-    ``<oldvalue>`` argument to :func:`compare_and_swap_branch` so a
-    concurrent landing cannot be silently force-overwritten (AC-08).
-
-    A failed ``rev-parse`` is also reported as ``None`` here. Callers
-    that must tell an absent branch from an unreadable one -- the
-    fast-forward path, where the difference decides whether to retry --
-    use :func:`observe_branch_sha` instead.
-    """
     sha, _query_ok = observe_branch_sha(repo_root, name)
     return sha
 
 
 def is_ancestor(repo_root: Path | str, ancestor: str, descendant: str) -> bool:
-    """Return True when ``ancestor`` is reachable from ``descendant``.
-
-    Thin wrapper over ``git merge-base --is-ancestor``. Used to gate
-    the fast-forward phase (AC-08 guard): ``is_ancestor(target,
-    feature_sha)`` must be True before we attempt to move the target
-    to ``feature_sha``; if False, the target has diverged and we
-    must skip with a recorded reason.
-    """
     if ancestor and ancestor == descendant:
         return True
     repo_root_path = Path(repo_root)
@@ -454,18 +219,6 @@ def is_ancestor(repo_root: Path | str, ancestor: str, descendant: str) -> bool:
 
 
 def merge_state(repo_root: Path | str) -> str:
-    """Classify the merge state of ``repo_root`` without guessing.
-
-    Returns :data:`MERGE_STATE_IN_PROGRESS` when ``MERGE_HEAD`` exists,
-    :data:`MERGE_STATE_NONE` when the git directory was read and holds
-    no ``MERGE_HEAD``, and :data:`MERGE_STATE_UNKNOWN` when ``git
-    rev-parse --git-dir`` itself failed.
-
-    The third verdict is the point of this function. Collapsing it into
-    ``False`` made :func:`abort_merge` a silent no-op on a repository it
-    could not read, which could strand a ``MERGE_HEAD`` and block every
-    later integration.
-    """
     repo_root_path = Path(repo_root)
     try:
         gitdir, _commondir = _resolve_gitdir_paths(repo_root_path)
@@ -492,47 +245,12 @@ def merge_state(repo_root: Path | str) -> str:
 
 
 def merge_in_progress(repo_root: Path | str) -> bool:
-    """Return True when a ``MERGE_HEAD`` exists in the git directory.
-
-    Used by the crash-recovery preamble to detect an owned merge we
-    must abort before restoring the feature branch. This is the
-    positive-verdict projection of :func:`merge_state`; callers that
-    must distinguish "no merge" from "could not tell" call
-    :func:`merge_state` directly.
-    """
     return merge_state(repo_root) == MERGE_STATE_IN_PROGRESS
 
 
 def merge_target_into_current(
     repo_root: Path | str, target: str, *, keep_conflicts: bool = False
 ) -> MergeResult:
-    """Run ``git merge --no-edit <target>`` into the current branch.
-
-    On non-zero return code, run ``git merge --abort`` (guarded by a
-    :func:`merge_state` precheck) and return a conflict result. The
-    abort's own verdict is checked: when it did not run, failed, or
-    left an unreadable merge state, a warning names the repository
-    rather than letting a possibly-stranded ``MERGE_HEAD`` hide behind
-    an ordinary conflict result. On
-    success return ``MergeResult(outcome='success')``. The merge is
-    never force-resolved; conflict outcome is the only escape hatch
-    other than success.
-
-    With ``keep_conflicts=True`` a conflicted merge is left in
-    progress (``MERGE_HEAD`` retained, conflict markers in the
-    working tree) so a conflict-resolution step can repair and
-    complete it; the caller owns the eventual
-    :func:`commit_merge_in_progress` or :func:`abort_merge`. A merge
-    that failed without starting (no ``MERGE_HEAD``) still returns
-    ``'conflict'`` with nothing to keep.
-
-    The target branch name is passed AFTER the ``--`` option
-    terminator so a configured value that starts with ``-`` (e.g.
-    ``--allow-unrelated-histories``) is treated as a positional
-    revision argument and never parsed as a git option. This
-    closes the untrusted-config subprocess-argument-boundary
-    exposure that the prompt's feedback item flagged.
-    """
     repo_root_path = Path(repo_root)
     clear_untracked_merge_obstructions(repo_root_path, target)
     result = run_git(
@@ -543,17 +261,9 @@ def merge_target_into_current(
     if result.returncode == 0:
         return MergeResult(outcome="success", failure_cause=ResolutionFailureCause.NONE)
     refusal = merge_refusal(f"{result.stdout}\n{result.stderr}")
-    # Conflict path. Unless the caller asked to keep the conflicted
-    # merge for resolution, abort so the working tree is left clean
-    # (the caller can then record the conflict and return;
-    # auto_integrate uses this to satisfy AC-07).
     if not keep_conflicts and not abort_merge(repo_root_path):
         state = merge_state(repo_root_path)
         if state != MERGE_STATE_NONE:
-            # The abort did not run, failed, or could not be proven. A
-            # stranded MERGE_HEAD blocks every later integration, so
-            # this is reported rather than folded into the plain
-            # conflict verdict the caller sees.
             logger.warning(
                 "conflicted merge not proven aborted in {} (merge state"
                 " {}); later integrations will be blocked until it is"
@@ -563,11 +273,6 @@ def merge_target_into_current(
             )
     if refusal is not None:
         reason, blocked = refusal
-        # The refusal is a TYPED PATH-BEARING OBSTRUCTION, not a content
-        # conflict: the merge never started (no MERGE_HEAD), so there is
-        # nothing for a resolver to repair. CONTEXT_FAILURE — the
-        # repository-state cause — is what lets the integration bridge
-        # tell this apart from a genuine UNRESOLVED_CONFLICT merge.
         return MergeResult(
             outcome="conflict",
             reason=reason,
@@ -578,17 +283,6 @@ def merge_target_into_current(
 
 
 def unmerged_paths(repo_root: Path | str) -> list[str]:
-    """Return the paths still carrying merge conflicts.
-
-    Wraps ``git diff --name-only --diff-filter=U``. An empty list
-    means every conflict has been resolved and staged; the in-progress
-    merge is then safe to commit via :func:`commit_merge_in_progress`.
-
-    A failed git invocation reports :data:`UNMERGED_PATH_QUERY_FAILED` so a
-    broken repository is never mistaken for "fully resolved". Callers that
-    must not treat a failure as evidence either way ask
-    :func:`observe_unmerged_paths`, whose UNKNOWN verdict carries no path.
-    """
     observed = observe_unmerged_paths(repo_root)
     if not observed.query_ok:
         return [UNMERGED_PATH_QUERY_FAILED]
@@ -596,23 +290,6 @@ def unmerged_paths(repo_root: Path | str) -> list[str]:
 
 
 def observe_unmerged_paths(repo_root: Path | str) -> UnmergedPathsObservation:
-    """Return the unmerged paths, or UNKNOWN when the query itself failed.
-
-    ``git diff --name-only --diff-filter=U`` is the only authoritative
-    answer to "which paths still conflict", so a repository that cannot be
-    asked has no answer -- not "no conflicts". Reporting the sentinel as a
-    path handed a broken repository to the resolver as a real conflict to
-    repair; this observation keeps the failure out of the path set and
-    names it in ``query_ok`` instead.
-
-    ``-z`` because git QUOTES a path with non-ASCII, a backslash, a
-    quote or a control character when it is not asked for NUL
-    separation: ``"\\303\\251.txt"`` cannot be opened, so every content
-    gate that later reads these paths reported "no markers" for a file
-    it never saw -- and conflict markers were committed under a line
-    asserting the stop was marker-free. NUL separation is the only
-    encoding git never mangles.
-    """
     repo_root_path = Path(repo_root)
     try:
         result = run_git(
@@ -634,12 +311,6 @@ def observe_unmerged_paths(repo_root: Path | str) -> UnmergedPathsObservation:
 def conflict_stage_entries(
     repo_root: Path | str, paths: Sequence[str]
 ) -> dict[str, dict[int, tuple[str, str]]]:
-    """Return unmerged index entries keyed by path and conflict stage.
-
-    The NUL-delimited ``ls-files -u`` format preserves paths with spaces,
-    newlines, or unicode. A failed query deliberately degrades to an empty
-    mapping so callers can use their existing resolver fallback.
-    """
     if not paths:
         return {}
     result = run_git(
@@ -664,18 +335,6 @@ def conflict_stage_entries(
 
 
 def stage_paths(repo_root: Path | str, paths: Sequence[str]) -> bool:
-    """Stage the given paths with ``git add -- <paths>``.
-
-    Returns True when every path staged cleanly. The paths are passed
-    AFTER the ``--`` terminator so a filename beginning with ``-`` is
-    never parsed as a git option. An empty ``paths`` sequence is a
-    no-op that returns True.
-
-    Ralph stages the resolution itself rather than requiring the
-    resolving agent to run ``git add``: an agent running under Ralph's
-    own MCP exec policy is denied every git invocation, so a
-    resolver-side staging step could never succeed.
-    """
     if not paths:
         return True
     result = run_git(
@@ -687,31 +346,12 @@ def stage_paths(repo_root: Path | str, paths: Sequence[str]) -> bool:
 
 
 def paths_with_conflict_markers(repo_root: Path | str, paths: Sequence[str]) -> list[str]:
-    """Return the subset of ``paths`` whose content still holds markers.
-
-    ``git add`` on a file that still contains ``<<<<<<<`` markers
-    silently clears its unmerged state, so an empty
-    :func:`unmerged_paths` result is NOT proof that a conflict was
-    really resolved. This scan closes that hole.
-
-    A path is reported when EITHER an opening ``<<<<<<< `` line or a
-    closing ``>>>>>>> `` line survives: half a conflict hunk is still
-    an unresolved conflict, and demanding both fences let a resolver
-    that deleted only one of them past the last remaining gate. A lone
-    ``=======`` separator is deliberately still allowed, because it is
-    ordinary reStructuredText/Markdown heading punctuation rather than
-    a conflict-specific token. A path that cannot be read as text
-    (binary or deleted) is skipped rather than reported.
-    """
     repo_root_path = Path(repo_root)
     sizes = conflict_marker_sizes(repo_root_path, list(paths))
     reported: list[str] = []
     for path in paths:
         content = _readable_text(repo_root_path / path)
         if content is None:
-            # Present but unreadable. An unreadable file is not evidence
-            # of a clean one, and reporting it keeps the resolution from
-            # landing on a path nobody could check.
             if (repo_root_path / path).exists():
                 reported.append(path)
             continue
@@ -728,20 +368,6 @@ def paths_with_conflict_markers(repo_root: Path | str, paths: Sequence[str]) -> 
 def commit_merge_in_progress(
     repo_root: Path | str, *, on_failure: Callable[[str], None] | None = None
 ) -> bool:
-    """Commit an in-progress merge with the default merge message.
-
-    Returns True when the merge commit was created (``git commit
-    --no-edit`` exited 0 and ``MERGE_HEAD`` is gone). The auto-
-    integrate conflict-resolution path calls this AFTER verifying
-    :func:`unmerged_paths` is empty, so the commit is deterministic —
-    the resolving agent only ever stages content, never commits.
-
-    Both the precheck and the post-commit verification go through
-    :func:`merge_state` rather than its boolean projection: a
-    :data:`MERGE_STATE_UNKNOWN` verdict is never accepted as proof
-    that ``MERGE_HEAD`` is gone, so an unreadable repository is
-    reported as "not committed" instead of a clean merge.
-    """
     repo_root_path = Path(repo_root)
     if merge_state(repo_root_path) != MERGE_STATE_IN_PROGRESS:
         return False
@@ -761,19 +387,6 @@ def commit_merge_in_progress(
 
 
 def abort_merge(repo_root: Path | str) -> bool:
-    """Abort an in-progress merge; report whether the abort actually ran.
-
-    Returns True only when ``git merge --abort`` was invoked and exited
-    zero. A repository with no merge in progress returns False without
-    running anything — there was nothing to abort.
-
-    The precheck is deliberately fail-closed: a
-    :data:`MERGE_STATE_UNKNOWN` verdict still attempts the abort,
-    because "git could not be asked" is not evidence that the working
-    tree is clean. A stray operator merge is still protected, since the
-    only state that skips the abort is the one where git positively
-    reported no ``MERGE_HEAD``.
-    """
     repo_root_path = Path(repo_root)
     state = merge_state(repo_root_path)
     if state == MERGE_STATE_NONE:
@@ -795,22 +408,12 @@ def abort_merge(repo_root: Path | str) -> bool:
 
 
 def reset_keep(repo_root: Path | str, sha: str) -> None:
-    """Restore a committed tip while refusing to overwrite unfinished edits."""
     result = run_git(("reset", "--keep", sha), cwd=Path(repo_root), label="git-reset-keep")
     if result.returncode != 0:
         raise GitOperationError("reset_keep", (result.stderr or result.stdout).strip())
 
 
 def fast_forward_via_worktree(worktree_root: Path | str, feature_sha: str) -> bool:
-    """Fast-forward the branch checked out in ``worktree_root``.
-
-    Returns True on success; False when ``feature_sha`` is NOT a
-    fast-forward of the worktree's current branch. ``git merge
-    --ff-only`` is itself the atomic guard — non-zero return when
-    the requested SHA is not a descendant of HEAD — so a target that
-    advanced concurrently between observation and the call is never
-    force-moved.
-    """
     worktree_root_path = Path(worktree_root)
     result = run_git(
         (*COMMIT_PIN_CONFIG_ARGS, "merge", "--ff-only", feature_sha),
@@ -827,15 +430,6 @@ def compare_and_swap_branch(
     expected_old_sha: str,
     new_sha: str,
 ) -> bool:
-    """Move ``refs/heads/<target>`` from ``expected_old_sha`` to ``new_sha`` atomically.
-
-    Uses ``git update-ref`` with the ``<newvalue> <oldvalue>`` form
-    so git performs an atomic compare-and-swap: it updates the ref
-    ONLY if it still equals ``expected_old_sha``, returning rc==0;
-    if the target advanced concurrently the rc is non-zero and the
-    ref is left untouched. This REPLACES the previous unconditional
-    ``git branch -f`` and closes the AC-08 TOCTOU race.
-    """
     repo_root_path = Path(repo_root)
     result = run_git(
         (*COMMIT_PIN_CONFIG_ARGS, "update-ref", f"refs/heads/{target}", new_sha, expected_old_sha),
@@ -847,30 +441,6 @@ def compare_and_swap_branch(
 
 
 def worktree_lookup(repo_root: Path | str, branch: str) -> tuple[str, Path | None]:
-    """Locate the worktree holding ``refs/heads/<branch>``, fail-closed.
-
-    Returns ``(verdict, path)`` where ``verdict`` is one of
-    :data:`WORKTREE_FOUND` (``path`` is the holding worktree),
-    :data:`WORKTREE_NOT_CHECKED_OUT` (git answered and no worktree holds
-    the branch) or :data:`WORKTREE_QUERY_FAILED` (``git worktree list``
-    itself failed). ``path`` is ``None`` for the latter two.
-
-    Keeping the third verdict distinct is what stops the fast-forward
-    from compare-and-swapping the shared mainline ref while a live
-    checkout may hold it: in a linked-worktree topology the mainline
-    genuinely IS checked out in a sibling worktree, and a CAS there
-    advances the ref while leaving that checkout's index and working
-    tree behind.
-
-    Parses ``git worktree list --porcelain`` (the stable, scriptable
-    format). When multiple worktrees have the same branch checked out
-    (only possible if one of them is the primary repo and another is a
-    linked worktree, which is itself illegal by git's own rules), the
-    FIRST match wins. The ``branch <ref>`` field is the authoritative
-    "what branch is checked out here" indicator; the ``HEAD`` field is
-    just a detached SHA / refs/heads/<name> pointer and is
-    intentionally NOT used to decide which branch is checked out.
-    """
     repo_root_path = Path(repo_root)
     result = run_git(
         ("worktree", "list", "--porcelain"),
@@ -903,14 +473,6 @@ def worktree_lookup(repo_root: Path | str, branch: str) -> tuple[str, Path | Non
 
 
 def worktree_for_branch(repo_root: Path | str, branch: str) -> Path | None:
-    """Return the worktree path that has ``refs/heads/<branch>`` checked out.
-
-    Optional-returning wrapper over :func:`worktree_lookup`, kept for
-    callers that do not need to distinguish a failed query from a
-    branch that is checked out nowhere. Callers that DO need that
-    distinction — the auto-integrate fast-forward and refresh paths —
-    call :func:`worktree_lookup` directly.
-    """
     _verdict, path = worktree_lookup(repo_root, branch)
     return path
 
@@ -945,21 +507,4 @@ __all__ = [
 ]
 
 
-# ----- AC-14 catalog evidence -----
-# This file is the authoritative source for the catalog entries listed
-# below. Each ``# AC-14 rationale: <ID>`` line is the code-adjacent
-# marker the AC-14 audit looks for; each ``# ladder rung: <N>``
-# names the rung the entry sits on. Adding a new entry here requires
-# BOTH lines or the audit fails.
 
-# AC-14 rationale: C13
-# ladder rung: 1
-# AC-14 rationale: C14
-# ladder rung: 1
-# AC-14 rationale: C7
-# ladder rung: 1
-# AC-14 rationale: E1
-# ladder rung: 1
-# AC-14 rationale: F3
-# ladder rung: 1
-# ----- end AC-14 catalog evidence -----

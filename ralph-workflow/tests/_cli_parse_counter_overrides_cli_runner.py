@@ -1,5 +1,3 @@
-"""CliRunner helper for test_cli_parse_counter_overrides.py."""
-
 from __future__ import annotations
 
 import os

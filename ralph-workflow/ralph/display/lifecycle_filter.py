@@ -1,20 +1,11 @@
-"""Shared lifecycle-line filter used by all display intake paths.
-
-``BARE_LIFECYCLE_TOKENS`` is the union of parser-only lifecycle markers from
-Claude, Codex, Gemini, OpenCode, and the generic parser. These markers carry no
-user payload and are suppressed before they can surface as display content.
-"""
 
 from __future__ import annotations
 
 import re
 from typing import Final
 
-# Bare lifecycle token values — exact matches after stripping a provider prefix.
-# These carry no user payload and must never surface as display content.
 BARE_LIFECYCLE_TOKENS: Final[frozenset[str]] = frozenset(
     {
-        # Claude lifecycle markers
         "message_delta",
         "message_start",
         "message_stop",
@@ -23,7 +14,6 @@ BARE_LIFECYCLE_TOKENS: Final[frozenset[str]] = frozenset(
         "thinking",
         "user",
         "assistant",
-        # Shared across providers
         "turn.started",
         "turn.completed",
         "thread.started",
@@ -40,26 +30,17 @@ BARE_LIFECYCLE_TOKENS: Final[frozenset[str]] = frozenset(
         "start",
         "step_start",
         "step_finish",
-        # Generic parser stop types
         "finish",
         "end",
     }
 )
 
-# Matches "system (status=<word>)" lifecycle lines.
 SYSTEM_STATUS_RE: Final[re.Pattern[str]] = re.compile(r"^system \(status=\w+\)$")
 
-# Matches an optional "<provider>/<model>: " prefix on transcript lines.
 PROVIDER_PREFIX_RE: Final[re.Pattern[str]] = re.compile(r"^[a-zA-Z][a-zA-Z0-9_.-]*/[^:]+: ")
 
 
 def is_bare_lifecycle(line: str) -> bool:
-    """Return True when *line* is a bare lifecycle token with no user payload.
-
-    Strips an optional "<provider>/<model>: " prefix before checking.
-    Only exact token matches are suppressed; longer content strings pass through.
-    Lines containing "✗:" are never suppressed (they are real error lines).
-    """
     if " ✗: " in line or line.endswith(" ✗:"):
         return False
     remainder = PROVIDER_PREFIX_RE.sub("", line, count=1)

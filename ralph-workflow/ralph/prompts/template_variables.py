@@ -1,4 +1,3 @@
-"""Template variable helpers ported from Ralph Workflow Rust."""
 
 from __future__ import annotations
 
@@ -24,13 +23,11 @@ if TYPE_CHECKING:
 
 
 def default_capability_identifiers_for_drain(drain: SessionDrain) -> set[str]:
-    """Return the canonical default capability identifiers for a drain."""
     return {cap.value for cap in DEFAULT_CAPABILITIES.get(drain, ())}
 
 
 @dataclass(frozen=True)
 class SessionCapabilities:
-    """Helper bundling capabilities and policy flags for prompt rendering."""
 
     capabilities: CapabilitySet
     policy_flags: PolicyFlagSet
@@ -44,7 +41,6 @@ class SessionCapabilities:
         *,
         tool_name_prefix: str = "",
     ) -> SessionCapabilities:
-        """Build a SessionCapabilities from explicit capability and policy-flag sets."""
         return cls(
             capabilities=capabilities,
             policy_flags=policy_flags,
@@ -55,7 +51,6 @@ class SessionCapabilities:
     def defaults_for_drain(
         cls, drain: SessionDrain, *, tool_name_prefix: str = ""
     ) -> SessionCapabilities:
-        """Build a SessionCapabilities using the bundled defaults for the given drain."""
         capabilities, policy_flags = default_caps_and_flags_for_drain(drain)
         return cls.new(
             capabilities,
@@ -65,7 +60,6 @@ class SessionCapabilities:
 
     @classmethod
     def from_session(cls, session: AgentSession) -> SessionCapabilities:
-        """Build a SessionCapabilities from the live session's identifiers."""
         raw_caps = _resolve_session_iterable(session, "capabilities")
         raw_flags = _resolve_session_iterable(session, "policy_flags")
         caps = CapabilitySet.from_identifiers(raw_caps)
@@ -74,23 +68,19 @@ class SessionCapabilities:
 
     @classmethod
     def from_drain(cls, drain: SessionDrain) -> tuple[CapabilitySet, PolicyFlagSet]:
-        """Return the bundled default (CapabilitySet, PolicyFlagSet) pair for the given drain."""
         return default_caps_and_flags_for_drain(drain)
 
     def as_parts(self) -> tuple[CapabilitySet, PolicyFlagSet]:
-        """Return the (capabilities, policy_flags) tuple this bundle holds."""
         return self.capabilities, self.policy_flags
 
 
 def default_caps_and_flags_for_drain(drain: SessionDrain) -> tuple[CapabilitySet, PolicyFlagSet]:
-    """Return the bundled default (CapabilitySet, PolicyFlagSet) pair for the given drain."""
     return (CapabilitySet.defaults_for_drain(drain), PolicyFlagSet.defaults_for_drain(drain))
 
 
 def capability_template_variables(
     capabilities: CapabilitySet, policy_flags: PolicyFlagSet, *, tool_name_prefix: str = ""
 ) -> dict[str, str]:
-    """Render prompt template variables for the given capabilities, flags, and tool-name prefix."""
     capability_vars: Sequence[tuple[str, str]] = [
         (
             "HAS_WORKSPACE_WRITE",
@@ -155,7 +145,6 @@ def capability_template_variables(
 def capability_template_variables_from_session(
     session: AgentSession, *, tool_name_prefix: str = ""
 ) -> dict[str, str]:
-    """Render capability template variables from the live session's identifiers."""
     caps = CapabilitySet.from_identifiers(_resolve_session_iterable(session, "capabilities"))
     flags = PolicyFlagSet.from_identifiers(_resolve_session_iterable(session, "policy_flags"))
     return capability_template_variables(caps, flags, tool_name_prefix=tool_name_prefix)
@@ -167,17 +156,6 @@ def timebox_template_variables(
     deadline_epoch: float | None,
     now_epoch: float | None = None,
 ) -> dict[str, str]:
-    """Render the development-timebox template variables.
-
-    Returns three keys when both ``warn_epoch`` and ``deadline_epoch`` are
-    provided: ``DEV_WARN_REMAINING_MINUTES`` (minutes until the warning
-    point), ``DEV_REMAINING_MINUTES`` (minutes until the deadline), and
-    ``DEV_FORCE_CUT`` (the literal ``"true"`` flag that the partial uses
-    to gate the force-cut sentence). Returns an empty mapping when either
-    epoch is missing — the ``|default('')`` idiom in the partial falls
-    through to the no-partial-on-exhaustion rule in that case. ``now_epoch``
-    is injectable so tests can pin the clock; production callers omit it.
-    """
     if warn_epoch is None or deadline_epoch is None:
         return {}
 
@@ -194,12 +172,10 @@ def timebox_template_variables(
 
 
 def bool_to_string(value: bool) -> str:
-    """Render a boolean as the template convention 'true' or the empty string."""
     return "true" if value else ""
 
 
 def visible_mcp_tool_names(capabilities: CapabilitySet) -> list[str]:
-    """Return canonical MCP tool names a session with the given capabilities may call."""
     capability_ids = [capability.value for capability in capabilities.to_vec()]
     drain = (
         SessionDrain.PLANNING
@@ -210,7 +186,6 @@ def visible_mcp_tool_names(capabilities: CapabilitySet) -> list[str]:
 
 
 def format_mcp_tools_list(tool_names: Sequence[str]) -> str:
-    """Render a sequence of MCP tool names as a single comma-separated string for prompts."""
     return ", ".join(tool_names)
 
 
@@ -219,13 +194,6 @@ def _tool_variable_items(
     *,
     tool_name_prefix: str,
 ) -> tuple[tuple[str, str], ...]:
-    """Return the NAME and REFERENCE variables for every MCP tool that exists.
-
-    Derived from :class:`RalphToolName` rather than a hand-maintained list
-    so a newly added tool cannot ship a template reference without the
-    variable that fills it — the desync that made a mid-run upgrade render
-    ``'GIT_STATUS_TOOL_REFERENCE' is undefined`` and terminate the run.
-    """
     items: list[tuple[str, str]] = []
     for tool in RalphToolName:
         items.append(
@@ -254,7 +222,6 @@ def tool_name_var(
     *,
     tool_name_prefix: str = "",
 ) -> tuple[str, str]:
-    """Return (variable_name, prefixed_tool_name) when visible, else (variable_name, '')."""
     canonical_name = tool_name.value if isinstance(tool_name, RalphToolName) else tool_name
     if canonical_name not in visible_tools:
         return (variable_name, "")
@@ -268,14 +235,12 @@ def tool_name_reference_var(
     *,
     tool_name_prefix: str = "",
 ) -> tuple[str, str]:
-    """Return (variable_name, prompt_reference) when visible, else (variable_name, '')."""
     if tool_name.value not in visible_tools:
         return (variable_name, "")
     return (variable_name, tool_name.prompt_reference(tool_name_prefix=tool_name_prefix))
 
 
 def format_capability_summary(capabilities: CapabilitySet, policy_flags: PolicyFlagSet) -> str:
-    """Render a multi-line summary of granted capabilities and active policy flags for prompts."""
     cap_list = sorted(capabilities.to_vec(), key=_capability_value)
     flag_list = sorted(policy_flags.to_vec(), key=_policy_flag_value)
 

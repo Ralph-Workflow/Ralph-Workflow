@@ -1,5 +1,3 @@
-"""Regression coverage for Rich's cross-Console style cache contamination."""
-
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -34,7 +32,6 @@ def _render_hex_colour(color_system: str) -> str:
 
 
 def test_standard_console_cache_contaminates_later_truecolor_console() -> None:
-    """A shared Rich style retains standard ANSI codes after a console-depth switch."""
     _clear_rich_style_color_caches()
 
     standard = _render_hex_colour("standard")
@@ -50,7 +47,6 @@ def test_standard_console_cache_contaminates_later_truecolor_console() -> None:
 
 
 def test_style_parse_and_add_caches_are_the_only_required_resets() -> None:
-    """Clearing the two caches that retain mutable styles restores truecolor output."""
     _clear_rich_style_color_caches()
     _render_hex_colour("standard")
 

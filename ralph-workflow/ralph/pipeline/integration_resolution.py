@@ -1,37 +1,3 @@
-"""Three-valued integration-resolution invariant for phase dispatch.
-
-A normal pipeline phase may run only after this module proves that neither
-persisted integration state nor the live repository indicates an unfinished
-rebase or merge.  Every git probe answers in three values -- known good,
-known blocked with a typed kind, or unknown -- and only a PROVEN conflict
-blocks.  A timeout, a kill, lock contention, or any other environmental
-failure is ``unknown``: it mints no blocking reason, dispatches no resolver,
-and is never persisted as "unresolved".  The caller backs off and re-observes.
-
-Decision authority
-------------------
-
-This module is OBSERVATION PLUMBING, not a decision authority. It answers
-only the dispatch-gate question -- "may an ordinary phase dispatch proceed
-against this tree and durable state?" -- in its own three-valued
-:class:`IntegrationResolutionVerdict` vocabulary
-(:data:`RESOLVED` / :data:`RECOVERABLE` / :data:`EXHAUSTED`). The sole
-decision authority for what INTEGRATION does next -- the mutation ladder --
-is :mod:`ralph.pipeline.integration_owner`, reached only through
-:func:`ralph.pipeline._integration_owner_seam.decide_seam_action` (and the
-planning gate's typed
-:func:`ralph.pipeline._integration_owner_seam.decide_planning_sync`).
-This module never derives a mutation-ladder action and never re-implements
-a decision table of its own; its probes and assessments are inputs the
-owner-adjacent seams compose with their verdicts (for example the run
-loop's blocking seam asks the owner seam first, then consults
-:func:`inspect_integration_resolution` for the dispatch invariant). The
-injectable probe callables on the assessment entry points exist so the
-probe layer stays pure and black-box testable; routing the dispatch-gate
-question through the owner seam would charge the durable attempt ledger on
-every phase-dispatch check, which is exactly what this observation layer
-must not do.
-"""
 
 from __future__ import annotations
 
@@ -70,24 +36,17 @@ if TYPE_CHECKING:
 
 RESOLUTION_DRAIN = RESOLUTION_DRAIN_NAME
 
-# ``XY<space>PATH`` -- the shortest meaningful porcelain v1 entry is a
-# two-letter status code, a separator, and at least one path character.
 _PORCELAIN_MIN_ENTRY_LEN = 4
 
-# Porcelain v1 status codes that denote an unmerged index entry whose two
-# halves are not individually ``U``.
 _BOTH_SIDES_UNMERGED_CODES = frozenset({"AA", "DD"})
 
 
-# Public aliases preserve the original concise predicate vocabulary while the
-# enum gives direct callers a typed, stable decision contract.
 RESOLVED = IntegrationResolutionStatus.RESOLVED
 RECOVERABLE = IntegrationResolutionStatus.RECOVERABLE
 EXHAUSTED = IntegrationResolutionStatus.EXHAUSTED
 
 
 class IntegrationBlockKind(StrEnum):
-    """Proven conditions that genuinely block ordinary dispatch."""
 
     UNMERGED_PATHS = "unmerged_paths"
     REBASE_IN_PROGRESS = "rebase_in_progress"
@@ -95,7 +54,6 @@ class IntegrationBlockKind(StrEnum):
 
 
 class UnknownKind(StrEnum):
-    """Probes that produced no verdict. Never a blocking reason."""
 
     PORCELAIN_UNREADABLE = "porcelain_unreadable"
     REBASE_STATE_UNREADABLE = "rebase_state_unreadable"
@@ -103,7 +61,6 @@ class UnknownKind(StrEnum):
 
 
 class IntegrationState(StrEnum):
-    """Which of the three probe outcomes produced a verdict."""
 
     KNOWN_GOOD = "known_good"
     KNOWN_BLOCKED = "known_blocked"
@@ -112,12 +69,11 @@ class IntegrationState(StrEnum):
 
 @dataclass(frozen=True)
 class KnownGood:
-    """Git answered, and reported nothing that needs recovery."""
+    pass
 
 
 @dataclass(frozen=True)
 class KnownBlocked:
-    """Git answered, and reported a proven integration conflict."""
 
     kind: IntegrationBlockKind
     detail: str
@@ -125,7 +81,6 @@ class KnownBlocked:
 
 @dataclass(frozen=True)
 class Unknown:
-    """The probe could not be answered: no verdict, no blocking reason."""
 
     kind: UnknownKind
 
@@ -135,7 +90,6 @@ ProbeOutcome = KnownGood | KnownBlocked | Unknown
 
 @dataclass(frozen=True)
 class TreeReadinessAssessment:
-    """Readiness assessment distinguishing development dispatch from integration readiness."""
 
     development_dispatch_allowed: bool
     integration_ready: bool
@@ -146,7 +100,6 @@ class TreeReadinessAssessment:
 
 @dataclass(frozen=True)
 class _AssessedIntegrationResolutionVerdict(IntegrationResolutionVerdict):
-    """Integration resolution verdict carrying structured tree readiness."""
 
     development_dispatch_allowed: bool = True
     integration_ready: bool = True
@@ -156,12 +109,6 @@ class _AssessedIntegrationResolutionVerdict(IntegrationResolutionVerdict):
 
     @property
     def integration_state(self) -> IntegrationState:
-        """Three-valued read of the verdict for callers that back off on UNKNOWN.
-
-        A proven conflict outranks an unreadable probe, because a blocking
-        reason exists and dispatch is refused on it regardless of which other
-        probes could not answer.
-        """
         if self.block_kinds or not self.dispatch_allowed:
             return IntegrationState.KNOWN_BLOCKED
         if self.unknown_kinds:
@@ -170,7 +117,6 @@ class _AssessedIntegrationResolutionVerdict(IntegrationResolutionVerdict):
 
 
 def _inspect_porcelain_uncommitted_state(porcelain_output: str) -> tuple[bool, bool]:
-    """Return (has_staged, has_modified_tracked) from porcelain v1 lines."""
     has_staged = False
     has_modified_tracked = False
     for raw_line in porcelain_output.splitlines():
@@ -188,7 +134,6 @@ def _inspect_porcelain_uncommitted_state(porcelain_output: str) -> tuple[bool, b
 
 
 def _uncommitted_integration_reasons(porcelain_output: str) -> tuple[str, ...]:
-    """Reasons a dirty tree defers auto-integration without blocking dispatch."""
     has_staged, has_modified_tracked = _inspect_porcelain_uncommitted_state(porcelain_output)
     reasons: list[str] = []
     if has_staged:
@@ -211,7 +156,6 @@ def _probe_porcelain(
     root: Path,
     probe: Callable[[Path], tuple[bool, str]],
 ) -> tuple[ProbeOutcome, str]:
-    """Answer the porcelain probe; a raised or unreadable query is UNKNOWN."""
     try:
         readable, porcelain_output = probe(root)
     except Exception as exc:
@@ -232,7 +176,6 @@ def _probe_porcelain(
 
 
 def _probe_rebase(root: Path, rebase_active: Callable[[Path], bool]) -> ProbeOutcome:
-    """Answer the rebase probe; a raised probe is UNKNOWN, not a conflict."""
     try:
         active = rebase_active(root)
     except Exception as exc:
@@ -244,7 +187,6 @@ def _probe_rebase(root: Path, rebase_active: Callable[[Path], bool]) -> ProbeOut
 
 
 def _probe_merge(root: Path, merge_status: Callable[[Path], str]) -> ProbeOutcome:
-    """Answer the merge probe; ``MERGE_STATE_UNKNOWN`` is UNKNOWN, not a conflict."""
     try:
         state = merge_status(root)
     except Exception as exc:
@@ -267,7 +209,6 @@ def _live_probe_outcomes(
     rebase_active: Callable[[Path], bool],
     merge_status: Callable[[Path], str],
 ) -> tuple[tuple[ProbeOutcome, ...], str]:
-    """Run every dispatch-path git probe once and return their outcomes."""
     porcelain_outcome, porcelain_output = _probe_porcelain(root, porcelain or _full_porcelain)
     return (
         porcelain_outcome,
@@ -284,22 +225,6 @@ def assess_tree_readiness(
     rebase_active: Callable[[Path], bool] = rebase_in_progress,
     merge_status: Callable[[Path], str] = merge_state,
 ) -> TreeReadinessAssessment:
-    """Assess live repository readiness for development dispatch vs auto-integration.
-
-    Development dispatch allows ordinary uncommitted work (modified, staged,
-    untracked) because development phases edit and stage files before
-    committing them.  Only a PROVEN conflict -- unmerged index entries, an
-    in-progress rebase, an in-progress merge -- refuses dispatch; an
-    unreadable probe yields ``unknown_kinds`` instead, which defers
-    integration without refusing the phase or naming a recovery executor.
-
-    Auto-integration additionally requires a tree free of tracked changes and
-    no retained durable integration ownership.  A receipt whose landing the
-    live repository already proves cannot outrank those Git facts: it holds
-    nothing back, because the integration it describes has demonstrably
-    happened.  Every other receipt -- in flight, unreadable, or
-    lock-contended -- still owns dispatch.
-    """
     retained = _observe_retained_record(root)
     ownership = None if retained.already_landed else retained.reason
     if ownership is not None:
@@ -418,21 +343,6 @@ def _log_persisted_override(
 
 
 def correct_overtaken_persisted_record(state: RebaseState) -> RebaseState:
-    """Return ``state`` with stale unresolved-integration evidence corrected.
-
-    The live tree has just proven (a clean readiness assessment with no
-    unreadable probes) that the persisted integration record is overtaken:
-    the landing it describes demonstrably happened. The correction must be
-    WRITTEN BACK to the durable record, not merely logged -- otherwise the
-    tree and the record disagree again on every later pass and the same
-    override is rediscovered forever.
-
-    Fail-closed by construction: this function clears only evidence the
-    caller proved stale (it must be called only after a clean
-    :func:`assess_tree_readiness`). The returned state is durable only
-    when the caller persists it through the checkpoint seam or a record
-    store; :func:`inspect_integration_resolution` wires that write-back.
-    """
     corrected = state
     if corrected.last_outcome in (
         RebaseOutcomeKind.CONFLICT,
@@ -468,15 +378,6 @@ def correct_overtaken_persisted_record(state: RebaseState) -> RebaseState:
 
 
 type WritePersistedCorrection = Callable[[RebaseState], None]
-"""Sink the caller hands to :func:`inspect_integration_resolution` to persist a correction.
-
-The observation layer stays pure: it derives the corrected state, but the
-CALLER owns the durable write (checkpoint seam or record store), preserving
-the authority boundary documented at module level. A caller that supplies
-``write_back`` asserts it can make the correction survive a restart; the
-correction itself is only minted for a fully readable, integration-ready
-live assessment.
-"""
 
 
 def _correct_persisted_record(
@@ -484,13 +385,6 @@ def _correct_persisted_record(
     readiness: TreeReadinessAssessment,
     write_back: WritePersistedCorrection | None,
 ) -> None:
-    """Correct the persisted record the live tree has proven overtaken.
-
-    AC-11(f): an override of the persisted record by the live tree writes
-    the correction back. Restricted to the safe case -- the assessment is
-    integration-ready AND no probe is unreadable -- so unknown evidence and
-    blocked trees fail closed and leave the record untouched.
-    """
     if not readiness.integration_ready or readiness.unknown_kinds:
         return
     corrected = correct_overtaken_persisted_record(state)
@@ -507,42 +401,6 @@ def inspect_integration_resolution(
     merge_status: Callable[[Path], str] = merge_state,
     write_back: Callable[[RebaseState], None] | None = None,
 ) -> _AssessedIntegrationResolutionVerdict:
-    """Return the three-valued dispatch verdict for ``root`` and ``state``.
-
-    Authority boundary: this function is the dispatch gate's observation
-    plumbing (see the module docstring). The owner seam
-    (:func:`ralph.pipeline._integration_owner_seam.decide_seam_action`) is
-    the sole mutation-ladder decision authority; this verdict never
-    names what integration does next -- only whether ordinary dispatch
-    may proceed, in the three-valued :class:`IntegrationResolutionVerdict`
-    vocabulary.
-
-    Git evidence is an UNMERGED index entry, an in-progress rebase, or an
-    in-progress merge.  Ordinary staged, modified, or untracked changes are
-    not: they are the normal working state of a development phase, which
-    writes files and only commits at the commit seam.  Treating any
-    non-empty porcelain as blocking deadlocked every run whose worktree held
-    uncommitted work -- the recovery executor named by the resulting verdict
-    defers on exactly that condition -- so the porcelain probe now reports
-    only unmerged paths.
-
-    A probe that could not answer is UNKNOWN, not blocked: no blocking
-    reason, no recovery executor, and nothing persisted as unresolved.
-    Callers read :attr:`integration_state` and back off on
-    :data:`IntegrationState.UNKNOWN`.
-
-    Durable ownership never outranks live Git facts: a receipt the live
-    repository proves has already landed holds nothing back, while an
-    in-flight or unreadable one still refuses ordinary dispatch.
-
-    AC-11(f) write-back: when the live tree provably contradicts the
-    persisted record (integration-ready, no unreadable probes), the
-    caller-supplied ``write_back`` sink receives the corrected state so
-    the durable record converges with the tree instead of being
-    re-overridden on every pass. Supplying the sink is the caller's
-    assertion that the correction will survive a restart; without one
-    the observation stays log-only (previous behavior).
-    """
     persisted = persisted_integration_resolution_verdict(state)
     readiness = assess_tree_readiness(
         root,
@@ -566,9 +424,6 @@ def inspect_integration_resolution(
 
     if readiness.unknown_kinds:
         if persisted is not None:
-            # A recorded resolution outcome is a durable fact about the
-            # repository, not an environmental failure, so it still holds
-            # dispatch while the live state cannot be re-read.
             return _AssessedIntegrationResolutionVerdict(
                 persisted.status,
                 persisted.reasons,
@@ -582,12 +437,6 @@ def inspect_integration_resolution(
 
     if persisted is not None:
         _log_persisted_override(persisted, readiness)
-        # AC-11(f): the override of the persisted record by the live tree
-        # must write the correction back to the durable record, not merely
-        # log it -- otherwise the same disagreement is rediscovered on
-        # every later pass. Only a fully readable, integration-ready live
-        # assessment proves the record overtaken; the fail-closed paths
-        # above return before this line.
         _correct_persisted_record(state, readiness, write_back)
 
     return _AssessedIntegrationResolutionVerdict(
@@ -602,7 +451,6 @@ def inspect_integration_resolution(
 
 @dataclass(frozen=True)
 class _RetainedRecord:
-    """The durable receipt: what it says, and whether it has been overtaken."""
 
     reason: str | None = None
     already_landed: bool = False
@@ -615,26 +463,10 @@ _UNREADABLE_RECEIPT_REASON = "durable integration ownership unreadable; recovery
 
 
 def _landing_already_happened(root: Path, record: IntegrationRecord | None) -> bool:
-    """Whether the landing this receipt describes provably already happened.
-
-    Only a positive proof retires a receipt from the dispatch gate: the
-    receipt is readable, it records a completed rebase, this worktree owns
-    it, and the integration target already carries the exact SHA it
-    captured. An in-flight, unreadable, lock-contended, diagnostic-held,
-    or foreign-worktree receipt names work that is not proven done, so it
-    keeps owning dispatch.
-    """
     if record is None or record.phase != "integrated" or not record.integrated_feature_sha:
         return False
     if record.owning_worktree is not None and Path(record.owning_worktree) != root:
         return False
-    # The receipt owns integration until recovery proves and clears it:
-    # a held diagnostic lease means the diagnostic path still owns the
-    # state. The retired ``diagnostic_intervention_required`` hand-off
-    # flag never blocks the gate — the loader load-and-clears legacy
-    # flagged payloads into the autonomous fallback ladder, and a spent
-    # diagnostic budget routes through the owner seam as a typed
-    # record-fact outcome that keeps the obligation blocking.
     if record.diagnostic_ownership is not None or record.diagnostic_intervention_required:
         return False
     target_sha, query_ok = observe_branch_sha(root, record.target)
@@ -646,7 +478,6 @@ def _observe_retained_record(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> _RetainedRecord:
-    """Read the durable receipt once, keeping its reason and its staleness."""
     from ralph.pipeline.auto_integrate_record import (
         RecordReadOutcomeDisposition,
         read_record_outcome,
@@ -683,19 +514,10 @@ def retained_integration_reason(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> str | None:
-    """A durable receipt owns integration until recovery proves and clears it."""
     return _observe_retained_record(root, backend=backend).reason
 
 
 def unmerged_porcelain_paths(porcelain_output: str) -> tuple[str, ...]:
-    """Return the unmerged (conflicted) paths in ``git status --porcelain`` output.
-
-    Porcelain v1 records an unfinished rebase or merge as an unmerged index
-    entry: either half of the two-letter status code is ``U``, or the code is
-    ``AA`` (both added) or ``DD`` (both deleted). Every other code -- ``M``,
-    ``A``, ``D``, ``R``, ``C``, ``??`` -- describes ordinary uncommitted work
-    and carries no integration evidence.
-    """
     unmerged: list[str] = []
     for raw_line in porcelain_output.splitlines():
         if len(raw_line) < _PORCELAIN_MIN_ENTRY_LEN:
@@ -710,7 +532,6 @@ def unmerged_porcelain_paths(porcelain_output: str) -> tuple[str, ...]:
 def persisted_integration_resolution_verdict(
     state: RebaseState,
 ) -> IntegrationResolutionVerdict | None:
-    """Return the blocking verdict supported by durable state alone."""
     if state.resolution_exhausted:
         return IntegrationResolutionVerdict(
             EXHAUSTED,
@@ -729,7 +550,6 @@ def assert_non_resolution_dispatch_allowed(
     phase: str,
     verdict: IntegrationResolutionVerdict,
 ) -> None:
-    """Reject every ordinary phase when the integration invariant blocks it."""
     if phase != RESOLUTION_DRAIN and not verdict.dispatch_allowed:
         raise IntegrationDispatchBlockedError(phase, verdict)
 

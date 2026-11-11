@@ -1,12 +1,3 @@
-"""Tests that explain_policy output covers all routing surfaces.
-
-Verifies that the policy explanation includes:
-- POST-COMMIT ROUTES section with phase, budget_state, and target
-- PARALLEL EXECUTION section with post_fanout_verify annotation
-- RECOVERY POLICY section with preserve_session_on_categories
-- Verification on_failure_route arrow in ASCII diagram
-"""
-
 from __future__ import annotations
 
 import functools
@@ -26,8 +17,6 @@ def _default_explanation() -> PolicyExplanation:
 
 @pytest.mark.timeout_seconds(5.0)
 class TestPostCommitRoutesInExplanation:
-    """explain_policy populates post_commit_routes on PolicyExplanation."""
-
     def test_post_commit_routes_populated(self) -> None:
         exp = _default_explanation()
         assert len(exp.post_commit_routes) > 0, (

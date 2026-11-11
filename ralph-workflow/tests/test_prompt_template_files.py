@@ -1,5 +1,3 @@
-"""Static coherence checks for planning prompt templates."""
-
 from __future__ import annotations
 
 from functools import lru_cache

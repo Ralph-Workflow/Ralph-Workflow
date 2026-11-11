@@ -1,10 +1,3 @@
-"""Process management package — single source of truth for all child processes.
-
-Every subprocess Ralph spawns flows through :class:`ProcessManager`.  The
-manager records lifecycle transitions, emits observable events, and owns
-escalating termination via psutil for cross-platform process-tree teardown
-(Linux, macOS, and Windows). No POSIX-only APIs are used.
-"""
 
 from ralph.process._spawn_env import (
     MALLOC_DEBUG_NOISE_VARS,

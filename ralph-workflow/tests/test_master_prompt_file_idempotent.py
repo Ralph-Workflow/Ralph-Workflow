@@ -53,7 +53,6 @@ def test_master_prompt_file_writer_writes_first_content() -> None:
 
 
 def test_master_prompt_file_writer_regression_skips_identical_parent_preparation() -> None:
-    """S-3: an unchanged prompt replay does not mutate its parent directory."""
     backend = _CountingBackend()
     destination = Path("/virtual-ws/.agent/tmp/agent_master_prompt.md")
 
@@ -66,7 +65,6 @@ def test_master_prompt_file_writer_regression_skips_identical_parent_preparation
 
 
 def test_product_criteria_sync_regression_skips_identical_parent_preparation() -> None:
-    """S-2: an unchanged fallback criteria replay does not touch its parent directory."""
     backend = _CountingBackend()
     workspace_root = Path("/virtual-ws")
 

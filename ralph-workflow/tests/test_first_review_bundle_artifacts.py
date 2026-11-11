@@ -1,5 +1,3 @@
-"""The standalone first-review bundle must ship canonical Markdown artifacts."""
-
 from __future__ import annotations
 
 from importlib import import_module

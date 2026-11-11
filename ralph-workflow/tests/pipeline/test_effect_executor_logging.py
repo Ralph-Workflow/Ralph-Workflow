@@ -1,9 +1,3 @@
-"""Regression test for clean log rendering on unexpected errors in effect executor.
-
-Ensures that when an unexpected exception is caught during agent invocation,
-the logged error message is clean and does not contain empty formatting braces (`{}`).
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -48,7 +42,6 @@ def _registry_factory(config: object) -> object:
 def test_execute_agent_effect_unexpected_error_logs_clean_message_without_curlies(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """An unexpected exception during agent invocation logs a message without '{}'."""
     config = _make_config(300.0)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
 
@@ -99,7 +92,6 @@ def test_execute_agent_effect_unexpected_error_logs_clean_message_without_curlie
 def test_execute_agent_effect_unexpected_error_renders_clean_loguru_output(
     tmp_path: Path,
 ) -> None:
-    """Loguru sink verifies that the rendered exception message has no '{}'."""
     config = _make_config(300.0)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
 

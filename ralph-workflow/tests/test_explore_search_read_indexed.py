@@ -1,6 +1,3 @@
-"""Black-box tests for indexed ``read_file``, ``read_multiple_files``,
-and ``search_files`` behavior."""
-
 from __future__ import annotations
 
 import hashlib
@@ -131,7 +128,6 @@ def test_read_file_evidence_id_returns_span(tmp_path: Path) -> None:
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     try:
         reindex(store, workspace, options=ReindexOptions(timeout_ms=5000))
-        # Pick a known evidence id (chunk spans 1-5 for the seed content).
         evidence_id = derive_evidence_id(
             path="a.py",
             content_hash=_hash((workspace / "a.py").read_text()),
@@ -161,8 +157,6 @@ def test_read_file_evidence_id_fails_closed_on_stale_hash(tmp_path: Path) -> Non
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     try:
         reindex(store, workspace, options=ReindexOptions(timeout_ms=5000))
-        # Re-index will compute the right content_hash; we want to
-        # pass a WRONG expected_content_hash and observe fail-closed.
         evidence_id = derive_evidence_id(
             path="a.py",
             content_hash=_hash((workspace / "a.py").read_text()),
@@ -342,12 +336,8 @@ def test_read_multiple_files_mixed_items(tmp_path: Path) -> None:
         payload = _decode(result)
         files = payload["files"]
         assert len(files) == 4
-        # First item is path-based.
         assert files[0].get("content") is not None
-        # Second is evidence-based.
         assert files[1].get("evidence_id") == evidence_id
-        # Third + fourth resolve via the indexed store and return
-        # structured unknown_evidence for the missing span / symbol.
         assert files[2].get("status") == "unknown_evidence"
         assert files[2].get("selector") == "span_id"
         assert files[3].get("status") == "unknown_evidence"
@@ -376,7 +366,6 @@ def test_search_files_role_filter(tmp_path: Path) -> None:
     (workspace / "tests").mkdir()
     (workspace / "tests" / "test_a.py").write_text("def test_x(): pass")
     session = _FakeSession(explore_index=None)
-    # role=source keeps .py files.
     result_source = handle_search_files(
         session,
         _Workspace(workspace),
@@ -384,7 +373,6 @@ def test_search_files_role_filter(tmp_path: Path) -> None:
     )
     payload_source = _decode(result_source)
     assert any("a.py" in m for m in payload_source["matches"])
-    # role=test keeps test_* only.
     result_test = handle_search_files(
         session,
         _Workspace(workspace),

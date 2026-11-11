@@ -1,5 +1,3 @@
-"""Tests for ralph/mcp/upstream/validation.py."""
-
 from __future__ import annotations
 
 from datetime import timedelta
@@ -81,7 +79,7 @@ class _StubClient:
     def list_tools(self, *, timeout_s: float | None = None) -> list[UpstreamTool]:
         return list(self._tools)
 
-    def call_tool(self, name: str, arguments: dict[str, object]) -> object:  # pragma: no cover
+    def call_tool(self, name: str, arguments: dict[str, object]) -> object:
         del name, arguments
         return None
 
@@ -144,7 +142,6 @@ def test_validator_does_not_raise_in_soft_mode() -> None:
 
 
 def test_strict_mode_does_not_raise_on_failing_agent_upstream_server() -> None:
-    """Agent-native (third-party) MCP servers are best-effort: warn and continue."""
     server = _agent_http_server(name="angular")
 
     stream = StringIO()
@@ -163,7 +160,6 @@ def test_strict_mode_does_not_raise_on_failing_agent_upstream_server() -> None:
 
 
 def test_strict_mode_still_raises_on_failing_custom_server() -> None:
-    """Ralph-owned custom (mcp.toml) servers still fail fast in strict mode."""
     server = _custom_http_server(name="ralph-docs")
 
     with pytest.raises(UpstreamValidationError) as excinfo:
@@ -172,7 +168,6 @@ def test_strict_mode_still_raises_on_failing_custom_server() -> None:
 
 
 def test_strict_mode_raises_only_for_custom_failures_in_mixed_set() -> None:
-    """A broken third-party server must not be named in the fail-fast diagnostic."""
     custom = _custom_http_server(name="ralph-docs")
     agent = _agent_http_server(name="angular")
 
@@ -186,7 +181,6 @@ def test_strict_mode_raises_only_for_custom_failures_in_mixed_set() -> None:
 def test_strict_mode_continues_when_only_agent_upstream_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A healthy custom server plus a broken agent server: no raise, both reported."""
     custom = UpstreamMcpServer(
         name="ralph-docs", transport="http", url="http://healthy.invalid/mcp", origin="custom"
     )

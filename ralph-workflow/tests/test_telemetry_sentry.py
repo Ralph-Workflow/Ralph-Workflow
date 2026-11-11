@@ -1,5 +1,3 @@
-"""Tests for ralph.telemetry._sentry."""
-
 from __future__ import annotations
 
 from collections.abc import Iterator
@@ -37,7 +35,6 @@ from tests._support.typed_accessors import (
 
 @pytest.fixture(autouse=True)
 def _reset_telemetry_state() -> Iterator[None]:
-    """Keep each test independent of the process-wide telemetry session."""
     _sentry.reset_telemetry_state()
     yield
     _sentry.reset_telemetry_state()
@@ -81,22 +78,12 @@ def test_init_sentry_calls_sentry_init(monkeypatch: pytest.MonkeyPatch) -> None:
     release = kwargs.get("release")
     assert isinstance(release, str)
     assert release.startswith("ralph-workflow@")
-    # Defense in depth: request locals must NEVER be forwarded even if the
-    # scrubber misses a prefix. Disabling local-variable capture
-    # at the SDK level removes the surface entirely.
     assert kwargs.get("include_local_variables") is False
 
 
 def test_init_sentry_enables_excepthook_so_crashes_are_reported(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An unhandled crash MUST be able to reach Sentry.
-
-    ``default_integrations=False`` disables the whole default set, which
-    silently included ``ExcepthookIntegration`` -- leaving a client that could
-    only ever emit the "session start"/"session end" messages. The integration
-    is opted back in EXPLICITLY so the privacy-sensitive defaults stay off.
-    """
     captured: list[dict[str, object]] = []
 
     def capture_init(**kwargs: object) -> None:
@@ -118,9 +105,6 @@ def test_init_sentry_enables_excepthook_so_crashes_are_reported(
     assert isinstance(integrations, list)
     names = {type(integration).__name__ for integration in integrations}
     assert "ExcepthookIntegration" in names
-    # Privacy-sensitive defaults must remain disabled: these forward argv,
-    # HTTP/subprocess spans with URLs, application logs, and the installed
-    # package inventory respectively.
     assert "ArgvIntegration" not in names
     assert "StdlibIntegration" not in names
     assert "LoggingIntegration" not in names
@@ -128,8 +112,6 @@ def test_init_sentry_enables_excepthook_so_crashes_are_reported(
 
 
 class _RecordingScope:
-    """Minimal stand-in for a Sentry scope context manager."""
-
     def __init__(self, tags: dict[str, str]) -> None:
         self._tags = tags
 
@@ -170,13 +152,6 @@ def _patch_capture(
 def test_report_handled_exception_captures_a_handled_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Failures Ralph catches internally must still produce a Sentry event.
-
-    The excepthook only sees exceptions that propagate out of the process, and
-    Ralph deliberately catches agent failures to retry or degrade -- so without
-    an explicit capture an operator cannot tell a clean run from one that
-    churned for hours on a wedged agent.
-    """
     captured, tags = _patch_capture(monkeypatch, inactive=False)
     exc = RuntimeError("fetch failed")
 
@@ -190,7 +165,6 @@ def test_report_handled_exception_captures_a_handled_failure(
 def test_report_handled_exception_clamps_unknown_origin(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An unbounded origin would forward a user-authored label as a tag."""
     _captured, tags = _patch_capture(monkeypatch, inactive=False)
 
     _sentry.report_handled_exception(RuntimeError("boom"), origin="/Users/someone/my-project")
@@ -201,7 +175,6 @@ def test_report_handled_exception_clamps_unknown_origin(
 def test_report_handled_exception_is_a_noop_when_telemetry_is_disabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Opting out of telemetry must suppress handled-failure capture too."""
     captured, _tags = _patch_capture(monkeypatch, inactive=True)
 
     _sentry.report_handled_exception(RuntimeError("boom"), origin="agent_invocation")
@@ -210,7 +183,6 @@ def test_report_handled_exception_is_a_noop_when_telemetry_is_disabled(
 
 
 def test_report_handled_exception_never_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Telemetry must never change control flow, even when the SDK errors."""
 
     def fake_inactive() -> bool:
         return False
@@ -343,11 +315,6 @@ def test_scrub_public_api_contract(monkeypatch: pytest.MonkeyPatch) -> None:
     assert obj["nested"] == ["~/doc.txt"]
 
 
-# ---------------------------------------------------------------------------
-# Opt-out flag (RALPH_DISABLE_TELEMETRY) — red-phase tests for step 1.
-# ---------------------------------------------------------------------------
-
-
 def test_is_telemetry_disabled_returns_false_when_unset() -> None:
     env: dict[str, str] = {}
     assert is_telemetry_disabled(env) is False
@@ -384,11 +351,6 @@ def test_is_telemetry_disabled_reads_os_environ_when_no_env_passed(
 
     monkeypatch.setenv("RALPH_DISABLE_TELEMETRY", "1")
     assert _sentry.is_telemetry_disabled() is True
-
-
-# ---------------------------------------------------------------------------
-# Extra-scrub-prefix redaction (cwd, argv) — red-phase tests for step 1.
-# ---------------------------------------------------------------------------
 
 
 def test_scrub_obj_redacts_extra_scrub_prefix(
@@ -458,12 +420,6 @@ def test_scrub_obj_handles_lists_with_extra_prefix(
     assert lst[1] == "<redacted>/b"
 
 
-# ---------------------------------------------------------------------------
-# Frame scrubbing (exception.values[*].stacktrace.frames[*].abs_path) —
-# red-phase tests for step 1.
-# ---------------------------------------------------------------------------
-
-
 def test_scrub_event_drops_abs_path_in_frames() -> None:
     event: dict[str, object] = {
         "exception": {
@@ -529,15 +485,6 @@ def test_scrub_event_basenames_absolute_filename() -> None:
 
 
 def test_scrub_event_basenames_relative_filename() -> None:
-    """Relative path-like filenames MUST collapse to their basename.
-
-    Regression: a relative frame filename such as ``ralph/foo.py`` reveals
-    codebase structure (module hierarchy, package layout) and must be
-    redacted to its basename. The earlier behavior preserved relative
-    filenames verbatim, which leaked codebase identity — contradicting
-    AC-06 ("no project file paths leave the process") and the README
-    privacy claim that telemetry never identifies the codebase.
-    """
     event: dict[str, object] = {
         "exception": {
             "values": [
@@ -567,7 +514,6 @@ def test_scrub_event_basenames_relative_filename() -> None:
 
 
 def test_scrub_event_basenames_windows_relative_filename() -> None:
-    """Windows-style relative filenames (``src\\foo.py``) collapse to basename."""
     event: dict[str, object] = {
         "exception": {
             "values": [
@@ -597,12 +543,6 @@ def test_scrub_event_basenames_windows_relative_filename() -> None:
 
 
 def test_scrub_event_preserves_bare_module_name() -> None:
-    """Bare module names without a path separator are too generic to leak identity.
-
-    ``foo.py`` (no ``/`` or ``\\``) does not identify a codebase, so the
-    scrubber leaves it intact. This bounds the redaction to filenames
-    that actually carry path information.
-    """
     event: dict[str, object] = {
         "exception": {
             "values": [
@@ -666,7 +606,6 @@ def test_scrub_event_drops_server_name_alongside_frame_scrubbing() -> None:
 def test_init_sentry_initializes_extra_scrub_prefixes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """init_sentry must populate scrub-policy prefixes from cwd + argv paths."""
     monkeypatch.setattr(_sentry.telemetry_state(), "extra_scrub_prefixes", ())
 
     init_calls: list[dict[str, object]] = []
@@ -688,16 +627,8 @@ def test_init_sentry_initializes_extra_scrub_prefixes(
     prefixes = _sentry.current_scrub_policy().extra_prefixes
     assert fake_cwd in prefixes
     assert fake_argv0 in prefixes
-    # The prompt string is NOT a path; it must NOT be added to prefixes.
     assert "secret prompt" not in prefixes
-    # argv0 was added, so init ran.
     assert len(init_calls) == 1
-
-
-# ---------------------------------------------------------------------------
-# Cross-platform absolute-path recognition (POSIX + Windows) — regression
-# tests for the cross-platform scrubber (AC-04 / AC-06).
-# ---------------------------------------------------------------------------
 
 
 def test_is_absolute_filename_posix() -> None:
@@ -799,7 +730,6 @@ def test_scrub_event_basenames_windows_unc_filename() -> None:
 def test_init_sentry_initializes_extra_scrub_prefixes_with_windows_argv(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Windows-style absolute argv entries must end up in the scrub policy."""
     monkeypatch.setattr(_sentry.telemetry_state(), "extra_scrub_prefixes", ())
 
     monkeypatch.setattr("sentry_sdk.init", lambda **kwargs: None)
@@ -825,11 +755,6 @@ def test_init_sentry_initializes_extra_scrub_prefixes_with_windows_argv(
 def test_build_extra_scrub_prefixes_filters_non_absolute_argv(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Argv entries that are not absolute paths MUST NOT be scrub prefixes.
-
-    Regression: flag values, prompts, and inline arguments would otherwise leak
-    into the scrub-prefix list and cause unrelated strings to be redacted.
-    """
     monkeypatch.setattr("sentry_sdk.init", lambda **kwargs: None)
     monkeypatch.setattr("sentry_sdk.set_user", lambda arg: None)
     monkeypatch.setattr("sentry_sdk.set_tag", lambda k, v: None)
@@ -841,9 +766,9 @@ def test_build_extra_scrub_prefixes_filters_non_absolute_argv(
             "--prompt",
             "a totally benign prompt",
             "C:\\Users\\jane\\repo\\run.py",
-            "ralph/cli/main.py",  # not absolute
-            "",  # empty
-            "42",  # not a path
+            "ralph/cli/main.py",
+            "",
+            "42",
         ],
     )
 
@@ -860,13 +785,7 @@ def test_build_extra_scrub_prefixes_filters_non_absolute_argv(
     assert "42" not in prefixes
 
 
-# ---------------------------------------------------------------------------
-# set_environment_context — red-phase tests for step 3.
-# ---------------------------------------------------------------------------
-
-
 def _make_runtime_env(*, in_virtualenv: bool, fake_sys: object) -> RuntimeEnvironment:
-    """Build a fake RuntimeEnvironment for the in_virtualenv bool test seam."""
     py = _version_info.PythonVersionInfo(
         major=3,
         minor=12,
@@ -993,7 +912,6 @@ def test_set_environment_context_is_fail_soft(
     monkeypatch.setattr("sentry_sdk.set_tag", boom)
     monkeypatch.setattr("sentry_sdk.set_context", boom)
     monkeypatch.setattr(_sentry, "current_platform", boom)
-    # Should NOT raise.
     _sentry.set_environment_context()
 
 
@@ -1060,11 +978,6 @@ def test_set_environment_context_empty_markers(
     assert runtime_context[1]["package_manager"] is None
     assert runtime_context[1]["python_implementation"] == "CPython"
     assert runtime_context[1]["in_virtualenv"] is False
-
-
-# ---------------------------------------------------------------------------
-# Session lifecycle (start, outcome, finalize, flush) — red-phase tests for step 5.
-# ---------------------------------------------------------------------------
 
 
 def test_record_session_start_and_finalize_session(
@@ -1153,7 +1066,6 @@ def test_record_session_start_and_finalize_session(
     assert duration == pytest.approx(60.0)
     session_context = next(c for c in context_calls if c[0] == "session")
     assert session_context[1]["duration_s"] == pytest.approx(60.0)
-    # Explicit timing markers — process-local monotonic values, no wall-clock leak.
     assert session_context[1]["started_monotonic_s"] == pytest.approx(100.0)
     assert session_context[1]["ended_monotonic_s"] == pytest.approx(160.0)
     assert session_context[1]["outcome"] == "success"
@@ -1165,7 +1077,6 @@ def test_record_session_start_and_finalize_session(
 def test_session_lifecycle_records_utc_start_and_end(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Session context exposes queryable UTC bounds alongside monotonic duration."""
     monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
     monkeypatch.setattr(_sentry.telemetry_state(), "started_at", None)
     monkeypatch.setattr(_sentry.telemetry_state(), "outcome", "unknown")
@@ -1200,7 +1111,6 @@ def test_session_lifecycle_records_utc_start_and_end(
 def test_agent_invocation_uses_safe_dimensions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Custom agent and drain names never enter invocation telemetry."""
     metric_calls: list[tuple[str, dict[str, object] | None]] = []
     monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
     monkeypatch.setattr(
@@ -1251,13 +1161,6 @@ def test_finalize_session_returns_none_when_not_initialized(
 def test_finalize_session_emits_explicit_start_end_timing_markers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Regression: the session context MUST include start AND end timing markers.
-
-    Privacy-safe monotonic floats (process-local, no wall-clock leak). The
-    README claims "Session timing (start, duration)" is collected; this test
-    pins that contract so the analyzer's "no session-start field sent" defect
-    cannot silently regress.
-    """
     monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
     monkeypatch.setattr(_sentry.telemetry_state(), "started_at", None)
     monkeypatch.setattr(_sentry.telemetry_state(), "outcome", "unknown")
@@ -1283,13 +1186,6 @@ def test_finalize_session_emits_explicit_start_end_timing_markers(
 def test_finalize_session_timing_markers_are_process_local_not_wallclock(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Sanity check: timing markers are monotonic floats, not Unix timestamps.
-
-    A Unix timestamp is a 10-digit absolute value; a process-local monotonic
-    float is the actual duration of the test execution. We assert the raw
-    value remains inside the injected range so a future regression that
-    switches to ``time.time()`` would immediately fail this guard.
-    """
     monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
     monkeypatch.setattr(_sentry.telemetry_state(), "started_at", None)
     monkeypatch.setattr(_sentry.telemetry_state(), "outcome", "unknown")
@@ -1311,7 +1207,6 @@ def test_finalize_session_timing_markers_are_process_local_not_wallclock(
     ended = session["ended_monotonic_s"]
     assert isinstance(started, float)
     assert isinstance(ended, float)
-    # Unix timestamps are billions; process-local monotonic stays tiny.
     assert started < 1_000_000.0
     assert ended < 1_000_000.0
     assert ended > started
@@ -1341,7 +1236,6 @@ def test_finalize_session_is_fail_soft_on_flush_error(
         raise RuntimeError("flush boom")
 
     monkeypatch.setattr("sentry_sdk.flush", flush_raises)
-    # Must NOT raise.
     assert _sentry.finalize_session(now=160.0, flush_timeout=1.0) == pytest.approx(60.0)
 
 
@@ -1387,24 +1281,9 @@ def test_set_session_outcome_records_value(
     assert _sentry.telemetry_state().outcome == "interrupted"
 
 
-# ---------------------------------------------------------------------------
-# Local-variable scrubber guard.
-# ---------------------------------------------------------------------------
-
-
 def test_scrub_event_redacts_prompt_like_string_anywhere_in_event(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Regression: prompt-shaped strings must not survive the scrubber.
-
-    ``scrub_event`` must scrub the entire event payload via ``scrub_obj``
-    so any string field (request bodies, exception values, breadcrumbs,
-    extra/context blobs) carrying prompt-like text is redacted regardless
-    of which key it lives under. The scrubber cannot enumerate every key,
-    so this test asserts the recursive walk + prefix-match contract: any
-    nested string that contains the configured home prefix collapses to
-    ``~``.
-    """
     fake_home = "/Users/jane"
     monkeypatch.setattr(_sentry.telemetry_state(), "home_prefix", fake_home)
     monkeypatch.setattr(_sentry.telemetry_state(), "extra_scrub_prefixes", ())
@@ -1440,12 +1319,6 @@ def test_scrub_event_redacts_prompt_like_string_anywhere_in_event(
 def test_init_sentry_disables_local_variables_capture(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Regression: ``include_local_variables=False`` is set on ``sentry_sdk.init``.
-
-    If the SDK ever silently drops this kwarg (e.g. via a stub that ignores
-    unknown kwargs), frame locals could leak request parameters verbatim.
-    The test pins the kwarg at the call site.
-    """
     captured: dict[str, object] = {}
 
     def capture_init(**kwargs: object) -> None:
@@ -1463,7 +1336,6 @@ def test_init_sentry_disables_local_variables_capture(
 def test_init_sentry_disables_profiling_for_metadata_only_contract(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Sentry profiling remains disabled because stack samples are not metadata-only."""
     captured: dict[str, object] = {}
 
     def capture_init(**kwargs: object) -> None:
@@ -1480,15 +1352,9 @@ def test_init_sentry_disables_profiling_for_metadata_only_contract(
     assert "profile_lifecycle" not in captured
 
 
-# ---------------------------------------------------------------------------
-# record_command_invocation — closed-vocabulary CLI command tag.
-# ---------------------------------------------------------------------------
-
-
 def test_record_command_invocation_sets_command_tag(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A registered subcommand name forwards as a single set_tag('command', ...)."""
     tag_calls: list[tuple[str, str]] = []
     monkeypatch.setattr(
         "sentry_sdk.set_tag",
@@ -1505,7 +1371,6 @@ def test_record_command_invocation_sets_command_tag(
 def test_record_command_invocation_noop_when_disabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When RALPH_DISABLE_TELEMETRY=1, record_command_invocation must not call set_tag."""
     tag_calls: list[tuple[str, str]] = []
     monkeypatch.setattr(
         "sentry_sdk.set_tag",
@@ -1522,7 +1387,6 @@ def test_record_command_invocation_noop_when_disabled(
 def test_record_command_invocation_noop_when_uninit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When Sentry was never initialized, record_command_invocation is a no-op."""
     tag_calls: list[tuple[str, str]] = []
     monkeypatch.setattr(
         "sentry_sdk.set_tag",
@@ -1539,7 +1403,6 @@ def test_record_command_invocation_noop_when_uninit(
 def test_record_command_invocation_fail_soft(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An exception from sentry_sdk.set_tag MUST NOT propagate to the caller."""
 
     def boom(k: object, v: object) -> None:
         raise RuntimeError("simulated set_tag boom")
@@ -1548,19 +1411,12 @@ def test_record_command_invocation_fail_soft(
     monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
     monkeypatch.delenv("RALPH_DISABLE_TELEMETRY", raising=False)
 
-    # Must not raise.
     _sentry.record_command_invocation("cleanup")
-
-
-# ---------------------------------------------------------------------------
-# set_session_wallclock_start — coarse UTC time-of-day buckets.
-# ---------------------------------------------------------------------------
 
 
 def test_set_session_wallclock_start_records_utc_buckets(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The session payload contains hour_of_day / day_of_week / is_weekday only."""
 
     monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
     monkeypatch.setattr(_sentry.telemetry_state(), "started_at", 100.0)
@@ -1583,14 +1439,13 @@ def test_set_session_wallclock_start_records_utc_buckets(
     wallclock = session_context[1]["wallclock"]
     assert isinstance(wallclock, dict)
     assert wallclock["hour_of_day"] == 9
-    assert wallclock["day_of_week"] == 3  # Thursday
+    assert wallclock["day_of_week"] == 3
     assert wallclock["is_weekday"] is True
 
 
 def test_wallclock_no_full_timestamp_no_timezone(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The wallclock payload has NO iso_timestamp / timestamp / timezone key."""
 
     monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
     monkeypatch.setattr(_sentry.telemetry_state(), "started_at", 100.0)
@@ -1621,7 +1476,6 @@ def test_wallclock_no_full_timestamp_no_timezone(
 def test_set_session_wallclock_start_noop_when_disabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When telemetry is disabled, the wallclock buckets must not be recorded."""
 
     monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
     monkeypatch.setattr(_sentry.telemetry_state(), "wallclock_buckets", None)
@@ -1635,7 +1489,6 @@ def test_set_session_wallclock_start_noop_when_disabled(
 def test_set_session_wallclock_start_fail_soft(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Exceptions during wallclock capture MUST NOT propagate to the caller."""
 
     monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
     monkeypatch.setattr(_sentry.telemetry_state(), "wallclock_buckets", None)
@@ -1646,19 +1499,12 @@ def test_set_session_wallclock_start_fail_soft(
 
     monkeypatch.setattr(_sentry, "_compute_wallclock_buckets", boom)
 
-    # Must not raise.
     _sentry.set_session_wallclock_start(now_dt=datetime(2026, 3, 12, 9, 30, tzinfo=UTC))
-
-
-# ---------------------------------------------------------------------------
-# record_phase_execution — PhaseRole-keyed aggregate.
-# ---------------------------------------------------------------------------
 
 
 def test_record_phase_execution_accumulates_by_role(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Three records collapse into one session payload keyed by PhaseRole."""
     monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
     monkeypatch.setattr(_sentry.telemetry_state(), "started_at", 100.0)
     monkeypatch.setattr(_sentry.telemetry_state(), "outcome", "unknown")
@@ -1730,7 +1576,6 @@ def test_record_phase_execution_accumulates_by_role(
 def test_record_phase_execution_drops_unknown_role(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A role outside the PhaseRole closed vocabulary MUST be silently dropped."""
     monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
     monkeypatch.setattr(_sentry.telemetry_state(), "phase_stats", {})
 
@@ -1742,7 +1587,6 @@ def test_record_phase_execution_drops_unknown_role(
 def test_record_phase_execution_noop_when_disabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When telemetry is disabled, record_phase_execution is a no-op."""
     monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
     monkeypatch.setattr(_sentry.telemetry_state(), "phase_stats", {})
     monkeypatch.setenv("RALPH_DISABLE_TELEMETRY", "1")
@@ -1755,21 +1599,18 @@ def test_record_phase_execution_noop_when_disabled(
 def test_record_phase_execution_fail_soft(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An exception from set_tag / collaborators MUST NOT propagate."""
     monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
     monkeypatch.setattr(
         _sentry.telemetry_state(), "phase_stats", {"execution": "this is not a dict"}
     )
     monkeypatch.delenv("RALPH_DISABLE_TELEMETRY", raising=False)
 
-    # Must not raise even though the stats lookup will fail.
     _sentry.record_phase_execution(role="execution", duration_s=1, outcome="success")
 
 
 def test_phase_stats_drained_after_finalize(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """After finalize_session, the phase-stat accumulator MUST be cleared."""
     monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
     monkeypatch.setattr(_sentry.telemetry_state(), "started_at", 100.0)
     monkeypatch.setattr(_sentry.telemetry_state(), "outcome", "unknown")
@@ -1788,15 +1629,9 @@ def test_phase_stats_drained_after_finalize(
     assert _sentry.telemetry_state().phase_stats == {}
 
 
-# ---------------------------------------------------------------------------
-# ci / container boolean tags (EnvironmentInfo reuse, no re-detection).
-# ---------------------------------------------------------------------------
-
-
 def test_set_environment_context_ci_container_false_tags(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """ci/container tags fire with boolean False when EnvironmentInfo is empty."""
     tag_calls: list[tuple[str, object]] = []
     monkeypatch.setattr(
         "sentry_sdk.set_tag",
@@ -1862,7 +1697,6 @@ def test_set_environment_context_ci_container_false_tags(
 def test_set_environment_context_ci_container_forward_bool_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The ci/container tag VALUES MUST be booleans, never strings or env-var values."""
     tag_calls: list[tuple[str, object]] = []
     monkeypatch.setattr(
         "sentry_sdk.set_tag",
@@ -1921,14 +1755,6 @@ def test_set_environment_context_ci_container_forward_bool_only(
     assert isinstance(tag_map["container"], bool)
     assert tag_map["ci"] is True
     assert tag_map["container"] is True
-
-
-# ---------------------------------------------------------------------------
-# Closed-vocabulary privacy regression — proves no user-supplied string,
-# sys.argv content, prompt, or cwd/path leaves the process via the new
-# telemetry. Tagged-name scan + role-set membership + bool-only ci/container
-# are the three invariants.
-# ---------------------------------------------------------------------------
 
 
 def _assert_no_forbidden_substrings(
@@ -2077,7 +1903,6 @@ def test_closed_vocabulary_privacy_regression(
     monkeypatch.setattr(_sentry.telemetry_state(), "wallclock_buckets", None)
     monkeypatch.setattr(_sentry.telemetry_state(), "phase_stats", {})
 
-    # Use ci=True/container=True so the privacy guard can verify bool-only.
     monkeypatch.setattr(
         _sentry,
         "current_platform",
@@ -2123,12 +1948,10 @@ def test_closed_vocabulary_privacy_regression(
 
     _sentry.set_environment_context()
 
-    # Exercise every new function with adversarial strings.
     _sentry.record_session_start(now=100.0)
-    _sentry.record_command_invocation("pipeline")  # closed-vocabulary command
+    _sentry.record_command_invocation("pipeline")
     _sentry.set_session_wallclock_start(now_dt=datetime(2026, 3, 12, 9, 30, tzinfo=UTC))
 
-    # Unknown phase role MUST be dropped (privacy invariant).
     _sentry.record_phase_execution(role="secret-startup-phase", duration_s=1, outcome="success")
     assert _sentry.telemetry_state().phase_stats == {}
 
@@ -2137,7 +1960,6 @@ def test_closed_vocabulary_privacy_regression(
 
     _sentry.finalize_session(now=160.0, flush_timeout=2.0)
 
-    # Invariant (a): no adversarial echo ("secret", "startup", "mvp").
     forbidden_substrings = ("secret", "startup", "mvp")
     for k, v in tag_calls:
         if isinstance(v, str):
@@ -2175,7 +1997,6 @@ def test_closed_vocabulary_privacy_regression(
             forbidden_substrings=forbidden_substrings,
         )
 
-    # Invariant (b): every tag NAME is in the closed vocabulary.
     allowed_tag_names = {
         "command",
         "os",
@@ -2189,7 +2010,6 @@ def test_closed_vocabulary_privacy_regression(
     for k, _v in tag_calls:
         assert k in allowed_tag_names, f"unknown tag name leaked: {k!r}"
 
-    # Invariant (c): ci/container tag VALUES are bool.
     tag_map = dict(tag_calls)
     if "ci" in tag_map:
         assert isinstance(tag_map["ci"], bool), f"ci tag is not bool: {tag_map['ci']!r}"
@@ -2198,7 +2018,6 @@ def test_closed_vocabulary_privacy_regression(
             f"container tag is not bool: {tag_map['container']!r}"
         )
 
-    # Invariant (d): phase context keys are all in PhaseRole closed vocabulary.
     session_payload = next((c[1] for c in context_calls if c[0] == "session"), None)
     assert session_payload is not None
     phases = session_payload.get("phases")
@@ -2210,7 +2029,6 @@ def test_closed_vocabulary_privacy_regression(
 
 
 def _flatten(value: object) -> list[object]:
-    """Walk an arbitrary payload and yield every leaf value (depth-first)."""
     if isinstance(value, dict):
         out: list[object] = []
         for k, v in value.items():
@@ -2226,7 +2044,6 @@ def _flatten(value: object) -> list[object]:
 
 
 def _agent(**overrides: object) -> AgentConfig:
-    """Build an AgentConfig with a benign default command."""
     fields: dict[str, object] = {"cmd": "claude"}
     fields.update(overrides)
     return AgentConfig.model_validate(fields)
@@ -2235,7 +2052,6 @@ def _agent(**overrides: object) -> AgentConfig:
 def _capture_contexts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> tuple[list[tuple[str, dict[str, object]]], list[tuple[str, object]]]:
-    """Activate telemetry and capture set_context / set_tag calls."""
     contexts: list[tuple[str, dict[str, object]]] = []
     tags: list[tuple[str, object]] = []
     monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
@@ -2250,7 +2066,6 @@ def _capture_contexts(
 def test_agent_config_context_drops_names_and_raw_cmd(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """User-authored agent names and raw cmd strings never leave the process."""
     contexts, tags = _capture_contexts(monkeypatch)
 
     _sentry.set_agent_config_context(
@@ -2277,7 +2092,6 @@ def test_agent_config_context_drops_names_and_raw_cmd(
 def test_agent_config_context_keeps_model_and_reduces_flags_to_booleans(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Model IDs pass through verbatim; flag VALUES are reduced to presence booleans."""
     contexts, tags = _capture_contexts(monkeypatch)
 
     _sentry.set_agent_config_context(
@@ -2308,7 +2122,6 @@ def test_agent_config_context_keeps_model_and_reduces_flags_to_booleans(
 def test_agent_config_context_disambiguates_same_family_agents(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Two agents on one transport get distinct, name-free slugs."""
     contexts, _tags = _capture_contexts(monkeypatch)
 
     _sentry.set_agent_config_context(
@@ -2327,7 +2140,6 @@ def test_agent_config_context_disambiguates_same_family_agents(
 def test_agent_config_context_caps_entries_but_reports_true_count(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A pathological config is truncated in the payload, not in the count."""
     contexts, _tags = _capture_contexts(monkeypatch)
     oversized = {
         f"agent-{i}": _agent(cmd="claude", transport=AgentTransport.CLAUDE) for i in range(40)
@@ -2345,7 +2157,6 @@ def test_agent_config_context_caps_entries_but_reports_true_count(
 def test_agent_config_context_noop_when_not_initialized(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """No agent config is forwarded when Sentry was never initialized."""
     contexts: list[tuple[str, dict[str, object]]] = []
     monkeypatch.setattr(_sentry.telemetry_state(), "initialized", False)
     monkeypatch.setattr(
@@ -2380,7 +2191,6 @@ def test_policy_schema_state_outdated_when_marker_stale(tmp_path: Path) -> None:
 
 
 def test_telemetry_policy_schema_vocabulary_matches_policy_layer() -> None:
-    """The restated vocabulary in _sentry must not drift from the policy layer."""
     assert _sentry._POLICY_SCHEMA_STATES == POLICY_SCHEMA_STATES
 
 
@@ -2399,7 +2209,6 @@ def test_set_policy_schema_context_tags_state(
 def test_set_policy_schema_context_rejects_unknown_vocabulary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An out-of-vocabulary state collapses to 'unknown' instead of being forwarded."""
     _contexts, tags = _capture_contexts(monkeypatch)
 
     _sentry.set_policy_schema_context("/Users/jane/secret-corp/policy")
@@ -2411,7 +2220,6 @@ def test_set_policy_schema_context_rejects_unknown_vocabulary(
 def test_finalize_session_reports_ralph_and_python_versions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The session payload is self-describing: it carries the versions that produced it."""
     contexts, _tags = _capture_contexts(monkeypatch)
     monkeypatch.setattr("sentry_sdk.capture_message", lambda *a, **k: None)
     monkeypatch.setattr("sentry_sdk.end_session", lambda: None)
@@ -2444,7 +2252,6 @@ def test_agent_config_forwards_genuine_model_identifiers(
     monkeypatch: pytest.MonkeyPatch,
     model_id: str,
 ) -> None:
-    """A model IDENTIFIER is a product identifier and passes through verbatim."""
     contexts, _tags = _capture_contexts(monkeypatch)
 
     _sentry.set_agent_config_context({"a": _agent(transport=AgentTransport.CLAUDE, model=model_id)})
@@ -2471,18 +2278,6 @@ def test_agent_config_forwards_genuine_model_identifiers(
 def test_agent_config_rejects_paths_urls_and_credentials_in_model(
     hostile_model: str,
 ) -> None:
-    """A model field carrying a path, URL, or credential must never reach Sentry.
-
-    ``model`` is free text: local-model and proxy workflows put filesystem paths
-    and credentialed endpoints there. The before_send scrubber only rewrites the
-    home/cwd PREFIX, so such values would otherwise leak org names, directory
-    structure, and passwords.
-
-    The contract is asserted directly against ``build_agent_config_payload`` so
-    the test does not depend on the order-dependent ``_capture_contexts``
-    monkeypatch chain (which is flaky when ``set_agent_config_context`` runs
-    before its telemetry-state activation propagates in parallel xdist workers).
-    """
     payload = _sentry_payload.build_agent_config_payload(
         {"a": _agent(transport=AgentTransport.CLAUDE, model=hostile_model)}
     )
@@ -2497,7 +2292,6 @@ def test_agent_config_rejects_paths_urls_and_credentials_in_model(
 def test_agent_config_distinguishes_unset_model_from_rejected_model(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An unconfigured model stays None; a rejected one reads as 'custom'."""
     contexts, _tags = _capture_contexts(monkeypatch)
 
     _sentry.set_agent_config_context(
@@ -2516,12 +2310,10 @@ def test_agent_config_distinguishes_unset_model_from_rejected_model(
 def test_agent_families_tag_covers_every_agent_not_just_forwarded_ones(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A config larger than the entry cap must not under-report its families."""
     _contexts, tags = _capture_contexts(monkeypatch)
     oversized: dict[str, AgentConfig] = {
         f"claude-{i}": _agent(cmd="claude", transport=AgentTransport.CLAUDE) for i in range(40)
     }
-    # Sits beyond AGENT_CONFIG_MAX_ENTRIES, so it is never a forwarded entry.
     oversized["tail-codex"] = _agent(cmd="codex", transport=AgentTransport.CODEX)
 
     _sentry.set_agent_config_context(oversized)
@@ -2531,18 +2323,12 @@ def test_agent_families_tag_covers_every_agent_not_just_forwarded_ones(
 
 
 def test_agent_family_table_covers_every_transport() -> None:
-    """A new AgentTransport must not silently degrade to 'custom'/'generic'.
-
-    Without this guard a 10th transport would be reported as an unknown custom
-    agent with every gate green — the telemetry would be wrong, not broken.
-    """
     assert {transport.value for transport in AgentTransport} == set(
         _sentry_payload.AGENT_FAMILY_BY_TRANSPORT
     )
 
 
 def test_agent_family_table_maps_kimi_family_and_binary() -> None:
-    """Kimi reports the 'kimi' family and survives the cmd reduction."""
     assert _sentry_payload.AGENT_FAMILY_BY_TRANSPORT["kimi"] == "kimi"
     assert "kimi" in _sentry_payload._KNOWN_AGENT_BINARIES
 
@@ -2552,7 +2338,6 @@ def test_every_vocabulary_state_survives_the_sink(
     monkeypatch: pytest.MonkeyPatch,
     state: str,
 ) -> None:
-    """Each in-vocabulary state reaches Sentry unchanged (not collapsed to 'unknown')."""
     _contexts, tags = _capture_contexts(monkeypatch)
 
     _sentry.set_policy_schema_context(state)
@@ -2561,7 +2346,6 @@ def test_every_vocabulary_state_survives_the_sink(
 
 
 def test_policy_schema_state_unknown_when_policy_file_unreadable(tmp_path: Path) -> None:
-    """An unreadable policy pack degrades to 'unknown' rather than raising."""
     _write_policy_pack(tmp_path, first_line=policy_markers.POLICY_SCHEMA_MARKER)
     unreadable = tmp_path / policy_markers.CANONICAL_DIR / policy_markers.CORE_POLICY_FILES[0]
     unreadable.write_bytes(b"\xff\xfe\x00invalid utf-8 \xc3\x28")

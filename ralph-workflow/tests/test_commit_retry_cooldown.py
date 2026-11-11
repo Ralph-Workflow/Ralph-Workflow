@@ -39,7 +39,6 @@ def test_retry_budget_exhaustion_surfaces_failure_without_agent_choice_verdict()
 
 
 def test_commit_failure_records_failed_outcome_on_display_surface(tmp_path: Path) -> None:
-    """AC11: A commit failure records 'failed' outcome on the display surface."""
     from rich.console import Console
 
     from ralph.display.context import make_display_context
@@ -86,7 +85,6 @@ def test_commit_failure_records_failed_outcome_on_display_surface(tmp_path: Path
 
 
 def test_phase_display_honesty_on_commit_failure_never_reports_completed() -> None:
-    """AC11: Commit failure clears pending completed outcome and routes to recovery, never failed_terminal."""
     from ralph.pipeline.commit_executor import set_last_commit_error
     from ralph.pipeline.events import PipelineEvent
     from ralph.pipeline.reducer import reduce
@@ -117,7 +115,6 @@ def test_phase_display_honesty_on_commit_failure_never_reports_completed() -> No
 
 
 def test_complete_commit_rejects_missing_or_empty_sha() -> None:
-    """AC11: Complete commit authority refuses to promote an integration record without a valid sha."""
     from ralph.pipeline._commit_completion_authority import complete_commit
     from ralph.pipeline.auto_integrate_record import IntegrationRecord
 

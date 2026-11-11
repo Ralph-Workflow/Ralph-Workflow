@@ -1,5 +1,3 @@
-"""Tests for ralph.skills.manager.SkillManager."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -170,8 +168,6 @@ def test_check_baseline_health_marks_outdated_on_version_mismatch(
 
 
 def test_check_skills_for_updates_marks_state_only_on_update(tmp_path: Path) -> None:
-    """check_skills_for_updates is surface-only: it records the update signal in state
-    and returns True, but MUST NOT call install_baseline_skills."""
     manager = SkillManager(state_path=tmp_path / "state.json")
     with (
         patch(

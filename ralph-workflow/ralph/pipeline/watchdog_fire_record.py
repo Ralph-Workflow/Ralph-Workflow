@@ -1,11 +1,3 @@
-"""Name the watchdog rule behind an ``AgentInactivityTimeoutError``.
-
-Every watchdog kill, whether silence, a loop-breaker, the child ceiling or
-the session ceiling, reaches the retry layer as one exception type, and the
-retry text used to flatten it to "an inactivity timeout". This module turns
-the exception's rule and its ``watchdog_snapshot`` into the detail line shown
-to the retry agent and into one JSONL record per kill that survives the run.
-"""
 
 from __future__ import annotations
 
@@ -19,11 +11,8 @@ from ralph.agents.invoke import AgentInactivityTimeoutError
 if TYPE_CHECKING:
     from pathlib import Path
 
-#: Workspace-relative journal with one JSON object per watchdog kill.
 WATCHDOG_FIRE_EVENTS_RELPATH: Final[str] = ".agent/watchdog-fire-events.jsonl"
 
-#: Snapshot fields worth showing the retry agent, in display order. They answer
-#: "was it silent, and was work still live?" (subagents, MCP calls, last signal).
 _DETAIL_SNAPSHOT_KEYS: Final[tuple[str, ...]] = (
     "idle_elapsed_seconds",
     "invocation_elapsed_seconds",
@@ -36,9 +25,6 @@ _DETAIL_SNAPSHOT_KEYS: Final[tuple[str, ...]] = (
 )
 
 
-#: Longest string kept per snapshot value or message in the journal. Loop-breaker
-#: diagnostics carry exec argv previews that can hold secrets and the file is
-#: append-only, so each record stays short.
 _MAX_RECORDED_TEXT: Final[int] = 512
 
 
@@ -67,11 +53,6 @@ def _rule(exc: AgentInactivityTimeoutError) -> str | None:
 
 
 def watchdog_fire_detail(exc: Exception) -> str | None:
-    """Return the retry-prompt detail naming the fired rule, else ``None``.
-
-    ``None`` for any failure that is not a watchdog kill, so its retry text
-    keeps its own wording.
-    """
     if not isinstance(exc, AgentInactivityTimeoutError):
         return None
     snapshot = _snapshot(exc)
@@ -90,12 +71,6 @@ def record_watchdog_fire(
     phase: str,
     recorded_at: float,
 ) -> None:
-    """Append one record for a watchdog kill to the workspace journal.
-
-    A no-op for any failure that is not a watchdog kill. The journal is the
-    only durable answer to "which rule killed this agent?": the console line
-    and the retry prompt are gone once the run's terminal closes.
-    """
     if not isinstance(exc, AgentInactivityTimeoutError):
         return
     record = {
@@ -111,12 +86,9 @@ def record_watchdog_fire(
     try:
         line = json.dumps(record, default=str) + "\n"
         journal.parent.mkdir(parents=True, exist_ok=True)
-        # filesystem-write-ok: append-only one-line-per-kill journal; write_text_if_changed's whole-file replace semantics would drop earlier kills.
         with journal.open("a", encoding="utf-8") as handle:
             handle.write(line)
     except (OSError, TypeError, ValueError) as error:
-        # Diagnostic only: a journal that cannot be written must not turn a
-        # retryable watchdog kill into a crash of the retry layer.
         logger.warning("Could not record watchdog fire to {}: {}", journal, error)
 
 

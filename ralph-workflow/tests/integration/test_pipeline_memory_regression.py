@@ -1,23 +1,3 @@
-"""Regression harness for bounded runner agent-output retention.
-
-These tests are subprocess_e2e: they exercise the real pipeline runner
-with tracemalloc snapshots across multi-iteration loops that cannot
-fit the per-test 1 s budget.
-
-Characterization notes (wt-024 memory-perf):
-- Cycle count is sized to expose sub-kilobyte-per-cycle retention that
-  would accumulate fatally over an hours-long run (detectable floor
-  ~512 B/cycle). Five post-warmup cycles still yield ~2.5 KiB if
-  retention were linear at that floor — well below the 256 KiB spread
-  cap — while keeping suite wall-clock under the e2e budget.
-- Bridge factories used here MUST NOT retain per-call argument dicts;
-  ``_RecordingBridgeFactory.calls`` is a test-only accumulator and
-  would mask production retention behind harness noise.
-- Early/late timing numbers are characterization evidence reported by
-  the test; the hard assertion is retained-state plateau, not a
-  brittle wall-clock threshold.
-"""
-
 from __future__ import annotations
 
 import gc
@@ -64,8 +44,6 @@ _PEAK_DELTA_LIMIT = 2_000_000
 
 
 class _SharedFakeBridge:
-    """Minimal SessionBridgeLike stand-in reused across cycles."""
-
     def __init__(self) -> None:
         self.run_id = str(uuid.uuid4())
 
@@ -83,7 +61,6 @@ _SHARED_BRIDGE = _SharedFakeBridge()
 
 
 def _shared_bridge_factory(**_kwargs: object) -> _SharedFakeBridge:
-    """Return a singleton fake bridge without retaining call arguments."""
     del _kwargs
     return _SHARED_BRIDGE
 
@@ -107,11 +84,6 @@ def _fake_invoke_agent(
 
 
 def _traced_bytes_from_ralph() -> int:
-    """Bytes currently traced to ralph package allocations.
-
-    Process-wide totals include unrelated daemon threads; scoping to
-    ``ralph/*`` (excluding tests/site-packages) is the signal under test.
-    """
     snapshot = tracemalloc.take_snapshot().filter_traces(
         (
             tracemalloc.Filter(inclusive=True, filename_pattern="*ralph/*"),
@@ -183,7 +155,6 @@ def test_run_pipeline_memory_regression(monkeypatch: MonkeyPatch, tmp_path: Path
     retained_spread = max(post_warmup) - min(post_warmup)
     final_retained = post_warmup[-1]
 
-    # Characterization report (not a brittle CI threshold).
     print(
         "pipeline_memory_characterization "
         f"cycles={_ITERATION_COUNT} warmup={_WARMUP_COUNT} "

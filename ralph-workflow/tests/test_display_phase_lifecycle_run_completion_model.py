@@ -1,10 +1,3 @@
-"""Black-box tests for ralph/display/phase_lifecycle.py.
-
-Verifies the view-model dataclasses hold correct data, provide consistent
-iteration labels, and convert cleanly to PhaseIterationContext for
-downstream rendering.
-"""
-
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -23,10 +16,6 @@ from ralph.display.phase_lifecycle import (
 from ralph.display.snapshot import BudgetProgress
 from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline.rebase_state import RebaseState
-
-# ---------------------------------------------------------------------------
-# PhaseEntryModel
-# ---------------------------------------------------------------------------
 
 
 class TestRunCompletionModel:
@@ -68,7 +57,6 @@ class TestRunCompletionModel:
             pass
 
     def test_from_snapshot_extracts_fields(self) -> None:
-        """from_snapshot correctly projects a PipelineSnapshot into the model."""
         snap = MagicMock()
         snap.phase = "done"
         snap.is_terminal_failure = False
@@ -112,7 +100,6 @@ class TestRunCompletionModel:
         assert model.budget_progress == {"dev_cycles": (3, 10)}
 
     def test_from_snapshot_excludes_non_budget_counters(self) -> None:
-        """Budget counters with tracks_budget=False are excluded."""
         snap = MagicMock()
         snap.phase = "done"
         snap.is_terminal_failure = False
@@ -150,7 +137,6 @@ class TestRunCompletionModel:
         assert m.last_activity_line is None
 
     def test_from_snapshot_extracts_analysis_decisions(self) -> None:
-        """from_snapshot filters analysis phases from decision_log."""
         snap = MagicMock()
         snap.phase = "done"
         snap.is_terminal_failure = False
@@ -175,7 +161,6 @@ class TestRunCompletionModel:
         assert model.analysis_decisions[1] == ("review_analysis", "revise", "nit fixes")
 
     def test_from_snapshot_extracts_last_activity_line(self) -> None:
-        """from_snapshot carries last_activity_line from snapshot."""
         snap = MagicMock()
         snap.phase = "done"
         snap.is_terminal_failure = False
@@ -193,7 +178,6 @@ class TestRunCompletionModel:
         assert model.last_activity_line == "read file: src/main.py"
 
     def test_from_snapshot_extracts_waiting_status_and_failure_category(self) -> None:
-        """from_snapshot carries waiting_status_line and last_failure_category."""
         snap = MagicMock()
         snap.phase = "done"
         snap.is_terminal_failure = False
@@ -212,7 +196,6 @@ class TestRunCompletionModel:
         assert model.last_failure_category == "timeout"
 
     def test_from_snapshot_analysis_decisions_empty_when_no_analysis_phases(self) -> None:
-        """from_snapshot yields empty analysis_decisions when log has no analysis phases."""
         snap = MagicMock()
         snap.phase = "done"
         snap.is_terminal_failure = False
@@ -230,12 +213,10 @@ class TestRunCompletionModel:
         assert model.analysis_decisions == ()
 
     def test_mcp_restart_count_defaults_zero(self) -> None:
-        """RunCompletionModel.mcp_restart_count defaults to zero."""
         m = RunCompletionModel(final_phase="done", is_failure=False)
         assert m.mcp_restart_count == 0
 
     def test_from_snapshot_extracts_mcp_restart_count(self) -> None:
-        """from_snapshot carries mcp_restart_count from snapshot."""
         snap = MagicMock()
         snap.phase = "done"
         snap.is_terminal_failure = False
@@ -312,7 +293,6 @@ def test_terminal_rendered_prefix() -> None:
 
 @pytest.mark.parametrize("state", list(OperationDisplayState))
 def test_all_operation_display_states_rendered_prefix(state: OperationDisplayState) -> None:
-    """Every OperationDisplayState value formats with its canonical prefix."""
     msg = format_auto_integrate_message(operation_display_state=state, target="main")
     if state is OperationDisplayState.INTERVENTION_REQUIRED:
         expected_prefix = "escalating through the autonomous fallback ladder"
@@ -323,7 +303,6 @@ def test_all_operation_display_states_rendered_prefix(state: OperationDisplaySta
 
 @pytest.mark.parametrize("kind", list(RebaseOutcomeKind))
 def test_all_rebase_outcome_kinds_project_and_render_prefix(kind: RebaseOutcomeKind) -> None:
-    """Every RebaseOutcomeKind value projects to OperationDisplayState and renders its prefix."""
     display_state = rebase_outcome_to_operation_display_state(kind)
     assert display_state is not None
     assert isinstance(display_state, OperationDisplayState)
@@ -336,7 +315,6 @@ def test_all_rebase_outcome_kinds_project_and_render_prefix(kind: RebaseOutcomeK
 
 
 def test_rebase_state_object_outcome_projection() -> None:
-    """rebase_outcome_to_operation_display_state projects directly from a RebaseState object."""
     state_landing = RebaseState(last_outcome=RebaseOutcomeKind.LANDING)
     assert rebase_outcome_to_operation_display_state(state_landing) == OperationDisplayState.LANDING
 
@@ -354,7 +332,6 @@ def test_rebase_state_object_outcome_projection() -> None:
 
 
 def test_format_auto_integrate_message_with_rebase_object() -> None:
-    """format_auto_integrate_message accepts rebase object and renders typed prefix."""
     state_integrating = RebaseState(last_outcome=RebaseOutcomeKind.INTEGRATING)
     msg_integrating = format_auto_integrate_message(rebase=state_integrating, target="main")
     assert msg_integrating.startswith("integrating")

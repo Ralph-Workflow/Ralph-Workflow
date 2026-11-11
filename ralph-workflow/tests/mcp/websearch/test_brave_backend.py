@@ -16,7 +16,7 @@ IMPORT_ERROR_MATCH = "pip install ralph-workflow\\[web-search\\]"
 def _import_brave_module() -> object:
     try:
         return import_module("ralph.mcp.websearch.backends.brave")
-    except ModuleNotFoundError as exc:  # pragma: no cover - exercised in RED phase
+    except ModuleNotFoundError as exc:
         raise AssertionError("ralph.mcp.websearch.backends.brave should exist") from exc
 
 

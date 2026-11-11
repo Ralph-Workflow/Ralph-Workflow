@@ -1,16 +1,3 @@
-"""Regression tests: web-access MCP tools are visible and callable for non-commit SessionDrains.
-
-These verify the historically brittle "configured-but-invisible" regression:
-- visit_url (built-in WebVisit) must appear in the tool registry for non-commit drains
-- upstream proxy tools must appear in the tool registry for drains with UPSTREAM_TOOL_USE
-- commit-class drains must NOT receive web capabilities (read-only, no web/upstream access)
-
-These use the ToolBridge API directly rather than a real HTTP server, which avoids
-subprocess startup overhead (~1.5-3 s per test under parallel execution) and keeps
-each test well within the 1 s per-test wall-clock budget.
-The full HTTP-stack path is covered by test_mcp_e2e.py.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -52,15 +39,12 @@ _NON_COMMIT_DRAINS = [d.value for d in SessionDrain if d not in _COMMIT_CLASS_DR
 
 
 class TestVisitUrlPhaseVisibility:
-    """Test that visit_url is visible for non-commit drains and absent for commit-class drains."""
-
     @pytest.mark.parametrize("drain_str", _NON_COMMIT_DRAINS)
     def test_visit_url_is_visible_and_callable_for_non_commit_drain(
         self,
         drain_str: str,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """visit_url must appear in the tool registry and be dispatchable for non-commit drains."""
         mock_outcome = FetchOutcome(
             status="ok",
             effective_url="https://example.com/page",
@@ -93,7 +77,6 @@ class TestVisitUrlPhaseVisibility:
         self,
         drain_str: str,
     ) -> None:
-        """visit_url must NOT appear in the tool registry for commit-class drains."""
         session = _make_session(drain_str)
         registry = _visit_registry(session)
         tool_names = {t.name for t in registry.list_definitions()}

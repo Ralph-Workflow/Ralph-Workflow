@@ -1,13 +1,3 @@
-"""Integration tests for persisted development/review progress invariants.
-
-These tests drive ``runner.run()`` in-process with a mocked agent execution seam
-so the reducer, checkpoint save path, and policy routing can be exercised without
-real subprocesses.
-
-These tests are subprocess_e2e: they exercise the real pipeline runner
-with multi-iteration loops that cannot fit the per-test 1 s budget.
-"""
-
 from __future__ import annotations
 
 from functools import lru_cache
@@ -54,11 +44,6 @@ DEVELOPMENT_CYCLES_TWO = 2
 DEVELOPMENT_CYCLES_THREE = 3
 MAX_PLANNING_ANALYSIS_ITERATIONS = 3
 
-# All tests in this module drive the full pipeline runner (multiple
-# phases, policy routing, checkpoint save path) and frequently exceed
-# the default 1-second per-test ceiling under parallel xdist load.
-# A 5-second ceiling reflects the realistic wall-clock cost without
-# changing the test design.
 pytestmark = [pytest.mark.timeout_seconds(5), pytest.mark.subprocess_e2e]
 
 
@@ -77,13 +62,6 @@ def _default_policy_bundle() -> object:
 
 
 def _strip_invocation_gates(bundle: PolicyBundle) -> PolicyBundle:
-    """Remove invocation gates so iteration routing is tested in isolation.
-
-    The default policy gates ``development_analysis`` entry on cumulative
-    upstream execution time (≥ 15 min). These tests mock instant agent
-    invocations, so the gate would bypass analysis entirely — obscuring
-    the iteration-counting behaviour under test.
-    """
     phases = dict(bundle.pipeline.phases)
     for name, phase_def in phases.items():
         if phase_def.invocation_gate is not None:
@@ -94,7 +72,6 @@ def _strip_invocation_gates(bundle: PolicyBundle) -> PolicyBundle:
 
 
 def _config() -> UnifiedConfig:
-    # Keep incidental auto-integrate git work out of the e2e wall-clock budget.
     return UnifiedConfig.model_validate({"general": {"auto_integrate_enabled": False}})
 
 
@@ -152,7 +129,6 @@ def _run_pipeline(
         analysis_phases = {"planning_analysis", "development_analysis"}
         if callable(analysis_event_for) and effect.phase in analysis_phases:
             return analysis_event_for(effect.phase)
-        # Handle commit phases using commit_event_for
         commit_event_for = getattr(mock_agent_invoker, "commit_event_for", None)
         if callable(commit_event_for):
             return commit_event_for(effect.phase)
@@ -325,12 +301,6 @@ def test_runner_uses_real_planning_analysis_decision_and_skips_reentry_at_cap(
     tmp_path: Path,
     memory_workspace: MemoryWorkspace,
 ) -> None:
-    """Planning analysis loopbacks hit the cap then skip re-entry into development.
-
-    Uses the shared ``_run_pipeline`` harness (same seam as the development
-    analysis cap tests) so the exhaustion advance cannot busy-loop under a
-    custom stop-at-development determine hook.
-    """
     invoker = PlanningAnalysisAlwaysLoopbackInvoker(memory_workspace)
     policy_bundle = _policy_bundle_with_loop_counter(
         "planning_analysis_iteration",
@@ -426,7 +396,6 @@ def test_development_analysis_runs_exactly_up_to_cap_then_skips_reentry(
     development_final_commit_state = next(
         state for state in saved_states if state.phase == "development_final_commit"
     )
-    # development_analysis -> development_final_commit_review -> development_final_commit
     assert development_final_commit_state.previous_phase == "development_final_commit_review"
     assert development_final_commit_state.get_loop_iteration("development_analysis_iteration") == 0
     final_state = saved_states[-1]
@@ -473,15 +442,6 @@ def test_dev_cycle_routing_layer_completes_with_mocked_execution(
     tmp_path: Path,
     mock_agent_invoker: MockAgentInvoker,
 ) -> None:
-    """Routing-layer regression: the pipeline can complete development cycles even when
-    the mock execution handler never writes development_result.
-
-    _execute_effect is mocked to return AGENT_SUCCESS, completely bypassing
-    handle_execution_phase. This test exercises the runner/checkpoint/state-machine
-    routing layer only, not artifact validation. development_result is required by
-    default policy, but this test confirms the routing layer is not affected by
-    mocked execution.
-    """
     result, saved_states = _run_pipeline(
         monkeypatch,
         tmp_path,
@@ -505,13 +465,6 @@ def test_commit_review_loop_exhaustion_advances_to_development_commit(
     tmp_path: Path,
     memory_workspace: MemoryWorkspace,
 ) -> None:
-    """Commit review loop exhaustion bypasses to development_commit with counter reset.
-
-    When CommitReviewAlwaysLoopbackInvoker forces every cleanup run to loopback,
-    the loop counter increments until it hits the cap (3), at which point the
-    exhaustion bypass routes to development_commit. The commit_review_iteration
-    counter should be reset to 0 when development_commit runs (via loop_resets).
-    """
     invoker = CommitReviewAlwaysLoopbackInvoker(memory_workspace)
 
     result, saved_states = _run_pipeline(

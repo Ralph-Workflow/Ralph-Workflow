@@ -1,4 +1,3 @@
-"""Side-effect-free inventory and conservative cleanup planning for workspace storage."""
 
 from __future__ import annotations
 
@@ -109,16 +108,6 @@ def _usage(path: Path, *, exclude_agent: bool = False) -> tuple[int, int]:
 
 
 def inventory_storage(workspace_root: Path) -> tuple[dict[str, object], ...]:
-    """Return five category inventories without modifying the workspace.
-
-    Each category row carries ``growth_trigger``, ``retention_basis``,
-    ``eligibility_reason``, ``recreatable``, ``recovery_impact``, and
-    ``active_owner`` plus a ``paths`` tuple covering every accumulating
-    writer the category owns: completion sentinels, receipt directories,
-    agent-retry scratch, codex-home directories, MCP session JSON, the
-    run state DB, the explore cache directory, log records, history
-    directories, and run-tmp directories.
-    """
     inventory: list[dict[str, object]] = []
     for (
         category,
@@ -166,16 +155,6 @@ def plan_cleanup(
     retained_paths: tuple[Path, ...] = (),
     now: Callable[[], float] | None = None,
 ) -> tuple[dict[str, object], ...]:
-    """Return removable derived/inactive paths without deleting any data.
-
-    ``keep_run_ids`` is the set of run ids whose data must survive the
-    plan: temporary directories matching a kept id are skipped, and
-    operational log files whose ``<run_id>.log`` prefix matches a kept
-    id are retained regardless of age. Callers should derive this set
-    from the shared active-run registry via
-    ``prune_lock_run_ids(workspace_root, extra_keep={...})`` so runs
-    registered by other processes are respected.
-    """
     current = (now or time.time)()
     candidates: list[dict[str, object]] = []
     for entry in inventory:

@@ -1,5 +1,3 @@
-"""Tests for PlainLogRenderer empty-state placeholder lines."""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime

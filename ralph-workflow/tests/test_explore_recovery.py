@@ -1,23 +1,3 @@
-"""Black-box tests for the S-4 recovery scheduler and S-6 truthful status.
-
-The recovery scheduler drives every applicable F1-F20 mode with
-bounded exponential backoff. These tests cover:
-
-* Initial health is ``healthy`` (S-6 truthful status).
-* Failure recording increments attempts and schedules a
-  backoff; ``unhealthy`` once ``recovery_attempts > max_attempts``.
-* ``should_attempt_recovery`` honours the backoff clock.
-* ``mark_read_only`` / ``mark_stale`` / ``mark_building`` /
-  ``mark_healthy`` flip the documented health states.
-* ``try_advisory_lock`` is single-flight per workspace (a second
-  acquisition fails immediately).
-* ``ralph_index_status`` payload carries ``health`` /
-  ``recovery_attempts`` / ``last_failure`` / ``next_recovery_at``.
-
-The tests use an injected clock so the bounded exponential backoff
-is deterministic and fast.
-"""
-
 from __future__ import annotations
 
 import json
@@ -40,8 +20,6 @@ from ralph.mcp.explore.store import ExploreStore
 
 
 class _FakeClock:
-    """Deterministic clock for backoff math (avoids wall-clock sleeps)."""
-
     def __init__(self) -> None:
         self._now = 0.0
 
@@ -93,11 +71,7 @@ def _attach_session(store: ExploreStore, workspace: Path) -> _FakeSession:
     return _FakeSession(handle)
 
 
-# --- recovery scheduler --------------------------------------------------
-
-
 def test_recovery_scheduler_initial_state_is_healthy(tmp_path: Path) -> None:
-    """A fresh scheduler reports ``healthy`` with no failure history."""
     scheduler = build_scheduler(tmp_path)
     assert scheduler.health is HealthState.HEALTHY
     snap = scheduler.snapshot()
@@ -107,14 +81,12 @@ def test_recovery_scheduler_initial_state_is_healthy(tmp_path: Path) -> None:
 
 
 def test_recovery_default_bounds_match_docs() -> None:
-    """The bounded defaults are pinned and visible to callers."""
     assert DEFAULT_BACKOFF_BASE_SECONDS > 0
     assert DEFAULT_MAX_BACKOFF_SECONDS > DEFAULT_BACKOFF_BASE_SECONDS
     assert DEFAULT_MAX_ATTEMPTS >= 1
 
 
 def test_recovery_failure_records_attempt_and_backoff(tmp_path: Path) -> None:
-    """A failure increments attempts and schedules a next_recovery_at."""
     clock = _FakeClock()
     scheduler = RecoveryScheduler(
         workspace_root=tmp_path,
@@ -132,7 +104,6 @@ def test_recovery_failure_records_attempt_and_backoff(tmp_path: Path) -> None:
 
 
 def test_recovery_backoff_grows_exponentially(tmp_path: Path) -> None:
-    """Repeated failures schedule an exponentially increasing backoff."""
     clock = _FakeClock()
     scheduler = RecoveryScheduler(
         workspace_root=tmp_path,
@@ -140,26 +111,22 @@ def test_recovery_backoff_grows_exponentially(tmp_path: Path) -> None:
         max_backoff_seconds=10.0,
         max_attempts=4,
     )
-    # Attempt 1 -> backoff 1s
     scheduler.record_failure(code="index_locked", clock=clock.monotonic)
     snap1 = scheduler.snapshot()
     assert snap1["next_recovery_at"] == 1.0
     clock.advance(1.5)
     scheduler.record_failure(code="index_locked", clock=clock.monotonic)
     snap2 = scheduler.snapshot()
-    # Attempt 2 -> backoff 2s
     assert snap2["recovery_attempts"] == 2
     assert snap2["next_recovery_at"] == 1.5 + 2.0
     clock.advance(3.5)
     scheduler.record_failure(code="index_locked", clock=clock.monotonic)
     snap3 = scheduler.snapshot()
-    # Attempt 3 -> backoff 4s
     assert snap3["recovery_attempts"] == 3
     assert snap3["next_recovery_at"] == 5.0 + 4.0
 
 
 def test_recovery_unhealthy_after_max_attempts(tmp_path: Path) -> None:
-    """Past ``max_attempts`` the scheduler is ``unhealthy`` and idle."""
     clock = _FakeClock()
     scheduler = RecoveryScheduler(
         workspace_root=tmp_path,
@@ -174,12 +141,10 @@ def test_recovery_unhealthy_after_max_attempts(tmp_path: Path) -> None:
     assert snap["recovery_attempts"] == 3
     assert snap["health"] == "unhealthy"
     assert snap["next_recovery_at"] is None
-    # Further recovery attempts are gated.
     assert scheduler.should_attempt_recovery(clock=clock.monotonic) is False
 
 
 def test_recovery_should_attempt_recovery_respects_backoff(tmp_path: Path) -> None:
-    """Backoff prevents premature recovery attempts."""
     clock = _FakeClock()
     scheduler = RecoveryScheduler(
         workspace_root=tmp_path,
@@ -188,15 +153,12 @@ def test_recovery_should_attempt_recovery_respects_backoff(tmp_path: Path) -> No
         max_attempts=4,
     )
     scheduler.record_failure(code="index_locked", clock=clock.monotonic)
-    # Too early -> False
     assert scheduler.should_attempt_recovery(clock=clock.monotonic) is False
     clock.advance(1.0)
-    # Cooldown elapsed -> True (still under max_attempts)
     assert scheduler.should_attempt_recovery(clock=clock.monotonic) is True
 
 
 def test_recovery_mark_health_states(tmp_path: Path) -> None:
-    """Mark_* helpers flip the documented health states."""
     scheduler = build_scheduler(tmp_path)
     scheduler.mark_building()
     assert scheduler.health is HealthState.BUILDING
@@ -252,34 +214,24 @@ def test_explore_regression_persisted_stale_exhaustion_normalizes_unhealthy(
 
 
 def test_recovery_advisory_lock_path_underworkspace_root(tmp_path: Path) -> None:
-    """The advisory lock lives under ``.agent/ralph-explore`` per workspace."""
     path = advisory_lock_path(tmp_path)
     assert path.parent.name == "ralph-explore"
     assert path.name == ".recovery.lock"
 
 
 def test_recovery_advisory_lock_acquired_and_released(tmp_path: Path) -> None:
-    """Single-flight advisory lock: the first acquire succeeds."""
     try:
         acquired = try_advisory_lock(tmp_path)
         assert acquired is True
-        # Release the lock so subsequent tests do not block.
         release_advisory_lock()
     except OSError:
-        # Some platforms / sandbox configurations reject the fcntl
-        # call; the test should not fail the rest of the suite in
-        # that case.
         release_advisory_lock()
         import pytest
 
         pytest.skip("advisory lock not available in this environment")
 
 
-# --- truthful status (S-6) -----------------------------------------------
-
-
 def test_status_payload_carries_health_and_recovery(tmp_path: Path) -> None:
-    """``ralph_index_status`` reports health + recovery state honestly."""
     workspace = _seed_workspace(tmp_path)
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     try:
@@ -302,7 +254,6 @@ def test_status_payload_carries_health_and_recovery(tmp_path: Path) -> None:
 
 
 def test_status_payload_after_failure_marks_unhealthy(tmp_path: Path) -> None:
-    """Repeated failures flip the health to ``unhealthy``."""
     workspace = _seed_workspace(tmp_path)
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     try:
@@ -311,8 +262,6 @@ def test_status_payload_after_failure_marks_unhealthy(tmp_path: Path) -> None:
         scheduler.record_failure(code="indexer_error", message="bad pages")
         scheduler.record_failure(code="indexer_error", message="bad pages")
         scheduler.record_failure(code="indexer_error", message="bad pages")
-        # The status handler uses a fresh scheduler; we re-use the
-        # one we just mutated via the public API.
         from ralph.mcp.explore.recovery import RecoveryScheduler
 
         sched = RecoveryScheduler(

@@ -1,29 +1,3 @@
-"""Tests for the packaged prompt-template text cache and registry backfill.
-
-The wt-024 P2 + P3 fixes:
-
-  - **P2**: The four call sites that read packaged .jinja templates
-    from disk (master_prompt._unattended_mode_text,
-    commit._select_template (commit_message.jinja),
-    commit.prompt_commit_message_for_opencode (commit_simplified.jinja))
-    re-read the file on EVERY call. The fix adds a small clearable
-    memoizing loader so each packaged template is read ONCE per
-    process.
-
-  - **P3**: ``TemplateRegistry._discover_template`` returns the
-    discovered text but never writes it back into ``self._templates``,
-    so every subsequent ``get_template`` re-discovers + re-reads.
-    The fix backfills the cache.
-
-These tests inject a counting ``reader`` so no real disk reads
-happen via the SUT path. They assert:
-  - The reader is invoked exactly once per packaged template across
-    many calls.
-  - TemplateRegistry.get_template for a discovered name invokes the
-    reader once and serves from cache on the second call.
-  - Returned text is unchanged.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -41,7 +15,6 @@ if TYPE_CHECKING:
 
 
 def _counting_reader(text: str) -> tuple[dict[str, int], Callable[[Path], str]]:
-    """Build a (state, reader) pair where reader counts invocations."""
 
     state: dict[str, int] = {"calls": 0}
 
@@ -53,11 +26,6 @@ def _counting_reader(text: str) -> tuple[dict[str, int], Callable[[Path], str]]:
 
 
 def test_packaged_template_cache_reads_each_file_once() -> None:
-    """``_PackagedTemplateCache.get`` reads each packaged template at most once.
-
-    The cache maps ``relative_path`` -> text. Subsequent calls with
-    the same key return the cached text without invoking the reader.
-    """
 
     state, reader = _counting_reader("template-body\n")
 
@@ -76,7 +44,6 @@ def test_packaged_template_cache_reads_each_file_once() -> None:
 
 
 def test_packaged_template_cache_clear_resets_state() -> None:
-    """``clear`` resets the cache so the next ``get`` re-reads."""
 
     state, reader = _counting_reader("body")
 
@@ -90,7 +57,6 @@ def test_packaged_template_cache_clear_resets_state() -> None:
 
 
 def test_packaged_template_cache_is_key_scoped() -> None:
-    """Different ``relative_path`` keys are cached independently."""
 
     state, reader = _counting_reader("body")
 
@@ -106,12 +72,6 @@ def test_packaged_template_cache_is_key_scoped() -> None:
 
 
 def test_master_prompt_unattended_mode_uses_cache() -> None:
-    """master_prompt._unattended_mode_text reads the jinja via the cache.
-
-    We patch the cache module-level instance with a counting reader
-    so we can assert the reader runs exactly once across many calls
-    to ``_unattended_mode_text``.
-    """
     state: dict[str, int] = {"calls": 0}
 
     def reader(_path: Path) -> str:
@@ -139,10 +99,6 @@ def test_master_prompt_unattended_mode_uses_cache() -> None:
 
 
 def test_commit_select_template_uses_cache() -> None:
-    """commit._select_template reads commit_message.jinja via the cache.
-
-    Counts reader invocations across many calls to ``_select_template``.
-    """
     state: dict[str, int] = {"calls": 0}
 
     def reader(_path: Path) -> str:
@@ -169,7 +125,6 @@ def test_commit_select_template_uses_cache() -> None:
 
 
 def test_commit_opencode_simplified_uses_cache() -> None:
-    """prompt_commit_message_for_opencode reads commit_simplified.jinja via the cache."""
 
     state: dict[str, int] = {"calls": 0}
 
@@ -202,14 +157,6 @@ def test_commit_opencode_simplified_uses_cache() -> None:
 
 
 def test_template_registry_backfills_discovered_template(tmp_path: Path) -> None:
-    """TemplateRegistry._discover_template writes the result back into
-    ``self._templates`` so subsequent ``get_template`` calls are
-    served from the in-memory cache without re-reading from disk.
-
-    Uses a ``MemoryWorkspace``-style fake via the injectable reader:
-    ``_read_text`` counts invocations and returns the templated text
-    for each registered file.
-    """
     state: dict[str, int] = {"calls": 0}
     text = "DISCOVERED-BODY\n"
 

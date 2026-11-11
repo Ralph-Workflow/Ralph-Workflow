@@ -1,15 +1,3 @@
-"""Regression test: FileBackedSession must support the tool-output streaming surface.
-
-The standalone MCP server runs with a ``FileBackedSession`` (built by
-``session_from_env`` from ``MCP_SESSION_FILE``). The exec SSE streaming path
-installs an atomic (owner thread, sink) entry on the session and the exec
-handler captures it via ``current_thread_tool_output_sink``. ``AgentSession``
-provides this surface; ``FileBackedSession`` originally did not — the first
-production exec call raised ``AttributeError`` after the SSE headers were
-sent, closing the socket with zero frames and leaving the MCP client to hang
-until its request timeout (the ``-32001 Request timed out`` retry storm).
-"""
-
 from __future__ import annotations
 
 import json

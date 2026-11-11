@@ -1,13 +1,3 @@
-"""Policy-driven acceptance tests — Product Requirements 1-10 and Criteria A-H.
-
-These tests assert every product requirement and acceptance criterion against a
-fully renamed PolicyBundle (no canonical phase names). Any regression that
-re-introduces hidden phase name knowledge in the runtime will fail here.
-
-Scope: pure functions only. No I/O.
-Runtime budget: ≤ 5 seconds for the full module.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -36,17 +26,6 @@ from ralph.policy.validation import PolicyValidationError, validate_policy_compl
 
 @pytest.fixture(scope="module")
 def policy_with_renamed_phases() -> PolicyBundle:
-    """Fully custom-named PolicyBundle — no canonical Ralph phase names.
-
-    Custom name mappings (canonical → custom):
-      planning          → design
-      development       → build
-      development_analysis → audit
-      development_commit → sign_off
-      review            → inspect
-      complete          → done
-      failed_terminal   → aborted
-    """
     agents = AgentsPolicy(
         agent_chains={
             "design_chain": AgentChainConfig(agents=["fake-agent"]),
@@ -174,16 +153,8 @@ def policy_with_renamed_phases() -> PolicyBundle:
     return PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
 
 
-# =============================================================================
-# Requirement 1: Policy must fully define user-visible routing semantics
-# =============================================================================
-
-
 class TestAcceptanceDIncompleteRejected:
     def test_bundle_missing_analysis_loop_policy_fails_validation(self) -> None:
-        """A policy with an analysis-role phase but no loop_policy fails validation."""
-        # Artifact contract satisfies pydantic's analysis-phase check;
-        # missing loop_policy is what validate_policy_completeness must catch.
         bundle = PolicyBundle(
             agents=AgentsPolicy(
                 agent_chains={"c": AgentChainConfig(agents=["agent"])},
@@ -204,7 +175,6 @@ class TestAcceptanceDIncompleteRejected:
                         decisions={
                             "ok": PhaseDecisionRoute(target="done", reset_loop=True),
                         },
-                        # Missing: loop_policy — required for analysis role
                     ),
                     "done": PhaseDefinition(
                         drain="done",
@@ -236,5 +206,4 @@ class TestAcceptanceDIncompleteRejected:
     def test_valid_custom_bundle_passes_validation(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """The custom renamed bundle passes validate_policy_completeness."""
         validate_policy_completeness(policy_with_renamed_phases)

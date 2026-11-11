@@ -1,5 +1,3 @@
-"""Black-box tests: stale-session failures are classified with reset_session=True."""
-
 from __future__ import annotations
 
 from ralph.agents.invoke import AgentInvocationError
@@ -10,7 +8,7 @@ from tests.recovery._classifier_session_helper__agentinactivitytimeouterror impo
 
 
 class _AgentInvocationError(Exception):
-    """Simulates AgentInvocationError via class name."""
+    pass
 
 
 _AgentInvocationError.__name__ = "AgentInvocationError"
@@ -18,7 +16,6 @@ _AgentInactivityTimeoutError.__name__ = "AgentInactivityTimeoutError"
 
 
 def test_stale_session_message_sets_reset_session_true() -> None:
-    """AgentInvocationError with stale-session substring sets reset_session=True."""
     classifier = FailureClassifier()
     exc = _AgentInvocationError(
         "Agent 'claude' failed with code 1: No conversation found with session ID: deadbeef"
@@ -31,7 +28,6 @@ def test_stale_session_message_sets_reset_session_true() -> None:
 
 
 def test_stale_session_attributed_to_agent() -> None:
-    """Stale-session failure is attributed to the agent, not environmental."""
     classifier = FailureClassifier()
     exc = _AgentInvocationError(
         "Agent 'claude' failed with code 1: No conversation found with session ID: 8e9806b7-8bcd"
@@ -43,7 +39,6 @@ def test_stale_session_attributed_to_agent() -> None:
 
 
 def test_non_stale_session_invocation_error_reset_session_false() -> None:
-    """AgentInvocationError without the stale-session substring keeps reset_session=False."""
     classifier = FailureClassifier()
     exc = _AgentInvocationError("Agent 'claude' failed with code 1: some other error")
     failure = classifier.classify(exc, phase="development", agent="claude")
@@ -52,7 +47,6 @@ def test_non_stale_session_invocation_error_reset_session_false() -> None:
 
 
 def test_inactivity_timeout_reset_session_false() -> None:
-    """AgentInactivityTimeoutError is unaffected by stale-session logic."""
     classifier = FailureClassifier()
     exc = _AgentInactivityTimeoutError("agent idle for too long")
     failure = classifier.classify(exc, phase="development", agent="claude")
@@ -62,7 +56,6 @@ def test_inactivity_timeout_reset_session_false() -> None:
 
 
 def test_environmental_error_reset_session_false() -> None:
-    """Environmental failures never set reset_session."""
     classifier = FailureClassifier()
     failure = classifier.classify(
         ConnectionRefusedError("connection refused"),
@@ -75,7 +68,6 @@ def test_environmental_error_reset_session_false() -> None:
 
 
 def test_documented_claude_session_limit_message_classifies_as_agent_fault() -> None:
-    """Official Claude Code session-limit text should classify as an agent-attributed fault."""
     classifier = FailureClassifier()
     exc = _AgentInvocationError("You've hit your session limit · resets 3:45pm")
 
@@ -88,7 +80,6 @@ def test_documented_claude_session_limit_message_classifies_as_agent_fault() -> 
 
 
 def test_agent_invocation_parsed_output_session_limit_message_is_detected() -> None:
-    """Classifier should inspect parsed output for documented Claude Code limit messages."""
     classifier = FailureClassifier()
     exc = AgentInvocationError(
         "claude",
@@ -105,7 +96,6 @@ def test_agent_invocation_parsed_output_session_limit_message_is_detected() -> N
 
 
 def test_subscription_limit_sets_is_unavailable_when_online() -> None:
-    """Subscription/credit limit failures flag the agent unavailable when connectivity is online."""
     classifier = FailureClassifier()
     exc = AgentInvocationError(
         "claude",
@@ -127,7 +117,6 @@ def test_subscription_limit_sets_is_unavailable_when_online() -> None:
 
 
 def test_online_timeout_with_no_output_is_treated_as_suspicious_agent_fault() -> None:
-    """When connectivity is known online, no-output timeout should fall over as agent fault."""
     classifier = FailureClassifier()
     exc = _AgentInvocationError("Agent timed out with no output while connectivity remained online")
 
@@ -144,7 +133,6 @@ def test_online_timeout_with_no_output_is_treated_as_suspicious_agent_fault() ->
 
 
 def test_unknown_connectivity_timeout_with_no_output_stays_non_agent_specific() -> None:
-    """Without online connectivity evidence, suspicious timeout text stays non-agent-specific."""
     classifier = FailureClassifier()
     failure = classifier.classify(
         "Agent timed out with no output",
@@ -158,7 +146,6 @@ def test_unknown_connectivity_timeout_with_no_output_stays_non_agent_specific() 
 
 
 def test_stale_session_counts_against_budget() -> None:
-    """Stale-session failures consume agent retry budget."""
     classifier = FailureClassifier()
     exc = _AgentInvocationError(
         "Agent 'opencode' failed with code 1: No conversation found with session ID: abc123"

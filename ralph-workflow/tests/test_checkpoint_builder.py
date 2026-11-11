@@ -1,5 +1,3 @@
-"""Unit tests for checkpoint payload builder."""
-
 from __future__ import annotations
 
 from importlib import import_module
@@ -58,7 +56,6 @@ def _builder_policy() -> PipelinePolicy:
 
 
 def test_checkpoint_builder_builds_payload_from_state() -> None:
-    """Builder should produce a payload with state, context, and history."""
     policy = _builder_policy()
     state = PipelineState(
         phase="development",
@@ -88,7 +85,6 @@ def test_checkpoint_builder_builds_payload_from_state() -> None:
 
 
 def test_checkpoint_builder_requires_pipeline_state() -> None:
-    """Builder should reject incomplete payloads."""
     try:
         CheckpointBuilder.new().build()
     except ValueError as exc:
@@ -98,7 +94,6 @@ def test_checkpoint_builder_requires_pipeline_state() -> None:
 
 
 def test_checkpoint_payload_round_trips_to_dict() -> None:
-    """Built payloads should serialize into JSON-safe dictionaries."""
     payload = CheckpointBuilder.new().state(PipelineState(phase="planning")).build()
 
     data = payload.to_dict()
@@ -109,12 +104,6 @@ def test_checkpoint_payload_round_trips_to_dict() -> None:
 
 
 def test_checkpoint_builder_without_policy_zeroes_progress_mirrors() -> None:
-    """Without pipeline_policy, stale non-zero progress values must be reset to 0.
-
-    Pins the no-policy branch in derive_run_context_progress: a RunContext carrying
-    non-zero actual_developer_runs / actual_reviewer_runs must not leak into the
-    built payload when no policy is provided.
-    """
     state = PipelineState(phase="planning")
     stale_context = RunContext(
         run_id="test-run",

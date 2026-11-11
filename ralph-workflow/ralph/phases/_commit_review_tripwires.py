@@ -1,23 +1,3 @@
-"""Deterministic Stage 1 tripwire evaluator for pending diffs.
-
-This module evaluates proposed commit diffs against deterministic safety tripwires
-before agent review. A hard tripwire rejects immediately without consulting an agent
-and rolls back to HEAD/baseline. Softer signals are collected and passed to Stage 2
-as structured evidence.
-
-Tripwire categories:
-- Hard:
-  - Mass deletion: deleted tracked file count or fraction exceeds policy thresholds.
-  - Protected deletion / overwrite: deletion or modification of .git content,
-    project manifests/lockfiles, specification prompt, AGENTS.md, or top-level source/test directories.
-    A top-level directory is a source or test directory when the base tree
-    holds source code, test code or a ``tests``/``test`` subdirectory under it,
-    so the protection does not depend on the directory being named ``src``.
-- Soft:
-  - Out of scope: modified/added files outside configured allowed_directories.
-  - Staged secrets / recognized secret files: credentials, keys, or secret files.
-  - Oversized binaries: binary files exceeding configured binary size limit.
-"""
 
 from __future__ import annotations
 
@@ -93,9 +73,6 @@ DEFAULT_TOP_LEVEL_SOURCE_TEST_DIRS: Final[frozenset[str]] = frozenset(
     }
 )
 
-#: File extensions that mark a tracked file as SOURCE CODE. A top-level
-#: directory that holds at least one tracked file with one of these
-#: extensions is a source directory, whatever its NAME is.
 SOURCE_CODE_EXTENSIONS: Final[frozenset[str]] = frozenset(
     {
         ".asm",
@@ -182,8 +159,6 @@ SOURCE_CODE_EXTENSIONS: Final[frozenset[str]] = frozenset(
     }
 )
 
-#: File extensions that only TEST code carries. They mark a top-level
-#: directory as a test directory even when it holds no source file.
 TEST_CODE_EXTENSIONS: Final[frozenset[str]] = frozenset(
     {
         ".approved",
@@ -194,8 +169,6 @@ TEST_CODE_EXTENSIONS: Final[frozenset[str]] = frozenset(
     }
 )
 
-#: Directory names that mark the tree below them as TEST code. A top-level
-#: directory that holds such a subdirectory is a test directory.
 TEST_DIRECTORY_NAMES: Final[frozenset[str]] = frozenset(
     {
         "test",
@@ -203,8 +176,6 @@ TEST_DIRECTORY_NAMES: Final[frozenset[str]] = frozenset(
     }
 )
 
-#: The number of path segments a repository-relative path needs before it
-#: can name a file INSIDE a top-level directory.
 _MIN_PATH_PARTS_IN_A_DIRECTORY: Final[int] = 2
 
 RECOGNIZED_SECRET_PATTERNS: Final[tuple[str, ...]] = (
@@ -260,7 +231,6 @@ SECRET_CONTENT_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
 
 @runtime_checkable
 class _DiffEntryProtocol(Protocol):
-    """Structural protocol for pending diff entries."""
 
     path: str
     status: str
@@ -276,17 +246,6 @@ DiffEntryProtocol = _DiffEntryProtocol
 
 @dataclass(frozen=True)
 class TripwireThresholds:
-    """Threshold configuration for deterministic tripwire evaluation.
-
-    Attributes:
-        max_deleted_files: Maximum allowed number of deleted files before triggering
-            a mass-deletion hard tripwire. Defaults to 50.
-        max_deleted_fraction: Maximum allowed ratio of deleted files to total tracked
-            files (0.0 to 1.0) before triggering a mass-deletion hard tripwire.
-            Defaults to 0.25 (25%).
-        binary_size_limit: Maximum allowed size in bytes for binary files before
-            triggering a binary size soft tripwire. Defaults to 1,000,000 bytes (1 MB).
-    """
 
     max_deleted_files: int = DEFAULT_MAX_DELETED_FILES
     max_deleted_fraction: float = DEFAULT_MAX_DELETED_FRACTION
@@ -295,21 +254,6 @@ class TripwireThresholds:
 
 @dataclass(frozen=True)
 class _DiffEntry:
-    """Pending diff entry representation.
-
-    Attributes:
-        path: Repository-relative path of the file.
-        status: Git status indicator ('A', 'M', 'D', 'R', etc.).
-        old_mode: Octal file mode before change (e.g. '100644', '040000').
-        new_mode: Octal file mode after change (e.g. '100644', '000000').
-        size: Size of the file in bytes.
-        is_binary: Whether the file is classified as binary.
-        content: Optional file text or patch content (for content secret scanning).
-        base_tree_paths: Optional tracked paths of the tree the diff was computed
-            against. A recursive diff reports blob entries only, so a directory
-            removal arrives as one deleted blob path per tracked file: the
-            membership is what proves the directory is gone in its entirety.
-    """
 
     path: str
     status: str
@@ -325,32 +269,27 @@ DiffEntry = _DiffEntry
 
 
 def _is_deleted(status: str) -> bool:
-    """Return True if git status denotes deletion."""
     s = status.strip().upper()
     return s == "D" or s.startswith("D") or s == "DELETED"
 
 
 def _is_git_path(norm: PurePosixPath) -> bool:
-    """Return True if path represents .git repository internal content."""
     parts = norm.parts
     return len(parts) > 0 and parts[0] == ".git"
 
 
 def is_recognized_secret_path(path: str) -> bool:
-    """Return whether a repository-relative path names a recognized secret file."""
     norm = PurePosixPath(path.replace("\\", "/"))
     return any(fnmatchcase(norm.name, pat) for pat in RECOGNIZED_SECRET_PATTERNS)
 
 
 def _get_entry_attr(entry: object, attr: str, default: object = None) -> object:
-    """Extract attribute from object or dict."""
     if isinstance(entry, dict):
         return entry.get(attr, default)
     return getattr(entry, attr, default)
 
 
 def _is_binary_entry(entry: object, norm: PurePosixPath) -> bool:
-    """Determine whether entry represents a binary file."""
     is_bin = _get_entry_attr(entry, "is_binary", None)
     if is_bin is True:
         return True
@@ -360,7 +299,6 @@ def _is_binary_entry(entry: object, norm: PurePosixPath) -> bool:
 
 
 def _is_path_in_allowed_dirs(norm: PurePosixPath, allowed_dirs: Sequence[str] | set[str]) -> bool:
-    """Return True if normalized path is within any of the allowed directories."""
     for allowed in allowed_dirs:
         norm_allowed = PurePosixPath(allowed.strip().replace("\\", "/"))
         if norm == norm_allowed or norm.is_relative_to(norm_allowed):
@@ -369,7 +307,6 @@ def _is_path_in_allowed_dirs(norm: PurePosixPath, allowed_dirs: Sequence[str] | 
 
 
 def _check_content_secrets(norm_path_str: str, content: str | None) -> list[Finding]:
-    """Scan content for staged credential patterns."""
     findings: list[Finding] = []
     if not content:
         return findings
@@ -386,17 +323,6 @@ def _check_content_secrets(norm_path_str: str, content: str | None) -> list[Find
 
 
 def _resolve_fraction_denominator(entries: list[object], tracked_count: int) -> int:
-    """Return the denominator of the mass-deletion fraction.
-
-    The denominator is the number of tracked paths in the IMMUTABLE tree the
-    diff was computed against (the proposal's base tree). The real git index
-    is mutable: staging a deletion shrinks it and staging an addition
-    inflates it, so a fraction measured against the index can be silenced or
-    diluted by the very change it is meant to judge.
-
-    Entries produced by the git layer carry that membership. Entries
-    assembled without it fall back to the caller-supplied count.
-    """
     membership = _collect_base_tree_paths(entries)
     if membership is not None:
         return len(membership)
@@ -408,12 +334,6 @@ def _evaluate_mass_deletion(
     tracked_count: int,
     thresholds: TripwireThresholds,
 ) -> list[Finding]:
-    """Evaluate mass deletion thresholds.
-
-    The COUNT threshold is a plain count of the deleted paths. The FRACTION
-    threshold is measured against the immutable base tree the diff was
-    computed against, never against the mutable real index.
-    """
     findings: list[Finding] = []
     deleted_count = sum(1 for e in entries if _is_deleted(str(_get_entry_attr(e, "status", ""))))
 
@@ -449,18 +369,10 @@ def _evaluate_mass_deletion(
 
 
 def _normalized_repo_path(raw_path: str) -> str:
-    """Return a repository-relative POSIX path for a diff entry path."""
     return PurePosixPath(raw_path.replace("\\", "/")).as_posix()
 
 
 def _collect_base_tree_paths(entries: list[object]) -> frozenset[str] | None:
-    """Return the base-tree membership carried by the diff entries.
-
-    Entries produced by the git layer carry the tracked paths of the tree the
-    diff was computed against. Entries assembled without that membership
-    contribute nothing, so ``None`` reports that the membership is absent and
-    a rule that needs it stays silent instead of guessing.
-    """
     for entry in entries:
         paths = _get_entry_attr(entry, "base_tree_paths", None)
         if isinstance(paths, (set, frozenset, list, tuple)):
@@ -469,24 +381,6 @@ def _collect_base_tree_paths(entries: list[object]) -> frozenset[str] | None:
 
 
 def resolve_immutable_tracked_count(entries: Iterable[object]) -> int | None:
-    """Return the tracked-file count of the IMMUTABLE base tree of a diff.
-
-    The count is the number of tracked paths in the tree the diff was
-    computed against (the proposal's base tree), never the mutable real
-    index: a staged deletion would shrink the index and a staged addition
-    would inflate it, so the index cannot be the denominator of a tripwire
-    that judges the staged change.
-
-    Args:
-        entries: The diff entries produced by the git layer.
-
-    Returns:
-        The number of tracked paths in the base tree, or ``None`` when that
-        membership is unavailable AND the diff proposes deletions. ``None``
-        means the mass-deletion fraction cannot be evaluated against a
-        trustworthy denominator, so the caller must fail closed instead of
-        silently skipping the check.
-    """
     materialized = list(entries)
     membership = _collect_base_tree_paths(materialized)
     if membership is not None:
@@ -500,7 +394,6 @@ def resolve_immutable_tracked_count(entries: Iterable[object]) -> int | None:
 
 
 def _collect_deleted_paths(entries: list[object]) -> set[str]:
-    """Return the normalized paths the diff deletes."""
     deleted: set[str] = set()
     for entry in entries:
         status = str(_get_entry_attr(entry, "status", ""))
@@ -511,11 +404,6 @@ def _collect_deleted_paths(entries: list[object]) -> set[str]:
 
 
 def _path_suffix(path: str) -> str:
-    """Return the lower-cased extension of a repository-relative path.
-
-    A dotfile such as ``.gitignore`` carries no extension, and an extension
-    that starts at the first character of the file name never does.
-    """
     name = path.rsplit("/", 1)[-1]
     dot = name.rfind(".")
     if dot <= 0:
@@ -524,15 +412,6 @@ def _path_suffix(path: str) -> str:
 
 
 def _source_test_top_level_dirs(base_paths: Iterable[str]) -> set[str]:
-    """Return the top-level directories that hold source or test code.
-
-    The classification is decided by the BASE TREE (HEAD) alone, never by
-    the name of the top-level directory: a directory qualifies when it holds
-    at least one tracked file with a source-code or test-code extension, or
-    when it holds a ``tests``/``test`` subdirectory. A repository whose
-    sources live under ``ralph-workflow/`` therefore classifies exactly like
-    one whose sources live under ``src/``.
-    """
     directories: set[str] = set()
     for path in base_paths:
         parts = path.split("/")
@@ -551,13 +430,6 @@ def _source_test_top_level_dirs(base_paths: Iterable[str]) -> set[str]:
 
 
 def _protected_top_level_dirs(base_paths: frozenset[str] | None) -> frozenset[str]:
-    """Return the top-level directories whose wholesale deletion is damage.
-
-    The fixed name set stays protected REGARDLESS of the tree content, so a
-    repository that keeps a listed name keeps its existing protection. A
-    directory outside that set is protected when the base tree shows it holds
-    source or test code.
-    """
     if not base_paths:
         return frozenset(DEFAULT_TOP_LEVEL_SOURCE_TEST_DIRS)
     return frozenset(DEFAULT_TOP_LEVEL_SOURCE_TEST_DIRS | _source_test_top_level_dirs(base_paths))
@@ -568,15 +440,6 @@ def _evaluate_protected_directory_deletions(
     deleted_paths: set[str],
     protected_dirs: frozenset[str],
 ) -> list[Finding]:
-    """Fire when a protected top-level directory is deleted in its entirety.
-
-    A recursive ``git diff-tree`` reports BLOB entries only: the removal of a
-    whole directory arrives as one deleted blob path per tracked file and
-    never as a directory entry. The base-tree membership is therefore the
-    only evidence that the directory is gone as a whole. A PARTIAL deletion
-    is not an entirety deletion and stays silent here; it remains subject to
-    the mass-deletion thresholds.
-    """
     if not base_paths:
         return []
 
@@ -605,8 +468,6 @@ def _evaluate_hard_entry(
     custom_protected: set[str],
     protected_top_level_dirs: frozenset[str],
 ) -> Finding | None:
-    """Evaluate hard protected tripwires for a single entry."""
-    # Protected: .git content
     if _is_git_path(norm):
         action = "deleted" if deleted else "modified or overwritten"
         category = "protected_deletion" if deleted else "protected_overwrite"
@@ -616,7 +477,6 @@ def _evaluate_hard_entry(
             path=norm_str,
         )
 
-    # Protected: canonical prompt and AGENTS.md
     if norm.name in DEFAULT_PROTECTED_DOCUMENTS:
         action = "deleted" if deleted else "overwritten"
         category = "protected_deletion" if deleted else "protected_overwrite"
@@ -626,7 +486,6 @@ def _evaluate_hard_entry(
             path=norm_str,
         )
 
-    # Protected: custom protected paths
     if norm_str in custom_protected or any(fnmatchcase(norm_str, pat) for pat in custom_protected):
         action = "deleted" if deleted else "modified or overwritten"
         category = "protected_deletion" if deleted else "protected_overwrite"
@@ -636,7 +495,6 @@ def _evaluate_hard_entry(
             path=norm_str,
         )
 
-    # Protected: manifest and lockfile removal
     is_manifest = norm.name in DEFAULT_LOCKFILE_BASENAMES or norm.name in DEFAULT_MANIFEST_BASENAMES
     if is_manifest and deleted:
         return Finding(
@@ -645,7 +503,6 @@ def _evaluate_hard_entry(
             path=norm_str,
         )
 
-    # Protected: top-level source or test directory deletion
     is_top_level_dir = norm_str in protected_top_level_dirs or (
         old_mode == "040000" and len(norm.parts) == 1 and norm.parts[0] in protected_top_level_dirs
     )
@@ -669,10 +526,8 @@ def _evaluate_soft_entry(
     allowed_dirs: Sequence[str] | set[str] | None,
     thresholds: TripwireThresholds,
 ) -> list[Finding]:
-    """Evaluate soft evidence tripwires for a single entry."""
     findings: list[Finding] = []
 
-    # Out-of-scope paths when allowed_directories is configured
     if allowed_dirs and not _is_path_in_allowed_dirs(norm, allowed_dirs):
         findings.append(
             Finding(
@@ -682,7 +537,6 @@ def _evaluate_soft_entry(
             )
         )
 
-    # Staged secret file (not deleted)
     if not deleted and is_recognized_secret_path(norm_str):
         findings.append(
             Finding(
@@ -692,11 +546,9 @@ def _evaluate_soft_entry(
             )
         )
 
-    # Staged secret content scanning (not deleted)
     if not deleted and content:
         findings.extend(_check_content_secrets(norm_str, str(content)))
 
-    # Oversized binary file (not deleted)
     if not deleted and _is_binary_entry(entry, norm) and size > thresholds.binary_size_limit:
         findings.append(
             Finding(
@@ -720,21 +572,6 @@ def evaluate_tripwires(
     allowed_dirs: Sequence[str] | set[str] | None = None,
     protected: Sequence[str] | set[str] | None = None,
 ) -> TripwireReport:
-    """Evaluate diff entries against deterministic safety tripwires.
-
-    Args:
-        diff_entries: Iterable of diff entries (DiffEntry instances or duck-typed objects/dicts).
-        tracked_count: Fallback count of tracked files, used ONLY when the entries
-            do not carry the immutable base-tree membership. The membership the
-            git layer attaches to the entries always wins, so the fraction can
-            never be measured against the mutable real index.
-        thresholds: TripwireThresholds instance configuring mass-deletion and binary limits.
-        allowed_dirs: Optional collection of allowed directory prefixes for scope enforcement.
-        protected: Optional collection of additional protected file paths/patterns.
-
-    Returns:
-        TripwireReport containing tuples of hard findings and soft findings.
-    """
     entries = list(diff_entries)
     base_paths = _collect_base_tree_paths(entries)
     deleted_paths = _collect_deleted_paths(entries)

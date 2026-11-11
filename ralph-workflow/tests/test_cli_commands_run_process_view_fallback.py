@@ -1,5 +1,3 @@
-"""CLI behavior tests for the process-scoped skills view fallback."""
-
 from __future__ import annotations
 
 import os
@@ -21,7 +19,6 @@ def _run_cli(
     *,
     expected_process_dir: Path | None,
 ) -> tuple[int, list[str | None]]:
-    """Run the public CLI command with only its public collaborators replaced."""
     monkeypatch.delenv(_PROCESS_VIEW_ENV, raising=False)
     observed_process_dirs: list[str | None] = []
 
@@ -68,7 +65,6 @@ def test_cli_skips_process_view_when_machine_global_skills_exist(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """A complete machine-global skill install needs no process-scoped view."""
     monkeypatch.setattr(run_module, "has_machine_global_skills", lambda: True)
 
     result, observed_process_dirs = _run_cli(
@@ -85,7 +81,6 @@ def test_cli_enters_process_view_when_machine_global_skills_are_absent(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Without machine-global skills, the pipeline sees the view's target."""
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     target = tmp_path / "process-view"
 
@@ -103,7 +98,6 @@ def test_cli_enters_process_view_when_machine_global_skills_are_partial(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """A partial machine-global install falls back to the process-scoped view."""
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     skills_dir = tmp_path / ".claude" / "skills" / "using-superpowers"
     skills_dir.mkdir(parents=True)

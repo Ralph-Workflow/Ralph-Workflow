@@ -1,36 +1,3 @@
-"""Fallback-ladder executor tests: rungs 2-5 behind the decision vocabulary.
-
-Pure fake-driven tests over the shared doubles in
-:mod:`tests._integration_ladder_fakes`: the git plumbing, filesystem
-quarantine and environment probe are scripted doubles recording every
-mutation; the clock is the fake monotonic clock; the durable ledger is
-the real :class:`~ralph.pipeline.integration_attempt_ledger.AttemptLedger`
-on the per-test ``tmp_path`` (the same pattern
-``tests/test_integration_attempt_ledger.py`` uses), so intent-before /
-outcome-after recording and restart resume are proven against the real
-persistence path. Rung 6 lives in ``tests/test_integration_ladder_last_resort.py``,
-the production adapter argv contract in ``tests/test_integration_ladder_adapters.py``,
-and the real-git regression in ``tests/test_integration_ladder_real_git.py``.
-
-The ladder contract pinned here, rung by rung:
-
-* intent is recorded BEFORE acting and the outcome AFTER, in the
-  durable ledger, and survives a restart (a fresh ``AttemptLedger``
-  reads the same evidence);
-* every rung is idempotent and a rung observation shows cannot succeed
-  is reported ``impossible`` and skipped, not repeated;
-* rungs 2-5 never discard work: preserved copies (ref or sidecar) are
-  recorded and never touched by a later rung;
-* a failed probe is UNKNOWN, never clean: rung 2 reports
-  ``failed:changed-paths-unreadable`` and the ladder escalates instead
-  of reading "nothing to preserve";
-* rung 4 lands with compare-and-swap semantics: a concurrent target
-  advance names the race (``failed:land:target-moved-concurrently``)
-  and overwrites nothing, and the original checkout is repointed only
-  when it is still where the ladder observed it;
-* a restart mid-ladder resumes at the recorded rung.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -77,15 +44,9 @@ from tests._integration_ladder_fakes import (
 pytestmark = pytest.mark.timeout_seconds(30)
 
 
-# ---------------------------------------------------------------------------
-# Rung 2 — alternate preservation.
-# ---------------------------------------------------------------------------
-
-
 def test_rung2_commits_dirt_to_a_verified_ref_and_survives_restart(
     tmp_path: Path,
 ) -> None:
-    """The plumbing commit preserves the dirt; evidence is durable."""
     ledger = _ledger(tmp_path)
     git = _FakePlumbing()
     fs = _FakeQuarantineFs()
@@ -106,11 +67,8 @@ def test_rung2_commits_dirt_to_a_verified_ref_and_survives_restart(
 
 
 def test_rung2_ref_failure_prunes_and_writes_verified_sidecar(tmp_path: Path) -> None:
-    """No ref: free space (artifacts + verified-landed refs), then sidecar."""
     ledger = _ledger(tmp_path)
     git = _FakePlumbing(commit_ref=None, readable_refs=frozenset())
-    # The plumbing records what it wrote; the fs verifies readability of
-    # exactly those paths — one shared set, no monkey-patching.
     fs = _FakeQuarantineFs(existing=git.written)
     result = preserve_via_temp_index(
         tmp_path,
@@ -129,7 +87,6 @@ def test_rung2_ref_failure_prunes_and_writes_verified_sidecar(tmp_path: Path) ->
 
 
 def test_rung2_no_verified_copy_fails_without_discarding(tmp_path: Path) -> None:
-    """Both preservation routes failing is a typed failure, never a silent loss."""
     ledger = _ledger(tmp_path)
     git = _FakePlumbing(commit_ref=None, readable_refs=frozenset(), fail_patch=True)
     fs = _FakeQuarantineFs()
@@ -155,7 +112,6 @@ def test_rung2_with_no_dirt_succeeds_immediately(tmp_path: Path) -> None:
 
 
 def test_rung2_unreadable_probe_fails_closed_never_nothing_to_preserve(tmp_path: Path) -> None:
-    """A failed probe is UNKNOWN, never clean: the rung fails and the ladder escalates."""
     ledger = _ledger(tmp_path)
     git = _FakePlumbing(changed_unreadable=True)
 
@@ -168,11 +124,6 @@ def test_rung2_unreadable_probe_fails_closed_never_nothing_to_preserve(tmp_path:
     assert "commit_dirt" not in git.calls
     assert not any(call.startswith("write_patch") for call in git.calls)
     assert _evidence(tmp_path)["rung:preserve_via_temp_index"] == "failed:changed-paths-unreadable"
-
-
-# ---------------------------------------------------------------------------
-# Rung 3 — quarantine.
-# ---------------------------------------------------------------------------
 
 
 def test_rung3_renames_and_restores_baseline(tmp_path: Path) -> None:
@@ -238,11 +189,6 @@ def test_rung3_restore_failure_is_a_typed_failure(tmp_path: Path) -> None:
     assert _evidence(tmp_path)["rung:quarantine_and_restore"] == "failed:restore-tree-to-head"
 
 
-# ---------------------------------------------------------------------------
-# Rung 4 — fresh isolated worktree.
-# ---------------------------------------------------------------------------
-
-
 def test_rung4_rebuilds_lands_and_records_salvage(tmp_path: Path) -> None:
     ledger = _ledger(tmp_path)
     git = _FakePlumbing()
@@ -261,7 +207,6 @@ def test_rung4_rebuilds_lands_and_records_salvage(tmp_path: Path) -> None:
 
     assert result.outcome == "succeeded"
     assert "apply_preserved:refs/ralph-backup/fake" in git.calls
-    # The expected sha observed at rung start is what the CAS is checked against.
     assert "land_in_worktree:main:cafe01" in git.calls
     assert "repoint_original:abc123" in git.calls
     assert _evidence(tmp_path)["salvage:fresh_worktree_rebuild"] == "succeeded"
@@ -307,7 +252,6 @@ def test_rung4_unreadable_target_sha_fails_closed_before_any_mutation(tmp_path: 
 
 
 def test_rung4_land_race_is_typed_names_the_race_and_overwrites_nothing(tmp_path: Path) -> None:
-    """A concurrent target advance: no repoint, no overwrite; the caller re-observes."""
     ledger = _ledger(tmp_path)
     git = _FakePlumbing(land_result="target-moved")
 
@@ -331,7 +275,6 @@ def test_rung4_land_race_is_typed_names_the_race_and_overwrites_nothing(tmp_path
 
 
 def test_rung4_repoint_not_now_defers_without_failing_the_landed_rung(tmp_path: Path) -> None:
-    """The target landed; the original checkout is owned elsewhere: defer, don't reset."""
     ledger = _ledger(tmp_path)
     git = _FakePlumbing(repoint_result="head-moved")
 
@@ -389,11 +332,6 @@ def test_rung4_step_failure_is_typed_and_stops_the_sequence(tmp_path: Path) -> N
     assert "repoint_original" not in git.calls
 
 
-# ---------------------------------------------------------------------------
-# Rung 5 — degrade, don't die.
-# ---------------------------------------------------------------------------
-
-
 def test_rung5_adapts_backs_off_on_the_fake_clock_and_reobserves(tmp_path: Path) -> None:
     clock = FakeClock(initial_time=500.0)
     ledger = _ledger(tmp_path)
@@ -427,11 +365,9 @@ def test_rung5_adapts_backs_off_on_the_fake_clock_and_reobserves(tmp_path: Path)
 
     assert first.outcome == "waiting"
     assert second.outcome == "waiting"
-    # Capped exponential backoff on the injectable clock: 1s, then 2s.
     assert clock.now() == 503.0
     assert observed == ["fresh-sig"]
     assert "n=1:" in first.reason and "n=2:" in second.reason
-    # Adaptation happened, and the reminder is rate-limited to one line.
     assert "prune_regenerable_artifacts" in fs.calls
     assert "alternative_state_dir" in fs.calls
     assert len(reminders) == 1
@@ -476,13 +412,7 @@ def test_rung5_healthy_environment_still_reobserves_without_adapting(tmp_path: P
     assert "prune_regenerable_artifacts" not in fs.calls
 
 
-# ---------------------------------------------------------------------------
-# Restart resume, budget, dispatcher and owner routing.
-# ---------------------------------------------------------------------------
-
-
 def test_restart_resumes_at_the_recorded_rung_without_repeating(tmp_path: Path) -> None:
-    """A restart never repeats finished rungs and never loses preserved copies."""
     ledger = _ledger(tmp_path)
     _record(ledger, "rung:save_and_restore", "succeeded:ref=refs/ralph-backup/one")
     _record(ledger, "rung:preserve_via_temp_index", "intent")
@@ -495,11 +425,8 @@ def test_restart_resumes_at_the_recorded_rung_without_repeating(tmp_path: Path) 
     _record(ledger, "rung:preserve_via_temp_index", "succeeded:ref=refs/ralph-backup/two")
     _record(ledger, "rung:quarantine_and_restore", "impossible:rename-failed:x")
     _record(ledger, "rung:rebuild_in_fresh_worktree", "failed:land")
-    # A completed waiting tick is a finished rung: the restart resumes
-    # past it and the decision table re-decides from the budget.
     _record(ledger, "rung:adapt_environment_and_retry", "waiting:n=1:failure=none:delay=1.0")
     assert resume_rung(_ledger(tmp_path).read()) is CleanupLadderRung.LAST_RESORT
-    # A rung left at intent (crash mid-rung) resumes there, idempotently.
     _record(ledger, "rung:adapt_environment_and_retry", "intent")
     assert resume_rung(_ledger(tmp_path).read()) is CleanupLadderRung.ENVIRONMENT_DEGRADE
     _record(ledger, "rung:adapt_environment_and_retry", "failed:still-broken")
@@ -545,7 +472,6 @@ def test_run_ladder_rung_dispatches_quarantine_to_the_executor(tmp_path: Path) -
 
 
 def test_run_ladder_rung_rung1_is_not_owned_here(tmp_path: Path) -> None:
-    """Rung 1 (normal cleanup) is another unit's executor; the ladder refuses."""
     result = run_ladder_rung(
         CleanupLadderRung.NORMAL_CLEANUP,
         root=tmp_path,
@@ -560,7 +486,6 @@ def test_run_ladder_rung_rung1_is_not_owned_here(tmp_path: Path) -> None:
 
 
 def test_owner_projection_routes_every_ladder_action_to_its_rung() -> None:
-    """The owner's projection layer maps the rung actions to executors."""
     expected = {
         NextAction.SAVE_AND_RESTORE: CleanupLadderRung.NORMAL_CLEANUP,
         NextAction.PRESERVE_VIA_TEMP_INDEX: CleanupLadderRung.ALTERNATE_PRESERVATION,
@@ -578,7 +503,6 @@ def test_owner_projection_routes_every_ladder_action_to_its_rung() -> None:
 
 
 def test_owner_verdict_carries_the_rung_field_and_defaults_to_none(tmp_path: Path) -> None:
-    """Non-ladder verdicts default to no rung; the field is part of the verdict."""
     from ralph.pipeline.integration_observation import (
         HeadState,
         InProgressOwnership,
@@ -628,7 +552,6 @@ def test_ladder_step_result_defaults() -> None:
 
 
 def test_seams_are_runtime_checkable_protocols() -> None:
-    """The fakes genuinely implement the public protocol aliases."""
     assert isinstance(_FakePlumbing(), GitPlumbing)
     assert isinstance(_FakeQuarantineFs(), FileQuarantine)
     assert isinstance(_FakeEnvProbe("disk_full"), EnvironmentProbe)

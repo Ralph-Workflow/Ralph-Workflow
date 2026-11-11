@@ -1,16 +1,3 @@
-"""Black-box tests for install_project_baseline_skills and _project_skills_need_install.
-
-All tests use ``tmp_path`` (or a per-test monkeypatched ``Path.home()``) so
-the real user-global root is never touched. Symlink verifications use
-``Path.resolve()`` on BOTH sides to handle the macOS ``/tmp`` -> ``/private/tmp``
-indirection safely (PA-007).
-
-These tests are subprocess_e2e: they exercise the real
-``install_project_baseline_skills`` entry point and its full filesystem +
-symlink + git path. They cannot be mocked down to the per-test 1 s
-budget without losing the end-to-end contract they assert.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -43,7 +30,6 @@ def _fake_user_global_home(tmp_path: Path) -> Path:
 
 
 def _project_skill_roots(workspace: Path) -> list[Path]:
-    """Return the project canonical root plus EVERY project sibling root."""
     roots = [workspace / ".opencode" / "skills"]
     roots.extend(
         sibling.resolve(workspace) for sibling in project_sibling_skill_roots_top(workspace)
@@ -53,13 +39,6 @@ def _project_skill_roots(workspace: Path) -> list[Path]:
 
 @pytest.mark.timeout_seconds(3)
 def test_install_project_baseline_skills_materializes_canonical_root(tmp_path: Path) -> None:
-    """Canonical .opencode/skills/<name>/SKILL.md exists for every baseline skill after install.
-
-    The test installs the full baseline bundle (30 skill directories) which is a
-    lot of real disk I/O. On a loaded worker the install run can take ~1.5 s, so
-    a 3 s per-test cap is required to keep this from tripping the 1 s default
-    and stalling the xdist scheduler.
-    """
     home = _fake_user_global_home(tmp_path)
     with patch("pathlib.Path.home", return_value=home):
         result = install_project_baseline_skills(tmp_path)
@@ -74,7 +53,6 @@ def test_install_project_baseline_skills_materializes_canonical_root(tmp_path: P
 
 @pytest.mark.timeout_seconds(5)
 def test_install_project_baseline_skills_creates_sibling_symlinks(tmp_path: Path) -> None:
-    """After install, every project-scope sibling is a symlink to the canonical."""
     home = _fake_user_global_home(tmp_path)
     with patch("pathlib.Path.home", return_value=home):
         install_project_baseline_skills(tmp_path)
@@ -91,8 +69,6 @@ def test_install_project_baseline_skills_creates_sibling_symlinks(tmp_path: Path
             sibling_dir = sibling_root / name
             canonical_target = (canonical / name).resolve()
             assert sibling_dir.is_symlink(), f"{agent}: expected {sibling_dir} to be a symlink"
-            # macOS /tmp -> /private/tmp indirection: resolve both sides
-            # before equality check (PA-007).
             assert sibling_dir.resolve() == canonical_target, (
                 f"{agent}: symlink target {sibling_dir.resolve()} != canonical {canonical_target}"
             )
@@ -110,7 +86,6 @@ def test_install_project_baseline_skills_creates_sibling_symlinks(tmp_path: Path
 def test_install_project_baseline_skills_preserves_user_edited_canonical_skill(
     tmp_path: Path,
 ) -> None:
-    """A canonical SKILL.md without a managed marker is preserved (NEEDS_REPAIR)."""
     home = _fake_user_global_home(tmp_path)
     canonical = tmp_path / ".opencode" / "skills"
     user_skill = canonical / "submit-artifact"
@@ -119,7 +94,6 @@ def test_install_project_baseline_skills_preserves_user_edited_canonical_skill(
     user_marker.write_text("# my custom override\n", encoding="utf-8")
 
     with patch("pathlib.Path.home", return_value=home):
-        # RALPH-TEST-REASON: the retired default skills are no longer shipped, so the fixture uses a retained artifact skill
         result = install_project_baseline_skills(tmp_path)
 
     assert result[1], "Expected at least one failure for the user-edited canonical"
@@ -135,7 +109,6 @@ def test_install_project_baseline_skills_preserves_user_edited_canonical_skill(
 def test_install_project_baseline_skills_preserves_user_edited_sibling_skill(
     tmp_path: Path,
 ) -> None:
-    """A sibling SKILL.md that diverges from canonical must be preserved (NEEDS_REPAIR)."""
     home = _fake_user_global_home(tmp_path)
     sibling = tmp_path / ".claude" / "skills" / "submit-artifact"
     sibling.mkdir(parents=True, exist_ok=True)
@@ -143,7 +116,6 @@ def test_install_project_baseline_skills_preserves_user_edited_sibling_skill(
     sibling_skill.write_text("# sibling override\n", encoding="utf-8")
 
     with patch("pathlib.Path.home", return_value=home):
-        # RALPH-TEST-REASON: the retired default skills are no longer shipped, so the fixture uses a retained artifact skill
         result = install_project_baseline_skills(tmp_path)
 
     assert result[1], "Expected at least one failure for the user-edited sibling"
@@ -157,7 +129,6 @@ def test_install_project_baseline_skills_preserves_user_edited_sibling_skill(
 
 @pytest.mark.timeout_seconds(3)
 def test_install_project_baseline_skills_is_idempotent(tmp_path: Path) -> None:
-    """Calling install twice must return INSTALLED_HEALTHY on the second call with no failures."""
     home = _fake_user_global_home(tmp_path)
     with patch("pathlib.Path.home", return_value=home):
         first = install_project_baseline_skills(tmp_path)
@@ -170,7 +141,6 @@ def test_install_project_baseline_skills_is_idempotent(tmp_path: Path) -> None:
 def test_install_project_baseline_skills_does_not_touch_user_global_root(
     tmp_path: Path,
 ) -> None:
-    """The project install must not modify the user-global skill root."""
     home = _fake_user_global_home(tmp_path)
     user_claude = home / ".claude" / "skills"
     user_claude.mkdir(parents=True, exist_ok=True)
@@ -186,22 +156,12 @@ def test_install_project_baseline_skills_does_not_touch_user_global_root(
 
 @pytest.mark.timeout_seconds(3)
 def test_project_skills_need_install_predicate(tmp_path: Path) -> None:
-    """Predicate: True on fresh, False after install, True after a stale non-symlink sibling.
-
-    The test installs the full baseline bundle (30 skill directories) plus
-    three sibling symlink trees, which is a lot of real disk I/O. On a loaded
-    worker the install + predicate run can take ~2 s, so a 3 s per-test cap
-    is required to keep this from tripping the 1 s default and stalling the
-    xdist scheduler. The baseline install is the actual surface under test,
-    so this is not a candidate for deeper mocking.
-    """
     home = _fake_user_global_home(tmp_path)
     with patch("pathlib.Path.home", return_value=home):
         assert _project_skills_need_install(tmp_path) is True
         install_project_baseline_skills(tmp_path)
         assert _project_skills_need_install(tmp_path) is False
 
-    # Make one sibling a real directory (not a symlink) to force a re-install.
     stale = tmp_path / ".claude" / "skills" / "submit-artifact"
     if stale.is_symlink():
         stale.unlink()
@@ -214,7 +174,6 @@ def test_project_skills_need_install_predicate(tmp_path: Path) -> None:
 def test_project_skills_need_install_detects_stale_managed_canonical_content(
     tmp_path: Path,
 ) -> None:
-    """A managed project skill with stale content must trigger reinstall."""
     home = _fake_user_global_home(tmp_path)
     with patch("pathlib.Path.home", return_value=home):
         install_project_baseline_skills(tmp_path)
@@ -230,7 +189,6 @@ def test_project_skills_need_install_detects_stale_managed_canonical_content(
 def test_project_skills_need_install_noop_when_canonical_and_all_siblings_have_symlinks(
     tmp_path: Path,
 ) -> None:
-    """Predicate False when canonical and all siblings are present; install is a no-op."""
     home = _fake_user_global_home(tmp_path)
     with patch("pathlib.Path.home", return_value=home):
         install_project_baseline_skills(tmp_path)
@@ -239,7 +197,6 @@ def test_project_skills_need_install_noop_when_canonical_and_all_siblings_have_s
 
 @pytest.mark.timeout_seconds(5)
 def test_project_skills_need_install_when_canonical_is_file(tmp_path: Path) -> None:
-    """PA-005 regression: a regular file at the canonical path must trigger an install."""
     canonical_path = tmp_path / ".opencode" / "skills"
     canonical_path.parent.mkdir(parents=True, exist_ok=True)
     canonical_path.touch()
@@ -250,7 +207,6 @@ def test_project_skills_need_install_when_canonical_is_file(tmp_path: Path) -> N
 
 @pytest.mark.timeout_seconds(5)
 def test_install_project_baseline_skills_invokes_self_improving_hook(tmp_path: Path) -> None:
-    """install_project_baseline_skills calls self_improving_skills_hook once on the success path."""
     home = _fake_user_global_home(tmp_path)
     with (
         patch("pathlib.Path.home", return_value=home),
@@ -269,7 +225,6 @@ def test_install_project_baseline_skills_invokes_self_improving_hook(tmp_path: P
 
 @pytest.mark.timeout_seconds(5)
 def test_self_improving_skills_hook_is_no_op_by_default(tmp_path: Path) -> None:
-    """The default self_improving_skills_hook body is a no-op and returns None."""
     result = self_improving_skills_hook(
         workspace_root=tmp_path,
         canonical_root=tmp_path,
@@ -284,12 +239,6 @@ def test_self_improving_skills_hook_is_no_op_by_default(tmp_path: Path) -> None:
 def test_install_project_baseline_skills_does_not_call_self_improving_hook_on_conflict(
     tmp_path: Path,
 ) -> None:
-    """On a user-owned canonical conflict (NEEDS_REPAIR), the hook must NOT be called.
-
-    The hook is only fired after a successful project fan-out. A conflict
-    leaves the workspace untouched; running the hook on a NEEDS_REPAIR path
-    would let it observe and write to the canonical prematurely.
-    """
     home = _fake_user_global_home(tmp_path)
     canonical = tmp_path / ".opencode" / "skills"
     user_skill = canonical / "submit-artifact"
@@ -303,7 +252,6 @@ def test_install_project_baseline_skills_does_not_call_self_improving_hook_on_co
         patch("pathlib.Path.home", return_value=home),
         patch("ralph.skills._installer.self_improving_skills_hook") as hook_mock,
     ):
-        # RALPH-TEST-REASON: the retired default skills are no longer shipped, so the fixture uses a retained artifact skill
         result = install_project_baseline_skills(tmp_path)
 
     assert result[0].status == CapabilityStatus.NEEDS_REPAIR
@@ -315,25 +263,6 @@ def test_install_project_baseline_skills_does_not_call_self_improving_hook_on_co
 
 @pytest.mark.timeout_seconds(5)
 def test_install_overwrites_stale_canonical_skill(tmp_path: Path) -> None:
-    """PA-002 closure: project-scope bundle-update path overwrites stale canonical content.
-
-    The locked conflict-resolution policy for the project-scope branch
-    (driven by ``_sync_shipped_skills_on_pipeline_run``) is: bundled content
-    always wins for hash-divergent canonical entries, even when the existing
-    managed marker matches the on-disk stale sha. The pre-existing
-    ``materialize_skills_to_claude_dir`` user-edit preservation contract
-    only preserves a skill whose ``stored_sha`` DOES NOT match the on-disk
-    sha (i.e. the user manually edited it after install).
-
-    This test pre-stages a stale canonical SKILL.md with a managed marker
-    whose ``installed_content_sha256`` matches the on-disk stale sha, so
-    ``materialize_skills_to_claude_dir`` will overwrite it anyway (no
-    user-edit preservation triggered) AND ``_materialize_canonical_skill``
-    runs as a defensive no-op once the on-disk hash already matches the
-    bundled sha after the materialize pass. The combined install must
-    leave the canonical SKILL.md byte-for-byte identical to the bundled
-    content.
-    """
     home = _fake_user_global_home(tmp_path)
     canonical = tmp_path / ".opencode" / "skills"
     name = BASELINE_SKILL_NAMES[0]
@@ -372,31 +301,8 @@ def test_install_overwrites_stale_canonical_skill(tmp_path: Path) -> None:
     )
 
 
-# --- Containment + wrong-target regression coverage (analysis feedback) ---------
-#
-# Two analyzed bugs require dedicated black-box tests:
-#
-#   1. CONTAINMENT (external symlink): project-scope canonical or sibling
-#      root may resolve outside ``workspace_root`` when the user pre-creates
-#      a symlink (e.g. ``./.agents`` -> ``/tmp/evil``). The install must
-#      fail closed as NEEDS_REPAIR BEFORE any filesystem mutation and must
-#      NOT write any skill content to the external directory.
-#
-#   2. WRONG-TARGET (sibling symlink pointing at non-canonical): the
-#      ``_project_skills_need_install`` predicate must verify each
-#      sibling skill symlink resolves to the canonical skill entry for
-#      the SAME skill name. A sibling symlink pointing at a stale or
-#      external canonical (the analyzed wrong-target regression) must
-#      be surfaced as needing install so the repair path replaces it.
-#
-# Both regressions are pinned by the tests below; if either test passes
-# but the analyzed bug repro returns the wrong status, the test suite
-# must be expanded.
-
-
 @pytest.mark.timeout_seconds(5)
 def test_resolve_within_workspace_accepts_descendant_path(tmp_path: Path) -> None:
-    """A path under workspace_root resolves to the resolved path (containment holds)."""
     inside = tmp_path / ".opencode" / "skills"
     resolved = _resolve_within_workspace(inside, tmp_path)
     assert resolved is not None, "Expected descendant path to be contained"
@@ -407,7 +313,6 @@ def test_resolve_within_workspace_accepts_descendant_path(tmp_path: Path) -> Non
 
 @pytest.mark.timeout_seconds(5)
 def test_resolve_within_workspace_rejects_external_symlink(tmp_path: Path) -> None:
-    """A symlinked canonical pointing outside workspace_root returns None."""
     outside_dir = tmp_path.parent / "outside-sibling-rejection"
     outside_dir.mkdir(parents=True, exist_ok=True)
     try:
@@ -424,14 +329,6 @@ def test_resolve_within_workspace_rejects_external_symlink(tmp_path: Path) -> No
 def test_install_project_baseline_skills_fails_closed_when_canonical_outside_workspace(
     tmp_path: Path,
 ) -> None:
-    """PA-009 closure: containment gate on the canonical project root.
-
-    When ``workspace_root/.opencode`` is a symlink to a directory OUTSIDE
-    the workspace, ``install_project_baseline_skills`` MUST fail closed as
-    NEEDS_REPAIR with a single ``skills-outside-workspace-canonical``
-    failure code, MUST NOT touch the external directory, and MUST NOT
-    return INSTALLED_HEALTHY.
-    """
     home = _fake_user_global_home(tmp_path)
     outside_dir = tmp_path.parent / "outside-canonical-rejection"
     outside_dir.mkdir(parents=True, exist_ok=True)
@@ -447,11 +344,9 @@ def test_install_project_baseline_skills_fails_closed_when_canonical_outside_wor
         assert result[1] == ["skills-outside-workspace-canonical"], (
             f"Expected ['skills-outside-workspace-canonical'], got {result[1]!r}"
         )
-        # External directory was not mutated
         assert (outside_dir / "sentinel.txt").read_text(encoding="utf-8") == "DO NOT TOUCH\n", (
             "External directory sentinel file was modified by install"
         )
-        # External directory did not receive any skill content
         outside_listing = sorted(p.name for p in outside_dir.iterdir())
         assert "skills" not in outside_listing, (
             f"External directory gained unexpected entry; listing={outside_listing!r}"
@@ -469,19 +364,10 @@ def test_install_project_baseline_skills_fails_closed_when_canonical_outside_wor
 def test_install_project_baseline_skills_fails_closed_when_sibling_outside_workspace(
     tmp_path: Path,
 ) -> None:
-    """PA-009 closure: containment gate on a sibling project root.
-
-    When a sibling root (e.g. ``workspace_root/.agents``) is a symlink
-    to a directory OUTSIDE the workspace, ``install_project_baseline_skills``
-    MUST fail closed as NEEDS_REPAIR with a single
-    ``skills-outside-workspace-<segment>`` failure code and MUST NOT
-    create the skill tree under the external directory.
-    """
     home = _fake_user_global_home(tmp_path)
     outside_dir = tmp_path.parent / "outside-sibling-install-rejection"
     outside_dir.mkdir(parents=True, exist_ok=True)
     (outside_dir / "sentinel.txt").write_text("DO NOT TOUCH\n", encoding="utf-8")
-    # Poison the .agents sibling root (pi project scope).
     (tmp_path / ".agents").symlink_to(outside_dir)
     try:
         with patch("pathlib.Path.home", return_value=home):
@@ -493,7 +379,6 @@ def test_install_project_baseline_skills_fails_closed_when_sibling_outside_works
         assert result[1] == ["skills-outside-workspace-.agents/skills"], (
             f"Expected ['skills-outside-workspace-.agents/skills'], got {result[1]!r}"
         )
-        # External directory was not mutated
         outside_listing = sorted(p.name for p in outside_dir.iterdir())
         assert outside_listing == ["sentinel.txt"], (
             f"External directory listing should be unchanged; got {outside_listing!r}"
@@ -508,7 +393,6 @@ def test_install_project_baseline_skills_fails_closed_when_sibling_outside_works
 def test_project_skills_need_install_true_when_canonical_outside_workspace(
     tmp_path: Path,
 ) -> None:
-    """PA-009 closure: predicate must surface repair-needed when canonical is external."""
     home = _fake_user_global_home(tmp_path)
     outside_dir = tmp_path.parent / "outside-canonical-predicate"
     outside_dir.mkdir(parents=True, exist_ok=True)
@@ -531,7 +415,6 @@ def test_project_skills_need_install_true_when_canonical_outside_workspace(
 def test_project_skills_need_install_true_when_sibling_outside_workspace(
     tmp_path: Path,
 ) -> None:
-    """PA-009 closure: predicate must surface repair-needed when sibling is external."""
     home = _fake_user_global_home(tmp_path)
     outside_dir = tmp_path.parent / "outside-sibling-predicate"
     outside_dir.mkdir(parents=True, exist_ok=True)
@@ -553,35 +436,20 @@ def test_project_skills_need_install_true_when_sibling_outside_workspace(
 def test_project_skills_need_install_true_when_sibling_points_to_wrong_target(
     tmp_path: Path,
 ) -> None:
-    """PA-009 closure: predicate surfaces repair-needed when sibling symlink target is wrong.
-
-    After a clean install, every sibling skill symlink resolves to the
-    matching canonical skill entry (``workspace_root/.opencode/skills/<name>``).
-    If a sibling symlink is redirected to point at a different directory
-    (e.g. an external ``poison_canonical``), the predicate MUST return
-    True so the repair path replaces the wrong target with the correct
-    canonical link. Without this check the wrong-target state would be
-    silently reported as healthy and the project-scope skill mirror
-    would stay misdirected.
-    """
     home = _fake_user_global_home(tmp_path)
     poison = tmp_path / "poison_canonical"
     poison.mkdir(parents=True, exist_ok=True)
-    # Populate poison with valid-looking skill directories so the wrong-target
-    # state is purely about the symlink pointing somewhere unexpected.
     for skill_name in BASELINE_SKILL_NAMES:
         skill_dir = poison / skill_name
         skill_dir.mkdir(parents=True, exist_ok=True)
         (skill_dir / "SKILL.md").write_text(get_skill_content(skill_name), encoding="utf-8")
 
     with patch("pathlib.Path.home", return_value=home):
-        # Clean install first.
         install_project_baseline_skills(tmp_path)
         assert _project_skills_need_install(tmp_path) is False, (
             "Sanity: clean install must report False"
         )
 
-        # Redirect every sibling skill symlink at the poison canonical.
         for sibling in project_sibling_skill_roots_top(tmp_path):
             sibling_root = sibling.resolve(tmp_path)
             for skill_name in BASELINE_SKILL_NAMES:
@@ -590,7 +458,6 @@ def test_project_skills_need_install_true_when_sibling_points_to_wrong_target(
                     sibling_dir.unlink()
                 sibling_dir.symlink_to(poison / skill_name, target_is_directory=True)
 
-        # Predicate must detect the wrong target and return True.
         assert _project_skills_need_install(tmp_path) is True, (
             "Predicate must return True when sibling symlink target != canonical"
         )
@@ -598,12 +465,6 @@ def test_project_skills_need_install_true_when_sibling_points_to_wrong_target(
 
 @pytest.mark.timeout_seconds(5)
 def test_project_root_outside_workspace_returns_none_on_clean_tree(tmp_path: Path) -> None:
-    """PA-009 closure: containment helper returns None when every root is inside the workspace.
-
-    Sanity check for ``_project_root_outside_workspace``: a fresh workspace
-    (no pre-existing symlinks) must return None so neither the install
-    nor the predicate treats a clean tree as misdirected.
-    """
     home = _fake_user_global_home(tmp_path)
     with patch("pathlib.Path.home", return_value=home):
         assert _project_root_outside_workspace(tmp_path) is None, (
@@ -613,34 +474,20 @@ def test_project_root_outside_workspace_returns_none_on_clean_tree(tmp_path: Pat
 
 @pytest.mark.timeout_seconds(5)
 def test_install_overwrites_user_edited_canonical_skill(tmp_path: Path) -> None:
-    """PA-002 closure: project-scope conflict-resolution OVERWRITES user-edited content.
-
-    The locked conflict-resolution policy for the project-scope branch
-    (driven by ``_sync_shipped_skills_on_pipeline_run``) is: bundled content
-    always wins for hash-divergent canonical entries. ``_materialize_canonical_skill``
-    overwrites a user-edited canonical SKILL.md whenever the on-disk hash
-    differs from the bundled sha, replacing the content with the bundled
-    content and updating the managed marker to the new bundled sha.
-
-    This is the OVERWRITE branch of the conflict-resolution rule -- the
-    user-edit preservation contract is honored on the USER-GLOBAL path
-    (via ``materialize_skills_to_claude_dir``) but NOT on the PROJECT-SCOPE
-    pre-pipeline sync path, where bundled content always wins.
-    """
     home = _fake_user_global_home(tmp_path)
     canonical = tmp_path / ".opencode" / "skills"
     name = BASELINE_SKILL_NAMES[0]
     canonical.mkdir(parents=True, exist_ok=True)
     skill_dir = canonical / name
     skill_dir.mkdir(parents=True, exist_ok=True)
-    user_edited_content = f"# user-edited version of {name}\n"  # NOT the bundled content
+    user_edited_content = f"# user-edited version of {name}\n"
     skill_dir.joinpath("SKILL.md").write_text(user_edited_content, encoding="utf-8")
     user_edited_sha = hashlib.sha256(user_edited_content.encode("utf-8")).hexdigest()
     skill_dir.joinpath(".ralph-managed.json").write_text(
         json.dumps(
             {
                 "managed_by": "ralph-workflow",
-                "installed_content_sha256": user_edited_sha,  # matches on-disk user edit
+                "installed_content_sha256": user_edited_sha,
                 "skill_name": name,
             }
         ),
@@ -661,38 +508,14 @@ def test_install_overwrites_user_edited_canonical_skill(tmp_path: Path) -> None:
     assert post_marker.get("installed_content_sha256") == bundled_sha
 
 
-# --- wt-025 relative symlink regression coverage ------------------------------
-#
-# AC-02 closure: relative symlinks must survive workspace relocation
-# (simulating a worktree switch) without producing git churn. The
-# pre-fix absolute-path symlinks encoded the full worktree path, so a
-# worktree rename dirtied ALL ~120 sibling symlinks. The post-fix
-# relative-path symlinks only encode the relative offset to
-# ``.opencode/skills/<name>``, so renaming the workspace parent dir
-# leaves every symlink's link-text unchanged AND every symlink's
-# resolved target pointing at the correct canonical under the new
-# location.
-
-
 @pytest.mark.timeout_seconds(5)
 def test_project_sibling_symlinks_survive_workspace_relocation(tmp_path: Path) -> None:
-    """wt-025 / AC-02: relative symlinks remain valid after workspace parent rename.
-
-    After renaming ``tmp_path/original_ws`` to ``tmp_path/relocated_ws``
-    (simulating a worktree switch), every project-scope sibling symlink
-    MUST still resolve to the correct canonical skill entry under the
-    new location, AND ``_project_skills_need_install`` MUST return
-    ``False`` so the pre-pipeline sync does NOT re-install. This proves
-    the relative-path fix eliminates the worktree-switch churn that
-    previously dirtied all ~120 sibling symlinks.
-    """
     original_ws = tmp_path / "original_ws"
     original_ws.mkdir(parents=True, exist_ok=True)
     home = _fake_user_global_home(tmp_path)
     with patch("pathlib.Path.home", return_value=home):
         install_project_baseline_skills(original_ws)
 
-    # Phase 1: every sibling is a RELATIVE symlink in the original workspace.
     for sibling in project_sibling_skill_roots_top(original_ws):
         sibling_root = sibling.resolve(original_ws)
         for name in BASELINE_SKILL_NAMES:
@@ -705,12 +528,9 @@ def test_project_sibling_symlinks_survive_workspace_relocation(tmp_path: Path) -
                 f"{sibling.agent}: sibling symlink must be RELATIVE; got absolute: {link_target}"
             )
 
-    # Phase 2: rename the workspace parent directory (simulate worktree switch).
     relocated_ws = tmp_path / "relocated_ws"
     original_ws.rename(relocated_ws)
 
-    # Phase 3: every sibling MUST still resolve to the canonical skill entry
-    # under the relocated workspace.
     canonical_relocated = relocated_ws / ".opencode" / "skills"
     for sibling in project_sibling_skill_roots_top(relocated_ws):
         sibling_root = sibling.resolve(relocated_ws)
@@ -725,7 +545,6 @@ def test_project_sibling_symlinks_survive_workspace_relocation(tmp_path: Path) -
                 f"{sibling.agent}: relocated symlink {resolved} != canonical {expected}"
             )
 
-    # Phase 4: predicate returns False — no re-install triggered.
     assert _project_skills_need_install(relocated_ws) is False, (
         "Relative symlinks MUST keep _project_skills_need_install=False after "
         "workspace relocation (no worktree-switch churn)"
@@ -734,32 +553,17 @@ def test_project_sibling_symlinks_survive_workspace_relocation(tmp_path: Path) -
 
 @pytest.mark.timeout_seconds(3)
 def test_install_prunes_managed_skill_removed_from_baseline(tmp_path: Path) -> None:
-    """Project-scope install removes managed skills that the baseline no longer ships.
-
-    A retired skill directory is removed ONLY when its managed marker proves
-    Ralph manages it AND its complete content still matches the digest the
-    marker recorded. The user-edit preservation contract is honoured: a
-    user-added skill directory without ``_MANAGED_MARKER`` MUST NOT be
-    pruned even if its name happens to coincide with a removed baseline
-    skill.
-    """
     from ralph.skills._content import _MANAGED_MARKER
     from ralph.skills._installer import _prune_removed_baseline_skills
 
     home = _fake_user_global_home(tmp_path)
     canonical = tmp_path / ".opencode" / "skills"
 
-    # Step 1: clean install. Canonical must match the baseline.
     with patch("pathlib.Path.home", return_value=home):
         install_project_baseline_skills(tmp_path)
     for name in BASELINE_SKILL_NAMES:
         assert (canonical / name).is_dir(), f"baseline skill {name!r} missing after install"
 
-    # Step 2: plant a managed skill that is NOT in the baseline (mimics
-    # a stale `submit-plan-step-edits` from a prior release). The marker
-    # carries the REAL prior shape -- ``managed_by`` plus a recorded
-    # ``installed_content_sha256`` digest of the installed content -- so
-    # the prune can prove the directory is pristine and prunable.
     stale_name = "submit-plan-step-edits"
     assert stale_name not in BASELINE_SKILL_NAMES, (
         "this test assumes the retired skill is no longer in the baseline"
@@ -782,26 +586,19 @@ def test_install_prunes_managed_skill_removed_from_baseline(tmp_path: Path) -> N
     )
     assert stale_dir.is_dir()
 
-    # Step 3: also plant a user-owned skill (no marker) in EVERY sibling
-    # root so the loop check in step 6 has a target to compare against.
     user_owned_target = "user-owned-skill"
     for sibling in project_sibling_skill_roots_top(tmp_path):
         sibling_root = sibling.resolve(tmp_path)
         user_owned = sibling_root / user_owned_target
         user_owned.mkdir(parents=True, exist_ok=True)
         (user_owned / "SKILL.md").write_text("user content", encoding="utf-8")
-    # RALPH-TEST-REASON: the retired default skills are no longer shipped, so the fixture uses a retained artifact skill
-    # Deliberately do NOT plant a managed marker.
 
-    # Step 4: the prune helper removes managed entries whose name is no
-    # longer in the baseline AND whose content still matches its digest.
     pruned = _prune_removed_baseline_skills(canonical)
     assert stale_name in pruned.pruned, (
         f"expected the stale managed skill to be pruned; got {pruned!r}"
     )
     assert not stale_dir.exists(), "stale managed skill must be removed from the canonical"
 
-    # Step 5: the user-owned entry (no marker) is preserved in every sibling root.
     for sibling in project_sibling_skill_roots_top(tmp_path):
         sibling_root = sibling.resolve(tmp_path)
         user_owned = sibling_root / user_owned_target
@@ -810,8 +607,6 @@ def test_install_prunes_managed_skill_removed_from_baseline(tmp_path: Path) -> N
         )
         assert (user_owned / "SKILL.md").read_text(encoding="utf-8") == "user content"
 
-    # Step 6: the full install call also runs the prune, so a symlink to
-    # the now-removed canonical entry is gone from every sibling root.
     with patch("pathlib.Path.home", return_value=home):
         install_project_baseline_skills(tmp_path)
     for sibling in project_sibling_skill_roots_top(tmp_path):
@@ -820,7 +615,6 @@ def test_install_prunes_managed_skill_removed_from_baseline(tmp_path: Path) -> N
         assert not stale_symlink.exists(), (
             f"{sibling.agent}: stale symlink to retired skill must be removed; saw {stale_symlink}"
         )
-        # The user-owned entry is untouched by the install.
         assert (sibling_root / user_owned_target).is_dir(), (
             f"{sibling.agent}: user-owned skill must survive the full install"
         )
@@ -828,13 +622,6 @@ def test_install_prunes_managed_skill_removed_from_baseline(tmp_path: Path) -> N
 
 @pytest.mark.timeout_seconds(3)
 def test_install_preserves_user_edited_retired_managed_skill(tmp_path: Path) -> None:
-    """A retired managed skill the user edited survives the project install.
-
-    The marker's recorded digest no longer matches the on-disk content, so
-    the prune cannot prove the directory is pristine: it is preserved and
-    REPORTED through the installer's failure list. The fixture is planted
-    at EVERY project root (the canonical and all four siblings).
-    """
     home = _fake_user_global_home(tmp_path)
     retired_name = "submit-plan-step-edits"
     assert retired_name not in BASELINE_SKILL_NAMES
@@ -855,7 +642,6 @@ def test_install_preserves_user_edited_retired_managed_skill(tmp_path: Path) -> 
             encoding="utf-8",
         )
         retired_dirs.append(retired_dir)
-    # The user edits the installed content: the digest no longer matches.
     for retired_dir in retired_dirs:
         (retired_dir / "SKILL.md").write_text("# my edited retired skill\n", encoding="utf-8")
 
@@ -874,12 +660,6 @@ def test_install_preserves_user_edited_retired_managed_skill(tmp_path: Path) -> 
 
 @pytest.mark.timeout_seconds(3)
 def test_install_preserves_retired_managed_skill_with_companion_file(tmp_path: Path) -> None:
-    """A retired managed skill carrying a user-added companion file survives.
-
-    The legacy marker owns exactly ``SKILL.md``; the extra file on disk is
-    a user-added companion, so the prune preserves the directory and
-    REPORTS it. The fixture is planted at EVERY project root.
-    """
     home = _fake_user_global_home(tmp_path)
     retired_name = "submit-plan-step-edits"
     assert retired_name not in BASELINE_SKILL_NAMES
@@ -915,31 +695,18 @@ def test_install_preserves_retired_managed_skill_with_companion_file(tmp_path: P
 
 @pytest.mark.timeout_seconds(3)
 def test_prune_removes_broken_symlinks_to_retired_baseline_skills(tmp_path: Path) -> None:
-    """A broken symlink whose name is no longer in the baseline is pruned.
-
-    Prior to the wt-044 close-out, ``_prune_removed_baseline_skills`` only
-    inspected ``is_dir()`` entries with a ``_MANAGED_MARKER`` file. A
-    sibling-root symlink pointing at a now-removed canonical entry
-    (e.g. ``submit-plan-step-edits`` after the per-step edit endpoint was
-    retired) fails both checks because the target no longer exists, so the
-    stale symlink survives forever. The fix unlinks such dead symlinks
-    unconditionally when their name is not in the baseline; a baseline
-    symlink that resolves to a real directory is left intact.
-    """
     from ralph.skills._content import BASELINE_SKILL_NAMES
     from ralph.skills._installer import _prune_removed_baseline_skills
 
     root = tmp_path / "skills"
     root.mkdir()
 
-    # 1. Plant a broken symlink to a retired skill — the live case.
     retired_name = "submit-plan-step-edits"
     assert retired_name not in BASELINE_SKILL_NAMES
     (root / retired_name).symlink_to(root / "does-not-exist", target_is_directory=True)
     assert (root / retired_name).is_symlink()
     assert not (root / retired_name).exists()
 
-    # 2. Plant a real, valid symlink to a baseline skill — the keep case.
     real_target = root / "real-target"
     real_target.mkdir()
     (real_target / "SKILL.md").write_text("body", encoding="utf-8")
@@ -947,17 +714,10 @@ def test_prune_removes_broken_symlinks_to_retired_baseline_skills(tmp_path: Path
         json.dumps({"managed_by": "ralph-workflow", "skill": "real-target"}),
         encoding="utf-8",
     )
-    # Pick a baseline skill whose name we can plant safely; if the real
-    # baseline name does not match ``real_target`` we fall through to a
-    # plain directory symbol so the prune treats it as a baseline entry.
     alive_baseline_name = next(iter(BASELINE_SKILL_NAMES))
     assert alive_baseline_name not in {retired_name}
-    # The simplest "alive baseline" tile is a baseline-named directory
-    # (the test only cares that the prune leaves BASELINE_SKILL_NAMES
-    # alone, not about its content).
     (root / alive_baseline_name).mkdir()
     (root / alive_baseline_name / "SKILL.md").write_text("body", encoding="utf-8")
-    # RALPH-TEST-REASON: the retired default skills are no longer shipped, so the fixture uses a retained artifact skill
 
     pruned = _prune_removed_baseline_skills(root)
 
@@ -967,7 +727,6 @@ def test_prune_removes_broken_symlinks_to_retired_baseline_skills(tmp_path: Path
     assert not (root / retired_name).exists(), (
         "broken symlink must be unlinked even when no marker is reachable"
     )
-    # Baseline entries stay; the test's tile uses the real baseline name.
     assert (root / alive_baseline_name).is_dir(), (
         f"baseline entry {alive_baseline_name!r} must not be pruned"
     )

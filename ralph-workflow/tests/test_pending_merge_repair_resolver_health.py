@@ -1,18 +1,3 @@
-"""Pending-merge repair offers repair agents by OBSERVED health, never by invocation.
-
-Every scenario here drives the public seam
-(:func:`handoff_pending_merge_repair`) and asserts only on what is
-observable: which agent ran, how often, and what the integration record
-says afterwards.
-
-The facts the shared owner is told are Ralph's own: the repair
-declaration the agent left on disk, and whether the workspace changed
-while the attempt ran. The invoke boolean is NOT a fact -- an
-invocation can report success after producing nothing, and report
-failure after producing the repair -- so it never decides an agent's
-standing.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -34,8 +19,6 @@ DECLARATION = ROOT / ".agent" / "tmp" / "pending_commit_repair_paths.json"
 
 
 class _ChangingWorkspaceProbe:
-    """A workspace probe that observes the workspace changing on every attempt."""
-
     def __init__(self) -> None:
         self.changed = True
 
@@ -97,13 +80,6 @@ def _controller(
 
 
 def test_truthy_invocation_without_a_repair_is_an_unproductive_attempt() -> None:
-    """§3.5/§7.1: the invoke boolean is not a fact; the OBSERVED artifact is.
-
-    The agent's invocation reports success every time, but it leaves no
-    repair declaration behind, so Ralph observed no completion. The
-    owner's consecutive limit decides when the agent is benched, and the
-    next candidate runs.
-    """
     backend = _RecordBackend()
     invoked: list[str] = []
     controller = _controller(FakeClock())
@@ -116,7 +92,6 @@ def test_truthy_invocation_without_a_repair_is_an_unproductive_attempt() -> None
 
 
 def test_declared_repair_is_a_verified_artifact_and_is_never_benched() -> None:
-    """§4.1/§4.3: an accepted artifact clears the agent's history."""
     backend = _RecordBackend()
     invoked: list[str] = []
     controller = _controller(FakeClock())
@@ -128,7 +103,6 @@ def test_declared_repair_is_a_verified_artifact_and_is_never_benched() -> None:
 
 
 def test_agent_that_changes_the_workspace_is_demoted_only_by_the_total_limit() -> None:
-    """§4.3: a workspace change restarts the consecutive count, not the total."""
     backend = _RecordBackend()
     invoked: list[str] = []
     controller = _controller(FakeClock(), probe=_ChangingWorkspaceProbe())
@@ -141,12 +115,6 @@ def test_agent_that_changes_the_workspace_is_demoted_only_by_the_total_limit() -
 
 
 def test_false_invocation_with_a_verified_artifact_is_not_a_failure() -> None:
-    """§3.5: the invoke boolean is not a fact.
-
-    The invocation reports failure, but the repair declaration Ralph
-    asked for is on disk: the OBSERVED completion clears the agent's
-    history, so the agent is offered again instead of being benched.
-    """
     backend = _RecordBackend()
     invoked: list[str] = []
     controller = _controller(FakeClock())
@@ -173,8 +141,6 @@ def test_all_agents_cooling_down_invokes_nothing_and_spends_no_attempt() -> None
     after = IntegrationRecord.model_validate_json(backend.read_bytes(record_path(ROOT)))
     assert invoked == ["first"] * 3 + ["second"] * 3
     assert after.merge_commit_repair_attempts == before.merge_commit_repair_attempts
-    # The integration is still PENDING with its progress retained: the
-    # pending merge and its verified tree are untouched.
     assert after.merge_commit_pending is True
     assert after.merge_commit_tree == "tree"
 
@@ -206,7 +172,6 @@ def test_agent_returns_after_its_cooldown() -> None:
 
 
 def test_successful_repairs_of_unrelated_integrations_never_accumulate_a_cooldown() -> None:
-    """§4.3: a verified repair clears the history, so no cooldown accumulates."""
     controller = _controller(FakeClock())
     invoked: list[str] = []
 
@@ -217,7 +182,6 @@ def test_successful_repairs_of_unrelated_integrations_never_accumulate_a_cooldow
 
 
 def test_integration_phase_standing_does_not_leak_into_other_phases() -> None:
-    """§7.1: the integration phase has its own (phase, agent) identity."""
     from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 
     backend = _RecordBackend()

@@ -1,38 +1,3 @@
-"""Consolidated policy validation tests.
-
-This module merges the following previously split test modules into a single
-file to reduce per-shard collection cost. The original class names are
-preserved so external references (test::TestX) still resolve.
-
-Source files (all test_policy_validation_*.py under tests/):
-  - test_policy_validation_advance_phase_requires_policy_for_commit_targets.py
-  - test_policy_validation_agents_policy_validation.py
-  - test_policy_validation_apply_commit_outcome_requires_policy.py
-  - test_policy_validation_checkpoint_policy_mismatch_error.py
-  - test_policy_validation_default_policy_loading.py
-  - test_policy_validation_forbid_sibling_drain_inference.py
-  - test_policy_validation_get_drain_resolution_matrix.py
-  - test_policy_validation_load_policy_forbid_sibling_inference.py
-  - test_policy_validation_pipeline_owned_artifact_required_policy.py
-  - test_policy_validation_policy_bundle_validation.py
-  - test_policy_validation_shared_drain_history_consistency.py
-  - test_policy_validation_strict_cli_counter_overrides.py
-  - test_policy_validation_strict_legacy_fields_rejected.py
-  - test_policy_validation_strict_skip_invocation_has_on_success.py
-  - test_policy_validation_validate_chain_exists.py
-  - test_policy_validation_validate_checkpoint_compatible.py
-  - test_policy_validation_validate_drain_bound.py
-  - test_policy_validation_validate_phase_exists_in_policy.py
-  - test_policy_validation_validate_policy_completeness_new_rules.py
-  - test_policy_validation_validate_policy_completeness_reachability.py
-  - test_policy_validation_validate_policy_completeness_verification_role.py
-  - test_policy_validation_validate_post_commit_all_budget_states_covered.py
-  - test_policy_validation_validate_post_commit_routes_coverage.py
-  - test_policy_validation_validate_required_inputs.py
-  - test_policy_validation_validate_review_phase_outcome_complete.py
-  - test_policy_validation_validate_terminal_failure_phase_required.py
-"""
-
 from __future__ import annotations
 
 import functools
@@ -113,14 +78,12 @@ def _cached_default_bundle() -> PolicyBundle:
     return load_policy(default_dir)
 
 
-# === Helper for test_policy_validation_strict_cli_counter_overrides.py ===
 def _strict_cli_counter_overrides_minimal_agents(drains: list[str]) -> AgentsPolicy:
     chains = {d: AgentChainConfig(agents=["claude"]) for d in drains}
     agent_drains = {d: AgentDrainConfig(chain=d) for d in drains}
     return AgentsPolicy(agent_chains=chains, agent_drains=agent_drains)
 
 
-# === Helper for test_policy_validation_strict_cli_counter_overrides.py ===
 def _strict_cli_counter_overrides_terminal_phase(
     drain: str = "complete", outcome: str = "success"
 ) -> PhaseDefinition:
@@ -132,7 +95,6 @@ def _strict_cli_counter_overrides_terminal_phase(
     )
 
 
-# === Helper for test_policy_validation_strict_cli_counter_overrides.py ===
 def _strict_cli_counter_overrides_minimal_bundle_with_phases(
     phases: dict[str, PhaseDefinition],
 ) -> PolicyBundle:
@@ -147,14 +109,12 @@ def _strict_cli_counter_overrides_minimal_bundle_with_phases(
     return PolicyBundle(agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy(artifacts={}))
 
 
-# === Helper for test_policy_validation_strict_legacy_fields_rejected.py ===
 def _strict_legacy_fields_rejected_minimal_agents(drains: list[str]) -> AgentsPolicy:
     chains = {d: AgentChainConfig(agents=["claude"]) for d in drains}
     agent_drains = {d: AgentDrainConfig(chain=d) for d in drains}
     return AgentsPolicy(agent_chains=chains, agent_drains=agent_drains)
 
 
-# === Helper for test_policy_validation_strict_legacy_fields_rejected.py ===
 def _strict_legacy_fields_rejected_terminal_phase(
     drain: str = "complete", outcome: str = "success"
 ) -> PhaseDefinition:
@@ -166,7 +126,6 @@ def _strict_legacy_fields_rejected_terminal_phase(
     )
 
 
-# === Helper for test_policy_validation_strict_legacy_fields_rejected.py ===
 def _strict_legacy_fields_rejected_minimal_bundle_with_phases(
     phases: dict[str, PhaseDefinition],
 ) -> PolicyBundle:
@@ -181,14 +140,12 @@ def _strict_legacy_fields_rejected_minimal_bundle_with_phases(
     return PolicyBundle(agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy(artifacts={}))
 
 
-# === Helper for test_policy_validation_strict_skip_invocation_has_on_success.py ===
 def _strict_skip_invocation_has_on__minimal_agents(drains: list[str]) -> AgentsPolicy:
     chains = {d: AgentChainConfig(agents=["claude"]) for d in drains}
     agent_drains = {d: AgentDrainConfig(chain=d) for d in drains}
     return AgentsPolicy(agent_chains=chains, agent_drains=agent_drains)
 
 
-# === Helper for test_policy_validation_strict_skip_invocation_has_on_success.py ===
 def _strict_skip_invocation_has_on__terminal_phase(
     drain: str = "complete", outcome: str = "success"
 ) -> PhaseDefinition:
@@ -200,7 +157,6 @@ def _strict_skip_invocation_has_on__terminal_phase(
     )
 
 
-# === Helper for test_policy_validation_strict_skip_invocation_has_on_success.py ===
 def _strict_skip_invocation_has_on__minimal_bundle_with_phases(
     phases: dict[str, PhaseDefinition],
 ) -> PolicyBundle:
@@ -215,10 +171,7 @@ def _strict_skip_invocation_has_on__minimal_bundle_with_phases(
     return PolicyBundle(agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy(artifacts={}))
 
 
-# === consolidated from test_policy_validation_advance_phase_requires_policy_for_commit_targets.py ===
 class TestAdvancePhaseRequiresPolicyForCommitTargets:
-    """Tests that advance_phase raises when policy is None."""
-
     def test_raises_value_error_when_policy_is_none(self) -> None:
 
         state = PipelineState(phase="development_commit")
@@ -226,12 +179,8 @@ class TestAdvancePhaseRequiresPolicyForCommitTargets:
             advance_phase(state, "development", policy=None)
 
 
-# === consolidated from test_policy_validation_agents_policy_validation.py ===
 class TestAgentsPolicyValidation:
-    """Tests for AgentsPolicy model validation."""
-
     def test_valid_agents_policy(self) -> None:
-        """Test that a valid agents policy passes validation."""
         policy = AgentsPolicy(
             agent_chains={
                 "planning": AgentChainConfig(agents=["claude"], max_retries=2),
@@ -244,7 +193,6 @@ class TestAgentsPolicyValidation:
         assert policy.agent_drains["planning"].chain == "planning"
 
     def test_drain_references_unknown_chain_raises(self) -> None:
-        """Test that a drain binding to an unknown chain raises ValueError."""
         with pytest.raises(ValueError, match="references unknown chain"):
             AgentsPolicy(
                 agent_chains={},
@@ -254,25 +202,15 @@ class TestAgentsPolicyValidation:
             )
 
     def test_empty_chain_list_raises(self) -> None:
-        """Test that an empty agents list in a chain raises ValueError."""
         with pytest.raises(ValidationError, match="too_short"):
             AgentChainConfig(agents=[])
 
     def test_chain_referencing_unknown_agent_raises(self) -> None:
-        """Test that chain with unknown agent name raises validation error.
-
-        Note: The model doesn't validate agent names exist, only that the chain
-        reference is valid. Agent name validation happens at the registry level.
-        """
-        # This is valid at the policy level - agent names are validated elsewhere
         chain = AgentChainConfig(agents=["nonexistent_agent"], max_retries=2)
         assert chain.agents == ["nonexistent_agent"]
 
 
-# === consolidated from test_policy_validation_apply_commit_outcome_requires_policy.py ===
 class TestApplyCommitOutcomeRequiresPolicy:
-    """Tests that apply_commit_outcome raises when policy is None."""
-
     def test_raises_value_error_when_policy_is_none(self) -> None:
         state = PipelineState(phase="development_commit")
         advanced = PipelineState(phase="development")
@@ -280,12 +218,8 @@ class TestApplyCommitOutcomeRequiresPolicy:
             apply_commit_outcome(state, advanced, skipped=False, policy=None)
 
 
-# === consolidated from test_policy_validation_checkpoint_policy_mismatch_error.py ===
 class TestCheckpointPolicyMismatchError:
-    """Tests for CheckpointPolicyMismatchError exception."""
-
     def test_error_message_contains_phase(self) -> None:
-        """Test that error message contains the checkpoint phase."""
         error = CheckpointPolicyMismatchError(
             checkpoint_phase="test_phase",
             valid_phases={"phase_a", "phase_b"},
@@ -296,12 +230,8 @@ class TestCheckpointPolicyMismatchError:
         assert "--no-resume" in str(error)
 
 
-# === consolidated from test_policy_validation_default_policy_loading.py ===
 class TestDefaultPolicyLoading:
-    """Tests for loading the default policy."""
-
     def test_load_default_policy_succeeds(self) -> None:
-        """Test that the default policy loads without error and satisfies structural defaults."""
         bundle = _cached_default_bundle()
 
         assert bundle.agents is not None
@@ -325,7 +255,6 @@ class TestDefaultPolicyLoading:
     def test_parallel_policy_roundtrip_retains_legacy_settings_without_capping_workers(
         self,
     ) -> None:
-        """Legacy unit settings do not constrain the concurrent worker policy."""
         bundle = _cached_default_bundle()
 
         assert bundle.pipeline.phases["development"].parallelization is not None
@@ -353,14 +282,8 @@ class TestDefaultPolicyLoading:
         assert parallelization.max_work_units == 1
 
     def test_all_pipeline_drains_are_bound(self) -> None:
-        """Test that every drain used in pipeline.phases is bound in agents.agent_drains.
-
-        This is enforced by PolicyBundle's all_pipeline_drains_are_bound validator.
-        """
         bundle = _cached_default_bundle()
 
-        # This should not raise - the validator ensures all drains are bound
-        # Skip terminal phase since it never invokes an agent
         for phase_name, phase_def in bundle.pipeline.phases.items():
             if phase_def.role == "terminal":
                 continue
@@ -369,7 +292,6 @@ class TestDefaultPolicyLoading:
             )
 
     def test_development_commit_review_phase_in_default_policy(self) -> None:
-        """Test that the default policy exposes both pre-analysis and final commit reviews."""
         bundle = _cached_default_bundle()
 
         pre_analysis_cleanup = bundle.pipeline.phases["development_commit_review"]
@@ -394,7 +316,6 @@ class TestDefaultPolicyLoading:
             )
 
     def test_default_policy_uses_pre_analysis_and_final_commit_paths(self) -> None:
-        """Default policy should commit before analysis and again after successful analysis."""
         bundle = _cached_default_bundle()
 
         pre_analysis_cleanup = bundle.pipeline.phases["development_commit_review"]
@@ -414,7 +335,6 @@ class TestDefaultPolicyLoading:
         assert final_commit.commit_policy.increments_counter == "iteration"
 
     def test_commit_loop_resets_follow_compiled_hook_semantics(self) -> None:
-        """Pre-analysis and final commit hooks reset only the counters they own."""
         bundle = _cached_default_bundle()
 
         pre_analysis_commit = bundle.pipeline.phases["development_commit"]
@@ -428,12 +348,8 @@ class TestDefaultPolicyLoading:
         assert "development_analysis_iteration" in loop_resets
 
 
-# === consolidated from test_policy_validation_forbid_sibling_drain_inference.py ===
 class TestForbidSiblingDrainInference:
-    """Tests for forbid_sibling_drain_inference validation."""
-
     def test_validate_drain_contracts_all_bound_passes(self) -> None:
-        """Test that all drains explicitly bound passes validation with flag True."""
         policy = AgentsPolicy(
             forbid_sibling_drain_inference=True,
             agent_chains={
@@ -464,8 +380,6 @@ class TestForbidSiblingDrainInference:
             },
         )
 
-        # Build minimal bundle for validation
-        # Use minimal pipeline that references all drains
         pipeline = PipelinePolicy(
             phases={
                 "planning": PhaseDefinition(
@@ -522,16 +436,9 @@ class TestForbidSiblingDrainInference:
             artifacts=artifacts,
         )
 
-        # Should not raise
         validate_drain_contracts(bundle)
 
     def test_validate_drain_contracts_ignores_unused_canonical_drains(self) -> None:
-        """Drain validation only checks drains used by the active pipeline.
-
-        When forbid_sibling_drain_inference=True, only non-terminal pipeline phases'
-        drains need explicit bindings. Unused canonical drains (review, review_analysis,
-        etc.) do NOT need to be bound if they are not referenced in the pipeline.
-        """
         policy = AgentsPolicy(
             forbid_sibling_drain_inference=True,
             agent_chains={
@@ -541,8 +448,6 @@ class TestForbidSiblingDrainInference:
             agent_drains={
                 "planning": AgentDrainConfig(chain="planning", drain_class="planning"),
                 "development": AgentDrainConfig(chain="development", drain_class="development"),
-                # review, review_analysis, review_commit, fix are intentionally NOT bound
-                # but they are also NOT in the pipeline - so no error is expected
             },
         )
 
@@ -578,11 +483,9 @@ class TestForbidSiblingDrainInference:
             artifacts=artifacts,
         )
 
-        # Should NOT raise: review etc. are not in the pipeline, so not required
         validate_drain_contracts(bundle)
 
     def test_validate_drain_contracts_pipeline_drain_unbound_raises(self) -> None:
-        """When a drain used by a non-terminal pipeline phase is unbound, raises."""
         policy = AgentsPolicy(
             forbid_sibling_drain_inference=True,
             agent_chains={
@@ -590,7 +493,6 @@ class TestForbidSiblingDrainInference:
             },
             agent_drains={
                 "planning": AgentDrainConfig(chain="planning"),
-                # development_analysis is in the pipeline but NOT bound
             },
         )
 
@@ -614,8 +516,6 @@ class TestForbidSiblingDrainInference:
         )
 
         artifacts = ArtifactsPolicy(artifacts={})
-        # Use model_construct to bypass all_pipeline_drains_are_bound so we can
-        # test validate_drain_contracts in isolation
         bundle = PolicyBundle.model_construct(
             agents=policy,
             pipeline=pipeline,
@@ -628,7 +528,6 @@ class TestForbidSiblingDrainInference:
             validate_drain_contracts(bundle)
 
     def test_validate_drain_contracts_flag_false_skips_validation(self) -> None:
-        """Test that forbid_sibling_drain_inference=False skips validation."""
         policy = AgentsPolicy(
             forbid_sibling_drain_inference=False,
             agent_chains={
@@ -636,7 +535,6 @@ class TestForbidSiblingDrainInference:
             },
             agent_drains={
                 "planning": AgentDrainConfig(chain="planning"),
-                # No other drains bound - this would fail with flag True
             },
         )
 
@@ -668,11 +566,9 @@ class TestForbidSiblingDrainInference:
             artifacts=artifacts,
         )
 
-        # Should not raise even though drains are unbound
         validate_drain_contracts(bundle)
 
     def test_forbid_sibling_drain_inference_default_false(self) -> None:
-        """Test that forbid_sibling_drain_inference defaults to False."""
         policy = AgentsPolicy(
             agent_chains={
                 "planning": AgentChainConfig(agents=["claude"]),
@@ -684,20 +580,14 @@ class TestForbidSiblingDrainInference:
         assert policy.forbid_sibling_drain_inference is False
 
 
-# === consolidated from test_policy_validation_get_drain_resolution_matrix.py ===
 class TestGetDrainResolutionMatrix:
-    """Tests for get_drain_resolution_matrix."""
-
     def test_empty_matrix(self) -> None:
-        """Test empty bundle returns empty matrix."""
         bundle = _cached_default_bundle()
         matrix = get_drain_resolution_matrix(bundle)
         assert isinstance(matrix, dict)
-        # Should have entries since default policy has bound drains
         assert len(matrix) > 0
 
     def test_matrix_contains_drain_info(self) -> None:
-        """Test that matrix contains correct drain information."""
         bundle = _cached_default_bundle()
         matrix = get_drain_resolution_matrix(bundle)
 
@@ -707,18 +597,8 @@ class TestGetDrainResolutionMatrix:
             assert "max_retries" in matrix["planning"]
 
 
-# === consolidated from test_policy_validation_load_policy_forbid_sibling_inference.py ===
 class TestLoadPolicyForbidSiblingInference:
-    """Tests that load_policy enforces forbid_sibling_drain_inference."""
-
     def test_load_policy_rejects_missing_drains(self, tmp_path: Path) -> None:
-        """load_policy rejects a pipeline drain bound nowhere — no inference.
-
-        When forbid_sibling_drain_inference=True, pipeline-used drains must be
-        explicitly bound. Drains the user omits but the bundled defaults bind
-        are satisfied by layering; a drain unknown to BOTH the user policy and
-        the bundled defaults is rejected at load time.
-        """
         config_dir = tmp_path / ".agent"
         config_dir.mkdir(parents=True)
 
@@ -772,19 +652,14 @@ class TestLoadPolicyForbidSiblingInference:
             load_policy(config_dir)
 
 
-# === consolidated from test_policy_validation_pipeline_owned_artifact_required_policy.py ===
 class TestPipelineOwnedArtifactRequiredPolicy:
-    """Tests for pipeline-owned required artifact behavior."""
-
     def test_default_policy_loads_with_development_phase_required(self) -> None:
-        """Default policy must load with development artifact requirement owned by pipeline."""
         bundle = _cached_default_bundle()
         assert bundle.pipeline.phases["development"].artifact_required is True, (
             "phases.development.artifact_required must be True in default policy"
         )
 
     def test_artifact_contract_rejects_phase_owned_artifact_required(self) -> None:
-        """ArtifactContract must reject artifact_required because it belongs to pipeline.toml."""
         with pytest.raises(ValueError, match=r"pipeline\.toml"):
             ArtifactContract.model_validate(
                 {
@@ -798,14 +673,12 @@ class TestPipelineOwnedArtifactRequiredPolicy:
         assert "artifact_json_path" not in ArtifactContract.model_json_schema()["properties"]
 
     def test_required_artifact_regression_uses_format_neutral_artifact_path(self) -> None:
-        """Cover the markdown-migration task: the model exposes no JSON-named path."""
         field_names = {field.name for field in fields(RequiredArtifact)}
 
         assert "artifact_path" in field_names
         assert "json_path" not in field_names
 
     def test_phase_required_artifact_uses_pipeline_owned_required_flag(self) -> None:
-        """resolve_phase_required_artifact threads artifact_required from phase policy."""
         bundle = _cached_default_bundle()
         dev_ra = resolve_phase_required_artifact(
             bundle.pipeline,
@@ -819,14 +692,9 @@ class TestPipelineOwnedArtifactRequiredPolicy:
         )
 
 
-# === consolidated from test_policy_validation_policy_bundle_validation.py ===
 class TestPolicyBundleValidation:
-    """Tests for cross-policy validation in PolicyBundle."""
-
     def test_pipeline_drain_not_bound_raises(self) -> None:
-        """Test that a pipeline using an unbound drain raises ValueError."""
 
-        # Create agents policy with no development drain bound
         agents = AgentsPolicy(
             agent_chains={
                 "planning": AgentChainConfig(agents=["claude"]),
@@ -836,7 +704,6 @@ class TestPolicyBundleValidation:
             },
         )
 
-        # Create pipeline that uses development drain (not bound)
         pipeline = PipelinePolicy(
             phases={
                 "planning": PhaseDefinition(
@@ -844,7 +711,7 @@ class TestPolicyBundleValidation:
                     transitions=PhaseTransition(on_success="development"),
                 ),
                 "development": PhaseDefinition(
-                    drain="development",  # Not bound in agents!
+                    drain="development",
                     transitions=PhaseTransition(
                         on_success="complete",
                         on_loopback="complete",
@@ -867,8 +734,6 @@ class TestPolicyBundleValidation:
             PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
 
     def test_analysis_phase_without_vocabulary_raises(self) -> None:
-        """Test that role='analysis' phase without decision_vocabulary raises."""
-        # Create valid agents policy
         agents = AgentsPolicy(
             agent_chains={
                 "development": AgentChainConfig(agents=["claude"]),
@@ -880,7 +745,6 @@ class TestPolicyBundleValidation:
             },
         )
 
-        # Create pipeline with analysis phase
         pipeline = PipelinePolicy(
             phases={
                 "development": PhaseDefinition(
@@ -903,17 +767,12 @@ class TestPolicyBundleValidation:
             terminal_phase="complete",
         )
 
-        # Without an artifacts policy that provides decision_vocabulary,
-        # this should raise
         artifacts = ArtifactsPolicy(artifacts={})
         with pytest.raises(ValueError, match="decision_vocabulary"):
             PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
 
 
-# === consolidated from test_policy_validation_shared_drain_history_consistency.py ===
 class TestSharedDrainHistoryConsistency:
-    """Tests for _validate_shared_drain_history_consistency via validate_policy_completeness."""
-
     def _minimal_bundle(
         self,
         *,
@@ -964,7 +823,6 @@ class TestSharedDrainHistoryConsistency:
         )
 
     def test_conflicting_history_enabled_on_same_drain_raises(self) -> None:
-        """Two phases on the same drain with conflicting artifact_history.enabled raise error."""
 
         bundle = self._minimal_bundle(
             history_a=ArtifactHistoryPolicy(enabled=True),
@@ -975,28 +833,23 @@ class TestSharedDrainHistoryConsistency:
             validate_policy_completeness(bundle)
 
     def test_consistent_history_enabled_on_same_drain_passes(self) -> None:
-        """Two phases on the same drain with the same artifact_history.enabled pass."""
 
         bundle = self._minimal_bundle(
             history_a=ArtifactHistoryPolicy(enabled=True),
             history_b=ArtifactHistoryPolicy(enabled=True),
         )
-        validate_policy_completeness(bundle)  # must not raise
+        validate_policy_completeness(bundle)
 
     def test_no_artifact_history_on_phase_is_excluded_from_check(self) -> None:
-        """A phase with no artifact_history declared is excluded from drain consistency."""
 
         bundle = self._minimal_bundle(
             history_a=ArtifactHistoryPolicy(enabled=True),
             history_b=None,
         )
-        validate_policy_completeness(bundle)  # must not raise
+        validate_policy_completeness(bundle)
 
 
-# === consolidated from test_policy_validation_strict_cli_counter_overrides.py ===
 class TestCliCounterOverrides:
-    """CLI counter overrides must reference declared budget_counters."""
-
     def _bundle_with_budget_counter(self, counter_name: str) -> PolicyBundle:
         agents = _strict_cli_counter_overrides_minimal_agents(["work", "complete"])
         pipeline = PipelinePolicy(
@@ -1024,17 +877,15 @@ class TestCliCounterOverrides:
 
     def test_declared_counter_override_passes(self) -> None:
         bundle = self._bundle_with_budget_counter("my_counter")
-        validate_policy_completeness(
-            bundle, cli_counter_overrides={"my_counter": 3}
-        )  # must not raise
+        validate_policy_completeness(bundle, cli_counter_overrides={"my_counter": 3})
 
     def test_no_overrides_kwarg_does_not_validate_counters(self) -> None:
         bundle = self._bundle_with_budget_counter("my_counter")
-        validate_policy_completeness(bundle)  # no cli_counter_overrides — must not raise
+        validate_policy_completeness(bundle)
 
     def test_none_overrides_does_not_validate_counters(self) -> None:
         bundle = self._bundle_with_budget_counter("my_counter")
-        validate_policy_completeness(bundle, cli_counter_overrides=None)  # must not raise
+        validate_policy_completeness(bundle, cli_counter_overrides=None)
 
     def test_error_message_lists_declared_counters(self) -> None:
         bundle = self._bundle_with_budget_counter("declared_counter")
@@ -1045,22 +896,12 @@ class TestCliCounterOverrides:
         assert "declared_counter" in error_msg
 
 
-# === consolidated from test_policy_validation_strict_legacy_fields_rejected.py ===
 class TestLegacyFieldsRejected:
-    """Tests for removed/legacy fields that must be rejected at construction time."""
-
     def test_failed_route_failed_alias_rejected(self) -> None:
-        """RecoveryPolicy rejects 'failed' as failed_route (removed pseudo-phase alias)."""
         with pytest.raises(ValueError, match="'failed' is no longer accepted"):
             RecoveryPolicy(failed_route="failed")
 
     def test_drain_class_substring_inference_rejected(self) -> None:
-        """Custom drain without drain_class raises PolicyValidationError.
-
-        Pre-v2 behavior silently inferred drain class from name substrings
-        (e.g. a drain named 'custom_fixer_drain' resolved to DrainClass.FIX).
-        That inference was removed; an explicit drain_class is required.
-        """
         agents = AgentsPolicy(
             agent_chains={"chain": AgentChainConfig(agents=["claude"])},
             agent_drains={"custom_fixer_drain": AgentDrainConfig(chain="chain")},
@@ -1069,11 +910,6 @@ class TestLegacyFieldsRejected:
             drain_class_for_session("custom_fixer_drain", agents)
 
     def test_drain_class_missing_rejected_under_strict_validation(self) -> None:
-        """validate_drain_contracts rejects drains missing drain_class when strict.
-
-        When forbid_sibling_drain_inference=true, every pipeline-used drain must
-        declare drain_class explicitly in agents.toml.
-        """
         agents = AgentsPolicy(
             forbid_sibling_drain_inference=True,
             agent_chains={"chain": AgentChainConfig(agents=["claude"])},
@@ -1109,7 +945,6 @@ class TestLegacyFieldsRejected:
             validate_drain_contracts(bundle)
 
     def test_drain_class_present_passes_strict_validation(self) -> None:
-        """validate_drain_contracts passes when all drains have explicit drain_class."""
         agents = AgentsPolicy(
             forbid_sibling_drain_inference=True,
             agent_chains={"chain": AgentChainConfig(agents=["claude"])},
@@ -1141,10 +976,9 @@ class TestLegacyFieldsRejected:
             pipeline=pipeline,
             artifacts=ArtifactsPolicy(artifacts={}),
         )
-        validate_drain_contracts(bundle)  # must not raise
+        validate_drain_contracts(bundle)
 
     def test_legacy_phase_field_requires_commit_rejected(self) -> None:
-        """PhaseDefinition with requires_commit=True is rejected with an actionable error."""
         with pytest.raises(ValidationError, match="requires_commit has been removed"):
             PhaseDefinition(
                 drain="build",
@@ -1154,7 +988,6 @@ class TestLegacyFieldsRejected:
             )
 
     def test_legacy_phase_field_embeds_analysis_rejected(self) -> None:
-        """PhaseDefinition with embeds_analysis=True is rejected with an actionable error."""
         with pytest.raises(ValidationError, match="embeds_analysis has been removed"):
             PhaseDefinition(
                 drain="build",
@@ -1164,14 +997,8 @@ class TestLegacyFieldsRejected:
             )
 
 
-# === consolidated from test_policy_validation_strict_skip_invocation_has_on_success.py ===
 class TestSkipInvocationHasOnSuccess:
-    """skip_invocation=true requires transitions.on_success."""
-
     def test_skip_invocation_without_on_success_raises(self) -> None:
-        # Use model_construct to bypass Pydantic's required-field and cross-reference
-        # validators so we can create the exact invalid state the policy validator
-        # is designed to catch (skip_invocation=True with no on_success target).
         invalid_transitions = PhaseTransition.model_construct(
             on_success=None,
             on_failure=None,
@@ -1221,12 +1048,11 @@ class TestSkipInvocationHasOnSuccess:
             "complete": _strict_skip_invocation_has_on__terminal_phase(),
         }
         bundle = _strict_skip_invocation_has_on__minimal_bundle_with_phases(phases)
-        validate_policy_completeness(bundle)  # must not raise
+        validate_policy_completeness(bundle)
 
     def test_skip_invocation_false_without_on_success_does_not_raise_from_this_check(
         self,
     ) -> None:
-        """skip_invocation=False with no on_success may still fail other validators."""
         phases = {
             "work": PhaseDefinition(
                 drain="work",
@@ -1237,68 +1063,45 @@ class TestSkipInvocationHasOnSuccess:
             "complete": _strict_skip_invocation_has_on__terminal_phase(),
         }
         bundle = _strict_skip_invocation_has_on__minimal_bundle_with_phases(phases)
-        validate_policy_completeness(bundle)  # must not raise due to skip_invocation check
+        validate_policy_completeness(bundle)
 
 
-# === consolidated from test_policy_validation_validate_chain_exists.py ===
 class TestValidateChainExists:
-    """Tests for validate_chain_exists."""
-
     def test_chain_exists(self) -> None:
-        """Test that an existing chain passes validation."""
         bundle = _cached_default_bundle()
-        # Should not raise
         validate_chain_exists("development", bundle)
 
     def test_chain_not_defined(self) -> None:
-        """Test that an undefined chain raises ValueError."""
         bundle = _cached_default_bundle()
         with pytest.raises(ValueError, match="not defined"):
             validate_chain_exists("nonexistent_chain", bundle)
 
 
-# === consolidated from test_policy_validation_validate_checkpoint_compatible.py ===
 class TestValidateCheckpointCompatible:
-    """Tests for validate_checkpoint_compatible."""
-
     def test_checkpoint_compatible(self) -> None:
-        """Test that a compatible checkpoint passes validation."""
         bundle = _cached_default_bundle()
-        # Should not raise
         validate_checkpoint_compatible("planning", bundle)
 
     def test_checkpoint_incompatible(self) -> None:
-        """Test that an incompatible checkpoint raises error."""
         bundle = _cached_default_bundle()
         with pytest.raises(CheckpointPolicyMismatchError):
             validate_checkpoint_compatible("nonexistent_phase", bundle)
 
 
-# === consolidated from test_policy_validation_validate_drain_bound.py ===
 class TestValidateDrainBound:
-    """Tests for validate_drain_bound."""
-
     def test_drain_bound(self) -> None:
-        """Test that a bound drain passes validation."""
         bundle = _cached_default_bundle()
-        # Should not raise
         validate_drain_bound("planning", bundle)
 
-    # ponytail: policy loading under xdist can exceed 1s; the 60s suite budget remains authoritative.
     @pytest.mark.timeout_seconds(2.0)
     def test_drain_not_bound(self) -> None:
-        """Test that an unbound drain raises ValueError."""
         bundle = _cached_default_bundle()
         with pytest.raises(ValueError, match="not bound"):
             validate_drain_bound("nonexistent_drain", bundle)
 
 
-# === consolidated from test_policy_validation_validate_phase_exists_in_policy.py ===
 class TestValidatePhaseExistsInPolicy:
-    """Tests for validate_phase_exists_in_policy."""
-
     def test_phase_exists_in_policy(self) -> None:
-        """Test that an existing phase passes validation."""
         pipeline = PipelinePolicy(
             phases={
                 "planning": PhaseDefinition(
@@ -1313,12 +1116,9 @@ class TestValidatePhaseExistsInPolicy:
             entry_phase="planning",
             terminal_phase="complete",
         )
-        # Should not raise
         validate_phase_exists_in_policy("development", pipeline)
 
     def test_phase_not_in_policy(self) -> None:
-        """Test that a missing phase raises CheckpointPolicyMismatchError."""
-        # Use mock to avoid Pydantic validation complexity
         pipeline = MagicMock()
         pipeline.phases = {
             "planning": MagicMock(),
@@ -1331,11 +1131,8 @@ class TestValidatePhaseExistsInPolicy:
         assert exc_info.value.checkpoint_phase == "nonexistent_phase"
 
 
-# === consolidated from test_policy_validation_validate_policy_completeness_new_rules.py ===
 @pytest.mark.timeout_seconds(3.0)
 class TestValidatePolicyCompletenessNewRules:
-    """Tests for vocab superset check, commit_policy, loop_resets, and failed_route."""
-
     def _minimal_agents(self, drains: list[str]) -> AgentsPolicy:
         chains = {d: AgentChainConfig(agents=["claude"]) for d in drains}
         agent_drains = {d: AgentDrainConfig(chain=d) for d in drains}
@@ -1348,7 +1145,6 @@ class TestValidatePolicyCompletenessNewRules:
         on_success: str = "complete",
         failure_target: str = "failed",
     ) -> PhaseDefinition:
-        """Create a minimal analysis phase with required decisions field."""
         return PhaseDefinition(
             drain=name,
             role="analysis",
@@ -1364,7 +1160,6 @@ class TestValidatePolicyCompletenessNewRules:
         )
 
     def _minimal_analysis_artifacts(self, drain: DrainName) -> ArtifactsPolicy:
-        """Create minimal artifacts policy for analysis phase."""
         return ArtifactsPolicy(
             artifacts={
                 "dev_analysis": ArtifactContract(
@@ -1376,7 +1171,6 @@ class TestValidatePolicyCompletenessNewRules:
         )
 
     def test_uncovered_vocab_entry_raises(self) -> None:
-        """Analysis phase decisions must cover every entry in decision_vocabulary."""
         agents = self._minimal_agents(["development_analysis", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -1416,11 +1210,6 @@ class TestValidatePolicyCompletenessNewRules:
             validate_policy_completeness(bundle)
 
     def test_uncovered_vocab_with_on_failure_still_raises(self) -> None:
-        """Uncovered vocab entries fail even when transitions.on_failure is set.
-
-        The on_failure escape hatch was removed - every decision_vocabulary entry
-        must have an explicit route in the decisions table.
-        """
         agents = self._minimal_agents(["development_analysis", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -1472,7 +1261,6 @@ class TestValidatePolicyCompletenessNewRules:
             validate_policy_completeness(bundle)
 
     def test_commit_phase_without_commit_policy_raises(self) -> None:
-        """A commit-role phase with commit_policy=None fails completeness check."""
         agents = self._minimal_agents(["development_commit", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -1483,7 +1271,6 @@ class TestValidatePolicyCompletenessNewRules:
                         on_success="complete",
                         on_failure=None,
                     ),
-                    # commit_policy intentionally absent
                 ),
                 "failed": PhaseDefinition(
                     drain="complete",
@@ -1510,7 +1297,6 @@ class TestValidatePolicyCompletenessNewRules:
             validate_policy_completeness(bundle)
 
     def test_commit_phase_with_commit_policy_passes(self) -> None:
-        """A commit-role phase with commit_policy passes completeness check."""
         agents = self._minimal_agents(["development_analysis", "development_commit", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -1554,15 +1340,9 @@ class TestValidatePolicyCompletenessNewRules:
         )
         artifacts = self._minimal_analysis_artifacts("development_analysis")
         bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
-        validate_policy_completeness(bundle)  # must not raise
+        validate_policy_completeness(bundle)
 
     def test_commit_phase_with_increments_counter_none_is_valid(self) -> None:
-        """A commit-role phase with increments_counter='none' passes completeness check.
-
-        increments_counter='none' is a valid declared value — it indicates that
-        this commit phase does not advance outer progress (e.g., a verification-style
-        commit that just validates without bumping iteration or reviewer_pass).
-        """
         agents = self._minimal_agents(["development_analysis", "development_commit", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -1580,7 +1360,7 @@ class TestValidatePolicyCompletenessNewRules:
                         on_failure=None,
                     ),
                     commit_policy=PhaseCommitPolicy(
-                        increments_counter="none",  # Valid — no outer-progress bump
+                        increments_counter="none",
                         loop_resets=["development_analysis_iteration"],
                     ),
                 ),
@@ -1606,10 +1386,9 @@ class TestValidatePolicyCompletenessNewRules:
         )
         artifacts = self._minimal_analysis_artifacts("development_analysis")
         bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
-        validate_policy_completeness(bundle)  # must not raise
+        validate_policy_completeness(bundle)
 
     def test_commit_policy_loop_resets_invalid_field_raises(self) -> None:
-        """commit_policy.loop_resets with an invalid iteration field fails validation."""
         agents = self._minimal_agents(["development_analysis", "development_commit", "complete"])
         dev_analysis_decisions = {
             "completed": PhaseDecisionRoute(target="development_commit", reset_loop=True),
@@ -1638,8 +1417,6 @@ class TestValidatePolicyCompletenessNewRules:
                     ),
                     commit_policy=PhaseCommitPolicy(
                         increments_counter="iteration",
-                        # "nonexistent_iteration_field" is not an iteration_state_field
-                        # used by any analysis phase in this policy
                         loop_resets=["nonexistent_iteration_field"],
                     ),
                 ),
@@ -1710,7 +1487,6 @@ class TestValidatePolicyCompletenessNewRules:
             validate_policy_completeness(bundle)
 
     def test_commit_policy_loop_resets_valid_field_passes(self) -> None:
-        """commit_policy.loop_resets referencing a valid iteration field passes validation."""
         agents = self._minimal_agents(["development_analysis", "development_commit", "complete"])
         dev_analysis_decisions = {
             "completed": PhaseDecisionRoute(target="development_commit", reset_loop=True),
@@ -1739,7 +1515,6 @@ class TestValidatePolicyCompletenessNewRules:
                     ),
                     commit_policy=PhaseCommitPolicy(
                         increments_counter="iteration",
-                        # References the iteration_state_field from development_analysis
                         loop_resets=["development_analysis_iteration"],
                     ),
                 ),
@@ -1765,10 +1540,9 @@ class TestValidatePolicyCompletenessNewRules:
         )
         artifacts = self._minimal_analysis_artifacts("development_analysis")
         bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
-        validate_policy_completeness(bundle)  # must not raise
+        validate_policy_completeness(bundle)
 
     def test_recovery_terminal_recovery_route_field_rejected(self) -> None:
-        """terminal_recovery_route is deprecated; the model validator rejects it."""
         with pytest.raises(ValidationError, match="deprecated"):
             RecoveryPolicy.model_validate(
                 {
@@ -1779,12 +1553,6 @@ class TestValidatePolicyCompletenessNewRules:
             )
 
     def test_recovery_failed_route_unknown_phase_raises_policy_error(self) -> None:
-        """failed_route referencing an undeclared phase fails completeness validation.
-
-        A non-reserved string that doesn't match a declared phase is rejected by
-        validate_policy_completeness, not at Pydantic model level.
-        Note: 'phase_failed' and 'exit_failure' are rejected at model construction.
-        """
         agents = self._minimal_agents(["planning", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -1817,7 +1585,6 @@ class TestValidatePolicyCompletenessNewRules:
             validate_policy_completeness(bundle)
 
     def test_recovery_failed_route_declared_phase_accepted(self) -> None:
-        """failed_route set to a declared pipeline phase is valid."""
         agents = self._minimal_agents(["planning", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -1846,11 +1613,10 @@ class TestValidatePolicyCompletenessNewRules:
         )
         artifacts = ArtifactsPolicy(artifacts={})
         bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
-        validate_policy_completeness(bundle)  # must not raise
+        validate_policy_completeness(bundle)
 
     @pytest.mark.parametrize("failed_route", ["phase_failed", "exit_failure"])
     def test_recovery_failed_route_legacy_rejected(self, failed_route: str) -> None:
-        """recovery.failed_route legacy pseudo-phases are rejected at model construction."""
         with pytest.raises(ValidationError, match="no longer supported"):
             RecoveryPolicy(
                 cycle_cap=200,
@@ -1859,7 +1625,6 @@ class TestValidatePolicyCompletenessNewRules:
             )
 
     def test_review_role_requires_issues_outcome(self) -> None:
-        """role='review' without issues_outcome fails validate_policy_completeness."""
         agents = self._minimal_agents(["planning", "review", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -1872,7 +1637,6 @@ class TestValidatePolicyCompletenessNewRules:
                     drain="review",
                     role="review",
                     transitions=PhaseTransition(on_success="complete"),
-                    # issues_outcome intentionally omitted
                 ),
                 "complete": PhaseDefinition(
                     drain="complete",
@@ -1893,7 +1657,6 @@ class TestValidatePolicyCompletenessNewRules:
             validate_policy_completeness(bundle)
 
     def test_review_role_requires_clean_outcome_when_bypass_routes_set(self) -> None:
-        """role='review' with bypass_routes but no clean_outcome fails completeness check."""
         agents = self._minimal_agents(["planning", "review", "review_commit", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -1908,7 +1671,6 @@ class TestValidatePolicyCompletenessNewRules:
                     issues_outcome="has_issues",
                     transitions=PhaseTransition(on_success="complete"),
                     bypass_routes={"review_clean": "review_commit"},
-                    # clean_outcome intentionally omitted while bypass_routes is set
                 ),
                 "review_commit": PhaseDefinition(
                     drain="review_commit",
@@ -1934,11 +1696,6 @@ class TestValidatePolicyCompletenessNewRules:
             validate_policy_completeness(bundle)
 
     def test_commit_policy_loop_resets_accepts_commit_review_iteration_field(self) -> None:
-        """commit_policy.loop_resets accepting commit_review iteration field passes validation.
-
-        Bug #1: The validator only scanned analysis-role phases for valid iteration
-        fields. This test verifies that commit_review-role phases are also accepted.
-        """
         drains = [
             "development_analysis",
             "commit",
@@ -2002,16 +1759,11 @@ class TestValidatePolicyCompletenessNewRules:
         )
         artifacts = self._minimal_analysis_artifacts("development_analysis")
         bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
-        validate_policy_completeness(bundle)  # must not raise
+        validate_policy_completeness(bundle)
 
     def test_commit_policy_loop_resets_rejects_field_not_from_analysis_or_commit_review(
         self,
     ) -> None:
-        """commit_policy.loop_resets with field from unknown role fails validation.
-
-        Bug #1: The validator only checked analysis-role phases. This test ensures
-        that fields from unrecognized roles are still rejected.
-        """
         agents = self._minimal_agents(["development_analysis", "development_commit", "complete"])
         dev_analysis_decisions = {
             "completed": PhaseDecisionRoute(target="development_commit", reset_loop=True),
@@ -2040,7 +1792,6 @@ class TestValidatePolicyCompletenessNewRules:
                     ),
                     commit_policy=PhaseCommitPolicy(
                         increments_counter="iteration",
-                        # "unknown_iteration_field" is not from any analysis or commit_review phase
                         loop_resets=["unknown_iteration_field"],
                     ),
                 ),
@@ -2069,16 +1820,7 @@ class TestValidatePolicyCompletenessNewRules:
             validate_policy_completeness(bundle)
 
 
-# === consolidated from test_policy_validation_validate_policy_completeness_reachability.py ===
 class TestValidatePolicyCompletenessReachability:
-    """Tests for phase reachability validation in validate_policy_completeness.
-
-    Every phase declared in policy.phases must be reachable from entry_phase
-    following any combination of transitions (on_success, on_failure, on_loopback,
-    decisions, bypass_routes). Orphaned phases that can never be reached from the
-    entry point are rejected as incomplete policy.
-    """
-
     def _agents(self, drains: list[str]) -> AgentsPolicy:
         chains = {d: AgentChainConfig(agents=["claude"]) for d in drains}
         agent_drains = {d: AgentDrainConfig(chain=d) for d in drains}
@@ -2093,7 +1835,6 @@ class TestValidatePolicyCompletenessReachability:
         )
 
     def test_linear_chain_all_reachable_passes(self) -> None:
-        """Simple entry -> middle -> terminal: all phases reachable, validation passes."""
         agents = self._agents(["planning", "development", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -2116,10 +1857,9 @@ class TestValidatePolicyCompletenessReachability:
         bundle = PolicyBundle(
             agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy(artifacts={})
         )
-        validate_policy_completeness(bundle)  # must not raise
+        validate_policy_completeness(bundle)
 
     def test_orphaned_phase_raises_validation_error(self) -> None:
-        """A phase defined in policy but unreachable from entry_phase fails validation."""
         agents = self._agents(["planning", "orphan", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -2146,7 +1886,6 @@ class TestValidatePolicyCompletenessReachability:
             validate_policy_completeness(bundle)
 
     def test_phase_reachable_via_on_failure_passes(self) -> None:
-        """A phase reachable only via on_failure is still considered reachable."""
         agents = self._agents(["planning", "fallback", "complete", "crashed"])
         pipeline = PipelinePolicy(
             phases={
@@ -2181,10 +1920,9 @@ class TestValidatePolicyCompletenessReachability:
         bundle = PolicyBundle(
             agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy(artifacts={})
         )
-        validate_policy_completeness(bundle)  # must not raise
+        validate_policy_completeness(bundle)
 
     def test_phase_reachable_via_on_loopback_passes(self) -> None:
-        """A phase reachable only via on_loopback is still considered reachable."""
         agents = self._agents(["execution", "review", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -2214,10 +1952,9 @@ class TestValidatePolicyCompletenessReachability:
         bundle = PolicyBundle(
             agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy(artifacts={})
         )
-        validate_policy_completeness(bundle)  # must not raise
+        validate_policy_completeness(bundle)
 
     def test_phase_reachable_via_decision_target_passes(self) -> None:
-        """A phase reachable only via an analysis decisions target is reachable."""
         agents = self._agents(["analysis", "alt_path", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -2258,10 +1995,9 @@ class TestValidatePolicyCompletenessReachability:
             }
         )
         bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
-        validate_policy_completeness(bundle)  # must not raise
+        validate_policy_completeness(bundle)
 
     def test_phase_reachable_via_bypass_route_passes(self) -> None:
-        """A phase reachable only via bypass_routes is still considered reachable."""
         agents = self._agents(["review", "shortcut_commit", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -2297,10 +2033,9 @@ class TestValidatePolicyCompletenessReachability:
         bundle = PolicyBundle(
             agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy(artifacts={})
         )
-        validate_policy_completeness(bundle)  # must not raise
+        validate_policy_completeness(bundle)
 
     def test_multiple_orphaned_phases_all_listed_in_error(self) -> None:
-        """All unreachable phases must appear in the validation error message."""
         agents = self._agents(["planning", "orphan_a", "orphan_b", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -2335,10 +2070,7 @@ class TestValidatePolicyCompletenessReachability:
         assert "orphan_b" in error_msg
 
 
-# === consolidated from test_policy_validation_validate_policy_completeness_verification_role.py ===
 class TestValidatePolicyCompletenessVerificationRole:
-    """Tests for validation of role='verification' phases in validate_policy_completeness."""
-
     def _agents(self, drains: list[str]) -> AgentsPolicy:
         chains = {d: AgentChainConfig(agents=["claude"]) for d in drains}
         agent_drains = {d: AgentDrainConfig(chain=d) for d in drains}
@@ -2353,7 +2085,6 @@ class TestValidatePolicyCompletenessVerificationRole:
         )
 
     def test_verification_role_requires_verification_block(self) -> None:
-        """role='verification' with no verification block fails completeness check."""
         agents = self._agents(["verify", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -2361,7 +2092,6 @@ class TestValidatePolicyCompletenessVerificationRole:
                     drain="verify",
                     role="verification",
                     transitions=PhaseTransition(on_success="complete"),
-                    # verification intentionally absent
                 ),
                 "complete": self._terminal_phase(),
             },
@@ -2374,17 +2104,14 @@ class TestValidatePolicyCompletenessVerificationRole:
             validate_policy_completeness(bundle)
 
     def test_verification_kind_pydantic_rejects_invalid(self) -> None:
-        """PhaseVerificationPolicy rejects invalid kind values."""
         with pytest.raises(ValidationError):
             PhaseVerificationPolicy(**{"kind": "bogus", "gate_for": "advancement"})
 
     def test_verification_gate_for_pydantic_rejects_invalid(self) -> None:
-        """PhaseVerificationPolicy rejects invalid gate_for values."""
         with pytest.raises(ValidationError):
             PhaseVerificationPolicy(**{"kind": "none", "gate_for": "unknown_gate"})
 
     def test_verification_on_failure_route_unknown_phase_rejected(self) -> None:
-        """on_failure_route naming a missing phase fails completeness check."""
         agents = self._agents(["verify", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -2409,12 +2136,6 @@ class TestValidatePolicyCompletenessVerificationRole:
             validate_policy_completeness(bundle)
 
     def test_verification_on_failure_route_failed_undeclared_rejected(self) -> None:
-        """on_failure_route to undeclared 'failed' pseudo-phase is now rejected.
-
-        The bare 'failed' alias is no longer a valid pseudo-phase target.
-        Declare a phase with role='terminal' and terminal_outcome='failure' and
-        reference it via on_failure_route.
-        """
         agents = self._agents(["verify", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -2439,7 +2160,6 @@ class TestValidatePolicyCompletenessVerificationRole:
             validate_policy_completeness(bundle)
 
     def test_verification_on_failure_route_legacy_pseudo_rejected(self) -> None:
-        """on_failure_route to 'phase_failed' or 'exit_failure' pseudo-phases is rejected."""
         for pseudo in ("phase_failed", "exit_failure"):
             agents = self._agents(["verify", "complete"])
             pipeline = PipelinePolicy(
@@ -2465,7 +2185,6 @@ class TestValidatePolicyCompletenessVerificationRole:
                 validate_policy_completeness(bundle)
 
     def test_verification_on_failure_route_declared_terminal_phase_accepted(self) -> None:
-        """on_failure_route pointing to a declared terminal phase passes."""
         agents = self._agents(["verify", "crashed", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -2492,10 +2211,9 @@ class TestValidatePolicyCompletenessVerificationRole:
             recovery=RecoveryPolicy(failed_route="crashed"),
         )
         bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy())
-        validate_policy_completeness(bundle)  # must not raise
+        validate_policy_completeness(bundle)
 
     def test_verification_with_valid_block_passes(self) -> None:
-        """role='verification' with valid block passes completeness check."""
         agents = self._agents(["verify", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -2516,18 +2234,10 @@ class TestValidatePolicyCompletenessVerificationRole:
             recovery=RecoveryPolicy(failed_route="complete"),
         )
         bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy())
-        validate_policy_completeness(bundle)  # must not raise
+        validate_policy_completeness(bundle)
 
 
-# === consolidated from test_policy_validation_validate_post_commit_all_budget_states_covered.py ===
 class TestValidatePostCommitAllBudgetStatesCovered:
-    """Tests for _validate_post_commit_routes_complete requiring all three budget states.
-
-    When a commit phase increments a tracked budget counter, post_commit_routes must
-    cover all three budget states (remaining, exhausted, no_review) so the runtime
-    always has an unambiguous route after commit.
-    """
-
     def _agents(self, drains: list[str]) -> AgentsPolicy:
         chains = {d: AgentChainConfig(agents=["claude"]) for d in drains}
         agent_drains = {d: AgentDrainConfig(chain=d) for d in drains}
@@ -2601,14 +2311,12 @@ class TestValidatePostCommitAllBudgetStatesCovered:
     def test_missing_budget_state_raises(
         self, routes: list[tuple[str, str]], missing_token: str
     ) -> None:
-        """Missing any required budget state fails validation."""
         bundle = self._bundle_with_routes(routes)
         with pytest.raises(PolicyValidationError) as exc_info:
             validate_policy_completeness(bundle)
         assert missing_token in str(exc_info.value)
 
     def test_all_three_budget_states_passes(self) -> None:
-        """All three budget states declared: validation passes."""
         bundle = self._bundle_with_routes(
             [
                 ("remaining", "work"),
@@ -2616,18 +2324,10 @@ class TestValidatePostCommitAllBudgetStatesCovered:
                 ("no_review", "complete"),
             ]
         )
-        validate_policy_completeness(bundle)  # must not raise
+        validate_policy_completeness(bundle)
 
 
-# === consolidated from test_policy_validation_validate_post_commit_routes_coverage.py ===
 class TestValidatePostCommitRoutesCoverage:
-    """Tests for post_commit_routes coverage validation.
-
-    A commit-role phase that increments a tracked budget counter must have at
-    least one [[post_commit_routes]] entry. Missing routes allow silent
-    fall-through on on_success, which is false configurability.
-    """
-
     def _agents(self, drains: list[str]) -> AgentsPolicy:
         chains = {d: AgentChainConfig(agents=["claude"]) for d in drains}
         agent_drains = {d: AgentDrainConfig(chain=d) for d in drains}
@@ -2642,7 +2342,6 @@ class TestValidatePostCommitRoutesCoverage:
         )
 
     def test_post_commit_routes_required_for_tracked_counter(self) -> None:
-        """Commit phase with tracked budget counter and no matching post_commit_routes fails."""
         agents = self._agents(["work", "commit", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -2680,7 +2379,6 @@ class TestValidatePostCommitRoutesCoverage:
         assert "commit" in error_msg
 
     def test_post_commit_routes_present_for_tracked_counter_passes(self) -> None:
-        """Commit phase with tracked counter AND all three budget states declared passes."""
         agents = self._agents(["work", "commit", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -2725,10 +2423,9 @@ class TestValidatePostCommitRoutesCoverage:
         bundle = PolicyBundle(
             agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy(artifacts={})
         )
-        validate_policy_completeness(bundle)  # must not raise
+        validate_policy_completeness(bundle)
 
     def test_untracked_counter_does_not_require_post_commit_routes(self) -> None:
-        """Commit phase with untracked (tracks_budget=False) counter needs no routes."""
         agents = self._agents(["work", "commit", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -2759,15 +2456,11 @@ class TestValidatePostCommitRoutesCoverage:
         bundle = PolicyBundle(
             agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy(artifacts={})
         )
-        validate_policy_completeness(bundle)  # must not raise
+        validate_policy_completeness(bundle)
 
 
-# === consolidated from test_policy_validation_validate_required_inputs.py ===
 class TestValidateRequiredInputs:
-    """Tests for validate_required_inputs."""
-
     def test_missing_prompt_md_raises_with_init_hint(self, tmp_path: Path) -> None:
-        """Missing PROMPT.md error must mention both the structural prefix and ralph --init."""
         scope = MagicMock()
         scope.root = tmp_path
         with pytest.raises(PolicyValidationError) as exc_info:
@@ -2777,11 +2470,10 @@ class TestValidateRequiredInputs:
         assert "ralph --init" in msg
 
     def test_present_prompt_md_does_not_raise(self, tmp_path: Path) -> None:
-        """A non-empty PROMPT.md passes validation without error."""
         (tmp_path / "PROMPT.md").write_text("# Goal\n\nDo something.\n")
         scope = MagicMock()
         scope.root = tmp_path
-        validate_required_inputs(scope)  # should not raise
+        validate_required_inputs(scope)
 
     @pytest.mark.parametrize(
         ("prompt_content", "match_pattern"),
@@ -2794,7 +2486,6 @@ class TestValidateRequiredInputs:
     def test_invalid_prompt_md_raises(
         self, tmp_path: Path, prompt_content: str, match_pattern: str
     ) -> None:
-        """An empty or unedited starter PROMPT.md raises PolicyValidationError."""
         (tmp_path / "PROMPT.md").write_text(prompt_content)
         scope = MagicMock()
         scope.root = tmp_path
@@ -2802,10 +2493,7 @@ class TestValidateRequiredInputs:
             validate_required_inputs(scope)
 
 
-# === consolidated from test_policy_validation_validate_review_phase_outcome_complete.py ===
 class TestValidateReviewPhaseOutcomeComplete:
-    """Tests for _validate_review_phase_outcome_complete in validate_policy_completeness."""
-
     def _agents(self, drains: list[str]) -> AgentsPolicy:
         chains = {d: AgentChainConfig(agents=["claude"]) for d in drains}
         agent_drains = {d: AgentDrainConfig(chain=d) for d in drains}
@@ -2820,7 +2508,6 @@ class TestValidateReviewPhaseOutcomeComplete:
         )
 
     def test_clean_outcome_missing_from_bypass_routes_fails(self) -> None:
-        """review phase with clean_outcome not in bypass_routes fails completeness."""
         agents = self._agents(["review", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -2830,7 +2517,7 @@ class TestValidateReviewPhaseOutcomeComplete:
                     issues_outcome="has_issues",
                     clean_outcome="approved",
                     transitions=PhaseTransition(on_success="complete"),
-                    bypass_routes={},  # 'approved' key absent
+                    bypass_routes={},
                 ),
                 "complete": self._terminal_phase(),
             },
@@ -2845,7 +2532,6 @@ class TestValidateReviewPhaseOutcomeComplete:
             validate_policy_completeness(bundle)
 
     def test_clean_outcome_present_in_bypass_routes_passes(self) -> None:
-        """review phase with clean_outcome key in bypass_routes passes completeness."""
         agents = self._agents(["review", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -2866,10 +2552,9 @@ class TestValidateReviewPhaseOutcomeComplete:
         bundle = PolicyBundle(
             agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy(artifacts={})
         )
-        validate_policy_completeness(bundle)  # must not raise
+        validate_policy_completeness(bundle)
 
     def test_review_phase_without_clean_outcome_skipped(self) -> None:
-        """review phase with no clean_outcome set is not checked."""
         agents = self._agents(["review", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -2888,18 +2573,10 @@ class TestValidateReviewPhaseOutcomeComplete:
         bundle = PolicyBundle(
             agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy(artifacts={})
         )
-        validate_policy_completeness(bundle)  # must not raise
+        validate_policy_completeness(bundle)
 
 
-# === consolidated from test_policy_validation_validate_terminal_failure_phase_required.py ===
 class TestValidateTerminalFailurePhaseRequired:
-    """Tests for _validate_terminal_failure_phase_declared.
-
-    When any phase declares on_failure or verification.on_failure_route transitions,
-    at least one phase with role='terminal' and terminal_outcome='failure' must exist
-    so the runtime has a policy-declared failure destination.
-    """
-
     def _agents(self, drains: list[str]) -> AgentsPolicy:
         chains = {d: AgentChainConfig(agents=["claude"]) for d in drains}
         agent_drains = {d: AgentDrainConfig(chain=d) for d in drains}
@@ -2922,7 +2599,6 @@ class TestValidateTerminalFailurePhaseRequired:
         )
 
     def test_on_failure_without_terminal_failure_phase_raises(self) -> None:
-        """Policy with on_failure route but no terminal-failure phase fails validation."""
         agents = self._agents(["work", "fallback", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -2953,7 +2629,6 @@ class TestValidateTerminalFailurePhaseRequired:
         assert "terminal_outcome='failure'" in str(exc_info.value)
 
     def test_verification_failure_route_without_terminal_failure_phase_raises(self) -> None:
-        """Policy with verification.on_failure_route but no terminal-failure phase fails."""
         agents = self._agents(["work", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -2981,7 +2656,6 @@ class TestValidateTerminalFailurePhaseRequired:
         assert "terminal_outcome='failure'" in str(exc_info.value)
 
     def test_on_failure_with_terminal_failure_phase_passes(self) -> None:
-        """Policy with on_failure route AND terminal-failure phase passes validation."""
         agents = self._agents(["work", "fallback", "complete", "crashed"])
         pipeline = PipelinePolicy(
             phases={
@@ -3011,10 +2685,9 @@ class TestValidateTerminalFailurePhaseRequired:
         bundle = PolicyBundle(
             agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy(artifacts={})
         )
-        validate_policy_completeness(bundle)  # must not raise
+        validate_policy_completeness(bundle)
 
     def test_no_failure_routes_skips_terminal_failure_check(self) -> None:
-        """Policy with no on_failure routes does not require a terminal-failure phase."""
         agents = self._agents(["work", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -3032,13 +2705,10 @@ class TestValidateTerminalFailurePhaseRequired:
         bundle = PolicyBundle(
             agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy(artifacts={})
         )
-        validate_policy_completeness(bundle)  # must not raise
+        validate_policy_completeness(bundle)
 
 
-# === consolidated from invocation_gate success-path validation (DA-006) ===
 class TestInvocationGateSuccessPath:
-    """DA-006: invocation_gate must validate success-path reachability."""
-
     def _bundle(
         self, *, builder_on_success: str, always_invoke_statuses: list[str] | None = None
     ) -> PolicyBundle:
@@ -3107,26 +2777,22 @@ class TestInvocationGateSuccessPath:
         )
 
     def test_gate_rejects_upstream_not_on_success_path(self) -> None:
-        """Builder's on_success goes to done, not inspector — gate must reject."""
         bundle = self._bundle(builder_on_success="done")
         with pytest.raises(PolicyValidationError, match="must reach .* via on_success"):
             validate_policy_completeness(bundle)
 
     def test_gate_accepts_upstream_on_success_path(self) -> None:
-        """Builder's on_success goes to inspector — gate accepts."""
         bundle = self._bundle(builder_on_success="inspector")
-        validate_policy_completeness(bundle)  # must not raise
+        validate_policy_completeness(bundle)
 
     def test_gate_accepts_valid_always_invoke_statuses(self) -> None:
-        """Valid execution result statuses in always_invoke_statuses pass."""
         bundle = self._bundle(
             builder_on_success="inspector",
             always_invoke_statuses=["partial", "failed"],
         )
-        validate_policy_completeness(bundle)  # must not raise
+        validate_policy_completeness(bundle)
 
     def test_gate_rejects_invalid_always_invoke_statuses(self) -> None:
-        """Unknown statuses in always_invoke_statuses are rejected."""
         bundle = self._bundle(
             builder_on_success="inspector",
             always_invoke_statuses=["partial", "bogus"],
@@ -3136,39 +2802,31 @@ class TestInvocationGateSuccessPath:
 
 
 class TestCommitReviewPolicyValidation:
-    """Tests for CommitReviewPolicy models and validation."""
-
     def test_default_policy_commit_review_configured(self) -> None:
-        """Default policy includes properly configured commit_review thresholds, counter, and routing."""
         bundle = _cached_default_bundle()
 
-        # Check commit_review thresholds on pipeline policy
         cr = bundle.pipeline.commit_review
         assert cr.max_deleted_files == 50
         assert cr.max_deleted_fraction == 0.25
         assert cr.binary_size_limit == 1_000_000
         assert cr.proposal_retention == 10
 
-        # Check rejection counter
         assert "commit_review_rejections" in bundle.pipeline.loop_counters
         rejections_counter = bundle.pipeline.loop_counters["commit_review_rejections"]
         assert rejections_counter.default_max == 2
 
-        # Check rejection counter is absent from all loop_resets
         for phase_name, phase_def in bundle.pipeline.phases.items():
             if phase_def.commit_policy is not None:
                 assert "commit_review_rejections" not in phase_def.commit_policy.loop_resets, (
                     f"phase {phase_name} unexpectedly includes commit_review_rejections in loop_resets"
                 )
 
-        # Check routing on commit review phases
         for phase_name in ("development_commit_review", "development_final_commit_review"):
             phase = bundle.pipeline.phases[phase_name]
             assert phase.transitions.on_reject == "development"
             assert phase.transitions.on_failure == "failed_terminal"
 
     def test_commit_review_policy_model_defaults_and_custom(self) -> None:
-        """CommitReviewPolicy accepts defaults and custom thresholds."""
         default_policy = CommitReviewPolicy()
         assert default_policy.max_deleted_files == 50
         assert default_policy.max_deleted_fraction == 0.25
@@ -3187,7 +2845,6 @@ class TestCommitReviewPolicyValidation:
         assert custom_policy.proposal_retention == 20
 
     def test_commit_review_policy_validation_constraints(self) -> None:
-        """CommitReviewPolicy rejects out-of-range values."""
         from pydantic import ValidationError
 
         with pytest.raises(ValidationError):
@@ -3202,7 +2859,6 @@ class TestCommitReviewPolicyValidation:
             CommitReviewPolicy(proposal_retention=0)
 
     def test_phase_transition_on_reject(self) -> None:
-        """PhaseTransition accepts on_reject routing target."""
         trans = PhaseTransition(
             on_success="next",
             on_reject="rollback_phase",
@@ -3211,7 +2867,6 @@ class TestCommitReviewPolicyValidation:
         assert trans.on_reject == "rollback_phase"
 
     def test_commit_policy_rejects_rejections_counter_in_loop_resets(self) -> None:
-        """Commit phase loop_resets cannot contain commit_review_rejections."""
         bundle = _cached_default_bundle()
         bad_phase = bundle.pipeline.phases["development_commit"].model_copy(
             update={
@@ -3233,13 +2888,6 @@ class TestCommitReviewPolicyValidation:
             validate_policy_completeness(bad_bundle)
 
     def test_group_block_rejects_rejections_counter_in_loop_resets(self) -> None:
-        """A group block's loop_resets cannot zero the rejection counter.
-
-        The rejection counter bounds the commit-review rejection loop. A
-        group block's ``loop_resets`` becomes the compiled lifecycle phase's
-        ``loop_resets``, which the runtime applies on lifecycle completion,
-        so listing the counter there would silently reset it.
-        """
         bundle = _cached_default_bundle()
         block = bundle.pipeline.blocks["developer_iteration"]
         bad_block = block.model_copy(
@@ -3255,7 +2903,6 @@ class TestCommitReviewPolicyValidation:
             validate_policy_completeness(bad_bundle)
 
     def test_lifecycle_phase_rejects_rejections_counter_in_loop_resets(self) -> None:
-        """A compiled lifecycle phase's loop_resets cannot zero the counter."""
         bundle = _cached_default_bundle()
         phase_name, lifecycle = next(iter(bundle.pipeline.lifecycle_phases.items()))
         bad_lifecycle = lifecycle.model_copy(
@@ -3274,7 +2921,6 @@ class TestCommitReviewPolicyValidation:
             validate_policy_completeness(bad_bundle)
 
     def test_commit_review_phase_rejects_unknown_on_reject_route(self) -> None:
-        """commit_review phase transitions.on_reject must point to a declared phase."""
         bundle = _cached_default_bundle()
         bad_trans = bundle.pipeline.phases["development_commit_review"].transitions.model_copy(
             update={"on_reject": "unknown_phase"}
@@ -3290,7 +2936,6 @@ class TestCommitReviewPolicyValidation:
             validate_policy_completeness(bad_bundle)
 
     def test_commit_review_policy_validation_catches_invalid_fields(self) -> None:
-        """_validate_commit_review_policy flags negative files, invalid fractions, etc."""
         bundle = _cached_default_bundle()
         bad_cr = CommitReviewPolicy.model_construct(
             max_deleted_files=-5,
@@ -3309,7 +2954,6 @@ class TestCommitReviewPolicyValidation:
         assert "commit_review.proposal_retention" in msg
 
     def test_commit_review_rejections_counter_must_have_positive_max(self) -> None:
-        """commit_review_rejections counter default_max must be >= 1."""
         bundle = _cached_default_bundle()
         bad_counters = {
             **bundle.pipeline.loop_counters,
@@ -3321,7 +2965,6 @@ class TestCommitReviewPolicyValidation:
             validate_policy_completeness(bad_bundle)
 
     def test_status_bar_phase_abbreviations_for_commit_review(self) -> None:
-        """Status bar shortens development_commit_review to DCr and final to FCr."""
         from ralph.display.context import make_display_context
         from ralph.display.status_bar import StatusBarModel, render_status_bar
 
@@ -3340,15 +2983,11 @@ class TestCommitReviewPolicyValidation:
         assert "FCr" in render_status_bar(m2, ctx=ctx).plain
 
 
-# === WU-4: phase-level allowed_directories reaches the Stage-1 out-of-scope tripwire ===
 class TestPhaseAllowedDirectories:
-    """Phase-level allowed_directories parses from TOML and reaches the tripwire."""
-
     PHASE_HEADER = '[blocks.development_commit_review.phase]\ndrain = "commit"\n'
 
     @classmethod
     def _config_dir_with_allowed_directories(cls, tmp_path: Path, entries: str) -> Path:
-        """Copy the bundled default policy and declare allowed_directories on a phase."""
         defaults_dir = Path(__file__).parent.parent / "ralph" / "policy" / "defaults"
         config_dir = tmp_path / ".agent"
         config_dir.mkdir(parents=True)
@@ -3366,14 +3005,12 @@ class TestPhaseAllowedDirectories:
         return config_dir
 
     def test_default_policy_leaves_allowed_directories_unset(self) -> None:
-        """The bundled default declares no allowed_directories (the setting is opt-in)."""
         bundle = _cached_default_bundle()
 
         assert bundle.pipeline.phases["development_commit_review"].allowed_directories == []
         assert bundle.pipeline.phases["development_final_commit_review"].allowed_directories == []
 
     def test_pipeline_toml_parses_phase_allowed_directories(self, tmp_path: Path) -> None:
-        """A phase-level allowed_directories list is parsed from the phase's TOML table."""
         config_dir = self._config_dir_with_allowed_directories(tmp_path, "'src', 'docs'")
 
         bundle = load_policy(config_dir)
@@ -3386,7 +3023,6 @@ class TestPhaseAllowedDirectories:
         ["", " ", "/absolute/path", "..", "src/../../etc", "src\\windows"],
     )
     def test_invalid_allowed_directories_entries_are_rejected(self, entry: str) -> None:
-        """Malformed allowed_directories entries fail phase validation."""
         with pytest.raises(ValidationError, match="allowed_directories"):
             PhaseDefinition(
                 drain="commit",
@@ -3396,7 +3032,6 @@ class TestPhaseAllowedDirectories:
             )
 
     def test_invalid_allowed_directories_entry_fails_the_policy_load(self, tmp_path: Path) -> None:
-        """A malformed allowed_directories entry in pipeline.toml fails the strict load."""
         config_dir = self._config_dir_with_allowed_directories(tmp_path, "'../outside'")
 
         with pytest.raises((LoaderPolicyValidationError, ValidationError)) as excinfo:
@@ -3405,7 +3040,6 @@ class TestPhaseAllowedDirectories:
         assert "allowed_directories" in str(excinfo.value)
 
     def test_allowed_directories_reaches_out_of_scope_tripwire(self, tmp_path: Path) -> None:
-        """A path outside the phase's allowed_directories yields a soft out-of-scope finding."""
         config_dir = self._config_dir_with_allowed_directories(tmp_path, "'src'")
         bundle = load_policy(config_dir)
         phase_def = bundle.pipeline.phases["development_commit_review"]

@@ -1,5 +1,3 @@
-"""Unit tests for file capture and state tracking operations."""
-
 from __future__ import annotations
 
 import importlib
@@ -16,7 +14,6 @@ validate_file_system_state = operations.validate_file_system_state
 
 
 def test_calculate_checksum_uses_sha256(tmp_path: Path) -> None:
-    """Checksum calculation should produce stable SHA-256 hex digests."""
     target = tmp_path / "sample.txt"
     target.write_text("hello world", encoding="utf-8")
 
@@ -27,7 +24,6 @@ def test_calculate_checksum_uses_sha256(tmp_path: Path) -> None:
 
 
 def test_capture_file_snapshot_for_existing_file(tmp_path: Path) -> None:
-    """Capturing a file snapshot should record path, size, and checksum."""
     target = tmp_path / "tracked.txt"
     target.write_text("tracked content", encoding="utf-8")
 
@@ -40,7 +36,6 @@ def test_capture_file_snapshot_for_existing_file(tmp_path: Path) -> None:
 
 
 def test_capture_file_snapshot_for_missing_file(tmp_path: Path) -> None:
-    """Capturing a missing file should preserve relative path and missing state."""
     snapshot = capture_file_snapshot(tmp_path / "missing.txt", root=tmp_path)
 
     assert snapshot.path == Path("missing.txt")
@@ -50,7 +45,6 @@ def test_capture_file_snapshot_for_missing_file(tmp_path: Path) -> None:
 
 
 def test_capture_file_system_state_uses_default_tracked_files(tmp_path: Path) -> None:
-    """File-system capture should snapshot the default Ralph checkpoint files."""
     prompt = tmp_path / "PROMPT.md"
     prompt.write_text("# task", encoding="utf-8")
     agent_dir = tmp_path / ".agent"
@@ -72,7 +66,6 @@ def test_capture_file_system_state_uses_default_tracked_files(tmp_path: Path) ->
 def test_validate_file_system_state_reports_missing_changed_and_unexpected_files(
     tmp_path: Path,
 ) -> None:
-    """State validation should classify missing, changed, and unexpected files."""
     tracked = tmp_path / "tracked.txt"
     tracked.write_text("before", encoding="utf-8")
 

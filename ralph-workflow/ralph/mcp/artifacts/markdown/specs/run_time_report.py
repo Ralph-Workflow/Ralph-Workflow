@@ -1,4 +1,3 @@
-"""Markdown specification for a bounded, comparable run-time report."""
 
 from __future__ import annotations
 
@@ -22,16 +21,7 @@ RUN_TIME_REPORT_SPEC = MdArtifactSpec(
         "Slowest Steps": SectionRule(require_items=True, allow_body=True),
         "Memory Findings": SectionRule(required=False, require_items=False, allow_body=False),
         "Signals": SectionRule(require_items=True, allow_body=True),
-        # Emitted whenever the independent development timer ran. The
-        # section is optional because a run that never started a
-        # development timer has nothing to report — but it MUST be
-        # declared: the spec is closed, so an undeclared section fails
-        # validation and takes the entire report with it.
         "Development Timebox": SectionRule(required=False, require_items=False, allow_body=False),
-        # Emitted whenever a cycle consumed time. The section is optional
-        # because a run that never started a cycle has nothing to report —
-        # but it MUST be declared: the spec is closed, so an undeclared
-        # section fails validation and takes the entire report with it.
         "Cycle Timebox": SectionRule(required=False, require_items=False, allow_body=False),
     },
     to_content=_content,

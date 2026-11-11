@@ -1,13 +1,3 @@
-"""Policy-driven acceptance tests — Product Requirements 1-10 and Criteria A-H.
-
-These tests assert every product requirement and acceptance criterion against a
-fully renamed PolicyBundle (no canonical phase names). Any regression that
-re-introduces hidden phase name knowledge in the runtime will fail here.
-
-Scope: pure functions only. No I/O.
-Runtime budget: ≤ 5 seconds for the full module.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -37,17 +27,6 @@ from ralph.policy.models import (
 
 @pytest.fixture(scope="module")
 def policy_with_renamed_phases() -> PolicyBundle:
-    """Fully custom-named PolicyBundle — no canonical Ralph phase names.
-
-    Custom name mappings (canonical → custom):
-      planning          → design
-      development       → build
-      development_analysis → audit
-      development_commit → sign_off
-      review            → inspect
-      complete          → done
-      failed_terminal   → aborted
-    """
     agents = AgentsPolicy(
         agent_chains={
             "design_chain": AgentChainConfig(agents=["fake-agent"]),
@@ -175,16 +154,10 @@ def policy_with_renamed_phases() -> PolicyBundle:
     return PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
 
 
-# =============================================================================
-# Requirement 1: Policy must fully define user-visible routing semantics
-# =============================================================================
-
-
 class TestRequirement5CommitSemantics:
     def test_post_commit_routes_declared_in_policy(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """post_commit_routes are declared in policy for the 'sign_off' commit phase."""
         routes = policy_with_renamed_phases.pipeline.post_commit_routes
         phases = {r.when.phase for r in routes}
         assert "sign_off" in phases
@@ -192,7 +165,6 @@ class TestRequirement5CommitSemantics:
     def test_resolve_post_commit_returns_policy_target_when_remaining(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """resolve_post_commit_phase returns 'design' when cycles budget > 0."""
         state = PipelineState(
             phase="sign_off",
             budget_caps={"cycles": 2},
@@ -203,7 +175,6 @@ class TestRequirement5CommitSemantics:
     def test_resolve_post_commit_returns_done_when_exhausted(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """resolve_post_commit_phase returns 'done' when cycles are exhausted."""
         state = PipelineState(
             phase="sign_off",
             budget_caps={"cycles": 3},
@@ -215,7 +186,6 @@ class TestRequirement5CommitSemantics:
     def test_commit_policy_increments_counter_is_policy_declared(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """The commit counter 'cycles' comes from policy, not a hardcoded name."""
         sign_off = policy_with_renamed_phases.pipeline.phases["sign_off"]
         assert sign_off.commit_policy is not None
         assert sign_off.commit_policy.increments_counter == "cycles"

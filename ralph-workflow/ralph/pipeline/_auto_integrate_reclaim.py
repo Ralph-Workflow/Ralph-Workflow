@@ -1,4 +1,3 @@
-"""Fail-closed reclamation of a dirty target-owning worktree."""
 
 from __future__ import annotations
 
@@ -28,7 +27,6 @@ if TYPE_CHECKING:
 
 
 def target_worktree_lookup(repo_root: Path, target: str) -> tuple[str, Path | None]:
-    """Resolve the sole worktree that owns ``target``, failing closed on lookup errors."""
     try:
         return worktree_lookup(find_main_worktree_root(repo_root), target)
     except Exception:
@@ -37,7 +35,6 @@ def target_worktree_lookup(repo_root: Path, target: str) -> tuple[str, Path | No
 
 @dataclass(frozen=True)
 class ReclaimResult:
-    """Structured successful target-owner reclamation evidence."""
 
     worktree_path: str
     snapshot_ref: str
@@ -46,7 +43,6 @@ class ReclaimResult:
 
 @dataclass(frozen=True)
 class _Snapshot:
-    """Durable snapshot plus the patches needed to restore the exact pre-discard state."""
 
     ref: str
     staged_patch: str
@@ -54,7 +50,6 @@ class _Snapshot:
 
 
 def reclaim_dirty_target_worktree(worktree: Path, target: str) -> ReclaimResult | None:
-    """Snapshot and transactionally discard dirty state only from the target owner."""
     verdict, owner = target_worktree_lookup(worktree, target)
     if verdict != WORKTREE_FOUND or owner is None or owner.resolve() != worktree.resolve():
         return None
@@ -85,7 +80,6 @@ def reclaim_dirty_target_worktree(worktree: Path, target: str) -> ReclaimResult 
 
 
 def _create_snapshot(worktree: Path, target: str) -> _Snapshot | None:
-    """Create a reclaim ref without leaving the owner's index staged on failure."""
     staged = run_git(
         ("diff", "--cached", "--binary", "--full-index"),
         cwd=worktree,
@@ -136,7 +130,6 @@ def _create_snapshot(worktree: Path, target: str) -> _Snapshot | None:
 
 
 def _prune_reclaim_refs(worktree: Path, target: str, snapshot_ref: str) -> None:
-    """Best-effort bound reclaim refs without ever deleting the new snapshot."""
     prefix = f"refs/ralph-reclaim/{target}/"
     try:
         listed = run_git(
@@ -144,7 +137,7 @@ def _prune_reclaim_refs(worktree: Path, target: str, snapshot_ref: str) -> None:
             cwd=worktree,
             label="auto-integrate:reclaim-list-refs",
         )
-    except Exception as exc:  # pragma: no cover -- defensive cleanup
+    except Exception as exc:
         logger.warning("auto_integrate: reclaim-ref listing failed: {}", exc)
         return
     if listed.returncode != 0:
@@ -178,7 +171,7 @@ def _prune_reclaim_refs(worktree: Path, target: str, snapshot_ref: str) -> None:
                 cwd=worktree,
                 label="auto-integrate:reclaim-delete-ref",
             )
-        except Exception as exc:  # pragma: no cover -- defensive cleanup
+        except Exception as exc:
             logger.warning("auto_integrate: reclaim-ref deletion failed for {}: {}", ref, exc)
             continue
         if deleted.returncode != 0:
@@ -190,12 +183,10 @@ def _prune_reclaim_refs(worktree: Path, target: str, snapshot_ref: str) -> None:
 
 
 def _reclaim_ref_timestamp(ref: tuple[str, int]) -> int:
-    """Return a reclaim ref's parsed creation timestamp for retention ordering."""
     return ref[1]
 
 
 def _restore_discarded_state(worktree: Path, snapshot: _Snapshot) -> None:
-    """Best-effort rollback after reset/clean fails, including untracked bytes."""
     restored = run_git(
         ("checkout", snapshot.ref, "--", "."),
         cwd=worktree,
@@ -209,7 +200,6 @@ def _restore_discarded_state(worktree: Path, snapshot: _Snapshot) -> None:
 
 
 def _restore_index(worktree: Path, staged_patch: str) -> None:
-    """Restore the pre-snapshot index while preserving working-tree bytes."""
     if (
         run_git(
             ("read-tree", "HEAD"), cwd=worktree, label="auto-integrate:reclaim-restore-index"
@@ -223,7 +213,6 @@ def _restore_index(worktree: Path, staged_patch: str) -> None:
 
 
 def _apply_patch(worktree: Path, patch_text: str, *, cached: bool) -> None:
-    """Apply a saved binary patch; empty patches intentionally do nothing."""
     if not patch_text:
         return
     with NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".patch") as patch:

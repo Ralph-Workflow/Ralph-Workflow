@@ -1,13 +1,3 @@
-# property-test: C — real GET /health route on the production transport
-"""Liveness contract: the production transport exposes a real GET /health route.
-
-The supervisor's ``RestartAwareMcpBridge.check_health_and_restart_if_needed``
-already calls a probe function; that probe must be reachable as a real HTTP
-endpoint, and the handler must surface 200 healthy / 503 unhealthy responses
-on the same transport that every other production request rides. The
-in-memory transport harness exercises the shipped path end-to-end.
-"""
-
 from __future__ import annotations
 
 import json
@@ -37,17 +27,6 @@ if TYPE_CHECKING:
 
 
 class _ServerWithHealthProbe(Protocol):
-    """Typed view of the production handler's fake-server attributes.
-
-    The SimpleNamespace returned by ``_make_fake_server`` is a structural
-    stand-in for ``_FallbackHttpServer``; this Protocol declares the
-    attributes the test sets (health_probe_fn, metrics) so assignments
-    are typed without suppression markers. The structural Protocol
-    is preferred over inheriting from ``_FallbackHttpServer`` (a concrete
-    ``ThreadingHTTPServer`` subclass) because Protocol can only inherit
-    from other Protocols.
-    """
-
     health_probe_fn: Callable[[], _ProbeResult] | None
     metrics: McpMetrics | None
 
@@ -78,7 +57,6 @@ def _make_with_probe(
     *,
     _original: Callable[[McpServer, ServerState], _FallbackHttpServer] | None = None,
 ) -> _FallbackHttpServer:
-    """Build a SimpleNamespace with health_probe_fn and metrics set."""
     factory = _original if _original is not None else _in_memory_transport._make_fake_server
     fake = factory(mcp_server, state)
     typed: _ServerWithHealthProbe = fake
@@ -90,7 +68,6 @@ def _make_with_probe(
 
 
 def test_health_route_returns_200_healthy_when_probe_succeeds(tmp_path: Path) -> None:
-    """A /health request with a healthy probe returns 200 application/json."""
     mcp_server = _make_mcp_server(tmp_path)
 
     def healthy_probe() -> _ProbeResult:
@@ -112,7 +89,6 @@ def test_health_route_returns_200_healthy_when_probe_succeeds(tmp_path: Path) ->
 
 
 def test_health_route_returns_503_unhealthy_when_probe_raises(tmp_path: Path) -> None:
-    """A /health request whose probe raises returns 503 unhealthy."""
     mcp_server = _make_mcp_server(tmp_path)
 
     def broken_probe() -> _ProbeResult:
@@ -134,7 +110,6 @@ def test_health_route_returns_503_unhealthy_when_probe_raises(tmp_path: Path) ->
 
 
 def test_health_route_returns_503_when_probe_reports_unhealthy(tmp_path: Path) -> None:
-    """A /health request whose probe returns unhealthy returns 503 with reason."""
     mcp_server = _make_mcp_server(tmp_path)
 
     def unhealthy_probe() -> _ProbeResult:
@@ -155,7 +130,6 @@ def test_health_route_returns_503_when_probe_reports_unhealthy(tmp_path: Path) -
 
 
 def test_health_route_increments_health_probe_outcomes_counter(tmp_path: Path) -> None:
-    """A /health probe increments the metrics counter for success or failure."""
     mcp_server = _make_mcp_server(tmp_path)
     metrics = McpMetrics()
     original = _in_memory_transport._make_fake_server
@@ -177,15 +151,9 @@ def test_health_route_increments_health_probe_outcomes_counter(tmp_path: Path) -
 
 
 def test_supervisor_calls_restart_within_configured_probe_timeout() -> None:
-    """The supervisor restarts within the bounded RALPH_MCP_PROBE_TIMEOUT_MS.
-
-    Inject a fake clock and a probe that fails. Verify the supervisor calls
-    restart_fn within the configured probe timeout, not only at the far-off
-    session cap.
-    """
 
     class _FakeProcess:
-        def poll(self) -> int | None:  # exits -> process_exited path
+        def poll(self) -> int | None:
             return 1
 
     class _FakeInner:
@@ -211,7 +179,6 @@ def test_supervisor_calls_restart_within_configured_probe_timeout() -> None:
         run_id="test-run",
     )
 
-    # process_exited=True, so restart fires immediately
     restarted = bridge.check_health_and_restart_if_needed()
     assert restarted is True
     assert bridge.restart_count == 1
@@ -220,10 +187,9 @@ def test_supervisor_calls_restart_within_configured_probe_timeout() -> None:
 
 
 def test_supervisor_probe_failure_with_explicit_timeout() -> None:
-    """When the probe function fails, the supervisor restarts within bound."""
 
     class _FakeProcess:
-        def poll(self) -> int | None:  # alive
+        def poll(self) -> int | None:
             return None
 
         @property
@@ -256,9 +222,6 @@ def test_supervisor_probe_failure_with_explicit_timeout() -> None:
         run_id="test-run",
         probe_fn=probe_fn,
     )
-    # A restart takes sustained evidence: one missed probe window means a
-    # server slowed by load, and tearing that down mid-call is the defect
-    # the debounce exists to prevent.
     restarts = [bridge.check_health_and_restart_if_needed() for _ in range(3)]
     assert restarts == [False, False, True]
     assert bridge.restart_count == 1
@@ -266,7 +229,6 @@ def test_supervisor_probe_failure_with_explicit_timeout() -> None:
 
 
 def test_health_route_is_present_in_fallback_handler() -> None:
-    """The /health branch was added by Property C; verify the code path is present."""
     handler_text = (
         Path(__file__).parent.parent / "ralph" / "mcp" / "server" / "_fallback_http_handler.py"
     ).read_text()

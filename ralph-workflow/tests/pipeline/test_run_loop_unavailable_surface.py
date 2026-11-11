@@ -1,5 +1,3 @@
-"""Black-box tests for run_loop operator-visible surface for unavailable agents."""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -11,8 +9,6 @@ from ralph.recovery.events import FailureEvent, FalloverEvent
 
 
 class TestRunLoopUnavailableSurface:
-    """Tests for unavailability_reason surfacing in run_loop display and logs."""
-
     def test_waiting_line_includes_unavailability_reason(self) -> None:
         ctx = MagicMock(spec=_LoopContext)
         ctx.active_display = MagicMock()

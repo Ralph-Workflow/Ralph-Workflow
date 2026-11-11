@@ -1,14 +1,3 @@
-"""Subprocess-based agent invocation with streaming NDJSON parsing.
-
-This module handles invoking AI agents as subprocesses, parsing their
-streaming NDJSON output, and managing the lifecycle of the process.
-
-Key features:
-- Line-by-line streaming from subprocess stdout to parser
-- tqdm progress bar (or rich when TTY)
-- loguru structured logging for every NDJSON line
-- watchdog workspace monitoring for file-change events during execution
-"""
 
 from __future__ import annotations
 
@@ -182,7 +171,6 @@ if TYPE_CHECKING:
 
 
 def _make_child_registry(opts: InvokeOptions) -> ChildLivenessRegistry:
-    """Create a new per-invoke ChildLivenessRegistry using config-driven TTL values."""
     return ChildLivenessRegistry(
         progress_ttl=opts.child_progress_ttl_seconds
         if opts.child_progress_ttl_seconds is not None
@@ -207,29 +195,6 @@ def _start_workspace_monitor(
         None
     ),
 ) -> WorkspaceMonitor | None:
-    """Start workspace monitoring if path provided.
-
-    Args:
-        workspace_path: Workspace directory to monitor.
-        classifier: Optional ``WorkspaceChangeClassifier`` used to
-            classify each file change into a ``WorkspaceChangeKind``
-            and a binary weight. When ``None`` (or omitted), the
-            monitor uses the legacy behavior: every file change is
-            recorded as ``OTHER / 1.0`` activity. When provided,
-            events with weight ``0.0`` are dropped before the
-            ``on_event`` callback fires; events with weight ``1.0``
-            are passed to the callback together with their
-            ``(kind, weight)`` tuple.
-        factory: Optional callable used in place of the real
-            ``WorkspaceMonitor`` constructor. When provided, the
-            factory is invoked with the same positional and keyword
-            arguments the production code would pass to
-            ``WorkspaceMonitor``; the returned ``WorkspaceMonitor``
-            (or ``None`` to skip monitoring) is then started and
-            returned. This seam lets routing-only unit tests inject
-            a no-op factory so they do not block on the real
-            watchdog observer's ``start`` / ``stop`` cost.
-    """
     if workspace_path is None:
         return None
     if factory is not None:
@@ -244,7 +209,6 @@ def _start_workspace_monitor(
 
 
 def _stop_workspace_monitor(monitor: WorkspaceMonitor | None) -> None:
-    """Stop workspace monitoring."""
     if monitor is not None:
         monitor.stop()
 
@@ -254,7 +218,6 @@ def _shared_interactive_pty_extras(
     opts: InvokeOptions,
     prompt_file: str,
 ) -> PtyExtras:
-    """Build PTY extras for transports that share the interactive runner."""
     if transport == AgentTransport.CLAUDE_INTERACTIVE:
         return PtyExtras(
             expected_session_id=opts.session_id or opts.initial_session_id,
@@ -280,7 +243,6 @@ def _run_shared_interactive_pty(
     transport: AgentTransport,
     prompt_file: str,
 ) -> Iterator[str]:
-    """Run a PTY-backed interactive agent through the common terminal path."""
     yield from run_pty_and_read_lines(
         cmd,
         ctx,
@@ -289,31 +251,6 @@ def _run_shared_interactive_pty(
 
 
 def _clear_session_completion_sentinel(workspace_path: Path, run_id: str) -> None:
-    """Delete this run's completion evidence (sentinel + submission receipts).
-
-    Clearing both together prevents a resumed session that reuses ``run_id`` from
-    inheriting stale "completed" / "artifact submitted" signals from a prior
-    attempt.
-
-    Also clears fallback artifacts in .agent/tmp/ to prevent a fresh run from
-    promoting stale fallback files from previous runs.
-
-    Storage (RFC-013 P3): the sentinel row in ``.agent/state.db`` is
-    cleared via ``RunStateDB``; the legacy on-disk sentinel file (left
-    behind by pre-upgrade releases) is also unlinked (dual-target) so a
-    stale sentinel cannot survive the clear.
-
-    Durable-fallback: when ``delete_completion_sentinel`` raises
-    ``sqlite3.Error`` / ``OSError`` (locked / corrupt / unsupported
-    WAL), ``mark_completion_sentinel_cleared`` is called as a
-    tombstone write so ``_db_sentinel_lookup`` honours the cleared
-    state even though the row was not physically removed. Without
-    this fallback, a reused ``run_id`` would inherit the previous
-    run's "completed" verdict because the DB read is authoritative
-    ahead of the legacy-file fallback. The tombstone write is itself
-    best-effort: if it also raises, the legacy file unlink still
-    runs so a pre-upgrade sentinel is cleared as the secondary path.
-    """
     try:
         db = RunStateDB(workspace_path)
     except (OSError, RuntimeError, sqlite3.Error):
@@ -324,9 +261,6 @@ def _clear_session_completion_sentinel(workspace_path: Path, run_id: str) -> Non
                 db.delete_completion_sentinel(run_id)
                 db.clear_run_receipts(run_id)
             except (OSError, RuntimeError, sqlite3.Error):
-                # Physical delete failed: try to tombstone the sentinel
-                # row so the reader honours the cleared state. Both
-                # follow-up writes are best-effort.
                 with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
                     db.mark_completion_sentinel_cleared(run_id)
                 with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
@@ -374,7 +308,6 @@ _CURSOR_AUTH_TOKEN_KEYS = frozenset(
 
 
 def _has_cursor_file_credentials(config_home: Path | None, home: Path | None = None) -> bool:
-    """Return whether either supported Cursor auth file carries a known token."""
     auth_paths: list[Path] = []
     if config_home is not None:
         auth_paths.append(config_home / "cursor" / "auth.json")
@@ -417,19 +350,6 @@ def _capture_failure_observation(
     opts: InvokeOptions,
     exc: BaseException,
 ) -> AgentFailureEvent:
-    """Capture the immutable observation of ONE failed attempt.
-
-    The observation is attempt-scoped by construction: it is built here, at
-    the invocation boundary where the workspace was actually measured, and
-    handed to the caller through the per-attempt sink. Nothing is written
-    to a module-level or enum-level attribute, so a later attempt can never
-    inherit this attempt's fact.
-
-    The workspace change is measured ONLY when the attempt has a phase
-    identity AND a probe: an attempt whose phase is unknown cannot be
-    attributed, so it is recorded without a measurement and the consumer
-    fails closed.
-    """
     workspace_changed: bool | None = None
     if probe is not None and probe_workspace is not None and probe_phase:
         workspace_changed = bool(probe.has_changed(probe_phase, probe_workspace))
@@ -453,7 +373,6 @@ def _run_pty_execution(
     transport: AgentTransport,
     prompt_file: str,
 ) -> Iterator[str]:
-    """Run the PTY-backed transports of one attempt."""
     if transport in {
         AgentTransport.CLAUDE_INTERACTIVE,
         AgentTransport.NANOCODER,
@@ -479,20 +398,6 @@ def invoke_agent(
     options: InvokeOptions | None = None,
     _clock: Clock | None = None,
 ) -> Iterator[str]:
-    """Invoke agent, yield parsed output lines as they arrive.
-
-    Args:
-        config: Agent configuration specifying command and flags.
-        prompt_file: Path to PROMPT.md file to pass to agent.
-        options: Optional invocation options.
-        _clock: Injectable Clock for testing; production callers omit this.
-
-    Yields:
-        Raw agent output lines (before parsing).
-
-    Raises:
-        AgentInvocationError: If agent exits with non-zero code.
-    """
     base_opts = options or InvokeOptions()
     _fail_for_missing_credentials(config, base_opts, env_getter=agent_environment_value)
     _fail_for_unsupported_local_opencode_model(config, base_opts)
@@ -503,25 +408,6 @@ def invoke_agent(
         master_prompt_file=base_opts.master_prompt_file,
         unsafe_mode=base_opts.unsafe_mode,
     )
-    # The try/finally boundary starts IMMEDIATELY after
-    # ``resolve_invocation_runtime`` (which can allocate per-invocation
-    # transport resources, e.g. a Codex ``CODEX_HOME`` tempdir) so that
-    # ANY subsequent setup failure — command construction, monitor
-    # setup, ``_log_workspace_completion`` instrumentation, etc. — still
-    # invokes the per-invocation ``cleanup`` hook. An earlier version of
-    # this function only started the ``try`` block around the actual
-    # subprocess execution, leaving the window between runtime resolution
-    # and subprocess launch unprotected; a ``_build_command`` failure or
-    # any other pre-launch setup exception would leak the allocated
-    # ``CODEX_HOME`` directory because the ``cleanup`` hook was never
-    # invoked (analysis feedback wt-024 round 3).
-    #
-    # ``runtime.cleanup`` is idempotent (``release_codex_home`` returns
-    # ``False`` on a second call without raising;
-    # ``shutil.rmtree(..., ignore_errors=True)`` is a no-op on missing
-    # paths), so invoking it twice (once from a pre-launch exception,
-    # once on interpreter shutdown via ``cleanup_codex_homes``'s atexit
-    # net) is safe.
     monitor: WorkspaceMonitor | None = None
     try:
         runtime_env = runtime.agent_env
@@ -565,35 +451,7 @@ def invoke_agent(
         if runtime_env is not None:
             label_scope = runtime_env.get(str(AGENT_LABEL_SCOPE_ENV))
         registry = _make_child_registry(opts)
-        # R1 / R5 (Trustworthy Idle Watchdog spec): construct the
-        # per-invocation shared SubagentPidRegistry + per-transport
-        # SubagentPidSource. This is the production entry point the
-        # analysis flagged as missing -- the registry MUST be threaded
-        # into strategy_for_command so BaseExecutionStrategy.classify_quiet
-        # uses the FILTERED signal (registry.known_subagent_pids()) instead
-        # of the broader descendant_snapshot() count (the 2365s
-        # indefinite-deferral bug source). The shared registry also gives
-        # any future parser-side PID registration a single source of
-        # truth (the cross-transport authoritative set).
         transport_for_registry = _agent_transport(config)
-        # R1 / R5 (Trustworthy Idle Watchdog spec): the orchestrator
-        # (``stream_parsed_agent_activity`` call site in
-        # ``effect_executor._consume_attempt_output``) MAY pass a
-        # pre-built ``SubagentPidRegistry`` and per-transport
-        # ``SubagentPidSource`` via ``opts.subagent_pid_registry`` /
-        # ``opts.subagent_pid_source`` so the SAME registry reaches
-        # both the strategy (here, via ``subagent_pid_source``) and
-        # the parser (via ``stream_parsed_agent_activity``). This
-        # is the canonical shared-registry contract documented at
-        # ``ralph/agents/registry.py:build_subagent_pid_registry``.
-        # Without threading the registry through these fields, the
-        # strategy layer would build a FRESH registry internally and
-        # the parser-registered PIDs would never reach the
-        # strategy's filtered count -- the watchdog-visible filtered
-        # subagent count would be desynchronized from the parser's
-        # authoritative registration set. When the caller does not
-        # thread a registry (legacy direct call), build one locally
-        # so the strategy layer has a filtered seam.
         if opts.subagent_pid_registry is not None and opts.subagent_pid_source is not None:
             subagent_pid_source = opts.subagent_pid_source
             _subagent_pid_registry = opts.subagent_pid_registry
@@ -666,17 +524,6 @@ def invoke_agent(
 
         _log_workspace_completion(monitor)
     finally:
-        # Per-invocation cleanup hook (see ResolvedInvocationRuntime.cleanup):
-        # releases transport-specific resources allocated during resolve(),
-        # e.g. the per-invocation Codex CODEX_HOME tempdir. Must be invoked
-        # in the finally block (not before _log_workspace_completion) so a
-        # subprocess crash still releases the home. The hook is None for
-        # resolvers that allocate nothing per-invocation; the conditional
-        # guard is a no-op in that case. release_codex_home is idempotent
-        # (returns False on a second call) so a duplicate invocation from
-        # a future caller is harmless. The try/finally boundary now
-        # wraps the ENTIRE post-resolution body so any pre-launch setup
-        # failure also releases transport-allocated resources.
         if runtime.cleanup is not None:
             runtime.cleanup()
         _stop_workspace_monitor(monitor)
@@ -687,20 +534,9 @@ def _fail_for_missing_credentials(
     options: InvokeOptions,
     env_getter: Callable[[str], str | None] | None = None,
 ) -> None:
-    """Raise before launching a hosted provider without its required credential."""
     transport = _agent_transport(config)
     required_env_var: str | None = None
     if transport in {AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE}:
-        # A ``ccs/<alias>`` agent (``cmd`` starts with the ``ccs`` wrapper
-        # binary) resolves its own provider credential per-profile -- e.g.
-        # a GLM-backed profile injects ``ANTHROPIC_AUTH_TOKEN`` /
-        # ``ANTHROPIC_BASE_URL`` itself (verified via ``ccs env <alias>``),
-        # never ``ANTHROPIC_API_KEY``. The official Claude Code CLI (both
-        # interactive ``claude`` and headless ``claude -p``) stores its own
-        # credentials in ``~/.claude/.credentials.json`` after login, so it
-        # does not require ``ANTHROPIC_API_KEY`` in Ralph's environment either.
-        # Only third-party wrappers or unknown binaries named ``claude`` in a
-        # test harness should be required to provide the env var.
         if config.cmd.split()[:1] in (["ccs"], ["claude"]):
             return
         required_env_var = "ANTHROPIC_API_KEY"
@@ -712,13 +548,9 @@ def _fail_for_missing_credentials(
             "openai": "OPENAI_API_KEY",
         }.get(provider)
     elif transport == AgentTransport.CURSOR:
-        # Cursor credentials are checked after runtime resolution, when Ralph
-        # can inspect the private file-backed login before subprocess launch.
-        # That projection and gate keep the macOS Keychain path unreachable.
         return
     if required_env_var is None:
         return
-    # Per-invocation overrides take precedence over ambient env.
     extra_env = options.extra_env or {}
     if extra_env.get(required_env_var):
         return
@@ -738,22 +570,6 @@ def _fail_for_unsupported_local_opencode_model(
     model_id = opencode_model_id_from_flag(options.model_flag or config.model_flag)
     if model_id is None:
         return
-    # When the operator has overridden the opencode binary via
-    # ``RALPH_OPENCODE_BINARY`` (parallel to ``RALPH_AGY_BINARY`` and
-    # ``RALPH_CURSOR_BINARY``), the local-model preflight is
-    # meaningless: the override target may be a real wrapper that does
-    # not implement ``opencode models`` or may be a test-only stub
-    # whose only contract is to dial the Ralph MCP endpoint. Skip the
-    # preflight so the override can take effect; the operator owns the
-    # choice and the smoke plumbing logs the override at INFO.
-    #
-    # The env access goes through the getter-indirection pattern the
-    # AGY/Cursor overrides use; direct ``os.environ.get(...)`` here would
-    # trip the ``verify_drift`` check that pins the canonical-three
-    # ``RALPH_*`` env-var boundary.
-    #
-    # The dependency-light override accessor keeps this package independent
-    # from agent detection, whose built-in catalog imports the invoke surface.
 
     if opencode_binary_override(env_getter):
         return
@@ -773,13 +589,6 @@ def resolve_invocation_runtime(
     master_prompt_file: str | None = None,
     unsafe_mode: bool = False,
 ) -> ResolvedInvocationRuntime:
-    """Build the runtime configuration needed to launch an agent.
-
-    Resolves transport-specific environment variables, MCP server configuration,
-    and endpoint address from ``config`` and ``extra_env``.  Returns a
-    ``ResolvedInvocationRuntime`` whose fields are ready to pass to the
-    subprocess launcher.
-    """
     resolver_cls = RUNTIME_RESOLVERS[_agent_transport(config)]
     return resolver_cls().resolve(
         config,
@@ -795,38 +604,6 @@ def _provider_allowed_mcp_tool_names(
     config: AgentConfig,
     endpoint: str | None,
 ) -> tuple[str, ...]:
-    """Resolve the Claude ``--allowedTools`` set, failing CLOSED on discovery errors.
-
-    An empty tuple here means "no restriction was ever wanted" -- there is no
-    Ralph MCP endpoint, or the transport is not Claude. It must NEVER mean
-    "the restriction could not be computed": the two were indistinguishable,
-    and the second one silently produced the opposite of the intended
-    posture. ``_extend_claude_transport_flags`` emits ``--tools`` /
-    ``--allowedTools`` only for a non-empty set, while ``--mcp-config`` and
-    ``--strict-mcp-config`` go out unconditionally. A transient ``tools/list``
-    failure (slow MCP start, dropped connection) was swallowed into ``()``,
-    so the agent was launched with the operator's own MCP servers stripped
-    AND every native Claude tool enabled -- while Ralph's prompt still told
-    it those native tools were disabled.
-
-    A discovery failure is therefore surfaced as an
-    :class:`AgentInvocationError` before the process is spawned. It is
-    transient by nature, so the normal retry path can re-attempt it once the
-    MCP server is up.
-
-    Args:
-        config: The agent configuration being launched.
-        endpoint: The Ralph MCP HTTP endpoint, or ``None`` when the run has
-            no Ralph MCP surface.
-
-    Returns:
-        The Claude-aliased tool names to pass to ``--allowedTools``; empty
-        only when no restriction applies to this transport.
-
-    Raises:
-        AgentInvocationError: When the Ralph MCP tool list cannot be
-            discovered, so no honest restriction can be built.
-    """
     if endpoint is None or _agent_transport(config) not in (
         AgentTransport.CLAUDE,
         AgentTransport.CLAUDE_INTERACTIVE,
@@ -852,12 +629,6 @@ def _provider_allowed_mcp_tool_names(
 
 
 def _canonical_http_mcp_tool_names(endpoint: str) -> tuple[str, ...]:
-    """Discover and canonicalize the Ralph MCP tool names served at ``endpoint``.
-
-    Discovery errors propagate: the caller decides what an unavailable tool
-    list means for the transport it is launching. Swallowing them here is
-    what made a failed ``tools/list`` indistinguishable from an empty one.
-    """
     return canonicalize_tool_names(discover_http_mcp_tool_names(endpoint))
 
 
@@ -888,12 +659,9 @@ def _discover_http_mcp_tool_names(endpoint: str) -> list[str]:
     return extract_preflight_tool_names(tools_response.get("result"), "HTTP MCP")
 
 
-# Public monkeypatch seam for runtime resolver tests.
 discover_http_mcp_tool_names = _discover_http_mcp_tool_names
 
 
-# Public aliases — test-accessible names and monkeypatch interception points.
-# Internal callers must use the public name so that monkeypatches intercept correctly.
 bounded_output_lines = _bounded_output_lines
 run_pty_and_read_lines = _run_pty_and_read_lines_impl
 run_subprocess_and_read_lines = _run_subprocess_and_read_lines
@@ -915,7 +683,6 @@ wait_for_descendants_then_recheck = _wait_for_descendants_then_recheck
 policy_from_options = _policy_from_options
 merge_mcp_toml_into_upstreams = _merge_mcp_toml_into_upstreams
 
-# Re-export all public types and error classes
 __all__ = [
     "TURN_BOUNDARY_MARKER",
     "AgentInactivityTimeoutError",

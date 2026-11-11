@@ -1,5 +1,3 @@
-"""Tests for ralph/mcp/tool_exec.py — MCP exec tool handler."""
-
 from __future__ import annotations
 
 from unittest.mock import MagicMock

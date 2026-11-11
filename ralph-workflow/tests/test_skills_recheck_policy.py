@@ -1,5 +1,3 @@
-"""Tests for ralph.skills._recheck_policy needs_recheck function."""
-
 from datetime import UTC, datetime, timedelta
 
 from ralph.skills._capability_entry import CapabilityEntry
@@ -38,14 +36,14 @@ class TestNeedsRecheck:
     def test_healthy_within_ttl_does_not_need_recheck(self) -> None:
         entry = _make_entry(
             CapabilityStatus.INSTALLED_HEALTHY,
-            last_check_ok_iso=_iso(12),  # 12 hours ago, TTL is 24
+            last_check_ok_iso=_iso(12),
         )
         assert needs_recheck(entry) is False
 
     def test_healthy_ttl_expired_needs_recheck(self) -> None:
         entry = _make_entry(
             CapabilityStatus.INSTALLED_HEALTHY,
-            last_check_ok_iso=_iso(25),  # 25 hours ago, TTL is 24
+            last_check_ok_iso=_iso(25),
         )
         assert needs_recheck(entry) is True
 
@@ -63,21 +61,21 @@ class TestNeedsRecheck:
     def test_needs_repair_after_failed_hours_expired(self) -> None:
         entry = _make_entry(
             CapabilityStatus.NEEDS_REPAIR,
-            last_check_fail_iso=_iso(2),  # 2 hours ago, TTL is 1
+            last_check_fail_iso=_iso(2),
         )
         assert needs_recheck(entry) is True
 
     def test_needs_repair_within_failed_ttl_does_not_need_recheck(self) -> None:
         entry = _make_entry(
             CapabilityStatus.NEEDS_REPAIR,
-            last_check_fail_iso=_iso(0.5),  # 30 min ago, TTL is 1h
+            last_check_fail_iso=_iso(0.5),
         )
         assert needs_recheck(entry) is False
 
     def test_configured_unreachable_after_fail_ttl_expired(self) -> None:
         entry = _make_entry(
             CapabilityStatus.CONFIGURED_UNREACHABLE,
-            last_check_fail_iso=_iso(2),  # 2 hours ago, TTL is 1h
+            last_check_fail_iso=_iso(2),
         )
         assert needs_recheck(entry) is True
 
@@ -91,7 +89,7 @@ class TestNeedsRecheck:
     def test_custom_policy_respected(self) -> None:
         entry = _make_entry(
             CapabilityStatus.INSTALLED_HEALTHY,
-            last_check_ok_iso=_iso(2),  # 2 hours ago
+            last_check_ok_iso=_iso(2),
         )
         policy = RecheckPolicy(healthy_recheck_hours=1.0)
         assert needs_recheck(entry, policy) is True

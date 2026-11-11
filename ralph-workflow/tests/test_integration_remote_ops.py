@@ -1,38 +1,3 @@
-"""Remote-tier injection seam for the integration pipeline (PA-002).
-
-The remote tier is driven through the injected
-:class:`~ralph.pipeline.integration_remote_actions.RemoteOps` protocol,
-so a fault-injecting double can simulate an unreachable remote, a
-non-fast-forward rejection, and a remote that advanced underneath the
-caller -- with no network, no subprocess, and no clock.
-
-Every test here is a black-box drive of a PUBLIC publication entry
-point (:func:`reconcile_remote_publication` /
-:func:`push_target_after_landing`) or of the protocol surface itself.
-The contract under test:
-
-* the production adapter really implements the protocol (the client is
-  ONE implementation of the remote tier);
-* an injected double receives the CONFIGURED remote/target and is the
-  only remote the publication path talks to;
-* the production adapter is fail-open: a failing remote read becomes
-  ``REFRESH_UNREACHABLE`` and a failing push an ``UNREACHABLE``
-  result -- never a proven negative;
-* a remote outage is an UNKNOWN environmental reading: the publication
-  obligation is DEFERRED, never terminally blocked, terminal success
-  stays ineligible, and the local landing is never reverted;
-* a LOCAL timeout is reported as a timeout, never as a remote outage --
-  the remote is not blamed for a local failure.
-
-Portfolio decision: KEEP. The nearest existing coverage
-(``tests/test_auto_integrate_remote_sync_convergence.py``) drives the
-same entry points through an ad-hoc ``remote_client`` double; this file
-adds the distinct fault sensitivity the protocol seam introduces
-(protocol conformance of the production adapter, and the UNKNOWN /
-no-blame contract asserted through the injected seam) without
-duplicating the convergence scenarios.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -59,14 +24,10 @@ REMOTE = "tacos"
 LOCAL_SHA = "local-sha"
 REMOTE_SHA = "remote-sha"
 
-#: A repository path that does not exist. The tests drive the injected
-#: seam, so the production adapter is never asked to reach a real
-#: repository -- this path only has to be inert.
 REPO_ROOT = Path("/ralph-remote-ops-no-such-repository")
 
 
 def _config() -> UnifiedConfig:
-    """Configured (non-default) remote and target."""
     return UnifiedConfig.model_validate(
         {
             "general": {
@@ -78,8 +39,6 @@ def _config() -> UnifiedConfig:
 
 
 class _FakeRemoteOps:
-    """Scriptable remote-ops double: no network, no subprocess, no clock."""
-
     def __init__(
         self,
         *,
@@ -106,13 +65,11 @@ class _FakeRemoteOps:
         remote: str,
         timeout_seconds: float,
     ) -> str:
-        """Report the scripted freshness outcome for the next observation."""
         self.refresh_calls.append((target, remote))
         index = min(len(self.refresh_calls) - 1, len(self._refresh_outcomes) - 1)
         return self._refresh_outcomes[index]
 
     def observe_remote_sha(self, repo_root: Path, target: str, *, remote: str) -> str | None:
-        """Report the scripted remote-tracking SHA for the next read."""
         self.observe_calls.append((target, remote))
         index = min(len(self.observe_calls) - 1, len(self._remote_shas) - 1)
         return self._remote_shas[index]
@@ -125,7 +82,6 @@ class _FakeRemoteOps:
         remote: str,
         timeout_seconds: float,
     ) -> PushResult:
-        """Report the scripted push outcome, or raise the scripted failure."""
         self.push_calls.append((branch, remote))
         if self._push_error is not None:
             raise self._push_error
@@ -136,13 +92,11 @@ class _FakeRemoteOps:
 
 @pytest.fixture(autouse=True)
 def _isolate_git_reads(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Stub the local git reads so no test touches a real repository."""
 
     def fake_branch_sha(_root: Path, _ref: str) -> str:
         return LOCAL_SHA
 
     def fake_is_ancestor(_root: Path, ancestor: str, descendant: str) -> bool:
-        # The local target is strictly ahead of every remote SHA.
         return ancestor != LOCAL_SHA and descendant == LOCAL_SHA
 
     def fake_rebase_in_progress(_root: Path) -> bool:
@@ -155,12 +109,10 @@ def _isolate_git_reads(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_production_remote_ops_implements_the_protocol() -> None:
-    """The production adapter is a real implementation of ``RemoteOps``."""
     assert isinstance(default_remote_ops(), RemoteOps)
 
 
 def test_injected_remote_ops_is_the_only_remote_the_publication_path_talks_to() -> None:
-    """Every remote call of the publication path goes through the seam."""
     fake = _FakeRemoteOps(
         refresh_outcomes=["refreshed"],
         remote_shas=[REMOTE_SHA],
@@ -181,7 +133,6 @@ def test_injected_remote_ops_is_the_only_remote_the_publication_path_talks_to() 
 
 
 def test_unreachable_remote_defers_the_publication_without_blocking_it() -> None:
-    """A remote outage is an UNKNOWN reading: deferred, never a terminal block."""
     fake = _FakeRemoteOps(
         refresh_outcomes=[REFRESH_UNREACHABLE],
         remote_shas=[None],
@@ -198,15 +149,12 @@ def test_unreachable_remote_defers_the_publication_without_blocking_it() -> None
     assert out.last_publication_decision == PublicationDecision.PUBLISH_DEFERRED_REMOTE.value
     assert out.last_publication_decision != PublicationDecision.PUBLICATION_BLOCKED.value
     assert out.last_publication_decision != PublicationDecision.PUBLICATION_TERMINAL.value
-    # The local landing is never reverted by a remote outage.
     assert out.fast_forwarded is True
-    # An unknown remote keeps terminal success ineligible.
     assert is_terminal_success_eligible(None, None, out) is False
     assert fake.push_calls == []
 
 
 def test_non_fast_forward_rejection_defers_the_publication_for_reconciliation() -> None:
-    """A remote that advanced rejects the push; the obligation stays open."""
     fake = _FakeRemoteOps(
         refresh_outcomes=["refreshed"],
         remote_shas=[REMOTE_SHA],
@@ -228,7 +176,6 @@ def test_non_fast_forward_rejection_defers_the_publication_for_reconciliation() 
 
 
 def test_local_timeout_is_not_reported_as_a_remote_outage() -> None:
-    """A local timeout is a timeout -- the remote is never blamed for it."""
     fake = _FakeRemoteOps(
         refresh_outcomes=["refreshed"],
         remote_shas=[REMOTE_SHA],
@@ -250,7 +197,6 @@ def test_local_timeout_is_not_reported_as_a_remote_outage() -> None:
 
 
 def test_remote_advance_between_observation_and_push_skips_the_stale_push() -> None:
-    """A remote that advanced to the local tip makes the push obsolete."""
     fake = _FakeRemoteOps(
         refresh_outcomes=["refreshed"],
         remote_shas=[REMOTE_SHA, LOCAL_SHA],
@@ -269,7 +215,6 @@ def test_remote_advance_between_observation_and_push_skips_the_stale_push() -> N
 def test_injected_remote_keeps_the_publication_path_off_the_raw_fetch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A client that answers every probe keeps the path off the raw fetch."""
     raw_fetches: list[str] = []
 
     def _spy_fetch(*_args: object, **_kwargs: object) -> str:
@@ -295,7 +240,6 @@ def test_injected_remote_keeps_the_publication_path_off_the_raw_fetch(
 def test_production_adapter_reports_an_unreadable_remote_as_unknown(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A failing remote read is UNKNOWN, never a proven negative."""
 
     def _boom(*_args: object, **_kwargs: object) -> str:
         raise OSError("remote unreachable")
@@ -313,7 +257,6 @@ def test_production_adapter_reports_an_unreadable_remote_as_unknown(
 def test_production_adapter_reports_a_failed_push_as_unreachable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A failing push is an UNKNOWN remote reading, not a proven negative."""
 
     def _boom(*_args: object, **_kwargs: object) -> PushResult:
         raise OSError("remote unreachable")

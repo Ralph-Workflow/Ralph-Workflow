@@ -15,12 +15,6 @@ if TYPE_CHECKING:
 
 
 class _FakeAgentExecutorWithArtifacts(FakeAgentExecutor):
-    """FakeAgentExecutor that creates artifacts in the worker namespace.
-
-    This simulates what a real agent would do when it completes - create
-    output artifacts in the worker's artifacts/ and handoffs/ directories.
-    """
-
     def __init__(self, runs: dict[str, FakeRun], tmp_path: Path) -> None:
         super().__init__(runs)
         self._tmp_path = tmp_path

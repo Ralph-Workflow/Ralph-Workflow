@@ -1,21 +1,3 @@
-"""A PTY spawn returns only once the child leads its own session.
-
-``fork()`` hands control back to the parent before the child has run a single
-line, so the child's ``os.setsid()`` had usually NOT happened yet when
-``spawn_pty_process`` returned. ``ProcessManager.spawn_pty`` reads the child's
-process group and banks the session for teardown immediately after the spawn,
-so it recorded Ralph's OWN process group as the agent's ``pgid`` and refused to
-register the session at all. Teardown could then never sweep the session, and
-every grandchild that re-parented away from the agent (an MCP server, a
-backgrounded tool) survived it.
-
-The spawn now blocks on a close-on-exec pipe the child releases once it has its
-session and controlling terminal, which also lets an ``exec`` failure reach the
-parent as a real ``OSError`` instead of a bare exit status 127.
-
-These tests fork REAL children, so they carry the ``subprocess_e2e`` marker.
-"""
-
 from __future__ import annotations
 
 import os
@@ -31,7 +13,6 @@ from ralph.process.teardown import teardown_subtree
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 
-#: Enough spawns that the pre-fix race (lost on most spawns) cannot pass by luck.
 _SPAWNS = 12
 _QUIET_POLICY = ProcessManagerPolicy(
     default_grace_period_s=0.1,
@@ -82,7 +63,6 @@ def _sleepers(tag: str) -> list[psutil.Process]:
 
 
 def test_teardown_reaps_a_session_member_that_outlived_the_pty_leader() -> None:
-    """The grandchild survives SIGHUP and its leader; only the session sweep reaches it."""
     pm = ProcessManager(policy=_QUIET_POLICY)
     tag = f"77.{os.getpid() % 1000:03d}"
     handle = pm.spawn_pty(

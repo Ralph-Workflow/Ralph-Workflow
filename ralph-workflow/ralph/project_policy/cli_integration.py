@@ -1,16 +1,3 @@
-"""Run-pipeline integration helpers for the project-policy-readiness preflight.
-
-The preflight lives in :mod:`ralph.project_policy`; the run-pipeline CLI
-in :mod:`ralph.cli.commands.run` only needs the orchestrator entry point
-plus the dependency-injection helpers (workspace factory, emit factory,
-remediation-agent factory). Moving the helpers here keeps the CLI module
-under the 1000-line repository cap without dragging the orchestrator's
-helpers into the public package surface.
-
-Every helper here is independent and small; the orchestrator entry point
-:func:`run_project_policy_readiness` stitches them together so the CLI
-call site reads as one line.
-"""
 
 from __future__ import annotations
 
@@ -73,11 +60,8 @@ if TYPE_CHECKING:
     from ralph.workspace.scope import WorkspaceScope
 
 
-#: Process-level success exit code.
 _EXIT_SUCCESS: int = 0
 
-#: Process-level preflight-blocked exit code. Kept in sync with the
-#: constant of the same name in :mod:`ralph.cli.commands.run`.
 _EXIT_PREFLIGHT: int = 2
 
 
@@ -85,34 +69,16 @@ EmitFn = Callable[[str], None]
 WorkingTreeSnapshot = Callable[["WorkspaceScope"], frozenset[str]]
 PolicyCommit = Callable[["WorkspaceScope", frozenset[str] | None], None]
 
-#: Estimated wall-clock cost of the one-time policy setup. Stated in one
-#: place because it appears in several strings; it is an estimate, not a
-#: measurement, and projects with more surface area take longer.
 _SETUP_ESTIMATE: str = "roughly 30 minutes"
 
-#: A menu whose "explain" item re-asks could in principle loop forever
-#: against a broken seam. Bound it; exhausting the rounds falls through to
-#: the menu's default answer.
 _MAX_PROMPT_ROUNDS: int = 8
 
-#: Stable choice keys. Control flow branches on these, never on the copy.
 _CHOICE_ADOPT: str = "adopt"
 _CHOICE_KEEP: str = "keep"
 _CHOICE_EXPLAIN: str = "explain"
 _CHOICE_UPGRADE: str = "upgrade"
 _CHOICE_FREEZE: str = "freeze"
 
-#: Explanation shown (via the info panel) before the adopt-or-keep menu.
-#: The wording is a contract: the user must understand that the repo may
-#: already have its own policy, what adopting actually costs and produces,
-#: that the resulting policy files help in any AI coding session (not only
-#: Ralph Workflow runs), that their own content is never rewritten, and
-#: which choice suits which kind of user.
-#:
-#: The per-choice consequences live HERE rather than in the menu's own
-#: descriptions because questionary renders a description as a single line
-#: and clips it at the terminal width. The panel is wrapped by the display,
-#: so it is the only place long-form guidance survives intact.
 _INIT_PANEL: str = (
     "AGENTS.md already contains agent instructions, so this repository may "
     "already have a process of its own.\n\n"
@@ -140,8 +106,6 @@ _INIT_PANEL: str = (
 
 _INIT_QUESTION: str = "What should Ralph Workflow do about this repository's policy?"
 
-# Menu descriptions are one clipped line each; keep them short. The full
-# consequences are in _INIT_PANEL above.
 _INIT_CHOICES: tuple[_prompt_ui.PromptChoice, ...] = (
     _prompt_ui.PromptChoice(
         key=_CHOICE_ADOPT,
@@ -164,11 +128,10 @@ _SCHEMA_QUESTION: str = "What should Ralph Workflow do with these policy files?"
 
 
 def _default_is_tty() -> bool:
-    """Return True only when both stdin and stdout are real TTYs."""
     try:
         stdin_tty: bool = sys.stdin.isatty()
         stdout_tty: bool = sys.stdout.isatty()
-    except Exception:  # pragma: no cover - defensive
+    except Exception:
         return False
     return stdin_tty and stdout_tty
 
@@ -182,13 +145,6 @@ def _ask(
     *,
     fallback_notice: str,
 ) -> str:
-    """Ask one menu, returning ``default`` if the seam itself blows up.
-
-    :func:`ralph.project_policy._prompt_ui.select` already absorbs its own
-    failures, so this guard exists for an injected seam and for the
-    contract it protects: an unusable prompt must never block or crash a
-    run, it must fall through to the documented default.
-    """
     try:
         return select(question, choices, default)
     except Exception as exc:
@@ -198,7 +154,6 @@ def _ask(
 
 
 def _policy_contents_detail(workspace: Workspace) -> str:
-    """Render the exact policy files this project would get, and why."""
     core = "\n".join(
         f"  • {policy_markers.CANONICAL_DIR}{name}" for name in policy_markers.CORE_POLICY_FILES
     )
@@ -233,26 +188,8 @@ def _maybe_offer_inline_policy_skip(
     select: _prompt_ui.SelectFn | None,
     is_tty: Callable[[], bool] | None,
 ) -> None:
-    """Offer to keep the existing policy when AGENTS.md is significant.
-
-    Fires only on first contact: a marker-free AGENTS.md with significant
-    user content (see
-    :func:`ralph.project_policy.agents_md.has_significant_unmanaged_content`)
-    AND an interactive terminal. Choosing "keep" persists the byte-exact
-    opt-out marker so the preflight takes its SKIPPED path now and on every
-    future run; choosing "adopt" changes nothing (the bootstrap appends the
-    managed block as before). Either answer therefore makes the offer
-    one-time. The third choice explains what the policy contains and
-    re-asks without writing anything.
-
-    A prompt that cannot run (EOF despite isatty, broken pipe, Ctrl-C) is
-    swallowed and the run proceeds on the default — adopt — which is
-    today's behavior.
-    """
     tty_check = is_tty if is_tty is not None else _default_is_tty
     if not tty_check():
-        # Cheap check first: unattended runs (the common case) skip the
-        # AGENTS.md read entirely.
         return
     if not policy_agents_md.has_significant_unmanaged_content(workspace):
         return
@@ -284,14 +221,6 @@ def _maybe_offer_inline_policy_skip(
 
 
 def _resolve_chain_agents(load_result: _LoadResult, drain: str) -> list[str]:
-    """Return the fallback agents of the chain bound to ``drain``.
-
-    Resolution reuses :class:`ralph.agents.chain.ChainManager` — the exact
-    strict drain->chain lookup the pipeline uses — so the out-of-graph policy
-    phases cannot drift from pipeline routing. The loader may alias either policy
-    drain to the user's corresponding chain. Returns an empty list when the
-    bundle is missing or the drain does not resolve to a non-empty chain.
-    """
     bundle = load_result.policy_bundle
     if bundle is None:
         return []
@@ -306,12 +235,6 @@ def _build_pipeline_deps_for_remediation(
     load_result: _LoadResult,
     display_context: DisplayContext,
 ) -> PipelineDeps | None:
-    """Build ``PipelineDeps`` for the synchronous remediation driver.
-
-    Returns ``None`` when the bundle is missing or factory construction
-    fails (defensive: a missing deps block simply prevents the production
-    agent invocation from running, but tests inject a fake and pass).
-    """
     if load_result.policy_bundle is None:
         return None
     try:
@@ -322,7 +245,7 @@ def _build_pipeline_deps_for_remediation(
             policy_bundle=load_result.policy_bundle,
             pro_hooks=None,
         )
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception as exc:
         logger.warning("Could not build pipeline deps for remediation: {}", exc)
         return None
 
@@ -334,27 +257,6 @@ def _make_production_invoke_agent(
     display: ParallelDisplay | None,
     display_context: DisplayContext | None,
 ) -> InvokePolicyAgent:
-    """Build the production ``invoke_agent`` closure for BOTH policy phases.
-
-    One call walks the resolved fallback chain of the phase's drain in order —
-    the same semantics a pipeline drain gets — invoking each agent through
-    :func:`execute_agent_effect` until one succeeds. A chain that ran and failed
-    returns ``False`` (the driver loops within its budget); a launch crash raises
-    :class:`RemediationInvocationError` so the driver stops looping rather than
-    spinning through the budget in milliseconds. Both policy phases are named
-    identically to their drains, so the phase name IS the drain name.
-
-    The policy phases are OUT-OF-GRAPH: they share the
-    :func:`execute_agent_effect` seam with the pipeline runner but are
-    not part of the pipeline graph itself. ``execute_agent_effect``
-    publishes the session id and next-attempt retry intent into
-    thread-locals that the pipeline runner drains via
-    :func:`apply_session_capture`. Without a snapshot/restore wrapper,
-    the first pipeline agent effect picks up the remediation session id
-    and resumes the remediation conversation in Phase 4. The wrapper
-    around each policy invocation closes that leak at the out-of-graph
-    boundary.
-    """
 
     def invoke_agent(*, phase: str, prompt_path: str) -> bool:
         if pipeline_deps is None or load_result.policy_bundle is None:
@@ -368,31 +270,10 @@ def _make_production_invoke_agent(
                 prompt_file=prompt_path,
                 drain=phase,
                 chain_name=phase,
-                # The REMEDIATION session is denied artifact.submit (so
-                # declare_complete is not in its tool surface) and has no
-                # artifact contract, leaving it no way to produce completion
-                # evidence; demanding it would fail every clean exit on the
-                # completion-enforcing transports. It is judged by the
-                # deterministic validator that re-runs after it exits, which is
-                # the only evidence that ever counted.
-                #
-                # The ANALYSIS session is the opposite: returning a decision
-                # artifact is its entire purpose, so it has a real contract and
-                # its completion evidence is required.
                 requires_completion_evidence=(phase == PHASE_ANALYSIS),
             )
-            # The out-of-graph boundary: snapshot/restore the pipeline
-            # runner's capture thread-locals around the policy invocation
-            # so its writes do not leak. The contextmanager restores in
-            # finally with swallow-and-log discipline; a failing restore
-            # must never block the run.
             with _capture_pipeline_state():
                 try:
-                    # Policy remediation deliberately writes the policy it is
-                    # validating. It is out of the shared integration graph,
-                    # so give its executor an explicit opt-out rather than
-                    # misclassifying those intended writes as an unresolved
-                    # rebase and blocking the remediation itself.
                     policy_config = load_result.config.model_copy(
                         update={
                             "general": load_result.config.general.model_copy(
@@ -409,17 +290,9 @@ def _make_production_invoke_agent(
                         policy_bundle=load_result.policy_bundle,
                         display=display,
                         display_context=display_context,
-                        # Policy readiness runs out of graph, but it still invokes
-                        # a live phase agent. Supply an explicit clean pipeline
-                        # state so the executor's fail-closed integration guard
-                        # always cross-checks this workspace before invocation.
                         state=PipelineState(phase=phase, rebase=RebaseState()),
                     )
                 except Exception as exc:
-                    # A crash launching ONE agent is not a failure of the chain: try
-                    # the next fallback, exactly as a pipeline drain would. Only when
-                    # every agent in the chain has crashed is this real infrastructure
-                    # breakage worth reporting to the driver.
                     logger.warning(
                         "Policy {} agent {} could not be launched: {}", phase, agent_name, exc
                     )
@@ -436,17 +309,6 @@ def _make_production_invoke_agent(
 
 
 def _snapshot_pipeline_capture() -> tuple[str | None, AgentRetryIntent]:
-    """Read and clear the pipeline runner's session-capture thread-locals.
-
-    The captured session id (:mod:`ralph.pipeline._runner_session`) and
-    retry intent (:mod:`ralph.pipeline.effect_executor`) are populated by
-    :func:`execute_agent_effect` and drained by the pipeline runner via
-    :func:`apply_session_capture`. The policy preflight runs OUT-OF-GRAPH
-    so its invocations populate those thread-locals without anyone
-    draining them. Snapshotting reads AND clears the slot; any
-    pre-existing value belongs to a caller outside the closure and must
-    be restored unchanged after the work returns.
-    """
     return (
         pop_last_captured_session_id(),
         _effect_executor_module.pop_last_captured_retry_intent(),
@@ -454,7 +316,6 @@ def _snapshot_pipeline_capture() -> tuple[str | None, AgentRetryIntent]:
 
 
 def _restore_pipeline_capture(snapshot: tuple[str | None, AgentRetryIntent]) -> None:
-    """Restore the pipeline runner's session-capture thread-locals."""
     session_id, retry_intent = snapshot
     _effect_executor_module._set_last_captured_retry_intent(retry_intent)
     set_last_captured_session_id(session_id)
@@ -462,30 +323,13 @@ def _restore_pipeline_capture(snapshot: tuple[str | None, AgentRetryIntent]) -> 
 
 @contextmanager
 def _capture_pipeline_state() -> Iterator[None]:
-    """Snapshot the pipeline runner's capture thread-locals on entry, restore on exit.
-
-    The single out-of-graph boundary for the policy preflight: every
-    thread-local write the executor body makes through either
-    :func:`execute_agent_effect` or any other collaborator it owns is
-    swallowed by entering this context and replayed on exit. The
-    contextmanager is the only place where the snapshot/restore
-    discipline lives, so the BLOCKED and READY routes cannot drift
-    apart -- the ``with _capture_pipeline_state():`` statement is the
-    contract.
-
-    The restore is wrapped in swallow-and-log: a failing restore must
-    never block the run, the same discipline the rest of this module
-    follows. The captured session id and retry intent are best-effort
-    state; the cost of a missing drain is a one-prompt resume, far
-    cheaper than refusing to drop out of the policy subsystem.
-    """
     snapshot = _snapshot_pipeline_capture()
     try:
         yield
     finally:
         try:
             _restore_pipeline_capture(snapshot)
-        except Exception as exc:  # pragma: no cover - defensive
+        except Exception as exc:
             logger.debug("capture-restore failed (non-fatal): {}", exc)
 
 
@@ -493,7 +337,6 @@ def _build_workspace(
     load_result: _LoadResult,
     workspace_factory: Callable[[], Workspace] | None,
 ) -> Workspace:
-    """Return the workspace, using the injected factory when available."""
     if workspace_factory is not None:
         return workspace_factory()
     scope = load_result.workspace_scope
@@ -504,10 +347,9 @@ def _build_workspace(
 
 
 def _snapshot_working_tree(workspace_scope: WorkspaceScope) -> frozenset[str]:
-    """Capture the currently-dirty paths. Never raises."""
     try:
         return list_dirty_paths(workspace_scope.root)
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception as exc:
         logger.debug("working-tree snapshot failed (non-fatal): {}", exc)
         return frozenset()
 
@@ -521,7 +363,6 @@ def _build_emit(
     display_context: DisplayContext,
     emit_factory: Callable[[str], None] | None,
 ) -> Callable[[str], None]:
-    """Return the display emit, using the injected callback when available."""
     if emit_factory is not None:
         return emit_factory
 
@@ -551,20 +392,6 @@ def _dispatch_preflight_result(
     working_tree_snapshot: WorkingTreeSnapshot,
     commit_policy_updates: PolicyCommit,
 ) -> int:
-    """Run the policy pipeline and map its result to an exit code.
-
-    NOTE the exit codes: this function returns ``_EXIT_SUCCESS`` for every policy
-    outcome unless the mode is an ``_ONLY`` mode. A policy that could not be made
-    ready is a warning, not a failure of the run. See
-    :func:`_exit_code_for_not_ready`.
-
-    ``pre_run_dirty`` is taken at the OUTER boundary (in
-    :func:`_run_policy_readiness`) BEFORE the preflight seeds the policy
-    surfaces, so the deterministic chore commit's exclusion set does
-    not swallow the surfaces the policy run actually authored. It is
-    threaded through here so both the READY and the NOT-READY routes
-    can hand the policy surfaces back committed instead of dirty.
-    """
     chain_agents = _resolve_chain_agents(load_result, PHASE_REMEDIATION)
     if not chain_agents and invoke_remediation_agent_factory is None:
         logger.warning(
@@ -591,16 +418,7 @@ def _dispatch_preflight_result(
             display_context,
         )
 
-    # wt-012: the ``_track_authored_paths`` wrapper and its ``authored``
-    # accumulator were removed. Remediation-agent authored paths (gate
-    # scripts) stay in the agent commit flow; the deterministic chore
-    # commit must never ride an agent's authoring.
 
-    # Drive the SAME display lifecycle the pipeline run loop uses: a started
-    # display (live status bar) for the duration of the agent work. The
-    # callback below updates the persistent status bar with the live attempt
-    # before each remediation iteration so the footer shows
-    # ``Remediation N/Max`` instead of a hardcoded ``Dev 1/N`` placeholder.
     display_scope = nullcontext(active_display) if display is not None else active_display
     resumed_phase = (
         load_result.initial_state.phase if load_result.initial_state is not None else None
@@ -629,12 +447,6 @@ def _dispatch_preflight_result(
             DEFAULT_MAX_REMEDIATION_ATTEMPTS,
             run_started_monotonic=run_started_monotonic,
         )
-        # The same out-of-graph boundary, applied at the call site the
-        # BLOCKED and READY routes share. The per-invocation wrapper
-        # inside ``_make_production_invoke_agent`` is the inner ring;
-        # this is the outer ring that closes any seam the inner ring
-        # misses (an injected ``invoke_remediation_agent_factory``,
-        # the analysis driver, the orchestrator's own auxiliary writes).
         with _capture_pipeline_state():
             final = run_policy_pipeline(
                 workspace,
@@ -664,14 +476,6 @@ def _dispatch_preflight_result(
             command_outcomes=final.command_outcomes,
         )
         return _EXIT_SUCCESS
-    # The NOT-READY route must run the same deterministic scoped commit the
-    # READY route runs, with the same ``pre_run_dirty``, so the files the
-    # policy run seeded are handed back committed instead of left for the
-    # next phase. The placeholder AGENTS.md block is NOT condensed here:
-    # only ``_finalize_ready_state`` owns that mutation, and the project
-    # is not ready. The ``authored`` set is no longer threaded to the
-    # commit -- wt-012 removed that scope expansion; remediation agent
-    # writes stay in the agent commit flow.
     commit_policy_updates(workspace_scope, pre_run_dirty)
     _emit_and_push_readiness_assessment(
         emit,
@@ -685,17 +489,6 @@ def _dispatch_preflight_result(
 
 
 def _exit_code_for_not_ready(mode: PolicyMode) -> int:
-    """Return the exit code for a policy that could not be made ready.
-
-    THE RULE: a normal run NEVER exits non-zero because of policy. Policy is
-    documentation about the project; a project with imperfect documentation is
-    still a project you can do work on, and coupling the two means a stale
-    RALPH-LANG block for a language nobody uses can stop all development.
-
-    The ``_ONLY`` modes are the sole exception, and only because they have no
-    development run to proceed to -- their exit code is the only signal they can
-    give a CI job.
-    """
     if mode.exits_after():
         return _EXIT_PREFLIGHT
     return _EXIT_SUCCESS
@@ -715,29 +508,6 @@ def run_project_policy_readiness(
     working_tree_snapshot: WorkingTreeSnapshot = _snapshot_working_tree,
     commit_policy_updates: PolicyCommit = _commit_policy_changes,
 ) -> int:
-    """Run the project-policy preflight at run_pipeline startup. NEVER blocks.
-
-    THIS FUNCTION IS A FAULT BOUNDARY. It catches every exception the policy
-    subsystem can raise -- including bugs: an ``AttributeError`` from a bad
-    refactor, a ``KeyError`` from a malformed policy file, an ``OSError`` from a
-    broken filesystem, a template that fails to render. Whatever happens, the
-    development run proceeds as if the policy pipeline had never existed.
-
-    That is not defensive paranoia, it is the requirement. Project policy is
-    documentation ABOUT the project; it is not a precondition for working on the
-    project. A crash in the documentation subsystem must never cost a user their
-    development run. The catch is deliberately broad (``Exception``) and
-    deliberately not broader (``BaseException`` is NOT caught, so Ctrl-C and
-    ``SystemExit`` still work).
-
-    The one exception to "never blocks" is an ``_ONLY`` mode, which has no
-    development run to proceed to and so reports failure through its exit code.
-
-    Tests can inject ``workspace_factory``, ``emit_factory``,
-    ``invoke_remediation_agent_factory``, ``select_factory``, and ``is_tty`` to
-    exercise the preflight without real filesystem I/O, agent invocation, or a
-    real terminal.
-    """
     try:
         return _run_policy_readiness(
             load_result=load_result,
@@ -775,7 +545,6 @@ def _emit_and_push_readiness_assessment(
     *,
     push_status: bool = True,
 ) -> None:
-    """Surface the three-state assessment in visible emit and status bar footer."""
     if assessment is not None:
         dims = ", ".join(
             f"{name}={'true' if value else 'false'}" for name, value in assessment.as_dict().items()
@@ -810,7 +579,7 @@ def _emit_and_push_readiness_assessment(
                 assessment,
                 run_started_monotonic=run_started_monotonic,
             )
-        except Exception as exc:  # defensive: presentation must never block remediation
+        except Exception as exc:
             logger.debug(
                 "readiness-assessment status-bar push failed (non-fatal): {}",
                 exc,
@@ -822,14 +591,9 @@ def _emit_safely(
     emit_factory: Callable[[str], None] | None,
     message: str,
 ) -> None:
-    """Emit a message, swallowing any failure of the display itself.
-
-    Called from the fault boundary, where the display may be exactly what broke.
-    A crash in the crash handler would defeat the entire point.
-    """
     try:
         _build_emit(display_context, emit_factory)(message)
-    except Exception as exc:  # pragma: no cover - the display is already broken
+    except Exception as exc:
         logger.debug("policy failure could not be displayed: {}", exc)
 
 
@@ -847,28 +611,10 @@ def _run_policy_readiness(
     working_tree_snapshot: WorkingTreeSnapshot,
     commit_policy_updates: PolicyCommit,
 ) -> int:
-    """The preflight body. Every exit path here is wrapped by the fault boundary.
-
-    Steps:
-
-    #. Build the workspace + project stack via the injected seams.
-    #. For an explicit mode, reset the policy (``--redo-policy``) and/or bypass
-       the READY cache and the opt-out marker.
-    #. On first contact with a significant, marker-free AGENTS.md and an
-       interactive terminal, offer to keep the existing policy instead of adding
-       Ralph Workflow's managed block.
-    #. Run the deterministic preflight, then the policy pipeline.
-    """
     workspace_scope = load_result.workspace_scope
     if workspace_scope is None:
         return _EXIT_SUCCESS
 
-    # Snapshot the working tree BEFORE the policy preflight writes anything.
-    # The post-run difference is what attributes a newly-written gate script
-    # to the policy agents rather than to the user, and the snapshot lives
-    # outside the dispatch helper so the deterministic chore commit's
-    # exclusion set does NOT swallow the policy surfaces the bootstrap
-    # seeded (the surfaces the commit exists to pick up).
     pre_run_dirty = working_tree_snapshot(workspace_scope)
 
     emit = _build_emit(display_context, emit_factory)
@@ -886,7 +632,6 @@ def _run_policy_readiness(
         if not policy_schema_upgrade._maybe_resolve_schema_upgrade(
             workspace, emit, select=select_factory, is_tty=is_tty
         ):
-            # The user declined a schema upgrade. Not a failure of the run.
             return _EXIT_SUCCESS
 
     stack = get_project_stack(workspace)
@@ -896,9 +641,6 @@ def _run_policy_readiness(
         emit("project-policy-readiness: skipped (opt-out marker present)")
         return _EXIT_SUCCESS
 
-    # An explicit mode bypasses the READY cache: a --run-policy-agents that
-    # no-ops on a ready project would be useless, since auditing a policy that
-    # LOOKS ready is the entire point of the flag.
     if result.is_ready() and not mode.is_explicit():
         emit(f"project-policy-readiness: ready ({len(result.changed_files)} files updated)")
         _emit_and_push_readiness_assessment(

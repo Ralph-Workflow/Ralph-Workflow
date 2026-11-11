@@ -1,28 +1,3 @@
-"""Regression test: no AGY-only exemption branches in ``smoke_plumbing.py``.
-
-Brief ``.agent/PRODUCT_CRITERIA.md`` F7 / DoD 17 / DoD 19 -- the four
-AGY-only branches the brief names by line number are all gone, and the
-gate is now rewritten so AGY clears the same bar as every other
-transport. A grep for ``AgentTransport.AGY`` in ``smoke_plumbing.py``
-MUST return only transport *identification* and additive diagnostics,
-never a branch that skips, relaxes, or substitutes for a check another
-transport must pass.
-
-The four branches that were deleted (do not reintroduce them):
-
-1. ``_meaningful_output_error``: two ``if config.transport ==
-   AgentTransport.AGY and meaningful_output: return None`` early returns.
-2. ``_tool_activity_seen_for_errors``: ``params.config.transport ==
-   AgentTransport.AGY and params.output_file.exists()`` fallback.
-3. ``_detect_smoke_errors``: ``AgentTransport.AGY`` in the session-ID
-   exemption set alongside ``NANOCODER``.
-4. ``_run_smoke_agent``: the ``host_synthesized_sentinel`` branch that
-   called ``_write_completion_sentinel`` on AGY's behalf.
-
-The negative assertions below encode each of those deletions as a
-search-able invariant so the lane cannot silently reopen.
-"""
-
 from __future__ import annotations
 
 import re
@@ -38,15 +13,6 @@ def _read_smoke_plumbing() -> str:
 
 
 def test_agy_tool_activity_fallback_is_gone() -> None:
-    """The AGY workspace-file-as-tool-activity fallback was removed in S-1.
-
-    Pre-fix branch (smoke_plumbing.py:1163) read:
-
-        return params.config.transport == AgentTransport.AGY and params.output_file.exists()
-
-    Tool activity for AGY now comes from parser-classified tool events
-    like every other transport (F7/DoD 20).
-    """
     source = _read_smoke_plumbing()
     assert (
         "params.config.transport == AgentTransport.AGY and params.output_file.exists()"
@@ -59,16 +25,6 @@ def test_agy_tool_activity_fallback_is_gone() -> None:
 
 
 def test_agy_meaningful_output_exemption_is_gone() -> None:
-    """The two AGY-only early-return short-circuits in ``_meaningful_output_error`` are gone.
-
-    Pre-fix branches (smoke_plumbing.py:1000, :1008) read:
-
-        if config.transport == AgentTransport.AGY and meaningful_output:
-            return None
-
-    AGY now falls through to the same three-tier meaningful-output check
-    as every other transport.
-    """
     source = _read_smoke_plumbing()
     matches = re.findall(
         r"if config\.transport == AgentTransport\.AGY and meaningful_output",
@@ -82,22 +38,6 @@ def test_agy_meaningful_output_exemption_is_gone() -> None:
 
 
 def test_agy_session_id_exemption_is_gone() -> None:
-    """AGY must not be exempted from the session-ID check by name.
-
-    Pre-fix branch (smoke_plumbing.py:1190) included AGY alongside
-    ``NANOCODER`` in a literal ``params.config.transport not in {...}`` set.
-
-    S-6 (G6 / DoD 20) replaced that literal transport-comparison set
-    entirely with a general, transport-declared property
-    (``AgentSupport.session_identifier_observable``, defaulting to
-    ``True``) so the check applies uniformly to every registered
-    transport unless one explicitly documents why it cannot clear it.
-    This test therefore asserts the general property directly: no
-    ``AgentTransport.<X> not in {...}`` literal exemption set exists
-    anywhere in the file (the pattern DoD 20 forbids for any transport,
-    not only AGY), AND AGY's own registered support keeps the default
-    ``session_identifier_observable=True`` -- it is not special-cased.
-    """
     source = _read_smoke_plumbing()
     assert re.search(r"AgentTransport\.[A-Z_]+\s+not in\s+\{", source) is None, (
         "a literal 'transport not in {...}' exemption set was reintroduced "
@@ -120,16 +60,6 @@ def test_agy_session_id_exemption_is_gone() -> None:
 
 
 def test_agy_host_synthesized_sentinel_branch_is_gone() -> None:
-    """The host must never call ``_write_completion_sentinel`` on AGY's behalf.
-
-    Pre-fix branch (smoke_plumbing.py:1441-1456) included:
-
-        if (params.config.transport == AgentTransport.AGY and ...):
-            _write_completion_sentinel(...)
-            host_synthesized_sentinel = True
-
-    Post-F7/DoD 19, the host writes completion evidence for no transport.
-    """
     source = _read_smoke_plumbing()
     assert "_write_completion_sentinel" not in source, (
         "smoke_plumbing.py imports/calls _write_completion_sentinel -- the "
@@ -140,13 +70,6 @@ def test_agy_host_synthesized_sentinel_branch_is_gone() -> None:
 
 
 def test_agy_branches_in_smoke_plumbing_are_identification_or_diagnostic_only() -> None:
-    """Every remaining ``AgentTransport.AGY`` reference is identification or additive diagnostic.
-
-    Per F7: ``grep`` for ``AgentTransport.AGY`` in ``smoke_plumbing.py``
-    returns only transport *identification* (e.g. building the AGY-shaped
-    prompt) and additive diagnostics -- never a branch that skips,
-    relaxes, or substitutes for a check another transport must pass.
-    """
     source = _read_smoke_plumbing()
     matches: list[tuple[int, str]] = []
     for line_no, line in enumerate(source.splitlines(), start=1):
@@ -160,16 +83,12 @@ def test_agy_branches_in_smoke_plumbing_are_identification_or_diagnostic_only() 
     )
 
     for line_no, line in matches:
-        # Additive diagnostic in ``_detect_smoke_errors`` -- reports an
-        # AGY-specific upstream diagnostic; not skipping/relaxing a check.
         is_additive_diagnostic = bool(
             re.match(
                 r"^if params\.config\.transport == AgentTransport\.AGY\s*:\s*$",
                 line,
             )
         )
-        # Transport identification in ``_build_smoke_prompt`` -- renders
-        # AGY-shaped submission instructions; not skipping/relaxing a check.
         is_transport_identification = bool(
             re.match(
                 r"^is_agy = transport is AgentTransport\.AGY\s*$",

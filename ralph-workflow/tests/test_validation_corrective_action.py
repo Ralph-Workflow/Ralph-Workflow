@@ -1,5 +1,3 @@
-"""Retry-hint corrective actions must follow the artifact validation failure."""
-
 from __future__ import annotations
 
 from ralph.mcp.artifacts.markdown import Diagnostic
@@ -17,7 +15,6 @@ def test_commit_message_failure_requires_rewriting_the_message() -> None:
 
 
 def test_development_result_invalid_status_frontmatter_keeps_free_form_guidance() -> None:
-    """Free-form contract: a bad frontmatter status is repaired via document-edit wording."""
     hint = build_validation_retry_hint(
         "development_result",
         [

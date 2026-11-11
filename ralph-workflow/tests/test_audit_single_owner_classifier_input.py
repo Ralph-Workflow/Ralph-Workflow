@@ -1,19 +1,9 @@
-"""Tests for the single-owner audit's text-classifier provenance rule.
-
-The §11 fix (rev 2) forbids Ralph-authored failure prose from reaching the text
-classifier; these tests pin that rule through the public
-``audit_production_source`` seam of ``audit_agent_failure_single_owner``.
-"""
-
 from __future__ import annotations
 
 from ralph.testing.audit_agent_failure_single_owner import audit_production_source
 
-# --- §11 fix (rev 2): no Ralph-authored prose may reach the text classifier. ---
-
 
 def test_production_ralph_authored_prose_assignment_then_classify_is_flagged() -> None:
-    """The exact regression shape: prose assigned to the session field, then classified."""
     source = """
 def handle(session, agent_name):
     session.last_attempt_failure = "unresolved paths remain in worktree"
@@ -33,7 +23,6 @@ def handle(session, agent_name):
 
 
 def test_production_reworded_prose_variant_is_flagged() -> None:
-    """Rewording the authored string does not evade the rule."""
     source = """
 def handle(session, agent_name):
     session.last_attempt_evidence = f"candidate gave up without doing anything"
@@ -48,7 +37,6 @@ def handle(session, agent_name):
 
 
 def test_production_direct_classifier_construction_with_prose_is_flagged() -> None:
-    """A direct FailureClassifier().classify(<internal prose>) call is flagged."""
     source = """
 from ralph.recovery.failure_classifier import FailureClassifier
 
@@ -62,7 +50,6 @@ def go() -> None:
 
 
 def test_production_classifier_wrapper_with_prose_is_flagged() -> None:
-    """The should_reset_tool_registry wrapper fed internal prose is flagged."""
     source = """
 from ralph.recovery.failure_classifier import should_reset_tool_registry
 
@@ -76,7 +63,6 @@ def go() -> bool:
 
 
 def test_production_exception_object_failure_arg_is_not_flagged() -> None:
-    """Exception objects are RAW external runtime text and stay accepted."""
     source = """
 from ralph.recovery.failure_classifier import should_reset_tool_registry
 
@@ -90,7 +76,6 @@ def go(exc: BaseException) -> bool:
 
 
 def test_production_or_chain_with_authored_constant_is_flagged() -> None:
-    """An or-fallback chain carrying ATTEMPT_FAILED_EVIDENCE is flagged."""
     source = """
 ATTEMPT_FAILED_EVIDENCE = "conflict attempt failed"
 
@@ -110,16 +95,6 @@ def handle(session, agent_name):
 
 
 def test_production_classifier_provenance_allowlist_is_removed() -> None:
-    """The U3 §11 conversion removed the temporary classifier-input allowlist.
-
-    Every formerly allowlisted shape — prose assignments to the session
-    failure fields, a classify call reading a tainted field, an or-chain
-    carrying ATTEMPT_FAILED_EVIDENCE — must flag again now that production
-    routes typed outcomes instead. This is the completion guard, asserted
-    purely through the public ``audit_production_source`` seam: a
-    reintroduced allowlist covering any of these shapes would silence the
-    matching flag below and turn this test red.
-    """
     driver_source = """
 def handle(session, agent_name, attempt):
     session.last_attempt_failure = "unresolved paths remain in worktree"
@@ -165,11 +140,7 @@ def note(session):
     )
 
 
-# --- §11 fix (rev 2), WU-2: the guard covers the wrapper and laundering shapes. ---
-
-
 def test_production_bench_resolver_with_authored_fstring_is_flagged() -> None:
-    """The pending-merge repair wrapper flow: authored f-string through bench_resolver."""
     source = """
 def handoff(controller, agent):
     bench_resolver(
@@ -187,7 +158,6 @@ def handoff(controller, agent):
 
 
 def test_production_bench_resolver_with_reworded_literal_is_flagged() -> None:
-    """Rewording the authored wrapper string does not evade the rule."""
     source = """
 def handoff(controller, agent):
     bench_resolver(
@@ -204,7 +174,6 @@ def handoff(controller, agent):
 
 
 def test_production_stored_classifier_instance_with_prose_is_flagged() -> None:
-    """A FailureClassifier stored on self and fed internal prose is flagged."""
     source = """
 from ralph.recovery.failure_classifier import FailureClassifier
 
@@ -224,7 +193,6 @@ class Runner:
 
 
 def test_production_local_assigned_authored_value_is_flagged() -> None:
-    """The or-chain laundering shape: a local assigned authored prose, then classified."""
     source = """
 def handoff(controller, agent, failure_detail):
     detail = failure_detail() if failure_detail is not None else None
@@ -241,7 +209,6 @@ def handoff(controller, agent, failure_detail):
 
 
 def test_production_prose_returning_helper_result_is_flagged() -> None:
-    """The diagnostic-handoff wrapper flow: a same-module helper returning authored prose."""
     source = """
 def _failure_text(agent, failure_detail):
     detail = failure_detail() if failure_detail is not None else None
@@ -260,7 +227,6 @@ def handoff(controller, agent, failure_detail):
 
 
 def test_production_external_exception_through_wrapper_and_instance_is_not_flagged() -> None:
-    """Exception objects are RAW external runtime text and stay accepted."""
     source = """
 from ralph.recovery.failure_classifier import FailureClassifier
 
@@ -279,7 +245,6 @@ class Runner:
 
 
 def test_production_typed_bench_resolver_outcome_is_not_flagged() -> None:
-    """The converted wrapper flows: typed outcome with no authored prose stays accepted."""
     source = """
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 

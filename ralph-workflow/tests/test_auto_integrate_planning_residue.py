@@ -1,20 +1,3 @@
-"""Planning-residue seam routing tests.
-
-:func:`ralph.pipeline.auto_integrate_planning.resolve_planning_residue`
-is the run loop's post-dispatch residue seam. It must consume the typed
-:class:`~ralph.pipeline.integration_cleanup.ResidueCleanupOutcome`
-instead of discarding it: an in-progress git operation
-(``operation_blocked`` / ``operation_unknown``) routes to the operation
-ladder through the ONE owner seam — never to residue restore and never
-to the conflict resolver — and every other outcome is returned untyped-
-loss free so the caller can act on it.
-
-The git effects run through a fake :class:`CleanupGitPort` and the
-ledger through a fake :class:`ResidueLedgerPort` (both installed in
-place of the production port classes); the owner seam is a recording
-stand-in. No real Git, no subprocess, no filesystem, no sleeps.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -52,8 +35,6 @@ def _baseline() -> PlanningBaseline:
 
 
 class _FakeCleanupGit:
-    """Minimal fake CleanupGitPort recording every restore-class effect."""
-
     def __init__(self, in_progress: Reading[InProgressKind]) -> None:
         self._in_progress = in_progress
         self.restore_calls = 0
@@ -138,8 +119,6 @@ class _FakeCleanupGit:
 
 
 class _FakeLedger:
-    """Fake ResidueLedgerPort; the operation gate never charges it."""
-
     def __init__(self) -> None:
         self.charges = 0
 
@@ -154,7 +133,6 @@ def _install_ports(
     fake_git: _FakeCleanupGit,
     fake_ledger: _FakeLedger,
 ) -> None:
-    """Install the fake ports in place of the production port classes."""
     monkeypatch.setattr(integration_cleanup, "RunGitCleanupPort", lambda: fake_git)
     monkeypatch.setattr(integration_cleanup, "OwnerResidueLedgerPort", lambda: fake_ledger)
 
@@ -162,7 +140,6 @@ def _install_ports(
 def test_operation_blocked_routes_to_the_operation_ladder_without_restore(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A merge in progress: no restore, no snapshot, owner seam asked once."""
     fake_git = _FakeCleanupGit(Reading.known(InProgressKind.MERGE))
     fake_ledger = _FakeLedger()
     _install_ports(monkeypatch, fake_git, fake_ledger)
@@ -194,21 +171,16 @@ def test_operation_blocked_routes_to_the_operation_ladder_without_restore(
     assert outcome is not None
     assert outcome.operation_blocked is True
     assert outcome.operation_kind is InProgressKind.MERGE
-    # The operation owns the index: cleanup took NO restore/preservation
-    # action and the ledger was never charged.
     assert fake_git.restore_calls == 0
     assert fake_git.snapshot_calls == 0
     assert fake_git.quarantine_calls == 0
     assert fake_ledger.charges == 0
-    # The operation state went to the ONE owner seam (the operation
-    # ladder), exactly once — never to a resolver dispatch.
     assert routed == [(_ROOT, IntegrationAction.CONTINUE_GIT_OPERATION)]
 
 
 def test_operation_unknown_fails_closed_to_the_operation_ladder(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An unreadable operation probe routes fail-closed, still no restore."""
     fake_git = _FakeCleanupGit(Reading.unknown("probe timed out"))
     fake_ledger = _FakeLedger()
     _install_ports(monkeypatch, fake_git, fake_ledger)
@@ -235,7 +207,6 @@ def test_operation_unknown_fails_closed_to_the_operation_ladder(
 def test_clean_outcome_is_returned_without_operation_routing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A clean dispatch returns the typed outcome and never asks the owner."""
     fake_git = _FakeCleanupGit(Reading.known(InProgressKind.NONE))
     fake_ledger = _FakeLedger()
     _install_ports(monkeypatch, fake_git, fake_ledger)

@@ -1,24 +1,3 @@
-"""A manifest-launched parallel worker must carry its own integration seams.
-
-``ralph.pipeline.parallel.worker_runtime.run_parallel_worker_from_manifest``
-runs a worker WITHOUT entering the shared run loop, so it inherits none
-of that loop's auto-integration hooks. Nothing under
-``ralph/pipeline/parallel/`` referenced integration or rebase at all,
-and the coordinator-side join that would have covered it
-(``runner._integrate_after_fan_out``, reached via ``FanOutEffect``) is
-dormant under the bundled ``dispatch_mode = "agent_subagents"``.
-
-The result was that in the exact topology auto-integration exists for --
-several agents advancing one shared mainline at the same time -- a
-manifest-launched worker neither published its landings to its siblings
-nor picked theirs up, which on its own reads as "auto rebase does not
-work".
-
-These are fast unit tests: no real git, no subprocess, no sleeping. The
-real-git proof of the conflicted path lives in
-``tests/test_auto_integrate_fleet_conflict_e2e.py``.
-"""
-
 from __future__ import annotations
 
 import dataclasses
@@ -51,8 +30,6 @@ if TYPE_CHECKING:
 
 
 class _IntegrationCall:
-    """One recorded invocation of the boundary integration entry point."""
-
     def __init__(
         self,
         *,
@@ -80,19 +57,11 @@ def _display_context() -> DisplayContext:
 
 
 def _git_workspace(tmp_path: Path) -> Path:
-    """Mark ``tmp_path`` as a git checkout for the seam's cheap stat guard.
-
-    The seam short-circuits on a workspace that is not a checkout, so
-    every test that expects it to DO something has to look like one.
-    Nothing here reads git itself -- the integration entry points are
-    replaced by recorders -- so a bare directory is enough.
-    """
     (tmp_path / ".git").mkdir(exist_ok=True)
     return tmp_path
 
 
 def _write_manifest(tmp_path: Path) -> tuple[Path, Path]:
-    """Write a minimal worker manifest; return (manifest_path, worker_ns)."""
     _git_workspace(tmp_path)
     worker_ns = tmp_path / ".agent" / "workers" / "unit-a"
     worker_ns.mkdir(parents=True)
@@ -115,16 +84,12 @@ def _write_manifest(tmp_path: Path) -> tuple[Path, Path]:
 
 
 class _FakePolicyBundle:
-    """Structural stand-in for the slots the worker flow reads."""
-
     pipeline = object()
     artifacts = object()
     agents = object()
 
 
 class _FakeRegistry:
-    """Registry that has no agents installed."""
-
     def get(self, name: str) -> None:
         del name
 
@@ -138,8 +103,6 @@ def _fake_registry_class() -> object:
 
 
 class _FakeWorkspace:
-    """Workspace whose ``read`` returns a fixed prompt body."""
-
     def __init__(self, root: Path, *, allowed_roots: tuple[Path, ...] | None = None) -> None:
         del root, allowed_roots
 
@@ -154,7 +117,6 @@ def _install_worker_stubs(
     *,
     agent_event: PipelineEvent = PipelineEvent.AGENT_SUCCESS,
 ) -> None:
-    """Stub every collaborator the worker flow needs except the seams."""
     monkeypatch.setattr(
         module,
         "load_config",
@@ -211,13 +173,6 @@ def _install_worker_stubs(
 def _record_seams(
     module: ModuleType, monkeypatch: MonkeyPatch
 ) -> tuple[list[str], list[_IntegrationCall]]:
-    """Replace the two seam entry points with recorders.
-
-    Returns ``(ordered_events, integration_calls)``. ``ordered_events``
-    interleaves ``"recover"`` and ``"integrate"`` markers so a test can
-    assert that recovery happens BEFORE any integration, and that both
-    happen before / after the agent as the seam contract requires.
-    """
     events: list[str] = []
     calls: list[_IntegrationCall] = []
 
@@ -256,7 +211,6 @@ def _record_seams(
 
 
 def _worker_pipeline_deps(display_context: DisplayContext) -> PipelineDeps:
-    """Real ``PipelineDeps`` whose prompt materializer returns a fixed path."""
 
     def _materialize(
         context: PromptPhaseContext | None = None,
@@ -287,7 +241,6 @@ def _run_worker(
 def test_worker_recovers_before_it_integrates_and_before_it_works(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """Crash recovery runs exactly once, ahead of every integration."""
     module = _worker_module()
 
     exit_code, events, _calls = _run_worker(module, tmp_path, monkeypatch)
@@ -302,7 +255,6 @@ def test_worker_recovers_before_it_integrates_and_before_it_works(
 def test_persisted_legacy_conflict_blocks_prompt_and_agent_invocation(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """A legacy persisted conflict stops the actual manifest entry before prompts."""
     module = _worker_module()
     manifest_path, _worker_ns = _write_manifest(tmp_path)
     _install_worker_stubs(module, monkeypatch)
@@ -330,7 +282,6 @@ def test_persisted_legacy_conflict_blocks_prompt_and_agent_invocation(
 def test_worker_startup_conflict_blocks_prompt_and_agent_invocation(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """S-3 regression: a startup conflict cannot reach worker planning or execution."""
     module = _worker_module()
     manifest_path, _worker_ns = _write_manifest(tmp_path)
     _install_worker_stubs(module, monkeypatch)
@@ -367,7 +318,6 @@ def test_worker_startup_conflict_blocks_prompt_and_agent_invocation(
 def test_worker_runs_a_startup_and_a_boundary_integration(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """Two seams: catch up before the phase, publish after it succeeds."""
     module = _worker_module()
 
     exit_code, events, calls = _run_worker(module, tmp_path, monkeypatch)
@@ -387,13 +337,6 @@ def test_worker_runs_a_startup_and_a_boundary_integration(
 def test_worker_integration_is_offered_a_rebase_stop_resolver(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """A conflicted rebase must be resolvable in place, not only aborted.
-
-    Without a ``rebase_stop_resolver`` the integration can still rebase
-    and fast-forward, but a conflicted replay is abandoned and retried
-    as an endpoint merge -- so this assertion is what separates "the
-    worker syncs" from "the worker syncs and can resolve".
-    """
     module = _worker_module()
 
     _exit_code, _events, calls = _run_worker(module, tmp_path, monkeypatch)
@@ -407,7 +350,6 @@ def test_worker_integration_is_offered_a_rebase_stop_resolver(
 def test_a_failed_phase_does_not_run_the_boundary_integration(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """Only a SUCCESSFUL phase publishes; a failed one has nothing to land."""
     module = _worker_module()
     manifest_path, _worker_ns = _write_manifest(tmp_path)
     _install_worker_stubs(module, monkeypatch, agent_event=PipelineEvent.AGENT_FAILURE)
@@ -429,13 +371,6 @@ def test_a_failed_phase_does_not_run_the_boundary_integration(
 def test_missing_dependencies_degrade_to_integration_without_resolvers(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """No policy / registry / deps means no resolver -- never a dead seam.
-
-    The cross-agent catch-up is the bulk of the value and needs none of
-    those collaborators, so it must still run; only in-place conflict
-    resolution, which genuinely requires a Ralph MCP session, is
-    withheld.
-    """
     module = _worker_module()
     _events, calls = _record_seams(module, monkeypatch)
 
@@ -458,13 +393,6 @@ def test_missing_dependencies_degrade_to_integration_without_resolvers(
 def test_a_workspace_that_is_not_a_checkout_costs_nothing(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """No git checkout, no seam: not even a crash-record read.
-
-    The guard is a cheap ``stat``. It matters because a worker whose
-    workspace is not a repository would otherwise pay for a record read,
-    a ``ParallelDisplay`` and two resolver closures on every seam only to
-    reach the same ``None``.
-    """
     module = _worker_module()
     _events, calls = _record_seams(module, monkeypatch)
 
@@ -484,13 +412,6 @@ def test_a_workspace_that_is_not_a_checkout_costs_nothing(
 
 
 def test_a_raising_seam_never_aborts_the_worker(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
-    """Auto-integration must degrade, never propagate into the worker.
-
-    A worker's job is the phase it was launched for. An integration that
-    blew up used to have no containment of its own in this topology,
-    because the topology had no integration at all; the seam therefore
-    carries the same broad guard the shared run loop uses.
-    """
     module = _worker_module()
 
     def _explode(
@@ -518,7 +439,6 @@ def test_a_raising_seam_never_aborts_the_worker(monkeypatch: MonkeyPatch, tmp_pa
 def test_worker_startup_retained_recovery_blocks_prompt_and_agent_invocation(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """A retained record blocks prompt materialization just like a conflict."""
     module = _worker_module()
     manifest_path, _worker_ns = _write_manifest(tmp_path)
     _install_worker_stubs(module, monkeypatch)
@@ -556,7 +476,6 @@ def test_worker_startup_retained_recovery_blocks_prompt_and_agent_invocation(
 def test_worker_boundary_retained_recovery_blocks_success_exit(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """A retained outcome after agent success must not yield worker exit code 0."""
     module = _worker_module()
     manifest_path, _worker_ns = _write_manifest(tmp_path)
     _install_worker_stubs(module, monkeypatch)
@@ -588,7 +507,6 @@ def test_worker_boundary_retained_recovery_blocks_success_exit(
 def test_worker_boundary_live_verdict_blocks_success_exit(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """S-3: post-phase live Git evidence blocks the worker even when its state is stale."""
     module = _worker_module()
     manifest_path, _worker_ns = _write_manifest(tmp_path)
     _install_worker_stubs(module, monkeypatch)

@@ -1,15 +1,3 @@
-"""Regression tests: overlapping exec streams must not cross-talk or corrupt frames.
-
-The exec SSE path swaps a sink on the SHARED session object. With one thread
-per connection, two overlapping exec calls raced that single attribute:
-last-writer-wins routed request A's subprocess output into request B's HTTP
-connection, and interleaved writes could corrupt B's final frame — a client
-that never receives a parseable final frame hangs to its request timeout
-(the -32001 storm). Ownership is now thread-scoped: a dispatch only composes
-streaming for the thread that swapped the sink, and sink restoration is
-compare-and-swap so a finished request cannot stomp a newer owner.
-"""
-
 from __future__ import annotations
 
 import json
@@ -47,7 +35,6 @@ def test_sink_only_visible_to_owning_thread() -> None:
     def handle_request(
         request: JsonRpcRequest, state: ServerState
     ) -> tuple[JsonRpcResponse | None, ServerState]:
-        # Same thread as the swap: dispatch must see its own sink.
         assert session.current_thread_tool_output_sink() is not None
 
         def probe() -> None:
@@ -82,7 +69,6 @@ def test_finished_request_does_not_stomp_newer_sink_owner() -> None:
     def handle_request(
         request: JsonRpcRequest, state: ServerState
     ) -> tuple[JsonRpcResponse | None, ServerState]:
-        # Simulate an overlapping request taking ownership mid-dispatch.
         session.tool_output_sink_entry = (newer_owner, newer_sink)
         return _response(request.msg_id), state
 
@@ -100,7 +86,6 @@ def test_finished_request_does_not_stomp_newer_sink_owner() -> None:
 
 
 def test_notification_and_final_frames_are_serialized_per_request() -> None:
-    """Chunk frames written from reader threads must not interleave the final frame."""
     session = _session()
     frames: list[bytes] = []
     write_lock_violations: list[str] = []
@@ -142,7 +127,6 @@ def test_notification_and_final_frames_are_serialized_per_request() -> None:
     )
 
     assert not write_lock_violations
-    # Every frame must be a complete, individually parseable SSE event.
     for frame in frames:
         text = frame.decode("utf-8")
         assert text.startswith("event: message\r\ndata: ")

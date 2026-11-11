@@ -1,4 +1,3 @@
-"""Poll the child sessions of one OpenCode parent and forward their work."""
 
 from __future__ import annotations
 
@@ -15,23 +14,11 @@ if TYPE_CHECKING:
 
     from ._part_source import OpenCodeChildPartSource
 
-#: Dedupe window for ``(part_id, time_updated)`` pairs already forwarded.
 _MAX_SEEN_PARTS: int = 512
-#: Cache of child session ids already announced to the operator log.
 _MAX_KNOWN_CHILDREN: int = 64
 
 
 class OpenCodeSubagentSessionProbe:
-    """Poll the child sessions of one OpenCode parent and forward their work.
-
-    Each newly updated part reaches two sinks: ``subagent_sink`` receives the
-    operator-readable summary (the watchdog's ``record_subagent_work``
-    channel) and ``child_progress_sink`` receives the child session id (the
-    execution strategy's child-liveness registry). Polling is throttled to
-    ``poll_interval_seconds`` so calling :meth:`poll` on every reader tick
-    stays cheap; the store itself is queried only once a parent session id
-    has been captured from the stream.
-    """
 
     def __init__(
         self,
@@ -51,8 +38,6 @@ class OpenCodeSubagentSessionProbe:
         self._child_progress_sink = child_progress_sink
         self._monotonic = monotonic
         wall = wall_clock_ms or _default_wall_clock_ms
-        # Only parts written after this invocation started count: a resumed
-        # session may own finished children from an earlier invocation.
         self._since_ms: int = wall()
         self._poll_interval = poll_interval_seconds
         self._status_interval = status_interval_seconds
@@ -62,14 +47,13 @@ class OpenCodeSubagentSessionProbe:
         self._latest_summary: str | None = None
         self._seen: OrderedDict[tuple[str, int], None] = (
             OrderedDict()
-        )  # bounded-accumulator-ok: capped at _MAX_SEEN_PARTS
+        )
         self._known_children: OrderedDict[str, None] = (
             OrderedDict()
-        )  # bounded-accumulator-ok: capped at _MAX_KNOWN_CHILDREN
+        )
         self._closed = False
 
     def poll(self) -> int:
-        """Forward every new child part; return how many were forwarded."""
         if self._closed:
             return 0
         now = self._monotonic()
@@ -101,7 +85,6 @@ class OpenCodeSubagentSessionProbe:
         return forwarded
 
     def close(self) -> None:
-        """Release the underlying source; further polls are no-ops."""
         if self._closed:
             return
         self._closed = True

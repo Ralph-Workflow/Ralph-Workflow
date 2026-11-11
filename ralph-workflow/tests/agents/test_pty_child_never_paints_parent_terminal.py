@@ -1,33 +1,3 @@
-"""End-to-end PTY backgrounding tests for spawned children.
-
-These tests fork REAL children via ``ProcessManager.spawn`` /
-``ProcessManager.spawn_pty`` to pin the POSIX contract for
-backgrounded agents. They carry the ``subprocess_e2e`` marker so
-they are excluded from the timed unit suite and run on demand via
-``make test-subprocess-e2e`` (Makefile:127).
-
-The contract being pinned:
-
-  1. A PTY child sits in its OWN session (os.setsid) with its
-     controlling-terminal set to the slave end of a fresh openpty
-     (TIOCSCTTY). It cannot claim the foreground process group of
-     Ralph's real TTY.
-
-  2. A child spawned without an explicit ``stdin`` reads EOF
-     immediately (the post-fix default is ``subprocess.DEVNULL``)
-     instead of blocking on Ralph's keyboard.
-
-In addition to those behavioural assertions, both tests use
-pytest's ``capfd`` to assert the PARENT captured file descriptors
-received ZERO ``\\x1b`` bytes across the whole exchange -- the
-direct runtime proof that the black-screen / log-overwrite leaks
-are gone.
-
-Each test uses a ``try/finally`` block to ensure the forked
-children are torn down (terminate + close) even when assertions
-fail so a stack trace cannot leak a child.
-"""
-
 from __future__ import annotations
 
 import contextlib
@@ -45,32 +15,11 @@ from ralph.process.manager._process_manager_policy import ProcessManagerPolicy
 from ralph.process.manager._pty_spawn_options import PtySpawnOptions
 from ralph.process.pty import read_master_chunk, wait_for_master_readable
 
-# ---------------------------------------------------------------------------
-# PTY spawn: child sits in its own session, paints nothing on parent fds
-# ---------------------------------------------------------------------------
-
 
 @pytest.mark.subprocess_e2e
 def test_pty_child_runs_in_its_own_session_and_paints_nothing_on_the_parent(
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """PTY child sits in its own session; parent's fds see zero ESC bytes.
-
-    Mimics what Claude Code's TUI does on startup: emits the
-    alternate-screen sequence ``ESC[?1049h`` followed by the
-    erase-display sequence ``ESC[2J``. We pin:
-
-      - ``os.getsid(child.pid) != os.getsid(0)`` -> child has its
-        own session; it CANNOT be the foreground process group
-        of Ralph's controlling terminal.
-      - The raw master bytes CONTAIN ``\\x1b[?1049h`` (the child
-        actually painted its own pty; we are not silently
-        over-sanitizing at the source).
-      - ``sanitize_display_line(raw)`` yields visible ``hello-from-tui``
-        with no residual ``\\x1b`` -- the stripper works.
-      - ``capfd.readouterr()`` contains zero ``\\x1b`` bytes in
-        either the parent's stdout or stderr.
-    """
     parent_sid = os.getsid(0)
 
     pm = ProcessManager(
@@ -101,7 +50,7 @@ def test_pty_child_runs_in_its_own_session_and_paints_nothing_on_the_parent(
 
     try:
         raw_chunks: list[bytes] = []
-        deadline_s = 0.9  # inside the 1.0s per-test SIGALRM cap
+        deadline_s = 0.9
         import time as _time
 
         start = _time.monotonic()
@@ -122,10 +71,6 @@ def test_pty_child_runs_in_its_own_session_and_paints_nothing_on_the_parent(
             f"PTY child must emit the alternate-screen sequence into its own "
             f"pty master; got raw={raw!r}"
         )
-        # Parse the child's session id from the captured bytes and assert it
-        # differs from the parent's. This avoids the parent-side
-        # ``os.getsid(pid)`` race (the child may already be reaped by the
-        # time the assertion runs) by using the child's own observation.
         assert b"child_sid=" in raw, (
             f"child must report its own session id from inside the pty; got raw={raw!r}"
         )
@@ -165,23 +110,10 @@ def test_pty_child_runs_in_its_own_session_and_paints_nothing_on_the_parent(
             pty_handle.close()
 
 
-# ---------------------------------------------------------------------------
-# stdin inheritance: child without explicit stdin reads EOF, not the tty
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.subprocess_e2e
 def test_child_without_explicit_stdin_sees_eof_not_the_terminal(
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """A child spawned without an explicit stdin sees EOF immediately.
-
-    Pins the post-fix default: ``SpawnOptions().stdin`` is
-    ``subprocess.DEVNULL``, so the child reads an empty string from
-    ``sys.stdin`` and exits -- proving the API cannot leak
-    Ralph's controlling-terminal keyboard. The other half of the
-    contract (the parent's fds stay ESC-free) is asserted too.
-    """
     pm = ProcessManager(
         policy=ProcessManagerPolicy(enable_zombie_reaper=False, log_events=False),
     )

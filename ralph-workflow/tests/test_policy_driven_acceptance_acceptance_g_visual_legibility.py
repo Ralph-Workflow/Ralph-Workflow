@@ -1,13 +1,3 @@
-"""Policy-driven acceptance tests — Product Requirements 1-10 and Criteria A-H.
-
-These tests assert every product requirement and acceptance criterion against a
-fully renamed PolicyBundle (no canonical phase names). Any regression that
-re-introduces hidden phase name knowledge in the runtime will fail here.
-
-Scope: pure functions only. No I/O.
-Runtime budget: ≤ 5 seconds for the full module.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -37,17 +27,6 @@ from ralph.policy.render import render_explanation_ascii, render_explanation_tex
 
 @pytest.fixture(scope="module")
 def policy_with_renamed_phases() -> PolicyBundle:
-    """Fully custom-named PolicyBundle — no canonical Ralph phase names.
-
-    Custom name mappings (canonical → custom):
-      planning          → design
-      development       → build
-      development_analysis → audit
-      development_commit → sign_off
-      review            → inspect
-      complete          → done
-      failed_terminal   → aborted
-    """
     agents = AgentsPolicy(
         agent_chains={
             "design_chain": AgentChainConfig(agents=["fake-agent"]),
@@ -175,21 +154,14 @@ def policy_with_renamed_phases() -> PolicyBundle:
     return PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
 
 
-# =============================================================================
-# Requirement 1: Policy must fully define user-visible routing semantics
-# =============================================================================
-
-
 class TestAcceptanceGVisualLegibility:
     def test_ascii_render_has_phase_boxes(self, policy_with_renamed_phases: PolicyBundle) -> None:
-        """ASCII render contains phase boxes for key phases."""
         exp = explain_policy(policy_with_renamed_phases)
         ascii_out = render_explanation_ascii(exp)
         for phase_name in ("design", "build", "audit", "sign_off"):
             assert phase_name in ascii_out, f"Phase '{phase_name}' missing from ASCII render"
 
     def test_text_render_has_phases_section(self, policy_with_renamed_phases: PolicyBundle) -> None:
-        """Text render has a PHASES section listing all phases."""
         exp = explain_policy(policy_with_renamed_phases)
         text = render_explanation_text(exp)
         assert "PHASES" in text
@@ -197,7 +169,6 @@ class TestAcceptanceGVisualLegibility:
     def test_text_render_has_loop_counters_section(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """Text render has a LOOP COUNTERS section for policy-declared counters."""
         exp = explain_policy(policy_with_renamed_phases)
         text = render_explanation_text(exp)
         assert "LOOP COUNTERS" in text
@@ -206,7 +177,6 @@ class TestAcceptanceGVisualLegibility:
     def test_text_render_has_budget_counters_section(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """Text render has a BUDGET COUNTERS section for policy-declared counters."""
         exp = explain_policy(policy_with_renamed_phases)
         text = render_explanation_text(exp)
         assert "BUDGET COUNTERS" in text

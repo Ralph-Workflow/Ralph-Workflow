@@ -1,18 +1,3 @@
-"""Black-box tests for ``run_git`` ``output_limit_bytes`` plumbing.
-
-wt-024 memory-perf AC-07: git output capture was unbounded \u2014 a massive
-``git log`` / ``git diff`` / ``git status`` would buffer the entire
-payload in memory. We add a ``GIT_OUTPUT_LIMIT_BYTES`` default constant
-(10 MiB, matching the existing ``SPILL_OUTPUT_LIMIT_BYTES`` precedent)
-and plumb an ``output_limit_bytes`` field through ``GitRunOptions`` to
-``proc.communicate_and_cleanup``.
-
-When ``output_limit_bytes`` is None the existing unbounded behavior is
-preserved exactly (backward compat). When set, ``_communicate_with_output_limit``
-truncates stdout at the cap with a marker (existing
-``ManagedProcessOutputLimitExceededError`` semantics).
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -26,10 +11,6 @@ from ralph.timeout_defaults import GIT_OUTPUT_LIMIT_BYTES
 
 
 class _FakeProc:
-    """A fake ManagedProcess that records ``communicate_and_cleanup`` args."""
-
-    # OpenCode's prompt is delivered on stdin, so a process fake must
-    # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
     stdin = None
 
     def __init__(self, *, returncode: int = 0, stdout: bytes = b"", stderr: bytes = b"") -> None:
@@ -39,10 +20,8 @@ class _FakeProc:
         self.communicate_calls: list[dict[str, object]] = []
         self.terminated = False
         self.communicate_raises: BaseException | None = None
-        # The production code reads proc.stdout / proc.stderr to close them.
         self.stdout = None
         self.stderr = None
-        # The production code accesses proc._proc for the raw Popen.
         self._proc = MagicMock()
 
     def communicate_and_cleanup(self, **kwargs: object) -> tuple[bytes, bytes]:
@@ -67,7 +46,6 @@ class _FakeProc:
 
 @pytest.fixture
 def fake_proc_factory(monkeypatch: pytest.MonkeyPatch) -> _FakeProc:
-    """Install a fake ProcessManager.spawn that returns a _FakeProc."""
     fake = _FakeProc()
 
     def fake_spawn(cmd: object, opts: object, *, label: object = None) -> _FakeProc:
@@ -83,7 +61,6 @@ def fake_proc_factory(monkeypatch: pytest.MonkeyPatch) -> _FakeProc:
 
 
 def test_output_limit_bytes_field_default_is_none() -> None:
-    """``GitRunOptions.output_limit_bytes`` defaults to ``None`` (backward compat)."""
     opts = GitRunOptions()
     assert opts.output_limit_bytes is None, (
         f"output_limit_bytes default must be None; got {opts.output_limit_bytes!r}"
@@ -91,7 +68,6 @@ def test_output_limit_bytes_field_default_is_none() -> None:
 
 
 def test_run_git_passes_output_limit_bytes_through(fake_proc_factory: _FakeProc) -> None:
-    """``run_git`` must forward ``output_limit_bytes`` to ``communicate_and_cleanup``."""
     run_git(
         ["status"],
         cwd=Path("/tmp"),
@@ -109,7 +85,6 @@ def test_run_git_passes_output_limit_bytes_through(fake_proc_factory: _FakeProc)
 def test_run_git_unlimited_when_output_limit_bytes_is_none(
     fake_proc_factory: _FakeProc,
 ) -> None:
-    """When ``output_limit_bytes`` is None, run_git must pass None through."""
     run_git(
         ["status"],
         cwd=Path("/tmp"),
@@ -126,8 +101,6 @@ def test_run_git_unlimited_when_output_limit_bytes_is_none(
 
 
 def test_run_git_handles_output_limit_exceeded(fake_proc_factory: _FakeProc) -> None:
-    """``ManagedProcessOutputLimitExceededError`` from ``communicate_and_cleanup``
-    must propagate; the proc must be terminated."""
     fake_proc_factory.communicate_raises = ManagedProcessOutputLimitExceededError(
         output_limit_bytes=1024, stdout=b"", stderr=b""
     )
@@ -144,7 +117,6 @@ def test_run_git_handles_output_limit_exceeded(fake_proc_factory: _FakeProc) -> 
 
 
 def test_git_output_limit_bytes_constant_value() -> None:
-    """``GIT_OUTPUT_LIMIT_BYTES`` must be a positive integer >= 1 MiB."""
     assert isinstance(GIT_OUTPUT_LIMIT_BYTES, int)
     assert GIT_OUTPUT_LIMIT_BYTES >= 1024 * 1024, (
         f"GIT_OUTPUT_LIMIT_BYTES must be >= 1 MiB; got {GIT_OUTPUT_LIMIT_BYTES}"

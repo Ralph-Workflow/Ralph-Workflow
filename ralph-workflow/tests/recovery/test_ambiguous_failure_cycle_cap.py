@@ -1,22 +1,3 @@
-"""The recovery cycle cap must bound technical failures, not just agent ones.
-
-``CycleCap`` documents itself as the guard against "a persistently-failing
-handler looping silently forever", and ``recovery.cycle_cap`` is counted for
-every category. But the check lived only at the end of ``handle``'s AGENT
-branch, and the technical categories -- ENVIRONMENTAL, ARTIFACT_VALIDATION and
-AMBIGUOUS -- return before reaching it. Nothing else bounded them:
-``_enter_phase_failed`` routes to ``failed_route``, whose recovery hop
-re-enters ``previous_phase`` and resets that chain's retry counter, so the
-only counter that bounded a pass was wiped on every pass.
-
-A ``TypeError`` raised by a wrapper on the commit path classifies AMBIGUOUS
-(``counts_against_budget=False``), which is how one signature bug turned into
-``development_commit`` -> ``failed_terminal`` -> ``development_commit`` at
-roughly ten iterations a second, forever, with no commit ever produced.
-
-These tests pin that every category is bounded by the same cap.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -31,15 +12,8 @@ from ralph.recovery.controller import (
 )
 
 _CAP = 3
-#: The ledger demotes the sole agent after this many consecutive
-#: unproductive attempts; the demotion fails the phase.
 _CONSECUTIVE_UNPRODUCTIVE_LIMIT = 3
-#: The ledger's total unproductive limit; never reached before the
-#: consecutive limit demotes the agent.
 _TOTAL_UNPRODUCTIVE_LIMIT = 9
-#: Generous ceiling on ``handle`` calls: an unbounded loop hits it, a bounded
-#: one exits after roughly ``_CAP * (_CONSECUTIVE_UNPRODUCTIVE_LIMIT + 1)``
-#: calls.
 _HANDLE_CALL_CEILING = _CAP * (_CONSECUTIVE_UNPRODUCTIVE_LIMIT + 2) * 3
 
 
@@ -48,10 +22,6 @@ def _policy_bundle() -> object:
 
 
 def _controller() -> RecoveryController:
-    # The failure ledger is the single owner of agent health: the sole agent
-    # in the chain is demoted after the consecutive unproductive limit, and a
-    # demoted sole agent fails the phase. That failure is what advances the
-    # recovery cycle counter the cap watches.
     return RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=_CAP,
@@ -72,17 +42,6 @@ def _fresh_state() -> PipelineState:
 
 
 def _drive_until_exit(failure: BaseException) -> tuple[int, PipelineState, list[object]]:
-    """Replay the observed loop and report how many outer rounds it took.
-
-    One outer round is: retry the phase in-chain until the technical retry cap
-    is spent, land on ``failed_terminal``, then re-enter the phase with a fresh
-    chain -- which is exactly what the failed-route recovery hop in
-    ``runner.py`` does via ``reset_phase_chain_for_recovery``. Wiping the chain
-    is what made the retry counter useless as a bound, so the driver has to
-    reproduce it or the test proves nothing.
-
-    Returns the outer-round count, the final state, and the last effects.
-    """
     controller = _controller()
     state = _fresh_state()
     rounds = 0
@@ -109,7 +68,6 @@ def _drive_until_exit(failure: BaseException) -> tuple[int, PipelineState, list[
 
 
 def test_ambiguous_failure_loop_is_bounded_by_the_cycle_cap() -> None:
-    """The exact production shape: a TypeError from a wrapper on the commit path."""
     failure = TypeError(
         "ralph.pipeline.commit_executor.execute_commit_effect() got multiple "
         "values for keyword argument 'has_residual_work_fn'"
@@ -126,7 +84,6 @@ def test_ambiguous_failure_loop_is_bounded_by_the_cycle_cap() -> None:
 
 
 def test_the_cap_fires_on_the_cycle_that_reaches_it() -> None:
-    """Not merely bounded -- bounded at the configured cap."""
     rounds, _, effects = _drive_until_exit(RuntimeError("something went wrong but not sure what"))
 
     assert rounds == _CAP
@@ -134,7 +91,6 @@ def test_the_cap_fires_on_the_cycle_that_reaches_it() -> None:
 
 
 def test_the_failing_phase_is_still_routed_before_the_run_exits() -> None:
-    """The exit effect says why the run stopped; the state must say where."""
     _, state, effects = _drive_until_exit(RuntimeError("unclassifiable"))
 
     assert effects

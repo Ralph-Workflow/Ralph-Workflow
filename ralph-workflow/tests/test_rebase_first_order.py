@@ -1,17 +1,3 @@
-"""Rebase-first order: replay onto mainline is always attempted first.
-
-Validates:
-1. Rebase-first order across all public integration entry paths:
-   - auto_integrate_after_commit
-   - auto_integrate_on_phase_transition
-   - recover_incomplete_integration
-2. `rebase_onto` is always executed before `resolve_rebase` or endpoint merge.
-3. Permitted skips (merge commits in range, root commits, all-empty replay)
-   each name their reason from current observation.
-4. Environmental failures (unreadable git, timeout) never dispatch the
-   resolver agent or fall back to endpoint merge.
-"""
-
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -345,7 +331,6 @@ def _config() -> UnifiedConfig:
 
 
 def test_auto_integrate_after_commit_tries_rebase_first(tmp_path: Path) -> None:
-    """Entry 1: auto_integrate_after_commit runs rebase_onto before landing."""
     recorder = _TraceRecorder()
     token = install_executors(recorder, recorder)
     try:
@@ -360,7 +345,6 @@ def test_auto_integrate_after_commit_tries_rebase_first(tmp_path: Path) -> None:
         rebase_idx = recorder.mutations.index("rebase_onto")
         ff_idx = recorder.mutations.index("fast_forward_target")
         assert rebase_idx < ff_idx
-        # No agent needed on clean rebase
         assert recorder.dispatches == []
     finally:
         reset_executors(token)
@@ -369,7 +353,6 @@ def test_auto_integrate_after_commit_tries_rebase_first(tmp_path: Path) -> None:
 def test_auto_integrate_after_commit_conflict_dispatches_resolver_after_rebase(
     tmp_path: Path,
 ) -> None:
-    """Conflict during rebase_onto dispatches resolve_rebase only AFTER rebase_onto."""
     recorder = _TraceRecorder(rebase_result=RebaseConflicts(files=["conflicted.txt"]))
     token = install_executors(recorder, recorder)
     try:
@@ -391,7 +374,6 @@ def test_auto_integrate_on_phase_transition_tries_rebase_first(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Entry 2: auto_integrate_on_phase_transition runs rebase_onto first."""
     recorder = _TraceRecorder()
     token = install_executors(recorder, recorder)
     try:
@@ -424,7 +406,6 @@ def test_recover_incomplete_integration_tries_rebase_first(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Entry 3: recover_incomplete_integration on integrating record retries rebase."""
     recorder = _TraceRecorder()
     token = install_executors(recorder, recorder)
     try:
@@ -455,7 +436,6 @@ def test_recover_incomplete_integration_tries_rebase_first(
             rebase_stop_resolver=lambda *_a, **_kw: True,
         )
         assert outcome is not None
-        # Recovery through the owner ladder invokes rebase_onto
         assert "rebase_onto" in recorder.mutations, f"outcome={outcome!r}"
     finally:
         reset_executors(token)
@@ -475,7 +455,6 @@ def test_permitted_skips_name_reason_from_observation(
     extra_args_match: tuple[str, ...],
     expected_reason: str,
 ) -> None:
-    """Permitted skips (merges, roots, all-empty) bypass rebase_onto with structured reason."""
     recorder = _TraceRecorder()
     token = install_executors(recorder, recorder)
 
@@ -485,14 +464,13 @@ def test_permitted_skips_name_reason_from_observation(
         extra_args: tuple[str, ...] = (),
     ) -> int | None:
         if extra_args == ():
-            return 3  # total commits > 0
+            return 3
         if extra_args == extra_args_match:
-            # For all-empty replay, cherry_count == 0 signals all-empty
             if extra_args == ("--cherry-pick", "--no-merges"):
                 return 0
-            return 1  # positive match for merges or roots
+            return 1
         if extra_args == ("--cherry-pick", "--no-merges"):
-            return 3  # not all empty
+            return 3
         return 0
 
     monkeypatch.setattr(
@@ -520,7 +498,6 @@ def test_permitted_skips_name_reason_from_observation(
         )
         assert outcome is not None
         assert expected_reason in (outcome.last_reason or "")
-        # Rebase was skipped as permitted
         assert "rebase_onto" not in recorder.mutations
     finally:
         reset_executors(token)
@@ -530,13 +507,11 @@ def test_environmental_failure_never_dispatches_agent_or_falls_back(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Environmental failure (timeout, I/O error) never dispatches agent or falls back to merge."""
     recorder = _TraceRecorder(
         rebase_result=RebaseFailed(kind=RebaseErrorKind(kind=RebaseKind.ENVIRONMENT_FAILURE))
     )
     token = install_executors(recorder, recorder)
 
-    # If endpoint merge were mistakenly called, fail immediately
     def _forbid_merge(*_args: object, **_kwargs: object) -> object:
         raise AssertionError("endpoint merge was called on an environmental failure")
 

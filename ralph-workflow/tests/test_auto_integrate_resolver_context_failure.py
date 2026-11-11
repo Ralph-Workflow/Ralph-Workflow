@@ -1,21 +1,3 @@
-"""The rebase-stop resolver declines an unusable target context; it never raises.
-
-``build_agent_rebase_stop_resolver`` documents that the callable it
-returns never raises, and the whole rebase-resolution loop is built on
-that: :func:`ralph.pipeline.conflict_resolution.rebase_loop._resolve_stops`
-treats the return value as the decision and has only a blanket
-``except`` above it, which turns any escape into an unexplained
-"resolution loop failed" line.
-
-Entering ``workspace_context`` re-reads the TARGET worktree's config,
-policy and agent registry from disk on every conflict, so it is the one
-step inside the resolver that a mid-run edit can break. An operator
-saving ``.agent/ralph-workflow.toml`` with a missing comma used to be
-enough: from that moment the run raised out of the resolver on every
-conflict, silently lost agent conflict resolution for the rest of its
-life, and named the parse error nowhere.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -30,7 +12,7 @@ if TYPE_CHECKING:
 
 
 class _UnreadableConfigError(RuntimeError):
-    """Stand-in for the config loader's parse failure."""
+    pass
 
 
 def _build_resolver(display: MagicMock) -> RebaseStopResolver:
@@ -69,12 +51,6 @@ def test_unreadable_target_config_declines_instead_of_raising(
 def test_unreadable_target_config_is_reported_to_the_operator(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The decline must name the real cause, not just fail quietly.
-
-    A resolver that declines without saying why is indistinguishable
-    from one that had nothing to do, which is how a broken config file
-    stayed invisible for a whole run.
-    """
     emitted: list[str] = []
 
     def _raise(_root: Path) -> object:

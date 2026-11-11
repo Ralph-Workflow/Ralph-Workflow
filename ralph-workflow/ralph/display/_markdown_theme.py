@@ -1,8 +1,3 @@
-"""Monokai-derived Markdown styles for background-aware previews.
-
-Each palette is solved per surface by :mod:`ralph.display._palette` rather
-than read from a fixed table.
-"""
 
 from __future__ import annotations
 
@@ -23,13 +18,7 @@ from ralph.display.theme import preview_background_for_background
 
 def _build_markdown_palette(preview_surface: str | None) -> tuple[str, str, str, str, str, str]:
     if preview_surface is not None:
-        # Body text (default) is the near-neutral foreground, not a hue
-        # accent -- matching Monokai Pro's own body colour and the S-4/S-5
-        # repoint of the neutral display roles (PLAN.md).
         default = solve_for_surface(ROLE_ANCHORS["foreground"], preview_surface)
-        # E-2: accent/link are structural chrome (headings, borders,
-        # blockquotes, kbd), not the semantic info state -- repointed off
-        # `info` onto the dedicated, lower-chroma `chrome` role.
         accent = solve_for_surface(ROLE_ANCHORS["chrome"], preview_surface)
         link = solve_for_surface(ROLE_ANCHORS["chrome"], preview_surface)
         url = solve_for_surface(ROLE_ANCHORS["skipped"], preview_surface)
@@ -46,10 +35,6 @@ def _build_markdown_palette(preview_surface: str | None) -> tuple[str, str, str,
 
 
 _PALETTES: dict[bool | None, tuple[str, str, str, str, str, str]] = {
-    # Single-sourced through the same canonical-surface derivation the
-    # measured (surface_hex) path uses, via preview_background_for_background
-    # (S-6) -- rather than the raw #101417/#F7F9FB literals that previously
-    # disagreed with it.
     False: _build_markdown_palette(preview_background_for_background(False)),
     True: _build_markdown_palette(preview_background_for_background(True)),
     None: _build_markdown_palette(None),
@@ -57,7 +42,6 @@ _PALETTES: dict[bool | None, tuple[str, str, str, str, str, str]] = {
 
 
 def _markdown_palette_for_surface(surface_hex: str) -> tuple[str, str, str, str, str, str]:
-    """Return the Markdown palette solved against the measured terminal surface."""
     return _markdown_palette_for_surface_cached(surface_hex)
 
 
@@ -68,9 +52,6 @@ def _markdown_palette_for_surface_uncached(
     return _build_markdown_palette(preview_surface)
 
 
-# Call form (rather than decorator form) keeps mypy's disallow_any_explicit /
-# disallow_any_decorated settings clean without a type: ignore suppression --
-# the same first-party idiom used by ralph.display.language_inference._cached_infer.
 _markdown_palette_for_surface_cached = lru_cache(maxsize=8)(_markdown_palette_for_surface_uncached)
 
 
@@ -104,6 +85,5 @@ def _styles(terminal_bg_is_light: bool | None, surface_hex: str | None = None) -
 def markdown_theme_context(
     console: Console, *, terminal_bg_is_light: bool | None, surface_hex: str | None = None
 ) -> Iterator[None]:
-    """Apply contrast-safe Markdown styles while rendering one preview."""
     with console.use_theme(Theme(_styles(terminal_bg_is_light, surface_hex=surface_hex))):
         yield

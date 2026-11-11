@@ -1,14 +1,3 @@
-"""Anti-drift guards for the OpenCode MCP client config.
-
-The OpenCode MCP CLIENT request timeout must exceed the longest server-side tool
-execution, or the client gives up with `-32001 Request timed out` before the server
-finishes, producing the retry storm seen in production.
-
-CRITICAL: OpenCode IGNORES the documented per-server ``mcp.<server>.timeout`` field
-and only honors the global ``experimental.mcp_timeout`` (opencode issues #8701/#8121).
-The effective timeout MUST therefore be set via ``experimental.mcp_timeout``.
-"""
-
 from __future__ import annotations
 
 import json
@@ -27,7 +16,6 @@ def _config(existing: str | None = None, *, unsafe_mode: bool = False) -> dict:
 
 
 def test_effective_mcp_timeout_exceeds_max_exec_tool_timeout() -> None:
-    # experimental.mcp_timeout is the field OpenCode actually honors.
     experimental = _config()["experimental"]
     assert isinstance(experimental, dict)
     effective = experimental["mcp_timeout"]
@@ -39,14 +27,12 @@ def test_effective_mcp_timeout_exceeds_max_exec_tool_timeout() -> None:
 
 
 def test_per_server_timeout_also_set_for_forward_compat() -> None:
-    # Kept (harmless) for if/when OpenCode honors the documented per-server field.
     server = _config()["mcp"]["ralph"]
     assert isinstance(server, dict)
     assert server["timeout"] > EXEC_MAX_TIMEOUT_MS
 
 
 def test_unsafe_mode_merges_existing_mcp_servers() -> None:
-    """unsafe_mode=True preserves any pre-existing OpenCode MCP servers."""
     existing = json.dumps(
         {
             "mcp": {
@@ -71,7 +57,6 @@ def test_unsafe_mode_merges_existing_mcp_servers() -> None:
 
 
 def test_unsafe_mode_false_replaces_existing_mcp_servers() -> None:
-    """unsafe_mode=False (default) replaces existing servers with Ralph-only config."""
     existing = json.dumps(
         {
             "mcp": {
@@ -94,7 +79,6 @@ def test_unsafe_mode_false_replaces_existing_mcp_servers() -> None:
 
 
 def test_unsafe_mode_overwrites_stale_ralph_entry() -> None:
-    """unsafe_mode=True still lets Ralph win on name collision."""
     existing = json.dumps(
         {
             "mcp": {

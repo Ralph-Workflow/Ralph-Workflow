@@ -1,12 +1,3 @@
-"""Tests for policy TOML fallback resilience across all policy kinds.
-
-Verifies that invalid TOML syntax, invalid encodings, permission errors,
-and schema validation failures in optional policy files fall back to
-built-in defaults, leave file bytes on disk untouched, and emit compliant
-loguru warnings mentioning the file, parse error, default-in-use, and
-fix hint (ralph --check-config).
-"""
-
 from __future__ import annotations
 
 import stat
@@ -47,7 +38,6 @@ if TYPE_CHECKING:
 
 @pytest.fixture(autouse=True)
 def _clear_fallback_registry() -> Generator[None, None, None]:
-    """Clear warning registry before and after every test."""
     reset_fallback_warning_registry()
     try:
         yield
@@ -57,7 +47,6 @@ def _clear_fallback_registry() -> Generator[None, None, None]:
 
 @contextmanager
 def _capture_warnings() -> Iterator[list[str]]:
-    """Capture loguru fallback warning messages."""
     records: list[str] = []
 
     def sink(message: str) -> None:
@@ -77,20 +66,13 @@ def _assert_fallback_warning(
     *,
     expected_kind: str,
 ) -> None:
-    """Assert that a loguru warning matches the required fallback format."""
     assert str(path) in record
     assert expected_kind in record.lower()
     assert "using built-in default" in record
     assert "ralph --check-config" in record
 
 
-# =========================================================================
-# 1. Pipeline Policy Fallback Tests
-# =========================================================================
-
-
 def test_pipeline_toml_syntax_error_fallback(tmp_path: Path) -> None:
-    """Corrupt syntax in pipeline.toml falls back to built-in default."""
     pipeline_file = tmp_path / "pipeline.toml"
     bad_content = b"phases = [\nunclosed syntax"
     pipeline_file.write_bytes(bad_content)
@@ -110,7 +92,6 @@ def test_pipeline_toml_syntax_error_fallback(tmp_path: Path) -> None:
 
 
 def test_pipeline_toml_schema_invalid_fallback(tmp_path: Path) -> None:
-    """Invalid schema in pipeline.toml falls back to built-in default."""
     pipeline_file = tmp_path / "pipeline.toml"
     bad_schema = dedent(
         """
@@ -144,7 +125,6 @@ def test_pipeline_toml_schema_invalid_fallback(tmp_path: Path) -> None:
 
 
 def test_pipeline_toml_strict_mode_raises(tmp_path: Path) -> None:
-    """strict_optional_files=True re-raises PolicyValidationError."""
     pipeline_file = tmp_path / "pipeline.toml"
     pipeline_file.write_text("broken = [syntax", encoding="utf-8")
 
@@ -152,13 +132,7 @@ def test_pipeline_toml_strict_mode_raises(tmp_path: Path) -> None:
         load_policy(tmp_path, strict_optional_files=True)
 
 
-# =========================================================================
-# 2. Agents Policy Fallback Tests
-# =========================================================================
-
-
 def test_agents_toml_syntax_error_fallback(tmp_path: Path) -> None:
-    """Corrupt syntax in agents.toml falls back to built-in default."""
     agents_file = tmp_path / "agents.toml"
     bad_content = b"agents = [\nnot closed"
     agents_file.write_bytes(bad_content)
@@ -175,7 +149,6 @@ def test_agents_toml_syntax_error_fallback(tmp_path: Path) -> None:
 
 
 def test_agents_toml_schema_invalid_fallback(tmp_path: Path) -> None:
-    """Invalid schema in agents.toml falls back to built-in default."""
     agents_file = tmp_path / "agents.toml"
     bad_schema = "[agent_chains.planning]\nagents = []\n"
     agents_file.write_text(bad_schema, encoding="utf-8")
@@ -192,7 +165,6 @@ def test_agents_toml_schema_invalid_fallback(tmp_path: Path) -> None:
 
 
 def test_agents_toml_strict_mode_raises(tmp_path: Path) -> None:
-    """strict_optional_files=True re-raises PolicyValidationError on invalid schema."""
     agents_file = tmp_path / "agents.toml"
     agents_file.write_text("[agent_chains.planning]\nagents = []\n", encoding="utf-8")
 
@@ -200,13 +172,7 @@ def test_agents_toml_strict_mode_raises(tmp_path: Path) -> None:
         load_agents_policy(tmp_path, strict_optional_files=True)
 
 
-# =========================================================================
-# 3. Artifacts Policy Fallback Tests
-# =========================================================================
-
-
 def test_artifacts_toml_syntax_error_fallback(tmp_path: Path) -> None:
-    """Corrupt syntax in artifacts.toml falls back to built-in default."""
     artifacts_file = tmp_path / "artifacts.toml"
     bad_content = b"artifacts = { broken"
     artifacts_file.write_bytes(bad_content)
@@ -224,7 +190,6 @@ def test_artifacts_toml_syntax_error_fallback(tmp_path: Path) -> None:
 
 
 def test_artifacts_toml_schema_invalid_fallback(tmp_path: Path) -> None:
-    """Invalid schema in artifacts.toml falls back to built-in default."""
     artifacts_file = tmp_path / "artifacts.toml"
     bad_schema = dedent(
         """
@@ -249,7 +214,6 @@ def test_artifacts_toml_schema_invalid_fallback(tmp_path: Path) -> None:
 
 
 def test_artifacts_toml_strict_mode_raises(tmp_path: Path) -> None:
-    """strict_optional_files=True re-raises PolicyValidationError."""
     artifacts_file = tmp_path / "artifacts.toml"
     artifacts_file.write_text("invalid = {", encoding="utf-8")
 
@@ -257,13 +221,7 @@ def test_artifacts_toml_strict_mode_raises(tmp_path: Path) -> None:
         load_policy(tmp_path, strict_optional_files=True)
 
 
-# =========================================================================
-# 4. Other User Policy TOMLs Fallback Tests
-# =========================================================================
-
-
 def test_other_user_policy_toml_fallback(tmp_path: Path) -> None:
-    """Arbitrary user policy TOML falls back to empty dict on corruption."""
     custom_policy_file = tmp_path / "custom-policy.toml"
     bad_content = b"custom = [unclosed"
     custom_policy_file.write_bytes(bad_content)
@@ -278,7 +236,6 @@ def test_other_user_policy_toml_fallback(tmp_path: Path) -> None:
 
 
 def test_other_user_policy_toml_permission_error_fallback(tmp_path: Path) -> None:
-    """Permission-denied user policy TOML falls back to default with warning."""
     policy_file = tmp_path / "unreadable-policy.toml"
     policy_file.write_text("key = 'value'\n", encoding="utf-8")
     before_bytes = policy_file.read_bytes()
@@ -296,7 +253,6 @@ def test_other_user_policy_toml_permission_error_fallback(tmp_path: Path) -> Non
 
 
 def test_other_user_policy_toml_bad_encoding_fallback(tmp_path: Path) -> None:
-    """Non-UTF-8 user policy TOML falls back to default with warning."""
     bad_encoding_file = tmp_path / "bad-encoding.toml"
     bad_bytes = b"\xff\xfe\x00\x01\x02"
     bad_encoding_file.write_bytes(bad_bytes)
@@ -310,13 +266,7 @@ def test_other_user_policy_toml_bad_encoding_fallback(tmp_path: Path) -> None:
     _assert_fallback_warning(warnings[0], bad_encoding_file, expected_kind="policy")
 
 
-# =========================================================================
-# 5. User Portfolio TOML Fallback Tests
-# =========================================================================
-
-
 def test_user_portfolio_toml_syntax_error_fallback(tmp_path: Path) -> None:
-    """Corrupt syntax in user portfolio TOML falls back to built-in default."""
     portfolio_file = tmp_path / "policy-portfolio.toml"
     bad_content = b"schema_version = 'v3'\n[controls\nbad syntax"
     portfolio_file.write_bytes(bad_content)
@@ -333,7 +283,6 @@ def test_user_portfolio_toml_syntax_error_fallback(tmp_path: Path) -> None:
 
 
 def test_user_portfolio_toml_schema_invalid_fallback(tmp_path: Path) -> None:
-    """Invalid schema in user portfolio TOML falls back to built-in default."""
     portfolio_file = tmp_path / "policy-portfolio.toml"
     bad_schema = dedent(
         """
@@ -355,7 +304,6 @@ def test_user_portfolio_toml_schema_invalid_fallback(tmp_path: Path) -> None:
 
 
 def test_user_portfolio_toml_missing_file_silent_default(tmp_path: Path) -> None:
-    """Missing user portfolio TOML silently returns built-in default without warnings."""
     missing_file = tmp_path / "does_not_exist.toml"
 
     with _capture_warnings() as warnings:
@@ -367,7 +315,6 @@ def test_user_portfolio_toml_missing_file_silent_default(tmp_path: Path) -> None
 
 
 def test_user_portfolio_toml_strict_mode_raises(tmp_path: Path) -> None:
-    """strict_optional_files=True raises on invalid portfolio TOML."""
     portfolio_file = tmp_path / "policy-portfolio.toml"
     portfolio_file.write_text("schema_version = 'invalid'\n", encoding="utf-8")
 
@@ -378,7 +325,6 @@ def test_user_portfolio_toml_strict_mode_raises(tmp_path: Path) -> None:
 def test_user_portfolio_toml_second_read_error_warns_and_falls_back(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """When the second read raises OSError, load_portfolio_toml emits a warning and returns default."""
     portfolio_file = tmp_path / "policy-portfolio.toml"
     portfolio_file.write_text("schema_version = 'v3'\n", encoding="utf-8")
 
@@ -401,7 +347,6 @@ def test_user_portfolio_toml_second_read_error_warns_and_falls_back(
 
 
 def test_parse_portfolio_toml_fallback_mode() -> None:
-    """parse_portfolio_toml with strict_optional_files=False falls back and warns."""
     with _capture_warnings() as warnings:
         portfolio = parse_portfolio_toml(
             "schema_version = 'invalid'\n",
@@ -419,13 +364,7 @@ def test_parse_portfolio_toml_fallback_mode() -> None:
     )
 
 
-# =========================================================================
-# 6. Deduplication and Re-warning Tests
-# =========================================================================
-
-
 def test_fallback_warning_deduplication(tmp_path: Path) -> None:
-    """Repeated loads of identical corrupt file emit only one warning."""
     agents_file = tmp_path / "agents.toml"
     agents_file.write_text("broken = <<<", encoding="utf-8")
 
@@ -438,7 +377,6 @@ def test_fallback_warning_deduplication(tmp_path: Path) -> None:
 
 
 def test_fallback_rewarns_when_content_changes(tmp_path: Path) -> None:
-    """Changing content of corrupt file triggers a new warning."""
     pipeline_file = tmp_path / "pipeline.toml"
     pipeline_file.write_text("broken_1 = <<<", encoding="utf-8")
 
@@ -455,7 +393,6 @@ def test_fallback_rewarns_when_content_changes(tmp_path: Path) -> None:
 def test_global_pipeline_toml_schema_invalid_fallback_attribution(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Invalid schema in global pipeline.toml attributes warning to global file and falls back."""
     global_dir = tmp_path / "global"
     global_dir.mkdir()
     monkeypatch.setenv("XDG_CONFIG_HOME", str(global_dir))
@@ -479,12 +416,10 @@ def test_global_pipeline_toml_schema_invalid_fallback_attribution(
     _assert_fallback_warning(warnings[0], global_file, expected_kind="pipeline")
     assert str(local_file) not in warnings[0]
 
-    # Repeated load emits no new warning (dedup)
     with _capture_warnings() as warnings_repeat:
         load_policy_for_config_dir(local_dir)
     assert len(warnings_repeat) == 0
 
-    # Changing bad content re-warns for global file
     global_file.write_text("entry_block = [1, 2]\n", encoding="utf-8")
     with _capture_warnings() as warnings_changed:
         load_policy_for_config_dir(local_dir)
@@ -495,7 +430,6 @@ def test_global_pipeline_toml_schema_invalid_fallback_attribution(
 def test_global_artifacts_toml_schema_invalid_fallback_attribution(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Invalid schema in global artifacts.toml attributes warning to global file and falls back."""
     global_dir = tmp_path / "global"
     global_dir.mkdir()
     monkeypatch.setenv("XDG_CONFIG_HOME", str(global_dir))
@@ -519,12 +453,10 @@ def test_global_artifacts_toml_schema_invalid_fallback_attribution(
     _assert_fallback_warning(warnings[0], global_file, expected_kind="artifacts")
     assert str(local_file) not in warnings[0]
 
-    # Repeated load emits no new warning (dedup)
     with _capture_warnings() as warnings_repeat:
         load_policy_for_config_dir(local_dir)
     assert len(warnings_repeat) == 0
 
-    # Changing bad content re-warns for global file
     global_file.write_text("[artifacts.plan]\nartifact_required = 12345\n", encoding="utf-8")
     with _capture_warnings() as warnings_changed:
         load_policy_for_config_dir(local_dir)
@@ -535,7 +467,6 @@ def test_global_artifacts_toml_schema_invalid_fallback_attribution(
 def test_global_pipeline_fallback_preserves_valid_local_override(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Invalid global pipeline falls back to default while preserving valid local override."""
     global_dir = tmp_path / "global"
     global_dir.mkdir()
     monkeypatch.setenv("XDG_CONFIG_HOME", str(global_dir))
@@ -563,7 +494,6 @@ def test_global_pipeline_fallback_preserves_valid_local_override(
 def test_local_pipeline_fallback_preserves_valid_global_override(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Invalid local pipeline falls back while preserving valid global override."""
     global_dir = tmp_path / "global"
     global_dir.mkdir()
     monkeypatch.setenv("XDG_CONFIG_HOME", str(global_dir))
@@ -591,7 +521,6 @@ def test_local_pipeline_fallback_preserves_valid_global_override(
 def test_global_artifacts_fallback_preserves_valid_local_override(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Invalid global artifacts falls back while preserving valid local override."""
     global_dir = tmp_path / "global"
     global_dir.mkdir()
     monkeypatch.setenv("XDG_CONFIG_HOME", str(global_dir))
@@ -623,7 +552,6 @@ def test_global_artifacts_fallback_preserves_valid_local_override(
 def test_local_artifacts_fallback_preserves_valid_global_override(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Invalid local artifacts falls back while preserving valid global override."""
     global_dir = tmp_path / "global"
     global_dir.mkdir()
     monkeypatch.setenv("XDG_CONFIG_HOME", str(global_dir))
@@ -655,7 +583,6 @@ def test_local_artifacts_fallback_preserves_valid_global_override(
 def test_workspace_scope_global_fallback_attribution(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """load_policy_for_workspace_scope properly attributes global fallback warning."""
     global_dir = tmp_path / "global"
     global_dir.mkdir()
     monkeypatch.setenv("XDG_CONFIG_HOME", str(global_dir))

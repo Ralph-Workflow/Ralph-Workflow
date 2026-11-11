@@ -1,5 +1,3 @@
-"""Regression coverage for exec-family result semantics."""
-
 from __future__ import annotations
 
 import subprocess

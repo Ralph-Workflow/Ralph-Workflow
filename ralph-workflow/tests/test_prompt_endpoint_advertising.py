@@ -1,18 +1,3 @@
-"""Test that every capability-granted endpoint is advertised in the rendered prompt.
-
-The shared ``_mcp_tools.jinja`` partial is the single source of truth for
-which brokered MCP tools the agent sees. This test renders each phase
-template through the real rendering pipeline and asserts:
-
-* every tool name in ``visible_tool_names_for_capabilities`` for the
-  profile appears in the rendered MCP tools section,
-* no tool name leaks into a profile that did NOT grant it,
-* the rendered MCP section stays under a byte budget (catch bloat).
-
-Runs entirely in-process against ``TemplateContext.default()``; fits inside
-the immutable 60s default-gate test budget.
-"""
-
 from __future__ import annotations
 
 import re
@@ -29,15 +14,8 @@ from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.template_engine import render_template
 from ralph.prompts.template_registry import packaged_template_root
 
-#: Hard byte budget on the rendered MCP tools section. Bumping this is a
-#: prompt-bloat regression; tighten it instead of loosening it.
 _MCP_SECTION_BYTE_BUDGET = 3_600
 
-#: Phase -> (template_name, drain) map. These cover every phase that uses
-#: the brokered MCP tools in production. We pick templates that render
-#: cleanly with a uniform minimal variable set so the test stays
-#: deterministic; conflict_resolution is excluded because it requires
-#: bespoke rebase-only variables (``replaying_commit_sha`` and friends).
 _PHASE_PROFILE_FIXTURES: tuple[tuple[str, str, SessionDrain], ...] = (
     ("planning.jinja", "planning", SessionDrain.PLANNING),
     ("development_analysis.jinja", "development_analysis", SessionDrain.DEVELOPMENT_ANALYSIS),
@@ -46,7 +24,6 @@ _PHASE_PROFILE_FIXTURES: tuple[tuple[str, str, SessionDrain], ...] = (
 
 
 def _visible_tool_strings(drain: SessionDrain) -> set[str]:
-    """Return the rendered-as-string tool names for the default capability profile."""
     caps, _ = template_variables.default_caps_and_flags_for_drain(drain)
     raw = visible_tool_names_for_capabilities(
         sorted(cap.value for cap in caps.to_vec()),
@@ -56,7 +33,6 @@ def _visible_tool_strings(drain: SessionDrain) -> set[str]:
 
 
 def _render_phase(template_name: str, drain: SessionDrain) -> str:
-    """Render ``template_name`` with the default capability variables for ``drain``."""
     context = TemplateContext.default()
     tmpl = context.registry.get_template(template_name)
     caps, flags = template_variables.default_caps_and_flags_for_drain(drain)
@@ -92,24 +68,11 @@ def _render_phase(template_name: str, drain: SessionDrain) -> str:
 
 
 def _extract_mcp_section(rendered: str) -> str:
-    """Return the rendered MCP TOOLS brokered section including the artifact block.
-
-    The shared ``_mcp_tools.jinja`` partial owns the brokered tool
-    advertising INCLUDING the ``ARTIFACT SUBMISSION`` block, so we extract
-    from ``MCP TOOLS (Ralph Workflow Brokered)`` up to the end of the
-    ``ARTIFACT SUBMISSION`` block. We stop before unrelated shared
-    partials such as ``_no_git_commit.j2`` (which mentions
-    ``unsafe_exec`` / ``raw_exec`` outside its high-risk VCS blacklist — a
-    different concern from brokered tool advertising).
-    """
     start = re.search(r"^MCP TOOLS \(Ralph Workflow Brokered\)", rendered, re.MULTILINE)
     if start is None:
         start = re.search(r"^MCP TOOLS", rendered, re.MULTILINE)
     if start is None:
         return rendered
-    # Stop at the next H2 that is NOT ``MCP TOOLS`` AND is not
-    # ``ARTIFACT SUBMISSION`` (the artifact block is part of the brokered
-    # partial — the parallel branch is leaving it byte-stable).
     rest = rendered[start.start() :]
     next_h2 = re.search(r"^## (?!MCP TOOLS|ARTIFACT SUBMISSION)\S", rest, re.MULTILINE)
     end = next_h2.start() if next_h2 is not None else len(rest)
@@ -121,26 +84,18 @@ def _extract_mcp_section(rendered: str) -> str:
 
 
 @pytest.mark.parametrize("template_name,phase_label,drain", _PHASE_PROFILE_FIXTURES)
-# ponytail: full-template render under xdist can exceed 1s; the 60s suite budget remains authoritative.
 @pytest.mark.timeout_seconds(2.0)
 def test_rendered_prompt_advertises_every_visible_tool(
     template_name: str,
     phase_label: str,
     drain: SessionDrain,
 ) -> None:
-    """Every capability-granted tool must appear by name in the rendered prompt."""
     visible = _visible_tool_strings(drain)
     rendered = _render_phase(template_name, drain)
     section = _extract_mcp_section(rendered)
 
     assert visible, f"{phase_label} expected at least one visible tool"
 
-    # Planning.jinja and planning_edit.jinja intentionally set
-    # ``HIDE_ARTIFACT_SUBMISSION_GUIDANCE = true`` so the brokered
-    # artifact-submission block does NOT render — the planning phase uses
-    # a different submission shape. Skip the artifact tools for those
-    # phases because the planning block legitimately advertises them
-    # elsewhere in the rendered prompt (e.g. the prompt body itself).
     hidden_artifact_phases = {
         "planning",
         "planning_edit",
@@ -161,8 +116,6 @@ def test_rendered_prompt_advertises_every_visible_tool(
     for raw_name in visible:
         if skip_artifact_tools and raw_name in artifact_tool_names:
             continue
-        # Some names are rendered as Claude alias `mcp__ralph__<tool>` and
-        # others as the raw `tool` string. Either form is acceptable.
         if raw_name not in section and f"mcp__ralph__{raw_name}" not in section:
             missing.append(raw_name)
     assert not missing, (
@@ -177,7 +130,6 @@ def test_rendered_prompt_does_not_advertise_ungranted_tools(
     phase_label: str,
     drain: SessionDrain,
 ) -> None:
-    """Tools NOT granted by the profile must NOT appear by name in the section."""
     visible = _visible_tool_strings(drain)
     visible_aliases = {f"mcp__ralph__{name}" for name in visible}
     rendered = _render_phase(template_name, drain)
@@ -187,13 +139,6 @@ def test_rendered_prompt_does_not_advertise_ungranted_tools(
     for member in RalphToolName:
         raw_name = member.value
         aliased = f"mcp__ralph__{raw_name}"
-        # The downstream policy-remediation branch is removing plan-related
-        # endpoints. The phase branch's instruction tells us not to modify
-        # the artifact submission block's wording for the removed names,
-        # so we skip any tool that the artifact submission block
-        # legitimately names (the submit/verify/stage/get/finalize/discard
-        # set) because those references are part of the block we are
-        # explicitly told to keep byte-stable.
         artifact_submission_block = {
             "ralph_submit_md_artifact",
             "ralph_verify_md_artifact",
@@ -223,7 +168,6 @@ def test_rendered_mcp_section_stays_under_byte_budget(
     phase_label: str,
     drain: SessionDrain,
 ) -> None:
-    """Catch prompt-bloat regressions: section stays within the byte budget."""
     rendered = _render_phase(template_name, drain)
     section = _extract_mcp_section(rendered)
     assert len(section.encode("utf-8")) <= _MCP_SECTION_BYTE_BUDGET, (
@@ -233,7 +177,6 @@ def test_rendered_mcp_section_stays_under_byte_budget(
 
 
 def test_planning_drain_advertises_explore_index_tools() -> None:
-    """Planning drains that grant explore must name ralph_reindex + ralph_index_status."""
     visible = _visible_tool_strings(SessionDrain.PLANNING)
     rendered = _render_phase("planning.jinja", SessionDrain.PLANNING)
     section = _extract_mcp_section(rendered)
@@ -244,7 +187,6 @@ def test_planning_drain_advertises_explore_index_tools() -> None:
 
 
 def test_development_drain_advertises_web_search_when_granted() -> None:
-    """Development drains that grant web.search must name web_search + visit_url."""
     visible = _visible_tool_strings(SessionDrain.DEVELOPMENT)
     rendered = _render_phase("developer_iteration.jinja", SessionDrain.DEVELOPMENT)
     section = _extract_mcp_section(rendered)
@@ -254,23 +196,6 @@ def test_development_drain_advertises_web_search_when_granted() -> None:
         assert "visit_url" in section
 
 
-# --- AC-04: every shared-partial inclusion path renders identically --------
-#
-# Every top-level production prompt template that includes the shared
-# ``shared/_mcp_tools.j2`` partial must render an MCP tools section
-# that contains exactly that drain's visible names AND the
-# brokered-only/write-only rule. This guard is the cross-phase
-# counterpart to the per-drain
-# ``test_mcp_partial_identical_across_phase_templates`` test in
-# ``tests/test_internal_skills_mcp_prompts.py``: that test pins the
-# partial source itself; this test pins every inclusion path through
-# the full production template set so a phase that drops the include
-# or renders a divergent section fails closed at its own template.
-
-#: Mapping every top-level production template that includes
-#: ``shared/_mcp_tools.j2`` to the drain it ships with. Discovered
-#: by :func:`_discover_mcp_partial_inclusion_templates`; the
-#: constant here is the canonical comparison surface.
 _ALL_MCP_INCLUSION_TEMPLATES: tuple[tuple[str, SessionDrain], ...] = (
     ("conflict_resolution", SessionDrain.DEVELOPMENT),
     ("developer_iteration", SessionDrain.DEVELOPMENT),
@@ -283,12 +208,6 @@ _ALL_MCP_INCLUSION_TEMPLATES: tuple[tuple[str, SessionDrain], ...] = (
 
 
 def _discover_mcp_partial_inclusion_templates() -> tuple[str, ...]:
-    """Return the stem of every top-level template that includes the MCP partial.
-
-    Drives the regression's discovery path so a future template
-    dropped in or removed is caught immediately by
-    :func:`test_mcp_partial_inclusion_templates_match_compiled_map`.
-    """
     root = Path(packaged_template_root())
     included: list[str] = []
     for path in sorted(root.glob("*.jinja")):
@@ -299,15 +218,6 @@ def _discover_mcp_partial_inclusion_templates() -> tuple[str, ...]:
 
 
 def _render_drain_template(template_stem: str, drain: SessionDrain) -> str:
-    """Render ``template_stem.jinja`` with the drain's default caps.
-
-    Unlike :func:`_render_phase`, this helper works for every
-    template that includes the partial — not just the five the
-    legacy fixture covered — by using the AST-discovered universe
-    of variables and a wider set of realistic defaults for the
-    bespoke variables each template wants (e.g.
-    ``replaying_commit_sha`` for conflict_resolution).
-    """
     context = TemplateContext.default()
     template = context.registry.get_template(template_stem + ".jinja")
 
@@ -321,7 +231,6 @@ def _render_drain_template(template_stem: str, drain: SessionDrain) -> str:
     referenced.discard("raise_error")
 
     base_vars: dict[str, str] = dict.fromkeys(referenced, "")
-    # Realistic defaults for bespoke variables each template wants.
     base_vars.update(
         {
             "show_plan_edit_guidance": "true",
@@ -379,16 +288,6 @@ def _render_drain_template(template_stem: str, drain: SessionDrain) -> str:
 def test_mcp_partial_inclusion_templates_match_compiled_map(
     template_stem: str, drain: SessionDrain
 ) -> None:
-    """All compilED inclusion entries are present in the discovered set; nothing missing.
-
-    Pins the ``_ALL_MCP_INCLUSION_TEMPLATES`` constant against
-    on-disk reality: every entry must be a real top-level template
-    (compilED map entry is discovered) and every discovered
-    template that includes the partial must appear as an
-    entry. A mismatch indicates the compiled map drifted from
-    the live include sites — a regression guard against the
-    partial being added or removed without updating the test.
-    """
     discovered = set(_discover_mcp_partial_inclusion_templates())
     compiled = {name for name, _ in _ALL_MCP_INCLUSION_TEMPLATES}
     missing_from_compiled = discovered - compiled
@@ -405,56 +304,21 @@ def test_mcp_partial_inclusion_templates_match_compiled_map(
 
 
 @pytest.mark.parametrize("template_stem,drain", _ALL_MCP_INCLUSION_TEMPLATES)
-# ponytail: full-template render under xdist can exceed 1s; the 60s suite budget remains authoritative.
 @pytest.mark.timeout_seconds(2.0)
 def test_mcp_partial_renders_visible_tools_and_rule_for_every_inclusion(
     template_stem: str, drain: SessionDrain
 ) -> None:
-    """Every inclusion-path renders the drain's visible tools plus the brokered-only rule.
-
-    AC-04 / S-6 demands the shared partial renders identically
-    across every phase template that includes it. The test renders
-    every entry of :data:`_ALL_MCP_INCLUSION_TEMPLATES` with its
-    real drain's default capabilities + an AST-discovered
-    fallback variable set, extracts the rendered MCP section via
-    :func:`_extract_mcp_section`, and asserts:
-
-    * every canonical tool name visible on the drain is present
-      in the section,
-    * no canonical tool name visible ONLY to a different drain
-      has leaked in,
-    * the brokered-only-write-path sentence is rendered when the
-      drain grants write (and absent when it does not), and
-    * the read/SEARCH clarifying sentence is rendered exactly once.
-
-    A regression in any one template fails closed at that
-    template; a regression that drops or duplicates the partial
-    fails closed via the discovery test above.
-    """
     visible = _visible_tool_strings(drain)
     rendered = _render_drain_template(template_stem, drain)
     section = _extract_mcp_section(rendered)
 
     assert visible, f"{template_stem} expected at least one visible tool"
 
-    # planning.jinja and planning_edit.jinja intentionally set
-    # ``HIDE_ARTIFACT_SUBMISSION_GUIDANCE = true`` so the brokered
-    # artifact-submission block does NOT render. The test still
-    # works because every other phase template renders the block
-    # and ``_extract_mcp_section`` then already includes it; for
-    # those phases the artifact-tools assertion below accepts the
-    # placeholder names elsewhere in the prompt body. We therefore
-    # require the read/SEARCH clarifying line regardless.
     assert "Use these for parent-session workspace reads and searches" in section, (
         f"{template_stem} MCP section missing the brokered read/search "
         f"clarifying sentence; rendered section:\n{section}"
     )
 
-    # planning-phase templates (planning.jinja, planning_edit.jinja)
-    # intentionally set ``HIDE_ARTIFACT_SUBMISSION_GUIDANCE = true``
-    # so the brokered artifact-submission block does NOT render —
-    # the planning phase uses a different submission shape and
-    # advertises the artifact tools elsewhere in the prompt body.
     artifact_tool_names = {
         "ralph_submit_md_artifact",
         "ralph_verify_md_artifact",
@@ -470,10 +334,6 @@ def test_mcp_partial_renders_visible_tools_and_rule_for_every_inclusion(
         "planning_edit",
     }
 
-    # Every visible tool name must appear by name or its Claude
-    # alias. We assert every ENUM member, not just the visible set,
-    # so a regression that swaps a tool reference for a non-existent
-    # name is caught.
     aliases_visible = {f"mcp__ralph__{name}" for name in visible}
     missing: list[str] = []
     for raw_name in visible:
@@ -486,15 +346,7 @@ def test_mcp_partial_renders_visible_tools_and_rule_for_every_inclusion(
         f"tools: {missing}; rendered MCP section:\n{section}"
     )
 
-    # No tool NOT granted by the drain appears by raw name or
-    # alias — the brokered-only rule states the partial must not
-    # advertise tools the session cannot call.
     leaked: list[str] = []
-    # Artifact submission block is intentionally part of the
-    # brokered partial and stays byte-stable per the parallel
-    # branch. Its ``ralph_submit_md_artifact`` etc. names render
-    # unconditionally in non-planning phases; pin them out of the
-    # leak assertion.
     artifact_submission_block = {
         "ralph_submit_md_artifact",
         "ralph_verify_md_artifact",
@@ -521,8 +373,6 @@ def test_mcp_partial_renders_visible_tools_and_rule_for_every_inclusion(
         f"section:\n{section}"
     )
 
-    # The brokered-only write path sentence must render exactly
-    # once when write is granted and not at all when write is not.
     caps, _ = template_variables.default_caps_and_flags_for_drain(drain)
     from ralph.mcp.protocol.capability_mapping import (
         Capability as RalphCapability,
@@ -544,12 +394,6 @@ def test_mcp_partial_renders_visible_tools_and_rule_for_every_inclusion(
             f"asserts the edit-tools-only rule"
         )
 
-    # The UNIVERSAL brokered-only sentence must render exactly
-    # once for every inclusion template — this is the AC-02 / S-4
-    # guarantee that read-only phases and write-granted phases
-    # both tell the agent the brokered path is the only permitted
-    # one. A regression that drops the universal sentence leaves
-    # a read-only phase unable to reject native write tools.
     universal_brokered_count = section.count(
         "PARENT SESSION ONLY: the brokered-only workspace rule does not apply to native sub-agents"
     )
@@ -559,9 +403,6 @@ def test_mcp_partial_renders_visible_tools_and_rule_for_every_inclusion(
         f"(expected exactly 1)"
     )
 
-    # The MCP section is bounded: existing byte budget for the
-    # 5-phase set must also hold for the 10-phase set; we re-apply
-    # it here to catch bloat in any newly-rendered phase.
     assert len(section.encode("utf-8")) <= _MCP_SECTION_BYTE_BUDGET, (
         f"{template_stem} (drain {drain.value}) MCP section exceeded "
         f"{_MCP_SECTION_BYTE_BUDGET} bytes; got {len(section.encode('utf-8'))}."

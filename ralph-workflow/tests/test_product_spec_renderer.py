@@ -1,15 +1,10 @@
-"""Tests for render_product_spec_as_prompt."""
-
 from __future__ import annotations
 
 from ralph.mcp.artifacts.product_spec import render_product_spec_as_prompt
 
 
 class TestRenderProductSpecAsPrompt:
-    """Tests for render_product_spec_as_prompt."""
-
     def test_render_produces_goal_heading(self) -> None:
-        """Render output contains # Goal heading."""
         spec = {
             "title": "Test Title",
             "scope": "Test scope",
@@ -21,7 +16,6 @@ class TestRenderProductSpecAsPrompt:
         assert "# Goal" in result
 
     def test_render_produces_context_heading(self) -> None:
-        """Render output contains ## Context heading."""
         spec = {
             "title": "Test Title",
             "scope": "Test scope",
@@ -33,7 +27,6 @@ class TestRenderProductSpecAsPrompt:
         assert "## Context" in result
 
     def test_render_produces_acceptance_criteria_heading(self) -> None:
-        """Render output contains ## Acceptance criteria heading."""
         spec = {
             "title": "Test Title",
             "scope": "Test scope",
@@ -45,7 +38,6 @@ class TestRenderProductSpecAsPrompt:
         assert "## Acceptance criteria" in result
 
     def test_render_places_scope_under_goal(self) -> None:
-        """Scope content appears under # Goal heading."""
         spec = {
             "title": "Test Title",
             "scope": "The scope of this project is to build X",
@@ -54,14 +46,12 @@ class TestRenderProductSpecAsPrompt:
             "success_criteria": ["Criterion 1"],
         }
         result = render_product_spec_as_prompt(spec)
-        # Scope should be in the Goal section (after # Goal heading)
         goal_index = result.index("# Goal")
         context_index = result.index("## Context")
         goal_section = result[goal_index:context_index]
         assert "The scope of this project" in goal_section
 
     def test_render_places_success_criteria_under_acceptance_criteria(self) -> None:
-        """Success criteria appears under ## Acceptance criteria heading."""
         spec = {
             "title": "Test Title",
             "scope": "Test scope",
@@ -77,7 +67,6 @@ class TestRenderProductSpecAsPrompt:
         assert "Must be fast" in acceptance_section
 
     def test_render_places_goals_under_context(self) -> None:
-        """Goals appear under ## Context heading."""
         spec = {
             "title": "Test Title",
             "scope": "Test scope",
@@ -95,7 +84,6 @@ class TestRenderProductSpecAsPrompt:
     def test_render_omits_notes_when_scope_boundaries_and_open_questions_empty(
         self,
     ) -> None:
-        """## Notes heading is omitted when both lists are empty."""
         spec = {
             "title": "Test Title",
             "scope": "Test scope",
@@ -109,7 +97,6 @@ class TestRenderProductSpecAsPrompt:
         assert "## Notes" not in result
 
     def test_render_includes_notes_when_scope_boundaries_non_empty(self) -> None:
-        """## Notes heading appears when scope_boundaries is non-empty."""
         spec = {
             "title": "Test Title",
             "scope": "Test scope",
@@ -124,7 +111,6 @@ class TestRenderProductSpecAsPrompt:
         assert "Mobile is out of scope" in result
 
     def test_render_includes_notes_when_open_questions_non_empty(self) -> None:
-        """## Notes heading appears when open_questions is non-empty."""
         spec = {
             "title": "Test Title",
             "scope": "Test scope",
@@ -139,7 +125,6 @@ class TestRenderProductSpecAsPrompt:
         assert "Which API to use?" in result
 
     def test_render_omits_empty_optional_subgroups_in_context(self) -> None:
-        """Empty optional sub-groups are omitted from ## Context."""
         spec = {
             "title": "Test Title",
             "scope": "Test scope",
@@ -159,7 +144,6 @@ class TestRenderProductSpecAsPrompt:
         assert "**UX/UI requirements:**" not in context_section
 
     def test_render_includes_non_empty_optional_subgroups_in_context(self) -> None:
-        """Non-empty optional sub-groups appear in ## Context."""
         spec = {
             "title": "Test Title",
             "scope": "Test scope",
@@ -176,7 +160,6 @@ class TestRenderProductSpecAsPrompt:
         assert "**UX/UI requirements:**" in result
 
     def test_render_handles_large_prd_style_spec_with_all_fields(self) -> None:
-        """Large PRD-style spec with all 10 fields renders correctly."""
         spec = {
             "title": "Enterprise Platform Redesign",
             "scope": (
@@ -235,25 +218,18 @@ class TestRenderProductSpecAsPrompt:
             ],
         }
         result = render_product_spec_as_prompt(spec)
-        # Main headings
         assert "# Goal" in result
         assert "## Context" in result
         assert "## Acceptance criteria" in result
         assert "## Notes" in result
-        # Context sub-group labels
         assert "**Goals:**" in result
         assert "**Users:**" in result
         assert "**Constraints:**" in result
         assert "**Product behavior:**" in result
         assert "**UX/UI requirements:**" in result
-        # Title
         assert "Enterprise Platform Redesign" in result
-        # Bracket-prefixed product behavior items
         assert "[Auth] Single sign-on" in result
         assert "[Dashboard] Tasks appear" in result
-        # UX/UI requirement
         assert "Minimum touch target size" in result
-        # Scope boundary
         assert "Mobile-native application" in result
-        # Open questions (at least one)
         assert any(q in result for q in spec["open_questions"])

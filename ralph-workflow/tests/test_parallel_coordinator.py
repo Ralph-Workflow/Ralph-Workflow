@@ -71,7 +71,6 @@ def _seed_artifact(repo_root: Path, unit_id: str) -> None:
 
 
 async def test_nonzero_worker_exit_is_failure_even_when_artifacts_would_exist() -> None:
-    """Analysis regression: exit 1 must not become a completed worker event."""
     run_fan_out = _load_run_fan_out()
     unit = make_unit("unit-a")
     executor = FakeAgentExecutor(
@@ -93,10 +92,7 @@ async def test_nonzero_worker_exit_is_failure_even_when_artifacts_would_exist() 
 
 
 class TestTolerantPlanDispatch:
-    """Coordinator accepts plan prose and relies on scoped dispatch for safety."""
-
     async def test_overlapping_edit_areas_are_serialized(self, tmp_path: Path) -> None:
-        """Overlapping ownership is accepted but scheduled in safe waves."""
         run_fan_out = _load_run_fan_out()
         unit_a = WorkUnit(
             unit_id="unit-a",
@@ -106,7 +102,7 @@ class TestTolerantPlanDispatch:
         unit_b = WorkUnit(
             unit_id="unit-b",
             description="Unit B",
-            allowed_directories=["src/sub"],  # 'src' is a prefix of 'src/sub' → overlap
+            allowed_directories=["src/sub"],
         )
         effect = FanOutEffect(work_units=(unit_a, unit_b), max_workers=2)
         executor = FakeAgentExecutor(

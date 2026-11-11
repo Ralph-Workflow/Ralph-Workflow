@@ -1,4 +1,3 @@
-"""Text rendering helpers for policy explanations."""
 
 from __future__ import annotations
 
@@ -16,7 +15,6 @@ _ROLE_LABELS: dict[str, str] = {
 
 
 def render_explanation_text(exp: object) -> str:
-    """Render a PolicyExplanation as a multi-section human-readable text string."""
     if not isinstance(exp, PolicyExplanation):
         return ""
 
@@ -130,7 +128,6 @@ def _render_budget_counters_text(exp: PolicyExplanation, lines: list[str]) -> No
 
 
 def render_explanation_sentences(phase: PhaseExplanation) -> list[str]:
-    """Generate explanation sentences for a phase per Required Product Outcome D."""
     sentences: list[str] = []
 
     if phase.decisions:

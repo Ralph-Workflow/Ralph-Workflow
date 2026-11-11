@@ -1,13 +1,3 @@
-"""Policy-driven acceptance tests — Product Requirements 1-10 and Criteria A-H.
-
-These tests assert every product requirement and acceptance criterion against a
-fully renamed PolicyBundle (no canonical phase names). Any regression that
-re-introduces hidden phase name knowledge in the runtime will fail here.
-
-Scope: pure functions only. No I/O.
-Runtime budget: ≤ 5 seconds for the full module.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -37,17 +27,6 @@ from ralph.policy.render import render_explanation_ascii, render_explanation_tex
 
 @pytest.fixture(scope="module")
 def policy_with_renamed_phases() -> PolicyBundle:
-    """Fully custom-named PolicyBundle — no canonical Ralph phase names.
-
-    Custom name mappings (canonical → custom):
-      planning          → design
-      development       → build
-      development_analysis → audit
-      development_commit → sign_off
-      review            → inspect
-      complete          → done
-      failed_terminal   → aborted
-    """
     agents = AgentsPolicy(
         agent_chains={
             "design_chain": AgentChainConfig(agents=["fake-agent"]),
@@ -175,16 +154,10 @@ def policy_with_renamed_phases() -> PolicyBundle:
     return PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
 
 
-# =============================================================================
-# Requirement 1: Policy must fully define user-visible routing semantics
-# =============================================================================
-
-
 class TestAcceptanceFInspectAndVisualize:
     def test_ascii_render_contains_entry_phase_box(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """render_explanation_ascii contains the entry phase in a box."""
         exp = explain_policy(policy_with_renamed_phases)
         ascii_out = render_explanation_ascii(exp)
         assert "design" in ascii_out
@@ -192,7 +165,6 @@ class TestAcceptanceFInspectAndVisualize:
     def test_ascii_render_contains_loopback_annotation(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """render_explanation_ascii marks loopback routes visually."""
         exp = explain_policy(policy_with_renamed_phases)
         ascii_out = render_explanation_ascii(exp)
         assert "loopback" in ascii_out.lower() or "<<" in ascii_out
@@ -200,7 +172,6 @@ class TestAcceptanceFInspectAndVisualize:
     def test_text_render_explains_routing_decisions(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """render_explanation_text includes decision routing explanation sentences."""
         exp = explain_policy(policy_with_renamed_phases)
         text = render_explanation_text(exp)
         assert "Explanation:" in text
@@ -209,7 +180,6 @@ class TestAcceptanceFInspectAndVisualize:
     def test_text_render_includes_post_commit_route_sentences(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """render_explanation_text includes post_commit_route sentences."""
         exp = explain_policy(policy_with_renamed_phases)
         text = render_explanation_text(exp)
         assert "Explanation: after commit phase" in text
@@ -217,7 +187,6 @@ class TestAcceptanceFInspectAndVisualize:
     def test_text_render_includes_parallel_rejection_sentences(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """render_explanation_text includes parallel execution rejection sentences."""
         exp = explain_policy(policy_with_renamed_phases)
         text = render_explanation_text(exp)
         assert "Explanation: parallel execution is rejected" in text

@@ -1,4 +1,3 @@
-"""Bundled dumb-proof Markdown reference docs for artifact submission."""
 
 from __future__ import annotations
 
@@ -32,32 +31,24 @@ ARTIFACT_FORMAT_INDEX_ARTIFACT_TYPE = "artifact_formats_index"
 
 FORMAT_DOCS_WORKSPACE_DIR = ".agent/artifact-formats"
 
-#: Artifact types that ship a full self-teaching example document alongside
-#: their format doc. Each example is a complete, validator-passing markdown
-#: artifact whose content also models the craft (a good plan, a good commit
-#: message, honest proof discipline, and so on).
 EXAMPLE_ARTIFACT_TYPES: tuple[str, ...] = FORMAT_DOC_ARTIFACT_TYPES
 
 EXAMPLES_WORKSPACE_DIR = f"{FORMAT_DOCS_WORKSPACE_DIR}/examples"
 
 
 def format_doc_workspace_path(artifact_type: str) -> str:
-    """Return the workspace-relative path for an artifact format doc."""
     return f"{FORMAT_DOCS_WORKSPACE_DIR}/{artifact_type}.md"
 
 
 def format_index_workspace_path() -> str:
-    """Return the workspace-relative path for the artifact formats index doc."""
     return f"{FORMAT_DOCS_WORKSPACE_DIR}/{ARTIFACT_FORMAT_INDEX_ARTIFACT_TYPE}.md"
 
 
 def example_workspace_path(artifact_type: str) -> str:
-    """Return the workspace-relative path for a bundled example artifact."""
     return f"{EXAMPLES_WORKSPACE_DIR}/{artifact_type}.md"
 
 
 def load_bundled_example(artifact_type: str) -> str | None:
-    """Load a bundled example artifact document, or None if unknown."""
     if artifact_type not in EXAMPLE_ARTIFACT_TYPES:
         return None
     pkg = importlib.resources.files("ralph.mcp.artifacts.format_docs")
@@ -71,11 +62,9 @@ def materialize_example(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> str | None:
-    """Write a bundled example artifact into the workspace and return its relative path."""
     content = load_bundled_example(artifact_type)
     if content is None:
         return None
-    # filesystem-write-ok: bundled format-doc example copy into workspace .agent/examples, runtime onboarding helper
     dest = workspace_root / EXAMPLES_WORKSPACE_DIR / f"{artifact_type}.md"
     write_text_if_changed(
         backend,
@@ -88,7 +77,6 @@ def materialize_example(
 
 
 def load_bundled_format_doc(artifact_type: str) -> str | None:
-    """Load a bundled Markdown format doc for the given artifact type, or None if unknown."""
     if artifact_type not in FORMAT_DOC_ARTIFACT_TYPES:
         return None
     pkg = importlib.resources.files("ralph.mcp.artifacts.format_docs")
@@ -97,7 +85,6 @@ def load_bundled_format_doc(artifact_type: str) -> str | None:
 
 
 def load_bundled_format_index() -> str:
-    """Load the bundled artifact formats index doc."""
     pkg = importlib.resources.files("ralph.mcp.artifacts.format_docs")
     resource = pkg.joinpath(f"{ARTIFACT_FORMAT_INDEX_ARTIFACT_TYPE}.md")
     return resource.read_text(encoding="utf-8")
@@ -109,13 +96,11 @@ def materialize_format_doc(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> str | None:
-    """Write a bundled format doc into the workspace and return its relative path."""
     if artifact_type not in FORMAT_DOC_ARTIFACT_TYPES:
         return None
     content = load_bundled_format_doc(artifact_type)
     if content is None:
         return None
-    # filesystem-write-ok: bundled format-doc example copy into workspace .agent/examples, runtime onboarding helper
     dest = workspace_root / FORMAT_DOCS_WORKSPACE_DIR / f"{artifact_type}.md"
     write_text_if_changed(
         backend,
@@ -132,12 +117,7 @@ def materialize_format_index(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> str:
-    """Materialize the bundled artifact formats index doc to workspace.
-
-    Returns the relative path to the materialized index file.
-    """
     content = load_bundled_format_index()
-    # filesystem-write-ok: bundled format-doc example copy into workspace .agent/examples, runtime onboarding helper
     dest = workspace_root / FORMAT_DOCS_WORKSPACE_DIR / f"{ARTIFACT_FORMAT_INDEX_ARTIFACT_TYPE}.md"
     write_text_if_changed(
         backend,
@@ -154,7 +134,6 @@ def materialize_all_format_docs(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> list[str]:
-    """Write all bundled format docs, examples, and the index into the workspace."""
     result = []
     for artifact_type in FORMAT_DOC_ARTIFACT_TYPES:
         path = materialize_format_doc(workspace_root, artifact_type, backend=backend)

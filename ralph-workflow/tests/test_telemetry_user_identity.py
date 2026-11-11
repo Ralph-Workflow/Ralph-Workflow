@@ -1,5 +1,3 @@
-"""Tests for ralph.telemetry._user_identity."""
-
 from __future__ import annotations
 
 import configparser
@@ -101,7 +99,6 @@ def test_get_or_create_uses_canonical_home_config_when_xdg_changes(
 def test_user_id_survives_switching_terminal_xdg_directories(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Terminal-specific XDG directories must not split one user identity."""
     home = tmp_path / "home"
     terminal_one_xdg = tmp_path / "terminal-one"
     terminal_two_xdg = tmp_path / "terminal-two"
@@ -119,7 +116,6 @@ def test_user_id_survives_switching_terminal_xdg_directories(
 def test_valid_legacy_xdg_identity_is_migrated_to_canonical_home(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """An existing XDG identity is preserved when the canonical path changes."""
     home = tmp_path / "home"
     legacy_xdg = tmp_path / "legacy-xdg"
     legacy_xdg.mkdir()
@@ -159,7 +155,6 @@ def test_canonical_identity_wins_over_conflicting_legacy_identity(
 
 
 def test_concurrent_first_use_returns_one_persisted_identity(tmp_path: Path) -> None:
-    """Concurrent terminal starts must converge on one persisted identifier."""
 
     def create_identity() -> str:
         return get_or_create_user_id(tmp_path)

@@ -1,10 +1,3 @@
-"""Nested mini-plan ownership for explicit Markdown work units.
-
-Work Units are a planning aid for the developer agent's own sub-agent fan-out:
-they describe how the developer agent should split and dispatch independent
-work to its sub-agents and do not instruct Ralph Workflow to start, schedule,
-or coordinate workers.
-"""
 
 from __future__ import annotations
 
@@ -37,11 +30,10 @@ def attach_owned_step_ids(
     *,
     section_names: tuple[str, ...] = ("Work Units",),
 ) -> None:
-    """Attach each nested step to at most one explicit work unit in place."""
     owner_by_step: dict[str, str] = {}
     entry_by_id = {
         cast("str", entry["unit_id"]): entry for entry in entries
-    }  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    }
 
     for index, section in enumerate(document.sections):
         if section.name in section_names:
@@ -103,7 +95,6 @@ def _claim_work_unit_section_steps(
     entry_by_id: dict[str, Content],
     owner_by_step: dict[str, str],
 ) -> None:
-    """Assign each nested step to its nearest preceding unit item."""
     unit_items = tuple(
         item for section in sections for item in section.items if item.identifier in entry_by_id
     )
@@ -124,7 +115,6 @@ def _owned_sections(
     document: ParsedDocument,
     owner_index: int,
 ) -> tuple[ParsedSection, ...]:
-    """Return one heading plus descendants in its Markdown hierarchy."""
     owner = document.sections[owner_index]
     descendants: list[ParsedSection] = [owner]
     for section in document.sections[owner_index + 1 :]:
@@ -142,7 +132,7 @@ def _claim_steps_by_target(
     directories_by_unit = {
         cast(
             "str", entry["unit_id"]
-        ): [  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        ): [
             directory
             for directory in cast("list[object]", entry.get("allowed_directories", []))
             if isinstance(directory, str)
@@ -154,7 +144,7 @@ def _claim_steps_by_target(
             PurePosixPath(path)
             for path in cast(
                 "list[object]", entry.get("allowed_paths", [])
-            )  # cast-policy: seam: optional extracted plan ownership metadata
+            )
             if isinstance(path, str)
         }
         for entry in entries
@@ -170,7 +160,7 @@ def _claim_steps_by_target(
         paths = [
             cast(
                 "str", target["path"]
-            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            )
             for target in targets
             if isinstance(target, dict) and isinstance(target.get("path"), str)
         ]
@@ -194,11 +184,11 @@ def _attach_cross_unit_dependencies(
     owner_by_step = {
         step_id: cast(
             "str", entry["unit_id"]
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         for entry in entries
         for step_id in cast(
             "list[str]", entry.get("step_ids", [])
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
     }
     step_by_id = {
         f"S-{number}": step for step in steps if isinstance((number := step.get("number")), int)
@@ -206,13 +196,13 @@ def _attach_cross_unit_dependencies(
     for entry in entries:
         unit_id = cast(
             "str", entry["unit_id"]
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         dependencies = cast(
             "list[str]", entry["dependencies"]
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         for step_id in cast(
             "list[str]", entry.get("step_ids", [])
-        ):  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        ):
             step = step_by_id.get(step_id, {})
             raw_dependencies = step.get("depends_on", [])
             if not isinstance(raw_dependencies, list):

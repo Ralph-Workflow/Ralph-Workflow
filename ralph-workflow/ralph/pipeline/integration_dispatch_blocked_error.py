@@ -1,4 +1,3 @@
-"""Typed refusal carrying integration evidence to ordinary dispatch callers."""
 
 from __future__ import annotations
 
@@ -9,7 +8,6 @@ if TYPE_CHECKING:
 
 
 class IntegrationDispatchBlockedError(RuntimeError):
-    """Expose the blocked phase and verdict without parsing diagnostic text."""
 
     def __init__(self, phase: str, verdict: IntegrationResolutionVerdict) -> None:
         self.phase = phase

@@ -1,22 +1,3 @@
-"""GitOps test implementation driven by SimulatedGitEnvironment.
-
-Every mutation the integration pipeline performs runs through this double,
-so every fault kind is consumed by the phase that models it:
-
-* the REPLAY phase (``rebase_onto``) consumes the faults a Git command hits
-  while it replays the feature onto the target;
-* the LANDING phase (``fast_forward_target`` / ``land_feature``) consumes
-  the faults a Git command hits while it moves the target ref;
-* the OBSERVATION phase (the environment's own ``observe``) consumes the
-  faults that show up while the repository is read;
-* the REMOTE phase (the environment's own ``publish_remote``) consumes the
-  remote and network faults.
-
-A consumed fault always produces a TYPED outcome and the user-facing reason
-registered for it in :mod:`tests._fake_git_fault`; the double never parses
-message text to decide what happened.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -35,17 +16,10 @@ if TYPE_CHECKING:
 
 
 class _SimulatedCrashError(RuntimeError):
-    """Raised when the simulated environment models Ralph dying mid-step.
-
-    A crash is the ONE outcome the pipeline cannot absorb inside a step:
-    the step dies, the work that was already committed stays committed, and
-    the next observation is what has to make progress.
-    """
+    pass
 
 
 class FakeGitOps:
-    """GitOps implementation driven by SimulatedGitEnvironment."""
-
     def __init__(self, env: SimulatedGitEnvironment) -> None:
         self.env = env
 
@@ -58,13 +32,10 @@ class FakeGitOps:
             if classification.effect == "crash_before":
                 self._crash(classification.reason)
             if fault is FaultKind.REAL_CONFLICT:
-                # The ONE fault an agent can change: the rebase stopped on a
-                # real content conflict.
                 return RebaseConflicts(files=["shared.txt"])
             if classification.effect in ("refuse", "fail"):
                 return RebaseFailed(kind=classify_rebase_error(classification.reason, ""))
 
-        # Successful rebase
         self.env.head_sha = f"{self.env.feature_sha}-rebased-onto-{self.env.target_sha}"
         self.env.feature_sha = self.env.head_sha
         if fault is not None and classification_for(fault).effect == "crash_after":
@@ -126,18 +97,14 @@ class FakeGitOps:
             if classification.effect == "crash_before":
                 self._crash(classification.reason)
             if classification.effect == "concurrent_advance":
-                # Another worktree landed first: the target moved under us.
                 self.env.target_sha = f"{self.env.target_sha}-concurrent"
                 return False, classification.reason
             if classification.effect in ("refuse", "fail"):
                 return False, classification.reason
         if self.env.agent_active:
-            # No worktree mutation while an agent runs in that worktree.
             return False, classification_for(FaultKind.AGENT_ACTIVE).reason
 
         self.env.target_sha = feature_sha
-        # The simulated remote tier: the local landing publishes to
-        # ``<remote>/<target>`` unless the remote refuses the push.
         self.env.publish_remote()
         if fault is not None and classification_for(fault).effect == "crash_after":
             self._crash(classification_for(fault).reason)
@@ -184,6 +151,5 @@ class FakeGitOps:
         return True
 
     def _crash(self, reason: str) -> None:
-        """Model Ralph dying at this step, leaving a stale lock behind."""
         self.env.leave_stale_lock()
         raise _SimulatedCrashError(reason)

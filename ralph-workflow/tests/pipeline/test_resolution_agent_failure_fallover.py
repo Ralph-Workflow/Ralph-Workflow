@@ -1,5 +1,3 @@
-"""AGENT_FAILURE keeps a pending conflict on its current strategy rung."""
-
 from __future__ import annotations
 
 import tempfile

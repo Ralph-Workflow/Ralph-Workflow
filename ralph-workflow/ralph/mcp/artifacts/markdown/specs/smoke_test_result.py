@@ -1,11 +1,3 @@
-"""Markdown spec for smoke-test results.
-
-Consumed structure (stays strict): frontmatter ``type``, ``status``
-(closed vocabulary ``passed`` | ``failed`` | ``partial`` — a wrong
-status is a hard error naming the valid values), ``output_file``, and
-the required-section skeleton. Section bodies are descriptive and
-tolerate multi-line prose and unknown continuation lines under items.
-"""
 
 from __future__ import annotations
 

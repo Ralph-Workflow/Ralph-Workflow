@@ -1,4 +1,3 @@
-"""Action to take after an attempt or round in conflict resolution."""
 
 from __future__ import annotations
 
@@ -14,7 +13,6 @@ if TYPE_CHECKING:
 
 
 class ResolutionAction(StrEnum):
-    """Action to take after an attempt or round in conflict resolution."""
 
     CONTINUE_AGENT_ROUND = "CONTINUE_AGENT_ROUND"
     ESCALATE_TO_INTERVENTION = "ESCALATE_TO_INTERVENTION"
@@ -29,7 +27,6 @@ def select_resolution_action(
     *,
     resolved: bool | None = None,
 ) -> ResolutionAction:
-    """Select the typed resolution action for the current round and session state."""
     del round_index, cap
     if session.terminal_reason in INFRASTRUCTURE_TERMINATION_REASONS or bool(
         session.out_of_reach_paths

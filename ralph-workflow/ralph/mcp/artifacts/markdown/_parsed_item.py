@@ -1,4 +1,3 @@
-"""One stable-ID list item parsed from a markdown artifact section."""
 
 from __future__ import annotations
 
@@ -11,12 +10,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class ParsedItem:
-    """A stable-ID list item from one section.
-
-    ``fields`` carries the indented continuation lines that immediately
-    follow the item (``  Key: value``); whether those lines are allowed is
-    a per-section rule enforced by the shared structure validator.
-    """
 
     identifier: str
     text: str

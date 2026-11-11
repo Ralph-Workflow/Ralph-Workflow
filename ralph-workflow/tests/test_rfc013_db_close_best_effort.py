@@ -1,24 +1,3 @@
-"""RFC-013 best-effort SQLite cleanup: ``db.close()`` failures must NOT surface.
-
-Three documented best-effort helpers open ``RunStateDB`` and call ``close()``
-in a ``finally`` block. Their docstrings advertise "best-effort" / "never
-raises" behavior so a missing, locked, or corrupt SQLite state cannot block
-start-up, gate completion, or fail cleanup.
-
-The prior analysis feedback round surfaced that ``db.close()`` itself was
-NOT inside a guarded ``finally`` block on these three call sites, so a
-close()-side OSError or sqlite3.Error would propagate past the helper and
-crash the caller. These tests pin the fixed contract: monkeypatch
-``RunStateDB.close`` to raise after a normal lookup / prune / clear path
-and assert the helper still returns its degraded-mode value.
-
-Covers:
-
-- ``_db_sentinel_lookup`` in ``ralph.agents.completion_signals``
-- ``_clear_session_completion_sentinel`` in ``ralph.agents.invoke``
-- ``_sweep_run_state_db_rows`` in ``ralph.workspace.agent_dir_retention``
-"""
-
 from __future__ import annotations
 
 import importlib
@@ -37,20 +16,10 @@ from ralph.mcp.artifacts.state_db import CLEARED_SENTINEL_HMAC, MISSING, RunStat
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps
 from ralph.workspace.agent_dir_retention import _sweep_run_state_db_rows
 
-# ponytail: Real-SQLite cleanup can exceed 1s while xdist workers contend on the external-volume filesystem; 5s preserves the bounded behavioral proof.
 pytestmark = pytest.mark.timeout_seconds(5)
 
 
 class _RaisingCloseDB:
-    """Stand-in for ``RunStateDB`` whose operation path succeeds but close() raises.
-
-    Covers all three call sites uniformly without faking the real
-    RunStateDB class hierarchy: the helpers only call
-    ``delete_completion_sentinel`` / ``clear_run_receipts`` /
-    ``prune_older_than`` / ``get_completion_sentinel_hmac`` and then
-    ``close()``. The replacement routes each method by attribute name.
-    """
-
     def __init__(
         self,
         workspace: Path,
@@ -91,7 +60,6 @@ def _patch_db_close(
     *,
     db_factory: object,
 ) -> None:
-    """Replace the module-level ``RunStateDB`` reference inside ``module_name``."""
 
     def _factory(workspace: Path) -> object:
         return db_factory(workspace)
@@ -105,14 +73,6 @@ def _patch_db_close(
 def test_db_sentinel_lookup_swallows_close_errors(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``_db_sentinel_lookup`` advertises best-effort / never-raises behaviour.
-
-    Even when ``RunStateDB.close()`` raises ``sqlite3.Error`` after a
-    successful lookup, the helper must NOT propagate the close failure.
-    The lookup's success path is preserved (the helper returns the
-    looked-up value), so callers can still honour the canonical
-    row before falling back to the legacy file.
-    """
 
     def _factory(workspace: Path) -> _RaisingCloseDB:
         db = _RaisingCloseDB(workspace, method_result="sentinel-hmac-value")
@@ -133,15 +93,6 @@ def test_db_sentinel_lookup_swallows_close_errors(
 def test_db_sentinel_lookup_returns_none_when_op_raises_and_close_raises(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Operation-path failure must still degrade to ``(None, None)`` even
-    when ``close()`` independently raises.
-
-    Pinned contract: a ``sqlite3.Error`` raised by
-    ``get_completion_sentinel_hmac`` returns ``(None, None)`` so the
-    caller falls through to the legacy file path, while a separate
-    ``close()`` raise in the ``finally`` block is suppressed and never
-    overrides the degraded-mode return value.
-    """
 
     class _OpAndCloseBothFail(_RaisingCloseDB):
         def get_completion_sentinel_hmac(self, run_id: str) -> object:
@@ -161,9 +112,6 @@ def test_db_sentinel_lookup_returns_none_when_op_raises_and_close_raises(
 def test_clear_session_completion_sentinel_swallows_close_errors(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``_clear_session_completion_sentinel`` must complete the legacy-file
-    cleanup even when the DB close() raises.
-    """
 
     def _factory(workspace: Path) -> _RaisingCloseDB:
         return _RaisingCloseDB(workspace)
@@ -187,14 +135,6 @@ def test_clear_session_completion_sentinel_swallows_close_errors(
 def test_sweep_run_state_db_rows_does_not_raise_when_close_raises(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``_sweep_run_state_db_rows`` must NOT raise even when ``close()`` raises.
-
-    The sweep path's contract is "never raises": a missing or closed
-    SQLite state must not block the rest of the ``sweep_agent_dir``
-    cleanup. The ``prune_older_than`` operation path still runs and
-    returns its integer row count; the ``close()`` raise that follows
-    must be suppressed so the caller receives the row count cleanly.
-    """
 
     def _factory(workspace: Path) -> _RaisingCloseDB:
         return _RaisingCloseDB(workspace, method_result=3)
@@ -205,7 +145,6 @@ def test_sweep_run_state_db_rows_does_not_raise_when_close_raises(
         db_factory=_factory,
     )
 
-    # Pre-create the db_path the helper checks for the absence short-circuit.
     (tmp_path / ".agent").mkdir(parents=True, exist_ok=True)
     (tmp_path / ".agent" / "state.db").touch()
 
@@ -213,34 +152,7 @@ def test_sweep_run_state_db_rows_does_not_raise_when_close_raises(
     assert removed == 3
 
 
-# ---------------------------------------------------------------------------
-# RFC-013 P3 durable-fallback regressions.
-#
-# Both regressions surfaced by the planning-decision round:
-#
-# 1. Canonical submission must fall back to the legacy
-#    ``.agent/receipts/<run_id>/<artifact_type>.json`` file when
-#    ``RunStateDB.upsert_receipt`` raises ``sqlite3.Error`` / ``OSError``;
-#    otherwise a transient DB failure turns an otherwise successful artifact
-#    submission into a hard failure.
-#
-# 2. ``_clear_session_completion_sentinel`` must tombstone the
-#    DB-backed sentinel row when ``RunStateDB.delete_completion_sentinel``
-#    raises so the downstream ``_check_completion_sentinel`` reader
-#    honours the cleared state. Without the tombstone, a reused
-#    ``run_id`` inherits the previous run's "completed" verdict because
-#    the DB read is authoritative ahead of the legacy-file fallback.
-# ---------------------------------------------------------------------------
-
-
 class _DeleteRaisingDB:
-    """Stand-in ``RunStateDB`` whose ``delete_completion_sentinel`` raises.
-
-    Routes ``mark_completion_sentinel_cleared`` and ``clear_run_receipts``
-    through a real ``RunStateDB`` so the tombstone write lands in the
-    on-disk DB the reader subsequently opens.
-    """
-
     def __init__(self, workspace: Path) -> None:
         self._workspace = workspace
         self._real_db: RunStateDB | None = None
@@ -268,7 +180,6 @@ class _DeleteRaisingDB:
 def test_canonical_submit_survives_receipt_db_upsert_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A transient receipt DB failure must preserve artifact and receipt evidence."""
 
     def _raise_receipt_upsert(
         self: RunStateDB,
@@ -327,21 +238,6 @@ status: completed
 def test_clear_session_completion_sentinel_tombstones_on_delete_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``_clear_session_completion_sentinel`` must tombstone the DB row when
-    ``delete_completion_sentinel`` raises so the reader honours the cleared
-    state.
-
-    Pinned contract: ``_check_completion_sentinel`` MUST return
-    ``False`` for the cleared ``run_id`` even when
-    ``delete_completion_sentinel`` raised ``sqlite3.OperationalError``
-    (the pre-fix bug allowed a stale DB row to survive cleanup and a
-    reused ``run_id`` to be treated as completed). The fix routes the
-    delete-failure path through ``mark_completion_sentinel_cleared``,
-    which writes the ``CLEARED_SENTINEL_HMAC`` marker the
-    ``_db_sentinel_lookup`` reader treats as ``(False, None)``.
-    """
-    # Seed a real DB-backed sentinel row so the reader has something
-    # to disagree with after the (mocked) delete attempt.
     seed_db = RunStateDB(tmp_path)
     seed_db.upsert_completion_sentinel("run-1", "real-hmac-for-run-1")
     seed_db.close()
@@ -366,8 +262,6 @@ def test_clear_session_completion_sentinel_tombstones_on_delete_failure(
         "DB delete raised; the tombstone marker guarantees this."
     )
 
-    # Confirm the tombstone is visible at the SQL level (and not just
-    # being interpreted by the reader).
     verify_db = RunStateDB(tmp_path)
     try:
         hmac_value = verify_db.get_completion_sentinel_hmac("run-1")
@@ -379,13 +273,6 @@ def test_clear_session_completion_sentinel_tombstones_on_delete_failure(
 def test_db_sentinel_lookup_treats_cleared_marker_as_absent(
     tmp_path: Path,
 ) -> None:
-    """``_db_sentinel_lookup`` must treat the ``CLEARED_SENTINEL_HMAC``
-    marker as ``(False, None)`` so ``_check_completion_sentinel``
-    falls through to the legacy-file path.
-
-    Direct unit test pinning the read-side contract that the
-    tombstone fix in ``_clear_session_completion_sentinel`` relies on.
-    """
     seed_db = RunStateDB(tmp_path)
     seed_db.upsert_completion_sentinel("run-cleared", CLEARED_SENTINEL_HMAC)
     seed_db.close()
@@ -396,29 +283,16 @@ def test_db_sentinel_lookup_treats_cleared_marker_as_absent(
 
 
 def test_mark_completion_sentinel_cleared_roundtrip(tmp_path: Path) -> None:
-    """``RunStateDB.mark_completion_sentinel_cleared`` upserts the tombstone
-    marker and is idempotent under repeat calls.
-
-    Pinned contract: the tombstone write must survive subsequent
-    upsert / delete attempts so a transient SQLite ``locked`` error
-    that surfaces during a retry of the original delete cannot
-    resurrect the cleared state.
-    """
     db = RunStateDB(tmp_path)
     try:
-        # Initially: no row.
         assert db.get_completion_sentinel_hmac("run-1") is MISSING
 
-        # First tombstone write creates the row.
         db.mark_completion_sentinel_cleared("run-1")
         assert db.get_completion_sentinel_hmac("run-1") == CLEARED_SENTINEL_HMAC
 
-        # Idempotent: a second tombstone write replaces the marker
-        # (preserves the cleared state).
         db.mark_completion_sentinel_cleared("run-1")
         assert db.get_completion_sentinel_hmac("run-1") == CLEARED_SENTINEL_HMAC
 
-        # Overwrites a prior valid HMAC row.
         db.upsert_completion_sentinel("run-1", "valid-hmac")
         assert db.get_completion_sentinel_hmac("run-1") == "valid-hmac"
         db.mark_completion_sentinel_cleared("run-1")

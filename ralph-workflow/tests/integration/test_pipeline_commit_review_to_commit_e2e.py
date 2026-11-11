@@ -1,61 +1,3 @@
-"""End-to-end pipeline test: development_commit_review -> development_commit.
-
-Black-box proof that the cleanup -> commit transition works through the
-real ``runner.run`` harness with real git operations on the filesystem
-(NOT a direct call to ``handle_commit_review_phase``).
-
-Mirrors the canonical pattern from
-``tests/integration/test_pipeline_with_engine_internal_artifacts.py``:
-
-* Real ``FsWorkspace`` against a real ``tmp_git_repo`` (the cleanup
-  phase mutates the real ``.gitignore`` and real ``.git/info/exclude``).
-* ``CommitReviewAlwaysLoopbackInvoker`` helper to drive every cleanup
-  run to loopback via its overridden ``commit_event_for``.
-* Patches ``phase_event_after_agent_run`` so cleanup phases actually
-  execute ``handle_commit_review_phase`` (the helper's
-  ``commit_event_for`` would otherwise short-circuit the cleanup work
-  with a ``PHASE_LOOPBACK`` stub); non-cleanup phases still go through
-  the standard mock seam so the pipeline can complete.
-* Observes the real git log via ``Repo.head.log`` after the pipeline
-  terminates -- proves the cleanup -> commit transition actually
-  created a commit.
-
-This test is the strongest possible proof that the original user-reported
-failure mode (``Refusing to delete non-housekeeping file: ...``) cannot
-recur: the pipeline terminates at ``complete`` (NOT ``failed_terminal``),
-every originally-failing tracked file is deleted from disk, AND the
-canonical ``.gitignore`` / ``.git/info/exclude`` patterns were
-auto-seeded. Per-test timeout is capped at 15s (well under the 60s
-combined budget enforced by ``ralph/verify.py``).
-
-Two e2e tests live here:
-
-1. ``test_pipeline_regression_scoped_commit_residue_reinvokes_commit_end_to_end``
-   -- the canonical proof. It commits the complete live changed set through
-   the cleanup-to-commit transition. It also pre-stages
-   the three originally-failing tracked paths AND a
-   SEPARATE innocent symlink (PA-005 distinct paths). Submits a
-   cleanup artifact deleting the three originally-failing paths but
-   NOT the symlink. Asserts the pipeline reaches ``complete``,
-   observes ``Repo.head.log`` directly (NOT ``repo.iter_commits``)
-   to prove a new commit was actually created, and asserts the
-   untouched innocent symlink is preserved.
-
-2. ``test_pipeline_cleanup_to_commit_rejects_symlink_delete_end_to_end``
-   -- the PA-005 BLACK-BOX proof that the ``delete_file_from_repo``
-   hardening is actually exercised by the full pipeline. Submits a
-   cleanup artifact that ALSO actively targets the innocent symlink
-   and asserts the pipeline surfaces the rejection (the symlink
-   survives both as a symlink AND as a target), the originally-
-   failing tracked files are STILL cleaned up in the same run, and
-   the pipeline still terminates at ``complete`` (the best-effort
-   ``_apply_safe_deletes`` try/except absorbs the rejection as a
-   WARNING). This is the active-symlink-delete proof that the
-   ``test_pipeline_cleanup_to_commit_end_to_end`` test does not
-   cover (which only verifies passive preservation of an
-   untouched symlink).
-"""
-
 from __future__ import annotations
 
 from functools import lru_cache
@@ -102,7 +44,7 @@ DEFAULT_POLICY_DIR = Path(__file__).parent.parent.parent / "ralph" / "policy" / 
 
 pytestmark = [
     pytest.mark.timeout_seconds(15),
-    pytest.mark.required_auto_integrate_e2e,  # wt-03-fix-bug: subprocess_e2e removed; runs in E2E shard only
+    pytest.mark.required_auto_integrate_e2e,
 ]
 
 ORIGINALLY_FAILING_PATHS: tuple[str, ...] = (
@@ -163,7 +105,6 @@ def _resolve_tree_sha_from_workspace(workspace: FsWorkspace) -> str | None:
 
 
 def _write_commit_review_artifact(workspace: FsWorkspace, content: dict[str, object]) -> None:
-    """Write a commit_review artifact to the workspace."""
     raw_actions = content["actions"]
     actions = [
         (action["action"], action.get("path", action.get("pattern", ""))) for action in raw_actions
@@ -182,7 +123,6 @@ def _write_commit_review_artifact(workspace: FsWorkspace, content: dict[str, obj
 def _write_commit_message_artifacts(
     repo_root: Path, subject: str, *, files: tuple[str, ...] = ()
 ) -> None:
-    """Write the canonical commit-message Markdown artifact."""
     artifact_path = repo_root / ".agent" / "artifacts" / "commit_message.md"
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
     artifact_path.write_text(
@@ -209,7 +149,6 @@ def _write_commit_message_artifacts(
 
 
 def _track_and_commit(repo_root: Path, rel_paths: tuple[str, ...] | list[str] | str) -> None:
-    """Stage relative path(s) in ``repo_root`` and commit them in one shot."""
     paths = [rel_paths] if isinstance(rel_paths, str) else list(rel_paths)
     repo = Repo(repo_root)
     try:
@@ -221,12 +160,6 @@ def _track_and_commit(repo_root: Path, rel_paths: tuple[str, ...] | list[str] | 
 
 @pytest.fixture
 def engine_internal_workspace_with_symlink(tmp_git_repo: Path) -> FsWorkspace:
-    """Pre-stage the originally-failing tracked paths AND an innocent symlink.
-
-    PA-005: the innocent symlink MUST use a distinct path from every
-    deletable tracked file so the assertions can simultaneously be
-    true (deletable tracked files are gone, symlink is preserved).
-    """
     root_checkpoint = tmp_git_repo / "checkpoint.json"
     root_checkpoint.write_text('{"phase": "development"}')
     raw_log = tmp_git_repo / ".agent" / "raw" / "opencode.log"
@@ -268,9 +201,6 @@ def _default_policy_bundle() -> PolicyBundle:
 
 
 def _config() -> UnifiedConfig:
-    # These tests prove cleanup→commit, not auto-integrate. Disable
-    # incidental integration so commit seams do not pay real git
-    # rebase/backoff cost under the subprocess_e2e 60s suite budget.
     return UnifiedConfig.model_validate({"general": {"auto_integrate_enabled": False}})
 
 
@@ -290,13 +220,11 @@ def _stub_prompt_materialization(monkeypatch: MonkeyPatch) -> None:
 
 
 def _resolved_integration_verdict(*_args: object, write_back: object = None) -> SimpleNamespace:
-    """Return the clean verdict for an integration-independent harness."""
     return SimpleNamespace(dispatch_allowed=True)
 
 
 @pytest.fixture(autouse=True)
 def _stub_integration_verdict(monkeypatch: MonkeyPatch) -> None:
-    """Isolate cleanup behavior from the separately tested integration invariant."""
     monkeypatch.setattr(runner, "inspect_integration_resolution", _resolved_integration_verdict)
     monkeypatch.setattr(
         run_loop_module,
@@ -311,23 +239,6 @@ def test_pipeline_regression_scoped_commit_residue_reinvokes_commit_end_to_end(
     memory_workspace: MemoryWorkspace,
     engine_internal_workspace_with_symlink: FsWorkspace,
 ) -> None:
-    """S-3 regression: residual scoped commits reinvoke and clean the worktree.
-
-    Drives ``runner.run`` end-to-end with the canonical
-    ``CommitReviewAlwaysLoopbackInvoker`` helper PLUS a real
-    ``execute_commit_effect`` call for every ``CommitEffect`` (the runner's
-    own DI seam). Pre-stages the three originally-failing tracked paths
-    AND a SEPARATE innocent symlink (PA-005 distinct paths).
-
-    After the pipeline terminates:
-    * Every originally-failing tracked file is deleted from disk.
-    * The innocent symlink is preserved (NOT deleted as a target).
-    * ``.gitignore`` and ``.git/info/exclude`` were auto-seeded.
-    * The pipeline terminated at ``complete`` (NOT ``failed_terminal``).
-    * A real git commit was created (Repo.head.log count incremented
-      beyond the template's initial commit, and the new commit's tree
-      does NOT contain the deleted tracked files).
-    """
     repo_root = Path(engine_internal_workspace_with_symlink.root)
     policy_bundle = _default_policy_bundle()
 
@@ -516,14 +427,6 @@ def test_pipeline_regression_scoped_commit_residue_reinvokes_commit_end_to_end(
 
 
 def _submit_symlink_review_artifact(workspace: FsWorkspace, submission_index: int) -> None:
-    """Submit the reviewer's artifact for one commit-review pass.
-
-    The FIRST submission asks for the symlink delete as well. The engine
-    refuses that delete, and a refused action loops the batch back to the
-    reviewer instead of advancing to the commit. Every later submission is
-    the corrected retry: the safe deletions are already applied, so it asks
-    for nothing and the batch advances.
-    """
     if submission_index == 1:
         actions: list[dict[str, str]] = [
             {"action": "delete_file", "path": path} for path in ORIGINALLY_FAILING_PATHS
@@ -545,23 +448,6 @@ def test_pipeline_cleanup_to_commit_rejects_symlink_delete_end_to_end(
     memory_workspace: MemoryWorkspace,
     engine_internal_workspace_with_symlink: FsWorkspace,
 ) -> None:
-    """End-to-end proof: cleanup -> commit surfaces symlink-delete rejection.
-
-    Regression for the PA-005 gap: prior e2e proof only verified that an
-    untouched innocent symlink stayed intact (passive preservation).
-    This test actively submits a ``delete_file`` cleanup action
-    targeting the distinct-path innocent symlink and asserts the
-    end-to-end pipeline surfaces the rejection (the symlink survives
-    both as a symlink AND as a target), the originally-failing tracked
-    files are STILL cleaned up in the same run, and the pipeline
-    terminates at ``complete`` (NOT ``failed_terminal``).
-
-    This is the BLACK-BOX proof that ``delete_file_from_repo``'s
-    symlink check (the new hardening wired into the full pipeline
-    through ``_apply_safe_deletes``'s try/except Exception which logs
-    the rejection at WARNING) is actually exercised by the
-    cleanup -> commit transition.
-    """
     repo_root = Path(engine_internal_workspace_with_symlink.root)
     policy_bundle = _default_policy_bundle()
 
@@ -738,7 +624,6 @@ def test_pipeline_cleanup_to_commit_rejects_symlink_delete_end_to_end(
 
 
 def _install_hook(repo_root: Path, name: str, script: str) -> None:
-    """Install a real, executable git hook file under ``.git/hooks``."""
     hook = repo_root / ".git" / "hooks" / name
     hook.parent.mkdir(parents=True, exist_ok=True)
     hook.write_text(script, encoding="utf-8")
@@ -746,7 +631,6 @@ def _install_hook(repo_root: Path, name: str, script: str) -> None:
 
 
 def _approved_repo(repo_root: Path) -> tuple[str, str]:
-    """Stage one tracked change and return ``(approved_tree_sha, head_sha)``."""
     readme = repo_root / "README.md"
     readme.write_text("approved change\n", encoding="utf-8")
     repo = Repo(repo_root)
@@ -759,7 +643,6 @@ def _approved_repo(repo_root: Path) -> tuple[str, str]:
 
 
 def _commit_history_shas(repo_root: Path) -> list[str]:
-    """Return the SHAs reachable from HEAD, newest first."""
     repo = Repo(repo_root)
     try:
         return [entry.hexsha for entry in repo.iter_commits("HEAD")]
@@ -770,12 +653,6 @@ def _commit_history_shas(repo_root: Path) -> list[str]:
 def test_sha_bound_commit_runs_pre_commit_hook_and_a_blocking_hook_stops_the_commit(
     tmp_git_repo: Path,
 ) -> None:
-    """A real ``pre-commit`` hook that fails blocks the approved commit.
-
-    The commit goes through a real ``git commit``, so the repository's own
-    hook runs. A non-zero hook exit means no commit is created, HEAD does
-    not move, and the failure is surfaced instead of swallowed.
-    """
     repo_root = tmp_git_repo
     approved_tree, head_before = _approved_repo(repo_root)
     _install_hook(
@@ -808,13 +685,6 @@ def test_sha_bound_commit_runs_pre_commit_hook_and_a_blocking_hook_stops_the_com
 
 
 def test_sha_bound_commit_refuses_a_hook_mutated_tree(tmp_git_repo: Path) -> None:
-    """A ``pre-commit`` hook that rewrites the index cannot smuggle a tree.
-
-    The hook stages an extra file, so the commit git creates carries a tree
-    that the commit review never approved. The executor must refuse that
-    tree: the branch is moved back, the index is restored to the approved
-    tree, and the attempt is reported as an approval mismatch.
-    """
     repo_root = tmp_git_repo
     approved_tree, head_before = _approved_repo(repo_root)
     _install_hook(
@@ -853,7 +723,6 @@ def test_sha_bound_commit_refuses_a_hook_mutated_tree(tmp_git_repo: Path) -> Non
 
 
 def test_sha_bound_commit_publishes_the_approved_tree(tmp_git_repo: Path) -> None:
-    """The normal path commits exactly the tree the commit review approved."""
     repo_root = tmp_git_repo
     approved_tree, head_before = _approved_repo(repo_root)
     _write_commit_message_artifacts(repo_root, "feat: approved tree")
@@ -876,7 +745,6 @@ def test_sha_bound_commit_publishes_the_approved_tree(tmp_git_repo: Path) -> Non
 
 
 def _assert_worktree_is_clean(repo_root: Path) -> None:
-    """Prove the residual scope was committed before pipeline completion."""
     repo = Repo(repo_root)
     try:
         assert not repo.git.status("--porcelain"), (
@@ -887,15 +755,6 @@ def _assert_worktree_is_clean(repo_root: Path) -> None:
 
 
 def _newest_commit_tree_paths(repo_root: Path) -> set[str]:
-    """Return the set of paths in the most recent commit's tree.
-
-    Used by the e2e test to assert that the originally-failing tracked
-    files (which cleanup deleted from disk) are NOT in the new commit's
-    tree. The cleanup phase handler uses ``git rm --cached`` so the
-    files are staged as deletions; the real ``execute_commit_effect``
-    then commits those deletions, so the new commit's tree must not
-    contain them.
-    """
     repo = Repo(repo_root)
     try:
         newest = repo.head.commit
@@ -909,21 +768,6 @@ def _newest_commit_tree_paths(repo_root: Path) -> set[str]:
 
 
 def _head_log_unique_shas(repo_root: Path) -> set[str]:
-    """Return the set of unique SHAs recorded in ``Repo.head.log()``.
-
-    Uses ``Repo.head.log()`` (NOT ``repo.iter_commits('HEAD')``) per
-    plan step 17 / AC-07: ``Repo.head.log`` is the reflog-level view
-    that captures EVERY change to HEAD (commits, branch switches,
-    resets). Deduplicating ``newhexsha`` across the reflog gives the
-    set of unique SHAs HEAD has ever pointed to in this session, which
-    is the strongest possible black-box signal that the
-    cleanup -> commit transition actually created a real commit
-    (a new SHA appears in the post-run reflog that was not present in
-    the pre-run reflog).
-
-    Returns:
-        The set of unique commit SHAs observed in the reflog.
-    """
     repo = Repo(repo_root)
     try:
         return {entry.newhexsha for entry in repo.head.log()}

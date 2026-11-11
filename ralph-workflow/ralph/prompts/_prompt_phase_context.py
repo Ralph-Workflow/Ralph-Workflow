@@ -13,7 +13,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class PromptPhaseContext:
-    """Required inputs for prompt materialization: the phase, workspace, and policy bindings."""
 
     phase: str
     workspace: Workspace

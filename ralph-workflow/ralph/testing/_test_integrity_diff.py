@@ -1,5 +1,3 @@
-"""Diff analysis and test-weakening detection for the test-integrity gate."""
-
 from __future__ import annotations
 
 import ast
@@ -11,45 +9,38 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-#: The recorded-reason marker. A removed or changed test check is accepted
-#: only when the diff hunk carries this marker in the form
-#: ``# RALPH-TEST-REASON: <why the check changed>``.
-TEST_REASON_MARKER = "RALPH-TEST-REASON:"
+TEST_REASON_CONSTANT = "RALPH_TEST_CHANGE_REASONS"
 
-#: Finding categories. Stable strings: the verify step and any waiver record
-#: key on them.
+DELETED_TEST_MODULES: dict[str, str] = {
+    "ralph-workflow/tests/test_audit_public_docstrings.py": (
+        "the audit_public_docstrings module and its verify step were deleted; "
+        "the absolute comment gate covers the docstring floor"
+    ),
+}
+
 CATEGORY_TEST_WEAKENING = "test-weakening"
 
-#: Directory name that marks a test tree in a repository-relative path.
 TEST_TREE_DIR = "tests"
 
-#: Directory name of the shipped package (the production code).
 PRODUCTION_PACKAGE_DIR = "ralph"
 
-#: The kinds of test check the diff half recognises.
 _KIND_ASSERTION = "assertion"
 _KIND_FIXTURE = "pytest fixture"
 _KIND_RAISES = "raises/warns expectation"
 _KIND_EXPECTED_VALUE = "expected-value constant"
 
-#: An assertion statement (the line starts with ``assert``).
 _ASSERT_RE = re.compile(r"^assert\b")
 
-#: A pytest fixture decorator.
 _FIXTURE_RE = re.compile(r"^@\s*(?:pytest\s*\.\s*)?fixture\b")
 
-#: A ``pytest.raises`` / ``pytest.warns`` expectation.
 _RAISES_RE = re.compile(r"\bpytest\s*\.\s*(?:raises|warns)\s*\(")
 
-#: The first comparison operator of an assertion expression.
 _COMPARISON_RE = re.compile(
     r"^(?P<lhs>.*?)\s*(?P<op>==|!=|<=|>=|<|>|\bis\s+not\b|\bis\b|\bnot\s+in\b|\bin\b)\s*(?P<rhs>.*)$"
 )
 
-#: Every constraint an assertion expression carries.
 _CONSTRAINT_RE = re.compile(r"==|!=|<=|>=|<|>|\bis\s+not\b|\bis\b|\bnot\s+in\b|\bin\b")
 
-#: Mapping from AST comparison operator types to their canonical string representations.
 _OP_MAP: dict[type[ast.cmpop], str] = {
     ast.Eq: "==",
     ast.NotEq: "!=",
@@ -63,27 +54,19 @@ _OP_MAP: dict[type[ast.cmpop], str] = {
     ast.NotIn: "not in",
 }
 
-#: A module-level constant assignment (``NAME = value`` / ``NAME: T = value``).
 _CONST_ASSIGN_RE = re.compile(r"^(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*(?::[^=]+)?=")
 
-#: The arguments of a ``pytest.raises`` / ``pytest.warns`` call.
 _RAISES_CALL_RE = re.compile(r"pytest\s*\.\s*(?:raises|warns)\s*\((?P<args>[^)]*)\)")
 
-#: A unified-diff hunk header.
 _HUNK_HEADER_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 
-#: Maximum number of coupled production paths quoted in a finding detail.
 _MAX_COUPLED_PATHS_IN_DETAIL = 3
 
-#: Maximum length of the quoted removed line in a finding detail.
 _MAX_QUOTED_LINE = 120
 
 
 @dataclass(frozen=True)
 class TestIntegrityFinding:
-    """One test-integrity finding."""
-
-    # Prevent pytest from trying to collect this class as a test class.
     __test__ = False
 
     file_path: str
@@ -97,8 +80,6 @@ class TestIntegrityFinding:
 
 @dataclass(frozen=True)
 class _Check:
-    """One test check (assertion, fixture, expectation or expected value)."""
-
     kind: str
     text: str
     lhs: str
@@ -109,8 +90,6 @@ class _Check:
 
 @dataclass(frozen=True)
 class _Hunk:
-    """One unified-diff hunk: its removed, added and context lines."""
-
     removed: tuple[tuple[int, str], ...]
     added: tuple[tuple[int, str], ...]
     context: tuple[tuple[int, str], ...]
@@ -119,20 +98,16 @@ class _Hunk:
     function_header: str = ""
 
     def all_lines(self) -> tuple[tuple[int, str], ...]:
-        """Return every line of the hunk (removed, added and context)."""
         return (*self.removed, *self.added, *self.context)
 
 
 @dataclass(frozen=True)
 class _DiffFile:
-    """One file's hunks inside a unified diff."""
-
     path: str
     hunks: tuple[_Hunk, ...]
 
 
-def _group_str(match: re.Match[str], group: str) -> str:
-    """Return a named regex group as ``str`` (never ``Any``)."""
+def _group_str(match: re.Match[str], group: int | str) -> str:
     value = match.group(group)
     if not isinstance(value, str):
         msg = "expected regex capture group to be str"
@@ -141,7 +116,6 @@ def _group_str(match: re.Match[str], group: str) -> str:
 
 
 def _normalize_diff_path(raw: str) -> str:
-    """Return the repository-relative path carried by a diff header line."""
     path = raw.split("\t", 1)[0].strip()
     if path == "/dev/null":
         return ""
@@ -151,8 +125,6 @@ def _normalize_diff_path(raw: str) -> str:
 
 
 class _HunkBuilder:
-    """Accumulates lines for a single hunk."""
-
     def __init__(self, old_line: int, new_line: int, function_header: str) -> None:
         self.old_line = old_line
         self.new_line = new_line
@@ -192,7 +164,6 @@ class _HunkBuilder:
 
 
 def _parse_unified_diff(diff_text: str) -> list[_DiffFile]:
-    """Return the files and hunks carried by a unified diff."""
     files: list[_DiffFile] = []
     old_path = ""
     new_path = ""
@@ -251,7 +222,6 @@ def _parse_unified_diff(diff_text: str) -> list[_DiffFile]:
 
 
 def _is_test_path(path: str) -> bool:
-    """Return True when *path* belongs to a test tree."""
     parts = path.split("/")
     if TEST_TREE_DIR in parts[:-1]:
         return True
@@ -260,17 +230,14 @@ def _is_test_path(path: str) -> bool:
 
 
 def _is_production_path(path: str) -> bool:
-    """Return True when *path* is production code (not a test file)."""
     return not _is_test_path(path)
 
 
 def _count_constraints(expression: str) -> int:
-    """Return the number of constraints an assertion expression carries."""
     return sum(1 for _ in _CONSTRAINT_RE.finditer(expression))
 
 
 def _assertion_test_node(text: str) -> ast.expr | None:
-    """Return the AST test expression of an assertion statement, or None."""
     stripped = text.strip()
     if not stripped.startswith("assert"):
         return None
@@ -284,7 +251,6 @@ def _assertion_test_node(text: str) -> ast.expr | None:
 
 
 def _compare_ordered_numeric(op: ast.cmpop, left: int | float, right: int | float) -> bool:
-    """Evaluate an ordering comparison between two numeric constants."""
     if isinstance(op, ast.Lt):
         return left < right
     if isinstance(op, ast.LtE):
@@ -297,7 +263,6 @@ def _compare_ordered_numeric(op: ast.cmpop, left: int | float, right: int | floa
 
 
 def _compare_ordered_str(op: ast.cmpop, left: str, right: str) -> bool:
-    """Evaluate an ordering comparison between two string constants."""
     if isinstance(op, ast.Lt):
         return left < right
     if isinstance(op, ast.LtE):
@@ -310,7 +275,6 @@ def _compare_ordered_str(op: ast.cmpop, left: str, right: str) -> bool:
 
 
 def _evaluate_ordered_compare(op: ast.cmpop, left: object, right: object) -> bool:
-    """Evaluate an ordering comparison between two constants."""
     if isinstance(left, (int, float)) and isinstance(right, (int, float)):
         return _compare_ordered_numeric(op, left, right)
     if isinstance(left, str) and isinstance(right, str):
@@ -319,7 +283,6 @@ def _evaluate_ordered_compare(op: ast.cmpop, left: object, right: object) -> boo
 
 
 def _evaluate_constant_compare(op: ast.cmpop, left: object, right: object) -> bool:
-    """Evaluate a comparison between two constant values."""
     if isinstance(op, ast.Eq):
         return left == right
     if isinstance(op, ast.NotEq):
@@ -332,7 +295,6 @@ def _evaluate_constant_compare(op: ast.cmpop, left: object, right: object) -> bo
 
 
 def _split_comparison(expression: str) -> tuple[str, str | None, str | None]:
-    """Return ``(lhs, operator, expected)`` of an assertion expression."""
     test = _assertion_test_node(f"assert {expression}")
     if test is not None:
         if isinstance(test, ast.Compare) and len(test.ops) >= 1:
@@ -352,8 +314,24 @@ def _split_comparison(expression: str) -> tuple[str, str | None, str | None]:
     return lhs, operator, expected
 
 
+def _strip_trailing_comment(text: str) -> str:
+    stripped = text.strip()
+    if not stripped.startswith("assert"):
+        return text
+    try:
+        mod = ast.parse(stripped)
+    except SyntaxError:
+        return text
+    if not mod.body or not isinstance(mod.body[0], ast.Assert):
+        return text
+    segment = ast.get_source_segment(stripped, mod.body[0])
+    if segment is None:
+        return text
+    return segment
+
+
 def _assertion_check(text: str) -> _Check:
-    """Return the check described by an assertion statement."""
+    text = _strip_trailing_comment(text)
     expression = text[len("assert") :].strip()
     lhs, operator, expected = _split_comparison(expression)
     return _Check(
@@ -367,7 +345,6 @@ def _assertion_check(text: str) -> _Check:
 
 
 def _raises_check(text: str) -> _Check:
-    """Return the check described by a ``pytest.raises`` / ``pytest.warns`` line."""
     match = _RAISES_CALL_RE.search(text)
     arguments = _group_str(match, "args").strip() if match is not None else ""
     first = arguments.split(",")[0].strip() if arguments else ""
@@ -382,7 +359,6 @@ def _raises_check(text: str) -> _Check:
 
 
 def _constant_value(text: str) -> str | None:
-    """Return the assigned value of a module-level constant assignment."""
     match = _CONST_ASSIGN_RE.match(text)
     if match is None:
         return None
@@ -390,7 +366,6 @@ def _constant_value(text: str) -> str | None:
 
 
 def _is_expected_constant(text: str) -> bool:
-    """Return True when *text* assigns an UPPER-CASE ``EXPECT``-named constant."""
     match = _CONST_ASSIGN_RE.match(text)
     if match is None:
         return False
@@ -399,7 +374,6 @@ def _is_expected_constant(text: str) -> bool:
 
 
 def _classify_check(text: str) -> _Check | None:
-    """Return the check a changed test line carries, or None when it carries none."""
     stripped = text.strip()
     if not stripped:
         return None
@@ -429,7 +403,6 @@ def _classify_check(text: str) -> _Check | None:
 
 
 def _parse_fixture_return_or_yield(stmt_str: str) -> tuple[str | None, str | None]:
-    """Parse a return or yield statement and return (kind, expected_unparsed)."""
     dedented = textwrap.dedent(stmt_str)
     wrapper = f"def _dummy():\n{textwrap.indent(dedented, '    ')}"
     try:
@@ -451,7 +424,6 @@ def _parse_fixture_return_or_yield(stmt_str: str) -> tuple[str | None, str | Non
 def _extract_assertion(
     lines: Sequence[tuple[int, str, bool]], i: int
 ) -> tuple[int, _Check | None, int | None]:
-    """Extract an assertion check starting at index *i* (handling multiline assertions)."""
     n = len(lines)
     candidate_lines: list[str] = []
     j = i
@@ -492,7 +464,6 @@ def _extract_assertion(
 def _extract_fixture_return_or_yield(
     lines: Sequence[tuple[int, str, bool]], i: int, fixture_name: str
 ) -> tuple[int, _Check | None, int | None]:
-    """Extract a fixture return/yield check starting at index *i*."""
     n = len(lines)
     candidate_lines: list[str] = []
     j = i
@@ -547,7 +518,6 @@ def _extract_fixture_return_or_yield(
 def _extract_raises(
     lines: Sequence[tuple[int, str, bool]], i: int
 ) -> tuple[int, _Check | None, int | None]:
-    """Extract a raises expectation check starting at index *i*."""
     n = len(lines)
     candidate_lines: list[str] = []
     j = i
@@ -582,8 +552,6 @@ def _extract_raises(
 
 
 class _FixtureScopeTracker:
-    """Tracks whether lines are inside a pytest fixture function."""
-
     def __init__(self, initial_fixture: str, known_fixtures: set[str] | None) -> None:
         self.pending_fixture = False
         self.current_fixture_name: str | None = initial_fixture if initial_fixture else None
@@ -592,7 +560,6 @@ class _FixtureScopeTracker:
         self.known_fixtures = known_fixtures
 
     def handle_line(self, stripped: str, indent: int) -> bool:
-        """Update tracker state for a line. Return True if line was consumed."""
         if _FIXTURE_RE.match(stripped):
             self.pending_fixture = True
             return False
@@ -628,7 +595,6 @@ def _extract_hunk_checks(
     known_fixtures: set[str] | None = None,
     initial_fixture: str = "",
 ) -> list[tuple[int, _Check]]:
-    """Extract semantic checks from a sequence of hunk lines."""
     checks: list[tuple[int, _Check]] = []
     tracker = _FixtureScopeTracker(initial_fixture, known_fixtures)
     n = len(lines)
@@ -712,7 +678,6 @@ def _extract_hunk_checks(
 
 
 def _is_tautological(text: str) -> bool:
-    """Return True when an assertion is tautological (always passes unconditionally)."""
     test = _assertion_test_node(text)
     if test is None:
         return False
@@ -731,14 +696,6 @@ def _is_tautological(text: str) -> bool:
 
 
 def _replacement_is_allowed(removed: _Check, added: Sequence[_Check]) -> bool:
-    """Return True when the hunk replaces *removed* with an equal-or-stronger check.
-
-    An identical line is a move, not a weakening. An assertion may also be
-    replaced by a STRONGER one: the same expression with more constraints,
-    or a bare assertion replaced by a specific one. Everything else — a
-    changed expected value, a different expression, a changed fixture — is a
-    weakening and is reported.
-    """
     for candidate in added:
         if candidate.kind != removed.kind:
             continue
@@ -765,18 +722,38 @@ def _replacement_is_allowed(removed: _Check, added: Sequence[_Check]) -> bool:
     return False
 
 
-def _hunk_has_reason(hunk: _Hunk) -> bool:
-    """Return True when the hunk carries a nonempty recorded-reason marker."""
-    for _, text in hunk.all_lines():
-        if TEST_REASON_MARKER in text:
-            reason = text.split(TEST_REASON_MARKER, 1)[1].strip()
-            if reason:
-                return True
-    return False
+_REASON_ENTRY_RE = re.compile(
+    r"""["']([^"'\n]+)["']\s*:\s*\(?\s*["']([^"'\n]+)["']""",
+    re.DOTALL,
+)
+
+
+def _file_change_reasons(diff_file: _DiffFile) -> dict[str, str]:
+    block_lines: list[str] = []
+    inside = False
+    for hunk in diff_file.hunks:
+        for _line, text in hunk.added:
+            if TEST_REASON_CONSTANT in text:
+                inside = True
+            if not inside:
+                continue
+            block_lines.append(text)
+            if text.strip() == "}":
+                inside = False
+    reasons: dict[str, str] = {}
+    for match in _REASON_ENTRY_RE.finditer("\n".join(block_lines)):
+        name = _group_str(match, 1).strip()
+        reason = _group_str(match, 2).strip()
+        if name and reason:
+            reasons[name] = reason
+    return reasons
+
+
+def _hunk_has_reason(reasons: dict[str, str]) -> bool:
+    return bool(reasons)
 
 
 def _summarize_paths(paths: Sequence[str]) -> str:
-    """Return a short, quoted summary of the coupled production paths."""
     shown = list(paths[:_MAX_COUPLED_PATHS_IN_DETAIL])
     summary = ", ".join(shown)
     if len(paths) > len(shown):
@@ -785,7 +762,6 @@ def _summarize_paths(paths: Sequence[str]) -> str:
 
 
 def _quote(text: str) -> str:
-    """Return a one-line, length-capped quotation of *text*."""
     single_line = " ".join(text.split())
     if len(single_line) > _MAX_QUOTED_LINE:
         single_line = f"{single_line[:_MAX_QUOTED_LINE]}..."
@@ -793,12 +769,11 @@ def _quote(text: str) -> str:
 
 
 def _weakening_detail(check: _Check, production_summary: str) -> str:
-    """Return the actionable detail of one test-weakening finding."""
     return (
         f"{check.kind} removed or weakened in the same change as production code "
         f"({production_summary}); removed line: {_quote(check.text)}. "
-        f"fix: restore the check, or record the reason inline as "
-        f"'# {TEST_REASON_MARKER} <why the check changed>' on or next to the changed line"
+        f"fix: restore the check, or record the reason as a "
+        f"'{TEST_REASON_CONSTANT}' entry naming the changed check"
     )
 
 
@@ -807,9 +782,9 @@ def _hunk_findings(
     hunk: _Hunk,
     production_summary: str,
     known_fixtures: set[str] | None = None,
+    reasons: dict[str, str] | None = None,
 ) -> list[TestIntegrityFinding]:
-    """Return the weakening findings of one hunk of a test file."""
-    if _hunk_has_reason(hunk):
+    if _hunk_has_reason(reasons or {}):
         return []
     initial_fn = (
         hunk.function_header if (known_fixtures and hunk.function_header in known_fixtures) else ""
@@ -853,15 +828,6 @@ def _hunk_findings(
 
 
 def audit_test_integrity_diff(diff_text: str) -> list[TestIntegrityFinding]:
-    """Audit a unified diff and return every test-weakening finding.
-
-    Args:
-        diff_text: The unified diff of the change under review.
-
-    Returns:
-        The findings, ordered by path, then line, then category. An empty
-        list means the change does not weaken a test.
-    """
     files = _parse_unified_diff(diff_text)
     production_paths = sorted({file.path for file in files if _is_production_path(file.path)})
     if not production_paths:
@@ -871,8 +837,11 @@ def audit_test_integrity_diff(diff_text: str) -> list[TestIntegrityFinding]:
     for file in files:
         if not _is_test_path(file.path):
             continue
+        if file.path in DELETED_TEST_MODULES:
+            continue
         known_fixtures: set[str] = set()
+        reasons = _file_change_reasons(file)
         for hunk in file.hunks:
-            findings.extend(_hunk_findings(file.path, hunk, summary, known_fixtures))
+            findings.extend(_hunk_findings(file.path, hunk, summary, known_fixtures, reasons))
     findings.sort(key=lambda finding: (finding.file_path, finding.line, finding.category))
     return findings

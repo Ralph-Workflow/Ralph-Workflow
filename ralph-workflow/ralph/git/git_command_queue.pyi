@@ -11,25 +11,18 @@ from ralph.git.git_call_policy import GitCallClass
 from ralph.git.git_run_result import GitOutcome, GitRunResult
 from ralph.git.subprocess_runner import GitRunOptions
 
-#: Capacity of the bounded outcome log retained on each queue
 _HEALTH_LOG_CAP: int
 
-#: Saturation ceiling for consecutive-timeout counter
 _MAX_CONSECUTIVE_TIMEOUTS: int
 
-#: Minimum path depth for a recognized linked-worktree git dir
 _WORKTREE_GIT_DIR_MIN_PARTS: int
 
-#: Trailing path parts in a worktree git dir above the common git dir
 _WORKTREE_GIT_DIR_UP_LEVELS: int
 
-#: Secondary age threshold of the lease-steal evidence gate
 _LEASE_STALE_SECONDS: float
 
-#: The liveness verdict of a lease holder
 LeaseLiveness = Literal["live", "dead", "unknown"]
 
-#: Why a lease steal was allowed or refused
 LeaseStealReason = Literal[
     "holder_dead",
     "holder_dead_and_stale",

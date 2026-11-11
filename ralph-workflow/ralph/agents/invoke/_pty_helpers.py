@@ -1,4 +1,3 @@
-"""VT/PTY helper functions for interactive Claude mode."""
 
 from __future__ import annotations
 
@@ -63,11 +62,6 @@ _MENU_APPROVAL_COUNT_THRESHOLD = 2
 _MIN_PREFIX_CHAR_LEN = 4
 _MENU_QUIESCENCE_SECONDS = 0.75
 _RECENT_CHOICE_LINES_MAX = 20
-# wt-024 M9 (AC-07): bound ``_transcript_session_ids`` so the
-# session-dedup list cannot grow unboundedly across a long
-# invocation. 64 covers the dedup window (recent-session correlation)
-# without leaking entries for sessions that have long since rotated
-# out of the watchdog's view.
 _MAX_TRANSCRIPT_SESSION_IDS = 64
 
 
@@ -95,14 +89,6 @@ def _visible_tui_text(text: str) -> str:
 
 
 def _fuzzy_contains_permission_prompt(text: str) -> bool:
-    """Fuzzy detection of interactive permission/approval prompts.
-
-    Permission prompts ask Claude to do something (allow tool, enable mode, etc).
-    Action chooser menus (Retry/Skip/Exit) ask user to pick a task action.
-
-    We detect permission prompts by looking for permission-related keywords
-    in the text, which is robust against format variations.
-    """
     visible = normalize_vt_text(text)
     lower = visible.lower()
     lines = [line.strip().lower() for line in visible.splitlines() if line.strip()]
@@ -143,11 +129,6 @@ def _option_index_score(pair: tuple[int, int]) -> int:
 
 
 def _simple_auto_approve(text: str) -> str | None:
-    """Auto-approve any permission prompt by scoring options for safety.
-
-    Scores each option by approval/rejection keyword weight, picks the best.
-    Falls back to plain Enter when scoring is ambiguous.
-    """
     if not _fuzzy_contains_permission_prompt(text):
         return None
 

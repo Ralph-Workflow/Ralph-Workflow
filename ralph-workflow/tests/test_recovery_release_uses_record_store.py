@@ -1,20 +1,3 @@
-"""Caller-boundary release-refusal tests for the three RELEASE_DIAGNOSTIC sites.
-
-Unit WU-1b. Each test drives a REAL release caller across the PRESENT,
-BUSY, and UNREADABLE race windows and asserts the typed refusal outcome
-plus byte-for-byte UNCHANGED record bytes on disk:
-
-- recovery: ``auto_integrate_recovery._maybe_release_diagnostic``
-- diagnostic: ``_integration_diagnostic._complete_or_intervene``
-- remote reconcile: ``_remote_reconcile_recovery._apply_release_or_refuse``
-  (also reached through ``_maybe_release_target_diagnostic``)
-
-Every refusal case asserts the record bytes on disk are byte-for-byte
-identical before and after the call: a refusal must never overwrite.
-The typed busy decision authority (``busy_refusal_outcome`` re-exports) is
-pinned too.
-"""
-
 from __future__ import annotations
 
 import errno
@@ -72,23 +55,7 @@ RECORD_FILE = Path(".agent") / AUTO_INTEGRATE_RECORD_FILENAME
 DEFAULT_BACKEND: FileBackend = PathFileBackend()
 
 
-# ---------------------------------------------------------------------------
-# Seams
-# ---------------------------------------------------------------------------
-
-
 class _InjectedBackend:
-    """FileBackend wrapper that injects one typed race window at call N.
-
-    ``fail_mode="busy"`` makes the Nth ``exists`` call raise
-    ``OSError(EAGAIN)`` (transient lock contention -> BUSY).
-    ``fail_mode="unreadable"`` makes the Nth ``read_text`` call raise a
-    generic ``OSError`` (backend read failure -> UNREADABLE). Earlier
-    and later calls are fully transparent, so the caller's own
-    top-level read succeeds and the injection lands exactly inside the
-    record store's re-read during the transition.
-    """
-
     def __init__(self, inner: FileBackend, fail_mode: str, fail_on_call: int) -> None:
         self._inner = inner
         self._fail_mode = fail_mode
@@ -134,8 +101,6 @@ class _InjectedBackend:
 
 
 class _UnchangedCollector(InMemoryOperationEvidenceCollector):
-    """Collector whose verdict is always UNCHANGED (positive evidence)."""
-
     def __init__(self) -> None:
         from ralph.pipeline.operation_fact import OperationFact
 
@@ -143,7 +108,6 @@ class _UnchangedCollector(InMemoryOperationEvidenceCollector):
 
 
 def _verified_record(owning_worktree: str | None = None) -> IntegrationRecord:
-    """A PRESENT integrating record whose lease is valid (verdict UNCHANGED)."""
     import time
 
     record = IntegrationRecord(
@@ -165,13 +129,11 @@ def _verified_record(owning_worktree: str | None = None) -> IntegrationRecord:
 
 
 def _write_present_record(tmp_path: Path, record: IntegrationRecord | None = None) -> bytes:
-    """Write a PRESENT record; return its exact on-disk bytes."""
     write_record(tmp_path, record if record is not None else _verified_record(str(tmp_path)))
     return (tmp_path / RECORD_FILE).read_bytes()
 
 
 def _install_unchanged_collector(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Install the always-UNCHANGED collector as the diagnostic-path default."""
     from ralph.pipeline._integration_diagnostic import set_operation_evidence_collector
 
     set_operation_evidence_collector(_UnchangedCollector())
@@ -182,13 +144,7 @@ def _install_unchanged_collector(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _assert_bytes_unchanged(record_file: Path, before: bytes) -> None:
-    """The single strongest refusal contract: no overwrite, ever."""
     assert record_file.read_bytes() == before
-
-
-# ---------------------------------------------------------------------------
-# busy_refusal_outcome canonical mapping (re-exported by all three modules)
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -200,19 +156,13 @@ def _assert_bytes_unchanged(record_file: Path, before: bytes) -> None:
     ],
 )
 class TestBusyRetryActionMapping:
-    """The typed BUSY decision authority is identical at all three sites."""
-
     def test_unexpired_deadline_waits_for_bounded_retry(self, busy_refusal_outcome: object) -> None:
-        # 999 s ahead: unexpired and inside the one-hour horizon writers may
-        # arm. A deadline further ahead is a previous boot's monotonic reading
-        # and expires (tests/test_integration_retry_deadline_reboot.py).
         action = busy_refusal_outcome(1_000.0, clock=lambda: 1.0)
         assert action is IntegrationAction.WAIT_FOR_BOUNDED_RETRY
 
     def test_missing_deadline_fails_closed_to_stale_intent(
         self, busy_refusal_outcome: object
     ) -> None:
-        """A missing deadline is the typed STALE_INTENT verdict, never a hand-off."""
         action = busy_refusal_outcome(None, clock=lambda: 1.0)
         assert action is RecordFactOutcome.STALE_INTENT
         assert ladder_rung_for_record_fact_outcome(action) is CleanupLadderRung.NORMAL_CLEANUP
@@ -220,24 +170,15 @@ class TestBusyRetryActionMapping:
     def test_expired_deadline_fails_closed_to_stale_intent(
         self, busy_refusal_outcome: object
     ) -> None:
-        """An expired deadline is the typed STALE_INTENT verdict, never a hand-off."""
         action = busy_refusal_outcome(10.0, clock=lambda: 100.0)
         assert action is RecordFactOutcome.STALE_INTENT
         assert ladder_rung_for_record_fact_outcome(action) is CleanupLadderRung.NORMAL_CLEANUP
 
 
-# ---------------------------------------------------------------------------
-# Site 1: recovery - auto_integrate_recovery._maybe_release_diagnostic
-# ---------------------------------------------------------------------------
-
-
 class TestRecoveryReleaseRefusals:
-    """``recover_incomplete_integration``'s release path (PRESENT record)."""
-
     def test_present_record_released_through_store(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A PRESENT record releases through the typed store (not a bare write)."""
         _install_unchanged_collector(monkeypatch)
         before = _write_present_record(tmp_path)
         record_file = tmp_path / RECORD_FILE
@@ -245,20 +186,15 @@ class TestRecoveryReleaseRefusals:
         assert isinstance(outcome, IntegrationRecord)
         assert not outcome.diagnostic_evidence
         assert outcome.diagnostic_ownership is None
-        # The store rewrote the record via RELEASE_DIAGNOSTIC_EVIDENCE;
-        # identity fields survive.
         assert outcome.target == "main"
         assert outcome.pre_feature_sha == "a" * 40
-        assert record_file.read_bytes() != before  # evidence released on disk
+        assert record_file.read_bytes() != before
 
     def test_busy_refusal_retains_record_bytes(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """BUSY at the store's re-read maps to a retained skip; bytes untouched."""
         before = _write_present_record(tmp_path)
         record_file = tmp_path / RECORD_FILE
-        # Call 1 = the release site's top-level read; call 2 = the store's
-        # re-read inside apply_record_transition.
         backend = _InjectedBackend(DEFAULT_BACKEND, "busy", fail_on_call=2)
         assert isinstance(backend, object)
         outcome = _maybe_release_diagnostic(tmp_path, WorkspaceScope(tmp_path), backend)
@@ -274,7 +210,6 @@ class TestRecoveryReleaseRefusals:
     def test_unreadable_refusal_maps_to_typed_ladder_escalation(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """UNREADABLE at the store's re-read maps to the ladder, never an overwrite."""
         _install_unchanged_collector(monkeypatch)
         before = _write_present_record(tmp_path)
         record_file = tmp_path / RECORD_FILE
@@ -290,29 +225,13 @@ class TestRecoveryReleaseRefusals:
         _assert_bytes_unchanged(record_file, before)
 
 
-# ---------------------------------------------------------------------------
-# Site 2: diagnostic - _integration_diagnostic._complete_or_intervene
-# ---------------------------------------------------------------------------
-
-
 class TestDiagnosticCompletionRefusals:
-    """``handoff_integration_diagnostic``'s completion pre-pass release.
-
-    The pre-pass verifies a positive operation-completion proof in a
-    real git repo (HEAD == integrated_feature_sha == pre_target_sha,
-    clean tree) BEFORE the release transition, so the PRESENT case
-    proves the happy path and the BUSY/UNREADABLE cases prove the
-    refusal AFTER the proof passes.
-    """
-
     def _setup(self, tmp_git_repo: Path) -> tuple[Path, Path, bytes]:
         from ralph.git.subprocess_runner import run_git
 
         head = run_git(("rev-parse", "HEAD"), cwd=tmp_git_repo, label="test:head").stdout.strip()
         record = _verified_record(owning_worktree=str(tmp_git_repo))
         record = record.model_copy(update={"integrated_feature_sha": head, "pre_target_sha": head})
-        # The lease format is ``<fingerprint>:<held_at>``; use the
-        # new format so the proof's ownership check parses it.
         import time
 
         record = record.model_copy(
@@ -354,11 +273,6 @@ class TestDiagnosticCompletionRefusals:
         _assert_bytes_unchanged(record_file, before)
 
 
-# ---------------------------------------------------------------------------
-# Site 3: remote reconcile - _apply_release_or_refuse / _maybe_release_target_diagnostic
-# ---------------------------------------------------------------------------
-
-
 def _raise_busy(*args: object, **kwargs: object) -> IntegrationRecord:
     del args, kwargs
     raise RecordBusyError("injected: transient record lock contention")
@@ -370,14 +284,6 @@ def _raise_unreadable(*args: object, **kwargs: object) -> IntegrationRecord:
 
 
 class TestRemoteReconcileReleaseRefusals:
-    """``recover_remote_target_reconcile``'s release path (default backend).
-
-    This site calls ``apply_record_transition`` through its module-level
-    binding with the DEFAULT backend, so the BUSY/UNREADABLE windows are
-    injected at the module's own store binding -- the same catch site the
-    production caller relies on.
-    """
-
     def test_present_record_releases_to_none(self, tmp_path: Path) -> None:
         before = _write_present_record(tmp_path)
         record_file = tmp_path / RECORD_FILE
@@ -397,7 +303,6 @@ class TestRemoteReconcileReleaseRefusals:
         deadline: float | None,
         bounded: bool,
     ) -> None:
-        """BUSY maps through busy_refusal_outcome: bounded wait vs intervention."""
         before = _write_present_record(tmp_path)
         record_file = tmp_path / RECORD_FILE
         monkeypatch.setattr(
@@ -410,8 +315,6 @@ class TestRemoteReconcileReleaseRefusals:
         if bounded:
             assert state.last_outcome is RebaseOutcomeKind.SKIPPED
         else:
-            # No usable deadline: the refusal escalates into the
-            # autonomous fallback ladder, never to an operator.
             assert state.last_outcome is RebaseOutcomeKind.LADDER_ESCALATION
         assert "busy" in (state.last_reason or "")
         assert state.recovery_record_retained is True
@@ -420,7 +323,6 @@ class TestRemoteReconcileReleaseRefusals:
     def test_unreadable_refusal_maps_to_typed_ladder_escalation(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """UNREADABLE maps to the typed ladder escalation, never an overwrite."""
         before = _write_present_record(tmp_path)
         record_file = tmp_path / RECORD_FILE
         monkeypatch.setattr(
@@ -441,7 +343,6 @@ class TestRemoteReconcileReleaseRefusals:
     def test_busy_refusal_via_public_caller_preserves_bytes(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """``_maybe_release_target_diagnostic`` surfaces the same typed refusal."""
         _install_unchanged_collector(monkeypatch)
         before = _write_present_record(tmp_path)
         record_file = tmp_path / RECORD_FILE
@@ -461,13 +362,7 @@ class TestRemoteReconcileReleaseRefusals:
         _assert_bytes_unchanged(record_file, before)
 
 
-# ---------------------------------------------------------------------------
-# Cross-site: the store itself owns the refusal (never a bare overwrite)
-# ---------------------------------------------------------------------------
-
-
 def test_store_refuses_busy_without_overwriting(tmp_path: Path) -> None:
-    """BUSY bytes must survive: the store, not the caller, refuses the write."""
     before = _write_present_record(tmp_path)
     record_file = tmp_path / RECORD_FILE
     backend = _InjectedBackend(DEFAULT_BACKEND, "busy", fail_on_call=1)
@@ -483,7 +378,6 @@ def test_store_refuses_busy_without_overwriting(tmp_path: Path) -> None:
 
 
 def test_store_refuses_unreadable_without_overwriting(tmp_path: Path) -> None:
-    """UNREADABLE bytes are the only ownership proof: never overwritten."""
     record_file = tmp_path / RECORD_FILE
     record_file.parent.mkdir(parents=True, exist_ok=True)
     record_file.write_text("{not valid json", encoding="utf-8")

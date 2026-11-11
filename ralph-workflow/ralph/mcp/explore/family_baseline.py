@@ -1,28 +1,3 @@
-"""Per-family representative baseline flows for the audit register.
-
-The architecture finding requires that every audited family have one
-deterministic representative baseline-flow record so the indexed path
-can be measured against the existing operation model without relying
-on agent transcripts. Each record names the current-operation script
-(the tool calls an agent would make today), the baseline counter
-snapshot (transcript tokens, returned bytes, tool calls, recall),
-and the catalog-token evidence (the rough schema-token cost of the
-tools involved). The Phase 0 numbers are conservative so a future
-re-measurement can only ever shrink them, never inflate them
-silently.
-
-Required family coverage (AC-01 / AC-04): read, list, search,
-edit, git, artifact, exec. These are the seven families whose
-existing tool flow was measured in Phase 0 and whose indexed path
-(or compact/summary mode) is compared against that flow in the
-benchmark gate.
-
-This module lives apart from ``audit_register.py`` so the audit's
-MCP-timeout scan (a full ``ast.parse`` + walk) does not have to
-process the long literal strings in the baseline evidence
-records; the baseline data is consumed only by the audit and
-benchmark code paths, not by the MCP handlers.
-"""
 
 from __future__ import annotations
 
@@ -37,14 +12,6 @@ from ralph.mcp.explore.audit_register import (
 
 @dataclass(frozen=True, slots=True)
 class FamilyBaselineFlow:
-    """Deterministic representative baseline flow for a single family.
-
-    The record is intentionally lightweight: name + tool script +
-    baseline counters + catalog-token evidence. The benchmark harness
-    may use this to assert the indexed flow beats the baseline on the
-    same question without re-deriving the baseline from a live
-    transcript.
-    """
 
     family: AuditFamily
     name: str
@@ -209,7 +176,6 @@ _FAMILY_BASELINE_FLOWS: tuple[FamilyBaselineFlow, ...] = (
 
 
 def family_baseline_flows() -> tuple[FamilyBaselineFlow, ...]:
-    """Return the immutable per-family representative baseline flow."""
     return _FAMILY_BASELINE_FLOWS
 
 

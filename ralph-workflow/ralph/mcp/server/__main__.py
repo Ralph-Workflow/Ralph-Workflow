@@ -1,4 +1,3 @@
-"""Entry point for `python -m ralph.mcp.server`."""
 
 from ralph.mcp.server.runtime import main
 

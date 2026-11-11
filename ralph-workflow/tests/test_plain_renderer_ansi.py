@@ -1,7 +1,3 @@
-"""Tests for ANSI escape stripping in [run-start] and [run-end] blocks.
-
-Consolidated onto ParallelDisplay."""
-
 from __future__ import annotations
 
 from io import StringIO

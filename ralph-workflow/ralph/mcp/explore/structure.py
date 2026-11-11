@@ -1,43 +1,3 @@
-"""Deterministic Python AST and Markdown structure extraction.
-
-The :mod:`structure` module owns the syntax-derived rows that
-back :mod:`ralph.mcp.explore.graph`. Every edge and span carries a
-deterministic id derived from normalized path, span coordinates,
-kind, and extractor version so a no-op reindex produces stable
-logical rows.
-
-Extraction rules (per the prompt):
-
-* ``contains`` edges: file contains class / function / heading /
-  body span. Always emitted when a child span exists.
-* ``defines``: emitted only from parser-recognized definition
-  spans (``ast.FunctionDef`` / ``ast.AsyncFunctionDef`` /
-  ``ast.ClassDef`` / module-level assignments with a syntactically
-  explicit target, Markdown ATX / Setext headings).
-* ``imports``: emitted only from ``ast.Import`` /
-  ``ast.ImportFrom``. Resolution to a local symbol/file is a
-  separate inferred edge with lower confidence.
-* ``calls_syntax``: emitted only when syntax contains a call
-  expression and the callee token/range can be recorded. It does
-  NOT claim semantic dispatch.
-* ``references_text``: emitted from exact token / text matches
-  after identifier normalization. Lower confidence than parser
-  edges.
-* ``inherits_syntax``: emitted only from Python class bases.
-* ``tests``: emitted from deterministic test-naming conventions
-  (path patterns, ``test_`` prefix) plus import/references to a
-  target symbol.
-* ``mentions``: emitted only from comments / docs / Markdown text
-  with exact matched spans.
-
-Confidence and provenance are recorded on every edge so callers can
-distinguish ``extracted`` (parser-verified) from ``inferred`` (text /
-naming) and ``unknown`` (dynamic / reflection / unresolved).
-
-The module is pure (no I/O); the reindex pipeline calls
-:func:`extract_structure` and persists the returned tuples through
-:class:`ralph.mcp.explore.store.ExploreStore.replace_structure_rows`.
-"""
 
 from __future__ import annotations
 
@@ -50,28 +10,16 @@ from typing import Final
 
 from ralph.mcp.explore.store import EdgeRow, SpanRow, SymbolRow
 
-# Phase 2 extractor version. Bumped whenever the schema or the
-# extraction rules change in a way that requires old rows to be
-# rebuilt.
 EXTRACTOR_VERSION: Final[str] = "phase2-structure-v1"
 
-# Stable ids are SHA-256 hex digests of a deterministic payload.
 _ID_BYTES = 32
 
-# Confidence ladder: ``extracted`` is parser-verified (1.0),
-# ``inferred`` is text/naming (0.6), ``ambiguous`` is multi-target
-# or dynamic (0.3).
 CONFIDENCE_EXTRACTED: Final[float] = 1.0
 CONFIDENCE_INFERRED: Final[float] = 0.6
 CONFIDENCE_AMBIGUOUS: Final[float] = 0.3
 
-# Heading detection (ATX + Setext).
 _ATX_HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
 _SETEXT_UNDERLINE_RE = re.compile(r"^[=-]+\s*$")
-# AC-02: Markdown link regex matches inline ``[text](target)``
-# and reference-style ``[text][ref]`` forms. The regex captures
-# the link text/label so we can emit ``mentions`` edges with
-# exact spans.
 _MARKDOWN_LINK_RE = re.compile(r"\[([^\]\n]+)\]\(([^)\n]+)\)")
 _MARKDOWN_AUTOLINK_RE = re.compile(r"<([^>\s]+)>")
 _MARKDOWN_REF_LINK_RE = re.compile(r"\[([^\]\n]+)\]\[([^\]\n]+)\]")
@@ -79,12 +27,6 @@ _MARKDOWN_REF_LINK_RE = re.compile(r"\[([^\]\n]+)\]\[([^\]\n]+)\]")
 
 @dataclass(frozen=True, slots=True)
 class StructureExtraction:
-    """The result of extracting structure from a single file.
-
-    The reindex pipeline persists the spans/symbols/edges via
-    :meth:`ExploreStore.replace_structure_rows` so the values here
-    always travel together with a single ``content_hash``.
-    """
 
     path: str
     content_hash: str
@@ -93,11 +35,9 @@ class StructureExtraction:
     edges: tuple[EdgeRow, ...]
 
 
-# --- Stable-id helpers ----------------------------------------------------
 
 
 def _stable_id(*parts: str) -> str:
-    """Return a SHA-256 hex digest of ``\\x00``-joined ``parts``."""
     payload = "\x00".join(parts)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
@@ -112,7 +52,6 @@ def derive_span_id(
     kind: str,
     content_hash: str,
 ) -> str:
-    """Return the deterministic span id for the given coordinates."""
     return _stable_id(
         "span",
         path,
@@ -133,7 +72,6 @@ def derive_symbol_id(
     kind: str,
     span_id: str,
 ) -> str:
-    """Return the deterministic symbol id for a definition."""
     return _stable_id("sym", path, qualified_name, kind, span_id)
 
 
@@ -145,15 +83,12 @@ def derive_edge_id(
     path: str,
     span_id: str | None,
 ) -> str:
-    """Return the deterministic edge id for a (source, target, relation) tuple."""
     return _stable_id("edge", source_id, target_id, relation, path, span_id or "")
 
 
-# --- Language detection --------------------------------------------------
 
 
 def detect_language(path: str) -> str | None:
-    """Return ``"python"`` / ``"markdown"`` / ``None`` based on extension."""
     lowered = path.lower()
     if lowered.endswith(".py"):
         return "python"
@@ -162,11 +97,9 @@ def detect_language(path: str) -> str | None:
     return None
 
 
-# --- Python extraction ----------------------------------------------------
 
 
 def _line_col(node: ast.AST) -> tuple[int, int, int, int]:
-    """Return ``(start_line, start_col, end_line, end_col)`` for an AST node."""
     start_line = _get_int_attr(node, "lineno", 0)
     start_col = _get_int_attr(node, "col_offset", 0)
     end_line = _get_int_attr(node, "end_lineno", 0)
@@ -175,7 +108,6 @@ def _line_col(node: ast.AST) -> tuple[int, int, int, int]:
 
 
 def _get_int_attr(node: ast.AST, attr: str, default: int) -> int:
-    """Read an integer attribute from an AST node, falling back to ``default``."""
     raw: object = getattr(node, attr, default)
     if isinstance(raw, bool):
         return int(raw)
@@ -192,20 +124,11 @@ def _get_int_attr(node: ast.AST, attr: str, default: int) -> int:
 
 
 def _qualify(parent: str, name: str) -> str:
-    """Join a qualified-name parent and a child name."""
     return f"{parent}.{name}" if parent else name
 
 
 class PythonExtractionError(Exception):
-    """Typed extraction failure raised when Python source fails to parse.
-
-    PA-001 / AC-02: the reindex pipeline translates this exception
-    in its preflight so the per-path failure path appends the file
-    to ``failed_files`` and continues the sorted path loop. Prior
-    lexical/structure rows for the path remain queryable, the dirty
-    entry stays queued, and the failure is retried on the next
-    reindex pass.
-    """
+    pass
 
 
 def extract_python(
@@ -216,20 +139,6 @@ def extract_python(
     generation: int,
     structure_extractor: str = "scalar",
 ) -> StructureExtraction:
-    """Dispatch to the named Python structure extractor.
-
-    ``structure_extractor`` selects between the historical four-pass
-    walker (:func:`extract_python_scalar`) and the single-pass fused
-    walker (:func:`extract_python_accelerated`). The reindex
-    pipeline threads the value through ``ReindexOptions``; unit
-    tests pin the implementation by passing the name explicitly.
-    The default is the scalar path so any caller that omits the
-    argument continues to see the historical behavior.
-    """
-    # Lazy import: ``structure`` is the single source of the
-    # ``StructureExtraction`` dataclass the seam imports. The
-    # seam imports back into this module for the implementation
-    # callables. The lazy import avoids a module-load cycle.
     from ralph.mcp.explore._structure_extractor import (
         select_structure_extractor,
     )
@@ -250,36 +159,6 @@ def extract_python_scalar(
     content_hash: str,
     generation: int,
 ) -> StructureExtraction:
-    """Extract spans/symbols/edges from a Python source ``content``.
-
-    Reference implementation that walks the AST four times: one
-    recursive walker for symbols / contains / defines /
-    inherits_syntax, then one ``ast.walk`` per additional relation
-    (calls, imports), then an O(N^2) body walk for references_text,
-    then a symbol pass for tests, and a line scan for mentions.
-
-    Raises ``PythonExtractionError`` when the source fails to parse. Per
-    the prompt's PA-001 invariant, the reindex pipeline catches the
-    typed exception in its preflight so lexical/structure rows for
-    the path remain queryable. Direct callers of ``extract_python``
-    (and tests) can decide their own recovery contract.
-
-    Edge relation coverage (mechanically evidenced):
-
-    * ``contains`` — file/module/class contains child span.
-    * ``defines`` — emitted only for parser-recognized definitions.
-    * ``imports`` — emitted only from ``ast.Import`` / ``ast.ImportFrom``.
-    * ``calls_syntax`` — emitted only when syntax contains a call
-      expression with a recordable callee token. Does NOT claim
-      semantic dispatch.
-    * ``references_text`` — emitted from exact token / text matches
-      after identifier normalization. Lower confidence than parser
-      edges; provenance is ``inferred``.
-    * ``inherits_syntax`` — emitted only from Python class bases.
-    * ``tests`` — emitted from deterministic test-naming conventions.
-    * ``mentions`` — emitted only from comments with exact matched
-      spans. Must not imply code dependency.
-    """
     spans: list[SpanRow] = []
     symbols: list[SymbolRow] = []
     edges: list[EdgeRow] = []
@@ -360,13 +239,6 @@ def extract_python_scalar(
                             generation=generation,
                         )
                     )
-                    # AC-02: emit a ``defines`` edge from the parent
-                    # symbol to the new definition so callers can
-                    # discover definitions through graph traversal.
-                    # The endpoint ids are the real deterministic
-                    # symbol ids (not synthetic placeholders) and the
-                    # provenance is ``extracted`` because the AST
-                    # recognizes the definition.
                     defines_source_id = f"sym:{path}:{parent_qualified}"
                     edges.append(
                         EdgeRow(
@@ -421,11 +293,9 @@ def extract_python_scalar(
                 child_qualified = parent_qualified
         else:
             child_qualified = parent_qualified
-        # Walk children
         for child in ast.iter_child_nodes(node):
             _walk(child, child_qualified, container_span_id)
 
-    # Walk top-level: the file's container span uses the module node.
     module_start, module_col, module_end, module_end_col = _line_col(tree)
     file_span_id = derive_span_id(
         path=path,
@@ -450,16 +320,9 @@ def extract_python_scalar(
             generation=generation,
         )
     )
-    # Top-level qualified name uses the file basename (without
-    # extension) so callers can resolve ``module.hello`` against
-    # the indexed symbol row.
     module_qualified = Path(path).stem
     _walk(tree, parent_qualified=module_qualified, container_span_id=file_span_id)
 
-    # Calls (calls_syntax). Emitted only when an ast.Call expression
-    # has a recordable callee token. The callee is recorded as a
-    # unresolved target because semantic dispatch is not proven by
-    # syntax alone.
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
             callee: object | None = None
@@ -502,7 +365,6 @@ def extract_python_scalar(
                 )
             )
 
-    # Imports
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
@@ -572,11 +434,6 @@ def extract_python_scalar(
                     )
                 )
 
-    # references_text: emit one edge per defined symbol whose
-    # identifier appears in another symbol's body. We use
-    # ``ast.walk`` to scan function/class bodies for raw token
-    # matches after identifier normalization. The relation is
-    # ``inferred`` (lower confidence than parser-verified edges).
     defined_names: set[str] = {
         symbol_row.name
         for symbol_row in symbols
@@ -591,7 +448,6 @@ def extract_python_scalar(
                 if isinstance(sub, ast.Name) and isinstance(sub.id, str):
                     name = sub.id
                     if name in defined_names:
-                        # Skip the symbol's own definition.
                         body_node_name: str = ""
                         if isinstance(
                             body_node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
@@ -642,12 +498,6 @@ def extract_python_scalar(
                                 )
                                 break
 
-    # tests: emit edges from any function whose name starts with
-    # ``test_`` to the file-level container span. ``tests`` is a
-    # suggested-verification relation, not proof of behavioral
-    # coverage. Deterministic naming + path heuristics drive the
-    # edge; callers must not assume the relation implies the test
-    # actually verifies the target.
     for sym_row in symbols:
         if sym_row.kind == "function" and sym_row.name.startswith("test_"):
             test_span_id = sym_row.span_id
@@ -672,11 +522,6 @@ def extract_python_scalar(
                 )
             )
 
-    # mentions: scan leading ``#``-prefixed comments for defined
-    # symbol names. The relation is ``inferred`` and must never
-    # imply code dependency. Each comment line emits one edge per
-    # matched identifier; the matched token's span is the
-    # comment span itself.
     if defined_names:
         lines_list: list[str] = content.splitlines()
         for line_index, raw_line in enumerate(lines_list, start=1):
@@ -737,16 +582,6 @@ def extract_python_accelerated(
     content_hash: str,
     generation: int,
 ) -> StructureExtraction:
-    """Single-pass fused walker that emits every relation inline.
-
-    Folds the calls, imports, references, tests, and mentions
-    emissions into the recursive walker that already produces
-    symbols and contains / defines edges. The output rows are
-    byte-for-byte identical to the scalar walker. The fused pass
-    eliminates the three redundant ``ast.walk`` traversals and
-    the O(N^2) ``ast.walk(body_node)`` references loop from the
-    historical implementation.
-    """
     spans: list[SpanRow] = []
     symbols: list[SymbolRow] = []
     edges: list[EdgeRow] = []
@@ -781,18 +616,10 @@ def extract_python_accelerated(
         )
     )
 
-    # Names defined in this file (after symbol emission); used to
-    # decide which ``Name`` nodes participate in references_text.
     defined_names: set[str] = set()
-    # Symbol-id index keyed by name, so the references pass can
-    # resolve the source symbol id in O(1) per Name visit.
     name_to_qualified: dict[str, list[str]] = {}
 
     module_qualified = Path(path).stem
-    # Stack of body (start_line, end_line, qualified_name) for the
-    # currently active definition. Names inside a body are emitted
-    # only when their ``lineno`` lies in the active body's range,
-    # and the symbol's own name is excluded.
     body_stack: list[tuple[int, int, str, str]] = []
 
     def _walk(node: ast.AST, parent_qualified: str, container_span_id: str) -> None:
@@ -923,8 +750,6 @@ def extract_python_accelerated(
                                     generation=generation,
                                 )
                             )
-                # tests: emit a tests edge from this definition
-                # when the name follows the test_ prefix.
                 if kind_name == "function" and node_name.startswith("test_"):
                     edges.append(
                         EdgeRow(
@@ -946,19 +771,10 @@ def extract_python_accelerated(
                             generation=generation,
                         )
                     )
-                # Push the active body frame so descendant Name
-                # nodes participate in references_text. The
-                # historical implementation ran one outer
-                # ``ast.walk`` per definition body; this stack
-                # folds the work into the single traversal.
                 body_start, _, body_end, _ = _line_col(node)
                 active_body = (body_start, body_end, child_qualified, node_name)
                 body_stack.append(active_body)
 
-        # In-place per-node relation emission. ``Call`` becomes a
-        # calls_syntax edge. ``Name`` whose id is in
-        # ``defined_names`` becomes a references_text edge
-        # provided the active body is the owning definition.
         if isinstance(node, ast.Call):
             callee: object | None = None
             func_obj: object = node.func
@@ -1069,17 +885,6 @@ def extract_python_accelerated(
             raw_id: object = node.id
             ref_name: str = raw_id if isinstance(raw_id, str) else ""
             if ref_name and ref_name in defined_names and body_stack:
-                # The historical scalar walker iterates EACH
-                # enclosing definition body and emits one edge
-                # per ``ast.Name`` whose identifier is in the
-                # defined-name set. Walking the stack from the
-                # innermost frame outward reproduces that
-                # behaviour without a second ``ast.walk`` pass:
-                # the deepest enclosing body whose name differs
-                # from ``ref_name`` becomes the target, so the
-                # inner self-reference (``b`` inside ``b``) is
-                # filtered but the outer reference (``b``
-                # inside the surrounding ``a``) still emits.
                 ref_line, _, ref_end, ref_end_col = _line_col(node)
                 target_name: str | None = None
                 target_span_id: str | None = None
@@ -1138,13 +943,6 @@ def extract_python_accelerated(
 
     _walk(tree, parent_qualified=module_qualified, container_span_id=file_span_id)
 
-    # mentions: scan leading ``#``-prefixed comments for defined
-    # symbol names. The relation is ``inferred`` and must never
-    # imply code dependency. Each comment line emits one edge per
-    # matched identifier; the matched token's span is the
-    # comment span itself. This step is a pure text scan over
-    # the source ``content`` (no AST cost), so it stays as a
-    # single post-pass.
     if defined_names:
         lines_list: list[str] = content.splitlines()
         for line_index, raw_line in enumerate(lines_list, start=1):
@@ -1202,7 +1000,6 @@ _IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
 def _node_kind(node: ast.AST) -> str | None:
-    """Map an AST node to a stable ``kind`` string for spans."""
     if isinstance(node, ast.ClassDef):
         return "class"
     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -1211,20 +1008,17 @@ def _node_kind(node: ast.AST) -> str | None:
 
 
 def _attr_name(node: ast.AST) -> str | None:
-    """Best-effort attribute name extraction for class-base references."""
     if isinstance(node, ast.Attribute):
         return node.attr
     return None
 
 
-# --- Markdown extraction --------------------------------------------------
 
 
 _HEADING_SLUG_RE = re.compile(r"[^a-z0-9]+")
 
 
 def _slugify(text: str) -> str:
-    """Return a GitHub-style heading anchor (lowercase, hyphenated)."""
     lowered = text.strip().lower()
     slug = _HEADING_SLUG_RE.sub("-", lowered).strip("-")
     return slug
@@ -1237,12 +1031,6 @@ def extract_markdown(
     content_hash: str,
     generation: int,
 ) -> StructureExtraction:
-    """Extract heading spans + heading-as-anchor edges from a Markdown file.
-
-    Captures ATX (``# Title``) and Setext (``Title\\n====``) headings.
-    The head container span uses the entire file range so other
-    spans nest under ``contains``.
-    """
     lines = content.splitlines()
     spans: list[SpanRow] = []
     symbols: list[SymbolRow] = []
@@ -1349,10 +1137,6 @@ def extract_markdown(
                     generation=generation,
                 )
             )
-            # AC-02: emit a ``defines`` edge from the file to the
-            # Markdown heading. The endpoint is the real
-            # deterministic symbol id and provenance is
-            # ``extracted`` because the heading is parser-recognized.
             edges.append(
                 EdgeRow(
                     edge_id=derive_edge_id(
@@ -1451,7 +1235,6 @@ def extract_markdown(
                     generation=generation,
                 )
             )
-            # AC-02: same ``defines`` emission for Setext headings.
             edges.append(
                 EdgeRow(
                     edge_id=derive_edge_id(
@@ -1474,14 +1257,6 @@ def extract_markdown(
             )
             line_no += 2
             continue
-        # AC-02: Markdown links emit ``mentions`` edges with exact
-        # spans. Each inline ``[text](target)`` and reference-style
-        # ``[text][ref]`` match records a span covering the link
-        # text and a ``mentions`` edge from the document span to a
-        # deterministic link symbol id so callers can audit the
-        # relationship. Provenance is ``extracted`` for parser-
-        # detected links; we do not chase the link target, so the
-        # edge describes the textual mention only.
         for link_match in _MARKDOWN_LINK_RE.finditer(line):
             link_text_raw: object = link_match.group(1)
             link_target_raw: object = link_match.group(2)
@@ -1565,7 +1340,6 @@ def extract_markdown(
     )
 
 
-# --- Dispatcher -----------------------------------------------------------
 
 
 def extract_structure(
@@ -1576,12 +1350,6 @@ def extract_structure(
     generation: int,
     structure_extractor: str = "scalar",
 ) -> StructureExtraction:
-    """Dispatch to the per-language extractor; unknown languages return empty.
-
-    ``structure_extractor`` is forwarded to :func:`extract_python`
-    for Python sources and is otherwise ignored. Markdown and
-    other languages do not currently have multiple implementations.
-    """
     language = detect_language(path)
     if language == "python":
         return extract_python(
@@ -1626,9 +1394,4 @@ __all__ = [
 ]
 
 
-# Ponytail: pure module — no I/O, no time imports, no global state.
-# Tests inject content + content_hash; the reindex pipeline owns the
-# I/O boundary.
-# Type-ignore note: Path import is here for future callers that need
-# filesystem hints; the current module is content-string-based.
-_ = Path  # keep the import for downstream callers that need filesystem hints
+_ = Path

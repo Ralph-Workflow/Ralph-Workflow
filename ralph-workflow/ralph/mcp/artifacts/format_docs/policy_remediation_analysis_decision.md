@@ -45,7 +45,7 @@ status: request_changes
 ## Sections
 
 - `## Summary` is required and has exactly one item.
-- `## Criterion Verdicts` is required and non-empty for every decision. Each
+- `## Criterion Verdicts` is required and non-empty for every verdict. Each
   item has a unique `PR-###` ID and `Criterion:`, `Expected observation:`,
   `Verdict:`, non-empty `Evidence:`, and non-empty `Location:` fields. Every
   non-met verdict has a same-ID mirror in `## What Came Up Short`.

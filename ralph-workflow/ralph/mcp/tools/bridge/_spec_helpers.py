@@ -1,4 +1,3 @@
-"""Helper functions and constants for building tool specs."""
 
 from __future__ import annotations
 
@@ -27,7 +26,7 @@ def _is_approved(outcome: object) -> bool:
                 "approved",
                 "allow",
                 "allowed",
-            }  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            }
             for field in ("name", "value", "status")
         )
     for field in ("name", "value", "status"):

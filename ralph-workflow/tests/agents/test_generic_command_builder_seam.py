@@ -1,12 +1,3 @@
-"""Pin the generic :class:`CommandBuilderSpec` seams behind AGY's flags.
-
-The AGY-specific argv behaviour (multi-token ``config.cmd`` override,
-yolo-before-session flag order, ``--add-dir`` workspace flag) is spec
-data any future agent can declare — not an agent-name branch.  These
-tests construct a *non-AGY* spec with each generic flag set to its AGY
-value and assert the matching argv through ``builder.build``.
-"""
-
 from __future__ import annotations
 
 import dataclasses
@@ -46,12 +37,10 @@ _FUTURE_BASE = CommandBuilderSpec(
 
 
 def _future_spec(**overrides: object) -> CommandBuilderSpec:
-    """AGY-shaped spec for a fictional ``futureagent`` binary."""
     return dataclasses.replace(_FUTURE_BASE, **overrides)
 
 
 def test_cmd_argv_override_preserves_wrapper_tokens(tmp_path: Path) -> None:
-    """``cmd_argv_override`` splits ``config.cmd`` into separate argv tokens."""
     builder = ConfigurableCommandBuilder(_future_spec())
     argv = builder.build(
         AgentConfig(
@@ -64,7 +53,6 @@ def test_cmd_argv_override_preserves_wrapper_tokens(tmp_path: Path) -> None:
 
 
 def test_without_cmd_argv_override_only_the_binary_token_is_used(tmp_path: Path) -> None:
-    """The default spec keeps the binary-name behaviour: one token from ``cmd``."""
     builder = ConfigurableCommandBuilder(_future_spec(cmd_argv_override=False))
     argv = builder.build(
         AgentConfig(
@@ -78,7 +66,6 @@ def test_without_cmd_argv_override_only_the_binary_token_is_used(tmp_path: Path)
 
 
 def test_yolo_before_session_orders_yolo_first(tmp_path: Path) -> None:
-    """``yolo_before_session`` emits the autonomy flag before the session flag."""
     builder = ConfigurableCommandBuilder(_future_spec())
     argv = builder.build(
         AgentConfig(
@@ -93,7 +80,6 @@ def test_yolo_before_session_orders_yolo_first(tmp_path: Path) -> None:
 
 
 def test_default_spec_orders_session_first(tmp_path: Path) -> None:
-    """Without ``yolo_before_session`` the session flag comes first (historical order)."""
     builder = ConfigurableCommandBuilder(_future_spec(yolo_before_session=False))
     argv = builder.build(
         AgentConfig(
@@ -108,7 +94,6 @@ def test_default_spec_orders_session_first(tmp_path: Path) -> None:
 
 
 def test_workspace_dir_flag_appends_workspace_path(tmp_path: Path) -> None:
-    """``workspace_dir_flag`` emits the flag pair with the workspace path."""
     builder = ConfigurableCommandBuilder(_future_spec())
     argv = builder.build(
         AgentConfig(cmd="futureagent", transport=AgentTransport.GENERIC),
@@ -124,7 +109,6 @@ def test_workspace_dir_flag_appends_workspace_path(tmp_path: Path) -> None:
 
 
 def test_workspace_flag_absent_without_spec_field(tmp_path: Path) -> None:
-    """A spec without ``workspace_dir_flag`` never emits a workspace directory flag."""
     builder = ConfigurableCommandBuilder(_future_spec(workspace_dir_flag=None))
     argv = builder.build(
         AgentConfig(cmd="futureagent", transport=AgentTransport.GENERIC),
@@ -135,7 +119,6 @@ def test_workspace_flag_absent_without_spec_field(tmp_path: Path) -> None:
 
 
 def test_print_flag_precedes_positional_prompt(tmp_path: Path) -> None:
-    """``print_flag`` is emitted immediately before the positional prompt text."""
     builder = ConfigurableCommandBuilder(_future_spec())
     argv = builder.build(
         AgentConfig(cmd="futureagent", transport=AgentTransport.GENERIC),
@@ -146,13 +129,6 @@ def test_print_flag_precedes_positional_prompt(tmp_path: Path) -> None:
 
 
 def test_future_agent_argv_matches_agy_builder_modulo_command(tmp_path: Path) -> None:
-    """The same spec data on a non-AGY name reproduces the AGY argv verbatim.
-
-    This is the core anti-special-casing pin: AGY's argv is fully
-    described by ``CommandBuilderSpec`` data, so an unrelated agent
-    declaring the same flags gets the same command line (modulo the
-    binary name).
-    """
     future_argv = ConfigurableCommandBuilder(_future_spec()).build(
         AgentConfig(cmd="futureagent", transport=AgentTransport.GENERIC),
         _write_prompt(tmp_path),

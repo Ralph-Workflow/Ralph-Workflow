@@ -1,12 +1,3 @@
-"""Regression tests for unbounded memory growth under heavy file churn.
-
-watchdog queues every inotify event without bound and dispatches them on one
-thread. Per-event classification there, plus a shared-awareness sidecar
-rewrite per change, capped the handler at a few hundred events/s while busy
-builds emit thousands, so long Ralph runs grew to many GB. Dispatch now only
-records the change, and sidecar rewrites are coalesced.
-"""
-
 from __future__ import annotations
 
 import threading
@@ -43,7 +34,6 @@ def _coalescer(
 def test_dispatch_defers_work_and_coalesces_repeated_writes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Dispatch does no per-event work; repeated writes to a file drain once."""
     monkeypatch.setattr(
         "ralph.agents.invoke._workspace_change_coalescer.CHANGE_DRAIN_INTERVAL_SECONDS", 10.0
     )
@@ -61,7 +51,6 @@ def test_dispatch_defers_work_and_coalesces_repeated_writes(
 
 
 def test_moves_into_the_workspace_record_their_destination(tmp_path: Path) -> None:
-    """An in-root move destination is recorded when the source is outside."""
     recorded: list[str] = []
     coalescer = _coalescer(tmp_path / "ws", recorded, [])
     destination = str(tmp_path / "ws" / "moved.py")
@@ -74,7 +63,6 @@ def test_moves_into_the_workspace_record_their_destination(tmp_path: Path) -> No
 
 
 def test_pending_changes_are_capped_and_overflow_is_reported(tmp_path: Path) -> None:
-    """Past the cap, changes are not retained and the overflow is reported."""
     recorded: list[str] = []
     overflows: list[bool] = []
     coalescer = _coalescer(tmp_path, recorded, overflows, max_pending=3)
@@ -89,7 +77,6 @@ def test_pending_changes_are_capped_and_overflow_is_reported(tmp_path: Path) -> 
 
 
 def test_closed_coalescer_drops_late_events(tmp_path: Path) -> None:
-    """Events arriving after teardown never schedule a drain."""
     recorded: list[str] = []
     coalescer = _coalescer(tmp_path, recorded, [])
     coalescer.close()
@@ -173,8 +160,6 @@ class _Sidecar(SharedAwarenessSidecar):
 
 
 class _Owner:
-    """Stands in for the monitor, whose bound method the publisher holds weakly."""
-
     def __init__(self) -> None:
         self.failures: list[str] = []
 
@@ -183,7 +168,6 @@ class _Owner:
 
 
 def test_sidecar_burst_publishes_first_change_then_one_coalesced_rewrite(tmp_path: Path) -> None:
-    """A burst rewrites the sidecar twice, not once per change."""
     sidecar = _Sidecar(tmp_path)
     owner = _Owner()
     clock = [100.0]
@@ -196,13 +180,12 @@ def test_sidecar_burst_publishes_first_change_then_one_coalesced_rewrite(tmp_pat
         publisher.add(f"src/{name}.py")
     assert sidecar.published == [["src/a.py"]]
 
-    publisher.flush()  # the trailing timer's flush
+    publisher.flush()
     assert sidecar.published == [["src/a.py"], ["src/b.py", "src/c.py"]]
     publisher.close()
 
 
 def test_sidecar_publishes_again_once_the_interval_elapses(tmp_path: Path) -> None:
-    """Changes spaced beyond the interval each publish immediately."""
     sidecar = _Sidecar(tmp_path)
     owner = _Owner()
     clock = [100.0]
@@ -219,7 +202,6 @@ def test_sidecar_publishes_again_once_the_interval_elapses(tmp_path: Path) -> No
 
 
 def test_sidecar_failure_is_recorded_and_reported(tmp_path: Path) -> None:
-    """A failed rewrite records the error on the sidecar and notifies the owner."""
     sidecar = _Sidecar(tmp_path, fail=True)
     owner = _Owner()
     publisher = ThrottledSidecarPublisher(
@@ -234,7 +216,6 @@ def test_sidecar_failure_is_recorded_and_reported(tmp_path: Path) -> None:
 
 
 def test_closed_publisher_never_rewrites_the_sidecar(tmp_path: Path) -> None:
-    """A trailing flush after teardown must not recreate a removed sidecar."""
     sidecar = _Sidecar(tmp_path)
     owner = _Owner()
     clock = [100.0]

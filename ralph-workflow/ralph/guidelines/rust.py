@@ -1,10 +1,3 @@
-"""Rust-specific review guideline categories.
-
-Ported from the canonical Rust implementation in
-``ralph-workflow/src/guidelines/rust.rs`` and adapted for the Python port.
-The module exposes a lightweight data container that review prompt builders
-can consume directly.
-"""
 
 from __future__ import annotations
 
@@ -13,12 +6,6 @@ from dataclasses import dataclass, field
 
 @dataclass
 class RustGuidelines:
-    """Rust language-specific review checks.
-
-    The categories mirror the review guideline structure used by the Rust
-    implementation while including Rust-specific guidance around ownership,
-    lifetimes, Clippy, panic-safety, and framework-oriented web handlers.
-    """
 
     quality_checks: list[str] = field(
         default_factory=lambda: [
@@ -128,7 +115,6 @@ class RustGuidelines:
     )
 
     def summary(self) -> str:
-        """Return a short human-readable summary."""
         return (
             f"{len(self.quality_checks)} quality checks, "
             f"{len(self.security_checks)} security checks, "
@@ -136,7 +122,6 @@ class RustGuidelines:
         )
 
     def total_checks(self) -> int:
-        """Return the total number of configured checks."""
         return sum(
             [
                 len(self.quality_checks),

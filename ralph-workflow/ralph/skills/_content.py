@@ -1,11 +1,3 @@
-"""Baseline skill content access.
-
-Reads bundled skill Markdown and metadata from ``ralph.skills.content``
-and materializes it into user-global or per-agent skill directories.
-Preserves user edits when the installed content hash no longer matches
-the managed marker.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -23,18 +15,6 @@ if TYPE_CHECKING:
 
 
 class SkillMetadata(TypedDict):
-    """JSON shape of ``metadata.json`` shipped with the bundled skills.
-
-    The bundle metadata is a MACHINE-EXTENSIBLE manifest: ``skills`` is
-    the ordered list of the shipped skill names and the single source of
-    truth for :data:`BASELINE_SKILL_NAMES`. The manifest deliberately
-    carries NO upstream provenance (no source repository, no source ref,
-    no mirror timestamp): the shipped skills are first-party Ralph
-    Workflow artifacts, so a per-skill upstream dict would be stale
-    provenance the bundle no longer has. A future bundle revision only
-    has to APPEND its names to ``skills``.
-    """
-
     skills: list[str]
 
 
@@ -42,28 +22,19 @@ _MANAGED_MARKER = ".ralph-managed.json"
 
 
 def _read_skill_metadata() -> SkillMetadata:
-    """Load the bundled skill metadata from package resources."""
     content_dir = files(__package__) / "content"
     raw = (content_dir / "metadata.json").read_text(encoding="utf-8")
-    return cast(
-        "SkillMetadata", json.loads(raw)
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    return cast("SkillMetadata", json.loads(raw))
 
 
 BASELINE_SKILL_NAMES: tuple[str, ...] = tuple(_read_skill_metadata()["skills"])
 
 
 def list_skill_names() -> tuple[str, ...]:
-    """Return the names of all bundled baseline skills."""
     return BASELINE_SKILL_NAMES
 
 
 def get_skill_content(name: str) -> str:
-    """Return the Markdown content for a bundled skill.
-
-    Raises:
-        ValueError: If ``name`` is not a bundled baseline skill.
-    """
     if name not in BASELINE_SKILL_NAMES:
         msg = f"Unknown baseline skill: {name}"
         raise ValueError(msg)
@@ -72,12 +43,10 @@ def get_skill_content(name: str) -> str:
 
 
 def get_skill_metadata() -> SkillMetadata:
-    """Return the bundled skill metadata dict."""
     return _read_skill_metadata()
 
 
 def managed_skill_marker(name: str, *, installed_sha256: str) -> dict[str, str]:
-    """Build the contents of a ``.ralph-managed.json`` marker file."""
     return {
         "managed_by": "ralph-workflow",
         "skill": name,
@@ -90,16 +59,8 @@ def materialize_skills_to_dir(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> list[str]:
-    """Write every bundled skill and metadata via an injectable backend.
-
-    Byte-identical rewrites are skipped.
-
-    Returns:
-        The list of skill names written.
-    """
     target.mkdir(parents=True, exist_ok=True)
     written_names: list[str] = []
-    # filesystem-write-ok: low-level skill content materialization helper, gated by installer's commit_skill_writes boundary
     metadata = get_skill_metadata()
     for name in BASELINE_SKILL_NAMES:
         write_text_if_changed(
@@ -109,7 +70,6 @@ def materialize_skills_to_dir(
             encoding="utf-8",
         )
         written_names.append(name)
-    # filesystem-write-ok: low-level skill content materialization helper, gated by installer's commit_skill_writes boundary
     write_text_if_changed(
         backend,
         target / "metadata.json",
@@ -124,18 +84,6 @@ def materialize_skills_to_claude_dir(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> list[str]:
-    """Write Claude-style skill dirs via an injectable backend.
-
-    Byte-identical rewrites are skipped. A skill is skipped when an existing
-    ``SKILL.md`` and ``.ralph-managed.json`` marker indicate user edits.
-
-    Args:
-        target: Root skill directory (e.g. ``~/.claude/skills``).
-        backend: File backend used for materialization writes.
-
-    Returns:
-        The list of skill names materialized.
-    """
     target.mkdir(parents=True, exist_ok=True)
     written_names: list[str] = []
     metadata = get_skill_metadata()
@@ -158,11 +106,9 @@ def materialize_skills_to_claude_dir(
             if stored_sha:
                 current_sha = hashlib.sha256(skill_file.read_bytes()).hexdigest()
                 if current_sha != stored_sha:
-                    continue  # user manually edited; preserve
-        # filesystem-write-ok: low-level skill content materialization helper, gated by installer's commit_skill_writes boundary
+                    continue
         content = get_skill_content(name)
         write_text_if_changed(backend, skill_file, content, encoding="utf-8")
-        # filesystem-write-ok: low-level skill content materialization helper, gated by installer's commit_skill_writes boundary
         content_sha = hashlib.sha256(content.encode("utf-8")).hexdigest()
         write_text_if_changed(
             backend,
@@ -171,7 +117,6 @@ def materialize_skills_to_claude_dir(
             encoding="utf-8",
         )
         written_names.append(name)
-    # filesystem-write-ok: low-level skill content materialization helper, gated by installer's commit_skill_writes boundary
     write_text_if_changed(
         backend,
         target / "metadata.json",

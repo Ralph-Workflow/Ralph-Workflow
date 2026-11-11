@@ -1,4 +1,3 @@
-"""_PolicyPreflightRequest — parameters for policy-backed preflight checks."""
 
 from __future__ import annotations
 

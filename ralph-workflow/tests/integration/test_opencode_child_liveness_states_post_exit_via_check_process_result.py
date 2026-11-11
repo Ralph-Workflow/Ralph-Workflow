@@ -1,16 +1,3 @@
-"""End-to-end regression scenarios for OpenCode child liveness classification.
-
-Three operator-critical scenarios tested as black-box via the public execution strategy API:
-
-1. Child exited cleanly — terminal ack leaves parent completion to durable evidence.
-2. Child hung — process label exists but progress/heartbeat expired → RESUMABLE_CONTINUE
-   (stale process existence alone must NOT hold WAITING_ON_CHILD open).
-3. Child still working — progress lease keeps renewing → WAITING_ON_CHILD maintained.
-
-Also includes post-exit path integration tests that drive check_process_result and
-PostExitWatchdog with FakeClock to validate the planned end-to-end behaviors.
-"""
-
 from __future__ import annotations
 
 import json
@@ -35,12 +22,9 @@ from tests.integration._fake_handle_post_exit import _FakeHandlePostExit
 
 
 class TestPostExitViaCheckProcessResult:
-    """Integration tests exercising check_process_result + PostExitWatchdog with FakeClock."""
-
     def test_terminal_ack_without_parent_evidence_is_resumable(
         self, tmp_path: pytest.FixtureRequest
     ) -> None:
-        """A terminal child ack cannot complete a required artifact phase."""
         t = [0.0]
         reg = ChildLivenessRegistry(
             progress_ttl=45.0,
@@ -88,7 +72,6 @@ class TestPostExitViaCheckProcessResult:
     def test_stale_child_with_os_descendants_raises_after_descendant_wait(
         self, tmp_path: pytest.FixtureRequest
     ) -> None:
-        """Stale registry + OS descendants → waits for quiesce, then raises when not resolved."""
         t = [0.0]
         reg = ChildLivenessRegistry(
             progress_ttl=45.0,
@@ -101,10 +84,8 @@ class TestPostExitViaCheckProcessResult:
         probe = DefaultLivenessProbe(registry=reg)
 
         strategy.observe_line(json.dumps({"type": "child_started", "child_id": "hung2"}))
-        # Advance past stale_label_ttl without progress
         t[0] = 60.0
 
-        # OS descendants still visible to handle but registry is stale
         handle = _FakeHandlePostExit(has_descendants=True)
         clock = FakeClock()
 
@@ -137,7 +118,6 @@ class TestPostExitViaCheckProcessResult:
     def test_fresh_progress_holds_waiting_until_ttl_expires_then_resumes(
         self, tmp_path: pytest.FixtureRequest
     ) -> None:
-        """Fresh progress keeps classify_exit as WAITING_ON_CHILD; expiry yields resumable."""
         t = [0.0]
         reg = ChildLivenessRegistry(
             progress_ttl=45.0,
@@ -152,7 +132,6 @@ class TestPostExitViaCheckProcessResult:
         strategy.observe_line(json.dumps({"type": "child_started", "child_id": "w2"}))
         strategy.observe_line(json.dumps({"type": "child_progress", "child_id": "w2"}))
 
-        # Advance time to just within progress_ttl: child still fresh
         t[0] = 30.0
         handle = _FakeHandlePostExit(has_descendants=False)
 
@@ -161,7 +140,6 @@ class TestPostExitViaCheckProcessResult:
             f"Fresh progress (30s < ttl=45s) should yield WAITING_ON_CHILD; got {result!r}"
         )
 
-        # Advance past progress_ttl: child is now stale
         t[0] = 60.0
         result = strategy.classify_exit(handle, _no_signals(), liveness_probe=probe)
         assert result == AgentExecutionState.RESUMABLE_CONTINUE, (

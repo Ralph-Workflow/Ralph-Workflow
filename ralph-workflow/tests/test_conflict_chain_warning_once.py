@@ -1,5 +1,3 @@
-"""The one-agent conflict-resolution chain warning is emitted once per process."""
-
 from __future__ import annotations
 
 import uuid

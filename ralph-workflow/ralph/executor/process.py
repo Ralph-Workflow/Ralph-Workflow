@@ -1,4 +1,3 @@
-"""Helpers for executing external processes with captured output."""
 
 from __future__ import annotations
 
@@ -19,53 +18,12 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from pathlib import Path
 
-# Standard unix timeout exit code
 TIMEOUT_EXIT_CODE = 124
 
-# Default per-call observability label for every child spawned through
-# ``run_process`` / ``run_process_async``. Recorded on the
-# ``ProcessRecord`` so ``pm.list_records(label_prefix=...)`` and
-# ``pm.cleanup_orphans(label_prefix=...)`` can target the spawned PID.
-# Callers can override per-call via ``ProcessRunOptions(label=...)`` /
-# the ``label=`` kwarg on ``run_process_async``.
-#
-# This comment used to claim these children were "NOT a teardown target"
-# because they are "synchronously reaped on every code path". That was
-# true only of the DIRECT child. ``handle.terminate()`` escalates
-# SIGTERM -> SIGKILL along the direct-child path only; it is not
-# transitive and, without a process group, there was nothing to signal
-# the tree with. So `exec("bin/rails test")` reaped rails and orphaned
-# every parallel worker it had forked: they reparented to PID 1 and
-# survived the call. Those orphans accumulated to 1800+ processes and
-# 35k tasks on a reference host, at which point everything else on the
-# box failed to start a thread — including the Ralph MCP server, whose
-# request handlers died with ``RuntimeError: can't start new thread``
-# after their SSE headers were already written, wedging agent runs.
 _DEFAULT_RUN_PROCESS_LABEL: Final[str] = "executor:run-process"
 
 
 def _reap_subtree(pid: int | None, pgid: int | None = None, *, label: str) -> None:
-    """Reap the whole descendant tree of an exec child, transitively.
-
-    Runs on EVERY exit path (success, timeout, cancellation, error).
-    ``teardown_subtree`` walks all descendants and escalates SIGTERM ->
-    SIGKILL, and falls back to signalling the process group when the host
-    PID is already gone — which is why exec children are spawned with
-    ``start_new_session=True``: without their own session there is no
-    group to signal and deep descendants cannot be reached.
-
-    ``pgid`` must come from ``verified_child_session_pgid`` called while the
-    child was alive. It is what makes the post-exit group sweep safe: by the
-    time this runs on the success path, ``communicate()`` has already reaped
-    the child, and its PID number carries no authority to kill anything.
-
-    ``label`` is the spawn's own label, used as the teardown issuer so the
-    label-family authorization in ``teardown_subtree`` accepts it even when a
-    caller labels the child under another subsystem (e.g. ``agents:...``).
-
-    Best-effort: a teardown failure must never mask the call's own result
-    or exception.
-    """
     if pid is None:
         return
     with contextlib.suppress(Exception):
@@ -73,7 +31,6 @@ def _reap_subtree(pid: int | None, pgid: int | None = None, *, label: str) -> No
 
 
 def _verified_pgid(pid: int | None) -> int | None:
-    """Capture the child's session PGID while it is still alive."""
     if pid is None:
         return None
     try:
@@ -82,16 +39,10 @@ def _verified_pgid(pid: int | None) -> int | None:
         return None
 
 
-# Defense-in-depth bound for the post-terminate pipe drain. The child has
-# already been escalated SIGTERM -> SIGKILL via ``terminate(grace_period_s=0)``,
-# so a healthy OS reaps the pipes within milliseconds. This bound only fires
-# for a wedged (e.g. uninterruptible D-state) child that ignores SIGKILL; we
-# must not hang the caller forever in that pathological case.
 _POST_TERMINATE_DRAIN_SECONDS: Final[float] = 5.0
 
 
 class ProcessExecutionError(RuntimeError):
-    """Raised when a process cannot be started or exceeds its timeout."""
 
     def __init__(
         self,
@@ -116,7 +67,6 @@ class ProcessExecutionError(RuntimeError):
         stdout: str,
         stderr: str,
     ) -> ProcessExecutionError:
-        """Build a timeout error with captured partial output."""
         executable = command[0]
         message = f"Failed to execute '{executable}': timed out"
         if timeout is not None:
@@ -138,7 +88,6 @@ class ProcessExecutionError(RuntimeError):
         command: tuple[str, ...],
         error: OSError,
     ) -> ProcessExecutionError:
-        """Build an execution error from an OS-level failure."""
         return cls(command, f"Failed to execute '{command[0]}': {error}")
 
 
@@ -152,7 +101,6 @@ async def run_process_async(
     label: str | None = None,
     _pm: ProcessManager | None = None,
 ) -> ProcessResult:
-    """Run a process asynchronously and capture its output."""
     cmd = _normalize_command(command, args)
     pm = _pm if _pm is not None else get_process_manager()
     effective_label = label if label is not None else _DEFAULT_RUN_PROCESS_LABEL
@@ -166,9 +114,6 @@ async def run_process_async(
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 label=effective_label,
-                # Own session/group so _reap_subtree can signal the whole
-                # tree even after the direct child is gone. Without it,
-                # forked grandchildren orphan to PID 1 and survive.
                 start_new_session=True,
             ),
         )
@@ -176,7 +121,7 @@ async def run_process_async(
         raise ProcessExecutionError.from_os_error(cmd, exc) from exc
 
     communicate_task: asyncio.Task[tuple[bytes, bytes]]
-    communicate_task = asyncio.create_task(handle.communicate())  # mcp-timeout-ok: wait-bounded
+    communicate_task = asyncio.create_task(handle.communicate())
 
     child_pid = handle.pid
     child_pgid = _verified_pgid(child_pid)
@@ -184,12 +129,7 @@ async def run_process_async(
         done, _pending = await asyncio.wait({communicate_task}, timeout=timeout)
         if communicate_task not in done:
             await handle.terminate(grace_period_s=0)
-            # terminate() only reaches the psutil-enumerated tree; a
-            # daemonized descendant still in the child's group keeps the
-            # pipes open, so sweep the group before draining them.
             _reap_subtree(child_pid, child_pgid, label=effective_label)
-            # Bounded like the sync drain: a wedged child must not make the
-            # caller's ``timeout`` unmeetable.
             drained, _ = await asyncio.wait(
                 {communicate_task}, timeout=_POST_TERMINATE_DRAIN_SECONDS
             )
@@ -198,8 +138,6 @@ async def run_process_async(
             else:
                 communicate_task.cancel()
                 stdout_bytes, stderr_bytes = b"", b""
-            # Return exit code TIMEOUT_EXIT_CODE on timeout (standard unix timeout exit code)
-            # instead of raising an exception, so callers can handle it gracefully
             return ProcessResult(
                 command=cmd,
                 returncode=TIMEOUT_EXIT_CODE,
@@ -215,10 +153,9 @@ async def run_process_async(
             with contextlib.suppress(Exception):
                 await handle.terminate(grace_period_s=0)
             with contextlib.suppress(Exception):
-                await asyncio.wait_for(handle.wait(), timeout=0)  # mcp-timeout-ok: wait_for-bounded
+                await asyncio.wait_for(handle.wait(), timeout=0)
         raise
     finally:
-        # Every exit path, including the two `return`s above: reap the tree.
         _reap_subtree(child_pid, child_pgid, label=effective_label)
 
     rc = handle.returncode if handle.returncode is not None else -1
@@ -237,12 +174,6 @@ def run_process(
     options: ProcessRunOptions | None = None,
     _pm: ProcessManager | None = None,
 ) -> ProcessResult:
-    """Run a process synchronously, optionally capturing output.
-
-    When ``options.capture_output`` is ``False`` the child process inherits the
-    parent's stdout/stderr so output streams directly to the terminal.  The
-    returned ``ProcessResult`` will have empty ``stdout`` and ``stderr`` strings.
-    """
     effective_options = options or ProcessRunOptions()
     cmd = _normalize_command(command, args)
     pm = _pm if _pm is not None else get_process_manager()
@@ -262,8 +193,6 @@ def run_process(
                 stdout=pipe,
                 stderr=pipe,
                 label=effective_label,
-                # See the async spawn above: own session/group so the whole
-                # descendant tree is reachable at teardown.
                 start_new_session=True,
             ),
         )
@@ -276,23 +205,12 @@ def run_process(
         stdout_bytes, stderr_bytes = handle.communicate(timeout=effective_options.timeout)
     except subprocess.TimeoutExpired as timeout_exc:
         handle.terminate(grace_period_s=0)
-        # terminate() only reaches the psutil-enumerated tree; a daemonized
-        # descendant still in the child's group keeps the pipes open, so the
-        # group sweep must run BEFORE the drain, not only in ``finally``.
         _reap_subtree(child_pid, child_pgid, label=effective_label)
-        # Bound the post-terminate drain so a wedged child (one that ignores
-        # SIGKILL, e.g. uninterruptible D-state) cannot hang the caller. The
-        # tree has already been escalated to SIGKILL above, so a healthy OS
-        # closes the pipes within milliseconds; the bound only fires in the
-        # pathological case where the OS never reaps the child. Either way
-        # the output captured so far is kept, never replaced by ``b""``.
         try:
             stdout_bytes, stderr_bytes = handle.communicate(timeout=_POST_TERMINATE_DRAIN_SECONDS)
         except subprocess.TimeoutExpired as drain_exc:
             stdout_bytes = _partial_output(drain_exc, timeout_exc, "output")
             stderr_bytes = _partial_output(drain_exc, timeout_exc, "stderr")
-        # Return exit code TIMEOUT_EXIT_CODE on timeout (standard unix timeout exit code)
-        # instead of raising an exception, so callers can handle it gracefully
         return ProcessResult(
             command=cmd,
             returncode=TIMEOUT_EXIT_CODE,
@@ -304,10 +222,9 @@ def run_process(
             with contextlib.suppress(Exception):
                 handle.terminate(grace_period_s=0)
             with contextlib.suppress(Exception):
-                handle.wait(timeout=0)  # mcp-timeout-ok: bounded
+                handle.wait(timeout=0)
         raise
     finally:
-        # Every exit path, including the timeout `return` above: reap the tree.
         _reap_subtree(child_pid, child_pgid, label=effective_label)
 
     rc = handle.returncode if handle.returncode is not None else -1
@@ -322,12 +239,6 @@ def run_process(
 def _partial_output(
     latest: subprocess.TimeoutExpired, earlier: subprocess.TimeoutExpired, stream: str
 ) -> bytes:
-    """Return the most complete partial ``stream`` a pair of timeouts carried.
-
-    ``Popen.communicate`` attaches everything read so far to the
-    ``TimeoutExpired`` it raises, so the later timeout normally holds the
-    superset; the earlier one is the fallback.
-    """
     for exc in (latest, earlier):
         captured: object = getattr(exc, stream, None)
         if isinstance(captured, bytes) and captured:

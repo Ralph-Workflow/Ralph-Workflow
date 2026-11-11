@@ -1,5 +1,3 @@
-"""Always-capable mock session for coordination tool tests."""
-
 from __future__ import annotations
 
 

@@ -1,20 +1,3 @@
-"""AC10 observation-driven convergence tests with non-default names.
-
-Every test uses the configured target ``release`` and remote ``tacos``
-(never the literal ``main``/``origin`` defaults) and fakes only — no
-real subprocess, no sleep. The contract under test:
-
-* A retry obligation persists while local ``release`` differs from
-  ``tacos/release``, re-derived from the CURRENT observation each cycle.
-* Non-fast-forward rejection triggers fetch -> reintegrate -> land ->
-  push until the refs are equal.
-* A failed remote read is UNKNOWN (back off, retry later), never a
-  stored unreachable claim, never blocking.
-* Publish idempotency on the pipeline push path: a push is skipped when
-  the local and remote refs already name the same commit.
-* No ``main``/``origin`` literals appear in the configured path.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -54,8 +37,6 @@ def _record() -> RebaseState:
 
 
 class _FakeRemoteClient:
-    """Scriptable remote client: no subprocess, no sleep, no real git."""
-
     def __init__(
         self,
         *,
@@ -84,9 +65,6 @@ class _FakeRemoteClient:
     def observe_remote_sha(self, repo_root: Path, target: str, *, remote: str) -> str | None:
         self.observe_calls += 1
         assert remote == REMOTE
-        # One true remote SHA per fetch cycle: a forced re-observe within
-        # the same cycle (after a throttled refresh) yields the same
-        # value instead of consuming the next cycle's script entry.
         index = min(self.refresh_calls - 1, len(self._remote_shas) - 1)
         return self._remote_shas[index]
 
@@ -108,7 +86,6 @@ def _stub_reconcile(
     outcome: remote_reconcile.ReconciliationOutcome,
     calls: list[tuple[str, str]] | None = None,
 ) -> None:
-    """Replace the target reconciliation with a typed scripted outcome."""
 
     def fake_reconcile(
         repo_root: Path,
@@ -124,7 +101,6 @@ def _stub_reconcile(
 
 
 def _stub_is_ancestor_not_ancestor(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Divergence stub: neither ref is an ancestor of the other."""
 
     def fake_is_ancestor(_root: Path, _ancestor: str, _descendant: str) -> bool:
         return False
@@ -134,7 +110,6 @@ def _stub_is_ancestor_not_ancestor(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture(autouse=True)
 def _isolate_git_reads(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Stub local git reads so no test touches a real repository."""
 
     def fake_branch_sha(_root: Path, _ref: str) -> str:
         return "local-sha-1"
@@ -158,7 +133,6 @@ def _isolate_git_reads(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_diverged_local_pushes_until_refs_equal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AC10: local ahead of remote -> push converges; obligation cleared."""
     _stub_reconcile(monkeypatch, remote_reconcile.ReconciliationOutcome(True, "ok"))
     client = _FakeRemoteClient(
         remote_shas=["old-remote-sha", "local-sha-1"],
@@ -173,7 +147,6 @@ def test_diverged_local_pushes_until_refs_equal(
 def test_non_fast_forward_triggers_reconcile_then_push(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AC10: rejection -> fetch/reintegrate/land/push until equal."""
     _stub_is_ancestor_not_ancestor(monkeypatch)
     _stub_reconcile(monkeypatch, remote_reconcile.ReconciliationOutcome(True, "ok"))
 
@@ -211,7 +184,6 @@ def test_non_fast_forward_triggers_reconcile_then_push(
 def test_unreachable_remote_is_unknown_backoff_not_stored_claim(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AC10: failed remote read -> UNKNOWN (deferred), never blocking."""
     client = _FakeRemoteClient(
         remote_shas=[None],
         refresh_outcomes=["refresh suppressed by throttle"],
@@ -225,7 +197,6 @@ def test_unreachable_remote_is_unknown_backoff_not_stored_claim(
 def test_unreachable_then_recovering_remote_converges_without_stale_reason(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AC10: cycle 1 unknown, cycle 2 recovering -> push, no stale prose."""
     _stub_reconcile(monkeypatch, remote_reconcile.ReconciliationOutcome(True, "ok"))
     client = _FakeRemoteClient(
         remote_shas=[None, "old-remote-sha", "local-sha-1"],
@@ -247,7 +218,6 @@ def test_unreachable_then_recovering_remote_converges_without_stale_reason(
 def test_concurrent_remote_advance_reintegrates_until_equal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AC10: remote advances between landing and push -> converge next cycle."""
     _stub_is_ancestor_not_ancestor(monkeypatch)
 
     reconciliation_calls: list[str] = []
@@ -274,7 +244,6 @@ def test_concurrent_remote_advance_reintegrates_until_equal(
 def test_pipeline_push_is_idempotent_when_refs_already_equal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AC10: skip the push subprocess when local sha == remote sha."""
     client = _FakeRemoteClient(remote_shas=["local-sha-1"], refresh_outcomes=["refreshed"])
     out = push_target_after_landing(
         _config(),
@@ -292,7 +261,6 @@ def test_pipeline_push_is_idempotent_when_refs_already_equal(
 def test_pipeline_push_does_not_skip_on_unknown_remote(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An unobservable remote never proves the push can be skipped."""
     client = _FakeRemoteClient(remote_shas=[None], refresh_outcomes=["refreshed"])
     push_target_after_landing(
         _config(),
@@ -308,7 +276,6 @@ def test_pipeline_push_does_not_skip_on_unknown_remote(
 def test_configured_path_reads_only_configured_names(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Zero reads of 'main'/'origin' anywhere on the configured path."""
     forbidden: list[str] = []
 
     class _SpyClient(_FakeRemoteClient):
@@ -330,9 +297,6 @@ def test_configured_path_reads_only_configured_names(
         remote=None,
         remote_client=client,
     )
-    # The configured names flow through; the fake pushes (no skip since
-    # branch_sha of the fake repo returns a real read) — the assertion
-    # under test is which names were read, never 'main'/'origin'.
     assert out.last_publication_decision in ("publication_terminal", "publish_deferred_remote")
     assert forbidden and all(name not in ("main", "origin") for name in forbidden), (
         f"configured path read literal names: {forbidden}"
@@ -342,7 +306,6 @@ def test_configured_path_reads_only_configured_names(
 def test_reconcile_after_rejected_push_uses_configured_names(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The rejected-push loop passes only the configured names downstream."""
     seen: list[tuple[str, str]] = []
     _stub_reconcile(
         monkeypatch,
@@ -361,13 +324,10 @@ def test_reconcile_after_rejected_push_uses_configured_names(
         remote_client=client,
     )
     assert seen == [(TARGET, REMOTE)]
-    # Blocked reconciliation is carried forward as a non-terminal retry
-    # obligation; the exact projection differs per outcome path.
     assert out.last_publication_decision != "publication_terminal"
 
 
 def test_no_origin_literal_in_remote_sync_module_sources() -> None:
-    """The configured path never hardcodes a default remote name in code."""
     import ast
     from pathlib import Path as _Path
 

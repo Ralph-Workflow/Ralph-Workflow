@@ -1,4 +1,3 @@
-"""Stable-ID validation and reference-integrity helpers for markdown artifacts."""
 
 from __future__ import annotations
 
@@ -14,7 +13,6 @@ _ID = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
 
 
 class StableIdNode(Protocol):
-    """Any parsed node that carries a stable ID and a source line."""
 
     @property
     def identifier(self) -> str: ...
@@ -24,15 +22,11 @@ class StableIdNode(Protocol):
 
 
 def normalize_id(identifier: str, *, case_sensitive: bool = True) -> str | None:
-    """Return a grammar-valid ID key, or ``None`` for malformed input."""
     if _ID.fullmatch(identifier) is None:
         return None
     return identifier if case_sensitive else identifier.casefold()
 
 
-# Consumer phrases used by reference validators. Each validator picks the
-# consumer that matches the section it is validating so the diagnostic
-# names the reader that actually breaks on the bad reference.
 _FAN_OUT_CONSUMER = (
     "blocking because the worker fan-out in ralph/pipeline/work_units.py "
     "parses ## Work Units / ## Parallel Plan IDs to scope edits and dispatch units"
@@ -40,21 +34,12 @@ _FAN_OUT_CONSUMER = (
 
 
 def _consumer_rule_message(what: str, fix: str, consumer: str) -> str:
-    """Compose a blocking-severity diagnostic that names its downstream consumer."""
     return f"{what}; {consumer}; resolve by {fix}"
 
 
 def _consumer_for_section(section: str | None) -> str:
-    """Return the named consumer phrase for the section a reference is read in."""
     if section in {"Work Units", "Parallel Plan"}:
         return _FAN_OUT_CONSUMER
-    # Default: the free-form development_result body no longer mechanically
-    # cross-references step numbers, so a step/acceptance-criteria/design
-    # reference outside ## Work Units / ## Parallel Plan is consumed by the
-    # human reader via the development analysis pass, not by a validator.
-    # The reference validator still passes through ``section`` from the call
-    # site so any plan-side caller that wants a different consumer should
-    # pass an explicit ``consumer`` to ``validate_references``.
     return _FAN_OUT_CONSUMER
 
 
@@ -64,7 +49,6 @@ def validate_unique_ids(
     section: str | None = None,
     case_sensitive: bool = True,
 ) -> list[Diagnostic]:
-    """Report malformed or duplicate stable IDs without throwing."""
     diagnostics: list[Diagnostic] = []
     seen: set[str] = set()
     for item in items:
@@ -99,16 +83,6 @@ def validate_references(
     case_sensitive: bool = True,
     consumer: str | None = None,
 ) -> list[Diagnostic]:
-    """Report references whose target stable ID does not exist.
-
-    ``references`` maps a target ID to ``(source_id, line, section)`` entries;
-    the source ID is intentionally retained for diagnostics rather than used as
-    a lookup key. ``consumer`` overrides the consumer phrase selected from
-    the ``section`` argument; the free-form development_result body no longer
-    mechanically cross-references step IDs, so for plan-side callers the
-    consumer phrase names the work-unit fan-out reader by default
-    (see ``_consumer_for_section``).
-    """
     known = {
         key
         for identifier in known_ids
@@ -145,12 +119,6 @@ def validate_acyclic_dependencies(
     case_sensitive: bool = True,
     consumer: str | None = None,
 ) -> list[Diagnostic]:
-    """Report dependency cycles with a stable message naming the re-entered ID.
-
-    ``consumer`` overrides the consumer phrase selected from
-    ``section_by_id`` (typically "Work Units" or "Parallel Plan" for plan
-    fan-out dependency cycles, otherwise the step-proof consumer).
-    """
     graph = {
         _required_id(identifier, case_sensitive): tuple(
             _required_id(dependency, case_sensitive) for dependency in values

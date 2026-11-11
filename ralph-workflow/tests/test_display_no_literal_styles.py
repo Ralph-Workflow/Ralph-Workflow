@@ -1,18 +1,3 @@
-"""Regression test: no literal Rich style strings in production display code.
-
-Walks ralph/display/, ralph/banner.py, and ralph/cli/main.py using ast.parse.
-Checks three categories of forbidden literals:
-
-  1. ``style=`` keyword argument: value must be a theme key ('theme.*') or allowlisted.
-  2. ``.append(text, style_literal)`` positional second arg: must be a theme key or allowlisted.
-  3. ``console.print("[bare_color]text")`` markup strings: first positional arg must not contain
-     bare Rich colour/style tags like [red], [green], [bold], etc.
-
-The allowlist is intentionally narrow. Add an entry only when the style cannot
-be expressed as a theme key (e.g., a runtime-computed value passed through a
-helper function parameter).
-"""
-
 from __future__ import annotations
 
 import ast
@@ -20,19 +5,12 @@ import re
 from functools import cache
 from pathlib import Path
 
-# Documented exceptions: style strings that are allowed as plain literals.
-# Each entry maps literal_value -> reason string (for documentation).
-_ALLOWLIST: dict[str, str] = {
-    # No permanent allowlist entries at this time.
-    # Add here only with a clear justification comment.
-}
+_ALLOWLIST: dict[str, str] = {}
 
-# Bare Rich colour/style tags that must not appear in markup strings passed to print()
 _BARE_MARKUP_RE = re.compile(
     r"\[(?:red|green|blue|yellow|cyan|magenta|bold|dim|italic|underline|white|black|orange)\]"
 )
 
-# Index for second positional arg in a call
 _SECOND_ARG_IDX = 1
 _MIN_ARGS_FOR_POSITIONAL_STYLE = 2
 
@@ -103,7 +81,6 @@ def _file_violations(
     list[tuple[int, str]],
     list[tuple[int, str]],
 ]:
-    """Return all forbidden literal-style violations for one source file."""
     source = _file_source(source_path)
     if "style=" not in source and ".append(" not in source and "print(" not in source:
         return [], [], []
@@ -117,15 +94,12 @@ def _file_violations(
     return visitor.style_violations, visitor.append_violations, visitor.markup_violations
 
 
-# Pre-populate caches at module import time so the I/O and AST parsing
-# happen before the per-test SIGALRM window is set up.
 _target_files()
 for _f in _target_files():
     _parsed_tree(_f)
 
 
 def test_display_style_contracts() -> None:
-    """Display code must avoid bare style literals and bare markup colors."""
     style_violations: list[str] = []
     append_violations: list[str] = []
     markup_violations: list[str] = []

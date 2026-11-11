@@ -1,5 +1,3 @@
-"""Black-box tests for hermetic verification-prompt evaluation scoring."""
-
 from __future__ import annotations
 
 import json
@@ -233,13 +231,6 @@ def test_scoring_reports_repeated_run_disagreement() -> None:
 
 
 def test_runner_reports_separate_metrics_for_strongest_and_weakest_agents() -> None:
-    # Free-form contract: development_analysis_decision does not
-    # carry per-criterion ``Location:`` lines, so the runner cannot
-    # recover a per-defect localization. The metric that still
-    # discriminates between a strong and a weak agent is the
-    # unsupported-met rate (a weak agent that says ``completed``
-    # against a planted defect is an unsupported met). Use that as
-    # the discriminating signal here.
     case = EvaluationCase(
         "planted-defect",
         frozenset({"DA-001"}),
@@ -259,12 +250,6 @@ def test_runner_reports_separate_metrics_for_strongest_and_weakest_agents() -> N
         ),
     )
 
-    # Free-form development decisions: a strong agent that flags
-    # the planted defect with `request_changes` produces a
-    # non-met verdict with no evidence; a weak agent that says
-    # `completed` produces an unsupported met. The localization
-    # signal is no longer recoverable for the free-form contract,
-    # so we assert on the met/not-met agreement instead.
     assert results["strongest"]["planted-defect"]["unsupported_met_rate"] == 0.0
     assert results["weakest"]["planted-defect"]["unsupported_met_rate"] == 1.0
 

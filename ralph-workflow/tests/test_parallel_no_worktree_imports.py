@@ -1,9 +1,3 @@
-"""Static regression tests: parallel modules must not reference worktree/merge helpers.
-
-These tests provide permanent guardrails so future refactors cannot silently
-re-introduce worktree-based paths into the same-workspace parallel product surface.
-"""
-
 from __future__ import annotations
 
 import importlib
@@ -31,7 +25,6 @@ _FORBIDDEN_TOKENS = [
 
 
 def _read_source(module_name: str) -> str:
-    """Read source for a module by name, falling back to __file__ if inspect fails."""
 
     mod = importlib.import_module(module_name)
     try:
@@ -45,7 +38,6 @@ def _read_source(module_name: str) -> str:
 
 @pytest.mark.parametrize("module_name", _PARALLEL_MODULES)
 def test_parallel_module_has_no_forbidden_tokens(module_name: str) -> None:
-    """Each parallel module must not contain any forbidden worktree/merge tokens."""
     source = _read_source(module_name)
     violations = [token for token in _FORBIDDEN_TOKENS if token in source]
     assert violations == [], (
@@ -55,11 +47,6 @@ def test_parallel_module_has_no_forbidden_tokens(module_name: str) -> None:
 
 
 def test_parallel_module_does_not_import_rebase() -> None:
-    """ralph.pipeline.parallel.coordinator must not transitively import ralph.git.rebase.
-
-    Rebase is only used for the single-worker development flow; parallel workers
-    in same-workspace mode do not rebase because they all write to the same checkout.
-    """
 
     rebase_key = "ralph.git.rebase"
 
@@ -76,7 +63,6 @@ def test_parallel_module_does_not_import_rebase() -> None:
 
 
 def test_subprocess_executor_does_not_reference_worktree() -> None:
-    """ralph.agents.subprocess_executor must not reference 'worktree' in its source."""
     source = _read_source("ralph.agents.subprocess_executor")
     occurrences = source.count("worktree")
     assert occurrences == 0, (
@@ -87,7 +73,6 @@ def test_subprocess_executor_does_not_reference_worktree() -> None:
 
 
 def test_parallel_modules_do_not_run_git_worktree_commands() -> None:
-    """Parallel module source must not contain 'git worktree' as a subprocess argument."""
     for module_name in _PARALLEL_MODULES:
         source = _read_source(module_name)
         assert "git worktree" not in source, (
@@ -97,23 +82,15 @@ def test_parallel_modules_do_not_run_git_worktree_commands() -> None:
 
 
 def test_parallel_modules_do_not_import_find_main_worktree_root() -> None:
-    """Parallel modules must never import or call find_main_worktree_root.
-
-    find_main_worktree_root is a workspace-root resolver for linked git worktrees.
-    It is explicitly NOT part of the same-workspace parallel worker path and must
-    never appear in any ralph.pipeline.parallel.* module.
-    """
 
     for module_name in _PARALLEL_MODULES:
         mod = importlib.import_module(module_name)
 
-        # No module-level attribute named find_main_worktree_root
         assert not hasattr(mod, "find_main_worktree_root"), (
             f"{module_name} must not expose find_main_worktree_root as a module attribute. "
             "This function is reserved for workspace bootstrap, not parallel workers."
         )
 
-        # Source must not contain the token
         source = _read_source(module_name)
         assert "find_main_worktree_root" not in source, (
             f"{module_name} contains the token 'find_main_worktree_root'. "

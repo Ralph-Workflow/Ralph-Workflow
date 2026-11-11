@@ -1,4 +1,3 @@
-"""The success outcome of applying a batch of text edits."""
 
 from __future__ import annotations
 
@@ -13,7 +12,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class AppliedTextEdits:
-    """Every edit matched; ``content`` is the fully edited text."""
 
     original: str
     content: str
@@ -22,5 +20,4 @@ class AppliedTextEdits:
 
     @property
     def diff(self) -> str:
-        """Return the unified diff from the original to the edited text."""
         return unified_text_diff(self.original, self.content, label=self.label)

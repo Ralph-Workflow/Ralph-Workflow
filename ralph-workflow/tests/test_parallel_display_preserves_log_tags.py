@@ -1,22 +1,3 @@
-"""AC-09: log-line tag markers in ParallelDisplay output are preserved byte-for-byte.
-
-The PlainLogRenderer emits these verified log-line tag markers as substrings of
-the rendered line:
-
-  1. ``[run-start]`` \u2014 emitted by ``emit_run_start``
-  2. ``[phase-close]`` \u2014 emitted by ``emit_phase_close``
-  3. ``[run-end]`` \u2014 emitted by ``emit_run_end``
-  4. ``[{tag}][{unit_id}]`` \u2014 emitted by ``emit`` (via ``emit_log_line``)
-
-The markers ``[phase-start]`` and ``[unit-id]`` are NOT real markers and must
-NOT be asserted. The ``[{unit_id}]`` substring is asserted via a substring
-``in`` check on the supplied unit_id, not an exact-marker match.
-
-The markers are byte-for-byte load-bearing for downstream log parsers; this
-test is the AC-09 evidence that the visual hierarchy refactor in
-wt-007-consolidate-display did NOT drop any tag markers.
-"""
-
 from __future__ import annotations
 
 import io

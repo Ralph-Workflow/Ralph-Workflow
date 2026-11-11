@@ -1,5 +1,3 @@
-"""Canonical Markdown artifact submission and completion evidence."""
-
 from __future__ import annotations
 
 import sqlite3
@@ -170,8 +168,6 @@ output_file: tmp/smoke.log
 
 
 class _RecordingBackend(MemoryBackend):
-    """In-memory artifact boundary that exposes directory mutations."""
-
     def __init__(self) -> None:
         super().__init__()
         self.mkdir_calls: list[Path] = []
@@ -252,7 +248,6 @@ def test_canonical_submit_symbols_exported_from_artifacts_package() -> None:
 
 
 def test_canonical_submission_replay_skips_directory_mutations(tmp_path: Path) -> None:
-    """S-2: replaying identical canonical output leaves its directories untouched."""
     backend = _RecordingBackend()
     parsed = _parsed("development_result", DEVELOPMENT_RESULT)
 
@@ -279,7 +274,6 @@ def test_canonical_submission_replay_skips_directory_mutations(tmp_path: Path) -
 
 
 def test_canonical_submission_identical_replay_does_not_create_history(tmp_path: Path) -> None:
-    """S-4: identical replay creates neither an archive nor its history directory."""
     backend = _RecordingBackend()
     parsed = _parsed("development_result", DEVELOPMENT_RESULT)
     deps = ArtifactHandlerDeps(backend=backend, history_enabled=True)
@@ -581,7 +575,6 @@ def test_fallback_promotion_regression_commit_message_stamps_receipt_and_removes
     backend: MemoryBackend,
     deps: ArtifactHandlerDeps,
 ) -> None:
-    """DA-003: commit artifacts must receive the same fallback promotion as every stage."""
     fallback = tmp_path / ".agent" / "tmp" / "commit_message.md"
     backend.write_text(fallback, COMMIT_MESSAGE)
 
@@ -604,7 +597,6 @@ def test_fallback_promotion_regression_malformed_commit_message_stamps_no_receip
     backend: MemoryBackend,
     deps: ArtifactHandlerDeps,
 ) -> None:
-    """DA-003: malformed commit fallback documents must not pass commit-stage validation."""
     fallback = tmp_path / ".agent" / "tmp" / "commit_message.md"
     backend.write_text(fallback, "not a markdown artifact")
 

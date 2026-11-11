@@ -1,5 +1,3 @@
-"""Black-box tests for RecoveryController unavailable-agent timeout tracking."""
-
 from __future__ import annotations
 
 import tempfile
@@ -54,22 +52,14 @@ def _make_state(agents: list[str]) -> PipelineState:
 
 
 def _simulate_successful_run(controller: RecoveryController, phase: str, agent: str) -> None:
-    """Mirror the production success path: runner resets backoff after a successful invocation."""
     controller.reset_backoff(phase, agent)
 
 
 def _cooldown_remaining_ms(controller: RecoveryController, phase: str, agent: str) -> int:
-    """Return the milliseconds left on ``agent``'s unavailability cooldown.
-
-    The unavailability store is the controller's public seam for "is this
-    agent cooling down, and for how long"; the remaining cooldown is the
-    observable effect of an unavailable failure.
-    """
     return controller.unavailability_store.earliest_unavailable_wait_ms(phase, [agent])
 
 
 def test_unavailable_failure_sets_timeout() -> None:
-    """Marking an agent unavailable stores a per-phase:agent timeout."""
     clock = FakeClock(start=0.0)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
@@ -92,7 +82,6 @@ def test_unavailable_failure_sets_timeout() -> None:
 
 
 def test_unavailable_timeout_is_agent_scoped_across_phases() -> None:
-    """The second phase records the same agent's increased cooldown."""
     clock = FakeClock(start=0.0)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
@@ -125,7 +114,6 @@ def test_unavailable_timeout_is_agent_scoped_across_phases() -> None:
 
 
 def test_unavailable_agent_skipped_in_recovery_cycle() -> None:
-    """An unavailable agent is skipped; it is retried after its timeout expires."""
     clock = FakeClock(start=0.0)
     fallovers: list[FalloverEvent] = []
     bus = FailureEventBus()
@@ -157,8 +145,6 @@ def test_unavailable_agent_skipped_in_recovery_cycle() -> None:
     assert claude_cooldown_ms > starting_timeout_ms
     assert claude_cooldown_ms == 5_000
 
-    # Cooldown for claude expires; a later failure on opencode routes back to
-    # claude when opencode is also marked unavailable.
     clock.advance(60)
     retried_state, _, _ = controller.handle(
         new_state,
@@ -173,7 +159,6 @@ def test_unavailable_agent_skipped_in_recovery_cycle() -> None:
 
 
 def test_all_agents_unavailable_waits_for_cooldown() -> None:
-    """When every agent in the chain is unavailable, the session waits rather than failing."""
     clock = FakeClock(start=0.0)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
@@ -202,9 +187,6 @@ def test_all_agents_unavailable_waits_for_cooldown() -> None:
 
     assert _cooldown_remaining_ms(controller, "development", "claude") == 5_000
 
-    # Once at least one cooldown expires, the same phase can make progress.
-    # Because claude fails again immediately, it is marked unavailable again
-    # and the controller falls over to opencode rather than terminating.
     clock.advance(60)
     retried_state, retried_effects, _ = controller.handle(
         new_state,
@@ -215,12 +197,10 @@ def test_all_agents_unavailable_waits_for_cooldown() -> None:
     assert len(retried_effects) == 0
     assert retried_state.chain_for_phase("development").current_index == 1
 
-    # The cooldown doubled after the second unavailable failure.
     assert _cooldown_remaining_ms(controller, "development", "claude") == 10_000
 
 
 def test_all_agents_unavailable_waits_and_resumes_after_earliest_cooldown() -> None:
-    """When every agent is unavailable, wait for the earliest cooldown then resume."""
     clock = FakeClock(start=0.0)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
@@ -234,7 +214,6 @@ def test_all_agents_unavailable_waits_and_resumes_after_earliest_cooldown() -> N
     )
     state = _make_state(["claude", "opencode"]).copy_with(last_connectivity_state="online")
 
-    # Every agent is unavailable: the session waits for the earliest cooldown.
     waiting_state, effects, _ = controller.handle(
         state,
         AgentInvocationError("claude", 1, "agent produced no output for 60s"),
@@ -248,11 +227,8 @@ def test_all_agents_unavailable_waits_and_resumes_after_earliest_cooldown() -> N
     assert "waiting for cooldown expiry" in waiting_state.last_error.lower()
     assert _cooldown_remaining_ms(controller, "development", "claude") == 5_000
 
-    # Advance to the earliest cooldown expiry; claude can be reconsidered.
     clock.advance(5)
 
-    # Claude fails again and is re-marked unavailable; opencode is still
-    # cooling down, so the controller waits again rather than crashing.
     waiting_state2, effects2, _ = controller.handle(
         waiting_state,
         AgentInvocationError("claude", 1, "agent produced no output for 60s"),
@@ -262,11 +238,8 @@ def test_all_agents_unavailable_waits_and_resumes_after_earliest_cooldown() -> N
     assert waiting_state2.last_retry_delay_ms == 5_000
     assert effects2 == []
 
-    # Advance until opencode's cooldown also expires.
     clock.advance(5)
 
-    # Claude fails again; opencode is now available, so the controller falls
-    # over and the phase makes progress instead of terminating.
     resumed_state, resumed_effects, _ = controller.handle(
         waiting_state2,
         AgentInvocationError("claude", 1, "agent produced no output for 60s"),
@@ -278,7 +251,6 @@ def test_all_agents_unavailable_waits_and_resumes_after_earliest_cooldown() -> N
 
 
 def test_unavailable_agent_fallover_a_to_b_to_a_with_exponential_backoff() -> None:
-    """Agent A fails, fall over to B, then retry A after cooldown and grow its backoff."""
     clock = FakeClock(start=0.0)
     fallovers: list[FalloverEvent] = []
     bus = FailureEventBus()
@@ -293,7 +265,6 @@ def test_unavailable_agent_fallover_a_to_b_to_a_with_exponential_backoff() -> No
     )
     state = _make_state(["claude", "opencode"]).copy_with(last_connectivity_state="online")
 
-    # A fails -> fall over to B.
     state_b, _, _ = controller.handle(
         state,
         AgentInvocationError("claude", 1, "agent produced no output for 60s"),
@@ -304,10 +275,8 @@ def test_unavailable_agent_fallover_a_to_b_to_a_with_exponential_backoff() -> No
     assert fallovers[-1].to_agent == "opencode"
     assert _cooldown_remaining_ms(controller, "development", "claude") == 5_000
 
-    # Advance past A's cooldown so A can be reconsidered.
     clock.advance(5)
 
-    # B fails -> fall back to A (A to B to A complete).
     state_a, _, _ = controller.handle(
         state_b,
         AgentInvocationError("opencode", 1, "agent produced no output for 60s"),
@@ -317,10 +286,8 @@ def test_unavailable_agent_fallover_a_to_b_to_a_with_exponential_backoff() -> No
     assert fallovers[-1].from_agent == "opencode"
     assert fallovers[-1].to_agent == "claude"
 
-    # Advance past B's cooldown so B can be reconsidered when A fails again.
     clock.advance(5)
 
-    # A fails again -> fall over to B, and A's backoff grows from 5s to 10s.
     state_b2, _, _ = controller.handle(
         state_a,
         AgentInvocationError("claude", 1, "agent produced no output for 60s"),
@@ -329,12 +296,10 @@ def test_unavailable_agent_fallover_a_to_b_to_a_with_exponential_backoff() -> No
     assert state_b2.chain_for_phase("development").current_index == 1
     assert fallovers[-1].from_agent == "claude"
     assert fallovers[-1].to_agent == "opencode"
-    # The backoff duration grew from 5s to 10s.
     assert _cooldown_remaining_ms(controller, "development", "claude") == 10_000
 
 
 def test_no_progress_quiet_reason_falls_over_a_to_b_to_a_with_growing_backoff() -> None:
-    """Agent A fails due to NO_PROGRESS_QUIET, fall over to B with growing backoff."""
     clock = FakeClock(start=0.0)
     fallovers: list[FalloverEvent] = []
     bus = FailureEventBus()
@@ -362,7 +327,6 @@ def test_no_progress_quiet_reason_falls_over_a_to_b_to_a_with_growing_backoff() 
     exc_a = AgentInactivityTimeoutError("claude", 1, opts=opts)
     exc_b = AgentInactivityTimeoutError("opencode", 1, opts=opts)
 
-    # Cycle 1: A fails -> fall over to B.
     state_b, _, _ = controller.handle(
         state,
         exc_a,
@@ -374,10 +338,8 @@ def test_no_progress_quiet_reason_falls_over_a_to_b_to_a_with_growing_backoff() 
     assert fallovers[-1].watchdog_reason == "no_progress_quiet"
     assert _cooldown_remaining_ms(controller, "development", "claude") == 5_000
 
-    # Advance past A's cooldown so A can be reconsidered.
     clock.advance(5)
 
-    # Cycle 2: B fails -> fall back to A.
     state_a, _, _ = controller.handle(
         state_b,
         exc_b,
@@ -388,10 +350,8 @@ def test_no_progress_quiet_reason_falls_over_a_to_b_to_a_with_growing_backoff() 
     assert fallovers[-1].to_agent == "claude"
     assert fallovers[-1].watchdog_reason == "no_progress_quiet"
 
-    # Advance past B's cooldown so B can be reconsidered when A fails again.
     clock.advance(5)
 
-    # Cycle 3: A fails again -> fall over to B, and A's backoff grows to 10s.
     state_b2, _, _ = controller.handle(
         state_a,
         exc_a,
@@ -404,10 +364,8 @@ def test_no_progress_quiet_reason_falls_over_a_to_b_to_a_with_growing_backoff() 
 
     assert _cooldown_remaining_ms(controller, "development", "claude") == 10_000
 
-    # Advance past A's cooldown so A can be reconsidered when B fails again.
     clock.advance(10)
 
-    # Cycle 4: B fails -> fall back to A, and A's backoff grows to 20s.
     state_a2, _, _ = controller.handle(
         state_b2,
         exc_b,
@@ -418,10 +376,8 @@ def test_no_progress_quiet_reason_falls_over_a_to_b_to_a_with_growing_backoff() 
     assert fallovers[-1].to_agent == "claude"
     assert fallovers[-1].watchdog_reason == "no_progress_quiet"
 
-    # Advance past A's cooldown so A can be reconsidered.
     clock.advance(20)
 
-    # Cycle 5: A fails again -> fall over to B, and A's backoff reaches cap.
     state_b3, _, _ = controller.handle(
         state_a2,
         exc_a,
@@ -436,7 +392,6 @@ def test_no_progress_quiet_reason_falls_over_a_to_b_to_a_with_growing_backoff() 
 
 
 def test_unavailable_agent_is_skipped_for_its_cooldown() -> None:
-    """Falling over from an unavailable agent puts it on cooldown for the phase."""
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,
@@ -452,14 +407,11 @@ def test_unavailable_agent_is_skipped_for_its_cooldown() -> None:
         FailureContext(phase="development", agent="claude"),
     )
 
-    # The unavailable agent is skipped: the chain advances and the agent stops
-    # being available for the phase.
     assert new_state.chain_for_phase("development").current_index == 1
     assert controller.agents_now_available("development", ["claude", "opencode"]) == ["opencode"]
 
 
 def test_exponential_backoff_increases_across_cycles() -> None:
-    """Consecutive unavailable failures grow the skip timeout exponentially."""
     clock = FakeClock(start=0.0)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
@@ -499,10 +451,7 @@ def test_exponential_backoff_increases_across_cycles() -> None:
     assert _cooldown_remaining_ms(controller, "development", "claude") == 20_000
 
     clock.advance(20.1)
-    # Simulate the production success path: the runner resets backoff after
-    # a successful agent invocation, clearing the attempt counter.
     _simulate_successful_run(controller, "development", "claude")
-    # A successful invocation cleared the cooldown history.
     assert _cooldown_remaining_ms(controller, "development", "claude") == 0
 
     controller.handle(
@@ -519,7 +468,6 @@ def test_exponential_backoff_increases_across_cycles() -> None:
 
 
 def test_classifier_flags_unavailable_only_when_online() -> None:
-    """Unavailable flag is set only for online no-output failures."""
     classifier = FailureClassifier()
     message = "agent produced no output for 60s"
 
@@ -553,7 +501,6 @@ def test_classifier_flags_unavailable_only_when_online() -> None:
 
 
 def test_agent_inactivity_timeout_is_unavailable() -> None:
-    """The real AgentInactivityTimeoutError subclass flags the agent unavailable."""
     failure = FailureClassifier().classify(
         AgentInactivityTimeoutError("claude", 30.0),
         phase="development",
@@ -565,12 +512,6 @@ def test_agent_inactivity_timeout_is_unavailable() -> None:
 
 
 def test_post_tool_empty_response_stays_retryable_not_unavailable() -> None:
-    """Post-tool registry-wedge failures keep their bounded retry path.
-
-    A tool-result desync (empty response after prior tool activity) is a
-    tool-registry issue, not an out-of-credits unavailability, and must not
-    be routed into the unavailable cooldown path.
-    """
     exc = AgentInvocationError(
         "claude",
         1,
@@ -591,32 +532,24 @@ def test_post_tool_empty_response_stays_retryable_not_unavailable() -> None:
     assert failure.is_unavailable is False
 
 
-# Transient credit-exhaustion / quota / rate-limit detection patterns.
-# These can self-heal after a cooldown and should flag the agent unavailable.
-# Each pattern must flag the agent as unavailable only when connectivity is online.
 _NEW_SUBSCRIPTION_LIMIT_PATTERNS = [
-    # OpenAI
     "429 - You exceeded your current quota, please check your plan and billing details",
     "insufficient_quota: You exceeded your current quota",
     "rate limit reached for requests",
     "billing hard limit reached",
     "monthly spend limit reached",
     "you've run out of credits",
-    # Anthropic / Claude
     "rate_limit_error: Number of request tokens has exceeded your per-minute rate limit",
     "rate_limit_error: Number of output tokens has exceeded your per-minute rate limit",
     "billing_error: out of credits or spend limit reached",
     "out of credits",
     "spend limit reached",
     "rate limit reached",
-    # Google / Gemini
     "429 Resource Exhausted: quota exceeded",
     "resource_exhausted",
     "quota limit has been exceeded",
-    # Cohere / general
     "rate limit exceeded",
     "too many requests",
-    # Cross-provider generic
     "credits exhausted",
     "no credits remaining",
     "insufficient credits",
@@ -632,9 +565,6 @@ _NEW_SUBSCRIPTION_LIMIT_PATTERNS = [
     "per-minute limit exceeded",
 ]
 
-# Permanent account/billing/configuration failures that will not self-heal.
-# These must terminate through the normal failure path, not enter an
-# indefinite unavailable cooldown.
 _PERMANENT_ACCOUNT_PATTERNS = [
     "organization has no valid billing information",
     "your account is not active",
@@ -646,7 +576,6 @@ _PERMANENT_ACCOUNT_PATTERNS = [
 
 
 def test_classifier_new_subscription_patterns_online() -> None:
-    """New credit/quota/rate-limit patterns set is_unavailable=True when online."""
     classifier = FailureClassifier()
     for message in _NEW_SUBSCRIPTION_LIMIT_PATTERNS:
         failure = classifier.classify(
@@ -660,7 +589,6 @@ def test_classifier_new_subscription_patterns_online() -> None:
 
 
 def test_classifier_new_subscription_patterns_not_unavailable_when_offline() -> None:
-    """Credit/quota patterns do not set is_unavailable when connectivity is not online."""
     classifier = FailureClassifier()
     for connectivity in ("unknown", "offline"):
         for message in _NEW_SUBSCRIPTION_LIMIT_PATTERNS:
@@ -675,7 +603,6 @@ def test_classifier_new_subscription_patterns_not_unavailable_when_offline() -> 
 
 
 def test_credit_exhaustion_failure_sets_timeout() -> None:
-    """Credit-exhaustion messages store the same per-phase:agent unavailable timeout."""
     clock = FakeClock(start=0.0)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
@@ -698,7 +625,6 @@ def test_credit_exhaustion_failure_sets_timeout() -> None:
 
 
 def test_credit_exhaustion_agent_skipped_in_recovery_cycle() -> None:
-    """A credit-exhaustion failure causes fallover to the next agent in the chain."""
     clock = FakeClock(start=0.0)
     fallovers: list[FalloverEvent] = []
     bus = FailureEventBus()
@@ -772,7 +698,6 @@ def test_model_preflight_failure_remains_agent_unavailable_with_billing_detail()
 
 
 def test_all_agents_unavailable_credit_exhaustion_waits_for_cooldown() -> None:
-    """Credit-exhaustion across the whole chain waits rather than crashing."""
     clock = FakeClock(start=0.0)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
@@ -811,7 +736,6 @@ def test_all_agents_unavailable_credit_exhaustion_waits_for_cooldown() -> None:
 
 
 def test_permanent_account_failures_classify_as_user_config() -> None:
-    """Permanent billing/account failures are user-config, not agent unavailable."""
     classifier = FailureClassifier()
     for message in _PERMANENT_ACCOUNT_PATTERNS:
         failure = classifier.classify(
@@ -825,7 +749,6 @@ def test_permanent_account_failures_classify_as_user_config() -> None:
 
 
 def test_permanent_account_failure_terminates_instead_of_waiting() -> None:
-    """Permanent billing failures advance to the failed route instead of waiting."""
     clock = FakeClock(start=0.0)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
@@ -846,24 +769,20 @@ def test_permanent_account_failure_terminates_instead_of_waiting() -> None:
 
     assert evt.category == "user_config"
     assert new_state.last_connectivity_state == "online"
-    # The phase should fail rather than entering an indefinite unavailable wait.
     assert new_state.phase != "development" or effects
     assert new_state.last_error is not None
     assert "all agents unavailable" not in (new_state.last_error or "").lower()
 
 
 def test_online_connectivity_propagates_through_run_loop_wiring() -> None:
-    """An ONLINE monitor writes 'online' into state so subscription limits trigger unavailable."""
     monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.ONLINE)
     state = _make_state(["claude", "opencode"])
-    # Default production state starts with unknown connectivity.
     assert state.last_connectivity_state == "unknown"
 
     updated_state = _apply_connectivity_check(state, monitor)
 
     assert updated_state.last_connectivity_state == "online"
 
-    # A quota failure on the now-online state is classified as unavailable and falls over.
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,
@@ -881,7 +800,6 @@ def test_online_connectivity_propagates_through_run_loop_wiring() -> None:
 
 
 def test_all_agents_unavailable_event_reports_real_cooldown_delay() -> None:
-    """The returned FailureEvent reports the actual cooldown wait, not zero."""
     clock = FakeClock(start=0.0)
     collected: list[FailureEvent] = []
     bus = FailureEventBus()
@@ -910,12 +828,10 @@ def test_all_agents_unavailable_event_reports_real_cooldown_delay() -> None:
     assert effects == []
     assert new_state.last_error is not None
     assert "all agents unavailable" in new_state.last_error.lower()
-    # At least one published event carries the real cooldown delay.
     assert any(e.retry_delay_ms == new_state.last_retry_delay_ms for e in collected)
 
 
 def test_out_of_credits_uses_30min_cap() -> None:
-    """OUT_OF_CREDITS reason caps at 30 minutes."""
     clock = FakeClock(start=0.0)
     policy = {
         UnavailabilityReason.OUT_OF_CREDITS: ReasonBackoffPolicy(
@@ -947,7 +863,6 @@ def test_out_of_credits_uses_30min_cap() -> None:
 
 
 def test_no_output_at_start_uses_30s_cap() -> None:
-    """NO_OUTPUT_AT_START reason caps at 30 seconds."""
     clock = FakeClock(start=0.0)
     policy = {
         UnavailabilityReason.NO_OUTPUT_AT_START: ReasonBackoffPolicy(
@@ -987,7 +902,6 @@ def test_no_output_at_start_uses_30s_cap() -> None:
 
 
 def test_stale_child_quiet_uses_5min_cap() -> None:
-    """STALE_CHILD_QUIET reason caps at 5 minutes."""
     clock = FakeClock(start=0.0)
     policy = {
         UnavailabilityReason.STALE_CHILD_QUIET: ReasonBackoffPolicy(
@@ -1027,7 +941,6 @@ def test_stale_child_quiet_uses_5min_cap() -> None:
 
 
 def test_failure_event_carries_unavailability_reason() -> None:
-    """FailureEvent carries the unavailability_reason string."""
     collected: list[FailureEvent] = []
     bus = FailureEventBus()
     bus.subscribe(lambda evt: collected.append(evt) if isinstance(evt, FailureEvent) else None)
@@ -1053,7 +966,6 @@ def test_failure_event_carries_unavailability_reason() -> None:
 
 
 def test_fallover_event_carries_unavailability_reason() -> None:
-    """FalloverEvent carries the unavailability_reason string when available."""
     fallovers: list[FalloverEvent] = []
     bus = FailureEventBus()
     bus.subscribe(lambda evt: fallovers.append(evt) if isinstance(evt, FalloverEvent) else None)
@@ -1078,7 +990,6 @@ def test_fallover_event_carries_unavailability_reason() -> None:
 
 
 def test_state_carries_last_unavailability_reason() -> None:
-    """PipelineState carries last_unavailability_reason after handle()."""
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,
@@ -1098,7 +1009,6 @@ def test_state_carries_last_unavailability_reason() -> None:
 
 
 def test_legacy_unavailable_timeouts_seam_still_works() -> None:
-    """Pre-seeding unavailable_timeouts dict still routes 'all agents unavailable' branch."""
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,
@@ -1122,7 +1032,6 @@ def test_legacy_unavailable_timeouts_seam_still_works() -> None:
 
 
 def test_default_policy_saturates_at_five_hours() -> None:
-    """S-3: credit failures double after expiry until the five-hour ceiling."""
     clock = FakeClock(start=0.0)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
@@ -1146,7 +1055,6 @@ def test_default_policy_saturates_at_five_hours() -> None:
 
 
 def test_default_success_resets_history() -> None:
-    """Successful invocation clears the unavailable state and attempt history."""
     clock = FakeClock(start=0.0)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
@@ -1175,11 +1083,9 @@ def test_default_success_resets_history() -> None:
         )
         cooldowns.append(_cooldown_remaining_ms(controller, "development", "claude"))
         clock.advance(60_000)
-    # The cooldown doubles on every consecutive unavailable failure.
     assert cooldowns == [5_000, 10_000, 20_000, 40_000, 80_000]
 
     controller.reset_backoff("development", "claude")
-    # A successful invocation clears the unavailable state and its history.
     assert _cooldown_remaining_ms(controller, "development", "claude") == 0
     clock.advance(60_000)
     controller.handle(
@@ -1187,5 +1093,4 @@ def test_default_success_resets_history() -> None:
         exc,
         FailureContext(phase="development", agent="claude"),
     )
-    # The next failure starts the cooldown from the base duration again.
     assert _cooldown_remaining_ms(controller, "development", "claude") == 5_000

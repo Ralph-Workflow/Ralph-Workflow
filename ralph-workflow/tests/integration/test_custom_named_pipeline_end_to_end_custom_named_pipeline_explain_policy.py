@@ -1,17 +1,3 @@
-"""End-to-end integration test: custom-named pipeline (design → build → audit → sign_off → done).
-
-Proves that policy-driven routing works with only user-defined phase names and
-that no canonical phase name (planning, development, review, fix, complete, failed)
-is hard-required anywhere in the runtime.
-
-Exercises:
-  - Policy validation via validate_policy_completeness
-  - Reducer-driven routing through all phase roles
-  - Post-commit routing via resolve_post_commit_phase
-  - ASCII explain-policy output contains custom names only
-  - Parallelization policy in a custom-named phase
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -63,15 +49,6 @@ CANONICAL_PHASE_NAMES = frozenset(
 
 
 def _build_custom_bundle() -> PolicyBundle:
-    """Build the design → build → audit → sign_off → done custom pipeline.
-
-    Phase roles:
-      design:    execution
-      build:     execution (with parallelization)
-      audit:     analysis (loops back to build on request_changes)
-      sign_off:  commit (increments cycles counter, resets audit_round)
-      terminal:  terminal success (done), terminal failure (rejected)
-    """
     pipeline = PipelinePolicy(
         entry_block="cycle_block",
         entry_phase="design",
@@ -284,10 +261,7 @@ def custom_bundle() -> PolicyBundle:
 
 
 class TestCustomNamedPipelineExplainPolicy:
-    """explain-policy ASCII output contains custom names and not canonical defaults."""
-
     def test_ascii_contains_custom_phase_names(self, custom_bundle: PolicyBundle) -> None:
-        """ASCII output contains all custom phase names."""
         explanation = explain_policy(custom_bundle)
         output = render_explanation_ascii(explanation)
 
@@ -295,7 +269,6 @@ class TestCustomNamedPipelineExplainPolicy:
             assert name in output, f"Expected custom phase name '{name}' in ASCII output"
 
     def test_ascii_excludes_canonical_phase_names(self, custom_bundle: PolicyBundle) -> None:
-        """ASCII output does not contain canonical default phase names as phase boxes."""
         explanation = explain_policy(custom_bundle)
         output = render_explanation_ascii(explanation)
 
@@ -315,19 +288,16 @@ class TestCustomNamedPipelineExplainPolicy:
             )
 
     def test_ascii_fanout_annotation_present(self, custom_bundle: PolicyBundle) -> None:
-        """Fan-out annotation appears for the 'build' phase (parallelization declared)."""
         explanation = explain_policy(custom_bundle)
         output = render_explanation_ascii(explanation)
         assert ">>> FAN_OUT" in output
 
     def test_ascii_loopback_annotation_present(self, custom_bundle: PolicyBundle) -> None:
-        """Loopback annotation appears for the 'audit' phase."""
         explanation = explain_policy(custom_bundle)
         output = render_explanation_ascii(explanation)
         assert "<<==[loopback]==" in output
 
     def test_ascii_terminal_markers_present(self, custom_bundle: PolicyBundle) -> None:
-        """Both ==SUCCESS==> and ==FAILURE==> terminal markers appear in output."""
         explanation = explain_policy(custom_bundle)
         output = render_explanation_ascii(explanation)
         assert "==SUCCESS==>" in output

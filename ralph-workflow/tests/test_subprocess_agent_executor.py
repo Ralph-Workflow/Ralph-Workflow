@@ -1,5 +1,3 @@
-"""Tests for SubprocessAgentExecutor."""
-
 import asyncio
 import inspect
 import json
@@ -57,7 +55,6 @@ async def test_protocol_isinstance() -> None:
 
 @pytest.mark.asyncio
 async def test_streams_output() -> None:
-    """Verify output lines arrive at on_output callback."""
     executor = SubprocessAgentExecutor(
         [sys.executable, "-c", "print('line1'); print('line2'); print('line3')"]
     )
@@ -79,7 +76,6 @@ async def test_streams_output() -> None:
 
 @pytest.mark.asyncio
 async def test_exit_code_propagates() -> None:
-    """Non-zero exit codes propagate to WorkerResult."""
     executor = SubprocessAgentExecutor(
         [sys.executable, "-c", f"import sys; sys.exit({EXIT_CODE_FAILURE})"]
     )
@@ -96,7 +92,6 @@ async def test_exit_code_propagates() -> None:
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(30)
 async def test_cancel_kills_process_group() -> None:
-    """Cancellation kills the entire process group."""
     unit = make_unit("test-C")
     started = asyncio.Event()
 
@@ -123,7 +118,6 @@ async def test_cancel_kills_process_group() -> None:
 
 @pytest.mark.asyncio
 async def test_duration_ms_populated() -> None:
-    """WorkerResult.duration_ms is non-zero."""
     executor = SubprocessAgentExecutor([sys.executable, "-c", "print('done')"])
     unit = make_unit("test-D")
     result = await executor.run(
@@ -136,7 +130,6 @@ async def test_duration_ms_populated() -> None:
 
 @pytest.mark.asyncio
 async def test_final_message_from_last_line() -> None:
-    """final_message is the last output line received."""
     executor = SubprocessAgentExecutor([sys.executable, "-c", "print('first'); print('last')"])
     unit = make_unit("test-E")
     last: list[str] = []
@@ -150,13 +143,8 @@ async def test_final_message_from_last_line() -> None:
 
 @pytest.mark.asyncio
 async def test_subprocess_executor_registers_scoped_agent_label_for_liveness() -> None:
-    """Executor labels are visible to DefaultLivenessProbe while the process is running.
-
-    Uses FakeControllableAsyncProcess to drive the lifecycle without spawning
-    any real subprocesses or waiting on real wall-clock time.
-    """
     output_ready = asyncio.Event()
-    completion = asyncio.Event()  # not set → process stays alive until we release it
+    completion = asyncio.Event()
 
     proc = FakeControllableAsyncProcess(
         pid=42,
@@ -207,15 +195,12 @@ async def test_subprocess_executor_registers_scoped_agent_label_for_liveness() -
 
     try:
         task = asyncio.create_task(_run())
-        # drain_output() reads stdout (pre-fed b"ready\n"), which sets output_ready;
-        # handle.wait() blocks on completion event, so the process stays RUNNING.
         await asyncio.wait_for(output_ready.wait(), timeout=1.0)
 
         probe = DefaultLivenessProbe()
         assert probe.any_agent_active("agent:run-scope-456:") is True
         assert probe.any_agent_active("agent:other-scope:") is False
 
-        # release the process
         completion.set()
         await asyncio.wait_for(task, timeout=1.0)
         assert finished.is_set() is True
@@ -227,20 +212,7 @@ async def test_subprocess_executor_registers_scoped_agent_label_for_liveness() -
 async def test_activity_router_receives_valid_ndjson_and_non_json_lines(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Parallel executor routes both JSON and non-JSON lines via ActivityRouter without crashing.
-
-    Non-JSON lines are passed to the parser (not pre-rejected) so provider parsers
-    can handle prefixed transcript formats like 'claude: ...' correctly.
-    """
     router = ActivityRouter()
-    # Use a path that does NOT contain "agy", "claude", "opencode", "codex",
-    # "aider", or "gemini" substrings so ``detect_provider_from_command``
-    # resolves to ``ActivityProvider.GENERIC`` (which uses
-    # ``GenericParser``). ``sys.executable`` in this venv lives at
-    # ``.../wt-015-agy-support/ralph-workflow/.venv/bin/python`` and the
-    # "agy-support" path component triggers the AGY provider otherwise,
-    # which uses a different parser and does not surface the
-    # ``{"content": "structured"}`` mock as a text entry.
     python_in_path = next(
         p
         for p in (sys.executable, "/usr/bin/python3", "/usr/local/bin/python3")
@@ -267,9 +239,7 @@ async def test_activity_router_receives_valid_ndjson_and_non_json_lines(
     entries = router.get_buffer(unit.unit_id).snapshot()
     assert result.exit_code == 0
     assert len(entries) == EXPECTED_ACTIVITY_ENTRIES
-    # Valid NDJSON line produces a content entry
     assert any("structured" in entry for entry in entries)
-    # Non-JSON line is passed to the parser as raw content (not pre-rejected as error)
     assert any("not-json" in entry for entry in entries)
 
 
@@ -277,7 +247,6 @@ async def test_activity_router_receives_valid_ndjson_and_non_json_lines(
 async def test_activity_router_raw_log_is_bounded(
     monkeypatch: pytest.MonkeyPatch, tmp_path: object
 ) -> None:
-    """Executor-owned raw logs must stop growing once the shared byte cap is reached."""
     router = ActivityRouter()
     max_bytes = 1024
     monkeypatch.setattr(
@@ -318,21 +287,6 @@ async def test_activity_router_raw_log_is_bounded(
 
 @pytest.mark.asyncio
 async def test_drop_unit_releases_raw_log_entry(tmp_path: object) -> None:
-    """``drop_unit(unit_id)`` releases the per-unit raw log state.
-
-    AC-05: long parallel sessions can run thousands of distinct
-    units through the same ``SubprocessAgentExecutor`` instance. If
-    the per-unit ``_raw_logs`` map grew monotonically, each retained
-    ``RawOverflowLog`` would hold up to
-    ``DEFAULT_MAX_OVERFLOW_FILE_BYTES`` of memory. ``drop_unit``
-    pops the entry so the memory is released when the unit is no
-    longer needed (typically on wave completion via the parallel
-    coordinator's worker finally).
-
-    Drives a real subprocess (the file is ``subprocess_e2e``-marked)
-    so the test exercises the production code path that populates
-    ``_raw_logs`` inside ``drain_output()``.
-    """
     executor = SubprocessAgentExecutor(
         [sys.executable, "-c", "print('drop-unit-output')"],
         activity_router=ActivityRouter(),
@@ -348,36 +302,25 @@ async def test_drop_unit_releases_raw_log_entry(tmp_path: object) -> None:
 
     assert result.exit_code == 0
 
-    # Sanity: the run populated the per-unit raw log.
     assert unit.unit_id in executor._raw_logs, (
         f"run() should populate _raw_logs[{unit.unit_id!r}],"
         f" got keys={list(executor._raw_logs.keys())}"
     )
 
-    # drop_unit removes the entry.
     executor.drop_unit(unit.unit_id)
     assert unit.unit_id not in executor._raw_logs, (
         f"drop_unit should remove _raw_logs[{unit.unit_id!r}],"
         f" got keys={list(executor._raw_logs.keys())}"
     )
 
-    # Idempotent: calling drop_unit twice is a no-op, no exception.
     executor.drop_unit(unit.unit_id)
     assert unit.unit_id not in executor._raw_logs
 
-    # Missing-safe: drop_unit for a unit that was never added does
-    # not raise (pop(..., None) returns None).
     executor.drop_unit("never-existed-unit")
 
 
 @pytest.mark.asyncio
 async def test_drop_unit_does_not_affect_other_units(tmp_path: object) -> None:
-    """``drop_unit(unit_id)`` MUST NOT remove entries for other units.
-
-    The parallel coordinator calls ``drop_unit`` per unit on wave
-    completion. If drop_unit released the wrong entries, one wave's
-    cleanup would corrupt another wave's state.
-    """
     executor = SubprocessAgentExecutor(
         [sys.executable, "-c", "print('multi-unit')"],
         activity_router=ActivityRouter(),
@@ -395,7 +338,6 @@ async def test_drop_unit_does_not_affect_other_units(tmp_path: object) -> None:
     for unit in units:
         assert unit.unit_id in executor._raw_logs
 
-    # Drop only the middle unit.
     executor.drop_unit(units[1].unit_id)
 
     assert units[0].unit_id in executor._raw_logs
@@ -407,20 +349,6 @@ async def test_drop_unit_does_not_affect_other_units(tmp_path: object) -> None:
 async def test_verbatim_capture_receives_the_undecorated_wire_frame(
     tmp_path: Path,
 ) -> None:
-    """The capture gets the raw bytes, NOT the display-sanitized text.
-
-    ``sanitize_display_line`` strips control sequences and truncates at
-    200 characters with an ellipsis. Writing its output to the capture
-    severed every wire frame longer than that into unparseable JSON, and
-    Ralph Workflow then read the file back and graded the run "raw
-    transcript corrupted" — the incident this whole capture path exists
-    to prevent.
-
-    The existing coverage constructed a ``RawOverflowLog`` directly and
-    never ran the executor, so it asserted on the helper rather than on
-    the wiring: swapping the capture write to the sanitized line left it
-    green.
-    """
     frame = json.dumps({"type": "item.completed", "text": "y" * 400})
     assert len(frame) > 200, "the frame must exceed the display truncation point"
 
@@ -441,5 +369,4 @@ async def test_verbatim_capture_receives_the_undecorated_wire_frame(
 
     assert frame in captured, "the capture must hold the whole frame"
     assert "…" not in captured, "the capture must not hold display-truncated text"
-    # The point of verbatim: it still parses as the frame the agent sent.
     assert json.loads(captured.strip()) == json.loads(frame)

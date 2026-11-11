@@ -1,4 +1,3 @@
-"""Small exit-status decisions shared by completion checking."""
 
 from __future__ import annotations
 
@@ -28,12 +27,10 @@ _CREDENTIALS_FAILURE_SUBSTRINGS = (
 
 
 def looks_like_credentials_failure(text: str) -> bool:
-    """Return whether text carries a known credential/authentication failure marker."""
     return contains_casefolded_marker([text], _CREDENTIALS_FAILURE_SUBSTRINGS)
 
 
 def terminal_returncode(handle: object, *, agent_name: str) -> int:
-    """Return the finalized process status or fail closed on an incomplete lifecycle."""
     returncode = cast("object", getattr(handle, "returncode", None))
     if not isinstance(returncode, int):
         raise AgentInvocationError(
@@ -49,7 +46,6 @@ def credentials_failure_needs_broken_exit(
     stderr_text: str,
     elapsed_seconds: float | None,
 ) -> bool:
-    """Return whether an early credential failure lacks enough activity evidence."""
     return looks_like_credentials_failure(stderr_text) and (
         elapsed_seconds is None or elapsed_seconds < BROKEN_AGENT_OUTPUT_GRACE_SECONDS
     )
@@ -66,7 +62,6 @@ class _CapturedStderrHandle(Protocol):
 
 @runtime_checkable
 class _ReadableTextPipe(Protocol):
-    """Minimal typed boundary for a captured text stderr pipe."""
 
     def read(self, size: int = -1, /) -> str: ...
 
@@ -85,12 +80,6 @@ def _bounded_read(pipe: _ReadableTextPipe) -> str:
 
 
 def read_bounded_stderr(handle: object) -> str:
-    """Return the bounded stderr captured from a subprocess handle, if available.
-
-    Stderr is diagnostic evidence only. A closed or malformed transport pipe
-    must not replace the original process-exit classification, so read errors
-    deliberately degrade to an empty diagnostic.
-    """
     if isinstance(handle, _CapturedStderrHandle):
         return handle._ralph_bounded_stderr
     try:

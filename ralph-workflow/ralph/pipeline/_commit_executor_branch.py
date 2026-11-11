@@ -1,10 +1,3 @@
-"""Branch and detached-HEAD resolution helpers for commit execution.
-
-Extracted from :mod:`ralph.pipeline.commit_executor` without behavior change:
-the helper names, signatures, and semantics are identical, and the executor
-re-exports them under the same private names so existing call sites and tests
-keep resolving them.
-"""
 
 from __future__ import annotations
 
@@ -33,7 +26,6 @@ _DEFAULT_ENV_GETTER: _EnvGetter = os.environ.get
 
 
 def _is_git_worktree(repo_root: Path) -> bool:
-    """Check if repo_root is inside a valid git working tree."""
     git_dir = rebase_bookkeeping_dir(repo_root)
     if git_dir is not None and git_dir.is_dir():
         return True
@@ -67,7 +59,6 @@ def _read_detached_head_from_git_dir(git_dir: Path) -> bool | None:
 
 
 def _is_head_detached(repo_root: Path) -> bool:
-    """Check if HEAD is currently detached."""
     if not _is_git_worktree(repo_root):
         return False
     git_dir = rebase_bookkeeping_dir(repo_root)
@@ -88,7 +79,6 @@ _head_is_detached = _is_head_detached
 
 
 def _branch_exists(repo_root: Path, branch: str) -> bool:
-    """Check if a branch exists locally in refs/heads/."""
     clean = branch.strip() if branch else ""
     if not clean:
         return False
@@ -137,7 +127,6 @@ def _direct_detached_branch_from_reflog(git_dir: Path, repo_root: Path) -> str |
 
 
 def _detached_branch_from_reflog(repo_root: Path) -> str | None:
-    """Find the branch detached from by inspecting the reflog."""
     git_dir = rebase_bookkeeping_dir(repo_root)
     if git_dir is not None:
         direct = _direct_detached_branch_from_reflog(git_dir, repo_root)
@@ -174,7 +163,6 @@ def _detached_branch_from_reflog(repo_root: Path) -> str | None:
 
 
 def _branch_from_worktree_metadata(repo_root: Path) -> str | None:
-    """Inspect git worktree list --porcelain to find the branch for this worktree."""
     git_dir = rebase_bookkeeping_dir(repo_root)
     if git_dir is not None:
         head_path = git_dir / "HEAD"
@@ -257,7 +245,6 @@ def _candidate_branch_names(repo_root: Path, **opts: object) -> Iterator[str]:
 
 
 def _resolve_branch_for_reattach(repo_root: Path, **opts: object) -> str | None:
-    """Resolve the target branch to safely reattach a detached HEAD to."""
     from ralph.pipeline._commit_reattach_fallback import (
         integration_target_branch,
         occupied_worktree_branches,
@@ -296,7 +283,6 @@ def _resolve_branch_for_reattach(repo_root: Path, **opts: object) -> str | None:
 
 
 def _preferred_feature_branch(repo_root: Path, **opts: object) -> str:
-    """Find the best-effort feature branch name without requiring tip equality."""
     for candidate in _candidate_branch_names(repo_root, **opts):
         if candidate and _branch_exists(repo_root, candidate):
             return candidate
@@ -304,7 +290,6 @@ def _preferred_feature_branch(repo_root: Path, **opts: object) -> str:
 
 
 def _detached_head_sha(repo_root: Path) -> str | None:
-    """Return the detached HEAD's current OID, or ``None`` if HEAD is attached."""
     git_dir = rebase_bookkeeping_dir(repo_root)
     if git_dir is not None:
         head_file = git_dir / "HEAD"
@@ -357,7 +342,6 @@ def _direct_branch_tip_matches(common: Path, clean: str, head_sha: str) -> bool:
 
 
 def _branch_tip_matches(repo_root: Path, branch: str, head_sha: str | None) -> bool:
-    """Return True iff ``refs/heads/<branch>`` exists and its tip equals ``head_sha``."""
     if not head_sha:
         return False
     clean = branch.strip()
@@ -380,7 +364,6 @@ def _branch_tip_matches(repo_root: Path, branch: str, head_sha: str | None) -> b
 
 
 def _reattach_head_if_detached(repo_root: Path, **opts: object) -> bool:
-    """If HEAD is detached, safely reattach to the verified feature branch."""
     from ralph.pipeline._commit_reattach_fallback import (
         create_fresh_branch_for_detached,
         fast_forward_reattach,
@@ -395,7 +378,6 @@ def _reattach_head_if_detached(repo_root: Path, **opts: object) -> bool:
         logger.info("Detached HEAD detected; safely reattaching to branch '{}'", branch)
         reattach_head_to_branch(repo_root, branch)
         return True
-    # Step 2: ancestry-verified fast-forward fallback.
     detached_head_sha = _detached_head_sha(repo_root)
     integration_target = integration_target_branch(**opts)
     occupied = occupied_worktree_branches(repo_root, **opts)
@@ -408,7 +390,6 @@ def _reattach_head_if_detached(repo_root: Path, **opts: object) -> bool:
         occupied=occupied,
     ):
         return True
-    # Step 3: fresh branch with collision-safe naming.
     fresh = create_fresh_branch_for_detached(
         repo_root,
         detached_head_sha=detached_head_sha,

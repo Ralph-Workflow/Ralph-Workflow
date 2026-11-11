@@ -1,12 +1,3 @@
-# property-test: foundation — in-memory transport round trip on the shipped path
-"""Round-trip test for the in-memory MCP transport harness.
-
-The harness drives the production ``_FallbackHttpHandler`` over in-memory
-buffers, so this test exercises the SHIPPED path — the same code that runs
-in production. The 60-second combined test budget is unaffected (this test
-completes in well under 1 second).
-"""
-
 from __future__ import annotations
 
 import json
@@ -69,9 +60,6 @@ def test_tools_list_returns_single_sse_frame_with_tools_array(tmp_path: Path) ->
 def test_round_trip_uses_no_sockets_and_no_real_time(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The driver must be deterministic — no time.sleep, no sockets."""
-    # Patch the sleep that the do_GET keepalive loop uses, so a leaked
-    # invocation of the keepalive path would be visible as a sleep call.
     sleep_calls: list[float] = []
 
     def fake_sleep(seconds: float) -> None:
@@ -81,8 +69,6 @@ def test_round_trip_uses_no_sockets_and_no_real_time(
     mcp_server = _make_mcp_server(tmp_path)
     status, _headers, _body = drive_request(mcp_server, _build_tools_list_payload())
     assert status == 200
-    # A POST goes through do_POST (no sleep); a GET to /mcp would have entered
-    # the keepalive loop, but we did not call that path here.
     assert sleep_calls == []
 
 
@@ -101,7 +87,6 @@ def test_unknown_path_returns_404(tmp_path: Path) -> None:
 
 
 def test_drive_request_matches_production_request_dataclass(tmp_path: Path) -> None:
-    """The harness forwards a JsonRpcRequest that the production McpServer can dispatch."""
     mcp_server = _make_mcp_server(tmp_path)
     status, _headers, body = drive_request(mcp_server, _build_tools_list_payload())
     assert status == 200
@@ -111,7 +96,6 @@ def test_drive_request_matches_production_request_dataclass(tmp_path: Path) -> N
 
 
 def test_state_progression_to_running(tmp_path: Path) -> None:
-    """A POST that runs initialize transitions the server state to RUNNING."""
     mcp_server = _make_mcp_server(tmp_path)
     init_payload = json.dumps(
         {
@@ -135,7 +119,6 @@ def test_invalid_json_returns_parse_error_frame(tmp_path: Path) -> None:
     mcp_server = _make_mcp_server(tmp_path)
     status, headers, body = drive_request(mcp_server, b"{not json")
     assert status == 400
-    # 400 / 401 / 503 error responses use application/json; SSE responses use text/event-stream.
     if headers.get("content-type", "").startswith("text/event-stream"):
         payload = parse_sse_data(body)
     else:
@@ -148,7 +131,6 @@ def test_invalid_json_returns_parse_error_frame(tmp_path: Path) -> None:
 def test_handler_state_factory_helper_returns_production_surface(
     tmp_path: Path,
 ) -> None:
-    """The SimpleNamespace exposes the production casted _FallbackHttpServer surface."""
     mcp_server = _make_mcp_server(tmp_path)
     fake = _make_fake_server(mcp_server, ServerState.UNINITIALIZED)
     assert fake.mcp_server is mcp_server

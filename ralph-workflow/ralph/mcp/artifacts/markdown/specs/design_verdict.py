@@ -1,46 +1,3 @@
-"""Markdown mapping and validation rules for ``design_verdict`` artifacts.
-
-Consumed structure (stays strict): frontmatter ``type`` (closed
-vocabulary ``design_verdict``), the required-section skeleton
-(``## Capture Provenance`` body fields, ``## Design Intent`` one
-item, ``## Verdict`` one item shaped ``status | summary``, and
-``## Findings`` items shaped
-``capture_id | x,y,w,h | dimension | severity | narrative``), and
-the cross-section invariants that the consumer relies on:
-
-- Every ``capture_id`` cited in a finding must appear in the
-  ``cell_ids`` list of ``## Capture Provenance``. A finding that
-  references a cell the artifact did not actually capture is a
-  hard error because downstream consumers resolve the cell to a
-  rendered image and an unknown cell would render an empty
-  rectangle — a verdict built on phantom evidence.
-- ``## Verdict`` status must match the findings it reports. A
-  ``pass`` status requires the findings contain no ``blocker`` or
-  ``major`` severities (otherwise the verdict would be praising a
-  regression). A ``fail`` status requires at least one ``blocker``
-  or ``major`` severity (otherwise the verdict is rejecting a
-  passing review). ``blocked`` is reserved for verdicts the
-  reviewer could not complete and is independent of finding
-  severities.
-- ``## Design Intent`` is the verbatim text the agent was asked to
-  review; wording that tries to pivot the review into a code-reading
-  task is rejected so a verdict cannot be smuggled in by escaping the
-  visual review. The vocabulary covers ``DOM``, ``CSS``,
-  ``stylesheet``, ``diff``, ``classname`` (with their plurals and
-  inflections), the code-artifact compounds of ``class``/``style``
-  (``class name``, ``inline style``, ...), and ``source`` in every
-  sense except the "root cause" idiom ``source of``. Matching is
-  whole-word, hyphen-tolerant, and case insensitive, so ``dom``,
-  ``DOMs``, ``diffing``, and ``source-code`` are rejected while
-  ``kingdom``, ``different``, ``resource``, ``the visual style``, and
-  ``the source of truth for spacing`` are not. The check is a
-  heuristic, not a trust boundary: see the ``CEILING`` note beside
-  the vocabulary for what it cannot catch.
-
-Section bodies tolerate multi-line prose and unknown continuation
-lines under items; the consumed structure above is what this spec
-checks.
-"""
 
 from __future__ import annotations
 
@@ -69,40 +26,7 @@ _JUDGEMENT_TIERS: tuple[Literal["deterministic", "on-demand"], ...] = (
 _FINDING_PARTS = 5
 _VERDICT_PARTS = 2
 _REGION_COORDINATES = 4
-# --- Design-intent smuggle vocabulary -------------------------------------
-#
-# ``## Design Intent`` carries the verbatim prose the reviewer was asked to
-# judge visually. The check rejects prose that pivots the review into a
-# code-reading task, so the vocabulary is matched as whole words (case
-# insensitively), never as bare substrings:
-#
-# * Substring matching was both leaky and over-eager. ``"DOM" in text`` missed
-#   ``dom`` and ``Dom``; ``"diff" in text`` rejected the perfectly ordinary
-#   design words ``different`` and ``difference``.
-# * Head words that are ordinary design vocabulary on their own -- ``class``
-#   (a class of bugs) and ``style`` (the visual style) -- are therefore listed
-#   ONLY in the compound forms that name a code artifact.
-# * ``source`` is handled by exempting its one design-prose sense (the "root
-#   cause" idiom, ``the source of the crowding`` / ``the source of truth for
-#   spacing``) rather than by enumerating the verbs that can precede it. An
-#   allowlist of one idiom covers every verb, tense, and punctuation variant;
-#   a verb blocklist covered only the verbs someone had thought of.
-#
-# CEILING -- READ BEFORE TRUSTING THIS CHECK. This is a heuristic that raises
-# the cost of pivoting a visual review into a code review; it is NOT a trust
-# boundary and must never be relied on as one. It matches a fixed vocabulary,
-# so any paraphrase that names a code artifact by another word walks straight
-# past it -- ``examine the html``, ``look at the markup``, ``check the
-# template``, ``read the component`` are all accepted today. The boundary that
-# actually holds is structural: a verdict can only cite ``capture_id`` values
-# minted on the wire ledger (DV003), so a smuggled intent still cannot produce
-# evidence the agent did not capture. Enumerating more evasions here is an
-# arms race with no end state; strengthen the structural checks instead.
 
-# Terms that name a code artifact on their own and have no design-prose sense.
-# Plurals and verb inflections are spelled out so ``DOMs`` and ``diffing`` are
-# the same smuggle as ``DOM`` and ``diff``, while ``kingdom``, ``different``,
-# and ``difference`` stay ordinary prose (the trailing ``\b`` rejects them).
 _SMUGGLE_TERMS: tuple[str, ...] = (
     "doms?",
     "css",
@@ -111,7 +35,6 @@ _SMUGGLE_TERMS: tuple[str, ...] = (
     "classnames?",
 )
 
-# Compounds whose head word is ordinary design vocabulary in isolation.
 _SMUGGLE_COMPOUNDS: tuple[str, ...] = (
     "class names?",
     "class attributes?",
@@ -121,24 +44,14 @@ _SMUGGLE_COMPOUNDS: tuple[str, ...] = (
     "computed styles?",
 )
 
-# ``source`` in every sense except the "root cause" idiom (``source of``).
-# The negative lookahead is the whole rule: it rejects ``consult the source``,
-# ``looked at the source``, ``the source-code``, and ``the source's contents``
-# without naming a single verb.
 _SMUGGLE_SOURCE: tuple[str, ...] = (r"sources?(?!\s+of\b)",)
 
-# A code-reading directive still names a code artifact when the ``source of``
-# idiom follows it (``read the source of the header``), which the exemption
-# above would otherwise let through. This narrow verb family is the supplement
-# for exactly that overlap -- it is not the primary ``source`` rule.
 _SMUGGLE_DIRECTIVES: tuple[str, ...] = (
     "(?:read|reads|reading|inspect|inspects|examine|examines|review|reviews"
     "|check|checks|open|opens|grep|greps|walk|walks|trace|traces|look at"
     "|looks at) (?:the |its |their |this |our )?sources?",
 )
 
-# Word separators tolerate hyphenation so ``source-code`` and ``class-name``
-# cannot evade a compound by joining its words.
 _SMUGGLE_PATTERN = re.compile(
     r"\b(?:"
     + "|".join(
@@ -176,14 +89,6 @@ def _provenance_field(
     *,
     allow_missing: bool = False,
 ) -> str:
-    """Return the value of a single ``Field: value`` body line in a section.
-
-    Field lines are body lines (not list items) — they live in
-    ``section.lines`` after the parser drops item-shaped content.
-    A missing field raises unless ``allow_missing`` is set so the
-    provenance field check can short-circuit when the section is
-    not present.
-    """
     prefix = f"{field}:"
     for line in section.lines:
         if line.text == prefix:
@@ -196,7 +101,6 @@ def _provenance_field(
 
 
 def _required_provenance_field(section: ParsedSection, field: str) -> str:
-    """Return the value of a required provenance field, raising if missing."""
     value = _provenance_field(section, field)
     if not value:
         raise ValueError(f"## Capture Provenance '{field}:' value is required")
@@ -204,7 +108,6 @@ def _required_provenance_field(section: ParsedSection, field: str) -> str:
 
 
 def _parse_region(region: str) -> tuple[int, int, int, int] | None:
-    """Parse an ``x,y,w,h`` region. Returns ``None`` for any malformed shape."""
     parts = region.split(",")
     if len(parts) != _REGION_COORDINATES:
         return None
@@ -223,7 +126,6 @@ def _parse_region(region: str) -> tuple[int, int, int, int] | None:
 def _cell_ids_from_provenance(
     provenance: ParsedSection | None,
 ) -> set[str]:
-    """Read the comma-separated ``cell_ids`` field into a set for fast lookup."""
     if provenance is None:
         return set()
     raw = _provenance_field(provenance, "cell_ids", allow_missing=True)
@@ -231,13 +133,6 @@ def _cell_ids_from_provenance(
 
 
 def _parse_findings(section: ParsedSection) -> list[dict[str, object]]:
-    """Extract well-formed finding dicts from the findings section.
-
-    Malformed entries (wrong number of pipe-separated parts) are
-    skipped here; the cross-section ``_validate_document`` hook
-    reports a diagnostic for each so the agent can see exactly
-    which entry needs repair.
-    """
     findings: list[dict[str, object]] = []
     for item in section.items:
         parts = item.text.split(" | ", _FINDING_PARTS - 1)
@@ -257,7 +152,6 @@ def _parse_findings(section: ParsedSection) -> list[dict[str, object]]:
 
 
 def _to_content(document: ParsedDocument) -> Content:
-    """Map the parsed markdown document to the canonical content dict."""
     provenance = _required_section(document, "Capture Provenance")
     run_id = _required_provenance_field(provenance, "run_id")
     judgement_tier = document.frontmatter.get("judgement_tier")
@@ -308,7 +202,6 @@ def _validate_finding(
     item_line: int,
     cell_ids: set[str],
 ) -> tuple[list[Diagnostic], str]:
-    """Validate one finding line. Returns (diagnostics, severity or '')."""
     diagnostics: list[Diagnostic] = []
     parts = item_text.split(" | ", _FINDING_PARTS - 1)
     if len(parts) != _FINDING_PARTS:
@@ -365,7 +258,6 @@ def _validate_verdict(
     verdict_line: int,
     severities: list[str],
 ) -> list[Diagnostic]:
-    """Validate the verdict line against the collected finding severities."""
     verdict_parts = verdict_text.split(" | ", 1)
     status = verdict_parts[0].strip() if verdict_parts else ""
     has_blocking = any(severity in _BLOCKING_SEVERITIES for severity in severities)
@@ -393,11 +285,6 @@ def _validate_verdict(
 
 
 def _validate_intent(intent_text: str, intent_line: int) -> list[Diagnostic]:
-    """Reject intent text that smuggles a code-reading phrase.
-
-    Matching is whole-word and case insensitive, so ``dom``/``DOM`` are both
-    rejected while ``different`` and ``kingdom`` are not.
-    """
     seen: list[str] = []
     for match in _SMUGGLE_PATTERN.finditer(intent_text):
         phrase = " ".join(match.group(0).lower().split())
@@ -418,7 +305,6 @@ def _validate_intent(intent_text: str, intent_line: int) -> list[Diagnostic]:
 
 
 def _validate_document(document: ParsedDocument) -> list[Diagnostic]:
-    """Enforce cross-section invariants the markdown mapper cannot express."""
     diagnostics: list[Diagnostic] = []
     cell_ids = _cell_ids_from_provenance(document.section("Capture Provenance"))
     severities: list[str] = []

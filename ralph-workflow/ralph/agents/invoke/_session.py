@@ -1,4 +1,3 @@
-"""Session ID extraction and bounded output utilities."""
 
 from __future__ import annotations
 
@@ -9,21 +8,8 @@ from typing import cast
 from ralph.agents._session_markers import TURN_BOUNDARY_MARKER
 from ralph.agents.invoke._pty_helpers import _visible_tui_text
 
-#: Explicit completion marker emitted by the interactive harness.
-#: Lines carrying this marker also contain a session id extracted by
-#: the PTY/session layer; they are canonical completion metadata, not
-#: corrupted wire output.
 _EXPLICIT_COMPLETION_MARKER: str = "Task declared complete:"
 
-#: Canonical interactive-transport session/resume metadata lines.
-#:
-#: These exact text shapes are emitted and parsed by the PTY/session
-#: layer for interactive Claude and related transports. They are not
-#: JSONL, but they are expected verbatim capture content -- not
-#: corruption -- so consumers that grade raw transcripts must recognize
-#: them. Anchored patterns only: a line that merely mentions
-#: ``Session ID`` without matching a canonical shape is still graded as
-#: ``NON_JSONL``.
 _TRANSPORT_SESSION_TEXT_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^Claude session ready\. Session ID:\s*([A-Za-z0-9._:-]+)$"),
     re.compile(r"^Session ID:\s*([A-Za-z0-9._:-]+)$", re.IGNORECASE),
@@ -32,10 +18,6 @@ _TRANSPORT_SESSION_TEXT_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^--session\s+([A-Za-z0-9._:-]+)$"),
 )
 
-#: Patterns that extract a session id from an explicit completion
-#: marker line. These are anchored loosely inside the marker text so
-#: future timestamp/summary ordering changes do not silently break
-#: recognition.
 _COMPLETION_SESSION_ID_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"session_id\s*[:=]\s*([A-Za-z0-9._:-]+)", re.IGNORECASE),
     re.compile(r"sessionId\s*[:=]\s*([A-Za-z0-9._:-]+)", re.IGNORECASE),
@@ -43,13 +25,6 @@ _COMPLETION_SESSION_ID_PATTERNS: tuple[re.Pattern[str], ...] = (
 
 
 def extract_transport_text_session_id(stripped: str) -> str | None:
-    """Extract a session id from a canonical transport text session line.
-
-    Single source of truth for the exact text shapes the PTY/session
-    layer emits and parses. Callers that need ANSI/VT-normalized
-    matching (e.g. the raw-log classifier) normalize the line first,
-    then call this helper.
-    """
     if _EXPLICIT_COMPLETION_MARKER in stripped:
         for pattern in _COMPLETION_SESSION_ID_PATTERNS:
             match = pattern.search(stripped)
@@ -62,56 +37,21 @@ def extract_transport_text_session_id(stripped: str) -> str | None:
     return None
 
 
-#: The HEAD of an emitted completion line: the marker, a session id, and
-#: the opening of the summary field. Anchored at the start with a bounded
-#: id, so matching cannot backtrack.
-#:
-#: It reaches ``summary=`` deliberately. A head, an unconstrained middle
-#: and a tail cannot decide "is this ONE line" -- the emitter's own
-#: structure (``mcp/tools/coordination.py``) is the only thing that can,
-#: and it is ``session_id=<id>, summary='<free text>', timestamp=<int>``.
 _COMPLETION_HEAD_PATTERN: re.Pattern[str] = re.compile(
     r"^Task declared complete:\s*session_?id\s*[:=]\s*[A-Za-z0-9._:-]+\s*,\s*summary\s*=",
     re.IGNORECASE,
 )
 
-#: An epoch second is TEN digits, and stays ten until 2286-11-20. A
-#: longer run is not a timestamp -- it is this line's timestamp with
-#: another line's digits welded onto it. That weld was the whole residue
-#: of the delimiter grammar: a torn write whose surviving remainder is
-#: all digits extends the field instead of breaking it.
-#:
-#: Ten, not the twelve a previous round chose while arguing for ten. The
-#: slack was the entire residue: at twelve a two-digit weld is graded
-#: clean, at ten there is none, measured at every cut point by
-#: ``test_a_torn_write_is_graded_at_every_cut``. The emitter's own
-#: timestamp is asserted to fit this bound
-#: (``test_the_emitters_timestamp_fits_the_graders_bound``), so a move to
-#: milliseconds fails there rather than turning every completion line
-#: into a corruption report.
 _MAX_TIMESTAMP_DIGITS = 10
 
-#: The TAIL: the summary's closing delimiter, then ``timestamp=<int>``
-#: and the end of the line. ``coordination.py`` interpolates
-#: ``now_fn() -> int``, so digits are the whole vocabulary.
 _COMPLETION_TAIL_PATTERN: re.Pattern[str] = re.compile(
     rf"'\s*,\s*timestamp\s*[:=]\s*\d{{1,{_MAX_TIMESTAMP_DIGITS}}}$",
     re.IGNORECASE,
 )
 
-#: The delimiter that closes the summary field. The emitter guarantees
-#: the summary contains no single quote of its own
-#: (``coordination.py._quotable_summary``), so the FIRST one after
-#: ``summary='`` is the closing delimiter and nothing else can be.
 _SUMMARY_DELIMITER = "'"
 
 
-#: The literal openings of every canonical session/completion line.
-#:
-#: Derived from the same vocabulary as the patterns above, and used for
-#: two things that both need to be CHEAP: deciding whether a line could
-#: possibly be canonical before matching it, and letting a grader skip
-#: expensive work on a line that provably is not.
 _CANONICAL_LINE_OPENINGS: tuple[str, ...] = (
     "claude session ready.",
     "session id:",
@@ -121,46 +61,15 @@ _CANONICAL_LINE_OPENINGS: tuple[str, ...] = (
     _EXPLICIT_COMPLETION_MARKER.lower(),
 )
 
-#: Longest opening above, plus room for leading whitespace. Bounds how
-#: much of a line has to be examined to rule it out.
 _MAX_CANONICAL_OPENING_CHARS = 64
 
 
 def starts_with_canonical_session_marker(stripped: str) -> bool:
-    """Return True when ``stripped`` OPENS with a canonical marker.
-
-    A cheap necessary condition, not a sufficient one. A grader uses it
-    to decide whether a line is worth examining closely; a line that
-    fails it cannot be canonical however long it is.
-    """
     opening = stripped[:_MAX_CANONICAL_OPENING_CHARS].lower()
     return any(opening.startswith(marker) for marker in _CANONICAL_LINE_OPENINGS)
 
 
 def is_whole_canonical_session_line(stripped: str) -> bool:
-    """Return True when the WHOLE line is canonical session metadata.
-
-    Strict counterpart to :func:`is_canonical_session_text_line`. The two
-    answer different questions and a grader needs this one.
-
-    Extraction is deliberately permissive: it must find a session id
-    inside a TUI-wrapped, decorated line, so it tests the completion
-    marker as a SUBSTRING and searches for the id UNANCHORED. Reusing it
-    to decide "is this line expected content" therefore excused any line
-    that merely mentioned the marker text -- and agents routinely echo a
-    ``declare_complete`` result into their own prose. A frame severed
-    mid-write was graded CLEAN whenever the surviving bytes happened to
-    contain that sentence, which is precisely the corruption the grader
-    exists to catch.
-
-    Anchored at BOTH ends. Anchoring only the front left the mirror
-    image: a line opening with the marker was excused however it ended,
-    so ``Task declared complete: session_id=1`` followed by a whole
-    concatenated frame -- the classic lost-newline interleave -- still
-    graded clean. The emitted line always closes with ``timestamp=``
-    (``mcp/tools/coordination.py``), so requiring that closes the tail
-    without constraining the free-text summary between them.
-    """
     for pattern in _TRANSPORT_SESSION_TEXT_PATTERNS:
         if pattern.match(stripped) is not None:
             return True
@@ -168,60 +77,17 @@ def is_whole_canonical_session_line(stripped: str) -> bool:
 
 
 def _is_whole_completion_line(stripped: str) -> bool:
-    """Match a completion line head-then-tail, without backtracking.
-
-    Two separate anchored matches joined by ``rfind``, NOT one pattern.
-    Writing it as ``^head.*\btimestamp...$`` made the ``.*`` backtrack
-    across the whole line looking for the tail: 28.8 seconds to grade a
-    single 508 KB line, inside the phase-close verdict, with no timeout
-    and a caller documented as never raising. Head match, tail search,
-    tail match: each bounded, the whole thing linear.
-
-    The tail's value is a bounded character class rather than ``\\S+``.
-    ``\\S+`` swallowed a concatenated wire frame whenever that frame
-    happened to contain no whitespace -- and real frames are compact --
-    so the very interleave this anchor was added to catch graded CLEAN
-    or CORRUPT depending on whether the lost frame had a space in it.
-    """
     head = _COMPLETION_HEAD_PATTERN.match(stripped)
     if head is None:
         return False
-    # Neither the FIRST timestamp field nor the LAST. Both were wrong,
-    # in opposite directions, and for the same reason: an unconstrained
-    # middle. Anchoring on the last excused a coordination line glued to
-    # a completion line; anchoring on the first graded a GENUINE line
-    # corrupt whenever the agent's own summary mentioned a field-shaped
-    # ``timestamp:`` -- and that summary is interpolated raw, unbounded
-    # and unsanitised.
-    #
-    # The delimiters decide it instead. The tail is anchored to the end
-    # of the line, so it identifies the summary's closing boundary
-    # rather than any mention inside it, and what lies between the two
-    # delimiters is the summary -- free text, and allowed to be.
     tail = _COMPLETION_TAIL_PATTERN.search(stripped)
     if tail is None or tail.start() < head.end():
         return False
-    # The summary must be QUOTED, and its quote must be the one the tail
-    # closes on. Nothing else about it is inspected.
-    #
-    # Two rounds were spent trying to judge the summary's CONTENT -- a
-    # blacklist of things a second line might contribute. That is both
-    # too narrow and too broad at once: a torn write severs the second
-    # line at an arbitrary byte, so its distinguishing opening is
-    # usually gone, while a legitimate summary describing JSON work was
-    # graded "raw transcript corrupted". Free text cannot be judged;
-    # only a delimiter can, so the emitter now guarantees one.
     summary = stripped[head.end() : tail.start()]
     return summary.startswith(_SUMMARY_DELIMITER) and _SUMMARY_DELIMITER not in summary[1:]
 
 
 def is_canonical_session_text_line(stripped: str) -> bool:
-    """Return True when ``stripped`` is a canonical transport session/completion line.
-
-    Single source of truth for raw-log graders and other consumers that
-    need to recognize session/resume/completion metadata without
-    reimplementing the pattern vocabulary.
-    """
     return extract_transport_text_session_id(stripped) is not None
 
 
@@ -231,10 +97,6 @@ _TRANSPORT_JSON_TYPES = frozenset(
         "session_ready",
         "session_start",
         "session_resume",
-        # Codex calls its session a "thread" and announces it once, on the
-        # first frame of `codex exec --json`. Without this entry a live Codex
-        # run was graded "session ID was not observed" even though its very
-        # first line carried the resumable id.
         "thread.started",
     }
 )
@@ -245,18 +107,6 @@ def _is_cursor_system_init_event(parsed: dict[str, object]) -> bool:
 
 
 def _is_kimi_meta_session_frame(parsed: dict[str, object]) -> bool:
-    """Match Kimi Code's role-keyed ``session.resume_hint`` meta frame.
-
-    Kimi Code's NDJSON frames are keyed by ``role`` rather than ``type``;
-    the session-bearing frame observed on the live v0.36.x wire is
-    ``{"role": "meta", "type": "session.resume_hint", "session_id": ...}``
-    (emitted right after session start, alongside a ``system.version``
-    meta frame that carries no session id).  Requiring BOTH the ``meta``
-    role and the ``session.resume_hint`` type keeps assistant/tool
-    frames (whose free-text content could otherwise collide with the
-    generic ``session_id`` keys) from masquerading as transport
-    session metadata.
-    """
     return parsed.get("role") == "meta" and parsed.get("type") == "session.resume_hint"
 
 
@@ -269,20 +119,10 @@ def _match_transport_json_session_id(parsed: dict[str, object]) -> str | None:
         or is_agy_init
         or _is_kimi_meta_session_frame(parsed)
     ):
-        # ``thread_id`` is Codex's spelling; it is scanned only for the frame
-        # types above, so an item or turn frame carrying one cannot pose as
-        # the transport's session announcement.
         for key in ("session_id", "sessionId", "conversation_id", "thread_id", "id"):
             session_id = parsed.get(key)
             if isinstance(session_id, str) and session_id:
                 return session_id
-    # OpenCode never emits a dedicated session frame: it stamps ``sessionID``
-    # (capital I, capital D -- distinct from the ``sessionId`` above) on EVERY
-    # event. Gating that spelling behind ``_TRANSPORT_JSON_TYPES`` meant the
-    # session was never captured for OpenCode, and the smoke reported "session
-    # ID was not observed" for a run whose every line carried one. The casing is
-    # OpenCode-specific, so accepting it unconditionally cannot shadow another
-    # transport's session key.
     opencode_session_id = parsed.get("sessionID")
     if isinstance(opencode_session_id, str) and opencode_session_id:
         return opencode_session_id
@@ -290,7 +130,6 @@ def _match_transport_json_session_id(parsed: dict[str, object]) -> str | None:
 
 
 def _session_id_from_nested_meta(parsed: dict[str, object]) -> str | None:
-    """Pull a session id out of a nested ``meta`` object."""
     meta = parsed.get("meta")
     if not isinstance(meta, dict):
         return None
@@ -305,11 +144,6 @@ def _extract_transport_session_id_from_line(line: str) -> str | None:
     try:
         parsed = cast("object", json.loads(line))
     except json.JSONDecodeError:
-        # The primary line extractor matches canonical text patterns on
-        # the raw line. ANSI/VT stripping is handled by
-        # ``extract_transport_session_id_with_visible_tui`` so that
-        # callers which need the original wire bytes (e.g. subprocess
-        # readers that parse NDJSON frames) are not silently normalized.
         return extract_transport_text_session_id(line.strip())
     if not isinstance(parsed, dict):
         return None
@@ -317,7 +151,6 @@ def _extract_transport_session_id_from_line(line: str) -> str | None:
 
 
 def extract_transport_session_id(raw_output: list[str] | tuple[str, ...]) -> str | None:
-    """Extract only top-level transport/runtime session IDs from output lines."""
     for line in raw_output:
         session_id = _extract_transport_session_id_from_line(line)
         if session_id:
@@ -326,34 +159,13 @@ def extract_transport_session_id(raw_output: list[str] | tuple[str, ...]) -> str
 
 
 def extract_transport_session_id_from_line(line: str) -> str | None:
-    """Extract only top-level transport/runtime session IDs from one line."""
     return _extract_transport_session_id_from_line(line)
 
 
 def extract_transport_session_id_with_visible_tui(line: str) -> str | None:
-    """Extract transport session IDs from a PTY line, with ANSI-strip fallback.
-
-    PTY output lines frequently contain ANSI escape codes that prevent
-    ``extract_transport_session_id_from_line`` from matching the
-    anchored text patterns in :data:`_TRANSPORT_TEXT_SESSION_PATTERNS`
-    (e.g. ``^Claude session ready\\. Session ID:\\s*(...)$``). The
-    visible-TUI helper :func:`extract_visible_tui_transport_session_id`
-    strips ANSI codes via :func:`ralph.agents.invoke._pty_helpers._visible_tui_text`
-    before matching, so a TUI line like
-    ``\\x1b[32mClaude session ready. Session ID: abc123\\x1b[0m``
-    still yields the captured id.
-
-    Used by the PTY watchdog / recovery paths so the resumable
-    session id survives a watchdog-kill -> resume flow on the PTY
-    transport. Mirrors the per-line capture already used by
-    :meth:`PtyLineReader._record_transcript_session_id`.
-    """
     primary = extract_transport_session_id_from_line(line)
     if primary:
         return primary
-    # Fallback: strip ANSI/VT control codes and re-run the text-pattern
-    # extractor so a session id carried in a TUI banner or status line
-    # is captured even when the wire line starts with escape sequences.
     visible_line = _visible_tui_text(line)
     if visible_line and visible_line != line.strip():
         return extract_transport_text_session_id(visible_line)
@@ -361,11 +173,6 @@ def extract_transport_session_id_with_visible_tui(line: str) -> str | None:
 
 
 def extract_visible_tui_transport_session_id(text: str) -> str | None:
-    """Extract transport session IDs from visible TUI text only.
-
-    This intentionally excludes generic ``session_id=...`` patterns so assistant or
-    tool text cannot masquerade as transport session metadata.
-    """
     return extract_transport_text_session_id(text.strip())
 
 

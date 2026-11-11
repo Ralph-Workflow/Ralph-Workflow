@@ -1,4 +1,3 @@
-"""Detect Pi-agent context-exhaustion and provider-failure signals in raw output."""
 
 from __future__ import annotations
 

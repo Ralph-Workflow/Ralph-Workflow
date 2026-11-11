@@ -1,77 +1,3 @@
-"""MCP Git read tool handlers.
-
-Ports the Rust MCP Git read tools so agents can inspect repository state
-through bounded read-only git commands from the workspace root.
-
-Exported surface:
-
-- ``handle_git_status`` — runs ``git status`` in the workspace root.
-  Capability: ``GitStatusRead``.
-- ``handle_git_diff`` — runs ``git diff [args]`` in the workspace root.
-  The handler uses the *lenient* runner so a non-zero exit (which can
-  happen when there is nothing to diff, or when a path filter matches
-  no files) is surfaced as stdout/stderr rather than an exception.
-  Capability: ``GitDiffRead``.
-- ``handle_git_log`` — runs ``git log -<count> --oneline`` (default
-  count = ``DEFAULT_LOG_COUNT`` = 10). Capability: ``GitStatusRead``.
-- ``handle_git_show`` — runs ``git show <ref>`` for a single object.
-  Capability: ``GitStatusRead``.
-- ``parse_git_diff_params`` / ``parse_git_log_params`` /
-  ``parse_git_show_params`` — the parameter parsers used by the
-  handlers above (string-only args, bounded count, ref validation).
-- ``run_git_command`` / ``run_git_command_lenient`` — the two
-  subprocess runners. Both require a successful ``git`` exit code
-  unless the lenient variant is used. They are the only call sites of
-  the internal ``_run_git_subprocess`` helper, which always carries
-  the fixed ``GIT_READ_TIMEOUT_SECONDS = 30.0`` bound.
-
-Trust boundary: every handler is gated on a ``McpCapability`` and runs
-through a process spawned by ``ralph.process.manager``. The 30-second
-hard timeout is the bounded-subprocess contract — a hung ``git status``
-over a large ``vendor/`` submodule or a held ``.git`` lock cannot hang
-the MCP server thread.
-
-Side effects: spawns a ``git`` subprocess under the workspace root
-(registered with the global ``ProcessManager``) and reads its
-stdout/stderr. No write to the workspace, no network call. Timeouts
-are converted into a non-retryable ``is_error`` result that names the
-likely cause (vendor/ submodule or held lock) and tells the agent
-*not* to retry unchanged.
-
-Workspace-bounded cwd contract
-------------------------------
-
-Every handler accepts an optional ``cwd`` parameter so an agent can
-read a *nested* repository contained inside the active workspace:
-
-1. ``cwd=None`` or ``cwd=""`` resolves to the workspace root
-   (the legacy default; no behavior change). The top-level probe always
-   applies, so a workspace inside an unrelated parent repository is
-   reported before any git command executes.
-2. ``cwd=<path>`` resolves relative to the workspace root and the
-   git command runs in the resolved directory (absolute paths are
-   taken as-is).
-3. The resolved directory must be inside the workspace root.
-   ``..`` segments are collapsed and symlinks are followed
-   (``Path.resolve``) *before* the check, so neither can smuggle the
-   subprocess outside the workspace.
-4. The resolved directory's ``git rev-parse --show-toplevel`` must
-   also be inside the workspace root. This defeats the parent-repo
-   bypass: when the workspace is itself a subdirectory of an
-   unrelated parent repository, git would otherwise operate on the
-   parent's commits even though the resolved cwd is inside the
-   workspace.
-5. A violated boundary returns ``ToolResult(is_error=False)`` with a
-   ``WARNING:`` message naming the resolved path, the discovered top-level
-   (when the second check fails), and the workspace root. Git still runs in
-   the resolved directory and its output follows the warning.
-
-The two-dimensional check lives in
-:func:`ralph.mcp.tools._git_cwd_validator.resolve_git_cwd`; the four
-handlers resolve once per request and thread the resulting ``Path``
-through ``run_git_command`` / ``run_git_command_lenient`` (via the
-``cwd=`` kwarg) into every summary-payload code path.
-"""
 
 from __future__ import annotations
 
@@ -110,7 +36,6 @@ from ralph.process.manager import SpawnOptions, get_process_manager
 GIT_STATUS_READ_CAPABILITY = "GitStatusRead"
 GIT_DIFF_READ_CAPABILITY = "GitDiffRead"
 DEFAULT_LOG_COUNT = 10
-#: Number of tab-separated fields in a ``git diff --numstat`` line.
 _NUMSTAT_FIELD_COUNT = 3
 type GitRunner = Callable[[list[str], Path], subprocess.CompletedProcess[bytes]]
 type CwdProvider = Callable[[], Path]
@@ -118,52 +43,32 @@ type CwdProvider = Callable[[], Path]
 
 @runtime_checkable
 class WorkspaceWithRoot(Protocol):
-    """Workspace surface required for git command execution."""
 
     @property
     def root(self) -> Path:
-        """Return the absolute workspace root path."""
         ...
 
 
 class _SpawnedProcessLike(Protocol):
-    """Minimal surface for a managed ``git diff`` subprocess.
-
-    AC-06: the streaming-cap helpers consume stdout in fixed
-    chunks and tear down the process at the end. We declare
-    the surface as a Protocol so mypy can verify the
-    ``get_process_manager().spawn`` return shape without
-    importing the concrete ``ManagedProcess`` class.
-    """
 
     @property
     def stdout(self) -> object:
-        """Return the stdout pipe."""
         ...
 
     @property
     def stderr(self) -> object:
-        """Return the stderr pipe."""
         ...
 
     def kill(self) -> None:
-        """Kill the process tree."""
         ...
 
     def communicate_and_cleanup(self, *args: object, **kwargs: object) -> object:
-        """Wait for the process to exit and clean up resources."""
         ...
 
 
 class _ReadablePipe(Protocol):
-    """Minimal pipe-like surface with ``read``.
-
-    Used by the streaming-cap helper so mypy can verify the
-    call site without coupling to ``IO[bytes]``.
-    """
 
     def read(self, n: int) -> bytes:
-        """Read up to ``n`` bytes from the pipe."""
         ...
 
 
@@ -172,7 +77,7 @@ def _workspace_root(workspace: object, *, cwd_provider: CwdProvider = Path.cwd) 
         return workspace.root
     root_value = cast(
         "Path | str | None", getattr(workspace, "root", None)
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     if isinstance(root_value, Path):
         return root_value
     if isinstance(root_value, str):
@@ -181,22 +86,6 @@ def _workspace_root(workspace: object, *, cwd_provider: CwdProvider = Path.cwd) 
 
 
 def parse_git_diff_params(params: Mapping[str, object]) -> GitDiffParams:
-    """Parse git diff params, keeping only string arguments.
-
-    AC-06: read-only contract. The git diff MCP tool is a
-    read-only ``GitDiffRead`` operation, so the ``args`` allowlist
-    MUST reject output-writing flags (``--output=...``,
-    ``--output ...``) and external-helper flags
-    (``--ext-diff``, ``--textconv``, ``--convience-diff`` etc.).
-    These flags would let a caller make git write to the
-    workspace or invoke an external helper, bypassing the
-    intended capability separation. Rejecting the flags is not
-    enough on its own: git also runs ``diff.external`` and
-    textconv drivers from config, so every ``git diff`` this
-    module spawns is prefixed with ``--no-ext-diff --no-textconv``.
-    Malformed types (non-string args, non-list containers) are
-    silently dropped so the legacy parsing contract is preserved.
-    """
     args_value = params.get("args")
     args = (
         [value for value in args_value if isinstance(value, str)]
@@ -207,53 +96,17 @@ def parse_git_diff_params(params: Mapping[str, object]) -> GitDiffParams:
     return GitDiffParams(args=args)
 
 
-#: External-helper flags that cause git to invoke an external
-#: program (``GIT_EXTERNAL_DIFF`` / ``GIT_TEXTConv``). These
-#: bypass the read-only intent of the MCP tool and can run
-#: arbitrary commands.
 _DIFF_EXTERNAL_HELPER_FLAGS: tuple[str, ...] = (
     "--ext-diff",
     "--textconv",
-    "--convience-diff",  # misspelled but accepted by older git
+    "--convience-diff",
 )
 
 
 def _validate_diff_args(args: Sequence[str]) -> None:
-    """Reject output-writing and external-helper flags.
-
-    AC-06: read-only contract. The check inspects each arg
-    against the output-writing and external-helper allowlists
-    so a caller cannot slip a write-producing or
-    external-helper-invoking flag past the schema. The check
-    runs at parse time, before git is invoked, so a rejected
-    flag never reaches the subprocess.
-
-    Flags like ``--output`` are checked as substrings so
-    ``--output=...``, ``--output ...``, and
-    ``--output-threshold`` all fail closed. The
-    external-helper list mirrors the git diff docs verbatim;
-    a flag not in the list is forwarded unchanged.
-    """
     for arg in args:
-        # An embedded NUL is rejected BEFORE the flag checks below.
-        # ``ProcessManager`` strips NULs out of argv (execve cannot carry
-        # one), so an arg accepted here with a NUL inside would reach git
-        # WITHOUT it -- ``--ext-di<NUL>ff`` would pass this denylist and
-        # run as ``--ext-diff``. Nothing legitimate puts a NUL in a git
-        # flag, so this fails closed at the boundary that decides.
         if "\x00" in arg:
             raise InvalidParamsError(f"read-only git_diff rejects an embedded NUL in: {arg!r}")
-        # ``args`` is already filtered to strings by
-        # ``parse_git_diff_params``; no ``isinstance`` guard
-        # is needed. The ``Sequence[str]`` annotation carries
-        # through to mypy so the helper stays typed.
-        # Output-writing flags: ``--output=path``, ``--output path``,
-        # and the short form ``-o path`` / ``-o=path``. The check
-        # is substring-based so callers cannot slip past via
-        # ``--output-threshold`` (rejected because the substring
-        # ``--output`` matches). ``-o`` is matched only when it is
-        # exactly ``-o`` or starts with ``-o=``/``-o<space>``, so we
-        # do not false-positive on ``-output``, ``-only`` etc.
         if (
             "--output=" in arg
             or arg == "--output"
@@ -271,14 +124,6 @@ def _validate_diff_args(args: Sequence[str]) -> None:
 
 
 def parse_git_log_params(params: Mapping[str, object]) -> GitLogParams:
-    """Parse git log params with the Rust default count.
-
-    Phase 4: ``format`` is optional and closed to ``{'raw', 'summary'}``.
-    ``raw`` is the default (preserved legacy output); ``summary`` returns a
-    compact JSON envelope with one entry per commit. Any other value
-    raises ``InvalidParamsError`` naming the closed enum so a malformed
-    selector never reaches the git subprocess.
-    """
     count_value = params.get("count", DEFAULT_LOG_COUNT)
     count = count_value if isinstance(count_value, int) and count_value >= 0 else DEFAULT_LOG_COUNT
     format_value = params.get("format", "raw")
@@ -290,21 +135,9 @@ def parse_git_log_params(params: Mapping[str, object]) -> GitLogParams:
 
 
 def parse_git_show_params(params: Mapping[str, object]) -> GitShowParams:
-    """Parse git show params.
-
-    Phase 4: ``format`` is optional and closed to ``{'raw', 'summary'}``.
-    ``raw`` is the default (preserved legacy output); ``summary`` returns
-    a compact header-only envelope without the patch body. Any other
-    value raises ``InvalidParamsError``.
-    """
     ref_value = params.get("ref")
     if not isinstance(ref_value, str):
         raise InvalidParamsError("Missing 'ref' parameter")
-    # A ref is a revision, never a flag: ``git show`` would otherwise accept
-    # ``--output=<path>`` here and write a file from a READ-ONLY tool, the same
-    # escape ``_validate_diff_args`` denies for ``git_diff``. An embedded NUL is
-    # rejected for the reason given there: the spawn strips it, so a
-    # NUL-hidden flag would reach git without it.
     if ref_value.startswith("-"):
         raise InvalidParamsError(
             f"read-only git_show rejects a flag-shaped ref: {ref_value!r}; pass a revision"
@@ -328,26 +161,10 @@ def _decode_output(data: bytes) -> str:
 def _resolve_git_cwd(
     workspace: object, params: Mapping[str, object]
 ) -> tuple[Path, bool, Path | None]:
-    """Resolve the optional ``cwd`` param against the workspace boundary.
-
-    The workspace-bounded contract (see the module docstring):
-    ``cwd=None`` / ``cwd=""`` runs in the workspace root; any other
-    value is checked against the workspace and its containing repository
-    top-level is probed. Handlers prepend a warning when the result is
-    outside while still executing in the resolved directory.
-
-    The top-level probe applies to omitted and empty cwd values too, so a
-    workspace nested in an unrelated parent repository cannot silently read
-    that parent repository.
-    """
     raw: object = params.get("cwd") if params else None
     if raw is not None and not isinstance(raw, str):
         raise InvalidParamsError(f"Invalid cwd: expected a string, got {type(raw).__name__}")
     if isinstance(raw, str) and "\x00" in raw:
-        # Named here rather than left to ``Path.resolve`` below, which raises a
-        # bare ``ValueError: lstat: embedded null character in path`` — an
-        # internal-looking error that names neither the tool nor the parameter
-        # the caller has to fix.
         raise InvalidParamsError(f"Invalid cwd: must not contain an embedded NUL: {raw!r}")
     return resolve_git_cwd(
         workspace_root=_workspace_root(workspace),
@@ -358,7 +175,6 @@ def _resolve_git_cwd(
 def _outside_workspace_warning_text(
     workspace: object, resolved_path: Path, *, top_level: Path | None = None
 ) -> str:
-    """Return the warning prepended to an outside-workspace git result."""
     root = _workspace_root(workspace).resolve()
     message = (
         f"WARNING: git cwd is outside the workspace: resolved={resolved_path} workspace_root={root}"
@@ -376,7 +192,6 @@ def run_git_command(
     cwd_provider: CwdProvider = Path.cwd,
     cwd: Path | None = None,
 ) -> str:
-    """Execute git and require a successful exit status."""
     git_runner = runner or _run_git_subprocess
     effective_cwd = (
         cwd if cwd is not None else _workspace_root(workspace, cwd_provider=cwd_provider)
@@ -412,11 +227,6 @@ def run_git_command_lenient(
     cwd_provider: CwdProvider = Path.cwd,
     cwd: Path | None = None,
 ) -> subprocess.CompletedProcess[bytes]:
-    """Execute git and return a :class:`CompletedProcess` regardless of exit code.
-
-    Callers that want a single text blob can use ``lenient_stdout`` or
-    join ``result.stdout`` and ``result.stderr`` themselves.
-    """
     git_runner = runner or _run_git_subprocess
     effective_cwd = (
         cwd if cwd is not None else _workspace_root(workspace, cwd_provider=cwd_provider)
@@ -439,12 +249,10 @@ def run_git_command_lenient(
 
 
 def lenient_stdout(result: subprocess.CompletedProcess[bytes]) -> str:
-    """Return the decoded combined stdout/stderr of a lenient git run."""
     return f"{_decode_output(result.stdout)}{_decode_output(result.stderr)}"
 
 
 def _parse_numstat_count(value: str) -> int:
-    """Parse a numstat field; ``"-"`` (binary file) maps to 0."""
     if value == "-":
         return 0
     try:
@@ -453,21 +261,10 @@ def _parse_numstat_count(value: str) -> int:
         return 0
 
 
-# MCP read tools must never block the server thread indefinitely: a hung
-# `git status` (large vendor/ submodules, a held .git lock) would starve the
-# agent of output and trip the idle watchdog. Git reads are bounded at a fixed
-# 30s (they are short, fixed subcommands with no agent-tunable timeout, unlike
-# the exec tool) and fail closed — communicate_and_cleanup terminates and kills
-# the process tree on expiry, then re-raises TimeoutExpired for
-# run_git_command* to convert into an actionable is_error result.
 GIT_READ_TIMEOUT_SECONDS = 30.0
 
-#: Prepended to every ``git diff`` this module runs. The read-only contract
-#: (AC-06) forbids external helpers, and git runs ``diff.external`` and
-#: textconv drivers from config by default, not only when asked by flag.
 _NO_EXTERNAL_DIFF_HELPER_ARGS: tuple[str, ...] = ("--no-ext-diff", "--no-textconv")
 
-#: Read size for the streamed ``git diff`` stdout and the stderr drain.
 _PIPE_READ_CHUNK_BYTES = 8192
 
 
@@ -489,7 +286,6 @@ def _run_git_subprocess(command: list[str], cwd: Path) -> subprocess.CompletedPr
 def _git_read_result_with_outside_warning(
     produce: Callable[[], str], *, is_outside: bool, warning_text: str
 ) -> ToolResult:
-    """Run a git read, preserving timeout handling and outside-cwd warnings."""
     try:
         output = produce()
     except ExecutionError as exc:
@@ -511,8 +307,6 @@ def _git_read_result_with_outside_warning(
 
 
 def _git_read_result(produce: Callable[[], str]) -> ToolResult:
-    """Run a git read and wrap its output, converting a timeout into an
-    actionable, non-retryable is_error result (NOT a propagated -32603)."""
     try:
         output = produce()
     except ExecutionError as exc:
@@ -533,12 +327,6 @@ def handle_git_status(
     workspace: object,
     params: Mapping[str, object],
 ) -> ToolResult:
-    """Read the git status of the workspace.
-
-    AC-11: the optional ``format`` argument selects between
-    ``raw`` (default; unchanged legacy output) and ``compact``
-    (ranked changed paths with role tags + byte budget).
-    """
     require_capability(session, GIT_STATUS_READ_CAPABILITY, "Git status")
     resolved_cwd, is_outside, top_level = _resolve_git_cwd(workspace, params)
     warning_text = _outside_workspace_warning_text(workspace, resolved_cwd, top_level=top_level)
@@ -551,9 +339,6 @@ def handle_git_status(
             is_outside=is_outside,
             warning_text=warning_text,
         )
-    # AC-11: compact mode runs through the same timeout-wrapping
-    # helper as raw mode so a hung ``git status`` returns an
-    # actionable is_error result rather than an uncaught exception.
     return _git_read_result_with_outside_warning(
         lambda: _build_compact_status_payload(workspace, session=session, cwd=resolved_cwd),
         is_outside=is_outside,
@@ -565,20 +350,6 @@ def _resolve_compact_status_index(
     workspace: object,
     session: object | None = None,
 ) -> tuple[ExploreIndexLike, ExploreStoreLike] | None:
-    """Best-effort resolve of the explore index for compact status.
-
-    AC-06: compact ``git_status`` may include bounded
-    changed-symbol hints when the index is current. The lookup
-    is best-effort: a missing handle, missing index, or any
-    exception during resolution produces ``None`` so the caller
-    can emit explicit unavailable/stale metadata without
-    blocking the porcelain payload.
-    """
-    # The index can ride on the session, the workspace, or
-    # ``workspace.session`` (the harness contract). Try the
-    # obvious attributes first; the resolve helper is
-    # session-shaped, so we pass any object that may carry an
-    # ``explore_index`` attribute.
     handle: ExploreIndexLike | None = None
     workspace_session: object = (
         cast("object", getattr(workspace, "session", None)) if workspace is not None else None
@@ -605,14 +376,6 @@ def _compact_status_index_meta(
     paths: list[dict[str, object]],
     session: object | None = None,
 ) -> dict[str, object]:
-    """Return index metadata for the compact ``git_status`` payload.
-
-    AC-06: when the index is current, attach bounded
-    changed-symbol hints per changed path. When the index is
-    missing, stale, or otherwise unavailable, surface explicit
-    metadata so agents do not guess. The function never raises
-    into the caller.
-    """
     meta: dict[str, object] = {
         "index_used": False,
         "index_generation": 0,
@@ -631,17 +394,6 @@ def _compute_compact_status_meta(
     paths: list[dict[str, object]],
     meta: dict[str, object],
 ) -> dict[str, object]:
-    """Compute the compact ``git_status`` index metadata for a resolved store.
-
-    AC-06: returns a copy of ``meta`` annotated with the
-    observed index state. The function uses bounded
-    aggregates (``peek_dirty_paths`` + ``has_deleted_files``)
-    so the compact path never materializes the entire
-    ``files`` table. Errors during freshness reads are
-    treated as ``unavailable`` (never as a fresh index) so a
-    corrupt or unreadable store cannot produce silent green
-    hints.
-    """
     result: dict[str, object] = dict(meta)
     try:
         current_generation_raw = store.get_setting("current_generation")
@@ -704,16 +456,6 @@ def _compute_compact_status_meta(
 def _strict_max_bytes_param(
     params: Mapping[str, object],
 ) -> int:
-    """Strict-bounded ``max_bytes`` for ``git_diff`` summary mode.
-
-    AC-06: rejects ``bool``, ``0``, negatives, malformed strings,
-    non-integer floats, and oversized values. Returns the
-    default (``50_000``) only when the caller omits the key.
-    The minimum is ``1`` so the slice ``text[:max_bytes]`` always
-    returns at least one byte when the diff is non-empty; the
-    maximum matches the documented default so callers cannot
-    silently extend the excerpt cap.
-    """
     default = 50_000
     minimum = 1
     if "max_bytes" not in params:
@@ -755,44 +497,6 @@ def _build_compact_status_payload(
     session: object | None = None,
     cwd: Path | None = None,
 ) -> str:
-    """Build the compact-mode JSON payload for ``git status``.
-
-    Ponytail: isolated helper so the timeout-wrapping
-    ``_git_read_result`` can call it without a try/except chain.
-    The lenient runner is used so a non-zero exit (e.g. outside a
-    git repo) still surfaces a useful result; the returncode is
-    inspected separately by the caller if needed.
-
-    AC-06: when an explore index is attached and current, the
-    payload includes bounded changed-symbol hints per changed
-    path. When the index is missing or stale, explicit
-    ``index_status`` and ``fallback_reason`` metadata is
-    surfaced so agents do not guess.
-
-    AC-06: ranked changed paths. Each card carries a
-    deterministic integer ``score`` and a list of human-readable
-    ``score_reasons`` describing which signals contributed.
-    Cards are sorted by ``score`` descending; ties break on
-    lexicographic path. The score formula (mirrors the
-    ``search_files`` ranking contract in the architecture
-    finding):
-
-    - ``+100`` unstaged role requested by the caller
-      (always applied: unstaged changes are the most
-      actionable for an agent about to edit)
-    - ``+80``  staged role
-    - ``+60``  untracked path (``code == "??"``)
-    - ``-50``  generated/vendor path (heuristic: filename
-      contains a ``generated`` or ``vendor`` token, OR the
-      path lives under a directory named ``build``,
-      ``dist``, ``.venv``, ``__pycache__``, or
-      ``node_modules``)
-    - ``+0``   tiebreaker on lexicographic path
-
-    A positive ``score`` is recorded; the ``score_reasons``
-    list lets tests and downstream tools assert exactly
-    why a card ranked above another card.
-    """
     raw_result = run_git_command_lenient(workspace, ["status", "--porcelain"], cwd=cwd)
     lines = raw_result.stdout.decode("utf-8", errors="replace").splitlines()
     cards: list[dict[str, object]] = []
@@ -801,13 +505,6 @@ def _build_compact_status_payload(
             continue
         code = line[:2]
         path = line[3:].strip()
-        # AC-06: ``role`` is one of ``staged``, ``unstaged``,
-        # or ``untracked``. The previous binary "staged vs
-        # unstaged" model lumped untracked entries in with
-        # unstaged and made ranking ambiguous. The compact
-        # contract now distinguishes them so the
-        # ``_rank_compact_status_cards`` helper can score
-        # untracked paths independently.
         if code == "??":
             role = "untracked"
         elif code[0] != " " and code[0] != "?":
@@ -849,15 +546,6 @@ def _build_compact_status_payload(
 def _rank_compact_status_cards(
     cards: list[dict[str, object]],
 ) -> list[dict[str, object]]:
-    """Sort cards by deterministic rank and attach score metadata.
-
-    AC-06: each card receives ``score`` (int) and
-    ``score_reasons`` (list[str]) so callers can assert why a
-    path ranked where it did. The sort is stable: equal scores
-    break on lexicographic path. The function never throws on
-    a missing or non-string ``path`` field; the sort still
-    runs (the offending entry is pushed to the bottom).
-    """
     ranked: list[dict[str, object]] = []
     for card in cards:
         score = 0
@@ -873,10 +561,6 @@ def _rank_compact_status_cards(
             score += 60
             reasons.append("+60 role=untracked")
         if card.get("untracked") is True and role != "untracked":
-            # Defensive: legacy callers may still pass the
-            # boolean ``untracked`` flag without the new
-            # role. Honor the +60 signal in that case so
-            # ranking stays consistent.
             score += 60
             reasons.append("+60 untracked")
         path = card.get("path")
@@ -888,10 +572,6 @@ def _rank_compact_status_cards(
         new_card["score_reasons"] = reasons
         ranked.append(new_card)
 
-    # Sort: score descending, then path lexicographic. Stable
-    # sort preserves the relative order of equal elements, but
-    # we explicitly key on path so the tiebreak is
-    # deterministic regardless of input order.
     def _rank_key(c: dict[str, object]) -> tuple[int, str]:
         score_value = c.get("score")
         score_int: int = score_value if isinstance(score_value, int) else 0
@@ -904,15 +584,6 @@ def _rank_compact_status_cards(
 
 
 def _is_generated_or_vendor_path(path: str) -> bool:
-    """Return True when ``path`` looks like a generated or vendor path.
-
-    AC-06: heuristic detection. A path matches if any path
-    segment equals ``build``, ``dist``, ``.venv``,
-    ``__pycache__``, ``node_modules``, ``vendor``, or
-    ``generated``. Filename tokens are NOT matched (a file
-    named ``vendor.txt`` at the repo root is NOT a vendor
-    path; a file under ``vendor/foo.py`` IS).
-    """
     lower = path.lower()
     segments = lower.replace("\\", "/").split("/")
     vendor_segments = {
@@ -932,18 +603,6 @@ def handle_git_diff(
     workspace: object,
     params: Mapping[str, object],
 ) -> ToolResult:
-    """Read the git diff of the workspace.
-
-    AC-11: ``format=raw`` (default) preserves the legacy text
-    output. ``format=summary`` returns a compact summary card
-    with changed files, insertion/deletion counts, and an output
-    byte cap so agents do not pay for unread diff bodies.
-    ``max_bytes`` caps the returned text; default 50_000.
-    AC-06: ``max_bytes`` is strictly bounded to a positive
-    integer in ``[1, 50_000]`` so callers cannot bypass the
-    excerpt cap with zero, negative, malformed, or non-integer
-    values.
-    """
     require_capability(session, GIT_DIFF_READ_CAPABILITY, "Git diff")
     resolved_cwd, is_outside, top_level = _resolve_git_cwd(workspace, params)
     warning_text = _outside_workspace_warning_text(workspace, resolved_cwd, top_level=top_level)
@@ -964,9 +623,6 @@ def handle_git_diff(
             warning_text=warning_text,
         )
     max_bytes = _strict_max_bytes_param(params)
-    # AC-11: wrap the summary branch in ``_git_read_result`` so a
-    # timeout converts into the same actionable ``is_error`` result
-    # as the raw branch, never an uncaught exception.
     return _git_read_result_with_outside_warning(
         lambda: _build_diff_summary_payload(workspace, parsed.args, max_bytes, cwd=resolved_cwd),
         is_outside=is_outside,
@@ -980,21 +636,6 @@ def _build_diff_summary_payload(
     max_bytes: int,
     cwd: Path | None = None,
 ) -> str:
-    """Build the summary-mode JSON payload for ``git diff``.
-
-    AC-06: the diff excerpt is bounded by ``max_bytes`` AT THE
-    STREAMING BOUNDARY, not after fully buffering the entire
-    diff. The subprocess is killed as soon as the byte cap is
-    reached so the caller never holds an unbounded buffer.
-    The bytes are truncated at a UTF-8 character boundary; any
-    trailing incomplete UTF-8 sequence is replaced by ``U+FFFD``
-    on decode so the returned string never contains invalid
-    UTF-8. The encoded excerpt (UTF-8) never exceeds
-    ``max_bytes``.
-
-    Ponytail: isolated helper so the timeout-wrapping
-    ``_git_read_result`` can call it without a try/except chain.
-    """
     raw_result = run_git_command_lenient(
         workspace, ["diff", "--numstat", *_NO_EXTERNAL_DIFF_HELPER_ARGS, *git_args], cwd=cwd
     )
@@ -1018,12 +659,6 @@ def _build_diff_summary_payload(
                 "removed": removed_count,
             }
         )
-    # AC-06: enforce the byte cap while reading the
-    # subprocess. ``_collect_git_diff_capped`` streams stdout
-    # chunk by chunk and stops as soon as the cap is reached,
-    # so the caller never holds an unbounded buffer. The
-    # returned string is UTF-8 safe (errors="replace") and the
-    # re-encoded length never exceeds ``max_bytes``.
     full_text, truncated = _collect_git_diff_capped(workspace, git_args, max_bytes, cwd=cwd)
     added_total = sum(c["added"] for c in cards if isinstance(c["added"], int))
     removed_total = sum(c["removed"] for c in cards if isinstance(c["removed"], int))
@@ -1046,26 +681,6 @@ def _collect_git_diff_capped(
     max_bytes: int,
     cwd: Path | None = None,
 ) -> tuple[str, bool]:
-    """Run ``git diff`` and stream at most ``max_bytes`` bytes.
-
-    AC-06: bounded streaming. The subprocess is spawned through the shared
-    ``ProcessManager`` with external diff helpers disabled
-    (``--no-ext-diff --no-textconv``). Its stdout is consumed in 8 KiB
-    chunks until EOF or until more than ``max_bytes`` bytes arrive; on the
-    cap the last chunk is sliced at the byte boundary and the subprocess is
-    killed, so no more bytes are read. stderr is drained concurrently and
-    discarded: an unread stderr pipe that fills up blocks git, and with it
-    the stdout read below, forever. The whole read is bounded by
-    ``GIT_READ_TIMEOUT_SECONDS``; on expiry git is killed and a
-    ``timed_out`` :class:`ExecutionError` is raised for the handler to turn
-    into its actionable, non-retryable error result. The decoded string
-    never carries a partial UTF-8 sequence from the truncation boundary.
-
-    Returns ``(decoded_text, truncated)`` where ``truncated`` is ``True``
-    iff the underlying diff was longer than ``max_bytes`` bytes (i.e. the
-    cap was actually applied). The encoded excerpt length never exceeds
-    ``max_bytes``.
-    """
     if max_bytes <= 0:
         return ("", False)
     effective_cwd = cwd if cwd is not None else _workspace_root(workspace)
@@ -1082,9 +697,9 @@ def _collect_git_diff_capped(
                 label="git-mcp-read",
             ),
         ),
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     stdout = proc.stdout
-    if stdout is None:  # pragma: no cover — defensive
+    if stdout is None:
         return ("", False)
     stderr_drain = _start_pipe_drain(proc.stderr)
     outcome: list[tuple[list[bytes], bool]] = []
@@ -1095,7 +710,7 @@ def _collect_git_diff_capped(
             outcome.append(
                 _read_git_diff_until_cap(
                     cast("_ReadablePipe", stdout),
-                    max_bytes,  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                    max_bytes,
                 )
             )
         except Exception as exc:
@@ -1126,16 +741,11 @@ def _collect_git_diff_capped(
 
 
 def _start_pipe_drain(pipe: object) -> threading.Thread | None:
-    """Read ``pipe`` to EOF on a daemon thread, discarding the bytes.
-
-    Keeps a chatty child from blocking on a full pipe that nobody reads.
-    Read errors (the pipe closed under the reader) end the drain quietly.
-    """
     if pipe is None:
         return None
     readable = cast(
         "_ReadablePipe", pipe
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
 
     def _drain() -> None:
         with contextlib.suppress(Exception):
@@ -1151,14 +761,6 @@ def _read_git_diff_until_cap(
     stdout: _ReadablePipe,
     max_bytes: int,
 ) -> tuple[list[bytes], bool]:
-    """Stream stdout until EOF or more than ``max_bytes`` bytes arrive.
-
-    AC-06: the streaming loop reads in 8 KiB chunks and stops when either
-    EOF is reached (returning ``truncated=False``) or the running total
-    exceeds ``max_bytes`` (returning ``truncated=True`` with the last chunk
-    sliced at the exact byte boundary). A diff of exactly ``max_bytes``
-    bytes is complete, not truncated.
-    """
     chunks: list[bytes] = []
     total = 0
     while True:
@@ -1166,10 +768,6 @@ def _read_git_diff_until_cap(
         if not chunk:
             break
         if total + len(chunk) > max_bytes:
-            # Cap at the exact byte boundary. The
-            # remaining bytes in this chunk are not
-            # appended, so the encoded length of the
-            # returned bytes never exceeds ``max_bytes``.
             needed = max_bytes - total
             if needed > 0:
                 chunks.append(chunk[:needed])
@@ -1181,49 +779,17 @@ def _read_git_diff_until_cap(
 
 
 def _kill_git_diff_proc(proc: _SpawnedProcessLike) -> None:
-    """Best-effort kill of a diff subprocess whose output is no longer read.
-
-    The process manager raises the SIGTERM-to-SIGKILL grace for git, so git
-    still gets to remove any lock file it holds.
-    """
     with contextlib.suppress(Exception):
         proc.kill()
 
 
 def _terminate_git_diff_proc(proc: _SpawnedProcessLike, *, timeout: float) -> None:
-    """Best-effort reap of the diff subprocess and its descendants.
-
-    AC-06: the subprocess is always torn down so file handles do not leak
-    across calls. The ``communicate_and_cleanup`` call is bounded by what
-    is left of the ``GIT_READ_TIMEOUT_SECONDS`` budget; ``TimeoutExpired``
-    and other exceptions are swallowed because the bytes we need have
-    already been read.
-    """
     with contextlib.suppress(Exception):
         proc.communicate_and_cleanup(timeout=timeout)
 
 
 def _decode_git_diff_capped(encoded: bytes, truncated: bool) -> str:
-    """Decode ``encoded`` bytes, truncating at a UTF-8 boundary.
-
-    AC-06: the streaming cap stops at exactly ``max_bytes``
-    raw bytes, but a UTF-8 character may be 1-4 bytes long.
-    If the boundary lands inside a multi-byte sequence, the
-    trailing bytes are incomplete and would decode into
-    ``U+FFFD`` (3 bytes) under ``errors="replace"``,
-    blowing past the cap. We instead walk back from the end
-    until the prefix decodes cleanly, so the encoded length
-    of the decoded string is guaranteed to be ``<= max_bytes``
-    and the bytes never contain invalid UTF-8.
-    """
     if truncated and len(encoded) > 0:
-        # ``encoded`` is at most ``max_bytes`` bytes (the
-        # streaming cap enforced that). Walk back one byte
-        # at a time until the prefix decodes without
-        # raising. The walk is bounded by the cap itself
-        # (at most ``max_bytes`` iterations) and converges
-        # in O(1)-O(4) steps in the common case (a
-        # truncated multi-byte char is at most 4 bytes).
         while len(encoded) > 0:
             try:
                 encoded.decode("utf-8")
@@ -1238,31 +804,6 @@ def handle_git_log(
     workspace: object,
     params: Mapping[str, object],
 ) -> ToolResult:
-    """Read the git commit log.
-
-    Args:
-        session: Agent session; must declare ``GitStatusRead``.
-        workspace: Workspace surface whose root is the cwd for ``git log``.
-        params: Mapping with optional ``count`` (positive integer,
-            defaults to ``DEFAULT_LOG_COUNT = 10``) and optional
-            ``format`` (``'raw'|'summary'``, default ``'raw'``).
-
-    Returns:
-        A ``ToolResult`` whose text content is the ``git log -<count>
-        --oneline`` output when ``format='raw'`` (default), or a compact
-        JSON envelope ``{format, count, commits: [{short_sha, sha,
-        subject}], bytes_in, bytes_out}`` when ``format='summary'``.
-
-    Raises:
-        CapabilityDeniedError: When the session does not declare
-            ``GitStatusRead``.
-        InvalidParamsError: When ``params`` fails ``parse_git_log_params``.
-
-    Side effects:
-        Spawns a ``git log`` subprocess registered with the global
-        ``ProcessManager``. Bounded by ``GIT_READ_TIMEOUT_SECONDS = 30``.
-        No workspace writes, no network calls.
-    """
     require_capability(session, GIT_STATUS_READ_CAPABILITY, "Git log")
     resolved_cwd, is_outside, top_level = _resolve_git_cwd(workspace, params)
     warning_text = _outside_workspace_warning_text(workspace, resolved_cwd, top_level=top_level)
@@ -1283,15 +824,6 @@ def handle_git_log(
 
 
 def _build_git_log_summary_payload(workspace: object, count: int, cwd: Path | None = None) -> str:
-    """Build the summary-mode JSON envelope for ``git log``.
-
-    Ponytail: isolated helper so the timeout-wrapping
-    ``_git_read_result`` can call it without a try/except chain. The
-    porcelain ``--oneline`` output is one line per commit with the
-    form ``<short_sha> <subject>``. The parser ignores blank lines
-    so an empty log still produces an empty ``commits`` list rather
-    than a fake sentinel.
-    """
     raw = run_git_command(workspace, ["log", f"-{count}", "--oneline"], cwd=cwd)
     raw_bytes = raw.encode("utf-8")
     commits: list[dict[str, object]] = []
@@ -1299,10 +831,6 @@ def _build_git_log_summary_payload(workspace: object, count: int, cwd: Path | No
         stripped = line.strip()
         if not stripped:
             continue
-        # ``--oneline`` emits ``<short_sha> <subject>``. The short
-        # sha is exactly the leading 7-12 hex chars; the remainder
-        # of the line is the subject. We do NOT split on a single
-        # space because a subject may itself contain spaces.
         parts = stripped.split(maxsplit=1)
         short_sha = parts[0] if parts else ""
         subject = parts[1] if len(parts) > 1 else ""
@@ -1323,32 +851,6 @@ def handle_git_show(
     workspace: object,
     params: Mapping[str, object],
 ) -> ToolResult:
-    """Show a git object by ref.
-
-    Args:
-        session: Agent session; must declare ``GitStatusRead``.
-        workspace: Workspace surface whose root is the cwd for ``git show``.
-        params: Mapping with required ``ref`` (string; commit-ish, tag,
-            or branch) per ``parse_git_show_params`` and optional
-            ``format`` (``'raw'|'summary'``, default ``'raw'``).
-
-    Returns:
-        A ``ToolResult`` whose text content is the ``git show <ref>``
-        output when ``format='raw'`` (default), or a compact header-only
-        JSON envelope ``{format, ref, kind, sha, short_sha, author_name,
-        author_email, author_date, subject, parents, bytes_in, bytes_out,
-        truncated:false}`` when ``format='summary'``.
-
-    Raises:
-        CapabilityDeniedError: When the session does not declare
-            ``GitStatusRead``.
-        InvalidParamsError: When ``params`` fails ``parse_git_show_params``.
-
-    Side effects:
-        Spawns a ``git show`` subprocess registered with the global
-        ``ProcessManager``. Bounded by ``GIT_READ_TIMEOUT_SECONDS = 30``.
-        No workspace writes, no network calls.
-    """
     require_capability(session, GIT_STATUS_READ_CAPABILITY, "Git show")
     resolved_cwd, is_outside, top_level = _resolve_git_cwd(workspace, params)
     warning_text = _outside_workspace_warning_text(workspace, resolved_cwd, top_level=top_level)
@@ -1367,25 +869,10 @@ def handle_git_show(
 
 
 def _build_git_show_summary_payload(workspace: object, ref: str, cwd: Path | None = None) -> str:
-    """Build the summary-mode JSON envelope for ``git show``.
-
-    Ponytail: isolated helper so the timeout-wrapping
-    ``_git_read_result`` can call it without a try/except chain. The
-    ``--no-patch`` flag suppresses the diff body so we only carry the
-    header fields. ``%x1f`` is the ASCII unit separator; we never see
-    that byte in real author/subject lines so it is safe to split on.
-    The ``kind`` field is inferred from the resolved ref: a tag is
-    identified by ``refs/tags/`` in the resolved ref or by a name that
-    matches the tag pattern. Commits are identified by the presence
-    of parents in the header.
-    """
     fmt = "%H%x1f%h%x1f%an%x1f%ae%x1f%ad%x1f%s%x1f%P%x1f%D%x1f%H"
     raw = run_git_command(workspace, ["show", "--no-patch", f"--format={fmt}", ref], cwd=cwd)
     raw_bytes = raw.encode("utf-8")
     fields = raw.split("\x1f")
-    # ``%D`` is appended to the format above to also include the
-    # ``refs/tags/...`` decoration when present. ``%H`` is duplicated
-    # so the last field is the SHA (we already have it in field 0).
     sha_idx = 0
     short_sha_idx = 1
     author_name_idx = 2
@@ -1403,18 +890,10 @@ def _build_git_show_summary_payload(workspace: object, ref: str, cwd: Path | Non
     parents_raw = fields[parents_raw_idx].strip() if len(fields) > parents_raw_idx else ""
     decoration = fields[decoration_idx].strip() if len(fields) > decoration_idx else ""
     parents = [p for p in parents_raw.split() if p] if parents_raw else []
-    # ``kind`` is inferred from decoration (tags/blobs/trees): tags
-    # have ``tag:`` in the decoration; otherwise a commit with
-    # parents is a commit. ``blob`` / ``tree`` would only show up
-    # if the caller passes a raw SHA. We keep the inference
-    # conservative: ``commit`` is the default.
     kind = "commit"
     if "tag:" in decoration:
         kind = "tag"
     elif not parents and sha:
-        # Heuristic: a SHA with no parents and no tag decoration is
-        # most likely a root commit; ``tree`` / ``blob`` are not
-        # reachable through normal ``git show`` usage.
         kind = "commit"
     envelope = finalize_envelope_bytes_out(
         {

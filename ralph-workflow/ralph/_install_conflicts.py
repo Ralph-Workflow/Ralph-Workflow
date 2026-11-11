@@ -1,9 +1,3 @@
-"""Conflict detection for the global ``ralph`` executable.
-
-The update checker classifies package files, not console-script paths.  This
-module resolves the executable to its owning package before asking it to classify
-an existing install.
-"""
 
 from __future__ import annotations
 
@@ -25,7 +19,6 @@ _PACKAGE_FILE_SCRIPT = "import pathlib, ralph; print(pathlib.Path(ralph.__file__
 
 
 class ConflictResolution(StrEnum):
-    """The user's selected action for an existing global install."""
 
     CONTINUE = "continue"
     REMOVE = "remove"
@@ -48,11 +41,6 @@ def _interpreter_from_shebang(first_line: str) -> str | None:
 
 
 def _interpreter_from_exec_trampoline(line: str) -> str | None:
-    """Return the interpreter named by a pip/uv ``/bin/sh`` exec trampoline.
-
-    A shebang cannot carry an interpreter path containing spaces, so installers
-    write ``#!/bin/sh`` followed by ``'''exec' "<python>" "$0" "$@"``.
-    """
     if not line.startswith("'''exec'"):
         return None
     try:
@@ -70,10 +58,8 @@ def _interpreter_from_script(lines: list[str]) -> str | None:
 
 
 def resolve_package_file(executable: str) -> Path | None:
-    """Resolve a console script to its interpreter's installed package file."""
     script = Path(executable).resolve()
     try:
-        # filesystem-read-ok: console-script shebang inspection occurs once per explicit install-conflict check
         lines = script.read_text(encoding="utf-8").splitlines()[:2]
     except (OSError, UnicodeDecodeError):
         return None
@@ -83,9 +69,6 @@ def resolve_package_file(executable: str) -> Path | None:
     if interpreter is None:
         return None
     try:
-        # ``-I`` keeps the installer's cwd and PYTHONPATH (``make`` exports
-        # the source checkout) off the probe's ``sys.path``; without it the
-        # probe reported the checkout instead of the executable's own package.
         result = run_process(
             interpreter,
             ("-I", "-c", _PACKAGE_FILE_SCRIPT),
@@ -106,7 +89,6 @@ def detect_existing_ralph(
     resolve_package_file: Callable[[str], Path | None],
     path_exists: Callable[[Path], bool] = Path.exists,
 ) -> ExistingInstall | None:
-    """Return the global ``ralph`` install, resolving its package location first."""
     executable = which_fn("ralph")
     if executable is None:
         return None
@@ -127,15 +109,6 @@ def is_same_source_install(
     *,
     cwd: Path,
 ) -> bool:
-    """Return True when an existing source install already points at ``cwd``.
-
-    ``make dev`` calls :func:`prompt_for_conflict` repeatedly on the same
-    checkout while iterating: every run resolves the global ``ralph`` script
-    to this same source tree, so a non-interactive ``make dev`` would otherwise
-    refuse to re-establish the dev build.  When the existing install is a
-    source checkout that resolves to ``cwd`` (or anywhere inside it), the
-    install is already correct and we may continue without prompting.
-    """
     if existing.kind is not InstallKind.SOURCE:
         return False
     try:
@@ -153,13 +126,6 @@ def prompt_for_conflict(
     is_tty: bool,
     cwd: Path | None = None,
 ) -> ConflictResolution:
-    """Ask how to handle an existing install; never block without a TTY.
-
-    When ``is_tty`` is false but the existing install is the same source
-    checkout already pointed at by ``cwd``, :class:`ConflictResolution.CONTINUE`
-    is returned without prompting so that ``make dev`` stays idempotent on
-    repeated invocations.
-    """
     if not is_tty:
         if cwd is not None and is_same_source_install(existing, cwd=cwd):
             return ConflictResolution.CONTINUE
@@ -184,5 +150,4 @@ def prompt_for_conflict(
 
 
 def real_environment() -> Mapping[str, str]:
-    """Return the real environment through a small injectable boundary."""
     return process_environ

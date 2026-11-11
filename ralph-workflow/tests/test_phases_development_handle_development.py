@@ -1,5 +1,3 @@
-"""Tests for the development execution phase handled by handle_execution_phase."""
-
 from __future__ import annotations
 
 import tempfile
@@ -181,7 +179,6 @@ class TestHandleDevelopment:
     def test_development_result_left_over_from_earlier_iteration_is_rejected(
         self, tmp_path: Path
     ) -> None:
-        """A killed/silent agent must not be credited with the previous result."""
         workspace = FsWorkspace(tmp_path)
         workspace.write(".agent/artifacts/plan.md", _VALID_PLAN_MARKDOWN)
         workspace.write(".agent/artifacts/development_result.md", _VALID_DEV_RESULT_MARKDOWN)
@@ -300,7 +297,6 @@ class TestHandleDevelopment:
 
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.txt")
         result = handle_execution_phase(effect, ctx)
-        # Present optional artifact with wrong type still fails
         assert len(result) == 1
         event = result[0]
         assert isinstance(event, PhaseFailureEvent)

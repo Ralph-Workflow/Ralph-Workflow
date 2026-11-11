@@ -1,11 +1,3 @@
-"""Rate-limit the watch owner's shared-awareness sidecar rewrites.
-
-Each rewrite serializes the whole published path list and its temp-file +
-rename raise further watch events. Publishing once per observed change let a
-busy build outpace the event handler (and grow watchdog's unbounded queue),
-so the first change publishes immediately and the rest of a burst is
-coalesced into one trailing rewrite.
-"""
 
 from __future__ import annotations
 
@@ -21,27 +13,14 @@ if TYPE_CHECKING:
 
     from ralph.workspace._shared_awareness import SharedAwarenessSidecar
 
-#: Minimum spacing between sidecar rewrites.
 SIDECAR_PUBLISH_INTERVAL_SECONDS = 0.25
 
-#: Pending paths that force an immediate publish (the sidecar's own bound).
 MAX_PENDING_SIDECAR_PATHS = 512
 
-#: Cause handed to ``on_failure`` when a rewrite fails.
 SIDECAR_FAILURE_CAUSE = "shared_awareness_io_failed"
 
 
 class ThrottledSidecarPublisher:
-    """Coalesce workspace-relative changes into spaced sidecar publications.
-
-    Args:
-        sidecar: Returns the workspace's sidecar (resolved per publish).
-        now: Monotonic clock.
-        on_failure: Bound method called with :data:`SIDECAR_FAILURE_CAUSE`
-            after a failed publish. It is held weakly so the owning monitor,
-            which holds this publisher, is still freed by reference counting
-            (monitors are tracked in weak sets).
-    """
 
     def __init__(
         self,
@@ -53,13 +32,12 @@ class ThrottledSidecarPublisher:
         self._now = now
         self._on_failure = weakref.WeakMethod(on_failure)
         self._lock = threading.Lock()
-        self._pending: dict[str, None] = {}  # bounded-accumulator-ok: drained per publish
+        self._pending: dict[str, None] = {}
         self._last_publish: float | None = None
         self._timer: threading.Timer | None = None
         self._open = True
 
     def add(self, relative_path: str) -> None:
-        """Queue one change; publish now when the interval has elapsed."""
         with self._lock:
             if not self._open:
                 return
@@ -79,11 +57,6 @@ class ThrottledSidecarPublisher:
         self.flush()
 
     def flush(self) -> None:
-        """Publish every pending change in one rewrite.
-
-        Publishing under the lock lets :meth:`close` wait out an in-flight
-        flush, so a timer never rewrites a sidecar that teardown removed.
-        """
         with self._lock:
             self._timer = None
             paths = list(self._pending)
@@ -105,7 +78,6 @@ class ThrottledSidecarPublisher:
             callback(SIDECAR_FAILURE_CAUSE)
 
     def close(self) -> None:
-        """Drop pending changes and cancel any trailing publish."""
         with self._lock:
             self._open = False
             if self._timer is not None:

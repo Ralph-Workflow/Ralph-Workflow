@@ -1,12 +1,3 @@
-"""Kimi smoke-harness layout resolution (PA-003).
-
-``resolve_smoke_harness_spec`` must resolve the bare ``kimi`` agent and
-the ``kimi/<model>`` dynamic alias to the kimi harness layout
-(``tmp/interactive-kimi-smoke``), with a sanitized model suffix that
-keeps two concurrent model smoke runs from colliding on run_id /
-output_file paths.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -41,8 +32,6 @@ def test_kimi_model_alias_sanitizes_suffix_into_run_id_and_dir() -> None:
     assert spec.agent_name == "kimi/kimi-code/k3-256k"
     assert spec.run_id.startswith("interactive-kimi-smoke-")
     assert spec.run_id == "interactive-kimi-smoke-kimi-code-k3-256k"
-    # Slashes in the model id sanitize to dashes; the output file stays
-    # under the kimi smoke root in its own model-scoped sub-directory.
     assert str(spec.output_file).startswith("tmp/interactive-kimi-smoke/")
     assert spec.output_file.name == "todo-list.js"
 

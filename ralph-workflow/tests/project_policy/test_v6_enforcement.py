@@ -1,5 +1,3 @@
-"""Contract tests for policy schema v6 and the Enforcement column."""
-
 from __future__ import annotations
 
 import pytest
@@ -17,7 +15,6 @@ from tests.project_policy.policy_corpus import seed_complete_corpus
 
 
 def _make_enforcement_workspace(enforcement_val: str) -> MemoryWorkspace:
-    """Build a complete ready workspace and substitute the typechecking guard's enforcement."""
     ws = MemoryWorkspace()
     seed_complete_corpus(ws)
     path = f"{markers.CANONICAL_DIR}typechecking-policy.md"
@@ -161,42 +158,34 @@ retirement_trigger = "when c1 is retired"
 lifecycle = "review when protected outcome changes"
 disposition = "KEEP"
 """
-    # Missing enforcement
     with pytest.raises(PortfolioError) as exc_missing:
         parse_portfolio_toml(base_toml)
     assert "enforcement" in str(exc_missing.value).lower()
 
-    # Invalid enforcement
     with pytest.raises(PortfolioError) as exc_invalid:
         parse_portfolio_toml(base_toml + 'enforcement = "invalid"\n')
     assert "enforcement" in str(exc_invalid.value).lower()
 
-    # Valid deterministic enforcement
     valid_det = parse_portfolio_toml(base_toml + 'enforcement = "deterministic: make test"\n')
     assert valid_det.controls[0].enforcement == "deterministic: make test"
 
-    # Valid advisory enforcement
     valid_adv = parse_portfolio_toml(
         base_toml + 'enforcement = "advisory: reason; review: on trigger"\n'
     )
     assert valid_adv.controls[0].enforcement == "advisory: reason; review: on trigger"
 
-    # Blank advisory reason
     with pytest.raises(PortfolioError) as exc_blank_reason:
         parse_portfolio_toml(base_toml + 'enforcement = "advisory: ; review: on trigger"\n')
     assert "reason" in str(exc_blank_reason.value).lower()
 
-    # Blank advisory review trigger
     with pytest.raises(PortfolioError) as exc_blank_trigger:
         parse_portfolio_toml(base_toml + 'enforcement = "advisory: reason; review: "\n')
     assert "review trigger" in str(exc_blank_trigger.value).lower()
 
-    # Advisory missing review trigger
     with pytest.raises(PortfolioError) as exc_no_trigger:
         parse_portfolio_toml(base_toml + 'enforcement = "advisory: reason"\n')
     assert "review" in str(exc_no_trigger.value).lower()
 
-    # Placeholder enforcement
     with pytest.raises(PortfolioError) as exc_placeholder:
         parse_portfolio_toml(
             base_toml + 'enforcement = "deterministic: PROJECT-FACT-UNRESOLVED"\n',
@@ -204,7 +193,6 @@ disposition = "KEEP"
         )
     assert "placeholder" in str(exc_placeholder.value).lower()
 
-    # Unknown enforcer id
     with pytest.raises(PortfolioError) as exc_unknown:
         parse_portfolio_toml(
             base_toml + 'enforcement = "deterministic: unknown-id"\n',
@@ -234,7 +222,6 @@ def test_managed_block_idempotent_rerender() -> None:
     assert markers.AGENTS_BLOCK_BEGIN in content_first
     assert markers.AGENTS_BLOCK_END in content_first
 
-    # Calling again should produce the exact same content without duplicating
     agents_md.bootstrap(ws)
     content_second = ws.read(markers.AGENTS_MD)
     assert content_first == content_second

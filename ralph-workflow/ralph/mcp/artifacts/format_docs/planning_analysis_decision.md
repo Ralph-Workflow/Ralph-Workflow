@@ -15,7 +15,7 @@ The planner will revise from this feedback, so every non-completed verdict and
 its mirrored finding carries a concrete `Proposed revision:` the planner either
 applies or rebuts; the validator enforces this on submission (`ANALYSIS019`).
 Do not add a `## How To Fix` section: the revision lives inline.
-These decision-artifact requirements do not impose a format on the plan.
+These verdict-artifact requirements do not impose a format on the plan.
 
 ## Review criteria
 
@@ -61,8 +61,8 @@ status: request_changes
   unique `PA-###` ID, carries `Criterion:`, `Expected observation:`,
   `Observation:`, `Proposed revision:`, `Verdict:`, `Evidence:`,
   `Location:`, and `Cost:`, and records criterion-level evidence. On a
-  non-completed decision every verdict needs `Proposed revision:` (`none`
-  for a met criterion); a completed decision does not need one because the
+  non-completed verdict every listed verdict needs `Proposed revision:` (`none`
+  for a met criterion); a completed verdict does not need one because the
   plan was approved as-is. A `not evaluable` criterion requires `failed`
   rather than completion.
 - `## What Came Up Short` is required for `request_changes` and `failed`;

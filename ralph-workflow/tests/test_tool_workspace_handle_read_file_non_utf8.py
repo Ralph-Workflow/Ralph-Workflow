@@ -1,5 +1,3 @@
-"""Tests for ralph/mcp/tool_workspace.py — MCP workspace tool handlers."""
-
 from __future__ import annotations
 
 import json
@@ -21,8 +19,6 @@ DEFAULT_MAX_INLINE_BYTES = 5_242_880
 
 
 class TestHandleReadFileNonUtf8:
-    """Tests for structured non-UTF-8 error in handle_read_file."""
-
     def test_returns_structured_error_for_unicode_decode_error(self) -> None:
         ws = MagicMock()
         ws.stat.return_value = {"type": "file", "size_bytes": 100}

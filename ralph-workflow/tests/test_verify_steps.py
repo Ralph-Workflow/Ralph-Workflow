@@ -1,22 +1,3 @@
-"""Focused tests for the extracted ``make verify`` step registry.
-
-``ralph/verify_steps.py`` owns the ordered step registry; ``ralph/verify.py``
-owns the budget policy that charges those steps and the import-time
-invariants that police both. These tests pin the contract between the two
-modules:
-
-* ``ralph.verify`` re-exports the SAME registry object, so every existing
-  caller keeps exactly one handle;
-* the pinned budget constants and both timeout values are unchanged;
-* the known test-step labels and the budget-tracked index set stay in sync
-  in BOTH directions (the invariant the module enforces at import time);
-* the registry module is import-safe: it defines data only and never
-  reaches back into ``ralph.verify``.
-
-Every assertion is in-memory: no subprocess, no filesystem access, no
-sleeps, no network.
-"""
-
 from __future__ import annotations
 
 import inspect
@@ -32,7 +13,6 @@ _EXPECTED_TEST_STEP_LABELS = frozenset({"make test", "make test-verification-smo
 
 
 def test_verify_reexports_the_step_registry() -> None:
-    """``ralph.verify`` and ``ralph.verify_steps`` share ONE registry object."""
     reexported_steps = ralph.verify._VERIFY_STEPS
     registry_steps = ralph.verify_steps._VERIFY_STEPS
 
@@ -40,7 +20,6 @@ def test_verify_reexports_the_step_registry() -> None:
 
 
 def test_registry_entries_have_the_documented_shape() -> None:
-    """Every entry is ``(label, command, args, per_step_timeout)``."""
     steps = ralph.verify_steps._VERIFY_STEPS
 
     for label, command, args, timeout in steps:
@@ -55,7 +34,6 @@ def test_registry_entries_have_the_documented_shape() -> None:
 
 
 def test_budget_constants_stay_pinned() -> None:
-    """The combined budget, its CPU ceiling, and both timeouts are unchanged."""
     budget = ralph.verify._TOTAL_TEST_BUDGET_SECONDS
     cpu_budget = ralph.verify._TOTAL_TEST_CPU_BUDGET_SECONDS
     hang_cap = ralph.verify._TOTAL_TEST_HANG_CAP_SECONDS
@@ -69,7 +47,6 @@ def test_budget_constants_stay_pinned() -> None:
 
 
 def test_registry_timeout_constants_match_the_policy_pins() -> None:
-    """The registry module and the policy module pin the SAME timeout values."""
     registry_step_timeout = ralph.verify_steps._VERIFY_STEP_TIMEOUT_SECONDS
     registry_hang_cap = ralph.verify_steps._TOTAL_TEST_HANG_CAP_SECONDS
     pinned_step_timeout = ralph.verify._VERIFY_STEP_TIMEOUT_SECONDS
@@ -80,7 +57,6 @@ def test_registry_timeout_constants_match_the_policy_pins() -> None:
 
 
 def test_labels_and_tracked_steps_stay_in_sync() -> None:
-    """Every tracked step is a known test step, and every known test step is tracked."""
     steps = ralph.verify_steps._VERIFY_STEPS
     known_labels = ralph.verify._KNOWN_TEST_STEP_LABELS
     tracked_indices = ralph.verify._BUDGET_TRACKED_STEPS
@@ -97,7 +73,6 @@ def test_labels_and_tracked_steps_stay_in_sync() -> None:
 
 
 def test_step_labels_are_unique_and_keep_their_order() -> None:
-    """Labels are unique; the lint step runs first and the test suites keep their order."""
     steps = ralph.verify_steps._VERIFY_STEPS
     labels = [step[0] for step in steps]
 
@@ -107,14 +82,12 @@ def test_step_labels_are_unique_and_keep_their_order() -> None:
 
 
 def test_registry_module_exposes_the_step_tuple_type() -> None:
-    """The tuple type the coordinator registers new steps with is public."""
     step_type = ralph.verify_steps.VerifyStep
 
     assert step_type == tuple[str, str, tuple[str, ...], float | None]
 
 
 def test_registry_module_defines_data_only() -> None:
-    """The registry module is import-safe: data, no behaviour, no back-reference."""
     namespace = vars(ralph.verify_steps)
     behaviour = [
         name

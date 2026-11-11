@@ -1,10 +1,3 @@
-"""Black-box tests for lifecycle model-driven rendering APIs.
-
-After the wt-028-display consolidation, the single ``default`` mode
-applies; the artifact outcome always renders when set (no
-mode-conditional suppression).
-"""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -16,10 +9,6 @@ from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay, resolve_active_display
 from ralph.display.phase_lifecycle import PhaseExitModel
 from ralph.display.snapshot import PipelineSnapshot
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 _CREATED_AT = datetime(2026, 5, 4, tzinfo=UTC)
 
@@ -48,7 +37,6 @@ def _blank_snapshot(
     waiting_status_line: str | None = None,
     last_failure_category: str | None = None,
 ) -> PipelineSnapshot:
-    """Return a minimal PipelineSnapshot with all optional fields defaulted."""
     return PipelineSnapshot(
         phase=phase,
         previous_phase=None,
@@ -72,11 +60,6 @@ def _blank_snapshot(
         waiting_status_line=waiting_status_line,
         last_failure_category=last_failure_category,
     )
-
-
-# ---------------------------------------------------------------------------
-# show_phase_start_from_entry
-# ---------------------------------------------------------------------------
 
 
 class TestRichCloseArtifactOutcome:
@@ -121,7 +104,6 @@ class TestRichCloseArtifactOutcome:
         assert "artifact:" not in output
 
     def test_artifact_outcome_always_present_when_set(self) -> None:
-        """Single default-mode invariant: artifact outcome always renders when set."""
         exit_model = PhaseExitModel(
             phase_name="planning",
             exit_trigger="produced",
@@ -131,7 +113,6 @@ class TestRichCloseArtifactOutcome:
         assert "artifact:" in output
 
     def test_artifact_outcome_after_stats_line(self) -> None:
-        """artifact line must appear after the main banner line and before debug breadcrumbs."""
         exit_model = PhaseExitModel(
             phase_name="development",
             exit_trigger="produced",
@@ -140,8 +121,6 @@ class TestRichCloseArtifactOutcome:
             tool_calls=3,
         )
         output = self._render_close(exit_model, width=80)
-        # artifact line should exist; stats line should exist
         assert "artifact:" in output
         assert "stats:" in output
-        # artifact should appear after the banner (which has the phase name)
         assert output.index("Development") < output.index("artifact:")

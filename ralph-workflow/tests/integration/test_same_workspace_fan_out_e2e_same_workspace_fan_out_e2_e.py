@@ -1,15 +1,3 @@
-"""Integration test: same-workspace fan-out → analysis handoff.
-
-Proves the full supported path:
-  planning artifact with >=2 disjoint work_units
-  → FanOutEffect from _determine_effect_from_policy
-  → coordinator.run_fan_out produces ALL_WORKERS_COMPLETE
-  → reducer advances to development_analysis (no merge/worktree step)
-  → per-worker evidence stays in its own namespace
-
-All workers use FakeAgentExecutor (no subprocess, no real MCP).
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -74,10 +62,7 @@ def _make_policy_bundle(max_workers: int = 4) -> MagicMock:
 
 
 class TestSameWorkspaceFanOutE2E:
-    """End-to-end test of the same-workspace parallel fan-out path."""
-
     def test_two_disjoint_units_emit_fan_out_effect(self) -> None:
-        """_determine_effect_from_policy emits FanOutEffect for >=2 work units."""
 
         unit_a = _make_work_unit("unit-a")
         unit_b = _make_work_unit("unit-b")
@@ -93,7 +78,6 @@ class TestSameWorkspaceFanOutE2E:
         assert effect.run_post_fanout_verification is True
 
     def test_single_unit_uses_serial_path(self) -> None:
-        """A single work unit must NOT produce fan-out; it falls to the normal dev path."""
 
         state = PipelineState(phase="development", work_units=(_make_work_unit("unit-a"),))
         policy_bundle = _make_policy_bundle(max_workers=4)
@@ -106,7 +90,6 @@ class TestSameWorkspaceFanOutE2E:
         assert effect.phase == "development"
 
     def test_fan_out_advances_to_development_commit_review_after_all_succeed(self) -> None:
-        """After ALL_WORKERS_COMPLETE, reducer advances into the compiled commit hook path."""
         unit_a = _make_work_unit("unit-a")
         unit_b = _make_work_unit("unit-b")
         units = (unit_a, unit_b)
@@ -139,7 +122,6 @@ class TestSameWorkspaceFanOutE2E:
         assert reduced_state.worker_states["unit-b"].status == WorkerStatus.SUCCEEDED
 
     def test_worker_artifacts_are_namespaced_per_unit(self) -> None:
-        """ALL_WORKERS_COMPLETE events carry isolated per-worker completion evidence."""
         unit_a = _make_work_unit("unit-a")
         unit_b = _make_work_unit("unit-b")
         units = (unit_a, unit_b)
@@ -162,7 +144,6 @@ class TestSameWorkspaceFanOutE2E:
         assert completed_ids == {"unit-a", "unit-b"}, (
             "Each worker must have its own completion event"
         )
-        # Each unit_id appears exactly once in completed events — no cross-contamination
         for uid in ("unit-a", "unit-b"):
             unit_events = [e for e in completed if e.unit_id == uid]
             assert len(unit_events) == 1, (
@@ -170,9 +151,6 @@ class TestSameWorkspaceFanOutE2E:
             )
 
     def test_no_merge_step_required_for_supported_path(self) -> None:
-        """The supported path transitions directly from fan-out into commit review
-        without any git merge/worktree step.
-        """
         unit_a = _make_work_unit("unit-a")
         unit_b = _make_work_unit("unit-b")
         units = (unit_a, unit_b)
@@ -196,26 +174,17 @@ class TestSameWorkspaceFanOutE2E:
         for event in events:
             reduced_state, _ = reducer_reduce(reduced_state, event, policy_bundle.pipeline)
 
-        # Phase advanced to compiled commit hook path — no merge/worktree event in the chain
         assert reduced_state.phase == "development_commit_review"
-        # Verify there are no merge-related intermediate phases
         git_merge_events = [e for e in events if hasattr(e, "name") and "merge" in str(e).lower()]
         assert git_merge_events == [], (
             f"Supported path must not emit merge events, got: {git_merge_events}"
         )
 
     def test_two_workers_happy_path_artifact_only_success(self, tmp_path: Path) -> None:
-        """Two safe workers complete with isolated artifact evidence in the same workspace.
-
-        Uses a real SameWorkspaceContext with per-worker namespaces. Each worker's
-        artifact directory is pre-seeded with evidence. Asserts no cross-namespace
-        contamination and correct phase transition.
-        """
         unit_a = WorkUnit(unit_id="unit-a", description="Unit A", allowed_directories=["src/a"])
         unit_b = WorkUnit(unit_id="unit-b", description="Unit B", allowed_directories=["src/b"])
         units = (unit_a, unit_b)
 
-        # Pre-seed per-worker artifact evidence
         _seed_artifact(tmp_path, "unit-a")
         _seed_artifact(tmp_path, "unit-b")
 
@@ -245,27 +214,22 @@ class TestSameWorkspaceFanOutE2E:
             )
         )
 
-        # Both workers complete
         completed = [e for e in events if isinstance(e, WorkerCompletedEvent)]
         assert {e.unit_id for e in completed} == {"unit-a", "unit-b"}, (
             "Both workers must emit WorkerCompletedEvent"
         )
-        # Pipeline event emitted
         assert PipelineEvent.ALL_WORKERS_COMPLETE in events, (
             "ALL_WORKERS_COMPLETE must be emitted after both workers succeed"
         )
-        # No merge/worktree events
         merge_events = [e for e in events if hasattr(e, "name") and "merge" in str(e).lower()]
         assert merge_events == [], f"No merge events expected, got {merge_events}"
 
-        # Reducer advances into the compiled commit hook path
         policy_bundle = load_policy(_DEFAULT_POLICY_DIR)
         state = initial_state
         for event in events:
             state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
         assert state.phase == "development_commit_review"
 
-        # Per-worker artifact directories exist and are separate
         artifact_a = tmp_path / ".agent" / "workers" / "unit-a" / "artifacts"
         artifact_b = tmp_path / ".agent" / "workers" / "unit-b" / "artifacts"
         assert artifact_a.exists() and any(artifact_a.iterdir()), (
@@ -274,7 +238,6 @@ class TestSameWorkspaceFanOutE2E:
         assert artifact_b.exists() and any(artifact_b.iterdir()), (
             "unit-b must have its own artifact directory"
         )
-        # No cross-namespace contamination: unit-b's artifact not in unit-a's dir
         assert not (artifact_a / "unit-b").exists(), (
             "unit-b artifacts must not appear in unit-a's namespace"
         )
@@ -283,13 +246,6 @@ class TestSameWorkspaceFanOutE2E:
         )
 
     def test_out_of_scope_worker_write_is_denied(self, tmp_path: Path) -> None:
-        """A worker attempting to write outside its allowed_directories is denied.
-
-        The side_effect callback simulates a worker trying to write to a path
-        outside its declared edit area. The scoped FsWorkspace raises ValueError,
-        the coordinator wraps it in a WorkerFailedEvent, and no forbidden file
-        is created on disk.
-        """
         unit_a = WorkUnit(unit_id="unit-a", description="Unit A", allowed_directories=["src/a"])
         units = (unit_a,)
 
@@ -302,7 +258,6 @@ class TestSameWorkspaceFanOutE2E:
             )
         )
 
-        # Build a scoped workspace that only allows src/a — used inside side_effect.
         worker_namespace = tmp_path / ".agent" / "workers" / "unit-a"
         scope = WorkspaceScope.for_same_workspace_worker(
             repo_root=tmp_path,
@@ -312,7 +267,6 @@ class TestSameWorkspaceFanOutE2E:
         scoped_ws = FsWorkspace(tmp_path, allowed_roots=scope.allowed_roots)
 
         def _attempt_forbidden_write() -> None:
-            # This write targets src/b which is outside the allowed area.
             scoped_ws.write("src/b/forbidden.txt", "should not be written")
 
         runs = {
@@ -335,7 +289,6 @@ class TestSameWorkspaceFanOutE2E:
             )
         )
 
-        # Worker should have failed
         failed = [e for e in events if isinstance(e, WorkerFailedEvent)]
         assert any(e.unit_id == "unit-a" for e in failed), (
             f"Expected WorkerFailedEvent for unit-a, got: {events}"
@@ -345,35 +298,18 @@ class TestSameWorkspaceFanOutE2E:
             f"Error must mention 'outside workspace root', got: {unit_a_failure.error!r}"
         )
 
-        # Forbidden file must not exist on disk
         forbidden = tmp_path / "src" / "b" / "forbidden.txt"
         assert not forbidden.exists(), f"Forbidden file must not have been written: {forbidden}"
 
-        # No success completion
         assert PipelineEvent.ALL_WORKERS_COMPLETE not in events
 
     def test_repo_dirtiness_does_not_satisfy_missing_artifacts(self, tmp_path: Path) -> None:
-        """Repo-wide dirtiness from another worker CANNOT satisfy a worker's success check.
-
-        Scenario:
-        - unit-a has pre-seeded artifacts → succeeds
-        - unit-b has NO artifacts → must fail
-        - A real file is written to tmp_path/src/b/ to simulate repo dirtiness
-
-        The coordinator must mark unit-b as FAILED with an error containing
-        'produced no worker-local artifact evidence', even though the repo is
-        dirty due to unit-a's (simulated) edits. Repo-wide git status is never
-        a fallback success signal in same-workspace mode.
-        """
         unit_a = WorkUnit(unit_id="unit-a", description="Unit A", allowed_directories=["src/a"])
         unit_b = WorkUnit(unit_id="unit-b", description="Unit B", allowed_directories=["src/b"])
         units = (unit_a, unit_b)
 
-        # Only seed artifacts for unit-a; unit-b gets none on purpose.
         _seed_artifact(tmp_path, "unit-a")
 
-        # Write a real file change into src/b to make the repo "dirty" — simulating
-        # worker-b having edited files but not submitted any worker-local artifact.
         dirty_file = tmp_path / "src" / "b" / "some_file.py"
         dirty_file.parent.mkdir(parents=True, exist_ok=True)
         dirty_file.write_text("# simulated edit by worker-b\n")
@@ -403,7 +339,6 @@ class TestSameWorkspaceFanOutE2E:
             )
         )
 
-        # unit-b must have failed — repo dirtiness is not a success signal
         failed_events = [e for e in events if isinstance(e, WorkerFailedEvent)]
         unit_b_failures = [e for e in failed_events if e.unit_id == "unit-b"]
         assert len(unit_b_failures) == 1, (
@@ -416,7 +351,6 @@ class TestSameWorkspaceFanOutE2E:
             "Repo-wide dirtiness must never substitute for per-worker artifact evidence."
         )
 
-        # unit-a should still have succeeded (it had artifacts)
         completed_events = [e for e in events if isinstance(e, WorkerCompletedEvent)]
         assert any(e.unit_id == "unit-a" for e in completed_events), (
             "unit-a must have completed successfully (it had artifact evidence)"

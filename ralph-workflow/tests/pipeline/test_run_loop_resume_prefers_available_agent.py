@@ -1,5 +1,3 @@
-"""Regression test for priority reselection after cooldown waiting."""
-
 from __future__ import annotations
 
 import tempfile
@@ -46,8 +44,6 @@ def _entry(until_ms: int) -> UnavailabilityEntry:
 
 @dataclass
 class _PendingMergeRecord:
-    """Stand-in for the durable pending-merge record the merge path reads."""
-
     resolving_merge: bool = False
 
 
@@ -147,7 +143,6 @@ def test_run_loop_resumes_on_highest_priority_newly_available_agent(
 def test_cooldown_resume_does_not_reselect_when_integration_is_unresolved(
     monkeypatch: Any,
 ) -> None:
-    """A cooldown cannot prepare an ordinary agent while resolution is pending."""
     ctx = MagicMock()
     ctx.workspace_scope.root = Path("/workspace")
     ctx.active_display = MagicMock()
@@ -185,7 +180,6 @@ def test_recoverable_mid_run_verdict_reenters_resolution_before_dispatch(
     monkeypatch: Any,
     auto_integrate_enabled: bool,
 ) -> None:
-    """A late conflict uses the resolver seam even when auto integration is disabled."""
     config = MagicMock()
     config.general.auto_integrate_enabled = auto_integrate_enabled
     ctx = MagicMock()
@@ -217,7 +211,6 @@ def test_recoverable_mid_run_verdict_reenters_resolution_before_dispatch(
 def test_exhausted_mid_run_verdict_terminates_without_resolution_reentry(
     monkeypatch: Any,
 ) -> None:
-    """Only durable resolver exhaustion may stop an otherwise ordinary loop."""
     config = MagicMock()
     config.general.auto_integrate_enabled = True
     ctx = MagicMock()
@@ -243,17 +236,6 @@ def test_exhausted_mid_run_verdict_terminates_without_resolution_reentry(
 def test_recoverable_verdict_always_enters_conflict_resolution(
     monkeypatch: Any,
 ) -> None:
-    """Any recoverable integration evidence must invoke the conflict resolver.
-
-    Regression guard for the deadlock that made ``rdev`` exit with zero agent
-    calls: the only recovery executor wired to a recoverable verdict was
-    ``_run_startup_integration``, which routes through
-    ``auto_integrate_on_phase_transition`` and defers the entire boundary when
-    the worktree is dirty. Every conflicted worktree is dirty, so the resolver
-    was never invoked for exactly the evidence it exists to clear, and the run
-    terminated instead. The resolver must be called directly, and before the
-    startup seam.
-    """
     config = MagicMock()
     config.general.auto_integrate_enabled = True
     ctx = MagicMock()
@@ -291,11 +273,6 @@ def test_recoverable_verdict_always_enters_conflict_resolution(
 def test_conflict_resolution_runs_even_when_startup_integration_defers(
     monkeypatch: Any,
 ) -> None:
-    """The resolver still runs when the startup seam reports nothing to do.
-
-    ``_run_startup_integration`` returns ``None`` on a dirty worktree. That
-    must not suppress conflict resolution.
-    """
     config = MagicMock()
     config.general.auto_integrate_enabled = True
     ctx = MagicMock()
@@ -324,7 +301,6 @@ def test_conflict_resolution_runs_even_when_startup_integration_defers(
 
 
 def test_conflict_resolution_executor_never_raises(monkeypatch: Any) -> None:
-    """A failing resolver degrades to False rather than aborting the loop."""
     ctx = MagicMock()
     ctx.workspace_scope.root = Path("/workspace")
 
@@ -341,14 +317,6 @@ def test_conflict_resolution_executor_never_raises(monkeypatch: Any) -> None:
 
 
 def test_blocked_dispatch_announces_the_real_evidence(monkeypatch: Any) -> None:
-    """A terminating block must name the live evidence, not the empty record.
-
-    Regression guard: the terminating seam reused the crash-recovery
-    announcement, so a run blocked by live git evidence died printing
-    "crash recovery still owns the durable integration record (None)" --
-    a message that names an empty record and hides the actual cause. The
-    verdict's own reasons and executor must be reported.
-    """
     lines: list[str] = []
     ctx = MagicMock()
     monkeypatch.setattr(
@@ -373,7 +341,6 @@ def test_blocked_dispatch_announces_the_real_evidence(monkeypatch: Any) -> None:
 
 
 def test_blocked_dispatch_announcement_never_raises(monkeypatch: Any) -> None:
-    """A display that cannot take the line must not abort the run."""
 
     def _boom(*_args: Any, **_kwargs: Any) -> None:
         raise RuntimeError("display gone")
@@ -389,14 +356,6 @@ def test_blocked_dispatch_announcement_never_raises(monkeypatch: Any) -> None:
 def test_direct_resolver_call_is_charged_against_the_conflict_budget(
     monkeypatch: Any,
 ) -> None:
-    """The direct resolver call must honour the failure ledger.
-
-    ``auto_integrate_after_commit`` gates resolver spend on the failure
-    ledger. The direct call added for the dirty-worktree deadlock fix
-    must honour the same authority, or a benched resolver would be
-    re-invoked on every seam. The stored conflict count is not that
-    authority: it describes the repository, not the health of an agent.
-    """
     from ralph.pipeline.rebase_state import RebaseState
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
 
@@ -418,11 +377,9 @@ def test_direct_resolver_call_is_charged_against_the_conflict_budget(
     monkeypatch.setattr(run_loop, "build_agent_conflict_resolver", _build)
     monkeypatch.setattr(run_loop, "_complete_in_progress_merge", lambda *_a: True)
 
-    # Fresh state: the first attempt is always allowed.
     assert run_loop._run_integration_conflict_resolution(ctx, RebaseState()) is True
     assert len(built) == 1
 
-    # The ledger has benched the only candidate: the resolver is not built.
     ledger.record(
         AttemptFact(
             phase="rebase_conflict_resolution",
@@ -440,13 +397,6 @@ def test_direct_resolver_call_is_charged_against_the_conflict_budget(
 
 
 def test_a_paused_rebase_reaches_a_resolver_instead_of_being_dropped(monkeypatch: Any) -> None:
-    """A paused rebase is the commoner blocking state, and it is not a merge.
-
-    The seam built the MERGE resolver and dropped it whenever no merge
-    was in progress, so a conflicted rebase reached a resolver that was
-    standing right there and was never invoked -- the run then exited
-    with zero resolution attempts.
-    """
     ctx = MagicMock()
     ctx.workspace_scope.root = Path("/workspace")
     monkeypatch.setattr(
@@ -473,7 +423,6 @@ def test_a_paused_rebase_reaches_a_resolver_instead_of_being_dropped(monkeypatch
 
 
 def test_a_paused_rebase_is_driven_through_the_stop_resolver(monkeypatch: Any) -> None:
-    """It must use the rebase-stop resolver, not the two-argument merge one."""
     from ralph.pipeline import auto_integrate_rebase_merge as rebase_merge
 
     ctx = MagicMock()
@@ -494,12 +443,6 @@ def test_a_paused_rebase_is_driven_through_the_stop_resolver(monkeypatch: Any) -
 
 
 def test_a_recorded_exhaustion_does_not_block_a_different_conflict(monkeypatch: Any) -> None:
-    """An exhausted record describes ONE conflict; it must not refuse another.
-
-    Treating `resolution_exhausted` as an unconditional stop ended the
-    run without invoking a resolver at all, so a conflict that had since
-    changed was refused by evidence recorded about a different one.
-    """
     from ralph.pipeline.auto_integrate_conflict_budget import (
         MAX_TRACKED_CONFLICT_ATTEMPTS,
         ConflictIdentity,
@@ -538,7 +481,6 @@ def test_a_recorded_exhaustion_does_not_block_a_different_conflict(monkeypatch: 
 def test_an_exhausted_record_still_reaches_the_resolver_when_it_does_not_bind(
     monkeypatch: Any,
 ) -> None:
-    """The whole point: a non-binding exhaustion must reach conflict resolution."""
     from ralph.pipeline.integration_resolution import IntegrationResolutionVerdict
     from ralph.pipeline.integration_resolution_types import IntegrationResolutionStatus
     from ralph.pipeline.rebase_state import RebaseState
@@ -573,13 +515,6 @@ def test_an_exhausted_record_still_reaches_the_resolver_when_it_does_not_bind(
 
 
 def test_a_different_conflict_gets_its_own_resolver_budget(monkeypatch: Any) -> None:
-    """The recorded exhaustion is scoped to ONE conflict, so a new one must not inherit it.
-
-    Consulting the record without observing which conflict is on disk
-    spends the identity that matches every conflict: a genuinely new
-    conflict then inherits an older one's exhausted record and is
-    escalated without a resolver ever being invoked.
-    """
     from ralph.pipeline.auto_integrate_conflict_budget import (
         MAX_TRACKED_CONFLICT_ATTEMPTS,
         ConflictIdentity,
@@ -626,7 +561,6 @@ def test_a_different_conflict_gets_its_own_resolver_budget(monkeypatch: Any) -> 
 
 
 def test_resolver_runs_when_no_rebase_state_is_threaded(monkeypatch: Any) -> None:
-    """Omitting the state keeps the resolver reachable (no accidental gate)."""
     ctx = MagicMock()
     ctx.workspace_scope.root = Path("/workspace")
     monkeypatch.setattr(
@@ -641,22 +575,12 @@ def test_resolver_runs_when_no_rebase_state_is_threaded(monkeypatch: Any) -> Non
 def test_completing_a_merge_stages_and_commits_not_just_resolves(
     monkeypatch: Any, tmp_path: Path
 ) -> None:
-    """The resolver alone never clears MERGE_HEAD; the merge must be committed.
-
-    Regression guard: invoking the bare conflict resolver repaired the
-    working tree but left the merge uncommitted, so the re-inspection still
-    reported "merge is in progress" and the run exited having burned a full
-    agent session for nothing.
-    """
     from ralph.git.merge import MERGE_STATE_IN_PROGRESS
 
     staged: list[list[str]] = []
     committed: list[str] = []
     monkeypatch.setattr("ralph.git.merge.merge_state", lambda _root: MERGE_STATE_IN_PROGRESS)
 
-    # The merge-completion path resolves, stages the previously conflicted
-    # paths, and commits the merge. Every collaborator it drives is a public
-    # function, so the observation happens on the public git surface.
     monkeypatch.setattr(auto_integrate_resolve, "unmerged_paths", lambda _root: [])
     monkeypatch.setattr(auto_integrate_resolve, "staged_conflict_marker_paths", lambda _root: [])
     monkeypatch.setattr(auto_integrate_resolve, "paths_with_conflict_markers", lambda *_a: [])
@@ -682,7 +606,6 @@ def test_completing_a_merge_stages_and_commits_not_just_resolves(
 def test_completing_a_merge_declines_when_no_merge_is_in_progress(
     monkeypatch: Any, tmp_path: Path
 ) -> None:
-    """With no MERGE_HEAD there is nothing for the merge path to finish."""
     from ralph.git.merge import MERGE_STATE_NONE
 
     def _must_not_run(*_args: Any, **_kwargs: Any) -> bool:
@@ -696,12 +619,6 @@ def test_completing_a_merge_declines_when_no_merge_is_in_progress(
 def test_an_unreadable_rebase_state_never_answers_no_rebase(
     monkeypatch: Any, tmp_path: Any
 ) -> None:
-    """ "No rebase" sends a paused rebase down the merge path, which invokes nobody.
-
-    The merge path has nothing to finish for a rebase, so answering "no"
-    on an unreadable state is the one answer that guarantees zero
-    resolution attempts. git's own on-disk markers are the fallback.
-    """
     from pathlib import Path as _Path
 
     def _boom(_root: object) -> bool:
@@ -718,7 +635,6 @@ def test_an_unreadable_rebase_state_never_answers_no_rebase(
 
 
 def test_the_merge_resolver_is_not_built_for_a_paused_rebase(monkeypatch: Any) -> None:
-    """The wrong resolver must not exist to be fallen back on."""
     ctx = MagicMock()
     ctx.workspace_scope.root = Path("/workspace")
     monkeypatch.setattr(
@@ -738,13 +654,6 @@ def test_the_merge_resolver_is_not_built_for_a_paused_rebase(monkeypatch: Any) -
 
 
 def test_a_conflicted_index_owned_by_nothing_still_reaches_a_resolver(monkeypatch: Any) -> None:
-    """Ralph's own recovery makes this state, and nothing handled it.
-
-    Quitting a foreign cherry-pick or revert removes CHERRY_PICK_HEAD and
-    leaves the conflicted index behind: unmerged paths with no rebase and
-    no merge. Both branches declined it, so the run exited having invoked
-    nobody -- against a verdict that named a resolver as its executor.
-    """
     ctx = MagicMock()
     ctx.workspace_scope.root = Path("/workspace")
     monkeypatch.setattr(
@@ -765,7 +674,6 @@ def test_a_conflicted_index_owned_by_nothing_still_reaches_a_resolver(monkeypatc
 
 
 def test_an_orphaned_conflicted_index_is_resolved_and_staged(monkeypatch: Any) -> None:
-    """Nothing needs continuing: repairing and staging IS the resolution."""
     ctx = MagicMock()
     ctx.workspace_scope.root = Path("/workspace")
     ctx.pipeline_deps = MagicMock()
@@ -788,21 +696,9 @@ def test_an_orphaned_conflicted_index_is_resolved_and_staged(monkeypatch: Any) -
     assert staged == [["a.py"]]
 
 
-# ---------------------------------------------------------------------------
-# Cooldown-wait resume priority-first invariants (plan S-1)
-#
-# These focused regressions assert that after the controller entered the
-# all-agents-unavailable wait branch, the resume path always picks the
-# highest-priority newly available agent regardless of the persisted
-# current_index. The resume seam routes through ``_reselect_preferred_agent``
-# so the same priority-first contract applies.
-# ---------------------------------------------------------------------------
-
-
 def test_resume_skips_still_unavailable_returns_to_higher_priority_newly_available(
     monkeypatch: Any,
 ) -> None:
-    """After waiting, the resume picks the highest-priority agent whose cooldown has expired."""
     clock = FakeClock(start=0.0)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
@@ -861,7 +757,6 @@ def test_resume_skips_still_unavailable_returns_to_higher_priority_newly_availab
 def test_resume_with_persisted_high_index_does_not_advance_cursor_past_index_zero(
     monkeypatch: Any,
 ) -> None:
-    """A persisted current_index that points past index 0 is NOT a search origin on resume."""
     clock = FakeClock(start=0.0)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
@@ -919,7 +814,6 @@ def test_resume_with_persisted_high_index_does_not_advance_cursor_past_index_zer
 def test_resume_picks_higher_priority_even_when_cursor_neighbor_is_newly_available(
     monkeypatch: Any,
 ) -> None:
-    """The cursor's neighbor becoming available does NOT block the highest-priority agent."""
     clock = FakeClock(start=0.0)
     controller = RecoveryController(
         options=RecoveryControllerOptions(

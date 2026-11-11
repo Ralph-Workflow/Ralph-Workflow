@@ -1,14 +1,3 @@
-"""Commit plumbing commands for Ralph CLI.
-
-This module is the thin CLI surface for ``commit`` and ``--generate-commit``.
-All chain-iteration, retry-classification, and session-resume logic lives in
-:mod:`ralph.pipeline.plumbing.commit_plumbing` and is invoked via
-:func:`run_commit_plumbing`. The CLI surface only owns:
-
-- option parsing (``CommitPlumbingOptions``),
-- output formatting (Rich text rendering, exit codes),
-- shell entry point (``commit_plumbing``).
-"""
 
 from __future__ import annotations
 
@@ -68,7 +57,6 @@ if TYPE_CHECKING:
     from ralph.policy.models import AgentsPolicy
     from ralph.pro_support.hooks import ProPipelineHooks
 
-# Re-exports for the test-patch surface.
 __all__ = [
     "AgentInvocationError",
     "CommitAgentResult",
@@ -85,13 +73,6 @@ __all__ = [
 
 
 def __getattr__(name: str) -> object:
-    """Resolve the lazily re-exported :mod:`ralph.agents.invoke` names.
-
-    ``ralph.agents.invoke`` is the heaviest import in the CLI tree, and
-    these two names exist here only so tests can patch them. Resolving
-    them on first access keeps every CLI child that never patches them
-    from paying that import cost.
-    """
     if name in ("AgentInvocationError", "invoke_agent"):
         from typing import cast
 
@@ -101,7 +82,6 @@ def __getattr__(name: str) -> object:
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-# Maximum number of staged files to display in output
 _MAX_DISPLAY_FILES = 5
 _VERBOSE_THRESHOLD = 2
 
@@ -113,13 +93,6 @@ def commit_plumbing(
     pro_hooks: ProPipelineHooks | None = None,
     model_identity: MultimodalModelIdentity | None = None,
 ) -> int:
-    """Handle commit plumbing operations.
-
-    Args:
-        options: Commit plumbing options.
-        display_context: Display context for consistent rendering.
-            If None, a context is created using make_display_context().
-    """
     ctx = display_context if display_context is not None else make_display_context()
     display = resolve_active_display(None, ctx)
     opts = options or CommitPlumbingOptions()
@@ -175,7 +148,6 @@ def _handle_agent_commit_generation(
     pro_hooks: ProPipelineHooks | None = None,
     model_identity: MultimodalModelIdentity | None = None,
 ) -> int:
-    # ruff: noqa: PLR0911
     display = resolve_active_display(None, display_context)
     generate = options.generate_commit_msg or options.generate_commit
     apply = options.generate_commit
@@ -327,16 +299,11 @@ def _resolve_commit_message_agents(agents_policy: AgentsPolicy) -> list[str]:
 
 
 def working_tree_diff(repo_root: Path) -> str:
-    """Compute all pending tracked and untracked work for commit generation."""
     return commit_generation_diff(repo_root)
 
 
 render_commit_agent_activity_line = _render_commit_agent_activity_line
 write_commit_prompt_file = _write_commit_prompt_file
-# ``start_commit_bridge`` is the legacy one-arg function; the plumbing
-# module's ``_start_commit_bridge`` (which accepts ``agents_policy=``)
-# is the one that ``run_commit_plumbing`` actually calls. Tests that
-# need to stub it patch the module-level name on the plumbing package.
 start_commit_bridge = _start_commit_bridge
 
 
@@ -349,17 +316,10 @@ def _generate_commit_message_with_chain(
     pro_hooks: ProPipelineHooks | None = None,
     model_identity: MultimodalModelIdentity | None = None,
 ) -> CommitAgentResult:
-    """Thin alias that delegates to :func:`run_commit_plumbing`.
-
-    Preserved so the existing tests (which patch
-    ``ralph.cli.commands.commit._generate_commit_message_with_chain``)
-    continue to work. The actual chain-iteration ownership lives in
-    :mod:`ralph.pipeline.plumbing.commit_plumbing`.
-    """
     deps = DefaultPipelineFactory().build(
         cast(
             "UnifiedConfig", chain_config.general_config
-        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        ),
         display_context,
         model_identity=model_identity,
         pro_hooks=pro_hooks,

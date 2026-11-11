@@ -1,13 +1,3 @@
-"""Contract tests for the ``execute_agent_effect`` dependency seam.
-
-The display/state/policy dependencies used to travel through ``**opts:
-object``, which made a missing ``display_context`` invisible to mypy and
-produced a runtime ``TypeError`` deep inside display resolution (the
-project-policy remediation launch crash). These tests pin the seam as
-explicit typed parameters, with ``display_context`` required, so an
-omission is a type-check and signature error rather than a runtime flood.
-"""
-
 from __future__ import annotations
 
 import inspect

@@ -1,47 +1,3 @@
-"""End-to-end black-box tests that lock the prompt's full unavailability contract.
-
-The prompt in ``.agent/PRODUCT_CRITERIA.md`` (wt-014-unavailable-detection)
-describes a runtime hole in the agent-fallback chain: an opencode run that
-produced zero output for ~10 minutes (log entries at 2026-06-15T08:13:18 -
-2026-06-15T08:28:18) despite healthy internet, and the watchdog took the
-full 600s waiting ceiling to fire. The prompt locks six contract
-requirements:
-
-  1. A fast 'no output despite healthy internet' detection that
-     fast-fallovers to the next agent (AC-01).
-  2. Per-reason exponential backoff so a 5-hour weekly-limit cooldown
-     does not punish transient 1-minute blips (AC-02).
-  3. A black-box testable architecture (the existing Protocol-typed
-     store seam).
-  4. A session-scoped unavailability store with a future-expansion
-     seam (AC-04).
-  5. A never-crash forever-wait state when every agent in the chain is
-     unavailable (AC-03).
-  6. The distinction between 'out of credits / no output in the
-     beginning' (cold-start stall) and 'running subagents and just
-     waiting' (positive-waiting suppression) (AC-02).
-
-These four tests tie the prompt's scenario together end-to-end through
-the public API. They MUST stay black-box:
-
-  - No ``time.sleep``, real subprocess, or real network.
-  - No private reach-through. Every assertion goes through the public
-    controller surface (``controller.handle``, ``controller.unavailability_store``,
-    ``controller.waiting_state_payload``, ``controller.agents_now_available``,
-    ``controller.snapshot``).
-  - Every dependency is faked or wrapped behind a Protocol surface
-    (``FakeClock`` for time, ``AgentUnavailabilityTracker`` for the
-    store, the real ``RecoveryController``).
-
-AC mapping:
-  - test_prompt_scenario_five_hour_stall_caught_at_120s -> AC-01
-  - test_prompt_scenario_distinguishes_out_of_credits_from_subagents -> AC-02
-  - test_prompt_scenario_forever_wait_through_many_cooldown_cycles -> AC-03
-  - test_prompt_scenario_session_scope_with_future_expansion_seam -> AC-04
-  - All four tests are black-box and run inside the 60s combined
-    budget -> AC-05
-"""
-
 from __future__ import annotations
 
 import importlib
@@ -76,26 +32,13 @@ from ralph.recovery.unavailability_reason import (
 )
 from ralph.timeout_defaults import NO_OUTPUT_AT_START_SECONDS
 
-# ---------------------------------------------------------------------------
-# Shared helpers
-# ---------------------------------------------------------------------------
-
 
 def _minimal_policy_bundle() -> object:
-    """Build a minimal policy bundle the controller can route through.
-
-    Mirrors the helper in test_all_agents_unavailable_never_crashes.py so
-    the controller's policy-driven code paths (chain config, failed
-    route) work in tests. The tempdir is created and destroyed per call
-    because the bundle is fully loaded into memory and does not hold
-    references to the tempdir.
-    """
     with tempfile.TemporaryDirectory() as d:
         return load_policy(Path(d) / ".agent")
 
 
 def _no_output_opts() -> InactivityTimeoutOpts:
-    """Build the canonical NO_OUTPUT_AT_START opts for inactivity timeouts."""
     return InactivityTimeoutOpts(
         reason=WatchdogFireReason.NO_OUTPUT_AT_START,
         diagnostic={"invocation_elapsed": 30.0},
@@ -103,7 +46,6 @@ def _no_output_opts() -> InactivityTimeoutOpts:
 
 
 def _no_progress_opts() -> InactivityTimeoutOpts:
-    """Build the canonical NO_PROGRESS_QUIET opts for inactivity timeouts."""
     return InactivityTimeoutOpts(
         reason=WatchdogFireReason.NO_PROGRESS_QUIET,
         diagnostic={"invocation_elapsed": 60.0},
@@ -111,7 +53,6 @@ def _no_progress_opts() -> InactivityTimeoutOpts:
 
 
 def _three_agent_state(current_index: int = 0) -> PipelineState:
-    """Build a 3-agent pipeline state for the development phase, online."""
     chain_state = AgentChainState(
         agents=["claude", "opencode", "agy"],
         current_index=current_index,
@@ -124,26 +65,11 @@ def _three_agent_state(current_index: int = 0) -> PipelineState:
 
 
 def _build_default_watchdog(clock: FakeClock) -> IdleWatchdog:
-    """Build a default IdleWatchdog with the production 120s threshold.
-
-    ``no_output_at_start_seconds=120.0`` is the production default from
-    ``ralph.timeout_defaults.NO_OUTPUT_AT_START_SECONDS``. Other timeout
-    fields are left at their defaults so a future default-tuning change
-    is automatically picked up by the test.
-    """
     policy = TimeoutPolicy(idle_timeout_seconds=300.0)
     return IdleWatchdog(policy, clock)
 
 
 def _wait_state_backoff_policy() -> dict[UnavailabilityReason, ReasonBackoffPolicy]:
-    """Custom backoff policy used by the forever-wait test.
-
-    Base 15_000ms covers 10 iterations of 1s FakeClock advance plus
-    margin, so the wait state is naturally maintained for the entire
-    loop without re-marking every agent on every iteration. Max
-    30_000ms matches the documented NO_OUTPUT_AT_START max, so the
-    plan's "<= 30_000ms" assertion still binds.
-    """
     return {
         UnavailabilityReason.NO_OUTPUT_AT_START: ReasonBackoffPolicy(
             base_backoff_ms=15_000,
@@ -152,41 +78,7 @@ def _wait_state_backoff_policy() -> dict[UnavailabilityReason, ReasonBackoffPoli
     }
 
 
-# ---------------------------------------------------------------------------
-# AC-01: Fast 'no output despite healthy internet' detection (5-hour stall)
-# ---------------------------------------------------------------------------
-
-
 def test_prompt_scenario_five_hour_stall_caught_at_the_startup_grace() -> None:
-    """AC-01: an agent producing zero output despite healthy internet is
-    detected at the startup grace and the chain falls over to the next agent.
-
-    Reproduces the user's exact log scenario (2026-06-15T08:13:18 -
-    2026-06-15T08:28:18) where the watchdog took the full 600s waiting
-    ceiling to fire. The contract locks:
-
-      1. ``TimeoutPolicy.no_output_at_start_seconds`` defaults to the
-         production value in ``ralph.timeout_defaults``. The duration is read
-         from that constant rather than written here as a literal: it has moved
-         (120 -> 30 -> 15 -> 360) and a hardcoded advance silently stops
-         exercising the fire path every time it does.
-      2. After the grace elapses with zero recorded activity and
-         ``classify_quiet=lambda: ACTIVE``, the watchdog returns
-         ``WatchdogVerdict.FIRE`` with ``last_fire_reason ==
-         NO_OUTPUT_AT_START``.
-      3. Driving the same failure through ``RecoveryController.handle()``
-         marks the agent as unavailable with the NO_OUTPUT_AT_START
-         backoff window (5_000ms base / 30_000ms cap) and falls over
-         from index 0 (claude) to index 1 (opencode).
-
-    The remaining cooldown is computed as
-    ``snapshot_timeout - current_time_ms`` because
-    ``controller.snapshot()['unavailable_timeouts']`` reports the
-    absolute ``unavailable_until_ms`` timestamp (when the cooldown
-    expires), not the remaining duration. The 5_000-30_000ms remaining
-    window matches the ``DEFAULT_UNAVAILABILITY_BACKOFF_POLICY`` entry
-    for NO_OUTPUT_AT_START.
-    """
     clock = FakeClock(start=0.0)
     watchdog = _build_default_watchdog(clock)
     watchdog.record_invocation_start()
@@ -238,39 +130,7 @@ def test_prompt_scenario_five_hour_stall_caught_at_the_startup_grace() -> None:
     assert "claude" not in available
 
 
-# ---------------------------------------------------------------------------
-# AC-02: Per-reason exponential backoff (out of credits vs running subagents)
-# ---------------------------------------------------------------------------
-
-
 def test_prompt_scenario_distinguishes_out_of_credits_from_subagents() -> None:
-    """AC-02: the per-reason backoff policy applies distinct cooldowns.
-
-    The prompt distinguishes 'no output in the beginning'
-    (NO_OUTPUT_AT_START, short cooldown) from 'running subagents and
-    just waiting' (STALE_CHILD_QUIET, longer cooldown) from 'out of
-    credits' (OUT_OF_CREDITS, 30-minute cap). The contract locks:
-
-      1. The ``FailureClassifier`` produces the right
-         ``unavailability_reason`` for each failure shape, given
-         ``connectivity_state='online'``.
-      2. ``AgentUnavailabilityTracker.mark_unavailable`` records the
-         exact ``base_backoff_ms`` and ``max_backoff_ms`` from
-         ``DEFAULT_UNAVAILABILITY_BACKOFF_POLICY`` for each reason.
-      3. The typed ``AgentInvocationError`` carrying the documented
-         Claude Code limit message classifies as ``OUT_OF_CREDITS``;
-         the production failure surface (``AgentInvocationError`` with
-         a non-zero returncode and a limit-bearing stderr) is a
-         distinct input shape from the raw-string surface, and the
-         classifier must handle both equivalently.
-
-    The test drives the classifier with three raw-string failure shapes
-    and one typed-exception shape, all classified as agent/unavailable
-    with the same ``connectivity_state='online'``. The shapes are:
-    subscription-limit raw text, NO_OUTPUT_AT_START watchdog fire, and
-    NO_PROGRESS_QUIET watchdog fire. The test then drives the tracker
-    with each reason and asserts the exact cooldown table.
-    """
     classifier = FailureClassifier()
 
     classified_a = classifier.classify(
@@ -315,7 +175,6 @@ def test_prompt_scenario_distinguishes_out_of_credits_from_subagents() -> None:
         UnavailabilityReason.OUT_OF_CREDITS,
     )
     assert out_of_credits_entry.base_backoff_ms == 60_000
-    # Default cap is the universal five-hour ceiling (18_000_000 ms).
     assert out_of_credits_entry.max_backoff_ms == 18_000_000
 
     no_output_entry = tracker.mark_unavailable(
@@ -324,7 +183,6 @@ def test_prompt_scenario_distinguishes_out_of_credits_from_subagents() -> None:
         UnavailabilityReason.NO_OUTPUT_AT_START,
     )
     assert no_output_entry.base_backoff_ms == 5_000
-    # Default cap is the universal five-hour ceiling (18_000_000 ms).
     assert no_output_entry.max_backoff_ms == 18_000_000
 
     stale_child_entry = tracker.mark_unavailable(
@@ -333,12 +191,9 @@ def test_prompt_scenario_distinguishes_out_of_credits_from_subagents() -> None:
         UnavailabilityReason.STALE_CHILD_QUIET,
     )
     assert stale_child_entry.base_backoff_ms == 15_000
-    # Default cap is the universal five-hour ceiling (18_000_000 ms).
     assert stale_child_entry.max_backoff_ms == 18_000_000
 
     policy = DEFAULT_UNAVAILABILITY_BACKOFF_POLICY
-    # Every default policy uses the universal five-hour ceiling
-    # (18_000_000 ms) for its max backoff.
     assert policy[UnavailabilityReason.OUT_OF_CREDITS].base_backoff_ms == 60_000
     assert policy[UnavailabilityReason.OUT_OF_CREDITS].max_backoff_ms == 18_000_000
     assert policy[UnavailabilityReason.NO_OUTPUT_AT_START].base_backoff_ms == 5_000
@@ -356,50 +211,7 @@ def test_prompt_scenario_distinguishes_out_of_credits_from_subagents() -> None:
         assert rp.base_backoff_ms > 0
 
 
-# ---------------------------------------------------------------------------
-# AC-03: Never-crash forever-wait through many cooldown cycles
-# ---------------------------------------------------------------------------
-
-
 def test_prompt_scenario_forever_wait_through_many_cooldown_cycles() -> None:
-    """AC-03: the forever-wait state is entered when all agents in the
-    chain are unavailable, never increments ``recovery_cycle_count``,
-    and the run loop sleeps for the earliest cooldown. After the
-    cooldown expires, the controller routes to the FIRST available
-    agent (preferred agent selection in ``preferred_agent_index``).
-
-    Setup:
-      - 3-agent chain (claude, opencode, agy) with a custom
-        NO_OUTPUT_AT_START policy (15_000ms base, 30_000ms cap). The
-        15s base covers 10 iterations of 1s FakeClock advance plus
-        margin, so the wait state is naturally maintained for the
-        entire loop without re-marking every agent on every iteration.
-        The 30s cap matches the documented NO_OUTPUT_AT_START max.
-      - ``FakeClock`` for deterministic time.
-
-    Behaviour:
-      - Mark all three agents unavailable ONCE through
-        ``controller.handle()`` with a NO_OUTPUT_AT_START failure per
-        agent. The third call lands on the all-agents-unavailable wait
-        branch: ``state.is_waiting_state == True`` and
-        ``state.recovery_cycle_count == 0``.
-      - Loop 10 times: advance the FakeClock by 1s, call handle() with
-        a NO_OUTPUT_AT_START failure for the current agent (agy, the
-        chain tail). Each iteration must:
-          * preserve state.phase == 'development' (never
-            'failed_terminal'),
-          * preserve state.recovery_cycle_count == 0,
-          * keep state.last_retry_delay_ms > 0 and <= 30_000ms
-            (bounded by NO_OUTPUT_AT_START max).
-      - After the loop, advance the FakeClock past the 15s base
-        cooldown so claude and opencode are available (agy is still
-        on cooldown because it was re-marked 10 times with exponential
-        backoff up to the 30_000ms cap). Call handle() once more; the
-        chain must advance to the FIRST available agent in chain
-        order (claude, index 0), NOT the last available agent. The
-        preferred selection semantics in ``preferred_agent_index`` is
-        exercised here.
-    """
     clock = FakeClock(start=0.0)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
@@ -481,39 +293,7 @@ def test_prompt_scenario_forever_wait_through_many_cooldown_cycles() -> None:
     )
 
 
-# ---------------------------------------------------------------------------
-# AC-04: Session scope + future-expansion seam
-# ---------------------------------------------------------------------------
-
-
 def test_prompt_scenario_session_scope_with_future_expansion_seam() -> None:
-    """AC-04: the UnavailabilityStore Protocol seam allows a custom store
-    to be injected via ``RecoveryControllerOptions``; the default
-    tracker ``scope`` is 'session' with a future-expansion seam for
-    'persistent' stores; the public controller surface
-    (``unavailability_store``, ``waiting_state_payload``,
-    ``agents_now_available``, ``snapshot``) is used end-to-end with
-    no private reach-through.
-
-    Locks four invariants:
-      1. The controller exposes a public ``unavailability_store``
-         property that returns the injected store unchanged
-         (Protocol-typed).
-      2. ``AgentUnavailabilityTracker().scope`` defaults to 'session'.
-      3. Driving the controller with a custom store delegates
-         ``mark_unavailable`` to the custom implementation with the
-         right ``(phase, agent, reason)`` tuple.
-      4. The existing private-reach-through guard test
-         (``test_run_loop_does_not_reach_through_private_tracker_attributes``)
-         is still present in the production code surface and is
-         accessible from its dedicated module. The run loop's
-         ``_unavailability_tracker`` and ``_clock`` symbols are not
-         reached through from production code.
-
-    The guard test is referenced via ``importlib.import_module`` +
-    ``getattr`` (rather than a top-level ``from <module> import``) so
-    pytest does not re-collect it in this module's test inventory.
-    """
     guard_module = importlib.import_module(
         "tests.pipeline.test_run_loop_waiting_state_real_controller"
     )
@@ -531,15 +311,6 @@ def test_prompt_scenario_session_scope_with_future_expansion_seam() -> None:
     entries: dict[str, UnavailabilityEntry] = {}
 
     class _CustomStore:
-        """Minimal UnavailabilityStore Protocol-typed implementation.
-
-        Records every ``mark_unavailable`` call into the shared
-        ``marker`` dict and tracks entries in a dict keyed by
-        agent name so the public ``is_available`` /
-        ``waiting_state_payload`` surface can be exercised end-to-end
-        through the controller.
-        """
-
         @property
         def scope(self) -> str:
             return "session"

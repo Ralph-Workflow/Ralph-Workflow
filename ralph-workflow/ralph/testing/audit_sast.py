@@ -1,62 +1,3 @@
-"""Static-analysis gate — a real Bandit scan in BASELINE-DIFF mode.
-
-The gate runs the Bandit engine over the shipped Python runtime and fails
-on every finding the current change introduces. A finding the committed
-baseline already carried is pre-existing debt: it stays visible in the
-baseline count, but it does not turn an unrelated change red.
-
-SCOPE
-
-The scan covers the shipped runtime (``ralph/``) — the same scope as the
-policy's documented ``bandit -r ralph/`` command. Test modules are out of
-scope: a fixture that shells out through ``subprocess`` exercises the
-feature under test rather than shipping it.
-
-BASELINE DIFF
-
-The gate compares two trees: the BASELINE (the committed ``HEAD`` copy of
-the package) and the CURRENT working tree. Only the files whose content
-differs between the two are scanned, and a finding is NEW when the
-baseline does not already carry it. The scan therefore costs what the
-change costs, not what the repository costs: a full sweep of the runtime
-takes far longer than the per-step verification timeout allows.
-
-A finding matches its baseline entry by (file, test id, offending source
-line). When the offending line was reformatted rather than introduced,
-the fallback match is (file, test id): the finding stays pre-existing as
-long as the file does not carry more findings of that id than the
-baseline did.
-
-WAIVERS
-
-Bandit suppresses a finding natively when the offending line carries a
-``# nosec`` marker; this project records the finding id with it, as
-``# nosec: B602``. The gate runs Bandit itself, so a waived line produces
-no finding at all and is never counted as new.
-
-FAIL-CLOSED
-
-A missing Bandit, a missing baseline and an unreadable root are errors,
-not passes: the gate exits non-zero instead of reporting a clean tree.
-
-INPUT SEAM
-
-    audit_sast_roots(baseline_root, current_root) -> tuple[list[SastFinding], int]
-
-Returns the NEW findings and the number of pre-existing findings the
-baseline carried for the scanned files.
-
-Usage:
-    python -m ralph.testing.audit_sast [baseline_root] [current_root]
-
-With no arguments the gate compares the committed ``HEAD`` copy of the
-package with the working tree. With one root it scans that tree against
-an empty baseline, so every finding it reports is new. With two roots it
-compares them.
-
-Exit 0 = no new finding, 1 = new findings, 2 = the gate could not run.
-"""
-
 from __future__ import annotations
 
 import json
@@ -87,24 +28,14 @@ __all__ = [
     "scan_files",
 ]
 
-#: The shipped-runtime subtree the gate scans, relative to the package root.
 SCANNED_PREFIX = "ralph/"
 
-#: The file suffix the gate scans inside :data:`SCANNED_PREFIX`.
 SCANNED_SUFFIX = ".py"
 
-#: Wall-clock ceiling for the Bandit invocation. The gate is scoped to the
-#: files the change touched, so the scan is a fraction of a full sweep;
-#: the ceiling keeps a pathological change from outliving the per-step
-#: verification timeout, and a timeout fails the gate rather than passing it.
 BANDIT_TIMEOUT_SECONDS = 20.0
 
-#: Accepted root-argument counts for the CLI: current-only, or baseline
-#: plus current.
 MAX_CLI_ROOT_ARGUMENTS = 2
 
-#: The remediation hint per Bandit test id. A finding that carries no
-#: entry falls back to :data:`GENERIC_FIX_HINT`.
 FIX_HINTS: dict[str, str] = {
     "B101": "replace the assert with an explicit raise, or move the check into a test",
     "B102": "remove the exec() call and dispatch on an explicit mapping instead",
@@ -147,7 +78,6 @@ FIX_HINTS: dict[str, str] = {
     "B702": "enable autoescape on the Jinja environment that renders the template",
 }
 
-#: The remediation hint for a Bandit test id the table does not name.
 GENERIC_FIX_HINT = (
     "read the Bandit documentation entry for this test id and fix the cause; "
     "waive it only with an inline '# nosec: <id>' marker that carries a "
@@ -157,8 +87,6 @@ GENERIC_FIX_HINT = (
 
 @dataclass(frozen=True)
 class SastFinding:
-    """One Bandit finding."""
-
     file_path: str
     line: int
     test_id: str
@@ -169,7 +97,6 @@ class SastFinding:
     code_line: str
 
     def __str__(self) -> str:
-        """Return the report line: location, test id, message and fix hint."""
         return (
             f"{self.file_path}:{self.line}: [{self.test_id}] {self.test_name}: "
             f"{self.message} | fix: {self.fix_hint}"
@@ -177,12 +104,10 @@ class SastFinding:
 
 
 def _fix_hint(test_id: str) -> str:
-    """Return the remediation hint for *test_id*."""
     return FIX_HINTS.get(test_id, GENERIC_FIX_HINT)
 
 
 def _package_python_sources(root: Path) -> dict[str, str]:
-    """Return the shipped-runtime Python sources of *root*, keyed by relative path."""
     return {
         path: text
         for path, text in read_tree(root).items()
@@ -191,14 +116,12 @@ def _package_python_sources(root: Path) -> dict[str, str]:
 
 
 def _changed_paths(current: Mapping[str, str], baseline: Mapping[str, str]) -> list[str]:
-    """Return the relative paths whose content differs between the two trees."""
     return sorted(
         path for path in set(current) | set(baseline) if current.get(path) != baseline.get(path)
     )
 
 
 def _source_line(sources: Mapping[str, str], path: str, line: int) -> str:
-    """Return the stripped source line *line* of *path*, or an empty string."""
     lines = sources.get(path, "").splitlines()
     if 1 <= line <= len(lines):
         return lines[line - 1].strip()
@@ -206,7 +129,6 @@ def _source_line(sources: Mapping[str, str], path: str, line: int) -> str:
 
 
 def _normalise_filename(filename: str) -> str:
-    """Return the reported filename as a tree-relative POSIX path."""
     cleaned = filename.replace("\\", "/")
     while cleaned.startswith("./"):
         cleaned = cleaned[2:]
@@ -214,7 +136,6 @@ def _normalise_filename(filename: str) -> str:
 
 
 def _parse_results(stdout: str, sources: Mapping[str, str]) -> list[SastFinding]:
-    """Return the findings Bandit reported in its JSON report."""
     decoded: object = json.loads(stdout)
     if not isinstance(decoded, dict):
         msg = "the Bandit report is not a JSON object"
@@ -251,19 +172,6 @@ def _parse_results(stdout: str, sources: Mapping[str, str]) -> list[SastFinding]
 def scan_files(
     root: Path, relative_paths: Sequence[str], sources: Mapping[str, str]
 ) -> list[SastFinding]:
-    """Run Bandit over *relative_paths* under *root* and return its findings.
-
-    Args:
-        root: The tree the paths are relative to.
-        relative_paths: The tree-relative Python files to scan.
-        sources: The text of every scanned file, keyed by relative path.
-
-    Returns:
-        The findings Bandit reported, ordered by path, line and test id.
-
-    Raises:
-        RuntimeError: when Bandit cannot be run or its report cannot be read.
-    """
     if not relative_paths:
         return []
     command = [
@@ -276,9 +184,6 @@ def scan_files(
         "--",
         *relative_paths,
     ]
-    # The Bandit scan is spawned through the sanctioned process layer, so the
-    # child is owned, bounded and reaped by the process manager rather than by
-    # a bare subprocess call.
     completed = run_process(
         command[0],
         command[1:],
@@ -304,12 +209,10 @@ def scan_files(
 
 
 def _finding_key(finding: SastFinding) -> tuple[str, str, str]:
-    """Return the exact identity of *finding*: file, test id and source line."""
     return (finding.file_path, finding.test_id, finding.code_line)
 
 
 def _broad_key(finding: SastFinding) -> tuple[str, str]:
-    """Return the fallback identity of *finding*: file and test id."""
     return (finding.file_path, finding.test_id)
 
 
@@ -317,25 +220,10 @@ def diff_findings(
     baseline: Sequence[SastFinding],
     current: Sequence[SastFinding],
 ) -> tuple[list[SastFinding], int]:
-    """Return the findings *current* introduced and the baseline finding count.
-
-    A current finding is pre-existing when the baseline carried the same
-    file, test id and source line, or when the baseline carried the same
-    file and test id and the current file does not hold more findings of
-    that id than the baseline did.
-
-    Args:
-        baseline: The findings the committed baseline carried.
-        current: The findings the current tree carries.
-
-    Returns:
-        The new findings and the number of findings the baseline carried.
-    """
     exact_available = Counter(_finding_key(finding) for finding in baseline)
     broad_available = Counter(_broad_key(finding) for finding in baseline)
     total_baseline = sum(broad_available.values())
 
-    # Pass 1: match exact (file, id, line)
     unmatched: list[SastFinding] = []
     for finding in current:
         key = _finding_key(finding)
@@ -346,7 +234,6 @@ def diff_findings(
         else:
             unmatched.append(finding)
 
-    # Pass 2: match broad (file, id) for remaining unmatched
     new: list[SastFinding] = []
     for finding in unmatched:
         wide = _broad_key(finding)
@@ -362,16 +249,6 @@ def audit_sast_roots(
     baseline_root: Path | None,
     current_root: Path,
 ) -> tuple[list[SastFinding], int]:
-    """Audit the change between two repository roots.
-
-    Args:
-        baseline_root: The committed baseline tree, or None for an empty baseline.
-        current_root: The current working tree.
-
-    Returns:
-        The new findings and the number of findings the baseline carried for
-        the scanned files.
-    """
     current_sources = _package_python_sources(current_root)
     baseline_sources = _package_python_sources(baseline_root) if baseline_root is not None else {}
     changed = _changed_paths(current_sources, baseline_sources)
@@ -391,17 +268,10 @@ def audit_sast_roots(
 
 
 def _default_root() -> Path:
-    """Return the package root the gate scans when no root is given."""
     return Path(__file__).parent.parent.parent
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the static-analysis gate and return an exit code.
-
-    Exit code 0: no new finding. Exit code 1: new findings. Exit code 2:
-    the gate could not run (bad arguments, missing root, missing baseline
-    or an unusable Bandit report).
-    """
     sanitize_process_environment()
     args = argv if argv is not None else sys.argv[1:]
     if len(args) > MAX_CLI_ROOT_ARGUMENTS:

@@ -1,9 +1,3 @@
-"""Tests that FanOutEffect is phase-agnostic.
-
-Verifies that the fan-out mechanism works for any phase whose parallelization
-policy is declared, not just phases named 'development'.
-"""
-
 from __future__ import annotations
 
 import ast
@@ -19,8 +13,6 @@ EFFECTS_PATH = (
 
 
 class TestFanOutEffectIsPhaseAgnostic:
-    """FanOutEffect carries an explicit phase field rather than assuming 'development'."""
-
     def test_fan_out_effect_accepts_arbitrary_phase_name(self) -> None:
         effect = FanOutEffect(work_units=(), max_workers=2, phase="partition_work")
         assert effect.phase == "partition_work"

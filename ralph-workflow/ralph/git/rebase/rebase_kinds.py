@@ -1,4 +1,3 @@
-"""Classification helpers for Git rebase outcomes."""
 
 from __future__ import annotations
 
@@ -12,7 +11,6 @@ from ralph.git.rebase._rebase_kind import RebaseKind
 
 @dataclass(frozen=True)
 class RebaseErrorKind:
-    """Payload for a classified rebase failure."""
 
     kind: RebaseKind
     metadata: Mapping[str, object] = field(default_factory=dict)
@@ -22,13 +20,11 @@ class RebaseErrorKind:
 
 
 def _freeze_metadata(metadata: Mapping[str, object]) -> Mapping[str, object]:
-    # Copy to prevent modification of the original dictionary before freezing.
     metadata_dict: dict[str, object] = dict(metadata)
     return cast("Mapping[str, object]", MappingProxyType(metadata_dict))
 
 
 def classify_rebase_error(stderr: str, stdout: str) -> RebaseErrorKind:
-    """Translate git rebase stderr/stdout into a concrete rebase failure kind."""
 
     output = f"{stderr}\n{stdout}".strip()
 

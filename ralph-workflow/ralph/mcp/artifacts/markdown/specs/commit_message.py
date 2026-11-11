@@ -1,4 +1,3 @@
-"""Markdown specification for commit-message artifacts."""
 
 from __future__ import annotations
 
@@ -16,7 +15,6 @@ if TYPE_CHECKING:
 
 
 def _to_content(document: ParsedDocument) -> dict[str, object]:
-    """Map the closed commit/skip markdown variants to the existing payload shape."""
     kind = document.frontmatter["type"]
     if kind == "skip":
         return {"type": kind, "reason": document.frontmatter.get("reason", "")}
@@ -71,8 +69,6 @@ COMMIT_MESSAGE_SPEC = MdArtifactSpec(
     },
     optional_frontmatter=frozenset({"subject", "reason"}),
     sections={
-        # Layout is normalized before this safety/executability parser; do not
-        # reject repairable multi-item prose here.
         "Body": SectionRule(required=False),
         "Body Summary": SectionRule(required=False),
         "Body Details": SectionRule(required=False),

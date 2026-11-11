@@ -1,10 +1,3 @@
-"""Opt-out gating for the update nagger.
-
-A version check is an outbound call, so it honors the existing telemetry opt-out
-(``RALPH_DISABLE_TELEMETRY`` / ``telemetry_enabled = false``). A dedicated
-``RALPH_DISABLE_UPDATE_CHECK`` env var and ``update_check_enabled = false``
-config key let a user silence the nag without also disabling telemetry.
-"""
 
 from __future__ import annotations
 
@@ -52,7 +45,6 @@ def _config_disables_update_check(environ: Mapping[str, str]) -> bool:
 
 
 def is_update_check_disabled(environ: Mapping[str, str]) -> bool:
-    """Return True when any opt-out signal (telemetry or update-specific) is set."""
     return (
         is_telemetry_disabled(environ)
         or is_telemetry_disabled_by_config(environ)

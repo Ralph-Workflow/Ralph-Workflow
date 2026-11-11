@@ -1,8 +1,3 @@
-"""Agent unavailability tracker with per-reason exponential backoff.
-
-Sole owner of unavailable storage. RecoveryController delegates to this class
-instead of directly managing _unavailable_timeouts and _backoff_attempts dicts.
-"""
 
 from __future__ import annotations
 
@@ -26,19 +21,9 @@ if TYPE_CHECKING:
 
 @runtime_checkable
 class UnavailabilityStore(Protocol):
-    """Protocol defining the interface for an agent unavailability store.
-
-    This store tracks which agents are currently unavailable due to errors
-    (such as out of credits or suspicious timeouts) and computes backoff cooldowns.
-
-    Callers MUST NOT depend on the dict-shaped snapshot() output for any
-    cross-session use, as the snapshot format is legacy and the store may be swapped
-    for a persistent implementation (sqlite, redis, file) in the future.
-    """
 
     @property
     def scope(self) -> Literal["session", "persistent"]:
-        """The scope of the store (e.g. 'session' or 'persistent')."""
         ...
 
     def mark_unavailable(
@@ -47,29 +32,23 @@ class UnavailabilityStore(Protocol):
         agent: str,
         reason: UnavailabilityReason | None = None,
     ) -> UnavailabilityEntry:
-        """Mark an agent unavailable with per-reason exponential backoff."""
         ...
 
     def is_available(self, phase: str, agent: str) -> bool:
-        """Return True when the agent is not currently marked unavailable."""
         ...
 
     def earliest_unavailable_wait_ms(self, phase: str, agents: list[str]) -> int:
-        """Return milliseconds until the earliest unavailable agent becomes available."""
         ...
 
     def reset_backoff(self, phase: str, agent: str) -> None:
-        """Clear the unavailable entry for a phase:agent."""
         ...
 
     def snapshot(self) -> dict[str, dict[str, object]]:
-        """Return a defensive copy of the internal state."""
         ...
 
 
 @dataclass(frozen=True)
 class UnavailabilityEntry:
-    """An agent's unavailable entry with backoff state."""
 
     unavailable_until_ms: int
     reason: UnavailabilityReason | None
@@ -83,22 +62,6 @@ DEFAULT_LEGACY_MAX_BACKOFF_MS = 300_000
 
 
 class AgentUnavailabilityTracker:
-    """Tracks agent unavailability with per-reason exponential backoff.
-
-    Sole owner of unavailable storage. The RecoveryController delegates to
-    this class rather than managing _unavailable_timeouts and _backoff_attempts
-    directly.
-
-    Args:
-        clock: Clock for time-dependent decisions. Defaults to system clock.
-        backoff_policy: Per-reason backoff policy mapping. Defaults to
-            DEFAULT_UNAVAILABILITY_BACKOFF_POLICY.
-        initial_entries: Optional pre-seeded entries (for testing).
-        initial_timeouts: Legacy seam — optional pre-seeded timeouts dict
-            (for backward compatibility with tests that use the old
-            unavailable_timeouts dict).
-        scope: Literal 'session' or 'persistent' indicating the storage scope.
-    """
 
     def __init__(
         self,
@@ -110,8 +73,6 @@ class AgentUnavailabilityTracker:
         initial_backoff_attempts: dict[str, int] | None = None,
     ) -> None:
         self._scope = scope
-        # The run's ledger is shared by the pipeline, resolver paths and watchdog
-        # threads; every read or write of the entries goes through this lock.
         self._lock = threading.RLock()
         self._clock = clock or SystemClock()
         self._backoff_policy: dict[UnavailabilityReason, ReasonBackoffPolicy] = (
@@ -120,7 +81,7 @@ class AgentUnavailabilityTracker:
         self._entries: dict[str, UnavailabilityEntry] = dict(initial_entries or {})
         self._backoff_attempts: dict[str, int] = dict(
             initial_backoff_attempts or {}
-        )  # bounded-accumulator-ok: drained on cleanup
+        )
 
         if initial_timeouts:
             for key, timeout_ms in initial_timeouts.items():
@@ -138,31 +99,10 @@ class AgentUnavailabilityTracker:
         agent: str,
         reason: UnavailabilityReason | None = None,
     ) -> UnavailabilityEntry:
-        """Mark an agent unavailable with per-reason exponential backoff.
-
-        The exponential growth is capped at the per-reason ``max_backoff_ms``
-        AND at the universal five-hour ceiling (18_000_000 ms). The
-        universal ceiling is enforced even when a caller-supplied policy
-        supplies a larger cap, so no operator override can grow a
-        cooldown past five hours. The exponent and the recorded attempt
-        counter are saturated at the cap-relevant threshold so repeated
-        failures cannot construct arbitrarily large integers in long
-        failure tails.
-
-        Args:
-            phase: Pipeline phase.
-            agent: Agent name.
-            reason: The unavailability reason (determines backoff policy).
-
-        Returns:
-            The new UnavailabilityEntry with computed backoff.
-        """
         with self._lock:
             del phase
             key = agent
             current_time_ms = int(self._clock.monotonic() * 1000)
-            # Opportunistically prune expired entries so the dict does
-            # not grow without bound across long parallel runs.
             self.prune_expired(now_ms=current_time_ms)
             attempt: int = self._backoff_attempts.get(key, 0)
 
@@ -179,12 +119,8 @@ class AgentUnavailabilityTracker:
                 cap_ms = DEFAULT_LEGACY_MAX_BACKOFF_MS
 
             base_ms_int: int = int(base_ms)
-            # Enforce the universal five-hour ceiling. The per-reason cap
-            # may still be lower (custom policies), so the effective cap is
-            # the smaller of the two.
             cap_ms_int: int = min(int(cap_ms), _UNIVERSAL_COOLDOWN_CAP_MS)
 
-            # ceil(log2(cap / base)), using integer arithmetic only.
             saturated_attempt = ((cap_ms_int - 1) // base_ms_int).bit_length()
             attempt = min(attempt, saturated_attempt)
             backoff_ms = min(base_ms_int << attempt, cap_ms_int)
@@ -197,14 +133,10 @@ class AgentUnavailabilityTracker:
                 base_backoff_ms=base_ms_int,
                 max_backoff_ms=cap_ms_int,
             )
-            # Saturate the recorded attempt counter at the same threshold so
-            # the per-agent history does not continue growing without bound
-            # after the cap is reached.
             self._backoff_attempts[key] = min(attempt + 1, saturated_attempt)
             return self._entries[key]
 
     def is_available(self, phase: str, agent: str) -> bool:
-        """Return True when the agent is not currently marked unavailable."""
         with self._lock:
             del phase
             entry = self._entries.get(agent)
@@ -214,10 +146,6 @@ class AgentUnavailabilityTracker:
             return current_time_ms >= entry.unavailable_until_ms
 
     def earliest_unavailable_wait_ms(self, phase: str, agents: list[str]) -> int:
-        """Return milliseconds until the earliest unavailable agent becomes available.
-
-        Returns 0 if any agent is available.
-        """
         with self._lock:
             del phase
             current_time_ms = int(self._clock.monotonic() * 1000)
@@ -233,32 +161,12 @@ class AgentUnavailabilityTracker:
             return max(0, min_remaining or 0)
 
     def reset_backoff(self, phase: str, agent: str) -> None:
-        """Clear the unavailable entry and history for an agent."""
         with self._lock:
             del phase
             self._entries.pop(agent, None)
             self._backoff_attempts.pop(agent, None)
 
     def prune_expired(self, now_ms: int | None = None) -> int:
-        """Remove entries whose cooldown has elapsed at ``now_ms``.
-
-        Mirrors the opportunistic-sweep pattern in
-        ``ChildLivenessRegistry.prune_stale``: the tracker is
-        unbounded on the ``_entries`` axis (only ``reset_backoff``
-        ever pops a single key), so a long-lived pipeline that
-        accumulates hundreds of agent entries would retain
-        every expired entry forever. ``prune_expired`` drops the
-        expired entries WITHOUT touching ``_backoff_attempts`` so
-        exponential backoff continues across fail/recover cycles
-        even after pruning.
-
-        Args:
-            now_ms: Current monotonic time in milliseconds. When
-                ``None`` (default), uses the injected clock.
-
-        Returns:
-            Number of entries pruned.
-        """
         with self._lock:
             if now_ms is None:
                 now_ms = int(self._clock.monotonic() * 1000)
@@ -270,7 +178,6 @@ class AgentUnavailabilityTracker:
             return len(expired_keys)
 
     def snapshot(self) -> dict[str, dict[str, object]]:
-        """Return a defensive copy of the internal state."""
         with self._lock:
             return {
                 "unavailable_timeouts": {
@@ -285,30 +192,12 @@ class AgentUnavailabilityTracker:
 
     @property
     def scope(self) -> Literal["session", "persistent"]:
-        """The scope of the store (e.g. 'session' or 'persistent')."""
         return self._scope
 
 
 __all__ = ["AgentUnavailabilityTracker", "UnavailabilityEntry", "UnavailabilityStore"]
 
 
-# ---------------------------------------------------------------------------
-# No permanent skip rule (locked at import time)
-# ---------------------------------------------------------------------------
-#
-# An agent is NEVER marked permanently unavailable. The only two public
-# mutators on the unavailable set are ``mark_unavailable`` (adds with
-# exponential backoff) and ``reset_backoff`` (removes on cooldown expiry
-# or explicit reset). The remaining public surface
-# (``is_available``, ``earliest_unavailable_wait_ms``, ``snapshot``,
-# ``scope``) is read-only. The constructor (``__init__``) is allowed to
-# seed ``_entries`` from ``initial_timeouts`` because that is operator-
-# provided config, not a runtime mutation.
-#
-# The pipeline never assumes an agent is permanently broken; any agent
-# may become available again for any reason (e.g. user upgrades their
-# plan, infrastructure recovers). The check uses ``if/raise RuntimeError``
-# (NOT ``assert``) so it survives ``python -O`` per AGENTS.md.
 
 _ALLOWED_PUBLIC_MUTATORS: frozenset[str] = frozenset(
     {"mark_unavailable", "reset_backoff", "prune_expired"}
@@ -324,7 +213,6 @@ _READONLY_PROPERTIES: frozenset[str] = frozenset({"scope"})
 
 
 def _is_property_decorated(member: ast.FunctionDef) -> bool:
-    """Return True when a class member is decorated with ``@property``."""
     for d in member.decorator_list:
         if isinstance(d, ast.Name) and d.id == "property":
             return True
@@ -334,21 +222,12 @@ def _is_property_decorated(member: ast.FunctionDef) -> bool:
 
 
 def _classify_async_function(member: ast.AsyncFunctionDef) -> str:
-    """Classify an async function member (``skip`` or ``unknown``)."""
     if member.name.startswith("_"):
         return "skip"
     return "unknown"
 
 
 def _classify_sync_function(member: ast.FunctionDef) -> str | None:
-    """Classify a sync function member.
-
-    Returns ``None`` for class-level non-method members and one of
-    ``"skip"``, ``"mutator"``, ``"readonly"``, ``"unknown"`` for
-    methods. Properties decorated with ``@property`` follow the
-    read-only allowlist; the other public methods follow the
-    mutator/read-only allowlist.
-    """
     if member.name.startswith("_"):
         return "skip"
     if _is_property_decorated(member):
@@ -361,16 +240,6 @@ def _classify_sync_function(member: ast.FunctionDef) -> str | None:
 
 
 def _classify_member(member: ast.AST) -> str | None:
-    """Classify a class member for the no-permanent-skip invariant check.
-
-    Returns:
-        "skip" -- the member is private (underscore-prefixed) and ignored.
-        "mutator" -- a public mutator in the allowlist.
-        "readonly" -- a public read-only method or property in the allowlist.
-        "unknown" -- a public method/property NOT in any allowlist; a
-            contract violation that fails the invariant.
-        None -- the member is not a method (e.g. a class-level constant).
-    """
     if isinstance(member, ast.AsyncFunctionDef):
         return _classify_async_function(member)
     if isinstance(member, ast.FunctionDef):
@@ -379,13 +248,6 @@ def _classify_member(member: ast.AST) -> str | None:
 
 
 def _find_tracker_class_node(tree: ast.Module) -> ast.ClassDef:
-    """Find the ``AgentUnavailabilityTracker`` class in the module AST.
-
-    Raises ``RuntimeError`` with the invariant-violation message when
-    the class is not found. The error path is split from the main
-    invariant function so the class lookup is easy to follow in
-    isolation.
-    """
     for node in tree.body:
         if isinstance(node, ast.ClassDef) and node.name == "AgentUnavailabilityTracker":
             return node
@@ -399,12 +261,6 @@ def _find_tracker_class_node(tree: ast.Module) -> ast.ClassDef:
 
 
 def _parse_tracker_source(source_path: Path) -> ast.Module:
-    """Parse the tracker source file or raise a RuntimeError.
-
-    Splits the parse step from the invariant function so the
-    ``SyntaxError``-to-``RuntimeError`` translation is one short
-    function call.
-    """
     source = source_path.read_text(encoding="utf-8")
     try:
         return ast.parse(source)
@@ -419,7 +275,6 @@ def _parse_tracker_source(source_path: Path) -> ast.Module:
 
 
 def _collect_unknown_public_methods(class_node: ast.ClassDef) -> list[str]:
-    """Return the names of public methods/properties that are not allowlisted."""
     unknown: list[str] = []
     for member in class_node.body:
         kind = _classify_member(member)
@@ -429,16 +284,6 @@ def _collect_unknown_public_methods(class_node: ast.ClassDef) -> list[str]:
 
 
 def _assert_no_permanent_skip_invariant() -> None:
-    """Verify the no-permanent-skip rule on ``AgentUnavailabilityTracker``.
-
-    The check reads the tracker's source file from disk (not a compiled
-    bytecode cache) so it always reflects the current source. The only
-    public methods that may mutate the unavailable set are the two
-    allowed mutators; every other public method on the class must be
-    read-only. Adding a new mutator is a deliberate contract change
-    and must be paired with an update to the import-time invariant
-    and the test in ``tests/recovery/test_two_state_invariant.py``.
-    """
     source_path = Path(__file__).resolve()
     tree = _parse_tracker_source(source_path)
     class_node = _find_tracker_class_node(tree)

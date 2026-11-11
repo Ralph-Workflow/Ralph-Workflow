@@ -1,19 +1,3 @@
-"""Live-derived robustness tests for the interactive Claude parser.
-
-Split from ``test_claude_interactive_parser.py`` (repo 1000-line file cap).
-These pin the fixes surfaced by live-testing the interactive transport
-against Claude Code 2.1.218 (haiku): VT escape residue, exit-banner chrome,
-parallel same-tool call emission, is_error parity, and string-shaped JSON
-payload handling.
-
-The chrome assertions drive the transport through its PUBLIC observation
-seam (``ClaudeInteractiveParser.parse_transcript_entry`` /
-``ClaudeInteractiveParser.session_id``) and never touch private parser
-state: the live content mode is entered the way production enters it --
-with a real assistant envelope -- and is then observed through the KIND of
-the events the seam returns.
-"""
-
 from __future__ import annotations
 
 import json
@@ -28,19 +12,6 @@ from ralph.display.vt_normalizer import normalize_vt_text
 
 
 def _enter_output_mode(parser: ClaudeInteractiveParser) -> None:
-    """Drive the transport into the live ``output`` content mode.
-
-    The content mode is live parser state, so it is entered the way
-    production enters it: with an assistant envelope whose content block is
-    agent text.
-
-    The probe line then PROVES which mode the parser is in.  Its text can
-    only ever surface as an ``output`` event in the ``output`` mode: the
-    idle mode drops it (it carries a thinking keyword), the ``thinking``
-    mode surfaces it as a ``thinking`` event, and the ``tool_use`` mode
-    drops it.  So the probe distinguishes the ``output`` mode from every
-    other mode instead of assuming it.
-    """
     envelope = json.dumps(
         {
             "type": "assistant",
@@ -56,9 +27,6 @@ def _enter_output_mode(parser: ClaudeInteractiveParser) -> None:
 
 
 def test_vt_normalizer_strips_charset_designation_and_cursor_save_escapes() -> None:
-    # Observed live with Claude Code 2.1.218: ESC(B (G0 charset), SI (\x0f),
-    # and DECSC/DECRC (ESC7/ESC8) survived normalization and leaked into
-    # parsed agent text.
     raw = "/rc\x1b(B\x0f\x1b(B\x0f\x1b7\x1b8\x1b(B\x0f\x1b7\x1b8\n"
 
     normalized = normalize_vt_text(raw)
@@ -75,10 +43,6 @@ def test_vt_normalizer_strips_shift_out_and_keypad_mode_escapes() -> None:
 
 
 def test_exit_banner_resume_line_is_chrome_even_in_output_mode() -> None:
-    # Claude Code >= 2.1.x prints the exit banner on two lines:
-    #   Resume this session with:
-    #   claude --resume <id>
-    # The bare first line must never be classified as agent output.
     parser = ClaudeInteractiveParser()
     _enter_output_mode(parser)
 
@@ -100,8 +64,6 @@ def test_exit_banner_resume_id_line_still_yields_session() -> None:
 
 
 def test_slash_command_echo_is_chrome_even_in_output_mode() -> None:
-    # The PTY echoes typed slash commands (e.g. the auto-exit "/exit");
-    # a lone slash-command token is TUI echo, never agent output.
     parser = ClaudeInteractiveParser()
     _enter_output_mode(parser)
 
@@ -110,8 +72,6 @@ def test_slash_command_echo_is_chrome_even_in_output_mode() -> None:
 
 
 def test_final_text_not_contaminated_by_exit_banner_end_to_end() -> None:
-    # Regression from a live claude/haiku run: the flushed final text
-    # accumulated "Resume this session with:" and slash-command echo.
     parser = ClaudeInteractiveParser()
     assistant_text = json.dumps(
         {
@@ -136,9 +96,6 @@ def test_final_text_not_contaminated_by_exit_banner_end_to_end() -> None:
 
 
 def test_parallel_same_tool_calls_in_one_message_all_emitted() -> None:
-    # Two tool_use blocks with the same tool name but distinct ids in a
-    # single assistant message must both surface; the consecutive-duplicate
-    # guard must key on tool_use_id, not just (kind, text).
     parser = ClaudeInteractiveTranscriptParser()
     payload = json.dumps(
         {
@@ -205,8 +162,6 @@ def test_identical_result_text_from_distinct_tool_calls_both_emitted() -> None:
 
 
 def test_is_error_tool_result_surfaces_as_error_with_tool_identity() -> None:
-    # Parity with the headless Claude parser (and Cursor/Pi/Generic): a
-    # failed tool call is an error, not a routine tool_result.
     parser = ClaudeInteractiveParser()
     tool_use = json.dumps(
         {
@@ -244,8 +199,6 @@ def test_is_error_tool_result_surfaces_as_error_with_tool_identity() -> None:
 
 
 def test_assistant_string_content_emitted_as_output() -> None:
-    # Defensive future-proofing: an assistant message whose content is a
-    # plain string (instead of a content-block list) must not be dropped.
     parser = ClaudeInteractiveTranscriptParser()
     payload = json.dumps({"type": "assistant", "message": {"content": "plain string answer"}})
 

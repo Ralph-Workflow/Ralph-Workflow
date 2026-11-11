@@ -1,11 +1,3 @@
-"""Every shipped format-doc example must validate through the real markdown gate.
-
-The examples under ``ralph/mcp/artifacts/format_docs/examples/`` are both
-reference material for agents and a standing proof that our own validator
-accepts what we tell agents to imitate. Each example file is enumerated
-dynamically so a newly added example is covered automatically.
-"""
-
 from __future__ import annotations
 
 from importlib import import_module

@@ -1,20 +1,3 @@
-"""Real-git proof of the background catch-up fast-forward.
-
-The catch-up worker's whole value claim is "a checkout with no commits
-of its own silently rides the moving target for free"; the unit tests
-in ``tests/test_auto_integrate_catchup.py`` prove the decision gates
-against fakes, and THIS file proves the real-git effect: a behind-and-clean
-checkout lands exactly on the target tip.
-
-Only the landing test marked ``subprocess_e2e`` drives real git. The worker
-cadence uses injected deterministic observations so the default suite proves
-that contract without rebuilding repositories.
-
-The ``_run`` / ``_commit`` / ``_init_repo`` helpers are duplicated here
-to keep this file standalone, matching the convention documented at
-tests/test_auto_integrate_race.py:11-15.
-"""
-
 from __future__ import annotations
 
 import os
@@ -32,7 +15,6 @@ _FEATURE = "feature"
 
 
 def _run(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    """Run ``git <args>`` in ``repo_root``."""
     return subprocess.run(
         ("git", *args),
         cwd=str(repo_root),
@@ -53,14 +35,13 @@ def _commit(repo_root: Path, filename: str, content: str, message: str) -> str:
     try:
         repo.index.add([filename])
         commit = repo.index.commit(message)
-        assert commit.hexsha  # RALPH-TEST-REASON: GitPython commit replaces subprocess git add/commit to reduce CPU overhead
+        assert commit.hexsha
         return commit.hexsha
     finally:
         repo.close()
 
 
 def _init_repo(path: Path) -> None:
-    """Seed a repository whose default branch is named ``main``."""
     path.mkdir(parents=True, exist_ok=True)
     assert _run(path, "init").returncode == 0
     assert _run(path, "config", "user.email", "test@example.com").returncode == 0
@@ -87,10 +68,6 @@ def _build_config(*, enabled: bool = True, remote_enabled: bool = False) -> Unif
 
 
 def _repo_with_feature_behind_main(tmp_path: Path) -> tuple[Path, str]:
-    """Checkout on ``feature`` at the seed commit while ``main`` moved on.
-
-    Returns ``(repo_root, advanced_main_sha)``.
-    """
     repo = tmp_path / "repo"
     _init_repo(repo)
     assert _run(repo, "branch", _FEATURE).returncode == 0
@@ -121,9 +98,7 @@ def test_behind_and_clean_checkout_lands_on_target_tip(tmp_path: Path) -> None:
     outcome = catchup.attempt_catchup_fast_forward(_build_config(), repo)
     assert outcome == catchup.CATCHUP_FAST_FORWARDED
     assert _head_sha(repo) == advanced
-    # The working tree advanced with the ref: the landed file is present.
     assert (repo / "mainline.txt").read_text(encoding="utf-8") == "landed\n"
-    # And the branch itself moved, not a detached HEAD.
     branch = _run(repo, "symbolic-ref", "--short", "HEAD").stdout.strip()
     assert branch == _FEATURE
 
@@ -274,14 +249,6 @@ def test_disabled_config_never_touches_git(
 def test_branch_names_shadowing_list_methods_resolve_correctly(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Branch names like ``append``/``count`` must not fool the ref reads.
-
-    GitPython's ``IterableList[name]`` falls back to ``getattr``, so a
-    lookup for a branch named after a ``list`` method returns the bound
-    method: a missing branch reads as present, and a REAL branch named
-    ``append`` reads as unreadable (adversarial-review reproduction).
-    The catch-up's exact-name lookup must get both directions right.
-    """
 
     class _Head:
         def __init__(self, name: str) -> None:
@@ -297,7 +264,6 @@ def test_branch_names_shadowing_list_methods_resolve_correctly(
 
 
 def test_worker_runner_uses_injected_wait_cadence() -> None:
-    """The worker runner ticks on cadence without a real thread or clock."""
     waits = iter((False, False, True))
     intervals: list[float] = []
     outcomes: list[str] = []

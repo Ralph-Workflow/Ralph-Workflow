@@ -1,10 +1,3 @@
-"""Generic NDJSON parser for other agents.
-
-This parser handles NDJSON output from agents that don't have
-a dedicated parser. It attempts to extract text content and
-error information from common NDJSON formats, with robust delta
-accumulation for streaming text responses.
-"""
 
 from __future__ import annotations
 
@@ -36,35 +29,6 @@ def _classify_plaintext_tool_line(stripped: str) -> tuple[str, str] | None:
 
 
 class GenericParser(NdjsonParserBase):
-    """Generic NDJSON parser for unknown or simple agent formats.
-
-    This parser handles NDJSON by:
-    1. Parsing each line as JSON
-    2. Looking for common text fields (content, text, message, output)
-    3. Accumulating short text content and flushing on paragraph boundaries
-    4. Extracting error information
-    5. Falling back to raw line storage for unparseable content
-
-    Text deltas are accumulated into coherent blocks before emission, flushing on:
-    - ``\\n\\n`` paragraph boundary (incremental surfacing of long responses)
-    - Stop/done markers (end of message)
-    - Iterator exhaustion (final flush via ``flush_accumulators()``)
-
-    Short content (below threshold) that doesn't end with ``\\n\\n`` is treated
-    as a streaming delta and accumulated. Content at or above the threshold,
-    or ending with ``\\n\\n``, is emitted immediately.
-
-    Field priority for content extraction:
-    1. content, text, message, output, response, result (type='text')
-    2. thought, reasoning (type='thinking') — only when no higher-priority field matches
-
-    Inherits from :class:`NdjsonParserBase` which owns the
-    ``data:`` strip, ``[DONE]`` short-circuit, JSON parse dispatch,
-    lifecycle suppression, and error extraction.  The subclass
-    overrides :meth:`_classify_non_json_line` to keep the plain
-    ``[plain] tool: NAME`` convention and :meth:`_dispatch_json_object`
-    to drive the per-content extractor + accumulator path.
-    """
 
     _STOP_TYPES: frozenset[str] = frozenset({"stop", "done", "complete", "finish", "end"})
 
@@ -74,20 +38,11 @@ class GenericParser(NdjsonParserBase):
         subagent_source_label: str | None = None,
     ) -> None:
         super().__init__()
-        # R5: bind the per-invocation shared SubagentPidRegistry + per-transport
-        # source label. The generic NDJSON shape does not currently carry
-        # embedded PIDs; this is forward-compat for the per-transport
-        # SubagentPidSource seam.
         self._subagent_pid_registry: SubagentPidRegistry | None = subagent_pid_registry
         self._subagent_source_label: str | None = subagent_source_label
         self._text_accumulator: TextAccumulator | None = None
 
     def _classify_non_json_line(self, stripped: str) -> Iterator[AgentOutputLine]:
-        """Reclassify non-JSON lines, detecting the ``[plain] tool:`` convention.
-
-        VT normalization is applied first so ANSI-decorated tool lines
-        (nanocoder TUI output piped without a PTY) still match.
-        """
         normalized = normalize_vt_text(stripped).strip()
         yield from self._flush_accumulator()
         classification = _classify_plaintext_tool_line(normalized)
@@ -103,13 +58,7 @@ class GenericParser(NdjsonParserBase):
         raw: str,
         source_timestamp: str | None = None,
     ) -> Iterator[AgentOutputLine]:
-        # DA-002 (wt-028-display S-2 / AC-01): the base class
-        # post-processes the iterator to attach ``source_timestamp``
-        # to any AgentOutputLine that lacks one, so the per-event
-        # dispatcher itself does not need to thread the parameter.
-        del source_timestamp  # accepted for override compatibility; ignored
-        # R5: register any embedded PID into the shared registry BEFORE
-        # the per-event classification.
+        del source_timestamp
         self._try_register_subagent_pid_from_obj(obj)
         yield from self._classify_parsed_json(obj, raw)
 
@@ -151,7 +100,6 @@ class GenericParser(NdjsonParserBase):
         obj: dict[str, object],
         event_type: str,
     ) -> Iterator[AgentOutputLine] | None:
-        """Flush text and emit stop for generic terminal lifecycle events."""
         if event_type in self._STOP_TYPES:
             return self._flush_stop_event(obj, event_type)
         return super()._handle_lifecycle_event(obj, event_type)
@@ -161,7 +109,6 @@ class GenericParser(NdjsonParserBase):
         obj: dict[str, object],
         event_type: str,
     ) -> Iterator[AgentOutputLine]:
-        """Flush the text accumulator and yield the terminal lifecycle marker."""
         yield from self._flush_accumulator()
         yield AgentOutputLine(type="stop", raw=event_type, metadata=obj)
 

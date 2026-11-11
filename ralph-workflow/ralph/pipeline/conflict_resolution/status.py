@@ -1,4 +1,3 @@
-"""Operator-facing status for the conflict-resolution pipeline."""
 
 from __future__ import annotations
 
@@ -29,7 +28,6 @@ _DIAGNOSIS_WARN_CHANNEL = "evidence-diagnosis"
 
 @dataclass
 class ResolutionStatusReporter:
-    """Rate-limited human-readable conflict-resolution status publisher."""
 
     display: object
     target: str
@@ -48,7 +46,6 @@ class ResolutionStatusReporter:
     operation_display_state: str | None = None
 
     def observe(self, event: object) -> None:
-        """Publish a low-cadence status from a watchdog activity event."""
         now = self.clock()
         if (
             self._last_emitted_at is not None
@@ -79,7 +76,6 @@ class ResolutionStatusReporter:
         )
 
     def set_agent(self, agent_name: str) -> None:
-        """Record the candidate currently performing resolution work."""
         self.agent_name = agent_name
 
 
@@ -104,7 +100,6 @@ __all__ = [
 
 @contextlib.contextmanager
 def conflict_status_bar_session(display: object, workspace_root: Path) -> Iterator[None]:
-    """Capture the prior footer once and restore it after a whole rebase loop."""
     previous = capture_status_bar_model(display)
     try:
         yield
@@ -134,7 +129,6 @@ def push_conflict_status_bar(
     operation_display_state: str | None = None,
     is_diagnosis: bool = False,
 ) -> None:
-    """Show the active conflict-resolution or diagnosis round in the persistent footer."""
     try:
         diag = (
             is_diagnosis
@@ -189,7 +183,6 @@ def _phase_label(
 
 
 def capture_status_bar_model(display: object) -> object | None:
-    """Return the currently displayed footer model, when one is available."""
     try:
         status_bar: object = getattr(display, "status_bar", None)
         if status_bar is None:
@@ -208,7 +201,6 @@ def clear_conflict_status_bar(
     elapsed_seconds: float | None = None,
     run_started_monotonic: float | None = None,
 ) -> None:
-    """Replace an unowned resolution footer with a neutral running footer."""
     try:
         _update_status_bar(
             display,
@@ -225,7 +217,6 @@ def clear_conflict_status_bar(
 
 
 def restore_status_bar(display: object, model: object | None) -> None:
-    """Restore a captured footer without letting presentation alter integration."""
     if model is None:
         return
     try:
@@ -248,7 +239,6 @@ def _display_run_started_monotonic(display: object) -> float | None:
 def emit_conflict_phase_line(
     display: object, message: str, *, channel: str = _WARN_CHANNEL
 ) -> None:
-    """Emit one operator-visible conflict-resolution transcript line."""
     with contextlib.suppress(Exception):
         emit = cast(
             "Callable[[str, str, str], None] | None", getattr(display, "emit_warn_line", None)

@@ -1,10 +1,3 @@
-"""Phase-output artifact helpers for the commit executor.
-
-The helpers in this module own the phase artifact selection and cleanup
-contract used by the pipeline runner.  They live beside the commit executor's
-public compatibility surface so the executor module stays below the
-repository's file-size limit without changing any caller-facing names.
-"""
 
 from __future__ import annotations
 
@@ -25,7 +18,6 @@ if TYPE_CHECKING:
 def phase_output_artifact_paths(
     phase: str, *, drain: str | None = None, policy_bundle: PolicyBundle | None = None
 ) -> tuple[str, ...]:
-    """Return paths of all output artifacts produced by a phase."""
     paths: list[str] = []
     effective_drain = drain or phase
     ra = (
@@ -52,7 +44,6 @@ def default_mcp_capabilities_for_phase(
     *,
     agents_policy: AgentsPolicy | None = None,
 ) -> set[str]:
-    """Return the default MCP capability set for a given phase."""
     return set(
         build_session_mcp_plan(
             transport=None,
@@ -68,13 +59,12 @@ def clear_phase_output_artifacts(
     phase: str,
     **opts: object,
 ) -> None:
-    """Remove stale per-phase artifacts before invoking an agent."""
     drain = cast(
         "str | None", opts.get("drain")
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     policy_bundle = cast(
         "PolicyBundle | None", opts.get("policy_bundle")
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     effective_drain = drain or phase
     required_artifact = (
         resolve_phase_required_artifact(

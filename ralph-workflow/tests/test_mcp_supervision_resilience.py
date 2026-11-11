@@ -1,21 +1,3 @@
-"""Regression tests for MCP supervision surviving a loaded machine.
-
-Observed 2026-07-25: a run stalled permanently after this sequence.
-
-1. A probe missed its bounded window on a heavily loaded host, so the
-   supervisor restarted an MCP server that was slow, not dead — twice,
-   in the middle of agent calls.
-2. The third spawn's preflight failed and raised a raw
-   ``PermanentPreflightError`` instead of ``McpServerError``.
-3. ``McpSupervisor._run`` only handled ``McpServerError``, so the
-   supervisor thread died. With nothing left probing or restarting the
-   server, the pipeline hung until the idle watchdog fired.
-
-Each step is pinned below: a restart needs repeated evidence, a spawn
-failure is always typed, and the supervisor keeps supervising no matter
-what a health check raises.
-"""
-
 from __future__ import annotations
 
 import pathlib
@@ -37,8 +19,6 @@ PREFLIGHT_TIMEOUT = 7.0
 
 
 class FakeProcess:
-    """Minimal ProcessLike whose liveness the test controls."""
-
     def __init__(self, poll_result: int | None = None) -> None:
         self._poll_result = poll_result
         self.terminated = False
@@ -52,10 +32,6 @@ class FakeProcess:
 
     def terminate(self, grace_period_s: float = 5.0) -> None:
         self.terminated = True
-        # Mark the process dead so the next poll() returns a non-None
-        # exit code; this matches what the real ``ManagedProcess``
-        # behaves like after ``terminate()`` (the OS reaps the process
-        # and ``poll()`` returns the exit status).
         self._poll_result = 0
 
     def wait(self, timeout: float | None = None) -> int | None:
@@ -71,12 +47,6 @@ def _make_bridge(
     process_poll: int | None = None,
     max_restarts: int = 10,
 ) -> tuple[lifecycle.RestartAwareMcpBridge, list[int]]:
-    """Return a bridge plus a restart-count log.
-
-    ``probe_outcomes`` is consumed one entry per health check: True means
-    the probe succeeded, False means it raised. Exhausting the list keeps
-    returning the final outcome.
-    """
     tmp_dir = pathlib.Path(tempfile.mkdtemp())
     session_file = tmp_dir / "session.json"
     session_file.write_text("{}", encoding="utf-8")
@@ -115,7 +85,6 @@ def _make_bridge(
 
 
 def test_one_missed_probe_does_not_restart_a_running_server() -> None:
-    """A slow server under load must not be torn down mid-call."""
     bridge, restarts = _make_bridge(probe_outcomes=[False])
 
     assert bridge.check_health_and_restart_if_needed() is False
@@ -123,7 +92,6 @@ def test_one_missed_probe_does_not_restart_a_running_server() -> None:
 
 
 def test_a_recovered_probe_clears_the_failure_streak() -> None:
-    """Intermittent misses never accumulate into a restart once hysteresis threshold is met."""
     bridge, restarts = _make_bridge(probe_outcomes=[False, False, True, True, True, False, False])
 
     for _ in range(7):
@@ -133,7 +101,6 @@ def test_a_recovered_probe_clears_the_failure_streak() -> None:
 
 
 def test_sustained_probe_failure_still_restarts_the_server() -> None:
-    """A genuinely wedged server is still recovered."""
     bridge, restarts = _make_bridge(probe_outcomes=[False])
 
     results = [bridge.check_health_and_restart_if_needed() for _ in range(3)]
@@ -143,7 +110,6 @@ def test_sustained_probe_failure_still_restarts_the_server() -> None:
 
 
 def test_an_exited_process_restarts_without_waiting_for_repeated_evidence() -> None:
-    """A dead process is unambiguous, so it is recovered immediately."""
     bridge, restarts = _make_bridge(probe_outcomes=[True], process_poll=1)
 
     assert bridge.check_health_and_restart_if_needed() is True
@@ -151,16 +117,6 @@ def test_an_exited_process_restarts_without_waiting_for_repeated_evidence() -> N
 
 
 def test_exhausted_budget_interrupts_a_blocked_invocation() -> None:
-    """Terminal supervision must unblock the run, not wait for ``__exit__``.
-
-    Step 3 above left one hang intact. When the restart budget is
-    exhausted the supervisor stores the error and stops its thread, and
-    the stored error is re-raised only by ``__exit__`` — which cannot
-    run while the agent is still blocked on MCP calls that will never be
-    answered. Nothing else probes the server, so the run stalls until
-    the idle watchdog fires, if it fires at all: an agent that keeps
-    retrying and printing looks busy to the watchdog.
-    """
     bridge, restarts = _make_bridge(probe_outcomes=[True], process_poll=1, max_restarts=0)
     interrupted = threading.Event()
 
@@ -171,8 +127,6 @@ def test_exhausted_budget_interrupts_a_blocked_invocation() -> None:
     )
 
     with pytest.raises(lifecycle.McpServerError, match="budget"), supervisor:
-        # Stands in for an agent wedged on unanswerable MCP calls: it
-        # returns only because supervision interrupted it.
         assert interrupted.wait(timeout=5.0), "supervisor never interrupted the blocked invocation"
 
     assert restarts == []
@@ -203,11 +157,6 @@ def test_supervision_interrupts_the_agent_by_default() -> None:
 def test_preflight_failure_on_a_live_process_surfaces_as_mcp_server_error(
     tmp_path: Path,
 ) -> None:
-    """A spawn that cannot become ready reports the pipeline's own error type.
-
-    A raw preflight error escaped every ``McpServerError`` handler on the
-    way out, including the supervisor's, and killed the supervisor thread.
-    """
 
     def failing_preflight(endpoint: str, required_tools: list[str], timeout: timedelta) -> None:
         msg = "HTTP MCP request failed with status '503': transport_loop_detected"
@@ -234,18 +183,6 @@ def test_preflight_failure_on_a_live_process_surfaces_as_mcp_server_error(
 
 
 def test_supervisor_keeps_supervising_after_a_failed_restart() -> None:
-    """S1 invariant: a restart_fn that raises still increments the counter.
-
-    The pre-fix code did ``self._inner = self._restart_fn()`` THEN
-    ``self._restart_count += 1``, so a raised restart exception left
-    the counter at the pre-attempt value and the budget-exhausted
-    guard never tripped: the supervisor kept retrying forever while
-    the run starved. The post-fix code increments FIRST, so a raised
-    restart is reflected in ``restart_count`` and the typed
-    ``McpServerError`` propagates with the real count visible to
-    the supervisor. The supervisor observes the typed error and
-    treats the attempt as terminal (no further restart calls).
-    """
     tmp_dir = pathlib.Path(tempfile.mkdtemp())
     session_file = tmp_dir / "session.json"
     session_file.write_text("{}", encoding="utf-8")
@@ -261,8 +198,6 @@ def test_supervisor_keeps_supervising_after_a_failed_restart() -> None:
 
     def restart_fn() -> lifecycle.StandaloneMcpProcess:
         attempts.append(len(attempts) + 1)
-        # S1: first restart attempt always raises so the test
-        # exercises the counter-still-advances contract.
         if len(attempts) == 1:
             msg = "preflight failed while the process was still alive"
             raise RuntimeError(msg)
@@ -288,33 +223,14 @@ def test_supervisor_keeps_supervising_after_a_failed_restart() -> None:
         probe_timeout_fn=lambda: timedelta(seconds=5),
     )
 
-    # The probe must fail 3 times (_PROBE_FAILURES_BEFORE_RESTART)
-    # before a restart is attempted, so the test calls the health
-    # check two times to accumulate the failure count, then
-    # asserts the 3rd call invokes restart_fn (which fails). Under
-    # the C2 contract, the failing restart returns False (non-terminal)
-    # and the counter advances to 1 (S1 invariant). The supervisor
-    # keeps supervising; the very next one detects the dead inner (from
-    # the failed first restart) and triggers a second restart attempt
-    # which succeeds.
     bridge.check_health_and_restart_if_needed()
     bridge.check_health_and_restart_if_needed()
-    # 3rd call: probe fails the third time -> restart attempt -> fails.
-    # Under C2 this returns False (non-terminal) and logs at WARNING.
     assert bridge.check_health_and_restart_if_needed() is False
-    # Counter advanced (S1 invariant).
     assert bridge.restart_count == 1
-    # restart_fn was called exactly once (the first attempt failed).
     assert attempts == [1]
-    # The 4th call sees the dead inner (poll() returns 0), triggers a
-    # second restart attempt (which succeeds per the restart_fn above),
-    # and returns True. This proves the supervisor kept its working
-    # state across the failed attempt and recovered via the next health
-    # check (C2 contract).
     result = bridge.check_health_and_restart_if_needed()
     assert result is True, (
         f"second restart attempt should succeed; restart_count={bridge.restart_count}"
     )
-    # Counter advanced to 2 (one failed, one successful).
     assert bridge.restart_count == 2
     assert second_restart_reached.is_set()

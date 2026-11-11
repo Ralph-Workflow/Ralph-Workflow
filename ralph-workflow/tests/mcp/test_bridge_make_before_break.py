@@ -1,14 +1,3 @@
-"""WU-Bridge: make-before-break MCP restart state machine tests with real child processes.
-
-Pins C1-C2 make-before-break behavior with real child processes:
-- Live old child continues serving tools/list while candidate is spawned.
-- Unverified candidate (exited/crashed or private-preflight identity mismatch) is discarded without promoting.
-- Successful candidate is promoted to _inner while old child is drained in background.
-- Failed restart attempt keeps old child serving and does not break the bridge.
-- Budget exhaustion occurs only after max_restarts failed attempts, with old child continuously serving.
-- Full process lifecycle verification: all child processes are reaped with zero leaks.
-"""
-
 from __future__ import annotations
 
 import contextlib
@@ -38,7 +27,6 @@ pytestmark = [
 
 
 def _pid_alive(pid: int) -> bool:
-    """Check if process with given PID is still alive."""
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -49,13 +37,11 @@ def _pid_alive(pid: int) -> bool:
 
 
 def _assert_child_reaped(proc: ManagedProcess) -> None:
-    """Assert child process is reaped and not running."""
     assert proc.poll() is not None, f"Child PID {proc.pid} still running (poll is None)"
     assert not _pid_alive(proc.pid), f"Child PID {proc.pid} leaked (still alive)"
 
 
 def _assert_no_child_leaks(tracked_pids: set[int]) -> None:
-    """Assert no tracked child processes remain alive or un-reaped."""
     own_pid = os.getpid()
     descendants = {d.pid for d in psutil.Process(own_pid).children(recursive=True)}
     leaked = descendants.intersection(tracked_pids)
@@ -65,7 +51,6 @@ def _assert_no_child_leaks(tracked_pids: set[int]) -> None:
 
 
 def _write_responder_script(tmp_path: Path) -> Path:
-    """Create a real child responder script serving JSON-RPC tools/list and handover socket."""
     script_path = tmp_path / "bridge_test_child.py"
     if not script_path.exists():
         script = """import argparse
@@ -189,7 +174,6 @@ def _spawn_mcp_child(
     stage_id: str | None = None,
     env: dict[str, str] | None = None,
 ) -> tuple[ManagedProcess, StandaloneMcpProcess]:
-    """Spawn a real MCP child process and return (ManagedProcess, StandaloneMcpProcess)."""
     script = _write_responder_script(tmp_path)
     port_file = tmp_path / f"port_{uuid.uuid4().hex[:8]}.txt"
     pass_fds: tuple[int, ...] = (child_sock_fd,) if child_sock_fd is not None else ()
@@ -242,7 +226,6 @@ def _spawn_mcp_child(
     while time.monotonic() < deadline and not port_file.exists():
         time.sleep(0.02)
     assert port_file.exists(), f"Child process {label} did not write port file within deadline"
-    # RALPH-TEST-REASON: wait for child process to flush port digits to disk before int conversion
     port_text = port_file.read_text(encoding="utf-8").strip()
     while time.monotonic() < deadline and not port_text.isdigit():
         time.sleep(0.02)
@@ -264,7 +247,6 @@ def _spawn_mcp_child(
 
 
 def test_live_server_survives_failed_candidate(tmp_path: Path) -> None:
-    """A live old child keeps serving when candidate spawn fails."""
     tracked_procs: list[ManagedProcess] = []
     try:
         old_proc, inner = _spawn_mcp_child(tmp_path, label="c2-live-old-child")
@@ -272,7 +254,6 @@ def test_live_server_survives_failed_candidate(tmp_path: Path) -> None:
         tracked_pids = {old_proc.pid}
         endpoint = inner.endpoint
 
-        # Invariant: Child serves tools/list before candidate attempt
         tools_before = _http_tools_list_names(endpoint, timeout=2.0)
         assert tools_before == ["read_file"]
 
@@ -293,11 +274,9 @@ def test_live_server_survives_failed_candidate(tmp_path: Path) -> None:
         assert bridge.restart_count == 1
         assert inner.process.poll() is None
 
-        # Invariant: Continuous tools/list serving after failed candidate spawn
         tools_after = _http_tools_list_names(endpoint, timeout=2.0)
         assert tools_after == tools_before
 
-        # Teardown assertion: bridge shutdown reaps old child without leaks
         bridge.shutdown()
         _assert_child_reaped(old_proc)
         _assert_no_child_leaks(tracked_pids)
@@ -311,7 +290,6 @@ def test_live_server_survives_failed_candidate(tmp_path: Path) -> None:
 
 
 def test_make_before_break_promotion_with_old_drain(tmp_path: Path) -> None:
-    """Successful candidate is promoted and old child is drained in background."""
     tracked_procs: list[ManagedProcess] = []
     try:
         old_proc, old_inner = _spawn_mcp_child(tmp_path, label="mbb-old-child")
@@ -358,17 +336,14 @@ def test_make_before_break_promotion_with_old_drain(tmp_path: Path) -> None:
         assert bridge.process.pid == cand_proc.pid
         assert bridge._inner.process.pid == cand_proc.pid
 
-        # Continuous serving: candidate child now serves tools/list
         cand_endpoint = bridge.endpoint_uri()
         assert _http_tools_list_names(cand_endpoint, timeout=2.0) == ["read_file"]
 
-        # Give background drain thread a moment to finish shutting down the old child
         deadline = time.monotonic() + 2.0
         while time.monotonic() < deadline and old_proc.poll() is None:
             time.sleep(0.02)
         _assert_child_reaped(old_proc)
 
-        # Teardown assertion: bridge shutdown reaps candidate child without leaks
         bridge.shutdown()
         _assert_child_reaped(cand_proc)
         _assert_no_child_leaks(tracked_pids)
@@ -384,7 +359,6 @@ def test_make_before_break_promotion_with_old_drain(tmp_path: Path) -> None:
 def test_preflight_over_shared_endpoint_does_not_promote_unverified_candidate(
     tmp_path: Path,
 ) -> None:
-    """Candidate that exited before promotion is not promoted; old child is kept."""
     tracked_procs: list[ManagedProcess] = []
     try:
         old_proc, old_inner = _spawn_mcp_child(tmp_path, label="unverified-old-child")
@@ -393,7 +367,6 @@ def test_preflight_over_shared_endpoint_does_not_promote_unverified_candidate(
         old_endpoint = old_inner.endpoint
         assert _http_tools_list_names(old_endpoint, timeout=2.0) == ["read_file"]
 
-        # Scenario 1: Dead candidate that exited before promotion
         dead_proc, dead_candidate = _spawn_mcp_child(
             tmp_path,
             label="dead-cand",
@@ -416,10 +389,8 @@ def test_preflight_over_shared_endpoint_does_not_promote_unverified_candidate(
         assert bridge.process.pid == old_proc.pid
         assert bridge._inner is old_inner
         assert old_proc.poll() is None
-        # Continuous serving: old child still serves tools/list
         assert _http_tools_list_names(old_endpoint, timeout=2.0) == ["read_file"]
 
-        # Scenario 2: Candidate with mismatched preflight identity is discarded
         mismatch_procs: list[ManagedProcess] = []
 
         def make_mismatched_candidate() -> StandaloneMcpProcess:
@@ -450,7 +421,6 @@ def test_preflight_over_shared_endpoint_does_not_promote_unverified_candidate(
         assert old_proc.poll() is None
         assert _http_tools_list_names(old_endpoint, timeout=2.0) == ["read_file"]
 
-        # Invariant: Mismatched candidate was reaped upon abandonment
         assert len(mismatch_procs) == 1
         mismatch_proc = mismatch_procs[0]
         deadline = time.monotonic() + 2.0
@@ -458,7 +428,6 @@ def test_preflight_over_shared_endpoint_does_not_promote_unverified_candidate(
             time.sleep(0.02)
         _assert_child_reaped(mismatch_proc)
 
-        # Teardown assertion: bridge shutdown reaps old child without leaks
         bridge.shutdown()
         _assert_child_reaped(old_proc)
         _assert_no_child_leaks(tracked_pids)
@@ -474,7 +443,6 @@ def test_preflight_over_shared_endpoint_does_not_promote_unverified_candidate(
 def test_single_failed_attempt_does_not_set_inner_to_drained_inner(
     tmp_path: Path,
 ) -> None:
-    """A single failed attempt does not set _inner to a shut-down inner."""
     tracked_procs: list[ManagedProcess] = []
     try:
         old_proc, old_inner = _spawn_mcp_child(tmp_path, label="failed-attempt-old")
@@ -499,7 +467,6 @@ def test_single_failed_attempt_does_not_set_inner_to_drained_inner(
         assert bridge.process.pid == old_proc.pid
         assert bridge._inner is old_inner
         assert old_proc.poll() is None
-        # Continuous serving: old child still serves tools/list
         assert _http_tools_list_names(endpoint, timeout=2.0) == ["read_file"]
 
         bridge.shutdown()
@@ -517,7 +484,6 @@ def test_single_failed_attempt_does_not_set_inner_to_drained_inner(
 def test_budget_still_exhausts_after_n_failed_attempts_only(
     tmp_path: Path,
 ) -> None:
-    """Repeated failed attempts exhaust budget only after max_restarts reached."""
     tracked_procs: list[ManagedProcess] = []
     try:
         old_proc, old_inner = _spawn_mcp_child(tmp_path, label="budget-old")
@@ -547,7 +513,6 @@ def test_budget_still_exhausts_after_n_failed_attempts_only(
         with pytest.raises(McpServerError, match="restart budget exhausted"):
             bridge._perform_restart(process_exited=False, probe_duration_s=1.0)
 
-        # Server was still alive and serving even after budget exhaustion
         assert old_proc.poll() is None
         assert _http_tools_list_names(endpoint, timeout=2.0) == ["read_file"]
 

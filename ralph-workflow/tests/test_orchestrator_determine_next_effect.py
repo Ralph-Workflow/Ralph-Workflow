@@ -1,13 +1,3 @@
-"""Unit tests for the orchestrator module.
-
-Tests cover:
-- determine_next_effect returns InvokeAgentEffect when agent not yet invoked
-- analysis loopback routes back to development phase
-- analysis success routes to development_commit
-- development_commit with budget=0 routes to review
-- unknown phase raises PhaseHandlerNotFoundError
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -37,7 +27,6 @@ from ralph.policy.models import (
 
 
 def _make_minimal_agents_policy() -> AgentsPolicy:
-    """Create a minimal agents policy for testing."""
     return AgentsPolicy(
         agent_chains={
             "planning": AgentChainConfig(agents=["claude"], max_retries=2),
@@ -61,7 +50,6 @@ def _make_minimal_agents_policy() -> AgentsPolicy:
 
 
 def _make_minimal_pipeline_policy() -> PipelinePolicy:
-    """Create a minimal pipeline policy for testing."""
     return PipelinePolicy(
         phases={
             "planning": PhaseDefinition(
@@ -159,15 +147,11 @@ def _make_minimal_pipeline_policy() -> PipelinePolicy:
 
 
 def _make_state(phase: str = "planning", **overrides: object) -> PipelineState:
-    """Create a pipeline state for testing."""
     return PipelineState(phase=phase, **overrides)
 
 
 class TestDetermineNextEffect:
-    """Tests for determine_next_effect function."""
-
     def test_complete_phase_returns_exit_success(self) -> None:
-        """Test that "complete" returns ExitSuccessEffect."""
         state = _make_state(phase="complete")
         agents = _make_minimal_agents_policy()
         pipeline = _make_minimal_pipeline_policy()
@@ -177,7 +161,6 @@ class TestDetermineNextEffect:
         assert isinstance(effect, ExitSuccessEffect)
 
     def test_failed_phase_returns_prepare_prompt_for_recovery(self) -> None:
-        """failed_terminal (the failed_route) should re-enter recovery to previous phase."""
         state = _make_state(
             phase="failed_terminal",
             previous_phase="development",
@@ -193,7 +176,6 @@ class TestDetermineNextEffect:
         assert effect.phase == "development"
 
     def test_unknown_phase_raises_handler_not_found(self) -> None:
-        """Test that an unknown phase raises PhaseHandlerNotFoundError."""
         state = _make_state(phase="nonexistent_phase")
         agents = _make_minimal_agents_policy()
         pipeline = _make_minimal_pipeline_policy()
@@ -204,7 +186,6 @@ class TestDetermineNextEffect:
         assert "nonexistent_phase" in str(exc_info.value)
 
     def test_planning_phase_returns_prepare_prompt(self) -> None:
-        """Test that planning phase returns PreparePromptEffect on first invocation."""
         state = _make_state(phase="planning")
         agents = _make_minimal_agents_policy()
         pipeline = _make_minimal_pipeline_policy()

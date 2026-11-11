@@ -1,4 +1,3 @@
-"""Grouped parameters for a smoke run."""
 
 from __future__ import annotations
 
@@ -15,7 +14,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class SmokeRunParams:
-    """Grouped parameters for a smoke run."""
 
     agent_name: str
     config: AgentConfig

@@ -1,4 +1,3 @@
-"""Validation exception for rejected markdown artifacts."""
 
 from __future__ import annotations
 
@@ -9,7 +8,6 @@ if TYPE_CHECKING:
 
 
 class MarkdownArtifactError(ValueError):
-    """Raised by callers that choose to reject error diagnostics as an exception."""
 
     def __init__(self, diagnostics: list[Diagnostic]) -> None:
         self.diagnostics = diagnostics

@@ -1,5 +1,3 @@
-"""Contract tests for the explicitly on-demand visual judgement tier."""
-
 from __future__ import annotations
 
 import inspect
@@ -38,7 +36,6 @@ def test_on_demand_tier_must_be_selected_explicitly() -> None:
 def test_visual_judgement_cli_dispatches_fixture_capture_sets_to_vision_agent_and_submits_on_demand_verdict() -> (
     None
 ):
-    """S-5: retained/fresh evidence is delegated then checked after submission."""
     dispatched: list[object] = []
     validated: list[tuple[str, tuple[str, ...], tuple[str, ...], str]] = []
     deps = OnDemandJudgementDeps(

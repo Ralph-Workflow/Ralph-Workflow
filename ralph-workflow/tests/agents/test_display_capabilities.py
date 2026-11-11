@@ -1,14 +1,3 @@
-"""Tests for the S-4 tri-state display-capability declaration contract.
-
-The capability declaration is the durable, fail-closed mechanism that
-prevents the original OpenCode defect class from recurring: a parser
-silently dropping the structured tool metadata the display layer needs
-without anything saying so. The tests in this file pin the total
-catalog-derived vocabulary, the per-builtin mandatory coverage, and
-the four mutation paths (remove one stance, duplicate one, add a new
-agent, extend the enum) that the plan requires the gate to bite.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -44,20 +33,13 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 
-# ---------------------------------------------------------------------------
-# Capability vocabulary is derived from SURFACE_CATALOG and frozen.
-# ---------------------------------------------------------------------------
-
-
 def test_display_capabilities_vocabulary_is_non_empty() -> None:
-    """The catalog-derived capability vocabulary must have at least one entry."""
     capabilities = all_display_capabilities()
     assert len(capabilities) >= 1
     assert all(isinstance(c, DisplayCapability) for c in capabilities)
 
 
 def test_display_capabilities_vocabulary_matches_catalog_surfaces() -> None:
-    """Every capability enum value must correspond to a SurfaceSpec in SURFACE_CATALOG."""
     catalog_names = {surface.name for surface in SURFACE_CATALOG}
     for capability in all_display_capabilities():
         assert capability.value in catalog_names, (
@@ -75,14 +57,7 @@ def test_surface_to_capability_returns_none_for_unknown_surface() -> None:
     assert surface_to_capability("definitely_not_a_capability") is None
 
 
-# ---------------------------------------------------------------------------
-# Tri-state stance: SUPPORTED needs no reason; the other two do.
-# ---------------------------------------------------------------------------
-
-
 def test_supported_stance_does_not_require_a_reason() -> None:
-    """``SUPPORTED`` accepts an empty reason (the supporting evidence lives
-    in fixtures/tests, not in the stance text)."""
     stance = DisplayCapabilityStance.supported(DisplayCapability.SYNTAX_HIGHLIGHTING)
     assert stance.is_supported
     assert stance.reason == ""
@@ -127,12 +102,7 @@ def test_unimplemented_rejects_blank_reason() -> None:
 
 
 def test_stance_rejects_unknown_capability() -> None:
-    """Unknown capability values are not silently accepted."""
 
-    # The validator rejects any capability whose ``value`` is not in
-    # the catalog. The check is ``self.capability not in _ALL_DISPLAY_CAPABILITIES``
-    # so a plain duck-typed object with a ``value`` attribute that
-    # does not collide with any catalog value is sufficient.
     class _FakeCapability:
         value = "not_in_vocabulary"
 
@@ -158,11 +128,6 @@ def test_stance_label_inlines_reason_for_unsupported_kinds() -> None:
     assert unimplemented.label() == "UNIMPLEMENTED (parser gap)"
 
 
-# ---------------------------------------------------------------------------
-# AgentSupport validation: built-ins MUST cover the full vocabulary.
-# ---------------------------------------------------------------------------
-
-
 def _support_with_stances(
     stances: tuple[DisplayCapabilityStance, ...],
     *,
@@ -181,8 +146,6 @@ def _support_with_stances(
 
 
 class _FakeParser(ParserTemplateBase):
-    """Minimal parser used to construct a valid AgentSupport without typing suppression."""
-
     _STOP_EVENT_TYPES: frozenset[str] = frozenset()
 
     def classify_line(self, line: str) -> Iterator[AgentOutputLine]:
@@ -191,7 +154,7 @@ class _FakeParser(ParserTemplateBase):
 
 
 class _FakeStrategy(BaseExecutionStrategy):
-    """Minimal strategy used to construct a valid AgentSupport without typing suppression."""
+    pass
 
 
 def test_builtin_support_with_complete_declaration_is_accepted() -> None:
@@ -206,15 +169,13 @@ def test_builtin_support_with_empty_declaration_is_rejected() -> None:
 
 
 def test_builtin_support_missing_one_capability_is_rejected() -> None:
-    """Removing one stance from a built-in must fail the constructor."""
     full = [DisplayCapabilityStance.supported(c) for c in all_display_capabilities()]
-    full.pop()  # drop the last one
+    full.pop()
     with pytest.raises(ValueError, match="missing display_capabilities"):
         _support_with_stances(tuple(full), is_builtin=True)
 
 
 def test_builtin_support_with_duplicate_stances_is_rejected() -> None:
-    """A built-in carrying two stances for the same capability must fail."""
     first = DisplayCapabilityStance.supported(DisplayCapability.SYNTAX_HIGHLIGHTING)
     second = DisplayCapabilityStance.not_applicable(
         DisplayCapability.SYNTAX_HIGHLIGHTING, "double entry"
@@ -224,10 +185,7 @@ def test_builtin_support_with_duplicate_stances_is_rejected() -> None:
 
 
 def test_builtin_support_with_unknown_capability_entry_is_rejected() -> None:
-    """A built-in carrying a stance whose capability is not in the catalog vocabulary must fail."""
 
-    # The validator checks ``self.capability not in _ALL_DISPLAY_CAPABILITIES``;
-    # a duck-typed object with a non-catalog ``value`` is sufficient.
     class _FakeCapability:
         value = "rogue_capability"
 
@@ -239,13 +197,11 @@ def test_builtin_support_with_unknown_capability_entry_is_rejected() -> None:
 
 
 def test_custom_support_with_empty_declaration_is_accepted() -> None:
-    """Custom agents (is_builtin=False) may omit the declaration entirely."""
     support = _support_with_stances((), is_builtin=False)
     assert support.display_capabilities == ()
 
 
 def test_custom_support_with_partial_declaration_is_accepted() -> None:
-    """Custom agents may declare a subset of capabilities."""
     partial = (DisplayCapabilityStance.supported(DisplayCapability.SYNTAX_HIGHLIGHTING),)
     support = _support_with_stances(partial, is_builtin=False)
     assert len(support.display_capabilities) == 1
@@ -261,8 +217,6 @@ def test_custom_support_with_duplicate_stances_is_rejected() -> None:
 
 
 def test_custom_support_with_unknown_capability_entry_is_rejected() -> None:
-    # The validator checks ``self.capability not in _ALL_DISPLAY_CAPABILITIES``;
-    # a duck-typed object with a non-catalog ``value`` is sufficient.
     class _FakeCapability:
         value = "rogue_capability"
 
@@ -271,11 +225,6 @@ def test_custom_support_with_unknown_capability_entry_is_rejected() -> None:
             (DisplayCapabilityStance.supported(_FakeCapability()),),
             is_builtin=False,
         )
-
-
-# ---------------------------------------------------------------------------
-# AgentSupport.capability() lookup
-# ---------------------------------------------------------------------------
 
 
 def test_support_capability_lookup_returns_matching_stance() -> None:
@@ -306,12 +255,6 @@ def test_support_capability_lookup_returns_none_when_missing() -> None:
     assert support.capability("syntax_preview") is None
 
 
-# ---------------------------------------------------------------------------
-# BuiltinAgentSpec / builtin.py: the 8 built-ins must carry a complete
-# declaration; the four mutation paths the plan calls out must bite.
-# ---------------------------------------------------------------------------
-
-
 def test_every_builtin_agent_declares_a_complete_capability_set() -> None:
     expected = set(all_display_capabilities())
     for support in builtin_supports():
@@ -331,14 +274,6 @@ def test_every_builtin_agent_has_a_stance_for_each_capability() -> None:
 
 
 def test_no_builtin_declaration_carries_a_reasonless_unsupported_stance() -> None:
-    """Reasons for ``NOT_APPLICABLE`` / ``UNIMPLEMENTED`` must be non-empty.
-
-    This pins the rule at the built-in level: the validator catches a
-    blank reason at construction time, but a regression that bypassed
-    that validator (e.g. by passing a populated ``DisplayCapabilityStance``
-    with a whitespace-only reason that survived stripping) is locked in
-    here.
-    """
     for support in builtin_supports():
         for stance in support.display_capabilities:
             if stance.kind == "supported":
@@ -351,10 +286,6 @@ def test_no_builtin_declaration_carries_a_reasonless_unsupported_stance() -> Non
 
 
 def test_mutating_builtin_supports_to_remove_a_stance_fails_construction() -> None:
-    """Removing one stance from the contract breaks every built-in."""
-    # Capture a complete declaration, then drop one capability to simulate
-    # a future maintainer forgetting a required stance. The complete
-    # BuiltinAgentSpec flow must fail closed.
     base = builtin_supports()[0]
     broken = tuple(
         stance
@@ -374,7 +305,6 @@ def test_mutating_builtin_supports_to_remove_a_stance_fails_construction() -> No
 
 
 def test_mutating_builtin_supports_to_duplicate_a_stance_fails_construction() -> None:
-    """Duplicating one stance breaks the built-in (no two stances for the same capability)."""
     base = builtin_supports()[0]
     double = base.display_capabilities + base.display_capabilities[:1]
     with pytest.raises(ValueError, match="Duplicate"):
@@ -390,9 +320,6 @@ def test_mutating_builtin_supports_to_duplicate_a_stance_fails_construction() ->
 
 
 def test_mutating_builtin_supports_to_add_a_new_agent_without_complete_declaration_fails() -> None:
-    """Adding a ninth agent without a complete declaration must fail closed."""
-    # A BuiltinAgentSpec with display_capabilities=() should fail at
-    # AgentSupport construction time.
     config = AgentConfig(
         cmd="newagent",
         json_parser=JsonParserType.GENERIC,
@@ -410,13 +337,7 @@ def test_mutating_builtin_supports_to_add_a_new_agent_without_complete_declarati
         )
 
 
-# ---------------------------------------------------------------------------
-# BuiltinAgentSpec.to_support wires display_capabilities through end to end.
-# ---------------------------------------------------------------------------
-
-
 def test_builtin_agent_spec_to_support_forwards_capabilities_unchanged() -> None:
-    """The dataclass -> AgentSupport path must NOT lose DisplayCapabilityStance identity."""
     full = tuple(DisplayCapabilityStance.supported(c) for c in all_display_capabilities())
     spec = BuiltinAgentSpec(
         transport=AgentTransport.OPENCODE,
@@ -437,7 +358,6 @@ def test_builtin_agent_spec_to_support_forwards_capabilities_unchanged() -> None
 
 
 def test_builtin_agent_spec_without_capabilities_fails_at_to_support() -> None:
-    """A built-in declared without capabilities must fail closed at the to_support boundary."""
     spec = BuiltinAgentSpec(
         transport=AgentTransport.CLAUDE,
         parser_factory=ClaudeParser,
@@ -450,7 +370,6 @@ def test_builtin_agent_spec_without_capabilities_fails_at_to_support() -> None:
 
 
 def test_builtin_agent_spec_with_incomplete_capabilities_fails_at_to_support() -> None:
-    """Built-in with missing capability fails closed."""
     incomplete = (DisplayCapabilityStance.supported(DisplayCapability.SYNTAX_HIGHLIGHTING),)
     spec = BuiltinAgentSpec(
         transport=AgentTransport.CLAUDE_INTERACTIVE,

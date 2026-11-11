@@ -1,4 +1,3 @@
-"""Invoke-agent pipeline effect."""
 
 from __future__ import annotations
 
@@ -16,27 +15,6 @@ else:
 
 @dataclass(frozen=True)
 class InvokeAgentEffect:
-    """Effect to invoke an AI agent.
-
-    Attributes:
-        agent_name: Name of the agent to invoke.
-        phase: Current pipeline phase.
-        prompt_file: Path to the prompt file for the agent.
-        chain_name: Name of the agent chain being used.
-        run_id: Stable run identity of the commit-review proposal seal.
-            Empty for every other phase.
-        iteration: Iteration segment of the commit-review proposal seal.
-            Empty for every other phase.
-        requires_completion_evidence: Whether a clean exit must be corroborated
-            by durable agent-side evidence. The ``declare_complete`` sentinel
-            is always required; a required-artifact phase additionally needs
-            its canonical submission receipt.
-            The out-of-graph ``policy_remediation`` phase sets it False: it has
-            no artifact contract, is not granted the ``artifact.submit``
-            capability that exposes ``declare_complete``, and is judged by a
-            deterministic validator that re-runs after the agent exits — so
-            there is no evidence for the agent to leave, and none is trusted.
-    """
 
     agent_name: str
     phase: PipelinePhase

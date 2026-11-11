@@ -1,9 +1,3 @@
-"""Unit and lifecycle tests for ExecJobRegistry (§3b / WU-3).
-
-All tests use deterministic fake clocks and mock process managers — zero wall-clock
-sleeps, zero real subprocesses, fully typed with no type: ignore markers.
-"""
-
 from __future__ import annotations
 
 import itertools
@@ -41,8 +35,6 @@ from ralph.timeout_defaults import (
 )
 
 if TYPE_CHECKING:
-    # Public type aliases of the process-manager protocols (exported from
-    # ``ralph.process.manager``) -- annotation-only, no runtime coupling.
     from ralph.process.manager import (
         LivenessProc,
         PsutilModuleLike,
@@ -52,22 +44,11 @@ if TYPE_CHECKING:
 
 
 class _ControllableFakePopen(FakePopen):
-    """``FakePopen`` double with a public seam to finish the fake process.
-
-    The shipped ``FakePopen`` snapshots its state at construction time and
-    exposes no public exit seam, so a lifecycle case that must observe the
-    process exiting *after* the job started needs a double that can report an
-    exit code later on.
-    """
-
     def finish(self, returncode: int) -> None:
-        """Mark the fake process as exited with ``returncode``."""
         self._returncode = returncode
 
 
 class _FakeClock:
-    """Deterministic fake clock for lifecycle tests."""
-
     def __init__(self, initial_time: float = 1000.0) -> None:
         self._time = initial_time
 
@@ -107,8 +88,6 @@ CtxSwitchesNamedTuple = _CtxSwitchesNamedTuple
 
 @dataclass
 class _FakeSamplerProc:
-    """Mock process for TreeSampler."""
-
     pid: int
     user_cpu: float = 0.0
     system_cpu: float = 0.0
@@ -144,8 +123,6 @@ FakeSamplerProc = _FakeSamplerProc
 
 
 class _FakePsutilModule:
-    """Mock psutil module for TreeSampler."""
-
     Process: Callable[[int], LivenessProc]
 
     def __init__(self, processes: dict[int, _FakeSamplerProc] | None = None) -> None:
@@ -180,8 +157,6 @@ def _make_test_config() -> LivenessConfig:
 
 
 class _TrackingProcessManager(ProcessManager):
-    """ProcessManager subclass that tracks orphan cleanup."""
-
     def __init__(
         self,
         policy: ProcessManagerPolicy | None = None,
@@ -206,8 +181,6 @@ TrackingProcessManager = _TrackingProcessManager
 
 
 class _TestEnv:
-    """Bundle containing FakeClock, ProcessManager, and ExecJobRegistry."""
-
     __test__ = False
 
     def __init__(self, liveness_config: LivenessConfig | None = None) -> None:
@@ -240,11 +213,6 @@ class _TestEnv:
         )
 
 
-# ---------------------------------------------------------------------------
-# Basic lifecycle tests
-# ---------------------------------------------------------------------------
-
-
 def test_job_finish_in_budget() -> None:
     env = _TestEnv()
     job_id = env.registry.start(["echo", "hello"], capability="ProcessExecBounded")
@@ -266,19 +234,16 @@ def test_job_snapshot_then_final() -> None:
     env = _TestEnv()
     job_id = env.registry.start(["long_running"], capability="ProcessExecBounded")
 
-    # While running, wait returns JobSnapshot
     snapshot = env.registry.wait(job_id, wait_ms=0, capability="ProcessExecBounded")
     assert isinstance(snapshot, JobSnapshot)
     assert snapshot.job_id == job_id
     assert snapshot.running
     assert snapshot.instruction == "call exec_wait; do not re-run"
 
-    # Finish process
     active_proc = next(iter(env.procs.values()))
     active_proc.finish(0)
     env.registry.step_job(job_id)
 
-    # Next wait returns final JobResult
     final = env.registry.wait(job_id, wait_ms=0, capability="ProcessExecBounded")
     assert isinstance(final, JobResult)
     assert final.job_id == job_id
@@ -304,7 +269,6 @@ def test_job_abandonment() -> None:
     job_id = env.registry.start(["long_running"], capability="ProcessExecBounded")
     active_proc = next(iter(env.procs.values()))
 
-    # Advance clock past abandon window without calling wait
     env.clock.advance(EXEC_JOB_ABANDON_S + 1.0)
     env.registry.step_job(job_id)
 
@@ -315,7 +279,6 @@ def test_job_abandonment() -> None:
 
 
 def test_job_stalled() -> None:
-    # Configure fast output aging so stall integrator accumulates pressure
     fast_config = LivenessConfig(
         output_recent_min_s=1.0,
         output_recent_max_s=2.0,
@@ -333,11 +296,9 @@ def test_job_stalled() -> None:
     )
     env = _TestEnv(liveness_config=fast_config)
 
-    # 5s stall window
     job_id = env.registry.start(["idle_command"], timeout_ms=5_000, capability="ProcessExecBounded")
     active_proc = next(iter(env.procs.values()))
 
-    # Keep wait refreshed while stepping through stall window
     for _ in range(10):
         env.clock.advance(1.0)
         env.registry.wait(job_id, wait_ms=0, capability="ProcessExecBounded")
@@ -355,7 +316,6 @@ def test_job_no_progress() -> None:
     active_proc = next(iter(env.procs.values()))
     sampler_proc = env.sampler_procs[active_proc.pid]
 
-    # Advance beyond 900s of continuous suspicion in 10s increments with high CPU usage (0.8) and wait refreshed
     for _ in range(105):
         env.clock.advance(10.0)
         sampler_proc.user_cpu += 8.0
@@ -382,11 +342,6 @@ def test_job_shutdown_all() -> None:
     assert res1.kill_cause == "session_end"
     assert isinstance(res2, JobResult)
     assert res2.kill_cause == "session_end"
-
-
-# ---------------------------------------------------------------------------
-# Gating and Error Handling Tests
-# ---------------------------------------------------------------------------
 
 
 def test_job_unknown_job_id() -> None:
@@ -433,9 +388,7 @@ def test_running_jobs_cap() -> None:
     except ExecJobError as exc:
         assert "Running job limit exceeded" in str(exc)
 
-    # Cancel one job to free a slot
     env.registry.cancel(jobs[0], capability="ProcessExecBounded")
-    # Now starting a 5th job succeeds
     j5 = env.registry.start(["sleep_5th"], capability="ProcessExecBounded")
     assert j5 is not None
 
@@ -445,7 +398,6 @@ def test_finished_results_fifo_cap() -> None:
     env = _TestEnv()
     jobs: list[str] = []
 
-    # Start and finish 17 jobs sequentially
     for i in range(EXEC_JOB_RESULT_FIFO + 1):
         jid = env.registry.start([f"cmd_{i}"], capability="ProcessExecBounded")
         proc = list(env.procs.values())[-1]
@@ -453,14 +405,12 @@ def test_finished_results_fifo_cap() -> None:
         env.registry.step_job(jid)
         jobs.append(jid)
 
-    # Job 0 must be evicted from FIFO (maxlen=16)
     try:
         env.registry.wait(jobs[0], wait_ms=0, capability="ProcessExecBounded")
         raise AssertionError("Expected ExecJobError for evicted job")
     except ExecJobError as exc:
         assert "unknown or expired job" in str(exc)
 
-    # Job 1 through 16 are still present
     for jid in jobs[1:]:
         res = env.registry.wait(jid, wait_ms=0, capability="ProcessExecBounded")
         assert isinstance(res, JobResult)
@@ -477,7 +427,6 @@ def test_progress_subscription_lifecycle() -> None:
     sub = ProgressSubscription(request_id="req-1", progress_token="tok-abc", sink=sink)
     job_id = env.registry.start(["cmd"], capability="ProcessExecBounded", progress=sub)
 
-    # Step job dispatches a progress frame
     env.clock.advance(2.0)
     env.registry.step_job(job_id, dt=2.0)
 
@@ -485,7 +434,6 @@ def test_progress_subscription_lifecycle() -> None:
     assert frames[0]["progressToken"] == "tok-abc"
     assert frames[0]["job_id"] == job_id
 
-    # Wait with a different subscription
     wait_frames: list[dict[str, object]] = []
     wait_sub = ProgressSubscription(
         request_id="req-2",
@@ -502,49 +450,36 @@ def test_progress_subscription_lifecycle() -> None:
     assert len(wait_frames) == 1
     assert wait_frames[0]["progressToken"] == "tok-wait"
 
-    # Finish job -> subscriptions torn down
     active_proc = next(iter(env.procs.values()))
     active_proc.finish(0)
     env.registry.step_job(job_id)
 
-    # Subsequent steps do NOT dispatch frames to torn-down sinks
     env.clock.advance(2.0)
     env.registry.step_job(job_id, dt=2.0)
     assert len(frames) == 2
     assert len(wait_frames) == 1
 
 
-# ---------------------------------------------------------------------------
-# The 4 Required Lifecycle Traces
-# ---------------------------------------------------------------------------
-
-
 def test_trace_1_root_exit_with_orphaned_child() -> None:
-    """Trace 1: root exits, orphan keeps pipes open -> job finishes, tree cleaned."""
     env = _TestEnv()
     job_id = env.registry.start(["sh", "-c", "sleep 100 &"], capability="ProcessExecBounded")
     root_proc = next(iter(env.procs.values()))
 
-    # Root process exits with 0
     root_proc.finish(0)
 
-    # Step job detects root exit immediately
     env.registry.step_job(job_id)
 
     result = env.registry.wait(job_id, wait_ms=0, capability="ProcessExecBounded")
     assert isinstance(result, JobResult)
     assert result.returncode == 0
     assert result.kill_cause is None
-    # Orphan cleanup verified
     assert root_proc.pid in env.pm.orphans_cleaned
 
 
 def test_trace_2_hard_cap_at_ceiling() -> None:
-    """Trace 2: job outlives 60-min default ceiling -> killed with hard_cap."""
     env = _TestEnv()
     job_id = env.registry.start(["long_build"], capability="ProcessExecBounded")
     root_proc = next(iter(env.procs.values()))
-    # Advance clock to 3601s (> 3600s EXEC_JOB_CEILING_S) with active output
     for _ in range(121):
         env.clock.advance(30.0)
         env.registry.note_output(job_id, capability="ProcessExecBounded")
@@ -557,49 +492,13 @@ def test_trace_2_hard_cap_at_ceiling() -> None:
     assert root_proc.pid in env.pm.orphans_cleaned
 
 
-# ---------------------------------------------------------------------------
-# G2 randomized bounded property — every HEALTHY trace ends at the ceiling.
-#
-# PRODUCT_CRITERIA Verification §3 "Bounded": randomized property proof
-# driving the REAL ``ExecJobRegistry.step_job`` through the production
-# hard-cap branch at ``_exec_jobs.py:503-505`` (complementary to the scripted
-# regression above; NOT a replacement).
-#
-# HEALTHY trace (cpu_ratio ~0.5, 128 KiB/s I/O, 20 ctx/s, fresh output) keeps
-# abandonment, stall, suspicion-clock branches unreachable; ceilings stay
-# well below ``EXEC_JOB_ABANDON_S`` and ``EXEC_NO_PROGRESS_WINDOW_S`` so those
-# stay unreachable too.
-#
-# CLEANUP-EVIDENCE SCOPE: root termination + ``ProcessManager`` cleanup
-# invocation only — NOT descendant-tree reaping (the ``_FakeSamplerProc`` and
-# ``TrackingProcessManager.cleanup_orphans`` graphs cannot jointly observe
-# it). Real descendant cleanup is proven by
-# ``tests/test_exec_job_shutdown_subprocess_e2e.py``.
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.timeout_seconds(5)
 def test_randomized_hard_cap_terminates_healthily_within_budget_at_real_registry_branch() -> None:
-    """Randomized Bounded property: HEALTHY jobs end at the real hard-cap branch.
-
-    Bounded per-test timeout (5s): the property drives 8 randomized cases
-    through the real ``step_job`` loop on the fake clock; total CPU work
-    legitimately grazes the 1.0s default bound, so an explicit bounded
-    marker keeps the loop-driven property under the per-test policy without
-    touching the 60s combined budget.
-
-    Per case: ``kill_cause == 'hard_cap'``; ``elapsed_s`` lies in
-    ``[ceiling, ceiling + sample_interval]``; mid-trace ``JobSnapshot`` proves
-    the job was still running, classified ``working`` with zero stall pressure;
-    root terminated and ``ProcessManager`` cleanup invoked (root-only scope).
-    """
     import math
     import random
 
     from ralph import timeout_defaults as _td
 
-    # Float tolerance for the fake clock's repeated ``+=``; not a behavioural
-    # margin — a kill one whole sample interval early still fails by a wide gap.
     timing_eps = 1e-9
     rng = random.Random(20260920)
 
@@ -614,8 +513,6 @@ def test_randomized_hard_cap_terminates_healthily_within_budget_at_real_registry
             f"sample_interval_s={sample_interval_s} max_steps={max_steps}"
         ]
 
-        # The corpus must stay inside the window where the hard-cap branch is
-        # the only reachable one, or the test would prove nothing.
         assert sample_interval_s <= _td.EXEC_LIVENESS_SAMPLE_INTERVAL_S, "; ".join(case_log)
         assert effective_ceiling_s < _td.EXEC_JOB_ABANDON_S, "; ".join(case_log)
         assert effective_ceiling_s < _td.EXEC_NO_PROGRESS_WINDOW_S, "; ".join(case_log)
@@ -633,14 +530,10 @@ def test_randomized_hard_cap_terminates_healthily_within_budget_at_real_registry
 
         for step_idx in range(max_steps):
             env.clock.advance(sample_interval_s)
-            # Healthy signal knobs, rate-matched to the sampling cadence so the
-            # windowed sampler reads cpu_ratio ~0.5, 128 KiB/s and 20 ctx/s.
             sampler_proc.user_cpu += 0.5 * sample_interval_s
             sampler_proc.read_bytes += int(128 * 1024 * sample_interval_s)
             sampler_proc.voluntary_ctx += int(20 * sample_interval_s)
             env.registry.note_output(job_id, capability="ProcessExecBounded")
-            # ``wait`` refreshes ``last_wait_time`` so the abandonment branch
-            # cannot fire — this is the real client's poll cadence.
             pending = env.registry.wait(job_id, wait_ms=0, capability="ProcessExecBounded")
             if step_idx == precondition_step and isinstance(pending, JobSnapshot):
                 mid_snapshot = pending
@@ -666,17 +559,12 @@ def test_randomized_hard_cap_terminates_healthily_within_budget_at_real_registry
         assert result.kill_cause == "hard_cap", "; ".join(case_log)
         assert result.cancelled is False, "; ".join(case_log)
         assert result.returncode is None, "; ".join(case_log)
-        # The requested ceiling is inside EXEC_JOB_CEILING_MAX_S, so the
-        # production clamp must leave it untouched.
         assert result.ceiling_ms == ceiling_ms, "; ".join(case_log)
         assert result.elapsed_s >= effective_ceiling_s - timing_eps, "; ".join(case_log)
         assert result.elapsed_s <= effective_ceiling_s + sample_interval_s + timing_eps, "; ".join(
             case_log
         )
 
-        # HEALTHY PRECONDITION: mid-trace the job was alive, below the ceiling,
-        # and classified working by the real assessor (not simulated here).
-        # ``is not None`` also narrows the saved reference to ``JobSnapshot``.
         assert mid_snapshot is not None, "; ".join(case_log)
         mid_verdict = mid_snapshot.verdict
         assert mid_verdict is not None, "; ".join(case_log)
@@ -694,11 +582,7 @@ def test_randomized_hard_cap_terminates_healthily_within_budget_at_real_registry
         assert mid_verdict.score > _make_test_config().stall_theta, "; ".join(case_log)
         assert mid_verdict.pressure == 0.0, "; ".join(case_log)
 
-        # CLEANUP EVIDENCE (root-only scope — NOT descendant tree reaping).
         assert root_proc.pid in env.pm.orphans_cleaned, "; ".join(case_log)
-        # PUBLIC registry proof that the hard-capped job left the running
-        # set and the registry published its finished result -- the public
-        # stand-in for "the registry holds no running job".
         assert env.registry.is_running(job_id) is False, "; ".join(case_log)
         finished = env.registry.last_finished_result()
         assert finished is not None, "; ".join(case_log)
@@ -706,28 +590,23 @@ def test_randomized_hard_cap_terminates_healthily_within_budget_at_real_registry
 
 
 def test_trace_3_three_hour_e2e_completing_via_max_runtime() -> None:
-    """Trace 3: 3-h e2e with max_runtime_ms runs past 1h without kill and completes."""
     env = _TestEnv()
-    # 4 hours max runtime cap = 14_400_000 ms
     job_id = env.registry.start(
         ["e2e_test"],
         max_runtime_ms=4 * 3600 * 1000,
         capability="ProcessExecBounded",
     )
     root_proc = next(iter(env.procs.values()))
-    # Advance clock to 7200s (2 hours) with active output — must NOT be killed by default 1h ceiling!
     for _ in range(240):
         env.clock.advance(30.0)
         env.registry.note_output(job_id, capability="ProcessExecBounded")
         env.registry.wait(job_id, wait_ms=0, capability="ProcessExecBounded")
         env.registry.step_job(job_id, dt=30.0)
 
-    # Job still running
     snap = env.registry.wait(job_id, wait_ms=0, capability="ProcessExecBounded")
     assert isinstance(snap, JobSnapshot)
     assert snap.running
 
-    # Advance to 3.0 hours (10,800s = additional 3600s) and finish
     for _ in range(120):
         env.clock.advance(30.0)
         env.registry.note_output(job_id, capability="ProcessExecBounded")
@@ -744,22 +623,17 @@ def test_trace_3_three_hour_e2e_completing_via_max_runtime() -> None:
 
 
 def test_trace_4_disconnected_request_scenario() -> None:
-    """Trace 4: client request times out / disconnects, job continues and finishes."""
     env = _TestEnv()
     job_id = env.registry.start(["render_video"], capability="ProcessExecBounded")
     root_proc = next(iter(env.procs.values()))
 
-    # Client calls wait with short timeout, receives JobSnapshot
     snap = env.registry.wait(job_id, wait_ms=0, capability="ProcessExecBounded")
     assert isinstance(snap, JobSnapshot)
 
-    # Client "disconnects" / abandons HTTP request.
-    # Job advances in the background, finishes naturally.
     env.clock.advance(30.0)
     root_proc.finish(0)
     env.registry.step_job(job_id, dt=30.0)
 
-    # Later, client reconnects and calls wait with the job_id
     reconnect_result = env.registry.wait(job_id, wait_ms=0, capability="ProcessExecBounded")
     assert isinstance(reconnect_result, JobResult)
     assert reconnect_result.returncode == 0

@@ -1,15 +1,3 @@
-"""Shared seams for the conflict-resolution chain-parity suites.
-
-The parity tests all drive the real
-:func:`~ralph.pipeline.conflict_resolution.driver.run_conflict_resolution_pipeline`
-against the shipped policy bundle, with only the two git queries its
-verdict rests on replaced. Those four pieces live here so
-``test_conflict_resolution_phase_parity`` and
-``test_conflict_resolution_attempt_attribution`` script the driver
-identically -- a divergence between them would make the two files
-disagree about what the pipeline was even asked to do.
-"""
-
 from __future__ import annotations
 
 import functools

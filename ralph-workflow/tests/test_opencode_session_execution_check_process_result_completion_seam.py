@@ -1,9 +1,3 @@
-"""Black-box regression tests for OpenCode session-aware execution.
-
-All tests use in-memory fakes — no real subprocesses, no real wall-clock waits,
-no real psutil. Verifies five acceptance scenarios and two edge cases.
-"""
-
 from __future__ import annotations
 
 import io
@@ -32,23 +26,11 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# Poll interval used in the wait helper - matches _DESCENDANT_WAIT_POLL_SECONDS
 _DESCENDANT_WAIT_POLL_SECONDS = 0.5
-
-# Local aliases: tests call the same public functions but under the private-looking names
-# that were used when this module was monolithic (pre-package split).
 
 
 class TestCheckProcessResultCompletionSeam:
-    """check_process_result end-to-end completion contract with OpenCodeExecutionStrategy."""
-
     def test_explicit_completion_with_sentinel_does_not_raise(self, tmp_path: Path) -> None:
-        """declare_complete marker plus completion sentinel is terminal without artifact.
-
-        The plain-text marker alone is no longer authoritative: it can be spoofed
-        by ordinary agent output. The completion sentinel written by the real
-        declare_complete MCP tool provides the required corroboration.
-        """
         strategy = OpenCodeExecutionStrategy()
         handle = _FakeHandle(returncode=0)
         raw_output = ["Task declared complete: session_id=abc, summary=done, timestamp=1"]
@@ -66,7 +48,6 @@ class TestCheckProcessResultCompletionSeam:
                 captured_session_id="abc",
             ),
         )
-        # No exception raised means explicit_complete + sentinel → TERMINAL_COMPLETE
 
     def test_retryable_nonzero_exit_does_not_log_terminal_error(
         self,
@@ -106,7 +87,6 @@ class TestCheckProcessResultCompletionSeam:
     def test_terminal_native_task_regression_still_requires_parent_completion(
         self, tmp_path: Path
     ) -> None:
-        """S-4: a finished native task cannot turn an incomplete parent into success."""
         registry = ChildLivenessRegistry(
             progress_ttl=30.0,
             heartbeat_ttl=30.0,
@@ -143,7 +123,6 @@ class TestCheckProcessResultCompletionSeam:
     def test_no_artifact_requirement_still_requires_explicit_completion(
         self, tmp_path: Path
     ) -> None:
-        """OpenCode without a required artifact must still raise unless it declares complete."""
         strategy = OpenCodeExecutionStrategy()
         handle = _FakeHandle(returncode=0)
 
@@ -160,14 +139,6 @@ class TestCheckProcessResultCompletionSeam:
             )
 
     def test_required_receipt_needs_completion_sentinel(self, tmp_path: Path) -> None:
-        """A current-run receipt is necessary but not sufficient for completion.
-
-        The legacy on-disk ``.agent/artifacts/<type>.json``-only fallback
-        was removed (analysis how_to_fix item 3): a stale canonical
-        artifact from a previous run can no longer satisfy the current
-        run's completion gate. The hardened contract requires both the
-        current-run receipt and the explicit completion sentinel.
-        """
         run_id = "seam-opencode-on-disk-run-id"
         artifact_dir = tmp_path / ".agent" / "artifacts"
         artifact_dir.mkdir(parents=True)
@@ -244,7 +215,6 @@ class TestCheckProcessResultCompletionSeam:
         )
 
     def test_neither_signal_nor_artifact_raises_resumable_exit(self, tmp_path: Path) -> None:
-        """Missing sentinel and required receipt produces a resumable exit."""
         strategy = OpenCodeExecutionStrategy()
         handle = _FakeHandle(returncode=0)
 
@@ -252,7 +222,7 @@ class TestCheckProcessResultCompletionSeam:
             check_process_result(
                 handle,
                 "opencode",
-                [],  # no declare_complete marker
+                [],
                 CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
@@ -268,7 +238,6 @@ class TestCheckProcessResultCompletionSeam:
             )
 
     def test_pi_length_stop_without_artifact_raises_context_exhausted(self, tmp_path: Path) -> None:
-        """Pi stopReason=length is a context-exhaustion signal, not an artifact retry."""
         strategy = OpenCodeExecutionStrategy()
         handle = _FakeHandle(returncode=0)
         raw_output = [
@@ -300,7 +269,6 @@ class TestCheckProcessResultCompletionSeam:
         assert excinfo.value.skip_same_agent_retries is True
 
     def test_malformed_json_artifact_raises_resumable_exit(self, tmp_path: Path) -> None:
-        """An artifact that cannot be parsed as JSON must NOT set required_artifact_present."""
         artifact_dir = tmp_path / ".agent" / "artifacts"
         artifact_dir.mkdir(parents=True)
         (artifact_dir / "development_result.json").write_text("not-valid-json")
@@ -328,7 +296,6 @@ class TestCheckProcessResultCompletionSeam:
             )
 
     def test_empty_json_object_artifact_raises_resumable_exit(self, tmp_path: Path) -> None:
-        """An empty JSON dict artifact must NOT set required_artifact_present."""
         artifact_dir = tmp_path / ".agent" / "artifacts"
         artifact_dir.mkdir(parents=True)
         (artifact_dir / "development_result.json").write_text("{}")
@@ -356,7 +323,6 @@ class TestCheckProcessResultCompletionSeam:
             )
 
     def test_optional_artifact_absent_without_sentinel_raises(self, tmp_path: Path) -> None:
-        """Optional artifact policy relaxes the receipt, not declaration."""
         strategy = OpenCodeExecutionStrategy()
         handle = _FakeHandle(returncode=0)
 
@@ -386,7 +352,6 @@ class TestCheckProcessResultCompletionSeam:
     def test_optional_artifact_malformed_without_sentinel_raises_at_completion_check(
         self, tmp_path: Path
     ) -> None:
-        """A malformed optional file cannot replace the mandatory sentinel."""
         artifact_dir = tmp_path / ".agent" / "artifacts"
         artifact_dir.mkdir(parents=True)
         (artifact_dir / "development_result.json").write_text("not-valid-json")

@@ -1,5 +1,3 @@
-"""Unit tests for the fan-out authority (Authority 6)."""
-
 from __future__ import annotations
 
 from ralph.pipeline._fan_out_authority import (

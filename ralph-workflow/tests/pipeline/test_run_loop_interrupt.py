@@ -1,34 +1,3 @@
-"""Black-box tests for ``ralph.pipeline.run_loop._handle_keyboard_interrupt``.
-
-These tests pin the 4 contracts the run_loop interrupt wrapper must satisfy:
-
-1. Return 130: the wrapper returns the canonical ``INTERRUPT_EXIT_CODE``
-   (130) so the run loop exits with the correct code.
-2. State marked interrupted: the wrapper calls
-   ``state.copy_with(interrupted_by_user=True)`` before saving the
-   checkpoint so a resumed run knows the previous run was
-   user-interrupted.
-3. monitor_stop cleared: the wrapper sets ``loop_ctx.monitor_stop = None``
-   after calling the entry point so the cleanup phase does not
-   double-stop the connectivity monitor.
-4. Checkpoint saved: the wrapper calls ``save_checkpoint_or_log`` with
-   the interrupted state and the path returned by
-   ``_checkpoint_path(loop_ctx.workspace_scope)``.
-
-The wrapper at ``ralph/pipeline/run_loop.py:446-469`` is the
-synchronous path a real Ctrl+C reaches inside the pipeline loop. It
-delegates to ``ralph.pipeline.runner.handle_keyboard_interrupt`` (the
-re-exported entry point) and then mutates ``loop_ctx`` to clear the
-monitor-stop callback and save a checkpoint.
-
-All tests in this file patch ``ralph.pipeline.runner`` (imported as
-``_runner_module``) so the wrapper's call sites are observable. The
-patching is done via ``monkeypatch.setattr`` on the module attribute
-(not on the local alias inside ``run_loop``) because ``run_loop.py:15``
-imports the same module as ``_runner_module`` and the patch is visible
-inside ``run_loop`` at the call site.
-"""
-
 from __future__ import annotations
 
 import tempfile
@@ -64,15 +33,6 @@ _EXIT_CODE = 130
 
 
 class _StubDisplay:
-    """Minimal display stub whose ``emit`` records calls.
-
-    The module-level ``emit_activity_line`` at
-    ``ralph/display/parallel_display.py:3068-3095`` calls
-    ``display.emit(unit_id, line)`` when display is not None. This
-    stub satisfies that duck-typed surface and records every call for
-    assertion.
-    """
-
     def __init__(self) -> None:
         self.emit_calls: list[tuple[object, str]] = []
 
@@ -86,12 +46,6 @@ def _make_loop_ctx(
     monitor_stop: Callable[[], None] | None = None,
     workspace_scope: WorkspaceScope | None = None,
 ) -> _LoopContext:
-    """Build a ``_LoopContext`` with inert placeholders.
-
-    The wrapper only reads ``active_display``, ``monitor_stop``, and
-    ``workspace_scope``. The remaining fields are not exercised here,
-    so plain objects keep this interrupt-contract test fast.
-    """
     resolved_display = active_display if active_display is not None else _StubDisplay()
     resolved_scope = (
         workspace_scope
@@ -127,19 +81,6 @@ def _patch_runner_dependencies(
     list[tuple[object, str, object]],
     list[tuple[WorkspaceScope, object]],
 ]:
-    """Patch ``_runner_module`` call sites and return recording stubs.
-
-    Returns three lists:
-    - ``handle_keyboard_interrupt_calls``: arguments passed to
-      ``_runner_module.handle_keyboard_interrupt``.
-    - ``save_checkpoint_or_log_calls``: ``(state, message, path)``
-      triples passed to ``_runner_module.save_checkpoint_or_log``.
-    - ``checkpoint_path_calls``: ``(workspace_scope, return_value)``
-      pairs from ``_runner_module._checkpoint_path``.
-
-    All three patches are removed automatically when the
-    ``monkeypatch`` fixture tears down.
-    """
     handle_keyboard_interrupt_calls: list[object] = []
 
     def _handle_keyboard_interrupt_stub(monitor_stop: object) -> None:
@@ -175,7 +116,6 @@ def _patch_runner_dependencies(
 
 
 def test_run_loop_handle_keyboard_interrupt_returns_130() -> None:
-    """Pins contract 1: the wrapper returns the canonical exit code 130."""
     state = PipelineState(phase="development")
     loop_ctx = _make_loop_ctx()
     result = _handle_keyboard_interrupt(state, loop_ctx)
@@ -187,9 +127,6 @@ def test_run_loop_handle_keyboard_interrupt_returns_130() -> None:
 def test_run_loop_handle_keyboard_interrupt_marks_state_interrupted(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Pins contract 2: the wrapper passes a state whose
-    ``interrupted_by_user`` is True to ``save_checkpoint_or_log``.
-    """
     _, save_calls, _ = _patch_runner_dependencies(monkeypatch)
     state = PipelineState(phase="development")
     loop_ctx = _make_loop_ctx()
@@ -203,12 +140,6 @@ def test_run_loop_handle_keyboard_interrupt_marks_state_interrupted(
 def test_run_loop_handle_keyboard_interrupt_clears_monitor_stop_on_loop_ctx(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Pins contract 3: the wrapper sets ``loop_ctx.monitor_stop = None``
-    after calling the entry point so the cleanup phase does not
-    double-stop the connectivity monitor. The original ``monitor_stop``
-    callable is passed to ``handle_keyboard_interrupt`` but is NOT
-    invoked by the wrapper.
-    """
     stop_calls: list[int] = []
     handle_calls: list[object] = []
 
@@ -238,11 +169,6 @@ def test_run_loop_handle_keyboard_interrupt_clears_monitor_stop_on_loop_ctx(
 def test_run_loop_handle_keyboard_interrupt_saves_checkpoint_to_workspace_scope(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Pins contract 4: the wrapper calls
-    ``_runner_module._checkpoint_path(loop_ctx.workspace_scope)`` and
-    forwards the result to ``save_checkpoint_or_log`` together with the
-    interrupted state.
-    """
     _, save_calls, checkpoint_path_calls = _patch_runner_dependencies(monkeypatch)
     ws_root = Path(tempfile.gettempdir()) / "test-workspace"
     workspace_scope = WorkspaceScope(root=ws_root)

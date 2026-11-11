@@ -1,4 +1,3 @@
-"""RegistrationHandler protocol for MCP tool handler functions."""
 
 from __future__ import annotations
 
@@ -9,7 +8,6 @@ if TYPE_CHECKING:
 
 
 class RegistrationHandler(Protocol):
-    """Callable protocol for MCP tool handler functions registered in the tool bridge."""
 
     def __call__(
         self,

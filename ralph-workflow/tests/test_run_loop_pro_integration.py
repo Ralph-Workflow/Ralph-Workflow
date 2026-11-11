@@ -1,12 +1,3 @@
-"""Black-box unit tests for Pro integration in the pipeline run loop.
-
-These tests stub out the runner, marker reader, and heartbeat client so
-the run loop can be exercised end-to-end without a real subprocess,
-network call, or wall-clock ``time.sleep``. The Pro contract is
-exercised at the integration level: heartbeat client is started in Pro
-mode, stopped during cleanup, and exit codes are preserved.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -48,12 +39,6 @@ if TYPE_CHECKING:
 
 
 def _load_run_loop() -> ModuleType:
-    """Load the run_loop module via importlib after runner has loaded.
-
-    Avoids the pre-existing circular import between
-    ``ralph.pipeline.runner`` and ``ralph.pipeline.run_loop`` by
-    ensuring runner is fully initialised before run_loop is loaded.
-    """
     return importlib.import_module("ralph.pipeline.run_loop")
 
 
@@ -62,7 +47,6 @@ def _load_runner() -> ModuleType:
 
 
 def _make_fake_bundle() -> PolicyBundle:
-    """Build the smallest bundle that satisfies ``run``'s contract."""
     pipeline = PipelinePolicy(
         phases={
             "planning": PhaseDefinition(
@@ -107,7 +91,6 @@ def _make_fake_bundle() -> PolicyBundle:
 
 
 def _seed_workspace(workspace_root: Path) -> None:
-    """Write the minimum files the run loop expects on the workspace."""
     workspace_root.mkdir(parents=True, exist_ok=True)
     (workspace_root / "PROMPT.md").write_text("# test\n", encoding="utf-8")
 
@@ -133,7 +116,6 @@ def _build_config(tmp_path: Path) -> UnifiedConfig:
 
 
 def _install_display_context(monkeypatch: pytest.MonkeyPatch, run_loop_module: ModuleType) -> None:
-    """Force ``make_display_context`` to return a deterministic context."""
     ctx = make_display_context()
     runner_module = _load_runner()
     monkeypatch.setattr(runner_module, "make_display_context", lambda **_kwargs: ctx)
@@ -151,7 +133,6 @@ def _patch_runner_dependencies(
     state: PipelineState,
     bundle: PolicyBundle,
 ) -> None:
-    """Patch heavy entry points so the run loop walks to the inner loop and exits cleanly."""
     runner_module = _load_runner()
     monkeypatch.setattr(
         runner_module,
@@ -290,7 +271,6 @@ def test_pro_mode_exit_code_zero_on_clean_completion(
 def test_pro_mode_exit_code_preserved_on_pipeline_failure(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A pipeline that returns a non-zero step code must surface that code under Pro mode."""
     run_loop_module = _load_run_loop()
     monkeypatch.setenv("RALPH_WORKFLOW_PRO", "1")
     _seed_workspace(tmp_path)
@@ -325,7 +305,6 @@ def test_pro_mode_exit_code_preserved_on_pipeline_failure(
 def test_connectivity_monitor_cleanup_stops_its_probe_task(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The owned monitor loop finishes its task before the probe thread exits."""
     run_loop_module = _load_run_loop()
     started = threading.Event()
     stopped = threading.Event()
@@ -350,7 +329,6 @@ def test_connectivity_monitor_cleanup_stops_its_probe_task(
 def test_start_pro_heartbeat_returns_none_when_marker_missing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """No marker = no heartbeat, even when RALPH_WORKFLOW_PRO is set."""
     run_loop_module = _load_run_loop()
     monkeypatch.setenv("RALPH_WORKFLOW_PRO", "1")
     assert run_loop_module._start_pro_heartbeat_if_active(tmp_path) is None
@@ -381,7 +359,6 @@ def test_start_pro_heartbeat_returns_none_when_token_missing(
 def test_connectivity_monitor_regression_teardown_cancels_pending_tasks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-3: cleanup cancels tasks the monitor itself does not own."""
     run_loop_module = _load_run_loop()
 
     class _MonitorWithPendingTask:
@@ -423,13 +400,6 @@ class _RecordingHeartbeat:
 
 
 class _LateMarkerWatcher:
-    """In-process watcher that adopts the marker only after N polls.
-
-    Mirrors the public ``ProMarkerWatcher`` surface that the run
-    loop touches (``heartbeat_client``, ``stop()``) so the test
-    can be exercised end-to-end without a real watcher thread.
-    """
-
     def __init__(
         self,
         workspace_root: Path,
@@ -448,7 +418,6 @@ class _LateMarkerWatcher:
         self.poll_count = 0
 
     def start(self) -> None:
-        # Drive polls synchronously so the test stays deterministic.
         for result in self._poll_results:
             if self._stopped:
                 return
@@ -466,9 +435,6 @@ def test_pipeline_deps_policy_bundle_is_authoritative_for_pro_hooks(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """When ``pipeline_deps.policy_bundle`` is already resolved, ``run()`` does not
-    call ``pro_hooks.policy_bundle_factory`` again.
-    """
     run_loop_module = _load_run_loop()
     _seed_workspace(tmp_path)
 
@@ -514,7 +480,6 @@ def test_pipeline_deps_policy_bundle_is_authoritative_for_pro_hooks(
 def test_pro_collaborator_overrides_reach_inner_loop(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """PipelineDeps built with Pro collaborator overrides is forwarded to the inner loop."""
     run_loop_module = _load_run_loop()
     monkeypatch.delenv("RALPH_WORKFLOW_PRO", raising=False)
     _seed_workspace(tmp_path)
@@ -605,7 +570,6 @@ def test_pro_collaborator_overrides_reach_inner_loop(
 def test_late_marker_adoption_starts_heartbeat_after_run(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A late-arriving marker is adopted by the watcher; heartbeat is still cleaned up."""
     run_loop_module = _load_run_loop()
     monkeypatch.setenv("RALPH_WORKFLOW_PRO", "1")
     _seed_workspace(tmp_path)
@@ -660,11 +624,7 @@ def test_late_marker_adoption_starts_heartbeat_after_run(
     assert recording.stopped, "cleanup should have stopped the heartbeat"
 
 
-# --- U4b: fail-closed consumers of read_record_outcome ----------------------
-
-
 def _minimal_ctx(tmp_path: Path, state: PipelineState) -> object:
-    """Build a duck-typed _LoopContext for the handoff unit under test."""
     from types import SimpleNamespace
 
     return SimpleNamespace(
@@ -684,7 +644,6 @@ def _seed_corrupt_record(tmp_path: Path) -> None:
 def test_handoff_unreadable_record_persists_intervention_projection(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """UNREADABLE handoff must be decision-complete: no diagnostic, intervention persisted."""
     from ralph.pipeline import run_loop as run_loop_module
     from ralph.pipeline._rebase_outcome_kind import RebaseOutcomeKind
 
@@ -703,7 +662,6 @@ def test_handoff_unreadable_record_persists_intervention_projection(
     assert rebase.last_outcome is RebaseOutcomeKind.LADDER_ESCALATION
     assert rebase.is_intervention_required
     assert "unreadable" in (rebase.last_reason or "")
-    # idempotent across restarts: calling again is stable
     run_loop_module._handoff_retained_failure(ctx, "retained on unreadable record")
     assert ctx.latest_state[0].rebase.last_outcome is RebaseOutcomeKind.LADDER_ESCALATION
 
@@ -711,7 +669,6 @@ def test_handoff_unreadable_record_persists_intervention_projection(
 def test_handoff_readable_record_still_runs_diagnostic(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A readable retained record keeps its existing diagnostic handoff."""
     from ralph.pipeline import run_loop as run_loop_module
     from ralph.pipeline.auto_integrate_record import IntegrationRecord, write_record
 
@@ -737,7 +694,6 @@ def test_handoff_readable_record_still_runs_diagnostic(
 
 
 def test_retained_integration_reason_unreadable_blocks_dispatch(tmp_path: Path) -> None:
-    """UNREADABLE and BUSY dispositions retain ownership like a readable record."""
     from ralph.pipeline.integration_resolution import retained_integration_reason
 
     _seed_corrupt_record(tmp_path)
@@ -747,7 +703,6 @@ def test_retained_integration_reason_unreadable_blocks_dispatch(tmp_path: Path) 
 def test_runner_exit_success_blocked_by_unreadable_record(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """ExitSuccessEffect must fail closed when the record is unreadable."""
     import types
 
     import ralph.pipeline.runner as runner_module
@@ -784,9 +739,6 @@ def test_runner_exit_success_blocked_by_unreadable_record(
     assert emitted == []
 
 
-# --- WU-B: post-recovery dispatch and state propagation ---------------------
-
-
 def _wu_b_ctx(tmp_path: Path, state: PipelineState) -> object:
     from types import SimpleNamespace
 
@@ -809,11 +761,9 @@ def _wu_b_ctx(tmp_path: Path, state: PipelineState) -> object:
 def test_post_recovery_dispatch_returns_continuation_not_block(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Successful post-recovery dispatch must clear the block and persist state."""
     from ralph.pipeline import run_loop as run_loop_module
     from ralph.pipeline._rebase_outcome_kind import RebaseOutcomeKind
 
-    # Clean tree: no record file, no git repo => verdict goes through.
     assert not (tmp_path / ".agent" / "auto_integrate_in_progress.json").exists()
     state = PipelineState(phase="development")
     rebase = state.rebase.model_copy(
@@ -837,7 +787,6 @@ def test_post_recovery_dispatch_returns_continuation_not_block(
 
     def _fake_startup(_ctx: object, _rebase: object) -> object:
         recovered_calls.append(_rebase)
-        # Recovery landed: the recovered rebase clears all conflict evidence.
         return _rebase.model_copy(
             update={
                 "last_outcome": RebaseOutcomeKind.FAST_FORWARDED,
@@ -866,9 +815,6 @@ def test_post_recovery_dispatch_returns_continuation_not_block(
     verdict = inspect_integration_resolution(tmp_path, state.rebase)
     result = run_loop_module._post_recovery_verdict(ctx, state, "development", verdict)
 
-    # BUG (pre-fix): both branches returned the raw verdict, so the caller
-    # treated success as another block. The contract: success returns None
-    # (dispatch allowed) with the reconciled state persisted.
     assert result is None, "successful post-recovery dispatch must not block"
     assert recovered_calls, "startup integration must run"
     final = ctx.latest_state[0].rebase
@@ -880,7 +826,6 @@ def test_post_recovery_dispatch_returns_continuation_not_block(
 def test_post_recovery_blocked_still_returns_verdict(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A still-recoverable verdict after recovery keeps the block behavior."""
     from ralph.pipeline import run_loop as run_loop_module
     from ralph.pipeline._rebase_outcome_kind import RebaseOutcomeKind
     from ralph.pipeline.integration_resolution import (

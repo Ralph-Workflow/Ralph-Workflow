@@ -1,10 +1,3 @@
-"""Commit plumbing must use canonical artifact submission.
-
-The commit CLI has a single canonical path for artifact submission
-through the MCP tool handle_submit_md_artifact. No direct writes to
-.agent/receipts/ or .agent/completion_seen_*.json are permitted.
-"""
-
 from __future__ import annotations
 
 import ast
@@ -34,32 +27,20 @@ if TYPE_CHECKING:
 
 
 def _plumbing_module() -> types.ModuleType:
-    """Resolve commit plumbing directly; it must not depend on CLI import order."""
     return importlib.import_module("ralph.pipeline.plumbing.commit_plumbing")
 
 
 def test_commit_plumbing_never_directly_writes_receipt_or_sentinel() -> None:
-    """Commit plumbing never directly writes to .agent/receipts/ or .agent/completion_seen_*.json.
-
-    This test reads the commit_plumbing.py source and scans for patterns that
-    would indicate direct writes to protected paths outside the canonical
-    submission block markers.
-    """
     plumbing_path = (
         Path(__file__).parent.parent / "ralph" / "pipeline" / "plumbing" / "commit_plumbing.py"
     )
     source_text = plumbing_path.read_text(encoding="utf-8")
 
-    # Patterns that would indicate direct writes to protected paths
     protected_write_patterns = [
-        # Direct Path.write_text / write_bytes to .agent/receipts/
         r"\.agent/receipts/.*\.write_(text|bytes)",
-        # Direct Path.open for writing to .agent/receipts/
         r"\.agent/receipts/.*\.open.*\w",
-        # Direct writes to .agent/completion_seen_*.json
         r"\.agent/completion_seen_.*\.write_(text|bytes)",
         r"\.agent/completion_seen_.*\.open.*\w",
-        # Direct json.dump to protected paths
         r"json\.dump.*\.agent/(receipts|completion_seen_)",
     ]
 
@@ -68,10 +49,6 @@ def test_commit_plumbing_never_directly_writes_receipt_or_sentinel() -> None:
         assert not matches, f"Found direct write to protected path matching {pattern}: {matches}"
 
 
-#: Sanctioned helpers for wiping run-scoped completion evidence. Both live
-#: outside commit plumbing so the deletes stay in one audited place;
-#: ``_clear_session_completion_sentinel`` is the superset (it delegates to
-#: ``clear_run_receipts`` and additionally drops the completion sentinel).
 _SANCTIONED_RUN_STATE_CLEARS = frozenset(
     {"clear_run_receipts", "_clear_session_completion_sentinel"}
 )
@@ -79,22 +56,13 @@ _SANCTIONED_RUN_STATE_CLEARS = frozenset(
 
 @pytest.mark.timeout_seconds(5)
 def test_commit_plumbing_receipt_cleared_before_each_attempt() -> None:
-    """Run-scoped completion evidence is wiped at the start of each attempt.
-
-    This protects against stale-evidence contamination between attempts —
-    both a leftover submission receipt and a leftover completion sentinel
-    satisfy the completion gate on an attempt whose agent never ran.
-    """
-    # Read the source of _run_commit_agent_attempt_with_recovery
     plumbing_path = (
         Path(__file__).parent.parent / "ralph" / "pipeline" / "plumbing" / "commit_plumbing.py"
     )
     source_text = plumbing_path.read_text(encoding="utf-8")
 
-    # Parse the source to find the function definition
     tree = ast.parse(source_text)
 
-    # Find _run_commit_agent_attempt_with_recovery function
     target_func = None
     for node in ast.walk(tree):
         if (
@@ -106,7 +74,6 @@ def test_commit_plumbing_receipt_cleared_before_each_attempt() -> None:
 
     assert target_func is not None, "Function _run_commit_agent_attempt_with_recovery not found"
 
-    # Check that a sanctioned clear helper is called in the function body
     clears_run_state = False
     for node in ast.walk(target_func):
         if (
@@ -124,31 +91,20 @@ def test_commit_plumbing_receipt_cleared_before_each_attempt() -> None:
 
 
 def test_commit_plumbing_run_id_binding_is_stable() -> None:
-    """Receipt is stamped under _COMMIT_RUN_ID and never any other value.
-
-    This protects against the artifact-handoff drift bug.
-    """
     plumbing_path = (
         Path(__file__).parent.parent / "ralph" / "pipeline" / "plumbing" / "commit_plumbing.py"
     )
     source_text = plumbing_path.read_text(encoding="utf-8")
 
-    # Check that _COMMIT_RUN_ID is used consistently
-    # The constant should be defined and used
     assert "_COMMIT_RUN_ID" in source_text, "_COMMIT_RUN_ID constant not defined"
 
-    # Check that the constant value is used (not a different run_id literal)
-    # Look for patterns like run_id="commit-plumbing" or run_id='commit-plumbing'
-    # and ensure they don't appear (only the constant should be used)
     non_constant_run_id_patterns = [
         r'run_id\s*=\s*["\']commit-plumbing["\']',
-        r'run_id\s*=\s*["\'][^"\']*["\']',  # Any run_id literal
+        r'run_id\s*=\s*["\'][^"\']*["\']',
     ]
 
-    # Only check for literals, not the specific value
     for pattern in non_constant_run_id_patterns[1:2]:
         matches = re.findall(pattern, source_text)
-        # Filter out the constant definition itself
         filtered_matches = [m for m in matches if "_COMMIT_RUN_ID" not in m]
         assert not filtered_matches, (
             f"Found run_id literal instead of _COMMIT_RUN_ID constant: {filtered_matches}"
@@ -156,23 +112,14 @@ def test_commit_plumbing_run_id_binding_is_stable() -> None:
 
 
 def test_commit_plumbing_uses_only_allowlisted_delete() -> None:
-    """Only clear_run_receipts is used for deletion in protected paths.
-
-    No ad-hoc unlink of .agent/receipts/* or .agent/completion_seen_* files.
-    Other cleanup operations (e.g., .agent/tmp/*) are allowed.
-    """
     plumbing_path = (
         Path(__file__).parent.parent / "ralph" / "pipeline" / "plumbing" / "commit_plumbing.py"
     )
     source_text = plumbing_path.read_text(encoding="utf-8")
 
-    # Patterns that would indicate direct deletes to protected paths
     protected_delete_patterns = [
-        # Direct Path.unlink/rmdir/remove to .agent/receipts/
         r"\.agent/receipts/.*\.(unlink|rmdir|remove)\(",
-        # Direct Path.unlink/rmdir/remove to .agent/completion_seen_
         r"\.agent/completion_seen_.*\.(unlink|rmdir|remove)\(",
-        # Direct os.remove/os.unlink/os.rmdir to protected paths
         r"os\.(remove|unlink|rmdir).*\.agent/(receipts|completion_seen_)",
     ]
 
@@ -217,7 +164,6 @@ def test_commit_plumbing_attempt_stamps_receipt_and_sentinel(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """A markdown commit submission stamps its canonical receipt and sentinel."""
 
     def _fake_execute_agent_effect(
         effect: object,
@@ -288,11 +234,6 @@ def test_commit_plumbing_attempt_uses_default_backend_when_not_injected(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """A commit attempt without a custom backend injection still succeeds.
-
-    This verifies that the plumbing works with the default ArtifactHandlerDeps
-    (DEFAULT_ARTIFACT_HANDLER_DEPS) rather than requiring an injected backend.
-    """
 
     def _fake_execute_agent_effect(
         effect: object,

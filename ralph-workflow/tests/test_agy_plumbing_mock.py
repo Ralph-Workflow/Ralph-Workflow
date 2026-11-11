@@ -1,24 +1,3 @@
-"""Contract tests for AGY-specific smoke plumbing.
-
-The prompt-contract and mock-diagnostic tests are fast unit tests that run
-under ``make test``. The negative import-time invariant tests (guards firing
-on bad values and surviving ``python -O``) are marked ``subprocess_e2e`` and
-run under ``make test-subprocess-e2e``.
-
-The RALPH_AGY_BINARY override is split into two contracts:
-
-* A general binary override: a real wrapper, alternate live binary path, or
-  ``agy`` on ``PATH``. Treated as a live AGY run.
-* A mock binary override: the deterministic mock at
-  ``tests/_support/mock_agy.sh`` (or ``mock_agy.py``). Empty stdout is
-  expected under ``MOCK_AGY_BEHAVIOR=quota_exhausted|invalid_model`` and
-  surfaces the informational mock-empty note.
-
-The detection helper is :func:`is_mock_agy_override`; the smoke
-diagnostic honours that helper to keep the two contracts from leaking
-into each other.
-"""
-
 from __future__ import annotations
 
 import contextlib
@@ -42,7 +21,6 @@ from ralph.pipeline.plumbing.smoke_plumbing import (
 
 
 def test_agy_prompt_uses_canonical_markdown_submit_tool() -> None:
-    """The AGY smoke prompt submits Markdown through the canonical MCP tool."""
     prompt_text = _build_smoke_prompt(
         "tmp/interactive-agy-smoke/todo-list.js",
         submit_artifact_tool_name="ralph_submit_md_artifact",
@@ -56,7 +34,6 @@ def test_agy_prompt_uses_canonical_markdown_submit_tool() -> None:
 
 
 def test_agy_prompt_allows_validated_fallback_when_submit_tool_is_unavailable() -> None:
-    """AGY can leave the validated fallback without writing a canonical artifact."""
     prompt_text = _build_smoke_prompt(
         "tmp/interactive-agy-smoke/todo-list.js",
         submit_artifact_tool_name="ralph_submit_md_artifact",
@@ -67,7 +44,6 @@ def test_agy_prompt_allows_validated_fallback_when_submit_tool_is_unavailable() 
 
 
 def test_agy_prompt_requires_workspace_relative_dispatcher_write_paths() -> None:
-    """AGY must not send an absolute output path through the workspace MCP tool."""
     prompt_text = _build_smoke_prompt(
         "tmp/interactive-agy-smoke/todo-list.js",
         submit_artifact_tool_name="ralph_submit_md_artifact",
@@ -81,7 +57,6 @@ def test_agy_prompt_requires_workspace_relative_dispatcher_write_paths() -> None
 
 
 def test_smoke_invariants_hold() -> None:
-    """The smoke plumbing invariants are satisfied by the current constants."""
     assert _SMOKE_MAX_TURNS >= 1
     assert _SMOKE_IDLE_TIMEOUT_SECONDS > 0
     assert _AGENT_SESSION_CEILINGS["agy"] > _SMOKE_IDLE_TIMEOUT_SECONDS
@@ -90,7 +65,6 @@ def test_smoke_invariants_hold() -> None:
 def test_is_mock_agy_override_false_when_unset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Without RALPH_AGY_BINARY the override is not the mock."""
     monkeypatch.delenv("RALPH_AGY_BINARY", raising=False)
     assert is_mock_agy_override() is False
 
@@ -98,7 +72,6 @@ def test_is_mock_agy_override_false_when_unset(
 def test_is_mock_agy_override_true_for_mock_shell_wrapper(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The mock shell wrapper is detected by basename."""
     mock_path = str(Path(__file__).resolve().parent / "_support" / "mock_agy.sh")
     monkeypatch.setenv("RALPH_AGY_BINARY", mock_path)
     assert is_mock_agy_override() is True
@@ -107,7 +80,6 @@ def test_is_mock_agy_override_true_for_mock_shell_wrapper(
 def test_is_mock_agy_override_true_for_mock_python_module(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The mock Python module is detected by basename."""
     mock_path = str(Path(__file__).resolve().parent / "_support" / "mock_agy.py")
     monkeypatch.setenv("RALPH_AGY_BINARY", mock_path)
     assert is_mock_agy_override() is True
@@ -116,7 +88,6 @@ def test_is_mock_agy_override_true_for_mock_python_module(
 def test_is_mock_agy_override_false_for_real_wrapper(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A general RALPH_AGY_BINARY override is not the mock binary."""
     monkeypatch.setenv("RALPH_AGY_BINARY", "/opt/agy-wrapper/agy")
     assert is_mock_agy_override() is False
 
@@ -124,7 +95,6 @@ def test_is_mock_agy_override_false_for_real_wrapper(
 def test_is_mock_agy_override_false_for_bare_agy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A bare ``agy`` on PATH is the default live binary, not the mock."""
     monkeypatch.setenv("RALPH_AGY_BINARY", "agy")
     assert is_mock_agy_override() is False
 
@@ -132,7 +102,6 @@ def test_is_mock_agy_override_false_for_bare_agy(
 def test_agy_chained_auth_success_is_not_labeled_unauthenticated(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A successful ChainedAuth event overrides a transient login prompt."""
     monkeypatch.setenv("RALPH_AGY_BINARY", "/opt/agy-wrapper/agy")
     diagnostic = agy_empty_output_reason(
         [
@@ -148,12 +117,9 @@ def test_agy_mock_empty_stdout_diagnostic_is_informational(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Mock-binary override surfaces the informational mock-empty note on empty stdout."""
     mock_path = str(Path(__file__).resolve().parent / "_support" / "mock_agy.sh")
     monkeypatch.setenv("RALPH_AGY_BINARY", mock_path)
     assert is_mock_agy_override() is True
-    # The informational note exists for the selector whose mock contract is
-    # empty stdout (``invalid_model`` exits silently by design).
     monkeypatch.setenv("MOCK_AGY_BEHAVIOR", "invalid_model")
     diagnostic = _agy_upstream_diagnostic([], tmp_path)
     assert diagnostic is not None
@@ -173,7 +139,6 @@ def test_agy_mock_terminal_failures_do_not_use_empty_stdout_diagnostic(
     tmp_path: Path,
     behavior: str,
 ) -> None:
-    """Terminal mock selectors are not masked as intentional empty output."""
     mock_path = str(Path(__file__).resolve().parent / "_support" / "mock_agy.sh")
     monkeypatch.setenv("RALPH_AGY_BINARY", mock_path)
     monkeypatch.setenv("MOCK_AGY_BEHAVIOR", behavior)
@@ -188,32 +153,19 @@ def test_agy_non_mock_empty_stdout_does_not_use_mock_diagnostic(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """A non-mock RALPH_AGY_BINARY override must not be diagnosed as a mock-empty run.
-
-    Regression: the prior implementation treated every ``RALPH_AGY_BINARY``
-    override as a mock run, so the live ``cli.log`` quota / model-id
-    diagnostic was masked by the informational mock-empty note. A real
-    wrapper or alternate live binary path must take the live-diagnostic
-    branch so a genuine live-AGY failure is never hidden.
-    """
     monkeypatch.setenv("RALPH_AGY_BINARY", "/opt/agy-wrapper/agy")
     assert is_mock_agy_override() is False
     diagnostic = _agy_upstream_diagnostic([], tmp_path)
-    # A non-mock override must NOT be reported as a mock-empty run.
     if diagnostic is not None:
         assert "mock AGY produced empty stdout by design" not in diagnostic
         assert "MOCK_AGY_BEHAVIOR" not in diagnostic
         assert "harness captured this correctly" not in diagnostic
-    # Whether the diagnostic is None (when no live cli.log issue is
-    # present) or a live-diagnostic string, the contract is: never the
-    # mock-empty note. The exact diagnostic is environment-dependent.
 
 
 def test_agy_bare_agy_override_does_not_use_mock_diagnostic(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """A bare ``agy`` override (i.e. the default live binary) takes the live branch."""
     monkeypatch.setenv("RALPH_AGY_BINARY", "agy")
     assert is_mock_agy_override() is False
     diagnostic = _agy_upstream_diagnostic([], tmp_path)
@@ -222,7 +174,6 @@ def test_agy_bare_agy_override_does_not_use_mock_diagnostic(
 
 
 def _get_smoke_plumbing_path() -> str:
-    """Return the absolute path to ralph/pipeline/plumbing/smoke_plumbing.py."""
     test_dir = Path(__file__).parent
     return str(test_dir.parent / "ralph" / "pipeline" / "plumbing" / "smoke_plumbing.py")
 
@@ -234,9 +185,7 @@ def _run_patched_smoke_plumbing_import(
     agy_ceiling: float | None = None,
     minus_o: bool = False,
 ) -> subprocess.CompletedProcess[str]:
-    """Run a subprocess that patches smoke_plumbing.py constants and imports it."""
     smoke_path = _get_smoke_plumbing_path()
-    # smoke_path is .../ralph-workflow/ralph/pipeline/plumbing/smoke_plumbing.py
     repo_root = str(Path(smoke_path).parent.parent.parent.parent)
     original = Path(smoke_path).read_text(encoding="utf-8")
 
@@ -300,7 +249,6 @@ def _run_patched_smoke_plumbing_import(
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(10)
 def test_smoke_max_turns_invariant_fires() -> None:
-    """_SMOKE_MAX_TURNS < 1 must raise RuntimeError at import time."""
     result = _run_patched_smoke_plumbing_import(max_turns=0)
     assert result.returncode != 0
     assert "RuntimeError" in result.stderr
@@ -310,7 +258,6 @@ def test_smoke_max_turns_invariant_fires() -> None:
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(10)
 def test_smoke_max_turns_invariant_survives_minus_o() -> None:
-    """_SMOKE_MAX_TURNS invariant must survive ``python -O``."""
     result = _run_patched_smoke_plumbing_import(max_turns=0, minus_o=True)
     assert result.returncode != 0
     assert "RuntimeError" in result.stderr
@@ -320,7 +267,6 @@ def test_smoke_max_turns_invariant_survives_minus_o() -> None:
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(10)
 def test_smoke_idle_timeout_invariant_fires() -> None:
-    """_SMOKE_IDLE_TIMEOUT_SECONDS <= 0 must raise RuntimeError at import time."""
     result = _run_patched_smoke_plumbing_import(idle_timeout=0.0)
     assert result.returncode != 0
     assert "RuntimeError" in result.stderr
@@ -330,7 +276,6 @@ def test_smoke_idle_timeout_invariant_fires() -> None:
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(10)
 def test_smoke_idle_timeout_invariant_survives_minus_o() -> None:
-    """_SMOKE_IDLE_TIMEOUT_SECONDS invariant must survive ``python -O``."""
     result = _run_patched_smoke_plumbing_import(idle_timeout=-1.0, minus_o=True)
     assert result.returncode != 0
     assert "RuntimeError" in result.stderr
@@ -340,7 +285,6 @@ def test_smoke_idle_timeout_invariant_survives_minus_o() -> None:
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(10)
 def test_agy_session_ceiling_invariant_fires() -> None:
-    """AGY ceiling <= idle timeout must raise RuntimeError at import time."""
     result = _run_patched_smoke_plumbing_import(agy_ceiling=10.0)
     assert result.returncode != 0
     assert "RuntimeError" in result.stderr
@@ -350,7 +294,6 @@ def test_agy_session_ceiling_invariant_fires() -> None:
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(10)
 def test_agy_session_ceiling_invariant_survives_minus_o() -> None:
-    """AGY ceiling invariant must survive ``python -O``."""
     result = _run_patched_smoke_plumbing_import(agy_ceiling=10.0, minus_o=True)
     assert result.returncode != 0
     assert "RuntimeError" in result.stderr
@@ -361,28 +304,6 @@ def test_execute_smoke_turns_stops_after_one_attempt_when_ceiling_below_wire(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The turn loop must not retry once turn 1's ceiling already rules out WIRE.
-
-    DA-001 regression: ``_execute_smoke_turns`` (``smoke_plumbing.py``) only
-    re-enters its ``for _attempt in range(_SMOKE_MAX_TURNS)`` loop from the
-    ``OpenCodeResumableExitError`` branch, which is supposed to ``break``
-    instead of ``continue`` once ``transport_evidence_ceiling(...) <
-    Provenance.WIRE``. Nothing previously drove that loop through a second
-    turn to prove the early break actually fires -- a future edit that
-    deleted it would silently regress to burning all ``_SMOKE_MAX_TURNS``
-    turns on a run whose ceiling already ruled out ``PASS`` from turn 1,
-    with no test catching it.
-
-    A fake multi-turn transport double (not live agy) raises
-    ``OpenCodeResumableExitError`` on every call and, on its first call,
-    deposits an ``init`` frame built from the mock's own
-    ``_MOCK_INIT_TOOL_NAMES`` (no ``ralph_*`` / ``mcp__ralph__*`` /
-    ``call_mcp_tool`` route), mirroring
-    ``test_mock_agy_evidence_ceiling_grades_below_wire`` in
-    ``test_smoke_agy_end_to_end.py``. The double must be invoked exactly
-    once, not ``_SMOKE_MAX_TURNS`` (5) times, and the ceiling computed from
-    the returned lines must stay below ``WIRE``.
-    """
     import json
     from collections.abc import MutableSequence
 
@@ -478,17 +399,6 @@ def test_execute_smoke_turns_reports_ceiling_early_for_single_turn_run(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-2 regression: the evidence ceiling is logged before the run ends,
-    even for a single-turn run that never enters the
-    ``OpenCodeResumableExitError`` retry branch S-3's regression covers.
-
-    Before S-2, ``transport_evidence_ceiling(...)`` was only observed inside
-    that retry branch, so an operator watching a live, possibly-long,
-    single-turn run learned the ceiling only from the final report table
-    (``smoke.py``'s "Ralph tools advertised" line) after the run finished.
-    This pins that the ceiling is now logged as soon as the first
-    ``init``-shaped frame is parsed, for the plain success path too.
-    """
     import io
     import json
     from collections.abc import MutableSequence

@@ -1,10 +1,3 @@
-"""Go-specific review guidelines.
-
-Ported from the canonical Rust implementation in
-``ralph-workflow/src/guidelines/go.rs`` and adapted for the Python port.
-Includes core Go checks plus framework-specific additions for Gin, Chi,
-Fiber, and Echo projects.
-"""
 
 from __future__ import annotations
 
@@ -15,11 +8,6 @@ if TYPE_CHECKING:
 
 
 class GoGuidelines:
-    """Review guidelines for Go codebases.
-
-    Args:
-        frameworks: Optional framework names used to add stack-specific guidance.
-    """
 
     __slots__ = (
         "anti_patterns",
@@ -120,7 +108,6 @@ class GoGuidelines:
             self._apply_framework(framework)
 
     def _apply_framework(self, framework: str) -> None:
-        """Add framework-specific guideline extensions."""
         framework_name = framework.casefold()
 
         if framework_name in {"gin", "chi", "fiber", "echo"}:
@@ -135,7 +122,6 @@ class GoGuidelines:
             )
 
     def summary(self) -> str:
-        """Return a short human-readable summary."""
         return (
             f"{len(self.quality_checks)} quality checks, "
             f"{len(self.security_checks)} security checks, "
@@ -143,7 +129,6 @@ class GoGuidelines:
         )
 
     def total_checks(self) -> int:
-        """Return the total number of configured checks."""
         return sum(
             [
                 len(self.quality_checks),

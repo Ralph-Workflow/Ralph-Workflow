@@ -1,13 +1,3 @@
-# Deprecated: Ralph-orchestrated workers are removed from the execution model;
-# parallelism is owned by the developer agent's own sub-agents.
-# See docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
-"""Conflict-safe wave scheduler for parallel work-unit execution.
-
-.. deprecated::
-    Deprecated: Ralph-orchestrated workers are removed from the execution model;
-    parallelism is owned by the developer agent's own sub-agents. See
-    docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
-"""
 
 from pathlib import PurePosixPath
 
@@ -21,7 +11,6 @@ def _contains(directory: str, path: str) -> bool:
 
 
 def _conflicts(left: WorkUnit, right: WorkUnit) -> bool:
-    """Return whether two declared ownership scopes can touch the same path."""
     left_dirs, right_dirs = left.allowed_directories, right.allowed_directories
     left_paths, right_paths = left.paths, right.paths
     return (
@@ -41,13 +30,6 @@ def schedule_next_wave(
     currently_running: set[str],
     max_workers: int,
 ) -> list[WorkUnit]:
-    """Return ready work units that can be launched in the next wave.
-
-    .. deprecated::
-        Deprecated: Ralph-orchestrated workers are removed from the execution model;
-        parallelism is owned by the developer agent's own sub-agents. See
-        docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
-    """
     available_slots = max_workers - len(currently_running)
     if available_slots <= 0:
         return []

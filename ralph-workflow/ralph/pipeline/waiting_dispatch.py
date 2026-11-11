@@ -1,4 +1,3 @@
-"""Dispatch waiting status events to pipeline subscribers."""
 
 from __future__ import annotations
 
@@ -17,10 +16,6 @@ def dispatch_waiting_event(
     unit_id: str,
     agent_name: str,
 ) -> None:
-    """Dispatch a WaitingStatusEvent to the subscriber.
-
-    Exposed as a free function so tests can exercise it without a full pipeline.
-    """
     if subscriber is not None:
         try:
             subscriber.record_waiting_status(event, unit_id=unit_id, agent_name=agent_name)

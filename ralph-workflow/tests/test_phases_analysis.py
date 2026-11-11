@@ -1,17 +1,3 @@
-"""Tests for ralph/phases/analysis.py — analysis decision parsing.
-
-Consolidated from a previous split of 4 per-target files
-(``test_phases_analysis_decision_vocabulary_full_coverage.py``,
-``test_phases_analysis_parse_analysis_decision.py``,
-``test_phases_analysis_parse_analysis_decision_phase_name_parameter.py``,
-``test_phases_analysis_register_role_handlers.py``).
-
-The split family cost one extra file-collection + import per shard on every
-``make test`` invocation; merging them into a single module preserves every
-existing test class (names kept stable so any external ref still resolves)
-while reclaiming 3 module-level imports per shard.
-"""
-
 from __future__ import annotations
 
 import tempfile
@@ -122,11 +108,6 @@ status: completed
 """
 
 
-# =============================================================================
-# Generic analysis phase
-# =============================================================================
-
-
 def test_generic_analysis_accepted_loopback_decision_clears_retry_hint() -> None:
     workspace = MemoryWorkspace()
     policy = _default_policy_bundle()
@@ -150,8 +131,6 @@ def test_generic_analysis_accepted_loopback_decision_clears_retry_hint() -> None
 
 
 class TestDecisionVocabularyFullCoverage:
-    """Every status in the policy decision_vocabulary must be parseable (return non-None)."""
-
     def _load_default_policy(self) -> object:
         with tempfile.TemporaryDirectory() as tmp:
             bundle = load_policy(Path(tmp) / ".agent")
@@ -179,11 +158,6 @@ class TestDecisionVocabularyFullCoverage:
                 f"Vocabulary entry '{status}' for development_analysis "
                 "must round-trip through the canonical Markdown artifact"
             )
-
-
-# =============================================================================
-# parse_analysis_decision
-# =============================================================================
 
 
 @pytest.mark.timeout_seconds(5)
@@ -310,14 +284,7 @@ class TestParseAnalysisDecision:
         assert result is None
 
 
-# =============================================================================
-# parse_analysis_decision phase_name parameter
-# =============================================================================
-
-
 class TestParseAnalysisDecisionPhaseNameParameter:
-    """parse_analysis_decision uses phase_name for policy lookup, drain_name for artifact path."""
-
     def _make_custom_analysis_policy(self) -> object:
         return PipelinePolicy(
             phases={
@@ -379,7 +346,6 @@ class TestParseAnalysisDecisionPhaseNameParameter:
         )
 
     def test_phase_name_parameter_used_for_policy_lookup(self) -> None:
-        """When phase_name is provided, it is used for decisions table lookup in policy."""
         workspace = MagicMock()
         workspace.exists.return_value = True
         workspace.read.return_value = _COMPLETED_DECISION_MARKDOWN
@@ -395,7 +361,6 @@ class TestParseAnalysisDecisionPhaseNameParameter:
         assert result == "completed"
 
     def test_without_phase_name_uses_drain_name_for_policy_lookup(self) -> None:
-        """Without phase_name, drain_name falls back — returns status when phase not in policy."""
         workspace = MagicMock()
         workspace.exists.return_value = True
         workspace.read.return_value = _COMPLETED_DECISION_MARKDOWN
@@ -405,22 +370,11 @@ class TestParseAnalysisDecisionPhaseNameParameter:
         ctx.artifacts_policy.artifacts = {}
         ctx.pipeline_policy = self._make_custom_analysis_policy()
 
-        # drain_name="development_analysis" is NOT a phase name in this custom policy
-        # (phases are: custom_analysis, development_commit, development, complete).
-        # When phase_def is None, the policy decisions check is skipped and the
-        # raw status is returned as-is.
         result = parse_analysis_decision_status(ctx, "development_analysis")
         assert result == "completed"
 
 
-# =============================================================================
-# register_role_handlers
-# =============================================================================
-
-
 class TestRegisterRoleHandlers:
-    """register_role_handlers wires generic handlers for analysis- and commit-role phases."""
-
     def _make_analysis_policy(self) -> PipelinePolicy:
         return PipelinePolicy(
             phases={
@@ -483,7 +437,6 @@ class TestRegisterRoleHandlers:
         )
 
     def test_register_role_handlers_registers_analysis_phase(self) -> None:
-        """register_role_handlers adds a generic handler for analysis-role phases."""
         policy = self._make_analysis_policy()
         HANDLERS.pop("my_custom_analysis", None)
 
@@ -493,7 +446,6 @@ class TestRegisterRoleHandlers:
         HANDLERS.pop("my_custom_analysis", None)
 
     def test_register_role_handlers_registers_commit_phase(self) -> None:
-        """register_role_handlers adds handle_commit_phase for commit-role phases."""
         policy = self._make_commit_policy()
         HANDLERS.pop("my_custom_commit", None)
 
@@ -503,9 +455,7 @@ class TestRegisterRoleHandlers:
         HANDLERS.pop("my_custom_commit", None)
 
     def test_register_role_handlers_does_not_overwrite_existing_handler(self) -> None:
-        """register_role_handlers skips phases that already have a handler registered."""
         policy = self._make_analysis_policy()
-        # Pre-register the generic handler; a second call must not overwrite it.
         HANDLERS["my_custom_analysis"] = handle_generic_analysis_phase
         try:
             register_role_handlers(policy)
@@ -514,7 +464,6 @@ class TestRegisterRoleHandlers:
             del HANDLERS["my_custom_analysis"]
 
     def test_handle_phase_dispatches_to_registered_analysis_handler(self) -> None:
-        """After register_role_handlers, handle_phase dispatches a custom analysis phase."""
         policy = self._make_analysis_policy()
         HANDLERS.pop("my_custom_analysis", None)
         register_role_handlers(policy)
@@ -541,14 +490,12 @@ class TestRegisterRoleHandlers:
             HANDLERS.pop("my_custom_analysis", None)
 
     def test_handle_phase_dispatches_to_registered_commit_handler(self) -> None:
-        """After register_role_handlers, handle_phase dispatches a custom commit phase."""
         policy = self._make_commit_policy()
         HANDLERS.pop("my_custom_commit", None)
         register_role_handlers(policy)
 
         ctx = MagicMock()
 
-        # PreparePromptEffect returns [] from handle_commit_phase (non-InvokeAgentEffect path)
         effect = PreparePromptEffect(phase="my_custom_commit", iteration=1)
         try:
             events = handle_phase(effect, ctx)
@@ -557,7 +504,6 @@ class TestRegisterRoleHandlers:
             HANDLERS.pop("my_custom_commit", None)
 
     def test_register_role_handlers_registers_execution_phase(self) -> None:
-        """register_role_handlers adds handle_execution_phase for execution-role phases."""
         policy = PipelinePolicy(
             phases={
                 "my_custom_build": PhaseDefinition(
@@ -581,7 +527,6 @@ class TestRegisterRoleHandlers:
         HANDLERS.pop("my_custom_build", None)
 
     def test_register_role_handlers_registers_review_phase(self) -> None:
-        """register_role_handlers adds handle_review for review-role phases."""
         policy = PipelinePolicy(
             phases={
                 "my_custom_audit": PhaseDefinition(
@@ -605,7 +550,6 @@ class TestRegisterRoleHandlers:
         HANDLERS.pop("my_custom_audit", None)
 
     def test_unregistered_phase_raises_handler_not_found(self) -> None:
-        """handle_phase raises PhaseHandlerNotFoundError for unregistered phase names."""
         HANDLERS.pop("totally_unknown_phase", None)
         effect = PreparePromptEffect(phase="totally_unknown_phase", iteration=1)
         with pytest.raises(PhaseHandlerNotFoundError) as exc_info:
@@ -613,7 +557,6 @@ class TestRegisterRoleHandlers:
         assert "totally_unknown_phase" in str(exc_info.value)
 
     def test_register_role_handlers_registers_commit_review_phase(self) -> None:
-        """register_role_handlers adds handle_commit_review_phase for commit_review roles."""
         policy = PipelinePolicy(
             phases={
                 "my_custom_cleanup": PhaseDefinition(

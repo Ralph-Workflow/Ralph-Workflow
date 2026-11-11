@@ -1,5 +1,3 @@
-"""Audit the MCP-to-agent boundary containment contracts."""
-
 from __future__ import annotations
 
 import ast

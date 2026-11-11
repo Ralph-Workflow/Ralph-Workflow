@@ -1,5 +1,3 @@
-"""Regression coverage for PTY drain ownership during concurrent teardown."""
-
 from __future__ import annotations
 
 import os
@@ -40,7 +38,6 @@ def _close_reader_fds(reader: PtyLineReader) -> None:
 
 
 def test_pty_drain_regression_keeps_buffered_output_after_handle_fd_closes() -> None:
-    """S-1: closing the shared handle fd must not discard its final buffered output."""
     read_fd, write_fd = os.pipe()
     reader = _make_reader(read_fd)
     try:
@@ -59,7 +56,6 @@ def test_pty_drain_regression_keeps_buffered_output_after_handle_fd_closes() -> 
 
 
 def test_pty_drain_regression_handles_reader_fd_closed_during_interrupt_teardown() -> None:
-    """S-1: reader-private fd teardown must complete without an EBADF thread warning."""
     read_fd, write_fd = os.pipe()
     reader = _make_reader(read_fd)
     records: list[object] = []

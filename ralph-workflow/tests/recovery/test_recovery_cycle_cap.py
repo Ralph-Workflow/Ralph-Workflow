@@ -1,5 +1,3 @@
-"""Black-box test: recovery cycle cap prevents infinite loops."""
-
 from __future__ import annotations
 
 import tempfile
@@ -22,9 +20,6 @@ def _minimal_policy_bundle() -> object:
 _CYCLE_CAP = 3
 _EXPECTED_CYCLE_COUNT = 2
 _MIN_REASON_LEN = 20
-#: The failure ledger demotes the sole agent after this many consecutive
-#: unproductive attempts; the demotion fails the phase and advances the
-#: recovery cycle counter.
 _CONSECUTIVE_UNPRODUCTIVE_LIMIT = 3
 
 
@@ -45,7 +40,6 @@ _AgentInactivityTimeoutError.__name__ = "AgentInactivityTimeoutError"
 
 
 def test_env_failure_does_not_increment_cycle_count() -> None:
-    """Environmental failures never increment recovery_cycle_count."""
     controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=_CYCLE_CAP))
     state = _make_state(["claude"], cycle_count=_EXPECTED_CYCLE_COUNT)
 
@@ -60,7 +54,6 @@ def test_env_failure_does_not_increment_cycle_count() -> None:
 
 
 def test_agent_failure_chain_exhaustion_increments_cycle_count() -> None:
-    """A demoted sole agent fails the phase and increments recovery_cycle_count."""
     controller = RecoveryController(
         options=RecoveryControllerOptions(cycle_cap=10, policy_bundle=_minimal_policy_bundle())
     )
@@ -78,7 +71,6 @@ def test_agent_failure_chain_exhaustion_increments_cycle_count() -> None:
 
 
 def test_cycle_cap_exceeded_emits_exit_failure_effect() -> None:
-    """When recovery_cycle_count >= cap, an ExitFailureEffect is produced."""
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=_CYCLE_CAP, policy_bundle=_minimal_policy_bundle()
@@ -103,7 +95,6 @@ def test_cycle_cap_exceeded_emits_exit_failure_effect() -> None:
 
 
 def test_cycle_cap_exit_reason_is_non_sentinel() -> None:
-    """Exit reason from cycle cap must not contain forbidden sentinels."""
     cap = CycleCap(cap=_CYCLE_CAP)
     reason = cap.exit_reason(_CYCLE_CAP, "agent", "agent idle timeout")
 
@@ -115,7 +106,6 @@ def test_cycle_cap_exit_reason_is_non_sentinel() -> None:
 
 
 def test_cycle_cap_exit_failure_effect_is_valid() -> None:
-    """ExitFailureEffect built from cycle cap reason must be constructable."""
     cap = CycleCap(cap=5)
     reason = cap.exit_reason(5, "agent", "agent idle timeout after 10s")
     effect = ExitFailureEffect(reason=reason)
@@ -123,6 +113,5 @@ def test_cycle_cap_exit_failure_effect_is_valid() -> None:
 
 
 def test_cycle_cap_rejects_zero() -> None:
-    """CycleCap must reject cap=0."""
     with pytest.raises(ValueError, match=">="):
         CycleCap(cap=0)

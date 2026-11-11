@@ -1,4 +1,3 @@
-"""Shared onboarding copy for CLI, validation, and docs-facing messaging."""
 
 from __future__ import annotations
 
@@ -41,17 +40,14 @@ STARTER_PROMPT_SENTINEL: Final[str] = (
 
 
 def getting_started_pointer_sentence() -> str:
-    """Return the canonical getting-started docs pointer sentence."""
     return f"New to Ralph Workflow? Read {GETTING_STARTED_DOC} for a step-by-step walkthrough."
 
 
 def init_local_config_override_explanation() -> str:
-    """Return the canonical explanation for the local override command."""
     return "optional full local override copy of the user-global config set"
 
 
 def init_help_text() -> str:
-    """Return top-level help text for the canonical init command."""
     explanation = init_local_config_override_explanation()
     return (
         "Initialize Ralph Workflow in the current directory (creates user-global config and "
@@ -63,7 +59,6 @@ def init_help_text() -> str:
 
 
 def init_local_config_help_text() -> str:
-    """Return top-level help text for the optional local override command."""
     explanation = init_local_config_override_explanation()
     return (
         f"Create .agent/ config files as an {explanation}; auto-detects worktree scope "
@@ -73,7 +68,6 @@ def init_local_config_help_text() -> str:
 
 
 def fresh_workspace_next_steps() -> tuple[str, ...]:
-    """Return the minimal next steps for a completely fresh workspace."""
     return (
         "From a human-operated shell outside any Ralph-managed agent session, "
         f"run {INIT_COMMAND} to scaffold {PROMPT_FILE} and user-global config",
@@ -87,12 +81,10 @@ class _GlobalConfigDirResolver(Protocol):
 
 
 def _is_global_config_dir_resolver(value: object) -> TypeGuard[_GlobalConfigDirResolver]:
-    """Return whether a bootstrap export can resolve the global config directory."""
     return callable(value)
 
 
 def _global_main_config_path() -> Path:
-    """Resolve the user-global main config without bootstrap's import cycle."""
     bootstrap = import_module("ralph.config.bootstrap")
     namespace = cast("dict[str, object]", bootstrap.__dict__)
     resolver = namespace.get("resolve_global_config_dir")
@@ -103,7 +95,6 @@ def _global_main_config_path() -> Path:
 
 
 def welcome_panel_next_steps() -> tuple[str, ...]:
-    """Return required first-run steps followed by quiet optional details."""
     explanation = init_local_config_override_explanation()
     siblings = ", ".join(sibling.agent for sibling in sibling_agent_skill_roots())
     project_siblings = ", ".join(PROJECT_SIBLING_SKILL_PATHS)
@@ -123,7 +114,6 @@ def welcome_panel_next_steps() -> tuple[str, ...]:
 
 
 def fallback_next_steps() -> tuple[str, ...]:
-    """Return concise re-run guidance after init when files already exist."""
     explanation = init_local_config_override_explanation()
     config_path = _global_main_config_path()
     return (
@@ -139,11 +129,6 @@ def fallback_next_steps() -> tuple[str, ...]:
 
 
 def resolve_starter_template(label: str | None) -> str:
-    """Return the requested starter PROMPT.md template.
-
-    ``bug-fix`` is an alias for the guardrail template.  The bare init path
-    keeps the established general-purpose template.
-    """
     if not label:
         return starter_prompt_template()
     templates = {
@@ -198,7 +183,6 @@ def resolve_starter_template(label: str | None) -> str:
 
 
 def starter_prompt_template() -> str:
-    """Return the canonical starter PROMPT.md template."""
     return (
         STARTER_PROMPT_SENTINEL
         + "\n\n"
@@ -233,7 +217,6 @@ def starter_prompt_template() -> str:
 
 
 def missing_prompt_validation_hint() -> str:
-    """Return canonical validation guidance when PROMPT.md is missing."""
     return (
         "PROMPT.md is the goal/acceptance-criteria document Ralph Workflow reads as its "
         f"task input. Run `{INIT_COMMAND}` to scaffold PROMPT.md and user-global config, "
@@ -243,7 +226,6 @@ def missing_prompt_validation_hint() -> str:
 
 
 def starter_prompt_validation_hint() -> str:
-    """Return canonical validation guidance when the starter sentinel is still present."""
     return (
         "Edit PROMPT.md to describe YOUR task and remove the `<!-- ralph:starter-prompt "
         "... -->` marker once you have replaced the example content. "

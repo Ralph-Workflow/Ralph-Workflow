@@ -1,5 +1,3 @@
-"""Regression coverage for integration recovery that outlives a spent ladder."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -33,7 +31,7 @@ def _noop_warn(_display: object, _msg: str) -> None:
 
 
 def _uninstalled_agent(_agent: str) -> None:
-    """Registry ``.get`` stub: no resolver agent is installed."""
+    pass
 
 
 def _noop_save(_state: PipelineState, _ctx: run_loop._LoopContext) -> None:
@@ -53,7 +51,6 @@ class RecoveryObservation:
 def run_recovery_scenario(
     monkeypatch: MonkeyPatch, state: PipelineState, *, startup: bool = False
 ) -> RecoveryObservation:
-    """Drive the real loop against Git evidence cleared by an injected clock."""
     dispatched: list[PipelineState] = []
     saved: list[PipelineState] = []
     warnings: list[str] = []
@@ -96,9 +93,6 @@ def run_recovery_scenario(
     def dispatch(*, state: PipelineState, **_kwargs: object) -> int:
         assert recovered, "unresolved integration must never reach the phase executor"
         assert state.is_waiting_state is False
-        # The exhaustion latch is released by the containment verdict once
-        # the tree is clean; the typed ladder-escalation outcome itself
-        # persists on the checkpoint until a successful land replaces it.
         assert saved[-1].rebase.resolution_exhausted is False
         assert workspace.read("main") == workspace.read("HEAD")
         dispatched.append(state)
@@ -191,33 +185,6 @@ def run_recovery_scenario(
 def test_exhausted_conflict_ladder_waits_until_recovery_before_ordinary_dispatch(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """When the conflict ladder is exhausted, the run loop must
-    persist the typed :class:`RebaseOutcomeKind.LADDER_ESCALATION`
-    transition through the :meth:`RebaseState.set_ladder_escalation`
-    single-writer setter and dispatch ONE session-scoped automated
-    resolver handoff (O1 / O3 cold durable exhausted contract).
-    The old behavior -- sleep + recovery preamble + strategy
-    rotation -- silently replenished the attempt budget and is
-    forbidden by the bounded-progress invariant. The replacement
-    contract keeps that invariant: no sleep on the first escalation,
-    no strategy rotation, no silent cap replenishment; it dispatches
-    a single automated resolver handoff ONCE per session so a cold
-    durable ``resolution_exhausted=True`` state is not a permanent
-    operator-only dead end.
-
-    The test exercises the same setup as before, but instead of
-    asserting that the loop ends the run on a person, it asserts
-    that the exhausted state escalates through the autonomous
-    fallback ladder, one handoff was dispatched, no sleep was
-    performed on the first escalation, and a repeated call within
-    the same session does NOT re-dispatch (it paces the loop with
-    the bounded repeat-escalation retry instead).
-    """
-    # The run-loop call would loop forever (the integration is still
-    # unresolved and the exhausted state escalates without sleeping).
-    # Exercise the helper directly instead: the behavior is identical
-    # to the loop's first iteration, and proves the typed-setter
-    # contract that the run loop relies on.
     state = PipelineState(
         phase="development",
         rebase=RebaseState(
@@ -235,9 +202,6 @@ def test_exhausted_conflict_ladder_waits_until_recovery_before_ordinary_dispatch
     sleeps: list[float] = []
 
     def _record_handoff(_ctx: object, failure: str, *, backend: object = None) -> None:
-        # Capture the dispatch so the test asserts the run loop
-        # dispatches exactly one session-scoped handoff on the cold
-        # exhausted path (O1 / O3 contract).
         handoff_calls.append(failure)
 
     workspace = MemoryWorkspace("/memory/recovery")
@@ -272,44 +236,26 @@ def test_exhausted_conflict_ladder_waits_until_recovery_before_ordinary_dispatch
         ),
     )
 
-    # Mock the automated-resolver handoff so the test does not pull
-    # in the full recovery / diagnostic chain; we only need to
-    # observe whether the run loop dispatched it.
     monkeypatch.setattr(run_loop, "_dispatch_retained_handoff", _record_handoff)
     monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", _noop_save)
 
     updated = run_loop._wait_for_integration_retry(state, ctx)
 
-    # The exhausted state is escalated through the typed LADDER_ESCALATION
-    # outcome -- never the retired INTERVENTION_REQUIRED operator hand-off.
-    # The typed single-writer setter persists the transition. The carried
-    # counters and the resolution_exhausted flag survive, so the run-loop
-    # consumer that gates dispatch keeps refusing ordinary work.
     assert updated.rebase.last_outcome is RebaseOutcomeKind.LADDER_ESCALATION
     assert updated.rebase.is_intervention_required is True
     assert updated.rebase.resolution_exhausted is True
-    # The conflict-strategy block is preserved: the typed
-    # ``LADDER_ESCALATION`` transition does NOT cycle or reset it.
     assert updated.rebase.conflict_strategy_index == state.rebase.conflict_strategy_index
     assert updated.rebase.conflict_strategies_tried == state.rebase.conflict_strategies_tried
-    # The cold exhausted state MUST dispatch exactly one session-scoped
-    # handoff (O1 / O3 -- not a permanent operator-only dead end).
     assert len(handoff_calls) == 1, (
         "Cold exhausted state must dispatch one session-scoped automated "
         "resolver handoff (O1/O3 cold durable exhausted contract)."
     )
     assert "unresolved shared.txt" in handoff_calls[0]
-    # The first escalation does NOT sleep -- a sleep would mask the
-    # escalation transition and let the loop continue iterating.
     assert sleeps == [], (
         "First escalation must not sleep; the run loop escalates through "
         "the typed ladder outcome and returns."
     )
 
-    # A repeated call within the SAME session MUST NOT re-dispatch the
-    # handoff (the in-session flag prevents the operator-visible rotation
-    # that motivated the original guard); it paces the loop with the
-    # bounded repeat-escalation retry instead.
     handoff_calls.clear()
     run_loop._wait_for_integration_retry(updated, ctx)
     assert handoff_calls == [], (
@@ -324,13 +270,6 @@ def test_exhausted_conflict_ladder_waits_until_recovery_before_ordinary_dispatch
 def test_exhausted_conflict_ladder_loop_recovers_without_terminal_code(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """When the conflict ladder is exhausted, the enclosing run loop must
-    NOT make a terminal transition that ends the run on a person. The
-    typed LADDER_ESCALATION outcome keeps the loop alive: it blocks for
-    recovery, paces repeat escalations with the bounded retry, and
-    resumes ordinary dispatch as soon as the autonomous recovery clears
-    the Git evidence — no exit code 1, no operator hand-off.
-    """
     state = PipelineState(
         phase="development",
         rebase=RebaseState(
@@ -344,9 +283,6 @@ def test_exhausted_conflict_ladder_loop_recovers_without_terminal_code(
         ),
     )
     observed = run_recovery_scenario(monkeypatch, state)
-    # The run never ends on a person: no terminal exit code, ordinary
-    # dispatch resumed only after the bounded retries, and the recovery
-    # was autonomous (paced waits, no person-dependent outcome).
     assert observed.exit_code != 1
     assert len(observed.dispatched) == 1
     assert observed.waits == (
@@ -358,33 +294,6 @@ def test_exhausted_conflict_ladder_loop_recovers_without_terminal_code(
 def test_conflict_cap_exhaustion_escalates_through_ladder_never_handoff(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """Cap-path acceptance test: conflict-cap exhaustion escalates through
-    the autonomous fallback ladder and never produces the retired
-    operator hand-off.
-
-    Drives the real cap path in :func:`run_loop._wait_for_integration_retry`
-    and the real phase-decision authority, asserting:
-
-    (a) a fresh conflict state does NOT carry the intervention latch
-        (the person-gate is never the pre-cap state);
-    (b) the cap path persists ``last_outcome == LADDER_ESCALATION``
-        (never ``INTERVENTION_REQUIRED`` / ``DIAGNOSTIC_INTERVENTION_REQUIRED``);
-    (c) the typed authority maps the escalation to
-        ``PhaseDecision.BLOCK_FOR_RECOVERY`` (the fallback ladder owns
-        the next action);
-    (d) the enclosing inner loop never returns exit code 1 from the
-        blocked-integration wait — the run stays alive autonomously;
-    (e) no display or log text asks for "manual recovery" — the alert
-        names the preserved copy's location and the next autonomous
-        ladder rung.
-    """
-    # The state production persists when the conflict budget is spent at
-    # the cap: a fresh conflict outcome that carries the durable
-    # ``resolution_exhausted`` latch but NOT the intervention gate (the
-    # shape written by ``record_resolution_exhausted`` after the resolver
-    # chain exhausts the configured cap). Below the cap the retry paces
-    # with a bounded sleep and never escalates; only this spent-budget
-    # record is the cap path the run loop escalates through the ladder.
     state = PipelineState(
         phase="development",
         rebase=RebaseState(
@@ -394,7 +303,6 @@ def test_conflict_cap_exhaustion_escalates_through_ladder_never_handoff(
             resolution_exhausted=True,
         ),
     )
-    # (a) The pre-cap state never latches the person-gate.
     assert state.rebase.is_intervention_required is False
 
     handoff_calls: list[str] = []
@@ -430,14 +338,6 @@ def test_conflict_cap_exhaustion_escalates_through_ladder_never_handoff(
             sleep=sleeps.append,
             connectivity_monitor=SimpleNamespace(current_state=None),
             _session_handoff_dispatched=False,
-            # The below-cap pending-retry path consults
-            # ``_resolver_cooldown_wait_ms(ctx)``, which iterates
-            # ``resolution_chain_agents(ctx.policy_bundle)`` and reads
-            # ``ctx.registry`` / ``ctx.controller`` through
-            # ``choose_resolver``. The default ``AgentsPolicy()`` binds no
-            # resolution drain, so the chain is empty and neither attribute
-            # is dereferenced; provide the stubs anyway so a future
-            # parametrization that binds a resolver cannot crash here.
             registry=SimpleNamespace(get=_uninstalled_agent),
             controller=None,
         ),
@@ -449,22 +349,15 @@ def test_conflict_cap_exhaustion_escalates_through_ladder_never_handoff(
 
     updated = run_loop._wait_for_integration_retry(state, ctx)
 
-    # (b) The cap path persists the typed ladder outcome — never the
-    # retired operator hand-off outcome.
     assert updated.rebase.is_intervention_required is True
     assert updated.rebase.last_outcome is RebaseOutcomeKind.LADDER_ESCALATION
     assert updated.rebase.last_outcome not in (
         RebaseOutcomeKind.INTERVENTION_REQUIRED,
         RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
     )
-    # The first escalation never sleeps and dispatches exactly one
-    # session-scoped automated resolver handoff.
     assert sleeps == []
     assert len(handoff_calls) == 1
 
-    # (c) The typed phase-decision authority routes the escalation to
-    # BLOCK_FOR_RECOVERY — the autonomous fallback ladder owns the next
-    # action, never a terminal REPORT_INTERVENTION_REQUIRED hand-off.
     decision = decide_phase_transition(
         updated,
         ctx.policy_bundle.pipeline,
@@ -474,19 +367,12 @@ def test_conflict_cap_exhaustion_escalates_through_ladder_never_handoff(
     assert decision is PhaseDecision.BLOCK_FOR_RECOVERY
     assert decision is not PhaseDecision.REPORT_INTERVENTION_REQUIRED
 
-    # (e) No "manual recovery needed" text anywhere on the operator
-    # surfaces: the alert names the preserved copy's location and the
-    # next autonomous ladder rung.
     alert = run_loop._integration_alert_for_state(updated)
     assert alert is not None
     assert "manual recovery" not in alert
     assert "backup refs" in alert
     assert "rung" in alert
 
-    # (d) The enclosing inner loop never ends the run on a person at the
-    # blocked-integration wait: drive the real loop with the escalated
-    # state and assert it keeps blocking (bounded retries, no terminal
-    # exit code) until the Git evidence clears, then resumes dispatch.
     observed = run_recovery_scenario(monkeypatch, updated)
     assert observed.exit_code != 1
     assert len(observed.dispatched) == 1

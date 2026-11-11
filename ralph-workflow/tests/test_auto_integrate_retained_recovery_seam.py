@@ -1,34 +1,3 @@
-"""A retained crash record must keep BOTH startup callers out of integration.
-
-``recover_incomplete_integration`` has two shapes of outcome. Either it
-reconciled the interrupted operation and cleared the durable
-``IntegrationRecord``, or it hit a transient failure -- a failed abort, a
-failed reset, an unrefreshable target pointer, a fast-forward that raised
--- and deliberately LEFT that record on disk so the next startup can
-retry it.
-
-In the second shape recovery is not finished. Both production callers
-(``run_loop._apply_startup_rebase_outcomes`` for the shared run loop and
-``parallel.worker_runtime.run_worker_auto_integration`` for a
-manifest-launched worker) used to run the startup catch-up
-unconditionally afterwards. That catch-up reaches
-``auto_integrate._integrate_once``, which writes a fresh
-``IntegrationRecord(phase='integrating', ...)`` BEFORE it mutates git --
-overwriting the retained record, and with it the pre-integration feature
-SHA that a later recovery needs to restore the branch.
-
-The gate is scoped to those two STARTUP seams. The in-run seams (commit,
-phase boundary, the worker's post-phase boundary) keep integrating, so a
-transient recovery fault cannot strand an agent off the shared mainline
-for a whole run; recovery retries the retained record at the next
-process startup.
-
-These are fast unit tests: no real git, no subprocess, no sleeping. The
-retention fact is read through the structured
-``RebaseState.recovery_record_retained`` flag, never from the free-form
-``last_reason`` display text.
-"""
-
 from __future__ import annotations
 
 import importlib
@@ -65,8 +34,6 @@ _CONFIG = UnifiedConfig.model_validate(
 
 
 class _RecordingDisplay:
-    """Display that records the operator warn lines pushed through it."""
-
     def __init__(self) -> None:
         self.warn_lines: list[str] = []
 
@@ -80,7 +47,6 @@ def _config() -> UnifiedConfig:
 
 
 def _retained() -> RebaseState:
-    """A recovery outcome that left the durable record on disk."""
     return RebaseState(
         last_action="skipped",
         last_reason=("recovery: feature branch not restored, record retained for retry"),
@@ -90,7 +56,6 @@ def _retained() -> RebaseState:
 
 
 def _reconciled() -> RebaseState:
-    """A recovery outcome that cleared the durable record."""
     return RebaseState(
         last_action="recovered",
         last_reason="restored feature branch after interrupted rebase",
@@ -98,18 +63,7 @@ def _reconciled() -> RebaseState:
     )
 
 
-# --------------------------------------------------------------------
-# The structured predicate, and every branch that must produce it.
-# --------------------------------------------------------------------
-
-
 def test_the_retention_predicate_reads_the_flag_not_the_reason_text() -> None:
-    """Retention is a structured fact; ``last_reason`` is display text.
-
-    A caller that pattern-matched the reason string would break the
-    moment a branch reworded its message or interpolated an exception,
-    so the predicate must key on the flag alone.
-    """
     assert recovery_retained_record(_retained()) is True
     assert recovery_retained_record(_reconciled()) is False
     assert recovery_retained_record(None) is False
@@ -129,18 +83,10 @@ def _recovery_module() -> ModuleType:
 
 
 def _landing_module() -> ModuleType:
-    """The split fast-forward landing module recovery delegates to.
-
-    The landing/verify/cleanup collaborators (``fast_forward_target``,
-    ``post_attempt_verify``, ``_delete_rebase_backup_refs``,
-    ``_clear_record``) are resolved in the landing module now, so the
-    per-branch stubs below patch them there.
-    """
     return importlib.import_module("ralph.pipeline._recovery_fast_forward_landing")
 
 
 def _fake_record(phase: str, *, integrated_sha: str | None = None) -> IntegrationRecord:
-    """Durable-record stand-in exposing only the attributes recovery reads."""
     return IntegrationRecord.model_validate(
         {
             "phase": phase,
@@ -153,13 +99,6 @@ def _fake_record(phase: str, *, integrated_sha: str | None = None) -> Integratio
 
 
 def _stub_clean_git(recovery: ModuleType, monkeypatch: MonkeyPatch, record: object) -> None:
-    """Fake every git collaborator into a quiet, no-op-in-flight state.
-
-    Each branch test below then breaks exactly ONE of them, so the
-    assertion is about that branch and nothing else. No real git, no
-    subprocess: ``_clear_record`` is also stubbed, so a branch that
-    wrongly cleared instead of retaining still reaches the assertion.
-    """
     monkeypatch.setattr(recovery, "_read_record", lambda _root, **_kwargs: record)
     monkeypatch.setattr(recovery, "_clear_record", lambda _root: None)
     monkeypatch.setattr(_landing_module(), "_clear_record", lambda _root: None)
@@ -181,7 +120,6 @@ def _boom(*_args: object, **_kwargs: object) -> None:
 def test_target_reconcile_recovery_never_resets_a_target_that_moved(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """S-3: a retained target-reconcile record preserves a concurrent target move."""
     recovery = _recovery_module()
     owner = tmp_path / "target-owner"
     record = recovery.IntegrationRecord(
@@ -221,7 +159,6 @@ def test_unconfigured_pending_landing_retains_the_record(
 def test_an_unprovable_abort_retains_the_record_and_says_so_structurally(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """phase='integrated' whose owned abort could not be proven (branch 4)."""
     recovery = _recovery_module()
     _stub_clean_git(recovery, monkeypatch, _fake_record("integrated", integrated_sha="b" * 40))
     monkeypatch.setattr(recovery, "rebase_in_progress", lambda _root: True)
@@ -237,11 +174,6 @@ def test_an_unprovable_abort_retains_the_record_and_says_so_structurally(
 def test_an_unrefreshable_pointer_retains_the_record_and_says_so_structurally(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """phase='integrated' whose target pointer would not refresh (branch 1).
-
-    This is the branch that used to CLEAR the record permanently from a
-    stale pointer, so it is the one that most needs to be detectable.
-    """
     recovery = _recovery_module()
     _stub_clean_git(recovery, monkeypatch, _fake_record("integrated", integrated_sha="b" * 40))
     monkeypatch.setattr(
@@ -260,10 +192,6 @@ def test_an_unrefreshable_pointer_retains_the_record_and_says_so_structurally(
 def test_a_transient_fast_forward_failure_retains_the_record_structurally(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """phase='integrated' whose fast-forward raised (branch 2 of 4).
-
-    Recovery must preserve ownership until landing is proved.
-    """
     recovery = _recovery_module()
     _stub_clean_git(recovery, monkeypatch, _fake_record("integrated", integrated_sha="b" * 40))
     monkeypatch.setattr(recovery, "branch_sha", lambda _root, _target: "c" * 40)
@@ -311,7 +239,6 @@ def test_landing_outcome_reports_whether_recovery_remains_owned(
 def test_an_unexpected_recovery_crash_keeps_integration_blocked(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Unreadable recovery evidence must block a fresh integration attempt."""
     recovery = _recovery_module()
     monkeypatch.setattr(recovery, "_read_record", _boom)
 
@@ -319,11 +246,6 @@ def test_an_unexpected_recovery_crash_keeps_integration_blocked(
 
     assert outcome is not None
     assert recovery_retained_record(outcome) is True
-
-
-# --------------------------------------------------------------------
-# The startup route is consumed from the owner's seam verdict.
-# --------------------------------------------------------------------
 
 
 def _route_record(**overrides: object) -> IntegrationRecord:
@@ -338,13 +260,6 @@ def _route_record(**overrides: object) -> IntegrationRecord:
 
 
 def test_the_startup_route_is_consumed_from_the_owner_verdict() -> None:
-    """No raw record flags decide the startup path beyond the documented record facts.
-
-    The seam verdict gates every state that is not a durable record
-    fact; the record facts (an owned operation, a target reconciliation,
-    a scheduled re-integration, an integrated-but-not-landed record)
-    keep their owning recovery path even when the owner would defer.
-    """
     recovery = _recovery_module()
     route = recovery._startup_recovery_route
     route_kind = recovery._StartupRecoveryRoute
@@ -355,10 +270,6 @@ def test_the_startup_route_is_consumed_from_the_owner_verdict() -> None:
     reintegrate = _route_record(reintegrate_pending=True)
     integrated = _route_record(phase="integrated", integrated_feature_sha="c" * 40)
 
-    # Record-owned operation facts keep the pending-merge recovery path,
-    # even for verdicts that would otherwise defer: the recovery path
-    # re-derives stale intent from Git (Git outranks the record) and
-    # replays it at the automatic rebase.
     assert route(IntegrationAction.WAIT_FOR_BOUNDED_RETRY, resolving) is (
         route_kind.RECOVERY_OWNS_OPERATION
     )
@@ -368,14 +279,10 @@ def test_the_startup_route_is_consumed_from_the_owner_verdict() -> None:
     assert route(IntegrationAction.WAIT_FOR_BOUNDED_RETRY, reintegrate) is (
         route_kind.RECOVERY_OWNS_OPERATION
     )
-    # The integrated -> landing split is a record fact the owner's pure
-    # observation cannot express (until the landing the owner reads the
-    # state as "re-integrate").
     assert route(IntegrationAction.REINTEGRATE_AGAINST_TARGET, integrated) is (
         route_kind.LANDING_CONTINUATION
     )
     assert route(IntegrationAction.LAND_TARGET, integrated) is (route_kind.LANDING_CONTINUATION)
-    # For everything else the seam verdict is the whole decision.
     assert route(IntegrationAction.REQUIRE_INTERVENTION, plain) is route_kind.DEFER_INTERVENTION
     assert route(IntegrationAction.WAIT_FOR_BOUNDED_RETRY, plain) is route_kind.DEFER_RETRY
     for verdict in (
@@ -390,7 +297,6 @@ def test_the_startup_route_is_consumed_from_the_owner_verdict() -> None:
 def test_startup_recovery_asks_the_owner_before_it_routes(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The seam is consulted for the route, and a deferred verdict retains."""
     recovery = _recovery_module()
     asked: list[bool] = []
 
@@ -408,11 +314,6 @@ def test_startup_recovery_asks_the_owner_before_it_routes(
     assert recovery.recovery_retained_record(outcome)
 
 
-# --------------------------------------------------------------------
-# Caller 1: the shared run loop.
-# --------------------------------------------------------------------
-
-
 def _run_loop_module() -> ModuleType:
     return importlib.import_module("ralph.pipeline.run_loop")
 
@@ -420,7 +321,6 @@ def _run_loop_module() -> ModuleType:
 def _install_run_loop_seams(
     module: ModuleType, monkeypatch: MonkeyPatch, recovered: RebaseState | None
 ) -> tuple[list[str], list[PipelineState]]:
-    """Replace the startup seams with recorders; return (events, saves)."""
     events: list[str] = []
     saves: list[PipelineState] = []
 
@@ -448,7 +348,6 @@ def _install_run_loop_seams(
 
 
 def _loop_ctx(tmp_path: Path, display: object) -> object:
-    """Minimal stand-in for the three ``_LoopContext`` slots this path reads."""
     return SimpleNamespace(
         workspace_scope=WorkspaceScope(tmp_path),
         config=_config(),
@@ -459,7 +358,6 @@ def _loop_ctx(tmp_path: Path, display: object) -> object:
 def test_run_loop_does_not_integrate_over_a_retained_recovery_record(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The startup catch-up must not overwrite a record recovery still owns."""
     module = _run_loop_module()
     events, _saves = _install_run_loop_seams(module, monkeypatch, _retained())
     display = _RecordingDisplay()
@@ -481,7 +379,6 @@ def test_run_loop_does_not_integrate_over_a_retained_recovery_record(
 def test_run_loop_persists_and_announces_the_deferred_catch_up(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A deferral the operator cannot see reads as 'auto rebase does nothing'."""
     module = _run_loop_module()
     events, saves = _install_run_loop_seams(module, monkeypatch, _retained())
     display = _RecordingDisplay()
@@ -500,7 +397,6 @@ def test_run_loop_persists_and_announces_the_deferred_catch_up(
 def test_a_display_that_cannot_take_the_line_never_aborts_startup(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Presentation must not be able to raise into the startup path."""
     module = _run_loop_module()
     _events, _saves = _install_run_loop_seams(module, monkeypatch, _retained())
 
@@ -518,7 +414,6 @@ def test_a_display_that_cannot_take_the_line_never_aborts_startup(
 def test_persisted_legacy_conflict_blocks_shared_loop_before_dispatch(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """Legacy conflict evidence holds dispatch until recovery clears the repository."""
     state = PipelineState(
         phase="planning",
         rebase=RebaseState(
@@ -539,7 +434,6 @@ def test_persisted_legacy_conflict_blocks_shared_loop_before_dispatch(
 def test_run_loop_checkpointed_conflict_blocks_first_phase_dispatch(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """Checkpointed conflict evidence waits and resumes after external recovery."""
     state = PipelineState(
         phase="planning",
         rebase=RebaseState(last_action="conflict", last_reason="resolver exhausted"),
@@ -558,11 +452,6 @@ def test_run_loop_checkpointed_conflict_blocks_first_phase_dispatch(
 def test_run_loop_still_catches_up_after_a_reconciled_recovery(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Control: recovery that CLEARED the record must not block the catch-up.
-
-    Without this, the fix above would trade one bug for a worse one --
-    a fleet whose members never pick up each other's landings.
-    """
     module = _run_loop_module()
     events, _saves = _install_run_loop_seams(module, monkeypatch, _reconciled())
     display = _RecordingDisplay()
@@ -579,7 +468,6 @@ def test_run_loop_still_catches_up_after_a_reconciled_recovery(
 def test_run_loop_still_catches_up_when_there_was_nothing_to_recover(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The overwhelmingly common case: no durable record at all."""
     module = _run_loop_module()
     events, _saves = _install_run_loop_seams(module, monkeypatch, None)
 
@@ -592,17 +480,11 @@ def test_run_loop_still_catches_up_when_there_was_nothing_to_recover(
     )
 
 
-# --------------------------------------------------------------------
-# Caller 2: the manifest-launched parallel worker.
-# --------------------------------------------------------------------
-
-
 def _worker_module() -> ModuleType:
     return importlib.import_module("ralph.pipeline.parallel.worker_runtime")
 
 
 def _git_workspace(tmp_path: Path) -> Path:
-    """Satisfy the seam's cheap ``.git`` stat guard without real git."""
     (tmp_path / ".git").mkdir(exist_ok=True)
     return tmp_path
 
@@ -663,7 +545,6 @@ def _run_worker_seam(
 def test_worker_does_not_integrate_over_a_retained_recovery_record(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A parallel worker faces the same overwrite as the shared run loop."""
     module = _worker_module()
     events = _install_worker_seams(module, monkeypatch, _retained())
 
@@ -682,15 +563,6 @@ def test_worker_does_not_integrate_over_a_retained_recovery_record(
 def test_the_worker_deferral_reaches_a_real_operator_console(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Drive the REAL display resolution, not a stand-in.
-
-    ``_emit_deferred_integration_line`` wraps ``resolve_active_display``
-    and ``emit_integration_warn_line`` in ``suppress(Exception)``, so a
-    wrong argument or a renamed method would fail silently in
-    production and leave the worker deferral invisible -- the exact
-    "auto rebase does nothing" symptom. Injecting a captured console
-    into a real ``DisplayContext`` proves the line actually renders.
-    """
     module = _worker_module()
     events = _install_worker_seams(module, monkeypatch, _retained())
     buffer = io.StringIO()
@@ -714,7 +586,6 @@ def test_the_worker_deferral_reaches_a_real_operator_console(
 def test_worker_still_integrates_after_a_reconciled_recovery(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Control: the cross-agent catch-up is the whole point of the seam."""
     module = _worker_module()
     events = _install_worker_seams(module, monkeypatch, _reconciled())
 
@@ -737,7 +608,6 @@ def test_worker_still_integrates_after_a_reconciled_recovery(
 def test_worker_boundary_does_not_integrate_over_an_unresolved_outcome(
     monkeypatch: MonkeyPatch, tmp_path: Path, unresolved: RebaseState
 ) -> None:
-    """S-3 regression: recovery may continue ownership but no fresh integration starts."""
     module = _worker_module()
     events = _install_worker_seams(module, monkeypatch, _retained())
 
@@ -748,7 +618,6 @@ def test_worker_boundary_does_not_integrate_over_an_unresolved_outcome(
 
 
 def test_run_loop_retained_recovery_blocks_first_phase_dispatch(monkeypatch: MonkeyPatch) -> None:
-    """A retained crash record waits without dispatch, then resumes after recovery."""
     state = PipelineState(phase="planning", rebase=_retained())
 
     observed = run_recovery_scenario(monkeypatch, state, startup=True)

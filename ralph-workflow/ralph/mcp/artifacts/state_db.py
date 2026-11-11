@@ -1,20 +1,3 @@
-"""Per-workspace SQLite store for machine-only run bookkeeping.
-
-Replaces one-file-per-event bookkeeping under ``.agent/`` (receipts,
-completion sentinels) with a single WAL-mode database at
-``.agent/state.db``. Motivation: on long multi-instance runs the
-per-event file creates were a measurable share of the macOS fseventsd
-event storm, and the files accumulated without bound.
-
-Scope rule: ONLY machine-only state belongs here. Anything an agent or
-a human reads through workspace file tools (PLAN.md, prompts, artifact
-Markdown, exec spills) stays a plain file.
-
-Concurrency: the MCP server process writes while the engine process
-reads. WAL mode plus a busy timeout covers that on a local filesystem.
-Every public method opens no extra connections; one connection per
-RunStateDB instance, serialized by SQLite itself.
-"""
 
 from __future__ import annotations
 
@@ -27,27 +10,17 @@ if TYPE_CHECKING:
 
 
 class _Missing:
-    """Sentinel type distinguishing 'row absent' from 'hmac is NULL'."""
 
     __slots__ = ()
 
-    def __repr__(self) -> str:  # pragma: no cover - debug aid
+    def __repr__(self) -> str:
         return "<MISSING>"
 
 
 MISSING: Final = _Missing()
 
-#: Tombstone marker written to ``completion_sentinels.hmac`` when a
-#: ``delete_completion_sentinel`` call raises ``sqlite3.Error`` so the
-#: downstream reader (``_db_sentinel_lookup``) honours the cleared
-#: state even though the row could not be physically removed. A model
-#: with workspace write access cannot forge a sentinel with this exact
-#: marker because the read path treats it as "not completed" and the
-#: HMAC secret is owned by the broker, not the agent.
 CLEARED_SENTINEL_HMAC: Final[str] = "__ralph_internal_cleared__"
 
-# Any change to _SCHEMA MUST bump _SCHEMA_VERSION so existing databases run
-# the new DDL instead of silently treating the old schema as current.
 _SCHEMA_VERSION: Final[int] = 2
 _INITIAL_SCHEMA_VERSION: Final[int] = 1
 
@@ -71,12 +44,6 @@ DB_RELPATH = ".agent/state.db"
 
 
 def _coerce_hmac(row: object) -> str | None:
-    """Extract a stored ``hmac`` value from a sqlite row tuple.
-
-    SQLite returns the column as ``str | None`` for our schema; the
-    cast here lets mypy treat the return value as the narrowed type
-    without any ``Any`` leakage.
-    """
     if not isinstance(row, tuple):
         return None
     first: object = row[0] if len(row) > 0 else None
@@ -86,7 +53,6 @@ def _coerce_hmac(row: object) -> str | None:
 
 
 class RunStateDB:
-    """Handle to the workspace bookkeeping database (create-on-open)."""
 
     def __init__(self, workspace_root: Path) -> None:
         db_path = workspace_root / DB_RELPATH
@@ -120,10 +86,8 @@ class RunStateDB:
 
     @classmethod
     def _raise_upsert_fail(cls, run_id: str, artifact_type: str, hmac_hex: str | None) -> None:
-        """Test seam: raise to simulate DB write failure during atomic rollback tests."""
         raise RuntimeError("simulated db upsert failure")
 
-    # -- receipts ---------------------------------------------------------
 
     def upsert_receipt(
         self,
@@ -186,7 +150,6 @@ class RunStateDB:
         with self._conn:
             self._conn.execute("DELETE FROM receipts WHERE run_id = ?", (run_id,))
 
-    # -- completion sentinels ---------------------------------------------
 
     def upsert_completion_sentinel(self, run_id: str, hmac_hex: str | None) -> None:
         with self._conn:
@@ -216,21 +179,6 @@ class RunStateDB:
             self._conn.execute("DELETE FROM completion_sentinels WHERE run_id = ?", (run_id,))
 
     def mark_completion_sentinel_cleared(self, run_id: str) -> None:
-        """Write a tombstone marker so the reader honours the cleared state.
-
-        Used as the durable-fallback when ``delete_completion_sentinel``
-        raises ``sqlite3.Error`` (locked / corrupt / unsupported WAL):
-        physically removing the row is best-effort, but the read path
-        must observe the cleared state so a reused ``run_id`` cannot
-        inherit a previous run's "completed" verdict.
-
-        ``_db_sentinel_lookup`` recognises ``CLEARED_SENTINEL_HMAC`` and
-        returns ``(False, None)`` so ``_check_completion_sentinel`` rejects
-        completion without consulting a stale legacy file. A successful upsert
-        here replaces any existing row (including a valid HMAC row),
-        so even if a future retry of ``delete_completion_sentinel``
-        fails the cleared state remains authoritative.
-        """
         with self._conn:
             params: tuple[str, ...] = (run_id, CLEARED_SENTINEL_HMAC)
             self._conn.execute(
@@ -239,7 +187,6 @@ class RunStateDB:
                 params,
             )
 
-    # -- retention ---------------------------------------------------------
 
     def prune_older_than(
         self,
@@ -248,18 +195,6 @@ class RunStateDB:
         keep_run_id: str | None = None,
         keep_run_ids: Iterable[str] = (),
     ) -> int:
-        """Delete aged rows from both tables. Returns total row count removed.
-
-        Used by the run-start retention sweep (RFC-013 P3) so DB rows do
-        not accumulate alongside the file-glob bookkeeping sweep.
-
-        Rows for ``keep_run_id`` and every run id in ``keep_run_ids`` are
-        skipped regardless of age — mirrors the file-path keep contract
-        so the DB-backed retention behavior matches the on-disk
-        convention during the rollout. The merged exclusion set lets the
-        process-local active-run registry protect every in-flight run,
-        not just the caller's own.
-        """
         keep = set(keep_run_ids)
         if keep_run_id is not None:
             keep.add(keep_run_id)

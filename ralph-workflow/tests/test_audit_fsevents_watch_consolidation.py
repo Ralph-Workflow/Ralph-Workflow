@@ -1,28 +1,3 @@
-"""Regression tests pinning the fsevents watch-consolidation audit contract.
-
-The fsevents watch-consolidation audit
-(``ralph.testing.audit_fsevents_watch_consolidation``) is the
-gate that locks the single-recursive-root-watch consolidation in
-``ralph/agents/invoke/_workspace.py`` so a future refactor cannot
-silently re-introduce drift. It locks four invariants:
-
-  * Exactly one ``observer.schedule(...)`` call exists in the
-    workspace-monitor module (INV-1).
-  * The single schedule call passes ``recursive=True`` (INV-2).
-  * The schedule call sits statically inside
-    ``WorkspaceMonitor.start()`` -- no ``for``/``while`` ancestor
-    and the nearest enclosing function is named ``start``
-    (INV-3).
-  * The target module exists at the canonical location
-    ``agents/invoke/_workspace.py`` under the package root
-    (INV-4).
-
-These tests write forbidden-construct source files under pytest's
-``tmp_path`` fixture and run the audit directly against the temp
-``package_root``. No real subprocess, no ``time.sleep``, no real
-file I/O outside ``tmp_path``.
-"""
-
 from __future__ import annotations
 
 import ast as _ast
@@ -42,20 +17,6 @@ def _write_fake_package(
     *,
     workspace_body: str,
 ) -> Path:
-    """Write a fake package containing ``agents/invoke/_workspace.py``.
-
-    Args:
-        tmp_path: The pytest ``tmp_path`` fixture; the fake package
-            tree is rooted at ``tmp_path / "ralph"``.
-        workspace_body: The full source body of the fake
-            ``_workspace.py``.  Tests pass mutated ``start()`` or
-            ``record_event()`` bodies through this parameter so the
-            fixtures differ only in the mutation site.
-
-    Returns:
-        The path of the fake ``package_root`` (the audit walks this
-        directory).
-    """
     package_root: Path = tmp_path / "ralph"
     workspace_path: Path = package_root / "agents" / "invoke" / "_workspace.py"
     workspace_path.parent.mkdir(parents=True)
@@ -63,23 +24,10 @@ def _write_fake_package(
     return package_root
 
 
-# NOTE: ``test_audit_passes_real_production_tree`` was deleted in the
-# wt-05-test-opti pass. That audit is already invoked as a dedicated
-# ``_VERIFY_STEPS`` entry inside ``make verify`` (via
-# ``python -m ralph.testing.audit_fsevents_watch_consolidation``),
-# so the same clean-tree check runs in the same gate. Re-running it
-# through pytest on the default profile added ~4.5 s of AST-walk cost
-# to the slowest shard while proving nothing the verify step does not
-# already prove. The fixture-driven tests below cover every audit
-# branch on a synthetic ``tmp_path`` tree without touching the real
-# package, preserving the audit's behavior contract.
-
-
 def test_audit_skips_schedule_walk_for_modules_without_a_schedule_marker(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Regression: ownership scan avoids AST walks for irrelevant modules."""
     package_root = _write_fake_package(
         tmp_path,
         workspace_body=(
@@ -139,7 +87,6 @@ def test_audit_regression_canonical_schedule_check_uses_one_ast_traversal(
 def test_audit_fails_closed_for_invalid_workspace_source_without_schedule_marker(
     tmp_path: Path,
 ) -> None:
-    """Malformed monitor source reports invalid syntax rather than a missing watch."""
     package_root: Path = _write_fake_package(
         tmp_path,
         workspace_body="class WorkspaceMonitor:\n    def start(self) -> None:\n        (\n",
@@ -153,12 +100,6 @@ def test_audit_fails_closed_for_invalid_workspace_source_without_schedule_marker
 
 
 def test_audit_flags_second_schedule_call_in_start(tmp_path: Path) -> None:
-    """A second ``observer.schedule(...)`` call inside ``start()`` triggers ``multiple_watch_schedule``.
-
-    Two overlapping watchdog watches inflate the fseventsd
-    footprint (each one is OS-recursive); the audit forbids the
-    duplicate.
-    """
     package_root: Path = _write_fake_package(
         tmp_path,
         workspace_body=(
@@ -180,12 +121,6 @@ def test_audit_flags_second_schedule_call_in_start(tmp_path: Path) -> None:
 
 
 def test_audit_flags_dynamic_schedule_lookup_without_schedule_text(tmp_path: Path) -> None:
-    """An unowned dynamic lookup fails closed instead of hiding a second watch.
-
-    S-8 regression: an AST audit cannot prove that a nonliteral ``getattr``
-    attribute is not ``schedule``.  It must reject the lookup rather than let
-    a newly added module create an overlapping workspace subscription.
-    """
     package_root = _write_fake_package(
         tmp_path,
         workspace_body=(
@@ -208,7 +143,6 @@ def test_audit_flags_dynamic_schedule_lookup_without_schedule_text(tmp_path: Pat
 
 
 def test_audit_allows_non_watch_dynamic_invocation(tmp_path: Path) -> None:
-    """Dynamic dispatch unrelated to an observer remains outside the watch audit."""
     package_root = _write_fake_package(
         tmp_path,
         workspace_body=(
@@ -226,7 +160,6 @@ def test_audit_allows_non_watch_dynamic_invocation(tmp_path: Path) -> None:
 
 
 def test_audit_flags_aliased_schedule_call(tmp_path: Path) -> None:
-    """A bound ``schedule`` method alias cannot bypass the single-watch audit."""
     package_root: Path = _write_fake_package(
         tmp_path,
         workspace_body=(
@@ -246,12 +179,6 @@ def test_audit_flags_aliased_schedule_call(tmp_path: Path) -> None:
 
 
 def test_audit_flags_non_recursive_schedule_call(tmp_path: Path) -> None:
-    """``recursive=False`` triggers ``watch_not_recursive``.
-
-    The fsevents backend is OS-recursive, so non-recursive
-    subscriptions would multiply overlapping streams.  The audit
-    requires the literal ``True`` constant.
-    """
     package_root: Path = _write_fake_package(
         tmp_path,
         workspace_body=(
@@ -272,14 +199,6 @@ def test_audit_flags_non_recursive_schedule_call(tmp_path: Path) -> None:
 
 
 def test_audit_flags_schedule_call_relocated_into_record_event(tmp_path: Path) -> None:
-    """A schedule call moved into ``record_event`` triggers ``dynamic_watch_schedule``.
-
-    The nearest enclosing function is ``record_event``, not
-    ``start``, and there is no loop ancestor -- this is the
-    function-relocation case.  The audit must flag it because the
-    production invariant requires the watch to be scheduled
-    statically inside ``start()``, never on a per-event path.
-    """
     package_root: Path = _write_fake_package(
         tmp_path,
         workspace_body=(
@@ -303,17 +222,6 @@ def test_audit_flags_schedule_call_relocated_into_record_event(tmp_path: Path) -
 
 
 def test_audit_flags_schedule_call_inside_for_loop_in_start(tmp_path: Path) -> None:
-    """A schedule call wrapped in a ``for`` loop inside ``start()`` triggers ``dynamic_watch_schedule``.
-
-    The nearest enclosing function is STILL ``start`` (the
-    FunctionDef line-range containment check would let this pass),
-    but the loop ancestor means the watch would be re-scheduled
-    on every iteration -- the exact per-iteration inflation case
-    the ancestor-walk check exists to catch.  This is a SEPARATE
-    fixture from the record_event relocation test to prove the
-    loop-ancestor detector fires independently of the
-    function-name detector.
-    """
     package_root: Path = _write_fake_package(
         tmp_path,
         workspace_body=(
@@ -336,7 +244,6 @@ def test_audit_flags_schedule_call_inside_for_loop_in_start(tmp_path: Path) -> N
 
 
 def test_audit_flags_getattr_schedule_call_in_unknown_production_module(tmp_path: Path) -> None:
-    """S-8 regression: dynamic getattr scheduling cannot evade package ownership."""
     package_root: Path = _write_fake_package(
         tmp_path,
         workspace_body=(
@@ -362,7 +269,6 @@ def test_audit_flags_getattr_schedule_call_in_unknown_production_module(tmp_path
 
 
 def test_audit_rejects_unrelated_canonical_schedule_receiver(tmp_path: Path) -> None:
-    """S-8 regression: only ``self._observer`` may satisfy the canonical watch rule."""
     package_root = _write_fake_package(
         tmp_path,
         workspace_body=(
@@ -379,7 +285,6 @@ def test_audit_rejects_unrelated_canonical_schedule_receiver(tmp_path: Path) -> 
 
 
 def test_audit_flags_observer_construction_in_unknown_production_module(tmp_path: Path) -> None:
-    """S-8 regression: a second observer cannot hide before it schedules a watch."""
     package_root = _write_fake_package(
         tmp_path,
         workspace_body=(
@@ -403,12 +308,6 @@ def test_audit_flags_observer_construction_in_unknown_production_module(tmp_path
 
 
 def test_audit_flags_schedule_call_in_unknown_production_module(tmp_path: Path) -> None:
-    """A watch added outside the lifecycle owner fails package-wide by default.
-
-    The canonical monitor may own the one recursive workspace watch. A new
-    production module must not independently arm another observer because it
-    duplicates the workspace event surface (P1).
-    """
     package_root: Path = _write_fake_package(
         tmp_path,
         workspace_body=(
@@ -436,7 +335,6 @@ def test_audit_flags_schedule_call_in_unknown_production_module(tmp_path: Path) 
 
 
 def test_audit_flags_schedule_call_in_testing_module(tmp_path: Path) -> None:
-    """S-8: modules under a testing-named directory cannot evade watch ownership."""
     package_root: Path = _write_fake_package(
         tmp_path,
         workspace_body=(
@@ -462,7 +360,6 @@ def test_audit_flags_schedule_call_in_testing_module(tmp_path: Path) -> None:
 
 
 def test_audit_flags_invalid_workspace_module(tmp_path: Path) -> None:
-    """An unparsable canonical owner fails closed instead of silently passing."""
     package_root: Path = _write_fake_package(
         tmp_path,
         workspace_body="class WorkspaceMonitor:\n    def start(self) -> None:\n",
@@ -477,7 +374,6 @@ def test_audit_flags_invalid_workspace_module(tmp_path: Path) -> None:
 
 
 def test_audit_fails_closed_for_missing_package_root(tmp_path: Path) -> None:
-    """S-8: a non-existent package root cannot pass an ownership audit."""
     missing_root = tmp_path / "missing"
 
     violations = audit.audit_fsevents_watch_consolidation(missing_root)
@@ -489,7 +385,6 @@ def test_audit_fails_closed_for_missing_package_root(tmp_path: Path) -> None:
 def test_audit_fails_closed_for_invalid_non_owner_module_without_schedule_marker(
     tmp_path: Path,
 ) -> None:
-    """S-8: every discovered module is parsed even when it lacks ``.schedule``."""
     package_root = _write_fake_package(
         tmp_path,
         workspace_body=(
@@ -510,14 +405,8 @@ def test_audit_fails_closed_for_invalid_non_owner_module_without_schedule_marker
 
 
 def test_audit_flags_missing_workspace_module(tmp_path: Path) -> None:
-    """A package root WITHOUT ``agents/invoke/_workspace.py`` triggers ``missing_workspace_module``.
-
-    The file's absence is itself drift -- the audit must NOT
-    silently pass when the canonical module is gone.
-    """
     package_root: Path = tmp_path / "ralph"
     package_root.mkdir(parents=True)
-    # Intentionally do NOT write agents/invoke/_workspace.py.
 
     violations: list[audit.FseventsWatchViolation] = audit.audit_fsevents_watch_consolidation(
         package_root
@@ -548,15 +437,6 @@ def _parse_audit_module() -> _ast.Module:
 
 
 def test_audit_module_imports_clean() -> None:
-    """The audit must NOT use ``time.sleep``, ``asyncio.sleep``,
-    ``subprocess.run``, ``httpx.*``, ``requests.*``,
-    ``urllib.request.urlopen``, or ``socket.create_connection``
-    (the test-policy and mcp-timeout invariants).  The audit is
-    purely an AST walk over local files.
-
-    The check uses AST-based detection (not regex) so the literal
-    strings in the test source do not produce false positives.
-    """
     audit_path: Path = REPO_ROOT / "ralph" / "testing" / "audit_fsevents_watch_consolidation.py"
     source: str = audit_path.read_text(encoding="utf-8")
     tree: _ast.Module = _ast.parse(source, filename=str(audit_path))
@@ -614,13 +494,6 @@ def test_audit_module_imports_clean() -> None:
     ],
 )
 def test_audit_module_forbids_known_io_primitives(forbidden_name: str) -> None:
-    """The audit must not be modified to introduce any of the known
-    I/O primitives.  This locks the invariant that the audit is a
-    pure static walker and never a runtime probe.
-
-    Uses AST-based detection (not regex) so the literal strings in
-    the test source do not produce false positives.
-    """
     audit_path: Path = REPO_ROOT / "ralph" / "testing" / "audit_fsevents_watch_consolidation.py"
     tree: _ast.Module = _parse_audit_module()
 

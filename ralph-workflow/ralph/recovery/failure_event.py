@@ -1,4 +1,3 @@
-"""Structured failure event emitted for every classified failure."""
 
 from __future__ import annotations
 
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class FailureEvent:
-    """Structured failure event emitted for every classified failure."""
 
     timestamp: datetime
     phase: str

@@ -1,23 +1,3 @@
-"""Policy-compliant unit tests for ``ralph.mcp.websearch._bounded_sdk_call``.
-
-The :func:`with_timeout` helper bounds third-party-SDK-backed websearch calls
-(DDGS, Exa, Tavily) so a hung SDK cannot block the dispatch worker for the
-full MCP client request timeout. These tests assert the contract without real
-wall-clock waits, real subprocesses, or real network I/O.
-
-The test suite uses ONLY policy-compliant patterns:
-
-- ``threading.Event`` for blocking (interruptible, NOT ``time.sleep``).
-- ``monkeypatch`` for stubbing the ``_executor`` test seam.
-- ``install_default_executor`` / ``reset_default`` seams for the singleton
-  executor.
-- ``concurrent.futures.ThreadPoolExecutor(max_workers=...)`` for fake workers.
-
-The test contract is "raises on timeout" or "returns the callable's value",
-NOT "takes exactly N seconds". If the helper does not actually time out,
-the test hangs and pytest fails it.
-"""
-
 from __future__ import annotations
 
 import concurrent.futures

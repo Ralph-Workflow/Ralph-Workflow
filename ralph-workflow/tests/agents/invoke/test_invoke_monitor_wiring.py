@@ -1,5 +1,3 @@
-"""Integration tests for process-monitor/discovery wiring in the invoke path."""
-
 from __future__ import annotations
 
 import io
@@ -42,12 +40,6 @@ if TYPE_CHECKING:
 
 
 def _patch_resolve_invocation_runtime(monkeypatch: MonkeyPatch) -> None:
-    """Return a minimal runtime so transport-specific MCP setup is not exercised.
-
-    These tests verify process-monitor wiring, not runtime resolution. A minimal
-    runtime keeps the tests focused and avoids network/file setup that some
-    transports require when a real MCP endpoint is present.
-    """
     monkeypatch.setattr(
         "ralph.agents.invoke.resolve_invocation_runtime",
         lambda *_args, **_kwargs: ResolvedInvocationRuntime(),
@@ -58,7 +50,6 @@ def _capture_idle_watchdog_args(
     monkeypatch: MonkeyPatch,
     captured: dict[str, object],
 ) -> None:
-    """Patch IdleWatchdog.__init__ to record its keyword arguments."""
     original_init = IdleWatchdog.__init__
 
     def _patched_init(self: IdleWatchdog, *args: object, **kwargs: object) -> None:
@@ -70,7 +61,6 @@ def _capture_idle_watchdog_args(
 
 @pytest.fixture(autouse=True)
 def _fake_process_manager(monkeypatch: MonkeyPatch) -> None:
-    """Keep monitor-wiring tests inside the injected process boundary."""
 
     def factory(_command: object, _options: object) -> FakePopen:
         return FakePopen(
@@ -91,7 +81,6 @@ def _fake_process_manager(monkeypatch: MonkeyPatch) -> None:
 
 
 def _fake_shared_interactive_pty(*args: object, **kwargs: object) -> Iterator[str]:
-    """Exercise PTY monitor wiring without starting a real terminal process."""
     del kwargs
     ctx = args[1]
     config = ctx.config
@@ -112,7 +101,6 @@ def _noop_command(
     *,
     options: object,
 ) -> list[str]:
-    """Return a placeholder command; the autouse fixture injects the process."""
     return [
         "echo",
         "hello from agent",
@@ -158,7 +146,6 @@ def test_invoke_wires_process_monitor_for_transport(
     tmp_path: Path,
     transport: AgentTransport,
 ) -> None:
-    """AC-06/AC-09/AC-10: real invoke path injects a DefaultProcessMonitor for every transport."""
     captured: dict[str, object] = {}
     _capture_idle_watchdog_args(monkeypatch, captured)
     _patch_resolve_invocation_runtime(monkeypatch)
@@ -198,13 +185,6 @@ def test_invoke_wires_discovery_strategy_for_transport(
     tmp_path: Path,
     transport: AgentTransport,
 ) -> None:
-    """Non-OpenCode transports get NullDiscoveryStrategy (consolidated).
-
-    The six invoke-path cases share process-startup work; under full xdist load
-    that occasionally exceeds the default one-second test cap. This registered
-    per-test override matches the neighboring invoke wiring coverage without
-    changing the immutable combined verification budget.
-    """
     captured: dict[str, object] = {}
     _capture_idle_watchdog_args(monkeypatch, captured)
     _patch_resolve_invocation_runtime(monkeypatch)
@@ -232,15 +212,6 @@ def test_invoke_wires_opencode_registry_discovery_strategy(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """OpenCode transport gets ``OpenCodeRegistryDiscoveryStrategy`` when a registry is provided.
-
-    The OpenCode execution strategy constructs a ``ChildLivenessRegistry`` per
-    invocation, so the factory receives a non-``None`` registry and returns
-    a registry-backed strategy. The watchdog therefore has a real
-    per-transport subagent-output extraction path for OPENCODE; for the
-    other supported transports the factory returns
-    ``NullDiscoveryStrategy`` (no documented per-worker log path).
-    """
     captured: dict[str, object] = {}
     _capture_idle_watchdog_args(monkeypatch, captured)
     _patch_resolve_invocation_runtime(monkeypatch)
@@ -281,13 +252,6 @@ def test_invoke_role_classifier_is_conservative_for_transport(
     tmp_path: Path,
     transport: AgentTransport,
 ) -> None:
-    """AC-06/AC-10/AC-11: command-line classifier is documentation-grounded and conservative.
-
-    No supported transport documents a stable external subagent-identification
-    command-line signal. The command-line classifier must therefore not promote
-    descendants to SPAWNED_SUBAGENT based on broad tokens. OpenCode subagents
-    are identified separately via the injected SubagentPidSource.
-    """
     captured: dict[str, object] = {}
     _capture_idle_watchdog_args(monkeypatch, captured)
     _patch_resolve_invocation_runtime(monkeypatch)
@@ -318,7 +282,6 @@ def test_invoke_respects_disabled_monitor_flags(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """AC-10: disabling monitor/output capture yields None dependencies."""
     captured: dict[str, object] = {}
     _capture_idle_watchdog_args(monkeypatch, captured)
     monkeypatch.setattr(
@@ -347,7 +310,6 @@ def test_invoke_disabling_only_process_monitor_keeps_discovery(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """AC-10: process_monitor_enabled=false does not disable output capture."""
     captured: dict[str, object] = {}
     _capture_idle_watchdog_args(monkeypatch, captured)
     monkeypatch.setattr(
@@ -373,14 +335,6 @@ def test_invoke_disabling_only_output_capture_keeps_process_monitor(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """AC-10: subagent_output_capture_enabled=false does not disable the monitor.
-
-    The 5-second per-test timeout (raised from the 1-second default via this
-    marker) accommodates real subprocess startup latency when the full
-    verify suite runs under pytest-xdist load. The test logic itself is
-    unchanged; the assertion is the same. Other tests in this file use the
-    same ``@pytest.mark.timeout_seconds(5)`` marker for the same reason.
-    """
     captured: dict[str, object] = {}
     _capture_idle_watchdog_args(monkeypatch, captured)
     monkeypatch.setattr(
@@ -408,11 +362,6 @@ def test_invoke_wires_subagent_pid_source_for_opencode(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """AC-06/AC-09/AC-10/AC-11: OpenCode invocation wires a SubagentPidSource.
-
-    The source is backed by the ChildLivenessRegistry so real OpenCode child
-    lifecycle events (which carry PIDs) can identify spawned subagents.
-    """
     captured: dict[str, object] = {}
     _capture_idle_watchdog_args(monkeypatch, captured)
     _patch_resolve_invocation_runtime(monkeypatch)
@@ -441,7 +390,6 @@ def test_invoke_poll_interval_reaches_process_monitor(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """AC-10: subagent_output_poll_interval_seconds is passed to DefaultProcessMonitor."""
     captured: dict[str, object] = {}
     _capture_idle_watchdog_args(monkeypatch, captured)
     monkeypatch.setattr(
@@ -465,15 +413,11 @@ def test_invoke_poll_interval_reaches_process_monitor(
 
 
 class _FreshOutputCapture(SubagentOutputCapture):
-    """Test capture that returns a fresh line on every poll."""
-
     def read_lines(self, worker_id: str) -> list[str]:
         return ["fresh subagent output"]
 
 
 class _FreshProcessMonitor(ProcessMonitor):
-    """Process monitor that always reports one fresh worker output stream."""
-
     def live_subagent_count(self) -> int:
         return 0
 
@@ -492,12 +436,6 @@ def test_invoke_fresh_subagent_output_defers_no_output_deadline(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """AC-07: real invoke path defers NO_OUTPUT_DEADLINE via discovered subagent output.
-
-    The agent command produces no stdout and sleeps longer than the idle timeout.
-    Without fresh subagent output the watchdog would fire; with the injected
-    discovery strategy reporting fresh output each poll, the run completes.
-    """
     monkeypatch.setattr(
         "ralph.agents.invoke._command_builders.OpencodeCommandBuilder.build",
         lambda self, _config, _prompt_file, *, options: [

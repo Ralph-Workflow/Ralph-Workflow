@@ -1,15 +1,3 @@
-"""Audit that planning treats subagent delegation and parallel work units as
-the default rather than a reluctant exception.
-
-The audit pins the literals that mark the unconditional posture: a planning
-prompt that names read-only subagent delegation for exploration, research, and
-verification, plus the shared delegation guidance that names context
-isolation. Forbidden literals are the relics of the previous
-``HAS_SUBAGENTS``-gated wording (e.g. ``ralph coordinate``, parallel-worker
-rules) that would re-introduce capability detection or a coordinated-worker
-abstraction Ralph does not implement.
-"""
-
 from __future__ import annotations
 
 import sys
@@ -23,8 +11,6 @@ def _read(rel_path: str) -> str:
 
 
 class Invariant:
-    """One literal-string check the audit enforces."""
-
     def __init__(
         self, *, rel_path: str, present: tuple[str, ...] = (), absent: tuple[str, ...] = ()
     ) -> None:
@@ -78,7 +64,6 @@ _INVARIANTS: tuple[Invariant, ...] = (
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the optional-delegation audit and return its process exit code."""
     del argv
     problems = [problem for invariant in _INVARIANTS for problem in invariant.violations()]
     if problems:

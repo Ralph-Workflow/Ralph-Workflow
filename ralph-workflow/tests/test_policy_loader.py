@@ -1,5 +1,3 @@
-"""Unit tests for :mod:`ralph.policy.loader`."""
-
 from __future__ import annotations
 
 import shutil
@@ -86,15 +84,6 @@ def test_load_policy_reports_agent_validation_failure(tmp_path: Path) -> None:
 def test_load_policy_read_error_distinct_from_parse_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """An OSError opening the file must surface as a read error, not a parse error.
-
-    Before the fix the loader caught ``Exception`` and labelled every
-    non-parse failure as ``"Failed to parse TOML at <path>: <err>"``,
-    which misdirected operators at a read problem (permissions,
-    missing directory, vanished mount) toward TOML syntax. After the
-    fix OSError and TOMLDecodeError take separate paths and the
-    message clearly distinguishes them.
-    """
     target = tmp_path / "agents.toml"
     target.write_text("placeholder = 1\n")
     original_open = Path.open
@@ -314,13 +303,6 @@ def test_load_policy_uses_unified_config_for_agents_policy_when_provided(tmp_pat
 def test_config_synthesized_agents_policy_backfills_policy_remediation(
     tmp_path: Path,
 ) -> None:
-    """A user config predating the policy_remediation chain must not block runs.
-
-    When the unified config defines its own agent_chains/agent_drains, the
-    out-of-graph policy_remediation chain is backfilled from the bundled
-    defaults instead of silently disappearing, and the drain aliases to the
-    chain behind the user's development drain when one exists.
-    """
     config = UnifiedConfig(
         agent_chains={
             "planning": ["codex"],
@@ -373,9 +355,6 @@ def test_project_agents_toml_backfills_policy_remediation(tmp_path: Path) -> Non
 def test_project_agents_toml_merges_onto_defaults_like_other_policies(
     tmp_path: Path,
 ) -> None:
-    """agents.toml layers onto bundled defaults exactly like pipeline.toml
-    and artifacts.toml: user entries win per name, everything else keeps
-    its bundled default."""
     (tmp_path / "agents.toml").write_text(
         dedent(
             """
@@ -415,10 +394,6 @@ def test_config_synthesized_policy_keeps_default_chains_not_overridden(
 def test_backfilled_policy_remediation_binds_development_drain_chain(
     tmp_path: Path,
 ) -> None:
-    """When the user policy binds a development drain, policy remediation
-    routes through the same chain instead of the bundled default. The shipped
-    pipeline has no review drain, so the development chain is the alias
-    target."""
     config = UnifiedConfig(
         agent_chains={
             "planning": ["codex"],
@@ -439,10 +414,6 @@ def test_backfilled_policy_remediation_binds_development_drain_chain(
 
 
 def test_backfilled_policy_remediation_ignores_review_drain(tmp_path: Path) -> None:
-    """A legacy review drain must NOT capture policy remediation: the shipped
-    pipeline has no review drain, so aliasing to it routes remediation into a
-    chain the pipeline never runs. Without a development drain the bundled
-    default binding survives."""
     config = UnifiedConfig(
         agent_chains={
             "planning": ["codex"],
@@ -789,10 +760,6 @@ def test_load_policy_or_die_exits_and_logs(monkeypatch: pytest.MonkeyPatch) -> N
         assert mock_logger.error.call_args_list[idx][0][1] == value
 
 
-# ---------------------------------------------------------------------------
-# cycle_timebox policy tests
-# ---------------------------------------------------------------------------
-
 _DEFAULTS_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
 
 
@@ -819,7 +786,6 @@ def test_cycle_timebox_duration_override_keeps_80_percent_warning(tmp_path: Path
     ct = bundle.pipeline.cycle_timebox
     assert ct is not None
     assert ct.duration_seconds == 3600.0
-    # 80% of 3600 -> 2880 elapsed; 720 remaining (12 minutes).
     assert ct.warning_threshold_seconds == 2880.0
 
 
@@ -827,7 +793,6 @@ def test_cycle_timebox_duration_override_keeps_80_percent_warning(tmp_path: Path
 def test_cycle_timebox_accepts_non_canonical_valid_phase_references(
     tmp_path: Path,
 ) -> None:
-    """A cycle_timebox may reference any declared phase, not just canonical names."""
     _copy_default_policy_files(tmp_path)
     pipeline = (tmp_path / "pipeline.toml").read_text()
     pipeline = pipeline.replace('guarded_entry = "development"', 'guarded_entry = "planning"')
@@ -863,8 +828,6 @@ def test_cycle_timebox_rejects_unknown_target(tmp_path: Path) -> None:
         'finalization_target = "development_final_commit_review"',
         'finalization_target = "no_such_phase"',
     )
-    # The toml has two lines matching the replacement target; replace only the
-    # one inside [cycle_timebox] by rewriting the whole cycle_timebox block.
     (tmp_path / "pipeline.toml").write_text(pipeline)
     with pytest.raises(LoaderPolicyValidationError) as excinfo:
         load_policy(tmp_path, strict_optional_files=True)
@@ -873,12 +836,8 @@ def test_cycle_timebox_rejects_unknown_target(tmp_path: Path) -> None:
 
 
 def test_cycle_timebox_rejects_undeclared_start_edge(tmp_path: Path) -> None:
-    """An explicit cycle_timebox whose start_source -> start_entry edge is not
-    declared in the graph is rejected with an actionable error (FR-1, AC-14)."""
     _copy_default_policy_files(tmp_path)
     pipeline = (tmp_path / "pipeline.toml").read_text()
-    # planning -> development is NOT a declared edge (planning on_success is
-    # planning_analysis), so this start transition must be rejected.
     pipeline = pipeline.replace(
         'start_source = "planning_analysis"',
         'start_source = "planning"',
@@ -892,13 +851,6 @@ def test_cycle_timebox_rejects_undeclared_start_edge(tmp_path: Path) -> None:
 
 
 def test_inherited_cycle_timebox_disabled_when_graph_lacks_referenced_phases() -> None:
-    """An inherited (bundled-default) cycle_timebox is disabled, not rejected,
-    when the merged graph lacks the referenced phases or start edge (FR-1, FR-7).
-
-    A custom non-canonical graph without planning_analysis/development must
-    silently drop the inherited timebox, while the same graph declaring the
-    block explicitly must be rejected strictly.
-    """
     custom_graph = {
         "entry_block": "work_group",
         "terminal_phase": "done",
@@ -939,9 +891,6 @@ def test_inherited_cycle_timebox_disabled_when_graph_lacks_referenced_phases() -
                 },
             },
         },
-        # Simulate the bundled-default cycle_timebox inherited into this graph.
-        # It references canonical phases (planning_analysis, development) that
-        # do NOT exist in the custom graph.
         "cycle_timebox": {
             "duration_seconds": 7200,
             "start_source": "planning_analysis",
@@ -952,18 +901,15 @@ def test_inherited_cycle_timebox_disabled_when_graph_lacks_referenced_phases() -
         },
     }
 
-    # Inherited (not explicit): the incompatible timebox is disabled silently.
     inherited = policy_loader._validate_pipeline(custom_graph, cycle_timebox_explicit=False)
     assert inherited.cycle_timebox is None
 
-    # Explicit: the same incompatible timebox is rejected strictly.
     with pytest.raises(LoaderPolicyValidationError) as excinfo:
         policy_loader._validate_pipeline(custom_graph, cycle_timebox_explicit=True)
     assert "cycle_timebox" in excinfo.value.message
 
 
 def test_pipeline_loader_loads_commit_review_policy(tmp_path: Path) -> None:
-    """load_policy loads commit_review section into CommitReviewPolicy."""
     _copy_default_policy_files(tmp_path)
     pipeline = (tmp_path / "pipeline.toml").read_text()
     pipeline = pipeline.replace("max_deleted_files = 50", "max_deleted_files = 15")

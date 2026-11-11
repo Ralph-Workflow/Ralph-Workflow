@@ -1,18 +1,3 @@
-"""Evidence-fingerprint / record-store branch of the integration diagnostic.
-
-Split-out of ``test_integration_diagnostic.py`` to keep each file under the
-1000-line cap enforced by ``ralph.testing.audit_repo_structure``. These tests
-pin the lease/evidence contract on the diagnostic record store:
-
-* rotating inspection agents when evidence is missing;
-* the closed ``EvidenceVerdict`` vocabulary
-  (``UNCHANGED`` / ``CHANGED`` / ``UNKNOWN``);
-* the ``release_verified_diagnostic`` non-mutating verdict;
-* the ``_check_atomic_transition_proof`` failure path on an expired lease;
-* the injected-collector behaviour of ``handoff_integration_diagnostic``;
-* the repeated-missing-agents cap on ``handoff_integration_diagnostic``.
-"""
-
 from pathlib import Path
 
 import pytest
@@ -35,10 +20,6 @@ from tests._integration_ladder_fakes import _FakePlumbing
 from tests._resolver_controller import make_resolver_controller
 from tests.test_auto_integrate_record_idempotent import _RecordBackend
 
-#: The exit status ``git`` reports when it cannot answer at all because the
-#: directory it was pointed at is not a repository. The diagnostic's
-#: completion proof reads it as "HEAD is unreadable" / "marker status is
-#: UNKNOWN", so the proof refuses to verify and the attempt is charged.
 _GIT_NOT_A_REPOSITORY_RETURNCODE = 128
 
 
@@ -46,12 +27,6 @@ def _not_a_git_repository(
     args: tuple[str, ...] | list[str],
     **_kwargs: object,
 ) -> GitRunResult:
-    """Answer every git query the way a non-repository directory does.
-
-    The double replaces the real ``git`` subprocess so a unit that only
-    asserts what the diagnostic DOES with an unverifiable repository keeps
-    that premise without spawning a process.
-    """
     return GitRunResult(
         args=tuple(args),
         returncode=_GIT_NOT_A_REPOSITORY_RETURNCODE,
@@ -61,12 +36,6 @@ def _not_a_git_repository(
 
 
 def _in_memory_collector() -> InMemoryOperationEvidenceCollector:
-    """Return the evidence collector used instead of the subprocess one.
-
-    The marker object of the operation IS resolvable, so the fail-closed
-    pre-pass does not spend a repair attempt; the completion proof still
-    cannot verify, because HEAD cannot be read.
-    """
     return InMemoryOperationEvidenceCollector(
         facts=(OperationFact(kind="rebase_object_resolvable", value="True"),)
     )
@@ -77,12 +46,6 @@ def _wait_for_bounded_retry(
     *,
     record: object = None,
 ) -> IntegrationAction:
-    """Answer the seam decision the way the owner's own branch answers it.
-
-    The owner keeps the record and hands the integration back to the bounded
-    retry path; the test only needs that answer, so the seam is replaced
-    instead of driving the real decision.
-    """
     return IntegrationAction.WAIT_FOR_BOUNDED_RETRY
 
 
@@ -90,26 +53,6 @@ def test_missing_evidence_rotates_inspection_without_clearing_ownership(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Missing evidence rotates the inspection agent and keeps the ownership.
-
-    The diagnostic never releases a hold it cannot prove: a missing
-    completion receipt keeps the record's phase, its resolving flag and its
-    pre-integration SHAs, and the inspection agent rotates because the
-    owner charges every attempt that produced no verifiable completion.
-
-    The handoff consults live Git three times -- the evidence snapshot, the
-    owner's observation and the operation-completion proof. All three are
-    replaced here by deterministic doubles, so the unit spawns no process
-    and its cost does not scale with the host:
-
-    * the evidence collector is injected, so the default subprocess
-      collector never runs;
-    * the owner seam answers with the action it really returns for this
-      record (``WAIT_FOR_BOUNDED_RETRY``), so no branch is observed;
-    * every remaining git query is answered with the exit status a
-      directory that is not a repository produces -- the state the
-      inspected root always had here.
-    """
     monkeypatch.setattr("ralph.git.subprocess_runner.run_git", _not_a_git_repository)
     monkeypatch.setattr(
         diagnostic,
@@ -154,17 +97,6 @@ def test_missing_evidence_rotates_inspection_without_clearing_ownership(
 def test_diagnostic_changed_evidence_cannot_authorize_recovery(
     changed: str,
 ) -> None:
-    """A held lease whose fingerprint does NOT match the current record is CHANGED.
-
-    The previous-shape single-fingerprint ownership string is
-    unparseable as a lease and routes to UNKNOWN (fail-open). The
-    O1 livelock contract is: a record whose durable identity was
-    rewritten by a different worktree carries a valid lease but a
-    mismatched fingerprint -- that is the only path to operator
-    escalation (CHANGED). The "reflog" parametrize value asserts the
-    collector is no longer consulted for the verdict (the lease alone
-    is the release authority).
-    """
     import time
 
     from ralph.pipeline._integration_diagnostic import (
@@ -178,7 +110,6 @@ def test_diagnostic_changed_evidence_cannot_authorize_recovery(
         pre_target_sha="target",
         resolving_rebase=True,
     )
-    # Held lease uses the ORIGINAL fingerprint, with a fresh held_at.
     held_fingerprint = identity_fingerprint(record)
     held_at = time.time()
     record = record.model_copy(
@@ -188,15 +119,6 @@ def test_diagnostic_changed_evidence_cannot_authorize_recovery(
         }
     )
     if changed == "ownership":
-        # Rewrite the durable identity (forged) so the current
-        # identity_fingerprint differs from the held one. The
-        # collector is irrelevant -- the verdict follows the lease.
-        # ``target`` is the only stable identity field that
-        # participates in ``identity_fingerprint`` (the field set is
-        # narrowed to ``("target", "operation_kind", "owning_worktree")``
-        # in AC-4: a record whose ``target`` is rewritten is a
-        # different durable operation even when the lifecycle fields
-        # are unchanged).
         record = record.model_copy(update={"target": "forged-target"})
 
     collector = InMemoryOperationEvidenceCollector(
@@ -206,18 +128,11 @@ def test_diagnostic_changed_evidence_cannot_authorize_recovery(
         Path("/workspace"), record, collector=collector
     )
     if changed == "ownership":
-        # Mismatched fingerprint + valid lease + unexpired: CHANGED.
         assert verdict == EvidenceVerdict.CHANGED
         assert not diagnostic.diagnostic_evidence_unchanged(
             Path("/workspace"), record, collector=collector
         )
     else:
-        # Held evidence differs from the collector's observation but
-        # the lease is valid and unexpired: UNCHANGED. The collector
-        # is no longer consulted for the verdict (the lease alone
-        # is the release authority). This is the AC4 contract:
-        # Ralph's own actions (e.g. snapshotting HEAD) must never
-        # count as tampering.
         assert verdict == EvidenceVerdict.UNCHANGED
         assert diagnostic.diagnostic_evidence_unchanged(
             Path("/workspace"), record, collector=collector
@@ -225,12 +140,6 @@ def test_diagnostic_changed_evidence_cannot_authorize_recovery(
 
 
 def test_diagnostic_evidence_verdict_closed_vocabulary() -> None:
-    """Lease-based verdict: fingerprint match + held_at < lease window.
-
-    The diagnostic no longer compares the evidence snapshot. The
-    ``<fingerprint>:<held_at>`` lease in ``diagnostic_ownership`` is
-    the sole release authority.
-    """
     import time
 
     root = Path("/workspace")
@@ -241,12 +150,8 @@ def test_diagnostic_evidence_verdict_closed_vocabulary() -> None:
         pre_target_sha="target",
         resolving_rebase=True,
     )
-    # 1. Empty evidence + empty ownership -> UNCHANGED (nothing to hold)
     assert diagnostic.diagnostic_evidence_verdict(root, record) == EvidenceVerdict.UNCHANGED
 
-    # 2. Unparseable lease -> UNKNOWN (fail-open auto-release contract
-    # so unparseable/malformed leases never livelock or stall in an
-    # operator-only state per O1 / AC1).
     record_with_forged = record.model_copy(
         update={
             "diagnostic_evidence": (("reflog", "original"),),
@@ -257,7 +162,6 @@ def test_diagnostic_evidence_verdict_closed_vocabulary() -> None:
         diagnostic.diagnostic_evidence_verdict(root, record_with_forged) == EvidenceVerdict.UNKNOWN
     )
 
-    # 3. Expired lease (held_at far in the past) -> UNKNOWN
     fingerprint = identity_fingerprint(record)
     expired_held_at = time.time() - (diagnostic.EVIDENCE_LEASE_SECONDS + 100.0)
     record_expired = record.model_copy(
@@ -268,7 +172,6 @@ def test_diagnostic_evidence_verdict_closed_vocabulary() -> None:
     )
     assert diagnostic.diagnostic_evidence_verdict(root, record_expired) == EvidenceVerdict.UNKNOWN
 
-    # 4. Mismatched fingerprint -> CHANGED
     record_mismatch = record.model_copy(
         update={
             "diagnostic_evidence": (("reflog", "valid"),),
@@ -277,7 +180,6 @@ def test_diagnostic_evidence_verdict_closed_vocabulary() -> None:
     )
     assert diagnostic.diagnostic_evidence_verdict(root, record_mismatch) == EvidenceVerdict.CHANGED
 
-    # 5. Valid fresh lease -> UNCHANGED (collector is irrelevant now)
     record_valid = record.model_copy(
         update={
             "diagnostic_evidence": (("reflog", "valid_sha"),),
@@ -286,8 +188,6 @@ def test_diagnostic_evidence_verdict_closed_vocabulary() -> None:
     )
     assert diagnostic.diagnostic_evidence_verdict(root, record_valid) == EvidenceVerdict.UNCHANGED
 
-    # 6. Differing collector facts -> UNCHANGED (collector no longer
-    # consulted for the verdict; the lease alone is authoritative)
     collector_differing = InMemoryOperationEvidenceCollector(
         facts=(OperationFact(kind="reflog", value="different_sha"),)
     )
@@ -317,16 +217,13 @@ def test_release_verified_diagnostic_returns_typed_verdict_without_mutation(tmp_
         facts=(OperationFact(kind="head", value="integrated"),)
     )
 
-    # Evaluate verdict via release_verified_diagnostic
     verdict = diagnostic.release_verified_diagnostic(root, record, collector=collector)
     assert verdict == EvidenceVerdict.UNCHANGED
 
-    # Ensure no record was written to disk by release_verified_diagnostic
     assert not record_path(root).exists()
 
 
 def test_unknown_evidence_verdict_refuses_atomic_transition() -> None:
-    """An expired lease refuses the atomic transition (fail-open auto-release)."""
     import time
 
     record = IntegrationRecord(
@@ -337,7 +234,6 @@ def test_unknown_evidence_verdict_refuses_atomic_transition() -> None:
         integrated_feature_sha="integrated",
         diagnostic_evidence=(("head", "unreadable"),),
     )
-    # Lease expired -> UNKNOWN -> atomic transition proof fails
     expired_held_at = time.time() - (diagnostic.EVIDENCE_LEASE_SECONDS + 100.0)
     record = record.model_copy(
         update={"diagnostic_ownership": f"{identity_fingerprint(record)}:{expired_held_at}"}
@@ -358,8 +254,6 @@ def test_handoff_integration_diagnostic_honors_injected_collector(tmp_path: Path
         pre_target_sha="target",
         resolving_rebase=True,
     )
-    # Collector with unreachable rebase marker object spends one bounded
-    # pre-pass attempt instead of raising the retired hand-off.
     collector = InMemoryOperationEvidenceCollector(
         facts=(OperationFact(kind="rebase_object_resolvable", value="False"),)
     )
@@ -406,11 +300,8 @@ def test_handoff_integration_diagnostic_repeated_missing_agents_persists_interve
     collector = InMemoryOperationEvidenceCollector(
         facts=(OperationFact(kind="rebase_object_resolvable", value="True"),)
     )
-    # The ladder dispatch after the cap uses the injected plumbing fake:
-    # no real Git, no subprocess in this unit test.
     plumbing = _FakePlumbing(changed=())
 
-    # Attempt 1: bumps attempt count below cap
     assert not diagnostic.handoff_integration_diagnostic(
         controller=make_resolver_controller(),
         root=root,
@@ -428,8 +319,6 @@ def test_handoff_integration_diagnostic_repeated_missing_agents_persists_interve
     assert saved1.repair_last_error == "no eligible diagnostic agent available"
     assert invoked == []
 
-    # Attempt 2: reaches cap, stamps the typed budget-spent outcome and
-    # escalates into the autonomous fallback ladder (recorded in the ledger).
     assert not diagnostic.handoff_integration_diagnostic(
         controller=make_resolver_controller(),
         root=root,
@@ -451,8 +340,6 @@ def test_handoff_integration_diagnostic_repeated_missing_agents_persists_interve
         "cap exhaustion must reach a ladder rung recorded in the durable ledger"
     )
 
-    # Attempt 3: already at cap; the typed marker preserves the counter
-    # across loads and zero later invocations occur.
     assert not diagnostic.handoff_integration_diagnostic(
         controller=make_resolver_controller(),
         root=root,
@@ -472,17 +359,6 @@ def test_handoff_integration_diagnostic_repeated_missing_agents_persists_interve
 
 
 def test_malformed_timestamp_lease_returns_changed() -> None:
-    """A lease with a non-numeric ``held_at`` segment returns ``CHANGED``.
-
-    The lease-based verdict: a non-empty unparseable
-    ``diagnostic_ownership`` (no ``:`` separator, empty
-    fingerprint, empty held_at, or non-numeric held_at) is no
-    longer a valid durable identity; the verdict escalates to
-    ``CHANGED`` for operator review. This is the only path to
-    operator escalation for a non-empty unparseable ownership
-    (the fail-open auto-release contract is preserved for the
-    separate expired-lease branch).
-    """
     root = Path("/workspace")
     record = IntegrationRecord(
         phase="integrating",
@@ -491,8 +367,6 @@ def test_malformed_timestamp_lease_returns_changed() -> None:
         pre_target_sha="target",
         resolving_rebase=True,
     )
-    # Non-numeric held_at -> parse_lease returns (None, None)
-    # -> verdict is UNKNOWN (fail-open auto-release per AC1).
     record_malformed = record.model_copy(
         update={
             "diagnostic_evidence": (("reflog", "original"),),
@@ -503,14 +377,6 @@ def test_malformed_timestamp_lease_returns_changed() -> None:
 
 
 def test_empty_evidence_with_unparseable_ownership_returns_changed() -> None:
-    """A record with empty evidence but a non-empty unparseable ownership returns ``UNKNOWN``.
-
-    The empty-evidence short-circuit at the top of the verdict
-    function only fires when ``diagnostic_ownership`` is also
-    empty (the no-hold case). A record with empty evidence but
-    a non-empty unparseable ownership auto-releases fail-open
-    (``UNKNOWN``) per O1 / AC1.
-    """
     root = Path("/workspace")
     record = IntegrationRecord(
         phase="integrating",
@@ -519,7 +385,6 @@ def test_empty_evidence_with_unparseable_ownership_returns_changed() -> None:
         pre_target_sha="target",
         resolving_rebase=True,
     )
-    # Empty evidence + non-empty unparseable ownership.
     record_unparseable = record.model_copy(
         update={
             "diagnostic_evidence": (),

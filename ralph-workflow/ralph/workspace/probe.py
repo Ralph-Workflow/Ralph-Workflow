@@ -1,8 +1,3 @@
-"""Workspace change probe protocol and default implementation.
-
-Enforces black-box observation of workspace modifications without coupling
-recovery or execution to hidden global state or test-specific filename markers.
-"""
 
 from __future__ import annotations
 
@@ -239,11 +234,6 @@ def take_workspace_snapshot(
     *,
     max_files: int = DEFAULT_MAX_SNAPSHOT_FILES,
 ) -> dict[str, str]:
-    """Capture a snapshot of workspace files and their fingerprints.
-
-    Excludes VCS internals, temporary files, build caches, and Ralph internal
-    directories (.agent, .git, checkpoint files).
-    """
     snapshot: dict[str, str] = {}
     ver = _extract_workspace_version(workspace)
     if ver is not None:
@@ -275,14 +265,11 @@ def take_workspace_snapshot(
 
 @runtime_checkable
 class _WorkspaceChangeProbe(Protocol):
-    """Protocol for detecting workspace changes across phase execution attempts."""
 
     def observe_before(self, phase: str, workspace: Workspace) -> None:
-        """Capture baseline workspace state before an execution attempt."""
         ...
 
     def has_changed(self, phase: str, workspace: Workspace) -> bool:
-        """Return True if workspace changed since observe_before was called."""
         ...
 
 
@@ -290,24 +277,21 @@ WorkspaceChangeProbe = _WorkspaceChangeProbe
 
 
 class DefaultWorkspaceChangeProbe:
-    """Default workspace change probe tracking per-phase baselines without global state."""
 
     def __init__(self, *, max_files: int = DEFAULT_MAX_SNAPSHOT_FILES) -> None:
-        self._baselines: dict[str, dict[str, str]] = {}  # bounded-accumulator-ok: keyed by phase
+        self._baselines: dict[str, dict[str, str]] = {}
         self._version_baselines: dict[
             str, str | None
-        ] = {}  # bounded-accumulator-ok: keyed by phase
+        ] = {}
         self._max_files = max_files
 
     def observe_before(self, phase: str, workspace: Workspace) -> None:
-        """Capture baseline snapshot before an attempt."""
         ver = _extract_workspace_version(workspace)
         if ver is not None:
             self._version_baselines[phase] = ver
         self._baselines[phase] = take_workspace_snapshot(workspace, max_files=self._max_files)
 
     def has_changed(self, phase: str, workspace: Workspace) -> bool:
-        """Return True if workspace changed since observe_before was called."""
         before_ver = self._version_baselines.pop(phase, None)
         if before_ver is not None:
             current_ver = _extract_workspace_version(workspace)

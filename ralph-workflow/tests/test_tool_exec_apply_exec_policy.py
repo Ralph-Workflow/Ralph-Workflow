@@ -1,5 +1,3 @@
-"""Tests for ralph/mcp/tool_exec.py — MCP exec tool handler."""
-
 from __future__ import annotations
 
 import pytest
@@ -21,8 +19,6 @@ class TestApplyExecPolicy:
         apply_exec_policy("ls", ["-la"])
 
     def test_git_command_is_denied(self) -> None:
-        # ``git status`` is read-only and is whitelisted; the denial case
-        # is any blacklisted high-risk subcommand such as push.
         with pytest.raises(CapabilityDeniedError, match="git"):
             apply_exec_policy("git", ["push"])
 

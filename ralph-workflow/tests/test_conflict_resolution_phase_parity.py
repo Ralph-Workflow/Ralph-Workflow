@@ -1,5 +1,3 @@
-"""B1-B6: conflict resolution must follow the pipeline chain, not a local loop."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -63,9 +61,6 @@ def test_four_agent_chain_tries_every_candidate(
             )
             is False
         )
-        # Every candidate gets a turn, in chain order, before the round ends.
-        # Later rounds wrap back to the head rather than invoking nobody, so
-        # the chain -- not the exact call count -- is what this pins.
         seen: list[str] = []
         for name in called:
             if not seen or seen[-1] != name:
@@ -78,7 +73,6 @@ def test_four_agent_chain_tries_every_candidate(
 def test_transient_failure_retries_the_same_agent_using_recovery_controller_handle(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A transient first-agent failure retries that agent before failover."""
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
     monkeypatch.setattr(
         "ralph.pipeline.conflict_resolution.driver._sleep_seconds", lambda _seconds: None
@@ -116,7 +110,6 @@ def test_transient_failure_retries_the_same_agent_using_recovery_controller_hand
 def test_conflict_retry_honors_chain_retry_delay_ms_from_recovery_controller(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Retry backoff is the chain's retry_delay_ms decided by RecoveryController.handle."""
     sleeps: list[float] = []
     monkeypatch.setattr("ralph.pipeline.conflict_resolution.driver._sleep_seconds", sleeps.append)
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
@@ -150,7 +143,6 @@ def test_conflict_retry_honors_chain_retry_delay_ms_from_recovery_controller(
 def test_conflict_failures_call_recovery_controller_handle(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """R1: candidate failures use RecoveryController.handle, not a private retry table."""
     from ralph.recovery.controller import RecoveryController
 
     handled: list[str] = []
@@ -288,7 +280,6 @@ def test_launch_failure_is_not_collapsed_to_candidate_declined(
 def test_failed_invoke_routes_launch_provider_and_decline_through_recovery_controller(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """After a failed invoke, RecoveryController sees launch vs provider vs decline."""
     from ralph.recovery.controller import RecoveryController
     from ralph.recovery.failure_classifier import FailureClassifier
 
@@ -308,8 +299,6 @@ def test_failed_invoke_routes_launch_provider_and_decline_through_recovery_contr
 
         effective = outcome if outcome is not None else ConflictAttemptOutcome.RAW
         if effective is not ConflictAttemptOutcome.RAW:
-            # Typed outcomes (Ralph-observed facts) bypass the text classifier;
-            # a bare false return lands here as the typed ATTEMPT_FAILED shape.
             seen.append("decline")
             return RecoveryController.classify_conflict_attempt(
                 self,
@@ -381,7 +370,6 @@ def test_failed_invoke_routes_launch_provider_and_decline_through_recovery_contr
 def test_max_fallback_agents_does_not_truncate_a_four_agent_chain(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """max_fallback_agents remains a non-truncating compatibility field."""
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two", "three", "four")
     )
@@ -424,7 +412,6 @@ def test_max_fallback_agents_does_not_truncate_a_four_agent_chain(
 def test_round_after_a_spent_chain_still_invokes_a_candidate(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A round that starts past the end of the chain wraps instead of no-opping."""
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
@@ -458,15 +445,12 @@ def test_round_after_a_spent_chain_still_invokes_a_candidate(
 def test_a_new_stop_restarts_the_chain_on_a_reused_session(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """One session spans a rebase; a later stop must still spend the chain."""
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
     clock = FakeClock()
     session = ResolutionSession(ledger=AgentFailureLedger(clock=clock))
-    # Per-attempt observation: each of one's no-progress false returns leaves
-    # the markers in place; two's success clears them.
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED, []])
 
     def _first_stop(agent_name: str, prompt_path: Path, round_index: int) -> bool:
@@ -488,7 +472,6 @@ def test_a_new_stop_restarts_the_chain_on_a_reused_session(
         )
         is True
     )
-    # Between stops, time elapses past the first stop's candidate cooldown.
     clock.advance(60.0)
     _install_seams(monkeypatch, surviving_per_round=[[]])
     second_stop: list[str] = []
@@ -519,7 +502,6 @@ def test_a_new_stop_restarts_the_chain_on_a_reused_session(
 def test_a_round_that_invokes_nobody_is_never_reported_as_a_failed_attempt(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A chain nobody could spend has no attempt to report as failed."""
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
     clock = FakeClock()
@@ -568,7 +550,6 @@ def test_a_round_that_invokes_nobody_is_never_reported_as_a_failed_attempt(
 
 
 def test_a_dead_chain_stops_burning_rounds(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """No live candidate means no later round can spend one, so stop asking."""
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one",))
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
     clock = FakeClock()
@@ -613,7 +594,6 @@ def test_a_dead_chain_stops_burning_rounds(monkeypatch: pytest.MonkeyPatch, tmp_
 def test_a_pi_context_exhaustion_is_not_reported_as_a_declined_candidate(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """pi exiting on an exhausted context is an exit, not a resolver's verdict."""
     from ralph.pipeline import effect_executor as effect_executor_module
     from ralph.pipeline.agent_retry_intent import AgentRetryIntent
     from ralph.pipeline.events import PipelineEvent
@@ -652,23 +632,15 @@ def test_a_pi_context_exhaustion_is_not_reported_as_a_declined_candidate(
     )
     assert session.last_attempt_failure == "PiContextExhaustedExitError"
     assert session.skip_same_agent_retries is True
-    # The intent is consumed here, never left for the next phase to inherit.
     assert effect_executor_module.pop_last_captured_retry_intent().failure_reason == ""
 
 
 def test_a_resolver_that_ran_and_came_back_unsuccessful_is_a_failed_attempt(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """
-    An agent that ran and failed is a failed ATTEMPT, never a refusal. Nothing gives the
-    resolver a way to refuse the conflict, so the only honest reading of a non-success from an
-    agent that actually worked is that the attempt failed -- and the chain answers that by
-    trying again, not by accepting it.
-    """
     from ralph.pipeline.events import PipelineEvent
 
     def _ran_then_refused(*args: object, **kwargs: object) -> object:
-        # A resolver that really declines has RUN, and running is visible.
         listener = kwargs.get("effect")
         activity = getattr(listener, "activity_status_listener", None)
         if callable(activity):
@@ -706,11 +678,6 @@ def test_a_resolver_that_ran_and_came_back_unsuccessful_is_a_failed_attempt(
 def test_a_candidate_that_never_ran_is_not_recorded_as_declining(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """
-    An instant non-success with no activity is an exit, not a verdict. The executor answers
-    with the same event for failures that happen before any agent runs, which is how "invoking
-    X" was followed immediately by X apparently reading the conflict and refusing it.
-    """
     from ralph.pipeline.events import PipelineEvent
 
     monkeypatch.setattr(
@@ -742,19 +709,11 @@ def test_a_candidate_that_never_ran_is_not_recorded_as_declining(
 def test_an_uninstalled_candidate_is_unavailable_not_declining(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """
-    A chain may name an agent this workspace does not have. The executor answers a missing
-    binary with the same non-success event a real failure produces, so it read as the agent
-    giving up on the conflict -- instantly, because nothing ran. It now names the cause on the
-    retry-intent channel and the chain hands over.
-    """
     from ralph.pipeline import effect_executor as effect_executor_module
     from ralph.pipeline.agent_retry_intent import AgentRetryIntent
     from ralph.pipeline.events import PipelineEvent
 
     def _agent_not_found(*args: object, **kwargs: object) -> object:
-        # Exactly what execute_agent_effect does for a name the registry
-        # cannot produce: name the cause on the retry-intent channel.
         effect_executor_module._set_last_captured_retry_intent(
             AgentRetryIntent(
                 failure_reason=effect_executor_module.AGENT_NOT_FOUND_REASON,
@@ -793,11 +752,8 @@ def test_an_uninstalled_candidate_is_unavailable_not_declining(
 def test_an_uninstalled_candidate_hands_over_to_the_next_one(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Being absent must cost the chain one candidate, not the whole round."""
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("pi", "claude"))
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
-    # Per-attempt observation: pi's no-op attempt leaves the markers in place
-    # (no progress), claude's success clears them.
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, []])
     session = ResolutionSession()
     called: list[str] = []
@@ -832,7 +788,6 @@ def test_an_uninstalled_candidate_hands_over_to_the_next_one(
 def test_skip_same_agent_retries_advances_the_chain_instead_of_retrying(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A futile-to-retry exit must cost the next candidate, not the same one again."""
     session = ResolutionSession(skip_same_agent_retries=True)
     classify_failed_resolution_attempt(
         session,
@@ -844,8 +799,6 @@ def test_skip_same_agent_retries_advances_the_chain_instead_of_retrying(
     )
     assert session.chain_cursor == 1
     assert session.skip_same_agent_retries is False
-    # Contrast: without the flag the same environmental failure keeps the
-    # candidate eligible until its ledger limit is reached.
     retried = ResolutionSession()
     classify_failed_resolution_attempt(
         retried,
@@ -861,7 +814,6 @@ def test_skip_same_agent_retries_advances_the_chain_instead_of_retrying(
 def test_a_live_candidate_behind_the_cursor_is_still_invoked(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Dead surfaces ahead of the cursor must not strand the live agent behind it."""
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("alpha", "beta", "gamma")
     )
@@ -906,7 +858,6 @@ def test_a_live_candidate_behind_the_cursor_is_still_invoked(
 def test_one_candidates_infrastructure_fault_does_not_bury_the_next_one(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A dead tool surface is the agent that faulted, never the one after it."""
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
@@ -932,8 +883,6 @@ def test_one_candidates_infrastructure_fault_does_not_bury_the_next_one(
         )
         is False
     )
-    # Barred for this stop -- Ralph's plumbing faulted, and the recovery
-    # layer calls that retryable -- and never charged to the other agent.
     assert skipped_candidates(session, ("one", "two")) == frozenset()
     assert session.terminal_reason is ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED
 

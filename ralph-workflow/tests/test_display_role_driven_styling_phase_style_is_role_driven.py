@@ -1,9 +1,3 @@
-"""Regression tests: display layer uses role-derived styling, not canonical phase names.
-
-Verifies that completion_summary and phase_banner derive styles from phase roles
-when pipeline_policy is provided, rather than from hardcoded canonical phase names.
-"""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -22,9 +16,6 @@ from ralph.policy.models import (
     RecoveryPolicy,
 )
 
-# The policy is immutable and identical for every assertion in this module.
-# Build it at collection time so repeated Pydantic validation cannot consume a test's
-# one-second execution budget when the full xdist suite is under CPU contention.
 _CUSTOM_PIPELINE_POLICY: Final = PipelinePolicy(
     entry_phase="design",
     terminal_phase="done",
@@ -98,12 +89,9 @@ def _console() -> Console:
 
 
 class TestPhaseStyleIsRoleDriven:
-    """_phase_style returns role-derived style when pipeline_policy is provided."""
-
     def test_custom_execution_phase_gets_execution_style(self) -> None:
         policy = _CUSTOM_PIPELINE_POLICY
         style = phase_style("design", policy)
-        # execution role maps to "theme.phase.development"
         assert style == "theme.phase.development"
 
     def test_custom_commit_phase_gets_commit_style(self) -> None:
@@ -122,7 +110,6 @@ class TestPhaseStyleIsRoleDriven:
         assert style == "theme.phase.complete"
 
     def test_without_policy_canonical_name_returns_muted(self) -> None:
-        # Without policy, canonical phase names are not recognized (only roles are)
         style = phase_style("planning")
         assert style == "theme.text.muted"
 

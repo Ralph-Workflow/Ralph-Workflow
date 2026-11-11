@@ -1,12 +1,3 @@
-"""Black-box tests for lifecycle model-driven rendering APIs.
-
-Covers:
-- show_phase_start_from_entry (phase_banner.py)
-- emit_phase_close_from_exit (PlainLogRenderer / ParallelDisplay)
-- debug breadcrumbs in text-mode render_completion_summary
-- section ordering in render_completion_summary_group
-"""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -18,10 +9,6 @@ from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.phase_lifecycle import ExitContext, PhaseEntryModel, PhaseExitModel
 from ralph.display.snapshot import PipelineSnapshot
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 _CREATED_AT = datetime(2026, 5, 4, tzinfo=UTC)
 
@@ -50,7 +37,6 @@ def _blank_snapshot(
     waiting_status_line: str | None = None,
     last_failure_category: str | None = None,
 ) -> PipelineSnapshot:
-    """Return a minimal PipelineSnapshot with all optional fields defaulted."""
     return PipelineSnapshot(
         phase=phase,
         previous_phase=None,
@@ -74,11 +60,6 @@ def _blank_snapshot(
         waiting_status_line=waiting_status_line,
         last_failure_category=last_failure_category,
     )
-
-
-# ---------------------------------------------------------------------------
-# show_phase_start_from_entry
-# ---------------------------------------------------------------------------
 
 
 class TestEmitPhaseCloseFromExit:
@@ -129,7 +110,6 @@ class TestEmitPhaseCloseFromExit:
     def test_emits_elapsed_and_counters(self) -> None:
         pd, buf = _make_display()
         pd.begin_phase("development")
-        # Emit some activity to populate counters
         pd.emit_activity_line("u1", "tool_use", "read_file path.py")
         pd.emit_activity_line("u1", "error", "some error")
         entry = PhaseEntryModel(phase_name="development")
@@ -147,7 +127,6 @@ class TestEmitPhaseCloseFromExit:
         exit_model = PhaseExitModel.from_entry_model(entry)
         pd.emit_phase_close_from_exit(exit_model)
         out = buf.getvalue()
-        # Should not render [Dev] or [Analysis] brackets when no context
         assert "[Dev" not in out
         assert "[Analysis" not in out
 
@@ -205,7 +184,6 @@ class TestEmitPhaseCloseFromExit:
         assert "[phase-close] debug" not in out
 
     def test_emits_review_issues_found(self) -> None:
-        """emit_phase_close_from_exit emits review: issues found when review_issues_found=True."""
         pd, buf = _make_display()
         pd.begin_phase("review")
         entry = PhaseEntryModel(phase_name="review")
@@ -217,7 +195,6 @@ class TestEmitPhaseCloseFromExit:
         assert "[phase-close] review: issues found" in out
 
     def test_emits_review_clean(self) -> None:
-        """emit_phase_close_from_exit emits review: clean when review_issues_found=False."""
         pd, buf = _make_display()
         pd.begin_phase("review")
         entry = PhaseEntryModel(phase_name="review")
@@ -229,7 +206,6 @@ class TestEmitPhaseCloseFromExit:
         assert "[phase-close] review: clean" in out
 
     def test_no_review_line_when_not_applicable(self) -> None:
-        """emit_phase_close_from_exit emits no review line when review_issues_found is None."""
         pd, buf = _make_display()
         pd.begin_phase("development")
         entry = PhaseEntryModel(phase_name="development")

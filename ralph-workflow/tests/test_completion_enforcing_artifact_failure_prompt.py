@@ -1,5 +1,3 @@
-"""Regression coverage for completion-enforcing agents missing artifacts."""
-
 from __future__ import annotations
 
 import types
@@ -110,7 +108,6 @@ def test_completion_enforcing_agent_regression_missing_receipt_writes_canonical_
     agent_name: str,
     transport: AgentTransport,
 ) -> None:
-    """S-1: a clean exit without a receipt leaves the standard resubmit prompt."""
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("implement the task", encoding="utf-8")
     _RegistryFactory._agent_config = AgentConfig(cmd=agent_name, transport=transport)
@@ -152,7 +149,6 @@ def test_completion_enforcing_agent_regression_missing_receipt_writes_canonical_
 def test_completion_enforcing_agent_regression_missing_sentinel_does_not_resubmit_artifact(
     tmp_path: Path,
 ) -> None:
-    """S-1: an existing artifact with no sentinel must not receive a resubmit hint."""
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("implement the task", encoding="utf-8")
     _RegistryFactory._agent_config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)

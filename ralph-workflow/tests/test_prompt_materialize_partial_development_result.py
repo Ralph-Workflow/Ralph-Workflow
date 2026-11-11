@@ -1,5 +1,3 @@
-"""Focused prompt tests for partial development-result continuation handoff."""
-
 from __future__ import annotations
 
 import dataclasses
@@ -47,8 +45,6 @@ if TYPE_CHECKING:
 
 
 class _RootedMemoryWorkspace(MemoryWorkspace):
-    """Memory workspace exposing the path contract used by prompt preparation."""
-
     def __init__(self, root: Path) -> None:
         super().__init__(root=str(root))
         self.root = root
@@ -64,7 +60,6 @@ def _patch_partial_pipeline_runtime(
     auto_integrate: Callable[..., RebaseState],
     routed_effects: list[str],
 ) -> None:
-    """Connect the runner to in-memory collaborators and bound the test loop."""
     monkeypatch.setattr(
         runner_module,
         "resolve_workspace_scope",
@@ -237,7 +232,6 @@ def _render_after_commit(
 def test_partial_result_regression_starts_new_session_with_complete_handoff(
     tmp_path: Path,
 ) -> None:
-    """Regression for the partial-result continuation prompt requested by this task."""
     rendered = _render_after_commit(
         tmp_path,
         """---
@@ -300,7 +294,6 @@ status: partial
 def test_partial_pipeline_regression_commits_integrates_and_restarts_before_analysis(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """A partial result takes the full commit path before a fresh development session."""
     pipeline, artifacts = _policy()
     agents = AgentsPolicy(
         agent_chains={"main": AgentChainConfig(agents=["fake-agent"])},

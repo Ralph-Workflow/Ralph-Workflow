@@ -1,11 +1,3 @@
-"""Tests for wt-16: exit-status harvest from reaped processes.
-
-Verifies that _reap_psutil_zombie_and_mark, _reap_async_in_sync_and_mark,
-_escalate_termination_sync, _escalate_with_psutil, _terminate_by_pid,
-and _terminate_psutil_wave all populate record.returncode from the
-dead-list returncode after _safe_wait_procs / os.waitpid reaps the root.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -38,13 +30,10 @@ _FAST_POLICY = ProcessManagerPolicy(
 
 
 class _PsutilProcessWithReturncode(FakePsutilProcess):
-    """Fake psutil process with a typed returncode attribute."""
-
     returncode: int | None = None
 
 
 def _make_record(manager: ProcessManager, pid: int) -> ProcessRecord:
-    """Create and inject a RUNNING ProcessRecord for the given manager."""
     record = ProcessRecord(
         pid=pid,
         pgid=pid,
@@ -57,20 +46,12 @@ def _make_record(manager: ProcessManager, pid: int) -> ProcessRecord:
     return record
 
 
-# ----------------------------------------------------------------------
-# Test 1: _reap_psutil_zombie_and_mark decodes psutil returncode directly
-# ----------------------------------------------------------------------
-
-
 def test_psutil_zombie_reap_decodes_psutil_returncode() -> None:
-    """When psutil.wait_procs reaps the root and sets returncode on the
-    psutil_proc object, _reap_psutil_zombie_and_mark propagates it to the
-    record."""
     manager = ProcessManager(policy=_FAST_POLICY)
     record = _make_record(manager, pid=1)
 
     fake_root = _PsutilProcessWithReturncode(pid=1)
-    fake_root._terminated = True  # is_running() -> False -> wait_procs puts it in dead
+    fake_root._terminated = True
     fake_root.returncode = -9
 
     fake_psutil = FakePsutil()
@@ -85,25 +66,16 @@ def test_psutil_zombie_reap_decodes_psutil_returncode() -> None:
     assert record.returncode == -9
 
 
-# ----------------------------------------------------------------------
-# Test 2: _reap_psutil_zombie_and_mark decodes waitpid when psutil has no rc
-# ----------------------------------------------------------------------
-
-
 def test_psutil_zombie_reap_decodes_waitpid_when_no_psutil_returncode(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When the psutil process has returncode==None but os.waitpid returns
-    a WEXITSTATUS-encoded exit code, _reap_psutil_zombie_and_mark decodes it
-    via _status_to_returncode."""
     manager = ProcessManager(policy=_FAST_POLICY)
     record = _make_record(manager, pid=1)
 
     fake_root = _PsutilProcessWithReturncode(pid=1)
     fake_root._terminated = True
 
-    # Encode exit code 7 as the raw kernel wait status: n << 8
-    encoded_status = 7 << 8  # 0x700
+    encoded_status = 7 << 8
 
     def fake_waitpid(pid: int, flags: int) -> tuple[int, int]:
         return (1, encoded_status)
@@ -122,22 +94,14 @@ def test_psutil_zombie_reap_decodes_waitpid_when_no_psutil_returncode(
     assert record.returncode == 7
 
 
-# ----------------------------------------------------------------------
-# Test 3: _reap_async_in_sync_and_mark decodes waitpid status
-# ----------------------------------------------------------------------
-
-
 def test_reap_async_in_sync_decodes_waitpid_status(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When os.waitpid reaps an async process and returns a signal status
-    (SIGTERM=15), _reap_async_in_sync_and_mark decodes it correctly."""
     manager = ProcessManager(policy=_FAST_POLICY)
     record = _make_record(manager, pid=42)
 
     fake_async = FakeAsyncProcess(pid=42)
 
-    # Encode SIGTERM as the raw kernel wait status: just the signal number
     encoded_signal_status = signal.SIGTERM
 
     def fake_waitpid(pid: int, flags: int) -> tuple[int, int]:
@@ -149,16 +113,9 @@ def test_reap_async_in_sync_decodes_waitpid_status(
     assert record.returncode == -15
 
 
-# ----------------------------------------------------------------------
-# Test 4: _terminate_by_pid harvests gone-list returncode
-# ----------------------------------------------------------------------
-
-
 def test_terminate_by_pid_harvests_gone_list(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When _safe_wait_procs returns a dead list containing the root with
-    returncode==-15, _terminate_by_pid passes that to _mark_killed."""
     manager = ProcessManager(policy=_FAST_POLICY, psutil=FakePsutil())
     record = _make_record(manager, pid=7)
 
@@ -181,14 +138,7 @@ def test_terminate_by_pid_harvests_gone_list(
     assert record.returncode == -15
 
 
-# ----------------------------------------------------------------------
-# Test 5: ManagedPtyProcess.returncode falls back to record
-# ----------------------------------------------------------------------
-
-
 class _StubPtyProcForManaged:
-    """Stub satisfying _PtyProcessLike protocol with no returncode."""
-
     pid = 99998
     master_fd = -1
     slave_fd = -1
@@ -223,8 +173,6 @@ class _StubPtyProcForManaged:
 
 
 def test_managed_pty_returncode_falls_back_to_record() -> None:
-    """When _proc.returncode is None but the record is terminal with an int
-    returncode, ManagedPtyProcess.returncode falls back to the record."""
     record = ProcessRecord(
         pid=99998,
         pgid=99998,
@@ -239,11 +187,6 @@ def test_managed_pty_returncode_falls_back_to_record() -> None:
     manager = ProcessManager(policy=_FAST_POLICY)
     handle = ManagedPtyProcess(_StubPtyProcForManaged(), record, manager)
     assert handle.returncode == -15
-
-
-# ----------------------------------------------------------------------
-# Test 6: _escalate_termination_sync harvests psutil returncode
-# ----------------------------------------------------------------------
 
 
 class _FakeSyncProc:
@@ -286,9 +229,6 @@ class _FakeSyncProc:
 def test_escalate_termination_sync_harvests_psutil_returncode(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When _safe_wait_procs returns the root in its dead list with
-    returncode==-15, _escalate_termination_sync passes it to _mark_killed
-    and calls note_external_returncode on the proc."""
     manager = ProcessManager(policy=_FAST_POLICY)
     record = _make_record(manager, pid=5)
     manager.record_terminal_reason(record.pid, "interactive_completion", "test")
@@ -316,16 +256,9 @@ def test_escalate_termination_sync_harvests_psutil_returncode(
     assert -15 in note_called_with
 
 
-# ----------------------------------------------------------------------
-# Test 7: _terminate_psutil_wave harvests dead_rc into records
-# ----------------------------------------------------------------------
-
-
 def test_terminate_psutil_wave_harvests_dead_rc(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When _terminate_psutil_wave's wait_procs returns a dead list entry
-    whose pid matches a tracked record, it calls _mark_killed on that record."""
     manager = ProcessManager(policy=_FAST_POLICY)
     record = _make_record(manager, pid=11)
 
@@ -357,16 +290,9 @@ def test_terminate_psutil_wave_harvests_dead_rc(
     assert len(survivors) == 0
 
 
-# ----------------------------------------------------------------------
-# Test 8: _kill_psutil_wave harvests dead_rc into records
-# ----------------------------------------------------------------------
-
-
 def test_kill_psutil_wave_harvests_dead_rc(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When _kill_psutil_wave's wait_procs returns a dead list entry
-    whose pid matches a tracked record, it sets returncode on that record."""
     manager = ProcessManager(policy=_FAST_POLICY)
     record = _make_record(manager, pid=12)
 
@@ -397,13 +323,7 @@ def test_kill_psutil_wave_harvests_dead_rc(
     assert len(survivors) == 0
 
 
-# ----------------------------------------------------------------------
-# Test 9: original_terminal_reason returns first recorded reason
-# ----------------------------------------------------------------------
-
-
 def test_original_terminal_reason_returns_first_recorded() -> None:
-    """ProcessManager.original_terminal_reason returns the earliest recorded reason."""
     manager = ProcessManager(policy=_FAST_POLICY)
     pid = 99999
     manager.record_terminal_reason(pid, "interactive_completion", "agy")
@@ -411,11 +331,6 @@ def test_original_terminal_reason_returns_first_recorded() -> None:
     manager._record_termination_outcome(pid, "force_kill", "sent")
     assert manager.original_terminal_reason(pid) == "interactive_completion"
     assert manager.termination_issuer(pid) == "sent"
-
-
-# ----------------------------------------------------------------------
-# Test doubles for descendant & async harvest tests
-# ----------------------------------------------------------------------
 
 
 class _FakePtyProc:
@@ -502,14 +417,7 @@ class _FakeAsyncProcWithNote:
             self._callback.append(rc)
 
 
-# ----------------------------------------------------------------------
-# Test 10: Unrecorded descendant harvest leaves parent untouched
-# ----------------------------------------------------------------------
-
-
 def test_harvest_and_mark_descendant_unrecorded_descendant_leaves_parent_untouched() -> None:
-    """When an unrecorded descendant terminates, its exit status is discarded
-    and never routed into the parent's record or process handle."""
     manager = ProcessManager(policy=_FAST_POLICY)
     parent_record = _make_record(manager, pid=100)
     parent_called_with: list[int] = []
@@ -533,14 +441,7 @@ def test_harvest_and_mark_descendant_unrecorded_descendant_leaves_parent_untouch
     assert 200 not in {record.pid for record in manager.list_records()}
 
 
-# ----------------------------------------------------------------------
-# Test 11: Recorded descendant harvest updates only itself
-# ----------------------------------------------------------------------
-
-
 def test_harvest_and_mark_descendant_recorded_descendant_updates_only_itself() -> None:
-    """When a recorded descendant terminates, its exit status updates only its
-    own ProcessRecord and process handle, leaving the parent untouched."""
     manager = ProcessManager(policy=_FAST_POLICY)
     parent_record = _make_record(manager, pid=100)
     parent_called_with: list[int] = []
@@ -572,13 +473,7 @@ def test_harvest_and_mark_descendant_recorded_descendant_updates_only_itself() -
     assert parent_called_with == []
 
 
-# ----------------------------------------------------------------------
-# Test 12: Unrecorded descendant leaves parent PTY untouched
-# ----------------------------------------------------------------------
-
-
 def test_unrecorded_descendant_leaves_parent_pty_untouched() -> None:
-    """Reaping an unrecorded descendant does not write child status into parent PTY."""
     manager = ProcessManager(policy=_FAST_POLICY)
     parent_record = _make_record(manager, pid=100)
     fake_pty = _FakePtyProc(pid=100)
@@ -599,14 +494,7 @@ def test_unrecorded_descendant_leaves_parent_pty_untouched() -> None:
     assert fake_pty.returncode is None
 
 
-# ----------------------------------------------------------------------
-# Test 13: Status attributed by matching PID only
-# ----------------------------------------------------------------------
-
-
 def test_harvest_and_mark_descendant_ignores_mismatched_pid_in_gone() -> None:
-    """Status is attributed by matching PID only; gone entries with mismatched
-    PIDs are ignored and do not update the descendant or parent."""
     manager = ProcessManager(policy=_FAST_POLICY)
     parent_record = _make_record(manager, pid=100)
     child_record = _make_record(manager, pid=200)
@@ -625,17 +513,9 @@ def test_harvest_and_mark_descendant_ignores_mismatched_pid_in_gone() -> None:
     assert parent_record.returncode is None
 
 
-# ----------------------------------------------------------------------
-# Test 14: Registered descendant propagation during parent termination
-# ----------------------------------------------------------------------
-
-
 def test_terminate_registered_descendants_propagation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """During parent termination, registered descendants are reaped:
-    recorded descendants update themselves and unrecorded descendants are discarded,
-    without corrupting parent status."""
     manager = ProcessManager(policy=_FAST_POLICY)
     parent_record = _make_record(manager, pid=100)
     parent_called_with: list[int] = []
@@ -681,17 +561,10 @@ def test_terminate_registered_descendants_propagation(
     assert parent_called_with == []
 
 
-# ----------------------------------------------------------------------
-# Test 15: _escalate_termination_async harvests psutil returncode
-# ----------------------------------------------------------------------
-
-
 @pytest.mark.asyncio
 async def test_escalate_termination_async_harvests_psutil_returncode(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When _safe_wait_procs returns root in dead list with returncode==-15,
-    _escalate_termination_async propagates it to record and note_external_returncode."""
     manager = ProcessManager(policy=_FAST_POLICY)
     record = _make_record(manager, pid=50)
     manager.record_terminal_reason(record.pid, "interactive_completion", "test")
@@ -723,16 +596,9 @@ async def test_escalate_termination_async_harvests_psutil_returncode(
         manager.shutdown_all(grace_period_s=0.0)
 
 
-# ----------------------------------------------------------------------
-# Test 16: _escalate_with_psutil harvests psutil returncode
-# ----------------------------------------------------------------------
-
-
 def test_escalate_with_psutil_harvests_psutil_returncode(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When _safe_wait_procs returns root in dead list with returncode==-9,
-    _escalate_with_psutil propagates it to record and note_external_returncode."""
     manager = ProcessManager(policy=_FAST_POLICY)
     record = _make_record(manager, pid=60)
     manager.record_terminal_reason(record.pid, "interactive_completion", "test")
@@ -761,18 +627,9 @@ def test_escalate_with_psutil_harvests_psutil_returncode(
     assert fake_proc.returncode == -9
 
 
-# ----------------------------------------------------------------------
-# Test 17: _escalate_termination_sync cross-harvests owned child status
-# ----------------------------------------------------------------------
-
-
 def test_escalate_termination_sync_cross_harvests_owned_child(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When parent PID 100 and owned child PID 202 are both returned from
-    psutil's gone list with returncode=-15 during _escalate_termination_sync,
-    both parent and child records end terminal with returncode == -15, and
-    both managed handles expose returncode == -15."""
     manager = ProcessManager(policy=_FAST_POLICY)
     parent_record = _make_record(manager, pid=100)
     child_record = _make_record(manager, pid=202)
@@ -818,18 +675,9 @@ def test_escalate_termination_sync_cross_harvests_owned_child(
     assert child_handle.returncode == -15
 
 
-# ----------------------------------------------------------------------
-# Test 18: _terminate_by_pid persists harvested root rc when child zombie
-# ----------------------------------------------------------------------
-
-
 def test_terminate_by_pid_persists_harvested_root_when_child_zombie(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When a PID-only registered root exits with -15 in wave 1, and a child
-    survives as a zombie in wave 2, _terminate_by_pid reaps the child zombie
-    without corrupting the root record, persisting returncode == -15 with
-    terminal status ProcessStatus.KILLED."""
     manager = ProcessManager(policy=_FAST_POLICY)
     record = _make_record(manager, pid=10)
 
@@ -850,14 +698,11 @@ def test_terminate_by_pid_persists_harvested_root_when_child_zombie(
         procs: Sequence[object], timeout: float | None = None
     ) -> tuple[list[FakePsutilProcess], list[FakePsutilProcess]]:
         nonlocal wave
-        # During zombie reaping, timeout is 0.0
         if timeout == 0.0:
             return [fake_child], []
         wave += 1
         if wave == 1:
-            # Wave 1: root is dead, child survived
             return [fake_root], [fake_child]
-        # Wave 2: child is still alive / zombie
         return [], [fake_child]
 
     monkeypatch.setattr(fake_psutil, "wait_procs", fake_wait_procs)
@@ -868,18 +713,9 @@ def test_terminate_by_pid_persists_harvested_root_when_child_zombie(
     assert record.returncode == -15
 
 
-# ----------------------------------------------------------------------
-# Test 19: _escalate_termination_sync persists harvested root rc when child zombie
-# ----------------------------------------------------------------------
-
-
 def test_escalate_termination_sync_persists_harvested_root_when_child_zombie(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When an owned root process exits with -15 in wave 1, and a child
-    survives as a zombie in wave 2, _escalate_termination_sync reaps the child
-    zombie without corrupting the root record, asserting returncode == -15
-    on both the record and the managed handle."""
     manager = ProcessManager(policy=_FAST_POLICY)
     parent_record = _make_record(manager, pid=30)
     manager.record_terminal_reason(parent_record.pid, "interactive_completion", "test")

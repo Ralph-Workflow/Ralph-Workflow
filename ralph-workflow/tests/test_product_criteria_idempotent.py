@@ -55,7 +55,6 @@ def test_persist_product_criteria_writes_first_content() -> None:
 
 
 def test_persist_product_criteria_regression_skips_identical_parent_preparation() -> None:
-    """S-3: unchanged criteria do not rewrite the parent directory metadata."""
     backend = _CountingBackend()
     workspace_root = Path("/virtual-ws")
     destination = workspace_root / ".agent" / "PRODUCT_CRITERIA.md"

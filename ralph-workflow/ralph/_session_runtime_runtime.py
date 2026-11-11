@@ -1,4 +1,3 @@
-"""Runtime context for Ralph-managed standalone agent sessions."""
 
 from __future__ import annotations
 
@@ -45,52 +44,6 @@ if TYPE_CHECKING:
 
 
 class ManagedAgentSessionRuntime:
-    """Host-owned context for running prompt-like mini workflows through Ralph.
-
-    A :class:`ManagedAgentSessionRuntime` is the reusable runtime seam
-    Ralph exposes for tools that need to drive a single, isolated agent
-    session without entering the full policy-driven pipeline. Callers own
-    the higher-level host loop (e.g. plan/verify helpers, ad-hoc prompt
-    runners, or external tooling); the runtime owns the MCP bridge, the
-    per-session environment, agent invocation wiring, retry handling, and
-    optional master-prompt materialization.
-
-    Instances are constructed via :meth:`open` (a classmethod) so the
-    bridge and session id lifecycle are managed in one place. The runtime
-    is a context manager: ``with runtime: ...`` shuts down the bridge on
-    exit (also available directly via :meth:`close`).
-
-    Attributes (set in :meth:`open`, treated as read-only afterwards):
-        config: The fully-merged :class:`UnifiedConfig` driving the
-            general settings of every :meth:`invoke_prompt_file` turn.
-        workspace_root: The repository-relative workspace the agent
-            subprocess treats as its working directory.
-        agent_config: The selected :class:`AgentConfig` identifying the
-            agent CLI to invoke.
-        request: The :class:`ManagedAgentSessionRequest` that named the
-            session; retained verbatim for diagnostics and checkpoint
-            rehydration.
-        bridge: The :class:`SessionBridgeLike` started by :meth:`open`.
-            Owns the MCP server endpoint the agent reaches as
-            ``MCP_ENDPOINT``.
-        agent_session: The :class:`AgentSession` carrying the unique
-            session id, run id, declared capabilities, and model identity.
-        master_prompt_file: Resolved path to a master-prompt file when
-            the request named one; ``None`` when the agent runs without an
-            explicit master prompt.
-        deps: The :class:`ManagedAgentSessionDeps` dependency bundle in
-            use (production defaults, or the test stub passed to
-            :meth:`open`).
-
-    Invariants:
-        - The class is constructed only via :meth:`open`; the regular
-          ``__init__`` is reserved for the runtime's internal use to keep
-          construction injectable.
-        - The MCP bridge owned by the runtime is alive between
-          construction and :meth:`close`; callers must invoke
-          :meth:`close` (or use the context-manager protocol) regardless
-          of how their host loop exits.
-    """
 
     def __init__(
         self,
@@ -124,66 +77,6 @@ class ManagedAgentSessionRuntime:
         deps: ManagedAgentSessionDeps | None = None,
         agents_policy: AgentsPolicy | None = None,
     ) -> ManagedAgentSessionRuntime:
-        """Construct a managed Ralph session ready for :meth:`invoke_prompt_file`.
-
-        ``open`` allocates the session id, starts the MCP bridge that the
-        agent will talk to, and (optionally) materializes a master-prompt
-        file. It is the only sanctioned way to build a
-        :class:`ManagedAgentSessionRuntime`; the regular ``__init__`` is
-        reserved for the runtime's internal use so it can be reasoned about
-        as a pure dependency-injected bundle.
-
-        Keyword Args:
-            config: The fully-merged :class:`ralph.config.models.UnifiedConfig`
-                that drives general settings (verbosity, retry limits, JSON
-                parser). Reused for every :meth:`invoke_prompt_file` call
-                made through the runtime.
-            workspace_root: Filesystem location the agent session will treat
-                as its working directory. Forwarded to the workspace factory
-                in ``deps`` to produce a :class:`Workspace` that the MCP
-                bridge will hand to tools.
-            agent_config: Selected :class:`ralph.config.models.AgentConfig`
-                that names which agent CLI to invoke (e.g. Claude, Codex,
-                OpenCode), which transport to use, and which optional model
-                flag to pass through.
-            request: Caller-supplied :class:`ManagedAgentSessionRequest` that
-                names the session id prefix, ``drain``, capabilities, system
-                prompt, and any pre-resolved session plan.
-            deps: Optional :class:`ManagedAgentSessionDeps` bundle overriding
-                one or more collaborator boundaries (workspace factory, MCP
-                server starter, agent invoker, master-prompt materializer,
-                bridge shutdown). Pass a stubbed bundle in tests to avoid
-                real subprocesses and filesystem access. When ``None`` the
-                production defaults from
-                :class:`ManagedAgentSessionDeps` are used.
-            agents_policy: Optional :class:`ralph.policy.models.AgentsPolicy`
-                used to resolve MCP capabilities and access modes when
-                ``request.capabilities`` and ``request.session_mcp_plan`` are
-                both ``None``. Falls back to the policy embedded in
-                ``config`` when omitted.
-
-        Returns:
-            A fully wired :class:`ManagedAgentSessionRuntime` whose MCP
-            bridge is already listening on a private endpoint. The caller
-            owns the returned runtime and must invoke :meth:`close` (or use
-            it as a context manager) so the bridge shuts down on exit.
-
-        Raises:
-            Exception: Any failure during bridge start or master-prompt
-                materialization is re-raised **after** any partially-started
-                bridge has been shut down via ``deps.shutdown_bridge``, so
-                the caller never inherits a half-initialized MCP listener.
-
-        Side Effects:
-            - Starts an MCP server subprocess (or in-memory bridge, if the
-              ``deps.start_mcp_server`` override returns one) bound to a
-              private endpoint.
-            - Captures a fresh ``run_id`` (UUID4) that is exposed through
-              ``MCP_RUN_ID_ENV`` and ``AGENT_LABEL_SCOPE_ENV`` to the agent
-              subprocess.
-            - May write a master-prompt file under ``workspace_root`` via
-              ``deps.materialize_master_prompt``.
-        """
         runtime_deps = deps or ManagedAgentSessionDeps()
         session_plan = _resolve_session_plan(
             request=request,
@@ -210,13 +103,6 @@ class ManagedAgentSessionRuntime:
         try:
             master_prompt_file = None
             if request.master_prompt_name is not None:
-                # G3/S-3 (Evidence Provenance C1): thread the agent's
-                # transport into the materialized master prompt so an
-                # AGY-shaped managed session gets the call_mcp_tool
-                # dispatcher hint, exactly like every other master-prompt
-                # call site. ManagedAgentSessionRequest has no worker-
-                # namespace concept (confirmed: zero matches for it on that
-                # dataclass), so None is the correct 4th positional value.
                 master_prompt_file = runtime_deps.materialize_master_prompt(
                     workspace_root,
                     request.master_prompt_name,
@@ -246,7 +132,6 @@ class ManagedAgentSessionRuntime:
         self.close()
 
     def close(self) -> None:
-        """Shut down the MCP bridge owned by this session."""
         self._deps.shutdown_bridge(self._bridge)
 
     def invoke_prompt_file(
@@ -260,88 +145,6 @@ class ManagedAgentSessionRuntime:
         permission_prompt_listener: Callable[[str], None] | None = None,
         extra_env: dict[str, str] | None = None,
     ) -> Iterable[str]:
-        """Drive one host-owned agent turn and stream the agent's output.
-
-        ``invoke_prompt_file`` resolves the per-turn ``InvokeOptions`` for
-        the configured agent, injects the MCP endpoint / run-id / agent
-        scope environment variables into the agent subprocess, and yields
-        the agent's output line-by-line (logging through
-        :func:`ralph.agents.invoke.invoke_agent`). The MCP bridge started
-        by :meth:`open` is reachable as the ``MCP_ENDPOINT`` env value, so
-        tools that call back into Ralph resolve back to the same bridge
-        for the lifetime of the turn.
-
-        Args:
-            prompt_file: Path to the prompt file the agent will be asked to
-                read. Resolved relative to the runtime's ``workspace_root``
-                by the underlying invocation mechanism; absolute paths are
-                honored as-is.
-
-        Keyword Args:
-            session_id: Optional explicit session id forwarded to the agent.
-                When ``None`` the agent runtime generates one; the actual id
-                is reported through ``session_id_sink``.
-            session_id_sink: Optional callback invoked as soon as the agent
-                makes its session id observable (i.e. after the first
-                handshake). Receives the resolved session id so the host can
-                store it for resumption, logging, or checkpoint writes.
-            required_artifact: Optional
-                :class:`ralph.phases.required_artifacts.RequiredArtifact`
-                declaration used by the agent runtime to gate completion;
-                the turn fails fast if no matching artifact is produced.
-                Most host loops leave this ``None``.
-            waiting_listener: Optional callback invoked when the agent
-                reports it is waiting on a tool call. Used by progress UIs
-                to surface the wait state without depending on stdout
-                parsing.
-            permission_prompt_listener: Optional callback invoked when the
-                agent prompts for permission (e.g. before an action that
-                requires operator approval). Implementations should return
-                the agent's answer or raise to abort the turn.
-            extra_env: Optional additional environment variables merged into
-                the agent subprocess environment, **excluding** the three
-                reserved names ``MCP_ENDPOINT``, ``MCP_RUN_ID``, and
-                ``AGENT_LABEL_SCOPE`` (these are owned by the runtime and
-                always set by ``open``).
-
-        Returns:
-            Iterable[str]: A lazy iterator over the agent's streamed output
-            lines. The iterator is wrapped by
-            :func:`ralph.agents.invoke._direct_mcp_recovery.iter_with_direct_mcp_recovery`,
-            which transparently retries on direct-MCP failures up to
-            ``config.general.max_same_agent_retries`` attempts. Retry events
-            are emitted through :func:`loguru.logger.warning`.
-
-        Raises:
-            Exception: Propagated from the underlying agent invocation or
-                from the recovery iterator once retries are exhausted. The
-                MCP bridge started by :meth:`open` is **not** shut down on
-                failure; callers are expected to invoke :meth:`close` (or use
-                the runtime as a context manager) regardless of outcome.
-
-        Side Effects:
-            - Launches the configured agent CLI as a subprocess.
-            - Injects ``MCP_ENDPOINT``, ``MCP_RUN_ID``, and
-              ``AGENT_LABEL_SCOPE`` into the subprocess environment so the
-              agent can reach the MCP bridge owned by this runtime.
-            - May invoke ``session_id_sink`` and the listener callbacks as
-              the turn progresses.
-            - On retryable failure, may re-launch the agent subprocess and
-              may reset the bridge's tool registry (when one is exposed via
-              ``bridge.reset_tool_registry``).
-
-        Example:
-            >>> with ManagedAgentSessionRuntime.open(
-            ...     config=config,
-            ...     workspace_root=repo_root,
-            ...     agent_config=agent_config,
-            ...     request=ManagedAgentSessionRequest(
-            ...         session_id_prefix="plan", drain="planning"
-            ...     ),
-            ... ) as runtime:
-            ...     for line in runtime.invoke_prompt_file("your-prompt-file.md"):
-            ...         print(line)
-        """
         runtime_env = {
             str(MCP_ENDPOINT_ENV): self._bridge.agent_endpoint_uri(),
             str(MCP_RUN_ID_ENV): self._agent_session.run_id,
@@ -363,12 +166,6 @@ class ManagedAgentSessionRuntime:
                 show_progress=False,
                 workspace_path=self._workspace_root,
                 extra_env=runtime_env,
-                # NOTE: Ralph does NOT pass opencode's ``--pure``. That flag runs
-                # opencode without external plugins, and a plugin is often what
-                # supplies the operator's model provider -- disabling it makes the
-                # model they configured unresolvable and the run dies with
-                # "UnknownError: Unexpected server error". Ralph runs an operator's
-                # coding harness with the extensions they installed.
                 session_id=session_id,
                 master_prompt_file=self._master_prompt_file,
                 waiting_listener=waiting_listener,
@@ -414,7 +211,6 @@ def _reset_tool_registry_callback(
 
 
 def _transport_tagged_identity(transport: AgentTransport | None) -> MultimodalModelIdentity:
-    """Return an unresolved identity carrying only the transport."""
     if transport is None:
         return UNKNOWN_IDENTITY
     return MultimodalModelIdentity(
@@ -435,15 +231,6 @@ def _resolve_session_plan(
     if request.session_mcp_plan is not None:
         return request.session_mcp_plan
     if request.capabilities is not None:
-        # Pre-supplied capabilities replace the capability computation,
-        # NOT the identity: falling back to the dataclass defaults here
-        # discarded the agent's transport and left the multimodal
-        # delivery guards blind on this path.
-        # Tag the transport only. Resolving the canonical provider here
-        # would flip pdf/document/audio/video for a flagless session from
-        # resource-reference to a hard UNSUPPORTED error -- a far wider
-        # behaviour change than this path intends, and one
-        # ``resolve_session_mcp_plan`` deliberately refuses to make.
         identity = (
             resolve_model_identity(agent_config.transport, agent_config.model_flag)
             if agent_config.model_flag is not None

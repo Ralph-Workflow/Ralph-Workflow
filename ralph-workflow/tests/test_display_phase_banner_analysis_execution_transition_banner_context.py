@@ -1,11 +1,3 @@
-"""Tests for ralph/display/parallel_display.py phase transition display.
-
-The free-function ``ralph.display.phase_banner`` module was deleted in
-wt-007-consolidate-display. The phase transition / start / close banner
-logic is now owned by ``ParallelDisplay`` instance methods; these tests
-exercise that consolidated surface.
-"""
-
 from __future__ import annotations
 
 from io import StringIO
@@ -29,7 +21,6 @@ from ralph.policy.models import (
 
 
 def _ctx_from_console(console: Console) -> DisplayContext:
-    """Create a DisplayContext from a Console for testing."""
     return make_display_context(console=console)
 
 
@@ -105,11 +96,7 @@ def test_show_phase_transition_with_context() -> None:
     assert "iteration=1/5" in output
 
 
-# --- New tests for expanded transitions and descriptions ---
-
-
 def test_major_transition_analysis_to_commit_with_policy() -> None:
-    """Analysis \u2192 commit is a major transition showing routing labels only."""
     policy = _make_two_phase_policy(
         "analysis",
         "commit",
@@ -130,7 +117,6 @@ def test_major_transition_analysis_to_commit_with_policy() -> None:
 
 
 def test_major_transition_analysis_loopback_with_policy() -> None:
-    """Analysis loopback \u2192 execution is a major transition with routing labels only."""
     policy = _make_two_phase_policy("analysis", "execution", "check", "work")
     console = Console(record=True, width=120)
     pd = ParallelDisplay(_ctx_from_console(console))
@@ -146,7 +132,6 @@ def test_major_transition_analysis_loopback_with_policy() -> None:
 
 
 def test_major_transition_review_to_terminal_with_policy() -> None:
-    """Review \u2192 terminal should be a major transition when policy provides roles."""
     terminal_name = "done"
     policy = PipelinePolicy(
         phases={
@@ -179,7 +164,6 @@ def test_major_transition_review_to_terminal_with_policy() -> None:
 
 
 def test_unknown_transition_renders_gracefully() -> None:
-    """Unknown transition pair should still render without crashing."""
     console = Console(record=True, width=120)
     pd = ParallelDisplay(_ctx_from_console(console))
     pd.emit_phase_transition(
@@ -192,7 +176,6 @@ def test_unknown_transition_renders_gracefully() -> None:
 
 
 def test_major_role_pairs_transition_shows_no_duplicated_description() -> None:
-    """Major role-pair transitions must not show duplicated description prose."""
     for from_role, to_role in MAJOR_ROLE_PAIRS:
         policy = _make_two_phase_policy(from_role, to_role, "phase_a", "phase_b")
         console = Console(record=True, width=120)
@@ -209,7 +192,6 @@ def test_major_role_pairs_transition_shows_no_duplicated_description() -> None:
 
 
 def test_transition_without_policy_renders_as_minor_no_description() -> None:
-    """Without policy, transitions are always minor with no description."""
     console = Console(record=True, width=120)
     pd = ParallelDisplay(_ctx_from_console(console))
     pd.emit_phase_transition(
@@ -221,11 +203,7 @@ def test_transition_without_policy_renders_as_minor_no_description() -> None:
     assert "Development Analysis" in output
 
 
-# --- Tests for show_phase_start_from_entry (canonical API) ---
-
-
 def test_show_phase_start_from_entry_outer_dev_label() -> None:
-    """show_phase_start_from_entry renders canonical Cycle N/cap label."""
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=200)
     entry = PhaseEntryModel(phase_name="development", outer_dev_iteration=3, outer_dev_cap=7)
@@ -238,7 +216,6 @@ def test_show_phase_start_from_entry_outer_dev_label() -> None:
 
 
 def test_show_phase_start_from_entry_inner_analysis_label() -> None:
-    """show_phase_start_from_entry renders canonical iter N/cap label."""
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=200)
     entry = PhaseEntryModel(
@@ -252,7 +229,6 @@ def test_show_phase_start_from_entry_inner_analysis_label() -> None:
 
 
 def test_show_phase_start_from_entry_no_raw_counter_format() -> None:
-    """show_phase_start_from_entry never emits legacy [counter_name N/cap] format."""
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=200)
     entry = PhaseEntryModel(
@@ -271,11 +247,7 @@ def test_show_phase_start_from_entry_no_raw_counter_format() -> None:
     assert "iter 1/3" in output
 
 
-# --- Tests for default mode banners ---
-
-
 def _make_execution_to_analysis_policy() -> PipelinePolicy:
-    """Build a policy with execution \u2192 analysis \u2192 terminal for mode transition tests."""
     return PipelinePolicy(
         phases={
             "planning": PhaseDefinition(
@@ -302,7 +274,6 @@ def _make_execution_to_analysis_policy() -> PipelinePolicy:
 
 
 def test_show_phase_transition_at_medium_width_has_one_rule_no_description() -> None:
-    """Default mode at medium width major transition uses a single titled Rule (no duplication)."""
     console = Console(record=True, width=80)
     ctx = make_display_context(
         console=console,
@@ -322,7 +293,6 @@ def test_show_phase_transition_at_medium_width_has_one_rule_no_description() -> 
 
 
 def test_show_phase_transition_at_wide_width_has_one_rule_no_description() -> None:
-    """Default mode at wide width major transition uses a single titled Rule."""
     console = Console(record=True, width=120)
     ctx = make_display_context(
         console=console,
@@ -347,7 +317,6 @@ def _make_two_phase_policy(
     from_name: str = "phase_a",
     to_name: str = "phase_b",
 ) -> PipelinePolicy:
-    """Build a minimal two-phase PipelinePolicy for display tests."""
     terminal_name = "done"
     return PipelinePolicy(
         phases={
@@ -375,10 +344,7 @@ def _make_two_phase_policy(
 
 
 class TestAnalysisExecutionTransitionBannerContext:
-    """Verify analysis \u2192 execution banners render decision context."""
-
     def test_analysis_to_execution_banner_shows_decision_and_final_skip(self) -> None:
-        """Analysis \u2192 execution transition shows decision in banner."""
         policy = _make_two_phase_policy(
             "analysis",
             "execution",
@@ -404,7 +370,6 @@ class TestAnalysisExecutionTransitionBannerContext:
         assert "\u2192 needs changes" in output, f"Decision missing from banner. Output:\n{output}"
 
     def test_analysis_to_execution_banner_without_final_skip_shows_decision(self) -> None:
-        """Analysis \u2192 execution transition shows decision even without final-skip."""
         policy = _make_two_phase_policy("analysis", "execution", "planning_analysis", "planning")
         console = Console(record=True, width=120)
         context = {
@@ -422,7 +387,6 @@ class TestAnalysisExecutionTransitionBannerContext:
         assert "final, skipping next" not in output
 
     def test_analysis_to_commit_banner_shows_approved_decision(self) -> None:
-        """Analysis \u2192 commit transition shows approved decision in banner."""
         policy = _make_two_phase_policy(
             "analysis", "commit", "planning_analysis", "planning_commit"
         )

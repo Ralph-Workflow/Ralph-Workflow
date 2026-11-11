@@ -1,5 +1,3 @@
-"""Black-box end-to-end tests for the AGY smoke harness using the mock binary."""
-
 from __future__ import annotations
 
 import os
@@ -41,7 +39,6 @@ pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(20)]
 
 
 def _mock_agy_path() -> Path:
-    """Return the absolute path to the mock AGY shell wrapper."""
     return Path(__file__).resolve().parent / "_support" / "mock_agy.sh"
 
 
@@ -61,7 +58,6 @@ def _run_agy_smoke_plumbing(
     agent_name: str = "agy/gemini-3.6-flash-low",
     subagents: bool = False,
 ) -> SmokeRunResult:
-    """Drive ``run_smoke_plumbing`` with the mock AGY binary in ``tmp_path``."""
     mock_path = _mock_agy_path()
     monkeypatch.setenv("RALPH_AGY_BINARY", str(mock_path))
     monkeypatch.setenv("MOCK_AGY_BEHAVIOR", behavior)
@@ -77,9 +73,6 @@ def _run_agy_smoke_plumbing(
     workspace_scope = WorkspaceScope(tmp_path)
     config = load_config(None, {}, workspace_scope=workspace_scope)
     config = apply_smoke_binary_overrides_to_config(config)
-    # Dynamic agy/<model> aliases are resolved from builtins, not from
-    # config.agents, so inject the overridden config under the exact
-    # agent name so the mock binary is honored.
     agent_config = AgentRegistry.from_config(config).get(agent_name)
     if agent_config is not None:
         agent_config = apply_smoke_binary_override(agent_config)
@@ -106,26 +99,6 @@ def _run_agy_smoke_plumbing(
     )
 
 
-# Module-scoped cache: the expensive smoke plumbing (subprocess startup
-# + pipeline build + mock AGY invocation) is shared across all tests
-# that use the SAME (behavior, agent_name) pair. The cache key is the
-# tuple; the cached value is a triple (SmokeRunResult, tmp_path,
-# deps) so tests can either assert against the result object
-# directly OR read the persisted artifact / todo files from the
-# cached tmp_path without re-running the subprocess.
-#
-# The cached ``tmp_path`` is the FIRST ``tmp_path`` seen for this
-# cache key (later ``tmp_path`` fixtures are skipped via cache hit).
-# All cached tests share that single tmp_path so they read the
-# same files. Non-cached tests (quota_exhausted, Gemini agent,
-# captures-both-sinks with monkeypatched execute_agent_effect) get
-# a fresh invocation per test.
-#
-# Without this cache, the 7 tests in this file each spent ~1.7 s on
-# real subprocess + pipeline setup, totaling ~12 s — well over the
-# 60 s cumulative subprocess_e2e budget. With the cache, only 3 of
-# the 7 tests drive a fresh subprocess; the other 4 share the cached
-# result and run in <100 ms each.
 _smoke_result_cache: dict[tuple[str, str], tuple[SmokeRunResult, Path, object]] = {}
 
 
@@ -133,13 +106,6 @@ _smoke_result_cache: dict[tuple[str, str], tuple[SmokeRunResult, Path, object]] 
 def cached_default_smoke(
     tmp_path_factory: pytest.TempPathFactory,
 ) -> tuple[SmokeRunResult, Path]:
-    """Module-scoped default smoke plumbing result shared across tests.
-
-    Returns ``(result, workspace_tmp_path)``. The ``tmp_path`` is owned
-    by the cache so all tests reading the persisted artifact /
-    todo-list.js files see the SAME files written by the one shared
-    smoke run.
-    """
     key = ("normal", "agy/claude-sonnet-5-5-high")
     cached = _smoke_result_cache.get(key)
     if cached is not None:
@@ -154,7 +120,7 @@ def cached_default_smoke(
             behavior="normal",
             agent_name="agy/claude-sonnet-5-5-high",
         )
-        deps = None  # placeholder for future seam
+        deps = None
         _smoke_result_cache[key] = (result, workspace, deps)
         return result, workspace
     finally:
@@ -164,7 +130,6 @@ def cached_default_smoke(
 def test_agy_harness_produces_real_output_with_mock(
     cached_default_smoke: tuple[SmokeRunResult, Path],
 ) -> None:
-    """The full harness reports file=yes, tool activity=yes, artifact=yes, no breaks."""
     result, _workspace = cached_default_smoke
     assert result.file_created is True
     assert result.session_id is not None
@@ -191,13 +156,6 @@ def test_agy_harness_subagent_stream_json_is_observed(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """S-6: mock stream-json dispatch/result satisfies the subagent smoke contract.
-
-    The mock emits TWO subagents in one frame (matching the measured live
-    multi-subagent capture); S-4 relaxed the contract from "exactly one
-    dispatch" to "at least one dispatch, each with a correlated result", so
-    both are expected here.
-    """
     result = _run_agy_smoke_plumbing(tmp_path, monkeypatch, subagents=True)
 
     assert result.subagent_dispatch_count == 2
@@ -211,7 +169,6 @@ def test_agy_harness_subagent_stream_json_is_observed(
 def test_agy_harness_writes_artifact_with_correct_schema(
     cached_default_smoke: tuple[SmokeRunResult, Path],
 ) -> None:
-    """The canonical Markdown artifact validates against the spec and SmokeTestResult."""
     _result, workspace = cached_default_smoke
     artifact_path = workspace / ".agent" / "artifacts" / "smoke_test_result.md"
     markdown = artifact_path.read_text(encoding="utf-8")
@@ -230,7 +187,6 @@ def test_agy_harness_writes_artifact_with_correct_schema(
 def test_agy_harness_writes_todo_list_with_expected_methods(
     cached_default_smoke: tuple[SmokeRunResult, Path],
 ) -> None:
-    """The todo-list.js file exports a function and contains the expected method names."""
     _result, workspace = cached_default_smoke
     todo_path = workspace / "tmp" / "interactive-agy-smoke" / "todo-list.js"
     text = todo_path.read_text(encoding="utf-8")
@@ -244,7 +200,6 @@ def test_agy_harness_quota_branch_reports_provider_signal_and_terminal_classific
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Quota smoke errors preserve the provider signal instead of a mock-empty note."""
     result = _run_agy_smoke_plumbing(tmp_path, monkeypatch, behavior="quota_exhausted")
 
     assert any("agy" in error for error in result.errors)
@@ -267,7 +222,6 @@ def test_agy_harness_non_quota_failures_preserve_their_provider_signal(
     expected_error: str,
     forbidden_error: str,
 ) -> None:
-    """Authentication and unknown smoke failures are not routed as quota."""
     result = _run_agy_smoke_plumbing(tmp_path, monkeypatch, behavior=behavior)
 
     assert any(expected_error in error for error in result.errors)
@@ -277,7 +231,6 @@ def test_agy_harness_non_quota_failures_preserve_their_provider_signal(
 def test_agy_harness_session_id_present_with_mock(
     cached_default_smoke: tuple[SmokeRunResult, Path],
 ) -> None:
-    """The harness extracts a session id matching the AGY smoke run id pattern."""
     result, _workspace = cached_default_smoke
     assert result.session_id is not None
     assert result.session_id.startswith("interactive-agy-smoke-")
@@ -287,47 +240,6 @@ def test_agy_smoke_promotes_artifact_and_records_completion_sentinel(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Mock AGY proves receipt promotion plus explicit completion durability.
-
-    Drives the full smoke harness with the deterministic mock AGY binary
-    using the ``agy/gemini-3.6-flash-low`` alias (the same alias used
-    by the live regression suite and by the smoke CLI default). Asserts
-    the five contract surfaces the completion contract requires:
-
-    1. The canonical Markdown artifact exists at
-       ``tmp_path / '.agent' / 'artifacts' / 'smoke_test_result.md'``
-       (the mock authors the fallback ``.agent/tmp/smoke_test_result.md``
-       document; promotion validates it and writes the canonical artifact).
-    2. The canonical receipt is durably present for
-       ``(run_id, artifact_type)`` — under RFC-013 P3 the canonical
-       receipt store is the per-workspace ``.agent/state.db`` (one row
-       per ``(run_id, artifact_type)``); ``promote_fallback_artifact`` at
-       ``ralph/mcp/artifacts/canonical_submit.py`` calls
-       ``write_artifact_receipt`` which inserts that row. The legacy
-       ``.agent/receipts/<run_id>/<artifact_type>.json`` file path is a
-       migration read fallback and a durable write fallback when DB
-       persistence is unavailable.
-    3. The receipt is identified by ``(run_id, artifact_type)`` with
-       ``artifact_type == "smoke_test_result"``. Asserting presence via
-       the public ``artifact_receipt_present`` API verifies the
-       promotion contract without coupling to the storage-layout choice
-       between the DB and the legacy file path.
-    4. The mock's ``declare_complete`` simulation produced the independent
-       run-scoped completion sentinel.
-    5. The mock wrote the file the prompt asked for at
-       ``tmp_path / 'tmp' / 'interactive-agy-smoke' / 'todo-list.js'``.
-
-    The expected ``run_id`` is computed from
-    ``resolve_smoke_harness_spec('agy/gemini-3.7-flash-medium').run_id``
-    (= ``interactive-agy-smoke-gemini-3.7-flash-medium``) so the assertion
-    stays in sync with the harness's sanitization rule.
-
-    This test is the always-green mock-binary regression-proof that AGY
-    artifact submission works just like any other agent. The companion
-    live-binary test in ``tests/test_agy_live_regression.py`` covers the
-    same contract against the real binary (with an xfail gate for
-    documented upstream-blocked states).
-    """
     result = _run_agy_smoke_plumbing(
         tmp_path,
         monkeypatch,
@@ -344,16 +256,6 @@ def test_agy_smoke_promotes_artifact_and_records_completion_sentinel(
     assert todo_path.is_file(), f"Expected the mock-written todo file at {todo_path}"
 
     expected_run_id = resolve_smoke_harness_spec("agy/gemini-3.7-flash-medium").run_id
-    # RFC-013 P3: the canonical receipt store is the per-workspace
-    # .agent/state.db. The legacy .agent/receipts/<run_id>/<type>.json
-    # path is a migration read fallback and the durable write fallback
-    # when DB persistence fails, so successful DB writes do not double-write.
-    # Asserting
-    # via artifact_receipt_present (the public read API) verifies the
-    # behavioral promotion contract -- the agent's fallback
-    # .agent/tmp/smoke_test_result.md write was promoted to a durable
-    # receipt -- without coupling to which physical store the receipt
-    # landed in.
     assert artifact_receipt_present(tmp_path, expected_run_id, "smoke_test_result") is True, (
         f"Expected a canonical receipt for run_id={expected_run_id!r} "
         f"artifact_type='smoke_test_result'. The harness's "
@@ -365,16 +267,8 @@ def test_agy_smoke_promotes_artifact_and_records_completion_sentinel(
     )
 
 
-# --- v1.1.13 measured-vocabulary mode (wt-015-agy-support S-5) ---
-
-#: Distinct broker secret so wire-ledger / sentinel HMAC verification in
-#: these tests never depends on (or mutates) any ambient developer secret.
 _V1_1_13_BROKER_SECRET = "test-mock-agy-v1-1-13-broker-secret"
 
-#: Vocabulary that ONLY the ``MOCK_AGY_V1_1_13=1`` emitter produces. The
-#: default (flag-unset) output must not contain any of it. (``invoke_subagent``
-#: and ``view_file`` are NOT here: both already appear in the default output
-#: via the init tool list / default tool steps.)
 _V1_1_13_ONLY_VOCABULARY: tuple[str, ...] = (
     "call_mcp_tool",
     "system_message",
@@ -389,15 +283,6 @@ def _capture_mock_stdout(
     *,
     v1_1_13: str | None,
 ) -> str:
-    """Run the mock AGY in-process and return its raw stream-json stdout.
-
-    The mock's ``main()`` is a plain ``argv -> int`` entry point, so it is
-    invoked directly (no subprocess) under a fully rebuilt environment: every
-    mode-selecting ``MOCK_AGY_*`` / ``RALPH_MCP_*`` variable is normalized so
-    an ambient ``MOCK_AGY_V1_1_13=1`` (the plan's second verify command
-    exports it for the whole pytest run) can never leak into the
-    byte-comparison baseline.
-    """
     from tests._support import mock_agy
 
     env = os.environ.copy()
@@ -428,14 +313,6 @@ def test_mock_v1_1_13_default_byte_compatible(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Flag unset or ``0``: the mock's stdout is byte-identical default output.
-
-    Pins the default-mock contract the existing harness tests rely on: no
-    v1.1.13 vocabulary (``call_mcp_tool``, ``system_message``,
-    ``invoke_subagent``, ``ralph_*``, ``view_file``) may leak when the flag
-    is off, and explicitly setting ``MOCK_AGY_V1_1_13=0`` must reproduce
-    the flag-unset bytes exactly.
-    """
     stdout_unset = _capture_mock_stdout(tmp_path / "unset", capsys, v1_1_13=None)
     stdout_zero = _capture_mock_stdout(tmp_path / "zero", capsys, v1_1_13="0")
 
@@ -454,26 +331,6 @@ def test_mock_v1_1_13_vocabulary_when_flag_enabled(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """``MOCK_AGY_V1_1_13=1``: measured vocabulary + real MCP / completion / preview.
-
-    Drives the full in-process smoke harness with the v1.1.13 mock and a
-    real broker secret, then asserts the plan's six signals:
-
-    (a) the subagent ACTIVE/DONE pair (step-level ``tool_name``
-        ``invoke_subagent``, role "Todo Edge Case Researcher") parses to a
-        correlated tool_use/tool_result pair;
-    (b) the bodiless ``system_message`` frame surfaces as a lifecycle event;
-    (c) the ``call_mcp_tool`` -> ``ralph_submit_md_artifact`` ACTIVE/DONE
-        pair parses with the measured ``ServerName``/``ToolName`` envelope
-        and precedes the ``declare_complete`` pair;
-    (d) a verified wire-ledger record for ``ralph_submit_md_artifact`` on
-        this run exists (``wire_evidence_for`` with the broker secret);
-    (e) the durable completion sentinel validates via the public
-        ``_check_completion_sentinel`` helper for the run id;
-    (f) the display's capability recorder observed SYNTAX_HIGHLIGHTING
-        (via the ``write_to_file`` pair's correlated result) and
-        FILE_PREVIEW (via the ``read_file`` pair).
-    """
     monkeypatch.setenv("MOCK_AGY_V1_1_13", "1")
     monkeypatch.setenv("RALPH_BROKER_SECRET", _V1_1_13_BROKER_SECRET)
     monkeypatch.delenv("MCP_AUTH_TOKEN", raising=False)
@@ -481,7 +338,6 @@ def test_mock_v1_1_13_vocabulary_when_flag_enabled(
 
     result = _run_agy_smoke_plumbing(tmp_path, monkeypatch)
 
-    # --- transcript-level parser assertions (a), (b), (c) ---
     stdout = _capture_mock_stdout(tmp_path / "transcript", capsys, v1_1_13="1")
     parser = AgyParser()
     events = list(parser.parse(iter(stdout.splitlines())))
@@ -553,7 +409,6 @@ def test_mock_v1_1_13_vocabulary_when_flag_enabled(
     )
     assert submit_result_pos > submit_use_pos, "submit tool_result must follow its tool_use"
 
-    # --- harness-level assertions (d), (e), (f) ---
     run_id = resolve_smoke_harness_spec("agy/gemini-3.6-flash-low").run_id
 
     assert result.parsed_event_count >= 8, (

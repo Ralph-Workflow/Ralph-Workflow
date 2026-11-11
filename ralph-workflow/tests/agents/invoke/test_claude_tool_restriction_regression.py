@@ -1,10 +1,3 @@
-"""Regression coverage for additive Claude MCP permissions.
-
-Ralph pre-approves its MCP tools without restricting Claude's native tools.
-MCP discovery must still fail closed because an incomplete allow-list can
-silently prevent access to required Ralph tools.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -33,7 +26,6 @@ def _claude_config() -> AgentConfig:
 
 
 def _claude_argv(config: AgentConfig, workspace: Path) -> list[str]:
-    """Compose argv exactly the way ``invoke_agent`` does."""
     prompt_file = workspace / "PROMPT.md"
     prompt_file.write_text("do the thing", encoding="utf-8")
     allowed = provider_allowed_mcp_tool_names(config, _ENDPOINT)
@@ -52,7 +44,6 @@ def test_claude_regression_tool_restriction_fails_closed_when_discovery_fails(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """A failed ``tools/list`` must abort the launch, not silently unrestrict."""
 
     def _raise(endpoint: str) -> list[str]:
         del endpoint
@@ -87,21 +78,6 @@ def test_claude_regression_operator_mcp_servers_are_not_stripped(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Ralph ADDS its MCP server; it must never remove the operator's.
-
-    ``claude --help``: ``--strict-mcp-config  Only use MCP servers from
-    --mcp-config, ignoring all other MCP configurations``. Ralph used to
-    pass it, which deleted every MCP source the operator had configured for
-    the run. Some of those cannot be given back at all: ``claude mcp list``
-    on this machine reports four claude.ai ACCOUNT CONNECTORS (Notion,
-    Gmail, Google Drive, Google Calendar) that exist in no config file
-    anywhere -- they come from the signed-in account, so Ralph's discovery
-    cannot see them and no proxy can restore them.
-
-    Without the strict flag Claude loads Ralph's ``--mcp-config`` file IN
-    ADDITION to its own sources, which is the intended posture: add ours,
-    keep theirs. Ralph's additive ``--allowedTools`` approvals still apply.
-    """
     monkeypatch.setattr(
         "ralph.agents.invoke.discover_http_mcp_tool_names",
         lambda _endpoint: ["read_file", "ralph_submit_md_artifact"],

@@ -1,5 +1,3 @@
-"""Tests for planning work_units parsing and validation."""
-
 from __future__ import annotations
 
 from ralph.pipeline.work_units import parse_work_units_from_artifact

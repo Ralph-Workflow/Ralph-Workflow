@@ -1,4 +1,3 @@
-"""Git wrapper helpers for blocking commits during agent phases."""
 
 from __future__ import annotations
 
@@ -20,20 +19,10 @@ from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.timeout_defaults import GIT_SUBPROCESS_TIMEOUT_SECONDS
 
-#: Bound each ``git config`` call so a pathological filesystem cannot wedge an
-#: agent-phase setup/teardown forever. These run through ``run_git`` (queue
-#: serialized, process-manager supervised) rather than GitPython's
-#: ``kill_after_timeout``, which SIGKILLs git with no chance to remove its own
-#: ``config.lock`` and would orphan it.
 _GIT_OP_TIMEOUT_SECONDS = GIT_SUBPROCESS_TIMEOUT_SECONDS
 
 
 def _git_config(repo: Repo, *args: str) -> str:
-    """Run ``git config <args>`` with a graceful, queue-serialized, bounded subprocess.
-
-    Raises :class:`GitCommandError` (with ``status`` set) on a non-zero exit,
-    matching what the GitPython dispatch raised so callers' status handling holds.
-    """
     cwd = Path(repo.working_tree_dir or repo.git_dir)
     result = run_git(
         ["config", *args],
@@ -54,60 +43,6 @@ HOOKS_DIR_NAME = "hooks"
 
 
 class GitHelpers:
-    """State carrier for one agent-phase git-protection sequence.
-
-    :class:`GitHelpers` is the lightweight bundle :func:`start_agent_phase`
-    and :func:`end_agent_phase` populate as they enable and later roll back
-    the agent-phase git protections. The two functions use it to share a
-    view of the runtime state (which directory is the Ralph-managed hooks
-    dir, which repository root the protections belong to, and which ``git``
-    binary is the genuine system one) without recomputing it on every
-    call.
-
-    Attributes:
-        real_git: Path to the genuine ``git`` executable on the host. Set
-            by callers when the Ralph wrapper redirects ``git`` to a
-            sandbox binary; ``None`` when the host has no wrapper in front
-            of ``git``. The wrapper scripts use this to invoke the real
-            binary once the agent-phase protections are restored.
-        wrapper_dir: Path to the per-repository ``.git/ralph`` directory
-            that holds the agent-phase marker, HEAD OID snapshot, and the
-            Ralph-managed hooks directory. Set by :func:`start_agent_phase`
-            and read by :func:`end_agent_phase` during teardown. ``None``
-            before :func:`start_agent_phase` populates it.
-        wrapper_repo_root: Path to the repository root the protections
-            were enabled for. ``None`` before :func:`start_agent_phase`
-            populates it; :func:`end_agent_phase` asserts the value
-            matches the repo being torn down so a mismatched call fails
-            fast instead of editing the wrong repository's ``.git``.
-        worktree_lease: The :class:`~ralph.git.git_command_queue.WorktreeLease`
-            acquired by :func:`start_agent_phase`. ``None`` before the
-            phase starts. :func:`end_agent_phase` releases the lease and
-            resets the attribute to ``None`` so a follow-up start can
-            re-acquire it.
-
-    Lifecycle:
-        1. Construct (or reuse) a :class:`GitHelpers`. Optional — the
-           phase helpers create one for you.
-        2. Call :func:`start_agent_phase(repo_root, helpers)`; it sets
-           ``wrapper_repo_root``, ``wrapper_dir``, and ``worktree_lease``
-           and writes the marker / HEAD OID / hooks-path snapshot.
-        3. Run the agent phase (commit/push attempts are blocked by the
-           marker file the hook scripts check; background mutators see
-           ``is_lease_held`` and skip).
-        4. Call :func:`end_agent_phase(repo_root, helpers)`; it restores
-           ``core.hooksPath``, deletes the marker / snapshot / track
-           files, releases the lease, and leaves ``wrapper_dir`` populated
-           only until the next start/end cycle.
-
-    Invariants:
-        - The class is a plain data carrier with no locking; threads that
-          enable protections concurrently must serialize around the
-          instance externally.
-        - All attributes are intentionally typed ``Path | WorktreeLease |
-          None`` because none of them carry meaning outside of a paired
-          ``start_agent_phase`` / ``end_agent_phase`` cycle.
-    """
 
     real_git: Path | None
     wrapper_dir: Path | None
@@ -122,61 +57,6 @@ class GitHelpers:
 
 
 def start_agent_phase(repo_root: Path | str, helpers: GitHelpers | None = None) -> None:
-    """Enable git protections for an agent phase.
-
-    Installs the Ralph-managed git hooks that block agent commits for the
-    remainder of the current phase. The function writes a marker file and
-    the current ``HEAD`` OID under ``<repo>/.git/ralph/``, snapshots the
-    previous ``core.hooksPath`` value, and repoints ``core.hooksPath`` at
-    the Ralph-managed hooks directory. Subsequent agent invocations that
-    attempt to commit or push are rejected by the hooks.
-
-    This function is the public entry point for enabling the protection
-    scheme and is paired with :func:`end_agent_phase`, which rolls back
-    the changes. Together they bracket one agent phase; callers that
-    skip :func:`end_agent_phase` leave the repository in a state that
-    still blocks commits.
-
-    Args:
-        repo_root: Path to the repository root whose protections should be
-            enabled. Accepts a :class:`pathlib.Path` or a string; the
-            value is resolved against the GitPython ``Repo`` constructor.
-        helpers: Optional pre-built :class:`GitHelpers` carrier. When
-            ``None``, a fresh carrier is constructed and populated with
-            ``wrapper_repo_root`` and ``wrapper_dir``. The same carrier
-            (or one with identical population) must be passed to the
-            matching :func:`end_agent_phase` call so teardown targets the
-            right repository.
-
-    Returns:
-        None. The function mutates the repository's ``.git/ralph``
-        directory, the local ``core.hooksPath`` config, and the supplied
-        :class:`GitHelpers` carrier.
-
-    Side effects:
-        - Creates ``<repo>/.git/ralph/`` if absent.
-        - Writes the marker, HEAD OID, and track files inside it.
-        - Snapshots and overwrites the local ``core.hooksPath``.
-        - Closes the GitPython ``Repo`` it opened for the duration of the
-          call (callers must not reuse the original handle).
-
-    Raises:
-        git.exc.GitCommandError: If any underlying ``git`` invocation
-            fails (filesystem permission, missing ``.git``, or a held
-            lock). Each subprocess is bounded by
-            ``GIT_SUBPROCESS_TIMEOUT_SECONDS`` so a stuck lock cannot
-            hang an agent-phase setup.
-        WorktreeLeaseUnavailable: Another agent phase holds the lease
-            for this repository; concurrent phases would race the
-            ``core.hooksPath`` config and the marker files. The holder
-            who won the race owns the worktree until they call
-            :func:`end_agent_phase`.
-
-    See also:
-        :func:`end_agent_phase` rolls back the protections this
-        function installs. :func:`detect_unauthorized_commit` reports
-        whether ``HEAD`` advanced during a protected phase.
-    """
 
     helpers = helpers or GitHelpers()
     helpers.wrapper_repo_root = Path(repo_root)
@@ -200,62 +80,10 @@ def start_agent_phase(repo_root: Path | str, helpers: GitHelpers | None = None) 
 
 
 def end_agent_phase(repo_root: Path | str, helpers: GitHelpers | None = None) -> None:
-    """Remove agent-phase protections and restore git state.
-
-    Reverses every change made by :func:`start_agent_phase`: restores the
-    previous ``core.hooksPath`` value, deletes the Ralph-managed marker /
-    HEAD-OID / track files under ``<repo>/.git/ralph/``, and closes the
-    GitPython ``Repo`` opened for the duration of the call. After this
-    function returns, the repository is in the same git state it was in
-    before the matching :func:`start_agent_phase` call.
-
-    Args:
-        repo_root: Path to the repository root whose protections should
-            be rolled back. Must match the ``repo_root`` passed to the
-            matching :func:`start_agent_phase` call so teardown targets
-            the same repository. Accepts a :class:`pathlib.Path` or a
-            string.
-        helpers: Optional :class:`GitHelpers` carrier populated by the
-            matching :func:`start_agent_phase` call. When ``None``, a
-            fresh carrier is constructed and ``wrapper_repo_root`` is
-            set to ``Path(repo_root)`` so teardown can locate the
-            ``.git/ralph`` directory written during setup.
-
-    Returns:
-        None. The function mutates the repository's local
-        ``core.hooksPath`` and deletes the marker / snapshot files
-        written during setup.
-
-    Side effects:
-        - Restores the previous ``core.hooksPath`` from the snapshot
-          file (or clears it if none was set).
-        - Deletes the marker, HEAD OID, and track files inside
-          ``<repo>/.git/ralph/``.
-        - Closes the GitPython ``Repo`` it opened for the duration of
-          the call.
-
-    Raises:
-        git.exc.GitCommandError: If any underlying ``git`` invocation
-            fails (filesystem permission, missing snapshot file, or a
-            held lock). Each subprocess is bounded by
-            ``GIT_SUBPROCESS_TIMEOUT_SECONDS`` so a stuck lock cannot
-            hang an agent-phase teardown.
-
-    See also:
-        :func:`start_agent_phase` installs the protections this
-        function rolls back. :func:`detect_unauthorized_commit` reports
-        whether ``HEAD`` advanced during a protected phase, which this
-        function neither inspects nor clears.
-    """
     helpers = helpers or GitHelpers()
     helpers.wrapper_repo_root = Path(repo_root)
     lease = helpers.worktree_lease
     if lease is None:
-        # Caller-separated GitHelpers (or an end without a matching
-        # tracked start): reclaim OUR OWN prior phase's leftover lock
-        # rather than stealing a live sibling phase's lease. try_acquire
-        # returns None when another live holder owns it — in that case
-        # the holder owns teardown and we must not touch the lease.
         lease = try_acquire_lease(repo_root, holder=WorktreeLeaseHolder(name="agent-phase"))
     repo = Repo(repo_root)
     try:
@@ -272,50 +100,6 @@ def end_agent_phase(repo_root: Path | str, helpers: GitHelpers | None = None) ->
 
 
 def detect_unauthorized_commit(repo_root: Path | str) -> bool:
-    """Return True if the HEAD OID no longer matches the stored baseline.
-
-    Compares the repository's current ``HEAD`` against the OID
-    :func:`start_agent_phase` snapshotted into
-    ``<repo>/.git/ralph/head-oid.txt``. A mismatch indicates that an
-    agent phase wrote a commit despite the protection hooks — a
-    condition the supervisor should treat as a security violation
-    and surface to the user before any further work continues.
-
-    The function is read-only: it does not modify the repository,
-    delete the snapshot file, or invoke the hooks. Callers that want
-    a single boolean answer for a check-and-act flow should call
-    this function and decide the policy themselves; a follow-up
-    :func:`end_agent_phase` will still roll back the protections
-    regardless of the return value.
-
-    Args:
-        repo_root: Path to the repository root to inspect. Accepts a
-            :class:`pathlib.Path` or a string; the value is resolved
-            against the GitPython ``Repo`` constructor.
-
-    Returns:
-        bool: ``True`` when a stored snapshot exists and the current
-        ``HEAD`` OID differs from it (unauthorized commit detected);
-        ``False`` when no snapshot exists, the snapshot is empty,
-        the current ``HEAD`` cannot be read, or ``HEAD`` still
-        matches the snapshot.
-
-    Side effects:
-        - Closes the GitPython ``Repo`` it opened for the duration of
-          the call.
-        - Does NOT mutate any file under ``<repo>/.git/ralph/`` and
-          does NOT invoke the hooks scripts.
-
-    Raises:
-        git.exc.GitCommandError: Re-raised only when the underlying
-            ``git`` invocation fails for a reason other than a missing
-            ``HEAD`` (detached/unborn HEAD is reported as ``False``,
-            not raised).
-
-    See also:
-        :func:`start_agent_phase` writes the snapshot this function
-        compares against. :func:`end_agent_phase` removes it.
-    """
 
     repo = Repo(repo_root)
     try:
@@ -346,17 +130,14 @@ def _ensure_ralph_dir(repo: Repo) -> Path:
 
 
 def _ralph_dir_from_repo(repo: Repo) -> Path:
-    # filesystem-write-ok: ralph runtime state files (markers + hook tracking) under .git/ralph, runtime metadata not tracked
     return Path(repo.git_dir) / "ralph"
 
 
 def _write_marker(ralph_dir: Path) -> None:
-    # filesystem-write-ok: ralph runtime state files (markers + hook tracking) under .git/ralph, runtime metadata not tracked
     write_text_if_changed(DEFAULT_FILE_BACKEND, ralph_dir / MARKER_FILENAME, "")
 
 
 def _write_track_file(ralph_dir: Path) -> None:
-    # filesystem-write-ok: ralph runtime state files (markers + hook tracking) under .git/ralph, runtime metadata not tracked
     write_text_if_changed(DEFAULT_FILE_BACKEND, ralph_dir / TRACK_FILENAME, str(ralph_dir))
 
 
@@ -366,7 +147,6 @@ def _capture_head_oid(repo: Repo, ralph_dir: Path) -> None:
     except (ValueError, GitCommandError):
         return
 
-    # filesystem-write-ok: ralph runtime state file (HEAD OID tracking) under .git/ralph, runtime metadata not tracked
     write_text_if_changed(DEFAULT_FILE_BACKEND, ralph_dir / HEAD_OID_FILENAME, f"{oid}\n")
 
 
@@ -391,10 +171,8 @@ def _store_previous_hooks_path(repo: Repo, ralph_dir: Path) -> None:
     if state_path.exists():
         return
 
-        # filesystem-write-ok: ralph runtime state files (markers + hook tracking) under .git/ralph, runtime metadata not tracked
     hooks_value = _read_hooks_path(repo)
     if hooks_value is None:
-        # filesystem-write-ok: ralph runtime state files (markers + hook tracking) under .git/ralph, runtime metadata not tracked
         write_text_if_changed(DEFAULT_FILE_BACKEND, state_path, "missing\n")
     else:
         write_text_if_changed(DEFAULT_FILE_BACKEND, state_path, f"value\n{hooks_value}\n")

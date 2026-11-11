@@ -1,5 +1,3 @@
-"""Tests for RecoveryController wall-time clock, public seam, and workspace observation."""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -28,8 +26,6 @@ if TYPE_CHECKING:
 
 
 class _MemoryFileBackend:
-    """In-memory FileBackend implementation for testing."""
-
     def __init__(self) -> None:
         self.files: dict[str, str] = {}
         self.dirs: set[str] = set()
@@ -215,7 +211,6 @@ def test_record_attempt_fact_public_seam() -> None:
         )
     )
 
-    # 1. Registered sole agent: demotes on 3 consecutive unproductive attempts
     controller.register_phase_chain("development", ["sole_agent"])
 
     res1 = controller.record_attempt_fact(
@@ -247,7 +242,6 @@ def test_record_attempt_fact_public_seam() -> None:
     assert "Sole agent 'sole_agent' demoted in phase 'development'" in res3
     assert "consecutive_unproductive" in res3
 
-    # 2. Multi-agent chain: demoting agent does NOT produce sole agent error
     controller.register_phase_chain("review", ["agent_a", "agent_b"])
     controller.record_attempt_fact(
         "review", "agent_a", artifact_valid=False, workspace_changed=False
@@ -267,16 +261,6 @@ def test_record_attempt_fact_public_seam() -> None:
 def test_invoke_agent_probe_stamping_on_failure(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A failed attempt's workspace-change fact travels on the public sink.
-
-    The fact is measured by the REAL probe against a REAL workspace
-    mutation and delivered as an immutable, attempt-scoped
-    ``AgentFailureEvent`` through ``InvokeOptions.failure_observation_sink``.
-
-    No exception attribute and no process-global enum attribute carries the
-    fact: the observation is the only transport, so one attempt can never
-    inherit another attempt's fact.
-    """
     probe = DefaultWorkspaceChangeProbe()
     workspace = MemoryWorkspace()
     workspace.write("seed.txt", "initial content")
@@ -288,7 +272,6 @@ def test_invoke_agent_probe_stamping_on_failure(
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("prompt", encoding="utf-8")
 
-    # (a) Agent mutates workspace then fails
     def fake_subprocess_mutating(cmd: list[str], ctx: object) -> list[str]:
         del cmd, ctx
         workspace.write("mutated.txt", "new file added")
@@ -316,7 +299,6 @@ def test_invoke_agent_probe_stamping_on_failure(
     assert mutated.agent == "agent_a"
     assert mutated.artifact_valid is False
 
-    # (b) Agent fails without mutating workspace
     def fake_subprocess_non_mutating(cmd: list[str], ctx: object) -> list[str]:
         del cmd, ctx
         raise AgentInvocationError("test-agent", 1, stderr="fail without mutating")

@@ -1,4 +1,3 @@
-"""Backup-reference lifecycle for auto-integrate attempts."""
 
 from __future__ import annotations
 
@@ -16,21 +15,11 @@ from ralph.git.subprocess_runner import GitRunOptions, run_git
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-#: ``git ls-tree`` rows are ``<mode> <type> <object>``.
 _LS_TREE_META_FIELDS = 3
 _REFS_SPLIT_PARTS: Final[int] = 2
 
 
 def qualified_backup_ref(owning_worktree: str | None, pre_feature_sha: str) -> str:
-    """Worktree-qualified backup-ref name for one integration operation.
-
-    Two linked worktrees that start from the same pre-feature SHA would
-    otherwise share a single ``refs/rebase-backup/`` ref, letting one
-    operation's cleanup destroy the other's only recovery ref. The
-    owning-worktree hash makes the name per-operation. Deterministic in
-    ``owning_worktree`` (including ``None``) so recovery can recompute
-    the exact name from the durable record without schema changes.
-    """
     wt8 = hashlib.sha256(str(owning_worktree).encode("utf-8")).hexdigest()[:8]
     return f"refs/rebase-backup/{wt8}-{pre_feature_sha[:8]}-{pre_feature_sha}"
 
@@ -38,13 +27,8 @@ def qualified_backup_ref(owning_worktree: str | None, pre_feature_sha: str) -> s
 def create_rebase_backup_ref(
     root: Path, pre_feature_sha: str | None, owning_worktree: str | None = None
 ) -> str | None:
-    """Create the fail-closed backup ref that protects an in-flight feature tip."""
     if pre_feature_sha is None:
         return None
-    # The operating worktree IS the owning worktree at this seam; the
-    # str(root) fallback mirrors the ``record.owning_worktree or str(root)``
-    # convention in _owned_landing_reintegration, so recovery recomputes
-    # the identical name even before U4b threads record.owning_worktree.
     backup_name = qualified_backup_ref(
         owning_worktree if owning_worktree is not None else str(root), pre_feature_sha
     )
@@ -58,7 +42,7 @@ def create_rebase_backup_ref(
         if common is not None:
             ref_file = common / backup_name
             ref_file.parent.mkdir(parents=True, exist_ok=True)
-            ref_file.write_text(  # filesystem-write-ok: direct git loose ref file write for auto-integrate backup
+            ref_file.write_text(
                 f"{pre_feature_sha}\n", encoding="utf-8"
             )
             return backup_name
@@ -90,22 +74,6 @@ def create_stale_resolution_snapshot(
     head_sha: str,
     owning_worktree: str | None = None,
 ) -> tuple[str, str]:
-    """Preserve the current index and untracked work in a durable backup ref.
-
-    The returned tuple is ``(backup_ref, feature_sha)``.  ``backup_ref``
-    resolves to a commit whose tree contains the staged index plus every
-    non-ignored untracked path.  ``feature_sha`` is the commit that also
-    contains any unstaged tracked edits; when the staged and worktree
-    trees are identical, both values are the same commit.  When the two
-    trees differ, the backup ref is a two-parent commit whose second
-    parent is the worktree commit, so both variants of the file stay
-    reachable from the one ref.
-
-    The current index and worktree are never changed.  Git's alternate
-    ``index.file`` configuration gives the snapshot an isolated index,
-    while ``read-tree --index-output`` seeds that index from the real
-    staged tree without touching the caller's index.
-    """
     if not head_sha:
         raise RuntimeError("auto_integrate: stale-resolution snapshot requires HEAD")
 
@@ -158,7 +126,7 @@ def create_stale_resolution_snapshot(
         if common is not None:
             ref_file = common / backup_ref
             ref_file.parent.mkdir(parents=True, exist_ok=True)
-            ref_file.write_text(  # filesystem-write-ok: direct git loose ref file write for auto-integrate backup
+            ref_file.write_text(
                 f"{snapshot_sha}\n", encoding="utf-8"
             )
             return backup_ref, feature_sha
@@ -215,7 +183,6 @@ def _snapshot_untracked_paths(root: Path) -> tuple[str, ...]:
 
 
 def _snapshot_tree_entries(root: Path, tree: str) -> list[tuple[str, str, str, str]]:
-    """Return the ``(path, mode, type, oid)`` rows of a tree, recursively."""
     result = run_git(
         ("ls-tree", "-r", "-z", tree),
         cwd=root,
@@ -241,13 +208,6 @@ def _snapshot_worktree_entries(
     root: Path,
     head_tree: str,
 ) -> list[tuple[str, str, str, str]]:
-    """Return the tracked worktree rows without touching the index.
-
-    ``git stash create`` builds a commit of the current worktree state
-    WITHOUT storing it in ``refs/stash`` and WITHOUT changing the index
-    or the working tree, so the snapshot never has to stage the user's
-    work to read it.
-    """
     created = run_git(
         ("stash", "create", "ralph stale-resolution work snapshot"),
         cwd=root,
@@ -264,15 +224,6 @@ def _snapshot_worktree_entries(
 
 
 def _snapshot_untracked_entries(root: Path) -> list[tuple[str, str, str, str]]:
-    """Return the untracked rows (mode, type, oid) the snapshot must keep.
-
-    ``ls-files --others`` lists an untracked embedded repository (a nested
-    clone) as one ``name/`` entry rather than its files. It cannot be hashed
-    as a blob, so it is recorded the way git itself records an embedded
-    repository -- a gitlink at the nested HEAD -- or skipped when the nested
-    repository has no commit to point at. Either way the rest of the work is
-    still preserved instead of the whole snapshot failing.
-    """
     entries: list[tuple[str, str, str, str]] = []
     for path in _snapshot_untracked_paths(root):
         if path.endswith("/"):
@@ -285,11 +236,6 @@ def _snapshot_untracked_entries(root: Path) -> list[tuple[str, str, str, str]]:
 
 
 def _snapshot_nested_repo_gitlink(root: Path, path: str) -> tuple[str, str, str, str] | None:
-    """Return the gitlink row for an untracked nested repository, if it has a HEAD.
-
-    The nested toplevel is checked so a nested ``.git`` git cannot open
-    never resolves to the OUTER repository's HEAD instead.
-    """
     nested_root = root / path
     result = run_git(
         ("rev-parse", "--show-toplevel", "HEAD^{commit}"),
@@ -314,7 +260,6 @@ def _snapshot_nested_repo_gitlink(root: Path, path: str) -> tuple[str, str, str,
 
 
 def _snapshot_untracked_blob(root: Path, path: str) -> tuple[str, str, str]:
-    """Return the ``(mode, type, oid)`` of one untracked path."""
     absolute = root / path
     if absolute.is_symlink():
         target = os.fsencode(absolute.readlink())
@@ -346,12 +291,6 @@ def _snapshot_build_tree(
     root: Path,
     entries: list[tuple[str, str, str, str]],
 ) -> str:
-    """Build one tree object from flat ``(path, mode, type, oid)`` rows.
-
-    ``git mktree`` accepts a single directory level, so nested paths are
-    folded bottom-up: each directory becomes its own tree object and the
-    parent level is written with the resulting tree id.
-    """
     groups: dict[str, list[tuple[str, str, str, str]]] = {}
     for path, mode, kind, oid in entries:
         head, _, rest = path.partition("/")
@@ -425,16 +364,6 @@ def preserve_dirt_commit(
     head_sha: str,
     owning_worktree: str | None = None,
 ) -> str:
-    """Preserve uncommitted work in a durable ref without touching tree or index.
-
-    Fallback-ladder rung 2 (:mod:`ralph.pipeline.integration_ladder`)
-    calls this when the normal backup-ref route cannot run. The commit
-    is built from plumbing only (see :func:`create_stale_resolution_snapshot`):
-    the working tree and the real index are never mutated, so the call
-    is safe while a writer keeps dirtying the tree. Returns the backup
-    ref name; raises :class:`RuntimeError` when the snapshot could not
-    be created or the ref could not be written.
-    """
     backup_ref, _feature_sha = create_stale_resolution_snapshot(
         root,
         None,
@@ -471,12 +400,6 @@ def _direct_list_ralph_backup_refs(common: Path) -> tuple[str, ...]:
 
 
 def list_ralph_backup_refs(root: Path) -> tuple[str, ...]:
-    """Return every Ralph-owned backup ref under ``refs/rebase-backup/`` and ``refs/ralph-backup/``.
-
-    ``-z`` NUL-delimited output keeps ref names with spaces or escapes
-    intact. A failed read yields an empty tuple: ref listing is
-    best-effort and never blocks the ladder.
-    """
     try:
         from ralph.pipeline._auto_integrate_recovery_git_state import (
             common_git_dir,
@@ -502,15 +425,6 @@ def prune_verified_landed_backup_refs(
     root: Path,
     is_landed: Callable[[str], bool],
 ) -> tuple[str, ...]:
-    """Delete Ralph backup refs whose work is verified landed; return the pruned names.
-
-    Rung 2 of the fallback ladder frees space before writing a patch /
-    tar sidecar. Only refs whose contained work :func:`is_landed` confirms
-    in the target are pruned — a ref that is not proven landed is NEVER
-    touched, so preserved copies stay recoverable until landing is
-    verified. Deletion is best-effort: a failing delete is skipped, never
-    fatal.
-    """
     pruned: list[str] = []
     for ref in list_ralph_backup_refs(root):
         if not is_landed(ref):
@@ -521,7 +435,6 @@ def prune_verified_landed_backup_refs(
 
 
 def delete_rebase_backup_ref(root: Path, backup_ref: str | None) -> None:
-    """Best-effort delete of a verified attempt's backup ref."""
     if backup_ref is None:
         return
     try:
@@ -544,7 +457,7 @@ def delete_rebase_backup_ref(root: Path, backup_ref: str | None) -> None:
             cwd=root,
             label="auto-integrate:backup-ref-delete",
         )
-    except Exception as exc:  # pragma: no cover -- defensive logging
+    except Exception as exc:
         logger.warning("auto_integrate: backup-ref deletion failed: {}", exc)
         return
     if result.returncode not in (0, 1):

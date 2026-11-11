@@ -1,13 +1,3 @@
-"""Policy-driven acceptance tests — Product Requirements 1-10 and Criteria A-H.
-
-These tests assert every product requirement and acceptance criterion against a
-fully renamed PolicyBundle (no canonical phase names). Any regression that
-re-introduces hidden phase name knowledge in the runtime will fail here.
-
-Scope: pure functions only. No I/O.
-Runtime budget: ≤ 5 seconds for the full module.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -38,17 +28,6 @@ from ralph.policy.models import (
 
 @pytest.fixture(scope="module")
 def policy_with_renamed_phases() -> PolicyBundle:
-    """Fully custom-named PolicyBundle — no canonical Ralph phase names.
-
-    Custom name mappings (canonical → custom):
-      planning          → design
-      development       → build
-      development_analysis → audit
-      development_commit → sign_off
-      review            → inspect
-      complete          → done
-      failed_terminal   → aborted
-    """
     agents = AgentsPolicy(
         agent_chains={
             "design_chain": AgentChainConfig(agents=["fake-agent"]),
@@ -176,16 +155,10 @@ def policy_with_renamed_phases() -> PolicyBundle:
     return PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
 
 
-# =============================================================================
-# Requirement 1: Policy must fully define user-visible routing semantics
-# =============================================================================
-
-
 class TestRequirement1RoutingSemantics:
     def test_analysis_decision_routes_to_policy_declared_target(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """AnalysisDecisionEvent routes to the target declared in policy, not a hardcoded name."""
         state = PipelineState(phase="audit")
         new_state, _ = reduce(
             state,
@@ -199,7 +172,6 @@ class TestRequirement1RoutingSemantics:
     def test_analysis_completed_routes_to_sign_off(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """completed decision routes to 'sign_off' per policy, not 'development_commit'."""
         state = PipelineState(phase="audit")
         new_state, _ = reduce(
             state,
@@ -211,7 +183,6 @@ class TestRequirement1RoutingSemantics:
     def test_all_decisions_are_policy_declared(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """Every decision for the audit phase maps to a policy-declared target."""
         audit_def = policy_with_renamed_phases.pipeline.phases["audit"]
         assert audit_def.decisions["completed"].target == "sign_off"
         assert audit_def.decisions["request_changes"].target == "build"

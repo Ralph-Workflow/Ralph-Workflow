@@ -1,11 +1,3 @@
-"""Verdict validation, tree binding, and no-progress accounting for commit review.
-
-A commit-review verdict is only meaningful when it is bound to the tree it
-judged. This module owns that binding: it validates the verdict, decides
-whether the artifact names the sealed proposal tree, and owns the
-no-progress counter that bounds a reviewer malfunction instead of letting it
-re-review forever.
-"""
 
 from __future__ import annotations
 
@@ -38,27 +30,14 @@ if TYPE_CHECKING:
     from ralph.phases.commit_review import CommitReviewParsedArtifact
     from ralph.pipeline.events import Event
 
-#: The workspace-relative file that holds the per-fingerprint no-progress
-#: counters of the commit-review phase.
 _IDENTITY_STATE_PATH = ".agent/tmp/commit_review_identity.json"
 
-#: A sealed tree SHA is a 40-character hex string. A verdict that names
-#: anything else is malformed and cannot be bound to a tree.
 _TREE_SHA_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[0-9a-fA-F]{40}$")
 
-#: The no-progress state keeps one count per fingerprint, so two different
-#: reviewer malfunctions cannot reset each other's budget. The cap keeps the
-#: state file bounded when a reviewer submits a stream of distinct artifacts.
 _MAX_IDENTITY_FINGERPRINTS: Final[int] = 32
 
 
 def _verdict_failure(artifact: CommitReviewParsedArtifact) -> CommitReviewGateFailed | None:
-    """Return the gate failure for an unusable verdict, or ``None``.
-
-    The verdict is the only way to approve a proposal, so an artifact whose
-    verdict is absent or outside the closed vocabulary fails the gate
-    instead of being read as an approval.
-    """
     verdict = artifact.verdict
     if verdict is None:
         return CommitReviewGateFailed(
@@ -75,20 +54,6 @@ def _tree_binding_fault(
     artifact: CommitReviewParsedArtifact,
     seal: Seal,
 ) -> str | None:
-    """Return why the verdict is not bound to the sealed tree, or ``None``.
-
-    A verdict is bound to a tree when it names the tree it judged. Three
-    faults break that binding, and every one of them is a REVIEWER
-    MALFUNCTION:
-
-    * ``absent``: the artifact carries no ``tree_sha`` at all.
-    * ``invalid``: the ``tree_sha`` is not a tree SHA.
-    * ``stale``: the ``tree_sha`` names a different tree than the sealed one.
-
-    A malfunction must never approve a tree the reviewer did not judge, and
-    it must never roll the proposal back: the engine cannot tell WHICH tree
-    the reviewer approved, so it can neither commit it nor discard it.
-    """
     tree_sha = artifact.tree_sha
     if tree_sha is None or not tree_sha.strip():
         return "absent"
@@ -104,7 +69,6 @@ def _tree_binding_hint(
     artifact: CommitReviewParsedArtifact,
     seal: Seal,
 ) -> str:
-    """Return the retry hint that names the unbound verdict and the tree to judge."""
     if fault == "stale":
         return (
             f"Stale commit review: artifact tree SHA {artifact.tree_sha!r} "
@@ -131,14 +95,6 @@ def _tree_binding_events(
     artifact: CommitReviewParsedArtifact,
     seal: Seal,
 ) -> list[Event | CommitReviewEvent]:
-    """Return the events for a verdict that is not bound to the sealed tree.
-
-    The malfunction is bounded by the phase-owned no-progress counter: the
-    reviewer is sent back for a re-review, and a reviewer that never binds
-    a verdict to the tree exhausts the budget and fails the gate. The gate
-    failure is fail-closed: the pending work stays in the worktree and the
-    proposal stays recoverable under its ref.
-    """
     fingerprint = f"tree-binding:{fault}:{seal.tree_sha}"
     if charge_identity(ctx, phase_name, fingerprint):
         detail = (
@@ -157,14 +113,6 @@ def _rebind_verdict_to_sealed_tree(
     artifact: CommitReviewParsedArtifact,
     seal: Seal,
 ) -> CommitReviewParsedArtifact:
-    """Re-bind the verdict to the tree the edit step produced.
-
-    The artifact records the tree SHA it JUDGED. The edit step then applies
-    the reviewer's own actions, which produce a NEW sealed tree. The verdict
-    is evaluated against that new tree, so the binding is re-pointed at it:
-    the approval names the tree that will be committed, and the commit phase
-    still refuses to commit a tree that differs from it.
-    """
     return replace(artifact, tree_sha=seal.tree_sha)
 
 
@@ -175,13 +123,6 @@ def maybe_succeed_after_identity_bound(
     fingerprint: str,
     events: list[Event | CommitReviewEvent],
 ) -> list[Event | CommitReviewEvent]:
-    """Cap identical recoverable failures, then fail the gate.
-
-    The identity bound stops a malfunctioning reviewer from looping forever.
-    Reaching the bound is a reviewer malfunction -- a missing or invalid
-    artifact -- so it is a gate failure, never an approval: the phase must
-    not hand the commit phase an unbound (SHA-less) tree to commit.
-    """
     if charge_identity(ctx, phase_name, fingerprint):
         logger.warning(
             "{}: identical no-progress bound reached; failing the commit review gate",
@@ -199,7 +140,6 @@ def maybe_succeed_after_identity_bound(
 
 
 def artifact_digest(ctx: PhaseContext, artifact_path: str) -> str:
-    """Fingerprint the leftover or newly submitted commit-review artifact bytes."""
     if not ctx.workspace.exists(artifact_path):
         return "missing"
     try:
@@ -210,13 +150,6 @@ def artifact_digest(ctx: PhaseContext, artifact_path: str) -> str:
 
 
 def charge_identity(ctx: PhaseContext, phase_name: str, fingerprint: str) -> bool:
-    """Increment the phase-owned identity counter; return True when the cap is reached.
-
-    Every fingerprint keeps its OWN count, so two different reviewer
-    malfunctions cannot reset each other's budget: a reviewer that
-    alternates between two kinds of malfunction still exhausts the budget
-    of the one it repeats.
-    """
     counts = _read_identity_counts(ctx)
     key = f"{phase_name}|{fingerprint}"
     count = counts.get(key, 0) + 1
@@ -226,7 +159,6 @@ def charge_identity(ctx: PhaseContext, phase_name: str, fingerprint: str) -> boo
 
 
 def _identity_max(ctx: PhaseContext) -> int:
-    """Return the policy cap for identical no-progress commit-review attempts."""
     policy: object = ctx.pipeline_policy
     if isinstance(policy, PipelinePolicy):
         cfg = policy.loop_counters.get(COMMIT_REVIEW_IDENTITY_COUNTER)
@@ -239,7 +171,6 @@ def _identity_max(ctx: PhaseContext) -> int:
 
 
 def _identity_max_from_untyped_policy(policy: object) -> int:
-    """Read the identity cap from test doubles that are not PipelinePolicy."""
     counters = cast("object", getattr(policy, "loop_counters", None))
     if not isinstance(counters, dict):
         return DEFAULT_IDENTITY_MAX
@@ -255,7 +186,6 @@ def _identity_max_from_untyped_policy(policy: object) -> int:
 
 
 def _read_identity_counts(ctx: PhaseContext) -> dict[str, int]:
-    """Return the per-fingerprint no-progress counts of this phase."""
     if not ctx.workspace.exists(_IDENTITY_STATE_PATH):
         return {}
     try:
@@ -278,7 +208,6 @@ def _read_identity_counts(ctx: PhaseContext) -> dict[str, int]:
 
 
 def _write_identity_counts(ctx: PhaseContext, counts: dict[str, int]) -> None:
-    """Persist the per-fingerprint no-progress counts of this phase."""
     retained = dict(list(counts.items())[-_MAX_IDENTITY_FINGERPRINTS:])
     payload = {"counts": retained}
     try:
@@ -292,7 +221,6 @@ def persist_unapplied_hint(
     phase_name: str,
     report: CommitReviewApplyReport,
 ) -> None:
-    """Write declined and apply-failed decisions for the next prompt."""
     hint = build_unapplied_retry_hint(report)
     if not hint:
         return

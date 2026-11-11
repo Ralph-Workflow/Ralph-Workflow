@@ -1,10 +1,3 @@
-"""Black-box tests for ralph/display/phase_lifecycle.py.
-
-Verifies the view-model dataclasses hold correct data, provide consistent
-iteration labels, and convert cleanly to PhaseIterationContext for
-downstream rendering.
-"""
-
 from __future__ import annotations
 
 from ralph.display.phase_lifecycle import (
@@ -13,18 +6,12 @@ from ralph.display.phase_lifecycle import (
     PhaseExitModel,
 )
 
-# ---------------------------------------------------------------------------
-# PhaseEntryModel
-# ---------------------------------------------------------------------------
-
 
 class TestPhaseExitModel:
     def test_defaults(self) -> None:
         m = PhaseExitModel(phase_name="development")
         assert m.elapsed_seconds == 0.0
         assert m.exit_trigger is None
-        # ``None`` preserves live counter values when no explicit phase-close
-        # override was supplied; zero is a deliberate override.
         assert m.content_blocks is None
         assert m.thinking_blocks is None
         assert m.tool_calls is None

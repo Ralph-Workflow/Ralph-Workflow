@@ -1,4 +1,3 @@
-"""Web visit and media configuration models for `mcp.toml`."""
 
 from __future__ import annotations
 
@@ -8,7 +7,6 @@ from ralph.pydantic_compat import RalphBaseModel
 
 
 class WebVisitConfig(RalphBaseModel):
-    """Top-level `web_visit` config in `mcp.toml`."""
 
     model_config = ConfigDict(frozen=True)
 

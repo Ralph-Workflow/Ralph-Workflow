@@ -1,36 +1,16 @@
-# Default pipeline policy for Ralph Workflow.
-#
-# This bundled default is authored as explicit blocks and compiled by the loader
-# into the flat runtime phase graph used by reducer/checkpoint/display code.
-# ============================================================
-# OPTIONAL — everything below this line has a working default.
-# Skip this file entirely unless you know you need it.
-# ============================================================
-# Edit this only if you are changing which checks or phases run in the pipeline.
 
 entry_block = "developer_iteration"
 terminal_phase = "complete"
 
-# ---------------------------------------------------------------------------
-# Edit this only if you need to tune how often a loop can run.
-# Loop counters
-# ---------------------------------------------------------------------------
 
-# Raise this if development-analysis reviews keep looping past 5 passes before approving a change;
-# lower it to fail fast on a weaker development agent instead of grinding through retries.
 [loop_counters.development_analysis_iteration]
 default_max = 5
 description = "Development analysis loop iteration counter"
 
 [loop_counters.planning_analysis_iteration]
-# Lower this toward 0 when a capable planning model does not need extra self-correction passes;
-# raise it when a smaller planner needs more, remembering each pass costs more.
 default_max = 3
 description = "Planning analysis loop iteration counter"
 
-# Raise this only if commit review (the damage gate in front of a commit, which
-# can also edit the pending tree) needs more than 3 self-correction passes;
-# most agents repair the damage the gate found in one or two passes.
 [loop_counters.commit_review_iteration]
 default_max = 3
 description = "Commit review loop iteration counter"
@@ -39,37 +19,17 @@ description = "Commit review loop iteration counter"
 default_max = 3
 description = "Identical no-progress commit-review attempt counter"
 
-# Consecutive commit review rejection counter. Fails the run to failed_terminal
-# when exhausted without another rollback. Absent from loop_resets so it survives
-# normal iteration loop resets and accumulates across the run.
 [loop_counters.commit_review_rejections]
 default_max = 2
 description = "Consecutive commit review rejections counter"
 
-# ---------------------------------------------------------------------------
-# Edit this only if you need to change the total development-cycle budget.
-# Budget counters
-# ---------------------------------------------------------------------------
 
-# This is the overall ceiling on full plan -> build -> commit cycles for one run.
-# Raise it for a multi-day task that needs more passes; lower it to cap cost/time on a quick task.
 [budget_counters.iteration]
 description = "Development iteration counter (developer cycles)"
 tracks_budget = true
 default_max = 5
 
-# ---------------------------------------------------------------------------
-# Edit this only if you need to bound the plan-to-final-commit cycle wall-clock.
-# Cycle timebox
-# ---------------------------------------------------------------------------
 
-# `duration_seconds` is the total wall-clock budget for one complete
-# plan-to-final-commit cycle, including development, intermediate commits,
-# development analysis, and loopbacks. It is not a per-agent-session timeout.
-# Once the budget elapses, Ralph Workflow redirects the next development entry
-# through final commit instead of starting another development invocation.
-# The 80% threshold is derived automatically (480 minutes under the 600-minute
-# default, leaving 120 minutes before finalization). Must be finite and > 0.
 [cycle_timebox]
 duration_seconds = 36000
 start_source = "planning_analysis"
@@ -77,16 +37,8 @@ start_entry = "development"
 guarded_entry = "development"
 end_entry = "development_final_commit"
 finalization_target = "development_final_commit_review"
-# A redirected cycle still finishes at the dev cycle's final commit, so it is
-# stamped with a normal cycle outcome and post_commit_routes decide what comes
-# next: another planning cycle while the iteration budget has room, or the
-# terminal phase once it is spent. Set this to "failed" instead if a timed-out
-# cycle should end an out-of-budget run in the failure terminal.
 finalization_cycle_outcome = "completed"
 
-# Independent development-phase timer. Unlike [cycle_timebox], this measures
-# uninterrupted development work only: validation retries and loopbacks do not
-# reset or extend it.
 [development_timebox]
 duration_seconds = 5400
 warning_seconds = 4200
@@ -96,29 +48,14 @@ guarded_entry = "development"
 end_entry = "development_commit"
 finalization_target = "development_commit_review"
 
-# ---------------------------------------------------------------------------
-# Commit review policy (Stage 1 deterministic tripwires & proposal retention)
-# ---------------------------------------------------------------------------
 
-# Stage 1 deterministic safety tripwires run before agent review.
-# If a hard tripwire triggers (e.g. mass deletion, protected file removal), the
-# proposal is rejected immediately and rolled back to HEAD/baseline.
 [commit_review]
-# Maximum allowed number of deleted tracked files before mass deletion hard tripwire triggers.
 max_deleted_files = 50
-# Maximum fraction of tracked files deleted (0.0 to 1.0) before mass deletion hard tripwire triggers.
 max_deleted_fraction = 0.25
-# Maximum allowed binary file size in bytes (1 MB) before triggering oversized-binary warning.
 binary_size_limit = 1000000
-# Number of recent sealed proposal references to keep per run before pruning.
 proposal_retention = 10
-# Maximum consecutive commit review rejections before failing the run to failed_terminal.
 max_rejections = 2
 
-# ---------------------------------------------------------------------------
-# Edit this only if you are changing the workflow phases or their order.
-# Block-authored default workflow
-# ---------------------------------------------------------------------------
 
 [blocks.developer_iteration]
 kind = "group"
@@ -334,10 +271,6 @@ terminal_outcome = "failure"
 on_success = "failed_terminal"
 on_loopback = "failed_terminal"
 
-# ---------------------------------------------------------------------------
-# Edit this only if you are changing what happens after a commit.
-# Post-commit budget-guarded routing
-# ---------------------------------------------------------------------------
 
 [[post_commit_routes]]
 target = "planning"
@@ -381,20 +314,12 @@ phase = "development_final_commit"
 budget_state = "no_review"
 cycle_outcome = "failed"
 
-# ---------------------------------------------------------------------------
-# Edit this only if you are changing retry behavior.
-# Default retry policy
-# ---------------------------------------------------------------------------
 
 [default_phase_retry_policy]
 max_retries = 3
 retry_delay_ms = 1000
 retry_in_session = false
 
-# ---------------------------------------------------------------------------
-# Edit this only if you are changing recovery after an agent failure.
-# Recovery policy
-# ---------------------------------------------------------------------------
 
 [recovery]
 cycle_cap = 200

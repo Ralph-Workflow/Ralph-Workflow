@@ -1,5 +1,3 @@
-"""ANSI-vs-plain regression tests for completion_summary decision badge rendering."""
-
 from __future__ import annotations
 
 import re
@@ -47,7 +45,6 @@ def _make_snapshot() -> PipelineSnapshot:
 
 
 def _themed_context(buf: StringIO) -> object:
-    """Create a DisplayContext for themed (color) output."""
     console = Console(
         file=buf,
         force_terminal=True,
@@ -60,7 +57,6 @@ def _themed_context(buf: StringIO) -> object:
 
 
 def _plain_context(buf: StringIO) -> object:
-    """Create a DisplayContext for plain (no color) output."""
     console = Console(
         file=buf,
         force_terminal=False,
@@ -107,7 +103,6 @@ def test_fail_badge_label_present_on_plain() -> None:
 
 
 def test_completion_summary_body_rows_retain_semantic_colour() -> None:
-    """Regression: S-8 completion details never fall back to the terminal default."""
     buf = StringIO()
     emit_completion_summary(_make_snapshot(), display_context=_themed_context(buf))
 
@@ -117,7 +112,6 @@ def test_completion_summary_body_rows_retain_semantic_colour() -> None:
 
 
 def test_completion_summary_failure_cause_retains_semantic_colour() -> None:
-    """Regression: S-8 error detail remains visible in a coloured completion summary."""
     buf = StringIO()
     snapshot = replace(
         _make_snapshot(),
@@ -132,12 +126,10 @@ def test_completion_summary_failure_cause_retains_semantic_colour() -> None:
 
 
 def test_badge_reason_text_uses_coloured_muted_style_in_themed_output() -> None:
-    """Badge reason text remains visibly coloured without relying on dim alone."""
     buf = StringIO()
     ctx = _themed_context(buf)
     t = make_badge_text("PASS", " Development Analysis: proceed")
     ctx.console.print(t, markup=False, highlight=False, no_wrap=True)
     out = buf.getvalue()
     assert "Development Analysis: proceed" in out
-    # The muted role must apply a foreground SGR sequence, not dim-only styling.
     assert re.search(r"\x1b\[[0-9;]*m[^\x1b]*Development Analysis: proceed", out)

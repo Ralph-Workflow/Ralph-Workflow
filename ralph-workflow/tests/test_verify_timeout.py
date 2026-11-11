@@ -119,18 +119,10 @@ def test_raw_pytest_run_is_hard_capped_by_suite_timeout(tmp_path: Path) -> None:
         options=ProcessRunOptions(
             cwd=tmp_path,
             env={
-                # Load the configured project plugins so pytest.ini options are
-                # registered before the watchdog begins timing the slow test.
                 SUITE_TIMEOUT_ENV: "0.2",
                 TEST_TIMEOUT_ENV: "5.0",
             },
             timeout=5.0,
         ),
     )
-    # Exit code 124 confirms the watchdog terminated the pytest process.
-    # A startup-inclusive elapsed-time threshold would measure host-dependent
-    # interpreter and pytest collection cost rather than this watchdog's contract.
     assert result.returncode == RAW_PYTEST_TIMEOUT_EXIT_CODE
-    # Note: The "wall-clock limit" message may not appear in stderr because
-    # os._exit() bypasses Python's buffer flushing. Exit code 124 is the
-    # reliable indicator that the suite watchdog fired.

@@ -1,5 +1,3 @@
-"""Tests for serialized post-fanout workspace verification."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -40,7 +38,6 @@ def _make_scope(tmp_path: Path) -> WorkspaceScope:
 
 class TestVerificationFailureMarksPhase:
     def test_post_fanout_verification_event_failure_enters_failed_recovery(self) -> None:
-        """PostFanoutVerificationEvent(success=False) must route state to failed phase."""
         state = PipelineState(phase="development", worker_states={})
         event = PostFanoutVerificationEvent(
             success=False,
@@ -52,7 +49,6 @@ class TestVerificationFailureMarksPhase:
         assert "workspace verification failed" in (new_state.last_error or "")
 
     def test_post_fanout_verification_event_success_is_noop(self) -> None:
-        """PostFanoutVerificationEvent(success=True) must not change phase."""
         state = PipelineState(phase="development", worker_states={})
         event = PostFanoutVerificationEvent(success=True, exit_code=0)
         new_state, effects = reducer_reduce(state, event)
@@ -60,7 +56,6 @@ class TestVerificationFailureMarksPhase:
         assert effects == []
 
     def test_verification_failure_last_error_contains_message(self) -> None:
-        """Phase failure state must carry the verification error in last_error."""
         state = PipelineState(phase="development", worker_states={})
         error_msg = "workspace verification failed (exit code 2): make: *** [verify] Error 2"
         event = PostFanoutVerificationEvent(success=False, exit_code=2, error=error_msg)

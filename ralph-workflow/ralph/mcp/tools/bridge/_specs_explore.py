@@ -1,4 +1,3 @@
-"""Tool specs for the explore index MCP tools."""
 
 from __future__ import annotations
 
@@ -13,7 +12,6 @@ from ralph.mcp.tools.names import (
 
 
 def explore_specs() -> list[ToolSpec]:
-    """Return tool specs for the explore index tools."""
     return [
         ToolSpec(
             metadata=_metadata(

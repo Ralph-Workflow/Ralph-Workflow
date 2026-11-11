@@ -1,4 +1,3 @@
-"""AccessDeniedCode — categorical access-denial codes."""
 
 from __future__ import annotations
 
@@ -6,7 +5,6 @@ from enum import StrEnum
 
 
 class AccessDeniedCode(StrEnum):
-    """Categorical access-denial codes."""
 
     NOT_INITIALIZED = "NotInitialized"
     CAPABILITY_DENIED = "CapabilityDenied"

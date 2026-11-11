@@ -1,4 +1,3 @@
-"""Graph neighbors query for ``ralph_graph`` (Phase 2+)."""
 
 import sqlite3
 from collections.abc import Sequence
@@ -29,12 +28,6 @@ def neighbors(
     depth: int = 1,
     limit: int = 25,
 ) -> GraphResult:
-    """Return bounded-depth neighbors for ``target``.
-
-    Relations default to the full evidence-backed allowlist. ``depth``
-    is capped at 3. Ordering: confidence DESC, relation priority
-    ASC, then path ASC for stable output.
-    """
     relations_actual = tuple(relations) if relations else _RELATION_PRIORITY
     resolved_id, resolved_name = _resolve_target(store, target)
     if resolved_id is None:
@@ -78,7 +71,6 @@ def neighbors(
         visited_nodes[symbol_id] = node
         return node
 
-    # Seed the frontier with the target itself.
     frontier: list[str] = [resolved_id]
     visited_ids: set[str] = {resolved_id}
     for _current_depth in range(bounded_depth):

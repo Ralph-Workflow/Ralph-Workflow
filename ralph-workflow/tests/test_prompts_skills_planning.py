@@ -1,5 +1,3 @@
-"""Planning prompt and skill guidance remains concise and current."""
-
 from __future__ import annotations
 
 from ralph.prompts.template_context import TemplateContext

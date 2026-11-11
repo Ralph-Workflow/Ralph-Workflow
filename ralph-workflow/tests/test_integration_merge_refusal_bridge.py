@@ -1,33 +1,3 @@
-"""AC-11 merge-refusal bridge: a clean-observation / merge-refusal livelock.
-
-Observed 2026-10-27: the live observation read the tree CLEAN while the
-endpoint merge REFUSED to start (``local changes to the following files
-would be overwritten by merge`` naming ``app/models/evidence_artifact.rb``).
-The refusal was recorded as a generic conflict, nothing repaired the
-observation or the tree, and the seam re-derived the identical
-``counted=False cycle=0`` state every ~7 s forever.
-
-These tests pin the bridge that closes the loop, all through injected
-seams (no real git, no subprocess, no sleep, no wall clock):
-
-* the refusal is a path-bearing TYPED obstruction
-  (:attr:`~ralph.pipeline.rebase_state.ResolutionFailureCause.CONTEXT_FAILURE`
-  plus the git-named ``blocked_paths``) — never a content conflict,
-  never an in-progress merge conflict;
-* the named paths are preserved to a backup ref through the existing
-  snapshot path, the baseline is restored, and ONE warning names the
-  paths and the ref;
-* the durable record is rewritten from the RE-OBSERVED tree: a clean
-  live reading is corrected by the refusal's own evidence (tracked
-  changes), so the state is never re-derived identically forever;
-* identical repeats charge the ONE durable attempt budget and advance
-  the escalation cycle/rung;
-* NO resolver agent and NO commit agent is dispatched for this class;
-* a genuine ``MERGE_HEAD`` content conflict keeps its existing safety
-  contracts untouched, and unknown/unreadable probes back off without
-  acting.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol
@@ -71,19 +41,12 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.timeout_seconds(10)
 
-#: The module under test: the captured warning lines are THIS module's
-#: observable output (the bridge's one warning per outcome). Warnings
-#: from sibling modules — e.g. the record-clearing helper's retention
-#: warning, existing-contract behavior pinned in its own suite — are
-#: outside the bridge surface this file pins.
 _ENGINE_MODULE = "ralph.pipeline.auto_integrate_rebase_merge"
 
 _BLOCK_PATH = "app/models/evidence_artifact.rb"
 _BACKUP_REF = "refs/ralph-backup/fake-refusal-01"
 _HEAD_SHA = "d" * 40
 
-#: The refusal restore's argv tail (after COMMIT_PIN_CONFIG_ARGS) — the
-#: exact ``git restore`` shape that returns the named paths to HEAD.
 _RESTORE_ARGV = ("restore", "--worktree", "--staged", "--source=HEAD", "--", _BLOCK_PATH)
 
 _REFUSAL_STDERR = (
@@ -95,7 +58,6 @@ _REFUSAL_STDERR = (
 
 
 def _typed_refusal() -> MergeResult:
-    """The refusal exactly as production classifies it after the fix."""
     return MergeResult(
         outcome="conflict",
         reason=f"merge refused: local changes would be overwritten: {_BLOCK_PATH}",
@@ -105,7 +67,6 @@ def _typed_refusal() -> MergeResult:
 
 
 def _clean_observation() -> Observation:
-    """The livelock's live reading: everything clean, nothing in progress."""
     return Observation(
         target_vs_feature=TargetVsFeature.BEHIND,
         target_vs_remote=TargetVsRemote.EQUAL,
@@ -119,8 +80,6 @@ def _clean_observation() -> Observation:
 
 
 class _StubDirector:
-    """Queue-backed double for the observation director's class seam."""
-
     def __init__(self, observations: list[Observation]) -> None:
         self._observations = list(observations)
         self.observations_made = 0
@@ -137,8 +96,6 @@ class _StubDirector:
 
 
 class _Recorder:
-    """One callable recording its calls and returning a fixed value."""
-
     def __init__(self, returns: object = None) -> None:
         self.calls: list[tuple[object, ...]] = []
         self._returns = returns
@@ -149,14 +106,6 @@ class _Recorder:
 
 
 class _GitCalls:
-    """Public ``run_git`` seam double: records every call, answers success.
-
-    Every git mutation in the bridged flow is isolated at a higher public
-    seam, so the only ``run_git`` call that can still arrive is the
-    refusal restore itself; recording at this boundary pins the exact
-    ``git restore`` argv and cwd without touching private names.
-    """
-
     def __init__(self) -> None:
         self.calls: list[tuple[tuple[str, ...], Path | None]] = []
 
@@ -178,11 +127,6 @@ class _GitCalls:
 def _restore_invocations(
     calls: list[tuple[tuple[str, ...], Path | None]],
 ) -> list[tuple[tuple[str, ...], Path | None]]:
-    """The recorded ``run_git`` calls that are refusal restores.
-
-    The pin-config prefix is stripped, so each returned argv is exactly
-    what git received (``restore --worktree --staged ...``).
-    """
     return [
         (argv[len(COMMIT_PIN_CONFIG_ARGS) :], cwd)
         for argv, cwd in calls
@@ -202,7 +146,6 @@ def _install_bridge_seams(
     preserve_returns: tuple[str, str] | Exception = (_BACKUP_REF, _HEAD_SHA),
     refusal: MergeResult | None = None,
 ) -> tuple[_StubDirector, _Recorder, _GitCalls, list[str], _Recorder]:
-    """Install every seam the bridge touches; return the recorders."""
     import ralph.pipeline.auto_integrate_rebase_merge as engine
     import ralph.pipeline.integration_director as director_mod
 
@@ -212,11 +155,6 @@ def _install_bridge_seams(
     def _fake_merge_state(_root: Path) -> str:
         return merge_state
 
-    # Drive the PUBLIC run_rebase_or_merge entry: the rebase phase is
-    # scripted to stop on conflicts so the attempt falls to the endpoint
-    # merge, where the injected refusal arrives. The routing and
-    # terminal-state probes resolve through the engine's PUBLIC module
-    # globals, so patching those names is all the indirection needed.
     def _fake_routing(_root: Path, _target: str) -> None:
         return None
 
@@ -249,8 +187,6 @@ def _install_bridge_seams(
     preserve = _Recorder(preserve_returns)
     monkeypatch.setattr(engine, "create_stale_resolution_snapshot", preserve)
 
-    # The restore runs through the engine's public ``run_git`` boundary;
-    # the double records the exact restore-shaped invocations.
     git = _GitCalls()
     monkeypatch.setattr(engine, "run_git", git)
 
@@ -271,8 +207,6 @@ def _drop_sink(_captured: list[str]) -> None:
 
 
 class _WarningMessage(Protocol):
-    """The loguru message object a sink receives: a ``str`` with a record dict."""
-
     def __str__(self) -> str: ...
 
     @property
@@ -280,15 +214,6 @@ class _WarningMessage(Protocol):
 
 
 def _capture_warnings() -> tuple[list[str], int]:
-    """Attach a WARNING-level sink scoped to the module under test.
-
-    Only warnings emitted from :mod:`ralph.pipeline.auto_integrate_rebase_merge`
-    are captured, so the assertions pin the bridge's own log surface:
-    exactly one line per bridged outcome, none on the back-off arms.
-    Sibling-module warnings (the record-clearing helper's retention
-    warning on the conflict path, existing-contract behavior pinned in
-    its own suite) never reach the captured buffer.
-    """
     captured: list[str] = []
 
     def _sink(message: _WarningMessage) -> None:
@@ -299,15 +224,9 @@ def _capture_warnings() -> tuple[list[str], int]:
     return captured, sink_id
 
 
-# ---------------------------------------------------------------------------
-# merge.py: the typed, path-bearing obstruction classification.
-# ---------------------------------------------------------------------------
-
-
 def test_refusal_result_is_a_typed_path_bearing_obstruction(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """merge.py classifies the pre-start refusal as CONTEXT_FAILURE + paths."""
     calls: list[tuple[str, ...]] = []
 
     def _fake_run_git(
@@ -345,15 +264,11 @@ def test_refusal_result_is_a_typed_path_bearing_obstruction(
 
     assert result.outcome == "conflict"
     assert result.blocked_paths == (_BLOCK_PATH,)
-    # The typed obstruction category: repository-state context, NOT a
-    # content conflict and NOT an agent failure.
     assert result.failure_cause is ResolutionFailureCause.CONTEXT_FAILURE
     assert merge_refusal_obstruction(result) == (_BLOCK_PATH,)
 
 
 def test_merge_refusal_obstruction_projection_is_closed() -> None:
-    """Only the typed refusal projects; everything else flows to re-observation."""
-    # A genuine content conflict: no blocked paths, unresolved cause.
     assert (
         merge_refusal_obstruction(
             MergeResult(
@@ -362,8 +277,6 @@ def test_merge_refusal_obstruction_projection_is_closed() -> None:
         )
         is None
     )
-    # A pre-change (legacy) refusal record: paths but no typed cause must
-    # NOT be silently classified — its consumer re-observes the repository.
     legacy = MergeResult(
         outcome="conflict",
         reason=f"merge refused: local changes would be overwritten: {_BLOCK_PATH}",
@@ -371,29 +284,13 @@ def test_merge_refusal_obstruction_projection_is_closed() -> None:
         failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
     )
     assert merge_refusal_obstruction(legacy) is None
-    # Success / noop / resolution failures are never obstructions.
     assert merge_refusal_obstruction(MergeResult(outcome="success")) is None
     assert merge_refusal_obstruction(MergeResult(outcome="noop")) is None
-
-
-# ---------------------------------------------------------------------------
-# The bridge: clean observation + overwrite refusal.
-# ---------------------------------------------------------------------------
 
 
 def test_clean_observation_overwrite_refusal_is_fully_bridged(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The livelock state: CLEAN observation + the evidence_artifact refusal.
-
-    Asserts, in one pass: (a) named paths preserved to a backup ref via
-    the existing snapshot path, (b) the durable record rewritten from the
-    re-observed tree with the clean reading corrected by the refusal's
-    evidence, (c) re-entry at rebase-first (a skip, never a conflict and
-    never a merge-preferring retry), (d) the one durable budget charged,
-    (e) no resolver and no commit agent, (f) exactly one warning naming
-    paths and ref.
-    """
     director, preserve, git, warnings, _merge = _install_bridge_seams(
         monkeypatch, tmp_path, observations=[_clean_observation()]
     )
@@ -408,33 +305,22 @@ def test_clean_observation_overwrite_refusal_is_fully_bridged(
 
         state = result.short_circuit
         assert state is not None
-        # (c) NOT a content conflict, NOT unresolved: the next seam
-        # re-enters at automatic rebase-first against changed evidence.
         assert state.last_outcome is RebaseOutcomeKind.SKIPPED
         assert not state.integration_unresolved
         assert result.skip_reason is None
         assert state.last_failure_cause is ResolutionFailureCause.CONTEXT_FAILURE
-        # (b) the clean live reading is corrected by the refusal's own
-        # evidence and written back on the durable record.
         assert "worktree=tracked_changes" in (state.last_reason or "")
         assert "retrying rebase-first" in (state.last_reason or "")
-        # (a) the named paths were preserved through the existing path.
         assert len(preserve.calls) == 1
         assert preserve.calls[0][0] == tmp_path
         assert (_BACKUP_REF) in (state.last_reason or "")
-        # The named paths were restored to HEAD through the public
-        # ``run_git`` boundary: exactly one restore-shaped invocation,
-        # scoped to exactly the refusal-named path at the repo root.
         restores = _restore_invocations(git.calls)
         assert len(restores) == 1
         assert restores[0] == (_RESTORE_ARGV, tmp_path)
-        # (e) no resolver agent ran for the refusal class.
         assert resolver_calls == []
-        # (f) exactly one warning, naming the paths and the ref.
         assert len(warnings) == 1
         assert _BLOCK_PATH in warnings[0]
         assert _BACKUP_REF in warnings[0]
-        # (d) exactly one durable charge against the one budget.
         durable = AttemptLedger(tmp_path).read()
         assert sum(durable.repeat_counts.values()) == 1
         assert director.observations_made == 1
@@ -445,14 +331,6 @@ def test_clean_observation_overwrite_refusal_is_fully_bridged(
 def test_identical_repeats_spend_budget_and_advance_cycle(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """AC-11(d): every repeat of the same refusal evidence charges once.
-
-    The 2026-10-27 loop ran ``counted=False cycle=0`` forever. Here the
-    same refusal repeats eight times: each repeat charges the one durable
-    budget, the escalation cycle advances rung by rung, the
-    preserve-shaped work is bounded (the direct rung executes once), and
-    neither a resolver nor a commit action is ever charged.
-    """
     _director, preserve, git, warnings, _merge = _install_bridge_seams(
         monkeypatch, tmp_path, observations=[_clean_observation()]
     )
@@ -464,22 +342,13 @@ def test_identical_repeats_spend_budget_and_advance_cycle(
             assert state.last_outcome is RebaseOutcomeKind.SKIPPED
 
         durable = AttemptLedger(tmp_path).read()
-        # Every repeat spent budget: the signature-level total equals the
-        # number of attempts (the observed run's ``counted=False``).
         assert sum(durable.repeat_counts.values()) == 8
-        # The cycle advanced past the first rung within a fixed bound.
         assert durable.rung is not EscalationRung.REPAIR
-        # No resolver and no commit action was ever charged or dispatched.
         charged_actions = {action for (_sig, action) in durable.repeat_counts}
         assert "dispatch_resolver" not in charged_actions
         assert "commit" not in charged_actions
-        # The direct cleanup rung executed exactly at the direct-action
-        # bound (twice — first contact is never a repeat); later repeats
-        # are answered by stronger, different rungs — never a third
-        # blind preserve of the same content, never a re-run loop.
         assert len(preserve.calls) == 2
         assert len(_restore_invocations(git.calls)) == 2
-        # One accurate line per outcome.
         assert len(warnings) == 8
     finally:
         _drop_sink(warnings)
@@ -488,13 +357,6 @@ def test_identical_repeats_spend_budget_and_advance_cycle(
 def test_durable_record_is_rewritten_from_the_reobserved_tree(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """(b) the override is written back from fresh evidence, not frozen.
-
-    First contact corrects the clean reading to tracked changes; a later
-    attempt whose re-observation proves a STAGED tree writes a different
-    record (``worktree=staged``) — the durable state is rewritten from
-    the current observation every time, never re-derived identically.
-    """
     staged = Observation(
         target_vs_feature=TargetVsFeature.BEHIND,
         target_vs_remote=TargetVsRemote.EQUAL,
@@ -515,7 +377,6 @@ def test_durable_record_is_rewritten_from_the_reobserved_tree(
         assert "worktree=tracked_changes" in (first.last_reason or "")
         assert "worktree=staged" in (second.last_reason or "")
         assert first.last_reason != second.last_reason
-        # Both attempts re-observed; both charged the one durable budget.
         assert director.observations_made == 2
         assert sum(AttemptLedger(tmp_path).read().repeat_counts.values()) == 2
     finally:
@@ -525,7 +386,6 @@ def test_durable_record_is_rewritten_from_the_reobserved_tree(
 def test_genuine_merge_head_conflict_keeps_existing_contracts(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """MERGE_HEAD semantics override the typed claim: content conflict path."""
     _director, preserve, git, warnings, _merge = _install_bridge_seams(
         monkeypatch,
         tmp_path,
@@ -536,12 +396,9 @@ def test_genuine_merge_head_conflict_keeps_existing_contracts(
         result = run_rebase_or_merge(tmp_path, "main", None)
         state = result.short_circuit
         assert state is not None
-        # The existing safety contract: an in-progress merge conflict is
-        # recorded as a conflict, not bridged, not preserved-over.
         assert state.last_outcome is RebaseOutcomeKind.CONFLICT
         assert preserve.calls == []
         assert _restore_invocations(git.calls) == []
-        # The bridge never charged the budget and never logged a line.
         assert sum(AttemptLedger(tmp_path).read().repeat_counts.values()) == 0
         assert warnings == []
     finally:
@@ -551,8 +408,6 @@ def test_genuine_merge_head_conflict_keeps_existing_contracts(
 def test_unreadable_probes_back_off_without_acting(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Unknown readings never block and never act: back off to the safe path."""
-    # (1) The merge-state re-probe itself is unreadable.
     _director, preserve, git, warnings, _merge = _install_bridge_seams(
         monkeypatch,
         tmp_path,
@@ -571,7 +426,6 @@ def test_unreadable_probes_back_off_without_acting(
     finally:
         _drop_sink(warnings)
 
-    # (2) The re-observed worktree is UNKNOWN: no preservation, no charge.
     unknown_observation = Observation(
         target_vs_feature=TargetVsFeature.BEHIND,
         target_vs_remote=TargetVsRemote.EQUAL,
@@ -601,12 +455,6 @@ def test_unreadable_probes_back_off_without_acting(
 def test_legacy_untyped_refusal_flows_through_safe_reobservation(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A pre-change refusal record (paths, no typed cause) still bridges — via proof.
-
-    With ``MERGE_HEAD`` proven absent the live repository confirms the
-    refusal shaped the record, so the bridge engages; with a genuine
-    in-progress merge the same record keeps the content-conflict path.
-    """
     legacy = MergeResult(
         outcome="conflict",
         reason=f"merge refused: local changes would be overwritten: {_BLOCK_PATH}",
@@ -657,7 +505,6 @@ def test_legacy_untyped_refusal_flows_through_safe_reobservation(
 def test_preservation_failure_is_reported_not_retried_silently(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """When the snapshot path raises, the bridge reports and still charges."""
     _director, _preserve, git, warnings, _merge = _install_bridge_seams(
         monkeypatch,
         tmp_path,
@@ -670,8 +517,6 @@ def test_preservation_failure_is_reported_not_retried_silently(
         assert state is not None
         assert state.last_outcome is RebaseOutcomeKind.SKIPPED
         assert "preservation failed" in (state.last_reason or "")
-        # Nothing was restored (there was no durable copy) and the
-        # attempt still spent budget exactly once.
         assert _restore_invocations(git.calls) == []
         assert sum(AttemptLedger(tmp_path).read().repeat_counts.values()) == 1
         assert len(warnings) == 1

@@ -1,15 +1,3 @@
-"""Guard: the commit-message artifact contract has ONE source-of-truth path.
-
-The commit-message path is referenced from three surfaces: the policy
-``artifacts.toml`` (what the gate resolves), the writer constant
-``COMMIT_MESSAGE_ARTIFACT`` (where the bytes land), and the standalone
-``--generate-commit`` resolver ``_commit_required_artifact()``. The resolver
-consumes ``COMMIT_MESSAGE_ARTIFACT`` directly, so pinning the policy path to that
-same constant transitively pins all three. If the policy and the constant drift,
-an artifact could be written where the gate never looks — this test fails the
-build the moment they disagree, so the drift can never be merged.
-"""
-
 from __future__ import annotations
 
 from ralph.mcp.artifacts.commit_message import COMMIT_MESSAGE_ARTIFACT, COMMIT_MESSAGE_TYPE

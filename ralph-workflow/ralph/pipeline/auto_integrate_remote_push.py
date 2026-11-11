@@ -1,20 +1,3 @@
-"""Push / push-outcome / reconcile-after-rejected-push path split from
-:mod:`ralph.pipeline.auto_integrate_remote_sync`.
-
-Owns :func:`push_single_remote`, :func:`push_target_after_landing`,
-:func:`reconcile_after_rejected_push`, the per-attempt
-:class:`_PushOutcome` record, the
-:func:`_attempt_reconcile_and_push` cycle body, the typed-outcome
-projection helpers, the remote-SHA observer used by the
-ref-comparison reconciler, and the canonical
-:func:`_record_remote_state` builder.
-
-The pull-side / throttle / :class:`_DefaultRemoteClient` lives in
-:mod:`ralph.pipeline.auto_integrate_remote_client`; the orchestrator
-(:mod:`ralph.pipeline.auto_integrate_remote_sync`) keeps the
-ref-comparison reconciler and the closed :class:`RemoteSyncStatus`
-vocabulary.
-"""
 
 from __future__ import annotations
 
@@ -52,15 +35,6 @@ if TYPE_CHECKING:
 
 
 def _default_remote_client() -> _DefaultRemoteClient:
-    """Lazy accessor for the shared default remote client.
-
-    Top-level import would close the cycle
-    ``client -> push -> client`` (client imports the push module's
-    :func:`_record_remote_state`; the push module imports the client's
-    ``_DEFAULT_REMOTE_CLIENT``). Resolving the symbol inside the
-    function body means the lookup runs at call time, when both modules
-    are fully loaded.
-    """
     from ralph.pipeline.auto_integrate_remote_client import _DEFAULT_REMOTE_CLIENT
 
     return _DEFAULT_REMOTE_CLIENT
@@ -79,15 +53,12 @@ __all__ = [
 ]
 
 
-#: Per-seam remote reconcile cap; later seams always retry.
 _MAX_REMOTE_SYNC_ATTEMPTS = 3
 
 
-# ----- Push hook --------------------------------------------------------
 
 
 def _safe_target_sha(repo_root: Path, target: str) -> str | None:
-    """Read the local target SHA, mapping failures to ``None`` (never raises)."""
     try:
         return branch_sha(repo_root, target)
     except Exception:
@@ -101,11 +72,6 @@ def _observe_remote_tracking_sha(
     remote: str,
     remote_client: RemoteClient | None = None,
 ) -> str | None:
-    """Observe the remote-tracking ref SHA without raising.
-
-    ``None`` means UNKNOWN (unobservable remote): the caller must NOT
-    treat it as proof the push can be skipped.
-    """
     client = remote_client or _default_remote_client()
     try:
         return client.observe_remote_sha(repo_root, target, remote=remote)
@@ -122,11 +88,6 @@ def push_single_remote(
     timeout_seconds: float = _remote_push_module.PUSH_TIMEOUT_SECONDS,
     remote_client: RemoteClient | None = None,
 ) -> tuple[_remote_push_module.PushResult | None, PublicationDecision]:
-    """Ask next_publication_action before invoking remote push.
-
-    If the publication decision is not PUBLISH_NOW, push_branch_to_single_remote
-    is not invoked.
-    """
     decision = next_publication_action(
         record,
         record=None,
@@ -187,11 +148,6 @@ def push_target_after_landing(
     remote: str | None = None,
     remote_client: RemoteClient | None = None,
 ) -> RebaseState:
-    """Push the local target to the configured remote after a successful land.
-
-    Returns the ``RebaseState`` annotated with ``last_remote_sync`` and
-    ``last_push``. Never raises; never reverts a local landing.
-    """
     from ralph.pipeline.auto_integrate_remote_sync import (
         remote_sync_enabled,
         remote_target_name,
@@ -209,10 +165,6 @@ def push_target_after_landing(
 
     import ralph.pipeline.auto_integrate_remote_sync as _remote_sync
 
-    # Publish idempotency (O2/AC10): when the live local target ref and the
-    # observed remote-tracking ref already name the same commit, the
-    # postcondition "the remote holds the target" already holds, so the push
-    # subprocess is skipped and the record reports terminal publication.
     local_sha = _safe_target_sha(repo_root, target)
     observed_remote_sha = _observe_remote_tracking_sha(
         repo_root, target, remote=chosen_remote, remote_client=remote_client
@@ -266,7 +218,6 @@ def push_target_after_landing(
 def _post_push_publication_decision(
     typed_result: _remote_push_module.PushResult,
 ) -> PublicationDecision:
-    """Translate a typed push outcome into the post-push publication decision."""
     terminal_statuses = {
         _remote_push_module.PushStatus.PUSHED,
         _remote_push_module.PushStatus.CREATED,
@@ -286,7 +237,6 @@ def _post_push_publication_decision(
 def _coerce_push_result(
     result: _remote_push_module.PushResult | str, *, remote: str, target: str
 ) -> _remote_push_module.PushResult:
-    """Keep legacy test doubles at the public helper boundary during migration."""
     if isinstance(result, _remote_push_module.PushResult):
         return result
     if result == f"pushed {target} to {remote}":
@@ -301,7 +251,6 @@ def _coerce_push_result(
 
 
 def _remote_sync_status(status: _remote_push_module.PushStatus) -> str:
-    """Project typed push facts into the durable remote-sync outcome."""
     from ralph.pipeline.auto_integrate_remote_sync import (
         REMOTE_AUTH_FAILED,
         REMOTE_CREATED,
@@ -326,12 +275,10 @@ def _remote_sync_status(status: _remote_push_module.PushStatus) -> str:
     return outcomes[status]
 
 
-# ----- Rejected-push reconcile loop -------------------------------------
 
 
 @dataclass
 class _PushOutcome:
-    """Per-attempt outcome of a push within the bounded reconcile cycle."""
 
     success: bool
     summary: str
@@ -352,24 +299,6 @@ def reconcile_after_rejected_push(
     rebase_stop_resolver: RebaseStopResolver | None = None,
     remote_client: RemoteClient | None = None,
 ) -> RebaseState:
-    """Try a bounded reconcile-then-push cycle after a non-fast-forward.
-
-    Per-seam cap is ``_MAX_REMOTE_SYNC_ATTEMPTS`` (3), matching the
-    Part-A landing loop budget. Each attempt is one
-    fetch -> reintegrate -> land -> push cycle, so the loop repeats
-    until the push reports the postcondition "the remote holds the
-    target", which is exactly "refs are equal". Exhausting the cap is
-    NOT a give-up: the pending push is carried forward on
-    :attr:`RebaseState.last_remote_sync` and on the typed
-    :class:`PublicationDecision`, and the next start re-derives the
-    obligation from the refs themselves, so the fail-open contract
-    holds for the whole run, not just one seam.
-
-    The obligation is NEVER derived from per-run memory: this loop
-    receives only ``repo_root`` / ``target`` / the live client, so a
-    crash between landing and push is recovered by the next start in
-    any worktree that observes the same refs.
-    """
     from ralph.pipeline.auto_integrate_remote_sync import (
         REMOTE_PULL_FAILED,
         remote_sync_enabled,
@@ -398,10 +327,6 @@ def reconcile_after_rejected_push(
             remote_unavailable=outcome.status == _remote_push_module.PushStatus.UNREACHABLE,
             configured_remote=chosen_remote,
         )
-        # Use the post-push decision so successful pushes become
-        # terminal and failed pushes remain non-terminal. ``decision``
-        # above is the pre-push eligibility check; it is replaced
-        # here by the actual outcome of the attempt.
         post_decision = (
             _post_push_publication_decision(
                 _remote_push_module.PushResult(
@@ -464,12 +389,6 @@ def _reconcile_in_progress_rebase(
     config: UnifiedConfig | None,
     rebase_stop_resolver: RebaseStopResolver | None,
 ) -> _PushOutcome | None:
-    """Resolve an in-progress rebase that blocks the push, when one is active.
-
-    Returns ``None`` when nothing further has to happen (rebase cleared
-    cleanly OR was not active when this function ran). Returns a
-    push outcome that should abort this attempt otherwise.
-    """
     if rebase_stop_resolver is not None:
         from ralph.pipeline.conflict_resolution import (
             resolution_session_from_config,
@@ -511,23 +430,6 @@ def _align_target_with_remote(
     rebase_stop_resolver: RebaseStopResolver | None,
     remote_client: RemoteClient | None = None,
 ) -> _PushOutcome | None:
-    """Align the local ref with the remote observation before attempting push.
-
-    Returns ``None`` when no alignment is needed. Returns a failed
-    push outcome the caller should surface when alignment cannot
-    proceed.
-
-    Three branches:
-
-    * in-progress rebase -- delegate to the configured conflict
-      resolver (or cleanly abort when no resolver is configured).
-    * diverged -- call :func:`reconcile_target_onto_remote` from the
-      remote-sync module so the target history lands on top of the
-      fetched remote SHA.
-    * remote ahead -- fast-forward the local target ref to the remote tip
-      (:func:`~ralph.pipeline.auto_integrate_remote_client.fast_forward_target_to_remote`)
-      before the next push attempt.
-    """
     rebase_ongoing = False
     try:
         rebase_ongoing = rebase_in_progress(repo_root)
@@ -564,8 +466,6 @@ def _align_target_with_remote(
                 ),
             )
     elif refresh == REFRESH_ORIGIN_AHEAD:
-        # Advance the TARGET itself through the shared routine; the throttled
-        # catch-up tick judged the checkout instead (docs/agents/remote-sync.md).
         from ralph.pipeline.auto_integrate_remote_client import fast_forward_target_to_remote
 
         observed = (
@@ -601,7 +501,6 @@ def _attempt_reconcile_and_push(
     record: RebaseState | None = None,
     remote_client: RemoteClient | None = None,
 ) -> _PushOutcome:
-    """Run a single fetch -> rebase-target-onto-remote -> push cycle."""
     from ralph.pipeline.auto_integrate_remote_sync import (
         FETCH_TIMEOUT_SECONDS,
         push_single_remote,
@@ -662,7 +561,3 @@ def _attempt_reconcile_and_push(
     )
 
 
-# ----- State helpers ---------------------------------------------------
-# The canonical ``_record_remote_state`` builder lives in the client
-# module (it is the largest user). The orchestrator re-exports it from
-# the client so the public surface still resolves here.

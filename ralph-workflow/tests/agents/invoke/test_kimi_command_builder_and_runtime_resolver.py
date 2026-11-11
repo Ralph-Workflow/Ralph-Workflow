@@ -1,29 +1,3 @@
-"""Direct behavior tests for ``KimiCommandBuilder`` and ``KimiRuntimeResolver``.
-
-The dispatch-table guard at
-``tests/agents/invoke/test_dispatch_table_covers_every_transport.py``
-asserts that ``COMMAND_BUILDERS[AgentTransport.KIMI]`` and
-``RUNTIME_RESOLVERS[AgentTransport.KIMI]`` are populated, but does not
-exercise their actual behavior.  This module pins the observable
-behavior of both classes for the kimi transport so the wire format and
-MCP-closure rules cannot silently regress.
-
-The argv contract is the ADAPTED S-5 shape, re-derived from the live
-kimi-code v0.36.1 binary (the plan's original ``kimi --print -p ...
---afk`` shape came from the stale kimi-cli documentation and is
-rejected by the live binary):
-
-    kimi --output-format=stream-json [-S <session>] [-m <model>] -p <prompt>
-
-with the prompt text as exactly one argv value.
-
-The MCP closure is the ADAPTED S-6/S-7 shape: the documented Kimi Code
-config surface is the user-global ``$KIMI_CODE_HOME/mcp.json``
-(defaulting to ``~/.kimi-code/mcp.json``) plus the project-local
-``<workspace>/.kimi-code/mcp.json``; the legacy ``~/.kimi/mcp.json``
-path from the kimi-cli docs is deliberately never touched.
-"""
-
 from __future__ import annotations
 
 import json
@@ -75,10 +49,7 @@ def _kimi_config(**overrides: object) -> AgentConfig:
 
 
 class TestKimiCommandBuilder:
-    """Pin the measured ``kimi --output-format=stream-json -p <prompt>`` argv shape."""
-
     def test_minimal_argv_is_kimi_output_format_print_prompt(self, tmp_path: Path) -> None:
-        """No session, no model, no yolo: argv is exactly the headless shape."""
         prompt_file = _make_prompt(tmp_path)
         cmd = KimiCommandBuilder().build(
             _kimi_config(), prompt_file, options=BuildCommandOptions(workspace_path=tmp_path)
@@ -87,7 +58,6 @@ class TestKimiCommandBuilder:
         assert cmd == ["kimi", "--output-format=stream-json", "-p", "hello world"]
 
     def test_legacy_stale_doc_tokens_are_not_emitted(self, tmp_path: Path) -> None:
-        """The stale kimi-cli flags the live binary rejects must never appear."""
         prompt_file = _make_prompt(tmp_path)
         cmd = KimiCommandBuilder().build(
             _kimi_config(), prompt_file, options=BuildCommandOptions(workspace_path=tmp_path)
@@ -100,14 +70,6 @@ class TestKimiCommandBuilder:
         assert "--plan" not in cmd
 
     def test_session_flag_is_dash_S_with_value(self, tmp_path: Path) -> None:
-        """The measured resume flag ``-S <id>`` lands before the model flag.
-
-        Fresh v0.36.1 probe (``kimi --help``): ``-S, --session [id]
-        Resume a session`` is the only advertised resume spelling; the
-        stale ``-r`` form came from legacy kimi-cli docs and is not a
-        v0.36.1 option, so generated resume argv must carry ``-S``
-        and never ``-r``.
-        """
         prompt_file = _make_prompt(tmp_path)
         cmd = KimiCommandBuilder().build(
             _kimi_config(),
@@ -126,7 +88,6 @@ class TestKimiCommandBuilder:
         assert "-r" not in cmd
 
     def test_session_id_with_spaces_stays_one_argv_element(self, tmp_path: Path) -> None:
-        """A session id containing spaces must stay as a single argv value."""
         prompt_file = _make_prompt(tmp_path)
         cmd = KimiCommandBuilder().build(
             _kimi_config(),
@@ -136,11 +97,9 @@ class TestKimiCommandBuilder:
 
         s_index = cmd.index("-S")
         assert cmd[s_index + 1] == "abc def"
-        # The session id must not be tokenized into separate elements.
         assert "abc" not in cmd[:s_index] + cmd[s_index + 2 :]
 
     def test_model_flag_is_dash_m_with_value(self, tmp_path: Path) -> None:
-        """The model template wraps a bare id into ``-m <model>``."""
         prompt_file = _make_prompt(tmp_path)
         cmd = KimiCommandBuilder().build(
             _kimi_config(),
@@ -158,7 +117,6 @@ class TestKimiCommandBuilder:
         ]
 
     def test_full_argv_layout(self, tmp_path: Path) -> None:
-        """Measured ``kimi --output-format=stream-json -S ID -m M -p P`` layout."""
         prompt_file = _make_prompt(tmp_path)
         cmd = KimiCommandBuilder().build(
             _kimi_config(),
@@ -182,7 +140,6 @@ class TestKimiCommandBuilder:
         ]
 
     def test_prepends_master_prompt(self, tmp_path: Path) -> None:
-        """The kimi transport is not CODEX, so the master prompt is concatenated."""
         prompt_file = _make_prompt(tmp_path)
         master = tmp_path / "MASTER_PROMPT.md"
         master.write_text("durable rules", encoding="utf-8")
@@ -200,7 +157,6 @@ class TestKimiCommandBuilder:
         assert cmd[-2] == "-p"
 
     def test_operator_cmd_override_preserves_wrapper_tokens(self, tmp_path: Path) -> None:
-        """A multi-token ``cmd`` override keeps the wrapper path AND its flags."""
         prompt_file = _make_prompt(tmp_path)
         config = _kimi_config(cmd="/opt/wrapper/kimi --telemetry-flag")
 
@@ -212,7 +168,6 @@ class TestKimiCommandBuilder:
         assert cmd[-2:] == ["-p", "hello world"]
 
     def test_prompt_is_exactly_one_argv_element(self, tmp_path: Path) -> None:
-        """A prompt with newlines and quotes stays one argv value."""
         prompt_file = tmp_path / "PROMPT.md"
         prompt_file.write_text("line one\nline two 'quoted'", encoding="utf-8")
 
@@ -225,8 +180,6 @@ class TestKimiCommandBuilder:
 
 
 class TestKimiRuntimeResolverNoEndpoint:
-    """Without an MCP endpoint the resolver returns the minimal runtime."""
-
     def test_registered_in_runtime_resolvers(self) -> None:
         assert RUNTIME_RESOLVERS[AgentTransport.KIMI] is KimiRuntimeResolver
 
@@ -253,8 +206,6 @@ class TestKimiRuntimeResolverNoEndpoint:
 
 
 class TestKimiRuntimeResolverMcpWiring:
-    """With an MCP endpoint the resolver writes and restores Kimi's config paths."""
-
     ENDPOINT = "http://127.0.0.1:54321/mcp"
 
     def test_resolve_writes_private_kimi_code_home(
@@ -290,15 +241,6 @@ class TestKimiRuntimeResolverMcpWiring:
     def test_resolve_skips_untrusted_workspace_config_write(
         self, tmp_path: Path, monkeypatch: MonkeyPatch
     ) -> None:
-        """Absent workspace config is not a write target (trust gate).
-
-        Measured on v0.36.1: headless ``kimi -p`` silently ignores a
-        project-level ``.kimi-code/mcp.json`` when the folder is not in
-        the operator's trusted-workspace store, so the resolver must NOT
-        create that file -- it would be ignored by the CLI and would
-        fabricate a project-level surface the operator never made.  The
-        user-global path carries no trust gate and is always written.
-        """
         kimi_home = tmp_path / "kimi-home"
         monkeypatch.setenv("KIMI_CODE_HOME", str(kimi_home))
 
@@ -354,7 +296,7 @@ class TestKimiRuntimeResolverMcpWiring:
 
         during = json.loads(during_bytes)
         assert RALPH_MCP_SERVER_NAME in during["mcpServers"]
-        assert "operator-managed" not in during["mcpServers"]  # unsafe_mode=False drops upstreams
+        assert "operator-managed" not in during["mcpServers"]
 
         assert global_config.read_bytes() == original_bytes
 
@@ -388,8 +330,6 @@ class TestKimiRuntimeResolverMcpWiring:
         assert server_env is not None
         during = json.loads(during_bytes)
         assert during["mcpServers"][RALPH_MCP_SERVER_NAME] == {"url": self.ENDPOINT}
-        # The canonical upstream dict adds name/transport keys alongside
-        # the url (same shape the cursor / agy merges write).
         assert during["mcpServers"]["operator-managed"]["url"] == "http://example.invalid/sse"
 
         restored = json.loads((kimi_home / "mcp.json").read_text(encoding="utf-8"))
@@ -398,7 +338,6 @@ class TestKimiRuntimeResolverMcpWiring:
     def test_stale_kimi_cli_doc_path_is_never_touched(
         self, tmp_path: Path, monkeypatch: MonkeyPatch
     ) -> None:
-        """The legacy ``~/.kimi/mcp.json`` surface from the stale docs stays alone."""
         fake_home = tmp_path / "fake-home"
         monkeypatch.setenv("KIMI_CODE_HOME", str(tmp_path / "kimi-home"))
         monkeypatch.setenv("HOME", str(fake_home))
@@ -427,9 +366,6 @@ class TestKimiRuntimeResolverMcpWiring:
         )
 
         assert runtime.mcp_endpoint == self.ENDPOINT
-        # No pre-existing workspace config: the trust gate keeps the
-        # workspace path out of the write targets; only the user-global
-        # config carries the run-scoped entry.
         assert not (tmp_path / ".kimi-code" / "mcp.json").exists()
         runtime_env = runtime.agent_env
         assert runtime_env is not None
@@ -441,8 +377,6 @@ class TestKimiRuntimeResolverMcpWiring:
 
 
 class TestKimiTransportHelpers:
-    """Direct helper-level pins for the kimi MCP transport module."""
-
     def test_kimi_mcp_config_uses_cursor_shape(self) -> None:
         assert json.loads(kimi_mcp_config("http://localhost:1234/mcp")) == {
             "mcpServers": {
@@ -490,7 +424,6 @@ class TestKimiTransportHelpers:
     def test_workspace_local_config_wins_in_loader(
         self, tmp_path: Path, monkeypatch: MonkeyPatch
     ) -> None:
-        """Workspace-local entries shadow user-global entries with the same name."""
         kimi_home = tmp_path / "kimi-home"
         monkeypatch.setenv("KIMI_CODE_HOME", str(kimi_home))
         kimi_home.mkdir()
@@ -510,23 +443,17 @@ class TestKimiTransportHelpers:
 
 
 class TestKimiCompletionEnforcement:
-    """The kimi strategy enforces completion like the other headless session transports."""
-
     def test_kimi_transport_uses_completion_enforcing_strategy(self) -> None:
         strategy = strategy_for_transport(AgentTransport.KIMI)
 
         assert isinstance(strategy, CompletionEnforcingStrategy)
         assert strategy.supports_completion_enforcement() is True
-        # Session-continuation stance mirrors the cursor / agy factories
-        # (the flag is only overridden True by the pi factory, whose
-        # resumable-exit contract needs it).
         cursor_strategy = strategy_for_transport(AgentTransport.CURSOR)
         assert strategy.supports_session_continuation() == (
             cursor_strategy.supports_session_continuation()
         )
 
     def test_strategy_classifies_tool_activity(self) -> None:
-        """The kimi strategy maps tool frames onto tool activity signals."""
         strategy = strategy_for_transport(AgentTransport.KIMI)
         classify = getattr(strategy, "classify_activity_line", None)
         assert callable(classify), "kimi strategy must expose classify_activity_line"
@@ -553,8 +480,6 @@ class TestKimiCompletionEnforcement:
         use_signal = classify(tool_use)
         assert use_signal is not None
         assert use_signal.kind is AgentActivityKind.TOOL_USE
-        # Plain assistant text is NOT tool activity (the generic base
-        # classifies it as an ordinary output line).
         plain_signal = classify(plain_text)
         assert plain_signal is None or plain_signal.kind not in (
             AgentActivityKind.TOOL_USE,

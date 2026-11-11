@@ -1,5 +1,3 @@
-"""Behavioral coverage for validation-focused agent retry prompts."""
-
 from __future__ import annotations
 
 from pathlib import Path

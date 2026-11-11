@@ -1,9 +1,3 @@
-"""Workspace-bounded git cwd validation.
-
-The git read handlers resolve a requested cwd and probe its repository top
-level before they invoke git. When either resolved location falls outside the
-active workspace, handlers warn and still execute in the resolved directory.
-"""
 
 from __future__ import annotations
 
@@ -13,19 +7,16 @@ from pathlib import Path
 
 from ralph.process.manager import ManagedProcess, SpawnOptions, get_process_manager
 
-#: Bounded timeout for the ``git rev-parse`` probe.
 _TOPLEVEL_PROBE_TIMEOUT_SECONDS = 10.0
 
 type GitToplevelRunner = Callable[[Path], Path | None]
 
 
 def _is_within(path: Path, root: Path) -> bool:
-    """Return whether ``path`` is ``root`` or is contained by it."""
     return path == root or root in path.parents
 
 
 def _default_toplevel_runner(resolved_cwd: Path) -> Path | None:
-    """Return git's containing top-level, or ``None`` when unavailable."""
     try:
         proc: ManagedProcess = get_process_manager().spawn(
             ["git", "rev-parse", "--show-toplevel"],
@@ -52,12 +43,6 @@ def resolve_git_cwd(
     requested_cwd: str | None,
     git_runner: GitToplevelRunner | None = None,
 ) -> tuple[Path, bool, Path | None]:
-    """Resolve a git cwd and report whether it escapes the workspace.
-
-    Returns ``(resolved_path, is_outside_workspace, discovered_top_level)``.
-    The top-level is ``None`` when no containing repository is found. Both
-    resolved locations contribute to the outside flag.
-    """
     root = Path(workspace_root).resolve()
     if requested_cwd is None or requested_cwd == "":
         resolved = root

@@ -1,20 +1,3 @@
-"""Guard: PipelineState must not declare any of the removed legacy budget fields.
-
-The following fields were identified as legacy hardcoded budget fields
-that should no longer be first-class declared fields on PipelineState:
-- total_iterations
-- total_reviewer_passes
-- development_budget_remaining
-- review_budget_remaining
-- budget_remaining    (replaced by derived get_budget_remaining() from budget_caps/outer_progress)
-- iteration          (scalar mirror of outer_progress['iteration'])
-- reviewer_pass      (scalar mirror of outer_progress['reviewer_pass'])
-
-All of these were migrated away in favour of budget_caps / outer_progress dicts
-keyed by policy-declared counter names. They remain handled in _migrate_legacy_state_fields
-for checkpoint backward-compat, but must NOT be declared as Pydantic fields.
-"""
-
 from __future__ import annotations
 
 from ralph.pipeline.state import PipelineState
@@ -31,8 +14,6 @@ FORBIDDEN_LEGACY_FIELDS = {
 
 
 class TestNoLegacyBudgetFieldsOnPipelineState:
-    """The four legacy budget cap/remaining fields must not be declared on PipelineState."""
-
     def test_total_iterations_not_declared(self) -> None:
         model_fields = set(PipelineState.model_fields.keys())
         assert "total_iterations" not in model_fields, (

@@ -1,5 +1,3 @@
-"""Regression coverage for actionable AGY clean-exit failures."""
-
 from __future__ import annotations
 
 import re
@@ -38,7 +36,6 @@ def test_agy_empty_output_regression_names_actionable_upstream_cause(
     evidence: str,
     expected: str,
 ) -> None:
-    """Plan S-3: AGY rc=0 without completion evidence names captured root cause."""
     cli_log = tmp_path / "cli.log"
     cli_log.write_text(evidence, encoding="utf-8")
     with pytest.raises(AgentInvocationError, match=expected):
@@ -55,7 +52,6 @@ def test_agy_empty_output_regression_names_actionable_upstream_cause(
 
 
 def test_agy_empty_output_regression_without_cause_still_fails(tmp_path: Path) -> None:
-    """Plan S-3: a clean AGY exit with no evidence never becomes success."""
     cli_log = tmp_path / "cli.log"
     cli_log.write_text("", encoding="utf-8")
     with pytest.raises(AgentInvocationError, match="completion evidence"):
@@ -69,9 +65,6 @@ def test_agy_empty_output_regression_without_cause_still_fails(tmp_path: Path) -
                 agy_cli_log_path=cli_log,
             ),
         )
-
-
-# --- Plan S-5: verbatim CLI-log substring pins -------------------------------
 
 
 @pytest.mark.parametrize(
@@ -90,35 +83,17 @@ def test_documented_cli_log_substrings_stay_in_diagnostic_patterns(
     pattern: re.Pattern[str] | tuple[str, ...],
     documented_literal: str,
 ) -> None:
-    """Plan S-5: every documented trigger literal is pinned inside its pattern.
-
-    Editing a diagnostic pattern and silently dropping one of the
-    documented AGY CLI-log trigger substrings must fail this pin, not
-    reach production as an unrecognised-cause regression.
-    """
     searchable = pattern.pattern if isinstance(pattern, re.Pattern) else pattern
     assert documented_literal in searchable
 
 
 def test_agy_default_cli_log_path_is_the_documented_one() -> None:
-    """Plan S-5: the fallback log path is ``~/.gemini/antigravity-cli/cli.log``.
-
-    Pinned via the path tail rather than a live ``Path.home()`` comparison:
-    the conftest autouse home fixture redirects HOME per test, while the
-    module constant is computed once at import time under the real home.
-    """
     assert agy_diag._AGY_CLI_LOG_PATH.parts[-3:] == (".gemini", "antigravity-cli", "cli.log")
 
 
 def test_unrecognised_agy_failure_fails_closed_with_useful_diagnostic(
     tmp_path: Path,
 ) -> None:
-    """Plan S-5: an unrecognised log tail surfaces the canonical diagnostic.
-
-    A brand-new upstream failure mode the patterns do not know must still
-    fail closed — never silently pass — and the raised error must name the
-    agent and the missing completion evidence so the operator can act.
-    """
     cli_log = tmp_path / "cli.log"
     cli_log.write_text("some brand-new upstream failure mode", encoding="utf-8")
 

@@ -1,6 +1,3 @@
-# Deprecated: Ralph-orchestrated workers are removed from the execution model; parallelism is owned by the developer agent's own sub-agents. See docs/sphinx/concepts.md §"Deprecated: Ralph-orchestrated workers".
-"""Agent and commit effect execution for the pipeline runner."""
-
 from __future__ import annotations
 
 import threading as _threading
@@ -117,11 +114,6 @@ if TYPE_CHECKING:
     from ralph.workspace.scope import WorkspaceScope
 
     class _KwargsMaterializeMasterPromptFn(Protocol):
-        """Structural view of ``MaterializeMasterPromptFn`` for variable-keyword
-        dispatch in ``_materialize_master_prompt`` (S-3 / G3). ``**kwargs: object``
-        is fully typed (no implicit ``Any``), unlike ``Callable[..., str]``.
-        """
-
         def __call__(self, **kwargs: object) -> str: ...
 
 
@@ -152,15 +144,6 @@ def _record_successful_attempt_session(
     raw_output: tuple[str, ...],
     session_id: str | None,
 ) -> None:
-    """Publish the successful attempt's session id and clear the retry intent.
-
-    Recording the session matters because failures are also raised AFTER the
-    agent exits successfully — artifact validation is the common case. The
-    reducer resumes ``state.last_agent_session_id`` so the agent repairs its
-    own artifact in place; without this the id is never captured, the resume
-    branch cannot fire, and every such retry restarts the whole phase from a
-    blank prompt.
-    """
     final_session_id = extract_transport_session_id(raw_output) or session_id
     if ctx.deps.set_session_id_cb is not None:
         ctx.deps.set_session_id_cb(final_session_id)
@@ -202,18 +185,6 @@ def execute_agent_effect(
     agent_invocation_error_sink: Callable[[Exception], object] | None = None,
     **opts: object,
 ) -> PipelineEvent | AgentFailureEvent:
-    """Execute an agent-invocation effect end-to-end, including MCP server lifecycle.
-
-    ``display_context`` is a required keyword so a call site cannot silently
-    omit the display dependency: at least one of ``display_context`` /
-    ``display`` must be non-None or :func:`get_display_context` raises.
-    """
-    # This is the final live agent-invocation boundary.  All normal dispatches
-    # delegate to the single fail-closed resolution invariant; its sole drain
-    # is the out-of-graph conflict-resolution executor.
-    # The final live agent-invocation boundary is unconditional.  Standalone
-    # plumbing has no checkpointed PipelineState, but it must still prove the
-    # live repository is safe before it can start an ordinary phase.
     verdict = inspect_integration_resolution(
         workspace_scope.root,
         state.rebase if state is not None else RebaseState(),
@@ -222,16 +193,9 @@ def execute_agent_effect(
 
     resolved_display_context = get_display_context(display, display_context)
     registry = _registry_from_pipeline_deps(pipeline_deps, config)
-    agent_config = cast(
-        "AgentConfig | None", registry.get(effect.agent_name)
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    agent_config = cast("AgentConfig | None", registry.get(effect.agent_name))
     if agent_config is None:
         logger.error("Agent not found: {}", effect.agent_name)
-        # Name the cause on the retry-intent channel. Without it this is
-        # indistinguishable from an agent that ran and failed, so callers
-        # reported a missing binary as the agent's own answer -- and
-        # retrying the same absent name is futile, which is what
-        # skip_same_agent_retries tells the chain.
         _set_last_captured_retry_intent(
             AgentRetryIntent(
                 failure_reason=AGENT_NOT_FOUND_REASON,
@@ -245,13 +209,8 @@ def execute_agent_effect(
         "RecoveryController | None", opts.get("recovery_controller") or opts.get("recovery")
     )
     if active_rec is None:
-        # The run's controller is the single owner of agent-failure health;
-        # borrowing it here keeps the executor on the owner's public seam
-        # instead of reaching into the ledger on its own.
         active_rec = pipeline_deps.recovery_controller
     active_ledger = active_rec.ledger if active_rec is not None else pipeline_deps.ledger
-    # Every decision on this path reads time through the owner's clock, so
-    # a cooldown recorded by the owner expires on the same timeline.
     active_clock: Clock = active_rec.clock if active_rec is not None else SystemClock()
     if active_ledger is None and state is not None and state.ledger_snapshot:
         from ralph.recovery.agent_failure_ledger import AgentFailureLedger
@@ -330,15 +289,9 @@ def execute_agent_effect(
         invocation_started_monotonic=invocation_started,
         clock=active_clock,
         invocation_options=cast("InvokeOptions | None", opts.get("invocation_options")),
-        worker_namespace=cast(
-            "Path | None", opts.get("worker_namespace")
-        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-        worker_artifact_dir=cast(
-            "Path | None", opts.get("worker_artifact_dir")
-        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-        parallel_worker=cast(
-            "bool", opts.get("parallel_worker", False)
-        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        worker_namespace=cast("Path | None", opts.get("worker_namespace")),
+        worker_artifact_dir=cast("Path | None", opts.get("worker_artifact_dir")),
+        parallel_worker=cast("bool", opts.get("parallel_worker", False)),
     )
     invocation_outcome = "crashed"
     try:
@@ -366,9 +319,6 @@ def execute_agent_effect(
         invocation_outcome = "interrupted"
         raise
     except BaseException as exc:
-        # Report before re-raising: an agent-invocation failure is frequently
-        # caught and converted to a retry further up, so without an explicit
-        # capture here it never reaches Sentry through the excepthook.
         invocation_outcome = "crashed"
         _report_agent_invocation_exception(exc)
         raise
@@ -384,13 +334,6 @@ def execute_agent_effect(
 
 
 def _resolve_workspace_probe(opts: dict[str, object]) -> WorkspaceChangeProbe:
-    """Return the probe that measures the workspace change of ONE attempt.
-
-    A caller-supplied probe wins. Otherwise a dedicated probe instance is
-    created for this invocation: it keeps its own per-phase baselines, so
-    measuring an attempt can never consume (or corrupt) the baseline the
-    phase-level handler took for the same phase.
-    """
     supplied = opts.get("workspace_probe")
     if isinstance(supplied, WorkspaceChangeProbe):
         return supplied
@@ -398,11 +341,6 @@ def _resolve_workspace_probe(opts: dict[str, object]) -> WorkspaceChangeProbe:
 
 
 def _report_agent_invocation_exception(exc: BaseException) -> None:
-    """Forward a crashed agent invocation to Sentry without affecting execution.
-
-    Mirrors ``_record_agent_invocation_telemetry``'s lazy import and
-    swallow-everything contract so telemetry can never change control flow.
-    """
     try:
         from ralph.telemetry._sentry import report_handled_exception
 
@@ -420,7 +358,6 @@ def _record_agent_invocation_telemetry(
     duration_s: float,
     outcome: str,
 ) -> None:
-    """Forward safe logical-invocation dimensions without affecting execution."""
     try:
         from ralph.telemetry._sentry import record_agent_invocation
 
@@ -458,39 +395,25 @@ def _registry_from_pipeline_deps(
     config: UnifiedConfig,
 ) -> _RegistryLike:
     if pipeline_deps.registry_factory is not None:
-        return cast(
-            "_RegistryLike", pipeline_deps.registry_factory(config)
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-    return cast(
-        "_RegistryLike", AgentRegistry.from_config(config)
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        return cast("_RegistryLike", pipeline_deps.registry_factory(config))
+    return cast("_RegistryLike", AgentRegistry.from_config(config))
 
 
 def _invoke_agent_from_registry_or_opts(
     pipeline_deps: PipelineDeps,
     opts: dict[str, object],
 ) -> _InvokeAgentFn:
-    # Precedence: per-call opts override (plumbing seams such as
-    # smoke_plumbing) > the pipeline-deps field (scenario harnesses inject
-    # the scripted agent here instead of patching module globals) >
-    # the module-global production invoker.
-    invoke = cast(
-        "_InvokeAgentFn | None", opts.get("invoke_agent")
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    invoke = cast("_InvokeAgentFn | None", opts.get("invoke_agent"))
     if invoke is not None:
         return invoke
-    deps_invoke = cast(
-        "_InvokeAgentFn | None", pipeline_deps.invoke_agent
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    deps_invoke = cast("_InvokeAgentFn | None", pipeline_deps.invoke_agent)
     if deps_invoke is not None:
         return deps_invoke
     return invoke_agent
 
 
 def _agent_invocation_error_from_opts(opts: dict[str, object]) -> type[Exception]:
-    error = cast(
-        "type[Exception] | None", opts.get("agent_invocation_error")
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    error = cast("type[Exception] | None", opts.get("agent_invocation_error"))
     if error is not None:
         return error
     return AgentInvocationError
@@ -500,36 +423,17 @@ def _agent_invocation_error_from_opts(opts: dict[str, object]) -> type[Exception
 class _AttemptState:
     prompt_file: str
     resume_session_id: str | None
-    # Captured from ``ctx.state.last_agent_session_id`` at attempt entry so
-    # the retry prompt can name the rejected session id without re-reading
-    # ``ctx.state`` inside the recovery path. None when no prior session
-    # id is recorded.
     last_agent_session_id: str | None = None
-    # One-reprompt bound for ``AgyIncompleteExitError``: set when the
-    # recovery plan for an AGY incomplete exit is produced, so the SAME
-    # invocation never issues a second automatic completion reprompt.
     completion_reprompt_used: bool = False
     attempts_started: int = 0
-    # Immutable observation of the MOST RECENT failed attempt. It is reset
-    # at the start of every attempt, so an attempt that produced no
-    # observation can never inherit the previous attempt's fact.
     last_observation: AgentFailureEvent | None = None
-    # Whether a workspace baseline was taken for the CURRENT attempt. An
-    # attempt that never took one (a failure before the agent process was
-    # launched) has nothing to measure and therefore no observation.
     attempt_observed: bool = False
-    # Fingerprint of the required artifact file taken right before the
-    # CURRENT attempt launched. A non-zero exit may only be salvaged as a
-    # success when the artifact differs from this baseline, i.e. when THIS
-    # attempt wrote it; a leftover artifact from an earlier iteration (for
-    # example the previous plan during a re-plan) must never count.
     artifact_baseline: list[int] | None = None
 
 
 def _artifact_fingerprint(
     ctx: _AgentInvocationCtx, artifact: RequiredArtifact | None
 ) -> list[int] | None:
-    """Return [mtime_ns, size] of the required artifact file, or None if absent."""
     if artifact is None:
         return None
     from ralph.phases.artifact_freshness import artifact_fingerprint
@@ -538,7 +442,6 @@ def _artifact_fingerprint(
 
 
 def _observation_sink(state: _AttemptState) -> Callable[[AgentFailureEvent], None]:
-    """Return the per-attempt sink that captures the failure observation."""
 
     def _sink(observation: AgentFailureEvent) -> None:
         state.last_observation = observation
@@ -552,13 +455,6 @@ def _observe_attempt_workspace(
     probe: WorkspaceChangeProbe | None,
     workspace: Workspace | None,
 ) -> None:
-    """Take the workspace baseline of the attempt that is about to run.
-
-    The baseline is taken per attempt, right before the agent process is
-    launched, so the measurement covers exactly that attempt. An attempt
-    that fails BEFORE the launch never takes one and therefore never
-    produces a workspace-change fact.
-    """
     state.attempt_observed = False
     if probe is None or workspace is None:
         return
@@ -572,16 +468,6 @@ def _attempt_failure_observation(
     probe: WorkspaceChangeProbe | None,
     workspace: Workspace | None,
 ) -> AgentFailureEvent | None:
-    """Return the attempt-scoped observation of the failed attempt.
-
-    The observation produced by the invocation boundary wins: it was
-    measured at the place where the workspace actually changed. When the
-    invocation boundary produced none (a caller that replaces the
-    invocation), the workspace is measured here, against the baseline this
-    attempt took. When neither is possible the attempt has NO observation
-    and the consumer fails closed -- it never inherits a previous
-    attempt's fact.
-    """
     existing = state.last_observation
     if existing is not None:
         return existing
@@ -599,7 +485,6 @@ def _attempt_failure_observation(
 
 
 def _safe_last_agent_session_id(state: PipelineState | None) -> str | None:
-    """Read ``last_agent_session_id`` defensively, returning None on any issue."""
     if state is None:
         return None
     raw_value: object = getattr(state, "last_agent_session_id", None)
@@ -699,8 +584,6 @@ def _handle_recovery_attempt_failure(
     if controller is not None:
         from ralph.recovery.agent_failure_ledger import Cooldown, Spent
 
-        # The owner decides. This client only states the observed facts and
-        # reads the owner's verdict; it never keeps a counter of its own.
         controller.record_attempt_fact(
             phase,
             agent,
@@ -711,9 +594,6 @@ def _handle_recovery_attempt_failure(
         demoted = not status.is_eligible
         demotion_reason = status.reason if isinstance(status, (Cooldown, Spent)) else None
     elif ledger is not None:
-        # No controller is wired into this run, so the ledger is the only
-        # owner available; charging it directly is the client pattern the
-        # owner's public API exists for.
         from ralph.recovery.agent_failure_ledger import AttemptFact
 
         outcome = ledger.record(
@@ -727,8 +607,6 @@ def _handle_recovery_attempt_failure(
         demoted = outcome.demoted
         demotion_reason = outcome.reason
         if outcome.demoted:
-            # No owner seam on this run, so this client reports the
-            # demotion itself; the owner's seam logs it in every other case.
             logger.warning(
                 "Agent '{}' demoted in phase '{}' (consecutive={}, total={}, reason={})",
                 agent,
@@ -796,12 +674,6 @@ def has_valid_terminal_artifact(
     *,
     baseline: list[int] | None = None,
 ) -> bool:
-    """Return True when a failed exit may still be credited as a submitted artifact.
-
-    Only a non-zero exit with a valid required artifact that THIS attempt wrote
-    qualifies: an artifact identical to ``baseline`` (taken before the attempt
-    launched) is a leftover from an earlier iteration and never counts.
-    """
     returncode_obj: object = getattr(exc, "returncode", 0)
     if (
         not isinstance(returncode_obj, int)
@@ -813,7 +685,6 @@ def has_valid_terminal_artifact(
         return False
     current = _artifact_fingerprint(ctx, resolved_required_artifact)
     if current is None or current == baseline:
-        # Artifact untouched by this attempt: it is stale, not a result.
         return False
     try:
         from ralph.phases.artifacts import (
@@ -866,19 +737,12 @@ def _invoke_agent_with_recovery(
     if bridge is None:
         bridge = _start_bridge(ctx, pipeline_deps, effective_run_id)
     elif run_id is None:
-        effective_run_id = cast(
-            "str", getattr(bridge, "run_id", effective_run_id)
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-    # The attempt state is created BEFORE the guarded block so the
-    # failure handlers below always have a bound ``state`` to read the
-    # attempt-scoped observation from.
+        effective_run_id = cast("str", getattr(bridge, "run_id", effective_run_id))
     state = _AttemptState(
         prompt_file=ctx.effect.prompt_file,
         resume_session_id=session_id or _initial_resume_session_id(ctx),
         last_agent_session_id=_safe_last_agent_session_id(ctx.state),
     )
-    # The workspace the attempt is measured against. It is created once per
-    # invocation; the probe baseline is taken per attempt.
     attempt_workspace: Workspace | None = FsWorkspace(ctx.workspace_scope.root)
     try:
         master_prompt_file = _materialize_master_prompt(
@@ -902,8 +766,6 @@ def _invoke_agent_with_recovery(
         )
 
         if resolved_required_artifact is not None and resolved_required_artifact.artifact_required:
-            # Once per invocation: lets the phase validators tell an artifact
-            # this run wrote from a leftover of an earlier iteration.
             from ralph.phases.artifact_freshness import record_invocation_baseline
 
             record_invocation_baseline(
@@ -932,19 +794,12 @@ def _invoke_agent_with_recovery(
             )
             if options is None:
                 return _AttemptResult(PipelineEvent.AGENT_FAILURE, state.prompt_file, session_id)
-            # Reset the attempt-scoped observation BEFORE the attempt runs so
-            # a later attempt can never inherit this attempt's fact, and
-            # install the per-attempt sink that captures it.
             state.last_observation = None
             options = replace(options, failure_observation_sink=_observation_sink(state))
             try:
                 _check_bridge_health(ctx, bridge_ctx, pipeline_deps)
                 if isinstance(bridge_ctx.bridge, RestartAwareMcpBridge):
                     bridge_ctx.bridge.reset_session_budget()
-                # The baseline of THIS attempt is taken after the health
-                # check and before the agent process starts, so a failure
-                # that happened before the launch produces no observation
-                # at all (and therefore no inherited fact).
                 state.artifact_baseline = _artifact_fingerprint(ctx, resolved_required_artifact)
                 _observe_attempt_workspace(ctx, state, workspace_probe, attempt_workspace)
                 _consume_attempt_output(
@@ -1141,19 +996,9 @@ def _materialize_master_prompt(
         kwargs["worker_namespace"] = ctx.worker_namespace
     if planning_style is not None and _accepts_keyword(materialize, "planning_style"):
         kwargs["planning_style"] = planning_style
-    # G3/S-3 (Evidence Provenance C1): thread the agent's transport into
-    # the master prompt so an AGY-shaped phase invocation gets the
-    # call_mcp_tool dispatcher hint at the prompt level, matching every
-    # other real master-prompt call site (the managed-session runtime and
-    # the default factory wrapper). Guarded by the same runtime
-    # introspection worker_namespace/planning_style already use, so an
-    # injected test materializer that does not declare the keyword is
-    # never called with an argument it cannot handle.
     if _accepts_keyword(materialize, "transport"):
         kwargs["transport"] = ctx.agent_config.transport
-    dynamic_materialize = cast(
-        "_KwargsMaterializeMasterPromptFn", materialize
-    )  # cast-policy: seam: structural boundary (variable-keyword dispatch against a Protocol with fixed optional params)
+    dynamic_materialize = cast("_KwargsMaterializeMasterPromptFn", materialize)
     return dynamic_materialize(**kwargs)
 
 
@@ -1161,7 +1006,6 @@ def _accepts_keyword(
     materialize: MaterializeMasterPromptFn,
     keyword: str,
 ) -> bool:
-    """Return whether an injected materializer accepts one keyword argument."""
     try:
         parameters = signature(materialize).parameters
     except (TypeError, ValueError):
@@ -1197,7 +1041,6 @@ def _resolve_required_artifact(
     pipeline_deps: PipelineDeps,
     required_artifact: RequiredArtifact | None,
 ) -> RequiredArtifact | None:
-    """Resolve one invocation's artifact contract exactly once."""
     if required_artifact is not None or ctx.policy_bundle is None:
         return required_artifact
     return pipeline_deps.artifact_requirements_resolver(
@@ -1238,7 +1081,6 @@ def _check_bridge_health(
 
 
 def _bridge_endpoint_uri(bridge: object) -> str:
-    """Return the agent endpoint URI from a bridge, or an empty string if unavailable."""
     raw_uri: object = getattr(bridge, "agent_endpoint_uri", None)
     if raw_uri is None:
         return ""
@@ -1343,19 +1185,9 @@ def _build_attempt_invoke_options(
                 if ctx.invocation_options is not None
                 else None
             ),
-            # The invocation boundary is where the workspace change of ONE
-            # attempt is measured. Without a probe the attempt produces no
-            # observation at all, and the ledger owner is told "unchanged"
-            # (fail closed) instead of inheriting a stale fact.
             workspace_probe=workspace_probe,
             phase=str(ctx.effect.phase),
             agent_name=ctx.effect.agent_name,
-            # NOTE: Ralph does NOT pass opencode's ``--pure``. That flag runs
-            # opencode without external plugins, and a plugin is often what
-            # supplies the operator's model provider -- disabling it makes the
-            # model they configured unresolvable and the run dies with
-            # "UnknownError: Unexpected server error". Ralph runs an operator's
-            # coding harness with the extensions they installed.
             connectivity_state_provider=pipeline_deps.connectivity_state_provider,
             is_waiting_state_provider=pipeline_deps.is_waiting_state_provider,
             activity_only_supervision=ctx.effect.activity_only_supervision,
@@ -1392,7 +1224,6 @@ def _cap_development_invocation_to_phase_deadline(
     *,
     elapsed_recovery_seconds: float = 0.0,
 ) -> InvokeOptions:
-    """Use the unspent development-phase budget as this invocation's ceiling."""
     if ctx.state is None or ctx.policy_bundle is None:
         return options
     timebox = ctx.policy_bundle.pipeline.development_timebox
@@ -1422,7 +1253,6 @@ def required_artifact_for_invocation(
     required_artifact: RequiredArtifact | None,
     worker_artifact_dir: Path | None,
 ) -> RequiredArtifact | None:
-    """Route a worker's artifact and fallback completion check to its namespace."""
     if required_artifact is None or worker_artifact_dir is None:
         return required_artifact
     markdown_path = (
@@ -1455,22 +1285,6 @@ def _consume_attempt_output(
     )
     get_heartbeat = pipeline_deps.heartbeat_policy_from_env_fn
 
-    # R1 / R5 (Trustworthy Idle Watchdog spec): build the per-invocation
-    # ``SubagentPidRegistry`` once at the orchestrator level so the
-    # SAME registry reaches BOTH the strategy layer
-    # (``invoke_agent`` -> ``strategy_for_command``) AND the parser
-    # layer (``stream_parsed_agent_activity`` -> ``_resolve_parser``
-    # -> ``get_parser`` -> ``parser._subagent_pid_registry``). The
-    # registry is threaded into ``InvokeOptions`` via the new
-    # ``subagent_pid_registry`` / ``subagent_pid_source`` fields so
-    # ``invoke_agent`` consumes the SAME registry instead of
-    # building a fresh one internally. Without this wiring, the
-    # parser's structured-event registration hook fires into one
-    # registry but the strategy layer's filtered seam sees a
-    # DIFFERENT registry -- the watchdog-visible filtered
-    # subagent count is desynchronized from the parser's
-    # authoritative registration set, and the R1 filtered count
-    # contract is silently violated.
     _raw_transport: object = getattr(ctx.agent_config, "transport", None)
     _agent_config_transport: AgentTransport = (
         _raw_transport if isinstance(_raw_transport, AgentTransport) else AgentTransport.GENERIC
@@ -1480,11 +1294,6 @@ def _consume_attempt_output(
         _agent_config_transport
     )
     _subagent_source_label = _agent_config_transport.value
-    # Thread the shared registry + per-transport source through
-    # ``InvokeOptions`` so ``invoke_agent`` consumes the SAME
-    # registry instance. ``replace`` produces a fresh InvokeOptions
-    # (the dataclass is frozen=True) without mutating the caller's
-    # copy.
     options = replace(
         options,
         subagent_pid_registry=_subagent_pid_registry,
@@ -1512,12 +1321,6 @@ def _consume_attempt_output(
                 subagent_source_label=_subagent_source_label,
             )
             return
-        # G1/S-1 (Evidence Provenance F3): smoke always runs at
-        # Verbosity.VERBOSE, so this low-verbosity fallback is unreached by
-        # the smoke gate today -- but leaving raw_line_sink unwired here
-        # would silently break the observer contract for the next caller at
-        # lower verbosity, which is exactly the kind of quiet exemption F7
-        # forbids for checks meant to apply uniformly.
         for line in output_lines:
             text_line = str(line)
             raw_output.append(text_line)
@@ -1544,7 +1347,6 @@ def _enrich_invocation_error(
     raw_output: deque[str],
     rendered_output: deque[str],
 ) -> Exception:
-    """Merge captured output into an invocation error so classifiers see full context."""
     if not isinstance(exc, AgentInvocationError):
         return exc
     extra = [
@@ -1555,30 +1357,6 @@ def _enrich_invocation_error(
 
 
 def build_agent_recovery_plan(recovery_input: AgentRecoveryInput) -> AgentRecoveryPlan | None:
-    """Determine whether and how to retry a failed agent invocation.
-
-    Computes ``session_id`` and ``recovery_action`` BEFORE the
-    prompt-construction call so the prompt constructor can branch on
-    ``recovery_action`` (``resume`` / ``new_session_with_id`` take the
-    resume-style path; ``fresh`` inlines the original task). The
-    single owner of ``recovery_action`` is this function; the only
-    consumer is ``_write_agent_retry_prompt`` via
-    ``_retry_prompt_file_for_context``.
-
-    Defense-in-depth: the stale-session prompt metadata trio
-    (``stale_session_id``, ``transport``, ``model``) is gated on
-    ``_is_stale_session_failure(recovery_input.exc)`` -- the canonical
-    predicate that scopes to ``SESSION_NOT_FOUND_SUBSTRINGS``. A prior
-    session id captured on ``AgentRecoveryInput.stale_session_id``
-    must NOT trigger the ``STALE SESSION RECOVERY`` block when the
-    failure is non-stale (e.g. ``AgentInactivityTimeoutError``,
-    ``OpenCodeResumableExitError``, generic connectivity failures).
-    This guards against direct ``AgentRecoveryInput`` construction
-    that bypasses ``_build_recovery_input_for_attempt`` (tests, future
-    callers). AC-03.
-    """
-    # Journal first: the kill that exhausts the budget (or a conflict resolver's,
-    # which has none) is the one an operator needs named.
     recorded_at = recovery_input.clock.epoch()
     record_watchdog_fire(
         recovery_input.workspace_root,
@@ -1596,10 +1374,6 @@ def build_agent_recovery_plan(recovery_input: AgentRecoveryInput) -> AgentRecove
         return None
     completion_recovery = isinstance(recovery_input.exc, AgyIncompleteExitError)
     if completion_recovery and recovery_input.completion_reprompt_used:
-        # One-reprompt bound (enforcement point 1 of 2): this invocation
-        # already spent its single automatic completion reprompt, so a
-        # repeated incomplete exit is terminal. The loop-level bound in
-        # ``run_with_direct_mcp_recovery`` is enforcement point 2.
         return None
     untruncated = _is_stale_session_failure(recovery_input.exc)
     context_lines = _recovery_context_lines(
@@ -1626,9 +1400,6 @@ def build_agent_recovery_plan(recovery_input: AgentRecoveryInput) -> AgentRecove
         has_prior_session=bool(session_id),
         reset_tool_registry=reset_tool_registry,
     )
-    # Stale-session prompt metadata: only forward when the failure was
-    # actually a stale-session failure. See module docstring note on
-    # AC-03. ``untruncated`` already encodes the canonical predicate.
     prompt_stale_session_id = recovery_input.stale_session_id if untruncated else None
     prompt_transport = recovery_input.transport if untruncated else None
     prompt_model = recovery_input.model if untruncated else None
@@ -1680,28 +1451,12 @@ def _resolve_recovery_session_id(
 
 
 def recovery_attempts_for_effect(effect: InvokeAgentEffect, config: UnifiedConfig) -> int:
-    """Same-agent recovery retries the executor may spend on ``effect``.
-
-    A conflict resolver (``activity_only_supervision``) gets none: the
-    conflict-resolution driver owns that retry budget (chain candidates,
-    per-candidate retries, rounds per stop). Executor-level retries were
-    invisible to it and re-launched a resolver whose inactivity kill had
-    followed a finished resolution up to ten times, then let the driver
-    spend the next candidate on the same repaired file.
-    """
     if effect.activity_only_supervision:
         return 0
     return _same_agent_recovery_attempts(config)
 
 
 def surfaces_supervision_error(effect: InvokeAgentEffect, exc: BaseException) -> bool:
-    """Return whether ``exc`` must reach the conflict-resolution session typed.
-
-    ``AgentInactivityTimeoutError`` and ``SupervisionInfrastructureError``
-    carry the watchdog's reason and provenance (``last_activity_kind``,
-    ``last_activity_at``); swallowing them into ``AGENT_FAILURE`` reported
-    every inactivity kill as ``CANDIDATE_EXITED`` with no activity data.
-    """
     return effect.activity_only_supervision and isinstance(
         exc, (AgentInactivityTimeoutError, SupervisionInfrastructureError)
     )
@@ -1720,19 +1475,6 @@ def _failure_requires_fresh_session(exc: Exception, inactivity_error_type: type[
 
 
 def _is_stale_session_failure(exc: Exception) -> bool:
-    """Return True when the failure exception surfaces a stale-session marker.
-
-    Single-owner for the untruncated retry-context branch. Scoped to
-    SESSION_NOT_FOUND_SUBSTRINGS markers ONLY (stderr / str(exc) /
-    parsed_output per the canonical classifier vocabulary); deliberately
-    narrower than ``_failure_requires_fresh_session`` which is also True
-    for ``AgentInactivityTimeoutError`` with ``session_resume_safe=False``.
-
-    The marker scan stays scoped to the FAILURE EXCEPTION surfaces via
-    ``_recovery_error_parts``; ``rendered_output`` and ``raw_output`` are
-    NOT inspected, so an incidental ``session not found`` substring inside
-    a long rendered output line does not widen the behavior.
-    """
     return contains_casefolded_marker(_recovery_error_parts(exc), _SESSION_NOT_FOUND_SUBSTRINGS)
 
 
@@ -1750,37 +1492,6 @@ def _build_recovery_input_for_attempt(
     rendered_output: deque[str],
     run_id: str,
 ) -> AgentRecoveryInput:
-    """Build an ``AgentRecoveryInput`` from an attempt-failure context.
-
-    Centralizes the construction so the per-attempt failure handler in
-    ``_invoke_agent_with_recovery`` stays compact. Also populates the
-    stale-session framing metadata (``stale_session_id``, ``transport``,
-    ``model``) so the retry prompt can name the rejected session id
-    and the runtime that rejected it. ``getattr`` defaults guard against
-    ``AttributeError`` if a future ``AgentConfig`` omits the ``model``
-    field.
-
-    The stale-session framing trio (``stale_session_id``, ``transport``,
-    ``model``) is gated on ``_is_stale_session_failure(exc)`` -- the
-    single-source-of-truth predicate that scopes to
-    ``SESSION_NOT_FOUND_SUBSTRINGS``. For non-stale failures (e.g.
-    ``AgentInactivityTimeoutError`` with ``session_resume_safe=False``,
-    ``OpenCodeResumableExitError``, generic connectivity failures) a
-    prior session id captured in ``state.last_agent_session_id`` does
-    NOT trigger the ``STALE SESSION RECOVERY`` block -- that block
-    carries the false claim that the prior session id was rejected,
-    which only happens for actual stale-session failures. AC-03.
-
-    ``stale_session_id`` falls back to ``state.resume_session_id`` (and
-    then to the ``session_id`` parameter) when ``state.last_agent_session_id``
-    is absent. This matters for callers that pass ``session_id``
-    explicitly without providing pipeline ``state`` -- e.g.
-    ``ralph.pipeline.plumbing.commit_plumbing`` invokes
-    ``execute_agent_effect(..., session_id=prior_session_id, ...)``
-    without a pipeline-state object. On those paths, the rejected
-    session id is the one we just attempted -- not the one captured in
-    pipeline state -- so the prompt must still surface it. AC-01, AC-04.
-    """
     _transport_obj: object = getattr(ctx.agent_config, "transport", None)
     _transport_value: str | None = (
         _transport_obj.value if isinstance(_transport_obj, AgentTransport) else None
@@ -1874,7 +1585,6 @@ def _validation_retry_context(
     drain: str | None,
     worker_namespace: Path | None,
 ) -> str:
-    """Return persisted validator diagnostics without consuming phase retry state."""
     if drain is None:
         return ""
     from ralph.phases.required_artifacts import read_validation_retry_hint
@@ -1922,12 +1632,6 @@ def _retry_prompt_file_for_context(
 
 
 def _resume_mode_tail(prompt_path: Path) -> str:
-    """Return the resume-mode tail for the retry prompt.
-
-    Single source of truth so the resume tail wording is one
-    change in one place (and tests can import the helper as a stable
-    token source).
-    """
     return (
         "CONTINUE FROM WHERE YOU LEFT OFF: The prior session for this "
         "task is being resumed. Do not restart from the beginning; "
@@ -1939,16 +1643,6 @@ def _resume_mode_tail(prompt_path: Path) -> str:
 def _stale_session_recovery_block(
     *, stale_session_id: str, transport: str | None, model: str | None
 ) -> str:
-    """Return the structured ``STALE SESSION RECOVERY`` block for fresh-mode retry prompts.
-
-    Single source of truth so the stale-session framing wording is one
-    change in one place (and tests can import the helper as a stable
-    token source). The block is layered ON TOP OF (not replacing)
-    ``build_retry_error_block`` and the original task body. Uses
-    fresh-session framing only -- NOT resume-style wording -- because
-    a stale-session retry is a fresh-session retry with the prior
-    session id explicitly rejected.
-    """
     transport_label = transport if transport else "unknown"
     model_label = model if model else "unknown"
     return (
@@ -1977,7 +1671,6 @@ def _write_retry_context_file(
     context_path = prompt_dir / f"agent_retry_context_{uuid.uuid4().hex}.md"
     condensed = _condense_recovery_context_lines(context_lines, untruncated=untruncated)
     summary = "\n".join(condensed) if condensed else "(no output captured)"
-    # filesystem-write-ok: UUID-keyed retry context file under .agent/tmp; each call writes a fresh path
     context_path.write_text(summary, encoding="utf-8")
     if run_id is not None:
         from ralph.workspace.agent_dir_retention import register_temporary_path_owner
@@ -1987,18 +1680,6 @@ def _write_retry_context_file(
 
 
 def _completion_recovery_block() -> str:
-    """Return the ``COMPLETION RECOVERY INSTRUCTION`` block for AGY incomplete-exit reprompts.
-
-    Single source of truth so the completion-instruction wording is one
-    change in one place (and tests can import the helper as a stable
-    token source). The block is appended AFTER the original task body in
-    fresh-mode retry prompts so it is the final instruction the agent
-    reads. It tells the agent to continue autonomously (no interactive
-    input exists), finish the assigned work, submit any required
-    artifact through the canonical MCP tool, and call
-    ``declare_complete`` — the exact evidence the previous attempt
-    failed to leave.
-    """
     return (
         "COMPLETION RECOVERY INSTRUCTION\n"
         "You are running NON-INTERACTIVELY: no user will read or answer questions.\n"
@@ -2062,16 +1743,7 @@ def _write_agent_retry_prompt(
     )
     validation_footer = build_validation_retry_footer() if validation_retry else ""
     if recovery_action in {"resume", "new_session_with_id"}:
-        # Resume / new_session_with_id: do NOT read the original task body
-        # and do NOT include the 'ORIGINAL TASK PROMPT:' section. The
-        # resumed session already has the original task in its context;
-        # re-inlining it defeats resume (the documented property L wedge).
-        # The agent is told to continue from where it left off and to refer
-        # to the original prompt by path only if it needs context.
-        # The stale-session block does NOT appear here -- resume path owns
-        # the framing.
         tail = _resume_mode_tail(prompt_path)
-        # filesystem-write-ok: UUID-keyed retry prompt under .agent/tmp; each call writes a fresh path
         retry_prompt_path.write_text(
             (
                 f"{error_block}\n\n"
@@ -2086,12 +1758,6 @@ def _write_agent_retry_prompt(
 
             register_temporary_path_owner(workspace_root, retry_prompt_path, run_id)
         return str(retry_prompt_path)
-    # Fresh (and the defensive ``None`` default): inline the original task
-    # body so a brand-new session has the full context. This preserves
-    # the prior behavior for fresh-session retries (stale-session,
-    # new-chain) and for un-updated callers that have not been threaded
-    # the new ``recovery_action`` keyword.
-    # filesystem-read-ok: retry construction reads the caller's original prompt once when it is available
     base_prompt = prompt_path.read_text(encoding="utf-8") if prompt_path.exists() else ""
     body_parts: list[str] = [
         error_block,
@@ -2103,18 +1769,6 @@ def _write_agent_retry_prompt(
     ]
     if validation_block:
         body_parts[1:1] = ["", validation_block]
-    # Empty-prior-output stale-session explanation: when ``stale_session_id``
-    # is set AND the prior output is empty (``condensed`` is empty, so the
-    # summary placeholder falls through to ``(no output captured)``),
-    # insert a structured ``STALE SESSION EMPTY PRIOR OUTPUT`` note
-    # IMMEDIATELY AFTER the summary element and IMMEDIATELY BEFORE the
-    # blank-string element that precedes the ``ORIGINAL TASK PROMPT:``
-    # header. This explicitly tells the retry agent that prior output is
-    # empty BY DESIGN (the transport rejected the session id before any
-    # work was attempted) and the original task prompt is the sole source
-    # of truth, so a confused retry agent does not mistake
-    # ``(no output captured)`` for the prior agent having run and
-    # produced nothing useful.
     if stale_session_id and not condensed:
         body_parts[3:3] = [
             "STALE SESSION EMPTY PRIOR OUTPUT",
@@ -2132,14 +1786,6 @@ def _write_agent_retry_prompt(
             "Execute the task as a FRESH attempt.",
             "",
         ]
-    # Stale-session framing: when this fresh-mode retry was triggered by a
-    # stale-session failure (i.e. ``stale_session_id`` is set), append a
-    # structured ``STALE SESSION RECOVERY`` block AFTER the original task
-    # body. The block names the rejected session id, transport, and model
-    # so the retry agent has structured context (instead of restarting
-    # from a generic error block). Uses fresh-session framing only --
-    # NOT resume-style wording -- because a stale-session retry is a
-    # fresh-session retry with the prior session id explicitly rejected.
     if stale_session_id:
         body_parts.extend(
             [
@@ -2151,17 +1797,10 @@ def _write_agent_retry_prompt(
                 ),
             ]
         )
-    # Completion-recovery framing: when this fresh-mode retry was triggered
-    # by an AGY incomplete exit (``completion_recovery`` is set), append the
-    # explicit completion instruction AFTER the original task body so it is
-    # the final instruction the agent reads: continue autonomously, finish
-    # the assigned work, submit any required artifact via
-    # ``ralph_submit_md_artifact``, and call ``declare_complete``.
     if completion_recovery:
         body_parts.extend(["", _completion_recovery_block()])
     if validation_footer:
         body_parts.extend(["", validation_footer])
-    # filesystem-write-ok: UUID-keyed retry prompt under .agent/tmp; each call writes a fresh path
     retry_prompt_path.write_text(
         "\n".join(body_parts) + "\n",
         encoding="utf-8",
@@ -2176,9 +1815,6 @@ def _write_agent_retry_prompt(
 recovery_error_parts = _recovery_error_parts
 resolve_recovery_session_id = _resolve_recovery_session_id
 recovery_context_lines = _recovery_context_lines
-#: ``AgentRetryIntent.failure_reason`` for a name this workspace's
-#: registry cannot produce. Read by callers that must tell a missing
-#: agent apart from one that ran and failed.
 AGENT_NOT_FOUND_REASON = "AgentNotFound"
 
 retry_prompt_file_for_context = _retry_prompt_file_for_context
@@ -2189,7 +1825,6 @@ _retry_intent_local: _threading.local = _threading.local()
 
 
 def _mark_next_attempt_gets_fresh_bridge(exc: Exception | None = None) -> None:
-    """Record that the next agent attempt must obtain a fresh MCP bridge."""
     del exc
     _retry_intent_local.fresh_bridge_requested = True
 
@@ -2204,7 +1839,6 @@ def _set_last_captured_retry_intent(intent: AgentRetryIntent) -> None:
 
 
 def set_last_captured_retry_intent(intent: AgentRetryIntent) -> None:
-    """Public seam: record the next-attempt retry intent (tests and policy code)."""
     _set_last_captured_retry_intent(intent)
 
 
@@ -2213,7 +1847,6 @@ def _write_terminal_missing_artifact_hint(
     exc: Exception,
     required_artifact: RequiredArtifact | None,
 ) -> None:
-    """Persist canonical resubmission guidance only when the receipt is absent."""
     if required_artifact is None or not is_unsubmitted_artifact_failure(failure_detail_parts(exc)):
         return
     workspace_root = ctx.workspace_scope.root
@@ -2230,7 +1863,6 @@ def _write_terminal_missing_artifact_hint(
             str(ctx.effect.phase),
             pipeline_policy=ctx.policy_bundle.pipeline if ctx.policy_bundle is not None else None,
         )
-        # filesystem-write-ok: effect-executor hint file under .agent/effect_executor, runtime hint metadata not tracked
         hint_file.parent.mkdir(parents=True, exist_ok=True)
         write_text_if_changed(DEFAULT_FILE_BACKEND, hint_file, hint, encoding="utf-8")
     except Exception:
@@ -2243,14 +1875,6 @@ def _handle_terminal_agent_invocation_error(
     agent_invocation_error_sink: Callable[[Exception], object] | None,
     observation: AgentFailureEvent | None = None,
 ) -> PipelineEvent | AgentFailureEvent:
-    """Convert a terminal agent-invocation failure into a reducer event.
-
-    When the failed attempt produced an observation, the returned event
-    carries that immutable, attempt-scoped observation so the reducer can
-    hand the honest workspace-change fact to the ledger owner. Without an
-    observation the bare ``PipelineEvent.AGENT_FAILURE`` member is
-    returned and the reducer fails closed.
-    """
     _set_pi_context_exhaustion_intent(exc)
     if isinstance(exc, McpServerError):
         _set_last_captured_retry_intent(
@@ -2285,7 +1909,6 @@ def _set_pi_context_exhaustion_intent(exc: Exception) -> None:
 
 
 def pop_last_captured_retry_intent() -> AgentRetryIntent:
-    """Return and clear the most recent canonical next-attempt retry intent."""
 
     raw: object = getattr(_retry_intent_local, "intent", cleared_agent_retry_intent())
     intent = raw if isinstance(raw, AgentRetryIntent) else cleared_agent_retry_intent()

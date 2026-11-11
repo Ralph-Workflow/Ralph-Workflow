@@ -1,4 +1,3 @@
-"""Immutable view-model for phase-close after-banner data."""
 
 from __future__ import annotations
 
@@ -14,7 +13,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class PhaseExitModel:
-    """Immutable view-model for phase-close after-banner data."""
 
     phase_name: str
     phase_role: str | None = None
@@ -36,7 +34,6 @@ class PhaseExitModel:
     last_failure_category: str | None = None
 
     def to_iteration_context(self) -> PhaseIterationContext:
-        """Return a PhaseIterationContext for canonical label rendering."""
         return PhaseIterationContext(
             outer_dev=self.outer_dev_iteration,
             outer_dev_cap=self.outer_dev_cap,
@@ -50,7 +47,6 @@ class PhaseExitModel:
         entry: PhaseEntryModel,
         context: ExitContext | None = None,
     ) -> PhaseExitModel:
-        """Construct a PhaseExitModel by extending a PhaseEntryModel."""
         effective_context = context or ExitContext()
         return cls(
             phase_name=entry.phase_name,

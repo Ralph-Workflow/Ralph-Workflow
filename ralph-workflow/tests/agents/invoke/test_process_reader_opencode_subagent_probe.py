@@ -1,11 +1,3 @@
-"""The subprocess reader watches OpenCode's session store for native subagents.
-
-Drives ``read_lines_from_process`` with a parent that prints its dispatch
-frames and then blocks, while an injected child-part source reports fresh
-store updates for 900 s of fake time. The idle watchdog (300 s idle timeout)
-must not fire while the child is working and must fire once it stops.
-"""
-
 from __future__ import annotations
 
 import threading

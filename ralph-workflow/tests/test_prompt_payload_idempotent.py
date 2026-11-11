@@ -1,23 +1,3 @@
-"""Black-box tests for idempotent oversized prompt-payload writes.
-
-Verifies the per-phase payload writer honors the shared
-``write_text_if_changed`` idempotent guard so a byte-identical re-emit
-of an oversized prompt payload does not advance the file's mtime or
-generate an additional fseventsd notification.
-
-The tests drive the public :func:`write_payload_to_directory` and
-:func:`phase_payload_variables` entry points with an injected
-in-memory counting ``FileBackend`` (no real filesystem I/O, no
-``tmp_path``, no ``time.sleep``), so the post-condition "file contains
-``sanitize_surrogates(content)``" is observed through the backend's
-recording of ``write_text`` invocations.
-
-A ``_CountingBackend`` (defined here for test isolation) is structurally
-shaped to match the public :class:`FileBackend` protocol: every method
-is fully annotated to the protocol's signature with concrete return
-types and lives entirely in-process.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -31,14 +11,6 @@ from ralph.prompts.payload_refs import (
 
 
 class _CountingBackend(FileBackend):
-    """In-memory FileBackend that records every write_text call.
-
-    Structurally implements the public :class:`FileBackend` protocol
-    so a counting backend is substitutable wherever a real
-    :class:`PathFileBackend` would go. Each method is annotated to
-    the protocol signature with concrete return types.
-    """
-
     def __init__(self) -> None:
         self._files: dict[Path, str] = {}
         self.write_text_calls: list[tuple[Path, str]] = []
@@ -52,8 +24,6 @@ class _CountingBackend(FileBackend):
 
     def mkdir(self, path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
         self.mkdir_calls.append(path)
-        # No filesystem state to mutate; the in-memory dict already
-        # serves as the single source of truth for path->content.
         _ = parents
         _ = exist_ok
 
@@ -133,9 +103,6 @@ def test_write_payload_to_directory_writes_changed_content() -> None:
 def test_phase_payload_variables_skips_identical_oversized_payload() -> None:
     backend = _CountingBackend()
     workspace_root = Path("/virtual-ws")
-    # Any single value above MAX_INLINE_PROMPT_BYTES forces the
-    # file-based payload path; a deterministic all-"x" body keeps
-    # the test fast and trivially byte-identical between calls.
     oversized = "x" * (MAX_INLINE_PROMPT_BYTES + 1)
     values = {"PLAN": oversized}
 

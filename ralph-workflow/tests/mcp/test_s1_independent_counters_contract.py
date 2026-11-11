@@ -1,26 +1,3 @@
-"""S1 independent-counter design contract — regression pin (C2-aware).
-
-Prompt requirement (quoted verbatim):
-    "Count every attempt, successful or not"
-
-Ralph's S1 design rule: each counter (_restart_count,
-_tool_registry_resets) is incremented BEFORE the _restart_fn
-call so that a raised exception is reflected in the count.
-The two counters are fully independent; exhausting
-_tool_registry_resets does not advance _restart_count.
-
-This module pins that behavior across both restart paths:
-  1. check_health_and_restart_if_needed  (restart budget)
-  2. reset_tool_registry                  (tool-registry-reset budget)
-
-C2 contract: a single failed ``_restart_fn`` call is NON-TERMINAL.
-The bridge logs at WARNING, the counter is incremented (S1), and
-the call returns ``False``/``None``. Only when the budget is
-exhausted does the bridge raise :class:`McpServerError`. The
-restart_count on the raised error must be the real cap value (not 0
-or 1) so the operator can diagnose which bound fired.
-"""
-
 from __future__ import annotations
 
 import pathlib
@@ -35,8 +12,6 @@ from ralph.mcp.server.lifecycle import RestartAwareMcpBridge
 
 
 class _FakeProcess:
-    """Minimal process stand-in used by _make_bridge."""
-
     def __init__(self, poll_result: int | None, pid: int = 9999) -> None:
         self._poll_result = poll_result
         self._pid = pid
@@ -59,10 +34,6 @@ class _FakeProcess:
 
 
 def _make_bridge() -> RestartAwareMcpBridge:
-    """Build a RestartAwareMcpBridge whose _restart_fn always raises.
-
-    Mirrors the pattern from tests/test_mcp_server_tool_registry_reset_cap.py.
-    """
     session_file = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     session_file.write_text("{}", encoding="utf-8")
     inner = StandaloneMcpProcess(
@@ -86,33 +57,17 @@ pytestmark = pytest.mark.subprocess_e2e
 
 
 def test_check_health_path_increments_restart_count_before_attempt() -> None:
-    """S1: restart_count advances BEFORE _restart_fn is called (C2-aware).
-
-    Each call to check_health_and_restart_if_needed increments
-    _restart_count before invoking _restart_fn. When _restart_fn raises,
-    the bridge returns ``False`` (non-terminal C2 contract) and the
-    counter still reflects the advanced value.
-
-    After max_restarts=3 exhausted attempts, the budget-exhausted
-    McpServerError carries restart_count == 3 (the real cap value,
-    not 0 or 1).
-    """
     bridge = _make_bridge()
 
-    # First attempt: _restart_fn raises; counter advanced to 1.
     assert bridge.check_health_and_restart_if_needed() is False
     assert bridge.restart_count == 1
 
-    # Second attempt: counter advanced to 2.
     assert bridge.check_health_and_restart_if_needed() is False
     assert bridge.restart_count == 2
 
-    # Third attempt: counter advanced to 3.
     assert bridge.check_health_and_restart_if_needed() is False
     assert bridge.restart_count == 3
 
-    # Fourth call: budget exhausted — _restart_fn is NOT called (check fires first)
-    # The error carries the real restart_count == 3 (not 0 or 1).
     with pytest.raises(McpServerError) as exc_budget:
         bridge.check_health_and_restart_if_needed()
     assert exc_budget.value.restart_count == 3
@@ -124,36 +79,24 @@ def test_check_health_path_increments_restart_count_before_attempt() -> None:
 
 
 def test_reset_tool_registry_path_increments_tool_registry_resets_before_attempt() -> None:
-    """S1: tool_registry_resets and restart_count advance BEFORE _restart_fn is called (C2-aware).
-
-    Each call to reset_tool_registry increments _tool_registry_resets
-    and shares accounting with _restart_count before invoking _restart_fn.
-    When _restart_fn raises, the bridge returns ``None`` (non-terminal C2
-    contract) and the counters still reflect the advanced amounts.
-    """
     bridge = _make_bridge()
 
-    # Sanity: both counters start at 0
     assert bridge.restart_count == 0
     assert bridge.tool_registry_resets == 0
 
     max_resets = lifecycle_module._TOOL_REGISTRY_MAX_RESETS
     assert max_resets == 3
 
-    # Each failing attempt is non-terminal; counters advance BEFORE the attempt.
     for i in range(1, max_resets + 1):
         assert bridge.reset_tool_registry() is None
-        # Counters advanced BEFORE the attempt; counts are reflected even on failure.
         assert bridge.restart_count == i, f"restart_count must be {i} — shared counter accounting"
         assert bridge.tool_registry_resets == i
 
-    # One more call: cap exhausted, _restart_fn is NOT called.
     with pytest.raises(McpServerError) as exc_cap:
         bridge.reset_tool_registry()
     msg = str(exc_cap.value)
     assert "tool-registry-reset exhausted" in msg
-    assert str(max_resets) in msg  # cap value visible
+    assert str(max_resets) in msg
 
-    # Counters advanced to cap — shared counter design verified.
     assert bridge.restart_count == max_resets
     assert bridge.tool_registry_resets == max_resets

@@ -1,15 +1,3 @@
-"""Once the agent exits, ``SubprocessAgentExecutor.run`` drains for a bounded grace only.
-
-The drain used to end only at stdout EOF, so a grandchild that inherited the
-agent's stdout kept ``run()`` pending for as long as it lived. The fake below
-models exactly that: the agent process has exited (``wait()`` returns and the
-return code is known) but stdout never reaches EOF. Everything the agent wrote
-before exiting must still reach ``on_output``.
-
-Fakes only (no real subprocess, no sleep); the real-process proof, including
-that the grandchild is reaped, is ``test_subprocess_executor_reaps_session.py``.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -25,8 +13,6 @@ _EXIT_CODE = 7
 
 
 class _ExitedButStdoutHeldOpen:
-    """An agent that has exited while a grandchild still holds its stdout."""
-
     def __init__(self, pid: int) -> None:
         self.pid = pid
         self.returncode: int | None = _EXIT_CODE
@@ -94,8 +80,6 @@ async def test_run_returns_after_the_grace_when_stdout_never_reaches_eof() -> No
 
 
 class _LongRunningAgent:
-    """An agent that keeps running past the process manager's exit-wait cap."""
-
     def __init__(self, pid: int, *, runtime_s: float) -> None:
         self.pid = pid
         self.returncode: int | None = None
@@ -130,12 +114,6 @@ class _LongRunningAgent:
 async def test_an_agent_running_past_the_exit_wait_cap_is_not_failed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The agent's own runtime is supervised by the idle watchdog, not capped.
-
-    ``ManagedAsyncProcess.wait()`` bounds a post-termination exit wait at
-    ``PROCESS_EXIT_WAIT_SECONDS``; using it for the whole run made every
-    parallel unit that worked longer than that cap fail with ``TimeoutError``.
-    """
     from ralph import timeout_defaults
 
     monkeypatch.setattr(timeout_defaults, "PROCESS_EXIT_WAIT_SECONDS", 0.05)

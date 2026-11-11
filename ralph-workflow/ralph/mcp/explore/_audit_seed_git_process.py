@@ -1,14 +1,3 @@
-"""Per-family audit seed entries for the git_process family group.
-
-Extracted from :mod:`ralph.mcp.explore.audit_register` so the hub
-module stays under the per-file line ceiling. Each tuple is merged
-into :data:`ralph.mcp.explore.audit_register.AUDIT_REGISTER` at
-module load via the per-family aggregate.
-
-AC-06: each entry keeps its full rationale, counters, and risk
-fields so the audit-register registry can validate measured
-provenance end-to-end.
-"""
 
 from __future__ import annotations
 

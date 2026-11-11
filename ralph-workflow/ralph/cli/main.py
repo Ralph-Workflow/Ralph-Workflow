@@ -1,8 +1,3 @@
-"""Ralph Workflow CLI entry point - typer application with rich-click help styling.
-
-This module provides the main CLI application for Ralph Workflow, using typer
-for argument parsing and rich-click for enhanced help output.
-"""
 
 from __future__ import annotations
 
@@ -121,14 +116,12 @@ _typer_get_command = typer.main.get_command
 
 
 def _as_click_command(command: object) -> click.Command:
-    """Bridge across typer versions that expose different Command types."""
     return cast(
         "click.Command", command
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
 
 
 def _get_cli_context() -> DisplayContext:
-    """Resolve a fresh DisplayContext for the current terminal environment."""
     return _make_display_context()
 
 
@@ -137,7 +130,6 @@ _THOROUGH_DEVELOPER_ITERS = 10
 
 
 def _prepare_init_args(args: Sequence[str] | None) -> list[str] | None:
-    """Normalize a missing --init label before Click parsing."""
     if args is None:
         args = sys.argv[1:]
 
@@ -204,12 +196,6 @@ def _get_command_with_optional_init(typer_instance: typer.Typer) -> click.Comman
                     windows_expand_args=windows_expand_args,
                 )
             except click.ClickException as exc:
-                # rich_click exceptions are not in typer's class hierarchy and
-                # therefore bypass typer's own ClickException handler, which
-                # would normally call sys.exit(e.exit_code).  Replicate it here
-                # so callers (including typer's CliRunner) see the correct exit
-                # code instead of falling through to the generic except-Exception
-                # branch that produces exit code 1.
                 if not standalone_mode:
                     raise
                 exc.show()
@@ -224,12 +210,6 @@ _set_typer_testing_get_command(_get_command_with_optional_init)
 
 
 def version_callback(version: bool, ctx: DisplayContext | None = None) -> None:
-    """Route ``--version`` through the shared display welcome banner.
-
-    A dev build adds the checkout it was installed from. ``rdev`` is a single
-    machine-wide launcher that any checkout or worktree can take over, so the
-    version alone does not identify which sources are actually running.
-    """
     if version:
         from ralph.display.parallel_display import resolve_active_display
 
@@ -243,7 +223,6 @@ def version_callback(version: bool, ctx: DisplayContext | None = None) -> None:
 
 
 def _config_path(config: str | None) -> RuntimePath | None:
-    """Convert CLI config string into a Path when provided."""
     if config is None:
         return None
 
@@ -256,13 +235,6 @@ def resolve_effective_verbosity(
     quiet: bool,
     debug: bool,
 ) -> Verbosity:
-    """Compute the verbosity to use for the run.
-
-    ``--quiet`` and ``--debug`` take precedence. Absent those, the default
-    is ``Verbosity.VERBOSE`` so Ralph Workflow is visibly active by default. The
-    legacy ``--verbosity normal`` input is mapped to VERBOSE to preserve
-    wrapper scripts that passed ``normal`` explicitly.
-    """
     if quiet:
         return Verbosity.QUIET
     if debug:
@@ -273,7 +245,6 @@ def resolve_effective_verbosity(
 
 
 def _try_load_registry() -> AgentRegistry | None:
-    """Attempt to load the agent registry; returns None on failure."""
     try:
         cfg = load_config(None, {})
         registry_type = _load_agent_registry_factory()
@@ -285,7 +256,6 @@ def _try_load_registry() -> AgentRegistry | None:
 def _bootstrap_global_configs(
     *, display_context: DisplayContext, emit_welcome: bool = True
 ) -> None:
-    """Create user-global configs, optionally leaving onboarding to the caller."""
     agents_result = ensure_global_agents_config()
     results = [
         ensure_global_config(),
@@ -313,14 +283,6 @@ def _bootstrap_global_configs(
 def _bootstrap_global_configs_or_exit(
     display_context: DisplayContext, *, emit_welcome: bool = True
 ) -> None:
-    """Run ``bootstrap_global_configs`` and render the envelope on config error.
-
-    ``load_toml`` raises ``ConfigTomlError`` when a pre-existing
-    user-global TOML is malformed (the migration path in
-    ``ensure_global_config`` reads the existing file). Render the
-    existing what/why/fix envelope and exit 1 instead of letting the
-    raw ``ValueError`` propagate as a traceback.
-    """
     try:
         if emit_welcome:
             bootstrap_global_configs(display_context=display_context)
@@ -334,7 +296,6 @@ def _bootstrap_global_configs_or_exit(
 def _bootstrap_for_command(
     *, init_requested: bool, regenerate_config: bool, display_context: DisplayContext
 ) -> None:
-    """Bootstrap commands that need global config before their dedicated handler."""
     if not init_requested:
         _bootstrap_global_configs_or_exit(
             display_context,
@@ -345,7 +306,6 @@ def _bootstrap_for_command(
 def _handle_init(
     *, template: str | None, config: str | None, display_context: DisplayContext
 ) -> None:
-    """Run init and preserve the setup-time TOML error envelope."""
     try:
         from ralph.cli.commands.init import init_command
 
@@ -361,16 +321,6 @@ def diagnose_command(
     *,
     display_context: DisplayContext | None = None,
 ) -> int:
-    """Run diagnostics by delegating to the lazily-loaded real command.
-
-    ``ralph.cli.commands.diagnose`` pulls in the heavy MCP/skill/agent import
-    graph, so that module loads inside the handler instead of at CLI start-up.
-    This module-level entry point keeps ``ralph.cli.main.diagnose_command``
-    resolvable — and monkeypatchable — for the ``--diagnose`` CLI path.
-
-    The signature mirrors ``ralph.cli.commands.diagnose.diagnose_command``;
-    keep the two in step when the real command changes.
-    """
     from ralph.cli.commands.diagnose import diagnose_command as _diagnose_command
 
     return _diagnose_command(config_path, cli_overrides, display_context=display_context)
@@ -382,7 +332,6 @@ def _handle_diagnose(
     cli_overrides: dict[str, object],
     display_context: DisplayContext,
 ) -> None:
-    """Run diagnose command and exit with its status code."""
     exit_code = diagnose_command(
         _config_path(config), cli_overrides, display_context=display_context
     )
@@ -390,7 +339,6 @@ def _handle_diagnose(
 
 
 def _handle_regenerate_config(*, display_context: DisplayContext) -> None:
-    """Regenerate globals and refresh only project-local configs already present."""
     display = resolve_active_display(None, display_context)
     agent_dir: RuntimePath | None
     try:
@@ -411,10 +359,6 @@ def _handle_regenerate_config(*, display_context: DisplayContext) -> None:
 
 
 def _init_telemetry() -> None:
-    # Opt-out guard: RALPH_DISABLE_TELEMETRY=1 or
-    # [general] telemetry_enabled=false skips Sentry entirely.
-    # Runs as the first statement so no sentry call, ID generation, or
-    # config-file write happens when the user has opted out.
     from ralph.telemetry._sentry import is_telemetry_disabled, is_telemetry_disabled_by_config
 
     if is_telemetry_disabled() or is_telemetry_disabled_by_config():
@@ -444,16 +388,6 @@ def _init_telemetry() -> None:
 
 
 def _record_cli_command(ctx: typer.Context) -> None:
-    """Forward the invoked subcommand (or the literal ``pipeline``) as a privacy-safe tag.
-
-    This is the single CLI chokepoint for the ``command`` telemetry tag. The
-    value is drawn from a closed vocabulary: either ``ctx.invoked_subcommand``
-    (a registered Typer command name — a developer-defined identifier, not
-    user-supplied free text) or the literal ``"pipeline"`` when no
-    subcommand is invoked (the default run path). The ``if ctx.invoked_subcommand:
-    return`` guard later short-circuits subcommand dispatch, so this single
-    call covers both paths. Opt-out-aware and fail-soft.
-    """
     try:
         from ralph.telemetry._sentry import is_telemetry_disabled, record_command_invocation
     except Exception:
@@ -470,7 +404,6 @@ def _record_cli_command(ctx: typer.Context) -> None:
 def _handle_generate_local_config(
     *, display_context: DisplayContext, scope_name: str | None = None
 ) -> None:
-    """Create the local config set in the automatic or requested workspace layer."""
     display = resolve_active_display(None, display_context)
     scope = resolve_workspace_scope()
     is_worktree_scope = scope.is_linked_worktree and scope_name != PROJECT_SCOPE_LABEL
@@ -496,7 +429,6 @@ def _handle_early_exit_flags(
     check_policy: bool,
     counter_overrides: dict[str, int] | None = None,
 ) -> None:
-    """Handle version and explain-policy early-exit flags before any bootstrap."""
     if version:
         version_callback(version)
     if explain_policy:
@@ -512,14 +444,6 @@ def _handle_early_exit_flags(
 
 
 def _handle_force_init_skills(*, workspace_root: RuntimePath) -> None:
-    """Run the ``--force-init-skills`` early-exit branch.
-
-    Extracted from ``main()`` to keep its branch / statement count under
-    the ruff ``PLR0912`` / ``PLR0915`` limits. Reinstalls baseline skills
-    and surfaces any failure codes with the ``ralph --force-init-skills``
-    remediation hint (re-printing the hint is harmless on the force path
-    because the user explicitly asked for it).
-    """
     from ralph.skills.manager import SkillManager
 
     display_context = _get_cli_context()
@@ -535,7 +459,6 @@ def _handle_retry_integration(
     *,
     display_context: DisplayContext | None = None,
 ) -> int:
-    """Handle explicit operator retry of retained integration conflict resolution."""
     from ralph.pipeline.auto_integrate import recover_incomplete_integration
     from ralph.workspace.scope import WorkspaceScope
 
@@ -576,7 +499,6 @@ def _dispatch_maintenance_flags(
     config: str | None,
     display_context: DisplayContext,
 ) -> None:
-    """Handle standalone maintenance flags that exit immediately."""
     if regenerate_config:
         _handle_regenerate_config(display_context=display_context)
         raise typer.Exit()
@@ -592,80 +514,6 @@ def _dispatch_maintenance_flags(
         raise typer.Exit(code=exit_code)
 
 
-"""Typer callback for the ``ralph`` CLI entry point.
-
-The handler is the console-script entry point declared in
-``pyproject.toml`` (``ralph = ralph.cli.main:main``). It binds the
-~33 flags exposed by the user-facing CLI and dispatches the pipeline
-subcommand (or one of the bundled support subcommands such as
-``--init``, ``--diagnose``, ``--generate-commit``, ``--init-skills``,
-``--install-skills``, ``--skill-status``, ``--version``, ``--help``).
-
-Args:
-    ctx: Typer context carrying subcommand resolution and shared state.
-    config: ``--config/-c`` path to the ralph configuration file.
-    developer_iters: ``--developer-iters/-D`` maximum developer agent
-        iterations per run.
-    quick: ``--quick/-Q`` single-developer-iteration shortcut.
-    long_run: ``--long/-L`` five-iteration preset.
-    thorough: ``--thorough/-T`` ten-iteration preset.
-    counter: ``--counter NAME=VALUE`` repeatable policy-counter override.
-    developer_agent: ``--developer-agent/-a`` developer agent name.
-    developer_model: ``--developer-model`` model flag for the developer
-        agent.
-    planner_agent: ``--planner-agent`` planner agent name.
-    planner_model: ``--planner-model`` model flag for the planner agent.
-    reviewer_agent: ``--reviewer-agent`` reviewer agent name.
-    reviewer_model: ``--reviewer-model`` model flag for the reviewer.
-    use_existing_pr: ``--use-existing-pr/-U`` reuse an existing PR
-        instead of opening a fresh one.
-    auto_pr: ``--auto-pr/-A`` automatically open a pull request after
-        the run finishes successfully.
-    pr_target: ``--pr-target`` target branch for the auto-PR.
-    worktree_path: ``--worktree-path`` custom worktree path override.
-    init: ``--init`` scaffold ``PROMPT.md`` and user-global config for
-        the current project; it does not create project-local config.
-    init_force_skills: ``--force-init-skills`` reinstall baseline skills.
-    init_skills: ``--init-skills`` install bundled skills into the
-        supported agent roots.
-    install_skills: ``--install-skills`` install skills only (no
-        ``.agent/`` scaffold).
-    skill_status: ``--skill-status`` print installed-skill summary.
-    diagnose: ``--diagnose`` pre-flight check (agents, MCP, capabilities).
-    generate_commit: ``--generate-commit`` draft a commit message from
-        the staged change set (dogfooded per AGENTS.md).
-    base_branch: ``--base-branch`` base branch for ``--generate-commit``.
-    max_commits: ``--max-commits`` cap the number of commits returned
-        by ``--generate-commit``.
-    exclude_globs: ``--exclude-globs`` repeatable glob patterns to skip
-        when staging the commit payload.
-    pipeline: ``--pipeline/-p`` path to the policy pipeline file.
-    state: ``--state/-s`` path to the run state file.
-    workspace: ``--workspace/-w`` workspace root override.
-    target: ``--target/-t`` target repository path (defaults to ``cwd``).
-    agent_timeout: ``--agent-timeout`` agent timeout in seconds.
-    resume: ``--resume/-r`` resume from a checkpoint.
-    checkpoint: ``--checkpoint`` save a checkpoint at the end of the run.
-    no_progress: ``--no-progress`` suppress progress reporting.
-    verbose: ``--verbose/-v`` increase log verbosity.
-    version: ``--version`` print the package version and exit.
-    help: ``--help/-h`` show the Typer-generated help text and exit.
-
-Returns:
-    ``None``. The CLI exit code is whatever the underlying subcommand
-    returns (typically ``0`` on success, ``1`` on a verify-failure or
-    pipeline error). ``--version`` and ``--help`` exit before any
-    pipeline side effect.
-
-Side effects:
-    Invokes the configured pipeline (planning, development, review, fix
-    cycles) which spawns agent subprocesses and writes artifacts under
-    ``.agent/``. ``--init`` creates ``PROMPT.md`` and seeds ``.gitignore``;
-    it never creates project-local TOMLs. Only the explicit local-config
-    aliases create the supported local TOML set. Skill subcommands may mutate
-    supported agent roots. ``--diagnose`` prints but does not mutate. ``--version``
-    and ``--help`` are read-only.
-"""
 
 
 class _CLIRestoreState:
@@ -682,7 +530,6 @@ def ensure_cli_terminal_restore(
     signal_getter: Callable[[int], object] | None = None,
     signal_setter: Callable[[int, object], object] | None = None,
 ) -> None:
-    """Snapshot TTY modes and register normal and termination restoration once."""
     if not _CLI_RESTORE_STATE.registered:
         snapshot_terminal_modes()
         reg = register_fn if register_fn is not None else atexit.register
@@ -726,7 +573,6 @@ def ensure_cli_terminal_restore(
 
 
 def reset_cli_restore_state() -> None:
-    """Reset CLI restore registration state for unit tests."""
     _CLI_RESTORE_STATE.registered = False
     _CLI_RESTORE_STATE.signals_registered = False
 
@@ -1014,111 +860,6 @@ def main(
         ),
     ] = False,
 ) -> None:
-    """Run the Ralph Workflow multi-agent pipeline or execute a sub-operation.
-
-    The handler is the ``ralph`` console script entry point declared in
-    ``pyproject.toml`` (``ralph = ralph.cli.main:app``). It is the single
-    Typer callback that fans out to ~12 early-exit branches
-    (``--version``, ``--init``, ``--diagnose``, ``--check-mcp``,
-    ``--check-config``, ``--init-local-config``, ``--inspect-checkpoint``,
-    ``--list-agents``, ``--list-providers``, ``--generate-commit*``,
-    ``--explain-policy``, ``--check-policy``) and
-    then to the main pipeline invocation.
-
-    Primary flags:
-
-    - ``--init [label]`` — scaffold ``PROMPT.md`` and user-global
-      configuration. It never creates project-local TOMLs; use
-      ``--init-local-config`` (or ``--generate-local-config``) for the
-      advanced explicit local override set.
-    - ``--diagnose`` / ``-d`` — pre-flight check of agent CLIs, MCP
-      servers, and capability bundles; never starts a real run.
-    - ``--generate-commit`` / ``--generate-commit-msg`` — build the
-      commit artifact from the latest development_result; ``--generate-commit``
-      applies the commit. Always dogfood this for the AGENTS.md commit
-      rule rather than hand-rolling ``git commit``.
-    - ``--quick`` / ``-Q``, ``--long`` / ``-L``, and ``--thorough`` /
-      ``-T`` — mutually exclusive depth presets that map to
-      developer-iteration counts (1, 5, and 10 respectively).
-    - ``--developer-iters`` / ``-D``, ``--reviewer-reviews`` / ``-R`` —
-      explicit iteration caps (overridden by the depth presets).
-    - ``--resume`` / ``-r`` and ``--no-resume`` — checkpoint handling.
-    - ``--counter NAME=VALUE`` (repeatable) — override a policy-declared
-      budget counter; the name must be declared in ``pipeline.toml`` or
-      the run is rejected.
-
-    Pipeline-invocation side effect: when none of the early-exit branches
-    fire, the handler builds the CLI overrides mapping, calls
-    ``bootstrap_global_configs`` + ``configure_logging``, resolves the
-    effective developer-iteration count, and dispatches to
-    ``run_pipeline``. The run writes ``.agent/checkpoint.json`` and
-    emits a finish-receipt on success.
-
-    Args:
-        ctx: Typer context (carries the global CLI state; not
-            directly consumed by this handler).
-        config: ``--config`` / ``-c`` path to an explicit configuration
-            file.
-        developer_iters: ``--developer-iters`` / ``-D`` developer-agent
-            iteration cap.
-        quick: ``--quick`` / ``-Q`` single-iteration preset.
-        long_run: ``--long`` / ``-L`` five-iteration preset.
-        thorough: ``--thorough`` / ``-T`` ten-iteration preset.
-        counter: ``--counter`` repeatable ``NAME=VALUE`` overrides.
-        developer_agent: ``--developer-agent`` / ``-a`` agent name.
-        developer_model: ``--developer-model`` model flag.
-        verbosity: ``--verbosity`` / ``-v`` output verbosity
-            (quiet / normal / verbose / full / debug).
-        quiet: ``--quiet`` / ``-q`` suppress non-error output.
-        debug: ``--debug`` enable debug output.
-        resume: ``--resume`` / ``-r`` resume from checkpoint.
-        no_resume: ``--no-resume`` ignore any existing checkpoint.
-        unsafe_mode: ``--unsafe-mode`` merge Ralph Workflow's MCP config into
-            the agent's existing config instead of overwriting.
-        inspect_checkpoint: ``--inspect-checkpoint`` print checkpoint
-            JSON and exit.
-        dry_run: ``--dry-run`` run without invoking agents.
-        list_agents: ``--list-agents`` print configured agents and exit.
-        list_providers: ``--list-providers`` print providers and exit.
-        diagnose: ``--diagnose`` / ``-d`` pre-flight check.
-        check_config: ``--check-config`` / ``-C`` validate config.
-        check_mcp: ``--check-mcp`` validate custom MCP servers.
-        init: ``--init [PATH]`` scaffold ``PROMPT.md`` and global config.
-        regenerate_config: ``--regenerate-config`` rewrite global config
-            and refresh only local config files already present (backs up
-            overwritten files to ``<name>.bak``).
-        force_init_skills: ``--force-init-skills`` re-run baseline
-            skill install.
-        generate_local_config: ``--init-local-config`` /
-            ``--generate-local-config`` create the complete advanced
-            project-local config override set.
-        generate_commit_msg: ``--generate-commit-msg`` build commit
-            message artifact.
-        generate_commit: ``--generate-commit`` build and apply commit.
-        show_commit_msg: ``--show-commit-mg`` show the commit message.
-        git_user_name: ``--git-user-name`` git user name for commits.
-        git_user_email: ``--git-user-email`` git user email for commits.
-        version: ``--version`` / ``-V`` print version and exit.
-        explain_policy: ``--explain-policy`` print human-readable policy
-            and exit.
-        explain_policy_dir: ``--explain-policy-dir`` (hidden) policy
-            directory to explain.
-        parallel_worker_manifest: ``--parallel-worker-manifest`` (hidden)
-            internal worker bootstrap manifest path.
-        check_policy: ``--check-policy`` validate active policy and exit.
-
-    Returns:
-        ``None``. The handler exits via ``typer.Exit`` or via the
-        underlying ``run_pipeline`` return code; it never returns
-        normally on success.
-
-    Side effects:
-        Bootstrap global config / MCP config / policy configs; write
-        ``.agent/checkpoint.json``; spawn the configured agent CLI;
-        write artifact files via the canonical MCP path; emit
-        ``declare_complete`` on success. Bounded subprocesses are
-        routed through ``ralph.process.manager``.
-    """
     if removed_malloc_debug_vars := sanitize_process_environment():
         logger.debug(
             "Stripped inherited malloc-debug environment variables: {}",
@@ -1126,12 +867,10 @@ def main(
         )
     ensure_cli_terminal_restore()
 
-    # If a subcommand was invoked, record telemetry and return without running pipeline bootstrap.
     if ctx is not None and ctx.invoked_subcommand:
         _record_cli_command(ctx)
         return
 
-    # Parse --counter NAME=VALUE entries early so --check-policy can validate them.
     counter_overrides = _parse_counter_overrides(list(counter) if counter else [])
 
     _handle_early_exit_flags(
@@ -1159,7 +898,6 @@ def main(
 
     _cli_ctx = _get_cli_context()
 
-    # Configure logging before bootstrap/init so setup never leaks loader DEBUG lines.
     configure_logging(verbosity, console_sink=make_sanitizing_log_sink(_cli_ctx))
     _bootstrap_for_command(
         init_requested=init is not None or "--init" in sys.argv[1:],
@@ -1169,7 +907,6 @@ def main(
     _init_telemetry()
     _record_cli_command(ctx)
 
-    # Mode presets imply developer iteration counts and override explicit -D when supplied.
     effective_developer_iters = _resolve_effective_developer_iters(
         quick=quick,
         long_run=long_run,
@@ -1181,7 +918,6 @@ def main(
         counter_overrides, effective_developer_iters
     )
 
-    # Load configuration
     cli_overrides = _build_cli_overrides(
         CLIOverrideInput(
             developer_agent=developer_agent,
@@ -1193,7 +929,6 @@ def main(
         ),
     )
 
-    # Check for early exit commands
     exit_code = handle_list_agents(config, cli_overrides, list_agents, display_context=_cli_ctx)
     if exit_code is not None:
         raise typer.Exit(code=exit_code)
@@ -1253,12 +988,10 @@ def main(
     if exit_code is not None:
         raise typer.Exit(code=exit_code)
 
-    # Best-effort nag if a newer release is available; never blocks the run.
     from ralph.update_check import maybe_render_update_nag
 
     maybe_render_update_nag(_cli_ctx)
 
-    # Run the main pipeline
     exit_code = invoke_pipeline(
         config,
         RunPipelineOpts(
@@ -1286,7 +1019,6 @@ def visual_judgement(
     target: Annotated[str, typer.Option("--target", help="Policy-declared visual target")],
     intent: Annotated[str, typer.Option("--intent", help="Design intent for the vision verdict")],
 ) -> None:
-    """Request non-blocking, operator-invoked visual judgement evidence."""
     display = resolve_active_display(None, _get_cli_context())
     result = run_on_demand_judgement(target, intent)
     if result.blocker is not None:
@@ -1299,10 +1031,6 @@ def visual_judgement(
 app.command(name="visual-judgement")(visual_judgement)
 
 
-#: Appended to every ``--agent`` help string so ``--help`` states, in one
-#: place, where the default actually comes from. The default itself is
-#: resolved at call time from the operator's config -- see
-#: ``ralph.cli.commands.smoke_agent_defaults``.
 _SMOKE_AGENT_DEFAULT_HELP = (
     "Defaults to the first {label} entry in your \\[agent_chains], falling back "
     "to bare `{bare}` (which passes no model, so the CLI uses the model you "
@@ -1343,7 +1071,6 @@ def smoke_interactive_claude(
         ),
     ] = None,
 ) -> None:
-    """Run the manual PTY/TUI smoke test for interactive Claude using claude/haiku."""
     from ralph.cli.commands.smoke import smoke_interactive_claude_command
 
     raise typer.Exit(
@@ -1393,7 +1120,6 @@ def smoke_headless_claude(
         ),
     ] = None,
 ) -> None:
-    """Run the manual NDJSON smoke test for headless Claude using claude-headless/haiku."""
     from ralph.cli.commands.smoke import smoke_headless_claude_command
 
     raise typer.Exit(
@@ -1443,7 +1169,6 @@ def smoke_interactive_agy(
         ),
     ] = None,
 ) -> None:
-    """Run the manual PTY smoke test for Google Anti Gravity."""
     from ralph.cli.commands.smoke import smoke_interactive_agy_command
 
     raise typer.Exit(
@@ -1493,7 +1218,6 @@ def smoke_interactive_nanocoder(
         ),
     ] = None,
 ) -> None:
-    """Run the manual PTY smoke test for Nanocoder interactive mode."""
     from ralph.cli.commands.smoke import smoke_interactive_nanocoder_command
 
     raise typer.Exit(
@@ -1543,7 +1267,6 @@ def smoke_interactive_cursor(
         ),
     ] = None,
 ) -> None:
-    """Run the manual end-to-end smoke test for the Cursor Agent CLI."""
     from ralph.cli.commands.smoke import smoke_interactive_cursor_command
 
     raise typer.Exit(
@@ -1595,7 +1318,6 @@ def smoke_interactive_kimi(
         ),
     ] = None,
 ) -> None:
-    """Run the manual end-to-end smoke test for the Kimi Code CLI."""
     from ralph.cli.commands.smoke import smoke_interactive_kimi_command
 
     raise typer.Exit(
@@ -1657,7 +1379,6 @@ def smoke_interactive_opencode(
         ),
     ] = None,
 ) -> None:
-    """Run the manual smoke test for OpenCode against a live provider/model."""
     if (provider is None) != (model is None):
         raise click.UsageError("--provider and --model must be given together")
     agent_name = f"opencode/{provider}/{model}" if provider is not None else agent
@@ -1711,7 +1432,6 @@ def smoke_interactive_codex(
         ),
     ] = None,
 ) -> None:
-    """Run the manual smoke test for Codex CLI."""
     from ralph.cli.commands.smoke import smoke_interactive_codex_command
 
     raise typer.Exit(
@@ -1761,7 +1481,6 @@ def smoke_interactive_pi(
         ),
     ] = None,
 ) -> None:
-    """Run the manual smoke test for the Pi coding agent."""
     from ralph.cli.commands.smoke import smoke_interactive_pi_command
 
     raise typer.Exit(
@@ -1808,7 +1527,6 @@ def smoke_interactive_ccs(
         ),
     ] = None,
 ) -> None:
-    """Run the manual smoke test for a CCS (Claude Code Switch) alias."""
     from ralph.cli.commands.smoke import smoke_interactive_ccs_command
 
     raise typer.Exit(
@@ -1826,8 +1544,6 @@ app.command(name="smoke-interactive-ccs")(smoke_interactive_ccs)
 app.command()(star)
 
 
-#: Depth presets are mutually exclusive: each pins ``developer_iters`` to a
-#: different value, so any two of them are a contradiction.
 _DEPTH_PRESET_FLAGS: tuple[tuple[str, str], ...] = (
     ("quick", "--quick/-Q"),
     ("long_run", "--long/-L"),
@@ -1848,9 +1564,6 @@ def _validate_mode_flags(
         raise click.UsageError(f"{' and '.join(names)} cannot be used together")
 
 
-#: (redo_policy, run_policy_agents, policy_only) -> the selected policy mode.
-#: ``--policy-only`` is a MODIFIER, not a mode: it says "exit after the policy
-#: work" and composes with either action flag.
 _POLICY_MODES: dict[tuple[bool, bool], PolicyMode] = {
     (True, False): PolicyMode.REDO,
     (True, True): PolicyMode.REDO_ONLY,
@@ -1865,13 +1578,6 @@ def _resolve_policy_mode(
     run_policy_agents: bool,
     policy_only: bool,
 ) -> PolicyMode:
-    """Map the policy flags onto a single :class:`PolicyMode`.
-
-    ``--redo-policy`` (wipe and regenerate) and ``--run-policy-agents`` (audit in
-    place) are mutually exclusive ACTIONS -- one destroys the existing policy and
-    the other preserves it, so asking for both is a contradiction.
-    ``--policy-only`` is a MODIFIER that composes with either.
-    """
     if redo_policy and run_policy_agents:
         raise click.UsageError(
             "Conflicting flags: --redo-policy and --run-policy-agents cannot be "
@@ -1892,16 +1598,6 @@ def _counter_overrides_with_developer_iters(
     counter_overrides: dict[str, int],
     developer_iters: int | None,
 ) -> dict[str, int]:
-    """Fold an explicit developer-iteration count into the counter overrides.
-
-    ``-D`` and the depth presets set the dev-cycle budget, which reaches a
-    FRESH run through the config. A RESUMED run adopts the checkpoint's caps,
-    so the instruction reaches it only as an explicit counter override; without
-    this the operator's request was silently dropped and the run ended at the
-    next final commit. ``None`` means the operator specified nothing. An
-    explicit ``--counter iteration=N`` is the more specific instruction and
-    wins.
-    """
     if developer_iters is None:
         return counter_overrides
     return {"iteration": developer_iters, **counter_overrides}
@@ -1926,7 +1622,6 @@ def _handle_list_agents(
     *,
     display_context: DisplayContext,
 ) -> int | None:
-    """Handle --list-agents flag; returns exit code or None to continue."""
     if not list_agents:
         return None
     try:
@@ -1947,7 +1642,6 @@ def _handle_list_providers(
     *,
     display_context: DisplayContext,
 ) -> int | None:
-    """Handle --list-providers flag; returns exit code or None to continue."""
     if not list_providers:
         return None
     try:
@@ -1961,7 +1655,6 @@ def _handle_list_providers(
 
 
 def _handle_check_mcp(check_mcp: bool, *, display_context: DisplayContext) -> int | None:
-    """Handle --check-mcp flag; returns exit code or None to continue."""
     if not check_mcp:
         return None
     display = resolve_active_display(None, display_context)
@@ -1985,7 +1678,6 @@ def _handle_commit_plumbing(
     *,
     display_context: DisplayContext,
 ) -> int | None:
-    """Handle commit plumbing commands; returns exit code or None to continue."""
     if not (options.generate_commit_msg or options.generate_commit or options.show_commit_msg):
         return None
 
@@ -2012,10 +1704,6 @@ def _run_pipeline(
     *,
     display_context: DisplayContext,
 ) -> int:
-    """Run the main pipeline."""
-    # Direct env-var check (no ralph.telemetry._sentry import needed).
-    # When ``RALPH_DISABLE_TELEMETRY`` is truthy, never import _sentry so the
-    # hot path executes without paying the sentry_sdk import cost.
     _raw_disable = os.environ.get("RALPH_DISABLE_TELEMETRY", "")
     _telemetry_enabled = _raw_disable.strip().lower() not in {"1", "true", "yes", "on"}
 
@@ -2058,9 +1746,6 @@ def _run_pipeline(
         _set_outcome("interrupted")
         return 130
     except ConfigTomlError as e:
-        # A malformed TOML raised during the run path: surface the
-        # existing what/why/fix envelope via the display, NOT via
-        # ``logger.exception`` (which would print a raw traceback).
         display.emit_warning(str(e))
         _set_outcome("failure")
         return 1
@@ -2074,21 +1759,6 @@ def _run_pipeline(
 def _configure_logging(
     verbosity: Verbosity, *, console_sink: Callable[[str], None] | None = None
 ) -> None:
-    """Configure logging based on verbosity level.
-
-    Args:
-        verbosity: CLI verbosity branch. Each branch maps to a
-            loguru level / format pair.
-        console_sink: Optional callable that replaces the raw
-            terminal sink. When ``None`` (default) the
-            library/worker fallback ``make_stderr_log_sink`` is used,
-            which strips terminal-control constructs before writing
-            to the process error stream. The CLI's ``main()`` call
-            site passes ``make_sanitizing_log_sink(_cli_ctx)`` so
-            the rich Live status bar is the single painter of the
-            terminal.
-    """
-    # Remove default handler
     logger.remove()
 
     sink = console_sink if console_sink is not None else make_stderr_log_sink()
@@ -2099,7 +1769,7 @@ def _configure_logging(
         logger.add(sink, level="INFO")
     elif verbosity == Verbosity.FULL:
         logger.add(sink, level="DEBUG", format="{time:HH:mm:ss} {level} {message}")
-    else:  # DEBUG
+    else:
         logger.add(
             sink,
             level="TRACE",
@@ -2108,7 +1778,6 @@ def _configure_logging(
 
 
 def _parse_counter_overrides(raw_entries: list[str]) -> dict[str, int]:
-    """Parse NAME=VALUE counter override strings; raises UsageError on malformed input."""
     result: dict[str, int] = {}
     for entry in raw_entries:
         if "=" not in entry:
@@ -2130,15 +1799,9 @@ def _parse_counter_overrides(raw_entries: list[str]) -> dict[str, int]:
 def _build_cli_overrides(
     input: CLIOverrideInput,
 ) -> dict[str, object]:
-    """Build CLI overrides dictionary from CLIOverrideInput."""
-    # Only flags the operator actually passed become overrides: the merge lets
-    # an override value (including ``None``) replace the config file's value,
-    # so an absent flag must leave its key out entirely.
     general: GeneralOverrides = {"execution": {}, "workflow": {}}
     overrides: dict[str, object] = {"general": general}
 
-    # ``developer_agent`` / ``developer_model`` are CLI-only UnifiedConfig
-    # fields; the policy loader rebinds the ``development`` drain to them.
     if input.developer_agent is not None:
         overrides["developer_agent"] = input.developer_agent
 
@@ -2160,7 +1823,6 @@ def _build_cli_overrides(
     return overrides
 
 
-# Public aliases — test-accessible names and monkeypatch interception points.
 init_telemetry = _init_telemetry
 record_cli_command = _record_cli_command
 bootstrap_global_configs = _bootstrap_global_configs
@@ -2182,11 +1844,6 @@ def _resolve_display_from_legacy(
     console: Console | None = None,
     display_context: DisplayContext | None = None,
 ) -> ParallelDisplay:
-    """Resolve a display from either a console or a context, or build a default.
-
-    When a legacy ``console`` is provided but no ``display_context``, build a
-    context whose console is the supplied one so the test's stream is honored.
-    """
     if display_context is not None:
         return resolve_active_display(None, display_context)
     if console is not None:
@@ -2201,7 +1858,6 @@ def handle_check_mcp(
     console: Console | None = None,
     display_context: DisplayContext | None = None,
 ) -> int | None:
-    """Public wrapper that accepts a legacy ``console`` kwarg for backward compat."""
     if not check_mcp:
         return None
     display = _resolve_display_from_legacy(console=console, display_context=display_context)
@@ -2227,9 +1883,6 @@ def handle_check_config(
     console: Console | None = None,
     display_context: DisplayContext | None = None,
 ) -> int | None:
-    """Public wrapper for the ``--check-config`` short-circuit; accepts legacy
-    ``console=`` and new ``display_context=`` kwargs.
-    """
     if not check_config:
         return None
     display = _resolve_display_from_legacy(console=console, display_context=display_context)

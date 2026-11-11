@@ -1,12 +1,3 @@
-"""Black-box ordering tests: PTY reader records a terminal reason before any signal.
-
-wt-071 / R7: every force-kill-capable PTY termination path must record a
-named permitted terminal reason BEFORE sending its first signal, so the
-"survived graceful terminate, escalating to force kill" warning can only
-follow a recorded reason. These tests observe the ordering on the handle
-doubles and fail when a signal precedes its reason record.
-"""
-
 from __future__ import annotations
 
 import threading
@@ -20,8 +11,6 @@ if TYPE_CHECKING:
 
 
 class _OrderHandle:
-    """Handle double that records the relative order of reason vs. signal calls."""
-
     def __init__(self) -> None:
         self.events: list[tuple[str, str]] = []
         self.pid = 4242
@@ -125,5 +114,5 @@ def test_record_terminal_reason_uses_handle_recorder_when_present() -> None:
 
 def test_record_terminal_reason_tolerates_missing_recorder() -> None:
     reader = object.__new__(PtyLineReader)
-    reader._handle = object()  # no record_terminal_reason attribute
-    PtyLineReader._record_terminal_reason(reader, "quota_exhausted")  # must not raise
+    reader._handle = object()
+    PtyLineReader._record_terminal_reason(reader, "quota_exhausted")

@@ -1,5 +1,3 @@
-"""Unit tests for git operations."""
-
 from __future__ import annotations
 
 import os
@@ -37,11 +35,6 @@ from ralph.workspace.scope import WorkspaceScope
 
 
 def _unused_pid() -> int:
-    """Return a PID that is verified to not be running.
-
-    Verify via os.kill(candidate, 0) raising ProcessLookupError so that
-    high PID churn or collisions never produce a live PID.
-    """
     candidate = os.getpid() + 1_000_000
     for _ in range(10_000):
         try:
@@ -61,13 +54,11 @@ DEFAULT_BRANCHES = {"main", "master"}
 
 @pytest.mark.subprocess_e2e
 def test_find_repo_root(tmp_git_repo: Path) -> None:
-    """Test finding repository root."""
     root = find_repo_root(tmp_git_repo)
     assert root == tmp_git_repo
 
 
 def test_find_repo_root_prefers_active_worktree_root(tmp_path: Path) -> None:
-    """Worktree paths should resolve to the active worktree, not the main checkout."""
     worktree = tmp_path / "feature-worktree"
     fake_repo = SimpleNamespace(
         working_tree_dir=str(worktree),
@@ -86,13 +77,11 @@ def test_find_repo_root_prefers_active_worktree_root(tmp_path: Path) -> None:
 
 @pytest.mark.subprocess_e2e
 def test_find_repo_root_not_git() -> None:
-    """Test finding repo root when not in git repository."""
     with pytest.raises(GitOperationError, match="Not inside a git repository"):
         find_repo_root(Path("/tmp"))
 
 
 def test_is_repo_clean(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A successful porcelain status determines clean state without Git I/O."""
     outputs = iter(("", " M README.md\n"))
     monkeypatch.setattr(
         "ralph.git.operations.run_git",
@@ -128,7 +117,6 @@ def test_is_repo_clean_prefers_bounded_subprocess_status(
 
 
 def test_has_staged_changes() -> None:
-    """Test checking for staged changes."""
     clean_repo = SimpleNamespace(
         index=SimpleNamespace(diff=lambda _ref: []),
         untracked_files=[],
@@ -222,7 +210,6 @@ def test_has_commits_since_no_baseline_returns_true(tmp_git_repo: Path) -> None:
 def test_has_commits_since_head_equals_baseline_returns_false(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An empty successful ``rev-list`` result reports no newer commit without Git I/O."""
     monkeypatch.setattr(
         "ralph.git.operations.run_git",
         lambda args, *, cwd, label: GitRunResult(
@@ -256,7 +243,6 @@ def test_has_commits_since_prefers_bounded_subprocess_rev_list(
 
 
 def test_has_commits_since_new_commit_returns_true(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A nonempty bounded ``rev-list`` result reports a newer commit without Git I/O."""
     monkeypatch.setattr(
         "ralph.git.operations.run_git",
         lambda args, *, cwd, label: GitRunResult(
@@ -271,7 +257,6 @@ def test_has_commits_since_new_commit_returns_true(monkeypatch: pytest.MonkeyPat
 
 
 def test_stage_all() -> None:
-    """Staging delegates to GitPython's all-files operation without Git I/O."""
     calls: list[bool] = []
 
     class FakeGit:
@@ -318,7 +303,6 @@ def test_stage_all_recovers_from_stale_index_lock(tmp_git_repo: Path) -> None:
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr("ralph.git.operations.Repo", lambda *_args, **_kwargs: fake_repo)
 
-    # Mock liveness probe so lock is provably dead (not unknown)
     def fake_liveness(*args: object, **kwargs: object) -> str:
         return "dead"
 
@@ -334,7 +318,6 @@ def test_stage_all_recovers_from_stale_index_lock(tmp_git_repo: Path) -> None:
 
 
 def test_create_commit() -> None:
-    """Test creating a commit."""
     captured: dict[str, object] = {}
 
     class FakeCommit:
@@ -447,7 +430,6 @@ def test_create_commit_recovers_from_stale_index_lock(tmp_git_repo: Path) -> Non
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr("ralph.git.operations.Repo", lambda *_args, **_kwargs: fake_repo)
 
-    # Mock liveness probe so lock is provably dead (not unknown)
     def fake_liveness(*args: object, **kwargs: object) -> str:
         return "dead"
 
@@ -466,7 +448,6 @@ def test_create_commit_recovers_from_stale_index_lock(tmp_git_repo: Path) -> Non
 
 
 def test_create_commit_with_author() -> None:
-    """Test creating a commit with custom author."""
     captured: dict[str, object] = {}
 
     class FakeCommit:
@@ -508,7 +489,6 @@ def test_create_commit_with_author() -> None:
 
 
 def test_create_commit_appends_ralph_workflow_coauthor_trailer() -> None:
-    """Generated commits keep the repo identity and add Ralph Workflow as co-author."""
     captured: dict[str, object] = {}
 
     class FakeCommit:
@@ -560,7 +540,6 @@ def test_create_commit_appends_ralph_workflow_coauthor_trailer() -> None:
 
 
 def test_get_head_sha() -> None:
-    """HEAD reads return the commit SHA through the GitPython boundary."""
     expected = "a" * FULL_SHA_LENGTH
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr(
@@ -578,13 +557,11 @@ def test_get_head_sha() -> None:
 
 @pytest.mark.subprocess_e2e
 def test_get_current_branch(tmp_git_repo: Path) -> None:
-    """Test getting current branch name."""
     branch = get_current_branch(tmp_git_repo)
     assert branch in DEFAULT_BRANCHES
 
 
 def test_append_to_gitignore(tmp_git_repo: Path) -> None:
-    """Test appending patterns to .gitignore."""
     patterns = [".agent/", "*.log", "__pycache__/"]
     append_to_gitignore(tmp_git_repo, patterns)
 
@@ -596,7 +573,6 @@ def test_append_to_gitignore(tmp_git_repo: Path) -> None:
 
 
 def test_append_to_gitignore_existing(tmp_git_repo: Path) -> None:
-    """Test appending to existing .gitignore without duplicates."""
     gitignore = tmp_git_repo / ".gitignore"
     gitignore.write_text(".existing\n")
 
@@ -604,13 +580,11 @@ def test_append_to_gitignore_existing(tmp_git_repo: Path) -> None:
     append_to_gitignore(tmp_git_repo, patterns)
 
     content = gitignore.read_text()
-    # .existing should not be duplicated
     assert content.count(".existing") == INITIAL_OCCURRENCE_COUNT
     assert ".new/" in content
 
 
 def test_merge_base() -> None:
-    """Test finding merge base between commits."""
     fake_base = SimpleNamespace(hexsha="c" * FULL_SHA_LENGTH)
 
     class FakeRepo:
@@ -632,7 +606,6 @@ def test_merge_base() -> None:
 
 
 def test_push_without_remote() -> None:
-    """An absent remote raises the public push error without a Git subprocess."""
     fake_repo = SimpleNamespace(
         remote=lambda _name: (_ for _ in ()).throw(ValueError("no such remote")),
         close=lambda: None,
@@ -646,34 +619,9 @@ def test_push_without_remote() -> None:
         monkeypatch.undo()
 
 
-# ---------------------------------------------------------------------------
-# Regression coverage for analysis-feedback correctness holes in the touched
-# git-operations surface:
-#   1. _recover_stale_git_lock must NOT auto-unlink a Git lock file based on
-#      age alone -- unlinking a live lock can corrupt a long-running Git
-#      operation. Recovery must be gated on a stronger stale-proof (the PID
-#      stored in the lock file, when present, must no longer be running).
-#   2. _git_status_porcelain_lines must NOT silently collapse a non-zero
-#      ``git status --porcelain`` return into ``[]`` -- that hides real
-#      failures and makes ``has_staged_changes`` / ``list_changed_paths`` /
-#      ``get_staged_files`` report a clean repo.
-#   3. has_staged_changes must report ONLY staged changes -- an
-#      untracked-only worktree must return False, and the
-#      ``No staged changes to commit`` CLI message must continue to be the
-#      user-facing truth.
-# ---------------------------------------------------------------------------
-
-
 def test_git_status_porcelain_lines_raises_on_nonzero_return(
     tmp_git_repo: Path,
 ) -> None:
-    """A non-zero ``git status --porcelain`` return raises GitOperationError.
-
-    Previously the helper silently returned ``[]``, which made
-    ``has_staged_changes``/``list_changed_paths``/``get_staged_files``
-    report a clean repo on real failures. The fix surfaces the failure so
-    callers can route through their GitPython fallback (or fail loud).
-    """
 
     def _broken_run_git(args: tuple[str, ...], *, cwd: Path, label: str) -> GitRunResult:
         return GitRunResult(
@@ -695,7 +643,6 @@ def test_git_status_porcelain_lines_raises_on_nonzero_return(
 def test_list_changed_paths_includes_unstaged_and_untracked_scope_candidates(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-3: a commit artifact may scope paths before they are staged."""
     monkeypatch.setattr(
         "ralph.git.operations.run_git",
         lambda args, *, cwd, label: GitRunResult(
@@ -716,7 +663,6 @@ def test_list_changed_paths_includes_unstaged_and_untracked_scope_candidates(
 def test_git_status_porcelain_lines_returns_lines_on_zero_return(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A successful bounded status call exposes its porcelain lines without Git I/O."""
     monkeypatch.setattr(
         "ralph.git.operations.run_git",
         lambda args, *, cwd, label: GitRunResult(
@@ -734,13 +680,6 @@ def test_git_status_porcelain_lines_returns_lines_on_zero_return(
 def test_has_staged_changes_returns_false_for_untracked_only_repo(
     tmp_git_repo: Path,
 ) -> None:
-    """An untracked-only worktree has NO staged changes.
-
-    ``has_staged_changes`` is the API contract for "is there anything
-    staged for the next commit?" -- untracked files do not satisfy that
-    contract. The CLI message ``No staged changes to commit`` must remain
-    accurate for an untracked-only repo.
-    """
     untracked = tmp_git_repo / "untracked.txt"
     untracked.write_text("never staged", encoding="utf-8")
 
@@ -755,18 +694,9 @@ def test_has_staged_changes_returns_false_for_untracked_only_via_subprocess(
     tmp_git_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Untracked-only detection stays correct under the subprocess path.
-
-    ``has_staged_changes`` prefers ``git status --porcelain`` when
-    available. With ONLY untracked files in the worktree, the porcelain
-    output is a single ``??`` line; the helper must return False even
-    though it sees the untracked line.
-    """
     untracked = tmp_git_repo / "untracked_only.txt"
     untracked.write_text("never staged", encoding="utf-8")
 
-    # Sanity: the real ``git status --porcelain`` path returns the
-    # expected untracked line, and the helper still returns False.
     assert has_staged_changes(tmp_git_repo) is False, (
         "Subprocess path: untracked-only worktree must return False"
     )

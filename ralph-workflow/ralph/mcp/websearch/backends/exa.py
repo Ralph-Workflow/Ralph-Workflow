@@ -1,22 +1,3 @@
-"""Exa web-search backend.
-
-Implements the ``ExaBackend`` dataclass that wraps the ``exa-py`` Python SDK to
-deliver web-search results via the Exa API. Requires ``pip install
-ralph-workflow[web-search]`` (or ``pip install exa-py``) at runtime; importing
-this module without the SDK installed is safe, but calling ``search`` raises
-``WebSearchError``.
-
-API key resolution:
-
-- Pass ``api_key`` directly, or
-- set ``api_key_env`` to an environment variable name that holds the key
-  (resolved via ``ralph.mcp.websearch.secrets.resolve_secret``).
-
-Typical usage (from ``ralph.config.mcp_models`` backend selection)::
-
-    backend = ExaBackend(api_key_env="EXA_API_KEY")
-    results = backend.search("async Python tutorial", limit=5)
-"""
 
 from __future__ import annotations
 
@@ -45,7 +26,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class ExaBackend:
-    """Backend powered by the Exa Python SDK."""
 
     api_key: str | None = None
     api_key_env: str | None = None
@@ -81,12 +61,12 @@ def _load_exa_type() -> _ExaType:
         ) from exc
     exa_type = cast(
         "object | None", getattr(module, "Exa", None)
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     if exa_type is None:
         raise WebSearchError("exa backend is unavailable")
     return cast(
         "_ExaType", exa_type
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
 
 
 def _normalize_results(response: _ExaSearchResponse) -> list[SearchResult]:

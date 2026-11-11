@@ -134,13 +134,11 @@ def test_dev_launcher_quotes_absolute_uv_and_snapshot_paths(hostile_path: Path) 
         "--project",
         str(hostile_path),
     ]
-    # The snapshot interpreter runs isolated so a caller's PYTHONPATH cannot shadow it.
     assert argv[6:8] == ["python", "-I"]
     assert argv[-1] == "$@"
 
 
 def test_install_dev_checkout_never_deletes_published_generations() -> None:
-    """The installer cannot prove that an older generation has no live processes."""
     events: list[str] = []
 
     @contextmanager

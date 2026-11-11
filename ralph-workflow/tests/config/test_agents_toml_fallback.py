@@ -1,12 +1,3 @@
-"""Tests for fallback behavior of agents configuration files.
-
-When ~/.config/ralph-workflow-agents.toml is unreadable (invalid TOML, bad encoding,
-permission error, or schema-invalid), Ralph must fall back to built-in defaults,
-leave the file on disk untouched, and emit a deduped loguru WARNING mentioning the
-file, error, default in use, and `ralph --check-config`.
-When strict_optional_files=True is passed, errors are re-raised.
-"""
-
 from __future__ import annotations
 
 import io
@@ -35,7 +26,6 @@ def _capture_warnings() -> tuple[list[str], int]:
 def test_agents_toml_invalid_toml_fallback_and_dedup(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Invalid TOML falls back to default, leaves file unchanged, and warns with dedup."""
     config_home = tmp_path / "xdg-config"
     config_home.mkdir(parents=True)
     agents_path = config_home / "ralph-workflow-agents.toml"
@@ -47,7 +37,6 @@ def test_agents_toml_invalid_toml_fallback_and_dedup(
     local_path.write_text("", encoding="utf-8")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
 
-    # 1. First load: falls back to default, emits WARN
     records, sink_id = _capture_warnings()
     try:
         config = load_config(config_path=local_path)
@@ -55,7 +44,7 @@ def test_agents_toml_invalid_toml_fallback_and_dedup(
         logger.remove(sink_id)
 
     assert config.agents == {}
-    assert agents_path.read_bytes() == before_bytes  # file bytes untouched
+    assert agents_path.read_bytes() == before_bytes
     warning_text = "\n".join(records)
     assert str(agents_path) in warning_text
     assert "agents" in warning_text
@@ -67,7 +56,6 @@ def test_agents_toml_invalid_toml_fallback_and_dedup(
     first_warning_count = len([r for r in records if "using built-in default" in r])
     assert first_warning_count == 1
 
-    # 2. Second load: deduped, no duplicate WARN
     records2, sink_id2 = _capture_warnings()
     try:
         config2 = load_config(config_path=local_path)
@@ -78,7 +66,6 @@ def test_agents_toml_invalid_toml_fallback_and_dedup(
     second_warning_count = len([r for r in records2 if "using built-in default" in r])
     assert second_warning_count == 0
 
-    # 3. Content change: re-warns
     changed_content = "[agents\ndifferent invalid toml @@@\n"
     agents_path.write_text(changed_content, encoding="utf-8")
     changed_bytes = agents_path.read_bytes()
@@ -98,7 +85,6 @@ def test_agents_toml_invalid_toml_fallback_and_dedup(
 def test_agents_toml_bad_encoding_fallback_and_dedup(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Bad encoding falls back to default, leaves file unchanged, and warns with dedup."""
     config_home = tmp_path / "xdg-config"
     config_home.mkdir(parents=True)
     agents_path = config_home / "ralph-workflow-agents.toml"
@@ -123,7 +109,6 @@ def test_agents_toml_bad_encoding_fallback_and_dedup(
     assert "ralph --check-config" in warning_text
     assert "ralph --regenerate-config" in warning_text
 
-    # Second load: deduped
     records2, sink_id2 = _capture_warnings()
     try:
         load_config(config_path=local_path)
@@ -131,7 +116,6 @@ def test_agents_toml_bad_encoding_fallback_and_dedup(
         logger.remove(sink_id2)
     assert len([r for r in records2 if "using built-in default" in r]) == 0
 
-    # Content change: re-warns
     changed_bytes = b"\xfe\xff\x01\x02different bad bytes"
     agents_path.write_bytes(changed_bytes)
 
@@ -146,7 +130,6 @@ def test_agents_toml_bad_encoding_fallback_and_dedup(
 def test_agents_toml_chmod_000_fallback_and_dedup(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Unreadable (chmod 000) agents file falls back to default and warns."""
     config_home = tmp_path / "xdg-config"
     config_home.mkdir(parents=True)
     agents_path = config_home / "ralph-workflow-agents.toml"
@@ -177,7 +160,6 @@ def test_agents_toml_chmod_000_fallback_and_dedup(
         assert "ralph --check-config" in warning_text
         assert "ralph --regenerate-config" in warning_text
 
-        # Second load: deduped
         records2, sink_id2 = _capture_warnings()
         try:
             load_config(config_path=local_path)
@@ -191,7 +173,6 @@ def test_agents_toml_chmod_000_fallback_and_dedup(
 def test_agents_toml_schema_invalid_fallback_and_dedup(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Schema-invalid agents file falls back to default, leaves file unchanged, and warns with dedup."""
     config_home = tmp_path / "xdg-config"
     config_home.mkdir(parents=True)
     agents_path = config_home / "ralph-workflow-agents.toml"
@@ -217,7 +198,6 @@ def test_agents_toml_schema_invalid_fallback_and_dedup(
     assert "ralph --check-config" in warning_text
     assert "ralph --regenerate-config" in warning_text
 
-    # Second load: deduped
     records2, sink_id2 = _capture_warnings()
     try:
         load_config(config_path=local_path)
@@ -225,7 +205,6 @@ def test_agents_toml_schema_invalid_fallback_and_dedup(
         logger.remove(sink_id2)
     assert len([r for r in records2 if "using built-in default" in r]) == 0
 
-    # Content change: re-warns
     changed_schema = '[agents.another_broken]\ncmd = "x"\njson_parser = "not_valid"\n'
     agents_path.write_text(changed_schema, encoding="utf-8")
     changed_bytes = agents_path.read_bytes()
@@ -242,7 +221,6 @@ def test_agents_toml_schema_invalid_fallback_and_dedup(
 def test_agents_toml_strict_optional_files_raises(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """When strict_optional_files=True, errors in agents toml are re-raised."""
     config_home = tmp_path / "xdg-config"
     config_home.mkdir(parents=True)
     agents_path = config_home / "ralph-workflow-agents.toml"
@@ -250,17 +228,14 @@ def test_agents_toml_strict_optional_files_raises(
     local_path.write_text("", encoding="utf-8")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
 
-    # Invalid TOML
     agents_path.write_text("[agents\ninvalid toml = =\n", encoding="utf-8")
     with pytest.raises(tomllib.TOMLDecodeError):
         load_config(config_path=local_path, strict_optional_files=True)
 
-    # Bad encoding
     agents_path.write_bytes(b"\xff\xfe\x00\x00bad encoding")
     with pytest.raises(UnicodeDecodeError):
         load_config(config_path=local_path, strict_optional_files=True)
 
-    # Schema invalid
     agents_path.write_text("[agents.broken]\ncmd = 12345\n", encoding="utf-8")
     with pytest.raises((ValidationError, SystemExit)):
         load_config(config_path=local_path, strict_optional_files=True)
@@ -269,7 +244,6 @@ def test_agents_toml_strict_optional_files_raises(
 def test_agents_toml_valid_loads_successfully_without_warning(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A valid agents file is loaded cleanly without any fallback warnings."""
     config_home = tmp_path / "xdg-config"
     config_home.mkdir(parents=True)
     agents_path = config_home / "ralph-workflow-agents.toml"
@@ -293,11 +267,9 @@ def test_agents_toml_valid_loads_successfully_without_warning(
 def test_corrupt_agents_toml_load_config_and_diagnose_contain_path_line_col_and_recovery(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """load_config and collect_unreadable_config_files (diagnose entry) warn with path, line/col, and regenerate fix."""
     config_home = tmp_path / "xdg-config"
     config_home.mkdir(parents=True)
     agents_path = config_home / "ralph-workflow-agents.toml"
-    # syntax error at line 2, column 5
     invalid_content = "[agents]\ninvalid = = =\n"
     agents_path.write_text(invalid_content, encoding="utf-8")
 
@@ -305,7 +277,6 @@ def test_corrupt_agents_toml_load_config_and_diagnose_contain_path_line_col_and_
     local_path.write_text("", encoding="utf-8")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
 
-    # Test load_config: returns fallback defaults without crashing
     records, sink_id = _capture_warnings()
     try:
         cfg = load_config(config_path=local_path)
@@ -320,7 +291,6 @@ def test_corrupt_agents_toml_load_config_and_diagnose_contain_path_line_col_and_
     assert "ralph --regenerate-config" in warn
     assert "using built-in default" in warn
 
-    # Test diagnose loader entry: collect_unreadable_config_files returns fallback findings without crashing
     reset_fallback_warning_registry()
     from ralph.config.bootstrap import collect_unreadable_config_files
 
@@ -346,7 +316,6 @@ def test_corrupt_agents_toml_load_config_and_diagnose_contain_path_line_col_and_
 def test_corrupt_agents_toml_console_warning_names_regenerate_config(
     tmp_path: Path, tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The Rich console warning for a corrupt agents file names `ralph --regenerate-config`."""
     monkeypatch.chdir(tmp_git_repo)
     config_home = tmp_path / "xdg-config"
     config_home.mkdir(parents=True)
@@ -384,8 +353,6 @@ def test_corrupt_agents_toml_console_warning_names_regenerate_config(
         f"recovery command:\n{console_buf.getvalue()}"
     )
 
-    # The console warning must carry the SAME fix hint the loguru record
-    # carries -- the operator must not see two disagreeing recovery paths.
     load_records = [record for record in records if "Failed to load agents configuration" in record]
     assert load_records, f"expected a loguru warning for the agents file, got: {records}"
     loguru_hint = load_records[0].split("using built-in default. ", 1)[-1].strip()
@@ -399,7 +366,6 @@ def test_corrupt_agents_toml_console_warning_names_regenerate_config(
 def test_corrupt_agents_toml_diagnose_command_warns_with_recovery_instructions(
     tmp_path: Path, tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """diagnose_command warns with path, line/column, and ralph --regenerate-config for corrupt agents file."""
     monkeypatch.chdir(tmp_git_repo)
     config_home = tmp_path / "xdg-config"
     config_home.mkdir(parents=True)

@@ -1,116 +1,3 @@
-"""Parser for the AGY ``--output-format stream-json`` wire format (v1.1.10 - v1.1.13).
-
-Source of truth: ``tests/display/_fixtures/agy_wire_provenance.md``. That file
-records the measured live-binary observations this parser is built against:
-the PTY capture method, the exact probe prompts, the observed
-``init`` / ``step_update`` / ``result`` / ``error`` frame vocabulary, the PTY
-requirement (no controlling terminal -> empty stdout), and the real
-empty-output stderr message.
-
-The parser maps AGY stream-json events (``init``, ``step_update``,
-``result``, ``error``; the measured binary range is v1.1.10 through
-v1.1.13) to normalized parser events (``text``, ``tool_use``,
-``tool_result``, ``error``, ``lifecycle``, ``stop``). For plain-text fallback
-streams, the parser classifies plain-text lines as ``AgentOutputLine(type='text')``
-(NOT ``type='raw'``) so the smoke report and activity stream render model
-content clearly.
-
-The parser inherits from :class:`NdjsonParserBase`, which owns the 6 shared
-NDJSON behaviours: ``data:`` SSE prefix strip, ``[DONE]`` short-circuit,
-non-dict-JSON-to-raw fallback, lifecycle-event suppression, error
-extraction, and JSON-dict dispatch.
-
-Behaviour specifics (measured against the live v1.1.10 binary):
-
-  * ``init`` frames carry ``model``, ``cwd``, ``tools``, and
-    ``permission_mode`` under an ``init`` object, plus a top-level
-    ``conversation_id``. These are surfaced as a ``type='lifecycle'`` event
-    (routed by ``activity_router.map_parser_type_to_kind`` as lifecycle, so it
-    stays out of the operator-visible text stream) whose metadata carries all
-    four fields plus ``conversation_id``. ``ralph.agents.invoke._session``
-    reads the raw JSON line directly for session-id extraction and is
-    unaffected by this parser's classification.
-  * ``step_update`` frames yield structured ``tool_use`` and ``tool_result``
-    events. Ordinary tools (``step_type == "tool"``) correlate ACTIVE/DONE by
-    ``tool_info.call_id`` / ``tool_info.id`` when present, else by
-    ``step_index`` (guarded against the falsy ``0`` step index). A genuine
-    ``tool_info.call_id`` / ``.id`` is surfaced as ``metadata["tool_use_id"]``;
-    a ``step_index`` fallback is NOT a genuine upstream call id, so it is
-    surfaced as ``metadata["step_ordinal"]`` instead — downstream renderers
-    read ``tool_use_id`` as ``call_id=N``, which would misleadingly claim a
-    synthesized ordinal as an upstream identifier. Subagent entries
-    (``step_type == "subagent"``) correlate by a ``f"{step_index}:{position}"``
-    composite id that is stable across ACTIVE and DONE regardless of how many
-    subagent entries share one frame — real AGY adds each entry's own
-    ``conversation_id`` only on the DONE update, so an id scheme keyed on that
-    field would not correlate the ACTIVE dispatch. That composite is a
-    purpose-built correlation key rather than a raw field standing in for
-    one, so it keeps using ``metadata["tool_use_id"]``.
-  * ``step_update`` frames whose ``step_type`` carries no body of its own
-    (no ``text_delta``, no ``tool_info`` / ``subagent_info``) are never
-    silently dropped. The v1.1.10-measured bodiless vocabulary is
-    ``user_input`` / ``unknown`` / ``checkpoint``; v1.1.13 added
-    ``system_message`` (see ``tests/display/_fixtures/
-    agy_wire_provenance.md``). Rather than enumerate, ANY bodiless
-    ``step_type`` other than ``agent_response`` yields a non-empty
-    ``type='lifecycle'`` event summarizing the step_type, so step
-    vocabulary added by a future AGY release degrades observably instead
-    of disappearing.
-    A bodiless ``agent_response`` DONE frame's ``usage`` (no ``text_delta``,
-    e.g. the measured one-shot ``OK`` capture) is likewise never discarded:
-    it is carried forward to the next flushed ``text`` event when text is
-    already buffered, or, if no further flush is coming, surfaces directly as
-    its own ``lifecycle`` event.
-  * Duration values (``duration_seconds`` on a tool/step completion or a
-    ``result`` frame) are formatted to 2 decimal places (e.g. ``"0.08s"``)
-    rather than interpolated raw, since AGY's measured ``duration_seconds``
-    can carry up to 9 decimal digits of floating-point noise
-    (e.g. ``0.076075017``).
-  * A tool's ``tool_use`` content includes a short summary of its most
-    identifying parameter (e.g. ``write_to_file hello.txt``); a subagent's
-    ``tool_use`` content is its ``role`` (e.g. ``Write File A``) so two
-    concurrent subagents remain distinguishable. When a DONE frame carries no
-    ``tool_info.output`` (common for AGY: many tools, and every subagent DONE,
-    never carry one), the emitted ``tool_result`` content is a non-empty
-    completion summary derived from the tool name, its identifying parameter,
-    and ``duration_seconds`` — never an empty string.
-  * ``result`` frames keep the ``stop`` event and additionally lift
-    ``status``, ``num_turns``, ``duration_seconds``, and ``usage`` out of the
-    nested ``result`` dict onto the top level of the event metadata (the
-    nested copy under ``metadata["result"]`` is preserved for back-compat).
-    The ``stop`` event's content is a non-empty summary built from those
-    fields (e.g. ``"agy result SUCCESS (3.58s, 1 turn)"``), falling back to
-    ``"agy result"`` when the nested ``result`` dict is absent, so it never
-    renders as a bodiless lifecycle line. ``response`` is intentionally not
-    re-emitted as text: its content already arrived incrementally via
-    ``text_delta``.
-  * ``step_update`` frames of ``step_type == "agent_response"`` carry
-    incremental ``text_delta`` chunks; a DONE frame's ``usage`` (token counts)
-    is carried onto the metadata of the eventual flushed ``text`` event
-    (the accumulator only flushes at a later structural boundary, so the
-    usage is held pending until then).
-  * A single plain-text line is buffered, then emitted at iterator
-    exhaustion (or at the next paragraph-boundary flush) as a single
-    ``text`` event. This coalesces consecutive short lines into one
-    coherent text block matching the GenericParser coalescing semantics.
-    Every flushed ``text`` event has surrounding whitespace stripped so no
-    trailing newline from a ``text_delta`` chunk reaches the display and no
-    whitespace-only buffer is ever emitted as an empty ``text`` event.
-  * An ``event: "error"`` frame with **no** ``error`` key (the exact live
-    payload shape for AGY's ``EmitError`` was not captured) is classified as
-    ``type='error'`` by this parser. Frames that DO carry an ``error`` key are
-    already intercepted by ``NdjsonParserBase._classify_parsed_json_object``
-    before ``_dispatch_json_object`` runs, so no duplicate handling is added
-    here for that shape.
-  * The ``Task declared complete:`` marker is treated as plain text (not
-    a structured completion signal). The smoke detector requires the durable
-    run-scoped sentinel written by ``declare_complete``, so transcript text
-    cannot spoof completion.
-  * Empty input (the documented quota-exhausted failure mode, and the
-    documented permission-auto-deny / PTY-less failure modes) yields zero
-    events, allowing the smoke plumbing to surface the empty-stdout
-    diagnostic for the live case.
-"""
 
 from __future__ import annotations
 
@@ -135,41 +22,15 @@ if TYPE_CHECKING:
 
 __all__ = ["AgyParser"]
 
-# The single most identifying parameter is picked in this preference order;
-# the first matching string-valued key wins, falling back to the first
-# string-valued parameter present for tools that use a different key name.
 _IDENTIFYING_PARAM_KEYS: tuple[str, ...] = ("TargetFile", "path", "file_path", "command", "query")
 _PARAM_SUMMARY_MAX_LEN = 60
 
-# B3/B4 + v1.1.13 drift: bodiless ``step_type`` frames (no text_delta, no
-# tool_info, no subagent_info) are never silently dropped by
-# ``_dispatch_step_update`` -- EVERY bodiless step_type other than
-# ``agent_response`` (the text step, governed by the B4 usage-carry
-# contract) yields an explicit non-empty ``lifecycle`` event, so new or
-# unknown vocabulary added by a future AGY release degrades observably.
-# See tests/display/_fixtures/agy_wire_provenance.md for the measured
-# v1.1.10 / v1.1.13 bodiless vocabulary.
 
 
-# Markdown fenced code blocks carried inside a text payload (S-8): the
-# opening fence's info string (```python, ```ts, ...) names the language.
-# The fence may be indented; only the info string's leading word is used.
 _FENCE_RE = re.compile(r"^[ \t]*```([\w.+-]*)[^\n]*\n", re.MULTILINE)
 
 
 def _fence_language(content: str) -> str | None:
-    """Return the detected language of ``content``'s first markdown code fence.
-
-    Runs the payload through the project's syntax-highlighter language
-    resolution (:func:`ralph.display.language_inference.lexer_for_path` and
-    Pygments' alias lookup) so the emitted text event can carry
-    ``syntax_highlight: True`` plus the canonical lexer alias. Returns
-    ``None`` when the payload carries no fenced code block at all. A fence
-    whose info string Pygments does not know keeps the raw lowercased info
-    string (it is still the language the agent declared); a fence with no
-    info string is guessed from the fenced code's content, degrading to
-    ``"text"`` exactly like every other inference call site.
-    """
     match = _FENCE_RE.search(content)
     if match is None:
         return None
@@ -184,7 +45,6 @@ def _fence_language(content: str) -> str | None:
 
 
 def _annotate_syntax_highlight(metadata: dict[str, object], content: str) -> None:
-    """Mark ``metadata`` with the fence language when ``content`` carries code."""
     language = _fence_language(content)
     if language is not None:
         metadata["syntax_highlight"] = True
@@ -192,14 +52,12 @@ def _annotate_syntax_highlight(metadata: dict[str, object], content: str) -> Non
 
 
 def _truncate(value: str) -> str:
-    """Truncate ``value`` to the parameter-summary length budget."""
     if len(value) <= _PARAM_SUMMARY_MAX_LEN:
         return value
     return value[: _PARAM_SUMMARY_MAX_LEN - 1] + "…"
 
 
 def _basename_if_path(value: str) -> str:
-    """Return the trailing path segment when ``value`` looks like a file path."""
     if "/" in value or "\\" in value:
         tail = value.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
         return tail or value
@@ -207,7 +65,6 @@ def _basename_if_path(value: str) -> str:
 
 
 def _parameter_summary(info: dict[str, object]) -> str | None:
-    """Return a short, truncated summary of the tool's most identifying parameter."""
     params = info.get("parameters")
     if not isinstance(params, dict):
         return None
@@ -223,18 +80,10 @@ def _parameter_summary(info: dict[str, object]) -> str | None:
 
 
 def _format_duration(seconds: float) -> str:
-    """Return a human-readable duration string rounded to 2 decimal places (B2).
-
-    AGY's ``duration_seconds`` is a raw float that can carry up to 9
-    decimal digits of floating-point noise (e.g. ``0.076075017``);
-    operators need a stable, readable duration, not a float-precision
-    artifact.
-    """
     return f"{seconds:.2f}s"
 
 
 def _completion_summary(label: str, step: dict[str, object], info: dict[str, object]) -> str:
-    """Return a non-empty completion summary for a DONE frame with no ``output``."""
     parts = [label]
     param_summary = _parameter_summary(info)
     if param_summary and param_summary not in label:
@@ -246,14 +95,6 @@ def _completion_summary(label: str, step: dict[str, object], info: dict[str, obj
 
 
 def _result_summary(res: dict[str, object]) -> str:
-    """Return a non-empty human-readable summary of a ``result`` frame (DA-002).
-
-    A bodiless ``stop`` event renders in the activity stream as a
-    content-free ``INFO <agent>`` line, the same defect D6/DA-001 already
-    fixed for text and lifecycle events. Built from the ``status`` /
-    ``duration_seconds`` / ``num_turns`` values already lifted onto the
-    event metadata, e.g. ``"agy result SUCCESS (3.58s, 1 turn)"``.
-    """
     parts = ["agy result"]
     status = res.get("status")
     if isinstance(status, str) and status:
@@ -271,15 +112,6 @@ def _result_summary(res: dict[str, object]) -> str:
 
 
 def _merge_usage(older: dict[str, object], newer: dict[str, object]) -> dict[str, object]:
-    """Merge two AGY ``usage`` dicts from back-to-back bodiless steps (B4 gap).
-
-    Both usage dicts describe tokens consumed by the same in-flight turn, so
-    a numeric field present in both sums rather than the newer frame
-    silently discarding the older one's count. A key present in only one
-    dict, or holding a non-numeric value in either dict, keeps the newer
-    dict's value -- AGY has not been observed to duplicate non-token fields
-    this way, so there is no summation contract to honor for them.
-    """
     merged: dict[str, object] = dict(older)
     for key, new_value in newer.items():
         old_value = older.get(key)
@@ -298,21 +130,6 @@ def _merge_usage(older: dict[str, object], newer: dict[str, object]) -> dict[str
 def _tool_updates(
     step: dict[str, object],
 ) -> list[tuple[str, dict[str, object], str | None, bool]]:
-    """Return normalized AGY tool or subagent update tuples.
-
-    Each tuple is ``(tool_name, info, correlation_id, id_is_synthesized)``.
-    ``info`` is ``tool_info`` for ordinary tools and one subagent entry dict
-    for subagent updates.
-
-    B5: ``id_is_synthesized`` is True only for the ordinary-tool
-    ``step_index`` fallback -- a raw step index is not a genuine
-    upstream-issued call identifier, so the caller must not label it
-    ``tool_use_id`` (downstream renderers read that key as ``call_id=N``,
-    which would misleadingly claim a synthesized ordinal as an upstream
-    id). The subagent composite id is a purpose-built, stable correlation
-    key (not a raw field standing in for one), so it is never flagged as
-    synthesized.
-    """
     step_type = step.get("step_type")
     step_index = step.get("step_index")
     if step_type == "subagent":
@@ -329,11 +146,6 @@ def _tool_updates(
             if not isinstance(sub, dict):
                 continue
             details = cast("dict[str, object]", sub)
-            # AGY assigns each subagent entry's conversation_id only on its
-            # DONE update; ACTIVE carries type_name/role/initial_prompt only.
-            # A (step_index, position) composite is stable across both states
-            # for every entry sharing one frame, so dispatch and result
-            # correlate even though the identity-bearing field arrives later.
             cid = f"{step_index}:{position}" if step_index is not None else str(position)
             results.append(("subagent", details, cid, False))
         return results
@@ -359,13 +171,6 @@ def _tool_updates(
 
 
 def _system_message_payload(frame: dict[str, object]) -> str | None:
-    """Return the text payload a ``system_message`` frame carries, if any.
-
-    The measured v1.1.13 ``system_message`` frames are bodiless, so the
-    candidate keys are ordered by how the wire format names operator-visible
-    text elsewhere (``text_delta`` on ``agent_response``, ``response`` on
-    ``result``); a whitespace-only value is treated as absent.
-    """
     for key in ("text", "message", "content", "text_delta", "response"):
         value = frame.get(key)
         if isinstance(value, str) and value.strip():
@@ -374,7 +179,6 @@ def _system_message_payload(frame: dict[str, object]) -> str | None:
 
 
 def _extract_fallback_payload(obj: dict[str, object]) -> str | None:
-    """Extract a compact human-readable text payload from an unrecognized JSON frame."""
     if not obj:
         return None
     data = obj.get("data")
@@ -395,15 +199,6 @@ def _extract_fallback_payload(obj: dict[str, object]) -> str | None:
 
 
 class AgyParser(NdjsonParserBase):
-    """Parser for AGY stream-json output with a plain-text compatibility fallback.
-
-    Inherits the NDJSON state machine from :class:`NdjsonParserBase` (SSE
-    strip, ``[DONE]`` short-circuit, lifecycle suppression, error
-    extraction, JSON-dict dispatch, non-dict-JSON-to-raw). Overrides
-    :meth:`_classify_non_json_line` so the AGY --print plain-text stream is
-    classified as ``type='text'`` and coalesced via
-    :class:`TextAccumulator` into coherent blocks.
-    """
 
     def __init__(
         self,
@@ -411,36 +206,16 @@ class AgyParser(NdjsonParserBase):
         subagent_source_label: str | None = None,
     ) -> None:
         super().__init__()
-        # R5: bind the per-invocation shared SubagentPidRegistry + per-transport
-        # source label. AGY's --print plain-text stream does not currently
-        # carry embedded PIDs; this is forward-compat for the
-        # per-transport SubagentPidSource seam.
         self._subagent_pid_registry: SubagentPidRegistry | None = subagent_pid_registry
         self._subagent_source_label: str | None = subagent_source_label
         self._text_accumulator: TextAccumulator | None = None
         self._has_prior_text_line: bool = False
         self._emitted_tool_use_ids: set[str] = (
             set()
-        )  # bounded-accumulator-ok: bounded set for deduplicating tool_use events per parse run
-        # Pending usage (token counts) from the most recent agent_response
-        # step_update, carried onto the next flushed text event's metadata.
-        # bounded-accumulator-ok: single scalar slot, overwritten per update, not a collection.
+        )
         self._pending_text_usage: dict[str, object] | None = None
 
     def _classify_non_json_line(self, stripped: str) -> Iterator[AgentOutputLine]:
-        """Classify an AGY plain-text line as ``type='text'`` and coalesce.
-
-        VT normalization is applied first so ANSI-decorated lines (e.g.
-        from a TUI run piped without a PTY) are classified consistently.
-
-        Consecutive non-blank lines are joined with a single ``\\n``
-        separator before being fed into the :class:`TextAccumulator` so
-        the rendered text output preserves the line boundaries that the
-        model emitted (the prior implementation concatenated lines
-        without separators, producing merged output like
-        ``I will create the todo list implementation.Using module.exports...``
-        that glued words from different lines together).
-        """
         normalized = normalize_vt_text(stripped).strip()
         if not normalized:
             return
@@ -456,15 +231,6 @@ class AgyParser(NdjsonParserBase):
         )
 
     def _flush_text(self) -> Iterator[AgentOutputLine]:
-        """Drain pending text before a structured boundary.
-
-        Strips surrounding whitespace off the flushed content so no
-        trailing newline from a ``text_delta`` chunk reaches the display
-        and no whitespace-only buffer is ever emitted as an empty ``text``
-        event (D6). Any usage token counts pending from the triggering
-        ``agent_response`` DONE frame are attached to the flushed line's
-        metadata (D8).
-        """
         if self._text_accumulator is None:
             return
         acc = self._text_accumulator
@@ -479,10 +245,6 @@ class AgyParser(NdjsonParserBase):
             metadata = dict(line.metadata) if line.metadata else {}
             if pending_usage is not None:
                 metadata["usage"] = pending_usage
-            # S-8: every flushed text payload (agent_response text_delta
-            # accumulation and the plain-text fallback alike) is run through
-            # the syntax-highlighter pass so fenced code the agent emitted
-            # reaches the rendering pipeline tagged with its language.
             _annotate_syntax_highlight(metadata, stripped_content)
             yield replace(line, content=stripped_content, metadata=metadata)
 
@@ -492,7 +254,6 @@ class AgyParser(NdjsonParserBase):
         raw: str,
         source_timestamp: str | None = None,
     ) -> Iterator[AgentOutputLine]:
-        """Map AGY v1.1.10 stream-json events to normalized output events."""
         event = obj.get("event")
         if event == "result":
             yield from self._dispatch_result_event(obj, raw)
@@ -503,20 +264,9 @@ class AgyParser(NdjsonParserBase):
         elif event == "init":
             yield from self._dispatch_init_event(obj, raw)
         elif event == "error":
-            # NdjsonParserBase._classify_parsed_json_object already intercepts
-            # every frame that carries an ``error`` key before this hook runs,
-            # so this branch only ever sees an ``event: "error"`` frame with
-            # no ``error`` key (the exact live payload shape was not captured;
-            # synthetic-only today).
             payload = _extract_fallback_payload(obj)
             yield AgentOutputLine(type="error", content=payload or "", raw=raw, metadata=obj)
         elif event == "system_message":
-            # S-8: a top-level ``system_message`` frame (not observed on the
-            # measured v1.1.10-v1.1.13 wire, but the symmetric top-level
-            # spelling of the v1.1.13 ``step_type``) is operator-visible
-            # system text, so it is surfaced as a ``text`` event with the
-            # syntax-highlighter pass applied instead of the generic fallback
-            # payload projection.
             payload = _system_message_payload(obj) or _extract_fallback_payload(obj)
             if payload is not None:
                 metadata: dict[str, object] = dict(obj)
@@ -530,30 +280,6 @@ class AgyParser(NdjsonParserBase):
                 yield AgentOutputLine(type="text", content=payload, raw=raw, metadata=obj)
 
     def _dispatch_result_event(self, obj: dict[str, object], raw: str) -> Iterator[AgentOutputLine]:
-        """Map a ``result`` frame to ``stop`` (and ``error`` on failure).
-
-        D8: ``status`` / ``num_turns`` / ``duration_seconds`` / ``usage`` are
-        lifted out of the nested ``result`` dict onto the top level of the
-        event metadata; the nested copy under ``metadata["result"]`` (from
-        ``dict(obj)``) is preserved for back-compat.
-
-        DA-002: the emitted ``stop`` event always carries non-empty content
-        (mirrors DA-001's fix for the ``init`` lifecycle event), built from
-        the ``result`` frame's ``status`` / ``duration_seconds`` /
-        ``num_turns`` fields, falling back to a bare ``"agy result"`` when
-        the nested ``result`` dict is absent.
-
-        S-5/C3: the emitted ``stop`` event is marked
-        ``metadata["_transcript_claimed_outcome"] = True`` so the display
-        layer can qualify the rendered line as transcript-sourced and the
-        report path can cross-check it against the graded verdict from
-        ``ralph.agents.completion_signals.graded_verdict``. The model is
-        free to emit ``"agy result SUCCESS (...)"`` even when the phase
-        produced no artifact and never called ``declare_complete``; the
-        rendered line carries that transcript claim explicitly so the
-        operator does not mistake the agent's own success assertion for
-        the harness's graded verdict.
-        """
         yield from self._flush_text()
         metadata: dict[str, object] = dict(obj)
         res = obj.get("result")
@@ -565,10 +291,6 @@ class AgyParser(NdjsonParserBase):
             if key in res_dict:
                 metadata[key] = res_dict[key]
         status = res_dict.get("status")
-        # Mark the ``stop`` event as carrying a transcript-claimed
-        # outcome so downstream renderers and reports know the
-        # ``SUCCESS``/``FAILURE`` text is the agent's own stream, not a
-        # graded verdict from Ralph's tooling (see C3 / DoD 14).
         metadata["_transcript_claimed_outcome"] = True
         if isinstance(status, str) and status != "SUCCESS":
             err_msg = str(res_dict.get("error") or status)
@@ -578,19 +300,6 @@ class AgyParser(NdjsonParserBase):
         )
 
     def _dispatch_init_event(self, obj: dict[str, object], raw: str) -> Iterator[AgentOutputLine]:
-        """Map an ``init`` frame to a ``lifecycle`` event (D7, DA-001).
-
-        Lifecycle, not operator-visible text: activity_router routes
-        ``type='lifecycle'`` as ``ActivityEventKind.LIFECYCLE``. The session
-        extractor (``ralph.agents.invoke._session``) reads the raw JSON line
-        directly, so this classification does not affect it.
-
-        DA-001: the emitted event always carries non-empty content — a
-        bodiless lifecycle event renders in the activity stream as a
-        content-free ``INFO <agent>`` line, which reads as a display
-        glitch rather than a real lifecycle signal. The content summarizes
-        the init frame using the model name when present.
-        """
         init_info = obj.get("init")
         metadata: dict[str, object] = dict(obj)
         model: object = None
@@ -606,7 +315,6 @@ class AgyParser(NdjsonParserBase):
     def _dispatch_legacy_tool_use(
         self, obj: dict[str, object], raw: str
     ) -> Iterator[AgentOutputLine]:
-        """Map a bare ``{"type": "tool_use", ...}`` frame (non-AGY-native shape)."""
         tool_name = obj.get("name")
         if isinstance(tool_name, str) and tool_name:
             yield AgentOutputLine(
@@ -614,15 +322,6 @@ class AgyParser(NdjsonParserBase):
             )
 
     def _dispatch_step_update(self, step: dict[str, object], raw: str) -> Iterator[AgentOutputLine]:
-        """Map one AGY incremental update to semantic parser events.
-
-        B3/B4: a step with no ``text_delta`` and no tool/subagent updates is
-        never silently dropped. ``user_input`` / ``unknown`` / ``checkpoint``
-        step_types (the documented bodiless vocabulary) and a bodiless
-        ``agent_response`` DONE frame's ``usage`` are handled explicitly by
-        :meth:`_dispatch_bodiless_step` instead of falling through a bare
-        ``return``.
-        """
         text_delta = step.get("text_delta")
         if isinstance(text_delta, str) and text_delta:
             yield from self._accumulate_text_delta(text_delta, step, raw)
@@ -647,35 +346,6 @@ class AgyParser(NdjsonParserBase):
     def _dispatch_bodiless_step(
         self, step: dict[str, object], raw: str
     ) -> Iterator[AgentOutputLine]:
-        """Handle a step_update with no ``text_delta`` and no tool/subagent update (B3/B4).
-
-        ``user_input`` / ``unknown`` / ``checkpoint`` are the v1.1.10-measured
-        bodiless step_types and ``system_message`` is the v1.1.13-measured
-        addition (see ``tests/display/_fixtures/agy_wire_provenance.md``);
-        each yields a non-empty ``lifecycle`` event (mirroring
-        :meth:`_dispatch_init_event`'s pattern) so the frame is accounted
-        for instead of silently discarded. The rule is deliberately not an
-        enumeration: ANY bodiless ``step_update`` whose ``step_type`` is not
-        ``agent_response`` surfaces as a lifecycle event, so a future AGY
-        release adding step vocabulary degrades observably rather than
-        disappearing (AGY Transport Completion plan assumption).
-
-        A bodiless ``agent_response`` DONE frame's ``usage`` is never thrown
-        away either: when text is already buffered, a later flush is
-        guaranteed (the next tool update or the closing ``result`` frame), so
-        the usage is carried forward via ``_pending_text_usage``; otherwise no
-        flush is coming, so the usage surfaces directly as its own
-        ``lifecycle`` event.
-
-        The "never thrown away" guarantee also covers two bodiless
-        ``agent_response`` DONE frames arriving back-to-back before the next
-        flush: ``_pending_text_usage`` is a single scalar slot, so a naive
-        overwrite would silently drop the first frame's usage the moment a
-        second one lands while text is still buffered. When a value is
-        already pending, the incoming usage is merged into it (numeric
-        fields sum, since both describe tokens consumed by the same
-        in-flight turn) rather than replacing it.
-        """
         step_type = step.get("step_type")
         usage = step.get("usage")
         has_usage = isinstance(usage, dict) and bool(usage)
@@ -684,11 +354,6 @@ class AgyParser(NdjsonParserBase):
             metadata["usage"] = usage
         label = step_type if isinstance(step_type, str) and step_type else "update"
         if step_type != "agent_response":
-            # S-8: a ``system_message`` that DOES carry a text payload (the
-            # measured v1.1.13 frames are bodiless, but the step_type exists
-            # to carry operator-visible system text) is surfaced as a
-            # ``text`` event with the syntax-highlighter pass applied, not
-            # as the bodiless lifecycle summary below.
             if step_type == "system_message":
                 payload = _system_message_payload(step)
                 if payload is not None:
@@ -699,10 +364,6 @@ class AgyParser(NdjsonParserBase):
                 type="lifecycle", content=f"agy step {label}", raw=raw, metadata=metadata
             )
             return
-        # ``agent_response`` is the text step: its bodiless form is governed
-        # by the B4 usage-carry contract below, not the generic lifecycle
-        # rule above (a bodiless agent_response frame with no usage carries
-        # no observable content of its own).
         if not has_usage:
             return
         if self._text_accumulator is not None:
@@ -719,12 +380,6 @@ class AgyParser(NdjsonParserBase):
     def _accumulate_text_delta(
         self, text_delta: str, step: dict[str, object], raw: str
     ) -> Iterator[AgentOutputLine]:
-        """Accumulate one ``agent_response`` ``text_delta`` chunk (ACTIVE or DONE).
-
-        D8: a DONE frame's ``usage`` (token counts) is held pending and later
-        attached to the eventual flushed ``text`` event's metadata, since the
-        accumulator only flushes at a later structural boundary.
-        """
         normalized_delta = normalize_vt_text(text_delta)
         if not normalized_delta:
             return
@@ -745,7 +400,6 @@ class AgyParser(NdjsonParserBase):
         *,
         is_subagent: bool,
     ) -> str:
-        """Return the display label for one tool/subagent update (D2, D5)."""
         if is_subagent:
             for key in ("type_name", "role", "initial_prompt", "conversation_id", "log_uri"):
                 value = info.get(key)
@@ -767,30 +421,9 @@ class AgyParser(NdjsonParserBase):
         raw: str,
         id_is_synthesized: bool = False,
     ) -> Iterator[AgentOutputLine]:
-        """Map one normalized tool or subagent update tuple to an output event.
-
-        B5: a ``call_id`` synthesized from a raw ``step_index`` fallback (no
-        genuine ``tool_info.call_id`` / ``.id`` present) is written under
-        ``metadata["step_ordinal"]``, never ``metadata["tool_use_id"]`` --
-        writing a step-index ordinal under the ``tool_use_id`` key made
-        downstream renderers (:mod:`ralph.display.presented_entry`,
-        :mod:`ralph.display.agent_event_renderer`) print it as
-        ``call_id=N``, falsely implying an upstream-issued identifier.
-        """
         metadata: dict[str, object] = {"tool": tool_name, "tool_info": info}
         parameters = info.get("parameters")
         if isinstance(parameters, dict):
-            # Surface the tool's arguments under the canonical ``input``
-            # key every other transport uses. The pipeline's tool-result
-            # correlator (``activity_stream._retain_tool_result_target``)
-            # and the display's preview payload builder read
-            # ``metadata["input"]``; without it a recognized read/write
-            # tool's result never renders through the shared preview choke
-            # point, so the SUPPORTED display-capability stances declared
-            # for agy (``builtin.py``: "read/write tool names normalized
-            # by parser match payload_from_tool_event") could never be
-            # observed. Subagent entries carry no ``parameters`` mapping,
-            # so the envelope stays tool-only.
             metadata["input"] = parameters
         if call_id:
             if id_is_synthesized:
@@ -802,12 +435,6 @@ class AgyParser(NdjsonParserBase):
         )
 
         if step.get("state") == "DONE":
-            # AGY may emit only a terminal tool update (the live 1.1.14
-            # write_to_file trace did). The display preview is constructed
-            # from tool_use events, so synthesize that missing semantic event
-            # only when its correlation key was not already observed. This
-            # preserves normal ACTIVE/DONE pairs while making DONE-only,
-            # content-bearing writes observable through the shared renderer.
             if call_id is None or call_id not in self._emitted_tool_use_ids:
                 if call_id:
                     self._emitted_tool_use_ids.add(call_id)
@@ -831,5 +458,4 @@ class AgyParser(NdjsonParserBase):
         yield AgentOutputLine(type="tool_use", content=content_label, raw=raw, metadata=metadata)
 
     def flush_accumulators(self) -> Iterator[AgentOutputLine]:
-        """Drain the text accumulator and yield the buffered text event."""
         yield from self._flush_text()

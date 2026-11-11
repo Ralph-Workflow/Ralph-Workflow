@@ -1,14 +1,4 @@
 #!/usr/bin/env bash
-# explore_inotify_probe.sh
-#
-# Linux-only receipt for the explore-linux-inotify-probe control in
-# docs/ralph-workflow-policy/policy-portfolio.toml. Rerun this on a
-# Linux host whenever the explore watcher implementation changes,
-# capture the dated stdout/stderr, and attach the receipt to the
-# change. Default-suite coverage is intentionally absent; the
-# supported developer hosts are macOS and Windows where /proc is
-# unavailable, so the assertion belongs in a one-off platform
-# receipt, not in the 60s budget.
 
 set -euo pipefail
 

@@ -1,5 +1,3 @@
-"""Killing a tree that contains git must give git time to drop its lock files."""
-
 from __future__ import annotations
 
 import os
@@ -22,8 +20,6 @@ pytestmark = [
     pytest.mark.timeout_seconds(30),
 ]
 
-#: A stand-in git: takes the lock, and on SIGTERM needs half a second to clean up
-#: before releasing it -- exactly the window a zero-grace SIGKILL steals.
 _FAKE_GIT = textwrap.dedent(
     """\
     #!{python}
@@ -111,7 +107,6 @@ _STUBBORN_GIT = textwrap.dedent(
 def test_shutdown_all_gives_several_stuck_gits_one_shared_window(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """N trees that ignore SIGTERM cost one cleanup window in total, not N."""
     import ralph.process.manager._git_termination as git_termination
     import ralph.process.manager._process_manager as process_manager
 
@@ -132,7 +127,6 @@ def test_shutdown_all_gives_several_stuck_gits_one_shared_window(
     started = time.monotonic()
     manager.shutdown_all(grace_period_s=0.0)
 
-    # Sequentially this is 4 windows (>= 4s); together it is one plus slack.
     assert time.monotonic() - started < 3 * window_s
 
 

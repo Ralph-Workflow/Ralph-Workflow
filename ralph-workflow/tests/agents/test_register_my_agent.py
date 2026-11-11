@@ -1,11 +1,3 @@
-"""Tests for the public ``register_my_agent`` opinionated helper.
-
-``register_my_agent`` is the 5-line recipe for adding a new agent.  When
-``strategy`` is omitted, the helper picks a transport-derived default so
-an interactive caller can never accidentally register an interactive
-agent with :class:`BaseExecutionStrategy`.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -38,8 +30,6 @@ from ralph.config.enums import AgentTransport, JsonParserType
 
 
 class _FakeParser(ParserTemplateBase):
-    """Trivial parser for tests; yields one raw line per input line."""
-
     _STOP_EVENT_TYPES = frozenset()
 
     def classify_line(self, line: str) -> Iterator[AgentOutputLine]:
@@ -52,15 +42,7 @@ class _FakeParser(ParserTemplateBase):
 
 
 class TestRegisterMyAgent:
-    """Pin the public ``register_my_agent`` contract."""
-
     def test_minimum_recipe_uses_5_kwargs(self) -> None:
-        """The minimum recipe is name + transport + parser + agent_registry (no strategy).
-
-        The helper picks the transport-derived default strategy so the
-        caller does not have to know which strategy class goes with which
-        transport.  This pins the documented 5-line recipe.
-        """
         registry = AgentRegistry()
         config = register_my_agent(
             name="my-headless",
@@ -71,15 +53,9 @@ class TestRegisterMyAgent:
         support = registry.catalog.get("my-headless")
         assert support is not None
         assert config.cmd == "my-headless"
-        # The transport-derived default is GenericExecutionStrategy.
         assert support.strategy_factory is GenericExecutionStrategy
 
     def test_strategy_default_for_claude_interactive_is_not_base(self) -> None:
-        """``register_my_agent(..., transport=CLAUDE_INTERACTIVE, interactive=True)``
-        without an explicit strategy MUST default to
-        :class:`ClaudeInteractiveExecutionStrategy`, not
-        :class:`BaseExecutionStrategy`.
-        """
         registry = AgentRegistry()
         register_my_agent(
             name="ci",
@@ -90,9 +66,7 @@ class TestRegisterMyAgent:
         )
         support = registry.catalog.get("ci")
         assert support is not None
-        # The transport-derived default MUST NOT be BaseExecutionStrategy.
         assert support.strategy_factory is not BaseExecutionStrategy
-        # The transport-derived default IS ClaudeInteractiveExecutionStrategy.
         assert support.strategy_factory is ClaudeInteractiveExecutionStrategy
         strategy = registry.catalog.get_strategy(AgentTransport.CLAUDE_INTERACTIVE, command="ci")
         assert isinstance(strategy, ClaudeInteractiveExecutionStrategy)
@@ -101,7 +75,6 @@ class TestRegisterMyAgent:
         )
 
     def test_agy_transport_defaults_to_make_agy_strategy(self) -> None:
-        """The AGY transport's default strategy is the agy strategy factory."""
         registry = AgentRegistry()
         register_my_agent(
             name="agy-test",
@@ -113,7 +86,6 @@ class TestRegisterMyAgent:
         )
         support = registry.catalog.get("agy-test")
         assert support is not None
-        # The support's strategy_factory must be the agy factory.
         assert support.strategy_factory is _make_agy_strategy
 
     def test_opencode_transport_defaults_to_opencode_strategy(self) -> None:
@@ -165,7 +137,6 @@ class TestRegisterMyAgent:
         assert support.strategy_factory is GenericExecutionStrategy
 
     def test_cmd_defaults_to_name(self) -> None:
-        """When ``cmd`` is not given, it defaults to ``name``."""
         registry = AgentRegistry()
         register_my_agent(
             name="my-cmd",
@@ -178,7 +149,6 @@ class TestRegisterMyAgent:
         assert support.config.cmd == "my-cmd"
 
     def test_explicit_strategy_overrides_transport_default(self) -> None:
-        """An explicit ``strategy=`` argument must win over the transport default."""
         registry = AgentRegistry()
 
         class _MyCustom(BaseExecutionStrategy):
@@ -197,7 +167,6 @@ class TestRegisterMyAgent:
         assert support.strategy_factory is _MyCustom
 
     def test_interactive_agent_gets_default_session_flag(self) -> None:
-        """Interactive agent without no_default_session_flag gets ``--resume {}``."""
         registry = AgentRegistry()
         register_my_agent(
             name="ic-with-session",
@@ -211,7 +180,6 @@ class TestRegisterMyAgent:
         assert support.config.session_flag == "--resume {}"
 
     def test_no_default_session_flag_suppresses_session_flag(self) -> None:
-        """When ``no_default_session_flag=True``, session_flag is None."""
         registry = AgentRegistry()
         register_my_agent(
             name="no-session",
@@ -227,7 +195,6 @@ class TestRegisterMyAgent:
         assert support.no_default_session_flag is True
 
     def test_interactive_transports_get_requires_pty(self) -> None:
-        """Every interactive transport's spec.requires_pty must be True."""
         for transport in (
             AgentTransport.CLAUDE_INTERACTIVE,
             AgentTransport.AGY,
@@ -247,7 +214,6 @@ class TestRegisterMyAgent:
             )
 
     def test_json_parser_default(self) -> None:
-        """The default json_parser kwarg is JsonParserType.GENERIC."""
         registry = AgentRegistry()
         register_my_agent(
             name="default-json",
@@ -261,16 +227,7 @@ class TestRegisterMyAgent:
 
 
 class TestStaticDispatchTableCoversEveryTransport:
-    """Audit-style coverage guard for the static dispatch table.
-
-    Fails if a new :class:`AgentTransport` is added without a matching
-    entry in ``AgentCatalog._DEFAULT_STRATEGIES`` (the single source
-    of truth for ``register_my_agent``'s transport-derived defaults
-    after the wt-016 consolidation refactor).
-    """
-
     def test_default_strategy_table_covers_every_transport(self) -> None:
-        """``AgentCatalog._DEFAULT_STRATEGIES`` must include every AgentTransport value."""
         default_strategies = default_catalog()._DEFAULT_STRATEGIES
         assert set(default_strategies) == set(AgentTransport), (
             f"Default strategy table missing transport(s). "
@@ -278,7 +235,6 @@ class TestStaticDispatchTableCoversEveryTransport:
         )
 
     def test_default_strategies_factories_are_callable(self) -> None:
-        """Every value in ``AgentCatalog._DEFAULT_STRATEGIES`` must be callable."""
         default_strategies = default_catalog()._DEFAULT_STRATEGIES
         for transport, factory in default_strategies.items():
             assert callable(factory), (
@@ -287,15 +243,7 @@ class TestStaticDispatchTableCoversEveryTransport:
 
 
 class TestPublicSurfaceDiscoverability:
-    """The opinionated ``register_my_agent`` recipe is the 90% case and
-    must be the FIRST registration symbol a reader of ``ralph.agents``
-    sees (AC-04).  These tests pin both ``__all__`` order and the
-    module docstring so the discoverability claim does not silently
-    regress.
-    """
-
     def test_register_my_agent_in_ralph_agents_all(self) -> None:
-        """``register_my_agent`` must be a public symbol of ``ralph.agents``."""
         assert "register_my_agent" in ralph.agents.__all__, (
             "ralph.agents.__all__ must include register_my_agent"
         )
@@ -304,10 +252,6 @@ class TestPublicSurfaceDiscoverability:
         )
 
     def test_register_my_agent_listed_before_register_agent_support(self) -> None:
-        """``register_my_agent`` must appear BEFORE ``register_agent_support``
-        in ``ralph.agents.__all__`` so the 90% recipe is the first
-        registration symbol a reader sees.
-        """
         all_list = ralph.agents.__all__
         assert all_list.index("register_my_agent") < all_list.index("register_agent_support"), (
             f"ralph.agents.__all__ must list register_my_agent BEFORE register_agent_support; "
@@ -315,17 +259,11 @@ class TestPublicSurfaceDiscoverability:
         )
 
     def test_ralph_agents_docstring_mentions_register_my_agent(self) -> None:
-        """``ralph.agents.__doc__`` must mention ``register_my_agent`` so
-        pydoc / help() users see the 90% recipe.
-        """
         doc = ralph.agents.__doc__ or ""
         assert "register_my_agent" in doc, (
             "ralph.agents.__doc__ must mention register_my_agent as the 90% recipe"
         )
 
     def test_ralph_agents_package_root_imports_still_work(self) -> None:
-        """Both ``register_my_agent`` and ``register_agent_support`` must
-        remain importable from the package root.
-        """
         assert callable(register_my_agent)
         assert callable(register_agent_support)

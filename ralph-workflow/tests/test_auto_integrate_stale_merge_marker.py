@@ -1,13 +1,3 @@
-"""Regression coverage: a stale merge marker must not disable integration.
-
-Git's ``ort`` merge strategy writes ``AUTO_MERGE`` into the worktree's
-private git dir whenever a merge stops on conflicts, and neither
-``merge --abort`` nor the follow-up merge commit removes it. The rebase
-preconditions used to reject any git-dir entry whose name contained
-``MERGE``, so the FIRST conflicted merge permanently disabled
-auto-integration for that worktree.
-"""
-
 from __future__ import annotations
 
 import subprocess
@@ -28,7 +18,6 @@ pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
 
 
 def auto_integrate_after_commit(*args: Any, **kwargs: Any) -> Any:
-    """Test-only wrapper that skips real CAS backoff sleeps."""
     kwargs.setdefault("sleep", lambda _seconds: None)
     kwargs.setdefault("jitter", lambda: 0.0)
     return _auto_integrate_after_commit(*args, **kwargs)
@@ -68,7 +57,7 @@ def _commit(repo_root: Path, filename: str, content: str, message: str) -> str:
     try:
         repo.index.add([filename])
         commit = repo.index.commit(message)
-        assert commit.hexsha  # RALPH-TEST-REASON: GitPython commit replaces subprocess git add/commit to reduce CPU overhead
+        assert commit.hexsha
         return commit.hexsha
     finally:
         repo.close()
@@ -85,12 +74,6 @@ def _add_worktree(repo_root: Path, path: Path, branch: str) -> None:
 
 
 def _private_git_dir(worktree: Path) -> Path:
-    """Resolve a linked worktree's private git dir.
-
-    The ``.git`` entry of a linked worktree is a FILE holding
-    ``gitdir: <path>``; that path is where git's ``ort`` strategy
-    writes ``AUTO_MERGE``.
-    """
     pointer = worktree / ".git"
     raw = pointer.read_text(encoding="utf-8").split(":", 1)[1].strip()
     return Path(raw)
@@ -99,7 +82,6 @@ def _private_git_dir(worktree: Path) -> Path:
 def test_stale_auto_merge_marker_does_not_block_integration(
     tmp_git_repo: Path,
 ) -> None:
-    """AC-01: a leftover ``AUTO_MERGE`` must not skip the integration."""
     main = _base_branch(tmp_git_repo)
     feature = tmp_git_repo.parent / "feature-stale-marker"
     _add_worktree(tmp_git_repo, feature, "feature-stale-marker")
@@ -125,7 +107,6 @@ def test_stale_auto_merge_marker_does_not_block_integration(
 def test_synthetic_clean_merge_head_is_reclaimed_and_lands(
     tmp_git_repo: Path,
 ) -> None:
-    """A5: a synthetic MERGE_HEAD on a clean tree is reclaimed and lands."""
     main = _base_branch(tmp_git_repo)
     feature = tmp_git_repo.parent / "feature-real-merge"
     _add_worktree(tmp_git_repo, feature, "feature-real-merge")
@@ -147,7 +128,6 @@ def test_synthetic_clean_merge_head_is_reclaimed_and_lands(
 
 
 def test_real_dirty_merge_conflict_is_protected_and_skipped(tmp_git_repo: Path) -> None:
-    """A5: a real dirty merge conflict remains operator-owned."""
     main = _base_branch(tmp_git_repo)
     _commit(tmp_git_repo, "shared.txt", "seed\n", "seed")
     feature = tmp_git_repo.parent / "feature-real-merge"

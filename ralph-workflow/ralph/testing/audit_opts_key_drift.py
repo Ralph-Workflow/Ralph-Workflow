@@ -1,59 +1,3 @@
-"""Silently-dropped ``**opts`` key audit.
-
-The complement to :mod:`ralph.testing.audit_kwargs_forwarding`. An untyped
-``**opts`` seam has two failure modes, and they are opposites:
-
-  * a key passed twice -- once explicitly, once through a forward -- raises
-    ``TypeError: got multiple values for keyword argument`` at call time. That
-    is the loud half, and ``audit_kwargs_forwarding`` bans it.
-
-  * a key passed under a name the callee never reads is silently discarded.
-    Nothing raises, nothing logs; the feature the key carried just never
-    happens. That is the quiet half, and this audit bans it.
-
-``ralph/pipeline/runner.py::_run_fan_out_phase`` passed ``monitor_stop_cb``
-into ``execute_fan_out_sync``, whose callee reads ``_monitor_stop_cb`` out of
-``opts``. The callback vanished, so the fan-out's ``SignalBridge`` never had
-``_connectivity_stop`` wired and interrupting a parallel phase left the
-connectivity probe running. Nothing failed, so nothing caught it: the only
-test that drove the seam stubbed it with ``def _fan_out(**kwargs)``, which
-absorbs any spelling at all.
-
-How a call is judged
---------------------
-For every call whose target resolves to a ``ralph`` function declaring a
-catch-all, the audit computes the set of names that call can actually reach:
-
-  * the callee's own named parameters, and
-  * the literal string keys read out of the catch-all -- ``opts["k"]``,
-    ``opts.get("k")``, ``opts.pop("k")``, ``"k" in opts`` -- followed
-    transitively through ``**`` re-forwards and through the dict being handed
-    to a helper as an ordinary argument.
-
-A keyword the caller passes that is in neither set is dead on arrival.
-
-Fail-quiet on opacity, not fail-loud
-------------------------------------
-When a callee does anything the audit cannot follow -- a non-literal key, a
-``update``/``keys``/``items`` call, a rebind of the dict, a forward into a
-target that cannot be resolved -- that callee is marked dynamic and every call
-to it is skipped rather than reported. A gate that cries wolf gets deleted, so
-this one only speaks when it can prove the key is unreachable.
-
-Resolution is pure AST across the parsed tree: ``from x import f``,
-``from x import f as g`` and ``import x.y as m`` / ``m.f`` are followed by
-reading each module's own import statements. Nothing is imported, executed, or
-read outside the source files themselves.
-
-Usage:
-    python -m ralph.testing.audit_opts_key_drift [root1 root2 ...]
-
-Exit codes:
-  0 = clean.
-  1 = violations found.
-  2 = a named root does not exist.
-"""
-
 from __future__ import annotations
 
 import ast
@@ -65,19 +9,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 _POOL_WORKER_CAP = 1
-#: Spawned, never forked: a forked child of a pytest/xdist worker inherits its
-#: sqlite handles, and finalizing one calls os_log, which is not fork-safe on
-#: macOS -- the pool worker dies with SIGSEGV (``BrokenProcessPool``).
 _POOL_CONTEXT = multiprocessing.get_context("spawn")
 _PARALLEL_PAYLOAD_THRESHOLD = 32
 _PARALLEL_CHUNK_SIZE = 128
 
 DEFAULT_ROOTS: tuple[str, ...] = ("ralph",)
 
-#: Catch-all reads whose key is a literal string are followed; any other use of
-#: the dict marks the callee dynamic.
 _LITERAL_READS = frozenset({"get", "pop", "setdefault"})
-#: Whole-dict operations that make the consumed key set unknowable.
 _OPAQUE_READS = frozenset({"update", "keys", "items", "values"})
 
 _FuncNode = ast.FunctionDef | ast.AsyncFunctionDef
@@ -86,8 +24,6 @@ _FUNC_NODES: tuple[type[ast.AST], ...] = (ast.FunctionDef, ast.AsyncFunctionDef)
 
 @dataclass(frozen=True)
 class Violation:
-    """One keyword that cannot reach anything in the callee."""
-
     path: str
     lineno: int
     callee: str
@@ -103,16 +39,10 @@ class Violation:
 
 @dataclass
 class _Module:
-    """One parsed module: its functions, call sites, and import bindings."""
-
     name: str
     functions: dict[str, _FuncNode] = field(default_factory=dict)
-    #: Call nodes carrying at least one keyword, collected during indexing so
-    #: the audit pass never re-walks the module tree.
     keyword_calls: list[ast.Call] = field(default_factory=list)
-    #: local name -> (module, attribute) for ``from x import f [as g]``
     from_imports: dict[str, tuple[str, str]] = field(default_factory=dict)
-    #: local name -> module for ``import x.y as m`` / ``import x``
     module_aliases: dict[str, str] = field(default_factory=dict)
 
 
@@ -149,7 +79,6 @@ def _lookup(
     module_name: str | None,
     attribute: str,
 ) -> tuple[_Module, _FuncNode] | None:
-    """Return the named function in the named module, when both are indexed."""
     target = index.get(module_name) if module_name is not None else None
     if target is None:
         return None
@@ -162,7 +91,6 @@ def _resolve_name(
     name: str,
     index: dict[str, _Module],
 ) -> tuple[_Module, _FuncNode] | None:
-    """Resolve a bare name to a local def or a ``from x import f`` target."""
     local = module.functions.get(name)
     if local is not None:
         return module, local
@@ -178,7 +106,6 @@ def _resolve_attribute(
     attribute: str,
     index: dict[str, _Module],
 ) -> tuple[_Module, _FuncNode] | None:
-    """Resolve ``m.f`` where ``m`` is an imported module or module alias."""
     module_name = module.module_aliases.get(value.id)
     if module_name is None:
         imported = module.from_imports.get(value.id)
@@ -191,7 +118,6 @@ def _resolve_call_target(
     func: ast.expr,
     index: dict[str, _Module],
 ) -> tuple[_Module, _FuncNode] | None:
-    """Resolve a call's target to a (module, function) pair, or None."""
     if isinstance(func, ast.Name):
         return _resolve_name(module, func.id, index)
     if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
@@ -205,7 +131,6 @@ def _named_parameters(fn: _FuncNode) -> set[str]:
 
 
 def _direct_reads(fn: _FuncNode, variable: str) -> tuple[set[str], bool]:
-    """Return literal keys read from ``variable``, and whether any read is opaque."""
     keys: set[str] = set()
     dynamic = False
     for node in ast.walk(fn):
@@ -253,11 +178,6 @@ def _reachable_names(
     index: dict[str, _Module],
     seen: set[tuple[str, str, str]],
 ) -> tuple[set[str], bool]:
-    """Return every name ``variable`` can reach in ``fn``, transitively.
-
-    The second element is True when the analysis hit something it could not
-    follow, in which case callers must not report anything.
-    """
     marker = (module.name, fn.name, variable)
     if marker in seen:
         return set(), False
@@ -307,7 +227,6 @@ def _reachable_names(
 
 
 def audit_index(index: dict[str, _Module]) -> list[Violation]:
-    """Return every keyword that cannot reach anything in its resolved callee."""
     reachable: dict[tuple[str, str], tuple[set[str], bool] | None] = {}
 
     def _for(callee_module: _Module, callee: _FuncNode) -> tuple[set[str], bool] | None:
@@ -353,7 +272,6 @@ def _parse_module_payload(payload: tuple[str, str]) -> tuple[str, _Module]:
     path_str, root_str = payload
     path = Path(path_str)
     package_root = Path(root_str)
-    # filesystem-read-ok: audit scanner loads module source for static AST inspection
     source_bytes = path.read_bytes()
     name = _module_name(path, package_root)
     if b"def " not in source_bytes and b"=" not in source_bytes and b"import" not in source_bytes:
@@ -366,12 +284,6 @@ def _parse_module_payload(payload: tuple[str, str]) -> tuple[str, _Module]:
 
 
 def build_index(package_root: Path, roots: tuple[str, ...] = DEFAULT_ROOTS) -> dict[str, _Module]:
-    """Parse and index every module under ``roots``.
-
-    Raises:
-        FileNotFoundError: when a named root is not a directory. Silently
-            skipping it would report a vacuous clean run.
-    """
     payloads: list[tuple[str, str]] = []
     root_str = str(package_root)
     for root in roots:
@@ -392,13 +304,11 @@ def audit_tree(
     package_root: Path,
     roots: tuple[str, ...] = DEFAULT_ROOTS,
 ) -> tuple[list[Violation], int]:
-    """Return violations under ``package_root`` and the number of modules indexed."""
     index = build_index(package_root, roots)
     return audit_index(index), len(index)
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the audit over the repository and report violations."""
     args = list(sys.argv[1:] if argv is None else argv)
     package_root = Path.cwd()
     roots = tuple(args) if args else DEFAULT_ROOTS

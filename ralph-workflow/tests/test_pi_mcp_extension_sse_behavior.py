@@ -1,13 +1,3 @@
-"""Behavioral subprocess test for the generated Pi MCP extension SSE client.
-
-This is marked subprocess_e2e because the only faithful way to execute the
-TypeScript extension that Pi loads is to run a JS/TS runtime. The test uses a
-fully mocked ``fetch`` and mocked Pi ``registerTool`` surface: no network, no
-real Ralph server, no sleeps. It proves the regression class behind the live
-300s ``terminated`` loop cannot return: an open SSE stream that does not EOF
-must still resolve as soon as the matching JSON-RPC response frame arrives.
-"""
-
 from __future__ import annotations
 
 import json
@@ -19,7 +9,6 @@ import pytest
 
 from ralph.mcp.transport.pi import write_pi_mcp_extension
 
-# ponytail: Bun cold starts contend with the parallel verification shards; 10s keeps this real-runtime regression deterministic without changing the 60s suite budget.
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 
 

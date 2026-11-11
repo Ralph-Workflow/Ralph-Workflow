@@ -1,11 +1,3 @@
-"""Recipe test: prove swapping a custom CommandBuilder/RuntimeResolver works.
-
-This test demonstrates that the 'one file per layer + one dict entry' property
-holds for existing AgentTransport values. It uses pytest's monkeypatch.setitem to
-register custom CommandBuilder and RuntimeResolver subclasses for AgentTransport.GENERIC
-(no enum change, no private helper, no new module-level state).
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -26,8 +18,6 @@ if TYPE_CHECKING:
 
 
 class _RecipeCommandBuilder(CommandBuilder):
-    """Minimal CommandBuilder subclass for testing the swapping recipe."""
-
     def build(
         self,
         config: AgentConfig,
@@ -39,8 +29,6 @@ class _RecipeCommandBuilder(CommandBuilder):
 
 
 class _RecipeRuntimeResolver(RuntimeResolver):
-    """Minimal RuntimeResolver subclass for testing the swapping recipe."""
-
     def resolve(
         self,
         config: AgentConfig,
@@ -59,14 +47,11 @@ class _RecipeRuntimeResolver(RuntimeResolver):
 
 
 class TestInvokeDispatchRecipe:
-    """Test that swapping a custom CommandBuilder/RuntimeResolver works."""
-
     def test_swap_command_builder_via_monkeypatch(
         self,
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """Assert custom CommandBuilder is used when registered in COMMAND_BUILDERS."""
         original_builder = COMMAND_BUILDERS[AgentTransport.GENERIC]
 
         try:
@@ -96,7 +81,6 @@ class TestInvokeDispatchRecipe:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """Assert custom RuntimeResolver is used when registered in RUNTIME_RESOLVERS."""
 
         original_resolver = RUNTIME_RESOLVERS[AgentTransport.GENERIC]
 
@@ -128,7 +112,6 @@ class TestInvokeDispatchRecipe:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """Assert COMMAND_BUILDERS[AgentTransport.GENERIC] is restored after test."""
 
         original_builder = COMMAND_BUILDERS[AgentTransport.GENERIC]
         original_resolver = RUNTIME_RESOLVERS[AgentTransport.GENERIC]

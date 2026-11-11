@@ -1,5 +1,3 @@
-"""Tests for ralph/mcp/artifacts/commit_message.py — markdown commit artifact helpers."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -44,7 +42,6 @@ reason: No relevant diff
 
 
 def test_commit_message_artifact_is_the_markdown_submission_path() -> None:
-    """The commit phase must look where markdown submission writes the artifact."""
     assert COMMIT_MESSAGE_ARTIFACT == ".agent/artifacts/commit_message.md"
 
 
@@ -135,7 +132,6 @@ def test_normalize_commit_message_content_rejects_non_conventional_subject() -> 
     ],
 )
 def test_rejected_subject_names_its_exact_cause(subject: str, expected_cause: str) -> None:
-    """One generic rejection for every cause makes weak agents guess; name the cause."""
     with pytest.raises(ValueError) as excinfo:
         normalize_commit_message_content({"type": "commit", "subject": subject})
 
@@ -179,9 +175,6 @@ def test_normalize_commit_message_content_rejects_invalid_excluded_files_payload
 
 
 def test_render_commit_message_content_drops_a_nul_from_the_body() -> None:
-    """Git writes a NUL straight into the commit object: ``git log`` then
-    truncates the message at that byte and ``git fsck`` reports nulInCommit
-    forever, so the message must never carry one."""
     rendered = render_commit_message_content(
         {
             "type": "commit",
@@ -206,7 +199,6 @@ def test_render_commit_message_content_leaves_a_clean_body_untouched() -> None:
 
 
 def test_render_commit_message_content_drops_a_nul_from_the_subject() -> None:
-    """The subject is prose too, and it is the line every git reader shows."""
     rendered = render_commit_message_content(
         {"type": "commit", "subject": "fix(auth): prevent a token\x00 race"}
     )
@@ -215,8 +207,6 @@ def test_render_commit_message_content_drops_a_nul_from_the_subject() -> None:
 
 
 def test_normalize_commit_message_content_rejects_a_nul_in_a_path_field() -> None:
-    """A path is not prose: stripping ``src/se<NUL>cret.env`` would silently
-    name ``src/secret.env`` — a different, real file — and exclude the wrong one."""
     for payload in (
         {"type": "commit", "subject": "fix(auth): scope the commit", "files": ["src/au\x00th.py"]},
         {

@@ -1,23 +1,3 @@
-"""Pins E4.3, E4.4, E4.5 (REAL CHILD scenarios) and E5.1 (PID-reuse PIN).
-
-This file REPLACES the previous vacuous E4.3-E4.5 versions with REAL
-synchronized scenarios. Each scenario spawns a real subprocess per child
-(each is its own session leader = own process group) and asserts the full
-set of invariants:
-
-  * candidate / old / draining PIDs all dead (``os.kill(pid, 0)`` raises
-    :class:`ProcessLookupError`).
-  * The bridge's parent-owned listening socket FD is closed exactly once.
-  * No supervisor / preflight / drain threads remain
-    (:func:`threading.enumerate` before / after snapshot equality).
-
-WU-3 scope: this file is the SOLE writer of these tests. Production files
-are out of scope. If a real scenario surfaces a production bug, the test
-fails loudly with the strict invariant rather than weakening the
-assertion; ``path:line`` and a minimal repro are recorded in the report
-for the coordinator to dispatch an owning unit.
-"""
-
 from __future__ import annotations
 
 import contextlib
@@ -44,11 +24,6 @@ if TYPE_CHECKING:
     from ralph.process.manager._managed_process import ManagedProcess
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
-
-
-# ---------------------------------------------------------------------------
-# Shared helpers
-# ---------------------------------------------------------------------------
 
 
 def _reserve_listening_socket() -> tuple[socket.socket, int]:
@@ -128,13 +103,7 @@ def _assert_no_leaks(
         raise AssertionError(f"Leaked threads: {names}")
 
 
-# ---------------------------------------------------------------------------
-# E4.5 (signal order) — pins SIGTERM -> grace -> SIGKILL escalation
-# ---------------------------------------------------------------------------
-
-
 def test_e45_real_child_signal_order_sigterm_then_sigkill(tmp_path: Path) -> None:
-    """E4.5: Process escalation sends SIGTERM first; when child ignores it, escalates to SIGKILL."""
     log_file = tmp_path / "signals.log"
     ready_file = tmp_path / "child.ready"
 
@@ -192,20 +161,7 @@ def test_e45_real_child_signal_order_sigterm_then_sigkill(tmp_path: Path) -> Non
         _reap_managed(managed_proc)
 
 
-# ---------------------------------------------------------------------------
-# E4.3: supervisor exit mid-replacement (REAL)
-# ---------------------------------------------------------------------------
-
-
 class _BlockingVerifyBridge(lifecycle.RestartAwareMcpBridge):
-    """RestartAwareMcpBridge with a controllable verify seam.
-
-    ``_verify_candidate`` signals that the candidate is in flight, then
-    blocks until the test releases ``verify_release``. Returning
-    ``False`` exercises the verify-fail path: the candidate is reaped
-    locally and the bridge keeps the old child.
-    """
-
     def __init__(
         self,
         inner: StandaloneMcpProcess,
@@ -236,21 +192,6 @@ class _BlockingVerifyBridge(lifecycle.RestartAwareMcpBridge):
 
 
 def test_e43_supervisor_exit_mid_replacement_reaps_candidate_and_old(tmp_path: Path) -> None:
-    """E4.3: McpSupervisor.__exit__() during a replacement's verify phase reaps candidate + old.
-
-    Scenario:
-      * Two real children: ``old_proc`` (the bridge's current ``_inner``)
-        and ``cand_proc`` (returned by ``restart_fn``). Both are own-
-        session leaders, sleeping.
-      * ``_verify_candidate`` is a controlled blocker; the candidate enters
-        verify, the test signals "in flight", then calls ``supervisor.__exit__``
-        from a second thread.
-      * ``supervisor.__exit__`` invokes bridge shutdown and blocks on the lock
-        until ``_perform_restart`` releases it. After verify returns ``False``,
-        the candidate is reaped locally, the lock is released, shutdown reaps the old ``_inner``.
-      * Invariants asserted: both PIDs dead, listening socket FD closed
-        exactly once, no leaked threads.
-    """
     sock, _port = _reserve_listening_socket()
     old_proc = _spawn_long_sleeper(tmp_path, label="e43-old")
     cand_proc = _spawn_long_sleeper(tmp_path, label="e43-cand")
@@ -280,7 +221,6 @@ def test_e43_supervisor_exit_mid_replacement_reaps_candidate_and_old(tmp_path: P
         supervisor = McpSupervisor(bridge, shutdown_bridge=True)
         supervisor.__enter__()
 
-        # 1. Launch _perform_restart in a thread. Verify blocks on event.
         def _do_restart() -> None:
             with contextlib.suppress(Exception):
                 bridge._perform_restart(process_exited=False, probe_duration_s=0.1)
@@ -288,21 +228,15 @@ def test_e43_supervisor_exit_mid_replacement_reaps_candidate_and_old(tmp_path: P
         restart_thread = threading.Thread(target=_do_restart)
         restart_thread.start()
 
-        # 2. Wait for verify to start (candidate is in flight).
         assert verify_started.wait(timeout=2.0), "Candidate verify did not start"
         assert _pid_alive(cand_pid), "Candidate died before in-flight window"
 
-        # 3. Concurrent McpSupervisor.__exit__ from another thread. It blocks on the
-        #    lock until _perform_restart releases it.
         def _do_supervisor_exit() -> None:
             supervisor.__exit__(None, None, None)
 
         exit_thread = threading.Thread(target=_do_supervisor_exit)
         exit_thread.start()
 
-        # 4. Release verify. Verify fails, candidate is reaped locally,
-        #    _perform_restart returns, lock released, supervisor.__exit__ proceeds
-        #    and reaps the old _inner.
         verify_release.set()
 
         restart_thread.join(timeout=2.0)
@@ -327,13 +261,7 @@ def test_e43_supervisor_exit_mid_replacement_reaps_candidate_and_old(tmp_path: P
             sock.close()
 
 
-# ---------------------------------------------------------------------------
-# E4.4: bridge shutdown mid-replacement (REAL)
-# ---------------------------------------------------------------------------
-
-
 def test_e44_bridge_shutdown_mid_replacement_reaps_candidate_and_old(tmp_path: Path) -> None:
-    """E4.4 part 1: bridge.shutdown() called after verify-fail reap reaps both old and candidate."""
     sock, _port = _reserve_listening_socket()
     old_proc = _spawn_long_sleeper(tmp_path, label="e44-replace-old")
     cand_proc = _spawn_long_sleeper(tmp_path, label="e44-replace-cand")
@@ -360,7 +288,6 @@ def test_e44_bridge_shutdown_mid_replacement_reaps_candidate_and_old(tmp_path: P
         )
         bridge._listening_socket = sock
 
-        # 1. Launch _perform_restart. Verify blocks.
         def _do_restart() -> None:
             with contextlib.suppress(Exception):
                 bridge._perform_restart(process_exited=False, probe_duration_s=0.1)
@@ -371,10 +298,8 @@ def test_e44_bridge_shutdown_mid_replacement_reaps_candidate_and_old(tmp_path: P
         assert verify_started.wait(timeout=2.0), "Verify did not start"
         assert _pid_alive(cand_pid), "Candidate died before in-flight window"
 
-        # 2. Shutdown the bridge WHILE replacement is actively in flight!
         bridge.shutdown()
 
-        # 3. Release verify so restart thread unblocks.
         verify_release.set()
         restart_thread.join(timeout=2.0)
         assert not restart_thread.is_alive(), "Restart thread did not finish"
@@ -389,7 +314,6 @@ def test_e44_bridge_shutdown_mid_replacement_reaps_candidate_and_old(tmp_path: P
             threads_before=threads_before,
         )
 
-        # 4. Idempotency: a second shutdown is a safe no-op.
         bridge.shutdown()
 
     finally:
@@ -399,19 +323,7 @@ def test_e44_bridge_shutdown_mid_replacement_reaps_candidate_and_old(tmp_path: P
             sock.close()
 
 
-# ---------------------------------------------------------------------------
-# E4.4: bridge shutdown mid-drain (REAL)
-# ---------------------------------------------------------------------------
-
-
 def test_e44_bridge_shutdown_mid_drain_reaps_old_and_candidate(tmp_path: Path) -> None:
-    """E4.4 part 2: bridge.shutdown() while old is being drained reaps both.
-
-    ``_draining_inners`` is populated manually (the production 2.0s drain
-    deadline is skipped via ``sleep_fn=lambda s: None`` so the drain
-    worker is a no-op). The test verifies shutdown's behavior on the
-    draining inner AND the new ``_inner``.
-    """
     sock, _port = _reserve_listening_socket()
     old_proc = _spawn_long_sleeper(tmp_path, label="e44-drain-old")
     cand_proc = _spawn_long_sleeper(tmp_path, label="e44-drain-cand")
@@ -424,7 +336,6 @@ def test_e44_bridge_shutdown_mid_drain_reaps_old_and_candidate(tmp_path: Path) -
         old_inner = _make_inner(old_proc, _make_session_file(tmp_path, "e44-drain-old"))
         cand_inner = _make_inner(cand_proc, _make_session_file(tmp_path, "e44-drain-cand"))
 
-        # Post-promote state: candidate is _inner, old is draining.
         bridge = lifecycle.RestartAwareMcpBridge(
             cand_inner,
             restart_fn=lambda: cand_inner,
@@ -433,11 +344,9 @@ def test_e44_bridge_shutdown_mid_drain_reaps_old_and_candidate(tmp_path: Path) -
             workspace_root=tmp_path,
         )
         bridge._listening_socket = sock
-        # Start real background drain worker on old_inner:
         bridge._drain_old(old_inner)
         assert len(bridge._draining_inners) == 1, "old_inner not in draining list"
 
-        # Shutdown while drain worker is active in background:
         bridge.shutdown()
 
         assert cand_proc.poll() is not None, "Candidate (_inner) was not reaped"
@@ -450,7 +359,6 @@ def test_e44_bridge_shutdown_mid_drain_reaps_old_and_candidate(tmp_path: Path) -
             threads_before=threads_before,
         )
 
-        # Idempotency: a second shutdown is a safe no-op.
         bridge.shutdown()
 
     finally:
@@ -460,59 +368,8 @@ def test_e44_bridge_shutdown_mid_drain_reaps_old_and_candidate(tmp_path: Path) -
             sock.close()
 
 
-# ---------------------------------------------------------------------------
-# E4.5: SIGINT during handover (REAL)
-# ---------------------------------------------------------------------------
-
-
-# Real-child test: two genuine ``python -c time.sleep`` children are spawned,
-# signalled and reaped, so the wall time is dominated by OS process lifecycle
-# (fork/exec, psutil termination waves, SIGTERM grace, waitpid). Every wait
-# in the path is bounded, but each syscall stretches when the shared host is
-# heavily loaded (observed: >30s under a ~52-load make verify with thousands
-# of concurrent processes enlarging every psutil scan). The 60s per-test
-# budget matches the project's extreme-environment real-process tests
-# (e.g. tests/test_explore_cold_start_lifecycle.py, 60s); the default 10s
-# only suits in-process work, which is not what this test measures. The 60s
-# combined suite budget in ralph/verify.py is untouched.
 @pytest.mark.timeout_seconds(60)
 def test_e45_sigint_during_handover_no_orphans(tmp_path: Path) -> None:
-    """E4.5: real KeyboardInterrupt during handover leaves zero orphans.
-
-    ``_hand_over_accept`` is driven synchronously with ``workspace_root``
-    set so the candidate is genuinely "in flight". Deterministic
-    interrupt placement: the injected ``sleep_fn`` raises SIGINT (via
-    ``signal.raise_signal``, which CPython delivers to the main thread
-    at the next bytecode) as soon as it observes the handover's pause
-    sentinel file — proof the main thread has entered the pause/ack-wait
-    stage — because production's ``wait_for_old_child_pause_ack`` calls
-    the injected sleeper from the MAIN thread after writing the sentinel.
-    A watchdog thread is kept only as a fallback; a shared one-shot guard
-    guarantees at most one SIGINT, so a late fallback fire cannot strike
-    during cleanup.
-    The original fixed 0.1s ``setitimer`` was racy under host load: the
-    alarm could fire before the handover started, or the handover's
-    ack-wait could complete before the alarm landed. Observing the
-    in-flight state removes the race without weakening any assertion.
-    The SIGINT disposition is pinned for the duration of the test (and
-    restored afterwards): a pytest-xdist worker does not raise
-    ``KeyboardInterrupt`` from a delivered SIGINT, so the test installs its
-    own handler that raises it. The trigger stays a genuine SIGINT, so the
-    assertion still fails when the signal is never delivered.
-    The ack window is constructor-injected at 30s so the pause stage
-    cannot expire before the fallback watchdog's ≤5s deadline under host
-    load (the sleeper children never write the ack sentinel, so with the
-    production 1.0s default the handover would escalate and return first).
-    ``bridge.shutdown()`` is the sole cleanup; if the candidate leaks,
-    the test fails and the bug is recorded in the report.
-    """
-    # Resolve the real snapshot dir the production code writes sentinels
-    # into (a protected cache path keyed by run_id, NOT tmp_path).
-    # The run_id MUST be unique per invocation: the snapshot dir it keys is a
-    # machine-global cache path, and production unlinks ``accept.pause`` /
-    # ``accept.pause.ack`` from it when a replacement starts. A constant
-    # run_id therefore lets a concurrent run of this same test delete the
-    # sentinels this run's handover protocol depends on.
     run_id = f"test-e45-handover-{uuid.uuid4().hex}"
     snap_dir = lifecycle.snapshot_dir(tmp_path, run_id)
     sock, _port = _reserve_listening_socket()
@@ -530,33 +387,9 @@ def test_e45_sigint_during_handover_no_orphans(tmp_path: Path) -> None:
         endpoint="http://127.0.0.1:9101/mcp",
     )
 
-    # The sleeper children never write the ack sentinel, so the production
-    # default 1.0s ack timeout caps the pause stage's lifetime at ~1s. Under
-    # host load the watchdog thread can be starved past that, letting the
-    # handover escalate (kill/reap) and return BEFORE SIGINT lands — the
-    # KeyboardInterrupt then never fires mid-handover. Injecting a long ack
-    # window (via the existing constructor seam) keeps ``wait_for_old_child_
-    # pause_ack`` blocked for the watchdog's entire ≤5s deadline, so the
-    # pause stage is guaranteed in flight whenever the watchdog fires.
-    # Trigger state: set once, by whichever mechanism fires first. The
-    # primary trigger is the injected sleep_fn itself: production's
-    # ``wait_for_old_child_pause_ack`` calls the sleeper from the MAIN
-    # thread on every poll iteration, and the pause sentinel is written
-    # just before the wait loop starts, so the first sleeper call is
-    # guaranteed to observe it. This has zero cross-thread scheduling
-    # dependence — under host load a daemon watchdog thread polling the
-    # filesystem can be starved for seconds (observed: load avg >70
-    # starved the 1ms-poll watchdog past its 5s deadline while the main
-    # thread busy-spun on the GIL in the ack wait, and the test then hit
-    # its own 10s execution timeout). The watchdog below remains only as
-    # a fallback for the hypothetical case where production stops calling
-    # sleep_fn inside the ack wait.
     trigger_fired = threading.Event()
 
     def _in_flight_sleep(_seconds: float) -> None:
-        # Runs on the main thread inside the ack-wait loop (and, on the
-        # failure path, inside the kill-wait loop / drain worker); the
-        # one-shot guard makes every extra caller a no-op.
         if pause_sentinel.exists() and not trigger_fired.is_set():
             trigger_fired.set()
             signal.raise_signal(signal.SIGINT)
@@ -572,19 +405,6 @@ def test_e45_sigint_during_handover_no_orphans(tmp_path: Path) -> None:
     )
     bridge._listening_socket = sock
 
-    # Fallback watchdog: same trigger as ``_in_flight_sleep``, but from a
-    # daemon thread in case production ever stops invoking the injected
-    # sleeper inside the ack wait. The shared one-shot guard guarantees
-    # at most one SIGINT process-wide, so this can never double-fire
-    # after the primary trigger and strike during cleanup.
-    # ``signal.raise_signal`` from a non-main thread still delivers the
-    # signal to the process, and CPython runs Python-level signal
-    # handlers (and the resulting KeyboardInterrupt) in the MAIN thread.
-    # filesystem-write-ok: reading a transient handover sentinel file written by production code
-    # Coupling note: ``_make_inner`` builds inners with no ``stage_id``, so
-    # production's ``_hand_over_accept`` writes the un-suffixed ``accept.pause``
-    # (not ``accept.pause.<stage_id>``). If inners ever gain a stage_id, this
-    # sentinel path must track ``f"accept.pause.{old_stage}"``.
     pause_sentinel = snap_dir / "accept.pause"
 
     def _sigint_watchdog() -> None:
@@ -593,11 +413,6 @@ def test_e45_sigint_during_handover_no_orphans(tmp_path: Path) -> None:
             if pause_sentinel.exists():
                 if not trigger_fired.is_set():
                     trigger_fired.set()
-                    # ``os.kill`` targets the PROCESS, so CPython delivers the
-                    # signal to the MAIN thread. A non-main-thread
-                    # ``signal.raise_signal(SIGINT)`` only marks the calling
-                    # thread's own interrupt flag, which the main thread never
-                    # observes, so the fallback could not reach it.
                     os.kill(os.getpid(), signal.SIGINT)
                 return
             time.sleep(0.01)
@@ -605,18 +420,6 @@ def test_e45_sigint_during_handover_no_orphans(tmp_path: Path) -> None:
     watchdog = threading.Thread(target=_sigint_watchdog, name="e45-sigint-watchdog", daemon=True)
     watchdog.start()
 
-    # Deterministic SIGINT disposition for this test.
-    #
-    # pytest-xdist replaces the worker process's SIGINT disposition (the
-    # controller tears the worker down on an interrupt), so a delivered
-    # SIGINT does not surface as a ``KeyboardInterrupt`` inside an xdist
-    # worker: the trigger fired, the handover burned its full 30 s ack
-    # window, and the assertion below failed with "KeyboardInterrupt did not
-    # fire mid-handover" (observed in the shard-8 profile; the same test
-    # passes standalone in ~1 s). A test-local handler that raises
-    # ``KeyboardInterrupt`` makes the delivery deterministic while keeping
-    # the trigger a genuine SIGINT: if the signal is never delivered, the
-    # assertion still fails.
     def _raise_keyboard_interrupt(_signum: int, _frame: object) -> None:
         raise KeyboardInterrupt
 
@@ -631,7 +434,6 @@ def test_e45_sigint_during_handover_no_orphans(tmp_path: Path) -> None:
     finally:
         signal.signal(signal.SIGINT, previous_sigint_handler)
         watchdog.join(timeout=1.0)
-        # Cleanup: bridge shutdown reaps whatever is in _inner / _draining_inners.
         bridge.shutdown()
 
     try:
@@ -654,17 +456,7 @@ def test_e45_sigint_during_handover_no_orphans(tmp_path: Path) -> None:
             sock.close()
 
 
-# ---------------------------------------------------------------------------
-# E5.1: PID-reuse PIN — UNCHANGED
-# ---------------------------------------------------------------------------
-
-
 def test_e51_pid_reuse_pin_no_bare_kill_in_replacement_path() -> None:
-    """E5.1: Assert no bare os.kill(pid, sig) exists in the replacement or handover code paths.
-
-    PID reuse is impossible by construction because all signaling goes through
-    tracked process handles (Popen / ProcessManager / psutil with create-time verification).
-    """
     repo_root = Path(__file__).resolve().parents[2]
     lifecycle_py = repo_root / "ralph" / "mcp" / "server" / "lifecycle.py"
     handover_py = repo_root / "ralph" / "mcp" / "server" / "_handover_protocol.py"

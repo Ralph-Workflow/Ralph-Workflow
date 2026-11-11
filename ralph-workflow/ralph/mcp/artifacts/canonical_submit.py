@@ -1,4 +1,3 @@
-"""Canonical persistence for markdown artifact documents."""
 
 from __future__ import annotations
 
@@ -36,7 +35,6 @@ class _CommitNormalizationModule(Protocol):
 def _normalize_commit_submission(
     artifact_type: str, markdown: str, workspace_root: Path
 ) -> tuple[str, dict[str, object] | None]:
-    """Freshly normalize every canonical commit submission and retain its audit."""
     if artifact_type != "commit_message":
         return markdown, None
     module = cast(
@@ -47,7 +45,6 @@ def _normalize_commit_submission(
 
 @dataclass(frozen=True)
 class SubmitResult:
-    """Locations produced by one canonical markdown submission."""
 
     artifact_path: Path | None
     receipt_path: Path | None
@@ -64,7 +61,6 @@ def _capture_file_state(
     backend: FileBackend,
     path: Path,
 ) -> tuple[bool, str]:
-    """Capture enough state to restore one markdown file after a failed submit."""
     if not backend.exists(path):
         return False, ""
     return True, backend.read_text(path, encoding="utf-8")
@@ -75,8 +71,6 @@ def _restore_file_state(
     path: Path,
     state: tuple[bool, str],
 ) -> None:
-    """Restore a captured file or remove a file created by the failed submit."""
-    # filesystem-write-ok: canonical artifact write under .agent/ subtree (plan/agent/development_result), agent-authored deliverable not in fixed-message chore commit
     existed, content = state
     if existed:
         atomic_write_text_if_changed(
@@ -106,7 +100,6 @@ def _rollback_submission(
     run_id: str | None,
     restorable_receipt_preexisting: bool,
 ) -> None:
-    """Restore canonical files and remove history created by a failed submit."""
     rollback_errors: list[Exception] = []
     if handoff_path is not None and handoff_state is not None:
         try:
@@ -168,14 +161,6 @@ def submit_artifact_canonical(
     handoff_dir: Path | None = None,
     normalization_audit: dict[str, object] | None = None,
 ) -> SubmitResult:
-    """Persist validated markdown, handoff, and receipt as one logical transaction.
-
-    ``parsed_content`` is retained only for callers that need to validate before
-    persistence; the stored artifact is always ``.md`` and never a JSON envelope.
-    If receipt persistence fails, canonical files and any history snapshot are
-    restored to their pre-submit state before the persistence error propagates.
-    Phase completion remains a separate explicit ``declare_complete`` operation.
-    """
     del parsed_content
     if markdown is None:
         raise ValueError("markdown source is required for migrated artifacts")
@@ -207,10 +192,6 @@ def submit_artifact_canonical(
     artifact_state = _capture_file_state(backend, artifact_path)
     handoff_state = _capture_file_state(backend, handoff_path) if handoff_path is not None else None
     history_paths: list[Path] = []
-    # A history snapshot represents a prior version, not another observation of
-    # the same version.  Avoid creating a timestamped archive merely because a
-    # caller re-submitted byte-identical Markdown: it adds no recoverable
-    # information and turns a no-op replay into filesystem churn.
     artifact_changed = not artifact_state[0] or artifact_state[1] != markdown
     history_enabled = deps.history_enabled and handoff_dir is None and artifact_changed
     history_dir = history_dir_for_artifact(directory, artifact_type) if history_enabled else None
@@ -232,13 +213,8 @@ def submit_artifact_canonical(
         else False
     )
     try:
-        # Avoid even an idempotent mkdir on an unchanged replay: directory creation
-        # changes metadata on some backends and is unnecessary once persistence exists.
         if not backend.exists(directory):
             backend.mkdir(directory, parents=True, exist_ok=True)
-        # Worker-local submissions carry their own handoff directory and are
-        # replaced between isolated attempts. Shared artifact history would look
-        # up the coordinator handoff and leak it into the worker namespace.
         if history_enabled:
             history_paths = snapshot_current_artifact(
                 directory,
@@ -247,7 +223,6 @@ def submit_artifact_canonical(
                 backend=backend,
                 now_iso=deps.now_iso,
             )
-        # filesystem-write-ok: canonical artifact write under .agent/ subtree (plan/agent/development_result), agent-authored deliverable not in fixed-message chore commit
         atomic_write_text_if_changed(
             backend,
             artifact_path,
@@ -257,13 +232,11 @@ def submit_artifact_canonical(
             sync_directory=artifact_type == "plan",
         )
         if backend.read_text(artifact_path, encoding="utf-8") != markdown:
-            # filesystem-write-ok: canonical artifact write under .agent/ subtree (plan/agent/development_result), agent-authored deliverable not in fixed-message chore commit
             raise OSError(f"canonical artifact write was corrupt: {artifact_path}")
 
         if handoff_path is not None:
             if not backend.exists(handoff_path.parent):
                 backend.mkdir(handoff_path.parent, parents=True, exist_ok=True)
-            # filesystem-write-ok: canonical artifact write under .agent/ subtree (handoff companion), agent-authored deliverable not in fixed-message chore commit
             atomic_write_text_if_changed(
                 backend,
                 handoff_path,
@@ -318,7 +291,6 @@ def submit_artifact_canonical(
 
 
 def _registered_markdown_types() -> tuple[str, ...]:
-    """Return the artifact types with a registered markdown spec."""
     import_module("ralph.mcp.artifacts.markdown.specs")
     return tuple(spec.artifact_type for spec in registered_specs())
 
@@ -334,7 +306,6 @@ def _clear_fallback_artifacts(
     backend: FileBackend = DEFAULT_FILE_BACKEND,
     fallback_dir: Path | None = None,
 ) -> None:
-    """Clear stale Markdown fallback files from a newly started run."""
     del run_id
     tmp = fallback_dir or workspace_root / ".agent" / "tmp"
     if not backend.exists(tmp):
@@ -350,12 +321,6 @@ def _clear_worker_artifacts(
     worker_namespace: Path,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> None:
-    """Clear stale canonical, handoff, and fallback documents for one worker.
-
-    Deprecated: Ralph-orchestrated workers are removed from the execution
-    model; parallelism is owned by the developer agent's own sub-agents.
-    See docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
-    """
     artifact_dir = worker_namespace / "artifacts"
     handoff_dir = worker_namespace / "handoffs"
     _clear_fallback_artifacts(
@@ -385,12 +350,6 @@ def promote_fallback_artifact(
     artifact_dir: Path | None = None,
     handoff_dir: Path | None = None,
 ) -> SubmitResult | None:
-    """Promote an agent-written ``.agent/tmp/<type>.md`` fallback through canonical submit.
-
-    Returns ``None`` when no fallback document exists, the artifact type has
-    no registered markdown spec, or the document fails markdown validation —
-    an invalid fallback must not stamp a submission receipt.
-    """
     import_module("ralph.mcp.artifacts.markdown.specs")
     try:
         spec = get_spec(artifact_type)

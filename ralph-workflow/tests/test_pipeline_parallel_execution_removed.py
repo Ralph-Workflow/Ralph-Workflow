@@ -1,5 +1,3 @@
-"""Regression tests: global parallel_execution block has been removed."""
-
 import textwrap
 from pathlib import Path
 from unittest.mock import MagicMock

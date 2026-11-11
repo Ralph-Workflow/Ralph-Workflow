@@ -1,9 +1,3 @@
-"""In-process MCP test harness.
-
-Shared deterministic fakes for the MCP JSON-RPC protocol. Tests use these
-to exercise upstream client and session logic without TCP ports or subprocesses.
-"""
-
 from __future__ import annotations
 
 import json
@@ -40,8 +34,6 @@ SSE_CALL_RESULT: dict[str, Any] = {
 
 
 class StubUpstreamClient(HttpUpstreamClient):
-    """In-process upstream client for fast deterministic tests."""
-
     def __init__(
         self,
         tools: list[UpstreamTool] | None = None,
@@ -64,7 +56,6 @@ def make_stub_client_factory(
     tools: list[UpstreamTool] | None = None,
     call_result: dict[str, object] | None = None,
 ) -> Callable[[UpstreamMcpServer], StubUpstreamClient]:
-    """Return a client_factory suitable for UpstreamRegistry.build()."""
     _tools = tools
     _result = call_result
 
@@ -76,13 +67,7 @@ def make_stub_client_factory(
 
 
 def make_fake_http_post_fn(server_name: str = "fake-http-mcp") -> Callable[..., httpx.Response]:
-    """Return a post_fn for post_http_jsonrpc_with_session that emulates _McpHandler.
-
-    Implements the MCP JSON-RPC response protocol in-process: no TCP port,
-    no subprocess, no sleep. The session_id is generated once per factory
-    call and reused across all requests within the same session.
-    """
-    _json = json  # capture before 'json' kwarg shadows the module in the inner function
+    _json = json
     _session_id = uuid.uuid4().hex
 
     def fake_post(

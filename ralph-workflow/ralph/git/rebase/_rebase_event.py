@@ -1,4 +1,3 @@
-"""RebaseEvent — events that drive transitions in the RebaseStateMachine."""
 
 from __future__ import annotations
 
@@ -6,7 +5,6 @@ from enum import Enum
 
 
 class RebaseEvent(Enum):
-    """Events that drive transitions in the ``RebaseStateMachine``."""
 
     START_REBASE = "start_rebase"
     CONFLICT_DETECTED = "conflict_detected"

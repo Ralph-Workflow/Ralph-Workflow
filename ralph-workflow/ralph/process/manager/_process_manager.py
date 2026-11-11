@@ -1,4 +1,3 @@
-"""ProcessManager — single source of truth for every child process Ralph spawns."""
 
 from __future__ import annotations
 
@@ -70,7 +69,6 @@ if TYPE_CHECKING:
 
 
 def _extract_psutil_returncode(procs: Sequence[object], target_pid: int) -> int | None:
-    """Return the harvested integer returncode for target_pid from a procs list."""
     for p in procs:
         p_pid: object = getattr(p, "pid", None)
         if p_pid == target_pid:
@@ -82,32 +80,20 @@ def _extract_psutil_returncode(procs: Sequence[object], target_pid: int) -> int 
 
 
 def _is_own_process_group(pgid: int) -> bool:
-    """Return True when ``pgid`` is this process's own process group."""
     if not hasattr(os, "getpgid"):
         return False
     try:
         return pgid == os.getpgid(0)
     except OSError:
-        # Cannot prove the group is foreign; refuse rather than guess.
         return True
 
 
 def _seed_popen_returncode(target: object, rc: int) -> None:
-    """Record a harvested exit status on a ``subprocess.Popen`` that has not seen it.
-
-    ``psutil.wait_procs`` (and the WNOHANG zombie sweeps) reap a direct child
-    with ``waitpid`` behind the owning ``Popen``'s back. The ``Popen``'s own
-    later ``poll()`` / ``wait()`` then gets ``ECHILD`` and CPython records
-    ``returncode = 0`` -- a child Ralph SIGTERM'd or SIGKILL'd would report
-    success. Seeding ``returncode`` with the status the harvest actually
-    collected makes every later ``poll()`` / ``wait()`` return it instead.
-    """
     if _is_popen(target) and target.returncode is None:
         target.returncode = rc
 
 
 class _ReturncodeSlot(Protocol):
-    """The writable ``returncode`` slot of a ``subprocess.Popen``."""
 
     returncode: int | None
 
@@ -116,12 +102,10 @@ _POPEN_TYPE: Final[type[object]] = subprocess.Popen
 
 
 def _is_popen(target: object) -> TypeGuard[_ReturncodeSlot]:
-    """Return True only for a real ``subprocess.Popen`` (never a fake or async process)."""
     return isinstance(target, _POPEN_TYPE)
 
 
 def _collect_psutil_exit_pairs(procs: Sequence[object]) -> list[tuple[int, int]]:
-    """Extract valid (pid, returncode) pairs from psutil processes."""
     pairs: list[tuple[int, int]] = []
     for p in procs:
         p_pid: object = getattr(p, "pid", None)
@@ -134,7 +118,6 @@ def _collect_psutil_exit_pairs(procs: Sequence[object]) -> list[tuple[int, int]]
 def _parse_async_term_res(
     term_res: object,
 ) -> tuple[bool, int | None, list[tuple[int, int]]]:
-    """Parse raw return value from _do_terminate."""
     if not isinstance(term_res, tuple):
         return False, None, []
     raw_alive = False
@@ -156,7 +139,6 @@ def _parse_async_term_res(
 
 
 def _is_reaped_invoke_proc(record: ProcessRecord, proc: object) -> bool:
-    """Return True if proc is a non-PTY invoke process that has already terminated."""
     if record.label is None or not record.label.startswith("invoke:"):
         return False
     if hasattr(proc, "master_fd"):
@@ -169,7 +151,6 @@ def _is_reaped_invoke_proc(record: ProcessRecord, proc: object) -> bool:
 
 
 def _extract_proc_command(proc: object) -> str:
-    """Extract command string from a psutil process via cmdline() or name()."""
     cmdline_fn: object = getattr(proc, "cmdline", None)
     if callable(cmdline_fn):
         with contextlib.suppress(Exception):
@@ -191,7 +172,6 @@ _UNINSPECTABLE_STATUSES: frozenset[str] = frozenset({"no_such_process", "access_
 
 
 def _query_proc_status(proc: _PsutilProcessLike, mod: _PsutilModuleLike) -> str:
-    """Query status from a psutil process, mapping exceptions to strings."""
     try:
         return str(proc.status())
     except mod.NoSuchProcess:
@@ -231,43 +211,10 @@ def _default_liveness_verifier(
     *,
     psutil_mod: _PsutilModuleLike | None = None,
 ) -> LivenessResult:
-    """Call the module-level liveness verifier.
-
-    The lookup is late-bound on purpose: the module-level
-    ``verify_process_liveness`` stays the single default every
-    ``ProcessManager`` uses, and a caller that swaps it out at runtime
-    keeps affecting the managers that did not inject their own verifier.
-    """
     return verify_process_liveness(pid, psutil_mod=psutil_mod)
 
 
 class ProcessManager:
-    """Single source of truth for all child processes Ralph spawns.
-
-    Termination uses psutil for cross-platform process-tree teardown: graceful
-    terminate() to the root and all descendants, then forceful kill() to
-    survivors. Works identically on Linux, macOS, and Windows.
-
-    Use :func:`get_process_manager` to obtain the module-level singleton.
-    Inject a custom instance (with a test-friendly :class:`ProcessManagerPolicy`)
-    to keep tests fast and isolated.
-
-    For testing, inject custom process factories and psutil module via the
-    constructor to avoid spawning real processes::
-
-        from ralph.testing.fake_process import (
-            FakePopen, FakeAsyncProcess, FakePsutil,
-            make_sync_process_factory, make_async_process_factory,
-        )
-        import itertools
-
-        pm = ProcessManager(
-            policy=_FAST_POLICY,
-            sync_process_factory=make_sync_process_factory(itertools.count(1)),
-            async_process_factory=make_async_process_factory(itertools.count(1)),
-            psutil=FakePsutil(),
-        )
-    """
 
     def __init__(
         self,
@@ -280,79 +227,34 @@ class ProcessManager:
         liveness_verifier: LivenessVerifier | None = None,
     ) -> None:
         self.policy = policy or ProcessManagerPolicy()
-        # All ProcessManager dicts are bounded by the centralized process
-        # lifecycle: ``_records`` is evicted via the terminal_history_limit
-        # FIFO (default 256), ``_listeners`` via max_listeners (default 64),
-        # ``_termination_outcomes`` is cleared on shutdown, and the per-PID
-        # maps (``_sync_procs`` / ``_pty_procs`` / ``_descendants``) shrink
-        # as each ProcessRecord completes via ``_mark_exited`` /
-        # ``_mark_killed`` / ``_mark_unreaped``. None of these grow
-        # monotonically across the manager's lifetime.
-        self._records: dict[int, ProcessRecord] = {}  # bounded-accumulator-ok: FIFO eviction
-        # bounded-accumulator-ok: FIFO cap
-        # ProcessManagerPolicy.terminal_history_limit
-        # (OrderedDict.popitem(last=False) eviction in _record_terminal_state)
+        self._records: dict[int, ProcessRecord] = {}
         self._terminal_records: OrderedDict[int, ProcessRecord] = (
             OrderedDict()
-        )  # bounded-accumulator-ok  # type: ignore[var-annotated]  # reason: autogenerated code has no type support, see docs/agents/type-ignore-policy.md#autogenerated-code
-        self._sync_procs: dict[int, _SyncProcessLike] = {}  # bounded-accumulator-ok: per-PID
-        self._pty_procs: dict[int, _PtyProcessLike] = {}  # bounded-accumulator-ok: per-PID
-        self._descendants: dict[int, list[int]] = {}  # bounded-accumulator-ok: per-PID
-        self._termination_outcomes: dict[  # bounded-accumulator-ok: cleared
+        )
+        self._sync_procs: dict[int, _SyncProcessLike] = {}
+        self._pty_procs: dict[int, _PtyProcessLike] = {}
+        self._descendants: dict[int, list[int]] = {}
+        self._termination_outcomes: dict[
             int, list[dict[str, str]]
         ] = {}
         self._stop_event: threading.Event = threading.Event()
         self._reaper_thread: threading.Thread | None = None
 
-        # purge_on_init: clear terminal records on startup when policy requests it
         if self.policy.purge_on_init:
             self._terminal_records.clear()
-            # wt-024 M3: symmetric eviction for _termination_outcomes
-            # so a re-instantiated manager with purge_on_init=True
-            # starts with an empty outcomes dict (not stale state
-            # inherited from a previous instance or test fixture).
             self._termination_outcomes.clear()
 
-        # Concurrent shutdown TOCTOU audit:
-        # (A) shutdown_all() status filter - SAFE without lock: concurrent callers may both
-        #     dispatch termination; ProcessLookupError/NoSuchProcess suppressed at every step
-        # (B) _escalate_termination_sync() terminal precheck - SAFE without lock: same suppression
-        # (C) _mark_exited/_mark_killed status write - PROTECTED by this lock: writing
-        #     ProcessRecord.status, returncode, ended_at must be atomic; duplicate writes
-        #     corrupt fields and fire duplicate events. _emit called OUTSIDE the lock to
-        #     prevent deadlock from listeners that call back into ProcessManager.
         self._status_lock = threading.Lock()
 
-        self._async_procs: dict[int, _AsyncProcessLike] = {}  # bounded-accumulator-ok: per-PID
-        self._listeners: dict[  # bounded-accumulator-ok: bounded
+        self._async_procs: dict[int, _AsyncProcessLike] = {}
+        self._listeners: dict[
             int, Callable[[ProcessEvent], None]
         ] = {}
         self._listener_counter = 0
-        # wt-024 memory-perf AC-02: dedicated bounded ThreadPoolExecutor
-        # for async process termination. ``_escalate_termination_async``
-        # passes this to ``loop.run_in_executor`` instead of the event
-        # loop's default executor (which ProcessManager does not own
-        # or release). Created lazily on first async-termination use
-        # so tests that never spawn an async process never create it.
-        # Released by ``shutdown_all``'s finally block via
-        # ``shutdown(wait=False)`` so it does NOT block shutdown on
-        # in-flight workers; in-flight workers complete within
-        # ``grace_period_s + kill_followup_timeout_s`` (bounded
-        # ``psutil.wait_procs`` calls inside ``_do_terminate``) and are
-        # reaped by ``concurrent.futures``' own ``_python_exit`` atexit
-        # join, so no orphaned termination worker blocks process exit.
         self._terminate_executor: ThreadPoolExecutor | None = None
-        # The liveness probe used by every termination path. Injectable
-        # so a caller that owns its own liveness policy (or a caller
-        # that must observe the probe) can supply one instead of the
-        # built-in ``verify_process_liveness``.
         self._liveness_verifier: LivenessVerifier = (
             liveness_verifier if liveness_verifier is not None else _default_liveness_verifier
         )
-        # The factory that lazily builds the dedicated termination
-        # executor. Injectable so a caller that owns its own executor
-        # policy (or a caller that must observe the executor's
-        # lifecycle) can supply one instead of the built-in builder.
         self._terminate_executor_factory: Callable[[], ThreadPoolExecutor] = (
             terminate_executor_factory
             if terminate_executor_factory is not None
@@ -379,39 +281,18 @@ class ProcessManager:
         if self.policy.log_events:
             self.register_listener(loguru_event_listener)
 
-    # ------------------------------------------------------------------
-    # Centralized zombie reaping helpers
-    #
-    # Every site that detects a post-kill zombie is required to call one of
-    # these helpers BEFORE invoking _mark_killed(..., cause="zombie_after_kill")
-    # so the child is reaped at the OS level rather than left as a defunct
-    # process. Each helper is bounded (no blocking wait_for with infinite
-    # timeout, no wait_procs with timeout=None) and wraps its reaping logic
-    # in try/except that suppresses OSError / ProcessLookupError /
-    # ChildProcessError / asyncio.CancelledError but never KeyboardInterrupt
-    # or SystemExit. _mark_killed is always called, even on exception, so the
-    # process record is still moved to a terminal state.
-    # ------------------------------------------------------------------
 
     @staticmethod
     def _has_running_event_loop() -> bool:
-        """Return True when an asyncio event loop is running on the current thread."""
         try:
             asyncio.get_running_loop()
         except RuntimeError:
             return False
         return True
 
-    # wt-024 memory-perf AC-02: dedicated bounded terminate executor.
-    # 4 workers is enough headroom for the small concurrency of async
-    # process termination (typically a handful of in-flight teardowns);
-    # the ceiling exists to make unbounded thread growth structurally
-    # impossible, NOT to be tuned for peak throughput. The cap is a
-    # SAFETY invariant, not a perf invariant.
     TERMINATE_EXECUTOR_MAX_WORKERS: int = 4
 
     def _build_terminate_executor(self) -> ThreadPoolExecutor:
-        """Build the dedicated bounded termination executor."""
         return ThreadPoolExecutor(
             max_workers=self.TERMINATE_EXECUTOR_MAX_WORKERS,
             thread_name_prefix="ralph-terminate",
@@ -419,26 +300,9 @@ class ProcessManager:
 
     @property
     def terminate_executor(self) -> ThreadPoolExecutor | None:
-        """The dedicated termination executor, or None while unallocated.
-
-        The executor is created lazily on the first async termination,
-        so a manager that never terminated an async process reports
-        None here and never allocated a worker pool.
-        """
         return self._terminate_executor
 
     def _get_terminate_executor(self) -> ThreadPoolExecutor:
-        """Return the ProcessManager-owned bounded ``ThreadPoolExecutor`` for
-        async process termination.
-
-        Created lazily on first async-termination use so tests that
-        never spawn an async process never allocate one. The same
-        instance is returned across calls and is released by
-        ``shutdown_all`` via ``shutdown(wait=False)`` (does NOT
-        block on in-flight workers; in-flight termination workers
-        complete within ``grace_period_s + kill_followup_timeout_s``
-        and are reaped by ``concurrent.futures``' own atexit join).
-        """
         if self._terminate_executor is None:
             self._terminate_executor = self._terminate_executor_factory()
         return self._terminate_executor
@@ -446,7 +310,6 @@ class ProcessManager:
     def _note_proc_external_returncode(
         self, record: ProcessRecord, proc: object | None, rc: int
     ) -> None:
-        """Propagate a reaped integer returncode to any process handle that tracks it."""
         if record.returncode is None:
             record.returncode = rc
         rec_proc: object = getattr(record, "proc", None)
@@ -474,13 +337,6 @@ class ProcessManager:
         proc: _SyncProcessLike | _PtyProcessLike,
         cause: str,
     ) -> None:
-        """Reap a sync (Popen-like) process and mark the record KILLED.
-
-        Calls ``proc.poll()``; if the process is still alive, calls
-        ``proc.wait(timeout=0.1)`` to attempt reaping with a strict
-        100ms cap. The final returncode is forwarded to ``_mark_killed``
-        with ``cause``.
-        """
         last_known_rc: int | None = None
         try:
             if record.status not in _TERMINAL_STATUSES:
@@ -493,9 +349,6 @@ class ProcessManager:
         except (OSError, ProcessLookupError, ChildProcessError):
             last_known_rc = None
         if record.returncode is not None:
-            # A status harvested by psutil / waitpid is authoritative: once
-            # the child was reaped elsewhere, ``proc.poll()`` only sees
-            # ECHILD, which CPython's Popen reports as a clean exit 0.
             last_known_rc = record.returncode
         if last_known_rc is not None:
             self._note_proc_external_returncode(record, proc, last_known_rc)
@@ -507,21 +360,13 @@ class ProcessManager:
         proc: _AsyncProcessLike,
         cause: str,
     ) -> None:
-        """Reap an async subprocess and mark the record KILLED.
-
-        Calls ``asyncio.wait_for(proc.wait(), timeout=0.5)`` with a 500ms
-        cap. The final returncode is forwarded to ``_mark_killed`` with
-        ``cause``. ``asyncio.CancelledError`` is suppressed because the
-        caller is already on the cancellation path and we still want the
-        record to transition to a terminal state.
-        """
         last_known_rc: int | None = None
         try:
             if record.status not in _TERMINAL_STATUSES:
                 last_known_rc = proc.returncode
                 try:
                     last_known_rc = await asyncio.wait_for(
-                        proc.wait(),  # mcp-timeout-ok: wait_for-bounded
+                        proc.wait(),
                         timeout=0.5,
                     )
                 except (TimeoutError, asyncio.CancelledError):
@@ -541,15 +386,6 @@ class ProcessManager:
         psutil_mod: _PsutilModuleLike,
         cause: str,
     ) -> None:
-        """Reap a psutil-tracked process and mark the record KILLED.
-
-        Uses ``psutil_mod.wait_procs`` with ``timeout=0.0`` (non-blocking
-        poll) to reap the process via psutil. On POSIX, when no asyncio
-        event loop is running in the current thread, additionally calls
-        ``os.waitpid(record.pid, os.WNOHANG)`` up to three times to
-        collect any remaining zombie state. Always calls ``_mark_killed``
-        with the supplied cause.
-        """
         harvested_rc: int | None = None
         try:
             if record.status not in _TERMINAL_STATUSES:
@@ -588,15 +424,6 @@ class ProcessManager:
         proc: _AsyncProcessLike,
         cause: str,
     ) -> None:
-        """Reap an async subprocess from a sync context and mark the record KILLED.
-
-        On POSIX, when no asyncio event loop is running in the current
-        thread, calls ``os.waitpid(record.pid, os.WNOHANG)`` up to three
-        times to collect any zombie state. On non-POSIX platforms (or when
-        an event loop is running) falls back to reading
-        ``proc.returncode``. Always calls ``_mark_killed`` with the
-        supplied cause.
-        """
         harvested_rc: int | None = None
         try:
             if record.status not in _TERMINAL_STATUSES:
@@ -633,16 +460,9 @@ class ProcessManager:
         self._mark_killed(record, harvested_rc, cause=cause)
 
     def register_listener(self, callback: Callable[[ProcessEvent], None]) -> Callable[[], None]:
-        """Subscribe to lifecycle events.  Returns an unsubscribe callable."""
         lid = self._listener_counter
         self._listener_counter += 1
         self._listeners[lid] = callback
-        # wt-024 M8 (AC-09): FIFO eviction on cap. ``self._listeners``
-        # preserves insertion order; evicting the OLDEST listener keeps
-        # the leak surface bounded if a caller leaks a subscription
-        # (forgot to call the returned unsubscribe callable). Steady-state
-        # count is ~3 (loguru_event_listener + PTY reader + process
-        # reader); the default cap of 64 is well above that.
         while len(self._listeners) > self.policy.max_listeners:
             oldest = next(iter(self._listeners))
             self._listeners.pop(oldest, None)
@@ -654,63 +474,22 @@ class ProcessManager:
 
     @property
     def listener_count(self) -> int:
-        """Number of currently registered lifecycle-event listeners.
-
-        The registry is capped at ``policy.max_listeners`` with FIFO
-        eviction, so this count never exceeds the cap.
-        """
         return len(self._listeners)
 
     def listener_callbacks(self) -> tuple[Callable[[ProcessEvent], None], ...]:
-        """The registered listener callbacks, in registration order.
-
-        A snapshot tuple: mutating it cannot disturb the registry.
-        """
         return tuple(self._listeners.values())
 
-    # ------------------------------------------------------------------
-    # Descendant registry API
-    # ------------------------------------------------------------------
 
     def register_descendant(self, parent_pid: int, descendant_pid: int) -> None:
-        """Register a descendant PID under a tracked parent.
-
-        When the parent process is terminated, descendants registered
-        here are enumerated and terminated as well. The registry is
-        SUPPLEMENTAL to the psutil process-tree walk used by the
-        termination paths: callers can register a grandchild that
-        re-sessioned itself (e.g. ``setsid`` + ``fork``) and would
-        otherwise escape the parent process group teardown. The
-        termination path consumes the registry once, so a registered
-        PID is reaped exactly once (defensive cleanup at
-        ``_mark_killed`` / ``_mark_exited`` / ``_mark_termination_failed``
-        is a no-op when the helper has already popped it).
-
-        Args:
-            parent_pid: The PID of the parent process.
-            descendant_pid: The PID of the descendant to register.
-        """
         if parent_pid not in self._descendants:
             self._descendants[parent_pid] = []
         if descendant_pid not in self._descendants[parent_pid]:
             self._descendants[parent_pid].append(descendant_pid)
 
     def _registered_descendants(self, parent_pid: int) -> tuple[int, ...]:
-        """Return the descendant PIDs currently registered for ``parent_pid``.
-
-        Mirrors the :meth:`register_descendant` write API: the returned tuple
-        is empty when no descendant is registered (or when the registry entry
-        was already consumed by a termination).
-
-        Private: the registry is consumed by the termination paths, so this
-        read-back view has no production consumer. It exists for the
-        white-box tests that assert the registry is consumed exactly once
-        (see ``tests/test_process_hardening.py``).
-        """
         return tuple(self._descendants.get(parent_pid, ()))
 
     def zombie_reaper_running(self) -> bool:
-        """Return whether the background zombie reaper thread is running."""
         thread = self._reaper_thread
         return thread is not None and thread.is_alive()
 
@@ -719,38 +498,6 @@ class ProcessManager:
         record: ProcessRecord,
         grace_period_s: float,
     ) -> list[int]:
-        """Terminate PIDs registered via :meth:`register_descendant`.
-
-        Consumes the registry entry for ``record.pid`` (pop with
-        default ``[]``) so the descendants are reaped exactly once
-        and the registry does not grow stale. Each registered
-        descendant is best-effort terminated:
-
-        - When ``psutil_mod`` is injected, we use
-          ``psutil_mod.process_from_pid(descendant_pid)`` and the
-          standard graceful-then-force escalation, mirroring the
-          psutil branch of ``_escalate_termination_sync`` so a
-          grandchild that re-sessioned and would escape
-          ``root.children(recursive=True)`` is still reaped.
-        - When ``psutil_mod`` is ``None`` (no injection), we fall
-          back to ``os.kill(descendant_pid, SIGTERM)`` followed by
-          ``os.kill(descendant_pid, SIGKILL)`` after the grace window
-          so the teardown remains correct on POSIX in the rare
-          no-psutil configuration. Windows has no ``os.kill``
-          equivalent, so the no-psutil branch is a no-op there.
-
-        Every per-descendant signalling step is wrapped in
-        ``contextlib.suppress`` for ``OSError`` /
-        ``ProcessLookupError`` so one unkilled descendant does not
-        strand the rest, and both bounded waits route through
-        :meth:`_safe_wait_procs` so a pidfd_open ``OSError`` (EINVAL)
-        on an already-reaped PID is classified per-PID instead of
-        aborting the batched wait.
-
-        Returns:
-            The list of PIDs we attempted to terminate (for
-            observability in tests; callers do not need to act on it).
-        """
         descendant_pids: list[int] = self._descendants.pop(record.pid, [])
         if not descendant_pids:
             return []
@@ -791,7 +538,6 @@ class ProcessManager:
         return terminated
 
     def _harvest_owned_process(self, pid: int, rc: int) -> None:
-        """Propagate exit code and mark killed for an owned process by PID."""
         desc_rec = self._records.get(pid)
         if desc_rec is not None:
             desc_proc: object = getattr(desc_rec, "proc", None)
@@ -810,7 +556,6 @@ class ProcessManager:
     def _harvest_gone_processes(
         self, gone: Sequence[object], root_pid: int | None = None
     ) -> int | None:
-        """Harvest exit codes from gone psutil processes, marking owned processes killed."""
         root_rc: int | None = None
         for p in gone:
             raw_pid: object = getattr(p, "pid", None)
@@ -852,7 +597,6 @@ class ProcessManager:
     def _record_termination_outcome(
         self, pid: int, stage: str, outcome: str, issuer: str | None = None
     ) -> None:
-        """Record a termination outcome and its responsible lifecycle issuer."""
         outcomes = self._termination_outcomes.setdefault(pid, [])
         record = {"stage": stage, "outcome": outcome}
         if issuer is not None:
@@ -860,7 +604,6 @@ class ProcessManager:
         outcomes.append(record)
 
     def record_terminal_reason(self, pid: int, reason: str, issuer: str | None = None) -> None:
-        """Record a permitted reason that authorizes a later termination."""
         if reason not in _PERMITTED_TERMINAL_REASONS:
             self._record_termination_outcome(pid, "terminal_reason_refused", reason, issuer)
             return
@@ -872,14 +615,12 @@ class ProcessManager:
             outcomes.append(record)
 
     def original_terminal_reason(self, pid: int) -> str | None:
-        """Return the original terminal reason recorded for ``pid``, if any."""
         for outcome in self._termination_outcomes.get(pid, []):
             if outcome.get("stage") == "terminal_reason":
                 return outcome.get("outcome")
         return None
 
     def termination_issuer(self, pid: int) -> str | None:
-        """Return the issuer of an intentional termination for ``pid``."""
         for outcome in reversed(self._termination_outcomes.get(pid, [])):
             if outcome["stage"] in {"terminal_reason", "graceful_terminate", "force_kill"}:
                 issuer = outcome.get("issuer")
@@ -901,37 +642,18 @@ class ProcessManager:
         return True
 
     def list_termination_outcomes(self) -> dict[int, list[dict[str, str]]]:
-        """Return a dict mapping PID to termination outcome records.
-
-        Each outcome dict has 'stage' and 'outcome' keys.
-        Returns empty dict when no outcomes have been recorded.
-
-        Returns:
-            Dict[int, list[dict[str, str]]]: PID-keyed list of outcome dicts.
-        """
         return dict(self._termination_outcomes)
 
-    # ------------------------------------------------------------------
-    # Spawn methods
-    # ------------------------------------------------------------------
 
     def spawn(
         self,
         command: Sequence[str],
         opts: SpawnOptions | None = None,
     ) -> ManagedProcess:
-        """Spawn a synchronous child process and begin tracking it."""
         effective = opts or SpawnOptions()
         cmd = tuple(command)
         now = datetime.now(tz=UTC)
         try:
-            # argv[1:] is STRIPPED of execve-illegal NULs so authored
-            # content (an agent prompt carrying a git diff of a source
-            # file with a literal NUL) cannot abort the phase; argv[0],
-            # cwd and env are REJECTED below, because rewriting a program
-            # name or a path would run something other than what the
-            # caller asked for. Both run inside the guard so a rejected
-            # argument still records a FAILED process.
             cmd = sanitize_spawn_command(cmd, label=effective.label)
             child_env = child_env_for_spawn(
                 effective.env,
@@ -977,11 +699,6 @@ class ProcessManager:
         except (ProcessLookupError, OSError):
             pgid = pid
 
-        # Prove ownership of the child's session NOW, while it is alive: the
-        # call records the PGID only for a live descendant of ours that leads
-        # its own group. Once the leader exits, its PID is a reusable integer
-        # that proves nothing and teardown will (correctly) refuse to signal
-        # it, so a group that is not banked here can never be reaped later.
         register_child_session(pid)
 
         record = ProcessRecord(
@@ -1017,19 +734,11 @@ class ProcessManager:
         rows: int = 24,
         label: str | None = None,
     ) -> ManagedPtyProcess:
-        """Spawn a PTY-backed child process and begin tracking it."""
         effective = opts or PtySpawnOptions(cwd=cwd, env=env, cols=cols, rows=rows, label=label)
         cmd = tuple(command)
         now = datetime.now(tz=UTC)
         child_env = child_env_for_spawn(effective.env, cwd=effective.cwd)
         try:
-            # argv[1:] is STRIPPED of execve-illegal NULs so authored
-            # content (an agent prompt carrying a git diff of a source
-            # file with a literal NUL) cannot abort the phase; argv[0],
-            # cwd and env are REJECTED below, because rewriting a program
-            # name or a path would run something other than what the
-            # caller asked for. Both run inside the guard so a rejected
-            # argument still records a FAILED process.
             cmd = sanitize_spawn_command(cmd, label=effective.label)
             cmd = prepare_spawn_command(cmd, cwd=effective.cwd, env=child_env)
             proc = self._pty_process_factory(
@@ -1066,11 +775,6 @@ class ProcessManager:
         except (ProcessLookupError, OSError):
             pgid = pid
 
-        # Prove ownership of the child's session NOW, while it is alive: the
-        # call records the PGID only for a live descendant of ours that leads
-        # its own group. Once the leader exits, its PID is a reusable integer
-        # that proves nothing and teardown will (correctly) refuse to signal
-        # it, so a group that is not banked here can never be reaped later.
         register_child_session(pid)
 
         record = ProcessRecord(
@@ -1100,19 +804,11 @@ class ProcessManager:
         command: Sequence[str],
         opts: SpawnOptions | None = None,
     ) -> ManagedAsyncProcess:
-        """Spawn an async child process and begin tracking it."""
         effective = opts or SpawnOptions()
         cmd = tuple(command)
         now = datetime.now(tz=UTC)
         child_env = child_env_for_spawn(effective.env, cwd=effective.cwd)
         try:
-            # argv[1:] is STRIPPED of execve-illegal NULs so authored
-            # content (an agent prompt carrying a git diff of a source
-            # file with a literal NUL) cannot abort the phase; argv[0],
-            # cwd and env are REJECTED below, because rewriting a program
-            # name or a path would run something other than what the
-            # caller asked for. Both run inside the guard so a rejected
-            # argument still records a FAILED process.
             cmd = sanitize_spawn_command(cmd, label=effective.label)
             cmd = prepare_spawn_command(cmd, cwd=effective.cwd, env=child_env)
             proc = await self._async_process_factory(
@@ -1151,11 +847,6 @@ class ProcessManager:
         except (ProcessLookupError, OSError):
             pgid = pid
 
-        # Prove ownership of the child's session NOW, while it is alive: the
-        # call records the PGID only for a live descendant of ours that leads
-        # its own group. Once the leader exits, its PID is a reusable integer
-        # that proves nothing and teardown will (correctly) refuse to signal
-        # it, so a group that is not banked here can never be reaped later.
         register_child_session(pid)
 
         record = ProcessRecord(
@@ -1181,7 +872,6 @@ class ProcessManager:
         return ManagedAsyncProcess(proc, record, self)
 
     def list_active(self) -> list[ProcessRecord]:
-        """Return all records for processes that have not yet terminated."""
         return [
             r
             for r in list(self._records.values())
@@ -1189,7 +879,6 @@ class ProcessManager:
         ]
 
     def get_record(self, pid: int, *, include_terminal: bool = True) -> ProcessRecord | None:
-        """Return a tracked record by pid, preferring active records over terminal history."""
         record = self._records.get(pid)
         if record is not None:
             return record
@@ -1204,7 +893,6 @@ class ProcessManager:
         include_terminal: bool = False,
         label_prefix: str | None = None,
     ) -> list[ProcessRecord]:
-        """Return active and/or terminal records with optional label filtering."""
         records: list[ProcessRecord] = []
         if include_active:
             records.extend(self._records.values())
@@ -1224,7 +912,6 @@ class ProcessManager:
         *,
         grace_period_s: float | None = None,
     ) -> None:
-        """Terminate a tracked process with explicit operator cancellation."""
         self.record_terminal_reason(
             handle.record.pid, "operator_cancellation", "process_manager.terminate"
         )
@@ -1238,24 +925,8 @@ class ProcessManager:
         if isinstance(handle, ManagedAsyncProcess):
             self._escalate_async_in_sync_context(handle.record, handle._proc, gp)
 
-    # ------------------------------------------------------------------
-    # Shutdown methods (with stale-entry reconciliation)
-    # ------------------------------------------------------------------
 
     def _reconcile_stale_entries(self) -> int:
-        """Scan active records and mark as KILLED any PIDs no longer alive at the OS level.
-
-        For zombie PIDs, dispatch to the existing sync-safe reaping
-        helpers (``_reap_sync_and_mark`` / ``_reap_async_in_sync_and_mark``)
-        so the OS is asked to collect the defunct child before the record
-        is moved to a terminal state. When no tracked process object is
-        present for the zombie PID, fall back to the mark-only path.
-
-        Also cleans up _descendants entries for stale PIDs.
-
-        Returns:
-            Number of stale PIDs that were reconciled.
-        """
         reconciled = 0
         for pid in list(self._records.keys()):
             record = self._records.get(pid)
@@ -1285,12 +956,8 @@ class ProcessManager:
                 reconciled += 1
         return reconciled
 
-    # ------------------------------------------------------------------
-    # Background zombie reaper (drains stale entries between shutdown calls)
-    # ------------------------------------------------------------------
 
     def _start_zombie_reaper(self) -> None:
-        """Start the background zombie reaper thread (idempotent)."""
         if self._reaper_thread is not None:
             return
         if not self.policy.enable_zombie_reaper:
@@ -1305,13 +972,6 @@ class ProcessManager:
         thread.start()
 
     def _stop_zombie_reaper(self) -> None:
-        """Stop the background zombie reaper thread (idempotent).
-
-        Returns immediately when no reaper is running. Otherwise signals
-        the loop via threading.Event.set() and joins with a 2.0s timeout.
-        If join times out, logs a warning and lets the daemon thread die
-        on interpreter shutdown.
-        """
         thread = self._reaper_thread
         if thread is None:
             return
@@ -1322,23 +982,8 @@ class ProcessManager:
         self._reaper_thread = None
 
     def _zombie_reaper_loop(self) -> None:
-        """Background loop that periodically reconciles stale tracking entries.
-
-        Race-condition safety: ``_reconcile_stale_entries`` reads
-        ``record.status`` without holding ``_status_lock``, but the TOCTOU
-        window is safe because:
-          (i) ``_mark_killed`` (called by the reaper) re-checks
-              ``record.status in _TERMINAL_STATUSES`` under ``_status_lock``
-              before writing,
-          (ii) duplicate ``_mark_killed`` calls are idempotent, and
-          (iii) the reaper is the only writer that transitions records to
-              KILLED with cause ``stale_entry_reconciled`` / ``zombie_reconciled``.
-        """
         interval = self.policy.zombie_reaper_interval_s
         while not self._stop_event.wait(timeout=interval):
-            # If Event.wait() is interrupted by a signal, the loop simply wakes
-            # early and proceeds to the next iteration, which is harmless
-            # because _reconcile_stale_entries is idempotent.
             try:
                 self._reconcile_stale_entries()
             except Exception:
@@ -1350,27 +995,6 @@ class ProcessManager:
         *,
         label_prefix: str | None = None,
     ) -> None:
-        """Kill orphaned processes associated with a handle or PID.
-
-        For handle inputs, the parent PID and PGID are taken from the
-        handle's record. POSIX uses ``os.killpg(pgid, SIGKILL)`` and
-        Windows falls back to a BFS tree walk over psutil.process_iter.
-
-        For ``int`` inputs, no record is available so the API falls back
-        to PID-only cleanup: POSIX uses ``_kill_pgid(handle_or_pid)``
-        (treats the input as a PGID) and Windows uses
-        ``_kill_orphan_tree_windows(handle_or_pid)``. The
-        ``label_prefix`` filter is a no-op for the int branch.
-
-        When ``label_prefix`` is supplied on the handle branch, all
-        tracked records whose label starts with ``label_prefix`` AND
-        whose PID is not the input handle are also terminated via
-        ``_terminate_by_pid``.
-
-        Args:
-            handle_or_pid: A managed process handle, or a raw PID/PGID int.
-            label_prefix: Optional label prefix filter for the handle branch.
-        """
         if isinstance(handle_or_pid, int):
             if hasattr(os, "killpg"):
                 self._kill_pgid(handle_or_pid)
@@ -1392,18 +1016,6 @@ class ProcessManager:
                     self._terminate_by_pid(other_record, self.policy.default_grace_period_s)
 
     def _kill_pgid(self, pgid: int) -> None:
-        """POSIX: stop the entire process group identified by ``pgid``.
-
-        A group containing git is first sent SIGTERM and given the git cleanup
-        window to exit (git removes its lock files from that handler); anything
-        still alive -- and every group without git -- is SIGKILLed.
-
-        Ralph's OWN process group is never signalled: a record can carry it
-        (a PTY child that never became a session leader, or a caller passing
-        a raw PGID), and ``killpg`` on it would take down Ralph itself and
-        every sibling sharing its terminal group. Same refusal as
-        ``ralph.process.teardown``'s group guard.
-        """
         if pgid <= 1 or not hasattr(os, "killpg") or _is_own_process_group(pgid):
             return
         members = group_pids(pgid)
@@ -1418,7 +1030,6 @@ class ProcessManager:
             os.killpg(pgid, signal.SIGKILL)
 
     def _kill_orphan_tree_windows(self, root_pid: int) -> None:
-        """Windows fallback: recursively kill orphaned descendants of ``root_pid``."""
         psutil_mod = self._psutil
         if psutil_mod is None or root_pid <= 0:
             return
@@ -1443,14 +1054,6 @@ class ProcessManager:
             frontier = set(children_found)
 
     def _release_git_trees_together(self, grace_period_s: float) -> None:
-        """Give every tracked tree that contains git ONE shared cleanup window.
-
-        The per-record teardown below gives a tree containing git up to the git
-        cleanup window on its own, one record after another, so N stuck trees
-        would cost N windows. Signalling them all first and waiting once bounds
-        the whole shutdown at a single window; survivors are killed here, and the
-        per-record pass then finds them gone.
-        """
         psutil_mod = self._psutil
         if psutil_mod is None or grace_period_s >= GIT_TERMINATE_GRACE_SECONDS:
             return
@@ -1472,19 +1075,8 @@ class ProcessManager:
                 proc.kill()
 
     def shutdown_all(self, *, grace_period_s: float | None = None) -> None:
-        """Terminate all active processes.
-
-        The per-record loop body is wrapped in try/except so a single
-        failing escalation (e.g. one ProcessTerminationError from an
-        unkilled record) does not strand the remaining siblings. The
-        original exception is re-raised AFTER every record has been
-        processed and the zombie reaper has been stopped, preserving
-        the existing ProcessTerminationError semantics for callers
-        that rely on it for observability.
-        """
         gp = grace_period_s if grace_period_s is not None else self.policy.default_grace_period_s
 
-        # Reconcile stale entries before attempting termination
         self._reconcile_stale_entries()
         self._release_git_trees_together(gp)
 
@@ -1519,22 +1111,6 @@ class ProcessManager:
                     )
         finally:
             self._stop_zombie_reaper()
-            # wt-024 AC-02: release the dedicated bounded terminate
-            # executor alongside the zombie reaper. ``shutdown(wait=False)``
-            # does NOT block on in-flight termination workers; any
-            # in-flight worker completes within
-            # ``grace_period_s + kill_followup_timeout_s`` and is reaped
-            # by ``concurrent.futures``' own ``_python_exit`` atexit join
-            # so no orphaned termination worker blocks process exit.
-            #
-            # GUARD on ``self._terminate_executor is not None`` first:
-            # the executor is created LAZILY by ``_get_terminate_executor``
-            # only on first async-termination use, and a fresh manager
-            # that never spawned an async process must not allocate one
-            # during teardown. Calling ``_get_terminate_executor()``
-            # unconditionally here would defeat the lazy-allocation
-            # contract and force every ``shutdown_all`` to spin up a
-            # worker pool it never needed.
             with contextlib.suppress(Exception):
                 if self._terminate_executor is not None:
                     self._terminate_executor.shutdown(wait=False)
@@ -1543,7 +1119,6 @@ class ProcessManager:
             raise first_termination_error
 
     def drain_completed(self) -> None:
-        """Stop the idle reaper once all tracked processes have completed."""
         if self.list_active():
             return
         self._stop_zombie_reaper()
@@ -1551,17 +1126,8 @@ class ProcessManager:
     def shutdown_all_for_label(
         self, label_prefix: str, *, grace_period_s: float | None = None
     ) -> None:
-        """Terminate all active processes whose label starts with label_prefix.
-
-        Mirrors :meth:`shutdown_all` resilience: a single failing
-        escalation does not strand the remaining label-matched siblings.
-        The original ``ProcessTerminationError`` is re-raised AFTER every
-        matched record has been processed and the zombie reaper has
-        been stopped.
-        """
         gp = grace_period_s if grace_period_s is not None else self.policy.default_grace_period_s
 
-        # Reconcile stale entries before attempting termination
         self._reconcile_stale_entries()
 
         first_termination_error: ProcessTerminationError | None = None
@@ -1605,12 +1171,8 @@ class ProcessManager:
             raise first_termination_error
 
     def shutdown_all_exec_jobs(self, *, grace_period_s: float | None = None) -> None:
-        """Terminate all active processes spawned as exec jobs."""
         self.shutdown_all_for_label("exec_job:", grace_period_s=grace_period_s)
 
-    # ------------------------------------------------------------------
-    # Termination methods (with pre-kill liveness checks)
-    # ------------------------------------------------------------------
 
     def _terminate_root_only_sync(
         self,
@@ -1618,7 +1180,6 @@ class ProcessManager:
         proc: _SyncProcessLike | _PtyProcessLike,
         grace_period_s: float,
     ) -> None:
-        # Pre-kill liveness check
         liveness = self._liveness_verifier(record.pid, psutil_mod=self._psutil)
         if liveness == LivenessResult.GONE:
             self._mark_killed(record, None, cause="already_gone")
@@ -1666,7 +1227,6 @@ class ProcessManager:
         proc: _AsyncProcessLike,
         grace_period_s: float,
     ) -> None:
-        # Pre-kill liveness check
         liveness = self._liveness_verifier(record.pid, psutil_mod=self._psutil)
         if liveness == LivenessResult.GONE:
             self._mark_killed(record, proc.returncode, cause="already_gone")
@@ -1679,7 +1239,7 @@ class ProcessManager:
         logger.debug(f"Process {record.pid} graceful terminate sent, waiting {grace_period_s}s")
         try:
             rc = await asyncio.wait_for(
-                proc.wait(),  # mcp-timeout-ok: wait_for-bounded
+                proc.wait(),
                 timeout=grace_period_s,
             )
         except TimeoutError:
@@ -1690,7 +1250,7 @@ class ProcessManager:
                 proc.kill()
             try:
                 rc = await asyncio.wait_for(
-                    proc.wait(),  # mcp-timeout-ok: wait_for-bounded
+                    proc.wait(),
                     timeout=self.policy.kill_followup_timeout_s,
                 )
             except TimeoutError:
@@ -1721,20 +1281,6 @@ class ProcessManager:
         *,
         timeout: float | None,
     ) -> tuple[list[_PsutilProcessLike], list[_PsutilProcessLike]]:
-        """``psutil_mod.wait_procs`` wrapper that cannot abort termination.
-
-        ``psutil.wait_procs`` internally calls ``os.pidfd_open(pid, 0)`` per
-        process and raises ``OSError`` (EINVAL) when the PID was already
-        terminated/reaped mid-wait — that failure used to propagate out of
-        the termination paths and abort the whole teardown. On
-        ``OSError`` / ``ProcessLookupError`` / ``ChildProcessError``, each
-        proc is classified independently by its own PID via
-        :func:`verify_process_liveness` instead of re-raising: ``GONE`` /
-        ``ZOMBIE`` procs are returned as dead, while ``ALIVE`` / ``UNKNOWN``
-        procs (and procs without a usable ``pid``) are returned as alive so
-        the caller retries them — a batched-wait failure can never make a
-        live descendant look dead.
-        """
         try:
             return psutil_mod.wait_procs(procs, timeout=timeout)
         except (OSError, ProcessLookupError, ChildProcessError):
@@ -1743,7 +1289,6 @@ class ProcessManager:
             for proc in procs:
                 raw_pid: object = getattr(proc, "pid", None)
                 if not isinstance(raw_pid, int):
-                    # Cannot prove death — conservatively keep it retryable.
                     alive.append(proc)
                     continue
                 liveness = self._liveness_verifier(raw_pid, psutil_mod=psutil_mod)
@@ -1758,7 +1303,6 @@ class ProcessManager:
         psutil_proc: _PsutilProcessLike,
         psutil_mod: _PsutilModuleLike,
     ) -> None:
-        """Reap a psutil-tracked process that has no ProcessRecord."""
         pid = psutil_proc.pid
         harvested_rc: int | None = None
         try:
@@ -1839,7 +1383,6 @@ class ProcessManager:
         if psutil_mod is None:
             return
 
-        # Pre-kill liveness check
         liveness = self._liveness_verifier(record.pid, psutil_mod=psutil_mod)
         if liveness == LivenessResult.GONE:
             self._mark_killed(record, cause="already_gone")
@@ -1918,7 +1461,6 @@ class ProcessManager:
         if record.status in _TERMINAL_STATUSES or self._refuse_unauthorized_termination(record.pid):
             return
 
-        # Pre-kill liveness check
         liveness = self._liveness_verifier(record.pid, psutil_mod=self._psutil)
         if liveness == LivenessResult.GONE:
             self._mark_killed(record, proc.poll(), cause="already_gone")
@@ -1934,12 +1476,7 @@ class ProcessManager:
         if all_procs is None:
             return
         self._record_termination_outcome(record.pid, "graceful_terminate", "sent")
-        # A git anywhere in the tree needs time to drop its lock files on SIGTERM.
         grace_period_s = git_aware_grace(grace_period_s, (record.pid, *(p.pid for p in all_procs)))
-        # Drive the owned process object too. This is the canonical lifecycle
-        # seam. Invoke tests inject lightweight subprocess doubles with a
-        # recycled illustrative PID; once those report termination, touching
-        # psutil would signal an unrelated real process.
         with contextlib.suppress(ProcessLookupError):
             proc.terminate()
         if _is_reaped_invoke_proc(record, proc):
@@ -1974,9 +1511,6 @@ class ProcessManager:
         if harvested_rc is None and still_harvested_rc is not None:
             harvested_rc = still_harvested_rc
             self._note_proc_external_returncode(record, proc, harvested_rc)
-        # Prefer what psutil harvested: wait_procs reaped the root with
-        # waitpid, so ``proc.poll()`` hits ECHILD and a plain Popen would
-        # report the killed child as a clean exit 0.
         rc = harvested_rc if harvested_rc is not None else proc.poll()
         if rc is None:
             rc = record.returncode
@@ -2015,7 +1549,6 @@ class ProcessManager:
             return
         if self._refuse_unauthorized_termination(record.pid):
             return
-        # Pre-kill liveness check
         liveness = self._liveness_verifier(record.pid, psutil_mod=self._psutil)
         if liveness == LivenessResult.GONE:
             self._mark_killed(record, proc.poll(), cause="already_gone")
@@ -2038,7 +1571,6 @@ class ProcessManager:
         if self._refuse_unauthorized_termination(record.pid):
             return
 
-        # Pre-kill liveness check
         liveness = self._liveness_verifier(record.pid, psutil_mod=self._psutil)
         if liveness == LivenessResult.GONE:
             self._mark_killed(record, proc.returncode, cause="already_gone")
@@ -2068,14 +1600,10 @@ class ProcessManager:
             for p in all_procs:
                 with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                     p.terminate()
-            # _safe_wait_procs: psutil's wait_procs can raise OSError (EINVAL)
-            # from os.pidfd_open on an already-reaped PID; the helper classifies
-            # per-PID, so this executor path cannot abort the teardown.
             gone, alive = self._safe_wait_procs(psutil_mod, all_procs, timeout=wait_s)
             for p in alive:
                 with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                     p.kill()
-            # _safe_wait_procs: OSError (EINVAL) from os.pidfd_open on reaped PIDs.
             still_gone, still_alive = self._safe_wait_procs(psutil_mod, alive, timeout=policy_kill)
             pairs = _collect_psutil_exit_pairs((*gone, *still_gone))
             for p_pid, p_rc in pairs:
@@ -2089,14 +1617,6 @@ class ProcessManager:
         still_alive: bool = False
         child_pairs: list[tuple[int, int]] = []
         try:
-            # wt-024 AC-02: pass the ProcessManager-owned bounded
-            # executor (NOT the event-loop default ``None`` executor).
-            # The default executor is not owned by ProcessManager and
-            # is not released on shutdown; a stuck default-executor
-            # termination worker can block process exit on the
-            # atexit join that ``concurrent.futures`` registers. The
-            # dedicated executor is released by ``shutdown_all``'s
-            # finally block via ``shutdown(wait=False)``.
             term_res: object = await loop.run_in_executor(
                 self._get_terminate_executor(), _do_terminate
             )
@@ -2111,7 +1631,6 @@ class ProcessManager:
             rc = harvested_rc
             self._note_proc_external_returncode(record, proc, harvested_rc)
         if still_alive:
-            # Post-kill zombie/liveness check
             post_liveness = self._liveness_verifier(record.pid, psutil_mod=psutil_mod)
             if post_liveness == LivenessResult.ZOMBIE:
                 logger.warning(f"Process {pid} is zombie after force kill — parent must reap")
@@ -2133,9 +1652,6 @@ class ProcessManager:
                 stage="force_kill",
                 reason="still alive",
             )
-        # wt-024 M3 (AC-03): reap registered descendants BEFORE
-        # _mark_killed because _mark_killed also pops
-        # self._descendants[record.pid] as defensive cleanup.
         self._terminate_registered_descendants(record, grace_period_s)
         self._mark_killed(record, rc)
 
@@ -2223,7 +1739,6 @@ class ProcessManager:
             proc.kill()
         probe_result = self._liveness_verifier(record.pid, psutil_mod=None)
         if probe_result == LivenessResult.GONE:
-            # wt-024 M3 (AC-03): no-psutil fallback reap BEFORE mark.
             self._terminate_registered_descendants(record, grace_period_s=0.0)
             self._mark_killed(record, None)
             return
@@ -2280,32 +1795,12 @@ class ProcessManager:
         limit = max(self.policy.terminal_history_limit, 0)
         if limit == 0:
             self._terminal_records.clear()
-            # wt-024 M3: cap-zero means "no terminal history kept".
-            # We must NOT ``clear()`` the whole ``_termination_outcomes``
-            # dict here, because ``_record_termination_outcome`` is
-            # called for a PID BEFORE that PID reaches terminal state
-            # (it records each escalation stage — graceful_terminate /
-            # force_kill — during the live escalation path).  If one
-            # PID's terminal-state call cleared the entire outcomes
-            # dict it would erase the in-flight diagnostics of every
-            # OTHER still-active PID.  Drop only the just-terminal
-            # PID's outcome record (or nothing if no outcome was
-            # ever recorded for it, e.g. clean exit with returncode=0).
             self._termination_outcomes.pop(record.pid, None)
             return
         self._terminal_records.pop(record.pid, None)
         self._terminal_records[record.pid] = record
         while len(self._terminal_records) > limit:
             evicted_pid, _ = self._terminal_records.popitem(last=False)
-            # wt-024 M3: tie _termination_outcomes lifetime to the
-            # _terminal_records FIFO eviction so the outcomes dict
-            # never outlives the cap.  ``pop(..., None)`` keeps the
-            # two structures in sync without KeyError when the
-            # escalation path didn't record an outcome (e.g. clean
-            # exits with returncode=0).  Active PIDs are not in
-            # ``_terminal_records`` (they live in ``_records``) so
-            # they cannot be evicted by this loop — their in-flight
-            # outcomes are preserved.
             self._termination_outcomes.pop(evicted_pid, None)
 
     def _mark_exited(self, record: ProcessRecord, returncode: int | None) -> None:
@@ -2354,10 +1849,6 @@ class ProcessManager:
         record: ProcessRecord | None = None,
         psutil_mod: _PsutilModuleLike | None = None,
     ) -> tuple[str, str]:
-        """Safely retrieve (status, command_name) diagnostics for a process.
-
-        Handles NoSuchProcess and AccessDenied gracefully without raising.
-        """
         mod = psutil_mod if psutil_mod is not None else self._psutil
         status = "unknown"
         cmd = " ".join(record.command) if record is not None and record.command else ""
@@ -2366,8 +1857,6 @@ class ProcessManager:
             try:
                 proc = mod.process_from_pid(pid)
                 status = _query_proc_status(proc, mod)
-                # A process psutil cannot see (gone, or not ours to inspect) has
-                # no trustworthy live command line; keep the spawn-time command.
                 if status not in _UNINSPECTABLE_STATUSES:
                     proc_cmd = _extract_proc_command(proc)
                     if proc_cmd:

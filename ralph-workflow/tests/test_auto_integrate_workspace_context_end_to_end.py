@@ -1,16 +1,3 @@
-"""End-to-end regression: ``reconcile_target_onto_remote`` drives the workspace-context.
-
-The auto-rebase conflict path on the main worktree is the workspace-context
-feature's first driver. The shared resolver built by
-``build_agent_rebase_stop_resolver`` enters ``workspace_context`` for the
-target ``root`` the reconcile module passes in, and the resolver's with-block
-covers decline, pipeline exception, and success so the caller is
-restored byte-identical. The existing ``TestAutoRebaseWorkspaceContextEndToEnd``
-suite (in ``test_auto_integrate_remote_sync_reconcile.py``) drives the
-resolver directly; this module drives it through the real reconcile module
-so every reconcile boundary is exercised end to end.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -28,7 +15,6 @@ if TYPE_CHECKING:
 
 
 def _seed_workspace(root: Path, *, prompt: str) -> None:
-    """Create a minimal Ralph workspace at ``root`` with the given ``prompt``."""
     agent_dir = root / ".agent"
     agent_dir.mkdir(parents=True, exist_ok=True)
     (root / "PROMPT.md").write_text(prompt, encoding="utf-8")
@@ -36,7 +22,6 @@ def _seed_workspace(root: Path, *, prompt: str) -> None:
 
 
 def _install_workspace_seams(monkeypatch: pytest.MonkeyPatch, *workspace_roots: Path) -> None:
-    """Mock git ops so each workspace resolves to its own root."""
 
     canonical = {p.resolve(): p.resolve() for p in workspace_roots}
 
@@ -65,18 +50,11 @@ def _config(**overrides: object):
 
 
 def _load_default_policy_bundle() -> PolicyBundle:
-    """The real default policy, which declares the resolution drain."""
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     return load_policy(defaults_dir)
 
 
 def _registry_with_chain_agent() -> object:
-    """Registry whose chain lookup returns a sentinel agent.
-
-    The real default policy's rebase-conflict-resolution drain resolves
-    through ``AgentRegistry.from_config``; the seeded builtins already
-    cover every chain name.
-    """
     from ralph.agents.registry import AgentRegistry
     from ralph.config.models import UnifiedConfig
 
@@ -84,7 +62,6 @@ def _registry_with_chain_agent() -> object:
 
 
 def _caller_proxies(caller: Path) -> dict[str, object]:
-    """Build the caller's observable resources -- what the caller sees."""
     from ralph.agents.registry import AgentRegistry
     from ralph.config.loader import load_config
     from ralph.mcp.session_plan import resolve_effective_session_mcp_plan
@@ -107,7 +84,6 @@ def _caller_proxies(caller: Path) -> dict[str, object]:
 
 
 def _snapshot_caller(caller: Path) -> dict[str, object]:
-    """Byte-identical snapshot of the caller's observable resources."""
     proxies = _caller_proxies(caller)
     return {
         "prompt_bytes": proxies["prompt_bytes"],
@@ -120,17 +96,6 @@ def _snapshot_caller(caller: Path) -> dict[str, object]:
 
 
 class TestReconcileTargetOntoRemoteWorkspaceContextEndToEnd:
-    """``reconcile_target_onto_remote`` drives the workspace-context path.
-
-    The reconcile module's main-owner rebase stop calls the resolver it
-    was passed (``rebase_stop_resolver``). When that resolver is the real
-    ``build_agent_rebase_stop_resolver`` built for the calling worktree,
-    the resolver must enter ``workspace_context`` for the target owner
-    passed in by the reconcile module and observe the target's prompt,
-    policy, registry, config, and MCP plan through the pipeline. The
-    caller is restored byte-identical regardless of outcome.
-    """
-
     @staticmethod
     def _drive_resolver_through_reconcile(
         monkeypatch: pytest.MonkeyPatch,
@@ -139,19 +104,6 @@ class TestReconcileTargetOntoRemoteWorkspaceContextEndToEnd:
         *,
         resolver_outcome: bool,
     ) -> dict[str, object]:
-        """Drive ``reconcile_target_onto_remote`` with the real shared resolver.
-
-        Patches every reconcile-module boundary (``_reconciliation_preconditions``,
-        ``write_record``, ``rebase_onto``, ``rebase_in_progress``,
-        ``resolve_rebase_in_progress``, ``abort_rebase``, ``branch_sha``,
-        ``clear_record``) so the path runs without real Git/network effects.
-        The fake ``resolve_rebase_in_progress`` invokes the received resolver,
-        so the real ``build_agent_rebase_stop_resolver`` runs end to end.
-
-        Returns a dict containing the pipeline observations and the
-        ``ReconciliationOutcome`` so the caller can assert both the
-        target-context assertions and the snapshot equality.
-        """
         from ralph.git.rebase.rebase import RebaseConflicts
         from ralph.pipeline import auto_integrate_agent as resolver_module
         from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
@@ -172,9 +124,6 @@ class TestReconcileTargetOntoRemoteWorkspaceContextEndToEnd:
         monkeypatch.setattr(remote_reconcile, "_reconciliation_owner", locate_owner)
         monkeypatch.setattr(remote_reconcile, "current_rebase_identity", rebase_identity)
 
-        # Reconcile preconditions short-circuit: pretend the caller is the
-        # main worktree's repo root and the target is the owning target
-        # worktree. None of the seams below touch real Git.
         monkeypatch.setattr(
             remote_reconcile,
             "_reconciliation_preconditions",
@@ -243,10 +192,6 @@ class TestReconcileTargetOntoRemoteWorkspaceContextEndToEnd:
             return resolved
 
         monkeypatch.setattr(remote_reconcile, "resolve_rebase_in_progress", _invoke_resolver)
-        # ``abort_rebase`` is intentionally left unpatched here so the
-        # calling test can record its invocations; the helper only stubs
-        # the seams every path uses. ``branch_sha`` and ``clear_record``
-        # are stubbed because the test doesn't need to observe them.
         monkeypatch.setattr(remote_reconcile, "branch_sha", lambda *_a, **_kw: "before_sha")
         monkeypatch.setattr(remote_reconcile, "get_head_sha", lambda *_a: "completed_feature_sha")
         monkeypatch.setattr(remote_reconcile, "clear_record", cleared.append)
@@ -276,24 +221,12 @@ class TestReconcileTargetOntoRemoteWorkspaceContextEndToEnd:
             "rebase_active": active_rebase[0],
         }
 
-    # Bounded per-test timeout (5s): the test runs real git init/remote setup,
-    # which legitimately grazes the 1.0s default bound only when the full
-    # suite loads the machine; the bound keeps it under the per-test policy
-    # without touching the 60s combined budget.
     @pytest.mark.timeout_seconds(5)
     def test_reconcile_target_onto_remote_drives_shared_resolver_with_target_context(
         self,
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """End-to-end: ``reconcile_target_onto_remote`` threads the target context.
-
-        The shared resolver built by ``build_agent_rebase_stop_resolver``
-        enters ``workspace_context`` for the conflicted owner that the
-        reconcile module passes in. The pipeline must receive the
-        TARGET's prompt bytes, scope, and policy, and the caller's
-        resources must be byte-identical before and after the call.
-        """
         caller = tmp_path / "caller"
         target = tmp_path / "target"
         caller.mkdir()
@@ -316,18 +249,13 @@ class TestReconcileTargetOntoRemoteWorkspaceContextEndToEnd:
         assert observations["workspace_scope"].root == target.resolve()
         assert observations["prompt_bytes"] == (target / "PROMPT.md").read_bytes()
         assert observations["prompt_bytes"] != (caller / "PROMPT.md").read_bytes()
-        # The reconcile module invoked the shared resolver once with the
-        # target owner root and the rebased-onto branch.
         assert len(result["resolver_call_args"]) == 1
         called_root, called_target, _stop = result["resolver_call_args"][0]
         assert called_root == target
         assert called_target == "origin/main"
-        # The reconcile outcome succeeded -- the resolver returned True and
-        # the second ``rebase_in_progress`` check was False.
         assert result["outcome"].reconciled is True
         assert result["cleared"] == [caller]
         assert result["rebase_active"] is False
-        # Caller's observable resources are byte-identical before and after.
         assert after == before
 
     def test_reconcile_target_onto_remote_decline_retains_owner_and_caller_context(
@@ -335,7 +263,6 @@ class TestReconcileTargetOntoRemoteWorkspaceContextEndToEnd:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """A declined resolver retains target ownership and preserves caller resources."""
         caller = tmp_path / "caller"
         target = tmp_path / "target"
         caller.mkdir()
@@ -374,5 +301,4 @@ class TestReconcileTargetOntoRemoteWorkspaceContextEndToEnd:
         owner_root, retained = result["records"][-1]
         assert owner_root == caller
         assert retained.resolving_rebase and retained.owning_worktree == str(target)
-        # The caller is byte-identical before and after.
         assert after == before

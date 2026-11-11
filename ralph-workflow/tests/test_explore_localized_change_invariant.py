@@ -1,17 +1,3 @@
-"""Black-box tests for the localized-change invariant (S-4).
-
-A single-file workspace mutation must touch ONLY the changed path's
-dirty-queue row. Sibling paths that were not mutated must stay absent
-from the dirty queue, and after a focused reindex only the changed
-file is reprocessed while the dirty queue settles clean.
-
-This locks in the S-5 synchronous ``_enqueue_mark`` seam: a write
-handler persists the dirty mark before returning (deduped by
-``_PENDING_MARKS``), so ``store.peek_dirty_paths()`` observes the
-change immediately and the next ``reindex(mode='changed')`` reparses
-exactly one file.
-"""
-
 from __future__ import annotations
 
 import json
@@ -27,13 +13,10 @@ from ralph.mcp.tools.workspace._write_handlers import handle_write_file
 
 
 class _FakeSession:
-    """Minimal session stub exposing explore_index."""
-
     def __init__(self, explore_index: Any | None) -> None:
         self.explore_index = explore_index
 
     def check_capability(self, capability: str) -> object:
-        # All capabilities are allowed in tests.
         return {"status": "approved", "capability": capability}
 
     def check_edit_area(self, path: str) -> object:
@@ -41,8 +24,6 @@ class _FakeSession:
 
 
 class _Workspace:
-    """In-memory workspace stub backed by a tmp_path directory tree."""
-
     def __init__(self, root: Path) -> None:
         self.root = root
 
@@ -97,7 +78,6 @@ def _decode(result) -> dict[str, Any]:
 
 
 def _seed_workspace(root: Path) -> list[str]:
-    """Create a 3-file workspace and return the relative paths."""
     paths = ["alpha.py", "beta.py", "gamma.py"]
     for idx, path in enumerate(paths):
         (root / path).parent.mkdir(parents=True, exist_ok=True)
@@ -107,21 +87,12 @@ def _seed_workspace(root: Path) -> list[str]:
 
 @pytest.mark.timeout_seconds(5)
 def test_localized_change_marks_only_changed_path(tmp_path: Path) -> None:
-    """A single-file mutation marks exactly the changed path dirty row.
-
-    Sibling rows that share the workspace must not appear in the dirty
-    queue. This exercises the S-5 synchronous ``_enqueue_mark`` seam:
-    after the write handler returns, ``store.peek_dirty_paths()``
-    observes the mark without waiting for a debounce drain.
-    """
     workspace_root = tmp_path / "ws"
     workspace_root.mkdir()
     _seed_workspace(workspace_root)
 
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     try:
-        # Seed the index so sibling rows already exist on disk and in
-        # the manifest. A freshly seeded store has an empty queue.
         reindex(
             store,
             workspace_root,
@@ -129,9 +100,6 @@ def test_localized_change_marks_only_changed_path(tmp_path: Path) -> None:
         )
         assert store.peek_dirty_paths() == []
 
-        # Mutate ONE file via the write handler. The handler routes
-        # through mark_path -> _enqueue_mark which persists the dirty
-        # mark synchronously before returning.
         session = _FakeSession(build_sqlite_index_handle(store))
         result = handle_write_file(
             session,
@@ -151,13 +119,6 @@ def test_localized_change_marks_only_changed_path(tmp_path: Path) -> None:
 
 @pytest.mark.timeout_seconds(5)
 def test_unchanged_sibling_absent_after_settle(tmp_path: Path) -> None:
-    """After a focused reindex only the changed file is reprocessed.
-
-    The dirty queue settles clean: the changed path is removed (it was
-    in scope and successfully re-extracted) and the unchanged siblings
-    were never marked dirty, so they neither appear in the queue nor in
-    the reindex changed_files set.
-    """
     workspace_root = tmp_path / "ws"
     workspace_root.mkdir()
     _seed_workspace(workspace_root)
@@ -171,7 +132,6 @@ def test_unchanged_sibling_absent_after_settle(tmp_path: Path) -> None:
         )
         assert store.peek_dirty_paths() == []
 
-        # Mutate alpha.py only; siblings are untouched on disk.
         session = _FakeSession(build_sqlite_index_handle(store))
         handle_write_file(
             session,
@@ -180,9 +140,6 @@ def test_unchanged_sibling_absent_after_settle(tmp_path: Path) -> None:
         )
         assert store.peek_dirty_paths() == ["alpha.py"]
 
-        # Focused reindex: only alpha.py content changed. Siblings are
-        # skipped by the size+mtime prefilter (not dirty, unchanged
-        # content) so the work stays proportional to the edit.
         result = reindex(
             store,
             workspace_root,
@@ -194,8 +151,6 @@ def test_unchanged_sibling_absent_after_settle(tmp_path: Path) -> None:
         assert "beta.py" not in result.changed_files
         assert "gamma.py" not in result.changed_files
 
-        # Dirty queue settles clean: the processed path was in scope
-        # and is removed; no sibling was ever added.
         assert store.peek_dirty_paths() == []
     finally:
         store.close()

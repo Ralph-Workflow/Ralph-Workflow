@@ -1,14 +1,3 @@
-"""Shared verdict rules and policy limits of the integration diagnostic path.
-
-The diagnostic path is the single authority that decides whether the retained
-integration evidence is still trustworthy. This module owns the two pieces
-every diagnostic site needs: the policy limits (the repair-attempt cap and the
-lease lifetime) and the lease/verdict rules that read them.
-
-Split out of ``ralph.pipeline._integration_diagnostic`` to stay within the
-repo-structure line limits; the public surface is unchanged and re-exported
-from there.
-"""
 
 from __future__ import annotations
 
@@ -31,21 +20,8 @@ if TYPE_CHECKING:
     from ralph.pipeline.auto_integrate_record import IntegrationRecord
     from ralph.pipeline.operation_evidence import OperationEvidenceCollector
 
-#: Default repair-attempt cap. The diagnostic path rotates inspection
-#: agents on every handoff, but the rotation must terminate: an
-#: over-cap handoff stamps the typed ``DIAGNOSTIC_BUDGET_SPENT_REASON``
-#: marker on the durable record and routes the state into the
-#: autonomous fallback ladder
-#: (:mod:`ralph.pipeline._integration_diagnostic_handoff`), never to a
-#: human hand-off. Operators can raise the cap via
-#: ``conflict_resolution.diagnostic_repair_attempt_cap`` in policy
-#: configuration; the default is intentionally low so the production
-#: loop is broken on the very first incident.
 DIAGNOSTIC_REPAIR_ATTEMPT_CAP: int = 5
 
-#: Re-exported from :mod:`ralph.pipeline.auto_integrate_transition`,
-#: where the constant lives so the load-time counter clamp can read it
-#: without an import cycle.
 __all__ = [
     "DIAGNOSTIC_BUDGET_SPENT_REASON",
     "DIAGNOSTIC_REPAIR_ATTEMPT_CAP",
@@ -58,39 +34,18 @@ __all__ = [
     "release_verified_diagnostic",
 ]
 
-#: Default lease lifetime in seconds. The diagnostic HOLD step writes
-#: ``diagnostic_ownership = f"{identity_fingerprint(record)}:{time.time()}"``.
-#: A subsequent run whose elapsed time exceeds this value treats the
-#: lease as expired and auto-releases (fail-open: ``UNKNOWN`` verdict).
-#: 30 minutes accommodates the longest legitimate agent invocation
-#: while ensuring a process killed between HOLD and RELEASE becomes
-#: auto-recoverable on the next run.
 EVIDENCE_LEASE_SECONDS: float = 1800.0
 
-#: The single mutable holder of the diagnostic path's evidence collector.
-#: The public write seam (:func:`set_operation_evidence_collector`) lives in
-#: ``ralph.pipeline._integration_diagnostic``; every reader resolves the
-#: current collector through :func:`operation_evidence_collector` below.
 _OPERATION_EVIDENCE_COLLECTOR: list[OperationEvidenceCollector] = [
     SubprocessOperationEvidenceCollector()
 ]
 
 
 def operation_evidence_collector() -> OperationEvidenceCollector:
-    """Return the diagnostic path's currently-configured collector."""
     return _OPERATION_EVIDENCE_COLLECTOR[0]
 
 
 def _operation_root_for(record: IntegrationRecord, default_root: Path) -> Path:
-    """Single source of truth for the diagnostic's operation root.
-
-    The diagnostic only switches to ``record.owning_worktree`` when
-    the operation is a ``target_reconcile`` AND the path still
-    exists on disk; otherwise it falls back to the caller-supplied
-    ``default_root``. Four call sites used to implement this gate
-    with subtly different predicates; this helper is the canonical
-    rule every site must consult.
-    """
     if (
         record.operation_kind == "target_reconcile"
         and record.owning_worktree
@@ -105,33 +60,6 @@ def diagnostic_evidence_verdict(
     record: IntegrationRecord,
     collector: OperationEvidenceCollector | None = None,
 ) -> EvidenceVerdict:
-    """Evaluate whether the held diagnostic lease is still trustworthy.
-
-    The diagnostic no longer compares the evidence snapshot. The
-    lease in ``diagnostic_ownership`` (``<fingerprint>:<held_at>``)
-    is the sole release authority:
-
-    * Empty ``diagnostic_evidence`` and no ``diagnostic_ownership`` --
-      no live hold; the record is already released. Returns
-      ``UNCHANGED`` so the caller can proceed to recovery.
-    * Non-empty ``diagnostic_evidence`` and no ``diagnostic_ownership``
-      (missing lease) -- returns ``UNKNOWN``; the caller
-      auto-releases fail-open and re-derives from Git.
-    * Non-empty unparseable ``diagnostic_ownership``
-      (malformed lease) -- returns ``UNKNOWN``; the caller
-      auto-releases fail-open and re-derives from Git.
-    * Fingerprint mismatch (the durable identity was rewritten by
-      a different worktree) -- returns ``CHANGED`` (valid old lease
-      bytes preserved on disk).
-    * Lease parseable and unexpired -- returns ``UNCHANGED``.
-    * Lease parseable and expired -- returns ``UNKNOWN``; the caller
-      auto-releases (fail-open).
-
-    Returns:
-        EvidenceVerdict.UNCHANGED: the lease is valid; release.
-        EvidenceVerdict.CHANGED: the durable identity was rewritten.
-        EvidenceVerdict.UNKNOWN: the lease is expired, missing, or unparseable.
-    """
     if not record.diagnostic_evidence and not record.diagnostic_ownership:
         return EvidenceVerdict.UNCHANGED
     if is_owner_dead(record) or record.diagnostic_ownership is None:
@@ -141,7 +69,6 @@ def diagnostic_evidence_verdict(
     if is_expired or fingerprint is None:
         return EvidenceVerdict.UNKNOWN
     if fingerprint != identity_fingerprint(record):
-        # Valid old lease bytes with differing fingerprint: preserve as CHANGED.
         return EvidenceVerdict.CHANGED
     return EvidenceVerdict.UNCHANGED
 
@@ -154,7 +81,6 @@ def diagnostic_evidence_unchanged(
     record: IntegrationRecord,
     collector: OperationEvidenceCollector | None = None,
 ) -> bool:
-    """Return True iff diagnostic evidence evaluates to UNCHANGED."""
     return (
         diagnostic_evidence_verdict(root, record, collector=collector) == EvidenceVerdict.UNCHANGED
     )
@@ -165,11 +91,6 @@ def release_verified_diagnostic(
     record: IntegrationRecord,
     collector: OperationEvidenceCollector | None = None,
 ) -> EvidenceVerdict:
-    """Evaluate diagnostic evidence without mutating durable record state.
-
-    Returns an :class:`EvidenceVerdict`. The caller owns the transition
-    and durable record write when the verdict is ``UNCHANGED``.
-    """
     try:
         return diagnostic_evidence_verdict(root, record, collector=collector)
     except Exception:

@@ -1,11 +1,3 @@
-"""Black-box tests for the FsWorkspace idempotent write guard.
-
-Exercises ``FsWorkspace.write`` end-to-end through a counting
-in-memory FileBackend so no real filesystem I/O is performed
-(no ``tmp_path``, no ``Path.read_text``/``Path.write_text``,
-no patching of ``pathlib``).
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -19,8 +11,6 @@ if TYPE_CHECKING:
 
 
 class _CountingBackend(FileBackend):
-    """In-memory FileBackend that records write_text invocations."""
-
     def __init__(self) -> None:
         self._files: Dict[Path, str] = {}
         self.write_text_calls: list[tuple[Path, str]] = []
@@ -57,33 +47,29 @@ class _CountingBackend(FileBackend):
 
 
 def test_fresh_write_creates_file_with_expected_content() -> None:
-    """First write to a fresh path: exactly one write_text call, stored bytes match."""
     backend = _CountingBackend()
     ws = FsWorkspace(Path("/virtual-ws"), backend=backend)
 
     ws.write("output.txt", "alpha")
 
     assert len(backend.write_text_calls) == 1
-    assert backend.write_text_calls[0][1] == "alpha"  # content check
+    assert backend.write_text_calls[0][1] == "alpha"
     assert backend._files[Path("/virtual-ws/output.txt")] == "alpha"
 
 
 def test_identical_write_is_skipped() -> None:
-    """Second write with identical content: zero additional write_text calls, bytes unchanged."""
     backend = _CountingBackend()
     ws = FsWorkspace(Path("/virtual-ws"), backend=backend)
 
     ws.write("output.txt", "alpha")
     ws.write("output.txt", "alpha")
 
-    # Two ``ws.write`` calls but the second is a skip — only one real write.
     assert len(backend.write_text_calls) == 1
-    assert backend.write_text_calls[0][1] == "alpha"  # content check
-    assert backend._files[Path("/virtual-ws/output.txt")] == "alpha"  # unchanged
+    assert backend.write_text_calls[0][1] == "alpha"
+    assert backend._files[Path("/virtual-ws/output.txt")] == "alpha"
 
 
 def test_identical_write_skips_parent_directory_creation() -> None:
-    """S-3 regression: replaying unchanged output does not touch its parent directory."""
     backend = _CountingBackend()
     ws = FsWorkspace(Path("/virtual-ws"), backend=backend)
 
@@ -95,7 +81,6 @@ def test_identical_write_skips_parent_directory_creation() -> None:
 
 
 def test_changed_write_persists() -> None:
-    """Write a different content: second write_text call, stored bytes reflect new content."""
     backend = _CountingBackend()
     ws = FsWorkspace(Path("/virtual-ws"), backend=backend)
 
@@ -103,24 +88,21 @@ def test_changed_write_persists() -> None:
     ws.write("output.txt", "beta")
 
     assert len(backend.write_text_calls) == 2
-    assert backend.write_text_calls[1][1] == "beta"  # content check
+    assert backend.write_text_calls[1][1] == "beta"
     assert backend._files[Path("/virtual-ws/output.txt")] == "beta"
 
 
 def test_mkdir_is_routed_through_injected_backend() -> None:
-    """The parent-directory mkdir is intercepted by the injected backend (no real I/O)."""
     backend = _CountingBackend()
     ws = FsWorkspace(Path("/virtual-ws"), backend=backend)
 
     ws.write("a/b/c/deep.txt", "content")
 
-    # Parent directory mkdir goes through the backend, not the real filesystem.
     assert any(path == Path("/virtual-ws/a/b/c") for path in backend.mkdir_calls)
     assert backend._files[Path("/virtual-ws/a/b/c/deep.txt")] == "content"
 
 
 def test_workspace_round_trip_uses_the_injected_file_backend() -> None:
-    """S-5 regression: a logical write/read round trip stays within its I/O seam."""
     backend = _CountingBackend()
     ws = FsWorkspace(Path("/virtual-ws"), backend=backend)
 
@@ -130,7 +112,6 @@ def test_workspace_round_trip_uses_the_injected_file_backend() -> None:
 
 
 def test_write_signature_returns_none() -> None:
-    """Public write() signature unchanged: returns None, accepts (str, str)."""
     backend = _CountingBackend()
     ws = FsWorkspace(Path("/virtual-ws"), backend=backend)
 

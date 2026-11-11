@@ -1,12 +1,3 @@
-"""Shared builders for a complete (validator-passing) policy corpus.
-
-The policy pipeline's tests need to control exactly one thing: does
-``validators.validate_readiness`` return findings or not? These helpers let a
-fake agent "fix" a workspace by seeding a corpus that really does pass the real
-deterministic validator -- so the tests drive the true gate rather than a mock of
-it.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -32,20 +23,10 @@ _LANG_POLICIES = frozenset({"typechecking-policy.md", "linting-policy.md"})
 
 
 def stack() -> ProjectStack:
-    """The project stack every policy-pipeline test runs against."""
     return ProjectStack(primary_language="Python", secondary_languages=[], frameworks=[])
 
 
 def complete_policy_body(filename: str) -> str:
-    """Build a policy body that satisfies every structural check.
-
-    The required RALPH-FACT keys are read from the bundled starter, so a starter
-    that gains a fact key cannot silently drift away from these fixtures.
-    The v5 contract adds a required ``## Guard inventory`` table; the
-    synthesized body always carries one with at least one data row whose
-    Protected outcome names a real detector observation (so the
-    deterministic claim-scope substring predicate passes).
-    """
     facts = [
         line.replace("PROJECT-FACT-UNRESOLVED", "verified-value")
         for line in starters.read_starter(filename).splitlines()
@@ -62,8 +43,6 @@ def complete_policy_body(filename: str) -> str:
     for heading in headings:
         lines.append(f"## {heading}")
         if heading == "Research basis":
-            # The citation block must follow the heading directly: the validator
-            # parses it as a block, and prose in between breaks the parse.
             lines.extend(
                 (
                     "",
@@ -75,18 +54,8 @@ def complete_policy_body(filename: str) -> str:
                 )
             )
         elif heading == "Bypass detection":
-            # The bypass gate is scoped to its section: the command must appear
-            # UNDER this heading, not merely somewhere in the file.
             lines.extend(("Real content.", "RALPH-COMMAND: make bypass-audit", ""))
         elif heading == markers.GUARD_INVENTORY_HEADING.removeprefix("## "):
-            # v6: every applicable starter (core and conditional) carries
-            # a Guard inventory table with the pinned header and at least
-            # one data row. The Protected outcome cell names a real
-            # detector observation so the claim-scope substring predicate
-            # passes. The fifth cell is the ``Claim scope`` field
-            # required by B7 (per the v6 frozen column order: ``Guard |
-            # Owner | Protected outcome | Detected condition | Claim scope
-            # | Enforcement | Retirement trigger``).
             lines.extend(
                 (
                     "",
@@ -107,7 +76,6 @@ def complete_policy_body(filename: str) -> str:
 
 
 def policy_invocation_bundle() -> PolicyBundle:
-    """Build the smallest valid bundle for policy invocation boundary tests."""
     phase_names = (
         "planning",
         "planning_analysis",
@@ -133,7 +101,6 @@ def policy_invocation_bundle() -> PolicyBundle:
 
 
 def remediation_required_result() -> ReadinessResult:
-    """Return one deterministic finding for a policy-invocation boundary test."""
     return ReadinessResult(
         status=ReadinessStatus.REMEDIATION_REQUIRED,
         findings=[
@@ -148,7 +115,6 @@ def remediation_required_result() -> ReadinessResult:
 
 
 def seed_complete_corpus(workspace: Workspace, *, portfolio: str | None = None) -> None:
-    """Write a full policy corpus that passes the real validator."""
     workspace.mkdirs(markers.CANONICAL_DIR.rstrip("/"))
     portfolio_content = portfolio or starters.read_starter(starters.PORTFOLIO_STARTER_NAME).replace(
         "PROJECT-FACT-UNRESOLVED", "make test"

@@ -1,4 +1,3 @@
-"""PhaseCommitPolicy Pydantic model."""
 
 from __future__ import annotations
 
@@ -8,7 +7,6 @@ from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 
 
 class PhaseCommitPolicy(_FrozenPolicyModel):
-    """Commit semantics for commit-role phases."""
 
     requires_artifact: bool = True
     skipped_advances_progress: bool = True

@@ -1,4 +1,3 @@
-"""Fallover event emitted when an agent chain advances to the next agent."""
 
 from __future__ import annotations
 
@@ -8,7 +7,6 @@ from datetime import UTC, datetime
 
 @dataclass(frozen=True)
 class FalloverEvent:
-    """Emitted when an agent is exhausted and the chain falls over to the next."""
 
     timestamp: datetime
     phase: str

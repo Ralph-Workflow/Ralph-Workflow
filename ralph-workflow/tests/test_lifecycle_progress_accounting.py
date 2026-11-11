@@ -1,5 +1,3 @@
-"""Progress tests for lifecycle-owned accounting metadata."""
-
 from __future__ import annotations
 
 from importlib import import_module

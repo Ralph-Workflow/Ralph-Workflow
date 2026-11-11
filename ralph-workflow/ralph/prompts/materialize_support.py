@@ -1,4 +1,3 @@
-"""Shared helper utilities for prompt materialization."""
 
 from __future__ import annotations
 
@@ -18,23 +17,9 @@ def phase_payload_variables(
     phase: str,
     workspace_root: Path,
     values: dict[str, str],
-    # Deprecated: Ralph-orchestrated workers are removed from the execution model;
-    # parallelism is owned by the developer agent's own sub-agents.
-    # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
     worker_namespace: Path | None = None,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> dict[str, str]:
-    """Build prompt payload variables, writing oversized values to disk.
-
-    The injected ``backend`` controls both ``mkdir`` and the physical
-    write so a byte-identical re-emit of an oversized prompt payload
-    does not advance the file's mtime or generate an additional
-    fseventsd notification. The default backend is the real-Path
-    backend; tests inject an in-memory counting backend to verify the
-    idempotent skip. The post-condition "the destination file contains
-    the expected payload content" always holds: any read uncertainty
-    or content mismatch falls through to a real write.
-    """
     output_dir = (
         worker_namespace / "tmp" / "prompt_payloads"
         if worker_namespace is not None
@@ -56,13 +41,9 @@ def persist_product_criteria(
     workspace_root: Path,
     prompt_content: str | None,
     *,
-    # Deprecated: Ralph-orchestrated workers are removed from the execution model;
-    # parallelism is owned by the developer agent's own sub-agents.
-    # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
     worker_namespace: Path | None = None,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> str:
-    """Persist the active prompt content to the workspace prompt file."""
     product_criteria_path = (
         worker_namespace / "tmp" / "PRODUCT_CRITERIA.md"
         if worker_namespace is not None
@@ -70,7 +51,6 @@ def persist_product_criteria(
     )
     if prompt_content is None and backend.exists(product_criteria_path):
         return str(product_criteria_path)
-    # filesystem-write-ok: prompt materialization under .agent/prompts (agent-authored), runtime prompt scaffold not committed by chore
     write_text_if_changed(
         backend,
         product_criteria_path,
@@ -87,13 +67,11 @@ def product_criteria_variables(
     prompt_content: str | None,
     product_criteria_path: str,
 ) -> dict[str, str]:
-    """Return the prompt variables for the current prompt path."""
     del prompt_content
     return {"PRODUCT_CRITERIA": "", "PRODUCT_CRITERIA_PATH": product_criteria_path}
 
 
 def merged_variables(base: dict[str, str], session_caps: SessionCapabilities) -> dict[str, str]:
-    """Merge base template variables with session capability variables."""
     return {
         **base,
         **capability_template_variables(

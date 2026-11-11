@@ -1,15 +1,3 @@
-"""Lock-down tests for render_explanation_ascii() ASCII marker contracts.
-
-These tests verify that the required ASCII visual markers are present in the
-rendered output for three structural patterns:
-  - spine (=ENTRY=>, ==SUCCESS==>, ==FAILURE==>, Legend: block)
-  - loopback (<<==[loopback]==, [LOOPBACK: ...], >> RE-ENTRY at ...)
-  - fan-out / rejoin (>>> FAN_OUT ..., <<< REJOIN)
-
-Tests use synthetic PolicyExplanation / PolicyBundle instances so they do not
-depend on the bundled default pipeline.toml.
-"""
-
 from __future__ import annotations
 
 from ralph.policy.explain import (
@@ -68,8 +56,6 @@ def _minimal_recovery() -> RecoveryExplanation:
 
 
 class TestAsciiFanoutRejoinContract:
-    """Fan-out / rejoin markers expose concurrency and queued waves."""
-
     def _fanout_explanation(self) -> PolicyExplanation:
         work = _make_phase("work", on_success="done", is_entry=True)
         done = _make_phase(
@@ -94,17 +80,14 @@ class TestAsciiFanoutRejoinContract:
         )
 
     def test_fanout_annotation_present(self) -> None:
-        """The FAN_OUT marker appears for the parallel phase."""
         output = render_explanation_ascii(self._fanout_explanation())
         assert ">>> FAN_OUT" in output
 
     def test_fanout_shows_worker_count(self) -> None:
-        """Fan-out annotation includes max_workers count."""
         output = render_explanation_ascii(self._fanout_explanation())
         assert "max_workers=4" in output
 
     def test_fanout_explains_queued_waves_and_file_ownership(self) -> None:
-        """Worker capacity bounds waves, not total units or directory-only ownership."""
         explanation = self._fanout_explanation()
         output = render_explanation_ascii(explanation)
         assert "waves=queued" in output
@@ -116,12 +99,10 @@ class TestAsciiFanoutRejoinContract:
         assert "Require allowed_directories:" not in text
 
     def test_rejoin_marker_present(self) -> None:
-        """<<< REJOIN appears after the fan-out phase box."""
         output = render_explanation_ascii(self._fanout_explanation())
         assert "<<< REJOIN" in output
 
     def test_fanout_before_rejoin_ordering(self) -> None:
-        """>>> FAN_OUT annotation appears before <<< REJOIN in the output."""
         output = render_explanation_ascii(self._fanout_explanation())
         fanout_pos = output.index(">>> FAN_OUT")
         rejoin_pos = output.index("<<< REJOIN")
@@ -130,10 +111,8 @@ class TestAsciiFanoutRejoinContract:
         )
 
     def test_rejoin_has_divider_line(self) -> None:
-        """<<< REJOIN is preceded by a divider line +================+ for visual bracketing."""
         output = render_explanation_ascii(self._fanout_explanation())
         assert "+================+" in output
-        # Divider must appear before the REJOIN marker
         divider_pos = output.index("+================+")
         rejoin_pos = output.index("<<< REJOIN")
         assert divider_pos < rejoin_pos, (

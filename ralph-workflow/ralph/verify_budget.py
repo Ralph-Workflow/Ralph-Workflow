@@ -1,55 +1,3 @@
-"""Contention-aware accounting for the combined ``make verify`` test budget.
-
-``ralph/verify.py`` charges every budget-tracked test step against two
-limits -- CPU and wall clock -- because wall clock alone cannot tell a
-slower suite from a busier (or smaller) machine:
-
-* **CPU** -- the core-seconds the suite's own processes consumed, read from
-  ``getrusage(RUSAGE_CHILDREN)`` deltas. Those include every descendant
-  reaped inside the tree, so the short-lived git and child interpreters a
-  process sampler misses are counted too. A descendant whose parent exits
-  first is re-parented to init and reaped there: rusage never sees its
-  CPU, while host busy time does, so it would be credited as *foreign*
-  contention. :func:`orphaned_cpu_tracker` samples each step twice a
-  second -- the live process tree, plus every process in the sessions the
-  tree's members belong to (``run_process`` gives each step its own) --
-  and charges the CPU of descendants found alive outside the tree to the
-  suite. An orphan that starts and ends between two samples is still
-  missed, so a small bias in the suite's favour remains. This is the work
-  the suite itself does; other load on the host barely moves it, so
-  exceeding the CPU budget is always a failure.
-
-* **Wall clock** -- the 60 s target a developer actually waits for. On a
-  shared host it also measures everything else that ran. While the tests
-  ran, the host spent ``host busy - suite CPU`` core-seconds on other
-  processes; spread across the host's cores, that is the most wall time
-  that foreign load can have taken from the suite (the *contention
-  credit*). A run over the wall budget that fits once the credit is
-  subtracted is reported as a host-contention WARNING; a run still over
-  is a failure. On an idle host the credit is ~0 and the wall budget
-  applies exactly as written.
-
-* **Host capacity** -- a host can be too small for the wall budget
-  without anything else running on it. ~470 core-seconds of suite work on
-  a 4-core CI runner needs at least 117 s of wall clock even perfectly
-  parallel. When the suite's own CPU kept the cores foreign load left free
-  saturated -- ``suite CPU / (wall x cores - foreign CPU)`` at or above
-  ``CAPACITY_SATURATION`` (0.9) -- the wall clock is capacity-bound: the
-  host could not have finished sooner, so the CPU budget is the binding
-  limit and the overrun is reported as a host-capacity WARNING. A wall
-  overrun that left capacity idle (the suite waited instead of working)
-  stays a failure. The rule cannot shelter unbounded growth: whatever the
-  host size, the suite's total work is still capped by the 700 core-s CPU
-  budget, and on a host of 13 or more cores saturating it for over 60 s
-  already costs more than that cap, which fails first.
-
-The credit is an upper bound -- it assumes every foreign core-second
-displaced the suite -- which is why the CPU budget is a hard limit: a
-suite that grows can shelter behind contention or capacity on wall clock,
-never on CPU. Host busy time counts only ``user + system`` (no iowait, no
-nice), so the credit can be under-estimated but never inflated by idle I/O
-waits.
-"""
 
 from __future__ import annotations
 
@@ -87,8 +35,6 @@ if TYPE_CHECKING:
         def children(self, *, recursive: bool) -> Sequence[_Process]: ...
 
 
-#: Share of the free cores the suite's own CPU must have kept busy for a
-#: wall overrun to count as capacity-bound rather than slow.
 CAPACITY_SATURATION = 0.9
 
 SuiteBudgetOutcome = Literal[
@@ -101,17 +47,11 @@ SuiteBudgetOutcome = Literal[
 
 
 def sample_suite_resources() -> tuple[float, float]:
-    """Return ``(children CPU seconds, host busy CPU seconds)`` at this instant.
-
-    Both are monotonic counters; a budget-tracked step is charged the
-    difference between a sample taken before it and one taken after it.
-    """
     usage = resource.getrusage(resource.RUSAGE_CHILDREN)
     host = psutil.cpu_times()
     return usage.ru_utime + usage.ru_stime, host.user + host.system
 
 
-#: How often the step's process tree is sampled for orphaned descendants.
 _ORPHAN_SAMPLE_INTERVAL_SECONDS = 0.5
 
 
@@ -124,7 +64,6 @@ class _Descendant:
 
 
 class _OrphanedCpuTracker:
-    """Charges a step the CPU of descendants that were orphaned while it ran."""
 
     def __init__(
         self,
@@ -137,11 +76,7 @@ class _OrphanedCpuTracker:
         self._interval = interval
         self._session_of = session_of
         self._session_members = session_members
-        # bounded-accumulator-ok: one session per process group the step started
-        # (``run_process`` gives each step its own); dies with the step.
         self._sessions: set[int] = set()
-        # bounded-accumulator-ok: live descendants of one step only; an entry is
-        # dropped as soon as its process is gone, and the tracker dies with the step.
         self._descendants: dict[tuple[int, float], _Descendant] = {}
         self._finished_orphan_cpu = 0.0
         self._stop = threading.Event()
@@ -170,7 +105,6 @@ class _OrphanedCpuTracker:
             self.sample()
 
     def sample(self, *, baseline: bool = False) -> None:
-        """Observe the tree once; ``baseline`` marks CPU spent before the step."""
         try:
             in_tree = list(self._root.children(recursive=True))
         except psutil.Error:
@@ -181,8 +115,6 @@ class _OrphanedCpuTracker:
             session = self._session_of(process.pid)
             if session is not None and session != own_session:
                 self._sessions.add(session)
-        # A descendant whose parent exited before any sample saw it is no
-        # longer in the tree, but it is still in the step's session.
         strays = [
             process
             for process in (
@@ -213,7 +145,6 @@ class _OrphanedCpuTracker:
     def _follow_departed(
         self, key: tuple[int, float], known: _Descendant, tree_pids: set[int]
     ) -> None:
-        """A descendant left the tree: it was reaped there, or orphaned."""
         try:
             running = known.process.is_running()
             parent = known.process.ppid() if running else None
@@ -226,8 +157,6 @@ class _OrphanedCpuTracker:
             known.orphaned = True
             known.cpu = max(known.cpu, cpu)
             return
-        # Gone. An orphan's last observed CPU stands; anything reaped inside
-        # the tree is already in RUSAGE_CHILDREN.
         if known.orphaned:
             self._finished_orphan_cpu += known.cpu - known.baseline_cpu
         del self._descendants[key]
@@ -270,22 +199,6 @@ def orphaned_cpu_tracker(
     session_of: Callable[[int], int | None] = _host_session_of,
     session_members: Callable[[frozenset[int]], Sequence[_Process]] = _host_session_members,
 ) -> _OrphanedCpuTracker:
-    """Return a context manager that tracks orphaned descendants' CPU for one step.
-
-    A descendant counts as orphaned once it is alive outside ``root``'s
-    process tree: re-parented after its parent exited, or found in a session
-    a tree member belongs to (other than ``root``'s own) without being in
-    the tree.
-
-    Args:
-        root: The process whose tree is watched; this process by default.
-        interval: Seconds between background samples while the step runs.
-        session_of: Session id of a pid, or ``None`` if it is gone.
-        session_members: Live processes in any of the given sessions.
-
-    The CPU the step's orphans spent while it ran is in
-    ``orphaned_cpu_seconds`` once the ``with`` block exits.
-    """
     return _OrphanedCpuTracker(
         root if root is not None else psutil.Process(os.getpid()),
         interval,
@@ -296,16 +209,6 @@ def orphaned_cpu_tracker(
 
 @dataclass(frozen=True, slots=True)
 class SuiteBudgetReport:
-    """What the budget-tracked test steps cost, and the verdict on it.
-
-    Attributes:
-        wall_seconds: Cumulative wall clock across the tracked steps.
-        suite_cpu_seconds: CPU the steps' own process trees consumed.
-        host_busy_seconds: CPU the whole host spent busy meanwhile.
-        cpu_count: Logical CPUs the host has.
-        wall_budget_seconds: The wall-clock budget.
-        cpu_budget_seconds: The CPU budget, in core-seconds.
-    """
 
     wall_seconds: float
     suite_cpu_seconds: float
@@ -316,22 +219,18 @@ class SuiteBudgetReport:
 
     @property
     def foreign_cpu_seconds(self) -> float:
-        """Core-seconds other processes used while the tests ran."""
         return max(0.0, self.host_busy_seconds - self.suite_cpu_seconds)
 
     @property
     def contention_credit_seconds(self) -> float:
-        """The most wall time foreign load can have taken from the suite."""
         return self.foreign_cpu_seconds / max(1, self.cpu_count)
 
     @property
     def adjusted_wall_seconds(self) -> float:
-        """Wall clock with the contention credit subtracted."""
         return max(0.0, self.wall_seconds - self.contention_credit_seconds)
 
     @property
     def suite_utilisation(self) -> float:
-        """Share of the cores foreign load left free that the suite kept busy."""
         free_core_seconds = self.wall_seconds * max(1, self.cpu_count) - self.foreign_cpu_seconds
         if free_core_seconds <= 0.0:
             return 1.0
@@ -339,7 +238,6 @@ class SuiteBudgetReport:
 
     @property
     def outcome(self) -> SuiteBudgetOutcome:
-        """The verdict: CPU first (the suite owns it), then wall clock."""
         if self.suite_cpu_seconds > self.cpu_budget_seconds:
             return "over_cpu_budget"
         if self.wall_seconds <= self.wall_budget_seconds:
@@ -351,12 +249,6 @@ class SuiteBudgetReport:
         return "over_wall_budget"
 
     def announce(self) -> str | None:
-        """Print a host-contention WARNING when due; return the failure, if any.
-
-        Returns:
-            ``None`` when the suite is within budget (with or without the
-            contention credit), else the reason the budget was exhausted.
-        """
         outcome = self.outcome
         if outcome == "host_contention":
             print(
@@ -385,11 +277,6 @@ class SuiteBudgetReport:
         return None
 
     def describe(self) -> str:
-        """One human-readable line with every number the verdict used.
-
-        ``scripts/record_verify_run.py`` parses this exact shape into the
-        verify receipt; change both together.
-        """
         foreign_cores = self.foreign_cpu_seconds / self.wall_seconds if self.wall_seconds else 0.0
         return (
             f"wall {self.wall_seconds:.2f}s / {self.wall_budget_seconds:.1f}s "

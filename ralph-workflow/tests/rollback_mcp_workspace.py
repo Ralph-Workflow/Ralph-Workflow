@@ -1,5 +1,3 @@
-"""Shared _Workspace mock for MCP artifact rollback tests."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

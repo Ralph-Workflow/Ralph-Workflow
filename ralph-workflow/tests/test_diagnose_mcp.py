@@ -1,5 +1,3 @@
-"""Tests for the diagnose command's custom MCP server probe rendering."""
-
 from __future__ import annotations
 
 import json

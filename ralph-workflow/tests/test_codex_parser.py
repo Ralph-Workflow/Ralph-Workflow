@@ -1,5 +1,3 @@
-"""Tests for CodexParser lifecycle suppression and content routing."""
-
 from __future__ import annotations
 
 import json
@@ -8,7 +6,6 @@ from ralph.agents.parsers.codex import CodexParser
 
 
 def test_thread_started_is_suppressed() -> None:
-    """thread.started lifecycle event must produce no output."""
     parser = CodexParser()
     lines = [json.dumps({"type": "thread.started"})]
     results = list(parser.parse(iter(lines)))
@@ -16,7 +13,6 @@ def test_thread_started_is_suppressed() -> None:
 
 
 def test_turn_started_is_suppressed() -> None:
-    """turn.started lifecycle event must produce no output."""
     parser = CodexParser()
     lines = [json.dumps({"type": "turn.started"})]
     results = list(parser.parse(iter(lines)))
@@ -24,7 +20,6 @@ def test_turn_started_is_suppressed() -> None:
 
 
 def test_message_start_is_suppressed() -> None:
-    """message_start lifecycle event must produce no output."""
     parser = CodexParser()
     lines = [json.dumps({"type": "message_start"})]
     results = list(parser.parse(iter(lines)))
@@ -32,7 +27,6 @@ def test_message_start_is_suppressed() -> None:
 
 
 def test_multiple_lifecycle_events_all_suppressed() -> None:
-    """Multiple lifecycle events in sequence must all be suppressed."""
     parser = CodexParser()
     lines = [
         json.dumps({"type": "thread.started"}),
@@ -44,7 +38,6 @@ def test_multiple_lifecycle_events_all_suppressed() -> None:
 
 
 def test_text_event_is_not_suppressed() -> None:
-    """Regular text event must still be emitted."""
     parser = CodexParser()
     lines = [json.dumps({"type": "text", "content": "hello world"})]
     results = list(parser.parse(iter(lines)))
@@ -54,7 +47,6 @@ def test_text_event_is_not_suppressed() -> None:
 
 
 def test_lifecycle_mixed_with_content_only_content_emitted() -> None:
-    """Lifecycle events before/after real content must not appear in output."""
     parser = CodexParser()
     lines = [
         json.dumps({"type": "thread.started"}),
@@ -70,7 +62,6 @@ def test_lifecycle_mixed_with_content_only_content_emitted() -> None:
 
 
 def test_stop_event_flushes_accumulator() -> None:
-    """Stop event must flush any pending text accumulator."""
     parser = CodexParser()
     lines = [
         json.dumps({"type": "text_delta", "response_id": "r1", "delta": {"text": "hello"}}),
@@ -83,7 +74,6 @@ def test_stop_event_flushes_accumulator() -> None:
 
 
 def test_item_started_reasoning_emits_thinking() -> None:
-    """item.started with item.type=='reasoning' must emit type='thinking'."""
     parser = CodexParser()
     event = json.dumps(
         {
@@ -98,7 +88,6 @@ def test_item_started_reasoning_emits_thinking() -> None:
 
 
 def test_item_completed_reasoning_emits_thinking() -> None:
-    """item.completed with item.type=='reasoning' must emit type='thinking'."""
     parser = CodexParser()
     event = json.dumps(
         {
@@ -113,7 +102,6 @@ def test_item_completed_reasoning_emits_thinking() -> None:
 
 
 def test_item_started_agent_message_emits_text() -> None:
-    """item.started with item.type=='agent_message' must emit type='text'."""
     parser = CodexParser()
     event = json.dumps(
         {
@@ -128,7 +116,6 @@ def test_item_started_agent_message_emits_text() -> None:
 
 
 def test_reasoning_preserves_raw_and_metadata() -> None:
-    """Reasoning thinking output must preserve raw and metadata from item object."""
     parser = CodexParser()
     event = json.dumps(
         {
@@ -144,7 +131,6 @@ def test_reasoning_preserves_raw_and_metadata() -> None:
 
 
 def test_reasoning_empty_text_produces_no_output() -> None:
-    """Reasoning item with empty text must not emit anything."""
     parser = CodexParser()
     event = json.dumps(
         {

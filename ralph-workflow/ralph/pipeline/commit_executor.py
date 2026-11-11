@@ -1,4 +1,3 @@
-"""Commit effect execution for the pipeline runner."""
 
 from __future__ import annotations
 
@@ -63,11 +62,6 @@ from ralph.workspace.scope import CONFIG_DIR_NAME
 def phase_output_artifact_paths(
     phase: str, *, drain: str | None = None, policy_bundle: PolicyBundle | None = None
 ) -> tuple[str, ...]:
-    """Return paths of all output artifacts produced by a phase.
-
-    Delegates to ``_commit_executor_artifacts`` at CALL time, so both the
-    public and the private module attribute stay patchable seams.
-    """
     return _commit_executor_artifacts.phase_output_artifact_paths(
         phase, drain=drain, policy_bundle=policy_bundle
     )
@@ -76,11 +70,6 @@ def phase_output_artifact_paths(
 def default_mcp_capabilities_for_phase(
     phase: str, *, agents_policy: AgentsPolicy | None = None
 ) -> set[str]:
-    """Return the default MCP capability set for a given phase.
-
-    Delegates to ``_commit_executor_artifacts`` at CALL time; see
-    :func:`phase_output_artifact_paths` for the seam contract.
-    """
     return _commit_executor_artifacts.default_mcp_capabilities_for_phase(
         phase, agents_policy=agents_policy
     )
@@ -94,11 +83,6 @@ if TYPE_CHECKING:
     from ralph.policy.models import AgentsPolicy
     from ralph.workspace import FsWorkspace
 
-# The commit-scope resolution helpers (path normalization, the symlink /
-# escape guard and the exact-match check against the live changed set) live
-# in ``ralph.pipeline._commit_scope``; they are bound here under their
-# historical private names so every existing call site and test keeps
-# resolving the very same objects.
 _CommitScopeResolution = _commit_scope._CommitScopeResolution
 _commit_include_paths_from_changed = _commit_scope._commit_include_paths_from_changed
 _resolve_commit_scope = _commit_scope._resolve_commit_scope
@@ -116,7 +100,6 @@ _SECRET_EXCLUDE_PATTERNS: tuple[str, ...] = (
 type _EnvGetter = Callable[[str], str | None]
 _DEFAULT_ENV_GETTER: _EnvGetter = os.environ.get
 
-#: Namespace the commit-review phase seals a proposal under (``<run_id>/<iteration>``).
 _PROPOSAL_REF_PREFIX = "refs/ralph/proposals/"
 _REJECTED_PROPOSAL_REF_PREFIX = "refs/ralph/rejected-proposals/"
 _PROPOSAL_TREE_ARGS = ("for-each-ref", "--format=%(refname) %(tree)", _PROPOSAL_REF_PREFIX)
@@ -124,7 +107,6 @@ _COMMITTED_TREE_ARGS = ("log", "--format=%T", "HEAD", "--branches", "--tags", "-
 
 
 def _git_stdout(repo_root: Path, args: tuple[str, ...], label: str) -> str:
-    """Return the stdout of a read-only git command, or an empty string on failure."""
     try:
         result = run_git(args, cwd=repo_root, label=label)
     except Exception:
@@ -135,23 +117,12 @@ def _git_stdout(repo_root: Path, args: tuple[str, ...], label: str) -> str:
 def _proposal_sweep(
     repo_root: Path, opts: dict[str, object]
 ) -> tuple[str | None, tuple[str, ...], int]:
-    """Return the run scope, the protected refs and the retention bound.
-
-    A rejected iteration is sealed and then rolled back, so its tree never
-    becomes a commit. The documented recovery for a wrongly rejected
-    iteration is ``git checkout <ref> -- .``, so those refs must survive
-    every later commit: the sweep protects every proposal ref whose tree
-    is absent from the commit history, every ref the run explicitly
-    rejected (marked under ``refs/ralph/rejected-proposals/``), and bounds
-    the rest by the policy's ``commit_review.proposal_retention``.
-    """
     raw_refs = _git_stdout(repo_root, _PROPOSAL_TREE_ARGS, "commit:proposal-refs")
     raw_committed = (
         _git_stdout(repo_root, _COMMITTED_TREE_ARGS, "commit:committed-trees")
         if raw_refs.strip()
         else ""
     )
-    # ``partition(" ")`` splits a ref line into the ref name and the sealed tree SHA.
     trees: dict[str, str] = {}
     for line in raw_refs.splitlines():
         parts = line.strip().partition(" ")
@@ -188,9 +159,6 @@ def _proposal_sweep(
 
 
 def _proposal_retention_limit(repo_root: Path, opts: dict[str, object]) -> int:
-    """Return the effective retention limit: the injected policy bundle, else
-    the workspace's policy file, else the bundled default.
-    """
     bundle = opts.get("policy_bundle")
     if isinstance(bundle, PolicyBundle):
         limit = bundle.pipeline.commit_review.proposal_retention
@@ -212,7 +180,6 @@ def _proposal_retention_limit(repo_root: Path, opts: dict[str, object]) -> int:
 
 
 def _prune_proposals(repo_root: Path, opts: dict[str, object]) -> None:
-    """Prune proposal refs, keeping every rejected iteration's ref."""
     run_id, keep_refs, max_retained = _proposal_sweep(repo_root, opts)
     _prune_fn = opts.get("prune_fn")
     with suppress(Exception):
@@ -225,12 +192,6 @@ def _prune_proposals(repo_root: Path, opts: dict[str, object]) -> None:
 
 
 def _render_commit_message_via_display(repo_root: Path, display_context: object) -> None:
-    """Render the commit message via the consolidated display surface.
-
-    When the resolved display is a ``ParallelDisplay`` instance, dispatch
-    directly to its ``emit_commit_message`` method. When it is a
-    ``DisplayContext`` (or None), fall back to the active-display resolver.
-    """
     display: object | None = None
     if isinstance(display_context, ParallelDisplay):
         display = display_context
@@ -238,7 +199,7 @@ def _render_commit_message_via_display(repo_root: Path, display_context: object)
         try:
             display = resolve_active_display(
                 None, cast("DisplayContext", display_context)
-            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            )
         except Exception:
             display = None
     if display is None:
@@ -246,11 +207,10 @@ def _render_commit_message_via_display(repo_root: Path, display_context: object)
     with suppress(Exception):
         cast("ParallelDisplay", display).emit_commit_message(
             repo_root
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
 
 
 def _record_display_outcome(display: object | None, outcome: str, **opts: object) -> None:
-    """Record artifact outcome on display surface to ensure honest phase display."""
     target: object | None = display
     if target is None:
         ctx = opts.get("display_context")
@@ -260,35 +220,19 @@ def _record_display_outcome(display: object | None, outcome: str, **opts: object
             with suppress(Exception):
                 target = resolve_active_display(
                     None, cast("DisplayContext", ctx)
-                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                )
     if target is not None and hasattr(target, "record_artifact_outcome"):
         with suppress(Exception):
             cast("ParallelDisplay", target).record_artifact_outcome(
                 outcome
-            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            )
 
 
 def _is_write_tree_fn(value: object) -> TypeGuard[Callable[[Path | str], str]]:
-    """Return whether ``value`` can be used as the write-tree seam.
-
-    The seam's signature is the injecting caller's contract -- the same
-    contract the other injectable seams in this module carry. The runtime
-    check proves that a callable was supplied, which is what the
-    executor needs before it calls it; the parameter and return types
-    are the caller's obligation.
-    """
     return callable(value)
 
 
 def _is_create_commit_with_hooks_fn(value: object) -> TypeGuard[_CreateCommitWithHooksFn]:
-    """Return whether ``value`` can be used as the commit-with-hooks seam.
-
-    The seam's signature is the injecting caller's contract -- the same
-    contract the other injectable seams in this module carry. The runtime
-    check proves that a callable was supplied, which is what the executor
-    needs before it calls it; the parameter and return types are the
-    caller's obligation.
-    """
     return callable(value)
 
 
@@ -324,12 +268,10 @@ if TYPE_CHECKING:
 
 
 def get_last_commit_error() -> str | None:
-    """Return the error message from the most recent failed commit execution."""
     return _commit_failure_pending.pending_reason()
 
 
 def set_last_commit_error(error: str | None) -> None:
-    """Record (or clear) the pending commit-failure diagnostic."""
     _commit_failure_pending.record_failure(error)
 
 
@@ -337,7 +279,6 @@ reattach_head_if_detached = _reattach_head_if_detached
 
 
 def _attempt_repair_git_state(repo_root: Path, **opts: object) -> bool:
-    """Repair repairable git state (detached HEAD, stale locks) so commit can succeed."""
     if not _is_git_worktree(repo_root):
         return False
     repaired = False
@@ -346,9 +287,6 @@ def _attempt_repair_git_state(repo_root: Path, **opts: object) -> bool:
 
     git_dir = rebase_bookkeeping_dir(repo_root) or (repo_root / ".git")
     if git_dir.is_dir():
-        # One gate for every lock git could have orphaned (private + common dir,
-        # refs, reflogs, submodules): old enough, provably no live holder, and
-        # still the same file when it is removed.
         common_dir = common_git_dir(repo_root)
         for lock_path in reap_stale_locks(git_dir, common_dir, operation="commit-repair"):
             logger.info("Removed stale git lock: {}", lock_path)
@@ -356,13 +294,11 @@ def _attempt_repair_git_state(repo_root: Path, **opts: object) -> bool:
     return repaired
 
 
-#: Machine-readable codes for the commit approval signals.
 COMMIT_TREE_SHA_MISMATCH_CODE = "COMMIT_TREE_SHA_MISMATCH"
 COMMIT_APPROVAL_MISSING_CODE = "COMMIT_APPROVAL_MISSING"
 
 
 class CommitApprovalError(RuntimeError):
-    """A commit attempt was not made against the tree the commit review approved."""
 
     def __init__(self, code: str, message: str) -> None:
         super().__init__(f"{code}: {message}")
@@ -394,14 +330,6 @@ def _perform_commit_creation(
     require_approved_tree: bool = False,
     write_tree_fn: Callable[[Path | str], str] | None = None,
 ) -> str:
-    """Attempt commit creation with repairable git state retry, returning commit sha.
-
-    The attempt is bound to the tree the commit review approved. When the
-    commit is SHA-bound (``require_approved_tree``) and no approved tree SHA
-    is available, the attempt is refused (fail closed) instead of committing
-    an unbounded tree. A commit that was never bound to a reviewed tree keeps
-    the plain behaviour: there is nothing to check it against.
-    """
 
     approved_tree_sha: str | None = expected_tree_sha
     if approved_tree_sha is None and require_approved_tree:
@@ -411,14 +339,6 @@ def _perform_commit_creation(
         )
 
     def _create(root: Path, commit_message: str, *, expected_head: str) -> CommitCreationResult:
-        """Create the commit, honouring the approved tree when one is bound.
-
-        A SHA-bound attempt goes through a real ``git commit`` (so the
-        repository's own hooks run and can block the commit) and the created
-        commit is verified against the approved tree; a hook that rewrote the
-        index is caught there and refused. An unbound attempt keeps the plain
-        commit path: there is no approved tree to check it against.
-        """
         if approved_tree_sha is None:
             return create_commit_fn(str(root), commit_message, expected_head=expected_head)
         create_with_hooks = repair_opts.get("create_commit_with_hooks_fn")
@@ -438,8 +358,6 @@ def _perform_commit_creation(
             raise CommitApprovalError(COMMIT_TREE_SHA_MISMATCH_CODE, str(exc)) from exc
 
     def _stage_and_create() -> CommitCreationResult:
-        # Staging is inside the repair-and-retry too: ``git add -A`` is where an
-        # orphaned index.lock is first hit, so it must reach the same repair.
         head = get_head_sha(repo_root)
         _stage_commit_scope(repo_root, payload, stage_all_fn)
         if approved_tree_sha is not None and write_tree_fn is not None:
@@ -449,8 +367,6 @@ def _perform_commit_creation(
     try:
         result = _stage_and_create()
     except CommitApprovalError:
-        # An approval failure is a routing decision, not a repairable git
-        # state problem: re-running the attempt would only repeat it.
         raise
     except Exception:
         if _attempt_repair_git_state(repo_root, **repair_opts):
@@ -483,7 +399,6 @@ def _handle_post_commit_actions(
     verbosity: Verbosity,
     opts: dict[str, object],
 ) -> None:
-    """Run post-commit side effects: proposal pruning, message rendering, display, artifact cleanup."""
     _prune_proposals(repo_root, opts)
 
     with suppress(Exception):
@@ -508,10 +423,9 @@ def execute_commit_effect(
     display: ParallelDisplay | None = None,
     **opts: object,
 ) -> Event:
-    """Execute a commit effect, creating or skipping a git commit."""
     verbosity = cast(
         "Verbosity", opts.get("verbosity", Verbosity.VERBOSE)
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     _raw_create = opts.get("create_commit_fn")
     _create_commit_fn: _CreateCommitFn = cast(
         "_CreateCommitFn", _raw_create if callable(_raw_create) else create_commit
@@ -536,10 +450,6 @@ def execute_commit_effect(
         payload = read_commit_message_payload_from_path(Path(effect.message_file))
         message = read_commit_message_from_path(Path(effect.message_file)) or ""
         if payload is None or not message:
-            # "Empty" only when it really is: a file that failed the artifact
-            # grammar (a NUL in a Files path, a malformed section) also lands
-            # here, and reporting it as empty sends the next pass looking for
-            # the wrong problem while the rejected artifact is retained.
             logger.error(
                 "Commit message file is {}: {}",
                 "empty" if not _has_content(effect.message_file) else "invalid",
@@ -577,9 +487,6 @@ def execute_commit_effect(
         logger.info("Created commit: {}", sha[:8])
     except Exception as exc:
         err_msg = f"{type(exc).__name__}: {exc}"
-        # The diagnostic belongs to THIS attempt: it carries the approval the
-        # attempt was committed against, so the reducer can tell it apart from
-        # a diagnostic another attempt left behind.
         _commit_failure_pending.record_failure(err_msg, effect.expected_tree_sha)
         logger.error("Commit failed ({}): {}", type(exc).__name__, exc)
         _record_display_outcome(display, "failed", **opts)
@@ -608,12 +515,9 @@ def execute_commit_effect(
 
 
 def _has_content(message_file: str) -> bool:
-    """Return whether the commit-message artifact holds any content at all."""
     path = Path(message_file)
     if not DEFAULT_FILE_BACKEND.exists(path):
         return False
-    # filesystem-read-ok: the artifact was already read on this path; this
-    # distinguishes an absent/blank file from one that failed the grammar.
     return bool(DEFAULT_FILE_BACKEND.read_text(path, encoding="utf-8").strip())
 
 
@@ -645,7 +549,6 @@ def _commit_include_paths(repo_root: Path, payload: dict[str, object]) -> list[s
 
 
 def _changed_commit_paths(repo_root: Path) -> list[str]:
-    """Compatibility seam for callers that need a fresh evidence snapshot."""
     return sorted(set(list_changed_paths(repo_root)))
 
 
@@ -654,12 +557,10 @@ def _repo_has_commit_work(repo_root: Path) -> bool:
 
 
 def cleanup_commit_message_artifacts(repo_root: Path) -> None:
-    """Remove commit message artifacts left by a prior commit phase."""
     delete_commit_message_artifacts(repo_root)
 
 
 def commit_effect(workspace_root: Path, expected_tree_sha: str | None = None) -> CommitEffect:
-    """Build a CommitEffect pointing at the standard commit message artifact path."""
     return CommitEffect(
         message_file=str(workspace_root / COMMIT_MESSAGE_ARTIFACT),
         expected_tree_sha=expected_tree_sha,
@@ -671,7 +572,6 @@ def clear_phase_output_artifacts(
     phase: str,
     **opts: object,
 ) -> None:
-    """Remove stale per-phase artifacts before invoking an agent."""
     _commit_executor_artifacts.clear_phase_output_artifacts(workspace, phase, **opts)
 
 

@@ -1,14 +1,3 @@
-"""The out-of-graph policy-remediation drain gets no artifact/plan MCP surface.
-
-Remediation hands its task off through a materialized prompt and is judged
-solely by the deterministic validator that re-runs afterward
-(``ralph.project_policy.remediation.remediate``). The prompt never asks the
-agent to submit an artifact, draft a plan, or declare completion, so the
-session must not advertise those tools: the MCP bridge filters ``tools/list``
-by session capability, and the Claude ``--allowedTools`` allowlist is
-discovered from that same endpoint.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -76,7 +65,6 @@ def test_policy_remediation_drain_keeps_the_documentation_write_surface(
     isolated_home: Path,
     tmp_path: Path,
 ) -> None:
-    """Remediation authors policy files, so the write/read/exec surface stays."""
     del isolated_home
 
     plan = build_session_mcp_plan(
@@ -97,7 +85,6 @@ def test_ordinary_development_drain_still_gets_the_artifact_surface(
     isolated_home: Path,
     tmp_path: Path,
 ) -> None:
-    """The denial is scoped to the remediation drain, not to its drain class."""
     del isolated_home
 
     plan = build_session_mcp_plan(

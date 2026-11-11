@@ -1,23 +1,3 @@
-"""Black-box end-to-end test: runner pauses when offline and resumes when online.
-
-While the connectivity monitor reports OFFLINE, the runner must not invoke any
-agent and must not debit any budget. When connectivity is restored, the runner
-must resume and complete normally with no false-positive FailureEvents.
-
-Both tests drive the runner on the CALLING thread. ``_apply_connectivity_check``
-registers a connectivity listener and then blocks on a
-:class:`threading.Event` *only* on the offline path, so listener registration
-is itself the observable "the runner has paused" edge, and it is the seam this
-module injects on: the fake monitor's ``add_listener`` records the state of the
-world at the pause and then restores connectivity, which fires the listener
-synchronously and lets the runner continue. That keeps the proof identical --
-no agent may have run at the pause, and the run must complete after it -- while
-removing the real daemon thread and the ``Event.wait`` handshake the previous
-version needed. Those made the test depend on the OS scheduler, which under a
-loaded ``pytest -n 4`` run pushed it past the 1.0 s per-test budget even though
-nothing about the runner had changed.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -101,7 +81,6 @@ def _patch_runner_seams(
     bundle: PolicyBundle,
     execute: Callable[..., PipelineEvent],
 ) -> None:
-    """Neutralise every seam the offline contract does not depend on."""
     monkeypatch.setattr(
         runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_git_repo)
     )
@@ -122,17 +101,6 @@ def _patch_runner_seams(
         "phase_event_after_agent_run",
         lambda **kwargs: PipelineEvent.AGENT_SUCCESS,
     )
-    # Skip the post-commit auto-integrate step so the runner does not shell
-    # out to ``git`` during the test. The seam is identical to the one used
-    # by ``tests/test_auto_integrate_parallel_wiring.py`` and
-    # ``tests/test_runner_auto_integrate_seam.py``: replacing the function
-    # on both ``runner_module`` (used by the per-step hook) and
-    # ``run_loop_module`` (used by the startup integration preamble)
-    # eliminates the real subprocess + psutil work that the offline tests
-    # were paying per run. The offline/online assertions do not depend on
-    # auto-integrate behaviour, so neutralising it here keeps the test
-    # deterministic within the 1.0 s per-test policy limit without
-    # weakening the black-box contract.
     monkeypatch.setattr(runner_module, "auto_integrate_on_phase_transition", lambda *a, **kw: None)
     monkeypatch.setattr(run_loop_module, "_run_startup_integration", lambda *a, **kw: None)
     resolved = IntegrationResolutionVerdict(RESOLVED)
@@ -147,15 +115,6 @@ def _patch_runner_seams(
 def _monitor_that_reconnects_on_pause(
     on_pause: Callable[[], None],
 ) -> FakeConnectivityMonitor:
-    """An OFFLINE monitor that comes back online the moment the runner pauses.
-
-    ``_apply_connectivity_check`` registers its listener only after it has
-    decided the pipeline is offline, so ``add_listener`` is exactly the
-    "runner has paused" edge. Restoring connectivity from inside that call
-    dispatches the ONLINE event to the just-registered listener
-    synchronously, so the runner's wake event is already set when it looks,
-    and it never blocks.
-    """
     monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.OFFLINE)
     original_add_listener = monitor.add_listener
     paused = False
@@ -177,16 +136,6 @@ def test_offline_pauses_agent_invocation_and_resume_completes(
     tmp_git_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Runner pauses while OFFLINE and auto-resumes when connectivity returns.
-
-    Proof of behavior:
-    1. Runner starts with monitor OFFLINE → reaches _apply_connectivity_check
-       and registers a connectivity listener (the pause).
-    2. No agent has been invoked at that point (invocations_at_pause == 0).
-    3. Restoring connectivity unblocks the runner.
-    4. Runner completes successfully (exit code 0).
-    5. The agent runs exactly once, after connectivity returned.
-    """
     invocation_count = 0
 
     def _fake_execute(*args: object, **kwargs: object) -> PipelineEvent:
@@ -229,11 +178,6 @@ def test_offline_window_produces_no_failure_events(
     tmp_git_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """No FailureEvents are emitted while the monitor is OFFLINE.
-
-    The offline period must be completely silent — no budget debits,
-    no failure events, no fallover records.
-    """
     captured_failure_events: list[FailureEvent] = []
 
     class _CapturingBus(FailureEventBus):
@@ -270,7 +214,6 @@ def test_offline_window_produces_no_failure_events(
     assert events_at_pause == [0], (
         f"Expected no FailureEvents during the offline window, saw {events_at_pause}"
     )
-    # No failure events should have been emitted at all (offline + online succeeded)
     assert captured_failure_events == [], (
         f"Expected no FailureEvents during offline window, "
         f"got {len(captured_failure_events)}: {captured_failure_events}"

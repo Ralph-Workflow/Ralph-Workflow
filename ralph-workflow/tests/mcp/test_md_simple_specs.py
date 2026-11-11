@@ -1,12 +1,3 @@
-"""Focused tests for analysis-decision Markdown contracts.
-
-Planning, review, and policy decisions keep the structured contract
-verbatim. Development analysis decisions are free-form below the
-frontmatter; the only mechanically validated field is the closed
-``status`` enum. Tests of structured per-field predicates for development
-decisions are gone with the rules.
-"""
-
 from __future__ import annotations
 
 from ralph.mcp.artifacts.markdown import parse_and_validate
@@ -57,8 +48,6 @@ def test_verification_decision_rejects_a_finding_without_evidence_fields() -> No
     content, diagnostics = parse_and_validate(document, get_spec("planning_analysis_decision"))
 
     assert content == {}
-    # Both planning items also lack the required Proposed revision:, so
-    # ANALYSIS019 fires alongside the two ANALYSIS005 field-completeness errors.
     assert [(item.rule_id, item.severity) for item in diagnostics] == [
         ("ANALYSIS005", "error"),
         ("ANALYSIS005", "error"),
@@ -168,7 +157,6 @@ def test_request_changes_allows_explicit_plan_level_target() -> None:
 
 
 def test_request_changes_accepts_free_form_plan_reference() -> None:
-    """Plans without S-n step IDs may still be referenced by stable identifier."""
     content, diagnostics = parse_and_validate(
         _decision("Plan reference: [install-flow] skips the retry path."),
         get_spec("planning_analysis_decision"),
@@ -179,7 +167,6 @@ def test_request_changes_accepts_free_form_plan_reference() -> None:
 
 
 def test_planning_findings_require_a_proposed_revision() -> None:
-    """ANALYSIS019: planning findings must state a concrete proposed revision."""
     document = _decision("The rollout risk is unaddressed.").replace(
         " Proposed revision: name the runnable command in the step.", ""
     )
@@ -187,7 +174,6 @@ def test_planning_findings_require_a_proposed_revision() -> None:
     content, diagnostics = parse_and_validate(document, get_spec("planning_analysis_decision"))
 
     assert content == {}
-    # Two What Came Up Short items (ANALYSIS019 twice) plus one verdict item.
     assert [item.rule_id for item in diagnostics] == [
         "ANALYSIS019",
         "ANALYSIS004",
@@ -196,9 +182,6 @@ def test_planning_findings_require_a_proposed_revision() -> None:
 
 
 def test_development_decision_is_free_form_body() -> None:
-    """A development analysis decision with a structured-looking body still
-    validates cleanly: only the frontmatter ``status`` enum is checked.
-    """
     document = """---
 type: development_analysis_decision
 status: request_changes
@@ -221,7 +204,6 @@ status: request_changes
 
 
 def test_development_decision_completed_is_accepted() -> None:
-    """A completed development decision with a structured-looking body is free-form."""
     document = """---
 type: development_analysis_decision
 status: completed
@@ -238,7 +220,6 @@ status: completed
 
 
 def test_development_decision_failed_is_accepted() -> None:
-    """A failed development decision with a structured-looking body is free-form."""
     document = """---
 type: development_analysis_decision
 status: failed
@@ -255,15 +236,6 @@ status: failed
 
 
 def test_planning_verdict_cost_omission_regression() -> None:
-    """Unit A step 2 (Cost: enforcement regression): a planning verdict that
-    omits ``Cost:`` must be rejected with ANALYSIS005.
-
-    The planning contract treats the cost of the missed split as part of
-    the verdict, so the validator rejects a planning verdict that omits
-    ``Cost:`` with ANALYSIS005. The same is not required of development
-    or policy decisions, which document what remains via ``Remaining
-    work:`` and never duplicate the cost on every verdict.
-    """
     document = """---
 type: planning_analysis_decision
 status: request_changes
@@ -279,18 +251,12 @@ status: request_changes
     content, diagnostics = parse_and_validate(document, get_spec("planning_analysis_decision"))
 
     assert content == {}
-    # The verdict item is missing ``Cost:``, so ANALYSIS005 fires once
-    # with a message that names the missing field. The finding's
-    # field-completeness check is independent and does not require
-    # ``Cost:`` (planning findings document the concrete proposed
-    # revision, which the analyzer already pins via ANALYSIS019).
     analysis_005 = [d for d in diagnostics if d.rule_id == "ANALYSIS005"]
     assert len(analysis_005) == 1
     assert "Cost:" in analysis_005[0].message
 
 
 def test_policy_remediation_verdict_does_not_require_cost() -> None:
-    """``Cost:`` is planning-only; policy verdicts stay valid without it."""
     document = """---
 type: policy_remediation_analysis_decision
 status: completed
@@ -311,20 +277,6 @@ status: completed
 
 
 def test_analysis011_message_aligns_with_inline_remedy_contract() -> None:
-    """ANALYSIS011's diagnostic must not contradict the inline-remedy contract.
-
-    PRODUCT_CRITERIA §1 (no contradictions) requires the validator
-    message to agree with the prompts and format docs. The planning
-    prompt (``planning_analysis.jinja:87-95``) and the planning format
-    doc require each non-met verdict to carry an inline
-    ``Proposed revision:`` the planner applies or rebuts, and the
-    development prompt requires ``Remaining work:`` describing the
-    leftover outcome. A validator message that says remedies "belong to
-    a later phase" reads as contradicting the inline-remedy rule, so
-    the message must point at the inline fields the prompts already
-    name. Lock the alignment here so a regression that reintroduces
-    ambiguous wording is caught.
-    """
     document = """---
 type: planning_analysis_decision
 status: request_changes
@@ -347,13 +299,7 @@ status: request_changes
     analysis_011 = [d for d in diagnostics if d.rule_id == "ANALYSIS011"]
     assert len(analysis_011) == 1
     message = analysis_011[0].message
-    # The ambiguous "later phase" wording reads as contradicting the
-    # inline-remedy contract; the planning prompt forbids a separate
-    # How To Fix section precisely because remedies live inline.
     assert "later phase" not in message.lower(), message
     assert "later pass" not in message.lower(), message
-    # The message must point at the inline remedy field the prompt
-    # already names, so the rejection agrees with the rule.
     assert "Proposed revision:" in message or "Remaining work:" in message, message
-    # The "How To Fix" prohibition is preserved verbatim.
     assert "How To Fix" in message or "How To Fix" in message.lower(), message

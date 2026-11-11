@@ -1,5 +1,3 @@
-"""Unit tests for checkpoint persistence."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -22,7 +20,6 @@ TOTAL_AGENT_CALLS = 10
 
 
 def test_save_and_load_checkpoint(tmp_path: Path) -> None:
-    """Test saving and loading a checkpoint."""
     state = PipelineState(
         phase="development",
         outer_progress={"iteration": DEVELOPMENT_ITERATION},
@@ -41,14 +38,12 @@ def test_save_and_load_checkpoint(tmp_path: Path) -> None:
 
 
 def test_load_nonexistent_checkpoint(tmp_path: Path) -> None:
-    """Test loading a checkpoint that doesn't exist."""
     path = tmp_path / "nonexistent.json"
     result = ckpt.load(path)
     assert result is None
 
 
 def test_checkpoint_exists(tmp_path: Path) -> None:
-    """Test checking if checkpoint exists."""
     path = tmp_path / "checkpoint.json"
     assert ckpt.exists(path) is False
 
@@ -58,7 +53,6 @@ def test_checkpoint_exists(tmp_path: Path) -> None:
 
 
 def test_checkpoint_inspect(tmp_path: Path) -> None:
-    """Test checkpoint inspection."""
     state = PipelineState(
         phase="review",
         outer_progress={"iteration": 1, "reviewer_pass": 0},
@@ -72,7 +66,6 @@ def test_checkpoint_inspect(tmp_path: Path) -> None:
 
 
 def test_checkpoint_remove(tmp_path: Path) -> None:
-    """Test removing a checkpoint."""
     path = tmp_path / "checkpoint.json"
     state = PipelineState(phase="planning")
     ckpt.save(state, path)
@@ -83,7 +76,6 @@ def test_checkpoint_remove(tmp_path: Path) -> None:
 
 
 def test_checkpoint_roundtrip_full_state(tmp_path: Path) -> None:
-    """Test saving and loading full state with all fields."""
     state = PipelineState(
         phase="development",
         outer_progress={"iteration": 3, "reviewer_pass": 1},
@@ -114,7 +106,6 @@ def test_checkpoint_roundtrip_full_state(tmp_path: Path) -> None:
 
 
 def test_checkpoint_roundtrip_preserves_current_drain() -> None:
-    """Resume checkpoints must keep the exact drain identity."""
 
     state = PipelineState(phase="planning", current_drain="development_analysis")
     restored = PipelineState.model_validate_json(state.model_dump_json())
@@ -123,7 +114,6 @@ def test_checkpoint_roundtrip_preserves_current_drain() -> None:
 
 
 def test_save_failure_removes_tmp_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """A failed checkpoint publication leaves no temporary file behind."""
 
     path = tmp_path / "checkpoint.json"
     tmp_prefix = f"{path.with_suffix('.tmp').name}."
@@ -149,7 +139,6 @@ def test_save_failure_removes_tmp_file(monkeypatch: pytest.MonkeyPatch, tmp_path
 
 
 def test_load_corrupt_checkpoint_returns_none(tmp_path: Path) -> None:
-    """Loading invalid JSON should return None."""
 
     path = tmp_path / "checkpoint.json"
     path.write_text("not a json", encoding="utf-8")
@@ -158,7 +147,6 @@ def test_load_corrupt_checkpoint_returns_none(tmp_path: Path) -> None:
 
 
 def test_load_invalid_model_returns_none(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Model validation errors should be treated as corrupt checkpoints."""
 
     path = tmp_path / "checkpoint.json"
     path.write_text("{}", encoding="utf-8")
@@ -172,47 +160,35 @@ def test_load_invalid_model_returns_none(monkeypatch: pytest.MonkeyPatch, tmp_pa
 
 
 def test_inspect_no_checkpoint_reports_missing(tmp_path: Path) -> None:
-    """Inspecting a missing checkpoint returns the friendly message."""
 
     path = tmp_path / "checkpoint.json"
     assert ckpt.inspect(path) == "No checkpoint found."
 
 
 def test_remove_nonexistent_checkpoint_idempotent(tmp_path: Path) -> None:
-    """Removing a missing checkpoint is a no-op."""
 
     path = tmp_path / "checkpoint.json"
     ckpt.remove(path)
 
 
 def test_load_drops_unknown_failure_sentinel(tmp_path: Path) -> None:
-    """Checkpoints with 'Unknown failure' last_error should be sanitized on load.
-
-    Pre-fix checkpoints may contain the 'Unknown failure' sentinel in last_error.
-    Loading such a checkpoint must drop the sentinel and replace it with None
-    so the old bug cannot be resurrected after an upgrade.
-    """
     path = tmp_path / "checkpoint.json"
 
-    # Create a checkpoint with the forbidden sentinel
     state_with_sentinel = PipelineState(
         phase="development",
         last_error="Unknown failure",
     )
     ckpt.save(state_with_sentinel, path)
 
-    # Load it
     loaded = ckpt.load(path)
     assert loaded is not None
 
-    # The sentinel must be dropped
     assert loaded.last_error is None, (
         f"Expected last_error to be None after sanitization, got: {loaded.last_error!r}"
     )
 
 
 def test_load_drops_empty_string_sentinel(tmp_path: Path) -> None:
-    """Checkpoints with empty-string last_error should be sanitized on load."""
     path = tmp_path / "checkpoint.json"
 
     state_with_empty = PipelineState(
@@ -227,7 +203,6 @@ def test_load_drops_empty_string_sentinel(tmp_path: Path) -> None:
 
 
 def test_load_drops_none_sentinel(tmp_path: Path) -> None:
-    """Checkpoints with 'None' string last_error should be sanitized on load."""
     path = tmp_path / "checkpoint.json"
 
     state_with_none = PipelineState(
@@ -242,7 +217,6 @@ def test_load_drops_none_sentinel(tmp_path: Path) -> None:
 
 
 def test_load_preserves_valid_last_error(tmp_path: Path) -> None:
-    """Checkpoints with valid last_error should be preserved."""
     path = tmp_path / "checkpoint.json"
 
     valid_error = "development: Missing planning artifact at .agent/artifacts/plan.md"
@@ -258,7 +232,6 @@ def test_load_preserves_valid_last_error(tmp_path: Path) -> None:
 
 
 def test_checkpoint_save_load_preserves_in_window_fallover_history(tmp_path: Path) -> None:
-    """In-window persisted histories round-trip exactly through checkpoint save/load."""
     path = tmp_path / "checkpoint.json"
     state = PipelineState(
         phase="development",
@@ -287,7 +260,6 @@ def test_checkpoint_save_load_preserves_in_window_fallover_history(tmp_path: Pat
 
 
 def test_checkpoint_load_normalizes_over_cap_fallover_history(tmp_path: Path) -> None:
-    """Over-cap persisted histories load back trimmed to the newest records."""
     path = tmp_path / "checkpoint.json"
     state = PipelineState(
         phase="development",

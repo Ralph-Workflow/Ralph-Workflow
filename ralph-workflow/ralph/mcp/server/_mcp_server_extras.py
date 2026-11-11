@@ -1,4 +1,3 @@
-"""McpServerExtras — optional runtime extras for start_mcp_server."""
 
 from __future__ import annotations
 
@@ -12,7 +11,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class McpServerExtras:
-    """Optional runtime extras for start_mcp_server."""
 
     phase: str | None = None
     extra_env: dict[str, str] | None = None

@@ -1,5 +1,3 @@
-"""Focused CLI command tests for commit, diagnose, init, and option helpers."""
-
 from __future__ import annotations
 
 import sys
@@ -30,7 +28,6 @@ if TYPE_CHECKING:
 
 
 def _write_commit_message_doc(repo_root: Path, message: str) -> None:
-    """Write the markdown commit_message artifact the way MCP submission does."""
     if message.upper().startswith("SKIP:"):
         reason = message[len("SKIP:") :].strip()
         document = f"---\ntype: skip\nreason: {reason}\n---\n"
@@ -273,16 +270,6 @@ def test_generate_commit_stages_working_tree_changes_when_nothing_is_staged(
 
 @pytest.mark.timeout_seconds(10)
 def test_working_tree_diff_excludes_mid_cycle_committed_files(tmp_git_repo: Path) -> None:
-    """_working_tree_diff must exclude files committed in earlier mid-cycle commits.
-
-    Real git subprocess work against ``tmp_git_repo`` regularly exceeds the
-    1-second default ceiling under parallel xdist load, so this test carries
-    the elevated per-test ceiling used by the other real-git tests.
-
-    The standalone commit plumbing must use HEAD-only diff semantics so that
-    files committed during an earlier dev iteration do not appear in the prompt
-    sent to the commit agent.
-    """
 
     (tmp_git_repo / "mid_cycle.py").write_text("mid = 1\n", encoding="utf-8")
     run_git(
@@ -366,13 +353,6 @@ def test_working_tree_diff_preserves_staged_and_untracked_work_before_first_comm
 
 
 def test_commit_bridge_session_plan_grants_write_ephemeral(tmp_path: Path) -> None:
-    """The MCP session built for commit plumbing must expose workspace.write_ephemeral.
-
-    Commit prompts instruct the agent to fall back to write_file when
-    markdown artifact submission is unavailable. That fallback only works if
-    the commit session grants workspace.write_ephemeral so the MCP server
-    allows the write_file tool call to .agent/tmp/commit_message.md.
-    """
     agents_policy = AgentsPolicy(
         agent_chains={"commit_chain": AgentChainConfig(agents=["claude"])},
         agent_drains={"commit": AgentDrainConfig(chain="commit_chain", drain_class="commit")},
@@ -390,12 +370,6 @@ def test_commit_bridge_session_plan_grants_write_ephemeral(tmp_path: Path) -> No
 
 
 def test_dead_cli_option_helpers_are_not_exposed_by_options_module() -> None:
-    """Cleanup should remove the unused option helper decorators entirely.
-
-    After wt-007, ralph.cli.options was deleted. The cleanup contract is
-    now: those dead helpers simply do not exist anywhere on the public
-    CLI surface.
-    """
     cli_pkg = sys.modules.get("ralph.cli")
     options_module = getattr(cli_pkg, "options", None) if cli_pkg is not None else None
     if options_module is None:
@@ -613,9 +587,6 @@ def test_generate_commit_retries_with_summarized_failure_before_fallback(
         ("claude", None),
         ("opencode", None),
     ]
-    # The retry guidance is the shared build_retry_hint output (same as the
-    # pipeline phase gates), so the assertions pin the unified hint, not a
-    # commit-specific prompt.
     assert any("required artifact 'commit_message'" in body for body in prompt_bodies[1:])
     assert any('artifact_type="commit_message"' in body for body in prompt_bodies[1:])
     assert any(".agent/artifacts/commit_message.md" in body for body in prompt_bodies[1:])
@@ -706,12 +677,6 @@ def test_generate_commit_passes_mcp_endpoint_to_opencode_agent(
     def fake_invoke_agent(_agent_config: object, *_args: object, **kwargs: object) -> object:
         options = kwargs.get("options")
         seen_extra_env.append(None if options is None else options.extra_env)
-        # This used to assert ``options.pure is True``. Ralph no longer forces
-        # OpenCode's ``--pure``: it runs OpenCode without external plugins, and
-        # a plugin is often what supplies the operator's model provider, so the
-        # model they configured became unresolvable. The commit path must not
-        # reintroduce it -- that is pinned at the command builder, where the
-        # flag would actually be emitted, not here.
         assert options is not None
         _write_commit_message_doc(tmp_path, "fix: commit drain message")
         return iter([])
@@ -875,7 +840,6 @@ def test_generate_commit_regression_configured_chain_does_not_fallback_to_claude
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """User-reported how_to_fix regression: configured chains are exclusive."""
     stream = _attach_console(monkeypatch, commit_module)
     monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
     monkeypatch.setattr(

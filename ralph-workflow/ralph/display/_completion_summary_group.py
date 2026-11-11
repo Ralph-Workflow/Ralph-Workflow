@@ -1,11 +1,3 @@
-"""Grouped Rich rendering helpers for completion summaries.
-
-After the wt-028-display consolidation, the single ``default`` display
-mode renders the full Rich layout (section rules, metrics, decisions,
-review, analysis, iteration context, activity, verification, commit,
-tail). The historical ``compact`` / ``wide`` split is collapsed into
-this single rendering path.
-"""
 
 from __future__ import annotations
 
@@ -78,15 +70,6 @@ def _tail_items(
     include_context_sections: bool,
     style: str,
 ) -> list[Text | Rule]:
-    """Render the tail-section content (error, dropped count, debug breadcrumbs).
-
-    The commit-message rendering is owned exclusively by
-    :func:`_commit_section`; this helper does NOT re-emit commit lines
-    (the prior bug rendered them twice). The PR URL is also rendered
-    in :func:`_commit_section` so it appears next to the commit message
-    when both are present, and independently when only the PR URL is
-    set.
-    """
     items: list[Text | Rule] = []
     dropped_line = _dropped_count_line(dropped_count)
     if dropped_line:
@@ -174,15 +157,6 @@ def _commit_section(
     pipeline_policy: PipelinePolicy | None,
     pr_url: str | None,
 ) -> list[Text | Rule]:
-    """Render the Commit section: commit-message lines plus the PR URL when set.
-
-    The section is rendered when EITHER a commit-message artifact
-    exists OR a ``pr_url`` is supplied. The prior bug returned ``[]``
-    when ``commit_lines`` was empty, dropping the PR URL entirely. The
-    consolidated layout renders the section unconditionally when any
-    signal is present and emits the commit lines / PR URL independently
-    of each other.
-    """
     commit_lines = _commit_message_lines(workspace_root)
     has_pr = pr_url is not None
     if not commit_lines and not has_pr:
@@ -196,14 +170,6 @@ def _commit_section(
 
 
 def _auto_integrate_items(snapshot: PipelineSnapshot, style: str) -> list[Text]:
-    """Render the auto-integration outcome line for the group receipt.
-
-    Returns ``[]`` when no integration ran (``auto_integrate_action`` is
-    ``None`` on the disabled / never-ran path, preserving the prompt's
-    AC-01 byte-identical no-op for that run shape). ``fast_forwarded``
-    is passed explicitly so a refused land exposes its recorded reason
-    instead of rendering identically to a success.
-    """
     if snapshot.auto_integrate_action is None:
         return []
     phrase = format_auto_integrate_message(
@@ -225,7 +191,6 @@ def render_completion_summary_group(
     display_context: DisplayContext,
     options: CompletionSummaryOptions,
 ) -> Group:
-    """Render the completion summary as a Rich Group (single default-mode layout)."""
     failed = snapshot.is_terminal_failure
     validation_failure = has_active_artifact_validation_failure(snapshot)
     style = (
@@ -242,9 +207,6 @@ def render_completion_summary_group(
     )
 
     renderables: list[Rule | Text] = [Rule(title, style=style)]
-    # The exit trigger is the closing summary's primary durable state carrier.
-    # Give it the same fixed semantic colour as its outcome rule while retaining
-    # the explicit ``exit=`` label for no-colour and grep-oriented transcripts.
     renderables.append(Text(f"  exit={_exit_trigger_label(snapshot)}", style=style))
     if failed:
         renderables.append(Text(f"  failed_phase={snapshot.phase}", style=style))

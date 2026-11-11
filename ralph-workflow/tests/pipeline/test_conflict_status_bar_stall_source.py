@@ -1,5 +1,3 @@
-"""Regression coverage for conflict-footer watchdog attention ownership (S-1)."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -18,7 +16,6 @@ class _Display:
 
 
 def test_conflict_footer_regression_keeps_watchdog_attention_live() -> None:
-    """S-1: conflict pushes leave attention unset for Live-tick substitution."""
     display = _Display()
 
     push_conflict_status_bar(
@@ -33,7 +30,6 @@ def test_conflict_footer_regression_keeps_watchdog_attention_live() -> None:
 
 
 def test_push_conflict_status_bar_evidence_diagnosis_never_shown_as_conflict() -> None:
-    """Evidence diagnosis must never be shown or counted as conflict resolution."""
     display = _Display()
 
     push_conflict_status_bar(
@@ -55,7 +51,6 @@ def test_push_conflict_status_bar_evidence_diagnosis_never_shown_as_conflict() -
 
 
 def test_push_conflict_status_bar_conflict_resolution_label() -> None:
-    """Conflict resolution pushes retain standard phase label and display state."""
     display = _Display()
 
     push_conflict_status_bar(
@@ -76,7 +71,6 @@ def test_push_conflict_status_bar_conflict_resolution_label() -> None:
 
 
 def test_resolution_status_reporter_distinguishes_evidence_diagnosis() -> None:
-    """ResolutionStatusReporter emits 'evidence diagnosis status' on diagnosis channel."""
     from ralph.pipeline.conflict_resolution.status import ResolutionStatusReporter
 
     class _WarnDisplay:
@@ -90,7 +84,6 @@ def test_resolution_status_reporter_distinguishes_evidence_diagnosis() -> None:
         def __init__(self) -> None:
             self.diagnostic = {"last_activity_kind": "tool_call", "last_activity_age_seconds": 1.0}
 
-    # Diagnosis reporter
     disp_diag = _WarnDisplay()
     rep_diag = ResolutionStatusReporter(
         display=disp_diag,
@@ -112,7 +105,6 @@ def test_resolution_status_reporter_distinguishes_evidence_diagnosis() -> None:
     assert message.startswith("evidence diagnosis status: ")
     assert "conflict resolution" not in message
 
-    # Conflict reporter
     disp_conf = _WarnDisplay()
     rep_conf = ResolutionStatusReporter(
         display=disp_conf,

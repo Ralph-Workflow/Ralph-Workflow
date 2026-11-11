@@ -73,7 +73,6 @@ def test_adr_records_renderer_scope_prompt_scope_and_review_authority() -> None:
 
 
 def _package_path(relative: str) -> Path:
-    """Resolve a path inside the ``ralph-workflow`` package from either root."""
     candidates = [
         Path("ralph-workflow") / relative,
         Path(relative),
@@ -85,7 +84,6 @@ def _package_path(relative: str) -> Path:
 
 
 def _flattened(path: Path) -> str:
-    """Read a shipped document with its line wrapping collapsed to spaces."""
     return " ".join(path.read_text(encoding="utf-8").split())
 
 
@@ -94,14 +92,6 @@ ADR_0002 = "docs/architecture/adr-0002-visual-design-verification.md"
 
 
 def test_vision_verdict_brief_describes_the_markdown_submission_channel() -> None:
-    """The shipped brief must name the channel the subagent actually has.
-
-    The brief is prompt text handed to an LLM subagent whose only output
-    channel is ``ralph_submit_md_artifact``. A brief that instructs a
-    different mechanism is an unactionable instruction, so the submission
-    tool, the spec that validates the submission, and the diagnostic that
-    enforces the code-reading prohibition are all pinned here.
-    """
     brief = _flattened(_package_path(VISION_VERDICT_BRIEF))
 
     assert "ralph_submit_md_artifact" in brief
@@ -110,13 +100,6 @@ def test_vision_verdict_brief_describes_the_markdown_submission_channel() -> Non
 
 
 def test_vision_verdict_brief_never_instructs_constructing_a_python_object() -> None:
-    """The brief must not tell the subagent to construct a Python object.
-
-    ``ralph.visual.design_verdict.DesignVerdict`` is constructed by no
-    production path, and an LLM subagent could not call it if there were
-    one. Citing it as the enforcement mechanism contradicts the DV008
-    rule the brief states elsewhere.
-    """
     brief = _flattened(_package_path(VISION_VERDICT_BRIEF))
 
     assert "DesignVerdict" not in brief
@@ -125,7 +108,6 @@ def test_vision_verdict_brief_never_instructs_constructing_a_python_object() -> 
 
 
 def test_adr_records_the_verdict_input_boundary_as_actually_built() -> None:
-    """ADR-0002 must not claim a typed verdict-input boundary that is unbuilt."""
     adr = _flattened(_package_path(ADR_0002))
 
     assert "rejected by typed validation at the artifact boundary" not in adr

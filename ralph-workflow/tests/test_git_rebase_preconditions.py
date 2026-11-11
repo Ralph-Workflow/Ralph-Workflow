@@ -1,5 +1,3 @@
-"""Tests for git rebase precondition validation."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -15,13 +13,10 @@ from ralph.git.rebase import (
 if TYPE_CHECKING:
     from pathlib import Path
 
-# This module is the real-git system contract. The default suite exercises
-# the same orchestration boundary with injected git collaborators.
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 
 
 def test_allows_clean_repository(tmp_git_repo: Path) -> None:
-    """A clean repository should pass all precondition checks."""
 
     check_rebase_preconditions(tmp_git_repo)
 
@@ -29,12 +24,6 @@ def test_allows_clean_repository(tmp_git_repo: Path) -> None:
 def test_tracked_modification_still_blocks_rebase_preconditions(
     tmp_git_repo: Path,
 ) -> None:
-    """An uncommitted TRACKED modification must still block a rebase.
-
-    This pins that the untracked-file relaxation below is scoped: git
-    itself refuses to replay commits over modified tracked content, so
-    Ralph must keep refusing too.
-    """
 
     (tmp_git_repo / "README.md").write_text("locally modified", encoding="utf-8")
 
@@ -48,13 +37,6 @@ def test_tracked_modification_still_blocks_rebase_preconditions(
 def test_untracked_file_does_not_block_rebase_preconditions(
     tmp_git_repo: Path,
 ) -> None:
-    """An untracked file must never disable integration for the whole run.
-
-    ``git rebase`` and ``git merge`` tolerate untracked files and refuse
-    non-destructively only when a specific untracked path would be
-    overwritten. Blocking up front converted that per-file, git-detectable
-    hazard into a run-wide outage.
-    """
 
     (tmp_git_repo / "scratch.txt").write_text("untracked\n", encoding="utf-8")
 
@@ -64,7 +46,6 @@ def test_untracked_file_does_not_block_rebase_preconditions(
 def test_untracked_directory_does_not_block_rebase_preconditions(
     tmp_git_repo: Path,
 ) -> None:
-    """A whole untracked directory is equally benign."""
 
     build_dir = tmp_git_repo / "build"
     build_dir.mkdir(parents=True)
@@ -74,7 +55,6 @@ def test_untracked_directory_does_not_block_rebase_preconditions(
 
 
 def test_detects_missing_identity(tmp_git_repo: Path) -> None:
-    """Missing git user configuration should be reported."""
 
     with Repo(tmp_git_repo) as repo:
         writer = repo.config_writer()
@@ -91,7 +71,6 @@ def test_detects_missing_identity(tmp_git_repo: Path) -> None:
 
 
 def test_detects_concurrent_rebase(tmp_git_repo: Path) -> None:
-    """Detect when another rebase-like state blocks the operation."""
 
     (tmp_git_repo / ".git" / "rebase-apply").mkdir(exist_ok=True)
 
@@ -103,7 +82,6 @@ def test_detects_concurrent_rebase(tmp_git_repo: Path) -> None:
 
 
 def test_detects_shallow_clone(tmp_git_repo: Path) -> None:
-    """Shallow clones should fail precondition validation."""
 
     shallow = tmp_git_repo / ".git" / "shallow"
     valid_commit = "0" * 40
@@ -117,7 +95,6 @@ def test_detects_shallow_clone(tmp_git_repo: Path) -> None:
 
 
 def _commit_gitmodules(repo_root: Path) -> None:
-    """Commit a .gitmodules declaring a never-initialized submodule."""
     (repo_root / ".gitmodules").write_text(
         '[submodule "vendor/brand"]\n'
         "\tpath = vendor/brand\n"
@@ -130,13 +107,11 @@ def _commit_gitmodules(repo_root: Path) -> None:
 
 
 def _add_linked_worktree(repo_root: Path, worktree_path: Path) -> None:
-    """Create a linked worktree on a fresh branch."""
     with Repo(repo_root) as repo:
         repo.git.worktree("add", "-b", "wt-feature", str(worktree_path))
 
 
 def test_uninitialized_submodule_does_not_block(tmp_git_repo: Path) -> None:
-    """A declared-but-uninitialized submodule must never block a rebase."""
 
     _commit_gitmodules(tmp_git_repo)
 
@@ -144,7 +119,6 @@ def test_uninitialized_submodule_does_not_block(tmp_git_repo: Path) -> None:
 
 
 def test_linked_worktree_passes_preconditions(tmp_git_repo: Path, tmp_path: Path) -> None:
-    """A clean linked worktree passes, even with an uninitialized submodule."""
 
     _commit_gitmodules(tmp_git_repo)
     worktree_path = tmp_path / "linked-worktree"
@@ -154,7 +128,6 @@ def test_linked_worktree_passes_preconditions(tmp_git_repo: Path, tmp_path: Path
 
 
 def test_detects_shallow_clone_from_linked_worktree(tmp_git_repo: Path, tmp_path: Path) -> None:
-    """The shallow marker lives in the common git dir; worktrees must see it."""
 
     worktree_path = tmp_path / "linked-worktree"
     _add_linked_worktree(tmp_git_repo, worktree_path)
@@ -169,14 +142,6 @@ def test_detects_shallow_clone_from_linked_worktree(tmp_git_repo: Path, tmp_path
 
 
 def test_stale_auto_merge_marker_does_not_block(tmp_git_repo: Path) -> None:
-    """A leftover ``AUTO_MERGE`` must never read as an in-progress merge.
-
-    Git's ``ort`` merge strategy writes ``AUTO_MERGE`` into the git dir
-    whenever a merge stops on conflicts, and neither ``merge --abort``
-    nor the follow-up merge commit removes it. Treating that leftover
-    as a concurrent operation permanently disabled auto-integration in
-    every worktree that had ever hit a single conflict.
-    """
 
     (tmp_git_repo / ".git" / "AUTO_MERGE").write_text("")
 
@@ -188,7 +153,6 @@ def test_stale_auto_merge_marker_does_not_block(tmp_git_repo: Path) -> None:
     ["MERGE_MSG", "MERGE_MODE", "MERGE_RR", "SQUASH_MSG", "ORIG_HEAD"],
 )
 def test_stale_merge_bookkeeping_files_do_not_block(tmp_git_repo: Path, leftover: str) -> None:
-    """Bookkeeping git leaves behind after an operation must not block."""
 
     marker = tmp_git_repo / ".git" / leftover
     marker.write_text("")
@@ -199,7 +163,6 @@ def test_stale_merge_bookkeeping_files_do_not_block(tmp_git_repo: Path, leftover
 
 
 def test_real_merge_head_still_blocks(tmp_git_repo: Path) -> None:
-    """``MERGE_HEAD`` proves a genuine in-progress merge and must block."""
 
     (tmp_git_repo / ".git" / "MERGE_HEAD").write_text("0" * 40)
 
@@ -211,7 +174,6 @@ def test_real_merge_head_still_blocks(tmp_git_repo: Path) -> None:
 
 
 def test_real_cherry_pick_and_revert_still_block(tmp_git_repo: Path) -> None:
-    """``CHERRY_PICK_HEAD`` and ``REVERT_HEAD`` must keep blocking."""
 
     for filename, description in (
         ("CHERRY_PICK_HEAD", "cherry-pick already in progress"),

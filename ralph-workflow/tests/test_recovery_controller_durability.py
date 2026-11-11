@@ -1,9 +1,3 @@
-"""RecoveryController snapshot, restoration, and durability tests.
-
-Split from :mod:`tests.test_retry_budget_durability` so neither module
-carries more than one top-level test class (repo-structure policy).
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -49,8 +43,6 @@ def _make_failure(
 
 
 class TestRecoveryControllerDurability:
-    """RecoveryController snapshot, restoration, and durability across restart."""
-
     def test_controller_snapshot_and_from_snapshot(self) -> None:
         clock = FakeClock(start=100.0)
         options = RecoveryControllerOptions(
@@ -88,7 +80,6 @@ class TestRecoveryControllerDurability:
         assert restored_backoff["claude"] == 2
 
     def test_spent_agent_is_skipped_in_preferred_agent_selection(self) -> None:
-        """A ledger-spent agent is skipped; the next agent is selected."""
         clock = FakeClock(start=100.0)
         options = RecoveryControllerOptions(
             clock=clock,
@@ -115,13 +106,9 @@ class TestRecoveryControllerDurability:
         )
 
         selection = controller.preferred_agent_index("development", ["claude", "gemini"])
-        # claude is spent, so gemini should be selected
         assert selection.agent == "gemini"
 
     def test_prepopulated_workspace_no_change_demotes_at_consecutive_limit(self) -> None:
-        """A pre-populated workspace with existing files where an agent does not change
-        any files correctly detects no workspace change and demotes at 3 consecutive attempts.
-        """
         bundle = load_policy(Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults")
         workspace = MemoryWorkspace()
         workspace.write("README.md", "# Project\nInitial readme.\n")
@@ -159,7 +146,6 @@ class TestRecoveryControllerDurability:
             prompt_file="prompt.txt",
         )
 
-        # Attempt 1: agent runs, does not change workspace files, fails artifact validation
         prep_events = handle_execution_phase(
             PreparePromptEffect(phase="development", iteration=1), ctx
         )
@@ -175,7 +161,6 @@ class TestRecoveryControllerDurability:
         assert controller.ledger.status("development", "claude").is_eligible is True
         assert controller.ledger.is_available("development", "claude") is True
 
-        # Attempt 2: still no workspace change
         handle_execution_phase(PreparePromptEffect(phase="development", iteration=2), ctx)
         exec_events = handle_execution_phase(invoke_effect, ctx)
         assert len(exec_events) == 1
@@ -186,7 +171,6 @@ class TestRecoveryControllerDurability:
         assert controller.ledger.status("development", "claude").is_eligible is True
         assert controller.ledger.is_available("development", "claude") is True
 
-        # Attempt 3: still no workspace change -> demotes at limit (3)
         handle_execution_phase(PreparePromptEffect(phase="development", iteration=3), ctx)
         exec_events = handle_execution_phase(invoke_effect, ctx)
         assert len(exec_events) == 1
@@ -200,9 +184,6 @@ class TestRecoveryControllerDurability:
         assert controller.ledger.is_available("development", "claude") is False
 
     def test_prepopulated_workspace_with_file_modifications_detects_changes(self) -> None:
-        """When an agent modifies or adds files in a pre-populated workspace,
-        workspace_changed is True and consecutive unproductive count is reset.
-        """
         bundle = load_policy(Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults")
         workspace = MemoryWorkspace()
         workspace.write("README.md", "# Project\nInitial readme.\n")
@@ -240,7 +221,6 @@ class TestRecoveryControllerDurability:
             prompt_file="prompt.txt",
         )
 
-        # Attempt 1: no changes, fails validation
         handle_execution_phase(PreparePromptEffect(phase="development", iteration=1), ctx)
         exec_events = handle_execution_phase(invoke_effect, ctx)
         assert len(exec_events) == 1
@@ -250,7 +230,6 @@ class TestRecoveryControllerDurability:
         state, _ = reduce(state, evt1, bundle.pipeline, recovery=controller)
         assert controller.ledger.status("development", "claude").is_eligible is True
 
-        # Attempt 2: agent modifies src/app.py during execution, but artifact validation still fails
         handle_execution_phase(PreparePromptEffect(phase="development", iteration=2), ctx)
         workspace.write("src/app.py", "def main():\n    print('modified')\n")
         exec_events = handle_execution_phase(invoke_effect, ctx)
@@ -265,9 +244,6 @@ class TestRecoveryControllerDurability:
     def test_checkpoint_resume_restores_ledger_snapshot_with_fresh_controller_and_clock(
         self, tmp_path: Path
     ) -> None:
-        """Resuming from checkpoint in a fresh controller with a fresh clock restores
-        the ledger snapshot and preserves two prior failure counts.
-        """
         bundle = load_policy(Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults")
         config = UnifiedConfig()
 
@@ -302,17 +278,14 @@ class TestRecoveryControllerDurability:
         assert "development:claude" in as_mapping(state.ledger_snapshot["entries"])
         assert controller1.ledger.status("development", "claude").is_eligible is True
 
-        # Save to checkpoint file
         checkpoint_path = tmp_path / "checkpoint.json"
         save_checkpoint(state, checkpoint_path)
 
-        # Load from checkpoint file
         loaded_state = load_checkpoint(checkpoint_path)
         assert loaded_state is not None
         assert loaded_state.ledger_snapshot is not None
         assert "development:claude" in as_mapping(loaded_state.ledger_snapshot["entries"])
 
-        # Fresh controller instance with a fresh clock (simulating process restart)
         fresh_clock = FakeClock(start=5000.0)
         fresh_controller, _ = build_recovery_controller(
             loaded_state,
@@ -321,11 +294,9 @@ class TestRecoveryControllerDurability:
             clock=fresh_clock,
         )
 
-        # Verify ledger state was restored in the fresh controller
         assert fresh_controller.ledger.status("development", "claude").is_eligible is True
         assert fresh_controller.ledger.is_available("development", "claude") is True
 
-        # Third failure on the fresh controller demotes claude
         loaded_state, _ = reduce(loaded_state, fail_evt, bundle.pipeline, recovery=fresh_controller)
         status = fresh_controller.ledger.status("development", "claude")
         assert status.is_eligible is False

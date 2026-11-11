@@ -1,11 +1,3 @@
-"""Orchestration, worker-count, and timeout tests for the test-suite runner.
-
-Split out of :mod:`tests.test_test_suites` so the shared suite stays under
-the maintained 1000-line-per-file cap. The shard fake classes live in
-:mod:`tests._test_test_suites_helpers` to keep both this file and the
-discovery suite free of repeated fakes.
-"""
-
 from __future__ import annotations
 
 import subprocess
@@ -29,7 +21,6 @@ if TYPE_CHECKING:
 
 
 def test_pytest_shard_processes_disable_background_reaping_and_event_logging() -> None:
-    """Shard teardown owns lifecycle cleanup without per-shard background work."""
     policy = test_suites_module._PYTEST_SHARD_PROCESS_MANAGER.policy
 
     assert policy.log_events is False
@@ -40,7 +31,6 @@ def test_default_spawner_inherits_parent_streams_for_verifier_log_drain(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """INFO-level Loguru output must not fill one independently polled shard pipe."""
     captured_options: list[object] = []
     sentinel = object()
 
@@ -84,15 +74,6 @@ def test_auto_worker_count_uses_verified_sixteen_shard_cap(
     cpu_count: int | None,
     expected_workers: str,
 ) -> None:
-    """Auto profile caps shards at the verified eight-worker limit.
-
-    Eight shards keep the maintained 40-core host's full selected suite
-    inside the immutable 60 s combined budget while preserving
-    exact-once selection. Sixteen shards caused I/O contention during
-    collection, timing out every shard on the 40-core host. The 12-core
-    profile reserves two logical cores for orchestration while using the
-    other ten for test shards.
-    """
     monkeypatch.delenv("PYTEST_WORKERS", raising=False)
     monkeypatch.setattr(test_suites_module.os, "cpu_count", lambda: cpu_count)
 
@@ -123,14 +104,6 @@ def test_explicit_worker_count_capped_at_cores_minus_two(
     requested: str,
     expected: str,
 ) -> None:
-    """Explicit PYTEST_WORKERS is capped at available_cores - 2.
-
-    One core is reserved for the parent process (shard polling, SIGCHLD
-    cleanup) and one for OS / I/O overhead. On a 12-core host, the Makefile's
-    twelve-shard default is capped to ten effective shards; on
-    a 32-core CI host 12 is preserved unchanged. Explicit overrides retain
-    their documented cap.
-    """
     monkeypatch.setenv("PYTEST_WORKERS", requested)
     monkeypatch.setattr(test_suites_module.os, "cpu_count", lambda: cpu_count)
 
@@ -153,17 +126,6 @@ def test_default_xdist_workers_per_shard_is_zero(
     cpu_count: int | None,
     shard_count: str,
 ) -> None:
-    """Default in-shard xdist is disabled on every host profile.
-
-    The plain-pytest per-shard path keeps the slowest shard under the
-    combined 60-second budget on the maintained 32-core CI profile
-    because the shard-saturated 16-shard fan-out already maximises
-    pytest-process parallelism and adding in-shard xdist workers only
-    shifts wall-clock budget from parallel IO into pytest-coordination
-    overhead. Operators that want the legacy CPU-utilisation-maximising
-    policy must opt in by setting ``PYTEST_XDIST_WORKERS_PER_SHARD=auto``
-    (see ``test_auto_xdist_worker_count_respects_available_cores``).
-    """
     monkeypatch.delenv("PYTEST_XDIST_WORKERS_PER_SHARD", raising=False)
     monkeypatch.setenv("PYTEST_WORKERS", shard_count)
     monkeypatch.setattr(test_suites_module.os, "cpu_count", lambda: cpu_count)
@@ -188,15 +150,6 @@ def test_auto_xdist_worker_count_respects_available_cores(
     shard_count: str,
     expected_workers: str,
 ) -> None:
-    """``PYTEST_XDIST_WORKERS_PER_SHARD=auto`` sizes in-shard fan-out from cores.
-
-    With the env var explicitly set to ``"auto"`` the resolver sizes the
-    in-shard xdist fan-out so that ``PYTEST_WORKERS`` shards * ``N``
-    in-shard workers does not exceed the host's available CPU count, up
-    to ``_MAX_XDIST_WORKERS_PER_SHARD``. This is the legacy
-    CPU-utilisation-maximising policy and is no longer the default; see
-    ``test_default_xdist_workers_per_shard_is_zero`` for the rationale.
-    """
     monkeypatch.setenv("PYTEST_XDIST_WORKERS_PER_SHARD", "auto")
     monkeypatch.setenv("PYTEST_WORKERS", shard_count)
     monkeypatch.setattr(test_suites_module.os, "cpu_count", lambda: cpu_count)
@@ -358,7 +311,6 @@ def test_pytest_tmpdir_regression_shards_use_isolated_repo_basetemps(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Each shard bypasses pytest's shared numbered temporary root."""
     monkeypatch.setenv("PYTEST_WORKERS", "2")
     monkeypatch.setattr(
         test_suites_module,
@@ -400,11 +352,6 @@ def test_required_auto_integrate_e2e_registry_matches_verification_contract() ->
 
 
 def test_sanctioned_default_lane_real_git_registry_is_pinned() -> None:
-    """The audit-exception registry is pinned and never overlaps selection.
-
-    Mirrors the discovery-side contract test so both test modules
-    independently fail when the audit-exception registry drifts.
-    """
     assert (
         test_suites_module.SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES
         == EXPECTED_SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES
@@ -436,7 +383,6 @@ def test_required_auto_integrate_selection_accepts_complete_registry() -> None:
 
 
 def test_real_child_startup_and_catalog_fail_closed_files_are_selected() -> None:
-    """Real-child startup, bounded catalog publish, and inherited-FD fail-closed tests are selected in verification."""
     target_files = (
         "tests/mcp/test_whole_startup_budget_production.py",
         "tests/mcp/test_bounded_catalog_publish.py",
@@ -454,11 +400,6 @@ def test_real_child_startup_and_catalog_fail_closed_files_are_selected() -> None
         auto_integrate_e2e_only=False,
         subprocess_e2e_only=False,
     )
-    # The real-git lane is split into ten shards (capped by the host's
-    # cores); the count is pinned here so a drift in the lane's
-    # parallelism is visible in this suite too.
-    # RALPH-TEST-REASON: the lane's parallelism is pinned at ten here too,
-    # capped by the host's core count.
     assert shard_count == 10
     for path in target_files:
         assert path in required_files
@@ -483,9 +424,6 @@ def test_focused_auto_integrate_profile_shards_exact_registry_without_discovery(
     assigned_files = tuple(path for shard in spawner.manifest_files for path in shard)
     assert exit_code == 0
     assert all(command[3] == "tests" for command, _cwd, _env in spawner.calls)
-    # ``tests/conftest.py`` is registered for the real-git audit exemption but
-    # is a pytest PLUGIN module: static discovery can never select it, so the
-    # focused profile must not hand it to pytest as a shard argument.
     assert sorted(assigned_files) == sorted(
         path
         for path in EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES
@@ -534,10 +472,6 @@ def test_subprocess_e2e_profile_uses_canonical_marker_with_explicit_files(
     ]
     marker_flag = general_command.index("-m", general_command.index("pytest") + 1)
     assert general_command[marker_flag + 1] == test_suites_module._SUBPROCESS_E2E_MARK_EXPRESSION
-    # The exclusive subprocess E2E shard uses 4 in-shard xdist workers
-    # (see ``_EXCLUSIVE_SUBPROCESS_E2E_SHARD_XDIST_WORKERS``) so the
-    # eight real-PTY regressions can run concurrently and fit inside
-    # the 60s combined subprocess profile budget.
     assert "-n" in exclusive_command
     exclusive_xdist_index = exclusive_command.index("-n")
     assert exclusive_command[exclusive_xdist_index + 1] == "4"
@@ -575,7 +509,6 @@ def test_run_test_suites_regression_profile_uses_exact_static_files_and_marker(
     expected_files: tuple[str, ...],
     expected_marker: str,
 ) -> None:
-    """S-2: named focused profiles retain exclusive paths and canonical markers."""
     monkeypatch.setenv("PYTEST_WORKERS", "1")
     spawner = _StubSpawner([_FakeShardProcess([0])])
     if profile == "unit":
@@ -610,7 +543,6 @@ def test_run_test_suites_regression_profile_uses_exact_static_files_and_marker(
 def test_run_test_suites_regression_accepts_marker_empty_profile_shard(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """S-2: a statically assigned file with no matching marker is not a profile failure."""
     monkeypatch.setenv("PYTEST_WORKERS", "2")
     monkeypatch.setattr(
         test_suites_module,
@@ -641,7 +573,6 @@ def test_run_test_suites_regression_returns_no_tests_code_when_every_profile_sha
     monkeypatch: pytest.MonkeyPatch,
     shard_count: int,
 ) -> None:
-    """S-2: all marker-empty focused shards preserve pytest's no-tests exit code."""
     monkeypatch.setenv("PYTEST_WORKERS", str(shard_count))
     selected_files = tuple(f"tests/test_empty_{index}.py" for index in range(shard_count))
     monkeypatch.setattr(test_suites_module, "discover_unit_test_files", lambda _cwd: selected_files)
@@ -661,7 +592,6 @@ def test_run_test_suites_regression_returns_no_tests_code_when_every_profile_sha
 
 
 def test_run_test_suites_regression_rejects_conflicting_profile_selectors(tmp_path: Path) -> None:
-    """S-2: callers cannot silently combine focused profile selection modes."""
     with pytest.raises(ValueError, match="mutually exclusive"):
         test_suites_module.run_test_suites(
             cwd=tmp_path,
@@ -673,7 +603,6 @@ def test_run_test_suites_regression_rejects_conflicting_profile_selectors(tmp_pa
 def test_main_regression_rejects_unknown_profile_before_spawning(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-2: unsupported CLI profiles fail closed instead of falling back to verification."""
     monkeypatch.setattr(
         test_suites_module,
         "run_test_suites",
@@ -688,24 +617,6 @@ def test_default_profile_splits_required_e2e_lane_into_ten_plain_shards(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The required real-git lane runs as ten plain shards beside the general ones.
-
-    The lane used to run as ONE shard with ten in-shard xdist workers.
-    Every xdist worker collects the whole shard manifest, so the ten
-    workers imported the conftest chain and all 90 real-git modules ten
-    times over: measured on the maintained host, the 10-worker xdist
-    shard cost 423.3 CPU core-seconds while the same 90 files spread
-    over ten plain shards cost 388.3 -- ~35 core-seconds of duplicated
-    collection and import charged against the immutable 700 core-second
-    budget. Ten plain shards give the same parallelism with ONE import
-    of every module, and the recalibrated weight table keeps their
-    predicted loads within 0.4 % of each other.
-
-    The lane's shards start alongside the general shards, so the whole
-    selection still runs in one concurrent wave.
-    """
-    # The worker count is capped by the host's cores; pin a 12-core host so
-    # the assertion below does not depend on the machine running the test.
     monkeypatch.setattr(test_suites_module.os, "cpu_count", lambda: 12)
     monkeypatch.setenv("PYTEST_WORKERS", "2")
     reap_spawn_counts: list[int] = []
@@ -733,28 +644,14 @@ def test_default_profile_splits_required_e2e_lane_into_ten_plain_shards(
     )
 
     assert exit_code == 0
-    # Concurrent execution: every shard (2 general + 10 real-git lane
-    # shards) is spawned concurrently in one wave, so reap_spawn_counts
-    # records the full shard count at each reap.
-    # RALPH-TEST-REASON: every shard is spawned and reaped in one
-    # concurrent wave.
     assert reap_spawn_counts == [shard_count] * shard_count
-    # RALPH-TEST-REASON: the exact number of spawned shards is pinned.
     assert len(spawner.calls) == shard_count
     lane_manifests = spawner.manifest_files[2:]
     lane_files = tuple(path for manifest in lane_manifests for path in manifest)
-    # Every registered real-git file runs exactly once, in the lane.
-    # RALPH-TEST-REASON: the lane's manifests hold every registered
-    # real-git file exactly once.
     assert sorted(lane_files) == sorted(EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES)
     assert len(lane_files) == len(set(lane_files))
-    # The lane's shards are plain pytest: no in-shard xdist fan-out, so no
-    # worker re-imports every module of the lane.
     for command, _cwd, _env in spawner.calls:
-        # RALPH-TEST-REASON: no lane shard carries an in-shard fan-out, so
-        # no worker re-imports every module of the lane.
         assert "-n" not in command
-        # RALPH-TEST-REASON: every shard targets the whole tests tree.
         assert command[3] == "tests"
 
 
@@ -763,7 +660,6 @@ def test_subprocess_e2e_regression_general_failure_prevents_exclusive_pty_spawn(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """S-1: the exclusive lane preserves first-failure output and cleanup semantics."""
     monkeypatch.setenv("PYTEST_WORKERS", "1")
     monkeypatch.setattr(test_suites_module, "REQUIRED_AUTO_INTEGRATE_E2E_FILES", ())
     failed = _FakeShardProcess([1], stderr=b"general failure output\\n")
@@ -800,7 +696,6 @@ def test_subprocess_e2e_regression_exclusive_pty_uses_remaining_parent_deadline(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-1: the PTY lane cannot reset the deadline consumed by general shards."""
     monkeypatch.setenv("PYTEST_WORKERS", "1")
     monkeypatch.setattr(test_suites_module, "REQUIRED_AUTO_INTEGRATE_E2E_FILES", ())
     clock = _FakeClock()
@@ -970,7 +865,6 @@ def test_timeout_regression_deadline_without_drain_does_not_claim_shard_survived
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """A zero-budget deadline cannot honestly diagnose a failed post-termination drain."""
     monkeypatch.setenv("PYTEST_WORKERS", "1")
     monkeypatch.setattr(
         test_suites_module,
@@ -1106,7 +1000,6 @@ def test_run_test_suites_charges_static_discovery_to_parent_deadline(
 def test_profile_durations_is_accepted_and_dispatches_to_per_file_runner(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The durations profile dispatches to the per-file duration runner."""
     calls: list[Path] = []
     monkeypatch.setattr(
         test_suites_module, "_run_durations_profile", lambda cwd: calls.append(cwd) or 7
@@ -1119,6 +1012,5 @@ def test_profile_durations_is_accepted_and_dispatches_to_per_file_runner(
 
 
 def test_profile_durations_appears_in_help_text() -> None:
-    """Unknown-profile SystemExit help text mentions the durations profile."""
     with pytest.raises(SystemExit, match="--profile durations"):
         test_suites_module.main(("--profile", "unknown"))

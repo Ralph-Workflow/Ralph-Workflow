@@ -1,17 +1,3 @@
-"""Sentry initialization with privacy-compliant PII scrubbing.
-
-Captures only anonymous metalevel telemetry: OS, architecture, runtime markers,
-Python/Ralph version, virtualenv flag, session timing, and a coarse exit
-outcome. The before_send scrubber redacts home-directory, cwd, and argv
-prefixes and drops server_name + stack-frame abs_path so no codebase identity
-leaves the process. RALPH_DISABLE_TELEMETRY=1 (or true/yes/on) or
-``telemetry_enabled = false`` in ``ralph-workflow.toml`` skips initialization
-at the single CLI chokepoint in ``_init_telemetry``.
-
-:class:`ScrubPolicy` -- the path prefixes the scrubber redacts -- is defined
-in :mod:`ralph.telemetry._sentry_scrub` and re-exported here, so ``from
-ralph.telemetry._sentry import ScrubPolicy`` keeps working unchanged.
-"""
 
 from __future__ import annotations
 
@@ -50,23 +36,14 @@ if TYPE_CHECKING:
 
 _DSN: str = "https://418c4f0099a0db0987b420c3cd1d5bb0@o4511480216158208.ingest.de.sentry.io/4511480219959376"
 
-# Minimum length to qualify as a Windows drive-letter path: ``X:\``.
-# Avoids matching ``C:foo`` (no separator after the colon).
 _WINDOWS_DRIVE_LETTER_PREFIX_LEN: int = 3
 
 _TRUE_DISABLE_VALUES: frozenset[str] = frozenset({"1", "true", "yes", "on"})
 
-# PhaseRole closed vocabulary — auto-derived from the Literal type alias via
-# ``get_args`` so the validation set cannot drift from the type. Phase telemetry
-# keys exclusively on these values; raw phase names are never forwarded.
 _PHASE_ROLES: frozenset[str] = frozenset(
     cast("tuple[str, ...]", get_args(PhaseRole))
-)  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+)
 _PHASE_OUTCOMES: frozenset[str] = frozenset({"success", "failure", "skipped", "crashed"})
-# Mirrors ralph.project_policy.schema_state.POLICY_SCHEMA_STATES. Restated here
-# rather than imported so telemetry keeps a dependency-free import graph (it is
-# loaded on the pipeline-runner import path); test_telemetry_sentry.py pins the
-# two vocabularies together so they cannot drift.
 _POLICY_SCHEMA_STATES: frozenset[str] = frozenset({"current", "outdated", "absent", "unknown"})
 _SAFE_DRAIN_NAMES: frozenset[str] = frozenset(
     {
@@ -86,20 +63,6 @@ _AGENT_STATS_MAX_KEYS = 128
 
 @dataclass
 class TelemetryState:
-    """Live telemetry session state.
-
-    The lifecycle functions read and write this object instead of
-    module-level scalars, so a caller can seed, observe, and reset the
-    session through ONE typed handle
-    (:func:`telemetry_state` / :func:`reset_telemetry_state`) instead of
-    by rebinding module attributes.
-
-    ``is_disabled`` and ``is_disabled_by_config`` are the injectable
-    opt-out checks. ``None`` means "ask the real environment variable and
-    the real configuration files"; a callable replaces that check so a
-    caller can decide the verdict without touching the process
-    environment.
-    """
 
     initialized: bool = False
     started_at: float | None = None
@@ -108,16 +71,9 @@ class TelemetryState:
     finalized: bool = False
     transaction: object | None = None
     wallclock_buckets: dict[str, object] | None = None
-    # Aggregate phase statistics, keyed by PhaseRole. Bounded by the
-    # 8-value closed vocabulary above; drained at session finalize.
     phase_stats: dict[str, dict[str, object]] = field(default_factory=dict)
-    # Aggregate agent statistics. Bounded by _AGENT_STATS_MAX_KEYS;
-    # drained at session finalize.
     agent_stats: dict[str, dict[str, object]] = field(default_factory=dict)
-    # The home-directory prefix the scrubber collapses to ``~``.
     home_prefix: str = field(default_factory=lambda: str(Path.home()))
-    # Cwd + path-like argv prefixes the scrubber redacts. Populated by
-    # init_sentry from os.getcwd() and path-like sys.argv entries.
     extra_scrub_prefixes: tuple[str, ...] = ()
     is_disabled: Callable[[], bool] | None = None
     is_disabled_by_config: Callable[[], bool] | None = None
@@ -127,12 +83,10 @@ _STATE = TelemetryState()
 
 
 def telemetry_state() -> TelemetryState:
-    """Return the live telemetry session state handle."""
     return _STATE
 
 
 def reset_telemetry_state() -> None:
-    """Reset the live telemetry session state to its pristine defaults."""
     _STATE.initialized = False
     _STATE.started_at = None
     _STATE.started_at_utc = None
@@ -149,7 +103,6 @@ def reset_telemetry_state() -> None:
 
 
 def current_scrub_policy() -> ScrubPolicy:
-    """Return the live scrub policy (home prefix + cwd/argv prefixes)."""
     return ScrubPolicy(
         home_prefix=_STATE.home_prefix,
         extra_prefixes=_STATE.extra_scrub_prefixes,
@@ -194,7 +147,6 @@ class _MetricDistribution(Protocol):
 
 
 def is_telemetry_disabled(env: Mapping[str, str] | None = None) -> bool:
-    """Return True when RALPH_DISABLE_TELEMETRY is set to a truthy value."""
     mapping = env if env is not None else os.environ
     raw = mapping.get("RALPH_DISABLE_TELEMETRY")
     if raw is None:
@@ -203,7 +155,6 @@ def is_telemetry_disabled(env: Mapping[str, str] | None = None) -> bool:
 
 
 def is_telemetry_disabled_by_config(env: Mapping[str, str] | None = None) -> bool:
-    """Return True when a global or project-local ralph-workflow.toml opts out."""
     mapping = env if env is not None else os.environ
     xdg_config_home = mapping.get("XDG_CONFIG_HOME")
     global_config_path = (
@@ -256,14 +207,6 @@ def _config_file_disables_telemetry(config_path: Path) -> bool:
 
 
 def telemetry_is_inactive() -> bool:
-    """Return True when telemetry must not emit anything right now.
-
-    The three inputs (environment opt-out, configuration opt-out, and
-    "Sentry was initialized") come from the live
-    :class:`TelemetryState`. The two opt-out checks are injectable so a
-    caller can decide the verdict without touching the process
-    environment; ``None`` means "use the real check".
-    """
     state = _STATE
     disabled = state.is_disabled if state.is_disabled is not None else is_telemetry_disabled
     disabled_by_config = (
@@ -275,12 +218,6 @@ def telemetry_is_inactive() -> bool:
 
 
 def is_telemetry_active() -> bool:
-    """Return True when telemetry is enabled AND Sentry was initialized.
-
-    Lets a caller skip work whose ONLY purpose is to feed telemetry (e.g.
-    reading the policy pack to derive its schema state) when nothing would be
-    forwarded anyway.
-    """
     return not telemetry_is_inactive()
 
 
@@ -296,7 +233,7 @@ def _add_breadcrumb(*, category: str, message: str, data: Mapping[str, object]) 
     with contextlib.suppress(Exception):
         add_breadcrumb = cast(
             "_BreadcrumbRecorder", sentry_sdk.add_breadcrumb
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         payload: dict[str, object] = dict(data)
         add_breadcrumb(
             category=category,
@@ -315,7 +252,7 @@ def _metric_count(
     with contextlib.suppress(Exception):
         count = cast(
             "_MetricCounter", sentry_metrics.count
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         payload: dict[str, object] = dict(attributes)
         count(name, value, attributes=payload)
 
@@ -330,21 +267,12 @@ def _metric_distribution(
     with contextlib.suppress(Exception):
         distribution = cast(
             "_MetricDistribution", sentry_metrics.distribution
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         payload: dict[str, object] = dict(attributes)
         distribution(name, value, unit=unit, attributes=payload)
 
 
 def _scrub_string(value: str, policy: ScrubPolicy | None = None) -> str:
-    """Redact home, cwd, and argv prefixes from a string value.
-
-    The first matching prefix wins (the order is the home prefix first so
-    that home directories nested inside argv/cwd prefixes still collapse
-    to ``~``). Non-matching strings are returned verbatim.
-
-    ``policy`` is the injectable prefix set; ``None`` uses the live
-    policy (:func:`current_scrub_policy`).
-    """
     active = policy if policy is not None else current_scrub_policy()
     if active.home_prefix and active.home_prefix in value:
         return value.replace(active.home_prefix, "~")
@@ -355,7 +283,6 @@ def _scrub_string(value: str, policy: ScrubPolicy | None = None) -> str:
 
 
 def scrub_obj(obj: object, policy: ScrubPolicy | None = None) -> None:
-    """Recursively replace home-directory and extra prefixes in all string values."""
     if isinstance(obj, dict):
         d = cast("dict[str, object]", obj)
         for key in list(d.keys()):
@@ -378,14 +305,6 @@ _scrub_obj = scrub_obj
 
 
 def _is_absolute_filename(value: object) -> bool:
-    """Return True if ``value`` looks like an absolute filename on POSIX or Windows.
-
-    POSIX: any path beginning with ``/``.
-    Windows: drive-letter paths (``C:\\...`` or ``C:/...``) and UNC paths
-    (starting with ``\\\\``). The cross-platform check is required so the
-    scrubber redacts stack-frame basenames and argv prefixes on
-    non-POSIX platforms too (AC-04 / AC-06).
-    """
     if not isinstance(value, str) or not value:
         return False
     if value.startswith("/"):
@@ -397,25 +316,12 @@ def _is_absolute_filename(value: object) -> bool:
 
 
 def _is_path_like_filename(value: object) -> bool:
-    """Return True if ``value`` looks like a filename carrying a path separator.
-
-    Relative paths like ``ralph/foo.py`` or ``src\\foo.py`` reveal codebase
-    structure (module hierarchy, package layout) even without an absolute
-    prefix, so the scrubber collapses them to their basename. Bare module
-    names like ``foo.py`` (no separator) are NOT considered path-like and are
-    left intact — they are too generic to identify a codebase.
-    """
     if not isinstance(value, str) or not value:
         return False
     return "/" in value or "\\" in value
 
 
 def _basename_of_path_like(filename: str) -> str:
-    """Return the basename of a path-like filename (relative or absolute).
-
-    Prefers ``\\`` as the separator when present so mixed Windows-style
-    strings like ``a\\b/c.py`` collapse correctly to ``c.py``.
-    """
     if "\\" in filename:
         return filename.rsplit("\\", 1)[-1]
     return filename.rsplit("/", 1)[-1]
@@ -434,7 +340,7 @@ def _scrub_frames(frames: object) -> None:
             continue
         d_frame["filename"] = _basename_of_path_like(
             cast("str", filename)
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
 
 
 def scrub_event(
@@ -463,15 +369,6 @@ _scrub_event = scrub_event
 
 
 def _build_extra_scrub_prefixes() -> tuple[str, ...]:
-    """Collect cwd + path-like sys.argv entries into an immutable tuple of prefixes.
-
-    Non-path strings (e.g. flag values, prompts, inline arguments) are filtered
-    out by requiring an absolute-path prefix and a non-empty value. Empty
-    strings are dropped. Order is preserved (cwd first, then argv) for
-    deterministic scrubber output. The check is cross-platform: POSIX
-    absolute (``/...``) and Windows absolute (``C:\\...``, ``C:/...``,
-    ``\\\\server\\share\\...``) prefixes are all eligible.
-    """
     prefixes: list[str] = []
     try:
         cwd = str(Path.cwd())
@@ -490,7 +387,6 @@ def _build_extra_scrub_prefixes() -> tuple[str, ...]:
 
 
 def init_sentry(user_id: str, session_id: str) -> None:
-    """Initialize Sentry with anonymous user identity and PII scrubbing."""
     _STATE.extra_scrub_prefixes = _build_extra_scrub_prefixes()
 
     sentry_sdk.init(
@@ -500,60 +396,23 @@ def init_sentry(user_id: str, session_id: str) -> None:
         environment=_sentry_environment(),
         auto_session_tracking=True,
         send_client_reports=True,
-        # Automatic integrations can add HTTP/subprocess spans containing
-        # URLs, argv, cwd, or other non-metadata details. Keep tracing
-        # limited to the manual ``ralph.session`` transaction below.
-        #
-        # ``default_integrations=False`` disables the WHOLE default set, which
-        # silently included ``ExcepthookIntegration`` — so an unhandled crash
-        # never reached Sentry and the only events this client could ever emit
-        # were the "session start"/"session end" messages below. The two
-        # integrations re-enabled here are opted in EXPLICITLY rather than by
-        # flipping the flag, so the privacy-sensitive defaults stay off:
-        # Argv (forwards sys.argv), Stdlib (HTTP/subprocess spans with URLs),
-        # Logging (application logs may carry prompts, paths, model output),
-        # Modules (installed package inventory), Atexit (Ralph flushes
-        # explicitly via ``finalize_session``). Excepthook events still pass
-        # through ``before_send=_scrub_event`` and carry no local variables
-        # (``include_local_variables=False``), so the metadata-only contract
-        # holds. Dedupe prevents one propagating exception from being reported
-        # twice when both a handled capture and the excepthook observe it.
         default_integrations=False,
         integrations=[ExcepthookIntegration(always_run=True), DedupeIntegration()],
         auto_enabling_integrations=False,
         traces_sample_rate=1.0,
-        # Profiling samples stack frames outside the event scrubber path, so
-        # keep it disabled to preserve Ralph Workflow's metadata-only contract.
         profiles_sample_rate=0.0,
         profile_session_sample_rate=0.0,
-        # Do not enable Sentry log capture by default: application logs can
-        # contain prompts, paths, or model output. Ralph emits explicit
-        # metadata-only breadcrumbs and metrics instead.
         enable_logs=False,
-        # Disable local-variable capture on stack frames: the scrubber can
-        # only redact known prefixes (home/cwd/argv), so arbitrary local
-        # values could otherwise be forwarded verbatim. We want stack frames
-        # (file/line/function) but never their locals.
         include_local_variables=False,
-        before_send=scrub_event,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-        before_send_transaction=scrub_event,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        before_send=scrub_event,
+        before_send_transaction=scrub_event,
     )
-    sentry_sdk.set_user({"id": user_id})  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    sentry_sdk.set_user({"id": user_id})
     sentry_sdk.set_tag("session_id", session_id)
     _STATE.initialized = True
 
 
 def set_environment_context() -> None:
-    """Attach anonymous runtime/OS context to Sentry.
-
-    Sources ONLY privacy-safe metadata: OS + architecture + environment
-    markers + package_manager from ``current_platform()``, Python
-    major.minor.micro + implementation from ``PythonVersionInfo.from_sys``,
-    Ralph ``__version__``, and the boolean ``in_virtualenv`` flag from
-    ``detect_runtime_environment``. NEVER reads or forwards
-    ``sys.executable``, ``sys.prefix/base_prefix/exec_prefix``,
-    ``virtualenv_path``, or any ``os.environ`` value.
-    """
     try:
         platform = current_platform()
         python_info = PythonVersionInfo.from_sys(sys)
@@ -575,20 +434,10 @@ def set_environment_context() -> None:
         }
         sentry_sdk.set_context("runtime", runtime_payload)
     except Exception:
-        # Telemetry must never break the host process.
         pass
 
 
 def set_agent_config_context(agents: Mapping[str, AgentConfig]) -> None:
-    """Attach the metadata-only agent-configuration snapshot to Sentry.
-
-    Called once at config load so the payload rides on EVERY subsequent event —
-    including crashes — rather than only a cleanly finalized session. The
-    sanitization contract lives in ``_agent_config_payload``: user-authored
-    agent names, raw ``cmd`` strings, and flag values never leave the process.
-    No-op when telemetry is disabled or Sentry was never initialized.
-    Fail-soft.
-    """
     if telemetry_is_inactive():
         return
     with contextlib.suppress(Exception):
@@ -599,15 +448,6 @@ def set_agent_config_context(agents: Mapping[str, AgentConfig]) -> None:
 
 
 def set_policy_schema_context(state: str) -> None:
-    """Attach the project's policy-schema state as a closed-vocabulary tag.
-
-    The caller derives the state (see
-    :func:`ralph.project_policy.schema_state.policy_schema_state`); telemetry
-    stays a pure sink and never reaches into the policy layer. Values outside
-    the closed vocabulary collapse to ``unknown`` rather than being forwarded.
-    No-op when telemetry is disabled or Sentry was never initialized.
-    Fail-soft.
-    """
     if telemetry_is_inactive():
         return
     with contextlib.suppress(Exception):
@@ -616,7 +456,6 @@ def set_policy_schema_context(state: str) -> None:
 
 
 def _python_version() -> str | None:
-    """Return the running ``major.minor.micro`` Python version, or None."""
     try:
         info = PythonVersionInfo.from_sys(sys)
     except Exception:
@@ -633,12 +472,6 @@ def record_session_start(
     now: float | None = None,
     now_dt: datetime | None = None,
 ) -> None:
-    """Record the monotonic-clock session start time.
-
-    Tests inject ``now=<float>`` for determinism (audit_test_policy forbids
-    ``time.monotonic()`` in test files). Production code passes ``now=None``
-    so the call resolves to ``time.monotonic()`` at runtime.
-    """
     if now is None:
         now = time.monotonic()
     _STATE.started_at = float(now)
@@ -663,20 +496,10 @@ def record_session_start(
 
 
 def set_session_outcome(outcome: str) -> None:
-    """Record the coarse session outcome: success / failure / interrupted / unknown."""
     _STATE.outcome = outcome
 
 
 def record_command_invocation(command: str) -> None:
-    """Record the invoked CLI command as a privacy-safe closed-vocabulary tag.
-
-    The closed-vocabulary guarantee is at the call site (the CLI passes
-    ``ctx.invoked_subcommand`` or the literal ``'pipeline'``); this function
-    forwards the value verbatim via ``sentry_sdk.set_tag('command', ...)``.
-    No-op when telemetry is disabled or Sentry was never initialized.
-    Fail-soft: any exception from ``sentry_sdk.set_tag`` is swallowed so the
-    host CLI/pipeline is never broken by telemetry.
-    """
     if telemetry_is_inactive():
         return
     with contextlib.suppress(Exception):
@@ -689,11 +512,10 @@ def record_command_invocation(command: str) -> None:
         )
 
 
-_WEEKDAY_COUNT = 5  # Mon-Fri inclusive; weekday cutoff for weekday/weekend bucketing.
+_WEEKDAY_COUNT = 5
 
 
 def _compute_wallclock_buckets(dt: datetime) -> dict[str, object]:
-    """Compute coarse UTC time-of-day buckets from a timezone-aware datetime."""
     return {
         "hour_of_day": dt.hour,
         "day_of_week": dt.weekday(),
@@ -702,16 +524,6 @@ def _compute_wallclock_buckets(dt: datetime) -> dict[str, object]:
 
 
 def set_session_wallclock_start(now_dt: datetime | None = None) -> None:
-    """Capture coarse UTC time-of-day buckets for aggregate when-analytics.
-
-    No full timestamp or timezone string is forwarded: only ``hour_of_day``
-    (0-23), ``day_of_week`` (0-6, Monday=0), and ``is_weekday`` (bool). The
-    buckets are attached to the session context at ``finalize_session`` time.
-    Tests inject ``now_dt=<datetime>`` for determinism; production code passes
-    ``now_dt=None`` so the call resolves to ``datetime.now(timezone.utc)``.
-    No-op when telemetry is disabled or Sentry was never initialized.
-    Fail-soft.
-    """
     if telemetry_is_inactive():
         return
     with contextlib.suppress(Exception):
@@ -720,17 +532,6 @@ def set_session_wallclock_start(now_dt: datetime | None = None) -> None:
 
 
 def record_phase_execution(*, role: str, duration_s: int, outcome: str) -> None:
-    """Record a completed phase execution aggregated by PhaseRole (closed vocabulary).
-
-    The aggregate is flushed as part of the session context at finalize time
-    (one snapshot per run, no per-phase ``capture_message`` events). Unknown
-    roles or outcomes are silently dropped — this enforces the privacy
-    invariant that no user-customizable phase identifier ever leaves the
-    process. ``duration_s`` is a whole-second ``int`` matching the production
-    ``PhaseTimingRecord.elapsed_seconds`` type.
-    No-op when telemetry is disabled or Sentry was never initialized.
-    Fail-soft.
-    """
     if telemetry_is_inactive():
         return
     if role not in _PHASE_ROLES or outcome not in _PHASE_OUTCOMES:
@@ -752,7 +553,6 @@ def record_phase_execution(*, role: str, duration_s: int, outcome: str) -> None:
             or not isinstance(current_total_raw, int)
             or not isinstance(outcomes_map_raw, dict)
         ):
-            # Defensive: ignore malformed accumulator state rather than crash.
             return
         current_count: int = current_count_raw
         current_total: int = current_total_raw
@@ -786,13 +586,6 @@ def record_agent_invocation(
     duration_s: float,
     outcome: str,
 ) -> None:
-    """Record one logical agent invocation using only bounded dimensions.
-
-    Agent names and custom policy identifiers are deliberately absent from the
-    payload. The resolved transport, closed phase role, allowlisted bundled
-    drain name, and custom/default pipeline profile provide useful attribution
-    without forwarding user-authored labels.
-    """
     if telemetry_is_inactive():
         return
     transport_value = transport.value if isinstance(transport, AgentTransport) else str(transport)
@@ -834,26 +627,10 @@ def record_agent_invocation(
         )
 
 
-#: Closed set of origins a handled failure may be attributed to. Keeping this
-#: bounded preserves the metadata-only contract: an unknown origin collapses to
-#: ``"unknown"`` rather than forwarding a user-authored label as a tag value.
 _HANDLED_FAILURE_ORIGINS: frozenset[str] = frozenset({"agent_invocation"})
 
 
 def report_handled_exception(exc: BaseException, *, origin: str) -> None:
-    """Capture a failure Ralph handled internally so it still reaches Sentry.
-
-    The excepthook integration only observes exceptions that propagate out of
-    the process. Ralph deliberately catches most failures — a wedged agent, a
-    watchdog fire, a classified transient fault — to retry or degrade, so
-    without an explicit capture those never produced a Sentry event and an
-    operator could not distinguish a clean run from one that churned for hours.
-
-    Fail-soft by contract: never raises, and no-ops when telemetry is disabled
-    or Sentry was never initialized. The event is tagged with a bounded
-    ``ralph.origin`` and passes through the same ``before_send`` scrubber as
-    every other event.
-    """
     if telemetry_is_inactive():
         return
     safe_origin = origin if origin in _HANDLED_FAILURE_ORIGINS else "unknown"
@@ -864,7 +641,6 @@ def report_handled_exception(exc: BaseException, *, origin: str) -> None:
 
 
 def flush_telemetry(timeout: float = 2.0) -> None:
-    """Bounded, fail-soft Sentry flush."""
     with contextlib.suppress(Exception):
         sentry_sdk.flush(timeout=timeout)
 
@@ -874,18 +650,6 @@ def finalize_session(
     end_dt: datetime | None = None,
     flush_timeout: float = 2.0,
 ) -> float | None:
-    """Emit the session-end context + message and flush. Returns the duration in seconds.
-
-    No-op (returns ``None``) when Sentry was never initialized or no session
-    start was recorded — so tests that monkeypatch ``_init_telemetry`` to a
-    no-op or skip the lifecycle do not flush real network I/O.
-
-    The session context includes explicit start/end monotonic timing
-    markers so the session timing payload is observable (matches the
-    README's "Session timing (start, duration)" claim). These monotonic
-    values are process-local: they are meaningful only inside this
-    process instance and leak no real-world clock information.
-    """
     if not _STATE.initialized or _STATE.started_at is None or _STATE.finalized:
         return None
 
@@ -901,9 +665,6 @@ def finalize_session(
             "started_monotonic_s": started,
             "ended_monotonic_s": end_clock,
             "outcome": _STATE.outcome,
-            # Ralph's version also ships as the Sentry release + a global tag;
-            # restating it on the session makes the run self-describing when a
-            # session is inspected in isolation.
             "ralph_version": ralph_version,
         }
         python_version = _python_version()
@@ -944,8 +705,6 @@ def finalize_session(
         flush_telemetry(flush_timeout)
     except Exception:
         pass
-    # Drain aggregates AFTER the snapshot is sent so a subsequent session can
-    # reuse the module-level accumulators safely (bounded-accumulator-ok).
     _STATE.phase_stats.clear()
     _STATE.agent_stats.clear()
     _STATE.transaction = None

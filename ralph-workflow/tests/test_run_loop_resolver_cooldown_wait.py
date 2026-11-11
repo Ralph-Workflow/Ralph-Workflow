@@ -1,5 +1,3 @@
-"""While every resolver is cooling down the retry loop waits; it neither works nor gives up."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -29,8 +27,6 @@ _MAX_SLEEP_SLICE_SECONDS = 30.0
 
 
 class _InstalledRegistry:
-    """Registry stand-in: the cooldown path only asks whether a resolver is installed."""
-
     def __init__(self, names: Iterable[str]) -> None:
         self._agents: dict[str, AgentConfig] = {name: AgentConfig(cmd=name) for name in names}
 

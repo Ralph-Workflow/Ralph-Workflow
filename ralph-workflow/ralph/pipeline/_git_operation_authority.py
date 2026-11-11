@@ -1,12 +1,3 @@
-"""Single authority for classifying which git operation a durable record owns.
-
-The pending-integration modules keep their model fields for
-checkpoint compatibility, but every decision about which operation
-is in flight (and therefore which fields may be mutated or cleared)
-is derived here via :func:`classify_git_operation`. No caller may
-re-derive the operation kind by hand-rolled boolean combinations of
-the record's flags.
-"""
 
 from __future__ import annotations
 
@@ -18,7 +9,6 @@ if TYPE_CHECKING:
 
 
 class GitOperationKind(StrEnum):
-    """The closed vocabulary of in-flight git operations."""
 
     RESOLVING_REBASE = "resolving_rebase"
     RESOLVING_MERGE = "resolving_merge"
@@ -28,13 +18,6 @@ class GitOperationKind(StrEnum):
 
 
 def classify_git_operation(record: IntegrationRecord) -> GitOperationKind:
-    """Map a durable record's operation flags to exactly one kind.
-
-    Priority follows danger of a concurrent continuation: an armed
-    continuation/commit pending flag wins over the resolver-only
-    flags; the prepared tree alone (crash between snapshot and
-    arming) still counts as awaiting its commit.
-    """
     if record.rebase_continue_pending:
         return GitOperationKind.AWAITING_CONTINUE
     if record.merge_commit_pending:
@@ -49,14 +32,6 @@ def classify_git_operation(record: IntegrationRecord) -> GitOperationKind:
 
 
 def is_in_active_resolution_state(record: IntegrationRecord) -> bool:
-    """True when the record is in RESOLVING_MERGE or RESOLVING_REBASE.
-
-    This is derived from :func:`classify_git_operation` so that callers
-    can check "are we on the retained-resolution path" without reading
-    raw flags.  It is *not* true for AWAITING_CONTINUE even when the
-    record also carries ``resolving_rebase=True`` (that state belongs to
-    the pending-rebase branch, not the resolution branch).
-    """
     kind = classify_git_operation(record)
     return kind in (GitOperationKind.RESOLVING_MERGE, GitOperationKind.RESOLVING_REBASE)
 

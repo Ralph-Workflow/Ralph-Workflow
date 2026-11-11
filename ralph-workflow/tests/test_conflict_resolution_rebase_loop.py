@@ -1,17 +1,3 @@
-"""Tests for the bounded rebase resolve-and-continue loop.
-
-The load-bearing contract is the DIVISION OF LABOUR: the resolver only
-edits files, and Ralph alone stages, re-scans for surviving conflict
-markers, asks git whether anything is still unmerged, and continues the
-rebase. A resolver that reports success over a file still carrying
-``<<<<<<<`` has resolved nothing, and ``git add`` clears a file's
-unmerged bit even with the markers intact -- so the textual re-scan is
-the only remaining proof and the loop must refuse to continue without it.
-
-Every git seam is injected, so nothing here launches a process or touches
-a repository and each test stays well inside the per-test timeout.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -51,21 +37,12 @@ if TYPE_CHECKING:
 
 _TARGET = "main"
 _CONFLICTED = ["src/alpha.py"]
-#: The commit a paused rebase is replaying onto, as git records it in
-#: ``rebase-merge/onto``. Completion is proved against THIS, not against
-#: the target name a fleet sibling can move mid-resolution.
 _BASE_SHA = "ba5e0000000000000000000000000000000000ba"
-#: The tip the paused rebase is replaying FROM, as git records it in
-#: ``rebase-merge/orig-head``. Paired with :data:`_BASE_SHA` it is the
-#: identity the progress sidecar is scoped to, so a record written by
-#: any other rebase is discarded instead of resumed from.
 _ORIG_HEAD_SHA = "0219000000000000000000000000000000000fea"
 _STOP_CAP = 10
 
 
 class _FakeRepo:
-    """Scripted git state: N conflicted stops, then a finished rebase."""
-
     def __init__(self, stops: int, *, never_finishes: bool = False) -> None:
         self.remaining = stops
         self.never_finishes = never_finishes
@@ -93,11 +70,6 @@ def _install_seams(
     dirty_query_fails: bool = False,
     replay_progress: tuple[int, int] | None = None,
 ) -> None:
-    """Replace every git call the loop makes with a scripted fake.
-
-    ``dirty_after_resolution`` scripts the post-resolver worktree; the fake alternates
-    across reads, and ``None`` means only the conflicted paths were touched.
-    """
     _install_worktree_seam(
         monkeypatch,
         dirty_after_resolution=dirty_after_resolution,
@@ -137,7 +109,6 @@ def _install_worktree_seam(
     dirty_after_resolution: Sequence[str] | None,
     dirty_query_fails: bool,
 ) -> None:
-    """Script the before/after worktree observations of one stop."""
     reads = {"count": 0}
 
     def _dirty_paths(_root: Path) -> frozenset[str] | None:
@@ -163,7 +134,6 @@ def _accepting_resolver(seen: list[RebaseStop]):
 def test_single_stop_resolves_and_continues_once(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """One conflicted commit: resolve, continue exactly once, report True."""
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
     seen: list[RebaseStop] = []
@@ -175,12 +145,6 @@ def test_single_stop_resolves_and_continues_once(
 def test_resolve_rebase_in_progress_lands_after_empty_commit_skip(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """C15: an empty replay commit handled by ``--skip`` still lands.
-
-    The continuation seam returns normally only after its bounded empty-stop
-    skip path has completed.  The loop must treat that as progress rather than
-    abandoning to endpoint merge.
-    """
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
     empty_stop_handled = {"value": False}
@@ -202,7 +166,6 @@ def test_resolve_rebase_in_progress_lands_after_empty_commit_skip(
 def test_rebase_empty_stop_continuation_failure_abandons(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The old continuation failure routes this otherwise valid stop to fallback."""
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
 
@@ -218,7 +181,6 @@ def test_rebase_empty_stop_continuation_failure_abandons(
 def test_three_stops_drive_three_resolver_calls_in_order(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A rebase stopping on three commits resolves each one in turn."""
     repo = _FakeRepo(stops=3)
     _install_seams(monkeypatch, repo)
     seen: list[RebaseStop] = []
@@ -230,7 +192,6 @@ def test_three_stops_drive_three_resolver_calls_in_order(
 def test_declining_resolver_never_continues_the_rebase(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A resolver that declines leaves the rebase exactly where it was."""
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
 
@@ -243,7 +204,6 @@ def test_declining_resolver_never_continues_the_rebase(
 def test_surviving_conflict_markers_reject_a_claimed_resolution(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Ralph's re-scan overrules the resolver's own success claim."""
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo, surviving=["src/alpha.py"])
     seen: list[RebaseStop] = []
@@ -257,7 +217,6 @@ def test_surviving_conflict_markers_reject_a_claimed_resolution(
 def test_residual_unmerged_paths_reject_a_claimed_resolution(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """git's own unmerged-path answer is the second, independent gate."""
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo, unmerged=["src/alpha.py"])
     seen: list[RebaseStop] = []
@@ -268,7 +227,6 @@ def test_residual_unmerged_paths_reject_a_claimed_resolution(
 
 
 def test_failure_to_stage_rejects_the_stop(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Staging is Ralph's job, so a failed stage is Ralph's failure."""
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo, stage_ok=False)
     seen: list[RebaseStop] = []
@@ -281,12 +239,6 @@ def test_failure_to_stage_rejects_the_stop(monkeypatch: pytest.MonkeyPatch, tmp_
 def test_a_resolver_that_edits_an_unrequested_path_keeps_the_in_scope_resolution(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Scope rejection drops the stray path and still lands the stop.
-
-    Only ``stop.conflicted_files`` is staged, so an edit anywhere else
-    cannot reach the replayed commit. The stray path is reverted; the
-    in-scope resolution still stages and continues.
-    """
     repo = _FakeRepo(stops=1)
     _install_seams(
         monkeypatch,
@@ -313,11 +265,8 @@ def test_a_resolver_that_edits_an_unrequested_path_keeps_the_in_scope_resolution
 def test_a_worktree_dirty_before_the_resolver_ran_is_not_blamed_on_it(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The gate is about what THIS round changed, not what it inherited."""
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
-    # Constant across both reads: the same unrelated path is dirty before
-    # AND after, so it was not this round's doing.
     monkeypatch.setattr(
         loop_module,
         "_worktree_dirty_paths",
@@ -331,7 +280,6 @@ def test_a_worktree_dirty_before_the_resolver_ran_is_not_blamed_on_it(
 def test_an_unreadable_worktree_declines_rather_than_assuming_it_is_clean(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Fail closed: an unreadable worktree hides exactly what we look for."""
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo, dirty_query_fails=True)
     seen: list[RebaseStop] = []
@@ -346,16 +294,6 @@ def test_an_unreadable_worktree_declines_rather_than_assuming_it_is_clean(
 def test_an_unreadable_rebase_head_declines_before_the_resolver_runs(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Fail closed when the stopped commit has no readable identity.
-
-    An empty ``REBASE_HEAD`` costs the loop both of the things that SHA
-    buys: the prompt template gates its whole rebase-mode commit context
-    on ``replaying_commit_sha``, so the resolver would be asked to fix a
-    commit it is never told the identity of, and ``_advanced_to_a_new_stop``
-    compares SHAs, so an empty one would let any later readable SHA pass
-    as proof that this stop landed. Declining hands the paused rebase to
-    the caller's abort path untouched.
-    """
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
     monkeypatch.setattr(loop_module, "_rev_parse_rebase_head", lambda _root: "")
@@ -372,7 +310,6 @@ def test_an_unreadable_rebase_head_declines_before_the_resolver_runs(
 def test_conflict_remaining_error_from_continue_declines(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """git refusing to continue is a declined resolution, not a crash."""
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
 
@@ -388,7 +325,6 @@ def test_conflict_remaining_error_from_continue_declines(
 def test_continuation_error_from_continue_declines(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A failed ``git rebase --continue`` declines rather than propagating."""
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
 
@@ -404,12 +340,6 @@ def test_continuation_error_from_continue_declines(
 def test_a_continue_that_lands_but_hits_the_next_conflict_is_success(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """``rebase --continue`` exits non-zero when the NEXT commit conflicts.
-
-    That is the stop advancing, not the stop failing. Reading it as a
-    failure made every multi-conflict branch fall back to the endpoint
-    merge while single-conflict branches resolved cleanly.
-    """
     repo = _FakeRepo(stops=2)
     _install_seams(monkeypatch, repo)
     heads = iter(["sha-one", "sha-two"])
@@ -429,7 +359,6 @@ def test_a_continue_that_lands_but_hits_the_next_conflict_is_success(
 def test_a_continue_that_fails_on_the_same_stop_declines(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """An unchanged REBASE_HEAD means nothing landed: decline, do not loop."""
     repo = _FakeRepo(stops=1, never_finishes=True)
     _install_seams(monkeypatch, repo)
 
@@ -446,7 +375,6 @@ def test_a_continue_that_fails_on_the_same_stop_declines(
 def test_rebase_finishing_during_continue_is_success(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """``NoRebaseInProgressError`` means the replay finished, not failed."""
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
     calls: list[int] = []
@@ -465,7 +393,6 @@ def test_rebase_finishing_during_continue_is_success(
 def test_a_rebase_that_never_finishes_exhausts_the_stop_budget(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The loop terminates at MAX_REBASE_CONFLICT_STOPS rather than spinning."""
     repo = _FakeRepo(stops=0, never_finishes=True)
     _install_seams(monkeypatch, repo)
     seen: list[RebaseStop] = []
@@ -479,7 +406,6 @@ def test_a_rebase_that_never_finishes_exhausts_the_stop_budget(
 def test_configured_stop_cap_applies_to_every_rebase_stop(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """S-4/DA-006-010: the typed session bound wins over the legacy loop fallback."""
     repo = _FakeRepo(stops=0, never_finishes=True)
     _install_seams(monkeypatch, repo)
     seen: list[RebaseStop] = []
@@ -499,12 +425,6 @@ def test_configured_stop_cap_applies_to_every_rebase_stop(
 def test_a_paused_rebase_with_its_stop_already_staged_is_continued(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A staged, marker-free stop needs `--continue`, not an agent.
-
-    Declining left the rebase paused on disk and the run exited having
-    invoked nobody -- for a stop that was already resolved, most likely
-    by a run that died between proving it and continuing past it.
-    """
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
     monkeypatch.setattr(loop_module, "get_conflicted_files", lambda **_kwargs: [])
@@ -520,7 +440,6 @@ def test_a_paused_rebase_with_its_stop_already_staged_is_continued(
 def test_a_paused_rebase_that_is_still_conflicted_is_not_continued(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Only a genuinely clean index may be continued past."""
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
     monkeypatch.setattr(loop_module, "get_conflicted_files", lambda **_kwargs: [])
@@ -533,7 +452,6 @@ def test_a_paused_rebase_that_is_still_conflicted_is_not_continued(
 def test_an_unexpected_exception_declines_without_propagating(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The never-raises contract the integration step depends on."""
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
 
@@ -550,15 +468,6 @@ def test_an_unexpected_exception_declines_without_propagating(
 def test_completion_is_proved_against_the_pinned_replay_base(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The completion check must not re-read a ref a sibling can move.
-
-    A resolution session is long, and in a shared-checkout fleet the
-    mainline moves during it routinely. Verifying against the target
-    NAME would report a finished replay as "not a descendant of target"
-    the moment a sibling landed, discarding a good resolution in favour
-    of an endpoint merge. The base recorded in ``rebase-merge/onto`` at
-    the start of the loop is the only stable answer.
-    """
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
     verified_against: list[str] = []
@@ -576,7 +485,6 @@ def test_completion_is_proved_against_the_pinned_replay_base(
 def test_an_unreadable_replay_base_falls_back_to_the_target_name(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """No ``onto`` file to read: verify exactly as before this seam existed."""
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
     monkeypatch.setattr(loop_module, "_rebase_base_sha", lambda _root: None)
@@ -595,7 +503,6 @@ def test_an_unreadable_replay_base_falls_back_to_the_target_name(
 def test_an_unverifiable_completion_declines(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """HEAD not descending from the replay base is not a resolved rebase."""
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo, verified=False)
     seen: list[RebaseStop] = []
@@ -606,7 +513,6 @@ def test_an_unverifiable_completion_declines(
 def test_the_stop_carries_the_replayed_commit_and_the_conflicted_paths(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The resolver's whole context: which commit, which files, where in the loop."""
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
     seen: list[RebaseStop] = []
@@ -625,7 +531,6 @@ def test_the_stop_carries_the_replayed_commit_and_the_conflicted_paths(
 
 
 def test_route_after_stop_resolves_continues_and_abandons() -> None:
-    """The pure router hits all three terminals at its boundaries."""
     assert route_after_stop(1, True, _STOP_CAP) == TERMINAL_RESOLVED
     assert route_after_stop(1, False, _STOP_CAP) == PHASE_RESOLUTION
     assert route_after_stop(_STOP_CAP, False, _STOP_CAP) == TERMINAL_ABANDONED
@@ -636,13 +541,6 @@ def _install_progress_git_seam(
     root: Path,
     files: dict[str, str],
 ) -> None:
-    """Answer ``rev-parse --git-path`` for scripted rebase state files.
-
-    ``files`` maps the relative state path git is asked to resolve onto
-    the text that file contains; anything absent resolves to a path that
-    is simply not there, which is what a rebase using the OTHER backend
-    looks like from here.
-    """
     state_dir = root / "state"
     scripted_files = {
         state_dir / relative.replace("/", "_"): text for relative, text in files.items()
@@ -673,7 +571,6 @@ def _install_progress_git_seam(
 def test_the_merge_backend_replay_counter_is_read_and_rendered(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """``rebase-merge/msgnum``+``end`` become the operator's ``commit 2/5``."""
     _install_progress_git_seam(
         monkeypatch,
         tmp_path,
@@ -697,7 +594,6 @@ def test_the_merge_backend_replay_counter_is_read_and_rendered(
 def test_the_apply_backend_replay_counter_is_read_equivalently(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A ``rebase --apply`` replay counts in different files, same meaning."""
     _install_progress_git_seam(
         monkeypatch,
         tmp_path,
@@ -710,11 +606,6 @@ def test_the_apply_backend_replay_counter_is_read_equivalently(
 def test_unreadable_or_nonsensical_replay_state_reads_as_none(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Absent, garbage and out-of-range counters are all just ``None``.
-
-    The counter is cosmetic, so every one of these must degrade the
-    label rather than raise into a resolution that would otherwise land.
-    """
     _install_progress_git_seam(monkeypatch, tmp_path, {})
     assert loop_module._read_replay_progress(tmp_path) is None
 
@@ -743,7 +634,6 @@ def test_unreadable_or_nonsensical_replay_state_reads_as_none(
 def test_a_failing_git_path_lookup_reads_as_none(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """git refusing to resolve the state path is just an unreadable counter."""
 
     def _failing_run_git(args: Sequence[str], *, cwd: Path, label: str) -> GitRunResult:
         return GitRunResult(args=tuple(args), returncode=128, stdout="", stderr="not a git repo")
@@ -756,7 +646,6 @@ def test_a_failing_git_path_lookup_reads_as_none(
 def test_an_unreadable_counter_falls_back_to_the_stop_counters(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """No replay pair on the stop, and the label degrades to the old one."""
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo, replay_progress=None)
     seen: list[RebaseStop] = []
@@ -782,7 +671,6 @@ def test_an_unreadable_counter_falls_back_to_the_stop_counters(
 def test_the_stop_carries_the_replay_position_when_it_is_readable(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The resolver is handed the real replay position, not the safety cap."""
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo, replay_progress=(2, 5))
     seen: list[RebaseStop] = []
@@ -795,12 +683,6 @@ def test_the_stop_carries_the_replay_position_when_it_is_readable(
 def test_a_readable_replay_total_never_widens_the_stop_budget(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The safety bound stays MAX_REBASE_CONFLICT_STOPS, whatever git reports.
-
-    ``stop_cap`` feeds :func:`route_after_stop`, which terminates the
-    loop. Letting the replay total reach it would replace a fixed bound
-    with an accident-controlled number of agent invocations.
-    """
     repo = _FakeRepo(stops=0, never_finishes=True)
     _install_seams(monkeypatch, repo, replay_progress=(1, 40))
     seen: list[RebaseStop] = []
@@ -815,7 +697,6 @@ def test_a_readable_replay_total_never_widens_the_stop_budget(
 def test_mode_only_conflict_resolved_without_invoking_resolver(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """C9 regression: uniform mode-only stops stage and continue without an agent."""
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
     monkeypatch.setattr(
@@ -849,7 +730,6 @@ def test_mode_only_conflict_resolved_without_invoking_resolver(
 def test_gitlink_conflict_resolved_via_ancestor_pick(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """C7 regression: the locally reachable descendant gitlink wins."""
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
     monkeypatch.setattr(
@@ -875,7 +755,6 @@ def test_gitlink_conflict_resolved_via_ancestor_pick(
 def test_gitlink_conflict_diverged_declines_to_resolver(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """C7 regression: diverged gitlinks retain the established resolver fallback."""
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
     monkeypatch.setattr(
@@ -899,7 +778,6 @@ def test_gitlink_conflict_diverged_declines_to_resolver(
 def test_mixed_deterministic_conflict_declines_whole_stop(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """C7/C9 regression: a mixed stop is never partially deterministic."""
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
     monkeypatch.setattr(loop_module, "get_conflicted_files", lambda **_kwargs: ["one", "two"])
@@ -920,7 +798,6 @@ def test_mixed_deterministic_conflict_declines_whole_stop(
 def test_resolve_skips_sidecar_landed_shas_and_starts_at_the_first_unlanded(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A fresh process resumes at the first SHA that is not already landed."""
     save_progress(
         tmp_path,
         RebaseResolutionProgress(
@@ -949,7 +826,6 @@ def test_resolve_skips_sidecar_landed_shas_and_starts_at_the_first_unlanded(
 def test_four_landed_stops_survive_a_fifth_stop_failure(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A later-stop decline must keep the four already-landed replay SHAs."""
     shas = ("s1", "s2", "s3", "s4", "s5")
     repo = _FakeRepo(stops=5)
     _install_seams(monkeypatch, repo)
@@ -978,14 +854,6 @@ def test_four_landed_stops_survive_a_fifth_stop_failure(
 def test_a_staged_stop_with_surviving_markers_is_not_continued(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A clean INDEX is not a resolved stop.
-
-    `_stage_and_prove` stages before it scans -- deliberately, because
-    `git add` clears the unmerged bit -- so a round refused for
-    surviving markers leaves nothing unmerged and the markers still in
-    the files. Continuing without looking committed them, with no agent
-    invoked and a log line claiming the stop was marker-free.
-    """
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
     monkeypatch.setattr(loop_module, "get_conflicted_files", lambda **_kwargs: [])

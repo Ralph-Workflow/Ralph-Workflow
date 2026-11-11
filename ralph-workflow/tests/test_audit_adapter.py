@@ -1,5 +1,3 @@
-"""Tests for the ralph.mcp.audit_adapter module."""
-
 from __future__ import annotations
 
 from ralph.mcp.artifacts import audit_adapter
@@ -13,7 +11,6 @@ from ralph.mcp.protocol.capability_mapping import (
 
 
 def test_outcome_from_decision_denied() -> None:
-    """Ensure denied access decisions map to denied policy outcomes."""
 
     decision = AccessDecision.deny("capability blocked", AccessDeniedCode.CAPABILITY_DENIED)
     outcome = audit_adapter.outcome_from_decision(decision)
@@ -23,7 +20,6 @@ def test_outcome_from_decision_denied() -> None:
 
 
 def test_sink_adapter_records_tool_event() -> None:
-    """Audit sink should translate MCP records into Ralph audit records."""
 
     metadata = audit_adapter.AuditMetadata(
         event_type=audit_adapter.McpAuditEventType.TOOL,
@@ -64,7 +60,6 @@ def test_sink_adapter_records_tool_event() -> None:
 
 
 def test_drain_records_clears_buffer() -> None:
-    """Calling drain_records twice should empty the buffer."""
 
     adapter = audit_adapter.RalphAuditSinkAdapter()
     record = audit_adapter.McpAuditRecord(

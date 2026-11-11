@@ -1,11 +1,3 @@
-"""Proofs for commit-review artifact tree_sha binding and re-review loopbacks.
-
-A commit-review verdict is only meaningful when it is bound to the exact
-proposal tree that was reviewed. An artifact that lacks a valid tree_sha,
-provides an invalid tree_sha, or points to a stale tree_sha must trigger
-a re-review loopback rather than approving or discarding work.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -31,7 +23,6 @@ pytestmark = [pytest.mark.timeout_seconds(5)]
 
 
 def _seed_engine_defaults(repo_root: Path) -> None:
-    """Seed the engine's canonical ignore/exclude files before a proof starts."""
     auto_seed_default_gitignore(repo_root)
     auto_seed_default_git_exclude(repo_root)
 
@@ -92,7 +83,6 @@ def _write_unbound_artifact(
     tree_sha: str | None = None,
     verdict: str = "approve",
 ) -> None:
-    """Write a commit-review artifact whose tree binding is absent or invalid."""
     lines = [
         "---",
         "type: commit_review",
@@ -107,13 +97,6 @@ def _write_unbound_artifact(
 
 
 def test_artifact_without_tree_sha_is_never_approved(tmp_git_repo: Path) -> None:
-    """A verdict that names no tree is a malfunction, never an approval.
-
-    The artifact spec requires tree_sha: a verdict that omits it is not
-    bound to the tree it judged, so the engine cannot tell which tree the
-    reviewer approved. The reviewer is sent back for a re-review and the
-    pending work survives untouched.
-    """
     pending = tmp_git_repo / "pending_work.txt"
     pending.write_text("work in progress\n", encoding="utf-8")
     _seed_engine_defaults(tmp_git_repo)
@@ -131,16 +114,13 @@ def test_artifact_without_tree_sha_is_never_approved(tmp_git_repo: Path) -> None
         f"An unbound verdict must be re-reviewed, not approved: {event!r}"
     )
     assert "tree_sha" in event.hint
-    # The malformed artifact is consumed: the next attempt needs a new submit.
     assert not workspace.exists(COMMIT_REVIEW_ARTIFACT_PATH)
-    # A malfunction never discards work: no rollback, no commit.
     assert pending.read_text(encoding="utf-8") == "work in progress\n"
     assert get_head_sha(tmp_git_repo) == head_before
     assert not has_commits_since(tmp_git_repo, head_before)
 
 
 def test_artifact_with_an_invalid_tree_sha_is_never_approved(tmp_git_repo: Path) -> None:
-    """A tree_sha that is not a valid git tree SHA is a malfunction, not an approval."""
     pending = tmp_git_repo / "pending_work.txt"
     pending.write_text("work in progress\n", encoding="utf-8")
     _seed_engine_defaults(tmp_git_repo)
@@ -163,12 +143,6 @@ def test_artifact_with_an_invalid_tree_sha_is_never_approved(tmp_git_repo: Path)
 
 
 def test_a_reject_without_tree_sha_is_never_a_rollback(tmp_git_repo: Path) -> None:
-    """A rejection that names no tree never discards the pending work.
-
-    A rejection rolls the working tree back. A verdict that is not bound to
-    the reviewed tree cannot be trusted to authorise that, so the reviewer
-    is sent back for a re-review instead.
-    """
     pending = tmp_git_repo / "src" / "app.py"
     pending.parent.mkdir(parents=True, exist_ok=True)
     pending.write_text("print('hello')\n", encoding="utf-8")
@@ -189,19 +163,12 @@ def test_a_reject_without_tree_sha_is_never_a_rollback(tmp_git_repo: Path) -> No
     assert isinstance(event, CommitReviewLoopback), (
         f"An unbound verdict must be re-reviewed: {event!r}"
     )
-    # The pending work survives the refused rejection.
     assert pending.read_text(encoding="utf-8") == "print('hello')\n"
     assert get_head_sha(tmp_git_repo) == head_before
     assert not has_commits_since(tmp_git_repo, head_before)
 
 
 def test_an_unbound_verdict_is_bounded_by_the_no_progress_budget(tmp_git_repo: Path) -> None:
-    """A reviewer that never binds a verdict exhausts the budget and fails the gate.
-
-    The malfunction never approves and never rolls back: the pending work
-    survives every attempt, and the identical no-progress bound turns the
-    endless re-review into a gate failure instead of an endless loop.
-    """
     pending = tmp_git_repo / "pending_work.txt"
     pending.write_text("work in progress\n", encoding="utf-8")
     _seed_engine_defaults(tmp_git_repo)
@@ -218,18 +185,10 @@ def test_an_unbound_verdict_is_bounded_by_the_no_progress_budget(tmp_git_repo: P
     assert isinstance(events[-1], CommitReviewGateFailed), (
         f"The identical no-progress bound must fail the gate, got: {events[-1]!r}"
     )
-    # The malfunction never discards work: no rollback, no commit.
     assert pending.read_text(encoding="utf-8") == "work in progress\n"
 
 
 def test_the_edit_step_reseal_still_approves_the_post_edit_tree(tmp_git_repo: Path) -> None:
-    """A verdict bound to the pre-edit tree still approves the post-edit tree.
-
-    The edit step applies the reviewer's own actions, which produce a NEW
-    sealed tree. The verdict is re-bound to that tree, so the approval names
-    the tree that will be committed and the strict binding does not break
-    the legitimate reseal flow.
-    """
     junk = tmp_git_repo / "session-output.txt"
     junk.write_text("tmp\n", encoding="utf-8")
     _seed_engine_defaults(tmp_git_repo)

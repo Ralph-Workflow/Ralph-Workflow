@@ -24,12 +24,9 @@ def _reset_loguru() -> Iterator[None]:
 
 
 class TestUpstreamMultimodalBoundary:
-    """Tests for upstream multimodal content rejection policy (Task 6)."""
-
     def _make_http_client(
         self, server: UpstreamMcpServer, responses: list[dict[str, object]]
     ) -> HttpUpstreamClient:
-        """Create an HTTP upstream client that returns pre-programmed responses."""
         responses_copy = list(responses)
         index = {"value": 0}
 
@@ -43,7 +40,6 @@ class TestUpstreamMultimodalBoundary:
         return HttpUpstreamClient(server, caller=caller)
 
     def test_upstream_image_content_block_normalized_to_resource_reference(self) -> None:
-        """Upstream image block is normalized to resource_reference content block."""
         server = UpstreamMcpServer(name="image_server", transport="http", url="http://unused")
         client = self._make_http_client(
             server,
@@ -82,7 +78,6 @@ class TestUpstreamMultimodalBoundary:
             "ralph_upstream__image_server__get_screenshot", {}, session=_FakeSession()
         )
 
-        # Image block must be normalized to resource_reference, not rejected
         content = result.get("content", [])
         assert len(content) == 2
         assert content[0].get("type") == "text"
@@ -90,7 +85,6 @@ class TestUpstreamMultimodalBoundary:
         assert str(content[1].get("uri", "")).startswith("ralph://media/")
 
     def test_upstream_video_content_block_normalized_to_resource_reference(self) -> None:
-        """Upstream video block is normalized to resource_reference, not rejected."""
         server = UpstreamMcpServer(name="media_server", transport="http", url="http://unused")
         client = self._make_http_client(
             server,
@@ -129,7 +123,6 @@ class TestUpstreamMultimodalBoundary:
         assert str(block.get("uri", "")).startswith("ralph://media/")
 
     def test_upstream_audio_content_block_normalized_to_resource_reference(self) -> None:
-        """Upstream audio block is normalized to resource_reference."""
         server = UpstreamMcpServer(name="audio_server", transport="http", url="http://unused")
         client = self._make_http_client(
             server,
@@ -167,7 +160,6 @@ class TestUpstreamMultimodalBoundary:
         assert block.get("mimeType") == "audio/mpeg"
 
     def test_upstream_pdf_content_block_normalized_to_resource_reference(self) -> None:
-        """Upstream PDF block is normalized to resource_reference."""
         server = UpstreamMcpServer(name="pdf_server", transport="http", url="http://unused")
         client = self._make_http_client(
             server,
@@ -205,7 +197,6 @@ class TestUpstreamMultimodalBoundary:
         assert block.get("mimeType") == "application/pdf"
 
     def test_upstream_document_content_block_normalized_to_resource_reference(self) -> None:
-        """Upstream document block is normalized to resource_reference."""
         server = UpstreamMcpServer(name="doc_server", transport="http", url="http://unused")
         client = self._make_http_client(
             server,
@@ -245,7 +236,6 @@ class TestUpstreamMultimodalBoundary:
         assert block.get("modality") == "document"
 
     def test_upstream_uri_backed_image_preserves_upstream_uri(self) -> None:
-        """URI-backed upstream image block preserves the upstream URI."""
         server = UpstreamMcpServer(name="uri_server", transport="http", url="http://unused")
         upstream_uri = "https://example.com/screenshot.png"
         client = self._make_http_client(
@@ -278,7 +268,6 @@ class TestUpstreamMultimodalBoundary:
         assert block.get("uri") == upstream_uri
 
     def test_upstream_embedded_image_stored_in_session_manifest(self) -> None:
-        """Embedded image bytes are stored in session manifest for retrieval."""
         server = UpstreamMcpServer(name="img_server", transport="http", url="http://unused")
         client = self._make_http_client(
             server,
@@ -314,7 +303,6 @@ class TestUpstreamMultimodalBoundary:
         uri = str(block.get("uri", ""))
         assert uri.startswith("ralph://media/")
 
-        # Bytes must be retrievable from the manifest
         artifact_id = parse_media_uri(uri)
         assert artifact_id is not None
         entry = session.media_manifest.get(artifact_id)
@@ -322,7 +310,6 @@ class TestUpstreamMultimodalBoundary:
         assert entry.raw_bytes == base64.b64decode("SGVsbG8gV29ybGQ=")
 
     def test_upstream_unknown_block_type_raises_error(self) -> None:
-        """Unknown block types raise UpstreamCallError with accepted types listed."""
         server = UpstreamMcpServer(name="bad_server", transport="http", url="http://unused")
         client = self._make_http_client(
             server,
@@ -345,7 +332,6 @@ class TestUpstreamMultimodalBoundary:
         assert "Accepted types" in error_message
 
     def test_upstream_media_block_missing_uri_and_data_raises_error(self) -> None:
-        """Media block with neither uri nor data raises UpstreamCallError."""
         server = UpstreamMcpServer(name="bad_server", transport="http", url="http://unused")
         client = self._make_http_client(
             server,
@@ -366,7 +352,6 @@ class TestUpstreamMultimodalBoundary:
         assert "cannot normalize" in str(exc_info.value)
 
     def test_upstream_mime_modality_mismatch_raises_error(self) -> None:
-        """Block with MIME type inconsistent with declared block type raises error."""
         server = UpstreamMcpServer(name="mismatch_server", transport="http", url="http://unused")
         client = self._make_http_client(
             server,
@@ -396,7 +381,6 @@ class TestUpstreamMultimodalBoundary:
         assert "inconsistent" in error_message or "derived modality" in error_message
 
     def test_upstream_mixed_modalities_in_single_response(self) -> None:
-        """Mixed text+image+audio response is fully normalized."""
         server = UpstreamMcpServer(name="mix_server", transport="http", url="http://unused")
         client = self._make_http_client(
             server,
@@ -431,7 +415,6 @@ class TestUpstreamMultimodalBoundary:
         assert modalities == {"image", "audio"}
 
     def test_upstream_embedded_image_in_content_list_normalized(self) -> None:
-        """Upstream content list with image block is normalized to resource_reference."""
         server = UpstreamMcpServer(name="mixed_server", transport="http", url="http://unused")
         client = self._make_http_client(
             server,
@@ -466,7 +449,6 @@ class TestUpstreamMultimodalBoundary:
             "ralph_upstream__mixed_server__get_mixed", {}, session=_FakeSession()
         )
 
-        # Text block passes through; image block becomes resource_reference
         content = result.get("content", [])
         assert len(content) == 2
         assert content[0].get("type") == "text"
@@ -475,7 +457,6 @@ class TestUpstreamMultimodalBoundary:
         assert str(content[1].get("uri", "")).startswith("ralph://media/")
 
     def test_upstream_text_only_content_passthrough_works(self) -> None:
-        """Upstream tool returning only text content blocks succeeds normally."""
         server = UpstreamMcpServer(name="text_server", transport="http", url="http://unused")
         client = self._make_http_client(
             server,
@@ -492,7 +473,6 @@ class TestUpstreamMultimodalBoundary:
 
         result = registry.call_tool("ralph_upstream__text_server__echo", {})
 
-        # Should pass through without error
         assert isinstance(result, dict)
         content = result.get("content", [])
         assert len(content) == 1
@@ -500,7 +480,6 @@ class TestUpstreamMultimodalBoundary:
         assert content[0].get("text") == "hello world"
 
     def test_upstream_tool_without_content_field_succeeds(self) -> None:
-        """Upstream tool returning result without content field succeeds."""
         server = UpstreamMcpServer(name="minimal_server", transport="http", url="http://unused")
         client = self._make_http_client(
             server,
@@ -519,7 +498,6 @@ class TestUpstreamMultimodalBoundary:
         assert result == {"result": "pong"}
 
     def test_upstream_tool_with_empty_content_succeeds(self) -> None:
-        """Upstream tool returning empty content list succeeds."""
         server = UpstreamMcpServer(name="empty_server", transport="http", url="http://unused")
         client = self._make_http_client(
             server,
@@ -538,7 +516,6 @@ class TestUpstreamMultimodalBoundary:
         assert result == {"content": []}
 
     def test_no_silent_fallback_for_multimodal_content(self) -> None:
-        """Image content is normalized to resource_reference, not silently stringified."""
         server = UpstreamMcpServer(name="strict_server", transport="http", url="http://unused")
         client = self._make_http_client(
             server,
@@ -578,14 +555,12 @@ class TestUpstreamMultimodalBoundary:
         )
 
         content = result.get("content", [])
-        # Image must NOT be silently stringified (raw base64 must not appear in any text block)
         text_values = [
             str(b.get("text", ""))
             for b in content
             if isinstance(b, dict) and b.get("type") == "text"
         ]
         assert not any("SGVsbG8gV29ybGQ=" in tv for tv in text_values)
-        # Image block must be normalized to resource_reference
         rr_blocks = [
             b for b in content if isinstance(b, dict) and b.get("type") == "resource_reference"
         ]
@@ -593,8 +568,6 @@ class TestUpstreamMultimodalBoundary:
         assert str(rr_blocks[0].get("uri", "")).startswith("ralph://media/")
 
     def test_embedded_media_without_session_raises_explicit_error(self) -> None:
-        """Embedded upstream media without a session raises an explicit error."""
-        # Verify no synthetic ralph://media/... URI is minted when bytes cannot be stored.
         server = UpstreamMcpServer(name="embed_server", transport="http", url="http://unused")
         client = self._make_http_client(
             server,

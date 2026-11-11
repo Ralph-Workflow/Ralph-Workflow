@@ -1,18 +1,3 @@
-"""Regression tests: fallback handler must survive session-file failures and route aliases.
-
-Two hardening contracts for ``_FallbackHttpHandler.do_POST``:
-
-1. ``initialize`` reads ``_session.session_id`` to emit the ``mcp-session-id``
-   header. With the production ``FileBackedSession`` that access re-reads the
-   session JSON file; a corrupt/missing file raised out of ``do_POST`` before
-   any byte was written, killing the response entirely. A session-id failure
-   must degrade (no session header), never destroy the response.
-
-2. The exec SSE streaming gate matched the literal name ``"exec"`` only, so
-   the server-advertised aliases (``mcp__ralph__exec``, ``ralph_exec``)
-   silently bypassed output streaming. Aliased exec calls must stream too.
-"""
-
 from __future__ import annotations
 
 import io
@@ -27,8 +12,6 @@ from ralph.mcp.server._server_state import ServerState
 
 
 class _ExplodingSessionIdSession:
-    """Mimics FileBackedSession.session_id when the backing file is corrupt."""
-
     def __init__(self) -> None:
         self.tool_output_sink_entry: object = None
 
@@ -61,22 +44,15 @@ class _Mcp:
 
 
 class _Server(_FallbackHttpServer):
-    """In-memory subclass of the production ``_FallbackHttpServer``.
-
-    PROMPT.md proof obligation B requires the production handler to narrow
-    ``self.server`` via ``isinstance`` (no ``cast()``), so the test harness
-    must subclass the real class to pass that check.
-    """
-
     def __init__(self, mcp: _Mcp) -> None:
         self.mcp_server = mcp
         self.state: object = ServerState.RUNNING
 
     def server_bind(self) -> None:
-        """No-op: the in-memory harness never binds a real socket."""
+        pass
 
     def server_activate(self) -> None:
-        """No-op: the in-memory harness never activates a real listener."""
+        pass
 
 
 def _post(server: _Server, body: dict[str, object], *, declared_length: int | None = None) -> str:

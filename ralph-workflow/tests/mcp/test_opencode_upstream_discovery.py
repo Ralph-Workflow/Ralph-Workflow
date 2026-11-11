@@ -1,16 +1,3 @@
-"""Tests for OpenCode operator-config discovery in ralph/mcp/transport/opencode.py.
-
-OpenCode was the only supported transport with no
-``load_existing_<agent>_upstream_servers``: Ralph seeded
-``build_opencode_provider_config`` from ``OPENCODE_CONFIG_CONTENT`` alone,
-which is normally unset, so Ralph never learned about the MCP servers the
-operator declared in their own OpenCode config files.
-
-The config sources asserted here were read out of the installed OpenCode
-1.18.25 binary (``Config.loadInstanceState`` / ``ConfigPaths``) and confirmed
-against ``opencode debug config``.
-"""
-
 from __future__ import annotations
 
 import json
@@ -34,7 +21,6 @@ _ENDPOINT = "http://127.0.0.1:9999/mcp"
 
 
 def _isolate_opencode_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
-    """Point every OpenCode config location at ``tmp_path`` and return the global dir."""
     xdg_config_home = tmp_path / "xdg"
     monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_config_home))
     monkeypatch.setenv("OPENCODE_TEST_HOME", str(tmp_path / "home"))
@@ -63,7 +49,6 @@ _REMOTE = {"type": "remote", "url": "https://ctx.example/mcp", "enabled": True}
 def test_opencode_transport_regression_operator_global_config_is_discovered(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The operator's global ``opencode.json`` must be discovered, not ignored."""
     global_dir = _isolate_opencode_env(monkeypatch, tmp_path)
     _write_json(global_dir / "opencode.json", _mcp(context7=_REMOTE))
 
@@ -77,7 +62,6 @@ def test_opencode_transport_regression_operator_global_config_is_discovered(
 def test_opencode_transport_regression_local_server_command_list_is_normalized(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """OpenCode spells a stdio command as a LIST; a str-only reader dropped the server."""
     global_dir = _isolate_opencode_env(monkeypatch, tmp_path)
     _write_json(
         global_dir / "opencode.json",
@@ -103,7 +87,6 @@ def test_opencode_transport_regression_local_server_command_list_is_normalized(
 def test_opencode_transport_regression_every_config_location_is_read(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Every location OpenCode itself loads must be read, not just the global file."""
     global_dir = _isolate_opencode_env(monkeypatch, tmp_path)
     workspace = tmp_path / "repo"
     (workspace / ".git").mkdir(parents=True)
@@ -138,7 +121,6 @@ def test_opencode_transport_regression_every_config_location_is_read(
 def test_opencode_transport_regression_project_config_wins_over_global(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Precedence must match OpenCode's deep merge: the project file wins."""
     global_dir = _isolate_opencode_env(monkeypatch, tmp_path)
     workspace = tmp_path / "repo"
     (workspace / ".git").mkdir(parents=True)
@@ -159,7 +141,6 @@ def test_opencode_transport_regression_project_config_wins_over_global(
 def test_opencode_transport_regression_jsonc_config_is_not_silently_empty(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """``opencode.jsonc`` is a first-class config name; comments must not lose it."""
     global_dir = _isolate_opencode_env(monkeypatch, tmp_path)
     (global_dir / "opencode.jsonc").write_text(
         '// operator notes\n{\n  "mcp": {\n    /* block */\n'
@@ -175,7 +156,6 @@ def test_opencode_transport_regression_jsonc_config_is_not_silently_empty(
 def test_opencode_transport_regression_disabled_server_is_not_discovered(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A server the operator switched off must not be reported as available."""
     global_dir = _isolate_opencode_env(monkeypatch, tmp_path)
     _write_json(
         global_dir / "opencode.json",
@@ -194,7 +174,6 @@ def test_opencode_transport_regression_disabled_server_is_not_discovered(
 def test_opencode_transport_regression_project_config_opt_out_is_honoured(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """``OPENCODE_DISABLE_PROJECT_CONFIG`` drops project files AND project ``.opencode``."""
     global_dir = _isolate_opencode_env(monkeypatch, tmp_path)
     monkeypatch.setenv("OPENCODE_DISABLE_PROJECT_CONFIG", "true")
     workspace = tmp_path / "repo"
@@ -211,7 +190,6 @@ def test_opencode_transport_regression_project_config_opt_out_is_honoured(
 def test_opencode_transport_regression_reserved_ralph_name_does_not_abort_discovery(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A stale operator-side `ralph` entry must be dropped, never raise."""
     global_dir = _isolate_opencode_env(monkeypatch, tmp_path)
     _write_json(
         global_dir / "opencode.json",
@@ -229,7 +207,6 @@ def test_opencode_transport_regression_reserved_ralph_name_does_not_abort_discov
 def test_opencode_transport_regression_unreadable_config_is_reported_not_swallowed(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A corrupt config must warn loudly instead of yielding a silent empty set."""
     global_dir = _isolate_opencode_env(monkeypatch, tmp_path)
     broken = global_dir / "opencode.json"
     broken.write_text("{ not json", encoding="utf-8")
@@ -247,7 +224,6 @@ def test_opencode_transport_regression_unreadable_config_is_reported_not_swallow
 def test_opencode_transport_regression_discovery_runs_without_config_content_env(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Restricted mode must find the operator's servers with OPENCODE_CONFIG_CONTENT unset."""
     global_dir = _isolate_opencode_env(monkeypatch, tmp_path)
     _write_json(global_dir / "opencode.json", _mcp(context7=_REMOTE))
     records: list[str] = []
@@ -263,7 +239,6 @@ def test_opencode_transport_regression_discovery_runs_without_config_content_env
 def test_opencode_transport_regression_discovered_servers_are_not_double_exposed(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """OpenCode deep-merges its config sources, so a proxy copy would duplicate every tool."""
     global_dir = _isolate_opencode_env(monkeypatch, tmp_path)
     _write_json(global_dir / "opencode.json", _mcp(context7=_REMOTE))
 
@@ -273,17 +248,13 @@ def test_opencode_transport_regression_discovered_servers_are_not_double_exposed
             None, _ENDPOINT, unsafe_mode=unsafe_mode
         )
 
-        # Never proxied: the operator's server is still reachable natively.
         assert [server.name for server in upstreams] == []
-        # Never written into the provider config either: Ralph must not
-        # restate a server OpenCode's own merge already delivers.
         assert list(json.loads(config_text)["mcp"]) == ["ralph"]
 
 
 def test_opencode_transport_regression_gate_report_warns_once_per_workspace(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The out-of-gate notice is a once-per-run operator notice, not per-cycle spam."""
     global_dir = _isolate_opencode_env(monkeypatch, tmp_path)
     _write_json(global_dir / "opencode.json", _mcp(context7=_REMOTE, refero=_REMOTE))
     records: list[str] = []
@@ -302,7 +273,6 @@ def test_opencode_transport_regression_gate_report_warns_once_per_workspace(
 def test_opencode_transport_regression_no_operator_servers_emits_no_warning(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """An operator with no MCP servers must not be warned about servers they do not have."""
     _isolate_opencode_env(monkeypatch, tmp_path)
     records: list[str] = []
     sink_id = logger.add(records.append, level="WARNING", format="{message}")

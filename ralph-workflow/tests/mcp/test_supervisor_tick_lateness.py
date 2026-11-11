@@ -1,5 +1,3 @@
-"""Tests for supervisor tick lateness and dead-child bypass."""
-
 from __future__ import annotations
 
 import pathlib
@@ -42,8 +40,6 @@ class FakeProcess:
 
 
 class _FakeClock:
-    """Controllable monotonic clock for testing."""
-
     def __init__(self, start: float = 100.0) -> None:
         self.now = start
 
@@ -56,7 +52,6 @@ class _FakeClock:
 
 @pytest.fixture(autouse=True)
 def _isolate_contention_signals() -> Generator[None, None, None]:
-    """Clear the host contention deque before and after each test."""
     _clear_host_contention_signals()
     yield
     _clear_host_contention_signals()
@@ -65,7 +60,6 @@ def _isolate_contention_signals() -> Generator[None, None, None]:
 def _make_bridge(
     *, poll_result: int | None = None
 ) -> tuple[lifecycle.RestartAwareMcpBridge, FakeProcess]:
-    """Create a test bridge with a controllable FakeProcess."""
     tmp_dir = pathlib.Path(tempfile.mkdtemp())
     session_file = tmp_dir / "session.json"
     session_file.write_text("{}", encoding="utf-8")
@@ -95,7 +89,6 @@ def _make_bridge(
 
 
 def test_tick_lateness_records_contention_signal_when_interval_exceeded() -> None:
-    """Supervisor records supervisor_tick_lateness when tick interval > 2x expected."""
     bridge, _ = _make_bridge()
     clock = _FakeClock(start=100.0)
     supervisor = McpSupervisor(
@@ -104,18 +97,15 @@ def test_tick_lateness_records_contention_signal_when_interval_exceeded() -> Non
         _now=clock,
     )
 
-    # First tick at t=100.0: sets _last_tick_at = 100.0, no prior tick so no lateness
     supervisor._do_check_once()
     sigs = pop_recent_host_contention_signals(60.0, _now=clock)
     assert len(sigs) == 0
 
-    # Advance clock by 3s (expected 2s, 3s <= 4s threshold): no lateness recorded
     clock.advance(3.0)
     supervisor._do_check_once()
     sigs = pop_recent_host_contention_signals(60.0, _now=clock)
     assert len(sigs) == 0
 
-    # Advance clock by 5s (5s > 2*2s = 4s threshold): lateness signal fired
     clock.advance(5.0)
     supervisor._do_check_once()
     sigs = pop_recent_host_contention_signals(60.0, _now=clock)
@@ -124,7 +114,6 @@ def test_tick_lateness_records_contention_signal_when_interval_exceeded() -> Non
 
 
 def test_dead_child_bypass_triggers_immediate_restart_under_contention() -> None:
-    """When child process has exited, restart triggers immediately despite contention."""
     bridge, proc = _make_bridge()
     clock = _FakeClock(start=100.0)
     supervisor = McpSupervisor(
@@ -133,23 +122,18 @@ def test_dead_child_bypass_triggers_immediate_restart_under_contention() -> None
         _now=clock,
     )
 
-    # Inject an active contention signal into the window
     record_host_contention_signal("watch_capacity_predicted", _now=clock)
 
-    # Child process is dead
     proc._poll_result = 1
 
-    # Health check triggers immediate restart (not deferred)
     restarted = supervisor._do_check_once()
     assert restarted is True
     assert bridge.restart_count == 1
 
 
 def test_supervisor_exit_only_raises_on_budget_exhausted() -> None:
-    """__exit__ re-raises McpServerError only when failure_kind is BUDGET_EXHAUSTED."""
     bridge, _ = _make_bridge()
 
-    # 1. Non-terminal error (transient failure): __exit__ does not raise
     supervisor1 = McpSupervisor(bridge, check_interval=timedelta(milliseconds=50))
     supervisor1._mcp_error = lifecycle.McpServerError(
         "transient spawn failure",
@@ -157,9 +141,8 @@ def test_supervisor_exit_only_raises_on_budget_exhausted() -> None:
         failure_kind=RestartAttemptResult.ATTEMPT_FAILED,
     )
     with supervisor1:
-        pass  # does not raise
+        pass
 
-    # 2. Terminal error (budget exhausted): __exit__ re-raises
     supervisor2 = McpSupervisor(bridge, check_interval=timedelta(milliseconds=50))
     supervisor2._mcp_error = lifecycle.McpServerError(
         "budget exhausted",
@@ -172,10 +155,8 @@ def test_supervisor_exit_only_raises_on_budget_exhausted() -> None:
 
 
 def test_record_supervisor_tick_lateness_helper() -> None:
-    """record_supervisor_tick_lateness emits signal directly or via delta evaluation."""
     clock = _FakeClock(start=50.0)
 
-    # Direct emission
     record_supervisor_tick_lateness(50.0, _now=clock)
     sigs = pop_recent_host_contention_signals(60.0, _now=clock)
     assert len(sigs) == 1
@@ -183,7 +164,6 @@ def test_record_supervisor_tick_lateness_helper() -> None:
 
     _clear_host_contention_signals()
 
-    # Delta evaluation: gap 12s > 2 * 5s = 10s -> emits
     record_supervisor_tick_lateness(
         50.0,
         check_interval=timedelta(seconds=5),
@@ -195,7 +175,6 @@ def test_record_supervisor_tick_lateness_helper() -> None:
 
     _clear_host_contention_signals()
 
-    # Delta evaluation: gap 8s <= 10s -> does not emit
     record_supervisor_tick_lateness(
         50.0,
         check_interval=timedelta(seconds=5),

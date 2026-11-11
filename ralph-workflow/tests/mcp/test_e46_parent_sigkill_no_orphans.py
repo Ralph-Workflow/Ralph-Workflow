@@ -1,53 +1,3 @@
-"""Pins E4.6: parent SIGKILLed during a REAL make-before-break overlap -> no orphans, port freed.
-
-Catalogue requirement E4.6:
-- Ralph dies hard (SIGKILL, OOM): the MCP children, the candidate and their
-  grandchildren must exit on their own and not keep the port.
-- Use ``PR_SET_PDEATHSIG`` or an EOF watch on a parent-held pipe, and test it.
-
-What production actually does (verified against the source, 2026-10):
-
-* The production sync spawn path
-  (``ralph/process/manager/_process_manager.py``,
-  ``_wrap_sync_factory_with_pdeathsig``) installs ``PR_SET_PDEATHSIG=SIGKILL``
-  in every freshly-forked child via ``preexec_fn``. The kernel
-  reaps the child the moment its immediate parent dies -- including
-  SIGKILL of the parent, which cannot be caught by signal handlers
-  or atexit. The fork/prctl race is closed by re-checking ``getppid()``
-  both before and after the ``prctl()`` call.
-* The candidate's runtime also runs
-  ``ralph/mcp/server/runtime.py:914 exit_when_owner_exits``: the parent
-  stamps its own pid into ``RALPH_MCP_OWNER_PID``
-  (``lifecycle.py:2559 _subprocess_env``), and the child pops + polls
-  it in a daemon thread; on reparenting it runs the owner-loss hooks
-  and ``os._exit(0)``. This is the graceful fallback on non-Linux
-  (where ``PR_SET_PDEATHSIG`` does not exist) and belt-and-suspenders
-  on Linux.
-* For the *grandchild*, the test below installs
-  ``PR_SET_PDEATHSIG`` directly in the ``subprocess.Popen`` call
-  inside the candidate source. Each grandchild's preexec samples
-  ``getppid()`` before/after ``prctl()`` and exits immediately when
-  the candidate (its parent) is already gone. When the candidate
-  dies -- whether via ``exit_when_owner_exits`` or via the inherited
-  ``PR_SET_PDEATHSIG`` from the spawn path above -- the grandchild
-  receives SIGKILL from the kernel milliseconds later.
-
-Scenario (production code paths, real processes):
-
-``start_mcp_server`` builds a real ``RestartAwareMcpBridge`` with a real
-``python -m ralph.mcp.server`` first child inheriting the parent-owned
-listening socket. The bridge's ``_restart_fn`` is then replaced with a spawner
-that launches a **real second child** through the production ``SpawnProcess``
-dependency, which forks a real upstream grandchild. Production
-``_spawn_candidate`` / ``_verify_candidate`` / ``_drain_old`` run so all four
-roles are simultaneously alive: serving child, draining child (registered in
-``_draining_inners``), candidate mid-preflight, and the grandchild.
-
-Because SIGKILL is not catchable, the watcher cannot run its own assertions: a
-watcher subprocess records every pid to a sentinel file and then SIGKILLs
-itself, and the pytest process performs the leak audit afterwards.
-"""
-
 from __future__ import annotations
 
 import contextlib
@@ -70,28 +20,11 @@ if TYPE_CHECKING:
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(25)]
 
 _PACKAGE_ROOT = Path(__file__).resolve().parents[2]
-#: Bounded reap deadline for the direct MCP children (production owner-watch
-#: poll interval is 1.0 s, so 5 s is three missed polls of slack).
 _REAP_DEADLINE_S = 5.0
-#: Deadline for the documented grandchild gap: the grandchild has no
-#: owner watch at all, so the only question is whether it ever exits.
-#: Kernel ``PR_SET_PDEATHSIG`` propagation is normally sub-millisecond, but
-#: host-saturated parallel xdist workers can delay the signal delivery past
-#: the original 200 ms floor. The 5 s budget is the same deadline used for
-#: the documented owner-watch reaping above, so the test stays inside the
-#: documented "MS-level kernel signal delivery" envelope rather than relying
-#: on a tight microsecond budget. The contract — "the kernel chain-delivers
-#: ``PR_SET_PDEATHSIG`` without any in-band cleanup" — is unchanged; only
-#: the wall-clock slack on the assert is widened to survive heavy xdist
-#: contention.
 _GRANDCHILD_REAP_DEADLINE_S = 5.0
 
-#: Real upstream grandchild: forked by the candidate, holds the port's process
-#: group open. Runs long enough to still be alive at SIGKILL time.
 _GRANDCHILD_SLEEP_S = 60
 
-#: Script executed as the *candidate* real child. Mirrors the production child
-#: runtime entry: installs the owner-pid watch first, then does its work.
 _CANDIDATE_SOURCE_TEMPLATE = """
 import ctypes
 import json
@@ -131,9 +64,6 @@ time.sleep(__SLEEP_S__)
 """
 _CANDIDATE_SOURCE: str = _CANDIDATE_SOURCE_TEMPLATE.replace("__SLEEP_S__", str(_GRANDCHILD_SLEEP_S))
 
-#: The watcher: builds the production bridge with a real overlap in progress,
-#: records every pid, then SIGKILLs itself (uncatchable) so the pytest process
-#: can perform the post-mortem leak audit.
 _WATCHER_SOURCE = """
 import json
 import os
@@ -283,7 +213,6 @@ os.kill(os.getpid(), signal.SIGKILL)
 
 
 def _pid_alive(pid: int) -> bool:
-    """Return True when ``pid`` is a live (non-zombie) OS process."""
     try:
         proc = psutil.Process(pid)
         return proc.status() != psutil.STATUS_ZOMBIE
@@ -292,7 +221,6 @@ def _pid_alive(pid: int) -> bool:
 
 
 def _wait_all_gone(pids: dict[str, int], timeout_s: float) -> list[str]:
-    """Return the names of ``pids`` still alive after waiting up to ``timeout_s``."""
     deadline = time.monotonic() + timeout_s
     survivors = list(pids)
     while time.monotonic() < deadline:
@@ -305,7 +233,6 @@ def _wait_all_gone(pids: dict[str, int], timeout_s: float) -> list[str]:
 
 @pytest.fixture(scope="module")
 def e46_overlap(tmp_path_factory: pytest.TempPathFactory) -> Iterator[dict[str, int]]:
-    """Run the SIGKILL overlap scenario once; yield the recorded pid/port map."""
     work = tmp_path_factory.mktemp("e46")
     candidate_script = work / "candidate.py"
     candidate_script.write_text(_CANDIDATE_SOURCE, encoding="utf-8")
@@ -324,9 +251,6 @@ def e46_overlap(tmp_path_factory: pytest.TempPathFactory) -> Iterator[dict[str, 
         ],
         capture_output=True,
         text=True,
-        # Bounds only the failure path: the watcher boots, starts a real MCP
-        # child, and waits up to 20 s for the candidate to boot -- each a
-        # child interpreter start that slows several-fold under host load.
         timeout=60.0,
         check=False,
     )
@@ -338,8 +262,6 @@ def e46_overlap(tmp_path_factory: pytest.TempPathFactory) -> Iterator[dict[str, 
     recorded: dict[str, int] = json.loads(sentinel.read_text(encoding="utf-8"))
     yield recorded
 
-    # Test-harness safety net: never leave a recorded process behind even if an
-    # assertion above failed before the leak audit ran.
     for name, pid in recorded.items():
         if name.endswith("pid") and _pid_alive(pid):
             with contextlib.suppress(OSError):
@@ -350,19 +272,12 @@ def e46_overlap(tmp_path_factory: pytest.TempPathFactory) -> Iterator[dict[str, 
 def test_e46_parent_sigkill_reaps_every_child_of_a_make_before_break_overlap(
     e46_overlap: dict[str, int],
 ) -> None:
-    """E4.6: every real child of a live make-before-break overlap exits after the owner is SIGKILLed."""
     port = e46_overlap["port"]
     children = {
         "serving_child": e46_overlap["serving_pid"],
         "candidate": e46_overlap["candidate_pid"],
     }
 
-    # Invariant: the overlap was real — a draining child was registered and
-    # every participant was alive when the owner was killed. The witness
-    # was taken INSIDE the watcher (before its SIGKILL) because
-    # PR_SET_PDEATHSIG collapses the tree within microseconds of the
-    # parent dying, so the pytest process can no longer observe the
-    # pre-SIGKILL state directly.
     assert e46_overlap["draining_count"] >= 1
     assert e46_overlap["alive_at_sigkill"] == {
         "serving_child": True,
@@ -375,8 +290,6 @@ def test_e46_parent_sigkill_reaps_every_child_of_a_make_before_break_overlap(
     assert survivors == [], f"orphaned MCP children after owner SIGKILL: {survivors}"
     assert not _pid_alive(e46_overlap["watcher_pid"]), "the SIGKILLed owner is somehow still alive"
 
-    # Invariant: no child keeps the parent-owned listening socket, so the port
-    # rebinds once the whole tree is gone.
     deadline = time.monotonic() + _REAP_DEADLINE_S
     rebound_ok = False
     while time.monotonic() < deadline:
@@ -400,20 +313,6 @@ def test_e46_parent_sigkill_reaps_every_child_of_a_make_before_break_overlap(
     ),
 )
 def test_e46_upstream_grandchild_dies_with_its_candidate(e46_overlap: dict[str, int]) -> None:
-    """E4.6: the candidate's upstream grandchild must not outlive the owner SIGKILL.
-
-    The grandchild is forked by the candidate via ``subprocess.Popen`` and
-    inherits the candidate's process group (the candidate was spawned with
-    ``start_new_session=True``). The grandchild's ``preexec_fn`` installs
-    ``PR_SET_PDEATHSIG=SIGKILL`` so the kernel SIGKILLs the grandchild the
-    moment the candidate dies; that signal chains through to the
-    grandchild without any in-band cleanup because SIGKILL on the candidate
-    is uncatchable. The whole tree collapses within
-    ``_GRANDCHILD_REAP_DEADLINE_S`` (5 s — see the comment on the constant
-    for the rationale on slack inside heavy-xdist contention; the contract
-    is the kernel chain-delivering ``PR_SET_PDEATHSIG`` without any in-band
-    cleanup, not a specific sub-ms latency).
-    """
     survivors = _wait_all_gone(
         {"grandchild": e46_overlap["grandchild_pid"]}, _GRANDCHILD_REAP_DEADLINE_S
     )

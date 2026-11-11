@@ -1,5 +1,3 @@
-"""Black-box rollback contracts for markdown artifact submission."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

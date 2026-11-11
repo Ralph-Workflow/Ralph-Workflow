@@ -1,70 +1,3 @@
-"""Parser for Pi's AgentSessionEvent NDJSON streaming format.
-
-Pi (https://pi.dev) is a terminal coding agent that, in
-``--mode json`` headless mode, emits one JSON line per
-``AgentSessionEvent``.  The event vocabulary is the documented
-TypeScript union at https://pi.dev/docs/latest/json:
-
-  - session header line: ``{type:'session', version, id, timestamp, cwd}``
-  - agent lifecycle: ``agent_start``, ``agent_end``
-  - turn lifecycle: ``turn_start``, ``turn_end``
-  - message lifecycle: ``message_start`` (in LIFECYCLE_EVENT_TYPES so the
-    base would suppress it; PiParser overrides
-    :meth:`_handle_lifecycle_event` to fall through to
-    ``_dispatch_json_object`` for every event type, and the dispatcher
-    marks ``message_start`` silent), ``message_update`` (carries
-    ``assistantMessageEvent``), ``message_end``
-  - tool execution: ``tool_execution_start``, ``tool_execution_update``,
-    ``tool_execution_end`` (with ``isError`` boolean)
-  - queue: ``queue_update``
-  - compaction: ``compaction_start``, ``compaction_end``
-  - auto-retry: ``auto_retry_start``, ``auto_retry_end``
-
-The current published AgentSessionEvent union enumerates EXACTLY these
-15 union members (10 ``AgentEvent`` members + 5 direct members;
-re-fetched 2026-06-20 from https://pi.dev/docs/latest/json; mirrored
-in ``tmp/pi-dev-docs/inventory.md``).  The ``session`` line emitted
-as the FIRST line of the stream (per the docs: "The first line is
-the session header") is a stream-level header, NOT a member of the
-union.  Anything outside the 15-member union plus the stream-level
-``session`` header is forward-compat, not part of the documented
-contract.
-
-Forward-compat only (NOT in the current published union):
-
-  - ``extension_error`` — defensively accepted so a legacy or future
-    pi.dev build that emits it does not break the parser; routed to
-    ``type='error'``.  Deliberately excluded from the committed
-    fixture and from the wire-format spec assertion so the live-doc
-    contract stays aligned with the published pi.dev docs.
-
-The ``message_update`` events carry an ``assistantMessageEvent`` with
-its own sub-type union:
-
-  - ``text_start`` / ``text_delta`` / ``text_end``
-  - ``thinking_start`` / ``thinking_delta`` / ``thinking_end``
-  - ``toolcall_start`` / ``toolcall_delta`` / ``toolcall_end``
-  - ``done`` (``stopReason: 'stop' | 'length' | 'toolUse'``)
-  - ``error`` (``reason: 'aborted' | 'error'``)
-
-Pi's ``message_start`` event is the only pi event that overlaps with
-the shared :data:`LIFECYCLE_EVENT_TYPES` frozenset, so PiParser
-overrides :meth:`_handle_lifecycle_event` to return ``None`` for
-every event type, which causes the base layer to fall through to
-``_dispatch_json_object`` for the entire pi vocabulary.  The
-dispatcher then routes each event through the per-type handler map
-(silent for ``message_start`` / ``agent_start`` / ``turn_start``,
-typed output for the rest).  This keeps the AC-04 invariant: every
-documented pi event reaches ``_dispatch_json_object`` for routing
-decisions; the dispatch table is the single owner of what each event
-type emits.
-
-Inherits from :class:`NdjsonParserBase` which owns the 6 shared NDJSON
-behaviors (data: strip, [DONE] short-circuit, JSON parse dispatch,
-lifecycle suppression, error extraction).  The subclass
-``_dispatch_json_object`` delegates to :class:`_PiDispatch` for the
-per-event-type routing and accumulator management.
-"""
 
 from __future__ import annotations
 
@@ -86,30 +19,10 @@ _THINKING_KIND = "thinking"
 _TEXT_ACCUMULATOR_PREFIX = "text:"
 _THINKING_ACCUMULATOR_PREFIX = "thinking:"
 
-# Sentinel used when a text_end / thinking_end event arrives without a
-# numeric ``contentIndex`` field.  In that case we cannot track the
-# terminal snapshot per-block (the streaming event did not tell us
-# which block it closed), so the per-block accumulator is keyed by
-# this sentinel and a separate "saw terminal" guard applies per block
-# just like for any other contentIndex.  Real pi.dev output always
-# carries an integer ``contentIndex`` (per the fixture and the live
-# docs), so this branch is a defensive fallback only.
 _LEGACY_UNINDEXED_CONTENT_INDEX = -1
 
 
 def _content_index_of(sub: dict[str, object]) -> int:
-    """Return the integer ``contentIndex`` of a streaming sub-event.
-
-    The pi.dev ``AssistantMessageEvent`` events (``text_start`` /
-    ``text_delta`` / ``text_end`` / ``thinking_start`` /
-    ``thinking_delta`` / ``thinking_end`` / ``toolcall_start`` /
-    ``toolcall_delta`` / ``toolcall_end``) all carry an integer
-    ``contentIndex`` field per the documented wire format.  Real
-    pi.dev output always carries an integer; if a malformed or
-    forward-compat event omits it, we fall back to the
-    :data:`_LEGACY_UNINDEXED_CONTENT_INDEX` sentinel so the
-    per-block tracking still treats it as its own block.
-    """
     raw = sub.get("contentIndex")
     if isinstance(raw, int) and not isinstance(raw, bool):
         return raw
@@ -117,41 +30,10 @@ def _content_index_of(sub: dict[str, object]) -> int:
 
 
 def _accumulator_key(kind: str, content_index: int) -> str:
-    """Compose the per-block accumulator key for a streaming sub-event.
-
-    The key is ``{kind}:{contentIndex}`` so each active text or
-    thinking content block accumulates independently, even when
-    multiple blocks stream interleaved ``text_delta`` events for the
-    same message.  Returns the literal ``"text"`` or ``"thinking"``
-    kind string; callers may pass ``_TEXT_KIND`` or ``_THINKING_KIND``.
-    """
     return f"{kind}:{content_index}"
 
 
 def _extract_tool_result_text(result: object) -> str:
-    """Normalize a Pi tool result payload into user-visible text.
-
-    Pi's documented ``tool_execution_end.result`` and
-    ``message_end.content[].toolResult.result`` payloads carry a
-    typed content-array shape::
-
-        {"content": [{"type": "text", "text": "..."}, ...]}
-
-    The parser MUST emit the user-visible ``text`` rather than the
-    raw ``str(result)`` (which would produce ``"{'content': [...]}"``
-    and leak the dict literal to downstream consumers).  The single
-    extraction rule is shared by the success path
-    (``tool_execution_end`` with ``isError=false``, and the
-    ``toolResult`` block from ``message_end``) and the error path
-    (``tool_execution_end`` with ``isError=true``, and the
-    ``toolResult`` block with ``isError=true``).
-
-    Returns the joined ``text`` of every content block of type
-    ``text`` (in order), or an empty string when the payload has no
-    user-visible text.  For backwards compatibility with callers
-    that already pass a plain string (or empty) ``result``, the
-    input is returned unchanged.
-    """
     if isinstance(result, str):
         return result
     if not isinstance(result, dict):
@@ -179,27 +61,10 @@ _PI_PASSTHROUGH_TOP_LEVEL_EVENTS: frozenset[str] = frozenset(
 )
 
 
-#: ``message.stopReason`` value pi sets when the model turn failed
-#: outright (provider unreachable, model rejected, transport error).
-#: On this path ``message.content`` is EMPTY and the human-readable
-#: cause lives in ``message.errorMessage`` -- so the content walk in
-#: :meth:`_PiDispatch._emit_message_content` yields nothing and the
-#: failure is invisible unless ``errorMessage`` is surfaced
-#: explicitly.  Distinct from ``"length"`` (context exhaustion),
-#: which :meth:`_PiDispatch._handle_done` already handles.
 _PI_ERROR_STOP_REASON = "error"
 
 
 def _message_failure_text(message: object) -> str:
-    """Return the human-readable cause of a failed pi model turn.
-
-    Returns ``""`` unless ``message`` is a dict whose ``stopReason``
-    is :data:`_PI_ERROR_STOP_REASON`.  When the stop reason marks a
-    failure but ``errorMessage`` is missing or blank, a generic
-    fallback is returned so the failure still surfaces as an error
-    line rather than being silently dropped -- an unexplained
-    failure is still a failure.
-    """
     if not isinstance(message, dict):
         return ""
     message_dict = cast("dict[str, object]", message)
@@ -235,12 +100,6 @@ def _make_passthrough(
 
 
 class _PiDispatch:
-    """Per-event-type dispatch for PiParser.
-
-    Encapsulates the routing logic for the documented AgentSessionEvent
-    union.  Holds a reference to the owning parser so accumulator state
-    stays in one place.
-    """
 
     def __init__(self, owner: PiParser) -> None:
         self._owner = owner
@@ -309,25 +168,9 @@ class _PiDispatch:
         obj: dict[str, object],
         stripped: str,
     ) -> Iterator[AgentOutputLine]:
-        # ``message_end`` carries the authoritative terminal snapshot for
-        # any in-flight streaming content.  Discard any pending
-        # streaming accumulators WITHOUT flushing them, because the
-        # blocks in ``message_end.message.content`` are the canonical
-        # final text/thinking; flushing on iterator exhaustion would
-        # double-emit (once from the ``message_end`` block, once from
-        # the leftover streaming buffer).  The per-index saw_*_by_index
-        # sets already suppress any double-emission from the streaming
-        # ``*_end`` events.
         for key in list(self._owner._accumulators.keys()):
             self._owner._accumulators.pop(key, None)
         yield from self._emit_message_content(obj, stripped)
-        # A failed turn carries an EMPTY ``content`` array, so the walk
-        # above yields nothing and the cause would be lost.  Surface it
-        # here -- ``message_end`` is the authoritative terminal snapshot
-        # for the message, so this fires exactly once per failed turn.
-        # ``turn_end`` / ``agent_end`` carry copies of the SAME message
-        # object and deliberately do NOT re-emit it (see
-        # ``_PI_STOP_EVENTS`` handling in :meth:`dispatch`).
         failure_text = _message_failure_text(obj.get("message"))
         if failure_text:
             yield AgentOutputLine(
@@ -343,15 +186,6 @@ class _PiDispatch:
         obj: dict[str, object],
         stripped: str,
     ) -> Iterator[AgentOutputLine]:
-        """Announce a retry attempt with an operator-readable body.
-
-        Emitted with a populated ``content`` because a content-free
-        line renders as a bodiless ``WARN`` banner downstream, which
-        tells the operator nothing about why the retry happened.
-        This stays a non-``error`` line: pi is still inside its own
-        bounded retry ladder and may yet succeed; only the exhausted
-        ladder (``auto_retry_end`` with ``success=false``) is terminal.
-        """
         attempt = obj.get("attempt")
         max_attempts = obj.get("maxAttempts")
         error_message = obj.get("errorMessage")
@@ -379,14 +213,6 @@ class _PiDispatch:
         obj: dict[str, object],
         stripped: str,
     ) -> Iterator[AgentOutputLine]:
-        """Close the retry ladder; an exhausted ladder is a hard error.
-
-        ``success=false`` means pi gave up after ``maxAttempts`` and
-        will exit rc=0 with no useful work done.  That MUST surface as
-        ``type='error'`` carrying ``finalError`` so the completion gate
-        and the failure classifier can see a real cause instead of a
-        generic "no completion evidence" exit.
-        """
         success = obj.get("success")
         if success is False:
             final_error = obj.get("finalError")
@@ -441,7 +267,6 @@ class _PiDispatch:
         obj: dict[str, object],
         stripped: str,
     ) -> Iterator[AgentOutputLine]:
-        """Keep partial tool updates in raw capture until the terminal event arrives."""
         del obj, stripped
         return iter(())
 
@@ -725,46 +550,6 @@ class _PiDispatch:
 
 
 class PiParser(NdjsonParserBase):
-    """Parser for pi.dev's AgentSessionEvent NDJSON streaming format.
-
-    Text deltas are accumulated into coherent blocks before emission.
-    The terminal snapshot (``text_end`` content or the ``message_end``
-    message.content text block) is the authoritative final text; the
-    parser tracks whether the terminal snapshot has already been
-    emitted for a given content block (keyed by ``contentIndex``)
-    to avoid duplicate emissions when streaming deltas, ``text_end``,
-    and the ``message_end`` snapshot all reference the same content.
-
-    Flushing happens on:
-
-    - ``message_update`` with ``assistantMessageEvent.type == 'text_end'``
-    - ``message_end`` (when no ``text_end`` was seen, the snapshot wins)
-    - ``agent_end`` / ``turn_end`` (final flush via stop events)
-    - Iterator exhaustion (final flush via ``flush_accumulators()``)
-
-    Thinking deltas are accumulated in a SEPARATE accumulator with the
-    same terminal-snapshot rules (``thinking_end`` content or
-    ``message_end`` message.content thinking block).
-
-    The single consistent isError rule:
-    ``tool_execution_end.isError=true`` maps to ``type='error'``;
-    ``isError=false`` (or absent) maps to ``type='tool_result'``.
-
-    The ``message_end`` content array is walked for text, thinking,
-    toolCall, and toolResult blocks.  Text and thinking blocks honor
-    the per-block terminal-snapshot rule: if the corresponding
-    ``*_end`` snapshot was already emitted for a given
-    ``contentIndex``, the ``message_end`` block at that block index
-    is skipped.  Other text/thinking blocks (whose ``contentIndex``
-    has NOT had a terminal snapshot yet) are emitted.  The toolCall
-    block is ALWAYS emitted (per the plan) so downstream consumers
-    see the same logical tool call in the same place they see text
-    and thinking content from ``message_end``.
-
-    Inherits from :class:`NdjsonParserBase` which owns the 6 shared
-    NDJSON behaviors.  The subclass ``_dispatch_json_object`` delegates
-    to :class:`_PiDispatch` for the per-event-type routing.
-    """
 
     _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset()
 
@@ -774,28 +559,14 @@ class PiParser(NdjsonParserBase):
         subagent_source_label: str | None = None,
     ) -> None:
         super().__init__()
-        # R5: bind the per-invocation shared SubagentPidRegistry + per-transport
-        # source label. Pi's documented ``AgentSessionEvent`` union does
-        # not currently include a ``pid`` field; this is forward-compat
-        # for the per-transport SubagentPidSource seam.
         self._subagent_pid_registry: SubagentPidRegistry | None = subagent_pid_registry
         self._subagent_source_label: str | None = subagent_source_label
-        self._accumulators: dict[str, TextAccumulator] = {}  # bounded-accumulator-ok: drained
-        self.saw_text_end_by_index: set[int] = set()  # bounded-accumulator-ok: cleared
-        self.saw_thinking_end_by_index: set[int] = set()  # bounded-accumulator-ok: cleared
+        self._accumulators: dict[str, TextAccumulator] = {}
+        self.saw_text_end_by_index: set[int] = set()
+        self.saw_thinking_end_by_index: set[int] = set()
         self._dispatcher = _PiDispatch(self)
 
     def reset_emission_flags(self) -> None:
-        """Clear per-message terminal-snapshot tracking.
-
-        Called after a stop event (``agent_end`` / ``turn_end`` /
-        ``done``) or after ``message_end`` so the next message can
-        emit its own terminal snapshots.  The set is keyed by the
-        ``contentIndex`` of the streaming ``*_end`` event so the
-        next ``message_end`` can distinguish blocks that were
-        already terminalised (skip) from blocks that still need
-        to be emitted (emit).
-        """
         self.saw_text_end_by_index = set()
         self.saw_thinking_end_by_index = set()
 
@@ -804,18 +575,6 @@ class PiParser(NdjsonParserBase):
         obj: dict[str, object],
         event_type: str,
     ) -> Iterator[AgentOutputLine] | None:
-        """Override the base lifecycle hook to fall through to dispatch.
-
-        Pi's documented event vocabulary (per
-        https://pi.dev/docs/latest/json) includes ``message_start``,
-        which is in the shared :data:`LIFECYCLE_EVENT_TYPES` frozenset.
-        To honor the AC-04 invariant that EVERY pi event reaches
-        :meth:`_dispatch_json_object`, this hook returns ``None`` so
-        the base layer falls through to the dispatch table; the
-        dispatcher's :data:`_PI_SILENT_TOP_LEVEL_EVENTS` membership
-        then decides whether the event is silent (``message_start``,
-        ``agent_start``, ``turn_start``) or yields typed output.
-        """
         return None
 
     def _dispatch_json_object(
@@ -824,13 +583,7 @@ class PiParser(NdjsonParserBase):
         raw: str,
         source_timestamp: str | None = None,
     ) -> Iterator[AgentOutputLine]:
-        # DA-002 (wt-028-display S-2 / AC-01): the base class
-        # post-processes the iterator to attach ``source_timestamp``
-        # to any AgentOutputLine that lacks one, so the per-event
-        # dispatcher itself does not need to thread the parameter.
-        del source_timestamp  # accepted for override compatibility; ignored
-        # R5: register any embedded PID into the shared registry BEFORE
-        # the dispatcher routes the event.
+        del source_timestamp
         self._try_register_subagent_pid_from_obj(obj)
         yield from self._dispatcher.dispatch(obj, raw)
 

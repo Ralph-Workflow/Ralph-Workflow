@@ -1,58 +1,3 @@
-"""MCP exec tool handler.
-
-Executes bounded subprocesses directly in the workspace after capability checks
-and blacklist policy filtering.
-
-Exported surface:
-
-- ``handle_exec_command`` — the public MCP tool handler. Validates the
-  ``ProcessExecBounded`` capability on the session, parses and policy-checks
-  the command, runs the bounded subprocess, and returns the result or a
-  timeout-shaped error.
-- ``parse_exec_params`` / ``run_command`` / ``apply_exec_policy`` —
-  parameter parsing, subprocess execution, and blacklist enforcement helpers
-  (exposed for tests; the public tool contract is the handler above).
-- ``ExecParams`` / ``ExecRunDeps`` / ``ExecutionError`` — typed parameter
-  bundle, dependency-injection bundle, and the typed error raised on
-  timeout / launch failure.
-- ``check_command`` / ``format_exec_result`` / ``resolve_spill_dir`` —
-  lower-level helpers used by the handler.
-- ``PROCESS_EXEC_BOUNDED_CAPABILITY`` / ``DEFAULT_TIMEOUT_MS`` — the
-  capability string and the per-call default timeout (90 000 ms; the
-  hard cap is ``EXEC_MAX_TIMEOUT_MS`` in ``ralph.timeout_defaults``).
-
-A plain command runs argv-direct (no shell). A compound shell string —
-one carrying an unquoted ``| & ; < >`` operator — is run through
-``sh -c`` so pipes, redirections, and ``&&``/``;`` sequences work; before
-it runs, the blacklist below is enforced against EVERY command in the
-pipeline (``echo hi; sudo rm -rf /`` is denied on its ``sudo`` segment).
-An argv LIST is always explicit argv and is never shell-interpreted.
-
-Trust boundary: this tool is the only public path that lets a hosted
-agent spawn an arbitrary subprocess. It enforces:
-
-- A mandatory capability check (default-deny if the session does not
-  declare ``ProcessExecBounded``).
-- A static blacklist applied to every shell pipeline segment, including a
-  VCS scanner (``_scan_text_for_vcs_violation``) that denies ``hg`` /
-  ``svn`` unconditionally and denies ``git`` subcommands in the
-  high-risk-operation blacklist (``_GIT_BLOCKED_SUBCOMMANDS``). ``diff``
-  output-writing and external-helper flags are denied separately — see
-  ``_scan_diff_flags_for_writes``.
-- A bounded per-call timeout (``timeout_ms`` capped at
-  ``EXEC_MAX_TIMEOUT_MS``); a non-positive or missing value is clamped
-  to the default so a direct caller can never produce an unbounded
-  blocking call.
-- A bounded output spill (anything above ``SPILL_OUTPUT_LIMIT_BYTES``
-  is written to ``.agent/tmp/`` rather than returned to the model).
-
-Side effects: spawns a subprocess under ``ralph.process.manager``
-(registered with the global ``ProcessManager``), executes it in the
-workspace root, captures stdout/stderr, and may write a spill file to
-``<workspace>/.agent/tmp/`` when the output exceeds the spill limit.
-The subprocess is killed on timeout. The capability check is the trust
-boundary — everything else is a hard-coded defence-in-depth layer.
-"""
 
 from __future__ import annotations
 
@@ -122,12 +67,6 @@ if TYPE_CHECKING:
     from ralph.process.manager import ProcessManager
 
 PROCESS_EXEC_BOUNDED_CAPABILITY = "ProcessExecBounded"
-# Default per-call exec timeout. Single source of truth lives in
-# ``ralph.timeout_defaults`` so the advertised tool-schema default (see
-# ``_specs_git_exec``) cannot drift from the handler's actual behavior. Set above
-# the 60s combined verify budget so an agent running `make verify`/`make test`
-# through exec does not time out on every call. Per-call
-# `timeout_ms` overrides this; the process tree is still killed on expiry.
 DEFAULT_TIMEOUT_MS = EXEC_DEFAULT_TIMEOUT_MS
 CompletedProcessAdapter = _CompletedProcessAdapter
 _TIMEOUT_NOTE_THRESHOLD_MS = 60_000
@@ -139,35 +78,18 @@ _EXEC_USAGE_EXAMPLES = (
 )
 
 _SHELL_OPERATOR_CHARS = frozenset("|&;<>\n")
-# A redirection operator (``< > >> <<``) is followed by a filename target, not a
-# new command; a command separator (``| ; & && ||``) introduces one. Segmentation
-# splits on separators and skips redirection targets so a benign ``echo x >
-# reboot`` is not misread as invoking the ``reboot`` command.
 _REDIRECTION_CHARS = frozenset("<>")
 
 
 @runtime_checkable
 class WorkspaceWithRoot(Protocol):
-    """Workspace surface required for command execution."""
 
     @property
     def root(self) -> Path:
-        """Return the absolute workspace root path."""
         ...
 
 
 def _reject_nul_params(params: Mapping[str, object]) -> None:
-    """Reject any string parameter carrying an embedded NUL.
-
-    ``ProcessManager`` strips NULs out of argv (execve cannot carry one),
-    so a token accepted here with a NUL inside would reach the child
-    WITHOUT it: ``su<NUL>do`` passes every blacklist check in
-    ``check_command`` and then executes as ``sudo``. The same holds for a
-    compound shell string, whose segments are checked but whose full text
-    is what ``sh -c`` runs. Every exec parameter is an argv token, a shell
-    string, or a timeout — none of them has a legitimate NUL — so the
-    denylist boundary fails closed here instead.
-    """
     for name, value in params.items():
         items: list[object] = list(value) if isinstance(value, list) else [value]
         for item in items:
@@ -176,7 +98,6 @@ def _reject_nul_params(params: Mapping[str, object]) -> None:
 
 
 def parse_exec_max_runtime(params: Mapping[str, object]) -> int | None:
-    """Return the optional clamped max_runtime_ms parameter."""
     raw = params.get("max_runtime_ms")
     if raw is None:
         return None
@@ -188,17 +109,11 @@ def parse_exec_max_runtime(params: Mapping[str, object]) -> int | None:
 
 
 def parse_exec_params(params: Mapping[str, object]) -> ExecParams:
-    """Parse and validate exec tool parameters."""
     params = decode_stringified_argv(params)
     _reject_nul_params(params)
     timeout_ms = parse_exec_timeout(params)
     max_runtime_ms = parse_exec_max_runtime(params)
 
-    # A command/argv STRING carrying an unquoted shell operator is a compound
-    # shell command (pipe, redirection, ``&&``/``;`` sequence). Route it through
-    # ``sh -c`` so the shell actually interprets it, but first split it into
-    # pipeline segments so ``handle_exec_command`` can enforce the blacklist
-    # against every command the shell would run — see ``_enforce_exec_policy``.
     shell_source = _shell_command_source(params)
     if shell_source is not None:
         segments = _shell_command_segments(shell_source)
@@ -224,30 +139,16 @@ def parse_exec_params(params: Mapping[str, object]) -> ExecParams:
 
 
 def parse_exec_timeout(params: Mapping[str, object]) -> int:
-    """Return the bounded exec-family timeout from untrusted tool parameters."""
-    # Require a strictly positive timeout: timeout_ms<=0 (or non-int) falls back to
-    # the default. Zero must NOT mean "unbounded" — that would make exec a blocking-
-    # forever call on the MCP server thread, an agent-controllable hang vector.
     timeout_value = params.get("timeout_ms", DEFAULT_TIMEOUT_MS)
     timeout_ms = (
         timeout_value
         if isinstance(timeout_value, int) and timeout_value > 0
         else DEFAULT_TIMEOUT_MS
     )
-    # Cap the per-call override: the MCP client request timeout is derived to exceed
-    # EXEC_MAX_TIMEOUT_MS, so a tool call can never outrun the client and re-trigger
-    # the -32001 "Request timed out" storm.
     return min(timeout_ms, EXEC_MAX_TIMEOUT_MS)
 
 
 def _shell_command_source(params: Mapping[str, object]) -> str | None:
-    """Return the raw shell string when the caller passed a compound command.
-
-    Only a ``command`` / ``argv`` STRING with an UNQUOTED shell operator is
-    treated as shell: a caller that passes an argv LIST is asking for explicit,
-    non-shell argv, so its operator tokens stay literal (no ``sh -c``). Returns
-    ``None`` for every non-compound invocation.
-    """
     command_value = params.get("command")
     argv_value = params.get("argv")
     if isinstance(command_value, str):
@@ -276,26 +177,12 @@ def _starts_with_environment_assignment(command: str) -> bool:
 
 
 def _has_unquoted_shell_operator(command: str) -> bool:
-    """Return True when ``command`` contains an UNQUOTED shell control operator.
-
-    Walks the raw string once, tracking single- and double-quote
-    state (and backslash escapes) so a literal ``>`` inside ``'...'``
-    or ``"..."`` is not flagged. Quoted literals are valid argv
-    content (``printf '>'``, ``grep "a|b"``); an unquoted ``|``,
-    ``&``, ``;``, ``<``, or ``>`` is unsafe because the per-token
-    blacklist only inspects the top-level command, not embedded
-    sub-commands the shell would run. Direct callers needing shell
-    composition must use ``unsafe_exec`` / ``raw_exec``, which
-    docs declare as the appropriate surface for compound shell
-    work.
-    """
     in_single = False
     in_double = False
     i = 0
     length = len(command)
     while i < length:
         c = command[i]
-        # Backslash escapes the next char in both shell quote modes.
         if c == "\\" and i + 1 < length and not in_single:
             i += 2
             continue
@@ -310,10 +197,6 @@ def _has_unquoted_shell_operator(command: str) -> bool:
 
 
 def _parse_exec_command_tokens(params: Mapping[str, object]) -> list[str]:
-    # A compound shell STRING is handled earlier (see ``_shell_command_source``);
-    # anything reaching here is either a single command string or an explicit
-    # argv list. An argv list is never shell-interpreted, so its operator tokens
-    # stay literal argv content.
     command_value = params.get("command")
     if isinstance(command_value, str):
         return _parse_shell_words(command_value, field_name="command")
@@ -372,21 +255,6 @@ def _is_operator_token(token: str) -> bool:
 
 
 def _shell_command_segments(command: str) -> list[tuple[str, list[str]]]:
-    """Split a compound shell string into ``(command, args)`` pipeline segments.
-
-    ``command`` is tokenized with the shell-operator punctuation lexer, so
-    operators surface as standalone tokens. Segments break on command separators
-    (``|``, ``;``, ``&``, ``&&``, ``||``); redirection operators (``<``, ``>``,
-    ``>>``) consume their following token as a filename target rather than
-    starting a new command. Each returned segment head is exactly what the shell
-    would execute, so ``check_command`` can veto a blacklisted command anywhere
-    in the pipeline (``echo hi; sudo rm -rf /`` denies on the ``sudo`` segment).
-
-    Best-effort: shell features that hide a command from a static token walk —
-    command substitution ``$(...)``, backticks, ``eval``, ``xargs sh -c`` — are
-    not decomposed here. The per-segment blacklist is defense-in-depth, not a
-    sandbox; the trust boundary remains the ``ProcessExecBounded`` capability.
-    """
     tokens = _parse_shell_words(command, field_name="command")
     segments: list[tuple[str, list[str]]] = []
     current: list[str] = []
@@ -474,12 +342,6 @@ def _expand_env_split_options(args: list[str]) -> list[str] | None:
 
 
 def _enforce_exec_policy(parsed: ExecParams, workspace: object) -> str | None:
-    """Enforce the blacklist for an exec invocation, shell-aware.
-
-    A compound shell command is checked against every command in the pipeline;
-    a plain command is checked directly. Executed scripts are content-scanned;
-    blocked operations in their contents produce a warning instead of denial.
-    """
     if parsed.shell_command is None:
         segments: list[tuple[str, list[str]]] = [(parsed.command, parsed.args)]
     else:
@@ -520,16 +382,6 @@ def _workspace_root(workspace: object, *, cwd_provider: CwdProvider = Path.cwd) 
 
 
 def resolve_spill_dir(workspace: object, deps: ExecRunDeps | None) -> Path:
-    """Resolve where oversized exec output spills, INSIDE the workspace by default.
-
-    The agent reads spill files through the workspace-scoped read/exec tools,
-    which reject any path resolving outside the workspace root. Spilling to the
-    OS temp dir produces a path the agent is told to read but cannot reach — it
-    goes blind on exactly the large outputs (a full pytest run) where the failing
-    summary lives, and loops re-running the command until the watchdog kills it.
-    Default to ``<workspace>/.agent/tmp`` (Ralph's own readable scratch dir); an
-    explicitly injected ``deps.spill_dir`` (tests, custom deployments) wins.
-    """
     if deps is not None and deps.spill_dir is not None:
         return deps.spill_dir
     return _workspace_root(workspace) / ".agent" / "tmp"
@@ -551,13 +403,9 @@ def run_command(
     timeout_ms: int,
     deps: ExecRunDeps | None = None,
 ) -> _CompletedProcessAdapter:
-    """Execute a subprocess directly in the workspace root after blacklist checks."""
     resolved_deps = deps or ExecRunDeps()
     cwd_provider = resolved_deps.cwd_provider or Path.cwd
     cwd = _workspace_root(workspace, cwd_provider=cwd_provider)
-    # Defense in depth: never produce an unbounded (None) timeout. A non-positive
-    # timeout_ms is clamped to the default so a direct caller cannot create a
-    # blocking-forever subprocess on the MCP server thread.
     effective_timeout_ms = timeout_ms if timeout_ms > 0 else DEFAULT_TIMEOUT_MS
     timeout_seconds = effective_timeout_ms / 1000
 
@@ -577,9 +425,6 @@ def run_command(
         raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
     except subprocess.TimeoutExpired as exc:
         timeout_cause = exc.timeout_cause if isinstance(exc, DeadlineTimeoutExpired) else None
-        # Suggest a larger timeout but never above the cap (the MCP client request
-        # timeout is derived to exceed EXEC_MAX_TIMEOUT_MS; suggesting more would
-        # let the next call outrun the client and re-trigger -32001).
         suggested = min(timeout_ms * 2, EXEC_MAX_TIMEOUT_MS) if timeout_ms > 0 else None
         if suggested is not None and suggested <= timeout_ms:
             suggested = None
@@ -632,15 +477,12 @@ def _run_subprocess(
             timeout=timeout_seconds,
             output_limit_bytes=SPILL_OUTPUT_LIMIT_BYTES,
             on_output_chunk=chunk_callback,
-            # Progress extends the inactivity window, never this absolute cap.
             hard_timeout=EXEC_MAX_TIMEOUT_MS / 1000,
         )
     except subprocess.TimeoutExpired:
         handle.terminate(grace_period_s=0)
         raise
     except ManagedProcessOutputLimitExceededError as exc:
-        # Don't discard the output: return the captured tail flagged as truncated
-        # so the caller can spill it to a file instead of forcing a blind retry.
         return _CompletedProcessAdapter(
             stdout=exc.stdout,
             stderr=exc.stderr,
@@ -657,7 +499,6 @@ def _run_subprocess(
 
 
 def _timeout_partial_output(exc: subprocess.TimeoutExpired) -> str | None:
-    """Return a bounded decoded tail captured before a process timeout."""
     parts: list[str] = []
     for label, value in (("Stdout", exc.stdout), ("Stderr", exc.stderr)):
         text = value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value
@@ -667,11 +508,6 @@ def _timeout_partial_output(exc: subprocess.TimeoutExpired) -> str | None:
 
 
 def _format_exec_error(exc: Exception) -> str:
-    """Format an exec error into a self-explanatory agent-actionable message.
-
-    Delegates to ``__str__`` for ``ExecutionError`` (which uses structured
-    templates), and wraps generic exceptions in a minimal format.
-    """
     if isinstance(exc, ExecutionError):
         return str(exc)
     return f"Error: {exc}"
@@ -683,13 +519,9 @@ def format_exec_result(
     output: _CompletedProcessAdapter,
     timeout_ms: int,
 ) -> str:
-    """Format subprocess output to match the Rust tool response."""
     stdout = output.stdout.decode("utf-8", errors="replace")
     stderr = output.stderr.decode("utf-8", errors="replace")
     exit_code = output.returncode
-    # Omit the args repr when there are none: the shell-command path passes the
-    # full command line as ``command`` with empty ``args``, and a trailing ``[]``
-    # is noise there (and for any argument-less command).
     command_line = f"{command} {args!r}" if args else command
     text = (
         f"Command: {command_line}\nExit code: {exit_code}\n\nStdout:\n{stdout}\n\nStderr:\n{stderr}"
@@ -707,62 +539,14 @@ def handle_exec_command(
     *,
     registry: ExecJobRegistry | None = None,
 ) -> ToolResult:
-    """Execute a bounded subprocess in the workspace after blacklist checks.
-
-    Public MCP tool handler. Validates the ``ProcessExecBounded`` capability
-    on the session, parses and policy-checks the command, runs the bounded
-    subprocess under the workspace root, and returns the formatted result
-    or a timeout-shaped error.
-
-    Args:
-        session: Agent session carrying the capability set, run id, and
-            chunk callback used to compose output for live streaming.
-        workspace: Workspace surface whose ``workspace_root`` is the cwd
-            for the spawned subprocess. ``Path``-like is required.
-        params: Mapping with ``command`` (string) and optional ``args``
-            (list of strings), ``timeout_ms`` (int, bounded by
-            ``EXEC_MAX_TIMEOUT_MS``).
-        deps: Optional dependency-injection bundle (custom ``runner``,
-            ``cwd_provider``, ``process_manager``, ``on_output_chunk``,
-            ``spill_dir``). When ``None``, ``DEFAULT_EXEC_RUN_DEPS`` is
-            used.
-        registry: Optional ExecJobRegistry coordinator for job execution.
-
-    Returns:
-        A ``ToolResult`` whose text content is the formatted command
-        output (``returncode`` + stdout/stderr). Output above
-        ``SPILL_OUTPUT_LIMIT_BYTES`` is written to
-        ``<workspace>/.agent/tmp/`` instead of returned to the model.
-
-    Raises:
-        CapabilityDeniedError: When the session does not declare
-            ``ProcessExecBounded``. The handler enforces default-deny.
-        InvalidParamsError: When ``params`` fails the ``ExecParams``
-            parser (missing ``command``, wrong types, etc.).
-        ExecutionError: When the subprocess fails to launch (not on
-            non-zero return; non-zero return is preserved as text).
-
-    Side effects:
-        Spawns a subprocess registered with the global ``ProcessManager``
-        and executes it in the workspace root. Captures stdout/stderr,
-        kills the subprocess on timeout, and may write a spill file to
-        ``<workspace>/.agent/tmp/`` when the output exceeds the spill
-        limit. A timeout is converted into an actionable, non-retryable
-        ``is_error`` ``ToolResult`` (not a -32603 protocol error).
-    """
     require_capability(session, PROCESS_EXEC_BOUNDED_CAPABILITY, "Command execution")
     parsed = parse_exec_params(params)
     script_warning = _enforce_exec_policy(parsed, workspace)
     effective_deps = build_effective_exec_deps(session, deps)
-    # AC-11: ``format=summary`` requests the bounded JSON envelope with
-    # replayable resource handles; the default preserves the legacy
-    # text/head-tail shape.
     format_value = params.get("format", "raw") if isinstance(params, Mapping) else "raw"
     if not isinstance(format_value, str) or format_value not in {"raw", "summary"}:
         raise InvalidParamsError(f"Invalid format: {format_value!r}; expected 'raw' or 'summary'")
     summary = format_value == "summary"
-    # A compound shell command runs through ``sh -c`` (after the per-segment
-    # blacklist above); a plain command runs argv-direct.
     if parsed.shell_command is not None:
         run_argv0, run_args = "sh", ["-c", parsed.shell_command]
         hint_segments = _shell_command_segments(parsed.shell_command)
@@ -870,14 +654,7 @@ def handle_exec_command(
             truncated=bool(res.output.get("truncated", False)),
         )
 
-    # The result header shows the command the caller actually asked for: the raw
-    # shell string for a pipeline, the argv otherwise.
     text = format_exec_result(display_cmd, display_args, output, parsed.timeout_ms)
-    # Append usage hints to the result text BEFORE spilling: an allowed
-    # ``git status`` result should mention the dedicated git_* MCP read tools
-    # so the agent learns the preferred surface; a ``grep`` result should
-    # warn that the MCP explore endpoint is more efficient. Both hints go
-    # inside the same text block so a spill still carries them.
     hints = exec_usage_hints(hint_segments)
     if script_warning is not None:
         hints.insert(0, script_warning)
@@ -895,16 +672,13 @@ def handle_exec_command(
         stderr_text=stderr_text,
         exec_resource_resolver=cast(
             "object | None", getattr(session, "exec_resource_resolver", None)
-        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        ),
     )
 
 
 __all__ = [
     "DEFAULT_TIMEOUT_MS",
     "PROCESS_EXEC_BOUNDED_CAPABILITY",
-    # Re-exported from ``_exec_vcs_scanner`` so tests / specs that pass over
-    # the blacklist categories and the unsafe_exec / raw_exec handlers can
-    # import the scanner through the same module surface.
     "_GIT_BLOCKED_SUBCOMMANDS",
     "_VCS_COMMANDS",
     "ExecParams",

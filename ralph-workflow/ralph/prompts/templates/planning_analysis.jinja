@@ -23,7 +23,6 @@ unit syntax; do not grade document shape or IDs. Worker capacity, ownership
 conflicts, dependency waves, and execution fit are substantive and must be
 graded. The planner's account is not proof.
 
-## Review contract
 
 Return criterion-level verdicts, not a holistic quality score. Review coverage, truthfulness, actionability, parallel decomposition, execution fit, and execution conflicts as these six substantive criteria:
 
@@ -93,22 +92,18 @@ type: planning_analysis_decision
 status: request_changes
 ---
 
-## Summary
 - [SUM-1] Parallel decomposition is not met.
 
-## What Came Up Short
 - [PA-001] Plan-level: Criterion: parallel decomposition. Expected observation: independent documentation and test branches can proceed together. Observation: the plan serializes them without coupling. Proposed revision: split the work into a documentation unit owning Paths: docs/usage.md with the focused check markdownlint docs/usage.md and a test unit owning Paths: tests/test_usage.py with the focused check python -m pytest tests/test_usage.py -q, each sized for a single agent, then an integration step that fans the two units back in. Verdict: not met. Evidence: the cited files have no dependency. Location: plan prose. Cost: unnecessary elapsed time.
 
-## Criterion Verdicts
 - [PA-001] Plan-level: Criterion: parallel decomposition. Expected observation: independent documentation and test branches can proceed together. Observation: the plan serializes them without coupling. Proposed revision: split the work into a documentation unit owning Paths: docs/usage.md with the focused check markdownlint docs/usage.md and a test unit owning Paths: tests/test_usage.py with the focused check python -m pytest tests/test_usage.py -q, each sized for a single agent, then an integration step that fans the two units back in. Verdict: not met. Evidence: the cited files have no dependency. Location: plan prose. Cost: unnecessary elapsed time.
 {% endset %}
 
-## Criteria and verdicts
 
 {% set planning_unit_split_allowed = true %}
 {% include 'shared/_criterion_verification_procedure.j2' %}
 
-Use one stable `PA-###` item per criterion in `## Criterion Verdicts`.
+Use one stable `PA-
 Include `Plan-level:` or a plan reference — `Step: [S-n]` when the plan
 numbers its steps, or a `Plan reference: [<stable id>]` when it does not —
 then `Criterion:`, `Expected observation:`, `Observation:`,
@@ -123,7 +118,6 @@ it. `Proposed revision:` is enforced on submission for non-completed
 decisions (`ANALYSIS019`). Do not add `How To Fix`. A `not evaluable`
 criterion requires `failed`.
 
-## Decision artifact
 
 Submit one `planning_analysis_decision` markdown artifact through
 {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}}, then call {{DECLARE_COMPLETE_TOOL_REFERENCE}}.

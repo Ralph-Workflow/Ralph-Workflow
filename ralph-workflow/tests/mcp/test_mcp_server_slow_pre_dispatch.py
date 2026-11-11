@@ -1,11 +1,3 @@
-"""A stalled shared pre-dispatch phase must be visible in the server log.
-
-Every ``tools/call`` passes through the activity relay and the wire ledger
-before its handler runs. When those stall, cheap read-only tools time out on
-the client (``timed out awaiting tools/call after 75s``) while the server log
-shows nothing. One bounded warning names the tool and how long the phase took.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

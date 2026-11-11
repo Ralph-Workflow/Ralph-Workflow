@@ -1,10 +1,3 @@
-"""Minimal real-Git proof for exact linked-worktree branch matching.
-
-The former full integration scenario duplicated broader landing coverage in
-``test_auto_integrate_worktree_sync.py``. This focused test retains only the
-Git worktree-list parsing behavior that an in-memory seam cannot prove.
-"""
-
 from __future__ import annotations
 
 import subprocess
@@ -31,7 +24,6 @@ def _run(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
 def test_prefix_extended_sibling_branch_does_not_block_rebase(
     tmp_git_repo: Path, tmp_path: Path
 ) -> None:
-    """A sibling on ``wt-040-fix`` must not be mistaken for ``wt-040``."""
     sibling = tmp_path / "sibling"
     assert (
         _run(

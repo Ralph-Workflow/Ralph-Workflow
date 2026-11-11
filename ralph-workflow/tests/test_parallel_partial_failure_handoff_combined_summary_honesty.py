@@ -1,5 +1,3 @@
-"""Tests for honest partial-failure reporting in the parallel development summary."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -46,10 +44,8 @@ def _read_summary(tmp_path: Path) -> str:
 
 class TestCombinedSummaryHonesty:
     def test_any_failed_when_one_worker_fails(self, tmp_path: Path) -> None:
-        """When unit-b fails (no artifact), combined summary must have any_failed=true."""
         effect = _make_effect(("unit-a", ["src/a"]), ("unit-b", ["src/b"]))
 
-        # unit-a succeeded (write artifact), unit-b failed (no artifact)
         _write_fake_artifact(tmp_path, "unit-a")
 
         state = PipelineState(
@@ -77,12 +73,9 @@ class TestCombinedSummaryHonesty:
         assert "- **unit-b**: failed (0 artifact(s))" in summary
 
     def test_failed_worker_does_not_inherit_success_from_sibling(self, tmp_path: Path) -> None:
-        """Worker B with no artifact must be reported as failed even when Worker A succeeded."""
         effect = _make_effect(("unit-a", ["src/a"]), ("unit-b", ["src/b"]))
 
-        # unit-a writes artifact; unit-b writes nothing
         _write_fake_artifact(tmp_path, "unit-a")
-        # unit-b artifact dir exists but is empty
         (tmp_path / ".agent" / "workers" / "unit-b" / "artifacts").mkdir(parents=True)
 
         state = PipelineState(
@@ -108,7 +101,6 @@ class TestCombinedSummaryHonesty:
         assert "- all_succeeded: false" in summary
 
     def test_blocked_dependency_reported_in_summary(self, tmp_path: Path) -> None:
-        """unit-b blocked because unit-a failed must appear with status='blocked'."""
         effect = _make_effect(("unit-a", ["src/a"]), ("unit-b", ["src/b"]))
 
         state = PipelineState(
@@ -143,14 +135,11 @@ class TestCombinedSummaryHonesty:
         assert "- any_failed: true" in summary
 
     def test_repo_wide_git_status_never_used_for_worker_success(self, tmp_path: Path) -> None:
-        """Untracked files in repo must not make failed workers appear as succeeded."""
         effect = _make_effect(("unit-a", ["src/a"]), ("unit-b", ["src/b"]))
 
-        # Create untracked files that could confuse a git-status-based check
         (tmp_path / "src" / "random_change.py").parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / "src" / "random_change.py").write_text("# untracked\n")
 
-        # unit-b has no artifact; its worker_state is FAILED
         _write_fake_artifact(tmp_path, "unit-a")
 
         state = PipelineState(
@@ -201,7 +190,6 @@ class TestCombinedSummaryHonesty:
         assert "- any_failed: false" in summary
 
     def test_verification_failure_adds_verify_entry(self, tmp_path: Path) -> None:
-        """When verification ran and failed, summary must include __verify__ entry."""
         effect = _make_effect(("unit-a", ["src/a"]))
         _write_fake_artifact(tmp_path, "unit-a")
 

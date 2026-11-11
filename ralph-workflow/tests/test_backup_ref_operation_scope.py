@@ -1,13 +1,3 @@
-"""U5: worktree-qualified backup-ref identity and scoped deletion.
-
-Real-Git cases prove that two linked worktrees starting from the same
-pre-feature SHA get DISTINCT backup refs, that completing the operation
-in one worktree preserves the other's recovery ref, and that legacy
-SHA-only refs survive cleanup (fail-closed under-delete). Unit-shaped
-cases pin the qualified-name helper and the exact-name-only deletion
-contract without spawning git.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -47,7 +37,7 @@ def _commit(repo_root: Path, filename: str, content: str, message: str) -> str:
     try:
         repo.index.add([filename])
         commit = repo.index.commit(message)
-        assert commit.hexsha  # RALPH-TEST-REASON: GitPython commit replaces subprocess git add/commit to reduce CPU overhead
+        assert commit.hexsha
         return commit.hexsha
     finally:
         repo.close()
@@ -60,12 +50,10 @@ def _backup_refs(repo_root: Path) -> list[str]:
 
 
 def _two_worktrees(tmp_path: Path) -> tuple[Path, Path, str]:
-    """Shared repo with two linked worktrees on the same pre-feature SHA."""
     root = tmp_path / "repo"
     root.mkdir()
     from git import Repo
 
-    # RALPH-TEST-REASON: GitPython init/config replaces subprocess git to reduce CPU overhead
     repo = Repo.init(root, initial_branch="main")
     with repo.config_writer() as cfg:
         cfg.set_value("user", "email", "t@example.com")
@@ -88,7 +76,6 @@ def test_qualified_backup_ref_is_deterministic_and_worktree_scoped() -> None:
     assert ref_a != ref_b
     assert ref_a.startswith("refs/rebase-backup/")
     assert ref_a.endswith("-" + "a" * 40)
-    # wt8 = sha256(str(owning_worktree))[:8]
     import hashlib
 
     assert ref_a.split("/")[2].startswith(hashlib.sha256(b"/wt/a").hexdigest()[:8])
@@ -115,12 +102,10 @@ def test_completing_worktree_a_preserves_worktree_b_ref(tmp_path: Path) -> None:
         pre_target_sha=pre_sha,
         owning_worktree=str(wt_b),
     )
-    # Worktree A's operation completes; deletion is by ITS exact name only.
     _term_del(wt_a, ref_a)
     refs = _backup_refs(wt_a)
     assert ref_a not in refs
     assert ref_b in refs, "worktree B's only recovery ref must survive A's cleanup"
-    # Symmetrically, B's record-scoped deletion removes only B's ref.
     _term_del(wt_a, qualified_backup_ref(record_b.owning_worktree, record_b.pre_feature_sha))
     assert _backup_refs(wt_a) == []
 
@@ -134,10 +119,8 @@ def test_legacy_sha_only_ref_survives_cleanup(tmp_path: Path) -> None:
     _term_del(wt_a, ref_a)
     refs = _backup_refs(wt_a)
     assert legacy_ref in refs, "legacy SHA-only ref is never deleted (fail-closed under-delete)"
-    # Exact-name deletion of a legacy ref is also refused.
     _term_del(wt_a, legacy_ref)
     assert legacy_ref in _backup_refs(wt_a)
-    # None ref: warn-and-return, namespace untouched.
     _term_del(wt_a, None)
     assert legacy_ref in _backup_refs(wt_a)
 
@@ -147,7 +130,6 @@ def test_create_with_none_owning_worktree_falls_back_to_root(tmp_path: Path) -> 
     root.mkdir()
     from git import Repo
 
-    # RALPH-TEST-REASON: GitPython init/config replaces subprocess git to reduce CPU overhead
     repo = Repo.init(root, initial_branch="main")
     with repo.config_writer() as cfg:
         cfg.set_value("user", "email", "t@example.com")
@@ -172,7 +154,6 @@ def _repo_with_edit(tmp_path: Path) -> tuple[Path, str]:
     root.mkdir()
     from git import Repo
 
-    # RALPH-TEST-REASON: GitPython init/config replaces subprocess git to reduce CPU overhead
     repo = Repo.init(root, initial_branch="main")
     with repo.config_writer() as cfg:
         cfg.set_value("user", "email", "t@example.com")
@@ -185,17 +166,11 @@ def _repo_with_edit(tmp_path: Path) -> tuple[Path, str]:
 
 
 def test_snapshot_records_an_untracked_nested_repo_as_a_gitlink(tmp_path: Path) -> None:
-    """An embedded clone is listed as ``vendored/`` and cannot be hashed as a blob.
-
-    The snapshot records it as a gitlink at the nested HEAD instead of
-    failing, so the surrounding work is still preserved.
-    """
     root, head = _repo_with_edit(tmp_path)
     nested = root / "vendored"
     nested.mkdir()
     from git import Repo
 
-    # RALPH-TEST-REASON: GitPython init/config replaces subprocess git to reduce CPU overhead
     repo = Repo.init(nested, initial_branch="main")
     with repo.config_writer() as cfg:
         cfg.set_value("user", "email", "t@example.com")

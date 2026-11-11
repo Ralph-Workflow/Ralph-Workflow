@@ -1,4 +1,3 @@
-"""ArtifactsPolicy Pydantic model."""
 
 from typing import Self
 
@@ -9,7 +8,6 @@ from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 
 
 class ArtifactsPolicy(_FrozenPolicyModel):
-    """Top-level artifacts.toml policy document."""
 
     artifacts: dict[str, ArtifactContract] = Field(
         default_factory=dict,

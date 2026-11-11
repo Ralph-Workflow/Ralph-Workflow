@@ -1,10 +1,3 @@
-"""ParallelDisplay artifact rendering reads submitted markdown directly.
-
-Markdown artifacts are the source of truth: submission writes the handoff file
-as identical bytes, so the display must render the existing markdown (handoff
-copy first, artifact document as fallback) without deriving anything from JSON.
-"""
-
 from __future__ import annotations
 
 import io
@@ -60,7 +53,6 @@ def test_emit_review_artifact_falls_back_to_markdown_artifact_document(tmp_path:
 def test_parallel_display_regression_development_ignores_retired_json_artifact(
     tmp_path: Path,
 ) -> None:
-    """Cover the markdown-migration task: JSON is not a display fallback."""
     artifact = tmp_path / ".agent" / "artifacts" / "development_result.json"
     artifact.parent.mkdir(parents=True, exist_ok=True)
     artifact.write_text('{"summary":"retired development payload"}', encoding="utf-8")
@@ -74,7 +66,6 @@ def test_parallel_display_regression_development_ignores_retired_json_artifact(
 def test_parallel_display_regression_review_ignores_retired_json_artifact(
     tmp_path: Path,
 ) -> None:
-    """Cover the markdown-migration task: JSON is not a display fallback."""
     artifact = tmp_path / ".agent" / "artifacts" / "issues.json"
     artifact.parent.mkdir(parents=True, exist_ok=True)
     artifact.write_text('{"summary":"retired review payload"}', encoding="utf-8")
@@ -88,7 +79,6 @@ def test_parallel_display_regression_review_ignores_retired_json_artifact(
 def test_parallel_display_regression_fix_ignores_retired_json_artifacts(
     tmp_path: Path,
 ) -> None:
-    """Cover the markdown-migration task: JSON is not a display fallback."""
     artifacts = tmp_path / ".agent" / "artifacts"
     artifacts.mkdir(parents=True, exist_ok=True)
     (artifacts / "fix_result.json").write_text(
@@ -109,7 +99,6 @@ def test_parallel_display_regression_fix_ignores_retired_json_artifacts(
 
 
 def test_emit_analysis_decision_skips_an_empty_structural_rule(tmp_path: Path) -> None:
-    """S-1/S-6: an absent analysis artifact must not leave chrome without content."""
     display, buf = _display()
 
     display.emit_analysis_decision(tmp_path, "development")
@@ -118,7 +107,6 @@ def test_emit_analysis_decision_skips_an_empty_structural_rule(tmp_path: Path) -
 
 
 def test_emit_commit_message_skips_an_empty_structural_rule(tmp_path: Path) -> None:
-    """S-1/S-6: an absent commit artifact must not leave chrome without content."""
     display, buf = _display()
 
     display.emit_commit_message(tmp_path)

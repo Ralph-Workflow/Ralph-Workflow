@@ -90,9 +90,6 @@ class _WriteFailsWorkspace(MemoryWorkspace):
 def test_download_url_write_failure_returns_is_error_not_exception(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # A workspace write failure (disk full / permission / read-only fs) must
-    # surface as a terminal is_error result — never escape as a raw OSError that
-    # the bridge turns into a retryable -32603 protocol error (retry-storm class).
     monkeypatch.setattr(tool_webvisit, "fetch_url", lambda *a, **kw: _GOOD_OUTCOME)
 
     result = tool_webvisit.handle_download_url(

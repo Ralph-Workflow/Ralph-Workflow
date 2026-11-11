@@ -1,12 +1,3 @@
-"""Doc-linter regression for the no-host-synthesized-sentinel contract.
-
-The runtime contract is pinned by
-``tests/test_agy_no_exemptions.py::test_agy_host_synthesized_sentinel_branch_is_gone``
-(the host writes completion evidence for no transport, F7/DoD 19). These tests
-pin the same contract in the user-facing docs so the deleted narration cannot
-silently return. Narrow text-shaped assertions only; no behaviour assumptions.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -31,8 +22,6 @@ def _read(path: Path) -> str:
 
 
 class TestNoHostSynthesizedSentinelDocs:
-    """AGY docs must not narrate the host writing completion evidence."""
-
     def test_docs_contain_no_host_synthesized_sentinel_phrase(self) -> None:
         for path in DOC_PATHS:
             content = _read(path)

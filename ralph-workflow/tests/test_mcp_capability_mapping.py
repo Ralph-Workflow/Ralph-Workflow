@@ -1,16 +1,3 @@
-"""Tests for ralph/mcp/capability_mapping.py — MCP capability mapping layer.
-
-Consolidated from a previous split of 21 per-symbol files
-(``test_mcp_capability_mapping_access_decision.py``,
-``test_mcp_capability_mapping_check_mcp_capability_policy.py``, …,
-``test_mcp_capability_mapping_workspace_new_capabilities.py``).
-
-The split family cost one extra file-collection + import per shard on every
-``make test`` invocation; merging them into a single module preserves every
-existing test method (names kept stable so any external ref still resolves)
-while reclaiming 20 module-level imports per shard.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -51,7 +38,6 @@ from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
 from ralph.policy.validation import PolicyValidationError
 from ralph.prompts.template_variables import CapabilitySet
 
-# Drains for which web/visit access is restricted (commit-class).
 _COMMIT_DRAINS: frozenset[SessionDrain] = frozenset(
     {SessionDrain.DEVELOPMENT_COMMIT, SessionDrain.REVIEW_COMMIT, SessionDrain.COMMIT}
 )
@@ -59,11 +45,6 @@ _COMMIT_DRAINS: frozenset[SessionDrain] = frozenset(
 
 def _builtin_agents_policy() -> AgentsPolicy:
     return load_agents_policy(Path("/nonexistent"))
-
-
-# =============================================================================
-# AccessDecision
-# =============================================================================
 
 
 class TestAccessDecision:
@@ -81,11 +62,6 @@ class TestAccessDecision:
     def test_is_allowed(self) -> None:
         assert AccessDecision.allow().is_allowed() is True
         assert AccessDecision.deny("x", AccessDeniedCode.CAPABILITY_DENIED).is_allowed() is False
-
-
-# =============================================================================
-# check_mcp_capability_policy
-# =============================================================================
 
 
 class TestCheckMcpCapabilityPolicy:
@@ -144,11 +120,6 @@ class TestCheckMcpCapabilityPolicy:
         assert result.is_allowed() is True
 
 
-# =============================================================================
-# coerce_capability
-# =============================================================================
-
-
 class TestCoerceCapability:
     def test_capability_passthrough(self) -> None:
         assert coerce_capability(Capability.WORKSPACE_READ) == Capability.WORKSPACE_READ
@@ -167,11 +138,6 @@ class TestCoerceCapability:
             coerce_capability("unknown_capability")
 
 
-# =============================================================================
-# coerce_mcp_capability
-# =============================================================================
-
-
 class TestCoerceMcpCapability:
     def test_mcp_capability_passthrough(self) -> None:
         assert coerce_mcp_capability(McpCapability.WORKSPACE_READ) == McpCapability.WORKSPACE_READ
@@ -188,11 +154,6 @@ class TestCoerceMcpCapability:
     def test_unknown_raises(self) -> None:
         with pytest.raises(ValueError):
             coerce_mcp_capability("UnknownCapability")
-
-
-# =============================================================================
-# coerce_session_drain
-# =============================================================================
 
 
 class TestCoerceSessionDrain:
@@ -214,11 +175,6 @@ class TestCoerceSessionDrain:
     def test_unknown_raises(self) -> None:
         with pytest.raises(ValueError):
             coerce_session_drain("unknown_drain")
-
-
-# =============================================================================
-# drain_class_for_session
-# =============================================================================
 
 
 class TestDrainClassForSession:
@@ -248,11 +204,6 @@ class TestDrainClassForSession:
             drain_class_for_session("unknown")
 
 
-# =============================================================================
-# drain_to_access_mode
-# =============================================================================
-
-
 class TestDrainToAccessMode:
     def test_development_allows_write(self) -> None:
         assert (
@@ -270,11 +221,6 @@ class TestDrainToAccessMode:
 
     def test_analysis_readonly(self) -> None:
         assert drain_to_access_mode("analysis", _builtin_agents_policy()) == AccessMode.READ_ONLY
-
-
-# =============================================================================
-# drain_to_policy_mode
-# =============================================================================
 
 
 class TestDrainToPolicyMode:
@@ -300,11 +246,6 @@ class TestDrainToPolicyMode:
     def test_custom_commit_drain_without_policy_raises(self) -> None:
         with pytest.raises(PolicyValidationError):
             drain_to_policy_mode("feature_commit")
-
-
-# =============================================================================
-# evaluate_mapped_capability
-# =============================================================================
 
 
 class TestEvaluateMappedCapability:
@@ -338,11 +279,6 @@ class TestEvaluateMappedCapability:
         assert result.is_allowed() is True
 
 
-# =============================================================================
-# evaluate_workspace_write
-# =============================================================================
-
-
 class TestEvaluateWorkspaceWrite:
     def test_ephemeral_approved(self) -> None:
         result = evaluate_workspace_write({"status": "approved"}, {"status": "denied"})
@@ -355,11 +291,6 @@ class TestEvaluateWorkspaceWrite:
     def test_both_denied(self) -> None:
         result = evaluate_workspace_write({"status": "denied"}, {"status": "denied"})
         assert result.is_allowed() is False
-
-
-# =============================================================================
-# extract_named_value
-# =============================================================================
 
 
 class TestExtractNamedValue:
@@ -391,11 +322,6 @@ class TestExtractNamedValue:
         assert extract_named_value(Obj()) == "my_value"
 
 
-# =============================================================================
-# extract_text_field
-# =============================================================================
-
-
 class TestExtractTextField:
     def test_from_dict(self) -> None:
         assert extract_text_field({"name": "test"}, "name") == "test"
@@ -419,11 +345,6 @@ class TestExtractTextField:
         assert extract_text_field({"name": 123}, "name") is None
 
 
-# =============================================================================
-# lookup_ralph_capability
-# =============================================================================
-
-
 class TestLookupRalphCapability:
     def test_workspace_read(self) -> None:
         result = lookup_ralph_capability("WorkspaceRead")
@@ -442,60 +363,43 @@ class TestLookupRalphCapability:
         assert result is None
 
 
-# =============================================================================
-# MediaRead capability
-# =============================================================================
-
-
 class TestMediaReadCapability:
-    """Tests for MediaRead capability mapping (Task 2)."""
-
     def test_capability_media_read_exists(self) -> None:
-        """Capability.MEDIA_READ exists with value 'media.read'."""
         assert hasattr(Capability, "MEDIA_READ")
         assert Capability.MEDIA_READ == "media.read"
 
     def test_mcp_capability_media_read_exists(self) -> None:
-        """McpCapability.MEDIA_READ exists with value 'MediaRead'."""
         assert hasattr(McpCapability, "MEDIA_READ")
         assert McpCapability.MEDIA_READ == "MediaRead"
 
     def test_media_read_alias_dot_notation_in_coerce_capability(self) -> None:
-        """coerce_capability accepts 'media.read' and returns Capability.MEDIA_READ."""
         result = coerce_capability("media.read")
         assert result == Capability.MEDIA_READ
 
     def test_media_read_alias_underscore_notation_in_coerce_capability(self) -> None:
-        """coerce_capability accepts 'media_read' and returns Capability.MEDIA_READ."""
         result = coerce_capability("media_read")
         assert result == Capability.MEDIA_READ
 
     def test_media_read_alias_dot_notation_in_coerce_mcp_capability(self) -> None:
-        """coerce_mcp_capability accepts 'media.read' and returns McpCapability.MEDIA_READ."""
         result = coerce_mcp_capability("media.read")
         assert result == McpCapability.MEDIA_READ
 
     def test_media_read_alias_underscore_notation_in_coerce_mcp_capability(self) -> None:
-        """coerce_mcp_capability accepts 'media_read' and returns McpCapability.MEDIA_READ."""
         result = coerce_mcp_capability("media_read")
         assert result == McpCapability.MEDIA_READ
 
     def test_media_read_alias_capitalized_in_coerce_mcp_capability(self) -> None:
-        """coerce_mcp_capability accepts 'MediaRead' and returns McpCapability.MEDIA_READ."""
         result = coerce_mcp_capability("MediaRead")
         assert result == McpCapability.MEDIA_READ
 
     def test_media_read_maps_to_ralph_capability(self) -> None:
-        """lookup_ralph_capability('MediaRead') returns Capability.MEDIA_READ."""
         result = lookup_ralph_capability("MediaRead")
         assert result == Capability.MEDIA_READ
 
     def test_media_read_in_mcp_to_ralph_map(self) -> None:
-        """MCP_TO_RALPH_CAPABILITY_MAP maps McpCapability.MEDIA_READ to Capability.MEDIA_READ."""
         assert MCP_TO_RALPH_CAPABILITY_MAP[McpCapability.MEDIA_READ] == Capability.MEDIA_READ
 
     def test_media_read_policy_allowed(self) -> None:
-        """check_mcp_capability_policy for MediaRead with approved outcome is allowed."""
         result = check_mcp_capability_policy(
             "MediaRead",
             {"status": "denied"},
@@ -505,7 +409,6 @@ class TestMediaReadCapability:
         assert result.is_allowed() is True
 
     def test_media_read_policy_denied(self) -> None:
-        """check_mcp_capability_policy for MediaRead with denied outcome is denied."""
         result = check_mcp_capability_policy(
             "MediaRead",
             {"status": "denied"},
@@ -515,7 +418,6 @@ class TestMediaReadCapability:
         assert result.is_allowed() is False
 
     def test_evaluate_mapped_capability_media_read_allowed(self) -> None:
-        """evaluate_mapped_capability works for MediaRead with approved outcome."""
         result = evaluate_mapped_capability(
             "MediaRead",
             (Capability.MEDIA_READ, {"status": "approved"}),
@@ -523,17 +425,11 @@ class TestMediaReadCapability:
         assert result.is_allowed() is True
 
     def test_evaluate_mapped_capability_media_read_denied(self) -> None:
-        """evaluate_mapped_capability works for MediaRead with denied outcome."""
         result = evaluate_mapped_capability(
             "MediaRead",
             (Capability.MEDIA_READ, {"status": "denied"}),
         )
         assert result.is_allowed() is False
-
-
-# =============================================================================
-# normalize_policy_outcome
-# =============================================================================
 
 
 class TestNormalizePolicyOutcome:
@@ -559,11 +455,6 @@ class TestNormalizePolicyOutcome:
             normalize_policy_outcome("unsupported_value")
 
 
-# =============================================================================
-# normalize_token
-# =============================================================================
-
-
 class TestNormalizeToken:
     def test_lowercases(self) -> None:
         assert normalize_token("Hello") == "hello"
@@ -576,11 +467,6 @@ class TestNormalizeToken:
 
     def test_strips_whitespace(self) -> None:
         assert normalize_token("  hello  ") == "hello"
-
-
-# =============================================================================
-# policy_from_outcome
-# =============================================================================
 
 
 class TestPolicyFromOutcome:
@@ -596,11 +482,6 @@ class TestPolicyFromOutcome:
         result = policy_from_outcome({"status": "denied"})
         assert result.is_allowed() is False
         assert result.code == AccessDeniedCode.CAPABILITY_DENIED
-
-
-# =============================================================================
-# resolved_policy_status
-# =============================================================================
 
 
 class TestResolvedPolicyStatus:
@@ -620,7 +501,6 @@ class TestResolvedPolicyStatus:
         assert resolved_policy_status({}, "deny", None) == PolicyOutcomeStatus.DENIED
 
     def test_dict_with_reason_denies(self) -> None:
-        # Any dict with "reason" key is denied
         assert resolved_policy_status({"reason": "because"}, "", None) == PolicyOutcomeStatus.DENIED
 
     def test_reason_present_denies(self) -> None:
@@ -628,11 +508,6 @@ class TestResolvedPolicyStatus:
 
     def test_unknown_returns_none(self) -> None:
         assert resolved_policy_status({}, "unknown_status", None) is None
-
-
-# =============================================================================
-# WebSearch capability (drain-grant surface)
-# =============================================================================
 
 
 class TestWebSearchCapabilitySupport:
@@ -656,14 +531,7 @@ class TestWebSearchCapabilitySupport:
             assert not CapabilitySet.defaults_for_drain(drain).contains(Capability.WEB_SEARCH)
 
 
-# =============================================================================
-# WebVisit capability (full surface)
-# =============================================================================
-
-
 class TestWebVisitCapability:
-    """Tests for WebVisit capability mapping."""
-
     def test_capability_web_visit_exists(self) -> None:
         assert hasattr(Capability, "WEB_VISIT")
         assert Capability.WEB_VISIT == "web.visit"
@@ -745,18 +613,7 @@ class TestWebVisitCapability:
             )
 
 
-# =============================================================================
-# WorkspaceEdit / WorkspaceDelete / WorkspaceMetadataRead (Task 3)
-# =============================================================================
-
-
 class TestWorkspaceNewCapabilities:
-    """Tests for WorkspaceEdit, WorkspaceDelete, and WorkspaceMetadataRead capability mapping."""
-
-    # ------------------------------------------------------------------
-    # WorkspaceEdit
-    # ------------------------------------------------------------------
-
     def test_workspace_edit_capability_exists(self) -> None:
         assert hasattr(Capability, "WORKSPACE_EDIT")
         assert Capability.WORKSPACE_EDIT == "workspace.edit"
@@ -809,10 +666,6 @@ class TestWorkspaceNewCapabilities:
         )
         assert result.is_allowed() is False
         assert result.code == AccessDeniedCode.CAPABILITY_DENIED
-
-    # ------------------------------------------------------------------
-    # WorkspaceDelete
-    # ------------------------------------------------------------------
 
     def test_workspace_delete_capability_exists(self) -> None:
         assert hasattr(Capability, "WORKSPACE_DELETE")
@@ -867,10 +720,6 @@ class TestWorkspaceNewCapabilities:
         )
         assert result.is_allowed() is False
         assert result.code == AccessDeniedCode.CAPABILITY_DENIED
-
-    # ------------------------------------------------------------------
-    # WorkspaceMetadataRead
-    # ------------------------------------------------------------------
 
     def test_workspace_metadata_read_capability_exists(self) -> None:
         assert hasattr(Capability, "WORKSPACE_METADATA_READ")
@@ -933,10 +782,6 @@ class TestWorkspaceNewCapabilities:
         )
         assert result.is_allowed() is False
         assert result.code == AccessDeniedCode.CAPABILITY_DENIED
-
-    # ------------------------------------------------------------------
-    # Drain-coverage: metadata_read (all drains), edit/delete (dev/fix only)
-    # ------------------------------------------------------------------
 
     def test_workspace_metadata_read_granted_to_all_drains(self) -> None:
         for drain in SessionDrain:

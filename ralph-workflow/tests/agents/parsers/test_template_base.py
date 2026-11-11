@@ -1,5 +1,3 @@
-"""Tests for the ParserTemplateBase template-method class."""
-
 from __future__ import annotations
 
 import json
@@ -14,8 +12,6 @@ if TYPE_CHECKING:
 
 
 class _FixtureParser(ParserTemplateBase):
-    """Minimal parser subclass for testing ParserTemplateBase."""
-
     _STOP_EVENT_TYPES = frozenset({"done"})
 
     def __init__(self) -> None:
@@ -26,7 +22,6 @@ class _FixtureParser(ParserTemplateBase):
         if result is not None:
             yield result
             return
-        # For test purposes, any valid JSON dict with a "text" field yields a text line
         obj = json.loads(line.strip())
         etype = obj.get("type")
         if etype == "accumulate":
@@ -48,12 +43,10 @@ def _make_lines(data: list[str]) -> Iterator[str]:
 
 
 class TestParseJsonLine:
-    """Tests for ParserTemplateBase.parse_json_line."""
-
     def test_valid_json_dict(self) -> None:
         parser = _FixtureParser()
         result = parser.parse_json_line('{"type":"text","content":"hello"}')
-        assert result is None  # Valid JSON dict -> None from default _classify_json_object
+        assert result is None
 
     def test_invalid_json_returns_raw(self) -> None:
         parser = _FixtureParser()
@@ -78,8 +71,6 @@ class TestParseJsonLine:
 
 
 class TestIsStopEvent:
-    """Tests for ParserTemplateBase.is_stop_event."""
-
     def test_known_stop_event(self) -> None:
         parser = _FixtureParser()
         assert parser.is_stop_event("done") is True
@@ -94,8 +85,6 @@ class TestIsStopEvent:
 
 
 class TestFlushAccumulators:
-    """Tests for ParserTemplateBase.flush_accumulators."""
-
     def test_empty_accumulators_yields_nothing(self) -> None:
         parser = _FixtureParser()
         results = list(parser.flush_accumulators())
@@ -137,8 +126,6 @@ class TestFlushAccumulators:
 
 
 class TestParseTemplate:
-    """Tests for ParserTemplateBase.parse template method."""
-
     def test_empty_lines(self) -> None:
         parser = _FixtureParser()
         results = list(parser.parse(_make_lines([])))
@@ -176,8 +163,6 @@ class TestParseTemplate:
 
 
 class TestStopEventTypesDefault:
-    """Test that the default _STOP_EVENT_TYPES is empty."""
-
     def test_default_empty(self) -> None:
         parser = _FixtureParser()
         assert frozenset({"done"}) == parser._STOP_EVENT_TYPES

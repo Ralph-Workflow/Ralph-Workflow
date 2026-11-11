@@ -1,5 +1,3 @@
-"""Every artifact-producing phase rejects an artifact its run never wrote."""
-
 from __future__ import annotations
 
 import os

@@ -1,21 +1,12 @@
-"""Fail-closed ownership audit for polling, watches, and tool invocation.
-
-The filesystem-proportional contract requires new production modules to use the
-lifecycle-owned watch and typed process seams.  This AST-only audit rejects raw
-poll sleeps, watchdog observer construction, and direct subprocess selection
-outside those owners.  A local ``filesystem-poll-ok:`` marker with a non-empty
-reason is the only exception route.
-"""
-
 from __future__ import annotations
 
 import ast
 import sys
-import tokenize
 from dataclasses import dataclass
-from io import StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from ralph.testing._audit_scope import build_parent_map, qualified_scope
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -24,26 +15,93 @@ _DEFAULT_PACKAGE_ROOTS: tuple[str, ...] = ("ralph",)
 _DEFAULT_EXEMPT_PATHS: frozenset[str] = frozenset(
     {
         "executor/process.py",
-        "process/manager/__init__.py",  # typed process owner constructs processes
-        "process/manager/_process_manager.py",  # bounded termination grace, not polling
+        "process/manager/__init__.py",
+        "process/manager/_process_manager.py",
         "testing/audit_filesystem_polling_invocation.py",
     }
 )
-_MARKER_TOKEN = "filesystem-poll-ok:"
 _GETATTR_MIN_ARGS = 2
+
+EXEMPT_CALL_SITES: frozenset[tuple[str, str, str]] = frozenset(
+    {
+        (
+            "ralph/diagnostics/host_pressure.py",
+            "_macos_maxfiles_pressure",
+            "raw_subprocess_invocation",
+        ),
+        ("ralph/git/_lock_recovery.py", "_find_lock_holder", "raw_subprocess_invocation"),
+        ("ralph/git/_lock_recovery.py", "_probe_lsof_fuser", "raw_subprocess_invocation"),
+        ("ralph/mcp/explore/_bench_r6_metrics.py", "_measure_operational", "raw_sleep_poll"),
+        (
+            "ralph/mcp/explore/_bench_r6_metrics.py",
+            "measure_cold_build",
+            "raw_subprocess_invocation",
+        ),
+        (
+            "ralph/mcp/explore/_bench_r6_subprocess.py",
+            "run_build_subprocess",
+            "raw_subprocess_invocation",
+        ),
+        (
+            "ralph/mcp/explore/_store_class_init.py",
+            "_InitializeMethods._initialize",
+            "raw_sleep_poll",
+        ),
+        (
+            "ralph/mcp/explore/_store_class_init.py",
+            "_InitializeMethods._initialize_with_bounded_retry",
+            "raw_sleep_poll",
+        ),
+        (
+            "ralph/mcp/server/_fallback_http_handler.py",
+            "_FallbackHttpHandler.do_GET",
+            "raw_sleep_poll",
+        ),
+        (
+            "ralph/mcp/server/_fallback_standalone_server.py",
+            "_FallbackStandaloneServer._setup_handover_pause._pause_watcher",
+            "raw_sleep_poll",
+        ),
+        (
+            "ralph/mcp/server/_fallback_standalone_server.py",
+            "_FallbackStandaloneServer.run",
+            "raw_sleep_poll",
+        ),
+        ("ralph/mcp/server/_handover_protocol.py", "wait_for_candidate_resume", "raw_sleep_poll"),
+        ("ralph/mcp/server/_runtime_polling.py", "_poll_registry_build_gate", "raw_sleep_poll"),
+        (
+            "ralph/mcp/server/_transport_repetition_tracker.py",
+            "_acquire_state_lock",
+            "raw_sleep_poll",
+        ),
+        ("ralph/mcp/server/_wire_ledger.py", "append_wire_record", "raw_sleep_poll"),
+        ("ralph/pipeline/integration_actions.py", "_SystemClock.sleep", "raw_sleep_poll"),
+        ("ralph/pipeline/integration_attempt_ledger.py", "_take_lock", "raw_sleep_poll"),
+        ("ralph/process/_pty_process.py", "PtyProcess.wait", "raw_sleep_poll"),
+        ("ralph/process/manager/_supervisor.py", "_kill_tree_and_exit", "raw_sleep_poll"),
+        ("ralph/process/teardown.py", "DefaultProcessTeardown._await_exit", "raw_sleep_poll"),
+        (
+            "ralph/process/teardown.py",
+            "DefaultProcessTeardown._signal_process_group",
+            "raw_sleep_poll",
+        ),
+        ("ralph/recovery/connectivity.py", "ConnectivityMonitor._probe_loop", "raw_sleep_poll"),
+        ("ralph/telemetry/_user_identity.py", "_identity_lock", "raw_sleep_poll"),
+        ("ralph/testing/_audit_baseline.py", "_run_git", "raw_subprocess_invocation"),
+        ("ralph/testing/audit_comments.py", "_git_output", "raw_subprocess_invocation"),
+        ("ralph/testing/fake_agent_executor.py", "FakeAgentExecutor.run", "raw_sleep_poll"),
+    }
+)
 
 
 @dataclass(frozen=True)
 class FilesystemPollingInvocationViolation:
-    """One lifecycle-ownership violation with actionable remediation."""
-
     kind: str
     file_path: str
     line: int
     message: str
 
     def __str__(self) -> str:
-        """Return the stable diagnostic representation."""
         return f"{self.file_path}:{self.line}: {self.kind}: {self.message}"
 
 
@@ -54,44 +112,13 @@ def _collect_python_files(root: Path) -> list[Path]:
 
 
 def _is_exempt(rel_path: str, exempt_paths: frozenset[str]) -> bool:
-    """Return whether a candidate is one of the canonical lifecycle owners.
-
-    Exact matching prevents an unrelated module such as
-    ``unrelated/agents/invoke/_workspace.py`` from borrowing the owner's
-    exemption and silently bypassing P1-P4 enforcement.
-    """
     return rel_path.removeprefix("ralph/") in exempt_paths
 
 
 def _is_canonical_owner(module_path: Path, package_root: Path) -> bool:
-    """Return whether a path is a canonical lifecycle owner under the package root.
-
-    The public entry point accepts either the repository root (where module
-    paths begin with ``ralph/``) or the package directory itself. Normalize
-    only that leading canonical production root; no suffix match is accepted.
-    """
     relative_path = module_path.relative_to(package_root).as_posix()
     normalized_path = relative_path.removeprefix("ralph/")
     return normalized_path in _DEFAULT_EXEMPT_PATHS
-
-
-def _marker_lines(source: str) -> set[int]:
-    """Return local D3 exception comments with a stated lifecycle contract."""
-    try:
-        tokens = tokenize.generate_tokens(StringIO(source).readline)
-        return {
-            token.start[0]
-            for token in tokens
-            if token.type == tokenize.COMMENT
-            and _MARKER_TOKEN in token.string
-            and token.string.split(_MARKER_TOKEN, maxsplit=1)[1].strip()
-        }
-    except tokenize.TokenError:
-        return set()
-
-
-def _has_local_marker(line: int, marker_lines: set[int]) -> bool:
-    return line in marker_lines or line - 1 in marker_lines
 
 
 _SUBPROCESS_CALLS: frozenset[str] = frozenset(
@@ -110,12 +137,6 @@ def _module_aliases(
 
 
 def _observer_aliases(nodes: Sequence[ast.AST]) -> set[str]:
-    """Return local roots that can construct watchdog observers.
-
-    ``import watchdog`` exposes the same observer constructor as a direct
-    ``watchdog.observers`` import.  Recognizing the root package keeps a new
-    watch owner from evading P1/P4 enforcement through attribute chaining.
-    """
     aliases = _imported_names(
         nodes, module="watchdog.observers", accepted={"watchdog.observers", "Observer"}
     )
@@ -136,12 +157,6 @@ def _observer_aliases(nodes: Sequence[ast.AST]) -> set[str]:
 
 
 def _subprocess_aliases(nodes: Sequence[ast.AST]) -> dict[str, str]:
-    """Map local subprocess import names to their canonical API names.
-
-    Direct imports retain their canonical member so an alias such as
-    ``from subprocess import run as launch`` cannot evade the typed-process
-    ownership audit.
-    """
     aliases: dict[str, str] = {}
     for node in nodes:
         if isinstance(node, ast.Import):
@@ -181,7 +196,6 @@ def _attribute_root(node: ast.Attribute) -> str | None:
 
 
 def _dynamic_observer_constructor(node: ast.Call, observer_names: set[str]) -> bool:
-    """True for a statically resolved ``getattr(watchdog, 'Observer')()`` call."""
     func = node.func
     if not (
         isinstance(func, ast.Call)
@@ -198,7 +212,6 @@ def _dynamic_observer_constructor(node: ast.Call, observer_names: set[str]) -> b
 
 
 def _dynamic_subprocess_launcher(node: ast.Call, subprocess_names: dict[str, str]) -> bool:
-    """True for a statically resolved ``getattr(subprocess, launcher)(...)`` call."""
     func = node.func
     if not (
         isinstance(func, ast.Call)
@@ -293,11 +306,11 @@ def _scan_module(module_path: Path, rel_path: str) -> list[FilesystemPollingInvo
             )
         ]
     nodes = list(ast.walk(tree))
-    markers = _marker_lines(source)
+    parents = build_parent_map(tree)
     time_names, asyncio_names, observer_names, subprocess_names = _module_aliases(nodes)
     violations: list[FilesystemPollingInvocationViolation] = []
     for node in nodes:
-        if not isinstance(node, ast.Call) or _has_local_marker(node.lineno, markers):
+        if not isinstance(node, ast.Call):
             continue
         details = _violation_for_call(
             node,
@@ -306,11 +319,15 @@ def _scan_module(module_path: Path, rel_path: str) -> list[FilesystemPollingInvo
             observer_names=observer_names,
             subprocess_names=subprocess_names,
         )
-        if details is not None:
-            kind, message = details
-            violations.append(
-                FilesystemPollingInvocationViolation(kind, rel_path, node.lineno, message)
-            )
+        if details is None:
+            continue
+        kind, message = details
+        scope = qualified_scope(node, parents)
+        if (rel_path, scope, kind) in EXEMPT_CALL_SITES:
+            continue
+        violations.append(
+            FilesystemPollingInvocationViolation(kind, rel_path, node.lineno, message)
+        )
     return violations
 
 
@@ -320,11 +337,6 @@ def audit_filesystem_polling_invocation(
     module_paths: Sequence[str] | None = None,
     exempt_paths: frozenset[str] | Sequence[str] | None = None,
 ) -> list[FilesystemPollingInvocationViolation]:
-    """Return lifecycle-ownership violations for every production module.
-
-    New modules participate automatically, unreadable or invalid source fails
-    closed, and deviations must name their local lifecycle contract.
-    """
     if not package_root.is_dir():
         return [
             FilesystemPollingInvocationViolation(
@@ -383,7 +395,6 @@ def audit_filesystem_polling_invocation(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Run the audit from the package root and print actionable violations."""
     selected = sys.argv[1:] if argv is None else argv
     package_root = Path(selected[0]) if selected else Path(__file__).parent.parent.parent
     violations = audit_filesystem_polling_invocation(package_root)

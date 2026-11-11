@@ -1,15 +1,3 @@
-"""S-5 / C3 / DoD 14: the operator never sees a bare transcript-claimed outcome.
-
-Brief ``.agent/PRODUCT_CRITERIA.md`` -- the agent's own ``agy result
-SUCCESS (3.58s, 1 turn)`` line is the model's stream, not Ralph's
-verdict. When the lifecycle renderer surfaces it as an activity line,
-the rendered text must qualify it as transcript-sourced (``[transcript]``)
-so the operator does not mistake the agent's own success assertion for
-the harness's graded verdict. The graded verdict is reported separately
-by the phase-report path, built from the
-``CompletionSignals``/``graded_verdict`` lattice.
-"""
-
 from __future__ import annotations
 
 from ralph.agents.parsers.agy import AgyParser
@@ -24,7 +12,6 @@ _AGY_RESULT_SUCCESS = (
 
 
 def test_agy_result_frame_marks_stop_event_as_transcript_claimed() -> None:
-    """AGY's ``result`` frame emits a ``stop`` event with the transcript-claimed marker."""
     parser = AgyParser()
     events = list(parser.parse(iter([_AGY_RESULT_SUCCESS])))
     stop_events = [e for e in events if e.type == "stop"]
@@ -34,7 +21,6 @@ def test_agy_result_frame_marks_stop_event_as_transcript_claimed() -> None:
 
 
 def test_lifecycle_renderer_qualifies_transcript_claimed_outcome() -> None:
-    """The lifecycle renderer prefixes ``[transcript]`` for transcript-claimed outcomes."""
     from ralph.display.activity_provider import ActivityProvider
 
     event = AgentActivityEvent(
@@ -51,7 +37,6 @@ def test_lifecycle_renderer_qualifies_transcript_claimed_outcome() -> None:
 
 
 def test_lifecycle_renderer_does_not_qualify_non_transcript_lifecycle_events() -> None:
-    """Phase-transition lifecycle events are NOT transcript-claimed outcomes."""
     from ralph.display.activity_provider import ActivityProvider
 
     event = AgentActivityEvent(

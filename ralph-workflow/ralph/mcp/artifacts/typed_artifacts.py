@@ -1,7 +1,3 @@
-"""Structured validation for typed non-plan artifact payloads.
-
-Covers: issues, fix_result, and analysis decision artifacts.
-"""
 
 from __future__ import annotations
 
@@ -24,7 +20,6 @@ if TYPE_CHECKING:
 
 
 def _load_analysis_decision_vocabulary() -> frozenset[str]:
-    """Load allowed analysis decision statuses from the bundled default artifacts.toml."""
     defaults = Path(__file__).parent.parent.parent / "policy" / "defaults" / "artifacts.toml"
     with defaults.open("rb") as f:
         data: dict[str, object] = tomllib.load(f)
@@ -50,7 +45,6 @@ _ANALYSIS_DECISION_VOCABULARY: frozenset[str] = _load_analysis_decision_vocabula
 
 
 class Issues(RalphBaseModel):
-    """Validated schema for an issues artifact payload."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -87,12 +81,10 @@ def _validate(model_cls: type[RalphBaseModel], content: dict[str, object]) -> di
 
 
 def normalize_issues_content(content: dict[str, object]) -> dict[str, object]:
-    """Validate and normalize a raw issues artifact content dict."""
     return _validate(Issues, content)
 
 
 def normalize_fix_result_content(content: dict[str, object]) -> dict[str, object]:
-    """Validate and normalize a raw fix_result artifact content dict."""
     return _validate(FixResult, content)
 
 
@@ -101,12 +93,6 @@ def normalize_analysis_decision_content(
     *,
     allowed_statuses: Collection[str] | None = None,
 ) -> dict[str, object]:
-    """Validate and normalize an analysis decision artifact content dict.
-
-    A development analysis decision is free-form: only the ``status``
-    enum is checked, because routing reads it. The body is otherwise
-    passed through unchanged for the next agent to read.
-    """
     if isinstance(content, dict) and content.get("type") == "development_analysis_decision":
         statuses = (
             frozenset(allowed_statuses)
@@ -132,7 +118,6 @@ def normalize_analysis_decision_content(
 
 
 def normalize_commit_review_content(content: dict[str, object]) -> dict[str, object]:
-    """Validate and normalize a raw commit_review artifact content dict."""
     return _validate(CommitReview, content)
 
 

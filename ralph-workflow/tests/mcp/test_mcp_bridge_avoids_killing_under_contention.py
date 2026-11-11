@@ -1,5 +1,3 @@
-"""R3.3: bridge preserves a healthy-but-contended server."""
-
 from __future__ import annotations
 
 import pathlib
@@ -23,13 +21,6 @@ from ralph.mcp.server import (
 
 @pytest.fixture(autouse=True)
 def _isolate_contention_signals() -> Iterator[None]:
-    """Clear the module-level contention deque before AND after each test.
-
-    The deque is a module-level singleton shared across the whole
-    process, so leakage from this test file would otherwise pollute
-    the regular 3-miss policy tests in ``test_mcp_lifecycle.py`` and
-    turn their probe-failure restarts into deferrals.
-    """
     clear_host_contention_signals()
     yield
     clear_host_contention_signals()
@@ -86,22 +77,18 @@ def _make_bridge(
     )
 
 
-# 1. Blocked-reader / no signal: existing 3-miss policy still applies
 def test_no_signal_regular_three_miss_policy_still_fires() -> None:
     def always_fail_probe(endpoint: str, timeout: timedelta) -> None:
         raise RuntimeError("probe failed")
 
     bridge = _make_bridge(always_fail_probe, contention_producer=lambda: False)
-    # 3 probe misses; restart fires on the 3rd.
     bridge.check_health_and_restart_if_needed()
     bridge.check_health_and_restart_if_needed()
     bridge.check_health_and_restart_if_needed()
-    # 4th call: restart_count == 1 (after the 3rd call's restart)
     bridge.check_health_and_restart_if_needed()
     assert bridge.restart_count == 1
 
 
-# 2. W-only: B False, W True → defer
 def test_w_only_defers_restart() -> None:
     record_host_contention_signal("watch_capacity_predicted")
 
@@ -111,17 +98,14 @@ def test_w_only_defers_restart() -> None:
     bridge = _make_bridge(always_fail_probe, contention_producer=lambda: False)
     for _ in range(3):
         bridge.check_health_and_restart_if_needed()
-    # 3 contended misses → no restart yet
     assert bridge.restart_count == 0
     assert bridge.diagnostics().deferred_probe_failures == 3
-    # Under sustained contention, 4th and subsequent misses NEVER escalate to restart
     for _ in range(5):
         bridge.check_health_and_restart_if_needed()
     assert bridge.restart_count == 0
     assert bridge.diagnostics().deferred_probe_failures == 8
 
 
-# 3. B-only: B True, W empty → defer
 def test_b_only_defers_restart() -> None:
     def always_fail_probe(endpoint: str, timeout: timedelta) -> None:
         raise RuntimeError("probe failed")
@@ -131,14 +115,12 @@ def test_b_only_defers_restart() -> None:
         bridge.check_health_and_restart_if_needed()
     assert bridge.restart_count == 0
     assert bridge.diagnostics().deferred_probe_failures == 3
-    # 4th and 5th misses under sustained contention NEVER escalate to restart
     for _ in range(5):
         bridge.check_health_and_restart_if_needed()
     assert bridge.restart_count == 0
     assert bridge.diagnostics().deferred_probe_failures == 8
 
 
-# 4. Both: B True, W True → defer
 def test_both_defers_restart() -> None:
     record_host_contention_signal("watch_capacity_predicted")
 
@@ -149,14 +131,12 @@ def test_both_defers_restart() -> None:
     for _ in range(3):
         bridge.check_health_and_restart_if_needed()
     assert bridge.restart_count == 0
-    # Sustained contention: never restarts
     for _ in range(5):
         bridge.check_health_and_restart_if_needed()
     assert bridge.restart_count == 0
     assert bridge.diagnostics().deferred_probe_failures == 8
 
 
-# 5. Successful recovery: contended misses + success resets BOTH counters
 def test_successful_recovery_preserves_server() -> None:
     record_host_contention_signal("watch_capacity_predicted")
     should_fail = [True]
@@ -167,34 +147,27 @@ def test_successful_recovery_preserves_server() -> None:
             raise RuntimeError("probe failed")
 
     bridge = _make_bridge(controllable_probe, contention_producer=lambda: contended[0])
-    # 3 contended misses
     for _ in range(3):
         bridge.check_health_and_restart_if_needed()
     assert bridge.restart_count == 0
     assert bridge.diagnostics().deferred_probe_failures == 3
 
-    # Under E6.3 hysteresis (3 consecutive successes), an isolated success retains failure count
-    # while 3 consecutive successes reset BOTH counters
     should_fail[0] = False
     bridge.check_health_and_restart_if_needed()
-    assert bridge.diagnostics().deferred_probe_failures == 3  # retained after 1 success
+    assert bridge.diagnostics().deferred_probe_failures == 3
     bridge.check_health_and_restart_if_needed()
-    assert bridge.diagnostics().deferred_probe_failures == 3  # retained after 2 successes
+    assert bridge.diagnostics().deferred_probe_failures == 3
     bridge.check_health_and_restart_if_needed()
-    # 3 consecutive successes -> hysteresis met -> reset
     assert bridge.diagnostics().consecutive_probe_failures == 0
     assert bridge.diagnostics().deferred_probe_failures == 0
     assert bridge.restart_count == 0
 
-    # Second sequence of 5 contended misses -> never restarts
     should_fail[0] = True
     for _ in range(5):
         bridge.check_health_and_restart_if_needed()
     assert bridge.restart_count == 0
     assert bridge.diagnostics().deferred_probe_failures == 5
 
-    # If contention ceases (producer returns False, W signal cleared),
-    # regular 3 misses trigger restart
     clear_host_contention_signals()
     contended[0] = False
     for _ in range(2):
@@ -205,10 +178,8 @@ def test_successful_recovery_preserves_server() -> None:
     assert bridge.diagnostics().deferred_probe_failures == 0
 
 
-# 6. Process-exit: not gated by contention signal
 def test_process_exit_not_gated_by_contention() -> None:
     record_host_contention_signal("watch_capacity_predicted")
-    # Build a bridge whose process.poll() returns non-None.
     inner = _make_inner(poll_result=1)
 
     def restart_fn() -> lifecycle.StandaloneMcpProcess:
@@ -220,13 +191,12 @@ def test_process_exit_not_gated_by_contention() -> None:
         restart_policy=McpRestartPolicy(max_restarts=10, cooldown_seconds=0.0),
         run_id="test-run",
         probe_fn=lambda ep, to: None,
-        contention_signal_producer=lambda: True,  # contended, but ignored
+        contention_signal_producer=lambda: True,
     )
     bridge.check_health_and_restart_if_needed()
     assert bridge.restart_count == 1
 
 
-# 7. Lock availability: lock is released during contention producer call
 def test_lock_released_during_contention_producer_call() -> None:
     producer_entered = threading.Event()
     release_producer = threading.Event()
@@ -250,10 +220,6 @@ def test_lock_released_during_contention_producer_call() -> None:
 
     assert producer_entered.wait(timeout=2.0) is True
 
-    # While the blocking producer is running outside the lock, a concurrent
-    # reader of the bridge's public diagnostics snapshot must complete: the
-    # bridge's internal lock is released for the duration of the producer
-    # call, so a supervisor thread is never queued behind it.
     snapshot_read = threading.Event()
 
     def read_snapshot() -> None:
@@ -272,16 +238,7 @@ def test_lock_released_during_contention_producer_call() -> None:
     assert not supervisor_thread.is_alive()
 
 
-# 8. Off-lock B-signal race: stale probe result discarded when bridge changed
 def test_stale_probe_result_discarded_after_reset() -> None:
-    """Supervisor's stale B-signal is discarded if the bridge changed.
-
-    While the contention producer runs OFF the lock, the main thread
-    calls reset_tool_registry. The reset bumps the bridge generation
-    and swaps self._inner. When the producer returns, the supervisor
-    revalidates the probed identity under the lock, finds a mismatch,
-    and discards the stale B-signal without touching any counter.
-    """
     log_records: list[str] = []
 
     def record_log(msg: object) -> None:
@@ -311,12 +268,6 @@ def test_stale_probe_result_discarded_after_reset() -> None:
     try:
         assert producer_entered.wait(timeout=2.0) is True
 
-        # While the producer is blocked OFF the lock, the main thread
-        # calls reset_tool_registry. The reset bumps _bridge_generation
-        # BEFORE any other step and swaps self._inner. The post-respawn
-        # alias verify makes an HTTP request to a non-existent endpoint
-        # and raises McpServerError; the generation bump has already
-        # happened, which is what the discard check needs.
         initial_generation = bridge.diagnostics().generation
         with pytest.raises(lifecycle.McpServerError):
             bridge.reset_tool_registry()
@@ -328,15 +279,10 @@ def test_stale_probe_result_discarded_after_reset() -> None:
         supervisor_thread.join(timeout=2.0)
         assert not supervisor_thread.is_alive()
 
-        # The supervisor's stale probe result was discarded: no counter
-        # was advanced by the supervisor's call. The deferred counter
-        # stays at zero (it would be 1 if the stale B-signal had been
-        # applied to the new inner).
         assert bridge.restart_count == restart_count_after_reset
         assert bridge.diagnostics().deferred_probe_failures == 0
         assert bridge.diagnostics().consecutive_probe_failures == 0
 
-        # The discard debug line was logged.
         assert any("stale probe result discarded" in record for record in log_records), (
             f"Expected discard debug line in {log_records!r}"
         )
@@ -345,7 +291,6 @@ def test_stale_probe_result_discarded_after_reset() -> None:
 
 
 def test_sustained_contention_probe_timeout_escalation_and_ceiling() -> None:
-    """Under sustained contention, probe timeout doubles up to ceiling below preflight budget."""
     observed_timeouts: list[float] = []
 
     def recording_probe(endpoint: str, timeout: timedelta) -> None:
@@ -364,12 +309,6 @@ def test_sustained_contention_probe_timeout_escalation_and_ceiling() -> None:
         contention_signal_producer=lambda: True,
     )
 
-    # Base timeout: 1.0s, preflight: 6.0s -> ceiling: max(1.0, 6.0 - 1.0) = 5.0s
-    # Call 1: deferred=0 -> timeout=1.0s
-    # Call 2: deferred=1 -> timeout=min(2.0s, 5.0s) = 2.0s
-    # Call 3: deferred=2 -> timeout=min(4.0s, 5.0s) = 4.0s
-    # Call 4: deferred=3 -> timeout=min(8.0s, 5.0s) = 5.0s (capped at ceiling)
-    # Call 5: deferred=4 -> timeout=min(16.0s, 5.0s) = 5.0s (capped at ceiling)
     for _ in range(5):
         restarted = bridge.check_health_and_restart_if_needed()
         assert restarted is False
@@ -380,7 +319,6 @@ def test_sustained_contention_probe_timeout_escalation_and_ceiling() -> None:
 
 
 def test_sustained_contention_writes_durable_sink_records(tmp_path: pathlib.Path) -> None:
-    """Each contention deferral appends a record with reason, duration, deferral_count, stage."""
     sink_path = configure_bridge_sink(tmp_path, "contention-bridge-test")
 
     def failing_probe(endpoint: str, timeout: timedelta) -> None:
@@ -411,22 +349,6 @@ def test_sustained_contention_writes_durable_sink_records(tmp_path: pathlib.Path
 
 
 def test_sustained_contention_ceiling_trips_replacement_at_30() -> None:
-    """Sustained contention never overflows AND the deferral ceiling trips replacement.
-
-    Regression for D-04 (no OverflowError from ``timedelta * 2**N``) and
-    for the wt-16 plan's _DEFERRAL_COUNT_CEILING invariant (C3): a live
-    child kept under sustained host contention must defer probes BUT
-    must also be replaced once the ceiling is reached, otherwise
-    indefinite deferral permanently suppresses a needed replacement.
-
-    Before the ceiling (probes 1..29): no exception, no restart,
-    ``_consecutive_probe_failures_deferred`` advances.
-    After the ceiling (probe 31+): a replacement is forced, and the
-    test re-enters the deferral cycle from zero.
-
-    Every observed probe timeout must be bounded by the documented
-    ceiling (max(base_timeout, preflight_timeout - 1s)).
-    """
     from ralph.mcp.server.lifecycle import _DEFERRAL_COUNT_CEILING
 
     observed_timeouts: list[float] = []
@@ -447,22 +369,16 @@ def test_sustained_contention_ceiling_trips_replacement_at_30() -> None:
         contention_signal_producer=lambda: True,
     )
 
-    # Probe _DEFERRAL_COUNT_CEILING times under sustained fresh contention:
-    # deferred every call, no restart, no exception. The deferred counter
-    # advances from 0 to _DEFERRAL_COUNT_CEILING inclusive (the trip point).
     for _ in range(_DEFERRAL_COUNT_CEILING):
         restarted = bridge.check_health_and_restart_if_needed()
         assert restarted is False
     assert bridge.restart_count == 0
     assert bridge.diagnostics().deferred_probe_failures == _DEFERRAL_COUNT_CEILING
 
-    # The next probe trips the ceiling: a replacement is forced.
     restarted = bridge.check_health_and_restart_if_needed()
     assert restarted is True
     assert bridge.restart_count >= 1
 
-    # Every observed probe timeout must be bounded by the ceiling
-    # (preflight - 1s = 29s; with base_timeout=5s the ceiling is max(5, 29) = 29s).
     assert observed_timeouts, "probe was never called"
     assert all(0.0 < t <= 29.0 for t in observed_timeouts), (
         f"observed probe timeout out of bounds: {observed_timeouts}"

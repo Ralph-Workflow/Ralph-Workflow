@@ -1,5 +1,3 @@
-"""Tests for the MCP startup port."""
-
 from __future__ import annotations
 
 import datetime
@@ -197,9 +195,6 @@ def test_mcp_preflight_timeout_from_env_defaults_to_30_seconds(
 
 
 def test_mcp_preflight_timeout_from_mapping_is_injectable() -> None:
-    # 1234 ms would violate the import-time safety-floor invariant
-    # (ceiling 0.6s <= _PROBE_SAFETY_S 2.0s), so inject a value above
-    # the 4000 ms minimum the invariant enforces.
     expected = datetime.timedelta(milliseconds=10_000)
     assert (
         startup.mcp_preflight_timeout_from_env({str(MCP_PREFLIGHT_TIMEOUT_MS_ENV): "10000"})

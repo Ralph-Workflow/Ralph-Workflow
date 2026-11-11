@@ -1,4 +1,3 @@
-"""Timeout exception that records which process deadline expired."""
 
 from __future__ import annotations
 
@@ -7,7 +6,6 @@ from typing import Literal
 
 
 class DeadlineTimeoutExpired(subprocess.TimeoutExpired):
-    """Timeout carrying the deadline that expired."""
 
     def __init__(
         self,

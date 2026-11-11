@@ -1,31 +1,3 @@
-"""DesignVerdict: the signed-off artifact for a visual change review.
-
-A :class:`DesignVerdict` takes EXACTLY three inputs:
-
-* ``before`` — :class:`~ralph.visual.capture_set.CaptureSet` (run-owned baseline)
-* ``after``  — :class:`~ralph.visual.capture_set.CaptureSet` (run-owned re-capture)
-* ``intent`` — ``str`` (the plan item text plus any repo declarations)
-
-Anything else — diff, DOM, stylesheet, source code, single-screenshot
-ground truth — is explicitly NOT a verdict input. The verdict's job is
-to compare two complete capture matrices and emit ``pass`` / ``fail`` /
-``blocked`` along with the findings that explain the verdict, each
-citing a ``capture_id`` and a :class:`~ralph.visual.visual_finding.Region`.
-
-Validation rejects:
-
-* missing or substituted baselines (the ``before`` matrix must be
-  present and must equal the ``after`` matrix),
-* inputs that smuggle in ``source``/``diff``/``DOM``/``stylesheet``
-  references in the intent narrative (the verdict is purely a
-  before/after visual artifact; downstream layers are responsible for
-  producing any other review),
-* absolute claims whose narrative names a target state (``"should
-  be"``, ``"must be"``, ``"needs to be"``, ``"expected to be"``,
-  ``"is not aligned"``, ``"is not visible"``) without a
-  ``"compared to before"``-style grounding phrase — those claims
-  cannot be falsified by re-running the capture.
-"""
 
 from __future__ import annotations
 
@@ -41,23 +13,13 @@ from ralph.visual.visual_finding import (
     VisualFinding,
 )
 
-# ---------------------------------------------------------------------------
-# Verdict status vocabulary
-# ---------------------------------------------------------------------------
 
 VERDICT_PASS: str = "pass"
 VERDICT_FAIL: str = "fail"
 VERDICT_BLOCKED: str = "blocked"
 
-# Closed verdict vocabulary. Anything outside this set is rejected at
-# construction time so downstream consumers can group verdicts by
-# status without spelling drift.
 VERDICT_VALUES: tuple[str, ...] = (VERDICT_PASS, VERDICT_FAIL, VERDICT_BLOCKED)
 
-# Phrases that signal an absolute claim not grounded in a
-# before/after comparison. If a finding's narrative contains any of
-# these without a grounding phrase, the verdict rejects the finding at
-# construction time.
 _ABSOLUTE_CLAIM_FRAGMENTS: tuple[str, ...] = (
     "should be ",
     "must be ",
@@ -69,9 +31,6 @@ _ABSOLUTE_CLAIM_FRAGMENTS: tuple[str, ...] = (
     "is not accessible",
 )
 
-# Grounding phrases that license an absolute claim. The agent MUST
-# explicitly cite the before capture for any absolute assertion —
-# silent "I noticed X" claims cannot be re-verified.
 _BEFORE_GROUNDING_HINTS: tuple[str, ...] = (
     "compared to before",
     "compared to baseline",
@@ -85,11 +44,6 @@ _BEFORE_GROUNDING_HINTS: tuple[str, ...] = (
     "now differs",
 )
 
-# Substrings that signal a verdict input smuggling in a non-capture
-# artifact. ``source``, ``diff``, ``DOM``, and ``stylesheet`` are
-# explicitly NOT visual-verdict inputs — they belong to other
-# reviewers (lint, type, accessibility). The intent narrative MUST
-# stick to plan-item text and repo declarations.
 _INPUT_SMUGGLE_FRAGMENTS: tuple[str, ...] = (
     "source code",
     "source diff",
@@ -105,7 +59,6 @@ _INTENT_MAX_LEN: int = 16 * 1024
 
 
 def _fixture_capture_bytes(capture: Mapping[str, object], label: str) -> tuple[bytes, ...]:
-    """Read fixture capture bytes for deterministic smoke validation only."""
     cells = capture.get("cells")
     if not isinstance(cells, list) or not cells:
         raise ValueError(f"{label} capture evidence is required")
@@ -128,11 +81,6 @@ def validate_deterministic_capture_evidence(
     after: Mapping[str, object],
     verdict: Mapping[str, object],
 ) -> None:
-    """Reject deterministic verdicts without captures or changed fixture bytes.
-
-    This checks evidence transport only. It deliberately makes no visual-quality
-    or taste judgement.
-    """
     handles = verdict.get("cell_handles")
     if not isinstance(handles, list) or not handles:
         raise ValueError("capture handles are required")
@@ -142,11 +90,6 @@ def validate_deterministic_capture_evidence(
         raise ValueError("an improved verdict requires non-byte-identical before/after evidence")
 
 
-# ---------------------------------------------------------------------------
-# Validation helpers — split out of __post_init__ to keep the dataclass
-# entry point short and let ruff's PLR0912 (too-many-branches) gate
-# pass without weakening lint enforcement.
-# ---------------------------------------------------------------------------
 
 
 def _validate_inputs_typed(
@@ -157,7 +100,6 @@ def _validate_inputs_typed(
     status: object,
     findings: object,
 ) -> str:
-    """Type-check the three-input contract. Returns the validated status."""
     if not isinstance(before, CaptureSet):
         raise ValueError("DesignVerdict.before must be a CaptureSet")
     if not isinstance(after, CaptureSet):
@@ -178,7 +120,6 @@ def _validate_inputs_typed(
 
 
 def _validate_intent_no_smuggle(intent: str) -> None:
-    """Reject intent narratives that smuggle in non-capture artifacts."""
     lowered = intent.lower()
     smuggled = [fragment for fragment in _INPUT_SMUGGLE_FRAGMENTS if fragment in lowered]
     if smuggled:
@@ -189,7 +130,6 @@ def _validate_intent_no_smuggle(intent: str) -> None:
 
 
 def _validate_targets_match(before: CaptureSet, after: CaptureSet) -> None:
-    """Reject verdict inputs that compare two different targets."""
     if before.target != after.target:
         raise ValueError(
             f"DesignVerdict target mismatch: before.target={before.target!r} "
@@ -202,7 +142,6 @@ def _validate_matrix_parity(
     before_ids: frozenset[str],
     after_ids: frozenset[str],
 ) -> None:
-    """Reject before/after capture matrices that are not cell-id-equal."""
     if before_ids == after_ids:
         return
     missing_from_after = sorted(before_ids - after_ids)
@@ -230,7 +169,6 @@ def _validate_states_covered(
     before: CaptureSet,
     after: CaptureSet,
 ) -> None:
-    """Reject baselines or after-captures that miss canonical states."""
     before_states = before.states_covered()
     after_states = after.states_covered()
     missing_before = [s for s in REQUIRED_STATES if s not in before_states]
@@ -253,7 +191,6 @@ def _validate_findings(
     findings: tuple[VisualFinding, ...],
     valid_capture_ids: frozenset[str],
 ) -> dict[str, tuple[VisualFinding, ...]]:
-    """Type-check findings, cite valid capture_ids, and group by capture."""
     by_capture: dict[str, list[VisualFinding]] = {}
     for finding in findings:
         if not isinstance(finding, VisualFinding):
@@ -270,11 +207,7 @@ def _validate_findings(
 
 
 def _validate_finding_grounding(finding: VisualFinding) -> None:
-    """Reject a finding whose narrative asserts an absolute state without before-grounding."""
     if finding.severity not in VISUAL_SEVERITIES:
-        # Defensive: the VisualFinding constructor already enforces
-        # this, but keep the check here so a future refactor of
-        # VisualFinding cannot silently disable verdict grounding.
         raise ValueError(
             f"VisualFinding has invalid severity {finding.severity!r}; "
             f"expected one of {list(VISUAL_SEVERITIES)}"
@@ -295,15 +228,6 @@ def _validate_finding_grounding(finding: VisualFinding) -> None:
 
 
 def _validate_status_consistency(status: str, findings: tuple[VisualFinding, ...]) -> None:
-    """Reject inconsistent status/findings pairings.
-
-    * ``pass`` must have no blocker/major findings.
-    * ``fail`` must have at least one blocker or major.
-    * ``blocked`` is allowed with any finding set; the verdict
-      is reserved for downstream "cannot evaluate" cases such as a
-      missing baseline (already raised above) or an agent-side
-      failure surfaced separately.
-    """
     blocker_count = sum(1 for f in findings if f.severity == "blocker")
     major_count = sum(1 for f in findings if f.severity == "major")
     if status == VERDICT_PASS and (blocker_count or major_count):
@@ -318,17 +242,12 @@ def _validate_status_consistency(status: str, findings: tuple[VisualFinding, ...
             "DesignVerdict.status='fail' requires at least one blocker "
             "or major finding; downgrade to 'pass' or add a finding"
         )
-    # ``blocked`` is permissive by design.
 
 
-# ---------------------------------------------------------------------------
-# Verdict object
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True, eq=False)
 class DesignVerdict:
-    """A signed-off visual verdict comparing two complete capture matrices."""
 
     before: CaptureSet
     after: CaptureSet
@@ -362,36 +281,22 @@ class DesignVerdict:
             findings=self.findings,
             valid_capture_ids=self.before.cell_ids,
         )
-        # ``object.__setattr__`` is required because the dataclass is
-        # frozen; we cannot use ``self._by_capture = ...`` directly.
-        # The dict+tuple types are explicit so the assignment does
-        # not leak ``Any`` from mypy's view of ``object.__setattr__``.
         object.__setattr__(self, "_by_capture", grouped)
 
-    # ------------------------------------------------------------------
-    # Accessors
-    # ------------------------------------------------------------------
 
     @property
     def cell_ids(self) -> frozenset[str]:
-        """Return the shared cell-id set (before == after)."""
         return self.before.cell_ids
 
     def findings_for(self, capture_id: str) -> tuple[VisualFinding, ...]:
-        """Return the findings that cite the given capture_id, in declaration order."""
         return self._by_capture.get(capture_id, ())
 
     def blockers(self) -> tuple[VisualFinding, ...]:
-        """Return every blocker finding (severity == 'blocker')."""
         return tuple(f for f in self.findings if f.severity == "blocker")
 
     def majors(self) -> tuple[VisualFinding, ...]:
-        """Return every major finding (severity == 'major')."""
         return tuple(f for f in self.findings if f.severity == "major")
 
-    # ------------------------------------------------------------------
-    # Identity-keyed equality (parity with CaptureSet)
-    # ------------------------------------------------------------------
 
     def __eq__(self, other: object) -> bool:
         return self is other

@@ -1,5 +1,3 @@
-"""Local-only target resolution, with one real-Git clone-layout proof."""
-
 from __future__ import annotations
 
 import subprocess
@@ -16,12 +14,6 @@ from ralph.pipeline.auto_integrate import (
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
 
-# ponytail: real Git clone and fetch setup under xdist can exceed 5s; the 60s suite budget remains authoritative.
-# subprocess_e2e: this file shells out to real ``git`` in tmp_path repos
-# and was already excluded from the test-policy audit by the
-# audit_test_policy's required-auto-integrate set; the explicit marker
-# aligns the audit AST walk with the test_suites.py registration so the
-# policy violations no longer flag subprocess + filesystem I/O.
 pytestmark = [
     pytest.mark.timeout_seconds(10),
     pytest.mark.subprocess_e2e,
@@ -29,7 +21,6 @@ pytestmark = [
 
 
 def auto_integrate_after_commit(*args: Any, **kwargs: Any) -> Any:
-    """Test-only wrapper that skips real CAS backoff sleeps."""
     kwargs.setdefault("sleep", lambda _seconds: None)
     kwargs.setdefault("jitter", lambda: 0.0)
     return _auto_integrate_after_commit(*args, **kwargs)
@@ -49,7 +40,6 @@ def _run(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
 def test_remote_only_target_is_not_materialized_locally(
     tmp_git_repo: Path,
 ) -> None:
-    """A remote-tracking ref cannot become the first local integration base."""
     main = _run(tmp_git_repo, "branch", "--show-current").stdout.strip()
     bare = tmp_git_repo.parent / "origin.git"
     clone = tmp_git_repo.parent / "agent"
@@ -82,7 +72,6 @@ def test_remote_only_target_is_not_materialized_locally(
 def test_remote_reconcile_conflict_regression_lands_feature_after_clean_abort(
     tmp_git_repo: Path,
 ) -> None:
-    """S-2/S-3: an aborted target conflict cannot strand local feature landing."""
     main = _run(tmp_git_repo, "branch", "--show-current").stdout.strip()
     bare = tmp_git_repo.parent / "origin.git"
     writer = tmp_git_repo.parent / "writer"
@@ -96,27 +85,23 @@ def test_remote_reconcile_conflict_regression_lands_feature_after_clean_abort(
 
     r = Repo(tmp_git_repo)
     r.index.add(["conflict.txt"])
-    # RALPH-TEST-REASON: GitPython commit replaces subprocess git add/commit to reduce CPU overhead
     r.index.commit("local target")
     r.close()
     assert _run(tmp_git_repo, "checkout", "-b", "feature").returncode == 0
     (tmp_git_repo / "feature.txt").write_text("feature\n", encoding="utf-8")
     r = Repo(tmp_git_repo)
     r.index.add(["feature.txt"])
-    # RALPH-TEST-REASON: GitPython commit replaces subprocess git add/commit to reduce CPU overhead
     r.index.commit("feature")
     r.close()
     assert _run(tmp_git_repo, "worktree", "add", str(owner), main).returncode == 0
 
     assert _run(tmp_git_repo.parent, "clone", str(bare), str(writer)).returncode == 0
     rw = Repo(writer)
-    # RALPH-TEST-REASON: GitPython config replaces subprocess git config to reduce CPU overhead
     with rw.config_writer() as cfg:
         cfg.set_value("user", "name", "Test User")
         cfg.set_value("user", "email", "test@example.com")
     (writer / "conflict.txt").write_text("remote\n", encoding="utf-8")
     rw.index.add(["conflict.txt"])
-    # RALPH-TEST-REASON: GitPython commit replaces subprocess git add/commit to reduce CPU overhead
     rw.index.commit("remote target")
     rw.close()
     assert _run(writer, "push", "origin", main).returncode == 0

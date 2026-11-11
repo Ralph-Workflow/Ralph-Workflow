@@ -1,18 +1,3 @@
-"""Opt-in AGY parser-to-harness regression.
-
-This module replays the measured v1.1.13 wire capture
-(``tests/display/_fixtures/agy_wire_v1_1_13.jsonl`` -- see
-``agy_wire_provenance.md`` in the same directory) through ``AgyParser`` and
-through ``ralph.pipeline.plumbing.smoke_plumbing._meaningful_output_lines``.
-It is selected explicitly with ``pytest -m smoke``, alongside the full
-AGY lifecycle smoke, and is not part of the standard verification profile.
-
-The v1.1.13 capture is bodiless for ``system_message`` steps, so the
-syntax-highlight contract is pinned with one synthetic payload-carrying
-frame (the same shape ``tests/test_agy_syntax_highlighting.py`` uses),
-clearly labeled as synthetic.
-"""
-
 from __future__ import annotations
 
 import json
@@ -42,12 +27,6 @@ def _agy_config() -> AgentConfig:
 
 
 def test_v1_1_13_fixture_replay_emits_the_measured_five_event_types() -> None:
-    """Every event type the v1.1.13 wire actually carries reaches the parser stream.
-
-    The measured capture produces exactly {text, tool_use, tool_result,
-    lifecycle, stop}; it carries no ``error`` or ``thinking`` frame, so the
-    assertion deliberately stops at the fixture's measured vocabulary.
-    """
     events = list(AgyParser().parse(iter(_fixture_lines())))
     types = [event.type for event in events]
     for expected in ("text", "tool_use", "tool_result", "lifecycle", "stop"):
@@ -55,13 +34,6 @@ def test_v1_1_13_fixture_replay_emits_the_measured_five_event_types() -> None:
 
 
 def test_v1_1_13_fixture_flows_through_meaningful_output_lines() -> None:
-    """The fixture's whitelisted content survives the harness output filter.
-
-    ``_meaningful_output_lines`` keeps only {text, thinking, tool_use,
-    tool_result, error} prefixed lines in parser emission order; the
-    ``lifecycle`` and ``stop`` events the fixture also emits are excluded by
-    documented contract.
-    """
     lines = _fixture_lines()
     events = list(AgyParser().parse(iter(lines)))
     meaningful = _meaningful_output_lines(_agy_config(), lines)
@@ -94,13 +66,6 @@ def test_v1_1_13_fixture_flows_through_meaningful_output_lines() -> None:
 
 
 def test_synthetic_fenced_system_message_highlight_stays_off_meaningful_lines() -> None:
-    """The syntax-highlight metadata travels on the parser event, not the harness line.
-
-    Synthetic frame (the v1.1.13 capture is bodiless for ``system_message``):
-    the parser must emit a ``text`` event with ``syntax_highlight is True``
-    and the resolved language alias; the harness whitelist then renders it
-    as an ordinary ``text:`` line -- no highlight-specific surface.
-    """
     frame = {
         "event": "step_update",
         "step_update": {

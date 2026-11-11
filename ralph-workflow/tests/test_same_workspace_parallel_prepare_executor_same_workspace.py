@@ -1,5 +1,3 @@
-"""Tests for same-workspace parallel worker behaviour."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -39,7 +37,6 @@ class TestPrepareExecutorSameWorkspace:
 
         _executor, bundle, worker_namespace = prepare_executor(unit, mock_executor, ctx)
 
-        # injected factory must be used, not a new one
         assert ctx.mcp_factory.build.called
         assert bundle is not None
         assert worker_namespace is not None
@@ -78,7 +75,6 @@ class TestPrepareExecutorSameWorkspace:
         assert worker_namespace is None
 
     def test_inprocess_forwards_session_contract_to_worker_session(self, tmp_path: Path) -> None:
-        """In-process _prepare_executor forwards session contract fields to build_worker_session."""
         unit = _make_unit("unit-a")
         mock_executor = MagicMock()
         identity = MultimodalModelIdentity(provider="claude", model_id="claude-sonnet-4")
@@ -107,7 +103,6 @@ class TestPrepareExecutorSameWorkspace:
     def test_inprocess_worker_session_has_unknown_identity_when_context_has_none(
         self, tmp_path: Path
     ) -> None:
-        """When session_model_identity is None, worker session uses UNKNOWN_IDENTITY."""
         unit = _make_unit("unit-a")
         mock_executor = MagicMock()
         ctx = _make_same_workspace_context(tmp_path, executor_command=None)

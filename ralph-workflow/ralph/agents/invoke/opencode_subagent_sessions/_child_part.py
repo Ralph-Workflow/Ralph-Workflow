@@ -1,4 +1,3 @@
-"""One updated message part of a native OpenCode subagent, and its summaries."""
 
 from __future__ import annotations
 
@@ -9,7 +8,6 @@ from typing import cast
 
 @dataclass(frozen=True)
 class OpenCodeChildPart:
-    """One updated message part belonging to a native OpenCode subagent."""
 
     child_session_id: str
     agent: str | None
@@ -20,7 +18,6 @@ class OpenCodeChildPart:
 
 
 def part_kind_from_data(data: str) -> str:
-    """Summarise a ``part.data`` JSON payload as ``tool:<name>`` / ``text`` / ``reasoning``."""
     try:
         decoded = cast("object", json.loads(data))
     except (TypeError, ValueError):
@@ -39,13 +36,6 @@ def part_kind_from_data(data: str) -> str:
 
 
 def summarize_child_part(part: OpenCodeChildPart) -> str:
-    """Render a part as the ``verb:<name> [child:<agent>] <title>`` watchdog summary.
-
-    The ``tool_use:`` / ``text:`` / ``thinking:`` prefixes are the canonical
-    subagent-description vocabulary the watchdog surfaces as the current
-    tool call; the ``[child:<agent>]`` label keeps the line attributed to
-    the subagent rather than the parent.
-    """
     label = f"[child:{part.agent}]" if part.agent else "[child]"
     if part.kind.startswith("tool:"):
         verb = f"tool_use:{part.kind[len('tool:') :]}"

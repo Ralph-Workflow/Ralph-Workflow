@@ -1,15 +1,3 @@
-"""Lock-down tests for render_explanation_ascii() ASCII marker contracts.
-
-These tests verify that the required ASCII visual markers are present in the
-rendered output for three structural patterns:
-  - spine (=ENTRY=>, ==SUCCESS==>, ==FAILURE==>, Legend: block)
-  - loopback (<<==[loopback]==, [LOOPBACK: ...], >> RE-ENTRY at ...)
-  - fan-out / rejoin (>>> FAN_OUT ..., <<< REJOIN)
-
-Tests use synthetic PolicyExplanation / PolicyBundle instances so they do not
-depend on the bundled default pipeline.toml.
-"""
-
 from __future__ import annotations
 
 from ralph.policy.explain import (
@@ -67,8 +55,6 @@ def _minimal_recovery() -> RecoveryExplanation:
 
 
 class TestAsciiLoopbackContract:
-    """Loopback markers: <<==[loopback]==, [LOOPBACK: counter=..., max=...], >> RE-ENTRY."""
-
     def _loopback_explanation(self) -> PolicyExplanation:
         loop_policy = LoopPolicyExplanation(
             max_iterations=3,
@@ -100,29 +86,22 @@ class TestAsciiLoopbackContract:
         )
 
     def test_loopback_arrow_present(self) -> None:
-        """<<==[loopback]== appears when on_loopback differs from on_success."""
         output = render_explanation_ascii(self._loopback_explanation())
         assert "<<==[loopback]==" in output
 
     def test_loopback_shows_target(self) -> None:
-        """Loopback annotation shows the return target."""
         output = render_explanation_ascii(self._loopback_explanation())
         assert "returns to 'analysis'" in output
 
     def test_loopback_counter_annotation_present(self) -> None:
-        """[LOOPBACK: counter=..., max=...] annotation appears when loop_policy is set."""
         output = render_explanation_ascii(self._loopback_explanation())
         assert "[LOOPBACK: counter=my_counter, max=3]" in output
 
     def test_reentry_banner_present(self) -> None:
-        """>> RE-ENTRY at target appears below the loopback annotation."""
         output = render_explanation_ascii(self._loopback_explanation())
         assert ">> RE-ENTRY at analysis" in output
 
     def test_loopback_is_left_pointing(self) -> None:
-        """Loopback arrow uses left-pointing syntax, not forward arrows."""
         output = render_explanation_ascii(self._loopback_explanation())
-        # Must use left-pointing arrows
         assert "<<==[loopback]==" in output
-        # Must NOT use the old right-pointing formats
         assert "<--[loopback]--" not in output

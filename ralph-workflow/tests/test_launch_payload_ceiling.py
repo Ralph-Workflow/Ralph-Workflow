@@ -20,7 +20,6 @@ def test_oversized_inline_prompt_is_replaced_by_file_path(monkeypatch: pytest.Mo
 
 
 def test_irreducible_payload_regression_is_a_typed_runtime_launch_error() -> None:
-    """S-2: validation-side E2BIG has the same typed contract as Popen E2BIG."""
     with pytest.raises(AgentLaunchError, match="argv\\+env =") as excinfo:
         prepare_spawn_command(
             ("claude", "--", "x" * 100), cwd=None, env={"A": "y" * 100}, payload_limit=32

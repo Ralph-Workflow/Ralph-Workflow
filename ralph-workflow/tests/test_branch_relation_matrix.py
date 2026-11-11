@@ -1,11 +1,3 @@
-"""Every way a feature branch can stand to its target, driven through real git.
-
-The planning gate, the idempotent land and the planning integration entry
-point must agree for each relation. The regression this guards: the feature
-sat fully inside a target that had moved ahead, the land shortcut answered
-"contained" while the gate answered "behind", and planning blocked forever.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -29,7 +21,6 @@ def _commit(repo: Path, name: str) -> None:
 
 
 def _build(repo: Path, relation: BranchRelation) -> None:
-    """Leave ``repo`` checked out on ``feature`` standing in ``relation`` to main."""
     _git(repo, "branch", "-M", _TARGET)
     _git(repo, "checkout", "-q", "-b", "feature")
     if relation in {BranchRelation.FEATURE_AHEAD, BranchRelation.DIVERGED}:
@@ -76,7 +67,6 @@ def test_relation_needs_follow_the_two_questions() -> None:
 def test_land_shortcuts_answer_only_when_their_own_question_is_settled(
     tmp_git_repo: Path, relation: BranchRelation
 ) -> None:
-    """A plain land answers once nothing needs landing; a catch-up land needs sync."""
     _build(tmp_git_repo, relation)
 
     plain = contained_land(tmp_git_repo, _TARGET)

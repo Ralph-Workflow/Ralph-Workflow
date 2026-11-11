@@ -1,11 +1,3 @@
-"""A round stops spending candidates once the worktree proves the conflict resolved.
-
-A resolver killed for inactivity AFTER repairing every marker still
-repaired every marker. Before the re-scan the round charged that kill as a
-failed candidate and prompted the next one on a conflict that no longer
-existed.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

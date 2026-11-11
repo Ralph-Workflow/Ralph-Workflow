@@ -1,8 +1,3 @@
-"""Guard: no developer-prompt template may reference the removed IS_WORKER flag.
-
-developer prompts have one audience and must not branch on a worker or coordinator role — see docs/agents/prompt-surface-changes.md
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -25,11 +20,6 @@ from ralph.workspace.memory import MemoryWorkspace
 
 
 def test_no_template_references_is_worker() -> None:
-    """Ralph-orchestrated workers are removed; IS_WORKER must not appear in any
-    template source (top-level or shared partials).
-
-    developer prompts have one audience and must not branch on a worker or coordinator role — see docs/agents/prompt-surface-changes.md
-    """
     context = TemplateContext.default()
     targets = _render_targets(context)
     all_sources = dict(context.partials)
@@ -42,8 +32,6 @@ def test_no_template_references_is_worker() -> None:
 
 
 def test_developer_render_context_has_no_is_worker() -> None:
-    """Developer render context must never contain an IS_WORKER key, and rendered
-    prompts must contain ## PARALLEL EXECUTION, sub-agent guidance, and pre-submit review."""
     context = TemplateContext.default()
     workspace = MemoryWorkspace()
     session_caps = SessionCapabilities(
@@ -69,11 +57,6 @@ def test_developer_render_context_has_no_is_worker() -> None:
 
 
 def test_developer_render_context_source_has_no_is_worker_or_work_unit() -> None:
-    """The developer module's source must construct the render context without
-    any IS_WORKER, work_unit_*, or worker_namespace keys. The single-audience
-    contract is enforced at the construction site, not just at the rendered
-    surface, so a future regression that re-introduces the role gate fails
-    here before the user ever sees the prompt."""
     package_dir = Path(__file__).resolve().parents[1] / "ralph" / "prompts" / "developer"
     for source_path in (package_dir / "__init__.py", package_dir / "developer_prompt_inputs.py"):
         source = source_path.read_text(encoding="utf-8")

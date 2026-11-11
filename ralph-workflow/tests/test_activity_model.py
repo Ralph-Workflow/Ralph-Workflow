@@ -1,5 +1,3 @@
-"""Unit tests for the typed activity model contract."""
-
 from __future__ import annotations
 
 from dataclasses import fields

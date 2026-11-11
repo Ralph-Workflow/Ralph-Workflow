@@ -1,23 +1,3 @@
-"""Layered TOML configuration loader.
-
-Merge order (lowest to highest priority):
-  1. Embedded defaults (Pydantic field defaults)
-  2. ~/.config/ralph-workflow-agents.toml (agent CLI definitions)
-  3. ~/.config/ralph-workflow.toml (or $XDG_CONFIG_HOME/ralph-workflow.toml)
-  4. .agent/ralph-workflow.toml (project-local)
-  5. CLI flag overrides
-
-This module handles the layered configuration merge:
-
-- Embedded defaults provide the baseline for every field.
-- The agents file supplies ``[agents.*]`` transport plumbing, kept out of the
-  main config so that file opens on the ``[agent_chains]`` operators edit. It
-  sits BELOW the main config so an ``[agents.*]`` table left in an existing
-  ``ralph-workflow.toml`` keeps winning and no upgrade loses a customization.
-- Global config supplies user-wide preferences.
-- Project-local config supplies repo-specific overrides.
-- CLI overrides apply last via dict patch before Pydantic validation.
-"""
 
 from __future__ import annotations
 
@@ -49,11 +29,6 @@ GLOBAL_CONFIG_PATH = Path.home() / ".config" / "ralph-workflow.toml"
 GLOBAL_AGENTS_CONFIG_PATH = Path.home() / ".config" / "ralph-workflow-agents.toml"
 LOCAL_CONFIG_PATH = Path(".agent") / "ralph-workflow.toml"
 
-# Open user-key maps whose IMMEDIATE child KEYS are user-defined.  We do
-# NOT warn on the child key names (they are chain/alias/agent names the
-# operator chose) but we DO recurse into the leaf fields underneath them.
-# Each entry is (mapping name, leaf-fields model class) where the model
-# class is None when the leaves are free-form (e.g. CCS alias table).
 _USER_KEYED_TABLES: tuple[tuple[str, type[object] | None], ...] = (
     ("agents", AgentConfig),
     ("ccs_aliases", None),
@@ -61,19 +36,11 @@ _USER_KEYED_TABLES: tuple[tuple[str, type[object] | None], ...] = (
     ("agent_drains", None),
 )
 
-# Closed nested subtables whose field names we DO want to detect typos on.
-# ``general.workflow`` carries specific leaf fields, so a misspelled leaf is a
-# real bug the operator probably wants to see.
-# Reference the classes directly so the Any-free ``RalphBaseModel`` facade
-# in ``ralph.pydantic_compat`` does not force a type-ignore suppression here.
 _CLOSED_SUBTABLE_LEAVES: tuple[tuple[str, type[RalphBaseModel]], ...] = (
     ("workflow", GeneralWorkflowFlags),
 )
 
 
-#: ``UnifiedConfig`` fields only the CLI may set (``--developer-agent`` /
-#: ``--developer-model``). A config file that names one gets the unknown-key
-#: warning and the key is dropped, so the warning's "ignored" is true.
 CLI_ONLY_CONFIG_FIELDS: frozenset[str] = frozenset({"developer_agent", "developer_model"})
 
 
@@ -84,19 +51,10 @@ def _drop_cli_only_fields(*layers: dict[str, object]) -> None:
 
 
 class ConfigTomlError(ValueError):
-    """A malformed main configuration file that needs user correction."""
+    pass
 
 
 def deep_merge(base: dict[str, object], override: dict[str, object]) -> dict[str, object]:
-    """Recursively merge override into base; override wins on conflict.
-
-    Args:
-        base: The base dictionary to merge into.
-        override: The override dictionary to merge.
-
-    Returns:
-        A new dictionary with the merged result.
-    """
     result: dict[str, object] = dict(base)
     for key, value in override.items():
         if key in result and isinstance(result[key], dict) and isinstance(value, dict):
@@ -107,19 +65,6 @@ def deep_merge(base: dict[str, object], override: dict[str, object]) -> dict[str
 
 
 def load_toml(path: Path) -> dict[str, object]:
-    """Read a TOML file; return empty dict if missing.
-
-    A retired ``can_commit`` assignment under an ``[agents.*]`` table is
-    migrated away IN MEMORY only: the file on disk is never rewritten, no
-    temporary or backup file appears next to it, and the operator sees one
-    deduplicated warning naming the file.
-
-    Args:
-        path: Path to the TOML file.
-
-    Returns:
-        Parsed TOML content as a dictionary, or empty dict if file doesn't exist.
-    """
     try:
         if not path.exists():
             logger.debug("Config file not found, skipping: {}", path)
@@ -132,7 +77,7 @@ def load_toml(path: Path) -> dict[str, object]:
         cast("type[ValueError]", tomllib.TOMLDecodeError),
         UnicodeDecodeError,
         OSError,
-    ) as exc:  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    ) as exc:
         raise ConfigTomlError(
             f"What failed: Ralph could not read {path}: {exc}.\n"
             "Why it matters: settings in a malformed file are not safe to use.\n"
@@ -147,36 +92,11 @@ def load_toml(path: Path) -> dict[str, object]:
 
 
 def warn_unknown_fields(data: dict[str, object], path: Path) -> None:
-    """Emit warning logs for every misspelled field discovered under *data*.
-
-    Walks the closed main-config schema (general, ccs),
-    the open user-keyed maps (agents, ccs_aliases, agent_chains,
-    agent_drains) at one level of depth, and the leaf fields under each
-    user-defined agent name. Top-level typos are caught, nested typos
-    like ``general.wrokflow`` and ``general.workflow.checkpont_enabled``
-    are caught, and user-defined names like ``[agent_chains.planning]``
-    or ``[agents.claude]`` are NOT warned about.
-
-    Args:
-        data: The parsed TOML data to inspect.
-        path: The TOML file path (used in the warning message).
-    """
     for line in collect_unknown_config_fields(data, path):
         logger.warning(line)
 
 
 def _format_unknown_field_message(*, full_path: str, path: Path, suggestion: str | None) -> str:
-    """Build a what/why/fix line for a single unknown field.
-
-    Args:
-        full_path: The dotted field path, e.g. ``"general.wrokflow"``.
-        path: The TOML file the field was found in.
-        suggestion: The closest canonical field name, or ``None``.
-
-    Returns:
-        A formatted single-line message mirroring the
-        ``ConfigTomlError`` envelope.
-    """
     base = (
         f"What failed: unknown setting `{full_path}` in {path}. "
         "Why it matters: Ralph ignores keys it does not recognize, so your "
@@ -190,21 +110,6 @@ def _format_unknown_field_message(*, full_path: str, path: Path, suggestion: str
 
 
 def collect_unknown_config_fields(data: dict[str, object], path: Path) -> list[str]:
-    """Return formatted what/why/fix lines for every unknown field under *data*.
-
-    This is the pure collector used by ``ralph --diagnose`` to surface
-    configuration typos without requiring a side-effecting log sink. The
-    returned lines are newline-free single strings; the caller decides
-    how to render them.
-
-    Args:
-        data: The parsed TOML data to inspect.
-        path: The TOML file path (used in the message body).
-
-    Returns:
-        A list of formatted human-readable lines, one per unknown field.
-        Returns an empty list when the config is fully clean.
-    """
     lines: list[str] = []
     seen: set[tuple[str, Path]] = set()
 
@@ -217,7 +122,6 @@ def collect_unknown_config_fields(data: dict[str, object], path: Path) -> list[s
             _format_unknown_field_message(full_path=full_path, path=path, suggestion=suggestion)
         )
 
-    # 1. Top-level closed keys
     _collect_unknown_leaves(
         data,
         known_fields=set(UnifiedConfig.model_fields) - CLI_ONLY_CONFIG_FIELDS,
@@ -226,7 +130,6 @@ def collect_unknown_config_fields(data: dict[str, object], path: Path) -> list[s
         suggester=emit,
     )
 
-    # 2. Closed nested subtables (general, conflict_resolution, ccs)
     general = data.get("general")
     if isinstance(general, dict):
         _collect_unknown_leaves(
@@ -236,9 +139,6 @@ def collect_unknown_config_fields(data: dict[str, object], path: Path) -> list[s
             prefix="general.",
             suggester=emit,
         )
-        # Recurse into the closed sub-subtables declared in
-        # ``_CLOSED_SUBTABLE_LEAVES`` so a typo like
-        # ``general.workflow.checkpont_enabled`` is caught.
         for sub_name, sub_model in _CLOSED_SUBTABLE_LEAVES:
             sub = general.get(sub_name)
             if isinstance(sub, dict):
@@ -262,7 +162,7 @@ def collect_unknown_config_fields(data: dict[str, object], path: Path) -> list[s
 
     ccs = data.get("ccs")
     if isinstance(ccs, dict):
-        from ralph.config.ccs_config import CcsConfig  # local import: avoid cycle at import time
+        from ralph.config.ccs_config import CcsConfig
 
         _collect_unknown_leaves(
             ccs,
@@ -272,8 +172,6 @@ def collect_unknown_config_fields(data: dict[str, object], path: Path) -> list[s
             suggester=emit,
         )
 
-    # 3. Open user-keyed maps: keys are operator-defined; leaves under
-    #    each key are still validated against the closed leaf schema.
     agents = data.get("agents")
     if isinstance(agents, dict):
         for name, agent in agents.items():
@@ -286,12 +184,6 @@ def collect_unknown_config_fields(data: dict[str, object], path: Path) -> list[s
                     suggester=emit,
                 )
 
-    # 4. agent_chains and agent_drains carry rich shapes (lists of
-    #    agents, or {chain: str} dicts). Their leaves are NOT a closed
-    #    model — accept anything — but we still want to warn if the
-    #    operator typo'd a chain/drain entry itself. We treat each
-    #    chain/drain name as a user-defined key and stop there.
-    #    (No leaf warnings for these tables by design.)
 
     return lines
 
@@ -304,7 +196,6 @@ def _collect_unknown_leaves(
     prefix: str,
     suggester: Callable[[str, str | None], None],
 ) -> None:
-    """Emit one warning line for every key in *data* not in *known_fields*."""
     for field in data:
         if field in known_fields:
             continue
@@ -314,17 +205,6 @@ def _collect_unknown_leaves(
 
 
 def _convert_legacy_config(data: dict[str, object]) -> dict[str, object]:
-    """Convert legacy UnifiedConfig format to current format.
-
-    This handles the migration from the old flat structure to the new
-    nested GeneralConfig with behavior/workflow/execution flags.
-
-    Args:
-        data: Raw config dictionary from TOML.
-
-    Returns:
-        Converted config dictionary.
-    """
     if "general" in data:
         return data
 
@@ -340,7 +220,6 @@ def _convert_legacy_config(data: dict[str, object]) -> dict[str, object]:
 
 
 def _global_config_path() -> Path:
-    """Resolve the global config path, honoring XDG_CONFIG_HOME when set."""
     xdg_config_home = getenv("XDG_CONFIG_HOME")
     if xdg_config_home:
         return Path(xdg_config_home) / "ralph-workflow.toml"
@@ -348,7 +227,6 @@ def _global_config_path() -> Path:
 
 
 def _global_agents_config_path() -> Path:
-    """Resolve the agent-definitions config path, honoring XDG_CONFIG_HOME."""
     xdg_config_home = getenv("XDG_CONFIG_HOME")
     if xdg_config_home:
         return Path(xdg_config_home) / "ralph-workflow-agents.toml"
@@ -356,13 +234,11 @@ def _global_agents_config_path() -> Path:
 
 
 def _migrate_verbosity(data: dict[str, object], general: dict[str, object]) -> None:
-    """Migrate verbosity field."""
     if "verbosity" in data:
         general["verbosity"] = data.pop("verbosity")
 
 
 def _migrate_workflow_flags(data: dict[str, object], general: dict[str, object]) -> None:
-    """Migrate workflow flags."""
     workflow: dict[str, object] = {}
     if "checkpoint_enabled" in data:
         workflow["checkpoint_enabled"] = data.pop("checkpoint_enabled")
@@ -371,7 +247,6 @@ def _migrate_workflow_flags(data: dict[str, object], general: dict[str, object])
 
 
 def _migrate_simple_fields(data: dict[str, object], general: dict[str, object]) -> None:
-    """Migrate simple configuration fields."""
     simple_fields = (
         "developer_iters",
         "developer_context",
@@ -415,7 +290,6 @@ _RETIRED_AUTO_INTEGRATE_KEYS: dict[str, str] = {
 
 
 def _warn_and_remove_retired_auto_integrate_keys(data: dict[str, object]) -> None:
-    """Warn once per retired key in a source layer, then ignore it."""
     for key, replacement in _RETIRED_AUTO_INTEGRATE_KEYS.items():
         if key in data:
             data.pop(key)
@@ -425,7 +299,6 @@ def _warn_and_remove_retired_auto_integrate_keys(data: dict[str, object]) -> Non
 
 
 def _warn_reserved_provider_fallback(data: dict[str, object]) -> None:
-    """Explain the legacy knob when a user actually sets it."""
     if "provider_fallback" in data:
         logger.warning(
             "`general.provider_fallback` is accepted but read by nothing and never will be — "
@@ -436,12 +309,10 @@ def _warn_reserved_provider_fallback(data: dict[str, object]) -> None:
 def _apply_cli_overrides(
     data: dict[str, object], cli_overrides: dict[str, object] | None
 ) -> dict[str, object]:
-    """Apply optional highest-precedence CLI settings."""
     return deep_merge(data, cli_overrides) if cli_overrides else data
 
 
 def _validate_agents_layer(data: dict[str, object]) -> dict[str, object]:
-    """Validate that the agents configuration layer conforms to UnifiedConfig schema."""
     if not data:
         return data
     cleaned = dict(data)
@@ -453,33 +324,14 @@ def _validate_agents_layer(data: dict[str, object]) -> dict[str, object]:
 _MAX_RETIRED_AGENT_KEY_WARNINGS = 256
 _WARNED_RETIRED_AGENT_KEYS: dict[
     Path, None
-] = {}  # bounded-accumulator-ok: FIFO cap _MAX_RETIRED_AGENT_KEY_WARNINGS
+] = {}
 
 
 def reset_retired_agent_key_warnings() -> None:
-    """Clear the deduplication registry for retired agent key warnings."""
     _WARNED_RETIRED_AGENT_KEYS.clear()
 
 
 def _warn_retired_agent_keys(config_path: Path) -> None:
-    """Emit the ONE deduplicated warning for a retired agent key in *config_path*.
-
-    This is the single warning authority for the retired ``can_commit``
-    assignment under an ``[agents.*]`` table. Both load routes share it:
-    the agents layer (:func:`_load_agents_data`) and the generic
-    explicit-config route (:func:`load_toml`). The registry is keyed by the
-    resolved path, so a file both routes read warns exactly once per
-    process, and a file carrying many retired assignments still warns once
-    instead of once per key or line.
-
-    The warning states that the key was migrated in memory only and that the
-    file on disk was not modified: the explicit operator commands
-    (``ralph --regenerate-config`` / ``ralph --init``) remain the only
-    writers.
-
-    Args:
-        config_path: The configuration file that carries the retired key.
-    """
     resolved = config_path.resolve()
     if resolved in _WARNED_RETIRED_AGENT_KEYS:
         return
@@ -496,7 +348,6 @@ def _warn_retired_agent_keys(config_path: Path) -> None:
 
 
 def _load_agents_data(agents_path: Path, *, strict: bool) -> dict[str, object]:
-    """Load, optionally migrate in memory, and validate the agents configuration layer."""
     agents_raw = load_optional_toml(
         agents_path,
         kind="agents",
@@ -524,7 +375,6 @@ def _load_agents_data(agents_path: Path, *, strict: bool) -> dict[str, object]:
 
 
 def _clean_general_layer(layer_data: dict[str, object]) -> None:
-    """Clean retired and reserved keys from the [general] table if present."""
     general_layer = layer_data.get("general")
     if isinstance(general_layer, dict):
         _warn_and_remove_retired_auto_integrate_keys(general_layer)
@@ -532,7 +382,6 @@ def _clean_general_layer(layer_data: dict[str, object]) -> None:
 
 
 def _load_agents_layer(agents_path: Path, *, strict: bool) -> dict[str, object]:
-    """Load agents data, failing fast with SystemExit on strict validation errors."""
     try:
         return _load_agents_data(agents_path, strict=strict)
     except ValidationError as exc:
@@ -548,35 +397,9 @@ def load_config(
     *,
     strict_optional_files: bool = False,
 ) -> UnifiedConfig:
-    """Build merged UnifiedConfig from all layers.
-
-    Merge order (lowest to highest priority):
-      1. Embedded defaults (Pydantic field defaults)
-      2. ~/.config/ralph-workflow-agents.toml (agent CLI definitions)
-      3. ~/.config/ralph-workflow.toml
-      4. .agent/ralph-workflow.toml (project-local)
-      5. CLI flag overrides
-
-    Args:
-        config_path: Optional path to local config file. Defaults to .agent/ralph-workflow.toml.
-        cli_overrides: Optional dictionary of CLI flag overrides.
-        workspace_scope: Optional workspace scope.
-        unknown_field_warning: Optional callback for unknown-field warnings.
-        strict_optional_files: When True, re-raise errors loading optional config files.
-
-    Returns:
-        Validated UnifiedConfig instance.
-
-    Raises:
-        SystemExit: If configuration validation fails.
-    """
     agents_path = _global_agents_config_path()
     agents_data = _load_agents_layer(agents_path, strict=strict_optional_files)
     global_data = load_toml(_global_config_path())
-    # Track each propagated path's data separately so warn_unknown_fields
-    # can name the exact source file when a typo is found in an inherited
-    # config. The merged ``propagated_data`` below stays aggregated for
-    # the effective-config merge; the per-path list is only for warnings.
     propagated_entries: list[tuple[Path, dict[str, object]]] = []
     propagated_data: dict[str, object] = {}
     local_path = config_path or LOCAL_CONFIG_PATH
@@ -594,8 +417,6 @@ def load_config(
                 propagated_data = deep_merge(propagated_data, propagated_data_for_path)
     local_data = load_toml(local_path)
 
-    # Convert legacy config format and discard retired keys at their original
-    # source layer, so each warning names one file and never becomes unknown.
     global_data = _convert_legacy_config(global_data)
     local_data = _convert_legacy_config(local_data)
     for layer_data in (global_data, local_data):
@@ -620,14 +441,10 @@ def load_config(
 
     _drop_cli_only_fields(agents_data, global_data, propagated_data, local_data)
 
-    # Merge: agents -> global -> propagated -> local. The agents file sits
-    # lowest so an [agents.*] table still present in an operator's existing
-    # ralph-workflow.toml keeps its precedence across the upgrade.
     merged = deep_merge(agents_data, global_data)
     merged = deep_merge(merged, propagated_data)
     merged = deep_merge(merged, local_data)
 
-    # Apply CLI overrides last
     merged = _apply_cli_overrides(merged, cli_overrides)
 
     try:
@@ -656,14 +473,6 @@ def load_config(
 
 
 def load_local_only(config_path: Path) -> UnifiedConfig:
-    """Load configuration from a specific path without merging global config.
-
-    Args:
-        config_path: Path to the configuration file.
-
-    Returns:
-        Validated UnifiedConfig instance.
-    """
     data = load_toml(config_path)
     data = _convert_legacy_config(data)
     general = data.get("general")
@@ -691,15 +500,6 @@ def _attribute_validation_error_to_layer(
     file_layers: list[tuple[Path, dict[str, object]]],
     cli_overrides: dict[str, object] | None,
 ) -> Path:
-    """Return the config file that actually owns a failing field.
-
-    ``file_layers`` lists every file layer highest-precedence first
-    (project-local, propagated, user-global, agents file). For each
-    ValidationError ``loc`` the first layer that sets that exact field is
-    blamed, so the operator does not get sent to edit the wrong file. A
-    field set by a CLI flag names no file, so CLI-owned errors fall back to
-    the project-local path, as does an error no layer can be tied to.
-    """
     details = cast("list[dict[str, object]]", exc.errors())
     blamed: set[int] = set()
     for detail in details:
@@ -716,7 +516,6 @@ def _attribute_validation_error_to_layer(
 
 
 def _loc_in_data(loc: tuple[object, ...], data: dict[str, object]) -> bool:
-    """Return True when the dotted ``loc`` is present anywhere in ``data``."""
     if not loc:
         return False
     current: object = data

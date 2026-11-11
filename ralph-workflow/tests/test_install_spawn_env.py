@@ -1,10 +1,3 @@
-"""Installer children must not inherit Python import-injection variables.
-
-``make install`` exports ``PYTHONPATH`` at the source checkout. If that leaks
-into the snapshot's ``ralph --version`` child, the child imports the unflavored
-source package instead of the snapshot and the install fails validation.
-"""
-
 from __future__ import annotations
 
 import itertools
@@ -87,7 +80,6 @@ def _executable(directory: Path, name: str) -> Path:
 
 
 def test_global_executable_skips_the_installers_own_environment(tmp_path: Path) -> None:
-    """``uv run`` puts the checkout's ``.venv/bin`` first; it is not a global install."""
     own_bin = tmp_path / "checkout" / ".venv" / "bin"
     _executable(own_bin, "ralph")
     global_ralph = _executable(tmp_path / "home" / ".local" / "bin", "ralph")

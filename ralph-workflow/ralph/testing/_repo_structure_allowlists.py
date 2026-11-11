@@ -1,14 +1,3 @@
-"""Grandfathered allowlists for the repo-structure audit.
-
-Split from :mod:`ralph.testing.audit_repo_structure` so neither module trips the
-1000-line cap the audit itself enforces.
-
-These sets are a ONE-WAY BACKLOG: they may shrink as code is refactored, never
-grow. A new violation is a bug to fix, not an entry to add. Stale line-number
-anchors (the bypass set is keyed by file+line) should be re-anchored to the
-suppressions that actually exist, which shrinks the set.
-"""
-
 from __future__ import annotations
 
 _MAX_FILE_LINES = 1_000
@@ -28,40 +17,13 @@ _LEGACY_LARGE_FILE_ALLOWLIST = frozenset(
         "ralph/prompts/materialize.py",
         "ralph/process/manager/_process_manager.py",
         "ralph/recovery/controller.py",
-        # wt-03: auto-integrate and conflict resolution recovery modules
-        # grew past 1000 lines while routing agent failure ledger availability,
-        # resolution fallback, and dirty-tree ladder invariants. Grandfathered.
         "ralph/pipeline/auto_integrate.py",
         "ralph/pipeline/auto_integrate_rebase_merge.py",
         "ralph/pipeline/conflict_resolution/driver.py",
         "ralph/pipeline/integration_ladder.py",
-        # wt-16: the bridge-owned listening socket + respawn policy +
-        # stage-tracker wiring pushed the lifecycle module past the
-        # 1000-line audit cap. The cohesive R1-R4 / S1-S4 invariants
-        # make splitting it now would scatter the per-state recovery
-        # branches across files; grandfathered as one module.
         "ralph/mcp/server/lifecycle.py",
-        # wt-16: the MCP respawn bug fix added the bounded pre-serve
-        # startup path, the inherited-FD handoff, the catalog
-        # publication envelope, and the per-spawn stage tracker; the
-        # cohesive R1-R4 / S1-S4 invariants keep the composition
-        # root in one module (build_standalone_http_server +
-        # _build_mcp_registry_and_server + _poll_bounded_pre_serve +
-        # record_stage_elapsed). Splitting it would scatter the
-        # per-state recovery branches across files. Grandfathered.
         "ralph/mcp/server/runtime.py",
-        # wt-16: the git lock recovery machinery (liveness probe
-        # via lsof/fuser, age gate, holder discovery, bounded
-        # backoff, stale-unlink fail-closed) was added to
-        # operations.py to keep the helper next to its callers
-        # (_run_git_operation_with_stale_lock_recovery +
-        # _recover_stale_git_lock). Grandfathered.
         "ralph/git/operations.py",
-        # wt-16: the git lock recovery regressions grew the
-        # single-file pytest module past 1000 lines; the cohesive
-        # per-recovery-step coverage (age gate, liveness probe,
-        # retry backoff, unlink fail-closed) keeps the assertions
-        # co-located. Grandfathered.
         "tests/test_git_operations.py",
         "tests/agents/test_idle_watchdog_1.py",
         "tests/agents/test_idle_watchdog.py",
@@ -84,35 +46,14 @@ _LEGACY_LARGE_FILE_ALLOWLIST = frozenset(
         "tests/test_process_hardening.py",
         "tests/test_process_manager.py",
         "tests/test_pipeline_runner_execute_commit_effect.py",
-        # wt-16: MCP respawn bug regression suite (R1-R4, S1-S4). Each
-        # test class pins one specific invariant of the bridge-endpoint
-        # / catalog-cache / cooldown contract; grouping them per
-        # feature keeps the lifecycle cross-references co-located.
         "tests/test_mcp_lifecycle.py",
         "tests/test_mcp_restart_policy_default_cooldown.py",
         "tests/test_mcp_probe_timeout_default_floor.py",
         "tests/test_mcp_supervision_resilience.py",
         "tests/test_startup_timeouts_invariants.py",
-        # wt-16: pipeline-runner timeout suite pins the
-        # subprocess-e2e timeout-arithmetic invariants across
-        # every entry path (run-loop, agent-effect, recovery
-        # interaction). The class fan-out is one test per
-        # invariant, each with a real subprocess; the file is
-        # grandfathered at the 1000-line cap because consolidating
-        # the cases into a parametrized sweep would lose the
-        # ``subprocess_e2e`` marker granularity that the default
-        # profile depends on.
         "tests/test_pipeline_runner_timeout.py",
-        # wt-19: terminal MCP error suite pins typed error conversion
-        # across every execution entry path and supervisor lifecycle;
-        # kept co-located so entry path parity remains auditable.
         "tests/pipeline/test_terminal_mcp_error_per_entry_path.py",
-        # wt-19: subprocess e2e shutdown suite covers all liveness kill
-        # causes and process-tree reaping under real kernels;
-        # referenced by docs/agents/exec-long-running-root-cause.md.
         "tests/test_exec_job_shutdown_subprocess_e2e.py",
-        # wt-19: state continuity suite covers MCP restart invariants;
-        # referenced by docs/sphinx/mcp-restart-decisions.md.
         "tests/mcp/test_e17_state_continuity.py",
         "tests/process/test_spawn_options_pass_fds.py",
         "tests/agents/parsers/test_pi_parser.py",
@@ -122,7 +63,6 @@ _LEGACY_LARGE_FILE_ALLOWLIST = frozenset(
         "tests/test_internal_skills_mcp_prompts.py",
         "ralph/recovery/failure_classifier.py",
         "tests/test_artifact_format_docs.py",
-        # wt-034 (mcp optimization) extracted carrier files; grandfathered.
         "ralph/agents/invoke/_process_reader.py",
         "ralph/mcp/explore/structure.py",
         "ralph/mcp/tools/git_read.py",
@@ -138,148 +78,31 @@ _LEGACY_LARGE_FILE_ALLOWLIST = frozenset(
         "tests/test_harness_run_diagnosis.py",
         "tests/test_phases_retry_on_stale_session.py",
         "tests/test_telemetry_sentry.py",
-        # wt-040 auto-integrate: large recovery + tests files; the
-        # reclaim + post-attempt-verify + per-seam tests are colocated
-        # by the AC-06/AC-07 contract, and the 1000-line cap is not
-        # the right refactor target here (each top-level section is a
-        # separate AC and the helpers are interdependent).
         "tests/test_auto_integrate_recovery.py",
-        # The allowlist file is split from audit_repo_structure.py
-        # specifically to keep both under the 1000-line cap. New
-        # legacy entries (wt-040 wt-034 etc.) push the allowlist
-        # wt-045 typechecking migration: one test file slightly over the
-        # 1000-line cap; not split as part of this migration.
         "tests/test_mcp_server_file_backed_session_model_identity.py",
-        # itself over the cap; adding it to its own allowlist is the
-        # only honest move because the alternative -- further splits
-        # -- would force the audit to walk more than one file and
-        # obscure the per-entry reasoning.
         "ralph/testing/_repo_structure_allowlists.py",
-        # wt-044: the plan spec owns the validator's contract (severity
-        # model, override ledger, fan-out markers, Work Units grammar,
-        # pydantic content mapping) in one place so cross-section
-        # invariants stay consistent. Splitting the file would scatter
-        # the contract across modules with no testable boundary.
         "ralph/mcp/artifacts/markdown/specs/plan.py",
-        # wt-05-test-opti: consolidation of 28 test_policy_validation_*.py
-        # files into a single module to reduce per-shard collection cost.
         "tests/test_policy_validation.py",
-        # Pre-existing oversized files from prior consolidation work
-        # (wt-045 typechecking migration).  Splitting the test
-        # multimodality + parsers and pipeline runner modules would
-        # fragment cross-section invariants they exercise together.
         "ralph/display/theme.py",
         "tests/test_pipeline_runner_pipeline_runner_loop_1.py",
         "tests/test_mcp_server_multimodal_tool_visibility_1.py",
         "tests/test_parsers_1.py",
-        # wt-063 (kimi support): the multimodal smoke stub gained the
-        # kimi emitter vocabulary (S-2), pushing the nine-transport
-        # stub past the 1000-line cap. The stub is ONE deliberately
-        # co-located subprocess script (S-9 / S-12): each transport's
-        # emitters + the shared dispatch tables must stay in one file
-        # because the harness execs the script by path with no package
-        # context, so a split would need import scaffolding the
-        # deterministic-stub contract explicitly avoids.
         "tests/_support/mock_multimodal_agent.py",
-        # wt-063 (kimi support): auto-integrated sibling commits 86a68b2f2
-        # (data-driven AGY registry refactor) and c3b55543c (claude
-        # completion gates) landed mid-iteration and pushed these past
-        # the 1000-line cap. The registry is one data-driven table whose
-        # rows reference each other's aliases (splitting re-creates the
-        # duplication the refactor removed); the shard runner's
-        # discovery, weighting, and reaping share the weight cache and
-        # the deadline protocol, so they must stay co-located.
         "ralph/agents/registry.py",
         "ralph/test_suites.py",
-        # wt-01-test-suites: the S-1 probe runner _bench_r6_metrics.py
-        # was extracted from _bench_product_baseline.py to keep both
-        # files under the cap; the new extract carries the R6 metric
-        # capture + the baseline regression comparator that the
-        # bench_product_baseline entrypoint re-exports, and pushes it
-        # three lines over the cap. The bench module family groups all
-        # capture/compare logic here so a second split would scatter
-        # the metric block across modules with no testable boundary.
         "ralph/mcp/explore/_bench_r6_metrics.py",
-        # wt-12: ``classify_target_for_commit`` (72 lines incl. its
-        # contract docstring) pushed the module past the 1000-line cap;
-        # the extraction boundary (``_dirty_paths``) is already taken,
-        # and splitting the classifier into its own module would scatter
-        # the explicit-outcome commit contract.
         "ralph/git/scoped_auto_commit.py",
-        # wt-12: the test-suite registry gained the deterministic-writer
-        # audit/isolation files, pushing this pinned-tuple guard past the
-        # cap; the pinned-tuple assertions are interdependent and cannot
-        # split without losing the invariant.
         "tests/test_test_suites_orchestration.py",
-        # wt-18 fix-integration-bug (WU-1 / O1 cold exhausted): the
-        # ``_wait_for_integration_retry`` durable-diagnostic
-        # regression suite grew with the cold
-        # ``resolution_exhausted=True`` autonomous-recovery tests.
-        # The new cases share the ``_setup_retry_env`` / ``_make_state``
-        # / ``_create_retry_ctx`` fixture trio (defined in the same
-        # file and re-imported by every cold-exhausted test), so
-        # splitting would force every test to rebuild a parallel
-        # fixture stack and the cross-test invariant on the
-        # ``_session_handoff_dispatched`` flag would drift. The
-        # whole-module cohesion is the cohesive ``_wait_for_integration_retry``
-        # contract surface, not a candidate for extraction.
         "tests/test_run_loop_retry_diagnostic.py",
-        # wt-16 MCP make-before-break acceptance (WU-1/WU-4): the
-        # root-cause real-child suite pins the per-root-cause
-        # invariant (C1 tool-hash equality, C2 budget + live-server
-        # survival, C3 timeout-only deferral + confirm + ceiling,
-        # C5 enriched diagnostics + E2.2 stage-failure parametrize,
-        # E5.1/E5.4 cited-impossibility comments) with one test per
-        # root-cause row. Every test consumes the single
-        # ``managed_spawner`` fixture + the per-bridge constants;
-        # splitting the C1/C2 cases from the C3/C5/cited-impossibility
-        # cases would force both halves to re-import the fixture and
-        # rebuild the per-bridge constants. Grandfathered for the
-        # acceptance proof.
         "tests/mcp/test_root_cause_real_child_bridge.py",
-        # wt-16 MCP make-before-break acceptance (WU-3a): the
-        # handover-inflight real-child suite pins E1.3-E1.6 (drain
-        # deadline, outcome-unknown, ACK-before-resume, fail-closed
-        # resume timeout, interleaved two-real-children ledger). All
-        # tests share a single helper and the wire-ledger /
-        # artifact-store imports. Grandfathered.
         "tests/mcp/test_handover_inflight_real_child.py",
-        # wt-18 fix-integration-bug (WU-1): the planning-residue cleanup
-        # executor (``integration_cleanup.py``) carries the AC-10
-        # baseline/residue model, both effect ports and their production
-        # ``run_git`` / owner-ledger edges, plus the resumable progress
-        # record, in one cohesive module: the pure detect/compare helpers
-        # and the executor steps share the frozen payload shape, and the
-        # fake-port tests patch the module-level ports as one seam.
-        # Splitting the model from the ports would rebind those seams.
-        # Grandfathered as one module.
         "ralph/pipeline/integration_cleanup.py",
-        # wt-18 fix-integration-bug: the catch-up ticker gained the
-        # ledger-charged catch-up path with its mutation lease and
-        # bounded failure budget (CatchupLedgerFailureBudget), pushing
-        # the module past the 1000-line cap. The budget dataclass and
-        # the worker share the frozen ledger-record shape; splitting
-        # them would rebind the module-level lease seam. Grandfathered
-        # as one module.
         "ralph/pipeline/auto_integrate_catchup.py",
-        # wt-18 fix-integration-bug: the attempt ledger gained the
-        # Git-fact rebuild API (rejected-bytes preservation +
-        # evidence-backed resume), pushing it past the 1000-line cap.
-        # The rebuild helpers share the frozen ledger bytes contract
-        # with the ledger class; splitting would scatter that format.
-        # Grandfathered as one module.
         "ralph/pipeline/integration_attempt_ledger.py",
-        # wt-18 fix-integration-bug: the integration-gates suite gained
-        # the typed readiness-obstruction and ladder-escalation
-        # regression blocks (shared gate fixture trio); the additions
-        # pushed the file past the 1000-line cap. Grandfathered.
         "tests/test_auto_integrate_gates.py",
     }
 )
 
-# Grandfathered structural violations that predate the current enforcement
-# pass. New files must not be added to these sets; they are a one-way
-# backlog that should shrink as code is refactored.
 _LEGACY_MULTIPLE_CLASS_ALLOWLIST = frozenset(
     {
         "ralph/git/git_command_queue.py",
@@ -290,35 +113,9 @@ _LEGACY_MULTIPLE_CLASS_ALLOWLIST = frozenset(
         "ralph/pipeline/integration_observation.py",
         "ralph/pipeline/integration_resolution.py",
         "ralph/pipeline/plumbing/commit_plumbing.py",
-        # wt-16 §3b: ``LivenessConfig``, ``LivenessWindow``,
-        # ``LivenessVerdict``, and ``StallIntegrator`` form the cohesive
-        # §3b pure deterministic liveness assessor contract. Splitting
-        # the dataclasses from the pure rule evaluator and integrator
-        # would scatter the frozen wire format across files.
         "ralph/process/manager/_liveness_assessor.py",
-        # wt-012: ``ScopedCommitStatus`` and ``ScopedCommitResult`` are
-        # the typed outcome pair every deterministic chore commit
-        # returns; they are colocated with the helper so callers can
-        # import the result without a second module. Splitting them
-        # across modules would scatter the explicit-outcome contract.
         "ralph/git/scoped_auto_commit.py",
-        # wt-16: ``IntegrationRecord`` and the four record-status
-        # family (RecordBusyError, RecordUnreadableError,
-        # RecordReadOutcomeDisposition, RecordReadOutcome) are one
-        # typed duck-typed record family sharing the
-        # ``read_record`` / ``write_record`` seams that every
-        # pipeline-state consumer patches in tests. Splitting them
-        # across modules would rebind those seams and weaken the
-        # fail-closed record-store contract.
         "ralph/pipeline/auto_integrate_record.py",
-        # wt-16: the four ``TestBusyRetryActionMapping``,
-        # ``TestRecoveryReleaseRefusals``,
-        # ``TestDiagnosticCompletionRefusals``, and
-        # ``TestRemoteReconcileReleaseRefusals`` test classes cover
-        # one shared record-store seam and share a parametrized
-        # fixture set; splitting them across files would scatter
-        # the action-mapping table that the integration
-        # recovery-flow test pins.
         "tests/test_recovery_release_uses_record_store.py",
         "ralph/agents/idle_watchdog/_evidence_tier.py",
         "ralph/agents/idle_watchdog/_stuck_classifier.py",
@@ -341,10 +138,6 @@ _LEGACY_MULTIPLE_CLASS_ALLOWLIST = frozenset(
         "ralph/recovery/unavailability_reason.py",
         "ralph/testing/audit_mcp_timeout.py",
         "ralph/testing/audit_test_policy.py",
-        # The four Invariant classes are one duck-typed family sharing the
-        # monkeypatchable ``_read`` seam the adversarial tests patch on this
-        # module. Splitting them across modules would rebind that seam and
-        # weaken the audit, so this stays grouped like its sibling audits.
         "ralph/testing/audit_terminal_escape_containment.py",
         "tests/agents/idle_watchdog/test_activity_aware.py",
         "tests/agents/invoke/test_invoke_dispatch_parity.py",
@@ -365,17 +158,6 @@ _LEGACY_MULTIPLE_CLASS_ALLOWLIST = frozenset(
         "tests/recovery/test_unavailability_reason.py",
         "tests/test_analysis_loop_counter.py",
         "tests/test_no_anti_drift_recovery_invariants.py",
-        # wt-18 (WU-1): the planning-residue cleanup executor is one
-        # cohesive typed contract — the frozen ``PlanningBaseline`` /
-        # ``PlanningResidue`` / ``ResidueCleanupOutcome`` wire triple,
-        # the two effect ports (``CleanupGitPort``,
-        # ``ResidueLedgerPort``) and their production edges
-        # (``RunGitCleanupPort``, ``OwnerResidueLedgerPort``) share the
-        # resume-after-interruption progress record and the pure
-        # detect/compare helpers. Splitting the ports from the model
-        # would rebind the seams the fake-port tests patch and scatter
-        # the AC-10 executor contract across files. Grandfathered as
-        # one module.
         "ralph/pipeline/integration_cleanup.py",
         "tests/test_no_anti_drift_regression.py",
         "tests/test_pipeline_factory.py",
@@ -390,7 +172,6 @@ _LEGACY_MULTIPLE_CLASS_ALLOWLIST = frozenset(
         "tests/agents/execution_state/test_generic_child_signal.py",
         "tests/agents/test_catalog.py",
         "tests/agents/test_pi_dev_blackbox.py",
-        # wt-034 (mcp optimization) extracted carrier files; grandfathered.
         "ralph/agents/idle_watchdog/_subagent_identity.py",
         "ralph/display/status_bar.py",
         "ralph/mcp/explore/_audit_types.py",
@@ -408,31 +189,15 @@ _LEGACY_MULTIPLE_CLASS_ALLOWLIST = frozenset(
         "ralph/testing/audit_resource_lifecycle.py",
         "tests/agents/parsers/test_cursor_parser.py",
         "tests/agents/test_register_cursor.py",
-        # wt-063 kimi support: per-surface kimi suites colocated under one
-        # file (builder + resolver, parser wire behaviors, registration).
         "tests/agents/invoke/test_kimi_command_builder_and_runtime_resolver.py",
         "tests/agents/parsers/test_kimi_parser.py",
         "tests/agents/test_register_kimi.py",
         "tests/test_explore_legacy_shape_regressions.py",
         "tests/test_tool_media_format_metadata.py",
-        # wt-045 typechecking migration: existing test suites with multiple
-        # top-level test classes; not split as part of this migration.
         "tests/test_audit_cast_policy.py",
         "tests/test_checked_accessors.py",
         "tests/test_typed_accessors.py",
-        # wt-05-test-opti: consolidation of 28 test_policy_validation_*.py
-        # files. Each original file owned a single test class; the
-        # consolidated module preserves the original class names so
-        # external references still resolve. Splitting them again would
-        # reintroduce the per-shard collection cost the consolidation
-        # was created to remove.
         "tests/test_policy_validation.py",
-        # wt-05-test-opti: prior-session consolidation suites (mcp capability
-        # mapping, no_hardcoded_phase_names, phases_analysis/commit_logging/
-        # retry_in_session/verification) group related test classes per
-        # module so cross-section invariants stay co-located. Splitting them
-        # would break the explicit ``test::TestX`` references that other
-        # files use and reintroduce per-shard collection cost.
         "tests/test_mcp_capability_mapping.py",
         "tests/test_no_hardcoded_phase_names.py",
         "tests/test_phases_analysis.py",
@@ -440,100 +205,33 @@ _LEGACY_MULTIPLE_CLASS_ALLOWLIST = frozenset(
         "tests/test_phases_retry_in_session.py",
         "tests/test_phases_verification.py",
         "tests/agents/test_idle_watchdog.py",
-        # wt-07-multimodal-visual: this file groups six test classes
-        # (TestSmokeFixtureBuilder, TestParamsDigest, TestMediaRegistryLookup,
-        # TestGradeMultimodalEvidence, TestPromptRequirements,
-        # TestGenerateFixtureGeometry) by the multimodal scenario
-        # feature they exercise. Splitting them per class would
-        # scatter the focal evidence checks across files with no
-        # testable boundary, so the existing grouping is intentional.
         "tests/test_multimodal_evidence.py",
-        # wt-16: MCP respawn health-event module. ``RestartReason`` (enum)
-        # and ``RestartDecision`` (frozen outcome record) are one typed
-        # outcome family for the respawn supervisor: the enum names why a
-        # restart was decided, the record carries the decision to the
-        # preflight bridge. Splitting them would force the supervisor and
-        # the event emitter to import each other across modules.
         "ralph/mcp/server/_mcp_health_event.py",
-        # wt-16: MCP discovery preflight budget suite. The constant-pinning
-        # class and the aggregate-enforcement class are one feature family
-        # (probe-budget accounting); co-locating them keeps the budget
-        # constant and its enforcement semantics in one readable file.
         "tests/mcp/test_discovery_aggregate_budget.py",
-        # wt-16: startup-timeout invariant suite. The four Test* classes
-        # pin independent invariants (import-time, probe-timeout defaults,
-        # undersized preflight, safety constant) of the same
-        # ``_startup_timeouts`` module; each class is one invariant and
-        # they share the module-under-test seam.
         "tests/test_startup_timeouts_invariants.py",
-        # wt-16: ``WireLedgerIOError`` and ``WireLedgerRecord`` are
-        # the typed error and the dataclass row of the wire-ledger
-        # append path. They share the same lock-guarded append
-        # function and are imported together by every ledger
-        # consumer. Splitting them across modules would rebind
-        # the import surface and the lock seam that all of those
-        # consumers rely on.
         "ralph/mcp/server/_wire_ledger.py",
-        # wt-18 fix-integration-bug: the typed readiness-obstruction
-        # seam suite pins both the typed-seam contract and the
-        # readiness-derived obstruction projection in one file; both
-        # test classes share the same obstruction-record fixtures and
-        # the legacy-prose fallback invariant. Grandfathered.
         "tests/test_planning_obstruction_typed_seam.py",
-        # wt-18 fix-integration-bug: the catch-up ticker module holds the
-        # bounded ``CatchupLedgerFailureBudget`` dataclass beside the
-        # ``AutoIntegrateCatchupWorker`` that consumes it; the budget
-        # shares the frozen ledger-record shape with the worker's lease
-        # seam. Splitting the dataclass out would rebind that seam.
-        # Grandfathered.
         "ralph/pipeline/auto_integrate_catchup.py",
     }
 )
 
 _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = frozenset(
     {
-        # wt-03 respawn-no-discovery suite reuses the production bounded
-        # tools/list HTTP reader (the same seam the respawn alias check
-        # calls) so the fake-upstream assertions measure the real read,
-        # not a test-local copy; a public re-export would duplicate the
-        # helper just to assert against it.
         (
             "tests/mcp/test_respawn_no_discovery.py",
             "ralph.mcp.server._http_tools_list",
             ("_http_tools_list_names",),
         ),
-        # wt-16 MCP make-before-break acceptance (WU-1/WU-4): the
-        # real-child root-cause suite needs to issue a real JSON-RPC
-        # ``tools/list`` HTTP request against the production bridge
-        # endpoint to assert the served tool-set before AND after a
-        # failed/successful replacement. The production helper that
-        # does exactly that bounded read lives in
-        # ``_http_tools_list.py``; a public re-export would widen the
-        # tool-list API surface the audit tracks. The legacy
-        # ``test_respawn_no_discovery`` precedent just above
-        # allowlists the same private import for the same reason.
         (
             "tests/mcp/test_root_cause_real_child_bridge.py",
             "ralph.mcp.server._http_tools_list",
             ("_http_tools_list_names",),
         ),
-        # wt-16 MCP make-before-break acceptance (WU-3a): the
-        # handover-inflight real-child suite (E1.3-E1.6) needs to
-        # pin that the OLD child still answers ``tools/list`` and
-        # that the shared endpoint stays in service during the
-        # drain / fail-closed-resume flows. Same production helper
-        # same allowlist rationale as the two precedents above.
         (
             "tests/mcp/test_handover_inflight_real_child.py",
             "ralph.mcp.server._http_tools_list",
             ("_http_tools_list_names",),
         ),
-        # wt-19 MCP make-before-break acceptance: the real-child bridge
-        # suite pins the served tool-set before and after a failed and
-        # a successful child replacement, and the drain path asserts the
-        # OLD child still answers ``tools/list``. It needs the same
-        # production bounded reader for the same reason as the three
-        # precedents above.
         (
             "tests/mcp/test_bridge_make_before_break.py",
             "ralph.mcp.server._http_tools_list",
@@ -544,12 +242,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.process.manager",
             ("_process_manager",),
         ),
-        # wt-07-multimodal-visual: the degradation-warning suite imports
-        # the private ``_media_blocks`` module to drive the same internal
-        # functions production wires up. The public re-export would
-        # duplicate every helper we need just to assert against the
-        # production-grade block builder; importing the private
-        # module is the more honest test seam.
         (
             "tests/test_media_degradation_warning.py",
             "ralph.mcp.tools.workspace",
@@ -575,13 +267,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.agents.registry",
             ("_resolve_dynamic_agent",),
         ),
-        # wt-065-claude-support: the interactive-startup suite pins the
-        # exact ``--settings`` JSON envelope (skip-permission flag, Stop
-        # sentinel hook, PermissionRequest auto-allow) that the invoke
-        # pipeline embeds in the claude argv. The only public seam,
-        # ``invoke_agent``, needs the full subprocess e2e lane that
-        # ``make test`` excludes, so importing the private settings
-        # builder is the honest fast-suite regression seam.
         (
             "tests/agents/invoke/test_interactive_startup_errors.py",
             "ralph.agents.invoke._commands",
@@ -607,11 +292,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.mcp.server",
             ("_fallback_http_handler",),
         ),
-        # wt-16: MCP respawn bug (R1-R4, S1-S4) regression suite. Each
-        # test file imports the private seam that owns the precise
-        # invariant it pins (inherited-FD handoff, respawn-only catalog
-        # cache, cooldown policy, supervision backoff, stage tracker,
-        # timeout invariants, spawn-options pass_fds).
         (
             "tests/mcp/test_mcp_endpoint_never_refuses.py",
             "ralph.mcp.server._fallback_http_server",
@@ -662,15 +342,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.mcp.protocol.startup",
             ("_visible_mcp_tool_names_owned",),
         ),
-        # wt-03-fix-bug: the S-3 regression test patches the landing
-        # collaborators (``fast_forward_target``,
-        # ``post_attempt_verify``, ``_delete_rebase_backup_refs``) that
-        # the refactor relocated into
-        # ``_recovery_fast_forward_landing``. The test asserts the
-        # public ``recovery._land_and_reconcile`` honors the opt-out
-        # configuration end-to-end; the private module is the only
-        # honest monkeypatch seam because the landing is an
-        # inlined collaborator of the recovery entry point.
         (
             "tests/test_auto_integrate_recovery.py",
             "ralph.pipeline",
@@ -890,9 +561,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.mcp.tools.exec",
             ("_shell_command_segments",),
         ),
-        # Tests whose subject IS the internal seam: the terminal-escape
-        # containment contract (AGENTS.md) is defined on these private
-        # functions, so the test must import them to pin the contract.
         (
             "tests/agents/test_agent_spawn_detaches_tty.py",
             "ralph.agents.invoke",
@@ -918,11 +586,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.display._plain_constants",
             ("_sanitize",),
         ),
-        # Tests whose subject IS the internal seam: the
-        # wt-028-display P2/P3 contract lives on these private
-        # helpers (identity slot assignment, stall threshold,
-        # buffer cap), so the accessibility / parity / liveness
-        # tests must import them to pin the contract.
         (
             "tests/display/test_accessibility_matrix.py",
             "ralph.display.theme",
@@ -973,14 +636,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.project_policy",
             ("_prompt_ui",),
         ),
-        # wt-15-policy WU-5: the authentic v4 consent-flow integration
-        # suite exercises the public ``_maybe_resolve_schema_upgrade``
-        # route against an unmodified v4 corpus (v4 marker, v1 portfolio)
-        # to prove the unattended refusal path and the interactive
-        # upgrade/freeze consent choices. The private module is the only
-        # entry point; adding a public re-export would duplicate the
-        # existing ``cli_integration._maybe_resolve_schema_upgrade`` call
-        # site purely for testability.
         (
             "tests/project_policy/test_authentic_v4_consent_flow.py",
             "ralph.project_policy",
@@ -991,31 +646,16 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.cli.commands._load_result",
             ("_LoadResult",),
         ),
-        # The C4 typed-terminal-failure suite drives the REAL
-        # ``cli_integration._make_production_invoke_agent`` closure, whose
-        # only entry type is the private ``_LoadResult`` NamedTuple; the
-        # out-of-graph boundary is exactly what makes the policy entry path
-        # interesting (it restores the retry-intent thread-local), so a
-        # test-local structural stand-in would measure a different seam. A
-        # public re-export would duplicate the type purely for testability,
-        # matching the three existing entries above.
         (
             "tests/pipeline/test_terminal_mcp_error_per_entry_path.py",
             "ralph.cli.commands._load_result",
             ("_LoadResult",),
         ),
-        # validators.py was split at the 1000-line cap; these two checks now
-        # live in the module that owns their layer, and the tests follow them.
         (
             "tests/project_policy/test_validator.py",
             "ralph.project_policy",
             ("_content_checks",),
         ),
-        # v5: the guard-inventory parser was split out of
-        # ``_content_checks.py`` to keep the 1000-line cap; the v5
-        # proof tests follow the parser to its new home so the
-        # per-row branch and the per-phrase claim-scope check are
-        # exercised at the cheapest deterministic layer.
         (
             "tests/project_policy/test_v5_kernel.py",
             "ralph.project_policy",
@@ -1136,12 +776,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.cli.commands.smoke",
             ("_required_evidence",),
         ),
-        # wt-063 (kimi support): the kimi wire-provenance test imports
-        # the same two private helpers as the lattice precedent above
-        # -- ``_required_evidence`` (the F1 verdict facts) and
-        # ``_run_smoke_agent`` (the real harness runner) -- to pin that
-        # a kimi-transport smoke run grades its multimodal fact from
-        # the wire ledger, not from smoke-only shortcuts.
         (
             "tests/test_kimi_wire_provenance.py",
             "ralph.pipeline.plumbing.smoke_plumbing",
@@ -1152,11 +786,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.cli.commands.smoke",
             ("_required_evidence",),
         ),
-        # wt-063 (kimi support): auto-integrated 86a68b2f2 (data-driven
-        # AGY refactor) added lookup-table regressions that pin the
-        # private table shape itself; re-exporting the tables publicly
-        # would widen the agent-support API surface the refactor just
-        # narrowed to the registry seam.
         (
             "tests/agents/test_dynamic_alias_help_lookup.py",
             "ralph.agents.support",
@@ -1172,18 +801,11 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.agents",
             ("_agy_upstream_diagnostic",),
         ),
-        # S-3 Part B (Evidence Provenance closeout plan, PA-001): the narrow
-        # grading-correlation test calls the private sentinel-check helper
-        # directly to pin the completion-evidence arithmetic in isolation
-        # from any dispatch, mirroring the existing
-        # tests/test_submit_artifact_writes_receipt.py grant below.
         (
             "tests/test_evidence_provenance_lattice.py",
             "ralph.agents.completion_signals",
             ("_check_completion_sentinel",),
         ),
-        # Grandfathered: pre-existing private-ralph imports in
-        # unrelated test files. These have not been touched by wt-024.
         (
             "tests/agents/execution_state/test_generic_child_signal.py",
             "ralph.agents.execution_state._factory",
@@ -1205,12 +827,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             ("ProcessLineReader",),
         ),
         (
-            # DA-001: pins that a smoke-minted RALPH_BROKER_SECRET never
-            # leaks into the agent subprocess env. ``_subprocess_env`` is
-            # deliberately NOT re-exported from ``ralph.agents.invoke`` --
-            # it is a private env-hygiene boundary, and only this test
-            # (plus the sibling test_subprocess_env_secret_isolation.py
-            # allowlist entries) may reach it directly.
             "tests/test_cli_smoke.py",
             "ralph.agents.invoke._process_reader",
             ("_subprocess_env",),
@@ -1280,14 +896,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.agents.invoke._session",
             ("_bounded_output_lines",),
         ),
-        # wt-01-fs-opti consolidation (commit 153a70e72): the idle-watchdog
-        # tests under tests/agents/idle_watchdog/ were merged into the single
-        # consolidated tests/agents/test_idle_watchdog.py module. Each entry
-        # below re-anchors the allowlist to the consolidated file so the
-        # grandfathered private imports the original files used remain
-        # grandfathered after consolidation; the import symbols are
-        # unchanged. New entries that would introduce *additional* private
-        # imports to a non-grandfathered file would still be rejected.
         (
             "tests/agents/test_idle_watchdog.py",
             "ralph.agents.invoke._monitor_factory",
@@ -1348,7 +956,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.pipeline.prompt_prep",
             ("_prompt_changed_since_last_materialization",),
         ),
-        # wt-034 (mcp optimization) extracted carrier violations; grandfathered.
         (
             "tests/agents/idle_watchdog/test_mark_tool_call_runtime_reachability.py",
             "ralph.agents.execution_state._factory",
@@ -1384,7 +991,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.agents.execution_state._factory",
             ("_STRATEGY_DISPATCH",),
         ),
-        # wt-063 kimi support: same dispatch-table golden pin as cursor/pi.
         (
             "tests/agents/test_register_kimi.py",
             "ralph.agents.execution_state._factory",
@@ -1425,10 +1031,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.agents.invoke._idle_stream_timeout_error",
             ("_IdleStreamTimeoutError",),
         ),
-        # wt-065: the interactive completion-gate regression derives the
-        # runtime agent name through the same private helper the PTY
-        # runner passes to check_process_result (shlex.split(cmd)[0]),
-        # pinning the claude/<alias>-to-runtime-name seam end to end.
         (
             "tests/test_claude_interactive_session_resume.py",
             "ralph.agents.invoke._process_reader",
@@ -1484,9 +1086,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.skills._agent_paths",
             ("_SKILL_ROOT_PREFIXES",),
         ),
-        # wt-044: the installer's prune helper removes managed skills that
-        # the baseline no longer ships; the test pins the contract by
-        # importing the private helper and the managed-marker constant.
         (
             "tests/test_skills_installer_project.py",
             "ralph.skills._content",
@@ -1497,10 +1096,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.skills._installer",
             ("_prune_removed_baseline_skills",),
         ),
-        # wt-12 U2: the install + auto-commit boundary test split from
-        # ``test_skills_auto_commit`` reaches the same private
-        # ``_MANAGED_MARKER`` seam the ``test_skills_installer_project``
-        # precedent uses.
         (
             "tests/test_skills_install_auto_commit.py",
             "ralph.skills._content",
@@ -1511,11 +1106,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.agents.completion_signals",
             ("_check_completion_sentinel",),
         ),
-        # wt-015-agy-support S-5/S-6: the AGY v1.1.13 full-lifecycle proofs
-        # verify the durable, HMAC-verified completion sentinel directly via
-        # the same private helper the harness's completion evaluation uses,
-        # mirroring the tests/test_submit_artifact_writes_receipt.py grant
-        # above (the sentinel IS the subject under test).
         (
             "tests/test_agy_harness_with_mock.py",
             "ralph.agents.completion_signals",
@@ -1571,13 +1161,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.mcp.tools._exec_completed_process",
             ("_CompletedProcessAdapter",),
         ),
-        # wt-04 idle-watchdog consolidation: the consolidated
-        # ``tests/agents/test_idle_watchdog.py`` is the surviving single
-        # regression surface for the idle-watchdog subsystem (per
-        # consolidation commit ``a673ae85d``), so the consolidated suite
-        # must reach the same private seams the prior split files did —
-        # otherwise the regression coverage of the consolidation would
-        # silently drop those seams without flagging the audit.
         (
             "tests/agents/test_idle_watchdog.py",
             "ralph.agents.idle_watchdog._subagent_identity",
@@ -1603,17 +1186,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.pipeline.effect_executor",
             ("_failure_requires_fresh_session",),
         ),
-        # wt-046 brief criteria coverage: the regression-probe registry
-        # injects each criterion's defect through a production seam
-        # that is private-by-convention (``_palette``, ``_salience``,
-        # ``_frequency_tier``, ``_terminal_bg_query``, ``_SYNTAX_ROLES``,
-        # ``_markdown_theme``). The seam is the documented injection
-        # surface per PLAN.md S-6, so allow the probes file (which
-        # exists only to wire probes) to reach it directly. The
-        # coverage test itself only imports ``_palette`` and
-        # ``_markdown_theme`` to clear lru_cache entries the probes
-        # perturbed; that reach is documented in the same S-6 plan
-        # and is likewise allowed.
         (
             "tests/unit/display/_criteria_probes.py",
             "ralph.display",
@@ -1654,13 +1226,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.display",
             ("_palette",),
         ),
-        # v5 B7/B9 contract tests: each test exercises a private seam
-        # of the guard-inventory validator at the cheapest
-        # deterministic layer (synthetic in-memory starter content,
-        # no filesystem I/O, no AI). The v5 plan §3 freezes the
-        # contract that the public test surface pins; importing the
-        # private parser helper / private validator seam is the
-        # honest test boundary.
         (
             "tests/project_policy/test_guard_inventory_contract.py",
             "ralph.project_policy._guard_inventory",
@@ -1701,12 +1266,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.project_policy.validators",
             ("_validate_existing_policy_file",),
         ),
-        # wt-16: the invariant suites pin the exact private constants the
-        # production modules define (``_PROBE_SAFETY_S`` export contract,
-        # ``_EVENTS`` health-event ledger). The assertions are the
-        # regression contract; importing the public package would not
-        # expose these names, and re-exporting them for tests would widen
-        # the production API surface for test convenience only.
         (
             "tests/mcp/test_discovery_aggregate_budget.py",
             "ralph.mcp.protocol",
@@ -1727,27 +1286,11 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.mcp.protocol._startup_timeouts",
             ("_PROBE_SAFETY_S",),
         ),
-        # wt-16: ``test_host_contention_signal_producers`` imports
-        # the private ``_mcp_health_event`` module because every
-        # test sets the same module-level signals the production
-        # call sites write to. A public re-export would just
-        # duplicate the ``_clear_host_contention_signals`` /
-        # ``pop_recent_host_contention_signals`` /
-        # ``record_host_contention_signal`` helpers the suite
-        # asserts against, with no extra invariants.
         (
             "tests/mcp/test_host_contention_signal_producers.py",
             "ralph.mcp.server",
             ("_mcp_health_event",),
         ),
-        # wt-16: ``test_mcp_bridge_avoids_killing_under_contention``
-        # imports ``_DEFERRAL_COUNT_CEILING`` to drive the bridge
-        # through exactly that many probe failures in a single
-        # test. The constant is module-private because it is an
-        # import-time invariant the production module owns; the
-        # test must reference the same value to prove the
-        # invariant. A public re-export would create two sources
-        # of truth and the test would rot silently.
         (
             "tests/mcp/test_mcp_bridge_avoids_killing_under_contention.py",
             "ralph.mcp.server.lifecycle",
@@ -1759,81 +1302,23 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
 
 _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
     {
-        # wt-16: ``_iter_with_direct_mcp_recovery`` keeps the recovery
-        # loop's per-step branch fan-out (session recovery, mcp-reset,
-        # retry classification) where each branch short-circuits to a
-        # typed outcome; flattening the branches would obscure the
-        # typed control flow.
         ("ralph/agents/invoke/_direct_mcp_recovery.py", 292),
-        # wt-16: ``failure_classifier._categorize_exc`` returns once
-        # per exception class (the priority order IS the
-        # classification contract); the function fans out across
-        # NETWORK/ENVIRONMENTAL, SUPERVISION, TOOL_AVAILABILITY,
-        # CONTENT_POLICY, USER_INPUT, and the post-tool-empty-response
-        # branches before the catch-all ``counted=True`` default.
-        # The audit_lint_bypass allowlist already authorises
-        # ``failure_classifier.PLR0911`` for the same fan-out;
-        # refactoring into a single accumulator would obscure the
-        # typed control flow.
         ("ralph/recovery/failure_classifier.py", 1019),
-        # wt-16: ``_start_stage_tracker`` uses a process-lifetime
-        # module-level ``_spawn_id`` UUID that ``reset_spawn_id`` and
-        # ``record`` must mutate in place; the alternative (a
-        # class-based wrapper) would couple every reader/writer across
-        # the bridge to a shared object and break the supervisor's
-        # preflight read path. PLW0603 (global-statement) is the ruff
-        # diagnostic that names this exception explicitly.
         ("ralph/mcp/server/_start_stage_tracker.py", 65),
-        # wt-16: ``_mcp_health_event`` keeps a process-lifetime
-        # module-level ``_DURABLE_SINK_PATH`` scalar set once by the
-        # supervisor before the first restart decision is recorded;
-        # ``set_durable_sink_path`` must mutate it in place via
-        # ``global`` (PLW0603) for the same reason as
-        # ``_start_stage_tracker`` above.
         ("ralph/mcp/server/_mcp_health_event.py", 110),
         ("ralph/mcp/server/_mcp_health_event.py", 350),
         ("ralph/mcp/server/lifecycle.py", 500),
         ("ralph/mcp/upstream/registry.py", 115),
-        # wt-14: ``_validate_decision_contract`` returns one branch per
-        # analysis-decision artifact type; the function is the shared
-        # contract used by planning / development / policy / review
-        # decisions. Branching on ``artifact_type`` keeps the per-type
-        # logic local and easier to read than a dispatch table would be.
         ("ralph/mcp/artifacts/markdown/specs/analysis_decision.py", 387),
-        # wt-14: ``execution.py`` keeps a ``from contextlib import suppress``
-        # next to its only user because the top-level import would shadow
-        # the existing module-level ``suppress`` alias used elsewhere in
-        # the package. Moving the import up would change import-time
-        # semantics; the file is short enough to keep it inline.
         ("ralph/phases/execution.py", 421),
-        # wt-012: deterministic auto-commit producer-level helpers. The
-        # local-import markers break module-load cycles with
-        # ``ralph.git.operations`` / ``ralph.git.scoped_auto_commit``
-        # from the producer-level call sites (skill install,
-        # ``.gitignore`` seed, policy preflight, post-pipeline
-        # finalize, manager.force-init-skills, init, run-start). The
-        # PLR0911/PLR0912/PLR0915 markers opt the explicit-outcome
-        # state machine out of the project complexity caps; the
-        # rationale is documented inline on each marker.
         ("ralph/git/scoped_auto_commit.py", 248),
         ("ralph/git/scoped_auto_commit.py", 537),
         ("ralph/git/scoped_auto_commit.py", 943),
-        # analysis_decision: the structured decision validator
-        # returns early for every per-type branch (planning / review /
-        # policy) and every status (completed / request_changes /
-        # failed); the early returns are the contract.
         ("ralph/mcp/artifacts/markdown/specs/analysis_decision.py", 323),
         ("ralph/cli/commands/_run_start_setup.py", 41),
         ("ralph/project_policy/cli_integration.py", 557),
         ("ralph/project_policy/cli_integration.py", 560),
         ("ralph/project_policy/cli_integration.py", 561),
-        # wt-15: lazy import of ``_content_checks`` from the validator's
-        # research-basis and per-file wrappers publishes the citation
-        # ``path:`` workspace seam without creating a
-        # validators<->_content_checks import cycle. The cycle is
-        # necessary because the workspace slot is module-level on
-        # ``_content_checks`` so unit tests can exercise the citation
-        # shape without setting it.
         ("ralph/project_policy/validators.py", 282),
         ("ralph/project_policy/validators.py", 320),
         ("ralph/skills/_installer.py", 112),
@@ -1842,16 +1327,11 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/skills/manager.py", 216),
         ("ralph/skills/manager.py", 217),
         ("ralph/skills/manager.py", 218),
-        # wt-12: the candidate-set + diff helpers extracted from
-        # ``_installer.py`` carry the same local-import lazy-import markers
-        # for ``git`` (optional seam) and the producer-side diff helper.
         ("ralph/skills/_installer_candidates.py", 221),
         ("ralph/skills/_installer_candidates.py", 323),
         ("ralph/skills/_installer_candidates.py", 325),
         ("ralph/skills/manager.py", 241),
         ("ralph/skills/manager.py", 248),
-        ("ralph/testing/audit_skill_auto_commit.py", 261),
-        ("ralph/testing/audit_skill_auto_commit.py", 358),
         ("ralph/agents/__init__.py", 44),
         ("ralph/agents/catalog.py", 216),
         ("ralph/agents/catalog.py", 217),
@@ -1866,10 +1346,6 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/agents/catalog.py", 477),
         ("ralph/agents/catalog.py", 546),
         ("ralph/agents/catalog.py", 549),
-        # wt-063 (kimi support): auto-integrated 86a68b2f2 moved the
-        # builtin lazy import inside the data-driven registry; the
-        # suppression pins the same builtin<->registry import-cycle
-        # break as the catalog precedents above.
         ("ralph/agents/registry.py", 203),
         ("ralph/agents/execution_state/_factory.py", 76),
         ("ralph/agents/execution_state/_factory.py", 130),
@@ -1908,35 +1384,11 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/phases/commit_review.py", 701),
         ("ralph/phases/commit_review.py", 722),
         ("ralph/phases/commit_review.py", 732),
-        # wt-01-test-suites: audit_typecheck_bypass.py:_check_mypy_ini
-        # is a single ConfigParser-driven reducer with a wide
-        # branch fan-out (eight sub-checks against the parsed
-        # config); the PLR0912 redaction is the canonical
-        # pattern for the too-many-branches lint rule and the
-        # function is intentionally one reducer -- splitting it
-        # would scatter the ConfigParser call across modules
-        # and rebind the audit's check order.
-        ("ralph/testing/audit_typecheck_bypass.py", 347),
-        # wt-16: the same ConfigParser reducer as line 347 above; the
-        # PLR0912 redaction at line 351 sits on a sub-branch that
-        # handles the ``[mypy]``-only configuration subset and is
-        # authorised for the same single-reducer rationale.
-        ("ralph/testing/audit_typecheck_bypass.py", 351),
         ("ralph/display/parallel_display.py", 875),
         ("ralph/display/parallel_display.py", 1967),
         ("ralph/display/parallel_display.py", 1968),
-        # wt-04-improve-display: _wrap_close_body fans out across 8 chrome-prefix
-        # / continuation-budget / trailer branches (fits/head/trailer/single-word/
-        # over-budget/over-budget-2x/short-after-over/short-after-over-2x). The
-        # audit_lint_bypass allowlist already authorises ``parallel_display.PLR0911``
-        # for the same fan-out; refactoring the branches into a single accumulator
-        # would complicate the per-row width-preservation contract that the existing
-        # tests pin (see tests/display/test_parallel_display_close_markers.py).
         ("ralph/mcp/server/_metrics.py", 77),
         ("ralph/mcp/server/_metrics.py", 86),
-        # process-lifetime memo of an immutable terminal probe (OSC 11)
-        # and the disambiguating _probed flag — see audit_lint_bypass for
-        # the policy-compliant rationale.
         ("ralph/display/_terminal_bg_query.py", 222),
         ("ralph/display/_terminal_bg_query.py", 238),
         ("ralph/mcp/tools/artifact.py", 239),
@@ -1952,11 +1404,6 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/pipeline/run_loop.py", 730),
         ("ralph/pipeline/run_loop.py", 841),
         ("ralph/pipeline/run_loop.py", 1019),
-        # wt-16: ``_block_unresolved_integration`` routes each distinct
-        # lifecycle decision through a dedicated return (busy wait /
-        # busy exhausted / unreadable / intervention / retained /
-        # post-recovery clear / blocked). audit_lint_bypass already
-        # authorises ``run_loop.PLR0911`` for the same fan-out.
         ("ralph/pipeline/run_loop.py", 2117),
         ("ralph/pipeline/runner.py", 224),
         ("ralph/pro_support/heartbeat.py", 82),
@@ -1965,15 +1412,7 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/agents/registry.py", 318),
         ("ralph/pydantic_validation_errors.py", 168),
         ("ralph/supervising.py", 209),
-        ("ralph/testing/audit_lint_bypass.py", 498),
-        ("ralph/testing/audit_typecheck_bypass.py", 286),
-        ("ralph/testing/audit_typecheck_bypass.py", 301),
-        # The comment audit documents the suppression directive forms it
-        # recognises, so its own docstring carries the literal markers the
-        # bypass-comment detector scans for. Same shape as the two
-        # audit_typecheck_bypass entries above.
         ("ralph/testing/audit_comments.py", 318),
-        # wt-034 (mcp optimization) extracted carrier files; grandfathered.
         ("ralph/agents/catalog.py", 275),
         ("ralph/agents/catalog.py", 316),
         ("ralph/agents/catalog.py", 531),
@@ -2014,29 +1453,11 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/telemetry/_sentry.py", 639),
         ("ralph/telemetry/_sentry.py", 800),
         ("ralph/telemetry/_sentry.py", 814),
-        ("ralph/testing/audit_skill_auto_commit.py", 183),
-        ("ralph/testing/audit_skill_auto_commit.py", 282),
-        ("ralph/testing/audit_typecheck_bypass.py", 100),
-        ("ralph/testing/audit_typecheck_bypass.py", 340),
-        # audit_test_policy.py: pre-existing noqa markers for justifiable
-        # complexity in the test-policy audit walker itself. Re-anchored after
-        # the template-body invariant allowlist entry.
         ("ralph/testing/audit_test_policy.py", 344),
         ("ralph/testing/audit_test_policy.py", 601),
         ("ralph/testing/audit_test_policy.py", 651),
-        # wt-040 auto-integrate: _reclaim_unowned_stale_rebase fans out
-        # across A1/A3/A4/A5/A6/A11 reclaim paths and _lock_holder_is_dead
-        # consults the live lock holder before allowing reclaim (A9/A10/E9).
         ("ralph/pipeline/auto_integrate_recovery.py", 198),
         ("ralph/pipeline/auto_integrate_recovery.py", 352),
-        # wt-044: _check_pyproject_config branches on each ruff config key
-        # the lint-bypass audit detects; collapsing the branches would
-        # duplicate the violation-builder call site in every arm.
-        ("ralph/testing/audit_lint_bypass.py", 505),
-        # wt-045 typechecking migration: pre-existing noqa markers surfaced by
-        # the newly wired repo-structure audit. They mark complexity,
-        # lazy-import, or global-state suppression in long-lived modules;
-        # refactoring them is out of scope for this migration.
         ("ralph/agents/execution_state/_factory.py", 266),
         ("ralph/agents/execution_state/_factory.py", 329),
         ("ralph/agents/execution_state/_factory.py", 332),
@@ -2063,130 +1484,28 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/telemetry/_sentry.py", 572),
         ("ralph/telemetry/_sentry.py", 621),
         ("ralph/telemetry/_sentry.py", 767),
-        ("ralph/testing/audit_lint_bypass.py", 492),
-        ("ralph/testing/audit_lint_bypass.py", 499),
-        ("ralph/testing/audit_skill_auto_commit.py", 181),
-        ("ralph/testing/audit_skill_auto_commit.py", 278),
-        # wt-047-stall-label: pre-existing noqa marker surfaced by the
-        # newly wired repo-structure audit. The wt-047 change added
-        # 13 lines to _NOQA_ALLOWLIST in audit_lint_bypass.py; the
-        # _check_pyproject_config marker (PLR0912) therefore sits at
-        # Locked by ``make verify`` via ``ralph.testing.audit_repo_structure``.
-        ("ralph/testing/audit_lint_bypass.py", 522),
-        # wt-047-stall-label: subscriber._format_waiting_status_line
-        # renders one explicit line per WaitingStatusKind (ENTERED /
-        # PROGRESS / SUSPECTED_FROZEN / EXITED / SUBAGENT_PROGRESS /
-        # STALLED / STALL_RESUMED / HARD_STOP fallback). The kind
-        # dispatch is one-statement-per-branch and consolidating it
-        # into a dict-based dispatcher would scatter the per-kind
-        # diagnostic payload handling across helper functions and
-        # obscure the per-kind fallback that the wt-047 plan locks
-        # against the ``hit hard ceiling`` template.
         ("ralph/agents/idle_watchdog/_active_branch.py", 228),
         ("ralph/display/subscriber.py", 98),
         ("ralph/display/subscriber.py", 110),
         ("ralph/config/loader.py", 414),
         ("ralph/pipeline/auto_integrate_remote_sync.py", 322),
-        # wt-07-multimodal-visual: the 4-condition contract has 7 short-circuit returns;
-        # splitting them across helpers (already done) leaves 7 in the top-level walker.
         ("ralph/pipeline/plumbing/smoke_multimodal.py", 363),
-        # wt-07-multimodal-visual: multimodal + subagent + parser + visible-output + AGY
-        # branches each their own short-circuit; restructuring further would scatter the
-        # contract.
         ("ralph/pipeline/plumbing/smoke_plumbing.py", 1669),
-        # wt-058-prompt-consistency (audit repair): the deferred import of
-        # ``opencode_binary_override`` from ``ralph.config.agent_detection``
-        # replaced the ``smoke_plumbing`` seam so the override read lives in
-        # the canonical env-boundary module; the lazy import still breaks
-        # the invoke <-> agent_detection chain (agent_detection ->
-        # ralph.agents.builtin -> execution_state -> invoke).
         ("ralph/agents/invoke/__init__.py", 610),
-        # wt-058-prompt-consistency (audit repair): backward-compat delegate
-        # in ``smoke_plumbing`` lazily imports the canonical
-        # ``agent_detection.opencode_binary_override`` so smoke callers keep
-        # their import path while the env read lives in the canonical
-        # boundary module; the lazy import keeps the delegate free of the
-        # agent_detection import chain.
         ("ralph/pipeline/plumbing/smoke_plumbing.py", 1548),
-        # wt-07-multimodal-visual: re-export of the three OpenCode
-        # override helpers from ``_smoke_opencode_override``; the
-        # helpers were extracted to keep ``smoke.py`` under the
-        # 1000-line audit cap (see ``_LEGACY_LARGE_FILE_ALLOWLIST``).
-        # External callers (the smoke test, downstream harnesses)
-        # keep importing from ``smoke.py`` for backward compatibility;
-        # the import is the documented seam for that re-export.
         ("ralph/cli/commands/smoke.py", 255),
-        # wt-58-prompt-consistency: workspace-context resolver.
-        # Lazy imports of registry, config loader, MCP plan resolver,
-        # and policy loader break the ralph.workspace<->ralph.mcp
-        # circular chain. ``audit_lint_bypass.py`` already gates the
-        # corresponding ``PLR0912`` suppression against a documented
-        # rationale; these entries mirror the same policy.
-        # Re-anchored to the current lines after ``WorkspaceContextError``
-        # moved to ``ralph/workspace/errors.py`` (the lazy-import block
-        # keeps the same five suppressions, at their new lines).
         ("ralph/workspace/context.py", 114),
         ("ralph/workspace/context.py", 117),
         ("ralph/workspace/context.py", 124),
         ("ralph/workspace/context.py", 127),
         ("ralph/workspace/context.py", 130),
-        # v5: the guard-inventory parser was split out of
-        # ``_content_checks.py`` to keep the 1000-line audit cap; the
-        # F401 re-export in ``_content_checks.py`` is the public seam
-        # the validators.py check and downstream tests consume. The
-        # bypass is the documented re-export pattern, mirroring the
-        # ``smoke.py`` re-export entry above.
         ("ralph/project_policy/_content_checks.py", 792),
-        # wt-18: ``_run_owned_integration_conflict_resolution`` adds
-        # the cold-capped escalation return path on top of the
-        # existing budget-gate / paused-rebase / merge / orphan-index
-        # branches. Each return is an independent contract: cold-cap
-        # escalation (one-shot per session), budget-spent
-        # escalation (returns False so caller escalates to
-        # ``INTERVENTION_REQUIRED``), paused-rebase path, in-progress
-        # merge completion, and orphaned-unmerged-index resolution.
-        # Flattening them into a single accumulator would obscure
-        # the typed control flow and risk merging paths that must
-        # not merge (cold-cap fires BEFORE the budget gate; budget
-        # gate fires ONLY when cold-cap is not in effect; the
-        # conflict-timeout path is separate from both).
         ("ralph/pipeline/run_loop.py", 1491),
-        # wt-18: ``_run_cold_capped_escalation`` returns once per
-        # distinct branch: live-rederive-clear (the cached record
-        # was stale), paused-rebase path, in-progress merge
-        # completion, orphaned-unmerged-index resolution. The
-        # one-shot ``_cold_capped_escalation_attempted`` guard plus
-        # the re-derive-first ordering are the O1 contract; flattening
-        # into a single accumulator would break the re-derive-clear
-        # fast path that prevents the cap from being burned on a
-        # state that no longer exists.
         ("ralph/pipeline/run_loop.py", 1677),
-        # wt-16: ``_host_contention_signal`` lazily imports
-        # ``_mcp_health_event.record_host_contention_signal`` inside
-        # the producer functions. The lazy import keeps the producer
-        # module load order independent of the singleton's mutable
-        # state so the producers can be imported in isolation by
-        # tests (and so that the in-line ``record_d_state`` /
-        # ``record_sigkill_survivor`` / ``record_psi_pressure`` /
-        # ``record_supervisor_tick_lateness`` call sites do not
-        # trigger the module side effects on import). The
-        # the import-not-at-top decision (lint marker suppressed)
-        # decision. A top-level import would create a circular
-        # dependency on the bridge-time configuration path.
         ("ralph/mcp/server/_host_contention_signal.py", 48),
         ("ralph/mcp/server/_host_contention_signal.py", 77),
         ("ralph/mcp/server/_host_contention_signal.py", 118),
         ("ralph/mcp/server/_host_contention_signal.py", 147),
-        # wt-16: ``_process_manager._mark_termination_failed`` and
-        # ``_process_manager._escalate_termination_sync`` lazily
-        # import the contention-signal helpers so the manager
-        # module does not pull the MCP server stack on every
-        # process-manager import. The ``# lint-bypass for the local-import decision`` markers
-        # are deliberate: lifting the imports to module scope would
-        # create a circular dependency (process_manager -> mcp
-        # server -> process_manager for the activity relay seam)
-        # and break the existing per-process module-load order
-        # that the test fixtures rely on.
         ("ralph/process/manager/_process_manager.py", 1746),
         ("ralph/process/manager/_process_manager.py", 2101),
     }

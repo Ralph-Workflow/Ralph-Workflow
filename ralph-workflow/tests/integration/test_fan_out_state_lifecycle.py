@@ -1,14 +1,3 @@
-"""Fan-out state lifecycle from production-shaped state.
-
-The effect router derives work units from the plan artifact, so the state
-entering ``execute_fan_out_sync`` carries EMPTY ``work_units``. The fan-out
-runtime must still seed worker tracking (the reducer builds ``worker_states``
-from ``state.work_units`` on FAN_OUT_STARTED), advance the phase when every
-worker succeeds, clear the wave's tracking state afterwards so downstream
-phases route normally, and preserve tracking state on partial failure so a
-re-entry resumes only the unfinished units.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -114,7 +103,6 @@ def test_successful_wave_advances_phase_from_empty_state(
 def test_successful_wave_clears_parallel_tracking_state(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Stale units would poison routing of the next (non-parallelized) phase."""
     result = _run_fan_out(
         monkeypatch,
         tmp_path,
@@ -134,7 +122,6 @@ def test_successful_wave_clears_parallel_tracking_state(
 def test_partial_failure_preserves_resume_state(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A failed wave must keep tracking state so re-entry retries only failures."""
     result = _run_fan_out(
         monkeypatch,
         tmp_path,
@@ -155,7 +142,6 @@ def test_partial_failure_preserves_resume_state(
 def test_failed_wave_does_not_run_successful_completion_hook(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Analysis regression: a failed worker must not integrate shared refs."""
     completions: list[PipelineState] = []
 
     def _record_completion(finished_state: PipelineState) -> PipelineState:
@@ -181,13 +167,6 @@ def test_failed_wave_does_not_run_successful_completion_hook(
 def test_successful_wave_checkpoints_cleared_state(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A crash after the wave must not leave a checkpoint that poisons resume.
-
-    The last checkpoint written by a fully successful wave must already have
-    the parallel tracking cleared; otherwise resume routes the advanced
-    (non-parallelized) phase with stale work_units and exits with a hard
-    failure instead of continuing the run.
-    """
     checkpointed: list[PipelineState] = []
     _run_fan_out(
         monkeypatch,
@@ -211,7 +190,6 @@ def test_successful_wave_checkpoints_cleared_state(
 def test_failed_wave_checkpoints_resume_state(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A failed wave's checkpoint must keep tracking state so resume can retry."""
     checkpointed: list[PipelineState] = []
     _run_fan_out(
         monkeypatch,
@@ -235,7 +213,6 @@ def test_failed_wave_checkpoints_resume_state(
 def test_resume_with_all_units_succeeded_advances_instead_of_stalling(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Crash-resume after the wave finished must advance, not loop forever."""
     units = _two_unit_effect().work_units
     state = PipelineState(
         phase="development",

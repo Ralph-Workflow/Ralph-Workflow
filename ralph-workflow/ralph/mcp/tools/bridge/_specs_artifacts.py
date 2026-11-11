@@ -1,4 +1,3 @@
-"""Tool specifications for markdown artifact authoring and coordination."""
 
 from __future__ import annotations
 
@@ -22,7 +21,6 @@ from ralph.mcp.tools.names import (
 
 
 def artifact_specs() -> list[ToolSpec]:
-    """Return the markdown-only artifact tool surface."""
     return [
         ToolSpec(
             metadata=_metadata(

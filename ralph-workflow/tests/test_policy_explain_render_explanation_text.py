@@ -1,5 +1,3 @@
-"""Tests for the policy explanation feature (ralph/policy/explain.py and render.py)."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -26,7 +24,6 @@ _CHECK_LOOP_MAX = 3
 
 
 def _minimal_bundle(phases: dict[str, PhaseDefinition] | None = None) -> PolicyBundle:
-    """Build a minimal PolicyBundle for testing."""
     if phases is None:
         phases = {
             "work": PhaseDefinition(
@@ -142,8 +139,6 @@ class TestRenderExplanationText:
         assert "LIFECYCLE COMPLETION" in text
         assert "development_final_commit" in text
 
-    # --- Cycle timebox (S-6) ---
-
     def test_cycle_timebox_section_appears_for_default_policy(self) -> None:
         bundle = load_policy(_DEFAULT_POLICY_DIR)
         exp = explain_policy(bundle)
@@ -154,8 +149,6 @@ class TestRenderExplanationText:
         assert "28800s" in text
         assert "planning_analysis -> development" in text
         assert "development_final_commit_review" in text
-        # The outcome a redirected cycle is finalized with decides whether the
-        # run continues, so the operator must be able to read it back.
         assert "Finalization outcome: completed" in text
 
     def test_cycle_timebox_section_absent_when_policy_omits_it(self) -> None:

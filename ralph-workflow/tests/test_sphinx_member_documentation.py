@@ -1,10 +1,3 @@
-"""Test that public classes and functions in :members: modules have docstrings.
-
-For every public ralph module documented with :members: in docs/sphinx/modules.rst,
-every public top-level class and function must have a non-empty docstring so that
-the Sphinx-rendered API reference is substantive.
-"""
-
 from __future__ import annotations
 
 import ast
@@ -17,15 +10,8 @@ _MODULES_RST = Path(__file__).parent.parent / "docs" / "sphinx" / "modules.rst"
 
 
 def _parse_members_modules(modules_rst_text: str) -> set[str]:
-    """Return module names (relative to ralph) documented with :members:.
-
-    Parses the RST source and collects every ``.. automodule:: ralph.X``
-    directive whose option block contains ``:members:`` but NOT ``:no-members:``.
-    """
     members_modules: set[str] = set()
 
-    # Split into blocks at each automodule directive.
-    # Pattern: find ``.. automodule:: NAME`` followed by an indented option block.
     block_re = re.compile(
         r"^\.\. automodule::\s+(\S+)(.*?)(?=^\.\. automodule::|\Z)",
         re.MULTILINE | re.DOTALL,
@@ -38,7 +24,6 @@ def _parse_members_modules(modules_rst_text: str) -> set[str]:
         has_no_members = bool(re.search(r"^\s+:no-members:", option_block, re.MULTILINE))
 
         if has_members and not has_no_members:
-            # Normalise to relative form (strip "ralph." prefix)
             if module_name.startswith("ralph."):
                 rel = module_name[len("ralph.") :]
             elif module_name == "ralph":
@@ -52,17 +37,10 @@ def _parse_members_modules(modules_rst_text: str) -> set[str]:
 
 
 def _resolve_to_source(rel_name: str, ralph_root: Path) -> Path | None:
-    """Map a documented ralph submodule name to its backing source file.
-
-    Returns the leaf ``.py`` path for modules or ``__init__.py`` for packages.
-    Returns ``None`` if neither exists.
-    """
     parts = rel_name.split(".")
-    # Try as leaf module
     leaf = ralph_root.joinpath(*parts[:-1], parts[-1] + ".py")
     if leaf.exists():
         return leaf
-    # Try as package
     pkg = ralph_root.joinpath(*parts, "__init__.py")
     if pkg.exists():
         return pkg
@@ -70,7 +48,6 @@ def _resolve_to_source(rel_name: str, ralph_root: Path) -> Path | None:
 
 
 def _is_overload(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Return True if the function is decorated with ``@overload`` or ``@typing.overload``."""
     for deco in node.decorator_list:
         if isinstance(deco, ast.Name) and deco.id == "overload":
             return True
@@ -85,27 +62,20 @@ def _is_overload(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
 
 @cache
 def _public_members_with_missing_docstrings(source_path: Path) -> list[str]:
-    """Return names of public top-level classes/functions without docstrings.
-
-    Uses AST inspection — import-free, safe to run against any source file.
-    Public names are those not starting with ``_``.
-    ``@overload`` decorated stubs are excluded because the real implementation
-    always carries the docstring.
-    """
     try:
         tree = ast.parse(source_path.read_text(encoding="utf-8"))
     except SyntaxError:
         return []
 
     missing: list[str] = []
-    seen: set[str] = set()  # track names so @overload stubs don't hide impl failures
+    seen: set[str] = set()
     for node in ast.iter_child_nodes(tree):
         if not isinstance(node, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
             continue
         if node.name.startswith("_"):
             continue
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and _is_overload(node):
-            continue  # @overload stubs don't need docstrings; the implementation does
+            continue
         docstring = ast.get_docstring(node)
         if (not docstring or not docstring.strip()) and node.name not in seen:
             missing.append(node.name)
@@ -116,12 +86,9 @@ def _public_members_with_missing_docstrings(source_path: Path) -> list[str]:
 
 @cache
 def _members_modules() -> set[str]:
-    """Return documented modules (relative to ralph) rendered with :members:."""
     return _parse_members_modules(_MODULES_RST.read_text(encoding="utf-8"))
 
 
-# Pre-populate caches at module import time so file I/O and AST parsing
-# happen before the per-test SIGALRM window is set up.
 for _rel in sorted(_members_modules()):
     _src = _resolve_to_source(_rel, _RALPH_ROOT)
     if _src is not None:
@@ -129,19 +96,12 @@ for _rel in sorted(_members_modules()):
 
 
 def test_members_modules_public_classes_and_functions_have_docstrings() -> None:
-    """Every public class/function in :members: documented modules must have a docstring.
-
-    Parses docs/sphinx/modules.rst to find all ``.. automodule::`` directives
-    rendered with ``:members:``, then AST-inspects each backing source file and
-    reports any public top-level class or function without a non-empty docstring.
-    """
     members_modules = _members_modules()
 
     failures: list[str] = []
     for rel_name in sorted(members_modules):
         source = _resolve_to_source(rel_name, _RALPH_ROOT)
         if source is None:
-            # Covered by test_sphinx_modules_coverage; skip silently here.
             continue
         missing = _public_members_with_missing_docstrings(source)
         failures.extend(

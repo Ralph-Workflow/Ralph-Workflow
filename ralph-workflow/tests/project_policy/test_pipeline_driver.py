@@ -1,11 +1,3 @@
-"""The policy pipeline's state machine: routing, the hard gate, and the budget.
-
-These tests drive the REAL deterministic validator against a MemoryWorkspace. A
-fake agent "fixes" the policy by seeding a corpus that genuinely passes
-``validate_readiness``, so the hard gate under test is the real one rather than a
-mock of it.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -36,7 +28,6 @@ def _submit_decision(
     *,
     what_came_up_short: list[str] | None = None,
 ) -> None:
-    """Write the decision artifact the way the MCP submit path would."""
     workspace.mkdirs(".agent/artifacts")
     shortcomings = what_came_up_short or []
     if status in {"request_changes", "failed"} and not shortcomings:
@@ -69,8 +60,6 @@ def _submit_decision(
 
 
 class _Recorder:
-    """A fake agent chain that records the phase sequence it was driven through."""
-
     def __init__(
         self,
         workspace: MemoryWorkspace,
@@ -98,7 +87,6 @@ class _Recorder:
 
     @property
     def trace(self) -> str:
-        """The phase sequence as 'R A R A ...' for readable assertions."""
         return " ".join("R" if phase == PHASE_REMEDIATION else "A" for phase in self.phases)
 
 
@@ -113,9 +101,6 @@ def test_happy_path_is_one_remediation_then_one_analysis() -> None:
 
 
 def test_exhausted_analysis_ends_on_a_final_remediation() -> None:
-    """With cap=3, three rejections give R A R A R A R: four remediations, three
-    analyses, and the LAST thing that happens is a remediation applying the final
-    review's feedback. Then the run proceeds -- it does not fail."""
     ws = MemoryWorkspace()
     agent = _Recorder(ws, decisions=["request_changes"] * 4)
 
@@ -128,10 +113,6 @@ def test_exhausted_analysis_ends_on_a_final_remediation() -> None:
 
 
 def test_analysis_is_never_consulted_while_the_validator_still_fails() -> None:
-    """The hard gate. An agent that cannot fix the policy must never reach the
-    analysis phase -- reviewing the QUALITY of a structurally invalid policy is
-    wasted work, and a 'completed' from analysis must never be able to launder a
-    failing validator into a pass."""
     ws = MemoryWorkspace()
     agent = _Recorder(ws, decisions=["completed"], fix_on_call=None)
 
@@ -143,8 +124,6 @@ def test_analysis_is_never_consulted_while_the_validator_still_fails() -> None:
 
 
 def test_a_forged_completed_cannot_produce_ready_while_findings_remain() -> None:
-    """Belt and braces on the hard gate: even if a decision artifact claiming
-    'completed' is sitting on disk, a failing validator still wins."""
     ws = MemoryWorkspace()
     _submit_decision(ws, "completed")
     agent = _Recorder(ws, decisions=["completed"], fix_on_call=None)
@@ -155,8 +134,6 @@ def test_a_forged_completed_cannot_produce_ready_while_findings_remain() -> None
 
 
 def test_request_changes_loops_back_and_carries_feedback_forward() -> None:
-    """Analysis feedback must reach the next remediation prompt, or the loop just
-    re-derives the same policy from the same findings and never converges."""
     ws = MemoryWorkspace()
     prompts: list[str] = []
 
@@ -200,8 +177,6 @@ def test_noncompleted_analysis_routes_to_remediation(status: str) -> None:
 
 
 def test_run_agents_entry_reviews_a_clean_policy_without_remediating() -> None:
-    """--run-policy-agents enters at ANALYSIS. A policy that is already good is
-    approved without a single remediation agent touching it."""
     ws = MemoryWorkspace()
     seed_complete_corpus(ws)
     agent = _Recorder(ws, decisions=["completed"])
@@ -242,11 +217,6 @@ def test_analysis_invocations_never_exceed_the_cap(cap: int) -> None:
 
 
 def test_a_launch_crash_in_the_analysis_phase_does_not_escape_the_driver() -> None:
-    """REGRESSION (found by review). The launch-crash handler only wrapped the
-    remediation branch, so a RemediationInvocationError raised while launching the
-    ANALYSIS agent propagated out of the driver instead of degrading to
-    'not ready'. The run still survived (the outer fault boundary caught it), but
-    the driver lost the findings list and the specific launch-failure report."""
     ws = MemoryWorkspace()
     seed_complete_corpus(ws)
 
@@ -265,9 +235,6 @@ def test_a_launch_crash_in_the_analysis_phase_does_not_escape_the_driver() -> No
 
 
 def test_an_analysis_entry_with_a_spent_budget_still_terminates() -> None:
-    """REGRESSION (found by review). Entering at ANALYSIS with cap=0 skipped the
-    budget check and ran one analysis anyway, so the cap was not a true invariant
-    on analysis invocations."""
     ws = MemoryWorkspace()
     seed_complete_corpus(ws)
     agent = _Recorder(ws, decisions=["completed"])
@@ -286,14 +253,6 @@ def test_an_analysis_entry_with_a_spent_budget_still_terminates() -> None:
 
 
 def test_on_remediation_attempt_callback_receives_live_attempt_numbers() -> None:
-    """AC-01 / AC-03: the persistent status bar must see the LIVE attempt value.
-
-    ``on_remediation_attempt`` is invoked BEFORE each remediation with the
-    1-indexed attempt number so the caller can push the right
-    ``Remediation N/Max`` label. Two consecutive remediation attempts
-    must produce ``1`` then ``2`` -- not ``1`` for both (the regression
-    that motivated the callback).
-    """
     ws = MemoryWorkspace()
     agent = _Recorder(ws, decisions=["request_changes", "completed"])
 
@@ -313,20 +272,16 @@ def test_on_remediation_attempt_callback_receives_live_attempt_numbers() -> None
     assert result.status is ReadinessStatus.READY
     remediation_count = agent.phases.count(PHASE_REMEDIATION)
     assert remediation_count >= 2, "the test fixture must drive at least two remediation attempts"
-    # One callback per remediation, in 1-indexed order.
     assert len(seen_attempts) == remediation_count
     assert seen_attempts == list(range(1, remediation_count + 1))
-    # Specifically: the first attempt is 1, the second is 2 (the regression).
     assert seen_attempts[0] == 1
     assert seen_attempts[1] == 2
 
 
 def test_on_remediation_attempt_callback_defaults_to_noop() -> None:
-    """Existing callers (no callback) keep working unchanged (AC-01)."""
     ws = MemoryWorkspace()
     agent = _Recorder(ws, decisions=["completed"])
 
-    # No on_remediation_attempt kwarg.
     result = pipeline_driver.run_policy_pipeline(ws, stack(), [_finding()], invoke_agent=agent)
 
     assert result.status is ReadinessStatus.READY

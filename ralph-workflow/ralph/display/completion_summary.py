@@ -1,4 +1,3 @@
-"""End-of-run completion summary rendering for log-first output."""
 
 from __future__ import annotations
 
@@ -60,7 +59,6 @@ _KV_PATTERN = re.compile(r"(\w+)=([^,)\s]+)")
 
 @dataclass(frozen=True)
 class CompletionSummaryOptions:
-    """Optional statistics and formatting parameters for completion summary rendering."""
 
     workspace_root: Path | None = None
     dropped_count: int = 0
@@ -75,11 +73,6 @@ class CompletionSummaryOptions:
 
 
 def _children_persist_diagnostic_line(error: str) -> str | None:
-    """Parse a CHILDREN_PERSIST_TOO_LONG error string into a human-readable reason line.
-
-    Returns None when the error does not match the marker phrase (or is None).
-    Missing keys in the diagnostic render as '?'.
-    """
     if not error or _CHILDREN_PERSIST_MARKER not in error:
         return None
     pairs: dict[str, str] = {m.group(1): m.group(2) for m in _KV_PATTERN.finditer(error)}
@@ -126,18 +119,12 @@ def _debug_breadcrumb_lines(snapshot: PipelineSnapshot) -> list[str]:
 
 
 def _dropped_count_line(dropped: int) -> str:
-    """Return a line reporting dropped snapshots, shown only when drops occurred."""
     if dropped <= 0:
         return ""
     return f"Snapshots dropped: {dropped}"
 
 
 def _review_summary_line(snapshot: PipelineSnapshot) -> tuple[str, str] | None:
-    """Return (badge, summary) for review section based on review_issues_found and decision_log.
-
-    Returns None when no review phase is in the decision log.
-    Badge is 'PASS', 'FAIL', or 'INFO'.
-    """
     if snapshot.review_issues_found:
         return ("FAIL", "issues found")
     has_review = snapshot.decision_log and any(
@@ -149,11 +136,6 @@ def _review_summary_line(snapshot: PipelineSnapshot) -> tuple[str, str] | None:
 
 
 def _review_badge_and_count(snapshot: PipelineSnapshot) -> tuple[str, int] | None:
-    """Return (badge, issue_count) for review section.
-
-    Returns None when no review phase is in the decision log.
-    Badge is 'PASS', 'FAIL', or 'INFO'.
-    """
     if snapshot.review_issues_found:
         return ("FAIL", 1)
     has_review = snapshot.decision_log and any(
@@ -167,16 +149,11 @@ def _review_badge_and_count(snapshot: PipelineSnapshot) -> tuple[str, int] | Non
 def _analysis_decision_summary(
     snapshot: PipelineSnapshot,
 ) -> list[tuple[str, str, str]]:
-    """Return list of (phase, decision, reason) for analysis decisions.
-
-    Shows analysis decisions with proceed/revise labeling for clarity.
-    """
     if not snapshot.decision_log:
         return []
     results: list[tuple[str, str, str]] = []
     for phase, decision, reason, _ts in snapshot.decision_log:
         if "analysis" in phase.lower():
-            # Normalize decision to proceed/revise
             normalized = decision.lower().strip()
             if normalized in _PROCEED_DECISIONS:
                 label = "proceed"
@@ -189,11 +166,6 @@ def _analysis_decision_summary(
 
 
 def analysis_decision_badge(decision: str) -> str:
-    """Canonical badge for a normalized analysis decision (single source of truth).
-
-    ``decision`` is the normalized label from :func:`_analysis_decision_summary`
-    ("proceed"/"revise"/other).
-    """
     if decision == "proceed":
         return "PASS"
     if decision == "revise":
@@ -202,21 +174,14 @@ def analysis_decision_badge(decision: str) -> str:
 
 
 def _exit_trigger_label(snapshot: PipelineSnapshot) -> str:
-    """Return a human-readable exit trigger label derived from snapshot state."""
     return format_exit_trigger(snapshot)
 
 
 def _has_iteration_context(snapshot: PipelineSnapshot) -> bool:
-    """Return True when any iteration context field is populated."""
     return snapshot.outer_dev_iteration is not None
 
 
 def _iteration_context_lines(snapshot: PipelineSnapshot) -> list[str]:
-    """Return display lines for the iteration context section.
-
-    Shows outer dev cycle when set, including total budget cap when available.
-    Returns an empty list when no context is available.
-    """
     if snapshot.outer_dev_iteration is not None:
         cap = next(
             (bp.cap for bp in snapshot.budget_progress.values() if bp.tracks_budget),
@@ -230,7 +195,6 @@ def style_for_role(
     role: str,
     pipeline_policy: PipelinePolicy | None,
 ) -> str:
-    """Return the style for the first phase with the given role, or muted when none matches."""
     if pipeline_policy is not None:
         for phase_name, phase_def in pipeline_policy.phases.items():
             if phase_def.role == role:
@@ -239,14 +203,12 @@ def style_for_role(
 
 
 def has_active_artifact_validation_failure(snapshot: PipelineSnapshot) -> bool:
-    """Return whether an unresolved artifact validation failure overrides completion."""
     return snapshot.last_failure_category == "artifact_validation"
 
 
 def style_for_terminal_failure(
     pipeline_policy: PipelinePolicy | None,
 ) -> str:
-    """Return the style for the terminal failure phase, or the failed theme default."""
     if pipeline_policy is not None:
         for phase_name, phase_def in pipeline_policy.phases.items():
             if phase_def.role == "terminal" and phase_def.terminal_outcome == "failure":
@@ -300,12 +262,6 @@ def _plain_tail_lines(
     dropped_line = _dropped_count_line(dropped_count)
     if dropped_line:
         lines.append(dropped_line)
-    # Auto-integration outcome projected from RebaseState. Renders only
-    # when an integration actually ran (action is None for the
-    # disabled / never-ran path, preserving the prompt's AC-01
-    # byte-identical no-op). ``fast_forwarded`` is passed explicitly so a
-    # refused land exposes its recorded reason rather than rendering
-    # identically to a success.
     if snapshot.auto_integrate_action is not None:
         lines.append(
             "Auto-integrate: "
@@ -328,7 +284,6 @@ def render_completion_summary(
     *,
     options: CompletionSummaryOptions | None = None,
 ) -> Text:
-    """Build a rich ``Text`` object summarising pipeline completion for the terminal."""
     opts = options or CompletionSummaryOptions()
     failed = snapshot.is_terminal_failure
     validation_failure = has_active_artifact_validation_failure(snapshot)
@@ -397,12 +352,10 @@ def render_completion_summary(
 
 
 def _snapshot_without_error(snapshot: PipelineSnapshot) -> PipelineSnapshot:
-    """Return a failure receipt snapshot whose cause has already been rendered."""
     return replace(snapshot, last_error=None)
 
 
 def make_badge_text(badge: str, rest: str) -> Text:
-    """Build a Text object with a themed badge label followed by muted rest text."""
     theme_key = _BADGE_THEME_KEYS.get(badge, "theme.level.info")
     text = Text("  ")
     text.append(f"[{badge}]", style=theme_key)
@@ -416,7 +369,6 @@ def render_completion_summary_group(
     display_context: DisplayContext,
     options: CompletionSummaryOptions | None = None,
 ) -> Group:
-    """Render the completion summary as a Rich Group with rule-delimited sections."""
     render_fn = cast(
         "_RenderCompletionSummaryGroupFn",
         import_module("ralph.display._completion_summary_group").render_completion_summary_group,
@@ -435,15 +387,6 @@ def emit_completion_summary(
     display_context: DisplayContext,
     options: CompletionSummaryOptions | None = None,
 ) -> None:
-    """Emit the completion summary to the console.
-
-    Thin forwarder that delegates to
-    :meth:`ralph.display.parallel_display.ParallelDisplay.emit_completion_summary_panel`,
-    the 37th consolidated emit_* method. The free-function surface is
-    preserved for backward compatibility with existing call sites and
-    tests; production callers in ralph/pipeline/ route through
-    ParallelDisplay directly.
-    """
     from ralph.display.parallel_display import resolve_active_display
 
     resolve_active_display(None, display_context).emit_completion_summary_panel(

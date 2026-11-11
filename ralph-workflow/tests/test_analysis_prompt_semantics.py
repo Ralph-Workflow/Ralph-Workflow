@@ -1,5 +1,3 @@
-"""Semantic contract for evidence-first verification prompts."""
-
 from __future__ import annotations
 
 from functools import cache
@@ -14,13 +12,6 @@ from ralph.prompts.types import SessionCapabilities, capability_template_variabl
 
 @cache
 def _render_verifier(template_name: str) -> str:
-    # ``functools.cache`` memoizes the deterministic rendered output of
-    # the static packaged template set so the three parameterized tests
-    # in this module share one Jinja-environment compilation. Without
-    # the cache, each parameterization re-pays the full compilation
-    # cost and the per-test wall-clock trips the 1 s SIGALRM budget
-    # (``ralph/verify_timeout.py:DEFAULT_TEST_TIMEOUT_SECONDS``) when
-    # the rest of the suite is running in parallel.
     context = TemplateContext.default()
     session = SessionCapabilities.defaults_for_drain(SessionDrain.ANALYSIS)
     return render_template(
@@ -61,25 +52,11 @@ def test_verification_prompts_prescribe_independent_criterion_verdicts(
         "## Criterion Verdicts",
         "Expected observation",
     )
-    # Free-form contract: the development_analysis prompt does NOT
-    # prescribe the structured ``## Criterion Verdicts`` shape, the
-    # ``Expected observation:`` field, or the ``met``/``not met``/
-    # ``not evaluable`` vocabulary. Coverage is judged in plain
-    # language against the request and plan, not against a per-item
-    # shape. The free-form guidance lives in the inspect / decision
-    # body sections of the development prompt and is asserted by
-    # ``test_development_analysis_prescribes_concrete_verification_fanout``
-    # and the free-form-decision-body wording below.
     if template_name == "development_analysis":
         for forbidden in planning_only:
             assert forbidden not in source, (template_name, forbidden)
         for required in (
             "implementer summary, rationale, or completion claim",
-            # Free-form contract replaces the structured
-            # ``fast path``/``full gate`` gate-discovery wording
-            # with the planner-style whole-change review
-            # (parallel pieces fit together, no unrelated scope,
-            # repository policy).
             "parallel pieces fit together",
             "no unrelated scope",
             "repository policy",
@@ -109,12 +86,6 @@ def test_rendered_verifiers_put_the_evidence_first_contract_before_final_submiss
     template_name: str,
 ) -> None:
     rendered = _render_verifier(template_name)
-    # Free-form contract: development_analysis does not use the
-    # structured ``## Criteria and verdicts`` section heading. The
-    # evidence-first contract lives in the inspect block of the
-    # prompt; that block must precede the Decision artifact block in
-    # every analysis type. For structured types the criteria and
-    # verdicts section is the same anchor.
     if template_name == "development_analysis":
         contract_marker = "inspect the current worktree"
         assert "## Criteria and verdicts" not in rendered
@@ -126,10 +97,6 @@ def test_rendered_verifiers_put_the_evidence_first_contract_before_final_submiss
     if template_name == "development_analysis":
         for required in (
             "implementer summary, rationale, or completion claim",
-            # The free-form contract replaces the structured
-            # ``Do not change the implementation`` line with the
-            # plain-language whole-change review (parallel pieces
-            # fit together, no unrelated scope, repository policy).
             "parallel pieces fit together",
             "no unrelated scope",
             "repository policy",
@@ -157,14 +124,7 @@ def test_rendered_verifiers_put_the_evidence_first_contract_before_final_submiss
     elif template_name == "policy_remediation_analysis":
         assert "do not propose remedies in this decision" in rendered[contract_start:final_action]
         assert "proposed unit split" not in rendered[contract_start:final_action]
-    else:  # development_analysis: free-form contract
-        # The structured ``do not propose remedies in this decision``
-        # line and the ``proposed unit split`` vocabulary belong to
-        # the planning contract. Development is free-form; the
-        # parallel-fix-plan guidance replaces the unit-split
-        # vocabulary. See development_analysis.jinja "Free-form
-        # decision body" and the follow-plan block in
-        # shared/_analysis_context.jinja.
+    else:
         assert "do not propose remedies in this decision" not in rendered
         assert "proposed unit split" not in rendered
         assert (
@@ -188,9 +148,6 @@ def test_verification_prompts_keep_criteria_and_submission_last(template_name: s
     source = _render_verifier(template_name)
 
     if template_name == "development_analysis":
-        # Free-form contract: the development prompt uses
-        # ``## Free-form decision body`` in place of the structured
-        # ``## Criteria and verdicts`` / ``## Criterion Verdicts`` blocks.
         contract_marker = "## Free-form decision body"
         assert "## Criteria and verdicts" not in source
         assert "## Criterion Verdicts" not in source
@@ -228,33 +185,17 @@ def test_planning_analysis_includes_five_substantive_criteria() -> None:
 
 
 def test_development_analysis_prescribes_concrete_verification_fanout() -> None:
-    """S-11: development_analysis.jinja must describe a concrete fan-out pattern.
-
-    The prompt dispatches read-only verification subagents, one per criterion
-    group (build, lint, types, focused tests), each returning the four-field
-    shape (Expected / Observed / Evidence / Location) and the reproduce rule:
-    every subagent lead a verdict relies on — passing or failing — must be
-    reproduced in the main session before the verdict is written.
-    """
     source = _render_verifier("development_analysis")
 
-    # Four-field return format.
     for required in ("Expected", "Observed", "Evidence", "Location"):
         assert required in source, required
 
-    # Concrete criterion groups named in the prompt.
     for group in ("build", "lint", "types", "focused tests"):
         assert group in source, group
 
-    # Reproduce rule: every relied-on lead is re-run in the main session.
     assert "reproduce" in source.lower(), "reproduce rule missing"
-    # The S-2 rule is preserved (subagent output is a lead, not evidence by itself).
     assert "lead" in source.lower()
 
-    # Free-form contract: development_analysis does NOT prescribe the
-    # structured ``## Criterion Verdicts`` / ``Expected observation:``
-    # / ``met``/``not met``/``not evaluable`` vocabulary. The body is
-    # free-form; the next agent reads the verdict in plain language.
     for forbidden in (
         "Expected observation",
         "`met`, `not met`, or `not evaluable`",
@@ -263,7 +204,6 @@ def test_development_analysis_prescribes_concrete_verification_fanout() -> None:
     ):
         assert forbidden not in source, forbidden
 
-    # The new fan-out block lives between the inspection intro and Decision artifact.
     intro = source.index("inspect the current worktree")
     decision = source.index("## Decision artifact")
     fanout = source.lower().index("reproduce", intro)

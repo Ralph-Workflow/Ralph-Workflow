@@ -1,13 +1,3 @@
-"""Tests for the S-5 transport-neutral capability-observation seam.
-
-The recorder is the single source of truth for "what the display
-layer actually rendered" during a smoke run. An empty
-``observed_capabilities`` set means the shared preview builder
-never produced a renderable -- the smoking gun for the original
-OpenCode defect. These tests pin the recorder's contract (bounded
-storage, transport-neutral observation, capability mapping).
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -46,7 +36,6 @@ def test_recorder_records_an_observation() -> None:
 
 
 def test_recorder_deduplicates_per_capability() -> None:
-    """The set of observed capabilities is per-capability, not per-event."""
     recorder = CapabilityObservationRecorder()
     for _ in range(3):
         recorder.record(
@@ -97,11 +86,6 @@ def test_recorder_iter_yields_observations() -> None:
     assert [o.capability for o in recorder] == list(all_display_capabilities())
 
 
-# ---------------------------------------------------------------------------
-# capability_for_render: surface name to capability mapping
-# ---------------------------------------------------------------------------
-
-
 def test_capability_for_render_maps_syntax_preview() -> None:
     assert capability_for_render(surface_name="syntax_preview", tool_name="write") is (
         DisplayCapability.SYNTAX_HIGHLIGHTING
@@ -126,15 +110,9 @@ def test_capability_for_render_returns_none_for_unknown_surface() -> None:
 
 
 def test_capability_for_render_accepts_none_tool_name() -> None:
-    """The tool name is informational; a None tool name still maps the surface."""
     assert capability_for_render(surface_name="syntax_preview", tool_name=None) is (
         DisplayCapability.SYNTAX_HIGHLIGHTING
     )
-
-
-# ---------------------------------------------------------------------------
-# infer_surface_for_preview: operation to catalog surface
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -151,7 +129,6 @@ def test_capability_for_render_accepts_none_tool_name() -> None:
 def test_infer_surface_for_preview_routes_all_known_operations(
     operation: PreviewOperation, expected_surface: str
 ) -> None:
-    """Every PreviewOperation maps to the correct catalog surface."""
     assert (
         infer_surface_for_preview(renderable=None, canonical_operation=operation)
         == expected_surface
@@ -159,29 +136,13 @@ def test_infer_surface_for_preview_routes_all_known_operations(
 
 
 def test_infer_surface_for_preview_defaults_to_syntax_preview() -> None:
-    """Unknown operations fall back to ``syntax_preview`` defensively."""
     assert (
         infer_surface_for_preview(renderable=None, canonical_operation="unknown")
         == "syntax_preview"
     )
 
 
-# ---------------------------------------------------------------------------
-# Capability stance contract: SUPPORTED capability without render is a break
-# ---------------------------------------------------------------------------
-
-
 def test_supported_capability_without_render_breaks_silently_in_old_observation() -> None:
-    """The recorder's observed_capabilities is the smoking gun for an unimplemented stance.
-
-    A SUPPORTED declaration paired with an empty observed set is the
-    exact failure mode the S-5 contract exists to detect. The recorder
-    itself does not raise; the smoke-grading layer is responsible
-    for comparing the declaration against the recorder and emitting
-    a break. This test pins the recorder-only contract: the
-    observed set is empty when no preview was rendered, regardless
-    of the agent's declaration.
-    """
     recorder = CapabilityObservationRecorder()
     supported = DisplayCapabilityStance.supported(
         DisplayCapability.SYNTAX_HIGHLIGHTING, detail="fixture:agy_wire.jsonl"
@@ -191,7 +152,6 @@ def test_supported_capability_without_render_breaks_silently_in_old_observation(
 
 
 def test_recorder_observation_carries_unit_id_for_smoke_grading() -> None:
-    """The smoke harness keys observations by ``unit_id`` so per-unit breaks can be reported."""
     recorder = CapabilityObservationRecorder()
     recorder.record(
         CapabilityObservation(
@@ -204,13 +164,7 @@ def test_recorder_observation_carries_unit_id_for_smoke_grading() -> None:
     assert obs[0].unit_id == "smoke-unit-1"
 
 
-# ---------------------------------------------------------------------------
-# Integration with PreviewPayload: full route
-# ---------------------------------------------------------------------------
-
-
 def test_full_route_write_operation_records_syntax_capability() -> None:
-    """The complete path: PreviewPayload.operation -> surface -> capability."""
     payload = PreviewPayload(
         path="x.py",
         language_hint="python",
@@ -243,7 +197,7 @@ def test_full_route_replace_operation_records_diff_capability() -> None:
         path="x.py",
         language_hint="python",
         operation="replace",
-        hunks=(),  # Empty hunks here; only the surface inference is under test
+        hunks=(),
     )
     surface = infer_surface_for_preview(renderable=None, canonical_operation=payload.operation)
     capability = capability_for_render(surface_name=surface, tool_name="edit")

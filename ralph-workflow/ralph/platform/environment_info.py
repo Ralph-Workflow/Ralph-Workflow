@@ -1,4 +1,3 @@
-"""Detected runtime environment traits."""
 
 from __future__ import annotations
 
@@ -7,7 +6,6 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class EnvironmentInfo:
-    """Detected runtime environment traits."""
 
     ci: bool = False
     container: bool = False
@@ -16,7 +14,6 @@ class EnvironmentInfo:
     ssh: bool = False
 
     def markers(self) -> list[str]:
-        """Return enabled environment markers in display order."""
         markers: list[str] = []
         if self.ci:
             markers.append("ci")

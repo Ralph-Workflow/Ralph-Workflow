@@ -1,5 +1,3 @@
-"""Focused tests for prompt materialization artifact-history handling."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -106,7 +104,6 @@ def test_fresh_development_prompt_removes_artifact_history_on_fresh_entry(
 def test_fresh_development_entry_clears_history_when_clear_on_fresh_entry_enabled(
     tmp_path: Path,
 ) -> None:
-    """Fresh development entry clears artifact history when development policy enables it."""
     pipeline_policy = PipelinePolicy(
         phases={
             "planning": PhaseDefinition(
@@ -145,7 +142,6 @@ def test_fresh_development_entry_clears_history_when_clear_on_fresh_entry_enable
     workspace.write("PROMPT.md", "Implement the feature")
     workspace.write(".agent/PLAN.md", "# Execution Plan\n\n1. Do the thing\n")
 
-    # Create history files on disk
     artifact_dir = tmp_path / ".agent" / "artifacts"
     hist_dir = history_dir_for_artifact(artifact_dir, "development_result")
     hist_dir.mkdir(parents=True, exist_ok=True)

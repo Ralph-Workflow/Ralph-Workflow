@@ -1,5 +1,3 @@
-"""Integration tests for fan-out wiring in pipeline runner."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Never
@@ -64,16 +62,6 @@ def _make_policy_bundle(
     workflow_fallback_target: str | None = None,
     extra_phases: Mapping[str, PhaseDefinition] | None = None,
 ) -> PolicyBundle:
-    """Build a REAL policy bundle for the fan-out wiring tests.
-
-    The reducer reads ``policy.phases`` and
-    ``policy.phases.get(state.phase).workflow_fallback``. A stub answers
-    those reads with whatever it likes, and the reducer then adopted the
-    stub's auto-created attribute as the next phase -- a phase no policy
-    declares. Every phase here is a real ``PhaseDefinition`` and every
-    route a real ``PhaseTransition``, so the reducer only ever sees
-    values a real policy can produce.
-    """
     phases: dict[str, PhaseDefinition] = {
         "development": PhaseDefinition(
             drain="development",
@@ -136,15 +124,6 @@ def _make_policy_bundle(
 
 
 def _bundle_with_phantom_fallback_target() -> PolicyBundle:
-    """Build a policy whose fallback target is NOT a declared phase.
-
-    ``PipelinePolicy`` rejects such a policy when it is loaded, so the
-    misconfiguration is simulated by dropping the target phase from an
-    otherwise valid policy. The reducer is the LAST gate before the run
-    adopts a phase value, so it must refuse the target on its own: a
-    fallback to a phase that does not exist would move the run into a
-    phase nothing can route.
-    """
     bundle = _make_policy_bundle(workflow_fallback_target="planning")
     remaining = {
         name: phase for name, phase in bundle.pipeline.phases.items() if name != "planning"
@@ -155,12 +134,10 @@ def _bundle_with_phantom_fallback_target() -> PolicyBundle:
 
 
 def _recovery_controller(bundle: PolicyBundle) -> RecoveryController:
-    """Build the run's recovery owner for the given policy."""
     return RecoveryController(options=RecoveryControllerOptions(policy_bundle=bundle))
 
 
 def _crashing_fan_out_state() -> PipelineState:
-    """Return the state a development fan-out starts from."""
     return PipelineState(
         phase="development",
         work_units=(_make_work_unit("unit-a"),),
@@ -169,7 +146,6 @@ def _crashing_fan_out_state() -> PipelineState:
 
 
 def _install_crashing_coordinator(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Make the fan-out coordinator raise the way an unexpected crash does."""
 
     class _FakeExecutor:
         def __init__(self, command: object, signal_bridge: object | None = None) -> None:
@@ -195,8 +171,6 @@ def _install_crashing_coordinator(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 class TestFanOutRouting:
-    """Test that runner routes correctly based on work_units."""
-
     def test_serial_when_no_work_units(self, tmp_path: Path) -> None:
         state = PipelineState(phase="development", work_units=())
         policy_bundle = _make_policy_bundle()
@@ -212,7 +186,6 @@ class TestFanOutRouting:
         assert effect.phase == "development"
 
     def test_fanout_when_work_units_present(self) -> None:
-        """When work_units present, development phase uses FanOutEffect."""
         units = (
             _make_work_unit("unit-a"),
             _make_work_unit("unit-b"),
@@ -232,7 +205,6 @@ class TestFanOutRouting:
         assert effect.max_workers == max_workers
 
     def test_serial_when_single_work_unit(self) -> None:
-        """Single work_unit falls through to InvokeAgentEffect — fan-out requires >=2 units."""
         state = PipelineState(phase="development", work_units=(_make_work_unit("unit-a"),))
         policy_bundle = _make_policy_bundle()
 
@@ -246,7 +218,6 @@ class TestFanOutRouting:
         assert effect.phase == "development"
 
     def test_non_development_phase_not_affected(self) -> None:
-        """Other phases always use InvokeAgentEffect regardless of work_units."""
         units = (_make_work_unit("unit-a"),)
         state = PipelineState(phase="planning", work_units=units)
         policy_bundle = _make_policy_bundle()
@@ -319,8 +290,6 @@ def test_execute_fan_out_sync_wires_signal_handlers_and_same_workspace_context(
     assert mcp_factory_calls
     ctx = coordinator_calls[0]["ctx"]
     assert ctx.same_workspace is not None
-    # Verify session contract fields are properly threaded from the runner's
-    # build_session_mcp_plan_for_phase into SameWorkspaceContext.
     assert ctx.same_workspace.session_drain == "development"
     assert "media.read" in ctx.same_workspace.session_capabilities
     assert ctx.same_workspace.session_model_identity is not None
@@ -414,14 +383,6 @@ def test_execute_fan_out_sync_converts_unexpected_coordinator_error_to_failed_re
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """A crashed fan-out is charged to the recovery owner, exactly like a crashed step.
-
-    The owner is the single component allowed to decide whether the
-    agent may try again, so the crash reaches it instead of the reducer
-    deciding on its own. The owner's verdict is one bounded retry in
-    the same phase: the phase stays put, the chain records exactly one
-    attempt, and the crash is reported through ``last_error``.
-    """
     unit = _make_work_unit("unit-a")
     effect = FanOutEffect(work_units=(unit,), max_workers=1)
     policy_bundle = _make_policy_bundle(max_workers=1)
@@ -454,9 +415,6 @@ def test_execute_fan_out_sync_converts_unexpected_coordinator_error_to_failed_re
     assert recovered.last_error is not None
     assert "Fan-out execution crashed" in recovered.last_error
     assert "fanout exploded" in recovered.last_error
-    # The crash reached the OWNER: it published the failure for the
-    # crashed phase, so the attempt was charged there and not to a
-    # reducer-local retry counter.
     assert any(
         isinstance(evt, FailureEvent)
         and evt.phase == "development"
@@ -469,15 +427,6 @@ def test_execute_fan_out_sync_without_recovery_owner_fails_closed_without_a_retr
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """With no owner reachable the reducer grants NO attempt of its own.
-
-    The reducer holds no verdict to apply when no recovery owner is
-    reachable, so it must not decide that the agent may try again:
-    granting one would make the reducer a SECOND decision owner. The
-    phase therefore takes the policy's failure route instead of
-    retrying an agent nobody has judged, and no retry is recorded on
-    the chain.
-    """
     unit = _make_work_unit("unit-a")
     effect = FanOutEffect(work_units=(unit,), max_workers=1)
     policy_bundle = _make_policy_bundle(max_workers=1)
@@ -493,8 +442,6 @@ def test_execute_fan_out_sync_without_recovery_owner_fails_closed_without_a_retr
         workspace_scope=workspace_scope,
     )
 
-    # The phase reaches the policy's declared failure route -- a REAL
-    # phase, never a value the reducer invented.
     assert recovered.phase == policy_bundle.pipeline.recovery.failed_route
     assert recovered.phase in policy_bundle.pipeline.phases
     development_chain = recovered.chain_for_phase("development")
@@ -509,13 +456,6 @@ def test_execute_fan_out_sync_without_owner_honours_a_declared_workflow_fallback
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """A REAL declared fallback target is honoured, and still grants no retry.
-
-    The fallback is the policy's own route for an exhausted agent
-    chain, so the reducer follows it. What matters for the owner
-    contract is the second half: the reducer still grants no attempt of
-    its own, because nobody could judge the agent.
-    """
     unit = _make_work_unit("unit-a")
     effect = FanOutEffect(work_units=(unit,), max_workers=1)
     policy_bundle = _make_policy_bundle(max_workers=1, workflow_fallback_target="planning")
@@ -545,14 +485,6 @@ def test_execute_fan_out_sync_without_owner_keeps_the_phase_the_policy_declares(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """No owner + a policy whose fallback is the phase itself: the phase stays.
-
-    The declared fallback is the policy's own route for an exhausted
-    agent chain, so the reducer follows it and the phase does not move.
-    The point of the case is the second half of the contract: the
-    reducer granted NO attempt of its own, because nobody could judge
-    the agent.
-    """
     unit = _make_work_unit("unit-a")
     effect = FanOutEffect(work_units=(unit,), max_workers=1)
     policy_bundle = _make_policy_bundle(max_workers=1, workflow_fallback_target="development")
@@ -582,13 +514,6 @@ def test_execute_fan_out_sync_never_adopts_a_fallback_target_that_is_not_a_phase
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """A fallback to a phase the policy does not declare must not move the run.
-
-    The reducer is the last gate before the run adopts a phase value.
-    A target that names no declared phase would move the run into a
-    phase nothing can route, so the failure takes the ordinary failure
-    route instead.
-    """
     unit = _make_work_unit("unit-a")
     effect = FanOutEffect(work_units=(unit,), max_workers=1)
     policy_bundle = _bundle_with_phantom_fallback_target()
@@ -733,7 +658,6 @@ def test_execute_fan_out_sync_uses_parallel_display_subscriber_when_not_provided
         dashboard_subscriber=None,
     )
 
-    # WORKERS_RESUMED notification + one per fan_out_events entry (AGENT_SUCCESS)
     assert notified_phases == [state.phase, state.phase]
 
 
@@ -803,7 +727,6 @@ def test_materialize_prepared_prompt_uses_worker_namespace_from_env(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """When RALPH_WORKER_NAMESPACE is set, prompt payloads land in the worker's namespace."""
 
     worker_ns = tmp_path / ".agent" / "workers" / "unit-test"
     worker_ns.mkdir(parents=True, exist_ok=True)
@@ -818,8 +741,6 @@ def test_materialize_prepared_prompt_uses_worker_namespace_from_env(
     def _fake_dump(workspace: object, phase: object, prompt: object) -> str:
         del workspace, phase, prompt
         return "/fake/prompt/path"
-
-    # Patch materialize and dump to avoid writing files
 
     monkeypatch.setattr(ralph.prompts.materialize, "dump_rendered_prompt", _fake_dump)
 
@@ -853,7 +774,6 @@ def test_materialize_prepared_prompt_no_namespace_without_env(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Without RALPH_WORKER_NAMESPACE, worker_namespace is None (shared path used)."""
 
     monkeypatch.delenv(str(WORKER_NAMESPACE_ENV), raising=False)
     recorded_kwargs: list[dict[str, object]] = []

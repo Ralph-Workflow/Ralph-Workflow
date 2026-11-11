@@ -1,4 +1,3 @@
-"""Activity router: parser → ActivityModel → RingBuffer."""
 
 from __future__ import annotations
 
@@ -20,15 +19,10 @@ if TYPE_CHECKING:
     from ralph.agents.parsers.agent_output_line import AgentOutputLine
     from ralph.agents.parsers.base import AgentParser
 
-# Parser imports are deferred: ``ralph.agents.parsers`` pulls in
-# ``ralph.display.vt_normalizer`` -> ``ralph.display`` -> ``ralph.display.parallel_display``
-# -> this module, so the eager import below would close a cycle.
-# bounded-accumulator-ok: fixed dispatch table keyed by ActivityProvider enum
-PARSERS: dict[ActivityProvider, type[AgentParser]] = {}  # bounded-accumulator-ok
+PARSERS: dict[ActivityProvider, type[AgentParser]] = {}
 
 
 def _build_parsers() -> dict[ActivityProvider, type[AgentParser]]:
-    """Populate ``PARSERS`` on first use to break the parsers/display cycle."""
     from ralph.agents.parsers import (
         AgyParser,
         ClaudeInteractiveParser,
@@ -52,13 +46,13 @@ def _build_parsers() -> dict[ActivityProvider, type[AgentParser]]:
         ActivityProvider.GEMINI: GeminiParser,
         ActivityProvider.NANOCODER: cast(
             "type[AgentParser]", NanocoderParser
-        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        ),
         ActivityProvider.PI: cast(
             "type[AgentParser]", PiParser
-        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        ),
         ActivityProvider.GENERIC: cast(
             "type[AgentParser]", GenericParser
-        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        ),
     }
 
 
@@ -71,22 +65,15 @@ def _default_parser_factory(provider: ActivityProvider) -> AgentParser:
 
         parser_cls = cast(
             "type[AgentParser]", GenericParser
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
     return parser_cls()
 
 
 def detect_provider_from_command(command: list[str]) -> ActivityProvider:
-    """Infer the ``ActivityProvider`` from the agent command executable name."""
     if not command:
         return ActivityProvider.GENERIC
     argv0 = command[0].lower() if command[0] else ""
 
-    # Map substrings to providers (checked in order). The ``pi``
-    # substring is checked BEFORE ``opencode`` is irrelevant because
-    # ``opencode`` is a substring of nothing containing ``pi``, but we
-    # still order ``claude_interactive`` before ``claude`` so an
-    # explicit ``*-claude-interactive`` wrapper binary is routed to
-    # ``CLAUDE_INTERACTIVE`` rather than ``CLAUDE``.
     substrings_to_provider: list[tuple[str, ActivityProvider]] = [
         ("claude_interactive", ActivityProvider.CLAUDE_INTERACTIVE),
         ("claude-interactive", ActivityProvider.CLAUDE_INTERACTIVE),
@@ -109,7 +96,6 @@ def detect_provider_from_command(command: list[str]) -> ActivityProvider:
 
 
 def map_parser_type_to_kind(parser_type: str) -> ActivityEventKind:
-    """Convert a parser output type string to the canonical ``ActivityEventKind``."""
     mapping: dict[str, ActivityEventKind] = {
         "text": ActivityEventKind.TEXT,
         "output": ActivityEventKind.TEXT,
@@ -120,34 +106,16 @@ def map_parser_type_to_kind(parser_type: str) -> ActivityEventKind:
         "status": ActivityEventKind.STATUS,
         "lifecycle": ActivityEventKind.LIFECYCLE,
         "subagent_progress": ActivityEventKind.SUBAGENT_PROGRESS,
-        # Transport lifecycle / retry-ladder types. Without these
-        # entries they fall through to ``UNKNOWN``, whose renderer
-        # (``agent_event_renderer._render_unknown_event``) paints a
-        # ``WARN`` banner -- and because these lines carry little or no
-        # body, the operator sees a wall of bodiless
-        # "WARN <agent>" lines that hides any real error alongside them.
-        # ``UNKNOWN`` stays reserved for types nobody has classified.
         "stop": ActivityEventKind.LIFECYCLE,
         "session": ActivityEventKind.LIFECYCLE,
         "auto_retry_end": ActivityEventKind.LIFECYCLE,
-        # Forward-compat: not a member of pi's documented 15-event
-        # AgentSessionEvent union, but emitted by real pi builds as the
-        # final line of a run (see ``ralph.agents.parsers.pi``).
         "agent_settled": ActivityEventKind.LIFECYCLE,
-        # An in-progress retry is live status, not a completed step.
         "auto_retry_start": ActivityEventKind.STATUS,
     }
     return mapping.get(parser_type, ActivityEventKind.UNKNOWN)
 
 
 class ActivityRouter:
-    """Wire a per-unit parser to its RingBuffer via the typed activity model.
-
-    Each *unit_id* owns an isolated parser instance and an isolated ring buffer
-    so output from different workers never interferes.  Parser exceptions are
-    caught per-line and recorded as ERROR events — a malformed line must never
-    crash the caller.
-    """
 
     def __init__(
         self,
@@ -164,9 +132,8 @@ class ActivityRouter:
         self._buffer_factory = buffer_factory or (
             lambda: RingBuffer(maxsize=PARALLEL_DISPLAY_BUFFER_SIZE)
         )
-        # bounded-accumulator-ok: per-unit; drained by ActivityRouter.drop_unit(unit_id)
-        self._parsers: dict[str, AgentParser] = {}  # bounded-accumulator-ok: drop_unit
-        self._buffers: dict[str, RingBuffer] = {}  # bounded-accumulator-ok: drop_unit
+        self._parsers: dict[str, AgentParser] = {}
+        self._buffers: dict[str, RingBuffer] = {}
         self._on_event = on_event
         self._raw_overflow_callback = raw_overflow_callback
 
@@ -176,13 +143,6 @@ class ActivityRouter:
         return self._buffers[unit_id]
 
     def drop_unit(self, unit_id: str) -> None:
-        """Release per-unit state so long parallel sessions don't accumulate state across waves.
-
-        Removes the unit's ``RingBuffer`` and ``AgentParser`` entries from
-        ``self._buffers`` and ``self._parsers`` so the per-unit memory
-        is released when the unit is no longer needed. Safe to call for
-        a unit that was never added; it just no-ops.
-        """
         self._buffers.pop(unit_id, None)
         self._parsers.pop(unit_id, None)
 
@@ -194,7 +154,6 @@ class ActivityRouter:
         provider: ActivityProvider = ActivityProvider.GENERIC,
         raw_reference: str | None = None,
     ) -> None:
-        """Never raises — parser failures are converted to ERROR events."""
         buffer = self.get_buffer(unit_id)
 
         try:
@@ -249,24 +208,6 @@ class ActivityRouter:
         unit_id: str,
         raw_reference: str | None,
     ) -> None:
-        """Forward parsed lines to the subagent sink and emit SUBAGENT_PROGRESS.
-
-        Mirrors ``stream_parsed_agent_activity`` (in
-        ``ralph/pipeline/activity_stream.py``): when the parser
-        implements ``emit_subagent_activity`` (the shared hook used by
-        Claude/OpenCode/Codex/Gemini/Pi/Agy/Generic), invoke it with a
-        capturing sink, then (a) forward the captured summary to the
-        per-task subagent sink via ``invoke_subagent_sink`` so the idle
-        watchdog's ``record_subagent_work`` channel stays fresh, and
-        (b) emit a ``SUBAGENT_PROGRESS`` event through the
-        ``_on_event`` callback so the operator sees real-time per-tool
-        subagent progress on the console transcript.
-
-        The hook is fail-soft: a buggy hook cannot crash the router
-        because the exception is swallowed and the inner ``sink``
-        capture re-raises into ``invoke_subagent_sink`` which is
-        already exception-swallowing at the helper boundary.
-        """
         emit_hook: object = getattr(parser, "emit_subagent_activity", None)
         if not callable(emit_hook):
             return

@@ -1,13 +1,3 @@
-"""Policy-driven acceptance tests — Product Requirements 1-10 and Criteria A-H.
-
-These tests assert every product requirement and acceptance criterion against a
-fully renamed PolicyBundle (no canonical phase names). Any regression that
-re-introduces hidden phase name knowledge in the runtime will fail here.
-
-Scope: pure functions only. No I/O.
-Runtime budget: ≤ 5 seconds for the full module.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -38,17 +28,6 @@ from ralph.policy.validation import validate_policy_completeness
 
 @pytest.fixture(scope="module")
 def policy_with_renamed_phases() -> PolicyBundle:
-    """Fully custom-named PolicyBundle — no canonical Ralph phase names.
-
-    Custom name mappings (canonical → custom):
-      planning          → design
-      development       → build
-      development_analysis → audit
-      development_commit → sign_off
-      review            → inspect
-      complete          → done
-      failed_terminal   → aborted
-    """
     agents = AgentsPolicy(
         agent_chains={
             "design_chain": AgentChainConfig(agents=["fake-agent"]),
@@ -176,16 +155,10 @@ def policy_with_renamed_phases() -> PolicyBundle:
     return PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
 
 
-# =============================================================================
-# Requirement 1: Policy must fully define user-visible routing semantics
-# =============================================================================
-
-
 class TestAcceptanceHPolicyVsPlumbing:
     def test_text_render_does_not_expose_internal_plumbing(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """render_explanation_text doesn't expose internal mechanics like watchdog, auth, etc."""
         exp = explain_policy(policy_with_renamed_phases)
         text = render_explanation_text(exp)
         plumbing_terms = ["watchdog", "subprocess", "auth_failure", "connectivity"]
@@ -197,7 +170,6 @@ class TestAcceptanceHPolicyVsPlumbing:
     def test_policy_contains_workflow_meaning(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """Policy contains workflow-level concepts: phases, routes, decisions, commit."""
         exp = explain_policy(policy_with_renamed_phases)
         text = render_explanation_text(exp)
         assert "On success" in text
@@ -207,5 +179,4 @@ class TestAcceptanceHPolicyVsPlumbing:
     def test_policy_validation_covers_workflow_semantics_not_plumbing(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """validate_policy_completeness validates workflow semantics (roles, routes, decisions)."""
         validate_policy_completeness(policy_with_renamed_phases)

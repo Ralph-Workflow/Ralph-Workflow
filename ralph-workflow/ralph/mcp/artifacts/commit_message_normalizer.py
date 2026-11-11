@@ -1,8 +1,3 @@
-"""Permissive, evidence-aware normalization for commit-message drafts.
-
-Valid artifacts pass through byte-for-byte. Repair is limited to structural
-syntax, and authored prose is preserved without lexical scoring.
-"""
 
 from __future__ import annotations
 
@@ -39,7 +34,6 @@ _SUBJECT_PART_COUNT = 2
 
 @dataclass(frozen=True)
 class NormalizationResult:
-    """Normalized content plus a deterministic, auditable repair record."""
 
     content: str
     transformations: tuple[NormalizationTransformation, ...]
@@ -53,7 +47,6 @@ def normalize_commit_message_draft(
     *,
     draft_revision: int = 0,
 ) -> NormalizationResult:
-    """Repair recognizable drafts from live facts; keep relevant body prose."""
     if re.search(r"(?m)^type:\s*skip\s*$", content):
         return NormalizationResult(content, (), "high", ("draft",))
     if _is_valid_safe_artifact(content):
@@ -115,7 +108,6 @@ def _is_valid_safe_artifact(content: str) -> bool:
 
 
 def _extract_claims(content: str) -> tuple[str, ...]:
-    """Extract candidates from canonical and tolerant prose/list/key-value drafts."""
     candidates: list[str] = []
     in_files = False
     for line in content.splitlines():

@@ -1,16 +1,3 @@
-"""Typed CaptureRequest: the immutable plan for a single visual capture run.
-
-The request carries the target plus the full cartesian product of
-``viewports x themes x states``. It is the single source of truth that
-the resulting :class:`~ralph.visual.capture_set.CaptureSet` must
-satisfy — any capture set whose cell set is missing from the matrix is
-invalid, because visual coverage cannot be summarised out of order.
-
-A :class:`CaptureRequest` rejects the single-screenshot default:
-every request must declare at least one narrow + one wide viewport and
-every state declared in :data:`REQUIRED_STATES`. A request that omits
-any required state is a misconfiguration, not a preference.
-"""
 
 from __future__ import annotations
 
@@ -27,18 +14,12 @@ from ralph.visual.policy_facts import (
     Viewport,
 )
 
-# Minimum number of cells a CaptureRequest must cover. The default
-# policy produces 2 viewports x 2 themes x 5 states = 20 cells; we
-# reject anything below the bare 2-cell floor because a one-cell
-# matrix is a single-screenshot request in disguise.
 MIN_MATRIX_CELLS: int = 2
 
-# Minimum number of viewports. Narrow + wide is the contract.
 MIN_VIEWPORTS: int = 2
 
 
 def _default_viewports() -> tuple[Viewport, ...]:
-    """Return the canonical narrow + wide viewport pair."""
     return (
         Viewport(
             name="narrow",
@@ -53,11 +34,6 @@ def _default_viewports() -> tuple[Viewport, ...]:
     )
 
 
-# ---------------------------------------------------------------------------
-# Validation helpers — split out of __post_init__ to keep the dataclass
-# entry point short and let ruff's PLR0912 (too-many-branches) gate pass
-# without weakening lint enforcement.
-# ---------------------------------------------------------------------------
 
 
 def _validate_string_tuple(
@@ -66,7 +42,6 @@ def _validate_string_tuple(
     values: object,
     error_prefix: str,
 ) -> None:
-    """Validate a tuple-of-non-empty-strings field."""
     if not isinstance(values, tuple) or not values:
         raise ValueError(f"{error_prefix} must be a non-empty tuple of strings")
     for value in values:
@@ -75,7 +50,6 @@ def _validate_string_tuple(
 
 
 def _validate_viewports(viewports: object) -> None:
-    """Validate the viewports tuple."""
     if not isinstance(viewports, tuple):
         raise ValueError("CaptureRequest.viewports must be a tuple of Viewport instances")
     if len(viewports) < MIN_VIEWPORTS:
@@ -89,7 +63,6 @@ def _validate_viewports(viewports: object) -> None:
 
 
 def _validate_matrix_cells(matrix: object) -> None:
-    """Validate the matrix is a non-empty tuple of CaptureCell instances."""
     if not isinstance(matrix, tuple):
         raise ValueError("CaptureRequest.matrix must be a tuple of CaptureCell instances")
     for cell in matrix:
@@ -104,7 +77,6 @@ def _expected_matrix(
     themes: tuple[str, ...],
     states: tuple[str, ...],
 ) -> dict[tuple[str, str, int, int, str, str], CaptureCell]:
-    """Build the canonical cartesian-product cell set keyed by cell.key."""
     expected: dict[tuple[str, str, int, int, str, str], CaptureCell] = {}
     for viewport in viewports:
         for theme in themes:
@@ -127,7 +99,6 @@ def _verify_matrix_shape(
     states: tuple[str, ...],
     matrix: tuple[CaptureCell, ...],
 ) -> None:
-    """Verify the matrix equals the full cartesian product of the declared axes."""
     expected = _expected_matrix(
         target=target,
         viewports=viewports,
@@ -149,8 +120,6 @@ def _verify_matrix_shape(
             f"viewports x themes x states; {'; '.join(problems)}"
         )
 
-    # Verify every present cell has the server-minted id for its key —
-    # i.e. no caller-supplied id can sneak past us.
     for key, cell in present.items():
         expected_cell = expected[key]
         if cell.cell_id != expected_cell.cell_id:
@@ -161,7 +130,6 @@ def _verify_matrix_shape(
 
 
 def _verify_required_states(states: tuple[str, ...]) -> None:
-    """Reject a request whose states miss any canonical state."""
     declared = set(states)
     missing = [state for state in REQUIRED_STATES if state not in declared]
     if missing:
@@ -172,14 +140,10 @@ def _verify_required_states(states: tuple[str, ...]) -> None:
         )
 
 
-# ---------------------------------------------------------------------------
-# Typed structure
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class CaptureRequest:
-    """Immutable plan for one visual capture run."""
 
     target: str
     viewports: tuple[Viewport, ...]
@@ -230,14 +194,6 @@ class CaptureRequest:
         themes: tuple[str, ...] | None = None,
         states: tuple[str, ...] | None = None,
     ) -> CaptureRequest:
-        """Construct a CaptureRequest with the canonical defaults filled in.
-
-        ``viewports`` defaults to the narrow + wide canonical pair;
-        ``themes`` defaults to :data:`DEFAULT_THEMES`; ``states``
-        defaults to :data:`REQUIRED_STATES`. The matrix is minted as
-        the full cartesian product so callers cannot accidentally
-        pass a half-built one.
-        """
         resolved_viewports = viewports if viewports is not None else _default_viewports()
         resolved_themes = themes if themes is not None else DEFAULT_THEMES
         resolved_states = states if states is not None else REQUIRED_STATES
@@ -262,11 +218,9 @@ class CaptureRequest:
 
     @property
     def cell_ids(self) -> frozenset[str]:
-        """Return the set of server-minted cell ids covered by this request."""
         return frozenset(cell.cell_id for cell in self.matrix)
 
     def cells_for(self, *, state: str | None = None) -> tuple[CaptureCell, ...]:
-        """Return the matrix cells, optionally filtered by state."""
         if state is None:
             return self.matrix
         return tuple(cell for cell in self.matrix if cell.state == state)

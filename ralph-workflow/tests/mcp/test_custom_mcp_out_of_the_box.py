@@ -1,9 +1,3 @@
-"""Regression test: a fresh .agent/mcp.toml server entry works out of the box.
-
-This test verifies that adding a single server block to .agent/mcp.toml is
-sufficient to expose it through the UpstreamRegistry without any extra setup.
-"""
-
 from __future__ import annotations
 
 import json
@@ -32,7 +26,6 @@ def _write_mcp_toml(workspace: Path, server_name: str, url: str) -> None:
 def test_single_server_entry_surfaces_in_upstream_registry(
     tmp_path: Path,
 ) -> None:
-    """Adding ONE server block to .agent/mcp.toml appears in mcp_toml_as_upstreams."""
     _write_mcp_toml(tmp_path, "my-custom-server", _FAKE_URL)
 
     upstreams = mcp_toml_as_upstreams(tmp_path)
@@ -44,7 +37,6 @@ def test_single_server_entry_surfaces_in_upstream_registry(
 def test_single_server_entry_produces_non_empty_tool_definitions(
     tmp_path: Path,
 ) -> None:
-    """UpstreamRegistry built from the upstreams has non-empty tool_definitions."""
     _write_mcp_toml(tmp_path, "my-custom-server", _FAKE_URL)
 
     upstreams = mcp_toml_as_upstreams(tmp_path)
@@ -63,7 +55,6 @@ def test_single_server_entry_produces_non_empty_tool_definitions(
 def test_single_server_entry_appears_in_ralph_transport_configs(
     tmp_path: Path,
 ) -> None:
-    """The Ralph transport configs include the custom server via UpstreamRegistry."""
     _write_mcp_toml(tmp_path, "my-custom-server", _FAKE_URL)
 
     upstreams = mcp_toml_as_upstreams(tmp_path)
@@ -87,7 +78,6 @@ def test_single_server_entry_appears_in_ralph_transport_configs(
 
 
 def test_codex_unsafe_mode_preserves_existing_mcp_servers(tmp_path: Path) -> None:
-    """unsafe_mode=True keeps the [mcp_servers.existing] table alongside Ralph."""
     codex_home = tmp_path / "codex-home"
     codex_home.mkdir()
     (codex_home / "config.toml").write_text(
@@ -112,7 +102,6 @@ def test_codex_unsafe_mode_preserves_existing_mcp_servers(tmp_path: Path) -> Non
 
 
 def test_codex_unsafe_mode_false_removes_existing_mcp_servers(tmp_path: Path) -> None:
-    """unsafe_mode=False (default) removes existing [mcp_servers.*] tables."""
     codex_home = tmp_path / "codex-home"
     codex_home.mkdir()
     (codex_home / "config.toml").write_text(
@@ -138,7 +127,6 @@ def test_codex_unsafe_mode_false_removes_existing_mcp_servers(tmp_path: Path) ->
 def test_single_server_entry_appears_in_codex_transport_config(
     tmp_path: Path,
 ) -> None:
-    """prepare_codex_home_with_upstreams creates a codex home for the workspace."""
     isolated_codex_home = tmp_path / "empty-codex-home"
     isolated_codex_home.mkdir()
 
@@ -159,7 +147,6 @@ def test_single_server_entry_appears_in_codex_transport_config(
 def test_single_server_entry_appears_in_opencode_transport_config(
     tmp_path: Path,
 ) -> None:
-    """build_opencode_provider_config includes the ralph server in the OpenCode config."""
     _write_mcp_toml(tmp_path, "my-custom-server", _FAKE_URL)
 
     config_json, existing_upstreams = build_opencode_provider_config(
@@ -176,7 +163,6 @@ def test_single_server_entry_appears_in_opencode_transport_config(
 def test_single_server_entry_surfaces_in_all_transport_paths(
     tmp_path: Path,
 ) -> None:
-    """Full integration: single server in mcp.toml appears across all transport configs."""
     isolated_codex_home = tmp_path / "empty-codex-home"
     isolated_codex_home.mkdir()
 

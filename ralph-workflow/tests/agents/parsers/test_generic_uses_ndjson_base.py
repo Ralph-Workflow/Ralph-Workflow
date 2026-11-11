@@ -1,14 +1,3 @@
-"""Migration test: GenericParser must inherit from NdjsonParserBase.
-
-After the consolidation refactor, GenericParser inherits from
-:class:`ralph.agents.parsers._ndjson_base.NdjsonParserBase` and delegates
-the data: prefix strip, [DONE] short-circuit, json parse dispatch,
-lifecycle suppression, and error extraction to the base layer. The
-subclass keeps the VT normalize + json parse + error/stop short-circuit
-path and the per-content extractor methods (``_extract_content``,
-``_extract_thinking_content``, ``_is_error``, ``_is_stop``).
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -27,8 +16,6 @@ def _lines(*raw: str) -> Iterator[str]:
 
 
 class TestGenericUsesNdjsonBase:
-    """Pin subclass relationship and migration behavior preservation."""
-
     def test_generic_parser_subclass_of_ndjson_base(self) -> None:
         assert issubclass(GenericParser, NdjsonParserBase)
 
@@ -58,7 +45,6 @@ class TestGenericUsesNdjsonBase:
         assert results[0].content == "boom"
 
     def test_plain_tool_line_emits_tool_use(self) -> None:
-        """[plain] tool: NAME lines must still emit tool_use after migration."""
         parser = GenericParser()
         results = list(parser.parse(_lines("[plain] tool: bash")))
         tool_uses = [r for r in results if r.type == "tool_use"]

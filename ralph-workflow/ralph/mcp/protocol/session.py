@@ -1,4 +1,3 @@
-"""Shared session metadata for standalone Ralph MCP processes."""
 
 from __future__ import annotations
 
@@ -31,7 +30,6 @@ def _normalize_capability_token(value: str) -> str:
 
 
 def session_has_capability(granted: set[str], requested: str) -> bool:
-    """Return True if the requested capability is present in the granted set."""
     normalized_granted = set[str]()
     for value in granted:
         normalized_granted.add(_normalize_capability_token(value))
@@ -50,233 +48,130 @@ def session_has_capability(granted: set[str], requested: str) -> bool:
     return any(candidate in normalized_granted for candidate in candidates)
 
 
-#: An exec-streaming sink paired with the thread ident that owns it. The pair
-#: lives in ONE attribute so a concurrent reader performs a single (atomic)
-#: attribute load and can never observe a torn owner/sink combination — the
-#: TOCTOU that routed one request's exec output onto another's connection.
-#: An owner of ``None`` means "any thread" — used by single-tenant embeddings
-#: where the exec reader threads run on a different thread than the request
-#: thread; the production ``_FallbackHttpHandler`` stamps the real
-#: request-thread ident.
 ToolOutputSinkEntry = tuple[int | None, "Callable[[dict[str, object]], None]"]
 
 
 class McpSession(Protocol):
-    """Full structural contract for MCP server session objects.
 
-    Both implementations — the in-memory ``AgentSession`` (used by tests)
-    and the production ``FileBackedSession`` (standalone server via
-    ``session_from_env``) — must satisfy this protocol. ``session_from_env``
-    returns this type, so ``mypy ralph/`` (run by ``make verify``) enforces
-    structural conformance of both; surface drift between the two shipped a
-    production AttributeError that hung MCP clients (the -32001 retry storm).
-    """
-
-    # Settable variable member — the exec SSE path swaps it per request.
     tool_output_sink_entry: ToolOutputSinkEntry | None
 
     @property
     def session_id(self) -> str:
-        """Stable identifier for the session, unique per logical MCP server invocation."""
         ...
 
     @property
     def run_id(self) -> str:
-        """Run identifier that owns this session, used for cross-record correlation."""
         ...
 
     @property
     def broker_secret(self) -> str | None:
-        """RFC-013 P3: broker-owned secret threaded into the run-scoped
-        receipt / completion sentinel HMAC. ``None`` means the pre-P3
-        contract (no HMAC enforcement).
-
-        Both implementations expose this as a read-only attribute:
-        ``AgentSession`` declares it as a dataclass field (with a
-        default of ``None``) and ``FileBackedSession`` exposes it as
-        a property backed by the constructor-supplied value."""
         ...
 
     @property
     def drain(self) -> str:
-        """Logical phase drain the session is bound to (e.g. ``planning``, ``development``)."""
         ...
 
     @property
     def activity_only_supervision(self) -> bool:
-        """Whether this session must suppress ordinary elapsed-time MCP notices."""
         ...
 
     @property
     def capabilities(self) -> set[str]:
-        """Set of capability identifiers granted to the session by the agent's auth contract."""
         ...
 
     @property
     def policy_flags(self) -> set[str] | None:
-        """Optional set of policy-flag identifiers that further restrict the session's surface."""
         ...
 
     @property
     def created_at(self) -> float:
-        """Unix timestamp (seconds) at which the session was first instantiated."""
         ...
 
     @property
     def parallel_worker(self) -> bool:
-        """True if the session is a parallel-worker subprocess rather than the main agent.
-
-        .. deprecated::
-            Ralph-orchestrated workers are removed; this property only ever
-            returns False on the live execution path and is retained for the
-            ``ralph_fan_out`` dispatch-mode compatibility surface. See
-            ``docs/sphinx/concepts.md`` §'Deprecated: Ralph-orchestrated workers'.
-        """
         ...
 
     @property
     def edit_area_result(self) -> object:
-        """Cached result of the edit-area validation for this session's worker, if any.
-
-        .. deprecated::
-            Worker-scoped edit areas are no longer allocated; retained for the
-            ``ralph_fan_out`` compatibility surface. See
-            ``docs/sphinx/concepts.md`` §'Deprecated: Ralph-orchestrated workers'.
-        """
         ...
 
     @property
     def worker_artifact_dir(self) -> Path | None:
-        """Directory the worker writes its per-worker artifact evidence under, or None.
-
-        .. deprecated::
-            Per-worker artifact directories are only allocated under the
-            ``ralph_fan_out`` compatibility surface. See
-            ``docs/sphinx/concepts.md`` §'Deprecated: Ralph-orchestrated workers'.
-        """
         ...
 
     @property
     def worker_namespace(self) -> Path | None:
-        """Per-worker scratch namespace, isolated from sibling workers and the main checkout.
-
-        .. deprecated::
-            Per-worker namespaces are only allocated under the ``ralph_fan_out``
-            compatibility surface. See ``docs/sphinx/concepts.md``
-            §'Deprecated: Ralph-orchestrated workers'.
-        """
         ...
 
     @property
     def allowed_roots(self) -> tuple[Path, ...]:
-        """Tuple of filesystem roots the session is permitted to read or write."""
         ...
 
     @property
     def media_manifest(self) -> MediaManifest:
-        """Per-session manifest tracking media references for upstream / proxy responses."""
         ...
 
     @property
     def model_identity(self) -> MultimodalModelIdentity:
-        """Identity of the active multimodal model used to resolve capability profiles."""
         ...
 
     @property
     def stored_capability_profile(self) -> ResolvedCapabilityProfile | None:
-        """Cached resolved capability profile for the active model, or None to re-resolve."""
         ...
 
     @property
     def capability_profile(self) -> ResolvedCapabilityProfile | None:
-        """Effective capability profile, falling back to ``model_identity`` when uncached."""
         ...
 
     @property
     def delegated_agent_id(self) -> str | None:
-        """Optional delegated caller identity for a single brokered call."""
         ...
 
     @property
     def delegated_model_identity(self) -> MultimodalModelIdentity | None:
-        """Optional delegated model identity for a single brokered call."""
         ...
 
     @property
     def delegated_capability_profile(self) -> ResolvedCapabilityProfile | None:
-        """Optional delegated capability profile for a single brokered call."""
         ...
 
     @property
     def caller_agent_id(self) -> str:
-        """Resolved agent identity for the current brokered call."""
         ...
 
     @property
     def caller_model_identity(self) -> MultimodalModelIdentity:
-        """Resolved model identity for the current brokered call."""
         ...
 
     @property
     def caller_capability_profile(self) -> ResolvedCapabilityProfile:
-        """Resolved capability profile for the current brokered call."""
         ...
 
     def check_capability(self, capability: str, /) -> object:
-        """Return whether the session may use `capability` (approved/denied or structured)."""
         ...
 
     def is_parallel_worker(self) -> bool:
-        """Return True if the session is a parallel-worker subprocess rather than the main agent.
-
-        .. deprecated::
-            Ralph-orchestrated workers are removed; this only ever returns
-            False on the live execution path. Retained for the
-            ``ralph_fan_out`` compatibility surface. See
-            ``docs/sphinx/concepts.md`` §'Deprecated: Ralph-orchestrated workers'.
-        """
         ...
 
     def check_edit_area(self, path: str, /) -> object:
-        """Return whether `path` is inside the session's allowed edit area."""
         ...
 
     def current_thread_tool_output_sink(
         self,
     ) -> Callable[[dict[str, object]], None] | None:
-        """Return the tool-output sink only when the calling thread owns it."""
         ...
 
     @property
     def explore_index(self) -> object | None:
-        """Optional :class:`ralph.mcp.explore.handlers.ExploreIndex` handle.
-
-        ``None`` keeps the legacy contract: handlers fall back to the
-        live implementation. Production sessions built by
-        :func:`ralph.pipeline.session_bridge.build_session_bridge`
-        attach one handle so all indexed read/search/grep/list/edit
-        operations share the same generation + dirty-path state.
-        """
         ...
 
     @property
     def exec_resource_resolver(self) -> ExecResourceResolverLike | None:
-        """Optional ``ralph.mcp.tools._exec_resource_uri.ExecResourceResolver``.
-
-        ``None`` keeps the legacy contract: ``resources/read`` for a
-        ``ralph://exec/<spill-name>`` URI returns a structured
-        "unsupported resource URI" error. Production sessions built
-        by :func:`ralph.pipeline.session_bridge.build_session_bridge`
-        attach one resolver so the AC-11 replayable stdout/stderr
-        resource IDs returned by ``format=summary`` exec calls can
-        be re-read through ``resources/read``.
-        """
         ...
 
 
 @dataclass
 class AgentSession:
-    """Lightweight session holder used by standalone Ralph MCP tooling."""
 
     session_id: str
     run_id: str
@@ -296,55 +191,27 @@ class AgentSession:
     delegated_agent_id: str | None = field(default=None)
     delegated_model_identity: MultimodalModelIdentity | None = field(default=None)
     delegated_capability_profile: ResolvedCapabilityProfile | None = field(default=None)
-    #: RFC-013 P3: broker-owned secret threaded into the run-scoped
-    #: receipt / completion sentinel HMAC. ``None`` means the pre-P3
-    #: contract (no HMAC enforcement). The broker process owns the
-    #: secret; the agent never sees it.
     broker_secret: str | None = field(default=None, repr=False)
-    #: Atomic (owner thread ident, sink) pair for exec output streaming. The
-    #: session is shared across concurrent request threads; without ownership,
-    #: overlapping exec streams route output to whichever connection swapped
-    #: the sink last. Stored as ONE attribute so readers can never tear it.
     tool_output_sink_entry: ToolOutputSinkEntry | None = field(default=None, repr=False)
-    #: Optional handle to the per-workspace :class:`ralph.mcp.explore.handlers.ExploreIndex`.
-    #: When ``None`` the workspace handlers fall back to the legacy live
-    #: implementation; production bridges attach one in
-    #: :func:`ralph.pipeline.session_bridge.build_session_bridge` so all
-    #: indexed read/search/grep/list/edit operations share the same
-    #: generation and dirty-path state.
     explore_index: object | None = field(default=None, repr=False)
-    #: AC-11: optional resolver for ``ralph://exec/<spill-name>`` resource
-    #: URIs returned by ``format=summary`` exec calls. When ``None`` the
-    #: ``resources/read`` handler reports an unsupported URI error and the
-    #: legacy contract is preserved. Production bridges attach one
-    #: resolver in :func:`ralph.pipeline.session_bridge.build_session_bridge`
-    #: so spill files can be replayed through ``resources/read``.
     exec_resource_resolver: ExecResourceResolverLike | None = field(default=None, repr=False)
 
     @property
     def capability_profile(self) -> ResolvedCapabilityProfile:
-        """Return the stored profile when present, otherwise resolve from model_identity."""
         if self.stored_capability_profile is not None:
             return self.stored_capability_profile
         return resolve_capability_profile(self.model_identity)
 
     @property
     def caller_agent_id(self) -> str:
-        """Return the delegate identity when set, otherwise the parent session identity."""
         return self.delegated_agent_id or self.session_id
 
     @property
     def caller_model_identity(self) -> MultimodalModelIdentity:
-        """Return the identity a delegated call is judged against.
-
-        The rule itself lives in :func:`caller_identity_for` so this
-        class, ``FileBackedSession``, and the test double cannot drift.
-        """
         return caller_identity_for(self.model_identity, self.delegated_model_identity)
 
     @property
     def caller_capability_profile(self) -> ResolvedCapabilityProfile:
-        """Resolve a fresh caller-specific profile for every ledgered tool call."""
         return caller_profile_for(
             self.model_identity,
             self.delegated_model_identity,
@@ -362,14 +229,6 @@ class AgentSession:
         return self.edit_area_result if self.edit_area_result is not None else "approved"
 
     def current_thread_tool_output_sink(self) -> Callable[[dict[str, object]], None] | None:
-        """Return the sink only when the calling thread owns it.
-
-        Dispatches capture this once at composition time; chunks from a
-        request's subprocess reader threads then flow through the captured
-        sink, immune to a concurrent request re-swapping the shared attribute.
-        The (owner, sink) pair is read with a single attribute load, so a
-        concurrent swap can never produce a torn owner/sink combination.
-        """
         entry = self.tool_output_sink_entry
         if entry is None:
             return None

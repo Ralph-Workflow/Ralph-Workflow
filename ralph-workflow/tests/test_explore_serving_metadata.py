@@ -1,22 +1,3 @@
-"""Black-box tests for the canonical serving metadata contract (S-2).
-
-The ``PRODUCT_CRITERIA.md`` R1 contract requires every index-capable
-tool response to carry the same machine-readable fields:
-
-* ``index_used`` — ``True`` / ``False``
-* ``fallback_reason`` — one of the canonical reason codes from
-  ``docs/agents/explore-index-fault-matrix.md``, or ``None``
-* ``index_staleness`` — ``{stale_paths_count, last_refresh_age, recovery_willfallback}``
-
-These tests exercise every one of the nine index-capable tools
-(``grep_files``, ``search_files``, ``read_file``,
-``read_multiple_files``, ``list_directory``, ``directory_tree``,
-``ralph_graph``, ``ralph_index_status``, ``ralph_reindex``) and
-assert the canonical block is present, the reason code is from the
-closed set, and unknown reason codes raise at the boundary so a
-typo cannot leak into the public surface.
-"""
-
 from __future__ import annotations
 
 import json
@@ -47,12 +28,8 @@ from ralph.mcp.tools.workspace._read_handlers import (
 
 pytestmark = pytest.mark.timeout_seconds(5)
 
-# --- shared fixtures -------------------------------------------------------
-
 
 class _FakeSession:
-    """Minimal coordination-session seam for the serving-metadata tests."""
-
     session_id = "serving-meta"
     run_id = "serving-meta"
     broker_secret: str | None = None
@@ -68,8 +45,6 @@ class _FakeSession:
 
 
 class _Workspace:
-    """Minimal in-memory ``Workspace`` adapter."""
-
     def __init__(self, root: Path) -> None:
         self.root = root
 
@@ -147,11 +122,6 @@ def _populate_index(workspace: Path, store: ExploreStore) -> None:
 
 
 def _attach_session(store: ExploreStore, workspace: Path) -> _FakeSession:
-    """Return a session with the full ``ExploreIndex`` handle (matches prod).
-
-    The store and the session share the same on-disk index directory so
-    rows written by ``_populate_index`` are visible to the handler.
-    """
     handle = ExploreIndex(
         workspace_root=workspace,
         index_root=store.db_path.parent,
@@ -161,11 +131,7 @@ def _attach_session(store: ExploreStore, workspace: Path) -> _FakeSession:
     return _FakeSession(handle)
 
 
-# --- canonical reason-code coverage ----------------------------------------
-
-
 def test_canonical_reason_codes_cover_all_f1_f20() -> None:
-    """Every reason code in the fault matrix is in the canonical set."""
     expected = {
         "no_committed_generation",
         "version_mismatch",
@@ -188,13 +154,11 @@ def test_canonical_reason_codes_cover_all_f1_f20() -> None:
 
 
 def test_unknown_reason_code_raises_at_boundary() -> None:
-    """Typo / drift in the reason code: helper rejects it fail-closed."""
     with pytest.raises(ValueError, match="unknown fallback_reason"):
         serving_metadata(object(), index_used=False, fallback_reason="bogus_reason")
 
 
 def test_serving_metadata_block_shape() -> None:
-    """The canonical block carries exactly the documented fields."""
     block = serving_metadata(object(), index_used=True, fallback_reason=None)
     assert block["index_used"] is True
     assert block["fallback_reason"] is None
@@ -206,9 +170,6 @@ def test_serving_metadata_block_shape() -> None:
         "last_refresh_age",
         "recovery_willfallback",
     }
-
-
-# --- per-tool coverage -----------------------------------------------------
 
 
 def test_grep_files_carries_serving_metadata(tmp_path: Path) -> None:
@@ -238,7 +199,6 @@ def test_grep_files_carries_serving_metadata(tmp_path: Path) -> None:
 
 
 def test_grep_files_use_index_always_failure_reports_reason(tmp_path: Path) -> None:
-    """``use_index='always'`` against an ineligible pattern returns a reason."""
     workspace = _seed_workspace(tmp_path)
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     try:
@@ -400,28 +360,22 @@ def test_ralph_reindex_carries_serving_metadata(tmp_path: Path) -> None:
 def test_serving_metadata_caches_staleness_block_until_state_changes(
     tmp_path: Path,
 ) -> None:
-    """The staleness block cache avoids repeat SQL while state is stable."""
     workspace = _seed_workspace(tmp_path)
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     try:
         _populate_index(workspace, store)
         session = _attach_session(store, workspace)
-        # First call populates the cache.
         serving_metadata(session, index_used=True, fallback_reason=None)
         cache_slot = session.explore_index.staleness_block_cache
         assert cache_slot is not None
         first_signature, first_block = cache_slot
         first_stale_count = first_block["stale_paths_count"]
-        # Second call with no store mutation must reuse the cache slot.
         serving_metadata(session, index_used=True, fallback_reason=None)
         second_slot = session.explore_index.staleness_block_cache
         assert second_slot is not None
         assert second_slot[0] == first_signature
-        # The integer staleness count is identical (only the wall-clock
-        # ``last_refresh_age`` may advance between calls).
         assert second_slot[1]["stale_paths_count"] == first_stale_count
         assert second_slot[1]["recovery_willfallback"] == first_block["recovery_willfallback"]
-        # Mutate the store and confirm the next call recomputes.
         session.explore_index.store.mark_dirty("hello.py", reason="test_cache", source_tool="test")
         serving_metadata(session, index_used=True, fallback_reason=None)
         third_slot = session.explore_index.staleness_block_cache

@@ -1,10 +1,3 @@
-"""Tests that handoffs._compute_budget_state is policy-driven.
-
-Verifies that budget routing works for any commit-role phase name, not just
-the canonical development_commit/review_commit names, as long as commit_policy
-declares the correct increments_counter.
-"""
-
 from __future__ import annotations
 
 from ralph.pipeline.handoffs import resolve_post_commit_phase
@@ -62,8 +55,6 @@ def _feature_commit_policy() -> PipelinePolicy:
 
 
 class TestComputeBudgetStateUsingCommitPolicy:
-    """_compute_budget_state reads commit_policy, not hardcoded phase names."""
-
     def test_custom_phase_with_budget_remaining_routes_correctly(self) -> None:
         policy = _feature_commit_policy()
         state = PipelineState(
@@ -93,7 +84,6 @@ class TestComputeBudgetStateUsingCommitPolicy:
                         on_success="complete",
                         on_failure=None,
                     ),
-                    # commit_policy absent
                 ),
                 "complete": PhaseDefinition(
                     drain="complete",

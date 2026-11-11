@@ -1,4 +1,3 @@
-"""Data models for Ralph Workflow logging configuration."""
 
 from __future__ import annotations
 
@@ -16,7 +15,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class LoggingSession:
-    """Configured logger bundle for a single Ralph Workflow run."""
 
     config: LoggingConfig
     paths: LoggingPaths

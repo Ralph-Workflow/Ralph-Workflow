@@ -1,10 +1,3 @@
-"""Regression: the review handoff issue count reads the canonical Markdown artifact.
-
-The pre-migration renderer parsed ``issues.md`` as a legacy JSON envelope; the
-parse always failed silently and the phase-close banner reported ``0 issue(s)``
-regardless of content. The count must come from the validated Markdown document.
-"""
-
 from __future__ import annotations
 
 import types
@@ -77,10 +70,6 @@ def test_issue_count_comes_from_markdown_artifact(tmp_path: Path) -> None:
 
     recorded = _render_and_capture(tmp_path)
 
-    # S-2 (F6) additively appends a graded verdict suffix (e.g. "— PASS" /
-    # "— FAILED (no artifact) — ...") after the issue-count text this test
-    # pins; the count itself -- what this regression actually guards -- is
-    # asserted as a prefix so the additive suffix does not break it.
     assert recorded["outcome"].startswith("2 issue(s)")
 
 
@@ -91,7 +80,6 @@ def test_issue_count_is_zero_when_artifact_missing(tmp_path: Path) -> None:
 
 
 def test_issue_count_ignores_legacy_json_envelope(tmp_path: Path) -> None:
-    """A JSON envelope is not a valid Markdown artifact and contributes no count."""
     artifact = tmp_path / ".agent" / "artifacts" / "issues.md"
     artifact.parent.mkdir(parents=True)
     artifact.write_text(

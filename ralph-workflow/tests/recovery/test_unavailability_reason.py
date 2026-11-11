@@ -1,5 +1,3 @@
-"""Black-box tests for UnavailabilityReason classifier logic."""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -16,8 +14,6 @@ from ralph.recovery.unavailability_reason import UnavailabilityReason
 
 
 class TestUnavailabilityReasonClassifier:
-    """Tests for the _classify_unavailability_reason helper."""
-
     def test_watchdog_reason_no_output_at_start(self) -> None:
         result = _classify_unavailability_reason(
             watchdog_reason="no_output_at_start",
@@ -112,8 +108,6 @@ class TestUnavailabilityReasonClassifier:
 
 
 class TestFailureClassifierUnavailabilityReasonIntegration:
-    """Integration tests for unavailability_reason propagation through FailureClassifier."""
-
     def test_out_of_credits_sets_reason(self) -> None:
         classifier = FailureClassifier()
         failure = classifier.classify(
@@ -207,13 +201,6 @@ class TestFailureClassifierUnavailabilityReasonIntegration:
         assert failure.unavailability_reason is None
 
     def test_out_of_credits_backoff_grows_exponentially_and_caps_at_five_hours(self) -> None:
-        """OUT_OF_CREDITS grows exponentially and saturates at 18_000_000 ms.
-
-        Plan S-3 + S-4 contract: the default OUT_OF_CREDITS policy has
-        base 60_000 ms and the universal five-hour cap (18_000_000 ms).
-        Exponential growth: 60_000, 120_000, ..., 15_360_000, then
-        30_720_000 caps to 18_000_000 and stays there.
-        """
         clock = FakeClock(start=0.0)
         tracker = AgentUnavailabilityTracker(clock=clock)
 
@@ -224,7 +211,6 @@ class TestFailureClassifierUnavailabilityReasonIntegration:
             )
             if i == 0:
                 assert entry.base_backoff_ms == 60_000
-                # Default cap is the universal five-hour ceiling.
                 assert entry.max_backoff_ms == 18_000_000
 
             cooldowns.append(entry.unavailable_until_ms - int(clock.monotonic() * 1000))
@@ -264,15 +250,6 @@ class TestFailureClassifierUnavailabilityReasonIntegration:
             assert failure.unavailability_reason == UnavailabilityReason.OUT_OF_CREDITS
 
     def test_generic_throttling_does_not_classify_as_out_of_credits(self) -> None:
-        """Generic throttling markers are NOT credit exhaustion.
-
-        A bare ``rate_limited`` token is a transient rate-limit response
-        that recovers in seconds-to-minutes, not a credit-exhausted state
-        that needs a 60s->30min cooldown. The ``OUT_OF_CREDITS`` reason
-        applies the long unavailable-agent cooldown, which is wrong for
-        a generic throttle. The classifier must NOT match the bare
-        ``rate_limited`` substring against the subscription-limit table.
-        """
         classifier = FailureClassifier()
         generic_throttle_substrings = [
             "rate_limited",
@@ -311,8 +288,6 @@ class TestFailureClassifierUnavailabilityReasonIntegration:
 
 
 class TestFailureEventUnavailabilityReason:
-    """Tests for unavailability_reason propagation to FailureEvent."""
-
     def test_failure_event_carries_unavailability_reason(self) -> None:
         evt = FailureEvent(
             timestamp=datetime.now(UTC),
@@ -331,8 +306,6 @@ class TestFailureEventUnavailabilityReason:
 
 
 class TestFalloverEventUnavailabilityReason:
-    """Tests for unavailability_reason propagation to FalloverEvent."""
-
     def test_fallover_event_carries_unavailability_reason(self) -> None:
         evt = FalloverEvent.now(
             phase="development",

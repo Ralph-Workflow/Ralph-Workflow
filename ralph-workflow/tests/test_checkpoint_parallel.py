@@ -1,10 +1,3 @@
-"""Round-trip serialization tests for PipelineState parallel fields.
-
-Tests that work_units (tuple[WorkUnit, ...]) and worker_states (dict[str, WorkerState])
-serialize and deserialize correctly via Pydantic's model_dump_json / model_validate_json,
-and that legacy checkpoints missing these fields load with correct defaults.
-"""
-
 from __future__ import annotations
 
 import json
@@ -25,7 +18,6 @@ def _ws(unit_id: str, status: WorkerStatus = WorkerStatus.PENDING) -> WorkerStat
 
 
 def test_round_trip_with_workers() -> None:
-    """PipelineState with 3 WorkerStates (mixed statuses) + work_units round-trips."""
     work_units = (
         _wu("task-a", "First subtask"),
         _wu("task-b", "Second subtask"),
@@ -47,13 +39,8 @@ def test_round_trip_with_workers() -> None:
     assert restored.worker_states["task-c"].status == WorkerStatus.RUNNING
 
 
-# Bounded per-test timeout (5s): pure round-trip work legitimately grazes
-# the 1.0s default bound only when the full suite loads the machine (heavy
-# external host load); the bound keeps it under the per-test policy without
-# touching the 60s combined budget.
 @pytest.mark.timeout_seconds(5)
 def test_round_trip_empty_parallel_fields() -> None:
-    """PipelineState with empty work_units and worker_states round-trips cleanly."""
     state = PipelineState(phase="planning", work_units=(), worker_states={})
 
     restored = PipelineState.model_validate_json(state.model_dump_json())
@@ -63,14 +50,12 @@ def test_round_trip_empty_parallel_fields() -> None:
 
 
 def test_old_checkpoint_without_parallel_fields() -> None:
-    """Legacy JSON missing work_units + worker_states loads with default empty values."""
     state = PipelineState(
         phase="planning",
         work_units=(_wu("u1"), _wu("u2")),
         worker_states={"u1": _ws("u1", WorkerStatus.SUCCEEDED)},
     )
 
-    # Simulate a checkpoint written before parallel fields existed
     raw = state.model_dump(mode="json")
     del raw["work_units"]
     del raw["worker_states"]
@@ -83,7 +68,6 @@ def test_old_checkpoint_without_parallel_fields() -> None:
 
 
 def test_worker_status_enum_serializes() -> None:
-    """All WorkerStatus values survive a round-trip through JSON serialization."""
     all_statuses = list(WorkerStatus)
 
     for status in all_statuses:
@@ -94,7 +78,6 @@ def test_worker_status_enum_serializes() -> None:
 
 @pytest.mark.parametrize("status", list(WorkerStatus))
 def test_worker_status_values_round_trip(status: WorkerStatus) -> None:
-    """Each WorkerStatus value serializes to its string name and deserialises back."""
     state = PipelineState(
         phase="planning", worker_states={"w": WorkerState(unit_id="w", status=status)}
     )

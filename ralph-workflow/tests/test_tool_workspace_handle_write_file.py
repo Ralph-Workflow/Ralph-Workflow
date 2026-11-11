@@ -1,5 +1,3 @@
-"""Tests for ralph/mcp/tool_workspace.py — MCP workspace tool handlers."""
-
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -56,7 +54,7 @@ class TestHandleWriteFile:
 
     def test_missing_content_raises(self) -> None:
         ws = MagicMock()
-        ws.exists.return_value = False  # file is untracked/ephemeral
+        ws.exists.return_value = False
 
         with pytest.raises(InvalidParamsError):
             handle_write_file(

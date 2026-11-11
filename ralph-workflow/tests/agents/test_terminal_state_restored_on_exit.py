@@ -1,5 +1,3 @@
-"""Real-PTY regression tests for ownership-safe terminal restoration."""
-
 from __future__ import annotations
 
 import os
@@ -79,7 +77,6 @@ class _ExitObservation:
 
 
 def _subprocess_env() -> dict[str, str]:
-    """Run child Python from the same locked package tree as this test."""
     env = dict(os.environ)
     env["PYTHONPATH"] = str(_PACKAGE_ROOT)
     env["TERM"] = "xterm-256color"
@@ -87,7 +84,6 @@ def _subprocess_env() -> dict[str, str]:
 
 
 def _observe_exit(script: str, *, redirect_stdout: bool = False) -> _ExitObservation:
-    """Run one controlled exit and observe its PTY stream and kernel state."""
     pm = ProcessManager(
         policy=ProcessManagerPolicy(enable_zombie_reaper=False, log_events=False),
     )
@@ -139,7 +135,6 @@ def _observe_exit(script: str, *, redirect_stdout: bool = False) -> _ExitObserva
 
 
 def _read_until(master_fd: int, *, expected: bytes) -> bytes:
-    """Read PTY output until a child synchronization marker arrives."""
     chunks: list[bytes] = []
     deadline = time.monotonic() + _DRAIN_CEILING_SECONDS
     while expected not in b"".join(chunks) and time.monotonic() < deadline:
@@ -153,7 +148,6 @@ def _read_until(master_fd: int, *, expected: bytes) -> bytes:
 
 
 def _parse_modes_snapshot(output: bytes) -> list[int | list[bytes | int]]:
-    """Parse the length-framed child-owned termios snapshot."""
     frame_start = output.index(_MODES_FRAME_PREFIX) + len(_MODES_FRAME_PREFIX)
     length_end = output.index(b":", frame_start)
     payload_length = int(output[frame_start:length_end])
@@ -174,7 +168,6 @@ def _parse_modes_snapshot(output: bytes) -> list[int | list[bytes | int]]:
 
 
 def _drain_pty(master_fd: int, *, expected: tuple[bytes, ...]) -> bytes:
-    """Drain exited-child output until all expected restore bytes arrive."""
     chunks: list[bytes] = []
     deadline = time.monotonic() + _DRAIN_CEILING_SECONDS
     while True:
@@ -191,14 +184,12 @@ def _drain_pty(master_fd: int, *, expected: tuple[bytes, ...]) -> bytes:
 
 
 def _read_queued_input(slave_fd: int) -> bytes:
-    """Read queued operator input without risking a blocking test."""
     readable, _, _ = select.select([slave_fd], [], [], 0.0)
     assert readable, "queued input was discarded before the process exited"
     return os.read(slave_fd, _READ_CHUNK_BYTES)
 
 
 def _assert_ownership_safe_restore(observation: _ExitObservation) -> None:
-    """Assert the shared byte-stream and kernel restoration contract."""
     assert _CURSOR_SHOW in observation.output
     for sequence in _FORBIDDEN_RESTORE_BYTES:
         assert sequence not in observation.output
@@ -208,7 +199,6 @@ def _assert_ownership_safe_restore(observation: _ExitObservation) -> None:
 
 @pytest.mark.subprocess_e2e
 def test_terminal_restore_regression_normal_exit_preserves_parent_state() -> None:
-    """S-4: normal exit restores owned state without destructive controls."""
     script = textwrap.dedent(
         f"""
         import os
@@ -231,7 +221,6 @@ def test_terminal_restore_regression_normal_exit_preserves_parent_state() -> Non
 @pytest.mark.parametrize("signum", [signal.SIGTERM, signal.SIGINT], ids=["sigterm", "sigint"])
 @pytest.mark.subprocess_e2e
 def test_terminal_restore_regression_signal_exit_preserves_parent_state(signum: int) -> None:
-    """S-4: SIGTERM and SIGINT restore the exact pre-run line discipline."""
     script = textwrap.dedent(
         f"""
         import os
@@ -257,7 +246,6 @@ def test_terminal_restore_regression_signal_exit_preserves_parent_state(signum: 
 
 @pytest.mark.subprocess_e2e
 def test_terminal_restore_regression_redirected_stdout_uses_terminal_stderr() -> None:
-    """S-4: redirected stdout leaves restore bytes on the terminal only."""
     script = textwrap.dedent(
         f"""
         import os
@@ -280,7 +268,6 @@ def test_terminal_restore_regression_redirected_stdout_uses_terminal_stderr() ->
 
 @pytest.mark.subprocess_e2e
 def test_terminal_restore_regression_normal_exit_restores_raw_termios() -> None:
-    """S-4: raw mode is replaced by the exact pre-run line discipline."""
     script = textwrap.dedent(
         f"""
         import os
@@ -304,7 +291,6 @@ def test_terminal_restore_regression_normal_exit_restores_raw_termios() -> None:
 
 @pytest.mark.subprocess_e2e
 def test_terminal_restore_regression_force_exit_preserves_parent_state() -> None:
-    """S-4: InterruptController.force_exit restores before os._exit."""
     script = textwrap.dedent(
         f"""
         import os
@@ -334,7 +320,6 @@ def test_terminal_restore_regression_force_exit_preserves_parent_state() -> None
 
 @pytest.mark.subprocess_e2e
 def test_terminal_restore_regression_crash_is_sanitized_and_preserves_parent_state() -> None:
-    """S-4: uncaught crash text is sanitized before terminal restoration."""
     script = textwrap.dedent(
         f"""
         import os
@@ -362,7 +347,6 @@ def test_terminal_restore_regression_crash_is_sanitized_and_preserves_parent_sta
 
 @pytest.mark.subprocess_e2e
 def test_queued_input_assertion_regression_rejects_old_tciflush() -> None:
-    """S-4: the queue assertion detects the old generic TCIFLUSH behavior."""
     master_fd, slave_fd = pty.openpty()
     try:
         os.write(master_fd, _QUEUED_INPUT)

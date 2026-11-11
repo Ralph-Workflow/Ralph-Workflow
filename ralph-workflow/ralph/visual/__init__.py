@@ -1,20 +1,3 @@
-"""Ralph visual capture and design-verdict package.
-
-The ``ralph.visual`` package is the single source of truth for:
-
-* parsing design-system policy facts into typed, validated structures
-  (:mod:`ralph.visual.policy_facts`),
-* describing the capture matrix for a visual run (:mod:`ralph.visual.capture_request`,
-  :mod:`ralph.visual.capture_cell`),
-* holding run-owned capture evidence (:mod:`ralph.visual.capture_set`),
-* describing reviewer observations (:mod:`ralph.visual.visual_finding`),
-* and producing the signed-off design verdict artifact (:mod:`ralph.visual.design_verdict`).
-
-Every layer in this package enforces one rule: visual coverage is
-never a single screenshot and never a single ``pass`` based on the
-agent's intuition. The package exists so the rest of Ralph can treat
-visual review as a typed contract with explicit, falsifiable inputs.
-"""
 
 from __future__ import annotations
 
@@ -54,9 +37,6 @@ from ralph.visual.visual_finding import (
     VisualSeverityT,
 )
 
-# Backwards-compat alias used in some downstream consumers. Declared
-# here (after the canonical ``Viewport`` symbol) so a typo in the
-# alias name surfaces immediately during import.
 Viewpoint = Viewport
 
 __all__ = [

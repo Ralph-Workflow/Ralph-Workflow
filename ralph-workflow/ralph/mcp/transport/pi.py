@@ -1,11 +1,3 @@
-"""Pi-specific MCP transport helpers.
-
-Pi's bridge plumbing wires ``pi.registerTool({ execute(_, _, signal) })``
-through to ``fetch(ENDPOINT, { signal })``. Ralph additionally arms a
-bridge-side ``setTimeout(controller.abort, MCP_TOOL_CALL_DEADLINE_MS)`` so
-a Pi that forgets to abort the signal still bounds tools/call at the
-verified soft-budget + headroom.
-"""
 
 from __future__ import annotations
 
@@ -23,27 +15,12 @@ from ralph.timeout_defaults import EXEC_SOFT_REPLY_BUDGET_MS
 PI_MCP_EXTENSION_ENV = "RALPH_PI_MCP_EXTENSION"
 CallableCleanup = Callable[[], None]
 
-#: Milliseconds of headroom above ``EXEC_SOFT_REPLY_BUDGET_MS`` for the
-#: bridge-side ``tools/call`` deadline. Matches the 30 s headroom the
-#: timing-safety check in ``ralph/mcp/server/_timing_safety.py`` requires.
 MCP_TOOL_CALL_HEADROOM_MS: Final[int] = 30_000
 
-#: Bounded deadline (ms) the generated Pi bridge enforces on every
-#: ``tools/call`` round-trip, independent of Pi's own per-tool signal.
-#: Pi propagates an ``AbortSignal`` to the bridge via
-#: ``pi.registerTool({ execute(_toolCallId, params, signal) })``, and the
-#: bridge passes that signal to ``fetch(ENDPOINT, { signal })``. We
-#: additionally start a ``setTimeout`` that aborts after this many ms as
-#: a defensive bound -- the documented rationale lives in
-#: ``docs/agents/exec-long-running-root-cause.md`` (Pi's discovery-time
-#: MCP_STARTUP_TIMEOUT_MS is the only deadline its bridge plumbing had
-#: configured). Sized at soft-budget + headroom so a legitimately long
-#: ``tools/call`` cannot outrun the verified client deadline.
 MCP_TOOL_CALL_DEADLINE_MS: Final[int] = EXEC_SOFT_REPLY_BUDGET_MS + MCP_TOOL_CALL_HEADROOM_MS
 
 
 def pi_mcp_extension_path(workspace_path: Path) -> Path:
-    """Return the deterministic per-workspace Pi MCP extension path."""
     return workspace_path / ".agent" / "tmp" / "ralph_pi_mcp_extension.ts"
 
 
@@ -52,21 +29,18 @@ def write_pi_mcp_extension(
     *,
     workspace_path: Path | None,
 ) -> tuple[Path, CallableCleanup | None]:
-    """Write a Pi extension that bridges Pi custom tools to Ralph's MCP server."""
     cleanup: CallableCleanup | None
     if workspace_path is None:
         temp_dir = Path(tempfile.mkdtemp(prefix="ralph-pi-mcp-"))
         extension_path = temp_dir / "ralph_pi_mcp_extension.ts"
 
         def cleanup() -> None:
-            # filesystem-write-ok: cleanup of a run-scoped temporary Pi home
             shutil.rmtree(temp_dir, ignore_errors=True)
 
     else:
         extension_path = pi_mcp_extension_path(workspace_path)
         cleanup = None
 
-    # filesystem-write-ok: per-process pi transport config under user-global config dir, NOT_REPO silent no-op for repo scope
     extension_path.parent.mkdir(parents=True, exist_ok=True)
     write_text_if_changed(
         DEFAULT_FILE_BACKEND,

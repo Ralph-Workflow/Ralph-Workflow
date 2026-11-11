@@ -1,12 +1,3 @@
-"""Mode-adaptive character limits for content condensation (single-mode).
-
-After the wt-028-display consolidation, Ralph Workflow uses a single
-``default`` mode with one fixed set of limits (no per-mode tier).
-This module is the single owner of the consolidated limits — the
-public :data:`_DEFAULT_LIMITS` constant lives here and
-:mod:`ralph.display.context` imports it directly so the limit
-definition has exactly one home in the codebase.
-"""
 
 from __future__ import annotations
 
@@ -19,24 +10,11 @@ CONDENSER_HARD_LIMIT: Final[int] = 4000
 STREAMING_CHECKPOINT_CHARS: Final[int] = 4000
 THINKING_PREVIEW_MIN_CHARS: Final[int] = 80
 TOOL_RESULT_HEADLINE_MIN_CHARS: Final[int] = 80
-#: P1 (wt-028-display S-5 / AC-04): the comfortable measure for prose
-#: and log body text. A 250-column console would otherwise let a
-#: rendered paragraph run full width, which forces the operator's eye
-#: to track very long lines. Capping the measure at a comfortable
-#: 100 columns keeps the line length readable on any console; rules,
-#: tables, and aligned columns continue to use the extra space
-#: because they are NOT prose-shaped and have their own width
-#: negotiation.
 BODY_MEASURE_CAP: Final[int] = 100
 
 
 @dataclass(frozen=True)
 class _ModeAdaptiveLimits:
-    """Mode-adaptive character limits for content condensation (single-mode).
-
-    After the wt-028-display consolidation, Ralph Workflow uses a single
-    ``default`` mode with one fixed set of limits (no per-mode tier).
-    """
 
     headline_max_chars: int
     condenser_soft_limit: int

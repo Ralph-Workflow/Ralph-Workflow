@@ -23,8 +23,6 @@ _FAST_POLICY = ProcessManagerPolicy(
 
 
 class _StubPtyProc:
-    """Stub satisfying _PtyProcessLike protocol: pid, master_fd, slave_fd, returncode==None."""
-
     pid = 99999
     master_fd = -1
     slave_fd = -1
@@ -74,8 +72,6 @@ def test_original_terminal_reason_returns_none_when_no_record() -> None:
 
 
 def test_managed_pty_returncode_falls_back_to_record() -> None:
-    """When _proc.returncode is None but the record is terminal with an int returncode,
-    ManagedPtyProcess.returncode falls back to the record value."""
     record = ProcessRecord(
         pid=99999,
         pgid=99999,

@@ -1,4 +1,3 @@
-"""Signature file heuristics for framework and package manager detection."""
 
 from __future__ import annotations
 
@@ -13,18 +12,17 @@ if TYPE_CHECKING:
 
 
 class DetectionResults:
-    """Accumulator for detected frameworks, test frameworks, and package managers."""
 
     def __init__(self) -> None:
         self.frameworks: list[
             str
-        ] = []  # bounded-accumulator-ok: request-scoped detection results; not retained past finish()
+        ] = []
         self.test_frameworks: list[
             str
-        ] = []  # bounded-accumulator-ok: request-scoped detection results; not retained past finish()
+        ] = []
         self.package_managers: list[
             str
-        ] = []  # bounded-accumulator-ok: request-scoped detection results; not retained past finish()
+        ] = []
 
     def with_framework(self, value: str) -> DetectionResults:
         if value not in self.frameworks:
@@ -74,7 +72,6 @@ def _read_signature_contents(
 def detect_signature_files(
     workspace: Workspace, root: str = ""
 ) -> tuple[list[str], str | None, str | None]:
-    """Scan workspace signature files to detect frameworks, test frameworks, and package manager."""
     signatures = collect_signature_files(workspace, root)
     contents = _read_signature_contents(workspace, signatures)
     results = DetectionResults()

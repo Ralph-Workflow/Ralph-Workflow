@@ -1,43 +1,3 @@
-"""Real public-boundary entry-point tests for unreadable integration records.
-
-Every entry point (startup, phase boundary, commit, cooldown, parallel
-join, terminal) is driven through its REAL production seam against a
-real git worktree whose durable record file carries unreadable bytes:
-
-* startup: ``run_loop._run_auto_integrate_recovery_preamble``
-* phase boundary: ``run_loop._run_inner_loop`` with an injected sleep
-* commit: ``prepare_commit_integration`` + ``runner._maybe_auto_integrate``
-* cooldown: ``run_loop._wait_for_integration_retry`` (injected sleep)
-* parallel join: ``run_worker_auto_integration(recover_first=True)``
-* terminal: ``decide_phase_transition`` at the terminal phase plus
-  ``is_terminal_success_eligible``
-
-Across every entry point and every unreadable cause (``corrupt_json``,
-``unsupported_schema``, and a real ``PermissionError`` backend read
-failure) the same typed lifecycle decision must hold: the unreadable
-record escalates into the AUTONOMOUS FALLBACK LADDER (the typed
-``LADDER_ESCALATION`` outcome), dispatch and terminal success stay
-blocked, a restart does NOT re-run the diagnosis agent, the checkpoint
-reload keeps the escalation projection, and the visible label names the
-next autonomous action -- never a terminal intervention state. The
-record file bytes are preserved untouched throughout.
-
-The ``PermissionError`` backend read failure is driven through the
-entry points that can THREAD the failing backend into the production
-seam -- startup recovery, the phase-boundary loop, the cooldown
-executor and the terminal authority. The commit and parallel-join
-seams have no backend seam to thread, so for that cause they reach the
-SAME startup recovery producer and are covered by the startup case.
-
-The ABSENT case is the proceeding control.
-
-Every entry point that drives the phase-boundary loop runs against an
-INJECTED FAKE CLOCK: the loop's blocked-integration branch never returns
-on a person, so its only bound is the bounded retry sleep that paces a
-REPEAT escalation. The fake clock raises a sentinel at that first paced
-sleep, which ends each loop deterministically without a real wait.
-"""
-
 from __future__ import annotations
 
 import contextlib
@@ -89,46 +49,20 @@ from ralph.workspace.scope import WorkspaceScope
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
 
 UNREADABLE_CAUSES: tuple[str, ...] = ("corrupt_json", "unsupported_schema")
-#: The typed autonomous escalation: the unreadable durable record blocks
-#: for recovery (the fallback ladder), never on a person.
 ESCALATION = PhaseDecision.BLOCK_FOR_RECOVERY
 ESCALATION_OUTCOME = "ladder_escalation"
-#: The visible label names the next autonomous action (the ladder), so a
-#: terminal intervention label must never appear.
 FORBIDDEN_LABELS = ("intervention",)
 
 
 class _LoopBudgetExhausted(BaseException):
-    """Ends the autonomous phase-boundary loop at its first paced sleep.
-
-    The run loop's blocked-integration branch never returns on a person:
-    it re-observes the durable evidence and paces the next attempt with
-    the bounded retry sleep. That pacing sleep is the loop's ONLY bound,
-    so a test that injects a no-op sleep runs the loop forever. The
-    tests inject this sentinel as the fake clock instead: the loop ends
-    deterministically at the first paced sleep, with no real wait.
-
-    The sentinel derives from ``BaseException`` (not ``Exception``) on
-    purpose. Production code that runs inside the loop -- notably
-    ``runner._save_checkpoint_or_log`` -- swallows ``Exception`` and logs
-    it, so an ``Exception`` sentinel raised in that window would be eaten
-    and the unbounded loop would continue. A ``BaseException`` sentinel
-    cannot be swallowed by any ``except Exception`` handler.
-    """
+    pass
 
 
 def _bounded_clock() -> MagicMock:
-    """A fake clock that ends the autonomous loop at the first paced sleep."""
     return MagicMock(side_effect=_LoopBudgetExhausted)
 
 
 class _FailingReadBackend(PathFileBackend):
-    """FileBackend whose read path fails with a PermissionError.
-
-    Drives the UNREADABLE(backend_read_failure) branch of the public
-    read boundary.
-    """
-
     def __init__(self, record_file: Path) -> None:
         self._record_file = record_file
 
@@ -144,7 +78,6 @@ def _record_file(workspace_root: Path) -> Path:
 
 
 def _seed_unreadable_record(workspace_root: Path, cause: str) -> bytes:
-    """Seed the durable record file with bytes that trigger ``cause``."""
     record_file = _record_file(workspace_root)
     record_file.parent.mkdir(parents=True, exist_ok=True)
     if cause == "corrupt_json":
@@ -158,34 +91,12 @@ def _seed_unreadable_record(workspace_root: Path, cause: str) -> bytes:
 
 
 def _ignore_inert_git_samples(directory: str, names: list[str]) -> set[str]:
-    """Skip git's inert ``*.sample`` hooks when copying a worktree.
-
-    Nothing ever runs a ``*.sample`` file, so copying the fourteen of
-    them into every test's worktree only costs filesystem time.
-    """
     del names
     return {"hooks"} if Path(directory).name == ".git" else set()
 
 
 @pytest.fixture(scope="session")
 def _git_worktree_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Build the shared git worktree template ONCE per test session.
-
-    Every entry point in this module needs a real git worktree, and
-    building one from scratch costs three git subprocess spawns per test
-    (init + two config writes). The template is built once and copied
-    per test, so the per-test setup becomes a filesystem copy instead of
-    repeated spawns.
-
-    The template is an EMPTY repository (no commits), exactly like the
-    worktree this module used to build per test: an empty repo keeps the
-    recovery seams on their fail-closed branch instead of letting them
-    walk into the landing/publication path.
-
-    The repository itself is written by GitPython (the same builder the
-    shared ``tests/conftest.py`` template uses), so preparing it costs
-    NO subprocess spawns at all.
-    """
     from git import Repo
 
     root = tmp_path_factory.mktemp("unreadable-record-template")
@@ -207,7 +118,6 @@ def workspace_root(
     tmp_path: Path,
     _git_worktree_template: Path,
 ) -> Generator[Path, None, None]:
-    """A real git worktree: the entry-point seams run real git commands."""
     shutil.copytree(
         _git_worktree_template,
         tmp_path,
@@ -219,7 +129,6 @@ def workspace_root(
 
 @pytest.fixture(autouse=True)
 def no_diagnosis_agent(monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    """Count diagnostic-agent invocations; the unreadable handoff must make none."""
     import ralph.pipeline._integration_diagnostic as diagnostic_module
 
     calls: list[str] = []
@@ -235,41 +144,17 @@ def no_diagnosis_agent(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
 
 def _as_mock(value: object) -> MagicMock:
-    """Narrow ``object`` to ``MagicMock`` for tests that need to call mock methods.
-
-    The helper exists so the test module never uses ``typing.cast`` over
-    arbitrary test data; the type checker is told the truth via the
-    runtime ``isinstance`` check rather than an assertion. The call site
-    is bounded: this function is only used to hand a ``MagicMock`` (the
-    pre-existing contract for ``run_loop._LoopContext.sleep``) into a
-    parameter typed as ``object``.
-    """
     assert isinstance(value, MagicMock), f"expected MagicMock, got {type(value).__name__}"
     return value
 
 
 @cache
 def _config() -> UnifiedConfig:
-    """The configuration every entry point in this module runs under.
-
-    Configured-remote synchronization is OFF. These entry points own
-    the LOCAL durable-record contract: the record file, the escalation
-    decision, the dispatch gate and the operator label. A configured
-    remote adds a remote-publication observation to every seam -- each
-    one a real git subprocess against ``refs/remotes/origin/<target>`` --
-    without changing what any assertion here checks.
-    """
     return UnifiedConfig.model_validate({"general": {"auto_integrate_remote_enabled": False}})
 
 
 @cache
 def _default_policy_bundle() -> PolicyBundle:
-    """Load the repository's default policy bundle once per process.
-
-    The bundle on disk is immutable for the lifetime of the test
-    session, so re-reading and re-validating it on every helper call
-    only bought repeated file I/O.
-    """
     repo_defaults = Path(__file__).parents[1] / "ralph" / "policy" / "defaults"
     return load_policy(repo_defaults)
 
@@ -334,14 +219,9 @@ def _assert_escalation(
     *,
     phase: str = "development",
 ) -> PhaseDecision:
-    """The single authority must block for the ladder; evidence stays intact."""
     decision = _authority_decision(rebase, phase=phase)
     assert decision is ESCALATION
     assert decision is not PhaseDecision.REPORT_INTERVENTION_REQUIRED
-    # The escalation flag marks the escalation as owning the state (the
-    # run loop's escalation machinery owns it from there); the durable
-    # outcome is the typed ladder escalation, never the retired
-    # intervention outcome.
     assert rebase.is_intervention_required is True
     assert rebase.last_outcome is not None
     assert rebase.last_outcome.value == ESCALATION_OUTCOME
@@ -353,11 +233,6 @@ def _assert_escalation(
     return decision
 
 
-# --------------------------------------------------------------------------
-# U4a boundary contract: closed typed outcome per on-disk cause.
-# --------------------------------------------------------------------------
-
-
 def test_unreadable_outcome_is_typed_with_reason(workspace_root: Path) -> None:
 
     for cause in UNREADABLE_CAUSES:
@@ -367,12 +242,6 @@ def test_unreadable_outcome_is_typed_with_reason(workspace_root: Path) -> None:
         assert outcome.unreadable_reason == cause
         assert outcome.record is None
         assert _record_file(workspace_root).read_bytes() == payload
-
-
-# --------------------------------------------------------------------------
-# Backend read failure maps to UNREADABLE(backend_read_failure); the
-# durable bytes are untouched by the failed read.
-# --------------------------------------------------------------------------
 
 
 def test_backend_read_failure_maps_to_unreadable_backend_read_failure(
@@ -390,11 +259,6 @@ def test_backend_read_failure_maps_to_unreadable_backend_read_failure(
     assert record_file.read_bytes() == b'{"phase": "integrating", "target": "main"}'
 
 
-# --------------------------------------------------------------------------
-# U4a boundary contract: evidence preservation under mutation refusal.
-# --------------------------------------------------------------------------
-
-
 def test_unreadable_evidence_is_preserved_not_cleared(workspace_root: Path) -> None:
 
     for cause in UNREADABLE_CAUSES:
@@ -405,11 +269,6 @@ def test_unreadable_evidence_is_preserved_not_cleared(workspace_root: Path) -> N
         with pytest.raises(RecordUnreadableError):
             store.transition(CLEAR)
         assert _record_file(workspace_root).read_bytes() == payload
-
-
-# --------------------------------------------------------------------------
-# REAL entry point: startup (crash-recovery preamble + dispatch gate).
-# --------------------------------------------------------------------------
 
 
 def test_startup_entry_point_escalates_to_the_ladder(workspace_root: Path) -> None:
@@ -425,11 +284,6 @@ def test_startup_entry_point_escalates_to_the_ladder(workspace_root: Path) -> No
         _assert_escalation(workspace_root, recovered, payload)
 
 
-# --------------------------------------------------------------------------
-# REAL entry point: phase boundary (full inner loop; injects the sleep).
-# --------------------------------------------------------------------------
-
-
 def test_phase_boundary_entry_point_escalates_to_the_ladder(workspace_root: Path) -> None:
 
     for cause in UNREADABLE_CAUSES:
@@ -442,13 +296,6 @@ def test_phase_boundary_entry_point_escalates_to_the_ladder(workspace_root: Path
         latest_state: list[PipelineState] = []
         sleep = _bounded_clock()
         ctx = _loop_context(workspace_root, latest_state, sleep)
-        # O1 retry-progress rule (D3) + WU-1: the phase-boundary loop
-        # escalates an unreadable durable record to the typed ladder
-        # outcome WITHOUT the fixed-interval cooldown sleep masking the
-        # escalation -- the FIRST escalation never sleeps. The loop also
-        # never returns early on a person: repeat escalations pace the
-        # loop with the bounded retry (the sentinel ends the loop
-        # deterministically at the first paced sleep).
         with contextlib.suppress(_LoopBudgetExhausted):
             run_loop._run_inner_loop(state, ctx, "development")
         assert sleep.called, (
@@ -459,15 +306,9 @@ def test_phase_boundary_entry_point_escalates_to_the_ladder(workspace_root: Path
         result_state = latest_state[0]
         assert result_state.rebase.last_decision == ESCALATION.value
         _assert_escalation(workspace_root, result_state.rebase, payload)
-        # The blocked turn checkpoints through the real persistence boundary.
         reloaded = checkpoint_module.load(workspace_root / "checkpoint.json")
         assert reloaded is not None
         assert reloaded.rebase.last_decision == ESCALATION.value
-
-
-# --------------------------------------------------------------------------
-# REAL entry point: commit (commit-integration plumbing + commit seam).
-# --------------------------------------------------------------------------
 
 
 def test_commit_entry_point_escalates_to_the_ladder(workspace_root: Path) -> None:
@@ -505,11 +346,6 @@ def test_commit_entry_point_escalates_to_the_ladder(workspace_root: Path) -> Non
         _assert_escalation(workspace_root, outcome, payload)
 
 
-# --------------------------------------------------------------------------
-# REAL entry point: cooldown (the loop's cooldown executor; injected sleep).
-# --------------------------------------------------------------------------
-
-
 def test_cooldown_entry_point_escalates_to_the_ladder(workspace_root: Path) -> None:
 
     for cause in UNREADABLE_CAUSES:
@@ -522,12 +358,6 @@ def test_cooldown_entry_point_escalates_to_the_ladder(workspace_root: Path) -> N
         latest_state: list[PipelineState] = [state]
         sleep = MagicMock()
         ctx = _loop_context(workspace_root, latest_state, sleep)
-        # O1 retry-progress rule (D3): the cooldown retry path escalates
-        # an unreadable durable record to INTERVENTION_REQUIRED WITHOUT
-        # calling the fixed-interval cooldown sleep. The unreadable
-        # record has no in-process satisfier (no lease, no evidence);
-        # the 5-second sleep that lived here was the operator-only stall
-        # that D3 forbade. Escalation must be immediate.
         cooled = run_loop._wait_for_integration_retry(state, ctx)
         assert not sleep.called, (
             "the cooldown retry path must escalate an unreadable record "
@@ -538,11 +368,6 @@ def test_cooldown_entry_point_escalates_to_the_ladder(workspace_root: Path) -> N
         reloaded = checkpoint_module.load(workspace_root / "checkpoint.json")
         assert reloaded is not None
         assert reloaded.rebase.last_decision == ESCALATION.value
-
-
-# --------------------------------------------------------------------------
-# REAL entry point: parallel join (worker seam with recover_first=True).
-# --------------------------------------------------------------------------
 
 
 def test_parallel_join_entry_point_escalates_to_the_ladder(workspace_root: Path) -> None:
@@ -565,11 +390,6 @@ def test_parallel_join_entry_point_escalates_to_the_ladder(workspace_root: Path)
         _assert_escalation(workspace_root, joined, payload)
 
 
-# --------------------------------------------------------------------------
-# REAL entry point: terminal (terminal-phase authority + success gate).
-# --------------------------------------------------------------------------
-
-
 def test_terminal_entry_point_escalates_to_the_ladder(workspace_root: Path) -> None:
 
     for cause in UNREADABLE_CAUSES:
@@ -585,20 +405,12 @@ def test_terminal_entry_point_escalates_to_the_ladder(workspace_root: Path) -> N
         _assert_escalation(workspace_root, recovered, payload, phase="complete")
 
 
-# --------------------------------------------------------------------------
-# Backend read failure driven through the startup entry point seam.
-# --------------------------------------------------------------------------
-
-
 def test_startup_entry_point_escalates_to_the_ladder_on_backend_read_failure(
     workspace_root: Path,
 ) -> None:
     record_file = _record_file(workspace_root)
     record_file.parent.mkdir(parents=True, exist_ok=True)
     record_file.write_bytes(b'{"phase": "integrating", "target": "main"}')
-    # Drive the startup recovery seam with the failing backend: the
-    # PermissionError from exists() maps to UNREADABLE(backend_read_failure)
-    # at the producer, so the decision must be strictly REPORT_INTERVENTION_REQUIRED.
     from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
 
     recovered = recover_incomplete_integration(
@@ -611,33 +423,16 @@ def test_startup_entry_point_escalates_to_the_ladder_on_backend_read_failure(
     _assert_escalation(workspace_root, recovered, b'{"phase": "integrating", "target": "main"}')
 
 
-# --------------------------------------------------------------------------
-# Backend read failure driven through the phase-boundary entry point seam.
-# --------------------------------------------------------------------------
-
-
 def test_phase_boundary_entry_point_escalates_to_the_ladder_on_backend_read_failure(
     workspace_root: Path,
 ) -> None:
     record_file = _record_file(workspace_root)
     record_file.parent.mkdir(parents=True, exist_ok=True)
     record_file.write_bytes(b'{"phase": "integrating", "target": "main"}')
-    # Drive the phase-boundary loop with the failing backend threaded
-    # through _run_inner_loop -> _apply_startup_rebase_outcomes ->
-    # _run_auto_integrate_recovery_preamble -> recover_incomplete_integration.
-    # The failing backend causes exists() to return True but read_text() to
-    # raise PermissionError, mapping to UNREADABLE(backend_read_failure) and
-    # strictly REPORT_INTERVENTION_REQUIRED.
     state = PipelineState(phase="development", rebase=RebaseState())
     latest_state: list[PipelineState] = []
     sleep = _bounded_clock()
     ctx = _loop_context(workspace_root, latest_state, sleep)
-    # O1 retry-progress rule (D3) + WU-1: same as the corrupt-in-parsed
-    # case -- the failing backend has no in-process satisfier, so the
-    # FIRST escalation is immediate (never the fixed-interval cooldown
-    # sleep), and the loop never returns early on a person: repeat
-    # escalations pace the loop with the bounded retry (the sentinel
-    # ends the loop deterministically at the first paced sleep).
     with contextlib.suppress(_LoopBudgetExhausted):
         run_loop._run_inner_loop(
             state,
@@ -659,22 +454,12 @@ def test_phase_boundary_entry_point_escalates_to_the_ladder_on_backend_read_fail
     assert reloaded.rebase.last_decision == ESCALATION.value
 
 
-# --------------------------------------------------------------------------
-# Backend read failure driven through the cooldown entry point seam.
-# --------------------------------------------------------------------------
-
-
 def test_cooldown_entry_point_escalates_to_the_ladder_on_backend_read_failure(
     workspace_root: Path,
 ) -> None:
     record_file = _record_file(workspace_root)
     record_file.parent.mkdir(parents=True, exist_ok=True)
     record_file.write_bytes(b'{"phase": "integrating", "target": "main"}')
-    # Drive the cooldown path with the failing backend threaded through
-    # _wait_for_integration_retry -> _run_auto_integrate_recovery_preamble ->
-    # recover_incomplete_integration.  The PermissionError from read_text()
-    # maps to UNREADABLE(backend_read_failure) and strictly
-    # REPORT_INTERVENTION_REQUIRED.
     from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
 
     recovered = recover_incomplete_integration(
@@ -693,9 +478,6 @@ def test_cooldown_entry_point_escalates_to_the_ladder_on_backend_read_failure(
         ctx,
         backend=_FailingReadBackend(record_file),
     )
-    # O1 retry-progress rule (D3): the failing backend has no in-process
-    # satisfier, so the cooldown retry path escalates to
-    # INTERVENTION_REQUIRED WITHOUT calling the cooldown sleep.
     assert not sleep.called, (
         "the cooldown retry path must escalate a backend read failure "
         "without calling the cooldown sleep (D3)"
@@ -706,11 +488,6 @@ def test_cooldown_entry_point_escalates_to_the_ladder_on_backend_read_failure(
     reloaded = checkpoint_module.load(workspace_root / "checkpoint.json")
     assert reloaded is not None
     assert reloaded.rebase.last_decision == ESCALATION.value
-
-
-# --------------------------------------------------------------------------
-# Backend read failure driven through the terminal entry point seam.
-# --------------------------------------------------------------------------
 
 
 def test_terminal_entry_point_escalates_to_the_ladder_on_backend_read_failure(
@@ -735,17 +512,7 @@ def test_terminal_entry_point_escalates_to_the_ladder_on_backend_read_failure(
     assert is_terminal_success_eligible(terminal_state, None, recovered) is False
 
 
-# --------------------------------------------------------------------------
-# Operator-visible label: intervention, not diagnosis/conflict prose.
-# --------------------------------------------------------------------------
-
-
 def test_operator_label_names_the_next_autonomous_action(workspace_root: Path) -> None:
-    """The visible label names the ladder escalation, never an intervention.
-
-    The unreadable record escalates autonomously, so the operator-facing
-    label must NOT be the retired terminal intervention state.
-    """
 
     for cause in UNREADABLE_CAUSES:
         payload = _seed_unreadable_record(workspace_root, cause)
@@ -756,25 +523,13 @@ def test_operator_label_names_the_next_autonomous_action(workspace_root: Path) -
         label = format_integration_label(recovered)
         assert label == "evidence diagnosis"
         assert label not in FORBIDDEN_LABELS
-        # The persisted checkpoint's label matches the live projection.
         _assert_escalation(workspace_root, recovered, payload)
-
-
-# --------------------------------------------------------------------------
-# Restart / no-repeat: crash + restart keeps the projection, no re-diagnosis.
-# --------------------------------------------------------------------------
 
 
 def test_restart_does_not_repeat_diagnosis_and_keeps_projection(workspace_root: Path) -> None:
 
     for cause in UNREADABLE_CAUSES:
         payload = _seed_unreadable_record(workspace_root, cause)
-        # First visit through the real startup seam, then one blocked inner-loop
-        # turn that checkpoints the escalation projection. O1 retry-progress
-        # rule (D3): the loop never returns early on a person -- the FIRST
-        # escalation is immediate and a REPEAT escalation paces the loop with
-        # the bounded retry, so the injected fake clock ends the loop
-        # deterministically at that first paced sleep.
         recovered = run_loop._run_auto_integrate_recovery_preamble(
             WorkspaceScope(workspace_root), _config()
         )
@@ -785,14 +540,11 @@ def test_restart_does_not_repeat_diagnosis_and_keeps_projection(workspace_root: 
         ctx = _loop_context(workspace_root, latest_state, sleep)
         with contextlib.suppress(_LoopBudgetExhausted):
             run_loop._run_inner_loop(state, ctx, "development")
-        # The loop ran to its paced repeat escalation instead of spinning:
-        # the fake clock is the ONLY bound, and it was reached.
         assert sleep.call_count == 1, (
             "the blocked loop must pace its repeat escalation with the "
             "bounded retry (the fake clock ends it at the first paced sleep)"
         )
         assert all(call.args[0] > 0 for call in sleep.call_args_list)
-        # The live projection is the state the blocked turn persisted.
         first = latest_state[0]
         assert first.rebase.last_decision == ESCALATION.value
         checkpoint_path = workspace_root / "checkpoint.json"
@@ -800,11 +552,6 @@ def test_restart_does_not_repeat_diagnosis_and_keeps_projection(workspace_root: 
         assert reloaded is not None
         assert reloaded.rebase.last_decision == ESCALATION.value
 
-        # Simulated crash + restart: a FRESH loop context (no in-memory state)
-        # reads the same durable evidence through the same real seams. The
-        # diagnosis agent stays silent (autouse fixture), the typed decision is
-        # identical, the persisted projection survives, and the record bytes are
-        # exactly as the crash left them.
         fresh_latest: list[PipelineState] = []
         fresh_sleep = _bounded_clock()
         fresh_ctx = _loop_context(workspace_root, fresh_latest, fresh_sleep)
@@ -835,11 +582,6 @@ def test_restart_does_not_repeat_diagnosis_and_keeps_projection(workspace_root: 
         assert reloaded_restart.rebase.last_outcome.value == ESCALATION_OUTCOME
 
 
-# --------------------------------------------------------------------------
-# ABSENT control: with no record file, the pipeline proceeds.
-# --------------------------------------------------------------------------
-
-
 def test_absent_record_is_the_proceeding_control(workspace_root: Path) -> None:
     assert not _record_file(workspace_root).exists()
     outcome = read_record_outcome(workspace_root)
@@ -849,7 +591,6 @@ def test_absent_record_is_the_proceeding_control(workspace_root: Path) -> None:
     recovered = run_loop._run_auto_integrate_recovery_preamble(
         WorkspaceScope(workspace_root), _config()
     )
-    # No record: the startup seam has nothing to recover.
     assert recovered is None or not recovered.is_intervention_required
     decision = _authority_decision(recovered if recovered is not None else RebaseState())
     assert decision is not PhaseDecision.REPORT_INTERVENTION_REQUIRED

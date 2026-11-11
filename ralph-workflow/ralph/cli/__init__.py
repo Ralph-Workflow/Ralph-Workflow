@@ -1,8 +1,3 @@
-"""Public CLI package.
-
-This package exposes the Typer application used by the ``ralph`` console script.
-For most CLI-oriented pydoc usage, start with ``ralph.cli.main``.
-"""
 
 from __future__ import annotations
 

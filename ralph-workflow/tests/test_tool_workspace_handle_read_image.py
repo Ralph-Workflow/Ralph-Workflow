@@ -1,5 +1,3 @@
-"""Tests for ralph/mcp/tool_workspace.py — MCP workspace tool handlers."""
-
 from __future__ import annotations
 
 import base64
@@ -55,7 +53,6 @@ class TestHandleReadImage:
         ws = MagicMock()
         ws.absolute_path.return_value = "/tmp/nonexistent.png"
 
-        # MockSessionWithManifest is required for capability-aware delivery path
         result = handle_read_image(
             MockSessionWithManifest(
                 MEDIA_READ_CAPABILITY,
@@ -68,23 +65,10 @@ class TestHandleReadImage:
         assert "Failed to read" in result.content[0].text
 
     def test_delivers_via_resource_reference_when_inline_too_large(self, tmp_path: Path) -> None:
-        """When inline image is too large, falls back to resource-reference delivery.
-
-        This tests that handle_read_image (as a compatibility alias over
-        _handle_workspace_media) properly routes oversized images through the
-        resource-reference path when inline delivery is not possible.
-
-        The contract under test is "file larger than ``max_inline_bytes`` is
-        routed to the resource-reference path"; we use a tiny local cap so
-        the temp file stays small (a few hundred bytes) and the test runs
-        in microseconds without touching the disk with a 5 MB+ payload that
-        would otherwise dominate xdist worker wall-clock budgets.
-        """
         media_file = tmp_path / "large.png"
         media_file.write_bytes(b"\x89PNG" + b"\x00" * 16)
         ws = FsWorkspace(tmp_path)
 
-        # MockSessionWithManifest with INLINE_IMAGE support but file exceeds limit
         result = handle_read_image(
             MockSessionWithManifest(
                 MEDIA_READ_CAPABILITY,
@@ -94,10 +78,8 @@ class TestHandleReadImage:
             {"path": "large.png"},
             max_inline_bytes=10,
         )
-        # With INLINE_IMAGE support but oversized file, falls back to resource-reference
         assert result.is_error is False
         content = result.content[0]
-        # Should be a resource reference, not an inline image
         assert isinstance(content, ResourceReferenceContent), (
             f"Expected resource-reference block, got {type(content).__name__}"
         )
@@ -117,7 +99,6 @@ class TestHandleReadImage:
         ws = MagicMock()
         ws.absolute_path.return_value = str(media_file)
 
-        # MockSessionWithManifest with INLINE_IMAGE support (claude model)
         result = handle_read_image(
             MockSessionWithManifest(
                 MEDIA_READ_CAPABILITY,

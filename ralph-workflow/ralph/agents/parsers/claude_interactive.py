@@ -1,26 +1,3 @@
-"""Convert interactive Claude transcript lines into agent parser output.
-
-Public observation seams
-------------------------
-:class:`ClaudeInteractiveParser` wraps a
-:class:`ClaudeInteractiveTranscriptParser` and exposes two read-only
-seams so the transport's behaviour can be observed from OUTSIDE the
-module instead of through private state:
-
-- :meth:`ClaudeInteractiveParser.parse_transcript_entry` ingests ONE raw
-  transcript entry exactly the way the live transport does and returns the
-  resulting :class:`InteractiveTranscriptEvent` objects.  The live content
-  mode (``thinking`` / ``output`` / ``tool_use``) is part of the parser's
-  state, so a caller enters it by feeding a real assistant envelope; the
-  mode is then observable through the KIND of the returned events (agent
-  text in the ``output`` mode yields an ``output`` event, while a short
-  fragment in the idle mode yields none).
-- :meth:`ClaudeInteractiveParser.session_id` reports the session id the
-  transcript has revealed so far.
-
-Both seams delegate to the transcript parser's public API; neither
-mutates it and neither exposes a private attribute.
-"""
 
 from __future__ import annotations
 
@@ -50,46 +27,25 @@ _ToolMap = OrderedDict[str, str]
 
 
 class ClaudeInteractiveParser:
-    """Convert interactive Claude transcript lines into AgentOutputLine events."""
 
     def __init__(
         self,
         subagent_pid_registry: SubagentPidRegistry | None = None,
         subagent_source_label: str | None = None,
     ) -> None:
-        # R5: bind the per-invocation shared SubagentPidRegistry + per-transport
-        # source label. Interactive Claude's transcript events do not
-        # currently carry embedded PIDs; this is forward-compat for the
-        # per-transport SubagentPidSource seam.
         self._subagent_pid_registry: SubagentPidRegistry | None = subagent_pid_registry
         self._subagent_source_label: str | None = subagent_source_label
         self._parser = ClaudeInteractiveTranscriptParser()
         self._text_accumulator = TextAccumulator()
         self._thinking_accumulator = TextAccumulator()
         self._last_tool_name: str | None = None
-        self._tool_names_by_id: _ToolMap = OrderedDict()  # bounded-accumulator-ok: cap 128
+        self._tool_names_by_id: _ToolMap = OrderedDict()
 
     def emit_subagent_activity(
         self,
         line: AgentOutputLine,
         sink: Callable[[str], None],
     ) -> None:
-        """Forward a parsed interactive-Claude line to the subagent sink.
-
-        Parallel standalone implementation of the
-        :meth:`ParserTemplateBase.emit_subagent_activity` hook for the
-        interactive-Claude transport (which does NOT inherit from
-        :class:`ParserTemplateBase`).  The hook fires ONLY for the
-        four ``_EMITTABLE_TYPES`` kinds so a hard-failing child or a
-        lifecycle heartbeat does not keep the watchdog deferring a
-        kill.  Sink exceptions are swallowed so a buggy sink cannot
-        crash the activity stream.
-
-        Summary format matches the NDJSON parser layer: ``tool_use:<name>``
-        for tool calls, ``tool_result:<name>`` for tool results,
-        ``text:<first-80-chars>`` for model text, and
-        ``thinking:<first-80-chars>`` for thinking blocks.
-        """
         if line.type not in _EMITTABLE_TYPES:
             return
         tool_name = _tool_name_from_line(line)
@@ -165,9 +121,6 @@ class ClaudeInteractiveParser:
                         tool_name = self._last_tool_name or "unknown"
                     metadata["tool"] = tool_name
                     content = event.text.removeprefix("claude result:").lstrip()
-                    # Wire-format is_error parity with the headless Claude
-                    # parser: a failed tool call surfaces as an error, not a
-                    # routine result, while keeping the tool correlation.
                     result_type = "error" if metadata.get("is_error") else "tool_result"
                     yield AgentOutputLine(
                         type=result_type,
@@ -178,20 +131,10 @@ class ClaudeInteractiveParser:
         yield from self._flush_accumulators()
 
     def parse_transcript_entry(self, entry: str) -> list[InteractiveTranscriptEvent]:
-        """Ingest ONE raw transcript entry and return the events it produced.
-
-        Public observation seam: the entry is fed through the same
-        transcript parser the agent-output stream is built from, so the
-        returned events are exactly the ones a live transcript line would
-        yield -- including the ones :meth:`parse` filters out (such as the
-        ``session`` event).  The entry is expected to be a complete
-        transcript line (terminated by a newline) for a text fragment.
-        """
         return self._parser.feed(entry)
 
     @property
     def session_id(self) -> str | None:
-        """The session id the transcript has revealed so far (read-only)."""
         return self._parser.session_id
 
     def _flush_accumulators(self) -> Iterator[AgentOutputLine]:

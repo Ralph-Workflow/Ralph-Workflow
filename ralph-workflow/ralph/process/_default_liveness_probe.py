@@ -1,4 +1,3 @@
-"""Production liveness probe querying the ProcessManager singleton."""
 
 from __future__ import annotations
 
@@ -12,12 +11,6 @@ if TYPE_CHECKING:
 
 
 class DefaultLivenessProbe:
-    """Production probe: queries the ProcessManager singleton for active labels.
-
-    Accepts an optional ChildLivenessRegistry for freshness-aware child_snapshot().
-    When no registry is supplied, child_snapshot() returns a conservative snapshot
-    based on ProcessManager labels only (has_process=True/False, no freshness).
-    """
 
     def __init__(self, registry: ChildLivenessRegistry | None = None) -> None:
         self._registry = registry
@@ -29,8 +22,6 @@ class DefaultLivenessProbe:
         )
 
     def child_snapshot(self, scope_prefix: str) -> ChildActivitySnapshot:
-        # Only scan ProcessManager labels when we have a meaningful (non-empty) prefix.
-        # An empty prefix would match ALL active processes including the parent itself.
         has_process = False
         active_count = 0
         if scope_prefix:

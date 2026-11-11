@@ -1,36 +1,3 @@
-"""Asyncio signal bridge for graceful-then-forced SIGINT handling.
-
-Uses ``loop.add_signal_handler()`` — not ``signal.signal()`` — to stay
-compatible with the asyncio event loop.
-
-Signal handling contract:
-
-* First ``SIGINT`` synchronously cancels ``root_task`` and swaps in
-  the second-SIGINT handler. The slow body (``begin_interrupt`` plus
-  the early-escalation poll) is dispatched off the event loop via
-  ``loop.run_in_executor`` with a done callback that logs any
-  executor-body exception. This makes the cancel + handler-swap
-  fast even when ``begin_interrupt`` would block.
-* Second ``SIGINT`` force-kills tracked child processes via
-  ``pm.list_active()`` (PGIDs) and exits with code 130.
-
-The single source of truth for live processes is
-``process_manager.list_active()``; the bridge does NOT maintain a
-parallel pids set.
-
-The interrupt dispatch is routed through :class:`InterruptDispatcher`
-so the same wiring lives in both the sync ``handle_keyboard_interrupt``
-path and this asyncio path. The ``controller`` parameter is
-type-broadened to accept either an ``InterruptController`` or an
-already-built ``InterruptDispatcher``; ``install_signal_handlers``
-discriminates by ``isinstance`` inside the function body. The
-parameter name is preserved for backward compatibility — the
-broadening is type-only.
-
-``install_signal_handlers`` returns an idempotent teardown callable
-that removes the second-SIGINT handler installed by the first
-handler. The teardown is safe to invoke twice.
-"""
 
 from __future__ import annotations
 
@@ -56,13 +23,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class SignalBridge:
-    """Bridge that routes OS signals to asyncio task cancellation and process cleanup.
-
-    The bridge is intentionally minimal: a counter for the interrupt
-    count and an optional connectivity-stop hook. The single source
-    of truth for live processes is the :class:`ProcessManager`; the
-    bridge never maintains its own PID set.
-    """
 
     _interrupt_count: int = field(default=0, init=False)
     _connectivity_stop: Callable[[], None] | None = field(default=None, init=False)
@@ -74,21 +34,6 @@ def install_signal_handlers(
     bridge: SignalBridge,
     controller: InterruptController | InterruptDispatcher | None = None,
 ) -> Callable[[], None] | None:
-    """Register SIGINT handlers that cancel ``root_task`` and forward to child PIDs.
-
-    The fourth argument is type-broadened to accept an
-    :class:`InterruptController` (legacy) OR an
-    :class:`InterruptDispatcher` (new). Discrimination is by
-    ``isinstance`` inside the body. When a controller is passed, the
-    implementation synthesizes a dispatcher that forwards the
-    controller's ``kill_process_group`` and ``hard_exit`` so the
-    controller's injected exit callable is the one invoked on
-    ``_second_sigint`` (PA-019).
-
-    The returned callable is an idempotent teardown that removes the
-    second-SIGINT handler installed by the first handler. Calling it
-    twice is safe (a short-circuit flag is stored in the closure).
-    """
     pm = get_process_manager()
     if controller is None:
         active_dispatcher: InterruptDispatcher = dispatcher_from_process_manager(
@@ -98,15 +43,6 @@ def install_signal_handlers(
     elif isinstance(controller, InterruptDispatcher):
         active_dispatcher = controller
     else:
-        # Raw InterruptController passed; wrap in a dispatcher so the
-        # kill_label propagation and block=True behavior are uniform.
-        # Thread kill_process_group and hard_exit through so the
-        # controller's injected exit callable is the one invoked on
-        # _second_sigint (PA-019). The dispatcher factory creates a
-        # fresh controller with the same injection seams; we then
-        # rebind ``controller`` to the passed controller so the
-        # wrapping methods operate on the original (preserving
-        # record_interrupt, stop_connectivity, etc.).
         wrapped = dispatcher_from_process_manager(
             process_manager=pm,
             stop_connectivity=bridge._connectivity_stop,
@@ -125,17 +61,6 @@ def install_signal_handlers(
         )
 
     def _install_force_handlers() -> None:
-        """Swap BOTH SIGINT and SIGTERM to the force-exit handler.
-
-        AC-01 mixed-signal escalation: once a first interrupt has
-        arrived (via either SIGINT or SIGTERM), ANY subsequent
-        interrupt — regardless of which OS signal it carries — must
-        trigger force-exit. Installing the force-exit handler on
-        only the signal that arrived first would leave the other
-        signal still pointing at the first-interrupt (graceful)
-        handler, so a mixed second interrupt would start a fresh
-        graceful shutdown instead of forcing exit.
-        """
         try:
             loop.add_signal_handler(signal.SIGINT, _second_sigint)
         except Exception:

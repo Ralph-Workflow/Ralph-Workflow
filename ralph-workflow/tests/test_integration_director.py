@@ -1,26 +1,3 @@
-"""Observation-driven IntegrationDirector tests.
-
-The director is the single owner of integration decisions, so the
-tests must prove:
-
-* landed work (feature ⊆ target and CLEAN worktree) releases any
-  retained durable record and short-circuits to ``NextAction.LAND``;
-* a stale or unreadable record drives the table to the
-  ``REPAIR`` ladder rung (no automatic escalation);
-* an ``UNMERGED`` worktree visits ``DISPATCH_RESOLVER`` first, then
-  advances the rung on repeat pressure;
-* unknown observations enter ``WAIT_FOR_ENVIRONMENT`` — never a
-  resolver or repair rung;
-* exhausting the unknown-attempt budget yields
-  ``CONTINUE_WITH_INTEGRATION_PENDING``;
-* a session restart with the same ledger does NOT restore the spent
-  budget.
-
-Every test uses ``monkeypatch`` or ``MemoryWorkspace`` fakes; no real
-subprocess, no real ``time.sleep``, and no real filesystem outside the
-per-test ``tmp_path``. This is the ``audit_test_policy`` contract.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -65,14 +42,7 @@ from ralph.pipeline.integration_observation import (
 pytestmark = pytest.mark.timeout_seconds(30)
 
 
-# ---------------------------------------------------------------------------
-# Fakes — in-memory substitutes for the git probes the director calls.
-# ---------------------------------------------------------------------------
-
-
 class _ProbeOverrides:
-    """Mutable set of fake answers the tests can shape per assertion."""
-
     def __init__(self) -> None:
         self.porcelain: str = ""
         self.head_state: Reading[HeadState] = Reading.known(HeadState.ATTACHED)
@@ -94,7 +64,6 @@ def _install_probe_overrides(
     tmp_path: Path,
     overrides: _ProbeOverrides,
 ) -> None:
-    """Install the probe overrides into every probe function the director uses."""
 
     def _fake_run_git(
         args: tuple[str, ...],
@@ -103,7 +72,6 @@ def _install_probe_overrides(
         label: str,
         options: object = None,
     ) -> GitRunResult:
-        """Stand in for the porcelain probe's public git runner."""
         del cwd, label, options
         if overrides.porcelain == "__raise__":
             raise OSError("porcelain probe failed")
@@ -133,10 +101,6 @@ def _install_probe_overrides(
         if ref in overrides.branch_shas:
             sha = overrides.branch_shas[ref]
             return (sha, sha is not None)
-        # Default: any unknown ref maps to the target's configured SHA so
-        # the production code treats "no remote tracking ref" as equal
-        # (a fresh-fetched local repo with no fetch yet). Tests that need
-        # a divergent remote state override ``branch_shas`` explicitly.
         target_sha = overrides.branch_shas.get(DEFAULT_TARGET_BRANCH)
         if target_sha is not None:
             return (target_sha, True)
@@ -170,11 +134,8 @@ def _install_probe_overrides(
         del root, remote, target
         return overrides.remote_probe
 
-    del tmp_path  # unused; kept for signature parity with test arguments.
+    del tmp_path
     monkeypatch.setattr("ralph.git.subprocess_runner.run_git", _fake_run_git)
-    # The director reads porcelain through the ONE shared observation
-    # probe, whose module binds ``run_git`` at import time; patch the
-    # binding the probe actually resolves.
     monkeypatch.setattr(integration_observation, "run_git", _fake_run_git)
     monkeypatch.setattr(integration_director, "read_head_state", _fake_head_state)
     monkeypatch.setattr(
@@ -196,11 +157,6 @@ def _install_probe_overrides(
     )
 
 
-# ---------------------------------------------------------------------------
-# Landed work → LAND + release_applied=True.
-# ---------------------------------------------------------------------------
-
-
 def _default_director(
     tmp_path: Path,
     overrides: _ProbeOverrides,
@@ -215,7 +171,6 @@ def _default_director(
     unknown_budget: int = 3,
     repeat_threshold: int = 2,
 ) -> IntegrationDirector:
-    """Build a director with in-memory versions of every observation probe."""
     return IntegrationDirector(
         tmp_path,
         target=target,
@@ -245,13 +200,11 @@ def _default_director(
 def test_director_landed_work_short_circuits_to_land_and_releases_record(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Contained feature + CLEAN worktree ⇒ LAND and clear any retained record."""
     overrides = _ProbeOverrides()
     overrides.record_disposition = RecordReadOutcomeDisposition.PRESENT
     overrides.record_phase = "integrating"
     _install_probe_overrides(monkeypatch, tmp_path=tmp_path, overrides=overrides)
 
-    # Seed a real retained record so ``clear_record`` actually has work to do.
     record_file = record_path(tmp_path)
     write_record(
         tmp_path,
@@ -299,7 +252,6 @@ def test_director_landed_work_preserves_reintegrate_pending_record(
 def test_director_clean_tree_with_no_record_keeps_release_false(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Contained feature + CLEAN worktree but no record ⇒ LAND, no release."""
     overrides = _ProbeOverrides()
     _install_probe_overrides(monkeypatch, tmp_path=tmp_path, overrides=overrides)
 
@@ -310,15 +262,9 @@ def test_director_clean_tree_with_no_record_keeps_release_false(
     assert decision.release_applied is False
 
 
-# ---------------------------------------------------------------------------
-# Stale record drives REPAIR (ladder rung 0).
-# ---------------------------------------------------------------------------
-
-
 def test_director_stale_record_with_clean_tree_routes_to_repair(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A STALE record on a CLEAN tree drives ``REPAIR`` — the first ladder rung."""
     overrides = _ProbeOverrides()
     overrides.head_sha = "abc1234" * 5
     overrides.remote_probe = ("deadbeef" * 5, True)
@@ -336,22 +282,10 @@ def test_director_stale_record_with_clean_tree_routes_to_repair(
     assert decision.release_applied is False
 
 
-# ---------------------------------------------------------------------------
-# UNMERGED worktree visits DISPATCH_RESOLVER, then advances rung.
-# ---------------------------------------------------------------------------
-
-
 def test_director_unmerged_worktree_dispatches_resolver_first(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """An ``UNMERGED`` tree visits ``DISPATCH_RESOLVER`` on the first contact."""
     overrides = _ProbeOverrides()
-    # Use a porcelain line that the production ``_project_worktree``
-    # recognises as UNMERGED (an unmerged-status code in BOTH
-    # columns). The current implementation does not yet recognise
-    # ``UU`` as unmerged in isolation; force a rebase-active flag
-    # instead, which the projection short-circuits to UNMERGED
-    # before the porcelain classifier.
     overrides.in_progress = Reading.known(InProgressKind.REBASE)
     _install_probe_overrides(monkeypatch, tmp_path=tmp_path, overrides=overrides)
 
@@ -363,7 +297,6 @@ def test_director_unmerged_worktree_dispatches_resolver_first(
 def test_director_unmerged_worktree_repeats_advance_rung(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A repeated unmerged signature advances exactly one rung per cycle."""
     overrides = _ProbeOverrides()
     overrides.in_progress = Reading.known(InProgressKind.REBASE)
     _install_probe_overrides(monkeypatch, tmp_path=tmp_path, overrides=overrides)
@@ -375,24 +308,15 @@ def test_director_unmerged_worktree_repeats_advance_rung(
 
     assert actions[0] is NextAction.DISPATCH_RESOLVER
     assert rungs[0] is EscalationRung.REPAIR
-    # Subsequent cycles bump the ladder exactly once each until exhausted.
     assert actions[1] is NextAction.REBUILD_ON_TARGET
     assert rungs[1] is EscalationRung.DISPATCH_RESOLVER
     assert actions[2] is NextAction.CONTINUE_WITH_INTEGRATION_PENDING
-    # The terminal action is non-chargeable and spends no escalation budget,
-    # so the durable rung does not advance past DISPATCH_RESOLVER.
     assert rungs[2] is EscalationRung.DISPATCH_RESOLVER
-
-
-# ---------------------------------------------------------------------------
-# Unknown observation → WAIT_FOR_ENVIRONMENT (never a resolver or repair rung).
-# ---------------------------------------------------------------------------
 
 
 def test_director_unknown_porcelain_yields_wait_for_environment(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A porcelain probe that raises produces ``WAIT_FOR_ENVIRONMENT``, never ``REPAIR``."""
     overrides = _ProbeOverrides()
     overrides.porcelain = "__raise__"
     _install_probe_overrides(monkeypatch, tmp_path=tmp_path, overrides=overrides)
@@ -403,14 +327,12 @@ def test_director_unknown_porcelain_yields_wait_for_environment(
     assert decision.action is NextAction.WAIT_FOR_ENVIRONMENT, (
         f"unknown observation must WAIT, got {decision.action}"
     )
-    # A budget consumption must have been recorded.
     assert decision.attempts.unknown_attempts >= 1
 
 
 def test_director_unknown_observation_persists_across_cycles(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Repeated unknown observations keep the director on WAIT_FOR_ENVIRONMENT."""
     overrides = _ProbeOverrides()
     overrides.porcelain = "__raise__"
     _install_probe_overrides(monkeypatch, tmp_path=tmp_path, overrides=overrides)
@@ -422,15 +344,9 @@ def test_director_unknown_observation_persists_across_cycles(
     )
 
 
-# ---------------------------------------------------------------------------
-# Unknown budget exhaustion → CONTINUE_WITH_INTEGRATION_PENDING.
-# ---------------------------------------------------------------------------
-
-
 def test_director_exhausted_unknown_budget_continues_with_pending(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Spending the unknown-attempt budget yields ``CONTINUE_WITH_INTEGRATION_PENDING``."""
     overrides = _ProbeOverrides()
     overrides.porcelain = "__raise__"
     _install_probe_overrides(monkeypatch, tmp_path=tmp_path, overrides=overrides)
@@ -443,15 +359,9 @@ def test_director_exhausted_unknown_budget_continues_with_pending(
     assert final.action is NextAction.CONTINUE_WITH_INTEGRATION_PENDING
 
 
-# ---------------------------------------------------------------------------
-# Session restart preserves the budget.
-# ---------------------------------------------------------------------------
-
-
 def test_director_restart_does_not_restore_spent_budget(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A fresh director instance must read the SAME ladder state from disk."""
     overrides = _ProbeOverrides()
     overrides.porcelain = "__raise__"
     _install_probe_overrides(monkeypatch, tmp_path=tmp_path, overrides=overrides)
@@ -480,7 +390,6 @@ def test_director_restart_does_not_restore_spent_budget(
 def test_director_initial_state_returns_default_rung(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A first-run director consumes a default-state ledger."""
     overrides = _ProbeOverrides()
     overrides.porcelain = "M  some_modified.py\n"
     _install_probe_overrides(monkeypatch, tmp_path=tmp_path, overrides=overrides)
@@ -490,19 +399,12 @@ def test_director_initial_state_returns_default_rung(
 
     assert decision.attempts.rung is EscalationRung.REPAIR
     assert decision.attempts.unknown_attempts == 0
-    # One repeat-count entry was recorded for the dirty-worktree COMMIT.
     assert len(decision.attempts.repeat_counts) == 1
-
-
-# ---------------------------------------------------------------------------
-# Helper exposure: ``observe`` parity.
-# ---------------------------------------------------------------------------
 
 
 def test_director_observe_helper_matches_direct_observation(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The module-level ``observe`` helper returns the same shape as the director."""
     overrides = _ProbeOverrides()
     overrides.record_disposition = RecordReadOutcomeDisposition.PRESENT
     overrides.record_phase = "integrating"
@@ -518,7 +420,6 @@ def test_director_observe_helper_matches_direct_observation(
 def test_director_decide_and_act_does_not_raise_under_observation_unknown(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """``decide_and_act`` is total over every observation, returning a verdict."""
     overrides = _ProbeOverrides()
     overrides.porcelain = "__raise__"
     _install_probe_overrides(monkeypatch, tmp_path=tmp_path, overrides=overrides)
@@ -532,10 +433,6 @@ def test_director_decide_and_act_does_not_raise_under_observation_unknown(
     assert isinstance(decision.attempts, AttemptLedgerState)
     assert isinstance(decision.release_applied, bool)
 
-
-# ---------------------------------------------------------------------------
-# Complete observation projection: ancestry, HEAD, operation kind, ownership.
-# ---------------------------------------------------------------------------
 
 _TARGET_SHA = "a" * 40
 _FEATURE_SHA = "b" * 40
@@ -560,7 +457,6 @@ def test_director_projects_target_vs_feature_ancestry(
     merge_base: str,
     expected: TargetVsFeature,
 ) -> None:
-    """The target/feature axis preserves equal, behind, ahead, and diverged ancestry."""
     overrides = _ProbeOverrides()
     overrides.branch_shas = {DEFAULT_TARGET_BRANCH: target_sha}
     overrides.head_sha = feature_sha
@@ -588,7 +484,6 @@ def test_director_projects_target_vs_remote_ancestry(
     merge_base: str,
     expected: TargetVsRemote,
 ) -> None:
-    """The target/remote axis preserves equal, behind, ahead, and diverged ancestry."""
     overrides = _ProbeOverrides()
     overrides.branch_shas = {DEFAULT_TARGET_BRANCH: _TARGET_SHA}
     overrides.remote_probe = (remote_sha, True)
@@ -603,7 +498,6 @@ def test_director_projects_target_vs_remote_ancestry(
 def test_director_reports_detached_head_from_head_probe(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The HEAD dimension reports a detached checkout instead of collapsing to attached."""
     overrides = _ProbeOverrides()
     overrides.head_state = Reading.known(HeadState.DETACHED)
     _install_probe_overrides(monkeypatch, tmp_path=tmp_path, overrides=overrides)
@@ -616,7 +510,6 @@ def test_director_reports_detached_head_from_head_probe(
 def test_director_reports_cherry_pick_in_progress(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A cherry-pick is projected as its own in-progress operation kind."""
     overrides = _ProbeOverrides()
     overrides.in_progress = Reading.known(InProgressKind.CHERRY_PICK)
     _install_probe_overrides(monkeypatch, tmp_path=tmp_path, overrides=overrides)
@@ -629,7 +522,6 @@ def test_director_reports_cherry_pick_in_progress(
 def test_director_reports_owned_operation_when_record_claims_it(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A matching record claim in the current worktree proves operation ownership."""
     overrides = _ProbeOverrides()
     overrides.in_progress = Reading.known(InProgressKind.REBASE)
     overrides.record_disposition = RecordReadOutcomeDisposition.PRESENT
@@ -645,7 +537,6 @@ def test_director_reports_owned_operation_when_record_claims_it(
 def test_director_reports_foreign_operation_when_record_does_not_claim_it(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """An operation with no matching record claim is foreign, not silently owned."""
     overrides = _ProbeOverrides()
     overrides.in_progress = Reading.known(InProgressKind.REBASE)
     _install_probe_overrides(monkeypatch, tmp_path=tmp_path, overrides=overrides)
@@ -658,7 +549,6 @@ def test_director_reports_foreign_operation_when_record_does_not_claim_it(
 def test_director_reports_foreign_operation_owned_by_another_worktree(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A record held by another worktree cannot claim the operation locally."""
     overrides = _ProbeOverrides()
     overrides.in_progress = Reading.known(InProgressKind.REBASE)
     overrides.record_disposition = RecordReadOutcomeDisposition.PRESENT
@@ -674,7 +564,6 @@ def test_director_reports_foreign_operation_owned_by_another_worktree(
 def test_director_unreadable_operation_probe_is_unknown_and_never_blocks(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """An unreadable operation probe is unknown evidence and never an operation."""
     overrides = _ProbeOverrides()
     overrides.record_disposition = RecordReadOutcomeDisposition.BUSY
     _install_probe_overrides(monkeypatch, tmp_path=tmp_path, overrides=overrides)
@@ -697,7 +586,6 @@ def test_director_unreadable_operation_probe_is_unknown_and_never_blocks(
 def test_director_unreadable_merge_base_probe_is_unknown_and_never_blocks(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """An unreadable ancestry probe is unknown and cannot become a blocking verdict."""
     overrides = _ProbeOverrides()
     overrides.head_sha = _FEATURE_SHA
     _install_probe_overrides(monkeypatch, tmp_path=tmp_path, overrides=overrides)
@@ -716,7 +604,6 @@ def test_director_unreadable_merge_base_probe_is_unknown_and_never_blocks(
     assert decision.action not in (NextAction.DISPATCH_RESOLVER, NextAction.REPAIR)
 
 
-#: Marker path components that name state DIRECTORIES rather than files.
 _MARKER_DIRS: frozenset[str] = frozenset({"rebase-merge", "rebase-apply", "sequencer"})
 
 _OPERATION_MARKER_LAYOUTS: tuple[tuple[tuple[str, ...], InProgressKind], ...] = (
@@ -742,7 +629,6 @@ def test_read_in_progress_kind_detects_authoritative_git_markers(
     layout: tuple[str, ...],
     expected: InProgressKind,
 ) -> None:
-    """Git's operation markers select the complete in-progress kind vocabulary."""
     git_dir = tmp_path / ".git"
     git_dir.mkdir()
     for relative in layout:

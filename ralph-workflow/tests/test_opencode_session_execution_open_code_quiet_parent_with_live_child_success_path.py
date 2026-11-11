@@ -1,9 +1,3 @@
-"""Black-box regression tests for OpenCode session-aware execution.
-
-All tests use in-memory fakes — no real subprocesses, no real wall-clock waits,
-no real psutil. Verifies the quiet-parent-with-live-child success path.
-"""
-
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -21,22 +15,11 @@ from ralph.process.liveness import FakeLivenessProbe
 
 
 class TestOpenCodeQuietParentWithLiveChildSuccessPath:
-    """Quiet parent with active liveness probe: clock resets, parent produces output, no timeout."""
-
     def test_quiet_opencode_parent_with_ralph_tracked_child_resets_idle_clock(
         self,
     ) -> None:
-        """Active liveness probe resets clock; parent produces output with no timeout.
-
-        Integration path: ``read_lines_from_process`` with
-        ``OpenCodeExecutionStrategy``. The test is deterministic: it uses a
-        non-blocking stdout iterator and a ``FakeClock`` so no real wall-clock
-        waits are required.
-        """
 
         class _OneLineThenDoneStdout:
-            """Yields one line immediately, then finishes."""
-
             def __init__(self) -> None:
                 self._emitted = False
 
@@ -54,8 +37,6 @@ class TestOpenCodeQuietParentWithLiveChildSuccessPath:
             stdout = _OneLineThenDoneStdout()
             stderr = SimpleNamespace(read=lambda _size: "")
             terminate_count: int = 0
-            # pid=None so the best-effort teardown helper no-ops without touching
-            # psutil; the test only needs to prove the watchdog does not fire.
             pid: int | None = None
             _poll_count: int = 0
 
@@ -74,17 +55,12 @@ class TestOpenCodeQuietParentWithLiveChildSuccessPath:
                 return self.returncode
 
             def poll(self) -> int | None:
-                # Return None for the first few drain-window polls so the
-                # watchdog has a chance to evaluate while the parent is quiet,
-                # then return 0 to let the drain window exit cleanly.
                 self._poll_count += 1
                 if self._poll_count < 3:
                     return None
                 return self.returncode
 
         class _WaitingThenDoneStrategy(OpenCodeExecutionStrategy):
-            """Always reports WAITING_ON_CHILD so the idle clock resets."""
-
             def __init__(self) -> None:
                 super().__init__()
                 self.call_count = 0

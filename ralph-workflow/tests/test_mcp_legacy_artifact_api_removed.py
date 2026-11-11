@@ -1,5 +1,3 @@
-"""Regression coverage for removing the retired JSON artifact API."""
-
 from __future__ import annotations
 
 from importlib.util import find_spec

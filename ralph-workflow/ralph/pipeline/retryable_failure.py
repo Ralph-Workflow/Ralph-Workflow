@@ -1,4 +1,3 @@
-"""Shared retryable agent-failure classification helpers."""
 
 from __future__ import annotations
 
@@ -13,13 +12,6 @@ from ralph.recovery.failure_classifier import (
 )
 from ralph.recovery.failure_details import contains_casefolded_marker, failure_detail_parts
 
-# Intentionally BROADER than ``failure_classifier._TRANSPORT_SUBSTRINGS``.
-# This set is a coarse retry trigger: any of these substrings marks the failure
-# as worth retrying as a transient connectivity fault. The classifier's
-# environmental transport set deliberately OMITS bare ``timeout``/``timed out``
-# so connectivity-aware timeouts stay agent-attributable (see
-# tests/recovery/test_classifier_session.py). The two sets serve different
-# decisions and must NOT be merged into one object.
 _TRANSIENT_CONNECTIVITY_MARKERS = (
     "connection refused",
     "network is unreachable",
@@ -31,20 +23,11 @@ _TRANSIENT_CONNECTIVITY_MARKERS = (
     "econnreset",
     "enotfound",
     "socket hang up",
-    # Node/Bun (undici) raise a bare ``TypeError: fetch failed`` and keep the
-    # real errno on ``.cause``, so the surfaced text carries no ECONNRESET /
-    # ENOTFOUND marker to match on. Node-based agent CLIs (pi, opencode) exit
-    # with exactly this string when their provider endpoint flaps; without it
-    # a transient network fault is misclassified as a non-retryable agent
-    # failure.
     "fetch failed",
 )
 
 _TURN_LIMIT_MARKERS = ("conversation exceeded 50 turns",)
 
-# Codex's client-side deadline on a Ralph MCP ``tools/call``. It contains
-# ``timed out`` but says nothing about the network, so it is reported on its
-# own ahead of the connectivity markers.
 _MCP_TOOL_CALL_TIMEOUT_MARKERS = ("timed out awaiting tools/call",)
 
 
@@ -52,7 +35,6 @@ def retryable_agent_failure_reason(
     exc: Exception,
     inactivity_error_type: type[Exception],
 ) -> str | None:
-    """Return the canonical retry reason for a retryable agent failure."""
     detail_parts = failure_detail_parts(exc)
     if type(exc).__name__ == "QuotaExhaustedError" or _is_subscription_limit_message(detail_parts):
         return None
@@ -65,9 +47,6 @@ def retryable_agent_failure_reason(
             "agent session exited without required completion evidence",
         ),
         (
-            # AGY rc=0 without the required completion evidence: bounded
-            # to ONE automatic fresh-session reprompt per invocation by
-            # build_agent_recovery_plan and the direct-MCP recovery loop.
             type(exc).__name__ == "AgyIncompleteExitError",
             "the agent exited without required completion evidence",
         ),
@@ -92,12 +71,6 @@ def retryable_agent_failure_reason(
             and contains_casefolded_marker(detail_parts, POST_TOOL_ACTIVITY_MARKERS),
             "a post-tool-result continuation failure",
         ),
-        # A plain empty model turn with no tool call (no prior tool activity) is
-        # still a recoverable wedge: the model connected, produced no actionable
-        # output, and another attempt may succeed. This mirrors the pipeline
-        # classifier treating an empty response as a recoverable agent failure,
-        # so the direct-MCP recovery path (commit/smoke) does not
-        # drift from the pipeline by hard-failing where the pipeline would retry.
         (
             contains_casefolded_marker(detail_parts, POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS),
             "an empty model response",

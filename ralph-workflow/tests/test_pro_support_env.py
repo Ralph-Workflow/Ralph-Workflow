@@ -1,5 +1,3 @@
-"""Black-box unit tests for :mod:`ralph.pro_support.env`."""
-
 from __future__ import annotations
 
 import importlib
@@ -13,21 +11,18 @@ if TYPE_CHECKING:
 
 
 def test_is_pro_mode_false_when_env_empty() -> None:
-    """``is_pro_mode`` returns False when ``RALPH_WORKFLOW_PRO`` is unset/empty."""
     assert env_module.is_pro_mode({}) is False
     assert env_module.is_pro_mode({"RALPH_WORKFLOW_PRO": ""}) is False
     assert env_module.is_pro_mode({"RALPH_WORKFLOW_PRO": "   "}) is True
 
 
 def test_is_pro_mode_true_when_env_set() -> None:
-    """``is_pro_mode`` returns True for any non-empty ``RALPH_WORKFLOW_PRO`` value."""
     assert env_module.is_pro_mode({"RALPH_WORKFLOW_PRO": "1"}) is True
     assert env_module.is_pro_mode({"RALPH_WORKFLOW_PRO": "pro"}) is True
     assert env_module.is_pro_mode({"RALPH_WORKFLOW_PRO": "anything"}) is True
 
 
 def test_is_pro_mode_defaults_to_os_environ(monkeypatch: pytest.MonkeyPatch) -> None:
-    """When no env is supplied, ``is_pro_mode`` reads ``os.environ``."""
     monkeypatch.delenv("RALPH_WORKFLOW_PRO", raising=False)
     assert env_module.is_pro_mode() is False
     monkeypatch.setenv("RALPH_WORKFLOW_PRO", "1")
@@ -67,12 +62,6 @@ def test_get_prompt_path_defaults_to_os_environ(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_module_does_not_read_os_environ_at_import() -> None:
-    """The module declares the three contract constants; it does NOT read os.environ at import.
-
-    We verify this by removing the env vars and re-importing the
-    module — the helpers must then return ``None``/``False``, proving
-    no module-level capture happened.
-    """
     saved_pro = os.environ.pop("RALPH_WORKFLOW_PRO", None)
     saved_workspace = os.environ.pop("RALPH_WORKSPACE", None)
     saved_prompt = os.environ.pop("PROMPT_PATH", None)
@@ -99,16 +88,13 @@ def test_three_contract_env_var_constants_are_defined() -> None:
 def test_os_environ_consulted_when_env_is_none(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The default behaviour is to read os.environ at call time."""
     monkeypatch.setenv("RALPH_WORKFLOW_PRO", "default-via-os")
     assert env_module.is_pro_mode() is True
     monkeypatch.setenv("RALPH_WORKSPACE", "/default/os/path")
     assert env_module.get_ralph_workspace() == "/default/os/path"
     monkeypatch.setenv("PROMPT_PATH", "/default/os/prompt.md")
     assert env_module.get_prompt_path() == "/default/os/prompt.md"
-    # restore to the real os.environ
     monkeypatch.delenv("RALPH_WORKFLOW_PRO", raising=False)
     monkeypatch.delenv("RALPH_WORKSPACE", raising=False)
     monkeypatch.delenv("PROMPT_PATH", raising=False)
-    # sanity: helpers are reading os.environ, not a captured snapshot
     assert env_module.is_pro_mode() is bool(os.environ.get("RALPH_WORKFLOW_PRO"))

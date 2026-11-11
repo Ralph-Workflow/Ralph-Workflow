@@ -1,5 +1,3 @@
-"""Tests for ralph.skills._process_view."""
-
 from __future__ import annotations
 
 import json

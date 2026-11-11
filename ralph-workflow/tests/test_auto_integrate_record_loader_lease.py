@@ -1,16 +1,3 @@
-"""Load-time lease and counter-clamp invariants for the integration record loader.
-
-These tests pin the parser-level helpers that make the O1 livelock
-structurally unreachable:
-
-* :func:`parse_lease` decodes the ``<fingerprint>:<held_at>`` lease
-  string and refuses malformed input.
-* :func:`parse_record_payload` clamps pre-existing over-cap
-  ``merge_commit_repair_attempts`` to ``cap - 1`` so the diagnostic
-  check (an inclusive ``>=``) cannot re-trigger intervention on a
-  value left behind by an older or pre-fix version.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -34,13 +21,6 @@ def test_parse_lease_returns_none_for_malformed() -> None:
 
 
 def test_load_time_counter_clamp_clamps_to_cap_minus_one() -> None:
-    """A record with ``merge_commit_repair_attempts=541`` is clamped to 4.
-
-    Bound is ``cap - 1`` (not ``cap``) because the diagnostic check
-    at ``_integration_diagnostic.py:222-224`` is an inclusive
-    ``>=``; clamping to ``cap`` (5) would still satisfy the gate
-    (``5 >= 5`` is True) and re-trigger intervention.
-    """
     from ralph.pipeline.auto_integrate_record import parse_record_payload
 
     legacy = {
@@ -57,7 +37,6 @@ def test_load_time_counter_clamp_clamps_to_cap_minus_one() -> None:
 
 
 def test_load_time_counter_clamp_preserves_under_cap_values() -> None:
-    """Under-cap counters pass through unchanged (no double-clamp)."""
     from ralph.pipeline.auto_integrate_record import parse_record_payload
 
     legacy = {
@@ -73,7 +52,6 @@ def test_load_time_counter_clamp_preserves_under_cap_values() -> None:
 
 
 def test_load_time_counter_clamp_handles_zero_and_missing() -> None:
-    """Missing or zero counters are tolerated; the value remains 0."""
     from ralph.pipeline.auto_integrate_record import parse_record_payload
 
     legacy: dict[str, object] = {
@@ -88,7 +66,6 @@ def test_load_time_counter_clamp_handles_zero_and_missing() -> None:
 
 
 def test_load_time_counter_clamp_treats_garbage_as_rejected() -> None:
-    """Non-integer values for the counter are rejected by pydantic (fail-closed)."""
     from ralph.pipeline.auto_integrate_record import parse_record_payload
 
     legacy: dict[str, object] = {
@@ -98,8 +75,6 @@ def test_load_time_counter_clamp_treats_garbage_as_rejected() -> None:
         "pre_target_sha": "b" * 40,
         "merge_commit_repair_attempts": "not-an-int",
     }
-    # The model rejects non-int values; the loader must surface the
-    # rejection (returns None) rather than coerce silently.
     assert parse_record_payload(legacy) is None
 
 
@@ -180,7 +155,6 @@ def test_migrate_payload_stale_fingerprint_lease_clears_fields() -> None:
 
 
 def test_old_format_record_without_owner_fields_round_trips() -> None:
-    """An old-format record (no owner fields) loads and parses lease unchanged."""
     from ralph.pipeline.auto_integrate_record import parse_lease, parse_record_payload
     from ralph.pipeline.operation_evidence import identity_fingerprint
 
@@ -202,7 +176,6 @@ def test_old_format_record_without_owner_fields_round_trips() -> None:
         **base_record,
         "diagnostic_evidence": [["unstaged_work", "clean"]],
         "diagnostic_ownership": lease,
-        # No diagnostic_owner_pid or diagnostic_owner_boot_id present
     }
     parsed = parse_record_payload(old_format)
     assert parsed is not None
@@ -213,7 +186,6 @@ def test_old_format_record_without_owner_fields_round_trips() -> None:
 
 
 def test_new_format_record_with_owner_fields_round_trips() -> None:
-    """A new-format record (owner fields present) loads and preserves owner identity."""
     import os
 
     from ralph.pipeline.auto_integrate_record import (
@@ -235,7 +207,6 @@ def test_new_format_record_with_owner_fields_round_trips() -> None:
     fp = identity_fingerprint(temp_rec)
     lease = f"{fp}:1700000000.0"
 
-    # Alive PID (current process) so dead-owner release does not trigger on load
     new_format: dict[str, object] = {
         **base_record,
         "diagnostic_evidence": [["unstaged_work", "clean"]],
@@ -252,7 +223,6 @@ def test_new_format_record_with_owner_fields_round_trips() -> None:
 
 
 def test_migrate_payload_unknown_evidence_keys_clears_fields() -> None:
-    """AC1: Any evidence payload containing unrecognized keys drops the hold."""
     from ralph.pipeline._integration_action import (
         IntegrationAction,
         next_integration_action,
@@ -282,7 +252,6 @@ def test_migrate_payload_unknown_evidence_keys_clears_fields() -> None:
 
 
 def test_migrate_payload_unparseable_evidence_format_clears_fields() -> None:
-    """AC1: Any uninterpretable evidence payload structure drops the hold."""
     from ralph.pipeline._integration_action import (
         IntegrationAction,
         next_integration_action,
@@ -307,7 +276,6 @@ def test_migrate_payload_unparseable_evidence_format_clears_fields() -> None:
 
 
 def test_dead_owner_pid_releases_hold_at_load_time() -> None:
-    """AC3: A record whose owner PID is dead automatically releases at next load."""
     from ralph.pipeline._integration_action import (
         IntegrationAction,
         next_integration_action,
@@ -329,7 +297,6 @@ def test_dead_owner_pid_releases_hold_at_load_time() -> None:
     temp_rec = IntegrationRecord.model_validate(base_record)
     fp = identity_fingerprint(temp_rec)
 
-    # Use a guaranteed non-existent PID
     dead_pid = 999999999
     payload = {
         **base_record,
@@ -348,7 +315,6 @@ def test_dead_owner_pid_releases_hold_at_load_time() -> None:
 
 
 def test_dead_owner_boot_id_releases_hold_at_load_time() -> None:
-    """AC3: A record whose owner boot ID does not match automatically releases at next load."""
     from ralph.pipeline._auto_integrate_record_restamp import current_boot_id
     from ralph.pipeline._integration_action import (
         IntegrationAction,
@@ -362,7 +328,7 @@ def test_dead_owner_boot_id_releases_hold_at_load_time() -> None:
 
     live_boot_id = current_boot_id()
     if live_boot_id is None:
-        return  # Non-Linux environment without /proc/sys/kernel/random/boot_id
+        return
 
     base_record = {
         "phase": "integrating",
@@ -392,7 +358,6 @@ def test_dead_owner_boot_id_releases_hold_at_load_time() -> None:
 
 
 def test_alive_owner_pid_preserves_hold_at_load_time() -> None:
-    """AC3: A record whose owner PID is alive does NOT release at load time."""
     import os
 
     from ralph.pipeline.auto_integrate_record import (
@@ -427,7 +392,6 @@ def test_alive_owner_pid_preserves_hold_at_load_time() -> None:
 
 
 def test_bump_attempt_clamps_at_cap_and_never_exceeds_cap() -> None:
-    """O1: _bump_attempt clamps to cap and never increments past it."""
     from ralph.pipeline._integration_diagnostic import (
         DIAGNOSTIC_BUDGET_SPENT_REASON,
         DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
@@ -442,21 +406,17 @@ def test_bump_attempt_clamps_at_cap_and_never_exceeds_cap() -> None:
         pre_target_sha="b" * 40,
         merge_commit_repair_attempts=DIAGNOSTIC_REPAIR_ATTEMPT_CAP - 1,
     )
-    # Bumping from cap - 1 reaches cap and stamps the typed
-    # "diagnostic budget spent" outcome (never the retired hand-off).
     bumped = _bump_attempt(record, "error 1", repair_attempt_cap=DIAGNOSTIC_REPAIR_ATTEMPT_CAP)
     assert bumped.merge_commit_repair_attempts == DIAGNOSTIC_REPAIR_ATTEMPT_CAP
     assert bumped.diagnostic_intervention_required is False
     assert bumped.repair_cap_reason == DIAGNOSTIC_BUDGET_SPENT_REASON
 
-    # Bumping when ALREADY at cap stays at cap (clamped; never exceeds)
     bumped_again = _bump_attempt(
         bumped, "error 2", repair_attempt_cap=DIAGNOSTIC_REPAIR_ATTEMPT_CAP
     )
     assert bumped_again.merge_commit_repair_attempts == DIAGNOSTIC_REPAIR_ATTEMPT_CAP
     assert bumped_again.diagnostic_intervention_required is False
 
-    # Bumping a legacy record already over cap clamps down to cap
     over_cap_record = record.model_copy(update={"merge_commit_repair_attempts": 200})
     bumped_over_cap = _bump_attempt(
         over_cap_record, "error 3", repair_attempt_cap=DIAGNOSTIC_REPAIR_ATTEMPT_CAP
@@ -466,7 +426,6 @@ def test_bump_attempt_clamps_at_cap_and_never_exceeds_cap() -> None:
 
 
 def test_recovery_on_legacy_work_evidence_missing_lease_auto_releases(tmp_path: Path) -> None:
-    """AC1: Record with legacy 'work' evidence and missing lease auto-releases fail-open on recovery."""
     import json
 
     from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
@@ -504,7 +463,6 @@ def test_recovery_on_legacy_work_evidence_missing_lease_auto_releases(tmp_path: 
 
 
 def test_recovery_on_malformed_lease_auto_releases(tmp_path: Path) -> None:
-    """AC1: Record with malformed lease auto-releases fail-open on recovery rather than retaining a skip."""
     import json
 
     from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
@@ -542,7 +500,6 @@ def test_recovery_on_malformed_lease_auto_releases(tmp_path: Path) -> None:
 
 
 def test_recovery_on_valid_old_lease_differing_fingerprint_preserves_bytes(tmp_path: Path) -> None:
-    """AC1: Valid old lease bytes with differing fingerprint retain skip and preserve disk bytes."""
     import time
 
     from ralph.pipeline._integration_diagnostic import release_verified_diagnostic

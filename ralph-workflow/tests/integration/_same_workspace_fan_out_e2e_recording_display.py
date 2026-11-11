@@ -1,5 +1,3 @@
-"""RecordingDisplay helper for test_same_workspace_fan_out_e2e_same_workspace_fan_out_e2_e.py."""
-
 from __future__ import annotations
 
 from collections import defaultdict

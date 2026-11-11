@@ -1,15 +1,3 @@
-"""Integration tests: fan-out → post-fan-out verification + handoff.
-
-Proves the complete end-to-end contract:
-- Verification runs exactly once after all workers finish (when flag=True)
-- Verification is skipped when flag=False
-- Verification is skipped on partial failure (saves wasted verification work)
-- Partial failure produces an honest handoff with any_failed=true / all_succeeded=false
-- DEVELOPMENT_RESULT.md is written after the fan-out run completes
-
-Uses monkeypatched coordinator and verification hook; no real subprocesses.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -38,18 +26,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# ``test_runner_fanout_e2e_full.py`` exercises the full
-# fan-out → post-fan-out verification + handoff integration with
-# real WorkUnit construction, real WorkspaceScope resolution,
-# monkeypatched coordinator + verification hook, and real
-# WorkUnit processing. Under 12-way xdist contention the
-# integration setup + the runner.run fan-out path has been
-# observed to intermittently exceed the 1s default test timeout.
-# 5s is the documented minimum for non-trivial tests (see
-# ``ralph/verify_timeout.py``) and is well under the 60s combined
-# ``make verify`` budget. The 1s default policy is preserved
-# globally; this module-level marker only relaxes the cap for the
-# fan-out integration tests in this file.
 pytestmark = pytest.mark.timeout_seconds(5)
 
 
@@ -81,7 +57,6 @@ def _make_policy_bundle(max_workers: int = 2) -> MagicMock:
             "development": AgentDrainConfig(chain="developer", drain_class="development")
         },
     )
-    # Raise AttributeError if old parallel_execution path is accessed
     type(bundle.pipeline).parallel_execution = property(
         lambda self: (_ for _ in ()).throw(
             AttributeError("parallel_execution removed — use phases[phase].parallelization")
@@ -100,7 +75,6 @@ def _seed_artifact(repo_root: Path, unit_id: str) -> None:
 
 
 def _patch_infra(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Patch out real subprocess/MCP/asyncio-bridge infrastructure."""
     monkeypatch.setattr(
         "ralph.interrupt.asyncio_bridge.install_signal_handlers", lambda *args: None
     )
@@ -115,12 +89,9 @@ def _patch_infra(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 class TestFanoutVerificationAndHandoff:
-    """Verification ordering and handoff correctness after fan-out."""
-
     def test_fanout_then_serialized_post_fanout_verification_runs_once(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Verification runs exactly once; DEVELOPMENT_RESULT.md exists after completion."""
         _seed_artifact(tmp_path, "unit-a")
         _seed_artifact(tmp_path, "unit-b")
 
@@ -179,7 +150,6 @@ class TestFanoutVerificationAndHandoff:
     def test_post_fanout_verification_skipped_when_flag_false(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """When run_post_fanout_verification=False, verification hook is never called."""
         _seed_artifact(tmp_path, "unit-a")
         _seed_artifact(tmp_path, "unit-b")
 
@@ -230,7 +200,6 @@ class TestFanoutVerificationAndHandoff:
     def test_partial_failure_writes_honest_handoff_and_skips_verification(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Partial failure: handoff shows any_failed=true and verification is skipped."""
         _seed_artifact(tmp_path, "unit-a")
 
         unit_a = _make_work_unit("unit-a")

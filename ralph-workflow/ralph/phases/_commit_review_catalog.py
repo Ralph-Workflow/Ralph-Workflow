@@ -1,4 +1,3 @@
-"""Shared commit-review deletability catalog for the engine and prompt."""
 
 from __future__ import annotations
 
@@ -215,7 +214,6 @@ PROMPT_DELETE_FILE_INELIGIBLE_EXAMPLES: tuple[str, ...] = (
 
 
 def render_delete_decision_rules_markdown() -> str:
-    """Render the prompt decision-rule table from the engine catalog."""
     generated_markers = ", ".join(sorted(GENERATED_TEXT_MARKERS))
     source_markers = ", ".join(f"`{marker}`" for marker in sorted(SOURCE_FILE_GENERATED_MARKERS))
     source_dirs = ", ".join(

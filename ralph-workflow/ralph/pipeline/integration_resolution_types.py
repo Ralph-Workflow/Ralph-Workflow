@@ -1,4 +1,3 @@
-"""Typed verdict values for the integration-resolution dispatch invariant."""
 
 from __future__ import annotations
 
@@ -9,7 +8,6 @@ from ralph.pipeline.integration_resolution_status import IntegrationResolutionSt
 
 @dataclass(frozen=True)
 class IntegrationResolutionVerdict:
-    """Evidence-backed answer to whether an ordinary phase may dispatch."""
 
     status: IntegrationResolutionStatus
     reasons: tuple[str, ...] = ()
@@ -17,5 +15,4 @@ class IntegrationResolutionVerdict:
 
     @property
     def dispatch_allowed(self) -> bool:
-        """Whether a non-resolution phase is safe to dispatch."""
         return self.status is IntegrationResolutionStatus.RESOLVED

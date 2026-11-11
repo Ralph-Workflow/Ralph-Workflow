@@ -1,5 +1,3 @@
-"""Regression tests for truthful termination-failure bookkeeping."""
-
 from __future__ import annotations
 
 import itertools
@@ -29,16 +27,14 @@ _FAST_POLICY = ProcessManagerPolicy(
 
 
 class _FakeAccessDeniedError(Exception):
-    """Synthetic access-denied error for process-manager shutdown tests."""
+    pass
 
 
 class _FakeNoSuchProcessError(Exception):
-    """Synthetic no-such-process error for process-manager shutdown tests."""
+    pass
 
 
 class _AccessDeniedPsutil(FakePsutil):
-    """Fake psutil adapter that denies access for configured PIDs."""
-
     NoSuchProcess = _FakeNoSuchProcessError
     AccessDenied = _FakeAccessDeniedError
 
@@ -58,7 +54,6 @@ class _PermissionDeniedPsutil(FakePsutil):
 
 
 def test_root_only_force_kill_failure_marks_record_failed() -> None:
-    """No-psutil termination failure must not be recorded as KILLED."""
 
     def immortal_factory(command: object, opts: object) -> FakeImmortalPopen:
         del command, opts
@@ -82,7 +77,6 @@ def test_root_only_force_kill_failure_marks_record_failed() -> None:
 
 
 def test_psutil_force_kill_failure_marks_record_failed() -> None:
-    """psutil-based force-kill failure must leave a FAILED terminal record."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
 
     class _RootStubborn(FakePsutilProcess):
@@ -119,7 +113,6 @@ def test_psutil_force_kill_failure_marks_record_failed() -> None:
 
 @pytest.mark.asyncio
 async def test_async_shutdown_failure_marks_record_failed() -> None:
-    """Async shutdown in sync context must surface failure and preserve truthful state."""
     async_factory = make_async_process_factory(itertools.count(1), returncode=None)
     pm = ProcessManager(
         policy=_FAST_POLICY,
@@ -147,7 +140,6 @@ async def test_async_shutdown_failure_marks_record_failed() -> None:
 
 
 def test_terminate_by_pid_access_denied_marks_record_failed() -> None:
-    """Stale tracked records must surface access-denied cleanup failures."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
     pm = ProcessManager(
         policy=_FAST_POLICY,
@@ -168,7 +160,6 @@ def test_terminate_by_pid_access_denied_marks_record_failed() -> None:
 
 
 def test_escalate_termination_sync_access_denied_marks_record_failed() -> None:
-    """Sync handle termination must surface access-denied cleanup failures."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
     pm = ProcessManager(
         policy=_FAST_POLICY,
@@ -188,7 +179,6 @@ def test_escalate_termination_sync_access_denied_marks_record_failed() -> None:
 
 
 def test_process_termination_regression_permission_error_marks_record_failed() -> None:
-    """Regression: macOS psutil PermissionError must fail closed."""
     pm = ProcessManager(
         policy=_FAST_POLICY,
         sync_process_factory=make_sync_process_factory(itertools.count(1), returncode=None),
@@ -208,7 +198,6 @@ def test_process_termination_regression_permission_error_marks_record_failed() -
 
 @pytest.mark.asyncio
 async def test_escalate_async_in_sync_context_access_denied_marks_record_failed() -> None:
-    """shutdown_all() for async records must surface access-denied cleanup failures."""
     async_factory = make_async_process_factory(itertools.count(1), returncode=None)
     pm = ProcessManager(
         policy=_FAST_POLICY,
@@ -229,7 +218,6 @@ async def test_escalate_async_in_sync_context_access_denied_marks_record_failed(
 
 @pytest.mark.asyncio
 async def test_escalate_termination_async_access_denied_marks_record_failed() -> None:
-    """Async handle termination must also surface access-denied cleanup failures."""
     async_factory = make_async_process_factory(itertools.count(1), returncode=None)
     pm = ProcessManager(
         policy=_FAST_POLICY,
@@ -249,7 +237,6 @@ async def test_escalate_termination_async_access_denied_marks_record_failed() ->
 
 
 def test_process_phase_scope_raises_on_termination_error() -> None:
-    """process_phase_scope must not report a clean exit when cleanup fails."""
 
     def _raise_termination_error(label_prefix: str, *, grace_period_s: float | None = None) -> None:
         raise ProcessTerminationError(pid=99999, pgid=99999)

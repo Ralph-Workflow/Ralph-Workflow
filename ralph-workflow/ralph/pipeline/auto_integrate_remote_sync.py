@@ -1,42 +1,3 @@
-"""Publication-side remote synchronization and post-landing push hooks.
-
-Owns the single public entry point
-(:func:`reconcile_remote_publication`) that reconciles local and
-remote target pointers after an integration lands, along with the
-ref-comparison helpers and the public outcome vocabulary.
-
-Helper modules:
-
-* :mod:`ralph.pipeline.auto_integrate_remote_constants`: shared timeout,
-  interval, and outcome-string constants.
-* :mod:`ralph.pipeline.integration_remote_actions`: the narrow
-  :class:`RemoteOps` protocol for the remote tier plus the accessor
-  (:func:`default_remote_ops`) for the production adapter. Every remote
-  call this module makes -- the freshness refresh, the remote-tracking
-  read, and the push -- goes through that one injected seam.
-* :mod:`ralph.pipeline._remote_default_client`: the production
-  :class:`_DefaultRemoteClient` this module injects by default.
-* :mod:`ralph.pipeline.auto_integrate_remote_client`: the pull-side
-  :class:`_DefaultRemoteClient`, the per-(root, remote, target) pull
-  throttle, and the pull-side entry point
-  (:func:`pull_and_reconcile_target`).
-* :mod:`ralph.pipeline.auto_integrate_remote_push`: the push helpers,
-  the per-attempt :class:`_PushOutcome` record and cycle body
-  (:func:`reconcile_after_rejected_push`), the typed-outcome
-  projection helpers, the remote-SHA observer, and the canonical
-  :func:`_record_remote_state` builder.
-
-Every private/public symbol the broader pipeline imports by name
-from ``ralph.pipeline.auto_integrate_remote_sync`` is re-exported
-here so the seam stays stable.
-
-When the remote is strictly ahead, the reconciler advances the local target
-itself through
-:func:`~ralph.pipeline.auto_integrate_remote_client.fast_forward_target_to_remote`
-(never through the throttled catch-up tick, which judges the checkout rather
-than the target). The remote-sync contract and its regression tests are
-documented in ``docs/agents/remote-sync.md``.
-"""
 
 from __future__ import annotations
 
@@ -175,26 +136,20 @@ __all__ = [
 ]
 
 
-#: The production remote-tier adapter. It is resolved through the
-#: protocol module's accessor so the default adapter is bound in
-#: exactly ONE place, while the module attribute itself stays
-#: replaceable (a test can substitute a fault-injecting double here).
 _DEFAULT_REMOTE_CLIENT: RemoteOps = default_remote_ops()
 
 
-# ----- Throttle ----------------------------------------------------------
 
 _MAX_REMOTE_KEYS = 128
 
 
 class _RemotePullThrottle:
-    """Rate-limits the periodic pull keyed per (root, remote, target)."""
 
     def __init__(self, *, max_tracked_keys: int = _MAX_REMOTE_KEYS) -> None:
         self._max_tracked_keys = max(1, max_tracked_keys)
         self._last_pull: OrderedDict[tuple[str, str, str], float] = (
             OrderedDict()
-        )  # bounded-accumulator-ok: _MAX_REMOTE_KEYS FIFO cap applied in arm()
+        )
 
     def should_pull(
         self,
@@ -205,7 +160,6 @@ class _RemotePullThrottle:
         interval_seconds: float,
         clock: Callable[[], float],
     ) -> bool:
-        """Return True if enough time has elapsed since the last pull."""
         key = self._key(root, remote, target)
         last = self._last_pull.get(key)
         if last is None:
@@ -215,7 +169,6 @@ class _RemotePullThrottle:
         return clock() - last >= interval_seconds
 
     def arm(self, root: Path | str, remote: str, target: str, clock: Callable[[], float]) -> None:
-        """Record the current timestamp for (root, remote, target)."""
         key = self._key(root, remote, target)
         self._last_pull.pop(key, None)
         while len(self._last_pull) >= self._max_tracked_keys:
@@ -223,7 +176,6 @@ class _RemotePullThrottle:
         self._last_pull[key] = clock()
 
     def invalidate(self, root: Path | str, remote: str, target: str) -> None:
-        """Evict timestamp for (root, remote, target) on failure."""
         self._last_pull.pop(self._key(root, remote, target), None)
 
     @staticmethod
@@ -241,7 +193,6 @@ def _throttle_allows_pull(
     config: UnifiedConfig | None,
     clock: Callable[[], float],
 ) -> bool:
-    """Check if the periodic pull throttle allows a pull for target on remote."""
     general: object = getattr(config, "general", config)
     configured: object = getattr(general, "auto_integrate_remote_interval_seconds", 0.0)
     interval = configured if isinstance(configured, (int, float)) else REMOTE_SYNC_INTERVAL_SECONDS
@@ -254,11 +205,8 @@ def _throttle_allows_pull(
     )
 
 
-# ----- Reconciler: ref-comparison-driven publication --------------------
 
 
-#: Refresh labels whose remote-tracking ref read may be trusted as an
-#: observation of the configured remote.
 _READABLE_REFRESH_OUTCOMES: frozenset[str] = frozenset(
     {
         REFRESH_LOCAL_FLEET,
@@ -275,8 +223,6 @@ _READABLE_REFRESH_OUTCOMES: frozenset[str] = frozenset(
     }
 )
 
-#: Refresh labels that mean "NO fetch was taken", so the remote-tracking
-#: ref behind the reading is whatever the last real fetch left there.
 _STALE_REFRESH_OUTCOMES: frozenset[str] = frozenset(
     {REFRESH_SUPPRESSED, "refresh suppressed", "refresh suppressed by throttle"}
 )
@@ -288,7 +234,6 @@ def _read_remote_tracking_sha(
     target: str,
     remote: str,
 ) -> str | None:
-    """Read ``<remote>/<target>`` through the client, never a hardcoded ref."""
     if hasattr(client, "observe_remote_sha"):
         return client.observe_remote_sha(repo_root, target, remote=remote)
     from ralph.pipeline.auto_integrate_catchup import observe_remote_target_sha
@@ -300,24 +245,6 @@ def _throttled_reading_needs_refetch(
     observed: str | None,
     local_sha: str | None,
 ) -> bool:
-    """Whether a throttled reading must be replaced by a real fetch.
-
-    A suppressed probe leaves the remote-tracking ref exactly as the last
-    real fetch left it. Two readings are worthless against that cache:
-
-    * ``observed is None`` -- nothing is known about the remote at all.
-      The module-level probe is forced; if it cannot answer either, the
-      observation stays UNKNOWN and the caller defers.
-    * ``observed == local_sha`` -- the stale cache appears to CONVERGE.
-      That is the dangerous case: answering "already current" for a
-      remote that moved during the throttle window silently drops a
-      divergence that Ralph otherwise has no way to see.
-
-    Everything else (``observed != local_sha``) already proves a
-    divergence, so the stale cache is enough to route the reconciler
-    into the push/reconcile path, where the server's rejection forces
-    the fetch that repairs the cache.
-    """
     if observed is None:
         return True
     return local_sha is None or observed == local_sha
@@ -331,20 +258,6 @@ def _observe_remote_target_sha(
     remote_client: RemoteOps | None = None,
     local_sha: str | None = None,
 ) -> tuple[str | None, str]:
-    """Observe ``<remote>/<target>`` and the refresh status without raising.
-
-    The remote-tracking ref is refreshed first so the comparison is not
-    made against a stale cache. When the periodic probe was throttled and
-    its reading cannot back the caller's verdict
-    (:func:`_throttled_reading_needs_refetch`), a real fetch is forced and
-    the ref is re-read before any branch is chosen.
-
-    Returns ``(None, status)`` for any failure (unreachable remote,
-    missing branch, transient network error). ``local_sha`` is the local
-    target ref the caller already read; it only decides whether a
-    throttled reading needs refetching and never selects a branch on its
-    own.
-    """
     client = remote_client or _DEFAULT_REMOTE_CLIENT
     try:
         refresh = client.refresh_target(
@@ -385,35 +298,6 @@ def _record_publication_failure(
     fast_forwarded: bool | None = None,
     publication_decision: PublicationDecision | None = None,
 ) -> RebaseState:
-    """Project a remote-publication failure onto ``base_state``.
-
-    Centralises the ``model_copy`` fan-out that the original
-    :func:`reconcile_remote_publication` repeated per branch so the
-    PLR0911 cap is satisfied without losing the per-branch
-    ``last_remote_sync`` / ``last_refresh`` / fast forward signal the
-    durable record carries.
-
-    ``last_reason`` is OPTIONAL on purpose: nothing in this module
-    shall persist stored prose as a decision input. The field is kept
-    on the durable record only as a backward-compatibility shim, and
-    callers that pass ``last_reason=None`` preserve the previous
-    record's prose so a downstream display formatters that have not
-    yet been migrated do not break. The single typed obligation is
-    carried by ``publication_decision`` (the
-    :class:`PublicationDecision` the run loop reads) -- the prose
-    field never drives branch selection here.
-
-    Remote observation failures (``REMOTE_PULL_FAILED`` /
-    ``REMOTE_REMOTE_UNREACHABLE``) must carry
-    :attr:`PublicationDecision.PUBLISH_DEFERRED_REMOTE` so
-    :func:`is_terminal_success_eligible` cannot permit terminal
-    success while a pending push obligation is unscheduled (O2/AC8).
-    The parameter is named ``publication_decision`` (not
-    ``last_publication_decision``) so the single-writer
-    :func:`test_no_direct_writer_sites_outside_rebase_state` audit does
-    not flag the helper as a forbidden direct writer of the
-    ``RebaseState`` field.
-    """
     update: dict[str, object] = {
         "last_remote_sync": last_remote_sync,
     }
@@ -441,12 +325,6 @@ def _dispatch_ref_comparison(
     remote_client: RemoteOps | None,
     rebase_stop_resolver: RebaseStopResolver | None = None,
 ) -> RebaseState:
-    """Apply the local/remote ancestor verdict and dispatch to the right helper.
-
-    Extracted from :func:`reconcile_remote_publication` to keep the
-    fan-out below the PLR0911 cap while preserving the same
-    per-branch outcome surface.
-    """
     try:
         local_ahead = is_ancestor(repo_root, remote_sha, local_sha)
     except Exception:
@@ -456,11 +334,6 @@ def _dispatch_ref_comparison(
     except Exception:
         remote_ahead = False
     if local_ahead and not remote_ahead:
-        # Local is strictly ahead: push. The push itself is the
-        # freshness proof; the freshness state machine is no longer
-        # consulted on the publication path. Set ``fast_forwarded=True``
-        # on the push record so the publication state machine does
-        # not gate the push on the missing fast-forward signal.
         pushed = push_target_after_landing(
             config,
             repo_root,
@@ -481,13 +354,6 @@ def _dispatch_ref_comparison(
             )
         return pushed
     if remote_ahead and not local_ahead:
-        # Remote is strictly ahead: advance the TARGET to the observed tip,
-        # then recurse. This is deliberately the shared target-advance
-        # routine, not the catch-up tick: the tick is fetch-throttled,
-        # re-acquires the mutation lease the ticker already holds, and
-        # reports the CHECKOUT's catch-up rather than the target's
-        # (docs/agents/remote-sync.md, root cause 3). Reclamation stays off
-        # here: a dirty owner refuses and a later seam retries.
         if config is None:
             return _record_publication_failure(
                 base_state,
@@ -512,8 +378,6 @@ def _dispatch_ref_comparison(
                 rebase_stop_resolver=rebase_stop_resolver,
                 source_state=base_state,
             )
-        # The remote WAS reached and IS ahead: the refusal names the real
-        # cause (dirty owner, CAS race, ...) instead of a false "unreachable".
         return _record_publication_failure(
             base_state,
             last_remote_sync=REMOTE_PULL_FAILED,
@@ -521,7 +385,6 @@ def _dispatch_ref_comparison(
             last_refresh=REFRESH_ORIGIN_AHEAD,
             publication_decision=PublicationDecision.PUBLISH_DEFERRED_REMOTE,
         )
-    # Diverged: reintegrate then push.
     return reconcile_after_rejected_push(
         config,
         repo_root,
@@ -540,14 +403,6 @@ def _build_disabled_noop_state(
     remote: str | None,
     config: UnifiedConfig | None,
 ) -> RebaseState:
-    """Build the strict no-op ``RebaseState`` when remote sync is disabled.
-
-    The reconciler returns this state instead of touching the
-    network. The caller's ``source_state`` is preserved (including
-    ``fast_forwarded``) so the post-landing seam's headline signal
-    survives; the annotation (``REMOTE_NO_REMOTE`` + a clear
-    reason) tells the caller that the seam was a no-op.
-    """
     chosen_remote = (
         remote
         if isinstance(remote, str) and remote
@@ -574,13 +429,6 @@ def _build_disabled_noop_state(
 
 
 def _safe_local_sha(repo_root: Path, target: str) -> str | None:
-    """Read the local target SHA, mapping exceptions to ``None``.
-
-    The original :func:`reconcile_remote_publication` returned a
-    distinct failure ``last_reason`` for the exception case.  Tests
-    assert the field name (``REMOTE_PULL_FAILED``) but not the
-    reason string, so this collapses the two cases into one branch.
-    """
     try:
         return branch_sha(repo_root, target)
     except Exception as exc:
@@ -598,14 +446,6 @@ def _handle_no_remote_branch(
     client: RemoteOps,
     rebase_stop_resolver: RebaseStopResolver | None,
 ) -> RebaseState:
-    """Handle the no-remote-branch case: push first, recover on non-fast-forward.
-
-    Extracted from :func:`reconcile_remote_publication` to keep the
-    parent function's PLR0911 return count under the configured cap.
-    The non-fast-forward rejection is the only freshness proof that
-    matters; everything else is a recovery-loop signal on the
-    returned ``RebaseState``.
-    """
     pushed = push_target_after_landing(
         config,
         repo_root,
@@ -637,54 +477,6 @@ def reconcile_remote_publication(
     rebase_stop_resolver: RebaseStopResolver | None = None,
     source_state: RebaseState | None = None,
 ) -> RebaseState:
-    """Reconcile local ``<target>`` with ``<remote>/<target>`` by ref comparison.
-
-    Single publication entry point. The function consults the
-    configured ``remote`` (``auto_integrate_remote`` in policy, or
-    the default ``origin``), compares the local and remote SHAs, and
-    dispatches to the existing helpers:
-
-    * ``local == remote`` -- no-op; the refs already converge.
-    * ``remote is an ancestor of local`` -- push via
-      :func:`push_target_after_landing`. The remote's
-      ``NON_FAST_FORWARD`` rejection is the only freshness proof that
-      matters: ``_freshness_publication_action`` no longer gates this
-      path.
-    * ``local is an ancestor of remote`` -- pull/catch up and recurse.
-    * diverged -- :func:`reconcile_after_rejected_push`.
-
-    Fail-closed: any remote-side failure returns a ``RebaseState``
-    with ``last_remote_sync=REMOTE_PULL_FAILED`` so the next seam
-    retries (AC8). Never raises; never reverts a local landing.
-
-    Args:
-        remote_client: The injected remote tier -- a
-            :class:`~ralph.pipeline.integration_remote_actions.RemoteOps`
-            implementation. ``None`` selects the production adapter
-            (live Git operations). Every remote call this function
-            makes -- the freshness refresh, the remote-tracking read,
-            and the push -- goes through that one seam, so a
-            fault-injecting double can simulate an unreachable remote,
-            a non-fast-forward rejection, or a remote that advanced
-            underneath the caller without a network.
-        source_state: The caller's pre-reconcile :class:`RebaseState`.
-            When provided, the returned ``RebaseState`` carries the
-            caller's ``fast_forwarded`` flag and other durable signals
-            (``last_target``, ``last_outcome``) so the post-landing
-            seam can preserve the headline "did the local land"
-            signal even when the publication did not reach the
-            remote. ``None`` (the startup-seam path) constructs a
-            fresh state with the default ``fast_forwarded=False``;
-            the no-op convergence branch sets it to ``True``.
-    """
-    # Disabled-by-policy guard (AC-12 / WU-1): when the configured
-    # ``auto_integrate_remote_enabled`` is False, this is a strict
-    # no-op. The function must perform ZERO remote observation,
-    # ZERO refresh, and ZERO push calls; the only side effect is
-    # annotating the returned ``RebaseState`` so the caller can
-    # tell that the seam was a no-op. The caller's ``source_state``
-    # is preserved (including ``fast_forwarded``) so the post-landing
-    # seam's headline "did the local land" signal survives.
     if not remote_sync_enabled(config):
         return _build_disabled_noop_state(
             source_state=source_state,
@@ -693,8 +485,6 @@ def reconcile_remote_publication(
             config=config,
         )
     chosen_remote = remote if isinstance(remote, str) and remote else remote_target_name(config)
-    # Build the base record for the push path: carry the caller's
-    # ``fast_forwarded`` so the post-landing seam can rely on it.
     base_state: RebaseState
     if source_state is not None:
         base_state = source_state.model_copy(
@@ -772,23 +562,10 @@ def _observation_reconciles(
     local_sha: str,
     remote_sha: str | None,
 ) -> bool:
-    """Truth: does the current live observation show refs already equal?
-
-    Pure: only the two SHAs the caller just observed are consulted.
-    Stored ``last_reason`` prose and persisted ``last_remote_sync``
-    values are NEVER inputs -- the O2 reconciliation obligation lives
-    on the LIVE ref comparison, not on text the previous run wrote.
-    A ``None`` remote SHA is treated as ``False`` because the
-    obligation "ref equality" cannot be proven unobservable.
-    """
     if remote_sha is None:
         return False
     if local_sha != remote_sha:
         return False
-    # Final witness: the live remote-tracking ref read confirms the
-    # equality is current, not stale. A separate fetch was performed
-    # in :func:`_observe_remote_target_sha`; this call only witnesses
-    # its outcome.
     _ = (repo_root, target, remote)
     return True
 
@@ -801,28 +578,6 @@ def refresh_observation_record(
     remote: str,
     remote_client: RemoteOps | None = None,
 ) -> RebaseState:
-    """Re-render the publication record from the CURRENT live observation.
-
-    Recomputes local vs ``<remote>/<target>`` from the same client the
-    runtime uses, then rewrites BOTH the typed publication obligation and
-    the operator-facing status line from that single observation. Used by
-    the run loop and by boundary seams that need an O2 freshness check
-    before reporting terminal success; the O2 contract demands that NO
-    state leaves local ahead of the remote with a satisfied publication
-    decision.
-
-    ``base_state.last_reason`` is deliberately OVERWRITTEN here, never
-    inherited. This is the render-time seam: replaying the prose a
-    previous seam persisted would present a stale ``... unreachable ...
-    recovery will retry`` line as the current explanation after the
-    remote has already recovered. Every branch below therefore renders
-    its line from the SHAs this call just observed.
-
-    The function never raises. It returns ``base_state`` unchanged when
-    remote sync is disabled or when the configured remote is missing --
-    those are "not observed", which must not overwrite a live line with
-    a fabricated one.
-    """
     if not isinstance(target, str) or not target or not isinstance(remote, str) or not remote:
         return base_state
     local_sha = _safe_local_sha(repo_root, target)
@@ -879,37 +634,14 @@ def refresh_observation_record(
 
 
 def _render_converged_reason(target: str, remote: str) -> str:
-    """Render-time line for "the two refs name the same commit"."""
     return f"local {target} and {remote}/{target} converge"
 
 
 def _render_unpublished_reason(target: str, remote: str) -> str:
-    """Render-time line for "local is ahead; the remote still owes the push"."""
     return f"local {target} is not yet published to {remote}/{target}"
 
 
 def _render_missing_branch_reason(target: str, remote: str) -> str:
-    """Render-time line for "the remote exists but has no target branch yet"."""
     return f"{remote}/{target} does not exist yet; publication will create it"
 
 
-# ----- AC-14 catalog evidence -----
-# AC-14 rationale: B12
-# ladder rung: 1
-# AC-14 rationale: B13
-# ladder rung: 1
-# AC-14 rationale: B14
-# ladder rung: 1
-# AC-14 rationale: B15
-# ladder rung: 1
-# AC-14 rationale: B16
-# ladder rung: 1
-# AC-14 rationale: B17
-# ladder rung: 1
-# AC-14 rationale: B18
-# ladder rung: 1
-# AC-14 rationale: B19
-# ladder rung: 1
-# AC-14 rationale: B20
-# ladder rung: 1
-# ----- end AC-14 catalog evidence -----

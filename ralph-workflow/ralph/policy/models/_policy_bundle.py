@@ -1,4 +1,3 @@
-"""PolicyBundle Pydantic model."""
 
 from typing import Self
 
@@ -11,7 +10,6 @@ from ralph.policy.models._pipeline_policy import PipelinePolicy
 
 
 class PolicyBundle(_FrozenPolicyModel):
-    """Aggregate of all three policy documents."""
 
     agents: AgentsPolicy = Field(..., description="Agent chains and drain bindings")
     pipeline: PipelinePolicy = Field(..., description="Phase graph and routing")

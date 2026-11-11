@@ -1,34 +1,3 @@
-"""Regression tests for the ``SpawnOptions.stdin`` default and call-site contract.
-
-When ``SpawnOptions().stdin`` defaults to ``None`` (the POSIX ``INHERIT``
-constant for ``subprocess.Popen.stdin``), every child spawned through
-``ProcessManager`` inherits Ralph's controlling-terminal stdin. An
-interactive child (Claude Code, etc.) can then claim the foreground
-process group, put the shared TTY into raw mode, and steal keystrokes.
-
-The fix flips the dataclass default to ``subprocess.DEVNULL`` so
-callers get a non-inheriting stdin by construction. The two call sites
-that genuinely speak stdio (the MCP JSON-RPC transport paths) and the
-two that already opted in to ``DEVNULL`` (agent subprocess paths) are
-left unchanged because they pass ``stdin=`` explicitly.
-
-Three tests:
-
-1. ``test_spawn_options_defaults_to_devnull_stdin`` -- the dataclass
-   default is ``subprocess.DEVNULL``, not ``None``.
-
-2. ``test_no_spawn_call_site_passes_stdin_none`` -- AST-scan every
-   ``SpawnOptions(...)`` call under ``ralph/`` for an explicit
-   ``stdin=None`` keyword. Re-introducing INHERIT fails the audit.
-
-3. ``test_process_manager_passes_devnull_when_caller_omits_stdin``
-   -- drive BOTH the sync and async ``ProcessManager`` seams with a
-   ``SpawnOptions()`` that omits ``stdin`` and assert the DEVNULL
-   default reaches each factory boundary.
-
-In-process, no real subprocess; stays under the per-test SIGALRM.
-"""
-
 from __future__ import annotations
 
 import ast
@@ -46,18 +15,6 @@ _RALPH_PACKAGE_ROOT = _REPO_ROOT / "ralph"
 
 
 def test_spawn_options_defaults_to_devnull_stdin() -> None:
-    """The bare ``SpawnOptions()`` default must be ``subprocess.DEVNULL``.
-
-    ``None`` (the pre-fix default) is the POSIX ``INHERIT`` constant for
-    ``subprocess.Popen.stdin``; a child that inherits Ralph's
-    controlling-terminal stdin can claim the foreground process group
-    and put the shared TTY into raw mode, stealing keystrokes.
-
-    The default must be the explicit ``subprocess.DEVNULL`` so EVERY
-    child spawned through ProcessManager is non-inheriting by
-    construction -- opt-in for stdin is only via
-    ``SpawnOptions(stdin=subprocess.PIPE)``.
-    """
     opts = SpawnOptions()
     assert opts.stdin is subprocess.DEVNULL, (
         f"SpawnOptions().stdin must default to subprocess.DEVNULL "
@@ -67,20 +24,7 @@ def test_spawn_options_defaults_to_devnull_stdin() -> None:
 
 
 def test_no_spawn_call_site_passes_stdin_none() -> None:
-    """No ``SpawnOptions(...)`` call site under ``ralph/`` may pass ``stdin=None``.
-
-    AST-scans every Python file in the ralph/ package, locates every
-    ``SpawnOptions(...)`` call, and asserts no call carries an
-    explicit ``stdin`` keyword whose value is the constant ``None``.
-    ``stdin=None`` means INHERIT -- the leak we are fixing.
-    """
     offenders: list[str] = []
-    # Fast-path text filter: skip files that don't even mention
-    # ``SpawnOptions`` so the AST walk stays under the per-test SIGALRM
-    # cap on a 1000+ file package. The pre-filter looks for the
-    # literal ``stdin=None`` substring so only files that COULD
-    # possibly contain the forbidden pattern proceed to AST parsing;
-    # everything else is skipped in well under a millisecond.
     for source_path in _iter_python_files(_RALPH_PACKAGE_ROOT):
         try:
             source = source_path.read_text(encoding="utf-8")
@@ -109,17 +53,6 @@ def test_no_spawn_call_site_passes_stdin_none() -> None:
 
 
 def test_process_manager_passes_devnull_when_caller_omits_stdin() -> None:
-    """``SpawnOptions()`` must reach BOTH the sync and async factory as DEVNULL.
-
-    The sync seam (ProcessManager.spawn) passes the whole ``SpawnOptions``
-    OBJECT to the factory, so we assert on the captured object. The async
-    seam (ProcessManager.spawn_async) destructures into kwargs before the
-    factory call, so we assert on the ``stdin`` kwarg.
-
-    Driving only one seam would leave the other unproven -- the sync path
-    is used by the PTY-less invoke reader and the async path is used by
-    the fan-out executor. Both must route DEVNULL through.
-    """
     sync_captured: list[SpawnOptions] = []
     async_captured: list[dict[str, object]] = []
 
@@ -145,8 +78,6 @@ def test_process_manager_passes_devnull_when_caller_omits_stdin() -> None:
                 "start_new_session": start_new_session,
             }
         )
-        # Return a fake whose awaited methods never run here -- the test
-        # only inspects the captured kwargs and exits promptly.
         raise RuntimeError("async factory reached only to capture kwargs")
 
     sync_pm = ProcessManager(
@@ -155,8 +86,6 @@ def test_process_manager_passes_devnull_when_caller_omits_stdin() -> None:
     )
 
     sync_handle = sync_pm.spawn(["/usr/bin/true"])
-    # Tear down via ``with`` so a failing assertion below cannot leave the
-    # FakePopen-attached record wedged in ``sync_pm._records``.
     sync_handle.__exit__(None, None, None)
     assert len(sync_captured) == 1, (
         f"sync factory must be invoked exactly once; got {len(sync_captured)}"
@@ -174,14 +103,11 @@ def test_process_manager_passes_devnull_when_caller_omits_stdin() -> None:
         policy=ProcessManagerPolicy(enable_zombie_reaper=False, log_events=False),
         async_process_factory=async_factory,
     )
-    # Drive spawn_async under asyncio -- only the kwargs capture matters.
     import asyncio
 
     try:
         asyncio.run(async_pm.spawn_async(["/usr/bin/true"]))
     except RuntimeError as exc:
-        # The async factory raises after capturing kwargs -- that is the
-        # expected exit path; any other exception is a test wiring bug.
         assert str(exc) == "async factory reached only to capture kwargs", (
             f"unexpected exception from async factory: {exc!r}"
         )
@@ -199,13 +125,7 @@ def test_process_manager_passes_devnull_when_caller_omits_stdin() -> None:
     )
 
 
-# ---------------------------------------------------------------------------
-# helpers
-# ---------------------------------------------------------------------------
-
-
 def _iter_python_files(root: Path) -> Iterator[Path]:
-    """Yield every ``*.py`` file under ``root`` (recursive)."""
     for directory, _dirs, names in os.walk(root):
         for name in names:
             if name.endswith(".py"):
@@ -213,7 +133,6 @@ def _iter_python_files(root: Path) -> Iterator[Path]:
 
 
 def _is_spawn_options_call(node: ast.Call) -> bool:
-    """Return True when the call's function is the ``SpawnOptions`` name."""
     func = node.func
     return (isinstance(func, ast.Name) and func.id == "SpawnOptions") or (
         isinstance(func, ast.Attribute) and func.attr == "SpawnOptions"
@@ -221,11 +140,9 @@ def _is_spawn_options_call(node: ast.Call) -> bool:
 
 
 def _format_call_site(path: Path, node: ast.Call) -> str:
-    """Return a one-line report of a violation: ``path:lineno: snippet``."""
     try:
         segment = ast.get_source_segment(path.read_text(encoding="utf-8"), node) or ""
     except (OSError, SyntaxError):
         segment = "<source unavailable>"
-    # Strip newlines so the violation is a single line.
     snippet = segment.replace("\n", " ").strip()
     return f"{path}:{node.lineno}: {snippet}"

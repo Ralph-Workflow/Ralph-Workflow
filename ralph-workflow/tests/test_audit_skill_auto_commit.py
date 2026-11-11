@@ -1,20 +1,3 @@
-"""Tests for ``ralph.testing.audit_skill_auto_commit``.
-
-The audit pins the wt-025 deterministic skill-update auto-commit contract:
-
-* the literal subject ``chore(skills): sync baseline bundle``,
-* the FIVE canonical project-scope skill-root prefix set,
-* the AST placement of the early-skip block in
-  ``ralph/git/commit_review.py::untrack_engine_internal_files``, and
-* the existence of ``ralph/skills/_auto_commit.py``.
-
-Mirrors the structure of ``tests/test_audit_parallelization_dormant.py``
-(PA-006 closure): smoke tests, structural invariant tests, and one
-regression test per invariant target that monkey-patches the audit's
-``_read`` to remove a literal, asserting the audit returns 1 and emits a
-labeled violation.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -25,24 +8,11 @@ from ralph.testing.audit_skill_auto_commit import main as audit_main
 pytestmark = pytest.mark.timeout_seconds(5)
 
 
-# NOTE: ``test_audit_returns_zero_when_all_invariants_satisfied``,
-# ``test_audit_main_returns_zero_on_clean_tree``, and
-# ``test_audit_module_path`` were removed in the wt-05-test-opti pass.
-# The two clean-tree checks duplicate the audit already executed by
-# ``make verify`` (the ``audit_skill_auto_commit`` step in
-# ``_VERIFY_STEPS``), and the module-path test is a pure import smoke
-# that the same verify step implicitly proves. The remaining tests
-# cover the literal-string + AST regression contract with monkey-patched
-# sources.
-
-
 def test_audit_subject_literal_is_deterministic_chore_skills_sync_baseline_bundle() -> None:
-    """The pinned subject literal is ``chore(skills): sync baseline bundle``."""
     assert audit_module._SKILL_AUTO_COMMIT_SUBJECT == "chore(skills): sync baseline bundle"
 
 
 def test_audit_skill_root_prefixes_count_is_five() -> None:
-    """The FIVE canonical project-scope skill-root prefix strings are pinned."""
     assert len(audit_module._SKILL_ROOT_PREFIXES) == 5
     assert (
         frozenset(
@@ -59,7 +29,6 @@ def test_audit_skill_root_prefixes_count_is_five() -> None:
 
 
 def test_audit_invariants_cover_helper_module() -> None:
-    """The audit's ``_INVARIANTS`` tuple contains the helper-module invariant."""
     invariant_paths = {inv.rel_path for inv in audit_module._INVARIANTS}
     assert "skills/_auto_commit.py" in invariant_paths
 
@@ -67,7 +36,6 @@ def test_audit_invariants_cover_helper_module() -> None:
 def test_audit_blocks_regression_when_helper_subject_missing(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Removing the subject literal from the helper module triggers rc=1."""
     real_read = audit_module._read
     helper_path = "skills/_auto_commit.py"
 
@@ -88,14 +56,12 @@ def test_audit_blocks_regression_when_helper_subject_missing(
 def test_audit_blocks_regression_when_skill_root_prefix_missing(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Removing one of the FIVE skill-root prefixes from the agent_paths file triggers rc=1."""
     real_read = audit_module._read
     agent_paths = "skills/_agent_paths.py"
 
     def _read_with_root_removed(rel_path: str) -> str:
         content = real_read(rel_path)
         if rel_path == agent_paths:
-            # Remove ".agents/skills/" from the set
             return content.replace('".agents/skills/",', "")
         return content
 
@@ -111,11 +77,9 @@ def test_audit_blocks_regression_when_skill_root_prefix_missing(
 def test_audit_blocks_regression_when_helper_module_deleted(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Deleting ``_auto_commit.py`` triggers the file-existence check rc=1."""
     real_exists = audit_module._PACKAGE_ROOT.__class__.exists
 
     def _exists_with_helper_deleted(self: object) -> bool:
-        # Pretend the helper module is missing
         if str(self).endswith("_auto_commit.py"):
             return False
         return real_exists(self)
@@ -130,7 +94,6 @@ def test_audit_blocks_regression_when_helper_module_deleted(
 def test_audit_blocks_regression_when_commit_review_skip_removed(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Removing the literal-string skip block from commit_review.py triggers rc=1."""
     real_read = audit_module._read
     cleanup_path = "git/commit_review.py"
 
@@ -150,14 +113,6 @@ def test_audit_blocks_regression_when_commit_review_skip_removed(
 def test_audit_blocks_regression_when_failure_path_log_removed(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Removing the ``Skill auto-commit failed (non-fatal)`` debug log literal from
-    ``cli/commands/run.py`` triggers rc=1 -- pins the failure-path invariant.
-
-    The plan (step 12) requires the audit to pin the run-path contract
-    INCLUDING the failure-path debug-log literal and the surrounding
-    try/except so a future refactor that silently drops the failure
-    handler is caught at audit time.
-    """
     real_read = audit_module._read
     run_path = "cli/commands/run.py"
 
@@ -181,22 +136,12 @@ def test_audit_blocks_regression_when_failure_path_log_removed(
 def test_audit_blocks_regression_when_phase_seam_skill_commit_resurfaces(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """wt-012: reintroducing the phase-seam skill commit in the runner triggers rc=1.
-
-    A future refactor that re-adds the ``commit_skill_updates`` call in
-    the phase seam (the legacy dirty-discovery sweep) would commit
-    whatever is dirty in the skill roots at every transition -- a
-    skill path the user or agent dirtied mid-run would be swept into
-    the deterministic chore commit. The audit's ``absent`` invariant
-    on ``pipeline/runner.py`` blocks the regression.
-    """
     real_read = audit_module._read
     runner_path = "pipeline/runner.py"
 
     def _read_with_seam_commit_removed(rel_path: str) -> str:
         content = real_read(rel_path)
         if rel_path == runner_path:
-            # Pretend the phase-seam sweep resurfaced.
             return (
                 content
                 + "\nfrom ralph.skills._auto_commit import commit_skill_updates  # regression\n"

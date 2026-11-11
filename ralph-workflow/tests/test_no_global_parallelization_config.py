@@ -1,10 +1,3 @@
-"""Regression tests: no global parallelization config must exist outside transition policy.
-
-Parallelization in Ralph v1 is transition-scoped: only [phases.<phase>.parallelization]
-blocks in pipeline.toml control fan-out. Top-level or cross-pipeline parallel switches
-in UnifiedConfig or ralph-workflow.toml are forbidden.
-"""
-
 from __future__ import annotations
 
 import re
@@ -25,7 +18,6 @@ _FORBIDDEN_TOP_LEVEL_KEYS = re.compile(
 
 
 def test_pipeline_toml_has_no_top_level_parallel_execution() -> None:
-    """pipeline.toml must not have a top-level [parallel_execution] key."""
     toml_path = _DEFAULTS_DIR / "pipeline.toml"
     data = tomllib.loads(toml_path.read_text(encoding="utf-8"))
     assert "parallel_execution" not in data, (
@@ -36,15 +28,6 @@ def test_pipeline_toml_has_no_top_level_parallel_execution() -> None:
 
 
 def test_ralph_workflow_toml_has_no_global_parallel_keys() -> None:
-    """ralph-workflow.toml and ralph-workflow-local.toml must not have global parallel keys.
-
-    Both templates are tracked in the clean clone at
-    ``ralph/policy/defaults/ralph-workflow.toml`` and
-    ``ralph/policy/defaults/ralph-workflow-local.toml``. The contract is that
-    neither may expose a top-level ``parallel_execution``,
-    ``max_parallel_workers``, or ``max_work_units`` key. Parallelization is
-    transition-scoped and belongs in ``pipeline.toml`` only.
-    """
     expected = {
         _DEFAULTS_DIR / "ralph-workflow.toml",
         _DEFAULTS_DIR / "ralph-workflow-local.toml",
@@ -66,7 +49,6 @@ def _walk_model_fields(
     model_cls: type,
     visited: set[type] | None = None,
 ) -> list[str]:
-    """Recursively collect field names from a Pydantic model."""
     if visited is None:
         visited = set()
     if model_cls in visited:
@@ -79,7 +61,6 @@ def _walk_model_fields(
             continue
         found.append(name)
         annotation = field.annotation
-        # Unwrap Optional / union types
         origin = getattr(annotation, "__origin__", None)
         args = getattr(annotation, "__args__", ()) if origin is not None else (annotation,)
         for arg in args:
@@ -89,7 +70,6 @@ def _walk_model_fields(
 
 
 def test_unified_config_has_no_forbidden_parallel_fields() -> None:
-    """UnifiedConfig and nested models must not expose forbidden global parallel fields."""
     all_fields = _walk_model_fields(UnifiedConfig)
     violations = [name for name in all_fields if _FORBIDDEN_TOP_LEVEL_KEYS.match(name)]
     assert violations == [], (

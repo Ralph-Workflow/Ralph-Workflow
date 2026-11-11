@@ -1,18 +1,3 @@
-"""MCP handler for ``ralph_index_status``.
-
-Extracted from :mod:`ralph.mcp.explore.handlers` so the hub module
-stays under the repository's per-file line ceiling. The handler is
-the only public surface; the helpers (``_build_disabled_status_payload``,
-``_gitignore_repair_payload``, ``_build_status_payload``) are
-implementation detail and remain importable from this module for
-test reach.
-
-The handler always returns a structured payload: when the session has
-no explore index handle it reports ``enabled=False`` /
-``index_exists=False`` rather than raising. Side-effect free: must not
-create SQLite files, ``.agent/ralph-explore/`` directories, or modify
-gitignore state.
-"""
 
 from __future__ import annotations
 
@@ -43,17 +28,6 @@ def handle_ralph_index_status(
     workspace: object,
     params: dict[str, object],
 ) -> ToolResult:
-    """Report index health and freshness.
-
-    Capability: ``WorkspaceMetadataRead`` (read-only metadata).
-
-    Side-effect free contract: this handler MUST NOT create SQLite
-    files, ``.agent/ralph-explore/`` directories, or modify gitignore
-    state. When the session has no explore index handle, it inspects
-    the existing on-disk state and reports ``enabled=False`` /
-    ``index_exists=False`` so callers can decide whether to run
-    ``ralph_reindex``.
-    """
     require_capability(session, WORKSPACE_METADATA_READ_CAPABILITY, "Explore index status")
     workspace_root_obj: object = getattr(workspace, "root", None)
     workspace_root_raw: object = workspace_root_obj or params.get("workspace_root", "")
@@ -61,9 +35,6 @@ def handle_ralph_index_status(
     workspace_root = Path(workspace_root_str) if workspace_root_str else Path.cwd()
     handle: ExploreIndex | None = handlers_module._resolve_explore_index(session)
     if handle is None:
-        # Side-effect free: inspect existing disk state without
-        # creating files. ``enabled=False`` reports the absence; the
-        # caller decides whether to run ``ralph_reindex`` to enable it.
         index_dir = handlers_module._resolve_index_dir(workspace_root)
         db_path = index_dir / "index.sqlite"
         index_exists_on_disk = db_path.is_file()
@@ -86,27 +57,11 @@ def handle_ralph_index_status(
     payload = _build_status_payload(handle, workspace_root, cold_index_required)
     payload["enabled"] = True
     payload["workspace_awareness"] = awareness_for_workspace(workspace_root).snapshot()
-    # Canonical serving metadata: ``ralph_index_status`` is the
-    # metadata endpoint itself, so ``index_used`` reports whether the
-    # attached store served the snapshot and ``fallback_reason`` is
-    # ``None`` when the handle is healthy.
     from ralph.mcp.explore.serving import serving_metadata
 
     payload.update(serving_metadata(session, index_used=True, fallback_reason=None))
-    # S-6: surface the recovery scheduler state so callers can see
-    # health / last failure / attempts / next recovery time. The
-    # scheduler is lazily created per workspace and the snapshot is
-    # bounded.
     from ralph.mcp.explore.recovery import build_scheduler
 
-    # S-2 (wt-11): when the probe observes ``cold_index_required`` on
-    # an attached handle, enqueue exactly one bounded recovery so
-    # ``run_pending_recovery`` will drain the queue on the next probe
-    # and the dispatcher will rebuild the index in the background.
-    # The probe itself stays side-effect free at the store level --
-    # only the recovery queue is touched. No retry storm: a second
-    # probe inside the same backoff window coalesces on the existing
-    # queue entry (``enqueue_recovery`` is keyed by workspace).
     if cold_index_required:
         from ralph.mcp.explore.recovery import enqueue_recovery
 
@@ -115,9 +70,6 @@ def handle_ralph_index_status(
             "no_committed_generation",
             message="cold_index_required observed by ralph_index_status",
         )
-    # Re-fetch the scheduler AFTER enqueue_recovery so the
-    # snapshot reflects the BUILDING state set by the
-    # ``no_committed_generation`` branch in ``enqueue_recovery``.
     scheduler = build_scheduler(workspace_root)
     payload["recovery"] = scheduler.snapshot()
     payload["health"] = scheduler.health.value
@@ -133,20 +85,6 @@ def _build_disabled_status_payload(
     cold_index_required: bool,
     index_exists: bool = False,
 ) -> dict[str, object]:
-    """Return the side-effect-free status payload when no handle exists.
-
-    ``index_exists`` lets the caller surface an existing on-disk
-    persisted index even when the current session has no handle
-    attached, so a side-effect-free status check reports the real
-    disk state instead of always reporting ``index_exists=False``.
-
-    AC-04: when ``.agent/ralph-explore/`` is not covered by the
-    managed gitignore rule, ``managed_ignore_rule_repair`` carries
-    the next Ralph seeding repair instruction so callers know how
-    to make the cache disposable. The status handler never mutates
-    the gitignore on its own \u2014 the repair is a documented next
-    step, not a side effect.
-    """
     return {
         "enabled": False,
         "index_exists": index_exists,
@@ -170,30 +108,9 @@ def _build_disabled_status_payload(
 
 
 def _gitignore_repair_payload(workspace_root: Path) -> dict[str, object]:
-    """Return the structured next-Ralph-seeding repair for the explore ignore rule.
-
-    The repair is a documented next step, not a side effect. The
-    handler must NOT mutate the gitignore; it only reports the
-    instruction so an operator (or the next ``ralph`` invocation,
-    which already calls ``auto_seed_default_gitignore``) can fix the
-    coverage.
-
-    AC-05: the repair payload names the explicit ``.agent/ralph-explore/``
-    child rule so the next ``auto_seed_default_gitignore`` pass
-    appends it next to the parent ``.agent/`` rule. Parent-only
-    coverage is reported as ``"parent_only"`` so operators and tests
-    see whether the explicit child rule is present yet; ``action``
-    becomes ``"append_explicit_child_rule"`` so the next normal
-    Ralph seeding pass repairs the gap instead of leaving the
-    parent-only state in place.
-    """
     gitignore = Path(workspace_root) / ".gitignore"
     rule_present = handlers_module._gitignore_coverage(workspace_root)
     if rule_present:
-        # Parent ``.agent/`` coverage plus the explicit child rule
-        # is the fully repaired state. Both reports surface the
-        # current truth so callers do not need to learn a new
-        # status string for the existing-parent-only case.
         if _gitignore_child_rule_present(workspace_root):
             return {
                 "required": False,
@@ -237,7 +154,6 @@ def _gitignore_repair_payload(workspace_root: Path) -> dict[str, object]:
 
 
 def _gitignore_child_rule_present(workspace_root: Path) -> bool:
-    """Return True when the explicit ``.agent/ralph-explore/`` rule is present."""
     gitignore = Path(workspace_root) / ".gitignore"
     if not gitignore.is_file():
         return False
@@ -265,23 +181,13 @@ def _build_status_payload(
         except ValueError:
             indexed_at = None
     dirty_paths = store.peek_dirty_paths()
-    # Ponytail: bounded aggregates, not ``iter_files()``; both
-    # are single ``COUNT(*)`` queries so the status call does
-    # not materialize the entire ``files`` table.
     files_indexed = store.count_files()
-    # Ponytail: ``files_stale`` counts deleted files; ``is_stale``
-    # is true when dirty paths exist OR a deleted file still has
-    # a row. ``iter_files`` filters out deleted rows, so the
-    # count must come from a dedicated aggregate.
     stale_paths = store.count_deleted_files()
     is_stale = bool(dirty_paths) or stale_paths > 0
     last_job_dict: dict[str, object] | None
     if latest_row is None:
         last_job_dict = None
     else:
-        # Ponytail: ``sqlite3.Row`` iterates values, not column names.
-        # ``dict(row)`` uses ``row.keys()`` internally and stringifies
-        # values, so we do not need a manual comprehension here.
         row_dict: dict[str, object] = dict(latest_row)
         last_job_dict = {str(key): str(value) for key, value in row_dict.items()}
     return {

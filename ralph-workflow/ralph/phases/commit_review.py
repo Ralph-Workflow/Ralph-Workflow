@@ -1,10 +1,3 @@
-"""Commit review phase handler.
-
-Orchestrates the two-stage safety gate and edit phase before commit:
-
-* Stage 1: Deterministic tripwires on a sealed Git proposal tree.
-* Stage 2: Agent review evaluating proposed diff and executing safe housekeeping.
-"""
 
 from __future__ import annotations
 
@@ -107,21 +100,10 @@ COMMIT_REVIEW_ARTIFACT_PATH = ".agent/artifacts/commit_review.md"
 _IDENTITY_STATE_PATH = ".agent/tmp/commit_review_identity.json"
 _COMMIT_REVIEW_CONTEXT_PATH = ".agent/tmp/commit_review_context.json"
 
-#: The soft tripwire categories that must NOT survive the commit-review edit
-#: step. A staged secret and an oversized binary are FIRST offered to the edit
-#: step (the reviewer may untrack or ignore them); when the unsafe content is
-#: still in the re-sealed proposal, the engine rejects on its own evidence.
-#: The out-of-scope signal stays advisory and the hard tripwires keep their
-#: own Stage 1 behaviour.
 _UNSAFE_SURVIVAL_CATEGORIES: Final[frozenset[str]] = frozenset({"secret", "binary_size"})
 
-#: A sealed tree SHA is a 40-character hex string. A verdict that names
-#: anything else is malformed and cannot be bound to a tree.
 _TREE_SHA_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[0-9a-fA-F]{40}$")
 
-#: The no-progress state keeps one count per fingerprint, so two different
-#: reviewer malfunctions cannot reset each other's budget. The cap keeps the
-#: state file bounded when a reviewer submits a stream of distinct artifacts.
 _MAX_IDENTITY_FINGERPRINTS: Final[int] = 32
 
 
@@ -132,7 +114,6 @@ def _close_repo(repo: Repo | None) -> None:
 
 
 def _path_exists_in_head(repo_root: Path, relative_path: str) -> bool:
-    """Return True when ``relative_path`` already exists in HEAD."""
     repo: Repo | None = None
     try:
         repo = Repo(repo_root, search_parent_directories=False)
@@ -152,7 +133,6 @@ def _is_generated_text_artifact(
     path: str,
     markers: frozenset[str] = _GENERATED_TEXT_MARKERS,
 ) -> bool:
-    """Return True when ``path`` looks like a generated artifact, not authored content."""
     candidate = Path(path)
     name_tokens = {
         token
@@ -169,14 +149,6 @@ def _is_generated_text_artifact(
 
 
 def _is_safe_to_delete(repo_root: Path, path: str) -> bool:
-    """Return True only if path is a housekeeping artifact safe to delete.
-
-    The check order matters:
-    1. The agent-internal fast path (FIRST statement in the function body).
-    2. Protected basenames win over suffix-based rules.
-    3. Housekeeping basenames win over the unsafe-extension fall-through.
-    4. Paths with parent-traversal segments or absolute paths are rejected.
-    """
     if is_agent_internal_path(path):
         return True
     candidate = Path(path)
@@ -194,7 +166,6 @@ def _is_protected_path(
     candidate: Path,
     path_lower: str,
 ) -> bool:
-    """Return True for paths that must never be deleted, regardless of suffix."""
     if any(seg in path_lower for seg in _UNSAFE_PATH_SEGMENTS):
         return True
     if candidate.name in LOCKFILE_BASENAMES:
@@ -211,7 +182,6 @@ def _is_deletable_housekeeping(
     candidate: Path,
     suffix: str,
 ) -> bool:
-    """Return True for files that are safe housekeeping artifacts to delete."""
     if candidate.name in _HOUSEKEEPING_BASENAMES:
         return not _path_exists_in_head(repo_root, str(candidate))
     if suffix in TEMPORARY_SUFFIXES:
@@ -229,7 +199,6 @@ def _resolve_run_id_and_iteration(
     ctx: PhaseContext,
     effect: Effect,
 ) -> tuple[str, str]:
-    """Extract run_id and iteration from context/effect or fallback to defaults."""
     run_id_val = cast("object", getattr(ctx, "run_id", None))
     if not isinstance(run_id_val, str) or not run_id_val:
         run_id_val = cast("object", getattr(effect, "run_id", None))
@@ -246,7 +215,6 @@ def _resolve_run_id_and_iteration(
 
 
 def _resolve_diff_base(repo_root: Path) -> str:
-    """Resolve the base ref for diff-tree, defaulting to empty tree if HEAD cannot be resolved."""
     repo: Repo | None = None
     try:
         repo = Repo(repo_root, search_parent_directories=False)
@@ -262,7 +230,6 @@ def _resolve_policy_thresholds(
     ctx_or_policy: object,
     phase_name: str,
 ) -> tuple[TripwireThresholds, list[str] | None, list[str] | None]:
-    """Read tripwire thresholds and path filters from pipeline policy."""
     thresholds = TripwireThresholds()
     allowed_dirs: list[str] | None = None
     protected: list[str] | None = None
@@ -309,7 +276,6 @@ def _persist_commit_review_context_to_root(
     soft_findings: tuple[Finding, ...],
     diff_entries: list[DiffEntry],
 ) -> None:
-    """Provide proposal ref, soft tripwires, and diff evidence to agent context."""
     payload = {
         "proposal_ref": seal.ref,
         "tree_sha": seal.tree_sha,
@@ -342,7 +308,6 @@ def _persist_commit_review_context(
     soft_findings: tuple[Finding, ...],
     diff_entries: list[DiffEntry],
 ) -> None:
-    """Provide proposal ref, soft tripwires, and diff evidence to agent context."""
     repo_root, _ = _resolve_workspace_root_safe(ctx)
     if repo_root is not None:
         _persist_commit_review_context_to_root(repo_root, seal, soft_findings, diff_entries)
@@ -350,7 +315,6 @@ def _persist_commit_review_context(
 
 @dataclass
 class CommitReviewParsedArtifact:
-    """Parsed commit review artifact."""
 
     verdict: str | None
     tree_sha: str | None
@@ -384,7 +348,6 @@ def _read_commit_review_document(
     ctx: PhaseContext,
     phase_name: str,
 ) -> ParsedDocument | None:
-    """Read and validate the basic frontmatter of the commit_review Markdown artifact."""
     if not ctx.workspace.exists(COMMIT_REVIEW_ARTIFACT_PATH):
         logger.warning(
             "{}: missing commit_review artifact at {}",
@@ -441,7 +404,6 @@ def _load_commit_review_artifact(
     ctx: PhaseContext,
     phase_name: str,
 ) -> CommitReviewParsedArtifact | None:
-    """Load and parse the commit_review Markdown artifact."""
     document = _read_commit_review_document(ctx, phase_name)
     if document is None:
         return None
@@ -485,9 +447,6 @@ def _load_commit_review_artifact(
 
     reason_str: str | None = "\n".join(reason_items) if reason_items else None
 
-    # Strict contract: a rejecting artifact bound to a tree requires ## Reason with list items.
-    # Frontmatter reason is never accepted as a substitute for ## Reason.
-    # If tree_sha is absent or invalid, tree binding loopback handles it.
     is_tree_bound = tree_sha is not None and bool(_TREE_SHA_PATTERN.fullmatch(tree_sha))
     if (
         verdict == "reject"
@@ -513,7 +472,6 @@ def _apply_commit_review_report(
     repo_root: Path,
     commit_review: CommitReviewParsedArtifact | _CommitReviewLike,
 ) -> CommitReviewApplyReport:
-    """Apply actions through the isolated action engine."""
     return apply_commit_review_actions(
         repo_root,
         commit_review,
@@ -528,7 +486,6 @@ def _apply_commit_review_actions(
     repo_root: Path,
     commit_review: CommitReviewParsedArtifact | _CommitReviewLike,
 ) -> tuple[list[str], list[str]]:
-    """Apply actions and return (declined, failed-delete) for existing tests."""
     report = _apply_commit_review_report(repo_root, commit_review)
     return report.declined_delete_paths, report.failed_delete_paths
 
@@ -544,7 +501,6 @@ def run_commit_review_stage1_preflight(
     | CommitReviewRejected
     | CommitReviewGateFailed
 ):
-    """Run Stage 1 deterministic tripwires on the sealed proposal tree before agent review."""
     try:
         ensure_git_initialized(str(repo_root))
     except Exception as exc:
@@ -684,14 +640,6 @@ def _surviving_unsafe_findings(
     phase_name: str,
     ctx: PhaseContext,
 ) -> tuple[Finding, ...]:
-    """Return the secret and oversized-binary findings that survive the edit step.
-
-    The re-check runs on the diff of the RE-SEALED proposal tree, so a finding
-    the edit step removed is absent and a finding the edit step could not
-    remove is still there. Only the two unsafe categories are considered: the
-    out-of-scope signal stays advisory and the hard tripwires keep their own
-    Stage 1 behaviour.
-    """
     thresholds, allowed_dirs, protected = _resolve_policy_thresholds(
         ctx.pipeline_policy, phase_name
     )
@@ -718,12 +666,6 @@ def _surviving_unsafe_findings(
 
 
 def _render_surviving_unsafe_reason(findings: tuple[Finding, ...]) -> str:
-    """Render the engine-owned evidence for unsafe content that survived the edit step.
-
-    The reason names the affected paths and the concrete counts and limits, so
-    the rejection stands on the engine's own evidence and never depends on the
-    reviewer's ``## Reason`` citations being verifiable.
-    """
     rendered = []
     for finding in findings:
         location = finding.path or "<unknown path>"
@@ -804,15 +746,10 @@ def _stage2_process_artifact(
 ) -> list[Event | CommitReviewEvent]:
     verdict_failure = _verdict_failure(artifact)
     if verdict_failure is not None:
-        # The artifact's own grammar is the first word: a verdict that cannot
-        # be read never reaches the tree binding and never runs an action.
         return [verdict_failure]
 
     binding_fault = _tree_binding_fault(artifact, seal)
     if binding_fault is not None:
-        # The verdict names no tree the reviewer judged, so its edit step
-        # must not run: the artifact is dropped and the reviewer is sent
-        # back for a re-review of the sealed tree.
         _consume_commit_review_artifact(ctx)
         return _tree_binding_events(ctx, phase_name, binding_fault, artifact, seal)
 
@@ -824,8 +761,6 @@ def _stage2_process_artifact(
     seal, diff_entries = action_res
 
     _consume_commit_review_artifact(ctx)
-    # The edit step produced a new sealed tree, so the verdict is evaluated
-    # against that tree: the binding follows the tree that will be committed.
     rebound = _rebind_verdict_to_sealed_tree(artifact, seal)
     return _evaluate_verdict(rebound, seal, diff_entries, phase_name, ctx)
 
@@ -834,15 +769,6 @@ def handle_commit_review_phase(
     effect: Effect,
     ctx: PhaseContext,
 ) -> list[Event | CommitReviewEvent]:
-    """Handle the commit review phase.
-
-    Orchestrates the two-stage review:
-
-    1. Pre-emptively untracks engine-internal files and seeds canonical ignore/exclude.
-    2. Seals pending working tree changes via proposal_seal.seal_pending.
-    3. Stage 1: Evaluates deterministic tripwires on the sealed proposal tree. Hard tripwires reject immediately.
-    4. Stage 2: Agent review. Provides proposal ref, diff, and soft tripwires, applies safe housekeeping actions, and validates verdict.
-    """
     if isinstance(effect, PreparePromptEffect):
         return [PipelineEvent.PROMPT_PREPARED]
     if not isinstance(effect, InvokeAgentEffect):
@@ -922,7 +848,6 @@ def handle_commit_review_phase(
 
 
 def _consume_commit_review_artifact(ctx: PhaseContext) -> None:
-    """Drop a graded well-formed leftover so the next attempt needs a new submit."""
     try:
         if ctx.workspace.exists(COMMIT_REVIEW_ARTIFACT_PATH):
             ctx.workspace.delete(COMMIT_REVIEW_ARTIFACT_PATH)

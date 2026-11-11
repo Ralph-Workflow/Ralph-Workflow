@@ -1,24 +1,3 @@
-"""WU-2: the typed index-flag probe that closes the hidden-dirt blind spot.
-
-``git update-index --assume-unchanged`` and ``git update-index
---skip-worktree`` hide a path from ``git status --porcelain``, from
-``git diff HEAD`` and from ``git stash create`` (all verified against
-real git in ``tests/test_integration_dirt_edge_cases.py``), so a
-flagged-only dirty tree used to classify as CLEAN and its content was
-never preserved. :func:`~ralph.pipeline.integration_observation.read_index_flag_dirt`
-is the bounded, typed probe that reads the flags (``git ls-files -v -z``)
-and the real content (``git hash-object`` vs ``git ls-tree HEAD``); its
-reading feeds :func:`~ralph.pipeline.integration_observation.classify_worktree`
-so hidden dirt types as ``DirtShape.INDEX_FLAG_HIDDEN`` — blocking,
-never clean — and an unreadable probe is UNKNOWN: back off and
-re-observe, never certify clean.
-
-Everything here is fake-based: ``run_git`` is monkeypatched with a
-scripted stand-in (no real git, no subprocess, no sleeps), and the
-classifier/decision-table checks are pure. This is the
-``audit_test_policy`` contract.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -61,8 +40,6 @@ pytestmark = pytest.mark.timeout_seconds(10)
 
 _ROOT = Path("/fake/root")
 
-#: Worktree content hash standing in for ``git hash-object`` output; the
-#: HEAD blob oid for the same content (deterministic, parse-safe).
 _CONTENT = "edited under the flag"
 _WT_HASH = hashlib.sha256(_CONTENT.encode()).hexdigest()
 _HEAD_OID = hashlib.sha256(b"base").hexdigest()
@@ -70,8 +47,6 @@ _OTHER_WT_HASH = hashlib.sha256(b"other edit").hexdigest()
 
 
 class _ScriptedGit:
-    """``run_git`` stand-in answering per subcommand from a script."""
-
     def __init__(
         self,
         *,
@@ -102,12 +77,10 @@ class _ScriptedGit:
         label: str,
         options: object | None = None,
     ) -> GitRunResult:
-        """Dispatch one scripted answer by subcommand; assert probe shape."""
         assert cwd is not None
         assert label
         argv = tuple(args)
         self.calls.append(argv)
-        # Find the subcommand after any leading ``-c key=value`` pins.
         offset = 0
         while offset < len(argv) and argv[offset] == "-c":
             offset += 2
@@ -145,19 +118,11 @@ def _install(
     monkeypatch.setattr(obs, "run_git", fake.run)
 
 
-# ---------------------------------------------------------------------------
-# The probe itself.
-# ---------------------------------------------------------------------------
-
-
 def test_probe_reads_both_flag_kinds_and_detects_changed_content(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``ls-files -v`` names the flags; content hashes find the hidden edit."""
     fake = _ScriptedGit(
         ls_files=_FLAGGED_LS_FILES,
-        # hash-object answers in argv path order (sorted): notes.md
-        # matches HEAD; app.py content differs from HEAD.
         hash_object=f"{_HEAD_OID}\n{_WT_HASH}\n",
         ls_tree="\0".join(
             (
@@ -180,14 +145,12 @@ def test_probe_reads_both_flag_kinds_and_detects_changed_content(
         ("docs/notes.md", _HEAD_OID),
         ("src/app.py", _WT_HASH),
     )
-    # Bounded: three git calls total, one per probe stage.
     assert len(fake.calls) == 3
 
 
 def test_probe_short_circuits_when_nothing_is_flagged(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A flag-free tree costs one git call and answers empty — never unknown."""
     fake = _ScriptedGit(ls_files="H src/clean.py\0")
     _install(monkeypatch, fake)
 
@@ -211,7 +174,6 @@ def test_probe_failure_is_unknown_never_clean(
     monkeypatch: pytest.MonkeyPatch,
     script: _ScriptedGit,
 ) -> None:
-    """Any unreadable stage backs off: unknown, not an empty (clean) reading."""
     reading = read_index_flag_dirt(_ROOT, git_runner=script.run)
 
     assert reading.is_unknown
@@ -222,10 +184,9 @@ def test_probe_failure_is_unknown_never_clean(
 def test_probe_unknown_content_hash_count_is_unknown(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A truncated hash-object stream proves nothing; fail closed."""
     fake = _ScriptedGit(
         ls_files="h src/app.py\0S docs/notes.md\0",
-        hash_object=f"{_WT_HASH}\n",  # one hash for two flagged paths
+        hash_object=f"{_WT_HASH}\n",
         ls_tree=f"100644 blob {_HEAD_OID}\tsrc/app.py\0",
     )
     _install(monkeypatch, fake)
@@ -233,11 +194,6 @@ def test_probe_unknown_content_hash_count_is_unknown(
     reading = read_index_flag_dirt(_ROOT, git_runner=fake.run)
 
     assert reading.is_unknown
-
-
-# ---------------------------------------------------------------------------
-# The classifier: hidden dirt is blocking, never clean.
-# ---------------------------------------------------------------------------
 
 
 def _dirt(changed: frozenset[str] = frozenset({"src/app.py"})) -> IndexFlagDirt:
@@ -250,7 +206,6 @@ def _dirt(changed: frozenset[str] = frozenset({"src/app.py"})) -> IndexFlagDirt:
 
 
 def test_classifier_flags_hidden_dirt_as_blocking_shape() -> None:
-    """Clean porcelain + changed flagged content = BLOCKED, INDEX_FLAG_HIDDEN."""
     verdict = classify_worktree(Reading.known(""), index_flag_dirt=_dirt())
 
     assert verdict.state is WorktreeState.TRACKED_CHANGES
@@ -261,7 +216,6 @@ def test_classifier_flags_hidden_dirt_as_blocking_shape() -> None:
 
 
 def test_classifier_unmerged_porcelain_outranks_flag_evidence() -> None:
-    """A real conflict stays UNMERGED: the operation ladder owns it, not cleanup."""
     verdict = classify_worktree(
         Reading.known("UU src/app.py\0"),
         index_flag_dirt=_dirt(),
@@ -273,7 +227,6 @@ def test_classifier_unmerged_porcelain_outranks_flag_evidence() -> None:
 
 
 def test_classifier_clean_tree_without_flags_is_unchanged() -> None:
-    """No flags, clean porcelain: the exact legacy CLEAN verdict."""
     with_flags = classify_worktree(Reading.known(""), index_flag_dirt=IndexFlagDirt.empty())
     without = classify_worktree(Reading.known(""))
 
@@ -283,19 +236,12 @@ def test_classifier_clean_tree_without_flags_is_unchanged() -> None:
 
 
 def test_classifier_visible_dirt_keep_their_shapes_with_flag_evidence() -> None:
-    """Flag-free evidence never rewrites an ordinary visible-dirt verdict."""
     assert classify_worktree(
         Reading.known(" M src/app.py\0"), index_flag_dirt=IndexFlagDirt.empty()
     ) == classify_worktree(Reading.known(" M src/app.py\0"))
 
 
-# ---------------------------------------------------------------------------
-# read_worktree: the observation seam runs the probe and fails closed.
-# ---------------------------------------------------------------------------
-
-
 def test_read_worktree_blocks_on_flag_hidden_dirt(monkeypatch: pytest.MonkeyPatch) -> None:
-    """End to end through the seam: hidden dirt is observed as blocking."""
     fake = _ScriptedGit(
         status="",
         ls_files="h src/app.py\0",
@@ -316,7 +262,6 @@ def test_read_worktree_blocks_on_flag_hidden_dirt(monkeypatch: pytest.MonkeyPatc
 def test_read_worktree_unknown_flag_probe_never_certifies_clean(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An unreadable flag probe turns a clean-looking tree into UNKNOWN."""
     fake = _ScriptedGit(status="", ls_files_rc=128)
     _install(monkeypatch, fake)
 
@@ -325,11 +270,6 @@ def test_read_worktree_unknown_flag_probe_never_certifies_clean(
     assert observed.is_unknown
     assert observed.value is None
     assert observed.reason
-
-
-# ---------------------------------------------------------------------------
-# The pure residue diff: baseline vs after flag content.
-# ---------------------------------------------------------------------------
 
 
 def _flag_baseline(flag_hashes: tuple[tuple[str, str], ...]) -> PlanningBaseline:
@@ -344,7 +284,6 @@ def _flag_baseline(flag_hashes: tuple[tuple[str, str], ...]) -> PlanningBaseline
 
 
 def test_detect_residue_flags_content_changed_under_the_flag() -> None:
-    """A flagged path whose content moved since baseline is typed residue."""
     baseline = _flag_baseline((("src/app.py", _HEAD_OID),))
     after = IndexFlagDirt(
         assume_unchanged=frozenset({"src/app.py"}),
@@ -361,7 +300,6 @@ def test_detect_residue_flags_content_changed_under_the_flag() -> None:
 
 
 def test_detect_residue_none_when_flagged_content_unchanged() -> None:
-    """Flag set, content identical to baseline: nothing changed, no residue."""
     baseline = _flag_baseline((("src/app.py", _HEAD_OID),))
     after = IndexFlagDirt(
         assume_unchanged=frozenset({"src/app.py"}),
@@ -377,7 +315,6 @@ def test_detect_residue_none_when_flagged_content_unchanged() -> None:
 
 
 def test_detect_residue_newly_flagged_path_with_changed_content() -> None:
-    """A path flagged during the dispatch (absent at baseline) is residue."""
     baseline = _flag_baseline(())
     after = IndexFlagDirt(
         assume_unchanged=frozenset({"src/app.py"}),
@@ -393,15 +330,9 @@ def test_detect_residue_newly_flagged_path_with_changed_content() -> None:
 
 
 def test_detect_residue_legacy_callers_without_probe_stay_clean() -> None:
-    """A no-flag baseline probed by an old caller (no after reading) stays None."""
     baseline = _flag_baseline(())
 
     assert detect_planning_residue(baseline, "", after_diff_hash="d" * 64) is None
-
-
-# ---------------------------------------------------------------------------
-# The decision table: the shape climbs the cleanup ladder, never a resolver.
-# ---------------------------------------------------------------------------
 
 
 def _observation() -> Observation:
@@ -418,7 +349,6 @@ def _observation() -> Observation:
 
 
 def test_index_flag_hidden_shape_routes_to_save_and_restore() -> None:
-    """Both attributions answer the first cleanup rung — never COMMIT, never resolver."""
     for attribution in (DirtAttribution.UNOWNED, DirtAttribution.UNKNOWN):
         action = decide(
             DecisionContext(
@@ -434,7 +364,6 @@ def test_index_flag_hidden_shape_routes_to_save_and_restore() -> None:
 def test_index_flag_hidden_shape_climbs_the_ladder_not_the_resolver(
     tmp_path: Path,
 ) -> None:
-    """Under repeat pressure the shape escalates rung by rung, saturating."""
     from ralph.pipeline.integration_owner import (
         charge_integration_attempt,
         load_integration_attempts,

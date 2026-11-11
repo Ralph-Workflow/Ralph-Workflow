@@ -1,12 +1,3 @@
-"""Black-box tests for lifecycle model-driven rendering APIs.
-
-Covers:
-- show_phase_start_from_entry (phase_banner.py)
-- emit_phase_close_from_exit (PlainLogRenderer / ParallelDisplay)
-- debug breadcrumbs in text-mode render_completion_summary
-- section ordering in render_completion_summary_group
-"""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -20,10 +11,6 @@ from ralph.display.completion_summary import (
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.snapshot import PipelineSnapshot
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 _CREATED_AT = datetime(2026, 5, 4, tzinfo=UTC)
 
@@ -52,7 +39,6 @@ def _blank_snapshot(
     waiting_status_line: str | None = None,
     last_failure_category: str | None = None,
 ) -> PipelineSnapshot:
-    """Return a minimal PipelineSnapshot with all optional fields defaulted."""
     return PipelineSnapshot(
         phase=phase,
         previous_phase=None,
@@ -76,11 +62,6 @@ def _blank_snapshot(
         waiting_status_line=waiting_status_line,
         last_failure_category=last_failure_category,
     )
-
-
-# ---------------------------------------------------------------------------
-# show_phase_start_from_entry
-# ---------------------------------------------------------------------------
 
 
 class TestTextModeDebugBreadcrumbs:

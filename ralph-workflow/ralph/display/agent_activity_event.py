@@ -1,4 +1,3 @@
-"""Typed canonical activity event for parser and display integration."""
 
 from __future__ import annotations
 
@@ -14,7 +13,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class AgentActivityEvent:
-    """Typed canonical activity event for future parser normalization work."""
 
     provider: ActivityProvider
     kind: ActivityEventKind

@@ -1,5 +1,3 @@
-"""Unit tests for CLI."""
-
 from __future__ import annotations
 
 import pytest
@@ -9,8 +7,6 @@ from ralph.cli.main import parse_counter_overrides
 
 
 class TestParseCounterOverrides:
-    """Tests for _parse_counter_overrides helper."""
-
     def test_parses_single_valid_entry(self) -> None:
         result = parse_counter_overrides(["iteration=3"])
         assert result == {"iteration": 3}

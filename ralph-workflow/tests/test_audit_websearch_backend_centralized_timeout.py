@@ -1,31 +1,3 @@
-"""AST-based drift-detection audit for the websearch backend timeout contract.
-
-The 10,000ms wedge the user reported originated from hard-coded
-``_TIMEOUT_SECONDS = 10.0`` literals in two websearch backends (Brave,
-SearXNG) and the COMPLETE ABSENCE of any timeout in three SDK-backed
-backends (DDGS, Exa, Tavily). This drift-detection test enforces the
-centralization contract so the wedge cannot be re-introduced:
-
-1. No backend declares a numeric ``_TIMEOUT_SECONDS`` literal in any
-   ``ast.Assign`` node.
-2. The HTTP backends (Brave, SearXNG) import
-   ``WEBSEARCH_BACKEND_TIMEOUT_SECONDS`` from ``ralph.timeout_defaults``
-   (the single source of truth).
-3. The SDK backends (DDGS, Exa, Tavily) route their third-party SDK
-   call through ``with_timeout`` from
-   ``ralph.mcp.websearch._bounded_sdk_call``.
-4. The SDK backends do NOT directly import ``WEBSEARCH_SDK_TIMEOUT_SECONDS``
-   from ``ralph.timeout_defaults`` (the timeout must flow through the
-   ``with_timeout`` argument or the helper's default-function
-   ``default_sdk_timeout_seconds()``).
-
-The audit is hermetic: ``inspect.getsource(module)`` to read production
-source (NOT in the policy audit's deny list), ``ast.parse`` to analyze it,
-and a per-module fixture (NOT a real ``Path.rglob`` inside the test loop).
-The test does NOT call ``Path.read_text`` or ``Path.write_text``, so it does
-not need to be added to ``_IO_ALLOWLIST``.
-"""
-
 from __future__ import annotations
 
 import ast
@@ -65,7 +37,6 @@ def _tree_for(module_name: str) -> ast.Module:
 
 @pytest.mark.parametrize("module_name", BACKEND_MODULES)
 def test_no_backend_declares_numeric_timeout_seconds_literal(module_name: str) -> None:
-    """No backend may declare ``_TIMEOUT_SECONDS = <numeric literal>``."""
     tree = _tree_for(module_name)
     for node in ast.walk(tree):
         if not isinstance(node, ast.Assign):
@@ -86,7 +57,6 @@ def test_no_backend_declares_numeric_timeout_seconds_literal(module_name: str) -
 
 @pytest.mark.parametrize("module_name", HTTP_BACKEND_MODULES)
 def test_http_backends_import_central_timeout(module_name: str) -> None:
-    """HTTP backends import the central timeout constant from ralph.timeout_defaults."""
     source = _source_for(module_name)
     assert "from ralph.timeout_defaults import WEBSEARCH_BACKEND_TIMEOUT_SECONDS" in source, (
         f"{module_name} must import WEBSEARCH_BACKEND_TIMEOUT_SECONDS from ralph.timeout_defaults"
@@ -95,7 +65,6 @@ def test_http_backends_import_central_timeout(module_name: str) -> None:
 
 @pytest.mark.parametrize("module_name", SDK_BACKEND_MODULES)
 def test_sdk_backends_route_through_with_timeout(module_name: str) -> None:
-    """SDK backends wrap their third-party SDK call in :func:`with_timeout`."""
     source = _source_for(module_name)
     assert "from ralph.mcp.websearch._bounded_sdk_call import" in source, (
         f"{module_name} must import from ralph.mcp.websearch._bounded_sdk_call"
@@ -142,13 +111,6 @@ def test_sdk_backends_route_through_with_timeout(module_name: str) -> None:
 
 @pytest.mark.parametrize("module_name", SDK_BACKEND_MODULES)
 def test_sdk_backends_do_not_directly_import_sdk_timeout_constant(module_name: str) -> None:
-    """SDK backends must NOT import the SDK timeout constant directly.
-
-    The timeout must flow through ``with_timeout``'s argument or the
-    helper's ``default_sdk_timeout_seconds()`` re-export. A direct
-    import from ``ralph.timeout_defaults`` bypasses the helper and
-    re-introduces the drift the audit is designed to detect.
-    """
     source = _source_for(module_name)
     forbidden = "from ralph.timeout_defaults import WEBSEARCH_SDK_TIMEOUT_SECONDS"
     assert forbidden not in source, (

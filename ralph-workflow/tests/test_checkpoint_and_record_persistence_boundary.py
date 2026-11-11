@@ -1,16 +1,3 @@
-"""Tests for checkpoint and record migration, filesystem, and persistence boundary.
-
-Verifies:
-1. Legacy checkpoint and integration records (including for-each-ref, ls-files,
-   dict evidence, and last_failure_cause) load into one authoritative state or
-   explicit intervention.
-2. Projections are rebuilt one-way with no newest-timestamp merging.
-3. Projection writers cannot mutate the authority.
-4. Each Transition is durable and atomic through an injected record store/workspace.
-5. Crash before and after each transition is idempotent.
-6. Checkpoint handle and persistence boundary with injected backend.
-"""
-
 from __future__ import annotations
 
 import errno
@@ -58,8 +45,6 @@ from ralph.pipeline.state_models import (
 
 
 class _InMemoryBackend(FileBackend):
-    """In-memory FileBackend implementation for atomic persistence tests."""
-
     def __init__(self) -> None:
         self.files: dict[Path, bytes] = {}
         self.write_calls: list[tuple[Path, bytes]] = []
@@ -115,31 +100,13 @@ class _InMemoryBackend(FileBackend):
         return []
 
 
-# ---------------------------------------------------------------------------
-# 1. State models export contract
-# ---------------------------------------------------------------------------
-
-
 def test_state_models_re_exports_resolution_failure_cause() -> None:
-    """ResolutionFailureCause must be exported from ralph.pipeline.state_models."""
     assert ExportedResolutionFailureCause is ResolutionFailureCause
     assert ExportedResolutionFailureCause.NONE.value == "NONE"
     assert ExportedResolutionFailureCause.AGENT_FAILURE.value == "AGENT_FAILURE"
 
 
-# ---------------------------------------------------------------------------
-# 2. Legacy record and checkpoint migration tests
-# ---------------------------------------------------------------------------
-
-
 def test_legacy_record_ls_files_loads_without_intervention() -> None:
-    """Legacy records carrying ls-files evidence key load without intervention.
-
-    The new diagnostic path drops the legacy global evidence key
-    silently and re-derives state from Git. Surfacing intervention
-    here was the production livelock: the diagnostic could not
-    re-verify the evidence and refused to proceed.
-    """
     payload: dict[str, object] = {
         "phase": "integrating",
         "target": "main",
@@ -152,12 +119,10 @@ def test_legacy_record_ls_files_loads_without_intervention() -> None:
     record = parse_record_payload(payload)
     assert record is not None
     assert record.diagnostic_intervention_required is False
-    # The dropped legacy key is no longer carried as live evidence.
     assert dict(record.diagnostic_evidence) == {}
 
 
 def test_legacy_record_prefixed_ls_files_loads_without_intervention() -> None:
-    """Legacy records carrying ls-files:stage load without intervention."""
     payload: dict[str, object] = {
         "phase": "integrating",
         "target": "main",
@@ -173,7 +138,6 @@ def test_legacy_record_prefixed_ls_files_loads_without_intervention() -> None:
 
 
 def test_legacy_record_dict_format_evidence_loads_cleanly() -> None:
-    """Diagnostic evidence stored as a dictionary loads and migrates one-way."""
     payload: dict[str, object] = {
         "phase": "integrating",
         "target": "main",
@@ -193,8 +157,6 @@ def test_legacy_record_dict_format_evidence_loads_cleanly() -> None:
 
 
 def test_legacy_record_last_failure_cause_migration() -> None:
-    """Legacy records without last_failure_cause migrate to NONE or AGENT_FAILURE."""
-    # Default case: no cause, no sentinel reason -> NONE
     payload1: dict[str, object] = {
         "phase": "integrating",
         "target": "main",
@@ -205,7 +167,6 @@ def test_legacy_record_last_failure_cause_migration() -> None:
     assert rec1 is not None
     assert rec1.last_failure_cause == ResolutionFailureCause.NONE
 
-    # Sentinel reason -> AGENT_FAILURE
     payload2: dict[str, object] = {
         "phase": "integrating",
         "target": "main",
@@ -217,7 +178,6 @@ def test_legacy_record_last_failure_cause_migration() -> None:
     assert rec2 is not None
     assert rec2.last_failure_cause == ResolutionFailureCause.AGENT_FAILURE
 
-    # repair_last_error sentinel -> AGENT_FAILURE
     payload3: dict[str, object] = {
         "phase": "integrating",
         "target": "main",
@@ -229,7 +189,6 @@ def test_legacy_record_last_failure_cause_migration() -> None:
     assert rec3 is not None
     assert rec3.last_failure_cause == ResolutionFailureCause.AGENT_FAILURE
 
-    # Explicit failure cause -> preserved
     payload4: dict[str, object] = {
         "phase": "integrating",
         "target": "main",
@@ -243,7 +202,6 @@ def test_legacy_record_last_failure_cause_migration() -> None:
 
 
 def test_corrupt_record_last_failure_cause_fails_closed() -> None:
-    """Corrupt last_failure_cause value in record payload causes loader to fail closed."""
     payload: dict[str, object] = {
         "phase": "integrating",
         "target": "main",
@@ -255,13 +213,7 @@ def test_corrupt_record_last_failure_cause_fails_closed() -> None:
     assert rec is None
 
 
-# ---------------------------------------------------------------------------
-# 3. Projections rebuilt one-way with no newest-timestamp merging
-# ---------------------------------------------------------------------------
-
-
 def test_checkpoint_payload_from_dict_and_load_preserves_authority() -> None:
-    """CheckpointPayload reconstructs state as single authority without timestamp merging."""
     state = PipelineState(
         phase="development",
         rebase=RebaseState(
@@ -278,17 +230,14 @@ def test_checkpoint_payload_from_dict_and_load_preserves_authority() -> None:
     )
 
     data = payload.to_dict()
-    # Inject divergent timestamp into raw json dict to test that it is NOT merged
     data["legacy_timestamp"] = "2099-01-01T00:00:00Z"
     data["timestamp"] = "2099-01-01T00:00:00Z"
 
     reconstructed = CheckpointPayload.from_dict(data)
     assert reconstructed.state.phase == "development"
     assert reconstructed.phase == "development"
-    # State was not overwritten or mutated by newest timestamp
     assert reconstructed.state.rebase.last_failure_cause == ResolutionFailureCause.AGENT_FAILURE
 
-    # Loading via checkpoint.load from backend
     backend = _InMemoryBackend()
     path = Path("/workspace/.agent/checkpoint.json")
     backend.write_text(path, json.dumps(data))
@@ -299,13 +248,7 @@ def test_checkpoint_payload_from_dict_and_load_preserves_authority() -> None:
     assert loaded_state.rebase.last_failure_cause == ResolutionFailureCause.AGENT_FAILURE
 
 
-# ---------------------------------------------------------------------------
-# 4. Projection writers cannot mutate the authority
-# ---------------------------------------------------------------------------
-
-
 def test_projection_writers_cannot_mutate_authority() -> None:
-    """IntegrationRecord and PipelineState are immutable and cannot be mutated by projection writers."""
     record = IntegrationRecord(
         phase="integrating",
         target="main",
@@ -323,26 +266,18 @@ def test_projection_writers_cannot_mutate_authority() -> None:
     with pytest.raises(ValidationError):
         state.phase = "complete"
 
-    # RebaseState projection cannot mutate record
     rebase = RebaseState(last_outcome=None)
     with pytest.raises(ValidationError):
         rebase.fast_forwarded = True
 
 
-# ---------------------------------------------------------------------------
-# 5. Transition durability and atomicity through injected record store
-# ---------------------------------------------------------------------------
-
-
 def test_integration_record_store_transitions_atomic_and_durable() -> None:
-    """Each Transition is durably and atomically persisted through IntegrationRecordStore."""
     backend = _InMemoryBackend()
     root = Path("/test-workspace")
     store = IntegrationRecordStore(root, backend=backend)
 
     assert store.read() is None
 
-    # 1. START_INTEGRATING
     initial = store.transition(
         START_INTEGRATING,
         target="main",
@@ -354,12 +289,10 @@ def test_integration_record_store_transitions_atomic_and_durable() -> None:
     assert backend.exists(store.record_path)
     assert len(backend.replace_calls) == 1
 
-    # 2. MARK_RESOLVING_REBASE
     resolving = store.transition(MARK_RESOLVING_REBASE, resolving_rebase=True)
     assert resolving.resolving_rebase is True
     assert len(backend.replace_calls) == 2
 
-    # 3. PROMOTE_TO_INTEGRATED
     promoted = store.transition(
         PROMOTE_TO_INTEGRATED,
         phase="integrated",
@@ -372,7 +305,6 @@ def test_integration_record_store_transitions_atomic_and_durable() -> None:
 
 
 def test_apply_record_transition_helper() -> None:
-    """apply_record_transition convenience helper writes through injected store."""
     backend = _InMemoryBackend()
     root = Path("/workspace")
     rec = apply_record_transition(
@@ -389,13 +321,7 @@ def test_apply_record_transition_helper() -> None:
     assert read_back.pre_feature_sha == "a" * 40
 
 
-# ---------------------------------------------------------------------------
-# 6. Crash before/after each transition idempotence
-# ---------------------------------------------------------------------------
-
-
 def test_crash_before_transition_idempotent() -> None:
-    """A crash before transition execution leaves prior state intact; retry applies it."""
     backend = _InMemoryBackend()
     root = Path("/crash-test")
     store = IntegrationRecordStore(root, backend=backend)
@@ -408,14 +334,12 @@ def test_crash_before_transition_idempotent() -> None:
     )
     replaces_before = len(backend.replace_calls)
 
-    # Simulated crash: no mutation performed. Next run performs the transition cleanly:
     updated = store.transition(MARK_RESOLVING_REBASE, resolving_rebase=True)
     assert updated.resolving_rebase is True
     assert len(backend.replace_calls) == replaces_before + 1
 
 
 def test_crash_after_transition_idempotent_replay() -> None:
-    """Replaying an already applied transition after a crash is idempotent and no-op."""
     backend = _InMemoryBackend()
     root = Path("/crash-test")
     store = IntegrationRecordStore(root, backend=backend)
@@ -430,15 +354,12 @@ def test_crash_after_transition_idempotent_replay() -> None:
 
     replaces_after = len(backend.replace_calls)
 
-    # Replay identical transition after crash:
     replayed = store.transition(MARK_RESOLVING_REBASE, resolving_rebase=True)
     assert replayed.resolving_rebase is True
-    # atomic_write_bytes_if_changed skips write and replace on unchanged payload
     assert len(backend.replace_calls) == replaces_after
 
 
 def test_crash_after_promote_to_integrated_idempotent_replay() -> None:
-    """Replaying PROMOTE_TO_INTEGRATED after crash is idempotent and does not trip guard."""
     backend = _InMemoryBackend()
     root = Path("/crash-test")
     store = IntegrationRecordStore(root, backend=backend)
@@ -457,7 +378,6 @@ def test_crash_after_promote_to_integrated_idempotent_replay() -> None:
 
     replaces_count = len(backend.replace_calls)
 
-    # Crash after write: replaying the transition with same integrated sha returns current record
     replayed = store.transition(
         PROMOTE_TO_INTEGRATED,
         phase="integrated",
@@ -465,20 +385,12 @@ def test_crash_after_promote_to_integrated_idempotent_replay() -> None:
     )
     assert replayed.phase == "integrated"
     assert replayed.integrated_feature_sha == "3" * 40
-    # No new replace performed
     assert len(backend.replace_calls) == replaces_count
 
 
-# ---------------------------------------------------------------------------
-# 7. Checkpoint handle with backend boundary tests
-# ---------------------------------------------------------------------------
-
-
 def test_checkpoint_handle_with_injected_backend() -> None:
-    """Checkpoint class operations are routed through the injected FileBackend."""
     backend = _InMemoryBackend()
     path = Path("/agent/checkpoint.json")
-    # Stray tmp file should be cleaned up on init
     tmp_path = Path("/agent/checkpoint.json.tmp")
     backend.write_text(tmp_path, "stray bytes")
 
@@ -505,7 +417,6 @@ def test_checkpoint_handle_with_injected_backend() -> None:
 
 @pytest.mark.asyncio
 async def test_checkpoint_async_methods_with_injected_backend() -> None:
-    """Checkpoint async methods operate cleanly with injected FileBackend."""
     backend = _InMemoryBackend()
     path = Path("/agent/async_checkpoint.json")
     handle = Checkpoint(path, backend=backend)
@@ -519,13 +430,7 @@ async def test_checkpoint_async_methods_with_injected_backend() -> None:
     assert loaded.phase == "development"
 
 
-# ---------------------------------------------------------------------------
-# 8. Execution components round-trip through from_dict
-# ---------------------------------------------------------------------------
-
-
 def test_execution_components_round_trip() -> None:
-    """StepOutcome, ExecutionStep, ExecutionHistory, RunContext round trip cleanly."""
     outcome = StepOutcome.failure("disk error", recoverable=True)
     outcome_dict = outcome.to_dict()
     reconstructed_outcome = StepOutcome.from_dict(outcome_dict)
@@ -553,14 +458,7 @@ def test_execution_components_round_trip() -> None:
     assert reconstructed_ctx.actual_reviewer_runs == 1
 
 
-# ---------------------------------------------------------------------------
-# 8. Typed record read outcome (read_record_outcome) -- closed dispositions
-# ---------------------------------------------------------------------------
-
-
 class _TransientBackend(_InMemoryBackend):
-    """Backend whose first read of a path fails with the given errno/error."""
-
     def __init__(self, files: dict[Path, bytes], *, err: Exception) -> None:
         super().__init__()
         self.files.update(files)
@@ -575,15 +473,11 @@ class _TransientBackend(_InMemoryBackend):
 
 
 class _ExistsPermissionErrorBackend(_InMemoryBackend):
-    """Backend whose exists() raises PermissionError (file is inaccessible)."""
-
     def exists(self, path: Path) -> bool:
         raise PermissionError(13, "permission denied")
 
 
 class _ExistsEagainBackend(_InMemoryBackend):
-    """Backend whose exists() raises EAGAIN (transient lock contention)."""
-
     def exists(self, path: Path) -> bool:
         raise OSError(errno.EAGAIN, "resource temporarily unavailable")
 
@@ -614,7 +508,6 @@ def test_read_record_outcome_present_round_trips_exact_record() -> None:
     assert outcome.disposition is RecordReadOutcomeDisposition.PRESENT
     assert outcome.record is not None
     assert outcome.record.target == "main"
-    # Restart re-read: same bytes -> identical record, byte-for-byte payload preserved
     outcome2 = read_record_outcome(root, backend=backend)
     assert outcome2.record == outcome.record
     assert backend.read_bytes(record_path(root)) == _valid_record_bytes()
@@ -633,7 +526,6 @@ def test_read_record_outcome_corrupt_json_is_unreadable() -> None:
 def test_read_record_outcome_unsupported_schema_is_unreadable() -> None:
     backend = _InMemoryBackend()
     root = Path("/ws")
-    # Valid JSON dict, but an unknown phase value (older / partial write).
     payload: dict[str, object] = {"phase": "warping", "target": "main"}
     backend.files[record_path(root)] = json.dumps(payload).encode("utf-8")
     outcome = read_record_outcome(root, backend=backend)
@@ -642,13 +534,6 @@ def test_read_record_outcome_unsupported_schema_is_unreadable() -> None:
 
 
 def test_read_record_outcome_eagain_is_busy_with_no_minted_deadline() -> None:
-    """BUSY is reserved for demonstrable EAGAIN/EWOULDBLOCK contention.
-
-    No attempt/deadline is minted at read time: a fresh deadline would
-    replenish the bounded-retry budget on every failing read. The
-    consumer must consult existing PERSISTED retry state and decide
-    REQUIRE_INTERVENTION itself when no valid unexpired deadline exists.
-    """
     root = Path("/ws")
     err = OSError(errno.EAGAIN, "resource temporarily unavailable")
     backend = _TransientBackend({record_path(root): _valid_record_bytes()}, err=err)
@@ -656,7 +541,6 @@ def test_read_record_outcome_eagain_is_busy_with_no_minted_deadline() -> None:
     assert outcome.disposition is RecordReadOutcomeDisposition.BUSY
     assert outcome.busy_attempt is None
     assert outcome.busy_deadline is None
-    # Second read succeeds: BUSY is transient, not a permanent state.
     outcome2 = read_record_outcome(root, backend=backend)
     assert outcome2.disposition is RecordReadOutcomeDisposition.PRESENT
 
@@ -680,7 +564,6 @@ def test_read_record_outcome_ewouldblock_is_busy() -> None:
     ],
 )
 def test_read_record_outcome_read_failures_are_unreadable(label: str, err: Exception) -> None:
-    """Backend read/permission/decoding failures map to UNREADABLE, never BUSY."""
     del label
     root = Path("/ws")
     backend = _TransientBackend({record_path(root): _valid_record_bytes()}, err=err)
@@ -696,7 +579,6 @@ def test_clear_record_refuses_to_unlink_unreadable_evidence() -> None:
     backend.files[record_path(root)] = b"{corrupt"
     with pytest.raises(RecordUnreadableError):
         clear_record(root, backend=backend)
-    # Evidence is byte-identical: the refusal never mutates the file.
     assert backend.read_bytes(record_path(root)) == b"{corrupt"
 
 
@@ -718,24 +600,17 @@ def test_store_transition_refuses_start_integrating_over_unreadable_evidence() -
             pre_feature_sha="a" * 40,
             pre_target_sha=None,
         )
-    # The unreadable file is left byte-identical; no fresh START_INTEGRATING
-    # record was written over the evidence.
     assert backend.read_bytes(record_path(root)) == corrupt
     assert backend.write_calls == []
     assert backend.replace_calls == []
 
 
 def test_store_transition_refuses_all_mutations_on_busy_read() -> None:
-    """BUSY (EAGAIN contention) refuses every mutation, preserving file bytes.
-
-    With no valid unexpired persisted deadline, the consumer decides
-    REQUIRE_INTERVENTION; the store never mints a fresh allowance.
-    """
     root = Path("/ws")
     existing = _valid_record_bytes()
     err = OSError(errno.EAGAIN, "resource temporarily unavailable")
     backend = _TransientBackend({record_path(root): existing}, err=err)
-    backend.busy_reads = 10  # persistent contention across the two store reads
+    backend.busy_reads = 10
     store = IntegrationRecordStore(root, backend=backend)
     with pytest.raises(RecordBusyError):
         store.transition(MARK_RESOLVING_REBASE, resolving_rebase=True)
@@ -752,12 +627,11 @@ def test_store_transition_refuses_all_mutations_on_busy_read() -> None:
 
 
 def test_store_transition_busy_absent_file_does_not_create_record() -> None:
-    """BUSY on a transiently-unreadable existing file never creates a fresh record."""
     root = Path("/ws")
     evidence = b"{torn write evidence"
     err = OSError(errno.EAGAIN, "lock held")
     backend = _TransientBackend({record_path(root): evidence}, err=err)
-    backend.busy_reads = 10  # persistent contention across the two store reads
+    backend.busy_reads = 10
     store = IntegrationRecordStore(root, backend=backend)
     with pytest.raises(RecordBusyError):
         store.transition(
@@ -783,7 +657,6 @@ def test_store_transition_absent_start_integrating_semantics_preserved() -> None
 
 
 def test_store_transition_refuses_busy_with_no_mutation() -> None:
-    """TOCTOU regression: single authoritative read; BUSY refuses every mutation."""
     root = Path("/ws")
     valid = _valid_record_bytes()
     backend = _TransientBackend(
@@ -801,13 +674,7 @@ def test_store_transition_refuses_busy_with_no_mutation() -> None:
     assert backend.replace_calls == []
 
 
-# ---------------------------------------------------------------------------
-# 9. backend.exists() failure maps to typed outcome (not raw exception escape)
-# ---------------------------------------------------------------------------
-
-
 def test_read_record_outcome_exists_permission_error_is_unreadable() -> None:
-    """PermissionError from backend.exists() maps to UNREADABLE, not a raw exception."""
     backend = _ExistsPermissionErrorBackend()
     outcome = read_record_outcome(Path("/ws"), backend=backend)
     assert outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE
@@ -816,7 +683,6 @@ def test_read_record_outcome_exists_permission_error_is_unreadable() -> None:
 
 
 def test_read_record_outcome_exists_eagain_is_busy() -> None:
-    """EAGAIN from backend.exists() maps to BUSY, not a raw exception."""
     backend = _ExistsEagainBackend()
     outcome = read_record_outcome(Path("/ws"), backend=backend)
     assert outcome.disposition is RecordReadOutcomeDisposition.BUSY
@@ -825,11 +691,10 @@ def test_read_record_outcome_exists_eagain_is_busy() -> None:
 
 
 def test_read_record_outcome_exists_returns_true_read_raises_filenotfound_is_absent() -> None:
-    """Race: exists=True then read raises FileNotFoundError => ABSENT (disappearance wins)."""
 
     class _ExistsTrueReadFNFBackend(_InMemoryBackend):
         def exists(self, path: Path) -> bool:
-            return True  # File exists
+            return True
 
         def read_text(self, path: Path, *, encoding: str = "utf-8") -> str:
             raise FileNotFoundError("file vanished between exists and read")

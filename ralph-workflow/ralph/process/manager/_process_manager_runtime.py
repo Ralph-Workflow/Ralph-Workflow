@@ -32,19 +32,10 @@ def load_psutil_module() -> _PsutilModuleLike | None:
         return None
     return cast(
         "_PsutilModuleLike", _PsutilModuleAdapter(cast("_PsutilModuleLike", psutil_import))
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
 
 
 def redacted_command(command: Sequence[str]) -> str:
-    """Render ``command`` for a log sink without echoing any argument value.
-
-    Agent argv carries secrets in ordinary operation: the inline prompt body is
-    appended as the trailing argument, and third-party credentials are embedded
-    in the ``--mcp-config`` JSON. ``ralph.agents.invoke._commands._command_for_log``
-    already strips the former before logging an invocation, so a process-lifecycle
-    sink must not reintroduce the leak. The executable names the failure; the
-    arguments only ever add exposure, so they are counted rather than shown.
-    """
     if not command:
         return "<empty>"
     remaining = len(command) - 1
@@ -67,9 +58,6 @@ def loguru_event_listener(event: ProcessEvent) -> None:
     ):
         bound.warning("process {} {} rc={}", record.pid, new_status.name, record.returncode)
     elif new_status == ProcessStatus.FAILED:
-        # A spawn that never produced a child has pid -1 and rc None, so those
-        # two fields alone say nothing an operator can act on. The executable and
-        # the failure message are the whole diagnosis.
         bound.error(
             "process {} {} rc={} command={} failure={}",
             record.pid,

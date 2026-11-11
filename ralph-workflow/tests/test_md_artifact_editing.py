@@ -1,5 +1,3 @@
-"""Anchored oldText/newText editing of persisted markdown artifact drafts."""
-
 from __future__ import annotations
 
 import hashlib
@@ -28,10 +26,7 @@ if TYPE_CHECKING:
 
 
 class MockSession:
-    """Typed stand-in satisfying CoordinationSessionLike for handler tests."""
-
     session_id: str = "test-session"
-    #: Empty run id keeps canonical submission off the receipt/sentinel path.
     run_id: str = ""
     explore_index: object | None = None
 
@@ -44,7 +39,6 @@ class MockSession:
 
 
 def _workspace(root: Path) -> WorkspaceLike:
-    """Return a typed workspace stand-in rooted at ``root``."""
 
     class Workspace:
         def absolute_path(self, path: str) -> str:
@@ -109,7 +103,6 @@ def test_edit_replaces_the_first_occurrence_and_persists_the_draft(tmp_path: Pat
 
 
 def test_edit_reports_ambiguous_old_text_and_replaces_its_first_occurrence(tmp_path: Path) -> None:
-    """S-7: repeated oldText remains deterministic but is reported to the caller."""
     session = MockSession()
     workspace = _workspace(tmp_path)
     repeated = _SPEC.replace("- [U1] Agents\n", "- [U1] Agents\n- [U2] Agents\n")
@@ -145,7 +138,6 @@ def test_edit_applies_multiple_edits_sequentially(tmp_path: Path) -> None:
 
 
 def test_edit_reports_the_refreshed_artifact_diagnostics(tmp_path: Path) -> None:
-    """One response tells the agent what changed and whether it now validates."""
     session = MockSession()
     workspace = _workspace(tmp_path)
     broken = _SPEC.replace("## Success Criteria\n- [C1] Markdown validates\n", "")
@@ -192,7 +184,6 @@ def test_edit_aborts_the_whole_batch_when_one_edit_does_not_match(tmp_path: Path
     payload = _payload(result)
     assert payload["status"] == "no_match"
     assert payload["edit_index"] == 1
-    # Nothing is written: the earlier edit in the batch is rolled back with it.
     assert _draft(session, workspace) == _SPEC
 
 
@@ -292,7 +283,6 @@ def test_edit_enforces_the_draft_character_cap(tmp_path: Path) -> None:
 
 
 def test_edit_repairs_a_rejected_whole_document_submission(tmp_path: Path) -> None:
-    """The end-to-end flow the validation-error pointer advertises."""
     session = MockSession()
     workspace = _workspace(tmp_path)
     broken = _SPEC.replace("- [C1] Markdown validates\n", "")
@@ -318,7 +308,6 @@ def test_edit_repairs_a_rejected_whole_document_submission(tmp_path: Path) -> No
 
 
 def test_edit_submits_canonically_once_the_edited_draft_validates(tmp_path: Path) -> None:
-    """An edit that completes the document is a full submission, not just a draft write."""
     session = MockSession()
     workspace = _workspace(tmp_path)
     broken = _SPEC.replace("- [C1] Markdown validates\n", "")
@@ -342,7 +331,6 @@ def test_edit_submits_canonically_once_the_edited_draft_validates(tmp_path: Path
     assert payload["submitted"] is True
     artifact_path = tmp_path / ".agent" / "artifacts" / "product_spec.md"
     assert artifact_path.read_text(encoding="utf-8") == _SPEC
-    # The submitted document stays editable for an in-phase revision.
     assert _draft(session, workspace) == _SPEC
 
 
@@ -360,12 +348,10 @@ def test_edit_does_not_submit_while_the_edited_draft_is_still_invalid(tmp_path: 
     assert payload["valid"] is False
     assert payload["submitted"] is False
     assert not (tmp_path / ".agent" / "artifacts" / "product_spec.md").exists()
-    # The edit still landed in the draft so repair can continue.
     assert "Coding agents" in _draft(session, workspace)
 
 
 def test_edit_dry_run_previews_without_submitting(tmp_path: Path) -> None:
-    """A preview stays a preview even when the edited document would validate."""
     session = MockSession()
     workspace = _workspace(tmp_path)
     broken = _SPEC.replace("- [C1] Markdown validates\n", "")

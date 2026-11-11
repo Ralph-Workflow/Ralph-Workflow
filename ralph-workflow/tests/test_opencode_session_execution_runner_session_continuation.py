@@ -1,9 +1,3 @@
-"""Black-box regression tests for OpenCode session-aware execution.
-
-All tests use in-memory fakes — no real subprocesses, no real wall-clock waits,
-no real psutil. Verifies five acceptance scenarios and two edge cases.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -32,20 +26,13 @@ from tests._session_registry_factory import _RegistryFactory
 
 pytestmark = pytest.mark.timeout_seconds(5)
 
-# Poll interval used in the wait helper - matches _DESCENDANT_WAIT_POLL_SECONDS
 _DESCENDANT_WAIT_POLL_SECONDS = 0.5
-
-# Local aliases: tests call the same public functions but under the private-looking names
-# that were used when this module was monolithic (pre-package split).
 
 
 class TestRunnerSessionContinuation:
-    """Runner correctly threads OpenCodeResumableExitError.session_id into the retry attempt."""
-
     def test_opencode_resumable_exit_retries_with_same_session_id(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        """First call raises OpenCodeResumableExitError; second call gets session_id='sess-1'."""
         del monkeypatch
         prompt_file = tmp_path / "PROMPT.md"
         prompt_file.write_text("implement the task", encoding="utf-8")
@@ -101,7 +88,6 @@ class TestRunnerSessionContinuation:
     def test_opencode_resumable_exit_no_more_attempts_returns_failure(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        """With max_retries=0, OpenCodeResumableExitError is not retried and returns FAILURE."""
         del monkeypatch
         prompt_file = tmp_path / "PROMPT.md"
         prompt_file.write_text("implement the task", encoding="utf-8")

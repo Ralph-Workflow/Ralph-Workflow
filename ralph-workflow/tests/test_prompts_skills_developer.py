@@ -1,5 +1,3 @@
-"""Tests that developer templates use Skill-tool discovery and docs-mcp guidance."""
-
 import tempfile
 from pathlib import Path
 
@@ -38,7 +36,6 @@ def _shared_render_developer(
     template: str | None = None,
     tmp_path: Path | None = None,
 ) -> str:
-    """Render a developer prompt with optional has_docs_mcp."""
     if tmp_path is None:
         with tempfile.TemporaryDirectory() as td:
             tmp_path = Path(td)
@@ -67,8 +64,6 @@ def _assert_shipped_skills_discovery(prompt: str) -> None:
 
 
 class TestDeveloperTemplatesShippedSkills:
-    """developer_iteration.jinja and developer_iteration_fallback.jinja."""
-
     def test_developer_iteration_jinja_has_shipped_skills_section(self, tmp_path: Path) -> None:
         prompt = _shared_render_developer(False, tmp_path=tmp_path)
         _assert_shipped_skills_discovery(prompt)

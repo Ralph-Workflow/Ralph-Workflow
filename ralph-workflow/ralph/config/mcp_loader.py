@@ -1,21 +1,3 @@
-"""Three-layer mcp.toml loader.
-
-Merge order (lowest → highest priority):
-  1. Bundled default  - ralph/policy/defaults/mcp.toml   (ships in wheel)
-  2. User-global      - $XDG_CONFIG_HOME/ralph-workflow-mcp.toml
-                        (default: ~/.config/ralph-workflow-mcp.toml)
-  3. Project-local    - .agent/mcp.toml  (resolved via WorkspaceScope)
-
-Bundled default fails loudly on any error (packaging defect).
-User-global and project-local files fall back to built-in defaults on syntax,
-encoding, permission, or schema validation errors (including schema-invalid
-[web_visit]), emitting deduplicated warnings. Strict mode re-raises errors.
-
-Architectural ruling:
-  MCP configuration preserves whole-layer integrity by employing whole-file
-  fallback rather than partial section-level fallback when an optional
-  configuration file has syntax, decoding, or schema validation errors.
-"""
 
 from __future__ import annotations
 
@@ -43,7 +25,6 @@ _MCP_TOP_LEVEL_FIELDS = frozenset({"mcp_servers", "web_search", "web_visit", "me
 
 
 class McpConfigError(SystemExit):
-    """Typed fail-fast exit for invalid MCP configuration."""
 
     def __init__(self, message: str, *, code: int = 1) -> None:
         super().__init__(code)
@@ -55,12 +36,10 @@ class McpConfigError(SystemExit):
 
 
 def bundled_default_mcp_config_path() -> Path:
-    """Return the path to the bundled default MCP configuration file."""
     return Path(__file__).parent.parent / "policy" / "defaults" / _LOCAL_MCP_FILENAME
 
 
 def global_mcp_config_path() -> Path:
-    """Return the user-level global MCP config path, respecting XDG_CONFIG_HOME."""
     xdg = getenv("XDG_CONFIG_HOME")
     if xdg:
         return Path(xdg) / _GLOBAL_MCP_FILENAME
@@ -68,7 +47,6 @@ def global_mcp_config_path() -> Path:
 
 
 def local_mcp_config_path(workspace_scope: WorkspaceScope) -> Path:
-    """Return the workspace-local MCP config path for the given workspace scope."""
     if hasattr(workspace_scope, "resolve_agent_file"):
         return workspace_scope.resolve_agent_file(_LOCAL_MCP_FILENAME)
     return workspace_scope.local_config_path.parent / _LOCAL_MCP_FILENAME
@@ -177,24 +155,6 @@ def load_mcp_config(
     *,
     strict_optional_files: bool = False,
 ) -> McpConfig:
-    """Build merged McpConfig from all layers.
-
-    Args:
-        workspace_scope: Provides the project-local .agent/ root. Not used when
-            config_path is given.
-        config_path: Explicit override for the project-local layer.
-        strict_optional_files: When True, errors in optional user-global and
-            project-local configuration files fail loudly. When False (default),
-            malformed optional files fall back to built-in defaults with warnings.
-
-    Returns:
-        Validated McpConfig.
-
-    Raises:
-        McpConfigError: On bundled default corruption, or when strict_optional_files=True
-            and an optional config file has TOML parse error, schema validation failure,
-            or unknown fallback backend reference.
-    """
     bundled_path = bundled_default_mcp_config_path()
     global_path = global_mcp_config_path()
     if config_path is not None:
@@ -204,11 +164,9 @@ def load_mcp_config(
     else:
         local_path = Path(_LOCAL_MCP_FILENAME)
 
-    # Bundled default stays FAIL LOUDLY (strict=True): packaging defect if corrupted.
     bundled = _load_mcp_toml(bundled_path, strict=True, is_bundled=True)
     bundled = _validate_mcp_layer(bundled_path, bundled, strict=True)
 
-    # Optional layers use fallback unless strict_optional_files=True.
     global_data = _load_mcp_toml(global_path, strict=strict_optional_files)
     global_data = _validate_mcp_layer(global_path, global_data, strict=strict_optional_files)
 

@@ -1,10 +1,3 @@
-"""Regression tests for version-aware policy specs and frozen v4/v5 packs.
-
-Verifies the unified PolicyVersionSpec and VERSION_SPECS mapping, helper
-functions, and that frozen v4 and frozen v5 policy packs validate correctly
-under their respective version-specific contracts.
-"""
-
 from __future__ import annotations
 
 import re
@@ -16,7 +9,6 @@ from tests.project_policy.test_v4_corpus_authentic import build_v4_pack
 
 
 def test_version_specs_registry_invariants() -> None:
-    """VERSION_SPECS registers v4 and v5 with their contract properties."""
     assert "v4" in markers.VERSION_SPECS
     assert "v5" in markers.VERSION_SPECS
 
@@ -27,7 +19,6 @@ def test_version_specs_registry_invariants() -> None:
     assert "testing-policy.md" in v4_spec.core_manifest
     assert v4_spec.guard_inventory_header is None
     assert v4_spec.guard_inventory_columns == 0
-    # RALPH-TEST-REASON: portfolio_schema_version widened from str to tuple to support v1 and v2 portfolios for authentic frozen v4 packs
     assert v4_spec.portfolio_schema_version == ("v1", "v2")
     assert v4_spec.allowed_frozen is True
 
@@ -37,7 +28,6 @@ def test_version_specs_registry_invariants() -> None:
     assert "execution-kernel.md" in v5_spec.core_manifest
     assert v5_spec.guard_inventory_header == markers.guard_inventory_header_for_version("v5")
     assert v5_spec.guard_inventory_columns == 6
-    # RALPH-TEST-REASON: portfolio_schema_version widened from str to tuple for version-keyed schema validation
     assert v5_spec.portfolio_schema_version == ("v2",)
     assert v5_spec.allowed_frozen is True
 
@@ -47,13 +37,11 @@ def test_version_specs_registry_invariants() -> None:
     assert len(v6_spec.core_manifest) == 12
     assert v6_spec.guard_inventory_header == markers.GUARD_INVENTORY_HEADER
     assert v6_spec.guard_inventory_columns == 7
-    # RALPH-TEST-REASON: portfolio_schema_version widened from str to tuple for version-keyed schema validation
     assert v6_spec.portfolio_schema_version == ("v3",)
     assert v6_spec.allowed_frozen is True
 
 
 def test_version_spec_helpers() -> None:
-    """Helper functions return correct specs, headers, and supported portfolio versions."""
     v4_files = markers.core_files_for_version("v4")
     assert len(v4_files) == 11
     assert "execution-kernel.md" not in v4_files
@@ -87,9 +75,7 @@ def test_version_spec_helpers() -> None:
 
 
 def test_frozen_v4_pack_with_portfolio_v2_validates_ready() -> None:
-    """A frozen v4 pack declaring portfolio v2 validates READY."""
     ws = build_v4_pack()
-    # update portfolio to v2
     v2_content = starters.read_starter("policy-portfolio.toml").replace(
         'schema_version = "v3"', 'schema_version = "v2"'
     )
@@ -100,7 +86,6 @@ def test_frozen_v4_pack_with_portfolio_v2_validates_ready() -> None:
 
 
 def test_frozen_v4_pack_with_portfolio_v3_rejected() -> None:
-    """A frozen v4 pack declaring portfolio v3 is rejected."""
     ws = build_v4_pack()
     v3_content = starters.read_starter("policy-portfolio.toml")
     ws.write(markers.PORTFOLIO_PATH, v3_content)
@@ -109,14 +94,12 @@ def test_frozen_v4_pack_with_portfolio_v3_rejected() -> None:
 
 
 def test_frozen_v4_pack_missing_core_file_fails() -> None:
-    """A frozen v4 pack missing an original v4 core file stays NOT READY."""
     ws = build_v4_pack(exclude_files=("security-policy.md",))
     findings = validators.validate_readiness(ws, ProjectStack(primary_language="Python"))
     assert any("security-policy.md" in f.requirement_id for f in findings)
 
 
 def _clean_v5_starter_prose(body: str) -> str:
-    """Resolve facts, remove starter banner, and adapt commands for v5 starters."""
     body = re.sub(r"<!--\s*RALPH-STARTER-TEMPLATE:.*?-->\s*", "", body, flags=re.DOTALL)
     body = re.sub(r"<!--\s*REPLACE-ME:.*?-->\s*", "", body, flags=re.DOTALL)
     body = re.sub(r"RALPH-COMMAND:\s*PROJECT-FACT-UNRESOLVED", "RALPH-COMMAND: make test", body)
@@ -140,7 +123,6 @@ def _clean_v5_starter_prose(body: str) -> str:
 
 
 def _build_frozen_v5_pack(*, exclude_files: tuple[str, ...] = ()) -> MemoryWorkspace:
-    """Build a MemoryWorkspace pre-populated with frozen v5 starters and v2 portfolio."""
     ws = MemoryWorkspace()
     for name in markers.CORE_POLICY_FILES:
         if name in exclude_files:
@@ -166,21 +148,18 @@ def _build_frozen_v5_pack(*, exclude_files: tuple[str, ...] = ()) -> MemoryWorks
 
 
 def test_frozen_v5_pack_validates_ready() -> None:
-    """A frozen v5 pack validates READY under v5 manifest, six-column header, and portfolio v2."""
     ws = _build_frozen_v5_pack()
     findings = validators.validate_readiness(ws, ProjectStack(primary_language="Python"))
     assert findings == []
 
 
 def test_frozen_v5_pack_missing_execution_kernel_fails() -> None:
-    """A frozen v5 pack missing execution-kernel.md stays NOT READY."""
     ws = _build_frozen_v5_pack(exclude_files=("execution-kernel.md",))
     findings = validators.validate_readiness(ws, ProjectStack(primary_language="Python"))
     assert any("execution-kernel.md" in f.requirement_id for f in findings)
 
 
 def test_frozen_v5_pack_malformed_guard_inventory_fails() -> None:
-    """A frozen v5 pack with a malformed guard inventory header stays NOT READY."""
     ws = _build_frozen_v5_pack()
     path = f"{markers.CANONICAL_DIR}testing-policy.md"
     content = ws.read(path)
@@ -191,7 +170,6 @@ def test_frozen_v5_pack_malformed_guard_inventory_fails() -> None:
 
 
 def test_freeze_outside_modelled_set_fails() -> None:
-    """A pack carrying a freeze marker outside the modelled set (e.g. freeze v3) is rejected."""
     ws = _build_frozen_v5_pack()
     path = f"{markers.CANONICAL_DIR}testing-policy.md"
     content = ws.read(path).replace("freeze v5", "freeze v3")

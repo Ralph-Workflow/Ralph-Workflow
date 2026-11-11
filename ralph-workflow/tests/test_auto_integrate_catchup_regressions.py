@@ -1,11 +1,3 @@
-"""Regression coverage for the 2026-10-24 background catch-up incident.
-
-The background ticker must never mutate a worktree while an agent lease is
-held, must charge every fast-forward attempt to the repository-wide durable
-ledger, and must quarantine a repeated same-state timeout instead of
-retrying the identical merge forever.
-"""
-
 from __future__ import annotations
 
 import subprocess
@@ -28,8 +20,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class _RecordingClock:
-    """Injected clock that records logical sleeps without waiting."""
-
     current: float = 100.0
     sleeps: list[float] = field(default_factory=list)
 
@@ -43,8 +33,6 @@ class _RecordingClock:
 
 @dataclass(frozen=True)
 class _FakeLease:
-    """Lease stand-in for the catch-up mutation gate."""
-
     name: str = "auto-integrate-catchup"
 
 
@@ -74,7 +62,6 @@ def _open_gates(
     merge: Callable[[Path, str], bool] | None = None,
     target_sha: str = "b" * 40,
 ) -> list[tuple[Path, str]]:
-    """Open every catch-up gate without running Git."""
 
     calls: list[tuple[Path, str]] = []
 
@@ -126,7 +113,6 @@ def test_catchup_regression_agent_lease_refuses_merge_without_charge(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """A held agent lease blocks the tick before any merge or ledger charge."""
 
     calls = _open_gates(monkeypatch, lease_held=True)
     ledger, ledger_path = _ledger(tmp_path)
@@ -145,8 +131,6 @@ def test_catchup_regression_agent_lease_refuses_merge_without_charge(
 
 
 class _FakeRepo:
-    """GitPython repository double exposing only the common directory."""
-
     def __init__(
         self,
         _root: Path,
@@ -157,14 +141,13 @@ class _FakeRepo:
         self.common_dir = str(_root / "common-git")
 
     def close(self) -> None:
-        """Match the repository close seam used by production code."""
+        pass
 
 
 def test_catchup_regression_default_ledger_is_repository_wide(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """The production ledger path is anchored to the repository common directory."""
 
     common_dir = tmp_path / "common-git"
     common_dir.mkdir()
@@ -185,7 +168,6 @@ def test_catchup_regression_successful_merge_is_charged_once(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """The durable repository-wide ledger records exactly one merge attempt."""
 
     calls = _open_gates(monkeypatch)
     ledger, ledger_path = _ledger(tmp_path)
@@ -207,7 +189,6 @@ def test_catchup_regression_timeout_is_named_charged_and_backed_off(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """A timeout is unknown evidence, not a block, and spends one durable attempt."""
 
     def _timeout(_root: Path, _sha: str) -> bool:
         raise subprocess.TimeoutExpired(cmd=["git", "merge"], timeout=120.0)
@@ -232,7 +213,6 @@ def test_catchup_regression_repeated_timeout_escalates_without_third_merge(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Two identical timeouts quarantine the third identical merge and advance the rung."""
 
     def _timeout(_root: Path, _sha: str) -> bool:
         raise subprocess.TimeoutExpired(cmd=["git", "merge"], timeout=120.0)
@@ -259,7 +239,6 @@ def test_catchup_regression_changed_observation_gets_a_fresh_attempt(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """A changed target tip is a new state and may use a fresh attempt budget."""
 
     target_sha = "b" * 40
 
@@ -298,7 +277,6 @@ def test_catchup_regression_git_failure_outcomes_are_distinguished(
     failure_kind: str,
     expected_reason: str,
 ) -> None:
-    """Definite failure, kill, and unknown remain distinct named outcomes."""
 
     def _fail(_root: Path, _sha: str) -> bool:
         if failure_kind == "killed":
@@ -325,7 +303,6 @@ def test_catchup_regression_tick_exception_log_names_timeout_without_blanket_ret
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """The worker classifies an escaped timeout instead of logging a blanket retry."""
 
     messages: list[str] = []
 

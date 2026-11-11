@@ -1,25 +1,3 @@
-"""Regression tests: config bootstrap writes must not sweep agent/user work.
-
-wt-12: ``config/bootstrap.py::_copy_with_backup`` used to write
-``.agent/ralph-workflow.toml`` (and siblings) without any commit routing, so a
-forced regeneration left a deterministic, Ralph-authored change dirty in the
-user's tree with no way to land it.
-
-The contract pinned here (real git, per-test ``tmp_path`` repos):
-
-* a tracked config file regenerated with ``force=True`` lands as a dedicated
-  ``chore(config): update <filename>`` commit, sweeping NOTHING else —
-  unrelated dirty tracked files stay dirty, and the ``.bak`` backup is not
-  swept in;
-* a first-creation inside a repo that ignores ``.agent/`` writes the file but
-  issues NO commit and NO warning (the path is ignored — not Ralph's place to
-  commit);
-* a forced regeneration of an ignored file likewise stays silent.
-
-The tests use real git and the production ``ensure_local_configs`` flow. They
-run well inside the immutable 60s combined verify budget.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -35,22 +13,12 @@ if TYPE_CHECKING:
 
 
 pytestmark = [
-    pytest.mark.required_auto_integrate_e2e,  # wt-03-fix-bug: subprocess_e2e removed; runs in E2E shard only
-    # Real-git setup; each test must stay far inside the per-suite cap and
-    # the file must complete in well under 4 seconds (immutable 60s budget).
+    pytest.mark.required_auto_integrate_e2e,
     pytest.mark.timeout_seconds(5),
 ]
 
 
 def _git(repo_root: Path, *args: str) -> str:
-    """Run a git command in ``repo_root`` and return stdout.
-
-    The command is driven through the GitPython API -- the same library
-    the production bootstrap commits with -- so the test exercises real
-    git (the subject under test) without spawning a subprocess of its
-    own. A failing command raises ``GitCommandError``, mirroring the
-    previous ``check=True`` behaviour.
-    """
     command, *rest = args
     repo = Repo(repo_root)
     try:
@@ -72,7 +40,6 @@ def _git(repo_root: Path, *args: str) -> str:
 
 
 def _init_repo_with_initial_commit(repo_root: Path) -> None:
-    """Create a fresh git repo with one initial commit so HEAD exists."""
     repo = Repo.init(repo_root)
     try:
         repo.config_writer().set_value("user", "name", "Test Author").release()
@@ -85,13 +52,11 @@ def _init_repo_with_initial_commit(repo_root: Path) -> None:
 
 
 def _commit_subjects(repo_root: Path) -> list[str]:
-    """Return every commit subject in the repo history."""
     out = _git(repo_root, "log", "--format=%s")
     return [line for line in out.splitlines() if line.strip()]
 
 
 def _non_gitignore_new_subjects(repo_root: Path, subjects_before: set[str]) -> list[str]:
-    """New commit subjects excluding the expected .gitignore auto-seed commit."""
     return [
         s
         for s in _commit_subjects(repo_root)
@@ -100,8 +65,6 @@ def _non_gitignore_new_subjects(repo_root: Path, subjects_before: set[str]) -> l
 
 
 class _WarningCapture:
-    """Collect loguru WARNING+ records emitted during a block."""
-
     def __init__(self) -> None:
         self.messages: list[str] = []
 
@@ -117,12 +80,6 @@ class _WarningCapture:
 
 
 def test_tracked_config_regeneration_commits_dedicated_chore(tmp_path: Path) -> None:
-    """Forced regeneration of a TRACKED config commits only that file.
-
-    A dedicated ``chore(config): update ralph-workflow.toml`` commit must
-    exist; an unrelated dirty tracked file must stay dirty; the ``.bak``
-    backup must not be swept into the commit.
-    """
     repo_root = tmp_path
     _init_repo_with_initial_commit(repo_root)
     agent_dir = repo_root / ".agent"
@@ -132,7 +89,6 @@ def test_tracked_config_regeneration_commits_dedicated_chore(tmp_path: Path) -> 
     _git(repo_root, "add", ".agent/ralph-workflow.toml")
     _git(repo_root, "commit", "-m", "track ralph config", "--no-gpg-sign")
 
-    # An unrelated tracked file the "user" is mid-edit on.
     (repo_root / "README.md").write_text("# user edit in progress\n", encoding="utf-8")
     subjects_before = set(_commit_subjects(repo_root))
 
@@ -148,14 +104,9 @@ def test_tracked_config_regeneration_commits_dedicated_chore(tmp_path: Path) -> 
         f"Expected a dedicated chore(config) commit for ralph-workflow.toml; "
         f"new commits: {new_subjects!r}"
     )
-    # The regeneration actually happened.
     regenerated = [r for r in results if r.path == config_path]
     assert regenerated and regenerated[0].action == "regenerated"
 
-    # ONLY the unrelated dirty file remains in the working tree. (The
-    # gitignore seeding of `.agent/`-adjacent engine patterns is itself
-    # committed by auto_seed_default_gitignore; what must remain dirty is
-    # exactly the user's unrelated edit.)
     porcelain = [
         line
         for line in _git(repo_root, "status", "--porcelain").splitlines()
@@ -163,7 +114,6 @@ def test_tracked_config_regeneration_commits_dedicated_chore(tmp_path: Path) -> 
     ]
     assert porcelain == [], f"Expected no dirty paths besides README.md; got {porcelain!r}"
 
-    # The .bak backup exists on disk but was NOT committed.
     assert (agent_dir / "ralph-workflow.toml.bak").exists()
     tracked = _git(repo_root, "ls-files")
     assert not any(".bak" in line for line in tracked.splitlines())
@@ -172,27 +122,8 @@ def test_tracked_config_regeneration_commits_dedicated_chore(tmp_path: Path) -> 
 def test_tracked_symlink_config_regeneration_commits_dedicated_chore(
     tmp_path: Path,
 ) -> None:
-    """Forced regeneration of a TRACKED SYMLINK config commits at the lexical path.
-
-    Regression for wt-12 DA-001 / DA-007 / DA-008 / DA-010: the
-    ``_repo_rel_path`` helper used to call ``target.resolve(strict=False)``,
-    which collapsed a tracked symlink (``.agent/ralph-workflow.toml ->
-    ../real.toml``) into the symlink target's path
-    (``real.toml``). The deterministic commit routing then
-    staged/hashed the wrong blob, the chore commit never landed, and
-    the symlink's lexical entry was left as a ``T`` (type change) in
-    ``git status`` for the agent flow.
-
-    The fix uses the LEXICAL path. With the fix, the dedicated
-    ``chore(config): update ralph-workflow.toml`` commit lands, the
-    ``.agent/ralph-workflow.toml`` type-change entry is removed, and the
-    unrelated user-dirty ``real.toml`` stays uncommitted.
-    """
     repo_root = tmp_path
     _init_repo_with_initial_commit(repo_root)
-    # A regular file the symlink resolves to; committing it under HEAD
-    # produces a "source" blob for both the symlink (target bytes) and
-    # the regular file.
     real_path = repo_root / "real.toml"
     real_path.write_text("source\n", encoding="utf-8")
     agent_dir = repo_root / ".agent"
@@ -201,8 +132,6 @@ def test_tracked_symlink_config_regeneration_commits_dedicated_chore(
     config_path.symlink_to(real_path)
     _git(repo_root, "add", ".agent/ralph-workflow.toml", "real.toml")
     _git(repo_root, "commit", "-m", "track symlink config", "--no-gpg-sign")
-    # User/agent edits the resolved file -- this is unrelated to the
-    # config replacement and must stay uncommitted.
     real_path.write_text("user edit\n", encoding="utf-8")
     subjects_before = set(_commit_subjects(repo_root))
 
@@ -223,9 +152,6 @@ def test_tracked_symlink_config_regeneration_commits_dedicated_chore(
     regenerated = [r for r in results if r.path == config_path]
     assert regenerated and regenerated[0].action == "regenerated"
 
-    # ONLY the user-dirty resolved file remains in the working tree.
-    # The symlink's lexical entry must NOT be a dirty ``T`` after the
-    # deterministic commit lands.
     porcelain = _git(repo_root, "status", "--porcelain")
     assert ".agent/ralph-workflow.toml" not in porcelain, (
         f"Tracked symlink must be committed; porcelain: {porcelain!r}"
@@ -236,17 +162,6 @@ def test_tracked_symlink_config_regeneration_commits_dedicated_chore(
 
 
 def test_nonignored_first_creation_commits_dedicated_chore(tmp_path: Path) -> None:
-    """First creation of a NONIGNORED config: dedicated commit lands.
-
-    Regression for wt-12 DA-001 / DA-007 / DA-008 / DA-010: the previous
-    ``classify_target_for_commit`` raised ``NoSuchPathError`` on
-    ``Repo(target, search_parent_directories=True)`` when ``target`` did
-    not yet exist on disk, so the first-creation of an untracked,
-    nonignored config misclassified as ``not_repo`` and the deterministic
-    commit routing bypassed it. The file was written, the working tree
-    stayed dirty, and no dedicated ``chore(config): update <filename>``
-    commit was ever created.
-    """
     repo_root = tmp_path
     _init_repo_with_initial_commit(repo_root)
     agent_dir = repo_root / ".agent"
@@ -259,15 +174,11 @@ def test_nonignored_first_creation_commits_dedicated_chore(tmp_path: Path) -> No
     assert created and created[0].action == "created", (
         f"First-creation must report 'created'; got {[r.action for r in results]!r}"
     )
-    # The whole point: a dedicated chore(config) commit for the
-    # first-created nonignored config must exist (DA-008).
     new_subjects = _non_gitignore_new_subjects(repo_root, subjects_before)
     assert "chore(config): update ralph-workflow.toml" in new_subjects, (
         f"Expected a dedicated chore(config) commit for ralph-workflow.toml; "
         f"new commits: {new_subjects!r}"
     )
-    # Working tree must be clean for the ralph-workflow.toml path
-    # (DA-007): no `?? new.toml` style leftovers.
     porcelain = _git(repo_root, "status", "--porcelain", "--", str(config_path))
     assert porcelain.strip() == "", (
         f"First-created nonignored config must be clean; got {porcelain!r}"
@@ -275,7 +186,6 @@ def test_nonignored_first_creation_commits_dedicated_chore(tmp_path: Path) -> No
 
 
 def test_ignored_first_creation_commits_nothing_and_warns_not(tmp_path: Path) -> None:
-    """First creation under an ignored path: no commit, no warning."""
     repo_root = tmp_path
     _init_repo_with_initial_commit(repo_root)
     (repo_root / ".gitignore").write_text(".agent/\n", encoding="utf-8")
@@ -299,7 +209,6 @@ def test_ignored_first_creation_commits_nothing_and_warns_not(tmp_path: Path) ->
 
 
 def test_ignored_force_regeneration_stays_silent(tmp_path: Path) -> None:
-    """Forced regeneration of an IGNORED config: no warning, no commit."""
     repo_root = tmp_path
     _init_repo_with_initial_commit(repo_root)
     (repo_root / ".gitignore").write_text(".agent/\n", encoding="utf-8")

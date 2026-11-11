@@ -1,12 +1,3 @@
-"""Consolidated add/update/remove recipe test for headless and interactive agents.
-
-Canonical recipe: docs/agents/adding-a-new-agent.md
-This test file acts as the executable form of the Add/Update/Remove sections.
-
-Tests add, update, and remove workflows for both headless and interactive agents
-using the public AgentCatalog API exclusively.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -126,5 +117,4 @@ class TestAddUpdateRemoveAgentRecipe:
         ],
     )
     def test_interactive_pty_invariant(self, name: str, spec: AgentSpec) -> None:
-        """Interactive agents with CLAUDE_INTERACTIVE transport require PTY."""
         assert spec.requires_pty == (spec.transport == AgentTransport.CLAUDE_INTERACTIVE)

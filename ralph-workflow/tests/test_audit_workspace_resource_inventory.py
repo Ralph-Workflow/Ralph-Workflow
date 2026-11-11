@@ -1,5 +1,3 @@
-"""Regression tests for the workspace resource inventory completeness audit."""
-
 from __future__ import annotations
 
 import ast
@@ -18,12 +16,9 @@ pytestmark = pytest.mark.timeout_seconds(5)
 
 
 def _no_op_discovery(_package_root: Path) -> list[tuple[str, str]]:
-    """Return no constituent-audit sites so synthetic tests skip the real walk."""
     return []
 
 
-#: Each canonical primitive module paired with a real top-level symbol name
-#: so a synthetic fake package can satisfy the backward (stale) check.
 _CANONICAL_FAKE_MODULES: dict[str, str] = {
     "mcp/artifacts/idempotent_write.py": "write_text_if_changed",
     "mcp/artifacts/file_backend.py": "FileBackend",
@@ -37,12 +32,6 @@ _CANONICAL_FAKE_MODULES: dict[str, str] = {
 
 
 def _write_fake_package(tmp_path: Path) -> Path:
-    """Create a ``ralph/`` fake package whose canonical primitives resolve.
-
-    Each canonical primitive module is written with a top-level ``def`` or
-    ``class`` matching :data:`_CANONICAL_FAKE_MODULES` so the backward
-    (stale) check passes against synthetic inventories.
-    """
     package_root = tmp_path / "ralph"
     for rel, symbol in _CANONICAL_FAKE_MODULES.items():
         module = package_root / rel
@@ -55,7 +44,6 @@ def _write_fake_package(tmp_path: Path) -> Path:
 
 
 def _write_inventory(package_root: Path, inventory: dict[str, object]) -> Path:
-    """Write an inventory JSON under the testing tree of ``package_root``."""
     inventory_path = package_root / "testing" / "workspace_resource_inventory.json"
     inventory_path.parent.mkdir(parents=True, exist_ok=True)
     inventory_path.write_text(json.dumps(inventory), encoding="utf-8")
@@ -63,7 +51,6 @@ def _write_inventory(package_root: Path, inventory: dict[str, object]) -> Path:
 
 
 def _complete_synthetic_inventory() -> dict[str, object]:
-    """Return a structurally valid inventory covering every canonical primitive."""
     owners = [
         {
             "site": f"{rel}:{symbol}",
@@ -80,7 +67,6 @@ def _complete_synthetic_inventory() -> dict[str, object]:
 
 
 def test_missing_package_root_fails_closed(tmp_path: Path) -> None:
-    """A absent package root cannot make completeness silently pass."""
     violations = audit.audit_workspace_resource_inventory(tmp_path / "absent")
 
     assert len(violations) == 1
@@ -88,7 +74,6 @@ def test_missing_package_root_fails_closed(tmp_path: Path) -> None:
 
 
 def test_missing_inventory_fails_closed(tmp_path: Path) -> None:
-    """An absent inventory file is itself drift."""
     package_root = tmp_path / "ralph"
     package_root.mkdir()
 
@@ -101,7 +86,6 @@ def test_missing_inventory_fails_closed(tmp_path: Path) -> None:
 
 
 def test_invalid_json_fails_closed(tmp_path: Path) -> None:
-    """Unparseable inventory source cannot bypass completeness."""
     package_root = tmp_path / "ralph"
     package_root.mkdir()
     inventory_path = package_root / "testing" / "workspace_resource_inventory.json"
@@ -117,7 +101,6 @@ def test_invalid_json_fails_closed(tmp_path: Path) -> None:
 
 
 def test_non_object_root_fails_closed(tmp_path: Path) -> None:
-    """A JSON root missing the top-level arrays is structural drift."""
     package_root = tmp_path / "ralph"
     package_root.mkdir()
     empty_inventory: dict[str, object] = {}
@@ -131,7 +114,6 @@ def test_non_object_root_fails_closed(tmp_path: Path) -> None:
 
 
 def test_missing_required_field_fails_closed(tmp_path: Path) -> None:
-    """A workspace_owners entry without responsibilities is incomplete."""
     package_root = _write_fake_package(tmp_path)
     inventory = _complete_synthetic_inventory()
     owners = inventory["workspace_owners"]
@@ -147,7 +129,6 @@ def test_missing_required_field_fails_closed(tmp_path: Path) -> None:
 
 
 def test_invalid_responsibility_enum_fails_closed(tmp_path: Path) -> None:
-    """A responsibility outside the fixed activity enum is rejected."""
     package_root = _write_fake_package(tmp_path)
     inventory = _complete_synthetic_inventory()
     owners = inventory["workspace_owners"]
@@ -169,7 +150,6 @@ def test_invalid_responsibility_enum_fails_closed(tmp_path: Path) -> None:
 
 
 def test_invalid_storage_category_enum_fails_closed(tmp_path: Path) -> None:
-    """A storage category outside the five product categories is rejected."""
     package_root = _write_fake_package(tmp_path)
     inventory = _complete_synthetic_inventory()
     inventory["storage_classes"] = [
@@ -195,7 +175,6 @@ def test_invalid_storage_category_enum_fails_closed(tmp_path: Path) -> None:
 
 
 def test_duplicate_site_within_array_fails_closed(tmp_path: Path) -> None:
-    """Two workspace_owners entries with the same site are ambiguous."""
     package_root = _write_fake_package(tmp_path)
     inventory = _complete_synthetic_inventory()
     owners = inventory["workspace_owners"]
@@ -217,7 +196,6 @@ def test_duplicate_site_within_array_fails_closed(tmp_path: Path) -> None:
 
 
 def test_missing_watch_field_fails_closed(tmp_path: Path) -> None:
-    """A watch_consumers entry missing a required contract field is rejected."""
     package_root = _write_fake_package(tmp_path)
     inventory = _complete_synthetic_inventory()
     inventory["watch_consumers"] = [
@@ -229,7 +207,6 @@ def test_missing_watch_field_fails_closed(tmp_path: Path) -> None:
             "stop_owner": "xo",
             "sharing": "sh",
             "exclusions": "e",
-            # capacity_failure_behavior omitted
         }
     ]
     _write_inventory(package_root, inventory)
@@ -244,7 +221,6 @@ def test_missing_watch_field_fails_closed(tmp_path: Path) -> None:
 
 
 def test_missing_canonical_owner_fails_closed(tmp_path: Path) -> None:
-    """A canonical primitive module with no inventory entry is uncovered."""
     package_root = _write_fake_package(tmp_path)
     inventory = _complete_synthetic_inventory()
     owners = inventory["workspace_owners"]
@@ -264,7 +240,6 @@ def test_missing_canonical_owner_fails_closed(tmp_path: Path) -> None:
 
 
 def test_stale_inventory_site_fails_closed(tmp_path: Path) -> None:
-    """An inventory entry referencing a non-existent symbol is stale."""
     package_root = _write_fake_package(tmp_path)
     module = package_root / "feature" / "owner.py"
     module.parent.mkdir(parents=True, exist_ok=True)
@@ -289,15 +264,12 @@ def test_stale_inventory_site_fails_closed(tmp_path: Path) -> None:
 
 
 def test_invalid_site_key_fails_closed(tmp_path: Path) -> None:
-    """A site key with an empty symbol side is malformed."""
     package_root = _write_fake_package(tmp_path)
     inventory = _complete_synthetic_inventory()
     owners = inventory["workspace_owners"]
     assert isinstance(owners, list)
     owners.append(
         {
-            # Colon present but empty symbol side: passes the structural
-            # colon-presence check but fails the backward _split_site check.
             "site": "feature/owner.py:",
             "responsibilities": ["read"],
             "summary": "bad key",
@@ -313,7 +285,6 @@ def test_invalid_site_key_fails_closed(tmp_path: Path) -> None:
 
 
 def test_complete_synthetic_inventory_is_clean(tmp_path: Path) -> None:
-    """A complete inventory over a well-formed fake package passes cleanly."""
     package_root = _write_fake_package(tmp_path)
     _write_inventory(package_root, _complete_synthetic_inventory())
 
@@ -327,7 +298,6 @@ def test_complete_synthetic_inventory_is_clean(tmp_path: Path) -> None:
 def test_default_inventory_audit_does_not_require_constituent_discovery(
     tmp_path: Path,
 ) -> None:
-    """The inventory lane validates a synthetic package without external scans."""
     package_root = _write_fake_package(tmp_path)
     _write_inventory(package_root, _complete_synthetic_inventory())
 
@@ -363,7 +333,6 @@ def test_inventory_regression_polling_scans_each_module_with_one_ast_traversal(
 
 
 def test_violation_str_format_is_stable() -> None:
-    """The diagnostic line format must stay stable for downstream parsers."""
     violation = WorkspaceResourceInventoryViolation(
         kind="missing_field", site="x.py:X", message="needs field"
     )

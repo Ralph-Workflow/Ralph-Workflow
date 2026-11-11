@@ -48,7 +48,7 @@ did something wrong at runtime."
 
 **The ProcessManager never infers success or failure from the exit code.**
 
-Success or failure of a work unit is decided by the pipeline from:
+Success or failure of a work unit is determined by the pipeline from:
 - Artifact submission (files under `.agent/artifacts/`)
 - Git workspace changes (`git status --porcelain`)
 
@@ -76,7 +76,7 @@ one rule, in `ralph/process/_spawn_argv.py`:
   NUL in one is a defect, and silently rewriting a path could point the child at
   a different directory.
 
-**Any validator that makes a security decision about an argv token must reject
+**Any validator that makes a security judgement about an argv token must reject
 NUL itself.** Otherwise a caller hides a denied token from the validator as
 `--ext-di<NUL>ff` and the strip hands the denied token to `execve`. The argv
 validators in this repo do:

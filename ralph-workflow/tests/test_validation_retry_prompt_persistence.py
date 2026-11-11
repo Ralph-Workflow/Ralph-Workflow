@@ -1,5 +1,3 @@
-"""Regression coverage for S-2 validation retry-prompt persistence."""
-
 from __future__ import annotations
 
 import json
@@ -124,7 +122,6 @@ def _verification_context(tmp_path: Path) -> tuple[PhaseContext, InvokeAgentEffe
 def test_regression_s2_two_failures_materialize_twice_with_accumulated_escalation(
     tmp_path: Path,
 ) -> None:
-    """S-2: failure -> materialize -> failure -> re-materialize retains both attempts."""
     session = MockSession(drain="planning")
     workspace = MockWorkspace(tmp_path)
     filesystem_workspace = FsWorkspace(tmp_path)
@@ -157,7 +154,6 @@ def test_regression_s2_two_failures_materialize_twice_with_accumulated_escalatio
 def test_regression_s2_inactivity_retry_after_materialization_keeps_validation_context(
     tmp_path: Path,
 ) -> None:
-    """S-2: consuming a prompt must not hide validation context from inactivity recovery."""
     hint = "ATTEMPT 1\nSPEC008 at line 1, section Title: missing list items"
     workspace = FsWorkspace(tmp_path)
     workspace.write(retry_hint_path("planning"), hint)
@@ -179,7 +175,6 @@ def test_regression_s2_inactivity_retry_after_materialization_keeps_validation_c
 def test_regression_s2_out_of_band_repair_then_phase_gate_clears_validation_hint(
     tmp_path: Path,
 ) -> None:
-    """S-2: a repaired artifact accepted by its gate clears the active retry hint."""
     context, effect = _verification_context(tmp_path)
     hint_path = retry_hint_path("development")
     context.workspace.write(hint_path, "ATTEMPT 1\nSPEC008: repair required")
@@ -193,7 +188,6 @@ def test_regression_s2_out_of_band_repair_then_phase_gate_clears_validation_hint
 
 
 def test_regression_s2_successful_submit_reports_recovery_and_clears_hint(tmp_path: Path) -> None:
-    """S-2: failed submission followed by success reports recovery and clears context."""
     session = MockSession(drain="development")
     workspace = MockWorkspace(tmp_path)
     backend = MemoryBackend()

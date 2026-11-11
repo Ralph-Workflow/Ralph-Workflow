@@ -1,11 +1,3 @@
-"""Fan-out routing must derive work units from the on-disk plan artifact.
-
-The planning agent declares ``work_units`` inside the plan artifact. When the
-development phase is routed and the pipeline state carries no work units, the
-effect router must read the plan artifact and emit a ``FanOutEffect`` so that
-multiple agent CLI instances actually run in parallel.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -34,13 +26,6 @@ def _default_policy_bundle() -> PolicyBundle:
 
 
 def _legacy_fan_out_policy_bundle() -> PolicyBundle:
-    """Bundle that opts into the legacy ``ralph_fan_out`` dispatch mode.
-
-    The bundled default in ``ralph/policy/defaults/pipeline.toml`` sets
-    ``dispatch_mode = 'agent_subagents'`` on the development phase, so
-    the existing routing tests that assert ``FanOutEffect`` must opt
-    into the legacy path explicitly on their policy fixture.
-    """
     bundle = _default_policy_bundle()
     dev_phase = bundle.pipeline.phases["development"]
     assert dev_phase.parallelization is not None
@@ -201,7 +186,6 @@ def test_unowned_plan_step_keeps_plan_artifact_work_in_main_session(tmp_path: Pa
 def test_fanout_regression_routes_five_units_with_nested_step_assignments(
     tmp_path: Path,
 ) -> None:
-    """Regression for plan blocker 6: routing retains every unit's mini-plan."""
     _write_plan_artifact(tmp_path, _five_nested_work_units_plan())
 
     effect = determine_effect_from_policy(
@@ -286,7 +270,6 @@ def test_corrupted_plan_artifact_falls_back_to_serial_agent(tmp_path: Path) -> N
 
 
 def test_preseeded_single_unit_state_ignores_plan_artifact(tmp_path: Path) -> None:
-    """A worker child carries exactly one unit in state and must stay serial."""
     _write_plan_artifact(
         tmp_path,
         _plan_document(
@@ -331,7 +314,6 @@ def test_non_parallelized_phase_ignores_plan_work_units(tmp_path: Path) -> None:
 
 
 def test_resume_with_unowned_plan_step_stays_in_main_session(tmp_path: Path) -> None:
-    """A resume must not fan out a plan whose step has no worker owner."""
     _write_plan_artifact(tmp_path, _plan_document(_two_disjoint_units()))
     state = PipelineState(
         phase="development",
@@ -352,7 +334,6 @@ def test_resume_with_unowned_plan_step_stays_in_main_session(tmp_path: Path) -> 
 
 
 def test_overlapping_units_are_dispatched_for_serialized_execution(tmp_path: Path) -> None:
-    """Overlapping ownership is serialized by the scheduler, never rejected."""
     _write_plan_artifact(
         tmp_path,
         ("## Work Units\n- [unit-a] A\n  Directories: src\n- [unit-b] B\n  Directories: src/sub\n"),
@@ -423,7 +404,6 @@ def test_fanout_keeps_post_unit_integration_work_in_main_session(tmp_path: Path)
 
 
 def test_fanout_keeps_scope_residual_prose_in_main_session(tmp_path: Path) -> None:
-    """Scope prose not represented by a unit must keep native work serial."""
     _write_plan_artifact(
         tmp_path,
         (
@@ -450,7 +430,6 @@ def test_fanout_keeps_scope_residual_prose_in_main_session(tmp_path: Path) -> No
 
 
 def test_fanout_regression_keeps_residual_instructions_in_main_session(tmp_path: Path) -> None:
-    """DA-004/DA-022: raw preambles and heading-only work must not disappear."""
     units = (
         "## Work Units\n"
         "- [one] Implement first component\n"

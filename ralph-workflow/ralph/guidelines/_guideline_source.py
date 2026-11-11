@@ -1,4 +1,3 @@
-"""GuidelineSource — structural protocol for guideline objects."""
 
 from __future__ import annotations
 
@@ -10,7 +9,6 @@ if TYPE_CHECKING:
 
 @runtime_checkable
 class GuidelineSource(Protocol):
-    """Structural protocol for guideline objects produced by handlers."""
 
     quality_checks: Sequence[str]
     security_checks: Sequence[str]

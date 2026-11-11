@@ -1,33 +1,3 @@
-"""Rock-solid integration test for the commit_review phase.
-
-This test exercises ``handle_commit_review_phase`` end-to-end on a
-single real ``tmp_git_repo`` fixture, pre-staging the five originally
-failing TRACKED files plus a SEPARATE symlink that MUST be preserved.
-The test pins the contract that the phase:
-
-* deletes every originally-failing tracked path,
-* preserves an innocent symlink (PA-005 fix: deletable tracked files
-  and the preserved symlink MUST use distinct paths so the assertions
-  can be simultaneously true),
-* auto-seeds canonical patterns into ``.gitignore`` and
-  ``.git/info/exclude``,
-* leaves no dangling staging files in the worktree.
-
-This is a fast, focused unit-level test that complements the
-end-to-end ``runner.run`` tests in
-``tests/integration/test_pipeline_commit_review_to_commit_e2e.py`` and
-``tests/integration/test_pipeline_final_commit_review_to_final_commit_e2e.py``.
-Per-test timeout is capped at 10s (well under the 60s combined budget
-enforced by ``ralph/verify.py``).
-
-Testing rules followed:
-* < 1s per-test wall-clock rule (the fixture is a session-template clone)
-* 60s combined-budget rule (one test contributes negligible time)
-* No real network, no time.sleep, no real subprocess outside git
-* Black-box: asserts observable behavior (file presence / absence,
-  .gitignore / .git/info/exclude content) NOT internal method calls
-"""
-
 from __future__ import annotations
 
 import re
@@ -53,22 +23,12 @@ from ralph.phases.commit_review import (
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.workspace.fs import FsWorkspace
 
-# The module carries the module-level ``subprocess_e2e`` marker because the
-# proof drives the REAL git boundary (a real repository, the real phase). It
-# is registered in ``ralph.test_suites.REQUIRED_AUTO_INTEGRATE_E2E_FILES`` and
-# additionally declares ``required_auto_integrate_e2e`` here, so the default
-# ``make test`` profile selects these proofs instead of deselecting them
-# behind the opt-in subprocess gate (where they would rot silently).
 pytestmark = [
     pytest.mark.timeout_seconds(10),
     pytest.mark.subprocess_e2e,
     pytest.mark.required_auto_integrate_e2e,
 ]
 
-# Five originally-failing TRACKED files (PA-005: distinct from the
-# preserved-symlink path). These were the exact paths that the legacy
-# hard-fail (``Refusing to delete non-housekeeping file: ...``) rejected
-# in the user-reported failure.
 ORIGINALLY_FAILING_TRACKED_PATHS: tuple[str, ...] = (
     "checkpoint.json",
     ".agent/raw/opencode.log",
@@ -77,14 +37,12 @@ ORIGINALLY_FAILING_TRACKED_PATHS: tuple[str, ...] = (
     ".agent/workers/unit-a/output.log",
 )
 
-# Canonical auto-seed fragments the hardening pins into .gitignore.
 EXPECTED_GITIGNORE_FRAGMENTS: tuple[str, ...] = (
     ".agent/",
     "/checkpoint.json",
     "*.cache",
 )
 
-# Canonical auto-seed fragments the hardening pins into .git/info/exclude.
 EXPECTED_GIT_EXCLUDE_FRAGMENTS: tuple[str, ...] = (
     ".agent/raw/",
     ".agent/tmp/",
@@ -93,14 +51,11 @@ EXPECTED_GIT_EXCLUDE_FRAGMENTS: tuple[str, ...] = (
     ".env.local",
 )
 
-# PA-005: the innocent symlink MUST use a distinct path from any
-# deletable tracked file so the assertions can simultaneously be true.
 INNOCENT_SYMLINK = "innocent_link"
 INNOCENT_SYMLINK_TARGET = "some_real_file.txt"
 
 
 def _track_and_commit(repo_root: Path, rel_path: str) -> None:
-    """Stage and commit one relative path inside ``repo_root``."""
     repo = Repo(repo_root)
     try:
         repo.index.add([rel_path])
@@ -110,7 +65,6 @@ def _track_and_commit(repo_root: Path, rel_path: str) -> None:
 
 
 def _pre_stage_tracked_paths(tmp_git_repo: Path) -> None:
-    """Pre-stage the five originally-failing tracked files for the test."""
     (tmp_git_repo / "checkpoint.json").write_text('{"phase": "development"}')
     (tmp_git_repo / ".agent" / "raw").mkdir(parents=True, exist_ok=True)
     (tmp_git_repo / ".agent" / "raw" / "opencode.log").write_text("log content\n")
@@ -125,12 +79,6 @@ def _pre_stage_tracked_paths(tmp_git_repo: Path) -> None:
 
 
 def _pre_stage_innocent_symlink(tmp_git_repo: Path) -> None:
-    """Pre-stage a separate, distinct-path symlink that MUST be preserved.
-
-    PA-005: the symlink path MUST be distinct from every deletable
-    tracked path so the assertions can simultaneously be true (the
-    symlink is preserved, the deletable tracked files are gone).
-    """
     target = tmp_git_repo / INNOCENT_SYMLINK_TARGET
     target.write_text("I am a real file, not a target of the symlink chain\n")
     symlink = tmp_git_repo / INNOCENT_SYMLINK
@@ -138,13 +86,6 @@ def _pre_stage_innocent_symlink(tmp_git_repo: Path) -> None:
 
 
 def _write_artifact(workspace_root: Path, cleanup: CommitReview, tree_sha: str) -> None:
-    """Write the commit_review artifact to ``workspace_root``.
-
-    The artifact carries the canonical ``verdict`` contract and the tree SHA
-    of the sealed proposal the reviewer judged. A verdict that names no tree
-    is not bound to the review, so the phase sends it back for a re-review
-    instead of approving it.
-    """
     artifact_path = workspace_root / ".agent" / "artifacts" / "commit_review.md"
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
     lines = [
@@ -166,30 +107,8 @@ def test_handle_commit_review_phase_rock_solid(
     tmp_git_repo: Path,
     tmp_path: Path,
 ) -> None:
-    """End-to-end rock-solid cleanup on the five originally-failing tracked paths.
-
-    Pins every postcondition simultaneously (PA-005):
-
-    * The phase returns a single ``CommitReviewApproved`` carrying the
-      40-hex SHA of the sealed proposal tree it approved.
-    * Every originally-failing tracked file is deleted.
-    * The innocent symlink at ``tmp_git_repo/'innocent_link'`` is preserved.
-    * The symlink's target file at ``tmp_git_repo/'some_real_file.txt'``
-      is preserved (not deleted as a side effect of any symlink follow).
-    * ``.gitignore`` was auto-seeded with the canonical patterns AND
-      contains the user's ``*.cache`` pattern from the action list.
-    * ``.git/info/exclude`` was auto-seeded with the canonical patterns
-      AND contains the user's ``.env.local`` pattern from the action list.
-    * No ``.ralph-staging.*`` / ``.tmp`` / ``.staging`` files dangle in
-      ``tmp_git_repo`` or ``tmp_git_repo/.git/info/``.
-    """
     _pre_stage_tracked_paths(tmp_git_repo)
     _pre_stage_innocent_symlink(tmp_git_repo)
-    # The phase pre-emptively untracks the engine-internal files and seeds the
-    # canonical ignore/exclude files before it seals, and the ``.gitignore``
-    # seed is a DETERMINISTIC COMMIT. Reproducing those steps here makes the
-    # phase's own preparation a no-op, so the tree the reviewer judged is
-    # the tree the phase seals.
     untrack_engine_internal_files(tmp_git_repo, is_agent_internal_path)
     auto_seed_default_gitignore(tmp_git_repo)
     auto_seed_default_git_exclude(tmp_git_repo)
@@ -221,7 +140,6 @@ def test_handle_commit_review_phase_rock_solid(
     )
     result = handle_commit_review_phase(effect, ctx)
 
-    # RALPH-TEST-REASON: Phase returns CommitReviewApproved event carrying sealed tree SHA instead of PipelineEvent.AGENT_SUCCESS
     assert len(result) == 1 and isinstance(result[0], CommitReviewApproved), (
         f"Phase must approve the rock-solid cleanup batch, got: {result!r}"
     )

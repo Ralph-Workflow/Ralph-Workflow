@@ -1,5 +1,3 @@
-"""Tests: artifact/proof validation strings classify as artifact_validation."""
-
 from __future__ import annotations
 
 import pytest

@@ -1,5 +1,3 @@
-"""Manual measurement harness for cross-model plan interoperability."""
-
 from __future__ import annotations
 
 import os
@@ -65,7 +63,6 @@ def _report(label: str, model: str, plan: str) -> str:
 
 
 def test_cross_model_plan_measurement_requires_operator_inputs() -> None:
-    """Collect safely; an operator supplies recorded plans for comparison."""
     strong_plan = os.environ.get("RALPH_STRONG_MODEL_PLAN")
     small_plan = os.environ.get("RALPH_SMALL_MODEL_PLAN")
     if strong_plan is None or small_plan is None:

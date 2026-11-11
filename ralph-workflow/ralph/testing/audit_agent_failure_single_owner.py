@@ -1,44 +1,3 @@
-"""Single-owner guard audit for agent failure and retry tracking.
-
-This audit enforces the single-
-owner architectural invariant: Exactly one decision owner
-(:class:`ralph.recovery.agent_failure_ledger.AgentFailureLedger`) owns the state and decision
-logic for whether an agent is failing, unproductive, or broken, and whether to retry or stop
-using it. Recording call sites (such as the controller, reducer, and resolver_health) are
-clients that feed attempt facts into the ledger rather than deciding agent failure
-independently. Specifically, this audit validates: 1. Production code: No module under
-``ralph/`` (except
-``ralph/recovery/agent_failure_ledger.py``) declares streak/counter state or logic used for
-agent stop/retry decisions (such as duplicate retry trackers, retry progress guards, or
-in-session retry counters), imports a deleted tracker, or decides an agent's fate with a
-LOCAL retry cap -- a retry counter compared against a locally declared retry cap that then
-retries or advances an agent. Genuine repository-safety bounds (a merge-repair attempt cap,
-for example) bound repository state rather than agent health and stay accepted. Since the
-§11 fix (rev 2) the production scan covers ALL of ``ralph/`` and one more rule applies: no
-module feeds Ralph-authored failure prose (a string literal, an f-string, or a module-level
-Ralph-authored constant such as ``ATTEMPT_FAILED_EVIDENCE``) into the text classifier
-(``classify_failed_resolution_attempt``, ``classify_conflict_attempt``, ``bench_resolver``,
-``should_reset_tool_registry``, ``FailureClassifier().classify(...)``, or ``classify(...)``
-on a classifier instance stored in the module), because authored prose classifies as
-AMBIGUOUS and poisons the failure ledger's decisions. The rule follows the prose through
-local laundering: a session failure field, a locally assigned value (``or``-chain fallback
-included), or a same-module helper returning authored prose all flag when classified.
-Exception objects are RAW external runtime text and stay accepted. 2. Test code:
-No test under ``tests/`` accesses private attributes, serialised ledger counters, or internal
-counters of ``AgentFailureLedger`` (enforcing black-box testability via the public seam) or
-imports deprecated retry tracker classes. A test also may not read the recovery controller's
-private failure-owner state through its SERIALISED snapshot (for example
-``controller.snapshot()["backoff_attempts"]``): the serialised key and the private attribute
-are the same private state, so both coupling forms are rejected.
-
-The production rules and the shared policy data live in the private rule engine
-:mod:`ralph.testing._single_owner_rules` (with the local retry-cap rule in
-:mod:`ralph.testing._single_owner_retry_cap_rule` and the test-side policy data and
-violation builders in :mod:`ralph.testing._single_owner_test_rules`); this module owns the
-scan, the test-side rules, the self-verification of every rule, and the command-line entry
-point.
-"""
-
 from __future__ import annotations
 
 import ast
@@ -93,15 +52,10 @@ __all__ = [
     "main",
 ]
 
-# The production scan covers ALL of ralph/ since the §11 fix (rev 2): the
-# text-classifier provenance rule must see every entry into the classifier,
-# and no production subtree may own agent failure decisions.
 PRODUCTION_SCAN_SUBTREES: tuple[str, ...] = ("ralph",)
 
 
 def audit_production_source(rel_path: str, source: str) -> list[SingleOwnerViolation]:
-    """Audit a production module inside a configured single-owner scan subtree."""
-    # The single failure ledger is the authoritative owner.
     if rel_path == "ralph/recovery/agent_failure_ledger.py":
         return []
     if rel_path in TEMPORARY_PRODUCTION_ALLOWLIST:
@@ -365,7 +319,6 @@ def _check_test_call(node: ast.Call, rel_path: str) -> list[SingleOwnerViolation
 
 
 def _check_test_subscript(node: ast.Subscript, rel_path: str) -> list[SingleOwnerViolation]:
-    """Flag direct access to ledger streak/counter snapshot fields in tests."""
     if (
         isinstance(node.slice, ast.Constant)
         and isinstance(node.slice.value, str)
@@ -406,7 +359,6 @@ def _check_test_subscript(node: ast.Subscript, rel_path: str) -> list[SingleOwne
 
 
 def audit_test_source(rel_path: str, source: str) -> list[SingleOwnerViolation]:
-    """Audit a single test module under tests/."""
     if rel_path in TEMPORARY_TEST_ALLOWLIST:
         return []
 
@@ -438,17 +390,10 @@ def audit_test_source(rel_path: str, source: str) -> list[SingleOwnerViolation]:
 
 
 def _violation_sort_key(violation: SingleOwnerViolation) -> tuple[str, int]:
-    """Deterministic sort key for single-owner audit violations."""
     return (violation.path, violation.line)
 
 
 def verify_counter_access_detection() -> None:
-    """Verify that AST audit detects direct counter coupling in test and production sources.
-
-    Ensures an audit negative verification confirms that direct counter coupling
-    and competing counter declarations are detected and enforced.
-    """
-    # Negative test 1: test asserting on outcome.consecutive_unproductive
     src_test_attr = """
 def test_sample(ledger, fact):
     outcome = ledger.record(fact)
@@ -459,7 +404,6 @@ def test_sample(ledger, fact):
         v.rule == "test_counter_access" and "consecutive_unproductive" in v.detail for v in v1
     ), f"Expected test_counter_access violation for consecutive_unproductive, got: {v1}"
 
-    # Negative test 2: test asserting on outcome.total_unproductive
     src_test_total = """
 def test_sample(ledger, fact):
     outcome = ledger.record(fact)
@@ -470,7 +414,6 @@ def test_sample(ledger, fact):
         f"Expected test_counter_access violation for total_unproductive, got: {v2}"
     )
 
-    # Negative test 3: non-ledger production code declaring counter state
     src_prod_decl = """
 class Worker:
     def __init__(self):
@@ -481,7 +424,6 @@ class Worker:
         f"Expected violation for non-ledger counter declaration, got: {v3}"
     )
 
-    # Negative test 4: non-ledger production code accessing ledger counter directly
     src_prod_attr = """
 def check(ledger):
     return ledger.consecutive_unproductive > 0
@@ -491,7 +433,6 @@ def check(ledger):
         f"Expected violation for non-ledger counter access, got: {v4}"
     )
 
-    # Negative test 5: test reading counter via .get()
     src_test_get = """
 def test_sample(snap):
     count = snap.get("consecutive_unproductive")
@@ -504,7 +445,6 @@ def test_sample(snap):
         f"Expected test_private_ledger_access violation for .get(consecutive_unproductive), got: {v5}"
     )
 
-    # Negative test 6: RC-1 fault hits increment, cap comparison, and dead surfaces exclusion
     src_rc1 = """
 def handle_fault(session, agent_name):
     session.ralph_fault_hits += 1
@@ -519,7 +459,6 @@ def handle_fault(session, agent_name):
         f"Expected violation for stop_dead_surfaces, got: {v6}"
     )
 
-    # Negative test 7: Rival RetryProgressGuard, signature tracking, and attempt caps (PA-001 / permanent bans)
     src_rival = """
 from ralph.pipeline._retry_progress_guard import (
     MAX_IDENTICAL_RETRY_ATTEMPTS,
@@ -543,7 +482,6 @@ class CustomGuard(RetryProgressGuard):
         f"Expected violation for MAX_IDENTICAL_RETRY_ATTEMPTS, got: {v7}"
     )
 
-    # Negative test 8: Competing progress_guard state assignment (PA-001 / permanent bans)
     src_rival_state = """
 class AgentSession:
     def __init__(self):
@@ -554,8 +492,6 @@ class AgentSession:
         f"Expected violation for progress_guard, got: {v8}"
     )
 
-    # Negative test 9: the widened all-of-ralph scope must reject output-derived
-    # failure signatures instead of letting them evade the ledger-owner guard.
     assert "ralph" in PRODUCTION_SCAN_SUBTREES
     src_agents_invoke_signature = """
 def _retry_failure_signature(exc: Exception) -> tuple[str, str]:
@@ -569,7 +505,6 @@ def _retry_failure_signature(exc: Exception) -> tuple[str, str]:
         f"Expected violation for agents/invoke retry_failure_signature, got: {v9}"
     )
 
-    # Negative test 10: a local retry cap that decides an agent's fate.
     src_local_retry_cap = """
 def _retry_or_fall_over(state, chain):
     max_retries = 3
@@ -583,7 +518,6 @@ def _retry_or_fall_over(state, chain):
         f"Expected production_local_retry_cap_decision violation, got: {v10}"
     )
 
-    # Negative test 11: a test that indexes into the serialised ledger snapshot.
     src_test_serialised = """
 def test_snapshot(state):
     assert state.ledger_snapshot["entries"]["development:claude"]["is_spent"] is True
@@ -593,7 +527,6 @@ def test_snapshot(state):
         f"Expected test_serialised_ledger_access violation, got: {v11}"
     )
 
-    # Positive test 1: a repository-safety bound bounds repository state, not agent health.
     src_repo_safety_bound = """
 MAX_MERGE_REPAIR_ATTEMPTS = 3
 
@@ -605,7 +538,6 @@ def repair_pending_merge(record):
     v12 = audit_production_source("ralph/pipeline/_pending_merge_repair.py", src_repo_safety_bound)
     assert not v12, f"Expected no violation for a repository-safety bound, got: {v12}"
 
-    # Positive test 2: the owner's public answers stay observable from a test.
     src_public_seam = """
 def test_public_seam(ledger, fact):
     status = ledger.status("development", "claude")
@@ -620,7 +552,6 @@ def test_public_seam(ledger, fact):
     v13 = audit_test_source("tests/recovery/test_sample.py", src_public_seam)
     assert not v13, f"Expected no violation for the public ledger seam, got: {v13}"
 
-    # Negative test 12: a test reading the controller's private backoff counter.
     src_private_backoff = """
 def test_backoff(controller):
     assert controller._backoff_attempts.get("development:claude") == 2
@@ -630,7 +561,6 @@ def test_backoff(controller):
         f"Expected test_private_failure_owner_access for _backoff_attempts, got: {v14}"
     )
 
-    # Negative test 13: a test reading the controller's private unavailability store.
     src_private_tracker = """
 def test_tracker(controller):
     assert controller._unavailability_tracker.is_available("development", "claude")
@@ -640,8 +570,6 @@ def test_tracker(controller):
         f"Expected test_private_failure_owner_access for _unavailability_tracker, got: {v15}"
     )
 
-    # Negative test 14: a test calling the private unavailable marker in an
-    # assignment context (the rule must not be limited to asserts).
     src_private_marker = """
 def test_marker(controller):
     cooldown_ms = controller._mark_agent_unavailable("development", "claude", reason)
@@ -651,7 +579,6 @@ def test_marker(controller):
         f"Expected test_private_failure_owner_access for _mark_agent_unavailable, got: {v16}"
     )
 
-    # Negative test 15: the same private state reached through getattr().
     src_private_getattr = """
 def test_getattr(controller):
     attempts = getattr(controller, "_backoff_attempts")
@@ -661,25 +588,12 @@ def test_getattr(controller):
         f"Expected test_private_failure_owner_access for getattr(_backoff_attempts), got: {v17}"
     )
 
-    # The controller's failure-owner coupling rules and its public seam are
-    # verified by the dedicated helper below.
     _verify_controller_failure_owner_seam()
 
-    # The widened classifier-provenance shapes (wrapper, stored instance,
-    # local laundering) are verified by the dedicated helper below.
     _verify_classifier_provenance_shapes()
 
 
 def _verify_controller_failure_owner_seam() -> None:
-    """Verify the controller's failure-owner coupling rules and its public seam.
-
-    The recovery controller publishes its private failure-owner state inside its
-    serialised snapshot under a public key name. A test that indexes one of
-    those keys couples to the same private state that the direct-access rule
-    already rejects, so the serialised form must be rejected too, while the
-    controller's public seam and its non-failure-owner snapshot keys stay
-    observable.
-    """
     src_controller_public_seam = """
 def test_controller_public_seam(controller):
     controller.handle(event)
@@ -691,8 +605,6 @@ def test_controller_public_seam(controller):
     v18 = audit_test_source("tests/recovery/test_sample.py", src_controller_public_seam)
     assert not v18, f"Expected no violation for the public controller seam, got: {v18}"
 
-    # Positive test 4: a snapshot key that is NOT private failure-owner state
-    # stays legal.
     src_public_snapshot_key = """
 def test_controller_snapshot(controller):
     assert controller.snapshot()["cycle_cap"] == 5
@@ -700,8 +612,6 @@ def test_controller_snapshot(controller):
     v19 = audit_test_source("tests/recovery/test_sample.py", src_public_snapshot_key)
     assert not v19, f"Expected no violation for a public snapshot key, got: {v19}"
 
-    # Negative test 16: a test reading the controller's private backoff counter
-    # through its SERIALISED snapshot.
     src_serialised_backoff = """
 def test_snapshot(controller):
     assert controller.snapshot()["backoff_attempts"] == {}
@@ -711,7 +621,6 @@ def test_snapshot(controller):
         f"Expected test_serialised_failure_owner_access for snapshot['backoff_attempts'], got: {v20}"
     )
 
-    # Negative test 17: the same serialised state reached through .get().
     src_serialised_backoff_get = """
 def test_snapshot(controller):
     attempts = controller.snapshot().get("backoff_attempts")
@@ -722,7 +631,6 @@ def test_snapshot(controller):
         f"got: {v21}"
     )
 
-    # Negative test 18: the serialised unavailability timeout history.
     src_serialised_timeouts = """
 def test_snapshot(controller):
     timeouts = controller.snapshot()["unavailable_timeouts"]
@@ -733,7 +641,6 @@ def test_snapshot(controller):
         f"got: {v22}"
     )
 
-    # Negative test 19: the bare snapshot() spelling reaches the same state.
     src_serialised_bare_snapshot = """
 def test_snapshot():
     attempts = snapshot()["backoff_attempts"]
@@ -746,17 +653,6 @@ def test_snapshot():
 
 
 def _verify_classifier_provenance_shapes() -> None:
-    """Verify the widened classifier-provenance rule shapes.
-
-    The rule must flag Ralph-authored prose reaching the classifier through
-    every inventoried entry shape — the ``bench_resolver`` wrapper (the two
-    integration wrapper flows), a stored ``FailureClassifier`` instance, a
-    locally assigned authored value, and a same-module helper returning
-    authored prose — while exception objects stay accepted as RAW external
-    runtime text.
-    """
-    # Negative: authored f-string through the bench_resolver wrapper
-    # (the pending-merge repair flow's pre-conversion shape).
     src_wrapper = """
 def handoff(controller, agent):
     bench_resolver(
@@ -771,7 +667,6 @@ def handoff(controller, agent):
         f"Expected production_ralph_authored_classifier_input for bench_resolver prose, got: {v}"
     )
 
-    # Negative: reworded literal still flags (rewording is not an escape).
     src_reworded = """
 def handoff(controller, agent):
     bench_resolver(controller, agent, "resolver produced nothing Ralph can verify")
@@ -781,7 +676,6 @@ def handoff(controller, agent):
         f"Expected production_ralph_authored_classifier_input for reworded prose, got: {v}"
     )
 
-    # Negative: stored classifier instance fed internal prose.
     src_stored = """
 from ralph.recovery.failure_classifier import FailureClassifier
 
@@ -798,7 +692,6 @@ class Runner:
         for v in v
     ), f"Expected production_ralph_authored_classifier_input for a stored instance, got: {v}"
 
-    # Negative: locally assigned authored value (or-chain fallback) classified.
     src_local = """
 def handoff(controller, agent, failure_detail):
     detail = failure_detail() if failure_detail is not None else None
@@ -810,8 +703,6 @@ def handoff(controller, agent, failure_detail):
         v.rule == "production_ralph_authored_classifier_input" and "'text'" in v.detail for v in v
     ), f"Expected production_ralph_authored_classifier_input for a local authored value, got: {v}"
 
-    # Negative: same-module helper returning authored prose
-    # (the diagnostic-handoff flow's pre-conversion shape).
     src_helper = """
 def _failure_text(agent, failure_detail):
     detail = failure_detail() if failure_detail is not None else None
@@ -826,8 +717,6 @@ def handoff(controller, agent, failure_detail):
         for v in v
     ), f"Expected production_ralph_authored_classifier_input for a prose helper, got: {v}"
 
-    # Positive: exception objects through the wrapper and a stored instance
-    # stay accepted (RAW external runtime text).
     src_external = """
 from ralph.recovery.failure_classifier import FailureClassifier
 
@@ -845,20 +734,14 @@ class Runner:
     )
 
 
-#: Below this many files the pool startup costs more than the parse work saved.
 _PARALLEL_MIN_FILES = 16
 
-#: Upper bound on pool workers so a many-core host does not spawn a swarm.
 _POOL_WORKER_CAP = 8
 
-#: Spawned, never forked: the audit may run inside pytest/xdist workers that
-#: hold native state which is not fork-safe. The worker lives in this
-#: importable module, so a spawned child needs nothing from ``__main__``.
 _POOL_CONTEXT = multiprocessing.get_context("spawn")
 
 
 def _audit_file_payload(payload: tuple[str, str, str]) -> list[SingleOwnerViolation]:
-    """Audit one ``(kind, rel_path, source)`` file; a pool worker entry point."""
     kind, rel_path, source = payload
     if kind == "production":
         return audit_production_source(rel_path, source)
@@ -866,15 +749,12 @@ def _audit_file_payload(payload: tuple[str, str, str]) -> list[SingleOwnerViolat
 
 
 def _collect_payloads(repo_root: Path) -> list[tuple[str, str, str]]:
-    """Return every ``(kind, rel_path, source)`` file the audit scans, in scan order."""
     payloads: list[tuple[str, str, str]] = []
     scan_dirs = [("production", repo_root / sub) for sub in PRODUCTION_SCAN_SUBTREES]
     scan_dirs.append(("test", repo_root / "tests"))
     for kind, base_dir in scan_dirs:
-        # filesystem-read-ok: audit scanner checks directory existence before tree traversal
         if not base_dir.is_dir():
             continue
-        # filesystem-read-ok: audit scanner walks directory tree for static AST inspection
         for parent, dirs, files in os.walk(base_dir):
             dirs[:] = [d for d in dirs if d != "__pycache__"]
             for name in files:
@@ -882,14 +762,12 @@ def _collect_payloads(repo_root: Path) -> list[tuple[str, str, str]]:
                     continue
                 file_path = Path(parent) / name
                 rel_path = file_path.relative_to(repo_root).as_posix()
-                # filesystem-read-ok: audit scanner loads module source for static AST inspection
                 source = file_path.read_text(encoding="utf-8")
                 payloads.append((kind, rel_path, source))
     return payloads
 
 
 def audit_single_owner(repo_root: Path) -> list[SingleOwnerViolation]:
-    """Scan production and test subtrees for single-owner failure ledger violations."""
     verify_counter_access_detection()
     violations: list[SingleOwnerViolation] = []
     payloads = _collect_payloads(repo_root)
@@ -905,7 +783,6 @@ def audit_single_owner(repo_root: Path) -> list[SingleOwnerViolation]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the single-owner failure ledger audit from the command line."""
     args = argv if argv is not None else sys.argv[1:]
     repo_root = Path(args[0]) if args else Path(__file__).resolve().parents[2]
     violations = audit_single_owner(repo_root)

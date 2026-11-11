@@ -1,10 +1,3 @@
-"""Unit tests for agents-policy construction and the bundled default policy.
-
-Split out of ``test_policy_loader.py`` (repo structure policy caps a file at
-1000 lines): this half pins what the shipped defaults guarantee, the other half
-pins loading and validation errors.
-"""
-
 from __future__ import annotations
 
 import shutil
@@ -36,7 +29,6 @@ def _copy_default_policy_files(target_dir: Path) -> None:
 def test_policy_loader_unknown_top_level_table_warns_with_file(
     tmp_path: Path,
 ) -> None:
-    """A misspelled policy table must be visible while open subtables remain untouched."""
     config_dir = tmp_path / ".agent"
     _copy_default_policy_files(config_dir)
     pipeline_path = config_dir / "pipeline.toml"
@@ -57,18 +49,12 @@ def test_policy_loader_unknown_top_level_table_warns_with_file(
 
 
 def test_build_agents_policy_from_config_rejects_missing_drain(tmp_path: Path) -> None:
-    """A pipeline drain that neither the user config nor the bundled
-    defaults bind must cause a cross-policy validation failure at load
-    time — no sibling inference. Drains the user omits but the defaults
-    define are satisfied by the bundled binding (standard layering).
-    """
     config_dir = tmp_path / ".agent"
     config_dir.mkdir(parents=True)
 
     config = UnifiedConfig(
         agent_chains={"dev_chain": ["claude"]},
         agent_drains={"development": "dev_chain"},
-        # custom_analysis drain intentionally absent everywhere — no inference
     )
     (config_dir / "pipeline.toml").write_text(
         dedent(
@@ -107,15 +93,12 @@ def test_build_agents_policy_from_config_rejects_missing_drain(tmp_path: Path) -
 def test_drain_omitted_by_user_is_satisfied_by_bundled_default_binding(
     tmp_path: Path,
 ) -> None:
-    """A pipeline drain the user omits but the bundled defaults bind loads
-    cleanly — agents policy layers onto defaults like pipeline/artifacts."""
     config_dir = tmp_path / ".agent"
     config_dir.mkdir(parents=True)
 
     config = UnifiedConfig(
         agent_chains={"dev_chain": ["claude"]},
         agent_drains={"development": "dev_chain"},
-        # development_analysis omitted: bound by the bundled default.
     )
     (config_dir / "pipeline.toml").write_text(
         dedent(
@@ -157,7 +140,6 @@ def test_drain_omitted_by_user_is_satisfied_by_bundled_default_binding(
 
 
 def test_terminal_recovery_route_rejected(tmp_path: Path) -> None:
-    """Loading a pipeline.toml with the deprecated terminal_recovery_route field raises an error."""
     config_dir = tmp_path / ".agent"
     config_dir.mkdir(parents=True)
 
@@ -198,7 +180,6 @@ def test_terminal_recovery_route_rejected(tmp_path: Path) -> None:
 
 
 def test_build_agents_policy_includes_custom_drains() -> None:
-    """build_agents_policy_from_config includes all declared drains unconditionally."""
 
     config = UnifiedConfig(
         agent_chains={"custom_chain": ["claude"]},
@@ -210,7 +191,6 @@ def test_build_agents_policy_includes_custom_drains() -> None:
 
 
 def test_default_policy_routes_all_noncompleted_analysis_back_to_rework() -> None:
-    """Both non-completed analysis decisions remain actionable rework."""
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
 
     bundle = load_policy(defaults_dir)
@@ -250,7 +230,6 @@ def test_default_policy_routes_planning_through_planning_analysis() -> None:
 
 
 def test_bundled_defaults_have_reviewless_phase_set() -> None:
-    """Bundled default policy must expose the reviewless phase set and no reviewer_pass counter."""
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
 
     bundle = load_policy(defaults_dir)
@@ -271,7 +250,6 @@ def test_bundled_defaults_have_reviewless_phase_set() -> None:
     assert bundle.pipeline.entry_phase == "planning"
     assert bundle.pipeline.terminal_phase == "complete"
 
-    # Bundled default agent surface must not expose review-era drains or chains.
     review_era_drains = {"review", "review_analysis", "review_commit", "fix"}
     assert not review_era_drains.intersection(bundle.agents.agent_drains), (
         f"Review-era drains still present in bundled defaults: "
@@ -285,7 +263,6 @@ def test_bundled_defaults_have_reviewless_phase_set() -> None:
 
 
 def test_default_policy_has_artifact_history_enabled_on_planning() -> None:
-    """Default policy must have artifact_history.enabled=True on planning phase."""
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     bundle = load_policy(defaults_dir)
     planning = bundle.pipeline.phases["planning"]
@@ -294,7 +271,6 @@ def test_default_policy_has_artifact_history_enabled_on_planning() -> None:
 
 
 def test_default_policy_has_artifact_history_enabled_on_planning_analysis() -> None:
-    """Default policy must have artifact_history.enabled=True on planning_analysis phase."""
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     bundle = load_policy(defaults_dir)
     planning_analysis = bundle.pipeline.phases["planning_analysis"]
@@ -305,7 +281,6 @@ def test_default_policy_has_artifact_history_enabled_on_planning_analysis() -> N
 
 
 def test_default_policy_has_artifact_history_enabled_on_development() -> None:
-    """Default policy must have artifact_history.enabled=True on development phase."""
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     bundle = load_policy(defaults_dir)
     development = bundle.pipeline.phases["development"]
@@ -316,7 +291,6 @@ def test_default_policy_has_artifact_history_enabled_on_development() -> None:
 
 
 def test_default_policy_planning_clears_history_on_fresh_entry() -> None:
-    """Default planning phase must clear history on fresh (non-loopback) entry."""
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     bundle = load_policy(defaults_dir)
     planning = bundle.pipeline.phases["planning"]
@@ -325,7 +299,6 @@ def test_default_policy_planning_clears_history_on_fresh_entry() -> None:
 
 
 def test_default_policy_planning_analysis_preserves_history_on_fresh_entry() -> None:
-    """Default planning_analysis phase must NOT clear history on fresh entry."""
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     bundle = load_policy(defaults_dir)
     planning_analysis = bundle.pipeline.phases["planning_analysis"]
@@ -334,7 +307,6 @@ def test_default_policy_planning_analysis_preserves_history_on_fresh_entry() -> 
 
 
 def test_default_policy_development_clears_history_on_fresh_entry() -> None:
-    """Default development phase must clear history on fresh (non-loopback) entry."""
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     bundle = load_policy(defaults_dir)
     development = bundle.pipeline.phases["development"]

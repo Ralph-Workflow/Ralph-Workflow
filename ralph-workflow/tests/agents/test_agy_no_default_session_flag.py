@@ -1,17 +1,3 @@
-"""Pin the agy built-in's session_flag behavior via the explicit
-``no_default_session_flag`` field on :class:`AgentSpec`.
-
-Replaces the legacy hidden ``name != "agy"`` check in
-:meth:`AgentSupport.from_registration_kwargs` with an explicit, data-driven
-opt-out.  This test pins:
-
-  (a) the agy built-in keeps ``config.session_flag == None`` after
-      refactoring through the new ``no_default_session_flag`` field;
-  (b) the agy spec exposes ``no_default_session_flag=True``;
-  (c) an interactive agent without the flag still receives the default
-      ``--resume {}`` template (matching the historical claude behavior).
-"""
-
 from __future__ import annotations
 
 from ralph.agents.builtin import builtin_supports
@@ -23,8 +9,6 @@ from ralph.config.enums import AgentTransport, JsonParserType
 
 
 class TestAgyNoDefaultSessionFlag:
-    """Pin the no_default_session_flag behavior end-to-end."""
-
     def test_agy_config_session_flag_is_none(self) -> None:
         agy = next(s for s in builtin_supports() if s.name == "agy")
         assert agy.config.session_flag is None, (
@@ -33,22 +17,16 @@ class TestAgyNoDefaultSessionFlag:
 
     def test_agy_support_has_no_default_session_flag_true(self) -> None:
         agy = next(s for s in builtin_supports() if s.name == "agy")
-        # The dataclass exposes no_default_session_flag as a support field
-        # so downstream introspection can detect the opt-out.
         assert agy.no_default_session_flag is True, (
             f"agy must opt out of the default session flag, got {agy.no_default_session_flag!r}"
         )
 
     def test_agy_keeps_no_session_flag_via_explicit_field(self) -> None:
-        """Building an agy-shaped support from scratch with
-        no_default_session_flag=True must yield session_flag=None, not
-        the default --resume {} template.
-        """
         registry = AgentRegistry()
         register_agent_support(
             name="agy-shaped",
             transport=AgentTransport.AGY,
-            parser_factory=ClaudeParser,  # any callable works
+            parser_factory=ClaudeParser,
             strategy_factory=ClaudeExecutionStrategy,
             agent_registry=registry,
             json_parser=JsonParserType.GENERIC,
@@ -64,10 +42,6 @@ class TestAgyNoDefaultSessionFlag:
         assert support.no_default_session_flag is True
 
     def test_interactive_without_flag_still_gets_default(self) -> None:
-        """An interactive agent WITHOUT no_default_session_flag still gets
-        the default ``--resume {}`` session template (matching the
-        historical claude behavior).
-        """
         registry = AgentRegistry()
         register_agent_support(
             name="claude-shaped",

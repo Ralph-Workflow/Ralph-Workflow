@@ -1,4 +1,3 @@
-"""Graph tests_for query for ``ralph_graph`` (Phase 2+)."""
 
 from typing import Final
 
@@ -10,9 +9,6 @@ from ralph.mcp.explore.graph import (
 )
 from ralph.mcp.explore.store import ExploreStore
 
-# Test path conventions. Kept next to tests_for because that
-# is the only producer; sharing them via the graph run_query
-# namespace would muddy the focused-module contract.
 _TEST_PATH_PREFIXES: Final[tuple[str, ...]] = (
     "tests/",
     "/tests/",
@@ -32,15 +28,6 @@ def tests_for(
     target: str,
     limit: int = 25,
 ) -> GraphResult:
-    """Return deterministic ``tests`` suggestions for ``target``.
-
-    The output is a suggested set, not a proof of behavioral
-    coverage. Suggestions are derived from:
-
-    * files that import the target,
-    * files that text-reference the target's qualified name,
-    * files under ``tests/`` whose path matches the target's module.
-    """
     bounded_limit = max(1, min(limit, 100))
     resolved_id, resolved_name = _resolve_target(store, target)
     if resolved_id is None:
@@ -55,12 +42,10 @@ def tests_for(
             truncated=False,
             metadata={"target": target},
         )
-    # Path-based candidates (test naming conventions).
     candidate_paths: set[str] = set()
     for edge in store.iter_edges():
         if edge.target_id == resolved_id:
             candidate_paths.add(edge.path)
-    # Plus text references to the target's qualified name.
     if resolved_name is not None:
         for edge in store.iter_edges():
             if edge.target_id == resolved_name:

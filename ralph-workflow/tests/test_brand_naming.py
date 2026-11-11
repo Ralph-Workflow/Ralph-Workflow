@@ -1,13 +1,3 @@
-"""Regression test: bare 'Ralph' (project name) must always appear as 'Ralph Workflow'.
-
-This test walks a set of user-facing source files and asserts that every
-capital-R 'Ralph' occurrence is either:
-  - followed by ' Workflow' (correct full project name), or
-  - part of one of two explicitly allowed historical references:
-    'original Ralph' or 'Ralph loop', or
-  - on an explicitly allowlisted line (e.g. ASCII art, internal CLI command literal).
-"""
-
 from __future__ import annotations
 
 import re
@@ -17,10 +7,6 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-# Files to audit for bare 'Ralph' branding (static list).
-# wt-007-consolidate-display deleted ralph/banner.py; the banner text now
-# lives in ralph/display/parallel_display.py, which is included separately
-# in the audit list below.
 _AUDIT_FILES: list[Path] = [
     REPO_ROOT / "ralph" / "policy" / "defaults" / "agents.toml",
     REPO_ROOT / "ralph" / "policy" / "defaults" / "artifacts.toml",
@@ -43,7 +29,6 @@ _AUDIT_FILES: list[Path] = [
 
 
 def _sphinx_docs() -> list[Path]:
-    """Return all Sphinx documentation files (*.md and *.rst)."""
     sphinx_dir = REPO_ROOT / "docs" / "sphinx"
     if not sphinx_dir.exists():
         return []
@@ -51,30 +36,16 @@ def _sphinx_docs() -> list[Path]:
 
 
 def _jinja_templates() -> list[Path]:
-    """Return all Jinja template files (*.jinja and *.j2)."""
     templates_dir = REPO_ROOT / "ralph" / "prompts" / "templates"
     if not templates_dir.exists():
         return []
     return list(templates_dir.rglob("*.jinja")) + list(templates_dir.rglob("*.j2"))
 
 
-# Substrings that make a line acceptable even when it contains bare 'Ralph'.
-# Each entry is a tuple of (substring, reason).
 _ALLOWLIST: list[tuple[str, str]] = [
-    # Historical concept references — allowed only when describing lineage,
-    # not when using 'Ralph' as the current product name.
     ("Ralph loop", "historical concept reference: the Ralph loop"),
     ("Ralph-loop", "historical concept reference: the Ralph-loop (hyphenated)"),
     ("original Ralph", "historical lineage reference: original Ralph"),
-    # Parallelization rework (wt-011): the audit at
-    # ralph/testing/audit_parallelization_dormant.py enforces the literal
-    # 'Ralph-managed fan-out is dormant in this build' string in
-    # effect_router.py, planning.jinja, and planning_analysis.jinja.
-    # The compound noun 'Ralph-managed' is the canonical product term for
-    # the (now-dormant) parallel-execution machinery. The bare 'Ralph' in
-    # this compound refers to the Ralph Workflow project; the term is
-    # scoped to a single technical concept and does not collide with the
-    # 'Ralph Workflow' brand.
     (
         "Ralph-managed",
         "parallelization rework: 'Ralph-managed' is the canonical product term "
@@ -94,42 +65,27 @@ _ALLOWLIST: list[tuple[str, str]] = [
         "Ralph would have run",
         "parallelization rework: contraction of 'Ralph Workflow would have run' in planning prompt",
     ),
-    # ASCII art logo lines — the banner spells out 'Ralph' as visual art
     ("|  _ \\", "ASCII art banner line"),
     ("| |_) /", "ASCII art banner line"),
     ("|  _ <", "ASCII art banner line"),
     ("|_| \\_\\", "ASCII art banner line"),
-    # WELCOME_MESSAGE constant — the string value itself is 'Welcome to Ralph Workflow'
-    # but the constant name 'WELCOME_MESSAGE' appears on a line with 'Ralph Workflow' already
-    # README codeberg repo path — Ralph-Workflow is the repo name, not a project name usage
     ("Ralph-Workflow.git", "codeberg repository path"),
     ("Ralph-Workflow/ralph-workflow", "codeberg repository path"),
     ("https://codeberg.org/RalphWorkflow/Ralph-Workflow", "codeberg repository URL"),
     ("https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new", "codeberg issue tracker URL"),
-    # GitHub primary repo path — Ralph-Workflow is the repo name, not a project name usage
     ("https://github.com/Ralph-Workflow/Ralph-Workflow", "github repository URL"),
     ("Ralph-Workflow/Ralph-Workflow", "github repository path"),
-    # GitDB mirrors the GitHub repo path — Ralph-Workflow is the repo name, not a project name usage
     ("gitdb.net/Ralph-Workflow/Ralph-Workflow", "gitdb mirror path"),
-    # Line-wrapped "Ralph\nWorkflow" in RST source (text wrapping, not a violation)
     ("or watch Ralph\nWorkflow", "rst line-wrapped Ralph Workflow"),
-    # Third-party product name (optional GUI layer) — Ralph-Workflow-Pro is a different
-    # product name from Ralph Workflow, not a project name usage of bare 'Ralph'.
     ("Ralph-Workflow-Pro", "third-party product name"),
-    # The literal MCP server entry name (``"ralph"`` key in
-    # ``mcpServers`` JSON config).  The bare 'Ralph' in 'the Ralph entry'
-    # refers to the JSON key, not the project name.  Used in docs that
-    # describe the cursor / agy / claude MCP wiring.
     ("the Ralph entry", "MCP server entry name (JSON key)"),
     ("Ralph entry plus", "MCP server entry name (JSON key)"),
 ]
 
-# Pattern: a capital-R 'Ralph' word that is NOT followed by ' Workflow'
 _BARE_RALPH_RE = re.compile(r"\bRalph\b(?! Workflow)")
 
 
 def _line_is_allowed(line: str) -> bool:
-    """Return True if the line is explicitly allowed despite containing bare 'Ralph'."""
     return any(substring in line for substring, _ in _ALLOWLIST)
 
 
@@ -139,7 +95,6 @@ def _line_is_allowed(line: str) -> bool:
     ids=lambda path: str(path.relative_to(REPO_ROOT)),
 )
 def test_no_bare_ralph_in_user_facing_files(path: Path) -> None:
-    """Each user-facing file names Ralph Workflow consistently within the test budget."""
     assert path.exists(), f"MISSING FILE: {path.relative_to(REPO_ROOT)}"
 
     violations = [

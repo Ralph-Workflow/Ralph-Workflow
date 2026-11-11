@@ -125,16 +125,16 @@ def write_dev_launcher(path: Path, content: str) -> None:
     replaced = False
     try:
         with (
-            os.fdopen(  # filesystem-write-ok: exclusive launcher staging must be durable before replacement.
+            os.fdopen(
                 descriptor, "w", encoding="utf-8"
             ) as handle
         ):
             handle.write(content)
             handle.flush()
-            os.fsync(  # filesystem-write-ok: durable launcher staging before replacement.
+            os.fsync(
                 handle.fileno()
             )
-        staging.chmod(  # filesystem-write-ok: launcher must be executable before atomic publication.
+        staging.chmod(
             0o755
         )
         if path.exists() or path.is_symlink():
@@ -143,23 +143,23 @@ def write_dev_launcher(path: Path, content: str) -> None:
             )
             os.close(backup_descriptor)
             backup = Path(backup_name)
-            path.replace(  # filesystem-write-ok: preserve the prior launcher without following it.
+            path.replace(
                 backup
             )
-        staging.replace(  # filesystem-write-ok: atomically publish fully prepared launcher staging.
+        staging.replace(
             path
         )
         replaced = True
         _fsync_directory(path.parent)
         if backup is not None:
-            backup.unlink()  # filesystem-write-ok: discard the superseded launcher after durable publication.
+            backup.unlink()
     except OSError as error:
         if replaced:
             try:
                 if backup is None:
-                    path.unlink()  # filesystem-write-ok: undo an uncommitted first-install launcher.
+                    path.unlink()
                 else:
-                    backup.replace(  # filesystem-write-ok: atomically restore the prior launcher.
+                    backup.replace(
                         path
                     )
                 _fsync_directory(path.parent)
@@ -168,25 +168,25 @@ def write_dev_launcher(path: Path, content: str) -> None:
                     f"launcher publication failed and recovery was not durable: {recovery_error}"
                 ) from error
         elif backup is not None:
-            backup.replace(  # filesystem-write-ok: restore prior launcher after replacement failure.
+            backup.replace(
                 path
             )
             _fsync_directory(path.parent)
         raise
     finally:
-        staging.unlink(  # filesystem-write-ok: discard failed exclusive launcher staging.
+        staging.unlink(
             missing_ok=True
         )
 
 
 def _fsync_directory(directory: Path) -> None:
     descriptor = (
-        os.open(  # filesystem-write-ok: fsync the directory containing atomic launcher replacement.
+        os.open(
             directory, os.O_RDONLY | os.O_DIRECTORY
         )
     )
     try:
-        os.fsync(  # filesystem-write-ok: persist atomic launcher replacement directory entry.
+        os.fsync(
             descriptor
         )
     finally:
@@ -220,7 +220,6 @@ def write_build_flavor(
     updated_content = _replace_build_metadata(content, "BUILD_FLAVOR", flavor)
     updated_content = _replace_build_metadata(updated_content, "BUILD_SOURCE_COMMIT", source_commit)
     updated_content = _replace_build_metadata(updated_content, "BUILD_SOURCE_PATH", source_path)
-    # deterministic-writer-ok: build_meta runtime cache under ralph install dir, not a repo-tracked deliverable
     updated_content = _replace_build_metadata(updated_content, "BUILD_INSTALLED_AT", installed_at)
     write_text_if_changed(DEFAULT_FILE_BACKEND, build_meta, updated_content, encoding="utf-8")
 

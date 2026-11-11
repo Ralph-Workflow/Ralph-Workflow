@@ -1,4 +1,3 @@
-"""Tool specs for directory listing operations."""
 
 from __future__ import annotations
 
@@ -15,7 +14,6 @@ from ralph.mcp.tools.names import (
 
 
 def file_list_specs() -> list[ToolSpec]:
-    """Return tool specs for directory listing operations."""
     return [
         ToolSpec(
             metadata=_metadata(

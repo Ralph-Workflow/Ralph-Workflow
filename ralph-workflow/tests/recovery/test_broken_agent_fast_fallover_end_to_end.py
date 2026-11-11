@@ -1,5 +1,3 @@
-"""End-to-end regression for broken-agent direct-MCP fallover."""
-
 from __future__ import annotations
 
 from collections.abc import Iterator
@@ -80,7 +78,6 @@ def _config() -> MagicMock:
 def test_broken_agent_regression_falls_over_without_direct_mcp_retries(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """S-1: preserve the broken-agent fallover intent across the full executor seam."""
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
     pipeline_deps = make_test_pipeline_deps(
         make_display_context(),
@@ -91,7 +88,6 @@ def test_broken_agent_regression_falls_over_without_direct_mcp_retries(
     invocations: list[str] = []
 
     def broken_agent_invoke(*_args: object, **_kwargs: object) -> Iterator[str]:
-        """S-6: trigger the real fast-exit completion gate, not a direct raise."""
         invocations.append("dev")
         yield from ()
         check_process_result(

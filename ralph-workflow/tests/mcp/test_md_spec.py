@@ -1,5 +1,3 @@
-"""Behavior tests for the shared markdown artifact validation gate."""
-
 from ralph.mcp.artifacts.markdown import MdArtifactSpec, SectionRule, parse_and_validate
 from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
 from ralph.mcp.artifacts.markdown._document import ParsedDocument

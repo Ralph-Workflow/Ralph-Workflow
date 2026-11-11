@@ -1,8 +1,3 @@
-"""Per-transport RuntimeResolver classes for agent invocation runtime environment wiring.
-
-This module defines the RuntimeResolver Protocol and the RUNTIME_RESOLVERS dispatch
-dictionary that maps every AgentTransport value to its corresponding RuntimeResolver class.
-"""
 
 from __future__ import annotations
 
@@ -51,7 +46,6 @@ if TYPE_CHECKING:
 
 
 class _InvokeCompatibilitySeam(Protocol):
-    """Typed package-level compatibility seam retained for resolver tests."""
 
     def _apply_upstream_env(
         self,
@@ -117,7 +111,6 @@ class _InvokeCompatibilitySeam(Protocol):
 
 @runtime_checkable
 class _InvokeModule(Protocol):
-    """Structural compatibility seam retained for runtime resolver tests."""
 
     def _apply_upstream_env(
         self,
@@ -183,12 +176,6 @@ class _InvokeModule(Protocol):
 
 @runtime_checkable
 class RuntimeResolver(Protocol):
-    """Protocol for per-transport runtime environment wiring.
-
-    Each transport-specific RuntimeResolver implementation provides a resolve()
-    method that builds the runtime environment dictionary and MCP configuration
-    for the agent subprocess.
-    """
 
     def resolve(
         self,
@@ -200,24 +187,10 @@ class RuntimeResolver(Protocol):
         master_prompt_file: str | None = None,
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
-        """Build the runtime configuration for agent invocation.
-
-        Args:
-            config: Agent configuration.
-            extra_env: Additional environment variables.
-            workspace_path: Workspace directory path.
-            base_env: Base environment variables.
-            master_prompt_file: Path to master prompt file.
-            unsafe_mode: Whether to allow unsafe mode.
-
-        Returns:
-            ResolvedInvocationRuntime with agent_env, server_env, and mcp_endpoint.
-        """
         ...
 
 
 def _invoke_module() -> _InvokeCompatibilitySeam:
-    """Return the typed package-level compatibility seam used by runtime tests."""
     return cast("_InvokeCompatibilitySeam", sys.modules["ralph.agents.invoke"])
 
 
@@ -227,13 +200,6 @@ def _apply_upstream_env(
     runtime_env: dict[str, str],
     server_env: dict[str, str],
 ) -> None:
-    """Project the resolved upstreams into the runtime and server environments.
-
-    A caller may replace the projection for the duration of a scope with
-    :meth:`ralph.agents.invoke.InvokeOptions.upstream_env_applier_override`;
-    the override then owns both environment dicts.  Without an override the
-    package seam is used so the shared MCP wiring stays in one place.
-    """
     override = _UPSTREAM_ENV_APPLIER_OVERRIDE.get()
     if override is not None:
         override(upstreams, workspace_path, runtime_env, server_env)
@@ -242,12 +208,6 @@ def _apply_upstream_env(
 
 
 def _current_platform() -> str:
-    """Return the host platform the resolvers use for OS-specific paths.
-
-    A caller may replace the platform for the duration of a scope with
-    :meth:`ralph.agents.invoke.InvokeOptions.platform_override` so the
-    macOS-specific branches stay testable on any host.
-    """
     override = _PLATFORM_OVERRIDE.get()
     if override is not None:
         return override
@@ -291,7 +251,6 @@ def _discover_http_mcp_tool_names(endpoint: str) -> list[str]:
 
 
 def _get_endpoint(runtime_env: dict[str, str], base_env: Mapping[str, str]) -> str | None:
-    """Get MCP endpoint from runtime_env or base_env."""
     return runtime_env.get(MCP_ENDPOINT_ENV) or base_env.get(MCP_ENDPOINT_ENV)
 
 
@@ -302,7 +261,6 @@ _CURSOR_SSH_MARKERS = ("SSH_CLIENT", "SSH_TTY", "SSH_CONNECTION")
 
 
 def _read_valid_cursor_auth(source: Path) -> dict[str, object] | None:
-    """Read a Cursor file-store payload only when it carries a known token."""
     try:
         payload: object = json.loads(source.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -319,13 +277,10 @@ def _read_valid_cursor_auth(source: Path) -> dict[str, object] | None:
 
 
 def _is_valid_cursor_auth_file(source: Path) -> bool:
-    """Return whether ``source`` is a usable Cursor file-store credential."""
     return _read_valid_cursor_auth(source) is not None
 
 
 def _replace_private_cursor_auth(destination: Path, payload: dict[str, object]) -> None:
-    """Materialize auth beneath the invocation-owned home without following links."""
-    # filesystem-write-ok: per-invocation runtime resolver cache, not a repo-tracked deliverable
     destination.unlink(missing_ok=True)
     write_text_if_changed(
         DEFAULT_FILE_BACKEND,
@@ -337,7 +292,6 @@ def _replace_private_cursor_auth(destination: Path, payload: dict[str, object]) 
 
 
 def _cursor_ide_auth(source_home: Path, source_config_home: Path) -> dict[str, object] | None:
-    """Extract a non-empty Cursor IDE token from its read-only state database."""
     state_db = (
         source_home / "Library/Application Support/Cursor/User/globalStorage/state.vscdb"
         if _current_platform() == "darwin"
@@ -357,7 +311,7 @@ def _cursor_ide_auth(source_home: Path, source_config_home: Path) -> dict[str, o
                     connection.execute(
                         "SELECT value FROM ItemTable WHERE key = ?", (key,)
                     ).fetchone(),
-                )  # cast-policy: sqlite row boundary
+                )
                 if row is not None and isinstance(token := row[0], str) and token.strip():
                     credentials[name] = token
     except (OSError, sqlite3.Error, ValueError):
@@ -366,7 +320,6 @@ def _cursor_ide_auth(source_home: Path, source_config_home: Path) -> dict[str, o
 
 
 class OpencodeRuntimeResolver:
-    """RuntimeResolver for AgentTransport.OPENCODE."""
 
     def resolve(
         self,
@@ -381,7 +334,7 @@ class OpencodeRuntimeResolver:
 
         _env = (
             base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         runtime_env = dict(extra_env or {})
         server_env: dict[str, str] = {}
         endpoint = _get_endpoint(runtime_env, _env)
@@ -413,7 +366,6 @@ class OpencodeRuntimeResolver:
 
 
 class NanocoderRuntimeResolver:
-    """RuntimeResolver for AgentTransport.NANOCODER."""
 
     def resolve(
         self,
@@ -428,7 +380,7 @@ class NanocoderRuntimeResolver:
 
         _env = (
             base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         runtime_env = dict(extra_env or {})
         server_env: dict[str, str] = {}
         endpoint = _get_endpoint(runtime_env, _env)
@@ -470,7 +422,6 @@ class NanocoderRuntimeResolver:
 
 
 class CodexRuntimeResolver:
-    """RuntimeResolver for AgentTransport.CODEX."""
 
     def resolve(
         self,
@@ -485,7 +436,7 @@ class CodexRuntimeResolver:
 
         _env = (
             base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         runtime_env = dict(extra_env or {})
         server_env: dict[str, str] = {}
         endpoint = _get_endpoint(runtime_env, _env)
@@ -515,30 +466,8 @@ class CodexRuntimeResolver:
 
         _apply_upstream_env(upstreams, workspace_path, runtime_env, server_env)
 
-        # Per-invocation cleanup hook: ``prepare_codex_home_with_upstreams``
-        # always allocates a fresh ``tempfile.mkdtemp`` under
-        # ``workspace_path/.agent/tmp`` (or the system tempdir). Without
-        # a release hook the on-disk directory would persist for the
-        # entire interpreter lifetime, and the in-memory registry in
-        # ``ralph.mcp.transport.codex._allocated_codex_homes`` could
-        # never distinguish an active home from a finished one. The
-        # ``invoke_agent`` finally block invokes this hook after the
-        # Codex subprocess finishes (success, failure, or
-        # cancellation) so each per-invocation home is rmtree'd at the
-        # right time.
-        #
-        # The hook unconditionally rmtree's the on-disk directory
-        # because the owning agent captured ``codex_home`` at
-        # allocation time. The registry may have already FIFO-evicted
-        # this entry (analysis-feedback wt-024 round 2 active-home
-        # invariant) before the owning agent finished, in which case
-        # ``release_codex_home`` would return False (no-op) but the
-        # directory still needs cleanup. ``release_codex_home`` is
-        # itself idempotent (returns False on a second call) so a
-        # duplicate invocation is harmless.
         def _release() -> None:
             release_codex_home(codex_home)
-            # filesystem-write-ok: idempotent cleanup of a run-scoped temporary Codex home
             shutil.rmtree(codex_home, ignore_errors=True)
 
         return ResolvedInvocationRuntime(
@@ -550,10 +479,6 @@ class CodexRuntimeResolver:
 
 
 class ClaudeRuntimeResolver:
-    """RuntimeResolver for AgentTransport.CLAUDE and AgentTransport.CLAUDE_INTERACTIVE.
-
-    Both CLAUDE and CLAUDE_INTERACTIVE use the same resolver class.
-    """
 
     def resolve(
         self,
@@ -568,7 +493,7 @@ class ClaudeRuntimeResolver:
 
         _env = (
             base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         runtime_env = dict(extra_env or {})
         configured_depth = runtime_env.get("CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH") or _env.get(
             "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH", "3"
@@ -613,13 +538,12 @@ _AGY_AUTH_ARTIFACTS = (
 
 
 def _project_agy_auth(source_root: Path, destination_root: Path) -> None:
-    """Copy AGY's bounded auth artifacts into an invocation-owned private HOME."""
     for artifact_name in _AGY_AUTH_ARTIFACTS:
         source = source_root / artifact_name
         destination = destination_root / artifact_name
         try:
             destination_root.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(  # filesystem-write-ok: bounded AGY credential projection into an invocation-owned private HOME
+            shutil.copy2(
                 source, destination
             )
         except FileNotFoundError:
@@ -627,11 +551,6 @@ def _project_agy_auth(source_root: Path, destination_root: Path) -> None:
 
 
 class AgyRuntimeResolver:
-    """RuntimeResolver for AgentTransport.AGY.
-
-    AGY receives a private HOME containing generated MCP configs and the
-    bounded credential artifacts present in the operator's AGY config directory.
-    """
 
     def resolve(
         self,
@@ -646,7 +565,7 @@ class AgyRuntimeResolver:
 
         _env = (
             base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         source_home = Path(_env.get("HOME", str(Path.home()))).expanduser()
         runtime_env = dict(extra_env or {})
         server_env: dict[str, str] = {}
@@ -690,12 +609,6 @@ class AgyRuntimeResolver:
 
 
 class DefaultRuntimeResolver:
-    """Default RuntimeResolver for AgentTransport.GENERIC.
-
-    This resolver handles the GENERIC transport. It raises UnsupportedMcpTransportError
-    if an MCP endpoint is provided, and otherwise returns a minimal runtime with no
-    server_env and no mcp_endpoint.
-    """
 
     def resolve(
         self,
@@ -709,7 +622,7 @@ class DefaultRuntimeResolver:
     ) -> ResolvedInvocationRuntime:
         _env = (
             base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         runtime_env = dict(extra_env or {})
         endpoint = _get_endpoint(runtime_env, _env)
 
@@ -725,13 +638,6 @@ class DefaultRuntimeResolver:
 
 
 class PiRuntimeResolver:
-    """RuntimeResolver for AgentTransport.PI.
-
-    Pi has no native MCP config file or CLI flag, but Pi extensions can
-    register tools. Ralph therefore materializes a per-invocation extension
-    that registers the visible Ralph MCP tools and proxies each call to the
-    active HTTP MCP endpoint.
-    """
 
     def resolve(
         self,
@@ -745,7 +651,7 @@ class PiRuntimeResolver:
     ) -> ResolvedInvocationRuntime:
         _env = (
             base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         runtime_env = dict(extra_env or {})
         endpoint = _get_endpoint(runtime_env, _env)
         runtime_env.pop(MCP_ENDPOINT_ENV, None)
@@ -765,18 +671,6 @@ class PiRuntimeResolver:
 
 
 class CursorRuntimeResolver:
-    """RuntimeResolver for AgentTransport.CURSOR.
-
-    Cursor reads its MCP server configuration from ``~/.cursor/mcp.json``.
-    This resolver gives the subprocess a private ``HOME`` with a generated
-    ``.cursor/mcp.json`` so concurrent Ralph sessions retain independent
-    endpoints without modifying workspace or operator configuration.
-
-    The MCP_ENDPOINT_ENV is consumed (and dropped) from the
-    ``runtime_env`` so it does not leak into the spawned agent's
-    environment as a literal variable (the endpoint itself is only
-    written into the JSON config files, not exported).
-    """
 
     def resolve(
         self,
@@ -790,7 +684,7 @@ class CursorRuntimeResolver:
     ) -> ResolvedInvocationRuntime:
         _env = (
             base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         source_home = Path(_env.get("HOME", str(Path.home()))).expanduser()
         source_config_home = Path(
             _env.get("XDG_CONFIG_HOME") or source_home / ".config"
@@ -865,16 +759,6 @@ class CursorRuntimeResolver:
 
 
 class KimiRuntimeResolver:
-    """RuntimeResolver for AgentTransport.KIMI.
-
-    Kimi Code reads ``$KIMI_CODE_HOME/mcp.json``. This resolver assigns a
-    private ``KIMI_CODE_HOME`` containing a generated MCP config, so each
-    invocation is isolated without touching workspace or operator config.
-
-    The MCP_ENDPOINT_ENV is consumed (and dropped) from the
-    ``runtime_env`` implicitly: the endpoint itself is only written into
-    the JSON config files, never exported as a literal variable.
-    """
 
     def resolve(
         self,
@@ -888,7 +772,7 @@ class KimiRuntimeResolver:
     ) -> ResolvedInvocationRuntime:
         _env = (
             base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         runtime_env = dict(extra_env or {})
         server_env: dict[str, str] = {}
         endpoint = _get_endpoint(runtime_env, _env)

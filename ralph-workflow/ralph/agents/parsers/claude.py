@@ -1,4 +1,3 @@
-"""Parser for Claude's NDJSON streaming format."""
 
 from __future__ import annotations
 
@@ -29,71 +28,20 @@ _CLAUDE_TOP_LEVEL_LIFECYCLE: Final[frozenset[str]] = frozenset(
     {"message_start", "message_stop", "content_block_stop"}
 )
 
-# ``claude -p --output-format=stream-json`` top-level ``system`` subtypes
-# that carry no agent-authored content -- pure transport/session plumbing
-# (session init metadata, SessionStart hook execution echoes, and periodic
-# thinking-token progress ticks). These fire many times per turn (e.g. one
-# ``thinking_tokens`` event per ~15-20 estimated tokens of reasoning) and
-# must be suppressed at the source, the same way lifecycle events are,
-# rather than falling through to the generic dispatch fallback where each
-# one would surface as a bare, content-less ``type="system"`` line and
-# flood operator-visible output. Session-ID capture for these subtypes
-# already happens independently via ``extract_transport_session_id`` on the
-# raw line, so suppressing them here does not lose any signal.
 _CLAUDE_NOISE_SYSTEM_SUBTYPES: Final[frozenset[str]] = frozenset(
     {"init", "hook_started", "hook_response", "thinking_tokens"}
 )
 
-# ``stream_event.event`` (partial-message streaming, active whenever the
-# harness passes ``--include-partial-messages``, which every production
-# invocation does) carries a nested ``message_delta`` once per turn with a
-# ``delta.stop_reason``. Expected end-of-turn reasons carry no actionable
-# signal beyond "the turn ended normally" and are suppressed; any other
-# reason (e.g. ``max_tokens`` truncation, ``refusal``, or a future reason
-# this parser has not seen yet) is operator-relevant and still surfaces.
 _CLAUDE_EXPECTED_STOP_REASONS: Final[frozenset[str]] = frozenset({"end_turn", "tool_use"})
 
-# ``rate_limit_event.rate_limit_info.status`` values that mean "nothing to
-# report" -- the account is comfortably within quota. Any other status
-# (e.g. ``allowed_warning``, ``rejected``) or overage usage is surfaced.
 _CLAUDE_RATE_LIMIT_OK_STATUSES: Final[frozenset[str]] = frozenset({"allowed"})
 
 
 def _content_block_fingerprint(block: dict[str, object]) -> str:
-    """Return a stable content identity shared by stream and assistant frames."""
     return json.dumps(block, sort_keys=True, separators=(",", ":"), default=str)
 
 
 class ClaudeParser(NdjsonParserBase):
-    """Parser for Claude's NDJSON streaming output with robust delta accumulation.
-
-    Text deltas are accumulated into coherent blocks before emission, flushing on:
-    - ``content_block_stop`` (end of a content block)
-    - ``message_stop`` (end of the message)
-    - ``\\n\\n`` paragraph boundary (incremental surfacing of long responses)
-
-    Thinking deltas (``thinking_delta``) are accumulated separately from text
-    deltas and emitted as ``type="thinking"`` lines.
-
-    Inherits from :class:`NdjsonParserBase` and delegates the NDJSON
-    scaffolding (``data:`` strip, ``[DONE]`` short-circuit, JSON parse,
-    error extraction, lifecycle interception) to the base layer via
-    :meth:`classify_line`.  Claude-specific behavior stays in subclass
-    hooks:
-
-      * :meth:`classify_line` first tries the prefixed-transcript parser
-        (``[claude]:``, ``claude/...:``) and only delegates to the base
-        when that hook returns ``None``.
-      * :meth:`_handle_lifecycle_event` carries the claude-specific
-        lifecycle side effects (``message_start`` recording,
-        ``message_stop`` flush, ``content_block_stop`` flush) and
-        returns ``None`` for lifecycle events the subclass wants to
-        dispatch (e.g. ``assistant`` / ``user`` / ``thinking``).
-      * :meth:`_dispatch_json_object` maps the per-event vocabulary
-        (stream_event, content_block_delta, content_block_start,
-        assistant, result, error) to :class:`AgentOutputLine` types
-        and drives the per-content-block accumulator state.
-    """
 
     def __init__(
         self,
@@ -101,55 +49,22 @@ class ClaudeParser(NdjsonParserBase):
         subagent_source_label: str | None = None,
     ) -> None:
         super().__init__()
-        # R5 (Trustworthy Idle Watchdog spec): bind the per-invocation
-        # shared SubagentPidRegistry. The base's
-        # ``_try_register_subagent_pid_from_obj`` hook fires for every
-        # structured child-lifecycle event observed by the parser; for
-        # Claude's NDJSON shape the standard events do not currently
-        # carry an embedded ``pid`` field, so this hook is mostly
-        # forward-compat. The constructor signature stays backward-compat
-        # (the registry kwarg defaults to ``None``).
         self._subagent_pid_registry: SubagentPidRegistry | None = subagent_pid_registry
-        # Bind the per-transport source label so any registered PID is
-        # attributed to ``claude`` (the canonical registry source token).
-        # ``None`` keeps the hook no-op when the parser is constructed
-        # without a registry.
         self._subagent_source_label: str | None = subagent_source_label
-        self._text_accumulator: dict[  # bounded-accumulator-ok: drained
+        self._text_accumulator: dict[
             tuple[str, int], TextAccumulator
         ] = {}
-        self._thinking_accumulator: dict[  # bounded-accumulator-ok: drained
+        self._thinking_accumulator: dict[
             tuple[str, int], TextAccumulator
         ] = {}
         self._fallback_accumulator: TextAccumulator | None = None
         self._fallback_thinking_accumulator: TextAccumulator | None = None
         self._current_message_id: str | None = None
-        self._seen_content_blocks: set[tuple[str, int]] = set()  # bounded-accumulator-ok: cleared
-        self._emitted_text: set[str] = set()  # bounded-accumulator-ok: cleared
-        self._streamed_block_fingerprints: set[str] = set()  # bounded-accumulator-ok: cleared
+        self._seen_content_blocks: set[tuple[str, int]] = set()
+        self._emitted_text: set[str] = set()
+        self._streamed_block_fingerprints: set[str] = set()
 
     def classify_line(self, line: str) -> Iterator[AgentOutputLine]:
-        """Classify a single raw NDJSON line.
-
-        Order of operations:
-
-          1. Strip the line and short-circuit on empty.
-          2. Try the claude-specific prefixed-transcript parser (e.g.
-             ``claude/sonnet: hello``).  If it returns a non-None list,
-             yield from it and return.
-          3. Delegate the remaining NDJSON path to
-             :class:`NdjsonParserBase` which owns the ``data:`` prefix
-             strip, ``[DONE]`` short-circuit, JSON parse dispatch,
-             error extraction, and lifecycle-event interception.  The
-             base calls back into :meth:`_handle_lifecycle_event` for
-             the claude-specific lifecycle side effects (message_start
-             recording, message_stop flush, content_block_stop flush)
-             and into :meth:`_dispatch_json_object` for the per-event
-             dispatch (which routes claude's ``assistant`` / ``user``
-             / ``thinking`` events through the subclass hook rather
-             than suppressing them as the base's default lifecycle
-             policy would).
-        """
         stripped = line.strip()
         if not stripped:
             return
@@ -213,17 +128,9 @@ class ClaudeParser(NdjsonParserBase):
         raw: str,
         source_timestamp: str | None = None,
     ) -> Iterator[AgentOutputLine]:
-        # DA-002 (wt-028-display S-2 / AC-01): the base class
-        # post-processes the iterator to attach ``source_timestamp``
-        # to any AgentOutputLine that lacks one, so the per-event
-        # dispatcher itself does not need to thread the parameter.
-        del source_timestamp  # accepted for override compatibility; ignored
+        del source_timestamp
         event_type = str(obj.get("type", "unknown"))
 
-        # R5: register any embedded PID into the shared registry BEFORE
-        # the per-event dispatch returns. The hook is a no-op when the
-        # parser was constructed without a registry or when the event
-        # does not carry a PID field.
         self._try_register_subagent_pid_from_obj(obj)
 
         if event_type == "stream_event":
@@ -255,16 +162,6 @@ class ClaudeParser(NdjsonParserBase):
         obj: dict[str, object],
         raw: str,
     ) -> Iterator[AgentOutputLine]:
-        """Classify a top-level ``system`` event by its ``subtype``.
-
-        Pure plumbing subtypes (see :data:`_CLAUDE_NOISE_SYSTEM_SUBTYPES`)
-        are suppressed entirely. Any other subtype -- known (e.g.
-        ``status``, ``compact_boundary``) or a future one this parser has
-        not seen yet -- still surfaces so operators are not left blind to
-        it, with the subtype (and, when present, a same-event ``status``
-        field observed on the ``status`` subtype in production, e.g.
-        ``status="requesting"``) as its content instead of an empty line.
-        """
         subtype = str(obj.get("subtype", ""))
         if subtype in _CLAUDE_NOISE_SYSTEM_SUBTYPES:
             return
@@ -280,15 +177,6 @@ class ClaudeParser(NdjsonParserBase):
         obj: dict[str, object],
         raw: str,
     ) -> Iterator[AgentOutputLine]:
-        """Classify a top-level ``rate_limit_event``.
-
-        Fires on essentially every turn boundary. When the account is
-        comfortably within quota (see :data:`_CLAUDE_RATE_LIMIT_OK_STATUSES`)
-        and not drawing on overage, the event is pure noise and is
-        suppressed. Anything else -- an unusual status or active overage
-        usage -- is operator-relevant and surfaces with that status as
-        content.
-        """
         info = obj.get("rate_limit_info")
         info_dict: dict[str, object] = info if isinstance(info, dict) else {}
         status = str(info_dict.get("status", ""))
@@ -308,13 +196,6 @@ class ClaudeParser(NdjsonParserBase):
         obj: dict[str, object],
         raw: str,
     ) -> AgentOutputLine:
-        """Build a self-describing line for a wire event with no dedicated handler.
-
-        Covers event types this parser has never seen (a future addition to
-        the ``claude -p`` wire format). Falls back to ``subtype`` when
-        present so an unrecognized event is still identifiable to an
-        operator rather than rendering as a bare, content-less line.
-        """
         subtype = obj.get("subtype")
         content = str(subtype) if subtype else ""
         return AgentOutputLine(type=event_type, content=content, raw=raw, metadata=obj)
@@ -366,14 +247,6 @@ class ClaudeParser(NdjsonParserBase):
         event: dict[str, object],
         raw: str,
     ) -> Iterator[AgentOutputLine]:
-        """Classify a ``stream_event``-nested ``message_delta``.
-
-        Fires once per completed turn with ``delta.stop_reason``. Expected
-        end-of-turn reasons (see :data:`_CLAUDE_EXPECTED_STOP_REASONS`) are
-        suppressed as routine turn-boundary noise; any other reason --
-        truncation, refusal, or a future reason this parser has not seen
-        yet -- is operator-relevant and surfaces with the reason as content.
-        """
         delta = event.get("delta")
         delta_dict: dict[str, object] = delta if isinstance(delta, dict) else {}
         stop_reason = delta_dict.get("stop_reason")
@@ -541,24 +414,6 @@ class ClaudeParser(NdjsonParserBase):
         obj: dict[str, object],
         raw: str,
     ) -> Iterator[AgentOutputLine]:
-        """Classify a top-level ``assistant`` or ``user`` message event.
-
-        Both wire shapes carry the same ``message.content`` block-list
-        envelope; the only difference is which role authored it. A
-        top-level ``user`` event is how ``claude -p`` echoes a tool_result
-        back after a tool call -- without this branch that content
-        (including tool failures) was silently dropped, since previously
-        only ``assistant`` was dispatched here.
-
-        RC2: classify the full top-level record via the shared
-        envelope classifier BEFORE per-content-block extraction so an
-        ``assistant`` record carrying an API-error envelope or a
-        synthetic envelope is dispatched consistently with the
-        interactive transport. ``user`` records bypass the envelope
-        classifier -- ``claude -p`` never emits a synthetic or
-        API-error envelope on a user event, so the legacy
-        ``_parse_message_content`` path is the only safe surface.
-        """
         if obj.get("type") == "assistant":
             decision: AssistantEnvelopeDecision = classify_assistant_record(obj)
             if decision.envelope == ENVELOPE_API_ERROR:
@@ -739,17 +594,6 @@ class ClaudeParser(NdjsonParserBase):
         block: dict[str, object],
         raw: str,
     ) -> Iterator[AgentOutputLine]:
-        """Classify a ``tool_result`` content block.
-
-        Honors the wire-format ``is_error`` flag (matching the precedent
-        already established by the Cursor, Pi, and Generic parsers): a
-        failed tool call surfaces as ``type="error"`` instead of
-        ``type="tool_result"`` so a tool failure is visually distinct and
-        counted as a break signal, rather than reading as a routine result.
-        The message text lives in ``content`` either way -- Claude's
-        tool_result envelope has no separate ``error`` field to fall back
-        to.
-        """
         result_type = "error" if block.get("is_error") else "tool_result"
         content = block.get("content")
         if content is None:

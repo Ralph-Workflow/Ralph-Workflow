@@ -1,5 +1,3 @@
-"""Regression tests: completion_summary derives styles from roles, not canonical phase names."""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -24,7 +22,6 @@ from ralph.policy.models import (
 
 
 def _make_custom_policy() -> PipelinePolicy:
-    """Custom PipelinePolicy: design (execution), sign_off (commit), done/halt (terminal)."""
     return PipelinePolicy(
         entry_phase="design",
         terminal_phase="done",
@@ -97,7 +94,6 @@ def _console() -> Console:
 
 class TestRenderCompletionSummaryRoleOnly:
     def test_plan_section_style_resolved_from_role_with_renamed_phases(self) -> None:
-        """render_completion_summary_group with a custom policy uses role-derived section styles."""
         policy = _make_custom_policy()
         snapshot = _minimal_snapshot(plan_summary="Design phase plan")
         console = _console()
@@ -113,7 +109,6 @@ class TestRenderCompletionSummaryRoleOnly:
         assert "Design phase plan" in output
 
     def test_default_mode_group_threads_pipeline_policy(self) -> None:
-        """Default mode also resolves styles via policy."""
         policy = _make_custom_policy()
         snapshot = _minimal_snapshot()
         console = _console()
@@ -130,7 +125,6 @@ class TestRenderCompletionSummaryRoleOnly:
         assert "Pipeline Complete" in output
 
     def test_renders_without_policy(self) -> None:
-        """render_completion_summary_group works when pipeline_policy is None."""
         snapshot = _minimal_snapshot()
         console = _console()
         ctx = make_display_context(console=console)
@@ -140,7 +134,6 @@ class TestRenderCompletionSummaryRoleOnly:
         assert "Pipeline" in output
 
     def test_failed_summary_uses_terminal_failure_style(self) -> None:
-        """Failed pipeline summary uses _style_for_terminal_failure, not a canonical name."""
         policy = _make_custom_policy()
         snapshot = _minimal_snapshot(
             is_terminal_failure=True, is_terminal_success=False, last_error="build failed"

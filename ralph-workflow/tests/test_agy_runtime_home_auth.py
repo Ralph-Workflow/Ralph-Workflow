@@ -1,5 +1,3 @@
-"""Regression coverage for AGY authentication under Ralph's private HOME."""
-
 from __future__ import annotations
 
 import json

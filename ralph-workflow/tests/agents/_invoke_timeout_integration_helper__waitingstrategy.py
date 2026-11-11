@@ -4,8 +4,6 @@ from ralph.agents.execution_state import AgentExecutionState, GenericExecutionSt
 
 
 class _WaitingStrategy(GenericExecutionStrategy):
-    """Strategy whose classify_quiet always returns WAITING_ON_CHILD."""
-
     def classify_quiet(
         self,
         handle: object,

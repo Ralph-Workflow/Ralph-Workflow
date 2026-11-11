@@ -1,5 +1,3 @@
-"""Tests for AgentSupport dataclass."""
-
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
@@ -29,8 +27,6 @@ class _FakeStrategy(BaseExecutionStrategy):
 
 
 class TestAgentSupport:
-    """Black-box tests for AgentSupport."""
-
     def test_immutability(self) -> None:
         support = AgentSupport(
             name="test",

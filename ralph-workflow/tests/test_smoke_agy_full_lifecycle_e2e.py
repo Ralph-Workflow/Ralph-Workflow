@@ -1,33 +1,3 @@
-"""Full-lifecycle AGY smoke: parser -> harness -> MCP wire -> completion -> capability.
-
-This is the wt-015-agy-support S-6 end-to-end proof. It drives the public
-``ralph smoke-interactive-agy`` command in a bounded subprocess against the
-``MOCK_AGY_V1_1_13=1`` augmented mock (see ``tests/_support/mock_agy.py``),
-with a real broker secret so the mock's stdlib JSON-RPC round trips hit the
-harness's actual MCP fallback server. It then asserts every cross-cutting
-signal the product brief names actually reached the harness:
-
-- the parser emitted at least 8 events covering init, step_updates,
-  subagent dispatch and result;
-- a verified wire-ledger record for ``ralph_submit_md_artifact`` exists for
-  the run (``wire_evidence_for`` with the broker secret);
-- the durable completion sentinel is present and validates via the
-  documented harness helper (``_check_completion_sentinel``);
-- the subagent dispatch/result pair both surfaced (the brief's named
-  failure mode, "subagent dispatch was not observed");
-- the display's capability recorder observed SYNTAX_HIGHLIGHTING during the
-  run -- proven through the harness's own loud-failure surface: the
-  ``write_to_file`` pair exercises the declared SUPPORTED
-  SYNTAX_HIGHLIGHTING stance, so
-  ``_detect_capability_breaks`` emits ``declared capability
-  SYNTAX_HIGHLIGHTING never rendered ...`` into ``Observed breaks:`` iff the
-  recorder did NOT observe it. No such break + the write_to_file tool call
-  in the observed transcript is the recorded-capability proof.
-
-The test reuses the subprocess harness shape already proven by
-``tests/test_smoke_agy_end_to_end.py`` -- no new harness code is introduced.
-"""
-
 from __future__ import annotations
 
 import json
@@ -53,8 +23,6 @@ pytestmark = [
 
 _AGENT = "agy/gemini-3.6-flash-low"
 
-#: Distinct broker secret so this test's wire-ledger / sentinel HMAC
-#: verification never depends on (or mutates) ambient developer state.
 _E2E_BROKER_SECRET = "test-agy-full-lifecycle-e2e-broker-secret"
 
 
@@ -63,12 +31,9 @@ def _mock_agy_path() -> Path:
 
 
 def _run_full_lifecycle_smoke(tmp_path: Path) -> tuple[int, str]:
-    """Run ``ralph smoke-interactive-agy`` against the v1.1.13 mock; return (rc, output)."""
     mock_path = _mock_agy_path()
     assert mock_path.is_file(), f"Mock AGY script not found at {mock_path}"
     env = os.environ.copy()
-    # The subprocess must import Ralph and pydantic from this test's uv
-    # interpreter, not a parent pipx installation compiled for another Python.
     env.pop("PYTHONPATH", None)
     env["RALPH_AGY_BINARY"] = str(mock_path)
     env["MOCK_AGY_BEHAVIOR"] = "normal"
@@ -100,7 +65,6 @@ def _run_full_lifecycle_smoke(tmp_path: Path) -> tuple[int, str]:
 
 
 def test_agy_full_lifecycle_e2e(tmp_path: Path) -> None:
-    """The v1.1.13 mock drives every cross-cutting signal through the real CLI."""
     returncode, output = _run_full_lifecycle_smoke(tmp_path)
 
     assert returncode == 0, (
@@ -108,27 +72,19 @@ def test_agy_full_lifecycle_e2e(tmp_path: Path) -> None:
         f"always-green v1.1.13 mock contract). Output:\n{output}"
     )
 
-    # --- parser emitted >= 8 events (init, step_updates, subagent pair, ...) ---
     event_counts = [int(count) for count in re.findall(r"parser emitted (\d+) event\(s\)", output)]
     assert event_counts, f"No 'parser emitted N event(s)' line in report:\n{output}"
     assert max(event_counts) >= 8, (
         f"Expected at least 8 parser events, got {event_counts}.\n{output}"
     )
 
-    # --- subagent dispatch/result pair both surfaced (brief's named failure) ---
     assert "subagent dispatch observed" in output, f"Subagent dispatch was not observed.\n{output}"
     assert "subagent result observed" in output, f"Subagent result was not observed.\n{output}"
 
-    # --- the write_to_file call was seen in the observed transcript ---
     assert "write_to_file" in output, (
         f"Expected the write_to_file tool pair in the observed output.\n{output}"
     )
 
-    # --- SYNTAX_HIGHLIGHTING was recorded (loud-failure contrapositive) ---
-    # The v1.1.13 mock's write_to_file pair exercises the declared SUPPORTED
-    # SYNTAX_HIGHLIGHTING stance, so _detect_capability_breaks emits the
-    # break below into "Observed breaks:" iff the display's capability
-    # recorder did NOT observe the render.
     assert "SYNTAX_HIGHLIGHTING never rendered" not in output, (
         f"The display's capability recorder did not observe "
         f"SYNTAX_HIGHLIGHTING despite the write_to_file tool call.\n{output}"
@@ -137,7 +93,6 @@ def test_agy_full_lifecycle_e2e(tmp_path: Path) -> None:
         f"Expected a PASS verdict with real wire-grade MCP round trips.\n{output}"
     )
 
-    # --- durable, cross-process evidence in the run workspace ---
     run_id = resolve_smoke_harness_spec(_AGENT).run_id
     assert (
         wire_evidence_for(
@@ -164,34 +119,6 @@ def test_agy_full_lifecycle_e2e(tmp_path: Path) -> None:
     )
 
 
-# --- MOCK_AGY_BEHAVIOR negative-contract selectors (wt-015-agy-support S-5) ---
-#
-# Each selector alters exactly one contract signal while preserving the rest
-# of the lifecycle. The CLI must exit non-zero and surface the selector's
-# documented diagnostic so a superficial green smoke can never mask a broken
-# signal.
-#
-# wt-064-ccs-support S-6: each selector drives one full
-# ``ralph smoke-interactive-agy`` lifecycle, and that lifecycle spawns TWO
-# Python interpreters (the CLI itself plus the standalone Ralph MCP HTTP
-# server subprocess whose handlers mint the receipt, sentinel, and wire
-# records). ~2.5 s of every selector is therefore interpreter startup, not
-# test logic, and eight serial selectors burned ~20 s of the immutable 60 s
-# combined ``make test`` budget (see
-# ``ralph/verify.py::_TOTAL_TEST_BUDGET_SECONDS``) -- the single largest
-# line item in the slowest shard. The selectors are mutually independent
-# (distinct cwd, distinct ``MOCK_AGY_ARTIFACT_DIR``, and a per-bridge
-# reserved MCP port for the server subprocess), so a bounded thread pool
-# fans them out without weakening a single assertion: every selector below
-# still asserts the real CLI exit code and its own documented diagnostic,
-# through the same real CLI -> MCP server -> mock AGY subprocess boundary
-# the positive lifecycle test proves.
-
-#: Two concurrent selectors keep the seven real CLI -> MCP lifecycles below
-#: the test's immutable 45-second ceiling. A wider three-selector fan-out
-#: previously exhausted host capacity and killed a selector's MCP server; two
-#: preserves independent workspaces and bounded load while avoiding the serial
-#: timeout.
 _NEGATIVE_SELECTOR_FANOUT = 2
 
 _NEGATIVE_SELECTORS: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -207,15 +134,12 @@ _NEGATIVE_SELECTORS: tuple[tuple[str, tuple[str, ...]], ...] = (
 
 @dataclass(frozen=True)
 class _NegativeSelectorOutcome:
-    """One selector's real-CLI result, paired with its documented diagnostics."""
-
     behavior: str
     returncode: int
     output: str
 
 
 def _run_negative_smoke(tmp_path: Path, behavior: str) -> tuple[int, str]:
-    """Run the lifecycle smoke with one MOCK_AGY_BEHAVIOR selector forced."""
     env = os.environ.copy()
     env.pop("PYTHONPATH", None)
     env["RALPH_AGY_BINARY"] = str(_mock_agy_path())
@@ -250,15 +174,6 @@ def _run_negative_smoke(tmp_path: Path, behavior: str) -> tuple[int, str]:
 def _run_negative_selectors_in_parallel(
     base_dir: Path,
 ) -> list[_NegativeSelectorOutcome]:
-    """Run every negative selector concurrently, each in its own workspace.
-
-    Each behavior gets a dedicated cwd and ``MOCK_AGY_ARTIFACT_DIR`` under
-    ``base_dir``, and each lifecycle reserves its own ephemeral MCP port for
-    the harness's server subprocess, so the selectors share no mutable
-    state. Results are returned in ``_NEGATIVE_SELECTORS`` order regardless
-    of completion order, keeping assertions (and any failure report)
-    deterministic.
-    """
     for behavior, _diagnostics in _NEGATIVE_SELECTORS:
         (base_dir / behavior).mkdir()
     with ThreadPoolExecutor(
@@ -278,14 +193,6 @@ def _run_negative_selectors_in_parallel(
 def test_agy_full_lifecycle_e2e_negative_selectors_fail_loudly(
     tmp_path: Path,
 ) -> None:
-    """Every selector must exit non-zero with its own documented diagnostic.
-
-    Runs the selectors concurrently (see ``_NEGATIVE_SELECTOR_FANOUT``) but
-    asserts each one individually, in declaration order, against the real
-    CLI -> MCP server -> mock AGY subprocess boundary: a selector passes only
-    if its own exit code is non-zero AND every diagnostic it owns appears in
-    that selector's captured output.
-    """
     outcomes = _run_negative_selectors_in_parallel(tmp_path)
 
     assert len(outcomes) == len(_NEGATIVE_SELECTORS)
@@ -308,16 +215,6 @@ def test_agy_full_lifecycle_e2e_negative_selectors_fail_loudly(
 
 
 def test_missing_completion_selector_produces_zero_wire_receipts(tmp_path: Path) -> None:
-    """Plan S-7: ``missing_completion`` leaves ZERO canonical round-trip records.
-
-    The selector makes ``drive_real_mcp_round_trips`` short-circuit to
-    ``(None, None)`` (see ``tests/_support/mock_agy_v1_1_13.py`` — the
-    round trip itself is pruned, not just the frame that reports it), so
-    the wire ledger must contain neither a ``ralph_submit_md_artifact``
-    nor a ``declare_complete`` record: the canonical submission pipeline
-    never fabricates a receipt for a round trip the mock deliberately
-    skipped, while the run still exits non-zero with its own diagnostic.
-    """
     returncode, output = _run_negative_smoke(tmp_path, "missing_completion")
 
     assert returncode != 0, f"missing_completion must exit non-zero.\n{output}"

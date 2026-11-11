@@ -1,5 +1,3 @@
-"""Tests for shared/_payload_section.jinja macros."""
-
 from __future__ import annotations
 
 from pathlib import Path

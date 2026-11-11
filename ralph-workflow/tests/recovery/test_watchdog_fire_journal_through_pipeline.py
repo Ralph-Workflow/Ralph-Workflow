@@ -1,11 +1,3 @@
-"""Every watchdog kill, including the one that ends the run, is journaled.
-
-Drives the real ``execute_agent_effect`` retry loop with an agent that is
-killed by the watchdog on every attempt. The kill that exhausts the retry
-budget is the one an operator investigates, so it must reach
-``.agent/watchdog-fire-events.jsonl`` just like the retried ones.
-"""
-
 from __future__ import annotations
 
 import contextlib
@@ -57,7 +49,6 @@ class _Registry:
 def _run_always_killed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, resolver: bool = False
 ) -> list[str]:
-    """Run the retry loop with a watchdog kill on every attempt; return attempt prompts."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".agent" / "tmp").mkdir(parents=True)
     prompt = tmp_path / "PROMPT.md"
@@ -122,7 +113,6 @@ def test_each_kill_including_the_final_one_has_a_journal_row(
 def test_a_conflict_resolver_kill_with_no_retry_budget_is_still_journaled(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A resolver gets zero executor retries, so its kill never reaches a retry plan."""
     prompts = _run_always_killed(tmp_path, monkeypatch, resolver=True)
 
     lines = (tmp_path / _EVENTS).read_text(encoding="utf-8").splitlines()

@@ -1,4 +1,3 @@
-"""Typed terminal result for one conflict-resolution invocation."""
 
 from __future__ import annotations
 
@@ -15,7 +14,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class ResolutionOutcome:
-    """Observable resolution attempt outcome used for status and terminal handling."""
 
     succeeded: bool
     reason: ResolutionTerminationReason | str | None

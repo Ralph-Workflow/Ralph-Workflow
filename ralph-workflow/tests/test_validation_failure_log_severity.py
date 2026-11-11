@@ -1,5 +1,3 @@
-"""Validation failure observability labels."""
-
 from __future__ import annotations
 
 from ralph.recovery.classifier import FailureCategory

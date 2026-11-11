@@ -1,5 +1,3 @@
-"""Tests for config failure warning on startup load and workspace_context reload."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -24,12 +22,10 @@ from ralph.workspace.scope import WorkspaceScope
 
 @pytest.fixture(autouse=True)
 def _clear_fallback_warning_registry() -> None:
-    """Start every test with an empty warning-deduplication registry."""
     reset_fallback_warning_registry()
 
 
 def _write_broken_config(root: Path, content: str = "syntax error = [") -> Path:
-    """Write a broken ``ralph-workflow.toml`` under ``root`` and return its path."""
     agent_dir = root / ".agent"
     agent_dir.mkdir(parents=True)
     broken_toml = agent_dir / "ralph-workflow.toml"
@@ -38,7 +34,6 @@ def _write_broken_config(root: Path, content: str = "syntax error = [") -> Path:
 
 
 def _build_resolver(root: Path) -> RebaseStopResolver:
-    """Build the rebase-stop resolver with every collaborator mocked out."""
     mock_display = MagicMock()
     return build_agent_rebase_stop_resolver(
         policy_bundle=MagicMock(),
@@ -51,7 +46,6 @@ def _build_resolver(root: Path) -> RebaseStopResolver:
 
 
 def _reload_once(resolver: RebaseStopResolver, root: Path) -> ResolutionOutcome:
-    """Drive one conflict through the resolver and return its outcome."""
     stop = RebaseStop(
         sha="1234567",
         subject="conflict stop",
@@ -67,7 +61,6 @@ def _reload_once(resolver: RebaseStopResolver, root: Path) -> ResolutionOutcome:
 
 
 def _config_failure_warnings(records: list[dict[str, Any]], broken_toml: Path) -> list[str]:
-    """Return the WARN records that name the broken configuration file."""
     return [
         str(record["message"])
         for record in records
@@ -76,7 +69,6 @@ def _config_failure_warnings(records: list[dict[str, Any]], broken_toml: Path) -
 
 
 def test_workspace_context_reload_logs_warning_on_config_failure(tmp_path: Path) -> None:
-    """Entering workspace_context on reload with broken config raises WorkspaceContextError."""
     agent_dir = tmp_path / ".agent"
     agent_dir.mkdir(parents=True)
     broken_toml = agent_dir / "ralph-workflow.toml"
@@ -93,7 +85,6 @@ def test_workspace_context_reload_logs_warning_on_config_failure(tmp_path: Path)
 
 
 def test_resolver_reload_emits_warn_line_on_config_failure(tmp_path: Path) -> None:
-    """Per-conflict reload in auto_integrate_agent emits a warning line to the display."""
     agent_dir = tmp_path / ".agent"
     agent_dir.mkdir(parents=True)
     broken_toml = agent_dir / "ralph-workflow.toml"
@@ -136,7 +127,6 @@ def test_resolver_reload_emits_warn_line_on_config_failure(tmp_path: Path) -> No
         assert outcome.succeeded is False
         assert outcome.failure_cause == ResolutionFailureCause.CONFIG_FAILURE
 
-        # Verify logger emitted warning containing fix instructions
         matching_logs = [
             r["message"]
             for r in records
@@ -144,7 +134,6 @@ def test_resolver_reload_emits_warn_line_on_config_failure(tmp_path: Path) -> No
         ]
         assert len(matching_logs) >= 1
 
-        # Verify display received warning line
         warn_calls = [
             call.args[2]
             for call in mock_display.emit_warn_line.call_args_list
@@ -157,7 +146,6 @@ def test_resolver_reload_emits_warn_line_on_config_failure(tmp_path: Path) -> No
 
 
 def test_unchanged_broken_config_warns_once_across_reloads(tmp_path: Path) -> None:
-    """Two reloads of the SAME unchanged broken config produce exactly one WARN."""
     broken_toml = _write_broken_config(tmp_path)
 
     records: list[dict[str, Any]] = []
@@ -171,7 +159,6 @@ def test_unchanged_broken_config_warns_once_across_reloads(tmp_path: Path) -> No
         assert len(_config_failure_warnings(records, broken_toml)) == 1
         record_count_after_first = len(records)
 
-        # Second reload of the SAME unchanged file: no new log line at all.
         second = _reload_once(resolver, tmp_path)
         assert second.failure_cause == ResolutionFailureCause.CONFIG_FAILURE
         assert len(records) == record_count_after_first
@@ -181,7 +168,6 @@ def test_unchanged_broken_config_warns_once_across_reloads(tmp_path: Path) -> No
 
 
 def test_changed_broken_config_warns_again(tmp_path: Path) -> None:
-    """A broken config whose CONTENT changed warns again."""
     broken_toml = _write_broken_config(tmp_path)
 
     records: list[dict[str, Any]] = []
@@ -194,8 +180,6 @@ def test_changed_broken_config_warns_again(tmp_path: Path) -> None:
         assert first.failure_cause == ResolutionFailureCause.CONFIG_FAILURE
         assert len(_config_failure_warnings(records, broken_toml)) == 1
 
-        # The operator repairs nothing and edits the file: the content
-        # changed, so the failure is a DIFFERENT one and must warn again.
         broken_toml.write_text("another syntax error = {", encoding="utf-8")
 
         second = _reload_once(resolver, tmp_path)
@@ -206,13 +190,6 @@ def test_changed_broken_config_warns_again(tmp_path: Path) -> None:
 
 
 def test_startup_load_reports_failure_through_shared_recorder(tmp_path: Path) -> None:
-    """The startup load of a broken config warns once through the shared recorder.
-
-    The startup load itself exercises the real loader via :func:`workspace_context`,
-    which raises :class:`WorkspaceContextError` and emits an operator-facing WARN
-    through the shared, ``(file, content)``-deduplicated recorder. A repeated
-    startup load of the same broken file raises again but deduplicates the warning.
-    """
     broken_toml = _write_broken_config(tmp_path, content="invalid_toml = [unclosed")
 
     records: list[dict[str, Any]] = []
@@ -227,8 +204,6 @@ def test_startup_load_reports_failure_through_shared_recorder(tmp_path: Path) ->
         startup_error = excinfo.value
         assert startup_error.file == broken_toml
 
-        # RALPH-TEST-REASON: replaced whitebox emit_config_failure_warning calls with black-box workspace_context testing
-        # Re-running startup validation against the unchanged broken file triggers the same exception while deduplicating the warning.
         with (
             pytest.raises(WorkspaceContextError),
             workspace_context(tmp_path),
@@ -239,8 +214,6 @@ def test_startup_load_reports_failure_through_shared_recorder(tmp_path: Path) ->
 
     matching = _config_failure_warnings(records, broken_toml)
     assert len(matching) == 1
-    # The warning names the file, the parse error with its position, the
-    # behaviour in effect, and the fix.
     assert str(broken_toml) in matching[0]
     assert "line" in matching[0].lower()
     assert "strict configuration behaviour in effect" in matching[0]

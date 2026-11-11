@@ -1,12 +1,3 @@
-"""Phase-boundary gates for auto-integration: target, cleanliness, freshness.
-
-Split out of :mod:`ralph.pipeline.auto_integrate` so that module stays
-inside the repo-structure size limit. These four helpers form one
-coherent unit -- everything that decides whether a PHASE BOUNDARY (as
-opposed to a commit) has anything to integrate -- and they depend only
-on imported collaborators, never on anything ``auto_integrate`` defines,
-so the dependency runs one way and no import cycle is possible.
-"""
 
 from __future__ import annotations
 
@@ -75,7 +66,6 @@ def phase_boundary_outcome(
     readiness: TreeReadinessAssessment | None = None,
     get_head_sha_fn: Callable[[Path | str], str] | None = None,
 ) -> tuple[bool, RebaseState | None]:
-    """Return whether the target, cleanliness, or freshness gate ends this boundary."""
     if target is None:
         return True, _record_skip(
             reason=_missing_target_reason(config), target=_configured_target(config)
@@ -107,7 +97,6 @@ def boundary_freshness_outcome(
     rebase_stop_resolver: RebaseStopResolver | None,
     get_head_sha_fn: Callable[[Path | str], str] | None = None,
 ) -> RebaseState | None:
-    """Return a freshness-gated no-commit boundary result, if the seam is done."""
     remote_record = pull_and_reconcile_target(
         config, root, target, rebase_stop_resolver=rebase_stop_resolver, prior=state
     )
@@ -115,24 +104,6 @@ def boundary_freshness_outcome(
     head_reader = get_head_sha_fn or get_head_sha
     if branch_sha(root, target) != head_reader(root):
         return None
-    # The phase-boundary seam runs the reconciler on every clean
-    # boundary (not just when an in-memory flag is set). The OLD
-    # ``last_push_status in {None, PUSHED, CREATED}`` filter is
-    # gone: terminal state is now detected by the reconciler's
-    # own ``local_sha == remote_sha`` short-circuit, not by an
-    # in-memory status. The boundary returns the reconciler's
-    # ``pending`` so the caller can observe the publication:
-    # * transient failure (``REMOTE_REMOTE_UNREACHABLE`` /
-    #   ``REMOTE_PULL_FAILED``) -- propagate ``pending`` so the
-    #   next seam retries it (AC-8 defence-in-depth).
-    # * already current (``REMOTE_ALREADY_CURRENT``) -- overwrite
-    #   the reconciler's prose with the silent-skip record; no push
-    #   is owed.
-    # * divergence -- propagate ``pending`` so the next seam
-    #   observes the reintegration outcome.
-    # The only ``None``-returning branch above is the HEAD-vs-target
-    # feature-integration gate, which fires BEFORE the reconciler is
-    # consulted.
     pending = _reconcile_remote_publication(
         config,
         root,
@@ -151,11 +122,8 @@ def boundary_freshness_outcome(
         RemoteSyncStatus.REMOTE_UNREACHABLE.value,
     }
     if is_transient_failure:
-        # Transient failure (unreachable remote): preserve the
-        # reconciler's verdict so the next seam retries it.
         return pending
     if already_current:
-        # No commits to publish; the boundary is silent.
         if remote_record is not None:
             return remote_record.model_copy(
                 update={
@@ -175,7 +143,6 @@ def target_is_ahead(
     *,
     get_head_sha_fn: Callable[[Path | str], str] | None = None,
 ) -> bool:
-    """Return whether the target carries commits HEAD does not have."""
     if target_sha is None:
         return False
     head_reader = get_head_sha_fn or get_head_sha
@@ -190,25 +157,6 @@ def defer_dirty_boundary(
     readiness: TreeReadinessAssessment | None = None,
     get_head_sha_fn: Callable[[Path | str], str] | None = None,
 ) -> RebaseState | None:
-    """Defer dirty-boundary integration, recording only meaningful missed catch-up.
-
-    The deferral DECISION is typed and made before this function: the
-    caller's :attr:`TreeReadinessAssessment.integration_ready` check plus
-    the ``diverged`` probe below. The recorded skip carries the typed
-    obstruction cause alongside the prose: the kind is derived from the
-    readiness assessment through the producer-side seam
-    :func:`~ralph.pipeline._planning_obstruction.planning_obstruction_from_readiness`
-    and persisted on ``last_planning_obstruction``, so the run loop routes
-    on the closed :class:`~ralph.pipeline._planning_obstruction.PlanningObstructionKind`
-    vocabulary without ever parsing the reason string. When the readiness
-    cause is not one of the canonical typed states the kind stays unset and
-    the record routes through the legacy-checkpoint shim
-    :func:`~ralph.pipeline._planning_obstruction.identify_planning_obstruction`,
-    exactly like an old checkpoint. The reason-string canonicalization
-    below is display/record prose only -- it is never a decision input,
-    and BOTH candidate strings translate to non-``NONE`` kinds that route
-    identically, so the canonicalization cannot change behavior.
-    """
     if readiness is None:
         readiness = assess_tree_readiness(root)
     refresh = REFRESH_SUPPRESSED
@@ -227,14 +175,6 @@ def defer_dirty_boundary(
         target_sha = branch_sha(root, target)
         diverged = target_is_ahead(root, target_sha)
     if diverged:
-        # Display-only canonicalization (see the docstring): the recorded
-        # reason always names the cleanliness deferral so an operator
-        # reading the durable record sees the same deferral phrase for
-        # every blocked boundary. This substring check decides NO
-        # behavior -- both the readiness reason it may keep and the
-        # canonical phrase it may substitute translate, through the one
-        # sanctioned prose-to-kind parser, to non-NONE obstruction kinds
-        # that the run loop routes identically.
         reason = (
             readiness.blocking_reasons[0]
             if readiness and readiness.blocking_reasons
@@ -246,18 +186,10 @@ def defer_dirty_boundary(
             reason=reason,
             target=target,
         )
-        # Carry the typed obstruction cause into the durable record. The
-        # kind is decided typed upstream from the readiness assessment; the
-        # prose above is canonicalized display text and is NEVER re-parsed
-        # to recover it. An untypeable (non-canonical) readiness cause
-        # leaves the field unset so the legacy-checkpoint shim routes the
-        # record, exactly like an old checkpoint.
         kind = planning_obstruction_from_readiness(readiness)
         if kind is not None:
             skip = skip.model_copy(update={"last_planning_obstruction": kind.value})
         return record_refresh(skip, refresh)
-    # R2/AC8: ladder rung 3 -- this routine clean-target deferral has no
-    # pending integration to report; a later clean seam re-evaluates live refs.
     logger.info(
         "auto_integrate: phase-transition integration deferred; worktree dirty (target '{}')",
         target,

@@ -1,10 +1,3 @@
-"""Regression: stdio transport close() bounds wait() and kills on timeout.
-
-The non-ManagedProcess close path did `proc.terminate(); proc.wait()` with no
-timeout, so a process that ignored SIGTERM could block the close (and the MCP
-server) forever. close() must bound the wait and escalate to kill().
-"""
-
 from __future__ import annotations
 
 import subprocess

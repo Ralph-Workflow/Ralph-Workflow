@@ -1,12 +1,3 @@
-"""Behavior-only contract for the :func:`workspace_context` context manager.
-
-The context manager must expose a target worktree's full context (the
-active prompt, config, policy, agent registry, and MCP plan) and leave
-the caller's resources byte-identical after every exit path: normal
-exit, nested entry, exception, and explicit early exit. A missing or
-invalid target raises **before** yielding.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -19,11 +10,8 @@ pytestmark = pytest.mark.timeout_seconds(5)
 
 
 class TestWorkspaceContext:
-    """Behavior-only contract for :func:`workspace_context`."""
-
     @staticmethod
     def _seed_workspace(root: Path, *, prompt: str) -> None:
-        """Create the minimal .agent structure for one workspace."""
         agent_dir = root / ".agent"
         agent_dir.mkdir(parents=True, exist_ok=True)
         (root / "PROMPT.md").write_text(prompt, encoding="utf-8")
@@ -34,7 +22,6 @@ class TestWorkspaceContext:
         monkeypatch: pytest.MonkeyPatch,
         *workspace_roots: Path,
     ) -> None:
-        """Mock git ops so each workspace resolves to its own root."""
 
         canonical = {p.resolve(): p.resolve() for p in workspace_roots}
 
@@ -50,7 +37,6 @@ class TestWorkspaceContext:
 
     @staticmethod
     def _caller_snapshot(root: Path) -> dict[str, object]:
-        """Snapshot the observable parts of the caller's context."""
         from ralph.agents.registry import AgentRegistry
         from ralph.config.loader import load_config
         from ralph.mcp.session_plan import resolve_effective_session_mcp_plan
@@ -75,7 +61,6 @@ class TestWorkspaceContext:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """The bundle exposes the target's complete observed context."""
         from ralph.workspace.context import WorkspaceContext, workspace_context
 
         caller = tmp_path / "caller"
@@ -103,7 +88,6 @@ class TestWorkspaceContext:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """The bundle is the TARGET's, not the caller's."""
         from ralph.workspace.context import workspace_context
 
         caller = tmp_path / "caller"
@@ -125,7 +109,6 @@ class TestWorkspaceContext:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """A successful round trip returns the caller to its prior state."""
         from ralph.workspace.context import workspace_context
 
         caller = tmp_path / "caller"
@@ -151,7 +134,6 @@ class TestWorkspaceContext:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """An exception inside `with` does not mutate the caller's snapshot."""
         from ralph.workspace.context import workspace_context
 
         caller = tmp_path / "caller"
@@ -177,7 +159,6 @@ class TestWorkspaceContext:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """Nested use discards the inner bundle without mutating the outer."""
         from ralph.workspace.context import workspace_context
 
         caller = tmp_path / "caller"
@@ -209,7 +190,6 @@ class TestWorkspaceContext:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """A `return` inside the `with` block restores the caller cleanly."""
         from ralph.workspace.context import workspace_context
 
         caller = tmp_path / "caller"
@@ -239,7 +219,6 @@ class TestWorkspaceContext:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """A non-existent target raises a clear error and never yields."""
         from ralph.workspace.context import workspace_context
 
         caller = tmp_path / "caller"

@@ -1,9 +1,3 @@
-"""Tests for ralph/mcp/transport/common.py:merge_existing_upstreams helper.
-
-These tests verify that the unsafe_mode merge logic is consolidated into a single
-helper that routes to the correct per-agent loader based on agent_name.
-"""
-
 from __future__ import annotations
 
 import json
@@ -18,14 +12,11 @@ from ralph.mcp.transport.common import merge_existing_upstreams
 
 
 class TestMergeExistingUpstreams:
-    """Tests for merge_existing_upstreams(agent_name, current_config, *, unsafe_mode)."""
-
     def test_unsafe_mode_false_keeps_only_ralph_entry(
         self,
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """unsafe_mode=False drops non-ralph entries and keeps only the ralph entry."""
         monkeypatch.setenv("HOME", str(tmp_path))
 
         (tmp_path / ".claude.json").write_text(
@@ -62,7 +53,6 @@ class TestMergeExistingUpstreams:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """unsafe_mode=True merges existing upstreams with the ralph entry."""
         monkeypatch.setenv("HOME", str(tmp_path))
 
         (tmp_path / ".claude.json").write_text(
@@ -94,7 +84,6 @@ class TestMergeExistingUpstreams:
     @pytest.mark.parametrize(
         "agent_name,current_config_factory",
         [
-            # claude/agy/nanocoder: use mcpServers
             (
                 "claude",
                 lambda: {
@@ -113,7 +102,6 @@ class TestMergeExistingUpstreams:
                     }
                 },
             ),
-            # opencode: use mcp key with native fields
             (
                 "opencode",
                 lambda: {
@@ -134,12 +122,6 @@ class TestMergeExistingUpstreams:
         agent_name: str,
         current_config_factory: callable,
     ) -> None:
-        """Smoke test: merge_existing_upstreams is callable for all 5 supported agents.
-
-        Each agent uses its native config format:
-        - claude/agy/nanocoder: {"mcpServers": {"<name>": {...}}}
-        - opencode: {"mcp": {"<name>": {"type", "url", "enabled", "timeout", ...}}}
-        """
         current_config = current_config_factory()
 
         result = merge_existing_upstreams(agent_name, current_config, unsafe_mode=False)
@@ -155,7 +137,6 @@ class TestMergeExistingUpstreams:
     def test_opencode_preserves_native_fields(
         self,
     ) -> None:
-        """OpenCode entries must preserve all native fields (type, url, enabled, timeout)."""
         current_config = {
             "mcp": {
                 "github": {
@@ -187,7 +168,6 @@ class TestMergeExistingUpstreams:
     def test_opencode_unsafe_mode_false_returns_only_ralph(
         self,
     ) -> None:
-        """When unsafe_mode=False, OpenCode result contains only the ralph entry."""
         current_config = {
             "mcp": {
                 "github": {

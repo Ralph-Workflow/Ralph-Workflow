@@ -1,36 +1,3 @@
-"""A1-H7 edge-case catalog coverage test (AC-14).
-
-The prompt's catalog enumerates every edge case the auto-integration
-pipeline must handle. The test below enumerates every entry as a
-named tuple ``(entry_id, evidence_kind, evidence_locator,
-production_file)`` and asserts that EACH entry has either:
-
-* a named automated test that ACTUALLY references the entry id
-  (the locator is a pytest node id whose test name or docstring
-  contains the entry id, validated by ``pytest --collect-only``),
-  OR
-* a code-adjacent written rationale string in the production file
-  that names the ladder rung the entry lives on (the production
-  file's source MUST contain a comment of the shape ``# AC-14
-  rationale: <ENTRY_ID>`` paired with the ladder rung the entry
-  sits on).
-
-A missing entry makes the test fail with a CLEAR list of what's
-missing, so a gap in the catalog is impossible to ship silently.
-A forbidden evidence shape (file exists but no test references the
-entry id; rationale token present but no ladder rung named) makes
-that SPECIFIC entry fail with a CLEAR message, not a generic
-"missing evidence".
-
-The test does the cross-reference; the production code does not have
-to be aware of the catalog at all. The rationale registry in
-:mod:`ralph.pipeline.auto_integrate_catalog_rationales` remains a
-documentation single-source-of-truth, but the AUTHORITATIVE
-evidence per AC-14 is the code-adjacent marker (``# AC-14
-rationale: <ENTRY_ID>``) in the production file named in the
-catalog tuple.
-"""
-
 from __future__ import annotations
 
 import re
@@ -41,46 +8,13 @@ import pytest
 
 
 class CatalogEntry(NamedTuple):
-    """One catalog entry the test must verify is covered.
-
-    ``entry_id`` is the canonical spec id (``"A1"``, ``"B3"`` ...).
-    ``kind`` is either ``"test"`` (a pytest file whose
-    ``test_*`` functions reference the entry id) or
-    ``"rationale"`` (a production file whose source contains a
-    ``# AC-14 rationale: <ENTRY_ID>`` comment paired with a
-    ladder rung).
-    ``locator`` is the test file or the production file that
-    carries the evidence. ``ladder_rung`` is the rung the entry
-    sits on (1=land anyway, 2=recover+land, 3=clean abort+retry,
-    4=loud diagnostic+self-resume); the audit requires rationale
-    evidence to NAME the rung.
-    """
-
     entry_id: str
     kind: str
     locator: str
     ladder_rung: int
 
 
-#: The full A1-H7 catalog. Each tuple is
-#: ``(id, kind, locator, ladder_rung)``.
-#:
-#: * ``kind="test"`` requires at least one ``test_*`` function in
-#:   ``locator`` whose name OR docstring references the entry id
-#:   (a substring match on ``entry_id``). A file that exists but
-#:   has no test referencing the entry id fails the audit.
-#: * ``kind="rationale"`` requires the production file
-#:   ``locator`` to contain a ``# AC-14 rationale: <ENTRY_ID>``
-#:   comment AND a paired ``# ladder rung: <N>`` line where N
-#:   matches the catalog's ``ladder_rung``. A token alone is not
-#:   enough -- the rung naming is the AC-14 contract.
-#:
-#: The locator is the file RELATIVE TO THE REPO ROOT (the
-#: ``ralph-workflow/`` checkout), NOT ``ralph/`` -- tests live
-#: under ``ralph-workflow/tests`` and production code under
-#: ``ralph-workflow/ralph``.
 CATALOG: tuple[CatalogEntry, ...] = (
-    # Section A — pre-existing / stale git state.
     CatalogEntry(
         "A1",
         "rationale",
@@ -153,7 +87,6 @@ CATALOG: tuple[CatalogEntry, ...] = (
         "ralph/git/rebase/rebase.py",
         ladder_rung=1,
     ),
-    # Section B — history topology.
     CatalogEntry(
         "B1",
         "rationale",
@@ -220,7 +153,6 @@ CATALOG: tuple[CatalogEntry, ...] = (
         "ralph/pipeline/auto_integrate_ff.py",
         ladder_rung=1,
     ),
-    # Section C — conflict detection and conflict types.
     CatalogEntry(
         "C1",
         "rationale",
@@ -311,7 +243,6 @@ CATALOG: tuple[CatalogEntry, ...] = (
         "ralph/pipeline/conflict_resolution/rebase_loop.py",
         ladder_rung=2,
     ),
-    # Section D — automation hazards.
     CatalogEntry(
         "D1",
         "rationale",
@@ -402,7 +333,6 @@ CATALOG: tuple[CatalogEntry, ...] = (
         "ralph/git/subprocess_runner.py",
         ladder_rung=1,
     ),
-    # Section E — worktrees and fleet concurrency.
     CatalogEntry(
         "E1",
         "rationale",
@@ -469,7 +399,6 @@ CATALOG: tuple[CatalogEntry, ...] = (
         "ralph/pipeline/auto_integrate_record.py",
         ladder_rung=1,
     ),
-    # Section F — fast-forward / ref-update mechanics.
     CatalogEntry(
         "F1",
         "rationale",
@@ -506,7 +435,6 @@ CATALOG: tuple[CatalogEntry, ...] = (
         "ralph/pipeline/auto_integrate_recovery.py",
         ladder_rung=3,
     ),
-    # Section G — rebase continue/skip/abort.
     CatalogEntry(
         "G1",
         "rationale",
@@ -537,7 +465,6 @@ CATALOG: tuple[CatalogEntry, ...] = (
         "ralph/git/hardening.py",
         ladder_rung=1,
     ),
-    # Section H — repository shape.
     CatalogEntry(
         "H1",
         "rationale",
@@ -583,24 +510,11 @@ CATALOG: tuple[CatalogEntry, ...] = (
 )
 
 
-#: Rationale registry: the catalog entries that are NOT covered
-#: by a dedicated test. The locator on each entry is the
-#: production file that owns the code-adjacent rationale marker
-#: (``# AC-14 rationale: <ENTRY_ID>``); the test asserts that
-#: marker exists in the source.
 def _find_repo_root() -> Path:
-    """Locate the ralph-workflow repo root from this test file."""
     return Path(__file__).resolve().parent.parent
 
 
 def _read_production_file(rel_path: str) -> str:
-    """Read the production file at ``rel_path`` (relative to repo root).
-
-    Returns ``""`` when the file is missing -- the per-entry
-    test reports the missing path clearly. A blanket
-    ``OSError``/``FileNotFoundError`` swallow keeps a single
-    missing file from masking every other entry's status.
-    """
     full = _find_repo_root() / rel_path
     try:
         return full.read_text(encoding="utf-8")
@@ -608,18 +522,6 @@ def _read_production_file(rel_path: str) -> str:
         return ""
 
 
-#: Regex for the AC-14 code-adjacent rationale marker. Each
-#: production file carrying an entry's rationale MUST contain a
-#: comment line of this shape near the relevant code:
-#:
-#:     # AC-14 rationale: A1_STALE_REBASE_MERGE
-#:     # ladder rung: 2
-#:
-#: The marker is unique enough that a ``re.search`` returns at
-#: most one match; the audit uses the absence of the marker as
-#: the "evidence missing" verdict and the absence of the rung
-#: line as the "rationale not code-adjacent" verdict. Two
-#: separate failures keep a half-done rationale visible.
 _RATIONALE_MARKER = re.compile(
     r"#\s*AC-14\s+rationale:\s*([A-H]\d{1,2})",
     re.MULTILINE,
@@ -631,12 +533,6 @@ _LADDER_RUNG_LINE = re.compile(
 
 
 def _rationale_marker_present(production_source: str, entry_id: str) -> bool:
-    """True when the named entry's marker exists in the production source.
-
-    Scoped by the entry id so a global token-grep cannot pass
-    the test for a rationale whose marker is in a DIFFERENT
-    file than the catalog entry's locator names.
-    """
     return bool(
         re.search(
             rf"#\s*AC-14\s+rationale:\s*{re.escape(entry_id)}\b",
@@ -646,13 +542,6 @@ def _rationale_marker_present(production_source: str, entry_id: str) -> bool:
 
 
 def _ladder_rung_named(production_source: str, expected_rung: int) -> bool:
-    """True when the production source names the expected ladder rung.
-
-    Walks every ``# ladder rung: N`` line in the source and
-    asserts that the expected rung is named at least once. The
-    rung naming is the AC-14 contract: a rationale that does
-    not name the rung is not a rationale per the spec.
-    """
     for match in _LADDER_RUNG_LINE.finditer(production_source):
         if int(match.group(1)) == expected_rung:
             return True
@@ -661,22 +550,6 @@ def _ladder_rung_named(production_source: str, expected_rung: int) -> bool:
 
 @pytest.mark.parametrize("entry", list(CATALOG), ids=lambda e: e.entry_id)
 def test_catalog_entry_has_evidence(entry: CatalogEntry) -> None:
-    """Every catalog entry has either a named test or a code-adjacent rationale.
-
-    For ``kind="rationale"`` the audit requires:
-
-    1. The locator file exists under the repo root.
-    2. The locator file contains a
-       ``# AC-14 rationale: <ENTRY_ID>`` comment.
-    3. The locator file contains a
-       ``# ladder rung: <N>`` line where N matches the
-       catalog's ``ladder_rung``.
-
-    All three are required because a marker without a rung
-    is not a rationale (AC-14 spec), a rung without a marker
-    is not code-adjacent (it could live anywhere), and a
-    missing file is missing evidence.
-    """
     if entry.kind == "rationale":
         source = _read_production_file(entry.locator)
         assert source, (
@@ -699,11 +572,6 @@ def test_catalog_entry_has_evidence(entry: CatalogEntry) -> None:
             "named next to the rationale"
         )
     elif entry.kind == "test":
-        # Test-kind entries reference a test file path; the
-        # audit asserts the file exists. The current
-        # catalog uses ``kind="rationale"`` for every entry,
-        # so this branch is exercised only by future test
-        # evidence that names a dedicated test.
         assert (Path(__file__).resolve().parent / entry.locator).exists(), (
             f"catalog entry {entry.entry_id} names a non-existent test file: {entry.locator}"
         )
@@ -712,7 +580,6 @@ def test_catalog_entry_has_evidence(entry: CatalogEntry) -> None:
 
 
 def test_catalog_is_complete() -> None:
-    """Every A1..H7 entry from the spec is enumerated in the catalog."""
     expected = set()
     for section in "ABCDEFGH":
         upper = {
@@ -735,15 +602,6 @@ def test_catalog_is_complete() -> None:
 
 
 def test_catalog_does_not_overlap() -> None:
-    """Every catalog entry has a unique entry id.
-
-    A duplicated ``entry_id`` would let one of the pair skip
-    a stricter evidence check; the audit asserts every entry
-    id is unique. Multiple entries sharing the same
-    ``(locator, ladder_rung)`` pair is fine -- the same
-    production file routinely documents every entry from the
-    same rung (recovery.py covers A1..A11, all rung 2).
-    """
     seen: dict[str, int] = {}
     duplicates: list[str] = []
     for entry in CATALOG:
@@ -753,24 +611,12 @@ def test_catalog_does_not_overlap() -> None:
 
 
 def test_synthetic_missing_entry_is_detected() -> None:
-    """A canonical missing-evidence shape MUST fail the audit.
-
-    Builds a synthetic catalog entry that points at a
-    non-existent production file with no rationale marker
-    and asserts the entry would fail the per-entry audit. If
-    the synthetic does NOT fail, the audit itself is broken
-    and the entire AC-14 surface has rotted.
-    """
     synthetic = CatalogEntry(
         entry_id="Z9",
         kind="rationale",
         locator="ralph/_nonexistent_file_for_audit_canary.py",
         ladder_rung=1,
     )
-    # Mirror the per-entry audit's three checks inline so the
-    # synthetic canary is independent of the parametrized test
-    # above -- a future change that loosens the parametrized
-    # test would not hide this canary.
     source = _read_production_file(synthetic.locator)
     assert source == "", (
         "synthetic catalog entry Z9 should resolve to a "
@@ -786,29 +632,6 @@ def test_synthetic_missing_entry_is_detected() -> None:
 def test_real_entry_with_real_file_strips_marker_fails_audit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A real catalog entry's production file, with its marker REMOVED, MUST fail.
-
-    The analysis feedback flagged the audit as "validating
-    evidence by file existence and rationale evidence by token
-    presence" -- it did not prove the audit actually catches a
-    removed marker. The test above (``test_synthetic_missing_entry_is_detected``)
-    proves a non-existent file is detected, but a removed
-    marker in a real file is the regression mode the audit
-    must catch: someone deleted the ``# AC-14 rationale: A1``
-    comment from ``auto_integrate_recovery.py`` and the audit
-    passed anyway. The test below proves that case fails by
-    monkeypatching :func:`_read_production_file` to return a
-    copy of the real file with the A1 marker stripped out,
-    re-running the per-entry audit's three checks, and
-    asserting every one of them fails.
-
-    The check is file-scoped: a real entry's production file
-    is the ONLY source the audit accepts (a centralized
-    rationale registry in a separate file is NOT evidence
-    per the AC-14 contract), so a regression that moves the
-    marker to a registry and removes it from the production
-    file is exactly the failure mode this canary catches.
-    """
     a1_entry = next(entry for entry in CATALOG if entry.entry_id == "A1")
     assert a1_entry.locator == "ralph/pipeline/auto_integrate_recovery.py", (
         "canary: A1's catalog locator drifted; the canary "
@@ -818,12 +641,6 @@ def test_real_entry_with_real_file_strips_marker_fails_audit(
     assert real_source, (
         "canary: the real production file is empty; the canary's setup cannot proceed"
     )
-    # Strip the ``# AC-14 rationale: A1`` marker from the
-    # source. We do this by re-formatting the regex match
-    # rather than reading the file, so the canary is
-    # hermetic: no file I/O mutation, no cleanup, no
-    # risk of breaking a subsequent test by leaving the
-    # marker stripped.
     stripped_source = re.sub(
         rf"\n#\s*AC-14\s+rationale:\s*{re.escape(a1_entry.entry_id)}\b[^\n]*",
         "\n# AC-14 rationale: A1_STRIPPED_BY_AUDIT_CANARY",
@@ -840,10 +657,6 @@ def test_real_entry_with_real_file_strips_marker_fails_audit(
         "remove it; the canary cannot prove the audit "
         "catches the regression"
     )
-    # Run the per-entry audit's three checks inline so
-    # the canary is independent of the parametrized
-    # test -- a future change that loosens the
-    # parametrized test would not hide this canary.
     assert not _rationale_marker_present(stripped_source, a1_entry.entry_id), (
         f"AUDIT ROT: catalog entry {a1_entry.entry_id} "
         "would pass the marker-present check even after "
@@ -857,37 +670,10 @@ def test_real_entry_with_real_file_strips_marker_fails_audit(
 def test_centralized_rationale_registry_is_not_substitute_evidence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The centralized ``auto_integrate_catalog_rationales.py`` registry is NOT evidence.
-
-    The analysis feedback flagged the prior shape as
-    "validating rationale evidence by token presence" while
-    "rationales are centralized in
-    ``ralph/pipeline/auto_integrate_catalog_rationales.py``
-    rather than adjacent to the production branch". AC-14
-    requires the rationale to be CODE-ADJACENT: in the
-    production file the catalog names as the locator. A
-    rationale registry in a separate file is a documentation
-    aid, not evidence -- a refactor that moves a primitive
-    from ``auto_integrate_recovery.py`` to
-    ``auto_integrate_rebase_merge.py`` without updating the
-    locator would still pass the audit if the registry
-    were accepted, even though the actual code the rationale
-    described is no longer in the file the catalog points
-    at.
-
-    The canary below builds a synthetic catalog entry whose
-    locator is a real production file (recovery.py) but
-    whose rationale marker is moved to the registry file
-    only. It asserts the per-entry audit rejects that
-    shape -- the marker must be in the LOCATED file, not
-    somewhere else in the tree.
-    """
     recovery_source = _read_production_file("ralph/pipeline/auto_integrate_recovery.py")
     registry_source = _read_production_file("ralph/pipeline/auto_integrate_catalog_rationales.py")
     assert recovery_source, "canary: recovery source is empty"
     assert registry_source, "canary: registry source is empty"
-    # Strip the A1 marker from the recovery file (the
-    # real file currently has it).
     stripped_recovery = re.sub(
         r"\n#\s*AC-14\s+rationale:\s*A1\b[^\n]*",
         "\n# AC-14 rationale: A1_STRIPPED_BY_AUDIT_CANARY",
@@ -896,20 +682,9 @@ def test_centralized_rationale_registry_is_not_substitute_evidence(
     assert not _rationale_marker_present(stripped_recovery, "A1"), (
         "canary: stripping A1 from recovery.py did not work"
     )
-    # The registry file still has a token-shaped reference
-    # to A1 (the A1_STALE_REBASE_MERGE constant), so a
-    # token-grep audit would be tricked. The per-entry
-    # check MUST be scoped to the locator file, not the
-    # whole tree.
     assert "A1" in registry_source, (
         "canary: the registry file is supposed to contain A1 references; the canary is set up wrong"
     )
-    # The per-entry audit's marker check is scoped to the
-    # locator file (see ``_rationale_marker_present``),
-    # so the stripped recovery file fails the audit even
-    # though the registry still has A1 references. The
-    # check below makes that scoping explicit: the audit
-    # is supposed to reject this shape.
     assert not _rationale_marker_present(stripped_recovery, "A1"), (
         "AUDIT ROT: the per-entry marker check is no longer "
         "scoped to the locator file; a centralized registry "

@@ -1,19 +1,3 @@
-"""SearXNG web-search backend.
-
-Implements the ``SearxngBackend`` dataclass that queries a self-hosted SearXNG
-instance over HTTP.  Unlike the API-key backends (Exa, Tavily, Brave), this
-backend requires no credentials — only the base URL of a running SearXNG
-server.
-
-The backend POSTs to ``{url}/search?format=json`` with a 10-second timeout and
-normalises the JSON response into a list of ``SearchResult`` objects.  Network
-errors and non-200 responses raise ``WebSearchError``.
-
-Typical usage (from ``ralph.config.mcp_models`` backend selection)::
-
-    backend = SearxngBackend(url="http://localhost:8080")
-    results = backend.search("Python type hints", limit=5)
-"""
 
 from __future__ import annotations
 
@@ -33,7 +17,6 @@ _SEARCH_PATH = "/search"
 
 @dataclass(frozen=True)
 class SearxngBackend:
-    """Backend that queries a user-managed SearXNG instance."""
 
     url: str
     timeout_seconds: float | None = None

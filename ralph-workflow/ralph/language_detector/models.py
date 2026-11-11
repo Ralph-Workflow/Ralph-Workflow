@@ -1,4 +1,3 @@
-"""Data models for detected project language stacks."""
 
 from __future__ import annotations
 
@@ -9,7 +8,6 @@ MAX_SECONDARY_LANGUAGES = 6
 
 @dataclass
 class ProjectStack:
-    """Detected project stack summary."""
 
     primary_language: str = "Unknown"
     secondary_languages: list[str] = field(default_factory=list)

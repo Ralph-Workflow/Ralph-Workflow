@@ -15,7 +15,7 @@ EXPECTED_MICRO = 7
 def runtime_environment_module() -> object:
     try:
         return importlib.import_module("ralph.runtime.environment")
-    except ModuleNotFoundError as exc:  # pragma: no cover - red phase only
+    except ModuleNotFoundError as exc:
         pytest.fail(f"runtime environment module missing: {exc}")
 
 
@@ -23,7 +23,7 @@ def runtime_environment_module() -> object:
 def runtime_module() -> object:
     try:
         return importlib.import_module("ralph.runtime")
-    except ModuleNotFoundError as exc:  # pragma: no cover - red phase only
+    except ModuleNotFoundError as exc:
         pytest.fail(f"runtime package missing: {exc}")
 
 

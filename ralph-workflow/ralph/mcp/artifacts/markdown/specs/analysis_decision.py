@@ -1,12 +1,3 @@
-"""Markdown specs for planning, development, review, and policy decisions.
-
-Development analysis decisions are free-form: only the ``status`` enum is
-validated, because routing reads it. The rest of the body is written for the
-next agent to read and act on, not for a validator to check.
-
-Planning, review, and policy-remediation decisions keep their structured
-validation verbatim (out of scope here).
-"""
 
 from __future__ import annotations
 
@@ -39,11 +30,6 @@ _REQUIRED_VERDICT_FIELDS = (
     "Evidence:",
     "Location:",
 )
-#: planning_analysis_decision verdicts are the only ones that must
-#: include ``Cost:``; the planning contract treats the cost of the
-#: missed split as part of the verdict, while policy decisions document
-#: what remains via ``Remaining work:`` and never
-#: duplicate the cost on every verdict.
 _PLANNING_VERDICT_FIELDS = (*_REQUIRED_VERDICT_FIELDS, "Cost:")
 _VERDICT_PATTERN = re.compile(r"Verdict:\s*(met|not met|not evaluable)(?:\.|$)", re.IGNORECASE)
 _REQUIRED_FINDING_FIELDS = tuple(
@@ -52,20 +38,11 @@ _REQUIRED_FINDING_FIELDS = tuple(
 
 
 def _finding_fields_complete(text: str) -> bool:
-    """Return True when a What Came Up Short item identifies its subject and
-    carries every required finding field.
-
-    The subject slot accepts ``Criterion:`` or any ``Plan reference: [<id>]``
-    the plan actually uses; free-form plans are not required to use ``S-n``
-    identifiers, so the plan-reference check is deliberately non-specific.
-    """
     has_subject = "Criterion:" in text or _PLAN_REFERENCE_PATTERN.search(text) is not None
     return has_subject and all(field in text for field in _REQUIRED_FINDING_FIELDS)
 
 
 def _has_finding_target(text: str) -> bool:
-    """A finding targets the plan via a step, plan-level scope, or any stable
-    plan reference identifier (free-form plans need not use S-n step IDs)."""
     return (
         _FINDING_TARGET_PATTERN.search(text) is not None
         or _PLAN_REFERENCE_PATTERN.search(text) is not None
@@ -73,7 +50,6 @@ def _has_finding_target(text: str) -> bool:
 
 
 def _extract_verdict(text: str) -> str | None:
-    """Extract the lowercased verdict from a finding/verdict line, or ``None``."""
     match = _VERDICT_PATTERN.search(text)
     if match is None:
         return None
@@ -140,13 +116,6 @@ def _to_content(document: ParsedDocument) -> dict[str, object]:
 
 
 def _to_content_development(document: ParsedDocument) -> dict[str, object]:
-    """Map a development analysis decision's body to content.
-
-    The body is free-form below the frontmatter; ``summary`` is the
-    first Summary item when present so downstream code (history
-    snapshots, displays) keeps something to read. A free-form
-    development decision may omit every section.
-    """
     summary_items = _item_texts(document, "Summary")
     summary = summary_items[0] if summary_items else ""
     return {
@@ -171,14 +140,6 @@ def _normalize(content: dict[str, object]) -> dict[str, object]:
 
 
 def _normalize_development(content: dict[str, object]) -> dict[str, object]:
-    """Validate a development decision content dict: status enum only.
-
-    The base ``AnalysisDecision`` model still demands a non-empty summary
-    and a status-specific ``what_came_up_short``; bypass both for the
-    free-form development contract. The ``type`` field is preserved so
-    downstream consumers (history snapshots, displays) keep their
-    artifact-type discriminator.
-    """
     raw_status = content.get("status")
     if not isinstance(raw_status, str) or raw_status not in _STATUSES:
         raise ValueError(f"status must be one of {list(_STATUSES)!r}")
@@ -321,15 +282,6 @@ def _validate_verification_verdicts(document: ParsedDocument) -> list[Diagnostic
 
 
 def _validate_decision_contract(document: ParsedDocument) -> list[Diagnostic]:
-    """Structured per-type validator for non-development analysis decisions.
-
-    Development analysis decisions short-circuit at the top of the
-    function (the free-form contract is enforced by ``_spec_development``),
-    so the rest of the body owns the structured planning / review /
-    policy contracts. Returns an empty list when the structured
-    contract is satisfied, or one or more ``Diagnostic`` entries that
-    name the line, section, and rule that was violated.
-    """
     artifact_type = document.frontmatter["type"]
     status = document.frontmatter["status"]
     if artifact_type == "development_analysis_decision":
@@ -521,14 +473,6 @@ def _spec(artifact_type: str) -> MdArtifactSpec:
 
 
 def _spec_development() -> MdArtifactSpec:
-    """Development analysis decision: status-only validation.
-
-    The body is free-form prose the next agent reads. The validator
-    only checks the frontmatter ``status`` enum. Section rules, body
-    grammar rules, and per-finding field labels all belong to the
-    structured planning / review / policy contracts and are not
-    applied here.
-    """
     return MdArtifactSpec(
         artifact_type="development_analysis_decision",
         required_frontmatter=frozenset({"type", "status"}),
@@ -541,7 +485,7 @@ def _spec_development() -> MdArtifactSpec:
         normalize_content=_normalize,
         allow_unknown_frontmatter=True,
         allow_unknown_sections=True,
-        structured_body=lambda document: False,  # body is always free-form
+        structured_body=lambda document: False,
     )
 
 

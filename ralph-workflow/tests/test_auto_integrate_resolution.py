@@ -1,25 +1,3 @@
-"""Fault-tolerance tests for the auto-integrate resolution + retry paths.
-
-Covers the behaviors added on top of the wt-038 baseline:
-
-* A FAILED rebase (not just a conflicted one) falls back to the
-  endpoint merge.
-* A conflicted endpoint merge is handed to the ``conflict_resolver``
-  seam; on success the merge is committed deterministically and the
-  fast-forward proceeds. Resolver failure / exception aborts the
-  merge bit-identically and records a conflict.
-* A fast-forward lost to a concurrent target move triggers an
-  immediate bounded re-integration instead of waiting for the next
-  commit.
-* The phase-transition hook integrates at clean-worktree phase
-  boundaries, records a skip when uncommitted TRACKED changes defer a
-  catch-up the target actually had, and stays silent when there is
-  nothing to do.
-
-Same conventions as :mod:`tests.test_auto_integrate` (real per-test git
-repositories; helpers duplicated to avoid brittle test-module imports).
-"""
-
 from __future__ import annotations
 
 import subprocess
@@ -42,21 +20,18 @@ pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
 
 
 def auto_integrate_after_commit(*args: Any, **kwargs: Any) -> Any:
-    """Test-only wrapper that skips real CAS backoff sleeps."""
     kwargs.setdefault("sleep", lambda _seconds: None)
     kwargs.setdefault("jitter", lambda: 0.0)
     return _auto_integrate_after_commit(*args, **kwargs)
 
 
 def auto_integrate_on_phase_transition(*args: Any, **kwargs: Any) -> Any:
-    """Test-only wrapper that skips real CAS backoff sleeps."""
     kwargs.setdefault("sleep", lambda _seconds: None)
     kwargs.setdefault("jitter", lambda: 0.0)
     return _auto_integrate_on_phase_transition(*args, **kwargs)
 
 
 def _run(repo_root: Path, *args: str, timeout: float = 10.0) -> subprocess.CompletedProcess[str]:
-    """Run ``git <args>`` in ``repo_root`` with a configurable timeout."""
     return subprocess.run(
         ("git", *args),
         cwd=str(repo_root),
@@ -68,7 +43,6 @@ def _run(repo_root: Path, *args: str, timeout: float = 10.0) -> subprocess.Compl
 
 
 def _base_branch(tmp_git_repo: Path) -> str:
-    """Return the seed template's default branch name."""
     head_file = tmp_git_repo / ".git" / "HEAD"
     try:
         head_content = head_file.read_text(encoding="utf-8").strip()
@@ -102,7 +76,6 @@ def _build_config(
     target: str | None = None,
     remote_enabled: bool = False,
 ) -> UnifiedConfig:
-    """Build a real ``UnifiedConfig`` with the auto-integrate knobs set."""
     payload: dict[str, object] = {
         "general": {
             "auto_integrate_enabled": enabled,
@@ -115,7 +88,6 @@ def _build_config(
 
 
 def _snapshot(tmp_git_repo: Path) -> dict[str, object]:
-    """Capture HEAD SHA + all ref SHAs for byte-equality comparisons."""
     head = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
     refs: dict[str, str] = {}
     out = _run(tmp_git_repo, "for-each-ref", "--format=%(refname) %(objectname)")
@@ -132,7 +104,6 @@ def _snapshot(tmp_git_repo: Path) -> dict[str, object]:
 
 
 def _diverged_conflicting_repo(tmp_git_repo: Path) -> str:
-    """Set up feature/base divergence with a guaranteed shared.txt conflict."""
     base = _base_branch(tmp_git_repo)
     base_seed_sha = _commit(tmp_git_repo, "base_seed.txt", "base seed\n", "base seed")
     _run(tmp_git_repo, "branch", "feature", base_seed_sha)
@@ -147,14 +118,12 @@ def _diverged_conflicting_repo(tmp_git_repo: Path) -> str:
 def test_rebase_failed_falls_back_to_endpoint_merge(
     tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A rebase failure (not just a conflict) still tries the endpoint merge."""
     import ralph.pipeline.auto_integrate_rebase_merge as _ai_mod
     from ralph.git.rebase._rebase_kind import RebaseKind
     from ralph.git.rebase.rebase import RebaseFailed
     from ralph.git.rebase.rebase_kinds import RebaseErrorKind
 
     base = _base_branch(tmp_git_repo)
-    # Disjoint changes: the endpoint merge will succeed cleanly.
     _run(tmp_git_repo, "checkout", "-b", "feature")
     _commit(tmp_git_repo, "feat.txt", "feature only\n", "feat")
     _run(tmp_git_repo, "checkout", base)
@@ -185,7 +154,6 @@ def test_rebase_failed_falls_back_to_endpoint_merge(
 def test_conflict_resolver_failure_retains_progress_and_records_conflict(
     tmp_git_repo: Path,
 ) -> None:
-    """A failing resolver leaves branch refs unchanged and retains the live merge."""
     base = _diverged_conflicting_repo(tmp_git_repo)
     before = _snapshot(tmp_git_repo)
 
@@ -215,7 +183,6 @@ def test_conflict_resolver_failure_retains_progress_and_records_conflict(
 def test_conflict_resolver_exception_retains_progress_and_records_conflict(
     tmp_git_repo: Path,
 ) -> None:
-    """A resolver exception is contained while retaining progress for the next agent."""
     base = _diverged_conflicting_repo(tmp_git_repo)
     before = _snapshot(tmp_git_repo)
 
@@ -239,7 +206,6 @@ def test_conflict_resolver_exception_retains_progress_and_records_conflict(
 def test_auto_integrate_regression_deterministic_ff_refusal_does_not_retry(
     tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Analysis feedback: a safety refusal makes exactly one integration pass."""
     import ralph.pipeline.auto_integrate as _ai_mod
 
     base = _base_branch(tmp_git_repo)
@@ -270,13 +236,6 @@ def test_auto_integrate_regression_deterministic_ff_refusal_does_not_retry(
 def test_ff_race_retries_integration_onto_moved_target(
     tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A concurrent target move during ff triggers an immediate re-integration.
-
-    The first fast-forward attempt is forced to fail (simulating the
-    AC-08 CAS race); the step must re-run the rebase onto the moved
-    target and fast-forward successfully instead of giving up until
-    the next commit.
-    """
     import ralph.pipeline.auto_integrate as _ai_mod
 
     base = _base_branch(tmp_git_repo)
@@ -325,7 +284,6 @@ def test_ff_race_retries_integration_onto_moved_target(
 
 
 def test_phase_transition_integrates_when_target_moved(tmp_git_repo: Path) -> None:
-    """A clean worktree + moved target at a phase boundary re-integrates."""
     base = _base_branch(tmp_git_repo)
     _run(tmp_git_repo, "checkout", "-b", "feature")
     _commit(tmp_git_repo, "feat.txt", "feature only\n", "feat")
@@ -348,25 +306,6 @@ def test_phase_transition_integrates_when_target_moved(tmp_git_repo: Path) -> No
 def test_phase_transition_records_a_skip_on_a_dirty_worktree(
     tmp_git_repo: Path,
 ) -> None:
-    """A dirty boundary that suppressed real catch-up work is RECORDED.
-
-    Supersedes the former ``silent_on_dirty_worktree`` expectation on
-    both halves.
-
-    * AC-01: the cleanliness probe now runs
-      ``--untracked-files=no``, so this test's original fixture (an
-      untracked ``wip.txt``) no longer makes the worktree dirty at
-      all. Deferring requires an uncommitted TRACKED modification,
-      which is what the fixture now creates.
-    * AC-02: a deferral whose resolved target carries commits this
-      checkout lacks suppressed a genuine cross-agent catch-up, so it
-      is recorded instead of returning ``None``. An invisible
-      suppression is indistinguishable from a feature that does not
-      work, which is exactly how the defect was reported.
-
-    The repository must still be byte-identical afterwards: recording a
-    diagnostic is not permission to mutate anything.
-    """
     base = _base_branch(tmp_git_repo)
     _run(tmp_git_repo, "checkout", "-b", "feature")
     _commit(tmp_git_repo, "feat.txt", "feature only\n", "feat")
@@ -392,10 +331,8 @@ def test_phase_transition_records_a_skip_on_a_dirty_worktree(
 def test_phase_transition_silent_when_nothing_to_integrate(
     tmp_git_repo: Path,
 ) -> None:
-    """Target at feature tip: the boundary hook does nothing, silently."""
     base = _base_branch(tmp_git_repo)
     _run(tmp_git_repo, "checkout", "-b", "feature")
-    # feature == target tip exactly.
     before = _snapshot(tmp_git_repo)
     config = _build_config(tmp_git_repo, target=base)
     outcome = auto_integrate_on_phase_transition(
@@ -407,19 +344,9 @@ def test_phase_transition_silent_when_nothing_to_integrate(
     assert _snapshot(tmp_git_repo) == before
 
 
-# ---------------------------------------------------------------------------
-
-
 def test_resolver_that_only_edits_files_still_lands_the_merge(
     tmp_git_repo: Path,
 ) -> None:
-    """AC-02: a resolver issuing NO git command still lands the merge.
-
-    Ralph's own MCP exec policy denies every git invocation, so a
-    resolver agent can never stage anything. Ralph must therefore stage
-    the previously-conflicted paths itself; before that fix this
-    resolver produced ``resolution_failed``.
-    """
     base = _diverged_conflicting_repo(tmp_git_repo)
     feature_sha_before = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
 
@@ -449,12 +376,6 @@ def test_resolver_that_only_edits_files_still_lands_the_merge(
 
 
 def test_resolver_leaving_conflict_markers_is_rejected(tmp_git_repo: Path) -> None:
-    """AC-02: a marker-bearing "resolution" must never be committed.
-
-    ``git add`` on a file that still holds ``<<<<<<<`` markers silently
-    clears its unmerged state, so the git-authoritative unmerged-path
-    check alone cannot catch this.
-    """
     base = _diverged_conflicting_repo(tmp_git_repo)
     before = _snapshot(tmp_git_repo)
 
@@ -496,14 +417,6 @@ def test_resolver_leaving_conflict_markers_is_rejected(tmp_git_repo: Path) -> No
 def test_resolver_regression_lone_conflict_marker_is_rejected(
     tmp_git_repo: Path, half_resolved: str
 ) -> None:
-    """A resolver that deletes only one conflict fence is still rejected.
-
-    The marker scan is the only gate left once Ralph stages the
-    previously-conflicted paths -- ``git add`` clears the unmerged bit
-    -- and it used to demand BOTH fences before reporting a file. A
-    resolution that removed just one of them therefore passed both
-    gates and was committed with the conflict text intact.
-    """
     base = _diverged_conflicting_repo(tmp_git_repo)
     before = _snapshot(tmp_git_repo)
 

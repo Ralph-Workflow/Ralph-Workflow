@@ -1,10 +1,3 @@
-"""Monokai Pro-derived Pygments token palettes for Ralph's background-aware syntax previews.
-
-Each palette is solved per surface by :mod:`ralph.display._palette` rather
-than read from a fixed table. Token classes are assigned to semantic roles
-following Monokai Pro's own scope convention -- see the module-level
-``_TOKEN_ROLE`` table.
-"""
 
 from __future__ import annotations
 
@@ -36,7 +29,6 @@ from ralph.display._palette import (
 
 
 def _child_token(parent: object, name: str) -> object:
-    """Resolve a Pygments child token despite its incomplete type stubs."""
     return cast("object", getattr(parent, name))
 
 
@@ -53,15 +45,6 @@ _KEYWORD_NAMESPACE = _child_token(Keyword, "Namespace")
 _TEXT_WHITESPACE = _child_token(Text, "Whitespace")
 _LITERAL = _child_token(_child_token(pygments_token, "Token"), "Literal")
 _ERROR = _child_token(_child_token(pygments_token, "Token"), "Error")
-#: DA-002/D-3: these nine token classes previously had no explicit mapping,
-#: so Pygments' own ``StyleMeta`` built them with ``color: None`` -- Rich's
-#: ``PygmentsSyntaxTheme.get_style_for_token`` then hardcodes ``#000000``
-#: for a falsy colour, a fixed non-adaptive black that bypasses the palette
-#: entirely (not merely "the terminal default", which D-3 already bans, but
-#: worse: a colour that is wrong on a dark surface and invisible on one).
-#: ``Generic.Heading``/``Generic.Strong`` are exactly the tokens Pygments'
-#: ``DiffLexer`` emits for a ``.diff``/``.patch`` preview, so this is
-#: production-reachable through ``edit_preview.py``, not hypothetical.
 _GENERIC_HEADING = _child_token(Generic, "Heading")
 _GENERIC_STRONG = _child_token(Generic, "Strong")
 _GENERIC_PROMPT = _child_token(Generic, "Prompt")
@@ -72,18 +55,6 @@ _GENERIC_EMPH = _child_token(Generic, "Emph")
 _TOKEN_OTHER = _child_token(_child_token(pygments_token, "Token"), "Other")
 _TOKEN_ESCAPE = _child_token(_child_token(pygments_token, "Token"), "Escape")
 
-#: The semantic roles every syntax colour is solved from, per surface.
-#: Matches Monokai Pro's own scope convention (D-1):
-#: - Text/Name/plain identifiers -> the near-neutral body foreground, not a
-#:   hue accent.
-#: - Comment -> the dimmed, floor-lifted grey.
-#: - Keyword/Operator/Punctuation -> Monokai Pro's red.
-#: - String -> Monokai Pro's yellow. Number/Literal -> Monokai Pro's purple.
-#:   Function/Class -> Monokai Pro's green. Attribute -> Monokai Pro's orange.
-#:   Keyword.Type/Builtin -> Monokai Pro's cyan.
-#: Verified current against the shipped ``_style`` mapping below by
-#: ``tests/unit/display/test_syntax_theme_monokai_mapping.py`` -- keep both
-#: in sync with any future token reassignment.
 _SYNTAX_ROLES: Final[tuple[str, ...]] = (
     "foreground",
     "comment",
@@ -107,7 +78,6 @@ def _generate_syntax_colors(preview_surface: str | None) -> dict[str, str]:
 
 
 class SyntaxThemes:
-    """Create the fixed palettes used by the display theme selector."""
 
     @staticmethod
     def dark() -> type[PygmentsStyle]:
@@ -135,10 +105,6 @@ def _syntax_theme_for_surface_uncached(surface_hex: str) -> type[PygmentsStyle]:
     return _style(_generate_syntax_colors(preview_surface))
 
 
-# Call form (rather than decorator form) keeps mypy's disallow_any_explicit /
-# disallow_any_decorated settings clean without a type: ignore suppression, and
-# resolves a per-surface syntax theme once instead of on every rendered row --
-# the same first-party idiom used by ralph.display.language_inference._cached_infer.
 _syntax_theme_for_surface_cached = lru_cache(maxsize=8)(_syntax_theme_for_surface_uncached)
 
 
@@ -184,10 +150,6 @@ def _style(colors: dict[str, str]) -> type[PygmentsStyle]:
                 Generic.Subheading: subheading,
                 Generic.Deleted: deleted,
                 Generic.Inserted: inserted,
-                # DA-002/D-3: complete the token range -- see this module's
-                # _GENERIC_HEADING-and-friends comment above for why these
-                # nine were previously falling through to a hardcoded,
-                # non-adaptive black instead of a palette role.
                 _GENERIC_HEADING: subheading,
                 _GENERIC_STRONG: subheading,
                 _GENERIC_PROMPT: foreground,

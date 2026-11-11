@@ -1,4 +1,3 @@
-"""Error raised when a managed process exceeds an output-byte budget."""
 
 from __future__ import annotations
 

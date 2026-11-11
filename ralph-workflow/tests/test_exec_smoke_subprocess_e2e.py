@@ -1,18 +1,3 @@
-"""Real-process end-to-end smoke tests for long-running exec jobs.
-
-Validates the liveness assessor and ExecJobRegistry against real OS processes:
-1. Real sleep process killed as stalled when silent and idle.
-2. Silent Python CPU loop runs past the stall window as suspicious (R4 fires).
-3. Silent Python file-writer runs past the stall window and completes (R2 fires).
-4. Socket-blocked process answered slowly by sibling completes via voluntary
-   context switch signal (R7 fires).
-
-Each test runs the spawned process for at least ``stall_window + 1`` so the
-suite proves the responsible signal actually kept the process alive
-beyond the deadline. The default config has shrunk windows (≤1 s) so each
-test finishes well inside the 60 s combined test budget.
-"""
-
 from __future__ import annotations
 
 import os
@@ -35,7 +20,6 @@ pytestmark = [
 
 
 def _make_fast_liveness_config() -> LivenessConfig:
-    """Shrunk configuration windows (<= 1s) for fast deterministic smoke tests."""
     return LivenessConfig(
         output_recent_min_s=0.1,
         output_recent_max_s=0.2,
@@ -54,7 +38,6 @@ def _make_fast_liveness_config() -> LivenessConfig:
 
 
 def _wait_for_pid_dead(pid: int, timeout_s: float = 3.0) -> bool:
-    """Poll until pid is no longer alive or timeout_s expires."""
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         try:
@@ -68,12 +51,6 @@ def _wait_for_pid_dead(pid: int, timeout_s: float = 3.0) -> bool:
 
 
 def test_smoke_real_sleep_killed_as_stalled() -> None:
-    """1. Real sleep process is killed with cause 'stalled' due to zero activity.
-
-    The sleep runs for 10 s (much longer than the 300 ms stall window) so
-    the test cannot pass via early completion. The kill must come from the
-    stall integrator.
-    """
     reg = ExecJobRegistry(
         liveness_config=_make_fast_liveness_config(),
         sample_interval_s=0.05,
@@ -91,30 +68,6 @@ def test_smoke_real_sleep_killed_as_stalled() -> None:
 
 
 def test_smoke_silent_python_cpu_loop_runs_past_stall_window() -> None:
-    """2. Silent Python CPU loop runs past the stall window (R4 keeps it alive).
-
-    A CPU loop is started with a 250 ms stall window. The CPU loop must
-    still be running after 0.6 s of real wall-clock time (>= 2x the stall
-    window) and every snapshot across that window must classify the job as
-    alive (``working`` or ``suspicious`` — never ``stalled``/``unknown``).
-    At least one snapshot must show R4 (silent compute) as the strongest
-    rule with a readable ``cpu_ratio``. This is a black-box proof that the
-    cpu_ratio signal kept the process alive — the loop has no output, no
-    I/O, no children.
-
-    Load robustness: instead of pinning the rule ranking on ONE snapshot
-    at t=0.6 s, snapshots are polled every 50 ms across the whole window.
-    Under host CPU contention any single windowed sample can catch the
-    child descheduled (dragging ``cpu_ratio`` down so a spurious I/O rule
-    outranks R4), but a busy loop dominates R4 across the aggregated
-    samples. The load-invariant facts (still running, never classified as
-    stalled/dead once signals are readable) are asserted on EVERY
-    readable snapshot; the R4 pin only requires the CPU signal to have
-    dominated at least once. Snapshots taken before the sampler's
-    windowed rates become readable (``cpu_ratio is None``) fail closed to
-    a ``stalled`` verdict by design and carry no classification signal,
-    so they are skipped for the verdict assertions.
-    """
     reg = ExecJobRegistry(
         liveness_config=_make_fast_liveness_config(),
         sample_interval_s=0.05,
@@ -128,9 +81,6 @@ def test_smoke_silent_python_cpu_loop_runs_past_stall_window() -> None:
     try:
         saw_r4 = False
         saw_cpu_ratio = False
-        # Poll across at least 0.6 s of real wall-clock — > 2x the stall window — so
-        # the test cannot pass via early termination or a brief snapshot. Under host
-        # contention, allow polling up to 1.8 s to observe R4 domination.
         min_deadline = time.monotonic() + 0.6
         max_deadline = time.monotonic() + 1.8
         while time.monotonic() < max_deadline:
@@ -140,9 +90,6 @@ def test_smoke_silent_python_cpu_loop_runs_past_stall_window() -> None:
             assert snapshot.verdict is not None
             cpu_ratio = snapshot.verdict.signals.get("cpu_ratio")
             if cpu_ratio is None:
-                # Sampler warm-up: windowed rates need two ticks before they
-                # are readable. The fail-closed 'stalled' verdict on unread
-                # signals is a D5 artifact, not a classification.
                 time.sleep(0.05)
                 continue
             assert snapshot.verdict.verdict_kind in ("working", "suspicious"), (
@@ -170,17 +117,6 @@ def test_smoke_silent_python_cpu_loop_runs_past_stall_window() -> None:
 
 
 def test_smoke_silent_python_file_writer_runs_past_stall_window_then_completes() -> None:
-    """3. Silent Python file-writer runs past the stall window and completes (R2).
-
-    The file-writer script loops 20 times writing 256 KiB then sleeping
-    0.04 s — total wall-clock ≈ 0.8 s (≫ 250 ms stall window). Without
-    the I/O signal it would be killed as stalled. The test verifies:
-
-    * the process ran past 0.6 s (>= 2x the stall window) and was still
-      alive mid-flight,
-    * the process completed with returncode=0,
-    * no kill fired.
-    """
     reg = ExecJobRegistry(
         liveness_config=_make_fast_liveness_config(),
         sample_interval_s=0.05,
@@ -199,8 +135,6 @@ def test_smoke_silent_python_file_writer_runs_past_stall_window_then_completes()
         cmd = [sys.executable, "-c", script]
         job_id = reg.start(cmd, timeout_ms=250, capability="ProcessExecBounded")
 
-        # Wait 0.6 s — twice the stall window — so the process is still
-        # in its loop. Snapshot must show it alive past the deadline.
         time.sleep(0.6)
         mid = reg.wait(job_id, wait_ms=0, capability="ProcessExecBounded")
         assert isinstance(mid, JobSnapshot)
@@ -213,13 +147,6 @@ def test_smoke_silent_python_file_writer_runs_past_stall_window_then_completes()
 
 
 def test_smoke_socket_blocked_answered_slowly_by_sibling_completes() -> None:
-    """4. Socket-blocked process answered slowly by sibling completes via voluntary ctx signal.
-
-    A child Python process opens a TCP connection and ``recv``s one byte at
-    a time while a sibling thread sends 8 bytes at 50 ms intervals. The
-    child sees near-zero CPU, zero I/O, zero new lines, but its voluntary
-    context-switch rate stays above the awake floor (R7 fires).
-    """
     reg = ExecJobRegistry(
         liveness_config=_make_fast_liveness_config(),
         sample_interval_s=0.05,
@@ -256,7 +183,6 @@ def test_smoke_socket_blocked_answered_slowly_by_sibling_completes() -> None:
         f"assert count == 8\n"
     )
 
-    # timeout_ms=250: would die of stall if idle, but voluntary context switches keep it alive
     cmd = [sys.executable, "-c", script]
     job_id = reg.start(cmd, timeout_ms=250, capability="ProcessExecBounded")
     result = reg.wait(job_id, wait_ms=2500, capability="ProcessExecBounded")

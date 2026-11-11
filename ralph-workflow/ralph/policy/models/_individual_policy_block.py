@@ -1,4 +1,3 @@
-"""Authoring-time individual policy block model."""
 
 from __future__ import annotations
 
@@ -19,7 +18,6 @@ else:
 
 
 class IndividualPolicyBlock(_FrozenPolicyModel):
-    """Leaf authoring block that compiles directly to one runtime phase."""
 
     kind: Literal["individual"] = "individual"
     phase_name: str = Field(..., description="Compiled runtime phase name for this block.")

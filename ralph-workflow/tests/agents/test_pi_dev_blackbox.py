@@ -1,40 +1,3 @@
-"""Public-surface black-box test for the Pi (pi.dev) agent path.
-
-Drives the full public surface for the ``pi`` built-in WITHOUT touching
-any private internals (no monkey-patching of ``_dispatch_json_object``,
-no private catalog state, no real subprocess, no ``time.sleep``, no
-network).  Mirrors the recipe in
-``tests/agents/test_add_a_new_agent_blackbox_recipe.py`` and the
-assertion style in ``tests/agents/test_quickstart_recipe_blackbox.py``.
-
-The test pins:
-
-  (1) ``AgentRegistry.from_config`` -> ``catalog.get('pi')`` returns the
-      built-in support with the documented BuiltinAgentSpec row
-      (cmd='pi', output_flag='--mode json', yolo_flag='--approve',
-      session_flag='--session {}', display_name='Pi',
-      transport=AgentTransport.PI, json_parser=JsonParserType.PI,
-      parser_factory=PiParser, strategy_factory=_make_pi_strategy).
-  (2) ``catalog.get_parser('pi')`` returns a ``PiParser`` instance.
-  (3) ``catalog.get_strategy(AgentTransport.PI, command='pi')`` returns
-      a ``BaseExecutionStrategy`` instance.
-  (4) ``build_command(support.config, prompt_file, options=...)`` from
-      ``ralph.agents.invoke`` returns an argv that STARTS with
-      ``('pi', '--mode', 'json')`` and ENDS with the actual prompt TEXT
-      loaded from a ``tmp_path`` fixture (NOT the literal string
-      ``'PROMPT.md'``).  Per the current public contract in
-      ``ralph-workflow/ralph/agents/invoke/_command_builders/__init__.py:_load_prompt_text``,
-      ``positional_prompt=True`` loads the prompt file CONTENT and emits
-      it as the positional argv element.
-  (5) ``catalog.get('pi/anthropic/claude-sonnet-4-20250514')`` returns a
-      support with ``--model anthropic/claude-sonnet-4-20250514`` set
-      (per the documented ``provider/id`` model id pattern).
-  (6) ``PiParser().parse()`` yields a non-empty ``AgentOutputLine``
-      stream for every non-silent event type from the committed fixture
-      at ``tests/agents/parsers/fixtures/pi_dev_documented_events.json``
-      (NOT the transient ``tmp/pi-dev-docs/inventory.md``).
-"""
-
 from __future__ import annotations
 
 import json
@@ -57,11 +20,6 @@ from ralph.config.models import UnifiedConfig
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-# Snapshot the default catalog at import time so the override tests
-# below (which install a configured [agents.pi] override) cannot leak
-# into sibling tests in the same pytest session.  The catalog is a
-# module-level singleton, so without this fixture an installed
-# override would survive across test modules.
 _GOLDEN_PARSERS: dict[str, object] = dict(_PARSER_REGISTRY)
 _GOLDEN_CUSTOM: dict[str, object] = dict(_CUSTOM_COMMAND_REGISTRY)
 _GOLDEN_STRATEGIES: dict[AgentTransport, object] = dict(_STRATEGY_DISPATCH)
@@ -95,14 +53,12 @@ _FIXTURE_PATH = Path(__file__).parent / "parsers" / "fixtures" / "pi_dev_documen
 
 
 def _make_prompt(tmp_path: Path) -> str:
-    """Write a prompt file and return its absolute path."""
     p = tmp_path / "PROMPT.md"
     p.write_text(_PROMPT_TEXT, encoding="utf-8")
     return str(p)
 
 
 def _load_documented_event_lines() -> list[str]:
-    """Load the committed wire-format fixture (NOT the transient inventory)."""
     return _FIXTURE_PATH.read_text(encoding="utf-8").splitlines()
 
 
@@ -111,10 +67,7 @@ def _lines(*raw: str) -> Iterator[str]:
 
 
 class TestPiDevBlackboxPublicSurface:
-    """Drive the full public surface for the pi built-in end-to-end."""
-
     def test_from_config_seeds_pi_in_default_catalog(self) -> None:
-        """AgentRegistry.from_config(UnifiedConfig()) must seed the pi built-in."""
         registry = AgentRegistry.from_config(UnifiedConfig())
 
         support = registry.catalog.get("pi")
@@ -133,7 +86,6 @@ class TestPiDevBlackboxPublicSurface:
         )
 
     def test_pi_builtin_spec_row_matches_documented_cli(self) -> None:
-        """The 7th BuiltinAgentSpec row must match the documented pi.dev CLI surface."""
         registry = AgentRegistry.from_config(UnifiedConfig())
         support = registry.catalog.get("pi")
         assert support is not None
@@ -154,7 +106,6 @@ class TestPiDevBlackboxPublicSurface:
         )
 
     def test_catalog_get_parser_returns_pi_parser_instance(self) -> None:
-        """``catalog.get_parser('pi')`` must return a PiParser instance."""
         registry = AgentRegistry.from_config(UnifiedConfig())
 
         parser = registry.catalog.get_parser("pi")
@@ -163,9 +114,6 @@ class TestPiDevBlackboxPublicSurface:
         )
 
     def test_catalog_get_strategy_returns_base_execution_strategy(self) -> None:
-        """``catalog.get_strategy(AgentTransport.PI, command='pi')`` must
-        return a BaseExecutionStrategy instance.
-        """
         registry = AgentRegistry.from_config(UnifiedConfig())
 
         strategy = registry.catalog.get_strategy(AgentTransport.PI, command="pi")
@@ -177,9 +125,6 @@ class TestPiDevBlackboxPublicSurface:
     def test_build_command_argv_starts_with_pi_mode_json_ends_with_prompt_text(
         self, tmp_path: Path
     ) -> None:
-        """``build_command`` must emit ``pi --mode json --approve <prompt>`` and
-        the prompt argv element must be the actual prompt TEXT (not 'PROMPT.md').
-        """
         registry = AgentRegistry.from_config(UnifiedConfig())
         support = registry.catalog.get("pi")
         assert support is not None
@@ -189,24 +134,17 @@ class TestPiDevBlackboxPublicSurface:
 
         argv = build_command(support.config, prompt_file, options=options)
 
-        # argv must start with the documented ('pi', '--mode', 'json') tokens
         assert argv[:3] == ["pi", "--mode", "json"], (
             f"argv must start with ('pi', '--mode', 'json'), got {argv[:3]!r}"
         )
-        # The yolo flag must be present
         assert "--approve" in argv, (
             f"argv must include the documented --approve yolo flag, got {argv!r}"
         )
-        # The prompt FILE PATH must NOT appear as an argv element; the
-        # actual prompt TEXT must.  Per positional_prompt=True contract in
-        # _load_prompt_text: prompt file CONTENT is the positional argv
-        # element, NOT the file path.
         assert "PROMPT.md" not in argv, (
             f"argv must not contain the literal 'PROMPT.md' (file path); "
             f"per positional_prompt=True, the file CONTENT must be the "
             f"positional element.  argv={argv!r}"
         )
-        # The actual prompt TEXT must be the last argv element.
         assert argv[-1] == _PROMPT_TEXT, (
             f"argv must end with the actual prompt TEXT loaded from the "
             f"tmp_path fixture ({_PROMPT_TEXT!r}), got argv[-1]={argv[-1]!r} "
@@ -214,7 +152,6 @@ class TestPiDevBlackboxPublicSurface:
         )
 
     def test_build_command_with_session_id_layout(self, tmp_path: Path) -> None:
-        """Documented ``pi --mode json --session ID --approve <prompt>`` layout."""
         registry = AgentRegistry.from_config(UnifiedConfig())
         support = registry.catalog.get("pi")
         assert support is not None
@@ -224,7 +161,6 @@ class TestPiDevBlackboxPublicSurface:
 
         argv = build_command(support.config, prompt_file, options=options)
 
-        # Documented layout per https://pi.dev/docs/latest/usage.
         assert argv == [
             "pi",
             "--mode",
@@ -236,15 +172,6 @@ class TestPiDevBlackboxPublicSurface:
         ], f"Unexpected argv layout: {argv!r}"
 
     def test_pi_model_shorthand_resolves_with_documented_model_flag(self, tmp_path: Path) -> None:
-        """``pi/anthropic/claude-sonnet-4-20250514`` must resolve through
-        ``catalog.get`` to a support with
-        ``--model anthropic/claude-sonnet-4-20250514`` set, per the
-        documented ``provider/id`` model id pattern in
-        https://pi.dev/docs/latest/usage.  This exercises the same public
-        surface (``AgentCatalog.get`` -> dynamic alias resolver) that
-        ``AgentRegistry.get`` uses internally so docs and runtime cannot
-        drift.
-        """
         registry = AgentRegistry.from_config(UnifiedConfig())
 
         support = registry.catalog.get("pi/anthropic/claude-sonnet-4-20250514")
@@ -253,8 +180,6 @@ class TestPiDevBlackboxPublicSurface:
             "must resolve to an AgentSupport via the pi/<model> dynamic "
             "alias, matching the registry.get() public contract"
         )
-        # The synthesized support must keep the pi built-in's parser and
-        # strategy factories (PiParser + _make_pi_strategy).
         assert support.parser_factory is PiParser, (
             f"pi/<model> support parser_factory must be PiParser, got {support.parser_factory!r}"
         )
@@ -262,7 +187,6 @@ class TestPiDevBlackboxPublicSurface:
             f"pi/<model> support strategy_factory must be "
             f"_make_pi_strategy, got {support.strategy_factory!r}"
         )
-        # The model flag must preserve the full provider/id suffix.
         config = support.config
         assert config.model_flag is not None, "pi/<model> must set model_flag"
         assert "anthropic/claude-sonnet-4-20250514" in config.model_flag, (
@@ -271,37 +195,24 @@ class TestPiDevBlackboxPublicSurface:
         )
 
     def test_pi_parser_documented_event_vocabulary_yields_lines(self) -> None:
-        """``PiParser().parse()`` must yield a non-empty stream of
-        ``AgentOutputLine`` for every non-silent event type from the
-        committed wire-format fixture.
-        """
         fixture_lines = _load_documented_event_lines()
         assert fixture_lines, (
             f"Committed fixture at {_FIXTURE_PATH} is empty; the wire-format "
             f"spec test would silently skip the documented vocabulary"
         )
 
-        # Parse the committed fixture end-to-end; the parser must not
-        # raise on any documented event type.
         parser = PiParser()
         results = list(parser.parse(iter(fixture_lines)))
 
-        # The parser must yield a non-empty stream for the documented
-        # event vocabulary (per the inventory: session header, message
-        # content, tool executions, and the documented stop events).
         assert results, (
             "PiParser must yield at least one AgentOutputLine for the "
             "committed documented event vocabulary"
         )
-        # isError semantics: a tool_execution_end with isError=true must
-        # produce a type='error' line (NOT type='tool_result').
         error_results = [r for r in results if r.type == "error"]
         assert error_results, (
             "PiParser must produce at least one type='error' line for the "
             "documented tool_execution_end(isError=true) event"
         )
-        # Documented stop events: agent_end and turn_end must each produce
-        # a type='stop' line.
         stop_results = [r for r in results if r.type == "stop"]
         assert len(stop_results) >= 2, (
             f"PiParser must produce at least two type='stop' lines (one "
@@ -310,8 +221,6 @@ class TestPiDevBlackboxPublicSurface:
 
 
 class TestPiDevBlackboxIndividualEvents:
-    """Parametrized per-event-type coverage of the documented vocabulary."""
-
     def test_session_header_yields_session_line(self, tmp_path: Path) -> None:
         registry = AgentRegistry.from_config(UnifiedConfig())
         parser = registry.catalog.get_parser("pi")
@@ -380,9 +289,6 @@ class TestPiDevBlackboxIndividualEvents:
         assert not any(r.type == "error" for r in results)
 
     def test_toolcall_end_yields_tool_use_with_tool_and_args_metadata(self) -> None:
-        """Pi message-update tool calls expose the same normalized
-        metadata shape as top-level tool_execution_start.
-        """
         parser = PiParser()
         line = json.dumps(
             {
@@ -412,20 +318,7 @@ class TestPiDevBlackboxIndividualEvents:
 
 
 class TestPiDevBlackboxConfigOverride:
-    """End-to-end coverage of configured ``[agents.pi]`` overrides.
-
-    Pins the D92 catalog-sync contract: a configured ``[agents.pi]``
-    override must propagate to BOTH ``registry.get`` and
-    ``registry.catalog.get`` so downstream consumers
-    (``catalog.get_parser``, ``catalog.get_strategy``,
-    ``build_command``, the ``pi/<model>`` dynamic alias) all see the
-    configured command, not the built-in ``pi`` binary.
-    """
-
     def test_override_propagates_to_registry_and_catalog(self) -> None:
-        """Both ``registry.get('pi')`` and ``registry.catalog.get('pi')``
-        must reflect the configured ``[agents.pi]`` override.
-        """
         config = UnifiedConfig(
             agents={
                 "pi": AgentConfig(
@@ -438,32 +331,20 @@ class TestPiDevBlackboxConfigOverride:
         )
         registry = AgentRegistry.from_config(config)
 
-        # registry.get path (already worked pre-fix).
         direct = registry.get("pi")
         assert direct is not None
         assert direct.cmd == "pi-custom"
 
-        # catalog.get path (this is the D92 gap being closed).
         catalog_pi = registry.catalog.get("pi")
         assert catalog_pi is not None, (
             "registry.catalog.get('pi') must resolve the configured "
             "override; the D92 gap left it pinned to the built-in"
         )
         assert catalog_pi.config.cmd == "pi-custom"
-        # The override must preserve the built-in's parser factory and
-        # strategy factory (they are structural to the pi transport).
         assert catalog_pi.parser_factory is PiParser
         assert catalog_pi.strategy_factory is _make_pi_strategy
 
     def test_override_propagates_to_dynamic_alias_endpoints(self) -> None:
-        """The ``pi/<model>`` dynamic alias must use the override base.
-
-        Both ``registry.get('pi/<model>')`` and
-        ``registry.catalog.get('pi/<model>')`` must derive the
-        synthesized support from the override's ``cmd``/``flags``,
-        not from the built-in.  Regression coverage for the D92
-        dynamic-alias-sync gap.
-        """
         config = UnifiedConfig(
             agents={
                 "pi": AgentConfig(
@@ -476,7 +357,6 @@ class TestPiDevBlackboxConfigOverride:
         )
         registry = AgentRegistry.from_config(config)
 
-        # registry.get path
         alias = registry.get("pi/anthropic/claude-sonnet-4-20250514")
         assert alias is not None
         assert alias.cmd == "pi-custom", (
@@ -484,14 +364,11 @@ class TestPiDevBlackboxConfigOverride:
         )
         assert alias.model_flag == "--model anthropic/claude-sonnet-4-20250514"
 
-        # catalog.get path
         catalog_alias = registry.catalog.get("pi/anthropic/claude-sonnet-4-20250514")
         assert catalog_alias is not None, (
             "registry.catalog.get('pi/<model>') must resolve through the override base config"
         )
         assert catalog_alias.config.cmd == "pi-custom"
         assert catalog_alias.config.model_flag == "--model anthropic/claude-sonnet-4-20250514"
-        # The synthesized dynamic-alias support must keep the built-in's
-        # parser factory and strategy factory.
         assert catalog_alias.parser_factory is PiParser
         assert catalog_alias.strategy_factory is _make_pi_strategy

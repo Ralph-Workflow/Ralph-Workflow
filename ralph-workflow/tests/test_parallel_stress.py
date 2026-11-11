@@ -1,11 +1,3 @@
-"""Hypothesis stress tests for the parallel coordinator.
-
-Generates random DAGs and asserts invariants after each run:
-- All units end in SUCCEEDED, FAILED, or CANCELLED (never PENDING/RUNNING)
-- SUCCEEDED units have all dependencies also SUCCEEDED
-- Coordinator terminates without deadlock
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -29,17 +21,11 @@ WORKER_FAILURE_THRESHOLD = 0.2
 
 
 def _build_acyclic_dag(n: int, edge_seed: int) -> list[WorkUnit]:
-    """Build N work units with a random acyclic DAG.
-
-    Lower-index units may depend only on higher-index units.
-    """
 
     units = []
     for i in range(n):
         uid = f"unit-{i}"
-        # Only depend on units with LOWER index to guarantee acyclicity
         possible_deps = [f"unit-{j}" for j in range(i)]
-        # Pick 0-2 random deps from lower-index units
         k = min(len(possible_deps), (edge_seed + i) % 3)
         deps = possible_deps[:k]
         units.append(
@@ -72,7 +58,6 @@ def test_coordinator_all_units_reach_terminal_state(
     edge_seed: int,
     exit_seed: int,
 ) -> None:
-    """Every unit must end in SUCCEEDED, FAILED, or CANCELLED — never PENDING or RUNNING."""
 
     units = _build_acyclic_dag(n_units, edge_seed)
     runs = {
@@ -119,7 +104,6 @@ def test_coordinator_all_units_reach_terminal_state(
 )
 @settings(max_examples=3, deadline=None)
 def test_coordinator_succeeded_deps_also_succeeded(edge_seed: int) -> None:
-    """Every SUCCEEDED unit must have all its dependencies also SUCCEEDED."""
     n = 5
     units = _build_acyclic_dag(n, edge_seed)
     runs = {unit.unit_id: FakeRun(outputs=["ok"], exit_code=0, duration_ms=1) for unit in units}

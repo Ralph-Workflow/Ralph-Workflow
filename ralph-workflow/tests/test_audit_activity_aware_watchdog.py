@@ -1,30 +1,3 @@
-"""Regression tests pinning the activity-aware watchdog contract.
-
-The activity-aware watchdog audit
-(``ralph.testing.audit_activity_aware_watchdog``) is the gate that makes
-the subagent/tool-visibility contract from PROMPT.md a hard fail. It
-locks seven invariants:
-
-  * ``IdleWatchdog`` is constructed with ``process_monitor=``.
-  * ``set_active_sink`` is wired after watchdog construction.
-  * ``set_subagent_sink`` is wired after watchdog construction.
-  * ``WorkspaceMonitor.set_on_event`` is bound to a 2-arg forwarding
-    callable (not the legacy 0-arg bound method).
-  * ``teardown_subtree`` is called on every fire path after
-    ``self._handle.terminate``.
-  * ``teardown_subtree`` (or ``_teardown_subtree_if_pid_available``) is
-    called on every error/crash path that raises ``AgentInvocationError``.
-  * ``DefaultProcessMonitor`` is constructed with injected
-    ``role_classifier=``, ``discovery_strategy=``, and
-    ``subagent_pid_source=``, and the role classifier comes from
-    ``role_classifier_for_transport``.
-
-These tests write forbidden-construct source files under pytest's
-``tmp_path`` fixture and run the audit directly against the temp
-``package_root`` or individual temp files. No real subprocess,
-no ``time.sleep``, no real file I/O outside ``tmp_path``.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -37,7 +10,6 @@ if TYPE_CHECKING:
 
 
 def _write_fake_package(tmp_path: Path) -> Path:
-    """Create a minimal ``agents/invoke/`` package layout."""
     package_root = tmp_path / "fake_ralph"
     (package_root / "agents" / "invoke").mkdir(parents=True)
     return package_root
@@ -131,15 +103,6 @@ def _reader_source_with_valid_teardown_subtree() -> str:
 
 
 def _process_reader_source_with_descendant_snapshot() -> str:
-    """Source uses descendant_snapshot (NOT the filtered seam).
-
-    Mirrors the production ``_process_reader._corroborate`` pattern but
-    regresses on the R1 subagent-counting seam (R1 of the Trustworthy
-    Idle Watchdog spec): the reader reads the BROADER descendant count
-    from ``self._handle.descendant_snapshot()`` rather than the FILTERED
-    ``process_monitor.spawned_subagent_count()``. The audit must flag
-    this as a ``subagent_counting_seam`` violation.
-    """
     return (
         "from ralph.agents.idle_watchdog.corroboration_snapshot import"
         " CorroborationSnapshot\n"
@@ -160,14 +123,6 @@ def _process_reader_source_with_descendant_snapshot() -> str:
 
 
 def _process_reader_source_with_spawned_subagent_count() -> str:
-    """Source that uses ``spawned_subagent_count`` (the filtered seam) for ``scoped_child_active``.
-
-    This is the canonical pattern from R1 of the Trustworthy Idle
-    Watchdog spec: the reader reads the FILTERED subagent count from
-    ``process_monitor.spawned_subagent_count()``. The audit MUST NOT
-    flag this as a ``subagent_counting_seam`` violation -- the broader
-    ``descendant_snapshot`` count is NOT consulted.
-    """
     return (
         "from ralph.agents.idle_watchdog.corroboration_snapshot import"
         " CorroborationSnapshot\n"
@@ -185,7 +140,6 @@ def _process_reader_source_with_spawned_subagent_count() -> str:
 
 
 def _reader_source_fully_wired() -> str:
-    """A reader that satisfies all six invoke-file invariants."""
     return (
         "from ralph.agents.idle_watchdog import IdleWatchdog\n"
         "from ralph.agents.invoke._workspace import WorkspaceMonitor\n"
@@ -215,8 +169,6 @@ def _reader_source_fully_wired() -> str:
 
 
 def test_audit_flags_idle_watchdog_without_process_monitor(tmp_path: Path) -> None:
-    """A reader that constructs ``IdleWatchdog`` without ``process_monitor=``
-    is flagged as a ``process_monitor_injection`` violation."""
     package_root = _write_fake_package(tmp_path)
     bad_module = package_root / "agents" / "invoke" / "_bad_reader.py"
     bad_module.write_text(_reader_source_with_missing_process_monitor(), encoding="utf-8")
@@ -231,8 +183,6 @@ def test_audit_flags_idle_watchdog_without_process_monitor(tmp_path: Path) -> No
 
 
 def test_audit_flags_reader_missing_active_sink(tmp_path: Path) -> None:
-    """A reader that constructs ``IdleWatchdog`` with ``process_monitor=`` but
-    does not call ``set_active_sink`` is flagged as ``mcp_tool_sink``."""
     package_root = _write_fake_package(tmp_path)
     bad_module = package_root / "agents" / "invoke" / "_bad_reader.py"
     bad_module.write_text(_reader_source_with_missing_active_sink(), encoding="utf-8")
@@ -245,8 +195,6 @@ def test_audit_flags_reader_missing_active_sink(tmp_path: Path) -> None:
 
 
 def test_audit_flags_reader_missing_subagent_sink(tmp_path: Path) -> None:
-    """A reader that calls ``set_active_sink`` but not ``set_subagent_sink``
-    is flagged as ``subagent_sink``."""
     package_root = _write_fake_package(tmp_path)
     bad_module = package_root / "agents" / "invoke" / "_bad_reader.py"
     bad_module.write_text(_reader_source_with_missing_subagent_sink(), encoding="utf-8")
@@ -259,8 +207,6 @@ def test_audit_flags_reader_missing_subagent_sink(tmp_path: Path) -> None:
 
 
 def test_audit_flags_legacy_zero_arg_set_on_event_binding(tmp_path: Path) -> None:
-    """A reader that binds ``monitor.set_on_event(watchdog.record_workspace_event)``
-    (0-arg bound method) is flagged as ``workspace_event_binding``."""
     package_root = _write_fake_package(tmp_path)
     bad_module = package_root / "agents" / "invoke" / "_bad_reader.py"
     bad_module.write_text(_reader_source_with_zero_arg_set_on_event(), encoding="utf-8")
@@ -273,9 +219,6 @@ def test_audit_flags_legacy_zero_arg_set_on_event_binding(tmp_path: Path) -> Non
 
 
 def test_audit_flags_reader_missing_teardown_subtree_on_fire_path(tmp_path: Path) -> None:
-    """A reader that calls ``self._handle.terminate(...)`` without also calling
-    ``teardown_subtree(...)`` in the same function body is flagged as
-    ``teardown_subtree``."""
     package_root = _write_fake_package(tmp_path)
     bad_module = package_root / "agents" / "invoke" / "_bad_reader.py"
     bad_module.write_text(_reader_source_with_missing_teardown_subtree(), encoding="utf-8")
@@ -287,12 +230,7 @@ def test_audit_flags_reader_missing_teardown_subtree_on_fire_path(tmp_path: Path
     assert "teardown_subtree" in categories, f"got {categories}"
 
 
-# Green-path production-tree coverage: ``make verify`` runs
-# ``python -m ralph.testing.audit_activity_aware_watchdog``.
-
-
 def test_audit_reader_file_per_file_interface(tmp_path: Path) -> None:
-    """``audit_reader_file`` runs detectors 1-5 on a single file."""
     bad_file = tmp_path / "_bad_reader.py"
     bad_file.write_text(_reader_source_with_missing_process_monitor(), encoding="utf-8")
 
@@ -303,9 +241,6 @@ def test_audit_reader_file_per_file_interface(tmp_path: Path) -> None:
 
 
 def test_audit_reader_file_valid_reader_is_clean(tmp_path: Path) -> None:
-    """``audit_reader_file`` reports zero violations for a correctly wired
-    reader file. This guards the rel_path fix that makes invoke-gated
-    detectors active in per-file mode."""
     good_file = tmp_path / "_good_reader.py"
     good_file.write_text(_reader_source_fully_wired(), encoding="utf-8")
 
@@ -320,12 +255,6 @@ def test_audit_reader_file_valid_reader_is_clean(tmp_path: Path) -> None:
 def test_audit_main_exit_code_is_one_on_violation(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """``main()`` returns 1 and reports an actionable violation.
-
-    The parser and exit-code decision are deterministic Python behavior, so
-    calling the documented CLI entry point directly retains the observable
-    contract without paying process startup in the subprocess-E2E profile.
-    """
     package_root = _write_fake_package(tmp_path)
     bad_module = package_root / "agents" / "invoke" / "_bad_reader.py"
     bad_module.write_text(_reader_source_with_missing_process_monitor(), encoding="utf-8")
@@ -338,8 +267,6 @@ def test_audit_main_exit_code_is_one_on_violation(
 
 
 def test_audit_default_process_monitor_injection_violation(tmp_path: Path) -> None:
-    """A ``DefaultProcessMonitor`` call missing ``role_classifier=`` is flagged
-    as ``process_monitor_injection_full``."""
     source = (
         "from ralph.process.monitor import DefaultProcessMonitor\n"
         "\n"
@@ -358,9 +285,6 @@ def test_audit_default_process_monitor_injection_violation(tmp_path: Path) -> No
 
 
 def test_audit_role_classifier_must_be_role_classifier_for_transport(tmp_path: Path) -> None:
-    """A ``DefaultProcessMonitor`` call whose ``role_classifier=`` is not a
-    ``role_classifier_for_transport`` call is flagged as
-    ``process_monitor_injection_full``."""
     source = (
         "from ralph.process.monitor import DefaultProcessMonitor\n"
         "\n"
@@ -387,7 +311,6 @@ def test_audit_role_classifier_must_be_role_classifier_for_transport(tmp_path: P
 
 
 def test_audit_teardown_subtree_allowlisted_when_present(tmp_path: Path) -> None:
-    """A reader that calls ``teardown_subtree`` on the terminate path is clean."""
     package_root = _write_fake_package(tmp_path)
     good_module = package_root / "agents" / "invoke" / "_good_reader.py"
     good_module.write_text(_reader_source_with_valid_teardown_subtree(), encoding="utf-8")
@@ -421,9 +344,6 @@ def _completion_source_with_missing_error_path_teardown() -> str:
 
 
 def test_audit_flags_completion_error_path_missing_teardown(tmp_path: Path) -> None:
-    """A function in an invoke file that raises ``AgentInvocationError``
-    without calling ``teardown_subtree`` (or the helper) is flagged as
-    ``error_path_teardown``."""
     package_root = _write_fake_package(tmp_path)
     bad_module = package_root / "agents" / "invoke" / "_completion.py"
     bad_module.write_text(_completion_source_with_missing_error_path_teardown(), encoding="utf-8")
@@ -438,15 +358,6 @@ def test_audit_flags_completion_error_path_missing_teardown(tmp_path: Path) -> N
 
 
 def test_audit_flags_reader_using_descendant_count_for_scoped_child_active(tmp_path: Path) -> None:
-    """R1 audit: a reader using ``descendant_snapshot()`` without the filtered seam is flagged.
-
-    The Trustworthy Idle Watchdog spec requires the reader's
-    ``_corroborate`` to use ``process_monitor.spawned_subagent_count()``
-    (preferred) or ``live_subagent_count()`` (legacy alias) for the
-    FILTERED subagent count. Using ``self._handle.descendant_snapshot()``
-    is the headline regression that produced the 2365s indefinite
-    deferral bug.
-    """
     package_root = _write_fake_package(tmp_path)
     bad_module = package_root / "agents" / "invoke" / "_process_reader.py"
     bad_module.write_text(_process_reader_source_with_descendant_snapshot(), encoding="utf-8")
@@ -460,12 +371,6 @@ def test_audit_flags_reader_using_descendant_count_for_scoped_child_active(tmp_p
 
 
 def test_audit_does_not_flag_reader_using_spawned_subagent_count(tmp_path: Path) -> None:
-    """R1 audit: a reader using ``spawned_subagent_count()`` for the filtered seam is clean.
-
-    The canonical pattern (R1) is to read the FILTERED subagent count
-    via ``process_monitor.spawned_subagent_count()``. The audit MUST
-    NOT flag this as a ``subagent_counting_seam`` violation.
-    """
     package_root = _write_fake_package(tmp_path)
     good_module = package_root / "agents" / "invoke" / "_process_reader.py"
     good_module.write_text(_process_reader_source_with_spawned_subagent_count(), encoding="utf-8")

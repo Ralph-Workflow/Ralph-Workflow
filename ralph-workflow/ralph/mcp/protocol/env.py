@@ -1,4 +1,3 @@
-"""Shared Ralph MCP environment variable names."""
 
 from __future__ import annotations
 
@@ -6,7 +5,6 @@ from enum import StrEnum
 
 
 class McpEnvVar(StrEnum):
-    """Environment variable names used to configure the Ralph MCP connection."""
 
     ENDPOINT = "RALPH_MCP_ENDPOINT"
     RUN_ID = "RALPH_MCP_RUN_ID"
@@ -14,8 +12,6 @@ class McpEnvVar(StrEnum):
     SESSION = "RALPH_MCP_SESSION_JSON"
     SESSION_FILE = "RALPH_MCP_SESSION_FILE"
     PREFLIGHT_TIMEOUT_MS = "RALPH_MCP_PREFLIGHT_TIMEOUT_MS"
-    # Host-dependent interpreter boot + import time before the child begins its
-    # own startup clock; budgeted separately from the pre-serve envelope.
     BOOT_ALLOWANCE_MS = "RALPH_MCP_BOOT_ALLOWANCE_MS"
     UPSTREAM_PROBE_TIMEOUT_MS = "RALPH_MCP_UPSTREAM_PROBE_TIMEOUT_MS"
     SUPERVISION_INTERVAL_MS = "RALPH_MCP_SUPERVISION_INTERVAL_MS"
@@ -25,65 +21,21 @@ class McpEnvVar(StrEnum):
     WORKER_NAMESPACE = "RALPH_WORKER_NAMESPACE"
     PARALLEL_WORKER_MANIFEST = "RALPH_PARALLEL_WORKER_MANIFEST"
     MAX_SESSION_SECONDS = "RALPH_MAX_SESSION_SECONDS"
-    # Wall-clock epochs, not durations: the cycle deadline is fixed for the
-    # lifetime of one agent invocation, and its artifact validator reads them
-    # against its own wall clock.
     CYCLE_WARN_EPOCH = "RALPH_CYCLE_WARN_EPOCH"
     CYCLE_DEADLINE_EPOCH = "RALPH_CYCLE_DEADLINE_EPOCH"
-    # Independent development-phase warning/deadline epochs. These must not
-    # reuse cycle names: both timers can be active for the same invocation.
     DEV_WARN_EPOCH = "RALPH_DEV_WARN_EPOCH"
     DEV_DEADLINE_EPOCH = "RALPH_DEV_DEADLINE_EPOCH"
-    # PID of the Ralph process that spawned this MCP server; the server exits
-    # once it is reparented away from it instead of running orphaned.
     OWNER_PID = "RALPH_MCP_OWNER_PID"
     REQUEST_TIMEOUT_MS = "RALPH_MCP_REQUEST_TIMEOUT_MS"
-    # Inherited-FD handoff for the parent-owned listening socket: the
-    # lifecycle reserves the port once, the child adopts the FD by
-    # number, and the bridge inherits the same socket across respawns
-    # so a kernel backlog (not a refused connection) is what an
-    # in-flight client sees between respawns.
     INHERITED_FD = "RALPH_MCP_INHERITED_FD"
-    # Respawn sentinel: every child beyond the first runs with this
-    # flag set. The runtime reads it to take the catalog-only
-    # ``UpstreamRegistry.build_from_tool_catalog`` path so a respawn
-    # does zero network I/O before serving. The flag is absent for
-    # the first start, so first-start discovery still probes
-    # configured upstreams once and caches the catalog in the parent.
     RESPAWN = "RALPH_MCP_RESPAWN"
-    # Per-spawn stage identity: the parent generates one UUID per
-    # spawn and hands it to the child via this env var. The child
-    # uses it as the stage-file name suffix so the parent and the
-    # child address the same file across the spawn boundary — the
-    # module-level UUID at import time would otherwise give each
-    # side a different file and the parent's ``read_last_stage``
-    # would always return ``None`` after a preflight failure.
     STAGE_ID = "RALPH_MCP_STAGE_ID"
-    # Subprocess-E2E test seam: path to a sentinel file. When set,
-    # the standalone server blocks after construction but BEFORE the
-    # first accept() until the file appears, so a test can prove a
-    # request sent during a slow pre-serve stage is queued in the
-    # kernel backlog and served on the same connection afterwards.
-    # Production never sets this variable.
     TEST_PRE_SERVE_GATE = "RALPH_MCP_TEST_PRE_SERVE_GATE"
-    # Subprocess-E2E test seam: path to a sentinel file. When set,
-    # the runtime blocks at the ``registry_built`` checkpoint until the
-    # sentinel file appears, mirroring the ``TEST_PRE_SERVE_GATE`` pattern
-    # but at an earlier stage boundary. Production never sets this variable.
     TEST_REGISTRY_BUILD_GATE = "RALPH_MCP_TEST_REGISTRY_BUILD_GATE"
-    # Make-before-break handover control sentinels: pause file path for the
-    # retiring child to drop its listening socket and emit .ack, resume file
-    # path for candidate to begin accepting, parent readiness socket fd,
-    # and protected snapshot directory path.
     ACCEPT_PAUSE_FILE = "RALPH_MCP_ACCEPT_PAUSE_FILE"
     ACCEPT_RESUME_FILE = "RALPH_MCP_ACCEPT_RESUME_FILE"
     BRIDGE_PARENT_SOCK = "RALPH_MCP_BRIDGE_PARENT_SOCK"
     SNAPSHOT_DIR = "RALPH_MCP_SNAPSHOT_DIR"
-    # C1 step 2: the parent-computed secret-safe digest of the effective MCP
-    # configuration. The candidate reads it from its spawn env and echoes it
-    # on the PRIVATE readiness channel so the parent can prove the candidate
-    # was started from the configuration snapshot it snapshotted. Never
-    # carries configuration values, only a SHA-256 digest.
     EFFECTIVE_CONFIG_FINGERPRINT = "RALPH_MCP_EFFECTIVE_CONFIG_FINGERPRINT"
 
 

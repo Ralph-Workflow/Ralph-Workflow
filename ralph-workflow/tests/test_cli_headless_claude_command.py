@@ -1,33 +1,3 @@
-"""Pin the R8 ``smoke-headless-claude`` CLI surface (wt-04-claude-parsing).
-
-The headless Claude smoke command exists so both Claude transports
-are smoke-verified on haiku with subagents (R8). The command must:
-
-  (1) Be registered in ``ralph/cli/main.py`` and exposed under
-      ``smoke-headless-claude``.
-  (2) Default to ``claude-headless/haiku`` (matching the
-      headless-Claude alias in the agents template).
-  (3) Accept the same ``--subagents`` / ``--subagent-prompt-file``
-      options as ``smoke-interactive-claude``.
-  (4) Delegate to the same ``smoke_harness_agent_command`` plumbing
-      so the two transports share one scenario surface.
-
-The two tests below pin (1) and (3) via the CLI ``--help`` surface
-(no real token-burn); (2) and (4) are pinned at the
-``smoke_headless_claude_command`` function surface (no real CLI
-invocation, no real harness run). Both checks are deterministic
-and run under ``make verify`` without consuming tokens.
-
-Test isolation guarantees (per ``docs/agents/testing-guide.md``):
-
-  - No real subprocess (CLI ``--help`` only).
-  - No real filesystem.
-  - No real wall-clock waits.
-  - No module-level mutable accumulators.
-  - No ``noqa`` directives (audit_lint_bypass).
-  - No bare ``type: ignore`` comments (audit_typecheck_bypass).
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -53,7 +23,6 @@ def _headless_smoke_policy() -> AgentsPolicy:
 
 
 def _resolved_default_agent() -> str:
-    """Return the alias the headless-Claude smoke resolves with no ``--agent``."""
     captured: dict[str, object] = {}
 
     def _stub(agent_name: str, **_kwargs: object) -> int:
@@ -71,15 +40,6 @@ def _resolved_default_agent() -> str:
 
 
 def test_smoke_headless_claude_command_default_agent_alias_regression_is_not_pinned() -> None:
-    """The default is the operator's own headless-Claude alias, never a pinned model.
-
-    This used to assert a hardcoded ``claude-headless/haiku``. Because the
-    command exposed no ``--agent``, it was exempt from the guard forbidding a
-    pinned ``<transport>/<model>`` default -- so the smoke drove a model the
-    operator's pipeline never runs, and would have failed for reasons unrelated
-    to Ralph once that model id was retired. The default now resolves from
-    ``[agent_chains]``, falling back to the bare built-in.
-    """
     resolved = _resolved_default_agent()
 
     assert resolved == "claude-headless" or resolved.startswith("claude-headless/")
@@ -88,12 +48,6 @@ def test_smoke_headless_claude_command_default_agent_alias_regression_is_not_pin
 def test_smoke_headless_claude_command_delegates_to_shared_harness(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``smoke_headless_claude_command`` delegates to ``smoke_harness_agent_command``.
-
-    The delegation must pass through the ``subagents`` /
-    ``subagent_prompt_file`` parameters verbatim so the headless
-    scenario surface is identical to the interactive surface.
-    """
     captured: dict[str, object] = {}
 
     def _stub_harness(
@@ -133,13 +87,6 @@ def test_smoke_headless_claude_command_delegates_to_shared_harness(
 def test_smoke_headless_claude_command_default_no_subagents(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``smoke_headless_claude_command`` defaults ``subagents=False`` so the basic scenario runs.
-
-    Without ``--subagents``, the harness runs the basic scenario
-    (no subagent dispatch). The default is the same as the
-    interactive command so the two transports share the same
-    baseline behavior.
-    """
     captured: dict[str, object] = {}
 
     def _stub_harness(
@@ -172,28 +119,13 @@ def test_smoke_headless_claude_command_default_no_subagents(
 
 
 def test_cli_help_advertises_subagent_options() -> None:
-    """The headless command's isolated help surface advertises subagent options.
-
-    Rendering only the command avoids root-app startup contention while
-    exercising the same Typer declarations exposed by the registered CLI.
-    """
     result = _RUNNER.invoke(_HEADLESS_HELP_APP, ["--help"])
-    # ``typer.testing.CliRunner.invoke`` returns a ``Result`` whose
-    # ``output`` carries the rendered help text on a clean
-    # ``--help`` invocation.
     assert "--subagents" in result.output
     assert "--subagent-prompt-file" in result.output
-    # The help text must name the headless-Claude alias so an
-    # operator can confirm the default without reading the source.
     assert "headless" in result.output.lower()
 
 
 def test_cli_help_for_both_claude_commands_advertise_same_subagent_options() -> None:
-    """The isolated interactive and headless command help surfaces agree.
-
-    A divergent option surface between the two commands would break R8's
-    shared-scenario contract.
-    """
     interactive = _RUNNER.invoke(_INTERACTIVE_HELP_APP, ["--help"])
     headless = _RUNNER.invoke(_HEADLESS_HELP_APP, ["--help"])
     for option in ("--subagents", "--subagent-prompt-file"):

@@ -1,10 +1,3 @@
-"""Anti-drift guards: shared display formatters have exactly one definition.
-
-The display layer previously drifted by re-defining the same formatter in two
-modules (e.g. ``make_badge_text``) and by formatting elapsed time three different
-ways. These pins fail if a duplicate definition reappears, forcing a single source.
-"""
-
 from __future__ import annotations
 
 import ast
@@ -18,7 +11,6 @@ _DISPLAY_ROOT = pathlib.Path(__file__).parent.parent / "ralph" / "display"
 
 @lru_cache(maxsize=1)
 def _display_sources() -> tuple[tuple[pathlib.Path, str], ...]:
-    """Read the fixed display source set once for all anti-drift checks."""
     return tuple(
         (path, path.read_text(encoding="utf-8"))
         for path in sorted(_DISPLAY_ROOT.rglob("*.py"))
@@ -28,13 +20,11 @@ def _display_sources() -> tuple[tuple[pathlib.Path, str], ...]:
 
 @lru_cache(maxsize=1)
 def _display_trees() -> tuple[ast.Module, ...]:
-    """Parse the fixed display source set once for all anti-drift checks."""
     return tuple(ast.parse(text) for _, text in _display_sources())
 
 
 @lru_cache(maxsize=1)
 def _display_function_names() -> tuple[str, ...]:
-    """Return all display function names after one bounded AST traversal."""
     return tuple(
         node.name
         for tree in _display_trees()
@@ -64,8 +54,6 @@ def test_analysis_decision_badge_defined_once() -> None:
 
 @pytest.mark.timeout_seconds(10)
 def test_no_inline_elapsed_dot_one_f_formatting() -> None:
-    """Elapsed time must go through format_elapsed_seconds, never a raw ``:.1f`` +
-    's' literal (the divergence that produced inconsistent rounding)."""
     offenders: list[str] = [
         str(path.relative_to(_DISPLAY_ROOT.parent))
         for path, text in _display_sources()

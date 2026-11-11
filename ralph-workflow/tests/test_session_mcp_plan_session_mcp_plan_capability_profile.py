@@ -72,8 +72,6 @@ def _default_agents_policy(_workspace_path: Path) -> AgentsPolicy:
 
 
 class TestSessionMcpPlanCapabilityProfile:
-    """SessionMcpPlan includes a resolved capability profile keyed by provider/model identity."""
-
     def test_plan_includes_capability_profile_for_claude_transport(
         self, isolated_home: Path, tmp_path: Path
     ) -> None:
@@ -97,16 +95,6 @@ class TestSessionMcpPlanCapabilityProfile:
     def test_plan_includes_capability_profile_for_openai_codex_transport(
         self, isolated_home: Path, tmp_path: Path
     ) -> None:
-        """Codex resolves to the OpenAI provider but must NOT inline images.
-
-        The Codex CLI cannot round-trip an inline MCP image block back
-        into its own Responses API request -- it re-serialises the part
-        as ``output_text``, which the API rejects with a 400 that kills
-        the whole turn. Image delivery therefore degrades to
-        ``RESOURCE_REFERENCE_REPLAY`` for this transport even though the
-        resolved provider (``openai``) is image-capable. See
-        ``tests/test_codex_inline_image_roundtrip.py``.
-        """
         del isolated_home
         plan = build_session_mcp_plan(
             transport=AgentTransport.CODEX,

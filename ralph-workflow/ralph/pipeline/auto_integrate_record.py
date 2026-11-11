@@ -1,14 +1,3 @@
-"""Durable crash-record model + I/O for :mod:`ralph.pipeline.auto_integrate`.
-
-Houses the :class:`IntegrationRecord` pydantic model and the
-atomically-written record I/O helpers so the main
-:mod:`ralph.pipeline.auto_integrate` module stays under the
-repo-structure ``_MAX_FILE_LINES`` cap. The four I/O helpers
-(``record_path``, ``write_record``, ``read_record``,
-``clear_record``) and the record model form a coherent unit --
-the phased crash-record file lifecycle -- and have no callers
-outside :mod:`ralph.pipeline.auto_integrate`.
-"""
 
 from __future__ import annotations
 
@@ -66,59 +55,13 @@ if TYPE_CHECKING:
 
 AUTO_INTEGRATE_RECORD_FILENAME = "auto_integrate_in_progress.json"
 
-#: Phases the auto-integrate recovery preamble understands.
-#: ``integrating`` while the rebase/merge is in flight; ``integrated``
-#: once the feature branch fully contains the target and only the
-#: fast-forward remains. Any other on-disk value is treated as
-#: corrupt by :func:`read_record` -- a malformed record must never
-#: be acted on as if it were a known phase.
 IntegrationPhase = Literal["integrating", "integrated"]
 IntegrationOperation = Literal["feature_integrate", "target_reconcile"]
 
-#: Closed set of valid phase values, used by :func:`read_record` to
-#: reject corrupt on-disk records that pass pydantic coercion but
-#: carry a phase outside the known protocol (e.g. a value left
-#: behind by an older or partially-applied write).
 _VALID_PHASES: frozenset[str] = frozenset({"integrating", "integrated"})
 
 
 class IntegrationRecord(RalphBaseModel):
-    """Durable phased record of an in-progress auto-integration.
-
-    Persisted to ``<workspace_scope.root>/.agent/auto_integrate_in_progress.json``
-    via :func:`write_record` (atomic temp + ``os.replace``) so a
-    SIGKILL mid-write leaves the previous record intact and a
-    recovery preamble on resume can decide whether to land the
-    fast-forward (phase='integrated') or restore the feature branch
-    to its pre-integration state (phase='integrating').
-
-    Attributes:
-        phase: ``'integrating'`` while the rebase/merge is in flight;
-            ``'integrated'`` once the feature branch fully contains
-            the target and only the fast-forward remains. Restricted
-            to those two values by the :data:`IntegrationPhase`
-            Literal so an on-disk record carrying a stray value is
-            rejected by :func:`read_record` as corrupt instead of
-            being acted on.
-        target: The integration target branch name.
-        pre_feature_sha: The feature branch HEAD SHA captured BEFORE
-            any rebase/merge; used to restore on a crash that
-            interrupts the rebase.
-        pre_target_sha: The target branch SHA captured BEFORE the
-            fast-forward attempt; the observed ``<oldvalue>`` for
-            the atomic compare-and-swap.
-        integrated_feature_sha: The feature branch HEAD SHA captured
-            AFTER the rebase/merge succeeded. Present only when
-            phase='integrated'.
-        resolving_rebase: True while a rebase-conflict resolution agent
-            is working inside a paused rebase. Recovery retains the operation
-            for supervised agent continuation instead of discarding edits.
-        resolving_merge: An interrupted merge resolver owns the current edits.
-        merge_commit_pending: The resolved merge awaits its ordinary commit.
-        rebase_continue_pending: A verified stop awaits ordinary continuation.
-        rebase_continue_metadata: Exact replay queue captured before continuation.
-        rebase_restore_metadata: Pre-restore queue receipt for idempotent repair.
-    """
 
     model_config = ConfigDict(frozen=True)
 
@@ -146,22 +89,7 @@ class IntegrationRecord(RalphBaseModel):
     diagnostic_ownership: str | None = None
     diagnostic_owner_pid: int | None = None
     diagnostic_owner_boot_id: str | None = None
-    # ``diagnostic_intervention_required`` is the RETIRED human-hand-off
-    # flag: no production path sets it. An exhausted diagnostic-repair
-    # budget is a typed ``repair_cap_reason`` outcome routed to the
-    # autonomous fallback ladder, never a terminal gate. Records that
-    # still carry the flag on disk are legacy products of an older
-    # version; the loader clears them (fail-open) so they re-enter the
-    # autonomous ladder instead of deadlocking on a person (see
-    # :func:`parse_record_payload`). Defaulted, so ordinary records
-    # load cleanly.
     diagnostic_intervention_required: bool = False
-    # ``repair_cap_reason`` is the typed marker for a spent diagnostic
-    # budget ("diagnostic repair budget spent; ..."), routing the
-    # record into the autonomous fallback ladder, and the canonical
-    # migration marker when the one-way legacy-key migrator drops an
-    # obsolete observation (the common-dir reflog, see
-    # :func:`_migrate_legacy_diagnostic_evidence`).
     repair_cap_reason: str | None = None
     repair_pending_diff: str | None = None
     repair_pending_paths: tuple[str, ...] = ()
@@ -179,12 +107,10 @@ class IntegrationRecord(RalphBaseModel):
 
     @property
     def is_integrated(self) -> bool:
-        """Whether this record has reached the integrated phase."""
         return self.phase in ("integrated",)
 
     @property
     def is_integrating(self) -> bool:
-        """Whether this record is in the integrating phase."""
         return self.phase in ("integrating",)
 
     def with_transition(
@@ -192,16 +118,6 @@ class IntegrationRecord(RalphBaseModel):
         transition: Transition,
         **fields: object,
     ) -> IntegrationRecord:
-        """Return a new :class:`IntegrationRecord` updated through the closed transition table.
-
-        The transition table is the single authority for which
-        field updates are legal at which phase. ``model_copy(update=...)``
-        is no longer the only writer; ``with_transition`` is. An
-        invalid transition (e.g. ``MARK_RESOLVING_REBASE`` from a
-        record whose phase is not ``integrating``) raises
-        :class:`ValueError` so the diagnostic path cannot silently
-        mutate a record it does not own.
-        """
         if not isinstance(transition, Transition) or transition not in Transition.ALL:
             raise ValueError(f"Invalid transition: {transition!r}")
         return transition.apply(self, **fields)
@@ -210,31 +126,20 @@ class IntegrationRecord(RalphBaseModel):
         self,
         gate_key: tuple[str | None, tuple[str, ...], str | None] | None,
     ) -> IntegrationRecord:
-        """Return a copy of this record with ``resolution_gate_key`` updated."""
         return self.model_copy(update={"resolution_gate_key": gate_key})
 
     def with_waiting_notification_key(
         self,
         notification_key: tuple[str | None, tuple[str, ...], str | None] | None,
     ) -> IntegrationRecord:
-        """Return a copy of this record with ``waiting_notification_key`` updated."""
         return self.model_copy(update={"waiting_notification_key": notification_key})
 
 
-# ---------------------------------------------------------------------------
-# Transition table -- the single authority for record mutation.
-# ---------------------------------------------------------------------------
 
-# Keys produced by the legacy ``_diagnostic_snapshot`` writer that are
-# forbidden under the new collector because they read repository-global
-# state. A record carrying any of these keys cannot be re-verified by
-# the new collector, so the loader surfaces intervention instead of
-# silently clearing the evidence.
 _LEGACY_GLOBAL_EVIDENCE_KEYS: frozenset[str] = frozenset({"for-each-ref", "ls-files"})
 
 
 def _is_legacy_global_evidence_key(key: str) -> bool:
-    """Return True if key is or starts with a legacy repository-global evidence key."""
     if key in _LEGACY_GLOBAL_EVIDENCE_KEYS:
         return True
     return any(
@@ -243,9 +148,6 @@ def _is_legacy_global_evidence_key(key: str) -> bool:
     )
 
 
-# Legacy per-path observation keys the previous collector wrote under
-# ``str(absolute_path)``. The new collector categorises them by suffix
-# (see :func:`_categorise_legacy_path_key`).
 _LEGACY_MERGE_STATE_SUFFIXES: tuple[str, ...] = (
     "/MERGE_HEAD",
     "/MERGE_MSG",
@@ -262,18 +164,6 @@ _LEGACY_COMMON_DIR_DROPPED_INFIXES: tuple[str, ...] = (
 
 
 def _categorise_legacy_path_key(key: str) -> tuple[str, str] | None:
-    """Re-categorise a legacy ``str(absolute_path)`` evidence key under a new kind.
-
-    Returns ``(new_kind, value_hint)`` where ``new_kind`` is one of
-    ``"rebase_state_files"`` / ``"merge_state_files"`` and
-    ``value_hint`` is the observation's value (a SHA hash or
-    ``"unreadable"`` / ``"absent"``).
-
-    The migration is one-way: legacy path-keyed observations are
-    re-emitted under their new kind tag. The branch reflog and
-    ``logs/HEAD`` are dropped (see
-    :func:`_migrate_legacy_diagnostic_evidence`).
-    """
     for suffix in _LEGACY_MERGE_STATE_SUFFIXES:
         if key.endswith(suffix):
             return ("merge_state_files", key)
@@ -286,35 +176,10 @@ def _categorise_legacy_path_key(key: str) -> tuple[str, str] | None:
 def _migrate_legacy_diagnostic_evidence(
     raw: tuple[tuple[str, str], ...],
 ) -> tuple[tuple[tuple[str, str], ...], str | None]:
-    """Translate legacy diagnostic-evidence pairs into the new key space.
-
-    The legacy writer stored one observation per pair, with the key
-    being either a subcommand name (``for-each-ref``, ``ls-files``,
-    ``work``, ``controls``, ``metadata``) or an absolute file path
-    (the per-worktree rebase/merge state files plus the
-    common-dir branch reflog and ``logs/HEAD``).
-
-    The new collector never produces the repository-global
-    subcommand names, so a record that still carries them cannot
-    be re-verified; the loader surfaces intervention. The legacy
-    ``work`` / ``controls`` keys translate to ``unstaged_work`` /
-    ``commit_controls`` (the new collector's names). The
-    per-worktree state file keys translate by suffix to
-    ``merge_state_files`` / ``rebase_state_files``. The common-dir
-    reflog and ``logs/HEAD`` are dropped with a
-    ``repair_cap_reason`` marker.
-
-    Returns the migrated key/value pairs and the dropped-reason
-    marker (or ``None`` if no drop was needed).
-    """
     migrated: list[tuple[str, str]] = []
     drop_marker: str | None = None
     for key, value in raw:
         if _is_legacy_global_evidence_key(key):
-            # Repository-global observations cannot be re-verified.
-            # The loader treats this as a corrupt schema and
-            # surfaces intervention; keep the key as-is so the
-            # operator can see what the legacy writer left behind.
             migrated.append((key, value))
             continue
         if key in {"work", "controls", "metadata", "rev-parse"}:
@@ -336,7 +201,6 @@ def _migrate_legacy_diagnostic_evidence(
         if key.startswith("rebase_state_files:") or key.startswith("merge_state_files:"):
             migrated.append((key, value))
             continue
-        # ``str(absolute_path)`` from the legacy writer.
         if key in ("unstaged_work", "commit_controls") or key.startswith(
             ("unstaged_work:", "commit_controls:")
         ):
@@ -352,10 +216,6 @@ def _migrate_legacy_diagnostic_evidence(
                 new_kind, _ = category
                 migrated.append((f"{new_kind}:{key}", value))
             else:
-                # Preserve arbitrary absolute paths under their
-                # original key so no on-disk evidence is silently
-                # lost. The diagnostic path treats unknown keys
-                # as unverified (see ``diagnostic_evidence_unchanged``).
                 migrated.append((key, value))
     return tuple(migrated), drop_marker
 
@@ -368,7 +228,6 @@ _RECORD_ROOT_BINDING: ContextVar[tuple[Path, Path] | None] = ContextVar(
 
 @contextmanager
 def bind_integration_record_root(operation_root: Path, record_root: Path) -> Iterator[None]:
-    """Keep foreign-worktree resolver receipts in their initiating workspace."""
     token = _RECORD_ROOT_BINDING.set((operation_root.resolve(), record_root))
     try:
         yield
@@ -377,7 +236,6 @@ def bind_integration_record_root(operation_root: Path, record_root: Path) -> Ite
 
 
 def record_path(workspace_root: Path) -> Path:
-    """Return the durable crash-record path anchored to ``workspace_root``."""
     binding = _RECORD_ROOT_BINDING.get()
     if binding is not None and workspace_root.resolve() == binding[0]:
         workspace_root = binding[1]
@@ -390,20 +248,7 @@ def write_record(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> None:
-    """Atomically persist ``record`` only when its durable bytes changed.
-
-    Publication uses the shared same-directory atomic primitive. It preserves
-    the crash-safe replace and directory durability barrier for changed state,
-    while an identical replay avoids creating the parent, staging a file,
-    replacing the record, or syncing its directory.
-
-    Args:
-        workspace_root: Workspace that owns this run-scoped recovery record.
-        record: Durable auto-integration state to publish.
-        backend: Persistence boundary; injectable for in-memory contract tests.
-    """
     record_file = record_path(workspace_root)
-    # filesystem-write-ok: auto-integrate binary record under .agent/auto_integrate, runtime state not tracked
     payload = record.model_dump_json().encode("utf-8")
     atomic_write_bytes_if_changed(
         backend,
@@ -416,27 +261,14 @@ def write_record(
 
 
 class RecordBusyError(RuntimeError):
-    """Typed refusal: the record read hit demonstrable transient lock contention.
-
-    Raised by :func:`clear_record` and by
-    :meth:`ralph.pipeline.auto_integrate_record_store.IntegrationRecordStore.transition`
-    when the backend reports ``EAGAIN``/``EWOULDBLOCK`` so no mutation is
-    applied without a valid unexpired persisted retry deadline.
-    """
+    pass
 
 
 class RecordUnreadableError(RuntimeError):
-    """Typed refusal: the durable record exists but cannot be read.
-
-    Raised by :func:`clear_record` and by
-    :meth:`ralph.pipeline.auto_integrate_record_store.IntegrationRecordStore.transition`
-    so the UNREADABLE ownership evidence is never silently unlinked
-    or overwritten with a fresh record.
-    """
+    pass
 
 
 class RecordReadOutcomeDisposition(StrEnum):
-    """Closed disposition set for :func:`read_record_outcome`."""
 
     ABSENT = "absent"
     PRESENT = "present"
@@ -448,23 +280,6 @@ RecordUnreadableReason = Literal["corrupt_json", "unsupported_schema", "backend_
 
 
 class RecordReadOutcome(RalphBaseModel):
-    """Closed typed result of reading the durable crash record.
-
-    Exactly one of four dispositions:
-
-    * ``ABSENT`` -- no record file exists; ``record`` is ``None``.
-    * ``PRESENT`` -- a valid record was loaded into ``record``.
-    * ``BUSY`` -- demonstrably transient lock contention (the backend
-      reported ``EAGAIN``/``EWOULDBLOCK``). No attempt count or
-      deadline is minted at read time: they come only from existing
-      PERSISTED retry state; with no valid unexpired persisted
-      deadline the consumer decides REQUIRE_INTERVENTION.
-    * ``UNREADABLE`` -- the file exists but is unusable, with a
-      reason from :data:`RecordUnreadableReason`. Backend read and
-      permission failures and decoding errors map to
-      ``backend_read_failure``. Callers MUST NOT mutate or unlink
-      the evidence.
-    """
 
     model_config = ConfigDict(frozen=True)
 
@@ -476,10 +291,7 @@ class RecordReadOutcome(RalphBaseModel):
 
 
 def _outcome_from_read_error(exc: OSError | UnicodeError | KeyError) -> RecordReadOutcome:
-    """Map a backend read failure to BUSY (EAGAIN contention) or UNREADABLE."""
     if isinstance(exc, OSError) and exc.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
-        # Demonstrable transient lock contention; no deadline is minted
-        # here (persisted retry state alone authorizes waits).
         return RecordReadOutcome(disposition=RecordReadOutcomeDisposition.BUSY)
     return RecordReadOutcome(
         disposition=RecordReadOutcomeDisposition.UNREADABLE,
@@ -488,7 +300,6 @@ def _outcome_from_read_error(exc: OSError | UnicodeError | KeyError) -> RecordRe
 
 
 def _parse_outcome_payload(raw_text: str) -> dict[str, object] | None:
-    """Parse outcome JSON text into a dict, or None for any parse failure."""
     try:
         parsed: object = json.loads(raw_text)
     except (ValueError, RecursionError):
@@ -505,27 +316,14 @@ def read_record_outcome(
     busy_attempt: int | None = None,
     busy_clock: object | None = None,
 ) -> RecordReadOutcome:
-    """Read the durable record and return a CLOSED typed outcome.
-
-    Unlike :func:`read_record` this never collapses corruption or
-    transient read failure into ``None``: ABSENT is proven by the
-    file not existing, and UNREADABLE preserves the evidence for the
-    caller. BUSY is reserved for demonstrable transient lock
-    contention (``EAGAIN``/``EWOULDBLOCK``); its attempt/deadline
-    fields are always ``None`` because a fresh deadline minted at
-    read time would replenish the bounded-retry budget on every
-    failing read. ``busy_attempt`` and ``busy_clock`` are ignored
-    (kept so out-of-scope callers keep importing); they carry no
-    retry authority.
-    """
-    del busy_attempt, busy_clock  # WU-A: no fresh allowances at read time
+    del busy_attempt, busy_clock
     record_file = record_path(workspace_root)
     outcome: RecordReadOutcome | None = None
     record_exists = False
     try:
         record_exists = backend.exists(record_file)
     except FileNotFoundError:
-        pass  # absence proven by the raised not-found
+        pass
     except OSError as exc:
         if exc.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
             outcome = RecordReadOutcome(disposition=RecordReadOutcomeDisposition.BUSY)
@@ -567,13 +365,6 @@ def read_record(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> IntegrationRecord | None:
-    """Return the durable record or ``None`` when absent / corrupt.
-
-    ``None`` does not prove absence: invalid JSON, unreadable bytes, and
-    unsupported schema or phase values also return ``None``. Recovery and
-    dispatch callers check record-path existence separately and preserve
-    unreadable ownership evidence without authorizing Git mutations.
-    """
     record_file = record_path(workspace_root)
     if not backend.exists(record_file):
         return None
@@ -588,13 +379,6 @@ def _read_record_raw(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> dict[str, object] | None:
-    """Read and parse the record file; return the parsed dict or None.
-
-    Splits out the read+JSON-parse steps from :func:`read_record` so
-    each helper stays under the ruff PLR0911 return-statement cap.
-    Returns ``None`` for any read or parse failure (treated as
-    corrupt / absent by the recovery preamble).
-    """
     try:
         raw_text = backend.read_text(record_file, encoding="utf-8")
     except (OSError, UnicodeError, KeyError):
@@ -609,19 +393,6 @@ def _read_record_raw(
 
 
 def _migrate_payload_evidence(data_raw: dict[str, object]) -> dict[str, object] | None:
-    """Migrate legacy diagnostic evidence keys in payload; return None on parse error.
-
-    For any evidence payload the current collector cannot interpret
-    (legacy or unknown keys/format, unparseable lease ownership),
-    returns the payload with ``diagnostic_evidence`` set to an empty
-    tuple AND any persisted intervention flag cleared, so the loaded
-    record carries no live comparison and no operator-only dispatch
-    action; the durable identity (``target``, SHAs, ``operation_kind``)
-    is preserved, and the diagnostic path re-derives state from Git
-    on the next seam. Surfacing intervention from the loader was the
-    production livelock: the diagnostic could not re-verify the
-    evidence and refused to proceed.
-    """
     raw_evidence = data_raw.get("diagnostic_evidence")
     sequence: tuple[tuple[str, str], ...]
     if raw_evidence is None:
@@ -648,12 +419,6 @@ def _migrate_payload_evidence(data_raw: dict[str, object]) -> dict[str, object] 
         return data_raw
 
     migrated_evidence, drop_marker = _migrate_legacy_diagnostic_evidence(sequence)
-    # Any key the current collector cannot interpret must drop the held
-    # evidence regardless of the intervention flag (O1 / AC1). The old
-    # gate only fired when the intervention flag was set; that left
-    # unknown keys persistent when no operator escalation was recorded,
-    # which is the documented O1 livelock: the diagnostic path could not
-    # verify the evidence and the record retained forever.
     if any(not _is_valid_collector_evidence_key(key) for key, _ in migrated_evidence):
         return _clear_legacy_ownership_and_intervention(data_raw)
 
@@ -666,13 +431,6 @@ def _apply_evidence_migration(
     drop_marker: str | None,
     original_sequence: tuple[tuple[str, str], ...],
 ) -> dict[str, object]:
-    """Apply the legacy key-space migration to ``data_raw``.
-
-    Helper split from :func:`_migrate_payload_evidence` to keep
-    that function's return-statement count under the ruff
-    ``PLR0911`` cap. Returns the migrated payload (or ``data_raw``
-    unchanged when no migration is needed).
-    """
     if drop_marker is not None:
         existing_reason = data_raw.get("repair_cap_reason")
         return {
@@ -686,63 +444,14 @@ def _apply_evidence_migration(
 
 
 def parse_record_payload(data_raw: dict[str, object]) -> IntegrationRecord | None:
-    """Validate the parsed record payload against the model contract.
-
-    Splits the schema-level validation out of :func:`read_record` so
-    the I/O helper stays under the ruff PLR0911 return-statement
-    cap. Returns ``None`` for any rejection (corrupt file).
-
-    The one-way legacy evidence migration runs here so the loaded
-    record already carries the new key space: a legacy ``work`` /
-    ``controls`` key becomes ``unstaged_work`` / ``commit_controls``;
-    a legacy ``str(absolute_path)`` for a per-worktree state file
-    becomes ``<kind>:<path>``; the branch reflog and ``logs/HEAD``
-    are dropped with a ``repair_cap_reason`` marker. A legacy
-    record that still carries the repository-global
-    ``for-each-ref`` / ``ls-files`` keys is loaded normally with
-    ``diagnostic_evidence=()``; the dropped evidence is still
-    visible in the original on-disk bytes (preserved by the
-    closed transition table on the durable record), and the
-    diagnostic path re-derives state from Git on the next seam.
-
-    Load-and-clear into the autonomous ladder (G6): a payload that
-    still carries ``diagnostic_intervention_required=True`` was
-    written by a version that treated the spent diagnostic-repair
-    budget as an operator hand-off. That flag is no longer a
-    terminal gate: the loader clears it (together with the held
-    evidence/lease and the stale operator-facing cap reason) so the
-    record re-enters the autonomous fallback ladder on the next
-    seam — mirroring the run-loop's durable-record intervention
-    guard. Every on-disk flag is legacy by definition: no current
-    producer exists.
-
-    After the record is validated, a held lease whose fingerprint
-    does not match the freshly-computed ``identity_fingerprint`` is
-    treated as a schema-migration candidate: the record is
-    re-stamped to a clean state (evidence ``()``, ownership
-    ``None``, intervention flag ``False``, repair-cap reason
-    cleared) via the same :func:`_clear_legacy_ownership_and_intervention`
-    helper that the legacy / unparseable-lease branches use. The
-    lease format (``<fingerprint>:<held_at>``) only stores the
-    fingerprint hash, not the individual identity fields, so a
-    fingerprint mismatch on load cannot be disambiguated between
-    ``"schema changed"`` and ``"external party rewrote the
-    record"``; the safe path is to re-derive state from Git on the
-    next seam. AC-4 / GAP-5 closes the O1 livelock that surfaced
-    here: a narrower identity-fingerprint field set no longer
-    forces a fingerprint mismatch when the record crosses a
-    legitimate lifecycle transition.
-    """
     phase_value = data_raw.get("phase")
     if not isinstance(phase_value, str) or phase_value not in _VALID_PHASES:
         return None
     if data_raw.get("diagnostic_intervention_required") is True:
-        # Legacy human-hand-off flag: load-and-clear into the ladder.
         data_raw = _clear_legacy_ownership_and_intervention(data_raw)
     migrated = _migrate_payload_evidence(data_raw)
     if migrated is None:
         return None
-    # Load-time clamp: coerce over-cap attempts to cap - 1 (see _clamp_loaded_attempt_counters).
     with_cause = _coerce_payload_failure_cause(migrated)
     with_cause = _clamp_loaded_attempt_counters(with_cause)
     try:
@@ -760,7 +469,6 @@ _parse_record_payload = parse_record_payload
 
 
 def _absent_record_is_recordable(path: Path) -> bool:
-    """Only a proven absent ownership record permits starting a new operation."""
     try:
         path.lstat()
     except FileNotFoundError:
@@ -776,31 +484,6 @@ def set_resolving_rebase(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> bool:
-    """Flag (or unflag) the durable record as an in-flight rebase resolution.
-
-    Called around the resolve-and-continue loop so a run killed while an
-    agent was editing a paused rebase leaves evidence of WHY the rebase
-    was paused.
-
-    Returns:
-        Whether the durable state on disk now says ``resolving``. That
-        includes the two no-op cases: a record already carrying the
-        wanted value, and NO RECORD FILE at all -- with nothing on disk,
-        recovery has nothing to act on either, so no interrupted-
-        resolution warning is lost by proceeding. ``False`` is returned
-        whenever the durable state was left disagreeing with the caller:
-        a failed write, and also a record file that EXISTS but could not
-        be read back. :func:`read_record` deliberately collapses absent,
-        corrupt and transiently-unreadable into a single ``None``, so
-        the file's existence is what separates "nothing to record" from
-        "something is there and we could not see it"; the latter must
-        not be reported as a persisted flag.
-
-    Never raises. Deciding what an unpersistable flag means belongs to
-    the caller: :mod:`ralph.pipeline.auto_integrate_rebase_merge` refuses
-    to start a resolution it could not record and takes the safe
-    abort-then-endpoint-merge path instead.
-    """
     try:
         current = read_record(workspace_root, backend=backend)
         if current is None:
@@ -827,21 +510,6 @@ def clear_record(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> None:
-    """Unlink the durable record; missing-ok.
-
-    The gate is tighter than the pre-fix behaviour: a record whose
-    phase is ``integrating`` with a non-empty resolution flag
-    cannot be cleared (the operation has unfinished work). Legacy
-    ``diagnostic_intervention_required=True`` payloads are
-    load-and-cleared by the parser, so the retired hand-off flag
-    never gates release.
-
-    UNREADABLE evidence is refused: a record that exists but cannot
-    be parsed MUST NOT be unlinked, because it is the only durable
-    proof of an interrupted integration. The typed
-    :class:`RecordUnreadableError` carries the refusal. ABSENT
-    remains idempotent (missing-ok unlink).
-    """
     outcome = read_record_outcome(workspace_root, backend=backend)
     if outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE:
         raise RecordUnreadableError(
@@ -854,11 +522,6 @@ def clear_record(
             "bounded retry with a persisted deadline owns the backoff"
         )
     record = outcome.record
-    # A legacy ``diagnostic_intervention_required=True`` payload is
-    # load-and-cleared by :func:`parse_record_payload`, so a parsed
-    # record never carries the retired hand-off flag; an exhausted
-    # diagnostic budget routes to the autonomous fallback ladder
-    # instead of gating release on a person.
     if record is not None and record.reintegrate_pending:
         from ralph.git.merge import branch_sha
         from ralph.git.operations import get_head_sha
@@ -885,13 +548,6 @@ def clear_record_on_containment(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> bool:
-    """Unlink the durable record, but only for a containment-proven release.
-
-    Returns:
-        ``True`` once the record is gone -- including the already-absent
-        case, which keeps the release idempotent -- and ``False`` when the
-        verdict did not prove containment.
-    """
     if not verdict.contained:
         return False
     clear_record(workspace_root, backend=backend)
@@ -905,13 +561,6 @@ def apply_containment_release(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> RebaseState:
-    """Clear the durable record and every latch ``verdict`` proves stale.
-
-    Fail-closed: a record that cannot be unlinked -- unreadable evidence,
-    lock contention, or an operator-intervention hold -- keeps its latches.
-    Releasing in-memory state while a blocking record survives on disk is a
-    lie the very next dispatch would act on.
-    """
     if not verdict.contained:
         return state
     if root is not None:
@@ -920,11 +569,6 @@ def apply_containment_release(
         except RuntimeError as exc:
             logger.warning("auto_integrate: containment release withheld: {}", exc)
             return state
-    # Conflict-strategy fields belong to their typed setters: the whole
-    # block resets when it is stale or never started, and only the
-    # exhaustion flag pair resets when the operator's strategy history
-    # must survive. The non-strategy fields reset through one literal-Dict
-    # ``model_copy``; they are not in the audit's DECISION_FIELDS set.
     strategy = (
         state.clear_conflict_strategy()
         if state.resolution_exhausted or state.conflict_strategy_index == 0
@@ -986,13 +630,4 @@ __all__ = [
 ]
 
 
-# ----- AC-14 catalog evidence -----
-# This file is the authoritative source for the catalog entries listed
-# below. Each ``# AC-14 rationale: <ID>`` line is the code-adjacent
-# marker the AC-14 audit looks for; each ``# ladder rung: <N>``
-# names the rung the entry sits on. Adding a new entry here requires
-# BOTH lines or the audit fails.
 
-# AC-14 rationale: E11
-# ladder rung: 1
-# ----- end AC-14 catalog evidence -----

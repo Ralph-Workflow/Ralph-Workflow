@@ -1,11 +1,3 @@
-"""Integration tests proving plumbing commands route through DefaultPipelineFactory.
-
-These tests are black-box: they monkeypatch the factory and the plumbing dispatch,
-invoke the CLI functions, and assert the factory received the expected kwargs and
-that the full ``PipelineDeps`` surface (including the 8 extended Pro DI seams)
-reaches plumbing.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -45,8 +37,6 @@ def _make_display_context() -> DisplayContext:
 
 
 class _RecordingPipelineFactory:
-    """Conforms to ``PipelineFactory`` and records every build call."""
-
     def __init__(self, deps: PipelineDeps) -> None:
         self._deps = deps
         self.calls: list[dict[str, object]] = []
@@ -142,10 +132,6 @@ def test_smoke_cli_uses_default_pipeline_factory(
             return cls()
 
         def get(self, name: str) -> AgentConfig | None:
-            # The command no longer hardcodes ``claude/haiku``: with no
-            # ``--agent`` it resolves from the operator's ``[agent_chains]``,
-            # and ``load_config`` is stubbed to an empty config below, so it
-            # deterministically falls back to the bare ``claude`` built-in.
             if name in {"claude", "claude/haiku"}:
                 return interactive
             return None
@@ -305,7 +291,6 @@ def test_smoke_report_surfaces_ordered_subagent_evidence(tmp_path: Path) -> None
 
 
 def test_smoke_table_subagent_status_accepts_two_correlated_dispatches(tmp_path: Path) -> None:
-    """S-4: two dispatches, each with its own correlated result, report 'yes'."""
     result = smoke_module.SmokeRunResult(
         agent_name="claude/haiku",
         transport="claude_interactive",
@@ -332,7 +317,6 @@ def test_smoke_table_subagent_status_accepts_two_correlated_dispatches(tmp_path:
 def test_smoke_table_subagent_status_rejects_dispatch_without_correlated_result(
     tmp_path: Path,
 ) -> None:
-    """S-4: two dispatches where at least one lacks its own correlated result report 'no'."""
     result = smoke_module.SmokeRunResult(
         agent_name="claude/haiku",
         transport="claude_interactive",
@@ -357,7 +341,6 @@ def test_smoke_table_subagent_status_rejects_dispatch_without_correlated_result(
 
 
 def test_extended_pro_hooks_reach_plumbing_via_factory(tmp_path: Path) -> None:
-    """All 8 extended Pro DI seams flow through the factory into plumbing."""
     display_context = _make_display_context()
     model_identity = MultimodalModelIdentity(provider="claude", model_id="sonnet")
     bundle: PolicyBundle = object()

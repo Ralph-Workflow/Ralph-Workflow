@@ -1,21 +1,3 @@
-"""E-1's render-frequency-tier evidence, as a re-runnable, checked test.
-
-``_palette.py``'s own module comment on ``ROLE_FREQUENCY_TIER`` cites a
-one-time counting probe: "a counting probe wrapping
-``rich.console.Console.get_style`` was run once across all six
-``ralph.display.scene_catalog.SCENE_NAMES`` scenes (dark, truecolour,
-unicode, 80 columns) via ``render_scene``". Definition of Done #3 requires
-that evidence not be left as prose. This module re-runs the *same* probe
-methodology -- instrumenting ``Console.get_style`` during the same
-six-scene render -- and asserts a directional consistency property against
-``ROLE_FREQUENCY_TIER`` instead of pinning the exact historical counts
-(which would make this a brittle golden-number test rather than a
-regression-proof sanity check): the role backing the single most-resolved
-named theme style must be tier 1 (``FrequencyTier.FIELD``), and no
-tier-3/4 (``EVENT``/``ALARM``) role's own most-resolved style may be
-resolved more often than that tier-1 role's.
-"""
-
 from __future__ import annotations
 
 import collections
@@ -33,26 +15,16 @@ from ralph.display.scene_catalog import FULL_LAYOUT_WIDTH, SCENE_NAMES, SupportC
 if TYPE_CHECKING:
     from rich.style import Style
 
-#: Matches _palette.py's own cited probe environment: dark, truecolour,
-#: unicode, 80 columns, across every catalogue scene.
 _PROBE_CASE: SupportCase = SupportCase("dark", "truecolour", "unicode", FULL_LAYOUT_WIDTH, "tty")
-#: The reference dark surface every ``ROLE_ANCHORS`` hex is measured
-#: against -- the same surface the probe's own dark theme table resolves
-#: against, so a resolved style's embedded hex can be matched back to the
-#: role that produced it.
 _PROBE_SURFACE_HEX: str = "#2D2A2E"
 
 
 @pytest.fixture(scope="module", autouse=True)
 def _warm_python_lexer() -> None:
-    """Compile the preview lexer before per-test timing begins."""
     get_lexer_by_name("python")
 
 
 def _count_theme_style_resolutions(monkeypatch: pytest.MonkeyPatch) -> collections.Counter[str]:
-    """Re-run _palette.py's cited probe: wrap ``Console.get_style`` and
-    tally every named theme-table key resolved while rendering the full
-    six-scene catalogue once."""
     counts: collections.Counter[str] = collections.Counter()
     original_get_style = Console.get_style
 
@@ -70,11 +42,6 @@ def _count_theme_style_resolutions(monkeypatch: pytest.MonkeyPatch) -> collectio
 
 
 def _role_max_resolution_counts(counts: collections.Counter[str]) -> dict[str, int]:
-    """Attribute each observed theme-key count to the role whose resolved
-    hex the key's style embeds, keeping each role's *single highest*
-    observed key count (not a sum across every key that role backs --
-    several structural keys share `chrome`'s hex, and summing them would
-    understate how concentrated a single role's own busiest style key is)."""
     palette = {
         role: hex_val.upper() for role, hex_val in resolve_palette(_PROBE_SURFACE_HEX).items()
     }
@@ -99,11 +66,6 @@ def _role_max_resolution_counts(counts: collections.Counter[str]) -> dict[str, i
 def test_frequency_tier_evidence_top_resolved_role_is_field_tier(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """E-1/DoD #3: re-running the counting probe must show a tier-1
-    (``FrequencyTier.FIELD``) role backing the single most-resolved named
-    theme style -- reproducing ``_palette.py``'s own cited measurement
-    (``theme.text.muted`` highest at 67, backed by the ``muted`` role) as a
-    live, regression-checked assertion instead of a static comment."""
     counts = _count_theme_style_resolutions(monkeypatch)
     role_max = _role_max_resolution_counts(counts)
     assert role_max, "no theme-table style resolutions were observed"
@@ -115,14 +77,6 @@ def test_frequency_tier_evidence_top_resolved_role_is_field_tier(
 def test_frequency_tier_evidence_no_event_or_alarm_role_out_resolves_the_top_field_role(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """E-1/DoD #3: no tier-3 (``EVENT``) or tier-4 (``ALARM``) role's own
-    busiest theme key may be resolved more often than the busiest tier-1
-    (``FIELD``) role's -- the chroma-budget ordering E-1 describes
-    (constant-render roles stay near-neutral; rare-render roles can spend
-    full chroma) only holds if the roles that render constantly really are
-    the ones resolved most often. A deliberate misordering of
-    ``ROLE_FREQUENCY_TIER`` (tried locally, not committed) makes this
-    assertion fail, proving it is a real gate."""
     counts = _count_theme_style_resolutions(monkeypatch)
     role_max = _role_max_resolution_counts(counts)
     assert role_max, "no theme-table style resolutions were observed"

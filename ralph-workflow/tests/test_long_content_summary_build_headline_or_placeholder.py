@@ -1,5 +1,3 @@
-"""Tests for long_content_summary — headline extraction for oversized content."""
-
 from __future__ import annotations
 
 from ralph.display.long_content_summary import (
@@ -10,8 +8,8 @@ from ralph.display.long_content_summary import (
 _LONG = "x" * 5000
 _SHORT = "x" * 100
 
-_MAX_HEADLINE_LEN = 51  # max_chars=50 plus one ellipsis character
-_MAX_CONTENT_SUMMARY_LEN = 201  # max_chars=200 plus one ellipsis character
+_MAX_HEADLINE_LEN = 51
+_MAX_CONTENT_SUMMARY_LEN = 201
 _EXPECTED_2TUPLE = 2
 _EXPECTED_4TUPLE = 4
 
@@ -35,7 +33,6 @@ class TestBuildHeadlineOrPlaceholder:
         assert result.endswith("…")
 
     def test_empty_headline_falls_back_to_placeholder(self) -> None:
-        # Text whose splitlines all yield empty stripped lines
         empty_text = "\n\n\n"
         assert build_content_summary(empty_text) == ""
         assert build_headline_or_placeholder(empty_text) == "(no headline available)"

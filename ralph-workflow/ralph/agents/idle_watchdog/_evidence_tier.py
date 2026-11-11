@@ -1,18 +1,3 @@
-"""Evidence tier model for the activity-aware idle watchdog.
-
-The watchdog distinguishes two tiers of evidence:
-
-* First-party evidence is direct output the watchdog reads: agent stdout,
-  MCP tool calls made by the agent, and a subagent's own output/log stream
-  when it is observable.
-* Side-channel evidence is inferred from consequences without reading any
-  output: workspace file changes and bare subagent PID liveness.
-
-The tier distinction drives how much weight each signal carries in the
-verdict. First-party evidence is sufficient on its own to defer a
-NO_OUTPUT_DEADLINE fire. Side-channel evidence can corroborate a session but
-is quality-filtered and never defers indefinitely.
-"""
 
 from __future__ import annotations
 
@@ -25,27 +10,12 @@ if TYPE_CHECKING:
 
 
 class EvidenceTier(StrEnum):
-    """Tier of an evidence channel.
-
-    FIRST_PARTY: direct output the watchdog reads (stdout, MCP tool calls,
-        subagent output stream). Sufficient on its own to defer the verdict.
-    SIDE_CHANNEL: inferred consequence without reading output (workspace file
-        changes, bare PID liveness). Quality-filtered and secondary.
-    """
 
     FIRST_PARTY = "first_party"
     SIDE_CHANNEL = "side_channel"
 
 
 class ChannelName(StrEnum):
-    """Canonical evidence channel names.
-
-    STDOUT: agent stdout output (first-party).
-    MCP_TOOL: MCP tool-call invocations/completions made by the agent (first-party).
-    SUBAGENT_OUTPUT: a subagent's own output/log stream, read where observable (first-party).
-    SUBAGENT_LIVENESS: bare subagent PID liveness when output is not observable (side-channel).
-    WORKSPACE: workspace file changes (side-channel).
-    """
 
     STDOUT = "stdout"
     MCP_TOOL = "mcp_tool"
@@ -56,31 +26,6 @@ class ChannelName(StrEnum):
 
 @dataclass(frozen=True)
 class ChannelEvidenceSummary:
-    """Per-channel activity evidence snapshot for the watchdog verdict.
-
-    Each channel is a separate stream of activity evidence that the watchdog
-    considers for the NO_OUTPUT_DEADLINE verdict. The channel is "fresh" when
-    ``age_seconds`` is below the configured ``activity_evidence_ttl_seconds``
-    TTL. A channel with ``last_at is None`` has never been observed and is
-    treated as stale.
-
-    - ``channel_name``: Canonical name of the channel (see ``ChannelName``).
-    - ``tier``: Whether this channel is first-party or side-channel evidence.
-    - ``last_at``: Monotonic clock value of the last observed activity on this
-      channel, or None if the channel has never been observed.
-    - ``age_seconds``: Seconds since the last observed activity; None when
-      ``last_at`` is None. Always non-negative for observable channels.
-    - ``counter``: Number of activity events seen on this channel, or
-      None if the channel has never been observed.
-    - ``kind_breakdown``: Per-kind breakdown of the channel counter. Only
-      populated for the ``workspace`` channel. None when the channel has
-      no kind breakdown or when no workspace activity has been observed.
-    - ``alive_by``: For the ``subagent_liveness`` channel, the ``AliveBy``
-      classification at the time of the summary; None otherwise.
-    - ``can_defer``: Whether this channel's fresh evidence is allowed to defer
-      the NO_OUTPUT_DEADLINE verdict. First-party channels and strong
-      side-channel channels defer; weak side-channel channels do not.
-    """
 
     channel_name: ChannelName
     tier: EvidenceTier
@@ -92,12 +37,6 @@ class ChannelEvidenceSummary:
     can_defer: bool = True
 
     def is_fresh(self, ttl: float | None) -> bool:
-        """Return True when this channel is fresher than ``ttl`` seconds.
-
-        A channel with ``last_at is None`` is never fresh. A non-positive TTL
-        disables freshness, matching the existing ``activity_evidence_ttl``
-        disable semantics.
-        """
         if ttl is None or ttl <= 0.0:
             return False
         if self.age_seconds is None:
@@ -105,11 +44,6 @@ class ChannelEvidenceSummary:
         return self.age_seconds < ttl
 
     def to_dict(self) -> dict[str, object]:
-        """Render the summary as a dict for diagnostic embedding.
-
-        Always returns a fresh dict. Keys with None values are omitted for
-        backward compatibility with consumers that assert on the dict shape.
-        """
         result: dict[str, object] = {
             "channel": self.channel_name.value,
             "tier": self.tier.value,
@@ -125,7 +59,6 @@ class ChannelEvidenceSummary:
         return result
 
 
-#: Tier assignment for each canonical channel.
 CHANNEL_TIERS: dict[ChannelName, EvidenceTier] = {
     ChannelName.STDOUT: EvidenceTier.FIRST_PARTY,
     ChannelName.MCP_TOOL: EvidenceTier.FIRST_PARTY,
@@ -134,12 +67,7 @@ CHANNEL_TIERS: dict[ChannelName, EvidenceTier] = {
     ChannelName.WORKSPACE: EvidenceTier.SIDE_CHANNEL,
 }
 
-#: Whether a channel's fresh evidence is allowed to defer NO_OUTPUT_DEADLINE.
-#: First-party channels always defer. Side-channel channels are gated by
-#: additional quality filtering in the watchdog.
 CHANNEL_DEFERS_BY_DEFAULT: dict[ChannelName, bool] = {
-    # stdout is the baseline channel the watchdog is trying to judge; it must
-    # NOT defer its own idle deadline.
     ChannelName.STDOUT: False,
     ChannelName.MCP_TOOL: True,
     ChannelName.SUBAGENT_OUTPUT: True,
@@ -150,23 +78,16 @@ CHANNEL_DEFERS_BY_DEFAULT: dict[ChannelName, bool] = {
 
 @dataclass(frozen=True)
 class EvidenceSummary:
-    """Aggregate evidence summary across all channels.
-
-    This is a thin wrapper around a tuple of ``ChannelEvidenceSummary`` values
-    that provides lookup helpers for the verdict logic and diagnostics.
-    """
 
     channels: tuple[ChannelEvidenceSummary, ...] = field(default_factory=tuple)
 
     def by_name(self, name: ChannelName) -> ChannelEvidenceSummary | None:
-        """Return the summary for a channel by name, or None if absent."""
         for channel in self.channels:
             if channel.channel_name == name:
                 return channel
         return None
 
     def first_party_fresh(self, ttl: float | None) -> ChannelEvidenceSummary | None:
-        """Return the freshest first-party channel that can defer, or None."""
         freshest: ChannelEvidenceSummary | None = None
         for channel in self.channels:
             if channel.tier != EvidenceTier.FIRST_PARTY:
@@ -180,7 +101,6 @@ class EvidenceSummary:
         return freshest
 
     def side_channel_fresh(self, ttl: float | None) -> ChannelEvidenceSummary | None:
-        """Return the freshest quality-filtered side-channel channel, or None."""
         freshest: ChannelEvidenceSummary | None = None
         for channel in self.channels:
             if channel.tier != EvidenceTier.SIDE_CHANNEL:
@@ -194,7 +114,6 @@ class EvidenceSummary:
         return freshest
 
     def to_dict_list(self) -> list[dict[str, object]]:
-        """Return a list of per-channel dicts for diagnostic embedding."""
         return [channel.to_dict() for channel in self.channels]
 
 

@@ -1,13 +1,3 @@
-"""A busy wire-ledger lock must never fail a tool call or flood the server log.
-
-The ledger is diagnostic evidence. Under host load a sibling writer can hold
-the append lock past the acquisition deadline; that used to surface as a
-JSON-RPC ``-32603`` on ``tools/call`` (agents saw ``wire_ledger_io_error:
-lock contention``) and as a full traceback per frame in ``mcp-server.log``.
-Contention now drops that one frame's witness, leaves the HMAC chain intact,
-and keeps the log to a single bounded line.
-"""
-
 from __future__ import annotations
 
 import fcntl
@@ -99,7 +89,6 @@ def test_tools_call_succeeds_while_the_ledger_lock_is_held(
     (tmp_path / "a.txt").write_text("hello", encoding="utf-8")
     server = _server(tmp_path)
     state = ServerState.RUNNING
-    # Any first frame creates the lock file the second call will find held.
     server.handle_request(JsonRpcRequest(jsonrpc="2.0", method="tools/list", msg_id=1), state)
 
     with _held_lock(tmp_path):

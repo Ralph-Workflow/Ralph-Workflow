@@ -1,8 +1,3 @@
-"""LivenessProbe protocol and implementations for aggregate-tree idle evaluation.
-
-The LivenessProbe is an injectable seam so unit tests can fake agent-tree
-activity without spawning real processes.
-"""
 
 from __future__ import annotations
 
@@ -12,18 +7,6 @@ from ralph.process.child_liveness import ChildActivitySnapshot
 
 
 class FakeLivenessProbe:
-    """Test-only probe that returns a fixed activity answer.
-
-    When ``active_labels`` is provided the probe simulates a specific set of
-    active process labels: ``any_agent_active(prefix)`` returns True only when
-    at least one label in ``active_labels`` starts with ``prefix``.  This lets
-    tests distinguish between related and unrelated agent workers.
-
-    When ``active_labels`` is None the probe falls back to the flat ``active``
-    flag (existing behaviour, unchanged).
-
-    When ``snapshot`` is provided, child_snapshot() returns it for any prefix.
-    """
 
     def __init__(
         self,
@@ -44,9 +27,6 @@ class FakeLivenessProbe:
     def child_snapshot(self, scope_prefix: str) -> ChildActivitySnapshot:
         if self._snapshot is not None:
             return self._snapshot
-        # For empty prefix with label-based matching, don't scan labels.
-        # Mirrors DefaultLivenessProbe which skips label scanning for empty
-        # scope_prefix to avoid false matches against the parent process.
         if not scope_prefix and self._active_labels is not None:
             active = False
         else:

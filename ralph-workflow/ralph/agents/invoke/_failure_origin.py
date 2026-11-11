@@ -1,4 +1,3 @@
-"""Closed attribution vocabulary for agent-invocation failures."""
 
 from typing import Literal
 

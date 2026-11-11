@@ -1,14 +1,3 @@
-"""Audit the canonical interactive-session text and PTY exemption contracts.
-
-The 2026-08-17 Claude production failure emitted ``Session ID:`` text into
-an interactive PTY transcript.  That text is expected transport metadata,
-not corrupt JSONL.  This audit uses both literal and AST-scoped checks so a
-refactor cannot silently remove the classifier vocabulary or Claude's PTY
-transport exemption.
-
-Usage: ``python -m ralph.testing.audit_canonical_session_text``.
-"""
-
 from __future__ import annotations
 
 import ast
@@ -17,10 +6,6 @@ from pathlib import Path
 
 _PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 _SESSION_SOURCE_PATH = "agents/invoke/_session.py"
-#: The corruption detector, which owns the interactive-PTY exemption.
-#: Split out of ``display/raw_overflow.py`` (which owns WRITING a
-#: capture) when that module outgrew the size limit; this audit parses
-#: the source, so it has to follow the constant rather than the name.
 _RAW_LOG_BREAKS_SOURCE_PATH = "display/raw_log_breaks.py"
 
 _CANONICAL_SESSION_TEXT_PATTERN_SOURCES: tuple[str, ...] = (
@@ -41,7 +26,6 @@ def _read(rel_path: str) -> str:
 
 
 def _assignment_value(source: str, constant_name: str) -> ast.expr | None:
-    """Return the AST value assigned to one module-level named constant."""
     try:
         tree = ast.parse(source)
     except SyntaxError:
@@ -61,7 +45,6 @@ def _assignment_value(source: str, constant_name: str) -> ast.expr | None:
 
 
 def _string_literals(value: ast.expr | None) -> tuple[str, ...] | None:
-    """Return direct string literals from a tuple expression."""
     if not isinstance(value, ast.Tuple):
         return None
     strings: list[str] = []
@@ -80,7 +63,6 @@ def _string_literals(value: ast.expr | None) -> tuple[str, ...] | None:
 
 
 def _transport_names(value: ast.expr | None) -> frozenset[str] | None:
-    """Return enum-member names from a ``frozenset({...})`` literal."""
     if not (
         isinstance(value, ast.Call)
         and isinstance(value.func, ast.Name)
@@ -102,7 +84,6 @@ def _transport_names(value: ast.expr | None) -> frozenset[str] | None:
 
 
 def _check_canonical_session_text_patterns() -> list[str]:
-    """Pin the exact AST-scoped canonical session-text pattern vocabulary."""
     try:
         source = _read(_SESSION_SOURCE_PATH)
     except FileNotFoundError:
@@ -117,7 +98,6 @@ def _check_canonical_session_text_patterns() -> list[str]:
 
 
 def _check_interactive_pty_transports() -> list[str]:
-    """Pin the exact AST-scoped interactive PTY transport exemption set."""
     try:
         source = _read(_RAW_LOG_BREAKS_SOURCE_PATH)
     except FileNotFoundError:
@@ -132,7 +112,6 @@ def _check_interactive_pty_transports() -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run every invariant and return 0 when the Claude regression remains protected."""
     del argv
     problems = _check_canonical_session_text_patterns() + _check_interactive_pty_transports()
     if problems:

@@ -1,4 +1,3 @@
-"""Continue a moved target under the recovery caller's existing lease."""
 
 from __future__ import annotations
 
@@ -41,20 +40,10 @@ if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
 
 
-#: Porcelain v1 entries are ``XY<space>path``; the status code plus the
-#: separating space is the prefix before the path starts.
 _PORCELAIN_STATUS_PREFIX_LEN = 3
 
 
 def retained_resolution_is_stale(root: Path, record: IntegrationRecord) -> bool:
-    """Return whether Git disproves the record's retained-resolution intent.
-
-    A stale intent has all three positive facts: no rebase, merge, or
-    cherry-pick operation is in progress; the index has no unmerged
-    entries; and the current feature work is not already contained in the
-    target.  The record's flags are intent only -- they never override
-    these observations.
-    """
     return _git_shows_no_operation(root) and _work_is_not_contained(root, record.target)
 
 
@@ -65,13 +54,6 @@ def replay_stale_resolution(
     conflict_resolver: ConflictResolver | None,
     rebase_stop_resolver: RebaseStopResolver | None,
 ) -> RebaseState:
-    """Preserve stale work, clear stale intent, and retry auto rebase.
-
-    The backup snapshot is completed before the durable record changes or
-    HEAD moves.  The snapshot's feature identity then becomes the
-    feature branch tip, which makes the worktree clean and gives the
-    ordinary auto-rebase entry a safe commit to replay.
-    """
     if not retained_resolution_is_stale(root, record):
         return _retained_replay_outcome(
             record,
@@ -247,7 +229,6 @@ def reintegrate_owned_landing(
     conflict_resolver: ConflictResolver | None,
     rebase_stop_resolver: RebaseStopResolver | None,
 ) -> RebaseState:
-    """Persist the next action before retrying integration without an ownership gap."""
     owning_worktree = record.owning_worktree or str(root)
     retained = record.with_transition(
         MARK_REINTEGRATE_PENDING,

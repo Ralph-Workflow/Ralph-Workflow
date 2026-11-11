@@ -1,13 +1,3 @@
-"""Tests for the strict execution-evidence ledger and the readiness assessment.
-
-These tests cover the three readiness dimensions that the analysis
-agent's ``RALPH-EVIDENCE:`` ledger unlocks, the strict parser that
-ingests them, the cache that carries them, and the pipeline driver that
-threads them through the readiness result. The contract is fail-closed:
-a malformed ledger, a missing hash, an unrun command, or a stale cache
-must NEVER surface as ``True`` for any of the three dimensions.
-"""
-
 from __future__ import annotations
 
 import json
@@ -56,9 +46,6 @@ def _ledger_line(
     return "RALPH-EVIDENCE: " + json.dumps(payload, sort_keys=True)
 
 
-# ----- pure parser tests -------------------------------------------------
-
-
 def test_parse_ledger_accepts_a_well_formed_line() -> None:
     line = _ledger_line()
     (outcome,) = parse_execution_evidence(line)
@@ -95,11 +82,8 @@ def test_parse_ledger_preserves_line_order() -> None:
 @pytest.mark.parametrize(
     ("line", "match"),
     [
-        # non-JSON payload
         ("RALPH-EVIDENCE: not-json", "JSON payload is invalid"),
-        # JSON array (not an object)
         ("RALPH-EVIDENCE: [1, 2, 3]", "must be a JSON object"),
-        # unknown key
         (
             "RALPH-EVIDENCE: "
             + json.dumps(
@@ -114,13 +98,11 @@ def test_parse_ledger_preserves_line_order() -> None:
             ),
             "unknown keys",
         ),
-        # missing key
         (
             "RALPH-EVIDENCE: "
             + json.dumps({"command": "x", "exit_code": 0, "duration_seconds": 1.0}),
             "missing required key",
         ),
-        # empty command
         (
             "RALPH-EVIDENCE: "
             + json.dumps(
@@ -134,7 +116,6 @@ def test_parse_ledger_preserves_line_order() -> None:
             ),
             "non-empty string command",
         ),
-        # boolean exit_code (not int)
         (
             "RALPH-EVIDENCE: "
             + json.dumps(
@@ -148,7 +129,6 @@ def test_parse_ledger_preserves_line_order() -> None:
             ),
             "integer exit_code",
         ),
-        # negative exit_code
         (
             "RALPH-EVIDENCE: "
             + json.dumps(
@@ -162,7 +142,6 @@ def test_parse_ledger_preserves_line_order() -> None:
             ),
             "outside the 0..255 range",
         ),
-        # boolean duration_seconds
         (
             "RALPH-EVIDENCE: "
             + json.dumps(
@@ -176,7 +155,6 @@ def test_parse_ledger_preserves_line_order() -> None:
             ),
             "numeric duration_seconds",
         ),
-        # negative duration
         (
             "RALPH-EVIDENCE: "
             + json.dumps(
@@ -190,7 +168,6 @@ def test_parse_ledger_preserves_line_order() -> None:
             ),
             "must be non-negative",
         ),
-        # empty hash
         (
             "RALPH-EVIDENCE: "
             + json.dumps(
@@ -220,8 +197,6 @@ def test_parse_ledger_rejects_too_many_lines() -> None:
 
 
 def test_models_re_export_matches_module_function() -> None:
-    """The models re-export must be the same callable so callers and
-    tests have one canonical import path."""
     assert models_parse_execution_evidence is parse_execution_evidence
     assert ModelsEvidenceParseError is EvidenceParseError
 
@@ -255,9 +230,6 @@ def test_readiness_assessment_defaults_are_all_false() -> None:
     assert a.outcome_evidence_reviewed is False
 
 
-# ----- cache carry + invalidation tests ----------------------------------
-
-
 def test_cache_surfaces_cached_assessment_on_subsequent_read() -> None:
     ws = MemoryWorkspace()
     assessment = ReadinessAssessment(
@@ -277,10 +249,6 @@ def test_cache_surfaces_cached_assessment_on_subsequent_read() -> None:
 
 
 def test_cache_stale_signature_returns_all_false_assessment() -> None:
-    """An edit OR deletion of any evidence file invalidates the cached
-    assessment: a stale cache must not launder a false ``True`` into a
-    verification claim.
-    """
     ws = MemoryWorkspace()
     cache.write_cache(
         ws,
@@ -298,18 +266,11 @@ def test_cache_stale_signature_returns_all_false_assessment() -> None:
 
 
 def test_cache_round_trip_without_optional_fields_defaults_to_all_false() -> None:
-    """Backwards-compatible: a cache payload missing the assessment or
-    outcomes keys (e.g. a cache written by an older binary) surfaces
-    the all-false default rather than crashing.
-    """
     ws = MemoryWorkspace()
     cache.write_cache(ws, _stack(), ReadinessStatus.READY)
     cached_assessment, cached_outcomes = cache.read_cached_assessment(ws, _stack())
     assert cached_assessment == ReadinessAssessment()
     assert cached_outcomes == ()
-
-
-# ----- pipeline-driver end-to-end (with fake agent) ----------------------
 
 
 def _finding() -> PolicyFinding:
@@ -327,7 +288,6 @@ def _write_decision_with_ledger(
     status: str = "completed",
     ledger: tuple[str, ...] = (),
 ) -> None:
-    """Write the analysis-phase decision artifact with an evidence ledger."""
     ws.mkdirs(".agent/artifacts")
     ledger_section = ""
     if ledger:
@@ -396,11 +356,6 @@ class _Recorder:
 
 @pytest.mark.timeout_seconds(5)
 def test_pipeline_ready_carries_assessment_through_to_result() -> None:
-    """A READY run with a matching ledger must surface a non-default
-    assessment in the result; the dimensions are evidence-anchored and
-    HASH-BOUND: the ledger's ``policy_content_hash`` must equal the
-    current readiness-evidence signature of the seeded corpus.
-    """
     ws = MemoryWorkspace()
     seed_complete_corpus(ws)
     current_hash = evidence.evidence_signature(ws, stack())
@@ -409,7 +364,6 @@ def test_pipeline_ready_carries_assessment_through_to_result() -> None:
         _ledger_line(command="make bypass-audit", exit_code=0, content_hash=current_hash),
     )
     agent = _Recorder(ws, decisions=["completed"], ledger=ledger, fix_on_call=None)
-    # The corpus is already seeded, so no remediation seeding is needed.
 
     result = pipeline_driver.run_policy_pipeline(ws, stack(), [_finding()], invoke_agent=agent)
 
@@ -424,10 +378,6 @@ def test_pipeline_ready_carries_assessment_through_to_result() -> None:
 
 @pytest.mark.timeout_seconds(5)
 def test_pipeline_wrong_hash_ledger_keeps_implementation_verified_false() -> None:
-    """A ledger whose ``policy_content_hash`` does NOT match the current
-    readiness-evidence signature cannot certify the present policy: the
-    dimension fails closed even with exit_code 0 on every line.
-    """
     ws = MemoryWorkspace()
     ledger = (_ledger_line(command="make test", exit_code=0, content_hash="WRONG-HASH"),)
     agent = _Recorder(ws, decisions=["completed"], ledger=ledger)
@@ -442,10 +392,6 @@ def test_pipeline_wrong_hash_ledger_keeps_implementation_verified_false() -> Non
 
 @pytest.mark.timeout_seconds(5)
 def test_pipeline_ready_with_no_ledger_keeps_implementation_verified_false() -> None:
-    """A READY run with NO ledger must report ``implementation_verified=False``:
-    the analysis agent approved the policy but never produced proof it
-    actually ran the gate.
-    """
     ws = MemoryWorkspace()
     agent = _Recorder(ws, decisions=["completed"], ledger=())
 
@@ -461,35 +407,21 @@ def test_pipeline_ready_with_no_ledger_keeps_implementation_verified_false() -> 
 
 @pytest.mark.timeout_seconds(5)
 def test_pipeline_blocked_with_ledger_reports_structure_incomplete() -> None:
-    """A BLOCKED run with a ledger must still report
-    ``structure_complete=False`` (the validator is the gate) and
-    ``implementation_verified=False`` because the cache cannot be
-    written from a non-READY result.
-    """
     ws = MemoryWorkspace()
     ledger = (_ledger_line(command="make verify", exit_code=1, content_hash="hash"),)
     agent = _Recorder(ws, decisions=["request_changes", "completed"], ledger=ledger)
 
     result = pipeline_driver.run_policy_pipeline(ws, stack(), [_finding()], invoke_agent=agent)
 
-    assert result.status is ReadinessStatus.READY  # eventually
+    assert result.status is ReadinessStatus.READY
     assert result.assessment is not None
     assert result.assessment.structure_complete is True
-    # The ledger contained a non-zero exit_code, so implementation_verified stays False.
     assert result.assessment.implementation_verified is False
 
 
 @pytest.mark.timeout_seconds(5)
 def test_pipeline_handles_malformed_ledger_without_crashing() -> None:
-    """A malformed ledger must NOT crash the driver; the analysis
-    artifact is still parseable for its decision and the dimension
-    degrades to all-false.
-    """
     ws = MemoryWorkspace()
-    # Use the helper that produces a well-formed decision artifact AND
-    # appends a malformed RALPH-EVIDENCE: line under the evidence section.
-    # The driver must read the decision (completed) and silently treat the
-    # malformed ledger as no ledger.
     _write_decision_with_ledger(
         ws,
         status="completed",
@@ -507,9 +439,6 @@ def test_pipeline_handles_malformed_ledger_without_crashing() -> None:
 
 @pytest.mark.timeout_seconds(5)
 def test_pipeline_with_failing_ledger_keeps_implementation_verified_false() -> None:
-    """A non-zero exit_code in the ledger is honest failure: the
-    dimension stays False even when the validator passes.
-    """
     ws = MemoryWorkspace()
     ledger = (
         _ledger_line(

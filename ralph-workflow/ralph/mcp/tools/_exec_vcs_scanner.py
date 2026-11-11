@@ -1,50 +1,11 @@
-"""Blacklist-aware VCS scanner for the exec / unsafe_exec / raw_exec handlers.
-
-The exec family used to apply a BLANKET VCS ban: any ``git`` / ``hg`` / ``svn``
-word anywhere in the command text was denied. The relaxed contract keeps
-``hg`` / ``svn`` fully banned and denies only known high-risk ``git``
-subcommands. Unknown commands and ``git worktree`` are allowed.
-
-This module is the single source of truth for the policy. It is split out
-of ``ralph.mcp.tools.exec`` so the public handler module stays under the
-1000-line cap the repo-structure audit enforces.
-
-Public surface:
-
-- ``check_version_control`` — the per-segment scanner used by the segment-
-  aware policy enforcer in ``exec.py``.
-- ``find_vcs_usage_in_scripts`` — the script-content scanner used to emit a
-  warning when a script contains a blocked operation.
-- ``exec_usage_hints`` — the human-readable hint strings appended to
-  the exec result text (a ``git_*`` MCP note for allowed git, an
-  explore-endpoint warning for ``grep``).
-
-Trust boundary: this scanner is a textual / static check only. It is the
-defence-in-depth layer that catches the textual VCS word; the trust
-boundary itself is the ``ProcessExecBounded`` capability check in the
-public handler.
-"""
 
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
-# Version control tools: hg / svn are NEVER allowed via exec (the agent has
-# no native read tools for either). Known high-risk git operations are denied.
 _VCS_COMMANDS: frozenset[str] = frozenset({"git", "hg", "svn"})
-# Deep VCS match: a standalone ``git``/``hg``/``svn`` word ANYWHERE in the
-# command text is the trigger — including inside quotes, ``$(...)``/backtick
-# substitutions, ``sh -c`` strings, and newline-separated sequences. Word
-# boundaries keep ``github.com`` and ``.gitignore`` out of the net while
-# still catching ``/usr/bin/git`` and ``git@host``. The textual match is
-# scanner; the per-segment policy above decides whether the underlying
-# subcommand is blacklisted.
 _VCS_USAGE_PATTERN = re.compile(r"\b(" + "|".join(sorted(_VCS_COMMANDS)) + r")\b", re.IGNORECASE)
-# High-risk git operations denied via exec / unsafe_exec / raw_exec. Unknown
-# and newly-added git subcommands are allowed so this policy cannot reject a
-# command merely because Ralph does not recognize it. ``worktree`` is an
-# intentional exception because Ralph's agent workflow uses worktrees.
 _GIT_BLOCKED_SUBCOMMANDS: frozenset[str] = frozenset(
     {
         "add",
@@ -75,14 +36,9 @@ _GIT_BLOCKED_SUBCOMMANDS: frozenset[str] = frozenset(
         "tag",
     }
 )
-# Git global flags that take a SEPARATE value (the next token is the value).
-# ``-C``/``-c`` accept both forms (separate value and ``=value``); the long
-# forms (``--git-dir`` etc.) are matched both as separate value and with
-# ``=value``.
 _GIT_VALUE_FLAG_NAMES: frozenset[str] = frozenset(
     {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path"}
 )
-# Git global flags that are BOOLEAN (skip in place; no value consumed).
 _GIT_BOOLEAN_GLOBAL_FLAGS: frozenset[str] = frozenset(
     {
         "-P",
@@ -95,11 +51,6 @@ _GIT_BOOLEAN_GLOBAL_FLAGS: frozenset[str] = frozenset(
         "--icase-pathspecs",
     }
 )
-# git diff flag guard: output-writing and external-helper flags. Mirrors
-# the AC-06 read-only contract in ``git_read.py::_validate_diff_args`` so
-# the same deny list applies no matter which surface (the diff MCP tool OR
-# ``git diff`` via exec) the agent uses. A divergence between the two
-# would be a policy leak.
 _GIT_DIFF_OUTPUT_FLAGS: tuple[str, ...] = (
     "--output=",
     "--output",
@@ -109,11 +60,8 @@ _GIT_DIFF_OUTPUT_FLAGS: tuple[str, ...] = (
 _GIT_DIFF_EXTERNAL_HELPER_FLAGS: tuple[str, ...] = (
     "--ext-diff",
     "--textconv",
-    "--convience-diff",  # misspelled but accepted by older git
+    "--convience-diff",
 )
-# Interpreters whose script-file argument is executed as shell: the script's
-# CONTENT is scanned for VCS usage (``bash deploy.sh`` where deploy.sh runs
-# ``git push`` is denied). ``source``/``.`` execute in-shell the same way.
 _SHELL_INTERPRETERS: frozenset[str] = frozenset({"sh", "bash", "zsh", "dash", "ksh", "source", "."})
 _SCRIPT_EXTENSIONS = (".sh", ".bash", ".zsh", ".ksh")
 _SCRIPT_SCAN_LIMIT_BYTES = 256 * 1024
@@ -121,38 +69,18 @@ _SHEBANG_PREFIX = b"#!"
 
 
 def _extract_git_subcommand_and_args(remainder: str) -> tuple[str | None, str]:
-    """Find the git subcommand in the remainder text after a ``git`` match.
-
-    Skips known global flags (value flags consume the next token; boolean
-    flags skip in place). Any other ``-flag``-shaped token is treated as a
-    subcommand-specific flag and skipped in place — the scanner is not a git
-    parser, it only extracts the first non-flag token to use as the
-    subcommand.
-
-    Returns ``(subcommand, args_text)``. ``subcommand`` is the lowercased
-    first non-flag token, or ``None`` if no subcommand can be determined
-    (e.g. ``git`` alone, or only flags). ``args_text`` is the remainder
-    text after the subcommand — used by ``_scan_diff_flags_for_writes``
-    when the subcommand is ``diff``.
-    """
     pos = 0
     length = len(remainder)
     while pos < length:
-        # Skip leading whitespace.
         while pos < length and remainder[pos].isspace():
             pos += 1
         if pos >= length:
             return None, remainder
-        # Read the next token (whitespace-bounded; quoted subcommands fall
-        # through as-is and are fail-closed — the policy enforcer is not
-        # a shell parser).
         token_end = pos
         while token_end < length and not remainder[token_end].isspace():
             token_end += 1
         token = remainder[pos:token_end]
         pos = token_end
-        # Value flag with separate next token (e.g. ``-C .`` or
-        # ``--git-dir <path>``): consume the next whitespace-bounded value.
         if token in _GIT_VALUE_FLAG_NAMES:
             while pos < length and remainder[pos].isspace():
                 pos += 1
@@ -162,31 +90,17 @@ def _extract_git_subcommand_and_args(remainder: str) -> tuple[str | None, str]:
                     value_end += 1
                 pos = value_end
             continue
-        # Value flag with inline ``=value`` form (e.g. ``--git-dir=.git``).
         if any(token.startswith(flag + "=") for flag in _GIT_VALUE_FLAG_NAMES):
             continue
-        # Boolean global flag: skip in place.
         if token in _GIT_BOOLEAN_GLOBAL_FLAGS:
             continue
-        # Any other flag-shaped token is a subcommand-specific flag: skip in
-        # place. This means ``git --version`` and ``git --unknown-flag``
-        # never produce a subcommand → fail closed (denied) below.
         if token.startswith("-"):
             continue
-        # Found the subcommand.
         return token.lower(), remainder[pos:]
     return None, remainder
 
 
 def _scan_diff_flags_for_writes(args_text: str) -> str | None:
-    """Return the offending flag if any write-producing or external-helper
-    flag is present in the args text following a ``git diff`` invocation.
-
-    Mirrors ``git_read.py::_validate_diff_args`` so the AC-06 read-only
-    contract is enforced identically across both surfaces (the dedicated
-    ``git_diff`` MCP tool AND ``git diff`` invoked via exec / unsafe_exec).
-    Returns ``None`` if every flag is read-only.
-    """
     pos = 0
     length = len(args_text)
     while pos < length:
@@ -199,9 +113,6 @@ def _scan_diff_flags_for_writes(args_text: str) -> str | None:
             token_end += 1
         token = args_text[pos:token_end]
         pos = token_end
-        # Output-writing flags: ``--output=path``, ``--output path``,
-        # ``--output``, ``-o=path``, ``-o``, ``-o path``. Substring match
-        # is intentional so ``--output-threshold`` is also rejected.
         for prefix in _GIT_DIFF_OUTPUT_FLAGS:
             if prefix == "--output" and (
                 token == "--output" or "--output=" in token or token.startswith("--output ")
@@ -218,22 +129,6 @@ def _scan_diff_flags_for_writes(args_text: str) -> str | None:
 
 
 def _scan_text_for_vcs_violation(text: str) -> str | None:
-    """Return a denial reason when ``text`` references a banned VCS usage.
-
-    Walks every ``_VCS_USAGE_PATTERN`` match. ``hg`` / ``svn`` are denied
-    immediately (the agent has no native read tools for either). ``git``
-    matches extract the subcommand from the remainder text via
-    ``_extract_git_subcommand_and_args``:
-
-    - a blocked subcommand → denial naming the subcommand.
-    - a ``diff`` invocation → ``_scan_diff_flags_for_writes``
-      guards output-writing and external-helper flags.
-    - any other subcommand → accepted; the loop continues so a
-      single text containing both ``git status`` and ``git push`` still
-      denies on the mutating call.
-
-    Returns ``None`` when every VCS reference in the text is permitted.
-    """
     pos = 0
     while True:
         match = _VCS_USAGE_PATTERN.search(text, pos)
@@ -246,7 +141,6 @@ def _scan_text_for_vcs_violation(text: str) -> str | None:
                 "git_* read tools for git reads; commits go through the "
                 "pipeline's commit phase."
             )
-        # ``git``: extract subcommand from the remainder after this match.
         subcommand, args_text = _extract_git_subcommand_and_args(text[match.end() :])
         if subcommand in _GIT_BLOCKED_SUBCOMMANDS:
             return (
@@ -266,25 +160,10 @@ def _scan_text_for_vcs_violation(text: str) -> str | None:
 
 
 def check_version_control(command: str, args: list[str]) -> str | None:
-    """Return a denial reason if the command invokes or references a VCS tool.
-
-    hg / svn are denied unconditionally. Known high-risk ``git`` operations
-    and write-producing ``diff`` flags are denied. The textual scan walks the
-    WHOLE joined text so a VCS call
-    hidden in a quoted ``sh -c`` string, a ``$(...)`` / backtick
-    substitution, or a newline-separated sequence is still caught.
-    """
     return _scan_text_for_vcs_violation(" ".join([command, *args]))
 
 
 def _script_candidate_tokens(segments: list[tuple[str, list[str]]]) -> list[str]:
-    """Return tokens that may name an executed script file.
-
-    Every segment head is a candidate (``./release``); when the head is a
-    shell interpreter, its first non-flag argument is the script it runs
-    (``bash deploy.sh``). An inline ``-c`` string is not a file and is
-    already covered by the textual VCS match.
-    """
     candidates: list[str] = []
     for head, args in segments:
         candidates.append(head)
@@ -300,17 +179,6 @@ def _script_candidate_tokens(segments: list[tuple[str, list[str]]]) -> list[str]
 def find_vcs_usage_in_scripts(
     segments: list[tuple[str, list[str]]], workspace_root: Path
 ) -> tuple[str, str] | None:
-    """Return ``(script_token, vcs_word)`` when an executed shell script uses VCS.
-
-    Best-effort static check: each candidate script token is resolved against
-    the workspace root; a readable file that looks like a shell script (a
-    known extension or a ``#!`` shebang) has its first
-    ``_SCRIPT_SCAN_LIMIT_BYTES`` scanned by the same blacklist scanner that
-    ``check_version_control`` uses. ``hg`` / ``svn`` and blocked ``git``
-    subcommands trip the scan; a script running only ``git status``
-    is allowed. Unreadable or non-file tokens are skipped — the textual
-    match on the command line remains the primary net.
-    """
     for token in _script_candidate_tokens(segments):
         path = Path(token) if Path(token).is_absolute() else workspace_root / token
         try:
@@ -322,10 +190,6 @@ def find_vcs_usage_in_scripts(
             continue
         if not (token.endswith(_SCRIPT_EXTENSIONS) or head_bytes.startswith(_SHEBANG_PREFIX)):
             continue
-        # NULs are dropped before scanning because ``sh`` drops them too: a
-        # script holding ``gi<NUL>t tag`` scans as the unknown word ``gi?t``
-        # but executes as ``git tag``. Scan the text the shell will actually
-        # run, not the bytes on disk.
         script_text = head_bytes.decode("utf-8", errors="replace").replace("\x00", "")
         reason = _scan_text_for_vcs_violation(script_text)
         if reason is not None:
@@ -334,26 +198,6 @@ def find_vcs_usage_in_scripts(
 
 
 def exec_usage_hints(segments: list[tuple[str, list[str]]]) -> list[str]:
-    """Return human-readable hint strings to append to the exec result text.
-
-    Two hints can be emitted, in order:
-
-    1. ``git``-hint — when any segment ran an allowed git
-       subcommand, append a note pointing at the dedicated ``git_status`` /
-       ``git_diff`` / ``git_log`` / ``git_show`` MCP read tools. They are
-       the preferred surface for repository-state reads (typed schemas,
-       bounded output, dedicated capabilities); ``exec`` is for the case
-       where shell-level processing is genuinely needed.
-    2. ``grep``-hint — when any segment head is ``grep`` / ``egrep`` /
-       ``fgrep``, append a warning that the MCP explore endpoint
-       (``grep_files`` / indexed search) is more efficient for
-       workspace-wide content searches. ``grep`` is never denied (the
-       tooling exists, the hint is informational).
-
-    Returns an empty list when no hint applies. The hints are joined with a
-    blank line onto the standard ``format_exec_result`` text so they surface
-    inside the same ToolContent block.
-    """
     saw_allowed_git = False
     saw_grep = False
     for head, args in segments:

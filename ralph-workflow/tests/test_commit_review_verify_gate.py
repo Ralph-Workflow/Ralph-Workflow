@@ -1,5 +1,3 @@
-"""Verify-gated black-box proofs for commit-review leftover, routing, and rules."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -162,12 +160,6 @@ def _stage1_soft_finding_categories(
     pipeline_policy: object | None = None,
     phase: str = "development_commit_review",
 ) -> tuple[str, ...]:
-    """Return the Stage 1 soft-finding categories raised for the pending diff.
-
-    Stage 1 is a public seam (``run_commit_review_stage1_preflight``), so a
-    proof can read the evidence the reviewer is handed without reaching into
-    the phase's private state.
-    """
     policy = (
         pipeline_policy
         if pipeline_policy is not None
@@ -256,9 +248,6 @@ def test_missing_artifact_bound_survives_highest_priority_reselection(
         events.append(_run(workspace, chain_manager=chain_manager)[0])
     assert isinstance(events[0], PhaseFailureEvent)
     assert events[0].failure_category is FailureCategory.ARTIFACT_VALIDATION
-    # The identical no-progress bound is a reviewer malfunction, so it fails
-    # the gate instead of proceeding to an unbound commit.
-    # RALPH-TEST-REASON: Phase returns CommitReviewGateFailed on bounded identical replay failure instead of AGENT_SUCCESS
     assert isinstance(events[-1], CommitReviewGateFailed)
 
 
@@ -339,8 +328,6 @@ def test_mixed_declined_delete_and_throwing_ignore_is_not_applied_work(
     assert "*.o" not in ignore_text
     assert (tmp_git_repo / "lib.py").exists()
     assert PipelineEvent.AGENT_SUCCESS not in result
-    # Every requested action failed at apply time: the phase loops back with the
-    # apply-time retry hint instead of failing the phase.
     assert isinstance(result[0], CommitReviewLoopback)
     assert "*.o" in result[0].hint
 
@@ -451,15 +438,7 @@ def test_prompt_named_deletable_classes_match_engine_boundary(tmp_git_repo: Path
         assert target.exists()
 
 
-# The commit-review acceptance criteria used to be pinned only inside the
-# opt-in ``subprocess_e2e`` lane, so the default ``make verify`` profile never
-# executed them and their coverage could rot unnoticed. Every proof below runs
-# in the DEFAULT lane: this module carries NO ``subprocess_e2e`` marker and IS
-# registered in ``ralph.test_suites.REQUIRED_AUTO_INTEGRATE_E2E_FILES``.
-
-
 def _head_sha(repo_root: Path) -> str:
-    """Return the SHA of the repository's current ``HEAD`` commit."""
     repo = Repo(repo_root)
     try:
         return str(repo.head.commit.hexsha)
@@ -468,7 +447,6 @@ def _head_sha(repo_root: Path) -> str:
 
 
 def _commit_count(repo_root: Path) -> int:
-    """Return the number of commits reachable from ``HEAD``."""
     repo = Repo(repo_root)
     try:
         return sum(1 for _ in repo.iter_commits())
@@ -477,7 +455,6 @@ def _commit_count(repo_root: Path) -> int:
 
 
 def _track_and_commit(repo_root: Path, paths: list[str]) -> None:
-    """Track ``paths`` and record them in a single commit."""
     repo = Repo(repo_root)
     try:
         repo.index.add(paths)
@@ -487,13 +464,6 @@ def _track_and_commit(repo_root: Path, paths: list[str]) -> None:
 
 
 def _seed_engine_defaults(repo_root: Path) -> None:
-    """Seed the engine's canonical ignore/exclude files before a proof starts.
-
-    The commit-review phase seeds these files itself, and the ``.gitignore``
-    seed is a DETERMINISTIC COMMIT. Seeding them up front makes the phase's
-    own seeding a no-op, so a proof that asserts "nothing was committed"
-    measures the gate and not the seeding.
-    """
     auto_seed_default_gitignore(repo_root)
     auto_seed_default_git_exclude(repo_root)
 
@@ -501,14 +471,6 @@ def _seed_engine_defaults(repo_root: Path) -> None:
 def test_hard_tripwire_rejects_without_an_agent_and_commits_nothing(
     tmp_git_repo: Path,
 ) -> None:
-    """A protected-file deletion is rejected by Stage 1, with no agent and no commit.
-
-    The reviewer agent is never consulted: no artifact exists, and a
-    consulted reviewer would have produced an artifact-validation failure
-    instead of a hard rejection. Nothing is committed, and the working tree
-    is left untouched -- the rollback belongs to the commit phase, not to
-    the gate.
-    """
     agents_md = tmp_git_repo / "AGENTS.md"
     agents_md.write_text("# Agents Policy\n", encoding="utf-8")
     fillers = [f"filler_{index:02d}.py" for index in range(12)]
@@ -533,11 +495,8 @@ def test_hard_tripwire_rejects_without_an_agent_and_commits_nothing(
     assert "Protected document deleted" in event.reason
     assert "AGENTS.md" in event.reason
     assert event.ref.startswith("refs/ralph/proposals/")
-    # The agent was never invoked: it produced no artifact, and the gate
-    # never reported an artifact-validation failure.
     assert not (tmp_git_repo / COMMIT_REVIEW_ARTIFACT_PATH).exists()
     assert not any(isinstance(item, PhaseFailureEvent) for item in result)
-    # Nothing was committed and the damage was not silently discarded.
     assert _head_sha(tmp_git_repo) == head_before
     assert _commit_count(tmp_git_repo) == commits_before
     assert not agents_md.exists()
@@ -546,12 +505,6 @@ def test_hard_tripwire_rejects_without_an_agent_and_commits_nothing(
 def test_whole_repo_deletion_is_rejected_by_the_hard_tripwire_without_an_agent(
     tmp_git_repo: Path,
 ) -> None:
-    """Deleting the whole repository trips the mass-deletion wire, agentlessly.
-
-    The mass-deletion wire is a HARD tripwire: it rejects the proposal
-    before any agent is consulted, so the rejection cannot be talked out of
-    and no artifact is required.
-    """
     tracked: list[str] = []
     for index in range(60):
         name = f"module_{index:03d}.py"
@@ -585,12 +538,6 @@ def test_whole_repo_deletion_is_rejected_by_the_hard_tripwire_without_an_agent(
 def test_unverifiable_reject_citation_is_a_reviewer_malfunction_not_a_rollback(
     tmp_git_repo: Path,
 ) -> None:
-    """A rejection citing a path outside the diff fails the gate, never rolls back.
-
-    The reviewer malfunctioned: the engine cannot verify the citation, so
-    the verdict is a gate failure. The pending work is NOT discarded --
-    nothing is rolled back and nothing is committed.
-    """
     app_file = tmp_git_repo / "src" / "app.py"
     app_file.parent.mkdir(parents=True, exist_ok=True)
     app_file.write_text("print('hello')\n", encoding="utf-8")
@@ -613,7 +560,6 @@ def test_unverifiable_reject_citation_is_a_reviewer_malfunction_not_a_rollback(
     event = result[0]
     assert isinstance(event, CommitReviewGateFailed)
     assert "citations could not be verified" in event.detail
-    # A malfunction never discards work: the pending change survives.
     assert app_file.read_text(encoding="utf-8") == "print('hello')\n"
     assert _head_sha(tmp_git_repo) == head_before
     assert _commit_count(tmp_git_repo) == commits_before
@@ -622,11 +568,6 @@ def test_unverifiable_reject_citation_is_a_reviewer_malfunction_not_a_rollback(
 def test_verifiable_reject_citation_is_a_rejection_not_a_reviewer_malfunction(
     tmp_git_repo: Path,
 ) -> None:
-    """The same reject verdict with a citable path is a rejection, not a malfunction.
-
-    This is the control for the malfunction proof above: the ONLY
-    difference is whether the cited path appears in the pending diff.
-    """
     app_file = tmp_git_repo / "src" / "app.py"
     app_file.parent.mkdir(parents=True, exist_ok=True)
     app_file.write_text("print('hello')\n", encoding="utf-8")
@@ -650,7 +591,6 @@ def test_verifiable_reject_citation_is_a_rejection_not_a_reviewer_malfunction(
 
 
 def test_stale_tree_sha_in_the_artifact_loops_back_for_rereview(tmp_git_repo: Path) -> None:
-    """An artifact that judged a different tree is consumed and re-reviewed."""
     workspace = FsWorkspace(tmp_git_repo)
     _seed_engine_defaults(tmp_git_repo)
     artifact_sha = "0" * 40
@@ -682,20 +622,11 @@ def test_stale_tree_sha_in_the_artifact_loops_back_for_rereview(tmp_git_repo: Pa
 def test_mismatched_tree_sha_at_commit_is_refused_without_creating_a_commit(
     tmp_git_repo: Path,
 ) -> None:
-    """The commit executor refuses to commit a tree the review never approved.
-
-    The review approves a SEALED tree. When the staged tree no longer
-    matches that approval, the commit is refused: no commit object is
-    created and ``HEAD`` does not move.
-    """
     readme = tmp_git_repo / "README.md"
     readme.write_text("approved change\n", encoding="utf-8")
 
     approved = seal_pending(tmp_git_repo, "run", 1)
 
-    # Control: staging the working tree reproduces EXACTLY the approved
-    # tree, so the refusal below can only come from the post-approval
-    # tampering and not from an unrelated staging difference.
     repo = Repo(tmp_git_repo)
     try:
         repo.git.add("-A")
@@ -727,19 +658,15 @@ def test_mismatched_tree_sha_at_commit_is_refused_without_creating_a_commit(
         diagnostic = get_last_commit_error()
         assert diagnostic is not None
         assert "does not match approved tree SHA" in diagnostic
-        # No commit object was created and HEAD did not move.
         assert _head_sha(tmp_git_repo) == head_before
         assert _commit_count(tmp_git_repo) == commits_before
     finally:
-        # The pending diagnostic is a handoff slot, not a log: clear it so
-        # this failure cannot be routed by a later attempt.
         set_last_commit_error(None)
 
 
 def test_invalid_verdict_produces_the_documented_validation_diagnostic(
     tmp_git_repo: Path,
 ) -> None:
-    """A verdict outside the closed vocabulary is a hard error with a diagnostic."""
     workspace = FsWorkspace(tmp_git_repo)
     _seed_engine_defaults(tmp_git_repo)
     _write_commit_review_artifact(workspace, {"verdict": "maybe"})
@@ -759,8 +686,6 @@ def test_invalid_verdict_produces_the_documented_validation_diagnostic(
     assert _head_sha(tmp_git_repo) == head_before
     assert _commit_count(tmp_git_repo) == commits_before
 
-    # The artifact grammar rejects the very same document with the
-    # documented MD/SPEC diagnostic code.
     _, diagnostics = parse_and_validate(artifact_text, COMMIT_REVIEW_SPEC)
     error_rule_ids = {
         diagnostic.rule_id for diagnostic in diagnostics if diagnostic.severity == "error"
@@ -768,24 +693,9 @@ def test_invalid_verdict_produces_the_documented_validation_diagnostic(
     assert "SPEC010" in error_rule_ids
 
 
-# Gap fills for the commit-review acceptance criteria.
-#
-# Every proof below runs in the DEFAULT lane: this module carries NO
-# ``subprocess_e2e`` marker and IS registered in
-# ``ralph.test_suites.REQUIRED_AUTO_INTEGRATE_E2E_FILES``, so ``make verify``
-# executes it.
-
-
 def test_legitimate_small_deletion_is_approved_not_rejected(
     tmp_git_repo: Path,
 ) -> None:
-    """A small, legitimate deletion is APPROVED -- only mass deletion is hard.
-
-    This is the control for the whole-repo-deletion proof above: the same
-    Stage 1 evaluator sees ONE deleted file and lets the iteration through.
-    The review approves the pending deletion; it neither rolls the tree back
-    nor creates a commit.
-    """
     tracked: list[str] = []
     for index in range(10):
         name = f"module_{index:02d}.py"
@@ -810,8 +720,6 @@ def test_legitimate_small_deletion_is_approved_not_rejected(
     assert isinstance(event, CommitReviewApproved), (
         f"A single small deletion must be approved, got: {event!r}"
     )
-    # The approved deletion is still pending: the gate approves, it does not
-    # roll back and it does not commit.
     assert not (tmp_git_repo / "module_00.py").exists()
     assert _head_sha(tmp_git_repo) == head_before
     assert _commit_count(tmp_git_repo) == commits_before
@@ -820,11 +728,6 @@ def test_legitimate_small_deletion_is_approved_not_rejected(
 def test_reviewer_malfunction_discards_no_pending_work(
     tmp_git_repo: Path,
 ) -> None:
-    """The identity-bound exhaustion of a missing artifact discards NO work.
-
-    A reviewer malfunction is a gate failure: the pending change survives
-    untouched, nothing is rolled back and nothing is committed.
-    """
     workspace = FsWorkspace(tmp_git_repo)
     pending = tmp_git_repo / "pending_work.txt"
     pending.write_text("work in progress\n", encoding="utf-8")
@@ -838,7 +741,6 @@ def test_reviewer_malfunction_discards_no_pending_work(
     assert isinstance(events[-1], CommitReviewGateFailed), (
         f"The identical no-progress bound must fail the gate, got: {events[-1]!r}"
     )
-    # A malfunction never discards work: no rollback, no commit.
     assert pending.read_text(encoding="utf-8") == "work in progress\n"
     assert _head_sha(tmp_git_repo) == head_before
     assert _commit_count(tmp_git_repo) == commits_before
@@ -847,13 +749,6 @@ def test_reviewer_malfunction_discards_no_pending_work(
 def test_staged_secret_is_offered_to_the_edit_step_instead_of_being_rejected(
     tmp_git_repo: Path,
 ) -> None:
-    """A staged secret is EDIT evidence, not a hard rejection.
-
-    The staged secret raises a Stage 1 signal, but that signal is soft: the
-    reviewer is offered the file, the edit step applies the exclusion, and
-    the iteration is approved with the secret kept out of the commit. The
-    working-tree copy is preserved.
-    """
     secret = tmp_git_repo / ".env"
     secret.write_text("TOKEN=staged-secret\n", encoding="utf-8")
     repo = Repo(tmp_git_repo)
@@ -864,8 +759,6 @@ def test_staged_secret_is_offered_to_the_edit_step_instead_of_being_rejected(
         repo.close()
     _seed_engine_defaults(tmp_git_repo)
 
-    # The secret is tracked and modified, so it appears in the pending diff
-    # as a staged secret.
     secret.write_text("TOKEN=rotated-secret\n", encoding="utf-8")
 
     categories = _stage1_soft_finding_categories(tmp_git_repo)
@@ -892,8 +785,6 @@ def test_staged_secret_is_offered_to_the_edit_step_instead_of_being_rejected(
     assert isinstance(event, CommitReviewApproved), (
         f"A staged secret must not reject the iteration, got: {event!r}"
     )
-    # The edit step applied the exclusion: the secret is untracked, and the
-    # working-tree copy survives.
     assert secret.read_text(encoding="utf-8") == "TOKEN=rotated-secret\n"
     repo = Repo(tmp_git_repo)
     try:
@@ -908,12 +799,6 @@ def test_staged_secret_is_offered_to_the_edit_step_instead_of_being_rejected(
 def test_oversized_binary_is_evidence_and_a_survivor_is_rejected(
     tmp_git_repo: Path,
 ) -> None:
-    """A binary above the size limit is EDIT evidence, and a survivor is rejected.
-
-    The binary reaches the reviewer as Stage 1 evidence, but the reviewer took
-    no action for it, so the unsafe content is still in the re-sealed proposal:
-    the engine rejects the proposal on its OWN evidence.
-    """
     policy = load_policy(_DEFAULT_POLICY_DIR).pipeline.model_copy(
         update={"commit_review": CommitReviewPolicy(binary_size_limit=1024)}
     )
@@ -937,9 +822,6 @@ def test_oversized_binary_is_evidence_and_a_survivor_is_rejected(
 
     assert len(result) == 1
     event = result[0]
-    # RALPH-TEST-REASON: the old expectation was that an approved oversized
-    # binary advanced the iteration. The product criteria require a survivor
-    # to be rejected on the engine's own evidence.
     assert isinstance(event, CommitReviewRejected), (
         f"An oversized binary that survives the edit step must reject, got: {event!r}"
     )
@@ -957,12 +839,6 @@ def test_oversized_binary_is_evidence_and_a_survivor_is_rejected(
 def test_final_commit_review_loops_back_on_an_unsafe_action_and_never_advances(
     tmp_git_repo: Path,
 ) -> None:
-    """The FINAL review phase behaves like the per-iteration one.
-
-    An ``approve`` verdict that carries an unsafe action loops the reviewer
-    back to the review phase; it never advances to the commit phase and it
-    never discards the tracked file the action targeted.
-    """
     workspace = FsWorkspace(tmp_git_repo)
     tracked = tmp_git_repo / "app.py"
     tracked.write_text("print('x')\n", encoding="utf-8")

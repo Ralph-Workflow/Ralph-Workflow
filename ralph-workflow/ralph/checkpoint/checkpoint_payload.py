@@ -1,4 +1,3 @@
-"""Checkpoint payload model combining state and metadata."""
 
 from __future__ import annotations
 
@@ -11,7 +10,6 @@ from ralph.pipeline.state import PipelineState
 
 @dataclass(frozen=True)
 class CheckpointPayload:
-    """Checkpoint payload combining pipeline state with extension metadata."""
 
     state: PipelineState
     run_context: RunContext
@@ -20,11 +18,9 @@ class CheckpointPayload:
 
     @property
     def phase(self) -> str:
-        """Expose the current phase directly for checkpoint summaries."""
         return self.state.phase
 
     def to_dict(self) -> dict[str, object]:
-        """Return a JSON-safe dictionary representation."""
         return {
             "state": self.state.model_dump(mode="json"),
             "run_context": self.run_context.to_dict(),
@@ -35,7 +31,6 @@ class CheckpointPayload:
 
     @classmethod
     def from_dict(cls, data: dict[str, object]) -> CheckpointPayload:
-        """Construct CheckpointPayload from dictionary representation."""
         raw_state = data.get("state")
         if isinstance(raw_state, dict):
             state = PipelineState.model_validate(raw_state)

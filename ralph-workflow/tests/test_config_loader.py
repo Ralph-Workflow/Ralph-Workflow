@@ -1,5 +1,3 @@
-"""Unit tests for configuration loading and merging."""
-
 from __future__ import annotations
 
 import os
@@ -83,7 +81,6 @@ def _assert_validation_error(action: Callable[[], object]) -> None:
 
 
 def test_load_toml_malformed_config_names_file_and_fix(tmp_path: Path) -> None:
-    """A malformed user config must not silently fall back to defaults."""
     config_path = tmp_path / "ralph-workflow.toml"
     config_path.write_text("[general\nverbosity = 2\n", encoding="utf-8")
 
@@ -100,7 +97,6 @@ def test_load_toml_malformed_config_names_file_and_fix(tmp_path: Path) -> None:
 def test_config_loader_regression_stale_prompt_helper_table_is_ignored(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """S-2: retired prompt-helper config must not block normal config loading."""
     config_path = tmp_path / "ralph-workflow.toml"
     config_path.write_text('[prompt_helper]\nagent = "legacy"\n', encoding="utf-8")
     monkeypatch.setattr("ralph.config.loader.GLOBAL_CONFIG_PATH", tmp_path / "missing-global.toml")
@@ -114,7 +110,6 @@ def test_config_loader_regression_stale_prompt_helper_table_is_ignored(
 def test_load_config_unknown_field_warns_with_field_and_file(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A misspelled config field must be visible instead of being silently ignored."""
     config_path = tmp_path / "ralph-workflow.toml"
     config_path.write_text("[general]\nverbosuty = 1\n", encoding="utf-8")
     monkeypatch.setattr("ralph.config.loader.GLOBAL_CONFIG_PATH", tmp_path / "missing-global.toml")
@@ -132,30 +127,22 @@ def test_load_config_unknown_field_warns_with_field_and_file(
 
 
 def test_collect_unknown_config_fields_names_nested_typo_with_suggestion() -> None:
-    """``collect_unknown_config_fields`` must name nested-subtable typos AND suggest the canonical name.
-
-    AC-01: typo'd keys in nested subtables like ``general.wrokflow`` or
-    ``general.workflow.checkpont_enabled`` must be surfaced with a
-    ``did you mean`` suggestion. Agent chain names like ``[agent_chains.planning]``
-    are USER-DEFINED and must NOT be warned about.
-    """
     from pathlib import Path
 
     from ralph.config.loader import collect_unknown_config_fields
 
     data = {
         "general": {
-            "workflow": {"checkpont_enabled": True},  # typo of checkpoint_enabled
-            "wrokflow": {"checkpoint_enabled": True},  # typo of workflow
+            "workflow": {"checkpont_enabled": True},
+            "wrokflow": {"checkpoint_enabled": True},
         },
         "agent_chains": {
-            "planning": ["claude"],  # user-defined name; must NOT be warned
-            "custom_chain_name": ["claude"],  # also user-defined; must NOT be warned
+            "planning": ["claude"],
+            "custom_chain_name": ["claude"],
         },
     }
     lines = collect_unknown_config_fields(data, Path("ralph-workflow.toml"))
 
-    # Nested typos must be surfaced with the dotted path.
     assert any("general.workflow.checkpont_enabled" in line for line in lines), (
         f"Expected nested typo 'general.workflow.checkpont_enabled' in "
         f"unknown-field findings, got: {lines}"
@@ -163,14 +150,11 @@ def test_collect_unknown_config_fields_names_nested_typo_with_suggestion() -> No
     assert any("general.wrokflow" in line for line in lines), (
         f"Expected nested typo 'general.wrokflow' in unknown-field findings, got: {lines}"
     )
-    # Each finding must include a 'did you mean' suggestion pointing at
-    # the canonical field name.
     for line in lines:
         if "general.wrokflow" in line:
             assert "workflow" in line, (
                 f"Expected canonical suggestion 'workflow' in line {line!r} (did-you-mean path)"
             )
-    # User-defined chain names must NOT be warned about.
     assert not any("agent_chains.planning" in line for line in lines), (
         f"User-defined agent chain names must not be warned about; got: {lines}"
     )
@@ -180,11 +164,6 @@ def test_collect_unknown_config_fields_names_nested_typo_with_suggestion() -> No
 
 
 def test_collect_unknown_config_fields_warns_on_unknown_agents_subkey() -> None:
-    """A typo INSIDE an agent block must be detected.
-
-    ``[agents.claude].yolo_flg`` is a leaf-typo (real field is ``yolo_flag``);
-    a single-character typo must surface with a suggestion.
-    """
     from pathlib import Path
 
     from ralph.config.loader import collect_unknown_config_fields
@@ -198,7 +177,6 @@ def test_collect_unknown_config_fields_warns_on_unknown_agents_subkey() -> None:
     assert any("agents.claude.yolo_flg" in line for line in lines), (
         f"Expected leaf typo 'agents.claude.yolo_flg' to surface, got: {lines}"
     )
-    # And the suggestion should be the canonical field name.
     for line in lines:
         if "yolo_flg" in line:
             assert "yolo_flag" in line, (
@@ -207,7 +185,6 @@ def test_collect_unknown_config_fields_warns_on_unknown_agents_subkey() -> None:
 
 
 def test_collect_unknown_config_fields_clean_when_schema_matches() -> None:
-    """A clean config yields zero unknown-field findings."""
     from pathlib import Path
 
     from ralph.config.loader import collect_unknown_config_fields
@@ -219,15 +196,6 @@ def test_collect_unknown_config_fields_clean_when_schema_matches() -> None:
 def test_load_config_warns_on_unknown_field_in_propagated_config(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A typo in an inherited (propagated) ancestor config must surface too.
-
-    AC-01 follow-up: ``load_config`` merges every
-    ``workspace_scope.propagated_config_paths`` file into the effective
-    configuration but must call ``warn_unknown_fields`` for each
-    inherited source path, not only for global + local. An unknown key
-    in an effective ancestor config must therefore be visible in the
-    loader warning, not silently ignored.
-    """
     from ralph.workspace.scope import WorkspaceScope
 
     propagated_path = tmp_path / "parent" / ".agent" / "ralph-workflow.toml"
@@ -262,39 +230,28 @@ def test_load_config_warns_on_unknown_field_in_propagated_config(
     assert str(propagated_path) in warning, (
         f"Expected the propagated-ancestor path to be named in the loader warning, got: {warning!r}"
     )
-    # The fix-it suggestion must include the canonical field name.
     assert "workflow" in warning, (
         f"Expected canonical 'workflow' suggestion in propagated-ancestor warning, got: {warning!r}"
     )
 
 
 def test_invalid_value_message_names_rejected_and_allowed() -> None:
-    """A Pydantic ValidationError must surface the rejected value and allowed enum set.
-
-    AC-02: a config validation error must name the rejected value (so the
-    operator can paste it back from the message) AND the allowed values
-    (so they do not need to consult the Pydantic docs).
-    """
     from pydantic import ValidationError
 
     from ralph.config.models import UnifiedConfig
 
-    # json_parser is a closed enum; pass an out-of-set value.
     try:
         UnifiedConfig.model_validate({"agents": {"bad": {"cmd": "x", "json_parser": "NOTREAL"}}})
     except ValidationError as exc:
         message = format_config_validation_error(exc, Path("ralph-workflow.toml"))
-        # The message must name the rejected value.
         assert "NOTREAL" in message, (
             f"Expected the rejected value 'NOTREAL' to be named in the "
             f"config-error message, got: {message!r}"
         )
-        # The message must list the allowed enum values.
         assert "'claude'" in message and "'codex'" in message, (
             f"Expected the allowed json_parser enum values to be listed in "
             f"the config-error message, got: {message!r}"
         )
-        # The message must keep the what/why/fix envelope.
         for marker in ("What failed:", "Why it matters:", "Fix:"):
             assert marker in message, (
                 f"Expected {marker!r} in the config-error envelope, got: {message!r}"
@@ -304,7 +261,6 @@ def test_invalid_value_message_names_rejected_and_allowed() -> None:
 def test_load_config_missing_agent_command_logs_ralph_authored_remediation(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Missing required agent fields must show a file, field, and concrete fix."""
     config_path = tmp_path / "ralph-workflow.toml"
     config_path.write_text("[agents.broken]\n", encoding="utf-8")
     monkeypatch.setattr("ralph.config.loader.GLOBAL_CONFIG_PATH", tmp_path / "missing-global.toml")
@@ -323,8 +279,6 @@ def test_load_config_missing_agent_command_logs_ralph_authored_remediation(
     assert "Fix:" in message
     assert str(config_path) in message
     assert "agents.broken.cmd" in message
-    # The per-field line lists the rejected value and the docstring anchor
-    # for what to set, so the operator gets both the why and a concrete fix.
     assert "Field required" in message
     assert "--check-config" in message
     assert "For further information" not in message
@@ -333,19 +287,6 @@ def test_load_config_missing_agent_command_logs_ralph_authored_remediation(
 def test_load_config_validation_error_names_global_file_when_only_global_has_bad_value(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """S-7: bad value lives ONLY in the user-global file -> message names that file.
-
-    Before the fix ``load_config`` always named the project-local
-    ``.agent/ralph-workflow.toml`` in the envelope, which misdirected
-    operators at a problem that lived in their ``~/.config/`` file.
-    After the fix the failing field's layer is attributed, and when
-    that layer is the user-global file the message names the global
-    path -- not the project-local one.
-    """
-    # The autouse conftest sets ``XDG_CONFIG_HOME`` to an isolated tmp
-    # path; writing the global config there mirrors the real
-    # ``~/.config/ralph-workflow.toml`` shape without leaking outside the
-    # sandbox.
     xdg_root = Path(os.environ["XDG_CONFIG_HOME"])
     global_path = xdg_root / "ralph-workflow.toml"
     global_path.parent.mkdir(parents=True, exist_ok=True)
@@ -353,7 +294,6 @@ def test_load_config_validation_error_names_global_file_when_only_global_has_bad
         '[general]\nverbosity = "not_an_int"\n',
         encoding="utf-8",
     )
-    # Project-local is empty (so the bad value comes ONLY from global).
     project_local = tmp_path / "agent-ralph-workflow.toml"
     project_local.write_text("", encoding="utf-8")
     records: list[str] = []
@@ -369,8 +309,6 @@ def test_load_config_validation_error_names_global_file_when_only_global_has_bad
         f"Validation envelope MUST name the user-global file when the bad "
         f"value lives only there; got: {message!r}"
     )
-    # The envelope must NOT misdirect the operator at the empty
-    # project-local file when the bad value did not come from it.
     assert "agent-ralph-workflow.toml" not in message, (
         f"Validation envelope MUST NOT name an empty project-local file "
         f"as the offender when the bad value came from the user-global "
@@ -379,7 +317,6 @@ def test_load_config_validation_error_names_global_file_when_only_global_has_bad
 
 
 def test_deep_merge_simple() -> None:
-    """Test basic dictionary merge."""
     base: dict[str, object] = {"a": 1, "b": 2}
     override: dict[str, object] = {"b": 3, "c": 4}
     result = deep_merge(base, override)
@@ -387,7 +324,6 @@ def test_deep_merge_simple() -> None:
 
 
 def test_deep_merge_nested() -> None:
-    """Test nested dictionary merge."""
     base: dict[str, object] = {"general": {"a": 1, "b": 2}}
     override: dict[str, object] = {"general": {"b": 3, "c": 4}}
     result = deep_merge(base, override)
@@ -395,7 +331,6 @@ def test_deep_merge_nested() -> None:
 
 
 def test_deep_merge_override_wins() -> None:
-    """Test that override values take precedence."""
     base: dict[str, object] = {"a": 1, "b": {"x": 1, "y": 2}}
     override: dict[str, object] = {"b": {"y": 3, "z": 4}}
     result = deep_merge(base, override)
@@ -405,7 +340,6 @@ def test_deep_merge_override_wins() -> None:
 def test_load_config_without_agent_policy_tables_leaves_agent_policy_empty(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Missing agent policy config must not be silently filled by Python defaults."""
     monkeypatch.setattr(
         "ralph.config.loader.GLOBAL_CONFIG_PATH", tmp_path / GLOBAL_CONFIG_PATH.name
     )
@@ -502,19 +436,16 @@ def test_load_config_local_normalized_tables_override_xdg_global(
 
 
 def test_unified_config_frozen() -> None:
-    """Test that UnifiedConfig is immutable (frozen)."""
     config = load_config(workspace_scope=_scope_for(Path.cwd()))
     _assert_validation_error(lambda: setattr(config.general, "verbosity", 99))
 
 
 def test_agent_config_frozen() -> None:
-    """Test that AgentConfig is immutable (frozen)."""
     agent = AgentConfig(cmd="test")
     _assert_validation_error(lambda: setattr(agent, "cmd", "changed"))
 
 
 def test_general_config_defaults() -> None:
-    """Test GeneralConfig default values."""
     config = GeneralConfig()
     assert config.verbosity == DEFAULT_VERBOSITY
     assert config.telemetry_enabled is True
@@ -524,7 +455,6 @@ def test_general_config_defaults() -> None:
 def test_load_config_accepts_telemetry_opt_out_in_general(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The main config supports an explicit telemetry opt-out switch."""
     global_path = tmp_path / GLOBAL_CONFIG_PATH.name
     global_path.write_text("[general]\ntelemetry_enabled = false\n", encoding="utf-8")
     monkeypatch.setattr("ralph.config.loader.GLOBAL_CONFIG_PATH", global_path)
@@ -536,19 +466,16 @@ def test_load_config_accepts_telemetry_opt_out_in_general(
 
 
 def test_general_config_does_not_expose_removed_field() -> None:
-    """Test that the dead field is removed."""
     field_name = "max_dev" + "_continuations"
     assert field_name not in GeneralConfig.model_fields
 
 
 def test_general_config_does_not_expose_removed_execution_flags() -> None:
-    """Removed review-era execution flags must not remain in GeneralConfig."""
     assert "execution" not in GeneralConfig.model_fields
     assert "behavior" not in GeneralConfig.model_fields
 
 
 def test_general_config_does_not_expose_removed_force_universal_prompt() -> None:
-    """force_universal_prompt and related review-era fields were removed as dead code."""
     for field_name in (
         "force_universal_prompt",
         "auto_detect_stack",
@@ -559,39 +486,21 @@ def test_general_config_does_not_expose_removed_force_universal_prompt() -> None
 
 
 def test_general_config_provider_fallback_is_labeled_reserved() -> None:
-    """``general.provider_fallback`` is reserved dead knob; carry an explicit maintainer comment.
-
-    The field is NOT consumed by any runtime code; agent fallback is provided
-    exclusively by [agent_chains] in ralph-workflow.toml. We keep the field
-    only so a legacy user-global config carrying ``provider_fallback = {...}``
-    does not trip the unknown-field detector. The accompanying Python
-    comment on the field is the "make it real, remove it, or label it"
-    label this knob needed. The plan Step 6 constraint requires the label
-    to remain a maintainer comment and forbids changing the Pydantic
-    model (no Field(description=...) and no type/default change).
-    """
     import inspect
 
     assert "provider_fallback" in GeneralConfig.model_fields
     field = GeneralConfig.model_fields["provider_fallback"]
-    # Constraint from the accepted plan: no Field(description=...) exposing
-    # the dead knob through Pydantic JSON schema. The label lives in the
-    # Python comment, not the Pydantic field metadata.
     assert field.description in (None, ""), (
         "provider_fallback must not carry a Field(description=...) that would "
         "expose the dead knob through Pydantic JSON schema; the label belongs "
         "in a maintainer comment. Got description: "
         f"{field.description!r}"
     )
-    # Default value must be an empty dict (via default_factory=dict), so
-    # legacy configs that already carry the field still validate against
-    # the bundled defaults.
     default_factory = field.default_factory
     assert default_factory is dict, (
         "provider_fallback must default to an empty dict via default_factory=dict; "
         f"got default_factory={default_factory!r}"
     )
-    # The label must be in a maintainer comment on the field declaration.
     source = inspect.getsource(GeneralConfig)
     source_lines = source.splitlines()
     field_idx = next(i for i, line in enumerate(source_lines) if "provider_fallback:" in line)
@@ -622,19 +531,6 @@ def test_general_config_provider_fallback_is_labeled_reserved() -> None:
 
 
 def test_provider_fallback_absent_from_bundled_tomls(tmp_path: Path) -> None:
-    """``provider_fallback`` MUST NOT appear in any bundled ``ralph/policy/defaults/*.toml``.
-
-    The bundled defaults are what ``ralph --init`` materialises into user-global
-    and project-local config. A stray ``provider_fallback = ...`` line there
-    would re-introduce the dead knob as a "documented-but-does-nothing"
-    documented option and violate principle 7.
-
-    The schema keeps the field for backward compatibility with legacy
-    user-global configs that already carry it; the bundled defaults must not.
-
-    The bundled TOML files are staged into ``tmp_path`` before reading so
-    the test honors the test-policy audit's real-I/O rule.
-    """
     import re
     import shutil
     import tomllib
@@ -644,9 +540,6 @@ def test_provider_fallback_absent_from_bundled_tomls(tmp_path: Path) -> None:
         staged = tmp_path / toml_path.name
         shutil.copy2(toml_path, staged)
         content = staged.read_text(encoding="utf-8")
-        # A literal ``provider_fallback = ...`` or ``provider_fallback = {...}``
-        # is the only shape that would actually populate the field. Whitespace
-        # and quote styles vary; a tolerant regex matches all of them.
         if re.search(r"^\s*provider_fallback\s*=", content, re.MULTILINE):
             raise AssertionError(
                 f"{toml_path} declares `provider_fallback`, which is a "
@@ -654,13 +547,10 @@ def test_provider_fallback_absent_from_bundled_tomls(tmp_path: Path) -> None:
                 "[agent_chains]; do not re-introduce the dead knob as a "
                 "documented-but-does-nothing option."
             )
-        # The bundled file SHOULD still parse as TOML even when the field is
-        # absent. A parse failure here would mask the regression in CI.
         tomllib.loads(content)
 
 
 def test_verbosity_enum() -> None:
-    """Test Verbosity enum values."""
     assert str(Verbosity.QUIET) == "quiet"
     assert str(Verbosity.NORMAL) == "normal"
     assert str(Verbosity.VERBOSE) == "verbose"
@@ -669,7 +559,6 @@ def test_verbosity_enum() -> None:
 
 
 def test_json_parser_type_enum() -> None:
-    """Test JsonParserType enum values."""
     assert str(JsonParserType.CLAUDE) == "claude"
     assert str(JsonParserType.CODEX) == "codex"
     assert str(JsonParserType.GEMINI) == "gemini"
@@ -694,25 +583,21 @@ _VALID_SUSPECT = 300.0
 
 
 def test_general_config_waiting_status_interval_defaults() -> None:
-    """New waiting-status interval field has correct default."""
     cfg = GeneralConfig()
     assert cfg.agent_waiting_status_interval_seconds == _DEFAULT_WAITING_STATUS_INTERVAL
 
 
 def test_general_config_suspect_waiting_on_child_defaults() -> None:
-    """New suspicion threshold field has correct default."""
     cfg = GeneralConfig()
     assert cfg.agent_suspect_waiting_on_child_seconds == _DEFAULT_SUSPECT_THRESHOLD
 
 
 def test_general_config_suspect_waiting_on_child_can_be_none() -> None:
-    """Suspicion threshold may be explicitly disabled."""
     cfg = GeneralConfig(agent_suspect_waiting_on_child_seconds=None)
     assert cfg.agent_suspect_waiting_on_child_seconds is None
 
 
 def test_general_config_suspect_above_max_raises() -> None:
-    """suspect_waiting_on_child >= idle_max_waiting_on_child is invalid."""
     _assert_validation_error(
         lambda: GeneralConfig(
             agent_idle_max_waiting_on_child_seconds=_SMALL_MAX_WAITING,
@@ -722,7 +607,6 @@ def test_general_config_suspect_above_max_raises() -> None:
 
 
 def test_general_config_suspect_equal_to_max_raises() -> None:
-    """suspect_waiting_on_child == idle_max_waiting_on_child is invalid."""
     _assert_validation_error(
         lambda: GeneralConfig(
             agent_idle_max_waiting_on_child_seconds=_SMALL_MAX_WAITING,
@@ -732,7 +616,6 @@ def test_general_config_suspect_equal_to_max_raises() -> None:
 
 
 def test_general_config_suspect_below_max_valid() -> None:
-    """suspect_waiting_on_child < idle_max_waiting_on_child is valid."""
     cfg = GeneralConfig(
         agent_idle_max_waiting_on_child_seconds=1800.0,
         agent_suspect_waiting_on_child_seconds=_VALID_SUSPECT,
@@ -743,7 +626,6 @@ def test_general_config_suspect_below_max_valid() -> None:
 def test_load_config_waiting_status_interval_roundtrips(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Operator-set waiting_status_interval_seconds survives config load."""
     monkeypatch.setattr(
         "ralph.config.loader.GLOBAL_CONFIG_PATH", tmp_path / GLOBAL_CONFIG_PATH.name
     )
@@ -763,7 +645,6 @@ def test_load_config_waiting_status_interval_roundtrips(
 def test_load_config_suspect_threshold_roundtrips(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Operator-set agent_suspect_waiting_on_child_seconds survives config load."""
     monkeypatch.setattr(
         "ralph.config.loader.GLOBAL_CONFIG_PATH", tmp_path / GLOBAL_CONFIG_PATH.name
     )
@@ -778,11 +659,6 @@ def test_load_config_suspect_threshold_roundtrips(
     config = load_config(workspace_scope=_scope_for(tmp_path))
 
     assert config.general.agent_suspect_waiting_on_child_seconds == _CUSTOM_SUSPECT_THRESHOLD
-
-
-# ---------------------------------------------------------------------------
-# Child-liveness TTL config knobs
-# ---------------------------------------------------------------------------
 
 
 def test_general_config_child_progress_ttl_default() -> None:
@@ -824,10 +700,6 @@ def test_load_config_child_progress_ttl_roundtrips(
     assert config.general.agent_child_progress_ttl_seconds == 90.0
 
 
-# ---------------------------------------------------------------------------
-# OS-descendant-only and probe config knobs
-# ---------------------------------------------------------------------------
-
 _OS_DESCENDANT_ONLY_CEILING = 300.0
 _OS_DESCENDANT_ONLY_SUSPECT = 60.0
 _CPU_IDLE = 60.0
@@ -855,19 +727,16 @@ def test_general_config_log_growth_default() -> None:
 
 
 def test_general_config_os_descendant_only_ceiling_can_be_none() -> None:
-    """os_descendant_only_ceiling may be explicitly disabled by setting to null."""
     cfg = GeneralConfig(agent_os_descendant_only_ceiling_seconds=None)
     assert cfg.agent_os_descendant_only_ceiling_seconds is None
 
 
 def test_general_config_cpu_idle_can_be_none() -> None:
-    """cpu_idle may be explicitly disabled by setting to null."""
     cfg = GeneralConfig(agent_cpu_idle_seconds=None)
     assert cfg.agent_cpu_idle_seconds is None
 
 
 def test_general_config_log_growth_can_be_none() -> None:
-    """log_growth may be explicitly disabled by setting to null."""
     cfg = GeneralConfig(agent_log_growth_seconds=None)
     assert cfg.agent_log_growth_seconds is None
 
@@ -922,18 +791,7 @@ def test_load_config_log_growth_roundtrips(monkeypatch: pytest.MonkeyPatch, tmp_
     assert config.general.agent_log_growth_seconds == 15.0
 
 
-# ---------------------------------------------------------------------------
-# Shared-constant round-trip assertions (timeout_defaults.py source of truth)
-# ---------------------------------------------------------------------------
-
-
 def test_config_defaults_match_timeout_defaults_constants() -> None:
-    """GeneralConfig defaults match the shared constants in ralph.timeout_defaults.
-
-    This test is the sentinel that prevents the three timeout-default layers
-    (idle_watchdog.TimeoutPolicy, invoke._CHILD_* constants, and config field
-    defaults) from drifting away from each other independently.
-    """
     cfg = GeneralConfig()
 
     assert cfg.agent_idle_timeout_seconds == IDLE_TIMEOUT_SECONDS
@@ -961,10 +819,6 @@ def test_config_defaults_match_timeout_defaults_constants() -> None:
 
 
 def test_timeout_policy_defaults_match_timeout_defaults_constants() -> None:
-    """TimeoutPolicy field defaults match the shared constants in ralph.timeout_defaults.
-
-    Ensures idle_watchdog.TimeoutPolicy cannot drift from config defaults.
-    """
     policy = TimeoutPolicy(idle_timeout_seconds=None)
 
     assert policy.drain_window_seconds == DRAIN_WINDOW_SECONDS

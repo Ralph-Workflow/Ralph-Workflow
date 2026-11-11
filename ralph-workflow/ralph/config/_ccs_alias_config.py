@@ -1,4 +1,3 @@
-"""CcsAliasConfig model — per-alias CCS configuration."""
 
 from __future__ import annotations
 
@@ -8,7 +7,6 @@ from ralph.pydantic_compat import RalphBaseModel
 
 
 class CcsAliasConfig(RalphBaseModel):
-    """Per-alias CCS configuration (table form)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 

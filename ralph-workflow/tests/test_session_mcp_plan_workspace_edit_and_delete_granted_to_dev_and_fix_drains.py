@@ -62,8 +62,6 @@ def _default_agents_policy(_workspace_path: Path) -> AgentsPolicy:
 
 
 class TestWorkspaceEditAndDeleteGrantedToDevAndFixDrains:
-    """workspace.edit and workspace.delete are granted to development and fix drains only."""
-
     @pytest.mark.parametrize(
         "drain",
         ["development", "fix"],

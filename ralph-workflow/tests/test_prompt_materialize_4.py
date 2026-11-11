@@ -33,15 +33,7 @@ def _write_plan_handoff(workspace: MemoryWorkspace) -> None:
 
 
 def test_sidecar_entries_built_from_capability_profile_verdicts_preserve_all_metadata() -> None:
-    """Capability-profile-derived metadata flows correctly through the media session index.
 
-    When the MCP workspace tool writes a media session index using verdicts from
-    resolve_capability_profile, collect_media_entries_for_phase must read those entries
-    back with delivery, block_type, reason, and URI all intact.
-    This proves the end-to-end data contract from capability detection to runner handoff.
-    """
-
-    # Claude profile: image=inline_image, pdf=typed_block, audio=unsupported
     claude_identity = MultimodalModelIdentity(provider="claude", model_id="claude-3-5-sonnet")
     profile = resolve_capability_profile(claude_identity)
 
@@ -49,8 +41,6 @@ def test_sidecar_entries_built_from_capability_profile_verdicts_preserve_all_met
     pdf_v = profile.verdict_for("pdf")
     audio_v = profile.verdict_for("audio")
 
-    # Write the media session index in the same format the MCP workspace tool uses.
-    # This simulates what _write_media_session_entry produces after a read_media call.
     index_payload = json.dumps(
         {
             "schema_version": "2",
@@ -126,12 +116,6 @@ def test_sidecar_entries_built_from_capability_profile_verdicts_preserve_all_met
 
 
 def test_collect_media_entries_preserves_failure_kind_through_sidecar_round_trip() -> None:
-    """failure_kind must survive JSON serialization and reload without re-inference.
-
-    Writing a session index entry with failure_kind='unsupported_runtime_seam' and
-    reloading via collect_media_entries_for_phase must yield the same value, keeping
-    unsupported_runtime_seam distinct from unsupported_modality all the way to invoke time.
-    """
 
     payload = json.dumps(
         {

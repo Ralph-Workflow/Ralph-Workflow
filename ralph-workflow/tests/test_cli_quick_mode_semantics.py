@@ -1,5 +1,3 @@
-"""Unit tests for CLI."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -27,7 +25,6 @@ _BUNDLED_POLICY_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" /
 
 
 def _make_display_context_for_console(console: Console) -> DisplayContext:
-    """Create a DisplayContext for a given console."""
     return make_display_context(console=console, env={})
 
 
@@ -35,8 +32,6 @@ pytestmark = pytest.mark.timeout_seconds(5)
 
 
 class TestQuickModeSemantics:
-    """Tests for --quick/-Q flag behavior."""
-
     def test_quick_mode_forces_developer_iters_1(self, monkeypatch: pytest.MonkeyPatch) -> None:
         captured: dict[str, object] = {}
         monkeypatch.setattr(
@@ -86,7 +81,6 @@ class TestQuickModeSemantics:
         assert general["developer_iters"] == 1
 
     def test_quick_mode_rejects_bare_positional_prompt_text(self, cli_runner: CliRunner) -> None:
-        """S-3 regression: quick mode accepts no inline prompt shortcut."""
         result = cli_runner.invoke(app, ["-Q", "do a quick change", "--dry-run"])
 
         assert result.exit_code == USAGE_ERROR_EXIT_CODE
@@ -95,7 +89,6 @@ class TestQuickModeSemantics:
     def test_prompt_option_is_not_a_cli_option(
         self, cli_runner: CliRunner, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """S-3 regression: the removed inline-prompt flag is rejected by Click."""
         monkeypatch.setenv("RALPH_DISABLE_TELEMETRY", "1")
         result = cli_runner.invoke(app, ["--prompt", "some text"])
 

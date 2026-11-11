@@ -1,4 +1,3 @@
-"""Process-scoped skill filesystem materialization."""
 
 from __future__ import annotations
 
@@ -37,7 +36,6 @@ def _merge_external_skills(target: Path) -> None:
             source = skill_dir / "SKILL.md"
             if not source.is_file():
                 continue
-            # filesystem-write-ok: skill process-view state under .agent/skills state store, runtime metadata not tracked
             write_text_if_changed(
                 DEFAULT_FILE_BACKEND,
                 target / f"{skill_dir.name}.md",
@@ -75,7 +73,6 @@ def has_machine_global_skills() -> bool:
 
 
 class SkillsProcessView(AbstractContextManager[Path]):
-    """Materialize baseline skills into a process-scoped filesystem view."""
 
     def __init__(self, target_dir: Path | None = None) -> None:
         self._target_dir = target_dir
@@ -87,7 +84,6 @@ class SkillsProcessView(AbstractContextManager[Path]):
             target = Path(self._tempdir.name)
         else:
             target = self._target_dir
-            # filesystem-write-ok: caller-selected skills materialization directory must exist before output publication
             target.mkdir(parents=True, exist_ok=True)
         _merge_external_skills(target)
         materialize_skills_to_dir(target)

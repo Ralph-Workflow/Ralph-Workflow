@@ -1,10 +1,3 @@
-"""Helpers for reading plan and analysis-decision artifacts.
-
-These readers are intentionally tolerant: missing files, malformed artifacts,
-or unexpected schemas all return ``None`` rather than raising. This keeps the
-display resilient when artifacts are partially written or absent (for example
-during the first iteration before any analysis has run).
-"""
 
 from __future__ import annotations
 
@@ -26,7 +19,6 @@ PLAN_ARTIFACT_REL = "plan.md"
 
 @dataclass(frozen=True, slots=True)
 class AnalysisDecisionSummary:
-    """A stable projection of an ``*_analysis_decision`` artifact."""
 
     drain: str
     decision: str
@@ -64,7 +56,6 @@ def _coerce_str_tuple(value: object, *, max_items: int = 64) -> tuple[str, ...]:
 
 
 def plan_artifact_path(workspace_root: Path) -> Path:
-    """Return the canonical Markdown plan artifact path."""
     return workspace_root / ARTIFACTS_DIR_REL / PLAN_ARTIFACT_REL
 
 
@@ -73,12 +64,6 @@ def read_plan_artifact(
     *,
     _text_loader: Callable[[Path], str | None] = _load_text,
 ) -> PlanSummary | None:
-    """Read ``.agent/artifacts/plan.md`` and project a PlanSummary.
-
-    Returns ``None`` if the file is missing or malformed beyond recovery.
-    Warnings from lenient vocabulary normalization do not hide an otherwise
-    valid plan from the display.
-    """
     markdown = _text_loader(plan_artifact_path(workspace_root))
     if markdown is None:
         return None
@@ -133,7 +118,6 @@ def read_latest_analysis_decision(
     workspace_root: Path,
     drain: str,
 ) -> AnalysisDecisionSummary | None:
-    """Read the canonical Markdown decision artifact for ``drain``."""
     artifact_type = f"{drain}_decision"
     artifact_path = workspace_root / ARTIFACTS_DIR_REL / f"{artifact_type}.md"
     markdown = _load_text(artifact_path)

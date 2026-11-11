@@ -1,12 +1,3 @@
-"""The terminal log boundary renders every record as bounded, separate lines.
-
-Every loguru record that reaches the terminal passes through the sinks in
-``ralph.display.log_sink``.  Callers interpolate exception text and agent
-output into messages, so the boundary is the one place that can guarantee a
-record never becomes a wall of text, and that consecutive records never run
-together on one line.  Full text stays available in the file sinks.
-"""
-
 from __future__ import annotations
 
 import io

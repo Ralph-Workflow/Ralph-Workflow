@@ -1,30 +1,3 @@
-"""Black-box tests for ``PtyLineReader._on_interrupt`` teardown path.
-
-wt-024 memory-perf AC-02: ``_on_interrupt`` previously only called
-``self._handle.close()`` and left the descendant process tree alive.
-The watchdog-fire path at ``_check_fire`` already does the right thing
-(terminate + teardown_subtree). The interrupt path must mirror it so a
-Ctrl-C / BaseException does not leak child agents.
-
-This test exercises ``_on_interrupt`` via a hand-crafted
-``PtyLineReader`` instance with stub ``_handle`` / ``_monitor_stop``
-so it runs without a real PTY / subprocess / wall-clock sleep.
-
-It asserts:
-1. ``_on_interrupt`` calls ``self._handle.close()`` (existing behavior)
-2. ``_on_interrupt`` calls ``self._handle.terminate(grace_period_s=0.5)``
-   (new behavior - mirrors the watchdog-fire path)
-3. ``_on_interrupt`` calls ``teardown_subtree(self._handle.pid)``
-   (new behavior)
-4. Both ``close`` and ``terminate`` errors are swallowed (the
-   existing ``contextlib.suppress(Exception)`` covers them; the new
-   ``teardown_subtree`` call is also wrapped in
-   ``contextlib.suppress(Exception)``).
-
-All tests are unit tests - no real PTY, no real subprocess, no
-wall-clock sleeps.
-"""
-
 from __future__ import annotations
 
 import threading
@@ -43,7 +16,6 @@ if TYPE_CHECKING:
 
 
 def _make_reader_for_interrupt() -> PtyLineReader:
-    """Build a PtyLineReader with stub ``_handle`` / ``_monitor_stop``."""
     reader = object.__new__(PtyLineReader)
     reader._handle = MagicMock()
     reader._handle.pid = 4242
@@ -64,7 +36,6 @@ def _track_teardown(teardown_calls: list[int]) -> Callable[..., None]:
 def test_on_interrupt_calls_close_terminate_and_teardown_subtree(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """_on_interrupt must call close() AND terminate() AND teardown_subtree(pid)."""
     teardown_calls: list[int] = []
     monkeypatch.setattr(
         "ralph.agents.invoke._pty_line_reader.teardown_subtree",
@@ -88,7 +59,6 @@ def test_on_interrupt_calls_close_terminate_and_teardown_subtree(
 
 
 def test_on_interrupt_swallows_close_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A failing close() must NOT prevent terminate() / teardown_subtree from running."""
     teardown_calls: list[int] = []
     monkeypatch.setattr(
         "ralph.agents.invoke._pty_line_reader.teardown_subtree",
@@ -108,7 +78,6 @@ def test_on_interrupt_swallows_close_error(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_on_interrupt_swallows_terminate_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A failing terminate() must NOT prevent teardown_subtree from running."""
     teardown_calls: list[int] = []
     monkeypatch.setattr(
         "ralph.agents.invoke._pty_line_reader.teardown_subtree",
@@ -128,7 +97,6 @@ def test_on_interrupt_swallows_terminate_error(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_on_interrupt_swallows_teardown_subtree_error() -> None:
-    """A failing teardown_subtree() must NOT raise out of _on_interrupt."""
     reader = _make_reader_for_interrupt()
 
     original = _pty_module.teardown_subtree
@@ -142,7 +110,6 @@ def test_on_interrupt_swallows_teardown_subtree_error() -> None:
 def test_on_interrupt_skips_teardown_when_pid_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """If the handle has no pid attribute (or it is None), teardown_subtree must be skipped."""
     teardown_calls: list[int] = []
     monkeypatch.setattr(
         "ralph.agents.invoke._pty_line_reader.teardown_subtree",
@@ -160,6 +127,4 @@ def test_on_interrupt_skips_teardown_when_pid_missing(
 
 
 def test_on_interrupt_real_teardown_subtree_call() -> None:
-    """Sanity-check that the production ``teardown_subtree`` is callable and
-    tolerates a nonexistent pid."""
     teardown_subtree(2**30, issuer="invoke:test")

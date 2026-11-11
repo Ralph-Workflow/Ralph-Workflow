@@ -1,4 +1,3 @@
-"""Injectable dependency bundle for Ralph-managed standalone agent sessions."""
 
 from __future__ import annotations
 
@@ -107,71 +106,6 @@ def _shutdown_bridge(bridge: SessionBridgeLike) -> None:
 
 @dataclass(frozen=True)
 class ManagedAgentSessionDeps:
-    """Injectable dependency bundle for the managed session runtime.
-
-    :class:`ManagedAgentSessionDeps` is the single seam that lets tests
-    replace the default production collaborators used by
-    :class:`ralph.session_runtime.ManagedAgentSessionRuntime` with
-    fakes or stubs. The production default wraps the canonical
-    implementations in :mod:`ralph.mcp.session_plan`,
-    :mod:`ralph.mcp.server.lifecycle`, :mod:`ralph.agents.invoke`,
-    :mod:`ralph.prompts.master_prompt`, and :mod:`ralph.workspace.fs`.
-
-    All fields are public callables; tests may overwrite any subset
-    while leaving the rest at the production defaults. Because the
-    dataclass is ``frozen=True`` the bundle itself cannot be mutated
-    after construction, so a runtime that captures a deps value is
-    guaranteed to use the same callables throughout its lifetime.
-
-    Attributes:
-        build_session_mcp_plan: Resolve the per-session MCP plan for a
-            given ``(transport, drain, workspace_path, agents_policy,
-            model_opts, model_flag)`` tuple. Side effect: none. The
-            production implementation reads policy and writes nothing.
-        start_mcp_server: Launch the MCP server subprocess for a given
-            session and workspace, returning the bridge handle the
-            runtime uses to talk to that server. Side effects: spawns
-            a subprocess and registers the bridge handle for
-            shutdown; the bridge is also exposed for
-            ``shutdown_bridge``.
-        invoke_agent: Run an agent CLI against a prompt file with the
-            given options. Returns an iterable of stdout chunks.
-            Side effects: spawns a subprocess, injects the resolved
-            environment into the agent, and yields streamed output.
-        materialize_master_prompt: Resolve the prompt inputs for a
-            named master prompt and, when the named prompt is supplied,
-            write the materialized master-prompt file the agent will
-            consume. Side effects: reads prompt inputs from
-            ``workspace_root`` (and the engine-owned current-prompt
-            mirror under the ``.agent`` directory), and may write the
-            materialized master-prompt file under ``workspace_root`` at
-            ``.agent/tmp/<name>_master_prompt.md`` (or under the worker
-            namespace when one is provided), plus the synchronized
-            current-prompt mirror and any prompt-history snapshot.
-            Returns the filesystem path of the written master-prompt
-            file as a string.
-        workspace_factory: Build a :class:`ralph.workspace.protocol.Workspace`
-            rooted at the given path. Side effects: instantiates the
-            workspace implementation; the production default returns
-            :class:`ralph.workspace.fs.FsWorkspace`.
-        shutdown_bridge: Terminate a running bridge handle, releasing
-            any subprocess it owns. Side effects: stops the MCP server
-            subprocess and frees the bridge handle. The runtime calls
-            this from its cleanup path after :class:`Exception` is
-            observed, so tests can verify cleanup behavior.
-
-    Example:
-        Replace just one field for a focused unit test::
-
-            deps = ManagedAgentSessionDeps(
-                start_mcp_server=lambda session, workspace, extras: fake_bridge,
-            )
-            runtime = ManagedAgentSessionRuntime.open(
-                config=cfg,
-                request=req,
-                deps=deps,
-            )
-    """
 
     build_session_mcp_plan: BuildSessionMcpPlanFn = _build_session_mcp_plan
     start_mcp_server: StartMcpServerFn = _start_mcp_server

@@ -1,5 +1,3 @@
-"""Private helper: _SessionRegistry for fake SSE MCP server."""
-
 from __future__ import annotations
 
 import queue
@@ -10,8 +8,6 @@ from tests.fixtures.fake_sse_mcp_helper__sessionstate import _SessionState
 
 
 class _SessionRegistry:
-    """Manages sessions for the fake SSE MCP server."""
-
     def __init__(self) -> None:
         self._sessions: dict[str, _SessionState] = {}
         self._lock = Lock()

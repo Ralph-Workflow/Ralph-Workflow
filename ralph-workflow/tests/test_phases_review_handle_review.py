@@ -1,12 +1,3 @@
-"""Tests for ralph/phases/review.py — review phase handler.
-
-Every test drives the PUBLIC ``handle_review`` entry point. The phase's
-side-effecting collaborators (baseline reader, commit checker, head-SHA
-reader, baseline writer) are supplied through the injectable
-``ReviewCollaborators`` seam, so the suite never opens a Git repository and
-never reaches into the module's private helpers.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -22,14 +13,6 @@ if TYPE_CHECKING:
 
 
 class _FakeReviewCollaborators:
-    """In-memory stand-in for the review phase's injectable collaborators.
-
-    The fakes are pure in-memory recorders: no filesystem access, no Git
-    repository, and no sleeping. They record the calls the handler makes so
-    the tests can assert on observable behavior instead of implementation
-    internals.
-    """
-
     def __init__(
         self,
         *,
@@ -44,7 +27,6 @@ class _FakeReviewCollaborators:
         self.commit_checks: list[str] = []
 
     def build(self) -> ReviewCollaborators:
-        """Return the production-facing collaborator bundle."""
         return ReviewCollaborators(
             read_baseline=self._read_baseline,
             has_new_commits=self._has_new_commits_since_baseline,
@@ -135,10 +117,6 @@ status: issues_found
 
         assert result == [PipelineEvent.REVIEW_ISSUES_FOUND]
         ctx.workspace.read.assert_any_call(".agent/artifacts/issues.md")
-        # The legacy ``.json`` path must never be opened when the canonical
-        # ``.md`` is present; the production code only calls ``read`` on the
-        # markdown path in this scenario. The exact call count is an
-        # implementation detail and is intentionally not asserted.
 
     def test_accepted_issues_artifact_clears_retry_hint(self) -> None:
         effect = InvokeAgentEffect(agent_name="reviewer", phase="review", prompt_file="review.txt")
@@ -176,12 +154,6 @@ status: issues_found
         ctx.workspace.remove.assert_called_once_with(hint_path)
 
     def test_review_regression_stray_json_fails_closed(self) -> None:
-        """Regression for PROMPT.md's Markdown-only tooling requirement.
-
-        A stray legacy ``issues.json`` must never be parsed. The phase fails
-        closed with an actionable error naming the canonical ``.md`` path and
-        the Markdown submit tool.
-        """
         effect = MagicMock(spec=InvokeAgentEffect)
         effect.phase = "review"
         ctx = self._make_context()
@@ -225,7 +197,6 @@ status: issues_found
         assert result == []
 
     def test_review_skips_when_no_new_commits(self) -> None:
-        """An unchanged baseline skips review without opening a Git repository."""
         ctx = self._make_context()
         fakes = _FakeReviewCollaborators(baseline="baseline", has_new_commits=False)
         collaborators = fakes.build()
@@ -242,7 +213,6 @@ status: issues_found
         assert fakes.written == []
 
     def test_review_proceeds_when_new_commits_exist(self) -> None:
-        """A changed head processes the artifact and records the fresh baseline."""
         effect = MagicMock(spec=InvokeAgentEffect)
         effect.phase = "review"
         ctx = self._make_context()
@@ -275,7 +245,6 @@ status: no_issues
         assert fakes.commit_checks == ["baseline"]
 
     def test_review_first_pass_has_no_baseline(self) -> None:
-        """A first review proceeds and writes its discovered head baseline."""
         effect = MagicMock(spec=InvokeAgentEffect)
         effect.phase = "review"
         ctx = self._make_context()
@@ -301,5 +270,4 @@ status: no_issues
             PipelineEvent.AGENT_SUCCESS
         ]
         assert fakes.written == ["first-head"]
-        # A missing baseline short-circuits the commit check entirely.
         assert fakes.commit_checks == []

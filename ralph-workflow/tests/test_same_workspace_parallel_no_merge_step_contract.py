@@ -1,5 +1,3 @@
-"""Tests for same-workspace parallel worker behaviour."""
-
 from __future__ import annotations
 
 import asyncio
@@ -35,7 +33,6 @@ class TestNoMergeStepContract:
     def test_no_git_branch_merge_or_worktree_subprocess(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Fan-out path must never issue git branch/merge/checkout or worktree subprocesses."""
         banned_calls: list[str] = []
 
         class _RecordingPopen(_subprocess.Popen):
@@ -73,13 +70,11 @@ class TestNoMergeStepContract:
             )
         )
 
-        # No banned git commands issued during the entire fan-out
         assert banned_calls == [], (
             f"Fan-out must not issue git branch/merge/checkout/worktree: {banned_calls}"
         )
 
     def test_event_stream_contains_no_merge_or_worktree_events(self, tmp_path: Path) -> None:
-        """Event stream from fan-out must not contain any merge, worktree, or branch events."""
         unit = _make_unit("unit-b")
         effect = FanOutEffect(work_units=(unit,), max_workers=1)
 
@@ -103,7 +98,6 @@ class TestNoMergeStepContract:
             )
         )
 
-        # Deny-list: no event class or string repr may contain merge/worktree/branch markers.
         denied_tokens = ("Merge", "Worktree", "BranchCreated", "BranchMerged", "Rebase")
         violations = [
             repr(ev)

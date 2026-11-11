@@ -1,7 +1,3 @@
-"""Tests verifying retry counters and cooldowns are durable, restart-surviving,
-bounded, and respect clock boundaries.
-"""
-
 from __future__ import annotations
 
 from ralph.agents.timeout_clock import FakeClock
@@ -34,8 +30,6 @@ def _make_failure(
 
 
 class TestApplyConflictBudgetDurability:
-    """apply_conflict_budget durability and clock boundary tests."""
-
     def test_deadline_computed_from_injected_clock(self) -> None:
         clock = FakeClock(start=1000.0)
         identity = ConflictIdentity(scope="f.py", stage_oids=("a", "b"))

@@ -7,12 +7,6 @@ if TYPE_CHECKING:
 
 
 class _FakeRegistry:
-    """Fake agent registry for testing availability checks.
-
-    Implements list_agents() -> list[str] and get(name) -> _FakeAgent | None
-    to match the _HasListAgents protocol used by emit_first_run_welcome.
-    """
-
     def __init__(self, agents: dict[str, _FakeAgent]) -> None:
         self._agents = agents
 

@@ -1,20 +1,3 @@
-"""Regression: AGY content-edit tools reach a syntax-highlighted preview.
-
-AGY's parser emits ``metadata = {"tool": ..., "tool_info": {"name": ...,
-"parameters": {...}}}`` (see ``ralph/agents/parsers/agy.py``). The preview
-pipeline must recognize this nested envelope, AGY's content-edit tool names
-(``write_to_file`` / ``replace_file_content`` / ``multi_replace_file_content``
-/ ``sed_file`` / ``notebook_edit``), and the ``TargetFile`` parameter key so a
-syntax-highlighted preview fires at the RENDER layer -- not just at any single
-payload layer.
-
-Each tool is driven through both :func:`payload_from_tool_event` (the payload
-layers: ``_input`` tool_info unwrap, the operations / dispatch map, and the
-``_path`` ``TargetFile`` key) and :func:`build_edit_preview` (the render layer,
-fed the raw metadata dict so the display preview-wrapping path is exercised
-too). A regression in any layer breaks the render assertion.
-"""
-
 from __future__ import annotations
 
 import json
@@ -34,7 +17,6 @@ def _agy_metadata(
     target: str = "/workspace/x.py",
     **parameters: object,
 ) -> dict[str, object]:
-    """Build the parser-real AGY envelope (nested ``tool_info.parameters``)."""
     return {
         "tool": tool,
         "tool_info": {"name": tool, "parameters": {"TargetFile": target, **parameters}},
@@ -61,7 +43,6 @@ def test_write_to_file_drives_write_payload_and_syntax_render() -> None:
 
 
 def test_done_only_write_tool_update_emits_previewable_use_before_result() -> None:
-    """A live-style DONE-only write still drives the shared syntax preview path."""
     frame = {
         "event": "step_update",
         "step_update": {
@@ -149,16 +130,6 @@ def test_notebook_edit_drives_write_payload_and_syntax_render() -> None:
 
 
 def test_tool_done_frame_keeps_canonical_payload_end_to_end() -> None:
-    """Plan S-6: a wire-shaped ``step_type=tool`` DONE frame survives the
-    ``_dispatch_tool_update`` path with the canonical payload envelope.
-
-    The frame mirrors the measured v1.1.13 wire shape (see
-    ``tests/display/_fixtures/agy_wire_v1_1_13.jsonl``): a ``step_update``
-    with ``step_type=tool``, ``state=DONE``, ``tool_name``, and a
-    ``tool_info`` carrying ``name`` / ``parameters`` / ``output``. The
-    metadata the parser emits must still unwrap through
-    :func:`payload_from_tool_event` into the canonical payload shape.
-    """
     frame = {
         "event": "step_update",
         "step_update": {

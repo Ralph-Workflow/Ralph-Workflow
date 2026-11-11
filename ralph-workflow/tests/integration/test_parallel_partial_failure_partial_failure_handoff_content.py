@@ -1,9 +1,3 @@
-"""Integration tests for partial-failure reporting in parallel fan-out.
-
-Verifies that when some workers succeed before a dependent worker fails,
-per-unit status is reported correctly for all workers.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -66,29 +60,14 @@ def _make_work_unit(uid: str, deps: list[str] | None = None) -> WorkUnit:
 
 
 class TestPartialFailureHandoffContent:
-    """Runner-level tests: DEVELOPMENT_RESULT.md handoff content on partial failure.
-
-    These tests verify that when 1 of 2 workers fails, the resulting handoff
-    artifact contains both unit_ids, marks the right worker as failed, and
-    reports phase state as "failed" (not "development_analysis").
-    """
-
     def test_partial_failure_development_result_md_contains_both_unit_ids(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """When unit-b fails, DEVELOPMENT_RESULT.md must name BOTH unit-a and unit-b.
-
-        Asserts:
-        - .agent/DEVELOPMENT_RESULT.md exists and contains both unit_ids
-        - unit-b (the failed one) is named in the failure context
-        - unit-a (the success) is present and not blamed
-        - any_failed: true and all_succeeded: false
-        """
 
         unit_a = _make_work_unit("unit-a")
         unit_b = _make_work_unit("unit-b")
 
-        _seed_artifact(tmp_path, "unit-a")  # unit-b deliberately has no artifact
+        _seed_artifact(tmp_path, "unit-a")
 
         scope = WorkspaceScope(root=tmp_path, allowed_roots=frozenset([tmp_path]))
         initial_state = PipelineState(
@@ -124,13 +103,11 @@ class TestPartialFailureHandoffContent:
             workspace_scope=scope,
         )
 
-        # State must be terminal failure — never "development_analysis" on partial failure
         assert final_state.phase == "failed_terminal", (
             f"Partial failure must produce 'failed_terminal', got {final_state.phase!r}. "
             "'development_analysis' must only be reached when ALL workers succeed."
         )
 
-        # DEVELOPMENT_RESULT.md must contain both unit_ids
         handoff_path = tmp_path / ".agent" / "DEVELOPMENT_RESULT.md"
         assert handoff_path.exists(), (
             ".agent/DEVELOPMENT_RESULT.md must be written on partial failure"
@@ -147,14 +124,6 @@ class TestPartialFailureHandoffContent:
     def test_parallel_development_summary_markdown_has_per_unit_status(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """parallel_development_summary.md lists per-unit status on partial failure.
-
-        Asserts:
-        - .agent/artifacts/parallel_development_summary.md exists
-        - any_failed = true
-        - all_succeeded = false
-        - worker entries name unit-a as succeeded and unit-b as failed
-        """
 
         unit_a = _make_work_unit("unit-a")
         unit_b = _make_work_unit("unit-b")

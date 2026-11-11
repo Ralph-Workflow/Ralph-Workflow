@@ -1,5 +1,3 @@
-"""Markdown submission rejects legacy JSON instead of repairing it."""
-
 from __future__ import annotations
 
 import json

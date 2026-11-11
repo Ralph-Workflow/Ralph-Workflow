@@ -1,4 +1,3 @@
-"""Sustained-suspicion tracker for §3b fuzzy liveness."""
 
 from __future__ import annotations
 
@@ -8,7 +7,6 @@ _SUSPICIOUS_RULES: frozenset[str] = frozenset({"R4", "R7"})
 
 
 class SuspicionClock:
-    """Sustained-suspicion tracker for R4 or R7 dominant verdict."""
 
     __slots__ = ("_streak_s", "_threshold_s")
 
@@ -20,7 +18,6 @@ class SuspicionClock:
         self._streak_s = 0.0
 
     def step(self, *, strongest_rule: str, dt: float) -> bool:
-        """Advance the clock by ``dt`` and return ``True`` iff sustained."""
         if dt < 0.0:
             raise ValueError(f"dt must be non-negative; got {dt!r}")
         if strongest_rule in _SUSPICIOUS_RULES:

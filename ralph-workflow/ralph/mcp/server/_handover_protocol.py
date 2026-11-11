@@ -1,15 +1,3 @@
-"""Ordered handover protocol and private readiness channel for make-before-break restarts.
-
-This module owns:
-- Parent-owned AF_UNIX socketpair for private candidate preflight.
-- Single-acceptor ordered handover via pause/ack/resume sentinels (FILES,
-  not sockets: the retiring child acknowledges by creating
-  ``<pause>.ack`` next to the pause sentinel).
-- Tool-set hash verification to prevent silent tool drift (E1.9), including
-  the canonical projection both channels hash and the parent-side served
-  ``tools/list`` fetch that seeds the first baseline.
-- Bounded handover and drain deadlines.
-"""
 
 from __future__ import annotations
 
@@ -30,23 +18,12 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-#: Maximum time (seconds) to wait for the retiring child to acknowledge pause.
 _HANDOVER_ACK_TIMEOUT_S: float = 1.0
 
-#: Drain deadline (seconds) before terminating the retired child.
 _HANDOVER_DRAIN_S: float = 0.5
 
-#: Private readiness communication timeout (seconds): the readiness exchange
-#: itself, once the candidate is running.
 _PRIVATE_READINESS_TIMEOUT_S: float = 5.0
 
-#: Extra time a make-before-break candidate gets for interpreter boot and
-#: imports. Its readiness wait starts at spawn, and a candidate is a full
-#: ``python -m ralph.mcp.server`` -- the same boot a first start gets a
-#: separate allowance for. Without it a loaded host refused every candidate
-#: before it could answer (boot measured ~0.65 s idle, ~6 s with 72 CPU
-#: burners on 12 cores). The old child keeps serving meanwhile, so this bounds
-#: how long a replacement takes, not an agent's wait.
 _CANDIDATE_BOOT_ALLOWANCE_S: float = 15.0
 
 if not _HANDOVER_ACK_TIMEOUT_S > 0:
@@ -72,30 +49,12 @@ def _tool_sort_key(t: dict[str, object]) -> str:
 
 
 def compute_tool_set_hash(tools: list[dict[str, object]]) -> str:
-    """Compute deterministic SHA-256 hash of a tool catalogue list for drift detection."""
     sorted_tools = sorted(tools, key=_tool_sort_key)
     encoded = json.dumps(sorted_tools, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
 
 def canonical_tool_entries(raw_tools: object) -> list[dict[str, object]]:
-    """Project any served ``tools`` array onto the canonical drift-hash shape.
-
-    Both sides of the comparison must hash the SAME bytes or drift detection
-    is meaningless:
-
-    * the parent captures its baseline from the shared endpoint's served
-      ``tools/list`` (:func:`served_tool_entries`), and
-    * the candidate is verified over the private readiness channel
-      (:func:`check_candidate_readiness`).
-
-    Each entry collapses to exactly ``{name, description, inputSchema}`` with
-    string name/description and a dict schema. Extra keys a server may add
-    (annotations, titles, vendor hints) are dropped because they are not part
-    of the E1.9 contract; missing fields take the same defaults
-    :func:`_build_tools_list_response` applies, so the projection is
-    idempotent on already-canonical input.
-    """
     if not isinstance(raw_tools, list):
         return []
     result: list[dict[str, object]] = []
@@ -118,13 +77,6 @@ def describe_tool_set_diff(
     expected: list[dict[str, object]] | None,
     candidate: list[dict[str, object]] | None,
 ) -> str:
-    """Describe drift by TOOL NAME so a refusal log names what actually changed.
-
-    Hash equality only says *that* the catalogues differ; an operator reading
-    the WARNING needs to know which tools were added, removed, or re-described.
-    A missing baseline (``None``) is reported explicitly rather than rendered
-    as "everything was added".
-    """
     if expected is None or candidate is None:
         return (
             f"added=<unknown> removed=<unknown> changed=[] baseline_captured={expected is not None}"
@@ -142,21 +94,6 @@ def describe_tool_set_diff(
 
 
 def served_tool_entries(endpoint: str, timeout: float) -> list[dict[str, object]]:
-    """Fetch the SERVED ``tools/list`` over HTTP and canonicalise it for hashing.
-
-    This is the parent-side baseline source. It deliberately reads the wire
-    response rather than a parent-side catalogue snapshot: only the served list
-    is what an agent actually sees, so it is the only sound drift reference.
-
-    Bounded on both axes: the socket/response wait is capped by ``timeout`` and
-    the body read by ``_LIFECYCLE_MAX_RESPONSE_BYTES``, so a wedged or
-    misbehaving child cannot stall or OOM the parent. Both the plain JSON body
-    and the SSE ``data:`` envelope used by the fallback server are accepted.
-
-    Raises:
-        OSError: transport failure or a body that is not a JSON-RPC envelope.
-        ValueError: the response is not decodable as a ``tools/list`` result.
-    """
     payload: dict[str, object] = {
         "jsonrpc": "2.0",
         "method": "tools/list",
@@ -172,15 +109,13 @@ def served_tool_entries(endpoint: str, timeout: float) -> list[dict[str, object]
     response = cast(
         "IO[bytes]",
         urllib.request.urlopen(request, timeout=timeout),
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     try:
         raw = response.read(_LIFECYCLE_MAX_RESPONSE_BYTES).decode("utf-8", errors="replace")
     finally:
         response.close()
     if not raw:
         raise ValueError(f"empty tools/list response from {endpoint}")
-    # The fallback standalone server answers with an SSE frame
-    # ``event: message\\ndata: {json}\\n\\n``; unwrap it when present.
     data_lines = [line[len("data: ") :] for line in raw.splitlines() if line.startswith("data: ")]
     try:
         decoded: object = json.loads(data_lines[0] if data_lines else raw)
@@ -198,7 +133,6 @@ def served_tool_entries(endpoint: str, timeout: float) -> list[dict[str, object]
 
 
 def create_handover_socketpair() -> tuple[socket.socket, socket.socket]:
-    """Create a parent/child connected AF_UNIX stream socketpair."""
     parent_sock, child_sock = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
     parent_sock.settimeout(_PRIVATE_READINESS_TIMEOUT_S)
     return parent_sock, child_sock
@@ -256,8 +190,6 @@ def _build_tools_list_response(mcp_server: object) -> list[dict[str, object]]:
                     "inputSchema": schema_obj,
                 }
             )
-    # Same projection the parent hashes its served baseline through, so the two
-    # channels are byte-comparable by construction rather than by convention.
     return canonical_tool_entries(raw)
 
 
@@ -318,15 +250,6 @@ def start_private_readiness_listener(
     broker_fingerprint: str | None,
     effective_config_fingerprint: str | None = None,
 ) -> threading.Thread:
-    """Start a background daemon thread that handles private preflight over child_sock.
-
-    ``effective_config_fingerprint`` is the C1 step 2 configuration-snapshot
-    digest the parent bound into this child's spawn environment. It defaults to
-    ``None`` so every pre-existing call site (and any caller on an older
-    handshake) keeps working; when a parent baseline exists, the parent's
-    comparison in :func:`_validate_init_metadata` is fail-closed, so a missing
-    or divergent value refuses promotion instead of silently passing.
-    """
 
     def _worker() -> None:
         try:
@@ -334,7 +257,6 @@ def start_private_readiness_listener(
                 child_sock.settimeout(1.0)
                 buf = b""
                 while True:
-                    # mcp-timeout-ok: private readiness thread loops until closed by parent
                     try:
                         chunk = child_sock.recv(65536)
                     except (TimeoutError, BlockingIOError):
@@ -389,11 +311,6 @@ def _validate_init_metadata(
             f"got {fp_val} expected {expected_broker_fingerprint}",
         )
     cfg_fp_val = res.get("effective_config_fingerprint")
-    # ``None`` capture means the parent had no fingerprint baseline. The
-    # candidate is allowed to echo ``None`` (e.g. older build, no toml)
-    # because refusing such a candidate would force every older build off
-    # the bridge. ``None`` vs a real fingerprint is the only mismatch
-    # counted below.
     if (
         expected_effective_config_fingerprint is not None
         and cfg_fp_val != expected_effective_config_fingerprint
@@ -407,14 +324,6 @@ def _validate_init_metadata(
 
 @dataclass(frozen=True)
 class CandidateReadiness:
-    """Typed outcome of one private-channel candidate preflight.
-
-    ``detail`` is the legacy human-readable third element (an error string on
-    failure, ``None`` on success). ``tools`` and ``tool_hash`` carry the
-    candidate's CANONICAL served catalogue and its hash on BOTH outcomes, so a
-    caller can retain the validated hash (or render a name-level drift diff)
-    without re-parsing ``detail``.
-    """
 
     ok: bool
     failure_stage: str | None = None
@@ -485,18 +394,10 @@ def _verify_tools_exchange(
     if not isinstance(res_raw, dict):
         return _failure("private_tools_list_invalid_response", str(res_raw))
 
-    # Canonicalise exactly as the parent's served-endpoint baseline does, so a
-    # candidate hash and a baseline hash are comparable byte-for-byte.
     tools_list = canonical_tool_entries(cast("dict[str, object]", res_raw).get("tools"))
     candidate_tool_hash = compute_tool_set_hash(tools_list)
     entries = tuple(tools_list)
 
-    # C1/E1.9 fail-closed gate: when the bridge never captured a baseline
-    # (capture timed out / returned empty / errored) it has no drift reference.
-    # Without this gate the comparison below would be silently skipped and any
-    # candidate — drifted or not — would replace the living child. The bridge
-    # now reports ``baseline_unavailable`` so the caller can apply the only
-    # legal escape (dead-old-child promotion).
     if expected_tool_hash_required and expected_tool_hash is None:
         return CandidateReadiness(
             ok=False,
@@ -534,18 +435,6 @@ def check_candidate_readiness(
     expected_tool_hash_required: bool = False,
     timeout: float = _PRIVATE_READINESS_TIMEOUT_S,
 ) -> CandidateReadiness:
-    """Verify the candidate over the private socketpair and return the typed outcome.
-
-    The candidate's canonical served catalogue and its hash are returned on both
-    success and drift so the caller can retain the validated hash or render a
-    name-level drift diff without parsing the human-readable ``detail``.
-
-    ``expected_tool_hash_required`` is the C1/E1.9 fail-closed switch: when
-    ``True`` and ``expected_tool_hash`` is ``None``, the tools exchange refuses
-    with ``failure_stage="baseline_unavailable"``. The caller (the bridge)
-    consults the old child's liveness and either refuses the promotion or
-    applies the only legal escape (the dead-old-child exception).
-    """
     deadline = time.monotonic() + timeout
     parent_sock.settimeout(max(0.1, deadline - time.monotonic()))
 
@@ -583,12 +472,6 @@ def verify_candidate_readiness(
     expected_tool_hash: str | None = None,
     timeout: float = _PRIVATE_READINESS_TIMEOUT_S,
 ) -> tuple[bool, str | None, str | None]:
-    """Tuple view of :func:`check_candidate_readiness`.
-
-    Returns ``(success, failure_stage, tool_hash_or_diff)``. Prefer
-    :func:`check_candidate_readiness` where the candidate's catalogue or hash
-    is needed; this wrapper exists for callers that only need the verdict.
-    """
     result = check_candidate_readiness(
         parent_sock,
         expected_spawn_id=expected_spawn_id,
@@ -626,9 +509,7 @@ def _read_json_response(sock: socket.socket, deadline: float) -> dict[str, objec
 
 
 def request_old_child_pause(pause_path: Path) -> None:
-    """Signal the retiring child to stop accepting connections."""
     pause_path.parent.mkdir(parents=True, exist_ok=True)
-    # filesystem-write-ok: transient handover sentinel file written once to request process pause
     pause_path.write_text("PAUSE\n", encoding="utf-8")
 
 
@@ -637,13 +518,6 @@ def wait_for_old_child_pause_ack(
     timeout: float = _HANDOVER_ACK_TIMEOUT_S,
     sleep_fn: Callable[[float], object] | None = None,
 ) -> bool:
-    """Wait for the retiring child to acknowledge pause with an ack FILE.
-
-    The acknowledgement is a sentinel file (``<pause>.ack``) created by the old
-    child once it has dropped its accepting FD — NOT a message on the handover
-    socketpair, which carries only the private preflight exchange. Waiting on
-    the socket here would hang until the ack timeout on every healthy handover.
-    """
     ack_path = pause_path.with_name(pause_path.name + ".ack")
     deadline = time.monotonic() + timeout
     sleeper = sleep_fn if sleep_fn is not None else time.sleep
@@ -655,9 +529,7 @@ def wait_for_old_child_pause_ack(
 
 
 def signal_candidate_resume(resume_path: Path) -> None:
-    """Signal the candidate child to start accepting connections."""
     resume_path.parent.mkdir(parents=True, exist_ok=True)
-    # filesystem-write-ok: transient handover sentinel file written once to signal candidate resume
     resume_path.write_text("RESUME\n", encoding="utf-8")
 
 
@@ -666,14 +538,12 @@ def wait_for_candidate_resume(
     timeout: float = 30.0,
     stop_event: threading.Event | None = None,
 ) -> bool:
-    """Wait for the candidate resume sentinel to appear before entering accept loop."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if stop_event is not None and stop_event.is_set():
             return False
         if resume_path.exists():
             return True
-        # filesystem-poll-ok: bounded poll interval awaiting candidate resume sentinel
         time.sleep(0.005)
     return resume_path.exists()
 

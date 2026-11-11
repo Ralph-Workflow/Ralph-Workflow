@@ -31,13 +31,6 @@ _ROOT_ONLY_WAIT_CALLS = 2
 
 
 def test_spawn_pty_records_pid_pgid_and_terminal_status(tmp_path: Path) -> None:
-    """A PTY child gets its caller's env plus a ``PWD`` naming its own ``cwd``.
-
-    ``PWD`` is not the caller's to supply: ``cwd=`` moves the child but leaves
-    any inherited ``PWD`` pointing at the parent, and tools that trust ``PWD``
-    over ``getcwd()`` then act on the wrong tree. The spawn seam realigns it for
-    every child, so it is expected here.
-    """
     factory = _FakePtyFactory()
     pm = ProcessManager(
         policy=_FAST_POLICY,
@@ -113,7 +106,6 @@ def test_terminate_pty_process_root_only_handles_builtin_timeout(tmp_path: Path)
     handle = pm.spawn_pty(["claude", "PROMPT.md"], cwd=str(tmp_path), label="invoke:claude")
     proc = handle._proc
 
-    # Mock os.kill to succeed so the liveness check returns ALIVE
     with patch("os.kill", return_value=None):
         handle.terminate(grace_period_s=0.0)
 
@@ -132,13 +124,7 @@ def test_spawn_pty_process_rejects_non_posix_platform(monkeypatch: pytest.Monkey
         pty_module.spawn_pty_process(["python"], cwd=None, env=None)
 
 
-# ---------------------------------------------------------------------------
-# Comprehensive ManagedPtyProcess unit tests (raise coverage to >=80%)
-# ---------------------------------------------------------------------------
-
-
 def test_spawn_pty_factory_raises_oserror_records_failed(tmp_path: Path) -> None:
-    """PTY factory OSError produces FAILED record and re-raises."""
 
     def raising_factory(command: object, **kwargs: object) -> object:
         del command, kwargs
@@ -151,12 +137,10 @@ def test_spawn_pty_factory_raises_oserror_records_failed(tmp_path: Path) -> None
     )
     with pytest.raises(OSError, match="pty factory failure"):
         pm.spawn_pty(["claude"], PtySpawnOptions(cwd=str(tmp_path)))
-    # Verify the FAILED record was emitted (no active records)
     assert pm.list_active() == []
 
 
 def test_managed_pty_wait_raises_on_live_process(tmp_path: Path) -> None:
-    """ManagedPtyProcess.wait() re-raises TimeoutError when process is still live."""
 
     factory = _FakePtyFactory()
     pm = ProcessManager(
@@ -178,7 +162,6 @@ def test_managed_pty_wait_raises_on_live_process(tmp_path: Path) -> None:
 
 
 def test_managed_pty_wait_marks_exited_on_returncode(tmp_path: Path) -> None:
-    """ManagedPtyProcess.wait() marks record EXITED when proc returns a code."""
 
     factory = _FakePtyFactory()
     pm = ProcessManager(
@@ -198,7 +181,6 @@ def test_managed_pty_wait_marks_exited_on_returncode(tmp_path: Path) -> None:
 
 
 def test_managed_pty_poll_returns_none_when_live(tmp_path: Path) -> None:
-    """ManagedPtyProcess.poll() returns None while the process is live."""
 
     factory = _FakePtyFactory()
     pm = ProcessManager(
@@ -215,7 +197,6 @@ def test_managed_pty_poll_returns_none_when_live(tmp_path: Path) -> None:
 
 
 def test_managed_pty_poll_marks_exited_when_returncode(tmp_path: Path) -> None:
-    """ManagedPtyProcess.poll() marks EXITED when returncode is non-None."""
 
     factory = _FakePtyFactory()
     pm = ProcessManager(
@@ -232,7 +213,6 @@ def test_managed_pty_poll_marks_exited_when_returncode(tmp_path: Path) -> None:
 
 
 def test_managed_pty_terminate_calls_escalate_with_default_grace(tmp_path: Path) -> None:
-    """ManagedPtyProcess.terminate() uses default grace when not specified."""
 
     factory = _FakePtyFactory()
     psutil_mod = FakePsutil()
@@ -252,7 +232,6 @@ def test_managed_pty_terminate_calls_escalate_with_default_grace(tmp_path: Path)
 
 
 def test_managed_pty_terminate_uses_overridden_grace_period(tmp_path: Path) -> None:
-    """ManagedPtyProcess.terminate(grace_period_s=X) honors the override."""
 
     factory = _FakePtyFactory()
     psutil_mod = FakePsutil()
@@ -271,7 +250,6 @@ def test_managed_pty_terminate_uses_overridden_grace_period(tmp_path: Path) -> N
 
 
 def test_managed_pty_terminate_is_noop_when_already_terminal(tmp_path: Path) -> None:
-    """ManagedPtyProcess.terminate() is a no-op when record is already terminal."""
 
     factory = _FakePtyFactory()
     pm = ProcessManager(
@@ -283,14 +261,12 @@ def test_managed_pty_terminate_is_noop_when_already_terminal(tmp_path: Path) -> 
     proc = handle._proc
     proc.returncode = 0
     handle.wait(timeout=0.1)
-    # Now record is EXITED. terminate() must no-op.
     handle.terminate(grace_period_s=0.0)
     assert handle.record.status == ProcessStatus.EXITED
     assert handle.record.cause == "exited"
 
 
 def test_managed_pty_kill_uses_zero_grace_period(tmp_path: Path) -> None:
-    """ManagedPtyProcess.kill() escalates with grace_period_s=0.0."""
 
     factory = _FakePtyFactory()
     psutil_mod = FakePsutil()
@@ -309,7 +285,6 @@ def test_managed_pty_kill_uses_zero_grace_period(tmp_path: Path) -> None:
 
 
 def test_managed_pty_has_live_descendants_returns_false_without_psutil(tmp_path: Path) -> None:
-    """has_live_descendants() returns False when psutil is unavailable."""
 
     factory = _FakePtyFactory()
     pm = ProcessManager(
@@ -325,7 +300,6 @@ def test_managed_pty_has_live_descendants_returns_false_without_psutil(tmp_path:
 
 
 def test_managed_pty_has_live_descendants_with_psutil(tmp_path: Path) -> None:
-    """has_live_descendants() uses psutil children(recursive=True)."""
 
     factory = _FakePtyFactory()
     psutil_mod = FakePsutil()
@@ -342,7 +316,6 @@ def test_managed_pty_has_live_descendants_with_psutil(tmp_path: Path) -> None:
 
 
 def test_managed_pty_descendant_snapshot_without_psutil_returns_zero(tmp_path: Path) -> None:
-    """descendant_snapshot() returns (0, None) when psutil is unavailable."""
 
     factory = _FakePtyFactory()
     pm = ProcessManager(
@@ -360,7 +333,6 @@ def test_managed_pty_descendant_snapshot_without_psutil_returns_zero(tmp_path: P
 
 
 def test_managed_pty_descendant_snapshot_with_psutil_includes_only_live(tmp_path: Path) -> None:
-    """descendant_snapshot() includes only live (non-zombie) descendants."""
 
     factory = _FakePtyFactory()
     psutil_mod = FakePsutil()
@@ -382,7 +354,6 @@ def test_managed_pty_descendant_snapshot_with_psutil_includes_only_live(tmp_path
 
 
 def test_managed_pty_close_calls_proc_close(tmp_path: Path) -> None:
-    """ManagedPtyProcess.close() delegates to the underlying proc.close()."""
 
     factory = _FakePtyFactory()
     pm = ProcessManager(
@@ -398,7 +369,6 @@ def test_managed_pty_close_calls_proc_close(tmp_path: Path) -> None:
 
 
 def test_managed_pty_context_manager_terminates_when_live(tmp_path: Path) -> None:
-    """__exit__() terminates a live process when no exception."""
 
     factory = _FakePtyFactory()
     psutil_mod = FakePsutil()
@@ -419,7 +389,6 @@ def test_managed_pty_context_manager_terminates_when_live(tmp_path: Path) -> Non
 
 
 def test_managed_pty_context_manager_closes_only_on_keyboard_interrupt(tmp_path: Path) -> None:
-    """__exit__() closes (does not terminate) when KeyboardInterrupt is raised."""
 
     factory = _FakePtyFactory()
     pm = ProcessManager(
@@ -434,13 +403,11 @@ def test_managed_pty_context_manager_closes_only_on_keyboard_interrupt(tmp_path:
     with pytest.raises(KeyboardInterrupt), handle:
         raise KeyboardInterrupt
 
-    # Close called, but no termination since KeyboardInterrupt
     assert proc.closed is True
     assert handle.record.status == ProcessStatus.RUNNING
 
 
 def test_managed_pty_context_manager_waits_after_terminate(tmp_path: Path) -> None:
-    """__exit__() calls wait() after terminate() while not yet terminal."""
 
     factory = _FakePtyFactory()
     psutil_mod = FakePsutil()
@@ -456,13 +423,11 @@ def test_managed_pty_context_manager_waits_after_terminate(tmp_path: Path) -> No
     with handle:
         pass
 
-    # After exit, status should be KILLED.
     assert handle.record.status == ProcessStatus.KILLED
     assert handle.record.cause == "killed"
 
 
 def test_managed_pty_context_manager_does_not_wait_when_already_terminal(tmp_path: Path) -> None:
-    """__exit__() skips wait() when status is already terminal."""
 
     factory = _FakePtyFactory()
     psutil_mod = FakePsutil()
@@ -480,12 +445,10 @@ def test_managed_pty_context_manager_does_not_wait_when_already_terminal(tmp_pat
     with handle:
         pass
 
-    # Status remains EXITED; no wait re-issued
     assert handle.record.status == ProcessStatus.EXITED
 
 
 def test_managed_pty_master_fd_returns_proc_master_fd(tmp_path: Path) -> None:
-    """master_fd property returns the inner proc's master_fd."""
 
     factory = _FakePtyFactory()
     pm = ProcessManager(
@@ -499,7 +462,6 @@ def test_managed_pty_master_fd_returns_proc_master_fd(tmp_path: Path) -> None:
 
 
 def test_managed_pty_slave_fd_returns_proc_slave_fd(tmp_path: Path) -> None:
-    """slave_fd property returns the inner proc's slave_fd."""
 
     factory = _FakePtyFactory()
     pm = ProcessManager(
@@ -513,7 +475,6 @@ def test_managed_pty_slave_fd_returns_proc_slave_fd(tmp_path: Path) -> None:
 
 
 def test_managed_pty_isatty_returns_true(tmp_path: Path) -> None:
-    """isatty() returns True for a PTY process."""
     factory = _FakePtyFactory()
     pm = ProcessManager(
         policy=_FAST_POLICY,
@@ -525,7 +486,6 @@ def test_managed_pty_isatty_returns_true(tmp_path: Path) -> None:
 
 
 def test_managed_pty_fileno_returns_master_fd(tmp_path: Path) -> None:
-    """fileno() returns master_fd."""
     factory = _FakePtyFactory()
     pm = ProcessManager(
         policy=_FAST_POLICY,

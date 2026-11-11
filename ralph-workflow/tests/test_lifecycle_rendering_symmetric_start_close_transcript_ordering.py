@@ -1,12 +1,3 @@
-"""Black-box tests for lifecycle model-driven rendering APIs.
-
-Covers:
-- show_phase_start_from_entry (phase_banner.py)
-- emit_phase_close_from_exit (PlainLogRenderer / ParallelDisplay)
-- debug breadcrumbs in text-mode render_completion_summary
-- section ordering in render_completion_summary_group
-"""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -18,10 +9,6 @@ from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay, resolve_active_display
 from ralph.display.phase_lifecycle import ExitContext, PhaseEntryModel, PhaseExitModel
 from ralph.display.snapshot import PipelineSnapshot
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 _CREATED_AT = datetime(2026, 5, 4, tzinfo=UTC)
 
@@ -50,7 +37,6 @@ def _blank_snapshot(
     waiting_status_line: str | None = None,
     last_failure_category: str | None = None,
 ) -> PipelineSnapshot:
-    """Return a minimal PipelineSnapshot with all optional fields defaulted."""
     return PipelineSnapshot(
         phase=phase,
         previous_phase=None,
@@ -76,23 +62,9 @@ def _blank_snapshot(
     )
 
 
-# ---------------------------------------------------------------------------
-# show_phase_start_from_entry
-# ---------------------------------------------------------------------------
-
-
 class TestSymmetricStartCloseTranscriptOrdering:
-    """Verify that phase-start and phase-close lines appear in the correct order
-    and carry the same iteration context vocabulary."""
-
     def test_phase_start_before_phase_close_in_transcript(self) -> None:
-        """[phase] snapshot line for a phase appears before its [phase-close] line.
-
-        [phase] lines are emitted via emit_snapshot() when the phase changes;
-        [phase-close] lines are emitted via emit_phase_close_from_exit().
-        """
         pd, buf = _make_display()
-        # emit_snapshot triggers [phase] when phase changes
         snapshot = _blank_snapshot(phase="development", is_terminal_success=False)
         pd.emit_snapshot(snapshot)
         pd.begin_phase("development")
@@ -100,7 +72,6 @@ class TestSymmetricStartCloseTranscriptOrdering:
         exit_model = PhaseExitModel.from_entry_model(entry, ExitContext(exit_trigger="produced"))
         pd.emit_phase_close_from_exit(exit_model)
         out = buf.getvalue()
-        # phase start marker (emit_snapshot emits [phase]) appears before phase-close
         phase_pos = out.find("[phase]")
         close_pos = out.find("[phase-close]")
         assert phase_pos != -1, "Expected [phase] in transcript"
@@ -108,9 +79,7 @@ class TestSymmetricStartCloseTranscriptOrdering:
         assert phase_pos < close_pos, "[phase] must appear before [phase-close]"
 
     def test_start_and_close_use_same_cycle_label_vocabulary(self) -> None:
-        """Phase-start banner and [phase-close] transcript line use the same Cycle label."""
 
-        # Phase-start banner
         start_buf = StringIO()
         start_console = Console(
             file=start_buf, force_terminal=False, highlight=False, color_system=None, width=200
@@ -124,7 +93,6 @@ class TestSymmetricStartCloseTranscriptOrdering:
         display = resolve_active_display(None, start_ctx)
         display.emit_phase_start_from_entry(entry)
 
-        # Phase-close transcript
         close_pd, close_buf = _make_display()
         close_pd.begin_phase("development")
         exit_model = PhaseExitModel.from_entry_model(entry, ExitContext(exit_trigger="produced"))
@@ -133,6 +101,5 @@ class TestSymmetricStartCloseTranscriptOrdering:
         start_out = start_buf.getvalue()
         close_out = close_buf.getvalue()
 
-        # Both should reference Cycle 3/5
         assert "Cycle 3/5" in start_out, f"Expected 'Cycle 3/5' in start banner: {start_out!r}"
         assert "Cycle 3/5" in close_out, f"Expected 'Cycle 3/5' in phase-close line: {close_out!r}"

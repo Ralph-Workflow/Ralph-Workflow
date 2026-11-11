@@ -1,9 +1,3 @@
-"""Tests verifying ActivityRouter kind mapping including THINKING.
-
-All assertions use the public ActivityRouter API (push_raw_line, on_event callback).
-No private helpers are referenced.
-"""
-
 from __future__ import annotations
 
 from ralph.agents.parsers import AgentOutputLine
@@ -78,7 +72,6 @@ def test_tool_use_maps_correctly() -> None:
 
 
 def test_unknown_maps_to_unknown() -> None:
-    """Parser types not in the mapping table route to UNKNOWN via a custom factory."""
     events: list[tuple[str, ActivityEventKind, str | None, str | None]] = []
 
     class _UnknownParser:
@@ -126,7 +119,6 @@ def test_router_on_event_called_with_thinking_kind() -> None:
 
 def test_router_on_event_not_called_when_none() -> None:
     router = ActivityRouter()
-    # Should not raise; no on_event registered
     router.push_raw_line(
         "u",
         '{"type":"content_block_delta","delta":{"type":"text_delta","text":"hi"}}',
@@ -134,7 +126,6 @@ def test_router_on_event_not_called_when_none() -> None:
 
 
 def test_prefixed_claude_text_line_routes_as_content() -> None:
-    """claude: <text> prefixed lines are parsed as text events, not JSON errors."""
     events: list[tuple[str, ActivityEventKind, str | None, str | None]] = []
     router = _make_router(events)
 
@@ -152,7 +143,6 @@ def test_prefixed_claude_text_line_routes_as_content() -> None:
 
 
 def test_prefixed_claude_tool_line_routes_as_tool_use() -> None:
-    """claude tool: <name> prefixed lines are parsed as tool_use events."""
     events: list[tuple[str, ActivityEventKind, str | None, str | None]] = []
     router = _make_router(events)
 

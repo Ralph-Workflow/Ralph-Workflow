@@ -1,4 +1,3 @@
-"""MediaEntryExtras — optional extras when adding a media artifact to the manifest."""
 
 from __future__ import annotations
 
@@ -11,17 +10,12 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class MediaEntryExtras:
-    """Optional extras when adding a media artifact to the manifest."""
 
     cache_path: str = ""
     source_path: str = ""
     source_uri: str = ""
     identity_key: str = ""
     byte_loader: ByteLoader | None = None
-    # Optional pre-assigned artifact_id so callers that need to
-    # persist a cache file BEFORE the manifest assigns the id (for
-    # an at-add-time byte_loader that references the cache path)
-    # can do so without a chicken-and-egg dependency.
     artifact_id: str = ""
 
 

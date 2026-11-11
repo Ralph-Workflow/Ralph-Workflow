@@ -1,9 +1,3 @@
-"""Black-box tests for the unified register_agent_support API.
-
-All tests use in-memory fakes — no real subprocesses, no real wall-clock waits,
-no real psutil.
-"""
-
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
@@ -86,32 +80,26 @@ def _reset_catalog() -> object:
 
 
 class FakeAgentParser:
-    """Pass-through parser used to prove registration wiring."""
-
     def parse(self, lines: Iterator[str]) -> Iterator[AgentOutputLine]:
         for line in lines:
             yield AgentOutputLine(type="output", content=line, raw=line)
 
 
 class FakeTextParser:
-    """Pass-through parser that yields text lines for display rendering."""
-
     def parse(self, lines: Iterator[str]) -> Iterator[AgentOutputLine]:
         for line in lines:
             yield AgentOutputLine(type="text", content=line, raw=line)
 
 
 class FakeAgentStrategy(BaseExecutionStrategy):
-    """Minimal custom strategy that inherits all defaults."""
+    pass
 
 
 class FakeInteractiveAgentStrategy(BaseExecutionStrategy):
-    """Minimal interactive strategy that inherits all defaults."""
+    pass
 
 
 class KwargsAwareStrategy(BaseExecutionStrategy):
-    """Strategy that records the kwargs it received at construction time."""
-
     def __init__(
         self,
         *,
@@ -125,8 +113,6 @@ class KwargsAwareStrategy(BaseExecutionStrategy):
 
 
 class TestRegisterAgentSupport:
-    """Unified API writes into parser, strategy, and agent-name registries."""
-
     def test_registers_headless_agent_round_trip(self) -> None:
         registry = AgentRegistry()
 
@@ -370,13 +356,9 @@ class TestRegisterAgentSupport:
             agent_config=config,
         )
 
-        # After wt-028-display the pipeline runner routes through the single
-        # agent-event renderer registry; the output carries the registry's
-        # INFO carrier icon plus the agent prefix and body.
         assert len(rendered) == 1
         assert "fake-stream" in rendered[0]
         assert "hello" in rendered[0]
-        # Plain-text path uses the icon (\u2139 for info) so meaning survives color-off.
         assert "\u2139" in rendered[0]
 
     def test_custom_cmd_and_session_flag_override_defaults(self) -> None:
@@ -413,8 +395,6 @@ class TestRegisterAgentSupport:
 
 
 class TestResolveParserKey:
-    """Runtime parser resolution prefers registered command names."""
-
     def test_registered_agent_command_wins_over_generic_parser(self) -> None:
         registry = AgentRegistry()
         register_agent_support(
@@ -478,7 +458,6 @@ class TestResolveParserKey:
         assert key == "claude_interactive"
 
     def test_configured_claude_interactive_override_keeps_interactive_parser(self) -> None:
-        """User-reported Claude smoke parsing regression, 2026-07-14."""
         config = AgentConfig(
             cmd="claude",
             json_parser=JsonParserType.CLAUDE,
@@ -493,8 +472,6 @@ class TestResolveParserKey:
 
 
 class TestStrategyForCommand:
-    """Runtime strategy resolution prefers the agent's command name."""
-
     def test_same_transport_agents_use_distinct_strategies(self) -> None:
         registry = AgentRegistry()
         register_agent_support(
@@ -522,7 +499,6 @@ class TestStrategyForCommand:
         assert type(strategy).__name__ == "GenericExecutionStrategy"
 
     def test_smoke_tool_activity_uses_command_specific_strategy(self) -> None:
-        """A strategy registered for a command classifies activity for that command."""
 
         class LineYieldingStrategy(BaseExecutionStrategy):
             def classify_activity_line(self, line: str) -> AgentActivitySignal | None:
@@ -544,15 +520,11 @@ class TestStrategyForCommand:
 
 
 class _AnyKwargsStrategy(BaseExecutionStrategy):
-    """Strategy that only accepts arbitrary kwargs."""
-
     def __init__(self, **kwargs: object) -> None:
         self.received_kwargs = kwargs
 
 
 class TestRegistrationRegressionCases:
-    """Regression coverage for collision, fallback, and kwargs forwarding."""
-
     def test_kwargs_forwarded_through_var_keyword_factory(self) -> None:
         registry = AgentRegistry()
         fake_registry = object()
@@ -572,12 +544,6 @@ class TestRegistrationRegressionCases:
             registry=fake_registry,
         )
         assert isinstance(strategy, _AnyKwargsStrategy)
-        # ``subagent_pid_source`` is forwarded by the canonical
-        # ``strategy_for_command`` / ``strategy_for_transport`` path
-        # (Trustworthy Idle Watchdog R4). The kwarg is added to
-        # the var-keyword forwarding dict even when the test does
-        # not pass one explicitly (the canonical pipeline defaults
-        # it to None).
         assert strategy.received_kwargs == {
             "label_scope": "scope-x",
             "registry": fake_registry,
@@ -595,12 +561,10 @@ class TestRegistrationRegressionCases:
             cmd="claude wrapper",
         )
 
-        # Built-in headless Claude parser must remain reachable.
         key = resolve_parser_key("claude -p", JsonParserType.CLAUDE, AgentTransport.CLAUDE)
         assert key == "claude"
         assert isinstance(get_parser(key), ClaudeParser)
 
-        # The custom command resolves to the custom registration.
         custom_key = resolve_parser_key(
             "claude wrapper", JsonParserType.GENERIC, AgentTransport.CLAUDE
         )
@@ -612,7 +576,6 @@ class TestRegistrationRegressionCases:
         )
 
     def test_unknown_command_on_same_transport_uses_transport_strategy(self) -> None:
-        """A command with no custom entry falls back to the built-in transport-keyed slot."""
         registry = AgentRegistry()
         register_agent_support(
             "custom-generic",
@@ -626,9 +589,6 @@ class TestRegistrationRegressionCases:
         assert isinstance(strategy, GenericExecutionStrategy)
 
     def test_transport_strategy_is_overwritten_by_custom_registration(self) -> None:
-        """register_agent_support writes the supplied strategy into the
-        legacy _CUSTOM_COMMAND_REGISTRY.
-        """
         registry = AgentRegistry()
         register_agent_support(
             "custom-generic",
@@ -643,10 +603,7 @@ class TestRegistrationRegressionCases:
 
 
 class TestRegistrationCollisionGuard:
-    """Built-in parser keys and duplicate commands are protected."""
-
     def test_registering_reserved_parser_name_raises(self) -> None:
-        """Custom agents cannot overwrite built-in parser keys like ``claude``."""
         registry = AgentRegistry()
         with pytest.raises(ValueError, match="reserved built-in parser name"):
             register_agent_support(
@@ -660,7 +617,6 @@ class TestRegistrationCollisionGuard:
         assert isinstance(get_parser("claude"), ClaudeParser)
 
     def test_custom_cmd_does_not_replace_builtin_parser_key(self) -> None:
-        """A command like ``claude wrapper`` leaves the built-in ``claude`` parser intact."""
         registry = AgentRegistry()
         register_agent_support(
             "claude-wrapper",
@@ -679,7 +635,6 @@ class TestRegistrationCollisionGuard:
         )
 
     def test_duplicate_command_registration_is_rejected(self) -> None:
-        """Two agents sharing the same ``cmd`` cannot silently clobber each other."""
         registry = AgentRegistry()
         register_agent_support(
             "agent-one",
@@ -701,7 +656,6 @@ class TestRegistrationCollisionGuard:
             )
 
     def test_duplicate_command_same_transport_is_rejected(self) -> None:
-        """Duplicate commands are rejected even when the transport is identical."""
         registry = AgentRegistry()
         register_agent_support(
             "agent-one",
@@ -724,8 +678,6 @@ class TestRegistrationCollisionGuard:
 
 
 class TestCatalogBackedRegistration:
-    """AgentSupport.from_registration_kwargs + default_catalog().add(support)."""
-
     def test_round_trip_through_default_catalog(self) -> None:
         support = AgentSupport.from_registration_kwargs(
             "fake-catalog",
@@ -782,37 +734,6 @@ class TestCatalogBackedRegistration:
 
 
 def test_register_agent_support_headless_and_interactive_lockstep() -> None:
-    """Black-box proof that ``register_agent_support`` keeps ``AgentCatalog`` and
-    ``AgentRegistry`` in lockstep on add and unregister for both transports.
-
-    This test exercises the public registration surface only:
-    ``ralph.agents`` (``AgentCatalog``, ``AgentRegistry``,
-    ``register_agent_support``, ``default_catalog``) bound at module top,
-    ``ralph.agents.execution_state`` (``BaseExecutionStrategy``) re-exported
-    by the public ``__init__``, ``ralph.config.enums`` (``AgentTransport``,
-    ``JsonParserType``), and the locally-defined ``FakeAgentParser`` stub
-    that implements the public ``AgentParser`` protocol.
-
-    The three runtime identity assertions at the top of the test body prove
-    that the bound names are the public-surface re-exports, not private
-    sub-module re-imports. If any re-export breaks (e.g., removed from
-    ``ralph.agents.__all__``), the module-level import fails before the test
-    ever runs.
-
-    The autouse ``_reset_catalog`` fixture in this module imports the legacy
-    module-level dicts (``_PARSER_REGISTRY_DATA``,
-    ``_CUSTOM_COMMAND_REGISTRY_DATA``, ``_STRATEGY_DISPATCH_DATA``) for
-    cleanup only — that fixture is the established pattern in this file and
-    is shared with the other tests that need golden-state restoration. The
-    lockstep test's own TEST LOGIC does not import from
-    ``ralph.agents.builtin``, ``ralph.agents.parsers._PARSER_REGISTRY``,
-    ``ralph.agents.execution_state._factory``,
-    ``ralph.agents.parsers._template``, or
-    ``ralph.agents.execution_state._base`` — those are private modules
-    whose leading-underscore names mark them as out of the public API.
-
-    See AGENTS.md: "All code must be testable in a black box way."
-    """
     assert AgentCatalog is ralph.agents.AgentCatalog
     assert AgentRegistry is ralph.agents.AgentRegistry
     assert register_agent_support is ralph.agents.register_agent_support
@@ -876,55 +797,18 @@ def test_register_agent_support_headless_and_interactive_lockstep() -> None:
 
 
 class TestPostRefactorContract:
-    """Pin the post-refactor contract:
-
-    (a) ``AgentCatalog._DEFAULT_STRATEGIES`` is the SINGLE source of
-        truth for the transport-to-strategy dispatch table and must
-        include every ``AgentTransport`` value (an audit-style coverage
-        guard that fails if a new transport is added without an entry);
-    (b) the ``AgentSupport`` dataclass shape parity between
-        ``from_registration_kwargs`` and ``BuiltinAgentSpec.to_support``
-        (frozen, slots, name/spec/parser_factory/strategy_factory/
-        config/is_builtin/no_default_session_flag);
-    (c) the ``AgentSpec`` consistency validators still reject
-        ``requires_pty`` without ``interactive`` (sanity, no behavior
-        change).
-
-    All tests are in-process, no I/O, no subprocess.
-    """
-
     def test_default_strategies_covers_every_transport(self) -> None:
-        """``AgentCatalog._DEFAULT_STRATEGIES`` must include every AgentTransport value.
-
-        This is the single source of truth for the transport-to-strategy
-        dispatch table after the wt-016 consolidation refactor; the
-        legacy ``_DEFAULT_STRATEGY_BY_TRANSPORT`` and
-        ``_DEFAULT_STRATEGY_IMPORT_PATH`` tables in
-        ``ralph.agents.registration`` have been removed.  If a new
-        ``AgentTransport`` is added without an entry here, the contract
-        test fails (the coverage guard).
-        """
         default_strategies = default_catalog()._DEFAULT_STRATEGIES
         assert set(default_strategies) == set(AgentTransport), (
             f"AgentCatalog._DEFAULT_STRATEGIES missing transport(s); "
             f"expected {sorted(AgentTransport)}, got {sorted(default_strategies)}"
         )
-        # Every value must be a callable StrategyFactory.
         for transport, factory in default_strategies.items():
             assert callable(factory), (
                 f"AgentCatalog._DEFAULT_STRATEGIES[{transport.name!r}] must be callable"
             )
 
     def test_agent_support_shape_parity_builtin_vs_kwargs(self) -> None:
-        """``AgentSupport.from_registration_kwargs`` and
-        ``BuiltinAgentSpec.to_support`` must produce instances with the
-        same field shape.
-
-        BuiltinAgentSpec.to_support delegates to from_registration_kwargs
-        with the same kwargs (plus ``is_builtin=True``), so the field
-        shape must be identical: name, spec, parser_factory,
-        strategy_factory, config, is_builtin, no_default_session_flag.
-        """
 
         class _TemplateParser(ParserTemplateBase):
             _STOP_EVENT_TYPES = frozenset()
@@ -940,7 +824,6 @@ class TestPostRefactorContract:
         class _Strategy(BaseExecutionStrategy):
             pass
 
-        # Materialise via the kwargs path.
         from_kwargs = AgentSupport.from_registration_kwargs(
             "kw-args-agent",
             transport=AgentTransport.GENERIC,
@@ -948,8 +831,6 @@ class TestPostRefactorContract:
             strategy_factory=_Strategy,
             interactive=False,
         )
-        # Materialise via the BuiltinAgentSpec path (with is_builtin=True).
-        # S-4 requires a complete display_capabilities tuple for built-ins.
         from ralph.agents.display_capabilities import all_display_capabilities
         from ralph.agents.display_capability_stance import DisplayCapabilityStance
 
@@ -972,15 +853,9 @@ class TestPostRefactorContract:
             "config",
             "is_builtin",
             "no_default_session_flag",
-            # S-6 (Evidence Provenance G6 / DoD 20): a general,
-            # transport-declared property replacing the literal
-            # `== AgentTransport.NANOCODER` session-ID exemption branch in
-            # smoke_plumbing.py. See AgentSupport's docstring.
             "session_identifier_observable",
             "display_capabilities",
             "_name_lower",
-            # S-4 (wt-015): generic data-driven seams replacing AGY
-            # name-typed branches, surfaced as fields on AgentSupport.
             "dynamic_alias_help",
             "dynamic_alias_help_prefix",
             "empty_output_diagnostic_factory",
@@ -994,15 +869,12 @@ class TestPostRefactorContract:
             f"AgentSupport field set changed; expected {expected_fields}, "
             f"got {set(from_builtin.__dataclass_fields__)}"
         )
-        # Both instances must be frozen + slots.
         assert from_kwargs.__dataclass_params__.frozen is True
         assert from_builtin.__dataclass_params__.frozen is True
-        # BuiltinAgentSpec.to_support sets is_builtin=True; kwargs path defaults to False.
         assert from_kwargs.is_builtin is False
         assert from_builtin.is_builtin is True
 
     def test_agent_support_is_frozen_cannot_mutate(self) -> None:
-        """``AgentSupport`` must remain a frozen dataclass (no mutation)."""
 
         class _TemplateParser(ParserTemplateBase):
             _STOP_EVENT_TYPES = frozenset()
@@ -1030,10 +902,6 @@ class TestPostRefactorContract:
     def test_agent_spec_consistency_validators_still_reject_inconsistent_state(
         self,
     ) -> None:
-        """``AgentSpec`` must still reject ``requires_pty=True`` without
-        ``interactive=True`` (sanity: the refactor must not loosen the
-        headless-vs-interactive axis validators).
-        """
         with pytest.raises(ValueError, match="requires_pty=True requires interactive=True"):
             AgentSpec(
                 name="bad",

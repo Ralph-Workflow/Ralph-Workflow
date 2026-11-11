@@ -1,5 +1,3 @@
-"""Black-box tests for the dev/fix session lifecycle refresh hooks."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -21,8 +19,6 @@ pytestmark = pytest.mark.timeout_seconds(2.0)
 
 
 class _Index:
-    """Tiny index handle exposing ``store`` and a deterministic runner."""
-
     def __init__(self, store: ExploreStore, runner) -> None:
         self.store = store
         self._runner = runner
@@ -32,8 +28,6 @@ class _Index:
 
         return ReindexOptions(mode="changed", timeout_ms=timeout_ms)
 
-    # The lifecycle hook calls ``runner(store, workspace_root, opts=...)``
-    # via duck-typing; expose the runner through a method.
     def runner(self):
         return self._runner
 
@@ -56,10 +50,6 @@ def _seed_workspace(tmp_path: Path) -> Path:
 
 
 def test_is_execution_phase_for_refresh_only_true_for_execution_role() -> None:
-    # AC-04: the role alone is not enough — the phase drain must also
-    # be in REFRESHABLE_PHASE_DRAINS. ``planning`` is also mapped to
-    # ``role=execution`` in the default pipeline but must NOT trigger
-    # a refresh.
     assert is_execution_phase_for_refresh(phase_role="execution", phase_drain="development") is True
     assert is_execution_phase_for_refresh(phase_role="execution", phase_drain="fix") is True
     assert is_execution_phase_for_refresh(phase_role="execution", phase_drain="planning") is False
@@ -67,20 +57,10 @@ def test_is_execution_phase_for_refresh_only_true_for_execution_role() -> None:
     assert is_execution_phase_for_refresh(phase_role="analysis", phase_drain="development") is False
     assert is_execution_phase_for_refresh(phase_role="commit", phase_drain="development") is False
     assert is_execution_phase_for_refresh(phase_role=None, phase_drain=None) is False
-    # Backward-compat: callers that pass only the role get False
-    # because the drain defaults to None, which is never refreshable.
     assert is_execution_phase_for_refresh(phase_role="execution") is False
 
 
 def test_planning_phase_does_not_trigger_refresh() -> None:
-    """AC-04 regression: the planning block (``role=execution``,
-    ``drain=planning``) must not trigger an indexed refresh.
-
-    The default pipeline maps the planning block to ``role =
-    \"execution\"`` for historical reasons. A role-only gate would
-    therefore refresh the index for the planning agent, which is
-    uncosted. The drain is the authoritative gate.
-    """
     assert is_execution_phase_for_refresh(phase_role="execution", phase_drain="planning") is False
     assert (
         is_execution_phase_for_refresh(phase_role="execution", phase_drain="planning_analysis")
@@ -89,13 +69,11 @@ def test_planning_phase_does_not_trigger_refresh() -> None:
 
 
 def test_development_and_fix_phases_trigger_refresh() -> None:
-    """AC-04: only the development / fix drains trigger a refresh."""
     assert is_execution_phase_for_refresh(phase_role="execution", phase_drain="development") is True
     assert is_execution_phase_for_refresh(phase_role="execution", phase_drain="fix") is True
 
 
 def test_review_and_commit_phases_do_not_trigger_refresh() -> None:
-    """AC-04: review and commit drains never trigger a refresh."""
     for drain in ("commit", "commit_review", "review", "terminal", "complete"):
         assert is_execution_phase_for_refresh(phase_role="execution", phase_drain=drain) is False, (
             f"drain {drain!r} must not trigger refresh"
@@ -187,7 +165,6 @@ def test_after_hook_invokes_reindex_with_injected_runner(tmp_path: Path) -> None
 def test_lifecycle_regression_requeues_observed_path_when_dirty_handoff_is_unavailable(
     tmp_path: Path,
 ) -> None:
-    """S-4 regression: failed durable handoff retains observer work for the next boundary."""
     workspace = _seed_workspace(tmp_path)
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     from ralph.workspace.awareness import awareness_for_workspace, release_workspace_awareness
@@ -211,7 +188,6 @@ def test_lifecycle_regression_requeues_observed_path_when_dirty_handoff_is_unava
 
 @pytest.mark.timeout_seconds(2.0)
 def test_lifecycle_success_recovers_requeued_awareness_freshness(tmp_path: Path) -> None:
-    """S-3 regression: a successful later boundary clears a failed-handoff stale state."""
     workspace = _seed_workspace(tmp_path)
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     from ralph.workspace.awareness import awareness_for_workspace, release_workspace_awareness
@@ -283,7 +259,6 @@ def test_hooks_report_timeout_when_runner_returns_timed_out(tmp_path: Path) -> N
 
 
 def test_hooks_use_default_runner_when_injected_runner_is_none(tmp_path: Path) -> None:
-    """When no runner is injected, the default pipeline.reindex runs."""
     workspace = _seed_workspace(tmp_path)
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     index = build_sqlite_index_handle(store)
@@ -295,30 +270,17 @@ def test_hooks_use_default_runner_when_injected_runner_is_none(tmp_path: Path) -
     )
     assert result.invoked is True
     assert result.timed_out is False
-    # Default reindex ran; the index now has a generation.
     assert store.get_setting("current_generation") == "1"
     store.close()
 
 
 def test_lifecycle_hook_result_dataclass_defaults() -> None:
-    """LifecycleHookResult is frozen with safe defaults."""
     result = LifecycleHookResult(invoked=False, timed_out=False)
     assert result.reindex_result is None
     assert result.skipped_reason is None
 
 
 def test_runner_wires_pre_post_refresh_around_development_agent(tmp_path: Path) -> None:
-    """AC-04 / runner-level integration: a development drain must
-    observe exactly one ``before`` refresh event before invocation
-    and one ``after`` refresh event after invocation, while a
-    planning drain must observe neither.
-
-    The test drives the runner through the injected reindex runner
-    seam (no live reindex, no LLM, no real subprocess) and
-    asserts the observable event sequence. The internal call
-    order of the hooks is not asserted because the contract is the
-    pre/invocation/post ordering; implementation details are not.
-    """
     from ralph.mcp.explore import lifecycle as lifecycle_module
     from ralph.mcp.explore.dirty_paths import build_sqlite_index_handle
     from ralph.mcp.explore.lifecycle import DEFAULT_HOOK_TIMEOUT_MS
@@ -346,22 +308,11 @@ def test_runner_wires_pre_post_refresh_around_development_agent(tmp_path: Path) 
     lifecycle_module.__dict__["before_agent_refresh"] = _spy_before
     lifecycle_module.__dict__["after_agent_refresh"] = _spy_after
     try:
-        # Isolated scratch dir from pytest's ``tmp_path`` fixture (not
-        # the real, machine-shared ``/tmp``): a hardcoded ``Path("/tmp")``
-        # here previously collided with any other live Ralph process on
-        # the same host writing to ``/tmp/.agent/ralph-explore``, causing
-        # sqlite lock contention and a spurious 1s timeout. The
-        # ExploreIndex handle is built from the underlying ExploreStore
-        # directly so the test does not depend on workspace_root semantics.
         workspace_root = tmp_path.resolve()
         store = ExploreStore(workspace_root / ".agent" / "ralph-explore")
         try:
             handle = build_sqlite_index_handle(store)
             workspace_root = handle.store.index_dir.parent.parent
-            # Drive the hooks directly so the test stays black-box
-            # against the runner internals. The lifecycle hooks are
-            # the only contract surface; the runner wires them in
-            # the production path.
             original_before(
                 workspace_root=workspace_root,
                 explore_index=handle,
@@ -380,10 +331,4 @@ def test_runner_wires_pre_post_refresh_around_development_agent(tmp_path: Path) 
         lifecycle_module.__dict__["before_agent_refresh"] = original_before
         lifecycle_module.__dict__["after_agent_refresh"] = original_after
 
-    # The hooks call the injected reindex runner exactly once each
-    # when both hooks are dispatched. The integration under test
-    # is that the runner wires these hooks around agent invocation;
-    # the unit-level wiring assertion is therefore that the
-    # injected runner observed exactly one reindex invocation per
-    # hook dispatch.
     assert events.count("reindex") == 2

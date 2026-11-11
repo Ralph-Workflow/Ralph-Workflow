@@ -1,13 +1,4 @@
 #!/usr/bin/env python3
-"""Deterministic multimodal smoke stub agent (criterion 5).
-
-The subprocess calls Ralph's MCP endpoint and emits each production harness's
-expected transport frames. ``MOCK_MULTIMODAL_TRANSPORT`` selects the frame
-vocabulary. In normal mode it reads the fixture, replays the server-minted
-handle, reports metadata plus the pixel-only secret, submits the smoke artifact,
-and completes the run. ``MOCK_MULTIMODAL_SKIP_MEDIA`` and
-``MOCK_MULTIMODAL_IGNORE_RESPONSE`` trigger the named negative contracts.
-"""
 
 from __future__ import annotations
 
@@ -33,46 +24,20 @@ TRANSPORT_ENV = "MOCK_MULTIMODAL_TRANSPORT"
 
 
 def _canonical_run_id_for_transport(transport: str, run_id: str) -> str:
-    """Return a deterministic per-transport session-id-style token.
-
-    The harness's session-id extractor (see
-    :mod:`ralph.agents.invoke._session`) recognises
-    ``conversation_id`` on AGY ``init`` frames, ``session_id`` on Cursor
-    ``system: init`` frames, ``sessionID`` (capital) on every OpenCode
-    event, and ``session_id`` / ``sessionId`` on JSON ``session`` /
-    ``session_ready`` / ``session_start`` / ``session_resume`` events
-    (Claude). Plain-text Claude sessions emit
-    ``Claude session ready. Session ID: <id>``. Kimi Code emits
-    ``session_id`` on ``role:"meta"`` ``session.resume_hint`` frames.
-
-    For each transport we emit the canonical shape so the harness's
-    :func:`extract_transport_session_id` returns the same value the
-    harness's run_id was bound to (``<transport-specific-prefix>``),
-    keeping the wire-ledger ``run_id`` and the extracted session id in
-    lockstep so the smoke report's ``session_id`` row is non-empty.
-    """
     return run_id
 
 
 def _emit_json(payload: dict[str, Any]) -> None:
-    """Emit one NDJSON frame on stdout and flush."""
     sys.stdout.write(json.dumps(payload, separators=(",", ":")) + "\n")
     sys.stdout.flush()
 
 
 def _emit_text_line(text: str) -> None:
-    """Emit a plain text line on stdout and flush."""
     sys.stdout.write(text + "\n")
     sys.stdout.flush()
 
 
-# ---------------------------------------------------------------------------
-# Per-transport frame emitters.
-# ---------------------------------------------------------------------------
-
-
 def _emit_claude_init(session_id: str, run_id: str) -> None:
-    """Emit a Claude ``session_start`` + ``message_start`` to seed the parser."""
     _emit_json({"type": "system", "subtype": "session_start", "session_id": session_id})
     _emit_json(
         {
@@ -125,7 +90,6 @@ def _emit_claude_stop() -> None:
 
 
 def _emit_claude_session_id_line(session_id: str) -> None:
-    """Plain-text session-id line the harness's text extractor recognises."""
     _emit_text_line(f"Claude session ready. Session ID: {session_id}")
 
 
@@ -359,7 +323,6 @@ def _emit_nanocoder_text(text: str) -> None:
 
 
 def _emit_nanocoder_tool(name: str) -> None:
-    """Emit a nanocoder-parser-recognised tool line (``⚒ Executed <name>``)."""
     _emit_text_line(f"⚒ Executed {name}")
 
 
@@ -372,14 +335,6 @@ def _emit_nanocoder_session_id_line(session_id: str) -> None:
 
 
 def _emit_kimi_init(session_id: str) -> None:
-    """Emit a Kimi ``meta`` banner + ``session.resume_hint`` to seed the parser.
-
-    Mirrors the measured v0.36.1 wire: the version banner and the
-    resumable session id both ride ``role:"meta"`` frames; the
-    harness's session extractor reads ``session_id`` from the raw
-    ``session.resume_hint`` line (see
-    ``tests/agents/invoke/test_kimi_session_id_extraction.py``).
-    """
     _emit_json({"role": "meta", "type": "system.version", "version": "0.36.1"})
     _emit_json(
         {
@@ -396,12 +351,6 @@ def _emit_kimi_assistant_text(text: str) -> None:
 
 
 def _emit_kimi_tool_call(name: str, arguments: dict[str, Any], call_id: str) -> None:
-    """Emit one assistant ``tool_calls`` entry in the documented shape.
-
-    ``arguments`` is a JSON-encoded STRING on the measured wire (the
-    parser decodes it into ``metadata["input"]``), so the stub dumps
-    the dict back to its string form.
-    """
     _emit_json(
         {
             "role": "assistant",
@@ -422,23 +371,10 @@ def _emit_kimi_tool_result(call_id: str, content: str) -> None:
 
 
 def _emit_kimi_stop() -> None:
-    """Emit the ``[DONE]`` sentinel the NDJSON base short-circuits on.
-
-    The documented kimi envelope has NO terminal frame (termination is
-    process exit), so the stub does not fabricate one; the base
-    parser's preserved ``[DONE]`` short-circuit gives the stop emitter
-    a deterministic sentinel without inventing a fake kimi frame.
-    """
     _emit_text_line("[DONE]")
 
 
-# ---------------------------------------------------------------------------
-# Transport dispatch tables.
-# ---------------------------------------------------------------------------
-
-
 def _make_emit_functions(transport: str) -> dict[str, Any]:
-    """Return a mapping of action names to per-transport emitters."""
     emitters = {
         "claude": (
             _emit_claude_session_id_line,
@@ -519,13 +455,7 @@ def _make_emit_functions(transport: str) -> dict[str, Any]:
     }
 
 
-# ---------------------------------------------------------------------------
-# Wire-call helpers.
-# ---------------------------------------------------------------------------
-
-
 def _dispatch(endpoint: str, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-    """POST a real ``tools/call`` JSON-RPC frame to ``endpoint``."""
     payload: dict[str, Any] = {
         "jsonrpc": "2.0",
         "id": 1,
@@ -536,7 +466,6 @@ def _dispatch(endpoint: str, name: str, arguments: dict[str, Any]) -> dict[str, 
 
 
 def _extension_path() -> str:
-    """Read Pi's extension path from its env variable or argv flag."""
     extension_path = os.environ.get("RALPH_PI_MCP_EXTENSION", "")
     if not extension_path and "--extension" in sys.argv:
         extension_index = sys.argv.index("--extension")
@@ -546,7 +475,6 @@ def _extension_path() -> str:
 
 
 def _endpoint_from_extension(extension_path: str) -> str:
-    """Extract the endpoint embedded in a generated Pi extension."""
     try:
         extension_source = DEFAULT_FILE_BACKEND.read_text(
             Path(extension_path),
@@ -559,7 +487,6 @@ def _endpoint_from_extension(extension_path: str) -> str:
 
 
 def _endpoint_from_opencode_config() -> str:
-    """Extract the first URL from an OpenCode MCP configuration payload."""
     try:
         config = json.loads(os.environ.get("OPENCODE_CONFIG_CONTENT", ""))
     except json.JSONDecodeError:
@@ -575,19 +502,6 @@ def _endpoint_from_opencode_config() -> str:
 
 
 def _read_env_or_fail() -> tuple[str, str, str]:
-    """Read the harness-exported env vars; return ``(endpoint, output_file, run_id)``.
-
-    Looks for the endpoint in this priority order:
-
-    1. ``RALPH_MCP_ENDPOINT`` (the canonical MCP endpoint env var).
-    2. ``RALPH_PI_MCP_EXTENSION`` (the generated TypeScript extension
-       Pi reads; its ``ENDPOINT`` constant carries the URL).
-    3. ``OPENCODE_CONFIG_CONTENT`` (the JSON config the opencode resolver
-       writes into the agent env; the URL is parsed out of the
-       ``mcp`` key when the direct env var is absent).
-    4. ``MCP_URL`` (a fallback for transports that do not export either
-       of the above).
-    """
     endpoint = (
         os.environ.get(ENDPOINT_ENV, "")
         or _endpoint_from_extension(_extension_path())
@@ -623,7 +537,6 @@ def _resolve_transport() -> str:
 
 
 def _extract_server_uri(first_response: dict[str, Any]) -> str | None:
-    """Return the first ``ralph://media/{artifact_id}`` URI the server minted."""
     sys.stderr.write(
         f"mock_multimodal_agent: extract_server_uri input={json.dumps(first_response, default=str)[:1000]!r}\n"
     )
@@ -646,7 +559,6 @@ def _extract_server_uri(first_response: dict[str, Any]) -> str | None:
 
 
 def _extract_metadata_envelope(metadata_response: dict[str, Any]) -> tuple[int | None, str | None]:
-    """Return ``(width, height)`` from a ``read_image(format=metadata)`` response."""
     result = metadata_response.get("result") if isinstance(metadata_response, dict) else None
     if not isinstance(result, dict):
         return None, None
@@ -677,15 +589,6 @@ def _run_dispatch(
     skip_media: bool,
     ignore_response: bool,
 ) -> tuple[bool, str | None, int, int]:
-    """Run the stub's media-call sequence.
-
-    Returns ``(success, mint_handle, width, height)``. The positive
-    contract issues a full sequence of media-tool calls and extracts
-    the geometry / sha256 from the ``read_image`` metadata envelope;
-    the ignore-response contract issues one ``read_media`` call (so a
-    verified wire-ledger record exists) and then forges a UUID-based
-    receipt; the skip-media contract skips the dispatch entirely.
-    """
     width = 40
     height = 24
     mint_handle: str | None = None
@@ -726,22 +629,7 @@ def _run_dispatch(
     return True, mint_handle, width, height
 
 
-# ---------------------------------------------------------------------------
-# Smoke-test orchestration.
-# ---------------------------------------------------------------------------
-
-
 def _fixture_geometry_from_disk(workspace_root: Path) -> tuple[int, int, str] | None:
-    """Return ``(width, height, sha256)`` of the on-disk fixture, or ``None``.
-
-    The smoke harness materializes ``smoke-fixture.png`` at the workspace
-    root before the turns start; reading the IHDR chunk + computing the
-    digest gives the stub the authoritative geometry and sha256 to
-    mirror into ``DIMENSIONS`` and ``MEDIA_SHA256`` tokens. Failing to
-    read the fixture is non-fatal: the stub falls back to the dimensions
-    the metadata envelope returned (or to ``None``, which lets the
-    harness grader report the missing token as the documented break).
-    """
     import hashlib
     import struct
 
@@ -762,7 +650,6 @@ def _fixture_geometry_from_disk(workspace_root: Path) -> tuple[int, int, str] | 
 
 
 def _first_idat_payload(body: bytes) -> bytes | None:
-    """Return the first complete IDAT payload from a PNG byte stream."""
     cursor = 8
     while cursor + 8 <= len(body):
         length = int.from_bytes(body[cursor : cursor + 4], byteorder="big", signed=False)
@@ -778,7 +665,6 @@ def _first_idat_payload(body: bytes) -> bytes | None:
 
 
 def _fixture_perception_secret_from_disk(workspace_root: Path) -> str | None:
-    """Extract the fixed-width secret from the fixture's final-row RGB pixels."""
     try:
         body = DEFAULT_FILE_BACKEND.read_bytes(workspace_root / "smoke-fixture.png")
     except OSError:
@@ -809,7 +695,6 @@ def _write_output(
     height: int,
     skip_media: bool,
 ) -> None:
-    """Append the multimodal token lines to ``output_file``."""
     output_file.parent.mkdir(parents=True, exist_ok=True)
     if output_file.exists():
         body = output_file.read_text(encoding="utf-8")
@@ -839,17 +724,6 @@ def _post_artifact_and_complete(
     output_file: Path,
     run_id: str,
 ) -> None:
-    """Write the artifact, completion sentinel, and POST ``declare_complete``.
-
-    The smoke harness grades the artifact and completion signals from
-    on-disk artifacts (the canonical ``.agent/artifacts/<type>.md`` plus
-    the run-scoped completion sentinel) and from the wire ledger
-    (which holds the verified ``declare_complete`` record). Posting the
-    artifact / sentinel write directly mirrors the deterministic
-    ``tests/_support/mock_agy.py`` proof path the AGY harness already
-    exercises; the stub still POSTs ``declare_complete`` to the wire so
-    a verified wire-ledger record exists for the run.
-    """
     artifact_md = (
         "---\n"
         "type: smoke_test_result\n"
@@ -883,7 +757,6 @@ def _emit_post_dispatch_frames(
     session_id: str,
     skip_media: bool,
 ) -> None:
-    """Emit frames that mirror the POSTed tool calls so the parser sees activity."""
     text_emitter = emitters.get("text")
     tool_emitter = emitters.get("tool_call")
     if text_emitter is not None:
@@ -943,9 +816,6 @@ def _emit_post_dispatch_frames(
                 "toolu_done",
             )
         elif transport == "kimi":
-            # The kimi parser preserves upstream tool names verbatim, so
-            # the frames carry the same fully-qualified names the stub
-            # POSTs to the endpoint.
             tool_emitter(
                 "mcp__ralph__read_media",
                 {"path": "smoke-fixture.png", "format": "inline"},
@@ -972,7 +842,6 @@ def _emit_post_dispatch_frames(
 
 
 def _emit_stop_frame(transport: str, stop_emitter: Any, session_id: str) -> None:
-    """Emit the transport-specific terminal frame."""
     if stop_emitter is None:
         return
     if transport == "agy":

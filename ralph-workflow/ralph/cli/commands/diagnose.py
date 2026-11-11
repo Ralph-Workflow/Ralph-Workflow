@@ -1,4 +1,3 @@
-"""Diagnose command for Ralph Workflow CLI."""
 
 from __future__ import annotations
 
@@ -75,7 +74,6 @@ def _load_starter_prompt_sentinel() -> str:
 
 
 def _run_fs_health_for_diagnose(workspace_root: Path) -> FsHealth:
-    """Build an :class:`FsHealth` snapshot; tests may patch this seam."""
     return FsHealth.gather(workspace_root)
 
 
@@ -85,10 +83,6 @@ def diagnose_command(
     *,
     display_context: DisplayContext | None = None,
 ) -> int:
-    """Run diagnostics on the Ralph Workflow environment.
-
-    Returns 0 for success, 1 for errors, or 2 for validation failures.
-    """
     ctx = display_context if display_context is not None else make_display_context()
     display = resolve_active_display(None, ctx)
     display.emit_status("Ralph Workflow Diagnostics")
@@ -115,12 +109,10 @@ def diagnose_command(
     _check_capability_state(display=display)
     _check_filesystem_health(workspace_scope.root, display=display)
 
-    # Pre-flight validation using policy system
     validation_ok = _run_preflight_validation(
         config_path, cli_overrides, workspace_scope, display=display
     )
 
-    # Build and print next steps
     prompt_path = resolve_effective_prompt_path(workspace_scope.root, ctx.env)
     prompt_exists = prompt_path.exists()
     prompt_has_sentinel = False
@@ -149,7 +141,6 @@ def diagnose_command(
 
 
 def _check_terminal_colour(ctx: DisplayContext, *, display: object) -> None:
-    """Report the loaded package and effective terminal-colour settings."""
     rows: list[tuple[object, ...]] = [
         ("Loaded package", str(ralph.__file__ or "(unknown)"), "", "", ""),
         ("Colour system", str(ctx.console.color_system), "", "", ""),
@@ -184,12 +175,6 @@ def _check_terminal_colour(ctx: DisplayContext, *, display: object) -> None:
 
 
 def _check_capability_state(*, display: object) -> bool:
-    """Check and display baseline capability state table.
-
-    ``display`` is a :class:`ParallelDisplay`. The parameter is typed as
-    ``object`` to keep this module free of a parallel_display import cycle
-    in type-check; the runtime call site uses ``display.emit_status``.
-    """
     from ralph.display.parallel_display import ParallelDisplay
 
     assert isinstance(display, ParallelDisplay)
@@ -231,12 +216,6 @@ def _check_capability_state(*, display: object) -> bool:
 
 
 def _emit_simple_table(display: object, title: str, rows: list[tuple[object, ...]]) -> None:
-    """Emit a Table to a ParallelDisplay by routing through its console.
-
-    Used by the diagnose helpers that need richer per-row formatting than
-    the new emit_diagnose_* helpers can offer. Goes through the
-    display's own ``_console`` so the section rule contract still fires.
-    """
     from rich.table import Table
 
     from ralph.display.parallel_display import ParallelDisplay
@@ -284,17 +263,6 @@ def build_next_steps(
     prompt_exists: bool,
     prompt_has_sentinel: bool,
 ) -> list[str]:
-    """Build the list of remediation steps based on current diagnostic state.
-
-    Args:
-        validation_ok: Whether pre-flight validation passed.
-        agent_missing: Whether any configured agent is missing from PATH.
-        prompt_exists: Whether PROMPT.md exists in the workspace.
-        prompt_has_sentinel: Whether PROMPT.md still contains the starter sentinel.
-
-    Returns:
-        List of human-readable remediation lines.
-    """
     steps: list[str] = []
 
     if not prompt_exists:
@@ -324,7 +292,6 @@ def build_next_steps(
 
 
 def _print_next_steps_panel(steps: list[str], *, display: object) -> None:
-    """Print the Next steps panel through the consolidated display."""
     from ralph.display.parallel_display import ParallelDisplay
 
     assert isinstance(display, ParallelDisplay)
@@ -347,17 +314,6 @@ def _run_preflight_validation(
     *,
     display: object,
 ) -> bool:
-    """Run pre-flight validation on policy configuration.
-
-    Args:
-        config_path: Optional path to config file.
-        cli_overrides: CLI flag overrides.
-        workspace_scope: Workspace scope.
-        display: Active ParallelDisplay.
-
-    Returns:
-        True if validation passes, False otherwise.
-    """
     from ralph.display.parallel_display import ParallelDisplay
 
     assert isinstance(display, ParallelDisplay)
@@ -406,7 +362,6 @@ def _run_preflight_validation(
 
 
 def _check_version(*, display: object, allow_network: bool) -> None:
-    """Report the installed version, latest known release, and how to upgrade."""
     from ralph.update_check import update_status
 
     rows: list[tuple[object, ...]] = []
@@ -447,7 +402,6 @@ def _check_version(*, display: object, allow_network: bool) -> None:
 
 
 def _check_git_repo(*, display: object) -> bool:
-    """Check git repository status."""
     from ralph.display.parallel_display import ParallelDisplay
 
     assert isinstance(display, ParallelDisplay)
@@ -502,16 +456,6 @@ def _check_configuration(
     *,
     display: object,
 ) -> bool:
-    """Check configuration validity across all layers.
-
-    Inspects config, agents, policy, and MCP layers for unreadable or invalid
-    files, emitting warnings and reporting each unreadable file in the table.
-    Surfaces typo'd config keys as a distinct warning row in the
-    Configuration table so the operator sees them at the same gate that
-    reports ``Config loaded: Success``. Unknown fields are ADVISORY only
-    — the gate never fails on them; the recommended fix is the
-    ``ralph --check-config`` flow that mirrors the loader warning.
-    """
     from ralph.display.parallel_display import ParallelDisplay
 
     assert isinstance(display, ParallelDisplay)
@@ -556,10 +500,6 @@ def _check_configuration(
             ("Config loaded", _status_text("Error", str(e), "theme.status.error"), "", "", "")
         )
 
-    # Advisory: re-read the effective global + local TOML so we can flag
-    # typo'd keys without changing the validation result. Unknown keys
-    # are tolerated by the Pydantic schema (extra='ignore') but should
-    # still be visible at the first-run gate.
     unknown_field_rows = _collect_unknown_field_rows(config_path, workspace_scope)
     rows.extend(unknown_field_rows)
 
@@ -570,14 +510,6 @@ def _check_configuration(
 def _collect_unknown_field_rows(
     config_path: Path | None, workspace_scope: WorkspaceScope | None
 ) -> list[tuple[object, ...]]:
-    """Render unknown-field findings as Configuration-table rows.
-
-    Re-reads the global config and either the explicit ``config_path`` or
-    the workspace-local ``.agent/ralph-workflow.toml`` and runs the
-    pure :func:`collect_unknown_config_fields` collector. Returns one
-    warning-styled row per finding, with the field name in column 1 and
-    the suggested correction + next command in column 2.
-    """
     rows: list[tuple[object, ...]] = []
     findings: list[tuple[str, str | None]] = []
 
@@ -601,10 +533,6 @@ def _collect_unknown_field_rows(
             findings.extend(_findings_with_path(local_data, local_path))
         except Exception:
             pass
-        # Inherited / propagated ancestor config files contribute to
-        # the effective config but the loader's per-source unknown-field
-        # warning needs the per-path name so the operator can locate the
-        # typo in a specific inherited file, not just the local one.
         for propagated_path in workspace_scope.propagated_config_paths:
             try:
                 propagated_data = load_toml(propagated_path)
@@ -631,13 +559,6 @@ def _collect_unknown_field_rows(
 
 
 def _findings_with_path(data: dict[str, object], path: Path) -> list[tuple[str, str | None]]:
-    """Run the loader collector and pull (field, suggestion) tuples out of it.
-
-    The collector returns human-readable single-line messages; the
-    diagnose renderer needs the structured ``(field, suggestion)`` pair
-    so we re-parse the suggestion out of the line with a minimal scan
-    rather than introducing a parallel data path through the loader.
-    """
     raw_lines = collect_unknown_config_fields(data, path)
     parsed: list[tuple[str, str | None]] = []
     for line in raw_lines:
@@ -649,17 +570,6 @@ def _findings_with_path(data: dict[str, object], path: Path) -> list[tuple[str, 
 
 
 def _parse_unknown_field_line(line: str) -> tuple[str | None, str | None]:
-    """Extract ``(field, suggestion)`` from a loader-formatted warning line.
-
-    The loader formats each line as::
-        What failed: unknown setting `<field>` in <path>. ...
-        Fix: ... did you mean `<suggestion>`? ...
-
-    Pulling these out without restructuring the loader keeps the
-    collector and the diagnose renderer on the same contract. The line
-    shape is owned by ``config_error_messages`` and this parser is the
-    single non-trivial consumer.
-    """
     field: str | None = None
     suggestion: str | None = None
     _, _, tail = line.partition("unknown setting `")
@@ -679,11 +589,6 @@ def check_agents(
     *,
     display_context: DisplayContext | None = None,
 ) -> bool:
-    """Check agent availability and return True if any agent is missing from PATH.
-
-    Public wrapper: resolves the active display from ``display_context``
-    and delegates to :func:`_check_agents_impl`.
-    """
     ctx = display_context if display_context is not None else make_display_context()
     display = resolve_active_display(None, ctx)
     return _check_agents_impl(cli_overrides, display=display)
@@ -694,7 +599,6 @@ def _check_agents_impl(
     *,
     display: object,
 ) -> bool:
-    """Return whether any configured agent is unavailable on PATH."""
     from ralph.display.parallel_display import ParallelDisplay
 
     assert isinstance(display, ParallelDisplay)
@@ -743,7 +647,6 @@ def _check_agents_impl(
 
 
 def _check_workspace_files(workspace_scope: WorkspaceScope, *, display: object) -> bool:
-    """Check workspace files and each resolved configuration layer."""
     from ralph.display.parallel_display import ParallelDisplay
 
     assert isinstance(display, ParallelDisplay)
@@ -779,11 +682,10 @@ def _check_workspace_files(workspace_scope: WorkspaceScope, *, display: object) 
     for file_path, description, path in workspace_files:
         file_label = Text()
         file_label.append(f"{file_path} ({description})\n{path}")
-        # filesystem-read-ok: explicit diagnose command reports each operator-visible workspace path
         if path.exists():
             size = (
                 path.stat().st_size
-            )  # filesystem-read-ok: explicit diagnose command reports file size
+            )
             rows.append(
                 (
                     file_label,
@@ -806,7 +708,6 @@ def _check_workspace_files(workspace_scope: WorkspaceScope, *, display: object) 
 
 
 def _check_filesystem_health(workspace_root: Path, *, display: object) -> bool:
-    """Render advisory filesystem-health diagnostics."""
     from ralph.display.parallel_display import ParallelDisplay
 
     assert isinstance(display, ParallelDisplay)
@@ -864,7 +765,6 @@ def _status_text(label: str, detail: str, style: str) -> Text:
 
 
 def check_git_repo(*, display_context: DisplayContext | None = None) -> bool:
-    """Public check helper that resolves an active display from a context."""
     ctx = display_context if display_context is not None else make_display_context()
     display = resolve_active_display(None, ctx)
     return _check_git_repo(display=display)
@@ -876,7 +776,6 @@ def check_configuration(
     *,
     display_context: DisplayContext | None = None,
 ) -> bool:
-    """Public check helper that resolves an active display from a context."""
     ctx = display_context if display_context is not None else make_display_context()
     display = resolve_active_display(None, ctx)
     return _check_configuration(config_path, cli_overrides, display=display)
@@ -887,7 +786,6 @@ def check_mcp_servers(
     *,
     display_context: DisplayContext | None = None,
 ) -> bool:
-    """Public check helper that resolves an active display from a context."""
     ctx = display_context if display_context is not None else make_display_context()
     display = resolve_active_display(None, ctx)
     return _check_mcp_servers_extracted(workspace_scope, display=display)
@@ -897,7 +795,6 @@ _check_mcp_servers = _check_mcp_servers_extracted
 
 
 def check_workspace_files(*, display_context: DisplayContext | None = None) -> bool:
-    """Public check helper that resolves an active display from a context."""
     ctx = display_context if display_context is not None else make_display_context()
     display = resolve_active_display(None, ctx)
     return _check_workspace_files(resolve_workspace_scope(), display=display)

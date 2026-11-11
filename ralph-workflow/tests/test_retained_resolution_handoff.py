@@ -53,11 +53,6 @@ def _without_unobserved_commit_evidence(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 def _fresh_git_repo(base: Path, template: Path, name: str) -> Path:
-    """Clone the pristine git template so each looped case starts from a clean repo.
-
-    ``tmp_git_repo`` hands out exactly one repository per test function, so a
-    looped case has to copy the session template again to stay independent.
-    """
     repo = base / f"case-{name}"
     shutil.copytree(template, repo, ignore=_COPY_IGNORE)
     return repo
@@ -402,7 +397,6 @@ _INTERRUPTED_CACHE: dict[str, tuple[Path, str, str, str]] = {}
 
 
 def _interrupted(root: Path, operation: str) -> tuple[str, str, str]:
-    # RALPH-TEST-REASON: cache template git fixtures to preserve test budget without changing assertions
     if operation not in _INTERRUPTED_CACHE:
         d = Path(tempfile.mkdtemp(prefix=f"it-{operation}-"))
         shutil.copytree(root, d, dirs_exist_ok=True)
@@ -672,9 +666,6 @@ def test_completed_retained_rebase_lands_or_replays_stale_intent(
     )
     assert outcome is not None
     if completion == "unrelated":
-        # Git shows no rebase, so the retained resolution claim is stale
-        # intent.  The work is snapshotted into a backup ref and a fresh
-        # auto rebase lands it instead of the record being withheld.
         assert outcome.fast_forwarded
         assert read_record(root) is None
         backup_refs = _git(
@@ -880,7 +871,6 @@ def test_foreign_target_commit_repair_uses_git_owner_and_keeps_record_owner(
 
 
 def test_stale_resolution_modules_do_not_use_legacy_decider_or_terminal_proof_text() -> None:
-    """The stale-intent replay path has one owner and no proof-withholding outcome."""
     import importlib
 
     _integration_continuation = importlib.import_module("ralph.pipeline._integration_continuation")
@@ -903,7 +893,6 @@ def test_stale_resolution_replay_clears_intent_and_retries_auto_rebase(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """A record Git disproves is snapshotted, cleared, and replayed at auto rebase."""
     import ralph.pipeline._owned_landing_reintegration as owned
     from ralph.git.merge import UnmergedPathsObservation
     from ralph.pipeline._integration_action import RebaseOutcomeKind
@@ -918,9 +907,6 @@ def test_stale_resolution_replay_clears_intent_and_retries_auto_rebase(
     )
     written: list[IntegrationRecord] = []
     replayed: list[IntegrationRecord] = []
-    # The ORDER the replay acts in: the work is saved to a backup ref
-    # BEFORE the stale resolution flags are cleared, so a crash between
-    # the two can never lose the work the cleared record used to point at.
     sequence: list[str] = []
 
     def fake_snapshot(*_args: object, **_kwargs: object) -> tuple[str, str]:
@@ -971,8 +957,6 @@ def test_stale_resolution_replay_clears_intent_and_retries_auto_rebase(
     assert written[0].resolving_rebase is False
     assert written[0].resolving_merge is False
     assert written[0].pre_feature_sha == "c" * 40
-    # The backup ref is written BEFORE the durable record changes: the
-    # work is preserved first, the stale intent is dropped second.
     assert sequence == ["backup_ref", "record"]
     assert replayed and replayed[0].resolving_rebase is False
     assert replayed[0].reintegrate_pending is True

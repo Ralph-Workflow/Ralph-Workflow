@@ -1,5 +1,3 @@
-"""Tests for the OpenCode model catalog helpers."""
-
 from __future__ import annotations
 
 import pytest
@@ -116,14 +114,6 @@ def test_fetch_catalog_caches_result(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_fetch_catalog_refetches_after_ttl(monkeypatch: pytest.MonkeyPatch) -> None:
-    """AC-03: the catalog TTL triggers a refetch when stale.
-
-    Wires a ``FakeClock`` so we can advance logical time past
-    ``_TTL_SECONDS`` without any real wall-clock wait. The first
-    call populates the cache at ``t=0``; a call inside the TTL
-    returns the cache without refetching; a call after the TTL
-    triggers a refetch and refreshes ``_cached_at``.
-    """
     calls = {"count": 0}
 
     def response_factory() -> _FakeResponse:
@@ -144,14 +134,12 @@ def test_fetch_catalog_refetches_after_ttl(monkeypatch: pytest.MonkeyPatch) -> N
     assert calls["count"] == 1
     assert fetcher._cached_at == 0.0
 
-    # Advance inside the TTL — no refetch expected.
     clock.advance(opencode._TTL_SECONDS - 1.0)
     second = fetcher()
     assert calls["count"] == 1
     assert second is first
     assert fetcher._cached_at == 0.0
 
-    # Advance past the TTL — refetch expected, _cached_at updated.
     clock.advance(2.0)
     third = fetcher()
     assert calls["count"] == 2
@@ -160,7 +148,6 @@ def test_fetch_catalog_refetches_after_ttl(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_fetch_catalog_cache_clear_resets_ttl(monkeypatch: pytest.MonkeyPatch) -> None:
-    """cache_clear() resets both the cache and the TTL timestamp."""
     calls = {"count": 0}
 
     def response_factory() -> _FakeResponse:
@@ -178,8 +165,6 @@ def test_fetch_catalog_cache_clear_resets_ttl(monkeypatch: pytest.MonkeyPatch) -
     fetcher()
     assert fetcher._cached_at == 0.0
 
-    # cache_clear must reset the timestamp; otherwise the next call
-    # would be inside the (now-meaningless) TTL and skip the refetch.
     clock.advance(10.0)
     fetcher.cache_clear()
     assert fetcher._cache is None

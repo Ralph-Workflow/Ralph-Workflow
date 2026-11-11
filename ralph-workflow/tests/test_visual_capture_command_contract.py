@@ -1,12 +1,3 @@
-"""The ``design_capture_command`` fact is judged by ONE rule set, at authoring and at runtime.
-
-Regression: a managed repo's design-system policy carried prose after the
-command (``make visual-capture (the bounded Tier 1 ...; ...`...`)``). Policy
-validation accepted it, so the visual pipeline rejected it on every cycle and
-silently skipped visual review -- and the rejection was then chained onto an
-unrelated agent-run crash, hiding the real failure.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -75,7 +66,6 @@ def test_unusable_commands_are_reported(command: str) -> None:
 
 
 def test_absent_or_blank_fact_is_not_this_checks_problem() -> None:
-    """Presence is the required-fact check's job, not this one's."""
     assert capture_command_problem("# Design system\n\nNo facts here.\n") is None
     assert capture_command_problem(_policy(" ")) is None
 
@@ -115,8 +105,6 @@ def test_validator_emits_a_finding_for_the_design_system_policy() -> None:
 def test_validator_is_silent_for_a_valid_command_and_for_other_policies() -> None:
     path = f"docs/ralph-workflow-policy/{_DESIGN_FILE}"
     assert check_capture_command_fact(_policy("make visual-capture"), path, _DESIGN_FILE) == []
-    # Other policies reference the command descriptively; only the design-system
-    # policy is parsed by the visual pipeline.
     assert (
         check_capture_command_fact(
             _policy(_PROSE), "docs/ralph-workflow-policy/ux-policy.md", "ux-policy.md"

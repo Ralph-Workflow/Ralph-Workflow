@@ -1,15 +1,3 @@
-"""``RALPH_MCP_STRICT`` decides whether one unreachable upstream kills the server.
-
-The env var is documented as the switch to warn-and-skip, but the standalone
-server ignored it and always hard-failed. One unreachable custom MCP server
-therefore aborted the whole subprocess before it could bind its port -- taking
-every BUILT-IN Ralph tool down with it -- and the parent, which only sees a
-refused connection, could not say why.
-
-Strict remains the default (a server the operator configured and Ralph cannot
-reach is still a loud failure). The escape hatch now actually works.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -41,8 +29,6 @@ def _isolate_from_upstream_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 class _UnreachableClient:
-    """An upstream client whose server never answers -- a stalled or absent binary."""
-
     def __init__(self, server: UpstreamMcpServer) -> None:
         self._server = server
 
@@ -98,8 +84,5 @@ def test_strict_mode_remains_the_default_and_names_the_unreachable_server(
     monkeypatch.delenv("RALPH_MCP_STRICT", raising=False)
     _install_unreachable_upstream(monkeypatch)
 
-    # Startup normalizes the registry's UpstreamValidationError into the
-    # typed McpServerError so the supervisor's restart budget sees a typed
-    # stage failure; the message must still name the unreachable server.
     with pytest.raises(McpServerError, match=_SERVER_NAME):
         _build(tmp_path)

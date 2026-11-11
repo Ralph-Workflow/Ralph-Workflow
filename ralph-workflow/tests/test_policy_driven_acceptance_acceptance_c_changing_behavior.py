@@ -1,13 +1,3 @@
-"""Policy-driven acceptance tests — Product Requirements 1-10 and Criteria A-H.
-
-These tests assert every product requirement and acceptance criterion against a
-fully renamed PolicyBundle (no canonical phase names). Any regression that
-re-introduces hidden phase name knowledge in the runtime will fail here.
-
-Scope: pure functions only. No I/O.
-Runtime budget: ≤ 5 seconds for the full module.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -38,17 +28,6 @@ from ralph.policy.models import (
 
 @pytest.fixture(scope="module")
 def policy_with_renamed_phases() -> PolicyBundle:
-    """Fully custom-named PolicyBundle — no canonical Ralph phase names.
-
-    Custom name mappings (canonical → custom):
-      planning          → design
-      development       → build
-      development_analysis → audit
-      development_commit → sign_off
-      review            → inspect
-      complete          → done
-      failed_terminal   → aborted
-    """
     agents = AgentsPolicy(
         agent_chains={
             "design_chain": AgentChainConfig(agents=["fake-agent"]),
@@ -176,19 +155,12 @@ def policy_with_renamed_phases() -> PolicyBundle:
     return PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
 
 
-# =============================================================================
-# Requirement 1: Policy must fully define user-visible routing semantics
-# =============================================================================
-
-
 class TestAcceptanceCChangingBehavior:
     def test_different_policy_produces_different_routing(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """Two different policies route the same decision to different targets."""
         policy_a = policy_with_renamed_phases.pipeline
 
-        # Build a variant bundle where request_changes routes to "inspect" instead
         alt_pipeline = PipelinePolicy(
             entry_phase="design",
             terminal_phase="done",
@@ -237,7 +209,6 @@ class TestAcceptanceCChangingBehavior:
             AnalysisDecisionEvent(phase="audit", decision="request_changes"),
             alt_pipeline,
         )
-        # Policy A routes to "build"; policy B routes to "design"
         assert result_a.phase == "build"
         assert result_b.phase == "design"
         assert result_a.phase != result_b.phase

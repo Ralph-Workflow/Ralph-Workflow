@@ -1,17 +1,3 @@
-"""WU-4: public-outcome tests for busy_refusal_outcome at both entry points.
-
-No private-spy pattern. All assertions are on the public seam verdict
-returned from the two call sites:
-  - ralph.pipeline._integration_diagnostic.busy_refusal_outcome
-  - ralph.pipeline.auto_integrate_recovery.busy_refusal_outcome
-
-A fail-closed BUSY refusal is the typed
-:class:`~ralph.pipeline.integration_owner.RecordFactOutcome.STALE_INTENT`
-verdict — routed to the preserve-first cleanup-ladder rung, never the
-retired ``IntegrationAction.REQUIRE_INTERVENTION`` value (which has no
-production producer).
-"""
-
 from __future__ import annotations
 
 from ralph.pipeline._integration_action import IntegrationAction
@@ -25,7 +11,6 @@ from ralph.pipeline.integration_owner import (
 
 
 def test_diagnostic_busy_refusal_fails_closed_to_stale_intent_when_no_deadline() -> None:
-    """Without a concrete deadline the diagnostic BUSY site fails closed."""
     action = diagnostic_outcome(None, clock=lambda: 1000.0)
     assert action is not IntegrationAction.COMPLETE_WITH_PROOF
     assert action is RecordFactOutcome.STALE_INTENT
@@ -33,7 +18,6 @@ def test_diagnostic_busy_refusal_fails_closed_to_stale_intent_when_no_deadline()
 
 
 def test_recovery_busy_refusal_fails_closed_to_stale_intent_when_no_deadline() -> None:
-    """Without a concrete deadline the recovery BUSY site fails closed."""
     action = recovery_outcome(None, clock=lambda: 1000.0)
     assert action is not IntegrationAction.COMPLETE_WITH_PROOF
     assert action is RecordFactOutcome.STALE_INTENT
@@ -48,7 +32,6 @@ def _clock_at(t: float) -> object:
 
 
 def test_both_call_sites_agree_on_same_deadline() -> None:
-    """Identical input yields identical action from both entry points."""
     clock = _clock_at(500.0)
     for deadline in (None, 999.0):
         da = diagnostic_outcome(deadline, clock=clock)
@@ -58,9 +41,8 @@ def test_both_call_sites_agree_on_same_deadline() -> None:
 
 
 def test_unexpired_deadline_yields_wait_for_bounded_retry() -> None:
-    """A concrete, unexpired deadline authorizes bounded retry at both sites."""
     clock = _clock_at(100.0)
-    deadline = 200.0  # clock=100 < deadline=200 → unexpired
+    deadline = 200.0
     da = diagnostic_outcome(deadline, clock=clock)
     ra = recovery_outcome(deadline, clock=clock)
     assert da is IntegrationAction.WAIT_FOR_BOUNDED_RETRY
@@ -68,9 +50,8 @@ def test_unexpired_deadline_yields_wait_for_bounded_retry() -> None:
 
 
 def test_expired_deadline_fails_closed_to_stale_intent() -> None:
-    """An expired deadline fails closed to the typed ladder verdict at both sites."""
     clock = _clock_at(300.0)
-    deadline = 200.0  # clock=300 > deadline=200 → expired
+    deadline = 200.0
     da = diagnostic_outcome(deadline, clock=clock)
     ra = recovery_outcome(deadline, clock=clock)
     assert da is RecordFactOutcome.STALE_INTENT
@@ -80,7 +61,6 @@ def test_expired_deadline_fails_closed_to_stale_intent() -> None:
 
 
 def test_factory_result_does_not_persist(monkeypatch) -> None:
-    """busy_refusal_outcome never writes to disk; it is side-effect-free."""
     import ralph.pipeline._integration_diagnostic as diagnostic
     import ralph.pipeline.auto_integrate_recovery as recovery
 
@@ -90,7 +70,6 @@ def test_factory_result_does_not_persist(monkeypatch) -> None:
         persisted.append("diagnostic" if "diagnostic" in str(type(args[0])) else "recovery")
         raise AssertionError("busy_refusal_outcome must not call write/persist helpers")
 
-    # Block all known persistence entry-points
     for name in ("write_record", "write_text_if_changed", "apply_record_transition"):
         if hasattr(diagnostic, name):
             monkeypatch.setattr(diagnostic, name, track_persist)

@@ -1,17 +1,3 @@
-"""Lint bypass audit — detects forbidden noqa and per-file-ignores.
-
-Scans the codebase for:
-- Bare ``# noqa`` comments without a specific error code
-- ``# noqa: CODE`` where CODE is not in the allowlist
-- ``[tool.ruff.lint.per-file-ignores]``, ``extend-per-file-ignores``, ``ignore``,
-  or ``extend-ignore`` in pyproject.toml
-
-Usage:
-    python -m ralph.testing.audit_lint_bypass [codebase_root]
-
-Returns exit code 0 if no lint bypass violations found, 1 otherwise.
-"""
-
 from __future__ import annotations
 
 import re
@@ -58,328 +44,145 @@ def _string_key_mapping(value: object) -> dict[str, object]:
     }
 
 
-# ---------------------------------------------------------------------------
-# Allowlist: known-legitimate noqa uses
-#
-# Format: {(file_stem, error_code), ...}
-# - file_stem matches the filename stem only (not full path), so
-#   "audit_test_policy" matches tests/test_audit_xxx.py as well as
-#   ralph/testing/audit_test_policy.py — any file with that stem.
-# - error_code is the ruff code (e.g. "PLR0911", "PLW0603").
-# ---------------------------------------------------------------------------
 _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("audit_test_policy", "PLR0911"),
     ("audit_test_policy", "PLW0603"),
-    ("audit_typecheck_bypass", "PLR0912"),
-    ("audit_lint_bypass", "PLR0912"),
-    # analysis_decision: the structured decision validator
-    # returns early for every per-type branch (planning / review /
-    # policy) and every status (completed / request_changes /
-    # failed); the early returns are the contract.
     ("analysis_decision", "PLR0911"),
     ("commit_executor", "PLC0415"),
-    ("runner", "PLC0415"),  # lazy import in module __getattr__ breaks runner<->run_loop cycle
+    ("runner", "PLC0415"),
     ("worker_runtime", "PLC0415"),
     ("commit_review", "PLC0415"),
     ("materialize", "PLC0415"),
     ("supervising", "PLC0415"),
     ("pytest_timeout_plugin", "PLC0415"),
     ("_event_classification", "PLC0415"),
-    # wt-16 producer module: the import of _mcp_health_event
-    # transitively loads the heavy workspace / git subtree; the lazy
-    # in-function import keeps the runtime cost flat.
     ("_host_contention_signal", "PLC0415"),
-    # wt-16 producer call sites: the import of _host_contention_signal
-    # transitively loads ralph.mcp.server which loads the heavy
-    # workspace / git subtree; the lazy-style noqa import keeps the
-    # _process_manager module load flat.
     ("_process_manager", "PLC0415"),
     ("run_loop", "PLC0415"),
-    # wt-012: the deterministic auto-commit producer-level helpers
-    # use lazy in-function imports to avoid module-load cycles with
-    # ``ralph.git.operations`` and ``ralph.git.scoped_auto_commit``.
-    # Each entry is named with a one-line rationale so a future
-    # refactor can either rewire the import or extend the rationale.
     ("scoped_auto_commit", "PLC0415"),
     (
         "scoped_auto_commit",
         "PLR0911",
-    ),  # wt-012 -- the explicit-outcome state machine returns CREATED/NOOP/NOT_REPO/FAILED/SKIPPED plus the rollback branch
+    ),
     (
         "scoped_auto_commit",
         "PLR0912",
-    ),  # wt-012 -- commit_scoped_updates has more branches than the cap because of staged-state preservation
+    ),
     (
         "scoped_auto_commit",
         "PLR0915",
-    ),  # wt-012 -- commit_deterministic_writes needs more statements for the producer-level state machine + rollback
+    ),
     (
         "scoped_auto_commit",
         "C420",
-    ),  # wt-012 -- prefer dict comprehension so mypy can keep the literal type
-    ("preflight", "C420"),  # wt-012 -- prefer dict comprehension so mypy can keep the literal type
+    ),
+    ("preflight", "C420"),
     ("_run_start_setup", "PLC0415"),
     (
         "_run_start_setup",
         "PLR0912",
-    ),  # wt-012 -- the run-start flow has explicit per-stage gates (user-global, project install, gitignore seed, auto-commit + diff, retention sweep) each with its own non-fatal warning surface; flattening into a single branch would lose the per-stage boundary
-    ("init", "PLC0415"),  # wt-012 -- lazy import in --init helper to avoid init<->operations cycle
+    ),
+    ("init", "PLC0415"),
     (
         "manager",
         "PLC0415",
-    ),  # wt-012 -- lazy import in --force-init-skills to avoid manager<->operations cycle
+    ),
     (
         "bootstrap",
         "PLC0415",
-    ),  # wt-012 -- lazy import in auto_seed_default_gitignore to avoid bootstrap<->operations cycle
-    ("preflight", "PLC0415"),  # wt-012 -- lazy import in preflight commit path
+    ),
+    ("preflight", "PLC0415"),
     (
         "cli_integration",
         "PLC0415",
-    ),  # wt-012 -- lazy import in _finalize_ready_state producer-level commit
-    ("_installer", "PLC0415"),  # wt-012 -- lazy import in producer-side diff helper
+    ),
+    ("_installer", "PLC0415"),
     (
         "_installer_candidates",
         "PLC0415",
-    ),  # wt-012 -- lazy import in candidate-set diff helper (split from _installer)
+    ),
     (
         "validators",
         "PLC0415",
-    ),  # wt-15 -- lazy import of _content_checks to publish the citation-path workspace seam
+    ),
     ("run_loop", "PLR0912"),
     ("run_loop", "PLR0915"),
     (
         "run_loop",
         "PLR0911",
-    ),  # _block_unresolved_integration routes each distinct lifecycle decision through a dedicated return (busy wait / busy exhausted / unreadable / intervention / retained / post-recovery clear / blocked)
-    ("idle_watchdog", "PLR0911"),  # evaluate() consults gate then 5 sub-evaluators
-    ("idle_watchdog", "PLR0912"),  # _handle_waiting_branch has 5 reasons + gate path branches
-    ("idle_watchdog", "PLR0915"),  # _handle_waiting_branch orchestrates 5 reasons
-    ("_active_branch", "PLR0911"),  # extracted evaluate_inner keeps original gate fan-out
-    ("_fire_evaluators", "PLR0911"),  # extracted fire evaluators preserve early-exit paths
-    ("_fire_evaluators", "PLR0912"),  # extracted no-progress branches
-    ("_waiting_branch", "PLR0911"),  # extracted waiting branch preserves 5 verdict paths
-    ("_waiting_branch", "PLR0912"),  # extracted waiting branch preserves suspect/hard-stop branches
-    ("_waiting_branch", "PLR0915"),  # extracted waiting branch orchestrates 5 reasons
-    ("_stuck_classifier", "PLR0911"),  # 7 distinct StuckKind outcomes
+    ),
+    ("idle_watchdog", "PLR0911"),
+    ("idle_watchdog", "PLR0912"),
+    ("idle_watchdog", "PLR0915"),
+    ("_active_branch", "PLR0911"),
+    ("_fire_evaluators", "PLR0911"),
+    ("_fire_evaluators", "PLR0912"),
+    ("_waiting_branch", "PLR0911"),
+    ("_waiting_branch", "PLR0912"),
+    ("_waiting_branch", "PLR0915"),
+    ("_stuck_classifier", "PLR0911"),
     (
         "parallel_display",
         "PLR0911",
-    ),  # _wrap_close_body: chrome-prefix / continuation-budget / trailer branches
+    ),
     (
         "parallel_display",
         "PLR0912",
-    ),  # _wrap_close_body: too-many-branches from the chrome-prefix/continuation-budget matrix
+    ),
     ("heartbeat", "PLC0415"),
-    ("canonical_submit", "PLC0415"),  # lazy import avoids cycle with tools.artifact
-    ("artifact", "PLC0415"),  # lazy import avoids cycle with canonical_submit
-    ("completion_signals", "PLC0415"),  # lazy import avoids cycle with invoke->tools
-    ("pydantic_validation_errors", "PLR0911"),  # exhaustive error-type dispatch
-    # failure_classifier._categorize_exc: returns once per exception
-    # class (the priority order IS the classification contract); the
-    # function fans out across NETWORK/ENVIRONMENTAL, SUPERVISION,
-    # TOOL_AVAILABILITY, CONTENT_POLICY, USER_INPUT, and the
-    # post-tool-empty-response branches before the catch-all
-    # ``counted=True`` default.
+    ("canonical_submit", "PLC0415"),
+    ("artifact", "PLC0415"),
+    ("completion_signals", "PLC0415"),
+    ("pydantic_validation_errors", "PLR0911"),
     ("failure_classifier", "PLR0911"),
     ("commit_plumbing", "UP047"),
     ("claude_interactive_transcript_parser", "PLR0911"),
     ("claude_interactive_transcript_parser", "PLR0912"),
-    # smoke_multimodal.grade_multimodal_evidence has the 4-condition
-    # contract branch fan-out (verified read_media call + server-persisted
-    # receipt == MEDIA_RECEIPT + verified replay-digest call + DIMENSIONS
-    # == authoritative geometry + MEDIA_SHA256 == fixture digest). The
-    # early-return shape keeps each branch a short-circuit; per-branch
-    # control flow stays local to the contract check.
     ("smoke_multimodal", "PLR0911"),
     ("smoke_multimodal", "PLR0912"),
-    # _detect_smoke_errors fans out across subagent, multimodal,
-    # parser-diagnostics, visible-output, AGY-upstream, and other
-    # contract branches; each is a short-circuit that does not lend
-    # itself to refactor without obscuring the contract.
     ("smoke_plumbing", "PLR0912"),
-    # mock_multimodal_agent.main: the subprocess-driven positive /
-    # no-call / ignore-response state machine spans ~25 statements
-    # by design; the parsed transport-frame vocabulary is interleaved
-    # with real MCP dispatch and the per-mode branching reads top-down.
     ("mock_multimodal_agent", "PLR0912"),
     ("mock_multimodal_agent", "PLR0915"),
-    # S-3: lazy imports break lifecycle/import-time coupling between the
-    # workspace monitor, the CLI run path, and the diagnostics surface.
-    ("_workspace", "PLC0415"),  # WorkspaceMonitor.stop releases the dirty scheduler
-    ("run", "PLC0415"),  # _execute_pipeline releases the scheduler at every exit branch
-    ("workspace_health", "PLC0415"),  # _active_maintenance reads the live coordinator/scheduler
+    ("_workspace", "PLC0415"),
+    ("run", "PLC0415"),
+    ("workspace_health", "PLC0415"),
     ("_metrics", "PLW0603"),
-    # _sentry.py: scalar module-level state (_SESSION_STARTED_AT,
-    # _SESSION_OUTCOME, _INITIALIZED, _EXTRA_SCRUB_PREFIXES) is the
-    # only honest shape for the session lifecycle + scrubber (the
-    # audit_resource_lifecycle contract forbids list/dict/set/deque
-    # at module level). The setters therefore MUST update those
-    # scalars in-place via `global`, which ruff flags as PLW0603.
     ("_sentry", "PLW0603"),
-    # smoke_multimodal.grade_multimodal_evidence fans out across the
-    # 4-condition contract (verified read_media + server-persisted receipt
-    # + replay-digest + DIMENSIONS / MEDIA_SHA256). Each helper is a
-    # single small short-circuit; the top-level function still needs
-    # 7 returns to walk the 4 helper stages.
     ("smoke_multimodal", "PLR0911"),
     ("parallel_display", "PLR0912"),
     ("pydantic_validation_errors", "PLR0911"),
-    ("_command_builders", "PLC0415"),  # lazy import enables test monkeypatching of invoke module
-    ("_runtime_resolvers", "PLC0415"),  # lazy import enables test monkeypatching of invoke module
-    # workspace/context.py: lazy imports of registry, config, MCP plan, and
-    # policy loaders break the ralph.workspace<->ralph.mcp circular chain
-    # (the MCP plan resolver pulls in ralph.mcp.artifacts.product_spec, which
-    # imports ralph.workspace). Deferring them to the call site keeps the
-    # package-level import of ralph.workspace acyclic.
+    ("_command_builders", "PLC0415"),
+    ("_runtime_resolvers", "PLC0415"),
     ("context", "PLC0415"),
-    # _media_io.py: global state for periodic prune counter (wt-024 AC-10).
     ("_media_io", "PLW0603"),
-    # _terminal_bg_query.py: process-lifetime memo of an immutable
-    # terminal probe (OSC 11 reply) and the _probed flag that
-    # disambiguates a sentinel-less cache. The setters must update
-    # those module-level scalars in-place via `global`, which ruff
-    # flags as PLW0603.
     ("_terminal_bg_query", "PLW0603"),
-    # _start_stage_tracker.py: per-spawn identity is a process-lifetime
-    # scalar (UUID4) that ``reset_spawn_id`` and ``record`` must mutate
-    # in place; the alternative (a class-based wrapper) would couple
-    # every reader/writer across the bridge to a shared object and
-    # break the supervisor's preflight read path.
     ("_start_stage_tracker", "PLW0603"),
-    # _mcp_health_event.py: the durable JSONL sink path is a
-    # process-lifetime scalar set once by the supervisor before the
-    # first restart decision is recorded; set_durable_sink_path must
-    # mutate it in place via `global`, which ruff flags as PLW0603.
     ("_mcp_health_event", "PLW0603"),
-    # wt-024 memory-perf: the bounded-accumulator-ok marker must live
-    # on the same physical line as the assignment so the
-    # audit_resource_lifecycle AST marker scan finds it. When the
-    # assignment carries a full type annotation (mypy strict requires
-    # it) + the marker + the policy-compliant type-ignore suffix, the
-    # line exceeds 100 chars. The noqa is narrowly scoped to the
-    # assignment line and does NOT mask any other ruff check.
-    ("idle_watchdog", "E501"),
-    ("ring_buffer", "E501"),
-    ("_process_manager", "E501"),
-    ("codex", "E501"),
-    ("audit_adapter", "E501"),
-    ("_bounded_lines_queue", "E501"),
-    ("repetition_tracker", "E501"),
-    ("_pty_line_reader", "E501"),
-    # __init__ modules use lazy imports to avoid circular deps; targeted per-file
     ("__init__", "PLC0415"),
-    # __init__ modules intentionally order __all__ for discoverability (e.g.
-    # the 90% recipe before the 14-kwarg advanced helper) rather than
-    # alphabetical sort, so the registration helpers read top-down.
     ("__init__", "RUF022"),
-    # catalog.py: late import of builtin_supports avoids parser<->catalog cycle.
     ("catalog", "PLC0415"),
-    # registration.py: late import of AgentConfig is a forward reference.
     ("registration", "UP037"),
-    # Conditional vision-agent provisioning reaches registration through a
-    # dependency cycle, so these imports must remain at call time.
     ("registration", "PLC0415"),
     ("registry", "PLC0415"),
     ("vision_agent_provisioning", "PLC0415"),
-    # N802: historical public API name preserved for backward compat.
     ("catalog", "N802"),
-    # execution_state/_factory.py: late imports of catalog and parsers
-    # break catalog<->_factory<->parsers cycles (the __getattr__ lazy
-    # view pattern in those modules defers the cross-module imports).
     ("_factory", "PLC0415"),
-    # parsers/__init__.py already covered by the `("__init__", "PLC0415")`
-    # entry above.
-    # audit_agent_module_state.py: SIM103 inlined the boolean, no leftover.
-    # test_audit_agent_module_state.py: lazy import keeps the test self-contained.
     ("test_audit_agent_module_state", "PLC0415"),
-    # wt-025 auto-commit skill: lazy import of git.Repo and stage_files
-    # defers the import until a real call (mirrors the existing
-    # commit_review / runner pattern; both are in this allowlist).
     ("_auto_commit", "PLC0415"),
-    # wt-025 auto-commit audit: AST walker over the untrack_engine_internal_files
-    # function has 15+ branches because of the nested search for the
-    # early-skip block AND the WARNING block; the AST walk is inherently
-    # branchy and refactoring it would obscure the placement check.
     ("audit_skill_auto_commit", "PLR0912"),
-    # plan.py: _apply_validation_overrides classifies each ledger entry into
-    # matched / error-targeted / stale in a single pass; the branch count
-    # exceeds the 14-cap because the classification is data-driven and the
-    # alternatives (one helper per classification) scatter a single ledger
-    # design across 4-5 helpers with worse readability. Locked by
-    # tests/mcp/test_md_plan_advisory.py.
     ("plan", "PLR0912"),
-    # wt-034 indexed-exploration: scoped_auto_commit.py wraps its
-    # GitPython import (git.Repo / GitCommandError /
-    # InvalidGitRepositoryError) inside a try/except so a non-git
-    # workspace can import the module without GitPython installed; the
-    # same lazy-import rationale already covers commit_review,
-    # runner, and _auto_commit in this allowlist.
     ("scoped_auto_commit", "PLC0415"),
-    # project_policy/cli_integration.py: lazy imports of
-    # ralph.display.status_bar.StatusBarModel and
-    # ralph.git.operations.create_commit are wrapped in try/except so
-    # a non-tty / non-git environment can run the readiness preflight
-    # without dragging the display / git subsystems into the module's
-    # top-level import graph; mirrors the supervising / canonical_submit
-    # lazy-import precedent.
     ("cli_integration", "PLC0415"),
-    # wt-040 auto-integrate recovery: _reclaim_unowned_stale_rebase
-    # fans out across the A1/A3/A4/A5/A6/A11 reclaim paths (stale
-    # rebase-merge / rebase-apply dirs, lone REBASE_HEAD, MERGE_HEAD
-    # on a clean tree, sequencer ops, detached-HEAD residue); each
-    # path is a small early-return and refactoring them into helper
-    # functions would obscure the per-marker-file reclaim ordering
-    # that AC-07/AC-06's terminal-state invariant depends on.
     ("auto_integrate_recovery", "PLR0911"),
     ("auto_integrate_recovery", "PLR0912"),
     ("auto_integrate_remote_sync", "PLR0911"),
-    # The loader walks each propagation layer to remove retired keys before
-    # merging, preserving source-specific warnings and precedence.
     ("loader", "PLR0912"),
-    # wt-047-stall-label: subscriber._format_waiting_status_line renders
-    # one explicit line per WaitingStatusKind (ENTERED / PROGRESS /
-    # SUSPECTED_FROZEN / EXITED / SUBAGENT_PROGRESS / STALLED /
-    # STALL_RESUMED / HARD_STOP fallback). The kind dispatch is
-    # one-statement-per-branch and consolidating it into a dict-based
-    # dispatcher would scatter the per-kind diagnostic payload
-    # wt-16: _iter_with_direct_mcp_recovery preserves the recovery loop's
-    # per-step branch fan-out (session recovery, mcp-reset, retry
-    # classification) -- each branch short-circuits to a typed outcome.
     ("_direct_mcp_recovery", "PLR0912"),
-    # handling (workspace_event_delta / alive_by / subagent_activity)
-    # across helper functions and obscure the per-kind fallback that
-    # the wt-047 plan locks against the ``hit hard ceiling``
-    # template. Mirrors the existing idle_watchdog / _waiting_branch
-    # / _stuck_classifier allowlist entries that already accept
-    # kind-dispatch fan-out as the readability-vs-branch-count trade.
     ("subscriber", "PLR0911"),
-    # wt-051-opencode: _ndjson_base._classify_after_strip is the
-    # shared NDJSON state-machine entry point that dispatches every
-    # observed line through its (already-stripped) classification
-    # fan-out: SSE ``[DONE]`` sentinel, JSON decode failure, non-dict
-    # JSON, structured error, Claude's ``content_block_start`` framing,
-    # generic lifecycle event, and the final subclass dispatch. Each
-    # branch is a single early-return with a short, distinct payload
-    # (yield / yield-from / return) and the dispatch order is itself
-    # part of the contract (lifecycle/error short-circuit comes after
-    # the SubagentPidRegistry hook so PID-tagged events are observed
-    # even when they are also flagged as lifecycle or error). Hoisting
-    # any branch into a helper would obscure the dispatcher shape
-    # that the per-transport parser tests in
-    # tests/agents/parsers/test_*_uses_ndjson_base.py lock against;
-    # the existing _dispatch_with_timestamp extraction already
-    # harvested the only refactorable cluster (raw / lifecycle /
-    # dispatch all routed through a single helper). Mirrors the
-    # existing idle_watchdog / _waiting_branch / _stuck_classifier /
-    # subscriber kind-dispatch fan-out allowlist rationale.
     ("_ndjson_base", "PLR0911"),
-    # teardown.py: the manager import stays lazy to prevent the proven
-    # teardown<->manager import cycle at module initialization.
     ("teardown", "PLC0415"),
 }
 
-# Files to skip entirely (test fixtures, generated code, etc.).
 _SKIP_DIRS: frozenset[str] = frozenset(
     {
         "__pycache__",
@@ -395,18 +198,6 @@ _SKIP_DIRS: frozenset[str] = frozenset(
     }
 )
 
-# ---------------------------------------------------------------------------
-# Allowlist: legitimate per-file-ignores entries
-#
-# Format: dict[str, dict[str, set[str]]] where:
-#   - outer key: error code (e.g., "PLR2004", "PLC0415")
-#   - value: dict with keys "pattern" (file glob) and "reason" (justification)
-#
-# Any [tool.ruff.lint.per-file-ignores] entry whose codes match an allowlist
-# code AND file pattern matches the allowlist pattern is permitted.
-# Any code NOT in this allowlist or applied to a non-matching file pattern
-# still triggers a violation.
-# ---------------------------------------------------------------------------
 _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
     "PLR2004": {
         "pattern": [
@@ -420,8 +211,6 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "closed protocol constants that read more clearly at the validation site."
         ),
     },
-    # Tests legitimately relax the no-any-rename rule for fixture dicts whose
-    # shape is verified by assertions rather than by type annotations.
     "ANN001": {
         "pattern": "tests/**/*.py",
         "reason": (
@@ -478,8 +267,6 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "tests/**/*.py",
             "ralph/mcp/explore/**/*.py",
             "ralph/mcp/tools/workspace/**/*.py",
-            # wt-16 producer module: Callable is used at runtime in
-            # function signatures (e.g. record_d_state's _now test seam).
             "ralph/mcp/server/_host_contention_signal.py",
         ],
         "reason": (
@@ -531,33 +318,17 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "CLI/config/display precedent."
         ),
     },
-    # Accumulator contract (wt-024 memory-perf AC-04): the
-    # ``# bounded-accumulator-ok: <reason>`` marker MUST stay on the
-    # SAME line as the assignment (the audit looks for the marker via
-    # ``source_lines[node.lineno - 1]``). With the production 100-char
-    # line cap, the marker + type annotation + assignment can exceed 100
-    # chars. Per-file-ignore E501 on accumulator marker lines lets the
-    # audit pass without weakening the underlying line-length contract
-    # (every other line still MUST fit in 100 chars; only marker lines
-    # carry the documented exemption).
     "E501": {
         "pattern": [
             "ralph/**/*.py",
             "tests/**/*.py",
         ],
         "reason": (
-            "bounded-accumulator-ok / resource-lifecycle-ok markers on "
-            "assignment lines; tests legitimately embed real tool "
-            "output (script text, error messages) in fixture strings "
-            "and the line-length signal is not informative."
+            "Production and test lines may exceed the default length when "
+            "they embed real tool output (script text, error messages) in "
+            "fixture strings; the line-length signal is not informative there."
         ),
     },
-    # Indexed MCP handlers (grep_files / search_files / read_file / read_multiple_files)
-    # gain fan-out for eligibility, fallback, and evidence-id branches: the live
-    # behaviour is preserved (use_index in {auto, always, never} takes one path
-    # each, fail-fast vs partial-result is a 1-bit discriminator) and refactoring
-    # those short-circuits into helper functions would obscure the per-file
-    # decision order the indexed contract requires.
     "PLR0911": {
         "pattern": [
             "ralph/mcp/tools/workspace/**/*.py",
@@ -604,9 +375,6 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "control flow stays local."
         ),
     },
-    # MutableClass-level dicts deliberately use class-level storage for the
-    # single-writer registry; making _active instance-level would lose the
-    # cross-instance coalescing that the contract guarantees.
     "RUF012": {
         "pattern": [
             "ralph/mcp/explore/**/*.py",
@@ -619,44 +387,22 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
     },
 }
 
-# Regex for matching ``noqa`` directives on a line.
-# Matches both code-specific (colon format) and blanket (no colon) forms,
-# including bare noqa with trailing non-colon text.
 _NOQA_RE = re.compile(r"#\s*noqa(?:\s*:\s*(.*?))?(?:\s*$|\s+\S)")
 
-# Files that are explicitly testing or documenting lint-bypass behavior and must
-# contain simulated directives as fixtures. These are exempt from the noqa check.
 _TEST_NOQA_EXEMPT_STEMS: frozenset[str] = frozenset(
     {
         "test_audit_lint_bypass",
         "audit_lint_bypass",
-        # The comment audit's own tests feed documented suppression directives
-        # in as fixtures, so the directives appear as literals in the test
-        # source rather than as real suppressions.
         "test_audit_comments",
     }
 )
 
-# Acceptable noqa codes — any code NOT in this set requires an allowlist entry.
-# Currently only complexity and global-state codes are acceptable when used
-# with a documented reason in the allowlist.
 _ACCEPTABLE_NOQA_CODES: frozenset[str] = frozenset(
     {"C420", "PLC0415", "PLR0911", "PLR0912", "PLR0915", "PLW0603"}
 )
 
-# Lines that carry a ``# bounded-accumulator-ok: <reason>`` marker MUST be on
-# the same line as the accumulator assignment itself (the marker is a
-# per-line suppression for the audit_resource_lifecycle 4th contract).
-# With the production line-100 cap, the marker + type annotation + assignment
-# can exceed 100 chars on a single line. We accept E501 on those lines
-# specifically via per-file-ignores (see _PYPROJECT_IGNORE_ALLOWLIST above)
-# so the audit doesn't flag them.
-# This documents why E501 noqa on accumulator marker lines is acceptable.
-
 
 class LintBypassViolation:
-    """A single lint bypass violation found during scanning."""
-
     def __init__(
         self,
         file_path: str,
@@ -674,7 +420,6 @@ class LintBypassViolation:
 
 
 def _find_noqa_violations(lines: list[str], rel_path: str) -> list[LintBypassViolation]:
-    """Scan source lines for forbidden noqa annotations."""
     violations: list[LintBypassViolation] = []
     file_stem = Path(rel_path).stem
 
@@ -683,7 +428,6 @@ def _find_noqa_violations(lines: list[str], rel_path: str) -> list[LintBypassVio
         lineno = idx + 1
         quote_count = raw_line.count('"""') + raw_line.count("'''")
 
-        # Skip multi-line literals and keep their state in one pass.
         if in_triple or quote_count % 2 == 1:
             if quote_count % 2 == 1:
                 in_triple = not in_triple
@@ -709,7 +453,6 @@ def _find_noqa_violations(lines: list[str], rel_path: str) -> list[LintBypassVio
         codes_str = match.group(1)
 
         if codes_str is None:
-            # Bare ``noqa`` without specific codes.
             violations.append(
                 LintBypassViolation(
                     file_path=rel_path,
@@ -720,13 +463,11 @@ def _find_noqa_violations(lines: list[str], rel_path: str) -> list[LintBypassVio
             )
             continue
 
-        # Parse comma-separated codes.
         codes = [c.strip() for c in str(codes_str).split(",") if c.strip()]
         for code in codes:
             if (file_stem, code) in _NOQA_ALLOWLIST:
                 continue
             if code in _ACCEPTABLE_NOQA_CODES:
-                # In allowlist but not for this file — flag.
                 violations.append(
                     LintBypassViolation(
                         file_path=rel_path,
@@ -755,7 +496,6 @@ def _per_file_ignore_violation(
     file_pattern: str,
     code: str,
 ) -> LintBypassViolation | None:
-    """Return the violation for one configured per-file ignore, if any."""
     allowlist_entry = _PYPROJECT_IGNORE_ALLOWLIST.get(code)
     if allowlist_entry is None:
         return LintBypassViolation(
@@ -787,7 +527,6 @@ def _per_file_ignore_violations(
     pyproject_path: Path,
     ruff_lint: Mapping[str, object],
 ) -> list[LintBypassViolation]:
-    """Return violations for Ruff's per-file ignore configuration."""
     violations: list[LintBypassViolation] = []
     ignores = _string_key_mapping(ruff_lint.get("per-file-ignores", {}))
     for file_pattern, codes in ignores.items():
@@ -815,7 +554,6 @@ def _global_ignore_violations(
     ruff_tool: Mapping[str, object],
     ruff_lint: Mapping[str, object],
 ) -> list[LintBypassViolation]:
-    """Return violations for global Ruff ignore settings."""
     settings = (
         ("[tool.ruff] ignore", ruff_tool.get("ignore"), "global ignore weakens lint enforcement"),
         (
@@ -842,7 +580,6 @@ def _global_ignore_violations(
 
 
 def _check_pyproject_config(pyproject_path: Path) -> list[LintBypassViolation]:
-    """Check pyproject.toml for Ruff settings that weaken lint enforcement."""
     if not pyproject_path.is_file():
         return []
     data = _load_toml_root(pyproject_path)
@@ -856,7 +593,6 @@ def _check_pyproject_config(pyproject_path: Path) -> list[LintBypassViolation]:
 
 
 def _collect_py_files(root: Path) -> Iterable[Path]:
-    """Yield all Python files under *root*, skipping excluded directories."""
     for path in root.rglob("*.py"):
         if any(part in _SKIP_DIRS for part in path.relative_to(root).parts):
             continue
@@ -864,10 +600,6 @@ def _collect_py_files(root: Path) -> Iterable[Path]:
 
 
 def audit_codebase(codebase_root: Path) -> tuple[list[LintBypassViolation], int]:
-    """Audit the entire codebase for lint bypass violations.
-
-    Returns (violations, files_checked).
-    """
     all_violations: list[LintBypassViolation] = []
     files_checked = 0
 
@@ -883,7 +615,6 @@ def audit_codebase(codebase_root: Path) -> tuple[list[LintBypassViolation], int]
         violations = _find_noqa_violations(lines, rel_path)
         all_violations.extend(violations)
 
-    # Also check pyproject.toml config.
     pyproject_path = codebase_root / "pyproject.toml"
     config_violations = _check_pyproject_config(pyproject_path)
     all_violations.extend(config_violations)
@@ -892,19 +623,9 @@ def audit_codebase(codebase_root: Path) -> tuple[list[LintBypassViolation], int]
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the lint bypass audit and return exit code.
-
-    Exit code 0: no violations found.
-    Exit code 1: violations found.
-    Exit code 2: error.
-    """
     args = argv if argv is not None else sys.argv[1:]
 
-    codebase_root = (
-        Path(args[0])
-        if args
-        else Path(__file__).parent.parent.parent  # default: ralph-workflow root
-    )
+    codebase_root = Path(args[0]) if args else Path(__file__).parent.parent.parent
 
     if not codebase_root.is_dir():
         print(f"Error: directory not found: {codebase_root}", file=sys.stderr)

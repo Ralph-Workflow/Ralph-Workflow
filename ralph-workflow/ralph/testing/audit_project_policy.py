@@ -1,14 +1,3 @@
-"""Project policy pack readiness audit.
-
-Validates that the repository's root policy pack (docs/ralph-workflow-policy/)
-validates READY under the active policy schema version (v6) with zero findings.
-
-Usage:
-    python -m ralph.testing.audit_project_policy
-
-Returns exit code 0 if no policy findings found, 1 otherwise.
-"""
-
 from __future__ import annotations
 
 import sys
@@ -37,7 +26,6 @@ __all__ = ["collect_violations", "main"]
 
 
 def collect_violations(repo_root: Path | None = None) -> list[str]:
-    """Return all project policy readiness findings for the repository root."""
     root = repo_root if repo_root is not None else REPO_ROOT
     ws = FsWorkspace(root)
     stack = ProjectStack(primary_language="Python")
@@ -46,7 +34,6 @@ def collect_violations(repo_root: Path | None = None) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Print findings and exit non-zero when the policy pack is not READY."""
     _ = argv
     violations = collect_violations()
     if violations:

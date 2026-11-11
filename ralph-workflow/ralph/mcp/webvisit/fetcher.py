@@ -1,8 +1,3 @@
-"""HTTP fetch layer for the visit_url tool.
-
-Performs a single HTTP GET with SSRF-guard, size cap, and timeout enforcement.
-No network IO should escape this module in production code paths.
-"""
 
 from __future__ import annotations
 
@@ -46,7 +41,6 @@ _MAX_REDIRECTS = 10
 
 @dataclass(frozen=True)
 class FetchOutcome:
-    """Result of a single HTTP fetch attempt."""
 
     status: FetchStatus
     effective_url: str | None = None
@@ -56,7 +50,7 @@ class FetchOutcome:
     error: str | None = None
 
 
-_DNS_SSRF_CHECK_TIMEOUT = 5.0  # seconds; prevents unbounded blocking on slow DNS
+_DNS_SSRF_CHECK_TIMEOUT = 5.0
 
 
 def _is_private_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
@@ -73,12 +67,10 @@ def _is_private_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
 def _is_private_address(host: str) -> bool:
     if host.lower() in _PRIVATE_HOSTNAMES:
         return True
-    # Parse as a literal IP address first  no DNS needed and no blocking
     try:
         return _is_private_ip(ipaddress.ip_address(host))
     except ValueError:
         pass
-    # Hostname: resolve with a bounded timeout so slow DNS cannot block the server
     old_timeout = socket.getdefaulttimeout()
     try:
         socket.setdefaulttimeout(_DNS_SSRF_CHECK_TIMEOUT)
@@ -109,22 +101,6 @@ def _check_url_policy(
     allow_private_networks: bool,
     error_url: str | None = None,
 ) -> FetchOutcome | None:
-    """Validate URL scheme, hostname, and SSRF policy. Returns an error FetchOutcome or None.
-
-    Parses with BOTH parsers on purpose. The stdlib one answers the
-    policy questions (scheme, hostname, private-network), but it is
-    LENIENT where httpx is strict, so a URL can clear this gate and then
-    make ``client.stream`` raise -- ``http://999.1.1.1/`` parses here
-    with ``hostname='999.1.1.1'`` and is rejected by httpx as an invalid
-    IPv4 address. Constructing ``httpx.URL`` here moves that rejection
-    into the gate, where the designed ``invalid_url`` outcome lives,
-    instead of leaving it to escape as an exception from a function
-    documented never to raise.
-
-    The stdlib parser is itself fallible: an unbalanced bracket
-    (``http://[::1``) raises ``ValueError: Invalid IPv6 URL`` before any
-    check below runs.
-    """
     target_url = error_url or url
     try:
         parsed = urlparse(url)
@@ -158,10 +134,6 @@ def _check_url_policy(
     try:
         httpx.URL(url)
     except (httpx.InvalidURL, ValueError) as exc:
-        # ``ValueError`` is not redundant with ``InvalidURL``: an
-        # over-long hostname reaches the IDNA codec and comes back as
-        # ``UnicodeEncodeError`` ("label too long"), which is a
-        # ``ValueError`` and NOT an ``InvalidURL``.
         return FetchOutcome(
             status="invalid_url",
             effective_url=target_url,
@@ -208,10 +180,6 @@ def fetch_url(
     user_agent: str,
     allow_private_networks: bool,
 ) -> FetchOutcome:
-    """Fetch a single URL and return a FetchOutcome.
-
-    Never raises on network failures  always returns a FetchOutcome.
-    """
     timeout = timeout_ms / 1000.0
     headers = {"User-Agent": user_agent}
     current_url = url
@@ -248,9 +216,6 @@ def fetch_url(
                         try:
                             next_url = urljoin(effective_url, location)
                         except ValueError as exc:
-                            # A server-supplied Location header is remote
-                            # input; a malformed one must be an outcome,
-                            # not an exception out of this function.
                             result = FetchOutcome(
                                 status="invalid_url",
                                 effective_url=effective_url,
@@ -301,12 +266,6 @@ def fetch_url(
                 result = FetchOutcome(status="unreachable", error="too many redirects")
 
     except (httpx.InvalidURL, ValueError) as exc:
-        # ``InvalidURL`` is NOT an httpx.HTTPError subclass (httpx declares it straight off
-        # Exception), so the tuple below cannot catch it. Reachable
-        # despite the gate above because Ralph hand-rolls the redirect
-        # loop with follow_redirects=False -- httpx converts InvalidURL
-        # to RemoteProtocolError only on its own internal redirect path,
-        # which this opts out of.
         return FetchOutcome(status="invalid_url", error=f"malformed URL: {exc}")
     except httpx.TimeoutException as exc:
         return FetchOutcome(status="timeout", error=str(exc))

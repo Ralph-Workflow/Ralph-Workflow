@@ -1,17 +1,3 @@
-"""Consolidated tests from test_agents_invoke_*.py.
-
-This module merges the following previously split test modules into a single
-file to reduce per-shard collection cost. The original class names are
-preserved so external references (test::TestX) still resolve.
-
-Source files:
-  - test_agents_invoke_1.py
-  - test_agents_invoke_2.py
-  - test_agents_invoke_3.py
-  - test_agents_invoke_4.py
-  - test_agents_invoke_5.py
-"""
-
 from __future__ import annotations
 
 import io
@@ -108,145 +94,120 @@ def _no_workspace_monitor(
     del workspace_path, classifier, args, kwargs
 
 
-# === Helper for test_agents_invoke_1.py ===
 @pytest.fixture(autouse=True)
 def _agents_invoke_1_disable_workspace_monitor() -> Iterator[None]:
     with InvokeOptions.workspace_monitor_factory_override(_no_workspace_monitor):
         yield
 
 
-# === Helper for test_agents_invoke_1.py ===
 def _agents_invoke_1_json_object(raw: str) -> dict[str, object]:
     return must_mapping(json.loads(raw))
 
 
-# === Helper for test_agents_invoke_1.py ===
 def _agents_invoke_1_toml_object(raw: str) -> dict[str, object]:
     return must_mapping(tomllib.loads(raw))
 
 
-# === Helper for test_agents_invoke_1.py ===
 def _agents_invoke_1_env_dict(kwargs: dict[str, object]) -> dict[str, str]:
     env_obj = kwargs.get("env")
     assert isinstance(env_obj, dict)
     return must_str_dict(env_obj)
 
 
-# === Helper for test_agents_invoke_1.py ===
 def _agents_invoke_1_argv(args: tuple[object, ...]) -> list[str]:
     return list(args[0])
 
 
-# === Helper for test_agents_invoke_2.py ===
 @pytest.fixture(autouse=True)
 def _agents_invoke_2_disable_workspace_monitor() -> Iterator[None]:
     with InvokeOptions.workspace_monitor_factory_override(_no_workspace_monitor):
         yield
 
 
-# === Helper for test_agents_invoke_2.py ===
 def _agents_invoke_2_json_object(raw: str) -> dict[str, object]:
     return must_mapping(json.loads(raw))
 
 
-# === Helper for test_agents_invoke_2.py ===
 def _agents_invoke_2_toml_object(raw: str) -> dict[str, object]:
     return must_mapping(tomllib.loads(raw))
 
 
-# === Helper for test_agents_invoke_2.py ===
 def _agents_invoke_2_env_dict(kwargs: dict[str, object]) -> dict[str, str]:
     env_obj = kwargs.get("env")
     assert isinstance(env_obj, dict)
     return must_str_dict(env_obj)
 
 
-# === Helper for test_agents_invoke_2.py ===
 def _agents_invoke_2_argv(args: tuple[object, ...]) -> list[str]:
     return list(args[0])
 
 
-# === Helper for test_agents_invoke_3.py ===
 @pytest.fixture(autouse=True)
 def _agents_invoke_3_disable_workspace_monitor() -> Iterator[None]:
     with InvokeOptions.workspace_monitor_factory_override(_no_workspace_monitor):
         yield
 
 
-# === Helper for test_agents_invoke_3.py ===
 def _agents_invoke_3_json_object(raw: str) -> dict[str, object]:
     return must_mapping(json.loads(raw))
 
 
-# === Helper for test_agents_invoke_3.py ===
 def _agents_invoke_3_toml_object(raw: str) -> dict[str, object]:
     return must_mapping(tomllib.loads(raw))
 
 
-# === Helper for test_agents_invoke_3.py ===
 def _agents_invoke_3_env_dict(kwargs: dict[str, object]) -> dict[str, str]:
     env_obj = kwargs.get("env")
     assert isinstance(env_obj, dict)
     return must_str_dict(env_obj)
 
 
-# === Helper for test_agents_invoke_3.py ===
 def _agents_invoke_3_argv(args: tuple[object, ...]) -> list[str]:
     return list(args[0])
 
 
-# === Helper for test_agents_invoke_4.py ===
 @pytest.fixture(autouse=True)
 def _agents_invoke_4_disable_workspace_monitor() -> Iterator[None]:
     with InvokeOptions.workspace_monitor_factory_override(_no_workspace_monitor):
         yield
 
 
-# === Helper for test_agents_invoke_4.py ===
 def _agents_invoke_4_json_object(raw: str) -> dict[str, object]:
     return must_mapping(json.loads(raw))
 
 
-# === Helper for test_agents_invoke_4.py ===
 def _agents_invoke_4_toml_object(raw: str) -> dict[str, object]:
     return must_mapping(tomllib.loads(raw))
 
 
-# === Helper for test_agents_invoke_4.py ===
 def _agents_invoke_4_env_dict(kwargs: dict[str, object]) -> dict[str, str]:
     env_obj = kwargs.get("env")
     assert isinstance(env_obj, dict)
     return must_str_dict(env_obj)
 
 
-# === Helper for test_agents_invoke_4.py ===
 def _agents_invoke_4_argv(args: tuple[object, ...]) -> list[str]:
     return list(args[0])
 
 
-# === Helper for test_agents_invoke_5.py ===
 def _agents_invoke_5_json_object(raw: str) -> dict[str, object]:
     return must_mapping(json.loads(raw))
 
 
-# === Helper for test_agents_invoke_5.py ===
 def _agents_invoke_5_toml_object(raw: str) -> dict[str, object]:
     return must_mapping(tomllib.loads(raw))
 
 
-# === Helper for test_agents_invoke_5.py ===
 def _agents_invoke_5_env_dict(kwargs: dict[str, object]) -> dict[str, str]:
     env_obj = kwargs.get("env")
     assert isinstance(env_obj, dict)
     return must_str_dict(env_obj)
 
 
-# === Helper for test_agents_invoke_5.py ===
 def _agents_invoke_5_argv(args: tuple[object, ...]) -> list[str]:
     return list(args[0])
 
 
-# === Helper: _run_agy_transport_proxy_payload_check (from test_agents_invoke_4.py) ===
 def _run_agy_transport_proxy_payload_check(
     monkeypatch: pytest.MonkeyPatch,
     fake_home: Path,
@@ -305,7 +266,6 @@ def _run_agy_transport_proxy_payload_check(
     assert "agy" in seen_envs
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def test_invoke_agent_passes_idle_timeout_to_subprocess(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -339,11 +299,9 @@ def test_invoke_agent_passes_idle_timeout_to_subprocess(
     assert getattr(captured.get("policy"), "idle_timeout_seconds", None) == _expected_idle_timeout
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def test_invoke_agent_probe_and_strategy_share_same_registry(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """DefaultLivenessProbe and OpenCodeExecutionStrategy share the same registry instance."""
     config = AgentConfig(
         cmd="opencode",
         output_flag="--json-stream",
@@ -384,7 +342,6 @@ def test_invoke_agent_probe_and_strategy_share_same_registry(
     assert strategy_registry is probe_registry, (
         "Strategy and probe must share the same registry instance"
     )
-    # Confirm config-driven TTL was applied
     expected_ttl = 90.0
     actual_ttl = strategy_registry._progress_ttl
     assert actual_ttl == expected_ttl, (
@@ -392,7 +349,6 @@ def test_invoke_agent_probe_and_strategy_share_same_registry(
     )
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def test_invoke_agent_scopes_opencode_liveness_to_agent_label_scope(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -438,7 +394,6 @@ def test_invoke_agent_scopes_opencode_liveness_to_agent_label_scope(
     assert state == AgentExecutionState.WAITING_ON_CHILD
 
 
-# === consolidated from test_agents_invoke_1.py ===
 @pytest.mark.timeout_seconds(2.0)
 def test_invoke_agent_without_session_scope_ignores_unrelated_agent_labels(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -483,23 +438,7 @@ def test_invoke_agent_without_session_scope_ignores_unrelated_agent_labels(
     assert state == AgentExecutionState.ACTIVE
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def _dead_pid() -> int:
-    """Return a pid that no live process owns.
-
-    Production answers "does this pid have live descendants?" with
-    ``psutil.Process.children(recursive=True)``, which enumerates EVERY
-    process on the host to build a parent map. A fake that names a pid a
-    live host process owns therefore pays for a full process-table scan on
-    every probe, and the idle watchdog probes on every poll -- with the
-    fake clock those polls spin at CPU speed. One such scenario ran 28
-    scans and burned 1.9 CPU seconds on a 2000-process host: over the 1.0
-    CPU-second per-test budget, and worse on a loaded host.
-
-    A pid this process forked and reaped is provably dead: the kernel holds
-    no entry for it, so psutil answers ``NoSuchProcess`` without
-    enumerating anything.
-    """
     pid = os.fork()
     if pid == 0:
         os._exit(0)
@@ -507,21 +446,10 @@ def _dead_pid() -> int:
     return pid
 
 
-# === consolidated from test_agents_invoke_1.py ===
 class _IdleTimeoutProcess:
-    """Fake agent process for the idle-stream-timeout scenario.
-
-    Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
-    positional message), so a process fake must satisfy the
-    ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
-    """
-
     stdin = None
 
     def __init__(self) -> None:
-        # A pid this session forked and reaped: no live host process owns
-        # it, so the production descendant probe short-circuits instead of
-        # enumerating the host's whole process table (see ``_dead_pid``).
         self.pid = _dead_pid()
         self.stdout = iter(())
         self.stderr = SimpleNamespace(read=lambda _size: "")
@@ -551,9 +479,7 @@ class _IdleTimeoutProcess:
         pass
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def _run_idle_stream_timeout_scenario(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Run the idle-stream timeout and assert it surfaces as an inactivity error."""
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
@@ -578,36 +504,19 @@ def _run_idle_stream_timeout_scenario(monkeypatch: pytest.MonkeyPatch, tmp_path:
         )
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def test_run_subprocess_and_read_lines_wraps_idle_stream_timeout(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _run_idle_stream_timeout_scenario(monkeypatch, tmp_path)
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def test_idle_stream_timeout_fake_process_owns_no_live_pid() -> None:
-    """The fake agent process must never name a pid a live host process owns.
-
-    A live pid turns every production descendant probe into a full scan of
-    the host's process table, and the scan cost grows with the number of
-    processes the host runs -- the reason this scenario used to exceed the
-    per-test CPU budget on a loaded host.
-    """
     assert not psutil.pid_exists(_IdleTimeoutProcess().pid)
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def test_idle_stream_timeout_scenario_never_scans_the_host_process_table(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The idle-stream timeout scenario must not scan the host's processes.
-
-    ``psutil`` answers a descendant probe by reading ``/proc/<pid>/stat`` for
-    every process on the machine. The scan is stubbed out here so the
-    assertion is about the scenario's behaviour, not about the host's
-    process count.
-    """
     scans = 0
 
     def counting_children(self: psutil.Process, recursive: bool = False) -> list[psutil.Process]:
@@ -622,15 +531,7 @@ def test_idle_stream_timeout_scenario_never_scans_the_host_process_table(
     assert scans == 0, f"the scenario scanned the host process table {scans} time(s)"
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def test_build_command_includes_print_streaming_and_session_flags() -> None:
-    """Official headless ``claude`` emits stream-json flags exactly once.
-
-    The official Claude Code CLI requires ``--verbose`` when
-    ``--output-format=stream-json`` is used; the builder must add it
-    automatically and only once. Third-party wrappers such as ``ccs`` keep
-    their original argv order and are covered separately.
-    """
     config = AgentConfig(
         cmd="claude",
         output_flag="--output-format=stream-json",
@@ -669,7 +570,6 @@ def test_build_command_includes_print_streaming_and_session_flags() -> None:
 
 
 def test_build_command_ccs_wrapper_keeps_original_argv_order() -> None:
-    """``ccs`` wrappers are not promoted to the official-claude flag order."""
     config = AgentConfig(
         cmd="ccs work",
         output_flag="--output-format=stream-json",
@@ -707,7 +607,6 @@ def test_build_command_ccs_wrapper_keeps_original_argv_order() -> None:
     ]
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def test_build_command_does_not_duplicate_print_flag_when_claude_cmd_already_uses_p() -> None:
     config = AgentConfig(
         cmd="claude -p",
@@ -739,14 +638,6 @@ def test_build_command_does_not_duplicate_print_flag_when_claude_cmd_already_use
 
 
 def test_build_command_keeps_quoted_cmd_path_containing_spaces_as_one_token() -> None:
-    """A shell-quoted wrapper path with spaces stays a single argv token.
-
-    Operators point ``[agents.claude].cmd`` at a wrapper binary whose path
-    may contain spaces; the documented contract (matching the AGY / Cursor
-    overrides and ``_agent_command_name``) is that the cmd string is parsed
-    with shell quoting rules, so the quoted path survives as one token
-    instead of being shredded into two nonexistent arguments.
-    """
     config = AgentConfig(
         cmd="'/opt/my wrapper/claude-shim' claude -p",
         output_flag="--output-format=stream-json",
@@ -766,7 +657,6 @@ def test_build_command_keeps_quoted_cmd_path_containing_spaces_as_one_token() ->
     assert cmd[:3] == ["/opt/my wrapper/claude-shim", "claude", "-p"]
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def test_claude_interactive_build_command_excludes_output_flag() -> None:
     config = AgentConfig(
         cmd="claude",
@@ -801,7 +691,6 @@ def test_claude_interactive_build_command_excludes_output_flag() -> None:
     ]
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def test_strategy_for_transport_returns_claude_interactive_strategy() -> None:
     assert isinstance(
         strategy_for_transport(AgentTransport.CLAUDE_INTERACTIVE),
@@ -809,12 +698,10 @@ def test_strategy_for_transport_returns_claude_interactive_strategy() -> None:
     )
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def test_claude_interactive_execution_strategy_supports_session_continuation() -> None:
     assert ClaudeInteractiveExecutionStrategy().supports_session_continuation() is True
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def test_claude_interactive_execution_strategy_classify_exit_terminal_on_completion() -> None:
     strategy = ClaudeInteractiveExecutionStrategy()
     signals = CompletionSignals(True, False, (), completion_sentinel_present=True)
@@ -826,7 +713,6 @@ def test_claude_interactive_execution_strategy_classify_exit_terminal_on_complet
     assert strategy.classify_exit(_FakeHandle(), signals) == AgentExecutionState.TERMINAL_COMPLETE
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def test_claude_interactive_execution_strategy_classify_exit_resumable_without_signals() -> None:
     strategy = ClaudeInteractiveExecutionStrategy()
     signals = CompletionSignals(False, False, ())
@@ -838,7 +724,6 @@ def test_claude_interactive_execution_strategy_classify_exit_resumable_without_s
     assert strategy.classify_exit(_FakeHandle(), signals) == AgentExecutionState.RESUMABLE_CONTINUE
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def test_claude_interactive_execution_strategy_classify_quiet_ignores_os_descendants() -> None:
     strategy = ClaudeInteractiveExecutionStrategy()
 
@@ -851,7 +736,6 @@ def test_claude_interactive_execution_strategy_classify_quiet_ignores_os_descend
     assert state == AgentExecutionState.ACTIVE
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def test_build_command_injects_claude_append_system_prompt_file() -> None:
     config = AgentConfig(
         cmd="claude -p",
@@ -882,7 +766,6 @@ def test_build_command_injects_claude_append_system_prompt_file() -> None:
     ]
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def test_build_command_injects_claude_interactive_session_id_and_settings() -> None:
     config = AgentConfig(
         cmd="claude",
@@ -893,12 +776,6 @@ def test_build_command_injects_claude_interactive_session_id_and_settings() -> N
         transport=AgentTransport.CLAUDE_INTERACTIVE,
     )
 
-    # The session-resume flag is decided by the single-source-of-truth
-    # helper. When `options.session_id` is set, the helper emits
-    # `--resume <id>` (NOT `--session-id`); the pre-fix code emitted
-    # `--session-id` for the interactive Claude path, which created a
-    # new session tagged with the id instead of continuing the prior
-    # session. After the fix, the only decision point is the helper.
     cmd = build_command(
         config,
         "PROMPT.md",
@@ -919,19 +796,12 @@ def test_build_command_injects_claude_interactive_session_id_and_settings() -> N
     ]
 
 
-# === consolidated from test_agents_invoke_1.py ===
 @pytest.mark.timeout_seconds(3)
 @pytest.mark.subprocess_e2e
 def test_invoke_agent_claude_interactive_default_settings_include_permission_request_hook(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Builds and inspects the ``claude --resume`` command.
-
-    On a loaded worker the mock setup + command build can take ~1.1 s, so a 3 s
-    per-test cap is required to keep this from tripping the 1 s default and
-    stalling the xdist scheduler.
-    """
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
     config = AgentConfig(
@@ -980,19 +850,12 @@ def test_invoke_agent_claude_interactive_default_settings_include_permission_req
     assert "allow" in must_str(permission_hook["command"])
 
 
-# === consolidated from test_agents_invoke_1.py ===
 @pytest.mark.timeout_seconds(3)
 @pytest.mark.subprocess_e2e
 def test_invoke_agent_claude_interactive_passes_permission_prompt_listener_to_pty_runtime(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Exercises the full ``invoke_agent`` path through a mock PTY runtime.
-
-    On a loaded worker the mock PTY setup + invoke pipeline can take ~1.1 s,
-    so a 3 s per-test cap is required to keep this from tripping the 1 s
-    default and stalling the xdist scheduler.
-    """
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
     config = AgentConfig(
@@ -1032,19 +895,12 @@ def test_invoke_agent_claude_interactive_passes_permission_prompt_listener_to_pt
     assert callable(captured_listener[0])
 
 
-# === consolidated from test_agents_invoke_1.py ===
 @pytest.mark.timeout_seconds(3)
 @pytest.mark.subprocess_e2e
 def test_invoke_agent_claude_interactive_merges_custom_settings_with_required_hooks(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Builds and inspects the merged ``claude`` settings payload.
-
-    On a loaded worker the deep-copy + JSON-encoded settings build can take
-    ~1.1 s, so a 3 s per-test cap is required to keep this from tripping the
-    1 s default and stalling the xdist scheduler.
-    """
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
     config = AgentConfig(
@@ -1092,7 +948,6 @@ def test_invoke_agent_claude_interactive_merges_custom_settings_with_required_ho
     assert "PermissionRequest" in hooks
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def test_build_command_injects_claude_interactive_append_system_prompt_file() -> None:
     config = AgentConfig(
         cmd="claude",
@@ -1118,7 +973,6 @@ def test_build_command_injects_claude_interactive_append_system_prompt_file() ->
     ]
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def test_builtin_claude_command_defaults_to_skip_permissions() -> None:
     registry = AgentRegistry.from_config(UnifiedConfig())
     config = registry.get("claude")
@@ -1130,7 +984,6 @@ def test_builtin_claude_command_defaults_to_skip_permissions() -> None:
     assert cmd[-1] == "PROMPT.md"
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def test_build_command_omits_optional_flags_when_not_configured(tmp_path: Path) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("plain prompt", encoding="utf-8")
@@ -1142,13 +995,9 @@ def test_build_command_omits_optional_flags_when_not_configured(tmp_path: Path) 
         options=BuildCommandOptions(session_id="abc123", verbose=False),
     )
 
-    # ``--auto`` approves permissions that are not explicitly denied: an
-    # unattended run has nobody to answer a prompt, and OpenCode otherwise
-    # auto-REJECTS anything it cannot match.
     assert cmd == ["opencode", "run", "--format", "json", "--auto", "plain prompt"]
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def test_build_command_injects_claude_mcp_config_for_remote_endpoint(
     tmp_path: Path,
 ) -> None:
@@ -1197,7 +1046,6 @@ def test_build_command_injects_claude_mcp_config_for_remote_endpoint(
     assert cmd[-2:] == ["--", prompt_content]
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def test_build_command_resolves_relative_claude_prompt_from_workspace_path(tmp_path: Path) -> None:
     prompt_content = "commit prompt content"
     prompt_dir = tmp_path / ".agent" / "tmp"
@@ -1227,7 +1075,6 @@ def test_build_command_resolves_relative_claude_prompt_from_workspace_path(tmp_p
     assert cmd[-2:] == ["--", prompt_content]
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def test_build_command_uses_transport_metadata_not_command_name_for_claude_mcp(
     tmp_path: Path,
 ) -> None:
@@ -1261,7 +1108,6 @@ def test_build_command_uses_transport_metadata_not_command_name_for_claude_mcp(
     assert cmd[-2:] == ["--", prompt_content]
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def test_build_command_uses_opencode_run_json_with_prompt_contents(tmp_path: Path) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("say hello", encoding="utf-8")
@@ -1290,23 +1136,9 @@ def test_build_command_uses_opencode_run_json_with_prompt_contents(tmp_path: Pat
     ]
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def test_opencode_regression_no_pure_flag_and_no_output_flag_in_argv(
     tmp_path: Path,
 ) -> None:
-    """Two flags that must never reach an ``opencode run`` command line.
-
-    This test previously asserted ``--pure`` WAS emitted, which encoded a
-    bug: ``--pure`` runs opencode without external plugins, so an operator
-    whose model provider comes from a plugin had every run die on an
-    unresolvable provider. The flag and its ``pure`` option field are gone.
-
-    It also pins the second half: opencode 1.18.25 has no output-format flag
-    beyond ``--format json``, so an operator ``[agents.opencode]
-    output_flag`` is dropped -- now by an explicit
-    ``honors_output_flag=False`` declaration rather than by an argv-name
-    sniff that happened to swallow it.
-    """
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("say hello", encoding="utf-8")
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
@@ -1327,7 +1159,6 @@ def test_opencode_regression_no_pure_flag_and_no_output_flag_in_argv(
     ]
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def test_build_command_uses_codex_exec_json_with_prompt_contents(tmp_path: Path) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("fix the planner", encoding="utf-8")
@@ -1354,7 +1185,6 @@ def test_build_command_uses_codex_exec_json_with_prompt_contents(tmp_path: Path)
     ]
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def test_command_for_log_redacts_opencode_inline_prompt_and_shows_prompt_file(
     tmp_path: Path,
 ) -> None:
@@ -1374,7 +1204,6 @@ def test_command_for_log_redacts_opencode_inline_prompt_and_shows_prompt_file(
     assert str(prompt_file) in logged
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def test_command_for_log_redacts_codex_inline_prompt_and_shows_prompt_file(tmp_path: Path) -> None:
     prompt_file = tmp_path / ".agent" / "tmp" / "planning_prompt.md"
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
@@ -1392,7 +1221,6 @@ def test_command_for_log_redacts_codex_inline_prompt_and_shows_prompt_file(tmp_p
     assert str(prompt_file) in logged
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def test_invoke_agent_does_not_reexecute_command_after_stream_finishes(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -1403,9 +1231,6 @@ def test_invoke_agent_does_not_reexecute_command_after_stream_finishes(
     run_calls: list[list[str]] = []
 
     class FakeProcess:
-        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
-        # positional message), so a process fake must satisfy the
-        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
         stdin = None
         pid: int = 12345
 
@@ -1463,7 +1288,6 @@ def test_invoke_agent_does_not_reexecute_command_after_stream_finishes(
     assert run_calls == []
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def test_invoke_agent_passes_extra_env_to_subprocess(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -1473,9 +1297,6 @@ def test_invoke_agent_passes_extra_env_to_subprocess(
     seen_env: list[dict[str, str]] = []
 
     class FakeProcess:
-        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
-        # positional message), so a process fake must satisfy the
-        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
         stdin = None
         pid: int = 12345
 
@@ -1538,11 +1359,9 @@ def test_invoke_agent_passes_extra_env_to_subprocess(
     assert seen_env[0][str(MCP_ENDPOINT_ENV)] == "http://127.0.0.1:9999/mcp"
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def test_build_command_merges_existing_mcp_servers_when_unsafe_mode(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """BuildCommandOptions(unsafe_mode=True) merges workspace .mcp.json into the Claude command."""
     config = AgentConfig(
         cmd="claude",
         transport=AgentTransport.CLAUDE,
@@ -1585,11 +1404,9 @@ def test_build_command_merges_existing_mcp_servers_when_unsafe_mode(
     assert "ralph" in servers
 
 
-# === consolidated from test_agents_invoke_1.py ===
 def test_build_command_ralph_only_by_default(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """BuildCommandOptions(unsafe_mode=False, default) returns a Ralph-only --mcp-config JSON."""
     config = AgentConfig(
         cmd="claude",
         transport=AgentTransport.CLAUDE,
@@ -1628,7 +1445,6 @@ def test_build_command_ralph_only_by_default(
     assert list(parsed["mcpServers"].keys()) == ["ralph"]
 
 
-# === consolidated from test_agents_invoke_2.py ===
 def test_invoke_agent_times_out_when_agent_goes_idle(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -1641,14 +1457,9 @@ def test_invoke_agent_times_out_when_agent_goes_idle(
             return self
 
         def __next__(self) -> str:
-            # Raise StopIteration immediately - the FakeClock in the main loop
-            # advances time so the watchdog fires even though no real wait happens.
             raise StopIteration
 
     class FakeProcess:
-        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
-        # positional message), so a process fake must satisfy the
-        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
         stdin = None
         pid: int = 12345
 
@@ -1689,8 +1500,6 @@ def test_invoke_agent_times_out_when_agent_goes_idle(
         lambda *args, **kwargs: fake_process,
     )
 
-    # BlockingStdout closes stdout immediately → post-exit watchdog fires
-    # (PROCESS_EXIT_HANG), not idle watchdog (NO_OUTPUT_DEADLINE).
     expected_msg = "subprocess closed stdout but did not exit"
     with pytest.raises(AgentInactivityTimeoutError, match=expected_msg):
         list(
@@ -1708,7 +1517,6 @@ def test_invoke_agent_times_out_when_agent_goes_idle(
     assert process_teardown.calls == (fake_process.pid,)
 
 
-# === consolidated from test_agents_invoke_2.py ===
 def test_invoke_agent_defers_idle_timeout_while_descendants_remain_active(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -1721,14 +1529,9 @@ def test_invoke_agent_defers_idle_timeout_while_descendants_remain_active(
             return self
 
         def __next__(self) -> str:
-            # Raise StopIteration immediately - the FakeClock in the main loop
-            # advances time so the watchdog fires even though no real wait happens.
             raise StopIteration
 
     class FakeProcess:
-        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
-        # positional message), so a process fake must satisfy the
-        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
         stdin = None
         pid: int = 12345
 
@@ -1783,9 +1586,6 @@ def test_invoke_agent_defers_idle_timeout_while_descendants_remain_active(
         raising=False,
     )
 
-    # BlockingStdout closes stdout immediately → post-exit watchdog fires
-    # (PROCESS_EXIT_HANG), not idle watchdog (NO_OUTPUT_DEADLINE).
-    # Descendant check may not fire because drain window short-circuits.
     expected_msg = "subprocess closed stdout but did not exit"
     with pytest.raises(AgentInactivityTimeoutError, match=expected_msg):
         list(
@@ -1803,7 +1603,6 @@ def test_invoke_agent_defers_idle_timeout_while_descendants_remain_active(
     assert process_teardown.calls == (fake_process.pid,)
 
 
-# === consolidated from test_agents_invoke_2.py ===
 def test_invoke_agent_runs_subprocess_in_workspace_path(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -1813,9 +1612,6 @@ def test_invoke_agent_runs_subprocess_in_workspace_path(
     seen_cwds: list[str | None] = []
 
     class FakeProcess:
-        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
-        # positional message), so a process fake must satisfy the
-        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
         stdin = None
         pid: int = 12345
 
@@ -1875,7 +1671,6 @@ def test_invoke_agent_runs_subprocess_in_workspace_path(
     assert seen_cwds == [str(tmp_path)]
 
 
-# === consolidated from test_agents_invoke_2.py ===
 def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -1895,9 +1690,6 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
     seen_cmds: list[list[str]] = []
 
     class FakeProcess:
-        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
-        # positional message), so a process fake must satisfy the
-        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
         stdin = None
         pid: int = 12345
 
@@ -1980,10 +1772,6 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
         "url": "http://127.0.0.1:9999/mcp",
         "timeout": 75_000,
     }
-    # ``--strict-mcp-config`` is deliberately gone from this argv: it made
-    # Ralph's config the ONLY MCP source Claude read, deleting every server
-    # the operator installed in their own harness. Ralph adds its server; it
-    # does not remove theirs. Its OWN --tools/--allowedTools gate stays.
     assert cmd[10:] == [
         "--allowedTools",
         ",".join(
@@ -2000,7 +1788,6 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
     ]
 
 
-# === consolidated from test_agents_invoke_2.py ===
 def test_provider_allowed_mcp_tool_names_maps_live_ralph_endpoint_to_claude_aliases(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2024,20 +1811,9 @@ def test_provider_allowed_mcp_tool_names_maps_live_ralph_endpoint_to_claude_alia
     )
 
 
-# === consolidated from test_agents_invoke_2.py ===
 def test_provider_allowed_mcp_tool_names_dedupes_mixed_raw_and_aliased_names(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Regression test: when ``tools/list`` returns BOTH the raw tool name and
-    the ``mcp__<server>__<tool>`` alias (post-fix behavior), the
-    ``--allowedTools`` value must contain each alias exactly once.
-
-    The pre-fix code mapped every entry through ``claude_tool_name`` so the
-    already-aliased names became ``mcp__ralph__mcp__ralph__read_file`` and
-    appeared in the live smoke log as duplicates. The fix dedupes by stripping
-    the ``mcp__<server>__`` prefix from already-aliased names BEFORE applying
-    ``claude_tool_name`` once, and dedupes the final tuple.
-    """
     config = AgentConfig(
         cmd="claude -p",
         output_flag="--output-format=stream-json",
@@ -2065,14 +1841,9 @@ def test_provider_allowed_mcp_tool_names_dedupes_mixed_raw_and_aliased_names(
     assert len(allowed) == len(set(allowed))
 
 
-# === consolidated from test_agents_invoke_2.py ===
 def test_provider_allowed_mcp_tool_names_dedupes_double_prefixed_alias(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The pre-fix regression produced ``mcp__ralph__mcp__ralph__read_file``
-    by mapping an already-aliased name through ``claude_tool_name``. Pin
-    that the result NEVER contains a double-prefixed alias.
-    """
     config = AgentConfig(
         cmd="claude -p",
         output_flag="--output-format=stream-json",
@@ -2100,7 +1871,6 @@ def test_provider_allowed_mcp_tool_names_dedupes_double_prefixed_alias(
     )
 
 
-# === consolidated from test_agents_invoke_2.py ===
 def test_claude_builtin_command_preserves_login_capable_mode(tmp_path: Path) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("prompt", encoding="utf-8")
@@ -2139,7 +1909,6 @@ def test_claude_builtin_command_preserves_login_capable_mode(tmp_path: Path) -> 
     )
 
 
-# === consolidated from test_agents_invoke_2.py ===
 def test_build_command_claude_keeps_native_orchestration_tools_when_mcp_endpoint_wired(
     tmp_path: Path,
 ) -> None:
@@ -2162,15 +1931,12 @@ def test_build_command_claude_keeps_native_orchestration_tools_when_mcp_endpoint
             allowed_mcp_tool_names=(claude_tool_name("read_file"),),
         ),
     )
-    # Native orchestration tools must stay available through --allowedTools
-    # while MCP filesystem tools are funnelled through Ralph's MCP surface.
     allowed_index = cmd.index("--allowedTools")
     assert cmd[allowed_index + 1] == ",".join(
         [claude_tool_name("read_file"), *CLAUDE_NATIVE_TOOLS_TO_KEEP]
     )
 
 
-# === consolidated from test_agents_invoke_2.py ===
 def test_build_command_claude_injects_strict_mcp_config_when_mcp_endpoint_wired(
     tmp_path: Path,
 ) -> None:
@@ -2193,19 +1959,9 @@ def test_build_command_claude_injects_strict_mcp_config_when_mcp_endpoint_wired(
     assert "--mcp-config" in cmd
 
 
-# === consolidated from test_agents_invoke_2.py ===
 def test_build_command_claude_omits_tool_flags_when_allowlist_is_empty(
     tmp_path: Path,
 ) -> None:
-    """``--strict-mcp-config`` is deliberately absent: Ralph adds, never removes.
-
-    This used to assert the flag WAS emitted. Per ``claude --help`` it means
-    "Only use MCP servers from --mcp-config, ignoring all other MCP
-    configurations" -- it deleted every MCP server the operator installed in
-    their own harness, including claude.ai account connectors that exist in
-    no file and can never be proxied back. ``--mcp-config`` alone adds
-    Ralph's server on top of the operator's own sources.
-    """
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("prompt", encoding="utf-8")
     config = AgentConfig(
@@ -2232,7 +1988,6 @@ def test_build_command_claude_omits_tool_flags_when_allowlist_is_empty(
     assert "--allowedTools" not in cmd
 
 
-# === consolidated from test_agents_invoke_2.py ===
 def test_invoke_agent_claude_extracts_existing_workspace_mcp_servers(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -2266,9 +2021,6 @@ def test_invoke_agent_claude_extracts_existing_workspace_mcp_servers(
     seen_env: list[dict[str, str]] = []
 
     class FakeProcess:
-        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
-        # positional message), so a process fake must satisfy the
-        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
         stdin = None
         pid: int = 12345
 
@@ -2310,11 +2062,6 @@ def test_invoke_agent_claude_extracts_existing_workspace_mcp_servers(
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
     monkeypatch.setenv("HOME", str(fake_home))
 
-    # Claude's tool restriction now fails CLOSED: a `tools/list` that cannot
-    # be reached aborts the launch instead of silently emitting
-    # --strict-mcp-config with no --allowedTools. These tests assert on the
-    # --mcp-config payload, not on discovery, so the endpoint is stubbed
-    # rather than dialled (it never listened here in the first place).
     monkeypatch.setattr(
         "ralph.agents.invoke.discover_http_mcp_tool_names",
         lambda _endpoint: ["ralph_submit_md_artifact"],
@@ -2355,7 +2102,6 @@ def test_invoke_agent_claude_extracts_existing_workspace_mcp_servers(
     )
 
 
-# === consolidated from test_agents_invoke_2.py ===
 def test_claude_mode_extracts_upstream_servers_without_passing_them_through(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -2389,9 +2135,6 @@ def test_claude_mode_extracts_upstream_servers_without_passing_them_through(
     seen_env: list[dict[str, str]] = []
 
     class FakeProcess:
-        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
-        # positional message), so a process fake must satisfy the
-        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
         stdin = None
         pid: int = 12345
 
@@ -2431,11 +2174,6 @@ def test_claude_mode_extracts_upstream_servers_without_passing_them_through(
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
     monkeypatch.setenv("HOME", str(fake_home))
 
-    # Claude's tool restriction now fails CLOSED: a `tools/list` that cannot
-    # be reached aborts the launch instead of silently emitting
-    # --strict-mcp-config with no --allowedTools. These tests assert on the
-    # --mcp-config payload, not on discovery, so the endpoint is stubbed
-    # rather than dialled (it never listened here in the first place).
     monkeypatch.setattr(
         "ralph.agents.invoke.discover_http_mcp_tool_names",
         lambda _endpoint: ["ralph_submit_md_artifact"],
@@ -2476,7 +2214,6 @@ def test_claude_mode_extracts_upstream_servers_without_passing_them_through(
     )
 
 
-# === consolidated from test_agents_invoke_2.py ===
 @pytest.mark.timeout_seconds(2.0)
 def test_claude_mode_prefers_workspace_upstream_server_over_home_definition(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -2514,9 +2251,6 @@ def test_claude_mode_prefers_workspace_upstream_server_over_home_definition(
     seen_cmds: list[list[str]] = []
 
     class FakeProcess:
-        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
-        # positional message), so a process fake must satisfy the
-        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
         stdin = None
         pid: int = 12345
 
@@ -2556,11 +2290,6 @@ def test_claude_mode_prefers_workspace_upstream_server_over_home_definition(
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
     monkeypatch.setenv("HOME", str(fake_home))
 
-    # Claude's tool restriction now fails CLOSED: a `tools/list` that cannot
-    # be reached aborts the launch instead of silently emitting
-    # --strict-mcp-config with no --allowedTools. These tests assert on the
-    # --mcp-config payload, not on discovery, so the endpoint is stubbed
-    # rather than dialled (it never listened here in the first place).
     monkeypatch.setattr(
         "ralph.agents.invoke.discover_http_mcp_tool_names",
         lambda _endpoint: ["ralph_submit_md_artifact"],
@@ -2596,17 +2325,9 @@ def test_claude_mode_prefers_workspace_upstream_server_over_home_definition(
     )
 
 
-# === consolidated from test_agents_invoke_2.py ===
 def test_invoke_agent_starts_workspace_monitor_without_progress_ui(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Workspace evidence collection starts even when progress UI is disabled.
-
-    Regression for the activity-aware idle watchdog: a quiet unattended run
-    can be doing real file work without wanting progress output. The
-    workspace monitor must start whenever a workspace_path is provided,
-    regardless of show_progress.
-    """
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
     config = AgentConfig(cmd="codex", output_flag="--json-stream")
@@ -2620,9 +2341,6 @@ def test_invoke_agent_starts_workspace_monitor_without_progress_ui(
         captured_calls.append(((workspace_path,), {"classifier": classifier}))
 
     class FakeProcess:
-        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
-        # positional message), so a process fake must satisfy the
-        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
         stdin = None
         pid: int = 12345
 
@@ -2682,24 +2400,13 @@ def test_invoke_agent_starts_workspace_monitor_without_progress_ui(
     assert isinstance(classifier, WorkspaceChangeClassifier), (
         f"expected a WorkspaceChangeClassifier for direct invoke callers, got {classifier!r}"
     )
-    # Direct callers must receive the conservative default weights, not the
-    # legacy OTHER/1.0 fallback. Source changes count as activity; log churn
-    # does not.
     assert classifier.classify("src/app.py") == (WorkspaceChangeKind.SOURCE, 1.0)
     assert classifier.classify("build/output.log") == (WorkspaceChangeKind.LOG, 0.0)
 
 
-# === consolidated from test_agents_invoke_2.py ===
 def test_claude_mode_regression_stale_ralph_entry_is_dropped_not_rejected(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A leftover `ralph` entry in the operator's config is replaced by the live endpoint.
-
-    ``ralph`` is reserved, so the entry cannot be carried through as an
-    upstream -- but it is the operator's own config, and Ralph always
-    supplies its own endpoint, so a stale entry must be dropped rather
-    than reported as an error that blocks every Claude invocation.
-    """
     fake_home = tmp_path / "fake-home"
     fake_home.mkdir()
     monkeypatch.setenv("HOME", str(fake_home))
@@ -2746,7 +2453,6 @@ def test_claude_mode_regression_stale_ralph_entry_is_dropped_not_rejected(
     assert str(RALPH_MCP_SERVER_NAME) not in upstream_names
 
 
-# === consolidated from test_agents_invoke_2.py ===
 def test_build_command_claude_omits_tools_flag_when_no_mcp_endpoint() -> None:
     config = AgentConfig(
         cmd="claude -p",
@@ -2766,7 +2472,6 @@ def test_build_command_claude_omits_tools_flag_when_no_mcp_endpoint() -> None:
     assert "--strict-mcp-config" not in cmd
 
 
-# === consolidated from test_agents_invoke_3.py ===
 def test_invoke_agent_surfaces_stdout_error_when_stderr_is_empty(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -2782,9 +2487,6 @@ def test_invoke_agent_surfaces_stdout_error_when_stderr_is_empty(
     )
 
     class FakeProcess:
-        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
-        # positional message), so a process fake must satisfy the
-        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
         stdin = None
         pid: int = 12345
 
@@ -2849,7 +2551,6 @@ def test_invoke_agent_surfaces_stdout_error_when_stderr_is_empty(
     ]
 
 
-# === consolidated from test_agents_invoke_3.py ===
 def test_invoke_agent_injects_opencode_mcp_config_for_remote_endpoint(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -2863,9 +2564,6 @@ def test_invoke_agent_injects_opencode_mcp_config_for_remote_endpoint(
     seen_env: list[dict[str, str]] = []
 
     class FakeProcess:
-        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
-        # positional message), so a process fake must satisfy the
-        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
         stdin = None
         pid: int = 12345
 
@@ -2934,18 +2632,9 @@ def test_invoke_agent_injects_opencode_mcp_config_for_remote_endpoint(
     assert permission_config["ralph_*"] == "allow"
 
 
-# === consolidated from test_agents_invoke_3.py ===
 def test_invoke_agent_fails_fast_when_local_opencode_does_not_support_model(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The preflight sees the model id verbatim, ``provider/model``.
-
-    The fixture previously wrote the Ralph ALIAS (``-m
-    opencode/minimax/MiniMax-M3``) into ``model_flag`` and relied on the
-    invoke layer stripping ``opencode/`` a second time. That second strip
-    was a bug -- opencode publishes a provider literally named ``opencode``
-    -- so the fixture now carries what alias resolution actually emits.
-    """
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
     config = AgentConfig(
@@ -2977,7 +2666,6 @@ def test_invoke_agent_fails_fast_when_local_opencode_does_not_support_model(
         )
 
 
-# === consolidated from test_agents_invoke_3.py ===
 def test_invoke_agent_merges_existing_opencode_config_content(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -2990,9 +2678,6 @@ def test_invoke_agent_merges_existing_opencode_config_content(
     seen_env: list[dict[str, str]] = []
 
     class FakeProcess:
-        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
-        # positional message), so a process fake must satisfy the
-        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
         stdin = None
         pid: int = 12345
 
@@ -3057,7 +2742,6 @@ def test_invoke_agent_merges_existing_opencode_config_content(
     assert ralph_config["url"] == "http://127.0.0.1:9999/mcp"
 
 
-# === consolidated from test_agents_invoke_3.py ===
 def test_invoke_agent_does_not_inject_opencode_mcp_config_without_explicit_endpoint(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -3067,9 +2751,6 @@ def test_invoke_agent_does_not_inject_opencode_mcp_config_without_explicit_endpo
     seen_env: list[dict[str, str]] = []
 
     class FakeProcess:
-        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
-        # positional message), so a process fake must satisfy the
-        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
         stdin = None
         pid: int = 12345
 
@@ -3128,7 +2809,6 @@ def test_invoke_agent_does_not_inject_opencode_mcp_config_without_explicit_endpo
     }
 
 
-# === consolidated from test_agents_invoke_3.py ===
 def test_opencode_config_keeps_orchestration_tools_enabled_when_mcp_wired() -> None:
     result = merge_opencode_config_content(None, "http://localhost:0/mcp")
     parsed = _agents_invoke_3_json_object(result)
@@ -3140,7 +2820,6 @@ def test_opencode_config_keeps_orchestration_tools_enabled_when_mcp_wired() -> N
         assert permission[name] == "allow", f"Expected {name} to be auto-allowed"
 
 
-# === consolidated from test_agents_invoke_3.py ===
 def test_opencode_config_preserves_native_tool_enables() -> None:
     existing = '{"tools": {"bash": true}}'
     result = merge_opencode_config_content(existing, "http://localhost:0/mcp")
@@ -3157,7 +2836,6 @@ def test_opencode_config_native_task_enable_overrides_user_disable() -> None:
     assert tools["task"] is True
 
 
-# === consolidated from test_agents_invoke_3.py ===
 def test_opencode_config_preserves_unrelated_user_tools_sections() -> None:
     existing = '{"tools": {"custom_plugin_tool": true}, "ui": {"theme": "dark"}}'
     result = merge_opencode_config_content(existing, "http://localhost:0/mcp")
@@ -3168,7 +2846,6 @@ def test_opencode_config_preserves_unrelated_user_tools_sections() -> None:
     assert ui["theme"] == "dark"
 
 
-# === consolidated from test_agents_invoke_3.py ===
 def test_opencode_mode_extracts_upstream_servers_without_passing_them_through(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -3181,9 +2858,6 @@ def test_opencode_mode_extracts_upstream_servers_without_passing_them_through(
     seen_env: list[dict[str, str]] = []
 
     class FakeProcess:
-        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
-        # positional message), so a process fake must satisfy the
-        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
         stdin = None
         pid: int = 12345
 
@@ -3256,8 +2930,6 @@ def test_opencode_mode_extracts_upstream_servers_without_passing_them_through(
     parsed = _agents_invoke_3_json_object(seen_env[0]["OPENCODE_CONFIG_CONTENT"])
     mcp_config = must_mapping(parsed["mcp"])
     ralph_server = must_mapping(mcp_config["ralph"])
-    # The client timeout must exceed the longest server-side tool (exec); assert
-    # that property rather than a brittle literal so it cannot silently regress.
     assert isinstance(ralph_server["timeout"], int)
     assert ralph_server["timeout"] > EXEC_DEFAULT_TIMEOUT_MS
     assert {k: v for k, v in ralph_server.items() if k != "timeout"} == {
@@ -3276,9 +2948,7 @@ def test_opencode_mode_extracts_upstream_servers_without_passing_them_through(
     )
 
 
-# === consolidated from test_agents_invoke_3.py ===
 def test_opencode_mode_regression_stale_ralph_entry_is_dropped_not_rejected() -> None:
-    """A leftover `ralph` entry in the OpenCode config is replaced by the live endpoint."""
     existing = '{"mcp": {"ralph": {"type": "remote", "url": "http://wrong.example/mcp"}}}'
 
     result = merge_opencode_config_content(existing, "http://localhost:0/mcp")
@@ -3288,7 +2958,6 @@ def test_opencode_mode_regression_stale_ralph_entry_is_dropped_not_rejected() ->
     assert must_mapping(mcp_config["ralph"])["url"] == "http://localhost:0/mcp"
 
 
-# === consolidated from test_agents_invoke_3.py ===
 def test_opencode_config_preserves_unrelated_permission_entries() -> None:
     existing = '{"permission": {"bash": "ask", "custom_tool": "allow"}}'
     result = merge_opencode_config_content(existing, "http://localhost:0/mcp")
@@ -3299,7 +2968,6 @@ def test_opencode_config_preserves_unrelated_permission_entries() -> None:
     assert permission["ralph_*"] == "allow"
 
 
-# === consolidated from test_agents_invoke_3.py ===
 def test_opencode_config_allows_all_bare_ralph_mcp_tool_names() -> None:
     result = merge_opencode_config_content(None, "http://localhost:0/mcp")
     parsed = _agents_invoke_3_json_object(result)
@@ -3309,7 +2977,6 @@ def test_opencode_config_allows_all_bare_ralph_mcp_tool_names() -> None:
         assert permission[str(tool_name)] == "allow"
 
 
-# === consolidated from test_agents_invoke_3.py ===
 def test_opencode_config_normalizes_non_dict_mcp_sections() -> None:
     existing = '{"mcp": "invalid", "permission": "invalid", "tools": "invalid"}'
     result = merge_opencode_config_content(existing, "http://localhost:0/mcp")
@@ -3322,7 +2989,6 @@ def test_opencode_config_normalizes_non_dict_mcp_sections() -> None:
     assert tools == dict.fromkeys(OPENCODE_NATIVE_TOOLS_TO_KEEP, True)
 
 
-# === consolidated from test_agents_invoke_3.py ===
 def test_opencode_config_omits_tools_block_when_no_mcp_endpoint(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -3332,9 +2998,6 @@ def test_opencode_config_omits_tools_block_when_no_mcp_endpoint(
     seen_env: list[dict[str, str]] = []
 
     class FakeProcess:
-        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
-        # positional message), so a process fake must satisfy the
-        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
         stdin = None
         pid: int = 12345
 
@@ -3390,7 +3053,6 @@ def test_opencode_config_omits_tools_block_when_no_mcp_endpoint(
     assert "tools" not in config_content, "No tools block should be added without MCP endpoint"
 
 
-# === consolidated from test_agents_invoke_3.py ===
 def test_invoke_agent_injects_codex_mcp_config_for_remote_endpoint(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -3401,9 +3063,6 @@ def test_invoke_agent_injects_codex_mcp_config_for_remote_endpoint(
     seen_config: list[str] = []
 
     class FakeProcess:
-        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
-        # positional message), so a process fake must satisfy the
-        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
         stdin = None
         pid: int = 12345
 
@@ -3468,7 +3127,6 @@ def test_invoke_agent_injects_codex_mcp_config_for_remote_endpoint(
     assert expected_server in seen_config[0]
 
 
-# === consolidated from test_agents_invoke_3.py ===
 def test_invoke_agent_injects_codex_master_prompt_file_via_config(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -3480,9 +3138,6 @@ def test_invoke_agent_injects_codex_master_prompt_file_via_config(
     seen_config: list[str] = []
 
     class FakeProcess:
-        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
-        # positional message), so a process fake must satisfy the
-        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
         stdin = None
         pid: int = 12345
 
@@ -3544,7 +3199,6 @@ def test_invoke_agent_injects_codex_master_prompt_file_via_config(
         assert "model_instructions_file" not in features
 
 
-# === consolidated from test_agents_invoke_3.py ===
 def test_invoke_agent_prepends_master_prompt_for_opencode(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -3557,8 +3211,6 @@ def test_invoke_agent_prepends_master_prompt_for_opencode(
     stdin_writes: list[str] = []
 
     class _CapturingStdin:
-        """Records what Ralph writes to the child's stdin."""
-
         @staticmethod
         def write(text: str) -> int:
             stdin_writes.append(text)
@@ -3573,9 +3225,6 @@ def test_invoke_agent_prepends_master_prompt_for_opencode(
             return None
 
     class FakeProcess:
-        # OpenCode's prompt is delivered on stdin, not argv: the CLI re-quotes
-        # a positional message and backslash-escapes every `"` in it, which
-        # corrupted the JSON examples inside Ralph's prompts.
         stdin = _CapturingStdin()
         pid: int = 12345
 
@@ -3626,13 +3275,10 @@ def test_invoke_agent_prepends_master_prompt_for_opencode(
         )
     )
 
-    # The composed master+phase prompt is delivered on stdin, byte-identical,
-    # instead of as an argv token the OpenCode CLI would re-quote and escape.
     assert seen_cmds == [["opencode", "run", "--format", "json", "--auto"]]
     assert stdin_writes == ["unattended mode\n\nhello"]
 
 
-# === consolidated from test_agents_invoke_3.py ===
 def test_invoke_agent_preserves_existing_codex_home_state(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -3646,9 +3292,6 @@ def test_invoke_agent_preserves_existing_codex_home_state(
     copied_auth: list[str] = []
 
     class FakeProcess:
-        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
-        # positional message), so a process fake must satisfy the
-        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
         stdin = None
         pid: int = 12345
 
@@ -3706,7 +3349,6 @@ def test_invoke_agent_preserves_existing_codex_home_state(
     assert copied_auth == ['{"token":"secret"}']
 
 
-# === consolidated from test_agents_invoke_3.py ===
 def test_codex_config_toml_applies_feature_overrides_when_mcp_wired(tmp_path: Path) -> None:
     home = prepare_codex_home(
         "http://localhost:0/mcp",
@@ -3728,7 +3370,6 @@ def test_codex_config_toml_applies_feature_overrides_when_mcp_wired(tmp_path: Pa
     assert "web_search" not in features
 
 
-# === consolidated from test_agents_invoke_3.py ===
 def test_codex_config_toml_keeps_model_instructions_outside_features(tmp_path: Path) -> None:
     master_prompt_file = tmp_path / "MASTER_PROMPT.md"
     master_prompt_file.write_text("system", encoding="utf-8")
@@ -3744,7 +3385,6 @@ def test_codex_config_toml_keeps_model_instructions_outside_features(tmp_path: P
     assert "model_instructions_file" not in features
 
 
-# === consolidated from test_agents_invoke_3.py ===
 def test_codex_config_toml_preserves_existing_features_section(tmp_path: Path) -> None:
     fake_home = tmp_path / "fake_codex"
     fake_home.mkdir()
@@ -3769,7 +3409,6 @@ def test_codex_config_toml_preserves_existing_features_section(tmp_path: Path) -
     assert features["apps"] is True
 
 
-# === consolidated from test_agents_invoke_4.py ===
 def test_codex_mode_extracts_upstream_servers_without_passing_them_through(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -3787,9 +3426,6 @@ def test_codex_mode_extracts_upstream_servers_without_passing_them_through(
     seen_config: list[str] = []
 
     class FakeProcess:
-        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
-        # positional message), so a process fake must satisfy the
-        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
         stdin = None
         pid: int = 12345
 
@@ -3860,9 +3496,7 @@ def test_codex_mode_extracts_upstream_servers_without_passing_them_through(
     )
 
 
-# === consolidated from test_agents_invoke_4.py ===
 def test_build_command_nanocoder_uses_run_prompt_mode(tmp_path: Path) -> None:
-    """Nanocoder must use its PTY-backed Ink runtime, not JSON/plain mode."""
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
     config = AgentConfig(cmd="nanocoder", transport=AgentTransport.NANOCODER)
@@ -3876,7 +3510,6 @@ def test_build_command_nanocoder_uses_run_prompt_mode(tmp_path: Path) -> None:
     assert cmd == ["nanocoder", "--mode", "yolo", "--no-plain", "run", "hello"]
 
 
-# === consolidated from test_agents_invoke_4.py ===
 def test_build_command_nanocoder_passes_provider_and_model_flags(tmp_path: Path) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
@@ -3902,7 +3535,6 @@ def test_build_command_nanocoder_passes_provider_and_model_flags(tmp_path: Path)
     assert cmd[-5:] == ["--model", "llama3.1", "--no-plain", "run", "hello"]
 
 
-# === consolidated from test_agents_invoke_4.py ===
 def test_build_command_nanocoder_keeps_spaced_provider_as_single_argument(tmp_path: Path) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
@@ -3927,9 +3559,7 @@ def test_build_command_nanocoder_keeps_spaced_provider_as_single_argument(tmp_pa
     assert cmd[-5:] == ["--model", "MiniMax-M3", "--no-plain", "run", "hello"]
 
 
-# === consolidated from test_agents_invoke_4.py ===
 def test_codex_mode_regression_stale_ralph_entry_is_dropped_not_rejected(tmp_path: Path) -> None:
-    """A leftover `[mcp_servers.ralph]` is replaced by the live endpoint, not rejected."""
     fake_home = tmp_path / "fake_codex"
     fake_home.mkdir()
     (fake_home / "config.toml").write_text(
@@ -3950,7 +3580,6 @@ def test_codex_mode_regression_stale_ralph_entry_is_dropped_not_rejected(tmp_pat
     assert ralph_server["enabled"] is True
 
 
-# === consolidated from test_agents_invoke_4.py ===
 def test_codex_config_toml_preserves_unrelated_top_level_sections(tmp_path: Path) -> None:
     fake_home = tmp_path / "fake_codex"
     fake_home.mkdir()
@@ -3970,7 +3599,6 @@ def test_codex_config_toml_preserves_unrelated_top_level_sections(tmp_path: Path
     assert parsed["approval_policy"] == "never"
 
 
-# === consolidated from test_agents_invoke_4.py ===
 def test_codex_config_toml_omits_features_when_no_endpoint(tmp_path: Path) -> None:
     home = prepare_codex_home(
         None,
@@ -3984,7 +3612,6 @@ def test_codex_config_toml_omits_features_when_no_endpoint(tmp_path: Path) -> No
     assert "shell_tool" not in features, "No features disable without endpoint"
 
 
-# === consolidated from test_agents_invoke_4.py ===
 def test_invoke_agent_fails_fast_when_mcp_endpoint_has_unsupported_transport(
     tmp_path: Path,
 ) -> None:
@@ -4010,7 +3637,6 @@ def test_invoke_agent_fails_fast_when_mcp_endpoint_has_unsupported_transport(
         )
 
 
-# === consolidated from test_agents_invoke_4.py ===
 def test_codex_does_not_warn_about_intentional_native_tools(tmp_path: Path) -> None:
     buf = io.StringIO()
     logger.remove()
@@ -4028,7 +3654,6 @@ def test_codex_does_not_warn_about_intentional_native_tools(tmp_path: Path) -> N
         logger.remove(handler_id)
 
 
-# === consolidated from test_agents_invoke_4.py ===
 def test_codex_does_not_log_warning_when_no_endpoint(tmp_path: Path) -> None:
     buf = io.StringIO()
     logger.remove()
@@ -4045,7 +3670,6 @@ def test_codex_does_not_log_warning_when_no_endpoint(tmp_path: Path) -> None:
         logger.remove(handler_id)
 
 
-# === consolidated from test_agents_invoke_4.py ===
 def test_claude_strict_mode_only_exposes_ralph_server(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -4076,9 +3700,6 @@ def test_claude_strict_mode_only_exposes_ralph_server(
     seen_cmds: list[list[str]] = []
 
     class FakeProcess:
-        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
-        # positional message), so a process fake must satisfy the
-        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
         stdin = None
         pid: int = 12345
 
@@ -4118,11 +3739,6 @@ def test_claude_strict_mode_only_exposes_ralph_server(
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
     monkeypatch.setenv("HOME", str(fake_home))
 
-    # Claude's tool restriction now fails CLOSED: a `tools/list` that cannot
-    # be reached aborts the launch instead of silently emitting
-    # --strict-mcp-config with no --allowedTools. These tests assert on the
-    # --mcp-config payload, not on discovery, so the endpoint is stubbed
-    # rather than dialled (it never listened here in the first place).
     monkeypatch.setattr(
         "ralph.agents.invoke.discover_http_mcp_tool_names",
         lambda _endpoint: ["ralph_submit_md_artifact"],
@@ -4145,7 +3761,6 @@ def test_claude_strict_mode_only_exposes_ralph_server(
     mcp_index = cmd.index("--mcp-config")
     config_payload = _agents_invoke_4_json_object(cmd[mcp_index + 1])
     servers = must_mapping(config_payload["mcpServers"])
-    # Strict mode: ONLY Ralph is visible to the provider; user servers are NOT passed through
     assert list(servers.keys()) == [RALPH_MCP_SERVER_NAME], (
         f"Expected only '{RALPH_MCP_SERVER_NAME}' in provider-visible MCP config, "
         f"got: {list(servers.keys())}"
@@ -4154,7 +3769,6 @@ def test_claude_strict_mode_only_exposes_ralph_server(
     assert ralph_entry["url"] == "http://127.0.0.1:9999/mcp"
 
 
-# === consolidated from test_agents_invoke_4.py ===
 def test_opencode_strict_mode_only_exposes_ralph_server(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -4167,9 +3781,6 @@ def test_opencode_strict_mode_only_exposes_ralph_server(
     seen_env: list[dict[str, str]] = []
 
     class FakeProcess:
-        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
-        # positional message), so a process fake must satisfy the
-        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
         stdin = None
         pid: int = 12345
 
@@ -4242,7 +3853,6 @@ def test_opencode_strict_mode_only_exposes_ralph_server(
 
     parsed = _agents_invoke_4_json_object(seen_env[0]["OPENCODE_CONFIG_CONTENT"])
     mcp_config = must_mapping(parsed["mcp"])
-    # Strict mode: ONLY Ralph is visible to the provider; user servers are NOT passed through
     assert list(mcp_config.keys()) == [RALPH_MCP_SERVER_NAME], (
         f"Expected only '{RALPH_MCP_SERVER_NAME}' in provider-visible OpenCode MCP config, "
         f"got: {list(mcp_config.keys())}"
@@ -4251,7 +3861,6 @@ def test_opencode_strict_mode_only_exposes_ralph_server(
     assert ralph_entry["url"] == "http://127.0.0.1:9999/mcp"
 
 
-# === consolidated from test_agents_invoke_4.py ===
 def test_codex_strict_mode_only_exposes_ralph_server(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -4273,9 +3882,6 @@ def test_codex_strict_mode_only_exposes_ralph_server(
     seen_config: list[str] = []
 
     class FakeProcess:
-        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
-        # positional message), so a process fake must satisfy the
-        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
         stdin = None
         pid: int = 12345
 
@@ -4333,7 +3939,6 @@ def test_codex_strict_mode_only_exposes_ralph_server(
 
     parsed = _agents_invoke_4_toml_object(seen_config[0])
     mcp_servers = must_mapping(parsed["mcp_servers"])
-    # Strict mode: ONLY Ralph is visible to the provider; user servers are NOT passed through
     assert list(mcp_servers.keys()) == [RALPH_MCP_SERVER_NAME], (
         f"Expected only '{RALPH_MCP_SERVER_NAME}' in provider-visible Codex mcp_servers, "
         f"got: {list(mcp_servers.keys())}"
@@ -4342,7 +3947,6 @@ def test_codex_strict_mode_only_exposes_ralph_server(
     assert ralph_entry["url"] == "http://127.0.0.1:9999/mcp"
 
 
-# === consolidated from test_agents_invoke_4.py ===
 def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -4355,9 +3959,6 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
     seen_envs: dict[str, dict[str, str]] = {}
 
     class FakeProcess:
-        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
-        # positional message), so a process fake must satisfy the
-        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
         stdin = None
         pid: int = 12345
 
@@ -4391,7 +3992,6 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
         def kill(self) -> None:
             self.returncode = -9
 
-    # --- Claude ---
     fake_home = tmp_path / "fake-home"
     fake_home.mkdir()
     (fake_home / ".claude.json").write_text(
@@ -4415,11 +4015,6 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen_claude)
     monkeypatch.setenv("HOME", str(fake_home))
-    # Claude's tool restriction now fails CLOSED: a `tools/list` that cannot
-    # be reached aborts the launch instead of silently emitting
-    # --strict-mcp-config with no --allowedTools. These tests assert on the
-    # --mcp-config payload, not on discovery, so the endpoint is stubbed
-    # rather than dialled (it never listened here in the first place).
     monkeypatch.setattr(
         "ralph.agents.invoke.discover_http_mcp_tool_names",
         lambda _endpoint: ["ralph_submit_md_artifact"],
@@ -4437,7 +4032,6 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
         )
     )
 
-    # --- OpenCode ---
     def fake_popen_opencode(*args: object, **kwargs: object) -> FakeProcess:
         del args
         seen_envs["opencode"] = _agents_invoke_4_env_dict(kwargs)
@@ -4462,7 +4056,6 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
         )
     )
 
-    # --- Codex ---
     source_codex_home = tmp_path / "codex-home"
     source_codex_home.mkdir()
     (source_codex_home / "config.toml").write_text(
@@ -4492,10 +4085,8 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
         )
     )
 
-    # --- AGY ---
     _run_agy_transport_proxy_payload_check(monkeypatch, fake_home, prompt_file, seen_envs, tmp_path)
 
-    # All three baseline transports must pass upstream proxy payload to Ralph via env
     for transport_name in ("claude", "opencode", "codex"):
         env = seen_envs[transport_name]
         assert UPSTREAM_MCP_CONFIG_ENV in env, (
@@ -4517,7 +4108,6 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
     )
 
 
-# === consolidated from test_agents_invoke_4.py ===
 def test_claude_strict_mode_inlines_prompt_content_not_file_path(tmp_path: Path) -> None:
     prompt_text = "Generate a commit message for the staged diff.\n"
     prompt_file = tmp_path / "commit_prompt.md"
@@ -4545,7 +4135,6 @@ def test_claude_strict_mode_inlines_prompt_content_not_file_path(tmp_path: Path)
     assert str(prompt_file) not in cmd
 
 
-# === consolidated from test_agents_invoke_4.py ===
 def test_claude_strict_mode_command_for_log_shows_path_not_content(tmp_path: Path) -> None:
     prompt_text = "Generate a commit message.\n"
     prompt_file = tmp_path / "commit_prompt.md"
@@ -4570,7 +4159,6 @@ def test_claude_strict_mode_command_for_log_shows_path_not_content(tmp_path: Pat
     assert prompt_text.strip() not in log_line
 
 
-# === consolidated from test_agents_invoke_4.py ===
 def test_nanocoder_command_for_log_redacts_run_prompt_text(tmp_path: Path) -> None:
     prompt_file = tmp_path / "task_prompt.md"
     prompt_file.write_text("Build the feature.\n", encoding="utf-8")
@@ -4587,7 +4175,6 @@ def test_nanocoder_command_for_log_redacts_run_prompt_text(tmp_path: Path) -> No
     assert "Build the feature." not in log_line
 
 
-# === consolidated from test_agents_invoke_4.py ===
 @pytest.mark.parametrize(
     ("transport", "command"),
     (
@@ -4616,7 +4203,6 @@ def test_command_for_log_redacts_inline_prompt_for_every_remaining_positional_tr
     assert "operator secret" not in log_line
 
 
-# === consolidated from test_agents_invoke_4.py ===
 def test_agy_command_inlines_prompt_content_not_file_path(tmp_path: Path) -> None:
     prompt_text = "Build the feature.\n"
     prompt_file = tmp_path / "task_prompt.md"
@@ -4629,7 +4215,6 @@ def test_agy_command_inlines_prompt_content_not_file_path(tmp_path: Path) -> Non
     assert str(prompt_file) not in cmd
 
 
-# === consolidated from test_agents_invoke_4.py ===
 def test_agy_command_includes_print_flag(tmp_path: Path) -> None:
     prompt_text = "Build the feature.\n"
     prompt_file = tmp_path / "task_prompt.md"
@@ -4647,7 +4232,6 @@ def test_agy_command_includes_print_flag(tmp_path: Path) -> None:
     assert cmd[-1] == prompt_text
 
 
-# === consolidated from test_agents_invoke_4.py ===
 def test_build_agy_command_all_flags_precede_print_and_prompt(tmp_path: Path) -> None:
     prompt_text = "hello"
     prompt_file = tmp_path / "task_prompt.md"
@@ -4682,7 +4266,6 @@ def test_build_agy_command_all_flags_precede_print_and_prompt(tmp_path: Path) ->
     ]
 
 
-# === consolidated from test_agents_invoke_4.py ===
 def test_agy_command_appends_yolo_flag(tmp_path: Path) -> None:
     prompt_text = "Build the feature.\n"
     prompt_file = tmp_path / "task_prompt.md"
@@ -4698,7 +4281,6 @@ def test_agy_command_appends_yolo_flag(tmp_path: Path) -> None:
     assert "--dangerously-skip-permissions" in cmd
 
 
-# === consolidated from test_agents_invoke_4.py ===
 def test_agy_command_appends_session_flag(tmp_path: Path) -> None:
     prompt_text = "Build the feature.\n"
     prompt_file = tmp_path / "task_prompt.md"
@@ -4719,14 +4301,7 @@ def test_agy_command_appends_session_flag(tmp_path: Path) -> None:
     assert "test-session-123" in cmd
 
 
-# === consolidated from test_agents_invoke_4.py ===
 def test_claude_interactive_command_uses_config_session_flag(tmp_path: Path) -> None:
-    """The claude-interactive builder emits the resume flag from config.session_flag.
-
-    Regression for the cross-transport drift: the resume flag SYNTAX has exactly
-    one source (config.session_flag), shared by every builder. The interactive
-    builder must not hardcode its own --resume string.
-    """
     prompt_file = tmp_path / "task_prompt.md"
     prompt_file.write_text("Build the feature.\n", encoding="utf-8")
     config = AgentConfig(
@@ -4761,14 +4336,7 @@ def test_claude_interactive_fresh_session_uses_generated_session_id(tmp_path: Pa
     assert "--resume" not in cmd
 
 
-# === consolidated from test_agents_invoke_4.py ===
 def test_claude_interactive_command_honors_custom_session_flag(tmp_path: Path) -> None:
-    """A custom session_flag is honored by the interactive builder, not ignored.
-
-    Before the fix the interactive builder ignored config.session_flag and
-    hardcoded --resume, so a custom flag silently diverged from the other
-    transports. config.session_flag is now the single syntax source.
-    """
     prompt_file = tmp_path / "task_prompt.md"
     prompt_file.write_text("Build the feature.\n", encoding="utf-8")
     config = AgentConfig(
@@ -4788,7 +4356,6 @@ def test_claude_interactive_command_honors_custom_session_flag(tmp_path: Path) -
     assert "--resume" not in cmd
 
 
-# === consolidated from test_agents_invoke_4.py ===
 def test_agy_command_appends_verbose_flag(tmp_path: Path) -> None:
     prompt_text = "Build the feature.\n"
     prompt_file = tmp_path / "task_prompt.md"
@@ -4804,7 +4371,6 @@ def test_agy_command_appends_verbose_flag(tmp_path: Path) -> None:
     assert "--verbose" in cmd
 
 
-# === consolidated from test_agents_invoke_4.py ===
 def test_agy_command_appends_multimodal_sidecar_content(tmp_path: Path) -> None:
     prompt_text = "Build the feature.\n"
     prompt_file = tmp_path / "task_prompt.md"
@@ -4838,21 +4404,18 @@ def test_agy_command_appends_multimodal_sidecar_content(tmp_path: Path) -> None:
     assert cmd[-1].startswith(prompt_text)
 
 
-# === consolidated from test_agents_invoke_4.py ===
 def test_check_agent_available_found(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("ralph.agents.invoke.shutil.which", lambda name: f"/usr/bin/{name}")
     config = AgentConfig(cmd="claude")
     assert check_agent_available(config) is True
 
 
-# === consolidated from test_agents_invoke_4.py ===
 def test_check_agent_available_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("ralph.agents.invoke.shutil.which", lambda name: None)
     config = AgentConfig(cmd="nonexistent-xyz")
     assert check_agent_available(config) is False
 
 
-# === consolidated from test_agents_invoke_4.py ===
 def test_check_agent_available_empty_cmd(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[str] = []
 
@@ -4866,9 +4429,7 @@ def test_check_agent_available_empty_cmd(monkeypatch: pytest.MonkeyPatch) -> Non
     assert calls == []
 
 
-# === consolidated from test_agents_invoke_5.py ===
 def test_build_invoke_options_propagates_unsafe_mode_from_general_config() -> None:
-    """Unsafe_mode in [general.workflow] flows into InvokeOptions."""
     cfg = GeneralConfig(workflow={"unsafe_mode": True})
     opts = build_invoke_options_from_config(cfg)
     assert opts.unsafe_mode is True
@@ -4878,9 +4439,7 @@ def test_build_invoke_options_propagates_unsafe_mode_from_general_config() -> No
     assert opts_default.unsafe_mode is False
 
 
-# === consolidated from test_agents_invoke_5.py ===
 def test_opencode_runtime_propagates_unsafe_mode(monkeypatch: pytest.MonkeyPatch) -> None:
-    """resolve_invocation_runtime forwards unsafe_mode to build_opencode_provider_config."""
     config = AgentConfig(
         cmd="opencode",
         output_flag="--json-stream",
@@ -4912,11 +4471,9 @@ def test_opencode_runtime_propagates_unsafe_mode(monkeypatch: pytest.MonkeyPatch
     assert captured["unsafe_mode"] is False
 
 
-# === consolidated from test_agents_invoke_5.py ===
 def test_nanocoder_runtime_propagates_unsafe_mode(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """resolve_invocation_runtime forwards unsafe_mode to build_nanocoder_mcp_config."""
     config = AgentConfig(
         cmd="nanocoder",
         transport=AgentTransport.NANOCODER,
@@ -4949,9 +4506,7 @@ def test_nanocoder_runtime_propagates_unsafe_mode(
     assert captured["workspace_path"] == workspace
 
 
-# === consolidated from test_agents_invoke_5.py ===
 def test_codex_runtime_propagates_unsafe_mode(monkeypatch: pytest.MonkeyPatch) -> None:
-    """resolve_invocation_runtime forwards unsafe_mode to prepare_codex_home_with_upstreams."""
     config = AgentConfig(
         cmd="codex",
         output_flag="",
@@ -4980,11 +4535,9 @@ def test_codex_runtime_propagates_unsafe_mode(monkeypatch: pytest.MonkeyPatch) -
     assert captured["unsafe_mode"] is True
 
 
-# === consolidated from test_agents_invoke_5.py ===
 def test_claude_command_propagates_unsafe_mode(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """build_command passes unsafe_mode to claude_mcp_config via BuildCommandOptions."""
     config = AgentConfig(
         cmd="claude",
         transport=AgentTransport.CLAUDE,
@@ -5024,9 +4577,7 @@ def test_claude_command_propagates_unsafe_mode(
     assert "ralph" in cmd[idx + 1]
 
 
-# === consolidated from test_agents_invoke_5.py ===
 def test_load_config_cli_override_propagates_to_invoke_options() -> None:
-    """End-to-end: CLI --unsafe-mode reaches GeneralConfig and InvokeOptions."""
     cfg = load_config(
         workspace_scope=WorkspaceScope(Path("/tmp")),
         cli_overrides={"general": {"workflow": {"unsafe_mode": True}}},
@@ -5037,14 +4588,11 @@ def test_load_config_cli_override_propagates_to_invoke_options() -> None:
     assert opts.unsafe_mode is True
 
 
-# === consolidated from test_agents_invoke_5.py ===
 def test_load_config_absent_override_keeps_default() -> None:
-    """A CLI run without --unsafe-mode keeps the default of False."""
     cfg = load_config(workspace_scope=WorkspaceScope(Path("/tmp")), cli_overrides={})
     assert cfg.general.workflow.unsafe_mode is False
 
 
-# === consolidated from test_agents_invoke_5.py ===
 def test_agy_command_includes_add_dir_workspace_path(tmp_path: Path) -> None:
     prompt_text = "Build the feature.\n"
     prompt_file = tmp_path / "task_prompt.md"
@@ -5064,10 +4612,7 @@ def test_agy_command_includes_add_dir_workspace_path(tmp_path: Path) -> None:
     assert cmd[-1] == prompt_text
 
 
-# === consolidated from test_agents_invoke_2.py ===
 class _RecordingProcessTeardown:
-    """Record requested process-subtree teardowns without touching the OS."""
-
     def __init__(self) -> None:
         self.calls: tuple[int, ...] = ()
 
@@ -5076,7 +4621,6 @@ class _RecordingProcessTeardown:
         self.calls = (*self.calls, host_pid)
 
 
-# === consolidated from test_agents_invoke_5.py ===
 class TestResolveInvocationRuntime:
     def test_opencode_uses_config_content_from_base_env(
         self, monkeypatch: pytest.MonkeyPatch
@@ -5247,7 +4791,6 @@ class TestResolveInvocationRuntime:
 
 
 def test_invoke_options_workspace_monitor_factory_override() -> None:
-    """InvokeOptions.workspace_monitor_factory_override populates default factory."""
     custom_called: list[Path] = []
 
     def custom_factory(
@@ -5259,12 +4802,10 @@ def test_invoke_options_workspace_monitor_factory_override() -> None:
         del classifier, args, kwargs
         custom_called.append(workspace_path)
 
-    # Inside override scope, InvokeOptions() inherits the custom factory
     with InvokeOptions.workspace_monitor_factory_override(custom_factory):
         opts = InvokeOptions()
         assert opts.workspace_monitor_factory is custom_factory
 
-        # Explicit factory takes precedence over the ambient override
         def explicit_factory(
             workspace_path: Path,
             classifier: WorkspaceChangeClassifier | None = None,
@@ -5278,7 +4819,6 @@ def test_invoke_options_workspace_monitor_factory_override() -> None:
 
 
 def test_fresh_session_options_preserves_and_overrides_workspace_monitor_factory() -> None:
-    """fresh_session_options preserves or allows replacing workspace_monitor_factory."""
 
     def factory_a(
         workspace_path: Path,

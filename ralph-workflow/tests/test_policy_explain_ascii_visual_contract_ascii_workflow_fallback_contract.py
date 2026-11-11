@@ -1,15 +1,3 @@
-"""Lock-down tests for render_explanation_ascii() ASCII marker contracts.
-
-These tests verify that the required ASCII visual markers are present in the
-rendered output for three structural patterns:
-  - spine (=ENTRY=>, ==SUCCESS==>, ==FAILURE==>, Legend: block)
-  - loopback (<<==[loopback]==, [LOOPBACK: ...], >> RE-ENTRY at ...)
-  - fan-out / rejoin (>>> FAN_OUT ..., <<< REJOIN)
-
-Tests use synthetic PolicyExplanation / PolicyBundle instances so they do not
-depend on the bundled default pipeline.toml.
-"""
-
 from __future__ import annotations
 
 from ralph.policy.explain import (
@@ -67,8 +55,6 @@ def _minimal_recovery() -> RecoveryExplanation:
 
 
 class TestAsciiWorkflowFallbackContract:
-    """Workflow fallback arrow: +--[workflow_fallback]--> target."""
-
     def _fallback_explanation(self) -> PolicyExplanation:
 
         work = PhaseExplanation(
@@ -110,22 +96,18 @@ class TestAsciiWorkflowFallbackContract:
         )
 
     def test_workflow_fallback_arrow_present(self) -> None:
-        """Phase with workflow_fallback renders +--[workflow_fallback]--> target."""
         output = render_explanation_ascii(self._fallback_explanation())
         assert "+--[workflow_fallback]-->" in output
 
     def test_workflow_fallback_shows_target(self) -> None:
-        """Workflow fallback arrow includes the target phase name."""
         output = render_explanation_ascii(self._fallback_explanation())
         assert "+--[workflow_fallback]--> fallback_phase" in output
 
     def test_workflow_fallback_shows_note(self) -> None:
-        """Workflow fallback arrow includes the optional note when set."""
         output = render_explanation_ascii(self._fallback_explanation())
         assert "(agents exhausted)" in output
 
     def test_workflow_fallback_without_note(self) -> None:
-        """Workflow fallback arrow without note renders correctly (no parentheses)."""
 
         work = PhaseExplanation(
             name="work",

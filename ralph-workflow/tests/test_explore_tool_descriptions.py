@@ -1,19 +1,3 @@
-"""Black-box tests for explore tool description budget and checklist.
-
-The prompt's MCP description gate requires every new or changed
-Ralph-owned MCP schema to be compact and complete:
-
-* tool description <= 900 characters
-* individual argument descriptions <= 180 characters
-* required checklist fields are present: purpose, when to use, key
-  arguments, constraints/limits, fallback/error behavior, output shape
-
-The explore tools are :mod:`ralph.mcp.explore.handlers`. The
-catalogue token budget and catalog token delta are asserted at the
-:mod:`tests.test_explore_bench_gates` level; this file focuses on
-the per-tool budget and checklist for the new tools.
-"""
-
 from __future__ import annotations
 
 from ralph.mcp.explore.deferred_phases import DEFERRED_PHASES
@@ -29,14 +13,12 @@ def _explore_specs_by_name() -> dict[str, object]:
 
 
 def test_explore_specs_contains_status_and_reindex() -> None:
-    """The two shipped explore tools must be in the spec list."""
     names = {spec.metadata.definition.name for spec in explore_specs()}
     assert RALPH_INDEX_STATUS_TOOL in names
     assert RALPH_REINDEX_TOOL in names
 
 
 def test_changed_explore_tool_schemas_are_compact_and_complete() -> None:
-    """Each shipped explore tool's description must be within budget."""
     specs = _explore_specs_by_name()
     for name, spec in specs.items():
         description = str(spec.metadata.definition.description)
@@ -54,7 +36,6 @@ def test_changed_explore_tool_schemas_are_compact_and_complete() -> None:
 
 
 def test_ralph_index_status_description_includes_required_checklist_fields() -> None:
-    """The status tool must mention its required checklist fields."""
     spec = _explore_specs_by_name()[RALPH_INDEX_STATUS_TOOL]
     description = str(spec.metadata.definition.description)
     lowered = description.lower()
@@ -63,47 +44,28 @@ def test_ralph_index_status_description_includes_required_checklist_fields() -> 
 
 
 def test_ralph_index_status_description_documents_fallback_contract() -> None:
-    """AC-11: the status tool description must state the auto-mode fallback,
-    the canonical reason-code vocabulary (e.g. ``index_stale_scope``), the
-    five health states, the 5%% staleness threshold, automatic recovery, the
-    OS watch-handle resource guarantee, and the performance targets.
-
-    The description must stay within the 900-character budget enforced by
-    :func:`test_changed_explore_tool_schemas_are_compact_and_complete`, so
-    this test references the fault-matrix and baseline docs rather than
-    inlining their full content.
-    """
     spec = _explore_specs_by_name()[RALPH_INDEX_STATUS_TOOL]
     description = str(spec.metadata.definition.description)
     lowered = description.lower()
-    # Auto-mode fallback contract.
     assert "fall through" in lowered or "fallback" in lowered, (
         "status description must explain the auto-mode fall-through contract"
     )
-    # Canonical reason-code vocabulary — at least ``index_stale_scope`` is named.
     assert "index_stale_scope" in description, (
         "status description must surface a canonical reason code so the "
         "fallback vocabulary is discoverable from the tool surface"
     )
-    # Five documented health states (R2 status-truthfulness).
     for state in ("healthy", "building", "stale", "degraded", "unhealthy"):
         assert state in lowered, f"status description must list the {state!r} health state"
-    # 5% staleness threshold (R4 / DEFAULT_STALENESS_THRESHOLD).
     assert "5%" in description, "status description must name the 5% staleness threshold"
-    # Automatic recovery (R2 "Recovery is automatic").
     assert "automatic" in lowered, "status description must state recovery is automatic"
-    # OS watch-handle resource guarantee (R5).
     assert "watch" in lowered, "status description must surface the OS watch-handle guarantee"
-    # Performance targets (R6 / baseline + targets docs).
     assert "performance" in lowered and "target" in lowered, (
         "status description must point at the performance targets"
     )
-    # And stay within the shared 900-character budget for the description.
     assert len(description) <= _TOOL_DESCRIPTION_BUDGET
 
 
 def test_ralph_reindex_description_includes_required_checklist_fields() -> None:
-    """The reindex tool must mention constraints, fallback, and output shape."""
     spec = _explore_specs_by_name()[RALPH_REINDEX_TOOL]
     description = str(spec.metadata.definition.description)
     lowered = description.lower()
@@ -114,7 +76,6 @@ def test_ralph_reindex_description_includes_required_checklist_fields() -> None:
 
 
 def test_ralph_reindex_mode_enum_is_prompt_exact() -> None:
-    """The reindex mode enum must be ``changed`` or ``full`` per the prompt."""
     spec = _explore_specs_by_name()[RALPH_REINDEX_TOOL]
     mode_schema = spec.metadata.definition.input_schema["properties"]["mode"]
     enum = set(mode_schema["enum"])
@@ -122,7 +83,6 @@ def test_ralph_reindex_mode_enum_is_prompt_exact() -> None:
 
 
 def test_ralph_reindex_timeout_ms_is_positive_integer() -> None:
-    """The reindex timeout_ms must be an integer with a positive default."""
     spec = _explore_specs_by_name()[RALPH_REINDEX_TOOL]
     timeout = spec.metadata.definition.input_schema["properties"]["timeout_ms"]
     assert timeout["type"] == "integer"
@@ -130,14 +90,6 @@ def test_ralph_reindex_timeout_ms_is_positive_integer() -> None:
 
 
 def test_ralph_reindex_cancel_is_bounded_bool() -> None:
-    """AC-05: ralph_reindex must expose a boolean ``cancel`` argument
-    so the bounded cancel contract is discoverable in the schema.
-
-    The cancel contract is required for every reindex path; a
-    boolean default of ``False`` keeps the existing call shape
-    unchanged. The argument description must point the caller at
-    the bounded incomplete-summary semantics, not generic prose.
-    """
     spec = _explore_specs_by_name()[RALPH_REINDEX_TOOL]
     properties = spec.metadata.definition.input_schema["properties"]
     assert "cancel" in properties, (
@@ -151,22 +103,13 @@ def test_ralph_reindex_cancel_is_bounded_bool() -> None:
 
 
 def test_explore_catalog_token_count_stays_bounded() -> None:
-    """The explore tool catalog token count must remain under 15% growth."""
     text = " ".join(str(spec.metadata.definition.description) for spec in explore_specs())
     token_count = len(text.split())
     assert token_count < 1500, f"explore catalog token count {token_count} exceeds soft cap 1500"
 
 
 def test_deferred_explore_tools_have_no_schemas_yet() -> None:
-    """Deferred phases (optional adapters) must NOT be registered as
-    live tool specs. ``ralph_graph``, ``ralph_index_status``, and
-    ``ralph_reindex`` are live specs; only ``phase_5`` (optional
-    adapters) remains in the deferred register.
-    """
     names = {spec.metadata.definition.name for spec in explore_specs()}
-    # ``ralph_graph`` is implemented in this slice; structure.py
-    # stays out of the public MCP surface because the deferred
-    # register only tracks the optional adapters.
     assert "ralph_graph" in names
     deferred_ids = {entry.phase_id for entry in DEFERRED_PHASES}
     assert deferred_ids == {"phase_5"}

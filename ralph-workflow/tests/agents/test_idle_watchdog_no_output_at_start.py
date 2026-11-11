@@ -1,5 +1,3 @@
-"""Black-box tests for NO_OUTPUT_AT_START watchdog fire path."""
-
 from __future__ import annotations
 
 from ralph.agents.execution_state import AgentExecutionState
@@ -41,8 +39,6 @@ def _no_activity_corroborator() -> WaitingCorroborator:
 
 
 class TestNoOutputAtStart:
-    """Tests for NO_OUTPUT_AT_START fire path."""
-
     def test_fires_after_no_output_at_start_seconds_with_zero_activity(self) -> None:
         watchdog, clock = _make_watchdog(
             idle_timeout=300.0,
@@ -124,13 +120,6 @@ class TestNoOutputAtStart:
         assert watchdog.last_fire_reason == WatchdogFireReason.NO_OUTPUT_AT_START
 
     def test_defers_in_waiting_on_child_state(self) -> None:
-        """When the execution strategy reports WAITING_ON_CHILD, the 30s/60s
-        NO_OUTPUT_AT_START short kill is deferred so a legitimately-starting
-        agent that just dispatched a subagent is not killed.
-
-        The cumulative CHILDREN_PERSIST_TOO_LONG ceiling (default 1800s in
-        this test's config) remains the upper bound for live-child stalls.
-        """
         watchdog, clock = _make_watchdog(
             idle_timeout=300.0,
             no_output_at_start_seconds=60.0,

@@ -1,9 +1,3 @@
-"""Black-box contract tests for the sanity-only plan spec.
-
-The receipt matrix covers acceptance; this module retains the shared document
-fixture and a compact public extraction observation.
-"""
-
 from __future__ import annotations
 
 from ralph.mcp.artifacts.markdown import parse_and_validate
@@ -36,7 +30,6 @@ Expect: the focused plan suites pass with exit code 0
 """
 
 
-# Backward-compatible alias used by other test modules.
 _plan_document = _complete_plan
 
 

@@ -1,4 +1,3 @@
-"""Write, edit, append, create, move, copy, and delete handler functions."""
 
 from __future__ import annotations
 
@@ -50,26 +49,6 @@ def _freshness_payload(
     *,
     paths: list[str],
 ) -> dict[str, object]:
-    """Return the freshness metadata block for a successful mutation.
-
-    Returns an empty dict when the explore index is disabled so the
-    existing tool output is unchanged.
-
-    Field semantics (per the prompt's freshness contract):
-
-    * ``index_used`` — True when an explore index handle exists.
-    * ``index_generation`` — current index generation (``0`` when
-      no reindex has happened).
-    * ``is_stale`` — True when there are dirty paths OR deleted file
-      rows in the index (agents should refresh before relying on it).
-    * ``stale_paths_count`` — count of files marked deleted in the
-      index (the path may no longer exist on disk).
-    * ``reindex_in_progress`` — True when a reindex writer is active;
-      MCP readers use the last committed generation in that case.
-    * ``changed_paths`` — the workspace-relative paths this mutation
-      just touched (NOT ``marked_paths`` — that name was misleading
-      because the dirty path is independent of this call).
-    """
     handle = resolve_explore_index(session)
     if handle is None:
         return {}
@@ -81,15 +60,9 @@ def _freshness_payload_from_handle(
     *,
     paths: list[str],
 ) -> dict[str, object]:
-    """Internal: build the freshness payload when the handle is known.
-
-    Split from :func:`_freshness_payload` so the type narrowing on
-    ``handle.store`` is visible to mypy without an ``attr-defined``
-    suppression at every call site.
-    """
     typed_handle = cast(
         "ExploreIndexLike | None", handle
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     if typed_handle is None:
         return {}
     store_obj: ExploreStoreLike | None = getattr(typed_handle, "store", None)
@@ -97,7 +70,7 @@ def _freshness_payload_from_handle(
         return {}
     store: ExploreStore = cast(
         "ExploreStore", store_obj
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     generation_raw = store.get_setting("current_generation") or "0"
     try:
         generation_int = int(generation_raw)
@@ -106,9 +79,6 @@ def _freshness_payload_from_handle(
     dirty = store.peek_dirty_paths()
     deleted_count = store.count_deleted_files()
     is_stale_value = bool(dirty) or deleted_count > 0
-    # AC-04: reindex_in_progress is a typed optional attribute. Some
-    # production handle types (older test doubles) do not expose it;
-    # default to False rather than raising after a successful mutation.
     in_progress_attr: object = getattr(typed_handle, "reindex_in_progress", False)
     in_progress: bool = bool(in_progress_attr)
     return {
@@ -126,7 +96,6 @@ def _with_freshness(
     payload: dict[str, object],
     freshness: dict[str, object],
 ) -> dict[str, object]:
-    """Merge freshness metadata into an existing JSON payload dict."""
     if not freshness:
         return payload
     payload = dict(payload)
@@ -139,7 +108,6 @@ def handle_write_file(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
-    """Write UTF-8 content to a workspace file, creating it if necessary."""
     path = required_string_param(params, "path")
     normalized = normalize_relative_path(path)
     check_edit_area_restriction(session, normalized)
@@ -154,9 +122,6 @@ def handle_write_file(
     mark_path(handle, path=normalized, source_tool="write_file")
     freshness = _freshness_payload(session, paths=[normalized])
     if freshness:
-        # Indexed path returns a JSON envelope so the freshness block
-        # has somewhere to live; the disabled path keeps the prior
-        # plain-text success confirmation.
         return ToolResult(
             content=[
                 ToolContent.text_content(
@@ -185,30 +150,6 @@ def handle_edit_file(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
-    """Apply structured oldText/newText replacements to a workspace file.
-
-    AC-10 indexed args:
-
-    * ``expected_content_hash`` -- fail closed when the file's
-      current SHA-256 does not match.
-    * ``target`` (``evidence_id`` / ``span_id`` / ``symbol``) --
-      anchor the edit to an indexed span. Resolution happens after
-      workspace path normalization; unknown symbols return a
-      structured ``ambiguous_target`` error before any mutation.
-    * ``match_strategy`` ``exact|within_target|all_in_target`` --
-      constrains how the edit anchors inside the target span.
-      ``exact`` requires the edit's oldText to equal the indexed
-      span; ``within_target`` accepts an occurrence inside; the
-      default is ``exact`` so callers can opt in.
-    * ``reindex`` ``auto|skip|changed_blocking`` -- controls the
-      dirty marking + blocking refresh behavior. ``auto`` marks
-      the path dirty and lets the lifecycle handle it.
-    * ``impact_preview`` -- only valid with ``dry_run=true``.
-      Returns conservative graph impact when the explore index is
-      available; otherwise returns ``impact_preview_unavailable``.
-    * ``return_evidence_updates`` -- include the post-mutation
-      generation + freshness in the response.
-    """
     path = required_string_param(params, "path")
     normalized = normalize_relative_path(path)
     check_edit_area_restriction(session, normalized)
@@ -234,7 +175,6 @@ def handle_edit_file(
     impact_preview = bool(params.get("impact_preview", False))
     return_evidence_updates = bool(params.get("return_evidence_updates", False))
 
-    # Precondition: hash mismatch fails closed before any mutation.
     if expected_hash is not None:
         actual_hash = _hash_file_text(workspace, normalized)
         if actual_hash is None or actual_hash != expected_hash:
@@ -257,9 +197,6 @@ def handle_edit_file(
                 is_error=True,
             )
 
-    # Target resolution. Evidence/spans/symbols come from the
-    # explore index; symbol anchors require a path in addition to
-    # the name so the resolution is unambiguous.
     target_span: tuple[int, int] | None = None
     target_resolution_error: dict[str, object] | None = None
     if isinstance(target_param, dict) and target_param:
@@ -284,7 +221,7 @@ def handle_edit_file(
                 )
             store: ExploreStore = cast(
                 "ExploreStore", store_obj
-            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            )
             evidence_id = target_param.get("evidence_id")
             span_id = target_param.get("span_id")
             symbol_name = target_param.get("symbol")
@@ -318,9 +255,6 @@ def handle_edit_file(
                     resolved_path = span_row.path
                     resolved_content_hash = span_row.content_hash
             elif target_resolution_error is None and isinstance(symbol_name, str) and symbol_name:
-                # Symbol lookup is path-scoped when path is given;
-                # otherwise fall back to ambiguous_target if the
-                # symbol appears in more than one file.
                 matches = [
                     sym
                     for sym in store.iter_symbols()
@@ -333,7 +267,6 @@ def handle_edit_file(
                 )
                 if len(scoped) == 1:
                     sym = scoped[0]
-                    # Symbol stores span_id; resolve span via iter_spans.
                     span_row = next(
                         (s for s in store.iter_spans() if s.span_id == sym.span_id),
                         None,
@@ -349,12 +282,6 @@ def handle_edit_file(
                         "matches": [m.qualified_name for m in scoped],
                         "target": target_param,
                     }
-            # AC-10: cross-file evidence/span/symbol guards. The
-            # resolved row path must equal the normalized edit path
-            # so an agent cannot edit file_a.py while pointing at
-            # an evidence row that points to file_b.py. The guard
-            # runs after resolution so legitimate same-path edits
-            # succeed.
             if resolved is not None and resolved_path is not None and resolved_path != normalized:
                 target_resolution_error = {
                     "status": "ambiguous_target",
@@ -371,14 +298,6 @@ def handle_edit_file(
                     "target": target_param,
                 }
             target_span = resolved
-            # AC-10: hash-check a resolved indexed evidence/span/symbol
-            # target against the current file before any mutation.
-            # ``expected_content_hash`` is the caller-supplied escape
-            # hatch; this implicit guard catches stale rows even when
-            # the caller forgot to pass the expected hash. The check
-            # only fires when the resolved row carries a content_hash
-            # recorded at extraction time AND the edit path matches
-            # the resolved path; otherwise the mismatch is benign.
             if (
                 expected_hash is None
                 and resolved is not None
@@ -439,10 +358,6 @@ def handle_edit_file(
         if impact_preview:
             handle_for_impact = resolve_explore_index(session)
             if handle_for_impact is None:
-                # AC-10: surface the plan-described
-                # ``impact_preview_unavailable`` field alongside the
-                # existing diff so the caller can distinguish "no
-                # index" from "index present, no symbol target".
                 preview_payload["impact_preview_unavailable"] = True
                 preview_payload["impact_preview_unavailable_reason"] = "no_explore_index_handle"
                 preview_payload["impact_preview"] = {
@@ -457,30 +372,13 @@ def handle_edit_file(
                     "reason": "no_symbol_target_for_impact",
                 }
             else:
-                # AC-10: when a symbol target is available AND the
-                # explore index is attached, run the conservative
-                # ``impact`` graph query and surface callers,
-                # importers, and suggested tests. Dynamic / reflection
-                # / unsupported relations are marked as ``unknown``
-                # by the graph module.
                 try:
-                    # Import the dispatcher implementation rather
-                    # than going through the ``graph`` module so
-                    # mypy can see the return type as
-                    # ``GraphResult`` rather than ``Any``. The lazy
-                    # PEP 562 re-export on ``graph`` returns the
-                    # same callable; this direct import pins the
-                    # type for the variable annotation below.
                     from ralph.mcp.explore._graph_query import run_query
 
                     impact_handle = handle_for_impact
                     impact_store_obj: ExploreStoreLike | None = (
                         impact_handle.store if impact_handle is not None else None
                     )
-                    # ``target_span`` here is a (line_start, line_end)
-                    # tuple resolved earlier; the actual symbol id /
-                    # path live on the originating ``target_param`` and
-                    # the indexed symbol/span rows.
                     target_param_dict: dict[str, object] = (
                         target_param if isinstance(target_param, dict) else {}
                     )
@@ -495,7 +393,7 @@ def handle_edit_file(
                         symbols = list(
                             cast(
                                 "ExploreStore", impact_store_obj
-                            ).iter_symbols()  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                            ).iter_symbols()
                         )
                         scoped_symbols = [
                             s for s in symbols if target_symbol_name in (s.name, s.qualified_name)
@@ -510,7 +408,7 @@ def handle_edit_file(
                         result = run_query(
                             cast(
                                 "ExploreStore", impact_store_obj
-                            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                            ),
                             query_type="impact",
                             target=target_symbol_id,
                             change_kind="behavior",
@@ -583,7 +481,7 @@ def handle_edit_file(
                 reindex(
                     cast(
                         "ExploreStore", edit_store_obj
-                    ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                    ),
                     workspace_root_path,
                     options=ReindexOptions(
                         mode="changed",
@@ -592,7 +490,6 @@ def handle_edit_file(
                     ),
                 )
             except Exception:
-                # Fail-open: do not let a reindex failure fail the edit.
                 pass
     freshness = _freshness_payload(session, paths=[normalized])
     payload = _with_freshness(
@@ -617,7 +514,6 @@ def handle_edit_file(
 
 
 def _hash_file_text(workspace: Workspace, normalized: str) -> str | None:
-    """Return the SHA-256 hex digest of the file's current bytes."""
     try:
         content = workspace.read(normalized)
     except Exception:
@@ -630,7 +526,6 @@ def handle_append_file(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
-    """Append content to a workspace file."""
     path = required_string_param(params, "path")
     normalized = normalize_relative_path(path)
     check_edit_area_restriction(session, normalized)
@@ -659,7 +554,6 @@ def handle_create_directory(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
-    """Create a directory (and parents) within the workspace."""
     path = required_string_param(params, "path")
     normalized = normalize_relative_path(path)
     check_edit_area_restriction(session, normalized)
@@ -684,7 +578,6 @@ def handle_move_file(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
-    """Move or rename a workspace file or directory."""
     src = required_string_param(params, "src")
     dest = required_string_param(params, "dest")
     src_norm = normalize_relative_path(src)
@@ -715,7 +608,6 @@ def handle_copy_file(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
-    """Copy a workspace file or directory to a new location."""
     src = required_string_param(params, "src")
     dest = required_string_param(params, "dest")
     src_norm = normalize_relative_path(src)
@@ -745,7 +637,6 @@ def handle_delete_path(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
-    """Delete a workspace file or directory."""
     path = required_string_param(params, "path")
     normalized = normalize_relative_path(path)
     check_edit_area_restriction(session, normalized)

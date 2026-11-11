@@ -1,4 +1,3 @@
-"""Canonical Ralph MCP tool naming helpers."""
 
 from __future__ import annotations
 
@@ -12,7 +11,6 @@ RALPH_MCP_SERVER_NAME = "ralph"
 
 
 class RalphToolName(StrEnum):
-    """Canonical names for all Ralph MCP tools."""
 
     READ_FILE = "read_file"
     WRITE_FILE = "write_file"
@@ -61,19 +59,15 @@ class RalphToolName(StrEnum):
     RALPH_GRAPH = "ralph_graph"
 
     def with_prefix(self, *, tool_name_prefix: str = "") -> str:
-        """Return the tool name with an optional prefix applied."""
         return f"{tool_name_prefix}{self}" if tool_name_prefix else self.value
 
     def as_claude_alias(self, *, server_name: str = RALPH_MCP_SERVER_NAME) -> str:
-        """Return the Claude MCP tool alias in the form mcp__<server>__<tool>."""
         return f"mcp__{server_name}__{self}"
 
     def prompt_aliases(self, *, tool_name_prefix: str = "") -> tuple[str, ...]:
-        """Return only the provider-visible prompt name for this tool."""
         return (self.with_prefix(tool_name_prefix=tool_name_prefix),)
 
     def prompt_reference(self, *, tool_name_prefix: str = "") -> str:
-        """Return an exact provider-visible reference for prompts."""
         return f"`{self.prompt_aliases(tool_name_prefix=tool_name_prefix)[0]}`"
 
 
@@ -172,9 +166,6 @@ EXPLORE_TOOLS: tuple[str, ...] = (RALPH_INDEX_STATUS_TOOL, RALPH_REINDEX_TOOL, R
 
 ALL_RALPH_TOOLS: tuple[str, ...] = tuple(str(member) for member in RalphToolName)
 
-# Native orchestration tools that MUST stay enabled when Ralph wires its MCP surface:
-# sub-agent dispatch, skills, todo tracking, and web access. They are auto-allowed in
-# the generated permission section so they cannot wedge a headless run on approval.
 OPENCODE_NATIVE_TOOLS_TO_KEEP: tuple[str, ...] = (
     "skill",
     "task",
@@ -183,8 +174,6 @@ OPENCODE_NATIVE_TOOLS_TO_KEEP: tuple[str, ...] = (
     "websearch",
 )
 
-# ``Task`` was renamed ``Agent`` in claude v2.1.63; unknown names in ``--tools`` are
-# silently ignored, so listing both keeps every CLI version covered.
 CLAUDE_NATIVE_TOOLS_TO_KEEP: tuple[str, ...] = (
     "Agent",
     "Task",
@@ -197,7 +186,6 @@ CLAUDE_NATIVE_TOOLS_TO_KEEP: tuple[str, ...] = (
     "WebSearch",
 )
 
-# Authoritative source: https://developers.openai.com/codex/config-reference
 CODEX_NATIVE_FEATURE_OVERRIDES: tuple[tuple[str, str], ...] = (
     ("features.shell_tool", "true"),
     ("features.multi_agent", "true"),
@@ -216,7 +204,6 @@ def _coerce_tool_name(tool_name: str | RalphToolName) -> RalphToolName | None:
 
 
 def prefix_tool_name(tool_name: str | RalphToolName, *, tool_name_prefix: str = "") -> str:
-    """Return the tool name with an optional prefix applied."""
     coerced = _coerce_tool_name(tool_name)
     if coerced is not None:
         return coerced.with_prefix(tool_name_prefix=tool_name_prefix)
@@ -228,7 +215,6 @@ def prefix_tool_names(
     *,
     tool_name_prefix: str = "",
 ) -> list[str]:
-    """Apply the given prefix to each tool name in the sequence."""
     return [
         prefix_tool_name(tool_name, tool_name_prefix=tool_name_prefix) for tool_name in tool_names
     ]
@@ -237,10 +223,6 @@ def prefix_tool_names(
 def claude_tool_name(
     tool_name: str | RalphToolName, *, server_name: str = RALPH_MCP_SERVER_NAME
 ) -> str:
-    """Return the Claude MCP alias for a tool name (`mcp__<server>__<tool>`)."""
-    # Claude exposes every MCP tool as `mcp__<server>__<tool>`. This helper is the
-    # canonical alias builder used by prompts/tests so transport-specific naming does
-    # not drift from the runtime CLI wiring.
     coerced = _coerce_tool_name(tool_name)
     if coerced is not None:
         return coerced.as_claude_alias(server_name=server_name)
@@ -248,36 +230,24 @@ def claude_tool_name(
 
 
 def claude_tool_name_prefix(*, server_name: str = RALPH_MCP_SERVER_NAME) -> str:
-    """Return the `mcp__<server>__` prefix string used by Claude for MCP tools."""
     return f"mcp__{server_name}__"
 
 
 def opencode_tool_name(
     tool_name: str | RalphToolName, *, server_name: str = RALPH_MCP_SERVER_NAME
 ) -> str:
-    """Return the OpenCode alias for a tool name (`<server>_<tool>`).
-
-    OpenCode namespaces every remote MCP tool as ``<serverName>_<tool>`` (e.g. an
-    ``angular`` server exposes ``angular_ai_tutor``). Ralph's server is registered
-    as ``ralph`` (see ``transport/opencode.py`` and its ``ralph_*`` permission),
-    so its tools are exposed as ``ralph_<tool>``. This is the canonical builder so
-    prompts match the names OpenCode actually exposes.
-    """
     return f"{server_name}_{_coerce_tool_name(tool_name) or tool_name}"
 
 
 def opencode_tool_name_prefix(*, server_name: str = RALPH_MCP_SERVER_NAME) -> str:
-    """Return the `<server>_` prefix OpenCode uses for remote MCP tools."""
     return f"{server_name}_"
 
 
 def custom_proxy_tool_name(server_name: str, tool_name: str) -> str:
-    """Return the stable proxy alias for a Ralph custom MCP server tool."""
     return f"ralph_custom__{server_name}__{tool_name}"
 
 
 def upstream_proxy_tool_name(server_name: str, tool_name: str) -> str:
-    """Return the stable proxy alias for an agent-native upstream MCP server tool."""
     return f"ralph_upstream__{server_name}__{tool_name}"
 
 
@@ -287,7 +257,6 @@ def proxied_mcp_tool_name(
     *,
     origin: str,
 ) -> str:
-    """Return the stable proxy alias for a proxied MCP server tool."""
     if origin == "custom":
         return custom_proxy_tool_name(server_name, tool_name)
     return upstream_proxy_tool_name(server_name, tool_name)

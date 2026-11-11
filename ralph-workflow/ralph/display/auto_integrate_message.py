@@ -1,11 +1,3 @@
-"""User-facing phrase for an auto-integration outcome.
-
-Single mapping between the auto-integrate producer state (see
-:mod:`ralph.pipeline.auto_integrate`) and the human-readable phrase
-shown to the operator. Both the live activity line emitted by
-``ralph.pipeline.runner`` and the end-of-run completion summary route
-through this function so the two surfaces cannot drift.
-"""
 
 from __future__ import annotations
 
@@ -20,7 +12,6 @@ if TYPE_CHECKING:
 
 
 class OperationDisplayState(StrEnum):
-    """The closed vocabulary for the auto-integrate display state (ADR-0007)."""
 
     INTEGRATING = "integrating"
     LANDING = "landing"
@@ -38,7 +29,6 @@ _OPERATION_DISPLAY_STATES: frozenset[str] = frozenset(s.value for s in Operation
     "intervention",
 }
 
-#: Outcome verbs recorded on ``RebaseState.last_action`` by the producer.
 _ACTION_SKIPPED = "skipped"
 _ACTION_REBASED = "rebased"
 _ACTION_MERGED = "merged"
@@ -54,11 +44,6 @@ _LEGACY_ACTIONS: frozenset[str] = frozenset(
         _ACTION_RECOVERED,
     }
 )
-#: Remote-sync verb recorded on ``RebaseState.last_remote_sync`` by the
-#: opt-in remote sync tier. Rendered as a trailing ``[remote: <verb>]``
-#: suffix on the live line and the completion summary, so the
-#: operator sees the pull/reconcile/push outcome alongside the local
-#: land without changing the headline action.
 _ACTION_PULLED = "pulled"
 _ACTION_RECONCILED = "reconciled"
 _ACTION_PUSHED = "pushed"
@@ -71,14 +56,6 @@ def _fast_forward_suffix(
     fast_forwarded: bool,
     reason: str | None,
 ) -> str:
-    """Append the fast-forward outcome to a rebased/merged base phrase.
-
-    When ``fast_forwarded`` is True the suffix says ``, fast-forwarded
-    <target>`` (or ``, fast-forwarded target`` when no target is known).
-    When False a non-None ``reason`` is the fast-forward SKIP reason and
-    is appended as ``, fast-forward skipped: <reason>``. Otherwise
-    nothing is appended.
-    """
     if fast_forwarded:
         return f", fast-forwarded {target}" if target else ", fast-forwarded target"
     if reason:
@@ -87,7 +64,6 @@ def _fast_forward_suffix(
 
 
 def _freshness_suffix(verdict: str | None) -> str:
-    """Render the three operator-visible freshness classes without parsing prose."""
     labels = {
         "verified": "verified-fresh",
         "degraded": "degraded",
@@ -97,44 +73,16 @@ def _freshness_suffix(verdict: str | None) -> str:
 
 
 def _refresh_suffix(refresh: str | None) -> str:
-    """Append the pre-landing origin-refresh outcome, when one was recorded.
-
-    The refresh is fail-open -- an unreachable or diverged mainline
-    still lands locally -- so without this clause an integration
-    computed against a stale pointer is indistinguishable from a
-    healthy one in the operator-facing line.
-    """
     return f" [target refresh: {refresh}]" if refresh else ""
 
 
 def _push_suffix(push: str | None) -> str:
-    """Append the opt-in configured-remote push summary, when recorded."""
     return f" [push: {push}]" if push else ""
 
 
 def _remote_suffix(
     remote_sync: str | None, remote: str | None = None, target: str | None = None
 ) -> str:
-    """Append the opt-in remote-sync verb, when one was recorded.
-
-    The verb is one of the ``REMOTE_*`` constants in
-    :mod:`ralph.pipeline.auto_integrate_remote_sync`. Rendered as a
-    single trailing ``[remote: <verb>]`` so the operator sees the
-    pull / reconcile / push outcome alongside the local land without
-    changing the headline action. Distinct from :func:`_push_suffix`,
-    which carries the free-form push summary string.
-
-    The ``remote`` and ``target`` arguments are the configured
-    names (sourced from ``remote_target_name(config)`` /
-    ``configured_target(config)``) and are required for the
-    ``RECONCILED`` verb: the message MUST reflect the workspace's
-    configured target/remote so the display never falls back to
-    the literal ``origin`` / ``main`` defaults (AC-5). When
-    ``remote`` or ``target`` is missing on the ``RECONCILED`` path
-    the message degrades to the configured-verb prefix only --
-    the operator-facing summary still carries the remote-sync
-    outcome, but the unrecoverable fallback literal is dropped.
-    """
     if not remote_sync:
         return ""
     base = {
@@ -165,9 +113,6 @@ _LEGACY_ACTION_DISPLAY_MAP: dict[str, str] = {
     "terminal": OperationDisplayState.TERMINAL.value,
     "diagnosing": OperationDisplayState.EVIDENCE_DIAGNOSIS.value,
     "diagnostic_intervention_required": OperationDisplayState.INTERVENTION_REQUIRED.value,
-    # The typed ladder escalation is the live autonomous continuation
-    # of evidence diagnosis: the reason names the next rung and the
-    # preserved copy's location.
     "ladder_escalation": OperationDisplayState.EVIDENCE_DIAGNOSIS.value,
     "completed": OperationDisplayState.TERMINAL.value,
     "rebased": OperationDisplayState.LANDING.value,
@@ -204,8 +149,6 @@ _ACTION_TO_DISPLAY_STATE: dict[str, OperationDisplayState] = {
     "intervention": OperationDisplayState.INTERVENTION_REQUIRED,
     "intervention_required": OperationDisplayState.INTERVENTION_REQUIRED,
     "diagnostic_intervention_required": OperationDisplayState.INTERVENTION_REQUIRED,
-    # Live production projection of the typed ladder escalation: never
-    # a terminal intervention state.
     "ladder_escalation": OperationDisplayState.EVIDENCE_DIAGNOSIS,
     "complete_with_proof": OperationDisplayState.TERMINAL,
     "terminal": OperationDisplayState.TERMINAL,
@@ -213,12 +156,6 @@ _ACTION_TO_DISPLAY_STATE: dict[str, OperationDisplayState] = {
 }
 
 
-#: Closed-vocab evidence-diagnosis verbs that project to
-#: ``OperationDisplayState.EVIDENCE_DIAGNOSIS``. Only the typed
-#: ``is_diagnosis`` flag (raised by the authority on a verified
-#: diagnosis) or one of these exact tokens is allowed to flip the
-#: operator surface to the EVIDENCE_DIAGNOSIS label. Substring
-#: matching on arbitrary prose is forbidden (invariant 13).
 _DIAGNOSIS_ACTION_VERBS: frozenset[str] = frozenset(
     {
         "diagnosing",
@@ -232,19 +169,10 @@ def integration_action_to_operation_display_state(
     *,
     is_diagnosis: bool = False,
 ) -> OperationDisplayState | None:
-    """Project an IntegrationAction or action verb to an OperationDisplayState.
-
-    Evidence diagnosis is strictly distinguished and never returned as CONFLICT_RESOLUTION.
-    """
     if action is None:
         return None
     raw = action.value if isinstance(action, StrEnum) else str(action)
     norm = raw.strip().lower()
-    # Closed-vocab evidence-diagnosis tokens only; substring matching on
-    # arbitrary prose is forbidden (invariant 13: prose cannot drive the
-    # operator surface). The "is_diagnosis" flag is the typed call from
-    # the authority; the lookup uses the same closed set as the rest of
-    # the action vocabulary.
     if is_diagnosis:
         return OperationDisplayState.EVIDENCE_DIAGNOSIS
     if norm in _DIAGNOSIS_ACTION_VERBS:
@@ -255,10 +183,6 @@ def integration_action_to_operation_display_state(
 def _is_diagnosis_state(action_or_state: object, is_diagnosis: bool) -> bool:
     if is_diagnosis:
         return True
-    # A settled intervention projection is decision-complete, never an open
-    # diagnosis: the recovery-record retention that comes with it must not
-    # reclassify it as evidence diagnosis (the unreadable-record handoff
-    # carries both and must show 'intervention').
     settled_last_outcome = _safe_attr(action_or_state, "last_outcome")
     if settled_last_outcome is not None:
         settled_norm = (
@@ -304,19 +228,6 @@ def format_integration_label(
     *,
     is_diagnosis: bool = False,
 ) -> str:
-    """Derive the canonical operator display label from an IntegrationAction or display state.
-
-    Produces one of seven distinct labels:
-    - 'conflict resolution'
-    - 'evidence diagnosis'
-    - 'integration'
-    - 'landing'
-    - 'publication'
-    - 'waiting'
-    - 'intervention'
-
-    Evidence diagnosis is strictly distinguished and never shown or counted as conflict resolution.
-    """
     if action_or_state is None:
         return IntegrationDisplayLabel.INTERVENTION.value
     if _is_diagnosis_state(action_or_state, is_diagnosis):
@@ -364,13 +275,6 @@ def _safe_attr(obj: object, name: str) -> object:
 def rebase_outcome_to_operation_display_state(
     outcome: RebaseOutcomeKind | str | object | None,
 ) -> OperationDisplayState | None:
-    """Project a RebaseOutcomeKind or outcome string to an OperationDisplayState.
-
-    Single typed projection from last_outcome (and rebase.last_outcome) to
-    OperationDisplayState (ADR-0007 / ADR-0008). Accepts a RebaseOutcomeKind,
-    raw verb string, or a state/record object bearing ``last_outcome`` (or
-    ``last_action``).
-    """
     if outcome is None:
         return None
     extracted = _safe_attr(outcome, "last_outcome")
@@ -466,11 +370,6 @@ def _format_typed_state_message(
         "intervention_required",
         "intervention",
     ):
-        # Legacy checkpoints may still carry the retired hand-off
-        # state; the run never terminates on it. The display names the
-        # next autonomous action — the fallback ladder — and the reason
-        # carries the rung and the preserved copy's location when a
-        # live escalation recorded them.
         message = (
             f"escalating through the autonomous fallback ladder{target_clause}: "
             f"{reason or 'next ladder rung pending'}"
@@ -579,47 +478,6 @@ def format_auto_integrate_message(
     rebase: object | None = None,
     integration_action: object | None = None,
 ) -> str:
-    """Render the auto-integrate outcome into a single human-readable phrase.
-
-    Reads ``operation_display_state`` first (the eight-branch typed lifecycle
-    authority from ADR-0007); falls back to ``integration_action``, ``last_outcome``
-    (or ``rebase.last_outcome``) projection, or ``action``/``reason`` only when
-    the typed state is unset (legacy checkpoints).
-
-    The four basic arguments are the four fields the producer records on
-    :class:`ralph.pipeline.rebase_state.RebaseState`. The ``fast_forwarded``
-    parameter is the only signal that distinguishes a successful land from a
-    refused one, because the producer keeps ``last_action`` as
-    ``rebased``/``merged`` in BOTH cases and records the fast-forward result
-    on the boolean instead. A successful land renders
-    ``rebased onto target (<target>), fast-forwarded <target>`` (or its
-    ``merged`` variant); a refused land renders the same prefix followed by
-    ``, fast-forward skipped: <reason>``.
-
-    ``reason`` is treated as a fast-forward SKIP reason ONLY when
-    ``fast_forwarded`` is False. When ``fast_forwarded`` is True any
-    non-None ``reason`` is a stale :class:`RebaseNoOp` rebase reason
-    (the producer retains it on a successful land) and must not be
-    rendered as a skip -- doing so would emit a phantom
-    ``fast-forward skipped`` on a healthy run.
-
-    ``refresh`` is the ``RebaseState.last_refresh`` outcome of the origin
-    refresh performed immediately before the fast-forward observed the
-    target SHA. It is appended as ``[target refresh: <outcome>]`` when
-    present, and omitted entirely when ``None`` (no refresh was recorded,
-    e.g. a skip that short-circuited before the landing phase).
-
-    ``push`` is the ``RebaseState.last_push`` summary produced by the
-    opt-in push to the configured remote after a successful local landing.
-    It is appended as ``[push: <summary>]`` when present, and omitted
-    entirely when ``None``. The push is fail-open, so local success is
-    unchanged regardless of what the push reported.
-
-    The unknown-verb fallback returns a bare ``f"{action}"`` rather than
-    ``f"auto-integrate: {action}"``; the single ``auto-integrate:`` prefix
-    is added at the emit site, and emitting a second one here previously
-    doubled the prefix in the live line.
-    """
     if rebase is not None:
         (
             rb_outcome,

@@ -1,4 +1,3 @@
-"""Action classification and application for the commit-review phase."""
 
 from __future__ import annotations
 
@@ -15,7 +14,6 @@ if TYPE_CHECKING:
 
 
 class _CommitReviewLike(Protocol):
-    """Protocol for objects providing commit-review actions."""
 
     @property
     def actions(self) -> Sequence[CommitReviewAction]: ...
@@ -23,7 +21,6 @@ class _CommitReviewLike(Protocol):
 
 @dataclass
 class CommitReviewApplyReport:
-    """Observed apply results for one commit-review action batch."""
 
     declined_delete_paths: list[str] = field(default_factory=list)
     failed_delete_paths: list[str] = field(default_factory=list)
@@ -36,7 +33,6 @@ class CommitReviewApplyReport:
 
     @property
     def applied_count(self) -> int:
-        """Count actions that actually mutated the repository."""
         return (
             len(self.applied_delete_paths)
             + len(self.applied_gitignore_patterns)
@@ -45,7 +41,6 @@ class CommitReviewApplyReport:
 
     @property
     def failed_pattern_tokens(self) -> list[str]:
-        """Patterns that threw while appending ignore/exclude rules."""
         return [*self.failed_gitignore_patterns, *self.failed_exclude_patterns]
 
 
@@ -58,7 +53,6 @@ def apply_commit_review_actions(
     add_to_git_exclude: Callable[[Path, list[str]], None],
     delete_file_from_repo: Callable[[Path, str], None],
 ) -> CommitReviewApplyReport:
-    """Apply commit-review actions and return observed results."""
     report = CommitReviewApplyReport()
     gitignore_patterns: list[str] = []
     git_exclude_patterns: list[str] = []
@@ -106,7 +100,6 @@ def _classify_action(
     *,
     is_safe_to_delete: Callable[[Path, str], bool],
 ) -> None:
-    """Route one commit-review action into the appropriate output bucket."""
     act_type = action.action
     if act_type == "add_to_gitignore":
         pattern = action.pattern
@@ -157,7 +150,6 @@ def _apply_gitignore_patterns(
     *,
     append_to_gitignore: Callable[[Path, list[str]], None],
 ) -> None:
-    """Append gitignore patterns with per-pattern exception isolation."""
     for pattern in patterns:
         try:
             append_to_gitignore(repo_root, [pattern])
@@ -175,7 +167,6 @@ def _apply_git_exclude_patterns(
     *,
     add_to_git_exclude: Callable[[Path, list[str]], None],
 ) -> None:
-    """Append git-exclude patterns with per-pattern exception isolation."""
     for pattern in patterns:
         try:
             add_to_git_exclude(repo_root, [pattern])
@@ -193,7 +184,6 @@ def _apply_safe_deletes(
     *,
     delete_file_from_repo: Callable[[Path, str], None],
 ) -> None:
-    """Apply deduplicated safe deletes, isolating each failure."""
     seen_paths: set[str] = set()
     for file_path in safe_delete_files:
         if file_path in seen_paths:
@@ -212,7 +202,6 @@ def _apply_safe_deletes(
 
 
 def _note_once(report: CommitReviewApplyReport, note: str) -> None:
-    """Record one distinct unapplied decision for operator visibility."""
     if note not in report.unapplied_notes:
         report.unapplied_notes.append(note)
 

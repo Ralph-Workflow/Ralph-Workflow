@@ -1,5 +1,3 @@
-"""Tests for ralph/display/phase_status.py canonical presentation formatters."""
-
 from __future__ import annotations
 
 from ralph.display.phase_status import (
@@ -10,8 +8,6 @@ from ralph.display.phase_status import (
     format_exit_trigger,
     format_transition_context_items,
 )
-
-# --- Unit tests for format functions ---
 
 
 def test_format_dev_cycle_renders_number() -> None:
@@ -32,15 +28,11 @@ def test_format_analysis_cycle_with_cap() -> None:
 
 
 def test_format_elapsed_seconds_preserves_precision_across_minute_boundary() -> None:
-    """Durations use one vocabulary without discarding meaningful tenths."""
     assert format_elapsed_seconds(-1.0) == "0s"
     assert format_elapsed_seconds(59.9) == "59.9s"
     assert format_elapsed_seconds(60.0) == "1m00s"
     assert format_elapsed_seconds(60.9) == "1m00.9s"
     assert format_elapsed_seconds(125.4) == "2m05.4s"
-
-
-# --- PhaseIterationContext tests ---
 
 
 def test_phase_iteration_context_has_context_false_when_empty() -> None:
@@ -77,7 +69,6 @@ def test_phase_iteration_context_labels_full_context() -> None:
 
 
 def test_phase_iteration_context_labels_order() -> None:
-    """outer_dev appears before inner_analysis."""
     ctx = PhaseIterationContext(
         outer_dev=2,
         inner_analysis=1,
@@ -88,47 +79,37 @@ def test_phase_iteration_context_labels_order() -> None:
     assert texts.index("Cycle #2") < texts.index("iter 1/3")
 
 
-# --- Tests for format_transition_context_items ---
-
-
 def test_transition_context_analysis_status_renders_as_value_only() -> None:
-    """'analysis_status' key renders as the bare value without key prefix."""
     result = format_transition_context_items({"analysis_status": "final, skipping next"})
     assert result == ["final, skipping next"]
 
 
 def test_transition_context_decision_renders_with_arrow() -> None:
-    """'decision' key renders as '→ value'."""
     result = format_transition_context_items({"decision": "completed"})
     assert result == ["→ completed"]
 
 
 def test_transition_context_decision_needs_changes_renders_with_arrow() -> None:
-    """'decision' key with raw analysis decision renders as '→ request changes'."""
     result = format_transition_context_items({"decision": "request changes"})
     assert result == ["→ request changes"]
 
 
 def test_transition_context_multi_word_key_uses_bracket_notation() -> None:
-    """Multi-word keys (with spaces) render as '[key value]' bracket notation."""
     result = format_transition_context_items({"Planning Analysis": "3/3"})
     assert result == ["[Planning Analysis 3/3]"]
 
 
 def test_transition_context_multi_word_key_with_slash_value() -> None:
-    """Multi-word key with slash value still uses bracket notation."""
     result = format_transition_context_items({"Development Analysis": "2/4"})
     assert result == ["[Development Analysis 2/4]"]
 
 
 def test_transition_context_single_word_key_uses_equals_format() -> None:
-    """Single-word keys (no spaces) render as 'key=value'."""
     result = format_transition_context_items({"iteration": "1/5"})
     assert result == ["iteration=1/5"]
 
 
 def test_transition_context_multiple_items_preserve_order() -> None:
-    """Multiple context items are returned in insertion order."""
     context: dict[str, object] = {
         "Planning Analysis": "3/3",
         "analysis_status": "final, skipping next",
@@ -145,11 +126,7 @@ def test_transition_context_multiple_items_preserve_order() -> None:
 
 
 def test_transition_context_empty_dict_returns_empty_list() -> None:
-    """Empty context dict returns empty list."""
     assert format_transition_context_items({}) == []
-
-
-# --- Unit tests for format_exit_trigger ---
 
 
 class _FakeSnapshot:
@@ -186,6 +163,5 @@ def test_format_exit_trigger_unknown_state() -> None:
 
 
 def test_format_exit_trigger_interrupted_takes_priority() -> None:
-    """interrupted_by_user has highest priority over terminal flags."""
     snap = _FakeSnapshot(interrupted_by_user=True, is_terminal_success=True)
     assert format_exit_trigger(snap) == "interrupted"

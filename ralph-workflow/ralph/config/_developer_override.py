@@ -1,10 +1,3 @@
-"""Apply the ``--developer-agent`` / ``--developer-model`` pins to an agents policy.
-
-The developer agent is not a config scalar: it is whatever the chain bound to
-the ``development`` drain names first. The CLI flags therefore take effect by
-rebinding that drain to a dedicated single-agent chain, never by editing a
-chain another drain may share.
-"""
 
 from __future__ import annotations
 
@@ -17,7 +10,6 @@ _CLI_CHAIN_NAME = "cli_developer"
 
 
 def _agent_spec(agent: str | None, model: str | None, current: AgentChainConfig) -> str:
-    """Compose the ``<agent>[/<model>]`` alias the pinned chain runs."""
     if agent is not None and not agent.strip():
         raise PolicyValidationError("--developer-agent must name an agent", source="agents")
     if model is not None and not model.strip():
@@ -25,8 +17,6 @@ def _agent_spec(agent: str | None, model: str | None, current: AgentChainConfig)
     base = agent.strip() if agent is not None else current.agents[0]
     if model is None:
         return base
-    # ``<agent>/<model>`` is the registry's dynamic-alias shape; a model flag
-    # replaces whatever model the base entry already named.
     return f"{base.split('/', 1)[0]}/{model.strip()}"
 
 
@@ -36,20 +26,6 @@ def _pinned_value(config: object, name: str) -> str | None:
 
 
 def apply_developer_override(policy: AgentsPolicy, config: object) -> AgentsPolicy:
-    """Return ``policy`` with the developer role pinned to ``config``'s CLI agent/model.
-
-    ``config`` is the loaded ``UnifiedConfig`` (``None`` or a config without
-    the ``developer_agent`` / ``developer_model`` pins leaves ``policy`` as is).
-
-    The ``development`` drain, plus every development-class drain that shares
-    its chain (the out-of-graph aliases that follow the developer), is rebound
-    to a new chain holding exactly the requested agent. Drains on other chains
-    keep their agents.
-
-    Raises:
-        PolicyValidationError: When a flag is blank or no ``development`` drain
-            is bound, so the pin cannot silently do nothing.
-    """
     agent = _pinned_value(config, "developer_agent")
     model = _pinned_value(config, "developer_model")
     if agent is None and model is None:

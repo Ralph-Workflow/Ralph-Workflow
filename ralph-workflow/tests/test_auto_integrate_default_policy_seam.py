@@ -1,5 +1,3 @@
-"""Default-policy contracts for the post-commit auto-integration seam."""
-
 from __future__ import annotations
 
 from functools import lru_cache
@@ -33,7 +31,6 @@ def test_default_commit_phase_returns_commit_effect_after_message_agent(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Plan step 3 / AC-02: the real two-stage commit phase reaches CommitEffect."""
     bundle = _load_default_policy_bundle()
     state = PipelineState(phase="development_commit", commit=CommitState(agent_invoked=True))
     artifact = tmp_path / ".agent" / "artifacts" / "commit_message.md"
@@ -60,7 +57,6 @@ def test_default_commit_phase_returns_commit_effect_after_message_agent(
 def test_default_commit_success_calls_auto_integrate_but_skipped_does_not(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """Plan step 3 / AC-02: success triggers commit integration; skip uses only boundary hook."""
     bundle = _load_default_policy_bundle()
     commit_def = bundle.pipeline.phases["development_commit"]
     integration = MagicMock(return_value=RebaseState(last_action="rebased"))

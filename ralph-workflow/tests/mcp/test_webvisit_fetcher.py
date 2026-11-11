@@ -79,7 +79,7 @@ def _patch_client(
             requested_urls.append(url)
             try:
                 response = _make_response(responses[url])
-            except KeyError as exc:  # pragma: no cover - defensive test helper guard
+            except KeyError as exc:
                 raise AssertionError(f"unexpected request for {url!r}") from exc
             return _FakeResponseStream(response)
 
@@ -158,9 +158,6 @@ def test_fetch_url_follows_public_redirect_then_reads_body(
     assert created_kwargs == [{"follow_redirects": False, "timeout": 1.0}]
 
 
-#: URLs that clear or crash the stdlib policy parser and are rejected by
-#: httpx's stricter one. Each used to escape ``fetch_url`` as an
-#: exception from a function documented never to raise.
 _MALFORMED_URLS = (
     ("http://[::1", "unbalanced bracket: stdlib urlparse raises ValueError first"),
     ("http://999.1.1.1/", "stdlib accepts the hostname; httpx rejects the IPv4 address"),
@@ -176,20 +173,6 @@ _MALFORMED_URLS = (
     ids=[why for _, why in _MALFORMED_URLS],
 )
 def test_malformed_urls_are_an_outcome_not_an_exception(url: str, why: str) -> None:
-    """``fetch_url`` documents that it never raises; these all made it raise.
-
-    ``httpx.InvalidURL`` is declared straight off ``Exception``, so the
-    guard's ``(ConnectError, RemoteProtocolError, HTTPError)`` tuple
-    could not catch it, and the stdlib ``ValueError`` fires before httpx
-    is reached at all. Both escaped to the MCP dispatcher as a RETRYABLE
-    ``-32603``, so an agent could re-issue the identical failing call for
-    hours, while the dedicated ``invalid_url`` status was unreachable for
-    this entire input class.
-
-    No network is touched: every URL here is rejected before a request
-    is issued. Each URL is its own parametrized case so one slow
-    cold-start call cannot exhaust the per-test budget of the others.
-    """
     outcome = fetcher.fetch_url(
         url,
         timeout_ms=1000,
@@ -204,13 +187,6 @@ def test_malformed_urls_are_an_outcome_not_an_exception(url: str, why: str) -> N
 def test_a_malformed_redirect_target_is_an_outcome_not_an_exception(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A ``Location`` header is remote input and must not be able to raise.
-
-    Ralph sets ``follow_redirects=False`` and hand-rolls the redirect
-    loop, which opts out of the one place httpx converts ``InvalidURL``
-    into a catchable ``RemoteProtocolError`` -- so a hostile or broken
-    server's ``Location`` reached ``urljoin``/``client.stream`` raw.
-    """
     _patch_client(
         monkeypatch,
         {

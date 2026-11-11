@@ -1,5 +1,3 @@
-"""Standard workspace-root mock for tool tests."""
-
 from __future__ import annotations
 
 

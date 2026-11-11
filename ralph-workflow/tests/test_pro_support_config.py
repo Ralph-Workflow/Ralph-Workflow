@@ -1,5 +1,3 @@
-"""Black-box unit tests for Pro-owned config file invariants."""
-
 from __future__ import annotations
 
 import tomllib
@@ -15,7 +13,6 @@ if TYPE_CHECKING:
 
 
 def _write_pro_owned_config_files(workspace_root: Path) -> None:
-    """Write a minimal but representative set of Pro-owned config files."""
     agent_dir = workspace_root / ".agent"
     agent_dir.mkdir(parents=True, exist_ok=True)
     (agent_dir / "pipeline.toml").write_text(
@@ -52,13 +49,6 @@ def _write_pro_owned_config_files(workspace_root: Path) -> None:
 
 
 def test_engine_does_not_reinterpret_pro_owned_config(tmp_path: Path) -> None:
-    """The engine must read Pro-owned config and never mutate it on disk.
-
-    Loads the config through the public engine API and then re-reads the
-    raw files from disk to assert byte-for-byte equality. A regression
-    that lets the engine rewrite any of these files in Pro mode would
-    fail the byte-equality check.
-    """
     workspace_root = tmp_path
     _write_pro_owned_config_files(workspace_root)
     (workspace_root / "PROMPT.md").write_text("# hello\n", encoding="utf-8")
@@ -87,12 +77,6 @@ def test_engine_does_not_reinterpret_pro_owned_config(tmp_path: Path) -> None:
 
 
 def test_engine_does_not_reinterpret_pro_owned_config_in_memory_workspace() -> None:
-    """Same invariant, but exercised through the in-memory workspace seam.
-
-    Uses a ``MemoryWorkspace`` to prove the engine's read path does not
-    call ``workspace.write`` against any Pro-owned file when a config
-    is loaded.
-    """
     mem = MemoryWorkspace()
     mem.write("PROMPT.md", "# in-memory prompt\n")
     mem.mkdirs(".agent")
@@ -133,7 +117,6 @@ def test_engine_does_not_reinterpret_pro_owned_config_in_memory_workspace() -> N
 
 
 def test_pro_owned_config_round_trip_tomllib(tmp_path: Path) -> None:
-    """Smoke test that the on-disk Pro files are still parseable TOML."""
     workspace_root = tmp_path
     _write_pro_owned_config_files(workspace_root)
     parsed = tomllib.loads(
@@ -143,6 +126,5 @@ def test_pro_owned_config_round_trip_tomllib(tmp_path: Path) -> None:
 
 
 def test_pro_mode_does_not_introduce_extra_env_vars() -> None:
-    """The contract is bounded to three env vars; assert no helper reads beyond them."""
     keys = {env_module.RALPH_WORKFLOW_PRO, env_module.RALPH_WORKSPACE, env_module.PROMPT_PATH}
     assert keys == {"RALPH_WORKFLOW_PRO", "RALPH_WORKSPACE", "PROMPT_PATH"}

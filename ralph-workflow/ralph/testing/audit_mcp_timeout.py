@@ -1,60 +1,12 @@
-"""MCP timeout contract audit.
-
-Enforces, via AST analysis (not regex), that no operation under ``ralph/mcp/``
-performs blocking I/O without a bounded, fail-closed timeout. A blocking call
-that can hang the MCP server thread starves the agent of output and trips the
-idle watchdog — exactly the nanocoder hang this contract prevents.
-
-Flagged (a contract violation that fails ``make verify``):
-  - ``subprocess.run/call/check_call/check_output(...)`` without a ``timeout=``
-    keyword (resolved through import aliases, so ``import subprocess as sp;
-    sp.run(...)`` and ``from subprocess import run; run(...)`` are also caught).
-    An explicit ``timeout=None`` is also flagged: keyword presence alone is not
-    enough because the underlying call honors the documented "no timeout"
-    semantics when ``timeout is None``.
-  - ``subprocess.getoutput``/``getstatusoutput`` and ``os.system`` — these take
-    no timeout at all, so they are always flagged unless marked.
-  - any ``.communicate(...)`` / ``.communicate_and_cleanup(...)`` without a
-    ``timeout=`` keyword (the first positional argument is ``input``, NOT a
-    timeout). An explicit ``timeout=None`` is also flagged.
-  - any ``.wait(...)`` without a bounded timeout (``wait``'s first positional
-    IS the timeout, so ``.wait(5)`` and ``.wait(timeout=5)`` are both fine).
-    Both ``.wait()`` (no arg) and explicit ``.wait(None)`` / ``.wait(timeout=None)``
-    are flagged.
-  - ``<future>.result(...)`` without a bounded ``timeout=`` when ``future``
-    was bound by ``.submit(...)`` in the same function scope. This deliberately
-    excludes other ``.result()`` receivers such as ``asyncio.Task``.
-  - network calls (``httpx.*`` / ``requests.*`` request methods + clients,
-    ``urllib.request.urlopen``, ``socket.create_connection``) without
-    ``timeout=`` (also resolved through import aliases). An explicit
-    ``timeout=None`` is also flagged.
-
-NOT flagged (Python semantics — they take no ``timeout=``): ``subprocess.Popen``
-construction, ``socket.socket(...)``, ``socket.getaddrinfo`` (bound via
-``socket.setdefaulttimeout``).
-
-Escape hatch: an inline ``# mcp-timeout-ok: <reason>`` marker on the call's line
-suppresses the violation (the only allowlist mechanism — keep it rare and
-justified).
-
-Best-effort scope: this is name-based AST analysis. It resolves ``import x as y``
-and ``from x import y [as z]`` bindings, but deliberately-obfuscated indirection
-(assignment rebind ``r = subprocess.run; r(...)``, ``getattr(subprocess, 'run')``,
-``importlib.import_module('subprocess').run(...)``) is out of scope — closing that
-would require dataflow tracking. The guard targets honest unbounded calls, not an
-adversary working around it.
-
-Usage:
-    python -m ralph.testing.audit_mcp_timeout [mcp_root]
-
-Exit 0 = clean, 1 = violations, 2 = root not found.
-"""
-
 from __future__ import annotations
 
 import ast
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING, TypeAlias
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 _SKIP_DIRS: frozenset[str] = frozenset(
     {
@@ -70,31 +22,112 @@ _SKIP_DIRS: frozenset[str] = frozenset(
     }
 )
 
-_ALLOW_MARKER = "mcp-timeout-ok"
-
-# Network request methods / client constructors that perform blocking I/O and
-# must carry an explicit ``timeout=``.
 _HTTP_METHODS: frozenset[str] = frozenset(
     {"get", "post", "put", "delete", "patch", "head", "options", "request", "stream"}
 )
 _HTTP_CLIENTS: frozenset[str] = frozenset({"Client", "AsyncClient", "Session"})
 _HTTP_ROOTS: frozenset[str] = frozenset({"httpx", "requests"})
 
-# subprocess functions that accept a ``timeout=`` and must carry one.
 _SUBPROCESS_TIMEOUT_FUNCS: frozenset[str] = frozenset({"run", "call", "check_call", "check_output"})
-# Blocking process calls that take NO timeout argument at all — always unbounded,
-# so they require an explicit ``# mcp-timeout-ok`` marker to pass.
 _ALWAYS_UNBOUNDED: frozenset[str] = frozenset(
     {"subprocess.getoutput", "subprocess.getstatusoutput", "os.system"}
 )
-# Methods whose first positional is NOT a timeout, so a bare ``timeout=`` keyword
-# is required (mirrors ``.communicate``).
 _TIMEOUT_KEYWORD_METHODS: frozenset[str] = frozenset({"communicate", "communicate_and_cleanup"})
+
+_PACKAGE_DIR: Path = Path(__file__).resolve().parent.parent
+_PACKAGE_PARENT: Path = _PACKAGE_DIR.parent
+
+_ExemptionKey: TypeAlias = tuple[str, str, str, int]
+
+STRUCTURAL_EXEMPTIONS: dict[_ExemptionKey, str] = {
+    (
+        "ralph.mcp.protocol.transport",
+        "StdioTransport._read_loop",
+        "blocking_stream_iter",
+        0,
+    ): "the MCP stdout pipe read is unblocked by close(), which the transport calls on shutdown",
+    (
+        "ralph.mcp.server._fallback_standalone_server",
+        "_FallbackStandaloneServer.run._stop_watcher",
+        "wait",
+        0,
+    ): "the daemon watcher thread blocks until the caller sets the stop event it waits on",
+    (
+        "ralph.process.manager._managed_async_process",
+        "ManagedAsyncProcess.wait",
+        "wait",
+        0,
+    ): "the wait is wrapped by asyncio.wait_for with a bounded timeout",
+    (
+        "ralph.process.manager._managed_async_process",
+        "ManagedAsyncProcess.wait_supervised",
+        "wait",
+        0,
+    ): "the supervised wait is bounded by the caller's activity-aware idle watchdog",
+    (
+        "ralph.process.manager._managed_async_process",
+        "ManagedAsyncProcess.communicate",
+        "communicate",
+        0,
+    ): "the communicate is wrapped by asyncio.wait_for with a bounded timeout",
+    (
+        "ralph.process.manager._managed_process",
+        "ManagedProcess._wait_after_output_eof",
+        "wait",
+        0,
+    ): "no inactivity and no absolute deadline apply, so the caller accepts an unbounded reap",
+    (
+        "ralph.process.manager._managed_pty_process",
+        "ManagedPtyProcess.__exit__",
+        "wait",
+        0,
+    ): "the reap runs only after the process was already terminated",
+    (
+        "ralph.process.manager._process_manager",
+        "ProcessManager._reap_async_and_mark",
+        "wait",
+        0,
+    ): "the reap is wrapped by asyncio.wait_for with a bounded timeout",
+    (
+        "ralph.process.manager._process_manager",
+        "ProcessManager._terminate_root_only_async",
+        "wait",
+        0,
+    ): "the graceful terminate wait is wrapped by asyncio.wait_for with a bounded timeout",
+    (
+        "ralph.process.manager._process_manager",
+        "ProcessManager._terminate_root_only_async",
+        "wait",
+        1,
+    ): "the force-kill follow-up wait is wrapped by asyncio.wait_for with a bounded timeout",
+    (
+        "ralph.agents.invoke._workspace_change_coalescer",
+        "WorkspaceChangeCoalescer.close",
+        "wait",
+        0,
+    ): "the teardown waits for the single active drain to finish before returning",
+    (
+        "ralph.agents.subprocess_executor",
+        "SubprocessAgentExecutor._supervise",
+        "wait",
+        0,
+    ): "the wait is wrapped by asyncio.wait_for with a bounded timeout",
+    (
+        "ralph.executor.process",
+        "run_process_async",
+        "communicate",
+        0,
+    ): "the communicate task is bounded by the asyncio.wait timeout of the caller",
+    (
+        "ralph.executor.process",
+        "run_process_async",
+        "wait",
+        0,
+    ): "the wait is wrapped by asyncio.wait_for with a bounded timeout",
+}
 
 
 class McpTimeoutViolation:
-    """A single MCP-timeout contract violation."""
-
     def __init__(self, file_path: str, line: int, category: str, detail: str) -> None:
         self.file_path = file_path
         self.line = line
@@ -110,45 +143,22 @@ def _has_keyword(node: ast.Call, name: str) -> bool:
 
 
 def _is_none_expr(node: ast.expr) -> bool:
-    """Return True if ``node`` is an AST representation of the ``None`` singleton.
-
-    Covers both ``Constant(value=None)`` (the literal form) and ``Name(id='None')``
-    (the qualified form ``None`` evaluates to the same singleton). Anything
-    else — variables, attributes, calls — is treated as "value unknown, possibly
-    bounded" and is out of scope (dataflow tracking would be required to prove
-    the variable resolves to ``None``).
-    """
     return (isinstance(node, ast.Constant) and node.value is None) or (
         isinstance(node, ast.Name) and node.id == "None"
     )
 
 
 def _has_bounded_timeout_keyword(node: ast.Call) -> bool:
-    """Return True if ``node`` carries a ``timeout=`` keyword with a NON-None value.
-
-    A ``timeout=None`` keyword is treated as unbounded because the underlying
-    call honors the documented "no timeout" semantics when ``timeout is None``
-    (verified at runtime against CPython's subprocess / httpx / socket
-    implementations). The audit is AST-based, so it can only flag explicit
-    ``None`` literals — a variable that resolves to ``None`` at runtime is out
-    of scope and would require dataflow tracking.
-    """
     return any(kw.arg == "timeout" and not _is_none_expr(kw.value) for kw in node.keywords)
 
 
 def _first_positional_is_bounded_timeout(node: ast.Call) -> bool:
-    """Return True if ``node`` has a first positional arg that is NOT ``None``.
-
-    Used for ``.wait(timeout)`` whose first positional IS the timeout.
-    ``.wait()`` and ``.wait(None)`` are both treated as unbounded.
-    """
     if not node.args:
         return False
     return not _is_none_expr(node.args[0])
 
 
 def _dotted_name(node: ast.Call) -> str | None:
-    """Return the dotted function name when the receiver chain is plain names."""
     func: ast.expr = node.func
     parts: list[str] = []
     while isinstance(func, ast.Attribute):
@@ -178,13 +188,6 @@ def _is_subprocess_timeout_func(name: str | None) -> bool:
 
 
 def _collect_import_aliases(tree: ast.AST) -> tuple[dict[str, str], dict[str, str]]:
-    """Resolve ``import x as y`` / ``from x import y [as z]`` bindings so an
-    aliased call cannot evade the contract.
-
-    Returns (module_aliases, from_imports):
-      - module_aliases: local module alias -> canonical module ("sp" -> "subprocess")
-      - from_imports: local name -> canonical dotted path ("run" -> "subprocess.run")
-    """
     module_aliases: dict[str, str] = {}
     from_imports: dict[str, str] = {}
     for node in ast.walk(tree):
@@ -199,27 +202,42 @@ def _collect_import_aliases(tree: ast.AST) -> tuple[dict[str, str], dict[str, st
     return module_aliases, from_imports
 
 
-class McpTimeoutAuditor(ast.NodeVisitor):
-    """AST visitor that detects unbounded blocking I/O."""
+def module_identity(file_path: Path) -> str:
+    resolved = file_path.resolve()
+    try:
+        relative = resolved.relative_to(_PACKAGE_PARENT)
+    except ValueError:
+        return resolved.stem
+    parts = list(relative.with_suffix("").parts)
+    if parts and parts[-1] == "__init__":
+        parts = parts[:-1]
+    return ".".join(parts)
 
+
+class McpTimeoutAuditor(ast.NodeVisitor):
     def __init__(
         self,
         file_path: str,
-        source: str,
         *,
         module_aliases: dict[str, str] | None = None,
         from_imports: dict[str, str] | None = None,
+        exemptions: Mapping[_ExemptionKey, str] | None = None,
+        module: str = "",
     ) -> None:
         self.file_path = file_path
-        self.source_lines = source.splitlines()
         self.violations: list[McpTimeoutViolation] = []
+        self.used_exemptions: set[_ExemptionKey] = set()
         self._module_aliases = module_aliases or {}
         self._from_imports = from_imports or {}
         self._function_scopes: list[set[str]] = []
+        self._callable_stack: list[str] = []
+        self._module = module
+        self._exemptions: Mapping[_ExemptionKey, str] = (
+            STRUCTURAL_EXEMPTIONS if exemptions is None else exemptions
+        )
+        self._category_counts: dict[tuple[str, str], int] = {}
 
     def _canonical_name(self, name: str | None) -> str | None:
-        """Resolve a dotted call name through the module's import aliases so
-        ``sp.run`` -> ``subprocess.run`` and bare ``run`` -> ``subprocess.run``."""
         if name is None:
             return None
         parts = name.split(".")
@@ -228,14 +246,17 @@ class McpTimeoutAuditor(ast.NodeVisitor):
         head = self._module_aliases.get(parts[0], parts[0])
         return ".".join([head, *parts[1:]])
 
-    def _allowed(self, node: ast.AST) -> bool:
-        lineno: int = getattr(node, "lineno", 0)
-        if 1 <= lineno <= len(self.source_lines):
-            return _ALLOW_MARKER in self.source_lines[lineno - 1]
-        return False
+    def _qualified_callable(self) -> str:
+        return ".".join(self._callable_stack)
 
     def _add(self, node: ast.AST, category: str, detail: str) -> None:
-        if self._allowed(node):
+        callable_name = self._qualified_callable()
+        counter_key = (callable_name, category)
+        index = self._category_counts.get(counter_key, 0)
+        self._category_counts[counter_key] = index + 1
+        key: _ExemptionKey = (self._module, callable_name, category, index)
+        if key in self._exemptions:
+            self.used_exemptions.add(key)
             return
         lineno: int = getattr(node, "lineno", 0)
         self.violations.append(
@@ -249,9 +270,11 @@ class McpTimeoutAuditor(ast.NodeVisitor):
 
     def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
         self._function_scopes.append(set())
+        self._callable_stack.append(node.name)
         try:
             self.generic_visit(node)
         finally:
+            self._callable_stack.pop()
             self._function_scopes.pop()
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
@@ -259,6 +282,13 @@ class McpTimeoutAuditor(ast.NodeVisitor):
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
         self._visit_function(node)
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self._callable_stack.append(node.name)
+        try:
+            self.generic_visit(node)
+        finally:
+            self._callable_stack.pop()
 
     def visit_Assign(self, node: ast.Assign) -> None:
         if (
@@ -273,10 +303,6 @@ class McpTimeoutAuditor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_For(self, node: ast.For) -> None:
-        # A ``for line in <proc>.stdout:`` (or .stderr) is a blocking, unbounded
-        # line read over a live pipe — it cannot be interrupted by a timeout and
-        # wedges the reader on a hung child. Iterating a tuple of pipes or a
-        # ``.splitlines()`` result is fine (node.iter is a Tuple/Call, not Attribute).
         if isinstance(node.iter, ast.Attribute) and node.iter.attr in {"stdout", "stderr"}:
             self._add(
                 node,
@@ -287,17 +313,11 @@ class McpTimeoutAuditor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
-        # Method calls by attribute name, receiver-agnostic (catches chained
-        # receivers like spawn().communicate() that a dotted-name resolver
-        # would miss).
         if isinstance(node.func, ast.Attribute):
             attr = node.func.attr
             if attr in _TIMEOUT_KEYWORD_METHODS and not _has_bounded_timeout_keyword(node):
                 self._add(node, "communicate", f".{attr}() without bounded timeout=")
             elif attr == "wait":
-                # ``wait()``'s first positional IS the timeout, so we accept
-                # either a non-None first positional OR a non-None ``timeout=``
-                # keyword. Both ``.wait()`` and ``.wait(None)`` are flagged.
                 bounded = _first_positional_is_bounded_timeout(
                     node
                 ) or _has_bounded_timeout_keyword(node)
@@ -327,51 +347,87 @@ class McpTimeoutAuditor(ast.NodeVisitor):
         self.generic_visit(node)
 
 
-def audit_mcp_file(file_path: Path) -> list[McpTimeoutViolation]:
-    """Audit a single Python file for MCP-timeout violations."""
+def _audit_file(
+    file_path: Path,
+    exemptions: Mapping[_ExemptionKey, str],
+) -> tuple[list[McpTimeoutViolation], set[_ExemptionKey]]:
     source = file_path.read_text(encoding="utf-8")
     try:
         tree = ast.parse(source, filename=str(file_path))
     except SyntaxError:
-        return []
+        return [], set()
     module_aliases, from_imports = _collect_import_aliases(tree)
     auditor = McpTimeoutAuditor(
         str(file_path),
-        source,
         module_aliases=module_aliases,
         from_imports=from_imports,
+        exemptions=exemptions,
+        module=module_identity(file_path),
     )
     auditor.visit(tree)
-    return auditor.violations
+    return auditor.violations, auditor.used_exemptions
 
 
-def audit_mcp_directory(root: Path) -> tuple[list[McpTimeoutViolation], int]:
-    """Audit every Python file under ``root``. Returns (violations, files_checked)."""
+def audit_mcp_file(
+    file_path: Path,
+    *,
+    exemptions: Mapping[_ExemptionKey, str] | None = None,
+) -> list[McpTimeoutViolation]:
+    registry = STRUCTURAL_EXEMPTIONS if exemptions is None else exemptions
+    violations, _used = _audit_file(file_path, registry)
+    return violations
+
+
+def _stale_exemption_violations(
+    registry: Mapping[_ExemptionKey, str],
+    audited_modules: set[str],
+    used_by_module: Mapping[str, set[_ExemptionKey]],
+) -> list[McpTimeoutViolation]:
+    violations: list[McpTimeoutViolation] = []
+    for key in sorted(registry):
+        module = key[0]
+        if module not in audited_modules:
+            continue
+        if key in used_by_module.get(module, frozenset()):
+            continue
+        violations.append(
+            McpTimeoutViolation(
+                file_path=module,
+                line=0,
+                category="stale_exemption",
+                detail=(
+                    f"structural exemption for {module} {key[1]} category {key[2]} "
+                    f"occurrence {key[3]} matches no audited call site"
+                ),
+            )
+        )
+    return violations
+
+
+def audit_mcp_directory(
+    root: Path,
+    *,
+    exemptions: Mapping[_ExemptionKey, str] | None = None,
+) -> tuple[list[McpTimeoutViolation], int]:
+    registry = STRUCTURAL_EXEMPTIONS if exemptions is None else exemptions
     all_violations: list[McpTimeoutViolation] = []
+    used_by_module: dict[str, set[_ExemptionKey]] = {}
+    audited_modules: set[str] = set()
     files_checked = 0
     for py_file in sorted(root.rglob("*.py")):
         if any(part in _SKIP_DIRS for part in py_file.relative_to(root).parts):
             continue
-        all_violations.extend(audit_mcp_file(py_file))
+        violations, used = _audit_file(py_file, registry)
+        module = module_identity(py_file)
+        all_violations.extend(violations)
+        used_by_module.setdefault(module, set()).update(used)
+        audited_modules.add(module)
         files_checked += 1
+    all_violations.extend(_stale_exemption_violations(registry, audited_modules, used_by_module))
     return all_violations, files_checked
 
 
 def _default_roots() -> list[Path]:
-    """Roots audited when no explicit root is given.
-
-    Covers ``ralph/mcp`` (the MCP server thread), ``ralph/git`` (git invoked
-    outside the MCP layer — operations, rebase, vendor-drift checks),
-    ``ralph/process`` (the subprocess layer the MCP/git paths call
-    into synchronously, including ``ProcessManager`` and the rest of the
-    tree), ``ralph/executor`` (the sync + async process runners
-    ``run_process`` / ``run_process_async``), ``ralph/agents`` (the
-    subprocess agent executor), ``ralph/pro_support`` (the bounded Pro
-    heartbeat client), and the API, update-check, and contrib packages.
-    ``ralph/recovery`` is deliberately excluded until event waits can be
-    distinguished from subprocess waits. An unbounded call in any covered
-    root can hang the agent, so all are held to the same contract.
-    """
     package_root = Path(__file__).parent.parent
     return [
         package_root / "mcp",
@@ -387,7 +443,6 @@ def _default_roots() -> list[Path]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the bounded-subprocess audit and return an exit code."""
     args = argv if argv is not None else sys.argv[1:]
     roots = [Path(args[0])] if args else _default_roots()
 
@@ -414,8 +469,9 @@ def main(argv: list[str] | None = None) -> int:
         print()
         print(
             "Every MCP/git operation must be bounded by a timeout and fail closed. "
-            "Add a timeout=, or an inline '# mcp-timeout-ok: <reason>' marker if "
-            "the call is genuinely unbounded by design."
+            "Add a timeout=, or register a structural exemption in "
+            "ralph/testing/audit_mcp_timeout.py when the call is genuinely "
+            "unbounded by design."
         )
         return 1
 

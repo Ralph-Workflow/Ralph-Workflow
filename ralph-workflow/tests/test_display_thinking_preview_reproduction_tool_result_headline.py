@@ -1,21 +1,3 @@
-"""Reproduction and assertion tests for tool_result coalescing (S-7).
-
-Pre-S-7, ``tool_result`` triggered a ``↳ summary:`` line above the
-tool-result content as part of the same over-emission that produced
-``↳ preview:`` and ``↳ ai-summary:`` lines for thinking blocks.
-
-Post-S-7, ``tool_result`` is no longer in ``_STREAMING_KINDS``-style
-emission paths that produce preview / summary / ai-summary supplements.
-The single-entry contract means each tool_result is one line carrying
-its own content; the ``↳ summary:`` supplement is retired along with the
-other preview machinery.
-
-These tests pin the new shape: tool_result content is rendered as a
-single entry, no ``↳ summary:`` line follows, and the underlying
-``build_headline_or_placeholder`` helper still surfaces a headline when
-callers ask for one explicitly (the helper itself is not retired).
-"""
-
 from __future__ import annotations
 
 import io
@@ -28,7 +10,6 @@ from ralph.display.activity_model import ActivityEventKind
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 
-# ponytail: Rich Live teardown can exceed 1s under xdist scheduling; 5s preserves the behavior check within the 60s suite cap.
 pytestmark = pytest.mark.timeout_seconds(5)
 
 if TYPE_CHECKING:
@@ -52,10 +33,7 @@ def _plain_lines(output: str) -> list[str]:
 
 
 class TestToolResultSingleEntry:
-    """S-7: tool_result is one entry, no ↳ summary: supplement."""
-
     def test_short_tool_result_emits_one_line_with_content(self, tmp_path: Path) -> None:
-        """Short tool_result content surfaces as exactly one [result] entry."""
         pd, buf, _console = _make_display(tmp_path)
         unit_id = "u1"
 
@@ -82,11 +60,6 @@ class TestToolResultSingleEntry:
     def test_long_tool_result_emits_one_line_with_content_no_summary_supplement(
         self, tmp_path: Path
     ) -> None:
-        """Long tool_result remains one logical entry without a summary supplement.
-
-        The renderer may wrap that entry into hanging continuation rows;
-        those rows are layout, not duplicate activity.
-        """
         pd, buf, _console = _make_display(tmp_path)
         unit_id = "u1"
 

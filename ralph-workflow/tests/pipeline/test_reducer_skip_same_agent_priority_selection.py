@@ -1,5 +1,3 @@
-"""Regression tests for priority selection on skip-same-agent failures."""
-
 from __future__ import annotations
 
 import tempfile
@@ -62,7 +60,6 @@ def _cooldown(until_ms: int) -> UnavailabilityEntry:
 
 
 def test_reducer_regression_skip_same_agent_returns_to_highest_priority_available_agent() -> None:
-    """S-2: skip path selects index zero instead of advancing from index one."""
     reduced_state, effects = reduce(
         _state(),
         PipelineEvent.AGENT_FAILURE,
@@ -77,7 +74,6 @@ def test_reducer_regression_skip_same_agent_returns_to_highest_priority_availabl
 
 
 def test_reducer_regression_skip_same_agent_never_selects_agent_in_cooldown() -> None:
-    """S-2: skip path ignores a higher-priority agent that remains in cooldown."""
     reduced_state, effects = reduce(
         _state(),
         PipelineEvent.AGENT_FAILURE,
@@ -92,7 +88,6 @@ def test_reducer_regression_skip_same_agent_never_selects_agent_in_cooldown() ->
 
 
 def test_reducer_regression_skip_same_agent_waits_when_every_agent_is_in_cooldown() -> None:
-    """S-2: skip path waits instead of failing when no chain agent is selectable."""
     entries = {
         "claude": _cooldown(3000),
         "opencode": _cooldown(1000),

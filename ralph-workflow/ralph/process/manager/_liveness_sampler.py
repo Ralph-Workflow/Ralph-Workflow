@@ -1,35 +1,3 @@
-"""Liveness tree sampler for long-running exec jobs (§3b).
-
-This module samples activity across an execution process tree (CPU ratio,
-I/O throughput, child process events, output novelty, and context switches)
-and produces a :class:`LivenessWindow` consumable by
-:func:`ralph.process.manager._liveness_assessor.assess`.
-
-All metrics follow fail-closed error handling: any signal that cannot be read
-on the root process or any child process defaults to ``None`` individually.
-
-Per-rate signals (``cpu_ratio``, ``io_bytes_per_s``, ``voluntary_ctx_per_s``)
-are aggregated over the bounded
-``LivenessConfig.evidence_window_s`` window (default 30 s) rather than
-over the last sample interval. The sampler keeps a per-signal deque of
-``(timestamp, cumulative_total)`` snapshots, prunes entries older than the
-window, and computes ``(current - oldest_in_window) / window_dt`` so a
-slow steady drip of work reads as a small positive rate even when each
-2 s sample advances the cumulative counters only slightly. A gap larger
-than ``evidence_window_s`` resets the baseline (returning ``None`` for one
-cycle) per the failure-recovery policy in D3.
-
-Output novelty (``output_novelty``) obeys the SAME evidence-window rule.
-The producer hands over timestamped :class:`OutputEvidence` records, and
-:meth:`TreeSampler.sample` prunes every record older than
-``now - evidence_window_s`` before taking the distinct/total ratio. Without
-that pruning a historic burst of distinct startup lines keeps novelty pinned
-high forever, so a command that has since degenerated into printing one
-line per second reads as permanently novel, ``R6`` (Repetitive) never
-fires, stall pressure never builds, and the job is never killed as
-``stalled``. Records are a caller-owned bounded FIFO; the sampler holds no
-accumulator of its own for them.
-"""
 
 from __future__ import annotations
 
@@ -45,23 +13,22 @@ _MIN_OUTPUT_LINES_FOR_NOVELTY: int = 20
 _MIN_TUPLE_LEN_TWO: int = 2
 _MIN_TUPLE_LEN_FOUR: int = 4
 _KIBIBYTE: float = 1024.0
-_HISTORY_MAXLEN: int = 256  # bounded-accumulator-ok: 30 s window @ 0.125 s sampler → 240 entries max; 256 leaves headroom
+_HISTORY_MAXLEN: int = 256
 
 
 @runtime_checkable
 class _LivenessProc(Protocol):
-    """Sampler-local typed adapter protocol for process tree nodes (§3b)."""
 
     @property
     def pid(self) -> int: ...
 
     def children(self, recursive: bool = False) -> Sequence[_LivenessProc]: ...
 
-    def cpu_times(self) -> object: ...  # .user, .system or tuple
+    def cpu_times(self) -> object: ...
 
-    def io_counters(self) -> object: ...  # .read_bytes, .write_bytes
+    def io_counters(self) -> object: ...
 
-    def num_ctx_switches(self) -> object: ...  # .voluntary
+    def num_ctx_switches(self) -> object: ...
 
     def create_time(self) -> float: ...
 
@@ -84,13 +51,6 @@ class _CtxSwitchesObj(Protocol):
 
 
 class _OutputEvidence(NamedTuple):
-    """One decoded output line plus the instant the reader observed it.
-
-    The timestamp is the producer's own clock reading at the moment the
-    line was appended to the job's bounded output FIFO (the same reading
-    that seeds ``last_output_at``), so novelty can be scoped to the
-    evidence window instead of to the FIFO's whole retention.
-    """
 
     emitted_at: float
     line: str
@@ -100,13 +60,11 @@ OutputEvidence = _OutputEvidence
 
 
 class _PsutilModuleLike(Protocol):
-    """Protocol for psutil module or equivalent factory."""
 
     Process: Callable[[int], _LivenessProc]
 
 
 class _PsutilProcessAdapter:
-    """Typed adapter wrapping a psutil-compatible process."""
 
     def __init__(self, proc: LivenessProc) -> None:
         self._proc = proc
@@ -136,7 +94,6 @@ class _PsutilProcessAdapter:
 
 
 class _PsutilModuleAdapter:
-    """Typed adapter wrapping a psutil module."""
 
     def __init__(self, psutil_mod: _PsutilModuleLike) -> None:
         self._psutil = psutil_mod
@@ -190,18 +147,12 @@ def _extract_voluntary_ctx(val: object) -> float:
 def _collect_tree(
     root: _LivenessProc,
 ) -> tuple[list[_LivenessProc], set[int] | None]:
-    """Collect all reachable processes in the tree rooted at root.
-
-    Returns:
-        (all_processes, child_pids). If reading children fails, child_pids is None.
-    """
     try:
         children_seq = root.children(recursive=True)
         children = list(children_seq)
         child_pids: set[int] = {c.pid for c in children}
         return [root, *children], child_pids
     except TypeError:
-        # Fallback if recursive kwarg is unsupported
         pass
     except Exception:
         return [root], None
@@ -227,15 +178,6 @@ def _compute_output_novelty(
     now: float,
     evidence_window_s: float,
 ) -> float | None:
-    """Distinct/total line ratio measured over the evidence window only.
-
-    Records observed before ``now - evidence_window_s`` are dropped first,
-    so novelty describes what the command printed *now* rather than what
-    it printed at any point in the FIFO's retention. The gate is unchanged:
-    fewer than ``_MIN_OUTPUT_LINES_FOR_NOVELTY`` records inside the window
-    leaves novelty unknown (``None``), which the assessor treats as "no
-    repetitiveness evidence" per D5.
-    """
     cutoff = now - evidence_window_s
     in_window = [sample.line for sample in samples if sample.emitted_at >= cutoff]
     if len(in_window) < _MIN_OUTPUT_LINES_FOR_NOVELTY:
@@ -251,19 +193,6 @@ def _windowed_rate(
     *,
     cap_to_unit_interval: bool,
 ) -> float | None:
-    """Aggregate a per-second rate across the bounded evidence window.
-
-    For every call we (a) prune entries older than ``now - evidence_window_s``,
-    (b) record the current ``(now, current_total)`` snapshot, (c) compute
-    the rate as ``(current_total - oldest_in_window) / window_dt``. The
-    first sample in a window — or any sample following a gap wider than
-    the window — returns ``None`` so the caller can re-baseline without
-    contaminating the rate with stale deltas.
-
-    ``cap_to_unit_interval`` controls the output range: ``True`` clamps the
-    rate to ``[0, 1]`` (used for cpu ratio), ``False`` clamps to ``[0, +inf)``
-    (used for I/O bytes/s and voluntary context switches/s).
-    """
     cutoff = now - evidence_window_s
     while history and history[0][0] < cutoff:
         history.popleft()
@@ -283,12 +212,6 @@ def _windowed_rate(
 
 
 def _sum_cpu_seconds(procs: list[_LivenessProc]) -> tuple[float | None, bool]:
-    """Return ``(sum_cpu_seconds, success_flag)``.
-
-    ``success_flag=False`` indicates that the cumulative counter could not
-    be read on at least one process; the caller must treat the whole
-    signal as unavailable and not pollute the rate history.
-    """
     total = 0.0
     for p in procs:
         try:
@@ -319,16 +242,6 @@ def _sum_voluntary_ctx(procs: list[_LivenessProc]) -> tuple[float | None, bool]:
 
 
 class TreeSampler:
-    """Samples process tree activity and produces a :class:`LivenessWindow`.
-
-    Per-rate signals are aggregated across ``config.evidence_window_s``
-    (default ``EXEC_LIVENESS_EVIDENCE_WINDOW_S`` = 30.0 s) rather than the
-    last sample interval. ``child_events`` keeps the same windowed
-    semantics as before, and ``output_novelty`` is measured over the same
-    window from the timestamped ``output_samples`` the producer supplies.
-    An unreadable signal returns ``None`` for one
-    cycle and leaves the per-signal windowed history untouched.
-    """
 
     def __init__(
         self,
@@ -346,17 +259,17 @@ class TreeSampler:
         self._prev_child_pids: set[int] | None = None
         self._child_events_history: deque[tuple[float, int]] = deque(
             maxlen=_HISTORY_MAXLEN
-        )  # bounded-accumulator-ok: FIFO windowed accumulator; 256-entry safety cap
+        )
 
         self._cpu_history: deque[tuple[float, float]] = deque(
             maxlen=_HISTORY_MAXLEN
-        )  # bounded-accumulator-ok: 30 s evidence window @ 0.125 s sampler → ≤240 entries; 256 leaves headroom
+        )
         self._io_history: deque[tuple[float, float]] = deque(
             maxlen=_HISTORY_MAXLEN
-        )  # bounded-accumulator-ok: same windowed FIFO accumulator contract
+        )
         self._ctx_history: deque[tuple[float, float]] = deque(
             maxlen=_HISTORY_MAXLEN
-        )  # bounded-accumulator-ok: same windowed FIFO accumulator contract
+        )
 
     def _reset_tracked_pid_state(self, root_pid: int) -> None:
         self._tracked_root_pid = root_pid

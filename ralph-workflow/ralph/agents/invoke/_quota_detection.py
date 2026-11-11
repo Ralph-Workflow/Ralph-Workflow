@@ -1,4 +1,3 @@
-"""Distinguish provider quota failures from echoed user prompt text."""
 
 from __future__ import annotations
 
@@ -53,7 +52,6 @@ def raise_if_quota_exhausted(
     *,
     include_output: bool,
 ) -> None:
-    """Raise for provider quota evidence, excluding transport-owned user echoes."""
     output = parsed_output or []
     for line in stderr_text.splitlines() or [stderr_text]:
         if _is_subscription_limit_message([line]):

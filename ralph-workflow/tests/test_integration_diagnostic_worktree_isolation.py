@@ -1,17 +1,3 @@
-"""Linked-worktree regression coverage for the diagnostic evidence collector.
-
-Acceptance scenario 1: in a repository with linked worktrees, an
-unrelated branch advancing in one worktree must not invalidate the
-retained-integration obligation in another worktree. The new
-SubprocessOperationEvidenceCollector is the architectural fix:
-it never reads repository-global refs or common-dir reflogs across worktrees.
-
-Each test drives the real recovery boundary: imports and calls
-ralph.pipeline._integration_diagnostic.diagnose_retained_integration with
-a real SubprocessOperationEvidenceCollector, asserting the durable record's
-intervention flag and the run-loop's PhaseDecision.
-"""
-
 from __future__ import annotations
 
 import subprocess
@@ -104,7 +90,6 @@ def _build_loop_ctx(primary: Path, policy: PipelinePolicy) -> MagicMock:
 
 @pytest.mark.subprocess_e2e
 def test_unrelated_branch_advance_does_not_invalidate_evidence(tmp_path: Path) -> None:
-    """Linked-worktree scenario: unrelated branch advance drives real recovery boundary."""
     primary = _init_repo(tmp_path / "primary")
     other = _add_worktree(primary, tmp_path / "other", branch="unrelated")
 
@@ -124,7 +109,6 @@ def test_unrelated_branch_advance_does_not_invalidate_evidence(tmp_path: Path) -
     policy = _policy()
     ctx = _build_loop_ctx(primary, policy)
 
-    # 1. Take initial diagnosis to establish held evidence
     result1 = diagnose_retained_integration(ctx, failure="simulated diagnostic recovery failure")
     assert result1 is False
     persisted1 = read_record(primary)
@@ -132,24 +116,19 @@ def test_unrelated_branch_advance_does_not_invalidate_evidence(tmp_path: Path) -
     assert persisted1.diagnostic_intervention_required is False
     held_evidence = persisted1.diagnostic_evidence
 
-    # 2. Advance the unrelated branch in the linked worktree
     (other / "new.txt").write_text("new content")
     _git(other, "add", "new.txt")
     _git(other, "commit", "--quiet", "-m", "advance unrelated")
 
-    # 3. Run diagnosis again after unrelated branch advance
     result2 = diagnose_retained_integration(ctx, failure="simulated diagnostic recovery failure")
     assert result2 is False
 
-    # 4. Assert that the unrelated branch change does NOT invalidate the held operation evidence
-    # and that progress continues without diagnostic intervention
     assert record_path(primary).exists()
     persisted2 = read_record(primary)
     assert persisted2 is not None
     assert persisted2.diagnostic_intervention_required is False
     assert persisted2.diagnostic_evidence == held_evidence
 
-    # Assert run-loop's PhaseDecision evaluates to BLOCK_FOR_RECOVERY
     state = PipelineState(phase="development", rebase=RebaseState())
     decision = decide_phase_transition(
         state,
@@ -162,7 +141,6 @@ def test_unrelated_branch_advance_does_not_invalidate_evidence(tmp_path: Path) -
 
 @pytest.mark.subprocess_e2e
 def test_branch_reflog_change_does_not_invalidate_evidence(tmp_path: Path) -> None:
-    """Commondir reflog changes from linked worktree do not break recovery boundary."""
     primary = _init_repo(tmp_path / "primary")
     other = _add_worktree(primary, tmp_path / "other", branch="unrelated")
 
@@ -187,7 +165,6 @@ def test_branch_reflog_change_does_not_invalidate_evidence(tmp_path: Path) -> No
     policy = _policy()
     ctx = _build_loop_ctx(primary, policy)
 
-    # Drive the real recovery boundary
     diagnose_retained_integration(ctx, failure="reflog test failure")
 
     persisted = read_record(primary)
@@ -206,12 +183,6 @@ def test_branch_reflog_change_does_not_invalidate_evidence(tmp_path: Path) -> No
 
 @pytest.mark.subprocess_e2e
 def test_exhausted_diagnostic_attempts_escalates_to_ladder_and_blocks(tmp_path: Path) -> None:
-    """Exhausted diagnostic attempts in a linked worktree escalate to the ladder.
-
-    The spent budget is the typed "diagnostic budget spent" outcome: it
-    routes the state into the autonomous fallback ladder and blocks for
-    recovery. It never produces the retired operator hand-off.
-    """
     primary = _init_repo(tmp_path / "primary")
     _add_worktree(primary, tmp_path / "other", branch="unrelated")
 
@@ -241,8 +212,6 @@ def test_exhausted_diagnostic_attempts_escalates_to_ladder_and_blocks(tmp_path: 
 
     persisted = read_record(primary)
     assert persisted is not None
-    # The retired hand-off flag is never set; the typed outcome names
-    # the next autonomous action.
     assert persisted.diagnostic_intervention_required is False
     assert persisted.repair_cap_reason == DIAGNOSTIC_BUDGET_SPENT_REASON
 

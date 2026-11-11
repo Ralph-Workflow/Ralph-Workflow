@@ -13,7 +13,7 @@ EXPECTED_SEARCH_LIMIT_DEFAULT = 10
 def _import_ddgs_module() -> object:
     try:
         return import_module("ralph.mcp.websearch.backends.ddgs")
-    except ModuleNotFoundError as exc:  # pragma: no cover - exercised in RED phase
+    except ModuleNotFoundError as exc:
         raise AssertionError("ralph.mcp.websearch.backends.ddgs should exist") from exc
 
 

@@ -1,5 +1,3 @@
-"""The generic session watchdog must not preempt the development timebox."""
-
 from __future__ import annotations
 
 from ralph.config.general_config import GeneralConfig

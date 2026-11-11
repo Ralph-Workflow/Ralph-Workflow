@@ -27,4 +27,4 @@ unit back as a separate `partial`:
 
 The body is free-form; the validator only checks the frontmatter
 `status` enum. The fix-plan shape above is the useful target for
-a `request_changes` decision, not a required form.
+a `request_changes` verdict, not a required form.

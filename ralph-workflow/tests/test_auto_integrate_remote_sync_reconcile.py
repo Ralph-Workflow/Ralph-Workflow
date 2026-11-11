@@ -1,12 +1,3 @@
-"""Tests for the rejected-push reconcile loop of auto-integration.
-
-Covers AC-27 to AC-31 of the PRODUCT_CRITERIA.md. The reconcile
-loop runs at most ``_MAX_REMOTE_SYNC_ATTEMPTS`` (3) times per seam,
-stops on a successful push, and treats a runaway remote as a
-pending-not-terminal state on :attr:`RebaseState.last_remote_sync`.
-The pull/rebase/push cycle never blocks the pipeline.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -69,11 +60,8 @@ def _record() -> RebaseState:
 def test_successful_push_after_one_reconcile_succeeds(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AC-27: rejected push -> reconcile -> re-push succeeds."""
     from ralph.pipeline import auto_integrate_remote_sync as mod
 
-    # First refresh: REFRESH_LOCAL_FLEET (no-op, no fetch needed);
-    # push fails non-ff. Second iteration succeeds.
     refresh_calls: list[int] = []
     outcomes = ["push of main to origin failed: non-fast-forward", "pushed main to origin"]
 
@@ -95,17 +83,13 @@ def test_successful_push_after_one_reconcile_succeeds(
     config = _config()
     record = _record()
     out = reconcile_after_rejected_push(config, Path("/repo"), "main", record)
-    # After successful push: last_remote_sync == REMOTE_PUSHED
     assert out.last_remote_sync == REMOTE_PUSHED
-    # Only one push needed because the first call returns success? No - the
-    # first call returned failure. So push_calls should be 2.
     assert len(push_calls) == 2
 
 
 def test_run_keeps_going_after_per_seam_exhaustion(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AC-31: pushing remote keeps the run going, no block."""
     from ralph.pipeline import auto_integrate_remote_sync as mod
 
     monkeypatch.setattr(mod, "refresh_target_from_remote", lambda *a, **kw: REFRESH_LOCAL_FLEET)
@@ -117,15 +101,12 @@ def test_run_keeps_going_after_per_seam_exhaustion(
     config = _config()
     record = _record()
     out = reconcile_after_rejected_push(config, Path("/repo"), "main", record)
-    # After exhaustion, last_remote_sync carries the pending state, not None.
     assert out.last_remote_sync == REMOTE_PUSH_REJECTED
-    # Returning a RebaseState that the caller can carry forward.
 
 
 def test_per_seam_cap_is_three_attempts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AC-27: at most ``_MAX_REMOTE_SYNC_ATTEMPTS = 3`` cycles per seam."""
     from ralph.pipeline import auto_integrate_remote_sync as mod
 
     monkeypatch.setattr(mod, "refresh_target_from_remote", lambda *a, **kw: REFRESH_LOCAL_FLEET)
@@ -140,13 +121,12 @@ def test_per_seam_cap_is_three_attempts(
     config = _config()
     record = _record()
     reconcile_after_rejected_push(config, Path("/repo"), "main", record)
-    assert len(push_attempts) == 3  # bounded loop
+    assert len(push_attempts) == 3
 
 
 def test_unreachable_remote_does_not_attempt_push(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AC-30: unreachable remote is reported, no further push attempts."""
     from ralph.pipeline import auto_integrate_remote_sync as mod
 
     def fake_refresh(*a: object, **kw: object) -> str:
@@ -158,15 +138,13 @@ def test_unreachable_remote_does_not_attempt_push(
 
     def fake_push(*a: object, **kw: object) -> str:
         push_calls.append(1)
-        return "pushed"  # never actually called
+        return "pushed"
 
     monkeypatch.setattr(remote_push_module, "push_branch_to_single_remote", fake_push)
     config = _config()
     record = _record()
     out = reconcile_after_rejected_push(config, Path("/repo"), "main", record)
     assert push_calls == []
-    # The reconciliation attempts a single refresh-only cycle; the
-    # last_remote_sync reflects the unreachable pull state.
     assert out.last_remote_sync == remote_sync.REMOTE_REMOTE_UNREACHABLE
     assert out.last_push_status == remote_push_module.PushStatus.UNREACHABLE.value
 
@@ -174,7 +152,6 @@ def test_unreachable_remote_does_not_attempt_push(
 def test_rejected_push_passes_resolver_to_target_reconciliation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Regression S-1: rejected-push reconciliation keeps the shared resolver."""
     from ralph.pipeline import auto_integrate_remote_sync as mod
     from ralph.pipeline.auto_integrate_sync import REFRESH_DIVERGED
 
@@ -203,7 +180,6 @@ def test_rejected_push_passes_resolver_to_target_reconciliation(
 def test_rejected_push_regression_cleanly_aborted_reconcile_retains_publish_retry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-2/S-3: a restored target conflict leaves remote publication retryable."""
     from ralph.pipeline import auto_integrate_remote_sync as mod
     from ralph.pipeline.auto_integrate_sync import REFRESH_DIVERGED
 
@@ -225,7 +201,6 @@ def test_rejected_push_regression_cleanly_aborted_reconcile_retains_publish_retr
 def test_rejected_push_honors_target_reclaim_opt_out(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-3 regression: rejected-push reconciliation preserves the configured opt-out."""
     from ralph.pipeline import auto_integrate_remote_sync as mod
     from ralph.pipeline.auto_integrate_sync import REFRESH_DIVERGED
 
@@ -254,7 +229,6 @@ def test_rejected_push_honors_target_reclaim_opt_out(
 def test_target_reconciliation_regression_aborts_owner_rebase_after_conflict(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-4/E9: a conflicted target rebase aborts without moving its target ref."""
     from ralph.git.rebase.rebase import RebaseConflicts
 
     owner = Path("/target-owner")
@@ -282,7 +256,6 @@ def test_target_reconciliation_regression_aborts_owner_rebase_after_conflict(
 def test_target_reconciliation_regression_abort_restores_without_destructive_reset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-2/S-3: a proven rebase abort is safe without racing a hard reset."""
     from ralph.git.rebase.rebase import RebaseConflicts
 
     owner = Path("/target-owner")
@@ -312,7 +285,6 @@ def test_target_reconciliation_regression_abort_restores_without_destructive_res
 def test_target_reconciliation_regression_success_cleanup_failure_is_retained(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-1/S-2: a successful rebase retains recovery ownership when cleanup fails."""
     from ralph.git.rebase.rebase import RebaseSuccess
 
     owner = Path("/target-owner")
@@ -342,7 +314,6 @@ def test_target_reconciliation_regression_success_cleanup_failure_is_retained(
 def test_target_reconciliation_regression_success_requires_no_active_rebase(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-1/S-2: a success claim cannot release ownership while Git is rebasing."""
     from ralph.git.rebase.rebase import RebaseSuccess
 
     owner = Path("/target-owner")
@@ -373,7 +344,6 @@ def test_target_reconciliation_regression_success_requires_no_active_rebase(
 def test_target_reconciliation_regression_clear_record_failure_is_retained(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-2: cleanup failure preserves recovery ownership instead of escaping."""
     from ralph.git.rebase.rebase import RebaseConflicts
 
     owner = Path("/target-owner")
@@ -407,7 +377,6 @@ def test_target_reconciliation_regression_clear_record_failure_is_retained(
 def test_target_reconciliation_regression_record_write_failure_is_deferred(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-2: reconciliation refuses to mutate when recovery ownership cannot persist."""
     owner = Path("/target-owner")
     monkeypatch.setattr(remote_reconcile, "_reconciliation_owner", lambda *_a: owner)
     monkeypatch.setattr(
@@ -437,7 +406,6 @@ def test_target_reconciliation_regression_record_write_failure_is_deferred(
 def test_target_reconciliation_regression_precondition_probe_failure_is_deferred(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-2: an unobservable target owner becomes a retryable result, never an exception."""
     monkeypatch.setattr(remote_reconcile, "find_main_worktree_root", lambda *_args: Path("/main"))
     monkeypatch.setattr(
         remote_reconcile, "worktree_lookup", lambda *_args: ("found", Path("/owner"))
@@ -457,7 +425,6 @@ def test_target_reconciliation_regression_precondition_probe_failure_is_deferred
 def test_target_reconciliation_regression_worktree_lookup_failure_is_deferred(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-4/E6: an unknown target owner cannot be treated as safely absent."""
     monkeypatch.setattr(
         remote_reconcile,
         "find_main_worktree_root",
@@ -473,7 +440,6 @@ def test_target_reconciliation_regression_worktree_lookup_failure_is_deferred(
 def test_target_reconciliation_regression_retains_record_when_abort_cannot_restore_target(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-2/S-3: never overwrite a target that moved while reconciliation aborted."""
     from ralph.git.rebase.rebase import RebaseConflicts
 
     owner = Path("/target-owner")
@@ -503,7 +469,6 @@ def test_target_reconciliation_regression_retains_record_when_abort_cannot_resto
 def test_conflict_resolution_regression_remote_reconcile_binds_one_session_to_all_three_argument_resolver_calls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-1/S-2: remote reconciliation owns one session for its full paused rebase."""
     from ralph.git.rebase.rebase import RebaseConflicts
 
     owner = Path("/target-owner")
@@ -549,7 +514,6 @@ def test_conflict_resolution_regression_remote_reconcile_binds_one_session_to_al
 def test_target_reconciliation_offers_rebase_stop_resolver(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-1: target rebase conflicts offer the shared resolver in their owner."""
     from ralph.git.rebase.rebase import RebaseConflicts
 
     owner = Path("/target-owner")
@@ -591,7 +555,6 @@ def test_target_reconciliation_offers_rebase_stop_resolver(
 def test_target_reconciliation_regression_resolver_success_requires_finished_rebase(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-2: a resolver claim cannot clear ownership while Git is still rebasing."""
     from ralph.git.rebase.rebase import RebaseConflicts
 
     owner = Path("/target-owner")
@@ -634,7 +597,6 @@ def test_target_reconciliation_regression_resolver_success_requires_finished_reb
 def test_rejected_push_reintegrates_feature_before_repush(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-1: each rejected-push cycle reintegrates the feature before pushing."""
     from ralph.pipeline import auto_integrate_remote_sync as mod
 
     events: list[str] = []
@@ -661,7 +623,6 @@ def test_rejected_push_reintegrates_feature_before_repush(
 
 
 def test_disabled_remote_sync_skips_reconcile() -> None:
-    """No state change when remote sync is disabled."""
     from ralph.config.models import UnifiedConfig
 
     cfg = UnifiedConfig.model_validate(
@@ -674,22 +635,10 @@ def test_disabled_remote_sync_skips_reconcile() -> None:
     )
     record = _record()
     out = reconcile_after_rejected_push(cfg, Path("/repo"), "main", record)
-    # Record returned unchanged from the caller's perspective
     assert out is not None
 
 
 class TestAutoRebaseWorkspaceContextEndToEnd:
-    """End-to-end regression: the auto-rebase path uses the target's context.
-
-    The main worktree's rebase conflict must run against the main
-    worktree's PROMPT.md, MCP plan, config, policy, and registry -- not
-    against the calling feature worktree's. The shared resolver built
-    by ``build_agent_rebase_stop_resolver`` enters ``workspace_context``
-    for the target ``root`` the integration step passes it and uses
-    only the target's values inside the ``with`` block. Outside the
-    block, the caller's resources are unchanged.
-    """
-
     @staticmethod
     def _seed_workspace(root: Path, *, prompt: str) -> None:
         agent_dir = root / ".agent"
@@ -699,7 +648,6 @@ class TestAutoRebaseWorkspaceContextEndToEnd:
 
     @staticmethod
     def _install_workspace_seams(monkeypatch: pytest.MonkeyPatch, *workspace_roots: Path) -> None:
-        """Mock git ops so each workspace resolves to its own root."""
 
         canonical = {p.resolve(): p.resolve() for p in workspace_roots}
 
@@ -718,7 +666,6 @@ class TestAutoRebaseWorkspaceContextEndToEnd:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """The shared resolver enters the target before invoking the pipeline."""
         from ralph.pipeline import auto_integrate_agent as resolver_module
         from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
 
@@ -730,8 +677,6 @@ class TestAutoRebaseWorkspaceContextEndToEnd:
         self._seed_workspace(target, prompt="TARGET PROMPT")
         self._install_workspace_seams(monkeypatch, caller, target)
 
-        # Capture every context value the resolver hands to the pipeline,
-        # so the assertion can prove the resolver reached the TARGET.
         observations: dict[str, object] = {}
 
         def _record_pipeline(
@@ -762,9 +707,6 @@ class TestAutoRebaseWorkspaceContextEndToEnd:
             resolver_module, "run_rebase_conflict_resolution_pipeline", _record_pipeline
         )
 
-        # Drive the shared resolver with a target that is NOT the calling
-        # worktree's root. The integration step passes the main-owner
-        # worktree as ``root``.
         resolver = resolver_module.build_agent_rebase_stop_resolver(
             policy_bundle=_load_default_policy_bundle(),
             registry=_registry_with_chain_agent(),
@@ -783,9 +725,6 @@ class TestAutoRebaseWorkspaceContextEndToEnd:
 
         assert resolver(target, "main", stop) is True
 
-        # The pipeline must have received the TARGET's values, not the
-        # caller's. The resolved scope is the target's root, the prompt
-        # bytes are the target's, and the policy is the target's.
         assert observations["root"] == target
         assert observations["target"] == "main"
         assert observations["stop"] is stop
@@ -798,7 +737,6 @@ class TestAutoRebaseWorkspaceContextEndToEnd:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """A successful auto-rebase restores the caller's resources exactly."""
         from ralph.pipeline import auto_integrate_agent as resolver_module
         from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
 
@@ -810,16 +748,12 @@ class TestAutoRebaseWorkspaceContextEndToEnd:
         self._seed_workspace(target, prompt="TARGET PROMPT")
         self._install_workspace_seams(monkeypatch, caller, target)
 
-        # Stub the pipeline to a no-op success.
         monkeypatch.setattr(
             resolver_module,
             "run_rebase_conflict_resolution_pipeline",
             lambda **_kwargs: True,
         )
 
-        # Caller's closes-over scope and config: the caller's view of the
-        # world before the resolver runs. After the resolver exits, every
-        # observable part of the caller's resources must be identical.
         caller_proxies = _caller_proxies(caller)
 
         resolver = resolver_module.build_agent_rebase_stop_resolver(
@@ -838,15 +772,12 @@ class TestAutoRebaseWorkspaceContextEndToEnd:
             stop_cap=_STOP_CAP,
         )
 
-        # Snapshot caller resources BEFORE the resolver runs.
         before = _snapshot_caller(caller)
         outcome = resolver(target, "main", stop)
-        # Snapshot caller resources AFTER the resolver runs.
         after = _snapshot_caller(caller)
 
         assert outcome is True
         assert after == before
-        # Sanity: the caller's proxy scope is still the caller's scope.
         assert caller_proxies["scope"].root == caller.resolve()
 
     def test_auto_rebase_round_trip_leaves_caller_unchanged_on_pipeline_exception(
@@ -854,7 +785,6 @@ class TestAutoRebaseWorkspaceContextEndToEnd:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """A pipeline exception inside the resolver still restores the caller."""
         from ralph.pipeline import auto_integrate_agent as resolver_module
         from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
 
@@ -891,25 +821,16 @@ class TestAutoRebaseWorkspaceContextEndToEnd:
         outcome = resolver(target, "main", stop)
         after = _snapshot_caller(caller)
 
-        # The resolver never raises; the pipeline exception is contained.
         assert outcome is False
         assert after == before
 
 
 def _load_default_policy_bundle() -> PolicyBundle:
-    """The real default policy, which declares the resolution drain."""
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     return load_policy(defaults_dir)
 
 
 def _registry_with_chain_agent() -> object:
-    """Registry whose chain lookup returns a sentinel agent.
-
-    The real default policy's rebase-conflict-resolution drain resolves
-    through ``AgentRegistry.from_config``; the seeded builtins already
-    cover every chain name. A real registry is the easiest way to keep
-    the chain-availability check satisfied.
-    """
     from ralph.agents.registry import AgentRegistry
     from ralph.config.models import UnifiedConfig
 
@@ -917,7 +838,6 @@ def _registry_with_chain_agent() -> object:
 
 
 def _caller_proxies(caller: Path) -> dict[str, object]:
-    """Build the caller's observable resources -- what the caller sees."""
     from ralph.agents.registry import AgentRegistry
     from ralph.config.loader import load_config
     from ralph.mcp.session_plan import resolve_effective_session_mcp_plan
@@ -940,7 +860,6 @@ def _caller_proxies(caller: Path) -> dict[str, object]:
 
 
 def _snapshot_caller(caller: Path) -> dict[str, object]:
-    """Byte-identical snapshot of the caller's observable resources."""
     proxies = _caller_proxies(caller)
     return {
         "prompt_bytes": proxies["prompt_bytes"],

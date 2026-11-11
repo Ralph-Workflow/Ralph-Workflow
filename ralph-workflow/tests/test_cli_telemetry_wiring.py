@@ -1,31 +1,3 @@
-"""Regression tests for CLI telemetry wiring.
-
-Pins the privacy contract at the CLI chokepoints by observing the effect
-the telemetry lifecycle has on its EXTERNAL collaborator -- the Sentry SDK
-boundary (``sentry_sdk`` / ``sentry_sdk.metrics`` / ``atexit``) -- rather
-than by reaching into the private telemetry module.
-
-1. ``init_telemetry`` MUST skip every Sentry call whenever
-   ``RALPH_DISABLE_TELEMETRY`` is truthy or the global / project-local
-   configuration opts out.
-2. ``init_telemetry`` MUST wire the full lifecycle (init, user identity,
-   environment context, session start, wall-clock buckets, atexit
-   finalization) when telemetry is enabled.
-3. ``record_cli_command`` MUST forward the invoked subcommand (or the
-   literal ``pipeline``) as the ``command`` tag.
-4. ``invoke_pipeline`` MUST record the coarse session outcome
-   (``success`` / ``failure`` / ``interrupted``) in the finalized session
-   context.
-5. The PUBLIC run path (``ralph.cli.main.run_pipeline``) MUST forward the
-   resolved agent table and the policy-schema state to telemetry at the
-   config-load chokepoint.
-
-Only PUBLIC names are used: ``ralph.cli.main.init_telemetry`` /
-``record_cli_command`` / ``invoke_pipeline`` / ``RunPipelineOpts`` /
-``run_pipeline``, ``ralph.telemetry.reset_telemetry_state``, and the
-``sentry_sdk`` package itself.
-"""
-
 from __future__ import annotations
 
 import atexit
@@ -60,19 +32,6 @@ if TYPE_CHECKING:
 
 @pytest.fixture(autouse=True)
 def _isolate_telemetry_home_and_workspace(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Keep every telemetry read/write inside the test's temporary tree.
-
-    The anonymous user-id file, the global config lookup, and the
-    project-local config lookup all resolve against ``HOME`` /
-    ``XDG_CONFIG_HOME`` / the current directory, so redirecting them keeps
-    the test hermetic (no operator home directory is read or written).
-
-    The live session handle is ALSO reset here: the telemetry session is
-    process-global, so without the reset the cases would inherit the
-    previous test's outcome / wall-clock buckets and their order would
-    decide the result. ``reset_telemetry_state`` is the public
-    operational reset for exactly that.
-    """
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     monkeypatch.delenv("RALPH_DISABLE_TELEMETRY", raising=False)
@@ -81,14 +40,6 @@ def _isolate_telemetry_home_and_workspace(monkeypatch: pytest.MonkeyPatch, tmp_p
 
 
 class _SentrySpy:
-    """Spy the Sentry SDK boundary -- the external collaborator telemetry emits through.
-
-    Recording the boundary calls proves what telemetry actually DOES
-    (initialize the client, tag it, attach contexts, capture messages,
-    register the session finalizer) instead of proving which internal
-    helper was invoked.
-    """
-
     def __init__(self) -> None:
         self.init_calls: list[dict[str, object]] = []
         self.user_calls: list[object] = []
@@ -157,7 +108,6 @@ class _SentrySpy:
 
     @property
     def emitted_anything(self) -> bool:
-        """Return True when telemetry touched the Sentry boundary at all."""
         return bool(
             self.init_calls
             or self.user_calls
@@ -170,7 +120,6 @@ class _SentrySpy:
         )
 
     def session_payloads(self) -> list[dict[str, object]]:
-        """Return every session payload published to the Sentry boundary."""
         payloads: list[dict[str, object]] = []
         for key, data in self.contexts:
             if key == "session" and isinstance(data, dict):
@@ -178,7 +127,6 @@ class _SentrySpy:
         return payloads
 
     def observed_wallclock_buckets(self) -> list[dict[str, object]]:
-        """Return the coarse wall-clock buckets seen in any session payload."""
         buckets: list[dict[str, object]] = []
         for payload in self.session_payloads():
             wallclock = payload.get("wallclock")
@@ -187,18 +135,15 @@ class _SentrySpy:
         return buckets
 
     def tag_values(self, key: str) -> list[object]:
-        """Return every value recorded for ``key``."""
         return [value for name, value in self.tags if name == key]
 
     def context_payload(self, key: str) -> object:
-        """Return the payload recorded for the ``key`` context."""
         matches = [data for name, data in self.contexts if name == key]
         assert matches, f"no {key!r} context was recorded; got {self.contexts!r}"
         return matches[-1]
 
 
 def _stub_display_context() -> DisplayContext:
-    """Build the smallest DisplayContext the tests need."""
     return type(
         "_StubDisplay",
         (),
@@ -216,12 +161,6 @@ def _stub_display_context() -> DisplayContext:
 
 
 def _finalized_session_context(spy: _SentrySpy) -> dict[str, object]:
-    """Run the registered session finalizer and return the session context payload.
-
-    The finalizer is the callback the CLI handed to ``atexit.register``;
-    running it is what publishes the session payload (outcome, wall-clock
-    buckets, timings) to the Sentry boundary.
-    """
     assert spy.atexit_callbacks, "atexit.register must be wired when telemetry is enabled"
     finalizer = spy.atexit_callbacks[-1]
     assert callable(finalizer)
@@ -232,7 +171,6 @@ def _finalized_session_context(spy: _SentrySpy) -> dict[str, object]:
 
 
 def test_init_telemetry_skips_everything_when_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    """``init_telemetry`` MUST NOT touch the Sentry boundary when opted out."""
     spy = _SentrySpy()
     spy.install(monkeypatch)
     monkeypatch.setenv("RALPH_DISABLE_TELEMETRY", "1")
@@ -249,7 +187,6 @@ def test_init_telemetry_skips_everything_when_disabled(monkeypatch: pytest.Monke
 def test_init_telemetry_short_circuits_truthy_disable_values(
     monkeypatch: pytest.MonkeyPatch, value: str
 ) -> None:
-    """All truthy values (true/yes/on/1, case-insensitive) must short-circuit."""
     spy = _SentrySpy()
     spy.install(monkeypatch)
     monkeypatch.setenv("RALPH_DISABLE_TELEMETRY", value)
@@ -263,7 +200,6 @@ def test_init_telemetry_short_circuits_truthy_disable_values(
 def test_init_telemetry_wires_full_lifecycle_when_enabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When telemetry is NOT disabled, the whole lifecycle reaches Sentry."""
     spy = _SentrySpy()
     spy.install(monkeypatch)
 
@@ -288,16 +224,6 @@ def test_init_telemetry_wires_full_lifecycle_when_enabled(
 
 
 def test_init_telemetry_skips_wallclock_when_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The wall-clock start MUST NOT be wired when telemetry is opted out.
-
-    The coarse wall-clock buckets leave the process ONLY inside the session
-    payload published to Sentry, so the PUBLIC observation of "the
-    wall-clock start was not wired" is "no published session payload
-    carries a ``wallclock`` bucket". The negative is therefore stated
-    through the public telemetry surface (``ralph.telemetry``'s opt-out
-    predicate and the published session payload) -- never by reaching into
-    a private helper.
-    """
     spy = _SentrySpy()
     spy.install(monkeypatch)
     monkeypatch.setenv("RALPH_DISABLE_TELEMETRY", "1")
@@ -306,9 +232,6 @@ def test_init_telemetry_skips_wallclock_when_disabled(monkeypatch: pytest.Monkey
 
     assert is_telemetry_disabled() is True, "the public opt-out predicate must agree"
 
-    # Publish whatever WAS wired, so a wired wall-clock start would become
-    # observable: the buckets reach the outside world only through the
-    # session payload the finalizer publishes.
     for finalizer in spy.atexit_callbacks:
         assert callable(finalizer)
         finalizer()
@@ -324,7 +247,6 @@ def test_init_telemetry_skips_wallclock_when_disabled(monkeypatch: pytest.Monkey
 def test_init_telemetry_skips_everything_when_global_config_opts_out(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """``[general] telemetry_enabled = false`` must skip the Sentry boundary."""
     spy = _SentrySpy()
     spy.install(monkeypatch)
     config_home = tmp_path / "config"
@@ -344,7 +266,6 @@ def test_init_telemetry_skips_everything_when_global_config_opts_out(
 def test_init_telemetry_skips_everything_when_global_config_is_malformed(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Malformed telemetry config fails closed before any Sentry call."""
     spy = _SentrySpy()
     spy.install(monkeypatch)
     config_home = tmp_path / "config"
@@ -361,7 +282,6 @@ def test_init_telemetry_skips_everything_when_global_config_is_malformed(
 def test_init_telemetry_skips_everything_when_project_config_opts_out(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Project-local ``.agent/ralph-workflow.toml`` can opt out before Sentry init."""
     spy = _SentrySpy()
     spy.install(monkeypatch)
     agent_dir = tmp_path / ".agent"
@@ -382,7 +302,6 @@ def test_init_telemetry_skips_everything_when_project_config_opts_out(
 def test_init_telemetry_project_config_opt_out_works_from_subdirectory(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Project-local telemetry opt-out follows the resolved workspace root."""
     spy = _SentrySpy()
     spy.install(monkeypatch)
     agent_dir = tmp_path / ".agent"
@@ -405,7 +324,6 @@ def test_init_telemetry_project_config_opt_out_works_from_subdirectory(
 def test_record_cli_command_records_pipeline_when_no_subcommand(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``record_cli_command`` MUST forward ``'pipeline'`` when no subcommand is invoked."""
     spy = _SentrySpy()
     spy.install(monkeypatch)
     ralph_cli_main.init_telemetry()
@@ -419,7 +337,6 @@ def test_record_cli_command_records_pipeline_when_no_subcommand(
 def test_record_cli_command_records_subcommand_name_when_set(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``record_cli_command`` MUST forward ``ctx.invoked_subcommand`` verbatim when set."""
     spy = _SentrySpy()
     spy.install(monkeypatch)
     ralph_cli_main.init_telemetry()
@@ -431,7 +348,6 @@ def test_record_cli_command_records_subcommand_name_when_set(
 
 
 def test_record_cli_command_noop_when_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    """When telemetry is opted out, the command tag is never recorded."""
     spy = _SentrySpy()
     spy.install(monkeypatch)
     ralph_cli_main.init_telemetry()
@@ -444,7 +360,6 @@ def test_record_cli_command_noop_when_disabled(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_record_cli_command_fail_soft(monkeypatch: pytest.MonkeyPatch) -> None:
-    """An exception at the Sentry boundary MUST NOT crash the CLI."""
     spy = _SentrySpy()
     spy.install(monkeypatch)
     ralph_cli_main.init_telemetry()
@@ -455,30 +370,12 @@ def test_record_cli_command_fail_soft(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sentry_sdk, "set_tag", boom)
 
     ctx = type("_StubCtx", (), {"invoked_subcommand": None})()
-    # Must not raise.
     ralph_cli_main.record_cli_command(ctx)
-
-
-# ---------------------------------------------------------------------------
-# Phase recording wiring — proves _run_pipeline_step's try/finally fires
-# record_phase_execution at least once with role in PhaseRole vocabulary and
-# outcome in the coarse outcome set. Drives the REAL pipeline step (not the
-# CLI-layer run_pipeline stub) so the finally clause is exercised end-to-end.
-# ---------------------------------------------------------------------------
 
 
 def test_run_pipeline_step_records_phase_via_try_finally(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Driving the real _run_pipeline_step MUST record exactly one phase event.
-
-    The spy on ``ralph.pipeline.runner.record_phase_execution`` substitutes
-    the real Sentry sink so the finally-clause call never reaches the network.
-    We exercise the post-with-block success path (event -> AGENT_SUCCESS ->
-    outcome='success'). role MUST come from the PhaseRole closed vocabulary
-    (auto-derived via get_args); outcome MUST come from the coarse outcome
-    set. The finally clause is the SINGLE recording site.
-    """
 
     @lru_cache(maxsize=1)
     def _load_default_policy_bundle() -> PolicyBundle:
@@ -585,12 +482,6 @@ def test_run_pipeline_step_records_phase_via_try_finally(
 def test_run_pipeline_classifies_pipeline_outcome(
     monkeypatch: pytest.MonkeyPatch, return_code: int, expected_outcome: str
 ) -> None:
-    """``invoke_pipeline`` MUST publish the run outcome in the session context.
-
-    0 -> ``\"success\"``; nonzero -> ``\"failure\"`` (regression: previously
-    nonzero non-exception returns were mislabeled at the module default
-    ``\"unknown\"``).
-    """
     spy = _SentrySpy()
     spy.install(monkeypatch)
     ralph_cli_main.init_telemetry()
@@ -613,7 +504,6 @@ def test_run_pipeline_classifies_pipeline_outcome(
 def test_run_pipeline_reports_interrupted_on_keyboard_interrupt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """On ``KeyboardInterrupt``, outcome MUST be ``\"interrupted\"`` and rc MUST be 130."""
     spy = _SentrySpy()
     spy.install(monkeypatch)
     ralph_cli_main.init_telemetry()
@@ -645,7 +535,6 @@ def test_run_pipeline_reports_interrupted_on_keyboard_interrupt(
 def test_run_pipeline_reports_failure_on_generic_exception(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """On a generic exception, outcome MUST be ``\"failure\"`` and rc MUST be 1."""
     spy = _SentrySpy()
     spy.install(monkeypatch)
     ralph_cli_main.init_telemetry()
@@ -677,7 +566,6 @@ def test_run_pipeline_reports_failure_on_generic_exception(
 def test_run_pipeline_does_not_set_outcome_when_disabled(
     monkeypatch: pytest.MonkeyPatch, raise_exception: bool
 ) -> None:
-    """Outcome MUST NOT be set on either path when ``RALPH_DISABLE_TELEMETRY`` is set."""
     spy = _SentrySpy()
     spy.install(monkeypatch)
     ralph_cli_main.init_telemetry()
@@ -715,13 +603,6 @@ def test_run_pipeline_does_not_set_outcome_when_disabled(
 
 
 def _write_global_agents_table(config_home: Path) -> None:
-    """Write a one-agent global agents table so the run resolves an agent.
-
-    The agents table is the operator-facing configuration layer the
-    public run path reads (``$XDG_CONFIG_HOME/ralph-workflow-agents.toml``),
-    so writing it is how the test gives the public path a resolved agent
-    to forward -- no private config object is constructed.
-    """
     config_home.mkdir(parents=True, exist_ok=True)
     (config_home / "ralph-workflow-agents.toml").write_text(
         '[agents.acme-internal]\ncmd = "claude"\n',
@@ -730,18 +611,6 @@ def _write_global_agents_table(config_home: Path) -> None:
 
 
 def _public_run_pipeline() -> int:
-    """Drive the PUBLIC run entry point in dry-run mode.
-
-    ``ralph.cli.main.run_pipeline`` is the public CLI surface; the
-    config-load chokepoint that forwards the agent snapshot and the
-    policy-schema state to telemetry sits inside it, so no private symbol
-    is referenced to reach it.
-
-    The run's own exit code is irrelevant to the telemetry contract: the
-    config-load chokepoint runs BEFORE the preflight checks, so the
-    telemetry effect is observable regardless of whether the synthetic
-    workspace later satisfies the preflight.
-    """
     return ralph_cli_main.run_pipeline(
         ralph_cli_main.RunPipelineRequest(dry_run=True),
         display_context=make_display_context(
@@ -755,15 +624,6 @@ def test_public_run_path_forwards_the_resolved_agent_config(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """The config-load chokepoint MUST actually reach telemetry.
-
-    The forwarding happens behind a lazy import inside a bare
-    ``try/except``, so a broken wiring (renamed function, renamed
-    ``config.agents``, import cycle) would silently no-op while every
-    telemetry unit test still passed. This pins the wiring itself through
-    the PUBLIC run path, and every assertion is made on the Sentry
-    boundary.
-    """
     spy = _SentrySpy()
     spy.install(monkeypatch)
     ralph_cli_main.init_telemetry()
@@ -774,8 +634,6 @@ def test_public_run_path_forwards_the_resolved_agent_config(
     agent_payload = spy.context_payload("agent_config")
     assert isinstance(agent_payload, dict)
     assert agent_payload.get("agent_count") == 1
-    # The temporary workspace has no policy pack, so the derivation runs
-    # and reports 'absent'.
     assert spy.tag_values("policy_schema_state") == ["absent"]
 
 
@@ -783,7 +641,6 @@ def test_public_run_path_is_silent_when_telemetry_inactive(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Nothing is forwarded -- and no policy files are read -- when telemetry is off."""
     spy = _SentrySpy()
     spy.install(monkeypatch)
     ralph_cli_main.init_telemetry()
@@ -800,7 +657,6 @@ def test_public_run_path_never_breaks_the_run(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Telemetry failure must not propagate into the pipeline."""
     spy = _SentrySpy()
     spy.install(monkeypatch)
     ralph_cli_main.init_telemetry()
@@ -811,4 +667,4 @@ def test_public_run_path_never_breaks_the_run(
 
     monkeypatch.setattr(sentry_sdk, "set_context", boom)
 
-    _public_run_pipeline()  # must not raise
+    _public_run_pipeline()

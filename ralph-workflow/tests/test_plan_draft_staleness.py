@@ -1,5 +1,3 @@
-"""Plan draft cleanup preserves unsubmitted work and removes stale provenance."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -41,7 +39,6 @@ def _context(root: Path, policy: object) -> PhaseContext:
 def test_plan_draft_staleness_regression_keeps_different_content_despite_older_mtime(
     tmp_path: Path,
 ) -> None:
-    """S-3: timestamp rewriting cannot discard authored plan repairs."""
     policy = _policy()
     workspace = FsWorkspace(tmp_path)
     draft_path = md_draft_workspace_path("plan")
@@ -58,7 +55,6 @@ def test_plan_draft_staleness_regression_keeps_different_content_despite_older_m
 
 
 def test_plan_draft_staleness_regression_clears_submitted_content(tmp_path: Path) -> None:
-    """S-3: only a draft identical to canonical content is cleared."""
     policy = _policy()
     workspace = FsWorkspace(tmp_path)
     draft_path = md_draft_workspace_path("plan")
@@ -72,7 +68,6 @@ def test_plan_draft_staleness_regression_clears_submitted_content(tmp_path: Path
 
 
 def test_plan_draft_staleness_regression_keeps_seeded_canonical_draft(tmp_path: Path) -> None:
-    """S-4: loopback-seeded drafts remain available for in-place repair."""
     policy = _policy()
     workspace = FsWorkspace(tmp_path)
     workspace.write(md_draft_workspace_path("plan"), "submitted plan")
@@ -88,7 +83,6 @@ def test_plan_draft_staleness_regression_keeps_seeded_canonical_draft(tmp_path: 
 def test_plan_draft_staleness_regression_fallback_promotion_checks_retained_draft(
     tmp_path: Path,
 ) -> None:
-    """S-1: promoted fallback cannot hide a longer staged draft."""
     artifact_dir = tmp_path / ".agent" / "artifacts"
     save_md_draft(
         artifact_dir,
@@ -136,7 +130,6 @@ Expect: the focused draft-staleness tests pass with exit code 0
 
 
 def test_plan_draft_staleness_regression_fresh_entry_removes_seed_marker(tmp_path: Path) -> None:
-    """S-3: a fresh phase entry cannot leave stale seeded provenance behind."""
     policy = _policy()
     workspace = FsWorkspace(tmp_path)
     workspace.write(md_draft_workspace_path("plan"), "seeded plan")

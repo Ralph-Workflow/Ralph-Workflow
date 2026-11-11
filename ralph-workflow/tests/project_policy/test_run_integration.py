@@ -1,27 +1,3 @@
-"""Integration tests for the run_pipeline project-policy-readiness seam.
-
-These tests exercise the real ``_run_project_policy_readiness`` helper with
-injected workspace + remediation-agent seams so the test stays on the
-:func:`MemoryWorkspace` seam (no ``tmp_path``, no ``Path``, no
-``FsWorkspace``) while still covering the actual startup placement before
-pipeline execution.
-
-What the tests prove:
-
-* An unprepared project STILL PROCEEDS to planning. Policy is documentation
-  ABOUT the project, not a precondition for working ON it, so no policy outcome
-  may abort the development run. (See test_policy_never_blocks_the_run.py for the
-  full contract, including crash tolerance.)
-* A fake remediation agent that does NOT fix the project leaves the policy
-  unready -- and the run continues anyway, loudly.
-* A fake remediation agent that DOES fix the project, followed by an approving
-  analysis review, reaches READY.
-* The configured ``policy_remediation`` chain's first agent (not the
-  hard-coded ``"claude"``) drives the remediation InvokeAgentEffect.
-* An opt-out AGENTS.md yields SKIPPED without any policy writes and emits
-  exactly one brief status line.
-"""
-
 from __future__ import annotations
 
 import json
@@ -46,24 +22,10 @@ if TYPE_CHECKING:
     from ralph.pipeline.effects import InvokeAgentEffect
     from ralph.pipeline.factory import PipelineDeps
 
-# Sentinel for tests that need a PipelineEvent-shaped return without
-# importing the untyped MCP bridge. Compared by ``==`` at call sites.
 _agent_success_sentinel: PipelineEvent = PipelineEvent.AGENT_SUCCESS
 
-# Shorthand: tests construct fake _LoadResult values via the module
-# attribute (no private import).
 _LoadResult = run_module._LoadResult
 
-# Module attributes that some tests in this file mutate via direct
-# assignment (the helpers ``_patch_run_pipeline_collaborators`` and
-# ``fake_run`` install fakes by overwriting these names). Without
-# per-test restoration, subsequent tests in the same worker process
-# observe the fakes and silently short-circuit (e.g., a faked
-# ``_execute_pipeline`` that returns 0 hides real preflight/policy
-# failures and trips sibling tests in other files). The autouse
-# fixture below captures the original values at module import time
-# and restores them after every test, so a single worker can run
-# this file plus others without state bleed.
 _PATCHED_RUN_MODULE_ATTRS: tuple[str, ...] = (
     "_load_configuration",
     "_run_preflight_checks",
@@ -82,16 +44,6 @@ _ORIGINAL_RUN_MODULE_ATTRS: dict[str, object] = {
 
 @pytest.fixture(autouse=True)
 def _restore_run_module_collaborators() -> None:
-    """Restore ``run_module`` collaborators and ``_state.run_func`` after each test.
-
-    Several tests in this file overwrite ``run_module`` attributes such as
-    ``_execute_pipeline`` and ``_state.run_func`` with fakes and never
-    restore them. Within a single pytest worker (including the ``-n 1``
-    path used by some of the budget-tracking tests), that leftover state
-    turns subsequent tests' assertions against the real ``run_pipeline``
-    into silent short-circuits. This fixture ensures every test starts
-    from the canonical module state captured at import time.
-    """
     yield
     for name in _PATCHED_RUN_MODULE_ATTRS:
         setattr(run_module, name, _ORIGINAL_RUN_MODULE_ATTRS[name])
@@ -99,19 +51,6 @@ def _restore_run_module_collaborators() -> None:
 
 
 def _stub_load_result(workspace_root: str, *, phase: str = "planning") -> _LoadResult:
-    """Build a minimal ``_LoadResult`` that exercises the helper seam.
-
-    The ``workspace_scope`` uses an in-memory path; the helper itself is
-    short-circuited from touching the real filesystem because tests inject
-    a ``workspace_factory`` that returns a ``MemoryWorkspace``.
-
-    The ``phase`` parameter carries the persisted phase the load result
-    holds on its :class:`PipelineState`. Existing callers all default to
-    ``"planning"`` so their assertions are unchanged; the persisted-phase
-    hand-back test in this file parameterizes over the non-terminal phases
-    the pipeline persists, asserting the run returns to ``phase`` rather
-    than collapsing into the policy session id.
-    """
     config = UnifiedConfig()
     workspace_scope = WorkspaceScope(root=workspace_root, allowed_roots=[workspace_root])
     return _LoadResult(
@@ -127,16 +66,10 @@ def _stub_load_result(workspace_root: str, *, phase: str = "planning") -> _LoadR
 
 
 def _ensure_run_func_state_unset() -> None:
-    """Reset ``_state.run_func`` to ``_RUN_FUNC_UNSET`` before each test."""
     run_module._state.run_func = run_module._RUN_FUNC_UNSET
 
 
 def _approve_policy(ws: MemoryWorkspace) -> None:
-    """Submit a 'completed' analysis decision, as the MCP submit path would.
-
-    READY requires BOTH halves of the gate: a clean deterministic validator AND
-    an approving review. A fake agent that only fixes the files is not enough.
-    """
     ws.mkdirs(".agent/artifacts")
     ws.write(
         policy_analysis.ANALYSIS_ARTIFACT_REL_PATH,
@@ -151,18 +84,6 @@ def _approve_policy(ws: MemoryWorkspace) -> None:
 
 @pytest.mark.timeout_seconds(5)
 def test_unprepared_project_still_proceeds_to_planning() -> None:
-    """A project whose policy cannot be made ready runs anyway.
-
-    This replaces an earlier test that asserted the opposite. The old contract --
-    an unready policy returns _EXIT_PREFLIGHT and the run dies before planning --
-    meant a stale RALPH-LANG block for a language nobody used could cost a user
-    their entire session. Policy is documentation ABOUT the project; it is not a
-    precondition for working ON it.
-
-    The faked agent claims success but writes nothing, so the deterministic
-    validator fails on every iteration and the analysis budget is exhausted with
-    findings still open. The helper must STILL return _EXIT_SUCCESS.
-    """
     _ensure_run_func_state_unset()
 
     runner_invocations: list[dict[str, object]] = []
@@ -179,8 +100,6 @@ def test_unprepared_project_still_proceeds_to_planning() -> None:
     invoke_calls: list[str] = []
 
     def fake_invoke(*, phase: str, prompt_path: str) -> bool:
-        # Claims success but does NOT write any files, so the deterministic
-        # revalidation that follows fails every time.
         del phase
         invoke_calls.append(prompt_path)
         return True
@@ -197,16 +116,12 @@ def test_unprepared_project_still_proceeds_to_planning() -> None:
 
     assert rc == 0, "policy must NEVER block the development run"
     assert invoke_calls, "remediation agent must still be invoked"
-    # The user is told what happened -- proceeding is not the same as hiding it.
     assert any("remediation-required" in m for m in emit_messages)
     assert any("NOT READY" in m or "could not" in m for m in emit_messages)
 
 
 @pytest.mark.timeout_seconds(5)
 def test_remediation_agent_that_fixes_project_proceeds() -> None:
-    """A faked remediation agent that completes every required file allows the
-    runner to proceed (the helper returns ``_EXIT_SUCCESS``).
-    """
     _ensure_run_func_state_unset()
 
     runner_invocations: list[dict[str, object]] = []
@@ -229,7 +144,6 @@ def test_remediation_agent_that_fixes_project_proceeds() -> None:
     def fake_invoke(*, phase: str, prompt_path: str) -> bool:
         del prompt_path
         if phase == PHASE_REMEDIATION:
-            # Materialize every required canonical file so revalidation passes.
             _seed_agents_md(ws)
             _seed_claude_md(ws)
             from ralph.language_detector.models import ProjectStack
@@ -237,9 +151,6 @@ def test_remediation_agent_that_fixes_project_proceeds() -> None:
             stack = ProjectStack(primary_language="Python")
             _seed_all_core_complete(ws, stack)
             return True
-        # The analysis phase then approves what remediation wrote, which is the
-        # second half of the gate: READY needs BOTH a clean validator AND a
-        # 'completed' review.
         _approve_policy(ws)
         return True
 
@@ -256,15 +167,11 @@ def test_remediation_agent_that_fixes_project_proceeds() -> None:
         invoke_remediation_agent_factory=lambda _w: fake_invoke,
     )
 
-    assert rc == 0  # _EXIT_SUCCESS
-    # The helper emitted the single brief READY line.
+    assert rc == 0
     assert any("ready" in m for m in emit_messages)
 
 
 def test_opt_out_skips_readiness_without_writes() -> None:
-    """AC-02/AC-14: the byte-exact opt-out marker yields SKIPPED with no
-    policy writes and exactly one brief status line.
-    """
     _ensure_run_func_state_unset()
 
     runner_invocations: list[dict[str, object]] = []
@@ -294,23 +201,17 @@ def test_opt_out_skips_readiness_without_writes() -> None:
         emit_factory=fake_emit,
     )
 
-    assert rc == 0  # _EXIT_SUCCESS
-    # Exactly one brief status line for SKIPPED.
+    assert rc == 0
     skipped_lines = [m for m in emit_messages if "skipped" in m]
     assert len(skipped_lines) == 1
     assert "opt-out" in skipped_lines[0]
-    # No policy file was created in the workspace.
     assert not ws.exists(markers.CACHE_REL_PATH)
     assert not ws.exists(f"{markers.CANONICAL_DIR}testing-policy.md")
 
 
 def test_readiness_emits_exactly_one_line_for_each_terminal_state() -> None:
-    """AC-14: the helper emits EXACTLY ONE brief status line for SKIPPED
-    and EXACTLY ONE for READY. No duplicate emits.
-    """
     _ensure_run_func_state_unset()
 
-    # Case 1: SKIPPED
     ws_skipped = MemoryWorkspace()
     ws_skipped.write(
         markers.AGENTS_MD,
@@ -326,7 +227,6 @@ def test_readiness_emits_exactly_one_line_for_each_terminal_state() -> None:
     )
     assert len(emit_messages_skipped) == 1
 
-    # Case 2: READY (using the cache fast-path after a full pre-seed).
     from ralph.language_detector.models import ProjectStack
     from tests.project_policy.test_validator import (
         _seed_agents_md,
@@ -352,24 +252,12 @@ def test_readiness_emits_exactly_one_line_for_each_terminal_state() -> None:
 
 
 def test_remediation_invokes_configured_agent_not_hardcoded_claude() -> None:
-    """AC-13: when the policy_remediation chain is configured with a
-    non-Claude first agent, the InvokeAgentEffect uses that name. The
-    helper does NOT hardcode ``"claude"``.
-
-    This test mocks :func:`ralph.pipeline.effect_executor.execute_agent_effect`
-    so the real closure runs without actually invoking any agent. It
-    captures the ``InvokeAgentEffect`` that would have been sent to the
-    pipeline and asserts the ``agent_name`` matches the configured
-    first agent.
-    """
     _ensure_run_func_state_unset()
 
-    # Import here so the patch stays local to this test.
     from ralph.pipeline import effect_executor as effect_executor_module
     from ralph.policy.loader import default_dir, load_policy
     from ralph.policy.models._agent_chain_config import AgentChainConfig
 
-    # Build a bundle with a custom first agent on policy_remediation.
     default_bundle = load_policy(default_dir())
     custom_chain = AgentChainConfig(agents=["custom-agent"], max_retries=2, retry_delay_ms=1000)
     new_chains = dict(default_bundle.agents.agent_chains)
@@ -381,11 +269,6 @@ def test_remediation_invokes_configured_agent_not_hardcoded_claude() -> None:
 
     observed_effects: list[object] = []
 
-    # The fake mirrors the production signature so module-attribute
-    # assignment is type-safe. Modules that lack type stubs
-    # (``ralph.mcp.bridge``, ``ralph.mcp.contracts``) are imported
-    # lazily inside the function body where mypy cannot flag a direct
-    # assignment against their attribute types.
     def fake_execute_agent_effect(
         effect: InvokeAgentEffect,
         config: UnifiedConfig,
@@ -404,7 +287,6 @@ def test_remediation_invokes_configured_agent_not_hardcoded_claude() -> None:
         **opts: object,
     ) -> PipelineEvent:
         observed_effects.append(effect)
-        # Seed the workspace so the next revalidation passes.
         from ralph.language_detector.models import ProjectStack
         from tests.project_policy.test_validator import (
             _seed_agents_md,
@@ -417,9 +299,6 @@ def test_remediation_invokes_configured_agent_not_hardcoded_claude() -> None:
         _seed_all_core_complete(ws, ProjectStack(primary_language="Python"))
         return _agent_success_sentinel
 
-    # Patch execute_agent_effect on the effect_executor module. The
-    # production helper imports it locally inside the function, so we
-    # patch the module attribute it looks up at call time.
     original_executor_module = effect_executor_module.execute_agent_effect
     effect_executor_module.execute_agent_effect = fake_execute_agent_effect
 
@@ -441,11 +320,8 @@ def test_remediation_invokes_configured_agent_not_hardcoded_claude() -> None:
     finally:
         effect_executor_module.execute_agent_effect = original_executor_module
 
-    assert rc == 0  # remediation fixed the project
-    # The closure was invoked at least once.
+    assert rc == 0
     assert observed_effects, "execute_agent_effect must be invoked"
-    # The first captured effect must carry the configured agent name,
-    # NOT the hardcoded ``"claude"``.
     first_effect: object = observed_effects[0]
     agent_name_attr: object = getattr(first_effect, "agent_name", None)
     assert agent_name_attr == "custom-agent", (
@@ -454,19 +330,11 @@ def test_remediation_invokes_configured_agent_not_hardcoded_claude() -> None:
 
 
 def test_helper_does_not_emit_blocked_panel_when_agent_uses_run_id() -> None:
-    """Sanity: the helper path uses ``load_result.run_id`` and does not
-    require any Path/tmp_path artefact on disk. Asserts the helper works
-    end-to-end with ``MemoryWorkspace`` + injected closures only.
-    """
     _ensure_run_func_state_unset()
 
     ws = MemoryWorkspace()
     load_result = _stub_load_result("/test/sanity")
 
-    # No remediation agent injected: the helper must NOT reach remediation
-    # at all because the preflight returns REMEDIATION_REQUIRED but the
-    # helper short-circuits to BLOCKED when no closure is available.
-    # We assert no Path/fs artefacts are required.
     from ralph.language_detector.models import ProjectStack
     from tests.project_policy.test_validator import (
         _seed_agents_md,
@@ -485,39 +353,12 @@ def test_helper_does_not_emit_blocked_panel_when_agent_uses_run_id() -> None:
         emit_factory=lambda m: None,
     )
 
-    assert rc == 0  # READY
-    # Confirm the workspace still holds exactly the seeded files (no Path
-    # was ever touched).
+    assert rc == 0
     assert ws.exists(markers.AGENTS_MD)
     assert ws.exists(markers.CLAUDE_MD)
 
 
-# ---------------------------------------------------------------------------
-# Top-level ``run_pipeline`` integration tests
-# ---------------------------------------------------------------------------
-# These tests exercise the actual ``run_pipeline`` startup path with
-# stubbed collaborators (configuration loader, preflight, skill sync,
-# policy readiness, dry-run printer, pipeline executor). They prove:
-#
-# 1. The readiness preflight is invoked between skill-sync and dry-run.
-# 2. A nonzero readiness result prevents both ``print_dry_run`` and
-#    ``_execute_pipeline`` from being reached.
-# 3. A ``parallel_worker_manifest`` request short-circuits BEFORE the
-#    readiness preflight runs.
-#
-# The seam is the module-level functions of ``ralph.cli.commands.run``; the
-# helper monkey-patches the module attributes so no real Path I/O or
-# subprocess call is required.
-
-
 class _RecordingRunners:
-    """Capture the call order of every ``run_pipeline`` collaborator.
-
-    The orchestrator invokes collaborators in a fixed sequence; this
-    recorder is shared by the patched stubs so each test can assert the
-    call order and check which helpers were reached.
-    """
-
     def __init__(self) -> None:
         self.calls: list[str] = []
 
@@ -533,11 +374,6 @@ def _patch_run_pipeline_collaborators(
     policy_readiness_rc: int,
     runners: _RecordingRunners,
 ) -> dict[str, object]:
-    """Patch the ``run_module`` collaborators used by ``run_pipeline``.
-
-    Returns the dict of stubs so tests can introspect / reconfigure
-    individual collaborators.
-    """
     stubs: dict[str, object] = {}
 
     def fake_load_configuration(*args: object, **kwargs: object) -> _LoadResult:
@@ -591,12 +427,6 @@ def _patch_run_pipeline_collaborators(
 
 
 def test_run_pipeline_invokes_readiness_before_execution() -> None:
-    """AC-14: ``run_pipeline`` MUST invoke the readiness preflight before
-    ``print_dry_run`` and ``_execute_pipeline``. The call order is
-    load_configuration -> run_preflight_checks -> sync_shipped_skills ->
-    warn_capabilities -> run_project_policy_readiness -> print_dry_run
-    (or _execute_pipeline).
-    """
     _ensure_run_func_state_unset()
     runners = _RecordingRunners()
     load_result = _stub_load_result("/test/pipeline-order")
@@ -637,14 +467,6 @@ def test_run_pipeline_invokes_readiness_before_execution() -> None:
 
 
 def test_run_pipeline_nonzero_readiness_still_reaches_dry_run_and_execute() -> None:
-    """Defence in depth for the never-block rule.
-
-    The orchestrator is a fault boundary and should already return 0 for every
-    policy outcome in a normal run. But if it ever returned nonzero anyway -- a
-    future bug, a path nobody anticipated -- run_pipeline must STILL proceed. The
-    rule is enforced twice, on purpose: policy failure and development work are
-    entirely separate concerns.
-    """
     _ensure_run_func_state_unset()
     runners = _RecordingRunners()
     load_result = _stub_load_result("/test/pipeline-blocked")
@@ -652,7 +474,7 @@ def test_run_pipeline_nonzero_readiness_still_reaches_dry_run_and_execute() -> N
         run_module,
         load_result=load_result,
         preflight_rc=0,
-        policy_readiness_rc=2,  # _EXIT_PREFLIGHT (blocked)
+        policy_readiness_rc=2,
         runners=runners,
     )
 
@@ -672,9 +494,7 @@ def test_run_pipeline_nonzero_readiness_still_reaches_dry_run_and_execute() -> N
         display_context=make_display_context(),
     )
 
-    # The run does NOT inherit the policy exit code.
     assert rc != 2, "a policy failure must not become the run's exit code"
-    # Readiness still fires BEFORE dry-run, in the same order as always...
     assert runners.calls[:5] == [
         "load_configuration",
         "run_preflight_checks",
@@ -682,17 +502,12 @@ def test_run_pipeline_nonzero_readiness_still_reaches_dry_run_and_execute() -> N
         "warn_capabilities",
         "run_project_policy_readiness",
     ]
-    # ...but the run CONTINUES past it regardless.
     assert "print_dry_run" in runners.calls, (
         "an unready policy must not prevent the run from proceeding"
     )
 
 
 def test_run_pipeline_dry_run_invokes_printer_after_ready() -> None:
-    """AC-14: when ``dry_run=True`` is set and readiness passes, the
-    orchestrator invokes ``print_dry_run`` and returns ``_EXIT_SUCCESS``
-    WITHOUT calling ``_execute_pipeline``.
-    """
     _ensure_run_func_state_unset()
     runners = _RecordingRunners()
     load_result = _stub_load_result("/test/dry-run")
@@ -729,16 +544,10 @@ def test_run_pipeline_dry_run_invokes_printer_after_ready() -> None:
         "run_project_policy_readiness",
         "print_dry_run",
     ]
-    # The dry-run short-circuit prevents _execute_pipeline.
     assert "execute_pipeline" not in runners.calls
 
 
 def test_run_pipeline_parallel_worker_manifest_short_circuits_before_readiness() -> None:
-    """AC-14: ``parallel_worker_manifest`` requests MUST short-circuit
-    before the readiness preflight runs. The parallel-worker sub-run is
-    a different flow with its own startup seam; it must never invoke
-    the readiness helper on its own.
-    """
     _ensure_run_func_state_unset()
     runners = _RecordingRunners()
     load_result = _stub_load_result("/test/parallel-worker")
@@ -767,7 +576,6 @@ def test_run_pipeline_parallel_worker_manifest_short_circuits_before_readiness()
     )
 
     assert rc == 0
-    # The orchestrator short-circuits to the parallel-worker path.
     assert runners.calls == ["run_parallel_worker_from_manifest"]
     assert "run_project_policy_readiness" not in runners.calls
     assert "load_configuration" not in runners.calls

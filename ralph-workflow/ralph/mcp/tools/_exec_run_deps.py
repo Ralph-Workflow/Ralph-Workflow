@@ -1,4 +1,3 @@
-"""Injectable dependencies and type aliases for exec tool command execution."""
 
 from __future__ import annotations
 
@@ -19,25 +18,20 @@ type OutputChunkCallback = Callable[[str], None]
 
 @dataclass(frozen=True)
 class ExecRunDeps:
-    """Injectable dependencies for exec tool command execution."""
 
     runner: CommandRunner | None = None
     cwd_provider: CwdProvider | None = None
     process_manager: ProcessManager | None = None
     on_output_chunk: OutputChunkCallback | None = None
-    #: Directory for oversized-output spill files. Defaults to the OS temp dir
-    #: (``tempfile.gettempdir()``) so the OS reclaims them; injectable for tests.
     spill_dir: Path | None = None
 
 
 @runtime_checkable
 class _SessionWithStreaming(Protocol):
-    """Subset of AgentSession that supports thread-owned tool output streaming."""
 
     def current_thread_tool_output_sink(
         self,
     ) -> Callable[[dict[str, object]], None] | None:
-        """Return the active sink when the calling thread owns it."""
         ...
 
 
@@ -45,7 +39,6 @@ def build_effective_exec_deps(
     session: CoordinationSessionLike,
     deps: ExecRunDeps | None,
 ) -> ExecRunDeps | None:
-    """Compose the session's thread-owned output sink into exec dependencies."""
     if not isinstance(session, _SessionWithStreaming):
         return deps
     sink = session.current_thread_tool_output_sink()

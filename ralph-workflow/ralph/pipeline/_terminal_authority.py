@@ -1,14 +1,3 @@
-"""Single authority for terminal-success eligibility.
-
-The terminal authority is the only component permitted to return
-``True`` for a terminal-success report. The function returns
-``False`` unconditionally while any of:
-
-* an :class:`IntegrationRecord` exists and is not cleared;
-* :attr:`RebaseState.integration_unresolved` is True;
-* the publication authority reports a non-terminal decision;
-* the parallel-joins authority reports an unfinished join.
-"""
 
 from __future__ import annotations
 
@@ -28,18 +17,6 @@ def is_terminal_success_eligible(
     integration_record: IntegrationRecord | None,
     rebase_state: RebaseState,
 ) -> bool:
-    """Return ``True`` only when every authority has finished its obligation.
-
-    The function is the single authority for the "may the run
-    loop report terminal success?" question.
-
-    The cached ``last_fan_out_decision`` projection on the rebase state
-    is trusted only when the loaded ``state`` agrees with the canonical
-    ``fan_out_decision(state)`` recomputation. An absent or stale cached
-    projection never gates a success report: unfinished workers must
-    block. When no state is supplied (legacy callers), an absent cached
-    projection keeps the historical fail-open behavior.
-    """
     pub = rebase_state.last_publication_decision
     cached_fan_out = rebase_state.last_fan_out_decision
     if state is None:

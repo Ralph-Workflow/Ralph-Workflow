@@ -1,14 +1,3 @@
-"""Tests for reducer lock-retry behavior (WU-6).
-
-Verifies that:
-1. A repairable git failure with no recovery phase re-routes in-place
-   to development_commit (not to failed_terminal), bounded by recovery_epoch < 3.
-2. After recovery_epoch reaches the cap with no recovery phase, routes to failed_terminal
-   via _enter_failed_recovery.
-3. The message file at effect.message_file survives the failure and is re-read
-   on the next pass.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -43,18 +32,8 @@ def _load_pipeline_policy() -> PipelinePolicy:
 
 
 def test_no_recovery_phase_routes_in_place() -> None:
-    """A repairable git failure with no recovery phase re-routes in-place.
-
-    When _resolve_commit_recovery_phase returns None (no commit_recovery and no
-    commit_review phase), _recoverable_git_failure_default_target returns the
-    in-place phase name ('development_commit'). The reducer re-routes to it
-    (not to failed_terminal), allowing commit_executor to re-read the validated
-    message from effect.message_file.
-    """
     policy = _load_pipeline_policy()
 
-    # Use development_commit phase; patch _resolve_commit_recovery_phase to
-    # return None (simulating a policy with no commit_review phases).
     state = PipelineState(
         phase="development_commit",
         recovery_epoch=0,
@@ -63,38 +42,24 @@ def test_no_recovery_phase_routes_in_place() -> None:
     )
     set_last_commit_error("GitOperationError: Unable to create '.git/index.lock': File exists")
     try:
-        # Patch in the reducer module so _handle_commit_failure sees no recovery phase
         with patch(
             "ralph.pipeline.reducer._resolve_commit_recovery_phase",
             return_value=None,
         ):
             next_state, _ = reduce(state, PipelineEvent.COMMIT_FAILURE, policy)
 
-        # Must NOT reach failed_terminal — re-route in-place
         assert next_state.phase != "failed_terminal"
-        # Re-routes to the in-place development_commit phase
         assert next_state.phase == "development_commit"
-        # pending_cycle_outcome cleared (commit did not succeed)
         assert next_state.pending_cycle_outcome is None
-        # recovery_epoch incremented
         assert next_state.recovery_epoch == 1
     finally:
         set_last_commit_error(None)
 
 
 def test_recovery_epoch_clamps_at_max() -> None:
-    """Past the cap, the reducer clamps ``recovery_epoch`` and continues in-place.
-
-    The cap is purely diagnostic for repairable failures: the reducer never
-    escalates to ``failed_terminal`` merely because ``recovery_epoch`` reached
-    ``_MAX_COMMIT_RECOVERY_ATTEMPTS``. Past the cap, the in-place retry
-    continues with the epoch clamped at the cap, and the validated commit
-    message is re-read on the next pass.
-    """
     policy = _load_pipeline_policy()
     cap = _MAX_COMMIT_RECOVERY_ATTEMPTS
 
-    # At the cap: re-route in-place and clamp at the cap.
     state = PipelineState(
         phase="development_commit",
         recovery_epoch=cap,
@@ -112,13 +77,11 @@ def test_recovery_epoch_clamps_at_max() -> None:
         assert next_state.phase == "development_commit", (
             f"Expected in-place retry at recovery_epoch={cap}, got phase={next_state.phase}"
         )
-        # Epoch is clamped at the cap (does not increment past it).
         assert next_state.recovery_epoch == cap, (
             f"recovery_epoch must be clamped at the cap, got {next_state.recovery_epoch}"
         )
         assert next_state.pending_cycle_outcome is None
 
-        # Above the cap (e.g. 5): re-route in-place and keep the epoch at the cap.
         state_above_cap = PipelineState(
             phase="development_commit",
             recovery_epoch=5,
@@ -139,19 +102,8 @@ def test_recovery_epoch_clamps_at_max() -> None:
 
 
 def test_message_file_preserved_through_retry(tmp_path: Path) -> None:
-    """The message file at effect.message_file survives the failure.
-
-    The commit executor only deletes the message file on COMMIT_SUCCESS or
-    COMMIT_SKIPPED. On failure it sets _execution_record.last_error and returns
-    COMMIT_FAILURE; the file stays on disk. A fresh pass of
-    execute_commit_effect re-reads effect.message_file.
-
-    The reducer is pure and issues no file-deletion effects for the in-place
-    retry, so the message file is guaranteed to survive COMMIT_FAILURE handling.
-    """
     from ralph.pipeline.commit_executor import execute_commit_effect
 
-    # Create a message file (simulating what commit_executor wrote before failure)
     agent_dir = tmp_path / ".agent" / "artifacts"
     agent_dir.mkdir(parents=True, exist_ok=True)
     message_file = agent_dir / "commit_message.md"
@@ -160,10 +112,8 @@ def test_message_file_preserved_through_retry(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    # Verify the message file exists before the reducer processes the failure
     assert message_file.exists(), "Message file must exist before failure handling"
 
-    # Run the reducer with a repairable git failure
     policy = _load_pipeline_policy()
     state = PipelineState(
         phase="development_commit",
@@ -179,21 +129,17 @@ def test_message_file_preserved_through_retry(tmp_path: Path) -> None:
         ):
             next_state, _ = reduce(state, PipelineEvent.COMMIT_FAILURE, policy)
 
-        # Reducer routes in-place, no file deletion effect is issued (reducer is pure)
         assert next_state.phase == "development_commit"
         assert next_state.pending_cycle_outcome is None
 
-        # The message file is untouched after reducer processes COMMIT_FAILURE
         assert message_file.exists(), (
             "Message file at effect.message_file must survive COMMIT_FAILURE; "
             "the commit executor only deletes it on SUCCESS or SKIPPED"
         )
 
-        # A fresh execute_commit_effect re-reads the preserved message file
         effect = CommitEffect(message_file=str(message_file))
         _event = execute_commit_effect(effect, tmp_path)
 
-        # The message file was NOT deleted by the reducer's COMMIT_FAILURE handling
         assert message_file.exists(), "Message file must still exist after reducer routes in-place"
     finally:
         set_last_commit_error(None)
@@ -218,13 +164,6 @@ def _setup_git_worktree_for_retry(tmp_path: Path) -> Path:
 
 
 def test_valid_message_preserved_through_failure_then_success(tmp_path: Path) -> None:
-    """A validated commit message survives a real failure and is re-used on success.
-
-    Demonstrates the full failure-then-success commit seam required by AC-4:
-    a real ``execute_commit_effect`` invocation fails on a fake stage-all
-    (simulated lock contention), the message file stays on disk, the reducer
-    routes in-place, and the next pass reads the same message and succeeds.
-    """
     from ralph.git.commit_result import CommitCreationResult
     from ralph.mcp.artifacts.commit_message import read_commit_message_from_path
     from ralph.pipeline.commit_executor import (
@@ -253,7 +192,6 @@ def test_valid_message_preserved_through_failure_then_success(tmp_path: Path) ->
     original_bytes = message_text.encode("utf-8")
     message_file.write_bytes(original_bytes)
 
-    # Fake commit helpers.
     observed_messages: list[str] = []
     stage_call_count = {"n": 0}
     create_call_count = {"n": 0}
@@ -274,7 +212,6 @@ def test_valid_message_preserved_through_failure_then_success(tmp_path: Path) ->
 
     effect = CommitEffect(message_file=str(message_file))
 
-    # First attempt: fails on the simulated lock contention.
     first_event = execute_commit_effect(
         effect,
         repo_root,
@@ -283,7 +220,6 @@ def test_valid_message_preserved_through_failure_then_success(tmp_path: Path) ->
     )
     assert first_event is PipelineEvent.COMMIT_FAILURE
     assert "index.lock" in (get_last_commit_error() or "")
-    # The message file is preserved on disk byte-for-byte.
     assert message_file.exists(), (
         "Validated message must be preserved on COMMIT_FAILURE for the in-place retry"
     )
@@ -291,7 +227,6 @@ def test_valid_message_preserved_through_failure_then_success(tmp_path: Path) ->
         "Validated message bytes must be preserved byte-for-byte after failure"
     )
 
-    # Reducer routes in-place for a policy with no commit_recovery/commit_review.
     policy_bundle = _load_policy_bundle()
     policy = policy_bundle.pipeline
     state = PipelineState(
@@ -313,7 +248,6 @@ def test_valid_message_preserved_through_failure_then_success(tmp_path: Path) ->
         "In-place lock retry must preserve commit.agent_invoked=True"
     )
 
-    # Use the real effect router to obtain the next effect.
     scope = WorkspaceScope(
         root=repo_root,
         allowed_roots=(repo_root,),
@@ -334,7 +268,6 @@ def test_valid_message_preserved_through_failure_then_success(tmp_path: Path) ->
     )
     assert Path(next_effect.message_file) == message_file
 
-    # Assert byte-for-byte artifact preservation before second attempt.
     assert message_file.read_bytes() == original_bytes, (
         "Artifact bytes must remain byte-identical before retry attempt"
     )
@@ -342,7 +275,6 @@ def test_valid_message_preserved_through_failure_then_success(tmp_path: Path) ->
     assert expected_rendered_message is not None
     assert "\n\n" in expected_rendered_message, "Must be a multiline message"
 
-    # Second attempt: the same message is re-read via next_effect and the commit succeeds.
     second_event = execute_commit_effect(
         next_effect,
         repo_root,
@@ -353,7 +285,6 @@ def test_valid_message_preserved_through_failure_then_success(tmp_path: Path) ->
         f"Second attempt must succeed with the reused message, got {second_event}"
     )
 
-    # The SAME multiline message bytes were used on the successful attempt.
     assert len(observed_messages) == 1
     assert observed_messages[0] == expected_rendered_message, (
         "The validated multiline message must reach the second (successful) commit "
@@ -362,7 +293,6 @@ def test_valid_message_preserved_through_failure_then_success(tmp_path: Path) ->
 
 
 def test_persistent_lock_contention_never_reaches_failed_terminal_and_pauses() -> None:
-    """A lock is waited out, not fatal: no recovery budget burn, no terminal, a pause between tries."""
     from ralph.pipeline.reducer import LOCK_RETRY_DELAY_MS
 
     policy = _load_pipeline_policy()

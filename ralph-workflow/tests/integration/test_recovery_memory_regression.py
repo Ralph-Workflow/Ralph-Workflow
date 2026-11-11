@@ -1,12 +1,3 @@
-"""Regression harness for recovery-lineage memory retention and checkpoint growth.
-
-Characterization notes (wt-024 memory-perf):
-- Cycle count exposes sub-kilobyte retained drift that would accumulate over
-  an hours-long run while staying under repository test budgets.
-- Early/late elapsed means are printed for drift inspection; retained-byte
-  plateau remains the hard assertion (not a brittle wall-clock threshold).
-"""
-
 from __future__ import annotations
 
 import statistics
@@ -45,9 +36,6 @@ _AgentInactivityTimeoutError.__name__ = "AgentInactivityTimeoutError"
 def _load_default_policy_bundle() -> PolicyBundle:
     defaults_dir = Path(__file__).resolve().parents[2] / "ralph" / "policy" / "defaults"
     bundle = load_policy(defaults_dir)
-    # The development chain must carry both agents: the failure ledger demotes
-    # an agent after the configured unproductive limits, and a one-agent chain
-    # fails the phase on the first demotion instead of falling over.
     chains = dict(bundle.agents.agent_chains)
     chains["development"] = AgentChainConfig(agents=["claude", "opencode"])
     agents_policy = bundle.agents.model_copy(update={"agent_chains": chains})
@@ -75,9 +63,6 @@ def _make_state(
 
 
 def _make_controller() -> RecoveryController:
-    # One unproductive attempt spends the agent: the ledger's TOTAL limit is
-    # checked before the CONSECUTIVE limit, so a single failure demotes the
-    # agent for the phase and the chain falls over to the next agent.
     return RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=_RECOVERY_CYCLE_CAP,

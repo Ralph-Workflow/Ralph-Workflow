@@ -1,4 +1,3 @@
-"""Tool specs for git and exec operations."""
 
 from __future__ import annotations
 
@@ -27,12 +26,6 @@ from ralph.timeout_defaults import (
     EXEC_SOFT_REPLY_BUDGET_MS,
 )
 
-# A timeout is ambiguous, so the property hint teaches both readings: a
-# legitimately long command should raise ``timeout_ms``, but an unexpectedly slow
-# one may be genuinely stuck (infinite loop, deadlock, or blocked on input), in
-# which case raising the limit only wastes another full budget — fix the command
-# instead. Default is interpolated from the one source of truth so the advertised
-# hint can never drift from real behavior.
 _TIMEOUT_MS_DESCRIPTION = (
     f"Timeout in milliseconds (default: {EXEC_DEFAULT_TIMEOUT_MS}, above the verify "
     f"budget; example values: 10000, 60000, 120000). Synchronous calls block up to "
@@ -48,8 +41,6 @@ _TIMEOUT_MS_DESCRIPTION = (
 
 
 def _timeout_ms_property() -> dict[str, object]:
-    """Schema for the ``timeout_ms`` param, with the default derived from the one
-    source of truth so the advertised hint can never drift from real behavior."""
     return {
         "type": "number",
         "description": _TIMEOUT_MS_DESCRIPTION,
@@ -58,7 +49,6 @@ def _timeout_ms_property() -> dict[str, object]:
 
 
 def _max_runtime_ms_property() -> dict[str, object]:
-    """Schema for the optional ``max_runtime_ms`` param."""
     return {
         "type": "number",
         "description": (
@@ -71,14 +61,6 @@ def _max_runtime_ms_property() -> dict[str, object]:
 
 
 def _cwd_property() -> dict[str, object]:
-    """Schema for the optional workspace-bounded ``cwd`` param on git read tools.
-
-    The handler resolves ``cwd`` against the workspace root
-    (``..`` collapsed, symlinks followed). When the resolved path — or
-    discovered repository top-level — is outside the workspace, it still
-    runs git and prefixes the output with a ``WARNING:`` result while keeping
-    ``is_error=False``.
-    """
     return {
         "type": "string",
         "description": (
@@ -96,7 +78,6 @@ def _cwd_property() -> dict[str, object]:
 
 
 def git_exec_specs() -> list[ToolSpec]:
-    """Return tool specs for git and exec operations."""
     mod: object | None = sys.modules.get("tests.test_tool_spec_capability_consistency")
     if mod is not None:
         dict_obj: object = getattr(mod, "_HANDLER_CAPABILITY", None)

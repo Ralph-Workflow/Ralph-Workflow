@@ -1,24 +1,3 @@
-"""Reproduction and assertion tests for streaming-block coalescing (S-7 / AC-04).
-
-S-7 (wt-028-display P1): one entry per event in the live log.
-
-These tests verify the new single-entry shape for streaming blocks
-(``thinking`` and ``text`` kinds):
-
-* the streaming layer is silent during open / continue — no per-fragment
-  line, no open preview, no checkpoint preview;
-* the close path emits exactly one entry that carries the joined passage
-  plus fragment count and char count (sketch J shape);
-* tool call/result pairs remain two entries (call, result);
-* internal vocabulary (``CONT`` / ``META`` category badges, ``thinking-start``,
-  ``thinking-end``, ``thinking-continue#``, ``thinking-checkpoint#``,
-  ``↳ preview:``, ``↳ ai-summary:``) never reaches the rendered output.
-
-The pre-S-7 shape — per-fragment + open-preview + close-summary +
-ai-summary, all repeating the same content — was the bug; these tests
-pin the new shape.
-"""
-
 from __future__ import annotations
 
 import io
@@ -34,8 +13,6 @@ from ralph.display.parallel_display import ParallelDisplay
 if TYPE_CHECKING:
     from pathlib import Path
 
-# Forbidden markers (the OLD shape). Any leak of these into the rendered
-# output means the close-only coalescing has regressed.
 _FORBIDDEN_TOKENS: tuple[str, ...] = (
     "thinking-start",
     "thinking-end",
@@ -64,7 +41,6 @@ def _make_display(
 
 
 def _plain_lines(output: str) -> list[str]:
-    """Return the non-empty plain lines from a Rich console dump."""
     return [line for line in output.splitlines() if line.strip()]
 
 
@@ -73,14 +49,7 @@ def _count_lines_with_token(output: str, token: str) -> int:
 
 
 class TestStreamingBlockCoalescingSingleEntry:
-    """S-7 / AC-04: one entry per event — the streaming layer is silent."""
-
     def test_thinking_block_emits_zero_lines_during_streaming(self, tmp_path: Path) -> None:
-        """While the thinking block is open, no lines are emitted.
-
-        With S-7, every fragment during the open phase is buffered into
-        ``_active_block``. The console is silent until the block closes.
-        """
         pd, buf, _console = _make_display(tmp_path)
         unit_id = "u1"
 
@@ -103,8 +72,6 @@ class TestStreamingBlockCoalescingSingleEntry:
             metadata={},
         )
 
-        # Nothing has been emitted yet — the live log is silent during
-        # the open phase (verified by reading the buffer BEFORE close).
         out_before = buf.getvalue()
         assert "First sentence." not in out_before, (
             "Streaming layer must not emit per-fragment lines; got:\n" + out_before
@@ -115,12 +82,6 @@ class TestStreamingBlockCoalescingSingleEntry:
     def test_thinking_block_closes_with_exactly_one_entry_with_joined_passage(
         self, tmp_path: Path
     ) -> None:
-        """A 3-fragment thinking block produces exactly one line carrying the full passage.
-
-        S-7 / AC-04: a multi-fragment thinking block emits exactly one
-        line on close (sketch J shape). The line carries the joined
-        passage so the operator can read the reasoning as one piece.
-        """
         pd, buf, _console = _make_display(tmp_path)
         unit_id = "u1"
 
@@ -142,7 +103,6 @@ class TestStreamingBlockCoalescingSingleEntry:
             content="Closing the loop.",
             metadata={},
         )
-        # A non-streaming event closes the thinking block.
         pd.emit_parsed_event(
             unit_id=unit_id,
             kind=ActivityEventKind.TEXT,
@@ -153,40 +113,27 @@ class TestStreamingBlockCoalescingSingleEntry:
         out = buf.getvalue()
         joined = "Investigating the elapsed time. Found the recompute seam. Closing the loop."
 
-        # The joined passage must appear in the output exactly once.
         assert joined in out, f"Expected full joined passage in output. Output:\n{out}"
         assert out.count(joined) == 1, (
             f"Joined passage must appear exactly once, got {out.count(joined)} times. "
             f"Output:\n{out}"
         )
 
-        # Exactly one streaming-block close line carries the think tag.
         thinking_lines = [line for line in _plain_lines(out) if "[reasoning][u1]" in line]
         assert len(thinking_lines) == 1, (
             f"Expected exactly 1 thinking close line, got {len(thinking_lines)}. "
             f"Lines: {thinking_lines}\nFull output:\n{out}"
         )
 
-        # The close line carries the joined passage (S-7 / S-9 shape).
-        # Per AC-05, the close line is human vocabulary only -- the
-        # "fragments" footer is retired and the joined passage is the
-        # single visible entry for the block.
         close_line = thinking_lines[0]
         assert "fragments" not in close_line, (
             f"Close line must NOT report fragment count: {close_line!r}"
         )
 
-        # No internal vocabulary leaked.
         for forbidden in _FORBIDDEN_TOKENS:
             assert forbidden not in out, f"Forbidden token {forbidden!r} leaked into output:\n{out}"
 
     def test_text_block_also_coalesces_to_single_entry(self, tmp_path: Path) -> None:
-        """Text blocks share the coalescing rule — one close entry per block.
-
-        S-7 / AC-04: tool call/result pairs remain two entries, but text
-        streams coalesce to one entry per block close. The text kind
-        is in ``_STREAMING_KINDS`` alongside ``thinking``.
-        """
         pd, buf, _console = _make_display(tmp_path)
         unit_id = "u1"
 
@@ -208,7 +155,6 @@ class TestStreamingBlockCoalescingSingleEntry:
             "Text streaming layer must not emit per-fragment lines; got:\n" + out_before
         )
 
-        # A non-streaming event closes the text block.
         pd.emit_parsed_event(
             unit_id=unit_id,
             kind=ActivityEventKind.TOOL_USE,
@@ -229,12 +175,6 @@ class TestStreamingBlockCoalescingSingleEntry:
         )
 
     def test_tool_call_and_result_remain_two_separate_entries(self, tmp_path: Path) -> None:
-        """Tool call/result pairs remain two entries (S-7 / AC-04).
-
-        Unlike streaming text/thinking, tool_use and tool_result are NOT
-        in ``_STREAMING_KINDS``: each emits its own single entry, so the
-        pair produces exactly two entries.
-        """
         pd, buf, _console = _make_display(tmp_path)
         unit_id = "u1"
 
@@ -262,12 +202,6 @@ class TestStreamingBlockCoalescingSingleEntry:
         )
 
     def test_long_thinking_emits_one_close_line_no_checkpoints(self, tmp_path: Path) -> None:
-        """Long thinking (>20 fragments) still emits exactly one close line.
-
-        S-7 retired the checkpoint machinery: even a 25-fragment stream
-        closes with a single entry, not 25 per-fragment lines plus
-        checkpoints.
-        """
         pd, buf, _console = _make_display(tmp_path)
         unit_id = "u1"
 
@@ -288,21 +222,16 @@ class TestStreamingBlockCoalescingSingleEntry:
 
         out = buf.getvalue()
         thinking_lines = [line for line in _plain_lines(out) if "[reasoning][u1]" in line]
-        # One logical close entry may wrap into multiple physical console rows.
-        # Continuations repeat the transcript carrier, and a final overflow
-        # trailer is therefore a valid final physical row.
         assert any("⋯ reasoning" in line for line in thinking_lines), f"missing close entry:\n{out}"
         assert all("fragments" not in line for line in thinking_lines), (
             f"Close entry must NOT report fragment count: {thinking_lines!r}"
         )
 
-        # No checkpoints, no continuation tags, no previews.
         assert "checkpoint#" not in out, f"Checkpoint machinery must be retired:\n{out}"
         for forbidden in _FORBIDDEN_TOKENS:
             assert forbidden not in out, f"Forbidden token {forbidden!r} leaked:\n{out}"
 
     def test_no_bare_lifecycle_noise_in_output(self, tmp_path: Path) -> None:
-        """Bare lifecycle tokens still do not appear in the output."""
         pd, buf, _console = _make_display(tmp_path)
         unit_id = "u1"
 
@@ -333,7 +262,6 @@ class TestStreamingBlockCoalescingSingleEntry:
     def test_bare_lifecycle_suppressed_for_all_providers(
         self, tmp_path: Path, provider_prefix: str
     ) -> None:
-        """Bare lifecycle tokens for every provider prefix are still suppressed."""
         pd, buf, _console = _make_display(tmp_path)
         unit_id = "u1"
 
@@ -369,7 +297,6 @@ class TestStreamingBlockCoalescingSingleEntry:
     def test_longer_sentences_with_lifecycle_tokens_not_suppressed(
         self, tmp_path: Path, provider_prefix: str
     ) -> None:
-        """Sentences containing lifecycle tokens but with extra context still surface."""
         pd, buf, _console = _make_display(tmp_path)
         unit_id = "u1"
 

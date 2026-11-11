@@ -1,4 +1,3 @@
-"""Read, stat, list, and search handler functions."""
 
 from __future__ import annotations
 
@@ -48,11 +47,9 @@ if TYPE_CHECKING:
     from ralph.workspace import Workspace
 
 
-# --- Phase 1 indexed read helpers -----------------------------------------
 
 
 def _tombstone_replacement(tombstone: sqlite3.Row) -> str | None:
-    """Return the tombstone's replacement_evidence_id, typed as ``str | None``."""
     raw: object = tombstone["replacement_evidence_id"]
     if raw is None:
         return None
@@ -60,7 +57,6 @@ def _tombstone_replacement(tombstone: sqlite3.Row) -> str | None:
 
 
 def _tombstone_field(tombstone: sqlite3.Row, key: str) -> str:
-    """Read a string-typed tombstone column with precise return type."""
     raw: object = tombstone[key]
     if raw is None:
         return ""
@@ -68,12 +64,6 @@ def _tombstone_field(tombstone: sqlite3.Row, key: str) -> str:
 
 
 def _resolve_evidence(session: object, evidence_id: str) -> dict[str, object] | None:
-    """Return the indexed evidence row for ``evidence_id`` if available.
-
-    Returns ``None`` when the explore index is disabled. Raises
-    ``ToolError`` when the evidence_id is unknown (the caller should
-    treat that as a stale_evidence or unknown_evidence signal).
-    """
     handle = resolve_explore_index(session)
     if handle is None:
         return None
@@ -82,7 +72,6 @@ def _resolve_evidence(session: object, evidence_id: str) -> dict[str, object] | 
         return None
     row: EvidenceRow | None = store.get_evidence(evidence_id)
     if row is None:
-        # Try the tombstone for retention_expired vs stale_evidence.
         tombstone: sqlite3.Row | None = store.get_tombstone(evidence_id)
         if tombstone is None:
             raise ToolError(f"unknown_evidence: {evidence_id!r} (no live row or tombstone)")
@@ -103,14 +92,6 @@ def _resolve_evidence(session: object, evidence_id: str) -> dict[str, object] | 
 
 
 def _freshness_for_read(session: object) -> dict[str, object]:
-    """Return the freshness metadata block for read responses.
-
-    When the explore index is attached, the block carries the
-    canonical serving metadata (``index_used``, ``fallback_reason``,
-    ``index_staleness``) plus the legacy generation / staleness
-    counters. When no handle is attached the block is empty so the
-    legacy shape is preserved.
-    """
     handle = resolve_explore_index(session)
     if handle is None:
         return {}
@@ -139,7 +120,6 @@ def _freshness_for_read(session: object) -> dict[str, object]:
 def _workspace_snapshot(
     workspace: Workspace, path: str, *, max_bytes: int | None = None
 ) -> tuple[dict[str, object], str | None]:
-    """Observe metadata and text once, retaining legacy workspace compatibility."""
     snapshot_fn: object = getattr(workspace, "snapshot", None)
     if callable(snapshot_fn):
         try:
@@ -150,11 +130,6 @@ def _workspace_snapshot(
         content = cast("object", getattr(snapshot, "content", None))
         if isinstance(stat, dict) and (content is None or isinstance(content, str)):
             return stat, content
-    # ``stat`` is inside the guard because a rejected PATH (one carrying an
-    # embedded NUL, one resolving outside the workspace) raises ``ValueError``
-    # from path resolution. Uncaught, that becomes a retryable ``-32603`` the
-    # agent re-issues forever; ``write_file`` / ``delete_path`` / ``stat_path``
-    # all already degrade to a terminal ``is_error`` result instead.
     try:
         stat_result = workspace.stat(path)
         return stat_result, workspace.read(path)
@@ -165,7 +140,6 @@ def _workspace_snapshot(
 
 
 def _hash_file(workspace: Workspace, path: str) -> str | None:
-    """Return the SHA-256 of the workspace file's bytes, or None."""
     import hashlib
 
     try:
@@ -181,7 +155,6 @@ def _dispatch_partial_read(
     path: str,
     sel: _ReadSelector,
 ) -> ToolResult:
-    """Validate selectors and dispatch to byte-window or line-based partial read."""
     line_range = (sel.start is not None) or (sel.end is not None)
     byte_window = (sel.off is not None and sel.off > 0) or (sel.lim is not None)
     head_mode = sel.head is not None
@@ -223,45 +196,8 @@ def handle_read_file(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
-    """Read a UTF-8 file from the workspace.
-
-    Full-file reads (no partial params) return a plain text block for UTF-8 files
-    at or below max_bytes (default 5_000_000). The JSON envelope only appears when
-    truncated is True OR when an error occurs (binary_or_invalid_utf8).
-
-    Partial-read parameter groups (line_start/line_end, offset/limit, head, tail)
-    are mutually exclusive; combining any two raises InvalidParams.
-
-    Optional param max_bytes overrides the default ceiling for full-file reads.
-
-    Phase 1 indexed args:
-
-    * ``evidence_id`` — resolve the indexed evidence handle and read the
-      exact span + ``context_lines`` of context.
-    * ``span_id`` — resolve the indexed span from the structure rows
-      and read the exact span + bounded context. Behavior is
-      fail-closed: a stale span, missing generation, or unknown
-      span id produces a structured ``unknown_evidence`` or
-      ``stale_evidence`` response.
-    * ``symbol`` — resolve the indexed symbol span from the
-      structure rows and read the exact span + bounded context.
-      Behavior is fail-closed: a stale symbol, missing generation,
-      or unknown symbol produces a structured ``unknown_evidence``
-      or ``stale_evidence`` response.
-    * ``expected_content_hash`` — fail closed if the current file's
-      content hash does not match.
-    * ``context_lines`` — bounded context around the resolved span.
-    * ``return_metadata`` — include content hash, generation, and freshness.
-    """
     require_capability(session, WORKSPACE_READ_CAPABILITY, "Workspace read")
 
-    # --- Indexed selectors -------------------------------------------
-    # AC-01: the read_file handler accepts exactly one of
-    # ``path``, ``evidence_id``, ``span_id``, or ``symbol``. Direct
-    # callers (without the JSON Schema ``oneOf`` validator) are
-    # rejected here too so an in-process bug or hand-written
-    # client cannot silently pick a selector. Empty (no selector)
-    # is rejected because every selector is required.
     evidence_id = params.get("evidence_id")
     span_id = params.get("span_id")
     symbol_selector = params.get("symbol")
@@ -320,8 +256,6 @@ def handle_read_file(
     path = required_string_param(params, "path")
     normalized = normalize_relative_path(path)
 
-    # One snapshot is reused for hashing and full-file rendering. Partial and
-    # indexed reads retain their bounded specialised operations below.
     sel = _ReadSelector.from_params(params)
     max_bytes = _int_param(params, "max_bytes", FULL_READ_DEFAULT_MAX_BYTES)
     snapshot_stat: dict[str, object] | None = None
@@ -347,7 +281,6 @@ def handle_read_file(
             is_error=True,
         )
 
-    # Expected-content-hash precondition (no evidence/span selector).
     if expected_hash is not None:
         actual_hash = (
             None
@@ -391,7 +324,6 @@ def handle_read_file(
     if sel.is_active():
         result = _dispatch_partial_read(workspace, normalized, path, sel)
         if return_metadata:
-            # Re-decode the JSON envelope and append freshness.
             try:
                 first_content = result.content[0]
                 if not isinstance(first_content, ToolContent):
@@ -542,24 +474,12 @@ def _read_via_evidence(
     )
 
 
-# Distinct sentinels so the resolvers can report "no index handle"
-# versus "index present but selector unknown" without collapsing
-# the two outcomes into the same None return.
 _SPAN_NOT_FOUND = object()
 _SYMBOL_NOT_FOUND = object()
 _SYMBOL_AMBIGUOUS = object()
 
 
 def _resolve_span(session: object, span_id: str) -> object | None:
-    """Return the indexed ``SpanRow`` for ``span_id`` or a sentinel.
-
-    Return values:
-
-    * ``None`` — the session has no explore index handle.
-    * ``_SPAN_NOT_FOUND`` — the handle is attached but the span is
-      not in the store.
-    * :class:`SpanRow` — the resolved row.
-    """
     handle = resolve_explore_index(session)
     if handle is None:
         return None
@@ -578,17 +498,6 @@ def _resolve_symbol(
     *,
     path: str | None = None,
 ) -> object | None:
-    """Return the indexed symbol resolution for ``symbol``.
-
-    Return values:
-
-    * ``None`` — the session has no explore index handle.
-    * ``_SYMBOL_NOT_FOUND`` — the handle is attached but the symbol
-      is not in the store.
-    * ``_SYMBOL_AMBIGUOUS`` — multiple candidates matched; the
-      caller should surface a structured ambiguity error.
-    * :class:`SymbolRow` — the resolved unique match.
-    """
     handle = resolve_explore_index(session)
     if handle is None:
         return None
@@ -646,10 +555,9 @@ def _read_via_span(
             ],
             is_error=True,
         )
-    # ``span_obj`` is a SpanRow at this point — typed access is safe.
     span_row: SpanRow = cast(
         "SpanRow", span_obj
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     path = span_row.path
     start_line = int(span_row.start_line)
     end_line = int(span_row.end_line)
@@ -754,8 +662,6 @@ def _read_via_symbol(
             is_error=True,
         )
     if sym_obj is _SYMBOL_AMBIGUOUS:
-        # The store knows the candidates; refetch the list and
-        # surface them so the caller can disambiguate.
         handle = resolve_explore_index(session)
         candidates: Sequence[SymbolRow] = []
         if handle is not None:
@@ -788,11 +694,9 @@ def _read_via_symbol(
         )
     sym_row: SymbolRow = cast(
         "SymbolRow", sym_obj
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     path = sym_row.path
     span_id = sym_row.span_id
-    # Defer to the span resolver so hash checks and content slicing
-    # share one code path.
     if span_id:
         return _read_via_span(
             session,
@@ -802,9 +706,6 @@ def _read_via_symbol(
             expected_hash=expected_hash,
             return_metadata=return_metadata,
         )
-    # Fallback: span_id missing — return the symbol's metadata with
-    # a structured "ambiguous" payload so callers can rerun with a
-    # more specific selector.
     payload_ambiguous: dict[str, object] = {
         "status": "ambiguous_symbol",
         "symbol": symbol,
@@ -819,14 +720,6 @@ def _read_via_symbol(
 
 
 def _decode_payload(result: ToolResult) -> dict[str, object]:
-    """Decode a ``ToolResult`` JSON envelope into a mutable dict.
-
-    Used by ``read_multiple_files`` to splice indexed span / symbol
-    results into the per-item payload without losing the structured
-    error semantics from the helpers above. Empty dicts are returned
-    on decode failure so callers can still attach selector metadata
-    without crashing.
-    """
     if not result.content:
         return {"content": ""}
     first_content = result.content[0]
@@ -846,35 +739,15 @@ def handle_read_multiple_files(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
-    """Read multiple workspace files in one call and return per-file results.
-
-    Phase 1 indexed args:
-
-    * ``items`` (list of dicts): each item may be one of
-      ``{"path": "...", "line_start": N, "line_end": N}``,
-      ``{"evidence_id": "..."}``,
-      ``{"span_id": "..."}``, or ``{"symbol": "..."}``.
-    * ``per_item_max_bytes``: cap each returned item.
-    * ``return_metadata``: include freshness per item.
-    * ``fail_fast``: a stale indexed item fails only that item unless
-      ``fail_fast=true`` (Phase 1 keeps the default ``fail_fast=true``
-      so callers can opt into partial results explicitly).
-    """
     require_capability(session, WORKSPACE_READ_CAPABILITY, "Read multiple files")
 
     items_param = params.get("items")
     paths_param = params.get("paths")
 
-    # AC-01: read_multiple_files accepts exactly one of ``paths``
-    # (legacy live read) or ``items`` (mixed live/indexed reads).
-    # Empty / conflicting / both-present inputs are rejected
-    # explicitly so direct callers cannot silently choose a
-    # selector.
     if items_param is not None and paths_param is not None:
         raise InvalidParamsError("read_multiple_files accepts exactly one of 'paths' or 'items'.")
     legacy_paths_mode = items_param is None
     if items_param is None:
-        # Legacy ``paths`` path.
         if not isinstance(paths_param, list):
             raise InvalidParamsError("Missing 'paths' parameter as list of strings")
         items_param = [{"path": str(p)} for p in paths_param]
@@ -915,12 +788,7 @@ def handle_read_multiple_files(
         payload.update(_freshness_for_read(session))
         payload.update(serving_metadata(session, index_used=True, fallback_reason=None))
     else:
-        # Always carry the canonical serving block so the top-level
-        # ``read_multiple_files`` response reports which path served
-        # it. Per-item selectors already carry their own status.
         payload.update(serving_metadata(session, index_used=True, fallback_reason=None))
-    # Legacy ``paths`` mode preserves the prior behavior: a per-file
-    # error does not flip ``is_error`` on the top-level result.
     is_error = False if legacy_paths_mode else has_fatal_error
     return ToolResult(
         content=[ToolContent.text_content(_tool_json(payload))],
@@ -936,14 +804,6 @@ def _read_multiple_item(
     per_item_max_bytes: int,
     return_metadata: bool,
 ) -> dict[str, object]:
-    """Resolve a single ``items`` entry to a result dict.
-
-    AC-01: each ``items`` entry must specify exactly one selector
-    (``path``, ``evidence_id``, ``span_id``, or ``symbol``). Empty
-    or conflicting selectors are rejected with a structured
-    ``invalid_selector`` error so direct callers cannot silently
-    pick a selector.
-    """
     _selector_keys = ("path", "evidence_id", "span_id", "symbol")
     present_selectors = [key for key in _selector_keys if key in item]
     if not present_selectors:
@@ -964,7 +824,6 @@ def _read_multiple_item(
             ),
         }
     if "evidence_id" in item:
-        # Reuse the single-read evidence logic via a synthetic call.
         single_result = _read_via_evidence(
             session,
             workspace,
@@ -1084,7 +943,6 @@ def handle_stat(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
-    """Return file metadata (type, size, timestamps) for a workspace path."""
     require_capability(session, WORKSPACE_METADATA_READ_CAPABILITY, "Workspace metadata read")
     path = required_string_param(params, "path")
     normalized = normalize_relative_path(path)
@@ -1100,7 +958,6 @@ def handle_list_allowed_roots(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
-    """Return the list of workspace paths the session is permitted to access."""
     require_capability(session, WORKSPACE_READ_CAPABILITY, "List allowed roots")
     try:
         roots = workspace.allowed_roots()
@@ -1115,18 +972,6 @@ def handle_list_directory(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
-    """List entries in a workspace directory.
-
-    AC-09 indexed args:
-
-    * ``view`` ``raw|compact|ranked|outline`` — raw preserves
-      the legacy shape; compact adds counts; ranked sorts by
-      symbol count; outline includes top-level symbols/headings.
-    * ``include_counts``, ``include_symbols``, ``changed_only``,
-      ``limit_children`` filter the indexed view.
-    * ``use_index`` ``auto|always|never`` — always fails closed
-      when required indexed metadata cannot be supplied.
-    """
     require_capability(session, WORKSPACE_READ_CAPABILITY, "Directory listing")
     path = required_string_param(params, "path")
     recursive = bool(params.get("recursive", False))
@@ -1145,15 +990,6 @@ def handle_list_directory(
     changed_only = bool(params.get("changed_only", False))
     limit_children = _int_param(params, "limit_children", 100)
 
-    # AC-09: ``use_index='never'`` is an unconditional bypass. The
-    # caller has explicitly opted out, so the handler must never
-    # resolve the explore index -- it must use the live listing path
-    # regardless of view/recursive/depth. The same path also covers
-    # the default-raw backward-compat case: when the caller did NOT
-    # pass any indexed view selector (view=raw, no
-    # include_counts/include_symbols/changed_only/use_index=always),
-    # preserve the legacy plain listing shape even if an index
-    # handle is attached.
     explicit_indexed_request = (
         view != "raw" or include_counts or include_symbols or changed_only or use_index == "always"
     )
@@ -1165,7 +1001,6 @@ def handle_list_directory(
         )
         return ToolResult(content=[ToolContent.text_content(output)], is_error=False)
 
-    # Indexed listing path.
     handle_obj: object = resolve_explore_index(session)
     handle_obj2: object | None = (
         handle_obj if handle_obj is not None and hasattr(handle_obj, "store") else None
@@ -1192,20 +1027,11 @@ def handle_list_directory(
                 ],
                 is_error=True,
             )
-        # AC-09: when the caller explicitly asked for an indexed view
-        # but no handle is attached, ``use_index='auto'`` falls back to
-        # a documented live-fallback wrapper instead of silently
-        # dropping the metadata. ``use_index='never'`` is handled
-        # above; ``use_index='always'`` is handled by the early
-        # return above.
         output = (
             list_dir_flat(workspace, path)
             if not recursive
             else _list_dir_recursive_output(workspace, path)
         )
-        # The raw view + an explicit indexed view request is
-        # contradictory; honour the raw view and emit a
-        # fallback_reason so the caller can detect the downgrade.
         if view == "raw":
             return ToolResult(
                 content=[
@@ -1251,7 +1077,6 @@ def handle_list_directory(
         else []
     )
     raw_store: object | None = handle.store
-    # Filter / prioritize changed paths when requested.
     if changed_only and raw_store is not None:
         dirty_obj: object = getattr(raw_store, "peek_dirty_paths", lambda: [])()
         dirty_iterable: Iterable[object] = dirty_obj if isinstance(dirty_obj, list) else []
@@ -1262,7 +1087,6 @@ def handle_list_directory(
             if isinstance(entry_path_obj, str) and entry_path_obj in dirty:
                 filtered.append(entry)
         entries_list = filtered
-    # Symbol counts and headings.
     if raw_store is not None and (
         include_counts or include_symbols or view in {"compact", "ranked", "outline"}
     ):
@@ -1342,7 +1166,6 @@ def handle_list_directory_recursive(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
-    """Return a flat listing of all entries under a workspace directory."""
     require_capability(session, WORKSPACE_READ_CAPABILITY, "Recursive directory listing")
     path = required_string_param(params, "path")
     output = _list_dir_recursive_output(workspace, path)
@@ -1356,14 +1179,6 @@ def _build_directory_tree(
     max_depth: int | None,
     exclude_patterns: list[str] | None,
 ) -> dict[str, object]:
-    """Build a recursive directory tree structure.
-
-    AC-09: every node carries its full ``path`` so the directory_tree
-    handler can look up indexed counts/symbols and run
-    ``changed_only`` filters without rebuilding the tree. The
-    ``path`` is the workspace-relative POSIX path used by the
-    explore index.
-    """
     normalized = normalize_relative_path(path)
     name = normalized.split("/")[-1] if normalized else path
 
@@ -1407,12 +1222,6 @@ def handle_directory_tree(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
-    """Return a nested JSON directory tree for a workspace path.
-
-    AC-09 indexed args mirror ``list_directory``: ``view``,
-    ``include_counts``, ``include_symbols``, ``limit_children``,
-    ``use_index``. Raw + never preserve the legacy tree shape.
-    """
     require_capability(session, WORKSPACE_READ_CAPABILITY, "Directory tree")
     path = required_string_param(params, "path")
     max_depth = _int_opt_param(params, "max_depth")
@@ -1436,14 +1245,6 @@ def handle_directory_tree(
     limit_children = _int_param(params, "limit_children", 100)
     changed_only = bool(params.get("changed_only", False))
 
-    # AC-09: ``use_index='never'`` is an unconditional bypass. The
-    # caller has explicitly opted out, so the handler must never
-    # resolve the explore index or decorate the tree. The same path
-    # also covers the default-raw backward-compat case: when the
-    # caller did NOT pass any indexed view selector (view=raw, no
-    # include_counts/include_symbols/changed_only/use_index=always),
-    # preserve the legacy tree shape even if an index handle is
-    # attached.
     explicit_indexed_request = (
         view != "raw" or include_counts or include_symbols or changed_only or use_index == "always"
     )
@@ -1465,7 +1266,7 @@ def handle_directory_tree(
     if handle_obj_check is not None and hasattr(handle_obj_check, "store"):
         handle2 = cast(
             "ExploreIndexLike | None", handle_obj_check
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
     else:
         handle2 = None
     handle = handle2
@@ -1494,8 +1295,6 @@ def handle_directory_tree(
         except Exception as exc:
             raise ToolError(f"Failed to build directory tree for '{path}': {exc}") from exc
         tree_dict2: dict[str, object] = tree_obj2 if isinstance(tree_obj2, dict) else {}
-        # Legacy shape when no index is attached and the caller did
-        # not explicitly request an indexed view.
         if view == "raw":
             return ToolResult(
                 content=[ToolContent.text_content(_tool_json(tree_dict2))],
@@ -1518,11 +1317,6 @@ def handle_directory_tree(
     tree: dict[str, object] = tree_raw if isinstance(tree_raw, dict) else {}
     tree["path"] = path
 
-    # changed_only: filter to subtrees that contain at least one dirty
-    # descendant. Files drop unless their full path is dirty; directories
-    # are kept only when at least one descendant file matches, so the
-    # caller can see the ancestor chain of a changed path. Mirror this
-    # behaviour with the same dirty-path source as ``list_directory``.
     if changed_only:
         tree_dirty_source: object | None = handle_check_store
         co_dirty_obj: list[object] = []
@@ -1580,7 +1374,6 @@ def handle_directory_tree(
         else:
             tree = filtered_root
 
-    # Attach counts/symbols metadata from the explore index.
     counts_by_path: dict[str, dict[str, int]] = {}
     symbols_by_path: dict[str, list[dict[str, str]]] = {}
     raw_tree_store: object | None = handle.store
@@ -1604,11 +1397,6 @@ def handle_directory_tree(
                 )
 
     def _decorate(node: dict[str, object], parent_path: str) -> dict[str, object]:
-        # AC-09: ensure every node has a usable ``path`` even if the
-        # builder forgot one (e.g. tests build a tree ad-hoc) so the
-        # counts/symbols lookup and changed_only filter are not
-        # silently skipped. Pre-order traversal so children are
-        # decorated BEFORE the ranked sort reads their counts.
         node_path_obj: object = node.get("path")
         node_path: str
         if isinstance(node_path_obj, str) and node_path_obj:
@@ -1628,7 +1416,6 @@ def handle_directory_tree(
             children_list: list[dict[str, object]] = [
                 c for c in children_list_obj if isinstance(c, dict)
             ]
-            # Decorate first so ranked sort sees fresh counts.
             for child in children_list:
                 _decorate(child, node_path)
             if view == "ranked":
@@ -1681,20 +1468,6 @@ def handle_search_files(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
-    """Search for files matching a glob pattern within a workspace directory.
-
-    Indexed args:
-
-    * ``ranked``: rank paths by deterministic index signals.
-    * ``role`` in {source, test, docs, config, generated, any}.
-    * ``contains_symbol``: filter to files that define or mention
-      the named symbol via the indexed structure rows. The
-      contract ships: absence of the symbol in the index reports
-      ``+0 component:no_indexed_data`` reasons, not a deferred
-      placeholder.
-    * ``changed_only``: filter to git-changed paths.
-    * ``return_evidence_ids``: attach handles to matched indexed records.
-    """
     require_capability(session, WORKSPACE_READ_CAPABILITY, "File search")
     pattern = required_string_param(params, "pattern")
     path = required_string_param(params, "path")
@@ -1723,20 +1496,13 @@ def handle_search_files(
     if truncated:
         matches = matches[:limit]
 
-    # AC-04: every role accepted by the parameter validator (source,
-    # test, docs, config, generated) actually narrows the result
-    # instead of silently falling back to the unfiltered glob set.
-    # The handler used to pass ``docs`` / ``config`` / ``generated``
-    # through unchanged; the canonical taxonomy now narrows each.
     if role != "any":
         from ralph.mcp.explore.ranking import matches_role
 
         matches = [
             m for m in matches if matches_role(m, role)
-        ]  # m is str; matches_role(str, str) -> bool
+        ]
 
-    # Pull the explore handle once so every subsequent branch uses
-    # the same store; ``None`` preserves the legacy live contract.
     from ralph.mcp.explore.dirty_paths import resolve_explore_index
 
     _search_handle = resolve_explore_index(session)
@@ -1750,9 +1516,6 @@ def handle_search_files(
     contains_symbol_note: str | None = None
     if contains_symbol is not None:
         if _search_store is None:
-            # No index attached — keep the live glob results but
-            # surface the explicit fallback note so callers see why
-            # the filter did not narrow matches.
             contains_symbol_note = "no_explore_index_handle"
         else:
             text = str(contains_symbol)
@@ -1770,10 +1533,6 @@ def handle_search_files(
                 matches = [m for m in matches if m in symbol_files]
                 contains_symbol_note = None
 
-    # changed_only: filter to paths that are dirty in the index queue
-    # (the production lifecycle hook keeps this fresh). Without an
-    # index handle we fall back to a live git_status call so the
-    # caller still gets a useful answer.
     changed_only_note: str | None = None
     is_git_changed: bool = False
     if changed_only:
@@ -1813,15 +1572,11 @@ def handle_search_files(
             changed_only_note = "live_git_status"
             is_git_changed = bool(changed_set)
 
-    # Ranking.
     score_reasons: list[dict[str, object]] = []
     if ranked:
         from ralph.mcp.explore.ranking import score_search_file, sort_ranked
 
         basename = pattern.split("/")[-1]
-        # Phase 2 wiring: when an index is attached and the candidate
-        # is currently dirty, mark it as git-changed so the ranking
-        # bonuses kick in even without a real git diff.
         contains_symbol_str = (
             str(contains_symbol)
             if (_search_store is not None and contains_symbol is not None)
@@ -1868,11 +1623,6 @@ def handle_search_files(
     }
     if score_reasons:
         output["score_reasons"] = score_reasons
-    # Canonical serving metadata so callers can tell which path served
-    # the call. ``search_files`` always returns live-glob results; the
-    # index participates only in role/contains_symbol/changed_only
-    # filtering, so the truthful ``index_used`` reflects whether the
-    # caller asked for indexed filtering.
     has_indexed_filter = role != "any" or contains_symbol is not None or changed_only
     output.update(
         serving_metadata(
@@ -1884,11 +1634,6 @@ def handle_search_files(
         )
     )
     if return_evidence_ids:
-        # AC-02: emit only persisted evidence IDs that read_file can
-        # resolve. Pull the file's stored content hash and insert
-        # (or refresh) the evidence row keyed by the prompt's
-        # deterministic evidence-id formula, so the caller can
-        # read_file(evidence_id=...) and get the same path back.
         from ralph.mcp.explore.dirty_paths import resolve_explore_index
         from ralph.mcp.explore.store import (
             EvidenceRow,

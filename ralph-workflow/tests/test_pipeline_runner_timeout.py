@@ -1,5 +1,3 @@
-"""Tests that agent_idle_timeout_seconds from config flows through to InvokeOptions."""
-
 from __future__ import annotations
 
 import pathlib
@@ -55,8 +53,6 @@ def _registry_factory(config: object) -> object:
 
 
 class FakeBridge:
-    """Minimal stand-in for a session bridge in these tests."""
-
     def shutdown(self) -> None:
         return
 
@@ -68,7 +64,6 @@ class FakeBridge:
 
 
 def _make_fake_restart_aware_bridge() -> RestartAwareMcpBridge:
-    """Build a RestartAwareMcpBridge backed by a fake process."""
     td = pathlib.Path(tempfile.mkdtemp())
     sf = td / "session.json"
     sf.write_text("{}", encoding="utf-8")
@@ -106,7 +101,6 @@ def _make_fake_restart_aware_bridge() -> RestartAwareMcpBridge:
 def test_config_idle_timeout_flows_to_invoke_options(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """UnifiedConfig.general.agent_idle_timeout_seconds is passed to InvokeOptions."""
     del monkeypatch
     custom_timeout = 7.0
     config = _make_config(custom_timeout)
@@ -155,19 +149,16 @@ def test_config_idle_timeout_flows_to_invoke_options(
 
 
 def test_config_default_idle_timeout_is_300() -> None:
-    """Default GeneralConfig.agent_idle_timeout_seconds is 300.0 seconds."""
     config = GeneralConfig()
     assert config.agent_idle_timeout_seconds == 300.0
 
 
 def test_config_idle_timeout_validation_rejects_zero() -> None:
-    """agent_idle_timeout_seconds must be greater than zero."""
     with pytest.raises(ValidationError):
         GeneralConfig(agent_idle_timeout_seconds=0.0)
 
 
 def test_config_idle_timeout_validation_rejects_negative() -> None:
-    """agent_idle_timeout_seconds must be greater than zero."""
     with pytest.raises(ValidationError):
         GeneralConfig(agent_idle_timeout_seconds=-1.0)
 
@@ -187,7 +178,6 @@ def _make_config_with_watchdog(
 
 
 def _capture_options_factory(captured: dict[str, object]) -> object:
-    """Return a fake_invoke_agent that captures the full options object."""
 
     def fake_invoke_agent(
         config: _AgentConfig,
@@ -209,7 +199,6 @@ def _run_with_config(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Helper that wires up fakes and runs execute_agent_effect."""
     del monkeypatch
 
     def fake_materialize_master_prompt(
@@ -256,7 +245,6 @@ def test_runner_sets_agent_label_scope_to_run_id(
 def test_config_drain_window_seconds_flows_to_invoke_options(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """GeneralConfig.agent_idle_drain_window_seconds is passed to InvokeOptions."""
     custom_drain = 2.5
     config = _make_config_with_watchdog(agent_idle_drain_window_seconds=custom_drain)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
@@ -271,7 +259,6 @@ def test_config_drain_window_seconds_flows_to_invoke_options(
 def test_config_max_waiting_seconds_flows_to_invoke_options(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """GeneralConfig.agent_idle_max_waiting_on_child_seconds is passed to InvokeOptions."""
     custom_max = 900.0
     config = _make_config_with_watchdog(agent_idle_max_waiting_on_child_seconds=custom_max)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
@@ -284,13 +271,11 @@ def test_config_max_waiting_seconds_flows_to_invoke_options(
 
 
 def test_config_default_drain_window_is_0_5() -> None:
-    """Default GeneralConfig.agent_idle_drain_window_seconds is 0.5s."""
     config = GeneralConfig()
     assert config.agent_idle_drain_window_seconds == 0.5
 
 
 def test_config_default_max_waiting_is_1800() -> None:
-    """Default GeneralConfig.agent_idle_max_waiting_on_child_seconds is 1800.0s."""
     config = GeneralConfig()
     assert config.agent_idle_max_waiting_on_child_seconds == 1800.0
 
@@ -324,7 +309,6 @@ def _make_config_full(
 def test_config_idle_poll_interval_flows_to_invoke_options(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """GeneralConfig.agent_idle_poll_interval_seconds is passed to InvokeOptions."""
     custom_poll = 0.1
     config = _make_config_full(agent_idle_poll_interval_seconds=custom_poll)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
@@ -339,7 +323,6 @@ def test_config_idle_poll_interval_flows_to_invoke_options(
 def test_config_parent_exit_grace_flows_to_invoke_options(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """GeneralConfig.agent_parent_exit_grace_seconds is passed to InvokeOptions."""
     custom_grace = 10.0
     config = _make_config_full(agent_parent_exit_grace_seconds=custom_grace)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
@@ -354,7 +337,6 @@ def test_config_parent_exit_grace_flows_to_invoke_options(
 def test_config_descendant_wait_timeout_flows_to_invoke_options(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """GeneralConfig.agent_descendant_wait_timeout_seconds is passed to InvokeOptions."""
     custom_wait = 60.0
     config = _make_config_full(agent_descendant_wait_timeout_seconds=custom_wait)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
@@ -369,7 +351,6 @@ def test_config_descendant_wait_timeout_flows_to_invoke_options(
 def test_config_descendant_wait_poll_flows_to_invoke_options(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """GeneralConfig.agent_descendant_wait_poll_seconds is passed to InvokeOptions."""
     custom_poll = 0.25
     config = _make_config_full(agent_descendant_wait_poll_seconds=custom_poll)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
@@ -384,7 +365,6 @@ def test_config_descendant_wait_poll_flows_to_invoke_options(
 def test_config_process_exit_wait_flows_to_invoke_options(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """GeneralConfig.agent_process_exit_wait_seconds is passed to InvokeOptions."""
     custom_exit_wait = 45.0
     config = _make_config_full(agent_process_exit_wait_seconds=custom_exit_wait)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
@@ -399,7 +379,6 @@ def test_config_process_exit_wait_flows_to_invoke_options(
 def test_config_max_session_seconds_flows_to_invoke_options(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """GeneralConfig.agent_max_session_seconds is passed to InvokeOptions."""
     custom_session = 3600.0
     config = _make_config_full(agent_max_session_seconds=custom_session)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
@@ -414,7 +393,6 @@ def test_config_max_session_seconds_flows_to_invoke_options(
 def test_runner_does_not_launch_development_at_warning(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """S-1: a retry receives only the unspent development-phase budget."""
     del monkeypatch
     config = _make_config_full(agent_max_session_seconds=5700.0)
     captured: dict[str, object] = {}
@@ -622,41 +600,23 @@ def test_non_development_invocation_keeps_generic_session_ceiling(
 
 
 def test_config_default_idle_poll_interval_is_0_05() -> None:
-    """Default GeneralConfig.agent_idle_poll_interval_seconds is 0.05s."""
     config = GeneralConfig()
     assert config.agent_idle_poll_interval_seconds == 0.05
 
 
 def test_config_default_process_exit_wait_is_30() -> None:
-    """Default GeneralConfig.agent_process_exit_wait_seconds is 30.0s."""
     config = GeneralConfig()
     assert config.agent_process_exit_wait_seconds == 30.0
 
 
 def test_config_default_descendant_wait_poll_is_0_5() -> None:
-    """Default GeneralConfig.agent_descendant_wait_poll_seconds is 0.5s."""
     config = GeneralConfig()
     assert config.agent_descendant_wait_poll_seconds == 0.5
-
-
-# ---------------------------------------------------------------------------
-# McpServerError / bridge-sharing tests
-# ---------------------------------------------------------------------------
 
 
 def test_mcp_server_error_propagates_from_check_bridge_health(
     tmp_path: Path,
 ) -> None:
-    """McpServerError from check_mcp_bridge_health is converted to AGENT_FAILURE.
-
-    New contract (wt-16 / C4 + R3): the typed ``McpServerError`` is converted
-    in-place to ``PipelineEvent.AGENT_FAILURE`` via the typed-conversion site
-    in ``_invoke_agent_with_recovery``. ``logger.exception`` is NOT called.
-    The next attempt gets a fresh bridge via the recovery controller's
-    ``failure_reason="McpServerError"`` path. The classifier still treats the
-    typed exception as ``FailureCategory.ENVIRONMENTAL, counted=False`` so
-    the agent's retry budget is preserved.
-    """
     config = _make_config(300.0)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
 
@@ -697,7 +657,6 @@ def test_mcp_server_error_propagates_from_check_bridge_health(
 def test_bridge_shared_across_retry_attempts(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The bridge factory is called once; the same bridge serves all retry attempts."""
     del monkeypatch
     config = _make_config(300.0)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
@@ -749,7 +708,6 @@ def test_bridge_shared_across_retry_attempts(
 def test_check_mcp_bridge_health_called_per_retry_attempt(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """check_mcp_bridge_health is called once per attempt (not just once at start)."""
     del monkeypatch
     config = _make_config(300.0)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
@@ -804,7 +762,6 @@ def test_check_mcp_bridge_health_called_per_retry_attempt(
 def test_record_mcp_restart_forwarded_to_subscriber(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """When bridge.restart_count > 0, record_mcp_restart is called on the display subscriber."""
     del monkeypatch
 
     config = _make_config(300.0)
@@ -848,7 +805,6 @@ def test_record_mcp_restart_forwarded_to_subscriber(
 def test_supervision_interval_from_env_flows_to_mcp_supervisor(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """heartbeat_policy_from_env().interval is passed to the MCP supervisor factory."""
     del monkeypatch
 
     config = _make_config_with_watchdog()
@@ -901,7 +857,6 @@ def test_supervision_interval_from_env_flows_to_mcp_supervisor(
 def test_mcp_server_error_propagates(
     tmp_path: Path,
 ) -> None:
-    """Health-check McpServerError propagates to classifier without charging budget."""
     config = _make_config(300.0)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
 
@@ -925,7 +880,6 @@ def test_mcp_server_error_propagates(
         check_mcp_bridge_health_fn=fake_check_mcp_bridge_health,
     )
 
-    # New contract (wt-16): McpServerError is converted to AGENT_FAILURE; classify it.
     result = effect_executor_module.execute_agent_effect(
         effect,
         config,
@@ -939,12 +893,8 @@ def test_mcp_server_error_propagates(
 
     assert result is PipelineEvent.AGENT_FAILURE
 
-    # Prove environmental/non-counted behavior through the executor boundary:
     from ralph.recovery.failure_classifier import FailureCategory, FailureClassifier
 
-    # The classifier must still see the typed error preserved via
-    # ``_handle_terminal_agent_invocation_error(exc, ...)``; recapture it
-    # from the typed error path that the recovery controller consults.
     original_exc = McpServerError("budget exhausted", restart_count=3)
     failure = FailureClassifier().classify(
         original_exc,
@@ -959,7 +909,6 @@ def test_mcp_server_error_propagates(
 def test_mcp_server_error_propagates_without_logger_exception(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """McpServerError propagates without hitting bare-except logger.exception."""
     config = _make_config(300.0)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
 
@@ -1003,5 +952,4 @@ def test_mcp_server_error_propagates_without_logger_exception(
 
     assert result is PipelineEvent.AGENT_FAILURE
 
-    # logger.exception is not called on the typed McpServerError path.
     assert exception_calls == []

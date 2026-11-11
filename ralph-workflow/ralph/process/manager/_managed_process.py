@@ -1,4 +1,3 @@
-"""ManagedProcess — synchronous process wrapper with lifecycle integration."""
 
 from __future__ import annotations
 
@@ -33,7 +32,6 @@ if TYPE_CHECKING:
 
 
 class ManagedProcess:
-    """Wraps a synchronous process handle and integrates with ProcessManager lifecycle tracking."""
 
     def __init__(
         self,
@@ -79,11 +77,9 @@ class ManagedProcess:
         return None
 
     def termination_issuer(self) -> str | None:
-        """Return the lifecycle issuer that intentionally stopped this process."""
         return self._manager.termination_issuer(self._record.pid)
 
     def record_terminal_reason(self, reason: str) -> None:
-        """Authorize this process's termination with a named terminal reason."""
         self._manager.record_terminal_reason(self._record.pid, reason)
 
     def poll(self) -> int | None:
@@ -173,36 +169,6 @@ class ManagedProcess:
         hard_timeout: float | None = None,
         terminate_grace_period_s: float | None = None,
     ) -> tuple[bytes | None, bytes | None]:
-        """Drain output and clean up any descendant processes with psutil.
-
-        ``timeout`` is an inactivity window when output capture is enabled:
-        each stdout or stderr chunk resets it. ``hard_timeout`` is an optional
-        absolute ceiling for that mode; callers that omit it keep legacy
-        timeout-only behavior.
-
-        Exactly ONE synchronous process-tree scan runs per call, and it
-        runs *after* the child has finished. ``psutil``'s
-        ``children(recursive=True)`` is O(every process on the machine)
-        -- on macOS it walks the whole pid table building a ppid map --
-        so a scan costs more wall-clock than a short-lived ``git``
-        subprocess itself, and it gets *more* expensive exactly when
-        several Ralph agents run side by side and the machine's process
-        count climbs. The pre-``communicate`` scan this method used to
-        take was pure cost with no coverage: it ran microseconds after
-        our own ``spawn``, before the child could have forked anything,
-        so it could only ever observe the empty tree the post-run scan
-        observes again. Descendants that appear *while* the child runs
-        are picked up by the background monitor thread below, and
-        descendants still alive at exit are picked up by the trailing
-        scan; both are preserved.
-
-        ``cleanup_grace_period_s`` bounds the sweep of descendants that outlive
-        a child that exited on its own. ``terminate_grace_period_s`` is the
-        SIGTERM-to-SIGKILL window when the child itself must be stopped
-        (timeout / output cap); it defaults to ``cleanup_grace_period_s``. They
-        differ for git, which needs a window to remove its lock files on SIGTERM
-        but must not make every normal exit wait on a lingering helper.
-        """
         kill_grace_period_s = (
             terminate_grace_period_s
             if terminate_grace_period_s is not None
@@ -368,7 +334,6 @@ class ManagedProcess:
         stdout_thread.start()
         stderr_thread.start()
 
-        # ``hard_timeout`` prevents a continuously chatty child from running forever.
         absolute_deadline = start_at + hard_timeout if hard_timeout is not None else None
         try:
             while stdout_thread.is_alive() or stderr_thread.is_alive():
@@ -394,7 +359,6 @@ class ManagedProcess:
                 if timeout_cause is not None:
                     if timeout_value is None:
                         raise RuntimeError("timeout deadline requires a timeout value")
-                    # Close the pipes before the finally block joins their readers.
                     self.terminate(grace_period_s=cleanup_grace_period_s)
                     raise DeadlineTimeoutExpired(
                         [],
@@ -438,20 +402,10 @@ class ManagedProcess:
         stdout: bytes,
         stderr: bytes,
     ) -> int:
-        """Wait for a child whose stdout/stderr hit EOF, under the caller's deadlines.
-
-        A child may close its stdio and keep running (``exec >/dev/null``,
-        a daemonizing wrapper). Reader EOF says nothing about exit, so the
-        wait is bounded by the same inactivity / hard deadlines as the drain
-        -- never by a fixed short window that would report a timeout the
-        caller's budget never reached. No output can arrive after EOF, so
-        the inactivity deadline is fixed at the last chunk seen.
-        """
         inactivity_deadline = last_output_at + timeout if timeout is not None else None
         deadlines = [d for d in (inactivity_deadline, absolute_deadline) if d is not None]
         if not deadlines:
-            # The caller set neither deadline: same contract as communicate(timeout=None).
-            return self.wait()  # mcp-timeout-ok: caller passed no timeout and no hard_timeout
+            return self.wait()
         deadline = min(deadlines)
         try:
             return self.wait(timeout=max(0.0, deadline - _time.monotonic()))
@@ -535,8 +489,6 @@ class ManagedProcess:
         for proc in procs:
             with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                 proc.terminate()
-        # _safe_wait_procs: psutil's wait_procs can raise OSError (EINVAL) from
-        # os.pidfd_open on an already-reaped PID; the helper classifies per-PID.
         gone, alive = self._manager._safe_wait_procs(psutil_mod, procs, timeout=grace_period_s)
         root_rc = self._manager._harvest_gone_processes(gone, root_pid=self._record.pid)
         if root_rc is not None:
@@ -552,11 +504,6 @@ class ManagedProcess:
         psutil_mod: _PsutilModuleLike,
         procs: list[_PsutilProcessLike],
     ) -> list[_PsutilProcessLike]:
-        """Stop children that appeared after the tree snapshot.
-
-        A git among them is asked to exit first (it removes its lock files on
-        SIGTERM); only what survives that window is killed outright.
-        """
         survivors = self._terminate_psutil_wave(psutil_mod, procs, 0.0)
         return self._kill_psutil_wave(psutil_mod, survivors) if survivors else []
 
@@ -570,8 +517,6 @@ class ManagedProcess:
         for proc in procs:
             with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                 proc.kill()
-        # _safe_wait_procs: psutil's wait_procs can raise OSError (EINVAL) from
-        # os.pidfd_open on an already-reaped PID; the helper classifies per-PID.
         gone, still_alive = self._manager._safe_wait_procs(
             psutil_mod, procs, timeout=self._manager.policy.kill_followup_timeout_s
         )
@@ -605,7 +550,6 @@ class ManagedProcess:
             self._kill_late_spawns(psutil_mod, second_late_spawns)
 
     def terminate(self, grace_period_s: float | None = None) -> None:
-        # Idempotency guard: if already terminal, skip without error
         if self._record.status in _TERMINAL_STATUSES:
             logger.debug(
                 f"Process {self._record.pid} already terminal ({self._record.status.name}), "
@@ -629,11 +573,9 @@ class ManagedProcess:
         self._manager._escalate_termination_sync(self._record, self._proc, 0.0)
 
     def cleanup_orphans(self) -> None:
-        """Kill descendants that outlived this process."""
         self._manager.cleanup_orphans(self)
 
     def has_live_descendants(self) -> bool:
-        """Return True when this process currently has live descendants."""
         psutil_mod = self._manager._psutil
         if psutil_mod is None:
             return False
@@ -652,7 +594,6 @@ class ManagedProcess:
         return False
 
     def descendant_snapshot(self) -> tuple[int, float | None]:
-        """Return (live_descendant_count, oldest_age_seconds) excluding zombies."""
         psutil_mod = self._manager._psutil
         if psutil_mod is None:
             return (0, None)
@@ -693,8 +634,6 @@ class ManagedProcess:
                 with contextlib.suppress(Exception):
                     pipe.close()
         if self._record.status not in _TERMINAL_STATUSES:
-            # Bounded so teardown of a wedged child cannot hang; TimeoutExpired is
-            # suppressed and the process tree was already terminated above.
             with contextlib.suppress(Exception):
                 self._proc.wait(timeout=PROCESS_EXIT_WAIT_SECONDS)
 

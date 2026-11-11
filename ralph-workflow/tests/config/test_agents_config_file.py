@@ -1,25 +1,3 @@
-"""Behavior tests for the dedicated agent-CLI-definition config file.
-
-``[agents.*]`` entries are transport plumbing -- binary name, flags, output
-parser -- not an operator decision. They used to sit in the middle of the main
-``ralph-workflow.toml`` template, ahead of the one section operators actually
-edit (``[agent_chains]``). They now live in their own file,
-``ralph-workflow-agents.toml``, so the main config opens on the chains.
-
-The tests pin the operator-visible contract:
-
-* the bundled agents template exists, parses, and carries every built-in
-  agent block;
-* neither main-config template still ships an ``[agents.*]`` block;
-* a normal bootstrap leaves a MISSING agents file absent, while explicit
-  ``ralph --init`` creation and ``ralph --regenerate-config`` rewrites remain;
-* ``ralph --regenerate-config`` refreshes the file and keeps the operator's
-  previous bytes in a ``.bak``;
-* ``load_config`` reads ``[agents.*]`` from it; and
-* an ``[agents.*]`` table left behind in an existing ``ralph-workflow.toml``
-  still wins, so upgrading installs keep working.
-"""
-
 from __future__ import annotations
 
 import tomllib
@@ -46,20 +24,12 @@ def _bundled_agents_template() -> Path:
 
 
 def _scratch_files(directory: Path) -> list[Path]:
-    """Return leftover atomic-write scratch files inside ``directory``.
-
-    The agents writer stages the new content in a hidden ``.<name>.tmp.*``
-    file and then atomically replaces the target, so a completed write
-    leaves no scratch file behind. A writer that never touched the
-    directory must not leave one either.
-    """
     return sorted(
         path for path in directory.iterdir() if path.name.startswith(".") and ".tmp." in path.name
     )
 
 
 def test_bundled_agents_template_parses_and_activates_claude() -> None:
-    """The bundled agents template is valid TOML with claude active."""
     with _bundled_agents_template().open("rb") as handle:
         data = tomllib.load(handle)
     assert list(data) == ["agents"], (
@@ -69,7 +39,6 @@ def test_bundled_agents_template_parses_and_activates_claude() -> None:
 
 
 def test_bundled_agents_template_carries_every_builtin_block() -> None:
-    """Every built-in agent has an uncommentable block in the agents template."""
     text = _bundled_agents_template().read_text(encoding="utf-8")
     missing = tuple(
         support.name
@@ -80,12 +49,6 @@ def test_bundled_agents_template_carries_every_builtin_block() -> None:
 
 
 def test_main_templates_no_longer_ship_agent_definitions() -> None:
-    """Neither main-config template still carries [agents.*] plumbing.
-
-    A regression that reintroduces an agent block here puts transport
-    plumbing back ahead of [agent_chains], which is the section operators
-    actually edit.
-    """
     for name in ("ralph-workflow.toml", "ralph-workflow-local.toml"):
         text = (_bundled_dir() / name).read_text(encoding="utf-8")
         for line in text.splitlines():
@@ -96,7 +59,6 @@ def test_main_templates_no_longer_ship_agent_definitions() -> None:
 
 
 def test_main_template_opens_on_agent_chains() -> None:
-    """[agent_chains] is the first table in the main template."""
     text = (_bundled_dir() / "ralph-workflow.toml").read_text(encoding="utf-8")
     tables = [
         line.strip()
@@ -107,11 +69,6 @@ def test_main_template_opens_on_agent_chains() -> None:
 
 
 def test_ensure_global_agents_config_skips_a_missing_file(tmp_path: Path) -> None:
-    """A normal bootstrap leaves a missing agents file absent."""
-    # RALPH-TEST-REASON: the contract changed -- a normal bootstrap no longer
-    # seeds a MISSING agents file from the bundled template; only the explicit
-    # `ralph --init` route creates it, so the seeding assertions are replaced
-    # by the skip assertions below.
     result = ensure_global_agents_config(tmp_path)
 
     target = tmp_path / AGENTS_FILENAME
@@ -124,16 +81,6 @@ def test_ensure_global_agents_config_skips_a_missing_file(tmp_path: Path) -> Non
 
 
 def test_ensure_global_agents_config_is_idempotent(tmp_path: Path) -> None:
-    """A second run leaves an existing file untouched.
-
-    The documented contract: outside ``ralph --init`` /
-    ``ralph --regenerate-config`` the agents file is never modified. The
-    operator's own content must survive a bootstrap run byte-for-byte,
-    with no backup, no scratch file, and no commit side effect.
-    """
-    # RALPH-TEST-REASON: the seeding call is gone -- a normal bootstrap must
-    # not create the file, so the fixture starts from the operator's own
-    # content instead of a seeded template.
     (tmp_path / AGENTS_FILENAME).write_text('[agents.custom]\ncmd = "mine"\n', encoding="utf-8")
     operator_bytes = (tmp_path / AGENTS_FILENAME).read_bytes()
 
@@ -142,12 +89,8 @@ def test_ensure_global_agents_config_is_idempotent(tmp_path: Path) -> None:
     assert result.action == "skipped"
     assert "mine" in (tmp_path / AGENTS_FILENAME).read_text()
 
-    # The existing file is left byte-identical -- not rewritten, not
-    # reformatted, not re-ordered.
     assert (tmp_path / AGENTS_FILENAME).read_bytes() == operator_bytes
 
-    # No backup, no scratch file, no commit: the skipped path touches
-    # nothing on disk.
     assert result.backup is None
     assert not (tmp_path / f"{AGENTS_FILENAME}.bak").exists()
     assert _scratch_files(tmp_path) == []
@@ -157,13 +100,6 @@ def test_ensure_global_agents_config_is_idempotent(tmp_path: Path) -> None:
 
 
 def test_regenerate_all_refreshes_the_agents_file(tmp_path: Path) -> None:
-    """--regenerate-config rewrites the agents file and backs up the old one.
-
-    The documented contract: the agents file may only be rewritten by an
-    explicit operator command. ``ralph --regenerate-config`` restores the
-    bundled template and preserves the operator's previous bytes in
-    ``<name>.bak``.
-    """
     global_dir = tmp_path / "config"
     global_dir.mkdir()
     agent_dir = tmp_path / ".agent"
@@ -179,17 +115,13 @@ def test_regenerate_all_refreshes_the_agents_file(tmp_path: Path) -> None:
     with (global_dir / AGENTS_FILENAME).open("rb") as handle:
         assert "claude" in tomllib.load(handle)["agents"]
 
-    # The backup holds the operator's bytes byte-for-byte.
     assert (global_dir / f"{AGENTS_FILENAME}.bak").read_bytes() == operator_bytes
 
-    # The regenerated file is the bundled template again; the operator's
-    # custom agent is gone from the live file.
     assert (global_dir / AGENTS_FILENAME).read_text(encoding="utf-8") == (
         _bundled_agents_template().read_text(encoding="utf-8")
     )
     assert "mine" not in (global_dir / AGENTS_FILENAME).read_text(encoding="utf-8")
 
-    # The reported result names the regenerated file and its backup.
     agents_results = [r for r in results if r.path.name == AGENTS_FILENAME]
     assert len(agents_results) == 1, (
         f"regenerate_all must report the agents file exactly once; got: {results!r}"
@@ -198,14 +130,12 @@ def test_regenerate_all_refreshes_the_agents_file(tmp_path: Path) -> None:
     assert agents_result.action == "regenerated"
     assert agents_result.backup == global_dir / f"{AGENTS_FILENAME}.bak"
 
-    # The atomic write leaves no scratch file behind.
     assert _scratch_files(global_dir) == []
 
 
 def test_load_config_reads_agents_from_the_agents_file(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """[agents.*] defined in the agents file reaches the merged config."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     (tmp_path / AGENTS_FILENAME).write_text(
         '[agents.mytool]\ncmd = "mytool"\ndisplay_name = "My Tool"\n'
@@ -221,11 +151,6 @@ def test_load_config_reads_agents_from_the_agents_file(
 def test_agents_in_legacy_main_config_still_win(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """An [agents.*] table left in ralph-workflow.toml keeps its precedence.
-
-    Operators upgrading from a release that templated agents into the main
-    config must not silently lose their customized block.
-    """
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     (tmp_path / AGENTS_FILENAME).write_text('[agents.claude]\ncmd = "from-agents-file"\n')
     (tmp_path / "ralph-workflow.toml").write_text('[agents.claude]\ncmd = "from-main-config"\n')

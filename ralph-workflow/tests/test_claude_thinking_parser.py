@@ -1,5 +1,3 @@
-"""Tests for ClaudeParser thinking_delta parsing."""
-
 from __future__ import annotations
 
 from ralph.agents.parsers.claude import ClaudeParser

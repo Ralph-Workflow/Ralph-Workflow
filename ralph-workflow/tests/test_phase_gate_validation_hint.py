@@ -1,5 +1,3 @@
-"""Behavioral coverage for validation-phase retry hints."""
-
 from __future__ import annotations
 
 import pytest

@@ -1,17 +1,3 @@
-"""End-to-end acceptance suite for multimodal managed-runtime behaviors.
-
-Proves the cross-layer promises required by the multimodal product:
-- default-on media surface exposed to multimodal clients
-- text-only clients do not see multimodal tools
-- screenshot/PNG inline delivery through Ralph-owned MCP path
-- PDF resource-reference storage and retrieval via resources/read
-- unknown-provider safe fallback to resource_reference_replay for all modalities
-- upstream mixed-modality normalization without silent loss
-- prompt sidecar preserves mixed-modality metadata for runner handoff
-
-All tests drive McpServer.handle_request() in-process; no threads, no sockets.
-"""
-
 from __future__ import annotations
 
 import json
@@ -50,9 +36,6 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.subprocess_e2e
 
-# ---------------------------------------------------------------------------
-# Byte constants for in-memory artifacts — no external files needed
-# ---------------------------------------------------------------------------
 
 _TINY_PNG_BYTES = bytes(
     [
@@ -220,14 +203,8 @@ def _tool_call(
     return resp.result
 
 
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.integration
 def test_default_handshake_exposes_multimodal_tools(tmp_path: Path) -> None:
-    """A default empty handshake exposes enabled media tools."""
     server = _build_server(tmp_path, with_media=True)
     state = _initialize(server, multimodal_client=False)
     tool_names = _tools_list(server, state)
@@ -237,15 +214,6 @@ def test_default_handshake_exposes_multimodal_tools(tmp_path: Path) -> None:
 
 @pytest.mark.integration
 def test_explicit_media_disabled_keeps_multimodal_tools(tmp_path: Path) -> None:
-    """``[media] enabled = false`` is INERT -- media tools always stay visible (criterion 1).
-
-    The legacy opt-out used to remove ``read_media`` and ``read_image``
-    from ``tools/list`` when ``[media] enabled = false`` was set. The
-    retirement closes that counterexample at the ``MediaConfig``
-    validator (the value is coerced to ``True``) so every transport,
-    including the non-multimodal-managed-runtime E2E scenario,
-    always sees the multimodal tool surface.
-    """
     server = _build_server(tmp_path, with_media=True, media_enabled=False)
     state = _initialize(server, multimodal_client=False)
     tool_names = _tools_list(server, state)
@@ -255,7 +223,6 @@ def test_explicit_media_disabled_keeps_multimodal_tools(tmp_path: Path) -> None:
 
 @pytest.mark.integration
 def test_multimodal_client_sees_default_on_media_tools(tmp_path: Path) -> None:
-    """A multimodal-capable client must see read_media and read_image by default."""
     server = _build_server(tmp_path, with_media=True)
     state = _initialize(server, multimodal_client=True)
     tool_names = _tools_list(server, state)
@@ -271,7 +238,6 @@ def test_multimodal_client_sees_default_on_media_tools(tmp_path: Path) -> None:
 def test_screenshot_png_round_trip_preserves_inline_or_replay_delivery(
     tmp_path: Path,
 ) -> None:
-    """PNG file with Claude model identity delivers inline image through Ralph's MCP path."""
     png_file = tmp_path / "screenshot.png"
     png_file.write_bytes(_TINY_PNG_BYTES)
 
@@ -285,7 +251,6 @@ def test_screenshot_png_round_trip_preserves_inline_or_replay_delivery(
     assert len(content) == 1
     block = content[0]
     block_type = block.get("type")
-    # Claude provider: PNG must be inline image (or resource_reference for cross-session)
     assert block_type in {"image", "resource_reference"}, (
         f"Expected inline image or resource_reference, got type={block_type!r}"
     )
@@ -295,7 +260,6 @@ def test_screenshot_png_round_trip_preserves_inline_or_replay_delivery(
 def test_pdf_resource_reference_is_retrievable_via_resources_read(
     tmp_path: Path,
 ) -> None:
-    """PDF artifact stored via read_media must be retrievable via resources/read."""
     pdf_file = tmp_path / "report.pdf"
     pdf_file.write_bytes(_TINY_PDF_BYTES)
 
@@ -314,7 +278,6 @@ def test_pdf_resource_reference_is_retrievable_via_resources_read(
     uri = str(block.get("uri", ""))
     assert uri.startswith("ralph://media/"), f"Expected ralph://media/ URI, got: {uri!r}"
 
-    # Artifact must be retrievable via resources/read
     read_req = JsonRpcRequest(
         jsonrpc="2.0",
         method="resources/read",
@@ -330,16 +293,9 @@ def test_pdf_resource_reference_is_retrievable_via_resources_read(
 
 
 def test_unknown_provider_preserves_supported_modalities_as_replayable_resources() -> None:
-    """Unknown provider must deliver every supported modality as resource_reference_replay.
-
-    This proves the safe fallback: no modality is silently dropped or rejected
-    when the provider cannot be determined.
-    """
     for modality in sorted(SUPPORTED_MODALITIES):
         verdict = get_delivery_mode(UNKNOWN_IDENTITY, modality)
         if modality == "image":
-            # Images are always deliverable inline: the verdict does not
-            # guess model capability (criterion 14: unresolvable -> capable).
             assert verdict.delivery == DeliveryMode.INLINE_IMAGE, (
                 f"modality='image' must be INLINE_IMAGE even for unknown provider, "
                 f"got {verdict.delivery!r}"
@@ -358,7 +314,6 @@ def test_unknown_provider_preserves_supported_modalities_as_replayable_resources
 
 
 def test_upstream_mixed_modalities_are_normalized_without_silent_loss() -> None:
-    """Upstream mixed text+image+audio must preserve all blocks without silent dropping."""
 
     class _FakeClient:
         def list_tools(self, timeout_s: float | None = None) -> list[object]:
@@ -387,7 +342,6 @@ def test_upstream_mixed_modalities_are_normalized_without_silent_loss() -> None:
     result = registry.call_tool("ralph_upstream__mix_server__mix", {}, session=_FakeSession())
 
     content = result.get("content", [])
-    # All three input blocks must produce output blocks — no silent loss
     assert len(content) == 3, f"Expected 3 blocks, got {len(content)}: {content}"
     text_blocks = [b for b in content if b.get("type") == "text"]
     rr_blocks = [b for b in content if b.get("type") == "resource_reference"]
@@ -397,7 +351,6 @@ def test_upstream_mixed_modalities_are_normalized_without_silent_loss() -> None:
     assert modalities == {"image", "audio"}, (
         f"Expected image and audio modalities, got: {modalities}"
     )
-    # Embedded blocks must be resource_reference_replay (Ralph-owned manifest handles)
     for rr in rr_blocks:
         assert rr.get("delivery") == "resource_reference_replay", (
             f"Embedded upstream blocks must use resource_reference_replay delivery, "
@@ -409,11 +362,6 @@ def test_upstream_mixed_modalities_are_normalized_without_silent_loss() -> None:
 
 
 def test_upstream_uri_backed_block_uses_resource_reference_delivery() -> None:
-    """URI-backed upstream blocks must use 'resource_reference' delivery (not replay).
-
-    URI-backed blocks preserve an external URI and are NOT Ralph-owned artifacts.
-    They should NOT be replayed via read_media — the agent can access the URI directly.
-    """
 
     class _FakeClient:
         def list_tools(self, timeout_s: float | None = None) -> list[object]:
@@ -454,7 +402,6 @@ def test_upstream_uri_backed_block_uses_resource_reference_delivery() -> None:
     assert block.get("uri") == "https://example.com/report.pdf", (
         f"URI-backed upstream blocks must preserve the external URI, got: {block.get('uri')!r}"
     )
-    # URI-backed blocks must NOT create manifest entries
     session = _FakeSession()
     registry.call_tool("ralph_upstream__pdf_server__pdf_tool", {}, session=session)
     assert session.media_manifest.is_empty(), (
@@ -463,7 +410,6 @@ def test_upstream_uri_backed_block_uses_resource_reference_delivery() -> None:
 
 
 def test_prompt_sidecar_preserves_mixed_modality_metadata_for_runner_handoff() -> None:
-    """Sidecar with image + pdf + audio must round-trip all metadata for runner handoff."""
 
     workspace = MemoryWorkspace()
     mixed_payload = json.dumps(
@@ -523,37 +469,25 @@ def test_prompt_sidecar_preserves_mixed_modality_metadata_for_runner_handoff() -
     pdf_e = next(e for e in entries if e.modality == "pdf")
     audio_e = next(e for e in entries if e.modality == "audio")
 
-    # Image: delivery and reason preserved
     assert image_e.delivery == "inline_image"
     assert "inline" in image_e.reason
 
-    # PDF: typed_block delivery + block_type preserved
     assert pdf_e.delivery == "typed_block"
     assert pdf_e.block_type == "pdf"
     assert "typed block" in pdf_e.reason
 
-    # Audio: resource_reference_replay delivery preserved
     assert audio_e.delivery == "resource_reference_replay"
     assert audio_e.modality == "audio"
     assert audio_e.uri == "ralph://media/aud-003"
 
 
-# ---------------------------------------------------------------------------
-# Gemini typed audio/video block tests (Plan Step 1 extension)
-# ---------------------------------------------------------------------------
+_TINY_AUDIO_BYTES = b"ID3\x03\x00\x00\x00\x00\x00\x00"
 
-_TINY_AUDIO_BYTES = b"ID3\x03\x00\x00\x00\x00\x00\x00"  # Minimal ID3 header stub
-
-_TINY_VIDEO_BYTES = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom"  # mp4 ftyp atom stub
+_TINY_VIDEO_BYTES = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom"
 
 
 @pytest.mark.integration
 def test_gemini_audio_delivers_typed_audio_block(tmp_path: Path) -> None:
-    """Gemini provider must return a typed audio block (TYPED_BLOCK delivery) for audio files.
-
-    This proves the Gemini-specific audio typed-block delivery path through Ralph's
-    managed MCP runtime. The verdict must be TYPED_BLOCK with block_type='audio'.
-    """
     audio_file = tmp_path / "clip.mp3"
     audio_file.write_bytes(_TINY_AUDIO_BYTES)
 
@@ -562,16 +496,12 @@ def test_gemini_audio_delivers_typed_audio_block(tmp_path: Path) -> None:
 
     result = _tool_call(server, state, str(RalphToolName.READ_MEDIA), {"path": "clip.mp3"})
 
-    # Gemini accepts audio as a typed block — the call must succeed.
     assert result.get("isError") is not True, (
         f"read_media should not be an error for Gemini audio, got: {result}"
     )
     content = result.get("content", [])
     assert len(content) == 1
     block = content[0]
-    # Gemini audio must come back as an AudioContent typed block (type='audio') or
-    # resource_reference (when the inline size limit triggers replay path).
-    # AudioContent has type='audio' — this is the TYPED_BLOCK delivery form.
     block_type = block.get("type")
     assert block_type in {"audio", "resource_reference"}, (
         f"Expected AudioContent (type='audio') or resource_reference for Gemini audio, "
@@ -581,11 +511,6 @@ def test_gemini_audio_delivers_typed_audio_block(tmp_path: Path) -> None:
 
 @pytest.mark.integration
 def test_gemini_video_delivers_typed_video_block(tmp_path: Path) -> None:
-    """Gemini provider must deliver video as a typed block (TYPED_BLOCK delivery).
-
-    Proves the Gemini-specific video typed-block delivery path through Ralph's
-    managed MCP runtime. The verdict must be TYPED_BLOCK with block_type='video'.
-    """
     video_file = tmp_path / "clip.mp4"
     video_file.write_bytes(_TINY_VIDEO_BYTES)
 
@@ -600,8 +525,6 @@ def test_gemini_video_delivers_typed_video_block(tmp_path: Path) -> None:
     content = result.get("content", [])
     assert len(content) == 1
     block = content[0]
-    # Gemini video must come back as a VideoContent typed block (type='video') or
-    # resource_reference (replay path). VideoContent has type='video' — TYPED_BLOCK form.
     block_type = block.get("type")
     assert block_type in {"video", "resource_reference"}, (
         f"Expected VideoContent (type='video') or resource_reference for Gemini video, "
@@ -610,12 +533,6 @@ def test_gemini_video_delivers_typed_video_block(tmp_path: Path) -> None:
 
 
 def test_gemini_audio_capability_verdict_is_typed_block() -> None:
-    """Gemini audio verdict must be TYPED_BLOCK with block_type='audio'.
-
-    Black-box proof that the capability contract for Gemini audio is correct:
-    the resolved profile must report typed_block delivery so downstream layers
-    can choose the right transport form.
-    """
     gemini_identity = MultimodalModelIdentity(provider="gemini", model_id="gemini-2.0-flash")
     verdict = get_delivery_mode(gemini_identity, "audio")
     assert verdict.delivery == DeliveryMode.TYPED_BLOCK, (
@@ -628,7 +545,6 @@ def test_gemini_audio_capability_verdict_is_typed_block() -> None:
 
 
 def test_gemini_video_capability_verdict_is_typed_block() -> None:
-    """Gemini video verdict must be TYPED_BLOCK with block_type='video'."""
     gemini_identity = MultimodalModelIdentity(provider="gemini", model_id="gemini-2.0-flash")
     verdict = get_delivery_mode(gemini_identity, "video")
     assert verdict.delivery == DeliveryMode.TYPED_BLOCK, (
@@ -640,18 +556,8 @@ def test_gemini_video_capability_verdict_is_typed_block() -> None:
     assert verdict.is_supported(), "Gemini video must be marked as supported"
 
 
-# ---------------------------------------------------------------------------
-# OpenAI/Codex explicit unsupported outcomes (Plan Step 1 extension)
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.integration
 def test_openai_audio_returns_explicit_unsupported_error(tmp_path: Path) -> None:
-    """OpenAI provider must return an explicit unsupported error for audio files.
-
-    Ralph's managed MCP runtime must surface a clear rejection rather than
-    returning resource_reference or silently pretending the upload succeeded.
-    """
     audio_file = tmp_path / "meeting.mp3"
     audio_file.write_bytes(_TINY_AUDIO_BYTES)
 
@@ -674,11 +580,6 @@ def test_openai_audio_returns_explicit_unsupported_error(tmp_path: Path) -> None
 
 @pytest.mark.integration
 def test_openai_pdf_returns_explicit_unsupported_error(tmp_path: Path) -> None:
-    """OpenAI provider must return an explicit unsupported error for PDF files.
-
-    OpenAI's chat completion API cannot accept PDFs via Ralph's managed MCP path.
-    Ralph must surface this as an explicit rejection, not a silent text-only fallback.
-    """
     pdf_file = tmp_path / "report.pdf"
     pdf_file.write_bytes(_TINY_PDF_BYTES)
 
@@ -699,11 +600,6 @@ def test_openai_pdf_returns_explicit_unsupported_error(tmp_path: Path) -> None:
 
 
 def test_openai_unsupported_modality_verdicts_are_explicit() -> None:
-    """OpenAI capability verdicts must explicitly mark audio, video, PDF as UNSUPPORTED.
-
-    Black-box proof that the capability contract rejects these modalities for OpenAI
-    rather than silently routing them to resource_reference_replay.
-    """
     openai_identity = MultimodalModelIdentity(provider="openai", model_id="gpt-4o")
     for modality in ("audio", "video", "pdf", "document"):
         verdict = get_delivery_mode(openai_identity, modality)
@@ -714,27 +610,13 @@ def test_openai_unsupported_modality_verdicts_are_explicit() -> None:
         assert verdict.reason, f"OpenAI {modality!r} unsupported verdict must include a reason"
 
 
-# ---------------------------------------------------------------------------
-# Managed document-path proof (DOCX-class typed document or replay delivery)
-# ---------------------------------------------------------------------------
-
-_TINY_DOCX_BYTES = (
-    b"PK\x03\x04"  # ZIP local file header magic (OOXML is a ZIP archive)
-    + b"\x14\x00" * 25  # minimal content to satisfy the file reader
-)
+_TINY_DOCX_BYTES = b"PK\x03\x04" + b"\x14\x00" * 25
 
 
 @pytest.mark.integration
 def test_claude_docx_round_trip_preserves_typed_document_or_replay_delivery(
     tmp_path: Path,
 ) -> None:
-    """DOCX artifact obtained via Ralph's MCP surface must survive the managed path.
-
-    This proves the managed-runtime document-path requirement: when a Claude-provider
-    session calls read_media on a DOCX file, the response must be a typed document
-    block (typed_block delivery) or a replayable resource reference — NOT silent
-    text flattening. The test drives McpServer.handle_request() in-process.
-    """
     docx_file = tmp_path / "report.docx"
     docx_file.write_bytes(_TINY_DOCX_BYTES)
 
@@ -750,8 +632,6 @@ def test_claude_docx_round_trip_preserves_typed_document_or_replay_delivery(
     assert len(content) == 1, f"Expected exactly 1 content block, got: {content}"
     block = content[0]
     block_type = block.get("type")
-    # Claude provider must deliver DOCX as a typed document block or as a replayable
-    # resource reference — never as raw text or as an error.
     assert block_type in {"document", "resource_reference"}, (
         f"DOCX must be delivered as typed 'document' block or resource_reference, "
         f"got type={block_type!r}. Text flattening is not acceptable."

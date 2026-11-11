@@ -1,15 +1,3 @@
-"""Real-Git proof that auto-rebase is idempotent and resumes a rebase already underway.
-
-Two guarantees, each driven through ``integrate_before_planning`` against
-real repositories:
-
-* Running it again on a branch it already caught up changes nothing.
-* Starting inside a paused, conflicted rebase hands the stop to the
-  conflict resolver instead of ignoring, aborting or looping on it; a
-  resolver that declines leaves the branch unlanded and the next run asks
-  again.
-"""
-
 from __future__ import annotations
 
 import subprocess
@@ -50,7 +38,6 @@ def _init(repo: Path) -> None:
     repo.mkdir(parents=True, exist_ok=True)
     from git import Repo
 
-    # RALPH-TEST-REASON: GitPython init/config replaces subprocess git to reduce CPU overhead
     r = Repo.init(repo, initial_branch=_TARGET)
     with r.config_writer() as cfg:
         cfg.set_value("user", "email", "test@example.com")
@@ -73,7 +60,6 @@ def _config() -> UnifiedConfig:
 
 
 def _diverge(repo: Path, *, conflicting: bool) -> None:
-    """Feature and main each add a commit; ``conflicting`` makes them touch one file."""
     _commit(repo, "shared.txt" if conflicting else "feature.txt", "feature side\n")
     _git(repo, "checkout", "-q", _TARGET)
     _commit(repo, "shared.txt" if conflicting else "target.txt", "target side\n")
@@ -81,8 +67,6 @@ def _diverge(repo: Path, *, conflicting: bool) -> None:
 
 
 class _Resolver:
-    """Rebase-stop resolver that records its calls and optionally settles the stop."""
-
     def __init__(self, *, resolves: bool) -> None:
         self.resolves = resolves
         self.calls = 0
@@ -170,12 +154,6 @@ def test_a_declining_resolver_never_reports_the_rebase_landed_and_is_asked_again
 def test_every_starting_shape_converges_to_target_inside_the_branch(
     tmp_path: Path, shape: str
 ) -> None:
-    """Whatever the branch's relation to main, planning integration ends caught up.
-
-    ``target_ahead`` is the regression: the feature sits wholly inside a
-    ``main`` that moved on, which the idempotent-land shortcut used to
-    declare landed while the planning gate still blocked.
-    """
     repo = tmp_path / "repo"
     _init(repo)
     if shape == "diverged":

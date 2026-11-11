@@ -1,11 +1,3 @@
-# Deprecated: Ralph-orchestrated workers are removed from the execution model; parallelism is owned by the developer agent's own sub-agents. See docs/sphinx/concepts.md §"Deprecated: Ralph-orchestrated workers".
-"""Shared session-bridge construction for the main pipeline and plumbing commands.
-
-This module is the single owner of ``AgentSession`` + ``FsWorkspace`` +
-``McpServerExtras`` + ``start_mcp_server`` construction. Both the canonical
-pipeline and plumbing commands consume it so bridge, env, and reset-tool
-wiring cannot drift between the two paths.
-"""
 
 from __future__ import annotations
 
@@ -24,7 +16,6 @@ from ralph.workspace.fs import FsWorkspace
 
 
 class _ResetScopeState:
-    """Shared reset ownership state, protected by ``_RESET_SCOPE_LOCK``."""
 
     scope: str | None = None
 
@@ -44,7 +35,6 @@ if TYPE_CHECKING:
 
 
 class BuildSessionMcpPlanFn(Protocol):
-    """Injectable planner returning a ``SessionMcpPlan``."""
 
     def __call__(
         self,
@@ -58,7 +48,6 @@ class BuildSessionMcpPlanFn(Protocol):
 
 
 class StartMcpServerFn(Protocol):
-    """Injectable MCP server factory returning a ``SessionBridgeLike``."""
 
     def __call__(
         self,
@@ -69,13 +58,11 @@ class StartMcpServerFn(Protocol):
 
 
 class WorkspaceFactoryFn(Protocol):
-    """Injectable workspace factory."""
 
     def __call__(self, root: Path) -> Workspace: ...
 
 
 class BridgeFactory(Protocol):
-    """Factory that builds a session bridge from a workspace root."""
 
     def __call__(
         self,
@@ -147,12 +134,6 @@ def build_session_bridge(
     workspace_factory: WorkspaceFactoryFn | None = None,
     conflict_activity_relay: bool = False,
 ) -> SessionBridgeLike:
-    """Build and start a session bridge for the given workspace.
-
-    This is the single owner of ``AgentSession`` + workspace + MCP server
-    construction. Callers inject collaborators via the ``*_fn`` parameters;
-    production defaults are provided for each.
-    """
     plan_fn = build_session_mcp_plan_fn or _build_session_mcp_plan
     server_fn = start_mcp_server_fn or _start_mcp_server
     workspace_fn = workspace_factory or _workspace_factory
@@ -187,58 +168,16 @@ def build_session_bridge(
         worker_artifact_dir=worker_artifact_dir,
         worker_namespace=worker_namespace,
         allowed_roots=allowed_roots or (),
-        # F2/A5 (Evidence Provenance): wire the parent-only broker secret
-        # into the in-process session so ``McpServer``'s wire-ledger append
-        # (``self._session.broker_secret``) is not a permanent no-op for
-        # every caller of ``build_session_bridge`` (the main pipeline and
-        # every plumbing command, including the smoke harness). Without
-        # this, no in-process bridge could ever reach ``Provenance.WIRE``
-        # regardless of ``RALPH_BROKER_SECRET`` being set, because
-        # ``AgentSession.broker_secret`` defaults to ``None`` and nothing
-        # else populated it. ``_parent_broker_secret()`` is the single
-        # approved composition-root accessor (see
-        # ``ralph/testing/audit_di_seam.py``'s allowlist comment on
-        # ``agents/invoke/_process_reader.py``); it returns ``None`` when
-        # unset, which keeps the ledger a no-op exactly as before for any
-        # caller that never exports the secret.
         broker_secret=_parent_broker_secret(),
     )
     workspace = workspace_fn(workspace_root)
-    # Pre-render hook: materialize every bundled artifact format doc into
-    # the workspace so the agent can read ``.agent/artifact-formats/<type>.md``
-    # the moment the prompt tells it to. Without this, the agent's first read
-    # fails with ENOENT and the artifact submission silently breaks. (Bug
-    # surfaced on 2026-06-14 when the commit prompt pointed at a format doc
-    # that hadn't been written yet.) Idempotent and fseventsd-friendly:
-    # ``materialize_format_doc`` and ``materialize_format_index`` route
-    # through ``write_text_if_changed`` from
-    # ``ralph/mcp/artifacts/idempotent_write``, which SKIPS the physical
-    # rewrite when the on-disk doc is byte-identical, so re-running per
-    # session adds no filesystem mutation (and therefore no fsevents
-    # notification) on a workspace that already has the docs.
     materialize_all_format_docs(workspace_root)
-    # AC-11: attach one ``ExecResourceResolver`` per session so
-    # ``ralph://exec/<spill-name>`` URIs returned by ``format=summary``
-    # exec calls are replayable through ``resources/read``. The
-    # resolver owns the workspace's exec spill directory as a trusted
-    # root, plus any per-call spill roots a tool may register later.
-    # The attachment MUST happen BEFORE the subprocess is spawned so
-    # the on-disk session payload can carry the resolver config and
-    # the subprocess MCP server can re-construct the resolver. Doing
-    # this after ``bridge.start()`` would make the resources/read
-    # handler return a structured "resolver not attached" error
-    # inside the production subprocess path.
     try:
         from ralph.mcp.tools._exec_resource_uri import ExecResourceResolver
 
         spill_root = workspace_root / ".agent" / "tmp"
-        # The concrete class satisfies the resolver protocol; the
-        # session attribute is typed as the protocol. Assigning the
-        # concrete instance is structurally valid because the
-        # protocol narrows to the same public surface.
         session.exec_resource_resolver = ExecResourceResolver(spill_roots=(spill_root,))
     except Exception:
-        # Surface as no resolver rather than failing the bridge.
         session.exec_resource_resolver = None
     activity_relay = None
     if conflict_activity_relay:
@@ -254,11 +193,6 @@ def build_session_bridge(
         ),
     )
     bridge.start()
-    # AC-03: attach one ExploreIndex per session/workspace so every
-    # indexed read/search/grep/list/edit operation shares the same
-    # generation + dirty-path state. The build is lazy: when no
-    # indexed operation is invoked, the handle stays attached but
-    # the SQLite store is only opened on the first read.
     try:
         from ralph.mcp.explore.handlers import build_explore_index
 
@@ -272,17 +206,6 @@ def build_session_bridge(
 
 
 def bridge_env_for(bridge: SessionBridgeLike) -> dict[str, str]:
-    """Return the two-key MCP environment dict used by plumbing commands.
-
-    The ``MCP_RUN_ID_ENV`` value is derived from the bridge's ``run_id``
-    property — the SAME identity the submission handler stamps receipts
-    with. A free-form label is no longer accepted: a caller passing a
-    label that disagreed with the session's run_id produced the
-    artifact-handoff drift bug (receipt stamped under one value, gate
-    looked it up under another). The single-source-of-truth contract
-    here is the structural fix: there is no separate label parameter
-    to drift.
-    """
     return {
         str(MCP_ENDPOINT_ENV): bridge.agent_endpoint_uri(),
         str(MCP_RUN_ID_ENV): bridge.run_id,
@@ -294,7 +217,6 @@ def scoped_reset_tool_registry_callback(
     scope_key: str | None,
     recorder: Callable[[str], object] | None = None,
 ) -> Callable[[], object] | None:
-    """Bind a bridge registry reset to exactly one concrete invocation scope."""
     if not isinstance(scope_key, str) or not scope_key.strip() or scope_key == "unscoped":
         raise ValueError("a tool-registry reset requires an invocation scope")
     if bridge is None:

@@ -1,15 +1,3 @@
-"""Tests for the bounded conflict-resolution driver.
-
-The load-bearing contract is that the DETERMINISTIC marker scan decides
-whether a round resolved anything. An agent that reports success over a
-file still carrying ``<<<<<<<`` has resolved nothing, and the driver must
-say so; ``git add`` clears a file's unmerged bit even with markers
-intact, so the textual re-scan is the only remaining proof.
-
-Every test injects the round runner and the git seams, so nothing here
-launches a process or touches a repository.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -59,20 +47,15 @@ pytestmark = pytest.mark.timeout_seconds(5)
 
 @pytest.fixture(autouse=True)
 def _no_real_cooldown_waits(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A failed agent is benched and the driver waits out its cooldown; never for real here."""
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
 
 
 class _FakeStatusBar:
-    """Records the model the driver last pushed."""
-
     def __init__(self) -> None:
         self.last_model: object | None = None
 
 
 class _FakeDisplay:
-    """Display double recording status-bar pushes and warn lines."""
-
     def __init__(self) -> None:
         self.status_bar = _FakeStatusBar()
         self.models: list[object] = []
@@ -87,7 +70,6 @@ class _FakeDisplay:
 
 
 def _policy_bundle() -> PolicyBundle:
-    """Return the preloaded default policy that declares the resolution drain."""
     return _POLICY_BUNDLE
 
 
@@ -101,7 +83,6 @@ def _install_seams(
     unmerged: Sequence[str],
     surviving_per_round: Sequence[Sequence[str]],
 ) -> list[Sequence[str]]:
-    """Stub the two git queries the driver's verdict rests on."""
     scans: list[Sequence[str]] = []
     monkeypatch.setattr(driver_module, "unmerged_paths", lambda root: list(unmerged))
     monkeypatch.setattr(
@@ -158,7 +139,6 @@ def test_first_round_success_returns_true_and_invokes_once(
 def test_surviving_markers_loop_and_feed_the_paths_back(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Round 2's prompt must name what round 1 failed to resolve."""
     _install_seams(
         monkeypatch,
         unmerged=_CONFLICTED,
@@ -199,7 +179,6 @@ def test_surviving_markers_loop_and_feed_the_paths_back(
 
 
 def test_bounded_at_max_resolution_rounds(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Markers that never clear exhaust the budget and decline."""
     _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[["src/alpha.py"]])
     calls: list[int] = []
 
@@ -208,19 +187,12 @@ def test_bounded_at_max_resolution_rounds(monkeypatch: pytest.MonkeyPatch, tmp_p
         return True
 
     assert _run(tmp_path, invoke=_invoke) is False
-    # Retries are governed by the failure ledger (agent_max_total_unproductive=9),
-    # not an independent round cap.
     assert calls == list(range(1, 10))
 
 
 def test_failed_resolver_attempt_uses_the_next_fallback_candidate(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A failed resolver invocation cannot finish recovery or advance a phase."""
-    # Per-attempt observable facts (§11 observes the unresolved set once
-    # before every charge): primary's three exception attempts leave the
-    # conflicted paths in place (no progress), then fallback's success
-    # clears them.
     _install_seams(
         monkeypatch,
         unmerged=_CONFLICTED,
@@ -255,9 +227,6 @@ def test_failed_resolver_attempt_uses_the_next_fallback_candidate(
         is True
     )
     assert calls == ["primary", "primary", "primary", "fallback"]
-    # The resolution drain uses the normal immutable chain model, not a
-    # separate "failed means phase complete" cursor.  The failed primary
-    # has advanced the same AgentChainState ordinary phases use.
     recovery_state = session.recovery_state
     assert recovery_state is not None
     chain = recovery_state.chain_for_phase(PHASE_RESOLUTION)
@@ -267,7 +236,6 @@ def test_failed_resolver_attempt_uses_the_next_fallback_candidate(
 def test_exhausted_resolver_chain_reports_typed_terminal_evidence(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """An exhausted resolver chain remains a terminal recovery failure."""
     _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[_CONFLICTED])
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("primary", "fallback")
@@ -309,7 +277,6 @@ def test_exhausted_resolver_chain_reports_typed_terminal_evidence(
 def test_exhausted_resolver_chain_persists_terminal_state_that_blocks_planning(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Resolver exhaustion has no ordinary-phase successor."""
     _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[_CONFLICTED])
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("primary", "fallback")
@@ -337,8 +304,6 @@ def test_exhausted_resolver_chain_persists_terminal_state_that_blocks_planning(
     verdict = inspect_integration_resolution(
         tmp_path,
         persisted,
-        # The conflict is still on disk: that is what makes the record
-        # terminal. A record that outlived its conflict does not block.
         porcelain=lambda _root: (True, "UU src/alpha.py\n"),
         rebase_active=lambda _root: False,
         merge_status=lambda _root: MERGE_STATE_NONE,
@@ -362,7 +327,6 @@ def test_invoker_exception_is_contained_and_returns_false(
 def test_agent_success_over_surviving_markers_is_not_a_resolution(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The repository outranks the agent's own claim."""
     _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[["src/alpha.py"]])
     assert _run(tmp_path, invoke=lambda name, path, index: True) is False
 
@@ -370,7 +334,6 @@ def test_agent_success_over_surviving_markers_is_not_a_resolution(
 def test_failed_invocation_with_clean_markers_is_not_a_resolution(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Fail closed: a round that did not run cannot claim the merge is clean."""
     _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[[]])
     assert _run(tmp_path, invoke=lambda name, path, index: False) is False
 
@@ -435,14 +398,6 @@ def test_previous_status_bar_model_is_restored_on_exit(
 def test_status_bar_is_not_left_on_the_resolution_label_without_a_prior_model(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """AC-05: nothing to restore must still clear the resolution label.
-
-    The pipeline is entered from four seams, one of which is the startup
-    seam, where the run loop's next status-bar push can be a whole phase
-    away. A footer left claiming ``Rebase Conflict Resolution`` after the
-    pipeline has exited reads exactly like the hang the label exists to
-    rule out.
-    """
     _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[[]])
     monkeypatch.setattr(driver_module, "_restore_status_bar", _RESTORE_STATUS_BAR)
     display = _FakeDisplay()
@@ -459,7 +414,6 @@ def test_status_bar_is_not_left_on_the_resolution_label_without_a_prior_model(
 def test_status_bar_clear_tolerates_a_display_that_raises(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Presentation must never break integration, on the clear path too."""
     _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[[]])
 
     class _ExplodingDisplay(_FakeDisplay):
@@ -489,7 +443,6 @@ def test_entry_and_exit_are_announced_to_the_operator(
 def test_merge_mode_success_reports_committing_the_merge(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The endpoint-merge path really does commit a merge next."""
     _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[[]])
     display = _FakeDisplay()
 
@@ -502,11 +455,6 @@ def test_merge_mode_success_reports_committing_the_merge(
 def test_rebase_mode_success_reports_continuing_the_rebase(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The rebase path stages and continues; it commits no merge.
-
-    Claiming a merge commit here is observably wrong phase feedback for
-    the dedicated rebase-conflict workflow, so the wording is asserted.
-    """
     _install_seams(monkeypatch, unmerged=[], surviving_per_round=[[]])
     display = _FakeDisplay()
 
@@ -536,26 +484,11 @@ def test_rebase_mode_success_reports_continuing_the_rebase(
 
 
 def test_the_resolution_phase_has_its_own_non_muted_display_style() -> None:
-    """The dedicated conflict phase must not render as inert grey text.
-
-    ``rebase_conflict_resolution`` is not declared in ``pipeline.toml``
-    -- it is a nested pipeline entered from the integration seams -- so
-    it only resolves through ``_PHASE_STYLES``. Without an entry there
-    ``_phase_style`` falls through to ``theme.text.muted`` and the phase
-    banner and status bar go silent at exactly the moment the operator
-    needs to see them.
-    """
     assert phase_style_for_phase(PHASE_RESOLUTION) != "theme.text.muted"
     assert phase_style_for_phase(PHASE_RESOLUTION) == "theme.phase.fix"
 
 
 def test_the_pushed_footer_carries_that_non_muted_style(tmp_path: Path) -> None:
-    """The model actually pushed at the display must carry the style.
-
-    Asserted through the real push rather than the lookup helper, so a
-    change that styles the phase banner but leaves the persistent footer
-    grey cannot pass.
-    """
     display = _FakeDisplay()
 
     push_conflict_status_bar(
@@ -574,7 +507,6 @@ def test_the_pushed_footer_carries_that_non_muted_style(tmp_path: Path) -> None:
 def test_resolution_termination_keeps_typed_reason_activity_and_unresolved_paths(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """S-4/DA-007: driver output preserves the invocation's typed supervision result."""
     _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[_CONFLICTED])
     display = _FakeDisplay()
     session = ResolutionSession()
@@ -612,7 +544,6 @@ def test_resolution_termination_keeps_typed_reason_activity_and_unresolved_paths
 def test_expired_operator_cap_is_reported_before_another_resolver_launch(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """S-2/R6: a rebase-wide expired cap cannot be passed as an invalid zero timeout."""
     _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[_CONFLICTED])
     display = _FakeDisplay()
     session = ResolutionSession(started_at=0.0, total_resolution_cap_seconds=60.0)
@@ -643,7 +574,6 @@ def test_expired_operator_cap_is_reported_before_another_resolver_launch(
 def test_configured_operator_cap_reaches_the_active_invocation(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """S-4/R6: the active invocation receives the remaining session cap, not idle semantics."""
     _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[["src/alpha.py"]])
     config = UnifiedConfig.model_validate(
         {"general": {}, "conflict_resolution": {"total_resolution_cap_seconds": 60.0}}
@@ -675,23 +605,11 @@ def test_configured_operator_cap_reaches_the_active_invocation(
 def test_work_the_agent_finished_is_not_thrown_away_by_a_bad_exit(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The worktree is the evidence, exactly as the resolver's prompt promises.
-
-    The prompt tells every resolver "Ralph Workflow re-scans every listed
-    path textually after you return; your own report is never the
-    evidence" -- and then the round demanded that the INVOCATION return
-    success as well. An agent that resolved every marker and ended its
-    session in any way the executor calls unsuccessful therefore had
-    finished work discarded, the same conflict handed to the next
-    candidate, and a repaired worktree abandoned when the rounds ran out.
-    """
     _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[[]])
     session = ResolutionSession()
 
     def _worked_then_exited_badly(name: str, path: Path, index: int) -> bool:
-        # The supervision stream saw the agent working ...
         session.last_attempt_saw_activity = True
-        # ... and the invocation still came back unsuccessful.
         return False
 
     assert _run(tmp_path, invoke=_worked_then_exited_badly, session=session) is True
@@ -700,7 +618,6 @@ def test_work_the_agent_finished_is_not_thrown_away_by_a_bad_exit(
 def test_a_round_that_never_reached_an_agent_still_proves_nothing(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Fail closed: clean markers are not a resolution nobody performed."""
     _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[[]])
     session = ResolutionSession()
 
@@ -714,21 +631,12 @@ def test_a_round_that_never_reached_an_agent_still_proves_nothing(
 def test_an_earlier_candidates_finished_work_survives_a_later_one_not_starting(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The round is judged on the worktree, so ANY agent having run counts.
-
-    Reading the flag of the LAST invocation discarded work a different
-    agent had already finished: candidate one repairs every marker and
-    exits badly, candidate two never starts, and the clean worktree was
-    scored a failure -- after which the merge seam threw the repaired
-    tree away.
-    """
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
     _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[[]])
     session = ResolutionSession()
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
-        # 'one' really ran and repaired the tree; 'two' never started.
         session.last_attempt_saw_activity = agent_name == "one"
         return False
 
@@ -738,13 +646,6 @@ def test_an_earlier_candidates_finished_work_survives_a_later_one_not_starting(
 def test_a_heartbeat_does_not_credit_a_decision_nobody_declared(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A markerless conflict has an empty marker scan before anyone touches it.
-
-    Crediting "an agent ran" there credited a decision nobody made:
-    Ralph then staged whatever git happened to leave -- reversing the
-    other side's deletion and, in a rebase, dropping the commit that
-    made it -- and reported success.
-    """
     from ralph.pipeline.conflict_resolution.sight import ConflictSight
 
     monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: ["gone.py"])
@@ -768,7 +669,6 @@ def test_a_heartbeat_does_not_credit_a_decision_nobody_declared(
 def test_a_declared_decision_is_still_accepted(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The guard must not make a genuinely declared decision unlandable."""
     from ralph.pipeline.conflict_resolution.sight import ConflictSight
 
     monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: ["gone.py"])
@@ -787,12 +687,6 @@ def test_a_declared_decision_is_still_accepted(
 def test_a_file_the_resolver_destroyed_is_not_a_resolution(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The marker scan skips a path it cannot read, so a deletion passed it.
-
-    A two-sided content conflict "resolved" by dropping the file is not
-    a resolution -- neither side asked for it to disappear -- and it was
-    being credited to an invocation that had already returned failure.
-    """
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "alpha.py").write_text("<<<<<<< HEAD\na\n=======\nb\n>>>>>>> x\n")
     monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: ["src/alpha.py"])
@@ -812,13 +706,6 @@ def test_a_file_the_resolver_destroyed_is_not_a_resolution(
 def test_a_deletion_is_still_unresolved_on_the_round_after_it(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The vanish guard has to describe the STOP, not one round of it.
-
-    A file deleted in round 1 is already absent when round 2 starts, so
-    a per-round snapshot stopped calling it vanished -- and the empty
-    marker scan (it cannot read a file that is gone) credited the
-    deletion. Neither side asked for the file to disappear.
-    """
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "alpha.py").write_text("<<<<<<< HEAD\na\n=======\nb\n>>>>>>> x\n")
     monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: ["src/alpha.py"])
@@ -843,12 +730,6 @@ def test_a_deletion_is_still_unresolved_on_the_round_after_it(
 def test_a_truncated_conflict_is_not_a_resolution(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Emptying the file drops BOTH sides, and the markers go with them.
-
-    With nothing left to object to, the marker scan passed and a
-    heartbeat credited the round -- so a resolver that truncated the
-    file had that committed as a clean resolution.
-    """
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "alpha.py").write_text("<<<<<<< HEAD\na\n=======\nb\n>>>>>>> x\n")
     monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: ["src/alpha.py"])

@@ -1,5 +1,3 @@
-"""Rendered regression checks for concise planning guidance."""
-
 from __future__ import annotations
 
 import pytest

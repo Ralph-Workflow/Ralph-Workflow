@@ -1,23 +1,3 @@
-"""The tool-dispatch boundary must not turn operational failures into retryable
-protocol errors at the server edge.
-
-INCIDENT: an agent re-issued an identical failing MCP tool call for ~5 hours.
-Mechanism: an operational failure inside a handler (a timeout) propagated as an
-exception and was returned to the agent as a JSON-RPC ``-32603`` PROTOCOL error,
-which reads as *transient/retryable* — so the agent retried forever.
-
-Contract pinned here (single systemic guard, independent of any one handler):
-- An OPERATIONAL ``ToolError`` (timeout, output-limit, spawn/IO/git failure —
-  including ``ExecutionError``) becomes a ``ToolResult(is_error=True)``. It is
-  terminal and non-retryable, never a ``-32603``.
-- A FIX-YOUR-CALL error (``InvalidParamsError``, ``CapabilityDeniedError``) may still
-  propagate from ``ToolBridge`` itself, but the MCP ``tools/call`` boundary must
-  convert it into a terminal ``ToolResult(is_error=True)`` so clients do not see
-  a retryable ``-32603`` transport/internal failure.
-- A genuine bug (any non-``ToolError`` exception) still becomes a
-  ``ToolDispatchError`` (``-32603``).
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -95,9 +75,6 @@ def test_unexpected_bug_still_becomes_dispatch_error() -> None:
 
 
 def test_unknown_tool_error_is_actionable() -> None:
-    """A mis-prefixed tool name (e.g. the model's invented 'ralph_mcp__exec') must
-    yield an actionable error: keep 'is not registered' (the recovery classifier
-    keys on it), suggest the real name, and list available tools."""
     bridge = ToolBridge()
 
     def _handler(
@@ -120,7 +97,7 @@ def test_unknown_tool_error_is_actionable() -> None:
     with pytest.raises(ToolDispatchError) as exc_info:
         bridge.get("ralph_mcp__exec")
     message = str(exc_info.value)
-    assert "is not registered" in message  # recovery classifier contract
-    assert "exec" in message  # the suggestion / available list
+    assert "is not registered" in message
+    assert "exec" in message
     assert "Available tools" in message
     assert "Did you mean 'exec'?" in message

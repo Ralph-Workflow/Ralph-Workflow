@@ -1,39 +1,3 @@
-"""Bundled starter policy loader.
-
-Mirrors the resource-access pattern used by ``ralph.skills._content``: the
-starter ``.md`` files are bundled inside the installed package and read via
-``importlib.resources.files(__package__)``. The hatch wheel and sdist
-include entries (added to :file:`pyproject.toml`) ship the same files
-with the wheel so the starter loader works in any environment that has
-the wheel installed.
-
-Public API:
-
-* :func:`iter_starter_names` — return every bundled starter name.
-  The count is derived from :data:`STARTER_NAMES`; v6 ships
-  ``len(STARTER_NAMES)`` entries (12 core files including the
-  ``execution-kernel`` introduced by the v5 outcome-oriented kernel,
-  plus 10 conditional files keyed on domain signals); the 12-core
-  count is anchored by :data:`ralph.project_policy.markers.CORE_POLICY_FILES`
-  so the docstring cannot drift from the v6 marker module.
-* :func:`read_starter` — return the content of one bundled starter.
-* :func:`seed_starter_into` — copy a bundled starter into the canonical
-  policy directory via the workspace seam, but ONLY when the target is
-  absent (never overwrite an existing project-customized file).
-
-Shipped content contract (schema v6): every starter opens with the
-:data:`ralph.project_policy.markers.POLICY_SCHEMA_MARKER` marker and
-carries a ``## Guard inventory`` section whose header is the seven-column
-v6 grammar: ``Guard``, ``Owner``, ``Protected outcome``,
-``Detected condition``, ``Claim scope``, ``Enforcement``,
-``Retirement trigger``. The ``Enforcement`` column states whether a guard
-is enforced deterministically or held advisory pending review.
-
-Every starter ships with a template banner, REPLACE-ME guidance comments,
-and placeholder tokens, so a freshly-seeded starter fails the validator
-until the remediation agent resolves every one of them. Completion is the
-absence of unresolved markers — there is no completion marker to add.
-"""
 
 from __future__ import annotations
 
@@ -48,9 +12,6 @@ if TYPE_CHECKING:
 
     from ralph.workspace.protocol import Workspace
 
-#: Set of starter filenames bundled with the package. The hatch wheel and
-#: sdist include these files via the ``ralph/project_policy/starters/**/*.md``
-#: glob in ``pyproject.toml``.
 PORTFOLIO_STARTER_NAME: Final[str] = "policy-portfolio.toml"
 STARTER_NAMES: Final[tuple[str, ...]] = (
     "execution-kernel.md",
@@ -79,19 +40,6 @@ STARTER_NAMES: Final[tuple[str, ...]] = (
 
 
 def iter_starter_names() -> Iterator[str]:
-    """Yield every bundled starter name.
-
-    The v6 ship set is ``len(STARTER_NAMES)`` entries: 12 core
-    files (including the ``execution-kernel.md`` introduced with the
-    v5 outcome-oriented kernel) plus 10 conditional files. Counts
-    are derived from :data:`STARTER_NAMES` and
-    :data:`ralph.project_policy.markers.CORE_POLICY_FILES`
-    so the docstring cannot drift from the loader truth. Each name
-    resolves to a starter carrying the v6 schema marker and the
-    seven-column guard inventory whose ``Enforcement`` column states
-    whether the guard is enforced deterministically or held advisory
-    pending review.
-    """
     yield from STARTER_NAMES
 
 
@@ -104,14 +52,6 @@ _STARTER_CONTENT: Final[MappingProxyType[str, str]] = MappingProxyType(
 
 
 def read_starter(name: str) -> str:
-    """Return cached bundled content for one starter.
-
-    Args:
-        name: Filename of the starter (e.g. ``testing-policy.md``).
-
-    Raises:
-        ValueError: When ``name`` is not a bundled starter.
-    """
     try:
         return _STARTER_CONTENT[name]
     except KeyError as exc:
@@ -120,19 +60,6 @@ def read_starter(name: str) -> str:
 
 
 def seed_starter_into(workspace: Workspace, name: str) -> bool:
-    """Write ``name`` into the canonical directory via the workspace seam.
-
-    Returns True when the file was created, False when it already existed
-    (never overwrites). Starter content is shipped without the completion
-    marker; seeding never makes a file valid.
-
-    Args:
-        workspace: The injected workspace seam.
-        name: Filename of the starter to seed.
-
-    Raises:
-        ValueError: When ``name`` is not a bundled starter.
-    """
     if name not in (*STARTER_NAMES, PORTFOLIO_STARTER_NAME):
         msg = f"Unknown starter policy name: {name!r}"
         raise ValueError(msg)

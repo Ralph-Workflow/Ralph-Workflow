@@ -1,5 +1,3 @@
-"""Private helper: _SessionState for fake SSE MCP server."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -11,6 +9,4 @@ if TYPE_CHECKING:
 
 @dataclass
 class _SessionState:
-    """Holds per-session state for the fake SSE MCP server."""
-
     events: queue.Queue[bytes]

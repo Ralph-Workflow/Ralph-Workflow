@@ -1,5 +1,3 @@
-"""Black-box tests for the deterministic ranking contract."""
-
 from __future__ import annotations
 
 import pytest
@@ -17,12 +15,8 @@ from ralph.mcp.explore.ranking import (
     sort_ranked,
 )
 
-# --- Score components ------------------------------------------------------
-
 
 def test_exact_basename_outranks_subdir_match() -> None:
-    # The caller is searching for ``foo.py``; a path whose basename
-    # is exactly that matches; a path whose basename differs does not.
     exact = score_search_file(
         candidate_path="tools/foo.py",
         basename="foo.py",
@@ -31,13 +25,12 @@ def test_exact_basename_outranks_subdir_match() -> None:
     )
     subdir = score_search_file(
         candidate_path="deep/nested/foo.py",
-        basename="foo.py",  # basename of the candidate is foo.py too, so it matches
+        basename="foo.py",
         role_requested=None,
         is_git_changed=False,
     )
-    assert exact.score == subdir.score  # both match exact basename
+    assert exact.score == subdir.score
 
-    # When the candidate's basename differs, no exact match occurs.
     no_match = score_search_file(
         candidate_path="deep/nested/foo.py",
         basename="bar.py",
@@ -71,7 +64,6 @@ def test_generated_path_applies_penalty() -> None:
         role_requested=None,
         is_git_changed=False,
     )
-    # Phase 1: exact basename +100 minus vendor -50 = +50 net.
     assert any("generated" in reason for reason in item.reasons)
     assert item.score == 50
 
@@ -91,9 +83,6 @@ def test_role_requested_applies_bonus() -> None:
     )
     assert with_source.score > base.score
     assert any("role_requested=source" in reason for reason in with_source.reasons)
-
-
-# --- Stable tie-breaks -----------------------------------------------------
 
 
 def test_sort_ranked_is_stable_by_path_line_evidence() -> None:
@@ -117,9 +106,6 @@ def test_sort_ranked_higher_score_first() -> None:
     ]
     sorted_items = sort_ranked(items)
     assert sorted_items[0].path == "b.py"
-
-
-# --- Score reasons -------------------------------------------------------
 
 
 def test_score_reasons_documents_missing_indexed_components() -> None:
@@ -148,9 +134,6 @@ def test_score_search_file_to_dict_includes_reasons() -> None:
     assert isinstance(payload["score_reasons"], list)
 
 
-# --- Grep rank_by scoring -----------------------------------------------
-
-
 def test_score_grep_match_returns_missing_indexed_data_for_symbol_components() -> None:
     item = score_grep_match(path="a.py", line=1, evidence_id="ev-1")
     joined = " ".join(item.reasons)
@@ -162,9 +145,6 @@ def test_score_grep_match_git_changed_adds_bonus() -> None:
     base = score_grep_match(path="a.py", line=1, evidence_id="ev-1")
     changed = score_grep_match(path="a.py", line=1, evidence_id="ev-1", is_git_changed=True)
     assert changed.score > base.score
-
-
-# --- FTS eligibility ------------------------------------------------------
 
 
 def test_is_fts_eligible_accepts_literal() -> None:
@@ -185,9 +165,6 @@ def test_fts_query_for_escapes_internal_quotes() -> None:
     assert fts_query_for('he"llo', whole_word=False) == '"he""llo"'
 
 
-# --- Role + generated heuristics ------------------------------------------
-
-
 def test_is_generated_path_detects_vendor() -> None:
     assert is_generated_path("vendor/lib/foo.py") is True
     assert is_generated_path("foo.py") is False
@@ -205,9 +182,6 @@ def test_is_test_role_accepts_test_paths() -> None:
     assert is_test_role("tests/test_foo.py") is True
     assert is_test_role("test_foo.py") is True
     assert is_test_role("foo.py") is False
-
-
-# --- RankedItem dataclass --------------------------------------------------
 
 
 def test_ranked_item_defaults() -> None:

@@ -1,5 +1,3 @@
-"""Regression coverage for conflict-strategy recovery backoff."""
-
 from __future__ import annotations
 
 from ralph.pipeline.events import PhaseFailureEvent
@@ -30,7 +28,6 @@ def _policy() -> PipelinePolicy:
 
 
 def test_conflict_strategy_retry_uses_bounded_exponential_backoff() -> None:
-    """The next rung cannot immediately hot-loop at the recovery boundary."""
     state, _ = reduce(
         PipelineState(phase="development"),
         PhaseFailureEvent(

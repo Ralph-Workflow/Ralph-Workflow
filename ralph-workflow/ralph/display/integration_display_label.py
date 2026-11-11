@@ -1,8 +1,3 @@
-"""Canonical closed vocabulary for integration display labels.
-
-Split from :mod:`ralph.display.auto_integrate_message` so neither
-module carries two top-level classes (repo-structure policy).
-"""
 
 from __future__ import annotations
 
@@ -10,7 +5,6 @@ from enum import StrEnum
 
 
 class IntegrationDisplayLabel(StrEnum):
-    """The canonical closed vocabulary for the seven distinct integration display labels."""
 
     CONFLICT_RESOLUTION = "conflict resolution"
     EVIDENCE_DIAGNOSIS = "evidence diagnosis"
@@ -21,7 +15,6 @@ class IntegrationDisplayLabel(StrEnum):
     INTERVENTION = "intervention"
 
 
-#: Producer-side action/state strings routed to a display label.
 DISPLAY_LABEL_MAP: dict[str, str] = {
     "conflict_resolution": IntegrationDisplayLabel.CONFLICT_RESOLUTION.value,
     "conflict resolution": IntegrationDisplayLabel.CONFLICT_RESOLUTION.value,
@@ -42,9 +35,6 @@ DISPLAY_LABEL_MAP: dict[str, str] = {
     "publish_after_landing": IntegrationDisplayLabel.PUBLICATION.value,
     "waiting": IntegrationDisplayLabel.WAITING.value,
     "wait_for_bounded_retry": IntegrationDisplayLabel.WAITING.value,
-    # The retired hand-off strings stay mapped for legacy-payload
-    # parsing; the live typed ladder escalation displays as evidence
-    # diagnosis (the reason names the next rung and preserved copy).
     "intervention_required": IntegrationDisplayLabel.INTERVENTION.value,
     "intervention": IntegrationDisplayLabel.INTERVENTION.value,
     "require_intervention": IntegrationDisplayLabel.INTERVENTION.value,

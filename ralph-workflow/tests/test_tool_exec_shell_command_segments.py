@@ -1,5 +1,3 @@
-"""Tests for the shell pipeline splitter behind the MCP exec blacklist."""
-
 from __future__ import annotations
 
 import pytest
@@ -8,9 +6,6 @@ from ralph.mcp.tools.exec import _shell_command_segments
 
 
 class TestShellCommandSegments:
-    """The pipeline splitter feeds the per-segment blacklist, so every command
-    the shell would run must surface as its own ``(command, args)`` segment."""
-
     def test_pipe_splits_into_command_heads(self) -> None:
         segments = _shell_command_segments("grep -r foo . | wc -l")
         assert segments == [("grep", ["-r", "foo", "."]), ("wc", ["-l"])]
@@ -22,8 +17,6 @@ class TestShellCommandSegments:
         assert "sudo" in heads
 
     def test_redirection_target_is_not_a_command_head(self) -> None:
-        # The token after ``>`` is a filename, so a file named like a
-        # blacklisted command must NOT be misread as invoking it.
         segments = _shell_command_segments("echo x > reboot")
         assert segments == [("echo", ["x"])]
 

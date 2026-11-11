@@ -1,5 +1,3 @@
-"""Cursor stream-json session ID extraction tests."""
-
 from __future__ import annotations
 
 import json
@@ -11,7 +9,6 @@ from ralph.agents.invoke._session import (
 
 
 def test_cursor_system_init_session_id_is_transport_session_id() -> None:
-    """Cursor emits the resumable session id on ``system/init`` stream-json events."""
     line = json.dumps(
         {
             "type": "system",

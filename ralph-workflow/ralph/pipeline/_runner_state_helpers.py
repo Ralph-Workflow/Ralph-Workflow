@@ -1,4 +1,3 @@
-"""State mutation helpers for the pipeline runner."""
 
 from __future__ import annotations
 
@@ -42,7 +41,6 @@ def reset_phase_chain_for_recovery(
     state: PipelineState,
     target_phase: str,
 ) -> PipelineState:
-    """Reset the target phase chain when re-entering after the terminal failure route."""
     chain = state.chain_for_phase(target_phase)
     if chain is None:
         return state
@@ -60,51 +58,6 @@ def recover_missing_plan_handoff(
     subscriber: _NotifiableSubscriber | None,
     exc: Exception,
 ) -> PipelineState:
-    """Recover from a missing plan handoff by routing back to the entry phase.
-
-    When ``current_epoch >= pipeline_policy.recovery.cycle_cap``, the recovery
-    routes to ``pipeline_policy.recovery.failed_route`` (default
-    ``"failed_terminal"``) instead of ``entry_phase``, preventing an infinite
-    recovery loop when a planning agent persistently fails to produce a plan
-    artifact. On the success path (below the bound) the helper advances to
-    ``pipeline_policy.entry_phase``. Both paths preserve
-    ``last_error=str(exc)`` so the operator sees the underlying
-    ``MissingPlanHandoffError`` message regardless of which branch fires,
-    matching the ``ExitFailureEffect`` convention.
-
-    On the success path (rerouting to ``entry_phase``) the helper ALSO
-    resets the target entry phase's ``AgentChainState`` via
-    ``reset_phase_chain_for_recovery`` so the recovered planning pass
-    starts with ``current_index=0`` and ``retries=0`` rather than
-    resuming on a fallback planner or with retry debt carried over from
-    the prior planning attempt. This mirrors the chain-reset behaviour
-    already used by the failed-route re-entry branch in
-    ``ralph/pipeline/runner.py`` so every re-entry into a phase starts
-    a fresh chain. The bound-exceeded path does NOT reset the chain:
-    the pipeline is heading to ``failed_route`` (terminal), so the
-    planning chain state is irrelevant on that branch.
-
-    Mirrors the side-effect order of the original inline ``except`` blocks in
-    ``_handle_inline_effect`` and ``_run_pipeline_step``:
-
-    1. ``logger.warning`` (success path) or ``logger.error`` (bound-exceeded
-       path) with the missing handoff message.
-    2. ``progress.advance_phase`` to ``entry_phase`` (success) or
-       ``failed_route`` (bound-exceeded).
-    3. ``reset_phase_chain_for_recovery(state, target_phase)`` on the
-       success path only, so the recovered planning phase restarts its
-       agent chain from scratch.
-    4. ``copy_with(last_error=str(exc), recovery_epoch=current_epoch + 1)``.
-    5. ``ckpt.save(recovered_state, checkpoint_path)``.
-    6. ``_notify_pipeline_subscriber(subscriber, recovered_state)``.
-
-    The on-disk checkpoint write happens before the subscriber is notified
-    so the next run can resume from the recovered state even if the
-    subscriber callback raises.
-
-    Returns the recovered ``PipelineState``. Callers MUST return the
-    recovered state to their caller (do not continue the current effect).
-    """
     current_epoch = state.recovery_epoch if isinstance(state.recovery_epoch, int) else 0
     cycle_cap = pipeline_policy.recovery.cycle_cap
     bound_exceeded = current_epoch >= cycle_cap
@@ -133,12 +86,6 @@ def recover_missing_plan_handoff(
         target_phase,
         policy=pipeline_policy,
     )
-    # This recovery leaves the cycle behind -- it routes back to the entry
-    # phase to re-plan. A timer left running charges the re-plan to the cycle
-    # that just ended, and if planning analysis is then bypassed the next cycle
-    # cannot start (starting requires an inactive timer) and is judged on the
-    # previous cycle's spent clock: redirected to its final commit before
-    # development ever runs.
     advanced_state = conclude_cycle_on_route_out_of_cycle(
         advanced_state, target_phase, policy=pipeline_policy
     )

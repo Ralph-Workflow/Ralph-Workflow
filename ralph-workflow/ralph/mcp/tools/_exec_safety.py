@@ -1,8 +1,3 @@
-"""Command-safety and blacklist checking policy for :mod:`ralph.mcp.tools.exec`.
-
-Housed in a private companion module so :mod:`ralph.mcp.tools.exec` stays
-strictly under the 1000-line cap enforced by the repository-structure audit.
-"""
 
 from __future__ import annotations
 
@@ -32,7 +27,6 @@ _CONTAINER_COMMANDS = {"docker", "podman", "chroot", "nsenter", "unshare"}
 
 
 def check_command(command: str, args: list[str]) -> str | None:
-    """Return a denial reason when a command matches the blacklist policy."""
     cmd = command.strip()
     if not cmd:
         return None
@@ -68,7 +62,6 @@ def _contains_any(arg_list: list[str], targets: set[str]) -> bool:
 
 
 def check_privilege_escalation(command: str, _args: list[str]) -> str | None:
-    """Return a denial reason if the command is a privilege escalation tool."""
     key = _command_key(command)
     if key in _PRIVILEGE_ESCALATION_COMMANDS:
         desc = _description("privilege_escalation")
@@ -77,7 +70,6 @@ def check_privilege_escalation(command: str, _args: list[str]) -> str | None:
 
 
 def check_destructive_system(command: str, args: list[str]) -> str | None:
-    """Return a denial reason if the command is a destructive system operation."""
     key = _command_key(command)
     args_lower = _lower_args(args)
     desc = _description("destructive_system")
@@ -123,7 +115,6 @@ def _is_init_kill(key: str, args_lower: list[str]) -> bool:
 
 
 def check_network_exfiltration(command: str, args: list[str]) -> str | None:
-    """Return a denial reason if the command could exfiltrate data over the network."""
     key = _command_key(command)
     args_lower = _lower_args(args)
 
@@ -159,7 +150,6 @@ def _is_external_url(arg: str) -> bool:
 
 
 def check_container_escape(command: str, _args: list[str]) -> str | None:
-    """Return a denial reason if the command could escape container isolation."""
     key = _command_key(command)
     if key in _CONTAINER_COMMANDS:
         desc = _description("container_escape")
@@ -168,7 +158,6 @@ def check_container_escape(command: str, _args: list[str]) -> str | None:
 
 
 def check_multi_file_operation(command: str, args: list[str]) -> str | None:
-    """Return a denial reason if the command performs bulk file operations."""
     key = _command_key(command)
     args_lower = _lower_args(args)
     desc = _description("multi_file_operation")
@@ -240,7 +229,6 @@ def _extracts_archive_in_place(key: str, args_lower: list[str]) -> bool:
 
 
 def apply_exec_policy(command: str, args: list[str]) -> None:
-    """Apply command policy and raise if the command is denied."""
     reason = check_command(command, args)
     if reason is None:
         return

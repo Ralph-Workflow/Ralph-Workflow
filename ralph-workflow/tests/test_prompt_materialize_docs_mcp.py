@@ -87,7 +87,6 @@ def _render_materialized_prompt(
 def test_planning_prompt_materialization_uses_docs_mcp_active_branch(
     tmp_path: Path,
 ) -> None:
-    """Parallel xdist contention on per-test policy materialization; see commit 2fa17fa38."""
     rendered = _render_materialized_prompt(
         phase="planning",
         drain=SessionDrain.PLANNING,

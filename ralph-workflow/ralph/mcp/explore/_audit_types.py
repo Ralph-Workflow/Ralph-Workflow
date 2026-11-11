@@ -1,21 +1,3 @@
-"""Audit register types extracted from ``audit_register``.
-
-Holds the ``AuditOutcome``, ``AuditFamily``, ``AuditCounters``, and
-``AuditEntry`` dataclasses plus the ``_counters`` helper so
-:mod:`ralph.mcp.explore.audit_register` and the per-family
-``_audit_seed_*`` sub-modules can import them without a circular
-dependency. Audit outcome / family / counters are closed enums or
-fully validated frozen dataclasses, so they have no I/O and stay
-fully black-box testable.
-
-This module was extracted from
-:mod:`ralph.mcp.explore.audit_register` after the prior PEP 562
-late-import workaround (``# noqa: E402`` markers) tripped the
-``audit_lint_bypass`` invariant. The split lets the hub module and
-its seed modules import the dataclasses in declaration order, so
-plain ruff/mypy understand the dependency chain and the
-late-import markers disappear.
-"""
 
 from __future__ import annotations
 
@@ -28,7 +10,6 @@ if TYPE_CHECKING:
 
 
 class AuditOutcome(StrEnum):
-    """Closed vocabulary of audit outcomes for a single MCP tool."""
 
     KEEP = "keep"
     ADD_ARGUMENT = "add_argument"
@@ -37,7 +18,6 @@ class AuditOutcome(StrEnum):
 
 
 class AuditFamily(StrEnum):
-    """Closed vocabulary of tool families used by the audit register."""
 
     WORKSPACE_READ = "workspace_read"
     WORKSPACE_SEARCH = "workspace_search"
@@ -55,19 +35,6 @@ class AuditFamily(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class AuditCounters:
-    """Required baseline research-gate counters for a single MCP tool.
-
-    All fields are required and non-null. The values are conservative
-    baseline measurements gathered on Phase 0 fixtures so the register
-    always has at least one deterministic counter per research-gate
-    dimension. Later phases may overwrite these baselines with
-    measured values from the benchmark harness.
-
-    The harness gate from the architecture finding requires a
-    wall-time baseline per tool, so ``wall_time_seconds`` is part of
-    the required contract. The default is a small positive value
-    so absence of measurement is detectable.
-    """
 
     transcript_tokens: int
     returned_bytes: int
@@ -105,17 +72,6 @@ class AuditCounters:
 
 @dataclass(frozen=True, slots=True)
 class AuditEntry:
-    """A single audit entry: tool outcome, rationale, and counters.
-
-    AC-01 contract. The ``rationale`` field is required for every
-    entry. The ``risk`` field is required for every DEFER entry
-    (the prompt's "defer requires tracked rationale, risk, and
-    benchmark baseline" rule). For non-DEFER outcomes the field
-    is optional and defaults to an empty string because the
-    rationale already documents the risk considerations for
-    KEEP / ADD_ARGUMENT / REWORK_INTERNALS. The ``counters`` field
-    must include a wall-time baseline.
-    """
 
     tool: RalphToolName
     family: AuditFamily
@@ -123,14 +79,6 @@ class AuditEntry:
     rationale: str
     counters: AuditCounters
     risk: str = ""
-    # AC-06 measured provenance: ``source`` records the provenance
-    # label for the entry's counters so the audit consumer can
-    # distinguish seed-baseline entries from real benchmark
-    # measurements. ``refresh_audit_register`` overlays the
-    # measurement's ``source`` on the matching entry; the default
-    # ``"seed"`` preserves the previous behaviour for callers that
-    # construct ``AuditEntry`` directly without going through
-    # ``refresh_audit_register``.
     source: str = "seed"
 
     def __post_init__(self) -> None:
@@ -158,16 +106,6 @@ class AuditEntry:
 
 @dataclass(frozen=True, slots=True)
 class Measurement:
-    """One reproducible measurement for a single audit entry.
-
-    ``tool`` is the canonical ``RalphToolName`` the measurement
-    applies to. ``counters`` is the measured ``AuditCounters``
-    record (callers MUST source it from a real ``run_benchmark``
-    result or a fixture; the type prevents synthesized values).
-    The ``source`` string is a free-form provenance label
-    (e.g. ``"tests/test_explore_bench_gates.py:Q1"``) that the
-    audit register preserves alongside the merged entry.
-    """
 
     tool: RalphToolName
     counters: AuditCounters
@@ -176,16 +114,6 @@ class Measurement:
 
 @dataclass(frozen=True, slots=True)
 class RefreshResult:
-    """Outcome of :func:`refresh_audit_register`.
-
-    ``register`` is the rebuilt tuple of ``AuditEntry`` with the
-    measured counters overlaid. ``applied`` is the set of tools
-    for which a measurement was supplied. ``unmeasured`` is the
-    set of tools that kept the seed baseline. ``duplicates`` is
-    the set of tool names that received more than one
-    measurement; refresh uses the first and reports the rest so
-    callers can detect and correct upstream bench fixtures.
-    """
 
     register: tuple[AuditEntry, ...]
     applied: frozenset[RalphToolName]
@@ -194,15 +122,6 @@ class RefreshResult:
     source: str = "refresh_audit_register"
 
 
-# Ponytail: per-tool baseline counters. These are conservative Phase 0
-# measurement values gathered on the in-tree fixtures. They are real
-# baselines, not None placeholders. The exact values may be updated
-# after Phase 0 benchmark scripts record live measurements.
-#
-# AC-01: ``wall_time_seconds`` is part of the required baseline
-# counters. The default is a small positive value (0.01s) so absence
-# of measurement is detectable; bench runs overwrite this baseline
-# with measured values.
 def _counters(
     *,
     transcript_tokens: int,

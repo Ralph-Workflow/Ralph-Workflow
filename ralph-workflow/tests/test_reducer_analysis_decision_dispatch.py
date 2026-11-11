@@ -1,5 +1,3 @@
-"""Unit tests for the pure pipeline reducer."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -334,22 +332,8 @@ def _policy_with_planning_analysis() -> PipelinePolicy:
     )
 
 
-# =============================================================================
-# PhaseFailureEvent tests
-# =============================================================================
-
-
 class TestAnalysisDecisionDispatch:
-    """Tests for AnalysisDecision-driven routing through the reducer.
-
-    These tests verify that ANALYSIS_SUCCESS and ANALYSIS_LOOPBACK events
-    (emitted by the phase handlers based on AnalysisDecision values)
-    correctly route between development_analysis/review_analysis and their
-    target phases.
-    """
-
     def test_analysis_success_routes_development_analysis_to_commit(self) -> None:
-        """Test that ANALYSIS_SUCCESS in development_analysis routes to development_commit."""
         policy = _policy_with_post_commit_routes()
         state = PipelineState(
             phase="development_analysis",
@@ -360,7 +344,6 @@ class TestAnalysisDecisionDispatch:
         assert new_state.previous_phase == "development_analysis"
 
     def test_analysis_loopback_routes_development_analysis_to_development(self) -> None:
-        """Test that ANALYSIS_LOOPBACK in development_analysis routes back to development."""
         policy = _policy_with_post_commit_routes()
         state = PipelineState(
             phase="development_analysis",
@@ -371,7 +354,6 @@ class TestAnalysisDecisionDispatch:
         assert new_state.previous_phase == "development_analysis"
 
     def test_analysis_failed_routes_development_analysis_to_final_commit_review(self) -> None:
-        """A terminal analyzer verdict closes the cycle through its commit boundary."""
         policy = _policy_with_post_commit_routes()
         analysis = policy.phases["development_analysis"]
         policy = policy.model_copy(
@@ -407,7 +389,6 @@ class TestAnalysisDecisionDispatch:
         assert new_state.previous_phase == "development_analysis"
 
     def test_analysis_loopback_does_not_decrement_budget(self) -> None:
-        """Analysis loopback re-enters development WITHOUT consuming a budget slot."""
         initial_budget = 2
         state = PipelineState(
             phase="development_analysis",
@@ -419,7 +400,6 @@ class TestAnalysisDecisionDispatch:
         assert new_state.get_budget_remaining("iteration") == initial_budget
 
     def test_analysis_success_routes_review_analysis_to_commit(self) -> None:
-        """Test that ANALYSIS_SUCCESS in review_analysis routes to review_commit."""
         policy = _policy_with_post_commit_routes()
         state = PipelineState(
             phase="review_analysis",
@@ -430,7 +410,6 @@ class TestAnalysisDecisionDispatch:
         assert new_state.previous_phase == "review_analysis"
 
     def test_analysis_loopback_routes_review_analysis_to_fix(self) -> None:
-        """Test that ANALYSIS_LOOPBACK in review_analysis routes to fix."""
         policy = _policy_with_post_commit_routes()
         state = PipelineState(
             phase="review_analysis",
@@ -441,7 +420,6 @@ class TestAnalysisDecisionDispatch:
         assert new_state.previous_phase == "review_analysis"
 
     def test_analysis_loopback_with_policy_marks_review_issue_without_completing_pass(self) -> None:
-        """Policy routing must preserve review bookkeeping on loopback to fix."""
         policy = _policy_with_post_commit_routes()
         state = PipelineState(
             phase="review_analysis",
@@ -455,7 +433,6 @@ class TestAnalysisDecisionDispatch:
         assert _review_issues_found(new_state, policy) is True
 
     def test_analysis_success_with_policy_clears_review_issue_flag(self) -> None:
-        """Policy routing should clear stale review issue state on approval."""
         policy = _policy_with_post_commit_routes()
         state = PipelineState(
             phase="review_analysis",
@@ -469,8 +446,6 @@ class TestAnalysisDecisionDispatch:
         assert _review_issues_found(new_state, policy) is False
 
     def test_analysis_success_with_policy_routes_correctly(self) -> None:
-        """Test that ANALYSIS_SUCCESS respects pipeline policy routing."""
-        # Build a minimal pipeline policy
         policy = PipelinePolicy(
             phases={
                 "development_analysis": PhaseDefinition(
@@ -511,7 +486,6 @@ class TestAnalysisDecisionDispatch:
         assert new_state.phase == "development_commit"
 
     def test_analysis_loopback_with_policy_routes_correctly(self) -> None:
-        """Test that ANALYSIS_LOOPBACK respects pipeline policy routing."""
         policy = PipelinePolicy(
             phases={
                 "development_analysis": PhaseDefinition(
@@ -552,7 +526,6 @@ class TestAnalysisDecisionDispatch:
         assert new_state.phase == "development"
 
     def test_dev_analysis_loopback_increments_dev_analysis_iteration(self) -> None:
-        """ANALYSIS_LOOPBACK in development_analysis increments the iteration counter."""
         policy = _policy_with_post_commit_routes()
         state = PipelineState(
             phase="development_analysis",
@@ -562,7 +535,6 @@ class TestAnalysisDecisionDispatch:
         assert new_state.get_loop_iteration("development_analysis_iteration") == 1
 
     def test_dev_analysis_loopback_at_max_routes_to_development(self) -> None:
-        """At max iterations, ANALYSIS_LOOPBACK still routes to development."""
         policy = _policy_with_post_commit_routes()
         expected_cap = policy.loop_counters["development_analysis_iteration"].default_max
         state = PipelineState(
@@ -575,7 +547,6 @@ class TestAnalysisDecisionDispatch:
         assert new_state.get_loop_iteration("development_analysis_iteration") == expected_cap
 
     def test_dev_analysis_loopback_already_at_cap_stays_clamped(self) -> None:
-        """Further loopbacks after the cap should not increment beyond the cap."""
         policy = _policy_with_post_commit_routes()
         expected_cap = policy.loop_counters["development_analysis_iteration"].default_max
         state = PipelineState(
@@ -588,7 +559,6 @@ class TestAnalysisDecisionDispatch:
         assert new_state.get_loop_iteration("development_analysis_iteration") == expected_cap
 
     def test_dev_analysis_loopback_with_zero_cap_stays_zero(self) -> None:
-        """A zero configured cap should still route to development without incrementing."""
         policy = _policy_with_post_commit_routes()
         policy = _with_loop_cap(policy, "development_analysis_iteration", 0)
         state = PipelineState(
@@ -601,7 +571,6 @@ class TestAnalysisDecisionDispatch:
         assert new_state.get_loop_iteration("development_analysis_iteration") == 0
 
     def test_dev_analysis_loopback_with_single_iteration_cap_clamps_to_one(self) -> None:
-        """A cap of 1 should allow the first analysis run and clamp the loopback to 1."""
         policy = _policy_with_post_commit_routes()
         policy = _with_loop_cap(policy, "development_analysis_iteration", 1)
         state = PipelineState(
@@ -614,7 +583,6 @@ class TestAnalysisDecisionDispatch:
         assert new_state.get_loop_iteration("development_analysis_iteration") == 1
 
     def test_dev_analysis_loopback_with_two_iteration_cap_reaches_final_counter(self) -> None:
-        """The second allowed analysis run should clamp to 2 so only the next re-entry skips."""
         policy = _policy_with_post_commit_routes()
         policy = _with_loop_cap(
             policy,
@@ -634,7 +602,6 @@ class TestAnalysisDecisionDispatch:
         )
 
     def test_dev_analysis_success_resets_dev_analysis_iteration(self) -> None:
-        """ANALYSIS_SUCCESS in development_analysis resets the iteration counter."""
         policy = _policy_with_post_commit_routes()
         state = PipelineState(
             phase="development_analysis",
@@ -644,7 +611,6 @@ class TestAnalysisDecisionDispatch:
         assert new_state.get_loop_iteration("development_analysis_iteration") == 0
 
     def test_commit_success_resets_dev_analysis_iteration(self) -> None:
-        """COMMIT_SUCCESS in development_commit resets development_analysis_iteration."""
         policy = _policy_with_post_commit_routes()
         state = PipelineState(
             phase="development_commit",
@@ -654,7 +620,6 @@ class TestAnalysisDecisionDispatch:
         assert new_state.get_loop_iteration("development_analysis_iteration") == 0
 
     def test_review_analysis_loopback_increments_review_analysis_iteration(self) -> None:
-        """ANALYSIS_LOOPBACK in review_analysis increments the iteration counter."""
         policy = _policy_with_post_commit_routes()
         state = PipelineState(
             phase="review_analysis",
@@ -664,7 +629,6 @@ class TestAnalysisDecisionDispatch:
         assert new_state.get_loop_iteration("review_analysis_iteration") == 1
 
     def test_review_analysis_loopback_at_max_routes_to_fix(self) -> None:
-        """At the review-analysis cap, ANALYSIS_LOOPBACK still routes to fix."""
         policy = _policy_with_post_commit_routes()
         policy = _with_loop_cap(policy, "review_analysis_iteration", 3)
         expected_cap = policy.loop_counters["review_analysis_iteration"].default_max
@@ -678,7 +642,6 @@ class TestAnalysisDecisionDispatch:
         assert new_state.get_loop_iteration("review_analysis_iteration") == expected_cap
 
     def test_review_analysis_loopback_already_at_cap_stays_clamped(self) -> None:
-        """Further review loopbacks after the cap should not increment beyond the cap."""
         policy = _policy_with_post_commit_routes()
         policy = _with_loop_cap(policy, "review_analysis_iteration", 3)
         expected_cap = policy.loop_counters["review_analysis_iteration"].default_max
@@ -693,7 +656,6 @@ class TestAnalysisDecisionDispatch:
         assert new_state.review_outcome is not None
 
     def test_review_analysis_loopback_with_zero_cap_stays_zero(self) -> None:
-        """A zero configured cap should still route to fix without incrementing."""
         policy = _policy_with_post_commit_routes()
         policy = _with_loop_cap(policy, "review_analysis_iteration", 0)
         state = PipelineState(
@@ -707,7 +669,6 @@ class TestAnalysisDecisionDispatch:
         assert new_state.review_outcome is not None
 
     def test_review_analysis_loopback_at_max_with_policy_routes_to_fix(self) -> None:
-        """Policy routing must keep review analysis loopback on fix when the cap is reached."""
         policy = _policy_with_post_commit_routes()
         expected_cap = policy.loop_counters["review_analysis_iteration"].default_max
         state = PipelineState(
@@ -723,7 +684,6 @@ class TestAnalysisDecisionDispatch:
         assert new_state.review_outcome is not None
 
     def test_review_analysis_success_resets_review_analysis_iteration(self) -> None:
-        """ANALYSIS_SUCCESS in review_analysis resets the iteration counter."""
         policy = _policy_with_post_commit_routes()
         state = PipelineState(
             phase="review_analysis",
@@ -733,7 +693,6 @@ class TestAnalysisDecisionDispatch:
         assert new_state.get_loop_iteration("review_analysis_iteration") == 0
 
     def test_commit_success_resets_review_analysis_iteration(self) -> None:
-        """COMMIT_SUCCESS in review_commit resets review_analysis_iteration."""
         policy = _policy_with_post_commit_routes()
         state = PipelineState(
             phase="review_commit",
@@ -743,7 +702,6 @@ class TestAnalysisDecisionDispatch:
         assert new_state.get_loop_iteration("review_analysis_iteration") == 0
 
     def test_dev_analysis_loopback_routing_error_preserves_iteration_bookkeeping(self) -> None:
-        """Routing errors after capped dev loopback should keep the clamped counter."""
         policy = MagicMock()
         policy.recovery.failed_route = "failed"
         policy.loop_counters = {
@@ -772,7 +730,6 @@ class TestAnalysisDecisionDispatch:
         )
 
     def test_review_analysis_loopback_routing_error_preserves_iteration_bookkeeping(self) -> None:
-        """Routing errors after capped review loopback should keep the clamped counter."""
         policy = MagicMock()
         policy.recovery.failed_route = "failed"
         policy.loop_counters = {

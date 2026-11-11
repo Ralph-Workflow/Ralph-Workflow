@@ -1,74 +1,3 @@
-"""Supervised inspection when retained integration lacks a completion receipt.
-
-The diagnostic path is the single authority that decides whether the
-retained-integration evidence is still trustworthy. The architecture
-fixes the linked-worktree reproduction by:
-
-* reading ONLY operation-scoped Git state through the
-  :class:`OperationEvidenceCollector` (no ``git for-each-ref``, no
-  full ``git ls-files --stage``, no branch reflog, no
-  ``logs/HEAD``);
-* bounding the diagnostic-repair loop at
-  :data:`DIAGNOSTIC_REPAIR_ATTEMPT_CAP` so an over-cap handoff
-  stamps the typed "diagnostic budget spent" outcome and routes the
-  state into the autonomous fallback ladder
-  (:mod:`ralph.pipeline._integration_diagnostic_handoff`) -- never a
-  human hand-off. The budget counts REPOSITORY failures only (the
-  fail-closed pre-pass, an unreadable diagnostic, a workspace with no
-  repair agent installed); an agent attempt never advances it, because
-  agent health belongs to the shared failure ledger and an invocation
-  count must not decide the integration's fate;
-* routing every ``write_record(... model_copy(...))`` call site
-  through the closed :class:`Transition` table on
-  :class:`IntegrationRecord.with_transition`;
-* routing every clear of ``diagnostic_evidence`` /
-  ``diagnostic_ownership`` through the
-  ``RELEASE_DIAGNOSTIC_EVIDENCE`` transition.
-
-Decision ownership
-------------------
-
-The **mutation ladder** -- which integration rung the boundary must
-climb next -- is decided by the single owner
-:func:`ralph.pipeline.integration_owner.decide_integration`. This
-module asks the owner and acts on its verdict; it never re-derives the
-rung from the durable record.
-
-The **record facts the pure observation table cannot express** stay
-with the seam:
-
-* the **completion proof** -- the four-condition Git proof below. It
-  verifies the DURABLE RECORD against live Git, so the record must
-  decide when it applies: the owner's live observation cannot express
-  "the operation is still in flight" (:func:`_completion_proof_applies`).
-
-The split is deliberate: the owner decides *what to do to the
-integration state*, the record facts decide *whether the obligation is
-already finished*.
-
-Module layout
--------------
-
-The diagnostic concerns live in three focused modules; this module is
-the seam that composes them and re-exports their public surface:
-
-* :mod:`ralph.pipeline._integration_diagnostic_evidence` -- the
-  evidence-collector seam and the held-lease verdict;
-* :mod:`ralph.pipeline._integration_diagnostic_proof` -- the
-  four-condition positive operation-completion proof;
-* :mod:`ralph.pipeline._integration_diagnostic_prepass` -- the
-  pre-pass facts (which root the operation runs in, whether the
-  completion proof applies, whether the repair budget is spent);
-* :mod:`ralph.pipeline._integration_diagnostic_handoff` -- the typed
-  "diagnostic budget spent" outcome and its routing into the
-  autonomous fallback ladder;
-* :mod:`ralph.pipeline._integration_record_facts` -- the durable record
-  facts that decide the fail-closed verdict and the persisted
-  bounded-retry deadline.
-
-The public entry points of this path are published by
-:mod:`ralph.pipeline.integration_diagnostic`.
-"""
 
 from __future__ import annotations
 
@@ -207,26 +136,6 @@ __all__ = [
 ]
 
 
-# Default repair-attempt cap. The diagnostic path rotates inspection
-# agents on every handoff, but the rotation must terminate: an
-# over-cap handoff stamps the typed "diagnostic budget spent" outcome
-# (:data:`DIAGNOSTIC_BUDGET_SPENT_REASON`) and routes the state into
-# the autonomous fallback ladder -- never a human hand-off. Operators
-# can raise the cap via ``conflict_resolution.diagnostic_repair_attempt_cap``
-# in policy configuration; the default is intentionally low so the
-# production loop is broken on the very first incident.
-#
-# RULING (single-owner review): this cap is a REPOSITORY-STATE bound,
-# not an agent-health bound. It counts the failures Ralph observes in
-# the repository and the durable record WITHOUT an agent attempt -- the
-# fail-closed pre-pass, an unreadable diagnostic, a workspace with no
-# repair agent installed -- and those failures escalate into the
-# autonomous ladder, which preserves the work before it resets. An
-# agent attempt does NOT advance it: whether an agent is failing, when
-# it is benched and which agent runs next is decided by the single
-# owner (:class:`ralph.recovery.agent_failure_ledger.AgentFailureLedger`
-# through the recovery controller), and an invocation count must never
-# decide the integration's fate.
 DIAGNOSTIC_REPAIR_ATTEMPT_CAP: int = 5
 
 
@@ -237,16 +146,6 @@ def _bump_attempt(
     repair_attempt_cap: int = DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
     cap_reason: str = DIAGNOSTIC_BUDGET_SPENT_REASON,
 ) -> IntegrationRecord:
-    """Emit ``BUMP_DIAGNOSTIC_ATTEMPT`` and enforce ``DIAGNOSTIC_REPAIR_ATTEMPT_CAP``.
-
-    Single authority for the attempt-counter emission: when the bumped
-    count reaches the cap, the returned record carries the typed
-    "diagnostic budget spent" outcome (:data:`DIAGNOSTIC_BUDGET_SPENT_REASON`)
-    in ``repair_cap_reason``, routing the state into the autonomous
-    fallback ladder -- the retired ``diagnostic_intervention_required``
-    hand-off flag is never set. The counter is clamped so it never
-    increments past the cap.
-    """
     new_attempts = min(record.merge_commit_repair_attempts + 1, repair_attempt_cap)
     bumped = record.with_transition(
         BUMP_DIAGNOSTIC_ATTEMPT,
@@ -356,7 +255,6 @@ def diagnose_retained_integration(
     env: EnvironmentProbe | None = None,
     clock: Clock | None = None,
 ) -> bool:
-    """Inspect missing evidence under both worktree leases; never accept agent success as proof."""
     from contextlib import ExitStack
 
     from ralph.pipeline.auto_integrate_transaction import integration_transaction
@@ -385,8 +283,6 @@ def diagnose_retained_integration(
             clock=clock,
         )
         if budget_spent:
-            # The budget is spent: the ladder escalation owns the state
-            # now; no agent is offered on this pass.
             return False
 
         operation_root = _operation_root_for(record, ctx.workspace_scope.root)
@@ -428,18 +324,6 @@ def diagnose_retained_integration(
 
         try:
             col = collector if collector is not None else operation_evidence_collector()
-            # The diagnostic path no longer consumes the evidence
-            # snapshot for the release verdict; the lease in
-            # ``diagnostic_ownership`` is the sole release authority.
-            # The collector's snapshot is preserved public API
-            # (tests in :mod:`tests.test_operation_evidence` exercise
-            # the snapshot). The diagnostic path no longer compares
-            # the snapshot to held evidence, but it still consults
-            # the snapshot for UNREADABLE detection (via
-            # :func:`snapshot_has_unreadable` inside the proof). Run
-            # the snapshot here so a collector crash surfaces in the
-            # ``except`` branch and bumps the attempt counter
-            # (the OLD evidence-collecting path relied on this).
             before: tuple[tuple[str, str], ...] = ()
             if not record.diagnostic_evidence or not record.diagnostic_ownership:
                 lease = f"{identity_fingerprint(record)}:{time.time()}"
@@ -508,13 +392,6 @@ def _pre_pass_failure(
     env: EnvironmentProbe | None = None,
     clock: Clock | None = None,
 ) -> bool:
-    """Record a bounded pre-pass failure instead of an operator hand-off.
-
-    The pre-pass failure spends one repair attempt (the counter is the
-    budget); when the cap is reached the typed "diagnostic budget
-    spent" outcome is stamped and the state escalates into the
-    autonomous fallback ladder -- never a person.
-    """
     target_record = _bump_attempt(record, reason, repair_attempt_cap=repair_attempt_cap)
     write_record(root, target_record, backend=backend)
     if target_record.merge_commit_repair_attempts >= repair_attempt_cap:
@@ -555,27 +432,7 @@ def _run_completion_pre_pass(
     env: EnvironmentProbe | None = None,
     clock: Clock | None = None,
 ) -> bool | None:
-    """Run the fail-closed pre-pass that precedes every diagnostic agent call.
-
-    ``next_action`` is the owner's mutation-ladder answer, overlaid with
-    the durable record facts; the overlay may also be a typed
-    :class:`RecordFactOutcome` verdict (a durable fact the pure
-    observation cannot express), which routes to the autonomous
-    fallback ladder instead of offering an agent. The completion-proof
-    trigger is a RECORD FACT (:func:`_completion_proof_applies`): the
-    four-condition proof verifies the durable record against live Git,
-    so the record decides when it applies. A pre-pass failure spends
-    one bounded repair attempt; a spent budget escalates into the
-    autonomous fallback ladder, never to an operator hand-off.
-
-    Returns:
-        ``None`` when the pre-pass does not decide (the caller may
-        offer a resolver), otherwise the pre-pass outcome.
-    """
     if isinstance(next_action, RecordFactOutcome):
-        # Typed fail-closed verdict (stale intent / diagnostic budget
-        # spent): the owner mapped it to a ladder rung; escalate
-        # autonomously and never offer another agent on this pass.
         try:
             escalate_record_fact_outcome(
                 root,
@@ -647,7 +504,6 @@ def _complete_or_intervene(
     env: EnvironmentProbe | None = None,
     clock: Clock | None = None,
 ) -> bool:
-    """Run the positive-completion pre-pass through the typed record store."""
     proof_ok, proof_reason = _check_operation_completion_proof(
         inspection_root, record, collector=collector
     )
@@ -673,19 +529,9 @@ def _complete_or_intervene(
             diagnostic_ownership=None,
         )
     except RecordBusyError:
-        # Fail closed: no write, no fresh retry allowance. The caller
-        # decides bounded wait vs intervention from the PERSISTED
-        # ``RebaseState.retry_deadline`` (see
-        # :func:`ralph.pipeline._integration_record_facts.busy_refusal_outcome`);
-        # with no deadline in scope this is REQUIRE_INTERVENTION. The
-        # record bytes stay untouched on disk.
         logger.warning("Release busy; record bytes preserved for the bounded-retry authority")
         return False
     except RecordUnreadableError:
-        # Fail closed: NEVER bare-write over UNREADABLE bytes. The bytes
-        # on disk are the only proof of the interrupted integration; the
-        # typed DIAGNOSTIC_INTERVENTION_REQUIRED outcome is derived from
-        # the unchanged UNREADABLE read on the next seam.
         logger.critical(
             "Release refused: durable record unreadable; intervention required; "
             "unreadable bytes preserved"
@@ -709,15 +555,6 @@ def _settle_exhausted_cap(
     env: EnvironmentProbe | None = None,
     clock: Clock | None = None,
 ) -> bool:
-    """Release the hold when Git shows no diagnostic is needed; otherwise escalate to the ladder.
-
-    The diagnostic-repair budget is spent: if Git shows the operation
-    completed (or no diagnostic is needed) the hold is released and
-    recovery re-derives; otherwise the typed "diagnostic budget spent"
-    outcome is stamped on the durable record and the state escalates
-    into the autonomous fallback ladder -- rung by ledgered rung, never
-    to a human hand-off.
-    """
     proof_ok, _ = _check_operation_completion_proof(inspection_root, record, collector=col)
     if proof_ok or not diagnostic_needed(inspection_root, record):
         try:
@@ -775,31 +612,9 @@ def handoff_integration_diagnostic(
     env: EnvironmentProbe | None = None,
     clock: Clock | None = None,
 ) -> bool:
-    """Offer inspection candidates by health without authorizing publication or cleanup.
-
-    Candidates come from the shared resolver health ledger (``controller``):
-    one that ended an attempt without a verified result is benched with
-    exponential backoff and is not offered again until its cooldown elapses.
-    While every candidate is benched nothing is invoked and no attempt is
-    spent, so the caller's retry cadence costs nothing.
-
-    The diagnostic-repair attempt counter is bounded at
-    ``repair_attempt_cap``. When the cap is reached, the function
-    stamps the typed "diagnostic budget spent" outcome
-    (:data:`DIAGNOSTIC_BUDGET_SPENT_REASON`) and escalates into the
-    autonomous fallback ladder through
-    :func:`escalate_diagnostic_budget_to_ladder`, returning ``False``
-    without calling any agent -- the next run loop iteration re-observes
-    and the ladder resumes at the recorded rung; the run never waits on
-    a person.
-    """
     inspection_root = _operation_root_for(record, root)
     col = collector if collector is not None else operation_evidence_collector()
     snapshot = col.snapshot(inspection_root, record)
-    # The owner decides the MUTATION LADDER for this seam THROUGH THE ONE
-    # SEAM (:func:`decide_seam_action`); the seam overlays the durable
-    # record facts, which decide whether the obligation is already
-    # finished (the completion proof in the pre-pass below).
     next_action = decide_seam_action(root, record=record)
 
     pre_pass_result = _run_completion_pre_pass(
@@ -893,17 +708,6 @@ def handoff_integration_diagnostic(
     )
     backend.mkdir(prompt.parent, parents=True, exist_ok=True)
     write_text_if_changed(backend, prompt, content)
-    # The diagnostic-repair budget counts REPOSITORY failures, not agent
-    # attempts. This write therefore records the diagnostic breadcrumb
-    # WITHOUT advancing the counter: an agent that keeps failing inside
-    # the integration is owned by the shared failure ledger (its
-    # consecutive and total limits bench it and name the next agent),
-    # and an invocation count must never decide the integration's fate
-    # by pushing the state into the autonomous fallback ladder. The
-    # budget still advances on the failures that happen WITHOUT an
-    # agent attempt -- the fail-closed pre-pass, an unreadable
-    # diagnostic, a workspace with no repair agent installed -- which is
-    # what bounds the repository state.
     write_record(
         root,
         record.with_transition(BUMP_DIAGNOSTIC_ATTEMPT, repair_last_error=failure[:8192]),

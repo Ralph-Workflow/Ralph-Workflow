@@ -1,31 +1,3 @@
-"""Bootstrap helpers for creating user-global and project-local config files.
-
-Auto-creates the user-global Ralph config set on first run, including
-~/.config/ralph-workflow.toml, ~/.config/ralph-workflow-agents.toml,
-~/.config/ralph-workflow-mcp.toml, ~/.config/ralph-workflow-pipeline.toml,
-and ~/.config/ralph-workflow-artifacts.toml from bundled templates.
-Also supports regenerating configs with .bak backups via --regenerate-config.
-
-Bootstrap creates the standard user-global config set:
-  - ~/.config/ralph-workflow.toml
-  - ~/.config/ralph-workflow-agents.toml
-  - ~/.config/ralph-workflow-mcp.toml
-  - ~/.config/ralph-workflow-pipeline.toml
-  - ~/.config/ralph-workflow-artifacts.toml
-
-Project-local overrides are created only by the explicit local-config flow.
-General regeneration refreshes only local TOMLs that already exist, including
-.agent/ralph-workflow.toml, .agent/mcp.toml, .agent/pipeline.toml,
-.agent/artifacts.toml, and the optional advanced .agent/agents.toml.
-
-The agents configuration and the config-write commit routing it shares with
-the other config files live in :mod:`ralph.config.agents_bootstrap`.
-
-The explicit local-config flow also seeds a batteries-included .gitignore with
-Ralph-local, Python, Node, Rust, Go, Ruby, PHP, Java/Kotlin, .NET, Dart/Flutter,
-Elixir, Scala, Terraform, IDE, and OS metadata patterns (see
-_DEFAULT_GITIGNORE_PATTERNS).
-"""
 
 from __future__ import annotations
 
@@ -107,47 +79,18 @@ __all__ = [
 
 
 def resolve_global_config_dir(env: Mapping[str, str] | None = None) -> Path:
-    """Resolve the user-global config directory."""
     return _resolve_global_config_dir(env)
 
 
-# Machine-local exclude patterns for ``.git/info/exclude``. These never enter
-# the repo -- they keep the user-level state out of every clone.
-#
-# Every pattern here is the canonical on-disk form (NOT the Python abstraction
-# identifier). The completion-sentinel glob is ``completion_seen_*.json``
-# (the canonical on-disk filename pattern -- confirmed against
-# ``COMPLETION_SENTINEL_RELPATHFMT`` in ``ralph.mcp.tools.coordination``).
-# Root-anchored "/checkpoint.json" is used (NOT bare checkpoint.json
-# which would silently match every nested directory).
-#
-# The engine-internal globs come from ``ralph.config._agent_internal_globs``,
-# which loads the canonical leaf module by file path so this module never
-# transitively triggers ``ralph.phases.__init__.py``.
 _DEFAULT_GIT_EXCLUDE_PATTERNS: tuple[str, ...] = (
-    # Engine-internal directories under .agent/ -- everything inside is engine-owned.
     *tuple(f".agent/{dir_name}/" for dir_name in sorted(AGENT_INTERNAL_DIR_GLOBS)),
-    # Completion sentinels -- on-disk filename glob, NOT Python abstraction identifier.
     f".agent/{_AGENT_INTERNAL_COMPLETION_SENTINEL_GLOB}",
-    # Engine-internal top-level files under .agent/.
     *tuple(f".agent/{name}" for name in sorted(AGENT_INTERNAL_TOP_LEVEL_BASENAMES)),
-    # Root-anchored root basenames (only checkpoint.json today). The leading
-    # slash matches only at the repo root -- bare ``checkpoint.json`` would
-    # silently match every nested directory (PA-002).
     *tuple(f"/{name}" for name in sorted(AGENT_INTERNAL_ROOT_BASENAMES)),
 )
 
 
 def ensure_global_config(global_dir: Path | None = None, *, force: bool = False) -> BootstrapResult:
-    """Ensure ~/.config/ralph-workflow.toml exists, creating it from the bundled template.
-
-    Args:
-        global_dir: Override the global config directory. Defaults to resolve_global_config_dir().
-        force: When True, overwrite an existing file (backs it up to <name>.bak first).
-
-    Returns:
-        BootstrapResult describing the action taken.
-    """
     if global_dir is None:
         global_dir = resolve_global_config_dir()
     target = global_dir / _GLOBAL_CONFIG_FILENAME
@@ -156,9 +99,6 @@ def ensure_global_config(global_dir: Path | None = None, *, force: bool = False)
     if result.action == "skipped":
         migrated = _migrate_legacy_global_config(target)
         if migrated is not None:
-            # The migration helper lives in the backup module and returns that
-            # module's own result type; re-wrap it so callers keep the one
-            # canonical BootstrapResult.
             return BootstrapResult(migrated.path, migrated.action, migrated.backup)
     return result
 
@@ -169,20 +109,6 @@ def ensure_global_agents_config(
     force: bool = False,
     create_if_missing: bool = False,
 ) -> BootstrapResult:
-    """Handle the user-global agents file without implicit first-run creation.
-
-    Agent CLI definitions are transport plumbing (binary, flags, output
-    parser), so they live apart from the main config, which opens on the
-    ``[agent_chains]`` operators actually edit.
-
-    Args:
-        global_dir: Override the global config directory. Defaults to resolve_global_config_dir().
-        force: When True, overwrite an existing file (backs it up to <name>.bak first).
-        create_if_missing: Create a missing file for the explicit ``ralph --init`` route.
-
-    Returns:
-        BootstrapResult describing the action taken.
-    """
     if global_dir is None:
         global_dir = resolve_global_config_dir()
     target = global_dir / _GLOBAL_AGENTS_FILENAME
@@ -200,15 +126,6 @@ def ensure_global_agents_config(
 def ensure_global_mcp_config(
     global_dir: Path | None = None, *, force: bool = False
 ) -> BootstrapResult:
-    """Ensure ~/.config/ralph-workflow-mcp.toml exists, creating it from the bundled template.
-
-    Args:
-        global_dir: Override the global config directory. Defaults to resolve_global_config_dir().
-        force: When True, overwrite an existing file (backs it up to <name>.bak first).
-
-    Returns:
-        BootstrapResult describing the action taken.
-    """
     if global_dir is None:
         global_dir = resolve_global_config_dir()
     target = global_dir / _GLOBAL_MCP_FILENAME
@@ -219,15 +136,6 @@ def ensure_global_mcp_config(
 def ensure_global_policy_configs(
     global_dir: Path | None = None, *, force: bool = False
 ) -> list[BootstrapResult]:
-    """Ensure the user-global policy defaults exist.
-
-    Args:
-        global_dir: Override the global config directory. Defaults to resolve_global_config_dir().
-        force: When True, overwrite existing files (backs them up first).
-
-    Returns:
-        List of BootstrapResult, one per global policy file.
-    """
     if global_dir is None:
         global_dir = resolve_global_config_dir()
     return [
@@ -241,15 +149,6 @@ def ensure_global_policy_configs(
 
 
 def ensure_local_main_config(agent_dir: Path, *, force: bool = False) -> BootstrapResult:
-    """Ensure the project-local main override exists.
-
-    Args:
-        agent_dir: The .agent directory to write configs into.
-        force: When True, overwrite an existing file (backing it up first).
-
-    Returns:
-        BootstrapResult describing the action taken for `.agent/ralph-workflow.toml`.
-    """
     agent_dir.mkdir(parents=True, exist_ok=True)
     global_source = resolve_global_config_dir() / _GLOBAL_CONFIG_FILENAME
     source = (
@@ -265,18 +164,6 @@ def ensure_local_main_config(agent_dir: Path, *, force: bool = False) -> Bootstr
 
 
 def ensure_local_support_configs(agent_dir: Path, *, force: bool = False) -> list[BootstrapResult]:
-    """Ensure the standard project-local policy and MCP files exist.
-
-    This scaffolds the `.agent/` files Ralph needs for project-local runtime behavior
-    without creating the optional project-local main override.
-
-    Args:
-        agent_dir: The .agent directory to write configs into.
-        force: When True, overwrite existing files (backs them up first).
-
-    Returns:
-        List of BootstrapResult, one per support file.
-    """
     agent_dir.mkdir(parents=True, exist_ok=True)
     global_dir = resolve_global_config_dir()
     global_mcp_source = global_dir / _GLOBAL_MCP_FILENAME
@@ -306,15 +193,6 @@ def ensure_local_support_configs(agent_dir: Path, *, force: bool = False) -> lis
 
 
 def ensure_local_configs(agent_dir: Path, *, force: bool = False) -> list[BootstrapResult]:
-    """Ensure the full project-local config set exists.
-
-    Args:
-        agent_dir: The .agent directory to write configs into.
-        force: When True, overwrite existing files (backs them up first).
-
-    Returns:
-        List of BootstrapResult, one per config file.
-    """
     return [
         ensure_local_main_config(agent_dir, force=force),
         *ensure_local_support_configs(agent_dir, force=force),
@@ -322,37 +200,10 @@ def ensure_local_configs(agent_dir: Path, *, force: bool = False) -> list[Bootst
 
 
 def _ensure_default_gitignore(repo_root: Path) -> None:
-    """Append missing default .gitignore patterns and commit the change.
-
-    wt-012 DA-001/DA-008: this used to append via ``append_to_gitignore``
-    and return without committing, leaving a deterministic write dirty.
-    It now routes through :func:`auto_seed_default_gitignore`, which
-    commits via the producer-level
-    :func:`ralph.git.scoped_auto_commit.commit_deterministic_writes`
-    isolation primitive (and stays a safe no-op append in a non-git
-    workspace).
-    """
     auto_seed_default_gitignore(repo_root)
 
 
 def _ensure_default_git_exclude(repo_root: Path) -> None:
-    """Append the canonical engine-internal patterns to ``.git/info/exclude``.
-
-    Uses ``add_to_git_exclude`` from ``ralph.git.commit_review`` which is
-    idempotent and preserves user-added entries. Idempotent on its own --
-    the helper will simply return ``[]`` when every default pattern is
-    already present.
-
-    Graceful no-op when ``repo_root`` is not a git repository: the
-    underlying ``add_to_git_exclude`` calls ``Repo(repo_root)`` which
-    raises ``InvalidGitRepositoryError`` if there is no ``.git`` directory.
-    Bootstrap is called from non-git working trees (e.g. ``ensure_local_configs``
-    in unit tests that pass a bare ``tmp_path``); failing here would break
-    those tests for no real benefit.
-
-    Raises:
-        OSError: When the underlying filesystem operation fails.
-    """
     from git import InvalidGitRepositoryError
 
     from ralph.git.commit_review import add_to_git_exclude
@@ -360,26 +211,10 @@ def _ensure_default_git_exclude(repo_root: Path) -> None:
     try:
         add_to_git_exclude(repo_root, list(_DEFAULT_GIT_EXCLUDE_PATTERNS))
     except InvalidGitRepositoryError:
-        # Non-git working tree -- nothing to seed. The gitignore path
-        # (``_ensure_default_gitignore``) also does not require a git repo.
         return
 
 
 def _resolve_git_exclude_path(repo_root: Path) -> Path | None:
-    """Return the resolved path to ``info/exclude`` for ``repo_root``.
-
-    Works for normal repositories AND git worktrees / separate-git-dir
-    layouts. In a worktree the top-level ``.git`` is a *file* containing
-    ``gitdir: <real-gitdir>``; the real ``info/exclude`` lives in
-    ``<real-gitdir>/info/exclude``, NOT in ``repo_root/.git/info/exclude``.
-    Resolving via GitPython's ``Repo.git_dir`` works for both layouts.
-
-    Returns ``None`` when ``repo_root`` is not a git repository. In that
-    case the caller falls back to the simple ``repo_root/.git/info/exclude``
-    path so the helper still seeds the file when invoked in a project
-    that has not yet been ``git init``-ed (Ralph creates the project-local
-    config set on every invocation).
-    """
     try:
         repo = Repo(repo_root, search_parent_directories=False)
     except (InvalidGitRepositoryError, NoSuchPathError):
@@ -392,42 +227,8 @@ def _resolve_git_exclude_path(repo_root: Path) -> Path | None:
 
 
 def auto_seed_default_git_exclude(repo_root: Path) -> list[str]:
-    """Auto-seed ``.git/info/exclude`` on a normal ``ralph`` run.
-
-    Mirrors ``auto_seed_default_gitignore`` but for the per-user
-    ``.git/info/exclude`` file. Reads the existing file (if any), computes
-    the patterns from ``_DEFAULT_GIT_EXCLUDE_PATTERNS`` that are not
-    already present, appends the missing patterns to the resolved
-    exclude file, and returns the list of patterns that were actually
-    appended.
-
-    The git directory is resolved via ``Repo(repo_root).git_dir`` so the
-    helper works for normal repositories, git worktrees, and
-    separate-git-dir layouts. In a worktree the top-level ``.git`` is a
-    gitfile pointing at the real gitdir; blindly using
-    ``repo_root / '.git' / 'info' / 'exclude'`` would call ``mkdir`` on a
-    file and fail with ``NotADirectoryError``. Falls back to the
-    repo-root layout only when ``repo_root`` is not a git repository.
-
-    Idempotent: a second call with the same ``repo_root`` returns ``[]``
-    when every default pattern is already present. Does NOT clobber
-    user-added entries.
-
-    Tolerates a missing git dir: when ``repo_root`` is not a git
-    repository (e.g. first-run bootstrap before ``git init``), the helper
-    writes ``.git/info/exclude`` directly into the filesystem, creating
-    the parent dirs as needed.
-
-    Args:
-        repo_root: Path to the repository (or project) root.
-
-    Returns:
-        List of patterns that were appended on this call. Empty when the
-        existing file already covered every default pattern.
-    """
     exclude_path = _resolve_git_exclude_path(repo_root)
     if exclude_path is None:
-        # Non-git working tree -- seed the conventional repo_root/.git/info/exclude.
         exclude_path = repo_root / ".git" / "info" / "exclude"
     existing: set[str] = set()
     file_existed = exclude_path.exists()
@@ -435,12 +236,6 @@ def auto_seed_default_git_exclude(repo_root: Path) -> list[str]:
         try:
             existing = set(exclude_path.read_text(encoding="utf-8").splitlines())
         except OSError as exc:
-            # Non-fatal: best-effort seeding must not block the run, but
-            # silently assuming "the file is empty" would cause every
-            # default pattern to be appended (potential duplicates on
-            # retry once the read problem is fixed). Warn so the
-            # operator can investigate the read failure without
-            # breaking the run.
             logger.warning(
                 "Could not read existing git exclude at {}: {}. "
                 "Proceeding as if the file were empty; this may append "
@@ -459,48 +254,12 @@ def auto_seed_default_git_exclude(repo_root: Path) -> list[str]:
 
 
 def auto_seed_default_gitignore(repo_root: Path) -> list[str]:
-    """Auto-seed the batteries-included .gitignore on a normal `ralph` run.
-
-    Reads the existing ``.gitignore`` (if any), computes the patterns from
-    ``_DEFAULT_GITIGNORE_PATTERNS`` that are not already present, appends
-    them via ``append_to_gitignore`` (which filters duplicates by line), and
-    returns the list of patterns that were actually appended.
-
-    Idempotent: a second call with the same ``repo_root`` returns ``[]``
-    when every default pattern is already present (the underlying
-    ``append_to_gitignore`` short-circuits when nothing is missing). Does
-    NOT clobber user-added lines — user-customized patterns are preserved.
-
-    Handles the no-git case: the helper just touches ``.gitignore`` in
-    ``repo_root``; it does not require a ``.git`` directory to exist.
-
-    wt-012: when the seed actually appended new patterns, this helper
-    commits the ``.gitignore`` change via the producer-level
-    :func:`ralph.git.scoped_auto_commit.commit_deterministic_writes`
-    isolation primitive. The pre-write content hash is recorded BEFORE
-    the append so a user mid-edit on ``.gitignore`` is never swept into
-    the deterministic commit. A non-git workspace (or any git error)
-    is logged at DEBUG and never blocks the run.
-
-    Args:
-        repo_root: Path to the repository (or project) root.
-
-    Returns:
-        List of patterns that were appended on this call. Empty when the
-        existing ``.gitignore`` already covered every default pattern.
-    """
     gitignore_path = repo_root / ".gitignore"
     existing: set[str] = set()
     if gitignore_path.exists():
         try:
             existing = set(gitignore_path.read_text(encoding="utf-8").splitlines())
         except OSError as exc:
-            # Non-fatal: best-effort seeding must not block the run, but
-            # silently assuming "the file is empty" would cause every
-            # default pattern to be appended (potential duplicates on
-            # retry once the read problem is fixed). Warn so the
-            # operator can investigate the read failure without
-            # breaking the run.
             logger.warning(
                 "Could not read existing .gitignore at {}: {}. "
                 "Proceeding as if the file were empty; this may append "
@@ -513,13 +272,6 @@ def auto_seed_default_gitignore(repo_root: Path) -> list[str]:
     missing = [p for p in _DEFAULT_GITIGNORE_PATTERNS if p not in existing]
     appended: list[str] = []
     if missing:
-        # Record the pre-write content hash BEFORE the append so the
-        # deterministic auto-commit can detect a user mid-edit on
-        # ``.gitignore`` and SKIP the path (it stays in the agent /
-        # user commit flow). A non-git workspace returns ``None`` for
-        # the pre-write hash; the commit helper handles that as
-        # NOT_REPO and returns a NOOP, so the seed is still safe to
-        # leave the file dirty in a non-git project.
         from ralph.git.operations import (
             create_commit,
         )
@@ -554,7 +306,7 @@ def auto_seed_default_gitignore(repo_root: Path) -> list[str]:
                 )
             elif result.status is ScopedCommitStatus.FAILED:
                 logger.warning(".gitignore auto-seed commit failed (non-fatal): {}", result.error)
-        except Exception as exc:  # pragma: no cover - defensive
+        except Exception as exc:
             logger.warning(".gitignore auto-seed commit failed (non-fatal): {}", exc)
     return appended
 
@@ -562,7 +314,6 @@ def auto_seed_default_gitignore(repo_root: Path) -> list[str]:
 def _regenerate_existing_local_configs(
     agent_dir: Path, *, global_dir: Path
 ) -> list[BootstrapResult]:
-    """Regenerate project-local configs only when they already exist."""
     sources = {
         _LOCAL_CONFIG_FILENAME: _get_bundled_defaults_dir() / _LOCAL_CONFIG_SOURCE,
         _LOCAL_MCP_FILENAME: _get_bundled_defaults_dir() / "mcp.toml",
@@ -589,18 +340,6 @@ def regenerate_all(
     global_dir: Path | None = None,
     agent_dir: Path | None = None,
 ) -> list[BootstrapResult]:
-    """Regenerate global configs and refresh existing local overrides.
-
-    Missing global files are created. Project-local files are rewritten only
-    when already present; use :func:`ensure_local_configs` to create them.
-
-    Args:
-        global_dir: Override the global config directory. Defaults to resolve_global_config_dir().
-        agent_dir: The .agent directory whose existing local configs may be refreshed.
-
-    Returns:
-        Flat list of BootstrapResult for every file touched.
-    """
     resolved_global_dir = global_dir or resolve_global_config_dir()
     results: list[BootstrapResult] = [
         ensure_global_config(resolved_global_dir, force=True),
@@ -616,27 +355,12 @@ def regenerate_all(
 
 
 def _copy_with_backup(source: Path, target: Path, force: bool) -> BootstrapResult:
-    """Copy source to target, optionally backing up an existing target first.
-
-    The backup (.bak) is always in the same directory as target, so a
-    cross-device move is impossible and shutil.move is safe.
-
-    Args:
-        source: Bundled template to copy.
-        target: Destination path.
-        force: When True, overwrite target (with backup). When False, skip if target exists.
-
-    Returns:
-        BootstrapResult describing what happened.
-    """
     target.parent.mkdir(parents=True, exist_ok=True)
     pre_existed = target.exists()
 
     if pre_existed and not force:
         return BootstrapResult(target, "skipped", None)
 
-    # The target is classified BEFORE any write so the commit routing
-    # decision uses the pre-write state.
     plan = _prepare_config_commit(target)
 
     backup: Path | None = None
@@ -644,11 +368,11 @@ def _copy_with_backup(source: Path, target: Path, force: bool) -> BootstrapResul
         backup = _backup_path(target)
         if backup.exists():
             backup.unlink()
-        shutil.move(  # filesystem-write-ok: forced-regeneration backup preserves the prior config bytes before reinstall
+        shutil.move(
             str(target), str(backup)
         )
 
-    shutil.copy2(  # filesystem-write-ok: shipped-template install committed by the scoped config routing below
+    shutil.copy2(
         str(source), str(target)
     )
     action: Literal["created", "skipped", "regenerated"] = (

@@ -1,8 +1,3 @@
-"""Terminal state restoration utilities.
-
-Provides safe, idempotent restoration of saved terminal modes (termios),
-cursor visibility, and text attributes without mutating unowned console state.
-"""
 
 from __future__ import annotations
 
@@ -51,35 +46,23 @@ class _HasFileno(Protocol):
 
 
 def terminal_understands_vt(env: Mapping[str, str] | None = None) -> bool:
-    """Return whether TERM permits VT control sequences.
-
-    This is deliberately distinct from theme.py's Unicode-glyph TERM=dumb
-    check: it protects terminal-control writes, not character selection.
-    """
     term = (os.environ if env is None else env).get("TERM", "")
     return bool(term and term != "dumb")
 
 
 def terminal_restore_sequence() -> str:
-    """Return Ralph-owned controlled-exit terminal restoration output."""
     return "\x1b[?25h\x1b[0m"
 
 
 def set_global_snapshot(modes: TermiosModes | None) -> None:
-    """Set or clear global saved termios modes snapshot."""
     _STATE.saved_modes = modes
 
 
 def get_global_snapshot() -> TermiosModes | None:
-    """Return the currently saved termios modes snapshot."""
     return _STATE.saved_modes
 
 
 def snapshot_terminal_modes(fd: int | None = None) -> TermiosModes | None:
-    """Capture current termios attributes for the given fd (or stdin/stdout/stderr).
-
-    Returns None if termios is unavailable, fd is not a tty, or tcgetattr fails.
-    """
     try:
         target_fd = _resolve_fd(fd)
         if target_fd is None:
@@ -95,11 +78,6 @@ def restore_terminal_modes(
     fd: int | None = None,
     modes: TermiosModes | None = None,
 ) -> bool:
-    """Restore termios attributes on fd.
-
-    Uses provided modes or global saved_modes.
-    Returns True if successfully restored, False otherwise. Total-guarded.
-    """
     target_modes = modes if modes is not None else _STATE.saved_modes
     if target_modes is None:
         return False
@@ -118,12 +96,6 @@ def restore_terminal(
     stream: TextIO | object | None = None,
     modes: TermiosModes | None = None,
 ) -> None:
-    """Idempotently restore terminal escape sequences and termios modes.
-
-    Writes terminal_restore_sequence() to stream if stream is a tty.
-    Restores termios modes using modes or saved snapshot.
-    Swallows all exceptions.
-    """
     try:
         target_stream, close_stream = (
             (stream, False) if stream is not None else _default_tty_stream()
@@ -161,11 +133,11 @@ def _default_tty_stream() -> tuple[TextIO | object | None, bool]:
         except Exception:
             pass
     try:
-        fd = os.open(  # resource-lifecycle-ok: wrapped stream is closed by restore_terminal after its one restore write; filesystem-write-ok: transient controlling-tty output fd, never persists content
+        fd = os.open(
             "/dev/tty", os.O_WRONLY | os.O_NOCTTY
         )
         return (
-            os.fdopen(  # filesystem-write-ok: transient controlling-tty output stream closed after one restore write
+            os.fdopen(
                 fd, "w"
             ),
             True,

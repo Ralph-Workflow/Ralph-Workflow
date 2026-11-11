@@ -1,9 +1,3 @@
-"""Canonical configuration filenames shared by the config seams.
-
-The bootstrap seam (which creates the files) and the config-scan seam
-(which reports the unreadable ones) must name the same files; the
-filenames live here so neither seam has to import the other.
-"""
 
 from __future__ import annotations
 

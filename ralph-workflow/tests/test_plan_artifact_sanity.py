@@ -1,5 +1,3 @@
-"""Public sanity boundary and partial extraction regression scenarios."""
-
 from ralph.mcp.artifacts.markdown.specs.plan import analyze_plan_document
 
 
@@ -37,7 +35,6 @@ def test_colon_prefixed_prose_outside_frontmatter_remains_main_session_work() ->
 
 
 def test_plan_regression_heading_only_tasks_remain_main_session_work() -> None:
-    """DA-016: retain residual tasks expressed in headings, not only body prose."""
     units = (
         "## Work Units\n"
         "- [one] Implement first component\n  Paths: src/one.py\n"
@@ -193,16 +190,6 @@ def test_unreadable_and_obvious_nonplan_text_is_rejected() -> None:
 
 
 def test_legitimate_aid_and_ai_self_description_are_accepted() -> None:
-    """DA-001 regression: actionable prose beginning ``As an aid`` or
-    ``As an AI engineer`` must not be flagged as an AI refusal. The
-    original detector substring-matched the literal ``as an ai``, which
-    also caught the distinct English word ``as an aid`` (a, i, d) and
-    legitimate self-descriptions like ``As an AI engineer, inspect the
-    parser...``. Per the product criteria, refusal detection is reduced
-    to obvious cases (``I cannot``/``I'm sorry``); the ``as an ai``
-    family is dropped entirely so every readable, on-topic plan
-    receives a receipt.
-    """
     legitimate_plans = (
         "As an aid to maintainers, document the public API, implement "
         "regression tests, and verify the resulting behavior thoroughly.",
@@ -216,8 +203,6 @@ def test_legitimate_aid_and_ai_self_description_are_accepted() -> None:
         assert diagnostics == [], (
             f"unexpected PLAN001 for legitimate plan: {text!r}; got {[d.rule_id for d in diagnostics]}"
         )
-    # Genuine refusals still must fail the sanity gate via the
-    # ``I cannot`` / ``I'm sorry`` prefixes.
     for text in (
         "I cannot complete this request because I cannot access the repository secrets.",
         "I'm sorry, I cannot help with that request as an AI assistant without more information.",
@@ -227,29 +212,14 @@ def test_legitimate_aid_and_ai_self_description_are_accepted() -> None:
 
 
 def test_legitimate_constraint_clauses_with_implementation_work_are_accepted() -> None:
-    """DA-001 regression: actionable prose that *opens* with a constraint
-    clause (``I cannot change X, so implement Y and verify Z``) must
-    receive a receipt. The original detector prefix-matched the
-    literal ``I cannot`` and rejected the whole message, even when
-    the rest of the text prescribes concrete implementation and
-    verification work. A real refusal (``I cannot access the
-    repository secrets``) describes no action and remains a refusal.
-    """
     legitimate_plans = (
-        # The demonstrated DA-001 counterexample: opens with a
-        # constraint clause, then prescribes implementation and
-        # regression verification.
         "I cannot change the public API without breaking "
         "compatibility, so implement the fix internally and verify "
         "existing callers with regression tests.",
-        # ``I cannot`` constraint followed by an action chain
-        # ``build, run, verify``.
         "I cannot extend the legacy adapter to support the new "
         "field, so add a small translator, run the regression "
         "suite, and verify the resulting public behavior is "
         "unchanged for existing callers.",
-        # ``I'm sorry`` opening with a follow-up implementation
-        # sentence is also an actionable plan, not a refusal.
         "I'm sorry, I cannot make that change, but I can refactor "
         "the helper to keep the public contract and add a focused "
         "regression test for the affected branch.",
@@ -260,9 +230,6 @@ def test_legitimate_constraint_clauses_with_implementation_work_are_accepted() -
             f"unexpected PLAN001 for legitimate plan: {text!r}; "
             f"got {[d.rule_id for d in diagnostics]}"
         )
-    # Genuine refusals still must fail the sanity gate: every
-    # ``I cannot`` / ``I'm sorry`` line that does not prescribe
-    # any implementation, verification, or test work is a refusal.
     for text in (
         "I cannot complete this request because I cannot access any repository files.",
         "I cannot complete this request because policy prevents me from helping you today.",
@@ -275,27 +242,13 @@ def test_legitimate_constraint_clauses_with_implementation_work_are_accepted() -
 
 
 def test_multiline_constraint_preface_followed_by_plan_is_accepted() -> None:
-    """DA-001 regression: a multi-line submission that opens with an
-    explicit ``I cannot implement this request because X`` constraint
-    preface and follows with concrete implementation, test, and
-    verification work is a constrained plan, not a refusal. The
-    detector must reject refusals only when the entire message is a
-    refusal.
-    """
     legitimate_plans = (
-        # The exact DA-001 counterexample probed against the public
-        # handler: constraint preface line followed by actionable
-        # implementation guidance.
         "I cannot implement this request because production credentials are unavailable.\n"
         "Implement an offline adapter using recorded responses, add deterministic tests, and verify the public interface.",
-        # ``I cannot complete`` preface followed by an explicit
-        # numbered step list on subsequent lines.
         "I cannot complete this request because the upstream service is unreachable.\n"
         "1. Stub the upstream calls with deterministic responses.\n"
         "2. Wire the stub through the public interface.\n"
         "3. Add a regression test that exercises the stubbed path.",
-        # ``I'm sorry`` preface followed by a separate sentence
-        # prescribing work.
         "I'm sorry, I cannot run that command without elevated access.\n"
         "Mock the elevated call, exercise the public surface, and verify the regression coverage.",
     )
@@ -305,7 +258,6 @@ def test_multiline_constraint_preface_followed_by_plan_is_accepted() -> None:
             f"unexpected PLAN001 for legitimate multiline plan: {text!r}; "
             f"got {[d.rule_id for d in diagnostics]}"
         )
-    # Single-line refusals still must fail the sanity gate.
     for text in (
         "I cannot complete this request because production credentials are unavailable.",
         "I cannot implement this request because policy blocks me from helping you today.",
@@ -319,19 +271,12 @@ def test_multiline_constraint_preface_followed_by_plan_is_accepted() -> None:
 
 
 def test_legitimate_plans_mentioning_placeholder_text_are_accepted() -> None:
-    """DA-001 regression: a real plan that *discusses* a placeholder
-    marker (for example, instructing removal of the obsolete text) must
-    not be flagged as a placeholder. Placeholder detection is anchored
-    to the first non-empty line so discussions of the marker stay valid.
-    """
     legitimate = (
         "Remove the obsolete todo: plan placeholder from documentation "
         "and verify the updated planning instructions with focused tests."
     )
     _, diagnostics, _ = analyze_plan_document(legitimate)
     assert diagnostics == [], [d.rule_id for d in diagnostics]
-    # Other marker names that must not falsely trip the placeholder
-    # check when they appear in the middle of a real plan.
     for text in (
         "Refactor the fixme: plan annotation away and re-run the regression "
         "tests for the affected module today.",
@@ -420,7 +365,6 @@ Prepare release/manifest.json after the first component is complete.
 
 
 def test_plan_regression_duplicate_units_cannot_reassign_nested_steps() -> None:
-    """U-1: ambiguous identifiers retain prose without inventing a worker owner."""
     for second_section in ("Work Units", "Parallel Plan"):
         text = f"""## Work Units
 - [api] Implement the first API component
@@ -463,7 +407,6 @@ Files:
 
 
 def test_plan_regression_duplicate_steps_make_worker_ownership_unextractable() -> None:
-    """Ambiguous duplicate steps never permit unsafe native fan-out."""
     text = """## Work Units
 - [api] First API component
   Paths: src/first.py

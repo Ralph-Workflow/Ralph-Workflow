@@ -1,38 +1,3 @@
-"""Builds the conflict resolver handed to the auto-integrate step.
-
-This module is now a thin adapter. It builds the production
-:data:`~ralph.pipeline.auto_integrate_resolve.ConflictResolver` -- the
-``(repo_root, target) -> bool`` callable
-:func:`~ralph.pipeline.auto_integrate_resolve.endpoint_merge_with_resolution`
-consumes -- and delegates the actual work to
-:func:`ralph.pipeline.conflict_resolution.run_conflict_resolution_pipeline`,
-the out-of-graph pipeline that owns prompting, status, session and the
-bounded retry loop.
-
-The delegation exists because the previous implementation invoked the
-agent OUTSIDE Ralph's MCP session: it called ``invoke_agent`` directly
-with no ``RALPH_MCP_ENDPOINT``, so there was no Ralph tool surface, no
-``declare_complete`` contract and -- critically -- no exec policy. The
-claim that "an agent running under Ralph's own MCP exec policy is denied
-every git invocation" was therefore aspirational rather than true. It is
-true now: the pipeline runs every round through
-``effect_executor.execute_agent_effect``, which builds the session
-bridge, so ``ralph.mcp.tools.exec.apply_exec_policy`` actually binds and
-the agent cannot commit, abort or move a ref. Ralph alone stages the
-previously-conflicted paths and then advances the integration itself:
-for a REBASE stop it runs ``git rebase --continue``, replaying the
-commit and leaving linear history; only the endpoint-merge mode
-finishes by creating a merge commit.
-
-Fault-tolerance contract, unchanged: every failure mode returns ``False``
-so the integration step aborts the operation in progress -- the rebase
-for a declined stop, the merge for a declined endpoint merge -- and
-records a conflict instead of crashing the run. A MISSING dependency
-(no ``pipeline_deps``, no
-``workspace_scope``) is one of those failures -- it declines rather than
-falling back to an MCP-less invocation, because that fallback is the
-defect this module exists to remove.
-"""
 
 from __future__ import annotations
 
@@ -69,30 +34,14 @@ if TYPE_CHECKING:
     from ralph.workspace.scope import WorkspaceScope
 
     class _SupportsAgentLookup(Protocol):
-        """Structural registry surface: ``get(name) -> AgentConfig | None``."""
 
         def get(self, name: str) -> AgentConfig | None: ...
 
 
-#: Channel the decline lines are attributed to on the operator transcript.
 _WARN_CHANNEL = "auto-integrate"
 
 
 def emit_integration_warn_line(display: object, message: str) -> None:
-    """Put a decline reason where the OPERATOR can see it, not just the log.
-
-    Every branch below already logs, and the log file is exactly where
-    the reason used to die: a run whose auto-integration silently stopped
-    resolving conflicts looks, from the transcript, like a feature that
-    does not work. One line on the transcript is the difference between
-    "auto rebase is broken" and "no resolution agent is installed".
-
-    Duck-typed and defensive, exactly as
-    :func:`ralph.pipeline.conflict_resolution.status.emit_conflict_phase_line`
-    is: a display exposing no ``emit_warn_line`` is a silent no-op, and a
-    display that raises is swallowed. Presentation must never be able to
-    raise into the integration step.
-    """
     try:
         emit = cast(
             "Callable[[str, str, str], None] | None",
@@ -115,30 +64,6 @@ def build_agent_conflict_resolver(
     display_context: DisplayContext | None = None,
     strategy_history: tuple[str, ...] = (),
 ) -> ConflictResolver:
-    """Build the pipeline-backed conflict resolver for the integration step.
-
-    The returned callable matches
-    :data:`~ralph.pipeline.auto_integrate_resolve.ConflictResolver`: it is
-    invoked with ``(repo_root, target_branch)`` while the conflicted merge
-    is in progress and returns ``True`` only when Ralph's own
-    deterministic marker scan found the conflicts resolved.
-
-    Args:
-        policy_bundle: Resolved policy supplying the resolution drain.
-        registry: Agent registry. Used to decline BEFORE a session is
-            started when no agent of the resolution chain is actually
-            installed in this workspace.
-        display: Active display; the pipeline pushes its own status bar
-            through it and restores the previous one on exit.
-        config: Run configuration, supplying the wall-clock ceiling.
-        pipeline_deps: Pipeline dependencies. Required: without them no
-            MCP session can be built.
-        workspace_scope: Workspace scope. Required, for the same reason.
-        display_context: Display context, when there is one.
-
-    Returns:
-        The resolver callable. It never raises.
-    """
 
     def _resolver(root: Path, target: str) -> bool:
         if pipeline_deps is None or workspace_scope is None:
@@ -188,9 +113,6 @@ def build_agent_conflict_resolver(
                 display_context=display_context,
             )
         except Exception as exc:
-            # The pipeline contains its own failures; this is the outer
-            # net that keeps the promise the integration step relies on:
-            # a conflict resolver never raises into it, it only declines.
             logger.warning("auto_integrate: conflict-resolution pipeline raised: {}", exc)
             emit_integration_warn_line(
                 display, f"conflict resolution failed: resolution pipeline raised {exc}"
@@ -211,30 +133,6 @@ def build_agent_rebase_stop_resolver(
     display_context: DisplayContext | None = None,
     strategy_history: tuple[str, ...] = (),
 ) -> RebaseStopResolver:
-    """Build the resolver that resolves ONE stop of a conflicted rebase.
-
-    The rebase counterpart of :func:`build_agent_conflict_resolver`, and
-    deliberately a SEPARATE builder rather than a widening of
-    :data:`~ralph.pipeline.auto_integrate_resolve.ConflictResolver`: a
-    rebase stop carries context a merge conflict does not have (which
-    commit is being replayed, how far through the replay the loop is), and
-    every existing caller of the merge resolver keeps its two-argument
-    signature untouched.
-
-    Args:
-        policy_bundle: Resolved policy supplying the resolution drain.
-        registry: Agent registry, used to decline before a session starts
-            when no agent of the resolution chain is installed.
-        display: Active display; the caller owns the footer across the
-            whole loop, this resolver only pushes per-stop updates.
-        config: Run configuration, supplying the wall-clock ceiling.
-        pipeline_deps: Pipeline dependencies. Required for an MCP session.
-        workspace_scope: Workspace scope. Required, for the same reason.
-        display_context: Display context, when there is one.
-
-    Returns:
-        The resolver callable. It never raises.
-    """
 
     def _resolver(root: Path, target: str, stop: RebaseStop) -> ResolutionOutcome | bool:
         if pipeline_deps is None or workspace_scope is None:
@@ -250,31 +148,6 @@ def build_agent_rebase_stop_resolver(
                 f"rebase conflict resolution unavailable: {missing} not threaded to this seam",
             )
             return False
-        # The conflicted `root` is the target worktree (the main worktree
-        # for an auto-rebase). All path-bound context -- prompt, MCP plan,
-        # policy, agent registry, config -- must come from the TARGET, not
-        # from the calling worktree's closed-over values. The
-        # ``workspace_context`` manager validates the target and yields one
-        # immutable bundle; the agent session built downstream then
-        # receives the target's ``workspace_scope.root`` through the
-        # existing bridge chain, selecting the target's ``.agent/mcp.toml``.
-        # The ``with`` scope covers every exit path (decline, pipeline
-        # exception, success, abort) so the caller's closed-over config
-        # and registry are never replaced by target values.
-        #
-        # ENTERING it is itself fallible, and must decline rather than
-        # raise: the manager re-reads the target's config, policy and
-        # agent registry FROM DISK, so anything an operator edits
-        # mid-run -- a `.agent/ralph-workflow.toml` saved with a missing
-        # comma is the observed case -- turns every later conflict into
-        # an exception thrown out of a callable this module's own
-        # contract promises never raises. It was then caught three
-        # frames up by the resolution loop's blanket handler and logged
-        # as "rebase resolution loop failed", so the run silently lost
-        # conflict resolution for its whole remaining life and no
-        # message anywhere named the config file. Declining here keeps
-        # the fallback behaviour identical and puts the real cause in
-        # front of the operator.
         try:
             return _resolve_within_target_context(
                 root=root,
@@ -293,14 +166,6 @@ def build_agent_rebase_stop_resolver(
                 session.terminal_reason = ResolutionTerminationReason.CONFIG_FAILURE
                 session.last_failure_cause = ResolutionFailureCause.CONFIG_FAILURE
                 session.exhaustion_reason = reason_text
-            # The WARN goes through the shared configuration-failure
-            # recorder, the same one the soft fallback path uses. It used
-            # to be emitted here directly, so EVERY conflict re-logged an
-            # identical warning for a file that had not changed: the
-            # operator saw the same line once per conflict and could not
-            # tell a repaired file from an unrepaired one. The recorder
-            # deduplicates per (file, content), so an unchanged broken
-            # file warns once and a repaired-then-broken file warns again.
             emit_config_failure_warning(
                 exc.file,
                 kind="ralph-workflow",
@@ -351,12 +216,6 @@ def _resolve_within_target_context(
     display_context: DisplayContext | None,
     strategy_history: tuple[str, ...],
 ) -> ResolutionOutcome | bool:
-    """Resolve one stop under the TARGET worktree's config, policy and registry.
-
-    Split out of the resolver closure so entering ``workspace_context``
-    sits inside the caller's decline handler; see the comment there for
-    why that entry must never propagate.
-    """
     with workspace_context(root) as target_ctx:
         target_config = target_ctx.config
         target_policy = target_ctx.policy_bundle
@@ -411,12 +270,6 @@ def _resolve_within_target_context(
 
 
 def _any_chain_agent_installed(policy_bundle: PolicyBundle, registry: _SupportsAgentLookup) -> bool:
-    """Whether at least one resolution-chain agent exists in the registry.
-
-    Checked here rather than inside the pipeline so a workspace with no
-    usable agent never pays for a status-bar push, a prompt render and a
-    session bridge before finding out.
-    """
     return any(
         registry.get(agent_name) is not None
         for agent_name in resolution_chain_agents(policy_bundle)

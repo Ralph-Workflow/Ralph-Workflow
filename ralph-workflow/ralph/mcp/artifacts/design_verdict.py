@@ -1,15 +1,3 @@
-"""Structured ``design_verdict`` artifact validation helpers.
-
-The pydantic schema mirrors the markdown-spec mapper output: the
-provenance fields, the verbatim intent, the verdict status /
-summary, and the list of findings. The cross-section invariants
-(capture_id must appear in cell_ids, status must match the
-findings, intent must not smuggle source-reading phrases) are
-enforced by the markdown spec's ``validate_document`` hook
-because they need the parsed-side ordering; the schema here only
-checks the structural shape so a downstream consumer can rely
-on every field being present and well typed.
-"""
 
 from __future__ import annotations
 
@@ -31,7 +19,6 @@ _JUDGEMENT_TIERS: tuple[Literal["deterministic", "on-demand"], ...] = (
 
 
 class DesignVerdict(RalphBaseModel):
-    """Validated schema for a ``design_verdict`` artifact payload."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -66,7 +53,6 @@ class DesignVerdict(RalphBaseModel):
 
 
 def normalize_design_verdict_content(content: dict[str, object]) -> dict[str, object]:
-    """Validate and normalize a raw ``design_verdict`` content dict."""
     try:
         validated = DesignVerdict.model_validate(content)
     except ValidationError as exc:

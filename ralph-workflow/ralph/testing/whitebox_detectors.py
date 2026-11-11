@@ -1,35 +1,3 @@
-"""Single-pass AST analysis of Ralph test modules.
-
-The test-policy audit needs, for every parsed test module:
-
-* the three white-box coupling counts (private monkeypatch targets, private
-  ``ralph`` imports, and private attribute reads in high-confidence contexts),
-* the exact dotted targets the module patches,
-* the pytest markers the module declares, and
-* every call site with its dotted callee name and its wait-for context, and
-* the module's import-alias table, so a call written through an alias
-  (``import time as t`` / ``from time import sleep``) resolves to the
-  module function it really calls (:func:`resolve_dotted_name`).
-
-All of it comes from ONE traversal per module
-(:func:`analyze_module`). ``ast.parse`` is the irreducible cost of auditing
-the whole tree; every additional tree walk is not. The detectors below used
-to walk each module about ten times (once per detector, plus a fixpoint loop
-over the assignments and a re-walk of every ``assert`` subtree), which made
-the whole-tree audit cost more than its own per-step wall-clock cap.
-
-The ONE traversal collects the nodes; the three CONTEXTS that need ancestry
-(an attribute inside an ``assert``, an attribute inside a
-``monkeypatch.setattr`` target, a call inside an ``asyncio.wait_for``) are
-resolved afterwards against the collected nodes, because resolving them
-during the walk would put a context tuple on every stack entry.
-
-The public helpers (:func:`count_setattr_private`, :func:`count_private_imports`,
-:func:`count_private_attrs`, :func:`collect_whitebox_counts` and
-:func:`collect_patched_targets`) are thin wrappers over that single
-traversal, so a caller that only needs one number still pays for one walk.
-"""
-
 from __future__ import annotations
 
 import ast
@@ -41,16 +9,8 @@ if TYPE_CHECKING:
 
 WhiteboxCounts = dict[str, int]
 
-#: A module's import aliases: every name an import binds to something other
-#: than itself, mapped to the dotted names it may stand for (``t`` ->
-#: ``time`` for ``import time as t``, ``sleep`` -> ``time.sleep`` for
-#: ``from time import sleep``). A name rebound by several imports maps to
-#: all of them.
 ImportAliases = dict[str, frozenset[str]]
 
-#: One call site: the call node, its dotted callee name (``None`` when the
-#: callee is not a plain dotted name), and whether the call sits inside an
-#: ``asyncio.wait_for`` / ``asyncio.timeout`` expression.
 CallSite = tuple[ast.Call, str | None, bool]
 
 _DUNDER_ATTRIBUTES: frozenset[str] = frozenset(
@@ -68,23 +28,15 @@ _DUNDER_ATTRIBUTES: frozenset[str] = frozenset(
     }
 )
 
-# The calls whose arguments are a blocking wait that the caller already
-# bounded with a timeout.
 _WAIT_FOR_NAMES: frozenset[str] = frozenset({"asyncio.wait_for", "asyncio.timeout"})
 
-# The number of leading arguments of a ``monkeypatch.setattr`` call that
-# name the patched target (the target itself and the patched attribute).
 _SETATTR_TARGET_ARGUMENT_COUNT = 2
 
-# The number of arguments a ``mock.patch.object`` call needs: the patched
-# receiver and the patched attribute.
 _PATCH_OBJECT_ARGUMENT_COUNT = 2
 
 
 @dataclass
 class _Scan:
-    """The node buckets ONE traversal collects."""
-
     call_sites: list[tuple[ast.Call, str | None]] = field(default_factory=list)
     attributes: list[ast.Attribute] = field(default_factory=list)
     imports: list[ast.Import | ast.ImportFrom] = field(default_factory=list)
@@ -97,8 +49,6 @@ class _Scan:
 
 @dataclass(frozen=True)
 class ModuleFacts:
-    """Every fact the test-policy audit needs from ONE parsed test module."""
-
     counts: WhiteboxCounts
     patched_targets: frozenset[str]
     monkeypatch_names: frozenset[str]
@@ -125,7 +75,6 @@ def _module_last_segment(module: str) -> str:
 
 
 def _dotted_name(node: ast.expr) -> str | None:
-    """Return the dotted name of ``node`` (``None`` when it has none)."""
     parts: list[str] = []
     current: ast.expr = node
     while isinstance(current, ast.Attribute):
@@ -139,13 +88,6 @@ def _dotted_name(node: ast.expr) -> str | None:
 
 
 def _import_aliases(imports: list[ast.Import | ast.ImportFrom]) -> ImportAliases:
-    """Return the alias table of every absolute import in the module.
-
-    ``import a.b`` binds ``a`` to itself and is not an alias; relative and
-    star imports bind nothing the detectors can name, so they are skipped.
-    Imports are collected from every scope: a function-local
-    ``import subprocess as sp`` still makes ``sp.run`` a subprocess call.
-    """
     aliases: dict[str, set[str]] = {}
     for node in imports:
         if isinstance(node, ast.ImportFrom):
@@ -163,12 +105,6 @@ def _import_aliases(imports: list[ast.Import | ast.ImportFrom]) -> ImportAliases
 
 
 def resolve_dotted_name(name: str, aliases: ImportAliases) -> frozenset[str]:
-    """Return every dotted name ``name`` may denote, ``name`` itself included.
-
-    The first segment is looked up in the module's import aliases, so
-    ``t.sleep`` resolves to ``time.sleep`` under ``import time as t`` and a
-    bare ``run`` to ``subprocess.run`` under ``from subprocess import run``.
-    """
     head, separator, rest = name.partition(".")
     targets = aliases.get(head)
     if not targets:
@@ -177,7 +113,6 @@ def resolve_dotted_name(name: str, aliases: ImportAliases) -> frozenset[str]:
 
 
 def _argument_names(node: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[str, ...]:
-    """Return the positional and keyword-only argument names of ``node``."""
     arguments = node.args
     return tuple(
         argument.arg
@@ -186,7 +121,6 @@ def _argument_names(node: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[str, 
 
 
 def _is_monkeypatch_setattr(node: ast.Call, bound: Collection[str]) -> bool:
-    """Return True when ``node`` patches through a monkeypatch fixture."""
     function = node.func
     if not isinstance(function, ast.Attribute) or function.attr != "setattr":
         return False
@@ -195,13 +129,11 @@ def _is_monkeypatch_setattr(node: ast.Call, bound: Collection[str]) -> bool:
 
 
 def _record_import(scan: _Scan, node: ast.AST) -> None:
-    """Record an import node."""
     if isinstance(node, ast.Import | ast.ImportFrom):
         scan.imports.append(node)
 
 
 def _record_assign(scan: _Scan, node: ast.AST) -> None:
-    """Record an assignment and the ``pytestmark`` it may declare."""
     if isinstance(node, ast.Assign):
         targets = tuple(node.targets)
         scan.assignments.append((targets, node.value))
@@ -213,13 +145,6 @@ def _record_assign(scan: _Scan, node: ast.AST) -> None:
 
 
 def _record_function(scan: _Scan, node: ast.AST) -> None:
-    """Record a function's fixture arguments and its decorators.
-
-    Only a SYNCHRONOUS function contributes decorators: the marker grammar
-    of the audit reads ``@pytest.mark.*`` off a synchronous function or a
-    class definition. An asynchronous function still contributes its fixture
-    arguments, because the monkeypatch fixture can be requested there too.
-    """
     if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
         scan.fixture_arguments.append(_argument_names(node))
     if isinstance(node, ast.FunctionDef):
@@ -227,20 +152,15 @@ def _record_function(scan: _Scan, node: ast.AST) -> None:
 
 
 def _record_class(scan: _Scan, node: ast.AST) -> None:
-    """Record a class's decorators."""
     if isinstance(node, ast.ClassDef):
         scan.decorators.extend(node.decorator_list)
 
 
 def _record_assert(scan: _Scan, node: ast.AST) -> None:
-    """Record an assert statement."""
     if isinstance(node, ast.Assert):
         scan.asserts.append(node)
 
 
-#: The node types the ONE traversal records outside the call and attribute
-#: buckets. A dispatch table keeps the hot loop free of a long isinstance
-#: chain.
 _SCAN_HANDLERS: dict[type, Callable[[_Scan, ast.AST], None]] = {
     ast.Import: _record_import,
     ast.ImportFrom: _record_import,
@@ -254,12 +174,6 @@ _SCAN_HANDLERS: dict[type, Callable[[_Scan, ast.AST], None]] = {
 
 
 def _scan_tree(tree: ast.AST) -> _Scan:
-    """Collect every node category the detectors need in ONE traversal.
-
-    The children are pushed in reverse field order so the stack pops them
-    back in source order, which keeps the collected call sites in the same
-    order an ``ast.NodeVisitor`` would report them.
-    """
     scan = _Scan()
     stack: list[ast.AST] = [tree]
     while stack:
@@ -283,7 +197,6 @@ def _scan_tree(tree: ast.AST) -> _Scan:
 
 
 def _monkeypatch_names(scan: _Scan) -> set[str]:
-    """Return every name bound to pytest's monkeypatch fixture."""
     bound = {"monkeypatch"}
     for names in scan.fixture_arguments:
         for name in names:
@@ -306,7 +219,6 @@ def _monkeypatch_names(scan: _Scan) -> set[str]:
 def _count_setattr_private(
     call_sites: list[tuple[ast.Call, str | None]], bound: Collection[str]
 ) -> int:
-    """Count monkeypatch calls that target a private production attribute."""
     count = 0
     for node, _call_name in call_sites:
         if not _is_monkeypatch_setattr(node, bound):
@@ -336,7 +248,6 @@ def _count_setattr_private(
 
 
 def _count_private_imports(imports: list[ast.Import | ast.ImportFrom]) -> int:
-    """Count imports that reach private ``ralph`` production internals."""
     count = 0
     for node in imports:
         if isinstance(node, ast.ImportFrom):
@@ -358,7 +269,6 @@ def _count_private_imports(imports: list[ast.Import | ast.ImportFrom]) -> int:
 
 
 def _ralph_module_names(imports: list[ast.Import | ast.ImportFrom]) -> set[str]:
-    """Return the names bound by imports that reach a ``ralph`` module."""
     names: set[str] = set()
     for node in imports:
         if isinstance(node, ast.ImportFrom):
@@ -374,7 +284,6 @@ def _ralph_module_names(imports: list[ast.Import | ast.ImportFrom]) -> set[str]:
 
 
 def _assert_attribute_ids(asserts: list[ast.Assert]) -> set[int]:
-    """Return the identities of the attributes that sit inside an ``assert``."""
     identities: set[int] = set()
     for node in asserts:
         for descendant in ast.walk(node):
@@ -387,7 +296,6 @@ def _setattr_target_attribute_ids(
     call_sites: list[tuple[ast.Call, str | None]],
     bound: Collection[str],
 ) -> set[int]:
-    """Return the identities of the attributes a monkeypatch patches."""
     identities: set[int] = set()
     for node, _call_name in call_sites:
         if not _is_monkeypatch_setattr(node, bound):
@@ -400,7 +308,6 @@ def _setattr_target_attribute_ids(
 
 
 def _count_private_attrs(scan: _Scan, bound: Collection[str]) -> int:
-    """Count private attribute accesses in high-confidence test contexts."""
     ralph_modules = _ralph_module_names(scan.imports)
     assert_identities = _assert_attribute_ids(scan.asserts)
     setattr_identities = _setattr_target_attribute_ids(scan.call_sites, bound)
@@ -422,7 +329,6 @@ def _count_private_attrs(scan: _Scan, bound: Collection[str]) -> int:
 
 
 def _whitebox_counts(scan: _Scan, bound: Collection[str]) -> WhiteboxCounts:
-    """Return the three white-box detector counts of one scanned module."""
     return {
         "setattr_private": _count_setattr_private(scan.call_sites, bound),
         "private_import": _count_private_imports(scan.imports),
@@ -431,14 +337,12 @@ def _whitebox_counts(scan: _Scan, bound: Collection[str]) -> WhiteboxCounts:
 
 
 def canonical_patch_target(receiver: str, attribute: str) -> str:
-    """Return the canonical dotted target for a patched attribute."""
     if receiver == "Path":
         receiver = "pathlib.Path"
     return f"{receiver}.{attribute}"
 
 
 def canonical_target_string(target: str) -> str:
-    """Return the canonical spelling of a string patch target."""
     if target == "open":
         return "builtins.open"
     if target.startswith("Path."):
@@ -449,13 +353,11 @@ def canonical_target_string(target: str) -> str:
 def _add_receiver_targets(
     targets: set[str], receiver: str, attribute: str, aliases: ImportAliases
 ) -> None:
-    """Record ``receiver.attribute`` under every name the receiver may denote."""
     for resolved in resolve_dotted_name(receiver, aliases):
         targets.add(canonical_patch_target(resolved, attribute))
 
 
 def _add_setattr_targets(targets: set[str], node: ast.Call, aliases: ImportAliases) -> None:
-    """Record the targets a ``monkeypatch.setattr`` call patches."""
     if node.args and isinstance(node.args[0], ast.Constant):
         first_node = node.args[0]
         if isinstance(first_node.value, str):
@@ -479,7 +381,6 @@ def _patched_targets(
     monkeypatch_patterns: Collection[str],
     aliases: ImportAliases,
 ) -> set[str]:
-    """Collect the exact dotted targets patched in one scanned module."""
     normalized = {pattern.removesuffix("(") for pattern in monkeypatch_patterns}
     targets: set[str] = set()
     for node, function_name in scan.call_sites:
@@ -514,7 +415,6 @@ def _patched_targets(
 
 
 def _is_subprocess_e2e_decorator(node: ast.AST) -> bool:
-    """Return True when ``node`` is ``@pytest.mark.subprocess_e2e``."""
     return (
         isinstance(node, ast.Attribute)
         and node.attr == "subprocess_e2e"
@@ -526,7 +426,6 @@ def _is_subprocess_e2e_decorator(node: ast.AST) -> bool:
 
 
 def _harvest_markers_from_value(value: ast.AST, markers: set[str]) -> None:
-    """Walk a single marker expression and record its name."""
     if isinstance(value, ast.Attribute):
         if (
             isinstance(value.value, ast.Attribute)
@@ -544,7 +443,6 @@ def _harvest_markers_from_value(value: ast.AST, markers: set[str]) -> None:
 
 
 def _collect_markers(scan: _Scan) -> set[str]:
-    """Return every pytest marker name the module declares."""
     markers: set[str] = set()
     for value in scan.pytestmark_values:
         _harvest_markers_from_value(value, markers)
@@ -554,7 +452,6 @@ def _collect_markers(scan: _Scan) -> set[str]:
 
 
 def _has_subprocess_e2e_marker(scan: _Scan) -> bool:
-    """Return True when the module declares the ``subprocess_e2e`` marker."""
     for decorator in scan.decorators:
         if _is_subprocess_e2e_decorator(decorator):
             return True
@@ -569,7 +466,6 @@ def _has_subprocess_e2e_marker(scan: _Scan) -> bool:
 
 
 def _wait_for_call_ids(call_sites: list[tuple[ast.Call, str | None]]) -> set[int]:
-    """Return the identities of the calls nested inside a wait-for call."""
     identities: set[int] = set()
     for node, call_name in call_sites:
         if call_name not in _WAIT_FOR_NAMES:
@@ -581,11 +477,6 @@ def _wait_for_call_ids(call_sites: list[tuple[ast.Call, str | None]]) -> set[int
 
 
 def has_subprocess_e2e_marker(tree: ast.AST) -> bool:
-    """Return True when ``tree`` declares the ``subprocess_e2e`` marker.
-
-    This is the cheap, marker-only probe the whole-tree exemption scan uses;
-    it walks the module once but collects nothing else.
-    """
     decorators: list[ast.expr] = []
     pytestmark_values: list[ast.expr] = []
     stack: list[ast.AST] = [tree]
@@ -609,18 +500,6 @@ def analyze_module(
     *,
     monkeypatch_patterns: Collection[str] = (),
 ) -> ModuleFacts:
-    """Return every fact the detectors need from ONE parsed test module.
-
-    Args:
-        tree: The parsed module.
-        monkeypatch_patterns: The dotted names of the patch helpers whose
-            first argument names the patched target.
-
-    Returns:
-        The white-box counts, the patched targets, the monkeypatch-bound
-        names, the call sites, the declared pytest markers and the import
-        aliases.
-    """
     scan = _scan_tree(tree)
     bound = _monkeypatch_names(scan)
     aliases = _import_aliases(scan.imports)
@@ -640,22 +519,18 @@ def analyze_module(
 
 
 def count_setattr_private(tree: ast.AST) -> int:
-    """Count monkeypatch calls that target a private production attribute."""
     return analyze_module(tree).counts["setattr_private"]
 
 
 def count_private_imports(tree: ast.AST) -> int:
-    """Count imports that reach private ``ralph`` production internals."""
     return analyze_module(tree).counts["private_import"]
 
 
 def count_private_attrs(tree: ast.AST) -> int:
-    """Count private attribute accesses in high-confidence test contexts."""
     return analyze_module(tree).counts["private_attr"]
 
 
 def collect_whitebox_counts(tree: ast.AST) -> WhiteboxCounts:
-    """Return all white-box detector counts for one parsed test module."""
     return analyze_module(tree).counts
 
 
@@ -663,5 +538,4 @@ def collect_patched_targets(
     tree: ast.AST,
     monkeypatch_patterns: Collection[str],
 ) -> set[str]:
-    """Collect exact dotted targets patched in ``tree``."""
     return set(analyze_module(tree, monkeypatch_patterns=monkeypatch_patterns).patched_targets)

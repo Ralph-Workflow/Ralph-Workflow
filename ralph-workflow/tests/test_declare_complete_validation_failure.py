@@ -1,5 +1,3 @@
-"""S-2 regression tests for completion with unresolved artifact validation."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -44,7 +42,6 @@ def _declare_complete(session: MockSession, workspace: MockWorkspace) -> object:
 def test_declare_complete_regression_validation_failure_surfaces_hint_and_persists_sentinel(
     tmp_path: Path,
 ) -> None:
-    """S-2: active validation context blocks a success response, not the sentinel."""
     session = MockSession(drain="development")
     session.run_id = "validation-failure-run"
     workspace = MockWorkspace(tmp_path)
@@ -70,7 +67,6 @@ def test_declare_complete_regression_validation_failure_surfaces_hint_and_persis
 def test_declare_complete_regression_without_validation_hint_keeps_success_contract(
     tmp_path: Path,
 ) -> None:
-    """S-2: no retry hint preserves the existing completion response."""
     session = MockSession(drain="development")
     session.run_id = "normal-completion-run"
     workspace = MockWorkspace(tmp_path)
@@ -87,7 +83,6 @@ def test_declare_complete_regression_without_validation_hint_keeps_success_contr
 def test_declare_complete_regression_successful_submission_clears_hint_and_restores_success(
     tmp_path: Path,
 ) -> None:
-    """S-2: a valid resubmission clears retry context before completion."""
     session = MockSession(drain="development")
     session.run_id = "recovered-completion-run"
     workspace = MockWorkspace(tmp_path)

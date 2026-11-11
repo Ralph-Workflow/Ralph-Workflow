@@ -1,5 +1,3 @@
-"""Tests for ralph/workspace/fs.py — Filesystem workspace implementation."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -43,7 +41,6 @@ class TestFsWorkspaceIterFiles:
         assert files == ()
 
     def test_iter_files_excludes_build_output(self, tmp_path: Path) -> None:
-        """S-4 regression: generated build output is outside the traversal surface."""
         ws = FsWorkspace(tmp_path)
         (tmp_path / "source.py").write_text("value = 1\n", encoding="utf-8")
         (tmp_path / "build").mkdir()
@@ -55,7 +52,6 @@ class TestFsWorkspaceIterFiles:
         assert "build/generated.py" not in files
 
     def test_iter_files_skips_a_generated_base_directory(self, tmp_path: Path) -> None:
-        """S-4 regression: an explicit generated base cannot bypass the skip set."""
         ws = FsWorkspace(tmp_path)
         (tmp_path / ".git").mkdir()
         (tmp_path / ".git" / "config").write_text("[core]\n", encoding="utf-8")
@@ -63,22 +59,17 @@ class TestFsWorkspaceIterFiles:
         assert ws.iter_files(".git") == ()
 
     def test_iter_files_does_not_follow_a_symlink_cycle(self, tmp_path: Path) -> None:
-        """R2: a symlink cycle inside the traversal base cannot cause unbounded recursion."""
         ws = FsWorkspace(tmp_path)
         (tmp_path / "source.py").write_text("value = 1\n", encoding="utf-8")
         sub = tmp_path / "sub"
         sub.mkdir()
         (sub / "nested.txt").write_text("nested\n", encoding="utf-8")
-        # Self-referential symlink that would otherwise form a cycle.
         sub_loop = sub / "loop"
         sub_loop.symlink_to(sub, target_is_directory=True)
 
         files = ws.iter_files(".")
 
-        # ``os.walk`` does not follow directory symlinks by default, so the
-        # cycle resolves without recursion. The visible files are stable.
         assert "source.py" in files
         assert "sub/nested.txt" in files
         assert "sub/loop/nested.txt" not in files
-        # Bounded number of files proves the traversal terminated.
         assert len(files) == 2

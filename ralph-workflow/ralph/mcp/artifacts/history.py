@@ -1,19 +1,3 @@
-"""Artifact history archival and indexing.
-
-When a phase's artifact_history policy has enabled=True, the runtime archives
-the current canonical Markdown artifact and its Markdown handoff into a stable
-history directory before overwriting them. This lets planning agents inspect
-prior failed plans and analysis decisions across re-planning loops.
-
-Layout under .agent/artifacts/:
-    history/<artifact_type>/            -- history root for a type
-        <timestamp>_<artifact_type>.md    -- archived canonical Markdown
-        index.md                          -- human-readable summary of archived entries
-
-The canonical latest files (.agent/artifacts/plan.md, .agent/PLAN.md, etc.)
-are never moved here — they remain the authoritative current state. History
-contains only prior versions that were overwritten.
-"""
 
 from __future__ import annotations
 
@@ -32,27 +16,20 @@ if TYPE_CHECKING:
 _HISTORY_SUBDIR = "history"
 _TIMESTAMP_PATTERN = re.compile(r"^(\d{8}T\d{6})_")
 _TIMESTAMP_LENGTH = 15
-#: Maximum archived Markdown entries retained per artifact type.  Canonical
-#: current artifacts remain outside this bounded bookkeeping directory.
 HISTORY_RETENTION_LIMIT = 64
 
 
 def history_dir_for_artifact(artifact_dir: Path, artifact_type: str) -> Path:
-    """Return the history directory for an artifact type."""
     return artifact_dir / _HISTORY_SUBDIR / artifact_type
 
 
 def history_index_path(artifact_dir: Path, artifact_type: str) -> Path:
-    """Return the path to the history index file for an artifact type."""
     return history_dir_for_artifact(artifact_dir, artifact_type) / "index.md"
 
 
 def _safe_timestamp(now_iso: Callable[[], str]) -> str:
-    """Return a filesystem-safe timestamp from an ISO string."""
     raw = now_iso()
-    # Convert "2026-04-15T12:00:00+00:00" -> "20260415T120000"
     compact = raw.replace("-", "").replace(":", "").replace("+", "").replace(".", "")
-    # Keep the 15-char date-time prefix: YYYYMMDDTHHMMSS
     return compact[:_TIMESTAMP_LENGTH] if len(compact) >= _TIMESTAMP_LENGTH else compact
 
 
@@ -81,23 +58,6 @@ def archive_artifact_before_overwrite(
     backend: FileBackend = DEFAULT_FILE_BACKEND,
     now_iso: Callable[[], str],
 ) -> list[Path]:
-    """Archive the current canonical artifact files before they are overwritten.
-
-    Reads the current canonical Markdown artifact and its handoff (if any),
-    writes them into the history directory under a timestamped prefix, then
-    rebuilds the history index.
-
-    Args:
-        artifact_dir: The artifacts directory (e.g. .agent/artifacts/).
-        workspace_root: Workspace root (used to locate Markdown handoff files).
-        artifact_type: The artifact type identifier (e.g. 'plan').
-        backend: File backend for I/O.
-        now_iso: Callable returning the current timestamp as an ISO 8601 string.
-
-    Returns:
-        List of Paths of files created by this operation (Markdown archives,
-        NOT the index). The caller can use these paths to roll back the archive.
-    """
     canonical_markdown = artifact_dir / f"{artifact_type}.md"
     if not backend.exists(canonical_markdown):
         return []
@@ -113,12 +73,10 @@ def archive_artifact_before_overwrite(
         ".md",
         backend=backend,
         now_iso=now_iso,
-        # filesystem-write-ok: history archive copies under .agent/ history subtree, runtime archive metadata
     )
     write_text_if_changed(backend, archive_markdown, backend.read_text(canonical_markdown))
     created.append(archive_markdown)
 
-    # Archive the Markdown handoff if it exists
     handoff_rel = handoff_path_for_artifact(artifact_type)
     if handoff_rel:
         handoff_abs = workspace_root / handoff_rel
@@ -129,12 +87,10 @@ def archive_artifact_before_overwrite(
                 ".md",
                 backend=backend,
                 now_iso=now_iso,
-                # filesystem-write-ok: history archive copies under .agent/ history subtree, runtime archive metadata
             )
             write_text_if_changed(backend, archive_md, backend.read_text(handoff_abs))
             created.append(archive_md)
 
-    # Bound engine bookkeeping before rebuilding the derived index.
     prune_artifact_history(artifact_dir, artifact_type, backend=backend)
     rebuild_history_index(artifact_dir, artifact_type, backend=backend)
 
@@ -149,11 +105,6 @@ def snapshot_current_artifact(
     backend: FileBackend = DEFAULT_FILE_BACKEND,
     now_iso: Callable[[], str],
 ) -> list[Path]:
-    """Snapshot the current canonical artifact and handoff into history.
-
-    Unlike archive-before-overwrite, this records the current successful artifact
-    immediately after submission so history exists from the first completed phase.
-    """
     canonical_markdown = artifact_dir / f"{artifact_type}.md"
     if not backend.exists(canonical_markdown):
         return []
@@ -168,7 +119,6 @@ def snapshot_current_artifact(
         ".md",
         backend=backend,
         now_iso=now_iso,
-        # filesystem-write-ok: history archive copies under .agent/ history subtree, runtime archive metadata
     )
     write_text_if_changed(backend, archive_markdown, backend.read_text(canonical_markdown))
     created.append(archive_markdown)
@@ -183,7 +133,6 @@ def snapshot_current_artifact(
                 ".md",
                 backend=backend,
                 now_iso=now_iso,
-                # filesystem-write-ok: history archive copies under .agent/ history subtree, runtime archive metadata
             )
             write_text_if_changed(backend, archive_md, backend.read_text(handoff_abs))
             created.append(archive_md)
@@ -200,11 +149,6 @@ def prune_artifact_history(
     backend: FileBackend = DEFAULT_FILE_BACKEND,
     limit: int = HISTORY_RETENTION_LIMIT,
 ) -> list[Path]:
-    """Prune oldest archived entries, leaving the newest ``limit`` entries.
-
-    The operation is a no-op while retention is already satisfied.  ``index.md``
-    is deliberately excluded: it is rebuilt only when archive membership changed.
-    """
     if limit < 0:
         raise ValueError("history retention limit must be non-negative")
     hist_dir = history_dir_for_artifact(artifact_dir, artifact_type)
@@ -223,11 +167,6 @@ def rebuild_history_index(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> None:
-    """Rebuild the history index from files present in the history directory.
-
-    Always writes a fresh index.md derived from directory contents so the index
-    stays consistent with the actual archived files regardless of rollback state.
-    """
     hist_dir = history_dir_for_artifact(artifact_dir, artifact_type)
     if not backend.exists(hist_dir):
         return
@@ -257,7 +196,6 @@ def rebuild_history_index(
         lines.append(f"- Markdown: `{markdown_path.name}`")
         lines.append("")
 
-    # filesystem-write-ok: history archive copies under .agent/ history subtree, runtime archive metadata
     index_path = hist_dir / "index.md"
     write_text_if_changed(backend, index_path, "\n".join(lines))
 
@@ -268,11 +206,6 @@ def clear_artifact_history(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> None:
-    """Remove all archived history files for an artifact type.
-
-    Deletes all timestamped archive files and the index. The history directory
-    itself is left in place to avoid filesystem churn on repeated planning cycles.
-    """
     hist_dir = history_dir_for_artifact(artifact_dir, artifact_type)
     if not backend.exists(hist_dir):
         return

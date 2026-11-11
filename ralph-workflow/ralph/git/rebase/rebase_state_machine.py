@@ -1,4 +1,3 @@
-"""High-level rebase state machine for Python agents."""
 
 from __future__ import annotations
 
@@ -40,7 +39,6 @@ DEFAULT_MAX_RECOVERY_ATTEMPTS = 3
 
 
 class RebaseStateMachine:
-    """State machine that coordinates rebase lifecycle via ``RebaseCheckpoint``."""
 
     def __init__(
         self,

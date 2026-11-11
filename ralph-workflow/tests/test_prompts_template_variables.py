@@ -56,16 +56,10 @@ def test_specialized_analysis_drain_grants_read_and_exec_defaults() -> None:
     )
     vars_map = template_variables.capability_template_variables(caps, flags)
 
-    # Analysis must NOT grant tracked-write capability.
     assert vars_map["HAS_WORKSPACE_WRITE"] == ""
-    # Analysis MUST grant bounded process exec so agents can run verification commands.
     assert vars_map["HAS_PROCESS_EXEC"] == "true"
-    # Analysis must remain in a no_edit policy mode.
     assert vars_map["POLICY_NO_EDIT"] == "true"
-    # Analysis is NOT a development phase, so allow_shell policy stays off.
     assert vars_map["POLICY_ALLOW_SHELL"] == ""
-    # The MCP tool list MUST advertise the read/git/exec/artifact tooling so the
-    # rendered prompt tells the agent it can call these tools.
     tool_list = vars_map["MCP_TOOLS_LIST"]
     for required in (
         "read_file",
@@ -89,13 +83,9 @@ def test_review_analysis_drain_grants_read_and_exec_defaults() -> None:
     caps, flags = template_variables.default_caps_and_flags_for_drain(SessionDrain.REVIEW_ANALYSIS)
     vars_map = template_variables.capability_template_variables(caps, flags)
 
-    # Analysis must NOT grant tracked-write capability.
     assert vars_map["HAS_WORKSPACE_WRITE"] == ""
-    # Analysis MUST grant bounded process exec so agents can run verification commands.
     assert vars_map["HAS_PROCESS_EXEC"] == "true"
-    # Analysis must remain in a no_edit policy mode.
     assert vars_map["POLICY_NO_EDIT"] == "true"
-    # Analysis is NOT a development phase, so allow_shell policy stays off.
     assert vars_map["POLICY_ALLOW_SHELL"] == ""
     tool_list = vars_map["MCP_TOOLS_LIST"]
     for required in (
@@ -162,11 +152,8 @@ def test_analysis_drain_rendered_prompt_contains_exec_and_read_tooling(
     vars_map = {**base_vars, **capability_template_variables(caps, flags)}
     rendered = render_template(tmpl, vars_map, ctx.partials)
 
-    # The EXECUTION block from _mcp_tools.jinja must appear in the rendered output.
     assert "exec" in rendered
 
-    # Phase-specific guidance tools must appear in the rendered output.
-    # (Generic tool listing was removed — MCP tools are self-documenting via the protocol.)
     for tool in (
         "exec",
         "ralph_submit_md_artifact",
@@ -176,6 +163,5 @@ def test_analysis_drain_rendered_prompt_contains_exec_and_read_tooling(
     assert "write_file" not in rendered
     assert ".agent/tmp/" not in rendered
 
-    # The SESSION CAPABILITIES block must list the key capabilities.
     for cap in ("process.exec_bounded", "workspace.read", "git.diff_read", "artifact.submit"):
         assert cap in rendered, f"missing capability {cap} in rendered {template_name}"

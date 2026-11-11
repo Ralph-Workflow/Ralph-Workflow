@@ -1,12 +1,3 @@
-"""Kimi transport WIRE-provenance dispatch replay (DA-001 / DA-006 / DA-008).
-
-Extracted from ``tests/test_evidence_provenance_lattice.py`` to keep that
-module under the 1000-line repo-structure cap. Shares the same in-process
-real-MCP-dispatch pattern as the lattice module's Part A test: role-keyed
-Kimi stream-json frames, real ``McpServer.handle_request`` ``tools/call``
-round trips, and the shared ``_run_smoke_agent`` grading path.
-"""
-
 from __future__ import annotations
 
 import json
@@ -42,32 +33,11 @@ if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
 
 
-# Bounded per-test timeout (5s): the replay drives a real dispatch through
-# the fake transports, which legitimately grazes the 1.0s default bound
-# only when the full suite loads the machine; the bound keeps it under the
-# per-test policy without touching the 60s combined budget.
 @pytest.mark.timeout_seconds(5)
 def test_kimi_transcript_replay_with_real_mcp_dispatch_grades_wire_pass(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """DA-001/DA-006/DA-008: pin the WIRE path for the Kimi transport.
-
-    The live Kimi smoke (2026-08-17) created the file, submitted the
-    artifact, and declared completion, yet graded ``DEGRADED
-    (workspace-effect)`` with all three required facts below WIRE: the
-    smoke process carried no ``RALPH_BROKER_SECRET``, so every
-    wire-ledger append was a documented no-op and the shared gate could
-    never observe a wire-backed ``tools/call`` for the run. This test
-    replays the Kimi-shaped run through the SAME real in-process MCP
-    dispatch chain Part A pins for AGY -- role-keyed stream-json frames
-    Kimi actually emits, real ``McpServer.handle_request`` ``tools/call``
-    round trips for ``ralph_submit_md_artifact`` and
-    ``declare_complete``, the shared ``_run_smoke_agent`` grading path --
-    and proves the gate reaches ``PASS`` / WIRE when the session carries
-    a broker secret, so the remaining live gap is the missing secret at
-    the smoke composition root, not any Kimi transport/parser defect.
-    """
     test_secret = "kimi-wire-dispatch-secret"
     monkeypatch.setenv("RALPH_BROKER_SECRET", test_secret)
 
@@ -94,11 +64,6 @@ def test_kimi_transcript_replay_with_real_mcp_dispatch_grades_wire_pass(
     def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
         raw_sink = kwargs.get("raw_output_sink")
         if isinstance(raw_sink, deque):
-            # The measured v0.36.1 role-keyed frame vocabulary: a version
-            # banner, the session.resume_hint meta frame carrying the
-            # resumable session id, and assistant text frames. The tool
-            # activity itself is witnessed on the wire ledger below (the
-            # real tools/call dispatches), not only in transcript text.
             raw_sink.extend(
                 [
                     json.dumps({"role": "meta", "type": "system.version", "version": "0.36.1"}),

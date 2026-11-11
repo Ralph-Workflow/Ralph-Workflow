@@ -1,13 +1,3 @@
-"""Discovery, partitioning, and weight estimation tests for the test-suite runner.
-
-This module owns the static AST / partitioning checks for
-:mod:`ralph.test_suites`. The shared fakes for the shard-runner orchestration
-side (which previously lived here) live in
-:mod:`tests._test_test_suites_helpers` so the test runner orchestration
-tests can be their own file (``tests/test_test_suites_orchestration.py``)
-under the maintained ``1000``-line-per-file cap.
-"""
-
 from __future__ import annotations
 
 import importlib.util
@@ -27,29 +17,6 @@ from tests._test_test_suites_helpers import (
     _StubSpawner,
 )
 
-# --- Testing-policy white-box exception (frozen routing contract) ---------
-#
-# ``ralph/test_suites.py`` is FROZEN for this unit and owns the shard routing
-# contract: the E2E lane shard count, the per-file weight estimation fast
-# path, the discovery weight/source caches and the required-E2E weight
-# multiplier. None of these values is rendered by the documented CLI output of
-# the suite runner (they are internal scheduling inputs), and the module cannot
-# be refactored to expose them in this unit. The public surface
-# (``discover_test_files`` / ``discover_unit_test_files`` /
-# ``discover_integration_test_files`` / ``discover_subprocess_e2e_files`` /
-# ``estimate_test_file_weight`` / ``partition_selected_files`` /
-# ``validate_exact_file_assignment``) is exercised by the behavioural cases
-# below; every assertion that still reaches into a frozen private is marked
-# ``# policy: white-box-frozen`` and is an explicitly quoted exception.
-#
-# Quoted policy clause -- docs/ralph-workflow-policy/testing-policy.md,
-# "Default requirements":
-#   "White-box tests that reach into private internals are permitted only
-#    when no observable surface can express the regression."
-#
-# Why the exception holds here: the frozen routing contract has no public
-# observable for the pinned values (see the enumeration above), so the
-# regression cannot be expressed through the public surface.
 POLICY_WHITE_BOX_EXCEPTION = (
     "White-box tests that reach into private internals are permitted only when "
     "no observable surface can express the regression."
@@ -125,7 +92,6 @@ def test_run_test_suites_drains_backpressured_shard_pipe_instead_of_timing_out(
 
 
 def test_default_routing_allowlist_is_exact_and_immutable() -> None:
-    """AGY's two deterministic regressions stay in the default suite."""
     assert (
         frozenset(
             {
@@ -133,46 +99,21 @@ def test_default_routing_allowlist_is_exact_and_immutable() -> None:
                 "tests/test_agy_runtime_home_auth.py",
             }
         )
-        == conftest_module._AGY_DEFAULT_TEST_PATHS  # policy: white-box-frozen
+        == conftest_module._AGY_DEFAULT_TEST_PATHS
     )
 
 
 def test_fast_profile_registry_is_a_fixed_nonempty_routing_contract() -> None:
-    """S-5: test-fast covers the statically named suite-routing boundary only."""
     assert test_suites_module.FAST_PROFILE_TEST_FILES == EXPECTED_FAST_TEST_FILES
     assert all(not path.startswith("tests/integration/") for path in EXPECTED_FAST_TEST_FILES)
     assert not set(EXPECTED_FAST_TEST_FILES) & set(EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES)
 
 
 def test_required_e2e_lane_shard_count_is_pinned_to_ten() -> None:
-    """Use ten plain shards for the isolated real-git lane.
-
-    The lane used to run as ONE shard with ten in-shard xdist workers.
-    Every xdist worker collects the whole shard manifest, so the ten
-    workers imported the conftest chain and all 90 real-git modules ten
-    times over: measured on the maintained host, the 10-worker xdist
-    shard cost 423.3 CPU core-seconds while the same 90 files spread
-    over ten plain shards cost 388.3 -- ~35 core-seconds of duplicated
-    collection and import charged against the immutable 700 core-second
-    budget. Ten plain shards give the same parallelism with ONE import
-    of every module, and the recalibrated weight table keeps their
-    predicted loads within 0.4 % of each other.
-
-    The value stays a strict, pinned runner-architecture constant -- a
-    change here must be deliberate.
-    """
-    # RALPH-TEST-REASON: the lane's parallelism is pinned at ten, capped by
-    # the host's core count.
-    # comment-ok: the white-box-frozen tag is a prose policy marker, not code
-    assert test_suites_module._REQUIRED_E2E_SHARD_COUNT == 10  # policy: white-box-frozen
+    assert test_suites_module._REQUIRED_E2E_SHARD_COUNT == 10
 
 
 def test_required_auto_integrate_e2e_registry_matches_discovery_contract() -> None:
-    """The discovery suite enforces the required auto-integrate registry.
-
-    Mirrors the orchestration-side contract test so both test modules
-    independently fail when the production registry drifts.
-    """
     assert (
         test_suites_module.REQUIRED_AUTO_INTEGRATE_E2E_FILES
         == EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES
@@ -183,21 +124,6 @@ def test_required_auto_integrate_e2e_registry_matches_discovery_contract() -> No
 
 
 def test_sanctioned_default_lane_real_git_registry_is_pinned() -> None:
-    """The audit-exception registry is pinned and never overlaps selection.
-
-    ``SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES`` sanctions real-Git crossings
-    for the test-policy audit only; it must not double as a pytest-selection
-    requirement (``tests/conftest.py`` is not discoverable, and requiring it
-    would fail ``make test`` selection unconditionally).
-
-    The two registries are consulted together by the audit's
-    ``_is_registered_real_git_file``, so a file already named in the
-    SELECTION registry is sanctioned automatically. The audit-exception
-    registry therefore holds only the default-lane real-Git files the
-    selection registry does NOT name, and the two must stay disjoint:
-    naming one file in both gives it two roles and makes the sanction and
-    the selection requirement drift apart.
-    """
     assert (
         test_suites_module.SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES
         == EXPECTED_SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES
@@ -261,7 +187,6 @@ def test_partition_selected_files_balances_static_weights_deterministically() ->
 
 
 def test_partition_selected_files_minimizes_heavy_e2e_shard_load() -> None:
-    """The heaviest E2E file is isolated by deterministic LPT placement."""
     selected = (
         "tests/test_auto_integrate_recovery.py",
         "tests/test_auto_integrate_refresh_contract.py",
@@ -307,7 +232,6 @@ def test_partition_selected_files_minimizes_heavy_e2e_shard_load() -> None:
 def test_static_profile_discovery_regression_partitions_unit_and_integration_files(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """S-2: focused profiles statically partition test files before pytest starts."""
     tests_root = tmp_path / "tests"
     integration_root = tests_root / "integration"
     integration_root.mkdir(parents=True)
@@ -323,7 +247,7 @@ def test_static_profile_discovery_regression_partitions_unit_and_integration_fil
     assert unit_files == ("tests/test_unit.py",)
     assert integration_files == ("tests/integration/test_integration.py",)
     test_suites_module.validate_exact_file_assignment(
-        test_suites_module._discover_all_test_files(tmp_path),  # policy: white-box-frozen
+        test_suites_module._discover_all_test_files(tmp_path),
         (unit_files, integration_files),
     )
 
@@ -389,7 +313,6 @@ def test_keyword_item(keyword_item: str) -> None:
 
 
 def test_fast_test_count_counts_test_definitions_without_parsing() -> None:
-    """The regex counter backs the parent-process weight pre-population."""
     source = """
 def test_top_level() -> None:
     pass
@@ -404,14 +327,14 @@ class TestCases:
 # def test_commented_out() -> None:
 """
 
-    assert test_suites_module._fast_test_count(source) == 3  # policy: white-box-frozen
+    assert test_suites_module._fast_test_count(source) == 3
     parametrized = """
 import pytest
 @pytest.mark.parametrize("value", [1, 2, 3, 4, 5])
 def test_values(value: int) -> None:
     assert value
 """
-    assert test_suites_module._fast_test_count(parametrized) == 5  # policy: white-box-frozen
+    assert test_suites_module._fast_test_count(parametrized) == 5
     multiline_parametrized = """
 import pytest
 @pytest.mark.parametrize("value", [
@@ -423,26 +346,14 @@ import pytest
 def test_multiline_values(value: int) -> None:
     assert value
 """
-    assert (
-        test_suites_module._fast_test_count(multiline_parametrized) == 4
-    )  # policy: white-box-frozen
-    assert test_suites_module._fast_test_count("# helper only\n") == 0  # policy: white-box-frozen
-    # Defensive minimum: even empty sources get weight 1 for shard placement.
-    assert test_suites_module._fast_test_count("") == 0  # policy: white-box-frozen
+    assert test_suites_module._fast_test_count(multiline_parametrized) == 4
+    assert test_suites_module._fast_test_count("# helper only\n") == 0
+    assert test_suites_module._fast_test_count("") == 0
 
 
 def test_static_discovery_populates_weight_cache_for_retained_files(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """discover_test_files must populate the per-file weight cache in one pass.
-
-    Without this in-line pre-population ``_test_file_weight`` re-parses every
-    cached source with the Python syntax-tree parser after discovery, costing
-    ~5s on a 1.3k file tree. The parent process pays that cost before any
-    shard is spawned, so it directly inflates the wall clock against the 60s
-    combined budget enforced by
-    ``ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS``.
-    """
     tests_root = tmp_path / "tests"
     tests_root.mkdir()
     retained_one = tests_root / "test_retained_one.py"
@@ -464,12 +375,8 @@ def test_static_discovery_populates_weight_cache_for_retained_files(
 
     test_suites_module.discover_test_files(tmp_path)
 
-    assert (
-        test_suites_module._FILE_WEIGHT_CACHE.get("tests/test_retained_one.py") == 1
-    )  # policy: white-box-frozen
-    assert (
-        test_suites_module._FILE_WEIGHT_CACHE.get("tests/test_retained_two.py") == 2
-    )  # policy: white-box-frozen
+    assert test_suites_module._FILE_WEIGHT_CACHE.get("tests/test_retained_one.py") == 1
+    assert test_suites_module._FILE_WEIGHT_CACHE.get("tests/test_retained_two.py") == 2
 
 
 def test_static_discovery_keeps_required_real_git_weight_unmultiplied(
@@ -486,9 +393,9 @@ def test_static_discovery_keeps_required_real_git_weight_unmultiplied(
 
     test_suites_module.discover_test_files(tmp_path)
 
-    assert test_suites_module._FILE_WEIGHT_CACHE[required] == 1  # policy: white-box-frozen
-    assert test_suites_module._test_file_weight(tmp_path, required) == (  # policy: white-box-frozen
-        test_suites_module._REQUIRED_E2E_WEIGHT_MULTIPLIER  # policy: white-box-frozen
+    assert test_suites_module._FILE_WEIGHT_CACHE[required] == 1
+    assert test_suites_module._test_file_weight(tmp_path, required) == (
+        test_suites_module._REQUIRED_E2E_WEIGHT_MULTIPLIER
     )
 
 
@@ -508,25 +415,15 @@ def test_required_real_git_file_weight_accounts_for_process_cost(
     )
 
     assert (
-        test_suites_module._test_file_weight(  # policy: white-box-frozen
+        test_suites_module._test_file_weight(
             Path("/unused"),
             relative_path,
         )
-        == test_suites_module._REQUIRED_E2E_WEIGHT_MULTIPLIER  # policy: white-box-frozen
+        == test_suites_module._REQUIRED_E2E_WEIGHT_MULTIPLIER
     )
 
 
 def test_estimate_test_file_weight_matches_class_scope_walk_for_known_samples() -> None:
-    """The fast class-scope walker must match a literal parametrization sample.
-
-    The class-scope walker is the optimized replacement for the
-    ``ast.walk``-based implementation: it descends through ``ClassDef``
-    bodies but does not visit nested-function bodies (pytest does not
-    collect them anyway). This test pins the contract that a
-    well-formed test file with both module-level and class-level
-    parametrized tests still produces the same weight as the old
-    ``ast.walk`` walker.
-    """
     source = '''
 import pytest
 
@@ -557,18 +454,10 @@ def helper_helper_function() -> None:
         assert True
 '''
 
-    # 1 module-level parametrized (3 cases) + 1 module-level plain + 1 class
-    # method parametrized (3 cases) + 1 class method plain = 8.
     assert test_suites_module.estimate_test_file_weight(source) == 8
 
 
 def test_estimate_test_file_weight_handles_syntax_error_gracefully() -> None:
-    """A file that fails to parse must report weight 1 rather than raising.
-
-    The walker only walks visible nodes; if the AST step fails, the
-    fallback weight of 1 keeps the shard balancer from crashing the
-    whole ``make test`` run on a stray bad module.
-    """
     assert test_suites_module.estimate_test_file_weight("def @broken:") == 1
 
 
@@ -640,17 +529,6 @@ def test_static_discovery_excludes_only_module_marked_e2e_files(
 def test_static_discovery_finds_pytest_patterns_and_required_files(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Discovery walks the ``tests/`` tree and applies the pytest naming
-    pattern. The on-disk shape is exercised against a tiny synthetic
-    ``tests/`` tree so the assertion is deterministic and well inside the
-    1s per-test budget even under shard-saturated disk
-    contention. The full-tree variant walked ``Path.cwd()/tests/`` (~1.3k
-    files), and even with a 5s override the cold-cache walk on the
-    maintained 8-shard run could exceed the SIGALRM cap, masking the
-    assertion the test was trying to pin. The synthetic tree asserts the same observable contract
-    (name pattern, sort order, required-file inclusion) without paying the
-    per-file read cost.
-    """
     tests_root = tmp_path / "tests"
     tests_root.mkdir()
     (tests_root / "test_alpha.py").write_text("def test_one() -> None: pass\n", encoding="utf-8")
@@ -678,20 +556,9 @@ def test_static_discovery_finds_pytest_patterns_and_required_files(
     assert {"tests/test_required.py"} <= set(discovered)
 
 
-# S-1 (PTY subprocess regression) and S-5 (terminate / reap pool)
-# tests moved to tests/test_test_suites_subprocess_orchestration.py
-# so this suite stays under the 1000-line audit cap.
 def test_static_discovery_populates_source_cache_for_retained_files(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Each retained file's decoded source must end up in the source cache so
-    ``_test_file_weight`` does not re-read the same file from disk during
-    shard weight computation. The synthetic ``tests/`` tree is small enough
-    to fit comfortably inside the 1s per-test budget, so the
-    assertion is deterministic under shard-saturated disk contention (the
-    previous full-tree variant flaked at >5s on the maintained 32-core
-    profile).
-    """
     tests_root = tmp_path / "tests"
     tests_root.mkdir()
     retained_one = tests_root / "test_retained_one.py"
@@ -714,17 +581,10 @@ def test_static_discovery_populates_source_cache_for_retained_files(
         "tests/test_retained_one.py",
         "tests/test_retained_two.py",
     }
-    assert test_suites_module._FILE_SOURCE_CACHE.keys() >= set(
-        discovered
-    )  # policy: white-box-frozen
+    assert test_suites_module._FILE_SOURCE_CACHE.keys() >= set(discovered)
 
 
 def _load_module_from_path(module_name: str, path: Path) -> ModuleType:
-    """Import *path* as a standalone module.
-
-    The module object is deliberately NOT bound into this test module's
-    namespace: nothing it defines may be collected by pytest here.
-    """
     spec = importlib.util.spec_from_file_location(module_name, path)
     assert spec is not None and spec.loader is not None, f"{path} must be importable"
     module = importlib.util.module_from_spec(spec)
@@ -733,11 +593,6 @@ def _load_module_from_path(module_name: str, path: Path) -> ModuleType:
 
 
 def _module_marker_names(module: ModuleType) -> set[str]:
-    """Return the marker names pytest collects from *module*.
-
-    ``pytestmark`` is pytest's own public module-level marker attribute; a
-    module may set it to a single marker or to a sequence of markers.
-    """
     marks = getattr(module, "pytestmark", [])
     candidates = list(marks) if isinstance(marks, (list, tuple)) else [marks]
     found = {getattr(candidate, "name", None) for candidate in candidates}
@@ -745,21 +600,11 @@ def _module_marker_names(module: ModuleType) -> set[str]:
 
 
 def _shard_marker_expression(command: tuple[str, ...]) -> str:
-    """Return the ``-m`` marker expression of a shard command (the last ``-m``)."""
     marker_flag = len(command) - 1 - command[::-1].index("-m")
     return command[marker_flag + 1]
 
 
 def test_real_pty_completion_no_terminal_lost_has_required_auto_integrate_e2e_and_smoke() -> None:
-    """The real-PTY regression file must carry the required auto-integrate E2E
-    marker and the smoke marker.
-
-    wt-03-fix-bug: subprocess_e2e removed; the file runs in the E2E shard via
-    required_auto_integrate_e2e (which provides the same make-test coverage
-    guarantee). The markers are read from the module's PUBLIC ``pytestmark``
-    attribute -- the same attribute pytest itself collects -- and not from
-    the file's source text, so no other test file's source is parsed here.
-    """
     target_rel = "tests/agents/invoke/test_real_pty_completion_no_terminal_lost.py"
     repo_root = Path(__file__).resolve().parent.parent
     target_path = repo_root / target_rel
@@ -776,10 +621,6 @@ def test_real_pty_completion_no_terminal_lost_has_required_auto_integrate_e2e_an
         f"test_request_interactive_exit_does_not_lose_returncode must be defined in {target_rel}"
     )
 
-    # The Makefile is the documented user-facing command surface: the
-    # ``test-verification-smoke`` target is how an operator runs this file.
-    # Reading a Makefile target body is a public-surface read, not
-    # white-box coupling into another test's implementation.
     makefile_lines = (repo_root / "Makefile").read_text(encoding="utf-8").splitlines()
     smoke_target_body: list[str] = []
     for line in makefile_lines[makefile_lines.index("test-verification-smoke:") + 1 :]:
@@ -795,16 +636,6 @@ def test_real_pty_completion_no_terminal_lost_has_required_auto_integrate_e2e_an
 def test_required_auto_integrate_e2e_smoke_module_routes_to_the_required_e2e_shard(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A module marked ``required_auto_integrate_e2e`` + ``smoke`` runs on the
-    required auto-integrate E2E shard, not on the default suite's shards.
-
-    The synthetic ``tests/`` tree holds the three module shapes the routing
-    contract distinguishes: the marked one, a plain unmarked one, and a
-    module-marked ``subprocess_e2e`` one. The public runner must keep the
-    marked module out of the subprocess-E2E lane, route it to the required
-    auto-integrate E2E shard, and leave the plain module on the general
-    shard.
-    """
     tests_root = tmp_path / "tests"
     tests_root.mkdir()
     marked_rel = "tests/test_marked_required_e2e.py"
@@ -825,11 +656,7 @@ def test_required_auto_integrate_e2e_smoke_module_routes_to_the_required_e2e_sha
     monkeypatch.setattr(test_suites_module, "REQUIRED_AUTO_INTEGRATE_E2E_FILES", (marked_rel,))
     test_suites_module.reset_discovery_cache()
 
-    # Static discovery keeps the marked module (a ``smoke`` marker does not
-    # hide a file from static discovery) and drops the subprocess-E2E one.
     assert set(test_suites_module.discover_test_files(tmp_path)) == {marked_rel, plain_rel}
-    # The marked module is NOT in the subprocess-E2E lane: it carries no
-    # ``subprocess_e2e`` marker, so the registry reaches it instead.
     assert test_suites_module.discover_subprocess_e2e_files(tmp_path) == (subprocess_e2e_rel,)
 
     clock = _FakeClock()
@@ -838,18 +665,11 @@ def test_required_auto_integrate_e2e_smoke_module_routes_to_the_required_e2e_sha
         cwd=tmp_path, spawner=spawner, monotonic=clock, wait=clock.advance
     )
     assert exit_code == 0
-    # The marked module is routed to the required auto-integrate E2E shard;
-    # the plain module stays on the default suite's general shard.
     assert spawner.manifest_files == [(plain_rel,), (marked_rel,)]
-    # The default profile's expression selects ``required_auto_integrate_e2e``
-    # modules, so the smoke-marked module still runs on the default profile.
     assert {_shard_marker_expression(c) for c, _cwd, _env in spawner.calls} == {
         "(not subprocess_e2e and not smoke) or required_auto_integrate_e2e"
     }
 
-    # The focused profiles apply the plain ``not subprocess_e2e and not
-    # smoke`` expression, under which the smoke-marked module is NOT
-    # collected while the plain, unmarked module is.
     focused_clock = _FakeClock()
     focused_spawner = _StubSpawner([_FakeShardProcess([0]) for _ in range(4)])
     focused_exit_code = test_suites_module.run_test_suites(

@@ -1,4 +1,3 @@
-"""Execution strategy for interactive Claude agents."""
 
 from __future__ import annotations
 
@@ -19,22 +18,6 @@ if TYPE_CHECKING:
 
 
 def _interactive_tool_use_raw(event: InteractiveTranscriptEvent) -> str:
-    """Return a watchdog-readable raw payload for an interactive tool_use event.
-
-    ``event.text`` is the operator-facing ``claude tool: <name>`` marker and
-    stays exactly that -- the display and several parsers key off it. But the
-    marker carries NO arguments, so feeding it to the tool-call circuit breaker
-    fingerprinted every invocation of one tool as ``<name>|{}``: ten different
-    ``Bash`` commands looked like one command repeated ten times and fired
-    REPEATED_IDENTICAL_TOOL_CALL on a healthy agent at the seventh call. This
-    is the default ``claude`` agent, so that false kill was the common case.
-
-    The transcript parser already extracts ``input`` into ``event.metadata``
-    (see ``_TranscriptItemHandler``); this re-packs name + input into the
-    canonical ``{"type": "tool_use", ...}`` envelope the extractor understands.
-    Falls back to the plain marker when the event carries no tool metadata, so
-    the extractor's plain-text branch still applies.
-    """
     metadata = event.metadata or {}
     tool_name = metadata.get("tool")
     if not isinstance(tool_name, str) or not tool_name:
@@ -49,12 +32,6 @@ def _interactive_tool_use_raw(event: InteractiveTranscriptEvent) -> str:
 
 
 class ClaudeInteractiveExecutionStrategy(ClaudeExecutionStrategy):
-    """Interactive Claude session strategy.
-
-    Uses a VT-aware transcript parser before falling back to the headless Claude
-    classifier so TUI repaint noise does not downgrade meaningful tool/lifecycle
-    lines into generic output.
-    """
 
     def __init__(self, **kwargs: object) -> None:
         del kwargs

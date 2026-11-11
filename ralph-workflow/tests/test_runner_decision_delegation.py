@@ -1,11 +1,3 @@
-"""Black-box delegation tests for runner decision consumption.
-
-``_apply_step_integration_outcome`` and ``_handle_blocked_dispatch_recovery``
-must *consume* the typed ``IntegrationAction`` / ``PhaseDecision`` returned by
-the authorities, not discard them. These tests observe only the returned
-``PipelineState`` — never internals.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -58,11 +50,8 @@ def _write_record(
     monkeypatch: MonkeyPatch,
     **record_fields: Any,
 ) -> None:
-    """Make read_record return a record with the given fields (in-memory seam)."""
     record = IntegrationRecord(**{**_BASE_RECORD, **record_fields})
     monkeypatch.setattr(runner_module, "read_record", lambda _root: record)
-    # _reconcile_rebase_if_live_resolved reads the record from disk too; stub
-    # it to a no-op so the in-memory record is the only input.
     monkeypatch.setattr(
         runner_module,
         "_reconcile_rebase_if_live_resolved",
@@ -73,9 +62,6 @@ def _write_record(
 def test_stale_intent_surfaces_waiting_display_state(
     tmp_path: Path, monkeypatch: MonkeyPatch, policy_bundle: object
 ) -> None:
-    # No record + retained recovery => typed STALE_INTENT verdict
-    # (fail-closed), routed to the autonomous cleanup ladder: the display
-    # names the bounded wait, never an operator hand-off.
     monkeypatch.setattr(runner_module, "read_record", lambda _root: None)
     state = _state(recovery_record_retained=True)
     out = runner_module._apply_step_integration_outcome(
@@ -88,9 +74,6 @@ def test_stale_intent_surfaces_waiting_display_state(
 def test_diagnostic_budget_spent_surfaces_waiting_display_state(
     tmp_path: Path, monkeypatch: MonkeyPatch, policy_bundle: object
 ) -> None:
-    # A record whose diagnostic repair budget is spent => typed
-    # DIAGNOSTIC_BUDGET_SPENT verdict, routed to the autonomous cleanup
-    # ladder: the display names the bounded wait, never a hand-off.
     _write_record(tmp_path, monkeypatch, diagnostic_intervention_required=True)
     state = _state()
     out = runner_module._apply_step_integration_outcome(
@@ -103,8 +86,6 @@ def test_diagnostic_budget_spent_surfaces_waiting_display_state(
 def test_recoverable_action_blocks_display_without_intervention(
     tmp_path: Path, monkeypatch: MonkeyPatch, policy_bundle: object
 ) -> None:
-    # Active operation => RESOLVE_ACTIVE_OPERATION => BLOCK_FOR_RECOVERY,
-    # NOT intervention.
     _write_record(
         tmp_path,
         monkeypatch,
@@ -139,8 +120,6 @@ def _fake_verdict() -> object:
 def test_blocked_dispatch_unknown_action_fails_closed_to_retention(
     tmp_path: Path, monkeypatch: MonkeyPatch, policy_bundle: object
 ) -> None:
-    # No record at all => next_integration_action => REQUIRE_INTERVENTION,
-    # an unknown-ish/fail-closed vocabulary value; recovery must retain.
     monkeypatch.setattr(runner_module, "read_record", lambda _root: None)
     timed = _state()
     recovered = _state()
@@ -173,8 +152,6 @@ def test_blocked_dispatch_non_blocked_exc_is_noop(
 def test_apply_step_does_not_write_last_decision(
     tmp_path: Path, monkeypatch: MonkeyPatch, policy_bundle: object
 ) -> None:
-    # The reducer is the single last_decision writer; the runner consumes the
-    # decision by acting on display state, not by persisting the decision.
     _write_record(tmp_path, monkeypatch, diagnostic_intervention_required=True)
     state = _state()
     out = runner_module._apply_step_integration_outcome(

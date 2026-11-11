@@ -1,5 +1,3 @@
-"""The tool bridge preserves arguments instead of repairing JSON-shaped strings."""
-
 from __future__ import annotations
 
 from ralph.mcp.tools.bridge import ToolBridge
@@ -8,7 +6,6 @@ from ralph.mcp.tools.bridge._tool_metadata import ToolMetadata
 
 
 def test_tool_bridge_forwards_arguments_without_json_compensation() -> None:
-    """Removed JSON repair must not silently reinterpret markdown-tool input."""
     seen: dict[str, object] = {}
 
     def handler(

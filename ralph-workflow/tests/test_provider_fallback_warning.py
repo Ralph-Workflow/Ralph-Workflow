@@ -1,5 +1,3 @@
-"""Regression tests for legacy provider_fallback guidance."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -29,7 +27,6 @@ def _capture_warnings(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 def test_provider_fallback_regression_warns_when_set(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """S-1: legacy provider_fallback points users to active chain fallback."""
     global_path = tmp_path / GLOBAL_CONFIG_PATH.name
     global_path.write_text(
         '[general]\nprovider_fallback = { claude = ["codex"] }\n', encoding="utf-8"
@@ -53,7 +50,6 @@ def test_provider_fallback_regression_warns_when_set(
 def test_provider_fallback_regression_empty_value_warns_on_presence(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """S-3: an empty legacy knob still warns because it does nothing."""
     global_path = tmp_path / GLOBAL_CONFIG_PATH.name
     global_path.write_text("[general]\nprovider_fallback = {}\n", encoding="utf-8")
     monkeypatch.setattr("ralph.config.loader.GLOBAL_CONFIG_PATH", global_path)

@@ -1,8 +1,3 @@
-"""Unit tests for terminal_restore module.
-
-Drives terminal restoration through fakes and mock streams without real TTY I/O.
-"""
-
 from __future__ import annotations
 
 import signal
@@ -54,7 +49,6 @@ def _make_dummy_non_tty_stream() -> _FakeStream:
 
 
 def test_terminal_restore_regression_sequence_is_ownership_safe() -> None:
-    """S-1: controlled cleanup must not mutate terminal state Ralph does not own."""
     seq = terminal_restore_sequence()
     assert seq == "\x1b[?25h\x1b[0m"
     assert "\x1b[?1049l" not in seq
@@ -101,7 +95,6 @@ def test_restore_terminal_writes_nothing_on_non_tty_stream() -> None:
 def test_terminal_restore_regression_preserves_pending_input(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-1: generic restoration must never flush queued operator input."""
     monkeypatch.setenv("TERM", "xterm")
     stream = _make_dummy_tty_stream()
     with patch("termios.tcflush") as flush, patch("os.isatty", return_value=True):
@@ -221,7 +214,6 @@ def test_cli_ensure_terminal_restore_registers_once() -> None:
         assert len(registered_hooks) == 1
         assert registered_hooks[0] is restore_terminal
 
-        # Second call is idempotent and registers nothing new
         ensure_cli_terminal_restore(register_fn=fake_register)
         assert len(registered_hooks) == 1
     reset_cli_restore_state()

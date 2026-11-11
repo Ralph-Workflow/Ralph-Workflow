@@ -1,11 +1,3 @@
-"""Fail-closed audit for regression-test-elimination source markers.
-
-A ``# regression-test-elimination: tests/path.py::test_id`` comment on a
-production boundary names the test that must fail if the eliminated behavior is
-reintroduced. The audit scans every Python file under ``ralph/`` and requires
-that each marker name an existing Python test module under ``tests/``.
-"""
-
 from __future__ import annotations
 
 import sys
@@ -23,8 +15,6 @@ _MARKER = "regression-test-elimination:"
 
 @dataclass(frozen=True)
 class RegressionTestEliminationViolation:
-    """One malformed or unresolved regression-test-elimination marker."""
-
     kind: str
     file_path: str
     line: int
@@ -35,7 +25,6 @@ class RegressionTestEliminationViolation:
 
 
 def _marker_tokens(source: str) -> list[tuple[int, str]]:
-    """Return line-numbered marker payloads from real Python comments only."""
     return [
         (token.start[0], token.string.split(_MARKER, 1)[1].strip())
         for token in tokenize.generate_tokens(StringIO(source).readline)
@@ -59,7 +48,6 @@ def _violation(
 
 
 def audit_regression_test_elimination(repo_root: Path) -> list[RegressionTestEliminationViolation]:
-    """Validate every regression-test-elimination marker beneath ``ralph/``."""
     source_root = repo_root / "ralph"
     tests_root = repo_root / "tests"
     if not source_root.is_dir():
@@ -128,7 +116,6 @@ def audit_regression_test_elimination(repo_root: Path) -> list[RegressionTestEli
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Run the marker audit and return 0 when every declared proof exists."""
     if argv is None:
         argv = sys.argv[1:]
     repo_root = Path(argv[0]) if argv else Path(__file__).parent.parent.parent

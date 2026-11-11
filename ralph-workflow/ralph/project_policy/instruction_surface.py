@@ -1,9 +1,3 @@
-"""Instruction-surface integrity checks: hidden-character lint and helpers.
-
-This module detects zero-width spaces, directional formatting overrides, and
-other visually invisible or deceptive Unicode characters in instruction surface
-files (AGENTS.md, policy files, prompt templates, and MCP configs).
-"""
 
 from __future__ import annotations
 
@@ -13,23 +7,12 @@ from typing import Final
 from ralph.project_policy import markers
 from ralph.project_policy.models import PolicyFinding
 
-# Zero-width and bidirectional control characters that pose security,
-# prompt-injection, or invisible-instruction risks:
-# U+200B..U+200F: Zero-width space, ZWNJ, ZWJ, LRM, RLM
-# U+202A..U+202E: LRE, RLE, PDF, LRO, RLO (bidi embedding/override)
-# U+2066..U+2069: LRI, RLI, FSI, PDI (bidi isolate controls)
-# U+FEFF: Byte order mark / zero-width no-break space
-# U+00AD: Soft hyphen
 HIDDEN_UNICODE_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff\u00ad]"
 )
 
 
 def find_hidden_unicode(text: str) -> list[tuple[int, int, str]]:
-    """Scan *text* and return ``(line_number, column, hex_codepoint)`` for each hidden character.
-
-    Line and column numbers are 1-indexed.
-    """
     results: list[tuple[int, int, str]] = []
     for line_idx, line in enumerate(text.splitlines(), start=1):
         for match in HIDDEN_UNICODE_PATTERN.finditer(line):
@@ -41,10 +24,6 @@ def find_hidden_unicode(text: str) -> list[tuple[int, int, str]]:
 
 
 def check_hidden_unicode(content: str, path: str) -> list[PolicyFinding]:
-    """Validate that *content* contains no zero-width or bidi Unicode characters.
-
-    Returns deterministic :class:`PolicyFinding` instances for any occurrences.
-    """
     occurrences = find_hidden_unicode(content)
     if not occurrences:
         return []

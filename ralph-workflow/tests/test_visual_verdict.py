@@ -1,29 +1,3 @@
-"""Black-box tests for :class:`ralph.visual.design_verdict.DesignVerdict`.
-
-The verdict takes EXACTLY three inputs:
-
-* ``before`` — a :class:`~ralph.visual.capture_set.CaptureSet`
-  (the run-owned pre-change baseline),
-* ``after``  — a :class:`~ralph.visual.capture_set.CaptureSet`
-  (the run-owned post-change re-capture),
-* ``intent`` — the verbatim text the agent was asked to review.
-
-Anything else — diff, DOM, stylesheet, source, single-screenshot
-ground truth — is explicitly NOT a verdict input. The verdict's job
-is to compare two complete capture matrices and emit
-``pass`` / ``fail`` / ``blocked`` along with the findings that
-explain the verdict, each citing a ``capture_id`` and a
-:class:`~ralph.visual.visual_finding.Region`.
-
-This suite pins every input-boundary invariant and every negative
-case the contract lists. Every test exercises the public
-constructor (``DesignVerdict(...)``) and the public accessors
-(``findings_for``, ``blockers``, ``majors``) only, so the test file
-stays free of inline suppressions per the AGENTS.md type-ignore
-policy. No real subprocess, no real wire ledger, no ``time.sleep``:
-tests run well inside the 60s combined budget.
-"""
-
 from __future__ import annotations
 
 import inspect
@@ -44,11 +18,6 @@ from ralph.visual.design_verdict import (
 from ralph.visual.policy_facts import REQUIRED_STATES, Viewport
 from ralph.visual.visual_finding import Region, VisualFinding
 
-# ---------------------------------------------------------------------------
-# Builders
-# ---------------------------------------------------------------------------
-
-
 _DEFAULT_VIEWPORTS: tuple[Viewport, ...] = (
     Viewport(name="narrow", width=375, height=812),
     Viewport(name="wide", width=1440, height=900),
@@ -57,7 +26,6 @@ _DEFAULT_THEMES: tuple[str, ...] = ("light", "dark")
 
 
 def _build_request(*, target: str) -> CaptureRequest:
-    """Build a small but complete CaptureRequest for verdict tests."""
     return CaptureRequest.build(
         target=target,
         viewports=_DEFAULT_VIEWPORTS,
@@ -72,15 +40,9 @@ def _build_capture_set(
     run_id: str,
     handle_prefix: str,
 ) -> CaptureSet:
-    """Build a complete CaptureSet for ``target`` with synthetic artifact ids."""
     request = _build_request(target=target)
     cells: list[CaptureCell] = []
     for index, cell in enumerate(request.matrix):
-        # Stamp a synthetic handle into a parallel list (the
-        # CaptureSet cells themselves are content-addressable by
-        # (target, viewport, theme, state) so we cannot edit
-        # cell_id; the verdict layer does not need handle data
-        # inside CaptureSet, only the cell identity).
         cells.append(
             CaptureCell(
                 target=cell.target,
@@ -99,7 +61,6 @@ def _finding_for(
     *,
     severity: str = "minor",
 ) -> VisualFinding:
-    """Build a VisualFinding that cites ``capture_id`` with no absolute claim."""
     return VisualFinding(
         capture_id=capture_id,
         region=Region(x=0, y=0, w=10, h=10),
@@ -117,7 +78,6 @@ def _verdict(
     findings: Sequence[VisualFinding] = (),
     status: str = VERDICT_PASS,
 ) -> DesignVerdict:
-    """Build a DesignVerdict with the three required inputs."""
     return DesignVerdict(
         before=before,
         after=after,
@@ -127,13 +87,7 @@ def _verdict(
     )
 
 
-# ---------------------------------------------------------------------------
-# Happy path: exactly-three inputs build a verdict
-# ---------------------------------------------------------------------------
-
-
 def test_visual_finding_has_one_public_top_level_class() -> None:
-    """The repo-structure audit accepts the finding public API."""
     from ralph.visual import visual_finding
 
     source = inspect.getsource(visual_finding)
@@ -143,7 +97,6 @@ def test_visual_finding_has_one_public_top_level_class() -> None:
 
 
 def test_verdict_accepts_exactly_three_inputs() -> None:
-    """A verdict built from before + after + intent + findings + status must succeed."""
     before = _build_capture_set(target="checkout", run_id="run-1", handle_prefix="before")
     after = _build_capture_set(target="checkout", run_id="run-2", handle_prefix="after")
     sample = _finding_for(next(iter(before.cell_ids)))
@@ -159,7 +112,6 @@ def test_verdict_accepts_exactly_three_inputs() -> None:
 
 
 def test_verdict_requires_before_to_be_a_capture_set() -> None:
-    """Passing a non-CaptureSet ``before`` must fail closed at the type boundary."""
     after = _build_capture_set(target="checkout", run_id="run-2", handle_prefix="after")
     not_a_capture_set: object = "not-a-capture-set"
     with pytest.raises(ValueError, match="DesignVerdict.before must be a CaptureSet"):
@@ -173,7 +125,6 @@ def test_verdict_requires_before_to_be_a_capture_set() -> None:
 
 
 def test_verdict_requires_after_to_be_a_capture_set() -> None:
-    """Passing a non-CaptureSet ``after`` must fail closed at the type boundary."""
     before = _build_capture_set(target="checkout", run_id="run-1", handle_prefix="before")
     not_a_capture_set: object = "not-a-capture-set"
     with pytest.raises(ValueError, match="DesignVerdict.after must be a CaptureSet"):
@@ -187,7 +138,6 @@ def test_verdict_requires_after_to_be_a_capture_set() -> None:
 
 
 def test_verdict_requires_non_empty_intent() -> None:
-    """An empty intent is a non-input verdict; must be rejected."""
     before = _build_capture_set(target="checkout", run_id="run-1", handle_prefix="before")
     after = _build_capture_set(target="checkout", run_id="run-2", handle_prefix="after")
     with pytest.raises(ValueError, match="DesignVerdict.intent must be a non-empty string"):
@@ -197,7 +147,6 @@ def test_verdict_requires_non_empty_intent() -> None:
 
 
 def test_verdict_status_must_match_closed_vocabulary() -> None:
-    """A status outside pass/fail/blocked must be rejected at the constructor."""
     before = _build_capture_set(target="checkout", run_id="run-1", handle_prefix="before")
     after = _build_capture_set(target="checkout", run_id="run-2", handle_prefix="after")
     with pytest.raises(ValueError, match="DesignVerdict.status must be one of"):
@@ -211,7 +160,6 @@ def test_verdict_status_must_match_closed_vocabulary() -> None:
 
 
 def test_verdict_findings_must_be_a_tuple_of_visual_finding_instances() -> None:
-    """A list of findings is rejected because the field is frozen-by-tuple."""
     before = _build_capture_set(target="checkout", run_id="run-1", handle_prefix="before")
     after = _build_capture_set(target="checkout", run_id="run-2", handle_prefix="after")
     sample = _finding_for(next(iter(before.cell_ids)))
@@ -226,13 +174,7 @@ def test_verdict_findings_must_be_a_tuple_of_visual_finding_instances() -> None:
         )
 
 
-# ---------------------------------------------------------------------------
-# Three-input boundary: source / diff / DOM / stylesheet smuggling
-# ---------------------------------------------------------------------------
-
-
 def test_verdict_rejects_intent_with_source_smuggle_phrase() -> None:
-    """An intent naming 'source code' must be rejected — design review is visual only."""
     before = _build_capture_set(target="checkout", run_id="run-1", handle_prefix="before")
     after = _build_capture_set(target="checkout", run_id="run-2", handle_prefix="after")
     with pytest.raises(ValueError, match="must not smuggle non-capture artifacts"):
@@ -244,7 +186,6 @@ def test_verdict_rejects_intent_with_source_smuggle_phrase() -> None:
 
 
 def test_verdict_rejects_intent_with_diff_smuggle_phrase() -> None:
-    """An intent naming 'the diff' must be rejected."""
     before = _build_capture_set(target="checkout", run_id="run-1", handle_prefix="before")
     after = _build_capture_set(target="checkout", run_id="run-2", handle_prefix="after")
     with pytest.raises(ValueError, match="must not smuggle non-capture artifacts"):
@@ -256,7 +197,6 @@ def test_verdict_rejects_intent_with_diff_smuggle_phrase() -> None:
 
 
 def test_verdict_rejects_intent_with_dom_smuggle_phrase() -> None:
-    """An intent naming 'dom tree' must be rejected."""
     before = _build_capture_set(target="checkout", run_id="run-1", handle_prefix="before")
     after = _build_capture_set(target="checkout", run_id="run-2", handle_prefix="after")
     with pytest.raises(ValueError, match="must not smuggle non-capture artifacts"):
@@ -268,7 +208,6 @@ def test_verdict_rejects_intent_with_dom_smuggle_phrase() -> None:
 
 
 def test_verdict_rejects_intent_with_stylesheet_smuggle_phrase() -> None:
-    """An intent naming 'stylesheet contents' must be rejected."""
     before = _build_capture_set(target="checkout", run_id="run-1", handle_prefix="before")
     after = _build_capture_set(target="checkout", run_id="run-2", handle_prefix="after")
     with pytest.raises(ValueError, match="must not smuggle non-capture artifacts"):
@@ -279,13 +218,7 @@ def test_verdict_rejects_intent_with_stylesheet_smuggle_phrase() -> None:
         )
 
 
-# ---------------------------------------------------------------------------
-# Target + parity: before and after must describe the same matrix
-# ---------------------------------------------------------------------------
-
-
 def test_verdict_rejects_target_mismatch() -> None:
-    """A verdict comparing different targets is rejected at the type boundary."""
     before = _build_capture_set(target="checkout", run_id="run-1", handle_prefix="before")
     after = _build_capture_set(target="dashboard", run_id="run-2", handle_prefix="after")
     with pytest.raises(ValueError, match="target mismatch"):
@@ -293,18 +226,16 @@ def test_verdict_rejects_target_mismatch() -> None:
 
 
 def test_verdict_rejects_matrix_parity_mismatch() -> None:
-    """A verdict whose after drops a baseline cell must be rejected."""
     before_request = CaptureRequest.build(
         target="checkout",
         viewports=_DEFAULT_VIEWPORTS,
         themes=_DEFAULT_THEMES,
         states=REQUIRED_STATES,
     )
-    # After has the same target but a smaller matrix (single theme).
     after_request = CaptureRequest.build(
         target="checkout",
         viewports=_DEFAULT_VIEWPORTS,
-        themes=("light",),  # dropped dark theme
+        themes=("light",),
         states=REQUIRED_STATES,
     )
     before = CaptureSet(
@@ -322,20 +253,12 @@ def test_verdict_rejects_matrix_parity_mismatch() -> None:
 
 
 def test_verdict_rejects_after_missing_required_states() -> None:
-    """An after-set that omits a canonical state is incomplete and rejected.
-
-    The matrix-parity check fires before the states-covered check,
-    so the parity invariant surfaces first when cells are missing.
-    """
     before_request = CaptureRequest.build(
         target="checkout",
         viewports=_DEFAULT_VIEWPORTS,
         themes=_DEFAULT_THEMES,
         states=REQUIRED_STATES,
     )
-    # Build an after whose matrix omits the 'overflow' state. The
-    # after has the same target and shape minus one state, which
-    # first trips the parity check.
     cells = [
         CaptureCell.mint(
             target="checkout",
@@ -357,9 +280,6 @@ def test_verdict_rejects_after_missing_required_states() -> None:
     with pytest.raises(ValueError, match="same capture matrix"):
         _verdict(before=before, after=after)
 
-    # When the matrix is parity-equal but the matrix itself was
-    # built without the 'overflow' state, the states-covered check
-    # fires.
     overflow_cells = [
         CaptureCell.mint(
             target="checkout",
@@ -376,20 +296,11 @@ def test_verdict_rejects_after_missing_required_states() -> None:
         cells=tuple(cells_with_overflow),
         run_id="run-2",
     )
-    # now both before and after cover all REQUIRED_STATES — the
-    # states-covered check is satisfied. Confirm that re-parity
-    # accepts the matrix.
     verdict = _verdict(before=before, after=after_complete)
     assert verdict.cell_ids == before.cell_ids
 
 
-# ---------------------------------------------------------------------------
-# Findings: capture_id must be in cell_ids, severities must match status
-# ---------------------------------------------------------------------------
-
-
 def test_verdict_rejects_finding_with_unknown_capture_id() -> None:
-    """A finding citing a cell outside the shared matrix is rejected."""
     before = _build_capture_set(target="checkout", run_id="run-1", handle_prefix="before")
     after = _build_capture_set(target="checkout", run_id="run-2", handle_prefix="after")
     ghost = _finding_for("not-in-cell-ids")
@@ -398,7 +309,6 @@ def test_verdict_rejects_finding_with_unknown_capture_id() -> None:
 
 
 def test_verdict_pass_with_blocker_finding_is_rejected() -> None:
-    """A 'pass' verdict cannot coexist with a blocker finding."""
     before = _build_capture_set(target="checkout", run_id="run-1", handle_prefix="before")
     after = _build_capture_set(target="checkout", run_id="run-2", handle_prefix="after")
     blocker = _finding_for(next(iter(before.cell_ids)), severity="blocker")
@@ -407,7 +317,6 @@ def test_verdict_pass_with_blocker_finding_is_rejected() -> None:
 
 
 def test_verdict_fail_with_no_blocking_finding_is_rejected() -> None:
-    """A 'fail' verdict must have at least one blocker or major finding."""
     before = _build_capture_set(target="checkout", run_id="run-1", handle_prefix="before")
     after = _build_capture_set(target="checkout", run_id="run-2", handle_prefix="after")
     minor = _finding_for(next(iter(before.cell_ids)), severity="minor")
@@ -421,7 +330,6 @@ def test_verdict_fail_with_no_blocking_finding_is_rejected() -> None:
 
 
 def test_verdict_blocked_status_is_permissive_about_findings() -> None:
-    """A 'blocked' verdict accepts any finding set — it is a "cannot evaluate" state."""
     before = _build_capture_set(target="checkout", run_id="run-1", handle_prefix="before")
     after = _build_capture_set(target="checkout", run_id="run-2", handle_prefix="after")
     minor = _finding_for(next(iter(before.cell_ids)), severity="minor")
@@ -437,7 +345,6 @@ def test_verdict_blocked_status_is_permissive_about_findings() -> None:
 
 
 def test_verdict_accessors_group_findings_by_capture_id() -> None:
-    """The ``findings_for`` accessor must return only findings that cite the given cell."""
     before = _build_capture_set(target="checkout", run_id="run-1", handle_prefix="before")
     after = _build_capture_set(target="checkout", run_id="run-2", handle_prefix="after")
     cells = sorted(before.cell_ids)
@@ -454,9 +361,7 @@ def test_verdict_accessors_group_findings_by_capture_id() -> None:
     )
     assert verdict.findings_for(first) == (finding_a, finding_b)
     assert verdict.findings_for(second) == (finding_c,)
-    # Unknown capture id yields an empty tuple, never a KeyError.
     assert verdict.findings_for("not-a-cell-id") == ()
-    # Severity accessors group by closed vocabulary.
     blockers = verdict.blockers()
     assert len(blockers) == 1
     assert blockers[0].severity == "blocker"
@@ -465,15 +370,7 @@ def test_verdict_accessors_group_findings_by_capture_id() -> None:
     assert majors[0].severity == "major"
 
 
-# ---------------------------------------------------------------------------
-# Findings: absolute claims without before-grounding are rejected
-# ---------------------------------------------------------------------------
-
-
 def test_verdict_rejects_absolute_finding_without_before_grounding() -> None:
-    """A finding whose narrative asserts an absolute state without
-    'compared to before' (or similar) grounding must be rejected.
-    """
     before = _build_capture_set(target="checkout", run_id="run-1", handle_prefix="before")
     after = _build_capture_set(target="checkout", run_id="run-2", handle_prefix="after")
     finding = VisualFinding(
@@ -488,7 +385,6 @@ def test_verdict_rejects_absolute_finding_without_before_grounding() -> None:
 
 
 def test_verdict_accepts_absolute_finding_with_before_grounding_phrase() -> None:
-    """A finding whose narrative uses 'compared to before' is grounded."""
     before = _build_capture_set(target="checkout", run_id="run-1", handle_prefix="before")
     after = _build_capture_set(target="checkout", run_id="run-2", handle_prefix="after")
     finding = VisualFinding(
@@ -502,17 +398,7 @@ def test_verdict_accepts_absolute_finding_with_before_grounding_phrase() -> None
     assert verdict.status == VERDICT_PASS
 
 
-# ---------------------------------------------------------------------------
-# Identity equality: two distinct verdicts are not the same object
-# ---------------------------------------------------------------------------
-
-
 def test_verdict_equality_is_identity_keyed() -> None:
-    """Two verdicts over equivalent inputs are NOT equal because
-    CaptureSet equality is identity-keyed and the verdict inherits
-    that contract: two runs over the same matrix produce two
-    distinct verdicts.
-    """
     before_a = _build_capture_set(target="checkout", run_id="run-1", handle_prefix="before")
     after_a = _build_capture_set(target="checkout", run_id="run-2", handle_prefix="after")
     before_b = _build_capture_set(target="checkout", run_id="run-3", handle_prefix="before")

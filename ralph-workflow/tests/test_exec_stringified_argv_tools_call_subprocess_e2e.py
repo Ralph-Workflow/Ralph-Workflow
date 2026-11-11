@@ -1,11 +1,3 @@
-"""A stringified argv runs through a real ``tools/call`` even under ledger contention.
-
-Some clients send ``command`` as the text of a list (``'["cat", "a.txt"]'``).
-This drives the real ``McpServer`` dispatch and a real exec subprocess, with
-the wire-ledger append lock held by another writer, and asserts the command
-runs as the intended argv and the call does not fail.
-"""
-
 from __future__ import annotations
 
 import fcntl

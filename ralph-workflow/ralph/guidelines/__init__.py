@@ -1,4 +1,3 @@
-"""Language-specific review guidelines for the Python port."""
 
 from __future__ import annotations
 

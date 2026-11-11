@@ -1,15 +1,3 @@
-"""Side-effect contract for Ralph MCP tools.
-
-A tool call that is retried after a committed-then-failed response has
-explicitly defined side-effect semantics. A command that may have partially
-executed before a stream failed is surfaced as ``partial: True`` and the
-recovery controller refuses to re-execute when ``outcome == 'partial'``.
-
-The classification here is the single source of truth for the retry safety
-contract. It is a closed registry — every tool in the built registry must
-have a classification, and a new tool without a classification fails the
-default-deny test (tests/test_property_f_retry_side_effects.py).
-"""
 
 from __future__ import annotations
 
@@ -21,16 +9,6 @@ SideEffectClassification = Literal["read", "mutate", "unknown"]
 
 @dataclass(frozen=True)
 class SideEffectContract:
-    """Side-effect contract for a tool.
-
-    Attributes:
-        tool_name: The tool's public name (e.g. ``"exec"``).
-        classification: ``"read"`` for idempotent reads, ``"mutate"`` for
-            commands that may change system state, ``"unknown"`` if the
-            classification is not pinned.
-        idempotent: True when the tool is safe to re-execute after a
-            partial failure. Reads are idempotent. Mutates are not.
-    """
 
     tool_name: str
     classification: SideEffectClassification
@@ -45,14 +23,7 @@ def _contract(name: str, classification: SideEffectClassification) -> SideEffect
     )
 
 
-#: Static side-effect registry. Every tool listed in
-#: ``RalphToolName`` MUST appear here — the default-deny test walks the
-#: live enum and asserts no tool is missing a contract.
-#: This is the closed set; adding a new tool without a contract is a
-#: test failure (a property the recovery controller relies on).
 REGISTRY: dict[str, SideEffectContract] = {
-    # Mutating tools — exec family and any web/visit tool that may set cookies,
-    # file writes, git writes, plan edits, and artifact submission.
     "exec": _contract("exec", "mutate"),
     "unsafe_exec": _contract("unsafe_exec", "mutate"),
     "raw_exec": _contract("raw_exec", "mutate"),
@@ -76,7 +47,6 @@ REGISTRY: dict[str, SideEffectContract] = {
     "declare_complete": _contract("declare_complete", "mutate"),
     "report_progress": _contract("report_progress", "mutate"),
     "read_env": _contract("read_env", "read"),
-    # Read tools — safe to retry on partial failure.
     "exec_wait": _contract("exec_wait", "read"),
     "read_file": _contract("read_file", "read"),
     "read_multiple_files": _contract("read_multiple_files", "read"),
@@ -96,34 +66,17 @@ REGISTRY: dict[str, SideEffectContract] = {
     "read_image": _contract("read_image", "read"),
     "read_media": _contract("read_media", "read"),
     "media_capture": _contract("media_capture", "mutate"),
-    # Indexed exploration tools (Phase 1).
     "ralph_index_status": _contract("ralph_index_status", "read"),
-    # A reindex may write to the SQLite index inside the workspace,
-    # but the operation is bounded, idempotent, and recoverable; we
-    # classify it as ``read`` here because it does not mutate
-    # source-of-truth files (the .agent/ralph-explore/ subtree is a
-    # derived disposable cache).
     "ralph_reindex": _contract("ralph_reindex", "read"),
-    # Phase 2: bounded graph traversal over the indexed substrate;
-    # pure read, no source-of-truth mutation.
     "ralph_graph": _contract("ralph_graph", "read"),
 }
 
 
 def get_contract(tool_name: str) -> SideEffectContract:
-    """Return the side-effect contract for a tool, or an unknown contract.
-
-    A new tool without a classification is treated as ``unknown`` and
-    non-idempotent — the safe default. The default-deny test fails on any
-    unclassified tool that actually appears in the registry, so this
-    fallback is only reached when a caller passes a tool name not in the
-    registry (i.e. a typo).
-    """
     return REGISTRY.get(tool_name, SideEffectContract(tool_name, "unknown", False))
 
 
 def register(tool_name: str, classification: SideEffectClassification) -> SideEffectContract:
-    """Register a new contract (test-only convenience; production uses REGISTRY)."""
     REGISTRY[tool_name] = _contract(tool_name, classification)
     return REGISTRY[tool_name]
 

@@ -1,20 +1,3 @@
-"""Obstructions that stop an integration from landing, and how to clear them.
-
-``git merge`` REFUSES to start -- exit 2, nothing merged, nothing for a
-conflict resolver to repair -- when untracked files or uncommitted edits
-sit where the target changes a path, and a rebase refuses a dirty tree.
-Left alone, every such refusal strands the branch behind its integration
-target. These primitives turn each refusal into something integration can
-finish:
-
-* ``clear_untracked_merge_obstructions`` -- removes untracked files whose
-  bytes equal the target's copy (the merge would write the same file).
-* ``ancestry_state`` -- three-valued ``merge-base --is-ancestor`` for the
-  "branch contains the target" gate (``None`` = not proven).
-
-Uncommitted work is never committed, stashed or discarded by integration:
-only untracked copies byte-identical to the target's file are removed.
-"""
 
 from __future__ import annotations
 
@@ -26,13 +9,6 @@ from ralph.git.subprocess_runner import run_git
 
 
 def ancestry_state(repo_root: Path | str, ancestor: str, descendant: str) -> bool | None:
-    """Three-valued ``git merge-base --is-ancestor``.
-
-    ``True``/``False`` are git's own answer (exit 0/1); ``None`` means the
-    query failed (unknown ref, unreadable repository). Callers that gate
-    on "the branch already contains the target" must treat ``None`` as
-    "not proven", never as either answer.
-    """
     if ancestor and ancestor == descendant:
         return True
     try:
@@ -55,12 +31,10 @@ def _nul_fields(text: str) -> list[str]:
     return [field for field in text.split("\0") if field]
 
 
-#: ``git ls-tree`` metadata is ``<mode> <type> <oid>``.
 _LS_TREE_META_FIELDS = 3
 
 
 def _untracked_paths_identical_to(root: Path, target: str) -> list[str]:
-    """Untracked paths whose bytes equal the blob ``target`` tracks there."""
     untracked = run_git(
         ("ls-files", "--others", "--exclude-standard", "-z"),
         cwd=root,
@@ -91,24 +65,12 @@ def _untracked_paths_identical_to(root: Path, target: str) -> list[str]:
 
 
 def clear_untracked_merge_obstructions(repo_root: Path | str, target: str) -> tuple[str, ...]:
-    """Delete untracked files that are byte-identical to ``target``'s copy.
-
-    ``git merge`` refuses to start (exit 2, "untracked working tree files
-    would be overwritten by merge") when an untracked file sits where the
-    target tracks a path. When the untracked bytes equal the target's blob
-    the merge would write exactly the same file, so removing it loses
-    nothing and lets the integration land. Leftovers of an aborted merge
-    or a resolver session are the usual source. Files whose content
-    differs are never touched: they are genuine local work, and the merge
-    refusal that follows names them. Returns the removed paths.
-    """
     root = Path(repo_root)
     identical = _untracked_paths_identical_to(root, target)
     removed: list[str] = []
     for path in identical:
         candidate = root / path
         try:
-            # filesystem-write-ok: removes an untracked file whose bytes the target already holds
             candidate.unlink()
         except OSError as exc:
             logger.warning("could not remove merge obstruction {}: {}", path, exc)
@@ -136,11 +98,6 @@ _OVERWRITE_REFUSALS: tuple[tuple[str, str], ...] = (
 
 
 def merge_refusal(output: str) -> tuple[str, tuple[str, ...]] | None:
-    """Why ``git merge`` refused to start, and the paths it named.
-
-    ``None`` when the output is not an overwrite refusal (an ordinary
-    conflict, or a failure this module cannot clear).
-    """
     lowered = output.lower()
     for needle, label in _OVERWRITE_REFUSALS:
         if needle not in lowered:

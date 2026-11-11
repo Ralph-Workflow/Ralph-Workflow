@@ -1,4 +1,3 @@
-"""General Ralph configuration model definitions."""
 
 from pathlib import Path
 from typing import Self
@@ -47,7 +46,6 @@ from ralph.timeout_defaults import (
 
 
 class GeneralConfig(RalphBaseModel):
-    """[general] section of ralph-workflow.toml."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -67,18 +65,6 @@ class GeneralConfig(RalphBaseModel):
     templates_dir: Path | None = None
     git_user_name: str | None = None
     git_user_email: str | None = None
-    # RESERVED dead knob: provider_fallback is NOT consumed by any runtime code.
-    # Agent fallback is provided exclusively by [agent_chains] in
-    # ralph-workflow.toml (an ORDERED FALLBACK LIST of agents per role).
-    # This field exists only so a legacy user-global config that still
-    # carries `provider_fallback = {...}` does not trip the unknown-field
-    # detector. Do not document it in user-facing onboarding or TOML
-    # comments; do not add typed accessors for it; do not add a
-    # ``Field(description=...)`` exposing the dead knob through Pydantic
-    # JSON schema. A regression-guard test in tests/test_config_loader.py
-    # asserts it is absent from every bundled ralph/policy/defaults/*.toml.
-    # The loader warns when a non-empty legacy value is encountered so users
-    # get the active [agent_chains] replacement at the point of use.
     provider_fallback: dict[str, list[str]] = Field(default_factory=dict)
     max_same_agent_retries: int = Field(default=10, ge=0)
     max_commit_residual_retries: int = Field(default=10, ge=0)

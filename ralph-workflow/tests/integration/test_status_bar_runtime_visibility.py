@@ -1,54 +1,3 @@
-"""wt-028-display: end-to-end runtime visibility for the persistent Status Bar.
-
-The persistent bottom Status Bar is composed by
-:class:`ralph.display.parallel_display.ParallelDisplay` and reached via
-``pd.status_bar``. The existing unit-level tests prove (a) ``StatusBar.start()``
-constructs a Live region on a tty-like stream and (b) ``StatusBar.start()`` is
-a no-op on force_terminal+StringIO consoles. The existing wiring test
-``tests/pipeline/test_run_loop_status_bar_wiring.py`` proves that
-``_push_status_bar_if_changed`` calls ``display.update_status_bar``.
-
-Gap A closed here: this file proves the runtime contract through the
-**production entry point** (``ParallelDisplay.__enter__`` then
-``ParallelDisplay.start`` then ``StatusBar.start`` then the Live region
-becomes active). It enters ``with pd as active:``, pushes a
-:class:`StatusBarModel`, and asserts both the observable ``is_active`` /
-``last_model`` slots on ``pd.status_bar`` AND the captured buffer
-contents (which prove the Live region actually rendered the model data).
-
-The tests deliberately use the update-before-start pattern: ``pd.update_status_bar``
-is called BEFORE entering the context manager so the model is captured
-into Live's initial renderable and the first renderable frame contains
-the model data without waiting for a refresh tick. No ``time.sleep`` is
-needed (the audit_test_policy forbids sleep in non-``subprocess_e2e``
-tests; both old and new tests prove deterministic rendering).
-
-The tests use the same ``_TtyLikeStringIO`` harness as the existing
-``tests/display/test_status_bar.py`` so the StatusBar real-TTY gate
-(``console.is_terminal AND console.file.isatty()``) passes
-deterministically without a real pseudo-tty.
-
-Tests
------
-
-- ``test_status_bar_is_active_through_parallel_display_context_manager``:
-  context-manager activation and teardown of the composed StatusBar.
-- ``test_runtime_entry_point_renders_full_model_in_buffer``: full model
-  with workspace + phase + outer_dev + inner_analysis surfaces in the
-  Live region's captured buffer.
-- ``test_runtime_entry_point_omits_iteration_when_not_applicable``: a
-  model with no iteration fields renders the phase label and omits any
-  placeholder.
-- ``test_quiet_mode_suppresses_status_bar_in_runtime_entry_point``: an
-  ``is_quiet=True`` ``ParallelDisplay`` does NOT start the Live region
-  and writes nothing to the buffer.
-- ``test_non_tty_console_suppresses_status_bar_in_runtime_entry_point``:
-  a force_terminal console with a plain ``StringIO`` (no
-  ``_TtyLikeStringIO`` override) does NOT start the Live region; the
-  isatty() conjunct of the gate is honored through the production entry
-  point.
-"""
-
 from __future__ import annotations
 
 import io
@@ -64,15 +13,6 @@ pytestmark = pytest.mark.integration
 
 
 class _TtyLikeStringIO(io.StringIO):
-    """An in-memory buffer that reports ``isatty() is True``.
-
-    Mirrors the canonical pattern from
-    ``tests/display/test_status_bar.py:58-65`` so the StatusBar real-TTY
-    gate (the ``console.is_terminal AND console.file.isatty()`` conjunct)
-    passes on a StringIO-backed console without requiring an actual
-    pseudo-tty.
-    """
-
     def isatty(self) -> bool:
         return True
 
@@ -83,20 +23,6 @@ def _make_parallel_display(
     tty_like: bool = True,
     width: int = 120,
 ) -> tuple[ParallelDisplay, _TtyLikeStringIO | io.StringIO, Console]:
-    """Build a ``ParallelDisplay`` with a tty-like or plain StringIO console.
-
-    ``tty_like=True`` uses :class:`_TtyLikeStringIO` so the StatusBar
-    real-TTY gate passes. ``tty_like=False`` uses a plain ``io.StringIO``
-    so ``console.file.isatty()`` is False; force_terminal+StringIO
-    exercises the second conjunct of the real-TTY gate. ``width``
-    controls the Rich Console width (default 120 — the canonical
-    external-monitor width used by the existing tests; the AC-01..AC-04
-    test passes width=100 to cover a common laptop-monitor width).
-
-    The injected ``Console`` is returned so the test asserts on the
-    console IT created (the public Rich surface) instead of reaching
-    through ``ParallelDisplay`` into its private context holder.
-    """
     buf = _TtyLikeStringIO() if tty_like else io.StringIO()
     console = Console(
         file=buf,
@@ -109,18 +35,6 @@ def _make_parallel_display(
 
 
 def test_status_bar_is_active_through_parallel_display_context_manager() -> None:
-    """Entering the production context manager activates the composed StatusBar;
-    exiting tears it down.
-
-    This exercises the production entry point end-to-end:
-    ``ParallelDisplay.__enter__`` calls ``ParallelDisplay.start`` which calls
-    ``self._status_bar.start()``; ``ParallelDisplay.__exit__`` calls
-    ``ParallelDisplay.stop`` which calls ``self._status_bar.stop()``. The
-    observable slot ``pd.status_bar.is_active`` flips ``True`` while
-    inside the context manager and back to ``False`` after exit. The
-    composed :class:`StatusBar` instance is reachable only via
-    ``pd.status_bar`` (single-owner invariant).
-    """
     pd, _buf, _console = _make_parallel_display()
     sb = pd.status_bar
     assert isinstance(sb, StatusBar)
@@ -149,15 +63,6 @@ def test_status_bar_is_active_through_parallel_display_context_manager() -> None
 
 
 def test_runtime_entry_point_renders_full_model_in_buffer() -> None:
-    """Full model pushed through the production entry point surfaces in the
-    captured buffer.
-
-    ``workspace_root``, ``phase_label``, applicable outer-dev iteration,
-    and applicable inner-analysis iteration all appear in the Live
-    region's rendered buffer. Uses the update-before-start pattern (model
-    captured into Live's initial renderable) so the first renderable
-    frame contains the model data deterministically.
-    """
     pd, buf, console = _make_parallel_display()
     assert console.is_terminal is True
     assert console.file.isatty() is True
@@ -191,14 +96,6 @@ def test_runtime_entry_point_renders_full_model_in_buffer() -> None:
 
 
 def test_runtime_entry_point_omits_iteration_when_not_applicable() -> None:
-    """Phase-conditional omission: when outer_dev and inner_analysis are both
-    None, the buffer contains the phase label but no iteration placeholder.
-
-    The persistent Status Bar contract is that a field is omitted
-    entirely (no ``--`` placeholder) when its iteration field is ``None``
-    on the model. The buffer proves the field is omitted (not rendered
-    as ``--`` or similar placeholder).
-    """
     pd, buf, console = _make_parallel_display()
     assert console.is_terminal is True
     assert console.file.isatty() is True
@@ -232,39 +129,6 @@ def test_runtime_entry_point_omits_iteration_when_not_applicable() -> None:
 
 
 def test_status_bar_shows_workspace_phase_and_applicable_iterations_end_to_end() -> None:
-    """AC-01..AC-04 end-to-end: workspace, phase, and applicable iteration counts.
-
-    This focused test names the four prompt acceptance criteria
-    (AC-01..AC-04) directly:
-
-    - **AC-01**: the bottom Status Bar visibly shows the working directory,
-      the active phase, and any applicable iteration count. The test
-      drives the production entry point (``pd.update_status_bar`` followed
-      by ``with pd:``) at terminal width 100 and asserts the captured
-      live buffer contains the workspace path ``/tmp/ac01-workspace``,
-      the phase label ``development``, and the literal iteration labels
-      ``Cycle 1/3`` (outer cycle 1 of 3) and ``iter 2/5`` (inner
-      analysis cycle 2 of 5).
-
-    - **AC-02**: when a phase does not track an outer-dev or inner
-      analysis iteration, the field is omitted entirely (no ``--``
-      placeholder). A second model with both iteration fields ``None``
-      is pushed through the same production entry point and the
-      captured buffer is asserted to contain neither ``Cycle --`` nor
-      ``iter --`` nor any ``--/--`` substring.
-
-    - **AC-03**: during development-related phases the outer-dev
-      iteration (``Cycle N/cap``) is visible.
-
-    - **AC-04**: during analysis phases the inner analysis iteration
-      (``iter N/cap``) is visible.
-
-    The test uses width 100 (a common external-monitor width) because
-    the canonical ``Cycle 1/3`` / ``iter 2/5`` labels always render
-    in full at widths ``>= _CANONICAL_FIT_THRESHOLD`` (40 cols).
-    Reuses the existing ``_TtyLikeStringIO`` fake-console pattern so
-    the StatusBar real-TTY gate passes without a real pseudo-tty.
-    """
     pd_full, buf_full, console_full = _make_parallel_display(width=120)
     assert console_full.is_terminal is True
     assert console_full.file.isatty() is True
@@ -344,14 +208,6 @@ def test_status_bar_shows_workspace_phase_and_applicable_iterations_end_to_end()
 
 
 def test_quiet_mode_suppresses_status_bar_in_runtime_entry_point() -> None:
-    """A quiet-mode ``ParallelDisplay`` does NOT start the Live region through
-    the production entry point.
-
-    Even when ``pd.update_status_bar`` is called inside the production
-    context manager, an ``is_quiet=True`` ``ParallelDisplay`` keeps the
-    StatusBar gated off. The captured buffer is empty so non-interactive
-    and quiet runs stay clean.
-    """
     pd, buf, console = _make_parallel_display(is_quiet=True)
     assert console.is_terminal is True
     assert console.file.isatty() is True
@@ -373,17 +229,6 @@ def test_quiet_mode_suppresses_status_bar_in_runtime_entry_point() -> None:
 
 
 def test_non_tty_console_suppresses_status_bar_in_runtime_entry_point() -> None:
-    """A force_terminal console with a plain ``StringIO`` does NOT start the
-    Live region through the production entry point.
-
-    Rich's ``is_terminal`` is True on a force_terminal console; the
-    StatusBar real-TTY gate's ``isatty()`` conjunct must keep the bar
-    gated off on a plain ``StringIO`` (which has ``isatty() is False``).
-    This proves the second conjunct of the gate is honored through the
-    production entry point so non-tty files stay clean even when
-    force_terminal is set (the same pattern real production code uses
-    on CI / redirected output / pipe output).
-    """
     pd, buf, console = _make_parallel_display(tty_like=False)
     assert console.is_terminal is True, "force_terminal implies Rich's is_terminal=True"
     assert console.file.isatty() is False, (
@@ -407,7 +252,6 @@ def test_non_tty_console_suppresses_status_bar_in_runtime_entry_point() -> None:
 
 
 def test_runtime_entry_point_regression_stop_preserves_prior_transcript_and_banner() -> None:
-    """S-1: stopping the live footer keeps earlier CLI output readable."""
     pd, buf, console = _make_parallel_display()
     banner = "ralph 1.2.3 — welcome"
     console.print(banner)
@@ -435,7 +279,6 @@ def test_runtime_entry_point_regression_stop_preserves_prior_transcript_and_bann
 
 
 def test_runtime_entry_point_renders_evidence_diagnosis_from_retained_recovery() -> None:
-    """Retained crash-recovery records produce EVIDENCE_DIAGNOSIS, not CONFLICT_RESOLUTION."""
     from ralph.pipeline.rebase_state import RebaseState
 
     rebase = RebaseState(recovery_record_retained=True)
@@ -460,26 +303,21 @@ def test_runtime_entry_point_renders_evidence_diagnosis_from_retained_recovery()
 
 
 def test_rebase_state_produces_all_eight_display_states() -> None:
-    """All eight ADR-0007 operation display states are resolvable from typed fields."""
     from ralph.display.auto_integrate_message import (
         OperationDisplayState,
         format_auto_integrate_message,
     )
     from ralph.pipeline.rebase_state import RebaseState
 
-    # 1. integrating
     st_integrating = RebaseState(last_action="integrating")
     assert st_integrating.operation_display_state == OperationDisplayState.INTEGRATING.value
 
-    # 2. landing
     st_landing = RebaseState(last_action="rebased", fast_forwarded=True)
     assert st_landing.operation_display_state == OperationDisplayState.LANDING.value
 
-    # 3. publishing
     st_publishing = RebaseState(last_publication_decision="publish_now")
     assert st_publishing.operation_display_state == OperationDisplayState.PUBLISHING.value
 
-    # 4. conflict_resolution
     st_conflict = RebaseState(last_action="conflict")
     assert st_conflict.operation_display_state == OperationDisplayState.CONFLICT_RESOLUTION.value
     st_resolving_rebase = RebaseState(resolving_rebase=True)
@@ -493,7 +331,6 @@ def test_rebase_state_produces_all_eight_display_states() -> None:
         == OperationDisplayState.CONFLICT_RESOLUTION.value
     )
 
-    # 5. evidence_diagnosis
     st_retained = RebaseState(recovery_record_retained=True)
     assert st_retained.operation_display_state == OperationDisplayState.EVIDENCE_DIAGNOSIS.value
     st_diag_owner = RebaseState(diagnostic_ownership="evidence-hash")
@@ -501,11 +338,9 @@ def test_rebase_state_produces_all_eight_display_states() -> None:
     st_diagnosing = RebaseState(last_action="diagnosing")
     assert st_diagnosing.operation_display_state == OperationDisplayState.EVIDENCE_DIAGNOSIS.value
 
-    # 6. waiting
     st_waiting = RebaseState(last_action="waiting")
     assert st_waiting.operation_display_state == OperationDisplayState.WAITING.value
 
-    # 7. intervention_required
     st_intervention = RebaseState(last_decision="report_intervention_required")
     assert (
         st_intervention.operation_display_state == OperationDisplayState.INTERVENTION_REQUIRED.value
@@ -516,13 +351,11 @@ def test_rebase_state_produces_all_eight_display_states() -> None:
         == OperationDisplayState.INTERVENTION_REQUIRED.value
     )
 
-    # 8. terminal
     st_terminal_success = RebaseState(last_decision="report_terminal_success")
     assert st_terminal_success.operation_display_state == OperationDisplayState.TERMINAL.value
     st_terminal_failure = RebaseState(last_decision="report_terminal_failure")
     assert st_terminal_failure.operation_display_state == OperationDisplayState.TERMINAL.value
 
-    # Verify format_auto_integrate_message eliminates arbitrary prose inference
     msg_custom_prose = format_auto_integrate_message(
         action="rebase and endpoint merge both conflicted",
         target="main",
@@ -531,7 +364,6 @@ def test_rebase_state_produces_all_eight_display_states() -> None:
     assert "rebase and endpoint merge both conflicted" in msg_custom_prose
     assert "conflict resolution" not in msg_custom_prose
 
-    # Verify format_auto_integrate_message normalizes provided operation_display_state
     msg_normalized = format_auto_integrate_message(
         action="ignored",
         target="main",

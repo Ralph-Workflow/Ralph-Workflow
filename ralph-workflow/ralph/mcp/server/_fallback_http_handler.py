@@ -1,4 +1,3 @@
-"""HTTP request handler for the fallback MCP server runtime."""
 
 from __future__ import annotations
 
@@ -42,21 +41,6 @@ _EXEC_STREAMING_TOOL_NAMES = frozenset(
 
 
 def _coerce_fallback_server(server: object) -> _FallbackHttpServer:
-    """Narrow ``self.server`` to the production ``_FallbackHttpServer`` class
-    without using ``typing.cast`` at the session factory boundary (PROMPT.md
-    proof obligation B).
-
-    The narrowing uses a runtime ``isinstance`` check instead of a static
-    ``cast()`` so the type checker does not launder the production class
-    boundary. Test-only ``SimpleNamespace`` fakes that do not subclass
-    ``_FallbackHttpServer`` are caught here with a clear error rather than
-    silently passed through a cast.
-
-    In the in-memory transport harness, the fake is wrapped via
-    ``_coerce_fallback_server(self.server)`` and must therefore match the
-    production class surface; the harness upgrades its SimpleNamespace to a
-    minimal subclass of ``_FallbackHttpServer`` so the runtime check passes.
-    """
     server_cls: type[_FallbackHttpServer] = _FallbackHttpServer
     if not isinstance(server, server_cls):
         raise TypeError(
@@ -66,19 +50,6 @@ def _coerce_fallback_server(server: object) -> _FallbackHttpServer:
     return server
 
 
-#: Process-lifetime transport-level repetition tracker. The same instance
-#: observes every request dispatched on this server so a doomed retry loop
-#: at the transport layer is broken regardless of which request the storm
-#: is currently running. Tests inject a fresh instance via the in-memory
-#: transport's monkeypatch seam.
-#:
-#: It is bound to the PARENT-OWNED MCP snapshot directory
-#: (``RALPH_MCP_SNAPSHOT_DIR``) whenever the lifecycle supplied one. The
-#: parent hands every spawn of a bridge run -- including every
-#: make-before-break candidate -- the SAME directory, so the streak the
-#: retiring child wrote is read back by the promoted child and the breaker
-#: cannot be reset by a swap (E1.7). With no such directory the tracker is
-#: purely in-process, exactly as before.
 _transport_repetition_tracker = TransportRepetitionTracker.from_parent_owned_state()
 
 
@@ -86,9 +57,6 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def do_GET(self) -> None:
-        # Real GET /health route. Driven by the in-memory transport harness
-        # (tests/test_property_c_liveness_contract.py) and by the live agent
-        # supervisor (RestartAwareMcpBridge.check_health_and_restart_if_needed).
         if self.path == "/health":
             self._handle_health_get()
             return
@@ -103,20 +71,15 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
         self.wfile.write(b"event: open\r\ndata: {}\r\n\r\n")
         self.wfile.flush()
         server = _coerce_fallback_server(self.server)
-        # mcp-timeout-ok: SSE keepalive under /mcp mount; pre-existing baseline,
-        # not introduced by this plan. The MCP-timeout audit only flags subprocess
-        # and HTTP/socket calls; time.sleep is not in its scope. Documented here
-        # for reviewer ergonomics.
         while not server.shutdown_event.is_set():
             try:
                 self.wfile.write(b": keepalive\r\n\r\n")
                 self.wfile.flush()
             except BrokenPipeError:
                 break
-            sleep(0.25)  # filesystem-poll-ok: SSE keepalive is protocol-required
+            sleep(0.25)
 
     def _handle_health_get(self) -> None:
-        """Handle GET /health. Returns 200 healthy / 503 unhealthy with latency_ms."""
         server = _coerce_fallback_server(self.server)
         probe = server.health_probe_fn
         metrics = server.metrics or get_default_metrics()
@@ -129,9 +92,6 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
         try:
             result = probe()
         except Exception as exc:
-            # Any failure is unhealthy. We catch broadly because the probe may
-            # raise any subclass — the alternative (re-raise) defeats the
-            # whole point of the liveness contract.
             metrics.record_health_probe_outcome(False)
             self._write_json(
                 {"status": "unhealthy", "reason": type(exc).__name__},
@@ -176,10 +136,6 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
         self._dispatch_parsed_request(request, data)
 
     def _authorize_request(self) -> bool:
-        """Apply the trust boundary (property K). Return True if allowed.
-
-        Sends a 401 frame and returns False when the request must be rejected.
-        """
         try:
             require_trust_boundary(
                 self.headers.get("Authorization"),
@@ -200,7 +156,6 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
     def _parse_request_body(
         self,
     ) -> tuple[dict[str, object] | None, JsonRpcRequest | None, str | None]:
-        """Decode the JSON-RPC request body. Returns (data, request, error_msg)."""
         length = int(self.headers.get("Content-Length", "0"))
         payload = self.rfile.read(length)
         if len(payload) != length:
@@ -237,12 +192,8 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
         request: JsonRpcRequest,
         data: dict[str, object],
     ) -> None:
-        """Handle the SSE streaming and saturated-dispatch paths."""
         server = _coerce_fallback_server(self.server)
 
-        # Exec tool calls use SSE streaming: chunk notifications before final
-        # frame. Match the server-advertised aliases too — clients calling
-        # `mcp__ralph__exec`/`ralph_exec` must stream the same way.
         if (
             request.method == "tools/call"
             and isinstance(request.params, dict)
@@ -258,28 +209,11 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
         server: _FallbackHttpServer,
         data: dict[str, object],
     ) -> None:
-        # Dispatch the JSON-RPC request through the saturated-dispatch seam so
-        # the production transport can bound concurrency with backpressure
-        # (property H) without queueing past an unstated limit. The seam is a
-        # no-op pass-through today; the bounded-executor wiring layers on top
-        # in a follow-up without changing call sites in this method.
-        # The try/except wraps the call so the transport-repetition breaker
-        # (property G) can consult the failure signature BEFORE the response
-        # is written: 3 identical -32001-class failures within 60s short-
-        # circuit to a 503 + transport_loop_detected frame.
-        # The saturated-dispatch wrapper (property H) returns a
-        # SaturatedResponse sentinel when the bounded executor's queue is
-        # full; the handler writes that as a 503 + JSON-RPC -32001 frame
-        # rather than queueing silently past max_workers.
         try:
             dispatch_result = _saturated_dispatch.submit(
                 lambda: server.mcp_server.handle_request(request, server.state)
             )
         except Exception as exc:
-            # failure_signature() binds the failure to the request that
-            # produced it and returns None for a Ralph-side infrastructure
-            # fault, which must be re-raised into the normal error path
-            # rather than counted as a repetition.
             sig = failure_signature(request.method, request.params, exc)
             if sig is not None and _transport_repetition_tracker.observe(sig):
                 self._write_json(
@@ -295,9 +229,6 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
                 )
                 return
             raise
-        # Saturation: the bounded executor rejected the call. The handler
-        # writes the 503 + JSON-RPC -32001 frame and short-circuits the
-        # response so the client sees backpressure, not a queue.
         if isinstance(dispatch_result, _saturated_dispatch.SaturatedResponse):
             self._write_json(
                 {
@@ -311,23 +242,7 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
                 _saturated_dispatch.SATURATION_STATUS,
             )
             return
-        # dispatch_result is the saturated-dispatch union: a successful tuple
-        # OR a SaturatedResponse sentinel. The SaturatedResponse branch
-        # returns above; mypy narrows to the tuple here.
         response, next_state = dispatch_result
-        # The dispatch net inside McpServer.handle_request converts thrown
-        # exceptions into a -32603 JSON-RPC error frame. Observe that frame
-        # too: a doomed retry loop produces 3 identical -32603 errors, and
-        # the breaker must trip on the 3rd.
-        #
-        # The frame alone is NOT the key. A corrupt SQLite cache killed
-        # read_file before the path mattered, so three reads of three
-        # different files produced three identical frames and the third was
-        # answered with transport_loop_detected. failure_signature() binds
-        # the frame to the request (method + tool + arguments) so distinct
-        # calls stay distinct, and returns None for a Ralph-side
-        # infrastructure fault so the agent sees the real error instead of
-        # a breaker message it cannot act on.
         if response is not None and response.error is not None:
             sig = failure_signature(
                 request.method,
@@ -349,9 +264,6 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
                 return
         server.state = next_state
         if response is None:
-            # JSON-RPC notification: no response frame expected. Return 202
-            # Accepted with an empty body so the client sees the
-            # notification was received but no reply will be sent.
             self.send_response(202)
             self.send_header("Content-Length", "0")
             self.end_headers()
@@ -361,10 +273,6 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
             body["result"] = response.result
         if response.error is not None:
             body["error"] = response.error
-        # Serialization runs outside McpServer.handle_request's error net. A
-        # non-JSON-serializable value leaking through a tool result must still
-        # yield a well-formed -32603 JSON-RPC error frame, never a bare HTTP 500
-        # the client can only read as a broken/empty session.
         try:
             encoded = f"event: message\r\ndata: {json.dumps(body)}\r\n\r\n".encode()
         except (TypeError, ValueError) as exc:
@@ -379,9 +287,6 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
             encoded = f"event: message\r\ndata: {json.dumps(error_body)}\r\n\r\n".encode()
         session_id = None
         if request.method == "initialize":
-            # The production session re-reads its backing file on every access;
-            # a corrupt/missing file must degrade to a response without the
-            # session header, never destroy the already-encoded response.
             with suppress(Exception):
                 session_id = _coerce_fallback_server(self.server).mcp_server._session.session_id
         self._write_sse(encoded, 200, session_id=session_id)
@@ -398,16 +303,9 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-cache, no-transform")
         self.send_header("Connection", "close")
         self.end_headers()
-        # Exec streaming POST is a finite RPC response, not the long-lived GET
-        # event stream. Close after the terminal JSON-RPC frame so EOF-oriented
-        # clients do not wait on HTTP/1.1 keep-alive until their request timeout.
         self.close_connection = True
 
         def _write_frame(frame: bytes) -> None:
-            # suppress(Exception), not just OSError: a concurrent write to the
-            # buffered socket writer raises RuntimeError (reentrant call), and
-            # any escape here kills the request thread after the 200 header —
-            # the bodyless-stream hang the streaming net exists to prevent.
             with suppress(Exception):
                 self.wfile.write(frame)
                 self.wfile.flush()

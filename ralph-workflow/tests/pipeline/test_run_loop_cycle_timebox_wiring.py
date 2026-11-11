@@ -1,16 +1,3 @@
-"""The run loop's connections to the cycle timebox must actually be made.
-
-Every pure part of this feature is well covered, and all of it is inert if the
-composition root stops handing those parts their inputs. Each connection below
-could be cut with the whole suite green: the loop's monotonic sample box (which
-alone disables time accumulation, enforcement, publication, the agent warning,
-the MCP nag and the artifact gate), the mid-loop legacy-resume initializer, and
-the timebox policy threaded into the end-of-run report.
-
-These drive the real inner loop and assert on what it hands its collaborators,
-which is what cutting a call site changes.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -21,9 +8,6 @@ from ralph.pipeline import run_loop
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.state import PipelineState
 
-#: The resume path arms the timer once, and the loop arms it again on entry.
-#: Both calls land on the same module-level name, so only the count tells them
-#: apart — and the mid-loop one is the site with no other coverage.
 _EXPECTED_ARMING_CALLS = 2
 
 if TYPE_CHECKING:
@@ -35,7 +19,6 @@ def _run_to_terminal(
     initial: PipelineState,
     on_step: object = None,
 ) -> None:
-    """Run the real loop, ending it on its first step."""
 
     def _step(**kwargs: object) -> PipelineState:
         if on_step is not None:
@@ -44,8 +27,6 @@ def _run_to_terminal(
         return state.copy_with(phase=kwargs["policy_bundle"].pipeline.terminal_phase)
 
     monkeypatch.setattr(run_loop._runner_module, "run_pipeline_step", _step)
-    # This wiring test owns the ordinary inner-loop seam; startup recovery and
-    # the integration dispatch invariant have dedicated behavioral coverage.
     monkeypatch.setattr(
         run_loop, "_apply_startup_rebase_outcomes", lambda state, _ctx, **_kwargs: state
     )
@@ -56,12 +37,6 @@ def _run_to_terminal(
 def test_the_loop_gives_each_step_a_monotonic_sample_box(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Without a sample box the runner has no clock and the feature is inert.
-
-    The step then samples nothing, so no time accumulates, no deadline is
-    enforced or published, no warning reaches the agent or the MCP server, and
-    the artifact gate can never fire — with every other test still green.
-    """
     boxes: list[object] = []
 
     _run_to_terminal(
@@ -77,11 +52,6 @@ def test_the_loop_gives_each_step_a_monotonic_sample_box(
 def test_the_loop_arms_a_legacy_checkpoint_resumed_mid_loop(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A checkpoint predating the feature must not run its cycle untimed.
-
-    Two call sites arm it and only the other one was covered, so this one could
-    be deleted and every mid-loop resume would execute with no deadline.
-    """
     armed: list[PipelineState] = []
     real_initializer = run_loop.initialize_legacy_cycle_on_resume
 
@@ -93,9 +63,6 @@ def test_the_loop_arms_a_legacy_checkpoint_resumed_mid_loop(
 
     _run_to_terminal(monkeypatch, PipelineState(phase="development"))
 
-    # BOTH sites must fire: monkeypatching the module-level name cannot tell
-    # them apart, so counting is what distinguishes the mid-loop call from the
-    # resume-path one that a sibling test already covers.
     assert len(armed) == _EXPECTED_ARMING_CALLS
     assert armed[-1].cycle_timebox_active is True
 
@@ -103,7 +70,6 @@ def test_the_loop_arms_a_legacy_checkpoint_resumed_mid_loop(
 def test_the_loop_threads_the_timebox_policy_into_the_report(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Without it the report silently loses its Limit and Finalization fields."""
     reported: list[dict[str, object]] = []
     monkeypatch.setattr(
         run_loop,

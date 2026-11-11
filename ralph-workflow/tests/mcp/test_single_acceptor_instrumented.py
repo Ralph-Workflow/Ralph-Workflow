@@ -1,19 +1,3 @@
-"""Pins E4.3 and E4.4: single acceptor invariant and atomic socket handover.
-
-Catalogue requirement E4.3:
-- Single acceptor invariant: No two processes accept on the server endpoint
-  simultaneously. The retiring child acknowledges pause and drops the listening
-  socket before the candidate resumes accept.
-- Unresponsive / SIGSTOPped retiring child: When pause acknowledgement times out,
-  the bridge escalates to SIGKILL, confirms the old process is reaped, and only
-  then signals the candidate to resume accept.
-
-Catalogue requirement E4.4:
-- Atomic socket handover, no fd leak across processes: The parent-owned listening
-  socket is cleanly passed to the candidate without leaking fds into unrelated
-  children or leaving dangling listeners after shutdown.
-"""
-
 from __future__ import annotations
 
 import contextlib
@@ -41,7 +25,6 @@ def _is_linux() -> bool:
 
 
 def _get_process_open_inodes(pid: int) -> set[int]:
-    """Inspect /proc/<pid>/fd and collect inode numbers of all open file descriptors."""
     fd_dir = Path(f"/proc/{pid}/fd")
     if not fd_dir.is_dir():
         return set()
@@ -55,8 +38,6 @@ def _get_process_open_inodes(pid: int) -> set[int]:
 
 
 class _ProcessAdapter:
-    """Adapts subprocess.Popen to ProcessLike protocol."""
-
     def __init__(self, proc: subprocess.Popen[bytes]) -> None:
         self._proc = proc
 
@@ -78,10 +59,7 @@ class _ProcessAdapter:
 
 
 class _ImmortalProcessAdapter(_ProcessAdapter):
-    """Adapter whose ``kill`` is a no-op (models a D-state / unkillable survivor)."""
-
     def kill(self) -> None:
-        """Absorb the kill request — the underlying survivor cannot be terminated."""
         pass
 
 
@@ -211,10 +189,6 @@ def _build_failed_kill_bridge_wiring(
     workspace_dir: Path,
     run_id: str,
 ) -> tuple[StandaloneMcpProcess, StandaloneMcpProcess, lifecycle.RestartAwareMcpBridge]:
-    """Construct the candidate bridge wiring with the old child wrapped in an immortal adapter.
-
-    The returned bridge hands over ``old_inner`` -> ``cand_inner`` on failure.
-    """
     old_inner = StandaloneMcpProcess(
         endpoint=f"http://127.0.0.1:{port}/mcp",
         process=_ImmortalProcessAdapter(old_proc),
@@ -248,10 +222,6 @@ def _drive_failed_kill_handover_and_assert_candidate_serves(
     resume_file: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Freeze old child, hand over (kill absorbed), assert candidate serves and survivor is tracked."""
-    # Record the reap hand-off itself: the reaper thread runs immediately
-    # (backoff pinned to 0) and its SIGTERM kills a stopped child at once on
-    # macOS, so the live ``_unkillable_reapers`` entry can already be gone.
     scheduled_reaps: list[object] = []
     schedule_reap = bridge._schedule_unkillable_reap
 
@@ -281,12 +251,9 @@ def _sigcont_old_and_wait_for_recovery(
     pause_file: Path,
     port: int,
 ) -> None:
-    """SIGCONT the old child and poll until it answers ``PONG_old`` or the timeout elapses."""
     if pause_file.exists():
         pause_file.unlink()
     if old_proc.poll() is not None:
-        # The background reap already collected it (macOS delivers the
-        # reaper's SIGTERM to a stopped child immediately); nothing to resume.
         return
     os.kill(old_proc.pid, signal.SIGCONT)
     deadline = time.monotonic() + 2.0
@@ -301,7 +268,6 @@ def _sigcont_old_and_wait_for_recovery(
 
 
 def test_e43_single_acceptor_graceful_handover(tmp_path: Path) -> None:
-    """E4.3 & E4.4: Retiring child drops listening socket before candidate resumes accept; no overlap."""
     script_path = tmp_path / "acceptor_child.py"
     _create_child_script(script_path)
     log_file = tmp_path / "events.log"
@@ -366,7 +332,6 @@ def test_e43_single_acceptor_graceful_handover(tmp_path: Path) -> None:
         if _is_linux():
             assert sock_ino in _get_process_open_inodes(old_proc.pid)
 
-        # Perform atomic single-acceptor handover
         bridge._hand_over_accept(old_inner, cand_inner)
 
         _wait_for_mode_event(log_file, "candidate", "STARTED_ACCEPT")
@@ -380,7 +345,6 @@ def test_e43_single_acceptor_graceful_handover(tmp_path: Path) -> None:
 
         assert old_dropped_ts, "Old child never logged DROPPED_SOCKET"
         assert cand_start_ts, "Candidate child never logged STARTED_ACCEPT"
-        # Invariant E4.3: candidate started accept strictly at or after old child dropped socket
         assert cand_start_ts[0] >= old_dropped_ts[0]
 
         if _is_linux():
@@ -399,36 +363,10 @@ def test_e43_single_acceptor_graceful_handover(tmp_path: Path) -> None:
 def test_e43_single_acceptor_failed_kill_reaps_candidate_and_preserves_old_child(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """E5.2: An unkillable / D-state old child does NOT block candidate promotion.
-
-    Pause ACK fails (because the old child is SIGSTOPped so it cannot see
-    the pause sentinel) and the kill is intentionally absorbed by an
-    ``_ImmortalProcessAdapter``. The previous contract asserted "handover
-    fails closed: candidate is reaped, resume is NOT signaled, old child
-    remains single acceptor." The E5.2 contract changes that to "promote
-    the candidate anyway because:
-
-      (a) the pause sentinel was written so the old child drops its
-          accepting FD on its next pass after SIGCONT;
-      (b) a D-state survivor cannot run user code and so cannot accept
-          new connections;
-      (c) promotion proceeds, the survivor is registered for bounded
-          background reap, the candidate signals resume and serves.
-
-    The candidate therefore serves continuously even though the old child
-    cannot be reaped. The bounded background reap will retry the kill at
-    ``_UNKILLABLE_REAP_BACKOFF_S`` intervals until it succeeds or the
-    bridge shuts down. Single-acceptor safety is preserved because the
-    survivor is identified by the OWNED process handle (not a bare pid,
-    per E5.4) and is unregistered from the bridge's resumable handle set.
-    """
     script_path = tmp_path / "acceptor_child.py"
     _create_child_script(script_path)
     log_file = tmp_path / "events_failed_kill.log"
 
-    # Fast handover ACK and kill wait timeouts (<0.2s each), and pin
-    # the bounded unkille reap retries to 0 so the test does not race
-    # a background reap thread.
     monkeypatch.setattr(lifecycle, "_HANDOVER_ACK_TIMEOUT_S", 0.1)
     monkeypatch.setattr(lifecycle, "_HANDOVER_KILL_WAIT_S", 0.1)
     monkeypatch.setattr(lifecycle, "_UNKILLABLE_REAP_BACKOFF_S", 0.0)
@@ -500,12 +438,10 @@ def test_e43_single_acceptor_failed_kill_reaps_candidate_and_preserves_old_child
 def test_e43_single_acceptor_sigstopped_old_child_kills_before_resume(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """E4.3: When old child is SIGSTOPped and cannot ACK, handover escalates to SIGKILL before candidate resumes."""
     script_path = tmp_path / "acceptor_child.py"
     _create_child_script(script_path)
     log_file = tmp_path / "events_sigstop.log"
 
-    # Use a short handover ACK timeout to keep test fast (<0.5s)
     monkeypatch.setattr(lifecycle, "_HANDOVER_ACK_TIMEOUT_S", 0.2)
 
     parent_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -561,13 +497,10 @@ def test_e43_single_acceptor_sigstopped_old_child_kills_before_resume(
     try:
         _wait_for_mode_event(log_file, "old", "STARTED_ACCEPT")
 
-        # Freeze the old child process with SIGSTOP so it cannot ACK pause
         os.kill(old_proc.pid, signal.SIGSTOP)
 
-        # Execute handover: ack timeout will fire, triggering kill escalation
         bridge._hand_over_accept(old_inner, cand_inner)
 
-        # Invariant: Old process MUST be reaped/dead before handover finishes
         assert old_proc.poll() is not None, "Old child was not terminated before candidate resumed!"
 
         _wait_for_mode_event(log_file, "candidate", "STARTED_ACCEPT")
@@ -585,7 +518,6 @@ def test_e43_single_acceptor_sigstopped_old_child_kills_before_resume(
 
 
 def test_e44_bridge_shutdown_releases_listening_socket_and_reaps(tmp_path: Path) -> None:
-    """E4.4: Bridge shutdown closes listening socket and reaps process; port immediately re-bindable."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(("127.0.0.1", 0))
@@ -593,9 +525,6 @@ def test_e44_bridge_shutdown_releases_listening_socket_and_reaps(tmp_path: Path)
     port = sock.getsockname()[1]
 
     child = subprocess.Popen(
-        # 1 s sleep is enough: bridge.shutdown() below kills the child
-        # within microseconds, so the 5 s originally hardcoded only padded
-        # wall-clock without exercising any added behavior.
         [sys.executable, "-c", "import time; time.sleep(1)"],
     )
     session_file = tmp_path / "session_shutdown.json"
@@ -617,7 +546,6 @@ def test_e44_bridge_shutdown_releases_listening_socket_and_reaps(tmp_path: Path)
     try:
         bridge.shutdown()
 
-        # Invariants: child is reaped, socket is closed, port is immediately re-bindable
         assert child.poll() is not None
         assert bridge._listening_socket is None
 

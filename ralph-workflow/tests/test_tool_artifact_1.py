@@ -1,12 +1,3 @@
-"""Canonical markdown handoff and draft handler behavior.
-
-Consolidated from ``test_tool_artifact_1.py`` and ``test_tool_artifact_2.py``.
-The two files both exercise ``ralph.mcp.tools.md_artifact`` against the
-in-memory ``MockWorkspace`` and ``planning_session`` helpers; merging them
-keeps the shared imports paid once per shard and preserves a single
-black-box contract for the markdown artifact tool surface.
-"""
-
 from __future__ import annotations
 
 import json

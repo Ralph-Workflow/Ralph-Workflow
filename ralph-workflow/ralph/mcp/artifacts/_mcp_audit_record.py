@@ -1,4 +1,3 @@
-"""McpAuditRecord — audit record emitted by the MCP server dispatch layer."""
 
 from __future__ import annotations
 
@@ -13,7 +12,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class McpAuditRecord:
-    """Audit record emitted by the MCP server dispatch layer."""
 
     timestamp_nanos: int
     session_id: str

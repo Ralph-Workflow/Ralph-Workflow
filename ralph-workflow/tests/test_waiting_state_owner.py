@@ -1,11 +1,3 @@
-"""Static-scan and behavior tests: PipelineState.set_waiting owns is_waiting_state.
-
-Contract: ``is_waiting_state`` may only be written inside
-``ralph/pipeline/state.py`` (via ``set_waiting`` / ``clear_waiting``). All
-other modules must route transitions through that seam; this test scans the
-source tree for direct ``is_waiting_state=`` writer sites.
-"""
-
 from __future__ import annotations
 
 import ast
@@ -20,13 +12,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 _STATE_MODULE = _REPO_ROOT / "ralph" / "pipeline" / "state.py"
 _EXEMPT_MODULES: set[Path] = set()
 
-# Writer-shape: keyword assignment of the flag inside a call
-# (``copy_with(..., is_waiting_state=...)`` or ``model_copy(update={...})``
-# after normalization). Docstring/comment mentions are not writers.
-
 
 def _flag_writer_lines(source: str) -> list[int]:
-    """Line numbers of ``copy_with``/``model_copy`` calls writing the flag."""
     lines: list[int] = []
     try:
         tree = ast.parse(source)
@@ -55,7 +42,6 @@ def test_no_direct_writers_outside_state_module() -> None:
     for path in (_REPO_ROOT / "ralph").rglob("*.py"):
         if path == _STATE_MODULE or path in _EXEMPT_MODULES:
             continue
-        # Cheap pre-filter: only parse files that mention the flag at all.
         try:
             text = path.read_text(encoding="utf-8")
         except OSError:
@@ -77,7 +63,6 @@ def test_set_waiting_raises_flag_and_records_reason(reason: WaitReason) -> None:
     assert waiting.is_waiting_state is True
     assert waiting.wait_reason is reason
     assert waiting.wait_until_monotonic_ms == 12345
-    # Original snapshot untouched (immutability).
     assert state.is_waiting_state is False
 
 

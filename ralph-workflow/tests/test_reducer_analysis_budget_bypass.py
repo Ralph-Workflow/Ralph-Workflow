@@ -1,5 +1,3 @@
-"""Unit tests for the pure pipeline reducer."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -331,14 +329,7 @@ def _policy_with_planning_analysis() -> PipelinePolicy:
     )
 
 
-# =============================================================================
-# PhaseFailureEvent tests
-# =============================================================================
-
-
 class TestAnalysisBudgetBypass:
-    """Tests for bypassing exhausted analysis phases on re-entry."""
-
     def test_planning_success_skips_exhausted_planning_analysis(self) -> None:
         policy = _policy_with_planning_analysis()
         policy = _with_loop_cap(policy, "planning_analysis_iteration", 10)

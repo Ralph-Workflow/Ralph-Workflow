@@ -1,5 +1,3 @@
-"""Tests for ralph/mcp/tool_workspace.py — MCP workspace tool handlers."""
-
 from __future__ import annotations
 
 import json
@@ -29,7 +27,6 @@ class TestHandleDirectoryTree:
                 return ["file.txt", "subdir"]
             return []
 
-        # Handle both normalized ("") and non-normalized (".") path forms
         ws.is_dir.side_effect = lambda p: p in (".", "")
         ws.list_dir.side_effect = list_dir_effect
         ws.is_file.side_effect = lambda p: p == "file.txt"

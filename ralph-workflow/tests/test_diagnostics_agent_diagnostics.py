@@ -1,12 +1,3 @@
-"""Unit tests for the diagnostics module.
-
-Tests cover:
-- SystemInfo.gather() populates all fields
-- run_diagnostics() returns a DiagnosticReport
-- AgentDiagnostics with mocked AgentRegistry
-- Agent availability check logic
-"""
-
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -21,10 +12,7 @@ MULTI_AGENT_COUNT = 2
 
 
 class TestAgentDiagnostics:
-    """Tests for AgentDiagnostics dataclass."""
-
     def test_agent_diagnostics_test_with_empty_registry(self) -> None:
-        """Test that AgentDiagnostics.test() works with empty registry."""
         mock_registry = MagicMock()
         mock_registry.list_agents.return_value = []
 
@@ -35,7 +23,6 @@ class TestAgentDiagnostics:
         assert diagnostics.agent_status == []
 
     def test_agent_diagnostics_test_with_available_agent(self) -> None:
-        """Test that AgentDiagnostics.test() detects available agent."""
         mock_registry = MagicMock()
         mock_registry.list_agents.return_value = ["claude"]
 
@@ -57,7 +44,6 @@ class TestAgentDiagnostics:
         assert diagnostics.agent_status[0].available is True
 
     def test_agent_diagnostics_test_with_unavailable_agent(self) -> None:
-        """Test that AgentDiagnostics.test() detects unavailable agent."""
         mock_registry = MagicMock()
         mock_registry.list_agents.return_value = ["nonexistent"]
 
@@ -76,7 +62,6 @@ class TestAgentDiagnostics:
         assert diagnostics.agent_status[0].available is False
 
     def test_agent_diagnostics_test_with_multiple_agents(self) -> None:
-        """Test that AgentDiagnostics.test() handles multiple agents."""
         mock_registry = MagicMock()
         mock_registry.list_agents.return_value = ["claude", "opencode"]
 

@@ -1,4 +1,3 @@
-"""ManagedPtyProcess — PTY-backed process wrapper with lifecycle integration."""
 
 from __future__ import annotations
 
@@ -15,7 +14,6 @@ if TYPE_CHECKING:
 
 
 class ManagedPtyProcess:
-    """Wraps a PTY-backed process and exposes the master terminal handle."""
 
     def __init__(
         self,
@@ -74,18 +72,15 @@ class ManagedPtyProcess:
         return self._proc.isatty()
 
     def termination_issuer(self) -> str | None:
-        """Return the lifecycle issuer that intentionally stopped this process."""
         return self._manager.termination_issuer(self._record.pid)
 
     def original_terminal_reason(self) -> str | None:
-        """Return the original terminal reason recorded for this process."""
         return self._manager.original_terminal_reason(self._record.pid)
 
     def record_terminal_reason(self, reason: str) -> None:
         self._manager.record_terminal_reason(self._record.pid, reason)
 
     def terminate(self, grace_period_s: float | None = None) -> None:
-        # Idempotency guard: if already terminal, skip without error
         if self._record.status in _TERMINAL_STATUSES:
             return
         self._manager.record_terminal_reason(
@@ -167,4 +162,4 @@ class ManagedPtyProcess:
         self.close()
         if self._record.status not in _TERMINAL_STATUSES:
             with contextlib.suppress(Exception):
-                self._proc.wait()  # mcp-timeout-ok: post-terminate cleanup reap
+                self._proc.wait()

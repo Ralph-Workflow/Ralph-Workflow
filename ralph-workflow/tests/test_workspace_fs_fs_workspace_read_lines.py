@@ -1,5 +1,3 @@
-"""Tests for ralph/workspace/fs.py — Filesystem workspace implementation."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -63,7 +61,6 @@ class TestFsWorkspaceReadLines:
     def test_read_lines_regression_allows_a_bounded_head_for_a_large_file(
         self, tmp_path: Path
     ) -> None:
-        """S-4: a head window is allowed when only the unbounded read exceeds its ceiling."""
         ws = FsWorkspace(tmp_path)
         (tmp_path / "large.txt").write_text("first\nsecond\nthird\n", encoding="utf-8")
 
@@ -73,7 +70,6 @@ class TestFsWorkspaceReadLines:
         assert meta == {"total_lines": 3, "returned_lines": 1, "truncated": True}
 
     def test_read_lines_regression_rejects_an_unbounded_large_file(self, tmp_path: Path) -> None:
-        """S-4: only a full line read is rejected by the configured byte ceiling."""
         ws = FsWorkspace(tmp_path)
         (tmp_path / "large.txt").write_text("first\nsecond\nthird\n", encoding="utf-8")
 
@@ -143,7 +139,6 @@ class TestFsWorkspaceReadLines:
     def test_read_lines_regression_does_not_probe_metadata_before_its_content_observation(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """S-5: the one opened stream supplies both its size and line window."""
         ws = FsWorkspace(tmp_path)
         target = tmp_path / "lines.txt"
         target.write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
@@ -164,7 +159,6 @@ class TestFsWorkspaceReadLines:
     def test_read_lines_regression_reuses_one_content_observation(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """S-5: one logical line request opens its content only once."""
         ws = FsWorkspace(tmp_path)
         target = tmp_path / "lines.txt"
         target.write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
@@ -186,13 +180,6 @@ class TestFsWorkspaceReadLines:
         assert content_opens == 1
 
     def test_read_lines_count_lines_helper_no_trailing_newline(self, tmp_path: Path) -> None:
-        """Direct regression for the prior analysis-feedback bug.
-
-        ``_count_lines`` MUST add 1 for a final unterminated line so
-        that ``total_lines`` matches the number of lines actually
-        returned by ``read_lines`` for files without a trailing
-        newline. An empty file still reports 0.
-        """
         ws = FsWorkspace(tmp_path)
         alpha_beta = tmp_path / "alpha_beta.txt"
         alpha_beta.write_text("alpha\nbeta", encoding="utf-8")

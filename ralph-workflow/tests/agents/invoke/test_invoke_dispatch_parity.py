@@ -1,13 +1,3 @@
-"""Parity test: verify resolve_invocation_runtime behavior for every AgentTransport.
-
-This test exercises every AgentTransport value (with and without endpoint where applicable)
-and asserts full ResolvedInvocationRuntime equality against the expected runtime wiring
-behavior. MCP helpers are monkeypatched with fakes to produce deterministic assertions.
-
-The test locks the behavioral contract for each transport and must continue to pass
-after any refactor to prove the dispatch-based implementation is behaviorally equivalent.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
@@ -53,12 +43,6 @@ def _make_fake_apply_upstream_env() -> Callable[..., None]:
 
 
 def _assert_no_endpoint_no_extra_env(transport: AgentTransport, tmp_path: Path) -> None:
-    """Assert behavior when extra_env is None (no endpoint).
-
-    The body is shared by the default-lane test (every non-AGY
-    transport) and the AGY-only smoke case below so both cover exactly
-    the same assertions.
-    """
     config = AgentConfig(cmd="test-agent", transport=transport)
 
     result = resolve_invocation_runtime(
@@ -79,12 +63,6 @@ def _assert_no_endpoint_no_extra_env(transport: AgentTransport, tmp_path: Path) 
 
 
 def _assert_no_endpoint_with_base_env(transport: AgentTransport, tmp_path: Path) -> None:
-    """Assert behavior when _base_env is provided without endpoint.
-
-    The body is shared by the default-lane test (every non-AGY
-    transport) and the AGY-only smoke case below so both cover exactly
-    the same assertions.
-    """
     base_env: Mapping[str, str] = {"PATH": "/usr/bin", "HOME": "/home/test"}
     config = AgentConfig(cmd="test-agent", transport=transport)
 
@@ -109,16 +87,6 @@ def _assert_configurable_command_builder_parity(
     expected_argv: list[str],
     tmp_path: Path,
 ) -> None:
-    """Assert the per-transport builder produces a byte-identical command line.
-
-    This checks each headless transport through the public
-    ``build_command`` entry point, which dispatches to the same
-    configurable builder the transport owns.
-
-    The body is shared by the default-lane test (every non-AGY
-    transport) and the AGY-only smoke case below so both cover exactly
-    the same assertions.
-    """
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello world", encoding="utf-8")
 
@@ -146,7 +114,6 @@ def _assert_configurable_command_builder_parity(
         workspace_path=tmp_path,
     )
 
-    # Replace WORKSPACE_PATH_PLACEHOLDER in expected_argv with actual tmp_path
     expected = [str(tmp_path) if x == "WORKSPACE_PATH_PLACEHOLDER" else x for x in expected_argv]
 
     res = build_command(config, str(prompt_file), options=options)
@@ -154,12 +121,6 @@ def _assert_configurable_command_builder_parity(
 
 
 class TestResolveInvocationRuntimeParity:
-    """Parametric parity tests for every AgentTransport value.
-
-    Each test monkeypatches the MCP-wiring helpers to return controlled values,
-    then asserts the returned ResolvedInvocationRuntime has the expected field contents.
-    """
-
     @pytest.mark.parametrize("has_endpoint", [False, True])
     def test_opencode_resolver_parity(
         self,
@@ -167,7 +128,6 @@ class TestResolveInvocationRuntimeParity:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """Test OPENCODE resolver with and without endpoint."""
         extra_env: dict[str, str] = {}
         endpoint = "http://localhost:8080" if has_endpoint else None
         if has_endpoint:
@@ -185,9 +145,6 @@ class TestResolveInvocationRuntimeParity:
             unsafe_mode: bool = False,
             workspace_path: Path | None = None,
         ) -> tuple[str, list[FakeUpstream]]:
-            # ``workspace_path`` reaches the builder so OpenCode's PROJECT-local
-            # config sources (``<ws>/opencode.json``, ``<ws>/.opencode/``) are
-            # discovered; without it only the global sources were ever seen.
             return fake_provider_config, [fake_upstream]
 
         monkeypatch.setattr(
@@ -221,22 +178,6 @@ class TestResolveInvocationRuntimeParity:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """Test AGY resolver with and without endpoint.
-
-        AGY is a NON-Claude transport: it has its own CLI, its own parser
-        and its own runtime contract (a private HOME carrying the
-        generated MCP configs). The ``CLAUDE_CODE_*`` knobs belong to the
-        Claude Code / Claude Agent SDK runtime, so they are NOT part of
-        the AGY resolver contract -- asserting them here would pin a
-        behavior the AGY resolver never had.
-
-        The AGY-specific runtime details (private HOME, generated MCP
-        config, credential projection, cleanup) are covered by
-        ``tests/test_agy_runtime_home_auth.py``; this parity test pins
-        the resolver's transport-level shape: no runtime env without an
-        MCP endpoint, and the upstream env projection into the MCP server
-        env with one.
-        """
         extra_env: dict[str, str] = {}
         endpoint = "http://localhost:8080" if has_endpoint else None
         if has_endpoint:
@@ -264,15 +205,11 @@ class TestResolveInvocationRuntimeParity:
 
         assert isinstance(result, ResolvedInvocationRuntime)
         if has_endpoint:
-            # With an MCP endpoint the AGY resolver injects a runtime env
-            # and projects the existing AGY upstream servers into the MCP
-            # server env.
             assert isinstance(result.agent_env, dict)
             assert isinstance(result.server_env, dict)
             assert result.server_env["TEST-UPSTREAM_VAR"] == "test-value"
             assert result.mcp_endpoint == endpoint
         else:
-            # Without an MCP endpoint AGY needs no runtime env at all.
             assert result.agent_env is None
             assert result.server_env is None
             assert result.mcp_endpoint is None
@@ -284,7 +221,6 @@ class TestResolveInvocationRuntimeParity:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """Test NANOCODER resolver with and without endpoint."""
         extra_env: dict[str, str] = {}
         if has_endpoint:
             extra_env[MCP_ENDPOINT_ENV] = "http://localhost:8080"
@@ -346,7 +282,6 @@ class TestResolveInvocationRuntimeParity:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """Test CODEX resolver with and without endpoint."""
         extra_env: dict[str, str] = {}
         if has_endpoint:
             extra_env[MCP_ENDPOINT_ENV] = "http://localhost:8080"
@@ -401,7 +336,6 @@ class TestResolveInvocationRuntimeParity:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """Test CLAUDE and CLAUDE_INTERACTIVE resolvers with and without endpoint."""
         extra_env: dict[str, str] = {}
         endpoint = "http://localhost:8080" if has_endpoint else None
         if has_endpoint:
@@ -477,7 +411,6 @@ class TestResolveInvocationRuntimeParity:
             assert result.agent_env["CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH"] == expected_depth
 
     def test_generic_resolver_parity(self, tmp_path: Path) -> None:
-        """Test GENERIC resolver without endpoint (raises with endpoint)."""
         config = AgentConfig(cmd="test-agent", transport=AgentTransport.GENERIC)
 
         result = resolve_invocation_runtime(
@@ -493,7 +426,6 @@ class TestResolveInvocationRuntimeParity:
         assert result.mcp_endpoint is None
 
     def test_generic_with_endpoint_raises(self, tmp_path: Path) -> None:
-        """GENERIC transport with MCP endpoint must raise UnsupportedMcpTransportError."""
         extra_env: dict[str, str] = {str(MCP_ENDPOINT_ENV): "http://localhost:8080"}
         config = AgentConfig(cmd="test-agent", transport=AgentTransport.GENERIC)
 
@@ -523,13 +455,6 @@ class TestResolveInvocationRuntimeParity:
         transport: AgentTransport,
         tmp_path: Path,
     ) -> None:
-        """AGY-only smoke case for the no-endpoint / no-extra-env contract.
-
-        The parametrization id MUST contain ``agy``: ``tests/conftest.py``
-        marks every node id containing ``agy`` with the ``smoke`` marker, so
-        the default lane deselects this case and it only runs in the
-        explicit smoke profile.
-        """
         _assert_no_endpoint_no_extra_env(transport, tmp_path)
 
     def test_no_endpoint_with_base_env(self, tmp_path: Path) -> None:
@@ -550,13 +475,6 @@ class TestResolveInvocationRuntimeParity:
         transport: AgentTransport,
         tmp_path: Path,
     ) -> None:
-        """AGY-only smoke case for the no-endpoint / base-env contract.
-
-        The parametrization id MUST contain ``agy``: ``tests/conftest.py``
-        marks every node id containing ``agy`` with the ``smoke`` marker, so
-        the default lane deselects this case and it only runs in the
-        explicit smoke profile.
-        """
         _assert_no_endpoint_with_base_env(transport, tmp_path)
 
     def test_configurable_command_builder_parity(self, tmp_path: Path) -> None:
@@ -569,12 +487,6 @@ class TestResolveInvocationRuntimeParity:
                 "--skip-stuff",
                 "--verbose",
                 None,
-                # ``--pure`` is gone: it ran opencode without external
-                # plugins and made an operator's plugin-provided model
-                # provider unresolvable. ``opencode/`` is no longer stripped
-                # off the model value either -- opencode publishes a provider
-                # literally named ``opencode``, so the extra strip made every
-                # model under it unselectable.
                 [
                     "opencode",
                     "run",
@@ -673,10 +585,6 @@ class TestResolveInvocationRuntimeParity:
                     "--print",
                     "hello world",
                 ],
-                # Explicit id pins the pre-consolidation node id so the
-                # historical ``[agy-...]`` selector keeps working and the
-                # ``agy`` token stays in the node id (``tests/conftest.py``
-                # marks every ``agy`` node id with the ``smoke`` marker).
                 id="agy-agy---session {}---skip-perms---verbose---print-expected_argv3",
             ),
         ],
@@ -692,13 +600,6 @@ class TestResolveInvocationRuntimeParity:
         expected_argv: list[str],
         tmp_path: Path,
     ) -> None:
-        """AGY-only smoke case for the configurable command builder parity.
-
-        The parametrization id MUST contain ``agy``: ``tests/conftest.py``
-        marks every node id containing ``agy`` with the ``smoke`` marker, so
-        the default lane deselects this case and it only runs in the
-        explicit smoke profile.
-        """
         _assert_configurable_command_builder_parity(
             transport,
             cmd,

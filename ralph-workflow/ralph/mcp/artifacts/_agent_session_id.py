@@ -1,10 +1,8 @@
-"""AgentSessionId — convenience wrapper around a session identifier."""
 
 from __future__ import annotations
 
 
 class AgentSessionId:
-    """Convenience wrapper around a session identifier."""
 
     __slots__ = ("_value",)
 

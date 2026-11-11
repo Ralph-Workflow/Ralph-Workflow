@@ -1,5 +1,3 @@
-"""Configured-remote synchronization defaults and explicit opt-out coverage."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -25,7 +23,6 @@ def _config(**overrides: object) -> GeneralConfig:
 def test_remote_sync_default_on_fetches_and_pushes_when_present(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-2: default configuration enables configured-remote operations."""
     calls: list[str] = []
     monkeypatch.setattr(
         "ralph.pipeline.auto_integrate_remote_sync.refresh_target_from_remote",
@@ -53,7 +50,6 @@ def test_remote_sync_default_on_fetches_and_pushes_when_present(
 
 
 def test_remote_sync_explicit_false_is_a_noop(monkeypatch: pytest.MonkeyPatch) -> None:
-    """S-2: explicit false remains the operator-controlled local-only opt-out."""
     calls: list[str] = []
     monkeypatch.setattr(
         "ralph.pipeline.auto_integrate_remote_sync.refresh_target_from_remote",

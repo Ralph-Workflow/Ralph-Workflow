@@ -1,5 +1,3 @@
-"""The MCP probe timeout default must be 6 s, not 5 s."""
-
 from __future__ import annotations
 
 from datetime import timedelta

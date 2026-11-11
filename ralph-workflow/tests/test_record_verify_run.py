@@ -1,11 +1,3 @@
-"""``scripts/record_verify_run.py`` records what ``make verify`` actually did.
-
-The receipt is evidence, so a budget the run failed must never be filed as
-passed. These tests feed the recorder the exact text ``run_verify`` prints
--- produced by running it against an injected clock, CPU counters and a
-stub runner -- and a runner that times out, so no real ``make`` runs.
-"""
-
 from __future__ import annotations
 
 import importlib.util
@@ -44,7 +36,6 @@ def _verify_output(
     wall: float,
     suite_cpu: float,
 ) -> tuple[int, str]:
-    """Run ``run_verify`` with every tracked step costing ``wall``/``suite_cpu`` in total."""
     clock = [0.0]
     cpu = [0.0]
     per_step = {"test": 0.8, "test-verification-smoke": 0.2}

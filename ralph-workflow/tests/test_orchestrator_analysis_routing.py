@@ -1,13 +1,3 @@
-"""Unit tests for the orchestrator module.
-
-Tests cover:
-- determine_next_effect returns InvokeAgentEffect when agent not yet invoked
-- analysis loopback routes back to development phase
-- analysis success routes to development_commit
-- development_commit with budget=0 routes to review
-- unknown phase raises PhaseHandlerNotFoundError
-"""
-
 from __future__ import annotations
 
 from ralph.pipeline.orchestrator import (
@@ -30,7 +20,6 @@ from ralph.policy.models import (
 
 
 def _make_minimal_agents_policy() -> AgentsPolicy:
-    """Create a minimal agents policy for testing."""
     return AgentsPolicy(
         agent_chains={
             "planning": AgentChainConfig(agents=["claude"], max_retries=2),
@@ -54,7 +43,6 @@ def _make_minimal_agents_policy() -> AgentsPolicy:
 
 
 def _make_minimal_pipeline_policy() -> PipelinePolicy:
-    """Create a minimal pipeline policy for testing."""
     return PipelinePolicy(
         phases={
             "planning": PhaseDefinition(
@@ -152,15 +140,11 @@ def _make_minimal_pipeline_policy() -> PipelinePolicy:
 
 
 def _make_state(phase: str = "planning", **overrides: object) -> PipelineState:
-    """Create a pipeline state for testing."""
     return PipelineState(phase=phase, **overrides)
 
 
 class TestAnalysisRouting:
-    """Tests for analysis loopback and success routing."""
-
     def test_development_on_loopback_routes_to_development(self) -> None:
-        """Test that development phase on loopback routes back to development."""
         next_phase = resolve_next_phase(
             current_phase="development",
             signal="loopback",
@@ -169,7 +153,6 @@ class TestAnalysisRouting:
         assert next_phase == "development"
 
     def test_development_on_success_routes_to_development_commit(self) -> None:
-        """Test that development phase on success routes to development_commit."""
         next_phase = resolve_next_phase(
             current_phase="development",
             signal="success",
@@ -178,7 +161,6 @@ class TestAnalysisRouting:
         assert next_phase == "development_commit"
 
     def test_review_on_loopback_routes_to_fix(self) -> None:
-        """Test that review phase on loopback routes to fix."""
         next_phase = resolve_next_phase(
             current_phase="review",
             signal="loopback",
@@ -187,7 +169,6 @@ class TestAnalysisRouting:
         assert next_phase == "fix"
 
     def test_review_on_success_routes_to_review_commit(self) -> None:
-        """Test that review phase on success routes to review_commit."""
         next_phase = resolve_next_phase(
             current_phase="review",
             signal="success",
@@ -196,7 +177,6 @@ class TestAnalysisRouting:
         assert next_phase == "review_commit"
 
     def test_fix_on_success_routes_to_review(self) -> None:
-        """Test that fix phase on success routes back to review."""
         next_phase = resolve_next_phase(
             current_phase="fix",
             signal="success",

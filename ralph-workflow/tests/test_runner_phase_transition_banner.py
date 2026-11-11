@@ -1,5 +1,3 @@
-"""Regression tests for runner-driven rich phase-close banners."""
-
 from __future__ import annotations
 
 import tempfile
@@ -42,7 +40,6 @@ def _default_pipeline_policy_with_loop_counter_max(
 
 
 def test_emit_phase_transition_populates_close_banner_exit_trigger() -> None:
-    """emit_phase_close_from_exit should be called with exit_trigger='completed'."""
     display = _StubDisplay()
     state = PipelineState(
         phase="planning_analysis",
@@ -66,7 +63,6 @@ def test_emit_phase_transition_populates_close_banner_exit_trigger() -> None:
 
 
 def test_emit_phase_transition_populates_last_failure_category_from_state() -> None:
-    """Exit model should carry last_failure_category from pipeline state."""
     display = _StubDisplay()
     state = PipelineState(
         phase="planning_analysis",
@@ -89,7 +85,6 @@ def test_emit_phase_transition_populates_last_failure_category_from_state() -> N
 
 
 def test_emit_phase_transition_populates_waiting_status_from_subscriber() -> None:
-    """Exit model should carry waiting_status_line from display subscriber."""
     display = _StubDisplay()
     state = PipelineState(
         phase="planning_analysis",
@@ -107,11 +102,10 @@ def test_emit_phase_transition_populates_waiting_status_from_subscriber() -> Non
 
     exit_model = display._last_exit_model
     assert exit_model is not None
-    assert exit_model.waiting_status_line is None  # _StubSubscriber returns None
+    assert exit_model.waiting_status_line is None
 
 
 def test_emit_phase_transition_populates_activity_counters_from_display() -> None:
-    """Exit model should carry activity counters from display's last_phase_counters."""
     display = _StubDisplay()
     state = PipelineState(
         phase="planning_analysis",
@@ -137,7 +131,6 @@ def test_emit_phase_transition_populates_activity_counters_from_display() -> Non
 
 
 def test_emit_phase_transition_propagates_artifact_outcome_from_display() -> None:
-    """Exit model should carry artifact_outcome from display's last_phase_artifact_outcome."""
     display = _StubDisplay()
     display._last_phase_artifact_outcome = "plan: 3 step(s), 2 risk(s)"
     state = PipelineState(
@@ -160,7 +153,6 @@ def test_emit_phase_transition_propagates_artifact_outcome_from_display() -> Non
 
 
 def test_emit_phase_transition_uses_produced_exit_trigger_when_artifact_present() -> None:
-    """When last_phase_artifact_outcome is non-empty, exit_trigger should be 'produced'."""
     display = _StubDisplay()
     display._last_phase_artifact_outcome = "plan: 5 step(s), 2 risk(s)"
     state = PipelineState(
@@ -184,9 +176,7 @@ def test_emit_phase_transition_uses_produced_exit_trigger_when_artifact_present(
 
 
 def test_emit_phase_transition_uses_completed_exit_trigger_without_artifact() -> None:
-    """When last_phase_artifact_outcome is empty, exit_trigger should be 'completed'."""
     display = _StubDisplay()
-    # Do not set last_phase_artifact_outcome (not in _StubDisplay) so it returns None/empty
     state = PipelineState(
         phase="planning_analysis",
         previous_phase="planning",
@@ -207,7 +197,6 @@ def test_emit_phase_transition_uses_completed_exit_trigger_without_artifact() ->
 
 
 def test_execute_commit_effect_records_sha_artifact_outcome(tmp_path: Path) -> None:
-    """Commit effect must record the sha as artifact outcome for the phase-close banner."""
 
     recorded: dict[str, str] = {}
 
@@ -256,7 +245,6 @@ def test_execute_commit_effect_records_sha_artifact_outcome(tmp_path: Path) -> N
 
 
 def test_execute_commit_effect_records_sha_regardless_of_state() -> None:
-    """Commit effect records sha artifact outcome even when state and policy are provided."""
 
     recorded: dict[str, str] = {}
 
@@ -342,13 +330,6 @@ def test_execute_commit_effect_records_sha_regardless_of_state() -> None:
 
 
 def test_emit_phase_transition_shows_rich_transition_banner_for_major_routing() -> None:
-    """Major phase transitions should render the dedicated transition banner.
-
-    The runtime already emits the close banner for the phase being left and the
-    next phase later emits its own start banner. This test locks in the missing
-    middle surface: the rich transition separator that shows the actual phase
-    handoff (for example Planning → Planning Analysis).
-    """
     display = _StubDisplay()
     state = PipelineState(
         phase="planning_analysis",
@@ -364,7 +345,6 @@ def test_emit_phase_transition_shows_rich_transition_banner_for_major_routing() 
         pipeline_policy=_DEFAULT_POLICY.pipeline,
     )
 
-    # The close banner still emits for the phase being left.
     assert display._phase_close_emitted, "emit_phase_close_from_exit must be called"
     exit_model = display._last_exit_model
     assert exit_model is not None
@@ -375,12 +355,6 @@ def test_emit_phase_transition_shows_rich_transition_banner_for_major_routing() 
 
 
 def test_emit_phase_transition_calls_canonical_rich_phase_change_surfaces() -> None:
-    """Runner phase changes must emit both the close and transition rich surfaces.
-
-    This locks the runner contract instead of only testing the individual
-    renderers in isolation: if a refactor drops either surface from the live
-    path, this test should fail immediately.
-    """
     display = _StubDisplay()
     state = PipelineState(
         phase="planning_analysis",
@@ -401,28 +375,11 @@ def test_emit_phase_transition_calls_canonical_rich_phase_change_surfaces() -> N
 
 
 def test_emit_phase_transition_skipped_analysis_emits_routing_note() -> None:
-    """When analysis is skipped due to cap exhaustion, a brief routing note is printed.
-
-    Instead of emitting a full transition banner that would duplicate the close banner's
-    information, we emit a brief single-line routing note directly to console.
-    The close banner already communicated iteration context and exit_trigger, so
-    we only note *why* the routing happened for debugging clarity.
-    """
-    # To trigger skipped analysis, we need:
-    # - previous_phase role is "execution" or "review"
-    # - on_success target is an analysis phase with exhausted loop counter
-    #
-    # In the default policy, development_commit (role=commit) has on_success=development_analysis.
-    # When development_analysis_iteration hits cap, we skip development_analysis and go
-    # to development_final_commit_review. So we set
-    # state.phase="development_final_commit_review" which differs from
-    # previous_phase="development_commit".
     display = _StubDisplay()
     state = PipelineState(
-        phase="development_final_commit_review",  # Actual phase after skipping analysis
-        previous_phase="development_commit",  # Previous phase whose success target was analysis
+        phase="development_final_commit_review",
+        previous_phase="development_commit",
         budget_caps={"iteration": 1},
-        # Set loop iteration to cap to trigger skipped analysis
         loop_iterations={"development_analysis_iteration": 5},
     )
 
@@ -452,7 +409,6 @@ def test_emit_phase_transition_skipped_analysis_emits_routing_note() -> None:
 
 
 def test_emit_phase_transition_review_issues_found_set_for_review_phase() -> None:
-    """review_issues_found must be populated when transitioning from a review phase."""
 
     policy = PipelinePolicy(
         entry_phase="review",
@@ -484,7 +440,6 @@ def test_emit_phase_transition_review_issues_found_set_for_review_phase() -> Non
     )
 
     display = _StubDisplay()
-    # State with review_outcome set to issues-found (not "clean")
 
     state = ReviewState(
         phase="done",
@@ -508,7 +463,6 @@ def test_emit_phase_transition_review_issues_found_set_for_review_phase() -> Non
 
 
 def test_emit_phase_transition_shows_skip_and_changes_for_capped_loopback() -> None:
-    """The live runner transition banner must show the capped planning-analysis loopback context."""
     display = _StubDisplay()
     state = PipelineState(
         phase="planning",
@@ -547,13 +501,12 @@ def test_emit_phase_transition_shows_skip_and_changes_for_capped_loopback() -> N
 
 
 def test_emit_phase_transition_review_issues_found_none_for_non_review_phase() -> None:
-    """review_issues_found must be None when transitioning from a non-review phase."""
     display = _StubDisplay()
     state = PipelineState(
         phase="planning_analysis",
         previous_phase="planning",
         budget_caps={"iteration": 1},
-        review_outcome="issues",  # Set but should be ignored for non-review phases
+        review_outcome="issues",
     )
 
     runner_module.emit_phase_transition_if_changed(

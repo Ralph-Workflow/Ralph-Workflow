@@ -1,5 +1,3 @@
-"""Regression harness for bounded multimodal live-session retention."""
-
 from __future__ import annotations
 
 import gc

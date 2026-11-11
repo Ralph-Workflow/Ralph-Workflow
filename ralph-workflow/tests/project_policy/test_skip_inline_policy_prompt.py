@@ -1,13 +1,3 @@
-"""Integration tests for the interactive adopt-or-keep policy menu.
-
-When a marker-free AGENTS.md carries significant user content, the run
-preflight offers (TTY only) a menu: adopt Ralph Workflow's managed policy,
-keep the existing policy, or ask what the policy contains. All tests
-exercise the real ``cli_integration.run_project_policy_readiness`` with
-injected ``MemoryWorkspace`` / emit / select / is_tty seams — no real
-filesystem, no real stdin.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
@@ -23,16 +13,12 @@ from ralph.project_policy import _schema_upgrade as policy_schema_upgrade
 from ralph.workspace.memory import MemoryWorkspace
 from ralph.workspace.scope import WorkspaceScope
 
-#: A marker-free AGENTS.md with a heading — significant per the heuristic.
 _SIGNIFICANT_AGENTS_MD = "# Our agent rules\n\nAlways run make test before committing.\n"
 
-#: Marker-free content below both significance thresholds.
 _INSIGNIFICANT_AGENTS_MD = "be nice to the codebase\n"
 
 
 class _Selector:
-    """Scripted select seam: answers each menu with the next queued key."""
-
     def __init__(self, *answers: str) -> None:
         self._answers = list(answers)
         self.questions: list[str] = []
@@ -80,8 +66,6 @@ def _run(
 
 
 def test_keep_writes_opt_out_and_skips_policy() -> None:
-    """Keeping the existing policy persists the opt-out marker: the preflight
-    returns SKIPPED, no managed block is appended, no starters are seeded."""
     ws = MemoryWorkspace()
     ws.write(markers.AGENTS_MD, _SIGNIFICANT_AGENTS_MD)
     emit_messages: list[str] = []
@@ -100,8 +84,6 @@ def test_keep_writes_opt_out_and_skips_policy() -> None:
 
 
 def test_adopt_appends_managed_block_and_proceeds() -> None:
-    """Adopting keeps today's behavior: the managed block is appended and the
-    normal readiness flow continues."""
     ws = MemoryWorkspace()
     ws.write(markers.AGENTS_MD, _SIGNIFICANT_AGENTS_MD)
     emit_messages: list[str] = []
@@ -109,9 +91,6 @@ def test_adopt_appends_managed_block_and_proceeds() -> None:
 
     rc = _run(ws, emit_messages, select=selector, is_tty=lambda: True)
 
-    # The fake remediation agent never fixes anything, so the policy never
-    # reaches READY. That is NOT a failure of the run: policy never blocks
-    # development work, so the exit code stays 0 and the run proceeds.
     assert rc == 0
     assert len(selector.questions) == 1
     content = ws.read(markers.AGENTS_MD)
@@ -121,8 +100,6 @@ def test_adopt_appends_managed_block_and_proceeds() -> None:
 
 
 def test_adopt_is_the_default_choice() -> None:
-    """Enter-through must start the setup, not disable enforcement — the
-    default answer is the one the prompt falls back on when it cannot run."""
     ws = MemoryWorkspace()
     ws.write(markers.AGENTS_MD, _SIGNIFICANT_AGENTS_MD)
     selector = _Selector("adopt")
@@ -134,8 +111,6 @@ def test_adopt_is_the_default_choice() -> None:
 
 
 def test_explain_lists_policy_files_and_reasks() -> None:
-    """The 'what does it contain' choice writes nothing, names the policy
-    files that would be created, and returns to the menu."""
     ws = MemoryWorkspace()
     ws.write(markers.AGENTS_MD, _SIGNIFICANT_AGENTS_MD)
     emit_messages: list[str] = []
@@ -150,7 +125,6 @@ def test_explain_lists_policy_files_and_reasks() -> None:
 
 
 def test_no_tty_never_prompts_and_keeps_current_behavior() -> None:
-    """Non-interactive runs (CI/unattended) must never prompt or hang."""
     ws = MemoryWorkspace()
     ws.write(markers.AGENTS_MD, _SIGNIFICANT_AGENTS_MD)
     emit_messages: list[str] = []
@@ -190,7 +164,6 @@ def test_insignificant_content_never_prompts() -> None:
 
 @pytest.mark.timeout_seconds(5)
 def test_existing_managed_block_never_prompts() -> None:
-    """A repo that already bootstrapped must not be re-asked."""
     ws = MemoryWorkspace()
     ws.write(
         markers.AGENTS_MD,
@@ -209,8 +182,6 @@ def test_existing_managed_block_never_prompts() -> None:
 
 
 def test_prompt_failure_falls_back_to_current_behavior() -> None:
-    """A crashing prompt (EOF despite isatty, broken pipe) must never block
-    the run: fall back to the default, which appends the managed block."""
     ws = MemoryWorkspace()
     ws.write(markers.AGENTS_MD, _SIGNIFICANT_AGENTS_MD)
     emit_messages: list[str] = []
@@ -231,11 +202,6 @@ def test_prompt_failure_falls_back_to_current_behavior() -> None:
 
 
 def test_prompt_explains_the_ramifications_of_each_choice() -> None:
-    """The messaging contract. Before choosing, the user must be told: the
-    repo may already have its own policy; adopting is a one-time ~30 minute
-    agent setup; the policy files help any AI assistant, not just Ralph
-    Workflow runs; keeping theirs is for an established process and writes an
-    opt-out marker."""
     ws = MemoryWorkspace()
     ws.write(markers.AGENTS_MD, _SIGNIFICANT_AGENTS_MD)
     emit_messages: list[str] = []
@@ -249,16 +215,11 @@ def test_prompt_explains_the_ramifications_of_each_choice() -> None:
     assert "token spend" in panel
     assert "not just Ralph Workflow runs" in panel
     assert "opt-out marker" in panel
-    # Who each choice is for. questionary clips a menu description to one
-    # line, so this guidance has to survive in the panel, not in the menu.
     assert "not an experienced software developer" in panel
     assert "strong engineering process" in panel
 
 
 def test_menu_descriptions_fit_on_one_terminal_line() -> None:
-    """questionary renders a choice description as a single line and clips it
-    at the terminal width. A description that overflows a narrow terminal is
-    shown to the user cut off mid-word, so keep them short."""
     budget = 60
     choices = [
         *cli_integration._INIT_CHOICES,
@@ -286,8 +247,6 @@ def test_declining_schema_upgrade_freezes_existing_policy() -> None:
 
 
 def test_schema_upgrade_asks_once_for_all_files() -> None:
-    """Multiple outdated files must produce exactly ONE prompt, not one per
-    file. Upgrading leaves every file for the remediation agent."""
     ws = MemoryWorkspace()
     paths = [
         f"{markers.CANONICAL_DIR}testing-policy.md",
@@ -310,7 +269,6 @@ def test_schema_upgrade_asks_once_for_all_files() -> None:
     assert len(selector.questions) == 1
     assert selector.choices[0] == ("upgrade", "freeze", "explain")
     assert selector.defaults == ["upgrade"]
-    # Upgrading all leaves the files untouched (remediation upgrades later).
     for path in paths:
         assert "freeze" not in ws.read(path)
 
@@ -336,8 +294,6 @@ def test_schema_explain_reasks_without_writing() -> None:
 
 
 def test_declining_schema_upgrade_freezes_all_and_shows_undo() -> None:
-    """Freezing pins EVERY outdated file at once and tells the user where to
-    remove the skip if they change their mind."""
     ws = MemoryWorkspace()
     paths = [
         f"{markers.CANONICAL_DIR}testing-policy.md",
@@ -360,7 +316,6 @@ def test_declining_schema_upgrade_freezes_all_and_shows_undo() -> None:
     for path in paths:
         assert ws.read(path).startswith("<!-- ralph-policy-schema: freeze v1 -->")
     undo = "\n".join(messages)
-    # The freeze message must name every frozen file and explain the undo.
     for path in paths:
         assert path in undo
     assert "freeze" in undo

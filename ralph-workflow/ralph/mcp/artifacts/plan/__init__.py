@@ -1,4 +1,3 @@
-"""Sanity-only plan acceptance and optional context helpers."""
 
 from ralph.mcp.artifacts.plan._section_models import PlanArtifactDict
 from ralph.mcp.artifacts.plan._section_registry import (

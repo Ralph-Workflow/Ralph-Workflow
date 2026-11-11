@@ -1,4 +1,3 @@
-"""Graph run_query dispatcher for ``ralph_graph`` (Phase 2+)."""
 
 from collections.abc import Callable, Sequence
 
@@ -36,38 +35,6 @@ def run_query(
     deadline: float | None = None,
     cancel: Callable[[], bool] | None = None,
 ) -> GraphResult:
-    """Dispatch a single ``ralph_graph`` query by ``query_type``.
-
-    AC-07 freshness contract:
-
-    * ``freshness="required"``: the index must be free of dirty
-      paths. When the store has pending dirty paths, the response
-      carries ``missing_data=("freshness_required",)`` and an empty
-      result so the caller can decide whether to refresh first.
-    * ``freshness="prefer_fresh"`` (default): dirty paths cause
-      ``is_stale=True`` to be set on the result so callers can
-      downgrade the evidence weight.
-    * ``freshness="allow_stale"``: dirty paths are ignored; the
-      result reports ``is_stale=False`` regardless.
-
-    AC-05 deadline/cancellation contract:
-
-    * ``deadline``: absolute monotonic-clock deadline (``time.monotonic``
-      value, seconds). When the deadline elapses mid-query, the
-      dispatcher returns a bounded, truthful
-      :class:`GraphResult` with ``deadline_exceeded=True`` and
-      ``missing_data=("deadline_exceeded",)``. No mutable work is
-      exposed; readers see the last committed generation, not partial
-      rows. ``deadline`` of ``0`` or negative disables the check
-      (caller responsibility to bound the call site).
-    * ``cancel``: zero-arg callable returning ``True`` to ask for
-      cooperative cancellation. Same bounded-incomplete contract as
-      deadline expiry: ``cancelled=True`` and
-      ``missing_data=("cancelled",)``. The check is invoked before
-      each phase of the dispatcher (freshness, neighbors, path,
-      impact, hubs, tests) and may also be called inside the per-type
-      implementations.
-    """
     dirty = list(store.peek_dirty_paths())
     is_stale = bool(dirty)
     if _is_cancelled(cancel):
@@ -163,8 +130,6 @@ def run_query(
             is_stale=is_stale,
             truncated=False,
         )
-    # Apply the freshness is_stale signal so the caller can act on
-    # it uniformly across query types.
     if freshness != "allow_stale":
         result = result.with_staleness(is_stale=is_stale)
     return result

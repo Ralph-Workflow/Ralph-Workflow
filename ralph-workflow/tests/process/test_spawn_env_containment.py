@@ -1,5 +1,3 @@
-"""Containment coverage for spawn-capable process entry points."""
-
 from __future__ import annotations
 
 import ast
@@ -12,9 +10,6 @@ import pytest
 PACKAGE_ROOT = Path(__file__).parents[2]
 RALPH_ROOT = PACKAGE_ROOT / "ralph"
 
-# These guards either delegate to a wired composition root or deliberately do
-# not reach a process spawn seam. New guarded modules must be classified here
-# or discovered as a wired entry point below.
 _GUARD_ALLOWLIST: dict[str, str] = {
     "ralph/__main__.py": "delegates to ralph.cli.main.main",
     "ralph/main.py": "delegates to ralph.cli.main.app",
@@ -141,7 +136,6 @@ def parsed_modules() -> dict[str, ast.Module]:
     return dict(cached_parsed_modules())
 
 
-# Pre-warm module cache at import time to prevent SIGALRM under concurrent test-shard I/O
 cached_parsed_modules()
 
 
@@ -229,7 +223,6 @@ def _calls_sanitizer(statement: ast.stmt) -> bool:
 
 
 def _callback_entry_name(tree: ast.Module, attribute: str) -> str | None:
-    """Resolve ``app.callback()(main)``-style console-script targets."""
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Call):
             continue
@@ -263,7 +256,6 @@ def _declared_entry_names(tree: ast.Module, module_name: str, attributes: set[st
 
 @pytest.mark.timeout_seconds(5)
 def test_spawn_capable_entry_points_sanitize_before_work() -> None:
-    """Full-package entry-point sweep; 5s covers parallel-load I/O on slow disks."""
     modules = parsed_modules()
     guard_paths = {path for path, tree in modules.items() if _has_main_guard(tree)}
     assert all(_GUARD_ALLOWLIST.values())
@@ -317,7 +309,6 @@ def test_spawn_capable_entry_points_sanitize_before_work() -> None:
 def test_spawn_env_containment_regression_checks_declared_script_attribute(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """DA-001: a non-``main`` console-script target cannot evade the sweep."""
     fake_module = "ralph.fake_b"
     monkeypatch.setattr(
         __import__(__name__, fromlist=["script_targets"]),

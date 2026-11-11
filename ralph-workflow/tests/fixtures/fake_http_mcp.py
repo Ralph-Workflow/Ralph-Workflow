@@ -1,13 +1,3 @@
-"""Minimal single-threaded HTTP MCP server fixture.
-
-Mirrors ``fake_stdio_mcp.py`` but speaks the 2024-11-05 streamable-http
-variant of MCP. The handler is intentionally single-threaded so upstream
-tests can assume sequential JSON-RPC calls; do not pipeline requests
-against this fixture. Sessions are tracked but stateless requests are
-accepted so Ralph's session-less ``HttpUpstreamClient`` can still probe
-``tools/list`` without first doing ``initialize``.
-"""
-
 from __future__ import annotations
 
 import json

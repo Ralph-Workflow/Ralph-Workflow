@@ -1,12 +1,3 @@
-"""Retained-resolution replay must preserve work and retry auto rebase.
-
-The cases in this module use real Git because the protected artifact is a
-Git object: staged and untracked bytes must be recoverable from the
-backup ref.  The rebase mutation itself is replaced by a recording fake,
-so the test proves the replay ordering and identity handoff without
-depending on a conflict resolver.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -57,7 +48,6 @@ def _setup_stale_record(root: Path) -> tuple[str, str, str]:
 def test_stale_resolution_snapshot_keeps_staged_untracked_and_leaves_the_index_alone(
     tmp_git_repo: Path,
 ) -> None:
-    """The snapshot preserves every work variant and stages nothing itself."""
     root = tmp_git_repo
     target = _git(root, "branch", "--show-current").stdout.strip()
     _commit(root, "base.txt", "base\n")
@@ -143,9 +133,6 @@ def test_stale_resolution_replay_preserves_work_and_retries_auto_rebase(
 
     assert outcome is not None
     assert calls and calls[0][0] == target
-    # The replay re-enters the ORDINARY integration entry: it does not
-    # ask for a merge-only attempt, so the automatic rebase is the
-    # first attempt again after a crash.
     assert switches
     assert not switches[0].get("prefer_merge")
     assert not switches[0].get("force_endpoint_merge")
@@ -201,18 +188,8 @@ def _backup_refs(root: Path) -> list[str]:
 def test_recovery_releases_a_resolution_record_whose_work_already_landed(
     tmp_git_repo: Path,
 ) -> None:
-    """Git outranks the record: contained work releases the retained resolution.
-
-    The retained record still claims "resolving rebase", but Git shows
-    no operation and the feature work is contained in the target: the
-    obligation is finished.  Recovery must release the record (and
-    reconcile publication) instead of retaining it as a "malformed
-    integrated record" on every startup.
-    """
     root = tmp_git_repo
     target, _base, _feature = _setup_stale_record(root)
-    # The obligation was discharged elsewhere: the feature work is now
-    # contained in the target and no operation is in progress.
     assert _git(root, "switch", target).returncode == 0
     assert _git(root, "merge", "--ff-only", "feature").returncode == 0
 
@@ -225,8 +202,6 @@ def test_recovery_releases_a_resolution_record_whose_work_already_landed(
     assert not outcome.recovery_record_retained
     assert "malformed integrated record" not in (outcome.last_reason or "")
     assert "lacks verified completion proof" not in (outcome.last_reason or "")
-    # The record is released, not replayed: no backup ref is created and
-    # the target keeps the landing it already had.
     assert read_record(root) is None
     assert _backup_refs(root) == []
 
@@ -235,16 +210,6 @@ def test_unresolved_integrating_record_with_moved_head_replays_into_auto_rebase(
     tmp_git_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An integrating record Git disproves is stale intent, never retained forever.
-
-    The record claims an integration ("phase=integrating") that Git does
-    not show; the work is not contained in the target and HEAD has moved
-    on.  The only escape hatch used to be "HEAD equals the recorded
-    pre-feature SHA and the tree is clean"; every other state retained
-    with OWNED_TARGET_PRECONDITION_FAILED on every startup.  Now the
-    recovery preserves the moved HEAD work in a backup ref and re-enters
-    at step 1 (the automatic rebase).
-    """
     root = tmp_git_repo
     target = _git(root, "branch", "--show-current").stdout.strip()
     base = _commit(root, "base.txt", "base\n")
@@ -259,8 +224,6 @@ def test_unresolved_integrating_record_with_moved_head_replays_into_auto_rebase(
             pre_target_sha=base,
         ),
     )
-    # HEAD moved on: the recorded pre-feature identity can never be
-    # restored, so retaining the record loops forever.
     moved = _commit(root, "operator.txt", "operator work\n")
     assert moved != feature
 
@@ -293,21 +256,16 @@ def test_unresolved_integrating_record_with_moved_head_replays_into_auto_rebase(
     )
 
     assert outcome is not None
-    # The replay re-entered the ORDINARY integration entry: the automatic
-    # rebase is the first attempt again after the crash.
     assert calls and calls[0][0] == target
     assert switches
     assert not switches[0].get("prefer_merge")
     assert not switches[0].get("force_endpoint_merge")
-    # The retention escape hatch ("unchanged feature tip") and the
-    # "lacks proof" withholding are both gone.
     assert "unchanged feature tip" not in (outcome.last_reason or "")
     assert "lacks verified completion proof" not in (outcome.last_reason or "")
     current = read_record(root)
     assert current is not None
     assert current.resolving_rebase is False
     assert current.resolving_merge is False
-    # The moved HEAD work is preserved in exactly one backup ref.
     refs = _backup_refs(root)
     assert len(refs) == 1
     assert _git(root, "show", f"{refs[0]}:feature.txt").stdout == "feature work\n"
@@ -317,12 +275,6 @@ def test_unresolved_integrating_record_with_moved_head_replays_into_auto_rebase(
 def test_promote_completed_resolution_names_a_leftover_operation_marker_instead_of_raising(
     tmp_git_repo: Path,
 ) -> None:
-    """A leftover cherry-pick marker is live Git state, not completion proof.
-
-    ``_promote_completed_resolution`` must refuse with a typed reason the
-    recovery maps onto its retained-conflict state; it must not raise the
-    terminal-state violation into the generic recovery-failure wrapper.
-    """
     root = tmp_git_repo
     target = _git(root, "branch", "--show-current").stdout.strip()
     base = _commit(root, "file.txt", "base\n")
@@ -332,8 +284,6 @@ def test_promote_completed_resolution_names_a_leftover_operation_marker_instead_
     main_work = _commit(root, "file.txt", "conflicting main work\n")
     assert _git(root, "switch", "feature").returncode == 0
     _commit(root, "file.txt", "conflicting feature work\n")
-    # A cherry-pick that stops on the conflict leaves CHERRY_PICK_HEAD:
-    # an operation marker that is neither a rebase nor a merge.
     pick = _git(root, "cherry-pick", main_work)
     assert pick.returncode != 0
     assert (root / ".git" / "CHERRY_PICK_HEAD").exists()

@@ -1,8 +1,3 @@
-"""MCP transport layer.
-
-Provides transport abstractions for MCP communication. Supports stdio and
-HTTP/SSE connections to MCP clients and servers.
-"""
 
 from __future__ import annotations
 
@@ -32,14 +27,6 @@ __all__ = [
     "TransportError",
 ]
 
-# Defense-in-depth bound for the StdioTransport reader/writer thread
-# teardown. The reader exits promptly when ``close()`` terminates the child
-# and closes stdout (EOF on the ``for raw_line in proc.stdout`` loop). The
-# writer polls ``_send_queue.get(timeout=0.1)`` and observes ``_closed``
-# within ~0.1s. A wedged reader/writer that ignores these signals MUST NOT
-# block ``close()`` forever — interpreter exit will still reap the daemon
-# threads, but a long-lived process that opens/closes transports in tight
-# loops cannot afford to leak dangling daemon threads.
 _CLOSE_THREAD_JOIN_SECONDS: Final[float] = 2.0
 
 if TYPE_CHECKING:
@@ -47,7 +34,6 @@ if TYPE_CHECKING:
 if TYPE_CHECKING:
 
     class ProcessLike(Protocol):
-        """Subset of subprocess.Popen required by StdioTransport."""
 
         @property
         def stdin(self) -> IO[bytes] | None: ...
@@ -63,7 +49,6 @@ if TYPE_CHECKING:
         def kill(self) -> None: ...
 
     class ThreadLike(Protocol):
-        """Minimal threading.Thread interface required by StdioTransport."""
 
         def start(self) -> None: ...
         def join(self, timeout: float | None = None) -> None: ...
@@ -71,11 +56,6 @@ if TYPE_CHECKING:
 
 
 class StdioTransport:
-    """MCP transport over stdio.
-
-    Communicates with an MCP server process via stdin/stdout.
-    Each line is a JSON-RPC message.
-    """
 
     def __init__(
         self,
@@ -85,12 +65,6 @@ class StdioTransport:
         process_factory: Callable[[list[str], str | None], ProcessLike] | None = None,
         thread_factory: Callable[[Callable[[], None], bool], ThreadLike] | None = None,
     ) -> None:
-        """Initialize stdio transport.
-
-        Args:
-            command: Command and arguments to spawn as MCP server.
-            cwd: Working directory for the subprocess.
-        """
         self._command = command
         self._cwd = cwd
         self._process_factory = process_factory or _default_process_factory
@@ -102,7 +76,6 @@ class StdioTransport:
         self._lock = threading.Lock()
 
     def start(self) -> None:
-        """Start the MCP server process."""
         self._process = self._process_factory(self._command, self._cwd)
         self._reader_thread = self._thread_factory(self._read_loop, True)
         self._writer_thread = self._thread_factory(self._write_loop, True)
@@ -111,13 +84,10 @@ class StdioTransport:
         logger.info("Started MCP server: {}", " ".join(self._command))
 
     def _read_loop(self) -> None:
-        """Read from stdout in a loop."""
         proc = self._process
         if proc is None or proc.stdout is None:
             return
-        # close() terminates the child and closes stdout, unblocking this iteration
-        # (EOF); consumers read via bounded _recv_queue.get(timeout=...).
-        for raw_line in proc.stdout:  # mcp-timeout-ok: unblocked by close()
+        for raw_line in proc.stdout:
             if self._closed:
                 break
             stripped = raw_line.strip()
@@ -152,7 +122,6 @@ class StdioTransport:
                 logger.warning("Failed to parse MCP message: {}", exc)
 
     def _write_loop(self) -> None:
-        """Write to stdin in a loop."""
         proc = self._process
         if proc is None or proc.stdin is None:
             return
@@ -169,7 +138,6 @@ class StdioTransport:
                 break
 
     async def send(self, message: MCPMessage) -> None:
-        """Send a message to the MCP server."""
         if self._closed:
             raise TransportError("Transport is closed")
         msg_dict: dict[str, object] = {"method": message.method}
@@ -180,7 +148,6 @@ class StdioTransport:
         self._send_queue.put(msg_dict)
 
     async def recv(self) -> AsyncIterator[MCPMessage]:
-        """Receive messages as an async iterator."""
         while not self._closed:
             try:
                 msg = self._recv_queue.get(timeout=0.1)
@@ -189,7 +156,6 @@ class StdioTransport:
                 continue
 
     async def close(self) -> None:
-        """Close the transport."""
         with self._lock:
             if self._closed:
                 return
@@ -211,27 +177,12 @@ class StdioTransport:
                                 pipe.close()
             else:
                 proc.terminate()
-                # Bound the wait so a process that ignores SIGTERM can't block
-                # the transport (and the MCP server) forever; escalate to kill.
                 try:
                     proc.wait(timeout=5.0)
                 except subprocess.TimeoutExpired:
                     proc.kill()
                     with contextlib.suppress(subprocess.TimeoutExpired):
                         proc.wait(timeout=5.0)
-        # Deterministically join the reader/writer daemon threads with a
-        # bounded timeout. The reader exits promptly when the child is
-        # terminated and stdout is closed (EOF on the ``for raw_line in
-        # proc.stdout`` loop); the writer polls ``_send_queue.get`` and
-        # observes ``_closed`` within ~0.1s. A wedged thread that ignores
-        # these signals MUST NOT block close() forever — interpreter exit
-        # will still reap the daemon threads, but a long-lived process that
-        # opens/closes transports in tight loops cannot afford to leak
-        # dangling daemon threads. ``getattr(self, ..., None)`` guards the
-        # un-started case so close() on an un-started transport is a no-op.
-        # A thread that is still alive after the bounded join is logged as a
-        # warning (visibility for ops) but close() remains non-raising —
-        # ``daemon=True`` guarantees interpreter exit will still reap it.
         for thread_attr in ("_reader_thread", "_writer_thread"):
             thread: ThreadLike | None = getattr(self, thread_attr, None)
             if thread is not None:
@@ -278,11 +229,7 @@ def _default_process_factory(command: list[str], cwd: str | None) -> ManagedProc
 
 
 def _default_thread_factory(target: Callable[[], None], daemon: bool) -> threading.Thread:
-    # factory; daemon-ness is bound by the sole callers (StdioTransport.start:
-    # _thread_factory(..., True) for both reader and writer). The audit cannot
-    # statically resolve the parameter, so the inline marker below documents
-    # the bounded lifecycle.
-    return threading.Thread(  # resource-lifecycle-ok: bounded-daemon factory
+    return threading.Thread(
         target=target,
-        daemon=daemon,  # callers pass daemon=True
+        daemon=daemon,
     )

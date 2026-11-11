@@ -1,73 +1,3 @@
-"""Duplicate-keyword forwarding audit.
-
-Bans the wrapper shape that silently breaks every call through a seam::
-
-    def wrapper(a, b, **opts):
-        return inner(a, b, some_hook=DEFAULT, **opts)
-
-``some_hook`` is not a parameter of ``wrapper``, so a caller naming it lands
-it in ``opts`` -- and the forwarded ``**opts`` then collides with the explicit
-keyword. Python raises ``TypeError: <inner>() got multiple values for keyword
-argument 'some_hook'`` at call time, never at import time, so the shape
-type-checks, passes any test that does not exercise that exact caller, and
-fails only in production.
-
-This is not hypothetical: ``ralph/pipeline/runner.py::execute_commit_effect``
-hardcoded ``has_commit_work_fn`` / ``has_residual_work_fn`` alongside
-``**opts`` while its only production caller
-(``_execute_commit_effect_from_deps``) named ``has_residual_work_fn``. Every
-commit the pipeline attempted raised ``TypeError``, which the recovery
-classifier could only label ``ambiguous``; the ``development_commit`` phase
-routed to the failed terminal, re-entered itself, and looped without ever
-producing a commit. The unit tests all called ``execute_commit_effect``
-directly and never crossed the seam.
-
-The fix, and the shape this audit enforces, is to seed the catch-all instead
-of forwarding past it::
-
-    def wrapper(a, b, **opts):
-        opts.setdefault("some_hook", DEFAULT)
-        return inner(a, b, **opts)
-
-An explicit keyword is accepted only when it genuinely cannot collide:
-
-  * It names a plain or keyword-only parameter of the enclosing function. A
-    caller passing that name binds it to the parameter, so it never reaches
-    the catch-all dict.
-
-    Positional-only parameters do NOT qualify: ``def w(a, /, **opts)`` still
-    routes ``w(1, a=2)`` into ``opts``. Neither do the ``*args`` and
-    ``**kwargs`` names themselves -- ``w(args=5)`` and ``w(opts=5)`` both land
-    in the catch-all.
-
-  * The enclosing function rejects the name before forwarding, with a guard
-    whose body raises::
-
-        if "buffering" in kwargs:
-            raise TypeError("callers must NOT pass buffering")
-
-    which turns the collision into an explicit, well-described error.
-    ``ralph/logging.py::_add_buffered_file_sink`` uses this form. A guard that
-    only logs does not qualify, because the call still raises.
-
-Forwarding is detected through derived unpacking too: ``**{**opts}`` and
-``**dict(opts)`` collide exactly as ``**opts`` does, so any ``**`` argument
-whose expression mentions the catch-all counts as a forward.
-
-Nested scopes are attributed correctly. ``audit_function`` descends into
-nested ``def``/``lambda`` bodies while extending the safe set with the names
-those scopes bind, and stops at any scope that rebinds the catch-all name --
-that scope is audited in its own right.
-
-Usage:
-    python -m ralph.testing.audit_kwargs_forwarding [root1 root2 ...]
-
-Exit codes:
-  0 = clean.
-  1 = violations found.
-  2 = a named root does not exist.
-"""
-
 from __future__ import annotations
 
 import ast
@@ -80,38 +10,21 @@ from pathlib import Path
 
 from ralph.testing._audit_parse_error import AuditParseError
 
-#: Both the shipped package and its tests are gated: a helper in ``tests/``
-#: carrying the banned shape is a landmine for the next author of that helper.
 DEFAULT_ROOTS: tuple[str, ...] = ("ralph", "tests")
 
-#: Per-file auditing is independent, so whole-tree scans fan out across a small
-#: process pool. Capped so the audit stays a polite citizen when it runs inside
-#: a sharded ``make test`` worker that already shares the machine with eleven
-#: sibling shards.
 _POOL_WORKER_CAP = 1
 
-#: Below this many candidate files the pool startup costs more than the parse
-#: work it would save, so the scan stays in-process.
 _PARALLEL_MIN_FILES = 16
 
-#: Spawned, never forked. The audit runs inside pytest/xdist workers that
-#: hold sqlite connections and other native state; a forked child that
-#: finalizes an inherited sqlite handle calls os_log, which is not
-#: fork-safe on macOS, and the pool worker dies with SIGSEGV
-#: (``BrokenProcessPool``). The worker function lives in this importable
-#: module, so a spawned child needs nothing from the parent's ``__main__``.
 _POOL_CONTEXT = multiprocessing.get_context("spawn")
 
 _Scope = ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda
 
-#: Node types that open a new binding scope, as a tuple for ``isinstance``.
 _SCOPE_NODES: tuple[type[_Scope], ...] = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
 
 
 @dataclass(frozen=True)
 class Violation:
-    """One forwarded call that can collide with its own catch-all."""
-
     path: str
     lineno: int
     function: str
@@ -128,23 +41,11 @@ class Violation:
 
 
 def _bindable_parameter_names(scope: _Scope) -> set[str]:
-    """Return the names a caller can bind by keyword on ``scope``.
-
-    Only plain and keyword-only parameters qualify. Positional-only names, the
-    ``*args`` name, and the ``**kwargs`` name are all still routable INTO the
-    catch-all by a keyword caller, so reusing them as explicit keywords beside
-    a forward is exactly as hazardous as any other name.
-    """
     args = scope.args
     return {arg.arg for arg in (*args.args, *args.kwonlyargs)}
 
 
 def _rejecting_guard_names(scope: _Scope, catchall: str) -> set[str]:
-    """Return keyword names the scope raises on before forwarding.
-
-    Recognises ``if "<name>" in <catchall>: ... raise ...``. The raise is
-    required: a guard that only logs leaves the collision intact.
-    """
     guarded: set[str] = set()
     for node in ast.walk(scope):
         if not isinstance(node, ast.If):
@@ -170,11 +71,6 @@ def _mentions(node: ast.AST, name: str) -> bool:
 
 
 def _forwards_catchall(call: ast.Call, catchall: str) -> bool:
-    """Report whether ``call`` unpacks the catch-all, directly or derived.
-
-    ``**opts``, ``**{**opts}`` and ``**dict(opts)`` all deliver the caller's
-    keys to the callee, so all three collide with an explicit keyword.
-    """
     return any(
         keyword.arg is None and _mentions(keyword.value, catchall) for keyword in call.keywords
     )
@@ -183,13 +79,6 @@ def _forwards_catchall(call: ast.Call, catchall: str) -> bool:
 def _walk_scope(
     node: ast.AST, catchall: str, safe: frozenset[str]
 ) -> list[tuple[ast.Call, frozenset[str]]]:
-    """Collect calls reachable from ``node``, carrying each one's safe-name set.
-
-    Descending into a nested ``def``/``lambda`` extends the safe set with the
-    names that scope binds, so a nested helper that declares the keyword is not
-    reported against its parent. A scope that rebinds the catch-all name is
-    skipped: it shadows the name, and its own pass audits it.
-    """
     found: list[tuple[ast.Call, frozenset[str]]] = []
     if isinstance(node, _SCOPE_NODES):
         scope = node
@@ -214,7 +103,6 @@ def audit_function(
     fn: ast.FunctionDef | ast.AsyncFunctionDef,
     path: str,
 ) -> list[Violation]:
-    """Return every colliding explicit keyword in one function's forwarded calls."""
     if fn.args.kwarg is None:
         return []
     catchall = fn.args.kwarg.arg
@@ -240,12 +128,6 @@ def audit_function(
 
 
 def audit_source(source: str, path: str) -> list[Violation]:
-    """Return every violation in one module's source text.
-
-    Raises:
-        AuditParseError: when the source does not parse. An unparseable file
-            must never be reported as clean.
-    """
     try:
         tree = ast.parse(source)
     except SyntaxError as exc:
@@ -258,7 +140,6 @@ def audit_source(source: str, path: str) -> list[Violation]:
 
 
 def _audit_file_payload(payload: tuple[str, str]) -> list[Violation]:
-    """Audit one ``(label, source)`` pair; a pool worker entry point."""
     label, source = payload
     return audit_source(source, label)
 
@@ -267,17 +148,6 @@ def audit_tree(
     package_root: Path,
     roots: tuple[str, ...] = DEFAULT_ROOTS,
 ) -> tuple[list[Violation], int]:
-    """Return violations under ``package_root`` and the number of files scanned.
-
-    The file count is part of the result so a caller can tell a genuinely
-    clean tree from a misresolved root that scanned nothing. Files are audited
-    in sorted-path order; the pool preserves that order, so violation output
-    is identical to a serial scan.
-
-    Raises:
-        FileNotFoundError: when a named root is not a directory. Silently
-            skipping it would report a vacuous clean run.
-    """
     payloads: list[tuple[str, str]] = []
     scanned = 0
     for root in roots:
@@ -306,7 +176,6 @@ def audit_tree(
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the audit over the repository and report violations."""
     args = list(sys.argv[1:] if argv is None else argv)
     package_root = Path.cwd()
     roots = tuple(args) if args else DEFAULT_ROOTS

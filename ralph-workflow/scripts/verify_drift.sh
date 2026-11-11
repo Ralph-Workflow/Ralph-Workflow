@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Fail-closed Pro-contract drift checks extracted from the Makefile.
-# Policy: docs/ralph-workflow-policy/gate-script-policy.md
 set -euo pipefail
 set -o monitor
 

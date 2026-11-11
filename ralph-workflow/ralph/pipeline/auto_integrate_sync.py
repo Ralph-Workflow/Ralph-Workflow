@@ -1,14 +1,3 @@
-"""Bounded remote freshness observation for the auto-integrate target.
-
-This module fetches only ``refs/remotes/<remote>/<target>`` and classifies it
-against the local target without moving either worktree or local branch. The
-remote-sync seam consumes :data:`REFRESH_ORIGIN_AHEAD` deliberately through
-its shared worktree-aware advance routine; this probe itself remains read-only.
-
-Every failure is fail-open: an absent or unreachable remote leaves the local
-ref untouched and records degraded provenance. Repositories without a remote
-use the shared local target ref as their fleet freshness primitive.
-"""
 
 from __future__ import annotations
 
@@ -22,15 +11,8 @@ from ralph.git.subprocess_runner import GitRunOptions, run_git
 if TYPE_CHECKING:
     from pathlib import Path
 
-#: Default configured remote name.
 DEFAULT_REFRESH_REMOTE = "origin"
 
-#: Typed outcomes of :func:`refresh_target_from_remote`. The refresh is
-#: fail-open by design -- an unreachable remote degrades to local-only
-#: integration rather than failing the run -- so the outcome is the ONLY
-#: signal that tells an operator how the mainline pointer the
-#: integration used was observed. It is recorded on
-#: ``RebaseState.last_refresh`` and rendered in the auto-integrate line.
 REFRESH_DISABLED = "fetch disabled"
 REFRESH_NO_ORIGIN = "no origin remote"
 REFRESH_NO_REMOTE = "no remote configured"
@@ -39,30 +21,10 @@ REFRESH_NO_REMOTE_BRANCH = "no remote branch"
 REFRESH_NO_LOCAL_BRANCH = "no local branch"
 REFRESH_ALREADY_CURRENT = "already current"
 REFRESH_DIVERGED = "diverged from origin"
-#: Historical outcome retained for records persisted by earlier versions.
-#: This read-only probe never emits it; application of an ahead remote is owned
-#: by the remote-sync seam's worktree-aware advance routine.
 REFRESH_REFRESHED = "refreshed from origin"
-#: The fetched remote holds commits the local target lacks. This probe only
-#: reports that fact; the remote-sync seam applies it through the safe advance
-#: routine before the feature rebase.
 REFRESH_ORIGIN_AHEAD = "origin ahead (local ref kept)"
-#: Local target contains the fetched remote target. This matters only to the
-#: opt-in sync path: it must publish later, not rebase local history.
 REFRESH_LOCAL_AHEAD = "local ahead of remote"
-#: The target pointer was re-observed from the SHARED ref store rather
-#: than from a remote. This is the normal outcome for Ralph's own
-#: linked-worktree fleet, where every agent's ``wt-0NN-*`` worktree
-#: shares one git common directory and sibling agents advance the local
-#: ``refs/heads/<target>`` directly, with no ``origin`` involved.
-#: Distinct from :data:`REFRESH_NO_ORIGIN`, which means the target
-#: could not be observed AT ALL -- neither remotely nor locally.
 REFRESH_LOCAL_FLEET = "local fleet"
-#: The boundary refresh throttle declined this probe, so NO refresh was
-#: taken. Recorded rather than left as ``None`` because a boundary
-#: decided from a pointer nobody re-read this round is exactly as
-#: unverifiable as one whose refresh failed -- the operator has to be
-#: able to tell that case from a genuinely fresh one.
 REFRESH_SUPPRESSED = "refresh suppressed by throttle"
 
 __all__ = [
@@ -87,19 +49,6 @@ __all__ = [
 
 
 def observe_target_sha(repo_root: Path, target: str) -> str | None:
-    """Re-read ``refs/heads/<target>`` from the shared ref store.
-
-    Returns the SHA, or ``None`` when the branch does not exist.
-
-    Branch refs live in the git COMMON directory, not in the per-worktree
-    git dir, so this read observes updates made by any sibling worktree
-    in the fleet -- including ones that landed microseconds ago. That is
-    what makes it the correct freshness primitive for the local fleet:
-    the pointer other agents advance is already the one this call reads.
-
-    Never raises; an unusable repository reports ``None`` so the
-    fail-open refresh contract is preserved.
-    """
     try:
         from ralph.git.operations import _read_ref_from_disk, _resolve_gitdir_paths
 
@@ -135,20 +84,6 @@ def refresh_target_from_remote(
     timeout_seconds: float,
     remote: str = DEFAULT_REFRESH_REMOTE,
 ) -> str:
-    """Observe the freshness of ``refs/heads/<target>``, fetching ``remote`` if any.
-
-    Returns one of the ``REFRESH_*`` outcomes. Never raises, pushes, or
-    moves a local ref: fetch updates only the remote-tracking ref and the
-    comparison is pure reporting. The caller may apply an ahead outcome through
-    the shared worktree-aware advance routine.
-
-    Args:
-        repo_root: Repository root in which to run the probe.
-        target: Branch whose freshness to observe.
-        timeout_seconds: Per-attempt wall-clock fetch budget.
-        remote: The remote to fetch from. Defaults to ``origin`` for
-            the configured remote-sync tier passes its configured remote here.
-    """
     try:
         has_remote = _has_remote(repo_root, remote)
     except Exception as remote_exc:
@@ -158,10 +93,6 @@ def refresh_target_from_remote(
         return _observe_without_remote(repo_root, target, remote)
 
     if not _fetch_target(repo_root, target, timeout_seconds, remote=remote):
-        # A cached ``refs/remotes/<remote>/<target>`` from an earlier,
-        # successful fetch is NOT evidence of a fresh remote read: it
-        # can be arbitrarily old. Reporting anything but UNREACHABLE
-        # here would assert a freshness this call never established.
         logger.debug(
             "auto_integrate: fetch of '{}' from '{}' failed; remote unreachable",
             target,
@@ -182,17 +113,6 @@ def refresh_target_from_remote(
 
 
 def _observe_without_remote(repo_root: Path, target: str, remote: str) -> str:
-    """Report freshness for a repository that has no ``remote`` configured.
-
-    'No remote' is not the same as 'no fresh pointer'. Ralph's own agent
-    fleet runs as linked worktrees over one git common directory with no
-    remote at all, and sibling agents advance ``refs/heads/<target>``
-    there continuously. So the local ref is re-observed and
-    :data:`REFRESH_LOCAL_FLEET` is reported. The ``REFRESH_NO_ORIGIN``
-    outcome survives for the legacy observe-only path where ``remote``
-    is ``origin``; ``REFRESH_NO_REMOTE`` is the parametrized equivalent
-    used by remote sync with a custom remote.
-    """
     observed = observe_target_sha(repo_root, target)
     if observed is None:
         logger.debug(
@@ -211,18 +131,8 @@ def _observe_without_remote(repo_root: Path, target: str, remote: str) -> str:
 
 
 def _classify_remote_position(repo_root: Path, target: str, remote: str) -> str:
-    """Name where ``remote`` sits relative to the authoritative local ref.
-
-    Pure observation over refs a successful fetch just updated: no branch in
-    this function mutates anything. The strict-ancestor probe distinguishes a
-    remote that is simply ahead (for the caller to apply safely) from one that
-    diverged (for the caller to reconcile).
-    """
     remote_sha = _remote_tracking_sha(repo_root, target, remote)
     if remote_sha is None:
-        # Reached only after a SUCCESSFUL fetch, so the remote
-        # genuinely does not carry this branch -- the unreachable case
-        # returned before this function was called.
         logger.debug(
             "auto_integrate: no remote-tracking ref for '{}/{}'; nothing to observe",
             remote,
@@ -258,7 +168,6 @@ def _classify_remote_position(repo_root: Path, target: str, remote: str) -> str:
 
 
 def remote_configured(repo_root: Path, remote: str) -> bool:
-    """Whether ``remote`` is configured in ``repo_root``; no network, never raises."""
     try:
         return _has_remote(repo_root, remote)
     except Exception as remote_exc:
@@ -267,13 +176,6 @@ def remote_configured(repo_root: Path, remote: str) -> bool:
 
 
 def _has_remote(repo_root: Path, remote: str) -> bool:
-    """True when ``remote`` is configured; no network call.
-
-    Filters empty / whitespace names defensively -- an empty remote
-    name on the legacy observe-only path is the same as "no origin",
-    just rendered differently for the operator. Anything else is
-    decided from a real ``git remote get-url`` query.
-    """
     if not isinstance(remote, str) or not remote.strip():
         return False
     result = run_git(
@@ -291,15 +193,6 @@ def _fetch_target(
     *,
     remote: str,
 ) -> bool:
-    """Fetch exactly one branch from ``remote``, bounded and fail-open.
-
-    Returns whether the fetch itself succeeded. The fetch touches ONLY
-    ``refs/remotes/<remote>/<target>``; no local ref is examined, moved
-    or created here. A failure ENDS the refresh with
-    :data:`REFRESH_UNREACHABLE`. ``run_git`` already forces
-    ``GIT_TERMINAL_PROMPT=0`` and ``GCM_INTERACTIVE=Never``, so a
-    credential prompt fails fast rather than hanging.
-    """
     try:
         result = run_git(
             ("fetch", "--quiet", remote, "--", target),
@@ -316,7 +209,6 @@ def _fetch_target(
 
 
 def _remote_tracking_sha(repo_root: Path, target: str, remote: str) -> str | None:
-    """SHA of ``refs/remotes/<remote>/<target>``, or None when absent."""
     try:
         from ralph.git.operations import _read_ref_from_disk, _resolve_gitdir_paths
 

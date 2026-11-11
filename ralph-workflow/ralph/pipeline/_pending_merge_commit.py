@@ -1,4 +1,3 @@
-"""Durable ownership of a verified merge awaiting its normal commit hooks."""
 
 from __future__ import annotations
 
@@ -9,7 +8,7 @@ from loguru import logger
 if TYPE_CHECKING:
     from pathlib import Path
 
-from ralph.git import subprocess_runner  # call-time run_git: never capture a test fake
+from ralph.git import subprocess_runner
 from ralph.git.merge import (
     MERGE_STATE_IN_PROGRESS,
     MERGE_STATE_NONE,
@@ -77,7 +76,6 @@ def _git_value(root: Path, *args: str) -> str | None:
 
 
 def mark_pending_merge(root: Path, target: str, *, resolving: bool = False) -> None:
-    """Protect resolver edits before invoking the agent or capturing index identities."""
     record = read_record(root) or IntegrationRecord(
         phase="integrating",
         target=target,
@@ -103,7 +101,6 @@ def mark_pending_merge(root: Path, target: str, *, resolving: bool = False) -> N
 
 
 def prepare_pending_merge(root: Path, target: str) -> str | None:
-    """Persist the exact resolved index and merge parents before attempting commit."""
     mark_pending_merge(root, target)
     head = _git_value(root, "rev-parse", "--verify", "HEAD")
     parent = _git_value(root, "rev-parse", "--verify", "MERGE_HEAD")
@@ -129,7 +126,6 @@ def prepare_pending_merge(root: Path, target: str) -> str | None:
 
 
 def pending_merge_identity_matches(root: Path, record: IntegrationRecord) -> bool:
-    """Prove a live merge still contains exactly the verified index and parents."""
     return (
         bool(record.merge_commit_head and record.merge_commit_parent and record.merge_commit_tree)
         and merge_state(root) == MERGE_STATE_IN_PROGRESS
@@ -142,7 +138,6 @@ def pending_merge_identity_matches(root: Path, record: IntegrationRecord) -> boo
 
 
 def _complete_pending_snapshot(root: Path, record: IntegrationRecord) -> IntegrationRecord | str:
-    """Reprove a clean resolved index only while both original merge parents remain."""
     if (
         any((record.merge_commit_head, record.merge_commit_parent, record.merge_commit_tree))
         or not record.pre_feature_sha
@@ -162,12 +157,6 @@ def _complete_pending_snapshot(root: Path, record: IntegrationRecord) -> Integra
 
 
 def resume_pending_merge(root: Path, record: IntegrationRecord) -> IntegrationRecord | str:
-    """Retry only the recorded merge commit; refuse changed index or parent evidence.
-
-    An already-created commit is accepted only when its tree and both ordered
-    parents match the prepared record, covering a crash before record promotion.
-    Failure retains the original record and repository state for a later retry.
-    """
     if record.repair_commit_controls is not None:
         from ralph.pipeline._pending_repair_edits import capture_commit_controls
 

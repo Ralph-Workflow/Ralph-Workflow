@@ -1,4 +1,3 @@
-"""PTY-based process line reader compatibility shim."""
 
 from __future__ import annotations
 

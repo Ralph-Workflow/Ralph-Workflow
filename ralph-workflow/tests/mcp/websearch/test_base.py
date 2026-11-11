@@ -9,7 +9,7 @@ from typing import Any
 def _import_base_module() -> object:
     try:
         return import_module("ralph.mcp.websearch.backends.base")
-    except ModuleNotFoundError as exc:  # pragma: no cover - exercised in RED phase
+    except ModuleNotFoundError as exc:
         raise AssertionError("ralph.mcp.websearch.backends.base should exist") from exc
 
 

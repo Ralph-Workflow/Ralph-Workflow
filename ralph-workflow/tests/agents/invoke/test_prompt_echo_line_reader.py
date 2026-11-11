@@ -1,5 +1,3 @@
-"""Reader-level regression coverage for prompt echoes."""
-
 from __future__ import annotations
 
 import os
@@ -26,8 +24,6 @@ _PROMPT = "plan the implementation step by step"
 
 
 class _ProcessHandle(ManagedProcess):
-    # OpenCode's prompt is delivered on stdin, so a process fake must
-    # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
     stdin = None
 
     def __init__(self) -> None:
@@ -112,7 +108,6 @@ def _pty_reader() -> tuple[PtyLineReader, IdleWatchdog, int]:
 
 
 def test_line_readers_regression_prompt_echo_does_not_count_as_meaningful_output() -> None:
-    """S-7: both transports exclude deterministic prompt echoes from LLM activity."""
     assert is_prompt_echo_line(_PROMPT, _PROMPT) is True
     assert is_prompt_echo_line("thinking: planning next step", _PROMPT) is False
 
@@ -129,7 +124,6 @@ def test_line_readers_regression_prompt_echo_does_not_count_as_meaningful_output
 
 
 def test_process_line_reader_regression_real_output_counts_as_meaningful_after_echoes() -> None:
-    """S-7: echo traffic must not suppress a subsequent genuine LLM response."""
     reader, watchdog = _process_reader()
     for _ in range(5):
         record_line_activity(reader, watchdog, _PROMPT)

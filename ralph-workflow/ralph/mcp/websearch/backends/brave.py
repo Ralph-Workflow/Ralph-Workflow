@@ -1,4 +1,3 @@
-"""Brave Search web-search backend."""
 
 from __future__ import annotations
 
@@ -19,7 +18,6 @@ _DEFAULT_URL = "https://api.search.brave.com/res/v1/web/search"
 
 @dataclass(frozen=True)
 class BraveBackend:
-    """Backend powered by Brave Search's HTTP API."""
 
     api_key: str | None = None
     api_key_env: str | None = None

@@ -1,5 +1,3 @@
-"""Tests for parallel pipeline effect types."""
-
 from __future__ import annotations
 
 import typing

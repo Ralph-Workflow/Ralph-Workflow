@@ -1,18 +1,3 @@
-"""Black-box end-to-end test: the runner follows the failure ledger's verdict.
-
-The failure ledger is the single owner of agent health, so the runner's
-end-to-end recovery behaviour follows the ledger and nothing else:
-
-- The chain runs its agents in priority order; a demoted agent is skipped
-  and the chain falls over to the next agent.
-- When every agent in the chain is spent, the phase fails, the recovery
-  cycle counter advances, and the runner stops with exit code 1 -- it never
-  reports success.
-
-The ledger remembers the demotion, so the run does not re-enter the phase
-with an agent the ledger already spent.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -49,9 +34,6 @@ _CYCLE_CAP = 3
 
 
 def _test_config() -> UnifiedConfig:
-    # One unproductive attempt spends the agent: the ledger's TOTAL limit is
-    # checked before the CONSECUTIVE limit, so a single failure demotes the
-    # agent for the phase.
     return UnifiedConfig(
         general=GeneralConfig(
             agent_max_consecutive_unproductive=1,
@@ -61,7 +43,6 @@ def _test_config() -> UnifiedConfig:
 
 
 def _make_policy_bundle() -> PolicyBundle:
-    """Build a policy bundle with a two-agent chain for fallover testing."""
     agents = AgentsPolicy(
         agent_chains={
             "dev-chain": AgentChainConfig(
@@ -136,16 +117,6 @@ def test_runner_tries_the_whole_chain_before_stopping(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The runner runs every agent in the chain, then stops with exit code 1.
-
-    With a two-agent chain (claude -> opencode):
-    - claude fails and the ledger spends it -> the chain falls over to opencode
-    - opencode fails and the ledger spends it -> the chain is exhausted, so the
-      phase fails and the runner stops with exit code 1 (never 0)
-
-    The ledger remembers the demotion, so the runner does not re-enter the
-    phase with an agent the ledger already spent.
-    """
     bundle = _make_policy_bundle()
 
     saved_states: list[PipelineState] = []
@@ -177,26 +148,16 @@ def test_runner_tries_the_whole_chain_before_stopping(
     )
 
     assert exit_code == 1
-    # Both agents of the chain ran before the run stopped.
     assert invocation_count == 2, (
         f"Expected both agents of the chain to run, got {invocation_count} invocations"
     )
 
 
-# ponytail: the full recovery-cycle event flow can exceed 1s under xdist; 5s preserves its black-box contract within the 60s suite cap.
 @pytest.mark.timeout_seconds(5)
 def test_runner_records_failure_and_fallover_events(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Each agent invocation records a FailureEvent; the chain records a FalloverEvent.
-
-    Captured by subscribing to the controller's bus via patching
-    ralph.recovery.controller.FailureEventBus (the class used at construction time).
-
-    With a two-agent chain:
-    - 2 FailureEvents (one per agent) + 1 FalloverEvent (claude -> opencode)
-    """
 
     bundle = _make_policy_bundle()
 
@@ -233,7 +194,6 @@ def test_runner_records_failure_and_fallover_events(
     )
 
     assert exit_code == 1
-    # One FailureEvent per agent invocation.
     assert len(captured_failure_events) == 2, (
         f"Expected 2 FailureEvents (one per agent), got {len(captured_failure_events)}"
     )
@@ -243,7 +203,6 @@ def test_runner_records_failure_and_fallover_events(
         assert evt.phase == "development"
         assert evt.agent in ("claude", "opencode")
 
-    # The chain falls over from claude to opencode.
     assert len(captured_fallover_events) == 1, (
         f"Expected 1 FalloverEvent, got {len(captured_fallover_events)}"
     )
@@ -257,7 +216,6 @@ def test_runner_fallover_history_reflects_agent_transitions(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The fallover_history in final state shows the agent transition."""
     bundle = _make_policy_bundle()
 
     saved_states: list[PipelineState] = []
@@ -280,7 +238,6 @@ def test_runner_fallover_history_reflects_agent_transitions(
     assert exit_code == 1
     assert len(saved_states) > 0, "Expected at least one saved checkpoint"
 
-    # Find the final saved state (last one with non-zero recovery_cycle_count)
     final_state = None
     for state in reversed(saved_states):
         if isinstance(state, PipelineState) and state.recovery_cycle_count > 0:
@@ -302,7 +259,6 @@ def test_runner_recovery_cycle_count_advances(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The recovery_cycle_count in saved checkpoints advances with the phase failure."""
     bundle = _make_policy_bundle()
 
     saved_states: list[PipelineState] = []

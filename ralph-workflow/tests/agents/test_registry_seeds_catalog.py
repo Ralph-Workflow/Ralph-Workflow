@@ -1,5 +1,3 @@
-"""Tests for AgentRegistry seeding the catalog with built-in agents."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -49,25 +47,20 @@ def _reset_catalog() -> object:
 
 def test_registry_seeds_catalog() -> None:
     catalog = default_catalog()
-    # Ensure they are seeded via AgentRegistry from_config
     registry = AgentRegistry.from_config(UnifiedConfig())
 
-    # (a) AgentRegistry() finds default_catalog().get('claude')
     claude_support = catalog.get("claude")
     assert claude_support is not None
     assert claude_support.spec.requires_pty is True
 
-    # (b) AgentRegistry() finds default_catalog().get('claude-headless')
     headless_support = catalog.get("claude-headless")
     assert headless_support is not None
     assert headless_support.spec.requires_pty is False
 
-    # (c) AgentRegistry() finds default_catalog().get('agy')
     agy_support = catalog.get("agy")
     assert agy_support is not None
     assert agy_support.spec.requires_pty is True
 
-    # (d) the eight built-in names are present in the catalog and registry
     builtins = {
         "claude",
         "claude-headless",
@@ -83,12 +76,9 @@ def test_registry_seeds_catalog() -> None:
         assert name in catalog_agents
         assert name in registry.agents
 
-    # (e) the seed is idempotent (calling AgentRegistry() twice does not raise)
-    # This also exercises from_config which calls _seed_catalog_with_builtins(default_catalog())
     registry2 = AgentRegistry.from_config(UnifiedConfig())
     assert registry2 is not None
 
-    # (f) builtin_agents() and builtin_supports() agree on names and cmds
     legacy = builtin_agents()
     supports = builtin_supports()
     assert len(legacy) == len(supports)

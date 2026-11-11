@@ -22,7 +22,6 @@ def _write_all(fd: int, payload: bytes) -> None:
 
 @pytest.mark.timeout_seconds(5)
 def test_pty_reader_regression_overlong_pending_tail_yields_newest_complete_line() -> None:
-    """S-5 / DA-002: the public reader retains the newest completed PTY line."""
     read_fd, write_fd = os.pipe()
     reader = PtyLineReader(
         _FakePtyHandle(read_fd),

@@ -1,5 +1,3 @@
-"""AGY fallback promotion keeps commit artifacts on the canonical path."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -26,7 +24,6 @@ subject: fix(agy): preserve canonical commit receipt
 
 
 def test_agy_commit_artifact_regression_promotes_valid_fallback_canonically(tmp_path: Path) -> None:
-    """DA-004: AGY's commit artifact receives the ordinary canonical receipt."""
     fallback = tmp_path / ".agent" / "tmp" / "commit_message.md"
     fallback.parent.mkdir(parents=True)
     fallback.write_text(_commit_markdown(), encoding="utf-8")
@@ -41,7 +38,6 @@ def test_agy_commit_artifact_regression_promotes_valid_fallback_canonically(tmp_
 
 
 def test_agy_commit_artifact_regression_rejects_malformed_fallback(tmp_path: Path) -> None:
-    """DA-004: malformed AGY commit artifacts never receive a canonical receipt."""
     fallback = tmp_path / ".agent" / "tmp" / "commit_message.md"
     fallback.parent.mkdir(parents=True)
     fallback.write_text("---\ntype: commit\n---", encoding="utf-8")

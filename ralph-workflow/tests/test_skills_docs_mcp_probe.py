@@ -1,5 +1,3 @@
-"""Tests for ralph.skills._docs_mcp_probe URL validation."""
-
 from ralph.skills._docs_mcp_probe import (
     SUPPORTED_DOCS_MCP_PATHS,
     is_supported_docs_mcp_url,

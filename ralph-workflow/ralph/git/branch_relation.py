@@ -1,11 +1,3 @@
-"""How a feature tip and its integration target stand to each other.
-
-This is the ONE place both ancestry directions are read and named. Every
-gate and every "nothing to do" shortcut asks it, so the planning gate and
-the integration seam can never answer opposite questions about the same
-pair of branches. Probes are reached through their modules so a test can
-substitute git's answers at the same seams the rest of integration uses.
-"""
 
 from __future__ import annotations
 
@@ -20,12 +12,6 @@ from ralph.git.rebase import rebase as rebase_module
 
 
 class BranchRelation(StrEnum):
-    """How a feature tip and its integration target stand to each other.
-
-    Two independent questions, so four known answers plus "not proven":
-    is the target inside the feature (nothing to catch up) and is the
-    feature inside the target (nothing to land)?
-    """
 
     SYNCED = "synced"
     TARGET_AHEAD = "target_ahead"
@@ -35,7 +21,6 @@ class BranchRelation(StrEnum):
 
     @property
     def needs_catch_up(self) -> bool:
-        """The feature lacks target commits (unproven counts as lacking)."""
         return self in {
             BranchRelation.TARGET_AHEAD,
             BranchRelation.DIVERGED,
@@ -44,7 +29,6 @@ class BranchRelation(StrEnum):
 
     @property
     def needs_landing(self) -> bool:
-        """The target lacks feature commits (unproven counts as lacking)."""
         return self in {
             BranchRelation.FEATURE_AHEAD,
             BranchRelation.DIVERGED,
@@ -53,7 +37,6 @@ class BranchRelation(StrEnum):
 
 
 def _operation_in_flight(root: Path) -> bool:
-    """Whether a rebase or merge is paused here; unreadable counts as paused."""
     try:
         return rebase_module.rebase_in_progress(root) or merge_module.merge_state(root) != (
             merge_module.MERGE_STATE_NONE
@@ -64,13 +47,6 @@ def _operation_in_flight(root: Path) -> bool:
 
 
 def branch_relation(repo_root: Path | str, target: str, feature: str = "HEAD") -> BranchRelation:
-    """Classify ``feature`` against ``target`` from git's ancestry answers.
-
-    Any unanswered query makes the whole relation ``UNKNOWN``: an
-    unreadable repository is never "in sync". So does a rebase or merge in
-    flight: a paused rebase detaches ``HEAD`` onto target-side commits, so
-    ancestry would read "synced" for a tree that is half replayed.
-    """
     if _operation_in_flight(Path(repo_root)):
         return BranchRelation.UNKNOWN
     target_in_feature = merge_obstructions.ancestry_state(repo_root, target, feature)

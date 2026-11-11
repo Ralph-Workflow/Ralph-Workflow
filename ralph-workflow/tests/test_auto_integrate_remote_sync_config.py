@@ -1,5 +1,3 @@
-"""Tests for retired auto-integration configuration keys."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -11,7 +9,6 @@ from ralph.config.loader import load_config, load_local_only
 
 
 def test_retired_auto_integrate_key_is_ignored_once_without_unknown_warning(tmp_path: Path) -> None:
-    """S-1: a retired key is ignored and warned once, never reported as unknown."""
     path = tmp_path / "ralph-workflow.toml"
     path.write_text("[general]\nauto_integrate_remote_sync_enabled = true\n", encoding="utf-8")
     records: list[str] = []
@@ -31,7 +28,6 @@ def test_retired_auto_integrate_key_is_ignored_once_without_unknown_warning(tmp_
 def test_retired_auto_integrate_key_warns_once_per_source_layer(
     monkeypatch, tmp_path: Path
 ) -> None:
-    """S-2: matching retired keys in global and local layers warn once each."""
     config_home = tmp_path / "config"
     config_home.mkdir()
     (config_home / "ralph-workflow.toml").write_text(

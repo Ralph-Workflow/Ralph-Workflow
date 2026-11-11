@@ -1,5 +1,3 @@
-"""Unit tests for CLI."""
-
 from __future__ import annotations
 
 import pytest
@@ -37,8 +35,6 @@ def _captured_developer_iters(captured: dict[str, object]) -> object:
 
 
 class TestLongModeSemantics:
-    """Tests for --long/-L flag behavior."""
-
     def test_long_mode_forces_developer_iters_5(self, monkeypatch: pytest.MonkeyPatch) -> None:
         captured = _stub_pipeline(monkeypatch)
 

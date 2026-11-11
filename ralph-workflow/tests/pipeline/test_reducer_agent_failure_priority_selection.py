@@ -1,5 +1,3 @@
-"""Regression tests for reducer AGENT_FAILURE path priority agent selection."""
-
 from __future__ import annotations
 
 import tempfile
@@ -46,7 +44,6 @@ def test_reducer_fallover_returns_to_preferred_available_agent() -> None:
             clock=clock,
         )
     )
-    # Index 1 (opencode), index 0 (claude) is available. Retries at cap (3).
     state = _three_agent_state(current_index=1, retries=3)
     policy = _minimal_policy()
 
@@ -81,7 +78,6 @@ def test_reducer_fallover_skips_agent_in_cooldown() -> None:
             unavailability_entries=initial_entries,
         )
     )
-    # Index 1 (opencode), claude in cooldown (5000ms). Retries at cap (3).
     from ralph.recovery.agent_failure_ledger import AttemptFact
 
     for _ in range(2):
@@ -116,7 +112,6 @@ def test_reducer_priority_beats_same_agent_retry() -> None:
             clock=clock,
         )
     )
-    # Index 1 (opencode), claude (index 0) is available, retries below cap (0).
     state = _three_agent_state(current_index=1, retries=0)
     policy = _minimal_policy()
 
@@ -132,8 +127,6 @@ def test_reducer_priority_beats_same_agent_retry() -> None:
 
 
 def test_reducer_recovery_none_fails_closed_instead_of_advancing_locally() -> None:
-    # Without an owner there is no verdict to apply, so the reducer must not
-    # advance the chain on its own authority: it fails the phase closed.
     state = _three_agent_state(current_index=1, retries=3)
     policy = _minimal_policy()
 

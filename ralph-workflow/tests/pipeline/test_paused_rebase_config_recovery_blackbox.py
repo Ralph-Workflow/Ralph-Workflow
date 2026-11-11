@@ -1,21 +1,3 @@
-"""Black-box regression tests for paused rebase continuation under configuration failure.
-
-Verifies:
-1. Typed ResolutionFailureCause.CONFIG_FAILURE is preserved across paused rebase
-   continuation (not falsely replaced with UNRESOLVED_CONFLICT) using real malformed
-   TOML and the production config/context/recovery path.
-2. Zero CRITICAL log lines are emitted during config failure continuation and
-   subsequent retry-gated ticks (preventing CRITICAL log flood).
-3. The continuation retry gate properly suppresses repeat attempts for unchanged
-   broken configuration while preserving the typed CONFIG_FAILURE cause and no false
-   agent announcements or budget charges occur.
-4. Repairing the configuration file releases the retry gate, allowing resolution
-   to reload real config from disk and retry/succeed exactly once.
-5. The run-loop retry path does not increment consecutive_conflicts for CONFIG_FAILURE
-   and formats actionable alerts naming the configuration fix rather than generic conflict.
-6. The startup recovery preamble end-to-end preserves CONFIG_FAILURE and recovers after repair.
-"""
-
 from __future__ import annotations
 
 import contextlib
@@ -177,7 +159,6 @@ def test_paused_rebase_continuation_preserves_config_failure_cause_and_prevents_
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Continuation of a paused rebase under real config failure preserves CONFIG_FAILURE and emits no CRITICAL logs."""
     root, cfg_file, feat_sha, main_sha = _setup_repo_with_paused_rebase_and_broken_config(tmp_path)
 
     initial_record = IntegrationRecord(
@@ -195,8 +176,6 @@ def test_paused_rebase_continuation_preserves_config_failure_cause_and_prevents_
 
     captured, sink_id = _capture_loguru_records()
     try:
-        # Run continuation recovery directly through production recover_pending_merge
-        # with the real agent rebase stop resolver and real paused git rebase.
         outcome = recover_pending_merge(
             root,
             initial_record,
@@ -205,21 +184,17 @@ def test_paused_rebase_continuation_preserves_config_failure_cause_and_prevents_
             recovery_controller=ctrl,
         )
 
-        # 1. Failure cause MUST be CONFIG_FAILURE, NOT UNRESOLVED_CONFLICT
         assert outcome.last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE
         assert outcome.last_outcome == RebaseOutcomeKind.CONFLICT
         assert outcome.recovery_record_retained is True
-        # RALPH-TEST-REASON: replaced mock fix_reason with production config failure reason asserting cfg_file and check command
         assert str(cfg_file) in (outcome.last_reason or "")
         assert "ralph --check-config" in (outcome.last_reason or "")
         assert outcome.resolution_exhausted is False
         assert outcome.resolution_exhaustion_reason is None
         assert outcome.consecutive_conflicts == 0
 
-        # No false agent invocation or announcement
         assert agent_invocations[0] == 0
 
-        # Observable warning log containing filename, check command, and strict-config cause
         warn_logs = [r for r in captured if r["level"].name == "WARNING"]
         config_warns = [
             r
@@ -230,17 +205,14 @@ def test_paused_rebase_continuation_preserves_config_failure_cause_and_prevents_
         ]
         assert len(config_warns) >= 1, f"Expected config failure warning log, got: {warn_logs}"
 
-        # 2. ZERO CRITICAL log lines emitted
         critical_logs = [r for r in captured if r["level"].name == "CRITICAL"]
         assert len(critical_logs) == 0, f"Expected 0 CRITICAL logs, got: {critical_logs}"
 
-        # 3. Disk record retains typed CONFIG_FAILURE and computed gate key
         disk_rec = read_record(root)
         assert disk_rec is not None
         assert disk_rec.last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE
         assert disk_rec.resolution_gate_key is not None
 
-        # 4. Subsequent run with unchanged state is quietly gated
         outcome2 = recover_pending_merge(
             root,
             disk_rec,
@@ -252,11 +224,9 @@ def test_paused_rebase_continuation_preserves_config_failure_cause_and_prevents_
         assert outcome2.last_reason is not None and "WAITING" in outcome2.last_reason
         assert agent_invocations[0] == 0
 
-        # Still ZERO CRITICAL logs after the gated second run
         critical_logs_r2 = [r for r in captured if r["level"].name == "CRITICAL"]
         assert len(critical_logs_r2) == 0
 
-        # Exactly one WAITING line emitted across both passes
         waiting_logs = [r for r in captured if "WAITING" in r["message"]]
         assert len(waiting_logs) == 1
     finally:
@@ -268,7 +238,6 @@ def test_paused_rebase_config_repair_releases_gate_and_recovers(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """When a failing config file is repaired, the retry gate opens and resolution proceeds."""
     root, cfg_file, feat_sha, main_sha = _setup_repo_with_paused_rebase_and_broken_config(tmp_path)
 
     initial_record = IntegrationRecord(
@@ -284,7 +253,6 @@ def test_paused_rebase_config_repair_releases_gate_and_recovers(
     agent_invocations = [0]
     resolver = _setup_agent_rebase_resolver(root, agent_invocations, monkeypatch)
 
-    # Initial attempt establishes gated state under real config failure
     outcome1 = recover_pending_merge(
         root,
         initial_record,
@@ -292,13 +260,11 @@ def test_paused_rebase_config_repair_releases_gate_and_recovers(
         rebase_stop_resolver=resolver,
         recovery_controller=ctrl,
     )
-    # RALPH-TEST-REASON: replaced mock resolve_calls with real production agent_invocations tracking
     assert agent_invocations[0] == 0
     assert outcome1.last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE
     assert str(cfg_file) in (outcome1.last_reason or "")
     assert "ralph --check-config" in (outcome1.last_reason or "")
 
-    # Second pass with unchanged broken config is gated
     rec_after_1 = read_record(root)
     assert rec_after_1 is not None
     outcome2 = recover_pending_merge(
@@ -308,16 +274,12 @@ def test_paused_rebase_config_repair_releases_gate_and_recovers(
         rebase_stop_resolver=resolver,
         recovery_controller=ctrl,
     )
-    # RALPH-TEST-REASON: replaced mock resolve_calls with real production agent_invocations tracking
-    assert agent_invocations[0] == 0  # Not called again
+    assert agent_invocations[0] == 0
     assert outcome2.last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE
     assert "WAITING" in (outcome2.last_reason or "")
 
-    # Repair the config file with valid TOML
     cfg_file.write_text("[general]\n", encoding="utf-8")
 
-    # Third pass detects fingerprint change across workspace config sources,
-    # reloads real config, opens the retry gate, and executes the agent resolver once
     outcome3 = recover_pending_merge(
         root,
         rec_after_1,
@@ -326,14 +288,12 @@ def test_paused_rebase_config_repair_releases_gate_and_recovers(
         recovery_controller=ctrl,
     )
     assert outcome3 is not None
-    # RALPH-TEST-REASON: replaced mock resolve_calls with real production agent_invocations tracking
-    assert agent_invocations[0] == 1  # Invoked exactly once after repair!
-    assert not (root / ".git" / "rebase-merge").exists()  # Rebase finished!
+    assert agent_invocations[0] == 1
+    assert not (root / ".git" / "rebase-merge").exists()
     assert outcome3.last_outcome == RebaseOutcomeKind.RECOVERED
     assert outcome3.last_failure_cause != ResolutionFailureCause.CONFIG_FAILURE
-    assert read_record(root) is None  # Recovery record cleared upon successful completion
+    assert read_record(root) is None
 
-    # Subsequent call with rebase finished does not re-invoke agent
     outcome4 = recover_pending_merge(
         root,
         IntegrationRecord(
@@ -347,11 +307,10 @@ def test_paused_rebase_config_repair_releases_gate_and_recovers(
         recovery_controller=ctrl,
     )
     assert outcome4 is not None
-    assert agent_invocations[0] == 1  # Still 1, not called again
+    assert agent_invocations[0] == 1
 
 
 def test_paused_rebase_run_loop_preserves_cause_and_does_not_bump_conflicts(tmp_path: Path) -> None:
-    """Run-loop handling of paused rebase with CONFIG_FAILURE does not bump conflict counter and formats alert."""
     fix_reason = f"fix {tmp_path}/.agent/ralph-workflow.toml then run ralph --check-config"
     rebase = RebaseState(
         last_outcome=RebaseOutcomeKind.CONFLICT,
@@ -373,10 +332,8 @@ def test_paused_rebase_run_loop_preserves_cause_and_does_not_bump_conflicts(tmp_
         backend=MagicMock(),
     )
 
-    # 1. consecutive_conflicts must NOT be charged
     assert handled.rebase.consecutive_conflicts == 2
 
-    # 2. Alert formatting cleanly surfaces CONFIG_FAILURE and fix instructions
     alert = integration_alert_for_state(handled)
     assert alert is not None
     assert "CONFIG_FAILURE" in alert
@@ -389,7 +346,6 @@ def test_paused_rebase_recovery_preamble_end_to_end(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """End-to-end recovery preamble with paused rebase and broken config preserves cause and emits no CRITICAL logs."""
     root, cfg_file, feat_sha, main_sha = _setup_repo_with_paused_rebase_and_broken_config(tmp_path)
 
     initial_record = IntegrationRecord(
@@ -407,7 +363,6 @@ def test_paused_rebase_recovery_preamble_end_to_end(
 
     captured, sink_id = _capture_loguru_records()
     try:
-        # Phase 1: Preamble under real broken config fails closed with CONFIG_FAILURE
         outcome = run_auto_integrate_recovery_preamble(
             scope,
             config=None,
@@ -423,7 +378,6 @@ def test_paused_rebase_recovery_preamble_end_to_end(
         assert agent_invocations[0] == 0
         assert len([r for r in captured if r["level"].name == "CRITICAL"]) == 0
 
-        # Phase 2: Repair config and re-run preamble -> reloads real config, retries once, recovers cleanly
         cfg_file.write_text("[general]\n", encoding="utf-8")
         outcome_repaired = run_auto_integrate_recovery_preamble(
             scope,
@@ -432,7 +386,7 @@ def test_paused_rebase_recovery_preamble_end_to_end(
         )
         assert outcome_repaired is not None
         assert outcome_repaired.last_outcome == RebaseOutcomeKind.RECOVERED
-        assert agent_invocations[0] == 1  # Exactly one agent invocation on retry after repair
+        assert agent_invocations[0] == 1
         assert not (root / ".git" / "rebase-merge").exists()
     finally:
         with contextlib.suppress(Exception):

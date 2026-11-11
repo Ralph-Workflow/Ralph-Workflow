@@ -1,5 +1,3 @@
-"""Tests for AgentSpec dataclass."""
-
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
@@ -12,8 +10,6 @@ from ralph.config.enums import AgentTransport
 
 
 class TestAgentSpec:
-    """Black-box tests for AgentSpec."""
-
     def test_immutability(self) -> None:
         spec = AgentSpec(name="test", transport=AgentTransport.GENERIC)
         with pytest.raises(FrozenInstanceError):

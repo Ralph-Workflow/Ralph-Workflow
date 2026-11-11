@@ -62,8 +62,6 @@ def _default_agents_policy(_workspace_path: Path) -> AgentsPolicy:
 
 
 class TestWorkspaceMetadataReadGrantedToAllDrains:
-    """workspace.metadata_read is granted to ALL drains."""
-
     @pytest.mark.parametrize(
         "drain",
         [

@@ -1,16 +1,3 @@
-"""Commit phase handler.
-
-Commit-role phases handle git operations after successful development or review
-phases. They stage and commit changes with an appropriate message.
-
-If the working tree has no uncommitted changes when a commit phase is entered,
-the handler emits ``COMMIT_SKIPPED`` so the reducer can advance routing without
-incrementing iteration/reviewer_pass counters for a no-op pass.
-
-The generic handle_commit_phase() function works for any phase with role='commit'.
-It is registered exclusively via register_role_handlers(policy) at policy-load time
-for all commit-role phases declared in the active pipeline policy.
-"""
 
 from __future__ import annotations
 
@@ -57,13 +44,6 @@ def _write_retry_hint(ctx: PhaseContext, phase: str, detail: str) -> None:
 
 
 def _has_no_diff(ctx: PhaseContext) -> bool:
-    """Best-effort no-diff check; returns False when git cannot be inspected.
-
-    Catches both workspace-layer failures (AttributeError/TypeError/ValueError
-    from mock workspaces that do not implement ``absolute_path``) and git-layer
-    failures (non-repo filesystem paths). In either case the caller falls back
-    to the legacy defer-to-runner path so the pipeline makes progress.
-    """
     try:
         root = ctx.workspace.absolute_path(".")
         return not has_uncommitted_changes(root)
@@ -79,11 +59,6 @@ def _has_no_diff(ctx: PhaseContext) -> bool:
 
 
 def _read_commit_message(ctx: PhaseContext) -> str | None:
-    """Read the markdown commit_message artifact and render the plain-text message.
-
-    Returns None when the artifact is absent, invalid, or the workspace cannot
-    read it (e.g., mock workspaces without file support).
-    """
     try:
         artifact = load_phase_artifact(
             ctx.workspace,
@@ -97,12 +72,6 @@ def _read_commit_message(ctx: PhaseContext) -> str | None:
 
 
 def handle_commit_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
-    """Generic commit phase handler for any role='commit' phase.
-
-    Stages and commits changes after a successful phase. When the working
-    tree has no pending changes, emits ``COMMIT_SKIPPED`` so the pipeline
-    advances without billing a progress counter for the no-op pass.
-    """
     if not isinstance(effect, InvokeAgentEffect):
         return []
 
@@ -117,9 +86,6 @@ def handle_commit_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
         logger.info("{}: no diff to commit — skipping", phase_name)
         return [PipelineEvent.COMMIT_SKIPPED]
 
-    # Validate the commit_message artifact was submitted by the agent.
-    # The runner clears COMMIT_MESSAGE_ARTIFACT before agent invocation, so absence
-    # here means the agent completed without submitting the required artifact.
     if not ctx.workspace.exists(COMMIT_MESSAGE_ARTIFACT):
         logger.warning(
             "{} agent completed without producing {}",
@@ -133,9 +99,6 @@ def handle_commit_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
         _write_retry_hint(ctx, phase_name, detail)
         return [artifact_validation_failure_event(phase=phase_name, reason=detail)]
 
-    # Artifact exists — validate that it can actually be parsed before deferring
-    # to the runner. Otherwise the phase is marked successful and the runner
-    # fails later with a generic "Commit message file is empty" error.
     message = _read_commit_message(ctx)
     if message is None or not message.strip():
         logger.warning(
@@ -151,9 +114,6 @@ def handle_commit_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
         _write_retry_hint(ctx, phase_name, detail)
         return [artifact_validation_failure_event(phase=phase_name, reason=detail)]
 
-    # Artifact exists — check if the agent submitted a skip response.
-    # Without this guard, a skip artifact would be passed to the runner
-    # and committed verbatim as a "SKIP: ..." git commit subject.
     if message.strip().lower().startswith("skip:"):
         clear_validation_retry_hint(
             ctx.workspace,

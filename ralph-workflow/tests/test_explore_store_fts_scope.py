@@ -1,12 +1,3 @@
-"""Regression tests: indexed FTS search scopes rows BEFORE the result limit.
-
-``fts_search`` / ``fts_search_grep`` used to rank every hit, cut the list at
-``LIMIT``, and only then drop rows outside ``path_prefix`` or the
-include/exclude globs. When the best-ranked hits were all out of scope, the
-in-scope matches were already gone and the indexed grep answered with zero
-matches. These tests rank many out-of-scope chunks above one in-scope chunk.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -22,7 +13,6 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.timeout_seconds(5)
 
-#: Out-of-scope files that outrank the in-scope one on bm25.
 _NOISE_FILES = 40
 _LIMIT = 5
 
@@ -64,11 +54,8 @@ def store(tmp_path: Path) -> Iterator[ExploreStore]:
     explore_store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     for index in range(_NOISE_FILES):
         _add(explore_store, f"vendor/lib{index}.py", "frobnicate frobnicate frobnicate\n")
-    # Look-alike paths the prefix must not reach: a LIKE wildcard in the
-    # prefix, and a different-case directory.
     _add(explore_store, "srcXdir/near.py", "frobnicate frobnicate\n")
     _add(explore_store, "SRC/upper.py", "frobnicate frobnicate\n")
-    # The single in-scope hit, ranked below all of the above.
     _add(explore_store, "src/target.py", "x = 1\n" * 50 + "frobnicate()\n")
     _add(explore_store, "src_dir/target.py", "x = 2\n" * 50 + "frobnicate()\n")
     try:
@@ -93,7 +80,6 @@ def test_path_prefix_survives_out_of_scope_hits_ranked_first(
 @pytest.mark.parametrize("method", ["fts_search", "fts_search_grep"])
 def test_path_prefix_is_literal_and_case_sensitive(store: ExploreStore, method: str) -> None:
     search = store.fts_search if method == "fts_search" else store.fts_search_grep
-    # ``_`` is a LIKE wildcard; the prefix must still match only ``src_dir``.
     assert _paths(search("frobnicate", limit=50, path_prefix="src_dir")) == ["src_dir/target.py"]
     assert _paths(search("frobnicate", limit=50, path_prefix="SRC")) == ["SRC/upper.py"]
 

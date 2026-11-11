@@ -44,7 +44,6 @@ def _policy() -> PipelinePolicy:
 def test_conflict_done_landing_pending_blocks_recovery_and_prevents_dev_phase(
     tmp_path: Path,
 ) -> None:
-    # 1. Conflict resolved, promote to integrated with landing pending (integrated_feature_sha is None)
     record = IntegrationRecord(
         phase="integrating",
         target="main",
@@ -62,7 +61,6 @@ def test_conflict_done_landing_pending_blocks_recovery_and_prevents_dev_phase(
     assert on_disk is not None
     assert on_disk.phase == "integrated"
 
-    # 2. Invoke real recovery boundary
     state = PipelineState(
         phase="integrating",
         rebase=RebaseState(),
@@ -75,7 +73,6 @@ def test_conflict_done_landing_pending_blocks_recovery_and_prevents_dev_phase(
 
     policy = _policy()
 
-    # 3. decide_phase_transition returns BLOCK_FOR_RECOVERY based strictly on durable record
     decision = decide_phase_transition(
         state,
         policy,
@@ -84,7 +81,6 @@ def test_conflict_done_landing_pending_blocks_recovery_and_prevents_dev_phase(
     )
     assert decision == PhaseDecision.BLOCK_FOR_RECOVERY
 
-    # 4. Reducer receives integration_record, preserves the non-business phase and does not return to development
     new_state, _ = reduce(state, PipelineEvent.AGENT_SUCCESS, policy, integration_record=on_disk)
     assert new_state.phase == "integrating"
     assert new_state.phase != "development"

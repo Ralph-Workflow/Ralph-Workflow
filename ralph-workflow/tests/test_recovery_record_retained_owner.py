@@ -1,11 +1,3 @@
-"""RebaseState is the single owner of ``recovery_record_retained``.
-
-Static scan: no production call site outside ``rebase_state.py`` may write
-``recovery_record_retained`` via ``model_copy(update={...})`` or pass
-``recovery_record_retained=True`` without a typed
-``recovery_record_retained_reason``. Behavior: the typed setter/clear pair.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -17,21 +9,14 @@ from ralph.pipeline.rebase_state import (
     StartupRetentionReason,
 )
 
-# Audit-style file scans: allow extra headroom under shard load so the
-# budget-shaped SIGALRM does not flake the same scan the other audit
-# tests in this codebase already permit (see
-# ``tests/test_audit_workspace_resource_inventory.py`` for the same
-# precedent). The contract being verified is unchanged: per-file bytes
-# pre-filter then a one-shot per-line check.
 pytestmark = pytest.mark.timeout_seconds(5)
 
 RALPH_PIPELINE = Path(__file__).resolve().parent.parent / "ralph" / "pipeline"
 
-# Sites the contract explicitly permits to keep the raw model_copy form.
 ALLOWED_MODEL_COPY_SITES = {
     "rebase_state.py",
-    "auto_integrate_recovery.py",  # record_conflict(...).model_copy(...) contract
-    "run_loop.py",  # owned by another unit
+    "auto_integrate_recovery.py",
+    "run_loop.py",
 }
 
 
@@ -40,8 +25,6 @@ def test_no_model_copy_writers_outside_allowed_sites() -> None:
     for path in sorted(RALPH_PIPELINE.rglob("*.py")):
         if path.name in ALLOWED_MODEL_COPY_SITES:
             continue
-        # Cheap bytes pre-filter: decode only files that can match, so the
-        # 1s per-test timeout holds under shard load.
         raw = path.read_bytes()
         if b"recovery_record_retained" not in raw or b"model_copy" not in raw:
             continue
@@ -82,7 +65,6 @@ def test_setter_retains_with_reason() -> None:
         retained.recovery_record_retained_reason
         is StartupRetentionReason.TRANSIENT_FAST_FORWARD_FAILURE
     )
-    # Frozen model: original untouched.
     assert not state.recovery_record_retained
 
 

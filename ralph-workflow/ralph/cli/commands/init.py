@@ -1,18 +1,3 @@
-"""Init command for Ralph Workflow CLI.
-
-This module implements the initialization command that sets up
-Ralph Workflow in a repository.
-
-AUTO-SKILL-INSTALL CONTRACT
-=============================
-`ralph --init` ALWAYS invokes the baseline skill installer on every run,
-including the re-run path where every bootstrap result is `skipped`.
-This guarantees that the bundled skill bundle is materialized at
-`~/.claude/skills/` and symlinked into every registered sibling agent
-root, regardless of whether other config files needed creation. The
-installer failures (e.g. `sibling-conflict-*`) are surfaced to the user
-on both the first-run and re-run paths.
-"""
 
 from __future__ import annotations
 
@@ -112,14 +97,6 @@ def init_command(
     *,
     display_context: DisplayContext | None = None,
 ) -> None:
-    """Initialize Ralph Workflow in the current working directory.
-
-    Args:
-        template: Optional prompt-template name.
-        config_path: Optional existing config path to use for agent enablement; a missing path is not created.
-        display_context: Display context for consistent rendering. If None, a default
-            context is created using make_display_context().
-    """
     ctx = display_context if display_context is not None else make_display_context()
     display = resolve_active_display(None, ctx)
     target = Path.cwd()
@@ -131,17 +108,6 @@ def init_command(
         except ValueError as exc:
             display.emit_warning(str(exc))
             raise typer.Exit(code=1) from exc
-        # wt-012: route the project-local PROMPT.md creation through
-        # the shared deterministic auto-commit primitive so a chore
-        # commit with the fixed
-        # ``chore(config): update agent configuration`` subject
-        # captures the starter template, never leaking it into a
-        # later agent's commit. When ``ralph --init`` runs outside
-        # a git repo (e.g. an operator's first-time config setup in
-        # an uninitialized directory), the path is the documented
-        # silent-NOOP branch -- the file is still created on disk
-        # and no commit is attempted, so ``ralph --init`` never
-        # silently creates a repo.
         _commit_deterministic_config_write(
             prompt_path,
             subject="chore(config): update agent configuration",
@@ -151,11 +117,6 @@ def init_command(
         )
         display.emit_status(f"Created: {prompt_path}")
     elif template:
-        # PROMPT.md already exists. An explicit `--init <label>` is NEVER
-        # silently dropped: the operator's intent was to choose a starter
-        # shape, so we still validate the label and tell them why their
-        # file wasn't overwritten. Unknown labels raise as today so a
-        # typo'd `--init feature-specs` (note the plural) still exits 1.
         try:
             resolve_starter_template(template)
         except ValueError as exc:
@@ -230,7 +191,6 @@ def init_command(
 
 
 def _emit_target_worktree_warning(display: ParallelDisplay, target: Path) -> None:
-    """Explain the configured target-worktree ownership contract when resolvable."""
     configured_target = "main"
     try:
         config = _load_config_loader()(None, {}, workspace_scope=resolve_workspace_scope())
@@ -245,7 +205,6 @@ def _emit_target_worktree_warning(display: ParallelDisplay, target: Path) -> Non
 
 
 def _try_load_registry() -> AgentRegistry | None:
-    """Attempt to load the agent registry; returns None on failure."""
     try:
         cfg = _load_config_loader()(None, {}, workspace_scope=resolve_workspace_scope())
         registry_type = _load_agent_registry_factory()
@@ -262,14 +221,6 @@ def _try_load_registry() -> AgentRegistry | None:
 def _ensure_baseline_capabilities(
     *, display_context: DisplayContext
 ) -> tuple[CapabilityState, list[str]]:
-    """Install baseline skills, print the capability summary, and return (state, failures).
-
-    Returns (CapabilityState, list[str]) where the second element is the list of
-    failure codes returned by install_baseline_skills (empty list on success or
-    on a swallowed exception). The init_command caller threads the failures
-    list into the welcome-banner and fallback code paths so a NEEDS_REPAIR is
-    visible on every ralph --init invocation, not just first run.
-    """
     from contextlib import suppress
 
     from ralph.skills._installer import (
@@ -284,14 +235,6 @@ def _ensure_baseline_capabilities(
         cap_state, failures = manager.ensure_baseline_capabilities(workspace_root=target_root)
         with suppress(Exception):
             if _project_skills_need_install(target_root):
-                # PA-004: discard the CapabilityEntry since
-                # ensure_baseline_capabilities already re-stamped the
-                # state with whichever user-global entry is worst.
-                # wt-012: use the producer-level wrapper that records
-                # the byte-exact diff and immediately commits the
-                # install at the install boundary. ``ralph --init`` is
-                # the canonical "first install" path; the deterministic
-                # chore commit must run here too.
                 from ralph.git.operations import (
                     create_commit,
                 )
@@ -330,7 +273,6 @@ def _ensure_baseline_capabilities(
 def _emit_agent_setup_status(
     display: ParallelDisplay, newly_enabled: list[str], rewired: list[str] | str | None
 ) -> None:
-    """Report PATH discovery and the safe default-chain rewrite."""
     if newly_enabled:
         display.emit_status("Auto-enabled agents (found on PATH): " + ", ".join(newly_enabled))
     if isinstance(rewired, list):
@@ -352,7 +294,6 @@ def _print_fallback_next_steps(
     failures: list[str] | None = None,
     display_context: DisplayContext,
 ) -> None:
-    """Print next steps when all configs were skipped (re-running init)."""
     display = resolve_active_display(None, display_context)
     display.emit_status(f"Ralph Workflow initialized in: {target}")
     _emit_agent_setup_status(display, newly_enabled or [], rewired or autowire_outcome)

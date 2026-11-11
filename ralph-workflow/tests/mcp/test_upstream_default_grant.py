@@ -1,10 +1,3 @@
-"""Regression tests for prompt-default upstream capability exposure.
-
-Prompt defaults must match the runtime session plan. Upstream tool use is not
-an unconditional default: it is granted only when actual upstream servers are
-present in the effective session plan.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -22,8 +15,6 @@ _ALL_DRAINS = [d.value for d in SessionDrain]
 
 
 class TestUpstreamToolUseDefaultGrant:
-    """Verify prompt defaults do not advertise absent upstream tools."""
-
     @pytest.mark.parametrize("drain_str", _ALL_DRAINS)
     def test_upstream_tool_use_is_not_in_prompt_defaults_without_upstreams(
         self, drain_str: str

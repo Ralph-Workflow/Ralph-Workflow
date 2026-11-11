@@ -1,5 +1,3 @@
-"""Tests that ParallelDisplay forwards TOOL_USE metadata to PipelineSubscriber."""
-
 from __future__ import annotations
 
 import json
@@ -51,11 +49,9 @@ def _make_mock_state(agent: str = "claude/sonnet") -> MagicMock:
 
 
 def test_parallel_display_tool_use_forwards_to_subscriber(tmp_path: Path) -> None:
-    """After a tool_use push_raw_line, subscriber._last_activity_line and tool fields are set."""
     pd, buf = _make_display(tmp_path)
     subscriber = pd.subscriber
 
-    # Prime subscriber with a state so record_activity can publish snapshots
     state = _make_mock_state()
     subscriber.notify(state)
     buf.truncate(0)
@@ -73,7 +69,6 @@ def test_parallel_display_tool_use_forwards_to_subscriber(tmp_path: Path) -> Non
     )
     pd.activity_router.push_raw_line("u", event, provider=ActivityProvider.CLAUDE)
 
-    # (a) last_activity_line contains friendly name and path
     last_line = subscriber._last_activity_line
     assert last_line is not None, "subscriber._last_activity_line must be set after tool_use"
     assert "ralph.read_file" in last_line or "read_file" in last_line, (
@@ -83,7 +78,6 @@ def test_parallel_display_tool_use_forwards_to_subscriber(tmp_path: Path) -> Non
         f"Expected path in last_activity_line, got: {last_line!r}"
     )
 
-    # (b) structured fields: original tool name and path
     assert subscriber.last_tool_name == "mcp__ralph__read_file", (
         f"Expected last_tool_name='mcp__ralph__read_file', got: {subscriber.last_tool_name!r}"
     )
@@ -91,7 +85,6 @@ def test_parallel_display_tool_use_forwards_to_subscriber(tmp_path: Path) -> Non
         f"Expected last_tool_path='ralph/pipeline/runner.py', got: {subscriber.last_tool_path!r}"
     )
 
-    # (c) rendered output contains exactly one [activity] line from the snapshot
     out = buf.getvalue()
     activity_lines = [line for line in out.splitlines() if "[activity]" in line]
     assert len(activity_lines) == 1, (
@@ -101,7 +94,6 @@ def test_parallel_display_tool_use_forwards_to_subscriber(tmp_path: Path) -> Non
 
 
 def test_subscriber_not_updated_for_non_tool_use_events(tmp_path: Path) -> None:
-    """Text events do not alter subscriber._active_tool or last_tool_name."""
     pd, _buf = _make_display(tmp_path)
     subscriber = pd.subscriber
 
@@ -122,7 +114,6 @@ def test_subscriber_not_updated_for_non_tool_use_events(tmp_path: Path) -> None:
 
 
 def test_tool_use_workdir_and_command_forwarded(tmp_path: Path) -> None:
-    """workdir and command from tool input are forwarded to the subscriber."""
     pd, _buf = _make_display(tmp_path)
     subscriber = pd.subscriber
 
@@ -147,7 +138,6 @@ def test_tool_use_workdir_and_command_forwarded(tmp_path: Path) -> None:
 
 
 def test_tool_use_pattern_forwarded(tmp_path: Path) -> None:
-    """pattern from tool input is forwarded to the subscriber."""
     pd, _buf = _make_display(tmp_path)
     subscriber = pd.subscriber
 
@@ -172,10 +162,6 @@ def test_tool_use_pattern_forwarded(tmp_path: Path) -> None:
 
 
 def test_repeated_identical_tool_use_keeps_live_status_fresh(tmp_path: Path) -> None:
-    """End-to-end regression: when an agent calls the SAME MCP tool repeatedly, the
-    persistent [activity] status line must keep updating with a running count
-    (x2, x3) instead of freezing/hiding until 'something happens'.
-    """
     pd, buf = _make_display(tmp_path)
     pd.subscriber.notify(_make_mock_state(agent="opencode/minimax"))
     buf.truncate(0)
@@ -197,7 +183,6 @@ def test_repeated_identical_tool_use_keeps_live_status_fresh(tmp_path: Path) -> 
 
 
 def test_subscriber_repeat_count_resets_on_different_tool(tmp_path: Path) -> None:
-    """The repeat count resets when a different tool identity is recorded."""
     pd, _buf = _make_display(tmp_path)
     sub = pd.subscriber
     sub.notify(_make_mock_state())

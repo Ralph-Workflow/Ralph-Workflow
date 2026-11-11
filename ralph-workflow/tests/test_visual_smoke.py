@@ -12,7 +12,6 @@ MEDIA_URI_RE = re.compile(r"^ralph://media/[^/\s]+$")
 
 
 def _validate_visual_evidence(verdict: dict[str, object]) -> list[str]:
-    """Lightweight validator for visual-evidence dicts in the smoke test."""
     errors: list[str] = []
     for field_name in ("design_verdict_id", "before_set_id", "after_set_id"):
         if not verdict.get(field_name):

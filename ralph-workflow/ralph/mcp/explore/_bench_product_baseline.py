@@ -1,18 +1,3 @@
-"""S-1 product-baseline response harness for the indexed exploration substrate.
-
-This module owns the production-clock p95 measurement the S-1 plan item
-requires: representative in-memory search flows are executed through the
-real MCP workspace/graph handlers under the production ``SystemClock``
-(``time.monotonic``), every post-warmup sample is recorded, and the
-nearest-rank p95 of each flow is compared against the checked-in
-``workspace_product_baselines.json`` oracle. It is deliberately NOT
-driven by a FakeClock, so a slower handler fails the gate.
-
-The fake-clock unit tests live in
-``tests/workspace/test_workspace_product_baselines.py``; they pin the
-nearest-rank arithmetic and the delayed-executor rejection through the
-injected-clock path without substituting for this responsiveness proof.
-"""
 
 from __future__ import annotations
 
@@ -41,7 +26,6 @@ if TYPE_CHECKING:
     from ralph.mcp.tools.tool_result import ToolResult
     from ralph.workspace import Workspace
 
-#: Representative flows grouped by their S-1 p95 limit bucket.
 REPRESENTATIVE_FLOW_GROUPS: Final[tuple[tuple[str, tuple[str, ...]], ...]] = (
     ("file_content_search", ("search_files", "grep_files", "read_file")),
     ("symbol_structure", ("directory_tree", "list_directory")),
@@ -49,17 +33,10 @@ REPRESENTATIVE_FLOW_GROUPS: Final[tuple[tuple[str, tuple[str, ...]], ...]] = (
 )
 
 
-#: How many extra times an over-limit sample is re-timed before it counts.
 _CONFIRM_ATTEMPTS: Final = 2
 
 
 def nearest_rank_p95(samples: Sequence[float]) -> float:
-    """Nearest-rank 95th percentile of *samples*.
-
-    The checked-in nearest-rank rule: ``sorted[max(0, ceil(0.95 * N) - 1)]``.
-    With the pinned 20-sample profile this is the 19th ordered value
-    (index 18), not the max.
-    """
     if not samples:
         raise ValueError("nearest_rank_p95 requires at least one sample")
     ordered = sorted(float(sample) for sample in samples)
@@ -68,9 +45,7 @@ def nearest_rank_p95(samples: Sequence[float]) -> float:
 
 
 def load_product_baseline_limits(path: str) -> Mapping[str, object]:
-    """Load the checked-in S-1 oracle JSON; fail closed on invalid content."""
     try:
-        # filesystem-read-ok: product-baseline harness reads the operator-supplied oracle JSON once per explicit --product-baseline invocation
         raw: object = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"invalid product-baseline limits file {path}: {exc}") from exc
@@ -88,24 +63,6 @@ def measure_representative_flows(
     clock: Clock | None = None,
     confirm_over_seconds: Mapping[str, float] | None = None,
 ) -> dict[str, FlowTiming]:
-    """Measure per-flow response latency through the injected clock.
-
-    Production runs pass no clock so the real ``SystemClock``
-    (``time.monotonic``) path measures true handler execution time. Each
-    of the ``warmup`` + ``repetitions`` iterations runs one
-    representative call per flow; only post-warmup samples are recorded.
-
-    The executor owns elapsed work. Production runs therefore record only
-    actual handler time rather than adding a synthetic delay to every sample.
-
-    ``confirm_over_seconds`` maps a flow to its limit. A sample above its
-    flow's limit is re-timed immediately, up to
-    ``_CONFIRM_ATTEMPTS`` more times, and the fastest attempt is recorded.
-    A slower handler is slow on every attempt, so it still fails the gate;
-    a wall-clock sample stretched by the host preempting the measuring
-    thread (a busy machine, not the handler) does not reproduce, so it
-    cannot fail the gate on its own.
-    """
     clk = clock or SystemClock()
     limits = confirm_over_seconds or {}
     samples: dict[str, list[float]] = {flow_id: [] for flow_id in flows}
@@ -140,13 +97,6 @@ def gate_product_baseline(
     timings: Mapping[str, FlowTiming],
     limits: Mapping[str, object],
 ) -> tuple[str, ...]:
-    """Return one failure string per p95 limit violation (empty = pass).
-
-    Limits come from the checked-in ``workspace_product_baselines.json``
-    ``response_limits_ms`` section; every representative flow maps to its
-    group limit and every flow must be measured (unknown or missing flows
-    are failures, never silently skipped).
-    """
     raw_limits: object = limits.get("response_limits_ms")
     if not isinstance(raw_limits, dict):
         return ("limits file is missing the response_limits_ms section",)
@@ -177,11 +127,6 @@ def gate_product_baseline(
 
 
 def flow_limits_seconds(limits: Mapping[str, object]) -> dict[str, float]:
-    """Return each representative flow's p95 limit in seconds.
-
-    Flows whose group limit is missing or not a number are left out; the
-    gate reports that malformed limits file on its own.
-    """
     raw_limits: object = limits.get("response_limits_ms")
     if not isinstance(raw_limits, dict):
         return {}
@@ -194,7 +139,6 @@ def flow_limits_seconds(limits: Mapping[str, object]) -> dict[str, float]:
 
 
 def flow_group(flow_id: str) -> str | None:
-    """Return the p95 limit bucket for *flow_id*, or None when unknown."""
     for group, tools in REPRESENTATIVE_FLOW_GROUPS:
         if flow_id in tools:
             return group
@@ -202,7 +146,6 @@ def flow_group(flow_id: str) -> str | None:
 
 
 def representative_calls() -> dict[str, ScriptedCall]:
-    """One representative in-memory search call per measured flow."""
     return {
         "search_files": ScriptedCall(
             tool="search_files",
@@ -238,7 +181,6 @@ def representative_calls() -> dict[str, ScriptedCall]:
 
 
 class _BaselineSession:
-    """Minimal coordination-session seam for the product-baseline flows."""
 
     session_id = "product-baseline-session"
     run_id = "product-baseline-run"
@@ -257,20 +199,12 @@ class _BaselineSession:
 def _seeded_probe_workspace(
     scratch: Path,
 ) -> tuple[Path, ExploreStore, _BaselineSession, FsWorkspace]:
-    """Build a real indexed workspace for the production-clock p95 runs.
-
-    Uses the shared Q1/Q2/Q3 fixture content so the representative flows
-    execute real handlers over a real SQLite index. Returns
-    ``(workspace_root, store, session, workspace)``; the caller owns
-    ``store.close()``.
-    """
     workspace_root = scratch / "ws_product_baseline"
     workspace_root.mkdir(parents=True)
     for fixture in REQUIRED_FIXTURES:
         for rel_path, content in fixture.workspace_files.items():
             target = workspace_root / rel_path
             target.parent.mkdir(parents=True, exist_ok=True)
-            # filesystem-write-ok: transient bench workspace under a tempfile.TemporaryDirectory (deleted by tempfile on context exit).
             target.write_text(content)
     from ralph.mcp.explore.dirty_paths import build_sqlite_index_handle
     from ralph.mcp.explore.pipeline import ReindexOptions, reindex
@@ -288,7 +222,6 @@ def dispatch_representative(
     session: CoordinationSessionLike,
     workspace: Workspace,
 ) -> Mapping[str, object]:
-    """Dispatch one representative call through the real MCP handler."""
     from ralph.mcp.explore._handlers_graph import handle_ralph_graph
     from ralph.mcp.tools.workspace._grep_handlers import handle_grep_files
     from ralph.mcp.tools.workspace._read_handlers import (
@@ -322,14 +255,6 @@ def dispatch_representative(
 
 
 def run_product_baseline(limits_path: str) -> int:
-    """Production-clock entry point for ``--product-baseline <limits.json>``.
-
-    Seeds a real indexed workspace, runs each representative in-memory
-    search flow through the real MCP handlers under ``SystemClock``
-    (``time.monotonic``), computes nearest-rank p95 per flow, prints the
-    full sample report as JSON, and exits nonzero when any p95 exceeds
-    its checked-in limit.
-    """
     limits = load_product_baseline_limits(limits_path)
     with tempfile.TemporaryDirectory(prefix="ralph-product-baseline-") as scratch:
         _root, store, session, workspace = _seeded_probe_workspace(Path(scratch))
@@ -437,7 +362,6 @@ def _build_main_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Entry point used by ``python -m ralph.mcp.explore.bench``."""
     from ralph.mcp.explore._bench_r6_metrics import (
         run_capture_baseline,
         run_validate_baseline,

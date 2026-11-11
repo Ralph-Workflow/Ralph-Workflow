@@ -1,9 +1,3 @@
-"""Regression guard: README.md and CONTRIBUTING.md must not hard-code stale test-cov flags.
-
-Asserts invariants, not exact recipe strings, so the test survives valid internal
-changes to worker counts or coverage thresholds without needing to be updated.
-"""
-
 from __future__ import annotations
 
 import re
@@ -23,18 +17,10 @@ ARCHITECTURE_POLICY_PATH = (
     WORKSPACE_ROOT / "docs" / "ralph-workflow-policy" / "architecture-policy.md"
 )
 ROOT_AGENTS_PATH = WORKSPACE_ROOT / "AGENTS.md"
-# wt-026 consolidation: CODE_STYLE.md and docs/tooling/python-tooling.md were
-# removed; their content now lives in docs/code-style/index.md and
-# docs/sphinx/configuration.md respectively. The typing-contract and
-# tooling-contract tests below assert the canonical homes.
 CODE_STYLE_PATH = WORKSPACE_ROOT / "CODE_STYLE.md"
 CODE_STYLE_INDEX_PATH = WORKSPACE_ROOT / "docs" / "code-style" / "index.md"
-# legacy paths removed in wt-026; tests skip if absent
 PYTHON_TOOLING_PATH = WORKSPACE_ROOT / "docs" / "tooling" / "python-tooling.md"
 TOOLING_CONFIG_PATH = WORKSPACE_ROOT / "ralph-workflow" / "docs" / "sphinx" / "configuration.md"
-# quickstart.md was deleted in the wt-026 documentation consolidation;
-# its non-duplicate content was merged into docs/sphinx/getting-started.md,
-# which is now the canonical home for the init-local-config contract.
 QUICKSTART_PATH = REPO_ROOT / "docs" / "sphinx" / "getting-started.md"
 CLI_REFERENCE_PATH = REPO_ROOT / "docs" / "sphinx" / "cli.md"
 
@@ -45,7 +31,6 @@ _STALE_FLAGS = [
 
 
 def test_readme_does_not_hard_code_stale_cov_report_flags() -> None:
-    """README.md must not document obsolete --cov-report=term-missing or --cov-report=html."""
     readme = README_PATH.read_text(encoding="utf-8")
     found = [flag for flag in _STALE_FLAGS if flag in readme]
     assert not found, (
@@ -56,7 +41,6 @@ def test_readme_does_not_hard_code_stale_cov_report_flags() -> None:
 
 
 def test_contributing_does_not_hard_code_stale_cov_report_flags() -> None:
-    """CONTRIBUTING.md must not document obsolete --cov-report=term-missing or --cov-report=html."""
     contributing = CONTRIBUTING_PATH.read_text(encoding="utf-8")
     found = [flag for flag in _STALE_FLAGS if flag in contributing]
     assert not found, (
@@ -68,14 +52,6 @@ def test_contributing_does_not_hard_code_stale_cov_report_flags() -> None:
 
 
 def test_readme_verification_section_references_make_verify() -> None:
-    """README.md must point at the canonical `make verify` workflow.
-
-    The wt-026 documentation consolidation removed the inline "Verification"
-    section from README.md; the canonical `make verify` reference now lives
-    on the contributor route. README.md routes contributors through
-    ralph-workflow/CONTRIBUTING.md (which names the canonical `make verify`
-    command), so this test checks CONTRIBUTING.md directly.
-    """
     contributing = CONTRIBUTING_PATH.read_text(encoding="utf-8")
     assert "make verify" in contributing, (
         "CONTRIBUTING.md must reference the canonical `make verify` command "
@@ -84,7 +60,6 @@ def test_readme_verification_section_references_make_verify() -> None:
 
 
 def test_contributing_required_verification_references_make_verify() -> None:
-    """CONTRIBUTING.md Required verification must point to the canonical `make verify` workflow."""
     contributing = CONTRIBUTING_PATH.read_text(encoding="utf-8")
     assert "make verify" in contributing, (
         "CONTRIBUTING.md must reference the canonical `make verify` command "
@@ -93,7 +68,6 @@ def test_contributing_required_verification_references_make_verify() -> None:
 
 
 def test_artifact_submission_contract_describes_active_markdown_fallback() -> None:
-    """The fallback contract must not contradict the live promotion path."""
     contract = ARTIFACT_SUBMISSION_CONTRACT_PATH.read_text(encoding="utf-8")
 
     assert "fallback promotion path removed" not in contract
@@ -107,7 +81,6 @@ def test_artifact_submission_contract_describes_active_markdown_fallback() -> No
 
 
 def test_verification_docs_avoid_volatile_gate_counts() -> None:
-    """Verification topology must be tied to code, not instantly stale totals."""
     volatile_count = re.compile(
         r"\b\d+-step\b"
         r"|\b\d+ audit(?: steps|s)\b"
@@ -130,7 +103,6 @@ def test_verification_docs_avoid_volatile_gate_counts() -> None:
 
 
 def test_verification_docs_describe_required_real_git_e2e_inside_make_test() -> None:
-    """The maintained topology has no separate auto-integrate verify step."""
     verification_policy = VERIFICATION_POLICY_PATH.read_text(encoding="utf-8")
     agents = ROOT_AGENTS_PATH.read_text(encoding="utf-8")
 
@@ -141,13 +113,6 @@ def test_verification_docs_describe_required_real_git_e2e_inside_make_test() -> 
 
 
 def test_repo_root_typing_docs_do_not_claim_pydantic_mypy_plugin() -> None:
-    """Repo-root strict-typing docs must reflect the no-plugin Pydantic contract.
-
-    wt-026 consolidation: CODE_STYLE.md and docs/tooling/python-tooling.md were
-    removed; the canonical homes are docs/code-style/index.md and
-    docs/sphinx/configuration.md. The assertion walks every surviving
-    strict-typing surface that still exists.
-    """
     typing_paths = [CODE_STYLE_INDEX_PATH, TOOLING_CONFIG_PATH]
     for path in typing_paths:
         if not path.exists():
@@ -165,7 +130,6 @@ def test_repo_root_typing_docs_do_not_claim_pydantic_mypy_plugin() -> None:
 
 
 def test_cli_callback_docs_do_not_claim_init_scaffolds_local_config() -> None:
-    """Plan S-3: callback guidance keeps local TOML creation explicit-only."""
     source = (REPO_ROOT / "ralph" / "cli" / "main.py").read_text(encoding="utf-8")
     stale_claim = "``--init`` and the skill subcommands mutate the\n    workspace (``.agent/``, ``.gitignore``)"
     assert stale_claim not in source, (
@@ -175,7 +139,6 @@ def test_cli_callback_docs_do_not_claim_init_scaffolds_local_config() -> None:
 
 
 def test_developer_internals_documents_explicit_local_config_creation() -> None:
-    """Plan S-3: internals must preserve the explicit local-config boundary."""
     content = (REPO_ROOT / "docs" / "sphinx" / "developer-internals.md").read_text(encoding="utf-8")
 
     assert "ralph --init-local-config" in content
@@ -184,7 +147,6 @@ def test_developer_internals_documents_explicit_local_config_creation() -> None:
 
 
 def test_cli_reference_distinguishes_gitignore_from_git_exclude_seeding() -> None:
-    """Plan S-3: CLI reference keeps ordinary init's non-git behavior accurate."""
     content = CLI_REFERENCE_PATH.read_text(encoding="utf-8")
 
     assert "It creates `.gitignore` only in a git repo." not in content
@@ -194,7 +156,6 @@ def test_cli_reference_distinguishes_gitignore_from_git_exclude_seeding() -> Non
 
 
 def test_quickstart_documents_init_local_config_as_explicit_opt_in() -> None:
-    """Quickstart must keep local-config command boundaries aligned with runtime."""
     content = QUICKSTART_PATH.read_text(encoding="utf-8")
     assert "ralph --init-local-config" in content, (
         "docs/sphinx/quickstart.md must document `ralph --init-local-config` as the explicit "
@@ -218,20 +179,9 @@ def test_quickstart_documents_init_local_config_as_explicit_opt_in() -> None:
 
 _MCP_SERVERS_DOC = REPO_ROOT / "docs" / "mcp" / "mcp-servers.md"
 _MCP_ADV_CONFIG_DOC = REPO_ROOT / "docs" / "sphinx" / "advanced-mcp-configuration.md"
-# _MCP_SERVERS_DOC was removed in wt-026; tests skip if absent.
 
 
 def test_mcp_servers_doc_describes_broad_multimodal_surface() -> None:
-    """docs/mcp/mcp-servers.md (or its canonical Sphinx successor) must describe the
-    broad multimodal contract, not image-only.
-
-    wt-026 consolidation: docs/mcp/mcp-servers.md was removed; its content
-    was merged into docs/sphinx/advanced-mcp-configuration.md and
-    docs/sphinx/mcp-tools.md. This test now asserts the contract in the
-    surviving Sphinx homes. If a docs/mcp/mcp-servers.md file is
-    re-introduced (it must not be), this test also runs against it as a
-    regression guard.
-    """
     candidates = [_MCP_SERVERS_DOC, _MCP_ADV_CONFIG_DOC, _SPHINX_MCP_TOOLS_PATH]
     primary = next((p for p in candidates if p.exists()), None)
     assert primary is not None, (
@@ -242,17 +192,11 @@ def test_mcp_servers_doc_describes_broad_multimodal_surface() -> None:
     assert "read_media" in content
     assert "read_image" in content
     assert "compatibility" in content
-    # Old reject-all wording must be gone
     assert "rejects it with a clear error" not in content
     assert "text-only passthrough" not in content
 
 
 def test_mcp_servers_doc_describes_upstream_normalization_policy() -> None:
-    """docs/mcp/mcp-servers.md (or its canonical Sphinx successor) must describe
-    upstream normalization, not reject-all policy.
-
-    wt-026 consolidation: the policy now lives in the Sphinx MCP pages.
-    """
     candidates = [_MCP_SERVERS_DOC, _MCP_ADV_CONFIG_DOC]
     primary = next((p for p in candidates if p.exists()), None)
     assert primary is not None, (
@@ -279,45 +223,21 @@ _SPHINX_AGENTS_PATH = REPO_ROOT / "docs" / "sphinx" / "agents.md"
 
 
 def test_readme_stays_onboarding_focused_and_points_to_deeper_docs() -> None:
-    """README.md must stay onboarding-focused and route to the canonical handler pages.
-
-    The wt-026 documentation consolidation replaced the legacy
-    "intentionally leaves out" / quickstart.md / developer-reference.md /
-    modules.rst pointer cluster with the canonical handler pages.
-
-    For the package-level ralph-workflow/README.md (PyPI surface), the
-    canonical handler is `ralph-workflow/docs/sphinx/index.rst` because
-    PyPI cannot resolve repo-root paths like `docs/README.md`. The test
-    accepts either pointer (or both) so both surfaces stay onboarding-focused.
-    The surviving developer/API surface is `concepts.md` (or
-    `developer-internals.md`) plus `modules.rst`; the route is
-    README.md -> ralph-workflow/docs/sphinx/index.rst.
-    """
     content = _README_PATH.read_text(encoding="utf-8")
-    # The maintained operator manual is the canonical handler for the PyPI surface.
     assert "docs/sphinx/index.rst" in content, (
         "README.md must route deeper topics to the maintained operator manual"
     )
 
 
 def test_contributing_describes_read_media_as_primary_multimodal_tool() -> None:
-    """CONTRIBUTING.md must describe read_media as primary tool, not image-only."""
     content = _CONTRIBUTING_PATH.read_text(encoding="utf-8")
     assert "read_media" in content
     assert "compatibility" in content
-    # Old upstream-rejection wording must be replaced with normalization
     assert "rejects it with a clear error" not in content
     assert "resource_reference" in content
 
 
 def test_contributing_does_not_claim_upstream_mcp_untracked() -> None:
-    """CONTRIBUTING.md must not claim upstream MCP servers are untracked.
-
-    The ``mcp_tool`` activity channel covers both in-process Ralph tools
-    and upstream (third-party) MCP tool calls proxied through
-    ``UpstreamProxyHandler``. The documented limitation was closed by the
-    upstream-proxy activity-sink wiring.
-    """
     content = _CONTRIBUTING_PATH.read_text(encoding="utf-8")
     assert "upstream MCP servers are not tracked" not in content, (
         "CONTRIBUTING.md must not claim upstream MCP servers are untracked;"
@@ -330,12 +250,7 @@ def test_contributing_does_not_claim_upstream_mcp_untracked() -> None:
 
 
 def test_contributing_uses_operator_facing_activity_evidence_ttl_key() -> None:
-    """CONTRIBUTING.md must use the operator-facing TOML key name, not the
-    internal TimeoutPolicy field name, when describing the tunable."""
     content = _CONTRIBUTING_PATH.read_text(encoding="utf-8")
-    # The internal dataclass field name must not appear bare in docs text;
-    # the operator-facing TOML key ``agent_idle_activity_evidence_ttl_seconds``
-    # is the canonical name for contributor-facing documentation.
     assert "`activity_evidence_ttl_seconds`" not in content, (
         "CONTRIBUTING.md must use the operator-facing key"
         " `agent_idle_activity_evidence_ttl_seconds`, not the internal"
@@ -344,12 +259,6 @@ def test_contributing_uses_operator_facing_activity_evidence_ttl_key() -> None:
 
 
 def test_readme_does_not_claim_none_disables_activity_evidence_ttl() -> None:
-    """README.md must document ``agent_idle_activity_evidence_ttl_seconds``
-    as disabled only by ``0.0``, not by ``None``.
-
-    The operator-facing config surface (``GeneralConfig``) defines the
-    field as ``float`` with ``ge=0.0``; it does not accept ``None``.
-    """
     content = README_PATH.read_text(encoding="utf-8")
     for match in re.finditer(r"agent_idle_activity_evidence_ttl_seconds", content):
         start = max(0, match.start() - 200)
@@ -363,12 +272,6 @@ def test_readme_does_not_claim_none_disables_activity_evidence_ttl() -> None:
 
 
 def test_contributing_does_not_claim_none_disables_activity_evidence_ttl() -> None:
-    """CONTRIBUTING.md must document ``agent_idle_activity_evidence_ttl_seconds``
-    as disabled only by ``0.0``, not by ``None``.
-
-    The operator-facing config surface (``GeneralConfig``) defines the
-    field as ``float`` with ``ge=0.0``; it does not accept ``None``.
-    """
     content = _CONTRIBUTING_PATH.read_text(encoding="utf-8")
     for match in re.finditer(r"agent_idle_activity_evidence_ttl_seconds", content):
         start = max(0, match.start() - 200)
@@ -382,8 +285,6 @@ def test_contributing_does_not_claim_none_disables_activity_evidence_ttl() -> No
 
 
 def test_contributing_does_not_reference_obsolete_watchdog_module_paths() -> None:
-    """CONTRIBUTING.md must point at the maintained module paths, not the
-    obsolete flat-module paths that no longer exist."""
     content = _CONTRIBUTING_PATH.read_text(encoding="utf-8")
     assert "ralph/agents/idle_watchdog.py" not in content, (
         "CONTRIBUTING.md references obsolete path ralph/agents/idle_watchdog.py;"
@@ -396,24 +297,19 @@ def test_contributing_does_not_reference_obsolete_watchdog_module_paths() -> Non
 
 
 def test_architecture_md_describes_read_media_as_primary_tool() -> None:
-    """ralph/mcp/ARCHITECTURE.md must describe read_media as primary multimodal tool."""
     content = _ARCHITECTURE_PATH.read_text(encoding="utf-8")
     assert "read_media" in content
     assert "compatibility" in content
-    # Must not describe old rejection policy
     assert "Upstream Multimodal Rejection Policy" not in content
     assert "text-only passthrough" not in content
-    # Must describe normalization
     assert "resource_reference" in content
     assert "Normalization" in content or "normalization" in content
 
 
 def test_sphinx_mcp_tools_describes_read_media_as_primary_tool() -> None:
-    """docs/sphinx/mcp-tools.md must list read_media as primary multimodal tool."""
     content = _SPHINX_MCP_TOOLS_PATH.read_text(encoding="utf-8")
     assert "read_media" in content
     assert "compatibility" in content or "read_image" in content
-    # media.read capability row must mention read_media
     lines = content.splitlines()
     media_read_rows = [row for row in lines if "media.read" in row]
     assert any("read_media" in row for row in media_read_rows), (
@@ -422,23 +318,17 @@ def test_sphinx_mcp_tools_describes_read_media_as_primary_tool() -> None:
 
 
 def test_sphinx_mcp_architecture_describes_read_media() -> None:
-    """docs/sphinx/mcp-architecture.md must list read_media in workspace tools."""
     content = _SPHINX_MCP_ARCH_PATH.read_text(encoding="utf-8")
     assert "read_media" in content
 
 
 def test_sphinx_agents_describes_bounded_summaries_not_first_class_artifacts() -> None:
-    """docs/sphinx/agents.md must describe parser behavior as bounded summaries, not first-class."""
     content = _SPHINX_AGENTS_PATH.read_text(encoding="utf-8")
-    # Must describe the correct parser behavior
     assert "bounded" in content or "summaries" in content or "summary" in content
-    # Must not claim parsers preserve multimodal as first-class artifacts in event stream
     assert "preserve these blocks as first-class artifacts" not in content
 
 
 def test_mcp_servers_doc_provider_matrix_typed_blocks() -> None:
-    """docs/mcp/mcp-servers.md (or canonical Sphinx successor) must document typed
-    block delivery for Claude/Gemini."""
     candidates = [_MCP_SERVERS_DOC, _MCP_ADV_CONFIG_DOC]
     primary = next((p for p in candidates if p.exists()), None)
     assert primary is not None, (
@@ -446,48 +336,38 @@ def test_mcp_servers_doc_provider_matrix_typed_blocks() -> None:
     )
     content = primary.read_text(encoding="utf-8")
     assert "typed block" in content, f"{primary} must describe typed block delivery mode"
-    # Must not claim all non-image media returns resource_reference
     assert "Returns all other media as `resource_reference`" not in content, (
         f"{primary} must not claim all non-image media returns resource_reference"
     )
 
 
 def test_mcp_servers_doc_provider_matrix_table() -> None:
-    """docs/mcp/mcp-servers.md (or canonical Sphinx successor) must include an
-    explicit provider/modality delivery matrix table."""
     candidates = [_MCP_SERVERS_DOC, _MCP_ADV_CONFIG_DOC]
     primary = next((p for p in candidates if p.exists()), None)
     assert primary is not None, (
         "Expected docs/mcp/mcp-servers.md or docs/sphinx/advanced-mcp-configuration.md to exist"
     )
     content = primary.read_text(encoding="utf-8")
-    # The matrix table must be present
     assert "Claude/Anthropic" in content and "Gemini" in content and "OpenAI/Codex" in content, (
         f"{primary} must have a provider/modality delivery matrix table"
     )
-    # Must describe explicit unsupported for OpenAI non-image modalities
     assert "unsupported" in content, (
         f"{primary} must describe modalities as explicitly unsupported for some providers"
     )
 
 
 def test_architecture_md_upstream_normalization_not_rejection() -> None:
-    """ralph/mcp/ARCHITECTURE.md must not describe upstream content as 'explicitly rejected'."""
     content = _ARCHITECTURE_PATH.read_text(encoding="utf-8")
-    # The old stale wording must be gone
     assert "Now explicitly rejected with clear error message" not in content, (
         "ARCHITECTURE.md must not describe upstream multimodal handling as 'explicitly rejected'; "
         "the current policy normalizes upstream content to resource_reference artifacts"
     )
-    # Must describe the normalization policy instead
     assert "normalized to" in content or "normalizes" in content, (
         "ARCHITECTURE.md must describe the upstream normalization policy"
     )
 
 
 def test_mcp_servers_doc_describes_screenshot_and_browser_visual_workflows() -> None:
-    """docs/mcp/mcp-servers.md (or canonical Sphinx successor) must describe
-    screenshot and browser-captured workflows."""
     candidates = [_MCP_SERVERS_DOC, _MCP_ADV_CONFIG_DOC]
     primary = next((p for p in candidates if p.exists()), None)
     assert primary is not None, (
@@ -500,8 +380,6 @@ def test_mcp_servers_doc_describes_screenshot_and_browser_visual_workflows() -> 
 
 
 def test_mcp_servers_doc_describes_replayable_resource_handles_via_resources_read() -> None:
-    """docs/mcp/mcp-servers.md (or canonical Sphinx successor) must describe
-    replayable handles retrievable via resources/read."""
     candidates = [_MCP_SERVERS_DOC, _MCP_ADV_CONFIG_DOC, _SPHINX_MCP_TOOLS_PATH]
     primary = next((p for p in candidates if p.exists()), None)
     assert primary is not None, (
@@ -517,8 +395,6 @@ def test_mcp_servers_doc_describes_replayable_resource_handles_via_resources_rea
 
 
 def test_mcp_servers_doc_describes_mixed_modality_workflows() -> None:
-    """docs/mcp/mcp-servers.md (or canonical Sphinx successor) must describe
-    mixed-modality workflow execution."""
     candidates = [_MCP_SERVERS_DOC, _MCP_ADV_CONFIG_DOC]
     primary = next((p for p in candidates if p.exists()), None)
     assert primary is not None, (
@@ -532,8 +408,6 @@ def test_mcp_servers_doc_describes_mixed_modality_workflows() -> None:
 
 
 def test_mcp_servers_doc_text_only_safety_is_explicit() -> None:
-    """docs/mcp/mcp-servers.md (or canonical Sphinx successor) must explicitly
-    state text-only workflow safety."""
     candidates = [_MCP_SERVERS_DOC, _MCP_ADV_CONFIG_DOC]
     primary = next((p for p in candidates if p.exists()), None)
     assert primary is not None, (
@@ -544,7 +418,6 @@ def test_mcp_servers_doc_text_only_safety_is_explicit() -> None:
 
 
 def test_agents_doc_describes_resolved_capability_profile() -> None:
-    """docs/sphinx/agents.md must describe ResolvedCapabilityProfile as session-owned contract."""
     content = _SPHINX_AGENTS_PATH.read_text(encoding="utf-8")
     assert "ResolvedCapabilityProfile" in content, (
         "docs/sphinx/agents.md must mention ResolvedCapabilityProfile as the "
@@ -553,8 +426,6 @@ def test_agents_doc_describes_resolved_capability_profile() -> None:
 
 
 def test_mcp_servers_doc_describes_resolved_capability_profile() -> None:
-    """docs/mcp/mcp-servers.md (or canonical Sphinx successor) must describe
-    ResolvedCapabilityProfile-based delivery."""
     candidates = [_MCP_SERVERS_DOC, _MCP_ADV_CONFIG_DOC, _SPHINX_MCP_TOOLS_PATH]
     primary = next((p for p in candidates if p.exists()), None)
     assert primary is not None, (
@@ -569,7 +440,6 @@ def test_mcp_servers_doc_describes_resolved_capability_profile() -> None:
 
 
 def test_agents_doc_explains_interactive_completion_evaluation() -> None:
-    """agents.md must document receipt-plus-sentinel completion."""
     content = _SPHINX_AGENTS_PATH.read_text(encoding="utf-8")
     assert "receipt" in content, (
         "docs/sphinx/agents.md must explain required artifact receipt evidence"
@@ -581,7 +451,6 @@ def test_agents_doc_explains_interactive_completion_evaluation() -> None:
 
 
 def test_agents_doc_describes_resumable_session_on_incomplete_exit() -> None:
-    """agents.md must explain what happens when interactive Claude exits without completing."""
     content = _SPHINX_AGENTS_PATH.read_text(encoding="utf-8")
     assert "incomplete" in content or "without completing" in content, (
         "docs/sphinx/agents.md must describe what happens on an incomplete exit "
@@ -590,7 +459,6 @@ def test_agents_doc_describes_resumable_session_on_incomplete_exit() -> None:
 
 
 def test_agents_doc_explains_interactive_vs_headless_tradeoff() -> None:
-    """agents.md must explain the observability tradeoff between interactive and headless Claude."""
     content = _SPHINX_AGENTS_PATH.read_text(encoding="utf-8")
     assert "observability" in content or "tradeoff" in content, (
         "docs/sphinx/agents.md must explain the observability or streaming tradeoff "
@@ -599,7 +467,6 @@ def test_agents_doc_explains_interactive_vs_headless_tradeoff() -> None:
 
 
 def test_agents_doc_explains_unattended_orchestration_contract() -> None:
-    """docs/sphinx/agents.md must explain Ralph Workflow's unattended orchestration contract."""
     content = _SPHINX_AGENTS_PATH.read_text(encoding="utf-8")
     assert "unattended" in content, "docs/sphinx/agents.md must describe unattended orchestration"
     assert "supervise" in content or "orchestrate" in content or "manages" in content, (
@@ -608,22 +475,13 @@ def test_agents_doc_explains_unattended_orchestration_contract() -> None:
     )
 
 
-# Maintained type checking and tooling docs enforcement
 _CODE_STYLE_PATH = REPO_ROOT.parent / "CODE_STYLE.md"
 _CODE_STYLE_INDEX_PATH = REPO_ROOT.parent / "docs" / "code-style" / "index.md"
 _TOOLING_GUIDE_PATH = REPO_ROOT.parent / "docs" / "tooling" / "python-tooling.md"
 _TOOLING_CONFIG_PATH = REPO_ROOT.parent / "ralph-workflow" / "docs" / "sphinx" / "configuration.md"
-# _CODE_STYLE_PATH and _TOOLING_GUIDE_PATH are legacy; tests skip if absent.
 
 
 def test_code_style_md_mentions_strict_mypy_config() -> None:
-    """CODE_STYLE.md (legacy, optional) or docs/code-style/index.md (canonical) must
-    mention strict mypy with ralph-workflow/mypy.ini.
-
-    wt-026 consolidation removed CODE_STYLE.md; the canonical home is
-    docs/code-style/index.md. If CODE_STYLE.md is re-introduced it must
-    match the canonical contract; the test still asserts it.
-    """
     candidates = [_CODE_STYLE_PATH, _CODE_STYLE_INDEX_PATH]
     primary = next((p for p in candidates if p.exists()), None)
     assert primary is not None, (
@@ -637,8 +495,6 @@ def test_code_style_md_mentions_strict_mypy_config() -> None:
 
 
 def test_code_style_md_mentions_type_ignore_policy() -> None:
-    """CODE_STYLE.md (legacy, optional) or docs/code-style/index.md (canonical) must
-    mention docs/agents/type-ignore-policy.md."""
     candidates = [_CODE_STYLE_PATH, _CODE_STYLE_INDEX_PATH]
     primary = next((p for p in candidates if p.exists()), None)
     assert primary is not None, (
@@ -651,8 +507,6 @@ def test_code_style_md_mentions_type_ignore_policy() -> None:
 
 
 def test_code_style_md_mentions_zero_test_suppressions() -> None:
-    """CODE_STYLE.md (legacy, optional) or docs/code-style/index.md (canonical) must
-    state test files have zero suppressions."""
     candidates = [_CODE_STYLE_PATH, _CODE_STYLE_INDEX_PATH]
     primary = next((p for p in candidates if p.exists()), None)
     assert primary is not None, (
@@ -669,8 +523,6 @@ def test_code_style_md_mentions_zero_test_suppressions() -> None:
 
 
 def test_code_style_md_mentions_make_verify() -> None:
-    """CODE_STYLE.md (legacy, optional) or docs/code-style/index.md (canonical) must
-    mention the canonical make verify workflow."""
     candidates = [_CODE_STYLE_PATH, _CODE_STYLE_INDEX_PATH]
     primary = next((p for p in candidates if p.exists()), None)
     assert primary is not None, (
@@ -683,7 +535,6 @@ def test_code_style_md_mentions_make_verify() -> None:
 
 
 def test_code_style_index_mentions_strict_mypy_config() -> None:
-    """docs/code-style/index.md must mention strict mypy with ralph-workflow/mypy.ini."""
     content = _CODE_STYLE_INDEX_PATH.read_text(encoding="utf-8")
     assert "ralph-workflow/mypy.ini" in content, (
         "docs/code-style/index.md must reference the exact maintained mypy config path"
@@ -692,7 +543,6 @@ def test_code_style_index_mentions_strict_mypy_config() -> None:
 
 
 def test_code_style_index_mentions_type_ignore_policy() -> None:
-    """docs/code-style/index.md must mention docs/agents/type-ignore-policy.md."""
     content = _CODE_STYLE_INDEX_PATH.read_text(encoding="utf-8")
     assert "docs/agents/type-ignore-policy.md" in content, (
         "docs/code-style/index.md must reference the type-ignore policy document"
@@ -700,7 +550,6 @@ def test_code_style_index_mentions_type_ignore_policy() -> None:
 
 
 def test_code_style_index_mentions_zero_test_suppressions() -> None:
-    """docs/code-style/index.md must state test files have zero suppressions."""
     content = _CODE_STYLE_INDEX_PATH.read_text(encoding="utf-8")
     content_lower = content.lower()
     marker = "type:" + " ignore"
@@ -712,7 +561,6 @@ def test_code_style_index_mentions_zero_test_suppressions() -> None:
 
 
 def test_code_style_index_mentions_make_verify() -> None:
-    """docs/code-style/index.md must mention the canonical make verify workflow."""
     content = _CODE_STYLE_INDEX_PATH.read_text(encoding="utf-8")
     assert "make verify" in content, (
         "docs/code-style/index.md must reference the canonical `make verify` verification command"
@@ -720,14 +568,6 @@ def test_code_style_index_mentions_make_verify() -> None:
 
 
 def test_tooling_guide_mentions_strict_mypy_config() -> None:
-    """docs/tooling/python-tooling.md (legacy) or docs/sphinx/configuration.md
-    (canonical) must mention strict mypy with ralph-workflow/mypy.ini.
-
-    wt-026 consolidation removed docs/tooling/python-tooling.md; the
-    canonical home is docs/sphinx/configuration.md. If the legacy file is
-    re-introduced it must match the canonical contract; the test still
-    asserts it.
-    """
     candidates = [_TOOLING_GUIDE_PATH, _TOOLING_CONFIG_PATH]
     primary = next((p for p in candidates if p.exists()), None)
     assert primary is not None, (
@@ -742,8 +582,6 @@ def test_tooling_guide_mentions_strict_mypy_config() -> None:
 
 
 def test_tooling_guide_mentions_type_ignore_policy() -> None:
-    """docs/tooling/python-tooling.md (legacy) or docs/sphinx/configuration.md
-    (canonical) must mention docs/agents/type-ignore-policy.md."""
     candidates = [_TOOLING_GUIDE_PATH, _TOOLING_CONFIG_PATH]
     primary = next((p for p in candidates if p.exists()), None)
     assert primary is not None, (
@@ -757,8 +595,6 @@ def test_tooling_guide_mentions_type_ignore_policy() -> None:
 
 
 def test_tooling_guide_mentions_zero_test_suppressions() -> None:
-    """docs/tooling/python-tooling.md (legacy) or docs/sphinx/configuration.md
-    (canonical) must state test files have zero suppressions."""
     candidates = [_TOOLING_GUIDE_PATH, _TOOLING_CONFIG_PATH]
     primary = next((p for p in candidates if p.exists()), None)
     assert primary is not None, (
@@ -776,8 +612,6 @@ def test_tooling_guide_mentions_zero_test_suppressions() -> None:
 
 
 def test_tooling_guide_mentions_make_verify() -> None:
-    """docs/tooling/python-tooling.md (legacy) or docs/sphinx/configuration.md
-    (canonical) must mention the canonical make verify workflow."""
     candidates = [_TOOLING_GUIDE_PATH, _TOOLING_CONFIG_PATH]
     primary = next((p for p in candidates if p.exists()), None)
     assert primary is not None, (
@@ -791,8 +625,6 @@ def test_tooling_guide_mentions_make_verify() -> None:
 
 
 def test_tooling_guide_does_not_reference_nonexistent_ruff_toml() -> None:
-    """docs/tooling/python-tooling.md (legacy) or docs/sphinx/configuration.md
-    (canonical) must not reference nonexistent ruff.toml."""
     candidates = [_TOOLING_GUIDE_PATH, _TOOLING_CONFIG_PATH]
     primary = next((p for p in candidates if p.exists()), None)
     assert primary is not None, (
@@ -800,7 +632,6 @@ def test_tooling_guide_does_not_reference_nonexistent_ruff_toml() -> None:
         "docs/sphinx/configuration.md (canonical) to exist"
     )
     content = primary.read_text(encoding="utf-8")
-    # The file should not reference ruff.toml as a config source (it doesn't exist in the repo)
     lines = content.splitlines()
     ruff_config_lines = [
         (i, line)
@@ -814,8 +645,6 @@ def test_tooling_guide_does_not_reference_nonexistent_ruff_toml() -> None:
 
 
 def test_tooling_guide_does_not_claim_stale_python_version() -> None:
-    """docs/tooling/python-tooling.md (legacy) or docs/sphinx/configuration.md
-    (canonical) must not claim python_version = 3.12."""
     candidates = [_TOOLING_GUIDE_PATH, _TOOLING_CONFIG_PATH]
     primary = next((p for p in candidates if p.exists()), None)
     assert primary is not None, (
@@ -830,8 +659,6 @@ def test_tooling_guide_does_not_claim_stale_python_version() -> None:
 
 
 def test_tooling_guide_does_not_claim_pydantic_mypy_plugin() -> None:
-    """docs/tooling/python-tooling.md (legacy) or docs/sphinx/configuration.md
-    (canonical) must not claim pydantic.mypy plugin is used."""
     candidates = [_TOOLING_GUIDE_PATH, _TOOLING_CONFIG_PATH]
     primary = next((p for p in candidates if p.exists()), None)
     assert primary is not None, (
@@ -846,8 +673,6 @@ def test_tooling_guide_does_not_claim_pydantic_mypy_plugin() -> None:
 
 
 def test_tooling_guide_uses_ini_style_overrides_not_toml() -> None:
-    """docs/tooling/python-tooling.md (legacy) or docs/sphinx/configuration.md
-    (canonical) must not show TOML [[overrides]] syntax."""
     candidates = [_TOOLING_GUIDE_PATH, _TOOLING_CONFIG_PATH]
     primary = next((p for p in candidates if p.exists()), None)
     assert primary is not None, (
@@ -865,12 +690,6 @@ _CHANGELOG_PATH = REPO_ROOT / "CHANGELOG.md"
 
 
 def test_changelog_does_not_claim_none_disables_activity_evidence_ttl() -> None:
-    """CHANGELOG.md must document ``agent_idle_activity_evidence_ttl_seconds``
-    as disabled only by ``0.0``, not by ``None``.
-
-    The operator-facing config surface (``GeneralConfig``) defines the
-    field as ``float`` with ``ge=0.0``; it does not accept ``None``.
-    """
     content = _CHANGELOG_PATH.read_text(encoding="utf-8")
     for match in re.finditer(r"agent_idle_activity_evidence_ttl_seconds", content):
         start = max(0, match.start() - 200)
@@ -884,12 +703,6 @@ def test_changelog_does_not_claim_none_disables_activity_evidence_ttl() -> None:
 
 
 def test_changelog_does_not_claim_upstream_proxy_invokes_active_sink() -> None:
-    """CHANGELOG.md must not claim ``UpstreamProxyHandler`` emits the activity sink.
-
-    The single emission point for every ``tools/call`` is
-    ``McpServer._handle_tools_call``; the proxy is a pure pass-through and
-    must not invoke ``invoke_active_sink`` itself.
-    """
     content = _CHANGELOG_PATH.read_text(encoding="utf-8")
     assert "invoke_active_sink(self._alias)" not in content, (
         "CHANGELOG.md must not claim UpstreamProxyHandler invokes the activity sink;"
@@ -898,7 +711,6 @@ def test_changelog_does_not_claim_upstream_proxy_invokes_active_sink() -> None:
 
 
 def test_changelog_does_not_reference_missing_architecture_doc() -> None:
-    """CHANGELOG.md must not point at a non-existent architecture doc path."""
     content = _CHANGELOG_PATH.read_text(encoding="utf-8")
     assert "docs/architecture/logging-and-observability.md" not in content, (
         "CHANGELOG.md references docs/architecture/logging-and-observability.md,"

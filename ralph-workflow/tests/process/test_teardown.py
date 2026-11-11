@@ -1,5 +1,3 @@
-"""Tests for process subtree teardown."""
-
 from __future__ import annotations
 
 import contextlib
@@ -21,7 +19,6 @@ def _wait_for_descendants(
     min_count: int = 1,
     timeout: float = 0.5,
 ) -> list[psutil.Process]:
-    """Poll until nested children exist instead of sleeping a fixed delay."""
     deadline = time.monotonic() + timeout
     last: list[psutil.Process] = []
     while time.monotonic() < deadline:
@@ -39,9 +36,6 @@ def _wait_for_descendants(
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals only")
 def test_teardown_subtree_reaps_nested_children() -> None:
-    """DefaultProcessTeardown kills the host and all descendants transitively."""
-    # Spawn a host that spawns a child; the child spawns a grandchild. All three
-    # processes must be reaped by teardown_subtree.
     grandchild_script = "import time; time.sleep(600)"
     child_script = (
         "import subprocess, sys, time; "
@@ -72,16 +66,11 @@ def test_teardown_subtree_reaps_nested_children() -> None:
         host.wait(timeout=0.5)
     assert host.poll() is not None
 
-    # A dead descendant can transiently remain as a zombie until the container's
-    # PID 1 reaps it. A zombie has no executable process and therefore cannot
-    # survive teardown; requiring immediate PID reuse made this boundary test
-    # environment-dependent without proving a stronger lifecycle contract.
     survivors = {pid for pid in child_pids if _is_live_process(pid)}
     assert not survivors, f"some descendants survived teardown: {survivors}"
 
 
 def _is_live_process(pid: int) -> bool:
-    """Return whether a PID still has an executable (non-zombie) process."""
     try:
         return psutil.Process(pid).status() != psutil.STATUS_ZOMBIE
     except psutil.NoSuchProcess:
@@ -89,27 +78,12 @@ def _is_live_process(pid: int) -> bool:
 
 
 def test_teardown_subtree_missing_process_is_noop() -> None:
-    """Tearing down a non-existent PID does not raise."""
     teardown = DefaultProcessTeardown(kill_escalation_ms=5.0)
-    # PID 999999 is unlikely to exist.
     teardown.teardown_subtree(999_999, issuer="invoke:test")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals only")
 def test_teardown_subtree_reaps_orphaned_children_after_host_exit() -> None:
-    """When the host is already dead, descendants are reaped via the process group.
-
-    The host is the session leader (``start_new_session=True``), so its PID is
-    also the process group ID. After the host is killed, the child ignores
-    SIGHUP and would normally be orphaned; ``teardown_subtree`` must still reap
-    it by signaling the process group.
-
-    The PGID is captured via ``verified_child_session_pgid`` while the host is
-    ALIVE. That capture is what makes the signal safe — a dead PID on its own
-    is just a number the kernel may have handed to an unrelated process, and
-    signalling it blind is what took a developer's machine down (see
-    ``test_teardown_ownership_guard.py``).
-    """
     child_script = (
         "import signal, time; signal.signal(signal.SIGHUP, signal.SIG_IGN); time.sleep(600)"
     )
@@ -130,19 +104,14 @@ def test_teardown_subtree_reaps_orphaned_children_after_host_exit() -> None:
     assert len(children) >= 1, f"expected at least one descendant, got {len(children)}"
     child_pid = children[0].pid
 
-    # Capture the group while the leader is still alive — this is the
-    # ownership proof teardown requires before it may signal a group.
     host_pgid = verified_child_session_pgid(host.pid)
     assert host_pgid == host.pid
 
-    # Kill the host directly. The child ignores SIGHUP, so it survives.
     host.kill()
     host.wait(timeout=2)
     with pytest.raises(psutil.NoSuchProcess):
         psutil.Process(host.pid)
 
-    # Now teardown_subtree cannot enumerate via psutil, but it should fall
-    # back to signaling the host's process group and reap the child.
     teardown = DefaultProcessTeardown(kill_escalation_ms=5.0)
     teardown.teardown_subtree(host.pid, issuer="invoke:test", pgid=host_pgid)
 

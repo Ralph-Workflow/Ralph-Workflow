@@ -1,9 +1,3 @@
-"""Black-box tests for transport-keyed strategy factory dispatch.
-
-All tests use in-memory fakes — no real subprocesses, no real wall-clock waits,
-no real psutil.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -21,8 +15,6 @@ from ralph.process.child_liveness import ChildLivenessRegistry
 
 
 class TestStrategyFactoryDispatch:
-    """strategy_for_transport resolves strategy instances by AgentTransport."""
-
     @pytest.mark.parametrize(
         ("transport", "expected_class"),
         [

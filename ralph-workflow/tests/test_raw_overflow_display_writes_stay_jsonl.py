@@ -1,29 +1,3 @@
-"""Regression: display-authored overflow must not corrupt the JSONL capture.
-
-The verbatim raw capture (``.agent/raw/<id>.log``) is supposed to hold
-exactly what the agent process wrote. It used to hold two writers' output:
-the reader appended the agent's wire JSONL, and the display appended the
-condensed bodies of tool results and previews that were too long to render
-inline.
-
-Those bodies are arbitrary text. When one carried a newline -- markdown
-front matter (``---``), a rendered ``PASS`` row, a diff -- it landed as
-multiple physical lines, none of which parse as JSON.
-``detect_raw_log_breaks`` then read the file back and reported
-``raw transcript corrupted``, so Ralph graded the run against damage it
-had inflicted on its own transcript.
-
-Measured 2026-08-20 in ``wt-067-claude-headless/.agent/raw/codex_*.log``:
-the condensed body of a ``ralph_submit_md_artifact`` call put a bare
-``---`` front-matter line into the capture, and the phase handler reported
-``raw transcript corrupted: line at byte 157612 is not parseable JSON
-(first 60 chars: '---')``.
-
-The fix splits the files: the verbatim capture keeps only agent bytes, and
-the display's condensed bodies go to a ``.overflow.log`` sibling as plain
-readable text.
-"""
-
 from __future__ import annotations
 
 import io
@@ -46,9 +20,6 @@ from ralph.display.raw_overflow import (
 
 pytestmark = pytest.mark.timeout_seconds(5)
 
-#: The exact shape observed in the field: a markdown artifact body whose
-#: YAML front matter opens with a bare ``---`` line. Padded past the
-#: condenser's limit so the display actually spills it to the log.
 _MARKDOWN_ARTIFACT_BODY = (
     "---\ntype: development_result\nstatus: completed\n---\n\n## Summary\n\n"
     + "\n".join(f"- [SUM-{n}] Repaired the headless display path." for n in range(400))
@@ -63,15 +34,9 @@ def _display(workspace_root: Path) -> ParallelDisplay:
     )
 
 
-# ---------------------------------------------------------------------------
-# The regression, through the real display path
-# ---------------------------------------------------------------------------
-
-
 def test_condensed_tool_result_does_not_corrupt_the_verbatim_capture(
     tmp_path: Path,
 ) -> None:
-    """The measured incident: front matter must not break the JSONL."""
     verbatim = raw_log_path_for(tmp_path, "codex")
     verbatim.parent.mkdir(parents=True, exist_ok=True)
     verbatim.write_text(
@@ -94,7 +59,6 @@ def test_condensed_tool_result_does_not_corrupt_the_verbatim_capture(
 
 
 def test_condensed_body_is_written_to_the_overflow_sibling(tmp_path: Path) -> None:
-    """The body must still be recoverable -- in the sibling file."""
     display = _display(tmp_path)
     try:
         display.emit_parsed_event(
@@ -116,27 +80,15 @@ def test_condensed_body_is_written_to_the_overflow_sibling(tmp_path: Path) -> No
 def test_condensed_log_is_a_distinct_file_from_the_verbatim_capture(
     tmp_path: Path,
 ) -> None:
-    """The two writers must not share a path -- that was the root cause."""
     verbatim = raw_log_path_for(tmp_path, "codex", model="gpt-5.6-terra")
     condensed = raw_log_path_for(tmp_path, "codex", model="gpt-5.6-terra", condensed=True)
 
     assert verbatim != condensed
     assert condensed.name.endswith(f"{CONDENSED_LOG_SUFFIX}.log")
-    # ``.agent/raw/`` accepts ``.log`` files only (see test_agent_internal_paths).
     assert condensed.suffix == ".log"
 
 
-# ---------------------------------------------------------------------------
-# Readability and detection properties of the two files
-# ---------------------------------------------------------------------------
-
-
 def test_condensed_body_stays_plain_text(tmp_path: Path) -> None:
-    """Operators page through this file; it must not be escaped JSON.
-
-    The condensation marker in the live view points an operator at this
-    path, so the body has to read as the text it was.
-    """
     log = RawOverflowLog(tmp_path, "claude", condensed=True)
     try:
         log.append(_MARKDOWN_ARTIFACT_BODY)
@@ -153,12 +105,6 @@ def test_condensed_body_stays_plain_text(tmp_path: Path) -> None:
 def test_condensed_writes_do_not_consume_the_verbatim_byte_budget(
     tmp_path: Path,
 ) -> None:
-    """A large condensed body must not disable the agent's own capture.
-
-    ``append`` permanently disables a log once its byte cap is crossed.
-    While both writers shared one file, one oversized preview could stop
-    the verbatim capture from recording any further agent output.
-    """
     display = _display(tmp_path)
     try:
         display.emit_parsed_event(
@@ -174,7 +120,6 @@ def test_condensed_writes_do_not_consume_the_verbatim_byte_budget(
 
 
 def test_genuine_wire_corruption_is_still_reported(tmp_path: Path) -> None:
-    """The split must not mute real corruption in the verbatim capture."""
     log = RawOverflowLog(tmp_path, "codex")
     try:
         log.append('{"type":"item.completed"}')
@@ -188,23 +133,9 @@ def test_genuine_wire_corruption_is_still_reported(tmp_path: Path) -> None:
     assert [b.kind for b in breaks] == ["NON_JSONL"]
 
 
-# ---------------------------------------------------------------------------
-# Only the readers may write the verbatim capture
-# ---------------------------------------------------------------------------
-
-
 def test_parser_failure_diagnostic_does_not_reach_the_verbatim_capture(
     tmp_path: Path,
 ) -> None:
-    """A display-side parse failure must not inject text into the transcript.
-
-    ``_raw_overflow_write`` exists to preserve a line the parser choked
-    on. The line it is handed has already been through the display
-    sanitizer (truncated at 200 chars with an ellipsis), so writing it to
-    the verbatim capture severs long wire frames into unparseable JSON --
-    and the surrounding ``try`` also covers the display's own render
-    callback, so a rendering bug is enough to trigger it.
-    """
     from ralph.display.activity_model import ActivityProvider
 
     display = _display(tmp_path)
@@ -224,23 +155,15 @@ def test_parser_failure_diagnostic_does_not_reach_the_verbatim_capture(
 
 
 class _RaisingParser:
-    """Parser stub whose failure drives the diagnostic write path."""
-
     def parse(self, _line: str) -> object:
         raise ValueError("parse failed")
 
 
 def test_cap_warning_is_not_shared_between_logs(tmp_path: Path) -> None:
-    """Each file needs its own one-shot 'log full' warning.
-
-    The slot is keyed by log path rather than by unit, so one log
-    reaching the cap cannot silence the warning for another.
-    """
     display = _display(tmp_path)
     try:
         first = display._get_condensed_log("unit-a")
         second = display._get_condensed_log("unit-b")
-        # Drive both past the byte cap so each guard fires.
         first.disable()
         second.disable()
         display._check_overflow_size("unit-a", first)
@@ -253,11 +176,6 @@ def test_cap_warning_is_not_shared_between_logs(tmp_path: Path) -> None:
 
 
 def test_stop_flushes_the_condensed_log_to_disk(tmp_path: Path) -> None:
-    """A run that ends without drop_unit must not advertise an empty file.
-
-    The live view points the operator at the condensed log by path. If
-    ``stop()`` does not flush it, that reference names a zero-byte file.
-    """
     display = _display(tmp_path)
     try:
         display.emit_parsed_event(
@@ -276,14 +194,6 @@ def test_stop_flushes_the_condensed_log_to_disk(tmp_path: Path) -> None:
 
 
 def test_a_respawned_unit_does_not_erase_the_earlier_wave(tmp_path: Path) -> None:
-    """The condensed log is the only copy; a second wave must not wipe it.
-
-    ``drop_unit`` closes and forgets a unit's log, so a re-spawned worker
-    for the same unit id builds a fresh writer. While truncation was
-    keyed to the writer instance, that second writer opened the path
-    ``wb`` and erased wave one -- including bodies wave one's rendered
-    record still points at by path.
-    """
     display = _display(tmp_path)
     try:
         display.emit_parsed_event(
@@ -307,13 +217,6 @@ def test_a_respawned_unit_does_not_erase_the_earlier_wave(tmp_path: Path) -> Non
 
 
 def test_a_dropped_units_writer_cannot_reopen_its_path(tmp_path: Path) -> None:
-    """``drop_unit`` must leave its writer unable to write again.
-
-    Forgetting the registry entry lets a later acquisition build a
-    SECOND writer for the same path. Closing the first one is not
-    enough -- ``append`` reopens -- so two buffered writers would append
-    to one file, tearing each other's lines and racing the byte total.
-    """
     display = _display(tmp_path)
     try:
         first = display._get_condensed_log("codex")
@@ -327,13 +230,6 @@ def test_a_dropped_units_writer_cannot_reopen_its_path(tmp_path: Path) -> None:
 
 
 def test_watchdog_drained_lines_reach_the_capture(tmp_path: Path) -> None:
-    """Lines drained straight to the parser are still agent output.
-
-    A watchdog fire empties the pending queue to the parser. Skipping
-    the capture for those lines left the verbatim transcript missing
-    exactly what was written just before a stall -- and losing whole
-    lines leaves the file parseable, so nothing reported the loss.
-    """
     from ralph.display.raw_overflow import RawOverflowLog
 
     log = RawOverflowLog(tmp_path, "codex")

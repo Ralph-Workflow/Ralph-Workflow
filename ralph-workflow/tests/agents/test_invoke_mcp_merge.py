@@ -1,5 +1,3 @@
-"""Tests for mcp.toml merge into upstream env-var flow across all four agent paths."""
-
 from __future__ import annotations
 
 import json
@@ -36,27 +34,6 @@ pytestmark = pytest.mark.timeout_seconds(5)
 
 @pytest.fixture(autouse=True)
 def _isolate_broker_secret(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Pin the broker-secret contract for every test in this module.
-
-    The invoke path verifies the run-scoped completion sentinel against
-    ``RALPH_BROKER_SECRET`` whenever that variable is in scope (RFC-013
-    P3 anti-forgery).  An operator-exported secret -- or a secret leaked
-    into the pytest process by another test, e.g. the CLI's
-    ``ralph/cli/commands/run.py::_ensure_broker_secret`` minting one in
-    ``os.environ`` and never restoring it -- therefore turns this module's
-    unsigned ``completion_seen_<run_id>.json`` sentinel into a REJECTED
-    one.  A rejected sentinel drops the OpenCode transport out of the
-    terminal-complete path and into the parent-exit grace window
-    (``parent_exit_grace_seconds``, 5 s by default), which is exactly the
-    per-test timeout this module is capped at: the two OpenCode tests then
-    failed with ``TestExecutionTimeoutError`` whenever they ran after such
-    a test in the same process.
-
-    Deleting the variable makes the module's completion-evidence contract
-    explicit and independent of the ambient environment, in both
-    directions.  It is the same hermetic-env discipline the rest of the
-    suite uses (see ``tests/test_smoke_canonical_path.py``).
-    """
     monkeypatch.delenv("RALPH_BROKER_SECRET", raising=False)
 
 
@@ -67,8 +44,6 @@ def _env_dict(kwargs: dict[str, object]) -> dict[str, str]:
 
 
 class _FakeProcess:
-    # Ralph delivers OpenCode's prompt on stdin, so a process fake must
-    # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
     stdin = None
     pid: int = 12345
 
@@ -332,21 +307,11 @@ def test_opencode_upstream_env_var_includes_mcp_toml_server(
                 show_progress=False,
                 workspace_path=tmp_path,
                 extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
-                # The OpenCode transport completes on durable evidence: the
-                # sentinel above is accepted on the FIRST exit classification
-                # and the invocation returns without ever entering the
-                # parent-exit grace window.  A zero-length window keeps that
-                # contract honest: if the evidence were ever rejected the
-                # invocation raises ``OpenCodeResumableExitError`` immediately
-                # instead of burning the 5 s production grace window and
-                # tripping this module's per-test timeout.
                 parent_exit_grace_seconds=0.0,
             ),
         )
     )
 
-    # The invocation returned normally (a rejected completion gate raises)
-    # and the fake agent's completion line was delivered to the consumer.
     assert any("Task declared complete:" in line for line in lines)
     upstreams = load_upstream_mcp_servers(seen_env[0][UPSTREAM_MCP_CONFIG_ENV])
     assert any(s.name == "toml-injected" for s in upstreams)
@@ -558,17 +523,11 @@ def test_opencode_non_colliding_native_server_preserved(
                 show_progress=False,
                 workspace_path=tmp_path,
                 extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
-                # See the sibling OpenCode test: a zero-length parent-exit
-                # grace window keeps a rejected completion sentinel a fast,
-                # explicit failure instead of a 5 s wait that collides with
-                # this module's per-test timeout.
                 parent_exit_grace_seconds=0.0,
             ),
         )
     )
 
-    # The invocation returned normally (a rejected completion gate raises)
-    # and the fake agent's completion line was delivered to the consumer.
     assert any("Task declared complete:" in line for line in lines)
     upstreams = load_upstream_mcp_servers(seen_env[0][UPSTREAM_MCP_CONFIG_ENV])
     names = {s.name for s in upstreams}
@@ -580,7 +539,6 @@ def test_opencode_non_colliding_native_server_preserved(
 def test_cursor_runtime_resolver_writes_private_mcp_json_and_cleans_up(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The cursor runtime resolver writes a private config and cleans it up."""
     operator_home = tmp_path / "fake-home"
     operator_home.mkdir()
     operator_config = operator_home / ".cursor" / "mcp.json"
@@ -621,14 +579,6 @@ def test_cursor_runtime_resolver_writes_private_mcp_json_and_cleans_up(
 def test_cursor_runtime_resolver_preserves_existing_mcp_servers(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The cursor runtime resolver merges existing ``.cursor/mcp.json`` entries.
-
-    A pre-existing ``.cursor/mcp.json`` with an operator-managed MCP
-    server is preserved (in ``unsafe_mode=True``) so the resolver does
-    not silently clobber operator-managed configuration.  In safe
-    mode the existing entry is dropped in favor of the Ralph entry
-    only.
-    """
     cursor_workspace = tmp_path / ".cursor"
     cursor_workspace.mkdir(parents=True, exist_ok=True)
     cursor_workspace_config = cursor_workspace / "mcp.json"
@@ -654,7 +604,6 @@ def test_cursor_runtime_resolver_preserves_existing_mcp_servers(
         transport=AgentTransport.CURSOR,
     )
 
-    # unsafe_mode=True: the private config retains the operator upstream.
     runtime = resolve_invocation_runtime(
         config,
         extra_env={str(MCP_ENDPOINT_ENV): endpoint},
@@ -676,7 +625,6 @@ def test_cursor_runtime_resolver_preserves_existing_mcp_servers(
         if runtime.cleanup is not None:
             runtime.cleanup()
 
-    # Restore the existing-svc to verify the safe-mode default restores the original bytes.
     cursor_workspace_config.write_text(
         json.dumps(
             {
@@ -696,7 +644,6 @@ def test_cursor_runtime_resolver_preserves_existing_mcp_servers(
         unsafe_mode=False,
     )
     try:
-        # In safe mode the private config contains only the Ralph entry.
         runtime_env = runtime_safe.agent_env
         assert runtime_env is not None
         private_config = Path(runtime_env["HOME"]) / ".cursor" / "mcp.json"

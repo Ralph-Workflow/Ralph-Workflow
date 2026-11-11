@@ -1,13 +1,3 @@
-"""Pins E2.4: fresh MCP_STAGE_ID_ENV per spawn during restart / respawn.
-
-Catalogue requirement E2.4:
-- Stage-file identity reuse: env.setdefault(MCP_STAGE_ID_ENV, str(uuid.uuid4()))
-  keeps an existing id. If restart_fn passes the same env mapping on every spawn,
-  every candidate writes the old child's stage file, and last_stage reports the
-  old child's "serving".
-- Required: every spawn gets a fresh stage id. Same for any other per-spawn env value.
-"""
-
 from __future__ import annotations
 
 import os
@@ -17,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-# Pre-import workspace to prevent circular import between process.manager and workspace
 from ralph import workspace as _workspace
 from ralph.mcp.protocol.env import (
     MCP_ACCEPT_PAUSE_FILE,
@@ -57,7 +46,6 @@ class _DummyProcess(ProcessLike):
 
 
 def test_spawn_mcp_process_assigns_fresh_stage_id_per_spawn(tmp_path: Path) -> None:
-    """Every call to _spawn_mcp_process must generate a fresh UUID for MCP_STAGE_ID_ENV."""
     captured_envs: list[dict[str, str]] = []
 
     def fake_spawn(
@@ -79,7 +67,6 @@ def test_spawn_mcp_process_assigns_fresh_stage_id_per_spawn(tmp_path: Path) -> N
 
     deps = LifecycleDeps(
         create_session_file=lambda _r, _s: session_file,
-        # Intentionally simulate an environment mapper that returns a stale stage ID
         subprocess_env=lambda _f: {MCP_STAGE_ID_ENV: stale_stage_id},
         spawn_process=fake_spawn,
         preflight=lambda _ep, _up, _to: None,
@@ -92,7 +79,6 @@ def test_spawn_mcp_process_assigns_fresh_stage_id_per_spawn(tmp_path: Path) -> N
         drain="standalone",
     )
 
-    # First spawn (e.g. initial server)
     proc1 = lifecycle._spawn_mcp_process(
         tmp_path,
         session,
@@ -105,7 +91,6 @@ def test_spawn_mcp_process_assigns_fresh_stage_id_per_spawn(tmp_path: Path) -> N
         make_before_break=False,
     )
 
-    # Second spawn (e.g. candidate replacement or restart)
     proc2 = lifecycle._spawn_mcp_process(
         tmp_path,
         session,
@@ -127,24 +112,19 @@ def test_spawn_mcp_process_assigns_fresh_stage_id_per_spawn(tmp_path: Path) -> N
     assert stage_id_1 is not None and len(stage_id_1) > 0
     assert stage_id_2 is not None and len(stage_id_2) > 0
 
-    # Invariant: Neither spawn reused the stale_stage_id
     assert stage_id_1 != stale_stage_id
     assert stage_id_2 != stale_stage_id
 
-    # Invariant: Each spawn receives a fresh, distinct stage ID
     assert stage_id_1 != stage_id_2
 
-    # Invariant: Pause files match their respective fresh stage IDs
     assert env1.get(MCP_ACCEPT_PAUSE_FILE, "").endswith(f"accept.pause.{stage_id_1}")
     assert env2.get(MCP_ACCEPT_PAUSE_FILE, "").endswith(f"accept.pause.{stage_id_2}")
 
-    # Invariant: StandaloneMcpProcess carries the exact stage_id
     assert proc1.stage_id == stage_id_1
     assert proc2.stage_id == stage_id_2
 
 
 def test_real_children_write_distinct_stage_files_without_collision(tmp_path: Path) -> None:
-    """Two real subprocesses record stages using assigned fresh stage IDs with zero collision."""
     ralph_root = Path(__file__).resolve().parents[2]
     script_path = tmp_path / "record_stage_child.py"
     script_path.write_text(
@@ -194,13 +174,11 @@ def test_real_children_write_distinct_stage_files_without_collision(tmp_path: Pa
     assert rc1 == 0
     assert rc2 == 0
 
-    # Ensure neither process overwrote the other's stage file
     last1 = read_last_stage(tmp_path, spawn_id=stage_id_1)
     last2 = read_last_stage(tmp_path, spawn_id=stage_id_2)
 
     assert last1 == "serving"
     assert last2 == "config_loaded"
 
-    # Leak check: both processes are dead
     assert proc1.poll() is not None
     assert proc2.poll() is not None

@@ -1,14 +1,3 @@
-"""Policy-file loading, block compilation, and schema validation.
-
-The policy loader (:mod:`ralph.policy.loader`) owns the layering rules --
-which file wins, how a workspace inherits, and which bundle Ralph gets back.
-This module owns the part that decides whether ONE file is acceptable: it
-reads a policy TOML, compiles the block-authored pipeline graph, and
-validates the agents/pipeline/artifacts schemas against the policy models.
-
-Both modules are one contract: the loader answers "which file?", this
-module answers "is this file valid?".
-"""
 
 from __future__ import annotations
 
@@ -77,20 +66,6 @@ def load_toml(
     kind: str | None = None,
     strict: bool = False,
 ) -> dict[str, object]:
-    """Load a TOML file, returning empty dict if absent or on fallback.
-
-    Args:
-        path: Path to the TOML file.
-        kind: Optional policy kind for warning messages. If None, derived from path.
-        strict: If True, raise PolicyValidationError on parse or read errors.
-
-    Returns:
-        Parsed TOML content or empty dict if file doesn't exist or on fallback.
-
-    Raises:
-        PolicyValidationError: If TOML parsing fails OR the file cannot be read
-            and strict=True.
-    """
     resolved_kind = kind if kind is not None else _kind_for_policy_path(path)
     try:
         data = load_optional_toml(path, kind=resolved_kind, strict=strict)
@@ -227,7 +202,6 @@ def _compile_block_pipeline_data(data: dict[str, object]) -> dict[str, object]:
 
 
 def _normalize_pipeline_data(data: dict[str, object]) -> dict[str, object]:
-    """Normalize pipeline data and reject obsolete authoring formats."""
     nested_pipeline = data.get("pipeline")
     if isinstance(nested_pipeline, Mapping) and not PIPELINE_POLICY_FIELDS.intersection(data):
         raise PolicyValidationError(
@@ -240,22 +214,19 @@ def _normalize_pipeline_data(data: dict[str, object]) -> dict[str, object]:
 
 
 def format_validation_error_messages(exc: ValidationError) -> list[str]:
-    """Format all pydantic ValidationError errors into human-readable strings."""
     details = cast(
         "ValidationErrorDetails", exc.errors()
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     return [format_validation_error_detail(detail) for detail in details]
 
 
 def format_validation_error_detail(detail: ValidationErrorDetail) -> str:
-    """Format a single pydantic validation error detail as 'location: message'."""
     loc = detail.get("loc")
     msg = detail.get("msg")
     return f"  {format_validation_location(loc)}: {format_validation_message(msg)}"
 
 
 def format_validation_location(raw_loc: object | None) -> str:
-    """Format a pydantic error location tuple to a dotted path string."""
     if raw_loc is None:
         return "<root>"
     if isinstance(raw_loc, list | tuple):
@@ -266,7 +237,6 @@ def format_validation_location(raw_loc: object | None) -> str:
 
 
 def format_validation_message(raw_msg: object | None) -> str:
-    """Return the validation error message string, substituting a placeholder if absent."""
     if isinstance(raw_msg, str):
         return raw_msg
     if raw_msg is None:
@@ -275,17 +245,6 @@ def format_validation_message(raw_msg: object | None) -> str:
 
 
 def validate_agents(data: dict[str, object]) -> AgentsPolicy:
-    """Validate and return AgentsPolicy.
-
-    Args:
-        data: Raw TOML dictionary.
-
-    Returns:
-        Validated AgentsPolicy instance.
-
-    Raises:
-        PolicyValidationError: On validation failure.
-    """
     misplaced_pipeline_fields = sorted(set(data).intersection(PIPELINE_POLICY_FIELDS))
     if misplaced_pipeline_fields:
         fields = ", ".join(f"`{field}`" for field in misplaced_pipeline_fields)
@@ -304,11 +263,6 @@ def validate_agents(data: dict[str, object]) -> AgentsPolicy:
 
 
 def _phase_def_declares_edge(phase_def: PhaseDefinition, target: str) -> bool:
-    """Return whether *phase_def* routes directly to *target*.
-
-    Checks transitions, decisions, bypass routes, result-status post-commit
-    routes, and post-commit routes declared on the phase definition.
-    """
     t = phase_def.transitions
     for candidate in (t.on_success, t.on_failure, t.on_loopback, t.on_reject):
         if candidate == target:
@@ -325,17 +279,11 @@ def _phase_def_declares_edge(phase_def: PhaseDefinition, target: str) -> bool:
 
 
 def _edge_declared_in_normalized(normalized: dict[str, object], source: str, target: str) -> bool:
-    """Return whether ``source`` declares a direct route to ``target``.
-
-    Operates on the normalized (block-compiled) pipeline data before Pydantic
-    validation: phase definitions are ``PhaseDefinition`` objects while
-    ``post_commit_routes`` may still be raw TOML dicts.
-    """
     phases = normalized.get("phases")
     if isinstance(phases, Mapping):
         typed_phases: Mapping[str, PhaseDefinition] = cast(
             "Mapping[str, PhaseDefinition]", phases
-        )  # cast-policy: seam: structural boundary (normalized pipeline mapping narrowed to its typed phase map)
+        )
         phase_def = typed_phases.get(source)
         if phase_def is not None and _phase_def_declares_edge(phase_def, target):
             return True
@@ -355,14 +303,13 @@ def _edge_declared_in_normalized(normalized: dict[str, object], source: str, tar
 def _disable_incompatible_inherited_timebox(
     normalized: dict[str, object], name: str
 ) -> dict[str, object]:
-    """Disable an inherited timebox that does not fit the compiled graph."""
     timebox = normalized.get(name)
     phases = normalized.get("phases")
     if not isinstance(timebox, Mapping) or not isinstance(phases, Mapping):
         return normalized
     phase_names = set(
         cast("Mapping[str, PhaseDefinition]", phases)
-    )  # cast-policy: seam: structural boundary (normalized pipeline mapping narrowed to its typed phase map)
+    )
     for key in ("start_source", "start_entry", "guarded_entry", "end_entry", "finalization_target"):
         value = timebox.get(key)
         if not isinstance(value, str) or value not in phase_names:
@@ -394,19 +341,15 @@ def _disable_incompatible_inherited_timebox(
 def _disable_incompatible_inherited_development_timebox(
     normalized: dict[str, object],
 ) -> dict[str, object]:
-    """Disable an inherited development timebox that does not fit the compiled graph."""
     return _disable_incompatible_inherited_timebox(normalized, "development_timebox")
 
 
 def _disable_incompatible_inherited_cycle_timebox(
     normalized: dict[str, object],
 ) -> dict[str, object]:
-    """Disable an inherited cycle timebox that does not fit the compiled graph."""
     return _disable_incompatible_inherited_timebox(normalized, "cycle_timebox")
 
 
-#: Public alias for :func:`_disable_incompatible_inherited_cycle_timebox`.
-#: Tests pin this helper's behavior through the public name.
 disable_incompatible_inherited_cycle_timebox = _disable_incompatible_inherited_cycle_timebox
 
 
@@ -416,21 +359,6 @@ def validate_pipeline(
     timeboxes_explicit: bool = True,
     cycle_timebox_explicit: bool | None = None,
 ) -> PipelinePolicy:
-    """Validate and return PipelinePolicy.
-
-    Args:
-        data: Raw TOML dictionary.
-        timeboxes_explicit: When False, inherited timebox defaults that do
-            not fit the compiled graph are disabled rather than rejected.
-        cycle_timebox_explicit: Backward-compatible alias for
-            ``timeboxes_explicit`` used by direct loader callers.
-
-    Returns:
-        Validated PipelinePolicy instance.
-
-    Raises:
-        PolicyValidationError: On validation failure.
-    """
     if cycle_timebox_explicit is not None:
         timeboxes_explicit = cycle_timebox_explicit
     normalized = _normalize_pipeline_data(data)
@@ -448,17 +376,6 @@ def validate_pipeline(
 
 
 def validate_artifacts(data: dict[str, object]) -> ArtifactsPolicy:
-    """Validate and return ArtifactsPolicy.
-
-    Args:
-        data: Raw TOML dictionary.
-
-    Returns:
-        Validated ArtifactsPolicy instance.
-
-    Raises:
-        PolicyValidationError: On validation failure.
-    """
     try:
         return ArtifactsPolicy.model_validate(data)
     except ValidationError as exc:

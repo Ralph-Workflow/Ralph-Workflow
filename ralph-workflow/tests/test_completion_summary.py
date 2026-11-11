@@ -1,5 +1,3 @@
-"""Tests for the end-of-run completion summary renderer."""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -87,7 +85,6 @@ def test_render_success_title_and_plan_summary() -> None:
 
 
 def test_render_completion_summary_regression_leads_with_failure_phase_and_cause() -> None:
-    """S-6: a cold-read failure receipt presents phase and cause before metrics."""
     text = render_completion_summary(
         _make_snapshot(
             phase="review",
@@ -129,7 +126,6 @@ def test_render_without_decision_log_shows_none_line() -> None:
 
 
 def test_render_completion_summary_regression_preserves_raw_overflow_destination() -> None:
-    """S-6: the standalone receipt preserves the condensed transcript location."""
     text = _render_plain(
         _make_snapshot(),
         workspace_root=None,
@@ -199,7 +195,6 @@ def test_emit_completion_summary_writes_to_console() -> None:
 
 
 def test_completion_summary_surfaces_children_persist_diagnostic() -> None:
-    """CHILDREN_PERSIST_TOO_LONG last_error produces a parsed Reason line."""
     error = (
         "Agent kept child agents alive without producing output for 1800s"
         " (cumulative=1800.0s, scoped_child_active=True, oldest_child_seconds=720.0s,"
@@ -207,16 +202,13 @@ def test_completion_summary_surfaces_children_persist_diagnostic() -> None:
     )
     snap = _make_snapshot(phase="failed", last_error=error, pr_url=None)
     text = _render_plain(snap)
-    # Key parts of the original error are present (console may wrap long lines)
     assert "kept child agents alive" in text
-    # Parsed reason line is also present
     assert "Reason: long child wait" in text
     assert "cumulative=1800.0s" in text
     assert "scoped_child_active=True" in text
 
 
 def test_completion_summary_unchanged_for_other_errors() -> None:
-    """Unrelated errors do not produce an extra Reason line."""
     snap = _make_snapshot(phase="failed", last_error="Some other failure", pr_url=None)
     text = _render_plain(snap)
     assert "Some other failure" in text
@@ -224,27 +216,21 @@ def test_completion_summary_unchanged_for_other_errors() -> None:
 
 
 def test_render_review_issues_found_surfaced_in_summary() -> None:
-    """When review found issues, the completion summary must surface review_issues_found."""
     snap = _make_snapshot(review_issues_found=True)
     text = _render_plain(snap)
-    # The completion summary should explicitly surface the review outcome
     assert "review_issues_found" in text.lower() or "issues found" in text.lower(), (
         f"Expected review_issues_found to be surfaced in output, got: {text}"
     )
 
 
 def test_render_review_clean_when_no_issues() -> None:
-    """When review found no issues, the completion summary should indicate clean review."""
     snap = _make_snapshot(review_issues_found=False)
     text = _render_plain(snap)
-    # The completion summary should indicate clean review when issues_found is False
     assert "review" in text.lower()
-    # When issues_found is False, the summary should not claim issues were found
     assert "issues found" not in text.lower()
 
 
 def test_emit_completion_summary_uses_subscriber_decision_log(tmp_path: Path) -> None:
-    """Snapshot built via subscriber.build_snapshot drives the completion panel."""
     queue: Queue = Queue(maxsize=64)
     subscriber = PipelineSubscriber(
         queue=queue,
@@ -272,7 +258,6 @@ def test_emit_completion_summary_uses_subscriber_decision_log(tmp_path: Path) ->
 
 
 def test_completion_summary_outer_dev_uses_canonical_label() -> None:
-    """outer_dev_iteration in completion summary uses 'Dev #N' canonical label."""
     snap = PipelineSnapshot(
         phase="fix",
         previous_phase="development",
@@ -298,7 +283,6 @@ def test_completion_summary_outer_dev_uses_canonical_label() -> None:
 
 
 def test_completion_summary_outer_dev_with_cap_shows_n_of_total() -> None:
-    """Cycle N/cap format used when budget_progress has a tracks_budget counter with cap."""
     snap = PipelineSnapshot(
         phase="fix",
         previous_phase="development",
@@ -329,7 +313,6 @@ def test_completion_summary_outer_dev_with_cap_shows_n_of_total() -> None:
 
 
 def test_completion_summary_elapsed_appears_before_metrics() -> None:
-    """Elapsed line appears before the Metrics line in text mode output."""
     snap = _make_snapshot()
     console = Console(record=True, width=120, force_terminal=False, color_system=None)
     rendered = render_completion_summary(
@@ -342,7 +325,6 @@ def test_completion_summary_elapsed_appears_before_metrics() -> None:
 
 
 def test_completion_summary_iteration_context_label_shown_for_outer_dev() -> None:
-    """Text mode shows 'Iteration Context:' section heading when outer_dev_iteration is set."""
     snap = PipelineSnapshot(
         phase="complete",
         previous_phase=None,
@@ -368,13 +350,9 @@ def test_completion_summary_iteration_context_label_shown_for_outer_dev() -> Non
 
 
 def test_completion_summary_no_iteration_context_label_when_absent() -> None:
-    """Text mode omits 'Iteration Context:' section when no iteration fields are set."""
     snap = _make_snapshot()
     text = _render_plain(snap)
     assert "Iteration Context:" not in text
-
-
-# --- Budget Progress tests ---
 
 
 def _make_snapshot_with_budget(budget_progress: dict) -> PipelineSnapshot:
@@ -400,7 +378,6 @@ def _make_snapshot_with_budget(budget_progress: dict) -> PipelineSnapshot:
 
 
 def test_completion_summary_budget_progress_never_shown() -> None:
-    """Text mode never shows 'Budget Progress:' or 'remaining' budget wording."""
     snap = _make_snapshot_with_budget(
         {
             "dev_cycles": BudgetProgress(
@@ -415,7 +392,6 @@ def test_completion_summary_budget_progress_never_shown() -> None:
 
 
 def test_completion_summary_budget_progress_absent_when_no_tracked_budget() -> None:
-    """Text mode omits budget wording when no budget-tracked counters exist."""
     snap = _make_snapshot_with_budget(
         {
             "dev_cycles": BudgetProgress(
@@ -428,14 +404,12 @@ def test_completion_summary_budget_progress_absent_when_no_tracked_budget() -> N
 
 
 def test_completion_summary_budget_progress_absent_when_no_budget_progress() -> None:
-    """Text mode omits budget wording when budget_progress dict is empty."""
     snap = _make_snapshot_with_budget({})
     text = _render_plain(snap)
     assert "Budget Progress:" not in text
 
 
 def test_completion_summary_budget_progress_absent_when_cap_zero() -> None:
-    """Text mode omits budget wording when cap is 0 (uncapped counter)."""
     snap = _make_snapshot_with_budget(
         {
             "dev_cycles": BudgetProgress(
@@ -447,18 +421,13 @@ def test_completion_summary_budget_progress_absent_when_cap_zero() -> None:
     assert "Budget Progress:" not in text
 
 
-# --- Exit trigger tests ---
-
-
 def test_completion_summary_exit_trigger_completed_for_success() -> None:
-    """Text mode shows 'Exit: completed' when is_terminal_success=True."""
     snap = _make_snapshot(is_terminal_success=True, is_terminal_failure=False)
     text = _render_plain(snap)
     assert "Exit: completed" in text
 
 
 def test_completion_summary_exit_trigger_failed_for_failure() -> None:
-    """Text mode shows 'Exit: failed' when is_terminal_failure=True."""
     snap = _make_snapshot(
         phase="failed",
         last_error="boom",
@@ -471,7 +440,6 @@ def test_completion_summary_exit_trigger_failed_for_failure() -> None:
 
 
 def test_completion_summary_exit_trigger_interrupted() -> None:
-    """Text mode shows 'Exit: interrupted' when interrupted_by_user=True."""
     snap = PipelineSnapshot(
         phase="complete",
         previous_phase=None,
@@ -497,7 +465,6 @@ def test_completion_summary_exit_trigger_interrupted() -> None:
 
 
 def test_completion_summary_exit_trigger_appears_before_elapsed() -> None:
-    """Exit: line appears before Elapsed: line in text mode."""
     snap = _make_snapshot()
     rendered = render_completion_summary(
         snap, options=CompletionSummaryOptions(elapsed_seconds=20.0)
@@ -508,9 +475,6 @@ def test_completion_summary_exit_trigger_appears_before_elapsed() -> None:
     assert "Exit:" in text
     assert "Elapsed:" in text
     assert text.index("Exit:") < text.index("Elapsed:")
-
-
-# --- Debug breadcrumbs tests ---
 
 
 def _make_snapshot_with_debug(
@@ -542,7 +506,6 @@ def _make_snapshot_with_debug(
 
 
 def test_completion_summary_debug_section_shows_last_activity() -> None:
-    """Debug section surfaces last_activity_line when set."""
     snap = _make_snapshot_with_debug(last_activity_line="read file: src/main.py")
     console = Console(record=True, width=120, force_terminal=False, color_system=None)
     ctx = make_display_context(console=console)
@@ -552,7 +515,6 @@ def test_completion_summary_debug_section_shows_last_activity() -> None:
 
 
 def test_completion_summary_debug_section_shows_waiting_status() -> None:
-    """Debug section surfaces waiting_status_line when set."""
     snap = _make_snapshot_with_debug(waiting_status_line="waiting for MCP response")
     console = Console(record=True, width=120, force_terminal=False, color_system=None)
     ctx = make_display_context(console=console)
@@ -562,7 +524,6 @@ def test_completion_summary_debug_section_shows_waiting_status() -> None:
 
 
 def test_completion_summary_debug_section_shows_failure_category() -> None:
-    """Debug section surfaces last_failure_category when set."""
     snap = _make_snapshot_with_debug(last_failure_category="timeout")
     console = Console(record=True, width=120, force_terminal=False, color_system=None)
     ctx = make_display_context(console=console)
@@ -572,7 +533,6 @@ def test_completion_summary_debug_section_shows_failure_category() -> None:
 
 
 def test_completion_summary_debug_section_absent_when_no_debug_fields() -> None:
-    """Debug section is absent when no debug fields are set on the snapshot."""
     snap = _make_snapshot()
     console = Console(record=True, width=120, force_terminal=False, color_system=None)
     ctx = make_display_context(console=console)
@@ -584,7 +544,6 @@ def test_completion_summary_debug_section_absent_when_no_debug_fields() -> None:
 
 
 def test_completion_summary_debug_section_shows_mcp_restart_count() -> None:
-    """Debug section surfaces mcp_restart_count when non-zero."""
     snap = PipelineSnapshot(
         phase="complete",
         previous_phase=None,
@@ -612,7 +571,6 @@ def test_completion_summary_debug_section_shows_mcp_restart_count() -> None:
 
 
 def test_completion_summary_debug_section_omits_mcp_restart_count_when_zero() -> None:
-    """Debug section omits mcp_restarts line when count is zero."""
     snap = _make_snapshot_with_debug()
     console = Console(record=True, width=120, force_terminal=False, color_system=None)
     ctx = make_display_context(console=console)
@@ -622,7 +580,6 @@ def test_completion_summary_debug_section_omits_mcp_restart_count_when_zero() ->
 
 
 def test_completion_summary_debug_section_shows_active_process_labels() -> None:
-    """Debug section surfaces active_process_labels when non-empty."""
     snap = PipelineSnapshot(
         phase="complete",
         previous_phase=None,
@@ -650,7 +607,6 @@ def test_completion_summary_debug_section_shows_active_process_labels() -> None:
 
 
 def test_completion_summary_debug_section_omits_active_process_labels_when_empty() -> None:
-    """Debug section omits active_processes line when no labels are set."""
     snap = _make_snapshot_with_debug()
     console = Console(record=True, width=120, force_terminal=False, color_system=None)
     ctx = make_display_context(console=console)

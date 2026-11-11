@@ -1,4 +1,3 @@
-"""Concrete file backend using pathlib.Path operations."""
 
 from __future__ import annotations
 
@@ -10,7 +9,6 @@ if TYPE_CHECKING:
 
 
 class PathFileBackend:
-    """Concrete FileBackend implementation backed by pathlib.Path operations."""
 
     def exists(self, path: Path) -> bool:
         return path.exists()
@@ -46,7 +44,7 @@ class PathFileBackend:
     def sync_directory(self, path: Path) -> None:
         descriptor = os.open(
             path, os.O_RDONLY
-        )  # resource-lifecycle-ok: closed in finally after bounded directory sync
+        )
         try:
             os.fsync(descriptor)
         finally:

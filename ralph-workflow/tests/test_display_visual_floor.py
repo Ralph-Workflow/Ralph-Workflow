@@ -1,5 +1,3 @@
-"""Mutation-style visual-floor checks for console palettes and previews."""
-
 from __future__ import annotations
 
 import re
@@ -59,12 +57,6 @@ _REQUIRED_TOKENS = (
     Punctuation,
     Generic.Deleted,
     Generic.Inserted,
-    # DA-002/D-3: previously fell through to Pygments' own color-less
-    # default, which Rich then hardcodes to non-adaptive black -- see
-    # ralph/display/syntax_theme.py's _GENERIC_HEADING-and-friends comment.
-    # Generic.Heading/Generic.Strong are what Pygments' DiffLexer emits,
-    # so this is production-reachable through edit_preview.py, not just a
-    # theoretical Pygments token nobody hits.
     Generic.Heading,
     Generic.Strong,
     Generic.Prompt,
@@ -99,13 +91,6 @@ def _assert_complete_token_classes(style_type: type[object]) -> None:
     missing = [token for token in _REQUIRED_TOKENS if token not in styles or not styles[token]]
     if missing:
         raise AssertionError(f"missing syntax token classes: {missing}")
-    # DA-002: a token can be present in the ``styles`` dict source (the
-    # check above) yet still resolve to Pygments' own ``color: None`` at
-    # lookup time if the style class wasn't actually instantiated with it --
-    # style_for_token is what Rich's PygmentsSyntaxTheme actually calls, so
-    # this is the check that would have caught DA-002 (every one of these
-    # tokens resolved to a colour-less style that Rich then hardcodes to a
-    # fixed, non-adaptive black).
     colourless = [
         token
         for token in _REQUIRED_TOKENS
@@ -122,7 +107,6 @@ def test_visual_floor_semantic_palettes_use_fixed_contrast_safe_foregrounds() ->
 
 
 def test_visual_floor_named_colour_categories_have_distinct_fixed_foregrounds() -> None:
-    """S-3 regression: every named category remains observable in the resolved theme."""
     role_pairs = {
         "chrome": "theme.display.chrome",
         "agent text": "theme.display.agent_text",
@@ -143,7 +127,6 @@ def test_visual_floor_named_colour_categories_have_distinct_fixed_foregrounds() 
 
 @pytest.mark.criteria("C-6")
 def test_visual_floor_theme_roles_never_recede_to_attribute_only_dim() -> None:
-    """S-3: semantic chrome retains an identifiable hue, not dim-only styling."""
     semantic_roles = (
         "theme.cat.meta",
         "theme.text.muted",
@@ -156,7 +139,6 @@ def test_visual_floor_theme_roles_never_recede_to_attribute_only_dim() -> None:
 
 
 def test_visual_floor_background_resolved_theme_roles_clear_the_actual_surface() -> None:
-    """S-3 regression: every semantic Rich role changes to a contrast-safe light palette."""
     dark = theme.theme_for_background(False)
     light = theme.theme_for_background(True)
     roles = (
@@ -183,7 +165,6 @@ def test_visual_floor_background_resolved_theme_roles_clear_the_actual_surface()
 def test_visual_floor_unknown_background_theme_roles_clear_both_possible_terminal_surfaces() -> (
     None
 ):
-    """S-3 regression: unknown-background chrome must not inherit the dark palette."""
     unknown = theme.theme_for_background(None)
     foregrounds = {
         theme._extract_hex(str(style))
@@ -197,7 +178,6 @@ def test_visual_floor_unknown_background_theme_roles_clear_both_possible_termina
 
 
 def test_visual_floor_unknown_background_events_use_the_dual_safe_palette() -> None:
-    """S-3: an undetermined terminal background must not silently render as dark."""
     context = make_display_context(env={})
     rendered = render_event(
         make_event_for_emit(ActivityEventKind.TEXT, "operator-visible event"),
@@ -210,7 +190,6 @@ def test_visual_floor_unknown_background_events_use_the_dual_safe_palette() -> N
 
 
 def test_visual_floor_regression_dark_event_uses_one_palette_for_identity_and_carrier() -> None:
-    """S-1/S-4: dark context never mixes unknown identity with dark state colour."""
     context = make_display_context(env={"RALPH_TERMINAL_BG": "dark"})
     rendered = render_event(
         make_event_for_emit(ActivityEventKind.ERROR, "claude failed"),
@@ -224,7 +203,6 @@ def test_visual_floor_regression_dark_event_uses_one_palette_for_identity_and_ca
 
 
 def test_visual_floor_regression_measured_dark_background_emits_vivid_activity_colour() -> None:
-    """S-4: a measured dark background selects the visible dark activity palette."""
     assert terminal_background_is_light({}, measured_bg_hex="#000000") is False
     stream = StringIO()
     context = make_display_context(
@@ -244,7 +222,6 @@ def test_visual_floor_regression_measured_dark_background_emits_vivid_activity_c
 
 
 def test_visual_floor_error_event_resolves_identity_against_light_background() -> None:
-    """S-3 regression: error-line identities use the resolved light palette."""
     context = make_display_context(env={"RALPH_TERMINAL_BG": "light"})
     rendered = render_event(
         make_event_for_emit(ActivityEventKind.ERROR, "claude failed"),
@@ -258,7 +235,6 @@ def test_visual_floor_error_event_resolves_identity_against_light_background() -
 
 
 def test_visual_floor_snapshot_lines_apply_semantic_fixed_rgb_spans() -> None:
-    """S-3: production snapshot chrome and state carriers are never default foreground."""
     stream = StringIO()
     context = make_display_context(
         console=theme.make_console(
@@ -292,19 +268,12 @@ def test_visual_floor_snapshot_lines_apply_semantic_fixed_rgb_spans() -> None:
 
     rendered = stream.getvalue()
     assert "[failure] operator-visible failure" in rendered
-    # Observable behaviour: every chrome and state carrier uses a non-default
-    # foreground colour. The console resolves the same hex style to either a
-    # truecolor RGB escape (``\x1b[38;2;``) or an ANSI 256-color escape
-    # (``\x1b[38;5;``) depending on the host's terminal capability, so the
-    # floor checks for ANY foreground colour escape (``\x1b[38;``) rather
-    # than coupling to Rich's specific escape-format choice.
     assert "\x1b[38;" in rendered
-    assert "\x1b[48;" not in rendered  # S-3 floor: never paint a background band by accident
+    assert "\x1b[48;" not in rendered
 
 
 @pytest.mark.criteria("C-4")
 def test_visual_floor_cli_status_and_warning_keep_semantic_colour_and_plain_labels() -> None:
-    """S-3: CLI status surfaces never fall back to terminal-default foreground."""
     colour_stream = StringIO()
     colour_context = make_display_context(
         console=theme.make_console(
@@ -338,7 +307,6 @@ def test_visual_floor_cli_status_and_warning_keep_semantic_colour_and_plain_labe
 
 
 def test_visual_floor_completion_summary_metrics_use_a_semantic_colour_span() -> None:
-    """S-3 regression: closing-summary metrics are content, never default foreground."""
     stream = StringIO()
     context = make_display_context(
         console=theme.make_console(
@@ -389,7 +357,6 @@ def test_visual_floor_syntax_theme_preserves_complete_token_range() -> None:
 
 @pytest.mark.criteria("C-1")
 def test_visual_floor_syntax_tokens_clear_contrast_on_their_owned_preview_surface() -> None:
-    """S-4: every fixed syntax foreground clears 4.5:1 on its actual fill."""
     for background, style_type in ((False, SyntaxThemes.dark()), (True, SyntaxThemes.light())):
         foregrounds = {
             foreground
@@ -403,9 +370,6 @@ def test_visual_floor_syntax_tokens_clear_contrast_on_their_owned_preview_surfac
             for foreground in foregrounds
         )
 
-    # DA-004: also exercise the S-4 measured-surface route, not only the
-    # canonical booleans -- SyntaxThemes.for_surface previously escaped this
-    # test entirely.
     for surface_hex in ("#2D2A2E", "#1E1E1E", "#FAF8F5"):
         style_type = SyntaxThemes.for_surface(surface_hex)
         foregrounds = {
@@ -421,7 +385,6 @@ def test_visual_floor_syntax_tokens_clear_contrast_on_their_owned_preview_surfac
 
 
 def test_visual_floor_syntax_tokens_on_undetermined_background_clear_contrast_dual_safe() -> None:
-    """S-5: every foreground in SyntaxThemes.unknown() clears CONTRAST_FLOOR against both #000000 and #FFFFFF."""
     foregrounds = {
         foreground
         for color in SyntaxThemes.unknown().styles.values()
@@ -436,7 +399,6 @@ def test_visual_floor_syntax_tokens_on_undetermined_background_clear_contrast_du
 def test_visual_floor_markdown_palette_on_undetermined_background_clears_contrast_dual_safe() -> (
     None
 ):
-    """S-5: every entry of _markdown_theme._PALETTES[None] clears CONTRAST_FLOOR against both #000000 and #FFFFFF."""
     from importlib import import_module
 
     _markdown_theme = import_module("ralph.display._markdown_theme")
@@ -450,25 +412,6 @@ def test_visual_floor_markdown_palette_on_undetermined_background_clears_contras
 
 @pytest.mark.criteria("D-4")
 def test_visual_floor_markdown_palette_draws_from_the_same_palette_roles() -> None:
-    """D-4: "Markdown rendering draws from the same roles as syntax and
-    chrome. One palette, three consumers."
-
-    The brief's D-4 claim must be observable, not just text. For every
-    representative surface the markdown palette builds its entries from
-    ``solve_for_surface(ROLE_ANCHORS[<role>], preview_surface)``, where the
-    preview_surface itself derives from the terminal surface. The
-    display's ``resolve_palette`` solves the exact same role anchors
-    against the same preview surface. The identity assert is therefore:
-
-        ``_markdown_palette_for_surface(s)[k]`` == ``resolve_palette(preview_surface)[<role>]``
-
-    for each (entry, role) pair: ``default`` -> ``foreground``,
-    ``accent`` -> ``chrome``, ``link`` -> ``chrome``, ``url`` -> ``skipped``,
-    ``bullet`` -> ``success``, ``rule`` -> ``success``. If a markdown
-    entry ever stops tracking its corresponding palette role, the test
-    fails naming the offending entry. F-4 holds: the assertion is on
-    resolved hex values, not on solver internals.
-    """
     from importlib import import_module
 
     from ralph.display._palette import resolve_palette
@@ -492,18 +435,9 @@ def test_visual_floor_markdown_palette_draws_from_the_same_palette_roles() -> No
             for entry in entry_to_role:
                 indexed = {"default": 0, "accent": 1, "link": 2, "url": 3, "bullet": 4, "rule": 5}
                 expected = _markdown_theme._build_markdown_palette(None)[indexed[entry]]
-                # Skip the surface-tracked identity for the unknown path;
-                # the dual-safe band is its own role and the identity
-                # assertion below covers the surface-tracked case.
                 _ = expected
             continue
         terminal_surface = "#2D2A2E" if case is False else "#FAF8F5"
-        # The markdown theme treats its ``_markdown_palette_for_surface``
-        # input as a *terminal* surface and derives its preview surface
-        # internally via ``preview_background_for_background(None,
-        # surface_hex=...)``. Mirror that exact path so the identity
-        # assertion compares the same preview surface the markdown
-        # entry was built against.
         preview_surface = preview_background_for_background(None, surface_hex=terminal_surface)
         md_palette = _markdown_theme._markdown_palette_for_surface(terminal_surface)
         resolved = resolve_palette(preview_surface)
@@ -528,7 +462,6 @@ def test_visual_floor_bad_syntax_foreground_fixture_is_rejected() -> None:
 
 
 def test_visual_floor_known_background_previews_paint_one_complete_owned_surface() -> None:
-    """S-4: known terminal backgrounds give source rows and gutters one owned fill."""
     for background in (False, True):
         preview = build_edit_preview(
             "write_file",
@@ -552,7 +485,6 @@ def test_visual_floor_missing_token_fixture_is_rejected() -> None:
 
 
 def test_visual_floor_palette_pairs_stay_separable_under_cvd_simulation() -> None:
-    """S-2/S-5 floor: paired pigments stay distinct under all three CVD simulations."""
     for first_role, second_role in (
         ("success", "error"),
         ("warning", "error"),
@@ -560,8 +492,6 @@ def test_visual_floor_palette_pairs_stay_separable_under_cvd_simulation() -> Non
         pigments = _status_pair_hexes(first_role, second_role)
         _cvd_separability_check(pigments)
 
-    # Diff polarity pigments live in display_styles_for_background and must
-    # stay distinct from the success/failure palette across every background.
     for background in (False, True, None):
         styles = display_styles_for_background(background)
         added = styles["diff_added"]
@@ -570,11 +500,6 @@ def test_visual_floor_palette_pairs_stay_separable_under_cvd_simulation() -> Non
 
 
 def test_visual_floor_palette_pairs_clear_contrast_under_cvd_simulation() -> None:
-    """S-2/S-5: the background-resolved pigments clear contrast on the
-    background they own. (CVD simulations do not preserve luminance
-    ordering, so contrast under simulation is not asserted; separability
-    under simulation is the separate ``cvd_simulation`` test.)
-    """
     backgrounds_for_role: tuple[tuple[bool | None, str], ...] = (
         (False, "#000000"),
         (True, "#FFFFFF"),
@@ -597,23 +522,16 @@ def test_visual_floor_palette_pairs_clear_contrast_under_cvd_simulation() -> Non
 
 
 def test_visual_floor_cvd_confusable_palette_fixture_is_rejected() -> None:
-    """DA-001 witness: a deliberately confusable pair is caught by the CVD check."""
-    # Two distinct hex codes that round to the same simulated colour under
-    # deuteranopia. The production palette deliberately avoids such pairs;
-    # forcing one here must trip the separability check.
     confusable = ("#000100", "#010001")
     with pytest.raises(AssertionError, match="collapse under deuteranopia"):
         _cvd_separability_check(confusable)
 
 
 def test_visual_floor_partial_fill_fixture_is_rejected() -> None:
-    """DA-003 (a): a preview whose fill covers only one row fails the check."""
     from rich.console import Console
     from rich.syntax import Syntax
 
     stream = StringIO()
-    # no_color=False: the host's NO_COLOR env (set in some agent sandboxes)
-    # must not silently blank the truecolour fill this witness counts.
     console = Console(
         file=stream,
         force_terminal=True,
@@ -629,15 +547,11 @@ def test_visual_floor_partial_fill_fixture_is_rejected() -> None:
     console.print(syntax)
     rendered = stream.getvalue()
 
-    # Sanity: production preview paints every row.
     r, g, b = theme._palette.hex_to_rgb(bg_color)
     preview_fill = f"48;2;{round(r * 255)};{round(g * 255)};{round(b * 255)}"
     production_count = rendered.count(preview_fill)
     assert production_count >= 2
 
-    # Mutation: drop the fill from one source row. The fill count must fall
-    # below the production baseline; if it doesn't, the partial-fill check
-    # is not actually catching partial fills.
     lines = rendered.splitlines(keepends=True)
     assert len(lines) >= 2, (
         "preview unexpectedly collapsed to a single row; the negative-control "
@@ -651,27 +565,18 @@ def test_visual_floor_partial_fill_fixture_is_rejected() -> None:
 
 
 def test_visual_floor_silent_elision_fixture_is_rejected() -> None:
-    """DA-003 (c): elision without count/bytes/recovery marker fails the check."""
     from ralph.display.scene_catalog import SupportCase, render_scene
 
-    # The burst scene emits the production elision body ``output condensed
-    # count=24 bytes=768`` plus the recovery reference ``.agent/raw/run.log``.
-    # Every test below exercises the production elision contract end-to-end.
     rendered = render_scene(
         "burst",
         SupportCase("dark", "truecolour", "unicode", 80, "redirect"),
         terminal_bg_is_light=False,
     )
 
-    # Production contract: every elision carries count=, bytes=, and the
-    # recovery destination.
     assert "count=" in rendered
     assert "bytes=" in rendered
     assert ".agent/raw/run.log" in rendered
 
-    # Mutation: strip the elision markers and confirm the check now rejects
-    # the rendered output. This proves the elision-marker check is doing the
-    # work, not a different assertion that happens to pass.
     muted = rendered
     for marker in ("count=", "bytes=", ".agent/raw/run.log"):
         muted = muted.replace(marker, "")
@@ -681,7 +586,6 @@ def test_visual_floor_silent_elision_fixture_is_rejected() -> None:
 
 
 def test_visual_floor_reduced_colour_named_category_passes() -> None:
-    """DA-002: a reduced (256-colour) scene still emits a non-default foreground."""
     import re as _re
 
     from ralph.display.scene_catalog import SupportCase, render_scene
@@ -692,8 +596,6 @@ def test_visual_floor_reduced_colour_named_category_passes() -> None:
         terminal_bg_is_light=False,
     )
 
-    # The elision body is one named semantic category; it must keep a
-    # non-default foreground even when the scene is reduced to 256 colours.
     assert "38;5;" in rendered
     elision_match = _re.search(r"\x1b\[([0-9;]+)m[^\x1b]*output condensed count=", rendered)
     assert elision_match is not None, "elision body lost its foreground in reduced mode"
@@ -701,7 +603,6 @@ def test_visual_floor_reduced_colour_named_category_passes() -> None:
 
 
 def test_visual_floor_reduced_colour_default_foreground_fixture_is_rejected() -> None:
-    """DA-002 witness: a reduced scene with a default foreground fails the check."""
     import re as _re
 
     from ralph.display.scene_catalog import SupportCase, render_scene
@@ -712,27 +613,16 @@ def test_visual_floor_reduced_colour_default_foreground_fixture_is_rejected() ->
         terminal_bg_is_light=False,
     )
 
-    # Production: every named category emits a 256-colour foreground.
     elision_match = _re.search(r"\x1b\[([0-9;]+)m[^\x1b]*output condensed count=", rendered)
     assert elision_match is not None
     production_escape = elision_match.group(1)
     assert production_escape.startswith("38;5;")
 
-    # Mutation: replace every instance of the production 256-colour escape
-    # with the empty string. The reduced-colour named-category check
-    # requires a 38;5; escape adjacent to the elision carrier; if the
-    # foreground escapes are gone, the check has nothing left to anchor on.
     muted = rendered.replace(f"\x1b[{production_escape}m", "")
     assert f"\x1b[{production_escape}m" not in muted
     assert "output condensed count=" in muted
-    # The witness must remain visibly colourless on the elision body:
-    # no other 38;5; escape should remain anchored to the carrier.
     assert not _re.search(r"\x1b\[38;5;\d+m[^\x1b]*output condensed count=", muted)
 
-
-# ---------------------------------------------------------------------------
-# Helpers used by the CVD separability tests above.
-# ---------------------------------------------------------------------------
 
 _CVD_ALL_MATRICES: tuple[tuple[tuple[float, float, float], ...], ...] = (
     _DEUTERANOPIA_MATRIX,
@@ -752,7 +642,6 @@ def _cvd_separability_check(
     *,
     matrices: tuple[tuple[tuple[float, float, float], ...], ...] = _CVD_ALL_MATRICES,
 ) -> None:
-    """Assert the two pigments stay disjoint under every CVD matrix."""
     first, second = pigments
     if first == second:
         raise AssertionError(
@@ -770,17 +659,6 @@ def _cvd_separability_check(
 def _check_surface_contrast_failures(
     surface_hex: str, *, use_resolver_surface: bool = True
 ) -> list[str]:
-    """Sweep every Ralph-owned role and report roles below ``CONTRAST_FLOOR``.
-
-    ``use_resolver_surface=True`` (default) threads ``surface_hex`` into the
-    resolvers themselves -- the S-4 measured-surface path. ``False`` calls
-    the resolvers with the boolean only, exercising the canonical,
-    measurement-free tables used when no OSC 11 measurement is available
-    (``RALPH_TERMINAL_BG=dark``/``light`` with no probe, or a
-    COLORFGBG-only signal), while still measuring the result against
-    ``surface_hex`` as the realistic surface it is actually painted on
-    (DA-001).
-    """
     is_light = surface_hex == "#FAF8F5"
     resolver_surface_hex = surface_hex if use_resolver_surface else None
     failures: list[str] = []
@@ -826,9 +704,6 @@ def _check_surface_contrast_failures(
 
 @pytest.mark.criteria("D-2")
 def test_visual_floor_preview_and_diff_foregrounds_clear_contrast_on_their_own_fills() -> None:
-    """DA-001: preview and diff foregrounds must clear CONTRAST_FLOOR against
-    the fill they are actually painted on, not merely against the raw
-    terminal surface."""
     cases: tuple[bool | str, ...] = (False, True, "#2D2A2E", "#1E1E1E", "#FAF8F5", "#282C34")
     for case in cases:
         is_bool = isinstance(case, bool)
@@ -860,7 +735,6 @@ def test_visual_floor_preview_and_diff_foregrounds_clear_contrast_on_their_own_f
 
 
 def test_visual_floor_all_resolvers_clear_contrast_on_realistic_surfaces() -> None:
-    """S-1 regression: assert every resolved role clears CONTRAST_FLOOR on realistic terminal surfaces."""
     realistic_surfaces = ("#2D2A2E", "#1E1E1E", "#FAF8F5")
     failures: list[str] = []
 
@@ -874,16 +748,6 @@ def test_visual_floor_all_resolvers_clear_contrast_on_realistic_surfaces() -> No
 
 
 def test_visual_floor_boolean_resolvers_clear_contrast_on_realistic_surfaces() -> None:
-    """DA-001: the canonical measurement-free (boolean-only) tables must also
-    clear CONTRAST_FLOOR on realistic terminal surfaces, not merely on the
-    pure #000000/#FFFFFF endpoints they used to be solved against.
-
-    This is the path a terminal without an OSC 11 measurement actually uses
-    -- RALPH_TERMINAL_BG=dark/light with the probe unavailable, or a
-    COLORFGBG-only signal -- and it previously left the canonical tables
-    with zero contrast headroom: a pigment solved to exactly 4.5:1 on
-    #000000 measured only ~3.04:1 on a realistic #2D2A2E terminal.
-    """
     realistic_surfaces = ("#2D2A2E", "#1E1E1E", "#FAF8F5")
     failures: list[str] = []
 

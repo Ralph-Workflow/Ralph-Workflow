@@ -1,9 +1,3 @@
-"""Black-box tests for ``DefaultPipelineFactory``.
-
-These tests pin the Protocol compliance, the production-default build, and the
-propagation of all 13 ``ProPipelineHooks`` fields through the factory.
-"""
-
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -39,8 +33,6 @@ def _make_display_context() -> DisplayContext:
 
 
 class _RecordingPipelineFactory:
-    """Conforms to ``PipelineFactory`` and records every ``build`` call."""
-
     def __init__(self, deps: PipelineDeps) -> None:
         self._deps = deps
         self.calls: list[dict[str, object]] = []
@@ -95,10 +87,6 @@ def _make_fake_smoke_registry() -> object:
 
     class _FakeCatalog:
         def get(self, _name: str) -> None:
-            # No support declared for these tests' synthetic agent names --
-            # matches the real ``AgentCatalog.get``'s "nobody has said"
-            # contract (S-3's Branch A of ``_detect_capability_breaks``
-            # grades a ``None`` support as ungraded, never crashes).
             return None
 
     class FakeRegistry:
@@ -540,12 +528,6 @@ def test_run_commit_plumbing_uses_hooked_display_context_at_dispatch_boundary(
     monkeypatch: object,
     tmp_path: Path,
 ) -> None:
-    """Regression: the display_context forwarded to execute_agent_effect and
-    collect_commit_agent_output must be the one produced by the factory, not
-    the original caller display_context. ProPipelineHooks.display_context is
-    applied by DefaultPipelineFactory, so the commit plumbing fallback path
-    must rebind display_context from the returned PipelineDeps.
-    """
     original_display_context = _make_display_context()
     hooked_display_context = _make_display_context()
     expected_deps = make_test_pipeline_deps(hooked_display_context)

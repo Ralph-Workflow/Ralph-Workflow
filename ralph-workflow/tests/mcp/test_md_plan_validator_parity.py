@@ -1,11 +1,3 @@
-"""Parity coverage for the plan validation entry points.
-
-The new spec is sanity-only: both entry points must agree on the
-PLAN001 (recognizably not a plan) outcome and otherwise produce
-no error-severity diagnostics. Best-effort extraction happens
-on every parse so the two entry points are parity-equivalent.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -50,7 +42,6 @@ several files across the spec, the validation module, and the tools.
 def test_plan_regression_validation_entry_points_emit_same_rule_severity_set(
     document: str,
 ) -> None:
-    """Direct and analyzed entry points agree on the diagnostic rule set."""
     _content, direct_diagnostics = parse_and_validate(document, PLAN_SPEC)
     _content, analyzed_diagnostics, _overridden = analyze_plan_document(document)
 
@@ -60,7 +51,6 @@ def test_plan_regression_validation_entry_points_emit_same_rule_severity_set(
 
 
 def test_prose_plan_is_accepted_by_both_entry_points() -> None:
-    """A prose plan produces no error diagnostics through either entry point."""
     direct_content, direct_diagnostics = parse_and_validate(_PROSE_PLAN, PLAN_SPEC)
     analyzed_content, analyzed_diagnostics, _ = analyze_plan_document(_PROSE_PLAN)
 
@@ -71,7 +61,6 @@ def test_prose_plan_is_accepted_by_both_entry_points() -> None:
 
 
 def test_explanatory_noop_agrees_across_both_entry_points() -> None:
-    """The ``noop: true`` payload returns ``{"noop": True}`` with no diagnostics."""
     direct_content, direct_diagnostics = parse_and_validate(
         "---\ntype: plan\nnoop: true\n---\nNo changes are needed because the requested behavior already works correctly.\n",
         PLAN_SPEC,

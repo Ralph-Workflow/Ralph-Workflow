@@ -1,5 +1,3 @@
-"""Tests for ralph.skills._docs_mcp_probe probe_docs_mcp function."""
-
 from unittest.mock import patch
 
 from ralph.skills._docs_mcp_probe import probe_docs_mcp
@@ -7,7 +5,6 @@ from ralph.skills._docs_mcp_probe import probe_docs_mcp
 
 class TestProbeDocsMcp:
     def test_returns_false_for_unsupported_url(self) -> None:
-        # probe_docs_mcp returns False without making HTTP call for non-matching URL
         with patch("httpx.get") as mock_get:
             result = probe_docs_mcp("http://localhost:9999/mcp")
             assert result is False

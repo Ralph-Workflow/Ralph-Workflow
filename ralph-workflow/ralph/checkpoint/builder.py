@@ -1,4 +1,3 @@
-"""Builder helpers for Python checkpoint payload extensions."""
 
 from __future__ import annotations
 
@@ -17,7 +16,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class CheckpointBuilder:
-    """Builder for assembling enriched Python checkpoint payloads."""
 
     _state: PipelineState | None = None
     _run_context: RunContext | None = None
@@ -27,11 +25,9 @@ class CheckpointBuilder:
 
     @classmethod
     def new(cls) -> CheckpointBuilder:
-        """Create a fresh checkpoint builder."""
         return cls()
 
     def pipeline_policy(self, policy: PipelinePolicy) -> CheckpointBuilder:
-        """Attach the pipeline policy for policy-driven progress derivation."""
         return type(self)(
             _state=self._state,
             _run_context=self._run_context,
@@ -41,7 +37,6 @@ class CheckpointBuilder:
         )
 
     def state(self, state: PipelineState) -> CheckpointBuilder:
-        """Attach the pipeline state."""
         return type(self)(
             _state=state,
             _run_context=self._run_context,
@@ -51,7 +46,6 @@ class CheckpointBuilder:
         )
 
     def run_context(self, run_context: RunContext) -> CheckpointBuilder:
-        """Attach run lineage metadata."""
         return type(self)(
             _state=self._state,
             _run_context=run_context,
@@ -61,7 +55,6 @@ class CheckpointBuilder:
         )
 
     def execution_history(self, execution_history: ExecutionHistory) -> CheckpointBuilder:
-        """Attach bounded execution history."""
         return type(self)(
             _state=self._state,
             _run_context=self._run_context,
@@ -71,7 +64,6 @@ class CheckpointBuilder:
         )
 
     def working_dir(self, working_dir: str) -> CheckpointBuilder:
-        """Attach the working directory captured for the checkpoint."""
         return type(self)(
             _state=self._state,
             _run_context=self._run_context,
@@ -81,7 +73,6 @@ class CheckpointBuilder:
         )
 
     def build(self) -> CheckpointPayload:
-        """Build the checkpoint payload or raise if required state is missing."""
         if self._state is None:
             raise ValueError("CheckpointBuilder requires pipeline state before build()")
 

@@ -1,8 +1,3 @@
-"""Filesystem-health diagnostics for the workspace volume (macOS-focused).
-
-Ralph reports host-level signals as potentially external activity. It keeps
-workspace observation bounded and does not require privileged host changes.
-"""
 
 from __future__ import annotations
 
@@ -20,11 +15,6 @@ _VOLUME_PATH_PARTS_FOR_EXTERNAL = 3
 
 
 class _SubprocessRunner(Protocol):
-    """Minimal protocol capturing the ``subprocess.run`` shape used by FsHealth.
-
-    Only ``capture_output``, ``text``, and ``timeout`` are forwarded.
-    Tests may pass a fake that exposes ``returncode`` and ``stdout``.
-    """
 
     def __call__(
         self,
@@ -37,7 +27,6 @@ class _SubprocessRunner(Protocol):
 
 
 def _probe_spotlight(volume: Path, run_command: _SubprocessRunner) -> bool | None:
-    """Run ``mdutil -s <volume>`` and report the Spotlight state."""
     try:
         result = run_command(
             ["mdutil", "-s", str(volume)],
@@ -59,7 +48,6 @@ def _probe_spotlight(volume: Path, run_command: _SubprocessRunner) -> bool | Non
 
 
 def _probe_journal_size(journal_dir: Path) -> int | None:
-    """Sum the file sizes under ``<volume>/.fseventsd``."""
     try:
         if not journal_dir.is_dir():
             return None
@@ -79,11 +67,6 @@ def _probe_journal_size(journal_dir: Path) -> int | None:
 
 
 def _volume_root(path: Path) -> Path:
-    """Return the volume root that contains the workspace.
-
-    ``/Volumes/<vol>/proj/ws`` -> ``/Volumes/<vol>``. Anything not under
-    ``/Volumes`` is treated as boot-volume ``/``.
-    """
     resolved = path.resolve()
     parts = resolved.parts
     if len(parts) >= _VOLUME_PATH_PARTS_FOR_EXTERNAL and parts[1] == "Volumes":
@@ -99,7 +82,6 @@ def _run_subprocess_mdutil(
     timeout: int,
     process_manager: ProcessManager | None = None,
 ) -> object:
-    """Run ``mdutil`` through the centralized child-process lifecycle."""
     del capture_output, text
     manager = process_manager if process_manager is not None else get_process_manager()
     handle = manager.spawn(
@@ -129,20 +111,6 @@ def _run_subprocess_mdutil(
 
 @dataclass
 class FsHealth:
-    """Filesystem-environment health snapshot for the workspace volume.
-
-    Attributes:
-        volume_root: Absolute path to the volume containing the workspace.
-        spotlight_indexing_enabled: When non-None, True iff Spotlight
-            (``mdutil -s``) reports "Indexing enabled" on the volume.
-            ``None`` when Spotlight status cannot be determined (e.g.
-            non-macOS host, ``mdutil`` missing, or subprocess error).
-        fsevents_journal_bytes: Total size of files under
-            ``<volume>/.fseventsd``. ``None`` when the directory cannot
-            be enumerated (locked volume, permissions quirk).
-        warnings: Human-readable product warnings that identify external
-            host pressure and Ralph's safe bounded behavior.
-    """
 
     volume_root: str
     spotlight_indexing_enabled: bool | None = None
@@ -157,20 +125,6 @@ class FsHealth:
         run_command: _SubprocessRunner | None = None,
         process_manager: ProcessManager | None = None,
     ) -> FsHealth:
-        """Probe the workspace volume and return a populated ``FsHealth``.
-
-        Args:
-            workspace_root: Workspace directory whose containing volume
-                is being probed.
-            run_command: Subprocess runner. Injectable for tests; when supplied,
-                ``process_manager`` is ignored.
-            process_manager: Child-process manager used by the default runner.
-
-        Returns:
-            ``FsHealth`` populated with the volume root, Spotlight
-            status, ``.fseventsd`` journal size, and any operator
-            warnings. On non-darwin hosts only ``volume_root`` is set.
-        """
         runner = (
             run_command
             if run_command is not None
@@ -183,11 +137,6 @@ class FsHealth:
         if sys.platform == "darwin":
             health.spotlight_indexing_enabled = _probe_spotlight(volume, runner)
             health.fsevents_journal_bytes = _probe_journal_size(journal_dir)
-        # On non-darwin hosts ``.fseventsd`` is not present and the
-        # Spotlight probe is meaningless, so the documented contract
-        # holds: only ``volume_root`` is populated. The dataclass
-        # defaults leave the other fields at ``None`` so the caller
-        # can distinguish "not probed" from "probed and zero".
 
         if health.spotlight_indexing_enabled is True:
             health.warnings.append(

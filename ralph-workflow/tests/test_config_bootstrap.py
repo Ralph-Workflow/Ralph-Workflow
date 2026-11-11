@@ -1,5 +1,3 @@
-"""Black-box tests for ralph.config.bootstrap and related first-run behavior."""
-
 from __future__ import annotations
 
 import tomllib
@@ -29,17 +27,13 @@ from ralph.workspace.scope import WorkspaceScope
 pytestmark = pytest.mark.timeout_seconds(2.0)
 
 _EXPECTED_LOCAL_CONFIG_COUNT = 4
-#: Nine files regenerated before ``ralph-workflow-agents.toml`` was split
-#: out of the main config; ten after.
 _EXPECTED_REGENERATE_COUNT = 10
 _EXPECTED_GLOBAL_REGENERATE_COUNT = 5
 _EXPECTED_DEFAULT_GITIGNORE_LINES = (
-    # Ralph-local
     ".agent/",
     "/PROMPT*",
     "wt-*/",
     "/checkpoint.json",
-    # Python
     "__pycache__/",
     "*.py[codz]",
     "*$py.class",
@@ -54,18 +48,15 @@ _EXPECTED_DEFAULT_GITIGNORE_LINES = (
     "build/*",
     "!build/.gitkeep",
     "*.egg-info/",
-    # Python extras
     ".tox/",
     ".nox/",
     ".pdm-build/",
     "*.pyo",
     ".ipynb_checkpoints/",
     "pip-wheel-metadata/",
-    # Node
     "node_modules/",
     ".next/",
     ".nuxt/",
-    # Node extras
     "coverage/",
     "*.tsbuildinfo",
     ".parcel-cache/",
@@ -73,28 +64,22 @@ _EXPECTED_DEFAULT_GITIGNORE_LINES = (
     ".env",
     ".env.local",
     ".env.*.local",
-    # Rust (Cargo.lock intentionally NOT ignored)
     "target/*",
     "!target/.gitkeep",
     "**/*.rs.bk",
-    # Go (vendor/ is opt-in, go.sum intentionally NOT ignored)
     "vendor/*",
-    # Ruby
     "vendor/bundle/*",
     ".bundle/",
     "log/",
     "tmp/",
     "*.gem",
-    # PHP
     ".phpunit.cache/",
     "/storage/*.key",
     "composer.phar",
-    # Java/Kotlin extras
     ".gradle/*",
     "!.gradle/.gitkeep",
     "*.class",
     "*.jar",
-    # .NET
     "bin/*",
     "!bin/.gitkeep",
     "obj/*",
@@ -110,14 +95,12 @@ _EXPECTED_DEFAULT_GITIGNORE_LINES = (
     "*.dll",
     "*.exe",
     "*.pdb",
-    # Dart / Flutter
     ".dart_tool/",
     ".flutter-plugins",
     ".flutter-plugins-dependencies",
     ".packages",
     ".pub-cache/",
     ".pub/",
-    # Elixir
     "_build/*",
     "!_build/.gitkeep",
     "deps/*",
@@ -126,12 +109,10 @@ _EXPECTED_DEFAULT_GITIGNORE_LINES = (
     "cover/",
     "doc/",
     "fetch.*.exs",
-    # Scala / Metals / BSP
     ".bsp/",
     ".metals/",
     "project/target/",
     "project/project/",
-    # Terraform
     ".terraform/",
     "*.tfstate",
     "*.tfstate.*",
@@ -140,21 +121,16 @@ _EXPECTED_DEFAULT_GITIGNORE_LINES = (
     "crash.log",
     "crash.*.log",
     "*.tfvars",
-    # Editors / IDEs extra
     ".fleet/",
     ".cursor/",
     ".windsurf/",
     ".idea_modules/",
     "*.iml",
-    # Editors (NOTE: .vscode/ intentionally NOT included — upstream repo
-    # has tracked files under .vscode/.)
     ".idea/",
     "*.swp",
     "*.swo",
-    # OS metadata
     ".DS_Store",
     "Thumbs.db",
-    # OS metadata extras
     "Desktop.ini",
     "ehthumbs.db",
     "$RECYCLE.BIN/",
@@ -170,51 +146,22 @@ _EXPECTED_IGNORED_LOCAL_PATHS = (
     "PROMPT.md",
     "wt-123/worktree-file.txt",
 )
-# Per-category positive matches (one representative path per new gitignore category).
-# These MUST be ignored by the expanded _DEFAULT_GITIGNORE_PATTERNS after
-# ensure_local_configs(agent_dir) runs in a git repo.
 _EXPECTED_NEW_CATEGORY_POSITIVE_IGNORED_PATHS = (
-    # Rust
     "target/main.o",
-    # Go (vendor/)
     "vendor/gopkg.in/yaml.v2/",
-    # Java/Kotlin extras
     "build/output.jar",
-    # .NET
     "bin/Release/MyApp.dll",
-    # Dart / Flutter
     ".dart_tool/package_config.json",
-    # Elixir
     "_build/dev/lib/myapp/ebin/myapp.app",
-    # Scala / Metals / BSP
     ".bsp/sbt.json",
-    # Terraform
     ".terraform/terraform.tfstate",
-    # Node extras
     "coverage/lcov.info",
-    # Ruby
     "tmp/cache/redis.rdb",
-    # PHP
     "vendor/autoload.php",
-    # Python extras
     ".tox/pytest",
-    # Editor extras
     ".idea/workspace.xml",
-    # OS extras
     "Desktop.ini",
 )
-# Per-category tracked-file / convention non-matches. These MUST NOT be ignored
-# after ensure_local_configs(agent_dir) runs — they are common tracked files
-# (or source-controlled markers) that the new patterns must preserve.
-#
-# NOTE: `vendor/bundle/.gitkeep` is intentionally omitted from this list.
-# The Go `vendor/*` and Ruby `vendor/bundle/*` patterns are mutually
-# exclusive in gitignore semantics: a single `vendor/*` line matches
-# `vendor/bundle/.gitkeep` and there is no way to allowlist a marker file
-# inside an ignored dir. The Go convention (ignore everything in `vendor/`)
-# is the dominant case, so the default gitignore honors that. A user who
-# tracks `vendor/bundle/.gitkeep` can add a one-line `!vendor/bundle/.gitkeep`
-# to their project-local gitignore.
 _EXPECTED_TRACKED_NON_IGNORED_PATHS = (
     ".vscode/launch.json",
     "Cargo.lock",
@@ -328,14 +275,12 @@ def test_ensure_local_configs_creates_all_four_standard_files(tmp_path: Path) ->
     assert len(results) == _EXPECTED_LOCAL_CONFIG_COUNT
     assert all(r.action == "created" for r in results)
 
-    # Verify result list contains all policy files
     result_names = [r.path.name for r in results]
     for fname in expected_files:
         assert fname in result_names, f"{fname} should be in results"
 
 
 def test_ensure_local_configs_includes_runtime_policy_files(tmp_path: Path) -> None:
-    """Verify the default runtime policy TOMLs are in the result list."""
     agent_dir = tmp_path / ".agent"
     results = ensure_local_configs(agent_dir)
 
@@ -445,13 +390,11 @@ def test_bundled_global_template_parses_as_valid_toml() -> None:
 
 
 def test_bundled_mcp_template_describes_broad_multimodal_support() -> None:
-    """Default mcp.toml must describe the broad multimodal surface, not image-only."""
     template = Path(ralph.policy.__file__).parent / "defaults" / "mcp.toml"
     content = template.read_text(encoding="utf-8")
     assert "read_media" in content
     assert "read_image" in content
     assert "compatibility" in content
-    # Must not imply image-only support
     assert "Multimodal image reading support" not in content
 
 
@@ -481,7 +424,6 @@ def test_local_template_defines_active_agent_chain_defaults() -> None:
     assert chains["analysis"] == ["claude/opus"]
     assert chains["commit"] == ["claude/haiku"]
 
-    # Review-era chains must not appear in the active default local template.
     review_era_chains = {"review", "fix"}
     assert not review_era_chains.intersection(chains), (
         f"Review-era chains still active in local template: "
@@ -541,12 +483,6 @@ def test_generated_local_template_validates_against_bundled_policy(
 def test_generated_local_template_missing_drain_heals_from_bundled_defaults(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A drain line lost from the generated template no longer breaks startup.
-
-    Agents policy layers onto bundled defaults (like pipeline/artifacts), so
-    a template that drifts and drops ``development_commit`` gets the bundled
-    binding back instead of failing policy validation on day zero.
-    """
     defaults_dir = Path(ralph.policy.__file__).parent / "defaults"
     agent_dir = tmp_path / ".agent"
     agent_dir.mkdir()
@@ -594,10 +530,6 @@ def test_ensure_local_configs_preserves_gitignore_without_duplicate_default_entr
     ensure_local_configs(agent_dir)
 
     content = gitignore.read_text(encoding="utf-8")
-    # The parent ``.agent/`` rule is in the file exactly once (the
-    # explicit ``.agent/ralph-explore/`` child rule is permitted
-    # alongside it because the seeder appends the child only when
-    # it is absent).
     assert content.count(".agent/\n") == 1
     assert content.count("/PROMPT*") == 1
     assert content.count("wt-*/") == 1
@@ -650,7 +582,6 @@ def test_ensure_local_configs_gitignore_dedup_when_pattern_already_present(
     gitignore.write_text("__pycache__/\n", encoding="utf-8")
 
     ensure_local_configs(agent_dir)
-    # Re-run idempotency: pattern already present, must not be added again.
     ensure_local_configs(agent_dir)
 
     content = gitignore.read_text(encoding="utf-8")
@@ -671,7 +602,6 @@ def test_ensure_local_configs_gitignore_includes_patterns_for_representative_loc
 
 
 def _paths_ignored_by_gitignore(gitignore: Path, paths: tuple[str, ...]) -> set[str]:
-    """Return the subset of paths matched by the generated gitignore."""
     spec = GitIgnoreSpec.from_lines(gitignore.read_text(encoding="utf-8").splitlines())
     return set(spec.match_files(paths))
 
@@ -679,7 +609,6 @@ def _paths_ignored_by_gitignore(gitignore: Path, paths: tuple[str, ...]) -> set[
 def test_ensure_local_configs_gitignore_matches_per_category_positive_paths(
     tmp_path: Path,
 ) -> None:
-    """Each new gitignore category must cover at least one representative path."""
     agent_dir = tmp_path / ".agent"
     ensure_local_configs(agent_dir)
 
@@ -693,16 +622,6 @@ def test_ensure_local_configs_gitignore_matches_per_category_positive_paths(
 def test_ensure_local_configs_does_not_overignore_tracked_conventions(
     tmp_path: Path,
 ) -> None:
-    """Tracked files and source-controlled .gitkeep markers must NOT be ignored.
-
-    Specifically locks in:
-    * .vscode/ — upstream repo has tracked files under .vscode/
-    * Cargo.lock — Rust apps intentionally check it in
-    * go.sum — Go modules intentionally check it in
-    * <dir>/.gitkeep — every dir-pattern added in step 3 has a paired
-      `!<dir>/.gitkeep` allowlist so source-controlled marker files stay
-      tracked even when the dir itself is ignored.
-    """
     agent_dir = tmp_path / ".agent"
     ensure_local_configs(agent_dir)
 
@@ -719,7 +638,6 @@ def test_ensure_local_configs_does_not_overignore_tracked_conventions(
 def test_ensure_local_configs_regression_idempotent_excludes_do_not_timeout(
     tmp_git_repo: Path,
 ) -> None:
-    """Plan S-1: repeated local config seeding must finish within the test budget."""
     agent_dir = tmp_git_repo / ".agent"
     ensure_local_configs(agent_dir)
     ensure_local_configs(agent_dir)
@@ -769,14 +687,6 @@ def test_regenerate_all_refreshes_an_existing_valid_policy_bundle(tmp_path: Path
 def test_global_template_bootstraps_first_run_policy_without_local_override(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Fresh installs must start from the generated user-global config alone.
-
-    This covers the exact first-run path users hit after installation: Ralph creates
-    ~/.config/ralph-workflow.toml, no project-local .agent/ralph-workflow.toml exists yet,
-    and the runtime falls back to bundled pipeline/artifact defaults. If the generated
-    global template drops any active drain binding, startup fails before the user can even
-    run `ralph --init`, which is why this must stay protected by an integration-style test.
-    """
     global_dir = tmp_path / "global"
     global_dir.mkdir()
     ensure_global_config(global_dir)
@@ -805,13 +715,6 @@ def test_global_template_bootstraps_first_run_policy_without_local_override(
 def test_global_template_missing_active_drain_heals_on_first_run_startup(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Global drain-binding drift no longer bricks first-run startup.
-
-    This used to be a severe day-zero failure: Ralph rejected startup during
-    policy loading. Agents policy now layers onto the bundled defaults, so a
-    fresh-install config that lost ``development_commit`` gets the bundled
-    binding back and startup proceeds.
-    """
     global_dir = tmp_path / "global"
     global_dir.mkdir()
     created = ensure_global_config(global_dir)
@@ -830,21 +733,8 @@ def test_global_template_missing_active_drain_heals_on_first_run_startup(
     assert bundle.agents.agent_drains["development_commit"].chain == "development_commit"
 
 
-# ---------------------------------------------------------------------------
-# Git-exclude auto-seed (PA-002, PA-003, PA-004)
-# ---------------------------------------------------------------------------
-#
-# Mirrors the ``auto_seed_default_gitignore`` surface for ``.git/info/exclude``
-# so engine-owned runtime artifacts never enter the repo in the first place.
-# Canonical patterns use root-anchored ``/checkpoint.json`` (NOT bare
-# ``checkpoint.json`` which would match every nested subdirectory) and the
-# ``.agent/completion_seen_*.json`` glob (NOT the Python abstraction
-# identifier ``completion_sentinel_*.json``).
-
-
 @pytest.mark.timeout_seconds(2.0)
 def test_ensure_local_configs_seeds_git_exclude(tmp_git_repo: Path) -> None:
-    """``ensure_local_configs`` must seed ``.git/info/exclude`` with canonical patterns."""
     repo_root = tmp_git_repo
     agent_dir = repo_root / ".agent"
 
@@ -859,7 +749,6 @@ def test_ensure_local_configs_seeds_git_exclude(tmp_git_repo: Path) -> None:
 
 @pytest.mark.timeout_seconds(5.0)
 def test_ensure_local_configs_git_exclude_idempotent(tmp_git_repo: Path) -> None:
-    """Re-running bootstrap must not duplicate any canonical exclude pattern."""
     repo_root = tmp_git_repo
     agent_dir = repo_root / ".agent"
 
@@ -879,28 +768,20 @@ def test_ensure_local_configs_git_exclude_idempotent(tmp_git_repo: Path) -> None
 
 @pytest.mark.timeout_seconds(5.0)
 def test_ensure_local_configs_git_exclude_covers_canonical_paths(tmp_git_repo: Path) -> None:
-    """A representative agent-runtime artifact path is listed in the exclude file."""
     agent_dir = tmp_git_repo / ".agent"
     ensure_local_configs(agent_dir)
 
     exclude_path = tmp_git_repo / ".git" / "info" / "exclude"
     content = exclude_path.read_text(encoding="utf-8")
-    # The canonical on-disk completion-sentinel filename glob MUST be present.
     assert ".agent/completion_seen_*.json" in content, (
         f"Canonical completion-sentinel glob missing from .git/info/exclude:\n{content}"
     )
-    # The root-anchored ``/checkpoint.json`` MUST be present in exclude too.
     assert "/checkpoint.json" in content, (
         f"Root-anchored /checkpoint.json missing from .git/info/exclude:\n{content}"
     )
 
 
 def test_auto_seed_default_git_exclude_creates_file_when_missing(tmp_path: Path) -> None:
-    """Without an existing ``.git/info/exclude``, the helper creates one.
-
-    Note: the helper works on ``repo_root/.git/info/exclude`` directly -- it
-    does NOT require an actual git working tree (it creates the parent dirs).
-    """
     repo_root = tmp_path / "fake_repo"
     repo_root.mkdir()
     assert not (repo_root / ".git" / "info" / "exclude").exists()
@@ -916,7 +797,6 @@ def test_auto_seed_default_git_exclude_creates_file_when_missing(tmp_path: Path)
 
 
 def test_auto_seed_default_git_exclude_is_idempotent(tmp_path: Path) -> None:
-    """Calling the helper twice returns ``[]`` on the second call and does not duplicate."""
     repo_root = tmp_path / "fake_repo"
     repo_root.mkdir()
     auto_seed_default_git_exclude(repo_root)
@@ -933,7 +813,6 @@ def test_auto_seed_default_git_exclude_is_idempotent(tmp_path: Path) -> None:
 
 
 def test_auto_seed_default_git_exclude_preserves_user_entries(tmp_path: Path) -> None:
-    """A user-customized exclude file with the full default set is preserved."""
     repo_root = tmp_path / "fake_repo"
     repo_root.mkdir()
     exclude_path = repo_root / ".git" / "info" / "exclude"
@@ -951,11 +830,6 @@ def test_auto_seed_default_git_exclude_preserves_user_entries(tmp_path: Path) ->
 
 
 def test_auto_seed_default_git_exclude_handles_missing_git_repo(tmp_path: Path) -> None:
-    """When the repo_root has no ``.git/`` directory, the helper still works.
-
-    It creates the ``.git/info/`` parents and writes the file. This is the
-    "Ralph is invoked in a non-git project" case -- bootstrap must not raise.
-    """
     repo_root = tmp_path / "no_git"
     repo_root.mkdir()
     assert not (repo_root / ".git").exists()
@@ -967,12 +841,6 @@ def test_auto_seed_default_git_exclude_handles_missing_git_repo(tmp_path: Path) 
 
 
 def test_default_gitignore_includes_root_anchored_checkpoint_json() -> None:
-    """``_DEFAULT_GITIGNORE_PATTERNS`` MUST contain root-anchored ``/checkpoint.json``.
-
-    PA-002 regression: bare ``checkpoint.json`` (without leading slash) would
-    match every nested directory. The root-anchored form ``/checkpoint.json``
-    follows the existing ``/PROMPT*`` and ``/storage/*.key`` convention.
-    """
     assert "/checkpoint.json" in _DEFAULT_GITIGNORE_PATTERNS, (
         f"/checkpoint.json MUST be in _DEFAULT_GITIGNORE_PATTERNS, got: "
         f"{_DEFAULT_GITIGNORE_PATTERNS!r}"

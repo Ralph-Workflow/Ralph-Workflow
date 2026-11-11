@@ -1,10 +1,3 @@
-"""Markdown spec for fix results.
-
-Consumed structure (stays strict): frontmatter ``type`` and the
-required-section skeleton. All section content is descriptive (no
-pipeline consumer reads individual fields), so bodies tolerate
-multi-line prose and unknown continuation lines under items.
-"""
 
 from __future__ import annotations
 

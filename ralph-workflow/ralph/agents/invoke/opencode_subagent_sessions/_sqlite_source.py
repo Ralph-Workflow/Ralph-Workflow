@@ -1,4 +1,3 @@
-"""Read-only reader over OpenCode's ``opencode.db``."""
 
 from __future__ import annotations
 
@@ -13,20 +12,11 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-#: Only the newest parts are read per poll; a healthy child writes a handful
-#: of parts per second at most, so this bounds one poll's work without ever
-#: skipping evidence (the high-water mark advances only over returned rows).
 _FETCH_LIMIT: int = 256
-#: Minimum seconds between reconnect attempts after the store was unreachable.
 _RECONNECT_BACKOFF_SECONDS: float = 30.0
 
-#: Column count of :data:`_CHILD_PART_QUERY`; rows of any other width are dropped.
 _CHILD_PART_COLUMNS: int = 6
 
-#: Subagents may themselves dispatch ``task`` when an agent config grants the
-#: permission (1.18.x denies it by default); walk the whole lineage so a
-#: grandchild's work is not hidden behind an intermediate child idling on its
-#: own ``task`` call. The depth cap bounds the walk on a corrupt cyclic tree.
 _MAX_LINEAGE_DEPTH: int = 8
 
 _CHILD_PART_QUERY: str = (
@@ -44,13 +34,6 @@ _CHILD_PART_QUERY: str = (
 
 
 class SqliteOpenCodeChildPartSource:
-    """Read-only reader over OpenCode's ``opencode.db``.
-
-    The connection is opened lazily with a bounded busy timeout and a
-    ``mode=ro`` URI so the probe can never write to, lock, or create the
-    store. Any ``sqlite3`` error empties the result and schedules a
-    reconnect after :data:`_RECONNECT_BACKOFF_SECONDS`.
-    """
 
     def __init__(
         self,
@@ -71,7 +54,6 @@ class SqliteOpenCodeChildPartSource:
         now = self._monotonic()
         if self._retry_after is not None and now < self._retry_after:
             return None
-        # filesystem-read-ok: existence probe of OpenCode's own data store outside the workspace
         if not self._db_path.is_file():
             self._retry_after = now + _RECONNECT_BACKOFF_SECONDS
             return None

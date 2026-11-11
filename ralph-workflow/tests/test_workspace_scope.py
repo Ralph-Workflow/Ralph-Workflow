@@ -1,5 +1,3 @@
-"""Tests for canonical workspace scope resolution."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -41,7 +39,6 @@ def test_workspace_scope_regression_linked_worktree_exposes_distinct_config_laye
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Plan S-1/S-2: a linked worktree retains its own target before an override exists."""
     main_repo = tmp_path / "main"
     worktree = tmp_path / "feature"
     main_repo.mkdir()
@@ -84,11 +81,6 @@ def test_for_same_workspace_worker_allowed_roots_under_repo_root(tmp_path: Path)
 def test_for_same_workspace_worker_does_not_include_repo_root_in_allowed_roots(
     tmp_path: Path,
 ) -> None:
-    """Same-workspace workers must NOT have the repo root in allowed_roots.
-
-    Workers are restricted to their declared edit areas plus their own
-    worker namespace. The repo root itself is NOT an allowed root.
-    """
     worker_ns = tmp_path / ".agent" / "workers" / "unit-A"
     worker_ns.mkdir(parents=True)
     scope = WorkspaceScope.for_same_workspace_worker(
@@ -96,9 +88,7 @@ def test_for_same_workspace_worker_does_not_include_repo_root_in_allowed_roots(
         allowed_directories=("src", "tests/unit"),
         worker_namespace=worker_ns,
     )
-    # Repo root must NOT be in allowed_roots for same-workspace workers
     assert tmp_path.resolve() not in scope.allowed_roots
-    # But the specific directories and worker namespace must be
     assert (tmp_path / "src").resolve() in scope.allowed_roots
     assert (tmp_path / "tests" / "unit").resolve() in scope.allowed_roots
     assert worker_ns.resolve() in scope.allowed_roots
@@ -112,7 +102,6 @@ def test_for_same_workspace_worker_translates_directories(tmp_path: Path) -> Non
         allowed_directories=("src", "docs"),
         worker_namespace=worker_ns,
     )
-    # Only the specific directories + worker namespace, NOT the repo root
     expected = {
         (tmp_path / "src").resolve(),
         (tmp_path / "docs").resolve(),
@@ -122,7 +111,6 @@ def test_for_same_workspace_worker_translates_directories(tmp_path: Path) -> Non
 
 
 def test_for_same_workspace_worker_empty_allowed_dirs(tmp_path: Path) -> None:
-    """Worker with no allowed directories can only write to its namespace."""
     worker_ns = tmp_path / ".agent" / "workers" / "unit-D"
     worker_ns.mkdir(parents=True)
     scope = WorkspaceScope.for_same_workspace_worker(
@@ -130,7 +118,6 @@ def test_for_same_workspace_worker_empty_allowed_dirs(tmp_path: Path) -> None:
         allowed_directories=(),
         worker_namespace=worker_ns,
     )
-    # Only worker_namespace, NOT repo root
     assert tmp_path.resolve() not in scope.allowed_roots
     assert worker_ns.resolve() in scope.allowed_roots
     assert len(scope.allowed_roots) == 1
@@ -242,7 +229,6 @@ def test_resolve_workspace_scope_prefers_worktree_local_policy_override_per_file
 
 class TestSameWorkspaceWorkerScopeFencing:
     def test_write_to_declared_dir_succeeds(self, tmp_path: Path) -> None:
-        """Worker scoped to src/foo can write inside src/foo."""
         (tmp_path / "src" / "foo").mkdir(parents=True)
         worker_ns = tmp_path / ".agent" / "workers" / "u1"
         worker_ns.mkdir(parents=True)
@@ -257,7 +243,6 @@ class TestSameWorkspaceWorkerScopeFencing:
         assert (tmp_path / "src" / "foo" / "x.txt").read_text() == "hello"
 
     def test_write_outside_declared_dir_raises(self, tmp_path: Path) -> None:
-        """Worker scoped to src/foo cannot write to src/bar."""
         (tmp_path / "src" / "bar").mkdir(parents=True)
         worker_ns = tmp_path / ".agent" / "workers" / "u1"
         worker_ns.mkdir(parents=True)
@@ -272,8 +257,6 @@ class TestSameWorkspaceWorkerScopeFencing:
             workspace.write("src/bar/y.txt", "should fail")
 
     def test_write_to_shared_agent_artifacts_denied(self, tmp_path: Path) -> None:
-        """Worker u1 cannot write to .agent/artifacts/
-        (only its own .agent/workers/u1/ namespace)."""
         (tmp_path / ".agent" / "artifacts").mkdir(parents=True)
         worker_ns = tmp_path / ".agent" / "workers" / "u1"
         worker_ns.mkdir(parents=True)
@@ -288,7 +271,6 @@ class TestSameWorkspaceWorkerScopeFencing:
             workspace.write(".agent/artifacts/plan.json", "should fail")
 
     def test_write_to_other_workers_namespace_denied(self, tmp_path: Path) -> None:
-        """Worker u1 cannot write to .agent/workers/u2/ (cross-worker namespace fencing)."""
         worker_ns_u1 = tmp_path / ".agent" / "workers" / "u1"
         worker_ns_u1.mkdir(parents=True)
         worker_ns_u2 = tmp_path / ".agent" / "workers" / "u2" / "artifacts"

@@ -1,79 +1,3 @@
-"""Planning-residue cleanup executor (AC-10 dirty-tree machinery).
-
-The integration decision table (:mod:`ralph.pipeline.integration_decision`)
-maps blocking dirt to the cleanup ladder — ``SAVE_AND_RESTORE`` for residue
-and unknown attribution, climbing one rung per charged repeat. This module
-is the impure machinery behind that decision for one specific seam: the
-planning-agent dispatch.
-
-Planning is read-only for source files. Its only permitted writes are its
-own artifacts under ``.agent/`` and git-ignored paths. The executor enforces
-that contract mechanically:
-
-* :func:`capture_planning_baseline` records the pre-dispatch baseline —
-  HEAD sha, the raw ``git status --porcelain -z`` blob (untracked included),
-  a tracked-diff hash, and a content fingerprint — before every planning
-  dispatch. When the baseline tree already carries tracked dirt (pre-existing
-  human work), the baseline also snapshots that work under a durable backup
-  ref so later ambiguity can never silently revert it.
-* :func:`run_residue_cleanup` re-observes after the dispatch and diffs the
-  two views (pure, in :func:`detect_planning_residue`). Tracked paths that
-  were clean at baseline and dirty after the dispatch are planning residue:
-  they are saved to a backup ref (the shared
-  :mod:`ralph.pipeline.auto_integrate_backup_refs` machinery — refs, never
-  ``git stash``, because refs are reachable from every worktree), restored
-  to the baseline, and named in exactly one WARNING together with the
-  backup ref. Paths that were already dirty at baseline AND changed during
-  the dispatch are attribution-ambiguous: they are treated as pre-existing
-  human work — saved, never silently reverted, and reported. Untracked-only
-  residue does not block. Untracked files the incoming target commits would
-  overwrite are blocking: they are moved aside into a quarantine directory
-  under ``.agent/`` and restored by the   landing seam via
-  :func:`restore_quarantined_untracked`. Unmerged (conflict) state created
-  during planning is NEVER touched by cleanup. Index-flag-hidden residue —
-  tracked content an ``assume-unchanged`` / ``skip-worktree`` flag hides
-  from porcelain, from the diff and from the stash snapshot — is detected
-  by the typed index-flag probe (:func:`read_index_flag_dirt`), unhidden
-  before the backup snapshot (both the snapshot and the restore are blind
-  to flagged paths), and saved/restored/reported through the identical
-  ladder. An unreadable flag probe aborts the baseline capture and backs
-  off the cleanup (typed ``flag_probe_unknown``): it is never evidence of
-  a clean tree.
-
-  An in-progress git operation blocks cleanup entirely: the
-  operation-marker probe (``MERGE_HEAD``, ``rebase-merge/``,
-  ``rebase-apply/``, ``CHERRY_PICK_HEAD`` via
-  :func:`~ralph.pipeline.integration_observation.read_in_progress_kind`)
-  runs before any restore, and ANY marker defers the run with a typed
-  outcome — the operation owns the index and its staged resolution until
-  the operation ladder (continue/abort/rebuild) resolves it. An unreadable
-  probe is UNKNOWN, never "clean/none".
-
-Every mutation is bounded and ledgered: the executor charges the
-repository-wide attempt ledger (intent before action) through
-:meth:`ResidueLedgerPort.charge_residue_attempt`, which delegates to the
-decision table so a repeat failure is answered with the next cleanup-ladder
-rung, never a re-run of a failed action and never a human hand-off.
-
-Cleanup is resumable. Progress (backup ref, restore set, restored subset,
-quarantined untracked files) is recorded under ``.agent/``; an interruption
-between the backup ref and the restore resumes on the next event without a
-second backup of the same content — the resumed run skips the snapshot when
-the recorded backup ref still exists and restores only the paths that are
-still dirty (compare-and-act on a fresh observation). Cleanup re-observes
-before acting: a moved HEAD aborts the restore rather than rewriting files
-against a baseline that no longer describes the tree.
-
-All Git goes through :func:`ralph.git.subprocess_runner.run_git`, which
-serializes every call through the per-common-dir command queue and applies
-the non-interactive hardening. Every git invocation here is plumbing-class
-(``status``/``diff`` reads, ``stash create`` / ``commit-tree`` /
-``update-ref`` / ``write-tree`` preservation, ``restore`` for the
-worktree/index), which runs no hooks by construction; the fixed
-:data:`~ralph.git.hardening.COMMIT_PIN_CONFIG_ARGS` pins accompany the
-commit-plumbing calls. There are no waits: nothing sleeps, so no clock is
-needed.
-"""
 
 from __future__ import annotations
 
@@ -117,25 +41,16 @@ from ralph.pipeline.integration_observation import (
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
-#: Permitted planning writes live under this prefix; they are excluded from
-#: residue detection so a planning agent's own artifacts never count as dirt.
 _PERMITTED_ARTIFACT_PREFIX: Final[str] = ".agent/"
 
-#: Durable cleanup-progress file, under ``.agent/`` (runtime state, never tracked).
 _STATE_FILENAME: Final[str] = "planning_residue_cleanup.json"
 
-#: Directory (under ``.agent/``) untracked overwrite-blockers are quarantined into.
 _QUARANTINE_DIRNAME: Final[str] = "planning-residue-quarantine"
 
-#: Ref namespace for the alternate-preservation rung's preserved commit.
 _PRESERVATION_REF_PREFIX: Final[str] = "refs/ralph-planning-residue/preserved-"
 
-#: Version of the on-disk cleanup-state payload.
 _STATE_VERSION: Final[int] = 1
 
-#: The cleanup-ladder actions the executor knows how to perform. A decision
-#: outside this set is refused (logged, no tree mutation): residue is never
-#: committed as feature work and never handed to a human.
 _CLEANUP_LADDER_ACTIONS: frozenset[NextAction] = frozenset(
     {
         NextAction.SAVE_AND_RESTORE,
@@ -147,15 +62,8 @@ _CLEANUP_LADDER_ACTIONS: frozenset[NextAction] = frozenset(
     }
 )
 
-#: Unmerged porcelain codes: a conflict state the cleanup ladder must not touch.
 _UNMERGED_XY: frozenset[str] = frozenset({"UU", "AA", "DD", "AU", "UA", "DU", "UD"})
 
-#: Human-readable labels for every operation state that blocks cleanup.
-#: Explicit total map over the non-``NONE`` :class:`InProgressKind`
-#: vocabulary (not ``kind.value``): ``InProgressKind`` is a plain Enum, so
-#: its ``.value`` is dynamically typed and the repo's mypy config disallows
-#: Any expressions. The label must stay total: a ``KeyError`` here would be
-#: caught by the executor's defensive wrapper and mask the typed outcome.
 _OPERATION_LABELS: Final[dict[InProgressKind, str]] = {
     InProgressKind.MERGE: "merge",
     InProgressKind.REBASE: "rebase",
@@ -165,8 +73,6 @@ _OPERATION_LABELS: Final[dict[InProgressKind, str]] = {
     InProgressKind.SEQUENCER: "sequencer",
 }
 
-#: A degraded rung is executed at quarantine strength; the outcome names the
-#: rung the ladder actually selected so the report is honest about it.
 _DEGRADED_RUNGS: frozenset[NextAction] = frozenset(
     {
         NextAction.REBUILD_IN_FRESH_WORKTREE,
@@ -176,28 +82,10 @@ _DEGRADED_RUNGS: frozenset[NextAction] = frozenset(
 )
 
 
-# ---------------------------------------------------------------------------
-# Pure model: baseline, residue, outcome.
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class PlanningBaseline:
-    """Pre-planning-dispatch tree snapshot used as the restore target.
-
-    ``status_blob`` is the raw ``git status --porcelain -z`` output
-    (untracked included, permitted ``.agent/`` artifacts still present —
-    filtering happens in the pure comparators so the blob stays a faithful
-    observation). ``tracked_diff_hash`` fingerprints ``git diff HEAD`` so a
-    content-only edit that leaves the porcelain code unchanged is still
-    detected. ``human_work_ref`` is the backup ref holding the pre-dispatch
-    tree when the baseline already carried tracked dirt; ``None`` when the
-    baseline tracked tree was clean. ``flag_hashes`` fingerprints every
-    assume-unchanged / skip-worktree flagged path's worktree content at
-    baseline time: porcelain is blind to flagged paths, so the after-read
-    of the index-flag probe diffs against these pairs to detect hidden
-    residue. Empty when nothing is flagged.
-    """
 
     head_sha: str
     status_blob: str
@@ -209,27 +97,6 @@ class PlanningBaseline:
 
 @dataclass(frozen=True)
 class PlanningResidue:
-    """Diff between the pre-dispatch baseline and the post-dispatch tree.
-
-    * ``tracked_paths`` — clean at baseline, dirty after the dispatch:
-      unambiguous planning residue. Saved and restored.
-    * ``ambiguous_paths`` — dirty at baseline AND changed during the
-      dispatch: attribution cannot separate planning-agent edits from human
-      edits, so the path is treated as pre-existing human work — saved,
-      never silently reverted, reported.
-    * ``untracked_paths`` — new untracked files outside ``.agent/``:
-      non-blocking; planning continues with them in place.
-    * ``overwritten_untracked_paths`` — untracked files the incoming target
-      commits would overwrite: blocking; moved aside and restored after
-      landing.
-    * ``unmerged_paths`` — conflict state created during the dispatch:
-      cleanup never touches these.
-    * ``index_flag_paths`` — tracked paths carrying an
-      assume-unchanged / skip-worktree flag whose worktree content moved
-      since the baseline: porcelain cannot see them, so the index-flag
-      probe's per-path hashes prove the change. Blocking; unhidden,
-      saved and restored exactly like tracked residue.
-    """
 
     fingerprint: str
     tracked_paths: tuple[str, ...]
@@ -242,29 +109,6 @@ class PlanningResidue:
 
 @dataclass(frozen=True)
 class ResidueCleanupOutcome:
-    """What one :func:`run_residue_cleanup` invocation did.
-
-    Exactly one of the terminal ``clean`` / ``unreadable`` / ``head_moved``
-    / ``unmerged`` / ``operation_blocked`` / ``operation_unknown`` /
-    ``untracked_only`` / ``refused`` flags is normally set when no cleanup
-    ran; a blocking cleanup sets none of them and reports its effect
-    through ``action`` / ``restored_paths`` / ``remaining_paths``.
-    ``degraded`` names a rung the executor could only execute at quarantine
-    strength (fresh-worktree / environment rungs need machinery owned
-    elsewhere); the tree is still preserved and restored.
-
-    ``operation_blocked`` names the seam where a git operation marker
-    (``MERGE_HEAD`` / ``rebase-merge`` / ``rebase-apply`` /
-    ``CHERRY_PICK_HEAD``) proved an operation in progress: the operation
-    owns the index and any staged resolution, so cleanup takes no
-    restore/reset action and ``operation_kind`` names what was observed.
-    ``operation_unknown`` is the fail-closed variant: the marker probe was
-    unreadable, which is never evidence of "no operation".
-    ``flag_probe_unknown`` is the same fail-closed variant for the
-    index-flag probe: the cleanup could not prove whether hidden flagged
-    dirt exists, so it backed off without touching the tree — never
-    certifying the residue check clean.
-    """
 
     clean: bool = False
     unreadable: bool = False
@@ -287,7 +131,6 @@ class ResidueCleanupOutcome:
 
 
 def _tracked_entries(status_blob: str) -> dict[str, str]:
-    """Map of tracked (non-untracked, non-``.agent/``) path -> XY code."""
     entries: dict[str, str] = {}
     for entry in parse_porcelain_z(status_blob):
         if entry.xy == "??" or entry.path.startswith(_PERMITTED_ARTIFACT_PREFIX):
@@ -297,7 +140,6 @@ def _tracked_entries(status_blob: str) -> dict[str, str]:
 
 
 def _untracked_paths(status_blob: str) -> tuple[str, ...]:
-    """Sorted untracked paths outside ``.agent/``."""
     return tuple(
         sorted(
             entry.path
@@ -314,14 +156,6 @@ def compute_fingerprint(
     tracked_diff_hash: str,
     flag_paths: tuple[str, ...] = (),
 ) -> str:
-    """Content fingerprint of the tracked view: HEAD + entries + diff hash.
-
-    ``flag_paths`` names the index-flag-hidden residue paths included in
-    this residue event: two residue events with the same visible diff
-    but a different hidden set are different events, so the resume
-    comparison (which matches on this fingerprint) must distinguish
-    them.
-    """
     digest = hashlib.sha256()
     digest.update(head_sha.encode("utf-8"))
     digest.update(b"\0")
@@ -345,19 +179,6 @@ def detect_planning_residue(
     incoming_overwrite_paths: frozenset[str] = frozenset(),
     after_flag_dirt: IndexFlagDirt | None = None,
 ) -> PlanningResidue | None:
-    """Pure diff of the post-dispatch tree against the baseline.
-
-    Returns ``None`` when planning left nothing detectable. The comparison
-    never reads the filesystem: everything is derived from the two porcelain
-    blobs, the two diff hashes and the two index-flag probe readings.
-    ``after_flag_dirt`` is the post-dispatch index-flag probe reading;
-    ``None`` (a caller without probe access) conservatively assumes the
-    baseline flag state is unchanged, which keeps legacy no-flag trees
-    clean. A flagged path whose content hash moved since the baseline —
-    including a path flagged only during the dispatch — is hidden
-    residue: porcelain is blind to it, so the probe's per-path hashes
-    are the only evidence.
-    """
     before_flag_hashes = dict(baseline.flag_hashes)
     after_flag_hashes = (
         after_flag_dirt.path_hashes if after_flag_dirt is not None else baseline.flag_hashes
@@ -384,18 +205,12 @@ def detect_planning_residue(
             tracked.append(path)
         elif before_xy != after_xy:
             ambiguous.append(path)
-    # A path dirty at baseline whose porcelain row vanished (deleted or
-    # committed) during the dispatch: the human work is gone from the tree;
-    # report it as ambiguous, never silently "restored".
     ambiguous.extend(
         path
         for path in sorted(before_tracked)
         if path not in after_tracked and path not in after_untracked
     )
 
-    # Content-only change on a path whose porcelain row did not move:
-    # the diff hash moved but no per-path row did. Conservatively treat
-    # every currently-tracked-dirty path as ambiguous (save, never revert).
     if after_diff_hash != baseline.tracked_diff_hash and not tracked and not ambiguous:
         ambiguous.extend(sorted(after_tracked))
 
@@ -428,13 +243,6 @@ def detect_planning_residue(
 
 
 def residue_observation(residue: PlanningResidue) -> tuple[Observation, DirtShape]:
-    """Project a residue onto the decision table's ``(observation, shape)``.
-
-    The dirty-tree branch of the table only reads worktree class,
-    in-progress kind, record and head state, plus the shape/attribution
-    refinements; the target axes are fixed to the in-sync pair because the
-    residue seam runs after the planning-sync gate has already proven them.
-    """
     if residue.unmerged_paths:
         worktree = WorktreeState.UNMERGED
         shape = DirtShape.UNMERGED
@@ -442,9 +250,6 @@ def residue_observation(residue: PlanningResidue) -> tuple[Observation, DirtShap
         worktree = WorktreeState.TRACKED_CHANGES
         shape = DirtShape.UNSTAGED_MODIFICATION
     elif residue.index_flag_paths:
-        # Hidden flag dirt is tracked residue the porcelain could not
-        # see: the same blocking class, its own shape so the executor
-        # and the log name WHAT is being preserved.
         worktree = WorktreeState.TRACKED_CHANGES
         shape = DirtShape.INDEX_FLAG_HIDDEN
     else:
@@ -460,9 +265,6 @@ def residue_observation(residue: PlanningResidue) -> tuple[Observation, DirtShap
         worktree=worktree,
         head=HeadState.ATTACHED,
         in_progress_kind=InProgressKind.NONE,
-        # The director's projection pairs kind NONE with ownership OWNED;
-        # UNKNOWN here would read as an unreadable probe and the table
-        # would answer WAIT_FOR_ENVIRONMENT instead of a cleanup action.
         in_progress_ownership=InProgressOwnership.OWNED,
         record=IntegrationRecordState.NONE,
         agent_active=False,
@@ -470,93 +272,45 @@ def residue_observation(residue: PlanningResidue) -> tuple[Observation, DirtShap
 
 
 def residue_attribution(residue: PlanningResidue) -> DirtAttribution:
-    """Attribution the decision seam charges with.
-
-    Ambiguous paths (human work mixed with planning edits) force UNKNOWN —
-    the table's conservative save-never-revert attribution. Unambiguous
-    residue is UNOWNED. Planning residue is never PHASE_OWNED: planning has
-    no commit seam, so the table can never route it to
-    ``COMMIT_VIA_COMMIT_PHASE`` (which would commit residue as feature work).
-    """
     if residue.ambiguous_paths:
         return DirtAttribution.UNKNOWN
     return DirtAttribution.UNOWNED
 
 
-# ---------------------------------------------------------------------------
-# Ports: the impure edges behind narrow seams.
-# ---------------------------------------------------------------------------
 
 
 class CleanupGitPort(Protocol):
-    """Git + state-file seam the residue executor performs its effects through.
-
-    Every method is effect-free or a deliberate, named mutation; tests
-    substitute an in-memory fake so the executor is black-box testable with
-    no subprocess, no filesystem and no clock.
-    """
 
     def porcelain_status_z(self, root: Path) -> str | None:
-        """Raw ``git status --porcelain -z`` (untracked normal); None when unreadable."""
         ...
 
     def tracked_diff_hash(self, root: Path) -> str | None:
-        """SHA-256 of ``git diff --no-renames HEAD``; None when unreadable."""
         ...
 
     def head_sha(self, root: Path) -> str | None:
-        """Current HEAD sha; None when unborn/unreadable."""
         ...
 
     def in_progress_kind(self, root: Path) -> Reading[InProgressKind]:
-        """Operation-marker probe (``MERGE_HEAD`` / rebase dirs / ``CHERRY_PICK_HEAD``).
-
-        :meth:`Reading.unknown` when the probe is unreadable — never
-        positive evidence that no operation exists.
-        """
         ...
 
     def index_flag_dirt(self, root: Path) -> Reading[IndexFlagDirt]:
-        """Index-flag probe (assume-unchanged / skip-worktree paths + content hashes).
-
-        :meth:`Reading.unknown` when the probe is unreadable — never
-        positive evidence that no flag is set. Porcelain alone cannot
-        see flagged dirt, so a caller without this reading cannot
-        certify the tree residue-free.
-        """
         ...
 
     def clear_index_flags(self, root: Path, paths: Sequence[str]) -> bool:
-        """Drop the assume-unchanged / skip-worktree bits on ``paths``.
-
-        The cleanup unhides flag-hidden residue BEFORE its backup
-        snapshot: ``git stash create`` and ``git restore`` are both
-        blind to flagged paths (skip-worktree restore fails outright),
-        so the snapshot would silently miss the real content until the
-        flags come off. Returns whether the unhide succeeded.
-        """
         ...
 
     def snapshot_worktree(self, root: Path, *, head_sha: str) -> str:
-        """Create the durable backup ref for the current tree; return its name."""
         ...
 
     def ref_exists(self, root: Path, ref: str) -> bool:
-        """Whether ``ref`` resolves."""
         ...
 
     def restore_paths(self, root: Path, *, source: str, paths: Sequence[str]) -> bool:
-        """Restore worktree+index ``paths`` from ``source`` (baseline commit)."""
         ...
 
     def preserve_dirt_commit(
         self, root: Path, *, head_sha: str, paths: Sequence[str]
     ) -> str | None:
-        """Alternate-preservation rung: commit the dirt via plumbing.
-
-        Returns the preservation ref, or ``None`` when there was nothing to
-        preserve. Never touches the caller's index or worktree.
-        """
         ...
 
     def quarantine_paths(
@@ -566,62 +320,37 @@ class CleanupGitPort(Protocol):
         *,
         quarantine_dir: Path,
     ) -> tuple[str, ...]:
-        """Move ``paths`` aside into ``quarantine_dir``; return the moved paths."""
         ...
 
     def incoming_overwrite_paths(self, root: Path, target: str | None) -> frozenset[str]:
-        """Paths the incoming target commits would add or change vs HEAD."""
         ...
 
     def load_state(self, root: Path) -> Mapping[str, object] | None:
-        """The persisted cleanup-progress payload, if any."""
         ...
 
     def store_state(self, root: Path, payload: Mapping[str, object]) -> None:
-        """Persist cleanup progress for resume-after-interruption."""
         ...
 
     def clear_state(self, root: Path) -> None:
-        """Drop cleanup progress once nothing remains to resume."""
         ...
 
     def path_exists(self, path: Path) -> bool:
-        """Whether ``path`` exists (destination probe for the landing restore)."""
         ...
 
     def move_path(self, source: str, destination: Path) -> None:
-        """Move ``source`` back to ``destination`` (may raise ``OSError``)."""
         ...
 
 
 class ResidueLedgerPort(Protocol):
-    """Charged-before-action seam onto the repository-wide attempt ledger.
-
-    The implementation loads the durable ledger, asks the decision table
-    for the cleanup action (direct or escalated under repeat pressure) and
-    charges the attempt — all BEFORE the caller mutates anything. Intent
-    before, outcome after.
-    """
 
     def charge_residue_attempt(self, root: Path, *, residue: PlanningResidue) -> NextAction:
-        """Charge one residue attempt and return the decided cleanup action."""
         ...
 
 
-# ---------------------------------------------------------------------------
-# Cleanup progress record (durable, resumable).
-# ---------------------------------------------------------------------------
 
 
 @dataclass
 class _CleanupProgress:
-    """Mutable resume record for one residue cleanup.
-
-    A local object only: never module-level, never ``self.X``, so the
-    resource-accumulator audit does not apply. Persisted via the port as a
-    JSON mapping after every step, so a kill between the backup ref and the
-    restore resumes without a second backup of the same content.
-    """
 
     fingerprint: str = ""
     head_sha: str = ""
@@ -678,9 +407,6 @@ def _str_dict(value: object) -> dict[str, str]:
     return {str(key): str(item) for key, item in value.items() if isinstance(item, str)}
 
 
-# ---------------------------------------------------------------------------
-# The executor.
-# ---------------------------------------------------------------------------
 
 
 def capture_planning_baseline(
@@ -688,20 +414,11 @@ def capture_planning_baseline(
     *,
     git: CleanupGitPort,
 ) -> PlanningBaseline | None:
-    """Record the pre-planning-dispatch baseline; ``None`` when unreadable.
-
-    When the baseline tree already carries tracked dirt (pre-existing human
-    work present despite the readiness gate), the baseline also snapshots
-    the tree under a durable backup ref so a later ambiguity verdict can
-    preserve that human work instead of losing it.
-    """
     blob = git.porcelain_status_z(root)
     diff_hash = git.tracked_diff_hash(root)
     head = git.head_sha(root)
     flag_reading = git.index_flag_dirt(root)
     if blob is None or diff_hash is None or head is None or not flag_reading.is_known_good:
-        # An unreadable flag probe is never evidence of "no flags": the
-        # baseline must not certify a tree it could not fully observe.
         return None
     flag_dirt = flag_reading.value if flag_reading.value is not None else IndexFlagDirt.empty()
     tracked = _tracked_entries(blob)
@@ -730,19 +447,12 @@ def run_residue_cleanup(
     target: str | None = None,
     warn: Callable[[str], None] | None = None,
 ) -> ResidueCleanupOutcome:
-    """Detect and clear planning residue left by one dispatch.
-
-    Never raises: every git effect goes through the port, an unreadable
-    observation is a typed outcome (never "clean"), and an unexpected port
-    failure is logged and reported as ``refused`` so the dispatch that
-    already ran is never crashed by its own cleanup.
-    """
     emit = warn if warn is not None else _default_warn
     try:
         return _run_residue_cleanup(
             root, baseline=baseline, git=git, ledger=ledger, target=target, emit=emit
         )
-    except Exception as exc:  # pragma: no cover -- defensive: cleanup never crashes planning
+    except Exception as exc:
         logger.warning("planning-residue cleanup raised; leaving tree untouched: {}", exc)
         return ResidueCleanupOutcome(refused=True)
 
@@ -774,7 +484,6 @@ def _run_residue_cleanup(
         )
         return ResidueCleanupOutcome(flag_probe_unknown=True)
     after_flag_dirt = flags.require_known()
-    # Operation gate before anything else (see _operation_gate).
     gated = _operation_gate(root, git, emit)
     if gated is not None:
         return gated
@@ -805,13 +514,6 @@ def _classify_and_clear_residue(
     head: str,
     emit: Callable[[str], None],
 ) -> ResidueCleanupOutcome:
-    """Diff the fresh observation against the baseline and act on the result.
-
-    Runs only after the unreadable-observation guard and the operation
-    gate have both passed. Compare-and-act: a moved HEAD means the
-    baseline no longer describes the tree; restoring against it could
-    rewrite somebody else's commit.
-    """
     if head != baseline.head_sha:
         emit(
             "planning left residue but HEAD moved "
@@ -840,8 +542,6 @@ def _classify_and_clear_residue(
         or residue.overwritten_untracked_paths
         or residue.index_flag_paths
     ):
-        # Untracked-only residue does not block: planning continues with the
-        # files in place. No ledger charge — nothing mutated.
         return ResidueCleanupOutcome(untracked_only=True)
     return _cleanup_blocking_residue(root, baseline, git, ledger, residue, emit)
 
@@ -851,21 +551,6 @@ def _operation_gate(
     git: CleanupGitPort,
     emit: Callable[[str], None],
 ) -> ResidueCleanupOutcome | None:
-    """Defer cleanup while ANY git operation marker is present.
-
-    A git operation marker (``MERGE_HEAD``, ``rebase-merge/``,
-    ``rebase-apply/``, ``CHERRY_PICK_HEAD``) proves an operation owns the
-    index — its staged resolution is NEVER planning residue. An
-    all-resolved merge (conflicts resolved and staged, ``MERGE_HEAD`` still
-    present) would otherwise reach ``restore_paths`` against the baseline
-    and destroy the operation's staged resolution. No owned/foreign split
-    at this seam: ANY marker defers cleanup, and the operation ladder
-    (continue/abort/rebuild) owns this state, not the residue cleanup.
-
-    An unreadable probe is UNKNOWN, never "clean/none": fail closed with a
-    typed outcome and no restore. Returns ``None`` when no marker gates
-    cleanup and the caller proceeds.
-    """
     in_progress = git.in_progress_kind(root)
     if not in_progress.is_known_good:
         emit(
@@ -892,7 +577,6 @@ def _cleanup_blocking_residue(
     residue: PlanningResidue,
     emit: Callable[[str], None],
 ) -> ResidueCleanupOutcome:
-    """Charge, save, restore and report one blocking residue event."""
     action = ledger.charge_residue_attempt(root, residue=residue)
     if action not in _CLEANUP_LADDER_ACTIONS:
         emit(
@@ -902,12 +586,6 @@ def _cleanup_blocking_residue(
         )
         return ResidueCleanupOutcome(refused=True)
 
-    # Unhide flag-hidden residue BEFORE any snapshot: both the backup
-    # (``git stash create``) and the restore (``git restore``) are blind
-    # to flagged paths — skip-worktree restore fails outright — so
-    # acting while the flags are set would lose the real content the
-    # backup ref exists to preserve. A failed unhide fails closed: no
-    # restore runs against content the snapshot never captured.
     if residue.index_flag_paths and not git.clear_index_flags(root, residue.index_flag_paths):
         emit(
             "index flags on "
@@ -951,13 +629,6 @@ def _ensure_backup_ref(
     baseline: PlanningBaseline,
     progress: _CleanupProgress,
 ) -> None:
-    """Save BEFORE any restore.
-
-    The backup-ref name derives from the tree content, so an existing
-    recorded ref proves the identical content is already preserved: a
-    resumed run skips the snapshot — never a second backup of the same
-    content.
-    """
     if progress.backup_ref is None or not git.ref_exists(root, progress.backup_ref):
         progress.backup_ref = git.snapshot_worktree(root, head_sha=baseline.head_sha)
         progress.restored_paths = []
@@ -969,7 +640,6 @@ def _quarantine_overwrite_blockers(
     progress: _CleanupProgress,
     residue: PlanningResidue,
 ) -> tuple[str, ...]:
-    """Move untracked incoming-overwrite blockers aside; return the moved paths."""
     unmoved = tuple(
         path
         for path in residue.overwritten_untracked_paths
@@ -992,7 +662,6 @@ def _execute_rung_and_restore(
     progress: _CleanupProgress,
     emit: Callable[[str], None],
 ) -> list[str]:
-    """Run the rung-specific preservation, restore the remainder, return targets."""
     restore_targets = [
         path for path in progress.restore_paths if path not in progress.restored_paths
     ]
@@ -1014,12 +683,6 @@ def _finalize_progress(
     progress: _CleanupProgress,
     restore_targets: Sequence[str],
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """Re-observe after the restore and persist resumable progress.
-
-    Only paths still dirty count as remaining. An unreadable re-observation
-    fails closed: nothing is marked restored. Returns ``(remaining,
-    restored_this_run)``.
-    """
     final_blob = git.porcelain_status_z(root)
     final_diff = git.tracked_diff_hash(root)
     final_flags = git.index_flag_dirt(root)
@@ -1058,7 +721,6 @@ def _report_residue_cleanup(
     restored: tuple[str, ...],
     remaining: tuple[str, ...],
 ) -> None:
-    """The ONE warning that names what was restored, saved and preserved."""
     message_parts = [
         f"planning residue cleanup ({action.value})",
         f"restored: {', '.join(restored) if restored else 'none'}",
@@ -1097,7 +759,6 @@ def _perform_action(
     restore_targets: Sequence[str],
     emit: Callable[[str], None],
 ) -> None:
-    """Run the rung-specific preservation step that precedes the restore."""
     if action is NextAction.SAVE_AND_RESTORE:
         return
     if action is NextAction.PRESERVE_VIA_TEMP_INDEX:
@@ -1111,9 +772,6 @@ def _perform_action(
         if preserved is not None:
             emit(f"alternate preservation ref: {preserved}")
         return
-    # QUARANTINE_AND_RESTORE and every degraded stronger rung: move the
-    # residue files aside (a second preservation, on disk) before the
-    # restore recreates them from the baseline commit.
     quarantine_dir = _quarantine_dir(root)
     moved = git.quarantine_paths(root, restore_targets, quarantine_dir=quarantine_dir)
     if moved:
@@ -1126,13 +784,6 @@ def _resume_or_start_progress(
     baseline: PlanningBaseline,
     residue: PlanningResidue,
 ) -> _CleanupProgress:
-    """Load matching progress for a resume, or start a fresh record.
-
-    A recorded fingerprint identical to the current residue proves the
-    identical content is already backed up: the caller then skips the
-    snapshot. Quarantined untracked files from an older, different residue
-    are carried over so their restore-after-landing record is never lost.
-    """
     carried_quarantine: dict[str, str] = {}
     existing = git.load_state(root)
     if existing is not None:
@@ -1151,11 +802,6 @@ def _resume_or_start_progress(
 
 
 def _retire_state_when_done(root: Path, git: CleanupGitPort) -> None:
-    """Drop a stale progress record once the tree is clean again.
-
-    A record with quarantined untracked files survives: the landing seam
-    still owes those paths their restore-after-landing.
-    """
     existing = git.load_state(root)
     if existing is None:
         return
@@ -1175,15 +821,6 @@ def restore_quarantined_untracked(
     git: CleanupGitPort,
     emit: Callable[[str], None] | None = None,
 ) -> tuple[str, ...]:
-    """Move quarantined untracked files back; return the restored paths.
-
-    The landing seam calls this after the feature lands so an untracked
-    file the incoming target commits would have overwritten comes back
-    instead of being silently clobbered. Paths whose destination now exists
-    are left quarantined (the landing content wins and the preserved copy
-    stays reachable in the quarantine dir); the returned tuple names only
-    what was actually restored.
-    """
     log = emit if emit is not None else _default_warn
     existing = git.load_state(root)
     if existing is None:
@@ -1214,22 +851,9 @@ def restore_quarantined_untracked(
     return tuple(restored)
 
 
-# ---------------------------------------------------------------------------
-# Real ports (production edges).
-# ---------------------------------------------------------------------------
 
 
 class RunGitCleanupPort:
-    """Production :class:`CleanupGitPort`: every effect through ``run_git``.
-
-    ``run_git`` serializes each call through the per-common-dir command
-    queue (the mutation lease) and applies the non-interactive hardening.
-    All invocations here are plumbing-class — porcelain reads, ``stash
-    create`` / ``commit-tree`` / ``update-ref`` preservation, ``restore``
-    for the tree — which run no hooks by construction. State-file I/O goes
-    through the shared :class:`~ralph.mcp.artifacts.file_backend.FileBackend`
-    primitive (the filesystem-write consolidation seam), never raw paths.
-    """
 
     def porcelain_status_z(self, root: Path) -> str | None:
         result = run_git(
@@ -1269,12 +893,6 @@ class RunGitCleanupPort:
         return read_index_flag_dirt(root)
 
     def clear_index_flags(self, root: Path, paths: Sequence[str]) -> bool:
-        """Unhide flagged paths: ``git update-index --no-assume-unchanged
-        --no-skip-worktree`` (one plumbing call, no hooks).
-
-        Clearing a flag the path does not carry is a no-op, so a resumed
-        cleanup may call this on already-unhidden paths.
-        """
         if not paths:
             return True
         result = run_git(
@@ -1321,15 +939,7 @@ class RunGitCleanupPort:
     def preserve_dirt_commit(
         self, root: Path, *, head_sha: str, paths: Sequence[str]
     ) -> str | None:
-        """Preserve the dirt as a normal commit over a plumbing-built tree.
-
-        ``git stash create`` materializes the current index+worktree state
-        as a commit WITHOUT touching ``refs/stash``, the index or the tree;
-        re-committing its tree over ``head_sha`` with ``commit-tree`` keeps
-        the staged and worktree variants reachable from one ordinary commit
-        ref. No hook can fire: every step is plumbing.
-        """
-        del paths  # stash create captures the whole state; the residue paths are included.
+        del paths
         created = run_git(
             ("stash", "create", "ralph planning-residue preservation"),
             cwd=root,
@@ -1404,9 +1014,6 @@ class RunGitCleanupPort:
                 backend.mkdir(destination.parent, parents=True, exist_ok=True)
                 backend.replace(source, destination)
             except OSError:
-                # Missing source (deleted residue) or a directory the
-                # replace seam will not move: leave it in place and let the
-                # re-observation report what is still dirty.
                 continue
             moved.append(path)
         return tuple(moved)
@@ -1462,14 +1069,6 @@ class RunGitCleanupPort:
 
 
 class OwnerResidueLedgerPort:
-    """Production :class:`ResidueLedgerPort` onto the owner seam.
-
-    Loads the durable attempt ledger through the owner's single read seam,
-    asks the decision table for the cleanup action (direct or escalated),
-    and charges the attempt through the owner's single write seam — all
-    before the caller touches the tree. The owner import is lazy because
-    the owner delegates its ledger work back through this package.
-    """
 
     def charge_residue_attempt(self, root: Path, *, residue: PlanningResidue) -> NextAction:
         from ralph.pipeline.integration_owner import (

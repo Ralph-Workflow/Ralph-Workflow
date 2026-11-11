@@ -1,10 +1,3 @@
-"""Regression tests for unified MCP contract ownership.
-
-These tests pin the main drift seams that previously diverged across
-startup preflight, lifecycle restart logic, and prompt-visible capability
-defaults.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

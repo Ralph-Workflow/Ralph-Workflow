@@ -1,5 +1,3 @@
-"""Tests for CommandBuilderSpec and ConfigurableCommandBuilder."""
-
 from __future__ import annotations
 
 import dataclasses
@@ -103,31 +101,14 @@ def test_spec_frozen_and_hashable() -> None:
         print_flag=None,
         extra_flags_before_prompt=(),
     )
-    # Check that it's frozen
     with pytest.raises(dataclasses.FrozenInstanceError):
         attr = "base_argv"
         setattr(spec, attr, ("other",))
 
-    # Check that it's hashable
     assert hash(spec) is not None
 
 
 def test_opencode_command_builder_parity(tmp_path: Path) -> None:
-    """Pin opencode's argv shape after three corrections to this expectation.
-
-    1. ``--pure`` is GONE. It ran opencode without external plugins, which
-       made an operator's plugin-provided model provider unresolvable and
-       killed every run; the flag, its ``options.pure`` field, and this
-       test's assertion of it were all removed together.
-    2. The ``opencode/`` prefix is NO LONGER stripped here. The earlier
-       expectation (``--model opencode/some-model`` -> ``--model
-       some-model``) encoded a bug: opencode publishes a provider literally
-       named ``opencode`` and parses ``-m`` as ``provider/model``, so the
-       second strip made every model under that provider unselectable. The
-       Ralph alias prefix is stripped once, at alias resolution.
-    3. There is no ``--json-stream``: opencode 1.18.25's only output
-       selector is the ``--format json`` already emitted here.
-    """
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello world", encoding="utf-8")
 
@@ -177,11 +158,6 @@ def test_nanocoder_command_builder_parity(tmp_path: Path) -> None:
         workspace_path=tmp_path,
     )
 
-    # Nanocoder uses the PTY-backed Ink runtime; Ralph must not drive the TUI editor.
-    # cmd = [cmd_name]
-    # yolo -> "--mode", "yolo"
-    # model -> "--provider", "openai", "--model", "gpt-4"
-    # run -> prompt content
     expected = [
         "nanocoder",
         "--mode",
@@ -215,12 +191,6 @@ def test_codex_command_builder_parity(tmp_path: Path) -> None:
         workspace_path=tmp_path,
     )
 
-    # Old logic:
-    # cmd = ["codex", "exec"]
-    # output -> "--json"
-    # yolo -> "--bypass"
-    # model -> "--model", "gpt-4"
-    # prompt -> "hello world"
     expected = [
         "codex",
         "exec",
@@ -237,7 +207,6 @@ def test_codex_command_builder_parity(tmp_path: Path) -> None:
 
 
 def test_codex_command_builder_keeps_quoted_command_path_as_one_argv_token(tmp_path: Path) -> None:
-    """A Codex wrapper path with spaces is a single executable argv token."""
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello world", encoding="utf-8")
     wrapper = tmp_path / "codex wrapper"
@@ -299,15 +268,6 @@ def test_agy_command_builder_parity(tmp_path: Path) -> None:
         model_flag="--model claude-3",
     )
 
-    # cmd = ["agy", "--output-format", "stream-json"]
-    # yolo -> "--skip-perms"
-    # session -> "--session", "sess-agy"
-    # workspace -> "--add-dir", str(tmp_path)
-    # verbose -> "--verbose"
-    # model -> "--model", "claude-3"
-    # print timeout -> "--print-timeout", "2h"
-    # print -> "--print"
-    # prompt -> "hello world"
     expected = [
         "agy",
         "--output-format",
@@ -332,8 +292,6 @@ def test_agy_command_builder_parity(tmp_path: Path) -> None:
 
 
 class TestCursorCommandBuilder:
-    """Pin the documented ``agent --print --output-format stream-json`` argv shape."""
-
     def test_build_argv_with_print_stream_json_and_model(self, tmp_path: Path) -> None:
         prompt_file = tmp_path / "PROMPT.md"
         prompt_file.write_text("hello world", encoding="utf-8")
@@ -354,36 +312,20 @@ class TestCursorCommandBuilder:
         builder = CursorCommandBuilder()
         cmd = builder.build(config, str(prompt_file), options=options)
 
-        # Canonical binary is `agent` (the first argv token after the cmd
-        # override is honored).
         assert cmd[0] == "agent"
-        # ``--print`` is the headless print flag.
         assert "--print" in cmd
-        # ``--output-format stream-json`` (output flag emitted as two tokens).
         assert "--output-format" in cmd
         assert "stream-json" in cmd
-        # ``--trust`` and ``--approve-mcps`` are the documented
-        # unattended-runner overrides that skip the interactive
-        # workspace-trust and MCP-approval prompts.
         assert "--trust" in cmd
         assert "--approve-mcps" in cmd
-        # ``--yolo`` is the documented autonomy flag.
         assert "--yolo" in cmd
-        # ``--model`` emitted as a separate ``--model <value>`` pair.
         assert "--model" in cmd
         assert "gpt-5.3-codex-high" in cmd
-        # Session flag (--resume) is emitted via the session flag template.
         assert "--resume" in cmd
         assert "sess-cursor" in cmd
-        # Prompt is a positional argument at the end.
         assert cmd[-1] == "hello world"
 
     def test_init_cmd_honors_config_cmd_override_with_flags(self, tmp_path: Path) -> None:
-        """An operator-supplied ``[agents.cursor].cmd`` with extra wrapper flags
-        (e.g. ``/opt/wrapper/agent --telemetry-flag``) MUST be honored verbatim.
-        Mirrors the AGY override contract (see
-        ``ConfigurableCommandBuilder._init_cmd`` and the agy branch).
-        """
         prompt_file = tmp_path / "PROMPT.md"
         prompt_file.write_text("hello world", encoding="utf-8")
 
@@ -398,15 +340,10 @@ class TestCursorCommandBuilder:
         builder = CursorCommandBuilder()
         cmd = builder.build(config, str(prompt_file), options=options)
 
-        # The full wrapper path is preserved (not stripped to ``agent``).
         assert cmd[0] == "/opt/wrapper/agent"
-        # The wrapper's extra flag is preserved as a separate argv token.
         assert "--telemetry-flag" in cmd
 
     def test_init_cmd_default_path_when_no_override(self, tmp_path: Path) -> None:
-        """Without a ``[agents.cursor].cmd`` override, the argv starts with
-        the built-in canonical command ``agent``.
-        """
         prompt_file = tmp_path / "PROMPT.md"
         prompt_file.write_text("hello world", encoding="utf-8")
 
@@ -421,5 +358,4 @@ class TestCursorCommandBuilder:
         builder = CursorCommandBuilder()
         cmd = builder.build(config, str(prompt_file), options=options)
 
-        # Default fall-through starts with the canonical ``agent`` command.
         assert cmd[0] == "agent"

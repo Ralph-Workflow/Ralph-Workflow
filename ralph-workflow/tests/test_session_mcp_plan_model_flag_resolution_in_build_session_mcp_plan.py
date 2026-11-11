@@ -158,8 +158,6 @@ url = "http://docs.example/mcp"
 
 
 class TestModelIdentityResolution:
-    """Model identity resolution from flags and session MCP plans."""
-
     def test_model_flag_resolves_claude_identity(self, isolated_home: Path, tmp_path: Path) -> None:
         del isolated_home
         plan = build_session_mcp_plan(
@@ -207,7 +205,6 @@ class TestModelIdentityResolution:
     def test_model_identity_takes_precedence_over_model_flag(
         self, isolated_home: Path, tmp_path: Path
     ) -> None:
-        """Explicit model_identity overrides model_flag."""
         del isolated_home
         explicit_identity = MultimodalModelIdentity(
             provider="custom-provider", model_id="custom-model", transport="claude"
@@ -242,7 +239,6 @@ class TestModelIdentityResolution:
     def test_opencode_model_flag_catalog_failure_returns_unknown_provider(
         self, isolated_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """When OpenCode catalog lookup fails, identity has 'unknown' provider."""
         del isolated_home
 
         def _fail(*args: object, **kwargs: object) -> None:
@@ -265,7 +261,6 @@ class TestModelIdentityResolution:
     def test_opencode_model_flag_catalog_success_uses_catalog_provider(
         self, isolated_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """When OpenCode catalog lookup succeeds, provider comes from catalog."""
         del isolated_home
         monkeypatch.setattr(
             session_plan_module,
@@ -296,7 +291,6 @@ class TestModelIdentityResolution:
         assert identity.transport == AgentTransport.CODEX.value
 
     def test_opencode_with_qualified_model_flag_resolves_to_embedded_provider(self) -> None:
-        """A qualified ``provider/model`` flag is self-describing; catalog is skipped."""
         identity = resolve_model_identity(
             AgentTransport.OPENCODE, "--model anthropic/claude-sonnet-4-6"
         )
@@ -323,7 +317,6 @@ class TestModelIdentityResolution:
         assert identity.model_id == "qwen2.5-coder"
 
     def test_cursor_with_model_flag_preserves_as_unresolvable(self) -> None:
-        """Cursor transport has no provider mapping; flag is preserved verbatim."""
         identity = resolve_model_identity(AgentTransport.CURSOR, "--model auto")
 
         assert identity.provider == AgentTransport.CURSOR.value
@@ -331,7 +324,6 @@ class TestModelIdentityResolution:
         assert identity.transport == AgentTransport.CURSOR.value
 
     def test_pi_with_bare_name_preserves_as_unresolvable(self) -> None:
-        """Pi transport has no provider mapping; the bare name is preserved."""
         identity = resolve_model_identity(AgentTransport.PI, "anything")
 
         assert identity.provider == AgentTransport.PI.value
@@ -339,7 +331,6 @@ class TestModelIdentityResolution:
         assert identity.transport == AgentTransport.PI.value
 
     def test_codex_with_qualified_flag_uses_embedded_provider(self) -> None:
-        """A Codex CLI invoked with ``--model anthropic/claude-...`` resolves to anthropic."""
         identity = resolve_model_identity(
             AgentTransport.CODEX, "--model anthropic/claude-sonnet-4-6"
         )

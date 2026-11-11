@@ -1,8 +1,3 @@
-"""MCP capability mapping for Ralph sessions.
-
-Ports the Rust capability-mapping layer used to translate session drain and
-policy outcomes into MCP access-control decisions.
-"""
 
 from __future__ import annotations
 
@@ -25,7 +20,6 @@ if TYPE_CHECKING:
 
 
 class Capability(StrEnum):
-    """Internal Ralph capability vocabulary."""
 
     WORKSPACE_READ = "workspace.read"
     WORKSPACE_WRITE_EPHEMERAL = "workspace.write_ephemeral"
@@ -80,7 +74,6 @@ MCP_TO_RALPH_CAPABILITY_MAP: dict[McpCapability, Capability] = {
     McpCapability.WORKSPACE_METADATA_READ: Capability.WORKSPACE_METADATA_READ,
     McpCapability.WORKSPACE_EDIT: Capability.WORKSPACE_EDIT,
     McpCapability.WORKSPACE_DELETE: Capability.WORKSPACE_DELETE,
-    # Legacy alias kept for backward-compatibility; canonical capability is plan_write.
     McpCapability.ARTIFACT_PLAN_SUBMIT: Capability.ARTIFACT_PLAN_WRITE,
 }
 
@@ -171,12 +164,10 @@ _APPROVED_WITH_RESTRICTION_VALUES = {
 
 
 def normalize_token(value: str) -> str:
-    """Normalize a capability or policy token to lowercase with underscores."""
     return value.strip().replace("-", "_").replace(" ", "_").lower()
 
 
 def extract_text_field(value: object, field_name: str) -> str | None:
-    """Extract a named string field from a dict or object attribute, returning None if absent."""
     if isinstance(value, dict):
         field_value = value.get(field_name)
     else:
@@ -185,7 +176,6 @@ def extract_text_field(value: object, field_name: str) -> str | None:
 
 
 def extract_named_value(value: object) -> str | None:
-    """Extract the canonical string value from a string, Enum, or structured object."""
     if isinstance(value, str):
         return value
     if isinstance(value, Enum):
@@ -200,7 +190,6 @@ def extract_named_value(value: object) -> str | None:
 
 
 def coerce_session_drain(value: SessionDrain | str) -> SessionDrain:
-    """Coerce a string or SessionDrain to a SessionDrain, raising ValueError for unknown values."""
     if isinstance(value, SessionDrain):
         return value
 
@@ -224,7 +213,6 @@ def coerce_session_drain(value: SessionDrain | str) -> SessionDrain:
 
 
 def coerce_capability(value: Capability | str) -> Capability:
-    """Coerce a string or Capability to a Capability enum, raising ValueError for unknown values."""
     if isinstance(value, Capability):
         return value
 
@@ -240,7 +228,6 @@ def coerce_capability(value: Capability | str) -> Capability:
 
 
 def coerce_mcp_capability(value: McpCapability | str) -> McpCapability:
-    """Coerce a string or McpCapability to a McpCapability enum."""
     if isinstance(value, McpCapability):
         return value
 
@@ -256,7 +243,6 @@ def coerce_mcp_capability(value: McpCapability | str) -> McpCapability:
 
 
 def normalize_policy_outcome(value: object) -> PolicyOutcome:
-    """Normalize any policy outcome representation to a PolicyOutcome."""
     if isinstance(value, PolicyOutcome):
         return value
     if value is True:
@@ -279,7 +265,6 @@ def resolved_policy_status(
     normalized_status: str,
     reason: str | None,
 ) -> PolicyOutcomeStatus | None:
-    """Resolve a normalized status string to a PolicyOutcomeStatus, or None if unrecognized."""
     if normalized_status in _APPROVED_POLICY_VALUES:
         return PolicyOutcomeStatus.APPROVED
     if normalized_status in _APPROVED_WITH_RESTRICTION_VALUES:
@@ -297,13 +282,6 @@ def drain_class_for_drain_name(
     name: str,
     agents_policy: AgentsPolicy | None = None,
 ) -> DrainClass:
-    """Resolve the drain class for any policy-declared drain name.
-
-    Resolution order:
-    1. Explicit drain_class on the AgentDrainConfig (highest priority).
-    2. Drain name itself is a valid DrainClass value (fallback).
-    3. PolicyValidationError when neither applies.
-    """
     policy_validation_error = _policy_validation_error_type()
     if agents_policy is not None:
         drain_cfg = agents_policy.agent_drains.get(name)
@@ -330,11 +308,6 @@ def drain_class_for_session(
     drain: SessionDrain | str,
     agents_policy: AgentsPolicy | None = None,
 ) -> DrainClass:
-    """Classify a session drain into its drain class.
-
-    Resolution is policy-defined only: callers must supply ``agents_policy`` and
-    the drain must be declared there with an explicit ``drain_class``.
-    """
     if agents_policy is None:
         raise _policy_validation_error_type()(
             f"Drain {drain!r} cannot resolve drain_class without agents_policy; "
@@ -348,7 +321,6 @@ def drain_to_access_mode(
     drain: SessionDrain | str,
     agents_policy: AgentsPolicy | None = None,
 ) -> AccessMode:
-    """Determine the MCP access mode for a session drain."""
     if drain_class_for_session(drain, agents_policy).allows_write():
         return AccessMode.READ_WRITE
     return AccessMode.READ_ONLY
@@ -358,18 +330,11 @@ def drain_to_policy_mode(
     drain: SessionDrain | str,
     agents_policy: AgentsPolicy | None = None,
 ) -> PolicyMode:
-    """Map a session drain to the matching policy mode.
-
-    Accepts any policy-declared drain name by resolving its class through
-    drain_class_for_session. DrainClass and PolicyMode share the same
-    vocabulary, so the mapping is a direct value lookup.
-    """
     dc = drain_class_for_session(drain, agents_policy)
     return PolicyMode(dc.value)
 
 
 def lookup_ralph_capability(capability: McpCapability | str) -> Capability | None:
-    """Look up the Ralph capability mapped from an MCP capability."""
     try:
         normalized_capability = coerce_mcp_capability(capability)
     except ValueError:
@@ -378,7 +343,6 @@ def lookup_ralph_capability(capability: McpCapability | str) -> Capability | Non
 
 
 def policy_from_outcome(outcome: object) -> AccessDecision:
-    """Convert a Ralph policy outcome to an MCP access decision."""
     normalized_outcome = normalize_policy_outcome(outcome)
     if normalized_outcome.status in {
         PolicyOutcomeStatus.APPROVED,
@@ -391,7 +355,6 @@ def policy_from_outcome(outcome: object) -> AccessDecision:
 
 
 def evaluate_workspace_write(ephemeral: object, tracked: object) -> AccessDecision:
-    """Evaluate the composite workspace-write policy."""
     ephemeral_outcome = normalize_policy_outcome(ephemeral)
     tracked_outcome = normalize_policy_outcome(tracked)
     allowed_statuses = {
@@ -410,7 +373,6 @@ def evaluate_mapped_capability(
     capability: McpCapability | str,
     mapped_outcome: tuple[Capability | str, object] | None,
 ) -> AccessDecision:
-    """Evaluate access for a capability that maps directly to a Ralph capability."""
     try:
         normalized_capability = coerce_mcp_capability(capability)
     except ValueError:
@@ -436,7 +398,6 @@ def check_mcp_capability_policy(
     tracked: object,
     mapped_outcome: tuple[Capability | str, object] | None,
 ) -> AccessDecision:
-    """Decide access for an MCP capability from session policy outcomes."""
     try:
         normalized_capability = coerce_mcp_capability(capability)
     except ValueError:

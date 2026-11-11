@@ -1,17 +1,3 @@
-"""The run's cleanup step must flush the display's buffered writers.
-
-A serial ``ralph run`` ends with neither ``drop_unit`` (parallel-only)
-nor ``ParallelDisplay.stop()`` -- the cleanup step named "display stop"
-invokes the width refresher's stop, not the display's. So the buffered
-per-unit writers were never flushed on the primary run path:
-``RenderedRecordWriter`` buffers in memory with no atexit or finalizer,
-and the condensation markers advertised a condensed log by path that
-could still be empty.
-
-This pins the wiring at the seam the run loop actually calls, so a
-refactor of ``_setup_active_display`` cannot silently drop it again.
-"""
-
 from __future__ import annotations
 
 import io
@@ -34,7 +20,6 @@ _OVERSIZED_BODY = "---\ntype: development_result\n---\n" + "\n".join(
 
 
 def test_composed_display_stop_flushes_buffered_writers(tmp_path: Path) -> None:
-    """The cleanup callable the run loop installs must reach the display."""
     console = Console(file=io.StringIO(), force_terminal=False, color_system=None, width=200)
     display = ParallelDisplay(
         make_display_context(console=console, env={"CI": "1"}),
@@ -57,7 +42,6 @@ def test_composed_display_stop_flushes_buffered_writers(tmp_path: Path) -> None:
 def test_composed_display_stop_flushes_even_if_the_refresher_raises(
     tmp_path: Path,
 ) -> None:
-    """A refresher failure must not cost the run its buffered output."""
     console = Console(file=io.StringIO(), force_terminal=False, color_system=None, width=200)
     display = ParallelDisplay(
         make_display_context(console=console, env={"CI": "1"}),
@@ -79,7 +63,6 @@ def test_composed_display_stop_flushes_even_if_the_refresher_raises(
 
 
 def test_run_end_flush_is_idempotent(tmp_path: Path) -> None:
-    """Cleanup can run more than once; it must not raise or double-write."""
     console = Console(file=io.StringIO(), force_terminal=False, color_system=None, width=200)
     display = ParallelDisplay(
         make_display_context(console=console, env={"CI": "1"}),

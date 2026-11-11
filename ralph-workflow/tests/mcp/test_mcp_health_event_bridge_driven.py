@@ -1,13 +1,3 @@
-"""Bridge-driven health event tests verifying per-bridge durable sink records.
-
-Forces both restart decisions through the real bridge path:
-1. process_exited: when inner process exits, bridge records reason='process_exited',
-   exit_status, bounded log_tail, and stage='process_exited' to configured per-bridge sink.
-2. probe_failed: when probe fails repeatedly under normal conditions (no contention),
-   bridge records reason='probe_failed', probe_duration_s, bounded log_tail, and
-   stage='probe_failed' to configured per-bridge sink.
-"""
-
 from __future__ import annotations
 
 import pathlib
@@ -49,7 +39,6 @@ class _FakeProcess:
 
 @pytest.fixture(autouse=True)
 def _short_handover_ack_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The fake old child never writes a pause ack; don't burn the real 1 s ack window."""
     monkeypatch.setattr(lifecycle, "_HANDOVER_ACK_TIMEOUT_S", 0.1)
 
 
@@ -85,7 +74,6 @@ def test_bridge_driven_process_exited_records_to_per_bridge_sink(tmp_path: pathl
     )
     bridge._durable_sink_path = sink_path
 
-    # Force decision through the real bridge health-check path
     restarted = bridge.check_health_and_restart_if_needed()
     assert restarted is True
     assert bridge.restart_count == 1
@@ -99,7 +87,6 @@ def test_bridge_driven_process_exited_records_to_per_bridge_sink(tmp_path: pathl
     assert record["probe_duration_s"] is None
     assert record["stage"] == "process_exited"
 
-    # Log tail must be bounded to at most 10 lines
     assert record["log_tail"] is not None
     assert isinstance(record["log_tail"], list)
     assert len(record["log_tail"]) == 10
@@ -133,12 +120,10 @@ def test_bridge_driven_probe_failed_records_to_per_bridge_sink(tmp_path: pathlib
     )
     bridge._durable_sink_path = sink_path
 
-    # First 2 misses: no restart yet (3-miss policy)
     assert bridge.check_health_and_restart_if_needed() is False
     assert bridge.check_health_and_restart_if_needed() is False
     assert len(read_durable_sink(path=sink_path)) == 0
 
-    # 3rd miss: triggers restart on probe_failed
     restarted = bridge.check_health_and_restart_if_needed()
     assert restarted is True
     assert bridge.restart_count == 1
@@ -153,7 +138,6 @@ def test_bridge_driven_probe_failed_records_to_per_bridge_sink(tmp_path: pathlib
     assert record["probe_duration_s"] >= 0.0
     assert record["stage"] == "probe_failed"
 
-    # Log tail must be bounded to at most 10 lines
     assert record["log_tail"] is not None
     assert isinstance(record["log_tail"], list)
     assert len(record["log_tail"]) == 10
@@ -186,12 +170,10 @@ def test_bridge_driven_both_decisions_append_to_same_sink(tmp_path: pathlib.Path
     )
     bridge._durable_sink_path = sink_path
 
-    # 1. Force process_exited decision
     inner.process.terminate()
     assert bridge.check_health_and_restart_if_needed() is True
     assert bridge.restart_count == 1
 
-    # 2. Force probe_failed decision on the newly restarted inner
     def failing_probe(ep: str, to: timedelta) -> None:
         raise RuntimeError("probe failed")
 

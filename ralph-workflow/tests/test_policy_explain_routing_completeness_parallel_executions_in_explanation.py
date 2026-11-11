@@ -1,12 +1,3 @@
-"""Tests that explain_policy output covers all routing surfaces.
-
-Verifies that the policy explanation includes:
-- POST-COMMIT ROUTES section with phase, budget_state, and target
-- PARALLEL EXECUTION section with post_fanout_verify annotation
-- RECOVERY POLICY section with preserve_session_on_categories
-- Verification on_failure_route arrow in ASCII diagram
-"""
-
 from __future__ import annotations
 
 from ralph.policy.explain import PolicyExplanation, explain_policy
@@ -20,8 +11,6 @@ def _default_explanation() -> PolicyExplanation:
 
 
 class TestParallelExecutionsInExplanation:
-    """explain_policy populates parallel_executions list on PolicyExplanation."""
-
     def test_parallel_executions_populated(self) -> None:
         exp = _default_explanation()
         assert len(exp.parallel_executions) > 0, (

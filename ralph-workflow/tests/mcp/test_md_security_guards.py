@@ -1,5 +1,3 @@
-"""Security contracts for commit markdown artifact specs."""
-
 from ralph.mcp.artifacts.markdown import parse_and_validate
 from ralph.mcp.artifacts.markdown.specs.commit_message import COMMIT_MESSAGE_SPEC
 from ralph.mcp.artifacts.markdown.specs.commit_review import COMMIT_REVIEW_SPEC

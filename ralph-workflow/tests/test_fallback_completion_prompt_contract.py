@@ -1,5 +1,3 @@
-"""Rendered prompts describe the runtime's real fallback completion order."""
-
 from __future__ import annotations
 
 from pathlib import Path

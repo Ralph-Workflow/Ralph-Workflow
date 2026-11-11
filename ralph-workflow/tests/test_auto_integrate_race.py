@@ -1,19 +1,3 @@
-"""Auto-integrate race / concurrency tests.
-
-Houses the AC-08 (CAS race in the orchestrator) and AC-09
-(dirty-worktree fast-forward skip) tests, which were previously
-inlined in :mod:`tests.test_auto_integrate` but pushed that file
-past the repo-structure ``_MAX_FILE_LINES`` cap. Splitting them out
-keeps the main test file under the cap while preserving the same
-subprocess_e2e marker so the tests still run under
-``make test-subprocess-e2e``.
-
-The helpers (``_run``, ``_commit``, ``_base_branch``,
-``_build_config``) are duplicated here to keep this file standalone;
-the duplication is small (~30 lines) and avoids a brittle
-``from test_auto_integrate import ...`` dependency.
-"""
-
 from __future__ import annotations
 
 import subprocess
@@ -31,13 +15,7 @@ pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
 _NO_INTEGRATION_BACKOFF = {"sleep": lambda _seconds: None, "jitter": lambda: 0.0}
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
 def _run(repo_root: Path, *args: str, timeout: float = 10.0) -> subprocess.CompletedProcess[str]:
-    """Run ``git <args>`` in ``repo_root`` with a configurable timeout."""
     return subprocess.run(
         ("git", *args),
         cwd=str(repo_root),
@@ -49,7 +27,6 @@ def _run(repo_root: Path, *args: str, timeout: float = 10.0) -> subprocess.Compl
 
 
 def _base_branch(tmp_git_repo: Path) -> str:
-    """Return the seed template's default branch name."""
     head_file = tmp_git_repo / ".git" / "HEAD"
     try:
         head_content = head_file.read_text(encoding="utf-8").strip()
@@ -83,7 +60,6 @@ def _build_config(
     target: str | None = None,
     reclaim_target_worktree: bool = True,
 ) -> UnifiedConfig:
-    """Build a real ``UnifiedConfig`` with the auto-integrate knobs set."""
     payload: dict[str, object] = {
         "general": {
             "auto_integrate_enabled": enabled,
@@ -95,54 +71,15 @@ def _build_config(
     return UnifiedConfig.model_validate(payload)
 
 
-# ---------------------------------------------------------------------------
-# AC-08: orchestrator CAS race
-# ---------------------------------------------------------------------------
-
-
 def test_cas_race_target_advances_concurrently_via_orchestration(
     tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """AC-08 orchestration race: target moves between observation and CAS.
-
-    The earlier AC-08 test
-    (:func:`tests.test_auto_integrate.test_compare_and_swap_branch_rejects_stale_expected_sha`)
-    only exercised the leaf primitive ``compare_and_swap_branch``
-    directly. It did NOT exercise the ORCHESTRATION race inside
-    :func:`ralph.pipeline.auto_integrate_ff.fast_forward_target`,
-    where the order is:
-
-        1. observe the target SHA via ``branch_sha(target)``
-        2. ``is_ancestor(observed_target_sha, feature_sha)`` -- ancestor guard
-        3. ``compare_and_swap_branch(target, observed_target_sha, feature_sha)``
-
-    The fix binds the ancestor decision to the same observed SHA
-    the CAS uses: the ancestor check is performed against the SHA
-    the orchestrator actually observed, so a concurrent landing
-    between observation and CAS is caught by the CAS itself
-    (the ref no longer equals the observed SHA).
-
-    The test forces the race by monkeypatching ``branch_sha`` so
-    the call inside
-    :func:`ralph.pipeline.auto_integrate_ff.fast_forward_target`
-    returns the pre-landing SHA. Because
-    :mod:`ralph.pipeline.auto_integrate_ff` binds ``branch_sha``
-    at import time, patching the attribute on that module is the
-    single binding that affects the call site that matters; every
-    other caller keeps the real function and sees the true current
-    SHA. With the fix the orchestrator's ancestor check is bound
-    to the observed SHA and the CAS is attempted with the
-    post-landing SHA as the expected-oldvalue, which fails closed.
-    """
     import ralph.pipeline.auto_integrate_ff as _ai_ff_mod
 
     base = _base_branch(tmp_git_repo)
     _run(tmp_git_repo, "checkout", "-b", "feature")
     _commit(tmp_git_repo, "feat.txt", "feat\n", "feat")
     pre_landing_base_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
-    # Concurrent landing: a new commit on base, advancing base past
-    # the pre-landing SHA. The integration's rebase will replay feat
-    # on top of the new base.
     _run(tmp_git_repo, "checkout", base)
     _commit(tmp_git_repo, "concurrent.txt", "concurrent\n", "concurrent")
     post_landing_base_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
@@ -150,13 +87,6 @@ def test_cas_race_target_advances_concurrently_via_orchestration(
     _run(tmp_git_repo, "checkout", "feature")
 
     def _stale_observe_branch_sha(_repo_root: object, _name: str) -> tuple[str | None, bool]:
-        # The single observe_branch_sha call inside
-        # auto_integrate_ff is the observation that decides the CAS
-        # expected-oldvalue. Returning the pre-landing SHA -- with
-        # query_ok=True, i.e. "git answered definitively" -- opens the
-        # race window deterministically, with no dependency on how many
-        # times the orchestrator read the ref beforehand. Every other
-        # caller keeps the real function and sees the true current SHA.
         return pre_landing_base_sha, True
 
     monkeypatch.setattr(_ai_ff_mod, "observe_branch_sha", _stale_observe_branch_sha)
@@ -172,7 +102,6 @@ def test_cas_race_target_advances_concurrently_via_orchestration(
     assert outcome.last_reason is not None and (
         "advanced concurrently" in outcome.last_reason or "CAS mismatch" in outcome.last_reason
     ), f"AC-08 race: last_reason must mention the concurrent landing, got {outcome.last_reason!r}"
-    # Target ref is UNCHANGED -- still at the post-landing SHA.
     final_base_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
     assert final_base_sha == post_landing_base_sha, (
         f"AC-08 race: target ref must be byte-unchanged, expected"
@@ -180,29 +109,10 @@ def test_cas_race_target_advances_concurrently_via_orchestration(
     )
 
 
-# ---------------------------------------------------------------------------
-# fast_forward_target defensive skip reasons (auto_integrate_ff.py)
-# ---------------------------------------------------------------------------
-
-
 def test_fast_forward_target_missing_branch_is_reported(tmp_git_repo: Path) -> None:
-    """AC-08 ff layer: ``branch_sha`` returning None -> ``ok=False`` with reason.
-
-    Direct mock-free test of
-    :func:`ralph.pipeline.auto_integrate_ff.fast_forward_target` --
-    the function reads ``branch_sha(target)`` (auto_integrate_ff.py:60)
-    and that call returns None when the branch does not exist. The
-    function MUST report ``ok=False`` and
-    ``reason='target branch missing at fast-forward time'`` -- never
-    attempt a CAS or worktree ff on a missing branch.
-
-    Its sibling reason for an UNREADABLE target -- the ``git rev-parse``
-    that failed rather than reporting the branch absent -- is covered by
-    :func:`test_unreadable_target_is_retryable_but_a_missing_one_is_not`.
-    """
     from ralph.pipeline.auto_integrate_ff import fast_forward_target
 
-    _base_branch(tmp_git_repo)  # ensure the default branch exists
+    _base_branch(tmp_git_repo)
     _commit(tmp_git_repo, "feat.txt", "feat\n", "feat")
     feature_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
 
@@ -217,20 +127,6 @@ def test_fast_forward_target_missing_branch_is_reported(tmp_git_repo: Path) -> N
 def test_unreadable_target_is_retryable_but_a_missing_one_is_not(
     tmp_path: Path, tmp_git_repo: Path
 ) -> None:
-    """A FAILED target read is a concurrency signal, not an absent branch.
-
-    Defect: ``branch_sha`` returned ``None`` both when the branch did not
-    exist AND when ``git rev-parse`` itself failed, and the fast-forward
-    mapped that single ``None`` onto the NON-retryable 'target branch
-    missing'. Under concurrency the commonest cause of a failed read is a
-    ref lock held by the sibling agent currently landing on the same
-    branch, so the bounded integration loop abandoned a situation one
-    retry resolves.
-
-    ``tmp_path`` is not a git repository at all, so ``git rev-parse``
-    exits non-zero for a REASON OTHER than 'no such ref' -- the same
-    shape a contended ref lock produces, without having to contend one.
-    """
     from ralph.pipeline.auto_integrate_ff import (
         fast_forward_target,
         is_retryable_fast_forward_failure,
@@ -257,25 +153,6 @@ def test_unreadable_target_is_retryable_but_a_missing_one_is_not(
 def test_exhausted_integration_attempts_are_recorded_and_not_over_promised(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The attempt budget is spent truthfully, in the log and on the state.
-
-    Two defects are pinned here, both in
-    :func:`ralph.pipeline.auto_integrate._auto_integrate_after_commit_inner`:
-
-    1. the ``re-integrating onto the moved target`` INFO line was emitted
-       at the bottom of EVERY iteration including the last one, where the
-       range then ends and nothing re-integrates -- the operator was
-       promised a retry that never came;
-    2. nothing recorded that the budget had been spent, so the returned
-       state carried only the last fast-forward skip reason and a
-       one-off concurrent move looked identical to a target that kept
-       moving until the loop gave up.
-
-    A scripted integration runner reports the same retryable CAS loss on
-    every attempt. The separate AC-08 test above retains the real-git proof
-    that a stale observation produces that loss; this test owns only the
-    orchestration contract around the bounded runner.
-    """
     from loguru import logger
 
     import ralph.pipeline.auto_integrate as _ai_mod
@@ -340,7 +217,6 @@ def test_exhausted_integration_attempts_are_recorded_and_not_over_promised(
     assert "exhausted 3 integration attempts" in outcome.last_reason, (
         f"the recorded reason must say the attempt budget was spent, got {outcome.last_reason!r}"
     )
-    # The underlying concurrency cause survives as the headline.
     assert "advanced concurrently" in outcome.last_reason
     assert attempts == [1, 2, 3]
 
@@ -352,21 +228,9 @@ def test_exhausted_integration_attempts_are_recorded_and_not_over_promised(
 
 
 def test_fast_forward_target_non_ancestor_is_reported(tmp_git_repo: Path) -> None:
-    """AC-08 ff layer: target not an ancestor of feature -> ``ok=False``.
-
-    Directly exercises
-    :func:`ralph.pipeline.auto_integrate_ff.fast_forward_target`
-    against a deliberately diverged target. The ancestor guard at
-    auto_integrate_ff.py:68 must reject the move and report
-    ``reason='target advanced concurrently (not an ancestor of feature)'``;
-    the target ref is then proven byte-unchanged -- AC-08's
-    no-force-move contract at the ff layer.
-    """
     from ralph.pipeline.auto_integrate_ff import fast_forward_target
 
     base = _base_branch(tmp_git_repo)
-    # Genuine divergence: feature and base BOTH advance past a
-    # shared ancestor, so base is NOT an ancestor of feature.
     base_seed_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
     _run(tmp_git_repo, "checkout", "-b", "feature")
     _commit(tmp_git_repo, "feat.txt", "feat\n", "feat")
@@ -384,8 +248,6 @@ def test_fast_forward_target_non_ancestor_is_reported(tmp_git_repo: Path) -> Non
         f"AC-08 ff: defensive reason for non-ancestor target must"
         f" match the producer literal, got {reason!r}"
     )
-    # AC-08 no-force-move contract at the ff layer: the target ref
-    # is BYTE-UNCHANGED.
     base_ref_after = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
     assert base_ref_after == base_ref_before, (
         f"AC-08 ff: target ref must be byte-unchanged on a refused"
@@ -394,74 +256,13 @@ def test_fast_forward_target_non_ancestor_is_reported(tmp_git_repo: Path) -> Non
     )
 
 
-# ---------------------------------------------------------------------------
-# AC-09: target checked out dirty in another worktree
-# ---------------------------------------------------------------------------
-
-
 def test_dirty_target_worktree_opt_out_leaves_ref_and_files_unchanged(
     tmp_git_repo: Path,
 ) -> None:
-    """DA-001/AC-9: opt-out leaves a dirty checked-out target untouched.
-
-    The previous behaviour CAS-advanced ``refs/heads/<target>`` while
-    a sibling worktree held the target with uncommitted changes. That
-    silently desynced the worktree's index and working tree -- a
-    ``reset --hard`` there would destroy the operator's work, and
-    ``git status`` described the freshly landed work as a local
-    reverse diff. AC-10/E2 forbids that path.
-
-    The new contract: when the target is checked out in a sibling
-    worktree AND ``merge --ff-only`` refuses there (because the
-    worktree's dirty changes would conflict with the merge, the
-    requested SHA is not a descendant, or any other precondition
-    fails), the shared ref is LEFT UNTOUCHED and the attempt returns
-    a loud, retryable diagnostic. The next clean seam on that
-    worktree will retry the same ``merge --ff-only`` and land once
-    the operator's uncommitted work is resolved.
-
-    To make ``merge --ff-only`` actually REFUSE, the dirty change in
-    the linked worktree must conflict with the merge -- the rebased
-    feature must modify a tracked file that the linked worktree has
-    ALSO modified with a different content. A bare fast-forward of a
-    branch that doesn't touch the dirty file would succeed (the
-    fast-forward only moves the branch pointer, not the file
-    content), so the test setup MUST introduce a file the rebased
-    feature rewrites AND the dirty worktree also modifies.
-
-    This test exercises the dirty-worktree refusal:
-
-    1. Seed a tracked file ``conflict.txt`` on the base branch.
-    2. Fork ``wt_branch`` off the seed base.
-    3. Add a commit on the primary ``feature`` branch that rewrites
-       ``conflict.txt`` to a different value, so ``feature`` is
-       genuinely ahead of ``wt_branch`` AND the merge into wt_branch
-       would conflict with the linked worktree's local modification.
-    4. Link a SECOND worktree on ``wt_branch`` and modify
-       ``conflict.txt`` (untracked changes are ignored by
-       ``is_repo_clean`` which uses ``--untracked-files=no``).
-    5. Configure the integration target as ``wt_branch`` and run.
-    6. Assert: the shared target ref does NOT advance; the dirty
-       worktree's files are UNTOUCHED; the integration surfaces a
-       loud retryable skip carrying the
-       ``_TARGET_CHECKED_OUT_REFUSED`` reason.
-
-    Then the test cleans the dirty file and re-runs integration, and
-    asserts the same ``merge --ff-only`` now lands the target into
-    the previously-dirty worktree atomically -- proving the
-    "next clean seam" self-resume contract holds.
-    """
     base = _base_branch(tmp_git_repo)
     wt_branch = "wt-target"
-    # Seed a tracked file so the rebased feature can conflict with
-    # the linked worktree's local modification. Without a CONFLICT
-    # in the merged content, ``merge --ff-only`` would happily move
-    # the branch pointer past the dirty file (a fast-forward is
-    # purely a branch-pointer move when the merged commit doesn't
-    # touch the dirty file).
     _commit(tmp_git_repo, "conflict.txt", "base content\n", "seed base")
     _run(tmp_git_repo, "branch", wt_branch, base)
-    # Add a commit on the primary base branch so wt_branch is behind.
     _commit(tmp_git_repo, "base_marker.txt", "base marker\n", "base marker")
     _run(tmp_git_repo, "checkout", "-b", "feature")
     feature_sha = _commit(
@@ -472,15 +273,9 @@ def test_dirty_target_worktree_opt_out_leaves_ref_and_files_unchanged(
     )
     wt_branch_sha_before = _run(tmp_git_repo, "rev-parse", f"refs/heads/{wt_branch}").stdout.strip()
     assert feature_sha != wt_branch_sha_before
-    # Add a SECOND worktree on wt_branch.
     wt_path = tmp_git_repo.parent / f"{tmp_git_repo.name}-wt"
     _run(tmp_git_repo, "worktree", "add", str(wt_path), wt_branch)
     try:
-        # Modify conflict.txt in the worktree -- the rebased feature
-        # rewrites the same file, so ``merge --ff-only`` of the
-        # feature tip into the dirty worktree will refuse (the local
-        # change to conflict.txt conflicts with the merge's intended
-        # update).
         tracked_in_wt = wt_path / "conflict.txt"
         tracked_in_wt.write_text("worktree dirty content\n", encoding="utf-8")
         wt_status = _run(wt_path, "status", "--porcelain", "--untracked-files=no").stdout.strip()
@@ -493,14 +288,6 @@ def test_dirty_target_worktree_opt_out_leaves_ref_and_files_unchanged(
             config, scope, RebaseState(), **_NO_INTEGRATION_BACKOFF
         )
         assert outcome is not None
-        # The integration rebase replay produced a feature tip that
-        # IS a fast-forward of wt_branch; the live worktree's
-        # ``merge --ff-only`` is the only landing path. The dirty
-        # worktree causes ``merge --ff-only`` to refuse (the worktree
-        # modified conflict.txt and the rebased feature rewrote the
-        # same file with a different value), so the shared ref is
-        # LEFT UNTOUCHED and the record carries a loud retryable
-        # skip.
         assert outcome.last_action in {"rebased", "merged"}, (
             f"AC-10: integration must still reach the rebase phase"
             f" (last_action reflects the rebase outcome), got"
@@ -520,8 +307,6 @@ def test_dirty_target_worktree_opt_out_leaves_ref_and_files_unchanged(
             f"AC-08: skip reason must name merge --ff-only and the "
             f"checked-out sibling, got {outcome.last_reason!r}"
         )
-        # The shared ref is BYTE-UNCHANGED while the dirty worktree
-        # refuses -- AC-10's central invariant.
         wt_branch_sha_after_dirty = _run(
             tmp_git_repo, "rev-parse", f"refs/heads/{wt_branch}"
         ).stdout.strip()
@@ -530,7 +315,6 @@ def test_dirty_target_worktree_opt_out_leaves_ref_and_files_unchanged(
             f"sibling worktree refuses merge --ff-only, before="
             f"{wt_branch_sha_before!r} after={wt_branch_sha_after_dirty!r}"
         )
-        # The dirty worktree's files are UNTOUCHED.
         assert (wt_path / "conflict.txt").exists(), (
             "AC-10: dirty file in the target worktree must not be removed"
         )
@@ -545,10 +329,6 @@ def test_dirty_target_worktree_opt_out_leaves_ref_and_files_unchanged(
         assert "conflict.txt" in wt_status_after, (
             f"AC-10: linked worktree must remain dirty, got status={wt_status_after!r}"
         )
-        # Now clean the worktree and re-run integration -- the
-        # next clean seam contract holds, and the same
-        # ``merge --ff-only`` path lands atomically. The ref moves
-        # AND the worktree's index+working tree advance together.
         tracked_in_wt.write_text("base content\n", encoding="utf-8")
         wt_status_clean = _run(
             wt_path, "status", "--porcelain", "--untracked-files=no"

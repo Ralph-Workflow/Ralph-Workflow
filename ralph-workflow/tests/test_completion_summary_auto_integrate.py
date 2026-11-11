@@ -1,22 +1,3 @@
-"""Regression tests for surfacing auto-integrate outcomes in the completion receipt.
-
-These tests pin the display contract for the four auto-integrate outcome
-fields projected from :class:`ralph.pipeline.rebase_state.RebaseState` onto
-:data:`ralph.display.snapshot.PipelineSnapshot`. The producer
-(:mod:`ralph.pipeline.auto_integrate`) keeps ``last_action`` as one of
-``rebased|merged|skipped|conflict|recovered`` and records the landing
-result on the ``fast_forwarded`` boolean. The action vocabulary contains
-no ``fast_forwarded`` verb at all, so the display layer must read
-``fast_forwarded`` rather than keying on a nonexistent action.
-
-Every case below is a tuple actually emitted by the producer; nothing here
-is invented. Both the plain renderer and the on-screen group renderer must
-agree, and the disabled path (no integration ran) must emit nothing.
-
-These are pure in-memory unit tests; they never touch the filesystem,
-spawn subprocesses, or call :func:`time.sleep`.
-"""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -33,17 +14,11 @@ from ralph.display.completion_summary import (
 from ralph.display.context import make_display_context
 from ralph.display.snapshot import PipelineSnapshot
 
-# ---------- Fixture ----------
-
-#: Verbatim reasons pulled from the producer so the tests assert on strings
-#: the operator will actually see in a real run.
-_TARGET_DIRTY_REASON = "target worktree dirty"  # auto_integrate_ff.py:108 (AC-09)
-_CAS_REFUSAL_REASON = (
-    "target advanced concurrently (CAS mismatch)"  # auto_integrate_ff.py:122 (AC-08)
-)
-_CONFLICT_REASON = "rebase and endpoint merge both conflicted"  # auto_integrate.py:230 (AC-07)
-_NO_COMMITS_BEYOND_REASON = "no commits beyond target"  # auto_integrate.py:557 (AC-03)
-_ALREADY_FF_REASON = "already fast-forwarded"  # auto_integrate.py:747-750 (recovery)
+_TARGET_DIRTY_REASON = "target worktree dirty"
+_CAS_REFUSAL_REASON = "target advanced concurrently (CAS mismatch)"
+_CONFLICT_REASON = "rebase and endpoint merge both conflicted"
+_NO_COMMITS_BEYOND_REASON = "no commits beyond target"
+_ALREADY_FF_REASON = "already fast-forwarded"
 
 
 def _make_snapshot(
@@ -70,12 +45,6 @@ def _make_snapshot(
     prompt_preview: tuple[str, ...] = (),
     run_id: str | None = "run-ai",
 ) -> PipelineSnapshot:
-    """Construct a PipelineSnapshot with the four auto-integrate fields set.
-
-    Mirrors the construction precedent in
-    ``tests/test_completion_summary.py``:48-75, with ``created_at`` pinned
-    to a deterministic value so every test run renders identically.
-    """
     return PipelineSnapshot(
         phase=phase,
         previous_phase=previous_phase,
@@ -121,15 +90,7 @@ def _render_group(snapshot: PipelineSnapshot) -> str:
     return buf.getvalue()
 
 
-# ---------- Step 3: unit tests for the shared formatter ----------
-
-
 def test_format_successful_land_says_fast_forwarded_target() -> None:
-    """Normal successful land ('rebased', target, fast_forwarded=True) renders
-    'fast-forwarded <target>'. This is the case the unreachable
-    ``action == 'fast_forwarded'`` branch at runner.py:589 used to break,
-    because the producer never emits a 'fast_forwarded' action.
-    """
     from ralph.display.auto_integrate_message import format_auto_integrate_message
 
     msg = format_auto_integrate_message("rebased", "main", None, fast_forwarded=True)
@@ -138,9 +99,6 @@ def test_format_successful_land_says_fast_forwarded_target() -> None:
 
 
 def test_format_refused_land_exposes_target_worktree_dirty() -> None:
-    """The AC-09 refusal reason ('target worktree dirty') must be visible, and
-    a refused land must NOT claim a fast-forward.
-    """
     from ralph.display.auto_integrate_message import format_auto_integrate_message
 
     msg = format_auto_integrate_message(
@@ -151,9 +109,6 @@ def test_format_refused_land_exposes_target_worktree_dirty() -> None:
 
 
 def test_format_cas_refusal_exposes_concurrent_target_advance() -> None:
-    """The AC-08 refusal reason ('target advanced concurrently (CAS mismatch)')
-    must be visible verbatim.
-    """
     from ralph.display.auto_integrate_message import format_auto_integrate_message
 
     msg = format_auto_integrate_message(
@@ -164,11 +119,6 @@ def test_format_cas_refusal_exposes_concurrent_target_advance() -> None:
 
 
 def test_format_successful_land_with_stale_rebase_reason_does_not_claim_skip() -> None:
-    """On the RebaseNoOp path the producer records ('rebased', <reason>)
-    and a successful fast-forward retains that reason. The reason is a
-    stale rebase reason when ``fast_forwarded`` is True; rendering it
-    as a fast-forward skip would emit a phantom skip on a healthy run.
-    """
     from ralph.display.auto_integrate_message import format_auto_integrate_message
 
     msg = format_auto_integrate_message(
@@ -179,7 +129,6 @@ def test_format_successful_land_with_stale_rebase_reason_does_not_claim_skip() -
 
 
 def test_format_unresolved_conflict_states_reason() -> None:
-    """AC-07: an unresolved conflict surfaces its reason in the receipt."""
     from ralph.display.auto_integrate_message import format_auto_integrate_message
 
     msg = format_auto_integrate_message("conflict", "main", _CONFLICT_REASON, fast_forwarded=False)
@@ -188,7 +137,6 @@ def test_format_unresolved_conflict_states_reason() -> None:
 
 
 def test_format_skip_states_reason() -> None:
-    """A recorded skip ('skipped', reason) must surface its reason."""
     from ralph.display.auto_integrate_message import format_auto_integrate_message
 
     msg = format_auto_integrate_message(
@@ -198,9 +146,6 @@ def test_format_skip_states_reason() -> None:
 
 
 def test_format_recovered_states_reason() -> None:
-    """Recovery path ('recovered', reason) surfaces the reason and (when
-    applicable) the successful land.
-    """
     from ralph.display.auto_integrate_message import format_auto_integrate_message
 
     msg = format_auto_integrate_message(
@@ -221,7 +166,6 @@ def test_format_recovered_states_reason() -> None:
 def test_freshness_rendering_distinguishes_the_three_operator_classes(
     verdict: str, expected: str
 ) -> None:
-    """S-5: fetch proof, fail-open degradation, and suppression stay legible."""
     from ralph.display.auto_integrate_message import format_auto_integrate_message
 
     message = format_auto_integrate_message(
@@ -232,11 +176,6 @@ def test_freshness_rendering_distinguishes_the_three_operator_classes(
 
 
 def test_format_unknown_verb_returns_bare_phrase_without_double_prefix() -> None:
-    """Defensive: any unknown ``last_action`` falls back to a bare phrase;
-    the single ``auto-integrate:`` prefix is added by the emit site, so the
-    formatter must NOT prepend one of its own (the pre-existing bug had a
-    doubled prefix ``auto-integrate: auto-integrate: <action>``).
-    """
     from ralph.display.auto_integrate_message import format_auto_integrate_message
 
     msg = format_auto_integrate_message("noop", None, None, fast_forwarded=False)
@@ -244,11 +183,7 @@ def test_format_unknown_verb_returns_bare_phrase_without_double_prefix() -> None
     assert msg.strip() == "noop"
 
 
-# ---------- Step 5: render_completion_summary integration ----------
-
-
 def test_configured_remote_is_rendered_by_both_completion_surfaces() -> None:
-    """S-1: completion surfaces retain the configured remote, not ``origin``."""
     snapshot = _make_snapshot(
         auto_integrate_action="rebased",
         auto_integrate_target="release",
@@ -262,10 +197,6 @@ def test_configured_remote_is_rendered_by_both_completion_surfaces() -> None:
 
 
 def test_plain_renderer_surfaces_conflict_with_reason() -> None:
-    """The prompt's 'unresolved conflicts are surfaced to the operator in
-    the run's final receipt' contract: a conflicted run must render
-    ``Auto-integrate:`` plus the conflict reason text.
-    """
     snap = _make_snapshot(
         auto_integrate_action="conflict",
         auto_integrate_reason=_CONFLICT_REASON,
@@ -278,7 +209,6 @@ def test_plain_renderer_surfaces_conflict_with_reason() -> None:
 
 
 def test_plain_renderer_says_fast_forwarded_target_on_successful_land() -> None:
-    """Successful land renders ``fast-forwarded <target>``."""
     snap = _make_snapshot(
         auto_integrate_action="rebased",
         auto_integrate_reason=None,
@@ -291,7 +221,6 @@ def test_plain_renderer_says_fast_forwarded_target_on_successful_land() -> None:
 
 
 def test_plain_renderer_exposes_target_worktree_dirty_on_refusal() -> None:
-    """A refused fast-forward surfaces its recorded reason."""
     snap = _make_snapshot(
         auto_integrate_action="merged",
         auto_integrate_reason=_TARGET_DIRTY_REASON,
@@ -305,10 +234,6 @@ def test_plain_renderer_exposes_target_worktree_dirty_on_refusal() -> None:
 
 
 def test_plain_renderer_renders_nothing_when_auto_integrate_was_disabled() -> None:
-    """AC-01: when no integration ran (action is None), no
-    ``Auto-integrate:`` line renders -- the receipt stays byte-identical to
-    runs without auto-integration.
-    """
     snap = _make_snapshot(
         auto_integrate_action=None,
         auto_integrate_reason=None,
@@ -319,11 +244,7 @@ def test_plain_renderer_renders_nothing_when_auto_integrate_was_disabled() -> No
     assert "Auto-integrate:" not in text
 
 
-# ---------- Group renderer (the one actually shown to the operator) ----------
-
-
 def test_group_renderer_surfaces_conflict_with_reason() -> None:
-    """The on-screen group renderer mirrors the plain receipt."""
     snap = _make_snapshot(
         auto_integrate_action="conflict",
         auto_integrate_reason=_CONFLICT_REASON,
@@ -335,7 +256,6 @@ def test_group_renderer_surfaces_conflict_with_reason() -> None:
 
 
 def test_group_renderer_exposes_target_worktree_dirty_on_refusal() -> None:
-    """The group renderer surfaces the refused-fast-forward reason."""
     snap = _make_snapshot(
         auto_integrate_action="merged",
         auto_integrate_reason=_TARGET_DIRTY_REASON,
@@ -344,15 +264,10 @@ def test_group_renderer_exposes_target_worktree_dirty_on_refusal() -> None:
     )
     text = _render_group(snap)
     assert _TARGET_DIRTY_REASON in text
-    # Confirm the success phrase does NOT leak onto a refused render.
-    # (Group renderer produces "  auto-integrate: ..." with internal spacing.)
     assert "fast-forwarded main" not in text
 
 
 def test_group_renderer_renders_nothing_when_auto_integrate_was_disabled() -> None:
-    """Disabled-path receipt stays byte-identical to runs without
-    auto-integration.
-    """
     snap = _make_snapshot(
         auto_integrate_action=None,
         auto_integrate_reason=None,

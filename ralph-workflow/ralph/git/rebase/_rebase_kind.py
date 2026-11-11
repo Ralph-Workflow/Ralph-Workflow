@@ -1,4 +1,3 @@
-"""RebaseKind enum describing every supported git rebase failure mode."""
 
 from __future__ import annotations
 
@@ -6,7 +5,6 @@ from enum import Enum
 
 
 class RebaseKind(Enum):
-    """Enum describing every supported rebase failure mode."""
 
     INVALID_REVISION = "invalid_revision"
     DIRTY_WORKING_TREE = "dirty_working_tree"

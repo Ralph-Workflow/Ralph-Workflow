@@ -1,5 +1,3 @@
-"""Tests for same-workspace parallel worker behaviour."""
-
 from __future__ import annotations
 
 import asyncio
@@ -36,7 +34,6 @@ class TestNoGitStatusFallback:
     def test_coordinator_worker_exit0_no_artifact_produces_worker_failed_event(
         self, tmp_path: Path
     ) -> None:
-        """Coordinator emits WorkerFailedEvent when exit_code=0 but no artifacts written."""
 
         unit = _make_unit("unit-a", ["src/a"])
         ctx = _make_same_workspace_context(tmp_path, executor_command=None)

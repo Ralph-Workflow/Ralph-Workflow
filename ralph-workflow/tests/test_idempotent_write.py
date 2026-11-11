@@ -1,9 +1,3 @@
-"""Black-box tests for ralph.mcp.artifacts.idempotent_write.
-
-The helper is exercised end-to-end through a counting in-memory
-FileBackend (no real filesystem I/O, no tmp_path, no patching).
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -20,8 +14,6 @@ if TYPE_CHECKING:
 
 
 class _CountingBackend(FileBackend):
-    """In-memory FileBackend that records write_text invocations."""
-
     def __init__(self) -> None:
         self._files: Dict[Path, str] = {}
         self.write_text_calls: list[tuple[Path, str]] = []
@@ -72,8 +64,6 @@ class _CountingBackend(FileBackend):
 
 
 class _RaisingBackend(_CountingBackend):
-    """FileBackend that claims the path exists but read_text always raises OSError."""
-
     def exists(self, path: Path) -> bool:
         return True
 
@@ -83,30 +73,26 @@ class _RaisingBackend(_CountingBackend):
 
 
 class _InvalidTextBackend(_CountingBackend):
-    """FileBackend whose existing bytes cannot be decoded as requested text."""
-
     def read_text(self, path: Path, *, encoding: str = "utf-8") -> str:
         del path, encoding
         raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
 
 
 def test_skips_write_when_content_identical() -> None:
-    """Identical existing content: returns False, zero write_text calls, bytes unchanged."""
     backend = _CountingBackend()
     path = Path("/virtual-ws/file.txt")
-    backend._files[path] = "alpha"  # seeding is the documented test seam
+    backend._files[path] = "alpha"
 
     result = write_text_if_changed(backend, path, "alpha")
 
     assert result is False
     assert backend.write_text_calls == []
-    assert backend._files[path] == "alpha"  # content check
+    assert backend._files[path] == "alpha"
     assert backend.exists_calls == 0
     assert backend.read_text_calls == 1
 
 
 def test_identical_write_skips_preparation() -> None:
-    """S-3 regression: write preparation occurs only when content changes."""
     backend = _CountingBackend()
     path = Path("/virtual-ws/file.txt")
     backend._files[path] = "alpha"
@@ -125,7 +111,6 @@ def test_identical_write_skips_preparation() -> None:
 
 
 def test_changed_write_prepares_before_persisting() -> None:
-    """S-3 regression: changed content performs its deferred preparation once."""
     backend = _CountingBackend()
     path = Path("/virtual-ws/file.txt")
     preparation_calls: list[str] = []
@@ -143,7 +128,6 @@ def test_changed_write_prepares_before_persisting() -> None:
 
 
 def test_writes_when_content_changed() -> None:
-    """Different content: returns True, exactly one write_text call, stored bytes updated."""
     backend = _CountingBackend()
     path = Path("/virtual-ws/file.txt")
     backend._files[path] = "old"
@@ -157,7 +141,6 @@ def test_writes_when_content_changed() -> None:
 
 
 def test_writes_when_path_absent() -> None:
-    """Missing path: returns True, exactly one write_text call, stored bytes == content."""
     backend = _CountingBackend()
     path = Path("/virtual-ws/new.txt")
 
@@ -170,7 +153,6 @@ def test_writes_when_path_absent() -> None:
 
 
 def test_writes_when_read_text_raises_oserror() -> None:
-    """Unreadable existing file (read_text raises OSError): fails open to a write."""
     backend = _RaisingBackend()
     path = Path("/virtual-ws/locked.txt")
 
@@ -182,7 +164,6 @@ def test_writes_when_read_text_raises_oserror() -> None:
 
 
 def test_text_write_regression_recovers_from_undecodable_existing_content() -> None:
-    """S-3: undecodable prior bytes are read uncertainty, so requested text publishes."""
     backend = _InvalidTextBackend()
     path = Path("/virtual-ws/invalid.txt")
 
@@ -194,7 +175,6 @@ def test_text_write_regression_recovers_from_undecodable_existing_content() -> N
 
 
 def test_atomic_write_regression_uses_distinct_staging_paths_for_same_destination() -> None:
-    """S-3: independent atomic updates cannot clobber a shared staging file."""
     backend = _CountingBackend()
     destination = Path("/virtual-ws/artifact.md")
     shared_stage_name = destination.with_suffix(".md.tmp")

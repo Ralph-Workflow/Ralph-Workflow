@@ -1,25 +1,3 @@
-"""The durable state a SUCCESSFUL integration landing carries.
-
-A landed feature is the product's headline success fact, so the state
-that survives the attempt must say exactly that: the feature landed, and
-nothing is left over from the rebase/merge phase that preceded it.
-
-The success branch of :mod:`ralph.pipeline.auto_integrate` used to keep
-the rebase phase's reason on the landing state while its comment claimed
-the reason was scrubbed, so a stale rebase-phase reason could reach the
-durable state next to ``fast_forwarded=True``. These tests pin the
-intended durable state:
-
-* a successful landing carries NO rebase-phase reason;
-* the ONE exception is a REGISTERED rebase-skip reason, the only way the
-  operator learns that the rebase never ran.
-
-The assertions read the PUBLIC result of the PUBLIC integration seam
-(``auto_integrate_after_commit`` -> ``RebaseState``): that object is what
-the runner renders and what the run checkpoint persists, so it is the
-observable durable state of one landing attempt.
-"""
-
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -66,9 +44,6 @@ _TARGET = "main"
 _TARGET_SHA = "a" * 40
 _FEATURE_SHA = "b" * 40
 
-#: The benign reason the rebase engine reports when the branch is already
-#: aligned with the target. It is a rebase-PHASE reason: it says what the
-#: rebase did, not what the landing did.
 _REBASE_PHASE_REASON = "Branch is already up-to-date with upstream"
 
 
@@ -85,8 +60,6 @@ def _config() -> UnifiedConfig:
 
 
 class _TraceRecorder:
-    """Git-mutation double that records the order of an attempt."""
-
     def __init__(self) -> None:
         self.mutations: list[str] = []
         self.rebase_result: RebaseResult = RebaseSuccess()
@@ -197,7 +170,6 @@ def _stubbed(name: str, value: object) -> tuple[str, object]:
 
 @pytest.fixture(autouse=True)
 def _stub_repository_reads(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Replace every git READ the integration seams perform."""
     for target, value in (
         _stubbed(
             "ralph.pipeline.auto_integrate.resolve_integration_target",
@@ -325,15 +297,6 @@ def _stub_repository_reads(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _isolate_publication(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Isolate the LANDING contract from the publication contract.
-
-    The publication seam always records its own outcome in
-    ``last_reason`` (a converged push, an unreachable remote, or the
-    "remote sync disabled by policy" no-op), so a landing state observed
-    THROUGH it can never show what the landing itself recorded. This
-    stub keeps the landing's own reason visible by leaving the source
-    state untouched; the publication reasons keep their own coverage.
-    """
 
     def _no_publication(
         *_args: object,
@@ -351,13 +314,6 @@ def _isolate_publication(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_a_successful_landing_carries_no_rebase_phase_reason(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A landed feature carries no reason from the rebase/merge phase.
-
-    The rebase phase reported a benign no-op reason; the fast-forward
-    then landed the feature. The durable state must say "it landed" and
-    nothing else: the rebase-phase reason must not survive next to
-    ``fast_forwarded=True``.
-    """
     recorder = _TraceRecorder()
     recorder.rebase_result = RebaseNoOp(_REBASE_PHASE_REASON)
     _isolate_publication(monkeypatch)
@@ -386,12 +342,6 @@ def test_a_successful_landing_carries_no_rebase_phase_reason(
 def test_a_successful_landing_keeps_the_registered_rebase_skip_reason(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The registered rebase-skip reason is the ONE reason a landing keeps.
-
-    A retry straight after a merge commit skips the rebase for a
-    registered reason. That reason is how the operator learns the rebase
-    never ran, so the success branch must NOT scrub it.
-    """
     recorder = _TraceRecorder()
     recorder.rebase_result = RebaseConflicts(files=["shared.txt"])
     recorder.land_failures = 1
@@ -418,5 +368,4 @@ def test_a_successful_landing_keeps_the_registered_rebase_skip_reason(
     assert outcome.last_reason is not None
     assert skip_reason_slug(outcome.last_reason) == SKIP_RETRY_AFTER_MERGE_COMMIT
     assert is_registered_skip_reason(outcome.last_reason)
-    # The retry took the named skip: the rebase was not attempted twice.
     assert recorder.mutations.count("rebase_onto") == 1

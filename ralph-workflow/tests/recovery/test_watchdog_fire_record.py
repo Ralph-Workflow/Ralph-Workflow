@@ -1,16 +1,3 @@
-"""Black-box tests for the watchdog fire record in recovery.
-
-A watchdog kill reaches the retry layer as ``AgentInactivityTimeoutError``,
-which the retry text used to flatten to "an inactivity timeout ... The exact
-cause may be unknown". Loop-breakers (``REPEATED_*``), the child ceiling and
-the session ceiling all arrive through that same type, so an operator could
-not tell a silent agent from one killed for looping, nor whether subagents
-were live. The kill is now named in the retry prompt and appended to
-``.agent/watchdog-fire-events.jsonl``.
-
-No real subprocesses, no real wall clock, no network.
-"""
-
 from __future__ import annotations
 
 import json
@@ -148,7 +135,6 @@ def test_every_watchdog_kill_is_appended_to_the_events_file(tmp_path: Path) -> N
 def test_watchdog_fire_record_regression_uses_injected_clock_timestamp(
     tmp_path: Path,
 ) -> None:
-    """U4b: the journal timestamp comes from the injected recovery clock."""
     recorded_at = 1_725_000_000.25
     clock = FakeClock(epoch_start=recorded_at)
 
@@ -160,7 +146,6 @@ def test_watchdog_fire_record_regression_uses_injected_clock_timestamp(
 def test_watchdog_fire_record_regression_missing_clock_fails_closed(
     tmp_path: Path,
 ) -> None:
-    """U4b: recovery input cannot omit its clock and silently use wall time."""
     with pytest.raises(TypeError, match="clock"):
         AgentRecoveryInput(
             exc=_quiet_kill({"live_subagent_count": 0}),

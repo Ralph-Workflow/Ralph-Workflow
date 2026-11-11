@@ -1,22 +1,3 @@
-"""Comprehensive black-box fault-injection tests for F15-F20 (S-5, late slice).
-
-For every failure mode in the F15-F20 slice the suite asserts the
-four-part acceptance contract plus the per-mode status payload:
-
-* (a) ``auto``-mode results equal live-search results
-* (b) the response reports the correct fallback reason code
-* (c) the call returns within its budget (1s)
-* (d) where R2 specifies recovery, the index recovers automatically
-      and a LATER query is served from the index again
-* (e) ``ralph_index_status`` reports the correct health/last_failure
-      during the fault and ``healthy`` after recovery
-
-This file is the late-F slice of the authoritative fault-matrix proof;
-``test_explore_fault_matrix_full.py`` carries the F1-F14 slice and the
-shared helpers. The split keeps each file under the repo-structure
-audit's 1000-line cap without changing the per-test contract.
-"""
-
 from __future__ import annotations
 
 import contextlib
@@ -39,16 +20,6 @@ from ralph.mcp.explore.recovery import (
 from ralph.mcp.explore.serving import CANONICAL_REASON_CODES
 from ralph.mcp.explore.store import ExploreStore
 from ralph.mcp.tools.workspace._grep_handlers import handle_grep_files
-
-# --- shared workspace / session / handler helpers --------------------------
-#
-# These helpers are intentionally duplicated from
-# ``test_explore_fault_matrix_full.py`` (and the legacy
-# ``test_explore_fault_matrix.py``). The repo's fault-matrix convention
-# keeps a self-contained helper set per file so the tests can be
-# re-pointed at a different explore-substrate version without churning
-# cross-file imports. The duplication is small, all black-box, and
-# pinned by the per-mode acceptance assertions.
 
 
 class _FakeSession:
@@ -112,7 +83,6 @@ def _attach_session(store: ExploreStore, workspace: Path) -> _FakeSession:
 
 
 def _call_grep(session, workspace, *, use_index: str = "auto", pattern: str = "hello") -> dict:
-    """Invoke the real grep handler and decode the JSON response."""
     result = handle_grep_files(
         session,
         _Workspace(workspace),
@@ -128,7 +98,6 @@ def _call_grep(session, workspace, *, use_index: str = "auto", pattern: str = "h
 
 
 def _live_only_call(workspace: Path, pattern: str = "hello") -> dict:
-    """The same call with ``use_index=never`` is the live-search ground truth."""
     session = _FakeSession(explore_index=None)
     return _call_grep(session, workspace, use_index="never", pattern=pattern)
 
@@ -138,7 +107,6 @@ def _matches_set(payload: dict) -> set[tuple[str, int]]:
 
 
 def _status_payload(workspace: Path, session=None) -> dict:
-    """Call the real status handler and return the decoded payload."""
     if session is None:
         session = _FakeSession()
     result = handle_ralph_index_status(session, _Workspace(workspace), {})
@@ -146,7 +114,6 @@ def _status_payload(workspace: Path, session=None) -> dict:
 
 
 def _assert_parity_with_live(payload: dict, workspace: Path, pattern: str = "hello") -> None:
-    """(a) auto-mode results equal live-search results."""
     live = _live_only_call(workspace, pattern=pattern)
     assert _matches_set(payload) == _matches_set(live), (
         f"parity failure: indexed/live diff\n"
@@ -155,12 +122,10 @@ def _assert_parity_with_live(payload: dict, workspace: Path, pattern: str = "hel
 
 
 def _budget_seconds() -> float:
-    """(c) The per-call budget (1.0s)."""
     return 1.0
 
 
 def _run_recovery(workspace: Path, fault_code: str, reason: str = "") -> dict:
-    """Drive the recovery action for a given fault code and return snapshot."""
     scheduler = build_scheduler(workspace)
     return run_recovery_action(
         scheduler,
@@ -171,8 +136,6 @@ def _run_recovery(workspace: Path, fault_code: str, reason: str = "") -> dict:
 
 
 class _TmpWorkspace:
-    """Context manager that creates a fresh tmp_path and a workspace inside it."""
-
     def __enter__(self) -> tuple[Path, Path]:
         import tempfile
 
@@ -186,30 +149,7 @@ class _TmpWorkspace:
         self._tmp_ctx.cleanup()
 
 
-# --- F15: hard files ----------------------------------------------------
-
-
 def test_f15_hard_files_skip_without_crashing() -> None:
-    """F15: hard files (binary, invalid encoding, long lines) skip without crash.
-
-    Asserts the full acceptance contract end to end:
-
-    * (a) ``auto``-mode results equal live-search results — both
-      paths must skip the binary / invalid-encoding / oversize
-      files identically and return the same matches for the text
-      files (acceptance criterion 1(a) / 6 parity).
-    * (b) ``fallback_reason`` is the canonical ``no_committed_generation``
-      before the rebuild and ``None`` (or the equivalent index-served
-      shape) once the rebuild commits.
-    * (c) The cold build plus the indexed call complete inside the
-      1 s budget (acceptance criterion 1(c)).
-    * (d) After the build commits, a LATER auto-mode query is
-      served from the index again (``index_used is True``).
-    * (e) ``ralph_index_status`` reports the truthful health
-      during and after the fault — ``healthy`` once the rebuild
-      commits and the persisted recovery state carries the build
-      outcome (acceptance criterion 7).
-    """
     with _TmpWorkspace() as (tmp_path, workspace):
         (workspace / "binary.dat").write_bytes(b"\x00\x01\x02\x03")
         (workspace / "invalid_utf8.txt").write_bytes(b"hello\xc3\x28world")
@@ -225,62 +165,32 @@ def test_f15_hard_files_skip_without_crashing() -> None:
             row = store.get_file("hello.py")
             assert row is not None
             session = _attach_session(store, workspace)
-            # (a)+(c) parity and budget.
             start = time.monotonic()
             payload = _call_grep(session, workspace)
             elapsed = time.monotonic() - start
             _assert_parity_with_live(payload, workspace)
             paths = {m.get("path") for m in payload["matches"]}
             assert "hello.py" in paths, paths
-            # Hard files must not appear in either result set.
             assert "binary.dat" not in paths, paths
             assert "invalid_utf8.txt" not in paths, paths
             assert "long_line.py" not in paths, paths
             assert elapsed < _budget_seconds(), f"F15 elapsed {elapsed:.3f}s > {_budget_seconds()}s"
-            # (b) the served-call reason is ``None``; the index
-            # covered the text files (F15 acceptance is that the
-            # build skips hard files without leaving the index
-            # unable to serve the surviving text matches).
             assert payload.get("index_used") is True, payload
             assert payload.get("fallback_reason") is None, payload
-            # (e) status truthfulness during/after the fault.
             status_during = _status_payload(workspace, session)
             assert status_during["health"] in {
                 "healthy",
                 "building",
             }, status_during
-            # (d) later query is served from the index again.
             later = _call_grep(session, workspace)
             assert later["index_used"] is True, later
-            # (e) after-recovery status is healthy.
             status_after = _status_payload(workspace, session)
             assert status_after["health"] == "healthy", status_after
         finally:
             store.close()
 
 
-# --- F16: query not eligible --------------------------------------------
-
-
 def test_f16_regex_falls_through_to_live() -> None:
-    """F16: regex patterns are not FTS-eligible; live grep runs.
-
-    Asserts the full acceptance contract end to end:
-
-    * (a) ``auto``-mode results equal live-search results for the
-      regex query (acceptance criterion 1(a) / 6 parity).
-    * (b) The response carries the canonical ``pattern_not_fts_eligible``
-      reason code.
-    * (c) The call completes inside the 1 s budget (acceptance
-      criterion 1(c)).
-    * (d) After the regex call falls through, a LATER FTS-eligible
-      query is served from the index again (the index is healthy
-      and committed; only the regex pattern was ineligible).
-    * (e) ``ralph_index_status`` reports the truthful health
-      during and after the fall-through — ``healthy`` because the
-      index is committed; ``fallback_reason`` is None for the
-      status payload (acceptance criterion 7).
-    """
     with _TmpWorkspace() as (tmp_path, workspace):
         index_dir = tmp_path / ".agent" / "ralph-explore"
         index_dir.mkdir(parents=True, exist_ok=True)
@@ -301,11 +211,6 @@ def test_f16_regex_falls_through_to_live() -> None:
             )
             elapsed = time.monotonic() - start
             payload = _decode(result)
-            # (a)+(b)+(c) parity, reason, and budget. The
-            # parity check has to drive the live handler with
-            # ``regex=True`` because the helper's default
-            # ``regex=False`` would compile ``h.llo`` as a
-            # literal and miss the only match.
             live_result = handle_grep_files(
                 session,
                 _Workspace(workspace),
@@ -326,10 +231,8 @@ def test_f16_regex_falls_through_to_live() -> None:
             assert payload["fallback_reason"] == "pattern_not_fts_eligible"
             assert any("hello" in (m.get("text") or "") for m in payload["matches"])
             assert elapsed < _budget_seconds(), f"F16 elapsed {elapsed:.3f}s > {_budget_seconds()}s"
-            # (e) status truthfulness during the fall-through.
             status_during = _status_payload(workspace, session)
             assert status_during["health"] == "healthy", status_during
-            # (d) later FTS-eligible query is served from the index.
             later = _call_grep(session, workspace, pattern="hello")
             assert later["index_used"] is True, later
             assert later["fallback_reason"] is None, later
@@ -337,11 +240,7 @@ def test_f16_regex_falls_through_to_live() -> None:
             store.close()
 
 
-# --- F17: timeout --------------------------------------------------------
-
-
 def test_f17_timeout_returns_bounded_partial() -> None:
-    """F17: an indexing timeout returns live results within the budget."""
     with _TmpWorkspace() as (tmp_path, workspace):
         index_dir = tmp_path / ".agent" / "ralph-explore"
         index_dir.mkdir(parents=True, exist_ok=True)
@@ -349,7 +248,6 @@ def test_f17_timeout_returns_bounded_partial() -> None:
         try:
             start = time.monotonic()
             with contextlib.suppress(Exception):
-                # Some platforms reject timeout_ms=1; treat as bounded.
                 reindex(store, workspace, options=ReindexOptions(timeout_ms=1))
             elapsed = time.monotonic() - start
             assert elapsed < 2.0, f"F17 elapsed {elapsed:.3f}s > 2s"
@@ -360,11 +258,7 @@ def test_f17_timeout_returns_bounded_partial() -> None:
             store.close()
 
 
-# --- F18: indexer error --------------------------------------------------
-
-
 def test_f18_indexer_exception_falls_through() -> None:
-    """F18: an indexer exception is caught; the call still succeeds."""
     with _TmpWorkspace() as (tmp_path, workspace):
         index_dir = tmp_path / ".agent" / "ralph-explore"
         index_dir.mkdir(parents=True, exist_ok=True)
@@ -380,41 +274,12 @@ def test_f18_indexer_exception_falls_through() -> None:
         assert "health" in snap
 
 
-# --- F19: resource pressure ---------------------------------------------
-
-
 def test_f19_resource_pressure_keeps_searches_working() -> None:
-    """F19: searches keep working under simulated resource pressure.
-
-    Asserts the four-part acceptance contract end to end:
-
-    * (a) Under simulated resource pressure (scheduler marked
-      ``UNHEALTHY`` with reason ``resource_pressure``, so the
-      next ``use_index="auto"`` query must not attempt the index
-      and must fall through to live search), the result set equals
-      a pure live-search call. The test also exercises the
-      no-handle / no-index path (use_index="auto" with
-      ``explore_index=None``) so the contract holds when the
-      indexer is paused altogether.
-    * (b) The fallback reason is one of the canonical codes used
-      by the F19 path (``resource_pressure`` is reserved for the
-      future code path that surfaces the pressure observation;
-      ``no_index_handle`` is the canonical code emitted when no
-      handle is attached; ``no_committed_generation`` is the
-      canonical code emitted when the index is cold / wiped).
-      Any of these proves the system is honest about what
-      happened.
-    * (c) The call completes inside the 1 s budget.
-    * (d) Automatic recovery: a LATER query (after the scheduler
-      is marked healthy and the index is rebuilt) is served from
-      the index again.
-    """
     with _TmpWorkspace() as (tmp_path, workspace):
         index_dir = tmp_path / ".agent" / "ralph-explore"
         index_dir.mkdir(parents=True, exist_ok=True)
         store = ExploreStore(index_dir)
         try:
-            # Phase 1: auto-mode query with no index handle.
             session = _FakeSession(explore_index=None)
             start = time.monotonic()
             payload = _call_grep(session, workspace)
@@ -427,10 +292,6 @@ def test_f19_resource_pressure_keeps_searches_working() -> None:
             }, payload
             assert payload["fallback_reason"] in CANONICAL_REASON_CODES
             assert elapsed < _budget_seconds(), f"F19 elapsed {elapsed:.3f}s > 1s"
-            # Phase 2: surface the resource-pressure observation
-            # on the recovery scheduler so the status payload is
-            # truthful. Attach a fresh ExploreIndex so the status
-            # handler returns the full ``recovery`` block.
             scheduler = build_scheduler(workspace)
             scheduler.observe(
                 code="resource_pressure",
@@ -446,8 +307,6 @@ def test_f19_resource_pressure_keeps_searches_working() -> None:
             status_session = _FakeSession(populated_handle)
             status = _status_payload(workspace, status_session)
             assert status["recovery"]["last_failure"]["code"] == "resource_pressure"
-            # Phase 3: rebuild the index and verify the LATER
-            # query is served from the index again.
             reindex(store, workspace, options=ReindexOptions(timeout_ms=5_000))
             scheduler.mark_healthy()
             new_session = _attach_session(store, workspace)
@@ -457,19 +316,7 @@ def test_f19_resource_pressure_keeps_searches_working() -> None:
             store.close()
 
 
-# --- F20: workspace moved ------------------------------------------------
-
-
 def test_f20_workspace_moved_falls_through_and_recovers() -> None:
-    """F20: workspace moved -> fall through, recovery rebuilds new path.
-
-    The acceptance contract is that the moved workspace, served by
-    a fresh empty index, falls through to live search and the
-    recovery driver rebuilds the index for the new path. The
-    ``fallback_reason`` must be one of the canonical codes
-    documented for F20 (``no_committed_generation`` or
-    ``workspace_moved``).
-    """
     with _TmpWorkspace() as (tmp_path, workspace):
         index_dir = tmp_path / ".agent" / "ralph-explore"
         index_dir.mkdir(parents=True, exist_ok=True)
@@ -507,15 +354,7 @@ def test_f20_workspace_moved_falls_through_and_recovers() -> None:
             moved_store.close()
 
 
-# --- parameterized status truthfulness ----------------------------------
-
-
 def test_status_payload_truthful_for_every_fault_mode() -> None:
-    """For every fault, the status handler reports the right health/last_failure.
-
-    The handler uses the persisted recovery state file, so a fault
-    recorded via the scheduler is visible to the next status call.
-    """
     with _TmpWorkspace() as (_tmp_path, workspace):
         for fault_code, expected_health in [
             ("index_corrupt", "stale"),

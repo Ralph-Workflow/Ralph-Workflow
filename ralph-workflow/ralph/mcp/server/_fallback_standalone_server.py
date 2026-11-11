@@ -1,4 +1,3 @@
-"""Fallback standalone MCP server using Python's built-in HTTP server."""
 
 from __future__ import annotations
 
@@ -47,9 +46,6 @@ if TYPE_CHECKING:
     EnvGetter = Callable[[str, str | None], str | None]
 
 
-#: Upper bound (seconds) the test-only pre-serve gate waits for its sentinel
-#: file before failing the child loudly. Bounded so a forgotten sentinel can
-#: never wedge a subprocess-E2E run.
 _PRE_SERVE_GATE_TIMEOUT_S: float = 60.0
 
 
@@ -68,25 +64,17 @@ class _FallbackStandaloneServer:
         self._mcp_server = mcp_server
         self._env_getter = env_getter
         self._httpd: _FallbackHttpServer | None = None
-        # Adopt the parent's already-listening socket when one is
-        # supplied. The bridge owns this socket for its full
-        # lifetime (R1); the child must not bind a new one. When
-        # ``parent_socket`` is ``None`` (one-shot CLI invocations
-        # like ``ralph-mcp --port 9000`` with no bridge parent),
-        # the standalone server still binds its own port.
         self._parent_socket: socket | None = parent_socket
 
     @property
     def bound_address(self) -> tuple[str, int]:
-        """Return the (host, port) the server is bound to after run() is called."""
         if self._httpd is None:
             raise RuntimeError("Server has not been started yet")
         return cast(
             "tuple[str, int]", self._httpd.server_address
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
 
     def prepare_httpd(self) -> _FallbackHttpServer:
-        """Instantiate and bind the underlying HTTP server on the host/port or parent_socket."""
         if self._httpd is not None:
             return self._httpd
         if self._parent_socket is not None:
@@ -100,11 +88,6 @@ class _FallbackStandaloneServer:
         httpd.mcp_server = self._mcp_server
         httpd.state = ServerState.UNINITIALIZED
         httpd.shutdown_event = Event()
-        # Class-annotated optional attributes (``_fallback_http_server.py``)
-        # that the handler reads on the /health path. Annotations alone do
-        # not create instance attributes, so without these assignments a
-        # bare GET /health raised AttributeError and the liveness route
-        # served by the production standalone runtime was unreachable.
         httpd.health_probe_fn = None
         httpd.metrics = None
         self._httpd = httpd
@@ -129,13 +112,6 @@ class _FallbackStandaloneServer:
             broker_fp: str | None = None
             if isinstance(raw_secret, str) and raw_secret:
                 broker_fp = hashlib.sha256(raw_secret[:8].encode()).hexdigest()
-            # C1 step 2: echo the parent-bound configuration-snapshot digest
-            # the parent placed in this child's spawn env. The parent compares
-            # it against its own baseline and refuses a candidate whose
-            # configuration diverged, keeping the old child serving. A child
-            # spawned without the env (older parent, non-bridge spawn) reports
-            # ``None`` and the parent's fail-closed comparison rejects it
-            # whenever a baseline exists.
             raw_cfg_fp: object = self._env_getter(MCP_EFFECTIVE_CONFIG_FINGERPRINT, None)
             config_fp: str | None = (
                 raw_cfg_fp if isinstance(raw_cfg_fp, str) and raw_cfg_fp else None
@@ -159,18 +135,15 @@ class _FallbackStandaloneServer:
         def _pause_watcher() -> None:
             pause_path = Path(pause_file_str)
             while not (stop_event is not None and stop_event.is_set()):
-                # filesystem-read-ok: transient handover sentinel file polled to detect pause request
                 if pause_path.exists():
                     try:
                         httpd.drop_listening_socket()
                         ack_path = pause_path.with_name(pause_path.name + ".ack")
-                        # filesystem-write-ok: transient handover sentinel file written once on process retirement
                         ack_path.write_text("ACK\n", encoding="utf-8")
                         logger.info("Retiring MCP server acknowledged handover pause")
                     except Exception:
                         logger.opt(exception=True).warning("Handover pause acknowledgement failed")
                     break
-                # filesystem-poll-ok: bounded sleep interval in background pause watcher thread
                 time.sleep(0.005)
 
         threading.Thread(target=_pause_watcher, daemon=True, name="mcp-pause-watcher").start()
@@ -215,23 +188,18 @@ class _FallbackStandaloneServer:
         if stop_event is not None:
 
             def _stop_watcher() -> None:
-                stop_event.wait()  # mcp-timeout-ok: daemon thread waiting for explicit stop signal
+                stop_event.wait()
                 httpd.shutdown()
 
             stop_thread = threading.Thread(target=_stop_watcher, daemon=True)
             stop_thread.start()
-        # Subprocess-E2E test seam (R1 "slow startup still becomes ready"
-        # invariant): when the env names a sentinel file, block here — the
-        # server object exists but nothing has accepted a connection yet —
-        # until the file appears. Production never sets this variable, so
-        # real runs skip the branch entirely.
         gate_path = self._env_getter(MCP_TEST_PRE_SERVE_GATE_ENV, None)
         if gate_path:
             gate_path_obj = Path(gate_path)
             deadline = time.monotonic() + _PRE_SERVE_GATE_TIMEOUT_S
             while not DEFAULT_FILE_BACKEND.exists(
                 gate_path_obj
-            ):  # filesystem-read-ok: subprocess-E2E test seam polls a path the test fixture creates on its side; routed through the shared FileBackend seam
+            ):
                 if time.monotonic() >= deadline:
                     raise McpServerError(
                         f"pre-serve gate timed out after {_PRE_SERVE_GATE_TIMEOUT_S:g}s "
@@ -240,14 +208,7 @@ class _FallbackStandaloneServer:
                         elapsed_s=_PRE_SERVE_GATE_TIMEOUT_S,
                         restart_count=0,
                     )
-                # filesystem-poll-ok: test-only pre-serve gate polls a sentinel file the subprocess-E2E fixture creates; production never sets this env, and the loop is deadline-bounded
                 time.sleep(0.005)
-        # Startup banner announces the live configuration so an operator can
-        # confirm which transport, which session class, and which effective
-        # timeouts are running. The earlier code only printed host/port —
-        # leaving the session class, the dispatch caps, and the auth posture
-        # invisible. Each field is queried from the running configuration so
-        # the banner cannot drift from the actual behavior.
         auth_token_set = bool(self._env_getter("MCP_AUTH_TOKEN", None))
         logger.info(
             "ralph-mcp startup: transport={transport} "
@@ -269,31 +230,14 @@ class _FallbackStandaloneServer:
             auth=auth_token_set,
             inherited_fd=self._parent_socket is not None,
         )
-        # Make-before-break handover setup
         self._setup_handover_readiness()
         self._setup_handover_pause(httpd, stop_event)
         self._await_handover_resume(stop_event, on_ready, ready_event)
 
-        # R4 / R4-banner: signal ready and emit the listening banner
-        # ONLY when serving is about to start (before serve_forever
-        # blocks). This ensures the banner and the stage file both
-        # reflect "server is accepting connections", not "server
-        # has been constructed but not started".
         if on_ready is not None:
-            # The parent records the ready_to_serve stage file at the
-            # actual serving boundary, not when ``build_standalone_http_server``
-            # returns. Without this hook the stage would land BEFORE
-            # the socket is actually accepting connections.
             on_ready()
         if ready_event is not None:
             ready_event.set()
-        # WU-B: the banner MUST reach the parent's pipe even when the
-        # parent did not pre-set ``PYTHONUNBUFFERED``. The runtime
-        # additionally reconfigures ``sys.stdout`` to line-buffered on
-        # the env_loaded path; this explicit ``flush=True`` is the
-        # backstop for any caller that hits the print site before the
-        # reconfigure (e.g. embedded test use) or with stdout attached
-        # to a fully-buffered block-buffered pipe.
         print(
             f"Ralph MCP server listening on http://{self._host}:{self._port}{DEFAULT_MOUNT_PATH}",
             flush=True,
@@ -302,10 +246,4 @@ class _FallbackStandaloneServer:
             httpd.serve_forever(poll_interval=SERVER_POLL_INTERVAL_SECONDS)
         finally:
             shutdown_runtime_executors()
-            # Release the listening TCP socket on every exit path
-            # (normal return, exception, external shutdown). Without
-            # this, embedded/long-lived use leaks the FD; one-shot
-            # CLI runs rely on OS-level cleanup at exit but the
-            # deterministic close is the contract this server
-            # advertises (see _fallback_http_server.server_close).
             httpd.server_close()

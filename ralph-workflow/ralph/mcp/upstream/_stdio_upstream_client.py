@@ -1,4 +1,3 @@
-"""StdioUpstreamClient — upstream MCP client that communicates over stdio."""
 
 from __future__ import annotations
 
@@ -23,7 +22,6 @@ JsonRpcCaller = Callable[[str, JsonObject], JsonObject]
 
 
 class StdioUpstreamClient:
-    """Upstream MCP client that communicates over stdio with a subprocess."""
 
     def __init__(
         self,
@@ -135,13 +133,6 @@ def _make_stdio_caller(
                 label=f"upstream:{server.name}",
             ),
         )
-        # Discovery is bounded BELOW the server-readiness budget: it runs inside
-        # a starting MCP server subprocess, before its port is bound, and a probe
-        # allowed to burn the whole readiness window gets that subprocess killed
-        # mid-call -- so the operator saw "connection refused" instead of the
-        # name of the upstream that stalled.
-        # When a hard bound (remaining budget) is supplied via probe_timeout_override_s,
-        # the effective timeout is the minimum of the env budget and that bound.
         env_timeout = upstream_call_timeout_seconds(method)
         probe_timeout_s = (
             min(env_timeout, probe_timeout_override_s)

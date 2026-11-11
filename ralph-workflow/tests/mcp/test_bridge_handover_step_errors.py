@@ -1,10 +1,3 @@
-"""Tests that make-before-break McpServerErrors name the failing handover step (DEC-002).
-
-Every McpServerError raised from the make-before-break path must carry
-``handover_step`` naming the stage that failed (spawn, verify, pause-ack, resume,
-promote, drain), and the drain stage's step must not be overwritten by promote.
-"""
-
 import os
 import pathlib
 from unittest.mock import patch
@@ -31,17 +24,10 @@ from tests.mcp._lifecycle_tool_hash_seams import (
 
 @pytest.fixture(scope="function")
 def synthetic_responders(request: pytest.FixtureRequest) -> list[_SyntheticResponder]:
-    """Own teardown of every synthetic responder (see the shared seams module)."""
     return register_synthetic_responders(request)
 
 
-# ---------------------------------------------------------------------------
-# DEC-002: make-before-break errors name the failing handover stage
-# ---------------------------------------------------------------------------
-
-
 def test_spawn_stage_failure_is_stamped_with_handover_step(tmp_path: pathlib.Path) -> None:
-    """A candidate-spawn McpServerError names the spawn stage (field and log)."""
     raised: list[McpServerError] = []
 
     def _explode() -> StandaloneMcpProcess:
@@ -52,16 +38,13 @@ def test_spawn_stage_failure_is_stamped_with_handover_step(tmp_path: pathlib.Pat
     bridge = _bridge_with_old_child(tmp_path, old_pid=1001, restart_fn=_explode)
     with _captured_logs() as records:
         assert bridge._run_with_make_before_break() is False
-    # Non-terminal under the C2 contract: the old child keeps serving...
     assert bridge.process.pid == 1001
-    # ...but the error itself still names the stage that produced it.
     assert len(raised) == 1
     assert raised[0].handover_step == "spawn_candidate"
     assert any("handover_step=spawn_candidate" in record for record in records)
 
 
 def test_verify_stage_failure_escapes_with_handover_step(tmp_path: pathlib.Path) -> None:
-    """A verification-stage McpServerError escapes the make-before-break path stamped."""
     bridge = _bridge_with_old_child(tmp_path, old_pid=1001)
 
     def _verify(_candidate: StandaloneMcpProcess) -> bool:
@@ -76,7 +59,6 @@ def test_verify_stage_failure_escapes_with_handover_step(tmp_path: pathlib.Path)
 
 
 def test_pause_ack_stage_failure_escapes_with_handover_step(tmp_path: pathlib.Path) -> None:
-    """A pause/ack failure names the pause-ack stage, not a generic handover step."""
 
     def _explode(_pause_path: pathlib.Path) -> None:
         raise McpServerError("pause file write failed", restart_count=1)
@@ -102,7 +84,6 @@ def test_pause_ack_stage_failure_escapes_with_handover_step(tmp_path: pathlib.Pa
 
 
 def test_resume_stage_failure_escapes_with_handover_step(tmp_path: pathlib.Path) -> None:
-    """A resume-sentinel failure names the resume stage."""
 
     def _explode(_resume_path: pathlib.Path) -> None:
         raise McpServerError("resume file write failed", restart_count=1)
@@ -132,7 +113,6 @@ def test_promote_stage_failure_escapes_with_handover_step(
     tmp_path: pathlib.Path,
     synthetic_responders: list[_SyntheticResponder],
 ) -> None:
-    """A promotion failure names the promote stage."""
 
     def _explode(_candidate: StandaloneMcpProcess, _old: StandaloneMcpProcess) -> None:
         raise McpServerError("promotion failed", restart_count=1)
@@ -162,7 +142,6 @@ def test_drain_stage_failure_is_not_overwritten_by_the_promote_stage(
     tmp_path: pathlib.Path,
     synthetic_responders: list[_SyntheticResponder],
 ) -> None:
-    """The innermost stage wins: a drain failure keeps its own step."""
 
     def _explode(_old: StandaloneMcpProcess) -> None:
         raise McpServerError("drain failed", restart_count=1)

@@ -1,12 +1,3 @@
-"""Regression: the parallel worker runtime reports FAILED (no artifact) on
-AGENT_FAILURE (S-3, closes PLANNING_ANALYSIS_DECISION.md PA-001).
-
-Split out from ``tests/test_parallel_worker_runtime.py`` (repo-structure's
-1000-line file cap) but otherwise mirrors that file's
-``test_run_parallel_worker_from_manifest_executes_real_worker_mode_flow``
-fixture pattern.
-"""
-
 from __future__ import annotations
 
 import importlib
@@ -27,8 +18,6 @@ if TYPE_CHECKING:
 
 
 class _FakePipelineFactory:
-    """Conforms to ``PipelineFactory`` and returns a pre-built test bundle."""
-
     def __init__(
         self,
         phase_prompt_materializer: PhasePromptMaterializerFn | None = None,
@@ -64,20 +53,6 @@ def test_run_parallel_worker_from_manifest_reports_failed_no_artifact_on_agent_f
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """F6 / DoD 12 (S-3, closes PLANNING_ANALYSIS_DECISION.md PA-001).
-
-    Mirrors ``test_run_parallel_worker_from_manifest_executes_real_worker_mode_flow``
-    (``tests/test_parallel_worker_runtime.py``) but makes the fake
-    ``execute_agent_effect`` return ``AGENT_FAILURE`` -- the exact shape the
-    completion-enforcement path in ``_completion.py`` produces when a
-    required-artifact phase's retry chain exhausts with no receipt and no
-    completion sentinel ever written. Proves the REAL
-    ``run_parallel_worker_from_manifest`` call site (S-2's restructured
-    ``else`` branch), not a helper called in isolation, reaches
-    ``render_phase_failure_report`` on that event -- carrying the same
-    ``run_id`` that was threaded into ``execute_agent_effect`` -- and that
-    ``phase_event_after_agent_run`` (the success-only path) is NOT called.
-    """
     module = importlib.import_module("ralph.pipeline.parallel.worker_runtime")
     worker_ns = tmp_path / ".agent" / "workers" / "unit-a"
     worker_ns.mkdir(parents=True)

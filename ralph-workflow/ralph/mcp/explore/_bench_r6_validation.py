@@ -1,8 +1,3 @@
-"""Validation helpers and canonical metric definitions for R6 benchmarks.
-
-Split from ``_bench_r6_metrics`` so both modules stay under the
-repository file-size limit.
-"""
 
 from __future__ import annotations
 
@@ -53,20 +48,14 @@ _R6_3_WORKLOADS: tuple[str, ...] = (
     "multi_session",
 )
 
-#: ``indexed_vs_live_speed_ratio`` is a LOWER-bound metric: indexed search must
-#: be faster than live search, so ``Final > Baseline`` is the improved direction.
 _LOWER_BOUND_METRICS: Final[frozenset[str]] = frozenset({"indexed_vs_live_speed_ratio"})
 
-#: Metrics that allow ``Final < Baseline`` strictly (smaller is strictly better)
-#: without relabelling an already-tolerance-passing row as "improved" — these
-#: are the regular upper-bound resource metrics.
 _UPPER_BOUND_METRICS: Final[frozenset[str]] = frozenset(
     metric for metric in _R6_2_METRICS if metric not in _LOWER_BOUND_METRICS
 )
 
 
 def validate_baseline(baseline_path: Path) -> tuple[str, ...]:
-    """Return one error string per missing metric, empty list = pass."""
     raw: object = json.loads(baseline_path.read_text())
     if not isinstance(raw, dict):
         return ("baseline JSON must be a dict",)
@@ -110,15 +99,6 @@ def validate_baseline(baseline_path: Path) -> tuple[str, ...]:
 def _parse_metric_table(
     raw: str,
 ) -> tuple[list[list[str]], list[str]]:
-    """Return ``(rows_after_separator, errors)`` for the report's metric table.
-
-    ``rows_after_separator`` is the list of table rows after the
-    ``|---|---|...`` separator line, each as a list of trimmed cell
-    strings (the leading/trailing empty cell created by the leading
-    ``|`` is preserved so cell indices match the canonical schema).
-    Errors are returned for header / shape problems; per-row content
-    errors are surfaced by the caller.
-    """
     errors: list[str] = []
     if "| Metric" not in raw and "|metric" not in raw:
         return (
@@ -137,7 +117,7 @@ def _parse_metric_table(
             in_table = False
             continue
         rows.append(line)
-    min_report_table_rows = 3  # header + separator + at least one row
+    min_report_table_rows = 3
     if len(rows) < min_report_table_rows:
         return (
             [],
@@ -159,21 +139,6 @@ def _derive_disposition(
     metric: str,
     comparator: Callable[[float, float, str], bool],
 ) -> str | None:
-    """Return the expected disposition for one row, or ``None`` on parse failure.
-
-    Returns:
-      - ``"regression"`` when ``final_value`` fails the target.
-      - ``"improved"`` when ``final_value`` is strictly better than
-        ``baseline_value`` in the metric's direction.
-      - ``"within-tolerance"`` when the target is met but the final
-        value is not strictly better than baseline.
-
-    Strictly better means strictly smaller for upper-bound metrics
-    (the default) and strictly larger for ``indexed_vs_live_speed_ratio``.
-    The comparator is reused for the regression branch so the
-    direction / tolerance logic is single-sourced from
-    ``measurement_within_target``.
-    """
     if not comparator(final_value, target_value, metric):
         return "regression"
     if metric in _LOWER_BOUND_METRICS:
@@ -192,29 +157,6 @@ def validate_report(
     targets: Mapping[str, Mapping[str, float]] | None = None,
     post: Mapping[str, Mapping[str, float]] | None = None,
 ) -> tuple[str, ...]:
-    """Return one error string per problem, empty list = pass.
-
-    When ``baseline`` and ``targets`` are given, every row is
-    cross-checked mechanically:
-
-    - The Baseline cell must equal the baseline JSON value (exact).
-    - The Target cell must equal the targets JSON value (exact).
-    - The Disposition must be derived from Baseline/Final/Target by
-      reusing ``measurement_within_target`` (regression vs.
-      within-tolerance vs. improved).
-    - The Final cell must be numeric.
-
-    When ``post`` is also given, an additional pass verifies that
-    every ``(workload, metric)`` recorded in the report matches the
-    post JSON and meets the documented improvement target. The
-    verification is fail-closed: a missing post entry, a numeric
-    mismatch, or an Underperforms (i.e. ``final > 0.6 * baseline``
-    for an upper-bound metric) returns an explicit error.
-
-    Cross-check failures return explicit messages; the row schema
-    is still verified first so the legacy shape-only path keeps
-    working.
-    """
     raw = report_path.read_text()
     parsed_rows, errors = _parse_metric_table(raw)
     if errors:
@@ -247,13 +189,6 @@ def _validate_post_matches_report(
     baseline: Mapping[str, Mapping[str, float]],
     post: Mapping[str, Mapping[str, float]],
 ) -> tuple[str, ...]:
-    """Verify every report row's ``Final`` matches the post JSON and the
-    documented improvement target (0.6x baseline for upper-bound
-    metrics; ``>`` baseline for the lower-bound
-    ``indexed_vs_live_speed_ratio``). The check is fail-closed: any
-    missing entry, numeric mismatch, or insufficient improvement
-    becomes an error string.
-    """
     errors: list[str] = []
     cell_metric = 1
     cell_workload = 2
@@ -320,7 +255,6 @@ def _validate_post_matches_report(
 def _validate_report_shape_only(
     parsed_rows: list[list[str]],
 ) -> tuple[str, ...]:
-    """Original shape-only validator: 7 cells and disposition vocabulary."""
     errors: list[str] = []
     required_report_cells = 7
     disposition_column_index = 6
@@ -335,7 +269,6 @@ def _validate_report_shape_only(
 
 
 def _parse_float_cell(cell: str) -> float | None:
-    """Return the cell as a float, or ``None`` when not parseable."""
     try:
         return float(cell)
     except (TypeError, ValueError):
@@ -348,18 +281,6 @@ def _validate_report_with_cross_check(
     baseline: Mapping[str, Mapping[str, float]],
     targets: Mapping[str, Mapping[str, float]],
 ) -> tuple[str, ...]:
-    """Mechanical cross-check: every row must match baseline + targets.
-
-    Empty rows (no cells beyond the leading empty cell) are skipped so
-    blank table-padding lines do not fail the gate. The Baseline
-    and Target cells are matched exactly (no tolerance) so an
-    internal drift between the report and the JSON files is
-    surfaced; only the Final column participates in the
-    tolerance-driven ``measurement_within_target`` comparator.
-    """
-    # Local import to keep this module free of a hard requirement on
-    # the metrics module (the comparator is the only function we
-    # need and it must match the in-budget gate's comparator).
     from ralph.mcp.explore._bench_r6_metrics import measurement_within_target
 
     cell_metric = 1
@@ -383,7 +304,6 @@ def _validate_report_with_cross_check(
         target_text = cells[cell_target].strip() if len(cells) > cell_target else ""
         disposition_text = cells[cell_disposition].strip() if len(cells) > cell_disposition else ""
         if not metric and not workload:
-            # Blank padding row.
             continue
         if metric not in _R6_2_METRICS:
             errors.append(f"row has unknown metric {metric!r}")
@@ -457,7 +377,6 @@ def _validate_report_with_cross_check(
 
 
 def _load_baseline_metrics(path: Path) -> Mapping[str, Mapping[str, float]]:
-    """Load the baseline JSON; fail closed on malformed content."""
     raw_obj: object = json.loads(path.read_text())
     if not isinstance(raw_obj, dict):
         raise ValueError(f"baseline JSON at {path} is not an object")
@@ -485,7 +404,6 @@ def _load_baseline_metrics(path: Path) -> Mapping[str, Mapping[str, float]]:
 
 
 def _load_targets_metrics(path: Path) -> Mapping[str, Mapping[str, float]]:
-    """Load the targets JSON; fail closed on malformed content."""
     raw_obj: object = json.loads(path.read_text())
     if not isinstance(raw_obj, dict):
         raise ValueError(f"targets JSON at {path} is not an object")
@@ -513,22 +431,10 @@ def _load_targets_metrics(path: Path) -> Mapping[str, Mapping[str, float]]:
 
 
 def _load_post_metrics(path: Path) -> Mapping[str, Mapping[str, float]]:
-    """Load the post-change JSON; same shape as the baseline.
-
-    The post JSON has the same shape as the baseline JSON produced by
-    ``capture_baseline``: ``{"metrics": {workload: {metric: value}}}``.
-    Validation enforces that every post-recorded metric for each
-    workload either improves on the baseline (smaller for
-    upper-bound metrics, larger for ``indexed_vs_live_speed_ratio``) or
-    stays within the documented ``0.6x`` (or equivalent) target.
-    Failures are returned with a message that names the offending
-    workload + metric so the regression gate can diagnose.
-    """
     return _load_baseline_metrics(path)
 
 
 def run_validate_baseline(baseline_path: str) -> int:
-    """CLI entry: validate the S-8 baseline JSON."""
     failures = validate_baseline(Path(baseline_path))
     if failures:
         for failure in failures:
@@ -544,21 +450,6 @@ def run_validate_report(
     targets_path: str | None = None,
     post_path: str | None = None,
 ) -> int:
-    """CLI entry: validate the S-10 before/after report.
-
-    When ``baseline_path`` and ``targets_path`` are both given, the
-    CLI mechanically cross-checks every report row against the two
-    JSON files. Either companion path without the other fails
-    closed so the operator cannot silently bypass the cross-check.
-
-    When ``post_path`` is given, the CLI loads the post-change
-    measurement JSON and verifies that every metric recorded in
-    the report matches the corresponding entry in the post JSON
-    and meets the documented improvement target (e.g. ralph_self
-    indexed_query_p50_seconds <= 0.6x baseline). Failures are
-    printed in order and a non-zero exit code is returned so the
-    regression gate fails closed.
-    """
     if (baseline_path is None) != (targets_path is None):
         print(
             "FAIL: --baseline and --targets must be supplied together",

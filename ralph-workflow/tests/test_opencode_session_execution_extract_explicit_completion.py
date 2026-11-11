@@ -1,23 +1,11 @@
-"""Black-box regression tests for OpenCode session-aware execution.
-
-All tests use in-memory fakes — no real subprocesses, no real wall-clock waits,
-no real psutil. Verifies five acceptance scenarios and two edge cases.
-"""
-
 from __future__ import annotations
 
 from ralph.agents.completion_signals import extract_explicit_completion
 
-# Poll interval used in the wait helper - matches _DESCENDANT_WAIT_POLL_SECONDS
 _DESCENDANT_WAIT_POLL_SECONDS = 0.5
-
-# Local aliases: tests call the same public functions but under the private-looking names
-# that were used when this module was monolithic (pre-package split).
 
 
 class TestExtractExplicitCompletion:
-    """extract_explicit_completion scans raw NDJSON output for the declare_complete marker."""
-
     def test_detects_marker_in_raw_output(self) -> None:
         raw = [
             '{"type": "text", "content": "Working..."}',

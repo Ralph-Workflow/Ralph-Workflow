@@ -1,4 +1,3 @@
-"""InactivityTimeoutOpts — optional parameters for AgentInactivityTimeoutError."""
 
 from __future__ import annotations
 
@@ -12,7 +11,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class InactivityTimeoutOpts:
-    """Optional parameters for AgentInactivityTimeoutError."""
 
     reason: WatchdogFireReason | None = None
     session_resume_safe: bool = False

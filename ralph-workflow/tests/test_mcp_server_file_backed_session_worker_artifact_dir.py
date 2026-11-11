@@ -1,9 +1,3 @@
-"""Integration tests for the standalone Python MCP server runtime."""
-
-# Property A: there is no alternate FastMCP path. The single production
-# _FallbackStandaloneServer (via build_standalone_http_server) is the
-# only server construction surface. This test pins the shipped path.
-
 from __future__ import annotations
 
 import json
@@ -11,7 +5,6 @@ from pathlib import Path
 
 import pytest
 
-# Config imports for multimodal tests
 from ralph.mcp.protocol import startup
 from ralph.mcp.protocol.env import WORKER_ARTIFACT_DIR_ENV
 from ralph.mcp.protocol.session import AgentSession
@@ -20,8 +13,6 @@ from ralph.mcp.upstream.config import (
     UPSTREAM_MCP_CONFIG_ENV,
 )
 
-# Lazy imports for multimodal tests that require optional dependencies
-# These are only available when the multimodal feature is fully configured
 _lazy_imports: dict[str, object] = {}
 
 HTTP_OK = 200
@@ -30,8 +21,6 @@ HTTP_ACCEPTED = 202
 
 @pytest.fixture(autouse=True)
 def _isolate_from_upstream_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Prevent real upstream MCP servers (configured in dev env) from being
-    # loaded during tests. Each test provides its own upstream config if needed.
     monkeypatch.delenv(UPSTREAM_MCP_CONFIG_ENV, raising=False)
 
 
@@ -63,11 +52,6 @@ def _http_call(
             "params": params or {},
         },
     )
-
-
-# =============================================================================
-# Image content serialization tests (Task 3)
-# =============================================================================
 
 
 class TestFileBackedSessionWorkerArtifactDir:

@@ -1,19 +1,3 @@
-# Deprecated: Ralph-orchestrated workers are removed from the execution model; parallelism is owned by the developer agent's own sub-agents. See docs/sphinx/concepts.md §"Deprecated: Ralph-orchestrated workers".
-"""Pure reducer: (state, event, policy) -> (new_state, effects).
-
-No I/O, no side effects, fully deterministic.
-
-This module implements the core state machine for the Ralph pipeline.
-Given the current state, an event, and the loaded policy, it computes
-the new state and any effects to execute.
-
-The reducer is a PURE FUNCTION — it contains no I/O operations,
-no logging, and no mutable state. This makes it fully deterministic
-and easy to test.
-
-Routing is driven by the policy: phase transitions come from pipeline.toml,
-not hardcoded match arms. All workflow semantics are expressed in policy.
-"""
 
 from __future__ import annotations
 
@@ -116,13 +100,6 @@ if TYPE_CHECKING:
 
 
 def _failure_reason(state: PipelineState, fallback: str) -> str:
-    """Extract a descriptive failure reason from state, or use the fallback.
-
-    Uses explicit truthiness check (not `or`) to handle empty-string last_error.
-    Empty strings are falsy but not None, so `state.last_error or fallback`
-    would work correctly in Python, but explicit checks make the intent clearer
-    and guard against future misuse of empty-string assignment.
-    """
     if state.last_error:
         return state.last_error
     return fallback
@@ -132,7 +109,6 @@ def _restore_work_units(
     state: PipelineState,
     new_state: PipelineState,
 ) -> PipelineState:
-    """Restore work_units if they were lost during state transition."""
     if state.work_units and not new_state.work_units:
         return new_state.copy_with(work_units=state.work_units)
     return new_state
@@ -145,16 +121,6 @@ def _dispatch_worker_event(
     policy: PipelinePolicy | None = None,
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]] | None:
-    """Handle worker events, returning None if the event is not a worker event.
-
-    When a RecoveryController is supplied, WorkerFailedEvent is routed through it for
-    classification-aware recovery (intelligent attribution, budget management). This ensures
-    worker failures are attributed to the phase's active agent and can trigger retry or
-    fallover behavior.
-
-    Terminal worker events (WorkerStartedEvent, WorkerCompletedEvent) do not go through
-    RecoveryController as they represent normal lifecycle events.
-    """
     if isinstance(event, WorkerStartedEvent):
         new_state, effects = _handle_worker_started(state, event)
         return _restore_work_units(state, new_state), effects
@@ -162,19 +128,11 @@ def _dispatch_worker_event(
         new_state, effects = _handle_worker_completed(state, event)
         return _restore_work_units(state, new_state), effects
 
-    # Worker failure events route through RecoveryController when available
-    # for proper attribution and recovery decision-making.
     if isinstance(event, WorkerFailedEvent):
-        # Bounded by the deadline like every other failure route into the
-        # controller: its retries stay in the same phase, so a spent cycle
-        # would otherwise buy another full-length invocation here too.
         expired = redirect_expired_cycle_in_place(state, policy, routing_timing)
         if expired is not None:
             return expired
         if recovery is not None:
-            # Route through RecoveryController for classification and attribution.
-            # The phase from state is used since worker failures are attributed
-            # to the current phase's active agent.
             phase_failure = PhaseFailureEvent(
                 phase=state.phase,
                 reason=event.error or f"Worker {event.unit_id} failed: exit code {event.exit_code}",
@@ -185,7 +143,6 @@ def _dispatch_worker_event(
                 phase_failure.reason,
                 FailureContext(phase=phase_failure.phase, agent=state.current_agent()),
             )
-            # Also mark the individual worker as FAILED in state.
             updated = state.worker_states[event.unit_id].copy_with(
                 status=WorkerStatus.FAILED,
                 exit_code=event.exit_code,
@@ -196,7 +153,6 @@ def _dispatch_worker_event(
                 worker_states={**new_state.worker_states, event.unit_id: updated}
             )
             return _restore_work_units(state, new_state), effects
-        # No recovery controller - use legacy direct handling
         new_state, effects = _handle_worker_failed(state, event)
         return _restore_work_units(state, new_state), effects
 
@@ -223,11 +179,6 @@ def _reduce_phase_failure(
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     if recovery is not None:
-        # Ask the deadline BEFORE the controller does anything. Its retry and
-        # progression routes keep the run in the same phase, crossing no
-        # routing boundary, so the deadline would never be consulted -- and a
-        # controller is always present in production, which left the guard on
-        # the plain failure handler covering only a path tests take.
         expired = redirect_expired_cycle_in_place(state, pipeline_policy, routing_timing)
         if expired is not None:
             return expired
@@ -302,12 +253,6 @@ def _reduce_captured_agent_failure(
     recovery: RecoveryController | None,
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]] | None:
-    """Delegate typed broken-agent failures to the recovery controller.
-
-    A spent cycle short-circuits to finalization first: the controller's
-    routes stay in the same phase, so nothing downstream would consult the
-    deadline before starting another full-length invocation.
-    """
     intent = state.agent_retry_intent
     if recovery is None or intent.failed_agent_name is None:
         return None
@@ -345,7 +290,7 @@ def _reduce_captured_agent_failure(
     return _restore_work_units(state, new_state), effects
 
 
-_EVENT_HANDLERS: dict[  # bounded-accumulator-ok: static
+_EVENT_HANDLERS: dict[
     PipelineEvent,
     Callable[
         [PipelineState, PipelinePolicy | None, RoutingTiming | None],
@@ -398,7 +343,6 @@ def _route_reduced_decision(
     pipeline_policy: PipelinePolicy | None,
     integration_record: IntegrationRecord | None = None,
 ) -> PipelineState:
-    """Route the reducer's decision through last_decision on RebaseState."""
     rebase = new_state.rebase
     terminal_states: set[str] = set()
     if pipeline_policy is not None:
@@ -413,13 +357,6 @@ def _route_reduced_decision(
         bool(terminal_states) and new_state.phase in terminal_states
     )
 
-    # The persisted ``last_decision`` is the OUTPUT of this
-    # function (the typed decision derived from current authority
-    # outputs). It is NOT a feedback INPUT; a settled obligation
-    # must not remain blocked because the previous turn's
-    # decision was blocking. The previous-turn ``last_decision``
-    # is dropped before the new decision is computed; the
-    # reducer is pure over the current authority inputs.
     if new_state.rebase.last_decision is not None:
         rebase = new_state.rebase.model_copy(update={"last_decision": None})
         new_state = new_state.copy_with(rebase=rebase)
@@ -544,7 +481,7 @@ def _reduce_pure(
         return worker_result
     handler = _get_event_handlers().get(
         cast("PipelineEvent", event)
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     if handler is None:
         return state, []
     new_state, effects = handler(state, pipeline_policy, routing_timing)
@@ -560,31 +497,6 @@ def reduce(
     routing_timing: RoutingTiming | None = None,
     integration_record: IntegrationRecord | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Pure state transition function.
-
-    This is the core of the Ralph pipeline state machine. Given the current
-    state, an event, and the pipeline policy, it computes the new state
-    and any effects to execute.
-
-    Args:
-        state: Current pipeline state.
-        event: Event to process.
-        pipeline_policy: Pipeline policy for resolving transitions.
-            Required for all routing decisions. Passing None causes routing
-            handlers to route to the policy-declared failure route rather
-            than silently falling back to hardcoded behavior.
-        recovery: Optional RecoveryController. When supplied, PhaseFailureEvents
-            and worker failure events are delegated to it for classification-aware
-            recovery (intelligent attribution, budget management). When None, no
-            owner can judge a failing agent, so the reducer fails the phase closed
-            instead of deciding on its own how often the agent may retry.
-        routing_timing: Optional routing timing controls for cycle timeboxes.
-        integration_record: Optional durable integration record.
-
-    Returns:
-        Tuple of (new_state, effects). Effects are instructions for the
-        effect handler to execute.
-    """
     new_state, effects = _reduce_pure(
         state,
         event,
@@ -632,11 +544,6 @@ def _return_state(
 
 
 def _terminal_failure_route(policy: PipelinePolicy | None) -> str:
-    """Resolve the terminal failure route from policy.
-
-    Raises:
-        RuntimeError: When policy is None (routing requires loaded policy).
-    """
     if policy is None:
         raise RuntimeError(
             "Routing requires loaded policy; no fallback to legacy phase constants. "
@@ -646,11 +553,6 @@ def _terminal_failure_route(policy: PipelinePolicy | None) -> str:
 
 
 def _terminal_success_route(policy: PipelinePolicy | None) -> str:
-    """Resolve the terminal success route from policy.
-
-    Raises:
-        RuntimeError: When policy is None (routing requires loaded policy).
-    """
     if policy is None:
         raise RuntimeError(
             "Routing requires loaded policy; no fallback to legacy phase constants. "
@@ -666,7 +568,6 @@ def _enter_failed_recovery(
     *,
     failure_category: FailureCategory | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Transition to the policy-declared terminal failure route."""
     target = _terminal_failure_route(policy)
     if policy is None:
         raise RuntimeError("Routing requires loaded policy")
@@ -692,13 +593,6 @@ def _enter_failed_recovery(
             phase=resume_phase or policy.entry_phase,
             previous_phase=state.previous_phase,
         )
-    # The cycle timer is deliberately NOT concluded here. The recovery failed
-    # route is a terminal to this reducer but does not end the run: the effect
-    # router turns it back into the phase the run was in, so the run re-enters
-    # the same cycle. Concluding switched the deadline off for the rest of a
-    # cycle that kept going -- and it could never re-arm, because starting a
-    # timer requires an inactive one. The cycle concludes when it routes out
-    # for real, or is reported as open at exit if the run dies inside it.
     return progress.apply_execution_cycle_outcome(state, new_state, policy=policy), []
 
 
@@ -707,16 +601,6 @@ def _workflow_fallback_target(
     phase_def: PhaseDefinition,
     policy: PipelinePolicy,
 ) -> str | None:
-    """Return the phase's workflow-fallback target when it names a REAL phase.
-
-    A declared fallback is honoured only when its target is a phase the
-    policy actually declares. A target that names nothing (or that is not
-    a phase name at all) would move the run into a phase no route can
-    leave, so the failure takes the ordinary failure route instead. The
-    policy loader rejects such a policy at load time, but the reducer is
-    the last gate before the run adopts the value, so it checks the
-    target itself instead of trusting the loader.
-    """
     fallback = phase_def.workflow_fallback
     if fallback is None:
         return None
@@ -739,24 +623,12 @@ def _handle_phase_failure(
     routing_timing: RoutingTiming | None = None,
     failure_category: FailureCategory | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Handle PhaseFailureEvent from phase handlers.
-
-    PhaseFailureEvent carries a recoverable flag:
-    - recoverable=True: route through _handle_agent_failure retry/fallback logic
-    - recoverable=False: route directly to the terminal failure route (terminal agent decision)
-
-    In both cases, last_error is set to a descriptive string combining the
-    phase name and the reason.
-    """
-    # Use the event reason if it's descriptive, otherwise synthesize one.
     if event.reason and event.reason.strip():
         failure_message = f"{event.phase}: {event.reason}"
     else:
         failure_message = f"(no reason reported for phase={event.phase})"
 
     if event.recoverable:
-        # Inject the failure message into state.last_error so that
-        # _handle_agent_failure preserves it when it transitions to the failure route.
         state_with_error = state.copy_with(last_error=failure_message)
         if event.retry_in_session and state.last_agent_session_id:
             state_with_error = state_with_error.copy_with(
@@ -783,8 +655,6 @@ def _handle_phase_failure(
             failure_category=event.failure_category,
             event=event,
         )
-    # Non-recoverable failures: check workflow_fallback before global failure route.
-    # Policy-declared workflow_fallback takes precedence over recovery.failed_route.
     if policy is not None:
         phase_def = policy.phases.get(event.phase)
         fallback_target = (
@@ -801,9 +671,6 @@ def _handle_phase_failure(
                     "non-recoverable failure — routing via policy workflow_fallback",
                 )
             )
-            # Route the fallback through the cycle-timebox guard so every entry
-            # into the configured guarded phase enforces the active deadline
-            # (FR-4), not only the analysis request_changes loopback.
             advanced_state, advanced_target = _prepare_phase_advance(
                 state, fallback_target, policy, routing_timing=routing_timing
             )
@@ -823,7 +690,6 @@ def _handle_agent_success(
     policy: PipelinePolicy | None,
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Handle successful agent completion."""
     if state.last_retry_delay_ms > 0:
         state = state.copy_with(last_retry_delay_ms=0)
     if policy is None:
@@ -854,13 +720,6 @@ def redirect_expired_cycle_in_place(
     policy: PipelinePolicy | None,
     routing_timing: RoutingTiming | None,
 ) -> tuple[PipelineState, list[Effect]] | None:
-    """Return the finalization advance when re-running this phase is over budget.
-
-    Asks the deadline the same question a routing boundary would, for a
-    handler that is about to stay put. ``None`` when the cycle has room, is
-    not running, or this phase is not the guarded one — in which case the
-    caller proceeds unchanged.
-    """
     if policy is None or routing_timing is None:
         return None
     decision = apply_development_timebox(
@@ -889,17 +748,6 @@ def _retry_or_fall_over(
     *,
     selection: AgentSelection,
 ) -> tuple[PipelineState, list[Effect]] | None:
-    """Apply the owner's verdict: retry the current agent, or fall over.
-
-    ``selection`` is the verdict of the single owner (the recovery
-    controller, which reads the agent-failure ledger). It is the ONLY thing
-    that decides whether the current agent may try again and which agent
-    runs next. This function applies that verdict; it never counts attempts
-    and never picks an agent on its own authority.
-
-    Returns ``None`` when the owner selected nobody, so the caller can fail
-    the phase closed instead of choosing an agent locally.
-    """
     if selection.index == chain.current_index:
         new_chain = chain.with_retry_increment()
         new_metrics = state.metrics.with_retry_increment()
@@ -929,7 +777,6 @@ def _all_agents_unavailable_wait_state(
     selection: AgentSelection,
     recovery: RecoveryController | None,
 ) -> tuple[PipelineState, list[Effect]] | None:
-    """Build a cooldown wait state when priority selection finds no agent."""
     if (
         selection.index is not None
         or recovery is None
@@ -950,13 +797,6 @@ def _selection_attempt(
     selection: AgentSelection,
     recovery: RecoveryController | None,
 ) -> tuple[PipelineState, list[Effect]] | None:
-    """Return a retry, fallover, or cooldown wait state selected for this failure.
-
-    ``selection`` is the OWNER's verdict. This function applies it and never
-    substitutes a local decision of its own: when the owner selected nobody
-    and no agent is cooling down, it returns ``None`` so the caller fails
-    the phase closed.
-    """
     same_phase_attempt = _retry_or_fall_over(state, chain, selection=selection)
     if same_phase_attempt is not None:
         return same_phase_attempt
@@ -972,26 +812,16 @@ def _handle_agent_failure(
     failure_category: FailureCategory | None = None,
     event: Event | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Handle agent failure with retry/fallback logic."""
     chain = state.chain_for_phase(state.phase)
     if chain is None:
         failure_reason = _failure_reason(state, f"No tracked agent chain for {state.phase}")
         return _enter_failed_recovery(state, failure_reason, policy)
 
-    # A retry or a chain fallover keeps the run in the same phase, so no
-    # routing boundary is crossed and the deadline -- enforced only at
-    # boundaries -- would never be consulted. Each one is a fresh full-length
-    # invocation, and three retries per agent across the chain add up to many
-    # of them on a budget that is already spent, while the prompt, the
-    # tool-result banner and the policy documentation all say the redirect
-    # happens INSTEAD of starting another development invocation.
     expired = redirect_expired_cycle_in_place(state, policy, routing_timing)
     if expired is not None:
         return expired
 
     if recovery is None:
-        # No owner is reachable, so nobody can decide whether the failing
-        # agent may try again. Fail closed instead of deciding locally.
         return _fail_closed_without_owner(
             state,
             chain,
@@ -1020,12 +850,6 @@ def _handle_owned_agent_failure(
     failure_category: FailureCategory | None,
     event: Event | None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Route a failure through the owner and apply its verdict.
-
-    The owner (``RecoveryController`` and, through it, the agent-failure
-    ledger) charges the attempt and decides whether the agent may try again
-    and which agent runs next. This function only applies that verdict.
-    """
     if state.agent_retry_intent.skip_same_agent_retries:
         return _handle_skip_same_agent_retries(state, chain, policy, recovery)
 
@@ -1035,11 +859,6 @@ def _handle_owned_agent_failure(
         else None
     )
     if current_agent is not None:
-        # The workspace-change fact is read ONLY from the attempt-scoped
-        # observation carried by this event. A bare
-        # ``PipelineEvent.AGENT_FAILURE`` carries none, so the attempt
-        # fails closed ("unchanged") instead of inheriting a stale fact
-        # from an earlier attempt.
         observation = observation_from_event(event)
         if observation is None or not observation.already_charged:
             workspace_changed: bool = (
@@ -1081,18 +900,6 @@ def _fail_closed_without_owner(
     routing_timing: RoutingTiming | None,
     failure_category: FailureCategory | None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Fail the phase closed when no owner can judge the failing agent.
-
-    The owner of "is this agent still working" is the recovery controller
-    and, through it, the agent-failure ledger. With no controller reachable
-    the reducer holds no verdict to apply, so it must not grant another
-    attempt: it used to count three local retries on ``chain.retries`` and
-    then advance the chain itself, which made the reducer a SECOND decision
-    owner (PRODUCT_CRITERIA §3.4). Failing closed keeps exactly one
-    component able to decide an agent's fate; the phase reaches the
-    policy's failure route (or its declared workflow fallback) instead of
-    retrying an agent nobody has judged.
-    """
     current_agent = (
         chain.agents[chain.current_index]
         if chain.agents and chain.current_index < len(chain.agents)
@@ -1123,7 +930,6 @@ def _handle_chain_exhausted(
     *,
     reason: str | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    # Chain exhausted: check for per-phase workflow_fallback before global failure route.
     if policy is not None:
         phase_def = policy.phases.get(state.phase)
         fallback_target = (
@@ -1140,9 +946,6 @@ def _handle_chain_exhausted(
                     "agent chain exhausted — routing via policy workflow_fallback",
                 )
             )
-            # Route the fallback through the cycle-timebox guard so every entry
-            # into the configured guarded phase enforces the active deadline
-            # (FR-4), not only the analysis request_changes loopback.
             advanced_state, advanced_target = _prepare_phase_advance(
                 state, fallback_target, policy, routing_timing=routing_timing
             )
@@ -1182,10 +985,6 @@ def _handle_skip_same_agent_retries(
         if selected_attempt is not None:
             return selected_attempt
 
-    # The owner selected nobody: fail closed. Advancing the chain here would
-    # pick an agent on the reducer's own authority, which is exactly the
-    # second decision owner PRODUCT_CRITERIA §3.4 forbids -- and the agent
-    # it picked would be one the owner already rejected.
     failure_reason = _failure_reason(
         state,
         (
@@ -1201,17 +1000,6 @@ def _handle_agent_retry(
     policy: PipelinePolicy | None = None,
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Handle agent retry request.
-
-    A continuation is another full-length invocation of the same phase, so it
-    is bounded by the cycle deadline exactly like a failure retry.
-
-    This route is NOT agent-health routing: it grants the CONTINUATION the
-    caller asked for and never judges whether the agent is working. The
-    counter it increments is a diagnostic only -- it decides no attempt
-    budget, and the owner's verdict (the agent-failure ledger) governs every
-    subsequent failure of the same agent.
-    """
     expired = redirect_expired_cycle_in_place(state, policy, routing_timing)
     if expired is not None:
         return expired
@@ -1233,15 +1021,6 @@ def _handle_analysis_success(
     policy: PipelinePolicy | None,
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Handle successful analysis decision (continue/approve).
-
-    Routing is driven exclusively through transitions.on_success via resolve_next_phase.
-    Decision keys in phase_def.decisions are not consulted for routing — but the
-    forward decision's declared counter and cycle outcome ARE applied, because
-    leaving this phase forward concludes the cycle exactly as that decision
-    would. Without the outcome, post-commit routing at the eventual final
-    commit has no verdict to match on.
-    """
     if policy is None:
         return _advance_to_failed(state, "No policy loaded for analysis success routing", policy)
 
@@ -1283,7 +1062,6 @@ def _handle_execution_result(
     policy: PipelinePolicy | None,
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Route an execution result while carrying any policy-declared commit override."""
     if policy is None:
         return _advance_to_failed(state, "No policy loaded for execution result routing", policy)
     if state.phase != event.phase:
@@ -1314,7 +1092,6 @@ def _handle_analysis_loopback(
     policy: PipelinePolicy | None,
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Handle analysis loopback decision (retry/request changes) — policy-driven."""
     if policy is None:
         return _advance_to_failed(state, "No policy loaded for analysis loopback routing", policy)
 
@@ -1347,7 +1124,6 @@ def _handle_phase_loopback(
     policy: PipelinePolicy | None,
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Handle generic bounded phase loopback for non-analysis phases."""
     if policy is None:
         return _advance_to_failed(state, "No policy loaded for phase loopback routing", policy)
 
@@ -1379,17 +1155,6 @@ def _handle_analysis_decision(
     policy: PipelinePolicy | None,
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Handle AnalysisDecisionEvent: route directly through decisions[decision].target.
-
-    The decision string from the agent artifact is used as a key into
-    ``phase_def.decisions`` to look up the target phase. This replaces the
-    legacy collapsing of all decisions into ANALYSIS_SUCCESS/ANALYSIS_LOOPBACK
-    followed by routing via transitions.on_success/on_loopback.
-
-    When the route's reset_loop is True, the loop counter is reset to 0.
-    When reset_loop is False and the phase has a loop_policy, the counter
-    is incremented (clamped to the runtime cap).
-    """
     if policy is None:
         return _advance_to_failed(
             state,
@@ -1415,20 +1180,16 @@ def _handle_analysis_decision(
             policy,
         )
 
-    # Apply loop counter accounting before routing.
     progress_state = state
     if phase_def.loop_policy is not None:
         iteration_field = phase_def.loop_policy.iteration_state_field
         if route.reset_loop:
-            # Reset counter on forward exit (e.g., 'completed' decision).
             progress_state = progress_state.with_loop_iteration(iteration_field, 0)
         else:
-            # Increment counter on loopback (e.g., 'request_changes' decision).
             max_iter = progress.resolve_analysis_cap(
                 iteration_field,
                 policy,
             )
-            # Apply loopback_review_outcome when configured and this is a loopback route.
             lp = phase_def.loop_policy
             progress_state = progress.apply_analysis_loopback(
                 state,
@@ -1449,8 +1210,6 @@ def _handle_analysis_decision(
     if route.cycle_outcome is not None:
         progress_state = progress_state.copy_with(pending_cycle_outcome=route.cycle_outcome)
 
-    # Resolve target: route to terminal failure when target is the failed route,
-    # otherwise advance to the declared target.
     failed_route = _terminal_failure_route(policy)
     if route.target == failed_route or route.target not in policy.phases:
         failure_reason = _failure_reason(
@@ -1475,14 +1234,6 @@ def _handle_review_clean(
     policy: PipelinePolicy | None,
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Handle clean review (no issues found).
-
-    When a review is clean, the phase emits a bypass directly to the target
-    declared in bypass_routes[clean_outcome]. The bypass key is read from the
-    phase's policy-declared clean_outcome field, not from a hardcoded string.
-    Falls back to on_success routing when clean_outcome is not set or has no
-    matching bypass_routes entry.
-    """
     if policy is None:
         return _advance_to_failed(state, "No policy loaded for review clean routing", policy)
 
@@ -1514,12 +1265,6 @@ def _handle_review_issues_found(
     policy: PipelinePolicy | None,
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Handle review with issues found.
-
-    The review_outcome label is read from the phase's policy-declared
-    issues_outcome field. Policy completeness validation rejects review phases
-    that omit issues_outcome, so this field is always set when this handler runs.
-    """
     if policy is None:
         return _advance_to_failed(state, "No policy loaded for review issues found routing", policy)
     phase_def = policy.phases.get(state.phase)
@@ -1546,7 +1291,6 @@ def _handle_fix_success(
     policy: PipelinePolicy | None,
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Handle successful fix."""
     if policy is None:
         return _advance_to_failed(state, "No policy loaded for fix success routing", policy)
     return _resolve_or_terminal(
@@ -1559,14 +1303,11 @@ def _handle_fix_failure(
     policy: PipelinePolicy | None,
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Handle fix failure."""
     if policy is None:
         return _advance_to_failed(state, "No policy loaded for fix failure routing", policy)
     try:
         next_phase = resolve_next_phase(state.phase, "failure", policy)
         failed_route = _terminal_failure_route(policy)
-        # Route to terminal failure if the transition targets a terminal failure pseudo-phase
-        # or the policy-declared terminal failure route.
         if failed_route == next_phase or next_phase not in policy.phases:
             failure_reason = _failure_reason(state, "Fix phase failed")
             return _enter_failed_recovery(state, failure_reason, policy)
@@ -1582,7 +1323,6 @@ def _handle_commit_success(
     policy: PipelinePolicy | None,
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Handle successful commit."""
     if policy is None:
         return _advance_to_failed(state, "No policy loaded for commit success routing", policy)
     try:
@@ -1608,7 +1348,6 @@ def _handle_commit_residual(
     policy: PipelinePolicy | None,
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Re-enter the commit phase to prepare a fresh artifact for remaining changes."""
     if policy is None:
         return _advance_to_failed(state, "No policy loaded for residual commit routing", policy)
     return _advance_phase(state, state.phase, policy, routing_timing=routing_timing)
@@ -1619,12 +1358,6 @@ def _handle_commit_skipped(
     policy: PipelinePolicy | None,
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Handle a skipped commit (no diff to commit).
-
-    Advances phase routing exactly like a successful commit so the pipeline
-    does not stall, but does NOT increment iteration or reviewer_pass because
-    no meaningful agent activity occurred during the skipped phase.
-    """
     if policy is None:
         return _advance_to_failed(state, "No policy loaded for commit skipped routing", policy)
     try:
@@ -1653,13 +1386,6 @@ def _reduce_commit_review_rejection(
     *,
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Handle a commit review rejection with rollback setup and iteration loopback.
-
-    The rejection counter fails the run once it REACHES the policy limit: with
-    the default limit of 2 the second consecutive rejection is terminal. The
-    terminal transition performs no rollback and keeps the rejected proposal
-    ref, so the rejected work stays recoverable by hand.
-    """
     new_rejections = state.commit_review_rejections + 1
     loop_counter_cfg = policy.loop_counters.get("commit_review_rejections")
     max_rejections = (
@@ -1727,12 +1453,6 @@ def _reduce_commit_review_rejection(
 
 
 def _commit_phase_fed_by_review(phase_def: PhaseDefinition, policy: PipelinePolicy) -> str | None:
-    """Return the commit phase a commit-review phase feeds, if it declares one.
-
-    A commit-review phase approves into the commit phase that carries its
-    proposal, and the commit-outcome accounting resolves that same phase, so
-    the rejection route crosses the same boundary.
-    """
     commit_phase = phase_def.transitions.on_success
     target_def = policy.phases.get(commit_phase)
     if target_def is None or target_def.role != "commit":
@@ -1748,21 +1468,6 @@ def _route_rejection_through_commit_entry(
     *,
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Route a rejection across the commit entry, then on to the reject target.
-
-    A rejection is a completed commit-phase outcome, so the route crosses the
-    commit phase's entry: that entry is where the development and cycle
-    timeboxes conclude, exactly as for a commit-then-development route.
-    Skipping the entry would leave the development timer running with the
-    seconds it had already consumed, and the cycle timer running past the
-    boundary that ends it.
-
-    The commit phase is entered and left again within the same reduction, so
-    it never becomes the phase the run is in: no commit-message agent runs
-    and nothing is committed. The commit-outcome accounting is charged once,
-    through the same ``apply_commit_outcome`` path a ``COMMIT_SUCCESS``
-    uses, and the rollback stays with the runner's single rollback owner.
-    """
     commit_phase = _commit_phase_fed_by_review(phase_def, policy)
     if commit_phase is None:
         return _advance_phase(state, target_phase, policy, routing_timing=routing_timing)
@@ -1780,7 +1485,6 @@ def _reduce_commit_review_event(
     routing_timing: RoutingTiming | None = None,
     recovery: RecoveryController | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Handle commit review lifecycle events."""
     phase_def = policy.phases.get(state.phase) if policy is not None else None
     if policy is None or phase_def is None:
         err = (
@@ -1818,13 +1522,9 @@ def _reduce_commit_review_event(
             if phase_def.transitions.on_failure
             else policy.recovery.failed_route
         )
-        # A gate failure is fail-closed: the run stops without a rollback, so
-        # no pending rollback flag may survive into the terminal phase. The
-        # proposal ref is kept, so the rejected work stays recoverable by hand.
         failed_state = state.copy_with(last_error=reason, rollback_pending=False)
         return _advance_phase(failed_state, target, policy, routing_timing=routing_timing)
 
-    # CommitReviewLoopback
     target = phase_def.transitions.on_loopback if phase_def.transitions.on_loopback else state.phase
     loop_state = state.copy_with(last_error=event.hint)
     if phase_def.loop_policy is not None:
@@ -1834,22 +1534,12 @@ def _reduce_commit_review_event(
 
 
 _MAX_COMMIT_RECOVERY_ATTEMPTS = 3
-#: Pause before re-running a commit that a git lock blocked. The in-call recovery
-#: already waits on a live holder; this keeps a lock that cannot be cleared from
-#: spinning the loop hot while the holder (or an operator) finishes.
 LOCK_RETRY_DELAY_MS = 5_000
 
-#: The pinned encoding of the dirty-worktree signal inside a commit-failure
-#: reason. No typed verdict exists at this seam (the commit executor records
-#: only display prose via ``set_last_commit_error``), so the dirty-tree branch
-#: of :func:`_is_repairable_git_failure` matches this one named constant.
-#: Rewording the upstream prose requires changing the constant and
-#: ``tests/test_reducer_dirty_tree_reason_constant.py`` together.
 DIRTY_WORKTREE_FAILURE_ENCODING = "worktree not clean"
 
 
 def _is_repairable_git_failure(reason: str | None) -> bool:
-    """Determine whether a commit failure is caused by a repairable Git state."""
     if not reason:
         return False
     error_text = reason.lower()
@@ -1878,14 +1568,6 @@ def _is_repairable_git_failure(reason: str | None) -> bool:
 
 
 def _is_commit_approval_signal(reason: str | None) -> bool:
-    """Determine whether a commit failure carries a machine-readable approval signal.
-
-    The commit executor reports an approval failure with a stable code
-    (:data:`COMMIT_TREE_SHA_MISMATCH_CODE` for a tree that differs from the
-    approved one, :data:`COMMIT_APPROVAL_MISSING_CODE` for an attempt without
-    an approved tree SHA) instead of prose the reducer would have to guess at.
-    The route is decided on the code alone, never on the words around it.
-    """
     if not reason:
         return False
     return COMMIT_TREE_SHA_MISMATCH_CODE in reason or COMMIT_APPROVAL_MISSING_CODE in reason
@@ -1895,7 +1577,6 @@ def _resolve_commit_recovery_phase(
     state: PipelineState,
     policy: PipelinePolicy,
 ) -> str | None:
-    """Resolve the automated recovery target phase for a repairable commit failure."""
     for name in ("commit_recovery", "COMMIT_RECOVERY"):
         if name in policy.phases and name != state.phase:
             return name
@@ -1917,30 +1598,6 @@ def _recoverable_git_failure_default_target(
     policy: PipelinePolicy,
     last_error: str | None,
 ) -> str | None:
-    """Return the in-place phase to retry when a repairable git failure has no recovery phase.
-
-    Returns the current phase name (e.g. ``development_commit``) when all of:
-      - The failure is repairable (matches ``_is_repairable_git_failure``)
-      - The policy defines neither ``commit_recovery`` nor ``commit_review`` phase
-        (i.e. ``_resolve_commit_recovery_phase`` returns ``None``)
-
-    When these hold, the reducer re-routes the cycle to the in-place phase so a
-    fresh pass of ``commit_executor.execute_commit_effect`` re-reads the validated
-    commit message from ``effect.message_file`` (which is preserved on disk when
-    the commit operation fails).
-
-    When the failure is not repairable, returns ``None`` and the caller falls
-    through to ``failed_terminal``.
-
-    The ``effect.message_file`` lifecycle:
-      - ``commit_executor.execute_commit_effect`` writes the validated message to
-        ``effect.message_file`` before attempting the commit.
-      - On failure it sets ``_execution_record.last_error`` and returns
-        ``PipelineEvent.COMMIT_FAILURE``.
-      - The message file is deleted only on ``COMMIT_SUCCESS`` or ``COMMIT_SKIPPED``;
-        on failure it stays on disk.
-      - A fresh pass of ``execute_commit_effect`` re-reads ``effect.message_file``.
-    """
     if not _is_repairable_git_failure(last_error):
         return None
     if _resolve_commit_recovery_phase(state, policy) is not None:
@@ -1956,31 +1613,12 @@ def _route_lock_contention_in_place(
     failure_reason: str,
     routing_timing: RoutingTiming | None,
 ) -> tuple[PipelineState, list[Effect]] | None:
-    """Re-run the commit in place when a git lock blocked it; never end the run for it.
-
-    A lock is not something a recovery agent can release and not a reason to stop
-    the workflow: it is held by a live operation (which finishes), or it is an
-    orphan the next attempt clears. So lock contention neither consumes the
-    bounded agent-recovery budget nor routes to ``failed_terminal``; the commit
-    is retried in place with the validated message preserved, after a pause.
-    ``recovery_epoch`` is clamped at the cap so it stays a diagnostic.
-    Returns ``None`` when the failure is not lock contention (or there is no
-    in-place target), leaving the ordinary budgeted routing to apply.
-    """
     from ralph.git._lock_recovery import names_a_lock_file
 
-    # Only a message that names a specific lock file is contention that waiting can
-    # resolve. "cannot lock ref" alone also reports permanent ref-name conflicts,
-    # which must keep the capped path instead of retrying forever.
     if not names_a_lock_file(last_error or ""):
         return None
-    # When policy defines a commit recovery or cleanup phase, delegate to that phase
-    # instead of retrying in place.
     if _resolve_commit_recovery_phase(cleared_state, policy) is not None:
         return None
-    # The failure arrived in the commit phase itself: that is where it is retried,
-    # whether or not the policy also declares an (agent) recovery phase -- an
-    # agent cannot release a lock, so routing there would only burn a cycle.
     in_place_target = cleared_state.phase
     logger.bind(component="policy.routing").warning(
         "Git lock blocked the commit; retrying {} in place after {}ms without consuming "
@@ -2012,23 +1650,6 @@ def _pending_commit_failure_belongs_to_state(
     pending: PendingCommitFailure,
     state: PipelineState,
 ) -> bool:
-    """Return whether a pending commit diagnostic describes THIS state's attempt.
-
-    A pending diagnostic is a handoff from the commit attempt that failed, so it
-    may only route the failure it describes. Two independent checks keep a
-    diagnostic another attempt left behind out of this routing decision:
-
-    1. The state must corroborate the diagnostic. It does so when it invoked a
-       commit attempt (``commit.agent_invoked`` -- the flag the effect router
-       requires before it emits a commit effect), when it has recorded no
-       failure of its own (``last_error is None``), or when the failure it
-       recorded IS this diagnostic. A state that recorded a DIFFERENT failure
-       and never invoked a commit attempt has no claim on this diagnostic.
-    2. The diagnostic is bound to the approval the attempt was committed
-       against, so it applies only to a state whose current approval matches.
-       Without this binding a diagnostic from another run (or another approval)
-       would re-route a failure that has nothing to do with it.
-    """
     if pending.approved_tree_sha != state.approved_tree_sha:
         return False
     if state.commit.agent_invoked:
@@ -2041,32 +1662,6 @@ def _handle_commit_failure(
     policy: PipelinePolicy | None,
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Handle commit failure without unconditionally routing to failed_terminal.
-
-    A repairable commit failure (detached HEAD, index.lock contention,
-    unmerged paths, conflict, repeated commit failure) receives a bounded
-    automated recovery budget before Ralph stops the workflow.
-    1. If the policy defines a recovery phase (``commit_recovery`` or
-       ``commit_review``), the reducer routes there until ``recovery_epoch``
-       reaches ``_MAX_COMMIT_RECOVERY_ATTEMPTS``.
-    2. If the policy defines no recovery phase, the reducer performs an in-place
-       retry of the current commit phase (via :func:`_recoverable_git_failure_default_target`),
-       preserving the validated commit message in ``effect.message_file`` across
-       attempts.
-    3. Exhausting the recovery budget routes to the policy's terminal failure
-       phase with the original Git diagnostic preserved.
-
-    The diagnostic of the failed attempt reaches the reducer through the commit
-    executor's pending slot. It is consumed only when it belongs to the attempt
-    being routed (see :func:`_pending_commit_failure_belongs_to_state`); a
-    diagnostic left behind by another attempt is discarded, and the failure is
-    routed from the canonical commit-failure reason instead.
-
-    A commit that was not made against the approved tree carries a
-    machine-readable approval signal (see :func:`_is_commit_approval_signal`)
-    and is routed like a repairable git failure: back to commit review, which
-    approves the tree again.
-    """
     if policy is None:
         return _advance_to_failed(state, "No policy loaded for commit failure routing", policy)
 
@@ -2083,10 +1678,6 @@ def _handle_commit_failure(
     if last_error is None and _is_repairable_git_failure(state.last_error):
         last_error = state.last_error
 
-    # A commit that was not made against the approved tree is repairable: it
-    # goes back to commit review, which approves the tree again. The decision
-    # is made on the machine-readable approval signal, never on the prose of
-    # the diagnostic.
     approval_signal = _is_commit_approval_signal(last_error)
     if approval_signal or _is_repairable_git_failure(last_error):
         failure_reason = last_error or commit_failure_reason(state)
@@ -2148,8 +1739,6 @@ def _handle_commit_failure(
             )
             return new_state, []
 
-        # No commit_recovery / commit_review phase: re-route in-place to retry
-        # with the validated message preserved on disk at effect.message_file.
         in_place_target = _recoverable_git_failure_default_target(
             cleared_state,
             policy,
@@ -2157,7 +1746,6 @@ def _handle_commit_failure(
         )
         if in_place_target is not None:
             failure_reason = last_error or commit_failure_reason(state)
-            # Extract lock path and age from the error for the operator log.
             lock_path_str = ""
             _lock_pattern = re.compile(r"Unable to create '([^']+\.lock)'")
             _lock_match = _lock_pattern.search(last_error or "")
@@ -2184,15 +1772,6 @@ def _handle_commit_failure(
                 cleared_state, in_place_target, policy, routing_timing=routing_timing
             )
             advanced_after_progress = progress.advance_phase(advanced_state, target, policy=policy)
-            # Preserve the original ``state.commit`` across the in-place retry so
-            # ``_commit_phase_effect`` (``effect_router.py``) sees
-            # ``commit.agent_invoked=True`` and returns ``CommitEffect`` (re-reading
-            # the validated message from ``effect.message_file``) instead of
-            # ``InvokeAgentEffect``. Without this, ``progress.advance_phase`` resets
-            # ``commit = CommitState()`` for ``role == "commit"`` target phases
-            # (``progress.py:190-193``), and the next effect would re-invoke the
-            # commit-message agent instead of re-running ``execute_commit_effect``
-            # on the preserved message file.
             updates: dict[str, object] = {
                 "commit": state.commit,
                 "last_error": failure_reason,
@@ -2205,7 +1784,6 @@ def _handle_commit_failure(
             new_state = advanced_after_progress.copy_with(**updates)
             return new_state, []
 
-    # Non-repairable failure: escalate to terminal failure.
     failure_reason = commit_failure_reason(state)
     return _enter_failed_recovery(cleared_state, failure_reason, policy)
 
@@ -2215,22 +1793,6 @@ def _apply_invocation_gate(
     next_phase: PipelinePhase,
     policy: PipelinePolicy,
 ) -> tuple[PipelinePhase, PipelineState, str | None]:
-    """Check an analysis phase's invocation gate and adjust routing accordingly.
-
-    When the next phase is an analysis phase with an ``invocation_gate``, the
-    cumulative unrounded elapsed seconds for the gate's ``upstream_execution_phase``
-    are summed from the current cycle's timing start index. Analysis is entered
-    when the cumulative time meets or exceeds ``minimum_elapsed_seconds`` **or**
-    the upstream execution result's status is listed in
-    ``always_invoke_statuses``. Otherwise analysis is bypassed: routing
-    continues to the analysis phase's policy-declared success transition, the
-    completed decision's cycle outcome is set, and no analysis count is
-    consumed.
-
-    The third element is the gate's upstream execution phase when the gate
-    admitted analysis, and ``None`` otherwise — the caller charges the
-    analysis-loop cycle once the advance has actually landed on the phase.
-    """
     phase_def = policy.phases.get(next_phase)
     if phase_def is None or phase_def.invocation_gate is None:
         return next_phase, state, None
@@ -2240,17 +1802,10 @@ def _apply_invocation_gate(
     cumulative = progress.cumulative_execution_seconds(state, gate.upstream_execution_phase)
 
     if always_invoke or cumulative >= gate.minimum_elapsed_seconds:
-        # Admitted, but NOT charged here: the charge belongs after the advance
-        # has actually landed on the phase. Charging first billed a pass the
-        # exhausted-analysis bypass then skipped, and because the skip
-        # predicate counts already-charged passes, the budget read as spent one
-        # pass early — a declared cap of five ran four times.
         return next_phase, state, gate.upstream_execution_phase
 
-    # Gate denies entry: skip analysis and route to its success transition.
     bypass_target = phase_def.transitions.on_success
     cycle_outcome = declared_forward_cycle_outcome(next_phase, policy)
-    # Never outrank a recorded verdict, matching the other stamp sites.
     if cycle_outcome is not None and state.pending_cycle_outcome is None:
         state = state.copy_with(pending_cycle_outcome=cycle_outcome)
     return bypass_target, state, None
@@ -2262,12 +1817,6 @@ def _advance_through_invocation_gate(
     policy: PipelinePolicy,
     routing_timing: RoutingTiming | None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Route a post-commit target through its invocation gate, then advance.
-
-    The gate's analysis-loop charge is applied only once the advance has landed
-    on the gated phase, so a pass the exhausted-analysis bypass skips is never
-    billed.
-    """
     next_phase, gated_state, admitted_execution_phase = _apply_invocation_gate(
         state, next_phase, policy
     )
@@ -2283,13 +1832,11 @@ def _advance_through_invocation_gate(
 
 
 def _handle_checkpoint_saved(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
-    """Handle checkpoint saved event."""
     new_state = state.copy_with(checkpoint_saved_count=state.checkpoint_saved_count + 1)
     return new_state, []
 
 
 def _handle_interrupted(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
-    """Handle user interruption."""
     new_state = state.copy_with(interrupted_by_user=True)
     return new_state, [SaveCheckpointEffect()]
 
@@ -2299,7 +1846,6 @@ def _handle_complete(
     policy: PipelinePolicy | None,
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Handle pipeline completion — routes to the policy-declared terminal success phase."""
     terminal = _terminal_success_route(policy)
     return _advance_phase(state, terminal, policy, routing_timing=routing_timing)
 
@@ -2309,12 +1855,6 @@ def _handle_failed(
     policy: PipelinePolicy | None,
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Handle pipeline failure.
-
-    Uses state.last_error if available and descriptive, which should have been
-    set by the preceding failure event handler. Falls back to a descriptive
-    message only as a last resort.
-    """
     last_error = _failure_reason(
         state,
         (
@@ -2330,7 +1870,6 @@ def _handle_phase_advance(
     policy: PipelinePolicy | None,
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Handle explicit phase advance request."""
     if policy is None:
         return _advance_to_failed(state, "No policy loaded for phase advance routing", policy)
     return _resolve_or_terminal(
@@ -2345,12 +1884,9 @@ def _prepare_phase_advance(
     *,
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, PipelinePhase]:
-    """Resolve the effective phase target before applying the transition."""
     if policy is None:
         return state, target_phase
 
-    # Apply the plan-to-final-commit cycle timebox guard first so every route
-    # that can enter the configured guarded phase uses one timing authority.
     timebox = apply_cycle_timebox(state, target_phase, policy=policy, routing_timing=routing_timing)
     if timebox.redirected and timebox.redirect_reason is not None:
         logger.bind(component="policy.routing").warning(timebox.redirect_reason)
@@ -2396,7 +1932,6 @@ def _concluded_if_leaving_cycle(
     resolved: tuple[PipelineState, PipelinePhase],
     policy: PipelinePolicy,
 ) -> tuple[PipelineState, PipelinePhase]:
-    """Apply each timer's configured end-entry boundary to the resolved target."""
     state, target_phase = resolved
     state = conclude_cycle_on_route_out_of_cycle(state, target_phase, policy=policy)
     return (
@@ -2414,20 +1949,7 @@ def _with_bypassed_cycle_timing(
     *,
     timer_just_started: bool = False,
 ) -> tuple[PipelineState, PipelinePhase]:
-    """Apply a bypass result with the cycle timer re-evaluated on its real target.
-
-    The timebox is applied to the PENDING target, which a bypass can then
-    rewrite — so both cycle boundaries have to be reconsidered against the
-    target routing actually took. Missing the end boundary left the timer
-    running into the next cycle, whose first development entry was then
-    redirected on the previous cycle's spent budget; missing the start
-    boundary left a cycle entirely untimed.
-    """
     if not bypass.skipped or timer_just_started:
-        # Nothing was rewritten (the caller's application already saw the real
-        # target), or the cycle was just started by that application — whose
-        # elapsed seconds still describe the PREVIOUS cycle, so re-judging the
-        # fresh one against them would redirect it before it ran at all.
         return bypass.state, bypass.target_phase
     timebox = apply_cycle_timebox(
         bypass.state,
@@ -2459,16 +1981,6 @@ def _should_preserve_commit_retry(
     target_phase: PipelinePhase,
     policy: PipelinePolicy,
 ) -> bool:
-    """Return True if transitioning to a commit phase should preserve commit state.
-
-    Preserves commit state across the cleanup->commit transition when:
-    1. The source phase is a commit review phase (role == "commit_review").
-    2. The target phase is a commit phase (role == "commit").
-    3. The cleanup is handling a currently recorded recoverable git failure.
-       ``recovery_epoch`` is historical accounting and cannot prove that the
-       current cleanup is a retry.
-    4. A validated commit message was already prepared (commit.agent_invoked is True).
-    """
     source_phase_def = policy.phases.get(state.phase)
     if source_phase_def is None or source_phase_def.role != "commit_review":
         return False
@@ -2487,16 +1999,6 @@ def _advance_phase(
     *,
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Advance to a new phase with proper state resets.
-
-    Args:
-        state: Current pipeline state.
-        target_phase: Phase to advance to.
-        policy: Pipeline policy for drain resolution and commit detection.
-
-    Returns:
-        Tuple of (new_state, effects).
-    """
     advanced_state, advanced_target = _prepare_phase_advance(
         state, target_phase, policy, routing_timing=routing_timing
     )
@@ -2515,7 +2017,6 @@ def _advance_to_failed(
     reason: str,
     policy: PipelinePolicy | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Transition into the terminal failure route via centralized recovery bookkeeping."""
     return _enter_failed_recovery(state, reason, policy)
 
 

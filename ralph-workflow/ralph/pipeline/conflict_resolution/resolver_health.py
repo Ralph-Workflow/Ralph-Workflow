@@ -1,23 +1,3 @@
-"""Run-scoped health ledger for integration resolver agents.
-
-Every path that invokes a resolver (conflict driver, retained-integration
-diagnostic, pending-merge repair) asks :func:`choose_resolver` for the next
-candidate and reports the outcome through :func:`bench_resolver` /
-:func:`clear_resolver`. They share the run's ``AgentFailureLedger`` via the
-``RecoveryController`` public seam, ensuring resolution attempt facts are
-consistently tracked and that an agent demoted or cooling down in
-resolution is skipped by any resolver caller.
-
-Health is strictly partitioned by phase identity (``PHASE_RESOLUTION``).
-Benching, cooldown, or demoting an agent in integration conflict resolution
-does not contaminate other phases such as ``development`` or ``analysis``,
-maintaining per-phase isolation.
-
-Unproductive attempts without a verified result record an attempt fact in the
-ledger. When consecutive unproductive attempts reach the configured limit,
-the agent enters cooldown with exponential backoff. A verified resolution
-clears the agent's failure history for the resolution phase.
-"""
 
 from __future__ import annotations
 
@@ -48,7 +28,6 @@ __all__ = [
 
 @dataclass(frozen=True, slots=True)
 class ResolverChoice:
-    """The next resolver to invoke, or how long until one is selectable."""
 
     agent: str | None
     wait_ms: int
@@ -60,12 +39,6 @@ def choose_resolver(
     *,
     target_root: Path | None = None,
 ) -> ResolverChoice:
-    """Return the highest-priority candidate that is not cooling down.
-
-    When every candidate is benched, ``agent`` is ``None`` and ``wait_ms`` is
-    the time until the earliest one returns; callers wait that long instead of
-    invoking a benched agent.
-    """
     if not candidates:
         return ResolverChoice(agent=None, wait_ms=0)
     if target_root is not None:
@@ -91,7 +64,6 @@ def _record_resolver_fact(
     workspace_changed: bool = False,
     free_retry_category: bool = False,
 ) -> None:
-    """Route an attempt fact to the failure ledger via public seam."""
     fact = AttemptFact(
         phase=PHASE_RESOLUTION,
         agent=agent,
@@ -142,11 +114,6 @@ def bench_resolver(
     outcome: ConflictAttemptOutcome | None = None,
     unresolved_count: int = 0,
 ) -> None:
-    """Record an unproductive resolution attempt for ``agent`` in the resolution phase.
-
-    ``outcome`` forwards a typed §11 attempt fact (default ``RAW`` keeps the
-    text path for genuinely external caller-supplied failures).
-    """
     is_free_retry = False
     with suppress(Exception):
         classified = controller.classify_conflict_attempt(
@@ -172,7 +139,6 @@ def bench_resolver(
 
 
 def clear_resolver(controller: RecoveryController, agent: str) -> None:
-    """Forget ``agent``'s failure history in the resolution phase after a verified result."""
     _record_resolver_fact(
         controller,
         agent,

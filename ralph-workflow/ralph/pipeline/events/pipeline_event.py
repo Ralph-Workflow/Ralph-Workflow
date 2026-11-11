@@ -1,10 +1,8 @@
-"""Pipeline event type enumeration."""
 
 from enum import StrEnum
 
 
 class PipelineEvent(StrEnum):
-    """Enumeration of all pipeline state-machine transition events."""
 
     AGENT_SUCCESS = "agent_success"
     AGENT_FAILURE = "agent_failure"

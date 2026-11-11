@@ -1,17 +1,3 @@
-"""Merge obstructions must never silently strand a branch behind its target.
-
-Observed 2026-10-05: a worktree held 22 untracked files that were
-byte-identical to files ``main`` tracks (leftovers of an earlier
-integration). ``git merge main`` refused to start (exit 2, "untracked
-working tree files would be overwritten by merge"); Ralph recorded a
-generic "endpoint merge conflicted" with no resolver able to act, saw a
-clean tree, and began planning 40 commits behind ``main``.
-
-Git is injected through ``run_git`` in ``ralph.git.merge`` and
-``ralph.git.merge_obstructions`` so this file stays in
-the default, budget-tracked suite; only ``tmp_path`` files are touched.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -164,20 +150,6 @@ def test_refused_merge_names_the_obstruction_instead_of_a_generic_conflict(
 def test_repeat_identical_refusal_spends_durable_budget_and_climbs(
     tmp_path: Path,
 ) -> None:
-    """AC-11(d): the refusal evidence is charged durably once per attempt.
-
-    The 2026-10-27 loop logged ``counted=False ... remaining=None`` and a
-    fixed delay: the refusal spent nothing, so it could never exhaust
-    anything. Here the refusal's typed evidence (the MergeResult the
-    boundary receives, including ``blocked_paths``) is folded into the
-    observation the owner charges, so a repeat of the SAME refusal
-    evidence:
-
-    * advances the durable repeat count once per attempt (``remaining``
-      decreases attempt by attempt), and
-    * advances the escalation ``cycle`` (the rung) at the threshold,
-      reaching a named escalation state within a fixed bound.
-    """
     from ralph.pipeline.integration_attempt_ledger import AttemptLedger
     from ralph.pipeline.integration_decision import (
         AttemptState,
@@ -199,11 +171,6 @@ def test_repeat_identical_refusal_spends_durable_budget_and_climbs(
         WorktreeState,
     )
 
-    # The refusal result from test_refused_merge_names_the_obstruction_...
-    # folded into the observation the boundary decides on: the live
-    # observation says clean, but the refusal's own file list proves the
-    # tree holds local work Git counts, so the observation the budget is
-    # charged against carries the blocking worktree state.
     refusal = MergeResult(
         outcome="conflict",
         reason=(
@@ -250,10 +217,6 @@ def test_repeat_identical_refusal_spends_durable_budget_and_climbs(
         trace.append(action)
         ledger.charge(signature, action.value, is_unknown=False)
 
-    # ``remaining`` advances: every attempt charged the same evidence
-    # once — the signature-level total equals the number of attempts,
-    # so no retry ever ran for free (the observed run's ``counted=False
-    # ... remaining=None``).
     durable = ledger.read()
     assert sum(durable.repeat_counts.values()) == len(trace), (
         "each repeat of the identical refusal evidence charges the durable budget once"
@@ -261,41 +224,16 @@ def test_repeat_identical_refusal_spends_durable_budget_and_climbs(
     assert durable.repeat_counts[(signature, trace[0].value)] == 2, (
         "the direct action is charged exactly at the repeat threshold, never re-run past it"
     )
-    # The first contact answers the direct cleanup action twice; the
-    # escalation cycle advances at the threshold and never re-runs the
-    # action that failed — within a fixed bound (here, by the third
-    # attempt) the trace reaches the named stronger rung.
     assert trace[0] is NextAction.SAVE_AND_RESTORE
     assert trace[1] is NextAction.SAVE_AND_RESTORE
     assert trace[2] is NextAction.PRESERVE_VIA_TEMP_INDEX
     assert any(action is not NextAction.SAVE_AND_RESTORE for action in trace[2:])
     assert durable.rung is not EscalationRung.REPAIR
-    # No resolver and no commit agent for a non-conflict refusal.
     assert NextAction.DISPATCH_RESOLVER not in trace
     assert NextAction.COMMIT not in trace
 
 
 def test_clean_verdict_then_mutation_dry_run_must_not_refuse() -> None:
-    """AC-11 differential: a clean verdict never answers a refusal.
-
-    The 2026-10-27 loop observed the inverse too: after every cleanup
-    the re-observation read CLEAN, yet the boundary still answered a
-    refusal-shaped action, so the run idled behind an up-to-date target.
-    The differential this test pins:
-
-    * a CLEAN worktree observation on first contact is answered with a
-      mutation-class decision (the boundary acts — land / reintegrate),
-      never a refusal-class one (no ``WAIT_FOR_ENVIRONMENT``, no
-      resolver dispatch for a clean tree, no save-and-restore of work
-      that does not exist);
-    * the contrast arm re-runs the SAME decision shape under the repeat
-      refusal from ``test_repeat_identical_refusal_spends_durable_
-      budget_and_climbs``: a TRACKED_CHANGES tree at the same signature
-      under repeat pressure is what climbs to a stronger rung — proving
-      the clean answer above is not an accident of a weak assertion.
-
-    Both arms are the pure decision table: no git, no clock, no I/O.
-    """
     from ralph.pipeline.integration_decision import (
         AttemptState,
         DecisionContext,
@@ -335,7 +273,6 @@ def test_clean_verdict_then_mutation_dry_run_must_not_refuse() -> None:
         )
     )
 
-    # The clean verdict is a mutation-class decision: the boundary acts.
     refusal_class = frozenset(
         {
             NextAction.WAIT_FOR_ENVIRONMENT,
@@ -348,10 +285,6 @@ def test_clean_verdict_then_mutation_dry_run_must_not_refuse() -> None:
     )
     assert clean_action is NextAction.REINTEGRATE
 
-    # Contrast arm: the SAME signature with a dirty worktree (the
-    # refusal's own evidence from the repeat-budget test above) is what
-    # refuses and escalates — the clean answer is the differential, not
-    # a weak assertion.
     dirty_observation = Observation(
         target_vs_feature=TargetVsFeature.BEHIND,
         target_vs_remote=TargetVsRemote.EQUAL,

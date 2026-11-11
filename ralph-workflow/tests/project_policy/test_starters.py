@@ -1,5 +1,3 @@
-"""Tests for the starter policy bundle loader."""
-
 from __future__ import annotations
 
 import re
@@ -21,37 +19,18 @@ def test_architecture_policy_is_a_core_starter() -> None:
 
 
 def test_security_policy_is_a_core_starter_with_threat_surfaces() -> None:
-    """Security applies to every project (secrets, untrusted input), so the
-    security policy ships as a CORE starter. Its content is app-type-specific
-    (strcpy bans vs CSRF defenses), so the 'Threat surfaces' section that
-    carries the project-specific rules is a REQUIRED heading: it must survive
-    every future amendment of the project's customized policy."""
     assert "security-policy.md" in markers.CORE_POLICY_FILES
     assert "security-policy.md" in set(starters.iter_starter_names())
     assert "Threat surfaces" in markers.REQUIRED_HEADINGS["security-policy.md"]
 
 
 def test_testing_policy_requires_a_suite_admission_section() -> None:
-    """Every other testing rule obliges MORE coverage; "Suite admission" is
-    the only section that decides what must NOT become an automated test —
-    a perceptual judgment belongs in a human review lane, a third-party or
-    device-bound check in a named profile, an expiring-credential probe in
-    one-off evidence. Without it the policy is a one-way ratchet and suites
-    accrete tests that assert subjective constants or die when a key
-    expires, so the heading is REQUIRED: it must survive every amendment of
-    the project's customized policy."""
     assert "Suite admission" in markers.REQUIRED_HEADINGS["testing-policy.md"]
     content = starters.read_starter("testing-policy.md")
     assert "## Suite admission" in content
 
 
 def test_verification_policy_requires_a_gate_lanes_section() -> None:
-    """ "Wire it in, or delete it" is correct anti-rot policy but leaves a
-    check that CANNOT meet the default gate's constraints (live third-party
-    service, device matrix, long soak) with nowhere legitimate to live.
-    "Gate lanes" is that home, and it is only safe because it demands an
-    owner and a trigger for every named profile — so the heading is
-    REQUIRED rather than optional prose."""
     assert "Gate lanes" in markers.REQUIRED_HEADINGS["verification-policy.md"]
     content = starters.read_starter("verification-policy.md")
     assert "## Gate lanes" in content
@@ -74,7 +53,6 @@ def test_read_starter_returns_non_empty_content() -> None:
 
 
 def test_read_starter_returns_cached_bundled_content_by_name() -> None:
-    """Repeated validation returns the same in-process bundled value."""
     first = starters.read_starter("testing-policy.md")
     second = starters.read_starter("testing-policy.md")
 
@@ -97,21 +75,16 @@ def test_starter_has_research_basis_section() -> None:
 def test_starter_has_at_least_one_research_citation() -> None:
     for name in starters.iter_starter_names():
         content = starters.read_starter(name)
-        # Every starter must include at least one citation block with
-        # publisher, title, http URL, and review date.
         assert "publisher:" in content
         assert "title:" in content
         assert "http:" in content
         assert "review date:" in content
 
 
-# Regex for an ISO review date (YYYY-MM-DD) -- the format every starter
-# citation block uses and the canonical validator checks for.
 _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def _extract_research_basis_section(content: str) -> str:
-    """Return the body of the '## Research basis' section, or '' if absent."""
     lines = content.splitlines()
     start_idx = -1
     for idx, line in enumerate(lines):
@@ -129,7 +102,6 @@ def _extract_research_basis_section(content: str) -> str:
 
 
 def _extract_citation_blocks(research_basis_body: str) -> list[str]:
-    """Split a '## Research basis' body on blank lines, keep blocks containing 'http:'."""
     blocks: list[str] = []
     for raw_block in research_basis_body.split("\n\n"):
         block = raw_block.strip()
@@ -141,19 +113,6 @@ def _extract_citation_blocks(research_basis_body: str) -> list[str]:
 
 
 def test_starter_citations_are_structurally_valid() -> None:
-    """Offline deterministic guard: every Research basis citation is structurally valid.
-
-    The on-demand ``make policy-citation-linkcheck`` target verifies that every
-    cited URL actually resolves (HTTP < 400); this offline test guards the
-    SHAPE of each citation block so silent rot -- a missing field, a non-https
-    URL, a malformed date -- fails fast inside the timed 60s suite instead of
-    only on a manual network gate.
-
-    For each starter: slice the '## Research basis' section, split into
-    citation blocks on blank lines, keep blocks containing 'http:', and
-    assert every such block carries every required field plus an https URL
-    with a non-empty host and an ISO ``YYYY-MM-DD`` review date.
-    """
     for name in starters.iter_starter_names():
         content = starters.read_starter(name)
         research_basis = _extract_research_basis_section(content)
@@ -195,16 +154,6 @@ def test_starter_citations_are_structurally_valid() -> None:
             )
 
 
-# Gate tools each starter's prose recommends to the remediation agent. A
-# faithful agent copies these into RALPH-COMMAND lines, so every entry MUST
-# pass the validator's first-token allowlist — otherwise the starter's own
-# advice burns a remediation attempt on an RWP-CMD:unapproved finding.
-# Keys must cover EVERY starter (completeness is asserted) so a new or
-# edited starter is forced to declare its recommendations here.
-# KNOWN LIMITATION: the guard is one-directional — a NEW tool
-# recommendation added to a starter's prose without an inventory entry is
-# not detected automatically (prose scanning is deliberately avoided);
-# reviewers must update this inventory when starter advice changes.
 _RECOMMENDED_GATE_COMMANDS: dict[str, tuple[str, ...]] = {
     "execution-kernel.md": (),
     "testing-policy.md": (),
@@ -212,10 +161,6 @@ _RECOMMENDED_GATE_COMMANDS: dict[str, tuple[str, ...]] = {
     "linting-policy.md": (),
     "dependency-policy.md": (),
     "verification-policy.md": (),
-    # The gate-script policy is the one starter that names a concrete tool in
-    # its own guidance: it points the remediator at shellcheck as the standard
-    # POSIX-shell script linter, so that recommendation must clear the
-    # validator's approved-tools allowlist like any other.
     "gate-script-policy.md": ("shellcheck",),
     "agent-policy.md": (),
     "clean-code-policy.md": (),
@@ -252,40 +197,23 @@ def test_standard_quality_gates_are_mandatory_when_supported() -> None:
 
 
 def test_testing_policy_has_browser_time_budget_rule() -> None:
-    """Browser-time budget admission language must appear verbatim so that
-    new browser journeys are routed correctly against the aggregate ceiling."""
     content = starters.read_starter("testing-policy.md")
     assert "BROWSER-TIME BUDGET" in content
     assert "browser_budget_seconds" in content
     assert "aggregate ceiling" in content.lower()
     assert "default_budget_seconds" in content
-    # The rule must preserve the no-raise constraint.
     assert "never raised" in content or "never" in content
 
 
 def test_testing_policy_browser_budget_two_states_are_unambiguous() -> None:
-    """The browser-time budget rule has two admission states and a
-    never-raise constraint; the prose must distinguish the states AND
-    declare the no-raise rule without the older "every addition needs
-    an offset" wording contradicting the new below-budget carve-out.
-    """
     content = starters.read_starter("testing-policy.md")
     normalized = " ".join(content.split())
-    # Two states, both present and not silently collapsed.
     assert "BELOW the measured budget" in normalized
     assert "AT or OVER the measured budget" in normalized
-    # Below-budget admission does NOT require a mandatory offset.
     assert "WITHOUT any mandatory time offset" in normalized
-    # At/over-budget admission requires BOTH an offset and a
-    # distinct-risk justification (the second part of the AND).
     assert "BOTH a time offset" in normalized
     assert "distinct-risk justification" in normalized
-    # The aggregate ceiling is never raised -- explicit on its own
-    # line so a future editor cannot silently relax it.
     assert "never raised" in normalized
-    # The general budget-neutrality rule carries an explicit
-    # browser-time carve-out so the two prose passages cannot be read
-    # to disagree.
     assert "browser-time carve-out" in normalized or "carve-out" in normalized
 
 
@@ -320,16 +248,11 @@ def test_typechecking_dead_code_findings_cannot_be_suppressed() -> None:
 
 
 def test_recommended_gate_tools_inventory_covers_every_starter() -> None:
-    """The starter-advice-vs-allowlist check must run for EVERY policy
-    document: a starter absent from the inventory silently escapes it."""
     assert set(_RECOMMENDED_GATE_COMMANDS) == set(starters.iter_starter_names())
 
 
 @pytest.mark.parametrize("name", sorted(starters.iter_starter_names()))
 def test_starter_recommended_gate_tools_are_validator_approved(name: str) -> None:
-    """Every gate tool a starter recommends must clear the validator's
-    APPROVED_GATE_TOOLS first-token allowlist, and must actually appear in
-    the starter text (staleness guard for this inventory)."""
     content = starters.read_starter(name)
     for command in _RECOMMENDED_GATE_COMMANDS[name]:
         assert command in content, (
@@ -346,19 +269,11 @@ def test_starter_recommended_gate_tools_are_validator_approved(name: str) -> Non
 
 @pytest.mark.parametrize("name", sorted(starters.iter_starter_names()))
 def test_multi_language_template_blocks_carry_replace_me_marker(name: str) -> None:
-    """A starter file can have MULTIPLE sections that are templates to adapt,
-    not just the top-of-file banner. Every per-language template block (a
-    starter shipping more than one RALPH-LANG block cannot match any single
-    real project) must be preceded by a `<!-- REPLACE-ME:` comment carrying
-    its own in-place instruction. `REPLACE-ME` is a validator placeholder
-    token, so the marker is machine-enforced: readiness stays blocked until
-    the section is adapted and the comment deleted — instructions live at
-    the section instead of bloating the remediation prompt."""
     content = starters.read_starter(name)
     lines = content.splitlines()
     lang_lines = [idx for idx, line in enumerate(lines) if line.startswith(markers.LANG_MARKER)]
     if len(lang_lines) <= 1:
-        return  # single/no language block: nothing speculative to adapt.
+        return
     marker_lines = [idx for idx, line in enumerate(lines) if line.startswith("<!-- REPLACE-ME:")]
     assert marker_lines, (
         f"{name} ships {len(lang_lines)} RALPH-LANG template blocks but no "
@@ -371,13 +286,10 @@ def test_multi_language_template_blocks_carry_replace_me_marker(name: str) -> No
 
 
 def test_replace_me_token_is_a_validator_placeholder() -> None:
-    """The section marker is only trustworthy if the validator enforces its
-    deletion: REPLACE-ME must be a placeholder token."""
     assert "REPLACE-ME" in markers.PLACEHOLDER_TOKENS
 
 
 def _h2_sections(content: str) -> list[tuple[str, str]]:
-    """Split starter content into (heading, body) pairs per H2 section."""
     sections: list[tuple[str, str]] = []
     current_heading: str | None = None
     current_body: list[str] = []
@@ -396,14 +308,6 @@ def _h2_sections(content: str) -> list[tuple[str, str]]:
 
 @pytest.mark.parametrize("name", sorted(starters.iter_starter_names()))
 def test_every_unresolved_section_carries_replace_me_guidance(name: str) -> None:
-    """Weaker remediation agents need guidance AT the point of work: every
-    H2 section that still carries unresolved data (PROJECT-FACT-UNRESOLVED)
-    must also carry a `<!-- REPLACE-ME:` comment with in-place instructions
-    — including what to record when the project is too young for the data
-    to exist yet (best current answer plus the condition that settles it).
-    The comment self-destructs: REPLACE-ME is a validator placeholder, so
-    readiness stays blocked until the section is resolved and the comment
-    deleted."""
     content = starters.read_starter(name)
     for heading, body in _h2_sections(content):
         if "PROJECT-FACT-UNRESOLVED" not in body:
@@ -432,12 +336,6 @@ def test_starter_has_command_or_inapplicable() -> None:
 
 
 def test_starter_never_mentions_a_completion_marker() -> None:
-    """Completion is the ABSENCE of unresolved markers (banner, REPLACE-ME
-    comments, placeholder tokens) — there is no completion certification
-    comment for an agent to add, so no starter may reference one. This is
-    simpler and more honest: a marker asserts more than the deterministic
-    validator can check, while absence-of-markers is exactly what it
-    checks."""
     for name in starters.iter_starter_names():
         content = starters.read_starter(name)
         assert "ralph-policy-complete" not in content, (
@@ -450,7 +348,6 @@ def test_seed_starter_into_writes_only_when_absent() -> None:
 
     ws = MemoryWorkspace()
     assert starters.seed_starter_into(ws, "testing-policy.md") is True
-    # Second call is a no-op.
     assert starters.seed_starter_into(ws, "testing-policy.md") is False
     target = f"{markers.CANONICAL_DIR}testing-policy.md"
     assert ws.exists(target)
@@ -482,15 +379,10 @@ def test_seed_starter_into_raises_for_unknown_name() -> None:
 
 
 def test_starters_are_free_of_known_content_corruption() -> None:
-    """Regression guard: bundled starters must not ship with corrupted completion-marker text.
-
-    Asserts only on exact corruption fragments so legitimate required prose
-    (e.g. the word ``placeholder`` or ``the theme``) is permitted.
-    """
     corruption_fragments = (
-        "comment identifier comment",  # garbled marker paraphrase
-        "resolved).laceholder is",  # exact malformed tail in testing-policy.md
-        "the the ",  # doubled-word corruption (trailing space excludes 'the theme')
+        "comment identifier comment",
+        "resolved).laceholder is",
+        "the the ",
     )
     for name in starters.iter_starter_names():
         content = starters.read_starter(name)
@@ -523,24 +415,16 @@ def test_seed_portfolio_into_writes_only_when_absent() -> None:
 
 
 def test_starter_names_set_equals_disk_listing() -> None:
-    """Closes audit GAP C4: the set of starter names returned by
-    iter_starter_names() must exactly match the ``.md`` files on disk
-    so a stale file added to the starters directory but not listed in
-    STARTER_NAMES escapes detection.
-    """
     from pathlib import Path
 
     starters_dir = Path(starters.__file__).parent
     disk_md_names = {p.name for p in starters_dir.iterdir() if p.suffix == ".md"}
     assert set(starters.iter_starter_names()) == disk_md_names
-    # policy-portfolio.toml is also bundled and must be present on disk.
     disk_all_names = {p.name for p in starters_dir.iterdir()}
     assert "policy-portfolio.toml" in disk_all_names
 
 
 def test_all_starters_are_v6_schema_with_seven_column_guard_inventories() -> None:
-    """Verifies that all starters bundled for scaffolding/preflight carry the
-    v6 schema marker and 7-column guard inventory header with Enforcement."""
     for name in starters.iter_starter_names():
         content = starters.read_starter(name)
         assert content.splitlines()[0] == markers.POLICY_SCHEMA_MARKER

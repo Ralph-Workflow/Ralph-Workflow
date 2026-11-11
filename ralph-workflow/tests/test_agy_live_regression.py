@@ -1,27 +1,3 @@
-"""Black-box end-to-end regression for the live AGY binary.
-
-Pairs with tests/test_smoke_agy_end_to_end.py (which inspects an on-disk log)
-and tests/test_agy_harness_with_mock.py (which drives the harness with a mock).
-This file is the single source of truth that the live AGY binary produces a
-green parity table through the harness.
-
-Sizing contract
----------------
-
-The file is marked ``subprocess_e2e`` AND ``live_agy``. The
-``test-subprocess-e2e`` Makefile target excludes ``live_agy`` so the
-deterministic subprocess suite stays under the 60s wall-clock cap. The
-live tests run under the dedicated ``test-live-agy`` target with a
-per-suite timeout sized for real network-bound AGY invocations.
-
-Within this file, the strict and observational tests share a
-session-scoped fixture that runs the full smoke harness EXACTLY ONCE
-per pytest session. Sharing the smoke output across tests keeps the
-live-AGY subprocess usage to one invocation per session, so the
-``test-live-agy`` target can finish within its per-suite timeout even
-when the live binary is healthy.
-"""
-
 from __future__ import annotations
 
 import contextlib
@@ -51,20 +27,9 @@ from ralph.display.line_sanitizer import strip_terminal_control
 from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
 from ralph.pipeline.plumbing.smoke_plumbing import resolve_smoke_harness_spec
 
-# Capture the real HOME at import time, BEFORE the conftest
-# ``_isolate_process_home`` autouse fixture remaps it to a per-test sandbox.
-# AGY v1.1.8 needs the real HOME to find its keyring credentials; the
-# sandbox HOME has no .gemini/antigravity-cli state and no OAuth tokens, so
-# AGY falls back to the OAuth browser flow and times out.
 _REAL_HOME = Path(os.environ.get("HOME") or Path.home()).resolve()
 
-# The model alias to drive for live tests. The default
-# ``agy/claude-sonnet-4-6`` can hit the individual quota; the observed-working
-# low-tier ``agy/gemini-3.6-flash-low`` alias is published by ``agy models``.
 _LIVE_AGY_AGENT = "agy/gemini-3.6-flash-low"
-# The expected canonical-receipt run_id mirrors the smoke harness spec for
-# ``_LIVE_AGY_AGENT``. Computing it from the spec keeps the receipt test
-# aligned when the fallback model changes.
 _LIVE_AGY_EXPECTED_RUN_ID = resolve_smoke_harness_spec(_LIVE_AGY_AGENT).run_id
 
 
@@ -118,31 +83,18 @@ def _get_live_agy_sandbox_home() -> Path:
 
 
 def _build_live_env() -> dict[str, str]:
-    """Build the env dict for a live AGY smoke run.
-
-    AGY v1.1.8 stores its keyring credentials in the OS keychain but the
-    Go runtime also keeps a session cache under ``$HOME/.gemini/antigravity-cli``.
-    We create an isolated sandbox home with a copy of ``.gemini`` so the
-    live binary finds its session cache without ever accessing the real
-    user home directory or user configuration directory.
-    """
     sandbox_home = _get_live_agy_sandbox_home()
     env = {
         **os.environ,
         "HOME": str(sandbox_home),
         "XDG_CONFIG_HOME": str(sandbox_home / ".config"),
     }
-    # ``sys.executable`` already points at the uv-managed environment that
-    # imports the local editable package. Never inherit the parent pipx
-    # PYTHONPATH: its Python 3.13 extension modules are incompatible with
-    # this repository's pinned Python 3.14 interpreter.
     env.pop("PYTHONPATH", None)
     env.pop("RALPH_AGY_BINARY", None)
     return env
 
 
 def _read_cli_log_tail(home: Path) -> str:
-    """Read the last 4096 bytes of ``~/.gemini/antigravity-cli/cli.log``."""
     cli_log_path = home / ".gemini" / "antigravity-cli" / "cli.log"
     if not cli_log_path.is_file():
         return ""
@@ -154,14 +106,6 @@ def _read_cli_log_tail(home: Path) -> str:
 
 @dataclass(frozen=True)
 class _LiveSmokeResult:
-    """Captured live-smoke output shared across the session-scoped tests.
-
-    The session-scoped fixture runs the full ``smoke-interactive-agy`` harness
-    EXACTLY ONCE and exposes the result via this dataclass. The 7 strict and
-    observational tests in this file all read from this fixture so the
-    live-AGY subprocess is invoked once per pytest session.
-    """
-
     output: str
     cli_log_tail: str
     workspace: Path
@@ -177,27 +121,11 @@ def workspace_mirror(tmp_path: Path) -> Generator[Path, None, None]:
 
 @pytest.fixture
 def live_env(workspace_mirror: Path) -> dict[str, str]:
-    """Per-test env for live runs that need their own workspace (e.g. PTY test)."""
     return _build_live_env()
 
 
 @pytest.fixture(scope="session")
 def live_smoke_session() -> Generator[_LiveSmokeResult, None, None]:
-    """Session-scoped live AGY smoke run shared by the strict/observational tests.
-
-    Runs the full smoke harness ONCE per pytest session, in a stable
-    ``tempfile.TemporaryDirectory``-backed workspace. Tests that need the
-    smoke output (parity table, artifact file, receipt, no-breaks,
-    text-classified lines) read from this fixture instead of running
-    their own smoke. The 5 strict tests and 2 observational tests share
-    this single invocation, so the live-AGY subprocess usage stays at
-    one run per session.
-
-    The PTY-drain test (``test_live_agy_pty_read_thread_sees_output``)
-    bypasses this fixture and uses ``run_pty_and_read_lines`` directly
-    because it tests a different seam (the PTY read thread, not the
-    smoke harness).
-    """
     workspace = Path(tempfile.mkdtemp(prefix="agy-live-smoke-"))
     prompt_file = workspace / "tmp" / "interactive-agy-smoke" / "PROMPT.md"
     _write_smoke_prompt(prompt_file)
@@ -231,26 +159,6 @@ def live_smoke_session() -> Generator[_LiveSmokeResult, None, None]:
 
 
 def _xfail_if_upstream_blocked(cli_log_tail: str, *, smoke_output: str = "") -> None:
-    """Convert a documented upstream-blocked run into a clear pytest.xfail.
-
-    Called by every strict and observational test before asserting the
-    live contract. When the cli.log shows a documented upstream-blocked
-    reason (auth timed out, not logged in, RESOURCE_EXHAUSTED 429,
-    model-invalid, model-not-in-config, INVALID_ARGUMENT 400, stream
-    reset), the test xfails with a clear reason so the executor records
-    the real env state without a false pass. When the env is healthy,
-    the function returns and the assertion runs.
-
-    ``smoke_output`` (optional): when supplied, also checks for the
-    sandbox-level ``[claude turn boundary]`` artifact documented in
-    ``agy_wire_provenance.md``'s "Unexplained, out of scope" section.
-    This artifact corrupts the raw transcript by injecting non-JSON
-    lines, producing ``raw transcript corrupted`` breaks that are
-    unrelated to the transport, parser, or MCP dispatch contract the
-    strict assertions verify. When the artifact is present, the test
-    xfails with a documented reason so the executor records the real
-    result without a false failure.
-    """
     upstream_reason = _detect_upstream_blocked_reason(cli_log_tail)
     if upstream_reason is not None:
         pytest.xfail(
@@ -272,14 +180,6 @@ def _xfail_if_upstream_blocked(cli_log_tail: str, *, smoke_output: str = "") -> 
 
 
 def test_live_agy_invokes_live_binary(live_smoke_session: _LiveSmokeResult) -> None:
-    """The live smoke run invokes the real agy binary, not the mock.
-
-    Reads the session-shared smoke output (one live invocation per
-    session, see ``live_smoke_session`` fixture) and asserts an
-    ``Invoking agent: agy`` line contains ``--dangerously-skip-permissions``
-    while the ``MOCK_AGY_BEHAVIOR=`` marker is absent. This proves the
-    harness used the real binary, not the mock.
-    """
     _xfail_if_upstream_blocked(live_smoke_session.cli_log_tail)
     output = live_smoke_session.output
 
@@ -295,14 +195,6 @@ def test_live_agy_invokes_live_binary(live_smoke_session: _LiveSmokeResult) -> N
 def test_live_agy_produces_green_parity_table(
     live_smoke_session: _LiveSmokeResult,
 ) -> None:
-    """The parity table reports file=yes, tool activity=yes, artifact=yes, breaks=none.
-
-    Reads the session-shared smoke output and asserts the AGY parity row
-    includes the model alias, the ``agy`` transport column, ``yes`` for
-    file creation, and ``none`` for breaks. There is NO auth/quota
-    permits allowance; the upstream-blocked xfail gate converts
-    documented transient conditions into a clear xfail.
-    """
     output = live_smoke_session.output
     cli_log_tail = live_smoke_session.cli_log_tail
     _xfail_if_upstream_blocked(cli_log_tail, smoke_output=output)
@@ -319,15 +211,6 @@ def test_live_agy_produces_green_parity_table(
         f"Expected File=yes column in parity table. "
         f"cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
     )
-    # Evidence Provenance plan (S-2, measured 2026-08-06 --
-    # tests/display/_fixtures/agy_wire_provenance.md): a genuine
-    # call_mcp_tool submission grades WORKSPACE_EFFECT, not WIRE, unless
-    # the run's own process can HMAC-bind its receipts. The smoke CLI
-    # mints a run-scoped RALPH_BROKER_SECRET when the operator's shell
-    # exports none, so the honest verdict is read from the provenance
-    # brackets in the report rather than from the pytest process's env.
-    # A bare "Breaks=none" column is only honest when every required fact
-    # graded WIRE; otherwise the report must name the DEGRADED demotion.
     required_facts_wire = (
         "- smoke_test_result artifact submitted observed [WIRE]" in output
         and "- completion sentinel observed [WIRE]" in output
@@ -348,13 +231,6 @@ def test_live_agy_produces_green_parity_table(
 
 
 def test_live_agy_artifact_present(live_smoke_session: _LiveSmokeResult) -> None:
-    """After the live smoke run, the smoke_test_result artifact is present.
-
-    Reads the session-shared smoke workspace and asserts the canonical
-    Markdown artifact ``.agent/artifacts/smoke_test_result.md`` is on
-    disk. There is NO auth/quota permits allowance; the upstream-blocked
-    xfail gate converts documented transient conditions into a clear xfail.
-    """
     _xfail_if_upstream_blocked(live_smoke_session.cli_log_tail)
     cli_log_tail = live_smoke_session.cli_log_tail
     output = live_smoke_session.output
@@ -369,15 +245,6 @@ def test_live_agy_artifact_present(live_smoke_session: _LiveSmokeResult) -> None
 def test_live_agy_no_breaks_and_tool_artifact_activity(
     live_smoke_session: _LiveSmokeResult,
 ) -> None:
-    """The parity row has Tool activity=yes, Artifact=yes, Breaks=none.
-
-    Reads the session-shared smoke output and asserts the EXACT positive
-    success markers in the parity report (``- tool activity observed``,
-    ``- smoke_test_result artifact submitted``, ``No breaks observed``)
-    AND the absence of the corresponding negative break markers. The
-    marker substrings overlap, so substring-only checks would let an
-    upstream-blocked run pass falsely; the xfail gate prevents that.
-    """
     output = live_smoke_session.output
     cli_log_tail = live_smoke_session.cli_log_tail
     _xfail_if_upstream_blocked(cli_log_tail, smoke_output=output)
@@ -390,12 +257,6 @@ def test_live_agy_no_breaks_and_tool_artifact_activity(
         f"Expected the dash-prefixed '- smoke_test_result artifact submitted' "
         f"success marker. cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
     )
-    # PA-002 / Evidence Provenance plan: a bare "- completion sentinel
-    # observed" substring is exactly the pre-feature contract this plan
-    # replaces -- it does not distinguish a real declare_complete call from
-    # a host-synthesized one (A4). Require the provenance bracket the
-    # report always attaches (see smoke.py's Evidence rendering) alongside
-    # it, naming one of the three ranks a live AGY run can actually reach.
     assert "- completion sentinel observed" in output, (
         f"Expected the durable completion-sentinel success marker. "
         f"cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
@@ -408,12 +269,6 @@ def test_live_agy_no_breaks_and_tool_artifact_activity(
         "(TRANSCRIPT/HOST_SYNTHESIZED/WIRE), not a bare unqualified claim. "
         f"cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
     )
-    # Evidence Provenance plan (S-2, measured 2026-08-06 -- see the parity-table
-    # assertion above for the full reasoning): "No breaks observed" / "Breaks: none"
-    # is only honest when every required fact reached WIRE. The smoke CLI may
-    # mint a run-scoped RALPH_BROKER_SECRET, so the honest verdict is read
-    # from the provenance brackets in the report rather than from the pytest
-    # process's env. Otherwise the report must name the DEGRADED demotion.
     required_facts_wire = (
         "- smoke_test_result artifact submitted observed [WIRE]" in output
         and "- completion sentinel observed [WIRE]" in output
@@ -457,18 +312,6 @@ def test_live_agy_no_breaks_and_tool_artifact_activity(
 def test_live_agy_pty_read_thread_sees_output(
     workspace_mirror: Path,
 ) -> None:
-    """The PTY read thread in PtyLineReader must actually see real AGY output.
-
-    Authoritative live-output proof: drive the live ``agy`` binary through the
-    PUBLIC ``run_pty_and_read_lines`` API (not the private ``PtyExtras``) and
-    assert at least one yielded line contains the literal text ``hello`` from
-    the canonical "Reply with exactly the word: hello" prompt.
-
-    This test does NOT use the session-shared ``live_smoke_session``
-    fixture: it tests a different seam (the PTY read thread, not the
-    smoke harness). The per-suite 60s cap on ``test-live-agy`` is
-    sized to accommodate this one direct PTY invocation.
-    """
     _xfail_if_live_agy_upstream_blocked()
 
     config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
@@ -574,7 +417,6 @@ _UPSTREAM_BLOCKED_PATTERNS: tuple[tuple[str, str], ...] = (
 
 
 def _live_timeout_diagnostic(timeout_seconds: float, cli_log_tail: str) -> str | None:
-    """Classify a bounded live timeout from its AGY CLI-log evidence."""
 
     upstream_reason = _detect_upstream_blocked_reason(cli_log_tail)
     if upstream_reason is None:
@@ -586,7 +428,6 @@ def _live_timeout_diagnostic(timeout_seconds: float, cli_log_tail: str) -> str |
 
 
 def test_detect_upstream_blocked_reason_ignores_transient_not_logged_in_noise() -> None:
-    """S-2: transient not-logged-in noise before successful ChainedAuth is not blocked."""
 
     cli_log_tail = (
         "You are not logged into Antigravity. Print mode: triggering interactive OAuth\n"
@@ -597,7 +438,6 @@ def test_detect_upstream_blocked_reason_ignores_transient_not_logged_in_noise() 
 
 
 def test_live_agy_timeout_regression_is_upstream_blocked_when_cli_log_records_auth() -> None:
-    """S-2: a bounded live timeout with AGY auth evidence is an upstream xfail."""
 
     diagnostic = _live_timeout_diagnostic(
         120,
@@ -611,17 +451,6 @@ def test_live_agy_timeout_regression_is_upstream_blocked_when_cli_log_records_au
 
 
 def _detect_upstream_blocked_reason(cli_log_tail: str) -> str | None:
-    """Return the first documented upstream-blocked reason found in cli.log, else None.
-
-    Patterns are pinned to ``tmp/agy-source-of-truth.txt`` and the
-    ``_AGY_QUOTA_PATTERN`` / ``_AGY_MODEL_INVALID_PATTERN`` /
-    ``_AGY_MODEL_NOT_IN_CONFIG_PATTERN`` constants in
-    ``ralph/pipeline/plumbing/smoke_plumbing.py:130-141``. The additional
-    patterns (INVALID_ARGUMENT 400, assistant prefill, stream reset,
-    auth timed out) cover the empirical 2026-06-16 dev-machine
-    cli.log evidence; they document the live-blocked state and are not part of
-    the published AGY contract.
-    """
     if not cli_log_tail:
         return None
     for pattern, reason in _UPSTREAM_BLOCKED_PATTERNS:
@@ -634,28 +463,6 @@ def _detect_upstream_blocked_reason(cli_log_tail: str) -> str | None:
 def test_live_agy_artifact_promoted_to_canonical_receipt(
     live_smoke_session: _LiveSmokeResult,
 ) -> None:
-    """The AGY-side direct file write is promoted to a canonical receipt.
-
-    Reads the session-shared smoke workspace and asserts the canonical
-    artifact submission path: the live AGY authors the fallback
-    ``.agent/tmp/smoke_test_result.md`` Markdown document and the
-    ``promote_fallback_artifact`` / ``write_artifact_receipt`` machinery
-    in ``ralph.mcp.artifacts`` writes the canonical
-    ``.agent/artifacts/smoke_test_result.md`` artifact and durably stamps
-    a canonical receipt keyed on ``(run_id, artifact_type)``. Under RFC-013 P3 that receipt lives
-    in the per-workspace ``.agent/state.db`` (one row per
-    ``(run_id, artifact_type)``); the legacy
-    ``.agent/receipts/<run_id>/<artifact_type>.json`` file path is a
-    migration read fallback and a durable write fallback when DB
-    persistence is unavailable.
-
-    Asserting via the public ``artifact_receipt_present`` read API
-    verifies the behavioral promotion contract without coupling to
-    which physical store the receipt landed in.
-
-    There is NO auth/quota permits allowance; the upstream-blocked xfail
-    gate converts documented transient conditions into a clear xfail.
-    """
     _xfail_if_upstream_blocked(live_smoke_session.cli_log_tail)
     cli_log_tail = live_smoke_session.cli_log_tail
     output = live_smoke_session.output
@@ -667,10 +474,6 @@ def test_live_agy_artifact_promoted_to_canonical_receipt(
     )
 
     expected_run_id = live_smoke_session.expected_run_id
-    # RFC-013 P3: assert the canonical receipt is durably present via
-    # the public artifact_receipt_present read API. The legacy
-    # .agent/receipts/<run_id>/<type>.json path is a migration read fallback
-    # and a durable write fallback when DB persistence is unavailable.
     assert (
         artifact_receipt_present(
             live_smoke_session.workspace,
@@ -690,24 +493,6 @@ def test_live_agy_artifact_promoted_to_canonical_receipt(
 def test_live_agy_produces_parser_classified_output_and_canonical_receipt(
     live_smoke_session: _LiveSmokeResult,
 ) -> None:
-    """End-to-end proof: parser-classified output AND canonical receipt.
-
-    Combines the two contract surfaces the user explicitly asked for
-    into one test that reads the session-shared smoke output: the
-    harness drives the live AGY to produce non-empty
-    parser-classified output AND the canonical artifact submission
-    chain (artifact + receipt) completes successfully.
-
-    Uses the existing xfail gate via ``_detect_upstream_blocked_reason``
-    (``_UPSTREAM_BLOCKED_PATTERNS``) to convert a documented
-    upstream-blocked run into a clear xfail with the env state. When
-    the env is healthy the test is STRICT and asserts the full contract
-    end-to-end.
-
-    The companion tests cover the individual surfaces; this test is
-    the single place that proves the full live path works end-to-end
-    using the session-shared smoke invocation.
-    """
     _xfail_if_upstream_blocked(live_smoke_session.cli_log_tail)
     cli_log_tail = live_smoke_session.cli_log_tail
     output = live_smoke_session.output
@@ -719,11 +504,6 @@ def test_live_agy_produces_parser_classified_output_and_canonical_receipt(
         f"Expected smoke_test_result artifact at {artifact_path}. "
         f"cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
     )
-    # RFC-013 P3: the canonical receipt store is the per-workspace
-    # .agent/state.db. Asserting via the public artifact_receipt_present
-    # read API verifies the end-to-end promotion contract without
-    # coupling to which physical store the receipt landed in (the legacy
-    # .agent/receipts/<run_id>/<type>.json path is the durable fallback).
     assert (
         artifact_receipt_present(
             live_smoke_session.workspace,
@@ -753,9 +533,6 @@ def test_live_agy_produces_parser_classified_output_and_canonical_receipt(
         f"success marker. cli.log tail: {cli_log_tail[-200:]!r}\n"
         f"Output:\n{output[-5000:]}"
     )
-    # PA-002: a bare substring cannot distinguish a real declare_complete call
-    # (TRANSCRIPT/WIRE) from a host-synthesized one (HOST_SYNTHESIZED, A4) --
-    # require the provenance rung the report always attaches.
     assert "- completion sentinel observed" in output, (
         "Expected the independent durable completion evidence in the report. "
         f"cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
@@ -770,36 +547,6 @@ def test_live_agy_produces_parser_classified_output_and_canonical_receipt(
 
 
 def test_live_agy_wire_dispatch_forces_pass_with_broker_secret() -> None:
-    """S-3 Part C (closes PLANNING_ANALYSIS_DECISION.md PA-001, the live half).
-
-    ``test_transcript_replay_with_real_mcp_dispatch_grades_wire_pass``
-    (``tests/test_evidence_provenance_lattice.py``, S-3 Part A) proves the
-    protocol boundary grades ``WIRE``/``PASS`` correctly WHEN DRIVEN
-    CORRECTLY, using a reconstructed transcript run through a real in-process
-    ``McpServer``. It does not prove AGY's actual ``call_mcp_tool`` argument
-    shape maps onto a real dispatch. This test proves that residual: it
-    drives the live ``agy`` binary once more, in its own workspace, with
-    ``RALPH_BROKER_SECRET`` forced into the subprocess env via its own
-    ``_build_live_env()``-derived dict -- never dependent on ambient shell
-    state, unlike ``live_smoke_session`` (whose
-    ``test_live_agy_produces_green_parity_table`` /
-    ``test_live_agy_no_breaks_and_tool_artifact_activity`` companions only
-    assert the WIRE-eligible branch conditionally, when the ambient
-    environment happens to already have the secret set).
-
-    Unlike every other test in this file, the assertion here is
-    unconditional: ``WORKSPACE_EFFECT`` / ``HOST_SYNTHESIZED`` / ``TRANSCRIPT``
-    do NOT satisfy this test -- only a genuine ``tools/call`` dispatch
-    reaching ``WIRE`` does. The ``_xfail_if_upstream_blocked`` gate is kept
-    for genuine auth/quota failures (this is a live, network-bound,
-    credential-dependent test), but a fallback-promoted or host-synthesized
-    run must NOT pass silently once the secret is forced -- that shape of
-    run fails this test loudly, closing the gap PLANNING_ANALYSIS_DECISION.md
-    PA-001 names: a hand-built test that fabricates the receipt/sentinel/
-    ledger directly stays green even if AGY's dispatcher route regresses to
-    zero real MCP calls; only a live run driven under a forced secret can
-    prove the real binary's dispatch route still reaches ``WIRE``.
-    """
     _xfail_if_live_agy_upstream_blocked()
 
     workspace = Path(tempfile.mkdtemp(prefix="agy-live-smoke-wire-"))
@@ -807,9 +554,6 @@ def test_live_agy_wire_dispatch_forces_pass_with_broker_secret() -> None:
     _write_smoke_prompt(prompt_file)
 
     env = _build_live_env()
-    # Force the secret explicitly rather than relying on ambient shell
-    # state -- the point of this test is that it is unconditional, not that
-    # it happens to observe a favorable environment.
     env["RALPH_BROKER_SECRET"] = "test-live-wire-dispatch-secret"
 
     result = subprocess.run(
@@ -856,7 +600,6 @@ def test_live_agy_wire_dispatch_forces_pass_with_broker_secret() -> None:
 
 
 def _xfail_if_live_agy_upstream_blocked() -> None:
-    """Stop a live call before it can hang on documented upstream auth."""
 
     cli_log_tail = _read_cli_log_tail(_REAL_HOME)
     upstream_reason = _detect_upstream_blocked_reason(cli_log_tail)
@@ -870,20 +613,6 @@ def _xfail_if_live_agy_upstream_blocked() -> None:
 def test_live_agy_environment_diagnostic_records_upstream_block(
     live_smoke_session: _LiveSmokeResult,
 ) -> None:
-    """Non-gating companion test that records the live AGY environment state.
-
-    Reads the session-shared smoke output and inspects the cli.log tail
-    for the documented upstream-blocked patterns (auth timed out, not
-    logged in, RESOURCE_EXHAUSTED 429, model-invalid, INVALID_ARGUMENT
-    400, stream reset).
-
-    When an upstream-blocked reason is detected, the test xfails with a
-    clear reason so the executor records the real environment state
-    without affecting the strict-test outcomes. When the environment
-    is healthy (no upstream-blocked reason in cli.log), the test passes
-    — this is the diagnostic signal that the strict tests should be
-    passing too.
-    """
     cli_log_tail = live_smoke_session.cli_log_tail
     output = live_smoke_session.output
 

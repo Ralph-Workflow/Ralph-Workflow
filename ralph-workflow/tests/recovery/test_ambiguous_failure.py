@@ -1,5 +1,3 @@
-"""Black-box test: ambiguous failures are classified correctly and flagged for review."""
-
 from __future__ import annotations
 
 import errno
@@ -32,7 +30,6 @@ def _make_state(agents: list[str] | None = None) -> PipelineState:
 
 
 def test_unknown_exception_is_ambiguous() -> None:
-    """An exception that doesn't match known patterns is classified as AMBIGUOUS."""
     classifier = FailureClassifier()
 
     failure = classifier.classify(
@@ -46,7 +43,6 @@ def test_unknown_exception_is_ambiguous() -> None:
 
 
 def test_generic_exception_message_ambiguous() -> None:
-    """Generic error messages that don't match transport patterns are ambiguous."""
     classifier = FailureClassifier()
 
     failure = classifier.classify(
@@ -60,7 +56,6 @@ def test_generic_exception_message_ambiguous() -> None:
 
 
 def test_ambiguous_failure_is_not_counted_against_the_budget() -> None:
-    """Ambiguous failures must not count against the agent budget."""
     controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
     state = _make_state()
 
@@ -73,13 +68,10 @@ def test_ambiguous_failure_is_not_counted_against_the_budget() -> None:
     assert evt.counted_against_budget is False
     assert evt.category == "ambiguous"
 
-    # An uncounted failure never grows the retry delay, so the agent keeps
-    # being retried at the base delay.
     assert evt.retry_delay_ms == 0
 
 
 def test_ambiguous_failure_returns_state_without_phase_change() -> None:
-    """Ambiguous failures keep the pipeline running in the same phase."""
     controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
     state = _make_state()
 
@@ -90,12 +82,11 @@ def test_ambiguous_failure_returns_state_without_phase_change() -> None:
     )
 
     assert new_state.phase == "development"
-    assert effects == []  # No exit effect
+    assert effects == []
     assert evt.counted_against_budget is False
 
 
 def test_ambiguous_failure_is_flagged_in_reason() -> None:
-    """Ambiguous failure reason includes the flagged_for_review indication."""
     classifier = FailureClassifier()
 
     failure = classifier.classify(
@@ -108,7 +99,6 @@ def test_ambiguous_failure_is_flagged_in_reason() -> None:
 
 
 def test_ambiguous_failure_emits_warning_log() -> None:
-    """Ambiguous failures emit a warning log flagged for review."""
     sink = io.StringIO()
     handler_id = logger.add(sink, level="WARNING", format="{level} {message}")
     try:
@@ -156,7 +146,6 @@ def test_mcp_config_error_is_user_config_not_ambiguous() -> None:
 
 
 def test_connection_refused_is_not_ambiguous() -> None:
-    """ConnectionRefused is clearly environmental, not ambiguous."""
     classifier = FailureClassifier()
 
     failure = classifier.classify(
@@ -170,7 +159,6 @@ def test_connection_refused_is_not_ambiguous() -> None:
 
 
 def test_timeout_error_is_environmental() -> None:
-    """TimeoutError is environmental, not ambiguous."""
     classifier = FailureClassifier()
 
     failure = classifier.classify(
@@ -184,7 +172,6 @@ def test_timeout_error_is_environmental() -> None:
 
 
 def test_agent_inactivity_timeout_is_agent_fault() -> None:
-    """AgentInactivityTimeoutError is agent fault, not ambiguous."""
     classifier = FailureClassifier()
 
     class AgentInactivityTimeoutError(Exception):
@@ -203,7 +190,6 @@ def test_agent_inactivity_timeout_is_agent_fault() -> None:
 
 
 def test_enospc_oserror_is_environmental_not_ambiguous() -> None:
-    """OSError with errno.ENOSPC must classify as ENVIRONMENTAL, not AMBIGUOUS."""
     classifier = FailureClassifier()
 
     failure = classifier.classify(
@@ -217,7 +203,6 @@ def test_enospc_oserror_is_environmental_not_ambiguous() -> None:
 
 
 def test_enospc_oserror_via_controller_is_not_counted_against_the_budget() -> None:
-    """ENOSPC reaching RecoveryController must not count against the agent budget."""
     controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
     state = _make_state()
 
@@ -230,11 +215,6 @@ def test_enospc_oserror_via_controller_is_not_counted_against_the_budget() -> No
     assert evt.category == "environmental"
     assert evt.counted_against_budget is False
     assert evt.retry_delay_ms == 0
-
-
-# ---------------------------------------------------------------------------
-# PA-001 / PA-002 regression tests — typed *ValidationError dispatch
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -279,10 +259,6 @@ def test_all_typed_artifact_validation_errors_route_to_artifact_validation(
     malformed_payload: dict[str, object],
     expected_type_name: str,
 ) -> None:
-    """For every typed ValidationError class produced by an artifact normalize function,
-    verify the real exception (driven through the real code path) classifies as
-    ARTIFACT_VALIDATION without budget debit.
-    """
     module_name, _, func_name = normalize_target.partition(":")
     module = importlib.import_module(module_name)
     normalize_fn = getattr(module, func_name)
@@ -304,9 +280,6 @@ def test_all_typed_artifact_validation_errors_route_to_artifact_validation(
 
 
 def test_development_result_validation_error_constructed_directly_still_routes_correctly() -> None:
-    """Even when a DevelopmentResultValidationError is constructed directly, the
-    type-name dispatch still routes it correctly (defense-in-depth).
-    """
     classifier = FailureClassifier()
     failure = classifier.classify(
         DevelopmentResultValidationError("bad shape"),
@@ -318,9 +291,6 @@ def test_development_result_validation_error_constructed_directly_still_routes_c
 
 
 def test_enospc_oserror_with_filename_arg_from_failed_terminal_is_environmental() -> None:
-    """OSError(ENOSPC) with a filename arg, raised in failed_terminal with agent=None
-    (mirrors the prompt's exact traceback), must classify as ENVIRONMENTAL.
-    """
     classifier = FailureClassifier()
     exc = OSError(
         errno.ENOSPC, "No space left on device", "/Users/x/Projects/Foo/.agent/start_commit"

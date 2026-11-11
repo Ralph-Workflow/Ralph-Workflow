@@ -1,4 +1,3 @@
-"""Fallover record model for pipeline state."""
 
 from __future__ import annotations
 
@@ -10,7 +9,6 @@ _FROZEN = ConfigDict(frozen=True)
 
 
 class FalloverRecord(RalphBaseModel):
-    """A record of a single agent fallover event persisted in pipeline state."""
 
     model_config = _FROZEN
 

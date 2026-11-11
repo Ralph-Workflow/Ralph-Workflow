@@ -1,5 +1,3 @@
-"""Tests for InvocationContext."""
-
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
@@ -63,8 +61,6 @@ class _FakeStrategy(BaseExecutionStrategy):
 
 
 class TestInvocationContext:
-    """Black-box tests for InvocationContext."""
-
     def test_frozen(self) -> None:
         ctx = InvocationContext(
             clock=_FakeClock(),

@@ -1,11 +1,3 @@
-"""Integration test: full transcript ordering from run-start through completion.
-
-Drives a stubbed runner through planning → development → development_analysis →
-development_commit → complete and asserts the captured transcript contains the
-expected ordered sequence: run-start → phase transitions → streaming content →
-phase-close → completion.
-"""
-
 from __future__ import annotations
 
 import contextlib
@@ -48,9 +40,7 @@ def _install_runner_stubs(
     policy_bundle: object,
     tmp_path: Path,
 ) -> tuple[list[str], Console, list[object]]:
-    """Set up stubs for runner.run(); return (invoked_phases, console, displays)."""
     invoked_phases: list[str] = []
-    # Use a list to capture display instances (list is mutable, survives monkeypatch)
     captured_displays: list[object] = []
 
     def fake_execute_effect(
@@ -60,9 +50,6 @@ def _install_runner_stubs(
     ) -> PipelineEvent:
         if isinstance(effect, InvokeAgentEffect):
             invoked_phases.append(effect.phase)
-            # Emit sample streaming content through the active display so the
-            # transcript has content markers without duplicating blocks across
-            # multiple captured display instances.
             if captured_displays:
                 display = captured_displays[-1]
                 unit_id = "dev-1"
@@ -116,7 +103,6 @@ def _install_runner_stubs(
         runner_module, "phase_event_after_agent_run", fake_phase_event_after_agent_run
     )
 
-    # Spy on ParallelDisplay construction to capture the display instance
     real_init = pd_module.ParallelDisplay.__init__
 
     def spy_init(self: object, *args: object, **kwargs: object) -> None:
@@ -133,11 +119,9 @@ def test_transcript_ordering_run_start_phase_transitions_streaming_phase_close_c
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Transcript contains run-start → phase → content → phase-close → completion in order."""
     monkeypatch.setenv("CI", "1")
     policy_bundle = load_policy(DEFAULT_POLICY_DIR)
 
-    # Write a minimal valid plan.md so the subscriber sees plan_present=True
     artifacts_dir = tmp_path / ".agent" / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
     plan_markdown = (
@@ -203,7 +187,6 @@ def test_transcript_ordering_run_start_phase_transitions_streaming_phase_close_c
 
     out = captured_console.export_text()
 
-    # --- Assert phase ordering ---
     assert "[phase] ◆ planning" in out
     assert "[phase] ◆ development" in out
 
@@ -214,29 +197,11 @@ def test_transcript_ordering_run_start_phase_transitions_streaming_phase_close_c
         "Phase transitions should appear in order: planning → development"
     )
 
-    # --- Assert run-start comes before first phase ---
-    # wt-028-display S-4: the chrome prefix no longer carries the
-    # MILESTONE LEVEL and META category badges; the match anchors
-    # on the [run-start] tag and the "Ralph Workflow run start"
-    # body text instead.
     run_start_idx = out.index("Ralph Workflow run start")
     assert run_start_idx < planning_idx, "run-start should appear before the first phase transition"
 
-    # --- Assert streaming content block structure ---
-    # S-7 (wt-028-display P1): one entry per block close, with the
-    # joined passage. The close-line tag is ``[output]`` (NOT
-    # ``[content-start]`` / ``[content-end]``); there are no per-fragment
-    # ``[content-continue#N]`` markers because the streaming layer is
-    # silent during open / continue.
     assert "[output]" in out, "Transcript should contain a [output] close line"
-    # S-2 (wt-028-display P1): close-line shape carries span + duration
-    # via the sketch-J shape ``⋯ <tag> · <start> → <end> · <duration>``
-    # followed by the joined passage. The retirement of the S-9
-    # ``fragments`` / ``chars`` footer vocabulary is part of the SAME
-    # deliberate contract change, so the transcript must NOT contain
-    # the retired tokens either.
     assert "→" in out, "Transcript should contain span → end character on close"
-    # The pre-S-7 per-fragment / preview tokens must NOT surface.
     for forbidden in (
         "[content-start]",
         "[content-end]",
@@ -245,29 +210,19 @@ def test_transcript_ordering_run_start_phase_transitions_streaming_phase_close_c
     ):
         assert forbidden not in out, f"Retired streaming token {forbidden!r} leaked into transcript"
 
-    # --- Assert [phase-close] contains elapsed= and content_blocks= ---
-    # Exclude the visual-hierarchy section rule line `─── [phase-close]`
-    # which is a section delimiter, not a phase-close content line.
     phase_close_lines = [ln for ln in out.splitlines() if "[phase-close]" in ln and "─" not in ln]
     assert phase_close_lines, "Transcript should contain at least one [phase-close] line"
     for pc_line in phase_close_lines:
         assert "elapsed=" in pc_line, f"[phase-close] missing elapsed=: {pc_line}"
         assert "content_blocks=" in pc_line, f"[phase-close] missing content_blocks=: {pc_line}"
 
-    # --- Assert [run-end] appears after last [phase-close] and before completion ---
-    # wt-028-display S-4: the chrome prefix no longer carries the
-    # MILESTONE LEVEL and META category badges; the [run-end] tag
-    # and the "Ralph Workflow run end" body text are the
-    # remaining anchors.
     assert "Ralph Workflow run end" in out, "Transcript should contain [run-end] header"
     run_end_idx = out.index("Ralph Workflow run end")
     last_phase_close_idx = out.rindex("[phase-close]")
     assert last_phase_close_idx < run_end_idx, "[run-end] should appear after last [phase-close]"
-    # Completion summary should appear after run-end
     completion_idx = out.index("Pipeline Complete")
     assert run_end_idx < completion_idx, "[run-end] should appear before completion summary"
 
-    # --- Assert [run-end] block contains required fields ---
     run_end_block = out[run_end_idx:]
     assert any("phase=" in ln for ln in run_end_block.splitlines()), "[run-end] missing phase="
     assert any("elapsed=" in ln for ln in run_end_block.splitlines()), "[run-end] missing elapsed="
@@ -275,7 +230,6 @@ def test_transcript_ordering_run_start_phase_transitions_streaming_phase_close_c
         "[run-end] missing content_blocks="
     )
 
-    # --- Assert completion summary ---
     assert "Pipeline Complete" in out or "Pipeline Failed" in out
 
 
@@ -284,7 +238,6 @@ def test_quiet_mode_suppresses_run_start_and_phase_close(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """In quiet mode, run-start, phase-close, and run-end lines are not emitted."""
     monkeypatch.setenv("CI", "1")
     policy_bundle = load_policy(DEFAULT_POLICY_DIR)
 
@@ -297,7 +250,6 @@ def test_quiet_mode_suppresses_run_start_and_phase_close(
         budget_caps={"iteration": 1},
     )
 
-    # Run with Verbosity.QUIET
     quiet_config = UnifiedConfig()
     pipeline_deps = make_test_pipeline_deps(
         make_display_context(console=captured_console, force_width=300)
@@ -312,10 +264,8 @@ def test_quiet_mode_suppresses_run_start_and_phase_close(
 
     out = captured_console.export_text()
 
-    # run-start, phase-close, and run-end should NOT appear in quiet mode
     assert "[run-start]" not in out, "run-start should be suppressed in quiet mode"
     assert "[phase-close]" not in out, "phase-close should be suppressed in quiet mode"
     assert "[run-end]" not in out, "run-end should be suppressed in quiet mode"
 
-    # But completion summary still renders
     assert ("Pipeline Complete" in out) or ("Pipeline Failed" in out)

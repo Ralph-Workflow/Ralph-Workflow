@@ -1,34 +1,3 @@
-"""Operation-scoped evidence collector for retained-integration diagnostics.
-
-The diagnostic path is the only authority that may consult Git state to
-prove the evidence carried on :class:`IntegrationRecord.diagnostic_evidence`
-has not drifted. Unrelated repository activity must NEVER invalidate the
-operation being decided, so the collector reads ONLY the state owned by
-the operation worktree:
-
-* the per-worktree ``HEAD`` (worktree-private);
-* the worktree path itself (catches worktree moves);
-* the per-worktree index entries restricted to
-  ``record.resolving_paths`` (never the full repository index);
-* the per-worktree ``rebase-merge/`` and ``rebase-apply/`` files (live
-  under the worktree-private gitdir);
-* the per-worktree ``MERGE_HEAD``, ``MERGE_MSG``, ``REBASE_HEAD``,
-  ``ORIG_HEAD``, ``AUTO_MERGE``, and ``CHERRY_PICK_HEAD``;
-* the unstaged work and commit controls for repair operations;
-* the ownership fingerprint derived from the durable record.
-
-The collector EXCLUDES:
-
-* ``git for-each-ref`` -- reads under commondir and observes every
-  branch tip in the repository, including branches in unrelated
-  worktrees;
-* ``git ls-files --stage`` against the full index -- the per-worktree
-  index is path-unscoped, so the digest changes when any tracked path
-  in any worktree changes;
-* the branch reflog (``logs/refs/heads/<branch>``) and ``logs/HEAD``
-  -- they live under commondir and shift on every commit in every
-  worktree.
-"""
 
 from __future__ import annotations
 
@@ -62,7 +31,6 @@ from ralph.pipeline.operation_fact import (
 if TYPE_CHECKING:
     from ralph.pipeline.auto_integrate_record import IntegrationRecord
 
-# Per-worktree rebase/merge state file names.
 _REBASE_MERGE_FILE_NAMES: tuple[str, ...] = (
     "MERGE_HEAD",
     "MERGE_MSG",
@@ -74,40 +42,9 @@ _REBASE_MERGE_FILE_NAMES: tuple[str, ...] = (
 
 
 def ownership_fingerprint(record: IntegrationRecord) -> str:
-    """SHA-256 fingerprint of the durable record minus its volatile fields.
-
-    The fingerprint is the durable evidence the record's *identity*
-    (target, operation kind, owning worktree) has not been changed
-    underneath the diagnostic path.
-
-    All fields that the diagnostic path itself owns are excluded so
-    a legitimate diagnostic-path transition (``RAISE_DIAGNOSTIC_INTERVENTION``,
-    ``BUMP_DIAGNOSTIC_ATTEMPT``, ``HOLD_DIAGNOSTIC_EVIDENCE``,
-    ``RELEASE_DIAGNOSTIC_EVIDENCE``) does not alter the fingerprint
-    it is measured against. The fingerprint therefore only changes
-    when an external party (not the diagnostic path) edits the
-    record's identity fields, which is what the diagnostic
-    re-read check is meant to detect.
-    """
     return identity_fingerprint(record)
 
 
-#: Closed set of identity fields used by :func:`identity_fingerprint`.
-#: Adding a new defaulted field to :class:`IntegrationRecord` MUST NOT
-#: extend this tuple; the fingerprint is structurally isolated from
-#: record-schema changes. Each field's role in the durable identity is
-#: documented inline.
-#:
-#: The set is narrowed to the structurally stable trio
-#: ``target`` / ``operation_kind`` / ``owning_worktree`` (AC-4). A
-#: successful integration legitimately transitions ``phase`` to
-#: ``"integrated"``, sets ``integrated_feature_sha``, clears
-#: ``reintegrate_pending``, and may update ``pre_target_sha``; those
-#: transitions describe the record's lifecycle, not the durable
-#: identity of the operation. The diagnostic path re-derives
-#: state from Git on the next seam when the lease is still held;
-#: HEAD / index / reflog / worktree path are already excluded by
-#: construction (see the function docstring below).
 _IDENTITY_FINGERPRINT_FIELDS: tuple[str, ...] = (
     "target",
     "operation_kind",
@@ -116,25 +53,6 @@ _IDENTITY_FINGERPRINT_FIELDS: tuple[str, ...] = (
 
 
 def identity_fingerprint(record: IntegrationRecord) -> str:
-    """SHA-256 fingerprint over the record's CLOSED identity field set.
-
-    The fingerprint is the durable evidence the record's *identity*
-    (target, operation kind, owning worktree) has not been changed
-    underneath the diagnostic path. Pre-integration SHAs and lifecycle
-    fields are excluded because they describe transitions across the
-    record's lifecycle rather than the durable identity of the
-    operation. The set of fields is closed: a future contributor who
-    adds a new defaulted field to :class:`IntegrationRecord` cannot
-    change the fingerprint, because the new field is not in
-    :data:`_IDENTITY_FINGERPRINT_FIELDS`.
-
-    The diagnostic path uses the fingerprint as the lease identifier:
-    a record whose ``diagnostic_ownership`` carries an equal
-    fingerprint is held by the same durable identity. State that
-    Ralph itself mutates (HEAD, the index, reflog) or lifecycle SHAs
-    are NOT in the fingerprint, so a legitimate fast-forward or
-    snapshot/reset never invalidates the lease.
-    """
     payload: dict[str, object] = {
         field: cast("object", getattr(record, field)) for field in _IDENTITY_FINGERPRINT_FIELDS
     }
@@ -148,11 +66,6 @@ def identity_fingerprint(record: IntegrationRecord) -> str:
     ).hexdigest()
 
 
-#: Closed vocabulary of kinds the operation-scoped collector is allowed
-#: to emit. Any kind outside this set is rejected by the snapshot
-#: boundary so a future contributor cannot silently reintroduce a
-#: repository-global key (the production bug the architecture fix
-#: eliminated).
 _CLOSED_OPERATION_FACT_KINDS: frozenset[str] = frozenset(
     {
         _KIND_HEAD,
@@ -170,7 +83,6 @@ _CLOSED_OPERATION_FACT_KINDS: frozenset[str] = frozenset(
 
 
 def _is_closed_kind(kind: str) -> bool:
-    """Return True if ``kind`` is one of the allowed operation-scoped kinds."""
     return kind in _CLOSED_OPERATION_FACT_KINDS
 
 
@@ -200,14 +112,6 @@ def _should_capture_repair_facts(
 
 
 class SubprocessOperationEvidenceCollector:
-    """The default collector: reads operation-scoped state through ``git``.
-
-    Never invokes ``git for-each-ref`` (repository-global in a linked
-    worktree), never reads the full per-worktree index, and never
-    reads the branch reflog or ``logs/HEAD`` (common-dir state not
-    owned by the operation worktree). Tests that need a different
-    observation set should inject an in-memory collector instead.
-    """
 
     def __init__(self, backend: FileBackend = DEFAULT_FILE_BACKEND) -> None:
         self._backend = backend
@@ -243,12 +147,6 @@ class SubprocessOperationEvidenceCollector:
             facts.append(_read_unstaged_work(root))
             facts.append(_read_commit_controls(root, self._backend))
         facts.extend(_read_reachability_facts(root, record, observed))
-        # Belt-and-braces: the collector is the only writer of operation-
-        # scoped evidence, and only the closed ``_KIND_*`` set is allowed.
-        # A future contributor cannot reintroduce a repository-global key
-        # without a fail-closed RuntimeError; the legacy loader already
-        # refuses records carrying ``_LEGACY_GLOBAL_EVIDENCE_KEYS`` so
-        # the same surface cannot be reintroduced on either side.
         for fact in facts:
             if not _is_closed_kind(fact.kind):
                 raise RuntimeError(
@@ -394,7 +292,6 @@ def _resolve_evidence_gitdir(root: Path) -> Path | None:
 
 
 def _read_rebase_state_files(root: Path) -> tuple[OperationFact, ...]:
-    """Read the per-worktree ``rebase-merge/`` and ``rebase-apply/`` files."""
     if not DEFAULT_FILE_BACKEND.exists(root):
         return (OperationFact(kind=_KIND_REBASE_STATE, value=_UNREADABLE),)
     gitdir = _resolve_evidence_gitdir(root)
@@ -417,7 +314,6 @@ def _read_rebase_state_files(root: Path) -> tuple[OperationFact, ...]:
 
 
 def _read_merge_state_files(root: Path) -> tuple[OperationFact, ...]:
-    """Read the per-worktree ``MERGE_HEAD`` / ``MERGE_MSG`` / etc. files."""
     if not DEFAULT_FILE_BACKEND.exists(root):
         return (OperationFact(kind=_KIND_MERGE_STATE, value=_UNREADABLE),)
     gitdir = _resolve_evidence_gitdir(root)

@@ -1,4 +1,3 @@
-"""Structured product_spec artifact validation helpers and PROMPT.md rendering."""
 
 from __future__ import annotations
 
@@ -23,7 +22,6 @@ _PRODUCT_SPEC_MARKDOWN_PATH = ".agent/artifacts/product_spec.md"
 
 
 class ProductSpec(RalphBaseModel):
-    """Validated schema for a product_spec artifact."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -50,7 +48,6 @@ class ProductSpec(RalphBaseModel):
 
 
 def normalize_product_spec_content(content: dict[str, object]) -> dict[str, object]:
-    """Validate and normalize a raw product_spec content dict."""
     try:
         validated = ProductSpec.model_validate(content)
         return validated.model_dump(mode="python", exclude_none=True)
@@ -62,22 +59,12 @@ def normalize_product_spec_content(content: dict[str, object]) -> dict[str, obje
 
 
 def _bullet_lines(items: list[str]) -> list[str]:
-    """Convert a list of strings to bullet lines."""
     return [f"- {item}" for item in items]
 
 
 def render_product_spec_as_prompt(spec: dict[str, object]) -> str:
-    """Render a product_spec dict as a PROMPT.md-formatted string.
-
-    The output follows the canonical PROMPT.md structure:
-    - # Goal: title (bold) + scope paragraph
-    - ## Context: goals, users, constraints, product_behavior, ux_ui_requirements
-    - ## Acceptance criteria: success_criteria bullets
-    - ## Notes: scope_boundaries + open_questions (only if non-empty)
-    """
     lines: list[str] = []
 
-    # # Goal — H1 heading
     lines.append("# Goal")
     title = str(spec.get("title", ""))
     scope = str(spec.get("scope", ""))
@@ -86,7 +73,6 @@ def render_product_spec_as_prompt(spec: dict[str, object]) -> str:
         lines.append(scope)
     lines.append("")
 
-    # ## Context — H2 heading
     lines.append("## Context")
     _emit_context_group(lines, "**Goals:**", _as_string_list(spec.get("goals", [])))
     _emit_context_group(lines, "**Users:**", _as_string_list(spec.get("users", [])))
@@ -99,12 +85,10 @@ def render_product_spec_as_prompt(spec: dict[str, object]) -> str:
     )
     lines.append("")
 
-    # ## Acceptance criteria — H2 heading
     lines.append("## Acceptance criteria")
     lines.extend(_bullet_lines(_as_string_list(spec.get("success_criteria", []))))
     lines.append("")
 
-    # ## Notes — H2 heading (only if scope_boundaries or open_questions are non-empty)
     scope_boundaries = _as_string_list(spec.get("scope_boundaries", []))
     open_questions = _as_string_list(spec.get("open_questions", []))
     if scope_boundaries or open_questions:
@@ -117,14 +101,12 @@ def render_product_spec_as_prompt(spec: dict[str, object]) -> str:
 
 
 def _as_string_list(value: object) -> list[str]:
-    """Convert a value to a list of strings."""
     if not isinstance(value, list):
         return []
     return [str(item) for item in value]
 
 
 def _emit_context_group(lines: list[str], label: str, items: list[str]) -> None:
-    """Append a labeled bullet group to lines if items is non-empty."""
     if not items:
         return
     lines.append(label)
@@ -133,7 +115,6 @@ def _emit_context_group(lines: list[str], label: str, items: list[str]) -> None:
 
 
 def read_product_spec_artifact(repo_root: Path) -> dict[str, object] | None:
-    """Read and validate the canonical Markdown product specification."""
     workspace = FsWorkspace(repo_root)
     try:
         markdown = workspace.read(_PRODUCT_SPEC_MARKDOWN_PATH)

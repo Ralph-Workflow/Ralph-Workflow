@@ -1,9 +1,3 @@
-"""Prompt-facing typed capability helpers.
-
-This module is a thin facade over ``template_variables`` so prompt materialization
-and prompt tests share one capability/policy implementation instead of carrying a
-second parallel type system.
-"""
 
 from __future__ import annotations
 
@@ -37,7 +31,6 @@ from ralph.prompts.template_variables import (
 
 @dataclass(frozen=True)
 class SessionCapabilities:
-    """Bundle of capability/policy sets plus transport-specific prompt decoration."""
 
     capabilities: CapabilitySet
     policy_flags: PolicyFlagSet
@@ -60,7 +53,6 @@ def capability_template_variables(
     *,
     tool_name_prefix: str = "",
 ) -> dict[str, str]:
-    """Return template variable dict derived from the given capability and policy sets."""
     return _capability_template_variables(
         capabilities,
         policy_flags,
@@ -69,7 +61,6 @@ def capability_template_variables(
 
 
 def bool_to_template_value(value: bool) -> str:
-    """Convert a boolean to the canonical template string representation."""
     return bool_to_string(value)
 
 

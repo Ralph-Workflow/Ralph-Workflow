@@ -1,5 +1,3 @@
-"""Behavioral tests for git rebase helpers."""
-
 from __future__ import annotations
 
 import contextlib
@@ -47,20 +45,10 @@ from ralph.process.manager import ProcessStatus, get_process_manager, reset_proc
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
-# File-level markers. ``subprocess_e2e`` excludes this file from ``make test``
-# (the budget-tracked 60 s step) because several tests here drive a real ``git``
-# subprocess, which cannot reliably finish inside the default 1 s per-test
-# budget once the suite runs in parallel. ``timeout_seconds(5)`` sizes the budget
-# for a real process spawn, matching the convention in
-# tests/test_audit_artifact_submission_canonical_path.py. This does not weaken
-# any cap: the file stays out of the 60 s combined budget and inside the 60 s
-# per-suite cap on ``make test-subprocess-e2e``.
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
 
 
 class FakeProcessExecutor(ProcessExecutor):
-    # OpenCode's prompt is delivered on stdin, so a process fake must
-    # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
     stdin = None
 
     def __init__(self, responses: Mapping[tuple[str, tuple[str, ...]], ProcessResult]) -> None:
@@ -139,13 +127,6 @@ def test_continue_rebase_executes_cli_when_ready(
 
 
 def test_rebase_onto_returns_noop_when_branch_up_to_date(tmp_git_repo: Path) -> None:
-    """An up-to-date feature branch is a no-op against a DISTINCT upstream.
-
-    The upstream is deliberately a different branch from the checked-out
-    one: rebasing a branch onto itself is a separate no-op path (the
-    self-rebase identity guard), and conflating the two hid which check
-    actually fired.
-    """
     with Repo(tmp_git_repo) as repo:
         upstream = repo.active_branch.name
         repo.git.checkout("-b", "feature-noop")
@@ -158,8 +139,6 @@ def test_rebase_onto_returns_noop_when_branch_up_to_date(tmp_git_repo: Path) -> 
 
     assert isinstance(result, RebaseNoOp)
     assert "up-to-date" in result.reason
-    # The ``--`` terminator is part of the contract: without it a target
-    # whose name begins with '-' is parsed by git as an option.
     assert executor.calls == [
         ("git", ("merge-base", "--is-ancestor", "--", upstream, "HEAD")),
     ]
@@ -168,7 +147,6 @@ def test_rebase_onto_returns_noop_when_branch_up_to_date(tmp_git_repo: Path) -> 
 def test_rebase_rename_limit_warning_retries_once_with_raised_limit(
     tmp_git_repo: Path,
 ) -> None:
-    """C12 regression: a skipped rename scan is aborted and retried once."""
     with Repo(tmp_git_repo) as repo:
         base_branch = repo.active_branch.name
         repo.git.checkout("-b", "feature-rename-limit")
@@ -201,7 +179,6 @@ def test_rebase_rename_limit_warning_retries_once_with_raised_limit(
 def test_rebase_rename_limit_retry_conflict_is_classified_without_loop(
     monkeypatch: pytest.MonkeyPatch, tmp_git_repo: Path
 ) -> None:
-    """C12 regression: a retry that still conflicts reaches normal resolution."""
     with Repo(tmp_git_repo) as repo:
         base_branch = repo.active_branch.name
         repo.git.checkout("-b", "feature-rename-limit-conflict")
@@ -276,12 +253,6 @@ def test_rebase_onto_detects_conflicts(monkeypatch: pytest.MonkeyPatch, tmp_git_
 def test_rebase_onto_never_skips_a_conflict_whose_subject_says_is_empty(
     tmp_git_repo: Path,
 ) -> None:
-    """A real conflict is reported, never ``--skip``-ped out of history.
-
-    git echoes the replayed subject in ``could not apply <sha>... <subject>``;
-    reading "is empty" anywhere in that output as an empty stop dropped the
-    commit and reported the rebase a success.
-    """
     subject = "Fix crash when the list is empty"
     with Repo(tmp_git_repo) as repo:
         base = repo.active_branch.name
@@ -436,7 +407,6 @@ def test_verify_rebase_completed_at_rejects_detached_head(tmp_git_repo: Path) ->
 
 
 def _assert_full_lifecycle(events: list, label_prefix: str) -> None:
-    """Assert each PID with the given label prefix emitted SPAWNED->RUNNING->EXITED."""
     labeled = [e for e in events if e.record.label and e.record.label.startswith(label_prefix)]
     assert labeled, f"Expected events with label prefix '{label_prefix}'"
 
@@ -456,7 +426,6 @@ def _assert_full_lifecycle(events: list, label_prefix: str) -> None:
 
 @pytest.mark.subprocess_e2e
 def test_subprocess_executor_emits_process_manager_events(tmp_git_repo: Path) -> None:
-    """Real SubprocessExecutor routes git calls through ProcessManager with full lifecycle."""
     reset_process_manager()
     events: list = []
     unsubscribe = get_process_manager().register_listener(events.append)
@@ -470,14 +439,6 @@ def test_subprocess_executor_emits_process_manager_events(tmp_git_repo: Path) ->
             get_process_manager().shutdown_all(grace_period_s=0)
         reset_process_manager()
 
-    # get_conflicted_files now routes through the NUL-delimited
-    # hardening helper (ralph.git.hardening.porcelain_z) so the
-    # ProcessManager event label is the hardening label, not the
-    # old SubprocessExecutor ``git-rebase:`` label. The executor
-    # argument is retained for signature compatibility; the helper
-    # uses the hardened run_git path so the per-invocation pin
-    # and non-interactive env are exactly what the rest of the
-    # auto-integration pipeline uses.
     _assert_full_lifecycle(events, "hardening:porcelain-z")
 
 

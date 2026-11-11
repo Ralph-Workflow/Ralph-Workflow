@@ -1,5 +1,3 @@
-"""Tests for ralph/mcp/tool_workspace.py — MCP workspace tool handlers."""
-
 from __future__ import annotations
 
 import json
@@ -59,7 +57,6 @@ class TestHandleDeletePath:
         assert result.is_error is True
 
     def test_workspace_delete_distinct_from_edit(self) -> None:
-        """WorkspaceDelete capability is distinct from WorkspaceEdit."""
         ws = MagicMock()
         ws.delete.return_value = None
 

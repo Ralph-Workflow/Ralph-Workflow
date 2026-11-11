@@ -1,5 +1,3 @@
-"""Regression coverage for remediation-footer watchdog attention ownership (S-1)."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -19,7 +17,6 @@ class _Display:
 
 
 def test_remediation_footer_regression_keeps_watchdog_attention_live() -> None:
-    """S-1: remediation pushes leave attention unset for Live-tick substitution."""
     display = _Display()
     scope = WorkspaceScope(root=Path("/workspace"), allowed_roots=frozenset({Path("/workspace")}))
 

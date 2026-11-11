@@ -1,10 +1,3 @@
-"""Integration tests verifying plumbing commands run on the ``PipelineCore`` surface.
-
-These tests mirror the coverage in ``test_plumbing_shared_deps.py`` but pass a
-modular ``PipelineCore`` + ``bridge_factory`` instead of a full ``PipelineDeps``
-bundle, confirming the new shared composition surface works end-to-end.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -87,10 +80,6 @@ def _make_fake_smoke_registry() -> object:
 
     class _FakeCatalog:
         def get(self, _name: str) -> None:
-            # No support declared for these tests' synthetic agent names --
-            # matches the real ``AgentCatalog.get``'s "nobody has said"
-            # contract (S-3's Branch A of ``_detect_capability_breaks``
-            # grades a ``None`` support as ungraded, never crashes).
             return None
 
     class FakeRegistry:
@@ -110,8 +99,6 @@ def _make_fake_smoke_registry() -> object:
 
 
 class _FakeOutputPath(Path):
-    """Path stand-in that avoids real filesystem I/O for the smoke output file."""
-
     def exists(self) -> bool:
         return True
 
@@ -122,10 +109,6 @@ class _FakeOutputPath(Path):
 def test_commit_plumbing_runs_on_pipeline_core(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """``run_commit_plumbing`` accepts a ``PipelineCore`` + ``bridge_factory`` and
-    returns a ``CommitAgentResult``; the bridge factory receives the commit drain
-    and session prefix.
-    """
     workspace_root = Path("/workspace")
     display_context = _fake_display_context()
     model_identity = MultimodalModelIdentity(provider="claude", model_id="sonnet")
@@ -216,10 +199,6 @@ def test_commit_plumbing_runs_on_pipeline_core(
 def test_smoke_plumbing_runs_on_pipeline_core(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """``run_smoke_plumbing`` accepts a ``PipelineCore`` + ``bridge_factory`` and
-    returns a ``SmokeRunResult``; the bridge factory receives the development
-    drain and smoke session prefix.
-    """
     workspace_root = Path("/workspace")
     display_context = _fake_display_context()
     bridge = MagicMock()
@@ -317,9 +296,6 @@ def test_smoke_plumbing_runs_on_pipeline_core(
 def test_plumbing_routes_through_execute_agent_effect(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """Both plumbing modules route their agent invocation through
-    ``execute_agent_effect`` when running on ``PipelineCore``.
-    """
     workspace_root = Path("/workspace")
     display_context = _fake_display_context()
     bridge = MagicMock()
@@ -442,9 +418,6 @@ def test_plumbing_routes_through_execute_agent_effect(
 def test_commit_plumbing_propagates_session_id(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """``run_commit_plumbing`` returns the session id captured by the shared
-    execution core so callers can resume a suspended commit attempt.
-    """
     workspace_root = Path("/workspace")
     display_context = _fake_display_context()
     bridge = MagicMock()
@@ -509,9 +482,6 @@ def test_commit_plumbing_propagates_session_id(
 def test_commit_plumbing_propagates_last_error(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """``run_commit_plumbing`` returns the last error reported by the shared
-    execution core so callers can inspect why a commit attempt failed.
-    """
     workspace_root = Path("/workspace")
     display_context = _fake_display_context()
     bridge = MagicMock()
@@ -577,9 +547,6 @@ def test_commit_plumbing_propagates_last_error(
 def test_commit_plumbing_shuts_down_bridge_on_execute_raise(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """If the body inside ``with_bridge_lifetime`` raises, the bridge is still
-    shut down exactly once.
-    """
     workspace_root = Path("/workspace")
     display_context = _fake_display_context()
     bridge = MagicMock()

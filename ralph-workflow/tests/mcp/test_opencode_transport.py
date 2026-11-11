@@ -1,5 +1,3 @@
-"""Tests for ralph/mcp/transport/opencode.py upstream handling."""
-
 from __future__ import annotations
 
 import json
@@ -17,7 +15,6 @@ _OPERATOR_CONFIG_WITH_STALE_RALPH = json.dumps(
 
 
 def test_opencode_transport_regression_stale_ralph_entry_is_dropped_not_rejected() -> None:
-    """Restricted mode replaces a leftover `ralph` entry instead of rejecting the config."""
     config_text, upstreams = build_opencode_provider_config(
         _OPERATOR_CONFIG_WITH_STALE_RALPH, "http://127.0.0.1:9999/mcp"
     )
@@ -29,7 +26,6 @@ def test_opencode_transport_regression_stale_ralph_entry_is_dropped_not_rejected
 
 
 def test_opencode_transport_regression_stale_ralph_entry_is_dropped_in_unsafe_mode() -> None:
-    """Unsafe mode keeps the operator's other servers and still wins the `ralph` name."""
     config_text, upstreams = build_opencode_provider_config(
         _OPERATOR_CONFIG_WITH_STALE_RALPH, "http://127.0.0.1:9999/mcp", unsafe_mode=True
     )

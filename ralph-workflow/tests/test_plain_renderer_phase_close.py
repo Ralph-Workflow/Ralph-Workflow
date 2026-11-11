@@ -1,5 +1,3 @@
-"""Tests for ParallelDisplay.emit_phase_close (consolidated from PlainLogRenderer)."""
-
 from __future__ import annotations
 
 from io import StringIO
@@ -21,7 +19,6 @@ def _make_display() -> tuple[ParallelDisplay, StringIO]:
 
 
 def test_phase_close_emits_body_line() -> None:
-    """emit_phase_close emits a single body line (plus a section rule)."""
     pd, buf = _make_display()
     pd.emit_phase_close(
         "planning", "plan: 5 step(s), 2 risk(s)", options=PhaseCloseOptions(phase_role="execution")
@@ -30,10 +27,6 @@ def test_phase_close_emits_body_line() -> None:
     body_lines = [ln for ln in out.splitlines() if "[phase-close]" in ln and "───" not in ln]
     assert len(body_lines) == 1
     milestone = UNICODE_GLYPHS["milestone"]
-    # wt-028-display S-4: chrome prefix no longer carries INFO META
-    # (level/category) badges -- severity is carried by the
-    # renderer's own icon+label carrier. The line still carries the
-    # [phase-close] tag, the milestone glyph, and the body.
     line = body_lines[0]
     assert f"[phase-close] {milestone} phase=planning plan: 5 step(s), 2 risk(s)" in line
     for forbidden in ("INFO META", "WARN META", "ERROR META", "MILESTONE META"):
@@ -43,26 +36,14 @@ def test_phase_close_emits_body_line() -> None:
 
 
 def test_phase_close_flushes_open_streaming_block() -> None:
-    """``emit_phase_close`` closes any active streaming block before its body line.
-
-    S-7 (wt-028-display P1): the close line carries ``[output]`` (NOT
-    ``[content-end]``); the lifecycle suffix is part of the retired
-    per-fragment vocabulary. The ordering invariant — streaming close
-    before phase-close body — still holds.
-    """
     pd, buf = _make_display()
-    # Open a streaming block
     pd.emit_activity_line("u", "text", "streaming content")
     pd.emit_phase_close("development", "development: result artifact present")
     out = buf.getvalue()
-    # The streaming-block close line uses the public ``[output]`` tag and
-    # must appear before the [phase-close] body line. The retired ``content``
-    # tag is internal vocabulary and must not return.
     body_phase_close_idx = out.index("[phase-close] phase=development")
     content_close_idx = out.index("[output][u]")
     assert "[output][u]" in out
     assert "[content][u]" not in out
-    # Pre-S-7 retired token must NOT appear.
     assert "[content-end]" not in out
     assert content_close_idx < body_phase_close_idx, (
         f"[output][u] (at {content_close_idx}) must appear before "
@@ -113,7 +94,6 @@ def test_phase_close_counts_tool_results_as_tool_calls() -> None:
 
 
 def test_phase_close_non_milestone_role_has_no_glyph() -> None:
-    """Non-milestone roles (terminal, analysis) emit no glyph prefix."""
     pd, buf = _make_display()
     pd.emit_phase_close("done", "result: done", options=PhaseCloseOptions(phase_role="terminal"))
     out = buf.getvalue()
@@ -122,7 +102,6 @@ def test_phase_close_non_milestone_role_has_no_glyph() -> None:
 
 
 def test_phase_close_milestone_role_ascii_glyph() -> None:
-    """RALPH_FORCE_ASCII=1 emits ASCII milestone glyph (* not ◆) for milestone roles."""
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, highlight=False, color_system=None, width=200)
     pd = ParallelDisplay(make_display_context(console=console, env={"RALPH_FORCE_ASCII": "1"}))
@@ -135,7 +114,6 @@ def test_phase_close_milestone_role_ascii_glyph() -> None:
 
 
 def test_phase_close_iteration_context_labels_appear_after_phase_name() -> None:
-    """emit_phase_close with iteration_context includes canonical labels in output."""
     pd, buf = _make_display()
     ctx = PhaseIterationContext(outer_dev=2, inner_analysis=1)
     pd.emit_phase_close("fix", "fix: applied", options=PhaseCloseOptions(iteration_context=ctx))
@@ -147,7 +125,6 @@ def test_phase_close_iteration_context_labels_appear_after_phase_name() -> None:
 
 
 def test_phase_close_iteration_context_none_no_labels() -> None:
-    """emit_phase_close without iteration_context emits no canonical label brackets."""
     pd, buf = _make_display()
     pd.emit_phase_close("planning", "plan: done")
     out = buf.getvalue()
@@ -157,7 +134,6 @@ def test_phase_close_iteration_context_none_no_labels() -> None:
 
 
 def test_phase_close_iteration_context_empty_no_labels() -> None:
-    """emit_phase_close with empty PhaseIterationContext emits no extra brackets."""
     pd, buf = _make_display()
     opts = PhaseCloseOptions(iteration_context=PhaseIterationContext())
     pd.emit_phase_close("planning", "plan: done", options=opts)
@@ -167,7 +143,6 @@ def test_phase_close_iteration_context_empty_no_labels() -> None:
 
 
 def test_phase_close_iteration_context_analysis_with_cap() -> None:
-    """emit_phase_close with inner_analysis + cap shows [iter N/cap] label."""
     pd, buf = _make_display()
     ctx = PhaseIterationContext(inner_analysis=3, inner_analysis_cap=5)
     pd.emit_phase_close(
@@ -178,7 +153,6 @@ def test_phase_close_iteration_context_analysis_with_cap() -> None:
 
 
 def test_phase_close_exit_trigger_included_in_output() -> None:
-    """emit_phase_close with exit_trigger includes 'exit=<trigger>' in the output line."""
     pd, buf = _make_display()
     pd.emit_phase_close(
         "development", "dev: result", options=PhaseCloseOptions(exit_trigger="produced")
@@ -188,7 +162,6 @@ def test_phase_close_exit_trigger_included_in_output() -> None:
 
 
 def test_phase_close_exit_trigger_none_omits_exit_field() -> None:
-    """emit_phase_close with exit_trigger=None emits no 'exit=' field."""
     pd, buf = _make_display()
     pd.emit_phase_close("development", "dev: result")
     out = buf.getvalue()
@@ -196,7 +169,6 @@ def test_phase_close_exit_trigger_none_omits_exit_field() -> None:
 
 
 def test_phase_close_exit_trigger_appears_before_elapsed() -> None:
-    """exit=<trigger> should appear before the elapsed/counter block."""
     pd, buf = _make_display()
     pd.emit_phase_close(
         "planning", "plan: done", options=PhaseCloseOptions(exit_trigger="produced")
@@ -207,7 +179,6 @@ def test_phase_close_exit_trigger_appears_before_elapsed() -> None:
 
 
 def test_phase_close_exit_trigger_with_iteration_context() -> None:
-    """exit_trigger and iteration_context can coexist on the same phase-close line."""
     pd, buf = _make_display()
     ctx = PhaseIterationContext(outer_dev=2)
     opts = PhaseCloseOptions(iteration_context=ctx, exit_trigger="produced")
@@ -219,9 +190,7 @@ def test_phase_close_exit_trigger_with_iteration_context() -> None:
 
 
 def test_phase_close_exit_trigger_does_not_render_as_markup() -> None:
-    """exit_trigger is printed with markup=False so Rich markup appears literally."""
     pd, buf = _make_display()
-    # Plain string exit trigger is shown as-is
     pd.emit_phase_close(
         "planning", "plan: done", options=PhaseCloseOptions(exit_trigger="produced")
     )

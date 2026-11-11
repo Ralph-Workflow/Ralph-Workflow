@@ -1,19 +1,3 @@
-"""R1 invariant: a request sent during a child's delayed pre-serve stage is served.
-
-Drives a REAL MCP subprocess (via start_mcp_server with real LifecycleDeps)
-whose pre-serve phase is held by a CHILD-SIDE gate: the child blocks inside
-``_FallbackStandaloneServer.run()`` after the server object exists but BEFORE
-the first accept(), until a sentinel file appears (env
-``RALPH_MCP_TEST_PRE_SERVE_GATE``, injected through ``McpServerExtras.extra_env``).
-
-While the child is gated, a client opens a TCP connection, sends a REAL HTTP
-request, and keeps the socket open. The kernel queues the connection in the
-listen backlog; the test proves nothing has accepted it yet (no bytes come
-back within a bounded window), then releases the gate and asserts the SAME
-connection receives a well-formed HTTP response. ECONNREFUSED is structurally
-impossible because the bridge owns the listening socket from the start.
-"""
-
 from __future__ import annotations
 
 import contextlib
@@ -52,19 +36,11 @@ def _make_session() -> AgentSession:
 
 @dataclass
 class _PortSignal:
-    """Test-side synchronization for learning the reserved host/port."""
-
     port_ready: threading.Event = field(default_factory=threading.Event)
     reserved: list[tuple[str, int]] = field(default_factory=list)
 
 
 def _make_deps(signal: _PortSignal) -> LifecycleDeps:
-    """Wrap only ``reserve_listening_socket`` so the test learns the endpoint.
-
-    The preflight and spawn deps stay REAL: the parent's own preflight request
-    must queue in the backlog behind the child-side gate exactly like a
-    production slow-startup client.
-    """
 
     default_deps = lifecycle._default_lifecycle_deps()
     default_reserve = default_deps.reserve_listening_socket or _reserve_listening_socket
@@ -120,7 +96,6 @@ def _read_last_stage_label(workspace: Path, deadline: float) -> str:
 
 @pytest.mark.timeout_seconds(60)
 def test_slow_startup_is_served_from_backlog(tmp_path: Path) -> None:
-    """A real HTTP request sent while the child is pre-accept must be answered on the same connection."""
     session = _make_session()
     workspace = FsWorkspace(tmp_path)
     sentinel = tmp_path / "pre_serve_gate"
@@ -135,7 +110,7 @@ def test_slow_startup_is_served_from_backlog(tmp_path: Path) -> None:
     def _start() -> None:
         try:
             result.append(lifecycle.start_mcp_server(session, workspace, deps=deps, extras=extras))
-        except BaseException as exc:  # surfaced below
+        except BaseException as exc:
             result.append(exc)
         finally:
             done.set()
@@ -146,33 +121,22 @@ def test_slow_startup_is_served_from_backlog(tmp_path: Path) -> None:
     bridge: lifecycle.RestartAwareMcpBridge | None = None
     sock: socket.socket | None = None
     try:
-        # Bounded wait for the bridge to own the listening socket.
         assert signal.port_ready.wait(timeout=15.0), "bridge never reserved its listening socket"
         host, port = signal.reserved[0]
         assert port > 0
 
-        # Proof 1 (child-side, passive): the child's own stage file must exist
-        # by now and must NOT yet say ready_to_serve — the child is held
-        # before the serving boundary.
         stage_label = _read_last_stage_label(tmp_path, time.monotonic() + 15.0)
         assert stage_label, "child never wrote a startup stage file"
         assert stage_label != "ready_to_serve", (
             f"child reached {stage_label!r} before the gate was released"
         )
 
-        # Proof 2 (child-side, active): a real request sent now gets NO bytes
-        # back within a bounded window — nothing has called accept() yet. The
-        # TCP connect itself succeeds because the parent-owned socket listens.
         sock = socket.create_connection((host, port), timeout=5.0)
         sock.sendall(_http_request(host, port))
         sock.settimeout(0.1)
-        # socket.timeout is an alias of TimeoutError on Python 3.10+.
         with pytest.raises(TimeoutError):
             sock.recv(4096)
 
-        # Release the child-side gate: the child crosses the serving boundary,
-        # accepts from the kernel backlog, and answers BOTH the parent's real
-        # preflight request and the retained client connection.
         sentinel.touch()
         assert done.wait(timeout=30.0), "start_mcp_server did not return after gate release"
         assert result, "start_mcp_server did not return"
@@ -180,7 +144,6 @@ def test_slow_startup_is_served_from_backlog(tmp_path: Path) -> None:
         bridge = result[0]
         assert bridge.process.poll() is None, "child must be alive after startup"
 
-        # The SAME connection must now receive a well-formed HTTP response.
         head = _read_response_head(sock, timeout_s=15.0)
         assert head.startswith("HTTP/1.1 "), (
             f"no HTTP response on the request-during-startup connection: {head!r}"
@@ -198,7 +161,6 @@ def test_slow_startup_is_served_from_backlog(tmp_path: Path) -> None:
 
 @pytest.mark.timeout_seconds(60)
 def test_slow_startup_preflight_succeeds(tmp_path: Path) -> None:
-    """Preflight must succeed even when the child takes seconds to cross the serving boundary."""
     session = _make_session()
     workspace = FsWorkspace(tmp_path)
     sentinel = tmp_path / "pre_serve_gate"
@@ -207,16 +169,13 @@ def test_slow_startup_preflight_succeeds(tmp_path: Path) -> None:
     signal = _PortSignal()
     deps = _make_deps(signal)
 
-    # start_mcp_server runs the REAL preflight; it can only complete once the
-    # child crosses the gate. Releasing right after port reservation bounds
-    # the wait deterministically while keeping the real inherited-socket path.
     result: list[lifecycle.RestartAwareMcpBridge | BaseException] = []
     done = threading.Event()
 
     def _start() -> None:
         try:
             result.append(lifecycle.start_mcp_server(session, workspace, deps=deps, extras=extras))
-        except BaseException as exc:  # surfaced below
+        except BaseException as exc:
             result.append(exc)
         finally:
             done.set()
@@ -237,7 +196,6 @@ def test_slow_startup_preflight_succeeds(tmp_path: Path) -> None:
         host, port_str = host_colon_port.rsplit(":", 1)
         port = int(port_str)
 
-        # The endpoint must serve HTTP immediately after start_mcp_server returns.
         sock = socket.create_connection((host, port), timeout=5.0)
         try:
             sock.sendall(_http_request(host, port))

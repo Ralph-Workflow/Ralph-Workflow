@@ -1,5 +1,3 @@
-"""Static in-memory snapshot of authentic v4 starter files from git commit 201bc67af^."""
-
 from __future__ import annotations
 
 __all__ = ["V4_PORTFOLIO", "V4_STARTERS"]

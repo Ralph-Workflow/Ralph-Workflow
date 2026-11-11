@@ -1,33 +1,3 @@
-"""Helper for the E7.2 make-before-break footprint measurement test.
-
-Spawns a REAL MCP serving child via :func:`get_process_manager().spawn`
-rather than a sleeping ``python -c``. The child:
-
-* adopts the bridge-owned listening FD (via ``RALPH_MCP_INHERITED_FD``) and
-  serves JSON-RPC ``tools/list`` over HTTP at the shared endpoint so the
-  bridge's baseline capture succeeds on the produced (real) HTTP wire;
-* adopts the private socketpair child end (via
-  ``RALPH_MCP_BRIDGE_PARENT_SOCK``) and answers ``initialize`` and
-  ``tools/list`` for the bridge's private preflight handshake;
-* watches ``RALPH_MCP_ACCEPT_PAUSE_FILE`` and writes ``.ack`` then exits
-  when the bridge signals pause during make-before-break handover;
-* waits on ``RALPH_MCP_ACCEPT_RESUME_FILE`` before fully entering the
-  serve-forever loop when the bridge launches it as a candidate.
-
-The HTTP responder and the private-readiness responder return the SAME
-``TOOLS`` list (passed via argv) so the served-endpoint baseline hash and
-the private-channel ``tools/list`` hash match exactly — that is what
-makes :class:`lifecycle.RestartAwareMcpBridge.capture_tool_hash_baseline`
-and :func:`check_candidate_readiness` byte-comparable end-to-end.
-
-This helper reuses the "real subprocess + minimal MCP-shaped handlers"
-approach that :mod:`tests.mcp.test_root_cause_real_child_bridge` and
-:mod:`tests.mcp.test_handover_inflight_real_child` already employ; no
-parallel fixture is introduced — only the smallest additional surface
-needed to wire HTTP serving on the inherited FD and pause/resume
-sentinels around it.
-"""
-
 from __future__ import annotations
 
 import contextlib
@@ -48,10 +18,6 @@ from ralph.mcp.server._handover_protocol import create_handover_socketpair
 from ralph.mcp.server._snapshots import snapshot_dir
 from ralph.process.manager import SpawnOptions, get_process_manager
 
-# ``MCP_SESSION_ID_ENV`` is named in ``ralph.mcp.server.lifecycle`` rather than
-# ``ralph.mcp.protocol.env`` (see lifecycle.MCP_SESSION_ID_ENV). The child
-# script needs the same value so the private preflight's ``session_id`` check
-# matches the bridge's expectation.
 MCP_SESSION_ID_ENV = "MCP_SESSION_ID"
 
 if TYPE_CHECKING:
@@ -237,23 +203,6 @@ def spawn_serving_child(
     snap_base: Path,
     run_id: str,
 ) -> tuple[ManagedProcess, socket.socket | None]:
-    """Spawn a real MCP serving child that adopts the bridge-owned listening fd.
-
-    When ``make_before_break`` is ``True``, also wires the private
-    handover socketpair so the bridge can run its full private preflight
-    against the candidate. Returns the spawned process and the parent
-    end of the handover socketpair (or ``None`` when not make-before-break).
-
-    ``snap_base`` and ``run_id`` are used to compute the snapshot directory
-    with the same factory the bridge uses (``snapshot_dir`` from
-    :mod:`ralph.mcp.server._snapshots`), so pause/resume sentinel files
-    written by either side land at the same absolute path.
-
-    The OLD child (``make_before_break=False``) still receives
-    ``MCP_ACCEPT_PAUSE_FILE`` so the bridge's pause/ack handshake finds it
-    and can retire the child cleanly without the kill-on-hang escape
-    escalating inside the bounded handover window.
-    """
     pm = get_process_manager()
     script = _write_child_script(tmp_path)
 

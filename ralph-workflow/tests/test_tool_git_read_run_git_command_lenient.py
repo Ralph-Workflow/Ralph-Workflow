@@ -1,5 +1,3 @@
-"""Tests for ralph/mcp/tools/git_read.py — MCP git read tool handlers."""
-
 from __future__ import annotations
 
 import subprocess
@@ -14,10 +12,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 CUSTOM_LOG_COUNT = 20
-
-# =============================================================================
-# Mock infrastructure
-# =============================================================================
 
 
 class TestRunGitCommandLenient:

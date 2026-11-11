@@ -1,8 +1,3 @@
-r"""The single declarative home for the headless-vs-interactive axis.
-
-Replaces the legacy ``interactive=True`` flag and the magic
-``session_flag='--resume {}'`` default in registration.py:142-145.
-"""
 
 from __future__ import annotations
 
@@ -16,29 +11,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class AgentSpec:
-    """Captures the headless-vs-interactive axis declaratively.
-
-    Attributes:
-        name: Agent name (lowercased by AgentSupport).
-        transport: Transport enum value.
-        interactive: Whether this is an interactive (PTY) agent.
-        requires_pty: Whether the agent requires a PTY. Only meaningful
-            when ``interactive=True``.
-        session_resume_template: Template string for session continuation,
-            e.g. ``--resume {}``. Requires ``completion_required=True``.
-        completion_required: Whether the agent requires explicit completion
-            signals before a clean exit is terminal.
-        subagent_capable: Whether the agent exposes usable sub-agent tooling.
-        no_default_session_flag: When True, the registration layer must
-            not auto-apply the default ``--resume {}`` template to
-            interactive agents.  Replaces the historical hidden
-            ``name != "agy"`` special case in
-            :meth:`AgentSupport.from_registration_kwargs` — one of the
-            declarative opt-outs (with ``AgentSupport``'s alias-help /
-            empty-output-diagnostic kwargs and ``CommandBuilderSpec``'s
-            builder flags) that keep agent behaviour data-driven instead
-            of name-typed.
-    """
 
     name: str
     transport: AgentTransport
@@ -69,12 +41,11 @@ class AgentSpec:
         completion_required: bool = False,
         no_default_session_flag: bool = False,
     ) -> AgentSpec:
-        """Build an AgentSpec from an AgentConfig plus keyword overrides."""
         return cls(
             name=config.cmd,
             transport=cast(
                 "AgentTransport", config.transport
-            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            ),
             interactive=interactive,
             requires_pty=interactive,
             session_resume_template=config.session_flag,

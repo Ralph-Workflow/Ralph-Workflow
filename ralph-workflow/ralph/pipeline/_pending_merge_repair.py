@@ -1,4 +1,3 @@
-"""Supervised agent handoff for commit blockers on an already-resolved merge."""
 
 from __future__ import annotations
 
@@ -39,28 +38,10 @@ if TYPE_CHECKING:
     from ralph.recovery.controller import RecoveryController
     from ralph.workspace.scope import WorkspaceScope
 
-#: The repair declaration the agent leaves behind: the repository
-#: relative paths it corrected, as a JSON array. It is the artifact this
-#: seam asks for, and Ralph reads it back itself.
 _REPAIR_DECLARATION = Path(".agent") / "tmp" / "pending_commit_repair_paths.json"
 
 
 def _config_failure_record(record: IntegrationRecord, reason_text: str) -> IntegrationRecord:
-    """Stamp a configuration failure WITHOUT charging a repair attempt.
-
-    A target-workspace configuration error is an operator fix, not a
-    repository failure: it must never advance the diagnostic-repair
-    budget, and it must never stamp the spent-budget marker that
-    routes a record into the autonomous fallback ladder.
-
-    The shared bump helper owns the attempt emission, so this path
-    routes through it and then restores the budget fields the
-    no-charge rule protects: the durable counter, the spent-budget
-    marker, and the recorded error (the helper replaces the error
-    with the marker text once the counter reaches the cap). The
-    configuration reason and the typed failure cause are what the
-    record keeps.
-    """
     stamped = _bump_attempt(record, reason_text)
     return stamped.model_copy(
         update={
@@ -85,7 +66,6 @@ def repair_pending_merge(
     controller: RecoveryController,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> bool:
-    """Hold recovery ownership while a supervised agent repairs the commit blocker."""
     from ralph.pipeline.auto_integrate_record import bind_integration_record_root, read_record
     from ralph.pipeline.auto_integrate_transaction import integration_transaction
     from ralph.workspace.context import WorkspaceContextError, workspace_context
@@ -153,7 +133,6 @@ def _repair_owned_merge(
     controller: RecoveryController,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> bool:
-    """Hold recovery ownership while a supervised agent repairs the commit blocker."""
     from ralph.pipeline._pending_merge_commit import pending_merge_identity_matches
     from ralph.pipeline._pending_rebase_continue import pending_rebase_identity_matches
     from ralph.pipeline._pending_repair_edits import (
@@ -232,11 +211,6 @@ def _repair_owned_merge(
         logger.critical("Pending integration retained; source repair refused: {}", exc)
         retained = read_record(root)
         if retained is not None:
-            # The refusal is recorded as a breadcrumb only. The
-            # diagnostic-repair budget counts repository failures that
-            # happen WITHOUT an agent attempt; a refused repair is the
-            # agent's own attempt, and the agent's standing is the
-            # shared ledger's decision, not this counter's.
             write_record(
                 root,
                 _bump_attempt(retained, f"source repair refused: {exc}"[:8192]),
@@ -256,29 +230,6 @@ def handoff_pending_merge_repair(
     backend: FileBackend = DEFAULT_FILE_BACKEND,
     protected_paths: Sequence[str] = (),
 ) -> bool:
-    """Offer repair agents by health before invoking one; Git still decides completion.
-
-    The caller holds integration ownership and validates the prepared index.
-    Agent success only authorizes another normal commit attempt, never landing.
-
-    Every attempt reports OBSERVED facts to the shared owner
-    (:class:`~ralph.recovery.agent_failure_ledger.AgentFailureLedger` through
-    ``controller``):
-
-    * the repair declaration the agent left on disk -- Ralph's own read of
-      the artifact this seam asks for; and
-    * whether the workspace changed while the attempt ran.
-
-    The invoke boolean is NOT one of those facts: an invocation can report
-    failure after the repair landed, and report success after nothing was
-    produced, so it never decides an agent's standing and never earns a
-    first-offer exemption. A verified artifact clears the agent's history;
-    every other way out is an unproductive attempt, and the owner's
-    consecutive and total limits decide when the agent is benched and which
-    agent runs next. While every agent is benched nothing is invoked and no
-    attempt is spent: the integration stays pending with its progress
-    retained, and is retried when an agent is eligible again.
-    """
     from ralph.pipeline._integration_diagnostic_handoff import check_target_worktree_context
 
     if not agents:
@@ -348,13 +299,7 @@ def handoff_pending_merge_repair(
     try:
         backend.mkdir(prompt.parent, parents=True, exist_ok=True)
         write_text_if_changed(backend, prompt, content)
-        # The declaration belongs to THIS attempt: a stale one from an
-        # earlier attempt must never be read as this attempt's artifact.
         backend.unlink(declaration, missing_ok=True)
-        # The diagnostic-repair budget counts repository failures that
-        # happen WITHOUT an agent attempt; an agent attempt does not
-        # advance it, so the counter can never decide an agent's
-        # eligibility or the integration's fate.
         write_record(
             root,
             _bump_attempt(record, diagnostic),
@@ -370,20 +315,10 @@ def handoff_pending_merge_repair(
         logger.critical("Pending integration retained; repair handoff failed: {}", exc)
         bench_resolver(controller, agent, exc)
         return False
-    # The invocation's own report is the FLOW signal only: it says the
-    # agent ran to a declared completion, so Ralph may try to accept
-    # whatever the attempt produced. It never decides the agent's
-    # standing -- that is the observed artifact's verdict.
     invoked_ok = bool(reported[0]) if reported else False
     if _declared_repair_present(backend, declaration):
-        # The artifact Ralph asked for is on disk: the attempt produced
-        # the required completion, so the agent's history is cleared.
         clear_resolver(controller, agent)
         return invoked_ok
-    # Typed, never prose: the missing declaration is Ralph's OWN observed
-    # fact (the artifact it asked for is not on disk), so the owner gets
-    # the typed ATTEMPT_FAILED outcome. The text classifier's RAW path
-    # stays reserved for the external exception route above.
     bench_resolver(
         controller,
         agent,
@@ -395,13 +330,6 @@ def handoff_pending_merge_repair(
 
 
 def _declared_repair_present(backend: FileBackend, declaration: Path) -> bool:
-    """Whether the agent left a repair declaration Ralph can read back.
-
-    The declaration is the artifact this seam asks for: the corrected
-    repository-relative paths, as a JSON array. Ralph reads it itself
-    and revalidates it against the repository before anything is staged,
-    so an unreadable or malformed declaration is not a completion.
-    """
     try:
         raw = backend.read_text(declaration)
     except Exception:

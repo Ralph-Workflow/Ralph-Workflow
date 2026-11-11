@@ -1,4 +1,3 @@
-"""Canonical baseline capability definition with tier splits."""
 
 from __future__ import annotations
 
@@ -7,15 +6,12 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class BaselineCapability:
-    """A Ralph Workflow baseline capability with its tier classification."""
 
     name: str
     description: str
     tier: str
-    # tier values: 'static_builtin' | 'mandatory' | 'conditional' | 'non_default'
 
 
-# Always-on built-in capabilities: no external dependencies, cannot degrade.
 STATIC_BUILTIN_CAPABILITIES: tuple[BaselineCapability, ...] = (
     BaselineCapability(
         "workspace_ops",
@@ -44,7 +40,6 @@ STATIC_BUILTIN_CAPABILITIES: tuple[BaselineCapability, ...] = (
     ),
 )
 
-# Dependency-backed helpers that require health tracking.
 MANDATORY_DEFAULTS: tuple[BaselineCapability, ...] = (
     BaselineCapability(
         "web_search",
@@ -66,7 +61,6 @@ MANDATORY_DEFAULTS: tuple[BaselineCapability, ...] = (
     ),
 )
 
-# Supported when configured and reachable.
 CONDITIONAL_DEFAULTS: tuple[BaselineCapability, ...] = (
     BaselineCapability(
         "docs_mcp",
@@ -88,7 +82,6 @@ CONDITIONAL_DEFAULTS: tuple[BaselineCapability, ...] = (
     ),
 )
 
-# Not part of the first-run baseline.
 NON_DEFAULTS: tuple[BaselineCapability, ...] = (
     BaselineCapability(
         "github",

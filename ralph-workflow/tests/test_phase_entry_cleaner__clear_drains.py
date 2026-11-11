@@ -1,5 +1,3 @@
-"""Tests for clear_phase_entry_drains function."""
-
 from __future__ import annotations
 
 from functools import lru_cache
@@ -35,7 +33,6 @@ def _make_phase_def(
     on_loopback: str | None = None,
     **extra: object,
 ) -> PhaseDefinition:
-    """Build a minimal PhaseDefinition for testing."""
     kwargs: dict[str, object] = {
         "drain": "test_phase",
         "transitions": PhaseTransition(on_success="next"),
@@ -51,7 +48,6 @@ def _make_phase_def(
 def _make_minimal_pipeline(
     phases: dict[str, PhaseDefinition],
 ) -> PipelinePolicy:
-    """Build a minimal PipelinePolicy for testing."""
     all_phases = dict(phases)
     all_phases["terminal"] = PhaseDefinition(
         drain="terminal",
@@ -73,7 +69,6 @@ def _write_artifact_files(
     artifact_path: str,
     md_path: str | None,
 ) -> None:
-    """Write minimal artifact files for a given artifact type."""
     ws.mkdirs(Path(artifact_path).parent.as_posix())
     ws.write(artifact_path, f"---\ntype: {artifact_type}\n---\n\n# Test\n")
     if md_path:
@@ -81,16 +76,12 @@ def _write_artifact_files(
 
 
 class TestClearPhaseEntryDrains:
-    """clear_phase_entry_drains deletes drain artifacts on fresh entry only."""
-
     def test_fresh_entry_clears_declared_drains(self, tmp_path: Path) -> None:
-        """Fresh entry with declared drains: JSON and markdown files are deleted."""
         pipeline, artifacts_policy = _load_default_policy_bundle()
         root = tmp_path / ".agent"
         root.mkdir(parents=True)
         ws = FsWorkspace(root)
 
-        # Pre-create planning, planning_analysis, and development_analysis drain artifacts
         _write_artifact_files(
             ws,
             "plan",
@@ -109,7 +100,6 @@ class TestClearPhaseEntryDrains:
             ".agent/artifacts/development_analysis_decision.md",
             ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
         )
-        # Also create a development artifact (should NOT be cleared on planning entry)
         _write_artifact_files(
             ws,
             "development_result",
@@ -119,19 +109,16 @@ class TestClearPhaseEntryDrains:
 
         clear_phase_entry_drains(ws, "planning", None, pipeline, artifacts_policy)
 
-        # planning, planning_analysis, and development_analysis artifacts are cleared
         assert not ws.exists(".agent/artifacts/plan.md")
         assert not ws.exists(".agent/PLAN.md")
         assert not ws.exists(".agent/artifacts/planning_analysis_decision.md")
         assert not ws.exists(".agent/PLANNING_ANALYSIS_DECISION.md")
         assert not ws.exists(".agent/artifacts/development_analysis_decision.md")
         assert not ws.exists(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")
-        # development artifact is NOT cleared (not in planning's clear_drains_on_fresh_entry)
         assert ws.exists(".agent/artifacts/development_result.md")
         assert ws.exists(".agent/DEVELOPMENT_RESULT.md")
 
     def test_fresh_entry_clears_the_retained_draft(self, tmp_path: Path) -> None:
-        """A retained draft must not outlive the canonical artifact it produced."""
         pipeline, artifacts_policy = _load_default_policy_bundle()
         root = tmp_path / ".agent"
         root.mkdir(parents=True)
@@ -145,7 +132,6 @@ class TestClearPhaseEntryDrains:
         assert not ws.exists(".agent/artifacts/.plan.draft.md")
 
     def test_phase_transition_clears_a_draft_whose_artifact_survives(self, tmp_path: Path) -> None:
-        """plan.md must outlive planning; the plan draft must not."""
         pipeline, artifacts_policy = _load_default_policy_bundle()
         root = tmp_path / ".agent"
         root.mkdir(parents=True)
@@ -153,15 +139,12 @@ class TestClearPhaseEntryDrains:
         _write_artifact_files(ws, "plan", ".agent/artifacts/plan.md", ".agent/PLAN.md")
         ws.write(".agent/artifacts/.plan.draft.md", "planning-phase draft")
 
-        # planning -> development: development reads plan.md, so the canonical
-        # artifact is deliberately not a declared drain here.
         clear_phase_entry_drains(ws, "development", "planning", pipeline, artifacts_policy)
 
         assert ws.exists(".agent/artifacts/plan.md")
         assert not ws.exists(".agent/artifacts/.plan.draft.md")
 
     def test_retry_keeps_the_retained_draft(self, tmp_path: Path) -> None:
-        """Same-phase retry is exactly the case that may resume from the draft."""
         pipeline, artifacts_policy = _load_default_policy_bundle()
         root = tmp_path / ".agent"
         root.mkdir(parents=True)
@@ -176,20 +159,17 @@ class TestClearPhaseEntryDrains:
     def test_analysis_loopback_refills_a_missing_draft_from_the_rejected_plan(
         self, tmp_path: Path
     ) -> None:
-        """Requested changes must land the agent on the rejected plan, ready to edit."""
         pipeline, artifacts_policy = _load_default_policy_bundle()
         root = tmp_path / ".agent"
         root.mkdir(parents=True)
         ws = FsWorkspace(root)
         _write_artifact_files(ws, "plan", ".agent/artifacts/plan.md", ".agent/PLAN.md")
 
-        # planning_analysis -> planning loopback, with no draft on disk.
         clear_phase_entry_drains(ws, "planning", "planning_analysis", pipeline, artifacts_policy)
 
         assert ws.read(".agent/artifacts/.plan.draft.md") == ws.read(".agent/artifacts/plan.md")
 
     def test_loopback_does_not_overwrite_an_existing_draft(self, tmp_path: Path) -> None:
-        """In-progress repairs are deliberately ahead of the canonical artifact."""
         pipeline, artifacts_policy = _load_default_policy_bundle()
         root = tmp_path / ".agent"
         root.mkdir(parents=True)
@@ -202,7 +182,6 @@ class TestClearPhaseEntryDrains:
         assert ws.read(".agent/artifacts/.plan.draft.md") == "half-repaired plan"
 
     def test_fresh_entry_does_not_seed_a_draft(self, tmp_path: Path) -> None:
-        """A new attempt starts empty, never preloaded with prior-phase text."""
         pipeline, artifacts_policy = _load_default_policy_bundle()
         root = tmp_path / ".agent"
         root.mkdir(parents=True)
@@ -214,7 +193,6 @@ class TestClearPhaseEntryDrains:
         assert not ws.exists(".agent/artifacts/.plan.draft.md")
 
     def test_loopback_keeps_the_retained_draft(self, tmp_path: Path) -> None:
-        """Analysis loopback resumes the attempt, so the draft survives."""
         pipeline, artifacts_policy = _load_default_policy_bundle()
         root = tmp_path / ".agent"
         root.mkdir(parents=True)
@@ -227,7 +205,6 @@ class TestClearPhaseEntryDrains:
         assert ws.exists(".agent/artifacts/.plan.draft.md")
 
     def test_loopback_does_not_clear(self, tmp_path: Path) -> None:
-        """Analysis loopback: is_fresh=False → files are NOT deleted."""
         pipeline, artifacts_policy = _load_default_policy_bundle()
         root = tmp_path / ".agent"
         root.mkdir(parents=True)
@@ -240,15 +217,12 @@ class TestClearPhaseEntryDrains:
             ".agent/PLAN.md",
         )
 
-        # planning_analysis → planning loopback (previous_phase="planning_analysis")
         clear_phase_entry_drains(ws, "planning", "planning_analysis", pipeline, artifacts_policy)
 
-        # Files must still exist (loopback, not fresh)
         assert ws.exists(".agent/artifacts/plan.md")
         assert ws.exists(".agent/PLAN.md")
 
     def test_same_phase_does_not_clear(self, tmp_path: Path) -> None:
-        """Same-phase retry: is_fresh=False → files are NOT deleted."""
         pipeline, artifacts_policy = _load_default_policy_bundle()
         root = tmp_path / ".agent"
         root.mkdir(parents=True)
@@ -261,25 +235,20 @@ class TestClearPhaseEntryDrains:
             ".agent/DEVELOPMENT_RESULT.md",
         )
 
-        # development → development (same-phase retry)
         clear_phase_entry_drains(ws, "development", "development", pipeline, artifacts_policy)
 
-        # Files must still exist
         assert ws.exists(".agent/artifacts/development_result.md")
         assert ws.exists(".agent/DEVELOPMENT_RESULT.md")
 
     def test_fresh_entry_absent_files_no_error(self, tmp_path: Path) -> None:
-        """Fresh entry with absent files: no FileNotFoundError or exception raised."""
         pipeline, artifacts_policy = _load_default_policy_bundle()
         root = tmp_path / ".agent"
         root.mkdir(parents=True)
         ws = FsWorkspace(root)
 
-        # No files pre-created - should not raise
         clear_phase_entry_drains(ws, "planning", None, pipeline, artifacts_policy)
 
     def test_empty_clear_drains_list_no_exception(self, tmp_path: Path) -> None:
-        """Phase with empty clear_drains_on_fresh_entry: no deletion, no exception."""
         pipeline = PipelinePolicy(
             phases={
                 "empty_phase": PhaseDefinition(
@@ -305,20 +274,14 @@ class TestClearPhaseEntryDrains:
         root.mkdir(parents=True)
         ws = FsWorkspace(root)
 
-        # Pre-create any file
         ws.write(".agent/artifacts/plan.md", "---\ntype: plan\n---\n")
 
-        # Empty list → nothing deleted, no exception
         clear_phase_entry_drains(ws, "empty_phase", None, pipeline, artifacts_policy)
         assert ws.exists(".agent/artifacts/plan.md")
 
     def test_planning_from_dev_commit_clears_planning_and_planning_analysis_drains(
         self, tmp_path: Path
     ) -> None:
-        """planning enters from dev_commit.
-
-        It clears planning, planning_analysis, and dev_analysis drains.
-        """
         pipeline, artifacts_policy = _load_default_policy_bundle()
         root = tmp_path / ".agent"
         root.mkdir(parents=True)
@@ -349,25 +312,18 @@ class TestClearPhaseEntryDrains:
             ".agent/DEVELOPMENT_RESULT.md",
         )
 
-        # planning from development_commit (fresh entry, cross-phase)
         clear_phase_entry_drains(ws, "planning", "development_commit", pipeline, artifacts_policy)
 
-        # planning, planning_analysis, and development_analysis artifacts are cleared
         assert not ws.exists(".agent/artifacts/plan.md")
         assert not ws.exists(".agent/PLAN.md")
         assert not ws.exists(".agent/artifacts/planning_analysis_decision.md")
         assert not ws.exists(".agent/PLANNING_ANALYSIS_DECISION.md")
         assert not ws.exists(".agent/artifacts/development_analysis_decision.md")
         assert not ws.exists(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")
-        # development artifact is NOT cleared (not in planning's clear_drains_on_fresh_entry)
         assert ws.exists(".agent/artifacts/development_result.md")
         assert ws.exists(".agent/DEVELOPMENT_RESULT.md")
 
     def test_planning_from_dev_final_commit_clears_dev_analysis(self, tmp_path: Path) -> None:
-        """planning re-entry from development_final_commit.
-
-        It clears dev analysis and planning drains.
-        """
         pipeline, artifacts_policy = _load_default_policy_bundle()
         root = tmp_path / ".agent"
         root.mkdir(parents=True)
@@ -414,7 +370,6 @@ class TestClearPhaseEntryDrains:
     def test_development_from_planning_analysis_clears_analysis_dev_drains(
         self, tmp_path: Path
     ) -> None:
-        """dev entering from planning_analysis clears analysis, dev, and dev_analysis drains."""
         pipeline, artifacts_policy = _load_default_policy_bundle()
         root = tmp_path / ".agent"
         root.mkdir(parents=True)
@@ -445,13 +400,10 @@ class TestClearPhaseEntryDrains:
             ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
         )
 
-        # development from planning_analysis (fresh entry, cross-phase)
         clear_phase_entry_drains(ws, "development", "planning_analysis", pipeline, artifacts_policy)
 
-        # planning artifact is NOT cleared (not in development's clear_drains_on_fresh_entry)
         assert ws.exists(".agent/artifacts/plan.md")
         assert ws.exists(".agent/PLAN.md")
-        # planning_analysis, development, and development_analysis artifacts ARE cleared
         assert not ws.exists(".agent/artifacts/planning_analysis_decision.md")
         assert not ws.exists(".agent/PLANNING_ANALYSIS_DECISION.md")
         assert not ws.exists(".agent/artifacts/development_result.md")
@@ -460,7 +412,6 @@ class TestClearPhaseEntryDrains:
         assert not ws.exists(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")
 
     def test_development_commit_from_dev_analysis_clears_dev_drains(self, tmp_path: Path) -> None:
-        """dev_commit enters from dev_analysis, clears dev and dev_analysis drains."""
         pipeline, artifacts_policy = _load_default_policy_bundle()
         root = tmp_path / ".agent"
         root.mkdir(parents=True)
@@ -491,17 +442,14 @@ class TestClearPhaseEntryDrains:
             ".agent/PLANNING_ANALYSIS_DECISION.md",
         )
 
-        # development_commit from development_analysis (fresh entry, cross-phase)
         clear_phase_entry_drains(
             ws, "development_commit", "development_analysis", pipeline, artifacts_policy
         )
 
-        # development and development_analysis artifacts are cleared
         assert not ws.exists(".agent/artifacts/development_result.md")
         assert not ws.exists(".agent/DEVELOPMENT_RESULT.md")
         assert not ws.exists(".agent/artifacts/development_analysis_decision.md")
         assert not ws.exists(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")
-        # planning and planning_analysis artifacts are NOT cleared
         assert ws.exists(".agent/artifacts/plan.md")
         assert ws.exists(".agent/PLAN.md")
         assert ws.exists(".agent/artifacts/planning_analysis_decision.md")

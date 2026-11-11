@@ -1,18 +1,3 @@
-"""Pins E4.2 and E2.7: two supervisors concurrently replacing and single-candidate invariant.
-
-Catalogue requirement E4.2:
-- Two supervisors / callers concurrently replacing -> per-bridge coordination guarantees
-  that a single replacement succeeds (single winner, other detects replacement or no-op).
-- If the restart budget is exhausted, terminal failure is delivered to both supervisors.
-
-Catalogue requirement E2.7:
-- Only one candidate at a time: second probe failure, second supervisor tick, or
-  reset_tool_registry() during candidate startup joins or waits under the bridge lock,
-  never spawning concurrent duplicate candidate processes.
-
-All inner processes in this suite are REAL OS subprocesses managed by ProcessManager.
-"""
-
 from __future__ import annotations
 
 import contextlib
@@ -102,11 +87,6 @@ def _make_real_inner(
 
 
 def test_e42_two_supervisors_concurrent_replacement_single_winner(tmp_path: pathlib.Path) -> None:
-    """E4.2: Two supervisors concurrently checking an unhealthy bridge -> single replacement succeeds.
-
-    Exactly one supervisor performs the restart (winner), while the other detects
-    that replacement is already complete (or in flight) and does not spawn a second candidate.
-    """
     procs: list[ManagedProcess] = []
     try:
         p_init = _spawn_real_process(tmp_path, label="e42-init", exit_code=1)
@@ -126,7 +106,6 @@ def test_e42_two_supervisors_concurrent_replacement_single_winner(tmp_path: path
                 max_active_spawns = max(max_active_spawns, active_spawns)
                 cur = total_spawns
             try:
-                # Brief hold to guarantee overlap if concurrent callers attempt spawning
                 time.sleep(0.04)
                 p = _spawn_real_process(tmp_path, label=f"e42-cand-{cur}")
                 with lock:
@@ -168,11 +147,9 @@ def test_e42_two_supervisors_concurrent_replacement_single_winner(tmp_path: path
 
         assert not errors, f"Unexpected errors during concurrent checks: {errors}"
         assert len(results) == 2
-        # Exactly one winner performed the restart (True), the other observed healthy/restarted (False)
         assert sorted(results) == [False, True]
         assert bridge.restart_count == 1
         assert total_spawns == 1
-        # Pin E2.7: Only one candidate at a time
         assert max_active_spawns == 1
         assert bridge.process.poll() is None
     finally:
@@ -182,15 +159,6 @@ def test_e42_two_supervisors_concurrent_replacement_single_winner(tmp_path: path
 def test_e42_dead_child_seen_by_both_supervisors_is_replaced_once(
     tmp_path: pathlib.Path,
 ) -> None:
-    """E4.2 regression: both supervisors observe the SAME dead child before either swaps it.
-
-    The first supervisor is parked in the off-lock restart cooldown (after it
-    observed the dead child, before it replaced it) while the second runs its
-    check. The second must not charge a second attempt or replace the child
-    the first is about to spawn; it either waits for the first replacement
-    and no-ops, or (pre-fix) races it -- which this ordering makes
-    deterministic instead of load-dependent.
-    """
     procs: list[ManagedProcess] = []
     try:
         p_init = _spawn_real_process(tmp_path, label="e42-dead-init", exit_code=1)
@@ -205,9 +173,6 @@ def test_e42_dead_child_seen_by_both_supervisors_is_replaced_once(
             cooldown_calls[0] += 1
             if cooldown_calls[0] == 1:
                 first_in_cooldown.set()
-                # Bounded: with the single-winner gate the second check blocks
-                # until this replacement finishes, so it can never set the
-                # event; 0.3 s is how long a rival gets to (wrongly) replace.
                 second_finished.wait(timeout=0.3)
 
         spawned: list[int] = []
@@ -259,7 +224,6 @@ def test_e42_dead_child_seen_by_both_supervisors_is_replaced_once(
 def test_e27_single_candidate_during_startup_serialization(
     tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """E2.7: Concurrent probe failure and reset_tool_registry serialize without duplicate candidates."""
     monkeypatch.setattr(
         lifecycle,
         "_http_tools_list_names",
@@ -306,7 +270,6 @@ def test_e27_single_candidate_during_startup_serialization(
             sleep_fn=lambda _s: None,
         )
 
-        # Simulate child exit to trigger restart path
         initial_inner.process.terminate()
 
         errors: list[Exception] = []
@@ -334,7 +297,6 @@ def test_e27_single_candidate_during_startup_serialization(
 
         assert not errors, f"Unexpected errors during concurrent operations: {errors}"
         assert max_active_spawns == 1
-        # Operations succeeded and bridge is left pointing to a valid candidate
         assert bridge.restart_count in (1, 2)
         assert bridge.process.poll() is None
     finally:
@@ -342,7 +304,6 @@ def test_e27_single_candidate_during_startup_serialization(
 
 
 def test_e42_two_supervisors_terminal_budget_delivered_to_both(tmp_path: pathlib.Path) -> None:
-    """E4.2: When restart budget is exhausted, terminal failure is delivered to both supervisors."""
     procs: list[ManagedProcess] = []
     try:
         dead_p = _spawn_real_process(tmp_path, label="e42-term-dead", exit_code=137)
@@ -395,7 +356,6 @@ def test_e42_two_supervisors_terminal_budget_delivered_to_both(tmp_path: pathlib
         t1.join(timeout=3.0)
         t2.join(timeout=3.0)
 
-        # Invariant: Terminal McpServerError delivered to both supervisors
         assert len(t1_caught) == 1
         assert t1_caught[0].failure_kind == RestartAttemptResult.BUDGET_EXHAUSTED
         assert len(t2_caught) == 1
@@ -410,7 +370,6 @@ def test_e42_two_supervisors_terminal_budget_delivered_to_both(tmp_path: pathlib
 
 
 def test_e42_concurrent_health_checks_with_probe_failure(tmp_path: pathlib.Path) -> None:
-    """E4.2: Concurrent probe failure checks serialize cleanly; single replacement occurs."""
     procs: list[ManagedProcess] = []
     try:
         p_init = _spawn_real_process(tmp_path, label="e42-probe-init")
@@ -430,7 +389,6 @@ def test_e42_concurrent_health_checks_with_probe_failure(tmp_path: pathlib.Path)
                 procs.append(p)
             return _make_real_inner(tmp_path, p)
 
-        # Configure bridge where probe fails
         bridge = lifecycle.RestartAwareMcpBridge(
             initial_inner,
             restart_fn=restart_fn,
@@ -456,7 +414,6 @@ def test_e42_concurrent_health_checks_with_probe_failure(tmp_path: pathlib.Path)
         t2.join(timeout=3.0)
 
         assert len(results) == 2
-        # One check triggered restart, or both serialized through failure counters
         assert bridge.restart_count <= 1
         assert spawns <= 1
     finally:

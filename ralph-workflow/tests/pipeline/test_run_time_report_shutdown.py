@@ -1,12 +1,3 @@
-"""Shutdown must preserve a truthful, valid run-time report.
-
-A run can end while integration is stalled, and the renderer can also produce
-a report that the closed markdown grammar rejects. Neither condition may erase
-the only end-of-run explanation. These tests drive the public shutdown seam
-with frozen state and a fake artifact sink; they never signal the process or
-touch the filesystem.
-"""
-
 from __future__ import annotations
 
 from datetime import timedelta
@@ -44,14 +35,6 @@ class _SubmissionSink(Protocol):
 
 
 class _UnreadablePhase(str):
-    """A phase whose text cannot be read.
-
-    The last-resort report must not depend on a state that already broke
-    the full and the degraded renderer, so the fault is injected through
-    the state itself: reading the phase raises for every renderer that
-    formats it.
-    """
-
     def replace(self, *_args: object, **_kwargs: object) -> str:
         raise RuntimeError("phase is unreadable")
 
@@ -91,12 +74,10 @@ def _capture_submission(
 
 
 def _capture_errors(captured: list[str]) -> int:
-    """Route loguru errors into ``captured`` and return the sink id."""
     return logger.add(captured.append, level="ERROR", format="{message}")
 
 
 def test_zero_agent_and_push_counts_are_a_valid_run_time_report() -> None:
-    """No agent activity is evidence, not a validation error."""
     state = PipelineState(
         phase="development",
         metrics=RunMetrics(
@@ -119,13 +100,6 @@ def test_zero_agent_and_push_counts_are_a_valid_run_time_report() -> None:
 
 
 def test_a_report_with_the_development_timebox_section_validates() -> None:
-    """The development timebox is a declared section, so it validates.
-
-    The renderer emits the section whenever the independent development
-    timer ran. The spec is closed, so an undeclared section took the whole
-    report with it -- a stall that never reached an agent call produced no
-    report at all.
-    """
     state = PipelineState(
         phase="development",
         metrics=RunMetrics(),
@@ -147,7 +121,6 @@ def test_a_report_with_the_development_timebox_section_validates() -> None:
 
 
 def test_an_interrupted_stall_with_zero_counts_validates() -> None:
-    """A stalled run that never called an agent still reports truthfully."""
     state = PipelineState(
         phase="development",
         metrics=RunMetrics(
@@ -176,7 +149,6 @@ def test_an_interrupted_stall_with_zero_counts_validates() -> None:
 def test_invalid_full_report_degrades_to_a_valid_report_with_its_reason(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A rejected full report is replaced, not silently discarded."""
     submitted: list[str] = []
     monkeypatch.setattr(
         run_time_report_module,
@@ -224,13 +196,6 @@ def test_invalid_full_report_degrades_to_a_valid_report_with_its_reason(
 def test_a_broken_degraded_renderer_still_emits_a_minimal_valid_report(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The last tier emits a valid report even when the degraded one fails.
-
-    The degraded report reads the pipeline state. When the state itself is
-    broken, the degraded renderer raises and the report would be lost. The
-    minimal report reads no state at all, so it still validates and still
-    carries the reason the earlier tiers failed.
-    """
     submitted: list[str] = []
     monkeypatch.setattr(
         run_time_report_module,
@@ -262,15 +227,6 @@ def test_a_broken_degraded_renderer_still_emits_a_minimal_valid_report(
 def test_zero_agent_stall_with_rejected_full_report_still_emits_valid_report(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AC-8(d): validation rejection of a zero-agent stall report never loses it.
-
-    The observed shutdown failure was ``run_time_report emission failed:
-    run_time_report validation failed`` with no report persisted at all.
-    When the full report of an interrupted, zero-agent stalled run is
-    rejected, the degraded replacement must still validate, keep the
-    zero counts truthful, carry the rejection reason, and name the
-    unresolved integration.
-    """
     submitted: list[str] = []
     monkeypatch.setattr(
         run_time_report_module,
@@ -325,7 +281,6 @@ def test_zero_agent_stall_with_rejected_full_report_still_emits_valid_report(
 def test_interrupted_integration_stall_emits_a_valid_run_time_report(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The observed Ctrl+C path reaches the report with the stalled state intact."""
     submitted: list[str] = []
     monkeypatch.setattr(
         run_time_report_module,
@@ -396,7 +351,5 @@ def test_interrupted_integration_stall_emits_a_valid_run_time_report(
     assert "## Development Timebox" in report
     assert "consumed: 17880.000s" in report
     assert "Integration status: unresolved at report time." in report
-    # The full report validated, so the run never lost its report to a
-    # validation failure.
     assert "Degraded run-time report" not in report
     assert not [message for message in errors if "run_time_report emission failed" in message]

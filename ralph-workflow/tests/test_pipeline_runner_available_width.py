@@ -1,5 +1,3 @@
-"""Tests for ralph/pipeline/runner.py — pipeline runner."""
-
 from __future__ import annotations
 
 from functools import lru_cache
@@ -32,11 +30,11 @@ DEVELOPER_ITERATIONS = 5
 REVIEWER_PASSES = 2
 SECOND_ITERATION = 2
 INTERRUPT_EXIT_CODE = 130
-_TRUNCATED_TEXT_MAX = runner_module.MAX_TEXT_LENGTH + 1  # content + ellipsis
-_TRUNCATED_RESULT_BRIEF_MAX = runner_module.MAX_TOOL_RESULT_BRIEF + 1  # content + ellipsis
-_TRUNCATED_METADATA_MAX = runner_module.MAX_METADATA_SUMMARY_LENGTH + 1  # content + ellipsis
+_TRUNCATED_TEXT_MAX = runner_module.MAX_TEXT_LENGTH + 1
+_TRUNCATED_RESULT_BRIEF_MAX = runner_module.MAX_TOOL_RESULT_BRIEF + 1
+_TRUNCATED_METADATA_MAX = runner_module.MAX_METADATA_SUMMARY_LENGTH + 1
 _AVAILABLE_WIDTH_FLOOR = 40
-_TRUNCATE_RESULT_LEN = 6  # 5 chars + 1 ellipsis char
+_TRUNCATE_RESULT_LEN = 6
 
 
 @lru_cache(maxsize=1)
@@ -177,11 +175,8 @@ def test_materialize_agent_prompt_if_needed_rewrites_stale_planning_prompt_on_an
 
 
 class TestAvailableWidth:
-    """Tests for _available_width helper."""
-
     def test_available_width_minimum_floor(self, monkeypatch: MonkeyPatch) -> None:
         monkeypatch.setattr(runner_module, "terminal_width", lambda: 20)
-        # With prefix_len=20, width would be 20-20-2 = -2, should floor to 40
         assert runner_module.available_width(20) == _AVAILABLE_WIDTH_FLOOR
 
     def test_available_width_normal_terminal(self, monkeypatch: MonkeyPatch) -> None:

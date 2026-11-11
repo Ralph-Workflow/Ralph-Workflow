@@ -1,12 +1,3 @@
-"""Crash guards convert ordinary errors into recovery but never swallow control-flow exits.
-
-The pipeline step, phase-handler and fan-out crash guards turn an
-``Exception`` (and, by the recovery-first design, a ``SystemExit`` raised by
-library code) into a recoverable phase failure. A ``BaseException`` that is
-neither -- a harness timeout, ``GeneratorExit``, ``asyncio.CancelledError`` --
-is a control-flow signal from outside the phase and must propagate unchanged.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -34,7 +25,7 @@ pytestmark = pytest.mark.timeout_seconds(5)
 
 
 class _OutsideAbort(BaseException):
-    """Stand-in for a harness timeout: a BaseException that is not an Exception."""
+    pass
 
 
 def _raise_outside_abort(*_args: object, **_kwargs: object) -> None:

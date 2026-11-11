@@ -1,10 +1,3 @@
-"""Regression tests for integration timing seams and rebase failure reasons.
-
-The integration retry back-off must run on the clock installed for the
-attempt, and a rebase failure caused by the environment must never be
-presented to the operator as a content conflict.
-"""
-
 from __future__ import annotations
 
 from collections import deque
@@ -36,37 +29,28 @@ if TYPE_CHECKING:
 
 
 class _RecordingClock:
-    """Clock double that records waits without waiting on real time."""
-
     def __init__(self) -> None:
         self.current = 1000.0
         self.slept: deque[float] = deque(maxlen=16)
 
     def now(self) -> float:
-        """Return the fake clock's current time."""
         return self.current
 
     def sleep(self, seconds: float) -> None:
-        """Record and apply a wait without blocking the test process."""
         self.slept.append(seconds)
         self.current += seconds
 
 
 class _EnvironmentalGitOps(FakeGitOps):
-    """Git-ops double that returns one classified rebase failure."""
-
     def __init__(self, result: RebaseFailed) -> None:
         super().__init__(SimulatedGitEnvironment())
         self.result = result
 
     def rebase_onto(self, root: Path, target: str) -> RebaseFailed:
-        """Return the configured environmental failure."""
         return self.result
 
 
 class _NoAgentRunner:
-    """Agent-runner double that fails if a resolver is dispatched."""
-
     def resolve_rebase(
         self,
         root: Path,
@@ -75,12 +59,10 @@ class _NoAgentRunner:
         *,
         session: ResolutionSession,
     ) -> bool:
-        """Reject any resolver dispatch."""
         raise AssertionError("an environmental rebase failure must not dispatch an agent")
 
 
 def _config() -> UnifiedConfig:
-    """Return a local-only integration configuration."""
     return UnifiedConfig.model_validate(
         {
             "general": {
@@ -96,7 +78,6 @@ def _stub_integration_observations(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Replace repository observations with deterministic local facts."""
     (tmp_path / ".git").mkdir()
     monkeypatch.setattr(
         auto_integrate_module,
@@ -144,7 +125,6 @@ def test_integration_clock_regression_installed_clock_records_the_backoff_wait(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The production retry back-off waits on the clock installed for the attempt."""
     _stub_integration_observations(monkeypatch, tmp_path)
     clock = _RecordingClock()
     attempts = 0
@@ -253,7 +233,6 @@ def test_integration_rebase_regression_environmental_failure_is_not_a_conflict(
     result: RebaseFailed,
     expected_reason: str,
 ) -> None:
-    """An environmental rebase failure is reported accurately and never merged."""
     git_ops = _EnvironmentalGitOps(result)
     endpoint_calls: list[object] = []
 
@@ -300,7 +279,6 @@ def test_integration_rebase_regression_environmental_failure_is_not_a_conflict(
 
 
 def test_conflict_resolution_regression_sleep_seconds_accepts_an_injected_sleep() -> None:
-    """The conflict-resolution wait seam never requires a real sleep in tests."""
     waits: list[float] = []
 
     conflict_driver._sleep_seconds(0.25, sleep=waits.append)

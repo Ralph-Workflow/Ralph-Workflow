@@ -1,4 +1,3 @@
-"""AliveBy — typed corroboration reasons for child liveness."""
 
 from __future__ import annotations
 
@@ -6,7 +5,6 @@ from enum import StrEnum
 
 
 class AliveBy(StrEnum):
-    """Typed corroboration reasons describing why child work still appears alive."""
 
     FRESH_PROGRESS = "fresh_progress"
     FRESH_HEARTBEAT_ONLY = "fresh_heartbeat_only"

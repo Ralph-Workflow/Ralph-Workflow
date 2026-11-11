@@ -1,5 +1,3 @@
-"""Pure behavior tests for the commit-review markdown specification."""
-
 from ralph.mcp.artifacts.markdown import parse_and_validate
 from ralph.mcp.artifacts.markdown.registry import get_spec, registered_specs
 from ralph.mcp.artifacts.markdown.specs import COMMIT_REVIEW_SPEC
@@ -144,16 +142,6 @@ tree_sha: shortsha
 
 
 def test_commit_review_spec_regression_wrong_type_diagnostic_uses_shared_grammar_code() -> None:
-    """A wrong artifact type is diagnosed with the shared markdown grammar code.
-
-    Plan step: WU-3 — the commit-review artifact must not carry the retired
-    cleanup family's rule code. The artifact contract (PROMPT.md, "Artifact
-    contract") requires validation diagnostics to follow the existing
-    markdown artifact grammar (``MD``/``SPEC``/``REF`` codes), so a wrong
-    ``type`` frontmatter value is reported with the shared closed-grammar
-    code ``SPEC010`` — the code this spec already uses for its other
-    closed-grammar rejections.
-    """
     doc = f"""---
 type: wrong
 verdict: approve
@@ -176,20 +164,11 @@ analysis_complete: true
 ---
 ## Actions
 """
-    # Missing required verdict and tree_sha
     error_ids = _error_ids(doc)
     assert "SPEC002" in error_ids
 
 
 def test_dual_field_commit_review_document_is_rejected() -> None:
-    """A document carrying both ``verdict`` and the retired field is rejected.
-
-    The artifact contract has a single verdict field: ``analysis_complete``
-    was replaced by ``verdict`` and there is no dual-field support. The
-    markdown grammar is a closed contract, so a document that still carries
-    the retired field next to a valid ``verdict`` must fail closed with an
-    unknown-frontmatter diagnostic instead of being silently accepted.
-    """
     doc = f"""---
 type: commit_review
 verdict: approve
@@ -200,9 +179,6 @@ analysis_complete: false
 """
     content, diagnostics = parse_and_validate(doc, get_spec("commit_review"))
 
-    # RALPH-TEST-REASON: the commit_review contract declares exactly one verdict
-    # field, so a document that also carries `analysis_complete` has no valid
-    # parse; the assertions below encode that contract.
     assert content == {}, "a dual-field document must not yield an accepted verdict"
     assert "analysis_complete" not in content
     errors = [diagnostic for diagnostic in diagnostics if diagnostic.severity == "error"]

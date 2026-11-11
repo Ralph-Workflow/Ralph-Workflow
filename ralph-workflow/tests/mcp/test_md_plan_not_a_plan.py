@@ -1,5 +1,3 @@
-"""PLAN001 sanity boundary tests."""
-
 from __future__ import annotations
 
 import pytest

@@ -1,12 +1,3 @@
-"""run_git must fail closed: a bounded default timeout and non-interactive git.
-
-Git invoked outside ralph/mcp/ (operations, rebase, vendor-drift checks) was
-unbounded and could block forever on a credential/network prompt — a hang
-vector behind the 5-hour runaway. run_git now substitutes a default timeout when
-a caller gives none, and always runs git in batch mode (GIT_TERMINAL_PROMPT=0)
-so a prompt fails fast instead of hanging.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -22,12 +13,10 @@ if TYPE_CHECKING:
 
 
 class _SyntheticSignalFault(BaseException):
-    """A non-timeout, non-output-cap fault that escapes ``communicate``."""
+    pass
 
 
 class _FakeProc:
-    # OpenCode's prompt is delivered on stdin, so a process fake must
-    # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
     stdin = None
 
     def __init__(
@@ -116,16 +105,6 @@ def test_run_git_explicit_timeout_is_preserved(monkeypatch: pytest.MonkeyPatch) 
 def test_run_git_terminates_child_when_communicate_raises_arbitrary_exception(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A fault that is neither TimeoutExpired nor the output cap still kills git.
-
-    ``communicate_and_cleanup`` can be unwound by a caller-turned signal — the
-    SIGALRM per-test cap, SIGINT, CancelledError — or by an I/O fault on the
-    pipes. Before the BaseException branch existed, the trailing ``finally``
-    closed the pipes and ``__exit__``ed the Popen WITHOUT killing the child, so
-    the git process survived ``run_git`` and kept writing into a repository
-    nobody was reaping. An interrupted index write is the observed damage: the
-    NEXT enumeration then exits 128 with "index file smaller than expected".
-    """
     fault = _SyntheticSignalFault("simulated interrupt inside communicate")
     proc = _FakeProc(raise_from_communicate=fault)
     _install_fake_manager(monkeypatch, proc=proc)
@@ -134,8 +113,6 @@ def test_run_git_terminates_child_when_communicate_raises_arbitrary_exception(
         run_git(["status"], cwd=None, label="test")
 
     assert caught.value is fault
-    # Git removes its *.lock files from a SIGTERM handler; a zero grace window
-    # SIGKILLs it first and orphans index.lock for every later git call.
     assert proc.terminate_calls == [GIT_TERMINATE_GRACE_SECONDS]
     assert GIT_TERMINATE_GRACE_SECONDS > 0.0
 
@@ -143,7 +120,6 @@ def test_run_git_terminates_child_when_communicate_raises_arbitrary_exception(
 def test_run_git_propagates_original_fault_even_when_terminate_itself_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A failing teardown must never mask the exception the caller must see."""
 
     class _UnkillableProc(_FakeProc):
         def terminate(self, grace_period_s: float = 0.0) -> None:

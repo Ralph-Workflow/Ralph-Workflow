@@ -10,8 +10,6 @@ if TYPE_CHECKING:
 
 
 class LoopbackOnceInvoker(MockAgentInvoker):
-    """Return a single development-analysis loopback before succeeding."""
-
     def __init__(self, workspace: MemoryWorkspace) -> None:
         super().__init__(workspace)
         self._development_analysis_calls = 0

@@ -1,5 +1,3 @@
-"""Unit tests for phase integrity helpers."""
-
 from __future__ import annotations
 
 from importlib import import_module
@@ -10,7 +8,6 @@ integrity = import_module("ralph.phases.integrity")
 
 
 def test_verify_prompt_integrity_accepts_existing_prompt() -> None:
-    """A non-empty PROMPT.md should pass integrity checks unchanged."""
     workspace = MemoryWorkspace()
     workspace.write("PROMPT.md", "# Prompt\n")
 
@@ -22,7 +19,6 @@ def test_verify_prompt_integrity_accepts_existing_prompt() -> None:
 
 
 def test_ensure_prompt_integrity_restores_missing_prompt_from_backup() -> None:
-    """Missing PROMPT.md should be restored from a backup copy when available."""
     workspace = MemoryWorkspace()
     workspace.write(".agent/prompt.backup.md", "# Restored\n")
 
@@ -40,7 +36,6 @@ def test_ensure_prompt_integrity_restores_missing_prompt_from_backup() -> None:
 
 
 def test_ensure_prompt_integrity_restores_empty_prompt_from_backup() -> None:
-    """Empty PROMPT.md should be treated as broken and restored."""
     workspace = MemoryWorkspace()
     workspace.write("PROMPT.md", "   \n")
     workspace.write(".agent/prompt.backup.md", "# Backup\n")
@@ -55,7 +50,6 @@ def test_ensure_prompt_integrity_restores_empty_prompt_from_backup() -> None:
 
 
 def test_ensure_prompt_integrity_reports_failure_without_backup() -> None:
-    """Missing prompt without a backup should return a failure result."""
     workspace = MemoryWorkspace()
 
     result = integrity.ensure_prompt_integrity(

@@ -1,5 +1,3 @@
-"""Tests for artifact history archival and indexing."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -48,7 +46,6 @@ class TestArchiveArtifactBeforeOverwrite:
         artifact_dir = tmp_path / ".agent" / "artifacts"
         artifact_dir.mkdir(parents=True)
         (artifact_dir / "plan.md").write_text("# Plan", encoding="utf-8")
-        # Write a handoff file at the known handoff path for 'plan'
 
         handoff_rel = handoff_path_for_artifact("plan")
         if handoff_rel:
@@ -64,7 +61,6 @@ class TestArchiveArtifactBeforeOverwrite:
             assert any(p.suffix == ".md" for p in created)
 
     def test_preserves_distinct_archives_when_timestamp_is_reused(self, tmp_path: Path) -> None:
-        """S-4 regression: repeated archival must retain every recorded version."""
         artifact_dir = tmp_path / ".agent" / "artifacts"
         artifact_dir.mkdir(parents=True)
         canonical = artifact_dir / "plan.md"

@@ -1,14 +1,3 @@
-"""Contract tests for a fully custom-named policy workflow.
-
-This module proves that Ralph Workflow routes on user-defined phase, drain,
-loop counter, and budget counter names without any runtime knowledge of the
-canonical default names (planning, development, review, etc.).
-
-Scope: pure functions only (validate, explain, render, resolve_post_commit_phase,
-with_loop_iteration). The full orchestrator is not exercised here because phase
-handler registration is out of scope for this PR.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -44,7 +33,6 @@ def _make_drain(drain: str, chain: str) -> tuple[str, AgentDrainConfig]:
 
 @pytest.fixture(scope="session")
 def custom_bundle() -> PolicyBundle:
-    """Build a fully custom-named PolicyBundle without any disk I/O."""
     agents = AgentsPolicy(
         agent_chains=dict(
             [
@@ -161,7 +149,6 @@ def custom_bundle() -> PolicyBundle:
 
 class TestCustomPolicyLoopCounterDict:
     def test_loop_counter_increments_on_dict_only(self) -> None:
-        """Custom loop counter writes to dict; legacy development_analysis_iteration stays 0."""
         state = PipelineState(phase="planning")
         updated = state.with_loop_iteration("audit_round", 1)
 

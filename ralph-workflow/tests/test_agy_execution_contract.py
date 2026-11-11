@@ -1,5 +1,3 @@
-"""Tests for AGY execution contract: no session continuation, completion enforcement."""
-
 from __future__ import annotations
 
 from io import StringIO
@@ -32,19 +30,16 @@ if TYPE_CHECKING:
 
 
 def test_agy_strategy_does_not_support_session_continuation() -> None:
-    """AGY strategy reports supports_session_continuation() as False."""
     strategy = strategy_for_transport(AgentTransport.AGY)
     assert strategy.supports_session_continuation() is False
 
 
 def test_agy_strategy_enforces_completion_evidence() -> None:
-    """AGY strategy reports supports_completion_enforcement() as True."""
     strategy = strategy_for_transport(AgentTransport.AGY)
     assert strategy.supports_completion_enforcement() is True
 
 
 def test_agy_strategy_supports_incomplete_exit_reprompt() -> None:
-    """AGY strategy opts into the ONE bounded incomplete-exit reprompt."""
     strategy = strategy_for_transport(AgentTransport.AGY)
     assert strategy.supports_incomplete_exit_reprompt() is True
 
@@ -53,7 +48,6 @@ def test_agy_empty_output_diagnostic_retains_missing_artifact_signal(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An AGY operator diagnosis supplements, rather than hides, completion failure."""
     monkeypatch.setattr(
         "ralph.agents.invoke._completion.lookup_empty_output_diagnostic_factory",
         lambda _agent_name: lambda _output, _cli_log_path: "AGY authentication failed",
@@ -85,11 +79,6 @@ def test_agy_empty_output_diagnostic_retains_missing_artifact_signal(
 def test_clean_exit_without_completion_signal_raises_agent_invocation_error(
     tmp_path: Path,
 ) -> None:
-    """AGY exit-0 with no declare_complete and no artifact raises AgyIncompleteExitError.
-
-    The typed error is retryable exactly once (one bounded fresh-session
-    reprompt per invocation), so it never creates an unbounded retry loop.
-    """
     strategy = strategy_for_transport(AgentTransport.AGY)
     handle = _FakeHandle(returncode=0)
 
@@ -116,12 +105,6 @@ def test_clean_exit_without_completion_signal_raises_agent_invocation_error(
 def test_declare_complete_sentinel_satisfies_artifact_free_completion_contract(
     tmp_path: Path,
 ) -> None:
-    """AGY durable declaration is terminal when the phase has no artifact contract.
-
-    The plain-text marker alone is no longer authoritative: it can be spoofed
-    by ordinary agent output. The completion sentinel written by the real
-    declare_complete MCP tool provides the required corroboration.
-    """
     strategy = strategy_for_transport(AgentTransport.AGY)
     handle = _FakeHandle(returncode=0)
     raw_output = ["Task declared complete: session_id=abc, summary=done, timestamp=1"]
@@ -144,13 +127,6 @@ def test_declare_complete_sentinel_satisfies_artifact_free_completion_contract(
 def test_agy_post_completion_provider_error_preserves_verified_success(
     tmp_path: Path,
 ) -> None:
-    """A provider error after durable completion cannot replay completed work.
-
-    Regression: a live AGY run submitted its artifact and called
-    ``declare_complete``, then AGY emitted ``Malformed function call: Function
-    call is empty`` and exited nonzero. Ralph discarded the authenticated
-    completion evidence and unnecessarily reran the development phase.
-    """
     run_id = "agy-post-completion-error"
     sentinel = tmp_path / ".agent" / f"completion_seen_{run_id}.json"
     sentinel.parent.mkdir(parents=True, exist_ok=True)
@@ -176,7 +152,6 @@ def test_agy_post_completion_quota_error_preserves_verified_success(
     tmp_path: Path,
     returncode: int,
 ) -> None:
-    """A quota diagnostic after durable completion cannot replay completed work."""
     run_id = "agy-post-completion-quota"
     sentinel = tmp_path / ".agent" / f"completion_seen_{run_id}.json"
     sentinel.parent.mkdir(parents=True, exist_ok=True)
@@ -199,7 +174,6 @@ def test_agy_post_completion_quota_error_preserves_verified_success(
 def test_agy_provider_error_without_verified_completion_still_fails(
     tmp_path: Path,
 ) -> None:
-    """A nonzero AGY exit remains fatal when durable completion is absent."""
     with pytest.raises(AgentInvocationError):
         check_process_result(
             _FakeHandle(returncode=1),
@@ -214,16 +188,6 @@ def test_agy_provider_error_without_verified_completion_still_fails(
 
 
 def test_required_artifact_receipt_needs_completion_sentinel(tmp_path: Path) -> None:
-    """AGY required-artifact completion needs receipt and sentinel.
-
-    The legacy schema-validity fallback for on-disk canonical artifacts
-    was removed (analysis how_to_fix item 3): a stale canonical artifact
-    from a previous run can no longer satisfy the current run's
-    completion gate. The hardened contract requires either a current-run
-    receipt at ``.agent/receipts/<run_id>/<type>.json`` (promoted from
-    the agent's direct write) AND a completion sentinel via the real
-    declare_complete MCP tool.
-    """
     artifact_dir = tmp_path / ".agent" / "artifacts"
     artifact_dir.mkdir(parents=True)
     (artifact_dir / "plan.md").write_text(
@@ -235,9 +199,6 @@ def test_required_artifact_receipt_needs_completion_sentinel(tmp_path: Path) -> 
         "## Files Changed\n\n- [F-1] src/x.py\n",
         encoding="utf-8",
     )
-    # The current-run receipt is what the AGY smoke plumbing now relies
-    # on (the receipt is promoted from the agent's direct write via
-    # ``promote_fallback_artifact``).
     run_id = "agy-on-disk-run-id"
     receipt_dir = tmp_path / ".agent" / "receipts" / run_id
     receipt_dir.mkdir(parents=True)
@@ -467,11 +428,6 @@ def test_agy_json_output_does_not_produce_lifecycle_only_watchdog_evidence() -> 
 
 
 def test_clean_development_exit_without_completion_signal_is_accepted(tmp_path: Path) -> None:
-    """Development is the scoped exception: a clean AGY exit concludes it.
-
-    Evidence-bearing phases (planning above) keep strict enforcement; the
-    development phase accepts a clean exit without an artifact sentinel.
-    """
     check_process_result(
         _FakeHandle(returncode=0),
         "agy",

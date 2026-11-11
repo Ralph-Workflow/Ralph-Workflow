@@ -1,13 +1,3 @@
-"""Single authority for remote-publication decisions.
-
-Local landing and remote publication are distinct obligations.
-The publication authority is the only component permitted to
-decide between ``PUBLISH_NOW`` / ``PUBLISH_DEFERRED_REMOTE`` /
-``PUBLISH_DEFERRED_FRESHNESS`` / ``PUBLICATION_TERMINAL`` /
-``PUBLICATION_BLOCKED`` / ``PUBLICATION_PENDING``. The reducer
-reads :attr:`RebaseState.last_publication_decision` and never
-infers the publication state from prose.
-"""
 
 from __future__ import annotations
 
@@ -20,7 +10,6 @@ if TYPE_CHECKING:
 
 
 class PublicationDecision(StrEnum):
-    """The closed vocabulary the run loop reads for publication."""
 
     PUBLICATION_PENDING = "publication_pending"
     PUBLISH_NOW = "publish_now"
@@ -47,15 +36,6 @@ def next_publication_action(
     remote_unavailable: bool,
     configured_remote: str | None,
 ) -> PublicationDecision:
-    """Return the typed :class:`PublicationDecision` for the current state.
-
-    The function is pure. It is the single authority for the
-    question "what may the publication tier do next?". The
-    ``state.last_publication_decision`` field is the single
-    persisted surface for the typed decision; no caller may
-    reconstruct the decision from prose or from auxiliary
-    state.
-    """
     if configured_remote is None:
         return PublicationDecision.PUBLICATION_TERMINAL
     if record is not None and record.phase != "integrated":

@@ -1,4 +1,3 @@
-"""Pydantic v2 models for Ralph configuration."""
 
 from __future__ import annotations
 
@@ -40,7 +39,6 @@ def _normalize_drain_value(value: object) -> AgentDrainConfig:
 
 
 class UnifiedConfig(RalphBaseModel):
-    """Top-level merged configuration (global + local + CLI overrides)."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -51,17 +49,12 @@ class UnifiedConfig(RalphBaseModel):
     ccs_aliases: dict[str, str | CcsAliasConfig] = Field(default_factory=dict)
     agent_chains: dict[str, AgentChainConfig] = Field(default_factory=dict)
     agent_drains: dict[str, AgentDrainConfig] = Field(default_factory=dict)
-    # CLI-only pins from ``--developer-agent`` / ``--developer-model``. The
-    # config loader strips them from TOML layers (see
-    # ``ralph.config.loader.CLI_ONLY_CONFIG_FIELDS``); the policy loader
-    # rebinds the ``development`` drain to the agent they name.
     developer_agent: str | None = None
     developer_model: str | None = None
 
     @model_validator(mode="before")
     @classmethod
     def _normalize_agent_chains_and_drains(cls, data: object) -> object:
-        """Accept both flat format (list[str]/str) and rich format for backward compat."""
         if not isinstance(data, dict):
             return data
 
@@ -91,7 +84,6 @@ class UnifiedConfig(RalphBaseModel):
 
     @model_validator(mode="after")
     def _validate_drain_references(self) -> UnifiedConfig:
-        """Ensure every drain references an existing chain."""
         for drain_name, drain_cfg in self.agent_drains.items():
             if drain_cfg.chain not in self.agent_chains:
                 raise ValueError(

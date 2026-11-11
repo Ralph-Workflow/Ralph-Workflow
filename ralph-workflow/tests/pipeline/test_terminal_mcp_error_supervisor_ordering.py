@@ -1,18 +1,3 @@
-"""The ``McpSupervisor.__exit__`` terminal-error ordering and its diagnostics.
-
-``McpSupervisor.__exit__`` re-raises the stored terminal
-``BUDGET_EXHAUSTED`` ``McpServerError`` UNCONDITIONALLY, so it replaces
-whatever agent-level error the supervised body was already propagating
-(``ralph/process/mcp_supervisor.py:202``). These tests pin that ordering
-against the REAL supervisor, prove the executor still converts it to the
-typed ``AGENT_FAILURE`` path end to end, and pin the next-incident
-diagnostics a child that survives SIGTERM *and* SIGKILL must leave.
-
-The per-entry-path matrix lives in
-``test_terminal_mcp_error_per_entry_path``; both modules share the fake
-seams in ``_terminal_mcp_error_seams``.
-"""
-
 from __future__ import annotations
 
 import itertools
@@ -56,14 +41,6 @@ from tests.pipeline._terminal_mcp_error_seams import (
 
 
 def test_supervisor_exit_replaces_in_flight_agent_error_with_terminal_mcp_error() -> None:
-    """The REAL ``McpSupervisor.__exit__`` replaces an in-flight error.
-
-    ``mcp_supervisor.py:202`` raises the stored ``BUDGET_EXHAUSTED`` error
-    unconditionally, so an agent-level ``AgentInvocationError`` that is
-    already propagating is REPLACED. Driven through the real supervisor with
-    a fake bridge whose health check is terminal; the only wait is the
-    bounded handshake the interrupt seam signals.
-    """
     terminal = threading.Event()
 
     def _note_interrupt(label: str) -> None:
@@ -94,13 +71,6 @@ def test_supervisor_exit_replaces_in_flight_agent_error_with_terminal_mcp_error(
 def test_in_flight_agent_error_is_replaced_by_terminal_conversion(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """End-to-end: the ``__exit__`` ordering still converts typed.
-
-    The supervised body dies with an ``AgentInvocationError`` while the
-    supervisor has already gone terminal. The typed conversion must win, so
-    the published outcome is ``AGENT_FAILURE`` with the intent naming
-    ``McpServerError`` -- not the agent-level retry path.
-    """
     deps, factory = _deps_with_terminal_supervisor(tmp_path)
     _patch_invoke_agent(monkeypatch, factory.agent_dies_in_flight)
 
@@ -119,9 +89,6 @@ def test_in_flight_agent_error_is_replaced_by_terminal_conversion(
     _assert_no_traceback_or_crash(recorder)
     _assert_typed_retry_intent()
 
-    # The ordering really happened: an AgentInvocationError was in flight
-    # when the supervisor went terminal, and the terminal McpServerError is
-    # what surfaced (otherwise the intent would name the agent failure).
     assert len(factory.supervisors) == 1
     assert list(factory.interrupted_labels) == [
         f"{AGENT_PROCESS_LABEL_PREFIX}{factory.label_scopes[0]}:"
@@ -131,14 +98,6 @@ def test_in_flight_agent_error_is_replaced_by_terminal_conversion(
 def test_terminal_supervisor_interrupt_logs_status_and_command(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The next incident names the psutil status and the command.
-
-    ``McpSupervisor`` interrupts every agent process under the run label
-    once supervision is terminal (``mcp_supervisor.py:169``). An agent that
-    survives SIGTERM *and* SIGKILL must leave a next-incident record that
-    says which status psutil saw and which command it saw, so an operator
-    can identify the wedged child instead of guessing.
-    """
 
     class _SurvivingPsutilProcess(FakePsutilProcess):
         def __init__(self, pid: int) -> None:

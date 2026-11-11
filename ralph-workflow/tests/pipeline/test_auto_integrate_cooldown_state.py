@@ -1,5 +1,3 @@
-"""Outer auto-integration retains an active merge while resolvers cool down."""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime

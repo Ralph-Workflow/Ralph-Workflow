@@ -1,10 +1,3 @@
-"""Contract test: review handler must use effect.phase (not literal 'review') for events.
-
-The review phase handler is a generic role handler. It must not hardcode the
-phase name 'review' in PhaseFailureEvent or _write_retry_hint. Instead it
-must derive the phase name from the InvokeAgentEffect.phase attribute.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -34,7 +27,6 @@ class _FakeWorkspace:
 
 
 def _make_failing_context() -> PhaseContext:
-    """Return a PhaseContext that simulates a missing review artifact."""
     workspace: Any = _FakeWorkspace()
     registry: Any = object()
     chain_manager: Any = object()
@@ -52,7 +44,6 @@ def _make_failing_context() -> PhaseContext:
 
 
 def test_phase_failure_event_uses_effect_phase_not_literal_review() -> None:
-    """PhaseFailureEvent.phase must equal effect.phase, not the literal 'review'."""
     custom_phase_name = "custom_review_phase"
     effect = InvokeAgentEffect(
         agent_name="reviewer",

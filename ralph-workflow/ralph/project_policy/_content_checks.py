@@ -1,10 +1,3 @@
-"""Per-file content checks for the deterministic project-policy validator.
-
-Split out of :mod:`ralph.project_policy.validators` (repo structure policy caps
-a module at 1000 lines). Each function here takes already-read content and
-returns :class:`PolicyFinding` objects; the orchestration (which files to read,
-in what order) stays in ``validators``.
-"""
 
 from __future__ import annotations
 
@@ -49,14 +42,6 @@ if TYPE_CHECKING:
     from ralph.workspace.protocol import Workspace
 
 
-# Module-level slot that the production ingress
-# (:func:`ralph.project_policy.validators._check_research_basis`) fills
-# with the workspace seam before any citation check runs. Unit tests
-# that exercise the citation shape directly do not set the slot; the
-# helper degrades to a shape-only check in that case so the existing
-# behaviour is preserved. Storing a single workspace avoids threading
-# a parameter through every internal helper while still keeping the
-# existence check honest.
 _CITATION_PATH_WORKSPACE: list[Workspace | None] = [None]
 
 
@@ -68,7 +53,6 @@ _FRESHNESS_CLOCK: list[Callable[[], date]] = [_default_freshness_clock]
 
 
 def set_research_freshness_clock(clock_fn: Callable[[], date] | None) -> None:
-    """Inject a custom clock function for research freshness checks."""
     if clock_fn is None:
         _FRESHNESS_CLOCK[0] = _default_freshness_clock
     else:
@@ -76,14 +60,12 @@ def set_research_freshness_clock(clock_fn: Callable[[], date] | None) -> None:
 
 
 def get_research_freshness_clock() -> Callable[[], date]:
-    """Return the currently active research freshness clock function."""
     return _FRESHNESS_CLOCK[0]
 
 
 def _check_citation_freshness(
     fields: dict[str, str], index: int, *, path: str, filename: str
 ) -> list[PolicyFinding]:
-    """Return a warning finding if citation review date exceeds RESEARCH_FRESHNESS_MAX_DAYS."""
     raw = fields.get("review date")
     if not raw:
         return []
@@ -118,7 +100,6 @@ def _fact_key(line: str) -> str | None:
 
 
 def _check_required_fact_keys(content: str, path: str, filename: str) -> list[PolicyFinding]:
-    """Require every fact key declared by the bundled contract exactly once."""
     required = {
         key
         for line in starters.read_starter(filename).splitlines()
@@ -144,14 +125,6 @@ def _check_required_fact_keys(content: str, path: str, filename: str) -> list[Po
 
 
 def _check_capture_command_fact(content: str, path: str, filename: str) -> list[PolicyFinding]:
-    """Reject a ``design_capture_command`` the visual pipeline would refuse.
-
-    The visual pipeline parses this one fact from the design-system policy and
-    silently skips visual review when it is unusable (prose, shell
-    metacharacters, a bare executable). Catching it here, with the very same
-    rules, surfaces it as a remediable policy finding instead of a per-cycle
-    runtime warning.
-    """
     if filename != Path(DESIGN_SYSTEM_POLICY_RELPATH).name:
         return []
     problem = capture_command_problem(content)
@@ -172,13 +145,6 @@ def _check_capture_command_fact(content: str, path: str, filename: str) -> list[
 
 
 def _check_template_banner(content: str, path: str, filename: str) -> list[PolicyFinding]:
-    """Reject a policy file that still carries the starter template banner.
-
-    Separate from the PLACEHOLDER_TOKENS scan (which also covers the whole
-    file but reports only the first token found) so the banner always gets
-    its own stable finding id and an explicit delete-the-banner outcome
-    instead of being shadowed by an unresolved fact placeholder.
-    """
     if markers.STARTER_TEMPLATE_TOKEN not in content:
         return []
     return [
@@ -197,7 +163,6 @@ def _check_template_banner(content: str, path: str, filename: str) -> list[Polic
 
 
 def _check_markers(content: str, path: str, filename: str) -> list[PolicyFinding]:
-    """Validate the schema + policy-id markers."""
     findings: list[PolicyFinding] = []
     lines = content.splitlines()
     first_line = next((line for line in lines if line.strip()), "")
@@ -242,14 +207,12 @@ def _check_markers(content: str, path: str, filename: str) -> list[PolicyFinding
 
 
 def _frozen_schema_version(content: str) -> int | None:
-    """Return an explicitly frozen older schema version, if well formed."""
     first_line = next((line for line in content.splitlines() if line.strip()), "")
     match = re.fullmatch(r"<!-- ralph-policy-schema: freeze v([0-9]+) -->", first_line)
     return int(match.group(1)) if match else None
 
 
 def _check_required_headings(content: str, path: str, filename: str) -> list[PolicyFinding]:
-    """Validate every required heading is present (case-insensitive)."""
     required = markers.REQUIRED_HEADINGS.get(filename, ())
     frozen_v = _frozen_schema_version(content)
     file_version = f"v{frozen_v}" if frozen_v is not None else markers.SCHEMA_VERSION
@@ -270,7 +233,6 @@ def _check_required_headings(content: str, path: str, filename: str) -> list[Pol
 
 
 def _check_research_basis(content: str, path: str, filename: str) -> list[PolicyFinding]:
-    """Validate the Research basis section exists and every citation is complete."""
     findings: list[PolicyFinding] = []
     headings_lower = {h.lower() for h in _headings(content)}
     if "research basis" not in headings_lower:
@@ -304,30 +266,12 @@ def _check_research_basis(content: str, path: str, filename: str) -> list[Policy
     return findings
 
 
-# Strict, narrow contract for an explicit repository-local citation:
-# the value inside an explicit ``path:`` key. Anything else (prose
-# sentences, ``https://`` URLs, ordinary ``http:`` fields, and the
-# default required fields) is NEVER treated as a path. The regex is
-# deliberately conservative: a leading character from the small allowed
-# set, then characters from a slightly larger allowed set, no
-# whitespace, no scheme, no control characters, no characters that
-# would let a path escape the repository root.
 _CITATION_PATH_VALUE_RE = re.compile(r"^[A-Za-z0-9_.][A-Za-z0-9_\-./]*$")
 
 
 def _check_citation_path(
     fields: dict[str, str], index: int, *, path: str, filename: str
 ) -> list[PolicyFinding]:
-    """Return a finding if the citation declares an explicit ``path:`` that does not exist.
-
-    The existence check is ONLY activated by an explicit ``path:`` key
-    in the citation block. Prose ``evidence:`` values, ``http:`` URLs,
-    and the default required fields keep their previous shape validation
-    with no filesystem lookup. The check is the production-side seam
-    for the citation-existence contract: a project that names a
-    non-existent repository path in a citation block cannot reach
-    READY until the path is created or the citation is removed.
-    """
     raw = fields.get("path")
     if not raw:
         return []
@@ -348,11 +292,6 @@ def _check_citation_path(
         ]
     workspace = _CITATION_PATH_WORKSPACE[0] if _CITATION_PATH_WORKSPACE else None
     if workspace is None:
-        # No workspace seam in scope (validator is called by tests that
-        # do not exercise the production ingress): skip the existence
-        # check so unit tests of the citation shape still pass without a
-        # workspace. The production ingress in
-        # ``validators._check_research_basis`` always supplies a workspace.
         return []
     if workspace.exists(raw):
         return []
@@ -376,7 +315,6 @@ def _check_individual_citations(
     path: str,
     filename: str,
 ) -> list[PolicyFinding]:
-    """Validate every citation block contains the required fields."""
     findings: list[PolicyFinding] = []
     for index, block in enumerate(blocks, start=1):
         lines = [line.strip().lstrip("*- ") for line in block.splitlines()]
@@ -394,10 +332,6 @@ def _check_individual_citations(
             re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", fields.get("review date", ""))
         )
         if not missing and valid_url and valid_date:
-            # The shape check passed. Run the optional repository-local
-            # `path:` existence check next; a missing or malformed path
-            # adds its own finding without invalidating the citation
-            # shape itself.
             findings.extend(_check_citation_path(fields, index, path=path, filename=filename))
             findings.extend(_check_citation_freshness(fields, index, path=path, filename=filename))
             continue
@@ -419,14 +353,6 @@ def _check_individual_citations(
 
 
 def _check_placeholders(content: str, path: str, filename: str) -> list[PolicyFinding]:
-    """Validate every RALPH-FACT line is resolved and at least one exists.
-
-    A complete policy must declare at least one resolved ``RALPH-FACT:``
-    line — the validator rejects generic prose that is missing machine-
-    checkable project facts. Placeholder tokens anywhere in the file are
-    rejected (the contract is project-specific content, not template
-    copy).
-    """
     findings: list[PolicyFinding] = []
     placeholder = _contains_placeholder(content)
     if placeholder is not None:
@@ -478,13 +404,6 @@ def _check_placeholders(content: str, path: str, filename: str) -> list[PolicyFi
 
 
 def _check_commands(content: str, path: str, filename: str) -> list[PolicyFinding]:
-    """Validate at least one non-empty command OR inapplicable marker exists.
-
-    Empty ``RALPH-COMMAND:`` and ``RALPH-INAPPLICABLE:`` lines are explicitly
-    rejected so a policy cannot exempt itself from the gate with an empty
-    marker. The general inapplicability value must name a reason (e.g. why
-    the verification step does not apply to this project).
-    """
     findings: list[PolicyFinding] = []
     command_values = _command_values(content)
     command_raw_values = _command_raw_lines(content)
@@ -550,15 +469,6 @@ def _check_commands(content: str, path: str, filename: str) -> list[PolicyFindin
 def _check_individual_inapplicables(
     inapplicable_values: list[str], path: str, filename: str
 ) -> list[PolicyFinding]:
-    """Validate every RALPH-INAPPLICABLE value is non-empty and placeholder-free.
-
-    The parser filters empty lines before reaching this helper, but
-    ``_fact_lines``/``_inapplicable_lines`` also enforce the
-    non-whitespace-value contract via regex. A no-op marker (the bare
-    ``RALPH-INAPPLICABLE:`` token with only whitespace after the colon)
-    MUST produce a stable RWP-CMD unusable finding so the user sees a
-    precise pointer at the offending line.
-    """
     findings: list[PolicyFinding] = []
     for index, value in enumerate(inapplicable_values, start=1):
         if not value:
@@ -692,23 +602,6 @@ def _check_individual_inapplicables(
 def _check_individual_commands(
     command_values: list[str], path: str, filename: str
 ) -> list[PolicyFinding]:
-    """Validate every RALPH-COMMAND value is non-empty, placeholder-free, and approved.
-
-    The check enforces three independent gates:
-
-    1. The value is non-empty (an empty ``RALPH-COMMAND:`` line is not a
-       valid gate).
-    2. The value contains no placeholder token (template copy is not a
-       valid gate).
-    3. The value's first whitespace-separated token is on the fixed
-       :data:`markers.APPROVED_GATE_TOOLS` allowlist (analysis feedback:
-       arbitrary non-empty text such as ``definitely-not-a-command`` does
-       NOT satisfy the executable-gate contract; the validator must
-       reject it with a stable ``RWP-CMD:*:unapproved-cmd-N`` finding).
-
-    A failing gate produces a stable ``RWP-CMD:filename:<kind>-N``
-    finding so the user sees a precise pointer at the offending line.
-    """
     findings: list[PolicyFinding] = []
     for index, value in enumerate(command_values, start=1):
         if not value:
@@ -741,12 +634,6 @@ def _check_individual_commands(
                 )
                 break
         else:
-            # Only run the approved-tools check when neither empty nor
-            # placeholder fired (the per-line ``else`` belongs to the
-            # ``for`` loop and runs when no ``break`` was taken, i.e. no
-            # placeholder matched). This keeps the findings list minimal:
-            # a placeholder command gets the placeholder finding, not an
-            # additional unapproved-tools finding on top of it.
             if not _command_is_approved(value):
                 first_token = _command_first_token(value)
                 findings.append(
@@ -776,14 +663,6 @@ def _check_individual_commands(
 
 
 def _check_per_language_coverage(workspace: Workspace, stack: ProjectStack) -> list[PolicyFinding]:
-    """Validate per-language RALPH-LANG coverage in typecheck and lint policies.
-
-    Per-language blocks must contain a non-empty ``RALPH-COMMAND`` or
-    ``RALPH-INAPPLICABLE`` line. An empty inapplicable marker is treated
-    as a missing declaration and produces a stable
-    ``RWP-LANG`` finding; a no-op exemption cannot silently disable a
-    per-language gate.
-    """
     required_langs = evidence.required_languages(stack)
     if not required_langs:
         return []
@@ -791,11 +670,9 @@ def _check_per_language_coverage(workspace: Workspace, stack: ProjectStack) -> l
     for filename in ("typechecking-policy.md", "linting-policy.md"):
         path = f"{markers.CANONICAL_DIR}{filename}"
         if not workspace.exists(path):
-            continue  # core-file presence check already emitted a finding.
+            continue
         content = workspace.read(path)
         blocks = _lang_blocks(content)
-        # Detect empty ``RALPH-INAPPLICABLE:`` lines inside per-language
-        # blocks (the parser strips them from the boolean count above).
         empty_lang_inapplicable = _find_empty_per_language_inapplicable(content)
         for language in sorted(required_langs):
             if language not in blocks:
@@ -853,13 +730,6 @@ def _check_per_language_coverage(workspace: Workspace, stack: ProjectStack) -> l
 
 
 def _find_empty_per_language_inapplicable(content: str) -> set[str]:
-    """Return the set of language names whose block contains an empty
-    ``RALPH-INAPPLICABLE:`` line.
-
-    An empty inapplicable marker is a structural defect: it claims
-    inapplicability without justification, so it MUST produce a finding
-    even when the language block also contains a usable command.
-    """
     out: set[str] = set()
     current_lang: str | None = None
     for line in content.splitlines():
@@ -879,21 +749,6 @@ def _find_empty_per_language_inapplicable(content: str) -> set[str]:
     return out
 
 
-# Guard inventory parser. The current schema version requires every
-# applicable starter (core and conditional) to carry a ``## Guard
-# inventory`` section with a markdown table whose header matches the
-# pinned :data:`markers.GUARD_INVENTORY_HEADER` exactly
-# (case-insensitive). One row per guard, one non-empty cell per header
-# column -- seven for the current seven-column grammar, six for a frozen
-# v5 pack -- and balanced pipes. A malformed or missing table is a
-# fail-closed RWP-INVENTORY:* finding. The substring predicate from
-# :data:`markers.CLAIM_SCOPE_PHRASES` is applied to each row's
-# ``Protected outcome`` against the same row's ``Detected condition`` so
-# the deterministic claim-scope rule is enforced at the starter level too.
-# The version-aware guard-inventory parser and validator live in
-# :mod:`ralph.project_policy._guard_inventory` to keep this module under
-# the 1000-line repo-structure cap. Re-exported at the top of the module
-# so callers can keep importing the same names.
 
 __all__ = [
     "_check_commands",

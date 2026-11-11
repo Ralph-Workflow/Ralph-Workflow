@@ -1,5 +1,3 @@
-"""Concurrent Cursor runtime resolution keeps private MCP homes isolated."""
-
 from __future__ import annotations
 
 import json

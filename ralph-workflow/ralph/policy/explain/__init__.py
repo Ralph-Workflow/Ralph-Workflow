@@ -1,12 +1,3 @@
-"""Policy explanation — converts a PolicyBundle into a structured human-readable description.
-
-This package answers the key questions a user has when looking at an unfamiliar policy:
-- What happens after this phase succeeds?
-- What makes a phase terminal?
-- When is a commit required?
-- When does the system retry vs fall back vs fail?
-- When is parallel execution allowed?
-"""
 
 from __future__ import annotations
 
@@ -38,7 +29,6 @@ def explain_routing_decision(
     *,
     recovery: bool = False,
 ) -> str:
-    """Build a human-readable routing explanation message."""
     if recovery:
         return (
             f"policy: '{phase}' routed to '{target}' because recovery was triggered "
@@ -126,7 +116,6 @@ def _explain_phase(
 
 
 def explain_policy(bundle: PolicyBundle) -> PolicyExplanation:
-    """Convert a PolicyBundle into a structured human-readable explanation."""
     pipeline = bundle.pipeline
     agents = bundle.agents
 

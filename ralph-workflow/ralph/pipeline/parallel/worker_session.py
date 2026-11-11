@@ -1,11 +1,3 @@
-# Deprecated: Ralph-orchestrated workers are removed from the execution model; parallelism is owned by the developer agent's own sub-agents. See docs/sphinx/concepts.md §"Deprecated: Ralph-orchestrated workers".
-"""Factory helpers for building per-worker MCP session bundles.
-
-Provides ``build_worker_session``, which constructs an ``AgentSession``,
-starts an MCP server for it via ``McpServerFactory``, and returns a
-``WorkerSessionBundle`` containing the session, its server handle, and the
-workspace scope that the worker should operate in.
-"""
 
 from __future__ import annotations
 
@@ -30,7 +22,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class WorkerSessionConfig:
-    """Optional session contract parameters for a parallel worker session."""
 
     worker_artifact_dir: Path | None = None
     worker_namespace: Path | None = None
@@ -46,13 +37,6 @@ def build_worker_session(
     workspace_scope: WorkspaceScope,
     config: WorkerSessionConfig | None = None,
 ) -> WorkerSessionBundle:
-    """Create an AgentSession, start an MCP server, and return the worker bundle.
-
-    Pass a ``WorkerSessionConfig`` to propagate session contract parameters
-    (drain, capabilities, model identity, capability profile) from the parent
-    phase's ``SessionMcpPlan`` so the worker exposes the same multimodal
-    capability surface as serial execution.
-    """
     cfg = config if config is not None else WorkerSessionConfig()
     session_id = f"dev-{unit.unit_id}-{uuid4().hex[:8]}"
     session = AgentSession(
@@ -71,14 +55,6 @@ def build_worker_session(
         stored_capability_profile=cfg.session_capability_profile,
     )
     mcp_handle = mcp_factory.build(session)
-    # AC-04: attach one ExploreIndex per worker so grep/search/list/edit
-    # operations share the same generation + dirty-path state as serial
-    # execution. Mirrors ``ralph/pipeline/session_bridge.py:218-231``:
-    # ``build_explore_index`` only opens the store — it does not index —
-    # so the cost is bounded. The try/except keeps the worker alive
-    # when the explore index is unavailable (read-only / exotic
-    # workspaces); the handler layer already treats a missing handle
-    # as live-grep fallback.
     try:
         from ralph.mcp.explore.handlers import build_explore_index
 

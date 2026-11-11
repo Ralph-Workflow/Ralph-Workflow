@@ -1,19 +1,9 @@
-"""Unit tests for ``BurstDebounceScheduler`` (S-3a).
-
-Coalescing and lifecycle-hook semantics with a ``FakeClock``. The
-scheduler is passive: ``mark`` records closures, the owner advances the
-clock, and the fire happens when ``fire_if_due`` observes the debounce
-window has elapsed.
-"""
-
 from __future__ import annotations
 
 from ralph.mcp.explore._burst_scheduler import BurstDebounceScheduler
 
 
 class _FakeClock:
-    """Controllable monotonic clock for deterministic debounce tests."""
-
     def __init__(self, initial: float = 0.0) -> None:
         self._t = initial
 
@@ -25,11 +15,6 @@ class _FakeClock:
 
 
 def _make_scheduler() -> tuple[BurstDebounceScheduler, _FakeClock, list[int]]:
-    """Build a scheduler wired to a fire counter.
-
-    Returns ``(scheduler, clock, fire_log)`` where ``fire_log`` records
-    one entry per coalesced fire.
-    """
     clock = _FakeClock()
     fire_log: list[int] = []
 
@@ -41,12 +26,6 @@ def _make_scheduler() -> tuple[BurstDebounceScheduler, _FakeClock, list[int]]:
 
 
 def test_200_marks_coalesce_into_one_fire() -> None:
-    """A burst of 200 marks in one window fires exactly once.
-
-    The closures are evidence that work is pending; the coalesced fire
-    invokes ``on_fire`` once (the single reindex trigger), not once per
-    closure. The closure bodies are never invoked by the scheduler.
-    """
     scheduler, clock, fire_log = _make_scheduler()
     invoked: list[int] = []
 
@@ -59,12 +38,10 @@ def test_200_marks_coalesce_into_one_fire() -> None:
     clock.advance(1.0)
     assert scheduler.fire_if_due() is True
     assert len(fire_log) == 1
-    # Closures are evidence only; the scheduler never invokes them.
     assert len(invoked) == 0
 
 
 def test_on_workflow_complete_releases_pending() -> None:
-    """``on_workflow_complete`` drops the pending fire."""
     scheduler, clock, fire_log = _make_scheduler()
     scheduler.mark(lambda: None)
     scheduler.on_workflow_complete()
@@ -74,7 +51,6 @@ def test_on_workflow_complete_releases_pending() -> None:
 
 
 def test_on_workflow_cancel_releases_pending() -> None:
-    """``on_workflow_cancel`` drops the pending fire."""
     scheduler, clock, fire_log = _make_scheduler()
     scheduler.mark(lambda: None)
     scheduler.on_workflow_cancel()
@@ -84,7 +60,6 @@ def test_on_workflow_cancel_releases_pending() -> None:
 
 
 def test_on_workflow_fail_releases_pending() -> None:
-    """``on_workflow_fail`` drops the pending fire."""
     scheduler, clock, fire_log = _make_scheduler()
     scheduler.mark(lambda: None)
     scheduler.on_workflow_fail()
@@ -94,14 +69,12 @@ def test_on_workflow_fail_releases_pending() -> None:
 
 
 def test_on_workflow_restart_releases_then_rearms() -> None:
-    """``on_workflow_restart`` drops the pending fire and re-arms."""
     scheduler, clock, fire_log = _make_scheduler()
     scheduler.mark(lambda: None)
     scheduler.on_workflow_restart()
     clock.advance(1.0)
     assert scheduler.fire_if_due() is False
     assert len(fire_log) == 0
-    # Re-arm: a fresh mark after restart fires normally.
     scheduler.mark(lambda: None)
     clock.advance(1.0)
     assert scheduler.fire_if_due() is True
@@ -109,7 +82,6 @@ def test_on_workflow_restart_releases_then_rearms() -> None:
 
 
 def test_hooks_idempotent_and_leave_counter_unchanged() -> None:
-    """Each hook called twice in a row does not raise and leaves the counter."""
     for hook_name in (
         "on_workflow_complete",
         "on_workflow_cancel",

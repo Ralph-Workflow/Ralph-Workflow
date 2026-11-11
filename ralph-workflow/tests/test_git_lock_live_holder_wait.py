@@ -1,5 +1,3 @@
-"""A live git lock holder is waited on, not counted against the recovery budget."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -22,10 +20,8 @@ def _lock_error(lock_path: Path) -> GitCommandError:
 
 
 def _run(lock_path: Path, *, still_held_polls: int, waitable: bool) -> tuple[str, list[float]]:
-    """Run an op whose lock stays held for ``still_held_polls`` extra attempts."""
     attempts = {"n": 0}
     sleeps: list[float] = []
-    # The short backoff consumes the first attempts; every later failure is one wait.
     fail_until = len(lr.LOCK_BACKOFF_S) + still_held_polls
 
     def action() -> str:

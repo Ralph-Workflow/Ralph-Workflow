@@ -1,17 +1,3 @@
-"""The runner's three connections to the cycle timebox must actually be made.
-
-Each of these could be severed — the fold deleted, the routing timing passed as
-None, the elapsed total not handed to prompt materialization — with the whole
-suite green, because the surrounding tests drive the pure helpers directly or
-re-implement the runner's orchestration. Severing any one of them disables the
-feature in production: without the fold no time accumulates, without the timing
-no deadline is enforced, and without the elapsed total nothing is published, so
-the agent is never warned and the artifact gate can never fire.
-
-These assert on the arguments the runner hands its real collaborators, which is
-what a mutation to the call site changes.
-"""
-
 from __future__ import annotations
 
 from functools import lru_cache
@@ -37,12 +23,7 @@ if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
 
 _CONSUMED = 3600.0
-# Seeded age of the sample box, so the folded delta is a real duration.
 _STEP_SECONDS = 5.0
-# Deterministic "now" for the default single-step drives. The audit forbids
-# real wall-clock measurement in tests; a constant fake clock makes both of
-# the step's sample points read the same instant, so the seeded box age is
-# exactly ``_STEP_SECONDS`` at each seam.
 _CLOCK_NOW = 1000.0
 
 
@@ -52,8 +33,6 @@ def _bundle() -> PolicyBundle:
     return load_policy(defaults_dir)
 
 
-# Warm the policy parse at collection time; these tests share the repo's
-# per-test timeout and a cold TOML parse alone can exhaust it under xdist.
 _ = _bundle()
 
 
@@ -71,11 +50,6 @@ def _drive_step(
     state: PipelineState | None = None,
     sample_box: list[float | None] | None = None,
 ) -> _Captured:
-    """Run one real pipeline step inside a guarded cycle, observing the seams.
-
-    Returns the captured seam arguments, or — when ``state`` is supplied — the
-    resulting state, so consecutive steps can be chained through one box.
-    """
     captured = _Captured()
     chaining = state is not None
     state = state or PipelineState(
@@ -110,7 +84,6 @@ def _drive_step(
     if sample_box is not None:
         box = sample_box
     else:
-        # Inject a deterministic clock instead of measuring real wall time.
         monkeypatch.setattr(runner_module.time, "monotonic", lambda: _CLOCK_NOW)
         box = [_CLOCK_NOW - _STEP_SECONDS]
 
@@ -152,8 +125,6 @@ def _drive_step(
         verbosity=Verbosity.QUIET,
         registry=registry,
         pipeline_subscriber=None,
-        # The run loop owns this sample box; without it the runner has no
-        # monotonic anchor and every timing seam below goes silently null.
         _cycle_sample_box=box,
     )
     return stepped if chaining else captured
@@ -162,10 +133,8 @@ def _drive_step(
 def test_the_step_hands_prompt_materialization_the_cycles_elapsed_total(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """Without it nothing is published: no prompt warning, no nag, no gate."""
     captured = _drive_step(monkeypatch, tmp_path)
 
-    # The elapsed total includes the step already in progress.
     assert captured.materialize_kwargs["cycle_total_elapsed"] == pytest.approx(
         _CONSUMED + _STEP_SECONDS, abs=2.0
     )
@@ -174,7 +143,6 @@ def test_the_step_hands_prompt_materialization_the_cycles_elapsed_total(
 def test_the_step_hands_the_reducer_its_routing_timing(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """The reducer enforces the deadline from this argument and nowhere else."""
     captured = _drive_step(monkeypatch, tmp_path)
 
     assert captured.reduce_kwargs
@@ -187,12 +155,6 @@ def test_the_step_hands_the_reducer_its_routing_timing(
 def test_the_step_folds_its_elapsed_time_into_the_cycle(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """The consumed total only advances because the step folds each step in.
-
-    Asserting merely that a fold happened with a non-negative delta is a
-    tautology a permanently-zero clock satisfies, so the sample box is seeded
-    in the past and the delta itself is checked.
-    """
     captured = _drive_step(monkeypatch, tmp_path)
 
     assert captured.folded
@@ -202,14 +164,6 @@ def test_the_step_folds_its_elapsed_time_into_the_cycle(
 def test_consumed_time_accumulates_across_consecutive_steps(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """Steps sharing one sample box must accumulate consumed time.
-
-    A single step seeded with an aged box never exercises the write-back that
-    stores this step's clock reading for the next one. Without that write-back
-    every step computes a zero delta, the consumed total stays at zero for the
-    life of the run and no deadline is ever reached — while a single-step test
-    and a helper that re-implements the step loop both stay green.
-    """
     box: list[float | None] = [None]
     state = PipelineState(
         phase="development",
@@ -232,12 +186,6 @@ def test_consumed_time_accumulates_across_consecutive_steps(
 def test_the_step_hands_the_inline_effect_path_its_routing_timing(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """The inline path falls back to the stored total, so the supply matters.
-
-    The recovery hop's deadline check is pinned by calling the handler with a
-    timing of the test's own making — which cannot see the runner failing to
-    supply one. Without it the hop silently reverts to the stale stored total.
-    """
     seen: list[object] = []
     monkeypatch.setattr(
         runner_module,
@@ -254,8 +202,6 @@ def test_the_step_hands_the_inline_effect_path_its_routing_timing(
     display_context = make_display_context()
     registry = MagicMock()
     registry.get.return_value = None
-    # Fold against the same deterministic clock as _drive_step; the sample
-    # box seed and the step's monotonic reads must agree.
     monkeypatch.setattr(runner_module.time, "monotonic", lambda: _CLOCK_NOW)
     runner_module.run_pipeline_step(
         state=PipelineState(

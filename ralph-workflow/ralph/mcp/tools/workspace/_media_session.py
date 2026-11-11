@@ -1,4 +1,3 @@
-"""Session-level media helpers: manifest access, capability profiles, identity."""
 
 from __future__ import annotations
 
@@ -20,7 +19,6 @@ if TYPE_CHECKING:
 
 
 def _get_media_manifest(session: object) -> MediaManifest | None:
-    """Return the session's MediaManifest if available."""
     raw: object = getattr(session, "media_manifest", None)
     if isinstance(raw, MediaManifest):
         return raw
@@ -28,7 +26,6 @@ def _get_media_manifest(session: object) -> MediaManifest | None:
 
 
 def _get_session_model_identity(session: object) -> MultimodalModelIdentity:
-    """Extract the model identity from a session, defaulting to UNKNOWN_IDENTITY."""
     raw: object = getattr(session, "model_identity", None)
     if isinstance(raw, MultimodalModelIdentity):
         return raw
@@ -36,17 +33,6 @@ def _get_session_model_identity(session: object) -> MultimodalModelIdentity:
 
 
 def _get_session_capability_profile(session: object) -> ResolvedCapabilityProfile:
-    """Return the resolved capability profile from a session.
-
-    Prefers a pre-resolved profile from the session (populated by the managed
-    runtime path from the persisted session contract), falling back to
-    computing one from the session's model identity.
-    """
-    # Prefer the CALLER's profile. A delegated call (a vision subagent)
-    # carries its own identity, and the resource surface and the wire
-    # ledger both read the caller's -- so reading the session's here made
-    # the tools serve one identity's bytes while the audit trail recorded
-    # another's delivery mode.
     caller: object = getattr(session, "caller_capability_profile", None)
     if isinstance(caller, ResolvedCapabilityProfile):
         return caller
@@ -61,7 +47,6 @@ def _workspace_artifact_loader(
     cache_path: str,
     source_path: str,
 ) -> Callable[[], bytes | None]:
-    """Build a lazy artifact loader bound to a workspace replay source."""
 
     def _loader() -> bytes | None:
         return _load_artifact_bytes(workspace, cache_path, source_path)

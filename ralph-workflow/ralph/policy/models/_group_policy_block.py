@@ -1,4 +1,3 @@
-"""Authoring-time group policy block model."""
 
 from __future__ import annotations
 
@@ -10,7 +9,6 @@ from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 
 
 class GroupPolicyBlock(_FrozenPolicyModel):
-    """Composite authoring block that owns lifecycle semantics."""
 
     kind: Literal["group"] = "group"
     child_blocks: list[str] = Field(

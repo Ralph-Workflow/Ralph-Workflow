@@ -1,5 +1,3 @@
-"""R1 in-scope regression: the parent-owned listening socket is held across respawns."""
-
 from __future__ import annotations
 
 import errno
@@ -19,7 +17,6 @@ pytestmark = pytest.mark.subprocess_e2e
 
 
 def test_reserved_listening_socket_holds_port_until_closed() -> None:
-    """Foreign ``bind`` raises ``EADDRINUSE`` while the socket is live."""
     host, port, sock = _reserve_listening_socket()
     try:
         assert host == "127.0.0.1"
@@ -38,13 +35,12 @@ def test_reserved_listening_socket_holds_port_until_closed() -> None:
     try:
         foreign.bind((host, port))
         foreign.close()
-    except OSError as exc:  # pragma: no cover
+    except OSError as exc:
         foreign.close()
         pytest.fail(f"expected a fresh bind to succeed after the parent closed: {exc!r}")
 
 
 def test_reserved_listening_socket_is_listening() -> None:
-    """The reserved socket is in LISTEN state (canonical kernel proof)."""
     _host, _port, sock = _reserve_listening_socket()
     try:
         assert socket_is_listening(sock)
@@ -76,10 +72,6 @@ class _FakeProcess:
 def test_parent_holds_listening_socket_from_start_until_shutdown(
     tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Parent holds listening socket from start_mcp_server until shutdown()."""
-    # The spawned child is fake, so nothing serves the endpoint: without this
-    # the tool-hash baseline read waits out its full timeout (5 s), which the
-    # per-test cap used to interrupt and the baseline capture then absorbed.
     monkeypatch.setattr(
         lifecycle, "served_tool_entries", lambda _endpoint, _timeout: [{"name": "read_file"}]
     )
@@ -117,10 +109,8 @@ def test_parent_holds_listening_socket_from_start_until_shutdown(
         assert listening_socket is not None
         assert listening_socket.fileno() >= 0
 
-        # In LISTEN state
         assert socket_is_listening(listening_socket)
 
-        # Foreign bind raises EADDRINUSE
         sock_addr = listening_socket.getsockname()
         assert isinstance(sock_addr, tuple)
         host = str(sock_addr[0])
@@ -135,7 +125,6 @@ def test_parent_holds_listening_socket_from_start_until_shutdown(
     finally:
         bridge.shutdown()
 
-    # After shutdown, socket is closed and released
     assert bridge._listening_socket is None
     foreign = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:

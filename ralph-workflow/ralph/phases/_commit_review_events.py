@@ -1,4 +1,3 @@
-"""Events emitted by the commit-review phase."""
 
 from __future__ import annotations
 

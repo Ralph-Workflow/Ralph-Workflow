@@ -1,5 +1,3 @@
-"""Tests for ralph/mcp/tools/git_read.py — MCP git show handler (Phase 4)."""
-
 from __future__ import annotations
 
 import json
@@ -25,20 +23,12 @@ CUSTOM_LOG_COUNT = 20
 
 @pytest.fixture(autouse=True)
 def _resolve_cwd_without_git_probe(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Keep mocked-handler tests hermetic despite the mandatory cwd probe."""
     monkeypatch.setattr(
         "ralph.mcp.tools.git_read.resolve_git_cwd",
         lambda **_kwargs: (tmp_path, False, None),
     )
 
 
-# AC-06 / analysis-feedback regression: see
-# ``test_tool_git_read_handle_git_log.py`` for the precedent.
-# ``_build_git_show_summary_payload`` previously computed
-# ``bytes_out`` BEFORE adding the field, so the declared value
-# was smaller than the actual returned text. This regression pins
-# the new convention that declared ``bytes_out`` equals the actual
-# UTF-8 length of the final serialized envelope the caller sees.
 def test_format_summary_bytes_out_matches_actual_payload(
     tmp_path: Path,
 ) -> None:
@@ -56,11 +46,6 @@ def test_format_summary_bytes_out_matches_actual_payload(
         result = handle_git_show(session, workspace, {"ref": "HEAD", "format": "summary"})
     envelope = json.loads(result.content[0].text)
     assert envelope["bytes_out"] == len(result.content[0].text.encode("utf-8"))
-
-
-# =============================================================================
-# Tests
-# =============================================================================
 
 
 class TestHandleGitShow:
@@ -89,8 +74,6 @@ class TestHandleGitShow:
             pytest.raises(ExecutionError),
         ):
             handle_git_show(session, workspace, {"ref": "DOES_NOT_EXIST_12345"})
-
-    # -- Phase 4: format=summary ----------------------------------------------
 
     def test_format_summary_returns_compact_envelope(self, tmp_path: Path) -> None:
         session = MockSession({GIT_STATUS_READ_CAPABILITY})
@@ -121,7 +104,6 @@ class TestHandleGitShow:
             assert envelope["bytes_out"] > 0
 
     def test_format_raw_default_unchanged(self, tmp_path: Path) -> None:
-        """``format='raw'`` (the default) preserves the legacy git show text."""
         session = MockSession({GIT_STATUS_READ_CAPABILITY})
         workspace = MockWorkspaceRoot(tmp_path)
 
@@ -129,7 +111,6 @@ class TestHandleGitShow:
             mock_git.return_value = "commit abc1234\nAuthor: ...\n\n    diff body"
             result = handle_git_show(session, workspace, {"ref": "HEAD"})
             assert result.is_error is False
-            # ``mock_git`` is called as ``run_git_command(workspace, git_args)``.
             args = mock_git.call_args.args
             assert args[0] is workspace
             assert args[1] == ["show", "HEAD"]

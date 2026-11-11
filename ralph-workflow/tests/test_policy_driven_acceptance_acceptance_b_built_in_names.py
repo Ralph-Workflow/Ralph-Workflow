@@ -1,13 +1,3 @@
-"""Policy-driven acceptance tests — Product Requirements 1-10 and Criteria A-H.
-
-These tests assert every product requirement and acceptance criterion against a
-fully renamed PolicyBundle (no canonical phase names). Any regression that
-re-introduces hidden phase name knowledge in the runtime will fail here.
-
-Scope: pure functions only. No I/O.
-Runtime budget: ≤ 5 seconds for the full module.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -43,17 +33,6 @@ from ralph.policy.render import render_explanation_ascii, render_explanation_tex
 
 @pytest.fixture(scope="module")
 def policy_with_renamed_phases() -> PolicyBundle:
-    """Fully custom-named PolicyBundle — no canonical Ralph phase names.
-
-    Custom name mappings (canonical → custom):
-      planning          → design
-      development       → build
-      development_analysis → audit
-      development_commit → sign_off
-      review            → inspect
-      complete          → done
-      failed_terminal   → aborted
-    """
     agents = AgentsPolicy(
         agent_chains={
             "design_chain": AgentChainConfig(agents=["fake-agent"]),
@@ -181,16 +160,10 @@ def policy_with_renamed_phases() -> PolicyBundle:
     return PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
 
 
-# =============================================================================
-# Requirement 1: Policy must fully define user-visible routing semantics
-# =============================================================================
-
-
 class TestAcceptanceBBuiltInNames:
     def test_canonical_phase_names_absent_from_custom_bundle_render(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """No canonical Ralph phase names appear as phase headers in the custom bundle render."""
         exp = explain_policy(policy_with_renamed_phases)
         ascii_out = render_explanation_ascii(exp)
         text_out = render_explanation_text(exp)
@@ -202,7 +175,6 @@ class TestAcceptanceBBuiltInNames:
             "development_commit",
             "review_commit",
         ):
-            # Check box labels and phase headers specifically
             assert f"| {absent} |" not in combined, (
                 f"Canonical name '| {absent} |' must not appear in custom-policy render"
             )
@@ -213,7 +185,6 @@ class TestAcceptanceBBuiltInNames:
     def test_custom_drain_resolves_without_canonical_name(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """Custom drain 'audit' resolves via explicit drain_class, not by name matching."""
         agents_policy = policy_with_renamed_phases.agents
         dc = drain_class_for_session("audit", agents_policy)
         assert dc == DrainClass.ANALYSIS
@@ -221,7 +192,6 @@ class TestAcceptanceBBuiltInNames:
     def test_custom_drain_policy_mode_resolves(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """drain_to_policy_mode resolves 'sign_off' via explicit drain_class='commit'."""
         agents_policy = policy_with_renamed_phases.agents
         pm = drain_to_policy_mode("sign_off", agents_policy)
         assert pm == PolicyMode.COMMIT

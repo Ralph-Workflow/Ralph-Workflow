@@ -1,5 +1,3 @@
-"""Regression tests for crash-output terminal containment (S-4)."""
-
 from __future__ import annotations
 
 from io import StringIO
@@ -12,7 +10,6 @@ def _reset_state() -> None:
 
 
 def test_crash_output_regression_sanitizes_terminal_control_and_restores_terminal() -> None:
-    """S-4: uncaught main-thread errors cannot repaint or leave the TTY altered."""
     _reset_state()
     stderr = StringIO()
     installed: list[object] = []
@@ -44,7 +41,6 @@ def test_crash_output_regression_sanitizes_terminal_control_and_restores_termina
 
 
 def test_worker_crash_regression_uses_same_sanitized_restore_boundary() -> None:
-    """S-4: worker-thread crashes cannot bypass terminal restoration."""
     _reset_state()
     stderr = StringIO()
     installed: list[object] = []

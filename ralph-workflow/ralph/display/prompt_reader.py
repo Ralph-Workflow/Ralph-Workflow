@@ -1,4 +1,3 @@
-"""Safe PROMPT.md reader with size cap, encoding safety, and markup escape."""
 
 from __future__ import annotations
 
@@ -20,22 +19,6 @@ def find_prompt_path(
     workspace_root: Path,
     env: Mapping[str, str] | None = None,
 ) -> Path | None:
-    """Return the path to the workspace prompt file, or ``None`` if absent.
-
-    The path is resolved through
-    :func:`ralph.pro_support.prompt.resolve_effective_prompt_path` so the
-    ``PROMPT_PATH`` env var is honoured in Pro mode. The
-    engine-owned ``.agent/PRODUCT_CRITERIA.md`` is still checked as a
-    fallback because it is the materialised prompt the agent actually
-    reads.
-
-    The caller supplies the ``env`` mapping. Reading ``os.environ``
-    directly inside the display module would violate the DI invariant
-    enforced by ``tests/display/test_di_invariants.py``. Callers that
-    do not have a pre-resolved env should pass
-    ``context.make_display_context().env`` or fall back to
-    ``os.environ`` at their own call site.
-    """
     path = resolve_effective_prompt_path(workspace_root, env)
     if path.exists():
         return path
@@ -44,7 +27,6 @@ def find_prompt_path(
 
 
 def read_prompt_preview(prompt_path: Path) -> tuple[str, ...]:
-    """Read at most MAX_PROMPT_BYTES, decode with errors='replace', return PREVIEW_LINES escaped."""
     if not prompt_path.exists():
         return ("[dim]PROMPT.md not found[/dim]",)
 

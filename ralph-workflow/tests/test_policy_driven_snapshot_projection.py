@@ -1,10 +1,3 @@
-"""Contract test: PipelineSnapshot must expose budget_progress keyed by policy counter name.
-
-The legacy scalar fields (iteration, total_iterations, reviewer_pass,
-total_reviewer_passes) must be absent. The replacement is a generic
-budget_progress dict keyed by the policy-declared counter name.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -29,7 +22,6 @@ from ralph.policy.models import (
 
 @pytest.fixture(scope="module")
 def _cycles_bundle() -> PolicyBundle:
-    """Policy bundle that uses 'cycles' as the only budget counter (no 'iteration')."""
     pipeline = PipelinePolicy(
         entry_phase="work",
         terminal_phase="done",
@@ -82,7 +74,6 @@ def _cycles_bundle() -> PolicyBundle:
 def test_snapshot_has_budget_progress_not_legacy_fields(
     _cycles_bundle: PolicyBundle,
 ) -> None:
-    """PipelineSnapshot must expose budget_progress, not iteration/reviewer_pass fields."""
     state = PipelineState.from_policy(_cycles_bundle.pipeline)
     state = state.with_outer_progress("cycles", 1)
     state = state.with_budget_cap("cycles", 3)
@@ -116,7 +107,6 @@ def test_snapshot_has_budget_progress_not_legacy_fields(
 
 
 def test_snapshot_budget_progress_empty_when_no_counters() -> None:
-    """budget_progress is an empty dict when no budget counters are declared."""
     policy = PipelinePolicy(
         entry_phase="start",
         terminal_phase="done",

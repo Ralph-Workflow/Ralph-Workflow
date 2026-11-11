@@ -1,8 +1,3 @@
-"""The diagnose-facing update snapshot.
-
-Split out of :mod:`ralph.update_check` so each module owns a single public class
-(repo structure policy); the package re-exports it.
-"""
 
 from __future__ import annotations
 
@@ -15,7 +10,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class UpdateStatus:
-    """Diagnose-friendly snapshot of the update situation."""
 
     current_version: str
     latest_version: str | None

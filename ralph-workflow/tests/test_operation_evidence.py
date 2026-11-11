@@ -1,13 +1,3 @@
-"""Black-box tests for the operation-scoped evidence collector.
-
-The collector is the architectural fix for the linked-worktree
-retained-integration reproduction. The tests in this file assert
-both the operation-scoped *positive* contract (the right facts are
-emitted) and the operation-scoped *negative* contract (the
-repository-global reads the production bug relied on are
-forbidden).
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -41,10 +31,6 @@ def _record(**overrides: object) -> IntegrationRecord:
 
 
 def _mock_git(monkeypatch: pytest.MonkeyPatch, root: Path, head_sha: str = "a" * 40) -> Path:
-    """Initialize a mock Git repo structure at ``root`` without real subprocess calls.
-
-    Mocks ``run_git`` to return valid git responses so tests remain pure and in-budget.
-    """
     root.mkdir(parents=True, exist_ok=True)
     gitdir = root / ".git"
     gitdir.mkdir(parents=True, exist_ok=True)
@@ -87,13 +73,6 @@ def test_operation_fact_round_trips_to_evidence_tuple_with_scope() -> None:
 def test_subprocess_collector_default_emits_five_kinds(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The default collector must emit the operation-scoped kinds.
-
-    ``head``, ``worktree_path``, ``index_scope``, and
-    ``ownership_fingerprint`` are always present. ``rebase_state_files``
-    and ``merge_state_files`` are only present when the operation
-    worktree has files in the per-worktree rebase/merge directories.
-    """
     repo = _mock_git(monkeypatch, tmp_path / "repo")
     record = _record()
     facts = SubprocessOperationEvidenceCollector().snapshot(repo, record)
@@ -106,40 +85,16 @@ def test_subprocess_collector_default_emits_five_kinds(
 def test_subprocess_collector_never_emits_for_each_ref(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``git for-each-ref`` is repository-global; the default collector never calls it.
-
-    The collector is the only component permitted to read Git state
-    for diagnostic evidence; the Protocol has no method that returns
-    it. Asserting the contract on the value domain (the kinds it
-    emits) is the only place a regression test can land, because
-    there is no ``method_named_for_each_ref`` to look up.
-    """
     repo = _mock_git(monkeypatch, tmp_path / "repo")
     record = _record()
     facts = SubprocessOperationEvidenceCollector().snapshot(repo, record)
-    # ``for-each-ref`` would surface as a kind labelled with the
-    # subcommand name (matching the legacy on-disk shape that
-    # produced the production bug). The new collector never emits
-    # that kind.
     assert "for-each-ref" not in {fact.kind for fact in facts}
-    # The full ``ls-files --stage`` would surface as a kind carrying
-    # the entire index digest. The new collector only emits
-    # ``index_scope`` (path-restricted) and emits ``absent`` when
-    # the scope is empty.
     assert "ls-files" not in {fact.kind for fact in facts}
 
 
 def test_subprocess_collector_excludes_common_dir_reflog(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Branch reflog + ``logs/HEAD`` are common-dir state; the collector must skip them.
-
-    In a linked worktree, the branch reflog and ``logs/HEAD`` live
-    under commondir, so any commit in any worktree shifts their
-    digest. The default collector's scope is the operation worktree
-    only, so a capture from the operation worktree must NEVER
-    observe a reflog path.
-    """
     repo = _mock_git(monkeypatch, tmp_path / "repo")
     record = _record()
     facts = SubprocessOperationEvidenceCollector().snapshot(repo, record)
@@ -157,7 +112,6 @@ def test_subprocess_collector_excludes_common_dir_reflog(
 def test_index_scope_uses_resolving_paths_and_emits_absent_when_empty(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The collector emits ``absent`` for the index scope when the record has none."""
     repo = _mock_git(monkeypatch, tmp_path / "repo")
     record = _record(resolving_paths=())
     facts = SubprocessOperationEvidenceCollector().snapshot(repo, record)
@@ -191,7 +145,6 @@ def test_in_memory_collector_returns_supplied_facts(tmp_path: Path) -> None:
 
 
 def test_in_memory_collector_honours_protocol(tmp_path: Path) -> None:
-    """The in-memory fake must satisfy the collector Protocol contract."""
     collector: OperationEvidenceCollector = InMemoryOperationEvidenceCollector()
     record = _record()
     assert collector.snapshot(tmp_path, record) == ()
@@ -199,14 +152,6 @@ def test_in_memory_collector_honours_protocol(tmp_path: Path) -> None:
 
 
 def test_unreadable_observations_are_stable_under_verify(tmp_path: Path) -> None:
-    """An observation that was unreadable at record time stays unverifiable.
-
-    The diagnostic path must not silently disagree on a fact that
-    was unreadable when the record was captured. The collector's
-    verify treats ``unreadable`` as a stable observation: the
-    fingerprint does not rotate, the recovery path is not
-    spuriously refused.
-    """
     observed = (OperationFact(kind="head", value="unreadable"),)
     collector = InMemoryOperationEvidenceCollector(
         facts=(OperationFact(kind="head", value="unreadable"),)
@@ -216,7 +161,6 @@ def test_unreadable_observations_are_stable_under_verify(tmp_path: Path) -> None
 
 
 def test_collector_protocol_export() -> None:
-    """The collector is exported from the public package surface."""
     from ralph.pipeline import operation_evidence
 
     assert hasattr(operation_evidence, "EvidenceVerdict")
@@ -230,7 +174,6 @@ def test_collector_protocol_export() -> None:
 
 
 def test_subprocess_collector_returns_unreadable_when_head_missing(tmp_path: Path) -> None:
-    """A non-git root returns ``unreadable`` for HEAD, not a fabricated SHA."""
     record = _record()
     facts = SubprocessOperationEvidenceCollector().snapshot(tmp_path, record)
     head_facts = [fact for fact in facts if fact.kind == "head"]
@@ -300,7 +243,6 @@ def test_subprocess_collector_reachability_mock_git(
     assert len(merge_facts) == 1
     assert merge_facts[0].value == "True"
 
-    # Now with unreachable SHA
     (gitdir / "MERGE_HEAD").write_text("0" * 40 + "\n", encoding="utf-8")
     facts_unreachable = SubprocessOperationEvidenceCollector().snapshot(repo, record)
     merge_facts_unreachable = [
@@ -346,24 +288,19 @@ def test_in_memory_collector_evaluate_returns_verdict(tmp_path: Path) -> None:
     collector = InMemoryOperationEvidenceCollector(facts=facts)
     record = _record()
 
-    # 1. Matching -> UNCHANGED
     assert collector.evaluate(tmp_path, record, facts) == EvidenceVerdict.UNCHANGED
 
-    # 2. Differing -> CHANGED
     differing = (OperationFact(kind="head", value="def"),)
     assert collector.evaluate(tmp_path, record, differing) == EvidenceVerdict.CHANGED
 
-    # 3. Unreadable in observed -> UNKNOWN
     unreadable_obs = (OperationFact(kind="head", value="unreadable"),)
     assert collector.evaluate(tmp_path, record, unreadable_obs) == EvidenceVerdict.UNKNOWN
 
-    # 4. Unreadable in live facts -> UNKNOWN
     collector_unreadable = InMemoryOperationEvidenceCollector(
         facts=(OperationFact(kind="head", value="unreadable"),)
     )
     assert collector_unreadable.evaluate(tmp_path, record, facts) == EvidenceVerdict.UNKNOWN
 
-    # 5. Reachability False -> CHANGED
     collector_unreachable = InMemoryOperationEvidenceCollector(
         facts=(OperationFact(kind=_KIND_MERGE_OBJECT_RESOLVABLE, value="False"),)
     )
@@ -385,17 +322,13 @@ def test_subprocess_collector_evaluate_returns_verdict(
     collector = SubprocessOperationEvidenceCollector()
     live_facts = collector.snapshot(repo, record)
 
-    # 1. Matching snapshot -> UNCHANGED
     assert collector.evaluate(repo, record, live_facts) == EvidenceVerdict.UNCHANGED
 
-    # 2. Differing facts -> CHANGED
     differing = (OperationFact(kind="head", value="0" * 40),)
     assert collector.evaluate(repo, record, differing) == EvidenceVerdict.CHANGED
 
-    # 3. Empty observed -> CHANGED
     assert collector.evaluate(repo, record, ()) == EvidenceVerdict.CHANGED
 
-    # 4. Unreadable in observed -> UNKNOWN
     unreadable_obs = (OperationFact(kind="head", value="unreadable"),)
     assert collector.evaluate(repo, record, unreadable_obs) == EvidenceVerdict.UNKNOWN
 
@@ -403,20 +336,9 @@ def test_subprocess_collector_evaluate_returns_verdict(
 def test_subprocess_collector_guard_rejects_forbidden_kind(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The snapshot boundary raises ``RuntimeError`` on a forbidden kind.
-
-    Belt-and-braces: even if a future contributor slips a
-    repository-global key (``for-each-ref`` / ``ls-files``) past the
-    helper that produces a fact, the boundary check raises fail-closed
-    instead of returning a poisoned tuple that the loader would later
-    refuse with a less informative ``RecordUnreadableError``.
-    """
     repo = _mock_git(monkeypatch, tmp_path / "repo")
     record = _record()
 
-    # Patch a low-level helper that contributes OperationFact values to
-    # the snapshot. The guard at the end of ``snapshot()`` rejects the
-    # forbidden key.
     from ralph.pipeline import operation_evidence as op_ev_module
 
     def _poisoned_state_files(_root: Path) -> tuple[object, ...]:
@@ -432,15 +354,6 @@ def test_subprocess_collector_guard_rejects_forbidden_kind(
 
 
 def test_subprocess_collector_guard_accepts_only_closed_vocabulary() -> None:
-    """The closed-vocabulary helper accepts allowed kinds and rejects forbidden ones.
-
-    The closed vocabulary is exposed via the module's public
-    ``_CLOSED_OPERATION_FACT_KINDS`` frozenset (tested through
-    ``getattr`` to keep the public surface unchanged). For each
-    allowed kind the snapshot boundary accepts the fact; for each
-    forbidden kind a monkey-patched helper triggers the
-    ``RuntimeError`` belt-and-braces check.
-    """
     import ralph.pipeline.operation_evidence as op_ev
 
     closed = op_ev._CLOSED_OPERATION_FACT_KINDS

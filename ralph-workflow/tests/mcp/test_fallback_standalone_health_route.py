@@ -1,15 +1,3 @@
-"""Black-box test: the real standalone server's GET /health route answers 200.
-
-Regression for the AttributeError surfaced by live Kimi smoke diagnostics:
-``_FallbackStandaloneServer.run()`` bound the real ``_FallbackHttpServer``
-without assigning the class-annotated optional attributes
-(``health_probe_fn``, ``metrics``), so the handler's ``GET /health`` route
-raised ``AttributeError`` and the liveness endpoint never answered. This
-test binds a REAL socket through the production ``run()`` and issues a REAL
-HTTP GET — no in-memory harness — so it fails if any attribute the handler
-touches on that path is missing again.
-"""
-
 from __future__ import annotations
 
 import http.client
@@ -20,8 +8,6 @@ import ralph.mcp.server._fallback_standalone_server as srv_mod
 
 
 class _FakeMcpServer:
-    """Minimal McpServer stub providing ``_session`` for the startup banner."""
-
     class _StubSession:
         pass
 

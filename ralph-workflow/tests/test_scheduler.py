@@ -146,7 +146,6 @@ def build_dag_units(
     num_units: int,
     dep_pairs: list[tuple[int, int]],
 ) -> tuple[WorkUnit, ...]:
-    """Build a valid DAG from indices and dependency pairs, filtering cycles."""
     valid_deps: dict[int, list[str]] = {index: [] for index in range(num_units)}
     for src, dst in dep_pairs:
         if src < num_units and dst < num_units and src < dst:
@@ -160,16 +159,6 @@ def build_dag_units(
     max_examples=3,
     database=None,
     derandomize=True,
-    # Hypothesis's default ``deadline`` is 200 ms PER EXAMPLE. Under a fully
-    # loaded ``make verify`` fan-out (many concurrent pytest shards contending
-    # for CPU) a single example of this 3-argument strategy can transiently
-    # exceed that, which Hypothesis reports as a ``FlakyFailure`` even though
-    # the property itself is deterministic (``derandomize=True``). Raising the
-    # deadline to 750 ms keeps the perf signal but moves it BELOW the 1.0 s
-    # per-test budget enforced by ``tests/_per_test_budget.py``, so a
-    # genuine runaway surfaces as an actionable per-example failure instead of
-    # an opaque session abort. ``HealthCheck.too_slow`` (a different,
-    # data-generation check) stays suppressed.
     deadline=750,
     suppress_health_check=[HealthCheck.too_slow],
 )
@@ -189,7 +178,6 @@ def test_dag_property_no_deadlock_no_duplicate(
     dep_pairs: list[tuple[int, int]],
     max_workers: int,
 ) -> None:
-    """Property: scheduler terminates, respects deps, and schedules each unit once."""
     units = build_dag_units(num_units, dep_pairs)
     actual_unit_ids = {unit.unit_id for unit in units}
 

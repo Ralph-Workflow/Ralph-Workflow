@@ -1,31 +1,10 @@
-"""VisualFinding: a single observation a design reviewer raises about a capture.
-
-A :class:`VisualFinding` is the smallest atomic claim a verdict emits.
-It pins the observation to a specific ``capture_id`` (one cell of a
-:class:`~ralph.visual.capture_set.CaptureSet`) and a rectangular
-``region`` inside that capture, names the dimension the reviewer is
-calling out, and carries a free-text narrative that the agent
-back-translates into an actionable change.
-
-The dimension vocabulary is closed: every visual finding names one of
-the eight canonical dimensions (hierarchy, alignment, spacing,
-typography, legibility, density, completeness, clipping). Anything
-else is rejected at construction time so the verdict layer can
-group findings by dimension without spelling drift.
-"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Final, Literal
 
-# ---------------------------------------------------------------------------
-# Closed vocabularies
-# ---------------------------------------------------------------------------
 
-# The eight canonical dimensions. Anything outside this set is a
-# vocabulary drift; the verdict layer groups findings by dimension and
-# cannot defend itself against untyped labels.
 VISUAL_DIMENSIONS: Final[tuple[str, ...]] = (
     "hierarchy",
     "alignment",
@@ -37,10 +16,6 @@ VISUAL_DIMENSIONS: Final[tuple[str, ...]] = (
     "clipping",
 )
 
-# Four canonical severities. ``blocker`` halts the verdict at ``fail``;
-# ``major`` contributes to ``fail``; ``minor`` and ``nit`` contribute
-# to ``pass`` with reviewer follow-up. Anything outside this set is
-# rejected.
 VISUAL_SEVERITIES: Final[tuple[str, ...]] = (
     "blocker",
     "major",
@@ -48,9 +23,6 @@ VISUAL_SEVERITIES: Final[tuple[str, ...]] = (
     "nit",
 )
 
-# Literal aliases for downstream callers that prefer ``Literal[...]``
-# over a plain string field. Both names are exported so a consumer
-# can pick the type form that suits them.
 VisualDimensionT = Literal[
     "hierarchy",
     "alignment",
@@ -63,33 +35,18 @@ VisualDimensionT = Literal[
 ]
 VisualSeverityT = Literal["blocker", "major", "minor", "nit"]
 
-# Backwards-compat alias kept for downstream imports that pre-date
-# the split into ``VisualDimensionT`` / ``VisualSeverityT``. Both
-# names point at the same set of literals.
 SeverityT = VisualSeverityT
 
-# Reasonable bounds on the rectangular region a finding cites. We
-# deliberately allow zero-size regions in principle (a 1x1 point can
-# legitimately be the entire finding, e.g. "this icon is the wrong
-# glyph") but we cap the upper bound at 4Kx8K to keep findings from
-# silently growing into "the whole screen" claims that should have
-# been multiple findings instead.
 REGION_MIN_PIXELS: Final[int] = 1
-REGION_MAX_PIXELS: Final[int] = 32_000_000  # 4K x 8K, generous ceiling.
+REGION_MAX_PIXELS: Final[int] = 32_000_000
 
-# Maximum narrative length. Cap is generous (8 KiB) but bounded so a
-# runaway narrative cannot bloat a verdict payload.
 _NARRATIVE_MAX_LEN: Final[int] = 8 * 1024
 
 
-# ---------------------------------------------------------------------------
-# Typed structures
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
 class Region:
-    """Rectangular region (x, y, w, h) inside a capture, in capture pixels."""
 
     x: int
     y: int
@@ -121,11 +78,9 @@ class Region:
 
     @property
     def area(self) -> int:
-        """Return the region's pixel area."""
         return self.w * self.h
 
     def contains(self, other: Region) -> bool:
-        """Return True if ``other`` is fully inside this region."""
         return (
             other.x >= self.x
             and other.y >= self.y
@@ -136,7 +91,6 @@ class Region:
 
 @dataclass(frozen=True, slots=True)
 class _VisualFinding:
-    """A reviewer observation pinned to one capture cell and one region."""
 
     capture_id: str
     region: Region

@@ -253,15 +253,6 @@ def test_session_mcp_plan_grants_full_plan_draft_access_for_planning(
 
 
 class TestCommitDrainIsStrictlyReadOnly:
-    """Commit drains must not be able to modify git-tracked files or run processes.
-
-    workspace.write_ephemeral is intentionally granted so the commit agent can
-    use the write_file fallback path (.agent/tmp/commit_message.md) when
-    artifact.submit is unavailable. Only non-tracked ephemeral files may be
-    written; git.write and workspace.write_tracked remain reserved for the
-    orchestrator.
-    """
-
     @pytest.fixture
     def commit_drain_workspace(self, tmp_path: Path, isolated_home: Path) -> Path:
         del isolated_home
@@ -311,10 +302,6 @@ enabled = true
         commit_drain_workspace: Path,
         drain: str,
     ) -> None:
-        """Commit sessions need workspace.write_ephemeral so the agent can write
-        the commit payload to .agent/tmp/commit_message.md when artifact.submit
-        is unavailable. This is the write_file fallback promised by commit prompts.
-        """
         plan = build_session_mcp_plan(
             transport=AgentTransport.CLAUDE,
             drain=drain,

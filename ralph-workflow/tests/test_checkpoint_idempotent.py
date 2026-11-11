@@ -1,24 +1,3 @@
-"""Black-box tests for ralph.pipeline.checkpoint.save idempotent-write guard.
-
-Satisfies AC-04 and AC-05:
-
-* AC-04: ``checkpoint.save`` skips the atomic temp-write+replace when
-  the serialized ``PipelineState`` equals the existing checkpoint
-  bytes, and otherwise performs the same atomic write;
-  ``_normalize_recovery_state`` normalization, atomic semantics,
-  stray-tmp failure cleanup, and the ``load()``/callers contract are
-  preserved. ``save`` gains only an optional keyword-only ``backend``
-  param.
-
-* AC-05: new black-box tests use an in-memory FileBackend whose
-  ``replace()`` MOVES stored source content to the destination
-  (diverging from the reference no-op), prove each writer skips the
-  write (and the replace) on identical content, writes/replaces on
-  changed content, and leaves the correct final content. Tests use
-  no ``tmp_path``, no real I/O, no ``time.sleep``, and are fully
-  typed.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -33,13 +12,6 @@ if TYPE_CHECKING:
 
 
 class _ReplacingCountingBackend(FileBackend):
-    """In-memory FileBackend that records write_text and replace invocations.
-
-    ``replace(source, destination)`` MOVES stored source content to the
-    destination (``self._files[destination] = self._files.pop(source)``)
-    so atomic-save assertions on destination content are reachable.
-    """
-
     def __init__(self) -> None:
         self._files: Dict[Path, str] = {}
         self.write_text_calls: list[tuple[Path, str]] = []
@@ -82,14 +54,6 @@ class _ReplacingCountingBackend(FileBackend):
 
 
 def test_checkpoint_save_regression_writes_and_replaces_on_first_save() -> None:
-    """AC-04 + AC-05: first ``checkpoint.save`` performs one tmp-write plus one replace returning True.
-
-    Verifies that an absent destination triggers the full atomic cycle:
-    exactly one ``write_text`` to the tmp path plus exactly one
-    ``replace(tmp, dest)``. The stored destination equals the serialized
-    state, the tmp path is absent, and the parent directory creation was
-    routed through the injected backend rather than the real filesystem.
-    """
     backend = _ReplacingCountingBackend()
     dest = Path("/virtual-ws/.agent/checkpoint.json")
     tmp_prefix = f"{dest.with_suffix('.tmp').name}."
@@ -106,21 +70,11 @@ def test_checkpoint_save_regression_writes_and_replaces_on_first_save() -> None:
     assert backend.replace_calls == [(staging_path, dest)]
     assert backend._files[dest] == serialized
     assert staging_path not in backend._files
-    # Parent directory creation is routed through the injected backend, not
-    # the real filesystem.
     assert dest.parent in backend.mkdir_calls
     assert backend.sync_directory_calls == [dest.parent]
 
 
 def test_checkpoint_save_regression_skips_replace_when_state_identical() -> None:
-    """AC-04 + AC-05: second identical ``checkpoint.save`` performs zero additional writes and replaces.
-
-    Verifies the skip half of AC-04: a repeated ``save`` with a
-    ``PipelineState`` whose serialized JSON equals the destination bytes
-    must not write the tmp path and must not call ``replace``. The
-    stored destination remains the original bytes; the tmp path stays
-    absent.
-    """
     backend = _ReplacingCountingBackend()
     dest = Path("/virtual-ws/.agent/checkpoint.json")
     tmp = dest.with_suffix(".tmp")
@@ -144,13 +98,6 @@ def test_checkpoint_save_regression_skips_replace_when_state_identical() -> None
 
 
 def test_checkpoint_save_regression_writes_and_replaces_when_state_changed() -> None:
-    """AC-04 + AC-05: changed ``PipelineState`` re-fires one write_text plus one replace.
-
-    Verifies the changed-content half of AC-04: a ``save`` whose
-    serialized state differs from the destination bytes performs the
-    full atomic tmp-write plus replace cycle and the destination ends
-    up holding the new serialized state.
-    """
     backend = _ReplacingCountingBackend()
     dest = Path("/virtual-ws/.agent/checkpoint.json")
     tmp = dest.with_suffix(".tmp")

@@ -1,14 +1,3 @@
-"""Static scan: the reducer is the single ``last_decision`` writer.
-
-Contract: ``run_loop.py`` and ``runner.py`` must not write
-``RebaseState.last_decision`` directly (assignment or ``model_copy(update=...)``).
-The reducer (``ralph/pipeline/reducer.py``) is the only writer; both modules
-must instead consult the typed authorities: the single integration owner
-(:func:`ralph.pipeline.integration_owner.decide_integration`, reached through
-:func:`ralph.pipeline._integration_owner_seam.decide_seam_action`) and
-``decide_phase_transition``.
-"""
-
 from __future__ import annotations
 
 import ast
@@ -22,7 +11,6 @@ _TARGETS = [
 
 
 def _last_decision_writer_lines(path: Path) -> list[str]:
-    """Offending ``last_decision`` writer sites in ``path``."""
     offenders: list[str] = []
     lines = path.read_text(encoding="utf-8").splitlines()
     try:
@@ -30,7 +18,6 @@ def _last_decision_writer_lines(path: Path) -> list[str]:
     except SyntaxError:
         return offenders
     for node in ast.walk(tree):
-        # model_copy(update={"last_decision": ...}) or copy_with(last_decision=...)
         if (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Attribute)
@@ -72,14 +59,6 @@ def test_authority_calls_present() -> None:
 
 
 def test_the_retired_per_seam_decider_is_gone() -> None:
-    """The single owner replaced the hand-rolled per-seam decider.
-
-    ``next_integration_action`` re-derived the integration rung from a
-    durable record inside each seam. The owner
-    (:mod:`ralph.pipeline.integration_owner`) now decides the mutation
-    ladder and the seams overlay the durable record facts, so no seam
-    may call the retired decider any more.
-    """
     for path in _TARGETS:
         source = path.read_text(encoding="utf-8")
         assert "next_integration_action(" not in source, (
@@ -88,51 +67,25 @@ def test_the_retired_per_seam_decider_is_gone() -> None:
 
 
 def test_the_run_loop_has_no_hand_rolled_block_decider() -> None:
-    """The run loop's blocking seam must not keep a private record decider.
-
-    ``_resolve_record_for_block`` decided the busy / unreadable record
-    outcome with a private table. The canonical record-fact helper
-    (``busy_refusal_outcome``) owns that verdict now.
-    """
     run_loop = _TARGETS[0].read_text(encoding="utf-8")
     assert "_resolve_record_for_block" not in run_loop
     assert "busy_refusal_outcome" in run_loop
 
 
 def test_run_loop_no_prose_compare_on_last_decision() -> None:
-    """Invariant 7 / 13: ``last_decision`` may not be compared against a string literal.
-
-    The reducer is the sole ``last_decision`` writer; the run loop
-    must compare typed ``PhaseDecision`` enum values via
-    ``.value`` rather than the literal string, so a future change to
-    the enum cannot silently disagree with the run loop helper.
-    """
     run_loop = _TARGETS[0].read_text(encoding="utf-8")
-    # The fix: replace the literal "report_intervention_required" with
-    # ``PhaseDecision.REPORT_INTERVENTION_REQUIRED.value``. The literal
-    # must not survive anywhere in run_loop.py outside this comment.
     assert 'last_decision == "report_intervention_required"' not in run_loop
     assert "PhaseDecision.REPORT_INTERVENTION_REQUIRED.value" in run_loop
 
 
 def test_integration_alert_for_state_uses_typed_phase_decision() -> None:
-    """The integration alert helper must trip on the typed PhaseDecision value.
-
-    Both a typed ``PhaseDecision`` and a string ``last_decision``
-    round-trip through ``_integration_alert_for_state``; the helper
-    may not disagree with the reducer's typed answer.
-    """
     from ralph.pipeline import run_loop
     from ralph.pipeline._pipeline_state_machine import PhaseDecision
     from ralph.pipeline.rebase_state import RebaseState
     from ralph.pipeline.state import PipelineState
 
     rebase_typed = RebaseState(last_decision=PhaseDecision.REPORT_INTERVENTION_REQUIRED.value)
-    rebase_string = RebaseState(
-        last_decision="report_intervention_required"  # StrEnum round-trip
-    )
-    # WU-1: the alert names the next autonomous ladder rung and the
-    # preserved copy's location — never a person.
+    rebase_string = RebaseState(last_decision="report_intervention_required")
     expected = (
         "autonomous fallback ladder escalation — preserved copy: backup refs; "
         "next autonomous rung: preserve the work, then climb the cleanup ladder"

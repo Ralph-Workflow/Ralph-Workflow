@@ -1,4 +1,3 @@
-"""Create and identify the self-contained snapshot used by ``make install``."""
 
 from __future__ import annotations
 
@@ -34,13 +33,6 @@ _IGNORED_NAMES = frozenset(
 
 @dataclass(frozen=True)
 class SnapshotIdentity:
-    """Which checkout a dev snapshot was built from, and what it contains.
-
-    Every checkout and git worktree shares one snapshot directory and one
-    ``rdev`` launcher, so an install silently takes the launcher over from
-    whichever checkout installed last.  This is the record that makes the
-    takeover reportable.
-    """
 
     source_path: str
     source_commit: str
@@ -48,13 +40,6 @@ class SnapshotIdentity:
 
 
 def _read_string_assignment(source: str, name: str) -> str:
-    """Return the string literal assigned to ``name``, or ``""`` when absent.
-
-    Parsed as Python, not matched as text: the installer writes these values
-    with ``repr`` (single quotes, escapes), and a published package may use
-    double quotes, so only a real literal parse reads both back faithfully.
-    The source is never executed.
-    """
     try:
         module = ast.parse(source)
     except (SyntaxError, ValueError):
@@ -73,13 +58,6 @@ def _read_string_assignment(source: str, name: str) -> str:
 
 
 def read_snapshot_identity(snapshot_dir: Path) -> SnapshotIdentity | None:
-    """Return the identity of an installed snapshot, or ``None`` when there is none.
-
-    The snapshot is read as text rather than imported: it is a foreign copy of
-    the package that may be older than, or incompatible with, the installer
-    doing the reading.  Any unreadable snapshot is reported as absent so a
-    damaged previous install can never block a fresh one.
-    """
     package = snapshot_dir / "ralph"
     try:
         build_meta = (package / "_build_meta.py").read_text(encoding="utf-8")
@@ -98,6 +76,5 @@ def copy_install_tree(source: Path, destination: Path) -> Path:
     def ignore(_directory: str, names: list[str]) -> set[str]:
         return set(names) & _IGNORED_NAMES
 
-    # filesystem-write-ok: create the user-requested self-contained dev-install snapshot
     shutil.copytree(source, destination, ignore=ignore, dirs_exist_ok=True)
     return destination

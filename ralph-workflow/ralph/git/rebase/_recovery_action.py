@@ -1,4 +1,3 @@
-"""RecoveryAction — decision enum guiding error recovery in a rebase."""
 
 from __future__ import annotations
 
@@ -12,7 +11,6 @@ if TYPE_CHECKING:
 
 
 class RecoveryAction(Enum):
-    """Decision returned by ``decide`` to guide error recovery in a rebase."""
 
     Continue = "continue"
     Retry = "retry"

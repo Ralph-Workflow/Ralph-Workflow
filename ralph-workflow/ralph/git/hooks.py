@@ -1,4 +1,3 @@
-"""Manage Ralph git hooks for the Python CLI."""
 
 from __future__ import annotations
 
@@ -20,7 +19,6 @@ from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 
 HOOK_MARKER = "RALPH_RUST_MANAGED_HOOK"
-"""Marker string embedded in every Ralph-managed hook."""
 
 RALPH_HOOK_NAMES = (
     "pre-commit",
@@ -30,7 +28,6 @@ RALPH_HOOK_NAMES = (
     "commit-msg",
     "post-commit",
 )
-"""Hook names managed by Ralph workflows."""
 
 _HOOK_DISPLAY_LABELS = {
     "pre-commit": "Commit",
@@ -43,7 +40,6 @@ _HOOK_DISPLAY_LABELS = {
 
 
 def get_hooks_dir(repo_root: Path | str | None = None) -> Path:
-    """Return the git hooks directory for a repository root."""
 
     repo_root_path = _resolve_repo_root(repo_root)
     hooks_dir = repo_root_path / ".git" / "hooks"
@@ -52,60 +48,6 @@ def get_hooks_dir(repo_root: Path | str | None = None) -> Path:
 
 
 def install_hooks_in_repo(repo_root: Path | str | None = None) -> Path:
-    """Install every Ralph-managed git hook into ``repo_root``.
-
-    The function walks :data:`RALPH_HOOK_NAMES`, ensures the repository's
-    ``.git/hooks`` directory and the ``.git/ralph`` marker directory exist,
-    and writes a generated hook script for each managed hook. The generated
-    scripts first block any commit/push/merge when an agent-phase marker
-    file is present, then delegate to the original hook script (backed up
-    alongside as ``<hook_name>.ralph.orig``) when the marker is absent.
-
-    The function is the writer half of the
-    :func:`install_hooks_in_repo` / :func:`uninstall_hooks` pair; together
-    they give Ralph a way to gate host-driven agent actions without
-    permanently modifying the repository.
-
-    Args:
-        repo_root: Filesystem path or string path of the git repository
-            root whose hooks should be installed. When ``None`` the
-            repository is discovered via
-            :func:`ralph.git.operations.find_repo_root` from the current
-            working directory. A relative path is resolved as-is.
-
-    Returns:
-        Path: The absolute path to the repository's ``.git/hooks``
-        directory, so callers can inspect the installed hooks or attach
-        additional bookkeeping.
-
-    Raises:
-        OSError: If the host filesystem refuses to create the hook files
-            (e.g. permission errors on a read-only mount). The error
-            surfaces unchanged so callers can decide whether to abort the
-            bootstrap or fall back to operator-supplied hooks.
-
-    Side Effects:
-        - Creates ``<repo>/.git/hooks`` and ``<repo>/.git/ralph`` if they
-          do not already exist.
-        - Touches the ``no_agent_commit`` and ``git-wrapper-dir.txt``
-          marker files under ``<repo>/.git/ralph`` so subsequent agent
-          phases can detect Ralph-managed installations.
-        - Backs up any existing non-Ralph hook script as
-          ``<hook_name>.ralph.orig`` before replacing it, so uninstall
-          restores the user's original hook behavior.
-        - Writes a Ralph-generated hook script for every name in
-          :data:`RALPH_HOOK_NAMES`. The marker :data:`HOOK_MARKER` is
-          embedded in each script so
-          :func:`reinstall_hooks_if_tampered` can later detect drift.
-
-    Trust Boundary:
-        The function executes only filesystem writes inside the target
-        repository's ``.git`` tree; it does not invoke any external
-        commands or read user-supplied data. Callers must ensure
-        ``repo_root`` resolves to a trusted repository before passing it
-        in (a hostile caller could otherwise induce the script to write
-        marker files in an attacker-chosen directory).
-    """
 
     repo_root_path = _resolve_repo_root(repo_root)
     hooks_dir = get_hooks_dir(repo_root_path)
@@ -124,7 +66,6 @@ def reinstall_hooks_if_tampered(
     logger: Logger | None = None,
     repo_root: Path | str | None = None,
 ) -> bool:
-    """Reinstall hooks when they are missing or do not contain the marker."""
 
     logger = logger or default_logger
     repo_root_path = _resolve_repo_root(repo_root)
@@ -143,64 +84,6 @@ def uninstall_hooks(
     logger: Logger | None = None,
     repo_root: Path | str | None = None,
 ) -> bool:
-    """Remove Ralph-managed hooks from ``repo_root`` and restore backups.
-
-    Walks :data:`RALPH_HOOK_NAMES` and, for any hook that still carries the
-    :data:`HOOK_MARKER` written by :func:`install_hooks_in_repo`, restores
-    the original script from the ``<hook_name>.ralph.orig`` backup (when
-    one exists) and removes the backup. When no backup exists the hook
-    file is deleted outright, leaving the slot empty so subsequent
-    ``pre-commit`` / ``pre-push`` invocations no longer fire at all.
-
-    The function is the reverse half of the
-    :func:`install_hooks_in_repo` / :func:`uninstall_hooks` pair. It only
-    removes scripts that carry the Ralph marker, so it is safe to call on
-    a repository whose hooks have already been replaced by another tool:
-    foreign hooks are detected by the absence of the marker and left
-    untouched.
-
-    Keyword Args:
-        logger: Optional :class:`loguru.Logger` instance used for the
-            "Uninstalled N Ralph hook(s)" / "No Ralph-managed hooks were
-            found to uninstall" summary lines. Defaults to the process
-            logger when ``None``, which is the right choice for normal
-            CLI invocations.
-        repo_root: Filesystem path or string path of the git repository
-            root whose hooks should be removed. When ``None`` the
-            repository is discovered via
-            :func:`ralph.git.operations.find_repo_root` from the current
-            working directory.
-
-    Returns:
-        bool: ``True`` when at least one Ralph-managed hook was removed
-        or restored; ``False`` when no managed hooks were found and the
-        repository was already clean. The return value is intended for
-        CLI-level reporting and is not load-bearing for the rest of the
-        Ralph pipeline.
-
-    Raises:
-        OSError: If the host filesystem refuses to move or delete the
-            hook files. The error surfaces unchanged so the caller can
-            decide whether to retry with elevated permissions or surface
-            the failure to the operator.
-
-    Side Effects:
-        - For every managed hook with a ``.ralph.orig`` backup, the
-          backup is moved back into place as the active hook script and
-          the backup file is removed.
-        - For every managed hook without a backup, the hook file is
-          deleted (leaving the slot empty rather than leaving a stub
-          Ralph script).
-        - Emits one ``logger.info`` line summarizing how many hooks were
-          removed.
-
-    Trust Boundary:
-        The function only writes inside the target repository's ``.git``
-        tree and never invokes external commands. Callers must ensure
-        ``repo_root`` resolves to a trusted repository so that an attacker
-        cannot trick the uninstall routine into deleting unrelated git
-        hooks on a different host.
-    """
 
     logger = logger or default_logger
     repo_root_path = _resolve_repo_root(repo_root)
@@ -286,13 +169,11 @@ def _backup_existing_hook(hook_path: Path) -> None:
         return
 
     orig_path = _orig_hook_path(hook_path.parent, hook_path.name)
-    # filesystem-write-ok: git hook installation copies the selected hook content into Git-managed hook storage
     shutil.copyfile(hook_path, orig_path)
     _make_writable(orig_path)
 
 
 def _orig_hook_path(hooks_dir: Path, hook_name: str) -> Path:
-    # filesystem-write-ok: git hook script install under .git/hooks/, runtime install path not tracked by repo
     return hooks_dir / f"{hook_name}.ralph.orig"
 
 
@@ -301,7 +182,6 @@ def _write_hook_file(hook_path: Path, content: str) -> None:
         _make_writable(hook_path)
         with contextlib.suppress(OSError):
             hook_path.unlink()
-    # filesystem-write-ok: git hook install writes the selected hook script under .git/hooks/, runtime install path not tracked by repo
     write_text_if_changed(DEFAULT_FILE_BACKEND, hook_path, content)
     _make_executable(hook_path)
 
@@ -310,7 +190,6 @@ def _make_executable(path: Path) -> None:
     if os.name == "nt":
         return
     with contextlib.suppress(OSError):
-        # filesystem-write-ok: installed Git hook must be executable for Git to invoke the retained script
         path.chmod(0o555)
 
 
@@ -318,7 +197,6 @@ def _make_writable(path: Path) -> None:
     if os.name == "nt":
         return
     with contextlib.suppress(OSError):
-        # filesystem-write-ok: restored Git hook must be writable before replacement or removal
         path.chmod(0o755)
 
 
@@ -342,7 +220,6 @@ def _remove_hook(hook_path: Path) -> int:
     _make_writable(hook_path)
     orig_path = _orig_hook_path(hook_path.parent, hook_path.name)
     if orig_path.exists():
-        # filesystem-write-ok: restore the user hook from Git-managed backup storage
         shutil.move(orig_path, hook_path)
         _make_writable(hook_path)
         return 1

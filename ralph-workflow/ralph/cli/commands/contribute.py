@@ -1,8 +1,3 @@
-""":star: ``ralph contribute`` — open the GitHub repo to star and fork Ralph Workflow.
-
-This is a lightweight community-support command. It opens the canonical
-GitHub repository by default; the Codeberg mirror remains available.
-"""
 
 from __future__ import annotations
 
@@ -21,7 +16,6 @@ PROJECT_NAME = "Ralph Workflow"
 
 
 def _build_banner() -> Text:
-    """Build the rich-starred contribute banner."""
     return Text.from_markup(
         "\n"
         "  [bold theme.banner.title]✨ Ralph Workflow[/bold theme.banner.title]\n"
@@ -42,15 +36,6 @@ def contribute(
         ),
     ] = "github",
 ) -> None:
-    """Open the Ralph Workflow repo in your browser so you can star it.
-
-    Opens the GitHub project page (default) or Codeberg mirror so you can
-    star, watch, or fork — then come back and keep working.
-
-    Examples:
-        ralph contribute                    # Open GitHub
-        ralph contribute --source codeberg  # Open Codeberg mirror
-    """
     ctx = make_display_context()
     display = resolve_active_display(None, ctx)
     source_lower = source.lower()

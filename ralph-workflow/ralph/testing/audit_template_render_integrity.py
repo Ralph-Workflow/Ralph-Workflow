@@ -1,49 +1,3 @@
-"""Render-integrity audit for packaged prompt templates and shared partials.
-
-Renders every top-level template under ``ralph/prompts/templates/*.jinja`` and
-every ``shared/_*`` partial through the real rendering path
-(``TemplateContext.default()`` + ``TemplateRenderer``). Macro-only partials
-receive small call harnesses so their bodies are validated independently
-rather than only when a top-level caller happens to reach them. The audit
-asserts six integrity properties on every prompt source/render pair:
-
-1. **No unrendered Jinja markers** — ``{{``, ``{%`` and ``{#`` must not
-   survive into the rendered output.
-2. **Include resolution** — every template x context combination must render
-   without raising (``TemplateNotFound`` or any other
-   ``TemplateRenderingError`` from the engine IS the failure signal; the
-   audit's job is to exercise every combination).
-3. **No duplicated markdown section headings** — a heading line
-   (``#``/``##``/... outside fenced code blocks) must not appear twice in
-   one rendered prompt.
-4. **No verbatim duplicated text blocks** — no whitespace-normalized
-   paragraph of >= 120 characters may appear twice within one rendered
-   prompt (catches partial-vs-body restatement drift).
-5. **No blank-run or doubled-label defects** — outside fenced payloads, no
-   run of 3+ consecutive blank lines; no ``LABEL:`` line immediately followed
-   by an identical ``LABEL:`` line. These are hard failures, matching the
-   renderer's blank-line normalization contract.
-6. **No deprecated worker-role conditional** — the removed role flag is a
-   source-level hard error instead of an optional render input.
-
-Rendered contexts use real drain capability mappings; capability and tool
-variables are never toggled independently. Case-neutral condition discovery
-uses Jinja's parsed undeclared-variable set, so both uppercase and lowercase
-branch inputs are covered without treating keywords or local names as inputs.
-Optional inputs are combined exhaustively within each reachable nested
-conditional path and pairwise across a target's template closure, while
-incompatible transport states such as simultaneously inlined and file-routed
-payloads are excluded. Real capability profiles are crossed with those branch
-paths. Every remaining undeclared variable receives a short deterministic
-placeholder so ``StrictUndefined`` cannot mask an unexercised branch.
-Cross-document duplication (master prompt vs template) is out of scope.
-
-Usage:
-    python -m ralph.testing.audit_template_render_integrity
-
-Exit 0 = clean, 1 = at least one integrity violation.
-"""
-
 from __future__ import annotations
 
 import itertools
@@ -66,16 +20,10 @@ from ralph.prompts.template_variables import (
 )
 
 _MIN_DUPLICATE_PARAGRAPH_CHARS = 120
-#: Whitespace-normalized paragraphs at or above this length participate in
-#: the verbatim-duplication check (check 4). Shorter fragments (bullet
-#: fragments, labels) repeat legitimately.
 
 _MAX_CONSECUTIVE_BLANK_LINES = 2
-#: A run of more than this many consecutive blank lines in a rendered
-#: prompt is a whitespace defect (check 5).
 
 _DUPLICATION_PREVIEW_CHARS = 60
-#: Maximum duplicated paragraph text included in one diagnostic.
 
 _JINJA_MARKERS: tuple[str, ...] = ("{{", "{%", "{#")
 
@@ -85,15 +33,11 @@ _FENCE_RE = re.compile(r"^\s*(?:```|~~~)")
 
 
 class _NameNodeView(Protocol):
-    """Typed view of the attributes exposed by a Jinja ``Name`` node."""
-
     name: str
     ctx: str
 
 
 class _IfNodeView(Protocol):
-    """Typed view of the attributes exposed by a Jinja ``If`` node."""
-
     test: nodes.Node
     body: list[nodes.Node]
     elif_: list[nodes.Node]
@@ -101,7 +45,6 @@ class _IfNodeView(Protocol):
 
 
 def _group_sort_key(group: frozenset[str]) -> tuple[int, tuple[str, ...]]:
-    """Return a deterministic sort key for one conditional-variable group."""
     return len(group), tuple(sorted(group))
 
 
@@ -114,9 +57,6 @@ _ASSIGNMENT_RE = re.compile(r"{%\s*set\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)\b")
 _JINJA_COMMENT_RE = re.compile(r"{#.*?#}", re.DOTALL)
 
 _ENGINE_GLOBAL_NAMES: frozenset[str] = frozenset({"raise_error"})
-#: Names ``jinja2.meta`` reports as undeclared that are actually engine
-#: globals installed by ``render_template``; they must not receive
-#: placeholder values (calling a string placeholder would break rendering).
 
 _BRANCH_VALUES: dict[str, tuple[str, ...]] = {
     "ANALYSIS_FEEDBACK": ("Analysis feedback F-1 requires a focused repair.",),
@@ -160,14 +100,11 @@ _BRANCH_VALUES: dict[str, tuple[str, ...]] = {
     "show_plan_edit_guidance": ("true",),
     "strategy_history": ("rebase_resolver: unresolved shared.txt",),
 }
-#: Closed vocabulary for non-capability branch inputs. Adding a conditional
-#: variable without declaring realistic values here fails the audit matrix.
 
 _MUTUALLY_EXCLUSIVE_BRANCH_GROUPS: tuple[frozenset[str], ...] = (
     frozenset({"ANALYSIS_FEEDBACK", "ANALYSIS_FEEDBACK_PATH"}),
     frozenset({"ISSUES", "ISSUES_PATH"}),
 )
-#: Runtime routing chooses either inline content or a file path, never both.
 
 _TOP_LEVEL_DRAINS: dict[str, SessionDrain] = {
     "commit_review": SessionDrain.COMMIT,
@@ -224,8 +161,6 @@ _ANALYSIS_CONTEXT_HARNESS = """\
 
 @dataclass(frozen=True)
 class _RenderTarget:
-    """One independently rendered template or shared-partial harness."""
-
     name: str
     source: str
     drain: SessionDrain
@@ -233,7 +168,6 @@ class _RenderTarget:
 
 
 def _render_targets(context: TemplateContext) -> tuple[_RenderTarget, ...]:
-    """Return every top-level template and shared partial as an audit target."""
     targets = [
         _RenderTarget(
             name=path.stem,
@@ -310,7 +244,6 @@ def _render_targets(context: TemplateContext) -> tuple[_RenderTarget, ...]:
 
 
 def _referenced_variable_names(sources: dict[str, str]) -> set[str]:
-    """Union of undeclared variable names across every template and partial."""
     environment = Environment()
     names: set[str] = set()
     for source in sources.values():
@@ -319,17 +252,13 @@ def _referenced_variable_names(sources: dict[str, str]) -> set[str]:
 
 
 def _base_variables(sources: dict[str, str]) -> dict[str, str]:
-    """Build deterministic placeholders for every non-engine variable."""
     return {name: f"[audit-value {name}]" for name in sorted(_referenced_variable_names(sources))}
 
 
 def _loaded_names(node: nodes.Node) -> set[str]:
-    """Return load-context variable names referenced by one Jinja AST node."""
     names: set[str] = set()
     if type(node).__name__ == "Name":
-        name_node = cast(
-            "_NameNodeView", node
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        name_node = cast("_NameNodeView", node)
         if name_node.ctx == "load":
             names.add(name_node.name)
     for child in node.iter_child_nodes():
@@ -340,7 +269,6 @@ def _loaded_names(node: nodes.Node) -> set[str]:
 def _conditional_variable_groups(
     sources: dict[str, str],
 ) -> tuple[frozenset[str], ...]:
-    """Return variable groups required along every nested conditional path."""
     environment = Environment()
     groups: set[frozenset[str]] = set()
     for source in sources.values():
@@ -353,9 +281,7 @@ def _conditional_variable_groups(
             undeclared_names: set[str],
         ) -> None:
             if type(node).__name__ == "If":
-                if_node = cast(
-                    "_IfNodeView", node
-                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                if_node = cast("_IfNodeView", node)
                 condition_names = frozenset(_loaded_names(if_node.test) & undeclared_names)
                 path_names = (ancestors | condition_names) - _ENGINE_GLOBAL_NAMES
                 if path_names:
@@ -375,7 +301,6 @@ def _conditional_variable_groups(
 
 
 def _conditional_variable_names(sources: dict[str, str]) -> set[str]:
-    """Return undeclared uppercase and lowercase names used by Jinja conditions."""
     groups = _conditional_variable_groups(sources)
     return set().union(*groups) if groups else set()
 
@@ -388,7 +313,6 @@ def _normalized_partial_name(name: str) -> str:
 
 
 def _referenced_partial_names(source: str) -> set[str]:
-    """Return constant include/import names from one template source."""
     uncommented = _JINJA_COMMENT_RE.sub("", source)
     return {
         _normalized_partial_name(match.group("name"))
@@ -397,7 +321,6 @@ def _referenced_partial_names(source: str) -> set[str]:
 
 
 def _template_source_closure(source: str, partials: dict[str, str]) -> dict[str, str]:
-    """Return one template plus every partial it directly or transitively references."""
     closure = {"__main__": source}
     pending = [source]
     while pending:
@@ -414,7 +337,6 @@ def _template_source_closure(source: str, partials: dict[str, str]) -> dict[str,
 
 
 def _assigned_variable_names(sources: dict[str, str]) -> set[str]:
-    """Return names assigned by ``set`` statements in a template closure."""
     assigned: set[str] = set()
     for source in sources.values():
         uncommented = _JINJA_COMMENT_RE.sub("", source)
@@ -426,7 +348,6 @@ def _build_capability_profiles() -> tuple[
     tuple[SessionDrain, tuple[tuple[str, str], ...]],
     ...,
 ]:
-    """Return immutable real capability-variable profiles for every drain."""
     profiles: list[tuple[SessionDrain, tuple[tuple[str, str], ...]]] = []
     for drain in SessionDrain:
         capabilities, policy_flags = default_caps_and_flags_for_drain(drain)
@@ -446,7 +367,6 @@ def _branch_scenarios(
     *,
     condition_groups: tuple[frozenset[str], ...] | None = None,
 ) -> tuple[tuple[str, dict[str, str]], ...]:
-    """Return exhaustive compatible values for every conditional path."""
     optional_names = condition_names - _CAPABILITY_VARIABLE_NAMES
     unknown = optional_names - _BRANCH_VALUES.keys()
     if unknown:
@@ -494,7 +414,6 @@ def _profile_scenarios(
     target: _RenderTarget,
     condition_names: set[str],
 ) -> tuple[tuple[str, dict[str, str]], ...]:
-    """Return real capability profiles needed by one target's conditions."""
     profiles = _CAPABILITY_PROFILES
     by_drain = {drain: dict(profile) for drain, profile in profiles}
     baseline = by_drain[target.drain]
@@ -520,7 +439,6 @@ def _target_scenarios(
     condition_names: set[str],
     condition_groups: tuple[frozenset[str], ...],
 ) -> tuple[tuple[str, dict[str, str]], ...]:
-    """Cross real capabilities with every reachable branch and harness case."""
     branches = _branch_scenarios(
         condition_names,
         condition_groups=condition_groups,
@@ -547,12 +465,6 @@ def _target_scenarios(
 
 
 def _duplicated_headings(lines: list[str]) -> list[str]:
-    """Check 3: one description per heading appearing twice.
-
-    Headings inside fenced code blocks (worked markdown examples, shell
-    comments) are excluded — only real section headings of the rendered
-    prompt participate.
-    """
     counts: Counter[str] = Counter()
     in_fence = False
     for line in lines:
@@ -569,13 +481,8 @@ def _duplicated_headings(lines: list[str]) -> list[str]:
 
 
 def _duplicated_paragraphs(rendered: str) -> list[str]:
-    """Check 4: one description per >=120-char paragraph seen twice."""
     counts: Counter[str] = Counter()
-    # re.split is typed ``list[str | Any]`` (group-dependent); this pattern
-    # has no groups, so every element is a plain str.
-    paragraphs = cast(
-        "list[str]", re.split(r"\n\s*\n", rendered)
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    paragraphs = cast("list[str]", re.split(r"\n\s*\n", rendered))
     for paragraph in paragraphs:
         normalized = " ".join(paragraph.split())
         if len(normalized) >= _MIN_DUPLICATE_PARAGRAPH_CHARS:
@@ -588,7 +495,6 @@ def _duplicated_paragraphs(rendered: str) -> list[str]:
 
 
 def _blank_and_label_defects(lines: list[str]) -> list[str]:
-    """Check 5 outside fences: 3+ blank lines and doubled ``LABEL:`` lines."""
     defects: list[str] = []
     first_content = 0
     last_content = len(lines)
@@ -629,13 +535,6 @@ def _blank_and_label_defects(lines: list[str]) -> list[str]:
 
 
 def check_rendered_prompt(template_name: str, rendered: str) -> list[str]:
-    """Run integrity checks 1 and 3-5 against one rendered prompt.
-
-    Returns human-readable violation descriptions (no template/scenario
-    prefix — ``collect_violations`` adds attribution). Check 2 (include
-    resolution) lives in ``collect_violations`` because it is observed as
-    a rendering exception, not as a property of rendered text.
-    """
     descriptions = [
         f"unrendered Jinja marker {marker!r} in output"
         for marker in _JINJA_MARKERS
@@ -649,7 +548,6 @@ def check_rendered_prompt(template_name: str, rendered: str) -> list[str]:
 
 
 def check_template_source(template_name: str, source: str) -> list[str]:
-    """Return violations for deprecated variables in one prompt source."""
     del template_name
     if _DEPRECATED_WORKER_ROLE_VARIABLE not in source:
         return []
@@ -659,11 +557,6 @@ def check_template_source(template_name: str, source: str) -> list[str]:
 
 
 def _collect_findings() -> list[str]:
-    """Render every top-level/shared target scenario and aggregate every finding.
-
-    The function is pure with respect to the repository: it reads packaged
-    templates, renders them in memory, and returns attributed findings.
-    """
     context = TemplateContext.default()
     targets = _render_targets(context)
     all_sources = dict(context.partials)
@@ -721,25 +614,10 @@ def _collect_findings() -> list[str]:
 
 
 def collect_violations() -> list[str]:
-    """Return hard violations across every template/partial render scenario."""
     return _collect_findings()
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the render-integrity audit and return the process exit code.
-
-    Renders every packaged top-level template and shared partial across real
-    capability and optional-input scenarios, then prints a one-line summary
-    or a labeled violation list. Has no side effects beyond stdout output.
-
-    Args:
-        argv: Unused positional argument list (kept for CLI symmetry with
-            the other audit entry points). Values are ignored.
-
-    Returns:
-        ``0`` when every template x scenario renders cleanly and passes
-        all six checks, ``1`` otherwise.
-    """
     del argv
     problems = collect_violations()
     if problems:

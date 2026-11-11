@@ -1,9 +1,3 @@
-"""Agent PATH availability checks for Ralph Workflow.
-
-Shared helper used by both the first-run welcome banner and the
-`ralph --diagnose` command to determine whether configured agents
-are reachable on the system PATH.
-"""
 
 from __future__ import annotations
 
@@ -19,7 +13,6 @@ __all__ = ["AgentEntry", "AgentStatus", "HasListAgents", "check_agent_availabili
 
 @runtime_checkable
 class HasListAgents(Protocol):
-    """Protocol for agent registries used in availability checks."""
 
     def list_agents(self) -> list[str]: ...
 
@@ -29,17 +22,6 @@ class HasListAgents(Protocol):
 def check_agent_availability(
     registry: HasListAgents,
 ) -> list[tuple[str, AgentStatus]]:
-    """Check which agents are available on PATH.
-
-    Args:
-        registry: Object implementing list_agents() and get(name) for agent resolution.
-
-    Returns:
-        List of (registry_name, status) tuples where status is one of
-        'available', 'missing_on_path', or 'no_cmd'.
-        The key is always the configured registry name so callers can join
-        back to the registry without a secondary display-name lookup.
-    """
     results: list[tuple[str, AgentStatus]] = []
     for name in registry.list_agents():
         agent = registry.get(name)

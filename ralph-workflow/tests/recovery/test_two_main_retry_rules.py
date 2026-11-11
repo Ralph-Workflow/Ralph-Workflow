@@ -1,35 +1,3 @@
-"""Black-box contract tests for the recovery controller's two main retry rules.
-
-The wt-012 plan enshrines the recovery controller's two-state
-recovery invariant:
-
-  - **Rule 1 (same-agent retry):** when an AGENT-category failure
-    is NOT marked unavailable, the recovery controller increments the
-    chain's ``retries`` counter and re-invokes the same agent.
-
-  - **Rule 2 (exponential backoff to next agent):** when an
-    AGENT-category failure IS marked unavailable, the recovery
-    controller marks the agent on cooldown via
-    ``AgentUnavailabilityTracker.mark_unavailable`` (per-reason
-    ``ReasonBackoffPolicy`` exponential backoff capped at
-    ``max_backoff_ms``) and advances ``chain.current_index`` to the
-    next available agent in the chain (priority agent selection).
-
-  - **Never-exit invariant:** the pipeline NEVER exits because of
-    agent unavailability. When all agents in the chain are on
-    cooldown, the controller sets ``is_waiting_state=True`` and
-    ``last_retry_delay_ms=<earliest_cooldown>`` and does NOT call
-    ``_enter_phase_failed``. The run loop sleeps on
-    ``last_retry_delay_ms`` and re-enters the same phase.
-
-The tests below drive the recovery controller through its PUBLIC
-surface only (``RecoveryController.handle``,
-``RecoveryControllerOptions.unavailability_entries``,
-``FailureClassifier.classify``).  No private mutation.  No real
-subprocess.  No real network.  No real sleep.  Uses ``FakeClock`` so
-the test completes in <3s combined.
-"""
-
 from __future__ import annotations
 
 import tempfile
@@ -104,7 +72,6 @@ def _controller(
     unproductive_streak_limit: int = 3,
     unproductive_total_limit: int = 9,
 ) -> RecoveryController:
-    """Build a controller whose failure ledger owns the agent-health decisions."""
 
     return RecoveryController(
         options=RecoveryControllerOptions(
@@ -120,19 +87,6 @@ def _controller(
 
 
 def test_recovery_rule_one_same_agent_retry_for_non_unavailable_failure() -> None:
-    """Rule 1: a NON-unavailable AGENT failure retries the same agent.
-
-    A stalled agent with ``watchdog_reason=STALLED_AFTER_TOOL_RESULT``
-    is not marked unavailable — it is genuinely stuck, not
-    temporarily down.  The recovery controller must increment the
-    chain's ``retries`` counter and re-invoke the same agent.
-
-    Assertions:
-      - effects list is empty (no ``ExitFailureEffect``).
-      - state.phase is unchanged (NOT ``failed_terminal``).
-      - state.is_waiting_state is False (NOT a wait branch).
-      - chain.retries was incremented by exactly 1 (same-agent retry).
-    """
     controller = _controller()
     state = _three_agent_state(current_index=0, retries=0)
 
@@ -156,27 +110,6 @@ def test_recovery_rule_one_same_agent_retry_for_non_unavailable_failure() -> Non
 
 
 def test_recovery_rule_two_exponential_backoff_to_next_agent_for_unavailable_failure() -> None:
-    """Rule 2: an unavailable AGENT failure is marked on cooldown and the chain advances.
-
-    A ``NO_OUTPUT_AT_START`` failure with connectivity online is
-    classified as unavailable (the agent is not producing output
-    despite a healthy connection — it is e.g. out of credits).
-    The recovery controller must:
-      (a) mark the agent on cooldown via
-          ``AgentUnavailabilityTracker.mark_unavailable``.
-      (b) advance the chain's ``current_index`` to the next agent.
-      (c) reset the chain's ``retries`` to 0 (fresh chain on new agent).
-      (d) NOT call ``_enter_phase_failed`` (the pipeline does not exit).
-      (e) NOT set ``is_waiting_state=True`` (we found an available agent).
-
-    Assertions:
-      - state.phase is unchanged.
-      - state.is_waiting_state is False.
-      - chain.current_index advanced from 0 to 1.
-      - chain.retries is 0.
-      - The unavailability tracker shows claude on cooldown.
-      - effects list is empty.
-    """
     controller = _controller()
     state = _three_agent_state(current_index=0, retries=0)
 
@@ -199,7 +132,6 @@ def test_recovery_rule_two_exponential_backoff_to_next_agent_for_unavailable_fai
     )
     assert chain.retries == 0, f"retries must reset on new agent, got {chain.retries}"
 
-    # Claude must be on cooldown.
     store = controller.unavailability_store
     assert not store.is_available("development", "claude"), (
         "claude must be on cooldown after NO_OUTPUT_AT_START"
@@ -209,18 +141,6 @@ def test_recovery_rule_two_exponential_backoff_to_next_agent_for_unavailable_fai
 
 
 def test_recovery_never_exits_on_unavailability_when_all_agents_on_cooldown() -> None:
-    """Never-exit invariant: when all agents are on cooldown, the
-    controller enters the wait state, NOT ``failed_terminal``.
-
-    Pre-seed all 3 agents as unavailable, with the earliest cooldown
-    (5s) on claude.  Drive the controller with a claude failure
-    classified as unavailable.  The controller must:
-      (a) NOT advance ``state.phase`` to ``failed_terminal``.
-      (b) Set ``state.is_waiting_state=True`` (the structured wait flag).
-      (c) Set ``state.last_retry_delay_ms == 5000`` (the earliest cooldown).
-      (d) NOT consume a recovery cycle (``state.recovery_cycle_count == 0``).
-      (e) Return an empty effects list (no ``ExitFailureEffect``).
-    """
     initial_entries: dict[str, UnavailabilityEntry] = {
         "claude": UnavailabilityEntry(
             unavailable_until_ms=5000,
@@ -262,29 +182,6 @@ def test_recovery_never_exits_on_unavailability_when_all_agents_on_cooldown() ->
 
 
 def test_recovery_reconsiders_earlier_agent_after_cooldown_expires_with_wrap_true() -> None:
-    """Priority agent selection: when the chain advances, earlier agents
-    whose cooldown has expired are reconsidered.
-
-    Setup:
-      - 3 agents, all pre-seeded as unavailable.
-      - claude: 5s cooldown.
-      - opencode: 60s cooldown.
-      - agy: 30s cooldown.
-
-    Behaviour:
-      - First handle() with claude failing -> wait state, wait_ms=5000.
-      - Advance FakeClock by 5.1s. claude is now available; opencode and
-        agy are still on cooldown.
-      - Set chain current_index=1 (opencode) so we can verify priority selection.
-      - Second handle() with opencode failing. The controller must
-        see opencode is on cooldown, see agy is on cooldown, use
-        priority agent selection to reconsider claude (index 0), which is now
-        available, and select claude as the next agent.
-
-    Assertions:
-      - chain.current_index returns to 0 (claude, the recovered agent).
-      - state.is_waiting_state is False (we found an available agent).
-    """
     clock = FakeClock(start=0.0)
     initial_entries: dict[str, UnavailabilityEntry] = {
         "claude": UnavailabilityEntry(
@@ -315,7 +212,6 @@ def test_recovery_reconsiders_earlier_agent_after_cooldown_expires_with_wrap_tru
     )
     state = _three_agent_state(current_index=0, retries=0)
 
-    # First failure: claude. All 3 unavailable -> wait state.
     exc = AgentInactivityTimeoutError("claude", 30.0, opts=_no_output_opts())
     state_after_first, _effects, _evt = controller.handle(
         state,
@@ -325,12 +221,8 @@ def test_recovery_reconsiders_earlier_agent_after_cooldown_expires_with_wrap_tru
     assert state_after_first.is_waiting_state is True
     assert state_after_first.last_retry_delay_ms == 5000
 
-    # Advance clock past claude's cooldown. claude is now available;
-    # opencode and agy remain on cooldown.
     clock.advance(5.1)
 
-    # Manually advance the chain to opencode (index=1) so we can
-    # verify priority selection re-arms/selects claude (index=0).
     state_at_opencode = state_after_first.with_phase_chain(
         "development",
         AgentChainState(
@@ -340,9 +232,6 @@ def test_recovery_reconsiders_earlier_agent_after_cooldown_expires_with_wrap_tru
         ),
     )
 
-    # Second failure: opencode. The controller sees opencode is on
-    # cooldown, agy is on cooldown, claude is available. Priority
-    # agent selection must select claude.
     exc2 = AgentInactivityTimeoutError("opencode", 30.0, opts=_no_output_opts())
     state_after_second, _effects2, _evt2 = controller.handle(
         state_at_opencode,
@@ -360,31 +249,6 @@ def test_recovery_reconsiders_earlier_agent_after_cooldown_expires_with_wrap_tru
 
 
 def test_recovery_chain_exhaustion_only_when_every_agent_is_spent() -> None:
-    """Chain exhaustion: when every agent in the chain is spent, the
-    pipeline MAY advance to ``failed_terminal``.
-
-    This is the ONLY path that may exit the pipeline, and it is the
-    EVERY-AGENT-SPENT path, NOT the unavailability path.  The
-    never-exit invariant only forbids exit on unavailability; the
-    every-agent-spent path is the legitimate end of the chain.
-
-    Setup:
-      - three agents, and a failure ledger whose limits spend an agent
-        after a single unproductive attempt.
-      - each agent fails once, in chain order.
-
-    The ledger spends claude first, so the chain advances to opencode;
-    opencode is spent next, so the chain advances to agy; agy is spent
-    last, and with every agent spent there is nothing left to select.
-    ``all(unavailable)`` is True but no agent has a cooldown to wait for,
-    so the controller must fall through to ``_enter_phase_failed`` and
-    advance ``state.phase`` to ``failed_terminal``.
-
-    Assertions:
-      - state.phase advances to ``failed_terminal``.
-      - state.recovery_cycle_count is incremented by 1.
-      - The state is NOT in the wait state (is_waiting_state is False).
-    """
     controller = _controller(
         agents=["claude", "opencode", "agy"],
         unproductive_streak_limit=1,
@@ -410,23 +274,6 @@ def test_recovery_chain_exhaustion_only_when_every_agent_is_spent() -> None:
 
 
 def test_recovery_failure_classifier_consults_typed_cause_for_watchdog_kill() -> None:
-    """End-to-end typed-cause: the classifier routes the
-    ``IdleWatchdogKilledError`` chain to ``FailureCategory.AGENT``
-    and ``is_unavailable=True``.
-
-    This proves the two rules are wired end-to-end through the
-    typed exception, not via text matching.  When the recovery
-    controller receives an ``AgentInactivityTimeoutError`` whose
-    ``__cause__`` chain contains an
-    ``IdleWatchdogKilledError(reason='no_progress_quiet',
-    signal=15)``, the classifier must return:
-      - category == FailureCategory.AGENT
-      - is_unavailable == True
-    so the controller routes to the exponential-backoff branch
-    (rule two).  The signal value 15 (SIGTERM) and the reason
-    ``no_progress_quiet`` are typed attributes — the classifier
-    does NOT parse the exception message.
-    """
     classifier = FailureClassifier()
     watchdog_exc = IdleWatchdogKilledError(reason="no_progress_quiet", signal=15)
     inactivity_exc = AgentInactivityTimeoutError(
@@ -455,17 +302,6 @@ def test_recovery_failure_classifier_consults_typed_cause_for_watchdog_kill() ->
 
 
 def test_recovery_does_not_call_enter_phase_failed_in_unavailability_branch() -> None:
-    """Black-box AST check: in the unavailability branch of
-    ``_handle_retry_progression``, the function returns BEFORE
-    ``_enter_phase_failed`` can be called.
-
-    The structural invariant is: the all-agents-unavailable branch
-    (which is the wait branch) is reached before the
-    ``_enter_phase_failed`` call, and the branch itself returns
-    immediately.  This test walks the AST of ``controller.py`` and
-    confirms the unavailability branch returns BEFORE the
-    fallthrough path that calls ``_enter_phase_failed``.
-    """
     controller_path = REPO_ROOT / "ralph" / "recovery" / "controller.py"
     source = controller_path.read_text(encoding="utf-8")
     method_start = source.index("    def _handle_retry_progression(")
@@ -486,61 +322,7 @@ def test_recovery_does_not_call_enter_phase_failed_in_unavailability_branch() ->
     )
 
 
-# ---------------------------------------------------------------------------
-# wt-012 typed-evidence differentiation: live-child vs dead-child
-# NO_PROGRESS_QUIET (Rule 1 vs Rule 2)
-# ---------------------------------------------------------------------------
-# The wt-012 typed-evidence path differentiates live-child
-# (``child_alive=True``) from dead-child (``child_alive=False`` or
-# ``child_alive=None``) NO_PROGRESS_QUIET at the typed-exception
-# level. Live-child NO_PROGRESS_QUIET routes to ``is_unavailable=False``
-# (Rule 1: same-agent retry, defense-in-depth -- normally dead code
-# because the gate refinement in ``IdleWatchdog._is_no_progress_quiet``
-# defers the fire when alive_by is not None). Dead-child NO_PROGRESS_QUIET
-# routes to ``is_unavailable=True`` with
-# ``unavailability_reason=STALE_CHILD_QUIET`` (Rule 2: exponential
-# backoff to the next agent). The conservative policy: ``child_alive=None``
-# (legacy default -- no signal at all) preserves the original
-# ``STALE_CHILD_QUIET`` (Rule 2) behavior for backward-compat with
-# the 14 existing tests in ``test_unavailability_reason.py`` that do
-# not set ``child_alive``.
-
-
 def test_no_progress_quiet_with_dead_child_routes_to_exponential_backoff() -> None:
-    """``NO_PROGRESS_QUIET`` with a TRULY-DEAD child routes to Rule 2
-    (exponential backoff to the next agent) end-to-end.
-
-    Per the wt-012 typed-evidence path: when
-    ``IdleWatchdogKilledError.child_alive=False`` (truly dead child --
-    the corroborator returned ``alive_by=None``), the failure
-    classifier must set ``is_unavailable=True`` with
-    ``unavailability_reason=STALE_CHILD_QUIET`` and the recovery
-    controller must mark claude on cooldown, advance to the next
-    available agent (opencode), and reset ``retries=0``.
-
-    The conservative policy: ``child_alive=False`` (truly dead
-    child) maps to ``is_unavailable=True`` (Rule 2) -- the same
-    as the legacy ``child_alive=None`` default behavior. The
-    ``child_alive=True`` (live child) defense-in-depth case
-    routes to ``is_unavailable=False`` (Rule 1) but is
-    normally dead code because the wt-012 gate refinement
-    defers NO_PROGRESS_QUIET when alive_by is not None.
-
-    Setup:
-      - 3-agent chain: claude (index 0), opencode (index 1), agy (index 2).
-      - Build ``AgentInactivityTimeoutError(opts=InactivityTimeoutOpts(
-        reason=WatchdogFireReason.NO_PROGRESS_QUIET, ...))`` with
-        ``IdleWatchdogKilledError(reason='no_progress_quiet',
-        signal=15, child_alive=False)`` set as ``__cause__``.
-      - Drive the ``RecoveryController.handle`` path.
-
-    Assertions:
-      - chain.current_index advanced from 0 to 1 (opencode).
-      - chain.retries == 0 (reset on chain advance).
-      - claude is on cooldown in the unavailability store.
-      - The published ``FalloverEvent.unavailability_reason`` is
-        ``STALE_CHILD_QUIET`` (the Rule 2 typed-evidence reason).
-    """
     captured_fallover_events: list[FalloverEvent] = []
     bus = FailureEventBus()
 
@@ -594,9 +376,6 @@ def test_no_progress_quiet_with_dead_child_routes_to_exponential_backoff() -> No
         "claude must be on cooldown in the unavailability store after"
         " NO_PROGRESS_QUIET with child_alive=False (Rule 2)"
     )
-    # Verify the FalloverEvent carries the typed-evidence
-    # STALE_CHILD_QUIET reason (the conservative policy: child_alive=False
-    # routes to Rule 2, same as the legacy child_alive=None default).
     assert len(captured_fallover_events) == 1, (
         f"expected exactly one FalloverEvent, got {len(captured_fallover_events)}"
     )

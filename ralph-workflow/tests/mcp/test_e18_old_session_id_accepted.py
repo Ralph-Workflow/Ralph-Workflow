@@ -1,13 +1,3 @@
-"""WU-U3a: Edge case E1.8 old session_id accepted across rotation.
-
-Pins catalogue requirement:
-- E1.8: Session id identical across swap; unknown or old session_id is not rejected.
-  The parent persists the session_id to snapshot before the first child serves.
-  Subsequent candidate children inherit and serve with the same session_id,
-  and incoming requests carrying pre-rotation or unfamiliar session IDs are
-  safely accepted rather than rejected.
-"""
-
 from __future__ import annotations
 
 import contextlib
@@ -85,16 +75,11 @@ class SimpleRegistry:
         self.tools: list[dict[str, object]] = []
 
 
-# ---------------------------------------------------------------------------
-# E1.8: Session ID persisted before first child serves and reused across candidate
-# ---------------------------------------------------------------------------
 def test_session_id_persisted_before_first_child_serves_and_inherited(tmp_path: Path) -> None:
-    """Parent persists session_id to snapshot before first child serves; candidate reuses it."""
     run_id = "run-e18-persistence"
     original_session_id = "session-e18-stable-42"
     snap_dir = snapshot_dir(tmp_path, run_id)
 
-    # 1. Parent writes snapshot file before first child serves
     write_snapshot(
         snap_dir,
         session_id=original_session_id,
@@ -103,9 +88,7 @@ def test_session_id_persisted_before_first_child_serves_and_inherited(tmp_path: 
     )
     assert (snap_dir / "session.json").exists()
 
-    # 2. Candidate child environment is configured to read the snapshot
     candidate_session_file = tmp_path / "candidate_session.json"
-    # An empty or run_id-only session file causes runtime_session.py to resolve via snapshot
     candidate_session_file.write_text(
         json.dumps({"run_id": run_id}),
         encoding="utf-8",
@@ -115,10 +98,8 @@ def test_session_id_persisted_before_first_child_serves_and_inherited(tmp_path: 
         candidate_session_file,
         workspace_root=tmp_path,
     )
-    # Invariant: Candidate resolves the exact session_id established by parent
     assert file_backed.session_id == original_session_id
 
-    # 3. Private candidate preflight over socketpair checks expected_session_id
     parent_sock, child_sock = create_handover_socketpair()
     try:
         mock_server = _StubMcpServer(original_session_id)
@@ -144,11 +125,7 @@ def test_session_id_persisted_before_first_child_serves_and_inherited(tmp_path: 
         child_sock.close()
 
 
-# ---------------------------------------------------------------------------
-# E1.8: Standalone HTTP server accepts request carrying old or unknown session_id
-# ---------------------------------------------------------------------------
 def test_standalone_server_accepts_old_session_id_header(tmp_path: Path) -> None:
-    """Incoming JSON-RPC requests carrying old pre-rotation session IDs are accepted."""
     current_session_id = "session-current-active"
     old_pre_rotation_session_id = "session-old-from-previous-rotation"
 
@@ -169,7 +146,6 @@ def test_standalone_server_accepts_old_session_id_header(tmp_path: Path) -> None
     conn = http.client.HTTPConnection(host, port, timeout=5.0)
 
     try:
-        # Request with an old session_id header from a previous rotation
         headers = {
             "Content-Type": "application/json",
             "mcp-session-id": old_pre_rotation_session_id,
@@ -178,7 +154,6 @@ def test_standalone_server_accepts_old_session_id_header(tmp_path: Path) -> None
         conn.request("POST", "/mcp", body=body, headers=headers)
         resp = conn.getresponse()
 
-        # Invariant: Server does NOT reject the old session ID
         assert resp.status == 200, f"Server rejected old session ID with status {resp.status}"
         resp_headers = dict(resp.getheaders())
         assert resp_headers.get("mcp-session-id") is None or isinstance(
@@ -194,7 +169,6 @@ def test_standalone_server_accepts_old_session_id_header(tmp_path: Path) -> None
 
 
 def test_standalone_server_accepts_completely_unknown_session_id() -> None:
-    """Incoming requests carrying completely unknown or arbitrary session IDs succeed."""
     server = _FallbackStandaloneServer("127.0.0.1", 0, _StubMcpServer("session-default"))
     httpd = server.prepare_httpd()
     ready = threading.Event()
@@ -220,7 +194,6 @@ def test_standalone_server_accepts_completely_unknown_session_id() -> None:
         conn.request("POST", "/mcp", body=body, headers=headers)
         resp = conn.getresponse()
 
-        # Invariant: Request with unknown session ID is accepted
         assert resp.status == 200
         body_bytes = resp.read()
         assert b'"jsonrpc": "2.0"' in body_bytes
@@ -230,17 +203,12 @@ def test_standalone_server_accepts_completely_unknown_session_id() -> None:
         httpd.server_close()
 
 
-# ---------------------------------------------------------------------------
-# E1.8: Real child subprocess accepts old session ID across simulated rotation
-# ---------------------------------------------------------------------------
 def test_real_child_accepts_old_session_id_across_rotation(tmp_path: Path) -> None:
-    """Real child candidate spawned in rotation accepts requests carrying old session ID."""
     ralph_root = str(Path(__file__).resolve().parents[2])
     port_file = tmp_path / "port_e18.txt"
     run_id = "run-e18-rot"
     stable_session_id = "session-e18-carried"
 
-    # Pre-write snapshot as parent would do on first spawn
     snap_dir = snapshot_dir(tmp_path, run_id)
     write_snapshot(
         snap_dir,
@@ -289,20 +257,12 @@ def test_real_child_accepts_old_session_id_across_rotation(tmp_path: Path) -> No
     )
 
     try:
-        # The candidate is a REAL child process: it imports the ralph
-        # package and binds its HTTP server before it can publish the
-        # port. A fixed 5 s deadline made this test fail on a loaded host
-        # for a reason that has nothing to do with the session-id
-        # rotation it proves. The wait stays bounded -- it still fails
-        # when the child never publishes -- it just no longer assumes an
-        # idle CPU.
         deadline = time.monotonic() + 30.0
         while time.monotonic() < deadline and not port_file.exists():
             time.sleep(0.02)
         assert port_file.exists()
         port = int(port_file.read_text(encoding="utf-8").strip())
 
-        # Old client from prior session connects with old session ID
         conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5.0)
         try:
             headers = {
@@ -320,5 +280,4 @@ def test_real_child_accepts_old_session_id_across_rotation(tmp_path: Path) -> No
     finally:
         _reap_process(proc)
 
-    # Leak check: child is terminated
     assert proc.poll() is not None

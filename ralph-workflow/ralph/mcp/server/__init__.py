@@ -1,16 +1,3 @@
-"""Standalone MCP server exports.
-
-This package separates standalone server startup/shutdown helpers from the rest
-of the bridge implementation so callers can either launch an in-process session
-bridge or run the dedicated ``ralph-mcp`` HTTP runtime.
-
-The bounded pre-serve startup seams are part of that public surface. The stage
-recorder, the exit handler, and the overrun handler are the INJECTION points a
-caller uses to observe the startup stage sequence and to replace the
-fail-closed process-exit boundary; the ``*_override`` context managers scope
-one registration to one startup. They are exported here so a caller never has
-to reach into a private module to use them.
-"""
 
 from __future__ import annotations
 
@@ -153,17 +140,11 @@ _LAZY_MODULES = {
 def __getattr__(name: str) -> object:
     target = _LAZY_MODULES.get(name)
     if target is not None:
-        # Lazy: an eager lifecycle import here creates a cycle
-        # (upstream.config -> server._mcp_server_error -> package init).
         return cast("object", getattr(import_module(target), name))
     submodule = f"{__name__}.{name}"
     try:
         return import_module(submodule)
     except ModuleNotFoundError as exc:
-        # Only "this submodule does not exist" means "no such attribute". A
-        # submodule that exists but fails to import (a circular import, a
-        # missing dependency of its own) must surface, not become an
-        # AttributeError that hides the real cause.
         if exc.name != submodule:
             raise
     msg = f"module {__name__!r} has no attribute {name!r}"

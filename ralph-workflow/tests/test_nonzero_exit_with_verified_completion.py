@@ -1,13 +1,3 @@
-"""A non-zero exit after verified completion is a success, not a failure.
-
-Contract: when the run-scoped completion evidence is durable and verified
-(``declare_complete`` sentinel, plus the submission receipt when an artifact
-is required), the agent finished its job.  How the process then went away --
-Ralph's own SIGTERM (rc 143), or a crash during shutdown -- must not discard
-that work by raising an invocation failure.  Without verified evidence a
-non-zero exit stays a failure.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path

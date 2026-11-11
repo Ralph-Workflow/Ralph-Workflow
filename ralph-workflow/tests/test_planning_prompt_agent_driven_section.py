@@ -1,5 +1,3 @@
-"""Regression checks for planning's parallel-default guidance."""
-
 from __future__ import annotations
 
 from ralph.prompts.template_context import TemplateContext
@@ -25,10 +23,6 @@ def test_submission_shape_is_optional() -> None:
 
 def test_analysis_reviews_substance() -> None:
     source = _source("planning_analysis.jinja")
-    # The substantive-criteria list is line-wrapped in the source;
-    # normalize whitespace so the wrap does not break the match. The
-    # substance must still be present (no reformat, no removal); this
-    # is a wrap-tolerant check, not a formatting grade.
     normalized = " ".join(source.split())
     assert "coverage, truthfulness, actionability, parallel" in normalized
     assert "Do not grade formatting" in source

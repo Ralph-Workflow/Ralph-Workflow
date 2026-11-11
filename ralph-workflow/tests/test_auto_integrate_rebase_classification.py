@@ -1,27 +1,3 @@
-"""Regression tests for :func:`ralph.git.rebase.rebase.rebase_onto` classification.
-
-``_rebase_result_from_process`` used to short-circuit ANY non-zero ``git
-rebase`` whose combined stdout/stderr merely CONTAINED the substring
-``up to date`` into :class:`RebaseNoOp`. A ``RebaseNoOp`` is a
-success-shaped outcome, so
-:func:`ralph.pipeline.auto_integrate_rebase_merge.run_rebase_or_merge`
-skipped the
-endpoint-merge fallback entirely and never aborted the half-applied
-rebase; the leftover ``rebase-apply`` / ``rebase-merge`` directory then
-failed ``check_rebase_preconditions`` for every subsequent integration,
-turning one conflict into a run-long outage.
-
-File-level markers. ``subprocess_e2e`` excludes this file from ``make
-test`` (the budget-tracked 60 s step) because :func:`rebase_onto`
-resolves the repository through ``_resolve_repo_root`` / ``_git_dir``,
-both of which open a real GitPython ``Repo``, so the ``tmp_git_repo``
-fixture is required even though the subprocess itself is faked.
-``timeout_seconds(5)`` sizes the budget for that real repository I/O,
-matching the convention in tests/test_git_rebase.py. This does not
-weaken any cap: the file stays out of the 60 s combined budget and
-inside the 60 s per-suite cap on ``make test-subprocess-e2e``.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -44,19 +20,14 @@ if TYPE_CHECKING:
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
 
 
-#: A real conflicted rebase whose hint text happens to carry the phrase
-#: "up to date" -- git prints exactly this shape when the branch being
-#: rebased tracks a remote that is itself current.
 _CONFLICT_MENTIONING_UP_TO_DATE = (
     "CONFLICT (content): Merge conflict in shared.txt\n"
     "error: could not apply 0badc0d... local change\n"
     "hint: Your branch is up to date with 'origin/main'.\n"
 )
 
-#: The genuine no-op shape: no conflict, nothing applied.
 _GENUINE_UP_TO_DATE = "Current branch feature-classify is up to date.\n"
 
-#: A conflict with no "up to date" text anywhere.
 _PLAIN_CONFLICT = (
     "CONFLICT (content): Merge conflict in shared.txt\n"
     "error: could not apply 0badc0d... local change\n"
@@ -64,10 +35,6 @@ _PLAIN_CONFLICT = (
 
 
 class FakeProcessExecutor(ProcessExecutor):
-    """Executor returning canned :class:`ProcessResult` values per argv."""
-
-    # OpenCode's prompt is delivered on stdin, so a process fake must
-    # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
     stdin = None
 
     def __init__(self, responses: Mapping[tuple[str, tuple[str, ...]], ProcessResult]) -> None:
@@ -87,7 +54,6 @@ class FakeProcessExecutor(ProcessExecutor):
 
 
 def _checkout_feature(repo_root: Path) -> str:
-    """Check out a feature branch and return the base branch name."""
     head_file = repo_root / ".git" / "HEAD"
     try:
         head_content = head_file.read_text(encoding="utf-8").strip()
@@ -109,19 +75,14 @@ def _checkout_feature(repo_root: Path) -> str:
 
 
 def _create_rebase_state(repo_root: Path) -> None:
-    """Leave the on-disk marker of an unfinished rebase."""
     Path(repo_root, ".git", "rebase-apply").mkdir(parents=True, exist_ok=True)
 
 
 def _executor_for(
     base: str, rebase_result: ProcessResult, *, branch_name: str = "feature-classify"
 ) -> FakeProcessExecutor:
-    """Fake executor driving ``rebase_onto`` to ``rebase_result``."""
     return FakeProcessExecutor(
         {
-            # Non-zero => the pre-flight "already up-to-date" check in
-            # _validate_rebase_request does NOT short-circuit, so the
-            # rebase really runs and its result is classified.
             ("git", ("merge-base", "--is-ancestor", "--", base, "HEAD")): ProcessResult(
                 returncode=1, stdout="", stderr=""
             ),
@@ -149,7 +110,6 @@ def _executor_for(
 def test_rebase_regression_failed_rebase_mentioning_up_to_date_is_not_a_noop(
     tmp_git_repo: Path,
 ) -> None:
-    """A conflicted rebase is never a no-op just because it says 'up to date'."""
     base = _checkout_feature(tmp_git_repo)
     _create_rebase_state(tmp_git_repo)
     executor = _executor_for(
@@ -166,7 +126,6 @@ def test_rebase_regression_failed_rebase_mentioning_up_to_date_is_not_a_noop(
 def test_genuine_up_to_date_rebase_without_rebase_state_is_still_a_noop(
     tmp_git_repo: Path,
 ) -> None:
-    """The legitimate no-op path is unchanged: no rebase state, no conflict."""
     base = _checkout_feature(tmp_git_repo)
     executor = _executor_for(
         base, ProcessResult(returncode=1, stdout=_GENUINE_UP_TO_DATE, stderr="")
@@ -180,7 +139,6 @@ def test_genuine_up_to_date_rebase_without_rebase_state_is_still_a_noop(
 def test_conflicting_rebase_result_is_classified_as_conflicts(
     tmp_git_repo: Path,
 ) -> None:
-    """A plain content conflict still classifies as :class:`RebaseConflicts`."""
     base = _checkout_feature(tmp_git_repo)
     executor = _executor_for(base, ProcessResult(returncode=1, stdout="", stderr=_PLAIN_CONFLICT))
 
@@ -192,13 +150,6 @@ def test_conflicting_rebase_result_is_classified_as_conflicts(
 def test_rebase_onto_non_default_target_from_master_is_not_a_phantom_noop(
     tmp_git_repo: Path,
 ) -> None:
-    """A feature branch named 'master' still rebases onto a different target.
-
-    The no-op guard used to fire whenever the CURRENT branch was named
-    main or master, regardless of the upstream actually requested, so a
-    configured integration target such as 'develop' was reported as
-    "already on branch" and the rebase never ran.
-    """
     with Repo(tmp_git_repo) as repo:
         repo.git.branch("develop")
         repo.git.checkout("-B", "master")
@@ -220,7 +171,6 @@ def test_rebase_onto_non_default_target_from_master_is_not_a_phantom_noop(
 def test_rebase_onto_the_branch_already_checked_out_is_a_noop(
     tmp_git_repo: Path,
 ) -> None:
-    """The self-rebase guard the identity comparison replaced still holds."""
     with Repo(tmp_git_repo) as repo:
         repo.git.checkout("-B", "develop")
 

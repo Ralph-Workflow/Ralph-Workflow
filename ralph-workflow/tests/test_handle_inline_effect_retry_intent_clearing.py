@@ -1,13 +1,3 @@
-"""Regression tests: PreparePromptEffect must not leak retry/session state.
-
-Part of the cross-platform MCP/session/tool-boundary drift bug family: a stale
-resume intent (session id + retry action) carried by ``PipelineState`` must be
-cleared whenever the inline-effect handler advances to a DIFFERENT phase
-(skip-invocation success route, failed-route re-entry), and must be PRESERVED
-for a same-phase re-prompt (the retry-in-session resume path). Otherwise a
-resume session id from one phase leaks into an unrelated phase's first attempt.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -37,7 +27,6 @@ def _scope(tmp_path: Path) -> WorkspaceScope:
 
 
 def test_phase_change_clears_stale_resume_intent(tmp_path: Path) -> None:
-    """A skip-materialization phase change drops the prior resume intent."""
     pipeline, artifacts = _load_default_policy_bundle()
     state = PipelineState(
         phase="planning",
@@ -63,7 +52,6 @@ def test_phase_change_clears_stale_resume_intent(tmp_path: Path) -> None:
 
 
 def test_same_phase_reprompt_preserves_resume_intent(tmp_path: Path) -> None:
-    """A same-phase re-prompt keeps the resume intent so the resume can fire."""
     pipeline, artifacts = _load_default_policy_bundle()
     intent = resume_agent_retry_intent("sid-keep", failure_reason="AgentInactivityTimeoutError")
     state = PipelineState(

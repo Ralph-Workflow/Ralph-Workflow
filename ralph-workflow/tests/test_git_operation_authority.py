@@ -1,5 +1,3 @@
-"""Tests for the git-operation authority's closed classification."""
-
 from __future__ import annotations
 
 import pytest
@@ -68,21 +66,18 @@ def test_classification_over_all_flag_combinations(
     assert kind is expected
 
 
-# ----------------------------------------------------------------------
-# is_in_active_resolution_state
-# ----------------------------------------------------------------------
 @pytest.mark.parametrize(
     "resolving_merge,resolving_rebase,rebase_continue_pending,merge_commit_pending,merge_commit_tree",
     [
-        (True, False, False, False, None),  # RESOLVING_MERGE
-        (False, True, False, False, None),  # RESOLVING_REBASE alone
-        (False, True, True, False, None),  # RESOLVING_REBASE + AWAITING_CONTINUE overlap
-        (True, True, False, False, None),  # both resolving flags
-        (True, True, True, False, None),  # both resolving + pending
-        (False, False, False, False, None),  # NONE
-        (False, False, True, False, None),  # AWAITING_CONTINUE
-        (False, False, False, True, None),  # AWAITING_MERGE_COMMIT
-        (False, False, False, False, "x"),  # AWAITING_MERGE_COMMIT (tree)
+        (True, False, False, False, None),
+        (False, True, False, False, None),
+        (False, True, True, False, None),
+        (True, True, False, False, None),
+        (True, True, True, False, None),
+        (False, False, False, False, None),
+        (False, False, True, False, None),
+        (False, False, False, True, None),
+        (False, False, False, False, "x"),
     ],
 )
 def test_is_in_active_resolution_state(
@@ -92,7 +87,6 @@ def test_is_in_active_resolution_state(
     merge_commit_pending: bool,
     merge_commit_tree: str | None,
 ) -> None:
-    """True only for RESOLVING_MERGE or RESOLVING_REBASE (without pending-continue)."""
     record = _record(
         resolving_merge=resolving_merge,
         resolving_rebase=resolving_rebase,
@@ -105,17 +99,14 @@ def test_is_in_active_resolution_state(
     assert is_in_active_resolution_state(record) is expected
 
 
-# ----------------------------------------------------------------------
-# Caller branch-mapping sanity checks
-# ----------------------------------------------------------------------
 @pytest.mark.parametrize(
     "resolving_merge,resolving_rebase,rebase_continue_pending",
     [
-        (True, False, False),  # RESOLVING_MERGE → resolution path
-        (False, True, False),  # RESOLVING_REBASE → resolution path
-        (False, True, True),  # AWAITING_CONTINUE → pending rebase path
-        (False, False, True),  # AWAITING_CONTINUE → pending rebase path
-        (False, False, False),  # NONE/AWAITING_MERGE_COMMIT → pending merge path
+        (True, False, False),
+        (False, True, False),
+        (False, True, True),
+        (False, False, True),
+        (False, False, False),
     ],
 )
 def test_auto_integrate_recovery_branch_mapping(
@@ -123,27 +114,22 @@ def test_auto_integrate_recovery_branch_mapping(
     resolving_rebase: bool,
     rebase_continue_pending: bool,
 ) -> None:
-    """Branch in auto_integrate_recovery.py maps kind to correct resume path."""
     record = _record(
         resolving_merge=resolving_merge,
         resolving_rebase=resolving_rebase,
         rebase_continue_pending=rebase_continue_pending,
     )
     kind = classify_git_operation(record)
-    # Resolution path: RESOLVING_MERGE or RESOLVING_REBASE
     is_resolution_path = kind in (
         GitOperationKind.RESOLVING_MERGE,
         GitOperationKind.RESOLVING_REBASE,
     )
-    # Pending rebase path: AWAITING_CONTINUE
     is_pending_rebase = kind is GitOperationKind.AWAITING_CONTINUE
-    # Pending merge path: everything else (NONE, AWAITING_MERGE_COMMIT)
     is_pending_merge = kind in (
         GitOperationKind.NONE,
         GitOperationKind.AWAITING_MERGE_COMMIT,
     )
     assert is_resolution_path or is_pending_rebase or is_pending_merge
-    # Resolution path is exclusive
     if is_resolution_path:
         assert not is_pending_rebase
         assert not is_pending_merge
@@ -152,45 +138,31 @@ def test_auto_integrate_recovery_branch_mapping(
 @pytest.mark.parametrize(
     "resolving_rebase,rebase_continue_pending",
     [
-        (False, True),  # AWAITING_CONTINUE → pending rebase
-        (True, False),  # RESOLVING_REBASE → resolution
-        (False, False),  # NONE → resolution (no pending)
-        (True, True),  # AWAITING_CONTINUE dominates → pending rebase
+        (False, True),
+        (True, False),
+        (False, False),
+        (True, True),
     ],
 )
 def test_remote_reconcile_recovery_branch_mapping(
     resolving_rebase: bool,
     rebase_continue_pending: bool,
 ) -> None:
-    """Branch in _remote_reconcile_recovery.py maps AWAITING_CONTINUE to rebase."""
     record = _record(
         resolving_rebase=resolving_rebase,
         rebase_continue_pending=rebase_continue_pending,
     )
     kind = classify_git_operation(record)
-    # Original: rebase_continue_pending → resume_pending_rebase else resolution
     expected_rebase = kind is GitOperationKind.AWAITING_CONTINUE
     expected_resolution = not expected_rebase
     assert (kind is GitOperationKind.AWAITING_CONTINUE) is expected_rebase
     assert (kind is not GitOperationKind.AWAITING_CONTINUE) is expected_resolution
 
 
-# ----------------------------------------------------------------------
-# No caller outside the authority module may combine the operation flags
-# for control-flow decisions (grep-level assertion).
-# ----------------------------------------------------------------------
 def test_no_raw_flag_control_flow_in_pipeline() -> None:
-    """Grep-level guard: no boolean flag combinations for branching in callers.
-
-    Flag + git-probe combinations (e.g. ``resolving_merge and merge_state``)
-    are permitted because the git probe is a necessary runtime verification.
-    Pure flag-only combinations are not.
-    """
     import re
     from pathlib import Path
 
-    # Patterns that combine operation flags without a git probe.
-    # These represent caller-local authority that should live in _git_operation_authority.
     flagged_patterns = [
         r"resolving_merge\s+or\s+resolving_rebase",
         r"resolving_rebase\s+and\s+not\s+rebase_continue_pending",
@@ -203,8 +175,6 @@ def test_no_raw_flag_control_flow_in_pipeline() -> None:
     for source in Path("ralph/pipeline/").rglob("*.py"):
         if source.name == "_git_operation_authority.py":
             continue
-        # Cheap bytes pre-filter: decode only files mentioning the flags, so
-        # the 1s per-test timeout holds under shard load.
         raw = source.read_bytes()
         if b"resolving_merge" not in raw and b"resolving_rebase" not in raw:
             continue

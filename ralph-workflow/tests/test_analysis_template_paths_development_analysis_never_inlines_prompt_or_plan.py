@@ -1,5 +1,3 @@
-"""Tests: analysis templates never inline PROMPT or PLAN regardless of content size."""
-
 from __future__ import annotations
 
 from pathlib import Path

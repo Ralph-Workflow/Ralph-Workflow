@@ -1,32 +1,3 @@
-"""Fail-closed contracts for the git-state queries behind auto-integration.
-
-Three queries used to answer "nothing there" and "I could not look"
-with the SAME value, which is what let auto-integration corrupt or
-silently skip work:
-
-* ``worktree_for_branch`` returned ``None`` both when the branch was
-  checked out nowhere and when ``git worktree list`` failed, so the
-  fast-forward compare-and-swapped the shared mainline ref while a live
-  checkout may have held it.
-* ``merge_in_progress`` returned ``False`` when ``git rev-parse
-  --git-dir`` failed, making ``abort_merge`` a silent no-op that could
-  strand ``MERGE_HEAD`` and block every later integration.
-* ``abort_merge`` never reported whether the abort actually ran.
-
-The same collapse existed one level up, in the callers: the resolution
-path asked ``merge_in_progress`` and read a failed query as "no merge to
-repair", so an unreadable repository was left with a possible
-``MERGE_HEAD`` and no abort attempt. Those callers now read
-``merge_state`` directly.
-
-Every test here injects git through ``run_git`` in ``ralph.git.merge`` (and
-``ralph.git.merge_obstructions``, which the merge consults first) and
-touches no repository, so the file stays in the DEFAULT (budget-tracked)
-suite: ``worktree_lookup``, ``merge_state`` and ``abort_merge`` pass
-``repo_root`` to ``run_git`` as ``cwd`` and never open a GitPython
-``Repo``.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -77,7 +48,6 @@ _WORKTREE_LIST_OUTPUT = (
 
 
 def _result(args: tuple[str, ...], returncode: int, stdout: str = "") -> GitRunResult:
-    """Build a :class:`GitRunResult` for an injected git invocation."""
     return GitRunResult(args=args, returncode=returncode, stdout=stdout, stderr="")
 
 
@@ -85,7 +55,6 @@ def _install_git_stub(
     monkeypatch: pytest.MonkeyPatch,
     responses: dict[tuple[str, ...], tuple[int, str]],
 ) -> tuple[list[tuple[str, ...]], list[tuple[str, GitCallClass | None]]]:
-    """Route ``ralph.git.merge.run_git`` to canned results; record argv and classes."""
     calls: list[tuple[str, ...]] = []
     call_records: list[tuple[str, GitCallClass | None]] = []
 
@@ -116,7 +85,6 @@ def _install_git_stub(
 def test_merge_regression_unreadable_git_dir_is_not_reported_as_no_merge(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A failed ``rev-parse --git-dir`` must not answer 'no merge in progress'."""
     _install_git_stub(monkeypatch, {("rev-parse", "--git-dir"): (128, "")})
 
     assert merge_state(Path("/repos/main")) == MERGE_STATE_UNKNOWN
@@ -126,7 +94,6 @@ def test_merge_regression_unreadable_git_dir_is_not_reported_as_no_merge(
 def test_merge_regression_unreadable_git_dir_abort_reports_it_did_not_abort(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``abort_merge`` on an unreadable repository reports failure, not silence."""
     calls, _ = _install_git_stub(
         monkeypatch,
         {
@@ -138,15 +105,12 @@ def test_merge_regression_unreadable_git_dir_abort_reports_it_did_not_abort(
     aborted = abort_merge(Path("/repos/main"))
 
     assert aborted is False
-    # Fail closed: an unreadable repository is NOT assumed to be clean, so
-    # the abort is attempted rather than skipped.
     assert ("merge", "--abort") in calls
 
 
 def test_clean_repo_without_merge_head_still_means_no_merge_in_progress(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The positive case is unchanged: a readable repo with no MERGE_HEAD."""
     git_dir = tmp_path / ".git"
     git_dir.mkdir()
     _install_git_stub(monkeypatch, {("rev-parse", "--git-dir"): (0, str(git_dir))})
@@ -158,7 +122,6 @@ def test_clean_repo_without_merge_head_still_means_no_merge_in_progress(
 def test_merge_head_present_means_merge_in_progress(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The other positive case: MERGE_HEAD present is reported as in progress."""
     git_dir = tmp_path / ".git"
     git_dir.mkdir()
     (git_dir / "MERGE_HEAD").write_text("cafebabe\n", encoding="utf-8")
@@ -171,7 +134,6 @@ def test_merge_head_present_means_merge_in_progress(
 def test_merge_regression_worktree_query_failure_is_not_branch_not_checked_out(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A failed ``worktree list`` is distinct from 'checked out nowhere'."""
     _install_git_stub(monkeypatch, {("worktree", "list", "--porcelain"): (128, "")})
 
     status, path = worktree_lookup(Path("/repos/main"), "main")
@@ -184,7 +146,6 @@ def test_merge_regression_worktree_query_failure_is_not_branch_not_checked_out(
 def test_successful_worktree_query_without_match_means_not_checked_out(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The paired positive case: a clean query with no matching branch."""
     _install_git_stub(
         monkeypatch,
         {("worktree", "list", "--porcelain"): (0, _WORKTREE_LIST_OUTPUT)},
@@ -199,7 +160,6 @@ def test_successful_worktree_query_without_match_means_not_checked_out(
 def test_worktree_lookup_finds_the_checkout_holding_the_branch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The found case still returns the holding worktree path."""
     _install_git_stub(
         monkeypatch,
         {("worktree", "list", "--porcelain"): (0, _WORKTREE_LIST_OUTPUT)},
@@ -214,7 +174,6 @@ def test_worktree_lookup_finds_the_checkout_holding_the_branch(
 def test_worktree_for_branch_keeps_its_optional_returning_signature(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The legacy wrapper is unchanged so existing callers keep compiling."""
     _install_git_stub(
         monkeypatch,
         {("worktree", "list", "--porcelain"): (0, _WORKTREE_LIST_OUTPUT)},
@@ -231,7 +190,6 @@ _FEATURE_SHA = "3333333333333333333333333333333333333333"
 def _install_fast_forward_stub(
     monkeypatch: pytest.MonkeyPatch, worktree_list: tuple[int, str]
 ) -> tuple[list[tuple[str, ...]], list[tuple[str, GitCallClass | None]]]:
-    """Drive ``fast_forward_target`` past its ancestry checks to the branch table."""
     calls, call_records = _install_git_stub(
         monkeypatch,
         {
@@ -244,8 +202,6 @@ def _install_fast_forward_stub(
         },
     )
 
-    # find_main_worktree_root opens a real GitPython Repo; the fast-forward
-    # branch table under test does not depend on which root it returns.
     def _identity_root(repo_root: Path) -> Path:
         return repo_root
 
@@ -256,7 +212,6 @@ def _install_fast_forward_stub(
 def test_fast_forward_regression_worktree_query_failure_is_a_retryable_skip(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A failed worktree query must not compare-and-swap the shared ref."""
     calls, _ = _install_fast_forward_stub(monkeypatch, (128, ""))
 
     landed, reason = fast_forward_target(Path("/repos/feature"), "main", _FEATURE_SHA)
@@ -264,14 +219,12 @@ def test_fast_forward_regression_worktree_query_failure_is_a_retryable_skip(
     assert landed is False
     assert reason
     assert is_retryable_fast_forward_failure(reason) is True
-    # The shared mainline ref was NOT moved while a live checkout may hold it.
     assert not any(argv and argv[0] == "update-ref" for argv in calls)
 
 
 def test_fast_forward_still_uses_the_cas_when_nothing_holds_the_target(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The paired positive case: a clean query with no match takes the CAS path."""
     calls, call_records = _install_fast_forward_stub(
         monkeypatch, (0, _WORKTREE_LIST_OUTPUT.replace("refs/heads/main", "refs/heads/other"))
     )
@@ -294,7 +247,6 @@ def test_fast_forward_still_uses_the_cas_when_nothing_holds_the_target(
 def test_merge_regression_unreadable_git_dir_never_commits_a_merge(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An unreadable repository is never reported as a committed merge."""
     calls, _ = _install_git_stub(
         monkeypatch,
         {
@@ -304,8 +256,6 @@ def test_merge_regression_unreadable_git_dir_never_commits_a_merge(
     )
 
     assert commit_merge_in_progress(Path("/repos/main")) is False
-    # Fail closed on the precheck: no commit is attempted against a
-    # repository whose merge state could not be read.
     assert ("commit", "--no-edit") not in calls
 
 
@@ -314,11 +264,6 @@ def _install_resolve_stub(
     *,
     state: str,
 ) -> list[str]:
-    """Drive ``endpoint_merge_with_resolution`` to a conflict with ``state``.
-
-    Returns the recorded call log so a test can assert whether the abort
-    was attempted and whether the resolver was ever invoked.
-    """
     log: list[str] = []
 
     def _fake_merge(
@@ -346,13 +291,6 @@ def _install_resolve_stub(
 def test_resolution_regression_unreadable_merge_state_retains_progress(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A failed merge-state query must not be read as 'nothing to repair'.
-
-    The resolution path used to ask ``merge_in_progress``: on a failed
-    ``rev-parse --git-dir`` it read ``False`` and returned the plain
-    conflict WITHOUT attempting an abort, so a ``MERGE_HEAD`` that could
-    not be seen was left on disk to block every later integration.
-    """
     log = _install_resolve_stub(monkeypatch, state=MERGE_STATE_UNKNOWN)
     monkeypatch.setattr(
         "ralph.pipeline.auto_integrate_resolve.mark_pending_merge", lambda *_args, **_kwargs: None
@@ -373,7 +311,6 @@ def test_resolution_regression_unreadable_merge_state_retains_progress(
 def test_resolution_readable_no_merge_state_returns_the_plain_conflict(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The paired positive case: a POSITIVE 'no merge' needs no abort."""
     log = _install_resolve_stub(monkeypatch, state=MERGE_STATE_NONE)
 
     def _resolver(repo_root: Path, target: str) -> bool:
@@ -393,13 +330,6 @@ def _install_sequenced_git_stub(
     monkeypatch: pytest.MonkeyPatch,
     responses: dict[tuple[str, ...], list[tuple[int, str]]],
 ) -> tuple[list[tuple[str, ...]], list[tuple[str, GitCallClass | None]]]:
-    """Route ``run_git`` to a per-argv QUEUE of results, one per call.
-
-    The plain stub answers every repetition of an argv identically,
-    which cannot express "the repository became unreadable between the
-    precheck and the verification". The last queued result is reused
-    once the queue is drained.
-    """
     calls: list[tuple[str, ...]] = []
     call_records: list[tuple[str, GitCallClass | None]] = []
     queues = {argv: list(results) for argv, results in responses.items()}
@@ -434,35 +364,22 @@ def _install_sequenced_git_stub(
 def test_merge_regression_unreadable_git_dir_after_commit_is_not_a_merge_commit(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A merge is 'committed' only when git PROVES ``MERGE_HEAD`` is gone.
-
-    The post-commit verification used to read ``not
-    merge_in_progress(...)``, so a repository that became unreadable
-    between the commit and the check reported a successful merge
-    commit — and the resolution path then treated an unproven merge as
-    landed.
-    """
     git_dir = tmp_path / ".git"
     git_dir.mkdir()
     (git_dir / "MERGE_HEAD").write_text("cafebabe\n", encoding="utf-8")
     calls, _ = _install_sequenced_git_stub(
         monkeypatch,
         {
-            # First read: a real in-progress merge. Second read (the
-            # post-commit verification): the query itself fails.
             ("rev-parse", "--git-dir"): [(0, str(git_dir)), (128, "")],
             ("commit", "--no-edit"): [(0, "")],
         },
     )
 
     assert commit_merge_in_progress(tmp_path) is False
-    # The commit WAS attempted (the precheck saw a real merge); only the
-    # unprovable post-state makes the answer False.
     assert ("commit", "--no-edit") in calls
 
 
 def _capture_warnings() -> tuple[list[str], int]:
-    """Attach a WARNING-level loguru sink; return its buffer and sink id."""
     captured: list[str] = []
     sink_id = logger.add(
         lambda message: captured.append(str(message)),
@@ -475,13 +392,6 @@ def _capture_warnings() -> tuple[list[str], int]:
 def test_merge_regression_unprovable_cleanup_abort_is_reported(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The no-resolver cleanup abort must not hide behind a conflict result.
-
-    ``merge_target_into_current`` discarded ``abort_merge``'s verdict, so
-    a ``MERGE_HEAD`` the abort could not clear (or could not be read at
-    all) was reported to the pipeline as an ordinary conflict with
-    nothing naming the repository that is now blocked.
-    """
     calls, _ = _install_git_stub(
         monkeypatch,
         {
@@ -506,7 +416,6 @@ def test_merge_regression_unprovable_cleanup_abort_is_reported(
 def test_merge_cleanup_abort_is_silent_when_git_proves_the_tree_is_clean(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The paired positive case: a readable, merge-free repo warns nothing."""
     git_dir = tmp_path / ".git"
     git_dir.mkdir()
     calls, _ = _install_git_stub(

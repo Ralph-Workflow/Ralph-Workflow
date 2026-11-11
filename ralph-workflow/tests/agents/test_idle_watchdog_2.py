@@ -1,5 +1,3 @@
-"""Black-box tests for IdleWatchdog policy using FakeClock."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -111,7 +109,6 @@ def _waiting() -> AgentExecutionState:
 
 
 def test_hard_stop_diag_includes_corroboration() -> None:
-    """HARD_STOP diagnostic contains scoped_child_active and oldest_child_seconds."""
 
     def _corroborator() -> CorroborationSnapshot:
         return CorroborationSnapshot(
@@ -127,7 +124,7 @@ def test_hard_stop_diag_includes_corroboration() -> None:
         corroborator=_corroborator,
     )
     clock.advance(1.1)
-    watchdog.evaluate(classify_quiet=_waiting)  # ENTERED
+    watchdog.evaluate(classify_quiet=_waiting)
     clock.advance(hard_stop_max)
     result = watchdog.evaluate(classify_quiet=_waiting)
     assert result == WatchdogVerdict.FIRE
@@ -139,7 +136,6 @@ def test_hard_stop_diag_includes_corroboration() -> None:
 
 
 def test_corroboration_snapshot_has_alive_by_field() -> None:
-    """CorroborationSnapshot accepts alive_by and defaults to None."""
     snap = CorroborationSnapshot()
     assert snap.alive_by is None
 
@@ -148,7 +144,6 @@ def test_corroboration_snapshot_has_alive_by_field() -> None:
 
 
 def test_build_corroboration_diag_includes_alive_by_when_set() -> None:
-    """alive_by from CorroborationSnapshot propagates into the diagnostic dict."""
     events: list[WaitingStatusEvent] = []
 
     def _corroborator() -> CorroborationSnapshot:
@@ -165,9 +160,9 @@ def test_build_corroboration_diag_includes_alive_by_when_set() -> None:
     watchdog = IdleWatchdog(config, clock, listener=events.append, corroborator=_corroborator)
 
     clock.advance(1.5)
-    watchdog.evaluate(classify_quiet=_waiting)  # ENTERED
+    watchdog.evaluate(classify_quiet=_waiting)
     clock.advance(2.0)
-    watchdog.evaluate(classify_quiet=_waiting)  # PROGRESS (interval=1s)
+    watchdog.evaluate(classify_quiet=_waiting)
 
     progress_events = [e for e in events if e.kind == WaitingStatusKind.PROGRESS]
     assert progress_events, "expected at least one PROGRESS event"
@@ -176,7 +171,6 @@ def test_build_corroboration_diag_includes_alive_by_when_set() -> None:
 
 
 def test_build_corroboration_diag_omits_alive_by_when_none() -> None:
-    """alive_by=None should not appear in the diagnostic dict."""
     events: list[WaitingStatusEvent] = []
 
     def _corroborator() -> CorroborationSnapshot:
@@ -193,9 +187,9 @@ def test_build_corroboration_diag_omits_alive_by_when_none() -> None:
     watchdog = IdleWatchdog(config, clock, listener=events.append, corroborator=_corroborator)
 
     clock.advance(1.5)
-    watchdog.evaluate(classify_quiet=_waiting)  # ENTERED
+    watchdog.evaluate(classify_quiet=_waiting)
     clock.advance(2.0)
-    watchdog.evaluate(classify_quiet=_waiting)  # PROGRESS
+    watchdog.evaluate(classify_quiet=_waiting)
 
     progress_events = [e for e in events if e.kind == WaitingStatusKind.PROGRESS]
     assert progress_events
@@ -204,12 +198,6 @@ def test_build_corroboration_diag_omits_alive_by_when_none() -> None:
 
 
 def test_no_progress_ceiling_fires_on_fresh_heartbeat_only() -> None:
-    """WAITING_ON_CHILD with alive_by=fresh_heartbeat_only fires on no-progress ceiling.
-
-    Regression test for wt-97-timeout: when a child is alive but only sending
-    heartbeats (no progress), the shorter no-progress ceiling should fire instead
-    of waiting for the full 1800s ceiling.
-    """
     watchdog, clock = _make_watchdog_with_no_progress_ceiling(
         no_progress_ceiling=_NO_PROGRESS_CEILING
     )
@@ -219,17 +207,14 @@ def test_no_progress_ceiling_fires_on_fresh_heartbeat_only() -> None:
 
     watchdog = IdleWatchdog(watchdog.config, clock, corroborator=_corroborator)
 
-    # Advance past idle deadline to enter WAITING_ON_CHILD.
     clock.advance(1.5)
     result = watchdog.evaluate(classify_quiet=_waiting)
     assert result == WatchdogVerdict.WAITING_ON_CHILD
 
-    # Advance to just under the no-progress ceiling — still waiting.
     clock.advance(_NO_PROGRESS_CEILING - 0.1)
     result = watchdog.evaluate(classify_quiet=_waiting)
     assert result == WatchdogVerdict.WAITING_ON_CHILD
 
-    # Advance past the no-progress ceiling — must FIRE.
     clock.advance(1.0)
     result = watchdog.evaluate(classify_quiet=_waiting)
     assert result == WatchdogVerdict.FIRE
@@ -237,7 +222,6 @@ def test_no_progress_ceiling_fires_on_fresh_heartbeat_only() -> None:
 
 
 def test_no_progress_ceiling_fires_on_stale_label_only() -> None:
-    """WAITING_ON_CHILD with alive_by=stale_label_only fires on no-progress ceiling."""
     watchdog, clock = _make_watchdog_with_no_progress_ceiling(
         no_progress_ceiling=_NO_PROGRESS_CEILING
     )
@@ -262,7 +246,6 @@ def test_no_progress_ceiling_fires_on_stale_label_only() -> None:
 
 
 def test_no_progress_ceiling_fires_on_os_descendant_only() -> None:
-    """WAITING_ON_CHILD with alive_by=os_descendant_only fires on no-progress ceiling."""
     watchdog, clock = _make_watchdog_with_no_progress_ceiling(
         no_progress_ceiling=_NO_PROGRESS_CEILING
     )
@@ -290,11 +273,6 @@ def test_no_progress_ceiling_fires_on_os_descendant_only() -> None:
 
 
 def test_full_ceiling_preserved_with_fresh_progress() -> None:
-    """WAITING_ON_CHILD with alive_by=fresh_progress uses full ceiling (no false positive).
-
-    When a child is actually making progress, the full ceiling must be used to avoid
-    false-positive timeouts on legitimate long-running child work.
-    """
     watchdog, clock = _make_watchdog_with_no_progress_ceiling(
         no_progress_ceiling=_NO_PROGRESS_CEILING,
         full_ceiling=100.0,
@@ -309,17 +287,14 @@ def test_full_ceiling_preserved_with_fresh_progress() -> None:
     result = watchdog.evaluate(classify_quiet=_waiting)
     assert result == WatchdogVerdict.WAITING_ON_CHILD
 
-    # Advance to just under the no-progress ceiling — should still be WAITING.
     clock.advance(_NO_PROGRESS_CEILING - 0.1)
     result = watchdog.evaluate(classify_quiet=_waiting)
     assert result == WatchdogVerdict.WAITING_ON_CHILD
 
-    # Advance to just under the full ceiling (100s) - we've used ~10s so far, need 89.9s more.
     clock.advance(89.9)
     result = watchdog.evaluate(classify_quiet=_waiting)
     assert result == WatchdogVerdict.WAITING_ON_CHILD
 
-    # Advance past the full ceiling — FIRE.
     clock.advance(1.0)
     result = watchdog.evaluate(classify_quiet=_waiting)
     assert result == WatchdogVerdict.FIRE
@@ -327,7 +302,6 @@ def test_full_ceiling_preserved_with_fresh_progress() -> None:
 
 
 def test_full_ceiling_preserved_when_no_progress_ceiling_disabled() -> None:
-    """When no_progress_ceiling=None, full ceiling is used even with non-progress alive_by."""
     watchdog, clock = _make_watchdog_with_no_progress_ceiling(
         no_progress_ceiling=None,
         full_ceiling=100.0,
@@ -342,12 +316,10 @@ def test_full_ceiling_preserved_when_no_progress_ceiling_disabled() -> None:
     result = watchdog.evaluate(classify_quiet=_waiting)
     assert result == WatchdogVerdict.WAITING_ON_CHILD
 
-    # Advance to just under the no-progress ceiling — still WAITING (ceiling disabled).
     clock.advance(_NO_PROGRESS_CEILING - 0.1)
     result = watchdog.evaluate(classify_quiet=_waiting)
     assert result == WatchdogVerdict.WAITING_ON_CHILD
 
-    # Advance past the full ceiling — FIRE.
     clock.advance(100.0 - _NO_PROGRESS_CEILING + 1.0)
     result = watchdog.evaluate(classify_quiet=_waiting)
     assert result == WatchdogVerdict.FIRE
@@ -355,14 +327,12 @@ def test_full_ceiling_preserved_when_no_progress_ceiling_disabled() -> None:
 
 
 def test_full_ceiling_preserved_when_alive_by_is_none() -> None:
-    """When alive_by=None (unknown), full ceiling is used as safe default."""
     watchdog, clock = _make_watchdog_with_no_progress_ceiling(
         no_progress_ceiling=_NO_PROGRESS_CEILING,
         full_ceiling=100.0,
     )
 
     def _corroborator() -> CorroborationSnapshot:
-        # alive_by=None means we can't determine progress — use full ceiling.
         return CorroborationSnapshot(scoped_child_active=True)
 
     watchdog = IdleWatchdog(watchdog.config, clock, corroborator=_corroborator)
@@ -371,17 +341,14 @@ def test_full_ceiling_preserved_when_alive_by_is_none() -> None:
     result = watchdog.evaluate(classify_quiet=_waiting)
     assert result == WatchdogVerdict.WAITING_ON_CHILD
 
-    # Advance past the no-progress ceiling — still WAITING (alive_by=None uses full ceiling).
     clock.advance(_NO_PROGRESS_CEILING + 10.0)
     result = watchdog.evaluate(classify_quiet=_waiting)
     assert result == WatchdogVerdict.WAITING_ON_CHILD
 
-    # Advance to just under the full ceiling (100s) - we've used ~20s so far, need ~79.9s more.
     clock.advance(79.9)
     result = watchdog.evaluate(classify_quiet=_waiting)
     assert result == WatchdogVerdict.WAITING_ON_CHILD
 
-    # Advance past the full ceiling — FIRE.
     clock.advance(1.0)
     result = watchdog.evaluate(classify_quiet=_waiting)
     assert result == WatchdogVerdict.FIRE
@@ -389,7 +356,6 @@ def test_full_ceiling_preserved_when_alive_by_is_none() -> None:
 
 
 def test_hard_stop_diagnostic_includes_effective_ceiling_classification() -> None:
-    """HARD_STOP diagnostic includes effective_ceiling classification."""
     watchdog, clock = _make_watchdog_with_no_progress_ceiling(
         no_progress_ceiling=_NO_PROGRESS_CEILING,
     )
@@ -415,12 +381,6 @@ def test_hard_stop_diagnostic_includes_effective_ceiling_classification() -> Non
 
 
 def test_waiting_events_surface_effective_ceiling_when_no_progress_limit_applies() -> None:
-    """Waiting events must report the active no-progress ceiling, not the full ceiling.
-
-    Regression test for the current mismatch where the watchdog enforces the
-    shorter no-progress ceiling internally but the emitted WaitingStatusEvent
-    still advertises the full max_waiting_on_child_seconds value.
-    """
     config = TimeoutPolicy(
         idle_timeout_seconds=1.0,
         drain_window_seconds=0.0,
@@ -466,19 +426,6 @@ def test_waiting_events_surface_effective_ceiling_when_no_progress_limit_applies
 
 
 def test_no_progress_ceiling_adapts_when_corroboration_degrades() -> None:
-    """No-progress ceiling activates mid-wait when corroboration degrades from fresh to stale.
-
-    Regression for wt-97: when the watchdog enters WAITING_ON_CHILD with fresh-progress
-    evidence (full ceiling), then the corroboration degrades to OS-descendant-only
-    evidence (no scoped progress), the effective ceiling must switch to the shorter
-    no-progress ceiling on the very next tick — not wait for the full ceiling.
-
-    Timeline (full_ceiling=100s, no_progress_ceiling=20s):
-    - T1 (t=1.5): ENTER WAITING with fresh_progress → ceiling=100s.
-    - T2 (t=19.5): cumulative=18s < 20s, corr still fresh_progress → WAITING.
-    - Corroborator degrades to os_descendant_only_stale_progress.
-    - T3 (t=22.5): cumulative=21s >= 20s (no-progress ceiling) → FIRE.
-    """
     full_ceiling = 100.0
     no_progress_ceiling = 20.0
 
@@ -505,20 +452,16 @@ def test_no_progress_ceiling_adapts_when_corroboration_degrades() -> None:
     clock = FakeClock(start=0.0)
     watchdog = IdleWatchdog(config, clock, corroborator=_corroborator)
 
-    # T1: enter WAITING at t=1.5s (cumulative=0s), fresh_progress → full ceiling.
     clock.advance(1.5)
     result = watchdog.evaluate(classify_quiet=_waiting)
     assert result == WatchdogVerdict.WAITING_ON_CHILD
 
-    # T2: cumulative=18s, still fresh_progress → ceiling=100s → WAITING.
     clock.advance(18.0)
     result = watchdog.evaluate(classify_quiet=_waiting)
     assert result == WatchdogVerdict.WAITING_ON_CHILD
 
-    # Corroboration degrades to OS-descendant-only (no scoped progress any more).
     phase[0] = "degraded"
 
-    # T3: cumulative=21s >= no_progress_ceiling=20s → FIRE (not waiting for full ceiling=100s).
     clock.advance(3.0)
     result = watchdog.evaluate(classify_quiet=_waiting)
     assert result == WatchdogVerdict.FIRE
@@ -526,34 +469,17 @@ def test_no_progress_ceiling_adapts_when_corroboration_degrades() -> None:
 
 
 def test_validation_rejects_no_progress_ceiling_above_max_waiting() -> None:
-    """TimeoutPolicy rejects no_progress_ceiling > max_waiting_on_child_seconds."""
     with pytest.raises(ValueError, match="max_waiting_on_child_no_progress_seconds must be <="):
         TimeoutPolicy(
             idle_timeout_seconds=10.0,
             max_waiting_on_child_seconds=100.0,
             max_waiting_on_child_no_progress_seconds=200.0,
-            suspect_waiting_on_child_seconds=None,  # Disable to avoid conflict
+            suspect_waiting_on_child_seconds=None,
         )
 
 
 def test_single_tick_corroboration_snapshot_reused_for_all_decisions_and_diagnostics() -> None:
-    """A single WAITING tick must reuse one corroboration snapshot for all decisions.
-
-    Regression test for wt-97-timeout: the flaky corroborator rotates through
-    alive_by values on each call. If the code reverted to calling
-    _safe_corroborate() separately for the ceiling decision vs. each diagnostic
-    (HARD_STOP, SUSPECTED_FROZEN, PROGRESS), the call_count assertion would catch
-    it (would be > 1 on the fire tick).
-
-    The test exercises three ticks:
-    - T1 (t=1.5): ENTER WAITING (entry corroboration + effective_ceiling computed).
-    - T2 (t=6.5): SUSPECTED_FROZEN + PROGRESS fire on same tick — proves both
-      diagnostics reuse the same snapshot (alive_by must agree).
-    - T3 (t=11.5): HARD_STOP fires — proves corroborator was called exactly once
-      on the fire tick and effective_ceiling is correct.
-    """
     call_count = 0
-    # Flaky corroborator: each call returns a different alive_by value.
     _alive_by_values = (
         "fresh_progress",
         "stale_label_only",
@@ -582,28 +508,22 @@ def test_single_tick_corroboration_snapshot_reused_for_all_decisions_and_diagnos
     events: list[WaitingStatusEvent] = []
     watchdog = IdleWatchdog(config, clock, listener=events.append, corroborator=_flaky_corroborator)
 
-    # T1: ENTER WAITING at t=1.5
     clock.advance(1.5)
     result = watchdog.evaluate(classify_quiet=_waiting)
     assert result == WatchdogVerdict.WAITING_ON_CHILD
-    # T1 makes 2 calls: _entry_corroboration + effective_ceiling
 
-    # T2: SUSPECTED_FROZEN + PROGRESS at t=6.5 (candidate_total=5.0, suspect=3.0)
     clock.advance(5.0)
-    call_count = 0  # reset to isolate T2 calls
+    call_count = 0
     result = watchdog.evaluate(classify_quiet=_waiting)
     assert result == WatchdogVerdict.WAITING_ON_CHILD
-    # T2 makes 1 call: only effective_ceiling (not entering WAITING)
     assert call_count == 1
 
-    # T3: HARD_STOP at t=11.5 (candidate_total=10.0 >= no_progress_ceiling=10.0)
-    call_count = 0  # reset to isolate T3 calls
+    call_count = 0
     clock.advance(5.0)
     result = watchdog.evaluate(classify_quiet=_waiting)
     assert result == WatchdogVerdict.FIRE
     assert watchdog.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
 
-    # HARD_STOP fires and returns early, so no other diagnostics on this tick.
     assert call_count == 1, (
         f"Expected corroborator called exactly once on fire tick, got {call_count}. "
         "If > 1, the code is calling _safe_corroborate() multiple times per tick."
@@ -616,8 +536,6 @@ def test_single_tick_corroboration_snapshot_reused_for_all_decisions_and_diagnos
         f"Expected 'no_progress', got {hs_diag.get('effective_ceiling_label')}."
     )
 
-    # T2 diagnostics: SUSPECTED_FROZEN and PROGRESS must agree on alive_by
-    # since they fire on the same tick (proves single snapshot reuse).
     t2_diag_by_kind = {
         e.kind: e.diagnostic
         for e in events
@@ -631,7 +549,6 @@ def test_single_tick_corroboration_snapshot_reused_for_all_decisions_and_diagnos
     )
     assert pr_diag_t2 is not None, f"Expected PROGRESS on T2, got: {[e.kind for e in events]}"
 
-    # Same tick -> same snapshot -> alive_by must be identical.
     assert sf_diag_t2.get("alive_by") == pr_diag_t2.get("alive_by"), (
         f"T2: SUSPECTED_FROZEN alive_by={sf_diag_t2.get('alive_by')} != "
         f"PROGRESS alive_by={pr_diag_t2.get('alive_by')}. Same tick must use same snapshot."
@@ -639,12 +556,6 @@ def test_single_tick_corroboration_snapshot_reused_for_all_decisions_and_diagnos
 
 
 def test_validation_rejects_no_progress_ceiling_equal_to_max() -> None:
-    """TimeoutPolicy allows no_progress_ceiling equal to max_waiting_on_child_seconds.
-
-    When equal, the no-progress ceiling provides no earlier protection (same as full ceiling),
-    but it is still a valid configuration.
-    """
-    # This should NOT raise - equality is allowed (validation uses > not >=)
     equal_ceiling = 100.0
     policy = TimeoutPolicy(
         idle_timeout_seconds=10.0,
@@ -661,28 +572,6 @@ def test_validation_rejects_no_progress_ceiling_equal_to_max() -> None:
 
 
 def test_safe_corroborate_bypasses_cache_outside_evaluate() -> None:
-    """Two consecutive ``_safe_corroborate()`` calls OUTSIDE ``evaluate()`` must
-    each invoke the corroborator and return FRESH snapshots, never reuse a
-    cached snapshot from a prior bypass-path call.
-
-    Regression test for the stale-cache bug pinned by analysis feedback:
-    ``_safe_corroborate()`` previously stored its return value in
-    ``self._tick_corroboration`` unconditionally, so two bypass-path calls
-    returned the SAME (now-stale) ``alive_by`` value and never observed the
-    corroborator's second return. The fix routes outside-``evaluate()``
-    calls to ``_call_corroborator_raw()`` directly without touching
-    ``_tick_corroboration`` (gated on the explicit ``_evaluate_tick_active``
-    sentinel). The contract pinned here:
-
-    1. Outside ``evaluate()``, two consecutive ``_safe_corroborate()``
-       calls invoke the corroborator TWICE (not once).
-    2. The second call returns the corroborator's SECOND return value
-       (not the first cached snapshot).
-    3. A single ``evaluate()`` tick still reuses ONE snapshot across its
-       internal reads (the existing per-tick-reuse contract pinned by
-       ``test_single_tick_corroboration_snapshot_reused_for_all_decisions_and_diagnostics``
-       is NOT weakened).
-    """
     call_count = 0
     alive_by_sequence = (
         "fresh_progress",
@@ -713,9 +602,6 @@ def test_safe_corroborate_bypasses_cache_outside_evaluate() -> None:
     clock = FakeClock(start=0.0)
     watchdog = IdleWatchdog(config, clock, corroborator=_flaky_corroborator)
 
-    # Two consecutive bypass-path calls: each MUST invoke the corroborator
-    # and return the corresponding fresh value. A stale cache would return
-    # the FIRST ``alive_by`` on the second call (the original bug).
     first = watchdog.safe_corroborate()
     second = watchdog.safe_corroborate()
     assert call_count == 2, (
@@ -731,8 +617,6 @@ def test_safe_corroborate_bypasses_cache_outside_evaluate() -> None:
         f"cache would return 'fresh_progress' here."
     )
 
-    # A third bypass-path call: still bypassing the cache, returning the
-    # third fresh value (further pins the per-call freshness contract).
     third = watchdog.safe_corroborate()
     assert call_count == 3
     assert third.alive_by == "os_descendant_only_stale_progress", (
@@ -740,8 +624,6 @@ def test_safe_corroborate_bypasses_cache_outside_evaluate() -> None:
         f"'os_descendant_only_stale_progress', got {third.alive_by!r}"
     )
 
-    # The cache field MUST remain None outside ``evaluate()`` so the next
-    # bypass-path call cannot accidentally hit a stale snapshot.
     assert watchdog.tick_corroboration is None, (
         "Outside evaluate(), tick_corroboration must remain None. A non-None "
         "value here means the bypass path poisoned the cache, and the next "
@@ -749,9 +631,6 @@ def test_safe_corroborate_bypasses_cache_outside_evaluate() -> None:
         "stale snapshot."
     )
 
-    # Per-tick reuse contract: a single ``evaluate()`` tick must still
-    # capture ONE snapshot and reuse it for all sub-evaluators on that tick.
-    # Reset call_count so the assertion isolates the ``evaluate()`` call.
     call_count = 0
     watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE)
     assert call_count == 1, (
@@ -759,9 +638,6 @@ def test_safe_corroborate_bypasses_cache_outside_evaluate() -> None:
         f"(tick-scoped reuse), got call_count={call_count}."
     )
 
-    # After ``evaluate()`` returns, ``evaluate_tick_active`` MUST be False
-    # so a subsequent bypass-path call is again routed to the raw
-    # corroborator rather than the now-stale tick cache.
     assert watchdog.evaluate_tick_active is False, (
         "evaluate() must reset evaluate_tick_active to False in its finally "
         "block. A True value here means the tick cache is still 'active' "
@@ -773,19 +649,11 @@ def test_safe_corroborate_bypasses_cache_outside_evaluate() -> None:
         "block so the next bypass-path call cannot hit a stale snapshot."
     )
 
-    # Bypass-path call AFTER evaluate(): must observe the corroborator's
-    # NEXT fresh value, not the snapshot captured during the previous tick.
     fourth = watchdog.safe_corroborate()
     assert call_count == 2, (
         f"Bypass-path call AFTER evaluate() must invoke the corroborator "
         f"(call_count=2), got call_count={call_count}."
     )
-    # evaluate() consumed call_count=1 (first index of sequence), so the
-    # bypass-path call after evaluate() consumes index 1 of the sequence.
-    # Crucially, this is the corroborator's LIVE second return, NOT the
-    # snapshot cached during the previous tick (which would be
-    # "fresh_progress"). A poisoned cache would either return the tick's
-    # cached snapshot or skip the corroborator entirely (call_count == 1).
     assert fourth.alive_by == "log_stale_while_alive", (
         f"Bypass-path call after evaluate() must return the corroborator's "
         f"NEXT fresh value, not a stale tick snapshot or a duplicate of the "

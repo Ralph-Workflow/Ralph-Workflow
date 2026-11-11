@@ -1,27 +1,3 @@
-"""Contract-level regression tests for the engine half of the Pro contract.
-
-Each test in this file is named after a contract section
-(``test_section_<n>_<invariant>``) so a reviewer can map any
-failing test back to the relevant clause in
-``Ralph-Workflow-Pro/docs/product-spec/CONTRACT_RALPH_INTEGRATION.md``
-without re-reading the test bodies. The contract is the single
-source of truth for engine responsibilities to Pro; this file
-pins the runtime invariants so a regression in the engine that
-would silently break the contract fails CI immediately.
-
-Test design constraints (enforced by ``make verify``):
-
-- **No real I/O.** All filesystem access goes through ``tmp_path``.
-  No real network, no real subprocess, no ``time.sleep``.
-- **No clock injection at the test level.** The heartbeat tests
-  use a ``_Clock`` / ``_FakeClient`` pair that mirrors the
-  helpers in ``tests/test_pro_support_heartbeat.py``.
-- **No global monkeypatching beyond ``os.environ`` scoping per
-  test.** Tests rely on the pro_support package's
-  ``env=`` injection seam.
-- **Type-clean.** No blanket suppression markers in this file.
-"""
-
 from __future__ import annotations
 
 import importlib
@@ -80,12 +56,6 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.timeout_seconds(5)
 
-# ---------------------------------------------------------------------------
-# Fake httpx / clock helpers (mirror of tests/test_pro_support_heartbeat.py).
-# Kept local so this file can run in isolation if the other test module is
-# refactored or split.
-# ---------------------------------------------------------------------------
-
 
 class _FakeResponse:
     def __init__(self, status_code: int) -> None:
@@ -93,8 +63,6 @@ class _FakeResponse:
 
 
 class _FakeClient:
-    """Fake httpx-like client that records posts and returns a configurable status."""
-
     def __init__(
         self,
         status_code: int = 200,
@@ -124,8 +92,6 @@ class _FakeClient:
 
 
 class _Clock:
-    """Controllable monotonic clock for the heartbeat worker."""
-
     def __init__(self) -> None:
         self._now = 0.0
         self._lock = threading.Lock()
@@ -155,18 +121,7 @@ def _make_heartbeat_client(
     )
 
 
-# ---------------------------------------------------------------------------
-# Section 3 — Environment variables provided by Pro
-#
-# Contract MUST: the engine MUST NOT require any variable beyond
-# {RALPH_WORKFLOW_PRO, RALPH_WORKSPACE, PROMPT_PATH}. The set is
-# the engine's "official" surface; adding a fourth env var would
-# be a contract change that the engine cannot make unilaterally.
-# ---------------------------------------------------------------------------
-
-
 def test_section_3_env_var_set_is_exactly_three() -> None:
-    """The engine's public env-var constants form the exact contract set."""
     constants: tuple[str, ...] = (
         env_module.RALPH_WORKFLOW_PRO,
         env_module.RALPH_WORKSPACE,
@@ -176,7 +131,6 @@ def test_section_3_env_var_set_is_exactly_three() -> None:
 
 
 def test_section_3_package_re_exports_match_module_attrs() -> None:
-    """The package re-exports the same env-var name strings as the env module."""
     assert (PKG_PRO, PKG_WORKSPACE, PKG_PROMPT_PATH) == (
         env_module.RALPH_WORKFLOW_PRO,
         env_module.RALPH_WORKSPACE,
@@ -187,12 +141,6 @@ def test_section_3_package_re_exports_match_module_attrs() -> None:
 def test_section_3_helpers_do_not_read_a_foreign_env_var(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Setting a fourth, foreign env var must not flip any pro_support helper.
-
-    The contract is a closed set. If the engine ever consulted a
-    fourth env var (e.g. ``RALPH_FOO=1``), this test would fail
-    because at least one of the helpers would read it.
-    """
     monkeypatch.setenv("RALPH_NOT_A_CONTRACT_VAR", "1")
     monkeypatch.delenv(env_module.RALPH_WORKFLOW_PRO, raising=False)
     monkeypatch.delenv(env_module.RALPH_WORKSPACE, raising=False)
@@ -203,14 +151,12 @@ def test_section_3_helpers_do_not_read_a_foreign_env_var(
 
 
 def test_section_3_ralph_workspace_is_honoured(tmp_path: Path) -> None:
-    """``RALPH_WORKSPACE`` overrides the fallback in :func:`resolve_pro_workspace`."""
     expected = (tmp_path / "ws").resolve()
     result = resolve_pro_workspace(env={"RALPH_WORKSPACE": str(expected)})
     assert result == expected
 
 
 def test_section_3_prompt_path_absolute_is_honoured(tmp_path: Path) -> None:
-    """``PROMPT_PATH`` (absolute) is returned verbatim through the resolver."""
     target = tmp_path / "operator.md"
     result = resolve_effective_prompt_path(tmp_path, env={"PROMPT_PATH": str(target)})
     assert result == target.resolve()
@@ -219,7 +165,6 @@ def test_section_3_prompt_path_absolute_is_honoured(tmp_path: Path) -> None:
 def test_section_3_prompt_path_relative_is_resolved_against_workspace(
     tmp_path: Path,
 ) -> None:
-    """``PROMPT_PATH`` (relative) is anchored at the workspace root."""
     result = resolve_effective_prompt_path(tmp_path, env={"PROMPT_PATH": "nested/operator.md"})
     assert result == (tmp_path / "nested" / "operator.md").resolve()
 
@@ -227,23 +172,11 @@ def test_section_3_prompt_path_relative_is_resolved_against_workspace(
 def test_section_3_prompt_path_unset_falls_back_to_workspace_prompt(
     tmp_path: Path,
 ) -> None:
-    """Without ``PROMPT_PATH`` the resolver returns ``<workspace>/PROMPT.md``."""
     result = resolve_effective_prompt_path(tmp_path, env={})
     assert result == (tmp_path / "PROMPT.md").resolve()
 
 
-# ---------------------------------------------------------------------------
-# Section 5/6 — Marker file is read-only
-#
-# Contract MUST: engine MUST NOT modify the marker file after
-# Pro writes it. This set of tests asserts the marker reader
-# never writes, and that the pro_support public API exposes no
-# marker writer at all.
-# ---------------------------------------------------------------------------
-
-
 def test_section_6_marker_reader_never_creates_marker(tmp_path: Path) -> None:
-    """Reading a non-existent marker returns ``None`` without creating the file."""
     marker_path = tmp_path / ".ralph" / "run.json"
     assert not marker_path.exists()
     assert read_marker_file(tmp_path) is None
@@ -255,7 +188,6 @@ def test_section_6_marker_reader_never_creates_marker(tmp_path: Path) -> None:
 def test_section_6_marker_reader_does_not_mutate_existing_marker(
     tmp_path: Path,
 ) -> None:
-    """Reading a valid marker preserves its bytes and mtime."""
     marker_dir = tmp_path / ".ralph"
     marker_dir.mkdir()
     payload = {"runId": "abc", "port": 7777, "heartbeatToken": "tok"}
@@ -274,13 +206,6 @@ def test_section_6_marker_reader_does_not_mutate_existing_marker(
 
 
 def test_section_6_pro_support_public_api_exposes_no_marker_writer() -> None:
-    """Contract \u00a76: the pro_support public API exposes no marker writer.
-
-    Probing the public attribute set of the package and the
-    marker module must surface only read-only helpers. A
-    regression that added ``write_marker`` / ``update_marker``
-    would surface here.
-    """
     forbidden = frozenset(
         {
             "write_marker",
@@ -307,7 +232,6 @@ def test_section_6_pro_support_public_api_exposes_no_marker_writer() -> None:
 def test_section_6_heartbeat_client_does_not_create_or_modify_marker(
     tmp_path: Path,
 ) -> None:
-    """Driving several heartbeat ticks must not create or touch ``.ralph/run.json``."""
     marker_dir = tmp_path / ".ralph"
     marker_dir.mkdir()
     payload = {"runId": "fixed", "port": 7432, "heartbeatToken": "tok"}
@@ -334,16 +258,7 @@ def test_section_6_heartbeat_client_does_not_create_or_modify_marker(
     assert fake.posts, "expected at least one heartbeat tick"
 
 
-# ---------------------------------------------------------------------------
-# Section 7 — Heartbeat contract
-#
-# Contract MUST: the engine POSTs {run_id, token, status, pid,
-# metadata} to /api/heartbeat, and treats 401/404 as hard stops.
-# ---------------------------------------------------------------------------
-
-
 def test_section_7_heartbeat_posts_required_fields() -> None:
-    """The heartbeat body carries the five contract-required fields."""
     tick_signal = threading.Event()
     fake = _FakeClient(tick_signal=tick_signal)
     clock = _Clock()
@@ -369,7 +284,6 @@ def test_section_7_heartbeat_posts_required_fields() -> None:
 
 
 def test_section_7_heartbeat_401_is_hard_stop() -> None:
-    """Contract \u00a77: a 401 stops the loop without a retry."""
     tick_signal = threading.Event()
     fake = _FakeClient(status_code=401, tick_signal=tick_signal)
     clock = _Clock()
@@ -389,7 +303,6 @@ def test_section_7_heartbeat_401_is_hard_stop() -> None:
 
 
 def test_section_7_heartbeat_404_is_hard_stop() -> None:
-    """Contract \u00a77: a 404 stops the loop without a retry."""
     tick_signal = threading.Event()
     fake = _FakeClient(status_code=404, tick_signal=tick_signal)
     clock = _Clock()
@@ -409,7 +322,6 @@ def test_section_7_heartbeat_404_is_hard_stop() -> None:
 
 
 def test_section_7_heartbeat_transient_error_continues() -> None:
-    """A 5xx response is transient; the loop must not stop on it."""
     tick_signal = threading.Semaphore(0)
     fake = _FakeClient(status_code=503, tick_signal=tick_signal)
     clock = _Clock()
@@ -425,7 +337,6 @@ def test_section_7_heartbeat_transient_error_continues() -> None:
 
 
 def test_section_7_heartbeat_request_carries_bounded_timeout() -> None:
-    """Contract \u00a77 + audit: every POST passes an explicit ``timeout=``."""
     tick_signal = threading.Event()
     fake = _FakeClient(tick_signal=tick_signal)
     clock = _Clock()
@@ -444,20 +355,7 @@ def test_section_7_heartbeat_request_carries_bounded_timeout() -> None:
         assert entry["timeout"] > 0
 
 
-# ---------------------------------------------------------------------------
-# Section 4 — Exit codes
-#
-# Contract MUST: the engine exits 0 on a clean run and preserves
-# non-zero exit codes on failure. We assert this end-to-end through
-# the run loop's ``run()`` entry point with the heavy dependencies
-# stubbed out and the heartbeat replaced with a recording fake.
-# The pattern mirrors ``tests/test_run_loop_pro_integration.py``.
-# ---------------------------------------------------------------------------
-
-
 class _RecordingHeartbeat:
-    """Replacement for ``ProHeartbeatClient`` used by the run loop under test."""
-
     def __init__(self) -> None:
         self.started = False
         self.stopped = False
@@ -475,7 +373,6 @@ class _RecordingHeartbeat:
 def _seed_pro_workspace(
     tmp_path: Path, *, run_id: str = "contract-run", token: str = "contract-tok"
 ) -> None:
-    """Write the minimum files the run loop expects on the workspace."""
     (tmp_path / "PROMPT.md").write_text("# contract\n", encoding="utf-8")
     marker_dir = tmp_path / ".ralph"
     marker_dir.mkdir(exist_ok=True)
@@ -487,21 +384,11 @@ def _make_pipeline_runner_with_heartbeat(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> Callable[[tuple[object, str, int | None]], tuple[int, _RecordingHeartbeat]]:
-    """Build a reusable ``run_loop.run()`` harness with a fake heartbeat.
-
-    The fixtures used by ``run_loop.run`` are patched to a
-    deterministic minimal stub. The returned runner accepts the
-    supplied ``(state, phase, exit_code)`` and records one complete
-    heartbeat lifecycle per invocation.
-    """
     run_loop_module = importlib.import_module("ralph.pipeline.run_loop")
     runner_module = importlib.import_module("ralph.pipeline.runner")
     recording = _RecordingHeartbeat()
 
     def _fake_start(_ws: object) -> _RecordingHeartbeat:
-        # The real helper calls ``client.start()`` itself before
-        # returning; replicate that so the recording observes
-        # the full lifecycle (started, then stopped on cleanup).
         recording.start()
         return recording
 
@@ -629,7 +516,6 @@ def _make_pipeline_runner_with_heartbeat(
 def test_section_4_pro_mode_clean_run_returns_zero(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A Pro-mode run that reaches the terminal phase returns 0."""
     monkeypatch.setenv("RALPH_WORKFLOW_PRO", "1")
     _seed_pro_workspace(tmp_path)
     state = PipelineState(phase="complete")
@@ -643,7 +529,6 @@ def test_section_4_pro_mode_clean_run_returns_zero(
 def test_section_4_pro_mode_failure_preserves_nonzero_exit_code(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A Pro-mode run with a non-zero step code must surface that code."""
     monkeypatch.setenv("RALPH_WORKFLOW_PRO", "1")
     _seed_pro_workspace(tmp_path)
     state = PipelineState(phase="planning")
@@ -656,14 +541,6 @@ def test_section_4_pro_mode_failure_preserves_nonzero_exit_code(
 def test_section_4_pro_mode_no_silent_zero_on_failure_sweep(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A ``try/finally`` in the run loop must not overwrite a non-zero exit code with 0.
-
-    The contract explicitly forbids silently swallowing non-zero
-    codes. This is a sanity sweep across the full set of
-    contract-cited exit codes (1, 7, 17, 130, 137, 143, 255) plus
-    the typical Pro sentinel of -1 (which the engine never emits
-    but Pro uses to mean "force-stopped").
-    """
     monkeypatch.setenv("RALPH_WORKFLOW_PRO", "1")
     _seed_pro_workspace(tmp_path)
     state = PipelineState(phase="planning")
@@ -676,43 +553,22 @@ def test_section_4_pro_mode_no_silent_zero_on_failure_sweep(
         )
 
 
-# ---------------------------------------------------------------------------
-# Section 8 — Log pipeline contract
-#
-# Contract MUST: stdout/stderr from the engine MUST be UTF-8
-# and newline-terminated, and MUST NOT contain a bare structured
-# JSON log line. The tests below capture engine log output via
-# pytest's ``caplog`` fixture and assert the contract invariants
-# on the captured text.
-# ---------------------------------------------------------------------------
-
-
-# A structured-JSON log line per contract \u00a78 looks like a single
-# line that is *just* a JSON object or array. We test for that
-# shape with a permissive but unambiguous regex.
 _JSON_OBJECT_LINE = re.compile(r"^\s*\{[^{}]*\}\s*$")
 _JSON_ARRAY_LINE = re.compile(r"^\s*\[[^\[\]]*\]\s*$")
 
 
 def _assert_utf8_newline_terminated(text: str) -> None:
-    """Assert the captured log text round-trips through UTF-8 and ends with ``\\n``."""
-    # UTF-8 decodable: ``str`` in Python is already decoded
-    # from UTF-8 by the logging sink, but we still re-encode and
-    # decode to prove round-trip identity.
     raw = text.encode("utf-8")
     round_tripped = raw.decode("utf-8")
     assert round_tripped == text
-    # Newline-terminated: at least one line and the text ends with \\n.
     assert text, "captured output is empty"
     assert text.endswith("\n"), (
         f"contract \u00a78: output must end with newline; tail={text[-32:]!r}"
     )
-    # No bare CRLF line endings (Pro splits on \\n).
     assert "\r\n" not in text, "contract \u00a78: CRLF line endings are not allowed"
 
 
 def _assert_no_bare_json_log_line(text: str) -> None:
-    """Assert no captured line is a bare JSON object or array."""
     for line_no, line in enumerate(text.splitlines(), start=1):
         if _JSON_OBJECT_LINE.match(line) or _JSON_ARRAY_LINE.match(line):
             raise AssertionError(
@@ -723,14 +579,7 @@ def _assert_no_bare_json_log_line(text: str) -> None:
 def test_section_8_loguru_logger_emits_utf8_newline_terminated_text(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """The engine's loguru-backed logger emits UTF-8 + newline-terminated text.
-
-    This proves the *engine* sink (the one Pro consumes via stdout)
-    is contract-compliant. We use ``logger.info`` (which routes
-    through loguru) instead of the stdlib ``logging`` module so the
-    captured text is the same code path that actually reaches Pro.
-    """
-    caplog.set_level(0)  # capture everything
+    caplog.set_level(0)
 
     sink_id = loguru_logger.add(
         sys.stderr,
@@ -744,24 +593,11 @@ def test_section_8_loguru_logger_emits_utf8_newline_terminated_text(
     finally:
         loguru_logger.remove(sink_id)
 
-    # The caplog text only captures stdlib logging, so re-assert
-    # the same invariants on a hand-rolled loguru-driven buffer
-    # below. The caplog here is just a smoke check that the test
-    # runs without breaking the fixture.
     assert caplog is not None
-    # The actual contract assertion is performed on the buffer
-    # we built up in a separate helper test below; this test
-    # exists to lock the loguru -> stderr -> UTF-8 pipeline.
     _assert_utf8_newline_terminated("hello\nünïcödé 漢字\nmulti-line stub\n")
 
 
 def test_section_8_loguru_does_not_emit_bare_json_log_line() -> None:
-    """The engine loguru sink does not produce a bare JSON object/array line.
-
-    We drive loguru with a string sink (in-memory) that captures
-    the exact text Pro would see, then assert no captured line is
-    a bare ``{...}`` or ``[...]``.
-    """
     captured: io.StringIO = io.StringIO()
     sink_id = loguru_logger.add(captured, format="{message}", level="DEBUG")
     try:
@@ -780,15 +616,6 @@ def test_section_8_loguru_does_not_emit_bare_json_log_line() -> None:
 def test_section_8_heartbeat_client_does_not_log_payload_as_bare_json(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """The heartbeat client must never log its payload as a bare JSON line.
-
-    Contract \u00a78: "engine MUST NOT emit a structured JSON log
-    format. Pro does not currently parse structured JSON from the
-    engine and may store it as a single opaque line."
-
-    We drive a tick, capture loguru output to an in-memory sink,
-    and assert no captured line is a bare JSON object/array.
-    """
     captured: io.StringIO = io.StringIO()
     sink_id = loguru_logger.add(captured, format="{message}", level="DEBUG")
     tick_signal = threading.Event()
@@ -808,20 +635,9 @@ def test_section_8_heartbeat_client_does_not_log_payload_as_bare_json(
     _assert_no_bare_json_log_line(text)
 
 
-# ---------------------------------------------------------------------------
-# Section 7 (extended) \u2014 Late-marker adoption
-#
-# Contract extension: the engine MUST adopt a marker that appears
-# AFTER the engine has already started. This is the new
-# "late-marker adoption" behaviour wired up by
-# ``ralph.pro_support.watcher.ProMarkerWatcher``.
-# ---------------------------------------------------------------------------
-
-
 def test_section_7_heartbeat_adopts_late_marker(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Setting ``RALPH_WORKFLOW_PRO`` + late marker triggers watcher adoption."""
     run_loop_module = importlib.import_module("ralph.pipeline.run_loop")
     runner_module = importlib.import_module("ralph.pipeline.runner")
     monkeypatch.setenv("RALPH_WORKFLOW_PRO", "1")

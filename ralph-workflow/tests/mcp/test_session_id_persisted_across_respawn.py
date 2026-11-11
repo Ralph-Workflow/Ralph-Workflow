@@ -1,5 +1,3 @@
-"""Tests for session_id persistence across respawns via snapshot file."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -14,10 +12,7 @@ from ralph.mcp.server._snapshots import (
 
 
 class TestSnapshotPersistence:
-    """Tests for the snapshot-based session_id persistence."""
-
     def test_write_snapshot_creates_dir_and_file(self, tmp_path: Path) -> None:
-        """When snapshot directory does not exist, write_snapshot creates it AND the file."""
         snap_dir = tmp_path / "nonexistent" / "subdir"
         assert not snap_dir.exists()
 
@@ -37,7 +32,6 @@ class TestSnapshotPersistence:
         assert data["broker_secret_fingerprint"] == "abc123"
 
     def test_read_snapshot_returns_same_dict_on_two_reads(self, tmp_path: Path) -> None:
-        """read_snapshot returns the same dict on two consecutive reads."""
         snap_dir = snapshot_dir(tmp_path, "bridge-run-789")
         write_snapshot(
             snap_dir,
@@ -55,11 +49,9 @@ class TestSnapshotPersistence:
         assert first_read["broker_secret_fingerprint"] == "fp-xyz"
 
     def test_snapshot_reused_across_spawns_same_session_id(self, tmp_path: Path) -> None:
-        """After one spawn writes the snapshot, a second spawn reads the same session_id."""
         bridge_run_id = "run-id-for-respawn"
         snap_dir = snapshot_dir(tmp_path, bridge_run_id)
 
-        # First spawn: write snapshot with session_id.
         write_snapshot(
             snap_dir,
             session_id="persist-this-session",
@@ -67,17 +59,14 @@ class TestSnapshotPersistence:
             broker_secret_fingerprint=None,
         )
 
-        # Second spawn: read from the same snapshot file.
         data = read_snapshot(snap_dir)
         assert data["session_id"] == "persist-this-session"
 
-        # Verify the same file is being read (not a new one).
         assert (snap_dir / "session.json").exists()
 
     def test_snapshot_dir_creates_correct_path(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        """snapshot_dir returns protected path outside the workspace (E2.5)."""
         snap_root = tmp_path / "protected_cache"
         monkeypatch.setenv("RALPH_MCP_SNAPSHOT_DIR", str(snap_root))
         workspace = tmp_path / "myworkspace"
@@ -93,7 +82,6 @@ class TestSnapshotPersistence:
     def test_snapshot_survives_workspace_tmp_deletion(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        """Snapshot survives deleting <workspace>/.agent/tmp (E2.5)."""
         snap_root = tmp_path / "protected_cache"
         monkeypatch.setenv("RALPH_MCP_SNAPSHOT_DIR", str(snap_root))
         workspace = tmp_path / "myworkspace"
@@ -109,18 +97,15 @@ class TestSnapshotPersistence:
             broker_secret_fingerprint=None,
         )
 
-        # Simulate workspace cleanup deleting .agent/tmp
         import shutil
 
         shutil.rmtree(workspace / ".agent")
 
-        # Snapshot still exists and reads correctly
         assert snap_dir.exists()
         data = read_snapshot(snap_dir)
         assert data["session_id"] == "persisted-across-clean"
 
     def test_read_snapshot_returns_empty_dict_when_file_missing(self, tmp_path: Path) -> None:
-        """read_snapshot returns {} when session.json does not exist."""
         snap_dir = tmp_path / "completely" / "missing"
         assert not snap_dir.exists()
 
@@ -129,11 +114,9 @@ class TestSnapshotPersistence:
         assert result == {}
 
     def test_write_snapshot_atomic_write(self, tmp_path: Path) -> None:
-        """write_snapshot uses atomic replace; intermediate .tmp file is replaced."""
         snap_dir = snapshot_dir(tmp_path, "atomic-test")
         path = snap_dir / "session.json"
 
-        # Write initial.
         write_snapshot(
             snap_dir,
             session_id="first",
@@ -143,7 +126,6 @@ class TestSnapshotPersistence:
         assert path.exists()
         first_content = path.read_text()
 
-        # Write again with different data.
         write_snapshot(
             snap_dir,
             session_id="second",
@@ -151,7 +133,6 @@ class TestSnapshotPersistence:
             broker_secret_fingerprint=None,
         )
 
-        # Verify content is updated.
         second_content = path.read_text()
         assert second_content != first_content
         data = read_snapshot(snap_dir)

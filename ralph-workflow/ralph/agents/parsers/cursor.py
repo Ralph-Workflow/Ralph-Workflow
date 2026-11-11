@@ -1,48 +1,3 @@
-"""Parser for the Cursor Agent CLI ``--output-format stream-json`` NDJSON wire format.
-
-The Cursor Agent CLI ``agent`` binary, when invoked with
-``--output-format stream-json``, emits one JSON line per event.  The
-documented event vocabulary includes (per Cursor's CLI ``--help`` and
-the documented Cursor Agent stream-json envelope):
-
-  - ``system`` - status events carrying the system message as the
-    ``message`` or ``content`` field.  Surfaced as ``AgentOutputLine(type='status')``
-    so the runtime can render the message via the standard status
-    pipeline.
-  - ``user`` - input echo (the user prompt Ralph already sent; these
-    are NOT the agent's own output).  Suppressed (mirror the pi/agy
-    behavior of not re-emitting already-known input).
-  - ``assistant`` - assistant turn events.  Carries a ``message`` object
-    with a ``content`` array of typed blocks.  Blocks of type ``text``
-    surface as ``type='text'`` via :class:`TextAccumulator` coalescing;
-    blocks of type ``thinking`` surface as ``type='thinking'``.
-  - ``thinking`` - standalone thinking event carrying a ``text`` or
-    ``thinking`` delta.  Surfaced as ``type='thinking'``.
-  - ``tool_call`` - tool invocation event carrying a ``toolName`` (or
-    ``name``) and ``args``.  Surfaced as ``type='tool_use'`` so the
-    watchdog sees real tool activity.
-  - ``tool_result`` - tool result event carrying the tool name and
-    a ``result`` (or ``output`` or ``content``) field.  Surfaced as
-    ``type='tool_result'`` for the success path; when the event
-    carries ``is_error=true`` (or ``error``) it is surfaced as
-    ``type='error'`` so the watchdog can see the failure.
-  - ``result`` - the documented end-of-turn marker.  Surfaced as
-    ``type='stop'`` (the canonical completion signal) after any
-    pending text/thinking accumulators are flushed.
-
-Cursor's ``--stream-partial-output`` flag (when the operator opts in
-via ``[agents.cursor].streaming_flag``) emits incremental text deltas
-on the assistant ``text_delta`` sub-events; the parser coalesces those
-deltas into coherent blocks via the shared :class:`TextAccumulator`
-exactly like the pi parser does for its streaming text deltas.
-
-Inherits from :class:`NdjsonParserBase` which owns the 6 shared NDJSON
-behaviors: ``data:`` strip, ``[DONE]`` short-circuit, JSON parse
-dispatch, lifecycle suppression, error extraction, and JSON-dict
-dispatch.  The subclass ``_dispatch_json_object`` routes each event
-through a per-event-type handler map so the wire-format vocabulary
-is the single owner of what each event type emits.
-"""
 
 from __future__ import annotations
 
@@ -73,19 +28,12 @@ _CURSOR_MCP_WRAPPER_TOOL_NAME = "mcpToolCall"
 _CURSOR_RALPH_MCP_NAME_PREFIX = "ralph-mcp__ralph__"
 _RALPH_MCP_NAME_PREFIX = "mcp__ralph__"
 
-# Sentinel flag for ``_handle_user`` (and any future ``_handle_*``
-# method that produces no events).  Set to ``False`` at runtime so the
-# conditional ``yield`` body is never executed; the constant exists
-# only so the method body is recognized as a generator (via the
-# ``yield`` statement) AND so mypy does not flag the
-# ``[unreachable]`` lint for a yield-after-return pattern.
 _HANDLER_RETURNS_NO_EVENTS = False
 
 
 def _cursor_nested_tool_call(
     obj: dict[str, object],
 ) -> tuple[str, dict[str, object]] | None:
-    """Return the live Cursor nested tool-call name and payload, when present."""
     tool_call = obj.get("tool_call")
     if not isinstance(tool_call, dict):
         return None
@@ -100,7 +48,6 @@ def _cursor_nested_tool_call(
 
 
 def _cursor_tool_name_and_args(obj: dict[str, object]) -> tuple[str, dict[str, object]]:
-    """Extract Cursor's tool name and argument dict from old and live shapes."""
     nested = _cursor_nested_tool_call(obj)
     if nested is not None:
         tool_name, payload = nested
@@ -119,7 +66,6 @@ def _cursor_tool_name_and_args(obj: dict[str, object]) -> tuple[str, dict[str, o
 
 
 def _cursor_mcp_tool_name_and_args(args: dict[str, object]) -> tuple[str, dict[str, object]]:
-    """Return the inner MCP tool and args from Cursor's ``mcpToolCall`` wrapper."""
     raw_name = args.get("toolName")
     if not isinstance(raw_name, str) or not raw_name:
         raw_name = args.get("name")
@@ -136,7 +82,6 @@ def _cursor_mcp_tool_name_and_args(args: dict[str, object]) -> tuple[str, dict[s
 
 
 def _cursor_tool_result_payload(obj: dict[str, object]) -> object:
-    """Return the result payload from Cursor's old ``tool_result`` or live shape."""
     nested = _cursor_nested_tool_call(obj)
     if nested is not None:
         _tool_name, payload = nested
@@ -150,7 +95,6 @@ def _string_field(obj: dict[str, object], key: str) -> str | None:
 
 
 def _cursor_tool_result_text(result: object) -> str:
-    """Extract a concise user-visible result from Cursor tool result payloads."""
     if isinstance(result, str):
         return result
     if not isinstance(result, dict):
@@ -176,7 +120,6 @@ def _cursor_tool_result_text(result: object) -> str:
 
 
 def _cursor_content_text(content: object) -> str | None:
-    """Extract text from Cursor MCP result ``content`` arrays."""
     if isinstance(content, str):
         return content
     if not isinstance(content, list):
@@ -189,7 +132,6 @@ def _cursor_content_text(content: object) -> str | None:
 
 
 def _cursor_content_item_text(item: object) -> str | None:
-    """Extract text from one Cursor MCP result content item."""
     if isinstance(item, str):
         return item or None
     if not isinstance(item, dict):
@@ -207,7 +149,6 @@ def _cursor_content_item_text(item: object) -> str | None:
 
 
 def _cursor_tool_result_is_error(obj: dict[str, object]) -> bool:
-    """Return True when a Cursor tool result represents a failed tool call."""
     is_error = obj.get("is_error", obj.get("isError", False))
     if isinstance(is_error, str):
         return is_error.casefold() in {"true", "1", "yes"}
@@ -222,14 +163,6 @@ def _cursor_tool_result_is_error(obj: dict[str, object]) -> bool:
 
 
 class _CursorDispatch:
-    """Per-event-type dispatch for ``CursorParser``.
-
-    Holds a reference to the owning parser so accumulator state stays
-    in one place.  Mirrors the dispatcher pattern used by
-    :class:`PiParser` and :class:`CodexParser` so future maintainers
-    familiar with those parsers can navigate the cursor parser
-    without re-learning the seam.
-    """
 
     def __init__(self, owner: CursorParser) -> None:
         self._owner = owner
@@ -256,9 +189,6 @@ class _CursorDispatch:
             yield from handler(obj, stripped)
             return
 
-        # Forward-compat: any unknown event type passes through with
-        # its ``type`` field as the AgentOutputLine type so a future
-        # Cursor release that adds events does not silently drop them.
         yield AgentOutputLine(type=event_type, raw=stripped, metadata=obj)
 
     def _handle_system(
@@ -266,13 +196,6 @@ class _CursorDispatch:
         obj: dict[str, object],
         stripped: str,
     ) -> Iterator[AgentOutputLine]:
-        """``system`` events carry the system message as ``message`` / ``content``.
-
-        Surfaced as ``type='status'`` so the runtime can render the
-        status via the standard status pipeline.  An empty message
-        yields nothing (matches the pi parser's no-op on empty
-        streaming deltas).
-        """
         message = obj.get("message") or obj.get("content") or ""
         if not isinstance(message, str):
             message = str(message) if message else ""
@@ -290,20 +213,7 @@ class _CursorDispatch:
         _obj: dict[str, object],
         _stripped: str,
     ) -> Iterator[AgentOutputLine]:
-        """``user`` events are the agent's input echo (the prompt Ralph sent).
-
-        Suppressed (mirror the pi/agy behavior of not re-emitting
-        already-known input).  This keeps the parsed-event stream
-        focused on the agent's actual output rather than Ralph's own
-        prompt.
-        """
-        # Explicitly produce an empty iterator so the type checker
-        # recognizes this method as a generator.  Using ``return`` alone
-        # would make the method a non-generator; using ``yield`` after
-        # ``return`` would be an unreachable statement that fails mypy's
-        # ``[unreachable]`` lint check.  The conditional ``yield`` below
-        # is never executed (the constant is ``False`` at runtime).
-        if _HANDLER_RETURNS_NO_EVENTS:  # pragma: no cover
+        if _HANDLER_RETURNS_NO_EVENTS:
             yield from ()
         return
 
@@ -312,15 +222,6 @@ class _CursorDispatch:
         obj: dict[str, object],
         stripped: str,
     ) -> Iterator[AgentOutputLine]:
-        """``assistant`` events carry a ``message`` with a ``content`` array.
-
-        Walks the content array and yields ``text`` / ``thinking``
-        events for each typed block.  Text blocks coalesce via
-        :class:`TextAccumulator` so a long response surfaces as a
-        single coherent block at the paragraph boundary or at the
-        end of the array.  Tool calls inside the assistant content
-        are surfaced as ``type='tool_use'`` for watchdog visibility.
-        """
         message = obj.get("message")
         if not isinstance(message, dict):
             return
@@ -367,7 +268,6 @@ class _CursorDispatch:
         obj: dict[str, object],
         stripped: str,
     ) -> Iterator[AgentOutputLine]:
-        """``thinking`` events carry a ``text`` or ``thinking`` delta."""
         text = str(obj.get("text", obj.get("thinking", "")))
         if not text.strip():
             return
@@ -383,7 +283,6 @@ class _CursorDispatch:
         obj: dict[str, object],
         stripped: str,
     ) -> Iterator[AgentOutputLine]:
-        """``tool_call`` events surface as ``type='tool_use'`` for watchdog visibility."""
         yield from self._owner.flush_accumulators()
         if obj.get("subtype") == "completed":
             yield from self._handle_tool_result(obj, stripped)
@@ -401,13 +300,6 @@ class _CursorDispatch:
         obj: dict[str, object],
         stripped: str,
     ) -> Iterator[AgentOutputLine]:
-        """``tool_result`` events surface as ``type='tool_result'`` or ``type='error'``.
-
-        The Cursor wire format documents a boolean ``is_error`` field
-        on the tool result envelope.  When ``is_error=true`` (or the
-        event carries an ``error`` field), the parser surfaces the
-        event as ``type='error'`` so the watchdog can see the failure.
-        """
         if _cursor_tool_result_is_error(obj):
             error_msg = extract_error_message(obj)
             yield AgentOutputLine(type="error", content=error_msg, raw=stripped, metadata=obj)
@@ -426,31 +318,11 @@ class _CursorDispatch:
         obj: dict[str, object],
         stripped: str,
     ) -> Iterator[AgentOutputLine]:
-        """``result`` is the documented end-of-turn marker.
-
-        Flush any pending text/thinking accumulators BEFORE the stop
-        event so the runtime sees the final block of model text in
-        the same iteration that sees the stop signal.
-        """
         yield from self._owner.flush_accumulators()
         yield AgentOutputLine(type="stop", raw=stripped, metadata=obj)
 
 
 class CursorParser(NdjsonParserBase):
-    """Parser for the Cursor Agent CLI ``--output-format stream-json`` wire format.
-
-    Text and thinking deltas are accumulated into coherent blocks via
-    :class:`TextAccumulator`.  Flushing happens on:
-
-      * ``result`` (the documented end-of-turn marker)
-      * Iterator exhaustion (final flush via :meth:`flush_accumulators`)
-
-    Inherits from :class:`NdjsonParserBase` which owns the 6 shared
-    NDJSON behaviors (data: strip, [DONE] short-circuit, JSON parse
-    dispatch, lifecycle suppression, error extraction, JSON-dict
-    dispatch).  The subclass ``_dispatch_json_object`` delegates to
-    :class:`_CursorDispatch` for the per-event-type routing.
-    """
 
     _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset({"result"})
 
@@ -460,10 +332,6 @@ class CursorParser(NdjsonParserBase):
         subagent_source_label: str | None = None,
     ) -> None:
         super().__init__()
-        # R5: bind the per-invocation shared SubagentPidRegistry +
-        # per-transport source label.  Cursor's documented stream-json
-        # envelope does not currently include a ``pid`` field; the
-        # hook is forward-compat for events that carry one.
         self._subagent_pid_registry: SubagentPidRegistry | None = subagent_pid_registry
         self._subagent_source_label: str | None = subagent_source_label
         self._text_accumulator: TextAccumulator = TextAccumulator()
@@ -476,11 +344,7 @@ class CursorParser(NdjsonParserBase):
         raw: str,
         source_timestamp: str | None = None,
     ) -> Iterator[AgentOutputLine]:
-        # DA-002 (wt-028-display S-2 / AC-01): the base class
-        # post-processes the iterator to attach ``source_timestamp``
-        # to any AgentOutputLine that lacks one, so the per-event
-        # dispatcher itself does not need to thread the parameter.
-        del source_timestamp  # accepted for override compatibility; ignored
+        del source_timestamp
         yield from self._dispatcher.dispatch(obj, raw)
 
     def _handle_lifecycle_event(
@@ -488,18 +352,6 @@ class CursorParser(NdjsonParserBase):
         obj: dict[str, object],
         event_type: str,
     ) -> Iterator[AgentOutputLine] | None:
-        """Override the base lifecycle hook to fall through to dispatch.
-
-        Cursor's documented event vocabulary (``system`` / ``user`` /
-        ``assistant`` / ``thinking`` / ``tool_call`` / ``tool_result`` /
-        ``result``) overlaps the shared :data:`LIFECYCLE_EVENT_TYPES`
-        frozenset on ``user`` / ``assistant`` / ``thinking``.  To honor
-        the AC-04 invariant that every documented cursor event reaches
-        :meth:`_dispatch_json_object`, this hook returns ``None`` so the
-        base layer falls through to the dispatch table; the dispatcher's
-        per-event handler map then decides what each cursor event type
-        emits (text / thinking / status / tool_use / tool_result / stop).
-        """
         return None
 
     def flush_accumulators(self) -> Iterator[AgentOutputLine]:

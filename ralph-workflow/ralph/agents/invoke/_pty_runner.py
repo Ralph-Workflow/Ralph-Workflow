@@ -1,4 +1,3 @@
-"""Process spawning and line-yield helpers for PTY-based invocation."""
 
 from __future__ import annotations
 
@@ -131,20 +130,6 @@ def run_pty_and_read_lines(
         with contextlib.suppress(FileNotFoundError):
             _extras.stop_sentinel_path.unlink()
     clock: Clock = ctx.clock or SystemClock()
-    # wt-04-claude-parsing: snapshot the transcript names already on disk
-    # for this workspace BEFORE ``spawn_pty`` below creates the child. The
-    # orchestrating session (or any sibling session) already lives in the
-    # same ``~/.claude/projects/<key>`` directory the child will write
-    # into; a snapshot taken any later -- e.g. inside
-    # ``PtyLineReader.__init__``, which only runs AFTER ``spawn_pty``
-    # returns -- could already include the child's own freshly-created
-    # transcript file and self-exclude the very file discovery needs to
-    # find (see ``ralph.agents.invoke._pty_transcript.existing_transcript_names``).
-    # ``isinstance`` gates a real ``PtyExtras`` (typed attribute access
-    # below) from a test double that duck-types it with a bare
-    # ``SimpleNamespace`` predating this field -- such a double simply
-    # skips the pre-spawn snapshot and falls back to ``PtyLineReader``'s
-    # own (later, best-effort) live snapshot.
     if (
         isinstance(_extras, PtyExtras)
         and _extras.pre_existing_transcript_names is None
@@ -173,15 +158,6 @@ def run_pty_and_read_lines(
         try:
             if captured_session_id is not None:
                 yield f"Session ID: {captured_session_id}\n"
-            # The two former branches (show_progress: tqdm-wrapped /
-            # no-progress: bare iterator) had byte-for-byte identical
-            # loop bodies; the only difference was the tqdm wrapper.
-            # tqdm wrote carriage-return / cursor-control sequences
-            # directly to Ralph's real sys.stdout, racing the rich Live
-            # status bar -- this is independent of the escape-leak
-            # class. Interactive agents are background processes whose
-            # activity is streamed by the display layer; a second
-            # painter on the same terminal is never correct here.
             for line in lines_iter:
                 stripped_line = line.rstrip()
                 parsed_output.append(stripped_line)
@@ -239,13 +215,6 @@ def run_pty_and_read_lines(
             _terminate_pty_tree(handle)
             raise
 
-        # R7 (Trustworthy Idle Watchdog): populate the diagnostic
-        # fields on ``CompletionCheckOptions`` from the watchdog
-        # state held on the PTY line reader (``pty_reader._watchdog``
-        # was set at the start of ``read_lines()``). The helper at
-        # ``_process_reader.collect_r7_diagnostic_fields`` extracts
-        # the four fields into a tuple so this function stays under
-        # the PLR0912 / PLR0915 branch / statement limits.
         (
             evidence_summary_str,
             last_tool_call_str,

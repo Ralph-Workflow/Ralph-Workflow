@@ -1,13 +1,3 @@
-"""The per-test budget charges each phase's own work and cannot be disarmed.
-
-``tests._per_test_budget`` charges every test phase the CPU its main
-thread spends, plus a wall-clock hang cap. These tests run the real
-mechanism -- watchdog thread, ``SIGPROF``, ``time.thread_time`` -- with
-budgets of a few hundredths of a second, so each overrun costs at most
-that much CPU. The nested phases they arm sit on top of the phase the
-suite itself armed for the test, which resumes when they end.
-"""
-
 from __future__ import annotations
 
 import math
@@ -41,7 +31,6 @@ def test_a_thread_leaked_by_an_earlier_test_is_not_charged_to_the_next_one() -> 
     leaked = threading.Thread(target=spin, daemon=True)
     leaked.start()
     try:
-        # The phase itself only waits; the leaked thread burns CPU meanwhile.
         with budget_module.phase_budget("idle waiter", 0.1):
             threading.Event().wait(0.2)
     finally:
@@ -49,9 +38,6 @@ def test_a_thread_leaked_by_an_earlier_test_is_not_charged_to_the_next_one() -> 
         leaked.join(timeout=2.0)
 
 
-#: Tests of the CPU path raise the wall hang cap far above the 5x default, so a
-#: loaded host -- where the main thread gets well under a fifth of a core --
-#: cannot trip the hang cap before the 0.05 CPU-second budget.
 _CPU_PATH_WALL_CAP = 30.0
 
 
@@ -92,7 +78,7 @@ def test_an_overrun_swallowed_by_code_under_test_still_fails_the_phase() -> None
     ):
         try:
             _burn_main_thread_cpu(1.0)
-        except BaseException as exc:  # the production anti-pattern being guarded
+        except BaseException as exc:
             swallowed.append(type(exc).__name__)
     assert swallowed == ["TestExecutionTimeoutError"]
 
@@ -182,9 +168,6 @@ def test_fixture_setup_and_teardown_are_each_charged_and_a_zero_marker_errors(
 
     result.assert_outcomes(passed=1, errors=3)
     output = result.stdout.str()
-    # Each phase is charged on its own budget. Which cap trips -- the CPU budget
-    # or its 5x wall hang cap -- depends on how much CPU a loaded host gives the
-    # main thread; either one, naming the right phase, proves the charging.
     for phase in (
         "setup of test_phases.py::test_setup_overrun",
         "teardown of test_phases.py::test_teardown_overrun",

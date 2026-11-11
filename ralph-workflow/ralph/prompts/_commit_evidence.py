@@ -1,4 +1,3 @@
-"""Fresh, bounded evidence used by the commit-message pipeline."""
 
 from __future__ import annotations
 
@@ -28,7 +27,6 @@ _CHANGE_AREA_DEPTH: Final = 2
 
 @dataclass(frozen=True)
 class CommitEvidenceBundle:
-    """A live snapshot of the work a commit may describe."""
 
     diff: str
     changed_files: tuple[str, ...]
@@ -44,7 +42,6 @@ class CommitEvidenceBundle:
 
     @property
     def message_budget(self) -> CommitMessageBudget:
-        """Derive one body-item cap from all objective scope signals."""
         grounded_fact_count = sum(
             len(facts)
             for facts in (
@@ -80,7 +77,6 @@ def _read_text(path: Path) -> str:
 
 
 def _behavior_facts(repo_root: Path) -> tuple[str, ...]:
-    """Read completed, durable behavior evidence; never infer claims from paths."""
     for relative_path in _DEVELOPMENT_RESULTS:
         result = _read_text(repo_root / relative_path)
         if not re.search(r"(?m)^status:\s*completed\s*$", result):
@@ -103,13 +99,11 @@ def _verification_facts(repo_root: Path) -> tuple[str, ...]:
 
 
 def _change_area(path: str) -> str:
-    """Use a useful, stable path area rather than a top-level bucket."""
     parts = path.split("/")
     return "/".join(parts[:_CHANGE_AREA_DEPTH]) if len(parts) > _CHANGE_AREA_DEPTH else parts[0]
 
 
 def _summarize_diff(diff: str) -> tuple[str, ...]:
-    """Extract bounded factual file/change summaries without inventing intent."""
     summaries: list[str] = []
     for match in _DIFF_PATH.finditer(diff):
         path = str(match.group(2))
@@ -129,7 +123,6 @@ def _summarize_diff(diff: str) -> tuple[str, ...]:
 
 
 def build_commit_evidence_bundle(repo_root: Path) -> CommitEvidenceBundle:
-    """Build a new live Git snapshot; this function deliberately never caches."""
     changed_files = tuple(sorted(set(list_changed_paths(repo_root))))
     diff = commit_generation_diff(repo_root)
     areas = tuple(sorted({_change_area(path) for path in changed_files if path}))

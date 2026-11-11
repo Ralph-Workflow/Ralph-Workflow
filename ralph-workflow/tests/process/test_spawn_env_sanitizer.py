@@ -1,5 +1,3 @@
-"""Regression coverage for inherited macOS malloc-debug environment cleanup."""
-
 from __future__ import annotations
 
 import os
@@ -62,7 +60,6 @@ def test_sanitize_process_environment_cleans_the_inherited_base(
 
 
 def test_cli_logs_stripped_malloc_debug_vars(monkeypatch: object) -> None:
-    """DA-003: the CLI reports inherited malloc-debug cleanup at DEBUG."""
     import ralph.cli.main as cli_module
 
     class _Logger:

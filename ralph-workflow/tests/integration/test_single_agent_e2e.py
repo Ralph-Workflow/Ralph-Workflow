@@ -153,13 +153,6 @@ def test_serial_run_completes_when_development_phase_encounters_multimodal_tool_
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Serial unattended run reaches 'complete' even when the development phase produces
-    multimodal placeholder output (e.g. '[image: image/png]') from the parser.
-
-    This is the black-box proof that the managed runtime path survives multimodal
-    tool results: the pipeline must not emit a fan-out event or get stuck when the
-    development phase processes multimodal tool output.
-    """
     prompt = tmp_path / "PROMPT.md"
     prompt.write_text("# Test\n\nRun multimodal serial path.")
 
@@ -211,8 +204,6 @@ def test_serial_run_completes_when_development_phase_encounters_multimodal_tool_
     ) -> PipelineEvent:
         del config, workspace_scope, kwargs
         handled_phases.append(effect.phase)
-        # Simulate successful completion even when the development phase encountered
-        # multimodal placeholder output like '[image: image/png]' from the parser.
         return PipelineEvent.AGENT_SUCCESS
 
     monkeypatch.setattr(
@@ -242,15 +233,6 @@ def test_development_phase_receives_multimodal_handoff_metadata(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Runner-owned prompt seam carries delivery/block_type/URI metadata to dev phase.
-
-    Proves that when a media session index is written by the MCP server before
-    the development phase runs, the runner reads it via collect_media_entries_for_phase
-    and the captured entries preserve delivery mode, block_type, and ralph://media/...
-    replay identity from the capability-profile verdict.
-    """
-    # Write a media session index as the MCP server would during a live session.
-    # Claude provider: image=inline_image, pdf=typed_block.
     claude_identity = MultimodalModelIdentity(provider="claude", model_id="claude-3-5-sonnet")
     profile = resolve_capability_profile(claude_identity)
     image_verdict = profile.verdict_for("image")
@@ -291,9 +273,6 @@ def test_development_phase_receives_multimodal_handoff_metadata(
     index_path = tmp_path / media_session_path("development")
     index_path.parent.mkdir(parents=True, exist_ok=True)
     index_path.write_text(json.dumps(index_payload), encoding="utf-8")
-
-    # Spy on materialize_agent_prompt_if_needed to capture what collect_media_entries_for_phase
-    # returns for the development phase — without actually rendering templates.
 
     captured_entries: list[object] = []
 
@@ -362,7 +341,6 @@ def test_development_phase_receives_multimodal_handoff_metadata(
     assert exit_code == 0
     assert saved_states[-1].phase == "complete"
 
-    # (a) development phase received multimodal entries via the runner-owned seam.
     dev_entries = [e for e in captured_entries if hasattr(e, "uri")]
     assert len(dev_entries) >= 2, (
         f"Expected at least 2 multimodal entries for development phase, got {len(dev_entries)}: "
@@ -380,7 +358,6 @@ def test_development_phase_receives_multimodal_handoff_metadata(
     image_entry = next(e for e in dev_entries if e.uri == "ralph://media/img-handoff-001")
     pdf_entry = next(e for e in dev_entries if e.uri == "ralph://media/pdf-handoff-002")
 
-    # (b) delivery metadata and replay identity survive from the managed decision into handoff.
     assert image_entry.delivery == DeliveryMode.INLINE_IMAGE.value, (
         f"Image entry must have inline_image delivery, got {image_entry.delivery!r}"
     )
@@ -399,14 +376,6 @@ def test_unsupported_modality_surfaces_explicit_rejection_through_runner_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Unsupported provider/modality combinations are carried through the runner handoff seam.
-
-    Proves (c) from plan Step 1: when an unsupported modality is encountered for a
-    known provider (e.g. audio for Claude), the media session index written by the
-    MCP server carries unsupported delivery and the runner reads this through the
-    collect_media_entries_for_phase seam rather than silently dropping the entry.
-    """
-    # Claude does not support audio — simulate the MCP server writing an unsupported entry.
     claude_identity = MultimodalModelIdentity(provider="claude")
     profile = resolve_capability_profile(claude_identity)
     audio_verdict = profile.verdict_for("audio")
@@ -415,7 +384,6 @@ def test_unsupported_modality_surfaces_explicit_rejection_through_runner_path(
         "Pre-condition: audio must be UNSUPPORTED for Claude"
     )
 
-    # Write a session index that records the unsupported audio artifact.
     index_payload = {
         "schema_version": "2",
         "phase": "development",
@@ -503,11 +471,9 @@ def test_unsupported_modality_surfaces_explicit_rejection_through_runner_path(
         pipeline_deps=_pipeline_deps(),
     )
 
-    # (d) serial mode still reaches complete without fan-out.
     assert exit_code == 0
     assert saved_states[-1].phase == "complete"
 
-    # (c) the unsupported entry is read through the handoff seam — not silently dropped.
     unsupported_entries = [
         e
         for e in captured_entries

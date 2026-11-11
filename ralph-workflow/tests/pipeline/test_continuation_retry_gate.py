@@ -1,14 +1,3 @@
-"""Tests for durable continuation retry gate for auto-integrate continuation (Unit B / Defect 9).
-
-Covers:
-1. unchanged key -> resolver invoked once, exactly one WAITING line, zero repeated CRITICAL;
-2. a SECOND process (fresh in-memory state, reloaded record) with an unchanged record does not re-enter resolution;
-3. agent becomes eligible/reset -> retried exactly once;
-4. config fingerprint change still retries once;
-5. old record without the new field loads and behaves as ungated;
-6. merge continuation retry gate.
-"""
-
 from __future__ import annotations
 
 import json
@@ -103,7 +92,6 @@ def _setup_controller(clock: FakeClock | None = None) -> tuple[RecoveryControlle
 
 
 def test_retry_gate_key_computation_and_record_field(tmp_path: Path) -> None:
-    """Retry gate key contains (stop_id, sorted_eligible_agents, config_fingerprint)."""
     root, _cfg = _setup_repo_and_config(tmp_path)
     ctrl, _clk = _setup_controller()
     record = IntegrationRecord(
@@ -114,7 +102,6 @@ def test_retry_gate_key_computation_and_record_field(tmp_path: Path) -> None:
         resolving_rebase=True,
     )
 
-    # Initial state: both agent1 and agent2 available
     key1 = compute_continuation_retry_gate_key(
         root,
         record,
@@ -124,9 +111,8 @@ def test_retry_gate_key_computation_and_record_field(tmp_path: Path) -> None:
     assert key1[0] == "stop_commit_1"
     assert key1[1] == ("agent1", "agent2")
     assert key1[2] is not None
-    assert len(key1[2]) == 64  # SHA-256
+    assert len(key1[2]) == 64
 
-    # When an agent is marked unavailable, sorted eligible set changes
     ctrl.unavailability_store.mark_unavailable("rebase_conflict_resolution", "agent1", "failed")
     key2 = compute_continuation_retry_gate_key(
         root,
@@ -139,7 +125,6 @@ def test_retry_gate_key_computation_and_record_field(tmp_path: Path) -> None:
     assert key2[2] == key1[2]
     assert key2 != key1
 
-    # Update record with gate key and verify serialization round-trip
     updated = record.with_resolution_gate_key(key2)
     assert updated.resolution_gate_key == key2
     write_record(root, updated)
@@ -152,7 +137,6 @@ def test_retry_gate_key_computation_and_record_field(tmp_path: Path) -> None:
 def test_unchanged_key_invokes_resolver_once_one_waiting_zero_repeated_critical(
     tmp_path: Path,
 ) -> None:
-    """Case 1: unchanged key -> resolver invoked once, exactly one WAITING line, zero repeated CRITICAL."""
     root, _cfg = _setup_repo_and_config(tmp_path)
     ctrl, _clk = _setup_controller()
     ctrl.unavailability_store.mark_unavailable("rebase_conflict_resolution", "agent1", "cooldown")
@@ -179,7 +163,6 @@ def test_unchanged_key_invokes_resolver_once_one_waiting_zero_repeated_critical(
 
     captured, sink_id = _capture_loguru_records()
     try:
-        # --- Round 1: first attempt (ungated) ---
         outcome1 = recover_pending_merge(
             root,
             read_record(root) or record,
@@ -189,18 +172,15 @@ def test_unchanged_key_invokes_resolver_once_one_waiting_zero_repeated_critical(
         )
         assert outcome1.recovery_record_retained is True
 
-        # Check records after Round 1: exactly one CRITICAL log from the failure, zero WAITING logs
         critical_logs_r1 = [r for r in captured if r["level"].name == "CRITICAL"]
         waiting_logs_r1 = [r for r in captured if "WAITING" in r["message"]]
         assert len(critical_logs_r1) == 1
         assert len(waiting_logs_r1) == 0
 
-        # Persisted integration record stores the computed resolution gate key.
         record_after_r1 = read_record(root)
         assert record_after_r1 is not None
         assert record_after_r1.resolution_gate_key is not None
 
-        # --- Round 2: retry with unchanged key ---
         outcome2 = recover_pending_merge(
             root,
             record_after_r1,
@@ -211,15 +191,12 @@ def test_unchanged_key_invokes_resolver_once_one_waiting_zero_repeated_critical(
         assert outcome2.recovery_record_retained is True
         assert "WAITING" in outcome2.last_reason
 
-        # Exactly one WAITING line emitted across both rounds
         waiting_logs_r2 = [r for r in captured if "WAITING" in r["message"]]
         assert len(waiting_logs_r2) == 1
 
-        # Zero repeated CRITICAL logs (count remains 1)
         critical_logs_r2 = [r for r in captured if r["level"].name == "CRITICAL"]
         assert len(critical_logs_r2) == 1
 
-        # --- Round 3: another per-tick check with unchanged key ---
         recover_pending_merge(
             root,
             read_record(root) or record,
@@ -237,7 +214,6 @@ def test_unchanged_key_invokes_resolver_once_one_waiting_zero_repeated_critical(
 def test_second_process_with_unchanged_record_does_not_reenter_resolution(
     tmp_path: Path,
 ) -> None:
-    """Case 2: a SECOND process (fresh in-memory state, reloaded record) does not re-enter resolution."""
     root, _cfg = _setup_repo_and_config(tmp_path)
     ctrl1, clock = _setup_controller()
     ctrl1.unavailability_store.mark_unavailable("rebase_conflict_resolution", "agent1", "cooldown")
@@ -259,7 +235,6 @@ def test_second_process_with_unchanged_record_does_not_reenter_resolution(
             failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
         )
 
-    # Process 1 runs round 1
     recover_pending_merge(
         root,
         record,
@@ -271,7 +246,6 @@ def test_second_process_with_unchanged_record_does_not_reenter_resolution(
     assert persisted_record is not None
     assert persisted_record.resolution_gate_key is not None
 
-    # Process 2 starts fresh: new controller, new clock at same time, reset in-process gate state
     reset_continuation_gate_state()
     ctrl2 = RecoveryController(options=RecoveryControllerOptions(clock=clock))
     ctrl2.register_phase_chain("rebase_conflict_resolution", ["agent1", "agent2"])
@@ -286,11 +260,9 @@ def test_second_process_with_unchanged_record_does_not_reenter_resolution(
             rebase_stop_resolver=fake_resolve,
             recovery_controller=ctrl2,
         )
-        # Process 2 sees the durable gate key from disk, emits WAITING, does not re-resolve
         assert outcome_p2.recovery_record_retained is True
         assert "WAITING" in outcome_p2.last_reason
 
-        # Exactly one WAITING line emitted in Process 2, zero CRITICAL logs
         waiting_logs = [r for r in captured if "WAITING" in r["message"]]
         critical_logs = [r for r in captured if r["level"].name == "CRITICAL"]
         assert len(waiting_logs) == 1
@@ -298,7 +270,6 @@ def test_second_process_with_unchanged_record_does_not_reenter_resolution(
         assert "ralph --check-config" in waiting_logs[0]["message"]
         assert len(critical_logs) == 0
 
-        # Process 3 verifies cross-process deduplication from the persisted record
         p2_persisted = read_record(root)
         assert p2_persisted is not None
         assert p2_persisted.waiting_notification_key is not None
@@ -318,7 +289,6 @@ def test_second_process_with_unchanged_record_does_not_reenter_resolution(
             recovery_controller=ctrl3,
         )
         assert outcome_p3.recovery_record_retained is True
-        # Process 3 emits zero additional WAITING logs across processes
         waiting_logs_after = [r for r in captured if "WAITING" in r["message"]]
         assert len(waiting_logs_after) == 1
     finally:
@@ -328,10 +298,8 @@ def test_second_process_with_unchanged_record_does_not_reenter_resolution(
 def test_agent_eligibility_change_retries_exactly_once(
     tmp_path: Path,
 ) -> None:
-    """Case 3: agent becomes eligible/reset -> retried exactly once."""
     root, _cfg = _setup_repo_and_config(tmp_path)
     ctrl, clock = _setup_controller()
-    # Cooldown duration 60s for agent1
     ctrl.unavailability_store.mark_unavailable("rebase_conflict_resolution", "agent1", "cooldown")
     _setup_rebase_state(root, "feat1", "target1", "stop_sha_1")
 
@@ -351,7 +319,6 @@ def test_agent_eligibility_change_retries_exactly_once(
             failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
         )
 
-    # Round 1: agent1 is in cooldown, key has ('agent2',)
     recover_pending_merge(
         root,
         record,
@@ -365,7 +332,6 @@ def test_agent_eligibility_change_retries_exactly_once(
     r1_key = rec1.resolution_gate_key
     assert r1_key[1] == ("agent2",)
 
-    # Immediate second call is gated
     recover_pending_merge(
         root,
         rec1,
@@ -374,7 +340,6 @@ def test_agent_eligibility_change_retries_exactly_once(
         recovery_controller=ctrl,
     )
 
-    # Advancing clock past expiration restores candidate eligibility.
     clock.advance(60.0)
     assert ctrl.agents_now_available("rebase_conflict_resolution", ["agent1", "agent2"]) == [
         "agent1",
@@ -383,7 +348,6 @@ def test_agent_eligibility_change_retries_exactly_once(
 
     captured, sink_id = _capture_loguru_records()
     try:
-        # Round 3: eligibility changed -> gate detects key change -> retries once
         rec2 = read_record(root)
         assert rec2 is not None
         recover_pending_merge(
@@ -400,7 +364,6 @@ def test_agent_eligibility_change_retries_exactly_once(
         assert r3_key[1] == ("agent1", "agent2")
         assert r3_key != r1_key
 
-        # Immediately following call with no eligibility change: gated again!
         recover_pending_merge(
             root,
             rec3,
@@ -418,7 +381,6 @@ def test_agent_eligibility_change_retries_exactly_once(
 def test_config_fingerprint_change_retries_once(
     tmp_path: Path,
 ) -> None:
-    """Case 4: config fingerprint change still retries once."""
     root, cfg_file = _setup_repo_and_config(tmp_path)
     ctrl, _clk = _setup_controller()
     ctrl.unavailability_store.mark_unavailable("rebase_conflict_resolution", "agent1", "cooldown")
@@ -440,7 +402,6 @@ def test_config_fingerprint_change_retries_once(
             failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
         )
 
-    # Round 1
     recover_pending_merge(
         root,
         record,
@@ -453,7 +414,6 @@ def test_config_fingerprint_change_retries_once(
     assert rec1.resolution_gate_key is not None
     r1_key = rec1.resolution_gate_key
 
-    # Gated while unchanged
     recover_pending_merge(
         root,
         rec1,
@@ -462,12 +422,10 @@ def test_config_fingerprint_change_retries_once(
         recovery_controller=ctrl,
     )
 
-    # Modify config file (simulating user edit)
     cfg_file.write_text("[general]\nmodel = 'repaired-model'\n", encoding="utf-8")
 
     captured, sink_id = _capture_loguru_records()
     try:
-        # Config changed -> retry once
         rec2 = read_record(root)
         assert rec2 is not None
         recover_pending_merge(
@@ -481,9 +439,8 @@ def test_config_fingerprint_change_retries_once(
         assert rec3 is not None
         assert rec3.resolution_gate_key is not None
         r3_key = rec3.resolution_gate_key
-        assert r3_key[2] != r1_key[2]  # fingerprint updated
+        assert r3_key[2] != r1_key[2]
 
-        # Further call without config edit is gated again
         recover_pending_merge(
             root,
             rec3,
@@ -500,13 +457,11 @@ def test_config_fingerprint_change_retries_once(
 def test_legacy_record_without_gate_key_is_ungated(
     tmp_path: Path,
 ) -> None:
-    """Case 5: old record without the new field loads and behaves as ungated."""
     root, _cfg = _setup_repo_and_config(tmp_path)
     ctrl, _clk = _setup_controller()
     ctrl.unavailability_store.mark_unavailable("rebase_conflict_resolution", "agent1", "cooldown")
     _setup_rebase_state(root, "feat1", "target1", "stop_sha_1")
 
-    # Simulate legacy JSON payload written by previous versions without resolution_gate_key field
     legacy_payload = {
         "schema_version": 1,
         "phase": "integrating",
@@ -518,7 +473,6 @@ def test_legacy_record_without_gate_key_is_ungated(
     rec_file = root / ".agent" / "auto_integrate_in_progress.json"
     rec_file.write_text(json.dumps(legacy_payload), encoding="utf-8")
 
-    # Verify parse_record_payload correctly loads it with None resolution_gate_key
     loaded = parse_record_payload(legacy_payload)
     assert loaded is not None
     assert loaded.resolution_gate_key is None
@@ -530,7 +484,6 @@ def test_legacy_record_without_gate_key_is_ungated(
             failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
         )
 
-    # First attempt: behaves normally (ungated)
     outcome = recover_pending_merge(
         root,
         loaded,
@@ -540,7 +493,6 @@ def test_legacy_record_without_gate_key_is_ungated(
     )
     assert outcome.recovery_record_retained is True
 
-    # After the attempt, new resolution_gate_key is written back
     saved = read_record(root)
     assert saved is not None
     assert saved.resolution_gate_key is not None
@@ -549,7 +501,6 @@ def test_legacy_record_without_gate_key_is_ungated(
 def test_merge_continuation_retry_gate(
     tmp_path: Path,
 ) -> None:
-    """Merge conflict resolution continuation also respects the retry gate."""
     root, _cfg = _setup_repo_and_config(tmp_path)
     ctrl, _clk = _setup_controller()
 
@@ -573,7 +524,6 @@ def test_merge_continuation_retry_gate(
         merge_resolve_invocations[0] += 1
         return False
 
-    # Round 1: ungated attempt
     res1 = continue_retained_resolution(
         root,
         record,
@@ -590,7 +540,6 @@ def test_merge_continuation_retry_gate(
     assert rec_after is not None
     assert rec_after.resolution_gate_key is not None
 
-    # Round 2: retry with unchanged record and unchanged state -> GATED!
     res2 = continue_retained_resolution(
         root,
         rec_after,
@@ -599,7 +548,7 @@ def test_merge_continuation_retry_gate(
         None,
         recovery_controller=ctrl,
     )
-    assert merge_resolve_invocations[0] == 1  # Resolver not re-entered!
+    assert merge_resolve_invocations[0] == 1
     assert isinstance(res2, str)
     assert "WAITING" in res2
 
@@ -608,7 +557,6 @@ def test_production_entry_recovery_retries_on_eligibility_and_command(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Production entry recover_incomplete_integration gates, retries on eligibility change, and supports force_retry."""
     from ralph.pipeline import auto_integrate_rebase_merge as rebase_merge
     from ralph.pipeline.auto_integrate import recover_incomplete_integration
     from ralph.workspace.scope import WorkspaceScope
@@ -642,7 +590,6 @@ def test_production_entry_recovery_retries_on_eligibility_and_command(
 
     scope = WorkspaceScope(root=root)
 
-    # 1. First call enters resolution
     outcome1 = recover_incomplete_integration(
         scope,
         config=None,
@@ -652,7 +599,6 @@ def test_production_entry_recovery_retries_on_eligibility_and_command(
     assert resolve_calls[0] == 1
     assert outcome1 is not None and outcome1.recovery_record_retained is True
 
-    # 2. Second call with unchanged inputs is gated (resolver not called)
     outcome2 = recover_incomplete_integration(
         scope,
         config=None,
@@ -662,7 +608,6 @@ def test_production_entry_recovery_retries_on_eligibility_and_command(
     assert resolve_calls[0] == 1
     assert outcome2 is not None and "WAITING" in outcome2.last_reason
 
-    # 3. Agent eligibility changes (cooldown expires) -> retried exactly once
     clock.advance(60.0)
     outcome3 = recover_incomplete_integration(
         scope,
@@ -673,7 +618,6 @@ def test_production_entry_recovery_retries_on_eligibility_and_command(
     assert resolve_calls[0] == 2
     assert outcome3 is not None and outcome3.recovery_record_retained is True
 
-    # 4. Immediate call after retry is gated again
     outcome4 = recover_incomplete_integration(
         scope,
         config=None,
@@ -683,7 +627,6 @@ def test_production_entry_recovery_retries_on_eligibility_and_command(
     assert resolve_calls[0] == 2
     assert outcome4 is not None and "WAITING" in outcome4.last_reason
 
-    # 5. Operator explicit force_retry (--retry command) -> retried immediately
     outcome5 = recover_incomplete_integration(
         scope,
         config=None,
@@ -698,7 +641,6 @@ def test_production_entry_recovery_retries_on_eligibility_and_command(
 def test_cli_retry_integration_invokes_recovery_with_force_retry(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """CLI --retry and --retry-integration invoke recover_incomplete_integration with force_retry=True."""
     from typer.testing import CliRunner
 
     from ralph.cli import main as main_module

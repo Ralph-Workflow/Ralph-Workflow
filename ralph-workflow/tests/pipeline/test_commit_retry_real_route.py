@@ -1,34 +1,3 @@
-"""End-to-end commit-retry real-route tests (Bug 2 AC 4, WU-1).
-
-The product brief's AC 4 requires that a ``development_commit`` failure
-caused by lock contention does not reach ``failed_terminal`` on the
-first attempt and the validated commit message is reused on retry.
-
-The existing ``tests/pipeline/test_reducer_lock_retry.py`` covers the
-reducer seam (in-place re-route, cap clamp, message file survival),
-while this module covers both:
-1. The in-place retry route (when policy defines no recovery/cleanup phase).
-2. The default-policy route through ``development_commit_review`` back
-   to ``development_commit``.
-
-When transitioning from cleanup back to commit following recoverable lock
-contention, the validated commit message state is preserved so that the
-effect router's ``_commit_phase_effect`` emits ``CommitEffect`` (re-reading
-the byte-identical validated message) instead of re-invoking the commit-message
-agent with ``InvokeAgentEffect``.
-
-Each test in this module:
-- Places the commit-message artifact inside the actual
-  ``WorkspaceScope.root`` so the routed effect (``workspace_scope.root
-  / COMMIT_MESSAGE_ARTIFACT``) reads the same file the test wrote.
-- Uses fakes for filesystem, git ops, and clock — no real
-  ``git.Repo.init``, no subprocess, no ``time.sleep``.
-- Drives the real effect router via ``determine_effect_from_policy``
-  with injectable ``has_uncommitted_changes_fn`` and the real reducer via ``reduce``.
-- Exercises the ``next_effect`` returned by the router on retry (NOT
-  the original ``effect``), so the test exercises the real route.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Iterator
@@ -83,14 +52,12 @@ def _make_unified_config() -> UnifiedConfig:
 
 
 def _make_fake_workspace(tmp_path: Path) -> Path:
-    """Create a faked workspace root directory without real git initialization."""
     repo_root = tmp_path / "worktree"
     repo_root.mkdir(parents=True, exist_ok=True)
     return repo_root
 
 
 def _has_uncommitted_changes(_path: Path) -> bool:
-    """Injectable fake changes checker that always reports pending commit work."""
     return True
 
 
@@ -102,14 +69,6 @@ def _make_commit_message_file(
     body_details: str
     | None = "Assert byte-identical multiline message reuse across router transitions.",
 ) -> Path:
-    """Place the commit-message artifact inside ``repo_root`` (the
-    ``WorkspaceScope.root``).
-
-    The effect router builds the routed effect's ``message_file`` as
-    ``workspace_scope.root / COMMIT_MESSAGE_ARTIFACT`` (see
-    ``ralph/pipeline/effect_router.py:301-302``). The artifact must
-    live at that path so the routed retry can re-read it.
-    """
     agent_dir = repo_root / ".agent" / "artifacts"
     agent_dir.mkdir(parents=True, exist_ok=True)
     message_file = agent_dir / "commit_message.md"
@@ -124,7 +83,6 @@ def _make_commit_message_file(
 
 @pytest.fixture(autouse=True)
 def _fake_git_ops() -> Iterator[None]:
-    """Ensure test module runs completely without real git operations or subprocesses."""
     with (
         patch("ralph.pipeline.effect_router._is_empty_commit_phase", return_value=False),
         patch("ralph.pipeline.commit_executor._is_git_worktree", return_value=False),
@@ -133,26 +91,9 @@ def _fake_git_ops() -> Iterator[None]:
         yield
 
 
-# ---------------------------------------------------------------------------
-# In-place route (no recovery phase).
-# ---------------------------------------------------------------------------
-
-
 def test_in_place_retry_next_effect_is_commit_effect_not_invoke_agent(
     tmp_path: Path,
 ) -> None:
-    """In-place lock-contention retry preserves commit state across the retry.
-
-    Drives the real effect router (``determine_effect_from_policy``) on the
-    post-reduce state:
-    1. The reducer's in-place branch preserves ``state.commit`` so
-       ``state.commit.agent_invoked`` remains True across the retry.
-    2. ``_commit_phase_effect`` (``effect_router.py:301-311``) sees
-       ``agent_invoked=True`` and returns ``CommitEffect`` (NOT
-       ``InvokeAgentEffect``) on the second pass.
-    3. ``execute_commit_effect`` re-reads the preserved message file and
-       lands the commit.
-    """
     repo_root = _make_fake_workspace(tmp_path)
     message_file = _make_commit_message_file(
         repo_root, "feat: validated message must be reused on in-place retry"
@@ -189,7 +130,6 @@ def test_in_place_retry_next_effect_is_commit_effect_not_invoke_agent(
         patch("ralph.pipeline.commit_executor._is_git_worktree", return_value=False),
         patch("ralph.pipeline.commit_executor.get_head_sha", return_value="deadbeef"),
     ):
-        # First attempt: lock-contention failure.
         first_event = execute_commit_effect(
             effect,
             repo_root,
@@ -200,7 +140,6 @@ def test_in_place_retry_next_effect_is_commit_effect_not_invoke_agent(
         assert first_event is PipelineEvent.COMMIT_FAILURE
         assert message_file.exists(), "Validated message must be preserved on COMMIT_FAILURE"
 
-        # Reducer routes in-place when commit_recovery/commit_review phase is absent.
         state = PipelineState(
             phase="development_commit",
             phase_chains={
@@ -249,12 +188,10 @@ def test_in_place_retry_next_effect_is_commit_effect_not_invoke_agent(
             f"({expected_message_file}); got {next_effect.message_file}"
         )
 
-        # Assert byte-for-byte artifact preservation before retry.
         assert message_file.read_bytes() == original_bytes, (
             "Commit message artifact bytes must be preserved byte-for-byte across lock-retry"
         )
 
-        # Second attempt succeeds using the reused message file.
         second_event = execute_commit_effect(
             next_effect,
             repo_root,
@@ -269,13 +206,7 @@ def test_in_place_retry_next_effect_is_commit_effect_not_invoke_agent(
         assert observed_messages[0] == expected_message
 
 
-# ---------------------------------------------------------------------------
-# Default-policy ``commit_review`` route.
-# ---------------------------------------------------------------------------
-
-
 def test_default_policy_routes_to_commit_review_phase(tmp_path: Path) -> None:
-    """Default-policy lock-contention routes to ``development_commit_review``."""
     policy_bundle = _load_policy_bundle()
     pipeline_policy = policy_bundle.pipeline
 
@@ -312,24 +243,6 @@ def test_default_policy_routes_to_commit_review_phase(tmp_path: Path) -> None:
 def test_default_policy_cleanup_to_commit_preserves_commit_message_and_emits_commit_effect(
     tmp_path: Path,
 ) -> None:
-    """Default-policy cleanup→commit transition preserves validated commit message.
-
-    When ``development_commit`` fails due to recoverable lock contention after
-    a validated commit message artifact has been produced (``commit.agent_invoked=True``):
-    1. The reducer routes to ``development_commit_review``, retaining the commit
-       state and recording ``recovery_epoch=1``.
-    2. The real effect router produces an observable cleanup effect
-       (``InvokeAgentEffect``) for ``development_commit_review``.
-    3. The cleanup agent finishes successfully, emitting ``AGENT_SUCCESS``.
-    4. On cleanup success (``AGENT_SUCCESS``), the reducer advances to
-       ``development_commit`` and preserves ``state.commit``
-       (with ``agent_invoked=True``) and ``recovery_epoch``.
-    5. The real effect router (``determine_effect_from_policy``) sees
-       ``commit.agent_invoked=True`` and emits ``CommitEffect`` (NOT
-       ``InvokeAgentEffect``).
-    6. ``execute_commit_effect`` re-reads the byte-identical validated multiline message
-       and lands the commit without re-invoking the commit-message agent.
-    """
     repo_root = _make_fake_workspace(tmp_path)
     expected_subject = "feat: default policy validated message must be reused on retry"
     message_file = _make_commit_message_file(
@@ -373,7 +286,6 @@ def test_default_policy_cleanup_to_commit_preserves_commit_message_and_emits_com
     )
     set_last_commit_error(state.last_error or "")
     try:
-        # Step 1: lock-contention routes to development_commit_review.
         cleanup_state, _ = reduce(state, PipelineEvent.COMMIT_FAILURE, pipeline_policy)
     finally:
         set_last_commit_error(None)
@@ -385,7 +297,6 @@ def test_default_policy_cleanup_to_commit_preserves_commit_message_and_emits_com
     assert cleanup_state.recovery_epoch == 1
     assert cleanup_state.commit.agent_invoked is True
 
-    # Step 2: Request the cleanup effect via the real router. Must emit InvokeAgentEffect.
     cleanup_effect = determine_effect_from_policy(
         cleanup_state,
         policy_bundle,
@@ -399,12 +310,10 @@ def test_default_policy_cleanup_to_commit_preserves_commit_message_and_emits_com
         f"Cleanup effect must target development_commit_review, got {cleanup_effect.phase}"
     )
 
-    # Step 3: Assert byte-for-byte artifact preservation during cleanup.
     assert message_file.read_bytes() == original_bytes, (
         "Commit message artifact bytes must remain intact during cleanup phase"
     )
 
-    # Step 4: cleanup completes successfully via AGENT_SUCCESS (actual agent success signal).
     advanced_state, _ = reduce(cleanup_state, PipelineEvent.AGENT_SUCCESS, pipeline_policy)
     assert advanced_state.phase == "development_commit", (
         f"Cleanup AGENT_SUCCESS must advance to development_commit, "
@@ -415,7 +324,6 @@ def test_default_policy_cleanup_to_commit_preserves_commit_message_and_emits_com
     )
     assert advanced_state.recovery_epoch == 1
 
-    # Step 5: drive the real effect router. Must emit CommitEffect, NOT InvokeAgentEffect.
     next_effect = determine_effect_from_policy(
         advanced_state,
         policy_bundle,
@@ -431,12 +339,10 @@ def test_default_policy_cleanup_to_commit_preserves_commit_message_and_emits_com
     )
     assert Path(next_effect.message_file) == message_file
 
-    # Step 6: Assert byte-for-byte artifact preservation before retry commit execution.
     assert message_file.read_bytes() == original_bytes, (
         "Commit message artifact bytes must remain intact before retry commit execution"
     )
 
-    # Step 7: execute CommitEffect with fakes — no agent reinvocation.
     with (
         patch("ralph.pipeline.commit_executor._is_git_worktree", return_value=False),
         patch("ralph.pipeline.commit_executor.get_head_sha", return_value="deadbeef"),
@@ -452,22 +358,12 @@ def test_default_policy_cleanup_to_commit_preserves_commit_message_and_emits_com
     assert observed_messages == [expected_message]
 
 
-# ---------------------------------------------------------------------------
-# Counterexamples and Edge Cases (WU-1 / DEVELOPMENT_ANALYSIS_DECISION.md)
-# ---------------------------------------------------------------------------
-
-
 def test_fresh_commit_entry_resets_commit_state_and_invokes_agent(tmp_path: Path) -> None:
-    """Normal first-entry commit behavior resets CommitState and invokes the agent."""
     repo_root = _make_fake_workspace(tmp_path)
     scope = _make_workspace_scope(repo_root)
     policy_bundle = _load_policy_bundle()
     pipeline_policy = policy_bundle.pipeline
 
-    # Entering development_commit fresh via the normal development workflow.
-    # In default policy: development -> development_commit_review -> development_commit.
-    # On this fresh path, there is no lock contention or repairable error, so
-    # transitioning into development_commit resets CommitState (agent_invoked=False).
     stale_commit = CommitState(message_prepared=True, diff_prepared=True, agent_invoked=True)
     state = PipelineState(
         phase="development",
@@ -503,7 +399,6 @@ def test_fresh_commit_entry_resets_commit_state_and_invokes_agent(tmp_path: Path
 
 
 def test_cleanup_failure_does_not_reuse_commit_message(tmp_path: Path) -> None:
-    """Cleanup failure does not mistakenly reuse stale messages or advance to commit."""
     policy_bundle = _load_policy_bundle()
     pipeline_policy = policy_bundle.pipeline
 
@@ -536,13 +431,11 @@ def test_cleanup_failure_does_not_reuse_commit_message(tmp_path: Path) -> None:
 def test_cleanup_without_validated_message_does_not_emit_commit_effect(
     tmp_path: Path,
 ) -> None:
-    """Cleanup transition without a prior validated message emits InvokeAgentEffect."""
     repo_root = _make_fake_workspace(tmp_path)
     scope = _make_workspace_scope(repo_root)
     policy_bundle = _load_policy_bundle()
     pipeline_policy = policy_bundle.pipeline
 
-    # commit.agent_invoked is False: no validated message exists
     cleanup_state = PipelineState(
         phase="development_commit_review",
         previous_phase="development_commit",
@@ -573,9 +466,7 @@ def test_cleanup_without_validated_message_does_not_emit_commit_effect(
 def test_malformed_artifact_on_commit_retry_regenerates_the_message(
     tmp_path: Path,
 ) -> None:
-    """Corrupted durable state cannot make a recoverable commit kill the pipeline."""
     repo_root = _make_fake_workspace(tmp_path)
-    # Write a malformed commit message artifact (missing required fields / invalid yaml)
     agent_dir = repo_root / ".agent" / "artifacts"
     agent_dir.mkdir(parents=True, exist_ok=True)
     corrupt_message_file = agent_dir / "commit_message.md"
@@ -604,7 +495,6 @@ def test_malformed_artifact_on_commit_retry_regenerates_the_message(
 def test_repeated_lock_contention_preserves_and_advances_recovery_epoch(
     tmp_path: Path,
 ) -> None:
-    """Repeated lock contention advances recovery_epoch across multiple cleanup cycles."""
     repo_root = _make_fake_workspace(tmp_path)
     _make_commit_message_file(repo_root, "feat: repeated lock contention test")
     policy_bundle = _load_policy_bundle()
@@ -613,7 +503,6 @@ def test_repeated_lock_contention_preserves_and_advances_recovery_epoch(
     commit_state = CommitState(message_prepared=True, diff_prepared=True, agent_invoked=True)
     repairable_error = "GitOperationError: worktree not clean: uncommitted changes exist"
 
-    # Initial state in development_commit
     state = PipelineState(
         phase="development_commit",
         commit=commit_state,
@@ -621,7 +510,6 @@ def test_repeated_lock_contention_preserves_and_advances_recovery_epoch(
         last_error=repairable_error,
     )
 
-    # Iteration 1: lock failure -> cleanup -> commit (epoch=1)
     set_last_commit_error(repairable_error)
     cleanup_1, _ = reduce(state, PipelineEvent.COMMIT_FAILURE, pipeline_policy)
     assert cleanup_1.phase == "development_commit_review"
@@ -633,7 +521,6 @@ def test_repeated_lock_contention_preserves_and_advances_recovery_epoch(
     assert commit_1.recovery_epoch == 1
     assert commit_1.commit.agent_invoked is True
 
-    # Iteration 2: 2nd lock failure -> cleanup -> commit (epoch=2)
     cleanup_2, _ = reduce(commit_1, PipelineEvent.COMMIT_FAILURE, pipeline_policy)
     assert cleanup_2.phase == "development_commit_review"
     assert cleanup_2.recovery_epoch == 2
@@ -641,7 +528,6 @@ def test_repeated_lock_contention_preserves_and_advances_recovery_epoch(
     commit_2, _ = reduce(cleanup_2, PipelineEvent.PHASE_ADVANCE, pipeline_policy)
     assert commit_2.phase == "development_commit"
     assert commit_2.recovery_epoch == 2
-    # Iteration 3: 3rd lock failure -> cleanup -> commit (epoch=3, cap reached)
     cleanup_3, _ = reduce(commit_2, PipelineEvent.COMMIT_FAILURE, pipeline_policy)
     assert cleanup_3.phase == "development_commit_review"
     assert cleanup_3.recovery_epoch == 3
@@ -650,20 +536,17 @@ def test_repeated_lock_contention_preserves_and_advances_recovery_epoch(
     assert commit_3.phase == "development_commit"
     assert commit_3.recovery_epoch == 3
 
-    # Iteration 4: 4th lock failure -> recovery budget exhausted
     cleanup_4, _ = reduce(commit_3, PipelineEvent.COMMIT_FAILURE, pipeline_policy)
     assert cleanup_4.phase == pipeline_policy.recovery.failed_route
     assert cleanup_4.recovery_epoch == 3
     assert cleanup_4.last_execution_result_status == "failed"
 
-    # On eventual commit success, recovery_epoch resets to 0
     commit_success_state, _ = reduce(commit_3, PipelineEvent.COMMIT_SUCCESS, pipeline_policy)
     assert commit_success_state.phase == "development_analysis"
     assert commit_success_state.recovery_epoch == 0
 
 
 def test_stale_recovery_epoch_does_not_reuse_an_old_commit_invocation() -> None:
-    """Ordinary cleanup must not turn historical recovery into a commit retry."""
     policy = _load_policy_bundle().pipeline
     stale_state = PipelineState(
         phase="development_commit_review",

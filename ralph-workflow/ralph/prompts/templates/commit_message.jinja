@@ -10,7 +10,6 @@ Produce and submit one valid `commit_message` artifact for the pending diff.
 {{ render_payload_section('DIFF', DIFF, DIFF_PATH) }}
 
 {% if OPTIONAL_CONTEXT_PATHS %}
-## Optional context
 
 The diff is authoritative. If useful, read any of these supporting artifacts; none is required:
 
@@ -26,27 +25,22 @@ Request a compact finding with exact diff lines and any recorded verification
 evidence. Re-read cited lines before relying on a finding; reconcile the
 message and submit only in this session. Keep coupled changes together.
 
-## WRITE THE MESSAGE FIRST
 
 Write the message a senior maintainer would want in permanent history. A reader should understand the problem, the chosen outcome, and any consequence that matters without reopening the diff. Recorded verification: {{ VERIFICATION_FACTS }}. If that says `none recorded`, omit verification entirely; never write “none recorded” in the commit message.
 
 Detail target: **{{ MESSAGE_BUDGET }}**. Match depth to conceptual scope, not file count. A trivial typo needs only a subject. A narrow fix needs one short paragraph. A medium change may need two or three focused paragraphs. A broad, cross-cutting, or breaking change should be long enough to explain the prior limitation, new invariant or behavior, important design decisions, tradeoffs, and migration or compatibility impact; do not shorten it until those ideas are understandable. Group related edits by purpose instead of subsystem. Never inventory files or directories, copy the diff, enumerate every edit, repeat facts in multiple forms, or pad the body with generated phrases such as “Changed X.”
 
-## HOW TO WRITE THE SUBJECT
 
 Summarize the user-visible or architectural outcome, not the largest directory, implementation technique, or work performed. Choose the conventional-commit type that best describes the outcome: `feat` adds capability, `fix` corrects behavior, `refactor` changes structure without intended behavior change, `perf` improves performance, and `docs|test|style|build|ci|chore` apply when that category is the primary outcome. Use a scope only when one stable product concept clearly owns the change; omit it for cross-cutting work. Mark `!` only when consumers must change how they use, deploy, or integrate the software.
 
 Write one concise imperative subject in the form `<kind>(<scope>)?!?: <description>`. Prefer language that completes “This commit will…”, names the outcome precisely, and avoids vague verbs such as update, change, improve, or handle when a concrete verb exists. Do not enumerate alternatives, end with punctuation, quote the frontmatter value, or use a ticket number as the description. The grammar requires lowercase type and scope, one space after the colon, and a description beginning with a lowercase letter or digit.
 
-## HOW TO WRITE THE BODY
 
 For any change beyond a one-line typo, formatting, or comment change, include a self-contained body. Start with why the old behavior was insufficient, then explain the new behavior or invariant and why that design resolves the problem. Mention tradeoffs, deployment steps, compatibility impact, or verified behavior only when they are real and material. Prefer causal prose over a changelog. Do not repeat the subject, narrate the diff, inventory components, claim tests that were not recorded, or include empty boilerplate categories. Use `## Body` for the normal case; use `## Body Summary`, `## Body Details`, and `## Body Footer` only when a complex migration, breaking change, or issue reference is clearer when separated.
 
-## Submit the result
 
 The submission procedure below is the completion contract. For state changes, use {{ SUBMIT_MD_ARTIFACT_TOOL_INSTRUCTIONS }} and {{ DECLARE_COMPLETE_TOOL_REFERENCE }}.
 
-## Document shape
 
 Choose a commit document for pending work or a skip document when no commit is needed.
 
@@ -58,10 +52,8 @@ type: commit
 subject: fix(auth): prevent token expiry race
 ---
 
-## Body Summary
 - [BS-1] Prevents a race where refreshed tokens could expire mid-request.
 
-## Body Details
 - [BD-1] The expiry check now happens after refresh; covers the concurrent-refresh edge case.
 
 ```
@@ -81,7 +73,6 @@ type: commit
 subject: fix(auth): prevent token expiry race
 ---
 
-## Body
 - [B-1] Explains the expiry race and why the check moved after refresh.
 {% endset %}
 {{ render_artifact_submission('commit_message', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, commit_message_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}

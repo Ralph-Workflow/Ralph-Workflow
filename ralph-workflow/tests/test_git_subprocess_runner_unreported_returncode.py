@@ -1,13 +1,3 @@
-"""An unreported git exit status must read as failure, never as success.
-
-``run_git`` reports ``_UNREPORTED_RETURNCODE`` (SIGKILL's conventional ``-9``)
-when the child never answered. The previous behaviour reported ``0``, which let
-every fail-closed consumer of a ``GitRunResult`` — unswept-work capture,
-staged-patch proofs, protected-path prompts — read "I could not ask git" as
-"git says there is nothing here". Every ``if result.returncode:`` gate then
-opened on an unproven answer, and ``check=True`` reported success.
-"""
-
 from __future__ import annotations
 
 import subprocess
@@ -24,7 +14,6 @@ if TYPE_CHECKING:
 
 
 def _install_unreporting_manager(monkeypatch: pytest.MonkeyPatch) -> _FakeManager:
-    """Install a fake manager whose git child exits without ever reporting."""
     manager = _FakeManager(_FakeProc(returncode=None))
     monkeypatch.setattr(subprocess_runner, "get_process_manager", lambda: manager)
     return manager
@@ -55,5 +44,4 @@ def test_run_git_check_true_raises_for_unreported_child(
 
 
 def test_unreported_returncode_constant_is_nonzero() -> None:
-    """The sentinel itself must never be a success status."""
     assert subprocess_runner._UNREPORTED_RETURNCODE != 0

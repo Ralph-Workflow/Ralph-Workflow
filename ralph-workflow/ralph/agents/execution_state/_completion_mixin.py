@@ -1,11 +1,3 @@
-"""Completion-enforcing mixin for execution strategies.
-
-Strategies that require durable completion evidence before a clean exit is
-considered terminal can inherit this mixin ahead of their base strategy. The
-mixin delegates the terminal decision to the transport-independent completion
-signal contract and is the sole source of truth for
-``supports_completion_enforcement()``.
-"""
 
 from __future__ import annotations
 
@@ -25,13 +17,6 @@ if TYPE_CHECKING:
 
 
 class CompletionEnforcingStrategy:
-    """Mixin that makes ``classify_exit`` depend on terminal completion signals.
-
-    Host classes must not override ``supports_completion_enforcement()``;
-    the mixin itself returns ``True`` and is the sole source of truth for the
-    capability.  Overriding the method hides that truth and breaks the
-    contract, so it is rejected at class-definition time.
-    """
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)

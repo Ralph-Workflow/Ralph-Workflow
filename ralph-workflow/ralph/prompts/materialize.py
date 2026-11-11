@@ -1,4 +1,3 @@
-"""Policy-selected prompt materialization."""
 
 from __future__ import annotations
 
@@ -131,29 +130,20 @@ Repo: _RepoFactoryProtocol | None = None
 
 @dataclass(frozen=True)
 class PromptPhaseOptions:
-    """Optional inputs for prompt materialization with sensible defaults."""
 
     artifacts_policy: ArtifactsPolicy | None = None
 
-    # Deprecated: Ralph-orchestrated workers are removed from the execution model;
-    # parallelism is owned by the developer agent's own sub-agents.
-    # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
     worker_namespace: Path | None = None
     previous_phase: str | None = None
     resume_existing_phase: bool = False
     multimodal_entries: list[MultimodalSidecarEntry] | None = None
 
-    # Deprecated: Ralph-orchestrated workers are removed from the execution model;
-    # parallelism is owned by the developer agent's own sub-agents.
-    # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
     work_unit: WorkUnit | None = None
 
-    # Stage 1 evidence for commit review prompts
     proposal_ref: str | None = None
     tree_sha: str | None = None
     soft_tripwires: list[dict[str, object]] | str | None = None
 
-    # Rejection context passed to developer prompt
     last_review_rejection_reason: str | None = None
     rollback_ref: str | None = None
     last_proposal_ref: str | None = None
@@ -174,45 +164,44 @@ def materialize_prompt_for_phase(
     options: PromptPhaseOptions | None = None,
     **kwargs: object,
 ) -> str:
-    """Render and persist the prompt for a pipeline phase, returning its dump path."""
     if context is None:
         context = PromptPhaseContext(
             phase=cast(
                 "str", kwargs["phase"]
-            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            ),
             workspace=cast(
                 "Workspace", kwargs["workspace"]
-            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            ),
             pipeline_policy=cast(
                 "PipelinePolicy", kwargs["pipeline_policy"]
-            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            ),
             session_caps=cast(
                 "SessionCapabilities", kwargs["session_caps"]
-            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            ),
             workspace_root=cast(
                 "Path", kwargs["workspace_root"]
-            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            ),
         )
     if options is None:
         opts = PromptPhaseOptions(
             artifacts_policy=cast(
                 "ArtifactsPolicy | None", kwargs.get("artifacts_policy")
-            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            ),
             worker_namespace=cast(
                 "Path | None", kwargs.get("worker_namespace")
-            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            ),
             previous_phase=cast(
                 "str | None", kwargs.get("previous_phase")
-            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            ),
             resume_existing_phase=cast(
                 "bool", kwargs.get("resume_existing_phase", False)
-            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            ),
             multimodal_entries=cast(
                 "list[MultimodalSidecarEntry] | None", kwargs.get("multimodal_entries")
             ),
             work_unit=cast(
                 "WorkUnit | None", kwargs.get("work_unit")
-            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            ),
             proposal_ref=optional_str(kwargs.get("proposal_ref")),
             tree_sha=optional_str(kwargs.get("tree_sha")),
             soft_tripwires=cast(
@@ -235,7 +224,7 @@ def materialize_prompt_for_phase(
             soft_tripwires=options.soft_tripwires
             or cast(
                 "list[dict[str, object]] | str | None", kwargs.get("soft_tripwires")
-            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            ),
             last_review_rejection_reason=options.last_review_rejection_reason
             or optional_str(kwargs.get("last_review_rejection_reason")),
             rollback_ref=options.rollback_ref or optional_str(kwargs.get("rollback_ref")),
@@ -270,7 +259,6 @@ def materialize_prompt_for_phase(
 
 
 def prompt_file_for_phase(phase: str) -> str:
-    """Return the workspace-relative path where a phase's prompt is stored."""
     return prompt_dump_path(phase)
 
 
@@ -295,7 +283,6 @@ def read_and_clear_retry_hint(
     worker_namespace: Path | None = None,
     pipeline_policy: PipelinePolicy | None = None,
 ) -> str:
-    """Read the retry hint file for a phase without consuming active context."""
     drain = _retry_hint_drain(phase, pipeline_policy)
     path = (
         str(worker_namespace / "tmp" / f"last_retry_error_{drain}.txt")
@@ -317,7 +304,6 @@ def read_and_clear_retry_hint(
 
 
 def _retry_hint_drain(phase: str, pipeline_policy: PipelinePolicy | None) -> str:
-    """Resolve a phase name to the shared retry-hint drain key."""
     phase_def = pipeline_policy.phases.get(phase) if pipeline_policy is not None else None
     return phase_def.drain if phase_def is not None else phase
 
@@ -339,14 +325,9 @@ def _render_prompt_for_phase(
     workspace_root_for_resolver = Path(workspace.absolute_path("."))
     raw_prompt_path = os.environ.get(_PROMPT_PATH_ENV, "")
     if raw_prompt_path:
-        # PROMPT_PATH is set: use the resolved absolute path (it
-        # must be looked up via the real filesystem).
         source_prompt_path = resolve_effective_prompt_path(workspace_root_for_resolver, os.environ)
         prompt_content = _read_optional(workspace, str(source_prompt_path))
     else:
-        # No PROMPT_PATH: keep the legacy "PROMPT.md" relative path
-        # so workspace abstractions like MemoryWorkspace (which do not
-        # understand symlink-resolved absolute paths) keep working.
         prompt_content = _read_optional(workspace, "PROMPT.md")
     _clear_accepted_analysis_history_if_needed(
         workspace_root=workspace_root,
@@ -366,7 +347,6 @@ def _render_prompt_for_phase(
     drain_artifact_type = (
         _drain_artifact_type(drain, artifacts_policy) if artifacts_policy else None
     )
-    # Planning-style prompt: execution role producing a plan artifact
     if phase_role == "execution" and drain_artifact_type == "plan":
         return _render_planning_prompt(
             context=context,
@@ -378,7 +358,6 @@ def _render_prompt_for_phase(
             template_name=template_name,
             prompt_content=prompt_content,
         )
-    # Commit-style prompt: commit role
     if phase_role == "commit":
         evidence = (
             build_commit_evidence_bundle(workspace_root)
@@ -406,7 +385,6 @@ def _render_prompt_for_phase(
             optional_context_paths=optional_context_paths,
             allow_empty_diff=True,
         )
-    # Commit-review prompt: commit_review role
     if phase_role == "commit_review":
         _snapshot_partial_execution_result(
             workspace,
@@ -432,7 +410,6 @@ def _render_prompt_for_phase(
         workspace,
         template_name=template_name,
     )
-    # Developer-style prompt: execution role producing a development_result artifact
     if phase_role == "execution" and (
         drain_artifact_type == "development_result"
         or (options.work_unit is not None and artifacts_policy is None)
@@ -449,7 +426,6 @@ def _render_prompt_for_phase(
             plan_content=plan_content,
             plan_path=plan_path,
         )
-    # Template-based prompt: review, analysis, or other execution-role phases
     if phase_role in (ROLE_REVIEW, "analysis", "execution", "verification"):
         return _render_template_based_prompt(
             phase=phase,
@@ -473,7 +449,6 @@ def _render_prompt_for_phase(
 
 
 def _append_retry_footer(rendered: str, last_retry_error: str) -> str:
-    """Repeat active validation repair guidance at the prompt's final action point."""
     if not last_retry_error.startswith("VALIDATION FAILURE"):
         return rendered
     return f"{rendered.rstrip()}\n\n{build_validation_retry_footer()}\n"
@@ -483,7 +458,6 @@ append_retry_footer = _append_retry_footer
 
 
 def _development_execution_envelope(pipeline_policy: PipelinePolicy) -> tuple[str, str]:
-    """Return the development timebox minutes and concurrent-worker cap."""
     timebox = pipeline_policy.development_timebox
     development = pipeline_policy.phases.get("development")
     parallelization = development.parallelization if development is not None else None
@@ -616,11 +590,6 @@ def _render_developer_prompt(
     )
     has_docs_mcp = SkillManager().get_docs_mcp_available(workspace_root=workspace_root)
     skills_inline_content = get_inline_skill_content()
-    # S-5: pull the published development-timebox epochs out of the
-    # process environment so the prompt can render the concrete
-    # remaining minutes and the force-cut sentence. The runtime
-    # publishes both together; if either is absent the partial falls
-    # through to the no-partial-on-exhaustion rule.
     dev_warn_epoch = read_published_epoch(DEV_WARN_EPOCH_ENV)
     dev_deadline_epoch = read_published_epoch(DEV_DEADLINE_EPOCH_ENV)
     rejection_reason = options.last_review_rejection_reason or ""
@@ -763,15 +732,6 @@ def _render_template_based_prompt(
     return _append_retry_footer(rendered, last_retry_error)
 
 
-# Transports that expose every MCP tool as ``mcp__<server>__<tool>``: Claude Code
-# and Codex CLI (its core qualifies tool names with the ``__`` delimiter
-# unconditionally, even for a single server).  Cursor's ``agent`` binary
-# follows the documented MCP server-naming convention and exposes remote
-# MCP tools with the same ``mcp__<server>__<tool>`` prefix Claude and
-# Codex use, so Cursor prompts must also use that prefix or the model
-# calls a non-existent tool name.  Kimi Code's ``kimi`` binary follows the
-# same convention on its measured ``stream-json`` wire (tool names arrive
-# as ``mcp__<server>__<tool>``), so kimi prompts use that prefix too.
 _CLAUDE_STYLE_TRANSPORTS = (
     AgentTransport.CLAUDE,
     AgentTransport.CLAUDE_INTERACTIVE,
@@ -782,7 +742,6 @@ _CLAUDE_STYLE_TRANSPORTS = (
 
 
 def submit_artifact_tool_name_for_transport(transport: AgentTransport | None) -> str:
-    """Return the submit-artifact tool name for the given transport."""
     if transport in _CLAUDE_STYLE_TRANSPORTS:
         return claude_tool_name(SUBMIT_MD_ARTIFACT_TOOL)
     if transport == AgentTransport.OPENCODE:
@@ -791,14 +750,6 @@ def submit_artifact_tool_name_for_transport(transport: AgentTransport | None) ->
 
 
 def tool_name_prefix_for_transport(transport: AgentTransport | None) -> str:
-    """Return the tool name prefix for the given agent transport.
-
-    Prompt templates must use the same MCP tool names the active transport sees,
-    or the model calls a name that does not exist. OpenCode namespaces remote MCP
-    tools as ``<server>_<tool>`` (Ralph's server is ``ralph``), so its prompts use
-    the ``ralph_`` prefix — matching the ``ralph_*`` permission Ralph already
-    grants in the OpenCode config. Claude AND Codex use ``mcp__ralph__``.
-    """
     if transport in _CLAUDE_STYLE_TRANSPORTS:
         return claude_tool_name_prefix()
     if transport == AgentTransport.OPENCODE:
@@ -813,7 +764,6 @@ def _read_optional(workspace: Workspace, path: str) -> str | None:
 
 
 def _resolve_plan_handoff(workspace: Workspace) -> tuple[str | None, str]:
-    """Return the plan handoff users and downstream agents should consume."""
     return _resolve_agent_handoff(
         workspace,
         artifact_type="plan",
@@ -883,9 +833,7 @@ def _prepare_planning_prompt_context(
         pipeline_policy=pipeline_policy,
         resume_existing_phase=resume_existing_phase,
     )
-    # Preserve planning context for loopbacks and resumed passes.
     if not preserve_planning_context:
-        # Clear drain artifacts for a genuine fresh planning entry.
         if (
             is_fresh_phase_entry(phase, previous_phase, pipeline_policy)
             and artifacts_policy is not None
@@ -909,7 +857,6 @@ def _prepare_planning_prompt_context(
         if preserve_planning_context
         else ("", "", "")
     )
-    # A planning edit requires a valid retained draft, but its template never renders it.
     if preserve_planning_context and not _template_allows_missing_plan_handoff(template_name):
         plan_content, plan_path = _resolve_required_plan_handoff(
             workspace,
@@ -930,7 +877,6 @@ def _prepare_planning_prompt_context(
 
 
 def _resolve_artifact_history_path(workspace_root: Path, artifact_type: str) -> str:
-    """Return the absolute path to the artifact history index for the given type, if it exists."""
     artifact_dir = workspace_root / ".agent" / "artifacts"
     index = history_index_path(artifact_dir, artifact_type)
     if index.exists():
@@ -939,7 +885,6 @@ def _resolve_artifact_history_path(workspace_root: Path, artifact_type: str) -> 
 
 
 def _artifact_history_dir_from_path(history_path: str) -> str:
-    """Return the archive directory for a resolved artifact history index path."""
     if not history_path:
         return ""
     return str(Path(history_path).parent)
@@ -953,17 +898,6 @@ def _clear_accepted_analysis_history_if_needed(
     previous_phase: str | None,
     artifacts_policy: ArtifactsPolicy | None,
 ) -> None:
-    """Clear artifact history per policy when an analysis phase accepts and advances.
-    Handles both planning_analysis\u2192development and
-    development_analysis\u2192development_commit transitions. The history remains
-    available throughout analysis iterations. Once an analysis phase succeeds and
-    the workflow advances to its on_success target, artifact history is cleared
-    per the per-phase clear_on_fresh_entry policy.
-    Also handles the bypass case where an analysis phase is skipped due to
-    iteration cap being hit. In that case, previous_phase is an execution-role
-    phase whose on_success leads to an analysis phase that routes to the current
-    phase.
-    """
     if previous_phase is None:
         return
     previous_phase_def = pipeline_policy.phases.get(previous_phase)
@@ -986,7 +920,6 @@ def _handle_analysis_accepted(
     previous_phase_def: PhaseDefinition,
     artifacts_policy: ArtifactsPolicy | None,
 ) -> None:
-    """Handle the normal case where an analysis phase accepted and advanced."""
     if previous_phase_def.transitions.on_success != phase:
         return
     loopback_phase = previous_phase_def.transitions.on_loopback
@@ -1007,7 +940,6 @@ def _handle_execution_bypass(
     previous_phase_def: PhaseDefinition,
     artifacts_policy: ArtifactsPolicy | None,
 ) -> None:
-    """Handle bypass case where execution phase skipped its analysis phase."""
     analysis_phase = previous_phase_def.transitions.on_success
     analysis_phase_def = pipeline_policy.phases.get(analysis_phase)
     if analysis_phase_def is None:
@@ -1024,11 +956,6 @@ def _clear_artifact_history_per_policy(
     pipeline_policy: PipelinePolicy,
     artifacts_policy: ArtifactsPolicy | None,
 ) -> None:
-    """Clear artifact history per-phase policy declarations.
-    Iterates over pipeline phases and clears artifact history only for phases
-    with artifact_history.clear_on_fresh_entry=True. When artifacts_policy is None,
-    returns immediately without clearing (safe conservative fallback).
-    """
     if artifacts_policy is None:
         return
     artifact_dir = workspace_root / ".agent" / "artifacts"
@@ -1050,7 +977,6 @@ def _resolve_and_clear_dev_artifact_history(
     is_loopback: bool,
     worker_namespace: Path | None = None,
 ) -> str:
-    """Resolve the artifact history path and optionally clear it on fresh entry."""
     if worker_namespace is not None:
         return ""
     if phase_def is None or phase_def.artifact_history is None or not drain_artifact_type:
@@ -1066,12 +992,6 @@ def _clear_fresh_planning_context(
     pipeline_policy: PipelinePolicy,
     artifacts_policy: ArtifactsPolicy | None,
 ) -> None:
-    """Delete prior planning state before rendering a fresh planning-creation prompt.
-    Clears the staged markdown plan draft and artifact history per policy.
-    Drain artifact clearing is handled by phase_entry_cleaner.clear_phase_entry_drains
-    at PreparePromptEffect time in the runner flow, and by the direct call in
-    _prepare_planning_prompt_context for the direct materialization path.
-    """
     if workspace.exists(PLAN_MD_DRAFT_PATH):
         workspace.remove(PLAN_MD_DRAFT_PATH)
     workspace_root = Path(workspace.absolute_path("."))
@@ -1100,12 +1020,6 @@ def _resolve_agent_handoff(
     artifact_type: str,
     artifact_path: str,
 ) -> tuple[str | None, str]:
-    """Return the Markdown handoff for an agent-consumed artifact.
-
-    Markdown artifacts are the source of truth: submission already writes the
-    handoff file as identical bytes, so resolution reads the existing handoff
-    (or the artifact document itself) directly — no derivation step.
-    """
     relative_handoff_path = handoff_path_for_artifact(artifact_type)
     if relative_handoff_path:
         handoff_path = workspace.absolute_path(relative_handoff_path)
@@ -1128,7 +1042,6 @@ def _resolve_issues_content(workspace: Workspace) -> tuple[str, str]:
 
 
 def resolve_fix_result_content(workspace: Workspace) -> tuple[str, str]:
-    """Return (content, path) for the fix_result artifact, with a fallback if absent."""
     content, path = _resolve_agent_handoff(
         workspace,
         artifact_type="fix_result",
@@ -1143,7 +1056,6 @@ def _resolve_loopback_analysis_feedback(
     pipeline_policy: PipelinePolicy,
     artifacts_policy: ArtifactsPolicy | None,
 ) -> tuple[str, str, str]:
-    """Return loopback analysis feedback content, path, and decision status."""
     if artifacts_policy is None:
         return "", "", ""
     for pdef in pipeline_policy.phases.values():
@@ -1167,14 +1079,6 @@ def _resolve_partial_development_result(
     artifacts_policy: ArtifactsPolicy | None,
     worker_namespace: Path | None = None,
 ) -> tuple[str, str, str, str] | None:
-    """Return the original partial result markdown alongside minimal routing metadata.
-
-    The free-form contract drops the structured-summary/next-steps
-    fields the partial pipeline used to forward. The next agent reads
-    the whole body verbatim under the prior-result header; ``status``
-    and the optional ``prior_session_id`` are the only signals the
-    caller still needs.
-    """
     if artifacts_policy is None:
         return None
     required_artifact = resolve_required_artifact(artifacts_policy, drain=drain)
@@ -1224,7 +1128,6 @@ def _snapshot_partial_execution_result(
     pipeline_policy: PipelinePolicy,
     artifacts_policy: ArtifactsPolicy | None,
 ) -> None:
-    """Persist partial execution context before commit phases clear its artifact."""
     if previous_phase is None or artifacts_policy is None:
         return
     previous_phase_def = pipeline_policy.phases.get(previous_phase)
@@ -1298,7 +1201,6 @@ def _optional_commit_context_paths(
 
 
 def _validated_development_result_content(markdown: str) -> dict[str, object] | None:
-    """Return validated development-result content without accepting error diagnostics."""
     content, diagnostics = parse_and_validate(markdown, DEVELOPMENT_RESULT_SPEC)
     if any(diagnostic.severity == "error" for diagnostic in diagnostics):
         return None
@@ -1311,11 +1213,6 @@ def _latest_artifact_content(
     pipeline_policy: PipelinePolicy,
     artifacts_policy: ArtifactsPolicy | None,
 ) -> tuple[str, str]:
-    """Return the primary work artifact that this phase needs as input context.
-    Traverses the pipeline graph backwards, skipping commit, analysis, and
-    skip_invocation execution phases, to find the last phase that produces
-    a concrete work artifact.
-    """
     if artifacts_policy is None:
         return "", ""
     ra = _find_work_artifact(phase, pipeline_policy, artifacts_policy)
@@ -1330,13 +1227,11 @@ def _latest_artifact_content(
 
 
 def _drain_artifact_type(drain: str, artifacts_policy: ArtifactsPolicy) -> str | None:
-    """Return the artifact_type produced by the given drain, or None."""
     ra = resolve_required_artifact(artifacts_policy, drain=drain)
     return ra.artifact_type if ra is not None else None
 
 
 def _predecessors(phase: str, pipeline_policy: PipelinePolicy) -> list[str]:
-    """Return all phases that can transition to the given phase."""
     result = []
     for name, pdef in pipeline_policy.phases.items():
         t = pdef.transitions
@@ -1350,10 +1245,6 @@ def _find_work_artifact(
     pipeline_policy: PipelinePolicy,
     artifacts_policy: ArtifactsPolicy,
 ) -> RequiredArtifact | None:
-    """Find the primary work artifact for the given phase via backwards graph traversal.
-    Skips commit-role, analysis-role, and skip_invocation execution phases until
-    it finds an execution or review phase that produces a concrete work artifact.
-    """
     visited: set[str] = set()
     queue = list(_predecessors(phase, pipeline_policy))
     while queue:
@@ -1376,7 +1267,6 @@ def _find_work_artifact(
 
 
 def _git_output(workspace_root: Path, *args: str) -> str:
-    """Run a git command in the workspace and return sanitized stdout."""
     result = run_process(
         "git",
         args,
@@ -1388,12 +1278,6 @@ def _git_output(workspace_root: Path, *args: str) -> str:
 
 
 def _git_diff(workspace_root: Path) -> str:
-    """Return the cumulative diff from the dev-cycle baseline through the working tree.
-    When a baseline SHA is recorded in .agent/start_commit, the diff includes:
-    - All commits landed since the baseline (baseline..HEAD), and any uncommitted
-      changes on top (HEAD vs working tree). This is correct whether the user
-      commits once per dev cycle or once per individual dev iteration within a cycle.
-    """
     if not _is_inside_git_repo(workspace_root):
         return "(no diff available)"
     baseline_sha = read_cycle_baseline(workspace_root)
@@ -1403,7 +1287,6 @@ def _git_diff(workspace_root: Path) -> str:
 
 
 def _pending_diff(workspace_root: Path) -> str:
-    """Return the pending (staged but not committed) diff for a workspace."""
     if not _is_inside_git_repo(workspace_root):
         return "(no diff available)"
     return _git_output(workspace_root, "diff", "HEAD")

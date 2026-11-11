@@ -1,4 +1,3 @@
-"""Parser for Codex's NDJSON streaming format."""
 
 from __future__ import annotations
 
@@ -19,27 +18,14 @@ def _parse_codex_object(
     obj: dict[str, object],
     stripped: str,
 ) -> Iterator[AgentOutputLine]:
-    """Public parse-object helper preserved for back-compat with downstream tests.
-
-    Delegates to the same per-event dispatch that ``CodexParser`` uses.
-    Kept as a module-level function so external callers (e.g. legacy tests
-    importing ``_parse_codex_object``) keep working unchanged.
-    """
     yield from _CodexDispatch().dispatch(obj, stripped)
 
 
 class _CodexDispatch:
-    """Per-event-type dispatch for CodexParser.
-
-    Encapsulates the historical ``handler_map`` + ``_parse_object`` method
-    body as a plain callable so the subclass ``_dispatch_json_object`` can
-    delegate to it without re-implementing the routing.  Holds a reference
-    to the owning parser so accumulator state stays in one place.
-    """
 
     def __init__(self, owner: CodexParser | None = None) -> None:
         self._owner = owner
-        self._accumulators: dict[str, TextAccumulator] = {}  # bounded-accumulator-ok: drained
+        self._accumulators: dict[str, TextAccumulator] = {}
         self._current_response_id: str | None = None
         self._stream_counter = 0
 
@@ -269,7 +255,6 @@ class _CodexDispatch:
 
 
 def _item_result_content(result: object) -> str:
-    """Extract the readable text from a Codex terminal tool result."""
     if isinstance(result, str):
         return result
     if isinstance(result, dict):
@@ -286,19 +271,6 @@ def _item_result_content(result: object) -> str:
 
 
 class CodexParser(NdjsonParserBase):
-    """Parser for Codex's NDJSON streaming output with robust delta accumulation.
-
-    Text deltas are accumulated into coherent blocks before emission, flushing on:
-    - ``response.completed`` / ``turn.completed`` / ``message_stop`` (end of message)
-    - ``\\n\\n`` paragraph boundary (incremental surfacing of long responses)
-    - Iterator exhaustion (final flush via ``flush_accumulators()``)
-
-    Inherits from :class:`NdjsonParserBase` which owns the
-    ``data:`` strip, ``[DONE]`` short-circuit, JSON parse dispatch,
-    lifecycle suppression, and error extraction.  The subclass
-    ``_dispatch_json_object`` delegates to ``_CodexDispatch`` for the
-    per-event-type routing.
-    """
 
     _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset(
         {"turn.completed", "message_stop", "done", "stop", "response.completed"}
@@ -310,15 +282,9 @@ class CodexParser(NdjsonParserBase):
         subagent_source_label: str | None = None,
     ) -> None:
         super().__init__()
-        # R5: bind the per-invocation shared SubagentPidRegistry + per-transport
-        # source label. The base's ``_try_register_subagent_pid_from_obj``
-        # hook fires for every structured child-lifecycle event observed
-        # by the parser (Codex's NDJSON shape does not currently carry
-        # embedded ``pid`` fields; this is forward-compat for the
-        # per-transport SubagentPidSource seam).
         self._subagent_pid_registry: SubagentPidRegistry | None = subagent_pid_registry
         self._subagent_source_label: str | None = subagent_source_label
-        self._accumulators: dict[str, TextAccumulator] = {}  # bounded-accumulator-ok: drained
+        self._accumulators: dict[str, TextAccumulator] = {}
         self._current_response_id: str | None = None
         self._stream_counter = 0
         self._dispatcher = _CodexDispatch(self)
@@ -329,12 +295,7 @@ class CodexParser(NdjsonParserBase):
         raw: str,
         source_timestamp: str | None = None,
     ) -> Iterator[AgentOutputLine]:
-        # R5 registration hook is centralised in NdjsonParserBase.
-        # DA-002 (wt-028-display S-2 / AC-01): the base class
-        # post-processes the iterator to attach ``source_timestamp``
-        # to any AgentOutputLine that lacks one, so the per-event
-        # dispatcher itself does not need to thread the parameter.
-        del source_timestamp  # accepted for override compatibility; ignored
+        del source_timestamp
         yield from self._dispatcher.dispatch(obj, raw)
 
     def flush_accumulators(self) -> Iterator[AgentOutputLine]:

@@ -1,5 +1,3 @@
-"""Tests for same-workspace parallel worker behaviour."""
-
 from __future__ import annotations
 
 import asyncio
@@ -35,7 +33,6 @@ class TestRunnerNoMergeStep:
     def test_runner_fanout_emits_no_branch_or_worktree_subprocess(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Runner fan-out must never issue git branch/merge/checkout/worktree subprocesses."""
 
         banned_calls: list[str] = []
 
@@ -79,7 +76,6 @@ class TestRunnerNoMergeStep:
         )
 
     def test_runner_event_stream_has_no_merge_or_worktree_events(self, tmp_path: Path) -> None:
-        """Event stream from runner fan-out must not contain merge, worktree, or branch events."""
 
         unit = _make_unit("unit-ev", ["src/ev"])
         effect = FanOutEffect(work_units=(unit,), max_workers=1)

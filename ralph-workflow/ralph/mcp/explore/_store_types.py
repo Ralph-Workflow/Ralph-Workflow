@@ -1,18 +1,3 @@
-"""Store types and helpers for the indexed exploration substrate.
-
-Extracted from :mod:`ralph.mcp.explore.store` so the hub module
-stays under the per-file line ceiling. This module owns the row
-dataclasses (FileRow, ChunkRow, EvidenceRow, SpanRow, SymbolRow,
-EdgeRow), the Clock + SystemClock protocol, the row-converter
-helpers (``_row_to_*`` + ``_row_*``), the chunk-id + evidence-id
-helpers, the workspace hashing utilities, and the
-``normalize_index_path`` policy.
-
-The :class:`ExploreStore` class lives in
-:mod:`ralph.mcp.explore._store_class` and is re-exported via the
-hub module :mod:`ralph.mcp.explore.store` for backward
-compatibility.
-"""
 
 from __future__ import annotations
 
@@ -26,73 +11,39 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Protocol, cast
 
-# ContentCacheChunk and ContentCachePayload live in
-# :mod:`ralph.mcp.explore._store_types_payload` so the hub module
-# stays under the per-file line ceiling. They are re-exported
-# here for backward compatibility with callers that import
-# them from ``ralph.mcp.explore._store_types`` directly.
 from ralph.mcp.explore._store_types_payload import (
     ContentCacheChunk,
     ContentCachePayload,
 )
-
-# --- Constants -------------------------------------------------------------
 
 DEFAULT_INDEX_ROOT: Final[str] = ".agent/ralph-explore"
 DEFAULT_INDEX_DB: Final[str] = "index.sqlite"
 DEFAULT_CHUNK_LINES: Final[int] = 50
 DEFAULT_FTS_TOKENIZE: Final[str] = "unicode61"
 
-# AC-05/AC-06: persisted schema version. Bumping this constant
-# signals a breaking change in the persisted rows; the store compares
-# it on open and triggers a safe cold rebuild when the on-disk
-# version is missing or older. Tests pin this constant.
 SCHEMA_VERSION: Final[str] = "explore-v2"
 
-# Bounded caps for retention. The audit_register/evidence_tombstones
-# caps are documented in the architecture finding.
 JOB_HISTORY_CAP: Final[int] = 100
 JOB_HISTORY_RETENTION_SECONDS: Final[int] = 14 * 24 * 60 * 60
 TOMBSTONE_CAP: Final[int] = 10_000
 TOMBSTONE_RETENTION_SECONDS: Final[int] = 30 * 24 * 60 * 60
 
-# SQLite default per-call busy timeout. The architecture finding
-# requires every blocking call to be bounded with a fail-closed timeout.
 DEFAULT_BUSY_TIMEOUT_MS: Final[int] = 5_000
 
-# Maximum file size inlined for FTS chunking. Files larger than this
-# still get hashed + chunked at byte-window granularity; the index
-# only stores chunks (never the full file) so the FTS footprint stays
-# bounded.
 DEFAULT_MAX_CHUNK_BYTES: Final[int] = 16 * 1024
 
 
-# --- Schema ----------------------------------------------------------------
 
-# AC-01: ordered additive migrations. Each entry maps a from-version
-# to the ALTER TABLE / CREATE statements that bring the database
-# forward. Migrations run in tuple order during :meth:`ExploreStore._initialize`
-# before the recorded ``settings.schema_version`` is pinned.
 _SCHEMA_MIGRATIONS: tuple[tuple[str, str], ...] = (
     (
         "explore-v2",
         "CREATE INDEX IF NOT EXISTS idx_edges_path ON edges(path)",
     ),
     (
-        # explore-v1 -> explore-v2: chunks_fts rows are linked to the
-        # ``chunks`` table by storing the FTS rowid in ``chunks.fts_rowid``;
-        # FTS deletes become rowid-keyed (O(log n)) instead of full
-        # scanning the UNINDEXED chunk_id/path columns (O(n) per delete,
-        # O(n^2) per rebuild — the 699s cold-build root cause). Old
-        # indexes are wiped by the schema-version mismatch path, so
-        # this entry is add-only for fresh databases.
         "explore-v2",
         "ALTER TABLE chunks ADD COLUMN fts_rowid INTEGER",
     ),
     (
-        # adds durable evidence->chunk and evidence->span links so
-        # the persisted evidence row resolves to the exact chunk
-        # and span ids rather than re-derived line coordinates.
         "explore-v1",
         "ALTER TABLE evidence ADD COLUMN chunk_id TEXT",
     ),
@@ -110,23 +61,20 @@ _ADD_COLUMN_RE = _re_migration.compile(
 
 
 def _is_add_column(sql: str) -> bool:
-    """Return True when ``sql`` is an ``ALTER TABLE ... ADD COLUMN``."""
     return bool(_ADD_COLUMN_RE.match(sql))
 
 
 def _parse_add_column(sql: str) -> tuple[str, str]:
-    """Return ``(table_name, column_name)`` for a matched ADD COLUMN sql."""
     match = _ADD_COLUMN_RE.match(sql)
-    assert match is not None  # callers gate via ``_is_add_column``
+    assert match is not None
     return match.group(1), match.group(2)
 
 
 def _column_exists(cur: sqlite3.Cursor, table: str, column: str) -> bool:
-    """Return True when ``table`` already has a ``column`` row."""
     pragma_cur = cur.execute(f"PRAGMA table_info({table})")
     info_rows = cast(
         "list[sqlite3.Row]", pragma_cur.fetchall()
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     for row in info_rows:
         value_obj: object = row["name"]
         if isinstance(value_obj, str) and value_obj == column:
@@ -223,9 +171,6 @@ _DDL: tuple[str, ...] = (
         error_summary TEXT
     )
     """,
-    # AC-05: content_cache is required by the minimum storage contract.
-    # It deduplicates extraction metadata by content hash so a moved
-    # or copied file can reuse an already-extracted record.
     """
     CREATE TABLE IF NOT EXISTS content_cache (
         content_hash TEXT PRIMARY KEY,
@@ -252,11 +197,6 @@ _DDL: tuple[str, ...] = (
         value TEXT
     )
     """,
-    # Phase 2 structure tables (AC-06). The schema is additive so a
-    # Phase 1 database can reopen and gain structure rows on the
-    # next changed/full reindex. Stable ids are deterministic from
-    # (path, kind, start_line, start_col, end_line, end_col,
-    # extractor_version) so no-op reindex produces stable logical rows.
     """
     CREATE TABLE IF NOT EXISTS spans (
         span_id TEXT PRIMARY KEY,
@@ -305,12 +245,10 @@ _DDL: tuple[str, ...] = (
 )
 
 
-# --- Public dataclasses ----------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
 class FileRow:
-    """A row from the ``files`` table."""
 
     path: str
     content_hash: str
@@ -324,7 +262,6 @@ class FileRow:
 
 @dataclass(frozen=True, slots=True)
 class ChunkRow:
-    """A row from the ``chunks`` table."""
 
     chunk_id: str
     path: str
@@ -337,15 +274,6 @@ class ChunkRow:
 
 @dataclass(frozen=True, slots=True)
 class EvidenceRow:
-    """A row from the ``evidence`` table.
-
-    AC-01: ``chunk_id`` and ``span_id`` are durable links to the
-    persisted ``chunks`` and ``spans`` rows so the evidence row
-    resolves to the exact indexed identity (line and column bounds,
-    text hash, chunk role, structured symbol) rather than to raw
-    coordinates that can drift between reindex passes. Both fields
-    may be None when the evidence predates the linked extraction.
-    """
 
     evidence_id: str
     path: str
@@ -363,7 +291,6 @@ class EvidenceRow:
 
 @dataclass(frozen=True, slots=True)
 class SpanRow:
-    """A row from the ``spans`` table (AC-06 Phase 2 structure)."""
 
     span_id: str
     path: str
@@ -379,7 +306,6 @@ class SpanRow:
 
 @dataclass(frozen=True, slots=True)
 class SymbolRow:
-    """A row from the ``symbols`` table (AC-06 Phase 2 structure)."""
 
     symbol_id: str
     name: str
@@ -395,7 +321,6 @@ class SymbolRow:
 
 @dataclass(frozen=True, slots=True)
 class EdgeRow:
-    """A row from the ``edges`` table (AC-06 Phase 2 structure)."""
 
     edge_id: str
     source_id: str
@@ -411,15 +336,6 @@ class EdgeRow:
 
 @dataclass(frozen=True, slots=True)
 class ContentCacheRow:
-    """A row from the ``content_cache`` metadata table.
-
-    The cache deduplicates extraction payloads by ``content_hash``
-    so a moved or copied file can reuse an already-extracted record.
-    Path-specific rows (chunks/FTS/evidence/spans/symbols/edges)
-    are rebuilt by the reindex pipeline because their identity
-    depends on the normalized path. This row carries the bookkeeping
-    so metadata reads stay cheap.
-    """
 
     content_hash: str
     language: str | None
@@ -429,9 +345,6 @@ class ContentCacheRow:
     error_summary: str | None
 
 
-# ContentCacheChunk and ContentCachePayload are imported at the top
-# of this module (see :mod:`ralph.mcp.explore._store_types_payload`)
-# and re-exported here for backward compatibility.
 
 __all__ = [
     "ContentCacheChunk",
@@ -440,54 +353,30 @@ __all__ = [
 
 
 class Clock(Protocol):
-    """Protocol for wall-clock injection. Tests inject a FakeClock."""
 
     def now(self) -> float: ...
 
 
 class SystemClock:
-    """Default wall-clock implementation backed by ``time.monotonic``."""
 
     def now(self) -> float:
         return time.monotonic()
 
 
 def real_clock_seconds() -> float:
-    """Return a wall-clock seconds value as a float.
-
-    Used for ``indexed_at`` / ``marked_at`` / ``created_at`` fields
-    that are persisted alongside evidence rows. Tests inject a fake
-    clock through ``Clock`` to avoid ``audit_test_policy`` wall-clock
-    violations; this helper is the default for production code.
-    """
     return time.time()
 
 
-# --- Path normalization ----------------------------------------------------
 
 
 def normalize_index_path(path: str) -> str:
-    """Normalize a workspace-relative POSIX path for index storage.
-
-    Rejects absolute paths and any normalized path that still contains
-    a ``..`` segment after ``PurePosixPath`` normalization. The
-    rejection happens before the path is ever persisted, so the index
-    cannot accept a workspace-boundary escape.
-
-    Raises ``ValueError`` for absolute or parent-escape inputs.
-    """
     if not isinstance(path, str):
         raise ValueError(f"normalize_index_path: path must be a str, got {type(path).__name__}")
-    # Import lazily to avoid an import cycle at module load time
-    # (the workspace utils import the MCP coordination helpers).
     from ralph.mcp.tools.workspace._utils import normalize_relative_path
 
     if path.startswith("/"):
         raise ValueError(f"normalize_index_path: absolute path {path!r} is not allowed")
     normalized = normalize_relative_path(path)
-    # ``PurePosixPath`` collapses redundant separators but does not
-    # surface ``..`` escapes; explicitly reject any segment that
-    # resolves to ``..`` so the index never stores a parent reference.
     if normalized != "" and (
         normalized == ".."
         or normalized.startswith("../")
@@ -498,14 +387,11 @@ def normalize_index_path(path: str) -> str:
     return normalized
 
 
-# --- Store -----------------------------------------------------------------
 
 
-# --- Helpers --------------------------------------------------------------
 
 
 def _row_str(row: sqlite3.Row, key: str) -> str:
-    """Read a string column from ``row`` with a precise return type."""
     value: object = row[key]
     if not isinstance(value, str):
         return str(value)
@@ -516,7 +402,6 @@ row_str = _row_str
 
 
 def _row_int(row: sqlite3.Row, key: str) -> int:
-    """Read an integer column from ``row`` with a precise return type."""
     value: object = row[key]
     if isinstance(value, bool):
         return int(bool(value))
@@ -524,11 +409,10 @@ def _row_int(row: sqlite3.Row, key: str) -> int:
         return value
     return int(
         cast("int | str | float", value)
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
 
 
 def _row_float(row: sqlite3.Row, key: str) -> float:
-    """Read a float column from ``row`` with a precise return type."""
     value: object = row[key]
     if isinstance(value, bool):
         return float(value)
@@ -536,11 +420,10 @@ def _row_float(row: sqlite3.Row, key: str) -> float:
         return float(value)
     return float(
         cast("int | str | float", value)
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
 
 
 def _row_bool(row: sqlite3.Row, key: str) -> bool:
-    """Read a boolean column from ``row`` with a precise return type."""
     value: object = row[key]
     if isinstance(value, bool):
         return value
@@ -548,7 +431,6 @@ def _row_bool(row: sqlite3.Row, key: str) -> bool:
 
 
 def _row_optional_str(row: sqlite3.Row, key: str) -> str | None:
-    """Read an optional string column from ``row``."""
     value: object = row[key]
     if value is None:
         return None
@@ -558,7 +440,6 @@ def _row_optional_str(row: sqlite3.Row, key: str) -> str | None:
 
 
 def _row_int_opt(row: sqlite3.Row | None, idx: int) -> int:
-    """Read an integer column from a positional ``row`` index (Any-safe)."""
     if row is None:
         return 0
     value: object = row[idx]
@@ -568,11 +449,10 @@ def _row_int_opt(row: sqlite3.Row | None, idx: int) -> int:
         return value
     return int(
         cast("int | str | float", value)
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
 
 
 def _row_to_file(row: sqlite3.Row) -> FileRow:
-    """Convert a ``files`` row to a typed ``FileRow`` dataclass."""
     return FileRow(
         path=_row_str(row, "path"),
         content_hash=_row_str(row, "content_hash"),
@@ -586,7 +466,6 @@ def _row_to_file(row: sqlite3.Row) -> FileRow:
 
 
 def _row_to_evidence(row: sqlite3.Row) -> EvidenceRow:
-    """Convert an ``evidence`` row to a typed ``EvidenceRow`` dataclass."""
     return EvidenceRow(
         evidence_id=_row_str(row, "evidence_id"),
         path=_row_str(row, "path"),
@@ -604,7 +483,6 @@ def _row_to_evidence(row: sqlite3.Row) -> EvidenceRow:
 
 
 def _row_to_span(row: sqlite3.Row) -> SpanRow:
-    """Convert a ``spans`` row to a typed ``SpanRow``."""
     return SpanRow(
         span_id=_row_str(row, "span_id"),
         path=_row_str(row, "path"),
@@ -620,7 +498,6 @@ def _row_to_span(row: sqlite3.Row) -> SpanRow:
 
 
 def _row_to_symbol(row: sqlite3.Row) -> SymbolRow:
-    """Convert a ``symbols`` row to a typed ``SymbolRow``."""
     return SymbolRow(
         symbol_id=_row_str(row, "symbol_id"),
         name=_row_str(row, "name"),
@@ -636,7 +513,6 @@ def _row_to_symbol(row: sqlite3.Row) -> SymbolRow:
 
 
 def _row_to_edge(row: sqlite3.Row) -> EdgeRow:
-    """Convert an ``edges`` row to a typed ``EdgeRow``."""
     return EdgeRow(
         edge_id=_row_str(row, "edge_id"),
         source_id=_row_str(row, "source_id"),
@@ -652,7 +528,6 @@ def _row_to_edge(row: sqlite3.Row) -> EdgeRow:
 
 
 def _row_to_content_cache(row: sqlite3.Row) -> ContentCacheRow:
-    """Convert a ``content_cache`` metadata row to ``ContentCacheRow``."""
     return ContentCacheRow(
         content_hash=_row_str(row, "content_hash"),
         language=_row_optional_str(row, "language"),
@@ -664,24 +539,16 @@ def _row_to_content_cache(row: sqlite3.Row) -> ContentCacheRow:
 
 
 def sha256_text(text: str) -> str:
-    """Return the SHA-256 hex digest of ``text`` (UTF-8 encoded)."""
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def sha256_bytes(data: bytes) -> str:
-    """Return the SHA-256 hex digest of ``data``."""
     return hashlib.sha256(data).hexdigest()
 
 
 def chunk_text(
     text: str, *, lines_per_chunk: int = DEFAULT_CHUNK_LINES
 ) -> list[tuple[int, int, str]]:
-    """Split ``text`` into ``(start_line, end_line, chunk_text)`` chunks.
-
-    Lines are 1-based and inclusive. The trailing chunk may be smaller
-    than ``lines_per_chunk``. Empty input returns an empty list so
-    callers can iterate without a guard.
-    """
     if not text:
         return []
     lines = text.splitlines(keepends=False)
@@ -703,7 +570,6 @@ def derive_chunk_id(
     text_hash: str,
     extractor_version: str,
 ) -> str:
-    """Return a stable chunk id derived from the deterministic inputs."""
     payload = f"{path}\x00{start_line}\x00{end_line}\x00{text_hash}\x00{extractor_version}"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
@@ -717,7 +583,6 @@ def derive_evidence_id(
     kind: str,
     extractor_version: str,
 ) -> str:
-    """Return a stable evidence id derived from the deterministic inputs."""
     payload = (
         f"ev\x00{path}\x00{content_hash}\x00{start_line}\x00{end_line}\x00"
         f"{kind}\x00{extractor_version}"
@@ -725,9 +590,6 @@ def derive_evidence_id(
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-# Ponytail: small helper to enumerate indexable files in a workspace.
-# Phase 1 keeps this minimal: skip hidden dirs, common VCS dirs, and
-# anything under .agent/ (the index lives there, never inside itself).
 SKIP_DIR_NAMES: Final[frozenset[str]] = frozenset(
     {
         ".git",
@@ -750,24 +612,11 @@ SKIP_DIR_NAMES: Final[frozenset[str]] = frozenset(
 
 
 def iter_indexable_files(workspace_root: Path) -> Iterator[os.DirEntry[str]]:
-    """Yield indexable :class:`os.DirEntry` entries under ``workspace_root``.
-
-    Skips common VCS / cache / build directories. Yields
-    :class:`os.DirEntry` so the caller can call
-    :meth:`DirEntry.stat` (a no-extra-syscall helper backed by the
-    directory's readdir buffer) instead of issuing a fresh
-    ``Path.stat()`` per file.
-
-    Non-regular entries (sockets, FIFOs, etc.) are skipped, matching
-    the prior ``os.walk`` behaviour. The skip-dir set prunes subtrees
-    in-place, mirroring the prior ``os.walk`` pruning contract.
-    """
     root = Path(workspace_root).resolve()
     stack: list[Path] = [root]
     while stack:
         current = stack.pop()
         try:
-            # filesystem-read-ok: canonical explore index traversal prunes skip directories in-place.
             with os.scandir(current) as it:
                 entries = list(it)
         except OSError:
@@ -793,12 +642,6 @@ def iter_indexable_files(workspace_root: Path) -> Iterator[os.DirEntry[str]]:
 
 
 def collect_workspace_files(workspace_root: Path) -> list[tuple[str, int, int]]:
-    """Return ``[(relative_path, size_bytes, mtime_ns), ...]`` for indexable files.
-
-    Each row's (size, mtime_ns) comes from a single ``DirEntry.stat``
-    call (no extra ``Path.stat()`` syscall). The output order and
-    shape match the prior ``os.walk`` implementation.
-    """
     root = Path(workspace_root).resolve()
     rows: list[tuple[str, int, int]] = []
     for entry in iter_indexable_files(root):
@@ -812,37 +655,16 @@ def collect_workspace_files(workspace_root: Path) -> list[tuple[str, int, int]]:
 
 
 def hash_workspace_file(workspace_root: Path, relative_path: str) -> tuple[str, int, int]:
-    """Return ``(content_hash, size_bytes, mtime_ns)`` for a single workspace file.
-
-    Reads via the same workspace boundary the MCP tools enforce. The
-    file's content hash is authoritative; mtime/size are a cheap
-    prefilter only.
-
-    Uses ``Path.is_relative_to`` (Python 3.9+) so the boundary check
-    cannot be fooled by sibling-prefix escapes (``/tmp/ws`` vs
-    ``/tmp/ws_evil``) or symlink targets outside ``workspace_root``.
-
-    AC-05: streams the file in bounded chunks so a single large
-    file cannot blow the byte budget or block past a cancellation
-    deadline. The chunk size is the same as the SQLite page size
-    so a workspace file larger than memory can still be hashed.
-    """
     root = Path(workspace_root).resolve()
     full = (root / relative_path).resolve()
-    # Ponytail: string-prefix startswith() is unsafe — ``/tmp/ws_evil``
-    # startswith ``/tmp/ws``. Use Path.is_relative_to instead so
-    # sibling-prefix collisions and symlink escapes are rejected.
     try:
         is_relative = full.is_relative_to(root)
-    except AttributeError:  # pragma: no cover — Python <3.9 fallback
+    except AttributeError:
         is_relative = str(full).startswith(str(root) + os.sep) or full == root
     if not is_relative:
         raise ValueError(f"Path escapes workspace: {relative_path!r}")
     if not full.is_file():
         raise FileNotFoundError(relative_path)
-    # AC-05: stream the file in bounded chunks. The chunk size of
-    # 1 MiB keeps memory bounded and matches the default
-    # ProcessManager stdout chunk size for consistency.
     hasher = hashlib.sha256()
     with full.open("rb") as f:
         while True:
@@ -859,28 +681,16 @@ def hash_workspace_file(workspace_root: Path, relative_path: str) -> tuple[str, 
 
 
 def assert_within_workspace(workspace_root: Path, full_path: Path) -> None:
-    """Raise ``ValueError`` when ``full_path`` is outside ``workspace_root``.
-
-    Resolves symlinks and uses ``Path.is_relative_to`` to defend
-    against sibling-prefix and symlink-escape attacks on the
-    indexed exploration store. Used by the reindex pipeline and the
-    workspace file handlers to share one boundary check.
-    """
     root = Path(workspace_root).resolve()
     resolved = Path(full_path).resolve()
     try:
         is_relative = resolved.is_relative_to(root)
-    except AttributeError:  # pragma: no cover
+    except AttributeError:
         is_relative = str(resolved).startswith(str(root) + os.sep) or resolved == root
     if not is_relative:
         raise ValueError(f"Path escapes workspace: {full_path}")
 
 
-# AC-05: content-cache payload (de)serialization lives in
-# :mod:`ralph.mcp.explore._store_types_payload` so this hub
-# module stays under the per-file line ceiling. The same names
-# are re-exported above for backward compatibility with
-# callers that import them from this module directly.
 
 
 __all__ = [

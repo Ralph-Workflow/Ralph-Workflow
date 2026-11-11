@@ -1,5 +1,3 @@
-"""Tests for master prompt materialization."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -190,14 +188,6 @@ def test_materialize_master_prompt_in_worker_mode_does_not_write_shared_prompt_h
 
 
 def test_build_master_prompt_includes_dispatcher_hint_for_agy_transport() -> None:
-    """S-7 / C1 / DoD 13: AGY-shaped master prompts name ``call_mcp_tool``.
-
-    The master prompt must thread the agent transport into the
-    rendered text so AGY-shaped sessions receive the MCP dispatcher
-    hint -- without it the model has no route to Ralph's tools and
-    silently falls back to the file-write path (the measured
-    2026-08-06 defect).
-    """
     from ralph.config.enums import AgentTransport
     from ralph.prompts.master_prompt import build_master_prompt
 
@@ -210,20 +200,10 @@ def test_build_master_prompt_includes_dispatcher_hint_for_agy_transport() -> Non
     )
     assert "call_mcp_tool" in agy_prompt
     assert "ralph_submit_md_artifact" in agy_prompt
-    # The hint names the canonical MCP server name so the model knows
-    # which server to route the call through.
     assert "ralph" in agy_prompt
 
 
 def test_build_master_prompt_does_not_include_dispatcher_hint_for_claude_transport() -> None:
-    """S-7 / C1 / DoD 13: non-AGY transports do NOT receive the dispatcher hint.
-
-    Claude / Cursor / OpenCode / Nanocoder advertise Ralph's tools
-    directly (e.g. ``ralph_submit_md_artifact`` is in their tool
-    names); the dispatcher hint would be misleading and is omitted.
-    The default call (no ``transport`` kwarg) matches today's call
-    sites, so the hint must also be absent in that control case.
-    """
     from ralph.config.enums import AgentTransport
     from ralph.prompts.master_prompt import build_master_prompt
 

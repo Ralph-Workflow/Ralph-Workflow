@@ -52,18 +52,12 @@ def test_test_target_uses_maintained_suite_runner() -> None:
 
 
 def test_run_python_uses_uv_managed_interpreter() -> None:
-    """Regression: test targets must not resolve bare Python outside .venv."""
     makefile_text = MAKEFILE_PATH.read_text(encoding="utf-8")
 
     assert "RUN_PYTHON = uv run --locked --project . python" in makefile_text
 
 
 def test_makefile_unconditionally_selects_the_project_virtual_environment() -> None:
-    """S-4 regression: inherited environments cannot make ``uv run`` warn.
-
-    The assignment must apply before the first ``uv run`` can create a missing
-    project environment, rather than only after ``.venv/pyvenv.cfg`` exists.
-    """
     makefile_text = MAKEFILE_PATH.read_text(encoding="utf-8")
 
     assert "export VIRTUAL_ENV := $(abspath .venv)" in makefile_text
@@ -71,14 +65,12 @@ def test_makefile_unconditionally_selects_the_project_virtual_environment() -> N
 
 
 def test_default_worker_count_preserves_verify_budget_headroom() -> None:
-    """The maintained worker baseline avoids host oversubscription."""
     makefile_text = MAKEFILE_PATH.read_text(encoding="utf-8")
 
     assert "PYTEST_WORKERS ?= auto" in makefile_text
 
 
 def test_install_targets_delegate_to_the_installer() -> None:
-    """S-4: install and dev select distinct snapshot flavors."""
     makefile_text = MAKEFILE_PATH.read_text(encoding="utf-8")
 
     assert _target_body("install") == ["$(RUN_PYTHON) -m ralph.install --build"]
@@ -167,7 +159,6 @@ def test_focused_make_targets_do_not_duplicate_pytest_orchestration() -> None:
 
 
 def test_multimodal_smoke_uses_configurable_bounded_parallel_workers() -> None:
-    """The multimodal smoke suite uses its named worker policy and markers."""
     makefile_text = MAKEFILE_PATH.read_text(encoding="utf-8")
     body = _target_body("test-multimodal-smoke")
     assert len(body) == 1
@@ -190,7 +181,6 @@ def test_visual_smoke_runs_only_its_smoke_marked_fixture_judge() -> None:
 
 
 def test_test_subprocess_e2e_uses_maintained_explicit_file_selector() -> None:
-    """The E2E profile avoids collecting the entire repository to deselect it."""
     assert _target_body("test-subprocess-e2e") == [
         "$(RUN_PYTHON) -m ralph.test_suites --subprocess-e2e"
     ]
@@ -232,16 +222,6 @@ def test_install_make_smoke_is_an_explicit_authoritative_target() -> None:
 
 @pytest.mark.timeout_seconds(5)
 def test_make_verify_excludes_paid_agy_markers() -> None:
-    """The immutable default profile cannot collect manual paid AGY runs.
-
-    The ``agy`` and ``live_agy`` bans are universal -- no
-    ``_VERIFY_STEPS`` label or arg may contain either substring, on any
-    transport. The ``smoke`` ban permits only the aggregate deterministic
-    installer, multimodal, and visual smoke target. Its subprocess stubs
-    never dial paid backends and every case is charged to the same budget.
-    Every other step is
-    checked for the full triple.
-    """
     expression = test_suites_module._VERIFICATION_MARK_EXPRESSION
 
     assert "not subprocess_e2e" in expression
@@ -270,14 +250,6 @@ def test_make_verify_excludes_paid_agy_markers() -> None:
 
 
 def test_test_live_agy_target_uses_live_agy_marker() -> None:
-    """The ``test-live-agy`` target is sized for live AGY subprocess tests.
-
-    The live AGY tests are marked BOTH ``subprocess_e2e`` AND ``live_agy``;
-    they require real network round-trips to the Antigravity backend and
-    run well past the 60s per-suite cap on ``test-subprocess-e2e``. The
-    dedicated target runs only the ``live_agy``-marked tests with the
-    ``LIVE_AGY_SUITE_TIMEOUT_SECONDS`` per-suite timeout.
-    """
     live_body = _target_body("test-live-agy")
 
     assert live_body == [
@@ -288,16 +260,6 @@ def test_test_live_agy_target_uses_live_agy_marker() -> None:
 
 
 def test_live_agy_suite_timeout_is_a_secondary_cap() -> None:
-    """``LIVE_AGY_SUITE_TIMEOUT_SECONDS`` is a per-suite cap, not the verify budget.
-
-    The 60s combined ``_TOTAL_TEST_BUDGET_SECONDS`` cap on ``make verify``
-    is enforced in ``ralph/verify.py`` and is ABSOLUTE and IMMUTABLE.
-    The ``LIVE_AGY_SUITE_TIMEOUT_SECONDS`` cap is a SECONDARY
-    per-suite timeout for the ``test-live-agy`` target only; it does
-    NOT contribute to the verify budget and raising it does NOT raise
-    the verify budget. This test pins the inline comment that documents
-    the invariant so a future drift fails CI.
-    """
     makefile_text = MAKEFILE_PATH.read_text(encoding="utf-8")
     assert "LIVE_AGY_SUITE_TIMEOUT_SECONDS ?= 600" in makefile_text, (
         "Expected LIVE_AGY_SUITE_TIMEOUT_SECONDS default = 600s for the live AGY "
@@ -311,16 +273,6 @@ def test_live_agy_suite_timeout_is_a_secondary_cap() -> None:
 
 
 def test_test_verify_budget_target_runs_only_real_time_test() -> None:
-    """The ``test-verify-budget`` target runs only the real-time budget test.
-
-    The ``test_make_test_completes_within_budget`` test consumes ~25 s of
-    wall-clock time by design (it runs ``make test`` to assert the 60 s
-    budget holds), which would push the 60 s per-suite cap on
-    ``test-subprocess-e2e`` over the limit. The dedicated
-    ``test-verify-budget`` target runs the test in isolation with a
-    per-test ``timeout_seconds(130)`` so the budget can be re-asserted
-    on demand (e.g. before a release) without breaking the CI suite cap.
-    """
     target_body = _target_body("test-verify-budget")
 
     assert target_body == [
@@ -337,21 +289,6 @@ def test_test_verify_budget_target_runs_only_real_time_test() -> None:
 
 
 def test_verify_budget_real_time_test_uses_dedicated_marker(tmp_path: Path) -> None:
-    """The real-time budget test is excluded from the 60 s per-suite cap.
-
-    Pins the marker contract: the test that runs ``make test`` as a
-    subprocess to assert the 60 s budget must be marked BOTH
-    ``subprocess_e2e`` AND ``verify_budget_real_time`` so the
-    ``test-subprocess-e2e`` target excludes it from the 60 s per-suite
-    cap. A drift that drops the ``verify_budget_real_time`` marker
-    would re-add the test to the 60 s cap and break CI.
-
-    The test uses ``tmp_path`` to materialise the source copy so the
-    audit (``audit_test_policy``) sees the read as a legitimate
-    ``tmp_path``-scoped filesystem access rather than a direct
-    ``Path.read_text()`` call. The source is the AST target, not the
-    test artefact, so a tmp_path copy is the canonical fixture pattern.
-    """
     target = Path(__file__).resolve().parent / "test_verify_budget_real_time.py"
     source_copy = tmp_path / "test_verify_budget_real_time.py"
     source_copy.write_text(target.read_text(encoding="utf-8"), encoding="utf-8")
@@ -393,7 +330,6 @@ def test_makefile_exposes_explicit_twine_upload_targets() -> None:
 
 
 def test_test_auto_integrate_e2e_delegates_to_canonical_registry() -> None:
-    """The focused target must use the same explicit registry as ``make test``."""
     assert _target_body("test-auto-integrate-e2e") == [
         "$(RUN_PYTHON) -m ralph.test_suites --auto-integrate-e2e"
     ]
@@ -401,15 +337,6 @@ def test_test_auto_integrate_e2e_delegates_to_canonical_registry() -> None:
 
 @pytest.mark.timeout_seconds(5)
 def test_every_audit_module_is_wired_into_verify_steps() -> None:
-    """No ``ralph/testing/audit_*.py`` module may sit outside the default gate.
-
-    AGENTS.md: "every check MUST be wired into ``make verify``. A check
-    that runs only in an opt-in suite the default gate excludes WILL rot
-    unnoticed: either wire it into ``_VERIFY_STEPS``, or delete it."
-    A dormant audit drifts from its own contract while the gate stays
-    green, so the inventory on disk and the inventory the gate runs must
-    match exactly.
-    """
     on_disk = {path.stem for path in (REPO_ROOT / "ralph" / "testing").glob("audit_*.py")}
     wired = {
         argument.rsplit(".", 1)[-1]

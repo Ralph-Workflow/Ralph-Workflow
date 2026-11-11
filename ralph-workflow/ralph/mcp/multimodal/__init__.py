@@ -1,11 +1,3 @@
-"""Ralph multimodal platform package.
-
-Provides the shared contract for multimodal artifacts, provider/model
-capability detection, resource URI handling, session-scoped manifests,
-and failure taxonomy. All runtime layers that need multimodal behavior
-must derive their decisions from this package rather than duplicating
-provider or format knowledge.
-"""
 
 from ralph.mcp.multimodal._audio_content import AudioContent
 from ralph.mcp.multimodal._document_content import DocumentContent

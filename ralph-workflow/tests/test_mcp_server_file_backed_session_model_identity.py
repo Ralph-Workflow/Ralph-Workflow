@@ -1,9 +1,3 @@
-"""Integration tests for the standalone Python MCP server runtime."""
-
-# Property A: there is no alternate FastMCP path. The single production
-# _FallbackStandaloneServer (via build_standalone_http_server) is the
-# only server construction surface. This test pins the shipped path.
-
 from __future__ import annotations
 
 import json
@@ -12,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-# Config imports for multimodal tests
 from ralph.mcp.multimodal.capabilities import (
     UNKNOWN_IDENTITY,
     MultimodalModelIdentity,
@@ -33,8 +26,6 @@ HTTP_ACCEPTED = 202
 
 @pytest.fixture(autouse=True)
 def _isolate_from_upstream_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Prevent real upstream MCP servers (configured in dev env) from being
-    # loaded during tests. Each test provides its own upstream config if needed.
     monkeypatch.delenv(UPSTREAM_MCP_CONFIG_ENV, raising=False)
 
 
@@ -69,10 +60,7 @@ def _http_call(
 
 
 class TestFileBackedSessionModelIdentity:
-    """Tests for FileBackedSession.model_identity property."""
-
     def test_file_backed_session_restores_known_model_identity(self, tmp_path: Path) -> None:
-        """FileBackedSession.model_identity returns the deserialized MultimodalModelIdentity."""
 
         payload = {
             "session_id": "sid-fbs",
@@ -98,7 +86,6 @@ class TestFileBackedSessionModelIdentity:
     def test_file_backed_session_falls_back_to_unknown_identity_when_absent(
         self, tmp_path: Path
     ) -> None:
-        """FileBackedSession.model_identity returns UNKNOWN_IDENTITY when payload omits it."""
 
         payload = {
             "session_id": "sid-no-mi",
@@ -114,7 +101,6 @@ class TestFileBackedSessionModelIdentity:
         assert identity == UNKNOWN_IDENTITY
 
     def test_lifecycle_payload_roundtrip_preserves_model_identity(self, tmp_path: Path) -> None:
-        """session_payload_json + FileBackedSession restores the same model identity."""
 
         agent_session = AgentSession(
             session_id="sid-rt",
@@ -135,6 +121,5 @@ class TestFileBackedSessionModelIdentity:
         assert identity.provider == "anthropic"
         assert identity.model_id == "claude-opus-4-7"
         assert identity.transport == "api"
-        # Verify the raw payload also contains model_identity
         raw = _json.loads(payload_str)
         assert raw["model_identity"]["provider"] == "anthropic"

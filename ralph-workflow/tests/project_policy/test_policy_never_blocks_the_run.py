@@ -1,23 +1,3 @@
-"""Policy failure is SEPARATE from development work. It never aborts the run.
-
-This is the single most important behavioral contract in the project-policy
-subsystem, so it gets its own suite.
-
-Project policy is documentation ABOUT a project. It is not a precondition for
-working ON that project. Before this contract existed, a stale RALPH-LANG block
-for a language nobody used would return exit code 2 from the startup preflight
-and kill the run outright -- no planning, no development, nothing. A user's whole
-session, lost to a documentation nit.
-
-The rule now: NO policy outcome may produce a non-zero exit from a normal run.
-Not a blocked policy, not an exhausted budget, not a missing agent, not a crashed
-agent, and -- crucially -- not a BUG in the policy code itself. Whatever happens,
-the run proceeds to planning as if the policy pipeline had never existed.
-
-The sole exception is the ``_ONLY`` modes, which have no development run to
-proceed to, and so must report failure through their exit code.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -40,9 +20,6 @@ if TYPE_CHECKING:
     from ralph.project_policy.analysis import InvokePolicyAgent
     from ralph.workspace.protocol import Workspace
 
-# Reached through the module rather than a `from ... import _Name`: tests may not
-# import private names out of ralph (audit_repo_structure), but the CLI's exit
-# codes and load-result shape are exactly what this suite is asserting about.
 _LoadResult = run_module._LoadResult
 _EXIT_SUCCESS = cli_integration._EXIT_SUCCESS
 _EXIT_PREFLIGHT = cli_integration._EXIT_PREFLIGHT
@@ -66,7 +43,6 @@ def _run(
     invoke: Callable[[Workspace], InvokePolicyAgent] | None = None,
     emitted: list[str] | None = None,
 ) -> int:
-    """Drive the real CLI entry point with injected seams."""
     sink = emitted if emitted is not None else []
     return cli_integration.run_project_policy_readiness(
         load_result=_load_result(),
@@ -88,16 +64,12 @@ def _agent_that_never_fixes_anything(_ws: Workspace) -> InvokePolicyAgent:
 
 
 def test_a_policy_that_cannot_be_made_ready_still_exits_zero() -> None:
-    """The reported bug: findings remain, so the preflight returned exit 2 and
-    the run died before planning. It must exit 0 and carry on."""
     exit_code = _run(MemoryWorkspace(), invoke=_agent_that_never_fixes_anything)
 
     assert exit_code == _EXIT_SUCCESS
 
 
 def test_an_agent_that_cannot_be_launched_still_exits_zero() -> None:
-    """A broken agent subprocess is infrastructure breakage, not a policy
-    shortfall. It must not cost the user their run."""
 
     def invoke(_ws: Workspace) -> InvokePolicyAgent:
         def _raise(*, phase: str, prompt_path: str) -> bool:
@@ -110,7 +82,6 @@ def test_an_agent_that_cannot_be_launched_still_exits_zero() -> None:
 
 
 def test_a_missing_agent_chain_still_exits_zero() -> None:
-    """No policy_remediation chain configured at all: warn, proceed."""
     assert _run(MemoryWorkspace()) == _EXIT_SUCCESS
 
 
@@ -128,13 +99,6 @@ def test_a_missing_agent_chain_still_exits_zero() -> None:
 def test_any_bug_in_the_policy_code_still_exits_zero(
     monkeypatch: pytest.MonkeyPatch, boom: Exception
 ) -> None:
-    """THE CRUCIAL ONE. Even if the policy pipeline crashes outright -- a real
-    bug, not a handled condition -- the run continues to the normal pipeline like
-    nothing ever happened.
-
-    Simulated by making the deterministic validator explode, which is on the path
-    of every single policy run.
-    """
 
     def explode(*_args: object, **_kwargs: object) -> list[object]:
         raise boom
@@ -154,8 +118,6 @@ def test_any_bug_in_the_policy_code_still_exits_zero(
 def test_a_crash_in_the_display_does_not_escape_either(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The fault handler must survive a broken display -- a crash in the crash
-    handler would defeat the entire point."""
 
     def explode(*_args: object, **_kwargs: object) -> list[object]:
         raise RuntimeError("policy is broken")
@@ -180,34 +142,6 @@ def test_a_crash_in_the_display_does_not_escape_either(
 def test_a_failing_capture_restore_does_not_block_the_run(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The out-of-graph boundary's restore MUST swallow and log on failure.
-
-    The policy preflight lives at the OUT-OF-GRAPH boundary: it shares
-    :func:`execute_agent_effect` with the pipeline runner, but the
-    pipeline runner's drain of the session id / retry intent thread-locals
-    does not run for policy invocations. The boundary contextmanager
-    :func:`cli_integration._capture_pipeline_state` owns the
-    snapshot/restore discipline, and the restore is wrapped in
-    swallow-and-log so a breaking restore never blocks the run.
-
-    The test discriminates in both directions. Before the S-4 fix the
-    BLOCKED handback has no such boundary, so the raising fake is never
-    called and the first assertion fails. A ``finally`` that restores
-    without swallowing lets the raise reach the module-level fault
-    boundary at ``cli_integration.py:745-757``, and the third assertion
-    fails.
-
-    The fake replaces ``cli_integration.set_last_captured_session_id``
-    (the module-level name the restore calls into) with a function that
-    raises, counts invocations, and emits a loguru DEBUG record so the
-    assertion can prove the failure was reported, not silently dropped.
-
-    To reach the boundary, the test patches ``execute_agent_effect`` to
-    publish a session id and short-circuit to ``AGENT_SUCCESS`` so the
-    production ``_make_production_invoke_agent`` runs end-to-end through
-    the boundary, and uses a real bundle so the dispatch helper enters
-    the pipeline-run path.
-    """
     from loguru import logger as _loguru_logger
 
     from ralph.pipeline import effect_executor as effect_executor_module
@@ -299,8 +233,6 @@ def test_a_failing_capture_restore_does_not_block_the_run(
 
 
 def test_keyboard_interrupt_is_not_swallowed(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The fault boundary catches Exception, deliberately NOT BaseException.
-    Ctrl-C must still stop the program."""
 
     def interrupt(*_args: object, **_kwargs: object) -> list[object]:
         raise KeyboardInterrupt
@@ -316,8 +248,6 @@ def test_keyboard_interrupt_is_not_swallowed(monkeypatch: pytest.MonkeyPatch) ->
 def test_only_modes_do_report_failure_through_their_exit_code(
     mode: PolicyMode,
 ) -> None:
-    """The one exception. An --*-only invocation has no development run to
-    proceed to, so its exit code is the only signal it can give a CI job."""
     exit_code = _run(MemoryWorkspace(), mode=mode, invoke=_agent_that_never_fixes_anything)
 
     assert exit_code == _EXIT_PREFLIGHT
@@ -329,8 +259,6 @@ def test_only_modes_do_report_failure_through_their_exit_code(
     ids=str,
 )
 def test_no_continuing_mode_can_ever_return_nonzero(mode: PolicyMode) -> None:
-    """Every mode that continues into the development run exits 0 on a policy
-    failure. This is the invariant, stated once over every such mode."""
     exit_code = _run(MemoryWorkspace(), mode=mode, invoke=_agent_that_never_fixes_anything)
 
     assert exit_code == _EXIT_SUCCESS

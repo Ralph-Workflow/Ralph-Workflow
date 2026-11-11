@@ -1,4 +1,3 @@
-"""Public policy validation API functions."""
 
 from __future__ import annotations
 
@@ -76,7 +75,6 @@ def validate_phase_exists_in_policy(
     phase: str,
     policy: PipelinePolicy,
 ) -> None:
-    """Validate that a phase name is present in the current pipeline policy."""
     if phase not in policy.phases:
         raise CheckpointPolicyMismatchError(
             checkpoint_phase=phase,
@@ -88,7 +86,6 @@ def validate_checkpoint_compatible(
     checkpoint_phase: str,
     bundle: PolicyBundle,
 ) -> None:
-    """Validate that a checkpoint phase is compatible with the current policy bundle."""
     validate_phase_exists_in_policy(checkpoint_phase, bundle.pipeline)
 
 
@@ -96,7 +93,6 @@ def validate_drain_bound(
     drain: str,
     bundle: PolicyBundle,
 ) -> None:
-    """Validate that a drain name has a binding in the current policy."""
     if drain not in bundle.agents.agent_drains:
         raise ValueError(
             f"Drain '{drain}' is not bound in agents.toml. "
@@ -108,7 +104,6 @@ def validate_chain_exists(
     chain: str,
     bundle: PolicyBundle,
 ) -> None:
-    """Validate that an agent chain is defined."""
     if chain not in bundle.agents.agent_chains:
         raise ValueError(
             f"Chain '{chain}' is not defined in agents.toml. "
@@ -117,7 +112,6 @@ def validate_chain_exists(
 
 
 def validate_drain_contracts(bundle: PolicyBundle) -> None:
-    """Validate drain contracts and enforce strict binding rules."""
     if not bundle.agents.forbid_sibling_drain_inference:
         return
 
@@ -160,7 +154,6 @@ def validate_cli_counter_overrides(
     cli_counter_overrides: dict[str, int],
     errors: list[str],
 ) -> None:
-    """Validate that every CLI counter override names a declared budget counter."""
     declared = set(policy.budget_counters.keys())
     unknown = sorted(k for k in cli_counter_overrides if k not in declared)
     if unknown:
@@ -177,7 +170,6 @@ def validate_policy_completeness(
     *,
     cli_counter_overrides: dict[str, int] | None = None,
 ) -> None:
-    """Validate that the policy bundle is semantically complete for policy-driven orchestration."""
     errors: list[str] = []
     policy = bundle.pipeline
     terminal_phase = policy.terminal_phase
@@ -243,7 +235,6 @@ def validate_policy_completeness(
 
 
 def get_drain_resolution_matrix(bundle: PolicyBundle) -> dict[str, dict[str, str]]:
-    """Generate a normalized drain resolution matrix."""
     matrix: dict[str, dict[str, str]] = {}
     for drain_name in bundle.agents.agent_drains:
         drain_config = bundle.agents.agent_drains[drain_name]
@@ -262,7 +253,6 @@ def validate_agent_chains_satisfiable(
     bundle: PolicyBundle,
     agent_registry: AgentRegistry,
 ) -> None:
-    """Validate that every chain references known, workflow-compatible agents."""
     unknown_agents: list[str] = []
     for chain_name, chain_config in bundle.agents.agent_chains.items():
         for agent_name in chain_config.agents:
@@ -276,9 +266,6 @@ def validate_agent_chains_satisfiable(
     if unknown_agents:
         agy_help = ""
         if any("'agy/" in agent for agent in unknown_agents):
-            # Same probe the registry resolves aliases against, so the listed
-            # vocabulary cannot drift from what ``agy models`` publishes.
-            # Deferred import: the registry transitively imports this module.
             registry: object = import_module("ralph.agents.registry")
             if not isinstance(registry, _AgyAliasHelpModule):
                 raise TypeError("ralph.agents.registry lacks agy_alias_help")
@@ -296,11 +283,6 @@ def validate_chain_agents_on_path(
     available: Callable[[str], bool] | None = None,
     warn: Callable[[str], None] | None = None,
 ) -> None:
-    """Fail before spawning when a configured chain has no available CLI."""
-    # Resolve only during PATH validation to avoid policy loading re-entering
-    # the execution-state package while it is being initialized.
-    # The catalog import is intentionally deferred to avoid the import cycle
-    # above; this module performs the same typed normalization at the boundary.
     builtin: object = import_module("ralph.agents.builtin")
     if not isinstance(builtin, _BuiltinAgentModule):
         raise TypeError("ralph.agents.builtin lacks builtin_supports")
@@ -346,7 +328,6 @@ def validate_chain_agents_on_path(
 
 
 def validate_recovery_config(bundle: PolicyBundle) -> None:
-    """Validate recovery-related configuration in the policy bundle."""
     for chain_name, chain_config in bundle.agents.agent_chains.items():
         if chain_config.max_retries < 0:
             raise PolicyValidationError(
@@ -359,7 +340,6 @@ def validate_checkpoint_against_policy(
     state: PipelineState,
     bundle: PolicyBundle,
 ) -> None:
-    """Validate a checkpoint state against the current policy bundle."""
     try:
         entry_block = bundle.pipeline.entry_block
     except AttributeError:
@@ -381,12 +361,6 @@ def validate_checkpoint_against_policy(
 
 
 def validate_required_inputs(workspace_scope: WorkspaceScope) -> None:
-    """Validate that required input files exist and are readable.
-
-    The source-prompt path is resolved through
-    :func:`ralph.pro_support.prompt.resolve_effective_prompt_path` so the
-    ``PROMPT_PATH`` env var is honoured in Pro mode.
-    """
     prompt_path = resolve_effective_prompt_path(workspace_scope.root, os.environ)
     if not prompt_path.exists():
         raise PolicyValidationError(

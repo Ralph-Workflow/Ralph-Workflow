@@ -1,5 +1,3 @@
-"""FakeRun: seeded replay script for a single parallel work unit."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -11,8 +9,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class FakeRun:
-    """Seeded replay script for a single parallel work unit."""
-
     outputs: list[str]
     exit_code: int
     duration_ms: int

@@ -1,12 +1,3 @@
-"""Exhaustion tests for the integration diagnostic.
-
-The repair-attempt cap is the bound that terminates the diagnostic
-rotation: once it is reached the durable record carries the typed
-"diagnostic budget spent" outcome and the state escalates into the
-autonomous fallback ladder (durable-ledger rungs) -- never a human
-hand-off.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -51,11 +42,8 @@ def test_handoff_integration_diagnostic_repeated_missing_agents_persists_interve
     collector = InMemoryOperationEvidenceCollector(
         facts=(OperationFact(kind="rebase_object_resolvable", value="True"),)
     )
-    # The ladder dispatch after the cap uses the injected plumbing fake:
-    # no real Git, no subprocess in this unit test.
     plumbing = _FakePlumbing(changed=())
 
-    # Attempt 1: bumps attempt count below cap
     assert not diagnostic.handoff_integration_diagnostic(
         controller=make_resolver_controller(),
         root=root,
@@ -73,8 +61,6 @@ def test_handoff_integration_diagnostic_repeated_missing_agents_persists_interve
     assert saved1.repair_last_error == "no eligible diagnostic agent available"
     assert invoked == []
 
-    # Attempt 2: reaches cap, stamps the typed budget-spent outcome and
-    # escalates into the autonomous fallback ladder (recorded in the ledger).
     assert not diagnostic.handoff_integration_diagnostic(
         controller=make_resolver_controller(),
         root=root,
@@ -96,8 +82,6 @@ def test_handoff_integration_diagnostic_repeated_missing_agents_persists_interve
         "cap exhaustion must reach a ladder rung recorded in the durable ledger"
     )
 
-    # Attempt 3: already at cap; the typed marker preserves the counter
-    # across loads and zero later invocations occur.
     assert not diagnostic.handoff_integration_diagnostic(
         controller=make_resolver_controller(),
         root=root,

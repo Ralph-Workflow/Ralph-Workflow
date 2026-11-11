@@ -1,5 +1,3 @@
-"""Tests for ralph/mcp/tool_workspace.py — MCP workspace tool handlers."""
-
 from __future__ import annotations
 
 import base64
@@ -39,14 +37,6 @@ DEFAULT_MAX_INLINE_BYTES = 5_242_880
 
 
 def _first_non_warning_block(blocks):
-    """Return the first content block that is NOT a ``WARNING:`` text block.
-
-    S-7 (criterion 3): a graceful-degradation WARNING block may be
-    prepended before the actual content block when the resolved model
-    identity is unknown. Tests that assert on the underlying payload
-    use this helper to skip past any leading WARNING block and find
-    the real block to type-check.
-    """
     for block in blocks:
         text = getattr(block, "text", None)
         if not (isinstance(text, str) and text.startswith("WARNING:")):
@@ -59,7 +49,6 @@ pytestmark = [pytest.mark.timeout_seconds(5), pytest.mark.subprocess_e2e]
 
 class TestHandleReadMedia:
     def test_no_manifest_returns_explicit_error(self) -> None:
-        """When no session manifest is available, resource-reference delivery returns an error."""
         pdf_bytes = b"%PDF-1.4 fake pdf content"
         with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
             f.write(pdf_bytes)
@@ -68,7 +57,6 @@ class TestHandleReadMedia:
         try:
             ws = MagicMock()
             ws.absolute_path.return_value = temp_path
-            # MockSession has no media_manifest attribute
             session = MockSession(MEDIA_READ_CAPABILITY)
 
             result = handle_read_media(session, ws, {"path": "report.pdf"})
@@ -135,9 +123,6 @@ class TestHandleReadMedia:
         media_file.write_bytes(pdf_bytes)
 
         ws = FsWorkspace(tmp_path)
-        # S-7 (criterion 3): an UNKNOWN_IDENTITY now degrades gracefully
-        # with a WARNING block; skip past it for the resource-reference
-        # assertion.
         session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
 
         result = handle_read_media(session, ws, {"path": "report.pdf"})
@@ -158,14 +143,11 @@ class TestHandleReadMedia:
         media_file.write_bytes(pdf_bytes)
 
         ws = FsWorkspace(tmp_path)
-        # S-7 (criterion 3): the default UNKNOWN_IDENTITY degrades with
-        # a WARNING block. Skip past it to the resource-reference block.
         session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
 
         result = handle_read_media(session, ws, {"path": "report.pdf"})
         content = _first_non_warning_block(result.content)
 
-        # The artifact must be stored in the manifest
         assert not session.media_manifest.is_empty()
         entries = session.media_manifest.list_entries()
         assert len(entries) == 1
@@ -176,13 +158,11 @@ class TestHandleReadMedia:
         assert entry.raw_bytes == pdf_bytes
 
     def test_audio_returns_resource_reference_block(self, tmp_path: Path) -> None:
-        mp3_bytes = b"ID3" + b"\x00" * 50  # Minimal fake MP3
+        mp3_bytes = b"ID3" + b"\x00" * 50
         media_file = tmp_path / "clip.mp3"
         media_file.write_bytes(mp3_bytes)
 
         ws = FsWorkspace(tmp_path)
-        # S-7 (criterion 3): an UNKNOWN_IDENTITY degrades with a warning
-        # block; skip past it for the resource-reference assertion.
         session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
 
         result = handle_read_media(session, ws, {"path": "clip.mp3"})
@@ -195,13 +175,11 @@ class TestHandleReadMedia:
         assert content.uri.startswith("ralph://media/")
 
     def test_video_returns_resource_reference_block(self, tmp_path: Path) -> None:
-        mp4_bytes = b"\x00" * 100  # Fake video bytes
+        mp4_bytes = b"\x00" * 100
         media_file = tmp_path / "video.mp4"
         media_file.write_bytes(mp4_bytes)
 
         ws = FsWorkspace(tmp_path)
-        # S-7 (criterion 3): an UNKNOWN_IDENTITY degrades with a warning
-        # block; skip past it for the resource-reference assertion.
         session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
 
         result = handle_read_media(session, ws, {"path": "video.mp4"})
@@ -214,11 +192,9 @@ class TestHandleReadMedia:
 
     def test_oversized_image_returns_resource_reference_block(self, tmp_path: Path) -> None:
         media_file = tmp_path / "large.png"
-        media_file.write_bytes(b"\x89PNG" + b"\x00" * 100)  # Fake PNG
+        media_file.write_bytes(b"\x89PNG" + b"\x00" * 100)
 
         ws = FsWorkspace(tmp_path)
-        # S-7 (criterion 3): UNKNOWN_IDENTITY degrades gracefully with
-        # a WARNING block; skip past it.
         session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
 
         result = handle_read_media(session, ws, {"path": "large.png"}, max_inline_bytes=10)
@@ -245,7 +221,6 @@ class TestHandleReadMedia:
         assert d["delivery"] == "resource_reference"
 
     def test_resource_reference_persists_to_session_index(self, tmp_path: Path) -> None:
-        """handle_read_media must write artifact metadata to the session media index."""
         pdf_bytes = b"%PDF-1.4 fake pdf content"
         media_file = tmp_path / "report.pdf"
         media_file.write_bytes(pdf_bytes)
@@ -288,12 +263,10 @@ class TestHandleReadMedia:
         assert artifacts[0]["cache_path"].startswith(".agent/tmp/media/")
         assert artifacts[0]["source_uri"] == ""
         assert artifacts[0]["block_type"] == ""
-        # Verify durable cache was written
         artifact_id = artifacts[0]["uri"].rsplit("/", 1)[-1]
         cache_file = tmp_path / ".agent" / "tmp" / "media" / artifact_id
         assert cache_file.exists(), "Durable cache file must be written alongside session index"
         assert cache_file.read_bytes() == pdf_bytes
-        # Verify centralized registry entry
         registry_path = tmp_path / ".agent" / "tmp" / "media_registry.json"
         assert registry_path.exists(), "Centralized media registry must be written"
         registry = json.loads(registry_path.read_text(encoding="utf-8"))
@@ -304,7 +277,6 @@ class TestHandleReadMedia:
         assert reg_entry["cache_path"].startswith(".agent/tmp/media/")
 
     def test_resource_reference_accumulates_entries_in_session_index(self, tmp_path: Path) -> None:
-        """Multiple read_media calls must append entries to the session index."""
 
         @dataclass
         class SessionWithDrain:
@@ -342,7 +314,6 @@ class TestHandleReadMedia:
     def test_resource_reference_prunes_old_media_cache_when_budget_exceeded(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The durable media byte cache must not grow without a total-size bound."""
 
         @dataclass
         class SessionWithDrain:
@@ -376,11 +347,6 @@ class TestHandleReadMedia:
 
         registry_path = tmp_path / ".agent" / "tmp" / "media_registry.json"
 
-        # The registry is pruned periodically (every _MEDIA_PRUNE_INTERVAL=32
-        # adds) rather than on every add to avoid O(N^2) maintenance cost.
-        # Drive enough additional adds to trigger the prune tick, then
-        # verify the stale "a.pdf" entry has been dropped from the
-        # registry artifact list (semantics preserved exactly).
         for i in range(media_io._MEDIA_PRUNE_INTERVAL):
             extra_path = tmp_path / f"extra_{i}.pdf"
             extra_path.write_bytes(b"x" * 20 + i.to_bytes(1, "big"))
@@ -399,7 +365,6 @@ class TestHandleReadMedia:
     def test_resource_reference_repeated_same_file_replaces_live_session_entry(
         self, tmp_path: Path
     ) -> None:
-        """Repeated reads of the same artifact must not grow the live session set."""
 
         @dataclass
         class SessionWithDrain:
@@ -433,10 +398,6 @@ class TestHandleReadMedia:
         artifacts = data["artifacts"]
         assert len(artifacts) == 1
         assert artifacts[0]["source_path"] == "report.pdf"
-
-    # -------------------------------------------------------------------------
-    # Typed-block delivery tests (Claude provider)
-    # -------------------------------------------------------------------------
 
     def test_claude_pdf_returns_typed_pdf_block(self, tmp_path: Path) -> None:
         pdf_bytes = b"%PDF-1.4 fake pdf content"
@@ -501,7 +462,7 @@ class TestHandleReadMedia:
         assert content.delivery == "typed_block"
 
     def test_claude_document_returns_typed_document_block(self, tmp_path: Path) -> None:
-        docx_bytes = b"PK\x03\x04" + b"\x00" * 50  # Fake DOCX (zip magic)
+        docx_bytes = b"PK\x03\x04" + b"\x00" * 50
         media_file = tmp_path / "doc.docx"
         media_file.write_bytes(docx_bytes)
 
@@ -519,12 +480,7 @@ class TestHandleReadMedia:
         assert content.type == "document"
         assert content.delivery == "typed_block"
 
-    # -------------------------------------------------------------------------
-    # Replay handle tests (ralph://media/{artifact_id})
-    # -------------------------------------------------------------------------
-
     def test_replay_handle_precedence_before_filesystem_lookup(self) -> None:
-        """A ralph://media/... handle must be resolved from manifest before any filesystem check."""
         png_bytes = b"\x89PNG" + b"\x00" * 20
         session = MockSessionWithManifest(
             MEDIA_READ_CAPABILITY,
@@ -540,7 +496,6 @@ class TestHandleReadMedia:
         ws = MagicMock()
         result = handle_read_media(session, ws, {"path": entry.uri})
 
-        # Should succeed from manifest without touching the filesystem
         assert result.is_error is False
         ws.absolute_path.assert_not_called()
         content = result.content[0]
@@ -589,7 +544,6 @@ class TestHandleReadMedia:
         assert MultimodalFailureKind.MISSING_REPLAY_SOURCE in text
 
     def test_cross_session_replay_from_persisted_cache(self, tmp_path: Path) -> None:
-        """A replay handle must work across sessions using the persisted registry."""
 
         @dataclass
         class SessionWithDrain:
@@ -611,21 +565,17 @@ class TestHandleReadMedia:
         media_file = tmp_path / "doc.pdf"
         media_file.write_bytes(pdf_bytes)
 
-        # Session 1: read the file and persist to registry
         session1 = SessionWithDrain(MEDIA_READ_CAPABILITY)
         ws = FsWorkspace(tmp_path)
         result1 = handle_read_media(session1, ws, {"path": "doc.pdf"})
         assert result1.is_error is False
-        # The artifact URI from session 1
         content1 = result1.content[0]
         assert isinstance(content1, PdfContent)
         artifact_uri = content1.uri
 
-        # Session 2: new empty manifest (simulates new session)
         session2 = SessionWithDrain(MEDIA_READ_CAPABILITY)
         assert session2.media_manifest.get(artifact_uri.rsplit("/", 1)[-1]) is None
 
-        # Replay from persisted registry
         result2 = handle_read_media(session2, ws, {"path": artifact_uri})
         assert result2.is_error is False
         content2 = result2.content[0]
@@ -633,7 +583,6 @@ class TestHandleReadMedia:
         assert content2.uri == artifact_uri
 
     def test_cross_session_replay_fails_when_cache_deleted(self, tmp_path: Path) -> None:
-        """Replay returns missing_replay_source when cache bytes are gone."""
 
         @dataclass
         class SessionWithDrain:
@@ -664,12 +613,10 @@ class TestHandleReadMedia:
         artifact_uri = content1.uri
         artifact_id = artifact_uri.rsplit("/", 1)[-1]
 
-        # Delete both the durable cache and the source file
         cache_file = tmp_path / ".agent" / "tmp" / "media" / artifact_id
         cache_file.unlink()
         media_file.unlink()
 
-        # Session 2: replay should fail with missing_replay_source
         session2 = SessionWithDrain(MEDIA_READ_CAPABILITY)
         result2 = handle_read_media(session2, ws, {"path": artifact_uri})
         assert result2.is_error is True

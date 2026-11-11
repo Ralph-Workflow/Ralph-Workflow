@@ -1,5 +1,3 @@
-"""Tests for the package-wide filesystem-write consolidation audit."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -7,6 +5,12 @@ from pathlib import Path
 import pytest
 
 from ralph.testing import audit_filesystem_write_consolidation as audit
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "marker exemption": "the inline marker comment no longer waives a write finding",
+    "raw write detection": "the raw-write detection message now names the structural exemption registry",
+    "structural exemption": "the structural exemption registry now carries the waived call site",
+}
 
 
 def _write_fake_package(tmp_path: Path, module_rel: str, body: str) -> Path:
@@ -18,7 +22,6 @@ def _write_fake_package(tmp_path: Path, module_rel: str, body: str) -> Path:
 
 
 def test_invalid_candidate_free_module_fails_closed(tmp_path: Path) -> None:
-    """S-8 regression: invalid source cannot bypass the package-wide audit."""
     module_rel = "alpha/broken.py"
     package_root = _write_fake_package(tmp_path, module_rel, "def broken(:\n")
     violations = audit.audit_filesystem_write_consolidation(
@@ -32,7 +35,6 @@ def test_invalid_candidate_free_module_fails_closed(tmp_path: Path) -> None:
 
 
 def test_valid_candidate_free_module_passes(tmp_path: Path) -> None:
-    """A valid inert production module remains accepted by the audit."""
     module_rel = "alpha/inert.py"
     package_root = _write_fake_package(tmp_path, module_rel, "VALUE = 1\n")
     assert (
@@ -41,7 +43,6 @@ def test_valid_candidate_free_module_passes(tmp_path: Path) -> None:
 
 
 def test_flags_unknown_raw_write_text(tmp_path: Path) -> None:
-    """A new raw ``write_text`` call in a previously-clean module fails closed."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path, module_rel, "def persist(path, content):\n    path.write_text(content)\n"
@@ -59,7 +60,6 @@ def test_flags_unknown_raw_write_text(tmp_path: Path) -> None:
 
 
 def test_regression_flags_dynamic_raw_write_text_lookup(tmp_path: Path) -> None:
-    """S-2: dynamic lookup cannot evade D1's raw stable-write enforcement."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -74,7 +74,6 @@ def test_regression_flags_dynamic_raw_write_text_lookup(tmp_path: Path) -> None:
 
 
 def test_ignores_guarded_write_via_canonical_helper(tmp_path: Path) -> None:
-    """A call to the canonical ``write_text_if_changed`` helper passes."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -87,7 +86,6 @@ def test_ignores_guarded_write_via_canonical_helper(tmp_path: Path) -> None:
 
 
 def test_media_cache_regression_identical_bytes_skip_the_persistence_boundary() -> None:
-    """S-3: replaying one media cache payload does not physically rewrite it."""
     from ralph.mcp.tools.workspace._media_io import write_durable_media_cache
 
     class RecordingBackend:
@@ -128,7 +126,6 @@ def test_media_cache_regression_identical_bytes_skip_the_persistence_boundary() 
 
 
 def test_ignores_byte_write_via_canonical_helper(tmp_path: Path) -> None:
-    """S-3: the audited byte-specific persistence boundary is available to new writers."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -141,7 +138,6 @@ def test_ignores_byte_write_via_canonical_helper(tmp_path: Path) -> None:
 
 
 def test_raw_byte_write_diagnostic_names_existing_atomic_byte_primitive(tmp_path: Path) -> None:
-    """D2: rejected byte writes name a real direct and atomic replacement path."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path, module_rel, "def persist(path, content):\n    path.write_bytes(content)\n"
@@ -154,21 +150,22 @@ def test_raw_byte_write_diagnostic_names_existing_atomic_byte_primitive(tmp_path
     assert "atomic_write_bytes_if_changed" in violations[0].message
 
 
-def test_explicit_marker_suppresses_violation(tmp_path: Path) -> None:
-    """A raw ``write_text`` with a meaningful exception marker passes."""
+def test_marker_comment_no_longer_silences_a_violation(tmp_path: Path) -> None:
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
         module_rel,
-        "def write_scratch(path, content):\n    # filesystem-write-ok: transient scratch file under tempfile.gettempdir(), deleted in finally\n    path.write_text(content)\n",
+        "def write_scratch(path, content):\n    # filesystem-write-ok: transient scratch file\n    path.write_text(content)\n",
     )
-    assert (
-        audit.audit_filesystem_write_consolidation(package_root, module_paths=(module_rel,)) == []
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+    assert [violation.kind for violation in violations] == ["raw_write_text"], (
+        "an inline marker comment MUST NOT silence the filesystem-write audit"
     )
 
 
-def test_empty_marker_fails_closed(tmp_path: Path) -> None:
-    """An empty exception marker remains a violation."""
+def test_marker_comment_fails_closed(tmp_path: Path) -> None:
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -183,7 +180,6 @@ def test_empty_marker_fails_closed(tmp_path: Path) -> None:
 
 
 def test_raw_write_bytes_also_flagged(tmp_path: Path) -> None:
-    """A raw ``write_bytes`` call is treated like ``write_text`` (both are raw)."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path, module_rel, "def persist(path, data):\n    path.write_bytes(data)\n"
@@ -196,7 +192,6 @@ def test_raw_write_bytes_also_flagged(tmp_path: Path) -> None:
 
 
 def test_whitespace_around_attr_does_not_evade(tmp_path: Path) -> None:
-    """Whitespace before the call must not evade AST-based detection."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path, module_rel, "def persist(path, content):\n    path.write_text (content)\n"
@@ -208,7 +203,6 @@ def test_whitespace_around_attr_does_not_evade(tmp_path: Path) -> None:
 
 
 def test_backend_write_text_is_flagged_outside_the_canonical_primitive(tmp_path: Path) -> None:
-    """S-8: a new backend-named raw writer cannot bypass D1 by convention alone."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -224,7 +218,6 @@ def test_backend_write_text_is_flagged_outside_the_canonical_primitive(tmp_path:
 
 
 def test_self_write_text_is_flagged_outside_the_canonical_primitive(tmp_path: Path) -> None:
-    """S-8: receiver spelling cannot silently exempt an unknown writer."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -239,7 +232,6 @@ def test_self_write_text_is_flagged_outside_the_canonical_primitive(tmp_path: Pa
 
 
 def test_arbitrary_name_write_text_is_flagged(tmp_path: Path) -> None:
-    """Any raw receiver name is rejected outside the canonical primitive."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path, module_rel, "def persist(fs, path, content):\n    fs.write_text(path, content)\n"
@@ -250,21 +242,22 @@ def test_arbitrary_name_write_text_is_flagged(tmp_path: Path) -> None:
     )
 
 
-def test_marker_on_prior_line_suppresses(tmp_path: Path) -> None:
-    """Marker may appear on the immediately preceding source line."""
+def test_marker_on_prior_line_no_longer_suppresses(tmp_path: Path) -> None:
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
         module_rel,
-        "def persist(path, content):\n    # filesystem-write-ok: timestamped marker file, content always changes\n    path.write_text(content)\n",
+        "def persist(path, content):\n    # filesystem-write-ok: timestamped marker file\n    path.write_text(content)\n",
     )
-    assert (
-        audit.audit_filesystem_write_consolidation(package_root, module_paths=(module_rel,)) == []
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+    assert [violation.kind for violation in violations] == ["raw_write_text"], (
+        "an inline marker comment MUST NOT silence the filesystem-write audit"
     )
 
 
 def test_regression_rejects_marker_token_inside_a_string_literal(tmp_path: Path) -> None:
-    """S-2: only a local comment may declare a filesystem-write exception."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -278,21 +271,22 @@ def test_regression_rejects_marker_token_inside_a_string_literal(tmp_path: Path)
     assert violations[0].line == 3
 
 
-def test_marker_on_same_line_suppresses(tmp_path: Path) -> None:
-    """Marker may appear as a trailing comment on the same line."""
+def test_marker_on_same_line_no_longer_suppresses(tmp_path: Path) -> None:
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
         module_rel,
         "def persist(path, content):\n    path.write_text(content)  # filesystem-write-ok: timestamped\n",
     )
-    assert (
-        audit.audit_filesystem_write_consolidation(package_root, module_paths=(module_rel,)) == []
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+    assert [violation.kind for violation in violations] == ["raw_write_text"], (
+        "an inline marker comment MUST NOT silence the filesystem-write audit"
     )
 
 
 def test_default_scope_excludes_the_audit_implementation_tree(tmp_path: Path) -> None:
-    """S-8 regression: production verification does not recursively audit its audits."""
     repo_root = tmp_path / "repo"
     production = repo_root / "ralph"
     production.mkdir(parents=True)
@@ -306,7 +300,6 @@ def test_default_scope_excludes_the_audit_implementation_tree(tmp_path: Path) ->
 
 
 def test_default_scope_walks_only_production_package(tmp_path: Path) -> None:
-    """Default audit scope finds ralph/ but ignores unrelated test fixtures."""
     repo_root = tmp_path / "repo"
     production = repo_root / "ralph"
     production.mkdir(parents=True)
@@ -320,7 +313,6 @@ def test_default_scope_walks_only_production_package(tmp_path: Path) -> None:
 
 
 def test_cli_returns_clean_when_no_violations(tmp_path: Path) -> None:
-    """CLI returns 0 when the scanned tree is clean."""
     clean_root = tmp_path / "ralph"
     clean_root.mkdir()
     (clean_root / "good.py").write_text(
@@ -330,7 +322,6 @@ def test_cli_returns_clean_when_no_violations(tmp_path: Path) -> None:
 
 
 def test_cli_returns_violation_count_when_dirty(tmp_path: Path) -> None:
-    """CLI returns 1 when the scanned tree contains at least one violation."""
     dirty_root = tmp_path / "ralph"
     dirty_root.mkdir()
     (dirty_root / "bad.py").write_text(
@@ -340,12 +331,10 @@ def test_cli_returns_violation_count_when_dirty(tmp_path: Path) -> None:
 
 
 def test_cli_returns_bad_root_when_missing(tmp_path: Path) -> None:
-    """CLI returns 2 when the package root does not exist."""
     assert audit.main([str(tmp_path / "missing")]) == 2
 
 
 def test_missing_package_root_fails_closed(tmp_path: Path) -> None:
-    """S-8 regression: an unavailable requested root cannot silently pass."""
     missing_root = tmp_path / "missing"
     violations = audit.audit_filesystem_write_consolidation(missing_root)
     assert len(violations) == 1
@@ -355,7 +344,6 @@ def test_missing_package_root_fails_closed(tmp_path: Path) -> None:
 
 
 def test_flags_raw_os_replace(tmp_path: Path) -> None:
-    """``os.replace(src, dst)`` is a raw atomic move outside the canonical primitive."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path, module_rel, "import os\ndef swap(src, dst):\n    os.replace(src, dst)\n"
@@ -368,7 +356,6 @@ def test_flags_raw_os_replace(tmp_path: Path) -> None:
 
 
 def test_flags_import_aliased_os_replace(tmp_path: Path) -> None:
-    """An import alias cannot evade the package-wide raw-replace audit (S-8)."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -383,7 +370,6 @@ def test_flags_import_aliased_os_replace(tmp_path: Path) -> None:
 
 
 def test_flags_directly_imported_os_replace(tmp_path: Path) -> None:
-    """A directly imported mutation function cannot bypass the audit (S-8)."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -398,7 +384,6 @@ def test_flags_directly_imported_os_replace(tmp_path: Path) -> None:
 
 
 def test_flags_import_aliased_pathlib_mutation(tmp_path: Path) -> None:
-    """A renamed pathlib class cannot bypass the package-wide delete audit (S-8)."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -412,7 +397,6 @@ def test_flags_import_aliased_pathlib_mutation(tmp_path: Path) -> None:
 
 
 def test_flags_raw_os_rename(tmp_path: Path) -> None:
-    """``os.rename(src, dst)`` is a raw atomic move."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path, module_rel, "import os\ndef swap(src, dst):\n    os.rename(src, dst)\n"
@@ -425,7 +409,6 @@ def test_flags_raw_os_rename(tmp_path: Path) -> None:
 
 
 def test_flags_raw_path_unlink(tmp_path: Path) -> None:
-    """``Path.unlink()`` is a raw delete."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path, module_rel, "from pathlib import Path\ndef drop(p):\n    Path(p).unlink()\n"
@@ -438,7 +421,6 @@ def test_flags_raw_path_unlink(tmp_path: Path) -> None:
 
 
 def test_flags_path_derived_variable_without_path_suffix(tmp_path: Path) -> None:
-    """S-8 regression: Path provenance, not a variable naming convention, owns deletion checks."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -453,7 +435,6 @@ def test_flags_path_derived_variable_without_path_suffix(tmp_path: Path) -> None
 
 
 def test_regression_instance_path_provenance_flags_raw_unlink(tmp_path: Path) -> None:
-    """S-1/S-6: a workspace-held path cannot evade write ownership enforcement."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -476,7 +457,6 @@ def test_regression_instance_path_provenance_flags_raw_unlink(tmp_path: Path) ->
 
 
 def test_path_provenance_does_not_leak_between_function_scopes(tmp_path: Path) -> None:
-    """S-8 regression: a Path local cannot misclassify another function's domain object."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -489,7 +469,6 @@ def test_path_provenance_does_not_leak_between_function_scopes(tmp_path: Path) -
 
 
 def test_flags_workspace_resolved_path_mutation(tmp_path: Path) -> None:
-    """S-2 regression: workspace path resolution cannot hide a raw deletion."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -504,7 +483,6 @@ def test_flags_workspace_resolved_path_mutation(tmp_path: Path) -> None:
 
 
 def test_flags_raw_os_remove(tmp_path: Path) -> None:
-    """``os.remove(path)`` is a raw delete."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path, module_rel, "import os\ndef drop(p):\n    os.remove(p)\n"
@@ -517,7 +495,6 @@ def test_flags_raw_os_remove(tmp_path: Path) -> None:
 
 
 def test_flags_raw_path_mkdir(tmp_path: Path) -> None:
-    """``Path.mkdir()`` is a raw directory creation."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path, module_rel, "from pathlib import Path\ndef make(p):\n    Path(p).mkdir()\n"
@@ -530,7 +507,6 @@ def test_flags_raw_path_mkdir(tmp_path: Path) -> None:
 
 
 def test_flags_raw_os_makedirs(tmp_path: Path) -> None:
-    """``os.makedirs(path)`` is a raw directory creation."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path, module_rel, "import os\ndef make(p):\n    os.makedirs(p)\n"
@@ -543,7 +519,6 @@ def test_flags_raw_os_makedirs(tmp_path: Path) -> None:
 
 
 def test_flags_raw_shutil_rmtree(tmp_path: Path) -> None:
-    """``shutil.rmtree(path)`` is a raw tree delete."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path, module_rel, "import shutil\ndef drop_tree(p):\n    shutil.rmtree(p)\n"
@@ -556,7 +531,6 @@ def test_flags_raw_shutil_rmtree(tmp_path: Path) -> None:
 
 
 def test_flags_raw_shutil_copy2(tmp_path: Path) -> None:
-    """``shutil.copy2(src, dst)`` is a raw copy."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -571,7 +545,6 @@ def test_flags_raw_shutil_copy2(tmp_path: Path) -> None:
 
 
 def test_regression_flags_raw_shutil_copytree(tmp_path: Path) -> None:
-    """S-6: raw recursive copies cannot bypass D1 write enforcement."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -584,11 +557,10 @@ def test_regression_flags_raw_shutil_copytree(tmp_path: Path) -> None:
     )
 
     assert [violation.kind for violation in violations] == ["raw_copytree"]
-    assert "filesystem-write-ok" in violations[0].message
+    assert "EXEMPT_CALL_SITES" in violations[0].message
 
 
 def test_flags_raw_shutil_move(tmp_path: Path) -> None:
-    """``shutil.move(src, dst)`` is a raw move."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path, module_rel, "import shutil\ndef relocate(src, dst):\n    shutil.move(src, dst)\n"
@@ -601,7 +573,6 @@ def test_flags_raw_shutil_move(tmp_path: Path) -> None:
 
 
 def test_flags_raw_os_open_with_write_flags(tmp_path: Path) -> None:
-    """A raw ``os.open`` creation path cannot bypass the mutation audit."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -618,11 +589,10 @@ def test_flags_raw_os_open_with_write_flags(tmp_path: Path) -> None:
     )
 
     assert [violation.kind for violation in violations] == ["raw_open"]
-    assert "filesystem-write-ok" in violations[0].message
+    assert "EXEMPT_CALL_SITES" in violations[0].message
 
 
 def test_flags_raw_os_fsync(tmp_path: Path) -> None:
-    """``os.fsync(fd)`` outside the canonical primitive is a raw durability barrier."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -637,7 +607,6 @@ def test_flags_raw_os_fsync(tmp_path: Path) -> None:
 
 
 def test_regression_flags_path_chmod_metadata_mutation(tmp_path: Path) -> None:
-    """S-6: raw permission changes cannot bypass D1 metadata-mutation enforcement."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -650,11 +619,10 @@ def test_regression_flags_path_chmod_metadata_mutation(tmp_path: Path) -> None:
     )
 
     assert [violation.kind for violation in violations] == ["raw_chmod"]
-    assert "filesystem-write-ok" in violations[0].message
+    assert "EXEMPT_CALL_SITES" in violations[0].message
 
 
 def test_regression_flags_path_variable_chmod_metadata_mutation(tmp_path: Path) -> None:
-    """S-6: pathlib provenance cannot let a local permission mutation evade D1."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -674,8 +642,7 @@ def test_regression_flags_path_variable_chmod_metadata_mutation(tmp_path: Path) 
     assert [violation.kind for violation in violations] == ["raw_chmod"]
 
 
-def test_reasoned_marker_allows_required_path_chmod_metadata_mutation(tmp_path: Path) -> None:
-    """D3: a local permission contract remains an explicit sanctioned exception."""
+def test_reasoned_marker_no_longer_allows_path_chmod_metadata_mutation(tmp_path: Path) -> None:
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -684,18 +651,20 @@ def test_reasoned_marker_allows_required_path_chmod_metadata_mutation(tmp_path: 
             "from pathlib import Path\n"
             "def restrict(p):\n"
             "    protected = Path(p)\n"
-            "    # filesystem-write-ok: persistent identity staging must remain owner-readable only\n"
+            "    # filesystem-write-ok: persistent identity staging\n"
             "    protected.chmod(0o600)\n"
         ),
     )
 
-    assert (
-        audit.audit_filesystem_write_consolidation(package_root, module_paths=(module_rel,)) == []
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+    assert [violation.kind for violation in violations] == ["raw_chmod"], (
+        "an inline marker comment MUST NOT silence the filesystem-write audit"
     )
 
 
 def test_flags_raw_path_touch(tmp_path: Path) -> None:
-    """``Path.touch()`` is a raw mtime bump."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -710,7 +679,6 @@ def test_flags_raw_path_touch(tmp_path: Path) -> None:
 
 
 def test_flags_raw_builtin_open_write_mode(tmp_path: Path) -> None:
-    """``open(path, "w")`` is a raw write that bypasses the canonical primitive."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -725,7 +693,6 @@ def test_flags_raw_builtin_open_write_mode(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("module", ["io", "builtins"])
 def test_flags_direct_imported_open_alias_in_write_mode(tmp_path: Path, module: str) -> None:
-    """S-8 regression: direct ``open`` aliases cannot evade write enforcement."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -748,7 +715,6 @@ def test_flags_direct_imported_open_alias_in_write_mode(tmp_path: Path, module: 
 
 @pytest.mark.parametrize("module", ["io", "builtins"])
 def test_flags_module_import_open_alias_in_write_mode(tmp_path: Path, module: str) -> None:
-    """S-8 regression: renamed ``io``/``builtins`` modules cannot evade enforcement."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -771,7 +737,6 @@ def test_flags_module_import_open_alias_in_write_mode(tmp_path: Path, module: st
 
 @pytest.mark.parametrize("module", ["io", "builtins"])
 def test_does_not_flag_direct_imported_open_alias_in_read_mode(tmp_path: Path, module: str) -> None:
-    """S-8 regression: direct ``open`` aliases preserve read-only access."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -785,7 +750,6 @@ def test_does_not_flag_direct_imported_open_alias_in_read_mode(tmp_path: Path, m
 
 
 def test_flags_raw_path_open_write_mode(tmp_path: Path) -> None:
-    """``Path.open(\"a\")`` is a raw append outside an approved stream boundary."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -803,11 +767,10 @@ def test_flags_raw_path_open_write_mode(tmp_path: Path) -> None:
     )
 
     assert [violation.kind for violation in violations] == ["raw_open_write"]
-    assert "filesystem-write-ok" in violations[0].message
+    assert "EXEMPT_CALL_SITES" in violations[0].message
 
 
 def test_does_not_flag_builtin_open_read_mode(tmp_path: Path) -> None:
-    """``open(path, "r")`` is a read, not a write, and must not be flagged."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -821,7 +784,6 @@ def test_does_not_flag_builtin_open_read_mode(tmp_path: Path) -> None:
 
 
 def test_does_not_flag_builtin_open_binary_read(tmp_path: Path) -> None:
-    """``open(path, "rb")`` is a binary read, not a write."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -835,7 +797,6 @@ def test_does_not_flag_builtin_open_binary_read(tmp_path: Path) -> None:
 
 
 def test_does_not_flag_builtin_open_default_or_keyword_read_mode(tmp_path: Path) -> None:
-    """Default and keyword read modes are reads, never false-positive mutations."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -849,7 +810,6 @@ def test_does_not_flag_builtin_open_default_or_keyword_read_mode(tmp_path: Path)
 
 @pytest.mark.parametrize("mode", ["rb+", "r+b", "w+b"])
 def test_flags_all_plus_open_modes(tmp_path: Path, mode: str) -> None:
-    """Every update mode mutates and must be rejected (DA-001)."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -862,8 +822,7 @@ def test_flags_all_plus_open_modes(tmp_path: Path, mode: str) -> None:
     assert [violation.kind for violation in violations] == ["raw_open_write"]
 
 
-def test_marker_suppresses_raw_os_replace(tmp_path: Path) -> None:
-    """A ``# filesystem-write-ok:`` marker suppresses ``os.replace`` too."""
+def test_marker_no_longer_suppresses_raw_os_replace(tmp_path: Path) -> None:
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -871,18 +830,19 @@ def test_marker_suppresses_raw_os_replace(tmp_path: Path) -> None:
         (
             "import os\n"
             "def swap(src, dst):\n"
-            "    # filesystem-write-ok: atomic-replace boundary for the canonical primitive\n"
+            "    # filesystem-write-ok: atomic-replace boundary\n"
             "    os.replace(src, dst)\n"
         ),
     )
     violations = audit.audit_filesystem_write_consolidation(
         package_root, module_paths=(module_rel,)
     )
-    assert violations == []
+    assert [violation.kind for violation in violations] == ["raw_replace"], (
+        "an inline marker comment MUST NOT silence the filesystem-write audit"
+    )
 
 
-def test_marker_suppresses_raw_shutil_rmtree(tmp_path: Path) -> None:
-    """A ``# filesystem-write-ok:`` marker suppresses ``shutil.rmtree``."""
+def test_marker_no_longer_suppresses_raw_shutil_rmtree(tmp_path: Path) -> None:
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -890,18 +850,19 @@ def test_marker_suppresses_raw_shutil_rmtree(tmp_path: Path) -> None:
         (
             "import shutil\n"
             "def drop(p):\n"
-            "    # filesystem-write-ok: bounded retention cleanup of agent home directory\n"
+            "    # filesystem-write-ok: bounded retention cleanup\n"
             "    shutil.rmtree(p)\n"
         ),
     )
     violations = audit.audit_filesystem_write_consolidation(
         package_root, module_paths=(module_rel,)
     )
-    assert violations == []
+    assert [violation.kind for violation in violations] == ["raw_rmtree"], (
+        "an inline marker comment MUST NOT silence the filesystem-write audit"
+    )
 
 
 def test_regression_missing_default_production_root_fails_closed(tmp_path: Path) -> None:
-    """S-6: a missing default root cannot make the write audit silently pass."""
     violations = audit.audit_filesystem_write_consolidation(tmp_path)
 
     assert len(violations) == 1
@@ -911,7 +872,6 @@ def test_regression_missing_default_production_root_fails_closed(tmp_path: Path)
 
 
 def test_regression_explicit_module_path_cannot_escape_package_root(tmp_path: Path) -> None:
-    """S-6: a supplied path outside production cannot bypass D1 enforcement."""
     package_root = _write_fake_package(tmp_path, "alpha/inert.py", "VALUE = 1\n")
     external_module = tmp_path / "outside.py"
     external_module.write_text("VALUE = 1\n", encoding="utf-8")
@@ -928,12 +888,6 @@ def test_regression_explicit_module_path_cannot_escape_package_root(tmp_path: Pa
 
 
 def test_synthetic_unknown_writer_in_production_would_fail(tmp_path: Path) -> None:
-    """DA-001 invariant: a synthetic unknown ``os.replace`` call must be flagged.
-
-    This is the regression test that proves the audit cannot be
-    silently bypassed by introducing a new writer that uses a
-    mutation form not previously seen by the audit.
-    """
     module_rel = "sneaky/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -948,7 +902,6 @@ def test_synthetic_unknown_writer_in_production_would_fail(tmp_path: Path) -> No
 
 
 def test_pathlib_path_unlink_detected(tmp_path: Path) -> None:
-    """``pathlib.Path.unlink`` (chained attribute) is detected."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -959,3 +912,84 @@ def test_pathlib_path_unlink_detected(tmp_path: Path) -> None:
         package_root, module_paths=(module_rel,)
     )
     assert any(v.kind == "raw_unlink" for v in violations)
+
+
+def test_registered_call_site_is_exempt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "def persist(path, content):\n    path.write_text(content)\n",
+    )
+    monkeypatch.setattr(
+        audit,
+        "EXEMPT_CALL_SITES",
+        frozenset({("alpha/example.py", "persist", "raw_write_text")}),
+    )
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+    assert violations == []
+
+
+def test_registered_scope_does_not_exempt_another_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "def persist(path, content):\n    path.write_text(content)\n",
+    )
+    monkeypatch.setattr(
+        audit,
+        "EXEMPT_CALL_SITES",
+        frozenset({("alpha/example.py", "other", "raw_write_text")}),
+    )
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+    assert [violation.kind for violation in violations] == ["raw_write_text"]
+
+
+def test_registered_kind_does_not_exempt_another_kind(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "def persist(path, content):\n    path.write_text(content)\n",
+    )
+    monkeypatch.setattr(
+        audit,
+        "EXEMPT_CALL_SITES",
+        frozenset({("alpha/example.py", "persist", "raw_open_write")}),
+    )
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+    assert [violation.kind for violation in violations] == ["raw_write_text"]
+
+
+def test_registered_call_site_does_not_exempt_another_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "def persist(path, content):\n    path.write_text(content)\n",
+    )
+    monkeypatch.setattr(
+        audit,
+        "EXEMPT_CALL_SITES",
+        frozenset({("alpha/other.py", "persist", "raw_write_text")}),
+    )
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+    assert [violation.kind for violation in violations] == ["raw_write_text"]

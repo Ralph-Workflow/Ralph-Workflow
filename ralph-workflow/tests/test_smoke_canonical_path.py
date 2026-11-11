@@ -1,10 +1,3 @@
-"""Smoke plumbing end-to-end canonical artifact-evidence tests.
-
-Tests both the Claude branch (through handle_submit_md_artifact) and the AGY
-branch (through direct file write + promotion) to ensure the canonical receipt
-path is stamped in both cases without implicitly declaring completion.
-"""
-
 from __future__ import annotations
 
 from collections import deque
@@ -34,14 +27,6 @@ if TYPE_CHECKING:
 
 @pytest.fixture(autouse=True)
 def _no_ambient_broker_secret(monkeypatch: MonkeyPatch) -> None:
-    """Pin the unsigned-evidence boundary this module asserts on.
-
-    An earlier in-process smoke-command test mints ``RALPH_BROKER_SECRET``
-    into the real ``os.environ`` (the composition root mints one when the
-    operator exported none). These tests deliberately run with
-    ``broker_secret = None``; an ambient secret flips receipt/sentinel HMAC
-    verification and fails them order-dependently.
-    """
     monkeypatch.delenv("RALPH_BROKER_SECRET", raising=False)
 
 
@@ -136,7 +121,6 @@ def test_smoke_claude_branch_end_to_end_uses_canonical_submit(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """Claude branch: markdown submission stamps the canonical receipt."""
     workspace = MockWorkspace(tmp_path)
     params = _make_params(tmp_path, "claude/haiku", _claude_config())
     run_id = "interactive-claude-smoke"
@@ -179,14 +163,6 @@ def test_smoke_agy_fallback_end_to_end_uses_canonical_submit(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """AGY branch: direct file write is promoted to canonical receipt.
-
-    Post F7/DoD 19: a fallback artifact promotion no longer earns the
-    completion sentinel -- the host writes no completion evidence for
-    any transport. The receipt is stamped (the artifact is promoted),
-    but ``explicit_completion_seen`` stays False until the agent itself
-    calls ``declare_complete``.
-    """
     params = _make_params(tmp_path, "agy/test-model", _agy_config())
     run_id = "interactive-agy-smoke-test-model"
 

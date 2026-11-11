@@ -1,4 +1,3 @@
-"""RegisteredTool dataclass."""
 
 from __future__ import annotations
 
@@ -12,7 +11,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class RegisteredTool:
-    """A registered tool and its executable handler."""
 
     metadata: ToolMetadata
     handler: RegistrationHandler

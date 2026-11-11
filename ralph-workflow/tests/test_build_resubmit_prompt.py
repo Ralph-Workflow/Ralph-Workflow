@@ -1,12 +1,3 @@
-"""Tests for the SINGLE artifact-missing retry-hint builder, `build_retry_hint`.
-
-Both the pipeline phase gates and the commit command call `build_retry_hint`, so
-the "agent did not submit the required artifact; here is your prior analysis;
-submit it now via <tool>" recovery cannot drift. These tests pin the shared
-resubmit guidance (artifact type, submit tool, Markdown fallback path, prior-analysis
-echo) produced for any caller.
-"""
-
 from __future__ import annotations
 
 from ralph.phases.required_artifacts import RequiredArtifact, build_retry_hint

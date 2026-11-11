@@ -1,10 +1,3 @@
-"""Black-box tests for the user-facing retention preference (S-7 / DA-107).
-
-``[general] retention_max_age_days`` lets an operator express a stricter
-(or looser) Ralph-managed retention bound without knowing the internal
-data organization. Impossible values must fail visibly at config load.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -23,25 +16,21 @@ LOCAL_TEMPLATE_PATH = REPO_ROOT / "ralph" / "policy" / "defaults" / "ralph-workf
 
 
 def test_retention_max_age_days_default_is_seven() -> None:
-    """The conservative default matches the previous hard-coded 7-day bound."""
     assert GeneralConfig().retention_max_age_days == 7.0
 
 
 def test_retention_max_age_days_accepts_stricter_value() -> None:
-    """A stricter preference (fewer days) validates and is honored."""
     config = GeneralConfig(retention_max_age_days=1.0)
     assert config.retention_max_age_days == 1.0
 
 
 @pytest.mark.parametrize("invalid", [0.0, -1.0, 3650.0 + 0.5])
 def test_retention_max_age_days_rejects_impossible_values(invalid: float) -> None:
-    """Zero, negative, and absurd values are rejected with a field-name error."""
     with pytest.raises(ValidationError, match="retention_max_age_days"):
         GeneralConfig(retention_max_age_days=invalid)
 
 
 def test_load_config_rejects_invalid_retention_preference(tmp_path: Path) -> None:
-    """End-to-end: an impossible value in the TOML fails visibly (SystemExit)."""
     agent_dir = tmp_path / ".agent"
     agent_dir.mkdir()
     (agent_dir / "ralph-workflow.toml").write_text(
@@ -53,7 +42,6 @@ def test_load_config_rejects_invalid_retention_preference(tmp_path: Path) -> Non
 
 
 def test_load_config_honors_stricter_retention_preference(tmp_path: Path) -> None:
-    """End-to-end: a valid stricter value flows into the merged config."""
     agent_dir = tmp_path / ".agent"
     agent_dir.mkdir()
     (agent_dir / "ralph-workflow.toml").write_text(
@@ -65,7 +53,6 @@ def test_load_config_honors_stricter_retention_preference(tmp_path: Path) -> Non
 
 
 def test_both_templates_document_the_retention_preference() -> None:
-    """Both bundled templates carry the commented-out retention key."""
     for path in (TEMPLATE_PATH, LOCAL_TEMPLATE_PATH):
         text = path.read_text()
         assert "retention_max_age_days" in text, (
@@ -76,7 +63,6 @@ def test_both_templates_document_the_retention_preference() -> None:
 def test_run_start_sweep_receives_configured_retention(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The run-start bookkeeping path forwards the configured age to the sweep."""
     captured: dict[str, object] = {}
 
     def _fake_sweep(

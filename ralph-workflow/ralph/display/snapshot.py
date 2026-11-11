@@ -1,8 +1,3 @@
-"""Immutable pipeline snapshot models.
-
-This module projects pipeline state into a presentation-agnostic data shape
-consumed by display panels and subscribers.
-"""
 
 from __future__ import annotations
 
@@ -32,10 +27,6 @@ _STATUS_TO_SEMANTIC: dict[str, str] = {
 
 @dataclass(frozen=True)
 class SnapshotContext:
-    """Display context for building a PipelineSnapshot from a PipelineState.
-
-    All fields are optional so callers can populate only what they know.
-    """
 
     prompt_path: str | None = None
     prompt_preview: tuple[str, ...] = ()
@@ -68,7 +59,6 @@ def snapshot_from_state(
     state: PipelineState,
     context: SnapshotContext | None = None,
 ) -> PipelineSnapshot:
-    """Project PipelineState into an immutable pipeline snapshot."""
     effective_context = context or SnapshotContext()
     created_at = datetime.now(UTC)
     workers = _snapshot_workers(state)
@@ -181,12 +171,6 @@ def snapshot_from_state(
         ),
         mcp_restart_count=effective_context.mcp_restart_count,
         active_process_labels=effective_context.active_process_labels,
-        # Project RebaseState onto the display layer so the completion
-        # summary can render what auto-integration actually did. The four
-        # fields correspond 1:1 to RebaseState.last_action /
-        # last_reason / last_target / fast_forwarded. Defaults keep the
-        # disabled-path receipt byte-identical to runs without
-        # auto-integration (action=None renders nothing).
         auto_integrate_action=state.rebase.last_action,
         auto_integrate_reason=state.rebase.last_reason,
         auto_integrate_target=state.rebase.last_target,
@@ -199,12 +183,6 @@ def snapshot_from_state(
 
 
 def _snapshot_workers(state: PipelineState) -> tuple[WorkerSnapshot, ...]:
-    """Capture snapshot of worker states.
-
-    Deprecated: Ralph-orchestrated workers are removed from the execution model;
-    parallelism is owned by the developer agent's own sub-agents. See
-    docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
-    """
     worker_states = state.worker_states
     seen: set[str] = set()
     snapshots: list[WorkerSnapshot] = []
@@ -225,12 +203,6 @@ def _snapshot_workers(state: PipelineState) -> tuple[WorkerSnapshot, ...]:
 
 
 def _snapshot_worker(description: str, worker: WorkerState) -> WorkerSnapshot:
-    """Capture snapshot of a single worker.
-
-    Deprecated: Ralph-orchestrated workers are removed from the execution model;
-    parallelism is owned by the developer agent's own sub-agents. See
-    docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
-    """
     status = worker.status.value if isinstance(worker.status, WorkerStatus) else str(worker.status)
     return WorkerSnapshot(
         unit_id=worker.unit_id,

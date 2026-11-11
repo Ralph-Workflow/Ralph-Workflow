@@ -1,5 +1,3 @@
-"""Tests for ExecutionError message rendering."""
-
 from __future__ import annotations
 
 import json
@@ -33,8 +31,6 @@ TimeoutCause = Literal[
     "restart_lost",
 ]
 
-#: Every cause the exec family can report. ``None`` is the legacy
-#: "cause unknown" path and must render both interpretations.
 _ALL_CAUSES: tuple[TimeoutCause | None, ...] = (
     "inactivity",
     "hard_cap",
@@ -46,8 +42,6 @@ _ALL_CAUSES: tuple[TimeoutCause | None, ...] = (
     None,
 )
 
-#: A serialized liveness verdict, shaped exactly as
-#: ``serialize_liveness_verdict`` emits it.
 _VERDICT: dict[str, object] = {
     "score": 0.1,
     "pressure": 92.0,
@@ -59,9 +53,6 @@ _VERDICT: dict[str, object] = {
     "elapsed_s": 305.5,
 }
 
-#: Capabilities this server does not expose. The exec family has no
-#: background / submit-and-poll mode: an exec call that outlives the
-#: soft-reply budget already returns a ``job_id`` that ``exec_wait`` polls.
 _NON_EXISTENT_ACTIONS: tuple[str, ...] = (
     "run it in the background",
     "run_in_background",
@@ -79,7 +70,6 @@ def _diagnostics(**overrides: object) -> str:
 
 
 def _timeout_error(cause: TimeoutCause | None, *, populated: bool) -> ExecutionError:
-    """Build a timed-out error, optionally with every data field populated."""
     if not populated:
         return ExecutionError(timed_out=True, timeout_cause=cause)
     return ExecutionError(
@@ -92,11 +82,6 @@ def _timeout_error(cause: TimeoutCause | None, *, populated: bool) -> ExecutionE
         partial_output="hello\n",
         diagnostics=_diagnostics(),
     )
-
-
-# ---------------------------------------------------------------------------
-# Cache-full / workspace-limit templates
-# ---------------------------------------------------------------------------
 
 
 def test_cache_full_message_describes_automatic_reset_without_internal_tool() -> None:
@@ -128,18 +113,7 @@ def test_cache_full_message_describes_automatic_reset_without_internal_tool() ->
     )
 
 
-# ---------------------------------------------------------------------------
-# Job kill causes (ExecJobRegistry) — cause-accurate, real data
-# ---------------------------------------------------------------------------
-
-
 def test_stalled_kill_never_claims_no_output() -> None:
-    """``stalled`` is a liveness verdict, not an output-silence verdict.
-
-    Spec rule R6 kills a job that is printing the same line in a loop, so
-    "No output was received" is factually wrong on this path. The message must
-    name stall pressure and the stall window instead.
-    """
     err = ExecutionError(
         "Job job_x terminated: stalled",
         timed_out=True,
@@ -160,9 +134,6 @@ def test_stalled_kill_never_claims_no_output() -> None:
 
 
 def test_stalled_kill_does_not_render_the_stall_window_as_elapsed_time() -> None:
-    """``timeout_ms`` is the stall window under the job architecture, not the
-    time the command ran. Rendering it as elapsed time is the false claim this
-    unit exists to remove."""
     err = ExecutionError(
         timed_out=True,
         timeout_cause="stalled",
@@ -188,9 +159,6 @@ def test_stalled_kill_with_no_elapsed_data_omits_the_number() -> None:
 
 
 def test_job_kill_surfaces_the_verdict_payload_but_never_guesses_a_duration() -> None:
-    """The serialized liveness verdict rides in ``diagnostics``. It is surfaced
-    verbatim, but the renderer does not mine it for a duration — so a job kill
-    with no explicit ``elapsed_ms`` carries no elapsed number."""
     err = ExecutionError(
         timed_out=True,
         timeout_cause="stalled",
@@ -283,14 +251,7 @@ def test_restart_lost_kill_says_the_job_did_not_survive_a_restart() -> None:
     assert "None" not in text
 
 
-# ---------------------------------------------------------------------------
-# Legacy in-request paths — preserved, and provably distinct from job kills
-# ---------------------------------------------------------------------------
-
-
 def test_legacy_inactivity_still_names_the_output_silence_window() -> None:
-    """A plain in-request exec really is killed by output silence, so the
-    silence wording stays on this path only."""
     err = ExecutionError(
         timed_out=True,
         timeout_ms=90_000,
@@ -305,8 +266,6 @@ def test_legacy_inactivity_still_names_the_output_silence_window() -> None:
 
 
 def test_legacy_hard_cap_still_names_the_absolute_ceiling() -> None:
-    """``run_command`` arms ``hard_timeout=EXEC_MAX_TIMEOUT_MS``; on THAT path
-    the 300s ceiling genuinely fired, so naming it is correct there."""
     err = ExecutionError(
         timed_out=True,
         timeout_ms=EXEC_MAX_TIMEOUT_MS,
@@ -323,8 +282,6 @@ def test_legacy_hard_cap_still_names_the_absolute_ceiling() -> None:
 
 
 def test_legacy_and_job_paths_are_distinguished_by_their_data() -> None:
-    """The two hard-cap paths must not render the same sentence: the legacy
-    path really did hit a 300s absolute cap, the job path hit a job ceiling."""
     legacy = ExecutionError(
         timed_out=True,
         timeout_ms=EXEC_MAX_TIMEOUT_MS,
@@ -381,10 +338,6 @@ def test_malformed_diagnostics_do_not_break_rendering() -> None:
 
 
 def test_unknown_cause_presents_both_interpretations() -> None:
-    """A cause-less timeout is ambiguous: the command may be legitimately long
-    (raise the limit) OR genuinely stuck (raising the limit only wastes more
-    time). The message must surface BOTH so the agent does not reflexively
-    double the timeout on a wedged command."""
     err = ExecutionError(
         "Failed to execute 'x': timed out after 90000ms",
         timed_out=True,
@@ -417,8 +370,6 @@ def test_run_command_timeout_reports_the_expired_deadline_and_useful_suggestion(
     expected_ms: int,
     expected_suggestion: int | None,
 ) -> None:
-    """End-to-end through the real handler: the rendered message must carry the
-    window that actually expired and a suggestion strictly below the cap."""
 
     def timeout_runner(
         _argv: list[str], _cwd: Path, timeout: float | None

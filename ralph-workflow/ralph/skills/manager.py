@@ -1,4 +1,3 @@
-"""SkillManager for baseline capability health tracking and skill installation."""
 
 from __future__ import annotations
 
@@ -66,7 +65,6 @@ def _visit_url_is_available() -> bool:
 
 
 class SkillManager:
-    """Manages baseline capability health state and skill bundle installation."""
 
     def __init__(
         self,
@@ -85,17 +83,9 @@ class SkillManager:
     def ensure_baseline_capabilities(
         self, *, workspace_root: Path
     ) -> tuple[CapabilityState, list[str]]:
-        """Install skills, probe docs_mcp, stamp web_search/visit_url with Ralph version.
-
-        Returns (updated_state, failures) where failures is the list of failure codes
-        returned by install_baseline_skills (empty list on success). The failures list
-        is threaded up to the caller (init.py) so a NEEDS_REPAIR status from the skill
-        installer is visible in the user-facing init summary.
-        """
         state = self._load_state()
         current_version = _get_ralph_version()
 
-        # Install baseline skill bundle
         skills_entry, failures = install_baseline_skills()
         if failures:
             skills_entry = CapabilityEntry(
@@ -103,7 +93,6 @@ class SkillManager:
                 last_check_fail_iso=_now_iso(),
             )
 
-        # Probe docs_mcp availability
         docs_mcp_url = _find_configured_docs_mcp_url(workspace_root)
         if docs_mcp_url:
             reachable = probe_docs_mcp(docs_mcp_url)
@@ -154,7 +143,6 @@ class SkillManager:
         return updated, failures
 
     def check_baseline_health(self) -> dict[str, bool]:
-        """Mark web_search/visit_url INSTALLED_OUTDATED if ralph version changed."""
         state = self._load_state()
         current_version = _get_ralph_version()
         updates: dict[str, object] = {}
@@ -188,34 +176,13 @@ class SkillManager:
         }
 
     def reinstall_baseline_skills(self, workspace_root: Path) -> tuple[CapabilityState, list[str]]:
-        """Re-run user-global + project-scope baseline skill installation.
-
-        Used by ``ralph --force-init-skills`` to force a full re-resolve even
-        when the install predicates report a healthy state. The two install
-        calls are merged: the WORST CapabilityStatus wins (NEEDS_REPAIR >
-        INSTALLED_OUTDATED > others, per CapabilityStatus enum order) and
-        the failure-code lists are concatenated. Saved to state and
-        returned.
-
-        wt-012: the project-scope install uses the producer-level
-        :func:`ralph.skills._installer.install_project_baseline_skills_with_diff`
-        wrapper that records the byte-exact diff, and the
-        :func:`ralph.skills._auto_commit.commit_skill_writes` helper
-        commits the install at the install boundary. The user-global
-        install is unchanged (it stays in the user-global canonical
-        under ``~/.claude/skills/`` and is auto-committed on the next
-        ``ralph`` run via the run-start sync).
-
-        Non-fatal: a raising exception is caught and reported via the
-        'reinstall-exception' failure code so the CLI surface stays usable.
-        """
         try:
-            from ralph.git.operations import (  # noqa: PLC0415
+            from ralph.git.operations import (
                 create_commit,
             )
-            from ralph.git.scoped_auto_commit import ScopedCommitStatus  # noqa: PLC0415
-            from ralph.skills._auto_commit import commit_skill_writes  # noqa: PLC0415
-            from ralph.skills._installer import (  # noqa: PLC0415
+            from ralph.git.scoped_auto_commit import ScopedCommitStatus
+            from ralph.skills._auto_commit import commit_skill_writes
+            from ralph.skills._installer import (
                 install_project_baseline_skills_with_diff,
             )
 
@@ -223,11 +190,6 @@ class SkillManager:
             project_outcome = install_project_baseline_skills_with_diff(workspace_root)
             project_entry = project_outcome.entry
             project_failures = project_outcome.failures
-            # Commit the project-scope install at the producer boundary
-            # so the deterministic chore commit is immediate. A
-            # non-git workspace, a user-dirty path, or any other
-            # FAILED / NOT_REPO outcome is logged at DEBUG and never
-            # blocks the reinstall.
             if project_outcome.written_paths:
                 try:
                     result = commit_skill_writes(
@@ -238,14 +200,14 @@ class SkillManager:
                         intentional_transitions=project_outcome.intentional_transitions,
                     )
                     if result.status is ScopedCommitStatus.FAILED:
-                        from loguru import logger as _logger  # noqa: PLC0415
+                        from loguru import logger as _logger
 
                         _logger.warning(
                             "Skill auto-commit during --force-init-skills failed (non-fatal): {}",
                             result.error,
                         )
                 except Exception as exc:
-                    from loguru import logger as _logger  # noqa: PLC0415
+                    from loguru import logger as _logger
 
                     _logger.warning(
                         "Skill auto-commit during --force-init-skills raised (non-fatal): {}",
@@ -257,8 +219,6 @@ class SkillManager:
         merged_failures: list[str] = list(user_failures) + list(project_failures)
 
         def _rank(status: CapabilityStatus) -> int:
-            # WORST is NEEDS_REPAIR (5) > INSTALLED_OUTDATED (3) > others.
-            # The exact ordering matches the plan's precedence contract.
             order: dict[CapabilityStatus, int] = {
                 CapabilityStatus.NEEDS_REPAIR: 5,
                 CapabilityStatus.INSTALLED_DEGRADED: 4,
@@ -292,13 +252,6 @@ class SkillManager:
         return updated, merged_failures
 
     def check_skills_for_updates(self) -> bool:
-        """Surface outdated baseline skills and return whether an update is available.
-
-        The user must run ``ralph --force-init-skills`` to apply the update;
-        this method records the signal in state for ``ralph`` runs and
-        ``_print_user_global_update_hint`` to surface, but does NOT mutate
-        the user-global canonical or any sibling symlink. (Do NOT auto-repair.)
-        """
         state = self._load_state()
         entry = state.skills
         if not needs_recheck(entry, self._policy):
@@ -327,7 +280,6 @@ class SkillManager:
         return update_available
 
     def get_docs_mcp_available(self, *, workspace_root: Path) -> bool:
-        """Return True if docs_mcp is reachable and healthy (uses TTL-based cache)."""
         state = self._load_state()
         entry = state.docs_mcp
         if not needs_recheck(entry, self._policy):

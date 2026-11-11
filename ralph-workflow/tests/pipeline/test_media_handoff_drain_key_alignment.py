@@ -1,5 +1,3 @@
-"""Plan S-8: the multimodal handoff reader must cover divergent drain keys."""
-
 from __future__ import annotations
 
 import json
@@ -22,10 +20,6 @@ from ralph.prompts.materialize import (
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace.fs import FsWorkspace
 
-# Phases whose configured drain differs from the phase name (drain-name key
-# mismatch the reader must close). The set is taken from the canonical
-# `ralph/policy/defaults/pipeline.toml` and is the only divergence Ralph can
-# see at this writing.
 DIVERGENT_PHASES: tuple[str, str] = (
     ("development_commit_review", "commit"),
     ("development_final_commit", "development_commit"),
@@ -63,7 +57,6 @@ def _seed_index(workspace_root: Path, drain: str, artifact_id: str, title: str) 
 
 
 def test_collect_media_entries_reads_divergent_drain_keys(tmp_path: Path) -> None:
-    """`collect_media_entries_for_phase` covers drain-keyed entries for divergent phases."""
     for phase, drain in DIVERGENT_PHASES:
         workspace = FsWorkspace(tmp_path)
         _seed_index(tmp_path, drain, f"{phase}-entry", f"{phase}.png")
@@ -77,7 +70,6 @@ def test_collect_media_entries_reads_divergent_drain_keys(tmp_path: Path) -> Non
 def test_materialize_prompt_carries_drain_keyed_entries_for_divergent_phases(
     tmp_path: Path,
 ) -> None:
-    """`materialize_prompt_for_phase` for a divergent phase surfaces the drain-keyed media."""
     policy = load_policy(tmp_path / ".agent")
     workspace = FsWorkspace(tmp_path)
     workspace.write("PROMPT.md", "Build the feature\n")
@@ -123,17 +115,14 @@ def test_materialize_prompt_carries_drain_keyed_entries_for_divergent_phases(
         assert any(
             artifact["artifact_id"] == f"{phase}-entry" for artifact in sidecar["artifacts"]
         ), f"phase {phase!r} sidecar must list the drain-keyed entry"
-        # The reader must have surfaced the drain-keyed entry to the spy.
         assert spy_entries and any(
             entry.artifact_id == f"{phase}-entry" for entry in spy_entries[-1]
         ), f"phase {phase!r} spy must see the drain-keyed media entry"
-        # Wipe the index so the next iteration starts from a clean workspace.
         (tmp_path / media_session_path(drain)).unlink()
         (tmp_path / multimodal_sidecar_path(phase)).unlink()
 
 
 def test_materialize_prompt_merges_phase_and_drain_entries(tmp_path: Path) -> None:
-    """A phase-keyed entry is still returned alongside a drain-keyed one for a divergent phase."""
     phase, drain = DIVERGENT_PHASES[0]
     policy = load_policy(tmp_path / ".agent")
     workspace = FsWorkspace(tmp_path)
@@ -175,7 +164,6 @@ def test_materialize_prompt_merges_phase_and_drain_entries(tmp_path: Path) -> No
 
 
 def test_materialize_prompt_dedupes_duplicate_phase_and_drain_entries(tmp_path: Path) -> None:
-    """An entry present under both keys must appear exactly once."""
     phase, drain = DIVERGENT_PHASES[0]
     policy = load_policy(tmp_path / ".agent")
     workspace = FsWorkspace(tmp_path)
@@ -213,7 +201,6 @@ def test_materialize_prompt_dedupes_duplicate_phase_and_drain_entries(tmp_path: 
 
 
 def test_default_policy_lists_divergent_phases() -> None:
-    """Pin the canonical divergent phases the reader must close."""
     policy = load_policy(Path("ralph/policy/defaults"))
     resolved = {
         phase: resolve_phase_drain(phase, policy.pipeline) or phase for phase, _ in DIVERGENT_PHASES

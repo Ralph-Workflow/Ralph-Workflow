@@ -1,4 +1,3 @@
-"""PhaseDefinition Pydantic model."""
 
 from pathlib import PurePosixPath
 from typing import Literal, cast
@@ -20,13 +19,6 @@ from ralph.policy.models._types import PhaseRole
 
 
 def _validate_allowed_directory_entry(entry: str) -> str:
-    """Validate one repository-relative allowed-directory prefix.
-
-    The rule mirrors the work-unit ``allowed_directories`` rule so the same
-    setting name means the same thing everywhere: an entry is a non-blank,
-    relative POSIX path that uses ``/`` separators and contains no ``..``
-    segment.
-    """
     if not entry or not entry.strip():
         raise ValueError("allowed_directories entries must be non-empty")
     if "\\" in entry:
@@ -40,7 +32,6 @@ def _validate_allowed_directory_entry(entry: str) -> str:
 
 
 class PhaseDefinition(_FrozenPolicyModel):
-    """Definition of a single phase in the pipeline graph."""
 
     drain: str = Field(..., description="Drain binding for this phase")
     transitions: PhaseTransition = Field(..., description="Transition routing rules")
@@ -196,7 +187,6 @@ class PhaseDefinition(_FrozenPolicyModel):
     @field_validator("allowed_directories")
     @classmethod
     def _validate_allowed_directories(cls, value: list[str]) -> list[str]:
-        """Reject allowed-directory prefixes that are not repository-relative."""
         return [_validate_allowed_directory_entry(entry) for entry in value]
 
     @model_validator(mode="before")

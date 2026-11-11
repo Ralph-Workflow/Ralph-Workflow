@@ -1,17 +1,3 @@
-"""The chain-transport decisions must be WIRED, not merely correct.
-
-``phase_session_identity`` and ``commit_chain_is_ambiguous`` are the two
-halves of one rule: a session serving several agents must not resolve a
-provider for a CLI that may not be the one that runs. Both were pinned
-as units, and neither was pinned at its call site -- so a mutation sweep
-reverted each wiring with the entire 14k-test suite green, including one
-that re-tagged a phase session with the FIRST agent's transport, which
-is exactly the defect the resolution exists to prevent.
-
-That is the same criticism the fix itself made of the code it replaced
-("one rule, two call sites"), turned on its own coverage.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -37,8 +23,6 @@ from ralph.workspace.scope import WorkspaceScope
 
 
 class _RecordingBridgeFactory:
-    """Captures the identity a bridge would have been built with."""
-
     def __init__(self) -> None:
         self.model_identity: object = "unset"
         self.transport: object = "unset"
@@ -71,12 +55,6 @@ def _drive_bridge(factory: _RecordingBridgeFactory, identity: object, *, drop: b
 
 
 def test_a_dropped_identity_does_not_reach_the_commit_bridge(injected_identity: object) -> None:
-    """An ambiguous chain must not resolve the injected provider.
-
-    Driven end to end: with the flag set the bridge is built with NO
-    model identity, so the session resolves as unresolved and delivery
-    degrades to resource references every candidate can accept.
-    """
     factory = _RecordingBridgeFactory()
 
     _drive_bridge(factory, injected_identity, drop=True)
@@ -85,7 +63,6 @@ def test_a_dropped_identity_does_not_reach_the_commit_bridge(injected_identity: 
 
 
 def test_an_unambiguous_chain_keeps_its_injected_identity(injected_identity: object) -> None:
-    """Not vacuous: the identity still reaches the bridge otherwise."""
     factory = _RecordingBridgeFactory()
 
     _drive_bridge(factory, injected_identity, drop=False)
@@ -96,16 +73,6 @@ def test_an_unambiguous_chain_keeps_its_injected_identity(injected_identity: obj
 def test_the_phase_plan_passes_the_RESOLVED_chain_transport(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The fan-out plan must use the resolver, not the first agent.
-
-    Reverting this wiring re-tags a phase session with the FIRST agent's
-    transport, so a ``[claude, codex]`` chain hands the codex worker
-    inline images -- the original incident. Driven: the values the
-    resolver returns are the values the identity rule receives.
-
-    The builder fails further down on stub inputs; that is past the
-    decision under test, so the recorded call is the assertion.
-    """
     from unittest.mock import MagicMock
 
     from ralph.config.enums import AgentTransport
@@ -137,8 +104,6 @@ def test_the_phase_plan_passes_the_RESOLVED_chain_transport(
     effect = SimpleNamespace(phase="development", drain=None)
     bundle = MagicMock()
     bundle.pipeline.phases.get.return_value = SimpleNamespace(drain="development")
-    # The builder fails further down on stub inputs; that is past the
-    # decision under test, so the recorded call is the assertion.
     with pytest.raises(Exception, match=r".*"):
         fan_out.build_session_mcp_plan_for_phase(effect, bundle, MagicMock(), None)
 
@@ -246,11 +211,6 @@ def test_fan_out_propagates_policy_validation_without_reloading_policy(
 def test_the_commit_call_site_asks_whether_the_chain_is_ambiguous(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The commit plumbing must ASK, not assume.
-
-    Deleting the argument at the call site leaves the default -- keep
-    the injected identity -- and survived the whole suite.
-    """
     from ralph.pipeline.plumbing import commit_plumbing
 
     asked: list[object] = []
@@ -287,17 +247,6 @@ def test_the_commit_call_site_asks_whether_the_chain_is_ambiguous(
 def test_a_chain_that_disagrees_on_MODEL_is_ambiguous_too(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Agreeing on the CLI is not agreeing on the provider.
-
-    Two agents can share a transport and name different models: two
-    ``claude``-transport candidates where only the first carries
-    ``--model gemini/...``. Comparing transports alone called that
-    unambiguous, so the phase session kept the first candidate's flag,
-    resolved GEMINI's capabilities for the whole phase, and minted
-    AudioContent and VideoContent that the agent which actually ran
-    cannot carry. It was order-dependent in exactly the way the
-    ambiguity rule was written to stop.
-    """
     from unittest.mock import MagicMock
 
     from ralph.config.enums import AgentTransport
@@ -329,8 +278,6 @@ def test_a_chain_that_disagrees_on_MODEL_is_ambiguous_too(
     assert transport is AgentTransport.CLAUDE
     assert ambiguous is True
 
-    # Not vacuous: agreeing on both is still unambiguous, so a
-    # homogeneous chain keeps the provider it can honestly resolve.
     same = {
         "a": config_for(AgentTransport.CLAUDE, "--model x"),
         "b": config_for(AgentTransport.CLAUDE, "--model x"),

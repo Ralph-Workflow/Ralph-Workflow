@@ -1,16 +1,3 @@
-"""Real-git proof that nothing in the worktree can strand a branch behind its target.
-
-Regression 2026-10-05: 22 untracked files that ``main`` also tracks made
-``git merge main`` refuse to start (exit 2). No merge ran, so no resolver
-could act, and planning began 40 commits behind ``main``. Every refusal
-shape is driven through real git here: identical leftovers are cleared,
-differing local work remains untouched, and safe integrations land the
-committed feature tip on the target.
-
-Registered in ``REQUIRED_AUTO_INTEGRATE_E2E_FILES`` so ``make verify``
-runs it even though it crosses the real git boundary.
-"""
-
 from __future__ import annotations
 
 import subprocess
@@ -27,10 +14,6 @@ if TYPE_CHECKING:
 
 from ralph.git.merge import merge_in_progress, merge_target_into_current
 
-# subprocess_e2e: this file shells out to real ``git`` in tmp_path repos
-# and is registered in REQUIRED_AUTO_INTEGRATE_E2E_FILES. The marker
-# aligns the audit_test_policy AST walk with that registration so the
-# real-git subprocess + filesystem I/O is not flagged.
 pytestmark = [
     pytest.mark.timeout_seconds(15),
     pytest.mark.subprocess_e2e,
@@ -69,7 +52,6 @@ def _fast_rev_parse(root: Path, ref_name: str) -> str | None:
 
 
 def _run(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    # RALPH-TEST-REASON: fast-paths for rev-parse, show, and branch reduce test subprocess CPU overhead
     if args == ("branch", "--show-current"):
         name = _fast_branch_name(repo_root)
         if name is not None:
@@ -113,7 +95,6 @@ def _commit_file(repo_root: Path, filename: str, content: str, message: str) -> 
 
 
 def _behind_with_untracked_copy(tmp_git_repo: Path, content: str) -> str:
-    """Feature branch behind ``base``, holding an untracked ``incoming.txt``."""
     base = _base_branch(tmp_git_repo)
     _run(tmp_git_repo, "checkout", "-b", "feature")
     _commit_file(tmp_git_repo, "feature.txt", "feature body\n", "feature work")
@@ -125,7 +106,6 @@ def _behind_with_untracked_copy(tmp_git_repo: Path, content: str) -> str:
 
 
 def test_merge_lands_over_untracked_copy_identical_to_target(tmp_git_repo: Path) -> None:
-    """Regression 2026-10-05: an identical untracked leftover no longer blocks the merge."""
     base = _behind_with_untracked_copy(tmp_git_repo, "mainline body\n")
 
     result = merge_target_into_current(tmp_git_repo, base)
@@ -138,7 +118,6 @@ def test_merge_lands_over_untracked_copy_identical_to_target(tmp_git_repo: Path)
 def test_merge_refusal_over_differing_untracked_file_keeps_it_and_names_it(
     tmp_git_repo: Path,
 ) -> None:
-    """Local untracked work is never deleted; the refusal names the path."""
     base = _behind_with_untracked_copy(tmp_git_repo, "local work\n")
 
     result = merge_target_into_current(tmp_git_repo, base)
@@ -354,7 +333,6 @@ def test_failed_landing_recovers_and_fast_forwards_on_next_seam(
 def test_rejected_merge_commit_retains_resolution_until_commit_and_fast_forward(
     tmp_git_repo: Path,
 ) -> None:
-    """A real hook rejection retains verified edits and retries commit without resolving again."""
     from ralph.config.models import UnifiedConfig
     from ralph.pipeline.auto_integrate import auto_integrate_after_commit
     from ralph.pipeline.auto_integrate_record import read_record
@@ -421,17 +399,13 @@ def test_rejected_merge_commit_retains_resolution_until_commit_and_fast_forward(
         f" last_action={outcome.last_action!r} reason={outcome.last_reason!r}"
     )
     assert outcome.fast_forwarded is True
-    # The merge was committed automatically: HEAD is a 2-parent commit.
     head_parents = _run(tmp_git_repo, "log", "-1", "--format=%P", "HEAD").stdout.strip()
     assert len(head_parents.split()) == 2
     head_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
     assert head_sha != feature_sha_before
-    # The resolved content landed.
     assert (tmp_git_repo / "shared.txt").read_text() == "resolved version\n"
-    # Target fast-forwarded to the merge commit.
     base_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
     assert base_sha == head_sha
-    # No merge state or crash record left behind.
     assert _run(tmp_git_repo, "rev-parse", "--verify", "MERGE_HEAD").returncode != 0
     assert _run(tmp_git_repo, "status", "--porcelain").stdout.strip() == ""
     assert not (tmp_git_repo / ".agent" / "auto_integrate_in_progress.json").exists()
@@ -441,7 +415,6 @@ def test_rejected_merge_commit_retains_resolution_until_commit_and_fast_forward(
 def test_rebase_continuation_rejection_retains_resolved_stop(
     tmp_git_repo: Path, mode: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A reference hook failure retries the resolved rebase without a second resolver."""
     from ralph.config.models import UnifiedConfig
     from ralph.pipeline.auto_integrate import auto_integrate_after_commit
     from ralph.pipeline.auto_integrate_record import read_record
@@ -519,7 +492,6 @@ def test_rebase_continuation_rejection_retains_resolved_stop(
 def test_saved_rebase_stop_recovers_empty_replay_or_next_conflict(
     tmp_git_repo: Path, scenario: str
 ) -> None:
-    """Restart recognizes a verified empty stop or an already-landed stop before the next conflict."""
     from ralph.git.rebase.rebase_continuation import RebaseContinuationError, continue_rebase_at
     from ralph.pipeline._pending_rebase_continue import prepare_pending_rebase
     from ralph.pipeline.auto_integrate_record import IntegrationRecord, read_record, write_record
@@ -543,7 +515,6 @@ def test_saved_rebase_stop_recovers_empty_replay_or_next_conflict(
         from git import Repo
 
         _repo = Repo(root)
-        # RALPH-TEST-REASON: GitPython commit replaces subprocess git commit to reduce CPU overhead
         _repo.index.commit("rename target path")
         _repo.close()
     onto = _run(root, "rev-parse", "HEAD").stdout.strip()
@@ -583,7 +554,6 @@ def test_saved_rebase_stop_recovers_empty_replay_or_next_conflict(
 
 
 def _interrupt_queue_restore(root: Path, config: object, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Crash immediately after one atomic queue-file write, then release the injected fault."""
     import ralph.mcp.artifacts.idempotent_write as writes
     from ralph.config.models import UnifiedConfig
     from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration

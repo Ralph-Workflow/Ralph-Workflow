@@ -1,5 +1,3 @@
-"""Incremental staging endpoints for markdown artifact drafts."""
-
 from __future__ import annotations
 
 import json
@@ -40,10 +38,7 @@ if TYPE_CHECKING:
 
 
 class MockSession:
-    """Typed stand-in satisfying CoordinationSessionLike for handler tests."""
-
     session_id: str = "test-session"
-    #: Empty run id keeps canonical submission off the receipt/sentinel path.
     run_id: str = ""
     explore_index: object | None = None
 
@@ -56,7 +51,6 @@ class MockSession:
 
 
 def _workspace(root: Path) -> WorkspaceLike:
-    """Return a typed workspace stand-in rooted at ``root``."""
 
     class Workspace:
         def absolute_path(self, path: str) -> str:
@@ -108,7 +102,6 @@ def test_stage_appends_and_reports_non_gating_diagnostics(tmp_path: Path) -> Non
     assert payload["sections"] == ["Title", "Scope"]
     assert payload["valid"] is False
     assert payload["submitted"] is False
-    # Missing-later-sections are diagnosable but never block staging.
     assert "SPEC008" in _diagnostic_rules(payload)
 
 
@@ -163,12 +156,10 @@ def test_stage_enforces_the_draft_size_cap_and_keeps_the_prior_draft(tmp_path: P
 
 
 def test_get_md_draft_survives_a_fresh_handler_process(tmp_path: Path) -> None:
-    """The draft is persisted under the run's artifact area, not in memory."""
     handle_stage_md_artifact(
         MockSession(), _workspace(tmp_path), {"artifact_type": "product_spec", "content": _HEAD}
     )
 
-    # Fresh session/workspace objects model a restarted MCP server process.
     resumed = handle_get_md_draft(
         MockSession(), _workspace(tmp_path), {"artifact_type": "product_spec"}
     )
@@ -235,15 +226,12 @@ def test_finalize_submits_through_the_canonical_path_and_retains_the_draft(
     }
     artifact_path = tmp_path / ".agent" / "artifacts" / "product_spec.md"
     assert artifact_path.read_text(encoding="utf-8") == _HEAD + _TAIL
-    # The submitted document stays editable for an in-phase revision; only a
-    # fresh phase entry clears it.
     after = _payload(handle_get_md_draft(session, workspace, {"artifact_type": "product_spec"}))
     assert after["exists"] is True
     assert after["content"] == _HEAD + _TAIL
 
 
 def test_submit_stages_the_submitted_document_as_the_draft(tmp_path: Path) -> None:
-    """Whole-document submission leaves an editable draft, valid or not."""
     session = MockSession()
     workspace = _workspace(tmp_path)
     deps = ArtifactHandlerDeps(backend=MemoryBackend())
@@ -273,7 +261,6 @@ def test_submit_stages_the_submitted_document_as_the_draft(tmp_path: Path) -> No
 
 
 def test_every_validating_endpoint_points_at_in_place_repair(tmp_path: Path) -> None:
-    """Agents must learn about the editor from whichever endpoint rejected them."""
     session = MockSession()
     workspace = _workspace(tmp_path)
 

@@ -1,4 +1,3 @@
-"""PTY line reader for interactive agent sessions."""
 
 from __future__ import annotations
 
@@ -139,11 +138,6 @@ type _MergedDiagType = "dict[str, str | int | float | bool | list[object]] | Non
 
 
 def _zero_idle_elapsed(_now: float) -> float:
-    """Unused helper kept for backward-compat with any caller that
-    relied on the prior module-level helper. Returns 0.0 so a
-    watchdog mock without the full ``IdleWatchdog`` surface does
-    not crash the fire path.
-    """
     return 0.0
 
 
@@ -154,18 +148,12 @@ _NANOCODER_TERMINAL_CONFIG_ERROR_PATTERNS = (
     re.compile(r"\bModel\s+'[^']+'\s+not found in agents\.config\.json\b", re.IGNORECASE),
 )
 
-#: Default seconds to wait for an interactive agent to exit naturally after
-#: ``/exit`` before escalating to SIGTERM. Mirrors the process manager's
-#: default grace period so the bounded teardown contract is consistent.
 _DEFAULT_INTERACTIVE_EXIT_GRACE_SECONDS: float = 2.0
 
-#: Hard ceiling on the natural-exit wait so a wedged child cannot stall the
-#: completion evidence thread indefinitely.
 _MAX_INTERACTIVE_EXIT_GRACE_SECONDS: float = 5.0
 
 
 def _terminal_interactive_startup_error(agent_name: str, line: str) -> str | None:
-    """Return a terminal startup/configuration error visible in PTY output."""
     visible_line = _visible_tui_text(line).strip()
     if not visible_line:
         return None
@@ -177,18 +165,11 @@ def _terminal_interactive_startup_error(agent_name: str, line: str) -> str | Non
 
 
 def _record_embedded_error(watchdog: IdleWatchdog, signal: AgentActivitySignal) -> None:
-    """Feed the error dimension for a signal that carries an embedded error.
-
-    A failed tool call is BOTH a call and an error; feeding only the dimension
-    its ``kind`` names left the other wedge invisible. See
-    :class:`~ralph.agents.activity.AgentActivitySignal`.
-    """
     if signal.error_message is not None:
         watchdog.record_error_activity(signal.error_message)
 
 
 def _record_tool_result_activity(watchdog: IdleWatchdog, *, is_harness_echo: bool) -> None:
-    """Record a tool result without requiring legacy fakes to accept the new flag."""
     if is_harness_echo:
         watchdog.record_tool_result_activity(is_harness_echo=True)
     else:
@@ -199,12 +180,6 @@ def _tool_use_display_name(
     raw: str,
     tool_call: tuple[str, dict[str, object]] | None,
 ) -> str:
-    """Return the tool name to show in watchdog diagnostics for a TOOL_USE line.
-
-    Prefers the extracted name. The plain-text ``claude tool: <name>`` split is
-    the fallback for transports that still emit a marker; applying it to the
-    interactive transport's JSON envelope would slice a JSON fragment.
-    """
     if tool_call is not None:
         return tool_call[0]
     stripped = raw.strip()
@@ -212,12 +187,6 @@ def _tool_use_display_name(
 
 
 class _ReadLoopSetup(NamedTuple):
-    """Bundle of resources the read_lines loop creates during setup.
-
-    Held in a NamedTuple so the setup helper has a single return value rather
-    than threading ten locals back into ``read_lines`` (which would push the
-    caller back over the PLR0915 too-many-statements ceiling).
-    """
 
     reader: threading.Thread
     transcript_reader: threading.Thread
@@ -233,32 +202,9 @@ class _ReadLoopSetup(NamedTuple):
 def _resolve_pre_existing_transcript_names(
     extras: PtyExtras, workspace_path: Path | None
 ) -> frozenset[str]:
-    """Resolve the transcript names to exclude from live discovery.
-
-    wt-04-claude-parsing: the orchestrating session (or any sibling
-    session) already lives in the same ``~/.claude/projects/<key>``
-    directory a freshly-spawned child writes into, so
-    ``find_latest_claude_transcript_entry``'s "touched since start"
-    floor alone cannot tell the two apart -- an already-active sibling
-    keeps satisfying that floor for as long as it stays active, and
-    "latest mtime wins" can lock the transcript thread onto the wrong
-    file for the entire run.
-
-    Prefer the caller's PRE-SPAWN snapshot (``extras.pre_existing_transcript_names``,
-    taken by ``run_pty_and_read_lines`` before the child process
-    existed) when available. A snapshot taken here instead, inside
-    ``PtyLineReader.__init__`` -- which only runs AFTER the caller has
-    already spawned the child -- could already see the child's own
-    freshly-created transcript file and wrongly self-exclude it, so
-    that live snapshot is only a best-effort default for direct
-    construction (e.g. tests), not the primary path.
-    """
-    # ``getattr`` (not direct attribute access): some test doubles
-    # duck-type ``PtyExtras`` with a bare ``SimpleNamespace`` that
-    # predates this field.
     snapshot = cast(
         "frozenset[str] | None", getattr(extras, "pre_existing_transcript_names", None)
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     if snapshot is not None:
         return snapshot
     if workspace_path is not None:
@@ -298,11 +244,7 @@ class PtyLineReader:
         self._monitor = ctx.monitor
         self._workspace_path = cast(
             "Path | None", getattr(ctx, "workspace_path", None)
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-        # wt-04-claude-parsing: the transcript names already on disk for
-        # this workspace, so the transcript thread's discovery fallback
-        # can exclude them (see ``_resolve_pre_existing_transcript_names``
-        # and ``existing_transcript_names``).
+        )
         self._pre_existing_transcript_names: frozenset[str] = (
             _resolve_pre_existing_transcript_names(_extras, self._workspace_path)
         )
@@ -315,13 +257,6 @@ class PtyLineReader:
             "Callable[[], None] | None",
             getattr(ctx, "pre_output_listener", None),
         )
-        # Live pipeline signals the watchdog consults on every
-        # evaluate() call so the StuckClassifier gate can return
-        # DUPLICATE_KILL (when the pipeline is already in a wait
-        # state) or WAITING_ON_CONNECTIVITY (when the network is
-        # offline) and defer the fire. Both providers are optional;
-        # the watchdog falls back to "no live signal" when they
-        # are None.
         self._connectivity_state_provider = cast(
             "Callable[[], str | None] | None",
             getattr(ctx, "connectivity_state_provider", None),
@@ -334,7 +269,7 @@ class PtyLineReader:
         self._completion_run_id = completion_run_id_from_extra_env(
             cast(
                 "dict[str, str] | None", getattr(ctx, "extra_env", None)
-            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            )
         )
         self._evaluate_completion_fn = cast(
             "_EvalCompletionFn | None",
@@ -358,11 +293,10 @@ class PtyLineReader:
         self._last_tool_result_at: float | None = None
         self._last_tool_result_excerpt: str | None = None
         self._reader_done: list[bool] = [False]
-        self._cpu_baselines: dict[int, tuple[float, float]] = {}  # bounded-accumulator-ok: drained
-        self._log_growth_state: dict[str, tuple[int, float]] = {}  # bounded-accumulator-ok: drained
+        self._cpu_baselines: dict[int, tuple[float, float]] = {}
+        self._log_growth_state: dict[str, tuple[int, float]] = {}
         self._raw_overflow: RawOverflowLog | None = None
         self._input_writer_fd = os.dup(handle.master_fd)
-        # The reader owns this dup so handle.close() cannot invalidate a select in flight.
         self._read_fd = os.dup(handle.master_fd)
         self._input_writer_lock = threading.Lock()
         self._auto_mode_prompt_seen = False
@@ -372,46 +306,19 @@ class PtyLineReader:
         self._last_auto_mode_menu_seen_at: float | None = None
         self._pending_permission_prompt_line: str | None = None
         self._pending_permission_prompt_started_at: float | None = None
-        # wt-024 M9 (AC-07): bounded deques replace the previous
-        # unbounded lists. ``_recent_choice_lines`` was already
-        # hand-capped at 20; the deque(maxlen) conversion makes
-        # the eviction O(1) and removes the manual pop(0)/len()
-        # check. ``_transcript_session_ids`` was unbounded; the
-        # new cap keeps the recent-session dedup window bounded.
-        # module constant cap; FIFO eviction
         recent_choice_cap = _RECENT_CHOICE_LINES_MAX
         self._recent_choice_lines: deque[str] = deque(
             maxlen=recent_choice_cap
-        )  # bounded-accumulator-ok: FIFO cap
-        # module constant cap; FIFO eviction
+        )
         cap = _MAX_TRANSCRIPT_SESSION_IDS
-        self._transcript_session_ids: deque[str] = deque(maxlen=cap)  # bounded-accumulator-ok
+        self._transcript_session_ids: deque[str] = deque(maxlen=cap)
         self._transcript_session_ids_lock = threading.Lock()
-        # Captured transport-level session id from the most recent
-        # visible-TUI line (or ``expected_session_id`` if no captured
-        # line has been observed yet). Mirrors
-        # ``_process_reader._captured_session_id``: the canonical
-        # seam is :func:`extract_visible_tui_transport_session_id`
-        # called from :meth:`_record_transcript_session_id`; this
-        # field is the cache so the watchdog-kill path can read it
-        # at the moment of the fire WITHOUT re-walking the PTY
-        # transcript queue. The id flows into the typed
-        # ``IdleWatchdogKilledError.resumable_session_id`` so the
-        # recovery controller can read it from the ``__cause__``
-        # chain and resume the same agent session instead of
-        # starting a fresh one.
         self._captured_session_id: str | None = self._expected_session_id
         if self._expected_session_id:
             self._transcript_session_ids.append(self._expected_session_id)
-        # wt-04-claude-parsing (RC1 + RC3 + R7): the subagent
-        # transcript tailer is constructed LAZILY by the transcript
-        # thread the first time a session id is observed. The
-        # attribute defaults to ``None`` so the ``_ensure_subagent_tails_for_session``
-        # helper can detect a fresh construction versus a re-use.
         self._subagent_tails: ClaudeSubagentTranscriptTails | None = None
 
     def _configure_runtime_hooks(self, ctx: AgentRunCtx, extras: PtyExtras) -> None:
-        """Store PTY completion and standalone-MCP relay hooks for this invocation."""
         self._expected_session_id = extras.expected_session_id
         self._input_prompt = extras.input_prompt
         relay_register: object = getattr(ctx, "relay_activity_sink_register", None)
@@ -426,7 +333,6 @@ class PtyLineReader:
 
     @property
     def completion_exit_sent(self) -> bool:
-        """Return whether completion evidence triggered an interactive exit."""
         return self._completion_exit_sent
 
     def _start_thread(self, target: Callable[[], None]) -> threading.Thread:
@@ -492,12 +398,6 @@ class PtyLineReader:
                         self._cpu_baselines[pid] = (current_cpu, _now)
                 else:
                     self._cpu_baselines[pid] = (current_cpu, _now)
-            # wt-024 M4 (AC-01): sweep PIDs that are no longer in the
-            # current child list so the baseline map does not retain
-            # entries for descendants that have exited between ticks.
-            # Without this sweep, every distinct PID ever observed
-            # accumulates one entry for the rest of the session, which
-            # is unbounded in long build/test-runner patterns.
             live_pids = set(child_pids)
             for stale_pid in list(self._cpu_baselines.keys() - live_pids):
                 self._cpu_baselines.pop(stale_pid, None)
@@ -540,28 +440,6 @@ class PtyLineReader:
         oldest_child_seconds: float | None = None
         scoped_child_active: bool | None = None
         scoped_child_count: int | None = None
-        # R1 (Trustworthy Idle Watchdog spec): the corroborator MUST
-        # read the FILTERED subagent count from
-        # ``ProcessMonitor.spawned_subagent_count()`` (preferred) or
-        # the legacy alias ``live_subagent_count()``. The BROADER
-        # ``self._handle.descendant_snapshot()`` count includes shell
-        # helpers like ``npm test`` / ``cargo build`` and is the bug
-        # source that produced the 2365s indefinite deferral in the
-        # wild (cited in the product spec).
-        #
-        # Production behavior: when a process monitor is injected,
-        # the corroborator sources ``scoped_child_active`` from the
-        # FILTERED seam. When the monitor is unavailable
-        # (``process_monitor_enabled=False`` legacy escape hatch
-        # used by integration tests that pre-date the R5 registry
-        # seam), the corroborator falls back to
-        # ``self._handle.descendant_snapshot()`` so the watchdog
-        # still has a signal. This fallback is the only
-        # ``descendant_snapshot`` reference the audit
-        # ``check_subagent_counting_seam`` does NOT flag because it
-        # is the canonical legacy escape hatch -- it MUST be the
-        # only descendant_snapshot reference in the function body,
-        # guarded by ``self._process_monitor is None``.
         try:
             monitor: ProcessMonitor | None = getattr(self, "_process_monitor", None)
             if monitor is not None:
@@ -569,11 +447,6 @@ class PtyLineReader:
                 scoped_child_count = filtered_count
                 scoped_child_active = filtered_count > 0
             else:
-                # Legacy escape hatch: ``process_monitor_enabled=False``
-                # (e.g. integration tests pre-dating the R5 registry
-                # seam). Reads the broader descendant count so the
-                # watchdog still has a signal. Production callers
-                # always have a monitor.
                 try:
                     descendant_count, descendant_oldest = self._handle.descendant_snapshot()
                     scoped_child_count = descendant_count
@@ -587,14 +460,11 @@ class PtyLineReader:
             logger.debug("corroborator: PTY process monitor count failed (suppressed)")
             scoped_child_count = None
             scoped_child_active = None
-        # Type assertion for mypy: ``scoped_child_count`` is
-        # guaranteed to be int (when the monitor produced a value) or
-        # None (when no monitor was injected or the call raised).
         scoped_child_count_int: int | None = scoped_child_count
         alive_by: AliveBy | None = None
         registry = cast(
             "ChildLivenessRegistry | None", getattr(self._strategy, "_registry", None)
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         if registry is not None:
             try:
                 label_prefix = cast(
@@ -634,13 +504,6 @@ class PtyLineReader:
         )
 
     def _drain_after_exit(self, decoder: codecs.IncrementalDecoder, pending: str) -> str:
-        """Bounded EIO drain of the PTY master after the child has exited.
-
-        Replaces the prior early-exit ``break`` that could drop buffered
-        bytes the child flushed to the kernel's PTY queue between exit
-        and the parent ``poll`` return. Reuses the existing EIO-tolerant
-        ``read_master_chunk`` and is bounded by ``_EIO_DRAIN_MAX``.
-        """
         for _ in range(_EIO_DRAIN_MAX):
             try:
                 if not wait_for_master_readable(self._read_fd, _EIO_DRAIN_SELECT_SECONDS):
@@ -721,14 +584,6 @@ class PtyLineReader:
         if session_id is None:
             return
         with self._transcript_session_ids_lock:
-            # wt-024 M9 (AC-07): deque-backed dedup. ``remove()`` on
-            # the existing entry is O(n) but n <= _MAX_TRANSCRIPT_SESSION_IDS;
-            # ``appendleft()`` is O(1) and the bounded deque automatically
-            # evicts the oldest session id from the right when full.
-            # ``candidate_ids[0]`` (consumed by ``_transcript_thread``)
-            # MUST be the most-recently-seen session id so the PTY
-            # resume path always prefers the freshest visible TUI
-            # session over an older one.
             if session_id in self._transcript_session_ids:
                 self._transcript_session_ids.remove(session_id)
             self._transcript_session_ids.appendleft(session_id)
@@ -746,11 +601,9 @@ class PtyLineReader:
 
     @property
     def captured_session_id(self) -> str | None:
-        """Return the resumable session ID observed by either PTY input path."""
         return self._captured_session_id
 
     def discover_captured_session_id(self) -> str | None:
-        """Resolve a late transcript created just before the PTY reader stopped."""
         if self._captured_session_id is not None:
             return self._captured_session_id
         entry = find_claude_transcript_entry(self._transcript_session_id_candidates())
@@ -773,23 +626,6 @@ class PtyLineReader:
         transcript_session_id: str | None = None
         file_obj = None
         transcript_parser = ClaudeInteractiveTranscriptParser()
-        # wt-04-claude-parsing (RC1 + RC3 + R7): wire the parent
-        # transcript parser to the subagent transcript tailer. The
-        # tailer is constructed lazily HERE on the FIRST observation
-        # of a session id (the previous shape constructed it in
-        # ``_build_subagent_transcript_tails`` at reader-thread start,
-        # BEFORE the visible-TUI extractor populated
-        # ``_captured_session_id`` -- the tailer always came back
-        # ``None`` for a fresh session and the watchdog's evidence
-        # channel never advanced). The tailer is then re-used across
-        # all subsequent lines of the parent transcript so every
-        # parsed record reaches ``note_parent_record``,
-        # ``note_dispatch``, and ``note_completion`` on the same
-        # tailer instance. The tailer is started EXACTLY ONCE on
-        # the first line that mentions a subagent-dispatch tool
-        # name (``Agent`` / ``Task``) so the discovery poll loop
-        # begins immediately on dispatch rather than idling until
-        # the parent session ends.
         active_tails: ClaudeSubagentTranscriptTails | None = None
         try:
             while not self._monitor_stop.is_set():
@@ -822,30 +658,12 @@ class PtyLineReader:
                 if not line:
                     self._monitor_stop.wait(0.1)
                     continue
-                # wt-04-claude-parsing: feed the line through the
-                # parser EXACTLY ONCE. ``ClaudeInteractiveTranscriptParser``
-                # is stateful (``session_id``, the dedup signature
-                # cache), so a second ``feed`` call on the same raw
-                # line silently returns fewer or zero events -- that
-                # regression previously starved the operator-facing
-                # ``_lines_queue`` of every parent event (session id,
-                # tool_use, tool_result, output) because this loop's
-                # own ``feed`` call had already consumed them. The
-                # SAME ``events`` list now feeds both the subagent-tailer
-                # routing below AND ``transcript_lines_from_events``.
                 events = transcript_parser.feed(line)
                 for event in events:
                     active_tails = self._route_parent_event(
                         event=event,
                         active_tails=active_tails,
                     )
-                # wt-04-claude-parsing: also surface the top-level
-                # parent record so the tailer can capture the
-                # Claude Code ``version`` from a user / assistant
-                # record on the first observation. ``feed`` already
-                # consumed the line; the raw line is the canonical
-                # JSON the tailer needs to inspect
-                # ``obj.version`` directly.
                 if active_tails is not None:
                     self._capture_parent_record_metadata(line, active_tails)
                 emitted_lines = transcript_lines_from_events(line, events)
@@ -864,34 +682,7 @@ class PtyLineReader:
         event: InteractiveTranscriptEvent,
         active_tails: ClaudeSubagentTranscriptTails | None,
     ) -> ClaudeSubagentTranscriptTails | None:
-        """Surface one parent ``InteractiveTranscriptEvent`` to the subagent tailer.
-
-        Extracted from ``_transcript_thread`` to keep the loop body
-        below the PLR0912 branch limit. The helper is pure-ish
-        (``active_tails`` flows in and out) so the call site can
-        re-assign the local ``active_tails`` reference. Each
-        branch is documented inline:
-
-          - ``session``: lazy-construct the tailer the first
-            time a session id is observed.
-          - ``tool_use``: dispatch-driven R7 probe + tailer
-            start the first time a dispatch lands.
-          - ``tool_result``: drop the matching child file via
-            ``note_completion`` (R1 lifecycle ownership).
-        All other event kinds (``text`` / ``output`` / ``thinking``
-        / ``error`` / ``lifecycle``) are intentionally ignored;
-        they do not change the subagent tailer's bookkeeping.
-        """
         if event.kind == "session":
-            # ``session`` events are emitted by
-            # ``_events_from_json`` whenever the ``sessionId``
-            # field changes; the FIRST observed session id is
-            # the moment to construct the tailer. Construction
-            # is deferred until here because the
-            # ``_captured_session_id`` cache is populated by
-            # the PTY-reader thread (not the transcript-reader
-            # thread), and we cannot race the reader for the
-            # canonical id.
             text_value = event.text.strip()
             if text_value and active_tails is None:
                 return self._ensure_subagent_tails_for_session(text_value)
@@ -904,11 +695,6 @@ class PtyLineReader:
                 and isinstance(tool_use_id_obj, str)
                 and active_tails is not None
             ):
-                # R7 (dispatch-driven probe) + R1 (start the
-                # tailer the first time a dispatch is observed).
-                # The tailer's ``note_dispatch`` is idempotent on
-                # ``tool_use_id`` so re-firing on every tool_use
-                # line is safe.
                 active_tails.note_dispatch(
                     tool_use_id=tool_use_id_obj,
                     tool_name=tool_name_obj,
@@ -919,11 +705,6 @@ class PtyLineReader:
         if event.kind == "tool_result":
             tool_use_id_obj = event.metadata.get("tool_use_id")
             if isinstance(tool_use_id_obj, str) and tool_use_id_obj and active_tails is not None:
-                # R1 (lifecycle ownership): drop the child
-                # file when the parent ``tool_result`` lands;
-                # the tailer correlates via the
-                # ``toolUseId`` parsed from
-                # ``agent-*.meta.json``.
                 active_tails.note_completion(tool_use_id=tool_use_id_obj)
             return active_tails
         return active_tails
@@ -931,22 +712,10 @@ class PtyLineReader:
     def _ensure_subagent_tails_for_session(
         self, session_id: str
     ) -> ClaudeSubagentTranscriptTails | None:
-        """Lazily build (or re-use) the subagent tailer for a captured session id.
-
-        Returns the existing tailer (started or unstarted) when the
-        reader already owns one for the same session id; builds a
-        new one on the first observation. The subagent sink is
-        wired into the watchdog's ``record_subagent_work`` channel
-        by the call site so the tailer's forwarded events
-        immediately reach the watchdog's evidence channel.
-        """
         existing_obj: object = getattr(self, "_subagent_tails", None)
         if isinstance(existing_obj, ClaudeSubagentTranscriptTails):
             if existing_obj.session_id == session_id:
                 return existing_obj
-            # Different session id observed; the prior tailer is
-            # associated with a now-superseded session so stop it
-            # and replace.
             with contextlib.suppress(Exception):
                 existing_obj.stop()
         if self._workspace_path is None:
@@ -955,10 +724,6 @@ class PtyLineReader:
             project_key = str(self._workspace_path.resolve()).replace("/", "-").replace(" ", "-")
         except OSError:
             return None
-        # The watchdog's subagent sink was bound earlier in
-        # ``_register_active_sinks`` (the closure holds a contextvar
-        # token that ``teardown_read_loop`` will reset). Look up the
-        # same sink the watchdog wired in.
         holder_obj: object = getattr(self, "_subagent_sink_holder", None)
         sink: Callable[[str], None]
         if isinstance(holder_obj, dict):
@@ -1007,16 +772,6 @@ class PtyLineReader:
     def _capture_parent_record_metadata(
         raw_line: str, tails: ClaudeSubagentTranscriptTails
     ) -> None:
-        """Parse the raw parent record once and surface the version to the tailer.
-
-        The transcript parser already consumed the line (its events are
-        reused for both subagent-tailer routing and
-        ``transcript_lines_from_events`` -- see ``_transcript_thread``;
-        the line is never fed through the parser twice). We do not want
-        to double-parse the JSON here either, so this reads the
-        top-level ``version`` field directly via ``json.loads`` for the
-        tailer's R7 diagnostic instead of going through the parser.
-        """
         try:
             obj: object = json.loads(raw_line)
         except (ValueError, TypeError):
@@ -1041,15 +796,6 @@ class PtyLineReader:
             self._monitor_stop.wait(0.05)
 
     def _capture_pending(self, pending_lines: list[str]) -> list[str]:
-        """Write drained queue lines to the raw capture before yielding them.
-
-        A watchdog fire drains the pending queue straight to the parser.
-        Those lines are agent output like any other, so skipping the
-        capture left the verbatim transcript missing exactly the lines
-        written just before a stall -- and losing whole lines leaves the
-        file parseable, so the corruption detector reports nothing and
-        the loss is silent.
-        """
         for line in pending_lines:
             with contextlib.suppress(Exception):
                 if self._raw_overflow is not None:
@@ -1057,26 +803,14 @@ class PtyLineReader:
         return pending_lines
 
     def _build_lines_queue(self) -> BoundedLinesQueue:
-        """Build the pre-parse queue with its capture-on-eviction sink."""
         queue = BoundedLinesQueue(maxlen=256)
-        # Anything the queue evicts still reaches the raw capture; see
-        # ``_capture_evicted_line``.
         queue.set_eviction_sink(self._capture_evicted_line)
         return queue
 
     def _capture_evicted_line(self, line: str) -> None:
-        """Write a queue-evicted line to the raw capture.
-
-        The queue drops its oldest entry when the producer outruns the
-        consumer, and the capture is written consumer-side -- so a
-        dropped line never reached the transcript. Losing whole lines
-        leaves the file parseable, so nothing reported it.
-        """
         if self._raw_overflow is None:
             return
         with contextlib.suppress(Exception):
-            # NOT liveness: this write means the consumer fell behind,
-            # not that it made progress. See ``RawOverflowLog.append``.
             self._raw_overflow.append(line, counts_as_liveness=False)
 
     def _request_interactive_exit(self) -> None:
@@ -1089,22 +823,15 @@ class PtyLineReader:
             self._lines_event.set()
         with contextlib.suppress(OSError):
             _write_pty_input(self._input_writer_fd, "/exit\r\n", lock=self._input_writer_lock)
-        # A completed interactive session should exit on its own after
-        # ``/exit``. Wait within the existing bounded grace contract before
-        # escalating to SIGTERM/SIGKILL so a normal completion does not
-        # trigger "survived graceful terminate, escalating to force kill".
         self._terminate_if_still_alive_after_grace()
 
     def _terminate_if_still_alive_after_grace(self) -> None:
-        """Wait for natural post-``/exit`` exit, then escalate only if needed."""
         policy = self._policy
         grace = (
             policy.parent_exit_grace_seconds
             if policy is not None
             else _DEFAULT_INTERACTIVE_EXIT_GRACE_SECONDS
         )
-        # Cap the natural-exit wait so a wedged child cannot stall the
-        # completion evidence thread indefinitely.
         grace = min(grace, _MAX_INTERACTIVE_EXIT_GRACE_SECONDS)
         with contextlib.suppress(
             AttributeError, OSError, ProcessLookupError, RuntimeError, TimeoutError
@@ -1115,7 +842,7 @@ class PtyLineReader:
                 self._handle.terminate(grace_period_s=0.5)
         pid = cast(
             "int | None", getattr(self._handle, "pid", None)
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         if pid is not None:
             with contextlib.suppress(Exception):
                 teardown_subtree(pid, issuer="invoke:pty")
@@ -1154,14 +881,6 @@ class PtyLineReader:
                 return
 
     def _finish_terminal_completion(self) -> bool:
-        """Stop a session whose completion evidence is already durable.
-
-        Once ``declare_complete`` is durable the session is finished: the
-        parent was told to ``/exit`` and its subtree is reaped here. Waiting
-        on "child work" afterwards only measures unrelated workspace churn,
-        which in the activity-only profile can hold the done path open until
-        the operator ceiling.
-        """
         _raise_on_relay_health_error(self, self._agent_name)
         terminal = self._completion_exit_sent
         if not terminal:
@@ -1171,7 +890,7 @@ class PtyLineReader:
             return False
         pid = cast(
             "int | None", getattr(self._handle, "pid", None)
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         if pid is not None:
             with contextlib.suppress(Exception):
                 teardown_subtree(pid, issuer="invoke:pty")
@@ -1238,56 +957,17 @@ class PtyLineReader:
         self._handle.terminate(grace_period_s=0.5)
         pid = cast(
             "int | None", getattr(self._handle, "pid", None)
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-        # Unconditional, like every other fire path: ``terminate`` has just
-        # reaped the leader, so gating on ``poll() is None`` skipped the sweep
-        # and left re-parented session members alive after every fire.
+        )
         if pid is not None:
             teardown_subtree(pid, issuer="invoke:pty")
-        # Real resume-safety from the canonical helper at
-        # ``_process_reader._is_resumable_fire_reason`` so the PTY
-        # watchdog kill path produces the same resume-safety signal
-        # as the subprocess path. Mirrors the same helper used by
-        # ``_process_reader._check_fire``.
         resume_safe = _is_resumable_fire_reason(fire_reason)
-        # The canonical watchdog-kill warning is logged by
-        # ``IdleWatchdog._emit_fire_log``; we do not duplicate it
-        # here. The subprocess path also logs only the canonical
-        # warning; the ``resume_safe`` / ``resumable_session_id``
-        # surface is the typed ``IdleWatchdogKilledError`` attached
-        # as ``__cause__`` and the merged_diag payload.
-        # Captured transport session id from the reader-level cache
-        # (mirrors ``_process_reader._captured_session_id``). Populated
-        # by :meth:`_record_transcript_session_id` from the visible-TUI
-        # extractor so PTY-visible session ids are promoted into the
-        # same resumable path the subprocess reader uses.
         captured_session_id = self._captured_session_id
-        # Always merge the watchdog's per-channel evidence summary into
-        # the diagnostic so a post-mortem (or the on-call operator) can
-        # see exactly which evidence channels were fresh and which
-        # were stale at the moment the watchdog fired. The watchdog's
-        # own ``last_evidence_summary`` produces a list of
-        # ``ChannelEvidenceSummary.to_dict()`` entries; we surface that
-        # under ``evidence_summary`` alongside any existing diagnostic
-        # (HARD_STOP or post-tool-result). ``diagnostic`` is mutable in
-        # the post-tool-result rewrite above, so this merge is
-        # deliberately applied AFTER that rewrite.
         now = self._clock.monotonic()
         merged_diag: dict[str, object] = {
             "evidence_summary": watchdog.last_evidence_summary(now).to_dict_list(),
         }
-        # Surface the captured session id and the real resume-safety
-        # signal in the post-mortem diagnostic so an on-call grep of
-        # the merged_diag payload sees the captured id here as well
-        # (the ``FailureClassifier.classify`` consults
-        # ``exc.__cause__`` first, but the diagnostic carries the id
-        # for log-only consumers).
         merged_diag["resumable_session_id"] = captured_session_id
         merged_diag["resume_safe"] = resume_safe
-        # The diagnostic_snapshot adds the full watchdog state at the
-        # moment of the fire for post-mortem reconstruction. It is
-        # optional because a watchdog mock without
-        # ``diagnostic_snapshot`` must not crash the fire path.
         snapshot_method: object = getattr(watchdog, "diagnostic_snapshot", None)
         if callable(snapshot_method):
             try:
@@ -1308,44 +988,12 @@ class PtyLineReader:
             for key, value in diagnostic.items():
                 if key not in merged_diag:
                     merged_diag[key] = value
-        # The watchdog's typed exception ``IdleWatchdogKilledError``
-        # (AC-05: the failure_classifier's typed-attribute branch in
-        # ``failure_classifier.py`` consults ``exc.reason`` and
-        # ``exc.signal`` directly instead of substring-matching the
-        # message) is built here so the PTY watchdog path matches
-        # the non-PTY (``_process_reader``) watchdog path. The typed
-        # exception is attached to the wrapped payload via
-        # ``__cause__`` so a downstream ``failure_classifier.classify``
-        # call that walks the ``__cause__`` chain (and the future
-        # ``isinstance`` check on the typed exception) sees the typed
-        # cause first. The post-exit ``PROCESS_EXIT_HANG`` path
-        # (``post_exit_watchdog.py``) still raises
-        # ``_IdleStreamTimeoutError`` directly because it is owned
-        # by ``PostExitWatchdog``, not ``IdleWatchdog``.
-        # Surface the watchdog's corroborator ``alive_by`` signal at
-        # the moment of the fire. ``child_alive=True`` means the
-        # child was alive per the corroborator (defense-in-depth;
-        # normally dead code because the gate refinement in
-        # ``IdleWatchdog._is_no_progress_quiet`` defers the
-        # ``NO_PROGRESS_QUIET`` fire when alive_by is not None).
-        # ``child_alive=False`` means the corroborator returned
-        # ``alive_by=None`` (truly dead child -- Rule 2:
-        # exponential backoff). The signal is consumed by
-        # ``FailureClassifier._classify_unavailability_reason`` to
-        # differentiate live-child from dead-child
-        # ``NO_PROGRESS_QUIET`` at the typed-evidence level. The
-        # ``is not None`` test maps ``None`` (no signal at all) to
-        # ``False`` (dead-child / Rule 2 path) and any of the 5
-        # non-``None`` ``AliveBy`` values to ``True`` (live-child /
-        # Rule 1 defense-in-depth path). ``getattr(..., None)`` is
-        # used for backward-compat with test mocks that do not set
-        # the ``last_alive_by`` attribute.
         _alive_by_signal: object = getattr(watchdog, "last_alive_by", None)
         _child_alive = _alive_by_signal is not None
         _append_conflict_termination_diagnostic(merged_diag, watchdog, fire_reason, now)
         typed_exc = IdleWatchdogKilledError(
             reason=fire_reason.value,
-            signal=15,  # SIGTERM
+            signal=15,
             evidence_summary=str(merged_diag),
             child_alive=_child_alive,
             resumable_session_id=captured_session_id,
@@ -1357,7 +1005,7 @@ class PtyLineReader:
             fire_reason,
             diagnostic=cast(
                 "_MergedDiagType", merged_diag
-            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            ),
         )
         wrapper.__cause__ = typed_exc
         return pending_lines, wrapper
@@ -1391,10 +1039,6 @@ class PtyLineReader:
     def _observe_queued_line(self, queued_line: str) -> None:
         visible_line = _visible_tui_text(queued_line)
 
-        # Maintain a sliding window of recent lines so cross-line menu detection
-        # can work even when TUI repaint sequences fragment menu options across
-        # individual queued entries. wt-024 M9 (AC-07): the deque(maxlen)
-        # cap is enforced automatically on append; no manual pop(0)/len().
         self._recent_choice_lines.append(queued_line)
 
         def _check_menu(screen_text: str) -> bool:
@@ -1500,16 +1144,11 @@ class PtyLineReader:
         self._record_terminal_reason("operator_cancellation")
         with contextlib.suppress(Exception):
             self._handle.close()
-        # Mirrors the watchdog-fire path at _check_fire (lines 571-574):
-        # terminate the child gracefully and tear down its descendant tree
-        # so a Ctrl-C / BaseException does not leave child agents running.
-        # All calls are idempotent and wrapped in suppress() so a wedged
-        # close/terminate cannot leak the teardown.
         with contextlib.suppress(Exception):
             self._handle.terminate(grace_period_s=0.5)
         pid = cast(
             "int | None", getattr(self._handle, "pid", None)
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         if pid is not None:
             with contextlib.suppress(Exception):
                 teardown_subtree(pid, issuer="invoke:pty")
@@ -1539,7 +1178,6 @@ class PtyLineReader:
         unsubscribe()
 
     def _terminate_for_quota(self, detail: str) -> None:
-        """Stop a quota-exhausted process without waiting for further output."""
         if self._quota_error is not None:
             return
         self._quota_error = QuotaExhaustedError(self._agent_name, detail)
@@ -1547,7 +1185,7 @@ class PtyLineReader:
         self._handle.terminate(grace_period_s=0.5)
         pid = cast(
             "int | None", getattr(self._handle, "pid", None)
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         if pid is not None:
             teardown_subtree(pid, issuer="invoke:pty")
         self._lines_event.set()
@@ -1556,7 +1194,6 @@ class PtyLineReader:
         reason_recorder = cast(
             "Callable[[str], None] | None",
             getattr(self._handle, "record_terminal_reason", None),
-            # cast-policy: seam: structural boundary (protocol conferee)
         )
         if reason_recorder is not None:
             reason_recorder(reason)
@@ -1586,7 +1223,7 @@ class PtyLineReader:
             self._handle.terminate(grace_period_s=0.5)
         pid = cast(
             "int | None", getattr(self._handle, "pid", None)
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         if pid is not None:
             teardown_subtree(pid, issuer="invoke:pty")
         raise AgentInvocationError(
@@ -1620,7 +1257,6 @@ class PtyLineReader:
                 and not activity_signal.is_harness_echo
             )
             if activity_signal.is_harness_echo:
-                # Keep the idle baseline current without treating echoed input as LLM output.
                 watchdog.record_prompt_echo(queued_line)
             else:
                 self._record_non_echo_activity(watchdog, activity_signal)
@@ -1668,20 +1304,6 @@ class PtyLineReader:
             watchdog.record_activity()
 
     def _capture_abandoned_lines(self) -> None:
-        """Write queued lines the read loop stopped short of.
-
-        The done path breaks out after a bounded drain window, and the
-        reader thread can append behind it. Those lines are agent output
-        like any other, and losing whole lines leaves the file
-        PARSEABLE -- so the corruption detector reports nothing and the
-        loss is silent, the same failure mode the eviction sink and
-        ``_capture_pending`` were written to close. Each covers one
-        exit; neither covers abandonment.
-
-        Capture only, never yielded: the parser stream stopped
-        deliberately. The verbatim record is supposed to hold everything
-        the agent wrote.
-        """
         overflow = self._raw_overflow
         if overflow is None:
             return
@@ -1696,10 +1318,6 @@ class PtyLineReader:
         _raise_on_relay_health_error(self, self._agent_name)
         if self._finish_terminal_completion():
             return
-        # A conflict resolver can outlive its foreground PTY parent while a
-        # scoped MCP/server child continues to produce recognised activity.
-        # An ordinary elapsed drain would cut that work off despite liveness,
-        # so the activity-only profile waits only for silence or an opt-in cap.
         drain_deadline = (
             None
             if self._policy.profile.value == "activity_only"
@@ -1728,13 +1346,6 @@ class PtyLineReader:
     def _strategy_registry_and_prefix(
         self,
     ) -> tuple[ChildLivenessRegistry | None, str]:
-        """Return ``(registry, scope_prefix)`` from the strategy, or ``(None, "")``.
-
-        Mirrors ``_process_reader._strategy_registry_and_prefix``. The
-        prefix lookup is wrapped in a try/except so a strategy stub that
-        omits ``_label_scope`` (used by some test fakes) does not crash
-        the caller.
-        """
         registry = cast(
             "ChildLivenessRegistry | None",
             getattr(self._strategy, "_registry", None),
@@ -1752,19 +1363,6 @@ class PtyLineReader:
         return registry, prefix or ""
 
     def _build_subagent_pid_source(self) -> ChildLivenessSubagentPidSource | None:
-        """Build a PID source from the strategy's child-liveness registry, if any.
-
-        Mirrors ``_process_reader._build_subagent_pid_source``: the
-        OpenCode strategy ingests structured child lifecycle events
-        (carried on the agent's own PTY stream) into a
-        ``ChildLivenessRegistry`` whose records include the child PID.
-        Returning those PIDs as a ``SubagentPidSource`` lets
-        ``DefaultProcessMonitor`` classify real spawned subagents as
-        ``SPAWNED_SUBAGENT`` instead of guessing from the command
-        line. Without this wiring the PTY/OpenCode path undercounts
-        active child agents and the watchdog would make decisions
-        from incomplete process classification.
-        """
         registry, prefix = self._strategy_registry_and_prefix()
         if registry is None:
             return None
@@ -1791,7 +1389,6 @@ class PtyLineReader:
             is_done = False
             with self._lines_lock:
                 if self._lines_queue:
-                    # BoundedLinesQueue exposes O(1) popleft; raw lists fall back to pop(0).
                     queued_line = _pop_queue_line(self._lines_queue)
                 elif self._reader_done[0]:
                     is_done = True
@@ -1807,13 +1404,6 @@ class PtyLineReader:
             yield from self._idle_check_and_wait(watchdog)
 
     def _setup_read_loop(self) -> _ReadLoopSetup:
-        # OPENED BEFORE ANY THREAD STARTS. ``_read_thread`` fills the
-        # bounded queue, and the queue's eviction sink drops a line on
-        # the floor while ``_raw_overflow`` is still None -- so a burst
-        # arriving in the window between starting the reader and opening
-        # the capture was lost in exactly the way the sink exists to
-        # prevent. The capture is cheap to open and is closed in
-        # ``_teardown_read_loop`` regardless of which thread failed.
         self._raw_overflow = get_or_create_raw_overflow_log(
             self._workspace_path or Path.cwd(),
             raw_log_unit_id_for(self._config),
@@ -1823,15 +1413,6 @@ class PtyLineReader:
         transcript_reader = self._start_thread(self._transcript_thread)
         sentinel_reader = self._start_thread(self._sentinel_thread)
         completion_reader = self._start_thread(self._completion_evidence_thread)
-        # RC1 + RC3 (wt-04-claude-parsing): the subagent transcript
-        # tailer is now constructed LAZILY inside ``_transcript_thread``
-        # on the first observed session id -- the previous shape
-        # built the tailer here and saw ``_captured_session_id is None``
-        # for every fresh invocation, so the tailer never came back
-        # populated. We still pre-allocate the sink holder here so
-        # the lazy constructor can find the watchdog binding once the
-        # watchdog exists. ``_teardown_read_loop`` stops the
-        # lazily-constructed tailer via ``self._subagent_tails``.
         self._subagent_sink_holder: dict[str, Callable[[str], None]] = {}
         subagent_pid_source = self._build_subagent_pid_source()
         registry, scope_prefix = self._strategy_registry_and_prefix()
@@ -1843,12 +1424,6 @@ class PtyLineReader:
             registry=registry,
             scope_prefix=scope_prefix,
         )
-        # R1 (Trustworthy Idle Watchdog spec): store the monitor so
-        # ``_corroborate`` can read the FILTERED subagent count from
-        # ``spawned_subagent_count()`` (preferred) instead of the
-        # broader ``handle.descendant_snapshot()`` count. The monitor
-        # is reset in the ``finally`` block so a stale monitor never
-        # leaks across invocations.
         self._process_monitor = process_monitor
         watchdog = IdleWatchdog(
             self._policy,
@@ -1861,25 +1436,11 @@ class PtyLineReader:
         if self._is_waiting_state_provider is not None:
             watchdog.set_is_waiting_state(self._is_waiting_state_provider())
         watchdog.record_invocation_start()
-        # R7 (Trustworthy Idle Watchdog): expose the watchdog
-        # reference on the PTY line reader so the line-reader
-        # layer can populate the R7 diagnostic fields on
-        # ``CompletionCheckOptions`` at the construction site
-        # AFTER the iterator exhausts (post-read at
-        # ``_pty_runner.py``).
         self._watchdog = watchdog
         if self._captured_session_id is not None:
             watchdog.record_session_id_capture(self._captured_session_id)
         self._bind_workspace_monitor(watchdog)
         sink_token, subagent_token, subagent_sink = self._register_active_sinks(watchdog)
-        # RC1 + RC3 (wt-04-claude-parsing): bind the watchdog's
-        # ``record_subagent_work`` channel into the sink holder the
-        # lazy tailer constructor reads from. The tailer consults
-        # ``self._subagent_sink_holder`` so the watchdog binding is
-        # a one-line swap rather than a constructor re-wire. The
-        # tailer's ``start()`` is fired by ``_transcript_thread`` on
-        # the first ``Agent`` / ``Task`` dispatch rather than here
-        # so a no-dispatch session never spins up a tailer thread.
         holder: dict[str, Callable[[str], None]] = self._subagent_sink_holder
         holder["sink"] = subagent_sink
         unsubscribe = get_process_manager().register_listener(self._on_process_event)
@@ -1896,24 +1457,9 @@ class PtyLineReader:
         )
 
     def _bind_workspace_monitor(self, watchdog: IdleWatchdog) -> None:
-        # Register the watchdog's workspace channel recorder as the
-        # on-event callback on the WorkspaceMonitor so every file
-        # change in the monitored workspace is visible to the
-        # activity-aware verdict as a fresh workspace channel signal.
-        # The monitor is constructed in invoke_agent BEFORE the
-        # watchdog is created (the watchdog lives inside this
-        # generator), so we cannot bind the recorder at monitor
-        # construction time; the late ``set_on_event`` binding
-        # happens here, immediately after the watchdog exists. The
-        # binding is cleared in the finally block below so a stale
-        # callback can never fire after the run ends.
         if self._monitor is None:
             return
 
-        # Forward (kind, weight) so the watchdog's per-kind
-        # counter receives the real classification; the
-        # 0-arg bound method form would always yield
-        # (OTHER, 1.0) and miss the AC #7 contract.
         def _forward_event(kind: WorkspaceChangeKind, weight: float) -> None:
             watchdog.record_workspace_event(kind=kind, weight=weight)
 
@@ -1927,15 +1473,6 @@ class PtyLineReader:
         Token[Callable[[str], None] | None],
         Callable[[str], None],
     ]:
-        # Register the watchdog's MCP activity recorder as the active sink
-        # for the in-process Ralph MCP server so each tools/call invocation
-        # defers a NO_OUTPUT_DEADLINE fire while the agent is actively
-        # using the MCP. The contextvar isolates concurrent agent runs
-        # in the same process so a sibling run's MCP calls never feed
-        # this watchdog's evidence surface. The recorder accepts a
-        # `now: float | None` argument; the sink protocol passes a
-        # `tool_name: str`, so we wrap the recorder in a thin closure
-        # that ignores the string and forwards to the recorder.
         def _mcp_sink(_tool_name: str) -> None:
             watchdog.record_mcp_tool_call()
 
@@ -1964,11 +1501,6 @@ class PtyLineReader:
         reset_subagent_sink(setup.subagent_token)
         if self._monitor is not None:
             self._monitor.set_on_event(None)
-        # RC1 + RC3 (wt-04-claude-parsing): the subagent tailer is
-        # built lazily inside ``_transcript_thread``; it lives on
-        # ``self._subagent_tails`` after the first observed session
-        # id, so we stop the lazy-constructed instance here (the
-        # setup-time ``subagent_tails`` slot is always ``None`` now).
         lazy_tails_obj: object = getattr(self, "_subagent_tails", None)
         if isinstance(lazy_tails_obj, ClaudeSubagentTranscriptTails):
             with contextlib.suppress(Exception):
@@ -1983,14 +1515,6 @@ class PtyLineReader:
             setup.unsubscribe,
             interrupted,
         )
-        # Flush and release the raw-overflow log so buffered tail bytes
-        # reach disk deterministically (RFC-013 P1: per-line open/close
-        # churn on .agent/raw/*.log was a top engine event source).
-        # close() is idempotent and never raises. The optional guard
-        # covers the rare setup-throws-mid-init case where the log was
-        # never constructed.
         if self._raw_overflow is not None:
-            # AFTER ``_cleanup`` joins the reader threads, so a line
-            # appended while the loop was breaking out is still saved.
             self._capture_abandoned_lines()
             self._raw_overflow.close()

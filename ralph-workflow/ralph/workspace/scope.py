@@ -1,32 +1,3 @@
-"""Canonical workspace scope for the active Ralph run.
-
-Provides ``WorkspaceScope``, the frozen dataclass that centralises all
-workspace-root and allowed-directory decisions made at process startup. Every
-component that needs to know where files live or which paths an agent may write
-should read its values from a ``WorkspaceScope`` instance rather than calling
-``Path.cwd()`` directly.
-
-Key API:
-
-- ``resolve_workspace_scope(start)`` - detect the active workspace from the
-  filesystem. Walks upward from *start* (default: ``cwd()``) looking for a
-  ``ralph-workflow.toml`` config file or a git repo root. Linked worktrees
-  automatically inherit config from the main worktree unless the linked
-  worktree has its own override.
-- ``WorkspaceScope`` - frozen dataclass with ``root``, ``allowed_roots``,
-  ``local_config_path``, and ``propagated_config_paths``. Use
-  ``scope.resolve_agent_file(filename)`` to locate ``.agent/`` files with
-  correct inheritance between linked and main worktrees.
-- ``WorkspaceScope.for_same_workspace_worker(...)`` - builds a restricted
-  scope for parallel workers that share a single checkout; the repo root is NOT
-  added to allowed roots, enforcing that workers only write to their declared
-  directories and their own worker namespace.
-
-Config files searched (in order):
-  ``ralph-workflow.toml``, ``agents.toml``, ``pipeline.toml``,
-  ``artifacts.toml``, ``mcp.toml`` (all under ``.agent/`` in the workspace
-  root).
-"""
 
 from __future__ import annotations
 
@@ -61,56 +32,6 @@ def _canonicalize(path: Path | str) -> Path:
 
 @dataclass(frozen=True, init=False)
 class WorkspaceScope:
-    """Single source of truth for workspace root and config inheritance.
-
-    Frozen dataclass that centralises every workspace-root and
-    allowed-directory decision made at process startup. Every
-    component that needs to know where files live, which paths an
-    agent may write, or where local and inherited configuration
-    files are read from should consume a :class:`WorkspaceScope`
-    instance rather than calling :func:`pathlib.Path.cwd` directly.
-    The dataclass is hashable and frozen so it can be cached,
-    passed between threads, and used as a dictionary key.
-
-    Construction canonicalises every path through :func:`_canonicalize`
-    (expanduser + resolve) and deduplicates ``allowed_roots`` so
-    callers can pass user-supplied paths and still rely on a stable
-    canonical form.
-
-    Attributes:
-        root: Canonical absolute path to the workspace root. All
-            ``.agent/``-relative paths are resolved against this
-            value, and it is the canonical entry point for
-            repository-relative lookups.
-        allowed_roots: Tuple of canonical absolute paths that agents
-            may read or write to during the run. ``root`` is always
-            the first entry. Additional entries are added by the
-            workspace resolver for linked worktrees, parallel
-            worker namespaces, and any directory the active
-            pipeline phase has been granted access to.
-        local_config_path: Canonical absolute path to the
-            workspace-local ``ralph-workflow.toml`` file. Defaults to
-            ``<root>/.agent/ralph-workflow.toml`` when no override
-            is supplied; can be overridden for tests and for
-            workspaces that store configuration outside ``.agent/``.
-        propagated_config_paths: Tuple of canonical absolute paths
-            to inherited configuration files. The values come from
-            the workspace resolver walking upward from ``root`` and
-            collecting any ``.agent/ralph-workflow.toml``,
-            ``agents.toml``, ``pipeline.toml``, ``artifacts.toml``,
-            or ``mcp.toml`` it finds. Order is parent-first so the
-            most-specific entry wins on conflict.
-
-    Lifecycle:
-        1. Construct (or receive from
-           :func:`resolve_workspace_scope`) a :class:`WorkspaceScope`.
-        2. Pass it to every component that needs to locate files
-           (``scope.root``, ``scope.local_config_path``) or check
-           path containment (``root in scope.allowed_roots``).
-        3. For parallel workers, build a restricted scope with
-           :meth:`for_same_workspace_worker` instead of mutating
-           the original instance — the dataclass is frozen.
-    """
 
     root: Path
     allowed_roots: tuple[Path, ...]
@@ -145,22 +66,18 @@ class WorkspaceScope:
 
     @property
     def is_linked_worktree(self) -> bool:
-        """Return whether this scope is a linked git worktree."""
         return self.project_config_path.parent.parent != self.root
 
     @property
     def scope_label(self) -> str:
-        """Return the automatic local-config scope label for this workspace."""
         return WORKTREE_SCOPE_LABEL if self.is_linked_worktree else PROJECT_SCOPE_LABEL
 
     @property
     def worktree_config_path(self) -> Path:
-        """Return the canonical config path owned by this workspace."""
         return _default_local_config_path(self.root)
 
     @property
     def project_config_path(self) -> Path:
-        """Return the canonical config path owned by the main project checkout."""
         if self.local_config_path != self.worktree_config_path:
             return self.local_config_path
         if self.propagated_config_paths:
@@ -168,11 +85,6 @@ class WorkspaceScope:
         return self.worktree_config_path
 
     def resolve_agent_file(self, filename: str) -> Path:
-        """Resolve the effective .agent file for this workspace.
-
-        Linked worktrees inherit defaults from the main worktree unless the
-        current workspace has an explicit local override for that filename.
-        """
         local_agent_dir = self.root / CONFIG_DIR_NAME
         local_candidate = local_agent_dir / filename
         if local_candidate.exists():
@@ -190,7 +102,6 @@ class WorkspaceScope:
         return local_candidate
 
     def has_any_local_agent_override(self) -> bool:
-        """Return True when the current workspace has any explicit .agent override."""
         local_agent_dir = self.root / CONFIG_DIR_NAME
         return any((local_agent_dir / filename).exists() for filename in _WORKSPACE_AGENT_FILENAMES)
 
@@ -203,34 +114,6 @@ class WorkspaceScope:
         *,
         paths: tuple[str, ...] = (),
     ) -> WorkspaceScope:
-        """Build a worker-scoped view of the shared checkout.
-
-        Deprecated: Ralph-orchestrated workers are removed from the execution model;
-        parallelism is owned by the developer agent's own sub-agents. See
-        docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'.
-
-        The root stays at ``repo_root`` (no per-worker root reassignment). Each
-        allowed directory is resolved relative to ``repo_root``. The
-        ``worker_namespace`` is always added so the worker can write its own
-        artifacts, logs, and temporary outputs even when ``allowed_directories``
-        is narrow. A ``ValueError`` is raised when any entry escapes ``repo_root``
-        via ``..`` or an absolute path.
-
-        This method bypasses the standard __init__ to avoid unconditionally
-        adding ``repo_root`` to allowed_roots. Same-workspace workers must NOT
-        have the repo root as an allowed root — they are restricted to only
-        their declared edit areas plus their own worker namespace.
-
-        Args:
-            repo_root: Shared repository root (same for all parallel workers).
-            allowed_directories: Relative directories the worker may edit.
-            paths: Exact relative files; never widened to their parent directory.
-            worker_namespace: Per-worker scratch directory (always allowed).
-
-        Returns:
-            WorkspaceScope with root=repo_root, allowed_roots restricted to the
-            declared directories plus the worker namespace (repo root is NOT included).
-        """
         canonical_root = _canonicalize(repo_root)
         canonical_ns = _canonicalize(worker_namespace)
 
@@ -255,14 +138,11 @@ class WorkspaceScope:
 
         allowed_roots.append(canonical_ns)
 
-        # Build the scope directly, bypassing __init__ to avoid unconditionally
-        # adding canonical_root to allowed_roots. Same-workspace workers must
-        # only have their specific allowed directories + worker namespace.
         scope = object.__new__(cls)
         object.__setattr__(scope, "root", canonical_root)
         object.__setattr__(
             scope, "allowed_roots", cast("tuple[Path, ...]", tuple(allowed_roots))
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         object.__setattr__(scope, "local_config_path", _default_local_config_path(canonical_root))
         object.__setattr__(scope, "propagated_config_paths", ())
         return scope
@@ -273,7 +153,6 @@ def _default_local_config_path(root: Path) -> Path:
 
 
 def _find_nearest_workspace_root(candidate: Path, repo_root: Path) -> Path:
-    """Prefer the nearest Ralph workspace config between cwd and repo root."""
     current = candidate.resolve()
     resolved_repo_root = repo_root.resolve()
     while True:
@@ -288,17 +167,11 @@ def _find_nearest_workspace_root(candidate: Path, repo_root: Path) -> Path:
 
 
 def resolve_workspace_scope(start: Path | str | None = None) -> WorkspaceScope:
-    """Resolve the active workspace scope.
-
-    The workspace root remains the active checkout, but linked worktrees inherit
-    default .agent config from the main checkout unless the linked worktree has
-    an explicit local override file.
-    """
 
     if start is None:
         try:
             candidate = resolve_pro_workspace()
-        except Exception:  # import-time failure of pro_support must not break scope resolution
+        except Exception:
             candidate = Path.cwd()
     else:
         candidate = Path(start)

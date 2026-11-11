@@ -1,4 +1,3 @@
-"""RebaseLock — context manager that acquires and releases the rebase lock."""
 
 from __future__ import annotations
 
@@ -9,7 +8,6 @@ if TYPE_CHECKING:
 
 
 class RebaseLock:
-    """Context manager that acquires and releases the rebase lock."""
 
     _acquire_fn: ClassVar[Callable[[], None] | None] = None
     _release_fn: ClassVar[Callable[[], None] | None] = None

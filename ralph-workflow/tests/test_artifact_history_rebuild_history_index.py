@@ -1,5 +1,3 @@
-"""Tests for artifact history archival and indexing."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -17,8 +15,6 @@ def _now_iso() -> str:
 
 
 class _RecordingHistoryBackend(FileBackend):
-    """In-memory history storage that exposes observable physical writes."""
-
     def __init__(self, files: dict[Path, str]) -> None:
         self.files = files
         self.write_count = 0
@@ -59,7 +55,6 @@ class TestRebuildHistoryIndex:
     def test_no_op_when_history_dir_missing(self, tmp_path: Path) -> None:
         artifact_dir = tmp_path / ".agent" / "artifacts"
         rebuild_history_index(artifact_dir, "plan")
-        # no error and no index created
         assert not history_index_path(artifact_dir, "plan").exists()
 
     def test_deletes_index_when_no_markdown_files(self, tmp_path: Path) -> None:
@@ -88,7 +83,6 @@ class TestRebuildHistoryIndex:
         assert "20260506T120000_plan.md" in content
 
     def test_rebuild_regression_skips_identical_index_rewrite(self) -> None:
-        """S-3: rebuilding unchanged history leaves the index mutation-free."""
         artifact_dir = Path("/virtual/.agent/artifacts")
         history_dir = history_dir_for_artifact(artifact_dir, "plan")
         backend = _RecordingHistoryBackend({history_dir / "20260506T120000_plan.md": "# Plan"})

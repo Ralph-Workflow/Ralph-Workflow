@@ -1,5 +1,3 @@
-"""Tests for ralph.mcp.tool_bridge — T12 extensibility tests."""
-
 from __future__ import annotations
 
 import logging
@@ -31,15 +29,9 @@ from tests.mcp._tool_bridge_upstream_env_var_helper__fakeworkspace import _FakeW
 
 
 class TestUpstreamEnvVar:
-    """T12.5-T12.7: RALPH_UPSTREAM_MCP_CONFIG env var handling."""
-
     def test_upstream_proxy_tools_registered_from_env_var(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Boot with RALPH_UPSTREAM_MCP_CONFIG set to serialized fake upstream.
-
-        Asserts that the proxied tool alias appears in the registry.
-        """
         fake_upstream_server = UpstreamMcpServer(
             name="my-fake-server",
             transport="http",
@@ -80,7 +72,6 @@ class TestUpstreamEnvVar:
     def test_empty_upstream_env_var_does_not_crash_boot(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Unset env var → server still starts with only built-in tools."""
         monkeypatch.delenv("RALPH_UPSTREAM_MCP_CONFIG", raising=False)
 
         bridge = build_ralph_tool_registry(
@@ -103,7 +94,6 @@ class TestUpstreamEnvVar:
         assert any("invalid JSON" in record.message for record in caplog.records)
 
     def test_present_empty_catalog_snapshot_sets_empty_env_var(self) -> None:
-        """Present-but-empty snapshot -> env var is SET to '{}' (not popped)."""
         env: dict[str, str] = {UPSTREAM_MCP_TOOL_CATALOG_ENV: "stale-leftover"}
         apply_tool_catalog_env(env, UpstreamToolCatalogSnapshot(present=True, value={}))
         assert env[UPSTREAM_MCP_TOOL_CATALOG_ENV] == "{}"

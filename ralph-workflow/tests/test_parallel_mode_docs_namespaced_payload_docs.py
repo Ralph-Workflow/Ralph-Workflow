@@ -1,6 +1,3 @@
-"""Tests that the advanced-pipeline-configuration.md parallel section
-accurately reflects same-workspace v1 behaviour."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -103,8 +100,6 @@ class TestNamespacedPayloadDocs:
         assert "must not select a separate worker prompt" in doc
 
     def test_parallel_mode_doc_no_future_tense_worktree(self) -> None:
-        """advanced-pipeline-configuration.md must not describe worktree as a future
-        or planned feature."""
         doc = _DOC_PATH.read_text(encoding="utf-8").lower()
         forbidden = [
             "future worktree",

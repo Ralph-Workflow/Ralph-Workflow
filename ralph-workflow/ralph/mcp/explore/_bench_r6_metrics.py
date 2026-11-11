@@ -1,9 +1,3 @@
-"""R6 metric capture and the baseline regression comparator.
-
-Split from ``_bench_product_baseline`` so each module stays under the
-repository file-size limit. Public names are re-exported from
-``_bench_product_baseline``.
-"""
 
 from __future__ import annotations
 
@@ -44,31 +38,13 @@ __all__ = (
     "validate_report",
 )
 
-# ---------------------------------------------------------------------------
-# S-8 / S-9 / S-10 baseline + report tooling
-# ---------------------------------------------------------------------------
-# R6 metrics demand a baseline JSON committed before any behaviour change
-# with measured values for every R6.2 metric on every R6.3 workload. The
-# workloads are: small fixture, ralph-self (working tree), large-synthetic
-# (scaled), multi-session. ``capture_baseline`` produces the S-8 JSON;
-# ``validate_baseline`` mechanically checks every metric x workload is
-# present. ``validate_report`` checks the S-10 before/after report has
-# baseline/final/target columns and an explicit disposition.
 
 
 def _empty_baseline_metrics() -> dict[str, float]:
-    """Return a zero-initialised metric dict for every R6.2 metric."""
     return dict.fromkeys(_R6_2_METRICS, 0.0)
 
 
 def _median_metrics(samples: Sequence[Mapping[str, float]]) -> dict[str, float]:
-    """Return the per-metric median across ``samples``.
-
-    Empty input returns a zero-initialised dict (matching the
-    ``_empty_baseline_metrics`` shape) so the caller can rely on
-    the canonical schema. Single-sample input returns a copy of
-    the only sample; the median of one observation is itself.
-    """
     if not samples:
         return _empty_baseline_metrics()
     out: dict[str, float] = {}
@@ -91,35 +67,6 @@ def _median_metrics(samples: Sequence[Mapping[str, float]]) -> dict[str, float]:
     return out
 
 
-# ---------------------------------------------------------------------------
-# Subprocess-based R6.2 build measurement
-# ---------------------------------------------------------------------------
-#
-# R6.6 requires the benchmark gate to "run reliably ... without flaky
-# results". The previous harness measured peak RSS via
-# ``resource.getrusage(resource.RUSAGE_SELF).ru_maxrss``, which is the
-# *process-lifetime* resident-set high-water mark. When the gate runs
-# in the same pytest process after hundreds of prior explore tests,
-# that high-water mark reflects prior memory use, not the build's
-# peak -- a direct measurement hazard that failed the gate on
-# developer machines once the harness ran late in the suite.
-#
-# The fix is to isolate the build inside a fresh subprocess: each
-# build phase runs in a short-lived child that performs the work and
-# prints its own peak RSS plus the build's wall/CPU time. The parent
-# parses that value, so the reported peak RSS depends only on the
-# build, never on prior activity in the benchmark process.
-#
-# For refresh metrics the child does a one-shot cold build as a
-# warm-up pass so the measured refresh wall/CPU excludes the
-# process-startup cost (FTS5 cache, page-cache fill, etc.) that the
-# first reindex call in any process pays. The warm-up pass is the
-# same shape as ``measure_cold_build``; only the measured phase
-# after it is reported to the parent.
-#
-# The subprocess runner script and the ``subprocess.run`` glue live
-# in :mod:`ralph.mcp.explore._bench_r6_subprocess` so this hub
-# module stays under the repository file-size limit.
 
 
 def measure_cold_build(
@@ -127,29 +74,12 @@ def measure_cold_build(
     *,
     parent_dir: Path,
 ) -> dict[str, float]:
-    """Run a single cold build and return the R6.2 cold-build metrics.
-
-    The build runs inside a fresh subprocess so the reported peak
-    RSS reflects only this build (see ``_BUILD_RUNNER_SCRIPT``).
-    The child does a one-shot warm-up reindex before the measured
-    cold build so the measured wall/CPU excludes the FTS5 /
-    page-cache start-up cost that the very first reindex call in
-    any process pays. The warm-up pass writes to ``warmup_dir``;
-    the measured pass runs against the empty ``index_dir`` so the
-    operation under measurement is a real cold build. Both
-    sub-runs share the same Python process so the warm-up pass
-    amortises the per-process start-up cost.
-    """
     warmup_dir = parent_dir / "index_cold_warmup"
     index_dir = parent_dir / "index_cold_build"
     import shutil
 
     if index_dir.exists():
-        # filesystem-write-ok: transient scratch directory cleanup
         shutil.rmtree(index_dir, ignore_errors=True)
-    # Warm-up + cold build in one subprocess. The
-    # warm-up pass is discarded; the cold build's wall/CPU/RSS
-    # is reported.
     combined_script_lines = [
         "import json",
         "import resource",
@@ -209,14 +139,7 @@ def measure_cold_build(
         "    store.close()",
     ]
     combined_script = "\n".join(combined_script_lines)
-    # mcp-timeout-ok / resource-lifecycle-ok / filesystem-poll-ok:
-    # the parent blocks on the bounded timeout so the child cannot outlive
-    # the call and no fd / process leaks cross the harness boundary.
-    # resource-lifecycle-ok: short-lived benchmark subprocess; parent blocks
-    # on .run()'s timeout so the child cannot outlive the call.
-    # filesystem-poll-ok: same short-lived subprocess; the parent blocks on
-    # the bounded timeout, so this is not a poll loop.
-    proc = subprocess.run(  # resource-lifecycle-ok: short-lived benchmark subprocess; parent blocks on the bounded timeout, so this is not a poll loop.  # filesystem-poll-ok: same short-lived subprocess; the parent blocks on the bounded timeout, so this is not a poll loop.
+    proc = subprocess.run(
         [sys.executable, "-c", combined_script],
         capture_output=True,
         text=True,
@@ -245,26 +168,13 @@ def _measure_changed_refresh(
     share_label: str,
     prepare: bool = True,
 ) -> dict[str, float]:
-    """Run a changed-files refresh and return the R6.2 refresh metrics.
-
-    When ``prepare`` is True the harness owns a fresh
-    ``index_dir`` for this refresh sample. When ``prepare`` is False
-    the existing cold-build index from ``_measure_cold_build`` is
-    reused. In either case the child subprocess does a one-shot
-    warm-up reindex so the measured refresh wall/CPU excludes the
-    process-startup cost of the very first reindex call.
-    """
     index_dir = parent_dir / (
         "index_cold_build" if not prepare else f"index_refresh_{change_count}_{share_label}"
     )
     if prepare:
-        # Drop any stale index so the warm-up pass rebuilds from
-        # scratch and the measured refresh starts from a known
-        # empty database.
         import shutil
 
         if index_dir.exists():
-            # filesystem-write-ok: transient scratch directory cleanup
             shutil.rmtree(index_dir, ignore_errors=True)
     payload = run_build_subprocess(
         workspace=workspace,
@@ -292,7 +202,6 @@ def _measure_query_latency(
     *,
     parent_dir: Path,
 ) -> dict[str, float]:
-    """Measure indexed vs live query latency over the small fixture."""
     from ralph.mcp.explore.pipeline import ReindexOptions, reindex
     from ralph.mcp.tools.workspace._grep_handlers import handle_grep_files
 
@@ -303,7 +212,6 @@ def _measure_query_latency(
     if index_dir != shared and index_dir.exists():
         import shutil
 
-        # filesystem-write-ok: transient scratch directory cleanup before latency benchmark
         shutil.rmtree(index_dir, ignore_errors=True)
     store = ExploreStore(index_dir)
     session = _BaselineSession.__new__(_BaselineSession)
@@ -313,14 +221,6 @@ def _measure_query_latency(
     try:
         if index_dir != shared:
             reindex(store, workspace, options=ReindexOptions(mode="full", timeout_ms=120_000))
-        # Attach the real ``ExploreIndex`` handle so the freshness
-        # guard, ``_staleness_block`` cache, and serving metadata all
-        # run through the production code path. The prior
-        # ``build_sqlite_index_handle`` returned a narrow duck-type
-        # that did NOT pass ``isinstance(handle, ExploreIndex)`` so
-        # the benchmark measured a different control flow than the
-        # live handler. This closes the production-path fidelity
-        # gap called out in R6 / S-7 of the plan.
         from ralph.mcp.explore.handlers import ExploreIndex as _ExploreIndex
 
         session.explore_index = _ExploreIndex(
@@ -336,14 +236,8 @@ def _measure_query_latency(
             store._conn.execute("SELECT count(*) FROM sqlite_master").fetchone()
             raw_samples.append(time.perf_counter() - start)
         raw_p50 = sorted(raw_samples)[len(raw_samples) // 2]
-        # cast-policy: seam: ``handle_grep_files`` is provably compatible
-        # with ``_QueryCallable`` by Callable contravariance
-        # (its ``CoordinationSessionLike`` / ``Workspace`` parameters
-        # are narrower than the Protocol's ``object`` parameters, and
-        # its ``ToolResult`` return is a subtype of ``object``); the
-        # proof is at the call site of the local handler.
         return sample_query_latencies(
-            grep_handler=cast("_QueryCallable", handle_grep_files),  # cast-policy: seam: see above
+            grep_handler=cast("_QueryCallable", handle_grep_files),
             session=session,
             workspace=ws,
             perf_counter=time.perf_counter,
@@ -354,14 +248,12 @@ def _measure_query_latency(
 
 
 def _seed_small_workspace(parent: Path) -> Path:
-    """Seed a small workspace mirroring Q1/Q2/Q3 fixture content."""
     workspace = parent / "ws_small"
     workspace.mkdir(parents=True, exist_ok=True)
     for fixture in REQUIRED_FIXTURES:
         for rel_path, content in fixture.workspace_files.items():
             target = workspace / rel_path
             target.parent.mkdir(parents=True, exist_ok=True)
-            # filesystem-write-ok: transient scratch workspace fixture seeding
             target.write_text(content)
     return workspace
 
@@ -375,15 +267,6 @@ def _seed_large_synthetic(
     *,
     file_count: int = BASELINE_LARGE_SYNTHETIC_FILE_COUNT,
 ) -> Path:
-    """Seed a synthetic workspace with binaries and one deep path.
-
-    The committed baseline and the in-budget gate use
-    ``BASELINE_LARGE_SYNTHETIC_FILE_COUNT`` (200) so a fresh capture
-    stays comparable to ``explore-index-targets.json`` and finishes
-    inside the 60-second combined test budget. Pass
-    ``file_count=FULL_LARGE_SYNTHETIC_FILE_COUNT`` to build the
-    tens-of-thousands R6.3 shape.
-    """
     workspace = parent / "ws_large"
     workspace.mkdir(parents=True, exist_ok=True)
     last_bucket_idx: int = -1
@@ -394,13 +277,10 @@ def _seed_large_synthetic(
             bucket = workspace / "src" / f"b{bucket_idx}"
             bucket.mkdir(parents=True, exist_ok=True)
             last_bucket_idx = bucket_idx
-        # filesystem-write-ok: transient scratch workspace synthetic file seeding
         (bucket / f"f{i:05d}.py").write_text(f"def fn_{i}():\n    return {i}\n")
-    # filesystem-write-ok: transient binary and deep-path fixtures
     (workspace / "blob.bin").write_bytes(bytes(range(256)))
     deep = workspace / "deep" / "a" / "b"
     deep.mkdir(parents=True, exist_ok=True)
-    # filesystem-write-ok: transient deep-path fixture
     (deep / "leaf.py").write_text("def leaf():\n    return 1\n")
     return workspace
 
@@ -408,10 +288,8 @@ def _seed_large_synthetic(
 def _snapshot_initial_inotify_fds() -> frozenset[str]:
     inherited: set[str] = set()
     fd_dir = Path("/proc/self/fd")
-    # filesystem-read-ok: check procfs directory existence for inotify snapshot
     if not fd_dir.is_dir():
         return frozenset()
-    # filesystem-read-ok: snapshot startup fds to exclude inherited parent inotify instances
     for entry in fd_dir.iterdir():
         try:
             target = entry.readlink()
@@ -426,11 +304,9 @@ _INITIAL_INOTIFY_FDS: Final[frozenset[str]] = _snapshot_initial_inotify_fds()
 
 
 def _count_proc_fds() -> tuple[float, float]:
-    """Return ``(fd_count, inotify_watch_count)`` for this process."""
     fd_dir = Path("/proc/self/fd")
     fd_count = 0
     watches = 0
-    # filesystem-read-ok: count this process's own /proc/self/fd entries; not a workspace tree
     for entry in fd_dir.iterdir():
         fd_count += 1
         if entry.name in _INITIAL_INOTIFY_FDS:
@@ -445,7 +321,6 @@ def _count_proc_fds() -> tuple[float, float]:
 
 
 def _rebuild_index(workspace: Path, index_dir: Path) -> float:
-    """Time one full reindex, replacing a corrupt index when open fails."""
     import shutil
 
     from ralph.mcp.explore.pipeline import ReindexOptions, reindex
@@ -458,7 +333,6 @@ def _rebuild_index(workspace: Path, index_dir: Path) -> float:
         finally:
             store.close()
     except Exception:
-        # filesystem-write-ok: drop a corrupt benchmark index before the timed rebuild
         shutil.rmtree(index_dir, ignore_errors=True)
         store = ExploreStore(index_dir)
         try:
@@ -469,7 +343,6 @@ def _rebuild_index(workspace: Path, index_dir: Path) -> float:
 
 
 def _measure_operational(workspace: Path, *, parent_dir: Path) -> dict[str, float]:
-    """Measure no-op refresh, post-git refresh, resources, and F2/F5/F6 recovery."""
     import shutil
 
     from ralph.mcp.explore.pipeline import ReindexOptions, reindex
@@ -484,7 +357,6 @@ def _measure_operational(workspace: Path, *, parent_dir: Path) -> dict[str, floa
         no_op_cpu = time.process_time() - start_cpu
         py_files = sorted(workspace.rglob("*.py"))
         if py_files:
-            # filesystem-write-ok: transient scratch mutation standing in for a git checkout
             py_files[0].write_text(py_files[0].read_text() + "\n# git-op\n")
         start_wall = time.monotonic()
         reindex(store, workspace, options=ReindexOptions(mode="changed", timeout_ms=120_000))
@@ -494,23 +366,18 @@ def _measure_operational(workspace: Path, *, parent_dir: Path) -> dict[str, floa
         store.close()
     peak_fd, peak_watches = _count_proc_fds()
     idle_start = time.process_time()
-    # filesystem-poll-ok: one-shot idle-CPU sample window, not a retry poll
     time.sleep(0.02)
     idle_cpu = time.process_time() - idle_start
     db = index_dir / "index.sqlite"
-    # F2: delete the committed database and rebuild.
     for suffix in ("", "-wal", "-shm"):
         candidate = Path(str(db) + suffix) if suffix else db
         if candidate.exists():
             candidate.unlink()
     recovery_f2 = _rebuild_index(workspace, index_dir)
-    # F5: corrupt the database header, then rebuild.
     if db.is_file():
         payload = db.read_bytes()
-        # filesystem-write-ok: corrupt the scratch index so F5 recovery is a real rebuild
         db.write_bytes(b"\x00\x00\x00" + payload[3:])
     recovery_f5 = _rebuild_index(workspace, index_dir)
-    # F6: interrupt a build, then time the recovery rebuild.
     interrupt = ExploreStore(index_dir)
     try:
         reindex(interrupt, workspace, options=ReindexOptions(mode="full", timeout_ms=1))
@@ -520,7 +387,6 @@ def _measure_operational(workspace: Path, *, parent_dir: Path) -> dict[str, floa
         interrupt.close()
     recovery_f6 = _rebuild_index(workspace, index_dir)
     for staging in index_dir.glob(".staging-*"):
-        # filesystem-write-ok: staging leftovers are scratch-only
         shutil.rmtree(staging, ignore_errors=True)
     return {
         "no_op_refresh_wall_seconds": no_op_wall,
@@ -538,7 +404,6 @@ def _measure_operational(workspace: Path, *, parent_dir: Path) -> dict[str, floa
 
 
 def _exercise_multi_session(workspace: Path, index_dir: Path, processes: int) -> None:
-    """Run several real processes that query one shared index."""
     import subprocess
 
     from ralph.process.manager import SpawnOptions, get_process_manager
@@ -581,13 +446,6 @@ def _capture_workload_metrics(
     parent_dir: Path,
     session_processes: int = 1,
 ) -> dict[str, float]:
-    """Capture the R6.2 metrics for one workload (workspace).
-
-    The cold build and the later refreshes share one index directory
-    so a tens-of-thousands-file workload is not rebuilt from scratch
-    for every refresh. Recovery timings are real rebuilds after delete,
-    corruption, and an interrupted build.
-    """
     print(f"capture start {workspace.name}", flush=True)
     metrics = _empty_baseline_metrics()
     metrics.update(measure_cold_build(workspace, parent_dir=parent_dir))
@@ -630,23 +488,6 @@ def capture_baseline(
     workloads: Sequence[str] | None = None,
     repeat: int = 1,
 ) -> dict[str, object]:
-    """Capture every R6.2 metric on every R6.3 workload into ``output_path``.
-
-    The capture measures the real R6.3 workloads:
-
-    - ``small``: the Q1/Q2/Q3 fixture content.
-    - ``ralph_self``: the actual ``ralph-workflow`` working tree, so
-      S-4's pre/post comparison uses real source files.
-    - ``large_synthetic``: ``FULL_LARGE_SYNTHETIC_FILE_COUNT``
-      (10 000) synthetic Python files plus a binary and a deep
-      path. This is the tens-of-thousands-of-files R6.3 shape.
-    - ``multi_session``: 3 sequential sessions sharing the small
-      workspace.
-
-    When ``workloads`` is provided, only the requested subset of
-    workloads is captured and merged into any existing baseline JSON
-    at ``output_path``; otherwise all four workloads are captured.
-    """
     target_workloads = set(workloads) if workloads is not None else set(_R6_3_WORKLOADS)
     existing: dict[str, object] = {}
     if output_path.is_file():
@@ -681,7 +522,6 @@ def capture_baseline(
         parent_dir: Path,
         session_processes: int = 1,
     ) -> dict[str, float]:
-        """Capture one workload ``repeat`` times; return per-metric median."""
         if repeat <= 1:
             return _capture_workload_metrics(
                 workspace,
@@ -745,7 +585,6 @@ def capture_baseline(
                 for rel_path, content in fixture.workspace_files.items():
                     target = multi_ws / rel_path
                     target.parent.mkdir(parents=True, exist_ok=True)
-                    # filesystem-write-ok: transient scratch workspace fixture seeding
                     target.write_text(content)
             multi_parent = scratch_path / "m_multi"
             multi_parent.mkdir(parents=True, exist_ok=True)
@@ -776,37 +615,17 @@ def capture_baseline(
         "metrics": existing_metrics,
         "workloads": existing_workloads,
     }
-    # filesystem-write-ok: benchmark report artifact emission
     output_path.write_text(json.dumps(baseline, indent=2, sort_keys=True))
     return baseline
 
 
 def _seed_ralph_self_workspace(parent: Path) -> Path:
-    """Copy the real ralph-workflow tree into ``parent`` for benchmarking.
-
-    The benchmark refresh mutates the workspace (write/delete files
-    to time refresh, change git state, etc.), so the capture runs on
-    a scratch copy. The copy uses ``shutil.copytree`` with
-    ``ignore=shutil.ignore_patterns('.venv', '.pytest_cache',
-    '.mypy_cache', '__pycache__', 'node_modules', '.git',
-    'build', 'dist')`` to keep the copy fast and ignore caches that
-    would otherwise balloon the measured wall/CPU and index size.
-
-    Returns the destination path. Raises ``FileNotFoundError`` when
-    no ralph-workflow tree is present, so the missing R. workflow
-    surface fails loudly at capture time rather than masking the
-    absence with a stub.
-    """
     import shutil
 
     workspace = parent / "ws_ralph_self"
     workspace.parent.mkdir(parents=True, exist_ok=True)
     source = _ralph_workflow_source()
 
-    # filesystem-write-ok: transient scratch directory for benchmark seeding
-    # The local ``_ignore`` typed wrapper accepts the strict mypy
-    # ``disallow_any_expr`` config that ``shutil.ignore_patterns`` violates
-    # by virtue of carrying no public type annotations.
     def _ignore(path: str, names: list[str]) -> set[str]:
         import fnmatch as _fnmatch
 
@@ -827,7 +646,6 @@ def _seed_ralph_self_workspace(parent: Path) -> Path:
             ignored.update(_fnmatch.filter(names, pat))
         return ignored
 
-    # filesystem-write-ok: transient scratch directory for benchmark seeding
     shutil.copytree(
         source,
         workspace,
@@ -839,15 +657,6 @@ def _seed_ralph_self_workspace(parent: Path) -> Path:
 
 
 def _ralph_workflow_source() -> Path:
-    """Locate the real ralph-workflow checkout the capture should measure.
-
-    Resolution order: ``RALPH_WORKFLOW_BENCH_SOURCE`` env var when set,
-    the ``ralph-workflow/`` directory adjacent to the project root
-    (``parents[4]``), the package itself (``parents[3]``), or
-    ``cwd/ralph-workflow``. Raises ``FileNotFoundError`` when no
-    source is found so the capture fails loudly instead of silently
-    measuring a stub.
-    """
     from os import getenv
 
     candidates: list[Path] = []
@@ -867,9 +676,6 @@ def _ralph_workflow_source() -> Path:
     )
 
 
-#: When a committed target is 0, the historical probe did not record a
-#: real sample. A fresh probe still has to stay under this absolute
-#: ceiling, so a multi-second refresh or a leaked fd table fails.
 _ZERO_TARGET_FLOOR: Final[Mapping[str, float]] = MappingProxyType(
     {
         "refresh_1_file_wall_seconds": 0.05,
@@ -914,42 +720,12 @@ _LIVE_QUERY_LATENCY_METRICS: Final[frozenset[str]] = frozenset(
         "live_query_p99_seconds",
     }
 )
-#: Five-sample indexed percentile tails move by about a millisecond.
 _QUERY_LATENCY_SLACK_SECONDS: Final[float] = 0.002
-#: Live search shares the host with the rest of ``make test``.
 _LIVE_QUERY_LATENCY_SLACK_SECONDS: Final[float] = 0.050
-#: Cold-build / refresh subprocesses share the CPU with sibling pytest
-#: xdist workers under ``make test``. Empirical noise under the
-#: default 10-worker REQUIRED_AUTO_INTEGRATE_E2E shard on the maintained
-#: 8-shard profile runs ~30-50 ms above the isolated value (parallel
-#: scheduler dispatch + cache contention). 50 ms matches the live
-#: query slack above and leaves headroom for the observed
-#: large-synthetic cold-build spike without compromising the
-#: regression contract: the captured baseline was 0.172 s and a
-#: real regression to >= 0.4 s still fails.
 _SHORT_WALL_NOISE_SECONDS: Final[float] = 0.050
 
 
 def measurement_within_target(measured: float, target: float, metric: str) -> bool:
-    """Return whether one measured value satisfies its numeric target.
-
-    Upper-bound resource metrics must be at or under the target. The
-    indexed-versus-live speed ratio must be at or above the target.
-    Other metrics may exceed the target by the documented tolerance:
-    50% for no-op refresh, 25% otherwise.
-
-    A target of 0 on an operational metric means the committed baseline
-    did not record a sample. The fresh probe must then stay under
-    ``_ZERO_TARGET_FLOOR`` for that metric. Watch-handle counts
-    stay exact: any inotify handle fails a 0 target. Indexed query
-    percentiles also allow ``_QUERY_LATENCY_SLACK_SECONDS`` of host
-    noise. Live query percentiles allow
-    ``_LIVE_QUERY_LATENCY_SLACK_SECONDS`` because the default verify
-    profile measures them beside other shards. Positive wall-clock and
-    CPU targets also allow ``_SHORT_WALL_NOISE_SECONDS`` of scheduler
-    noise. A cold-build wall target of 0 does not use a floor, so a
-    non-zero cold build still fails that target.
-    """
     if metric in _EXACT_CEILING_METRICS:
         floor = _ZERO_TARGET_FLOOR.get(metric, 0.0) if target <= 0.0 else 0.0
         return measured <= target + floor + 1e-9
@@ -975,13 +751,6 @@ def run_capture_baseline(
     workloads: Sequence[str] | None = None,
     repeat: int = 1,
 ) -> int:
-    """CLI entry: capture the S-8 baseline JSON.
-
-    When ``repeat`` is greater than 1, each workload is captured
-    that many times and the per-metric median is reported as the
-    canonical baseline value (the per-iteration samples are kept
-    under ``samples`` so the regression gate can reason about noise).
-    """
     baseline = capture_baseline(Path(output_path), workloads=workloads, repeat=repeat)
     metrics_obj: object = baseline.get("metrics")
     metrics_count = len(metrics_obj) if isinstance(metrics_obj, Sized) else 0
@@ -1007,15 +776,6 @@ _WORKLOAD_ALIASES: Final[Mapping[str, str]] = MappingProxyType(
 
 def main(argv: Sequence[str] | None = None) -> int:
     sanitize_process_environment()
-    """Thin re-export of the CLI's ``main`` so legacy spawn-env checks pass.
-
-    The CLI implementation lives in
-    :mod:`ralph.mcp.explore._bench_r6_cli` so the metrics hub stays
-    under the 1000-line audit cap. ``python -m
-    ralph.mcp.explore._bench_r6_metrics`` still reaches the same
-    function through the ``__main__`` block above, so the entry
-    point is single-sourced.
-    """
     from ralph.mcp.explore._bench_r6_cli import main as _cli_main
 
     return _cli_main(argv)

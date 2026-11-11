@@ -1,13 +1,3 @@
-"""Resolve the rebase in place before merge on unresolved conflict.
-
-The single-attempt integration machinery (:func:`_integrate_once` and
-:func:`_integrate_once_owned`, plus the post-reconciliation re-landing
-helper) lives in the private companion module
-:mod:`ralph.pipeline._auto_integrate_once` so this module stays under
-the repo-structure file-size cap; the orchestration (retry loop,
-recovery preamble, resolver suppression, skip table) stays here and
-re-exports every moved name unchanged.
-"""
 
 from __future__ import annotations
 
@@ -25,11 +15,6 @@ from ralph.git.rebase import (
     check_rebase_preconditions,
 )
 
-#: Maximum end-to-end integration attempts per commit. Attempt N+1 runs
-#: only when attempt N completed a rebase/merge but the fast-forward did
-#: not land (AC-08); the retry re-integrates onto the moved tip. The
-#: exhausted budget is not silent: the record names it (see
-#: :func:`_record_attempt_budget_spent`).
 from ralph.pipeline._auto_integrate_attempt_loop import (
     MAX_INTEGRATION_ATTEMPTS as _MAX_INTEGRATION_ATTEMPTS,
 )
@@ -152,7 +137,7 @@ complete_commit = _complete_commit
 
 _random = (
     random.Random()
-)  # module-local RNG: thread-safe jitter without mutating global random state
+)
 
 
 _DEFAULT_RECOVER_BEFORE_ATTEMPT = recover_before_attempt
@@ -242,13 +227,6 @@ def _repository_conflict_exhausted(
     target: str,
     identity: ConflictIdentity,
 ) -> bool:
-    """Return whether resolver refusal is repository, not agent, state.
-
-    With no ledger, :func:`resolver_allowed` can refuse only when this
-    conflict exhausted the durable strategy ladder.  A refusal that appears
-    only with the ledger is agent cooldown/unavailability and must retain the
-    active integration for retry.
-    """
     return not resolver_allowed(state, target, identity, ledger=None, candidates=())
 
 
@@ -259,7 +237,6 @@ def _pending_for_unavailable_agents(
     target: str,
     identity: ConflictIdentity,
 ) -> RebaseState:
-    """Retain recovery state without charging an unmade repository attempt."""
     carried = prior_conflict_count(
         prior,
         target,
@@ -316,19 +293,12 @@ def auto_integrate_after_commit(
     ledger: AgentFailureLedger | None = None,
     candidates: Sequence[str] = (),
 ) -> RebaseState | None:
-    """Integrate after a commit, recording skips and terminal-state violations.
-
-    The injected Git and agent seams own every mutation in this attempt.
-    """
     executors_token = install_executors(git_ops, agent_runner)
     try:
-        # An unresolved integration must not skip this recovery seam; the
-        # evidence is protected on the way out by the state authority.
         from ralph.pipeline.integration_resolution import retained_integration_reason
 
         root = Path(workspace_scope.root)
         target = resolve_integration_target(config, root) if (root / ".git").exists() else None
-        # Git is ground truth: release a contained integration before blocking.
         state = containment_release(root, target, state)
         if retained_integration_reason(root) is None and (root / ".git").exists():
             ctx = _auto_integrate_resolve_context(config, workspace_scope)
@@ -444,13 +414,8 @@ def auto_integrate_on_phase_transition(
     git_ops: GitOps | None = None,
     agent_runner: AgentRunner | None = None,
 ) -> RebaseState | None:
-    """Keep a clean worktree synchronized at phase boundaries without hiding failures.
-
-    The injected Git and agent seams own every mutation in this attempt.
-    """
     executors_token = install_executors(git_ops, agent_runner)
     try:
-        # An unresolved integration must not skip the seam that resolves it.
         return preserve_unresolved_resolution_state(
             _auto_integrate_on_phase_transition_inner(
                 config,
@@ -502,7 +467,6 @@ def _auto_integrate_on_phase_transition_inner(
         if boundary_handled:
             return boundary_outcome
     except Exception as exc:
-        # Record pre-check failures rather than hiding them as a no-op.
         logger.warning(
             "auto_integrate: phase-transition pre-check failed: {}\n"
             "  recording skip (AC-08); the next seam will retry from a "
@@ -530,12 +494,6 @@ def _auto_integrate_on_phase_transition_inner(
 
 
 def _attempt_loop_seams() -> AttemptLoopSeams:
-    """Hand the extracted attempt loop this module's patchable seams.
-
-    The snapshot is taken at CALL time, so a seam patched on this module
-    stays in effect inside the extracted loop: the loop uses the seam the
-    engine patched, not the one the loop module imported.
-    """
     return AttemptLoopSeams(
         resolve_context=_auto_integrate_resolve_context,
         early_skips=_check_early_skips,
@@ -563,7 +521,6 @@ def _auto_integrate_after_commit_inner(
     ledger: AgentFailureLedger | None = None,
     candidates: Sequence[str] = (),
 ) -> RebaseState | None:
-    """Resolve context, integrate, and retry bounded fast-forward races."""
     return run_attempt_loop(
         config,
         workspace_scope,
@@ -586,21 +543,6 @@ def _sync_remote_before_target_skip(
     *,
     rebase_stop_resolver: RebaseStopResolver | None,
 ) -> tuple[bool, RebaseState | None]:
-    """Run the remote boundary before an ``on target`` / ``at target`` skip.
-
-    Both skips are decided from the LOCAL target pointer, which with remote
-    sync enabled may be stale: a run on the target branch (trunk layout)
-    or a feature branch sitting at the local target would otherwise never
-    pull or publish at the post-commit seam. This runs the same clean-tree
-    freshness/publication boundary the phase-transition seam runs, so the
-    target fast-forwards to (or reconciles with, then publishes to) the
-    configured remote. Returns ``(handled, outcome)`` like
-    :func:`phase_boundary_outcome`: ``handled`` is ``False`` when the skip
-    does not apply to remote sync, or when the pull moved the target past
-    HEAD -- the caller then integrates against the fresh target. Remote-
-    disabled configs and repositories without the configured remote keep
-    the local-only skip unchanged. See ``docs/agents/remote-sync.md``.
-    """
     if ctx is None or not remote_sync_enabled(config):
         return True, None
     root, current_branch, target, _refresh = ctx
@@ -628,12 +570,6 @@ def _configured_resolver_allowed(
     ledger: AgentFailureLedger | None = None,
     candidates: Sequence[str] = (),
 ) -> bool:
-    """Ask the failure ledger whether this attempt may invoke the resolver.
-
-    Resolver eligibility is owned by ``AgentFailureLedger`` alone. There
-    is no second opinion here: the stored conflict count never selects,
-    suppresses or demotes an agent.
-    """
     return resolver_allowed(
         state,
         target,
@@ -656,7 +592,6 @@ def _freshen_attempt_target(
     ledger: AgentFailureLedger | None = None,
     candidates: Sequence[str] = (),
 ) -> tuple[RebaseState | None, str | None]:
-    """Return the current remote verdict or local-fleet observation."""
     if not remote_sync_enabled(config):
         if attempt or force_refresh:
             return None, _refresh_target_probe(config, root, target)
@@ -683,17 +618,10 @@ def _check_early_skips(
     *,
     missing_target: str,
 ) -> tuple[RebaseState | None, tuple[Path, str, str] | None]:
-    """Return either a recorded skip or the narrowed integration context."""
     if ctx is None:
-        # Disabled (AC-01) or env lookup failed: caller already
-        # recorded the skip when applicable.
         return None, None
     root, current_branch, target, refresh = ctx
     if current_branch is None:
-        # Detached HEAD: AC-02 requires this to be a RECORDED skip,
-        # not a silent no-op. The crash record is never written in
-        # this branch -- a detached HEAD is not an in-progress
-        # integration.
         return record_refresh(_record_skip(reason="detached HEAD", target=target), refresh), None
     if target is None:
         reason = (
@@ -704,12 +632,7 @@ def _check_early_skips(
         return _record_skip(reason=reason, target=missing_target or None), None
     skip = _auto_integrate_check_skip_conditions(root, current_branch, target)
     if skip is not None:
-        # Every skip in that table is decided FROM the target pointer
-        # the refresh above was meant to freshen, so the record carries
-        # how fresh that pointer actually was.
         return record_refresh(skip, refresh), None
-    # No skip: usable_ctx is the narrowed tuple with non-Optional
-    # branch + target slots the orchestrator can unpack.
     return None, (root, current_branch, target)
 
 
@@ -717,41 +640,15 @@ def _auto_integrate_resolve_context(
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
 ) -> tuple[Path, str | None, str | None, str | None] | None:
-    """Resolve the (root, current_branch, target, refresh) context or short-circuit.
-
-    Returns ``None`` ONLY when the integration step is a no-op
-    (AC-01 disabled path -- byte-identical to the pre-feature run).
-    When the environment lookup itself fails (not a git repo,
-    transport error, etc.), the exception is allowed to propagate
-    so :func:`auto_integrate_after_commit`'s outer try/except can
-    record a skip ``RebaseState`` with the failure reason. A
-    context-resolution failure must NEVER be silently swallowed to
-    ``None`` -- that would make the run continue without any state
-    record explaining WHY no integration ran.
-
-    The current-branch slot is ``None`` when HEAD is detached
-    (GitPython raises ``TypeError`` from ``repo.active_branch.name``
-    in that case). The caller surfaces that as a recorded skip
-    (``reason='detached HEAD'``) so the operator can see WHY no
-    integration ran -- previously a detached HEAD silently fell into
-    the broad ``except Exception`` branch and returned ``None``
-    with no state recorded.
-    """
     enabled_raw: object = getattr(config.general, "auto_integrate_enabled", True)
     enabled = bool(enabled_raw)
     if not enabled:
         return None
     root = Path(workspace_scope.root)
-    # Typed-exception guard: detached HEAD surfaces as
-    # ``current_branch is None`` (recorded skip) rather than being
-    # absorbed into the broad ``except Exception`` above.
     current_branch: str | None = _current_branch_probe(root)
     target: str | None = resolve_integration_target(config, root)
     refresh: str | None = None
     if target is not None and not remote_sync_enabled(config):
-        # Local-only runs retain the historical observe-only refresh. The
-        # opted-in path performs its one configured-remote fetch below, so it
-        # never issues an extra origin probe before remote preflight.
         refresh = _refresh_target_probe(config, root, target)
 
     return root, current_branch, target, refresh
@@ -762,24 +659,6 @@ def _auto_integrate_check_skip_conditions(
     current_branch: str,
     target: str,
 ) -> RebaseState | None:
-    """Apply the AC-02 / AC-03 / preconditions skip table; return skip or None.
-
-    A failed HEAD read is recorded with the underlying
-    :class:`GitOperationError` message rather than being allowed to
-    reach the caller's broad handler, where it became an opaque
-    ``unexpected failure`` that named neither the operation nor the
-    repository.
-
-    AC-07/R8 (reclaim-at-seam): a ``RebasePreconditionError`` that
-    points at UNOWNED stale state (the ``rebase_in_progress`` /
-    ``merge_in_progress`` family of precondition failures) on a
-    clean tree is NOT a permanent disablement -- it is a recoverable
-    block. The reclaim is delegated to
-    :func:`_reclaim_and_retry_preconditions`, which re-runs the
-    preconditions in the same seam when the reclaim succeeds and
-    proceeds. A dirty tree with unmerged paths is preserved
-    (operator-owned, AC-11 case 4).
-    """
     if current_branch == target:
         return _record_skip(reason="on target branch", target=target)
     target_sha = branch_sha(root, target)
@@ -825,12 +704,3 @@ __all__ = [
     "resolve_integration_target",
 ]
 
-# AC-14 catalog evidence
-# AC-14 rationale: B10
-# ladder rung: 1
-# AC-14 rationale: B11
-# ladder rung: 1
-# AC-14 rationale: E4
-# ladder rung: 4
-# AC-14 rationale: E5
-# ladder rung: 1

@@ -1,19 +1,3 @@
-"""Single-owner proof for the reducer's agent-failure route.
-
-PRODUCT_CRITERIA §3.4 (one owner decides an agent is not working) and §6.1
-(the public-seam scenario). Two proofs live here:
-
-1. The public-seam scenario: a scripted fake agent A produces nothing three
-   times and agent B then succeeds. The assertions are OBSERVABLE only --
-   which agents ran, in what order, how the run ended, and what was logged.
-   No ledger counter is read or written; the owner's verdict is observed
-   through the run itself.
-
-2. The ownerless route fails closed: with no recovery owner reachable the
-   reducer grants no further attempt to the failing agent and no fallover to
-   another agent. It never counts attempts of its own.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -37,7 +21,6 @@ if TYPE_CHECKING:
 
 
 def _policy() -> PipelinePolicy:
-    """A policy whose failure route is a declared terminal phase."""
     return PipelinePolicy(
         phases={
             "development": PhaseDefinition(
@@ -63,13 +46,6 @@ def _policy() -> PipelinePolicy:
 
 
 def test_unproductive_agent_runs_three_times_then_the_next_agent_runs(tmp_path: Path) -> None:
-    """Agent A produces nothing three times; agent B then runs and the run completes.
-
-    The invocation list is the whole proof: A is attempted exactly three
-    times -- the consecutive-unproductive limit the OWNER applies -- and the
-    next agent in the chain runs afterwards. The reducer itself grants no
-    attempt of its own; the demotion that ends A's run comes from the owner.
-    """
 
     def script(agent: str, _phase: str, _attempt: int, _workspace: object) -> AgentAttemptResult:
         if agent == "agent_b":
@@ -89,13 +65,6 @@ def test_unproductive_agent_runs_three_times_then_the_next_agent_runs(tmp_path: 
 
 
 def test_reducer_without_an_owner_grants_no_further_attempt() -> None:
-    """With no owner reachable the reducer fails the phase closed.
-
-    The reducer must not count attempts of its own: the chain's retry
-    counter stays where it was, the chain does not advance to another agent,
-    and no retry/fallback is booked. The phase reaches the policy's declared
-    failure route instead.
-    """
     state = PipelineState(
         phase="development",
         phase_chains={

@@ -1,10 +1,3 @@
-"""Persisted state and throttling for the update nagger.
-
-A tiny JSON cache under ``$XDG_CACHE_HOME/ralph-workflow/version-check.json``
-records when PyPI was last consulted and what it reported, so the network is hit
-at most once per TTL window. A missing or corrupt cache is treated as empty
-state and simply overwritten on the next successful refresh.
-"""
 
 from __future__ import annotations
 
@@ -25,21 +18,18 @@ _CACHE_RELATIVE = Path("ralph-workflow") / "version-check.json"
 
 @dataclass(frozen=True)
 class VersionCheckState:
-    """Last-known result of a PyPI version check."""
 
     last_checked: float
     latest_version: str | None
 
 
 def cache_path(environ: Mapping[str, str]) -> Path:
-    """Resolve the cache file path, honoring ``XDG_CACHE_HOME``."""
     xdg = environ.get("XDG_CACHE_HOME")
     base = Path(xdg) if xdg else Path.home() / ".cache"
     return base / _CACHE_RELATIVE
 
 
 def load_state(path: Path) -> VersionCheckState | None:
-    """Load persisted state, returning ``None`` for missing or corrupt files."""
     try:
         parsed = cast("object", json.loads(path.read_text(encoding="utf-8")))
     except (OSError, ValueError):
@@ -62,16 +52,10 @@ def save_state(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> None:
-    """Persist ``state`` to ``path``; filesystem errors are swallowed.
-
-    Parent creation is deferred until changed content requires publication, so
-    a repeated version-check result leaves both the cache and its parent intact.
-    """
     try:
         document: dict[str, object] = {
             "last_checked": state.last_checked,
             "latest_version": state.latest_version,
-            # filesystem-write-ok: update-check state cache under .agent/update_check, runtime cache not tracked
         }
         write_text_if_changed(
             backend,
@@ -87,7 +71,6 @@ def save_state(
 def is_refresh_due(
     state: VersionCheckState | None, now: float, *, ttl_seconds: int = DEFAULT_TTL_SECONDS
 ) -> bool:
-    """Return True when the cache is absent or older than ``ttl_seconds``."""
     if state is None:
         return True
     return (now - state.last_checked) >= ttl_seconds

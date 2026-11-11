@@ -1,13 +1,3 @@
-"""Policy-driven acceptance tests — Product Requirements 1-10 and Criteria A-H.
-
-These tests assert every product requirement and acceptance criterion against a
-fully renamed PolicyBundle (no canonical phase names). Any regression that
-re-introduces hidden phase name knowledge in the runtime will fail here.
-
-Scope: pure functions only. No I/O.
-Runtime budget: ≤ 5 seconds for the full module.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -36,17 +26,6 @@ from ralph.policy.models import (
 
 @pytest.fixture(scope="module")
 def policy_with_renamed_phases() -> PolicyBundle:
-    """Fully custom-named PolicyBundle — no canonical Ralph phase names.
-
-    Custom name mappings (canonical → custom):
-      planning          → design
-      development       → build
-      development_analysis → audit
-      development_commit → sign_off
-      review            → inspect
-      complete          → done
-      failed_terminal   → aborted
-    """
     agents = AgentsPolicy(
         agent_chains={
             "design_chain": AgentChainConfig(agents=["fake-agent"]),
@@ -174,27 +153,19 @@ def policy_with_renamed_phases() -> PolicyBundle:
     return PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
 
 
-# =============================================================================
-# Requirement 1: Policy must fully define user-visible routing semantics
-# =============================================================================
-
-
 class TestRequirement10RecoveryBehavior:
     def test_recovery_config_comes_from_policy(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """The recovery config (cycle_cap, preserve_session_on_categories) is from policy."""
         recovery = policy_with_renamed_phases.pipeline.recovery
         assert recovery.cycle_cap >= 0
 
     def test_failed_route_points_to_declared_terminal_phase(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """recovery.failed_route points to a policy-declared terminal failure phase."""
         recovery = policy_with_renamed_phases.pipeline.recovery
         failed_route = recovery.failed_route
         phases = policy_with_renamed_phases.pipeline.phases
-        # The failed route should point to a terminal failure phase or be the legacy alias
         if failed_route in phases:
             assert phases[failed_route].role == "terminal"
             assert phases[failed_route].terminal_outcome == "failure"
@@ -202,7 +173,6 @@ class TestRequirement10RecoveryBehavior:
     def test_explain_exposes_recovery_terminal_route(
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
-        """explain_policy surfaces the terminal_recovery_route from policy."""
         exp = explain_policy(policy_with_renamed_phases)
         assert exp.recovery is not None
         assert exp.recovery.terminal_recovery_route is not None

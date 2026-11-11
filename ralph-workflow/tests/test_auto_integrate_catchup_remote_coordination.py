@@ -233,15 +233,6 @@ def test_remote_sync_fetch_cadence_honours_configured_interval_while_local_catch
     probe_times: tuple[float, float, float],
     expected_fetches: list[float],
 ) -> None:
-    """The ticker fetches once per ``auto_integrate_remote_interval_seconds``.
-
-    A positive configured interval is the fleet-wide fetch cadence; unset or
-    ``0.0`` (the field default, "fetch at every seam") keeps the ticker's
-    documented 300 s cadence. Probes at the start, just inside and exactly
-    at one cadence fetch twice; every probe still fast-forwards the checkout.
-    Before the fix the cadence was hard-coded to 300 s, so a 60 s interval
-    fetched at 0 s only and a 900 s interval fetched again at 300 s.
-    """
     common_dir = tmp_path / ".git"
     common_dir.mkdir()
     checkout_merges = _open_local_gates(monkeypatch)
@@ -282,11 +273,6 @@ def test_remote_sync_fetch_cadence_honours_configured_interval_while_local_catch
 def test_remote_sync_interval_reads_the_configured_cadence(
     interval: float | None, expected: float
 ) -> None:
-    """Only a positive, finite configured interval replaces the 300 s default.
-
-    An infinite interval would persist a non-finite ``fetch_after`` that the
-    throttle treats as corrupt -- a fetch on every tick -- so it falls back.
-    """
     assert REMOTE_SYNC_INTERVAL_SECONDS == 300.0
     assert remote_sync_interval_seconds(_config(interval=interval)) == expected
 

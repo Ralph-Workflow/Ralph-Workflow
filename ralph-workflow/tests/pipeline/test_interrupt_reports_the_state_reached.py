@@ -1,12 +1,3 @@
-"""An interrupted run must be checkpointed and reported where it actually was.
-
-``KeyboardInterrupt`` unwinds out of the inner loop past every state that loop
-had reached, leaving the caller holding the state the run STARTED with. The
-checkpoint, the end-of-run report and the cleanup all read that binding, so a
-run interrupted after hours in development was recorded as having ended in
-planning — no phases, no signals, no cycle timebox section.
-"""
-
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -29,7 +20,6 @@ pytestmark = pytest.mark.timeout_seconds(15)
 def test_an_interrupt_checkpoints_the_phase_the_run_reached(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The saved checkpoint is the interrupted run's own state, not its first."""
     reached = PipelineState(
         phase=_REACHED_PHASE,
         cycle_timebox_active=True,
@@ -67,13 +57,6 @@ def test_an_interrupt_checkpoints_the_phase_the_run_reached(
 def test_a_crash_reports_where_the_run_was_and_that_it_failed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An interrupt is not the only way out of the loop.
-
-    Any other exception reached the report with the exit code still 0 and the
-    state still the initial one, so a run that crashed hours into development
-    was written up as `outcome: completed` in phase `planning` with no cycle
-    section at all — a success report for a failure.
-    """
     reached = PipelineState(
         phase=_REACHED_PHASE,
         cycle_timebox_active=True,

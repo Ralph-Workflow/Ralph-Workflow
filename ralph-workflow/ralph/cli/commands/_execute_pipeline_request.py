@@ -1,4 +1,3 @@
-"""_ExecutePipelineRequest — parameters for executing the pipeline."""
 
 from __future__ import annotations
 

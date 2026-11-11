@@ -1,5 +1,3 @@
-"""Markdown artifact submission stamps a receipt without declaring completion."""
-
 from __future__ import annotations
 
 import sqlite3
@@ -55,14 +53,12 @@ def test_submit_artifact_receipt_keyed_by_type(tmp_path: Path) -> None:
 
     handle_submit_md_artifact(_Session(), workspace, _commit_params(), deps=deps)
 
-    # No receipt should exist for an artifact type that was never submitted.
     assert artifact_receipt_present(tmp_path, "run-1", "plan", backend=backend) is False
 
 
 def test_submit_artifact_does_not_implicitly_write_completion_sentinel(
     tmp_path: Path,
 ) -> None:
-    """Submission and explicit phase completion remain separate operations."""
     backend = MemoryBackend()
     workspace = MockWorkspace(tmp_path)
     deps = ArtifactHandlerDeps(backend=backend)
@@ -70,8 +66,6 @@ def test_submit_artifact_does_not_implicitly_write_completion_sentinel(
     result = handle_submit_md_artifact(_Session(), workspace, _commit_params(), deps=deps)
 
     assert result.is_error is False
-    # Public completion-sentinel surfaces: the durable DB row and the
-    # legacy per-run sentinel file must both stay absent.
     db = RunStateDB(tmp_path)
     try:
         assert db.get_completion_sentinel_hmac("run-1") is MISSING
@@ -83,7 +77,6 @@ def test_submit_artifact_does_not_implicitly_write_completion_sentinel(
 def test_submit_artifact_does_not_write_sentinel_for_planning_decision(
     tmp_path: Path,
 ) -> None:
-    """Analysis submissions also require a separate completion declaration."""
     backend = MemoryBackend()
     workspace = MockWorkspace(tmp_path)
     deps = ArtifactHandlerDeps(backend=backend)
@@ -115,13 +108,6 @@ def test_submit_artifact_does_not_write_sentinel_for_planning_decision(
 def test_submit_artifact_threads_broker_secret_to_receipt_hmac(
     tmp_path: Path,
 ) -> None:
-    """RFC-013 P3: when the session carries a broker_secret, the receipt
-    written by ``handle_submit_md_artifact`` is HMAC-bound to that secret.
-
-    This pins the live-wiring contract: a forged receipt (or a receipt
-    written without the secret) is rejected by the completion gate when
-    the broker configures HMAC enforcement.
-    """
     backend = MemoryBackend()
     workspace = MockWorkspace(tmp_path)
     deps = ArtifactHandlerDeps(backend=backend)
@@ -157,27 +143,14 @@ def test_submit_artifact_uses_receipt_fallback_when_runstate_db_raises_sqlite_er
     tmp_path: Path,
     monkeypatch: object,
 ) -> None:
-    """A DB outage routes the receipt through the durable file fallback.
-
-    If ``RunStateDB`` raises ``sqlite3.Error`` (locked/corrupt/unsupported
-    WAL), the artifact submission itself must still succeed without
-    propagating the exception. The canonical artifact and legacy receipt are
-    persisted together; submission still does not create a completion
-    sentinel.
-    """
     backend = MemoryBackend()
     workspace = MockWorkspace(tmp_path)
     deps = ArtifactHandlerDeps(backend=backend)
 
     class _ExplodingRunStateDB:
-        """Public stand-in for ``RunStateDB`` whose open always fails."""
-
         def __init__(self, *_args: object, **_kwargs: object) -> None:
             raise sqlite3.OperationalError("database is locked")
 
-    # The receipt writer resolves ``RunStateDB`` from the module scope of
-    # ``completion_receipts``; replacing that public symbol makes the DB
-    # path fail exactly like a locked database would.
     monkeypatch.setattr(completion_receipts, "RunStateDB", _ExplodingRunStateDB)
 
     result = handle_submit_md_artifact(_Session(), workspace, _commit_params(), deps=deps)

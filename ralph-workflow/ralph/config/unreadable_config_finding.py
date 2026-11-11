@@ -1,11 +1,3 @@
-"""Findings for configuration files Ralph cannot read or parse.
-
-The config-scan seam inspects every configuration, policy, and MCP layer
-for a file that is unreadable or malformed, reports each one as a typed
-finding, and never fails fast: the run continues on built-in defaults for
-optional files or fails loudly for strict files while the operator sees
-exactly which file needs fixing.
-"""
 
 from __future__ import annotations
 
@@ -36,7 +28,6 @@ if TYPE_CHECKING:
 
 
 def _is_strict_config_file(path: Path, kind: str) -> bool:
-    """Return whether this configuration file is strict and must fail loudly."""
     return kind in ("config", "ralph-workflow") or path.name in (
         _GLOBAL_CONFIG_FILENAME,
         _LOCAL_CONFIG_FILENAME,
@@ -46,20 +37,12 @@ def _is_strict_config_file(path: Path, kind: str) -> bool:
 
 @dataclass(frozen=True)
 class UnreadableConfigFinding:
-    """Represents an unreadable or invalid configuration file finding.
-
-    Attributes:
-        path: Path to the offending configuration file.
-        kind: Category or role of the configuration layer.
-        error: Underlying exception encountered when reading or parsing.
-    """
 
     path: Path
     kind: str
     error: BaseException
 
     def format_line(self) -> str:
-        """Format the finding as a path and error string."""
         return f"{self.path}: {self.error}"
 
 
@@ -70,20 +53,6 @@ def collect_unreadable_config_files(
     global_dir: Path | None = None,
     display: object | None = None,
 ) -> list[UnreadableConfigFinding]:
-    """Inspect all configuration, policy, and MCP layers for unreadable/invalid files.
-
-    Aggregates errors across:
-      - config & agents layers
-      - global / local layers
-      - policy layers (pipeline, agents, artifacts, portfolio)
-      - MCP layers (global and local)
-
-    For every unreadable or malformed file found, emits a WARN log record and
-    collects the finding without failing fast.
-
-    Returns:
-        List of UnreadableConfigFinding instances naming every unreadable file.
-    """
     candidates = _gather_candidate_config_paths(
         config_path=config_path,
         workspace_scope=workspace_scope,
@@ -263,7 +232,6 @@ def _validate_config_file_schema(
 
 def _inspect_config_file_readability(path: Path, kind: str = "config") -> BaseException | None:
     try:
-        # filesystem-read-ok: test readability of config layer
         raw_bytes = path.read_bytes()
     except (OSError, UnicodeDecodeError) as exc:
         return exc

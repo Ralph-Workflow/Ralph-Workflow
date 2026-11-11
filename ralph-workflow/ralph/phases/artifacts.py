@@ -1,4 +1,3 @@
-"""Helpers for reading persisted MCP artifacts inside phase handlers."""
 
 from __future__ import annotations
 
@@ -19,14 +18,13 @@ if TYPE_CHECKING:
 
 
 class PhaseArtifactError(ValueError):
-    """Raised when a phase artifact is missing or malformed."""
+    pass
 
 
 def legacy_json_rejection_detail(
     workspace: Workspace,
     markdown_path: str,
 ) -> str | None:
-    """Return the Markdown-only diagnostic when a legacy sibling exists."""
     if not markdown_path.endswith(".md"):
         return None
     legacy_path = f"{markdown_path[:-3]}.json"
@@ -50,12 +48,6 @@ def load_phase_artifact(
     *,
     artifact_type: str | None = None,
 ) -> dict[str, object]:
-    """Validate a Markdown artifact and return its phase-consumer envelope.
-
-    ``artifact_type`` selects the markdown spec explicitly for documents whose
-    frontmatter ``type`` is not the artifact type (commit_message declares its
-    commit/skip variant there); when omitted the document's frontmatter decides.
-    """
     if path.endswith(".json"):
         raise PhaseArtifactError(_unsupported_legacy_json_detail(path))
 
@@ -78,7 +70,6 @@ def _load_markdown_artifact(
     *,
     artifact_type: str | None = None,
 ) -> dict[str, object]:
-    """Validate markdown with its registered spec and retain the legacy envelope."""
     import_module("ralph.mcp.artifacts.markdown.specs")
     document, _ = parse_markdown_document(text)
     declared = document.frontmatter.get("type")
@@ -123,7 +114,6 @@ def unwrap_phase_artifact_content(
     *,
     expected_type: str | None = None,
 ) -> dict[str, object]:
-    """Return the inner content payload from a persisted artifact wrapper."""
     artifact_type = artifact.get("type")
     if expected_type is not None and artifact_type is not None and artifact_type != expected_type:
         raise PhaseArtifactError(
@@ -142,13 +132,6 @@ def validate_artifact_on_disk(
     workspace: Workspace,
     required_artifact: RequiredArtifact,
 ) -> str | None:
-    """Return None if the required artifact is present, parseable, and valid.
-
-    Otherwise return a human-readable failure detail. This is the SINGLE on-disk
-    artifact-contract check used by both the pipeline phase gates and the commit
-    command, so "missing / can't parse / wrong type / wrong format" detection
-    cannot drift between callers.
-    """
     try:
         artifact = load_phase_artifact(
             workspace,
@@ -175,7 +158,6 @@ def artifact_validation_failure_event(
     *,
     retry_in_session: bool = True,
 ) -> PhaseFailureEvent:
-    """Build a typed phase failure event for artifact/proof validation issues."""
     return PhaseFailureEvent(
         phase=phase,
         reason=reason,
@@ -190,7 +172,6 @@ def artifact_contract_for_drain(
     drain: str,
     artifact_type: str,
 ) -> ArtifactContract | None:
-    """Find the artifact contract for a drain/type pair if one exists."""
     raw_artifacts: object = getattr(artifacts_policy, "artifacts", None)
     if not isinstance(raw_artifacts, dict):
         return None
@@ -208,7 +189,7 @@ def artifact_contract_for_drain(
         ):
             return cast(
                 "ArtifactContract", contract
-            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            )
     return None
 
 
@@ -217,7 +198,6 @@ def decision_vocabulary_for_drain(
     drain: str,
     artifact_type: str,
 ) -> list[str]:
-    """Return the allowed decision strings for a given drain and artifact type."""
     contract = artifact_contract_for_drain(artifacts_policy, drain, artifact_type)
     vocabulary: object = (
         getattr(contract, "decision_vocabulary", []) if contract is not None else []

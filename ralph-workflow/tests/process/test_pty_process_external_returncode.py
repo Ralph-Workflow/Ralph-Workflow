@@ -26,8 +26,6 @@ _FAST_POLICY = ProcessManagerPolicy(
 
 
 class _StubPtyProc:
-    """Stub satisfying _PtyProcessLike protocol."""
-
     pid = 99999
     master_fd = -1
     slave_fd = -1

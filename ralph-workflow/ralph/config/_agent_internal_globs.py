@@ -1,13 +1,3 @@
-"""Engine-internal path globs used by the gitignore and git-exclude seeds.
-
-``ralph/phases/_agent_internal_paths.py`` is the canonical owner of the
-engine-internal path allowlist. This module loads that leaf module
-directly -- by file path, not by import -- so a consumer of the globs
-never triggers ``ralph.phases.__init__`` (a normal import would create the
-cycle ``ralph.config`` -> ``bootstrap`` -> ``ralph.phases.__init__`` ->
-``ralph.policy.loader`` -> ``ralph.phases``). The audit
-(``ralph/testing/audit_agent_internal_paths.py``) uses the same pattern.
-"""
 
 from __future__ import annotations
 
@@ -20,11 +10,6 @@ if TYPE_CHECKING:
 
 
 def _load_agent_internal_paths_module() -> ModuleType:
-    """Load ``_agent_internal_paths`` directly without triggering ``ralph.phases.__init__``.
-
-    Returns:
-        The loaded ``_agent_internal_paths`` module.
-    """
     module_path = Path(__file__).resolve().parent.parent / "phases" / "_agent_internal_paths.py"
     spec = importlib.util.spec_from_file_location(
         "_ralph_agent_internal_paths_bootstrap_target", module_path

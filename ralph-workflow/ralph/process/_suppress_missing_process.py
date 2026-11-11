@@ -1,4 +1,3 @@
-"""Context manager that suppresses ProcessLookupError and PermissionError."""
 
 from __future__ import annotations
 

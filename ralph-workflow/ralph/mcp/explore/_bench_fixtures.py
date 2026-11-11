@@ -1,15 +1,3 @@
-"""Benchmark fixture builders for the indexed exploration substrate.
-
-Extracted from :mod:`ralph.mcp.explore.bench` so the harness module stays
-under the repository's per-file line ceiling. Each fixture defines a
-question, baseline flow, indexed flow, expected evidence ids, and the
-budget ceilings the gate tests compare against.
-
-AC-12: this module owns Q1-Q13 (lexical indexed search, graph,
-edit-impact, mutation freshness, and Phase 4 git/exec/web/media
-remediation fixtures). Q1-Q3 are the lexicon-only baselines; Q4-Q13
-are the focused-handler coverage set that the bench gate asserts.
-"""
 
 from __future__ import annotations
 
@@ -17,17 +5,6 @@ from ralph.mcp.explore._bench_types import BenchmarkFixture, ScriptedCall
 
 
 def question_register_tool() -> BenchmarkFixture:
-    """Q1: find where a tool is registered.
-
-    AC-07 (real-handler bench): the indexed script uses real
-    handlers, so the indexed read_file MUST drop the synthetic
-    ``evidence_id`` parameter and only specify ``path``. The
-    truth set (a real FTS-derived evidence id) is supplied by
-    the test from the indexed store; the fixture's
-    ``expected_evidence_ids`` remains a closed vocabulary for
-    unit-test sanity checks that exercise the harness with
-    synthetic executors.
-    """
     return BenchmarkFixture(
         question_id="Q1",
         description="Find where a tool is registered.",
@@ -86,7 +63,6 @@ def question_register_tool() -> BenchmarkFixture:
 
 
 def question_find_handler_tests() -> BenchmarkFixture:
-    """Q2: find likely tests for a handler."""
     return BenchmarkFixture(
         question_id="Q2",
         description="Find likely tests for a handler.",
@@ -117,12 +93,6 @@ def question_find_handler_tests() -> BenchmarkFixture:
             ),
         ),
         indexed_script=(
-            # AC-07 (real-handler bench): a single search_files call
-            # with ``contains_symbol`` narrows the test files to
-            # those referencing the handler symbol. The
-            # ``return_evidence_ids`` flag attaches the indexed
-            # handles so the next ``read_file`` call can resolve
-            # back to the exact chunk without re-grepping.
             ScriptedCall(
                 tool="search_files",
                 params={
@@ -146,15 +116,6 @@ def question_find_handler_tests() -> BenchmarkFixture:
 
 
 def question_estimate_rename_impact() -> BenchmarkFixture:
-    """Q3: estimate rename impact via lexical callers (Phase 1 lexical only).
-
-    AC-07: the Q3 fixture truth set includes both the caller
-    evidence (``ev:ref/open_index/pipeline``) and the test
-    evidence (``ev:ref/open_index/test``). A scripted indexed
-    flow that returns only the caller evidence does not recall
-    the test evidence; the gate is the only way to detect that
-    omission.
-    """
     return BenchmarkFixture(
         question_id="Q3",
         description=(
@@ -190,12 +151,6 @@ def question_estimate_rename_impact() -> BenchmarkFixture:
             ),
         ),
         indexed_script=(
-            # AC-07 (real-handler bench): one indexed grep call
-            # across the whole workspace yields both caller and
-            # test evidence in a single round trip; the baseline
-            # needs two separate scoped greps. This 2-call vs
-            # 3-call asymmetry is what gives the indexed flow
-            # its 30%+ byte savings in the real-handler gate.
             ScriptedCall(
                 tool="grep_files",
                 params={
@@ -233,23 +188,9 @@ REQUIRED_FIXTURES: tuple[BenchmarkFixture, ...] = (
 )
 
 
-# AC-12: the benchmark gate must cover graph queries, edit impact
-# preview, mutation freshness metadata, and the Phase 4 git/exec
-# remediation. Each new fixture is a positive control (the
-# indexed/path script must succeed and beat the baseline) AND a
-# negative control (the negative script is a known-bad pattern that
-# the gate must reject). The deferred_phases list keeps optional
-# ralph_explore out of the gate until benchmarked.
 
 
 def question_graph_callers() -> BenchmarkFixture:
-    """Q4: graph callers via ``ralph_graph query_type=neighbors``.
-
-    The positive script asks the graph for ``hello`` and reads
-    back the resulting evidence handles; the negative script
-    walks the directory tree and greps repeatedly to find the
-    same information, with a larger returned byte budget.
-    """
     return BenchmarkFixture(
         question_id="Q4",
         description="Find callers of a symbol via ralph_graph.",
@@ -295,12 +236,6 @@ def question_graph_callers() -> BenchmarkFixture:
 
 
 def question_edit_impact_preview() -> BenchmarkFixture:
-    """Q5: edit impact preview via ralph_graph impact.
-
-    The positive script asks for an impact preview (Phase 3
-    feature) and reads the targeted evidence handle. The negative
-    script greps for callers and re-reads the function body.
-    """
     return BenchmarkFixture(
         question_id="Q5",
         description="Estimate rename impact via ralph_graph impact preview.",
@@ -340,13 +275,6 @@ def question_edit_impact_preview() -> BenchmarkFixture:
 
 
 def question_mutation_freshness() -> BenchmarkFixture:
-    """Q6: mutation freshness metadata after a workspace write.
-
-    The positive script calls edit_file with a target selector and
-    expects the response to include the freshness metadata. The
-    negative script performs the same edit with a plain
-    oldText/newText and re-reads the file to confirm content.
-    """
     return BenchmarkFixture(
         question_id="Q6",
         description="Mutation freshness metadata via edit_file target.",
@@ -385,13 +313,6 @@ def question_mutation_freshness() -> BenchmarkFixture:
 
 
 def question_phase4_git_status_compact() -> BenchmarkFixture:
-    """Q7: Phase 4 git_status compact output.
-
-    The positive script requests ``format=compact``; the negative
-    script uses the default (raw) format and pays a larger byte
-    budget. The benchmark gate requires the compact form to use
-    fewer bytes than the default at parity call count.
-    """
     return BenchmarkFixture(
         question_id="Q7",
         description="Phase 4 git_status compact output.",
@@ -417,7 +338,6 @@ def question_phase4_git_status_compact() -> BenchmarkFixture:
 
 
 def question_phase4_git_diff_summary() -> BenchmarkFixture:
-    """Q8: Phase 4 git_diff summary output."""
     return BenchmarkFixture(
         question_id="Q8",
         description="Phase 4 git_diff summary output.",
@@ -443,7 +363,6 @@ def question_phase4_git_diff_summary() -> BenchmarkFixture:
 
 
 def question_phase4_exec_summary_spill() -> BenchmarkFixture:
-    """Q9: Phase 4 exec summary output with replayable spill handles."""
     return BenchmarkFixture(
         question_id="Q9",
         description="Phase 4 exec summary output.",
@@ -469,7 +388,6 @@ def question_phase4_exec_summary_spill() -> BenchmarkFixture:
 
 
 def question_phase4_git_log_summary() -> BenchmarkFixture:
-    """Q10: Phase 4 ``git_log`` ``format='summary'``."""
     return BenchmarkFixture(
         question_id="Q10",
         description="Phase 4 git_log summary output.",
@@ -495,7 +413,6 @@ def question_phase4_git_log_summary() -> BenchmarkFixture:
 
 
 def question_phase4_git_show_summary() -> BenchmarkFixture:
-    """Q11: Phase 4 ``git_show`` ``format='summary'``."""
     return BenchmarkFixture(
         question_id="Q11",
         description="Phase 4 git_show summary output.",
@@ -521,7 +438,6 @@ def question_phase4_git_show_summary() -> BenchmarkFixture:
 
 
 def question_phase4_web_search_summary() -> BenchmarkFixture:
-    """Q12: Phase 4 ``web_search`` ``format='summary'``."""
     return BenchmarkFixture(
         question_id="Q12",
         description="Phase 4 web_search summary output.",
@@ -547,7 +463,6 @@ def question_phase4_web_search_summary() -> BenchmarkFixture:
 
 
 def question_phase4_read_media_metadata() -> BenchmarkFixture:
-    """Q13: Phase 4 ``read_media`` ``format='metadata'``."""
     return BenchmarkFixture(
         question_id="Q13",
         description="Phase 4 read_media metadata output.",
@@ -572,24 +487,20 @@ def question_phase4_read_media_metadata() -> BenchmarkFixture:
     )
 
 
-# Ponytail: every workflow that AC-12 requires a benchmark for is a
-# fixture here. ``_REQUIRED_BENCH_WORKFLOW_IDS`` is the closed
-# vocabulary the gate test asserts; adding a workflow is a single
-# entry in both places.
 REQUIRED_BENCH_WORKFLOW_IDS: tuple[str, ...] = (
     "Q1",
     "Q2",
     "Q3",
-    "Q4",  # graph callers
-    "Q5",  # edit impact preview
-    "Q6",  # mutation freshness
-    "Q7",  # Phase 4 git_status compact
-    "Q8",  # Phase 4 git_diff summary
-    "Q9",  # Phase 4 exec summary
-    "Q10",  # Phase 4 git_log summary
-    "Q11",  # Phase 4 git_show summary
-    "Q12",  # Phase 4 web_search summary
-    "Q13",  # Phase 4 read_media metadata
+    "Q4",
+    "Q5",
+    "Q6",
+    "Q7",
+    "Q8",
+    "Q9",
+    "Q10",
+    "Q11",
+    "Q12",
+    "Q13",
 )
 
 EXTENDED_FIXTURES: tuple[BenchmarkFixture, ...] = (

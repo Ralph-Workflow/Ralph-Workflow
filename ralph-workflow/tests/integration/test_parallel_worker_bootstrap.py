@@ -264,7 +264,6 @@ def test_run_pipeline_forwards_model_identity_and_pro_hooks_to_parallel_worker(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """``run_pipeline`` forwards injected collaborators into the worker path."""
     scope = WorkspaceScope(tmp_path)
     monkeypatch.setattr(run_module, "resolve_workspace_scope", lambda: scope)
     captured: dict[str, object] = {}

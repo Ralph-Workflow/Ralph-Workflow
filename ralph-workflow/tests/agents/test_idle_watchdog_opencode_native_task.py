@@ -1,15 +1,3 @@
-"""A long native OpenCode ``task`` must not get the parent killed.
-
-Reproduces the measured 1.18.25 wire shape: the parent emits ``step_start``,
-then stays silent until the child finishes (the ``task`` ``tool_use`` frame
-is buffered until completion). Under the default timeout policy that silence
-used to fire ``NO_PROGRESS_QUIET`` at 240 s (no OS descendants) or
-``CHILDREN_PERSIST_TOO_LONG`` at 600 s (child shelling out) -- while real
-subagents run 10-15 minutes. The child's work is visible in OpenCode's own
-session store; fed through the store probe it must keep the parent alive
-for as long as the child keeps working, and no longer.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -41,8 +29,6 @@ _TICK_SECONDS = 10.0
 
 
 class _WorkingChild:
-    """A child session that writes one store part per poll until ``active_until``."""
-
     def __init__(self, clock: FakeClock, active_until: float) -> None:
         self._clock = clock
         self._active_until = active_until

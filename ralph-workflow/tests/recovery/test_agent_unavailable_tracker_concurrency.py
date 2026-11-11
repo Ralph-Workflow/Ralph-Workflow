@@ -1,5 +1,3 @@
-"""The shared cooldown ledger is read and written from several threads at once."""
-
 from __future__ import annotations
 
 import sys

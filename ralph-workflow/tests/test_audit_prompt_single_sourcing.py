@@ -1,5 +1,3 @@
-"""Regression coverage for canonical cross-surface prompt statements."""
-
 from ralph.testing.audit_prompt_single_sourcing import collect_violations
 
 

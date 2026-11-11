@@ -1,31 +1,3 @@
-"""Black-box tests for the stale-PID sweep on ``_cpu_baselines``.
-
-wt-024 Step 3 (AC-01): the ``_cpu_baselines`` dict in
-``PtyLineReader._probe_cpu_idle`` and
-``ProcessLineReader._probe_cpu_idle`` previously grew by one
-entry per distinct PID ever observed, with a child that exits
-cleanly between ticks never being pruned. The fix adds a sweep
-of any PID not present in the current ``child_pids`` list so
-the baseline map cannot accumulate dead PIDs across a long
-session spawning transient subprocesses.
-
-The tests below drive the production ``_probe_cpu_idle`` entry
-point against a real ``PtyLineReader`` / ``ProcessLineReader``
-constructed via the PUBLIC ``__init__`` path with minimal fakes
-(``SimpleNamespace`` for the handle, ``TimeoutPolicy`` stub,
-``FakeClock``). The ``psutil`` reference is patched in the
-reader module via ``sys.modules`` + ``monkeypatch.setattr`` so
-the production read path runs against an in-memory fake. No
-private ``__new__`` shenanigans, no direct OrderedDict mutation,
-no real subprocess, no ``time.sleep``.
-
-The tests assert the resulting ``_cpu_baselines`` state via the
-reader's own public ``_probe_cpu_idle`` return value + the
-test-only inspectable ``_cpu_baselines`` attribute (the field
-is a documented reader-level cache; other tests already access
-it via the same pattern).
-"""
-
 from __future__ import annotations
 
 import os
@@ -74,7 +46,6 @@ class _FakeProc:
 
 
 def _make_fake_psutil(procs: dict[int, _FakeProc]) -> object:
-    """Construct a psutil fake whose ``Process`` lookup returns procs[pid]."""
 
     class _Psutil:
         NoSuchProcess = type("NoSuchProcess", (Exception,), {})
@@ -88,7 +59,6 @@ def _make_fake_psutil(procs: dict[int, _FakeProc]) -> object:
             return self._table[pid]
 
         def __getattr__(self, name: str) -> object:
-            # Map ``Process`` (production psutil API name) to ``process``.
             if name == "Process":
                 return self.process
             raise AttributeError(name)
@@ -101,16 +71,11 @@ def _patch_psutil(
     class_ref: type,
     procs: dict[int, _FakeProc],
 ) -> None:
-    """Patch ``psutil`` in the module that owns ``class_ref`` so the
-    reader's read path uses the fake.
-    """
     module = sys.modules[class_ref.__module__]
     monkeypatch.setattr(module, "psutil", _make_fake_psutil(procs))
 
 
 class _FakePtyHandle(SimpleNamespace):
-    """Minimal stand-in for ``ManagedPtyProcess`` (PtyLineReader.__init__ only reads master_fd)."""
-
     def __init__(self, master_fd: int) -> None:
         super().__init__(master_fd=master_fd, pid=100)
 
@@ -177,28 +142,15 @@ def _make_process_reader() -> ProcessLineReader:
 def test_pty_line_reader_prunes_stale_pid_from_cpu_baselines(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """PtyLineReader._probe_cpu_idle sweeps PIDs absent from the current children list.
-
-    Drives the production entry point: a real ``PtyLineReader`` is
-    constructed via its public ``__init__``; the production
-    ``_probe_cpu_idle`` is called twice across two ticks, and the
-    resulting ``_cpu_baselines`` state is asserted via the public
-    cache attribute.
-    """
-    # tick 1: host has child pid 101 (alive)
     child = _FakeProc(101, cpu_user=1.0)
     host = _FakeProc(100, children=[child])
     _patch_psutil(monkeypatch, PtyLineReader, {100: host, 101: child})
 
     reader = _make_pty_reader()
     assert reader._probe_cpu_idle(scoped_active=True, alive_by=None) is False
-    # The live child is tracked.
     assert 101 in reader._cpu_baselines
-    # Pretend a transient PID was observed in a previous tick but has
-    # since exited. It must be pruned on the next call.
     reader._cpu_baselines[999] = (0.0, 0.0)
 
-    # tick 2: the child is still alive, but PID 999 is gone from the tree.
     result = reader._probe_cpu_idle(scoped_active=True, alive_by=None)
     assert result is False
     assert 999 not in reader._cpu_baselines, (
@@ -210,8 +162,6 @@ def test_pty_line_reader_prunes_stale_pid_from_cpu_baselines(
 def test_pty_line_reader_prunes_stale_pids_when_no_children_remain(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """If no children remain, ALL baseline PIDs are swept (host has no children)."""
-    # tick 1: child pid 101 was alive and tracked
     child = _FakeProc(101, cpu_user=1.0)
     host = _FakeProc(100, children=[child])
     _patch_psutil(monkeypatch, PtyLineReader, {100: host, 101: child})
@@ -219,7 +169,6 @@ def test_pty_line_reader_prunes_stale_pids_when_no_children_remain(
     reader._probe_cpu_idle(scoped_active=True, alive_by=None)
     assert 101 in reader._cpu_baselines
 
-    # tick 2: host has NO children. The previous child's PID must be swept.
     host._children = []
     reader._probe_cpu_idle(scoped_active=True, alive_by=None)
     assert 101 not in reader._cpu_baselines, (
@@ -230,15 +179,6 @@ def test_pty_line_reader_prunes_stale_pids_when_no_children_remain(
 def test_process_line_reader_prunes_stale_pid_from_cpu_baselines(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """ProcessLineReader._probe_cpu_idle sweeps PIDs absent from current children list.
-
-    Same shape as the PTY case but driven through the
-    ``ProcessLineReader`` production entry point. A real reader
-    is constructed via its public ``__init__`` with a minimal
-    fake handle and a ``ProcessReaderCtx``; the resulting
-    ``_cpu_baselines`` state is asserted via the public cache
-    attribute.
-    """
     child = _FakeProc(101, cpu_user=1.0)
     host = _FakeProc(100, children=[child])
     _patch_psutil(monkeypatch, ProcessLineReader, {100: host, 101: child})
@@ -257,17 +197,14 @@ def test_process_line_reader_prunes_stale_pid_from_cpu_baselines(
 
 
 def test_probe_cpu_idle_returns_false_when_scoped_inactive() -> None:
-    """When scoped_active is False, the probe is a no-op and does not touch baselines."""
     reader = _make_pty_reader()
     reader._cpu_baselines[999] = (0.0, 0.0)
 
     assert reader._probe_cpu_idle(scoped_active=False, alive_by=None) is False
-    # No children() call happens, so the baseline must be untouched.
     assert 999 in reader._cpu_baselines
 
 
 def test_probe_cpu_idle_returns_false_when_alive_by_indicates_progress() -> None:
-    """The sweep is still a no-op when the probe short-circuits on progress signals."""
     reader = _make_pty_reader()
     reader._cpu_baselines[999] = (0.0, 0.0)
 

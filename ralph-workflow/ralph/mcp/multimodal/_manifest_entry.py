@@ -1,4 +1,3 @@
-"""ManifestEntry — an entry in the session-scoped multimodal manifest."""
 
 from __future__ import annotations
 
@@ -10,7 +9,6 @@ ByteLoader = Callable[[], bytes | None]
 
 @dataclass
 class ManifestEntry:
-    """An entry in the session-scoped multimodal manifest."""
 
     artifact_id: str
     uri: str
@@ -26,11 +24,9 @@ class ManifestEntry:
 
     @property
     def raw_bytes(self) -> bytes:
-        """Return artifact bytes, rehydrating from the loader when needed."""
         return self.load_bytes() or b""
 
     def load_bytes(self) -> bytes | None:
-        """Return artifact bytes from memory or a backing replay source."""
         if self._raw_bytes is not None:
             return self._raw_bytes
         if self._byte_loader is None:
@@ -46,7 +42,6 @@ class ManifestEntry:
         byte_loader: ByteLoader | None = None,
         retain_raw_bytes: bool = False,
     ) -> None:
-        """Attach a durable replay source and optionally release in-memory bytes."""
         if cache_path:
             self.cache_path = cache_path
         if source_path:
@@ -59,7 +54,6 @@ class ManifestEntry:
             self._raw_bytes = None
 
     def resource_list_entry(self) -> dict[str, object]:
-        """Return the entry shape for a resources/list response."""
         return {
             "uri": self.uri,
             "name": self.title,

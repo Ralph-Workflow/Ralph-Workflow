@@ -1,5 +1,3 @@
-"""B7-B15: a broken tool surface must fail the attempt on evidence, not a clock."""
-
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -31,9 +29,6 @@ if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
 
 _CONFLICTED = ["a.py", "b.py", "c.py"]
-#: The number of watchdog ticks a repeated fault must survive. The contract the
-#: test pins is that a plumbing fault never bars the agent's surface, whatever
-#: the tick count, so the count is a property of the test and not of production.
 _REPEATED_WATCHDOG_TICKS = 6
 _POLICY_BUNDLE = load_policy(Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults")
 _CONFIG = UnifiedConfig.model_validate({"general": {}})
@@ -114,11 +109,6 @@ def test_dead_tool_surface_fails_fast_and_hands_over(
     assert called[0] == "primary"
     assert "fallback" in called
     assert called.count("primary") == 1
-    # The transport loop is recorded against the candidate that produced
-    # it. The round's REASON is the last attempt's own -- carrying an
-    # earlier candidate's fault forward reported a healthy agent's
-    # genuine failure under somebody else's fault, and made the whole
-    # stop unchargeable, which discarded its exhaustion evidence.
     assert "primary" in skipped_candidates(session, ("primary", "fallback"))
     assert session.terminal_reason is ResolutionTerminationReason.ATTEMPT_FAILED
     assert session.charge_conflict_budget is True
@@ -156,8 +146,6 @@ def test_known_dead_surface_is_not_reentered(
         invoke=_invoke,
         session=session,
     )
-    # The dead surface is never re-entered; the live candidate still gets
-    # every round, because a round that invoked nobody was the bug.
     assert "primary" not in called
     assert set(called) == {"fallback"}
     assert "primary" in skipped_candidates(session, ("primary", "fallback"))
@@ -193,20 +181,12 @@ def test_status_does_not_report_health_from_ralph_fault_text() -> None:
 
 
 def test_agent_prose_about_tool_surfaces_is_not_a_ralph_fault() -> None:
-    """A resolver quoting this repo's own words must not be recorded as dead.
-
-    The payload scanned here carries the agent's own activity text, and a
-    match kills that agent for the rest of the rebase. Ralph emits no
-    fault containing these phrases, so matching them could only ever
-    punish an agent for reading the code it was asked to fix.
-    """
     assert classify_ralph_origin_fault("edited driver.py: the MCP tool surface is fine") is None
     assert classify_ralph_origin_fault("the tool service comment explains the seam") is None
     assert classify_ralph_origin_fault("noted repeated identical tool calls in a docstring") is None
 
 
 def test_real_ralph_fault_tokens_are_still_classified() -> None:
-    """Narrowing the prose must not cost the markers Ralph actually writes."""
     assert (
         classify_ralph_origin_fault("HTTP 503: transport_loop_detected")
         is ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED
@@ -220,14 +200,6 @@ def test_real_ralph_fault_tokens_are_still_classified() -> None:
 def test_a_resolver_quoting_ralphs_own_fault_tokens_survives(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The markers live in Ralph's source, so a resolver reading it echoes them.
-
-    The conflict being resolved is frequently in this repository, where
-    ``transport_loop_detected`` and ``SUPERVISION_INFRASTRUCTURE_FAILURE``
-    are ordinary source tokens. Scanning the agent's own progress text
-    for them killed the only resolver in the shipped one-agent chain for
-    quoting a line it had just read.
-    """
     from ralph.agents.idle_watchdog.waiting_status_event import WaitingStatusEvent
     from ralph.agents.idle_watchdog.waiting_status_kind import WaitingStatusKind
     from ralph.pipeline.conflict_resolution.session import wrap_activity_listener
@@ -263,13 +235,6 @@ def test_a_resolver_quoting_ralphs_own_fault_tokens_survives(
 def test_a_watchdog_authored_fault_still_bars_the_surface(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Narrowing to Ralph-authored fields must not disarm the detection.
-
-    Corroboration applies to this channel too: a tripped MCP breaker
-    answers every tool call, so a real fault clears the threshold at
-    once -- while a single tick no longer bars an agent, and no longer
-    discards a conflict that agent had already resolved.
-    """
     from ralph.agents.idle_watchdog.waiting_status_event import WaitingStatusEvent
     from ralph.agents.idle_watchdog.waiting_status_kind import WaitingStatusKind
     from ralph.pipeline.conflict_resolution.session import wrap_activity_listener
@@ -308,7 +273,6 @@ def test_a_watchdog_authored_fault_still_bars_the_surface(
 def test_an_unspendable_chain_reports_candidate_exhausted(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The reason must reach the outcome, not only the console line."""
     _install_seams(monkeypatch)
     clock = FakeClock()
     ledger = AgentFailureLedger(clock=clock, total_limit=1)
@@ -333,7 +297,6 @@ def test_an_unspendable_chain_reports_candidate_exhausted(
         invoke=lambda *_args: True,
         session=session,
     )
-    # RALPH-TEST-REASON: Defect 3 fix correctly reports CANDIDATE_EXHAUSTED instead of mislabeled TOOL_SURFACE_DEAD when candidate chain is unspendable
     assert outcome.succeeded is False
     assert outcome.reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
     assert session.exhaustion_reason is not None
@@ -345,12 +308,10 @@ def test_an_unspendable_chain_reports_candidate_exhausted(
 def test_all_spent_candidates_yields_candidate_exhausted_terminal_reason(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Consumer proof: tri-state wait contract consumed by driver and round_verdict."""
     _install_seams(monkeypatch)
     clock = FakeClock(start=100.0)
     candidates = ("primary", "fallback")
 
-    # 1. All-spent case -> wait is None -> CANDIDATE_EXHAUSTED
     spent_ledger = AgentFailureLedger(clock=clock, total_limit=1)
     for agent in candidates:
         spent_ledger.record(
@@ -360,11 +321,9 @@ def test_all_spent_candidates_yields_candidate_exhausted_terminal_reason(
                 artifact_valid=False,
             )
         )
-    # RALPH-TEST-REASON: tri-state wait contract returns None when all candidates are spent
     assert spent_ledger.earliest_wait_ms(PHASE_RESOLUTION, candidates) is None
 
     session_spent = ResolutionSession(ledger=spent_ledger)
-    # RALPH-TEST-REASON: round_termination_reason maps None wait to CANDIDATE_EXHAUSTED
     assert (
         round_termination_reason(session_spent, invoked=False, candidates=candidates)
         is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
@@ -381,10 +340,8 @@ def test_all_spent_candidates_yields_candidate_exhausted_terminal_reason(
         invoke=lambda *_args: True,
         session=session_spent,
     )
-    # RALPH-TEST-REASON: driver maps None wait to CANDIDATE_EXHAUSTED
     assert outcome_spent.reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
 
-    # 2. Cooldown case -> wait > 0 -> CANDIDATE_UNAVAILABLE
     cooldown_ledger = AgentFailureLedger(clock=clock, consecutive_limit=1, total_limit=5)
     for agent in candidates:
         cooldown_ledger.record(
@@ -395,22 +352,17 @@ def test_all_spent_candidates_yields_candidate_exhausted_terminal_reason(
             )
         )
     wait_ms = cooldown_ledger.earliest_wait_ms(PHASE_RESOLUTION, candidates)
-    # RALPH-TEST-REASON: tri-state wait contract returns positive wait during cooldown
     assert wait_ms is not None and wait_ms > 0
 
     session_cooldown = ResolutionSession(ledger=cooldown_ledger)
-    # RALPH-TEST-REASON: round_termination_reason maps positive wait to CANDIDATE_UNAVAILABLE
     assert (
         round_termination_reason(session_cooldown, invoked=False, candidates=candidates)
         is ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
     )
 
-    # 3. Eligible case -> wait == 0
     fresh_ledger = AgentFailureLedger(clock=clock)
-    # RALPH-TEST-REASON: tri-state wait contract returns 0 for eligible agents
     assert fresh_ledger.earliest_wait_ms(PHASE_RESOLUTION, candidates) == 0
 
-    # 4. Mixed case: one cooling down, one eligible
     mixed_ledger = AgentFailureLedger(clock=clock, consecutive_limit=1, total_limit=5)
     mixed_ledger.record(
         AttemptFact(
@@ -419,14 +371,12 @@ def test_all_spent_candidates_yields_candidate_exhausted_terminal_reason(
             artifact_valid=False,
         )
     )
-    # RALPH-TEST-REASON: tri-state wait contract returns 0 when at least one agent is eligible
     assert mixed_ledger.earliest_wait_ms(PHASE_RESOLUTION, candidates) == 0
 
 
 def test_an_agents_activity_event_cannot_kill_its_own_tool_surface(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """End to end: progress text mentioning a tool surface leaves the chain live."""
     from ralph.agents.idle_watchdog.waiting_status_event import WaitingStatusEvent
     from ralph.agents.idle_watchdog.waiting_status_kind import WaitingStatusKind
     from ralph.pipeline.conflict_resolution.session import wrap_activity_listener
@@ -457,12 +407,6 @@ def test_an_agents_activity_event_cannot_kill_its_own_tool_surface(
 def test_ralph_infrastructure_faults_are_not_recorded_as_an_exhausted_chain(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A dead tool surface is Ralph's fault, not the resolver giving up.
-
-    Recording it as an exhausted chain wrote durable terminal evidence
-    that the resolver had failed, and the next seam then refused to try
-    at all -- for a conflict no agent had actually been unable to fix.
-    """
     from ralph.pipeline import auto_integrate_rebase_merge as rebase_merge
 
     captured: dict[str, object] = {}
@@ -484,7 +428,6 @@ def test_ralph_infrastructure_faults_are_not_recorded_as_an_exhausted_chain(
 def test_a_real_resolver_exhaustion_is_still_recorded(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Suppressing infrastructure faults must not suppress genuine exhaustion."""
     from ralph.pipeline import auto_integrate_rebase_merge as rebase_merge
 
     def _fake_resolve(root: Path, target: str, resolver: object, *, session: object) -> bool:
@@ -500,7 +443,6 @@ def test_a_real_resolver_exhaustion_is_still_recorded(
 
 
 def test_a_new_stop_starts_with_a_chargeable_budget(tmp_path: Path) -> None:
-    """The flag describes the stop that failed, not one three stops ago."""
     from ralph.pipeline.conflict_resolution.session import begin_resolution_stop
 
     session = ResolutionSession(charge_conflict_budget=False)
@@ -511,12 +453,6 @@ def test_a_new_stop_starts_with_a_chargeable_budget(tmp_path: Path) -> None:
 def test_a_failed_mechanical_attempt_still_reaches_the_resolver(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Ralph's own deterministic try must not consume the stop's only chance.
-
-    A mode-only or gitlink stop is staged without an agent. When that
-    attempt did not prove out, the stop was abandoned -- with a resolver
-    configured, willing, and never asked.
-    """
     from ralph.pipeline.conflict_resolution import rebase_loop
 
     stop = rebase_loop.RebaseStop(
@@ -547,12 +483,6 @@ def test_a_failed_mechanical_attempt_still_reaches_the_resolver(
 def test_an_infrastructure_fault_does_not_kill_the_agent_for_the_whole_rebase(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The shipped chain is ONE agent; barring it for the run ends resolution.
-
-    A transport loop or an unanswered relay is Ralph's own plumbing --
-    the recovery layer classifies that same failure as retryable -- so a
-    single hiccup must not leave every later stop with nobody to invoke.
-    """
     _install_seams(monkeypatch)
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("solo",))
     session = ResolutionSession()
@@ -581,7 +511,6 @@ def test_an_infrastructure_fault_does_not_kill_the_agent_for_the_whole_rebase(
     )
     assert session.terminal_reason is ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED
 
-    # A later stop must still reach it.
     _install_seams(monkeypatch)
     later: list[str] = []
     driver_module.run_conflict_resolution_pipeline(
@@ -602,7 +531,6 @@ def test_an_infrastructure_fault_does_not_kill_the_agent_for_the_whole_rebase(
 def test_a_chain_barred_only_by_ralphs_own_faults_is_retried_not_skipped(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Doing nothing is the one outcome that cannot resolve the conflict."""
     _install_seams(monkeypatch)
     clock = FakeClock()
     ledger = AgentFailureLedger(clock=clock)
@@ -630,7 +558,6 @@ def test_a_chain_barred_only_by_ralphs_own_faults_is_retried_not_skipped(
 def test_a_candidate_the_registry_cannot_produce_stays_barred_for_the_run(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """That bar IS deterministic: the name will not appear mid-run."""
     _install_seams(monkeypatch)
     session = ResolutionSession()
     calls: list[str] = []
@@ -673,16 +600,8 @@ def test_a_candidate_the_registry_cannot_produce_stays_barred_for_the_run(
 def test_every_reason_less_exit_now_names_itself(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """An exit with no reason is reported downstream as a failed resolution.
-
-    Two exits returned before the exhaustion block, leaving
-    `ResolutionOutcome.reason` empty and `exhaustion_reason` unset -- so
-    the operator was told "conflict resolution failed" for a resolution
-    that was never configured, or whose prompt could not be written.
-    """
     _install_seams(monkeypatch)
 
-    # No agent bound to the drain.
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ())
     session = ResolutionSession()
     outcome = driver_module.run_conflict_resolution_outcome(
@@ -700,7 +619,6 @@ def test_every_reason_less_exit_now_names_itself(
     assert outcome.reason is ResolutionTerminationReason.NO_RESOLVER_CONFIGURED
     assert session.exhaustion_reason is not None
 
-    # The prompt could not be materialized.
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one",))
     monkeypatch.setattr(driver_module, "render_conflict_prompt", lambda **_k: None)
     session = ResolutionSession()
@@ -721,7 +639,6 @@ def test_every_reason_less_exit_now_names_itself(
 
 
 def test_the_operator_headline_names_what_the_resolver_reported() -> None:
-    """ "Conflict resolution failed" was recorded for never-attempted work."""
     from ralph.git.merge import MergeResult
     from ralph.git.rebase.rebase import RebaseConflicts
     from ralph.pipeline.auto_integrate_outcome import classify_rebase_outcome
@@ -739,12 +656,6 @@ def test_the_operator_headline_names_what_the_resolver_reported() -> None:
 def test_a_binary_conflict_does_not_starve_the_text_conflicts_beside_it(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """One PNG must not mean three text conflicts are never offered to anyone.
-
-    Escalating the whole set on sight left nothing about the repository
-    changed, so the next run saw exactly what this one saw: zero
-    invocations, every run, forever.
-    """
     from ralph.pipeline.conflict_resolution.sight import ConflictSight
 
     paths = ["asset.png", "a.py", "b.py"]
@@ -780,7 +691,6 @@ def test_a_binary_conflict_does_not_starve_the_text_conflicts_beside_it(
 def test_a_submodule_pointer_beside_a_text_conflict_still_spends_the_chain(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The unreachable path is escalated by name, AFTER the rest are resolved."""
     from ralph.pipeline.conflict_resolution.sight import ConflictSight
 
     paths = ["vendor/sub", "a.py"]
@@ -820,12 +730,6 @@ def test_a_submodule_pointer_beside_a_text_conflict_still_spends_the_chain(
 def test_the_durable_evidence_does_not_assert_a_scan_that_never_ran(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """ "Conflict markers survive in X" was asserted for every reason.
-
-    Including exits that never opened a file, and paths that cannot
-    carry markers at all -- a binary, a modify/delete. The sentence has
-    to be true of every reason that uses it.
-    """
     from ralph.pipeline.conflict_resolution.sight import ConflictSight
 
     monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: ["vendor/sub"])
@@ -853,14 +757,12 @@ def test_the_durable_evidence_does_not_assert_a_scan_that_never_ran(
     assert session.exhaustion_reason is not None
     assert "markers survive" not in session.exhaustion_reason
     assert "vendor/sub" in session.exhaustion_reason
-    # And the typed outcome names what is unresolved instead of ().
     assert outcome.unresolved_paths == ("vendor/sub",)
 
 
 def test_a_clean_stop_is_not_reported_as_a_failure_reason(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Nothing unmerged is nothing to resolve, not a failure of anything."""
     monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: [])
     session = ResolutionSession()
 
@@ -883,12 +785,6 @@ def test_a_clean_stop_is_not_reported_as_a_failure_reason(
 def test_mechanical_staging_never_masks_a_path_nobody_can_repair(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Staging the reachable paths must not report the rest resolved.
-
-    The early "everything staged" exit never consulted the unreachable
-    remainder, so a submodule bump nobody had chosen was reported as a
-    clean resolution with zero invocations -- and then committed.
-    """
     from ralph.pipeline.conflict_resolution.sight import ConflictSight
 
     monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: ["mode.txt", "sub"])

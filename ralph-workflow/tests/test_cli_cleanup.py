@@ -1,5 +1,3 @@
-"""Tests for the ralph cleanup CLI command."""
-
 from __future__ import annotations
 
 import inspect
@@ -23,7 +21,6 @@ runner = CliRunner()
 
 
 def test_cleanup_removes_worker_namespaces(tmp_path: Path) -> None:
-    """With --force, removes stale .agent/workers/* directories."""
     workers_dir = tmp_path / ".agent" / "workers"
     (workers_dir / "unit-A").mkdir(parents=True)
     (workers_dir / "unit-B").mkdir(parents=True)
@@ -37,7 +34,6 @@ def test_cleanup_removes_worker_namespaces(tmp_path: Path) -> None:
 
 
 def test_cleanup_dry_run_no_removal(tmp_path: Path) -> None:
-    """With --dry-run, lists namespaces but does NOT remove them."""
     workers_dir = tmp_path / ".agent" / "workers"
     (workers_dir / "unit-A").mkdir(parents=True)
     (workers_dir / "unit-B").mkdir(parents=True)
@@ -53,7 +49,6 @@ def test_cleanup_dry_run_no_removal(tmp_path: Path) -> None:
 
 
 def test_cleanup_empty_no_crash(tmp_path: Path) -> None:
-    """No worker namespaces present → exits 0 with 'No stale worker namespaces found'."""
     with patch("ralph.cli.commands.cleanup.find_repo_root", return_value=tmp_path):
         result = runner.invoke(_app, [])
 
@@ -62,7 +57,6 @@ def test_cleanup_empty_no_crash(tmp_path: Path) -> None:
 
 
 def test_cleanup_no_workers_dir_no_crash(tmp_path: Path) -> None:
-    """When .agent/workers/ does not exist, exits 0 cleanly."""
     with patch("ralph.cli.commands.cleanup.find_repo_root", return_value=tmp_path):
         result = runner.invoke(_app, [])
 
@@ -71,7 +65,6 @@ def test_cleanup_no_workers_dir_no_crash(tmp_path: Path) -> None:
 
 
 def test_cleanup_aborted_without_force_or_dry_run(tmp_path: Path) -> None:
-    """Without --force, prompts for confirmation; 'n' input aborts."""
     workers_dir = tmp_path / ".agent" / "workers"
     (workers_dir / "unit-A").mkdir(parents=True)
 
@@ -84,7 +77,6 @@ def test_cleanup_aborted_without_force_or_dry_run(tmp_path: Path) -> None:
 
 
 def test_cleanup_force_removes_nested_contents(tmp_path: Path) -> None:
-    """--force removes worker dirs that contain nested files."""
     workers_dir = tmp_path / ".agent" / "workers"
     unit_dir = workers_dir / "unit-A"
     (unit_dir / "artifacts").mkdir(parents=True)
@@ -99,7 +91,6 @@ def test_cleanup_force_removes_nested_contents(tmp_path: Path) -> None:
 
 
 def test_cleanup_does_not_touch_worktrees_directory(tmp_path: Path) -> None:
-    """Regression guard: cleanup must never remove a sibling .worktrees/ directory."""
     worktrees_dir = tmp_path / ".worktrees" / "unit-a"
     worktrees_dir.mkdir(parents=True)
 
@@ -114,7 +105,6 @@ def test_cleanup_does_not_touch_worktrees_directory(tmp_path: Path) -> None:
 
 
 def test_cleanup_outside_git_repo_exits_1(tmp_path: Path) -> None:
-    """Running cleanup in a non-git directory must exit with code 1 and an error message."""
 
     def _raise_not_in_git() -> None:
         raise RuntimeError("not a git repository")
@@ -127,10 +117,7 @@ def test_cleanup_outside_git_repo_exits_1(tmp_path: Path) -> None:
 
 
 class TestCleanupNeverInvokesGit:
-    """Regression guardrails: cleanup must never shell out to git."""
-
     def test_cleanup_does_not_shell_out_to_git(self, tmp_path: Path, monkeypatch: object) -> None:
-        """cleanup --force must remove worker dirs without invoking any subprocess."""
 
         invocations: list[tuple[object, ...]] = []
 
@@ -163,7 +150,6 @@ class TestCleanupNeverInvokesGit:
         )
 
     def test_cleanup_source_does_not_reference_worktree_or_subprocess_git(self) -> None:
-        """Static source check: cleanup.py must not contain 'worktree' or subprocess calls."""
         source = inspect.getsource(ralph.cli.commands.cleanup)
         assert "worktree" not in source, (
             "cleanup.py must not reference 'worktree' — "

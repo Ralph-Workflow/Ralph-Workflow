@@ -10,8 +10,6 @@ if TYPE_CHECKING:
 
 
 class FakeAsyncProcess:
-    """Minimal asyncio.subprocess.Process-like fake for testing."""
-
     _stdin: asyncio.StreamWriter | None
     _stdout: asyncio.StreamReader | None
     _stderr: asyncio.StreamReader | None

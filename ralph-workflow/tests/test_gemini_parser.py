@@ -1,5 +1,3 @@
-"""Tests for GeminiParser thought=True detection and thinking type emission."""
-
 from __future__ import annotations
 
 import json
@@ -8,7 +6,6 @@ from ralph.agents.parsers.gemini import GeminiParser
 
 
 def test_candidates_part_thought_true_emits_thinking() -> None:
-    """A candidates response part with thought=True yields type='thinking'."""
     parser = GeminiParser()
     payload = {
         "candidates": [
@@ -28,7 +25,6 @@ def test_candidates_part_thought_true_emits_thinking() -> None:
 
 
 def test_candidates_part_thought_false_emits_text() -> None:
-    """A candidates response part with thought=False yields type='text'."""
     parser = GeminiParser()
     payload = {
         "candidates": [
@@ -50,7 +46,6 @@ def test_candidates_part_thought_false_emits_text() -> None:
 
 
 def test_candidates_part_no_thought_key_emits_text() -> None:
-    """A candidates response part with no thought key yields type='text'."""
     parser = GeminiParser()
     payload = {
         "candidates": [
@@ -70,7 +65,6 @@ def test_candidates_part_no_thought_key_emits_text() -> None:
 
 
 def test_candidates_mixed_thought_and_text_parts() -> None:
-    """Mixed thought=True and thought=False parts in one response."""
     parser = GeminiParser()
     payload = {
         "candidates": [
@@ -96,7 +90,6 @@ def test_candidates_mixed_thought_and_text_parts() -> None:
 
 
 def test_candidates_thought_none_emits_text() -> None:
-    """A candidates part with thought=None yields type='text'."""
     parser = GeminiParser()
     payload = {
         "candidates": [
@@ -117,7 +110,6 @@ def test_candidates_thought_none_emits_text() -> None:
 
 
 def test_message_part_thought_true_emits_thinking() -> None:
-    """_parse_message with a part that has thought=True emits type='thinking'."""
     parser = GeminiParser()
     payload = {
         "type": "message",
@@ -131,7 +123,6 @@ def test_message_part_thought_true_emits_thinking() -> None:
 
 
 def test_message_part_thought_false_emits_text() -> None:
-    """_parse_message with a part that has thought=False emits type='text'."""
     parser = GeminiParser()
     payload = {
         "type": "message",
@@ -146,7 +137,6 @@ def test_message_part_thought_false_emits_text() -> None:
 
 
 def test_candidates_empty_text_part_skipped() -> None:
-    """Candidates parts with empty text are skipped."""
     parser = GeminiParser()
     payload = {
         "candidates": [
@@ -162,7 +152,6 @@ def test_candidates_empty_text_part_skipped() -> None:
     results = list(parser.parse(iter([line])))
     thinking = [r for r in results if r.type == "thinking"]
     text_results = [r for r in results if r.type == "text"]
-    # Empty thought part is skipped; text part emits normally
     assert thinking == []
     assert len(text_results) == 1
     assert text_results[0].content == "Real content"

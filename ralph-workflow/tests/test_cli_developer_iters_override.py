@@ -1,12 +1,3 @@
-"""`-D` and the depth presets as budget instructions on a resumed run.
-
-A resumed run keeps the checkpoint's budget caps, so a developer-iteration
-count given on the command line only reaches it as an explicit counter
-override. These pin that translation: the flag is folded in when the operator
-actually gave one, an explicit `--counter iteration=N` still wins, and an
-unspecified flag changes nothing.
-"""
-
 from __future__ import annotations
 
 from ralph.cli.main import counter_overrides_with_developer_iters

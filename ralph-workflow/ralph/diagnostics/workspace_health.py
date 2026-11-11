@@ -1,17 +1,3 @@
-"""Operator-facing workspace health collection for ``ralph workspace-health``.
-
-AC-11: users must see storage use by category, freshness/readiness,
-coverage gaps, active observation/refresh/cleanup/recovery work,
-watch-capacity status, and cleanup eligibility without inspecting
-internal files.
-
-``collect_workspace_health`` is a pure read: it composes the existing
-side-effect-free seams (``inventory_storage`` + ``plan_cleanup``,
-``WorkspaceAwareness.snapshot()``, and the shared ``WorkspaceMonitor``
-lease table) into one JSON-serializable dict. It never mutates the
-workspace — the active-cleanup source is the non-mutating
-``plan_cleanup`` planner, never the deletion-oriented sweep.
-"""
 
 from __future__ import annotations
 
@@ -29,13 +15,11 @@ _READINESS_TOKENS = frozenset(
 
 
 def _derive_readiness(freshness: str) -> str:
-    """Map the awareness freshness token to the AC-11 readiness vocabulary."""
     token = "pending_refresh" if freshness == "pending" else freshness
     return token if token in _READINESS_TOKENS else "unavailable"
 
 
 def _active_observation() -> list[dict[str, object]]:
-    """One entry per active ``WorkspaceMonitor`` lease (scope + status)."""
     entries: list[dict[str, object]] = []
     for key, monitors in WorkspaceMonitor.shared_watch_snapshot():
         entries.extend(
@@ -51,10 +35,6 @@ def _active_observation() -> list[dict[str, object]]:
 
 
 def _active_maintenance() -> dict[str, object]:
-    """Report in-process retention passes and dirty-scheduler pending state."""
-    # The retention coordinator is process-local in agent_dir_retention;
-    # read its pass counter defensively so a missing coordinator never
-    # breaks the health surface.
     retention_passes = 0
     try:
         from ralph.workspace.agent_dir_retention import process_retention_coordinator
@@ -76,14 +56,6 @@ def _active_maintenance() -> dict[str, object]:
 
 
 def collect_workspace_health(workspace_root: Path) -> dict[str, object]:
-    """Collect the AC-11 workspace health payload (read-only, JSON-serializable).
-
-    Returns one dict with the keys AC-11 requires: ``storage``,
-    ``freshness``, ``readiness``, ``coverage_gaps``,
-    ``active_observation``, ``active_refresh``, ``active_cleanup``,
-    ``active_recovery``, ``watch_capacity``, ``cleanup_eligibility``,
-    and ``recreatability``.
-    """
     root = Path(workspace_root).absolute()
     snapshot = awareness_for_workspace(root).snapshot()
     inventory = inventory_storage(root)
@@ -150,11 +122,6 @@ def collect_workspace_health(workspace_root: Path) -> dict[str, object]:
             "automatic_recovery": bool(snapshot.get("automatic_recovery")),
             "safe_next_action": snapshot.get("safe_next_action"),
         },
-        # S-4: host watch-pressure signal (ralph_descriptor is always
-        # certain because Ralph owns the workspace monitor; host_pressure
-        # carries the host-level attribution). The two sub-objects are
-        # distinct dicts so a caller never confuses Ralph's own mode with
-        # the host's uncertain estimate.
         "host_watch_pressure": {
             "ralph_descriptor": {
                 "attribution": "certain",
@@ -163,9 +130,6 @@ def collect_workspace_health(workspace_root: Path) -> dict[str, object]:
             },
             "host_pressure": read_host_pressure(),
         },
-        # S-4: active in-process maintenance so a reader can tell whether
-        # Ralph is currently sweeping (retention) or has a deferred
-        # refresh pending (dirty scheduler).
         "active_maintenance": _active_maintenance(),
         "cleanup_eligibility": cleanup_eligibility,
         "recreatability": recreatability,

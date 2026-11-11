@@ -1,18 +1,12 @@
-"""Package-wide filesystem-read and traversal consolidation audit (R1-R5).
-
-New production modules fail closed when they use raw content reads, probes, or
-traversals instead of the typed FileBackend and Workspace observation seams.
-"""
-
 from __future__ import annotations
 
 import ast
 import sys
-import tokenize
 from dataclasses import dataclass
-from io import StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from ralph.testing._audit_scope import build_parent_map, qualified_scope
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -30,7 +24,147 @@ _DEFAULT_EXEMPT_PATHS: frozenset[str] = frozenset(
         "prompts/render/jinja.py",
     }
 )
-_MARKER_TOKEN: str = "filesystem-read-ok:"
+EXEMPT_CALL_SITES: frozenset[tuple[str, str, str]] = frozenset(
+    {
+        ("ralph/_install_conflicts.py", "resolve_package_file", "raw_path_read_text"),
+        (
+            "ralph/agents/invoke/_command_builders/__init__.py",
+            "_load_prompt_with_master",
+            "raw_path_read_text",
+        ),
+        ("ralph/agents/invoke/_watch_capacity.py", "_count_watchable_directories", "raw_walk"),
+        (
+            "ralph/agents/invoke/_watch_capacity.py",
+            "_read_inotify_watch_limit",
+            "raw_path_read_text",
+        ),
+        (
+            "ralph/agents/invoke/_watch_capacity.py",
+            "_read_inotify_watch_user_total",
+            "raw_path_iterdir",
+        ),
+        (
+            "ralph/cli/commands/smoke_binary_override.py",
+            "resolve_smoke_binary_override",
+            "raw_path_is_file",
+        ),
+        ("ralph/config/_toml_fallback.py", "load_optional_toml", "raw_path_read_bytes"),
+        ("ralph/files/operations.py", "calculate_checksum", "raw_path_open"),
+        ("ralph/files/operations.py", "capture_file_snapshot", "raw_path_exists"),
+        ("ralph/files/operations.py", "capture_file_snapshot", "raw_path_stat"),
+        ("ralph/git/_lock_liveness.py", "_not_host_pid_namespace", "raw_path_exists"),
+        ("ralph/git/_lock_liveness.py", "_not_host_pid_namespace", "raw_path_read_text"),
+        ("ralph/git/_lock_liveness.py", "_pid1_started_at_boot", "raw_path_read_text"),
+        ("ralph/git/_lock_paths.py", "_walk_locks", "raw_walk"),
+        ("ralph/git/_lock_proc_inspect.py", "_git_binary_identity_uncached", "raw_path_stat"),
+        ("ralph/git/_worktree_lease.py", "_probe_holder_pid", "raw_path_is_dir"),
+        ("ralph/git/rebase/rebase_checkpoint.py", "_backup_checkpoint", "raw_path_exists"),
+        ("ralph/git/rebase/rebase_checkpoint.py", "save_rebase_checkpoint", "raw_path_exists"),
+        (
+            "ralph/mcp/explore/_bench_product_baseline.py",
+            "load_product_baseline_limits",
+            "raw_path_read_text",
+        ),
+        ("ralph/mcp/explore/_bench_r6_metrics.py", "_count_proc_fds", "raw_path_iterdir"),
+        (
+            "ralph/mcp/explore/_bench_r6_metrics.py",
+            "_snapshot_initial_inotify_fds",
+            "raw_path_is_dir",
+        ),
+        (
+            "ralph/mcp/explore/_bench_r6_metrics.py",
+            "_snapshot_initial_inotify_fds",
+            "raw_path_iterdir",
+        ),
+        ("ralph/mcp/explore/_store_types.py", "iter_indexable_files", "raw_scandir"),
+        ("ralph/mcp/explore/handlers.py", "build_explore_index", "raw_path_exists"),
+        (
+            "ralph/mcp/server/_fallback_standalone_server.py",
+            "_FallbackStandaloneServer._setup_handover_pause._pause_watcher",
+            "raw_path_exists",
+        ),
+        ("ralph/mcp/server/_host_contention_signal.py", "record_psi_pressure", "raw_path_open"),
+        ("ralph/mcp/server/_start_stage_tracker.py", "read_overruns", "raw_path_read_text"),
+        (
+            "ralph/mcp/server/_start_stage_tracker.py",
+            "record_overrun._write_record",
+            "raw_path_open",
+        ),
+        ("ralph/mcp/tools/workspace/_media_io.py", "write_durable_media_cache", "raw_path_glob"),
+        ("ralph/phases/review.py", "_read_review_baseline", "raw_path_exists"),
+        ("ralph/phases/review.py", "_read_review_baseline", "raw_path_read_text"),
+        ("ralph/pipeline/_auto_integrate_record_restamp.py", "current_boot_id", "raw_path_exists"),
+        (
+            "ralph/pipeline/_auto_integrate_record_restamp.py",
+            "current_boot_id",
+            "raw_path_read_text",
+        ),
+        ("ralph/pipeline/_integration_ladder_adapters.py", "_walk_lock_files", "raw_walk"),
+        (
+            "ralph/pipeline/auto_integrate_recovery_lock.py",
+            "_lock_holder_is_dead",
+            "raw_path_exists",
+        ),
+        ("ralph/pipeline/auto_integrate_recovery_lock.py", "_lock_holder_is_dead", "raw_path_stat"),
+        (
+            "ralph/pipeline/auto_integrate_remote_reconcile.py",
+            "_reconcile_in_temporary_workspace",
+            "raw_path_exists",
+        ),
+        (
+            "ralph/pipeline/config_file_fingerprint.py",
+            "compute_config_file_fingerprint",
+            "raw_path_read_bytes",
+        ),
+        (
+            "ralph/pipeline/conflict_resolution/rebase_loop.py",
+            "_read_rebase_state_sha",
+            "raw_path_read_text",
+        ),
+        ("ralph/pipeline/effect_executor.py", "_write_agent_retry_prompt", "raw_path_exists"),
+        ("ralph/pipeline/effect_executor.py", "_write_agent_retry_prompt", "raw_path_read_text"),
+        (
+            "ralph/pipeline/plumbing/commit_plumbing.py",
+            "_read_retry_prompt_text",
+            "raw_path_exists",
+        ),
+        (
+            "ralph/pipeline/plumbing/commit_plumbing.py",
+            "_read_retry_prompt_text",
+            "raw_path_read_text",
+        ),
+        ("ralph/pipeline/run_loop.py", "_rebase_markers_on_disk", "raw_path_is_file"),
+        ("ralph/pipeline/run_loop.py", "_rebase_markers_on_disk", "raw_path_read_text"),
+        ("ralph/process/manager/_git_termination.py", "_process_name", "raw_path_read_text"),
+        ("ralph/process/manager/_git_termination.py", "group_pids", "raw_path_is_dir"),
+        ("ralph/process/manager/_git_termination.py", "group_pids", "raw_path_iterdir"),
+        ("ralph/process/manager/_supervisor.py", "_other_group_members_alive", "raw_path_iterdir"),
+        ("ralph/project_policy/portfolio.py", "load_portfolio_toml", "raw_path_exists"),
+        ("ralph/project_policy/portfolio.py", "load_portfolio_toml", "raw_path_read_text"),
+        ("ralph/recovery/controller.py", "_assert_never_exit_invariant", "raw_path_read_text"),
+        ("ralph/recovery/controller.py", "_assert_two_state_invariant", "raw_path_read_text"),
+        ("ralph/skills/_installer_candidates.py", "_canonical_skill_leaf_names", "raw_walk"),
+        ("ralph/skills/_installer_candidates.py", "_lexical_descendants", "raw_walk"),
+        ("ralph/skills/_skill_resolver.py", "get_inline_skill_content", "raw_path_glob"),
+        ("ralph/skills/_skill_resolver.py", "get_inline_skill_content", "raw_path_is_dir"),
+        ("ralph/testing/audit_activity_aware_watchdog.py", "_compute_fingerprint", "raw_walk"),
+        ("ralph/testing/audit_activity_aware_watchdog.py", "_iter_py_files", "raw_walk"),
+        ("ralph/testing/audit_agent_failure_single_owner.py", "_collect_payloads", "raw_walk"),
+        ("ralph/testing/audit_agent_module_state.py", "_collect_py_files", "raw_walk"),
+        ("ralph/testing/audit_comments.py", "_slice_files", "raw_path_is_dir"),
+        ("ralph/testing/audit_comments.py", "_slice_files", "raw_path_is_file"),
+        ("ralph/testing/audit_comments.py", "_slice_files", "raw_path_rglob"),
+        ("ralph/testing/audit_opts_key_drift.py", "_parse_module_payload", "raw_path_read_bytes"),
+        ("ralph/testing/audit_secret_scan.py", "main", "raw_path_is_dir"),
+        (
+            "ralph/testing/audit_terminal_escape_containment.py",
+            "PackageWideCallSiteInvariant._package_files",
+            "raw_walk",
+        ),
+        ("ralph/testing/audit_test_integrity.py", "_read_diff", "raw_path_read_text"),
+        ("ralph/workspace/fs.py", "FsWorkspace.iter_files", "raw_walk"),
+    }
+)
 _RAW_READ_QUALIFIERS: frozenset[str] = frozenset({"os", "os.path", "pathlib"})
 _RAW_READ_ATTRS: dict[str, str] = {
     "read_text": "R1/R3 raw full-file read; route through FileBackend.read_text or annotate",
@@ -58,27 +192,12 @@ _GLOB_TRAVERSAL_ATTRS: frozenset[str] = frozenset({"glob", "iglob"})
 
 @dataclass(frozen=True)
 class FilesystemReadViolation:
-    """One filesystem-read consolidation violation surfaced by the audit.
-
-    Attributes:
-        kind: Short violation tag (e.g. ``raw_path_read_text``). Drives
-            remediation guidance and stable diagnostics.
-        file_path: POSIX path of the offending module relative to the
-            package root passed to :func:`audit_filesystem_read_consolidation`.
-        line: 1-based source line of the flagged call. ``0`` when the
-            violation refers to the package root itself (missing or
-            unreadable).
-        message: Human-readable description naming the violated
-            criterion and the approved replacement seam (D2).
-    """
-
     kind: str
     file_path: str
     line: int
     message: str
 
     def __str__(self) -> str:
-        """Return the canonical ``path:line: kind: message`` diagnostic line."""
         return f"{self.file_path}:{self.line}: {self.kind}: {self.message}"
 
 
@@ -106,7 +225,6 @@ def _import_alias_names(
     glob_names: set[str],
     direct_read_names: dict[str, str],
 ) -> None:
-    """Record pathlib constructors and filesystem-module aliases (in-place)."""
     for node in tree.body:
         if isinstance(node, ast.ImportFrom):
             if node.module == "pathlib":
@@ -131,13 +249,6 @@ def _import_alias_names(
 
 
 def _scope_keys(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> tuple[int | None, ...]:
-    """Return lexical function scopes from nearest to module scope.
-
-    A read in a nested function can close over a pathlib value assigned by an
-    outer function.  Returning every enclosing function identity preserves the
-    fail-closed audit boundary for those captures without mistaking a same-named
-    local from an unrelated function for a path.
-    """
     keys: list[int | None] = []
     current: ast.AST | None = node
     while current is not None:
@@ -149,7 +260,6 @@ def _scope_keys(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> tuple[int | N
 
 
 def _scope_key(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> int | None:
-    """Return the nearest function scope identity, or ``None`` at module scope."""
     return _scope_keys(node, parents)[0]
 
 
@@ -161,7 +271,6 @@ def _assign_target_names(
     *,
     scope: int | None,
 ) -> None:
-    """Record a function-scoped name initialized from a pathlib constructor."""
     if not isinstance(value, ast.Call):
         return
     root = _call_root_name(value.func)
@@ -174,7 +283,6 @@ def _assign_target_names(
 def _collect_read_provenance(
     tree: ast.Module, nodes: Sequence[ast.AST], parents: dict[ast.AST, ast.AST]
 ) -> tuple[set[tuple[int | None, str]], set[str], set[str], dict[str, str]]:
-    """Return scoped path values plus filesystem module and function aliases."""
     imported_path_names: set[str] = set()
     os_names: set[str] = set()
     glob_names: set[str] = set()
@@ -212,7 +320,6 @@ def _read_call_details(
     node: ast.Call,
     direct_read_names: dict[str, str],
 ) -> tuple[str, str, bool] | None:
-    """Return raw filesystem call details when ``node`` reaches a tracked API."""
     direct_name = node.func.id if isinstance(node.func, ast.Name) else None
     if direct_name == "open":
         return "open", direct_name, True
@@ -227,20 +334,6 @@ def _read_call_details(
     return attr, root, False
 
 
-def _marker_line_indices(source: str) -> set[int]:
-    """Return zero-based lines with a reasoned D3 marker in a real comment."""
-    if _MARKER_TOKEN not in source:
-        return set()
-    indices: set[int] = set()
-    for token in tokenize.generate_tokens(StringIO(source).readline):
-        if token.type != tokenize.COMMENT or _MARKER_TOKEN not in token.string:
-            continue
-        marker_idx = token.string.find(_MARKER_TOKEN)
-        if token.string[marker_idx + len(_MARKER_TOKEN) :].strip():
-            indices.add(token.start[0] - 1)
-    return indices
-
-
 def _collect_python_files(root: Path) -> list[Path]:
     if not root.is_dir():
         return []
@@ -248,7 +341,6 @@ def _collect_python_files(root: Path) -> list[Path]:
 
 
 def _is_exempt(rel_path: str, exempt: frozenset[str]) -> bool:
-    """Return whether ``rel_path`` is one of the canonical exempt boundaries."""
     return rel_path in exempt
 
 
@@ -292,9 +384,8 @@ def _scan_module(module_path: Path, rel_path: str) -> list[FilesystemReadViolati
                 message=f"module could not be parsed ({exc.msg}); invalid modules fail closed",
             )
         ]
-    marker_lines = _marker_line_indices(source)
     nodes = list(ast.walk(tree))
-    parents = {child: node for node in nodes for child in ast.iter_child_nodes(node)}
+    parents = build_parent_map(tree)
     path_variables, os_names, glob_names, direct_read_names = _collect_read_provenance(
         tree, nodes, parents
     )
@@ -308,9 +399,6 @@ def _scan_module(module_path: Path, rel_path: str) -> list[FilesystemReadViolati
             continue
         attr, root, is_direct_read = call_details
         line_idx = node.lineno
-        zero_based = line_idx - 1
-        if zero_based in marker_lines or (zero_based - 1) in marker_lines:
-            continue
         is_os_path_read = root in os_names and attr != "open"
         is_os_traversal = attr in _OS_TRAVERSAL_ATTRS and is_os_path_read
         is_glob_traversal = attr in _GLOB_TRAVERSAL_ATTRS and root in glob_names
@@ -341,6 +429,9 @@ def _scan_module(module_path: Path, rel_path: str) -> list[FilesystemReadViolati
             message = _RAW_READ_ATTRS[attr]
         else:
             continue
+        scope = qualified_scope(node, parents)
+        if (rel_path, scope, kind) in EXEMPT_CALL_SITES:
+            continue
         violations.append(
             FilesystemReadViolation(
                 kind=kind,
@@ -359,36 +450,6 @@ def audit_filesystem_read_consolidation(
     exempt_paths: frozenset[str] | Sequence[str] | None = None,
     package_roots: Sequence[str] | None = None,
 ) -> list[FilesystemReadViolation]:
-    """Walk ``package_root`` and report raw filesystem-read call sites.
-
-    The audit is AST + ``Path.read_text`` only — no subprocess, no
-    ``sleep``, no real I/O beyond the one targeted source read per
-    module. Every newly-added Python module under ``package_root``
-    participates automatically (D1); there is no module allowlist to
-    maintain. Diagnostics name the violated criterion (R1/R3/R4) and
-    the approved replacement seam (D2).
-
-    Args:
-        package_root: Workspace directory whose ``ralph/`` subtree is
-            walked. The first path that is not a directory produces a
-            single ``missing_package_root`` violation so the caller can
-            fail closed without raising.
-        module_paths: Optional explicit list of relative POSIX paths
-            restricting the walk. When ``None`` every ``.py`` file
-            under ``package_roots`` is scanned.
-        exempt_paths: Optional explicit POSIX path set whose violations
-            are suppressed. Defaults to
-            :data:`_DEFAULT_EXEMPT_PATHS` (canonical FileBackend,
-            registry/render modules, and the audit module itself).
-        package_roots: Optional relative subpath list whose
-            ``.py`` descendants are scanned. Defaults to
-            :data:`_DEFAULT_PACKAGE_ROOTS` (single ``"ralph"`` entry).
-
-    Returns:
-        A list of :class:`FilesystemReadViolation` records. Empty list
-        means the scanned tree satisfies the read consolidation
-        contract.
-    """
     if not package_root.is_dir():
         return [
             FilesystemReadViolation(
@@ -451,20 +512,6 @@ def audit_filesystem_read_consolidation(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """CLI entry point for the filesystem-read consolidation audit.
-
-    Args:
-        argv: Optional positional list whose first element overrides
-            the default package root (``<repo>/ralph-workflow``).
-            Empty ``argv`` walks the package that contains this
-            module.
-
-    Returns:
-        ``0`` when the scanned tree satisfies the consolidation
-        contract, ``1`` when one or more violations were reported
-        (the violations are printed to ``stdout``), or ``2`` when
-        the resolved package root is not a directory.
-    """
     if argv is None:
         argv = sys.argv[1:]
     package_root = Path(argv[0]) if argv else Path(__file__).parent.parent.parent

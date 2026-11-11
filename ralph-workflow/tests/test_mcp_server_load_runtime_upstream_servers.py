@@ -1,9 +1,3 @@
-"""Integration tests for the standalone Python MCP server runtime."""
-
-# Property A: there is no alternate FastMCP path. The single production
-# _FallbackStandaloneServer (via build_standalone_http_server) is the
-# only server construction surface. This test pins the shipped path.
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -11,7 +5,6 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-# Config imports for multimodal tests
 from ralph.config.mcp_models import McpConfig, McpServerSpec
 from ralph.mcp.protocol import startup
 from ralph.mcp.protocol.session import AgentSession
@@ -39,8 +32,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 
-# Lazy imports for multimodal tests that require optional dependencies
-# These are only available when the multimodal feature is fully configured
 _lazy_imports: dict[str, object] = {}
 
 HTTP_OK = 200
@@ -49,8 +40,6 @@ HTTP_ACCEPTED = 202
 
 @pytest.fixture(autouse=True)
 def _isolate_from_upstream_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Prevent real upstream MCP servers (configured in dev env) from being
-    # loaded during tests. Each test provides its own upstream config if needed.
     monkeypatch.delenv(UPSTREAM_MCP_CONFIG_ENV, raising=False)
     monkeypatch.delenv(UPSTREAM_MCP_TOOL_CATALOG_ENV, raising=False)
 
@@ -139,9 +128,6 @@ def test_mcp_server_builders_raise_when_any_configured_upstream_is_unreachable(
     builder = getattr(server_runtime, builder_name)
     kwargs = must_mapping(extras_factory(mcp_config))
 
-    # Startup normalizes UpstreamValidationError into the typed McpServerError
-    # so the supervisor's restart budget sees a typed stage failure; the
-    # message must still name the unreachable server.
     with pytest.raises(McpServerError, match=server_name):
         builder(tmp_path, **kwargs)
 
@@ -187,11 +173,6 @@ def test_build_standalone_http_server_uses_cached_upstream_tool_catalog_without_
     tools = must_dict_list(result["tools"])
     tool_names = {must_str(tool["name"]) for tool in tools}
     assert custom_proxy_tool_name("docs", "ping") in tool_names
-
-
-# =============================================================================
-# Image content serialization tests (Task 3)
-# =============================================================================
 
 
 class TestLoadRuntimeUpstreamServers:

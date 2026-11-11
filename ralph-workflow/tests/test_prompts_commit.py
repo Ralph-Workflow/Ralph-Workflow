@@ -1,5 +1,3 @@
-"""Tests for commit prompt generation."""
-
 from pathlib import Path
 
 import pytest
@@ -16,9 +14,6 @@ def test_commit_prompt_includes_diff_and_guidance() -> None:
     diff = "diff --git a/app.py b/app.py\n@@ -1 +1 @@\n-foo\n+bar"
     prompt = prompt_commit_message(diff)
 
-    # The prompt names the artifact and its submission path in the opening
-    # line (tightened 2026-08-12 from the older "spec-compliant mcp
-    # commit_message artifact" phrasing; the contract is unchanged).
     assert "produce and submit one valid `commit_message` artifact" in prompt.lower()
     assert diff in prompt
     assert "<ralph-commit>" not in prompt
@@ -27,35 +22,19 @@ def test_commit_prompt_includes_diff_and_guidance() -> None:
     assert "## HOW TO WRITE THE BODY" in prompt
     assert "commit document" in prompt.lower()
     assert "skip document" in prompt.lower()
-    # Architectural fix (2026-06-14): the template MUST NOT carry a
-    # "REQUIRED PROCEDURE" that duplicates the shared artifact submission
-    # macro. A duplicate procedure (e.g. "output only the commit subject
-    # line") used to mislead a small model into stopping without calling
-    # ``declare_complete``, leaving the gate to retry forever. The macro
-    # is the single source of truth for the completion contract.
     assert "output only the commit subject line" not in prompt.lower()
     assert "declare_complete" in prompt.lower()
-    # The artifact is a markdown document: the decision lives in frontmatter.
     assert "type: commit" in prompt
     assert "subject: fix(auth): prevent token expiry race" in prompt
     assert "type: skip" in prompt
-    # Tightened opening (2026-08-12) replaced the old "Task:" prefix; the
-    # instruction line now opens the prompt directly.
     assert prompt.startswith("Produce and submit one valid `commit_message` artifact")
     assert "tool named" in prompt.lower()
     assert "do not call bash" in prompt.lower()
-    # The write-file fallback promotes a validated markdown document, not JSON.
     assert ".agent/tmp/commit_message.md" in prompt
     assert "raw markdown" in prompt.lower()
     assert "edit the json file on disk" not in prompt.lower()
-    # The doc-shape bullet names both document choices (tightened
-    # 2026-08-12: "for pending work" replaced the older "changes not yet
-    # committed" framing).
     assert "pending work" in prompt.lower()
     assert "when no commit is needed" in prompt.lower()
-    # The tightening dropped the "current worktree vs the last commit"
-    # framing; "for the pending diff" in the opening line carries the
-    # same scope statement.
 
 
 @pytest.mark.parametrize("opencode", [False, True])
@@ -126,17 +105,9 @@ def test_opencode_commit_prompt_uses_direct_tool_call_language() -> None:
         submit_artifact_tool_name="ralph_ralph_submit_md_artifact",
     )
 
-    # Tightened opening (2026-08-12): names the artifact and the pending
-    # diff directly, replacing the older "current pending work" framing.
     assert "Produce one valid `commit_message` artifact for the pending diff" in prompt
-    # The 2026-08-12 tightening dropped the "current worktree vs the last
-    # commit" framing; "for the pending diff" carries the same scope
-    # statement in the simplified template.
-    # Silent single-pass reading replaced the older "Do not analyze
-    # anything" instruction.
     assert "Read the diff silently" in prompt
     assert "`ralph_ralph_submit_md_artifact`" in prompt
-    # The artifact is a markdown document: the decision lives in frontmatter.
     assert "type: commit" in prompt
     assert "subject: fix(auth): prevent token expiry race" in prompt
     assert "type: skip" in prompt
@@ -145,13 +116,8 @@ def test_opencode_commit_prompt_uses_direct_tool_call_language() -> None:
     assert "ralph_write_file" in prompt
     assert '`ralph_declare_complete(summary="commit_message")`' in prompt
     assert "Do not call bash" in prompt
-    # The unavailable-tool fallback lives in the SHARED artifact submission
-    # macro, not in a duplicate procedure section, and promotes a validated
-    # markdown document — never JSON.
     assert ".agent/tmp/commit_message.md" in prompt
     assert "raw markdown" in prompt.lower()
-    # Tightened opening (2026-08-12) replaced the old "Task:" prefix; the
-    # instruction line now opens the prompt directly.
     assert prompt.startswith("Produce one valid")
 
 
@@ -161,23 +127,12 @@ def test_opencode_commit_prompt_skip_output_instruction_is_unambiguous() -> None
         submit_artifact_tool_name="ralph_submit_md_artifact",
     )
 
-    # The old "<subject>" placeholder caused models to output "<skip>" for skip artifacts.
-    # The instruction must now be explicit for both commit and skip cases.
     assert "<subject>" not in prompt
-    # The skip-output instruction is not a duplicate procedure; the shared
-    # artifact submission macro is the authoritative completion contract.
     assert "output only the commit subject line" not in prompt.lower()
     assert "MANDATORY FINAL ACTION" in prompt
 
 
 def test_commit_prompt_explicitly_forbids_confirmation_questions() -> None:
-    """The commit prompt must forbid confirmation questions outright.
-
-    The prohibition lives in the shared ``_unattended_mode`` partial, which
-    every commit prompt includes. The 2026-08-12 tightening dropped the
-    "would you like me to" example phrase; the behavioral prohibition it
-    illustrated is still pinned here by its normative sentence.
-    """
     prompt = prompt_commit_message("diff --git a/app.py b/app.py\n+hello")
 
     assert "do not ask the user for confirmation" in prompt.lower()

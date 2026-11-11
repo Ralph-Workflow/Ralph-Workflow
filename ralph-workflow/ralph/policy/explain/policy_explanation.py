@@ -1,4 +1,3 @@
-"""Complete structured explanation of a PolicyBundle."""
 
 from __future__ import annotations
 
@@ -19,7 +18,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class PolicyExplanation:
-    """Complete structured explanation of a PolicyBundle."""
 
     entry_phase: str
     terminal_phase: str

@@ -1,10 +1,3 @@
-"""Tests for request-scoped MCP exec progress notifications (§3c / WU-5).
-
-Verifies SSE streaming of `notifications/progress` frames when `progressToken`
-is provided, token propagation for exec-family tools and exec_wait, absence
-of progress frames when no token is supplied, and fail-safe subscription teardown.
-"""
-
 from __future__ import annotations
 
 import itertools
@@ -49,8 +42,6 @@ if TYPE_CHECKING:
 
 
 class _FakeClock:
-    """Deterministic fake clock for lifecycle tests."""
-
     def __init__(self, initial_time: float = 1000.0) -> None:
         self._time = initial_time
 
@@ -89,8 +80,6 @@ IoCountersNamedTuple = _IoCountersNamedTuple
 
 
 class _FakeSamplerProc:
-    """Mock process tree node satisfying LivenessProc."""
-
     def __init__(self, pid: int = 123) -> None:
         self._pid = pid
         self._children: list[_FakeSamplerProc] = []
@@ -126,8 +115,6 @@ FakeSamplerProc = _FakeSamplerProc
 
 
 class _FakePsutilModule:
-    """Mock psutil module for TreeSampler."""
-
     Process: Callable[[int], LivenessProc]
 
     def __init__(self, processes: dict[int, _FakeSamplerProc] | None = None) -> None:
@@ -162,8 +149,6 @@ def _make_test_config() -> LivenessConfig:
 
 
 class _TrackingProcessManager(ProcessManager):
-    """ProcessManager subclass that tracks orphan cleanup."""
-
     def __init__(
         self,
         policy: ProcessManagerPolicy | None = None,
@@ -188,8 +173,6 @@ TrackingProcessManager = _TrackingProcessManager
 
 
 class _TestEnv:
-    """Test environment bundle with deterministic FakeClock and ExecJobRegistry."""
-
     def __init__(self) -> None:
         self.clock = FakeClock(1000.0)
         self.pids = itertools.count(100)
@@ -222,7 +205,6 @@ class _TestEnv:
 
 
 def _extract_dict(obj: object) -> dict[str, object]:
-    """Helper to extract a typed dict[str, object] from an object without Any leakage."""
     assert isinstance(obj, dict)
     out: dict[str, object] = {}
     for k, v in obj.items():
@@ -232,7 +214,6 @@ def _extract_dict(obj: object) -> dict[str, object]:
 
 
 def _parse_sse_frames(raw_frames: list[bytes]) -> list[dict[str, object]]:
-    """Decode raw SSE frames into parsed JSON-RPC payload dictionaries."""
     frames: list[dict[str, object]] = []
     for raw in raw_frames:
         text = raw.decode("utf-8")
@@ -249,7 +230,6 @@ def _parse_sse_frames(raw_frames: list[bytes]) -> list[dict[str, object]]:
 
 
 def test_extract_progress_token_and_job_id() -> None:
-    """Verifies token extraction across spec and alternate param placements."""
     req1 = JsonRpcRequest("2.0", "tools/call", {"_meta": {"progressToken": "tok-1"}})
     assert extract_progress_token(req1) == "tok-1"
 
@@ -273,15 +253,6 @@ def test_extract_progress_token_and_job_id() -> None:
 
 
 def test_progress_frames_emitted_when_token_present() -> None:
-    """A token-bearing request emits notifications/progress on each liveness sample.
-
-    The handler binds the SSE-installed subscription to the new job via
-    :func:`attach_progress_subscription` (the WU-2 public hook) — the
-    SSE streaming path installs an unbound subscription with
-    ``job_id=None`` because ``exec`` / ``unsafe_exec`` / ``raw_exec``
-    don't carry a ``job_id`` yet, and the handler must attach the new
-    ``job_id`` once ``registry.start(...)`` returns it.
-    """
     env = _TestEnv()
     session = AgentSession("sess-1", "run-1", "http://localhost", {"ProcessExecBounded"})
 
@@ -301,16 +272,11 @@ def test_progress_frames_emitted_when_token_present() -> None:
     def handle_request(
         req: JsonRpcRequest, state: ServerState
     ) -> tuple[JsonRpcResponse, ServerState]:
-        # Emit an output chunk
         sink = session.current_thread_tool_output_sink()
         if sink is not None:
             sink({"tool": "exec", "stream": "stdout", "text": "task started"})
 
-        # Step the job registry, which triggers liveness progress dispatch
         job_id = env.registry.start(["cmd"], capability="ProcessExecBounded")
-        # Explicit binding: the SSE streaming path installed the subscription
-        # with job_id=None (no job_id is in the request). Bind it to the new
-        # job_id via the public hook so subsequent step_job dispatches emit.
         installed = list(env.registry._subscriptions.values())
         assert len(installed) == 1
         sub = installed[0]
@@ -339,7 +305,6 @@ def test_progress_frames_emitted_when_token_present() -> None:
     frames = _parse_sse_frames(written)
     assert len(frames) >= 3
 
-    # Frame 1: notifications/message chunk
     msg_frames = [f for f in frames if f.get("method") == "notifications/message"]
     assert len(msg_frames) >= 1
     assert msg_frames[0].get("params") == {
@@ -348,14 +313,12 @@ def test_progress_frames_emitted_when_token_present() -> None:
         "text": "task started",
     }
 
-    # Frame 2: notifications/progress frame
     prog_frames = [f for f in frames if f.get("method") == "notifications/progress"]
     assert len(prog_frames) >= 1
     prog_params = _extract_dict(prog_frames[0].get("params"))
     assert prog_params.get("progressToken") == "tok-progress-1"
     assert isinstance(prog_params.get("progress"), (int, float))
 
-    # Frame 3: final JSON-RPC response
     final_frames = [f for f in frames if f.get("id") == 101]
     assert len(final_frames) == 1
     final_res = _extract_dict(final_frames[0].get("result"))
@@ -364,13 +327,6 @@ def test_progress_frames_emitted_when_token_present() -> None:
 
 @pytest.mark.parametrize("tool_name", ["exec", "unsafe_exec", "raw_exec"])
 def test_token_bearing_exec_family_tools(tool_name: str) -> None:
-    """Each exec-family tool correctly streams progress when supplied a token.
-
-    Each exec-family tool binds the SSE-installed subscription via
-    :func:`attach_progress_subscription` after ``registry.start(...)``
-    returns the new ``job_id`` — same hook the production WU-2 worker
-    will call.
-    """
     env = _TestEnv()
     session = AgentSession("sess-1", "run-1", "http://localhost", {"ProcessExecBounded"})
 
@@ -392,9 +348,6 @@ def test_token_bearing_exec_family_tools(tool_name: str) -> None:
         req: JsonRpcRequest, state: ServerState
     ) -> tuple[JsonRpcResponse, ServerState]:
         job_id = env.registry.start(["cmd"], capability="ProcessExecBounded")
-        # Bind the SSE-installed subscription to the new job_id via the
-        # public hook (this is the WU-2 contract for exec/unsafe_exec/raw_exec
-        # requests that don't carry job_id at install time).
         installed = list(env.registry._subscriptions.values())
         assert len(installed) == 1
         installed[0].job_id = job_id
@@ -422,24 +375,11 @@ def test_token_bearing_exec_family_tools(tool_name: str) -> None:
 
 
 def test_exec_wait_with_distinct_progress_token() -> None:
-    """A subsequent exec_wait receives progress frames stamped with its own distinct token.
-
-    The initial ``exec`` request installs an unbound subscription
-    (``job_id=None``); the WU-2 worker attaches it via
-    :func:`attach_progress_subscription` after ``registry.start(...)``
-    returns the new job_id. The subsequent ``exec_wait`` request carries
-    ``job_id`` directly, so the SSE streaming path binds it at install
-    time. Each request's subscription uses a distinct ``request_id`` and
-    ``progress_token``; teardown ensures neither leaks after its request
-    completes.
-    """
     env = _TestEnv()
     session = AgentSession("sess-1", "run-1", "http://localhost", {"ProcessExecBounded"})
 
-    # Start a background job
     job_id = env.registry.start(["long_running"], capability="ProcessExecBounded")
 
-    # 1. Initial exec call with tok-initial
     req1 = JsonRpcRequest(
         jsonrpc="2.0",
         method="tools/call",
@@ -453,7 +393,6 @@ def test_exec_wait_with_distinct_progress_token() -> None:
     written1: list[bytes] = []
 
     def handle_req1(req: JsonRpcRequest, state: ServerState) -> tuple[JsonRpcResponse, ServerState]:
-        # WU-2 hook: bind the SSE-installed subscription to the new job_id.
         installed = list(env.registry._subscriptions.values())
         assert len(installed) == 1
         installed[0].job_id = job_id
@@ -479,9 +418,6 @@ def test_exec_wait_with_distinct_progress_token() -> None:
     p1_params = _extract_dict(prog1[0].get("params"))
     assert p1_params.get("progressToken") == "tok-initial"
 
-    # 2. Subsequent exec_wait call with DISTINCT tok-wait — this request
-    # carries job_id, so the SSE streaming path installs with an EXPLICIT
-    # binding. The WU-2 hook is not needed here.
     req2 = JsonRpcRequest(
         jsonrpc="2.0",
         method="tools/call",
@@ -517,18 +453,12 @@ def test_exec_wait_with_distinct_progress_token() -> None:
     p2_params = _extract_dict(prog2[0].get("params"))
     assert p2_params.get("progressToken") == "tok-wait"
 
-    # Crucial assertion: no frames in req2 carried tok-initial, and no frames in req1 carried tok-wait.
-    # Tokens are request-scoped, so each request's subscription only emits
-    # for ITS own token; the explicit job_id binding on the exec_wait
-    # subscription ensures it routes to the job whose frames that request
-    # is waiting on, never to a stale token from a prior request.
     for f in prog2:
         params = _extract_dict(f.get("params"))
         assert params.get("progressToken") != "tok-initial"
 
 
 def test_no_progress_frames_emitted_when_token_absent() -> None:
-    """When progressToken is absent, behavior is unchanged: no progress frames are emitted."""
     env = _TestEnv()
     session = AgentSession("sess-1", "run-1", "http://localhost", {"ProcessExecBounded"})
 
@@ -569,20 +499,16 @@ def test_no_progress_frames_emitted_when_token_absent() -> None:
     )
 
     frames = _parse_sse_frames(written)
-    # Output chunk notifications/message must be present
     msg_frames = [f for f in frames if f.get("method") == "notifications/message"]
     assert len(msg_frames) == 1
 
-    # notifications/progress MUST NOT be present
     prog_frames = [f for f in frames if f.get("method") == "notifications/progress"]
     assert len(prog_frames) == 0
 
-    # Final response is present
     assert any(f.get("id") == 303 for f in frames)
 
 
 def test_teardown_prevents_stale_token_emission() -> None:
-    """Subscription teardown ensures completed requests never receive further progress frames."""
     env = _TestEnv()
     session = AgentSession("sess-1", "run-1", "http://localhost", {"ProcessExecBounded"})
 
@@ -622,23 +548,18 @@ def test_teardown_prevents_stale_token_emission() -> None:
         registry=env.registry,
     )
 
-    # During request execution, 1 progress frame was recorded
     frames = _parse_sse_frames(written)
     prog_frames = [f for f in frames if f.get("method") == "notifications/progress"]
     assert len(prog_frames) == 1
     assert len(captured_sub) == 1
     sub = captured_sub[0]
 
-    # After request completion:
-    # 1. Registry no longer holds the subscription
     assert sub.request_id not in env.registry._subscriptions
 
-    # 2. Subsequent job steps do NOT dispatch frames to the finished request's writer
     before_len = len(written)
     env.clock.advance(1.0)
     env.registry.step_job(job_id, dt=1.0)
     assert len(written) == before_len
 
-    # 3. Invoking the stale sink directly drops the frame because active_flag is False
     sub.sink({"progressToken": "tok-ephemeral", "progress": 10.0})
     assert len(written) == before_len

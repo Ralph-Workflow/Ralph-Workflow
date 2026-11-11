@@ -1,4 +1,3 @@
-"""TTL-based recheck policy for capability health state."""
 
 from __future__ import annotations
 
@@ -13,7 +12,6 @@ if TYPE_CHECKING:
 
 
 class RecheckPolicy(RalphBaseModel):
-    """Recheck timing policy for capability health probes."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -26,7 +24,6 @@ DEFAULT_POLICY: RecheckPolicy = RecheckPolicy()
 
 
 def _hours_since_iso(iso_str: str) -> float | None:
-    """Return hours since an ISO timestamp, or None if the string is empty/invalid."""
     if not iso_str:
         return None
     try:
@@ -40,7 +37,6 @@ def _hours_since_iso(iso_str: str) -> float | None:
 
 
 def needs_recheck(entry: CapabilityEntry, policy: RecheckPolicy | None = None) -> bool:
-    """Return True if a capability entry should be rechecked based on TTL policy."""
     p = policy if policy is not None else DEFAULT_POLICY
     s = entry.status
     if s == CapabilityStatus.NOT_INSTALLED:

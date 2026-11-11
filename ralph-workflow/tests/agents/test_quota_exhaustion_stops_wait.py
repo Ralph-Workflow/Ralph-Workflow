@@ -1,13 +1,3 @@
-"""Regression coverage for definitive quota signals on live reader streams.
-
-Both public readers must stop as soon as they observe a definitive quota
-signal. The process stream returns one quota line and raises a test-local
-would-block error if the reader asks for a second blocking read. The AGY PTY
-case emits no stdout and appends quota evidence after reader start to its
-explicitly passed CLI-log path. The injected ``FakeClock`` keeps either
-regression fast.
-"""
-
 from __future__ import annotations
 
 import contextlib
@@ -32,7 +22,7 @@ if TYPE_CHECKING:
 
 
 class _WouldBlockError(Exception):
-    """Raised when a reader attempts another blocking source read."""
+    pass
 
 
 class _QuotaLineThenWouldBlock:
@@ -134,7 +124,6 @@ def _reader_error(reader: ProcessLineReader | PtyLineReader) -> BaseException | 
 
 
 def test_process_reader_stops_after_other_agent_quota_line(tmp_path: Path) -> None:
-    """A non-interactive rate-limit line aborts before stdout can block again."""
     stdout = _QuotaLineThenWouldBlock("rate limit reached\n")
     reader = ProcessLineReader(
         _ProcessHandle(stdout),
@@ -181,7 +170,6 @@ def test_process_reader_ignores_reordered_user_prompt_event(tmp_path: Path) -> N
 
 
 def test_process_reader_stops_when_quota_is_only_on_stderr(tmp_path: Path) -> None:
-    """A quota diagnostic on stderr aborts without waiting for stdout."""
     stderr = iter(("RESOURCE_EXHAUSTED (code 429)\n",))
     stdout = _EmptyStdoutWouldBlock()
     reader = ProcessLineReader(
@@ -197,7 +185,6 @@ def test_process_reader_stops_when_quota_is_only_on_stderr(tmp_path: Path) -> No
 
 
 def test_process_reader_does_not_treat_login_prompt_as_quota(tmp_path: Path) -> None:
-    """A login prompt remains distinct from a terminal quota signal."""
     stdout = _QuotaLineThenWouldBlock("Please log in to continue\n")
     reader = ProcessLineReader(
         _ProcessHandle(stdout),
@@ -214,7 +201,6 @@ def test_pty_reader_stops_after_quota_is_appended_to_explicit_cli_log(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AGY's newly appended CLI-log quota aborts before the PTY can block."""
     cli_log = tmp_path / "cli.log"
     cli_log.write_bytes(b"previous invocation\n")
     master_fd = os.open("/dev/null", os.O_RDONLY)

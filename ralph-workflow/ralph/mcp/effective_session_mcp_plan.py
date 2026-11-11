@@ -1,4 +1,3 @@
-"""Canonical effective MCP inventory for one agent session."""
 
 from __future__ import annotations
 
@@ -13,7 +12,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class EffectiveSessionMcpPlan:
-    """Canonical effective MCP inventory for one agent session."""
 
     custom_servers: tuple[UpstreamMcpServer, ...]
     agent_upstream_servers: tuple[UpstreamMcpServer, ...]

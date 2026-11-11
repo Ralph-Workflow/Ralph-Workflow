@@ -1,4 +1,3 @@
-"""Bounded structured logging for rejected markdown artifact validation."""
 
 from __future__ import annotations
 
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 
 def log_validation_rejection(artifact_type: str, diagnostics: list[Diagnostic]) -> None:
-    """Record bounded structured details for blocking validation diagnostics."""
     errors = [item for item in diagnostics if item.severity == "error"]
     if not errors:
         return

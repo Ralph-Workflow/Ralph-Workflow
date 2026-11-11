@@ -1,5 +1,3 @@
-"""Regression tests: web_search is enabled out-of-the-box with no user config."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

@@ -1,4 +1,3 @@
-"""SpawnProcess — callable protocol that spawns the MCP server subprocess."""
 
 from __future__ import annotations
 
@@ -11,16 +10,6 @@ if TYPE_CHECKING:
 
 
 class SpawnProcess(Protocol):
-    """Callable that spawns the MCP server subprocess.
-
-    The ``phase`` keyword argument, when set, is used to label the process
-    ``phase:<phase>:mcp-server`` so it is reaped by the phase-scope cleanup.
-
-    The ``pass_fds`` keyword argument carries file-descriptor numbers
-    the child must inherit past ``exec``; R1 uses it to hand a
-    parent-owned listening socket to a freshly spawned MCP server
-    without going through the bind/listen cycle again.
-    """
 
     def __call__(
         self,

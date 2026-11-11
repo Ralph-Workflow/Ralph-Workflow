@@ -1,12 +1,3 @@
-"""Publication of the cycle deadline to the agent-facing MCP server.
-
-The MCP server runs as a separate process spawned per agent invocation, so it
-cannot read pipeline state. The deadline is fixed for the lifetime of one
-invocation, so the pipeline publishes it as wall-clock epochs in the
-environment that subprocess inherits, and withdraws it when the invocation is
-not inside a guarded cycle.
-"""
-
 from __future__ import annotations
 
 import inspect
@@ -47,7 +38,6 @@ _CLOCK_TOLERANCE_SECONDS = 30.0
 
 @lru_cache(maxsize=1)
 def _bundle() -> object:
-    """Load the bundled policy once; these tests share a hard time budget."""
     return load_policy(_DEFAULTS_DIR)
 
 
@@ -56,7 +46,6 @@ def test_cycle_deadline_regression_mcp_server_has_no_notice_provider() -> None:
 
 
 def _reserve_env(monkeypatch: MonkeyPatch) -> None:
-    """Register the published names with monkeypatch so the test restores them."""
     for name in (
         CYCLE_WARN_EPOCH_ENV,
         CYCLE_DEADLINE_EPOCH_ENV,
@@ -99,7 +88,6 @@ def _materialize(
 def test_guarded_invocation_publishes_warning_and_deadline_epochs(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """A development invocation inside an active cycle publishes both epochs."""
     _reserve_env(monkeypatch)
     state = PipelineState(
         phase="development",
@@ -149,7 +137,6 @@ def test_development_epochs_are_independent_and_warn_at_seventy_minutes(
 def test_invocation_outside_a_cycle_withdraws_a_stale_deadline(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """A planning invocation must not inherit the previous cycle's deadline."""
     _reserve_env(monkeypatch)
     state = PipelineState(phase="planning", cycle_timebox_active=False)
 
@@ -162,7 +149,6 @@ def test_invocation_outside_a_cycle_withdraws_a_stale_deadline(
 def test_deadline_is_withdrawn_once_the_cycle_concludes(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """Finalization phases run with no deadline published."""
     _reserve_env(monkeypatch)
     state = PipelineState(
         phase="development_final_commit_review",
@@ -178,7 +164,6 @@ def test_deadline_is_withdrawn_once_the_cycle_concludes(
 def test_untimed_invocation_withdraws_the_deadline(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """With no timing context there is no deadline to advertise."""
     _reserve_env(monkeypatch)
     state = PipelineState(
         phase="development",
@@ -195,13 +180,6 @@ def test_untimed_invocation_withdraws_the_deadline(
 def test_publication_is_withdrawn_once_the_invocation_returns(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """The deadline belongs to one invocation, not to everything spawned after it.
-
-    The environment is process-global, so a deadline left published after the
-    development invocation is inherited by every later subprocess — including
-    agents with nothing to do with the cycle, such as the auto-integrate
-    conflict resolver, which would be told to wrap up work it never started.
-    """
     _reserve_env(monkeypatch)
     state = PipelineState(
         phase="development",
@@ -220,12 +198,6 @@ def test_publication_is_withdrawn_once_the_invocation_returns(
 def test_publish_then_withdraw_across_two_invocations(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """Sequencing, not just the endpoints: a real publish must be revoked later.
-
-    The two tests above seed the environment by hand; this one publishes for a
-    guarded invocation and then runs a later, unguarded one, which is the shape
-    a stale deadline would actually leak through.
-    """
     _reserve_env(monkeypatch)
     _materialize(
         "development",
@@ -253,12 +225,6 @@ def test_publish_then_withdraw_across_two_invocations(
 def test_fan_out_publishes_the_deadline_for_its_workers(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """Fan-out spawns worker bridges without materializing a phase prompt.
-
-    Without publishing on that path a fanned-out cycle gives its workers no
-    deadline at all, while still leaking whatever the previous invocation left
-    behind.
-    """
     _reserve_env(monkeypatch)
     state = PipelineState(
         phase="development",
@@ -289,15 +255,6 @@ def test_fan_out_withdraws_a_stale_deadline_when_no_cycle_runs(
 def test_finalizing_an_agent_invocation_keeps_the_deadline_readable(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """The finalizer grades the agent's result, so it must NOT revoke first.
-
-    Grading promotes and validates the result artifact, and the warned
-    incomplete-work gate in that validation asks the runtime — not the agent —
-    whether this cycle had warned. Revoking here answered "no" for every
-    promoted artifact, disabling the gate on the path it exists for. The
-    step's ``finally`` revokes instead; see
-    ``tests/test_runner_cycle_deadline_revocation.py``.
-    """
     _reserve_env(monkeypatch)
     _materialize(
         "development",
@@ -338,13 +295,6 @@ def test_finalizing_an_agent_invocation_keeps_the_deadline_readable(
 
 
 def test_withdrawing_clears_every_published_name(monkeypatch: MonkeyPatch) -> None:
-    """A partial withdrawal is worse than none: consumers read a mixed deadline.
-
-    The duration and finalization target are published alongside the epochs and
-    are just as inheritable, so leaving either behind describes one cycle with
-    another's numbers. Whether the runner actually calls this on each exit path
-    is pinned separately in ``tests/test_runner_cycle_deadline_revocation.py``.
-    """
     _reserve_env(monkeypatch)
     _publish_a_guarded_deadline()
     assert CYCLE_DEADLINE_EPOCH_ENV in os.environ
@@ -441,12 +391,6 @@ def test_prepared_prompt_regression_does_not_receive_a_cycle_timebox_warning(
 def test_the_fan_out_phase_publishes_before_spawning_its_workers(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """Workers inherit the deadline at spawn or never see it at all.
-
-    The publication helper was pinned by calling it directly, so the fan-out
-    call site itself could be deleted — leaving every worker in a warned cycle
-    unwarned — with that coverage still green.
-    """
     from ralph.pipeline.effects import FanOutEffect
     from ralph.workspace.scope import WorkspaceScope
 
@@ -455,13 +399,7 @@ def test_the_fan_out_phase_publishes_before_spawning_its_workers(
     integration_saw: list[str | None] = []
 
     def _fan_out(**kwargs: object) -> PipelineState:
-        # The raw value, not mere presence: the fixture seeds these names with
-        # a placeholder, so presence alone is satisfied by publishing nothing.
         published.append(os.environ.get(CYCLE_DEADLINE_EPOCH_ENV))
-        # Run the completion callback the real fan-out runs. Auto-integration
-        # spawns a conflict-resolver agent that never joined the cycle, and
-        # stubbing this away left the coordinator's side of that rule untested
-        # while the worker's twin was pinned.
         on_complete = kwargs["_on_successful_completion"]
         on_complete(PipelineState(phase="development"))
         return PipelineState(phase="development")
@@ -498,23 +436,14 @@ def test_the_fan_out_phase_publishes_before_spawning_its_workers(
 
     assert len(published) == 1
     assert published[0] is not None
-    # Hidden from the conflict resolver reconciliation spawns, which never
-    # joined this cycle.
     assert integration_saw == [None]
-    # A real epoch, which the placeholder is not.
     assert float(published[0]) > time.time()
-    # And revoked afterwards, so nothing spawned later inherits it.
     assert CYCLE_DEADLINE_EPOCH_ENV not in os.environ
 
 
 def test_the_warning_point_is_announced_to_the_operator(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """The operator learns a cycle passed 80% from this line and nowhere else.
-
-    Demoting it to debug removes it from normal output entirely, which no test
-    noticed — so the run would look unremarkable right up to the redirect.
-    """
     from loguru import logger
 
     _reserve_env(monkeypatch)

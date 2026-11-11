@@ -1,77 +1,15 @@
-"""Shared numeric defaults for agent timeout policy and child-liveness configuration.
-
-These constants are the single source of truth for all timeout and child-liveness
-numeric defaults. They are imported by ``ralph.agents.idle_watchdog.TimeoutPolicy``
-(dataclass field defaults), ``ralph.agents.invoke`` (child-liveness TTL module-level
-constants), and ``ralph.config.models.GeneralConfig`` (field defaults), as well as
-``ralph.mcp.websearch.backends.brave`` / ``searxng``
-(``WEBSEARCH_BACKEND_TIMEOUT_SECONDS``) and ``ralph.mcp.websearch.backends.ddgs`` /
-``exa`` / ``tavily`` (``WEBSEARCH_SDK_TIMEOUT_SECONDS``, routed through
-``ralph.mcp.websearch._bounded_sdk_call.with_timeout``).
-
-Changing a constant here automatically propagates to all consumers so they
-cannot drift independently.
-"""
-
 from __future__ import annotations
 
-# ---------------------------------------------------------------------------
-# Idle / session timeout defaults
-# ---------------------------------------------------------------------------
-
-#: Default idle timeout: maximum seconds without agent output before firing.
 IDLE_TIMEOUT_SECONDS: float = 300.0
 
-#: Default drain window duration before firing NO_OUTPUT_DEADLINE.
 DRAIN_WINDOW_SECONDS: float = 0.5
 
-#: Default post-tool-result progression budget. When set, the idle
-#: watchdog fires STALLED_AFTER_TOOL_RESULT if no follow-up
-#: STREAM_DELTA/OUTPUT_LINE activity arrives within this many seconds
-#: of a tool result. The default of 120s is generous enough to cover
-#: the typical 60s 95th-percentile tool-result-to-output-line latency
-#: in production while still detecting the post-tool-result wedge in
-#: ~120s rather than waiting for the 300s idle-timeout default.
-#: Set to ``None`` to opt out and preserve the legacy 300s
-#: NO_OUTPUT_DEADLINE-only behavior.
 POST_TOOL_RESULT_PROGRESSION_SECONDS: float | None = 120.0
 
-#: Default per-channel activity evidence TTL. Governs how long after a
-#: non-stdout event (MCP tool call, subagent progress, workspace file
-#: change) the corresponding channel still counts as live activity for
-#: the NO_OUTPUT_DEADLINE verdict. While ANY non-stdout channel is
-#: fresher than this TTL, the watchdog defers the NO_OUTPUT_DEADLINE
-#: fire and returns CONTINUE so a productive session that emits little
-#: stdout is not killed as idle. The default of 30s is well under the
-#: 300s idle-timeout default and the 600s no-progress ceiling, so a
-#: silent subagent (or silent MCP path) is detected at the regular
-#: idle deadline.
-#: Set to 0.0 to disable the activity-aware verdict and restore the
-#: legacy stdout-only NO_OUTPUT_DEADLINE behavior.
 AGENT_IDLE_ACTIVITY_EVIDENCE_TTL_SECONDS: float = 30.0
 
-#: Default staleness threshold for the SILENT_SUBAGENT diagnostic.
-#: The StuckClassifier returns ``StuckKind.SILENT_SUBAGENT`` when a
-#: subagent channel has evidence (count >= 1) but the most recent
-#: signal is older than this threshold. The default of 180.0s is
-#: deliberately looser than ``AGENT_IDLE_ACTIVITY_EVIDENCE_TTL_SECONDS``
-#: (30.0s) so the diagnostic surfaces after the short-term deferral
-#: gate has expired but before the 600s no-progress ceiling.
 SILENT_SUBAGENT_SECONDS: float | None = 180.0
 
-#: Default per-kind workspace file-change weights. Each value is
-#: BINARY: weight==0.0 means the change is dropped (does not defer
-#: the NO_OUTPUT_DEADLINE verdict); weight==1.0 means the change
-#: counts as full activity. Intermediate weights are rejected by
-#: the validator today and reserved for a future fractional-TTL
-#: feature.
-#:
-#: The default policy is conservative: only source-code changes
-#: count. Operators who relied on log-file activity to defer the
-#: verdict can opt in by overriding this dict (see
-#: ``GeneralConfig.agent_workspace_change_weights`` and the
-#: ``[general] agent_workspace_change_weights = {...}`` key in
-#: ``ralph-workflow.toml``).
 DEFAULT_AGENT_WORKSPACE_CHANGE_WEIGHTS: dict[str, float] = {
     "source": 1.0,
     "log": 0.0,
@@ -80,351 +18,99 @@ DEFAULT_AGENT_WORKSPACE_CHANGE_WEIGHTS: dict[str, float] = {
     "other": 0.0,
 }
 
-#: Default hard ceiling on cumulative WAITING_ON_CHILD time.
 MAX_WAITING_ON_CHILD_SECONDS: float = 1800.0
 
-#: Default absolute session wall-clock ceiling (hard force-cut). None disables it.
-#: This is a generic runaway guard, deliberately above the default 90-minute
-#: development-timebox hard stop so it cannot preempt the timebox redirect.
 MAX_SESSION_SECONDS: float | None = 5700.0
 
-#: Repeated-error circuit breaker: fire after this many consecutive identical
-#: error fingerprints with no intervening forward progress. None disables the rule.
 REPEATED_ERROR_CONSECUTIVE_THRESHOLD: int | None = 5
 
-#: Repeated-error circuit breaker: fire after this many occurrences of one error
-#: fingerprint within ``REPEATED_ERROR_WINDOW_SECONDS`` (catches loops that
-#: interleave cosmetic output). None disables the rule.
 REPEATED_ERROR_WINDOW_COUNT: int | None = 8
 
-#: Rolling window for ``REPEATED_ERROR_WINDOW_COUNT``. None disables the window rule.
 REPEATED_ERROR_WINDOW_SECONDS: float | None = 600.0
 
-#: Default bound for git subprocesses invoked via ``ralph.git.subprocess_runner.run_git``
-#: when a caller does not specify an explicit timeout. Git is run in non-interactive
-#: (batch) mode so a network/credential prompt fails fast rather than hanging; this
-#: ceiling is the backstop for a slow-but-non-blocking op (e.g. status over large
-#: vendor submodules). The process tree is killed on expiry.
 GIT_SUBPROCESS_TIMEOUT_SECONDS: float = 120.0
 
-#: SIGTERM-to-SIGKILL grace for a git child the runner must stop (timeout,
-#: output cap, cancellation). Git removes its ``*.lock`` files from a SIGTERM
-#: handler; SIGKILL cannot be handled, so killing git with no grace window
-#: orphans ``index.lock`` / ``HEAD.lock`` / ref locks and wedges every later
-#: git call on that repository. The window only has to cover git's cleanup.
-#: This is the single numeric source for the cleanup floor;
-#: ``ralph.git.git_call_policy`` projects it into every call-class row, and
-#: the git runner obtains its grace through that policy lookup.
 GIT_TERMINATE_GRACE_SECONDS: float = 5.0
 
-#: Default cap (bytes) on git stdout/stderr captured by
-#: ``ralph.git.subprocess_runner.run_git`` when a caller does not opt into a
-#: custom value via ``GitRunOptions.output_limit_bytes``. A massive
-#: ``git log`` / ``git diff`` / ``git status`` against a huge vendor submodule
-#: would otherwise buffer the entire payload in memory. 10 MiB matches the
-#: existing ``SPILL_OUTPUT_LIMIT_BYTES`` precedent at
-#: ``ralph/mcp/tools/_exec_output_spill.py:33`` and is well above any
-#: realistic single-file diff. Callers that need to opt OUT can pass
-#: ``output_limit_bytes=None`` to preserve the unbounded legacy behavior.
 GIT_OUTPUT_LIMIT_BYTES: int = 10 * 1024 * 1024
 
-#: Default per-call timeout for the exec MCP tool family (exec/unsafe_exec). Set
-#: above the 60s combined ``make verify`` budget so an agent running verification
-#: (or a slow git op) through exec does not time out on every call. This is the one
-#: source of truth: both the exec handler default and the advertised tool-schema
-#: default derive from it, so the hint shown to the agent cannot drift from the
-#: behavior. Per-call ``timeout_ms`` overrides it; the process tree is killed on
-#: expiry, so the server stays bounded regardless.
 EXEC_DEFAULT_TIMEOUT_MS: int = 90_000
 
-#: Hard upper bound on a per-call exec ``timeout_ms`` (and on the suggested retry
-#: timeout). An agent may raise ``timeout_ms`` to recover from a timeout, but never
-#: above this — the MCP client request timeout is derived to exceed it, so a
-#: legitimately long exec can never outrun the client (which would re-raise the
-#: ``-32001 Request timed out`` storm). 5 minutes is generous for any single command.
 EXEC_MAX_TIMEOUT_MS: int = 300_000
 
-#: Hard upper bound on the post-final-frame SSE drain grace (the time the
-#: server waits for the final frame's write to complete before closing the
-#: connection). A slow client cannot outrun the dispatch cap by holding
-#: the receive buffer open past the dispatch — the server gives the final
-#: frame at most this many milliseconds to drain. Tuned for LAN clients.
 SSE_DRAIN_CEILING_MS: int = 5_000
 
-#: Hard upper bound on the SIGTERM-then-SIGKILL escalation grace. When a
-#: child must be terminated, the server first sends SIGTERM and waits at
-#: most this long before escalating to SIGKILL. Tuned for fast subprocess
-#: shutdown.
 KILL_ESCALATION_CEILING_MS: int = 5_000
 
-#: Caller deadline for saturated MCP dispatch. ``EXEC_MAX_TIMEOUT_MS`` is the
-#: hard ceiling for legitimate tool calls; adding the kill grace prevents a
-#: healthy clamped call from racing the dispatcher while preserving room for
-#: dispatch, drain, and kill below the 330-second client request timeout.
 MCP_DISPATCH_TIMEOUT_SECONDS: float = (EXEC_MAX_TIMEOUT_MS + KILL_ESCALATION_CEILING_MS) / 1000.0
 
-#: Default per-call HTTP timeout for built-in websearch backends (Brave, SearXNG).
-#: Sourced by ralph.mcp.websearch.backends.brave and ralph.mcp.websearch.backends.searxng
-#: to replace the previously hard-coded _TIMEOUT_SECONDS = 10.0 literals. One source of
-#: truth so a 10s wedge cannot drift into a backend. Overridable via the
-#: ``[web_search]`` block of mcp.toml (WebSearchConfig.web_search_default_timeout_seconds).
-#: Must be > 0; the import-time invariant below rejects non-positive values.
 WEBSEARCH_BACKEND_TIMEOUT_SECONDS: float = 10.0
 
-#: Default per-call timeout for third-party-SDK-backed websearch backends (DDGS, Exa,
-#: Tavily). The SDKs wrap their own HTTP client; a hung SDK can otherwise block the
-#: dispatch worker for the full client timeout (330s), so the call is routed through
-#: ralph.mcp.websearch._bounded_sdk_call.with_timeout. Slightly more generous than the
-#: HTTP backend default because the SDKs add their own connection layer. Must be
-#: >= WEBSEARCH_BACKEND_TIMEOUT_SECONDS; the import-time invariant below rejects
-#: values that violate that ordering.
 WEBSEARCH_SDK_TIMEOUT_SECONDS: float = 30.0
 
-#: Default poll interval for subagent output capture. The watchdog polls
-#: observable subagent log streams at this cadence and ingests only new lines
-#: since the last poll.
 SUBAGENT_OUTPUT_POLL_INTERVAL_SECONDS: float = 1.0
 
-#: Default enabled state for the process monitor. When false, the watchdog
-#: does not scan the process tree and subagent liveness is inferred only from
-#: progress signals already received by the MCP server.
 PROCESS_MONITOR_ENABLED: bool = True
 
-#: Default enabled state for subagent output capture. When false, the watchdog
-#: does not poll subagent log streams; subagent output is not treated as
-#: first-party evidence.
 SUBAGENT_OUTPUT_CAPTURE_ENABLED: bool = True
 
-#: Default poll interval for the read loop.
 IDLE_POLL_INTERVAL_SECONDS: float = 0.05
 
-#: Default grace window after parent exits normally.
 PARENT_EXIT_GRACE_SECONDS: float = 5.0
 
-#: Default ceiling for descendant-wait after parent exits.
 DESCENDANT_WAIT_TIMEOUT_SECONDS: float = 30.0
 
-#: Default poll interval for descendant-wait / process-exit-wait loops.
 DESCENDANT_WAIT_POLL_SECONDS: float = 0.5
 
-#: Default ceiling for waiting on subprocess exit after stdout closes.
 PROCESS_EXIT_WAIT_SECONDS: float = 30.0
 
-#: Default cadence for WAITING_ON_CHILD periodic status events.
 WAITING_STATUS_INTERVAL_SECONDS: float = 30.0
 
-#: Default suspicion threshold: cumulative WAITING time before SUSPECTED_FROZEN event.
-#: None disables suspicion.
 SUSPECT_WAITING_ON_CHILD_SECONDS: float | None = 600.0
 
-#: Default no-progress ceiling: shorter WAITING ceiling when child is alive but not
-#: making forward progress (heartbeat-only, stale-label, or OS-descendant-only).
-#: None disables the no-progress ceiling.
 MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS: float | None = 600.0
 
-#: Short ceiling on cumulative WAITING_ON_CHILD time when the only evidence of a
-#: running child is its OS-process-tree existence (alive_by=OS_DESCENDANT_ONLY_STALE_PROGRESS
-#: with no scoped child evidence and no first-party evidence channels active). Fires
-#: CHILDREN_PERSIST_TOO_LONG in ~300s instead of waiting for the 600s no-progress
-#: ceiling. The 300s default tolerates the typical 95th-percentile sub-step latency
-#: (file reads, MCP startup, model load, multi-step tool calls) so the ceiling does
-#: not fire while the agent is genuinely making forward progress; a wedged-but-alive
-#: opencode subprocess with zero observable progress signals is still detected well
-#: before the 600s no-progress ceiling. The previous 120s default produced the
-#: 'dumb-kill' regression documented in wt-012 where the watchdog fired at
-#: cumulative=159s, idle_elapsed=120s while the agent was reading
-#: ``.agent/PRODUCT_CRITERIA.md`` (a legitimate sub-step well below 120s of work).
-#: The smart-verdict gate in the watchdog (StuckClassifier) further protects against
-#: premature fires by deferring the verdict while any first-party channel is fresh
-#: or while the agent is in a waiting state. Set to ``None`` to disable the override
-#: and fall back to the no-progress ceiling.
 OS_DESCENDANT_ONLY_CEILING_SECONDS: float | None = 300.0
 
-#: Earlier SUSPECTED_FROZEN threshold when alive_by is OS_DESCENDANT_ONLY_STALE_PROGRESS.
-#: The watchdog fires the suspect event at min(suspect_waiting_on_child_seconds,
-#: OS_DESCENDANT_ONLY_SUSPECT_SECONDS) so the operator sees escalation at ~60s
-#: instead of waiting for the standard 600s suspicion threshold. Set to ``None``
-#: to disable and use the standard suspect threshold.
 OS_DESCENDANT_ONLY_SUSPECT_SECONDS: float | None = 60.0
 
-#: A known descendant PID with 0 user+system CPU time over this rolling window is
-#: reported by the read-loop corroborator as alive_by=CPU_IDLE_WHILE_ALIVE. The
-#: override short-circuits the OS-descendant-only ceiling and falls back to the
-#: no-progress ceiling (180.0 default). The 60s default tolerates up to 60s of
-#: sub-step quiescence (I/O wait, GC pause, network call) which is within the
-#: typical 95th-percentile sub-step latency. Set to ``None`` to disable the CPU
-#: probe and rely solely on the OS-descendant-only ceiling.
 CPU_IDLE_SECONDS: float | None = 60.0
 
-#: The per-run .agent/raw/{safe_id}.log file is reported as alive_by=LOG_STALE_WHILE_ALIVE
-#: when its size has not grown for this many seconds. The override short-circuits
-#: the OS-descendant-only ceiling and falls back to the no-progress ceiling. The 30s
-#: default is aggressive but appropriate for detecting a wedged subprocess that is
-#: not writing any output. Set to ``None`` to disable the log-growth probe;
-#: the probe gracefully no-ops when the raw log file is absent.
 LOG_GROWTH_SECONDS: float | None = 30.0
 
-#: Default fast no-progress ceiling: shorter WAITING ceiling when child is alive but
-#: not making forward progress (heartbeat-only, stale-label, or OS-descendant-only)
-#: and stdout has been idle. None disables it.
 NO_PROGRESS_QUIET_SECONDS: float | None = 240.0
 
-#: Default heartbeat-only ceiling: fires ``NO_PROGRESS_QUIET`` when a
-#: heartbeat-only subagent (``AliveBy.FRESH_HEARTBEAT_ONLY`` -- alive per
-#: the corroborator but no first-party progress) has been alive for this
-#: many seconds. Without this ceiling, a heartbeat-only subagent would
-#: bypass ``NO_PROGRESS_QUIET`` (which requires ``alive_by is None``)
-#: AND ``STRICTLY_STUCK`` (which requires a stale alive_by) and only
-#: trip the cumulative 600s ``CHILDREN_PERSIST_TOO_LONG`` ceiling --
-#: too late for a heartbeat-only subagent that emits heartbeats but no
-#: real work. The default equals ``NO_PROGRESS_QUIET_SECONDS`` (240s)
-#: so the heartbeat-only branch fires AT the dumb-kill ceiling (the
-#: degenerate equal case permitted by the cross-field validator).
-#: Operators can RAISE the ceiling to give heartbeat-only subagents
-#: more headroom (e.g. long-running exploration, dispatching
-#: subagents) as long as the value stays <= ``NO_PROGRESS_QUIET_SECONDS``
-#: when both are set. Must be > 0 when set. When ``None``, the
-#: heartbeat-only ceiling is disabled and the watchdog falls back to
-#: the cumulative ``CHILDREN_PERSIST_TOO_LONG`` ceiling.
 NO_PROGRESS_QUIET_HEARTBEAT_CEILING_SECONDS: float | None = 240.0
 
-#: Default dumb-kill floor: NO_PROGRESS_QUIET cannot fire within the first N seconds
-#: of an agent run. This prevents the watchdog from killing a recently-launched
-#: agent that is doing real thinking work (planning, exploration, dispatching
-#: subagents) but has not yet produced first-party activity evidence. The 120.0s
-#: default matches the OS_DESCENDANT_ONLY_CEILING default. The
-#: SESSION_CEILING_EXCEEDED reason is unaffected (operator-set hard cap).
-#: Set to ``None`` to disable the floor (not recommended).
 NO_PROGRESS_QUIET_MINIMUM_INVOCATION_SECONDS: float | None = 120.0
 
-#: Default fast-fire window for the new NO_OUTPUT_AT_START watchdog reason. When
-#: the agent has been alive for this many seconds with zero recorded activity
-#: (no stdout, no tool call, no file change, no subagent output) the watchdog
-#: fires NO_OUTPUT_AT_START instead of waiting for the 600s cumulative
-#: no-progress ceiling. Set to None to opt out.
-#:
-#: This was walked down 120s -> 30s -> 15s chasing faster hang detection, and
-#: each step was reasoned about in terms of how long a kill takes rather than
-#: how long a healthy agent stays silent. That was measured backwards. An agent
-#: is not required to say anything before its first tool call, and OpenCode's
-#: ``run --format json`` says nothing at all until then: measured against the
-#: installed CLI with a real Ralph-sized prompt, it emitted NO frame within
-#: 180 seconds. At 15s the pipeline killed every OpenCode run before it could
-#: speak -- and the smoke harness never caught it, because the smoke rewrote
-#: this same setting to its own 360s ceiling.
-#:
-#: 360s is therefore the floor for a healthy silent startup, not a generous
-#: allowance. Hang detection is not weakened: an agent that produces output and
-#: then stalls is still caught by ``agent_idle_timeout_seconds`` (300s), and
-#: the cumulative no-progress ceiling (600s) and session ceiling are unchanged.
-#: This is the ONE value the broken-agent timer derives from as well
-#: (``_effective_broken_agent_grace_seconds`` = ``max(12, configured - 3)``),
-#: so raising it moves both kills together; lowering it re-breaks both.
-#: Locked by ``tests/agents/test_startup_grace_accommodates_silent_agents.py``.
 NO_OUTPUT_AT_START_SECONDS: float = 360.0
 
-#: Fast grace window for detecting a live agent with no meaningful LLM output.
-#: Deliberately BELOW ``NO_OUTPUT_AT_START_SECONDS`` so the dedicated
-#: broken-agent kill (``_check_broken_agent_timer`` in the read loop, and
-#: ``_raise_if_broken_agent_exit`` in the completion gate) wins the race
-#: against the startup watchdog: a silent or prompt-echo-only agent past
-#: this grace window is unambiguously broken and is classified unavailable
-#: with a short backoff (advancing recovery to the next agent), which is a
-#: better recovery verdict than the generic ``NO_OUTPUT_AT_START`` kill.
-#: The startup watchdog remains the backstop for agents that produce
-#: channel evidence but never meaningful output.
 BROKEN_AGENT_OUTPUT_GRACE_SECONDS: float = 12.0
 
-#: How long an EXITED process keeps the benefit of the doubt before
-#: "it produced nothing" is treated as evidence rather than as a race.
-#:
-#: The broken-agent timer's fast path reads two facts sampled at one
-#: instant: the process is dead, and no meaningful output has been
-#: RECORDED. Those are not the same instant for the output -- a line the
-#: agent wrote is recorded only once the reader thread has been
-#: scheduled, pushed it onto the queue and had it classified. On a
-#: loaded host a healthy agent that writes one line and exits promptly
-#: loses that race, and the run fails over with "no meaningful LLM
-#: output; check credentials" against an agent that did its job.
-#:
-#: Small on purpose: it delays failover for a genuinely broken agent by
-#: this much and no more, and it is bounded well below
-#: ``BROKEN_AGENT_OUTPUT_GRACE_SECONDS``. It matches the reader's own
-#: ``drain_window_seconds`` default, which exists to answer the same
-#: question at the other end of the loop.
 BROKEN_AGENT_EXIT_SETTLE_SECONDS: float = 0.5
 
-#: Default per-(fire_reason, deferred_kind) log throttle for ``_gate_fire``.
-#: The PROMPT log showed ~10 DEBUG records/sec at ``_gate_fire:949`` while a
-#: fire was deferred (SILENT_SUBAGENT or generic non-STUCK kind); that per-tick
-#: emission is log spam. The throttle keeps emissions to at most one per
-#: ``(fire_reason, deferred_kind)`` key per ``WATCHDOG_LOG_THROTTLE_SECONDS``.
-#: The 30s default matches ``WAITING_STATUS_INTERVAL_SECONDS`` so the throttle
-#: and the structured status cadence are aligned.
 WATCHDOG_LOG_THROTTLE_SECONDS: float = 30.0
 
-#: Default stuck-job sub-ceiling. The watchdog fires ``CHILDREN_PERSIST_TOO_LONG``
-#: when the cumulative ``WAITING_ON_CHILD`` time exceeds the standard cumulative
-#: ceiling (``max_waiting_on_child_seconds``, default 1800s) AND corroboration
-#: shows the child is alive-but-not-progressing (``alive_by`` in the stale set).
-#: The PROMPT trace showed cumulative waiting time climbing to 2365s without the
-#: gate firing because ``classify_stuck`` never returned STUCK while the
-#: corroborator reported an OS_DESCENDANT_ONLY_STALE_PROGRESS (or any stale
-#: alive_by). The stuck-job sub-ceiling is a SHORTER, ORTHOGONAL ceiling that
-#: fires well before the full cumulative ceiling when the child is alive but
-#: not producing fresh evidence. The 600s default is half the cumulative ceiling
-#: and matches the typical "I would have noticed if the agent was alive" run
-#: budget. Set to None to disable the sub-ceiling (legacy behavior).
 STUCK_JOB_SUB_CEILING_SECONDS: float = 600.0
 
-#: Default STRICTLY_STUCK ceiling: orthogonal to ``no_progress_quiet_seconds``,
-#: this fires ``WatchdogFireReason.STRICTLY_STUCK`` when the corroborator reports
-#: a stuck-but-alive state (``alive_by`` in
-#: ``{OS_DESCENDANT_ONLY_STALE_PROGRESS, CPU_IDLE_WHILE_ALIVE,
-#: LOG_STALE_WHILE_ALIVE}``) AND no first-party channel is fresh for this many
-#: seconds. Default is ``None`` (disabled) so operators opt in by setting a
-#: concrete value; setting it shorter than the existing
-#: ``max_waiting_on_child_no_progress_seconds`` is the recommended pattern
-#: (e.g. 300 s vs the 600 s outer ceiling). Set to ``None`` to disable.
 NO_PROGRESS_QUIET_STRICTLY_STUCK_SECONDS: float | None = None
 
-#: Default cadence for the SUBAGENT_PROGRESS waiting-status event. The
-#: watchdog emits a SUBAGENT_PROGRESS event at most once per this many seconds
-#: while WAITING_ON_CHILD deferral is active. The 30s default matches the
-#: existing PROGRESS cadence so the new event does not introduce additional
-#: churn.
 WATCHDOG_SUBAGENT_PROGRESS_INTERVAL_SECONDS: float = 30.0
 
-#: Default maximum consecutive unproductive execution attempts before an agent enters cooldown.
 AGENT_MAX_CONSECUTIVE_UNPRODUCTIVE_DEFAULT: int = 3
 
-#: Default maximum total unproductive execution attempts across a phase before an agent is spent.
 AGENT_MAX_TOTAL_UNPRODUCTIVE_DEFAULT: int = 9
 
-# ---------------------------------------------------------------------------
-# Child-liveness TTL defaults
-# ---------------------------------------------------------------------------
 
-#: Maximum seconds since last child progress signal before treated as not-progressing.
 CHILD_PROGRESS_TTL_SECONDS: float = 45.0
 
-#: Maximum seconds since last child heartbeat before heartbeat is stale.
 CHILD_HEARTBEAT_TTL_SECONDS: float = 15.0
 
-#: Grace period during which a child label persists after evidence goes stale.
 CHILD_STALE_LABEL_TTL_SECONDS: float = 10.0
 
-#: Reconciliation window after stdout EOF for late terminal acks.
 CHILD_EXIT_RECONCILE_SECONDS: float = 5.0
 
-# ---------------------------------------------------------------------------
-# Import-time invariants
-# ---------------------------------------------------------------------------
-# Use ``if``/``raise RuntimeError`` (NOT bare ``assert``) so the guards survive
-# ``python -O`` and prevent a future regression from silently emptying the
-# constant set or violating the SDK >= HTTP ordering. These checks run on
-# import, are not stripped by ``-O``, and pin the contract that operators
-# rely on.
 
 if not BROKEN_AGENT_OUTPUT_GRACE_SECONDS < NO_OUTPUT_AT_START_SECONDS:
     raise RuntimeError(
@@ -447,185 +133,53 @@ if not MCP_DISPATCH_TIMEOUT_SECONDS > EXEC_MAX_TIMEOUT_MS / 1000.0:
         f"got MCP_DISPATCH_TIMEOUT_SECONDS={MCP_DISPATCH_TIMEOUT_SECONDS!r}"
     )
 
-# ---------------------------------------------------------------------------
-# §3b Exec-job liveness & lifecycle constants
-# ---------------------------------------------------------------------------
-# Single source of truth for the sampler, liveness-assessor, stall
-# integrator, suspicion / no-progress windows, and job-flow / FIFO caps
-# backing the long-running-exec task (§3b). The values are paired with
-# the import-time order checks further below; both must stay in lock-step
-# so a future regression cannot introduce a violation that the order
-# guards fail closed against.
 
-#: §3b Sampler config: how often the background liveness sampler wakes
-#: to capture process-tree / I/O / output evidence (seconds). Must be
-#: strictly less than ``EXEC_JOB_ABANDON_S`` so the sampler gets at
-#: least one cycle before the abandon window fires.
 EXEC_LIVENESS_SAMPLE_INTERVAL_S: float = 2.0
 
-#: §3b Sampler config: maximum age (seconds) at which captured
-#: evidence still counts as fresh for the liveness breakpoints below.
-#: Evidence older than this window is treated as stale.
 EXEC_LIVENESS_EVIDENCE_WINDOW_S: float = 30.0
 
-#: §3b Liveness assessor: ``Output recent`` membership breakpoint
-#: (seconds). ``output_age <= EXEC_OUTPUT_RECENT_MAX_S`` fires the
-#: ``OutputRecent`` membership predicate (recent stdout seen).
-#:
-#: This breakpoint is the single scalar that PROOF 1 in
-#: ``ralph/process/manager/_liveness_assessor.py`` turns into the
-#: proven burst-then-idle kill-time floor
-#: ``t_kill >= last_output + EXEC_OUTPUT_RECENT_MAX_S + stall_window``:
-#: for ``age <= EXEC_OUTPUT_RECENT_MAX_S`` the score saturates at
-#: ``z1 = 1.0 > theta``, so stall pressure cannot rise at all, and
-#: pressure then grows at most at 1 s/s. Lowering it shortens that
-#: floor but re-creates cause #1 of the feature (a suite that prints
-#: every few seconds with no CPU/IO/tree/awake would be killed as
-#: idle), so it is a spec-mandated tuning value, not a free
-#: performance knob. Locked by
-#: ``tests/test_liveness_pa002_properties.py
-#: ::test_burst_then_idle_kill_never_beats_proof1_floor``.
 EXEC_OUTPUT_RECENT_MAX_S: float = 10.0
 
-#: §3b Liveness assessor: ``Output recent`` membership breakpoint
-#: (seconds, alternate configuration). Symmetric partner of
-#: ``EXEC_OUTPUT_RECENT_MAX_S``; the assessor routes through whichever
-#: bound the deployment profile selects.
-#:
-#: With the shipped pair (10.0, 60.0) the all-idle dead-phase score is
-#: exactly ``s(age) = (60 - age) / 50`` on ``age in (10, 60]``, so the
-#: score first falls below ``EXEC_STALL_THETA = 0.5`` at ``age = 35``
-#: and the remaining ramp integrates ``(60 - 35)^2 / (2 * 50) = 12.5``
-#: of stall pressure before it saturates at 0. That 12.5 s plus the
-#: 35 s flat top is the whole of the
-#: ``last_output + stall_window + 47.5`` closed form locked by
-#: ``tests/test_exec_liveness_scenarios.py`` scenarios 8 and 13.
 EXEC_OUTPUT_RECENT_MIN_S: float = 60.0
 
-#: §3b Liveness assessor: CPU-busy membership lower bound. A sampled
-#: CPU fraction ``>= EXEC_CPU_BUSY_MIN`` counts as ``CpuBusy``.
 EXEC_CPU_BUSY_MIN: float = 0.02
 
-#: §3b Liveness assessor: CPU-busy membership upper bound. A sampled
-#: CPU fraction ``<= EXEC_CPU_BUSY_MAX`` still counts as ``CpuBusy``;
-#: above this the assessor classifies as ``ComputeBound`` rather than
-#: ``CpuBusy``.
 EXEC_CPU_BUSY_MAX: float = 0.20
 
-#: §3b Liveness assessor: I/O rate (KB/s) at or below which the
-#: assessor treats the child as I/O-inactive.
 EXEC_IO_KBPS_INACTIVE: float = 4.0
 
-#: §3b Liveness assessor: I/O rate (KB/s) at or above which the
-#: assessor treats the child as I/O-active.
 EXEC_IO_KBPS_ACTIVE: float = 64.0
 
-#: §3b Liveness assessor: tree-activity threshold. A subtree size of
-#: ``t >= EXEC_TREE_ACTIVE_THRESHOLD`` fires the ``TreeActive``
-#: membership predicate.
 EXEC_TREE_ACTIVE_THRESHOLD: int = 1
 
-#: §3b Liveness assessor: repetitive-output upper bound. A
-#: repetitive-line ratio ``<= EXEC_REPETITIVE_MAX`` keeps the child in
-#: ``NotRepetitive``.
 EXEC_REPETITIVE_MAX: float = 0.1
 
-#: §3b Liveness assessor: repetitive-output lower bound (alternate
-#: configuration). A repetitive-line ratio ``>= EXEC_REPETITIVE_MIN``
-#: classifies as ``Repetitive``.
 EXEC_REPETITIVE_MIN: float = 0.5
 
-#: §3b Liveness assessor: awake-events-per-second rate at or below
-#: which the child is treated as not-awake-enough.
 EXEC_AWAKE_PER_S_INACTIVE: float = 0.5
 
-#: §3b Liveness assessor: awake-events-per-second rate at or above
-#: which the child is treated as actively awake.
 EXEC_AWAKE_PER_S_ACTIVE: float = 5.0
 
-#: §3b Stall integrator: theta threshold that separates the
-#: stall-decay branches. A stall score ``>= EXEC_STALL_THETA`` triggers
-#: the higher-decay branch; below it the lower-decay branch applies.
-#:
-#: D3 fixes the integrator at ``P <- max(0, P + dt * (theta - s) /
-#: theta)``. Because every rule ``z`` lies in ``[0, 1]``, ``s >= 0`` and
-#: so the per-step accrual rate ``(theta - s) / theta <= 1`` for EVERY
-#: ``theta > 0``: pressure can never grow faster than 1 s/s, at any
-#: theta. That unit-rate bound is what makes the burst-then-idle kill
-#: floor of PROOF 1 in
-#: ``ralph/process/manager/_liveness_assessor.py`` theta-independent,
-#: and it is swept in ``tests/test_liveness_pa002_properties.py
-#: ::test_proof1_floor_holds_for_every_theta``.
 EXEC_STALL_THETA: float = 0.5
 
-#: §3b Suspicion window (seconds). Cumulative no-progress time
-#: within this window raises the SUSPICIOUS report. Must be strictly
-#: less than ``EXEC_NO_PROGRESS_WINDOW_S`` (the next-window guard
-#: below enforces the order).
 EXEC_SUSPICIOUS_REPORT_S: float = 60.0
 
-#: §3b No-progress window (seconds, 15 minutes). Cumulative
-#: no-progress time within this window fires the no-progress
-#: verdict. Must satisfy
-#: ``EXEC_SUSPICIOUS_REPORT_S < EXEC_NO_PROGRESS_WINDOW_S < EXEC_JOB_CEILING_S``
-#: (the import-time guard below enforces the order).
 EXEC_NO_PROGRESS_WINDOW_S: float = 900.0
 
-#: §3b Job flow: soft-reply budget (milliseconds) used as the FLOOR
-#: for every transport timeout. Defined as the smallest verified
-#: client timeout (60_000 ms) minus a 15-second headroom, so a
-#: legitimately long transport time cannot outrun a verified client
-#: timeout. Re-exported through this module as the single source of
-#: truth for the timing-safety check in U-TRANSPORT. Must be strictly
-#: less than ``EXEC_MAX_TIMEOUT_MS`` so the per-call ceiling always
-#: covers the soft burst.
 EXEC_SOFT_REPLY_BUDGET_MS: int = 45_000
 
-#: §3b Job flow: default per-job ceiling (seconds, 1 hour). The
-#: runtime reaps a job that exceeds this. Must satisfy
-#: ``EXEC_NO_PROGRESS_WINDOW_S < EXEC_JOB_CEILING_S <= EXEC_JOB_CEILING_MAX_S``.
 EXEC_JOB_CEILING_S: float = 3600.0
 
-#: §3b Job flow: hard maximum per-job ceiling (seconds, 4 hours).
-#: Bounded above by ``max_runtime_ms`` so an operator who lifts the
-#: ceiling cannot outrun the dispatch timeout. Must satisfy
-#: ``EXEC_JOB_CEILING_S <= EXEC_JOB_CEILING_MAX_S``.
 EXEC_JOB_CEILING_MAX_S: float = 14400.0
 
-#: §3b Job flow: abandon window (seconds). The runner considers a
-#: job abandoned after this many seconds without progress and
-#: reaps it without waiting for the full job ceiling. The sampler
-#: cadence (``EXEC_LIVENESS_SAMPLE_INTERVAL_S``) must run faster than
-#: this so the sampler gets a chance to fire before the abandon
-#: verdict.
 EXEC_JOB_ABANDON_S: float = 120.0
 
-#: §3b Resource caps: maximum number of simultaneously running
-#: exec jobs. Bounded ``deque(maxlen=EXEC_MAX_RUNNING_JOBS)`` at use
-#: sites so a flood of submissions cannot leak past the cap.
 EXEC_MAX_RUNNING_JOBS: int = 4
 
-#: §3b Resource caps: FIFO depth of the bounded job-result
-#: accumulator. Bounded ``deque(maxlen=EXEC_JOB_RESULT_FIFO)`` at use
-#: sites so a runaway producer cannot leak past the cap; ``maxlen=16``
-#: covers four parallel jobs each carrying up to four partial writes
-#: before the consumer drains.
 EXEC_JOB_RESULT_FIFO: int = 16
 
-#: §3b Owner-loss pre-exit hook budget (seconds, rev-4 PA-003).
-#: When the runner detects an owner-loss signal (the parent that owns
-#: the exec channel has died), it has this much time to run a
-#: pre-exit cleanup hook before the runtime forcibly reaps the job.
 EXEC_OWNER_LOSS_HOOK_BUDGET_S: float = 5.0
 
-# ---------------------------------------------------------------------------
-# §3b Import-time order checks (survive `python -O`)
-# ---------------------------------------------------------------------------
-# Use ``if``/``raise RuntimeError`` (NOT bare ``assert``) so the guards
-# survive ``python -O`` and prevent a future regression from silently
-# emptying the constant set or breaking the sampling window ordering.
-# These run on import, are not stripped by ``-O``, and pin the contract
-# that the runtime and timing-safety layer rely on.
 
 if not (
     EXEC_SUSPICIOUS_REPORT_S

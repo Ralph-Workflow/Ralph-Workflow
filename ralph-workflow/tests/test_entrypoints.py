@@ -1,5 +1,3 @@
-"""Tests for rare entrypoints and MCP package exports."""
-
 import builtins
 import importlib
 import runpy
@@ -14,7 +12,6 @@ from ralph.mcp.server import runtime as mcp_runtime_module
 
 
 def _run_entrypoint(module_name: str) -> None:
-    # Ensure we import a fresh module to guarantee __main__ logic runs.
     sys.modules.pop(module_name, None)
     runpy.run_module(module_name, run_name="__main__")
 
@@ -59,10 +56,8 @@ def test_ralph_mcp_server_entrypoint_calls_main(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_mcp_tool_bridge_exports_and_error() -> None:
-    """Test that ralph.mcp exports ToolBridge directly (not via __getattr__ lazy loading)."""
     module = importlib.reload(importlib.import_module("ralph.mcp"))
 
-    # Direct imports mean ToolBridge is eagerly in __dict__
     tool_bridge_module = importlib.import_module("ralph.mcp.tools.bridge")
     assert module.ToolBridge is tool_bridge_module.ToolBridge
     assert "ToolBridge" in module.__dict__

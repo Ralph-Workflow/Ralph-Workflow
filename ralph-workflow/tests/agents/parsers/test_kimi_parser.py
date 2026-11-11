@@ -1,42 +1,3 @@
-"""Tests for KimiParser — the Kimi Code CLI ``--output-format stream-json`` parser.
-
-KimiParser is a black-box NDJSON parser for the JSON-stream output of
-``kimi -p <prompt> --output-format stream-json``.  The wire format is
-the measured Kimi Code v0.36.1 Message envelope: one JSON object per
-line keyed by ``role`` (``meta`` / ``assistant`` / ``tool`` / ``user``),
-with tool activity carried in an assistant message's ``tool_calls``
-list (JSON-string ``arguments``) and results in ``role:"tool"`` frames
-keyed by ``tool_call_id``.
-
-The parser inherits the shared NDJSON behaviors from
-:class:`NdjsonParserBase` and overrides ``_dispatch_json_object`` to
-route the role-keyed vocabulary to :class:`AgentOutputLine` types.
-This module covers:
-
-  - shared NDJSON behaviors inherited from NdjsonParserBase
-    (a) ``data:`` SSE prefix strip
-    (b) ``[DONE]`` short-circuit -> ``type='stop'``
-    (c) non-JSON line -> ``type='raw'``
-    (d) non-dict JSON -> ``type='raw'``
-    (e) ``{'error': ...}`` shapes -> ``type='error'``
-
-  - kimi-specific frame types
-    (f) ``role:"assistant"`` with string content -> ``type='text'``
-    (g) ``role:"assistant"`` with array content -> ``type='text'``
-    (h) ``role:"assistant"`` with ``tool_calls`` -> text flush +
-        ``type='tool_use'`` with decoded JSON-string arguments
-    (i) ``role:"tool"`` (success) -> ``type='tool_result'`` with
-        ``tool_use_id`` correlation
-    (j) ``role:"tool"`` with ``is_error`` / ``isError`` -> ``type='error'``
-    (k) ``role:"meta"`` ``system.version`` -> ``type='lifecycle'``
-    (l) ``role:"meta"`` ``session.resume_hint`` -> ``type='lifecycle'``
-    (m) ``role:"meta"`` unknown type -> observable ``type='lifecycle'``
-    (n) ``role:"user"`` -> no output (input echo, suppressed)
-    (o) unknown role -> passthrough with the role as the type
-    (p) no ``stop`` on assistant messages: termination is process exit
-        (iterator exhaustion) + ``flush_accumulators``
-"""
-
 from __future__ import annotations
 
 import json
@@ -58,8 +19,6 @@ def _line(obj: dict[str, object]) -> str:
 
 
 class TestKimiParserSubclassRelationship:
-    """KimiParser is a subclass of NdjsonParserBase and supports parse()."""
-
     def test_subclass_of_ndjson_base(self) -> None:
         assert issubclass(KimiParser, NdjsonParserBase)
 
@@ -69,8 +28,6 @@ class TestKimiParserSubclassRelationship:
 
 
 class TestKimiParserSharedNdjsonBehaviors:
-    """Shared NDJSON behaviors inherited from NdjsonParserBase."""
-
     def test_data_prefix_stripped(self) -> None:
         parser = KimiParser()
         results = list(
@@ -80,8 +37,6 @@ class TestKimiParserSharedNdjsonBehaviors:
                 ),
             )
         )
-        # The ``data:`` prefix must be stripped before JSON parse,
-        # allowing the assistant message to dispatch to a text line.
         assert len(results) == 1
         assert results[0].type == "text"
         assert results[0].content == "hi"
@@ -118,8 +73,6 @@ class TestKimiParserSharedNdjsonBehaviors:
 
 
 class TestKimiAssistantMessages:
-    """``role:"assistant"`` messages surface text and tool_calls activity."""
-
     def test_string_content_yields_text_event(self) -> None:
         parser = KimiParser()
         results = list(parser.parse(_lines(_line({"role": "assistant", "content": "hello world"}))))
@@ -128,7 +81,6 @@ class TestKimiAssistantMessages:
         assert results[0].content == "hello world"
 
     def test_array_content_yields_text_event(self) -> None:
-        """Array-form content (documented for message envelopes) is accepted."""
         parser = KimiParser()
         results = list(
             parser.parse(
@@ -150,7 +102,6 @@ class TestKimiAssistantMessages:
         assert results[0].content == "part one part two"
 
     def test_assistant_message_never_emits_stop(self) -> None:
-        """The measured envelope has no terminal discriminator per message."""
         parser = KimiParser()
         results = list(
             parser.parse(_lines(_line({"role": "assistant", "content": "done replying"})))
@@ -158,7 +109,6 @@ class TestKimiAssistantMessages:
         assert all(r.type != "stop" for r in results)
 
     def test_text_flushed_before_tool_call_in_same_message(self) -> None:
-        """Buffered text is a structural boundary: it flushes before the call."""
         parser = KimiParser()
         results = list(
             parser.parse(
@@ -190,7 +140,6 @@ class TestKimiAssistantMessages:
         assert results[1].metadata["tool_use_id"] == "call_1"
 
     def test_tool_call_summary_uses_leading_argument(self) -> None:
-        """The tool_use content summarizes with file_path/path/command/query/pattern."""
         parser = KimiParser()
         results = list(
             parser.parse(
@@ -221,7 +170,6 @@ class TestKimiAssistantMessages:
         assert results[0].content == "edit_file src/main.py"
 
     def test_undecodable_arguments_degrade_to_empty_input(self) -> None:
-        """A malformed JSON-string ``arguments`` keeps the call with an empty input."""
         parser = KimiParser()
         results = list(
             parser.parse(
@@ -249,14 +197,12 @@ class TestKimiAssistantMessages:
         assert results[0].type == "tool_use"
         assert results[0].metadata["tool"] == "bash"
         assert results[0].metadata["input"] == {}
-        # The raw entry is preserved verbatim in the metadata.
         assert results[0].metadata["function"] == {
             "name": "bash",
             "arguments": "not json",
         }
 
     def test_dict_arguments_accepted_directly(self) -> None:
-        """A pre-decoded dict ``arguments`` value is used as-is."""
         parser = KimiParser()
         results = list(
             parser.parse(
@@ -285,7 +231,6 @@ class TestKimiAssistantMessages:
         assert results[0].content == "grep def main"
 
     def test_multiple_tool_calls_in_one_message(self) -> None:
-        """Every ``tool_calls`` entry surfaces as its own tool_use line."""
         parser = KimiParser()
         results = list(
             parser.parse(
@@ -322,7 +267,6 @@ class TestKimiAssistantMessages:
         assert [r.content for r in results] == ["bash ls", "read_file README.md"]
 
     def test_missing_function_key_yields_unknown_tool(self) -> None:
-        """A tool_calls entry without a function dict surfaces as ``unknown``."""
         parser = KimiParser()
         results = list(
             parser.parse(
@@ -344,8 +288,6 @@ class TestKimiAssistantMessages:
 
 
 class TestKimiToolMessages:
-    """``role:"tool"`` messages surface tool results and declared errors."""
-
     def _tool_frame(self, **extra: object) -> dict[str, object]:
         frame: dict[str, object] = {
             "role": "tool",
@@ -372,7 +314,6 @@ class TestKimiToolMessages:
         assert results[0].metadata["tool"] == "tool_call"
 
     def test_tool_result_flushes_buffered_text(self) -> None:
-        """A tool result is a structural boundary for buffered text."""
         parser = KimiParser()
         results = list(
             parser.parse(
@@ -393,7 +334,6 @@ class TestKimiToolMessages:
         assert results[0].content == "boom"
 
     def test_iserror_string_true_yields_error_event(self) -> None:
-        """A string ``"true"`` is accepted (defensive against wrapper re-encoding)."""
         parser = KimiParser()
         results = list(
             parser.parse(_lines(_line(self._tool_frame(isError="true", content="kaboom"))))
@@ -417,8 +357,6 @@ class TestKimiToolMessages:
 
 
 class TestKimiMetaFrames:
-    """``role:"meta"`` frames surface as observable lifecycle events."""
-
     def test_system_version_yields_lifecycle_with_banner(self) -> None:
         parser = KimiParser()
         results = list(
@@ -449,12 +387,9 @@ class TestKimiMetaFrames:
         assert len(results) == 1
         assert results[0].type == "lifecycle"
         assert results[0].content == "kimi session sess-abc-1"
-        # The session id stays observable in the metadata for callers
-        # that prefer the structured field.
         assert results[0].metadata["session_id"] == "sess-abc-1"
 
     def test_system_version_prefers_message_content(self) -> None:
-        """A meta frame carrying explicit content uses it over the banner."""
         parser = KimiParser()
         results = list(
             parser.parse(
@@ -473,7 +408,6 @@ class TestKimiMetaFrames:
         assert results[0].content == "custom banner"
 
     def test_unknown_meta_type_degrades_observably(self) -> None:
-        """A future meta type surfaces as a lifecycle line, never disappears."""
         parser = KimiParser()
         results = list(parser.parse(_lines(_line({"role": "meta", "type": "telemetry.counter"}))))
         assert len(results) == 1
@@ -489,16 +423,12 @@ class TestKimiMetaFrames:
 
 
 class TestKimiUserAndUnknownRoles:
-    """``role:"user"`` is suppressed; unknown roles pass through."""
-
     def test_user_message_suppressed(self) -> None:
-        """user messages are the input echo of JSON-input mode."""
         parser = KimiParser()
         results = list(parser.parse(_lines(_line({"role": "user", "content": "do the thing"}))))
         assert results == []
 
     def test_unknown_role_passes_through(self) -> None:
-        """A future Kimi role passes through with the role as the type."""
         parser = KimiParser()
         results = list(
             parser.parse(_lines(_line({"role": "developer", "content": "future frame"})))
@@ -514,8 +444,6 @@ class TestKimiUserAndUnknownRoles:
 
 
 class TestKimiTextCoalescing:
-    """Text coalesces via the shared paragraph-boundary accumulator."""
-
     def test_two_messages_without_boundary_coalesce(self) -> None:
         parser = KimiParser()
         results = list(
@@ -560,8 +488,6 @@ class TestKimiTextCoalescing:
 
 
 class TestKimiFullExchange:
-    """A full measured-shape exchange parses end to end."""
-
     def test_full_exchange_order(self) -> None:
         parser = KimiParser()
         results = list(

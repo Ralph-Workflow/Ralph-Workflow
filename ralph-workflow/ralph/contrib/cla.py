@@ -1,4 +1,3 @@
-"""Validate CLA agreement state for Codeberg and GitHub pull requests."""
 
 from __future__ import annotations
 
@@ -37,14 +36,12 @@ _CODEBERG_PULL_REQUEST_EVENTS = frozenset({"pull_request", "pull_request_metadat
 
 @dataclass(frozen=True)
 class ClaCheckResult:
-    """Outcome of a contributor license agreement verification."""
 
     ok: bool
     message: str
 
 
 def evaluate_body(body: str | None) -> ClaCheckResult:
-    """Return whether a pull request body contains the checked CLA line."""
 
     if not body:
         return ClaCheckResult(
@@ -58,7 +55,6 @@ def evaluate_body(body: str | None) -> ClaCheckResult:
 
 
 def evaluate_github_event(*, event_name: str | None, event: Mapping[str, object]) -> ClaCheckResult:
-    """Evaluate a GitHub Actions webhook payload and skip non-PR events."""
 
     if event_name != "pull_request":
         return ClaCheckResult(True, "CLA check skipped for non-pull-request event.")
@@ -76,7 +72,6 @@ def evaluate_codeberg_environment(
     *,
     fetch_json: Callable[[str], object] | None = None,
 ) -> ClaCheckResult:
-    """Evaluate Woodpecker/Codeberg PR metadata, fetching the PR body when needed."""
 
     if env.get("CI_PIPELINE_EVENT") not in _CODEBERG_PULL_REQUEST_EVENTS:
         return ClaCheckResult(True, "CLA check skipped for non-pull-request event.")
@@ -103,7 +98,6 @@ def evaluate_codeberg_environment(
 
 
 def evaluate_current_environment() -> ClaCheckResult:
-    """Evaluate the current CI environment as GitHub Actions or Woodpecker."""
 
     github_event_path = os.environ.get("GITHUB_EVENT_PATH")
     if github_event_path:
@@ -117,7 +111,6 @@ def evaluate_current_environment() -> ClaCheckResult:
 
 
 def main() -> int:
-    """Run the CLA gate for the current environment and return a shell exit code."""
 
     result = evaluate_current_environment()
     stream = sys.stdout if result.ok else sys.stderr

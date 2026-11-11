@@ -1,103 +1,3 @@
-"""Build syntax-highlighted previews of agent file-edit tool calls.
-
-When ``ParallelDisplay`` emits a TOOL_USE event for one of the
-content-edit tools (``write_file``, ``append_file``, ``edit_file``,
-``ralph_edit_md_artifact``, ``ralph_stage_md_artifact``,
-``ralph_submit_md_artifact``), the operator already sees the existing
-one-line registry header line carrying the friendly tool name and the
-formatted argument repr. That line stays byte-identical (the consolidation
-contract). What this module contributes is purely additive: a
-syntax-highlighted preview block printed *after* the header so the
-operator can read the actual edit content in the live console instead of
-having to open the file or scroll back through the overflow log.
-
-Design:
-
-* The builder is pure: it takes ``(tool_name, input_dict, width)`` and
-  returns a ``rich`` renderable (or ``None`` for non-content tools /
-  empty payloads). No Console, no I/O, no env reads. The display owner
-  routes the renderable through its own Console, quiet-gates the print,
-  and suppresses exceptions so a malformed renderable cannot break the
-  live display path (R-3).
-
-* Language inference is delegated to
-  :func:`ralph.display.language_inference.lexer_for_path`; inference
-  failures degrade to ``"text"`` (plain text) rather than raising.
-  Artifact tools that carry no ``path`` key (``ralph_edit_md_artifact``,
-  ``ralph_stage_md_artifact``, ``ralph_submit_md_artifact``) default
-  to ``"markdown"`` because their content is always a markdown
-  artifact document.
-
-* All agent-derived content is sanitized through
-  :func:`ralph.display.line_sanitizer.strip_terminal_control` before
-  it enters any renderable, so a hostile escape sequence can never
-  paint the operator's terminal (R-1). The
-  ``audit_terminal_escape_containment`` audit pins this contract and
-  the dedicated ``tests/display/test_terminal_escape_containment.py``
-  suite contains the black-box assertions.
-
-* Markdown content gets word-wrap (so headings and paragraphs don't
-  blow past the panel width); non-markdown content does NOT wrap
-  (wrapping python code would garble indentation).
-
-* Write-style tools (``write_file`` / ``append_file`` /
-  ``ralph_stage_md_artifact`` / ``ralph_submit_md_artifact``): the
-  content is wrapped in a ``rich.syntax.Syntax`` with
-  ``line_numbers=True``; markdown uses :func:`render_markdown_preview` instead.
-
-* Edit-style tools (``edit_file`` / ``ralph_edit_md_artifact``):
-  every entry in ``edits`` is rendered as a ``- old / + new`` diff
-  with both hunks syntax-highlighted under ``line_numbers=True`` using the same lexer.
-  A positive integer ``start_line`` on an edit starts its new-content
-  line numbers at that known file position; absent or invalid values
-  remain snippet-relative at 1. When the caller resolves a known terminal
-  background, each removed/added hunk owns its complete derived fill,
-  including its gutter; undetermined backgrounds remain transparent.
-  Literal ``-`` and ``+`` markers retain the ``theme.status.error`` /
-  ``theme.status.success`` carriers, so the diff remains readable when
-  color is disabled.
-
-* A bounded preview cap (``_MAX_PREVIEW_LINES = 40``) trims long
-  content and appends a muted ``… (N more lines)`` elision line
-  so the operator knows the file is bigger than what is shown.
-
-* Zero hex color literals: the new module references named
-  ``STATUS_STYLES`` style keys (``"success"``, ``"error"``,
-  ``"theme.text.muted"``) instead of literal hex values, so the
-  wider ``tests/display/test_no_hex_colors_outside_theme.py``
-  anti-drift guard (which walks every ``ralph/display/*.py``) does
-  not flag this module (R-2).
-
-Background-aware highlighting
------------------------------
-
-Highlight colours are supplied by the fixed-RGB, contrast-tested Pygments
-themes in :func:`ralph.display.theme.syntax_theme_for_background`. Known
-backgrounds use one owned surface across the complete preview; an unknown
-background deliberately falls back to transparent, dual-safe rendering.
-
-The previous implementation pinned pygments' ``default`` theme, which
-is a *light-background* theme: it renders plain identifiers and
-punctuation at pure black and keywords at dark navy. Combined with a
-transparent background that made most of a preview invisible on the
-(overwhelmingly common) dark terminal. The background is resolved once
-by the display owner via
-:func:`ralph.display.theme.detect_terminal_background_is_light` -- which
-asks the terminal for its actual background colour rather than assuming
-one -- and threaded in as ``terminal_bg_is_light``; this module stays
-pure and reads no env. An optional ``surface_hex`` carries the actual
-measured terminal background so every colour solves against the real
-surface instead of only the canonical ``#000000`` / ``#FFFFFF`` endpoints;
-``None`` keeps the legacy fixed-endpoint behaviour for the given
-``terminal_bg_is_light`` value.
-
-The diff ``-`` / ``+`` markers are resolved the same way, through
-:func:`ralph.display.theme.pick_status_styles`, so the marker colours
-also clear WCAG contrast on a light terminal. Known-background diff rows
-receive the matched complete fill supplied by
-:func:`ralph.display.theme.diff_fill_styles`; the unknown-background path
-keeps the transparent dual-safe fallback.
-"""
 
 from __future__ import annotations
 
@@ -136,14 +36,11 @@ from ralph.display.theme import (
 if TYPE_CHECKING:
     from rich.console import RenderableType
 
-#: MCP and alias prefixes stripped from a tool name. Order matters: the
-#: longer ``mcp__ralph__`` prefix is checked first.
 _MCP_RALPH_PREFIX: Final[str] = "mcp__ralph__"
 _RA_PREFIX: Final[str] = "ralph."
 
 
 def _normalize_tool_name(name: str) -> str:
-    """Strip the MCP / alias prefix and return the bare tool name."""
     if name.startswith(_MCP_RALPH_PREFIX):
         return name[len(_MCP_RALPH_PREFIX) :]
     if name.startswith(_RA_PREFIX):
@@ -151,23 +48,14 @@ def _normalize_tool_name(name: str) -> str:
     return name
 
 
-#: Lexer aliases that identify markdown. ``get_lexer_for_filename``
-#: reports ``"markdown"`` first, but ``"md"`` is the alias some
-#: pygments versions lead with, so both are accepted.
 _MARKDOWN_LEXER_ALIASES: Final[frozenset[str]] = frozenset({"markdown", "md"})
 
 
 def _is_markdown_lexer(lexer_name: str) -> bool:
-    """Return True when ``lexer_name`` should trigger word-wrap.
-
-    Markdown is the only lexer that benefits from word-wrap; code
-    must NOT wrap or indentation breaks.
-    """
     return lexer_name.lower() in _MARKDOWN_LEXER_ALIASES
 
 
 def preview_header(tool_name: str, path: str | None, *, glyphs_enabled: bool = True) -> Text:
-    """Return the structural file-content header shown before a preview body."""
     marker = "▸" if glyphs_enabled else ">"
     bare = _normalize_tool_name(tool_name)
     target = f"  {strip_terminal_control(path)}" if path else ""
@@ -181,12 +69,6 @@ def preview_record_text(
     overflow_ref: str | None = None,
     glyphs_enabled: bool = True,
 ) -> tuple[str, str | None]:
-    """Return a plain preview projection and its full sanitized source.
-
-    The display owner writes the latter only when the bounded live preview
-    elides content; keeping file I/O outside this pure module preserves the
-    preview builder's no-I/O contract.
-    """
     canonical = (
         input_dict
         if isinstance(input_dict, PreviewPayload)
@@ -260,7 +142,6 @@ def preview_record_text(
 
 
 class _BackgroundAwareCodeBlock(CodeBlock):
-    """Rich fenced-code block using Ralph's fixed, transparent palette."""
 
     @classmethod
     def create(cls, markdown: Markdown, token: object) -> _BackgroundAwareCodeBlock:
@@ -297,7 +178,6 @@ class _BackgroundAwareCodeBlock(CodeBlock):
 
 
 class _BackgroundAwareMarkdown(Markdown):
-    """Markdown whose fenced code shares preview syntax contrast guarantees."""
 
     elements: ClassVar[dict[str, type[MarkdownElement]]] = {
         **Markdown.elements,
@@ -324,10 +204,6 @@ class _BackgroundAwareMarkdown(Markdown):
         surface = preview_background_for_background(
             self.terminal_bg_is_light, surface_hex=self.surface_hex
         )
-        # An expanded style wrapper paints every Markdown row (including prose,
-        # padding, and fenced code) without introducing body-frame chrome. On
-        # unknown backgrounds it remains transparent but still supplies a
-        # dual-safe foreground for otherwise unstyled body prose.
         yield Padding(
             _MarkdownContent(content),
             pad=(0, 0),
@@ -342,7 +218,6 @@ class _BackgroundAwareMarkdown(Markdown):
 
 
 class _MarkdownContent:
-    """Wrap Rich's Markdown render stream without asserting foreign item types."""
 
     def __init__(self, content: RenderResult) -> None:
         self._content = content
@@ -359,7 +234,6 @@ def render_markdown_preview(
     terminal_bg_is_light: bool | None,
     surface_hex: str | None = None,
 ) -> Markdown:
-    """Return the shared, sanitized Markdown renderer used by display previews."""
     del width
     return _BackgroundAwareMarkdown(
         strip_terminal_control(text),
@@ -381,8 +255,6 @@ def _build_write_preview(
     glyphs_enabled: bool = True,
     max_lines: int = _MAX_PREVIEW_LINES,
 ) -> RenderableType | None:
-    """Build a ``Syntax``-based preview for ``write_file`` / ``append_file``
-    and the two artifact-stage / artifact-submit tools."""
     if not content:
         return None
     lexer_name = "markdown" if path is None else lexer_for_path(path, content)
@@ -435,7 +307,6 @@ def _build_multiple_read_preview(
     glyphs_enabled: bool,
     overflow_ref: str | None,
 ) -> RenderableType | None:
-    """Render each successful ``read_multiple_files`` result as its own file block."""
     try:
         envelope: object = json.loads(content)
     except (TypeError, ValueError):
@@ -491,7 +362,6 @@ def _build_multiple_read_preview(
 
 
 def _search_record_lines(content: str) -> list[str] | None:
-    """Return greppable numbered hit lines from a result envelope, if present."""
     try:
         envelope: object = json.loads(content)
     except (TypeError, ValueError):
@@ -523,7 +393,6 @@ def _build_search_result_preview(
     glyphs_enabled: bool,
     overflow_ref: str | None,
 ) -> RenderableType | None:
-    """Render structured grep/search matches with per-file lexers and real gutters."""
     try:
         envelope: object = json.loads(content)
     except (TypeError, ValueError):
@@ -593,22 +462,7 @@ def _build_edit_preview(
     overflow_ref: str | None = None,
     glyphs_enabled: bool = True,
 ) -> RenderableType | None:
-    """Build a diff-style preview for ``edit_file`` / ``ralph_edit_md_artifact``.
-
-    ``diff_fills`` paints complete removed/added known-background rows,
-    including their numbered gutters; ``None`` keeps the unknown-background
-    fallback transparent. Both the old (``-``) and new (``+``) hunks are syntax-highlighted
-    through :func:`_make_syntax` with the same path-derived lexer. Only
-    the literal marker glyphs use the ``theme.status.error`` /
-    ``theme.status.success`` styles, preserving the diff when colour is
-    stripped. A positive ``start_line`` uses the real file gutter;
-    otherwise a visible ``(snippet)`` marker identifies relative lines.
-
-    Edit tools without a ``path`` (``ralph_edit_md_artifact``) default
-    the lexer to ``"markdown"`` because the artifact content is
-    always a markdown document.
-    """
-    del width  # reserved for future width-aware wrapping; currently unused
+    del width
     if not edits:
         return None
     lexer_name = "markdown" if path is None else lexer_for_path(path or "")
@@ -633,7 +487,6 @@ def _build_edit_preview(
     if not source_blocks:
         return None
     blocks: list[RenderableType] = []
-    # Reserve one row for the shared elision marker when this preview overflows.
     remaining_lines = _MAX_PREVIEW_LINES - 1
     remaining_blocks = source_blocks
     total_omitted = 0
@@ -669,7 +522,7 @@ def _build_edit_preview(
             allocation = min(remaining_lines - 1, max(1, remaining_lines // remaining_blocks))
             head, tail, omitted = _safe_lines(source, max_lines=allocation)
             shown = len(head) + len(tail)
-            remaining_lines -= shown + 1  # marker plus syntax rows
+            remaining_lines -= shown + 1
             remaining_blocks -= 1
             total_omitted += omitted or 0
             blocks.append(
@@ -725,7 +578,6 @@ def _build_content_preview(
     overflow_ref: str | None,
     glyphs_enabled: bool,
 ) -> RenderableType | None:
-    """Render a content payload, keeping diff metadata outside file gutters."""
     preview_path = path
     is_diff = (
         bare in {"git_diff", "git_show"}
@@ -745,7 +597,6 @@ def _build_content_preview(
         old_fill, new_fill = diff_fills or (None, None)
 
         def render_diff_rows(lines: list[str], start: int) -> RenderableType:
-            """Render each changed diff row on its complete resolved polarity fill."""
             lexer = lexer_for_path(preview_path, "\n".join(lines))
             return Group(
                 *(
@@ -837,37 +688,6 @@ def build_edit_preview(
     glyphs_enabled: bool = True,
     diff_fills: tuple[str, str] | None = None,
 ) -> RenderableType | None:
-    """Return a rich renderable previewing the edit described by ``input_dict``.
-
-    Returns ``None`` for tools without content (e.g. ``exec``) or empty
-    payloads so the caller can skip the print cleanly.
-
-    The renderable is a :class:`rich.syntax.Syntax` (write-style tools)
-    or a :class:`rich.console.Group` (edit-style tools with multiple
-    blocks). The caller (``ParallelDisplay``) prints the renderable
-    through its own Console so the same width / quiet / sanitization
-    policies apply. No I/O happens here -- including no env reads and
-    no terminal probing: the caller resolves the background once and
-    passes the answer in.
-
-    Parameters:
-        tool_name: Raw tool name from the event (MCP / alias prefixes
-            are stripped internally).
-        input_dict: The tool-call input payload.
-        width: Effective console width.
-        terminal_bg_is_light: ``True`` when the terminal background is
-            light, ``False`` when dark, ``None`` when undetermined.
-            ``None`` selects the fixed-RGB palette proven safe on both
-            black and white backgrounds; the value also selects the
-            diff-marker styles.
-        surface_hex: The measured terminal background, when known.
-            When given, every colour solves against this real surface
-            instead of the canonical ``#000000`` / ``#FFFFFF`` endpoints
-            implied by ``terminal_bg_is_light``.
-
-    Returns:
-        A rich renderable, or ``None`` when there is nothing to preview.
-    """
     bare = _normalize_tool_name(tool_name)
     canonical: PreviewPayload | None
     if isinstance(input_dict, PreviewPayload):

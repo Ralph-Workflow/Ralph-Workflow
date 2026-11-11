@@ -1,11 +1,4 @@
 #!/usr/bin/env bash
-# Probe rw-build-server and rw-build-server-2; print the name of the selected
-# server (lower 1-minute load average) to stdout and export it as REMOTE_SERVER.
-# Exits 0 if any server is reachable, non-zero if both are unreachable.
-#
-# ConnectTimeout=5 caps the fallback latency to at most 5 seconds per server.
-# Probes run sequentially here; parallel probing is handled by the Rust xtask
-# implementation.  BatchMode=yes prevents interactive password prompts.
 set -euo pipefail
 
 SERVERS=("rw-build-server" "rw-build-server-2")

@@ -1,7 +1,3 @@
-# Deprecated: Ralph-orchestrated workers are removed from the execution model;
-# parallelism is owned by the developer agent's own sub-agents.
-# See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
-"""ParallelCoordinator and supporting helpers for fan-out execution."""
 
 from __future__ import annotations
 
@@ -54,7 +50,6 @@ if TYPE_CHECKING:
 
 
 class ParallelCoordinator:
-    """Orchestrates parallel work-unit execution with DAG dependency ordering."""
 
     def __init__(self, *, activity_router: ActivityRouter | None = None) -> None:
         self.activity_router = activity_router
@@ -66,7 +61,6 @@ class ParallelCoordinator:
         display: ParallelDisplay,
         ctx: WorkerContext | None = None,
     ) -> list[Event]:
-        """Execute parallel work units while respecting DAG dependencies and worker caps."""
         effect = replace(effect, work_units=dispatchable_work_units(effect.work_units))
         effective_router = self.activity_router
         if effective_router is None and hasattr(display, "activity_router"):
@@ -443,7 +437,6 @@ async def run_fan_out(
     ctx: WorkerContext | None = None,
     activity_router: ActivityRouter | None = None,
 ) -> list[Event]:
-    """Execute a fan-out effect using a fresh ParallelCoordinator instance."""
     coord = ParallelCoordinator(activity_router=activity_router)
     return await coord.run_fan_out(effect, executor, display, ctx)
 

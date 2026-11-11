@@ -1,9 +1,3 @@
-"""Star command — open GitHub and print star CTA for Ralph Workflow.
-
-P2 (wt-028-display S-14): all visible output routes through the shared
-``ParallelDisplay`` surface (``emit_status`` / ``emit_info_panel`` /
-``emit_renderable`` / ``emit_warning`` / ``emit_blank_line``).
-"""
 
 from __future__ import annotations
 
@@ -28,7 +22,6 @@ def star(
         typer.Option("--no-browser", help="Print the link without opening a browser"),
     ] = False,
 ) -> None:
-    """Open the GitHub repo in your browser — star it if Ralph Workflow helps you."""
     ctx = make_display_context()
     display = resolve_active_display(None, ctx)
     display.emit_blank_line()

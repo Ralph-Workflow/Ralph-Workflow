@@ -1,5 +1,3 @@
-"""Unit tests for conflict resolution driver events helper."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

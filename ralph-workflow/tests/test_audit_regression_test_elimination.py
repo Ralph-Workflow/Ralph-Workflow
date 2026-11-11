@@ -1,5 +1,3 @@
-"""Regression tests for the regression-test-elimination marker audit."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -16,7 +14,6 @@ def _write_source(tmp_path: Path, marker: str) -> Path:
 
 
 def test_regression_marker_with_existing_test_file_passes(tmp_path: Path) -> None:
-    """S-5: a source marker resolves an existing test-module proof."""
     repo_root = _write_source(tmp_path, "tests/test_proof.py::test_regression")
     proof = repo_root / "tests" / "test_proof.py"
     proof.parent.mkdir()
@@ -26,7 +23,6 @@ def test_regression_marker_with_existing_test_file_passes(tmp_path: Path) -> Non
 
 
 def test_regression_marker_missing_test_file_fails_closed(tmp_path: Path) -> None:
-    """S-5: a stale proof path produces a line-anchored diagnostic."""
     repo_root = _write_source(tmp_path, "tests/test_missing.py::test_regression")
 
     violations = audit.audit_regression_test_elimination(repo_root)
@@ -38,7 +34,6 @@ def test_regression_marker_missing_test_file_fails_closed(tmp_path: Path) -> Non
 
 
 def test_regression_marker_malformed_token_fails_closed(tmp_path: Path) -> None:
-    """S-5: markers must name both a test module and proof selector."""
     repo_root = _write_source(tmp_path, "tests/test_proof.py")
 
     violations = audit.audit_regression_test_elimination(repo_root)
@@ -47,7 +42,6 @@ def test_regression_marker_malformed_token_fails_closed(tmp_path: Path) -> None:
 
 
 def test_regression_marker_path_outside_tests_fails_closed(tmp_path: Path) -> None:
-    """S-5: a lexical tests/ prefix cannot escape the test tree."""
     repo_root = _write_source(tmp_path, "tests/../outside.py::test_regression")
     (repo_root / "outside.py").write_text("", encoding="utf-8")
 

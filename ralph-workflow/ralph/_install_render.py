@@ -13,19 +13,12 @@ DEV_LAUNCHER_NAME = "rdev"
 _SHORT_COMMIT_LENGTH = 8
 
 
-# Body of the generated ``ralph`` console script. Running it with ``-c`` under
-# ``-I`` (isolated mode) keeps the caller's cwd and PYTHONPATH off the snapshot
-# interpreter's ``sys.path``: every package Make recipe exports PYTHONPATH at a
-# source checkout, which otherwise shadows the snapshot with unflavored source.
-# Isolation covers only Ralph's own interpreter; the agents and commands it
-# spawns still inherit the caller's environment unchanged.
 _ISOLATED_ENTRY = (
     'import sys; sys.argv[0] = "ralph"; from ralph.cli.main import app; sys.exit(app())'
 )
 
 
 def dev_launcher_command(package_dir: Path, uv_executable: str) -> tuple[str, ...]:
-    """Return the argv ``rdev`` runs; the installer validates this same command."""
     return (
         uv_executable,
         "run",

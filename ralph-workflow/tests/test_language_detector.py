@@ -1,5 +1,3 @@
-"""Tests for project language and framework detection helpers."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

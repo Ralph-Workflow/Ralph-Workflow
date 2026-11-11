@@ -1,5 +1,3 @@
-"""Tests: analysis templates never inline PROMPT or PLAN regardless of content size."""
-
 from __future__ import annotations
 
 import os
@@ -95,16 +93,8 @@ def _render_development_analysis_no_dev_result(
 
 
 class TestDevelopmentAnalysisWithoutDevResult:
-    """Verify development_analysis prompt renders correctly when development_result is absent.
-
-    Prompt materialization for development_analysis must not crash and must still reference
-    PRODUCT_CRITERIA.md and PLAN.
-    """
-
     @classmethod
     def setup_class(cls) -> None:
-        # Pre-warm the prompt template cache so the first test method does not
-        # pay the one-time Jinja2 compilation latency under shard CPU load.
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_home = Path(tmp_dir)
 

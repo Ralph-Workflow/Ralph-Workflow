@@ -1,10 +1,3 @@
-"""Regression tests: _render_phase_artifact_handoff uses role/artifact-type dispatch.
-
-Verifies that artifact handoff rendering is fully driven by policy role and artifact
-contracts, with no hardcoded canonical phase names. Uses a custom-named PolicyBundle
-(design/build/audit phases) to confirm generic dispatch works.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -36,7 +29,6 @@ if TYPE_CHECKING:
 
 
 def _make_custom_bundle() -> PolicyBundle:
-    """Return a PolicyBundle with fully custom phase names: design/build/audit/done/aborted."""
     agents = AgentsPolicy(
         agent_chains={
             "design_chain": AgentChainConfig(agents=["fake-agent"]),
@@ -112,14 +104,11 @@ def tmp_workspace(tmp_path: Path) -> Path:
 
 
 class TestRenderPhaseArtifactHandoffIsGeneric:
-    """_render_phase_artifact_handoff dispatches by role, not by phase name."""
-
     def test_analysis_phase_with_analysis_decision_contract_calls_render_analysis_decision(
         self,
         custom_bundle: PolicyBundle,
         tmp_workspace: Path,
     ) -> None:
-        """Audit phase (analysis role) with contract calls emit_analysis_decision."""
         captured_calls: list[object] = []
 
         def spy_emit(self: ParallelDisplay, *args: object, **kwargs: object) -> None:
@@ -142,7 +131,6 @@ class TestRenderPhaseArtifactHandoffIsGeneric:
         custom_bundle: PolicyBundle,
         tmp_workspace: Path,
     ) -> None:
-        """Design phase (execution role) has no artifact contract — skips rendering."""
         ctx = MagicMock()
         with (
             patch.object(ParallelDisplay, "emit_plan_artifact") as mock_plan,
@@ -167,7 +155,6 @@ class TestRenderPhaseArtifactHandoffIsGeneric:
         custom_bundle: PolicyBundle,
         tmp_workspace: Path,
     ) -> None:
-        """Build phase (execution role) has no artifact contract — skips rendering."""
         ctx = MagicMock()
         with (
             patch.object(ParallelDisplay, "emit_plan_artifact") as mock_plan,
@@ -192,7 +179,6 @@ class TestRenderPhaseArtifactHandoffIsGeneric:
         custom_bundle: PolicyBundle,
         tmp_workspace: Path,
     ) -> None:
-        """Non-AGENT_SUCCESS events skip rendering for phases without an artifact contract."""
         ctx = MagicMock()
         with patch.object(ParallelDisplay, "emit_plan_artifact") as mock_render:
             render_phase_artifact_handoff(
@@ -210,7 +196,6 @@ class TestRenderPhaseArtifactHandoffIsGeneric:
         self,
         tmp_workspace: Path,
     ) -> None:
-        """Without a policy_bundle, rendering is skipped for any phase name."""
         ctx = MagicMock()
         with (
             patch.object(ParallelDisplay, "emit_plan_artifact") as mock_plan,
@@ -232,7 +217,6 @@ class TestRenderPhaseArtifactHandoffIsGeneric:
 
 
 def _make_bundle_with_dev_result_contract() -> PolicyBundle:
-    """Bundle where 'build' has a development_result contract and commit follows on_success."""
     agents = AgentsPolicy(
         agent_chains={
             "build_chain": AgentChainConfig(agents=["fake-agent"]),

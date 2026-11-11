@@ -1,14 +1,3 @@
-"""Native OpenCode subagent evidence read from OpenCode's session store.
-
-OpenCode 1.18.x emits ``step_start`` when the parent dispatches a native
-``task`` and then nothing until the child finishes, so the stream carries no
-first-party evidence while a subagent works. The probe under test reads the
-child sessions OpenCode persists as it works and forwards each updated part
-as demonstrated child work. These tests drive the probe through an in-memory
-part source and a fake clock; the SQLite reader is exercised against a
-throwaway store under ``tmp_path`` built with OpenCode's real column names.
-"""
-
 from __future__ import annotations
 
 import json

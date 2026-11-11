@@ -1,5 +1,3 @@
-"""Contract tests for ResolutionFailureCause enum and its propagation across the pipeline."""
-
 from __future__ import annotations
 
 import json
@@ -29,7 +27,6 @@ from ralph.pipeline.rebase_state import RebaseState
 
 
 def test_resolution_failure_cause_enum_members() -> None:
-    """Enum must contain at least NONE, AGENT_FAILURE, UNRESOLVED_CONFLICT, CONTEXT_FAILURE."""
     assert ResolutionFailureCause.NONE.value == "NONE"
     assert ResolutionFailureCause.AGENT_FAILURE.value == "AGENT_FAILURE"
     assert ResolutionFailureCause.UNRESOLVED_CONFLICT.value == "UNRESOLVED_CONFLICT"
@@ -42,7 +39,6 @@ def test_resolution_failure_cause_enum_members() -> None:
 
 
 def test_resolution_outcome_dto_defaults_and_override() -> None:
-    """ResolutionOutcome carries failure_cause defaulting to NONE."""
     outcome_default = ResolutionOutcome(
         succeeded=True,
         reason=None,
@@ -66,7 +62,6 @@ def test_resolution_outcome_dto_defaults_and_override() -> None:
 
 
 def test_merge_result_dto_defaults_and_override() -> None:
-    """MergeResult carries failure_cause defaulting to NONE."""
     result_default = MergeResult(outcome="success")
     assert result_default.failure_cause == ResolutionFailureCause.NONE
 
@@ -78,7 +73,6 @@ def test_merge_result_dto_defaults_and_override() -> None:
 
 
 def test_rebase_state_dto_defaults_and_override() -> None:
-    """RebaseState carries last_failure_cause defaulting to NONE."""
     state_default = RebaseState()
     assert state_default.last_failure_cause == ResolutionFailureCause.NONE
 
@@ -87,7 +81,6 @@ def test_rebase_state_dto_defaults_and_override() -> None:
 
 
 def test_rebase_state_serialization_round_trip() -> None:
-    """RebaseState serializes last_failure_cause by enum name and deserializes it cleanly."""
     state = RebaseState(
         last_outcome=RebaseOutcomeKind.CONFLICT,
         last_reason="conflict resolution failed",
@@ -106,7 +99,6 @@ def test_rebase_state_serialization_round_trip() -> None:
 
 
 def test_rebase_state_legacy_load_missing_field_maps_to_none() -> None:
-    """Legacy checkpoints missing last_failure_cause load as NONE."""
     legacy_payload: dict[str, object] = {
         "pending": False,
         "last_outcome": "conflict",
@@ -117,7 +109,6 @@ def test_rebase_state_legacy_load_missing_field_maps_to_none() -> None:
 
 
 def test_rebase_state_legacy_load_agent_failure_sentinel_maps_to_agent_failure() -> None:
-    """Legacy checkpoint with last_reason equal to RESOLUTION_AGENT_FAILURE maps to AGENT_FAILURE."""
     legacy_payload: dict[str, object] = {
         "pending": False,
         "last_outcome": "conflict",
@@ -128,7 +119,6 @@ def test_rebase_state_legacy_load_agent_failure_sentinel_maps_to_agent_failure()
 
 
 def test_rebase_state_legacy_load_other_prose_is_not_interpreted() -> None:
-    """Prose mentioning sentinel as substring is NOT interpreted as AGENT_FAILURE."""
     legacy_payload: dict[str, object] = {
         "pending": False,
         "last_outcome": "conflict",
@@ -139,7 +129,6 @@ def test_rebase_state_legacy_load_other_prose_is_not_interpreted() -> None:
 
 
 def test_rebase_state_explicit_field_overrides_legacy_reason() -> None:
-    """An explicit last_failure_cause takes precedence over legacy last_reason."""
     payload: dict[str, object] = {
         "last_failure_cause": "CONTEXT_FAILURE",
         "last_reason": RESOLUTION_AGENT_FAILURE,
@@ -149,7 +138,6 @@ def test_rebase_state_explicit_field_overrides_legacy_reason() -> None:
 
 
 def test_outcome_helpers_record_typed_failure_cause() -> None:
-    """Auto-integrate outcome helpers thread failure_cause into RebaseState."""
     skip_state = record_skip(reason="skipped cleanly", target="main")
     assert skip_state.last_failure_cause == ResolutionFailureCause.NONE
 
@@ -165,7 +153,6 @@ def test_outcome_helpers_record_typed_failure_cause() -> None:
 
 
 def test_record_rebase_outcome_preserves_merge_failure_cause() -> None:
-    """record_rebase_outcome pulls failure_cause from merge_outcome on conflict."""
     from ralph.git.rebase.rebase import RebaseConflicts
 
     merge_res = MergeResult(
@@ -184,7 +171,6 @@ def test_record_rebase_outcome_preserves_merge_failure_cause() -> None:
 
 
 def test_apply_completed_attempt_budget_branches_on_enum_only() -> None:
-    """Budget seam checks record.last_failure_cause == AGENT_FAILURE, not last_reason."""
     prior = RebaseState(
         last_outcome=RebaseOutcomeKind.CONFLICT,
         last_target="main",
@@ -197,7 +183,6 @@ def test_apply_completed_attempt_budget_branches_on_enum_only() -> None:
         target_sha="2222222222222222222222222222222222222222",
     )
 
-    # 1. AGENT_FAILURE: does not charge consecutive_conflicts (preserves prior count)
     agent_record = RebaseState(
         last_outcome=RebaseOutcomeKind.CONFLICT,
         last_reason="some operator description without sentinel",
@@ -213,8 +198,6 @@ def test_apply_completed_attempt_budget_branches_on_enum_only() -> None:
     )
     assert res_agent.consecutive_conflicts == 1
 
-    # 2. UNRESOLVED_CONFLICT: charges consecutive_conflicts (increments count)
-    # even if last_reason happened to contain text with 'resolution_agent_failure'
     conflict_record = RebaseState(
         last_outcome=RebaseOutcomeKind.CONFLICT,
         last_reason="arbitrary prose",
@@ -230,7 +213,6 @@ def test_apply_completed_attempt_budget_branches_on_enum_only() -> None:
     )
     assert res_conflict.consecutive_conflicts == 2
 
-    # 3. CONFIG_FAILURE: neither increments consecutive_conflicts nor stamps identity
     config_record = RebaseState(
         last_outcome=RebaseOutcomeKind.CONFLICT,
         last_reason="fix config then run ralph --check-config",
@@ -251,7 +233,6 @@ def test_apply_completed_attempt_budget_branches_on_enum_only() -> None:
     assert res_config.consecutive_conflicts == 1
     assert res_config.last_conflict_feature_sha == prior.last_conflict_feature_sha
 
-    # 4. CONTEXT_FAILURE: neither increments consecutive_conflicts nor stamps identity
     context_record = RebaseState(
         last_outcome=RebaseOutcomeKind.CONFLICT,
         last_reason="context failure",

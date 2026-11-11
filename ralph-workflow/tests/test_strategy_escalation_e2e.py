@@ -1,5 +1,3 @@
-"""End-to-end regression coverage for exhausted integration strategies."""
-
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -43,18 +41,6 @@ def _policy() -> PipelinePolicy:
 def test_strategy_escalation_preserves_history_and_resumes_after_recovery(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """Every failed rung advances; exhaustion escalates to the typed
-    ``LADDER_ESCALATION`` transition through the
-    :meth:`RebaseState.set_ladder_escalation` single-writer
-    setter — the autonomous fallback ladder, never a person.
-
-    The previous behaviour of this test asserted that the run loop
-    sleeps, retries, and eventually dispatches ordinary work. That
-    pattern violated bounded-progress: it silently replenished the
-    attempt budget across crashes and hid a real exhaustion. The
-    architecture now forbids it, so the test exercises the helper
-    directly to prove the typed-setter contract.
-    """
     reason = "integration conflict requires resolution: unresolved shared.txt"
     state = PipelineState(phase="development")
     policy = _policy()
@@ -80,12 +66,6 @@ def test_strategy_escalation_preserves_history_and_resumes_after_recovery(
         "resolver_with_history",
     ]
 
-    # The exhausted state is escalated to the typed LADDER_ESCALATION
-    # outcome through the typed single-writer setter, WITHOUT a recovery
-    # preamble call and WITHOUT a sleep. Exercise the helper directly
-    # because the enclosing run loop keeps blocking for the autonomous
-    # fallback ladder (the integration is still unresolved and the
-    # exhausted state immediately escalates without waiting).
     preamble_invocations: list[object] = []
     sleeps: list[float] = []
 
@@ -124,30 +104,16 @@ def test_strategy_escalation_preserves_history_and_resumes_after_recovery(
 
     updated = run_loop._wait_for_integration_retry(state, ctx)
 
-    # The exhausted state escalates to the typed LADDER_ESCALATION
-    # outcome. The carried counters and the resolution_exhausted flag
-    # survive across the transition -- the run-loop consumer that gates
-    # dispatch keeps refusing ordinary work.
     assert updated.rebase.last_outcome is RebaseOutcomeKind.LADDER_ESCALATION
     assert updated.rebase.is_intervention_required is True
-    # The conflict-strategy block is preserved: the typed
-    # ``LADDER_ESCALATION`` transition does NOT cycle or reset it.
     assert updated.rebase.conflict_strategy_index == state.rebase.conflict_strategy_index
     assert updated.rebase.conflict_strategies_tried == state.rebase.conflict_strategies_tried
     assert updated.rebase.resolution_exhausted is True
-    # The cold exhausted state dispatches exactly one session-scoped
-    # automated resolver handoff (O1 / O3 -- not a permanent
-    # operator-only dead end). The session-scoped flag prevents
-    # repeated dispatches within the same session.
     assert len(handoff_calls) == 1, (
         "Cold exhausted state must dispatch one session-scoped automated "
         "resolver handoff (O1/O3 cold durable exhausted contract)."
     )
-    # The exhausted path does NOT sleep on the first escalation.
     assert sleeps == []
-    # A second call within the SAME session must NOT re-dispatch the
-    # handoff; it paces the loop with the bounded repeat-escalation
-    # retry so the ladder seam re-observes without a busy spin.
     handoff_calls.clear()
     run_loop._wait_for_integration_retry(updated, ctx)
     assert handoff_calls == [], (

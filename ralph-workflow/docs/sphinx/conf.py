@@ -1,4 +1,3 @@
-"""Sphinx configuration for Ralph Workflow documentation — ralph-docs theme."""
 
 from __future__ import annotations
 
@@ -6,7 +5,6 @@ import sys
 from pathlib import Path
 from typing import Protocol
 
-# Add the ralph-workflow package to sys.path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from ralph import __version__
@@ -25,8 +23,6 @@ release = __version__
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.napoleon",
-    # sphinx.ext.intersphinx removed — we have no live cross-doc targets and the inventory
-    # fetch hangs or fails in offline/CI environments. ref.python warnings are suppressed anyway.
     "myst_parser",
     "sphinx_copybutton",
     "sphinx_design",
@@ -43,15 +39,11 @@ autodoc_type_aliases = {
 napoleon_google_docstring = True
 napoleon_numpy_docstring = False
 
-# Python inventory fetch removed — cross-references to Python stdlib are not used in these docs,
-# and the network fetch would hang or fail in offline/CI environments. ref.python warnings are
-# already suppressed below so there is no user-visible regression.
 intersphinx_mapping: dict = {}
 
 templates_path = ["_templates"]
 exclude_patterns = ["_build", "build", "Thumbs.db", ".DS_Store"]
 
-# First-party ralph-docs theme — standalone, no Furo dependency
 html_theme = "ralph-docs"
 html_theme_path = ["_themes"]
 html_theme_options = {
@@ -66,8 +58,6 @@ language = "en"
 html_show_sourcelink = True
 html_show_sphinx = False
 html_baseurl = "https://ralphworkflow.com/docs/"
-# Keep search-engine focus on task-fit, proof, and getting-started pages instead of
-# auto-generated API chrome that bloats the public sitemap without improving adoption.
 html_use_index = False
 html_domain_indices = False
 html_static_path = ["_static"]
@@ -92,13 +82,8 @@ rst_epilog = f"""
 suppress_warnings = [
     "autodoc.import_object",
     "ref.python",
-    # Suppress inventory fetch failures: docs.python.org may be unreachable.
     "intersphinx",
     "myst.xref_missing",
-    # The wt-026 toctree trim intentionally leaves many reference / concept
-    # pages reachable only by direct URL rather than via the index toctree.
-    # Sphinx emits a `toc.not_included` warning for every such orphan; this
-    # suppression is the documented pattern (https://www.sphinx-doc.org/en/master/usage/configuration.html#confval-suppress_warnings).
     "toc.not_included",
 ]
 
@@ -110,10 +95,6 @@ source_suffix = {
 linkcheck_ignore = [
     r"http://PROMPT\.md",
     r"https://docs\.claude\.com/",
-    # The linkify extension auto-links bare `.md` filename mentions to
-    # `http://<name>.md` even when they refer to local artifact files
-    # (`.agent/ISSUES.md`, `.agent/FIX_RESULT.md`, etc.). Those are not
-    # real URLs and must not be HEAD-validated.
     r"http://ISSUES\.md",
     r"http://FIX_RESULT\.md",
     r"http://DEVELOPMENT_RESULT\.md",

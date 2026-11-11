@@ -1,8 +1,3 @@
-"""Per-transport CommandBuilder classes for agent invocation.
-
-This module defines the CommandBuilder Protocol and the COMMAND_BUILDERS dispatch
-dictionary that maps every AgentTransport value to its corresponding CommandBuilder class.
-"""
 
 from __future__ import annotations
 
@@ -29,7 +24,6 @@ if TYPE_CHECKING:
 
 
 _MODELED_FLAG_PARTS = 2
-#: opencode's two documented spellings of the model flag ("-m, --model <model>").
 _OPENCODE_MODEL_FLAG_NAMES: Final[frozenset[str]] = frozenset({"-m", "--model"})
 _PI_MODEL_FLAG_PARTS = 2
 _HEADLESS_CLAUDE_PRINT_FLAGS = frozenset({"-p", "--print"})
@@ -38,7 +32,7 @@ _HEADLESS_CLAUDE_PRINT_FLAGS = frozenset({"-p", "--print"})
 def _agent_transport(config: AgentConfig) -> AgentTransport:
     return cast(
         "AgentTransport", config.transport
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
 
 
 def _resolve_prompt_path(prompt_file: str, workspace_path: Path | None) -> Path:
@@ -147,28 +141,23 @@ def _load_prompt_with_master(
     workspace_path: Path | None,
     master_prompt_file: str | None,
 ) -> str:
-    """Prepend durable master instructions for transports without a system-file flag."""
     prompt = _load_prompt_text(prompt_file, workspace_path)
     if master_prompt_file is None:
         return prompt
     master_path = Path(master_prompt_file)
     if not master_path.is_absolute() and workspace_path is not None:
         master_path = workspace_path / master_path
-    # filesystem-read-ok: master prompt is a user-selected one-shot invocation input
     master = master_path.read_text(encoding="utf-8")
     return f"{master.rstrip()}\n\n{prompt}"
 
 
 def _materialize_prompt_file(text: str, dest_path: Path) -> str:
-    """Write ``text`` once and return its stable file-path argv value."""
-    # filesystem-write-ok: per-invocation command-builder draft under tmp, not a repo-tracked deliverable
     DEFAULT_FILE_BACKEND.mkdir(dest_path.parent, parents=True, exist_ok=True)
     write_text_if_changed(DEFAULT_FILE_BACKEND, dest_path, text, encoding="utf-8")
     return str(dest_path)
 
 
 def materialize_argv_prompt(text: str, cwd: str | None) -> str:
-    """Materialize an oversized inline Claude prompt at the spawn boundary."""
     base = Path(cwd) if cwd is not None else Path.cwd()
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
     return _materialize_prompt_file(text, base / ".agent" / "tmp" / f"prompt_{digest}_argv.md")
@@ -179,7 +168,6 @@ def _materialize_generic_prompt_with_master(
     workspace_path: Path | None,
     master_prompt_file: str,
 ) -> str:
-    """Return a stable prompt-file path containing master and phase instructions."""
     master_path = Path(master_prompt_file)
     if not master_path.is_absolute() and workspace_path is not None:
         master_path = workspace_path / master_path
@@ -205,17 +193,6 @@ def _format_session_flag(
     session_flag: str | None,
     session_id: str | None,
 ) -> list[str]:
-    """Format a session_flag template with ``session_id`` as exactly one argv value.
-
-    Plain ``str.format(session_id).split()`` would tokenize a session id
-    that contains spaces or flag-like text into multiple argv elements,
-    letting a hostile or malformed session id inject extra flags (e.g.
-    ``session_id='abc --model injected'`` would emit
-    ``['--session', 'abc', '--model', 'injected']`` and silently shadow
-    downstream flags).  ``shlex.quote`` only adds shell quotes when the
-    value contains characters that would otherwise be split, so
-    well-formed ids like ``'sess-1'`` are emitted unchanged.
-    """
     if not session_flag or not session_id:
         return []
     formatted = session_flag.format(shlex.quote(session_id))
@@ -227,38 +204,6 @@ def _command_already_enables_print_mode(cmd: list[str]) -> bool:
 
 
 def _tokenize_opencode_model_flag(model_flag: str) -> list[str]:
-    """Tokenize an opencode model flag into exactly two argv tokens.
-
-    ``opencode run --help`` (1.18.25) documents ``-m, --model <model>`` as
-    one flag plus one ``provider/model`` value. Two rules follow, and both
-    were previously violated:
-
-      1. The value is passed through **verbatim**. opencode publishes a
-         provider literally named ``opencode``, so stripping an
-         ``opencode/`` prefix here destroyed the provider half of ids like
-         ``opencode/big-pickle`` and left opencode parsing
-         ``providerID='big-pickle'`` with an empty model id. The Ralph
-         alias prefix is stripped once, at alias resolution
-         (``ralph.agents.registry``); never again.
-      2. The flag is split with :func:`shlex.split`, not ``str.split``, and
-         a malformed shape is rejected rather than emitted. ``str.split``
-         let an alias or a caller-supplied ``model_flag`` carrying
-         whitespace expand into extra argv tokens (``--agent plan``), which
-         is flag injection into the spawned ``opencode`` process.
-
-    This mirrors the fail-closed posture of
-    :func:`_tokenize_pi_model_flag`.
-
-    Args:
-        model_flag: The ``-m``/``--model`` flag string to tokenize.
-
-    Returns:
-        Exactly ``[<flag name>, <model id>]``.
-
-    Raises:
-        ValueError: When the flag does not tokenize into exactly one flag
-            name plus one value, or when the value itself looks like a flag.
-    """
     parts = shlex.split(model_flag)
     if len(parts) != _MODELED_FLAG_PARTS or parts[0] not in _OPENCODE_MODEL_FLAG_NAMES:
         raise ValueError(
@@ -274,30 +219,6 @@ def _tokenize_opencode_model_flag(model_flag: str) -> list[str]:
 
 
 def _tokenize_pi_model_flag(model_flag: str) -> list[str]:
-    """Tokenize a Pi ``--model`` flag into argv-safe tokens.
-
-    Pi (https://pi.dev/docs/latest/usage) documents ``--model <pattern>``
-    as exactly one ``--model`` flag followed by one ``<pattern>`` value
-    (two argv tokens).  The registry's
-    ``_is_valid_pi_model_id`` validator rejects whitespace, newlines,
-    and multi-colon shapes so the value side of the flag is always a
-    single token, but the flag string may also be supplied by callers
-    via ``BuildCommandOptions.model_flag`` and must not be trusted.
-
-    The pi.dev contract is strictly ``['--model', <pattern>]`` (two
-    tokens).  We therefore enforce three structural rules:
-
-      1. The flag must tokenize into exactly two argv tokens.
-      2. The first token must be the literal flag name ``--model``.
-      3. The second token must NOT itself start with ``-`` (so a
-         caller cannot smuggle a second flag in as the "value").
-
-    A malformed flag is rejected by raising
-    :class:`ValueError` rather than silently emitting an unsafe argv
-    shape.  This is a fail-closed posture: a hostile or malformed
-    ``--model`` string must never reach the spawned ``pi`` process
-    as extra argv tokens.
-    """
     parts = shlex.split(model_flag)
     if len(parts) != _PI_MODEL_FLAG_PARTS:
         raise ValueError(
@@ -330,19 +251,6 @@ def _extend_claude_transport_flags(
     ):
         return
 
-    # ``--mcp-config`` ADDS Ralph's own MCP server to whatever Claude already
-    # loads. It is deliberately NOT paired with ``--strict-mcp-config``:
-    # per ``claude --help`` that flag means "Only use MCP servers from
-    # --mcp-config, ignoring all other MCP configurations", i.e. it deletes
-    # every MCP source the operator installed in their own harness for the
-    # duration of the run. Some of those cannot be handed back at all --
-    # claude.ai account connectors (``claude mcp list`` shows them as
-    # ``claude.ai <Name>``) are delivered by the signed-in account and exist
-    # in no file on disk, so Ralph can neither discover nor proxy them.
-    # Ralph may add its own server; it must not remove the operator's.
-    # The trade this accepts: the operator's servers now reach Claude
-    # natively, outside Ralph's capability gate. Ralph's OWN restriction --
-    # the ``--tools`` / ``--allowedTools`` pair below -- still applies.
     cmd.extend(
         [
             "--mcp-config",
@@ -390,11 +298,6 @@ def _append_transport_prompt_arg(
 
 @runtime_checkable
 class CommandBuilder(Protocol):
-    """Protocol for per-transport command building.
-
-    Each transport-specific CommandBuilder implementation provides a build()
-    method that constructs the agent command line as a list of strings.
-    """
 
     def build(
         self,
@@ -403,61 +306,11 @@ class CommandBuilder(Protocol):
         *,
         options: _BuildCommandOptions,
     ) -> list[str]:
-        """Build the command line for agent invocation.
-
-        Args:
-            config: Agent configuration.
-            prompt_file: Path to prompt file.
-            options: Build command options.
-
-        Returns:
-            List of command arguments.
-        """
         ...
 
 
 @dataclass(frozen=True, slots=True)
 class CommandBuilderSpec:
-    """Declarative description of how :class:`ConfigurableCommandBuilder` assembles argv.
-
-    Attributes:
-        base_argv: Default argv prefix for the transport (``base_argv[0]`` is
-            the binary name).
-        format_flag: Optional two-token format flag emitted before the
-            output flag.
-        output_flag: Optional output-format flag string. Ignored entirely
-            (spec default AND ``config.output_flag`` operator override)
-            when ``honors_output_flag`` is False.
-        yolo_flag: Optional autonomy/yolo flag string.
-        model_flag_template: Optional ``str.format`` template for the model
-            flag.
-        positional_prompt: Whether the prompt text is appended as a
-            positional argument.
-        print_flag: Optional print/headless-mode flag emitted immediately
-            before the prompt.
-        extra_flags_before_prompt: Extra literal flags emitted before the
-            print flag.
-        cmd_argv_override: When True, the builder honours a multi-token
-            ``config.cmd`` override: ``_init_cmd`` returns
-            ``shlex.split(config.cmd)`` so a wrapper path plus its trailing
-            flags each land as separate argv tokens. agy / codex / cursor /
-            kimi set this; transports whose ``cmd`` only names the binary
-            keep the default False.
-        yolo_before_session: When True, the yolo flag precedes the session
-            flag (agy's flag order); the default emits the session flag
-            first.
-        workspace_dir_flag: When set, a ``--add-dir``-style flag prefix
-            emitted with ``str(options.workspace_path)`` so the agent can
-            access the workspace directory (agy uses ``("--add-dir",)``).
-        honors_output_flag: When False the transport has no output-format
-            flag at all, so BOTH the spec default and any operator
-            ``[agents.<name>].output_flag`` override are dropped -- loudly,
-            by this declaration, rather than by a coincidence of argv
-            sniffing. opencode 1.18.25 is the one such transport: its
-            ``run`` sub-command exposes only ``--format default|json``
-            (see ``opencode run --help``); there is no output flag to
-            forward and passing an unknown one aborts the run.
-    """
 
     base_argv: tuple[str, ...]
     format_flag: tuple[str, str] | None
@@ -474,7 +327,6 @@ class CommandBuilderSpec:
 
 
 class ConfigurableCommandBuilder:
-    """A command builder configured by a CommandBuilderSpec."""
 
     def __init__(self, spec: CommandBuilderSpec) -> None:
         self.spec = spec
@@ -484,9 +336,6 @@ class ConfigurableCommandBuilder:
         if not cmd:
             return []
         if self.spec.cmd_argv_override:
-            # Wrapper-friendly transports honour a multi-token ``config.cmd``
-            # override: shlex.split preserves the wrapper path AND its
-            # trailing flags as separate argv tokens.
             return shlex.split(config.cmd)
         return [_agent_command_name(config), *cmd[1:]]
 
@@ -579,24 +428,11 @@ class ConfigurableCommandBuilder:
 
 
 class OpencodeCommandBuilder(ConfigurableCommandBuilder):
-    """CommandBuilder for AgentTransport.OPENCODE."""
 
     SPEC = CommandBuilderSpec(
         base_argv=("opencode", "run"),
         format_flag=("--format", "json"),
-        # "auto-approve permissions that are not explicitly denied". Without it
-        # OpenCode replies ``reject`` to any permission request it cannot match
-        # and prints a bare ``permission requested: ...`` line into the JSON
-        # stream -- a silent tool failure in a run with nobody to ask. Every
-        # other transport passes an equivalent. The "not explicitly denied"
-        # wording matters: an operator's own denies still win.
         yolo_flag="--auto",
-        # opencode 1.18.25 has NO output-format flag beyond
-        # ``--format default|json`` (``opencode run --help``); an
-        # ``--json-stream`` default used to sit here and was silently
-        # discarded by an argv-name sniff, which also swallowed any
-        # operator ``[agents.opencode].output_flag``. The drop is now
-        # declared, not incidental.
         output_flag=None,
         honors_output_flag=False,
         model_flag_template="--model {}",
@@ -610,7 +446,6 @@ class OpencodeCommandBuilder(ConfigurableCommandBuilder):
 
 
 class NanocoderCommandBuilder(ConfigurableCommandBuilder):
-    """CommandBuilder for AgentTransport.NANOCODER."""
 
     SPEC = CommandBuilderSpec(
         base_argv=("nanocoder",),
@@ -628,7 +463,6 @@ class NanocoderCommandBuilder(ConfigurableCommandBuilder):
 
 
 class CodexCommandBuilder(ConfigurableCommandBuilder):
-    """CommandBuilder for AgentTransport.CODEX."""
 
     SPEC = CommandBuilderSpec(
         base_argv=("codex", "exec"),
@@ -647,7 +481,6 @@ class CodexCommandBuilder(ConfigurableCommandBuilder):
 
 
 class ClaudeInteractiveCommandBuilder:
-    """CommandBuilder for AgentTransport.CLAUDE_INTERACTIVE."""
 
     def build(
         self,
@@ -671,17 +504,12 @@ class ClaudeInteractiveCommandBuilder:
             cmd.extend(["--append-system-prompt-file", options.master_prompt_file])
         effective_model = options.model_flag or config.model_flag
         if effective_model:
-            # shlex.split (not str.split) so a shell-quoted model value
-            # (e.g. a bracket-parameterized or whitespace-bearing id from
-            # the dynamic Claude family resolver) survives as one argv
-            # token instead of splitting across argv elements.
             cmd.extend(shlex.split(effective_model))
         _append_transport_prompt_arg(cmd, AgentTransport.CLAUDE_INTERACTIVE, prompt_file, options)
         return cmd
 
 
 class AgyCommandBuilder(ConfigurableCommandBuilder):
-    """CommandBuilder for AgentTransport.AGY."""
 
     SPEC = CommandBuilderSpec(
         base_argv=("agy",),
@@ -702,31 +530,6 @@ class AgyCommandBuilder(ConfigurableCommandBuilder):
 
 
 class CursorCommandBuilder(ConfigurableCommandBuilder):
-    """CommandBuilder for AgentTransport.CURSOR.
-
-    The headless invocation is ``agent --print --output-format stream-json
-    --trust --yolo --approve-mcps --model <id> <prompt>`` per the
-    documented Cursor Agent CLI automation contract.  ``--trust`` and
-    ``--approve-mcps`` are the documented unattended-runner overrides that
-    skip the interactive workspace-trust and MCP-approval prompts. ``--yolo``
-    is the documented autonomy flag for the headless transport.  The
-    prompt is a positional argument, loaded via :func:`_load_prompt_text`
-    so a multi-modal sidecar (when present) is appended to the rendered
-    prompt text.
-
-    ``--stream-partial-output`` is omitted from the default spec because it
-    only improves live visibility when the operator passes
-    ``--output-format stream-json``; that flag is already in the spec, so
-    the streaming partial-output path is opt-in via
-    ``[agents.cursor].streaming_flag`` rather than a hardcoded default.
-
-    The ``--print`` headless flag is emitted via :attr:`print_flag` so an
-    operator-supplied ``[agents.cursor].cmd`` override (e.g.
-    ``/opt/wrapper/agent --telemetry-flag``) does not have to repeat the
-    ``--print`` token.  The builder concatenates the user-supplied cmd
-    (split via :func:`shlex.split`) and the documented headless flag set
-    so the wrapper preserves its own flags verbatim.
-    """
 
     SPEC = CommandBuilderSpec(
         base_argv=("agent",),
@@ -745,17 +548,6 @@ class CursorCommandBuilder(ConfigurableCommandBuilder):
 
 
 class PiCommandBuilder(ConfigurableCommandBuilder):
-    """CommandBuilder for AgentTransport.PI.
-
-    The headless invocation is ``pi --mode json <prompt>`` per
-    https://pi.dev/docs/latest/usage.  ``--mode json`` is modeled via
-    :attr:`CommandBuilderSpec.output_flag` (a literal plan-compliant
-    string); :class:`ConfigurableCommandBuilder` splits the string on
-    whitespace via :func:`_split_optional_flag` so the two argv tokens
-    ``--mode`` and ``json`` are emitted separately.  ``--approve`` is
-    the documented non-interactive project-trust override (``-a``
-    short form).  The prompt is a positional argument.
-    """
 
     SPEC = CommandBuilderSpec(
         base_argv=("pi",),
@@ -803,24 +595,6 @@ class PiCommandBuilder(ConfigurableCommandBuilder):
 
 
 class KimiCommandBuilder(ConfigurableCommandBuilder):
-    """CommandBuilder for AgentTransport.KIMI.
-
-    The headless invocation is ``kimi --output-format=stream-json -m <model>
-    -p <prompt>`` per the documented Kimi Code CLI non-interactive prompt
-    mode (``-p, --prompt <prompt>`` runs one prompt without opening the
-    TUI; ``--output-format <format>`` selects ``text`` or ``stream-json``).
-
-    The legacy kimi-cli tokens ``--print`` and ``--afk`` are NOT used: the
-    live kimi-code v0.36.1 binary rejects both (``error: unknown option
-    '--print'`` / ``'--afk'``), and the command reference documents
-    ``--yolo`` / ``--auto`` / ``--plan`` as mutually exclusive with
-    ``--prompt`` — prompt mode auto-approves its tool calls, so no autonomy
-    flag is emitted.
-
-    ``-p`` is modeled via :attr:`print_flag` (emitted immediately before
-    the positional prompt) so the prompt text lands as exactly one argv
-    value.  ``-m`` / ``-r`` come from the model / session flag templates.
-    """
 
     SPEC = CommandBuilderSpec(
         base_argv=("kimi",),
@@ -839,11 +613,6 @@ class KimiCommandBuilder(ConfigurableCommandBuilder):
 
 
 class DefaultCommandBuilder:
-    """Default CommandBuilder for AgentTransport.CLAUDE and AgentTransport.GENERIC.
-
-    This builder handles the default command construction for CLAUDE and GENERIC
-    transports when no specialized builder is needed.
-    """
 
     def build(
         self,
@@ -852,19 +621,11 @@ class DefaultCommandBuilder:
         *,
         options: _BuildCommandOptions,
     ) -> list[str]:
-        # shlex.split (not str.split) so a quoted wrapper path containing
-        # spaces stays a single argv token, matching the AGY / Cursor
-        # overrides and ``_agent_command_name``.
         cmd = shlex.split(config.cmd)
         transport = _agent_transport(config)
 
         if transport == AgentTransport.CLAUDE and config.output_flag is not None:
             cmd.append(config.output_flag)
-            # The official Claude Code CLI requires --verbose when
-            # --output-format=stream-json is combined with --print (measured
-            # v2.1.234). Emit it here so callers do not have to remember to set
-            # options.verbose for this transport. Third-party CLAUDE-transport
-            # binaries (e.g. ``ccs``) keep their original argv order.
             if (
                 _agent_command_name(config) == "claude"
                 and config.output_flag == "--output-format=stream-json"
@@ -894,10 +655,6 @@ class DefaultCommandBuilder:
 
         effective_model = options.model_flag or config.model_flag
         if effective_model:
-            # shlex.split (not str.split) so a shell-quoted model value
-            # (e.g. a bracket-parameterized or whitespace-bearing id from
-            # the dynamic Claude family resolver) survives as one argv
-            # token instead of splitting across argv elements.
             cmd.extend(shlex.split(effective_model))
 
         _append_transport_prompt_arg(cmd, transport, prompt_file, options)

@@ -1,8 +1,3 @@
-"""Canonical public repository URLs for Ralph Workflow.
-
-These constants are the maintained source of truth for the public repo surfaces
-referenced by package metadata, docs config, and regression tests.
-"""
 
 from __future__ import annotations
 
@@ -15,10 +10,6 @@ GETTING_STARTED_URL = (
     f"{GITHUB_REPOSITORY_URL}/blob/main/ralph-workflow/docs/sphinx/getting-started.md"
 )
 
-# Ralph-Workflow-Pro is a separate, optional GUI layer that runs the
-# engine as a subprocess. It lives in its own Codeberg repository and
-# is referenced from the engine docs as the source of truth for the
-# Pro↔Ralph integration contract.
 RALPH_WORKFLOW_PRO_REPOSITORY_URL = "https://codeberg.org/RalphWorkflow/Ralph-Workflow-Pro"
 
 __all__ = [

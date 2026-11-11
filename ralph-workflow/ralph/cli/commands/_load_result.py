@@ -1,4 +1,3 @@
-"""_LoadResult — result of loading CLI configuration."""
 
 from __future__ import annotations
 

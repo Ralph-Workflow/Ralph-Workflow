@@ -1,68 +1,3 @@
-"""Dependency-injection seam audit.
-
-Enforces the Foundations dependency-injection contract from PROMPT.md: every
-component below the composition root must receive its collaborators through
-its constructor or call signature, and must not reach into ambient process
-state (``os.environ``, ``open()``) or launder the session contract through
-``typing.cast()`` at the session factory boundary.
-
-This audit runs TWO AST passes (modeled on ``audit_mcp_timeout.py``):
-
-PASS 1 — env+open ambient reads
-  Walks ``ralph/mcp/``, ``ralph/agents/``, ``ralph/process/``,
-  ``ralph/recovery/``, ``ralph/pipeline/``, and ``ralph/git/`` for direct
-  ambient state reads that should be replaced with an injected accessor:
-
-    - ``os.environ[...]``
-    - ``os.environ.get(...)``
-    - ``os.getenv(...)``
-    - ``open(...)`` (direct file I/O without an injected reader)
-
-  Allowlist (composition-root or unavoidable boundary code):
-    - ``ralph/mcp/protocol/env.py`` — defines constants; no actual env read.
-    - ``ralph/mcp/server/_timing_safety.py`` — imports constants; one-line
-      justification.
-    - ``ralph/mcp/server/runtime.py:211`` and ``:389`` — composition root
-      that reads ``MCP_*_ENV`` / ``UPSTREAM_MCP_TOOL_CATALOG_ENV`` to wire
-      the factory.
-    - ``ralph/mcp/websearch/secrets.py:17`` — ``os.getenv`` is used as a
-      callable ``EnvGetter`` parameter, NOT an ambient read.
-    - ``ralph/config/*``, ``ralph/main.py``, ``ralph/__main__.py`` — top-level
-      entry points (composition root).
-
-PASS 2 — ``cast()`` at the session factory boundary
-  Walks ``ralph/mcp/server/runtime_session.py`` and
-  ``ralph/mcp/server/_fallback_http_handler.py`` (the modules named in
-  PROMPT.md proof obligation B as the session factory boundary) and flags
-  ANY ``cast(...)`` call. PROMPT.md proof obligation B says: "no cast() sits
-  at the session factory boundary (the specific laundering that hid the
-  storm), so the type checker cannot be told to look away there." This is
-  why PASS 2 has NO allowlist — the architecture's stance is zero casts at
-  the factory boundary.
-
-Both passes are controlled by the ``AUDIT_DI_SEAM_DRY_RUN`` env var
-(default ``"true"``). When ``true`` (the default), hits are REPORTED but the
-audit does not fail — this is the dry-run pattern, used so a fresh check
-surfaces hits without breaking the build. Set ``AUDIT_DI_SEAM_DRY_RUN=false``
-to make any reported hit fail the audit. The composition-root env reads
-(``ralph/mcp/server/runtime.py`` and similar) are also under the dry-run
-umbrella, so the audit can be turned into a hard gate once the allowlist
-and boundary code are confirmed correct.
-
-Self-audit (per PA-009): this module uses only non-mutating operations —
-``Path.rglob`` + ``read_text`` + ``ast.parse``. It NEVER uses
-``subprocess.run``, ``time.sleep``, or real file writes, so it passes
-``audit_test_policy`` and ``audit_mcp_timeout`` on itself.
-
-Usage:
-    python -m ralph.testing.audit_di_seam [root1 root2 ...]
-
-Exit codes:
-  0 = clean (in dry-run mode, always; in strict mode, only if no hits).
-  1 = violations found (strict mode only).
-  2 = root not found.
-"""
-
 from __future__ import annotations
 
 import ast
@@ -83,111 +18,39 @@ _SKIP_DIRS: frozenset[str] = frozenset(
     }
 )
 
-# PASS 1 — direct ambient env / filesystem reads below the composition root.
-# Each entry: a directory (relative to the ralph package root) or a specific
-# ``module:line`` declaration for narrow carve-outs.
-#
-# Justification is recorded inline for every entry; the audit prints the
-# justification when it skips a file so reviewers can audit the allowlist.
 PASS1_ALLOWLIST: tuple[str, ...] = (
-    # mcp/protocol/env.py — defines MCP_*_ENV constants; no actual read.
     "mcp/protocol/env.py",
-    # mcp/server/_timing_safety.py — imports constants for the
-    # import-time invariant check (one-line justification, see source).
     "mcp/server/_timing_safety.py",
-    # Composition root that reads MCP_*_ENV / UPSTREAM_MCP_TOOL_CATALOG_ENV
-    # to wire the factory. Justified by PROMPT.md: "Concrete IO and
-    # side-effecting implementations are assembled in exactly one place —
-    # the composition root." The line numbers shift with docstring edits;
-    # the audit must be re-pointed whenever the docstring changes.
     "mcp/server/runtime.py:211",
     "mcp/server/runtime.py:389",
-    # mcp/server/runtime.py — inherited-FD and respawn sentinel values are
-    # read from the env map injected into run_standalone_server (defaulting
-    # to the process environment at that composition root). They are not
-    # allowlisted. Line 428 remains the recorded carve-out for the upstream
-    # registry branch in build_standalone_http_server.
     "mcp/server/runtime.py:428",
-    # mcp/server/_start_stage_tracker.py:47 — import-time spawn identity:
-    # the module reads MCP_STAGE_ID_ENV once at import so parent and
-    # child share the per-spawn stage file (R3 fix, commit 3a7d61c4d).
-    # This is a composition-root read; the value is consumed exactly
-    # once and re-reading it via a seam would not change behavior.
-    "mcp/server/_start_stage_tracker.py:47",
-    # mcp/server/_fallback_standalone_server.py — startup banner reads
-    # ``MCP_AUTH_TOKEN`` (auth posture) and ``RALPH_MCP_PROBE_TIMEOUT_MS``
-    # (probe ceiling) so the operator-visible banner matches the live
-    # configuration. The banner is part of the composition root.
+    "mcp/server/_start_stage_tracker.py:18",
     "mcp/server/_fallback_standalone_server.py:65",
     "mcp/server/_fallback_standalone_server.py:79",
-    # mcp/transport/nanocoder.py — reads platform env vars (``APPDATA``,
-    # ``XDG_CONFIG_HOME``) to resolve the user-level nanocoder config dir.
-    # These are platform-path conventions, not config; injecting them
-    # would add noise without changing testable behavior.
     "mcp/transport/nanocoder.py:64",
     "mcp/transport/nanocoder.py:69",
-    # mcp/transport/kimi.py — reads ``KIMI_CODE_HOME`` to resolve the
-    # user-global Kimi Code mcp.json dir, defaulting to ``~/.kimi-code``.
-    # Same platform-path convention shape as nanocoder above; the
-    # workspace-local config path is fully injected, so the seam would
-    # add noise without changing testable behavior.
     "mcp/transport/kimi.py:92",
-    # mcp/websearch/secrets.py:17 — ``getenv`` is a callable parameter
-    # of type ``EnvGetter``, NOT an ambient read.
     "mcp/websearch/secrets.py:17",
-    # pipeline/runner.py:804 — display-only CTA: hashes the USER env var
-    # with the process id to determine whether to print a star-CTA after
-    # a successful pipeline run. Cosmetic, not a config read; the result
-    # is non-deterministic enough that injecting it would add no test
-    # value.
     "pipeline/runner.py:804",
-    # pipeline/plumbing/smoke_plumbing.py - RALPH_AGY_BINARY is the
-    # composition-root seam that lets tests and mock binaries inject a
-    # different AGY executable without changing config files. The single
-    # ambient read is isolated to ``_agy_binary_override_env``; all other
-    # smoke-plumbing helpers receive the value through call signatures, and
-    # production agent invocation below this level receives the resolved
-    # command through AgentConfig.
     "pipeline/plumbing/smoke_plumbing.py:443",
-    # os.environ.get(RALPH_AGY_BINARY) in _agy_binary_override_env
     "pipeline/plumbing/smoke_plumbing.py:490",
-    # agents/invoke/_process_reader.py - RALPH_BROKER_SECRET is the
-    # composition-root seam for completion receipt validation. The broker
-    # secret is read on the parent (orchestrator) side; the subprocess-env
-    # isolation fix in _subprocess_env ensures it does NOT leak to spawned
-    # children. PTY and smoke helpers call this single parent-side accessor
-    # instead of reading ambient env themselves. Line shifted to 225 by
-    # the broken-agent grace / harness-echo reader additions.
     "agents/invoke/_process_reader.py:225",
-    # pipeline/plumbing/smoke_plumbing.py - RALPH_AGY_BINARY in
-    # _agy_binary_override_env; justified by di-seam-allowlist comment.
     "pipeline/plumbing/smoke_plumbing.py:516",
-    # pipeline/plumbing/smoke_plumbing.py - MOCK_AGY_BEHAVIOR is the
-    # composition-root mock test infrastructure; no production code path
-    # reads it (guarded by is_mock_agy_override()).
     "pipeline/plumbing/smoke_plumbing.py:1542",
     "pipeline/plumbing/smoke_plumbing.py:1761",
 )
 
-# Top-level entry points and the config package — the composition root for
-# the application. Allowed to read ambient env / open files.
 PASS1_TOP_LEVEL_ALLOWLIST: tuple[str, ...] = (
     "ralph/config/",
     "ralph/main.py",
     "ralph/__main__.py",
 )
 
-# PASS 2 — modules that comprise the session factory boundary per
-# PROMPT.md proof obligation B. Any ``cast(...)`` call in these files is
-# flagged (no allowlist). Paths are relative to the package root (no
-# leading ``ralph/``), matching the file walker in audit_pass1().
 PASS2_SESSION_FACTORY_MODULES: tuple[str, ...] = (
     "mcp/server/runtime_session.py",
     "mcp/server/_fallback_http_handler.py",
 )
 
-# PASS 1 — roots audited (relative to the ralph package root, except the
-# first entry which is the workspace root for the top-level config files).
 PASS1_DEFAULT_ROOTS: tuple[str, ...] = (
     "mcp",
     "agents",
@@ -199,8 +62,6 @@ PASS1_DEFAULT_ROOTS: tuple[str, ...] = (
 
 
 class DiSeamViolation:
-    """A single dependency-injection seam violation."""
-
     def __init__(self, file_path: str, line: int, category: str, detail: str) -> None:
         self.file_path = file_path
         self.line = line
@@ -212,19 +73,11 @@ class DiSeamViolation:
 
 
 def _is_dry_run() -> bool:
-    """Return True unless ``AUDIT_DI_SEAM_DRY_RUN`` is set to a false-y value.
-
-    The dry-run default lets a fresh audit surface hits without breaking the
-    build — the composition-root env reads (and any future allowlist
-    expansion) can be reviewed in dry-run output before turning the audit
-    into a hard gate.
-    """
     raw = os.environ.get("AUDIT_DI_SEAM_DRY_RUN", "false")
     return raw.strip().lower() not in {"false", "0", "no", "off"}
 
 
 def _is_allowlisted(rel_path: str, line: int) -> bool:
-    """True if the (file, line) is in PASS 1's allowlist."""
     for entry in PASS1_ALLOWLIST:
         if ":" in entry:
             file_part, line_part = entry.rsplit(":", 1)
@@ -241,7 +94,6 @@ def _is_allowlisted(rel_path: str, line: int) -> bool:
 
 
 def _is_top_level_allowlisted(rel_path: str) -> bool:
-    """Top-level config / main entry points (composition root) — skip entirely."""
     for top in PASS1_TOP_LEVEL_ALLOWLIST:
         if top.endswith("/") and rel_path.startswith(top):
             return True
@@ -251,7 +103,6 @@ def _is_top_level_allowlisted(rel_path: str) -> bool:
 
 
 def _dotted_name(node: ast.Call) -> str | None:
-    """Return the dotted function name when the receiver chain is plain names."""
     func: ast.expr = node.func
     parts: list[str] = []
     while isinstance(func, ast.Attribute):
@@ -265,7 +116,6 @@ def _dotted_name(node: ast.Call) -> str | None:
 
 
 def _is_env_access(call: ast.Call) -> str | None:
-    """Return the env access category if the call is a direct env read, else None."""
     name = _dotted_name(call)
     if name is None:
         return None
@@ -275,13 +125,10 @@ def _is_env_access(call: ast.Call) -> str | None:
 
 
 def _is_direct_open(call: ast.Call) -> bool:
-    """True if the call is a bare ``open(...)`` (not bound)."""
     return isinstance(call.func, ast.Name) and call.func.id == "open"
 
 
 class _Pass1EnvOpenVisitor(ast.NodeVisitor):
-    """PASS 1: direct ambient env / file reads."""
-
     def __init__(self, file_path: str) -> None:
         self.file_path = file_path
         self.violations: list[DiSeamViolation] = []
@@ -316,8 +163,6 @@ class _Pass1EnvOpenVisitor(ast.NodeVisitor):
 
 
 class _Pass2CastVisitor(ast.NodeVisitor):
-    """PASS 2: ``cast(...)`` at the session factory boundary."""
-
     def __init__(self, file_path: str) -> None:
         self.file_path = file_path
         self.violations: list[DiSeamViolation] = []
@@ -340,7 +185,6 @@ class _Pass2CastVisitor(ast.NodeVisitor):
 
 
 def audit_pass1_file(rel_path: str, file_path: Path) -> list[DiSeamViolation]:
-    """Run PASS 1 (env+open) on a single Python file."""
     if _is_top_level_allowlisted(rel_path):
         return []
     try:
@@ -354,7 +198,6 @@ def audit_pass1_file(rel_path: str, file_path: Path) -> list[DiSeamViolation]:
 
 
 def audit_pass2_file(rel_path: str, file_path: Path) -> list[DiSeamViolation]:
-    """Run PASS 2 (cast at session factory boundary) on a single Python file."""
     try:
         source = file_path.read_text(encoding="utf-8")
         tree = ast.parse(source, filename=str(file_path))
@@ -366,7 +209,6 @@ def audit_pass2_file(rel_path: str, file_path: Path) -> list[DiSeamViolation]:
 
 
 def _iter_py_files(root: Path) -> list[Path]:
-    """Walk a directory for ``*.py`` files, skipping caches and build dirs."""
     return sorted(
         p
         for p in root.rglob("*.py")
@@ -378,10 +220,6 @@ def audit_pass1(
     package_root: Path,
     roots: tuple[str, ...] = PASS1_DEFAULT_ROOTS,
 ) -> tuple[list[DiSeamViolation], int]:
-    """PASS 1 — direct env / open ambient reads.
-
-    Returns (violations, files_checked).
-    """
     all_violations: list[DiSeamViolation] = []
     files_checked = 0
     for rel_root in roots:
@@ -399,10 +237,6 @@ def audit_pass2(
     package_root: Path,
     modules: tuple[str, ...] = PASS2_SESSION_FACTORY_MODULES,
 ) -> tuple[list[DiSeamViolation], int]:
-    """PASS 2 — ``cast()`` at the session factory boundary.
-
-    Returns (violations, modules_walked).
-    """
     all_violations: list[DiSeamViolation] = []
     modules_walked = 0
     for rel_path in modules:
@@ -437,7 +271,6 @@ def _format_pass2_header(
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run both DI-seam audit passes and return an exit code."""
     package_root = Path(__file__).parent.parent
 
     dry_run = _is_dry_run()

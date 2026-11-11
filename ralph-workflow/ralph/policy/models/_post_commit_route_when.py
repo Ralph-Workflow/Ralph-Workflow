@@ -1,4 +1,3 @@
-"""PostCommitRouteWhen Pydantic model."""
 
 from __future__ import annotations
 
@@ -10,7 +9,6 @@ from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 
 
 class PostCommitRouteWhen(_FrozenPolicyModel):
-    """Condition selector for post-commit budget-guarded routing."""
 
     phase: str = Field(
         ...,

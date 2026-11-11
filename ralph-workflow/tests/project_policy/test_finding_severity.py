@@ -1,5 +1,3 @@
-"""Contract tests for finding severity (blocking vs non-blocking warnings)."""
-
 from __future__ import annotations
 
 from datetime import date
@@ -49,14 +47,12 @@ def test_finding_can_be_non_blocking() -> None:
 
 
 def test_line_budget_findings_are_non_blocking() -> None:
-    # 201 lines triggers PROJECT_AGENTS_MD_LINE_BUDGET
     long_content = "# Title\n" + "\n".join(f"line {i}" for i in range(205))
     findings = agents_md.check_agents_md_line_budgets(long_content)
     assert len(findings) == 1
     assert findings[0].requirement_id == markers.PROJECT_AGENTS_MD_LINE_BUDGET_FINDING_ID
     assert findings[0].blocking is False
 
-    # Managed block exceeding 40 lines
     managed_lines = [markers.AGENTS_BLOCK_BEGIN]
     managed_lines.extend(f"instruction {i}" for i in range(45))
     managed_lines.append(markers.AGENTS_BLOCK_END)
@@ -70,7 +66,7 @@ def test_line_budget_findings_are_non_blocking() -> None:
 
 def test_research_freshness_finding_is_non_blocking() -> None:
     clock_date = date(2026, 11, 10)
-    old_date = date(2024, 1, 1)  # > 365 days old
+    old_date = date(2024, 1, 1)
     validators.set_research_freshness_clock(lambda: clock_date)
     try:
         policy_body = f"""<!-- ralph-policy-schema: v6 -->
@@ -93,12 +89,10 @@ def test_research_freshness_finding_is_non_blocking() -> None:
 
 
 def test_structural_and_security_findings_stay_blocking() -> None:
-    # Hidden unicode stays blocking
     unicode_findings = instruction_surface.check_hidden_unicode("hello\u200bworld", "test.md")
     assert len(unicode_findings) == 1
     assert unicode_findings[0].blocking is True
 
-    # Missing cited path stays blocking
     ws = MemoryWorkspace()
     cited_findings = agents_md.check_agents_md_path_citations(
         ws,
@@ -112,7 +106,6 @@ def test_structural_and_security_findings_stay_blocking() -> None:
 def test_workspace_with_only_line_budget_warning_assesses_ready() -> None:
     ws = MemoryWorkspace()
     seed_complete_corpus(ws)
-    # Add extra lines to AGENTS.md to exceed 200-line budget
     current = ws.read(markers.AGENTS_MD)
     extra_lines = "\n".join(f"# comment line {i}" for i in range(210))
     ws.write(markers.AGENTS_MD, current + "\n" + extra_lines)
@@ -121,11 +114,9 @@ def test_workspace_with_only_line_budget_warning_assesses_ready() -> None:
     assert len(all_findings) >= 1
     assert all(not f.blocking for f in all_findings)
 
-    # Preflight must return READY even with warnings present
     result = preflight.run_policy_readiness_preflight(ws, _stack())
     assert result.is_ready()
     assert result.status is ReadinessStatus.READY
-    # Warnings are still reported on the result
     assert len(result.findings) >= 1
 
 
@@ -165,7 +156,6 @@ def test_remediation_prompt_labels_severity() -> None:
 
 def test_cache_never_stores_warnings_as_failures() -> None:
     ws = MemoryWorkspace()
-    # Cache only writes for ReadinessStatus.READY
     cache.write_cache(ws, _stack(), ReadinessStatus.REMEDIATION_REQUIRED)
     assert not ws.exists(markers.CACHE_REL_PATH)
 

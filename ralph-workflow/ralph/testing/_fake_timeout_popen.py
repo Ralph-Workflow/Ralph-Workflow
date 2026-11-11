@@ -5,8 +5,6 @@ from typing import IO
 
 
 class FakeTimeoutPopen:
-    """FakePopen variant that raises TimeoutExpired on first communicate() with timeout."""
-
     def __init__(
         self,
         pid: int,

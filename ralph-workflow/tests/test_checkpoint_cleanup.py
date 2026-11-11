@@ -1,5 +1,3 @@
-"""Tests for stray .tmp file cleanup on Checkpoint init."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -24,7 +22,6 @@ def test_stray_tmp_removed_on_init(tmp_path: Path) -> None:
 def test_no_tmp_file_safe_on_init(tmp_path: Path) -> None:
     path = tmp_path / "checkpoint.json"
 
-    # Should not raise
     Checkpoint(path)
 
 
@@ -46,7 +43,6 @@ def test_actual_checkpoint_preserved(tmp_path: Path) -> None:
 
 
 def test_interrupted_save_staging_files_removed_on_init(tmp_path: Path) -> None:
-    """Init discards the staging files an interrupted ``save()`` leaves behind."""
     path = tmp_path / "checkpoint.json"
     state = PipelineState(phase="planning", outer_progress={"iteration": THIRD_ITERATION})
     ckpt.save(state, path)

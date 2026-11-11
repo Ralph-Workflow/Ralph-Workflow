@@ -1,8 +1,3 @@
-"""Fetch and cache the OpenCode model catalog from models.dev.
-
-This module provides access to the OpenCode model catalog for
-discovering available models and providers.
-"""
 
 from __future__ import annotations
 
@@ -28,7 +23,6 @@ if TYPE_CHECKING:
 
 
 class ProcessRunner(Protocol):
-    """Callable process-execution seam used for local OpenCode preflight probes."""
 
     def __call__(
         self,
@@ -44,23 +38,10 @@ CATALOG_URL = "https://models.dev/api.json"
 TIMEOUT_SECS = 10
 _LOCAL_COMMAND_TIMEOUT_SECS = 30.0
 
-# wt-024 M6 (AC-03): the catalog is fetched from a remote source and
-# cached for the full process lifetime. A 5-minute TTL triggers a
-# refetch on the next call so a long-running orchestrator does not
-# retain stale data indefinitely. cache_clear() still bypasses the
-# TTL for explicit invalidation.
 _TTL_SECONDS: float = 300.0
 
 
 class _CatalogFetcher:
-    """Callable cache around the OpenCode catalog with a TTL refresh.
-
-    The instance is a stateful callable: every invocation returns
-    ``list[ModelEntry]`` and refreshes the cached snapshot when more
-    than :data:`_TTL_SECONDS` (5 minutes) have elapsed since the
-    last fetch. Use :meth:`cache_clear` to force a fresh fetch on
-    the next call.
-    """
 
     def __init__(self, *, clock: _ClockProtocol | None = None) -> None:
         self._cache: list[ModelEntry] | None = None
@@ -68,21 +49,6 @@ class _CatalogFetcher:
         self._clock: _ClockProtocol = clock if clock is not None else SystemClock()
 
     def __call__(self) -> list[ModelEntry]:
-        """Fetch and return the OpenCode model catalog.
-
-        Returns:
-            ``list[ModelEntry]`` populated from
-            ``https://models.dev/api.json``. Within the 5-minute TTL
-            the cached list is returned directly; outside the TTL a
-            fresh HTTP GET refreshes the cache.
-
-        Raises:
-            httpx.HTTPError: When the underlying ``httpx.Client.get``
-                call fails (network error, non-2xx status, etc.).
-            ValueError: When the JSON payload is neither a list nor
-                a provider map, or when a provider/model entry is
-                missing required fields.
-        """
         if (
             self._cache is not None
             and self._cached_at is not None
@@ -110,7 +76,6 @@ class _CatalogFetcher:
         return models
 
     def cache_clear(self) -> None:
-        """Clear any cached catalog."""
 
         self._cache = None
         self._cached_at = None
@@ -190,14 +155,6 @@ See :class:`_CatalogFetcher` for the underlying implementation and
 
 
 def get_model_by_id(model_id: str) -> ModelEntry | None:
-    """Get a specific model by ID.
-
-    Args:
-        model_id: Model identifier to look up.
-
-    Returns:
-        ModelEntry if found, None otherwise.
-    """
     catalog = fetch_catalog()
     for model in catalog:
         if model.id == model_id:
@@ -206,14 +163,6 @@ def get_model_by_id(model_id: str) -> ModelEntry | None:
 
 
 def search_models(query: str) -> list[ModelEntry]:
-    """Search models by name or provider.
-
-    Args:
-        query: Search query (case-insensitive).
-
-    Returns:
-        List of matching ModelEntry instances.
-    """
     catalog = fetch_catalog()
     query_lower = query.lower()
     return [
@@ -226,11 +175,6 @@ def search_models(query: str) -> list[ModelEntry]:
 
 
 def list_providers() -> list[str]:
-    """List all unique providers in the catalog.
-
-    Returns:
-        Sorted list of provider names.
-    """
     catalog = fetch_catalog()
     providers = {model.provider for model in catalog if model.provider}
     return sorted(providers)
@@ -270,31 +214,11 @@ def _local_opencode_version(
     return version or None
 
 
-#: The two spellings of opencode's model flag (``-m, --model <model>``,
-#: per ``opencode run --help`` on 1.18.25). Both take exactly one value.
 _OPENCODE_MODEL_FLAG_NAMES: Final[frozenset[str]] = frozenset({"-m", "--model"})
 _OPENCODE_MODEL_FLAG_TOKENS: Final[int] = 2
 
 
 def opencode_model_id_from_flag(model_flag: str | None) -> str | None:
-    """Extract the ``provider/model`` id an opencode ``-m`` flag selects.
-
-    ``model_flag`` is either a whole flag pair (``-m anthropic/claude-x``,
-    ``--model opencode/big-pickle``) or a bare model id. The value is
-    returned **verbatim**: opencode 1.18.25 parses ``-m`` as
-    ``provider/model`` and publishes a provider literally named
-    ``opencode`` (``opencode models`` lists ``opencode/big-pickle``), so
-    removing an ``opencode/`` prefix here would destroy the provider half
-    of a legitimate id. The Ralph *alias* prefix is stripped exactly once,
-    at alias resolution in :mod:`ralph.agents.registry`.
-
-    Args:
-        model_flag: A flag pair or a bare model id; ``None``/empty yields
-            ``None``.
-
-    Returns:
-        The model id, or ``None`` when no single id can be identified.
-    """
     if not model_flag:
         return None
     try:
@@ -319,45 +243,6 @@ def validate_local_model_support(
     env_path: str | None = None,
     _run_process: ProcessRunner = run_process,
 ) -> str | None:
-    """Return a human-readable error when the local OpenCode binary cannot use a model.
-
-    Two-mode return value:
-
-    * ``None`` — the local ``opencode`` binary (resolved from
-      ``env_path`` or ``PATH``) confirmed the model is supported
-      after a ``models --refresh <provider>`` invocation.
-    * Diagnostic ``str`` — the binary is missing, the refresh
-      command failed, or the model is absent from the refreshed
-      model list. The string is suitable for surfacing to the
-      user before launching an agent that targets ``model_id``.
-
-    Args:
-        model_id: Fully-qualified ``"provider/model"`` identifier.
-            When ``"/"`` is absent the function returns ``None``
-            immediately (the caller passed a bare provider name).
-        command: Executable name or path to invoke. Defaults to
-            ``"opencode"``, resolved via :func:`shutil.which`.
-        env_path: Optional override for the ``PATH`` used to resolve
-            ``command``. When ``None`` the current process's
-            ``PATH`` is used.
-        _run_process: Subprocess seam (``ProcessRunner`` protocol).
-            Defaults to :func:`ralph.executor.process.run_process`;
-            injectable for tests.
-
-    Returns:
-        ``None`` when ``model_id`` is supported locally; otherwise a
-        multi-line diagnostic string describing the failure mode.
-
-    Side effects:
-        Spawns two subprocesses: ``<command> --version`` (for the
-        diagnostic banner) and ``<command> models --refresh
-        <provider>`` (the actual preflight probe). Both run under
-        :func:`ralph.executor.process.run_process` with the
-        ``_LOCAL_COMMAND_TIMEOUT_SECS`` cap. Resolution walks the
-        ``env_path`` (or ``PATH``) using
-        :func:`shutil.which` and ``os.access`` so duplicate /
-        non-executable entries are filtered out.
-    """
     if "/" not in model_id:
         return None
 

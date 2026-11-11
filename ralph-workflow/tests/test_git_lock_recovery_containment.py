@@ -1,5 +1,3 @@
-"""Containment, proof levels and retry policy of git lock recovery (round-3 findings)."""
-
 from __future__ import annotations
 
 import os
@@ -63,12 +61,6 @@ def test_ralph_owned_locks_are_never_reapable(tmp_path: Path, rel: str) -> None:
     ],
 )
 def test_a_users_branch_lock_named_ralph_is_still_a_git_lock(tmp_path: Path, rel: str) -> None:
-    """Only ``<gitdir>/ralph/`` and Ralph's integration lock are exempt.
-
-    A user's ``ralph-cleanup`` or ``ralph/feature`` branch leaves an ordinary
-    git ref lock behind; matching on the ``ralph`` name prefix treated it as
-    Ralph-owned, so a stale one was never reaped and blocked that branch.
-    """
     git_dir = _git_dir(tmp_path)
     lock = git_dir / rel
     lock.parent.mkdir(parents=True, exist_ok=True)
@@ -145,7 +137,6 @@ def test_gitdir_for_lock_uses_the_enclosing_git_dir(
 def test_only_a_message_naming_a_lock_file_counts_as_contention() -> None:
     assert lr.names_a_lock_file("fatal: Unable to create '/r/.git/index.lock': File exists.")
     assert lr.names_a_lock_file("error: could not lock config file /r/.git/config: File exists")
-    # A permanent ref-name conflict also says "cannot lock ref"; waiting never fixes it.
     assert not lr.names_a_lock_file(
         "error: cannot lock ref 'refs/heads/a/b': 'refs/heads/a' exists; cannot create it"
     )
@@ -185,14 +176,10 @@ def test_git_subcommand_skips_global_options() -> None:
     assert git_subcommand(["--git-dir", "/r/.git", "update-ref", "x"]) == "update-ref"
 
 
-# --- retry policy of the universal wrapper ---------------------------------
-
 _LOCK_ERR = "fatal: Unable to create '{}': File exists."
 
 
 class _Spawn:
-    """Scripted ``_spawn_git``: returns the queued results in order."""
-
     def __init__(self, results: list[GitRunResult]) -> None:
         self.results = results
         self.calls = 0

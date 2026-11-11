@@ -1,5 +1,3 @@
-"""Validation recovery display helpers."""
-
 from __future__ import annotations
 
 from ralph.prompts.materialize import append_retry_footer

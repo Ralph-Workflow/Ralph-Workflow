@@ -1,5 +1,3 @@
-"""Loader tests for block-authored pipeline policies."""
-
 from __future__ import annotations
 
 import shutil

@@ -1,30 +1,3 @@
-"""Black-box tests for AGY incomplete-exit bounded recovery.
-
-An AGY headless run that exits rc=0 without the required completion
-evidence (the durable ``declare_complete`` sentinel, or a required
-artifact receipt) raises the typed ``AgyIncompleteExitError`` instead of
-a plain ``AgentInvocationError``. The typed error:
-
-  * classifies deterministically as ``FailureCategory.AGENT`` (never
-    ``AMBIGUOUS``), BEFORE the broader ``AgentInvocationError`` branch;
-  * maps to a canonical retry reason so the recovery layer issues ONE
-    bounded automatic reprompt (a fresh invocation carrying the original
-    task plus an explicit completion instruction);
-  * is bounded to exactly one reprompt per invocation at BOTH
-    enforcement points (``build_agent_recovery_plan`` and the
-    ``run_with_direct_mcp_recovery`` loop) -- never an unbounded loop;
-  * is scoped to strategies that declare
-    ``supports_incomplete_exit_reprompt()`` (AGY) -- other
-    completion-enforcing transports (e.g. Cursor) keep the plain
-    ``AgentInvocationError`` behavior.
-
-AGY exposes no stable wire-level "waiting for user input" signal, so
-recovery is limited to the objective condition "process exited without
-required completion evidence"; see ``docs/sphinx/recovery.md``.
-
-No real subprocesses, no real wall clock, no network.
-"""
-
 from __future__ import annotations
 
 import types
@@ -56,7 +29,6 @@ def _check_clean_exit_without_evidence(
     transport: AgentTransport,
     agent_name: str,
 ) -> None:
-    """Run ``check_process_result`` for a rc=0 exit that left no completion evidence."""
     fake_handle = types.SimpleNamespace(returncode=0)
     check_process_result(
         fake_handle,
@@ -70,8 +42,6 @@ def _check_clean_exit_without_evidence(
                 parent_exit_grace_seconds=0.0,
             ),
             completion_run_id=agent_name,
-            # Isolate AGY's empty-output diagnostic from the host-global
-            # cli.log (same reasoning as tests/test_agy_runner_no_retry.py).
             agy_cli_log_path=tmp_path / "cli.log",
         ),
     )
@@ -105,15 +75,12 @@ def _make_recovery_input(
 
 
 def test_agy_clean_exit_without_evidence_raises_typed_error(tmp_path: Path) -> None:
-    """AGY rc=0 without completion evidence raises ``AgyIncompleteExitError``."""
     with pytest.raises(AgyIncompleteExitError) as excinfo:
         _check_clean_exit_without_evidence(tmp_path, AgentTransport.AGY, "agy")
-    # The typed error remains an AgentInvocationError for every legacy caller.
     assert isinstance(excinfo.value, AgentInvocationError)
 
 
 def test_agy_incomplete_exit_message_is_actionable(tmp_path: Path) -> None:
-    """The terminal error tells the operator what evidence was missing and what to check."""
     with pytest.raises(AgyIncompleteExitError) as excinfo:
         _check_clean_exit_without_evidence(tmp_path, AgentTransport.AGY, "agy")
     message = str(excinfo.value)
@@ -123,14 +90,12 @@ def test_agy_incomplete_exit_message_is_actionable(tmp_path: Path) -> None:
 
 
 def test_cursor_clean_exit_without_evidence_keeps_plain_error(tmp_path: Path) -> None:
-    """Scoping guard: non-AGY completion-enforcing transports are unaffected."""
     with pytest.raises(AgentInvocationError) as excinfo:
         _check_clean_exit_without_evidence(tmp_path, AgentTransport.CURSOR, "agent")
     assert not isinstance(excinfo.value, AgyIncompleteExitError)
 
 
 def test_agy_incomplete_exit_classified_as_agent_failure() -> None:
-    """``AgyIncompleteExitError`` classifies as AGENT (never AMBIGUOUS)."""
     classifier = FailureClassifier()
     exc = AgyIncompleteExitError("agy")
 
@@ -144,7 +109,6 @@ def test_agy_incomplete_exit_classified_as_agent_failure() -> None:
 
 
 def test_agy_incomplete_exit_has_retryable_reason() -> None:
-    """The recovery layer sees a canonical retry reason for the typed error."""
     reason = retryable_agent_failure_reason(
         AgyIncompleteExitError("agy"), AgentInactivityTimeoutError
     )
@@ -152,11 +116,6 @@ def test_agy_incomplete_exit_has_retryable_reason() -> None:
 
 
 def test_recovery_plan_is_fresh_with_completion_instruction(tmp_path: Path) -> None:
-    """The reprompt is a FRESH invocation: original task plus completion instruction.
-
-    AGY does not demonstrably support resumable sessions (the continuation
-    probes did not expose session identity), so the plan must never resume.
-    """
     plan = build_agent_recovery_plan(_make_recovery_input(AgyIncompleteExitError("agy"), tmp_path))
 
     assert plan is not None, "expected a recovery plan for the first incomplete exit"
@@ -170,7 +129,6 @@ def test_recovery_plan_is_fresh_with_completion_instruction(tmp_path: Path) -> N
 
 
 def test_recovery_plan_none_when_completion_reprompt_already_used(tmp_path: Path) -> None:
-    """Bounded: the second incomplete exit in the same invocation gets no plan."""
     plan = build_agent_recovery_plan(
         _make_recovery_input(
             AgyIncompleteExitError("agy"),
@@ -185,7 +143,6 @@ def test_recovery_plan_none_when_completion_reprompt_already_used(tmp_path: Path
 
 
 def test_direct_mcp_recovery_bounds_agy_reprompt_to_one() -> None:
-    """The retry driver runs the attempt exactly twice for repeated incomplete exits."""
     attempts = [0]
 
     def attempt_fn(
@@ -210,7 +167,6 @@ def test_direct_mcp_recovery_bounds_agy_reprompt_to_one() -> None:
 
 
 def test_direct_mcp_recovery_bound_is_scoped_to_agy_incomplete_exit() -> None:
-    """Other retryable exits keep the ordinary max_retries budget."""
     attempts = [0]
 
     def attempt_fn(

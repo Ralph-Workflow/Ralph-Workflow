@@ -1,10 +1,3 @@
-"""Real-PTY regression test: child terminated after /exit preserves returncode.
-
-wt-16 / U3: verifies that an interactive child ignoring /exit and terminated
-via PtyLineReader._request_interactive_exit preserves its returncode and
-passes check_process_result without raising or losing terminal status.
-"""
-
 from __future__ import annotations
 
 import contextlib
@@ -32,7 +25,7 @@ if TYPE_CHECKING:
 pytestmark = [
     pytest.mark.required_auto_integrate_e2e,
     pytest.mark.smoke,
-]  # wt-03-fix-bug: subprocess_e2e removed; runs in E2E shard only
+]
 
 
 def _terminal_signals(
@@ -59,9 +52,6 @@ def test_request_interactive_exit_does_not_lose_returncode(tmp_path: Path) -> No
     pm = ProcessManager(
         ProcessManagerPolicy(
             default_grace_period_s=0.02,
-            # macOS holds an exiting PTY session leader for ~0.6s once its
-            # terminal has echoed the ``/exit`` input, so a 20 ms follow-up
-            # declared the dying child unkillable before the kernel reaped it.
             kill_followup_timeout_s=1.0,
             log_events=False,
             enable_zombie_reaper=False,

@@ -1,4 +1,3 @@
-"""Compatibility import surface for commit evidence."""
 
 from pathlib import Path
 
@@ -9,7 +8,6 @@ CommitMessageBudget = _impl.CommitMessageBudget
 
 
 def build_commit_evidence_bundle(repo_root: Path) -> CommitEvidenceBundle:
-    """Build evidence while retaining this legacy monkeypatch surface."""
     original_paths = _impl.list_changed_paths
     original_diff = _impl.commit_generation_diff
     _impl.list_changed_paths = list_changed_paths

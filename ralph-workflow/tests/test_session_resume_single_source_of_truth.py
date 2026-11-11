@@ -1,18 +1,3 @@
-"""Regression tests for the session-resume single source of truth helpers.
-
-These tests pin:
-
-- ``resolve_resume_session_id`` is the ONLY place that decides WHETHER the next
-  attempt continues the prior session and WHICH session id it threads. It is
-  transport-independent; the per-transport resume flag SYNTAX is owned by
-  ``config.session_flag`` and exercised by the command-builder tests in
-  ``test_agents_invoke_4.py``.
-- A simulated live 'retry after timeout' resolves to the prior session id so the
-  builder can resume it (rather than dropping it and starting fresh).
-- The recovery action mapping routes known failure reasons to the expected
-  recovery action.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -33,7 +18,6 @@ def test_resume_after_inactivity_timeout_threads_prior_session_id() -> None:
 
 
 def test_resume_is_transport_independent() -> None:
-    """The decision does not depend on the transport; syntax lives in config."""
     for prior in ("sid-claude", "sid-opencode", "sid-nanocoder"):
         new_sid = resolve_resume_session_id(
             has_prior_session=True,

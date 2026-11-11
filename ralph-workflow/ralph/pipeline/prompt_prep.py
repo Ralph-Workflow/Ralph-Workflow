@@ -1,5 +1,3 @@
-# Deprecated: Ralph-orchestrated workers are removed from the execution model; parallelism is owned by the developer agent's own sub-agents. See docs/sphinx/concepts.md §"Deprecated: Ralph-orchestrated workers".
-"""Prompt materialization helpers for the pipeline runner."""
 
 from __future__ import annotations
 
@@ -93,7 +91,6 @@ def _prompt_session_drain_for_phase(
     pipeline_policy: PipelinePolicy | None = None,
     agents_policy: AgentsPolicy | None = None,
 ) -> SessionDrain:
-    """Return the prompt capability profile for a policy drain."""
     candidate_drains: list[str] = []
     if drain is not None:
         candidate_drains.append(drain)
@@ -130,7 +127,6 @@ def session_capabilities_for_agent_phase(
     agent: AgentConfig | None = None,
     agents_policy: AgentsPolicy | None = None,
 ) -> SessionCapabilities:
-    """Return prompt session capabilities with the effective transport tool prefix."""
     tool_name_prefix = ""
     if agent is not None:
         tool_name_prefix = tool_name_prefix_for_transport(agent.transport)
@@ -146,34 +142,9 @@ def session_capabilities_for_agent_phase(
 
 
 def _prompt_changed_since_last_materialization(workspace_root: Path) -> bool:
-    """Return True when the operator-visible prompt differs from the last materialised one.
-
-    The operator-visible prompt is resolved through
-    :func:`ralph.pro_support.prompt.resolve_effective_prompt_path` so the
-    ``PROMPT_PATH`` env var is honoured in Pro mode. The materialised
-    ``.agent/PRODUCT_CRITERIA.md`` remains engine-owned and is checked as
-    the second operand of the comparison.
-
-    Uses the shared ``_prompt_files_differ`` helper so the comparison
-    short-circuits on (st_size, st_mtime_ns) equality without reading
-    file content. OSError is still caught and converted to ``False``
-    to preserve the pre-existing behaviour.
-
-    When ``product_criteria_path`` does not exist yet (no prior
-    materialisation), this returns ``False`` to preserve the legacy
-    resume semantics: "no materialised prompt to differ from" is
-    treated as "no change", which lets the caller set
-    ``resume_existing_phase=True`` on the first invocation.
-    """
     prompt_path = resolve_effective_prompt_path(workspace_root, os.environ)
     product_criteria_path = workspace_root / ".agent" / "PRODUCT_CRITERIA.md"
 
-    # Preserve legacy semantics: a missing product_criteria means
-    # "no materialisation has happened yet" -> not changed -> the
-    # caller treats the planning phase as a resume target.  This is
-    # the opposite of what ``_sync_product_criteria_file`` wants
-    # (write source on missing current), so the resume caller must
-    # short-circuit BEFORE delegating to ``_prompt_files_differ``.
     if not product_criteria_path.exists():
         return False
 
@@ -190,9 +161,6 @@ def _prompt_changed_since_last_materialization(workspace_root: Path) -> bool:
         return path.read_text(encoding="utf-8")
 
     try:
-        # read_source is left as None here: this caller only needs the
-        # boolean verdict, not the source text, so we avoid reading the
-        # source file content on the size-mismatch fast path.
         changed, _ = _prompt_files_differ(
             prompt_path,
             product_criteria_path,
@@ -319,28 +287,12 @@ _CYCLE_DEADLINE_ENV_NAMES = (
 
 
 def _withdraw_cycle_deadline_env() -> None:
-    """Remove any published cycle deadline from the environment.
-
-    The environment is process-global, so a deadline left published outlives
-    the invocation it describes and is inherited by every subprocess spawned
-    afterwards — including agents that have nothing to do with the cycle, such
-    as the auto-integrate conflict resolver, which would be nagged to wrap up
-    work it never started.
-    """
     for name in _CYCLE_DEADLINE_ENV_NAMES:
         os.environ.pop(name, None)
 
 
 @contextmanager
 def cycle_deadline_suspended() -> Iterator[None]:
-    """Hide the published deadline from agents spawned inside this block.
-
-    Withdrawing outright is wrong where the invocation still needs its own
-    deadline afterwards — a fan-out worker rebuilds its prompt warning from
-    these values, but reconciles its siblings' work first, and the
-    conflict-resolver agent that reconciliation spawns never joined the cycle
-    and must not be nagged about it.
-    """
     saved = {
         str(name): os.environ[name] for name in _CYCLE_DEADLINE_ENV_NAMES if name in os.environ
     }
@@ -358,14 +310,6 @@ def _publish_cycle_deadline_env(
     cycle_total_elapsed: float | None,
     development_total_elapsed: float | None = None,
 ) -> None:
-    """Publish (or withdraw) the cycle deadline for the invocation about to start.
-
-    The MCP server is a separate process spawned per invocation, so it reads
-    the deadline from the environment it inherits rather than from pipeline
-    state. Withdrawing is as important as publishing: without it a later
-    invocation outside the cycle would inherit a stale deadline and nag the
-    agent about a budget that no longer applies.
-    """
     routing_timing = (
         RoutingTiming(
             total_elapsed_seconds=cycle_total_elapsed or 0.0,

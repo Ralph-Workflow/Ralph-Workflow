@@ -1,4 +1,3 @@
-"""Evidence row creation helpers for grep operations."""
 
 from __future__ import annotations
 
@@ -15,11 +14,6 @@ def _derive_evidence_id_for_span(
     end_line: int,
     kind: str,
 ) -> str:
-    """Compute the prompt-exact evidence id from deterministic inputs.
-
-    Centralized here so the grep handler and the reindex pipeline
-    produce identical ids for the same file span.
-    """
     return derive_evidence_id(
         path=path,
         content_hash=content_hash,
@@ -31,7 +25,6 @@ def _derive_evidence_id_for_span(
 
 
 class _EvidenceRowBuilder:
-    """Tiny helper that builds an ``EvidenceRow`` from span inputs."""
 
     def __init__(
         self,

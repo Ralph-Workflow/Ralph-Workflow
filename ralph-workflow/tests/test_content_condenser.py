@@ -1,5 +1,3 @@
-"""Unit tests for the content_condenser utility."""
-
 from __future__ import annotations
 
 from rich.cells import cell_len
@@ -77,22 +75,17 @@ def test_hard_limit_shows_chars_count_with_ref() -> None:
 
 
 def test_emoji_boundary_safety() -> None:
-    # Each emoji is 2 cells wide so 300 emojis = 600 cells, exceeds soft_limit=400
     emoji_text = "😀" * 300
     visible, condensed = condense_content(
         emoji_text, options=CondenseOptions(soft_limit=_SOFT_LIMIT, hard_limit=_HARD_LIMIT)
     )
     assert condensed is True
-    # The visible head should only contain whole emojis — no partial multi-byte sequences
     emoji_chars = [c for c in visible if c == "😀"]
     assert len(emoji_chars) > 0
-    # Verify cell count of emojis fits within soft_limit
     assert cell_len("".join(emoji_chars)) <= _SOFT_LIMIT
 
 
 def test_overflow_ref_none_produces_truncated_without_path() -> None:
-    # When no overflow_ref is provided, the condenser emits (truncated) without a path.
-    # The caller (PlainLogRenderer) is responsible for surfacing the ref via condensed_ref.
     text = "a" * (_SOFT_LIMIT + 100)
     visible, condensed = condense_content(
         text, options=CondenseOptions(soft_limit=_SOFT_LIMIT, overflow_ref=None)
@@ -110,13 +103,6 @@ def test_exactly_at_soft_limit_passthrough() -> None:
 
 
 def test_soft_limit_marker_carries_count_size_and_destination() -> None:
-    """S-10 (wt-028-display AC-06): every marker carries count, size, destination.
-
-    The head-only marker must surface all three facts on the same
-    line: how much was hidden (line count), how large the original
-    was (size string), and where the unabridged content lives
-    (verbatim overflow reference).
-    """
     text = "x" * (_SOFT_LIMIT + 200)
     visible, _ = condense_content(
         text,
@@ -132,7 +118,6 @@ def test_soft_limit_marker_carries_count_size_and_destination() -> None:
 
 
 def test_head_only_marker_reports_actual_hidden_line_count() -> None:
-    """Condensation reports the lines omitted from a multi-line payload."""
     text = "\n".join(f"line {index:02d}" for index in range(60))
     visible, condensed = condense_content(
         text,
@@ -148,12 +133,6 @@ def test_head_only_marker_reports_actual_hidden_line_count() -> None:
 
 
 def test_hard_limit_marker_carries_count_size_and_destination() -> None:
-    """S-10 (wt-028-display AC-06): the head+tail marker also owes count, size, destination.
-
-    The elision marker (``(+N chars, see ...)``) additionally
-    surfaces the omitted character count. The verbatim path stays
-    the destination; the marker cannot drift to a private path.
-    """
     text = "a" * _LONG_TEXT_LEN
     visible, _ = condense_content(
         text,
@@ -170,7 +149,6 @@ def test_hard_limit_marker_carries_count_size_and_destination() -> None:
 
 
 def test_marker_reports_utf8_bytes_not_display_cells() -> None:
-    """S-5: byte-labelled markers report the original UTF-8 byte size."""
     text = "é" * 500
     visible, condensed = condense_content(
         text,
@@ -181,8 +159,7 @@ def test_marker_reports_utf8_bytes_not_display_cells() -> None:
 
 
 def test_marker_kib_format_above_one_kib() -> None:
-    """S-10 (wt-028-display AC-06): the size token uses KiB above 1 KiB."""
-    text = "a" * (1024 * 4)  # 4 KiB
+    text = "a" * (1024 * 4)
     visible, _ = condense_content(
         text,
         options=CondenseOptions(

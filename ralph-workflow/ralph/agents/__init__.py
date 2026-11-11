@@ -1,32 +1,3 @@
-"""Public agent-management exports.
-
-This package exposes the set of agent abstractions most callers need:
-registry lookup, chain composition, process invocation, and support registration.
-
-The unified registration flow enables adding, updating, or removing agents.
-For the 90% case, prefer the opinionated 5-line recipe ``register_my_agent``.
-
-Example::
-
-    from ralph.agents import register_my_agent, AgentRegistry
-    from ralph.agents.parsers.generic import GenericParser
-    from ralph.config.enums import AgentTransport
-
-    register_my_agent(
-        name="my-agent",
-        transport=AgentTransport.GENERIC,
-        parser=GenericParser,
-        agent_registry=AgentRegistry(),
-    )
-
-For advanced scenarios (CCS aliases, dynamic model parsing, custom
-``AgentRegistry.ccs_defaults``) use the 14-kwarg ``register_agent_support``
-helper or ``AgentCatalog.add`` directly.  Both still delegate to the same
-single mutation surface.
-
-Imports are resolved lazily so submodule imports like ``ralph.agents.clock`` do
-not pull in the full agent runtime during package initialization.
-"""
 
 from __future__ import annotations
 
@@ -41,7 +12,7 @@ if TYPE_CHECKING:
     from ralph.agents.registry import AgentRegistry
     from ralph.agents.support import AgentSupport
 
-__all__ = [  # noqa: RUF022  # reason: discoverability: register_my_agent (the 90% recipe) must precede register_agent_support
+__all__ = [
     "AgentCatalog",
     "AgentChain",
     "AgentRegistry",

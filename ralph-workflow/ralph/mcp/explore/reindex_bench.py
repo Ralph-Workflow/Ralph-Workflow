@@ -1,28 +1,3 @@
-"""Standalone benchmark harness for the ``reindex()`` hot path.
-
-This CLI exists so the plan's A/B speedup measurement has a real,
-reproducible driver: it builds a bounded Python corpus, runs the
-full ``reindex()`` path under each available structure extractor,
-interleaves the samples to amortise warmup / cooldown noise, and
-prints machine-readable statistics (median, spread, speedup ratio,
-workload size, implementation, CPU / platform metadata).
-
-The bench is intentionally narrow:
-
-* It only exercises the ``reindex(mode='full' | 'changed')`` path
-  over a synthetic codebase. The legacy
-  :mod:`ralph.mcp.explore.bench` is a transcript-cost harness with
-  no ``__main__``; this module is the real wall-clock evidence.
-* Output byte-equality is mandatory. The CLI exits nonzero when
-  the accelerated path produces a different generation, file row,
-  or structure row set than the scalar reference.
-* The CLI uses fixed corpora (no randomness across runs) and
-  interleaved samples (not back-to-back) so per-run jitter cannot
-  bias the comparison.
-* The CLI is meant to be runnable as ``python -m
-  ralph.mcp.explore.reindex_bench`` from the repo root. It writes
-  its JSON summary to stdout so the caller can pipe it.
-"""
 
 from __future__ import annotations
 
@@ -45,43 +20,23 @@ from ralph.mcp.explore.store import ExploreStore
 if TYPE_CHECKING:
     from ralph.mcp.explore._store_types import EdgeRow, SpanRow, SymbolRow
 
-# Small corpus used by the ``--small-workload`` mode. Drives the
-# AST walker through just a handful of small files so the
-# per-call dispatch cost dominates and the auto selector must
-# switch back to scalar. Tuned so the full run fits in the
-# 60-second combined test budget with comfortable headroom.
 SMALL_FILE_COUNT = 8
 SMALL_LINES_PER_FILE = 12
 
-# Representative corpus used by the default bench. Drives the
-# AST walker through enough work that the accelerated fused
-# walker measurably beats the historical four-pass walker. The
-# number is small enough to keep one sample well under a
-# second on commodity hardware while still surfacing the
-# accelerated speedup above measurement noise.
 REPRESENTATIVE_FILE_COUNT = 60
 REPRESENTATIVE_LINES_PER_FILE = 60
 
-# Predclared noise floor for the A/B comparison. The
-# representative corpus has a single-sample median noise
-# measured at well under 5% on the development host; this
-# constant gives the bench a stable threshold so the result
-# is reproducible across machines without per-host tuning.
 REPRESENTATIVE_MIN_SPEEDUP = 1.10
-SMALL_MIN_SPEEDUP = 1.0  # below 1.0 means scalar is allowed to win
+SMALL_MIN_SPEEDUP = 1.0
 _QUICK_REPRESENTATIVE_FILE_COUNT = 8
 _QUICK_REPRESENTATIVE_LINES_PER_FILE = 12
 
-#: Row widths produced by :func:`_index_snapshot`; these are
-#: declared once so the ``isinstance(row, tuple) and len(row) == N``
-#: predicates below resolve to a non-magic constant.
 _SNAPSHOT_SPAN_WIDTH = 5
 _SNAPSHOT_SYMBOL_WIDTH = 5
 _SNAPSHOT_EDGE_WIDTH = 5
 
 
 def _seed_corpus(root: Path, *, files: int, lines_per_file: int) -> int:
-    """Write ``files`` Python modules under ``root`` and return total bytes."""
     (root / "src" / "pkg" / "sub").mkdir(parents=True, exist_ok=True)
     (root / "tests").mkdir(exist_ok=True)
     total_bytes = 0
@@ -101,13 +56,9 @@ def _seed_corpus(root: Path, *, files: int, lines_per_file: int) -> int:
             else:
                 body_lines.append(f"VAL_{i}_{j} = {i} + {j}")
         body = "\n".join(body_lines) + "\n"
-        # Deterministic cross-file reference so the
-        # references_text relation has at least one edge in the
-        # small corpus too.
         body += f"def ref_{i}():\n    return fn_{i}_0(0, 0)\n"
         full = root / rel
         full.parent.mkdir(parents=True, exist_ok=True)
-        # filesystem-write-ok: transient scratch under a ``tempfile.TemporaryDirectory`` (deleted by ``tempfile`` on context exit).
         full.write_text(body)
         total_bytes += len(body)
     return total_bytes
@@ -119,10 +70,8 @@ def _seeded_workspace(
     lines_per_file: int,
     parent: Path,
 ) -> tuple[Path, int]:
-    """Create a fresh workspace rooted under ``parent`` and return the path."""
     workspace = parent / "ws"
     if workspace.exists():
-        # filesystem-write-ok: cleanup of transient benchmark workspace under a ``tempfile.TemporaryDirectory``.
         shutil.rmtree(workspace, ignore_errors=True)
     workspace.mkdir(parents=True)
     total = _seed_corpus(workspace, files=files, lines_per_file=lines_per_file)
@@ -137,10 +86,8 @@ def _run_reindex(
     mode: str,
     timeout_ms: int,
 ) -> tuple[int, int]:
-    """Run ``reindex()`` over ``workspace`` and return ``(generation, files)``."""
     store_dir = parent / f"index-{structure_extractor}-{mode}"
     if store_dir.exists():
-        # filesystem-write-ok: cleanup of transient per-sample index directory under a ``tempfile.TemporaryDirectory``.
         shutil.rmtree(store_dir, ignore_errors=True)
     store = ExploreStore(store_dir)
     try:
@@ -164,37 +111,20 @@ def _run_reindex(
 
 
 def _span_sort_key(row: SpanRow) -> tuple[str, int, str]:
-    """Sort key used by :func:`_index_snapshot` for spans.
-
-    Named helper rather than a ``lambda`` so strict mypy can
-    resolve ``row`` to the ``SpanRow`` type. A lambda's
-    parameter type defaults to ``Any`` under ``disallow_any_expr``
-    which fails the gate.
-    """
     return (row.path, row.start_line, row.span_id)
 
 
 def _symbol_sort_key(row: SymbolRow) -> tuple[str, str, str]:
-    """Sort key used by :func:`_index_snapshot` for symbols."""
     return (row.path, row.qualified_name, row.symbol_id)
 
 
 def _edge_sort_key(row: EdgeRow) -> tuple[str, str, str]:
-    """Sort key used by :func:`_index_snapshot` for edges."""
     return (row.path, row.relation, row.edge_id)
 
 
 def _snapshot_spans(
     snapshot: dict[str, object],
 ) -> list[tuple[str, str, int, int, str | None]]:
-    """Return the spans list from an ``_index_snapshot`` result.
-
-    The snapshot dict is constructed by :func:`_index_snapshot`
-    with concrete typed lists (spans / symbols / edges) so the
-    access here is type-safe by construction; this helper
-    narrows the untyped ``dict[str, object]`` to the span
-    tuple shape without resorting to ``cast``.
-    """
     raw = as_object_list(snapshot["spans"], field="snapshot[spans]")
     return [
         row
@@ -212,7 +142,6 @@ def _snapshot_spans(
 
 
 def _snapshot_symbols(snapshot: dict[str, object]) -> list[tuple[str, str, str, str, str]]:
-    """Return the symbols list from an ``_index_snapshot`` result."""
     raw = as_object_list(snapshot["symbols"], field="snapshot[symbols]")
     return [
         row
@@ -226,7 +155,6 @@ def _snapshot_symbols(snapshot: dict[str, object]) -> list[tuple[str, str, str, 
 
 
 def _snapshot_edges(snapshot: dict[str, object]) -> list[tuple[str, str, str, str, str]]:
-    """Return the edges list from an ``_index_snapshot`` result."""
     raw = as_object_list(snapshot["edges"], field="snapshot[edges]")
     return [
         row
@@ -247,18 +175,8 @@ def _index_snapshot(
     mode: str,
     timeout_ms: int,
 ) -> dict[str, object]:
-    """Return a deterministic snapshot of the indexed SQLite state.
-
-    The bench compares ``scalar`` and ``accelerated`` snapshots
-    via this helper; equality proves the two extractors write
-    identical rows to the store. The return type is loosely
-    ``dict[str, object]`` because the JSON payload carries
-    heterogeneous values (generation int, file list, row
-    tuples); callers cast to the concrete shape when needed.
-    """
     store_dir = parent / f"snap-{structure_extractor}-{mode}"
     if store_dir.exists():
-        # filesystem-write-ok: cleanup of transient snapshot directory under a ``tempfile.TemporaryDirectory``.
         shutil.rmtree(store_dir, ignore_errors=True)
     store = ExploreStore(store_dir)
     try:
@@ -317,7 +235,6 @@ def _measure_one(
     mode: str,
     timeout_ms: int,
 ) -> int:
-    """Measure a single ``reindex()`` invocation in nanoseconds."""
     start = time.perf_counter_ns()
     _run_reindex(
         workspace=workspace,
@@ -338,11 +255,6 @@ def _interleaved_measure(
     mode: str,
     timeout_ms: int,
 ) -> dict[str, list[int]]:
-    """Measure each implementation ``samples`` times in round-robin order.
-
-    Interleaving amortises warmup / cooldown so the medians are
-    not biased by the order the implementations run.
-    """
     timings: dict[str, list[int]] = {name: [] for name in implementations}
     for _sample_index in range(samples):
         for name in implementations:
@@ -358,7 +270,6 @@ def _interleaved_measure(
 
 
 def _summary_statistics(samples: list[int]) -> dict[str, float]:
-    """Return the canonical median / spread statistics for a sample list."""
     if not samples:
         return {"median_ns": 0.0, "spread_ns": 0.0, "min_ns": 0.0, "max_ns": 0.0}
     return {
@@ -370,13 +281,12 @@ def _summary_statistics(samples: list[int]) -> dict[str, float]:
 
 
 def _platform_metadata() -> dict[str, str]:
-    """Return bounded platform / CPU metadata for the JSON summary."""
     cpu: dict[str, str] = {}
     try:
         cpu_info = platform.processor()
         if isinstance(cpu_info, str) and cpu_info:
             cpu["processor"] = cpu_info
-    except Exception:  # pragma: no cover - defensive
+    except Exception:
         cpu["processor"] = "unknown"
     machine = platform.machine()
     if isinstance(machine, str) and machine:
@@ -397,15 +307,6 @@ def _compare_summary(
     label: str,
     enforce_speedup: bool,
 ) -> dict[str, object]:
-    """Build the A/B summary block for ``implementations``.
-
-    Computes the per-implementation median / spread, the
-    scalar-vs-accelerated speedup ratio (when both are in the
-    dict), a ``speedup_passed`` result keyed on the declared threshold,
-    and a caller-selected ``passed`` verdict. Quick smoke callers report
-    speed without making host timing a correctness failure; normal
-    benchmarks remain fail closed on a regression.
-    """
     summary: dict[str, object] = {"label": label}
     for name in implementations:
         summary[name] = _summary_statistics(timings[name])
@@ -433,7 +334,6 @@ def _run_representative(
     enforce_speedup: bool,
     quick: bool,
 ) -> dict[str, object]:
-    """Run the representative A/B workload and return the summary block."""
     file_count = _QUICK_REPRESENTATIVE_FILE_COUNT if quick else REPRESENTATIVE_FILE_COUNT
     lines_per_file = (
         _QUICK_REPRESENTATIVE_LINES_PER_FILE if quick else REPRESENTATIVE_LINES_PER_FILE
@@ -443,10 +343,6 @@ def _run_representative(
         lines_per_file=lines_per_file,
         parent=parent,
     )
-    # Warmup: one untimed pass per implementation so the OS file
-    # cache and the SQLite write-ahead log are both warm before
-    # the measured samples start. Warmup cost is excluded from
-    # the medians.
     for name in implementations:
         _measure_one(
             workspace=workspace,
@@ -490,7 +386,6 @@ def _run_small(
     enforce_speedup: bool,
     quick: bool,
 ) -> dict[str, object]:
-    """Run the small A/B workload so ``auto`` can switch to scalar."""
     file_count = _QUICK_REPRESENTATIVE_FILE_COUNT if quick else SMALL_FILE_COUNT
     lines_per_file = _QUICK_REPRESENTATIVE_LINES_PER_FILE if quick else SMALL_LINES_PER_FILE
     workspace, total_bytes = _seeded_workspace(
@@ -532,7 +427,6 @@ def _run_small(
 
 
 def _output_summary(summaries: Sequence[dict[str, object]]) -> dict[str, object]:
-    """Combine multiple workload summaries into the final CLI payload."""
     overall: dict[str, object] = {
         "metadata": _platform_metadata(),
         "workloads": list(summaries),
@@ -553,7 +447,6 @@ def _compare_implementations(
     enforce_speedup: bool,
     quick: bool,
 ) -> tuple[dict[str, object], bool]:
-    """Run A/B workloads, optionally enforcing the speedup threshold."""
     with tempfile.TemporaryDirectory(prefix="ralph-reindex-bench-") as tmpdir:
         parent = Path(tmpdir)
         workloads: list[dict[str, object]] = []
@@ -591,15 +484,6 @@ def _end_to_end(
     timeout_ms: int,
     enforce_speedup: bool,
 ) -> tuple[dict[str, object], bool]:
-    """Drive the full ``reindex()`` path with output equality checks.
-
-    Returns ``(summary, all_passed)``. The end-to-end mode
-    forces identical generation / file / structure snapshots
-    between ``scalar`` and ``accelerated`` (and ``auto``) and
-    then runs the representative A/B comparison. Failures on
-    output equality always exit nonzero; speed enforcement follows
-    the caller's quick-versus-normal benchmark mode.
-    """
     with tempfile.TemporaryDirectory(prefix="ralph-reindex-e2e-") as tmpdir:
         parent = Path(tmpdir)
         workspace, total_bytes = _seeded_workspace(
@@ -656,9 +540,6 @@ def _end_to_end(
                     },
                 }
                 return summary, False
-        # Snapshots agree; run the A/B comparison with the auto
-        # selector in the mix so the end-to-end number reflects
-        # the real production path.
         comparison, all_passed = _compare_implementations(
             implementations=("scalar", "accelerated", "auto"),
             samples=samples,
@@ -674,13 +555,11 @@ def _end_to_end(
 
 
 def _implementation_runs(implementations: Sequence[str]) -> list[str]:
-    """Return the implementation names in CLI-canonical order."""
     canonical = ("scalar", "accelerated", "auto")
     return [name for name in canonical if name in implementations]
 
 
 def _parse_implementations(arg: str) -> list[str]:
-    """Parse a comma- or space-separated implementation name list."""
     parts: list[str] = []
     for token in arg.replace(",", " ").split():
         stripped = token.strip()
@@ -698,7 +577,6 @@ def _parse_implementations(arg: str) -> list[str]:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    """Construct the CLI parser."""
     parser = argparse.ArgumentParser(
         prog="python -m ralph.mcp.explore.reindex_bench",
         description=(
@@ -774,22 +652,10 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Entry point used by ``python -m ralph.mcp.explore.reindex_bench``."""
     parser = _build_parser()
     args = parser.parse_args(argv)
-    # ``args`` is an ``argparse.Namespace``; each field is
-    # ``Any`` from mypy's perspective. The argparse ``type``
-    # hooks above guarantee the runtime shape, so the local
-    # variables below are typed with the canonical Python
-    # surface. Re-binding through typed locals keeps the
-    # ``disallow_any_expr`` gate happy.
     quick_value: bool = args.quick
     samples_value: int = args.samples
-    # ``args.compare`` and ``args.implementation`` are
-    # ``Any`` from mypy's perspective; rebind them through
-    # ``list(...)`` so the element type is ``object`` (a
-    # concrete shape rather than Any), then narrow further
-    # through the parser hooks below.
     raw_compare: object = args.compare
     raw_implementation: object = args.implementation
     compare_tokens: list[str] | None = list(raw_compare) if isinstance(raw_compare, list) else None

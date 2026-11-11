@@ -1,14 +1,3 @@
-"""A conflict-resolution reader returns once its OpenCode parent has exited.
-
-Replays the frame shape OpenCode 1.18 really emits: a retried message with
-two ``step_start`` frames and one ``step_finish``, a final turn that ends
-with text and NO trailing ``step_finish`` on stdout, then EOF with exit 0.
-Under the ``activity_only`` profile the drain has no deadline and keeps
-consulting ``classify_quiet``; before the fix the unbalanced step frames
-pinned it to ``WAITING_ON_CHILD`` and the reader spun until the 900 s
-inactivity ceiling fired on a parent that had finished its work.
-"""
-
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -54,8 +43,6 @@ def _read_nothing(_size: int) -> str:
 
 
 class _Handle:
-    """A parent that prints its frames, closes stdout and exits 0."""
-
     def __init__(self) -> None:
         self.stdout = iter(_PARENT_LINES)
         self.stderr = SimpleNamespace(read=_read_nothing)

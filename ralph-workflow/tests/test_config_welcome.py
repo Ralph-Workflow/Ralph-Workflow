@@ -1,5 +1,3 @@
-"""Black-box tests for ralph.config.welcome.emit_first_run_welcome."""
-
 from __future__ import annotations
 
 from io import StringIO
@@ -25,7 +23,6 @@ from tests._config_welcome_helper__fakeregistry import _FakeRegistry
 
 _MIN_PRINT_CALLS = 2
 
-# Raw markup tokens that must never appear in rendered console output.
 _RAW_MARKUP_TOKENS = (
     "[bold cyan]",
     "[/bold cyan]",
@@ -41,8 +38,6 @@ _RAW_MARKUP_TOKENS = (
 
 
 class _FakeAgent:
-    """Fake agent config for registry testing."""
-
     def __init__(self, cmd: str, display_name: str | None = None) -> None:
         self.cmd = cmd
         self.display_name = display_name
@@ -54,12 +49,10 @@ def _make_console() -> tuple[StringIO, Console]:
 
 
 def _make_display_context_for_console(console: Console) -> DisplayContext:
-    """Create a DisplayContext for a given console."""
     return make_display_context(console=console, env={})
 
 
 def _assert_no_raw_markup(output: str) -> None:
-    """Assert that no raw Rich markup tokens appear in rendered output."""
     for token in _RAW_MARKUP_TOKENS:
         assert token not in output, (
             f"Raw markup token {token!r} found in rendered output: {output!r}"
@@ -67,7 +60,6 @@ def _assert_no_raw_markup(output: str) -> None:
 
 
 def test_emit_first_run_welcome_noops_on_all_skipped() -> None:
-    """Welcome should not print when all results are skipped (subsequent runs)."""
     console = StringIO()
     rich_console = Console(file=console, force_terminal=True, theme=RALPH_THEME)
     results = [
@@ -83,7 +75,6 @@ def test_emit_first_run_welcome_noops_on_all_skipped() -> None:
 
 
 def test_emit_first_run_welcome_prints_when_any_created() -> None:
-    """Welcome should print when at least one file is created."""
     console = StringIO()
     rich_console = Console(file=console, force_terminal=True, theme=RALPH_THEME)
     results = [
@@ -100,7 +91,6 @@ def test_emit_first_run_welcome_prints_when_any_created() -> None:
 
 
 def test_welcome_names_auto_enabled_agents() -> None:
-    """Plan step 7: detection is visible in the first-run panel."""
     console = StringIO()
     rich_console = Console(file=console, force_terminal=True, theme=RALPH_THEME)
     results = [BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None)]
@@ -115,7 +105,6 @@ def test_welcome_names_auto_enabled_agents() -> None:
 
 
 def test_welcome_explains_why_default_or_custom_chains_were_unchanged() -> None:
-    """S-1: a declined safe rewrite is visible instead of silent."""
     results = [BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None)]
     for outcome, expected in (
         ("kept-default-agent", "kept claude (found on PATH)"),
@@ -131,7 +120,6 @@ def test_welcome_explains_why_default_or_custom_chains_were_unchanged() -> None:
 
 
 def test_emit_first_run_welcome_prints_when_any_regenerated() -> None:
-    """Welcome should print when at least one file is regenerated."""
     console = StringIO()
     rich_console = Console(file=console, force_terminal=True, theme=RALPH_THEME)
     regen_result = BootstrapResult(
@@ -152,7 +140,6 @@ def test_emit_first_run_welcome_prints_when_any_regenerated() -> None:
 
 
 def test_emit_first_run_welcome_flags_missing_agent() -> None:
-    """Missing agent should be flagged with a warning indicator."""
     console = StringIO()
     rich_console = Console(file=console, force_terminal=True, theme=RALPH_THEME)
     results = [BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None)]
@@ -164,12 +151,10 @@ def test_emit_first_run_welcome_flags_missing_agent() -> None:
     emit_first_run_welcome(results, agent_registry=registry, display_context=ctx)
 
     output = console.getvalue()
-    # Should contain warning about missing agent
     assert "missing" in output.lower() or "⚠" in output
 
 
 def test_emit_first_run_welcome_includes_agy_install_url() -> None:
-    """Missing AGY should include the known install URL in the welcome output."""
     console = StringIO()
     rich_console = Console(file=console, force_terminal=True, theme=RALPH_THEME)
     results = [BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None)]
@@ -183,25 +168,21 @@ def test_emit_first_run_welcome_includes_agy_install_url() -> None:
 
 
 def test_emit_first_run_welcome_marks_available_agent() -> None:
-    """Available agent should not be flagged as missing."""
     console = StringIO()
     rich_console = Console(file=console, force_terminal=True, theme=RALPH_THEME)
     results = [BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None)]
-    # Use 'python' as it's guaranteed to be on PATH in CI
     registry = _FakeRegistry({"python": _FakeAgent("python", "Python")})
     ctx = _make_display_context_for_console(rich_console)
 
     emit_first_run_welcome(results, agent_registry=registry, display_context=ctx)
 
     output = console.getvalue()
-    # Should NOT contain "missing" warning for python
     assert "missing" not in output.lower() or "⚠" not in output
 
 
 def test_emit_first_run_welcome_with_local_and_global_files(
     tmp_path: Path,
 ) -> None:
-    """Welcome should group files by scope (global vs local)."""
     console = StringIO()
     rich_console = Console(file=console, force_terminal=True, theme=RALPH_THEME)
     results = [
@@ -218,7 +199,6 @@ def test_emit_first_run_welcome_with_local_and_global_files(
 
     output = console.getvalue()
     assert "Ralph Workflow first-run setup" in output
-    # All file names should appear
     assert "ralph-workflow.toml" in output
     assert "ralph-workflow-mcp.toml" in output
     assert "agents.toml" not in output
@@ -229,7 +209,6 @@ def test_emit_first_run_welcome_with_local_and_global_files(
 def test_emit_first_run_welcome_noops_when_no_registry(
     tmp_path: Path,
 ) -> None:
-    """Welcome should work without an agent registry (generic PATH message)."""
     console = StringIO()
     rich_console = Console(file=console, force_terminal=True, theme=RALPH_THEME)
     results = [
@@ -245,7 +224,6 @@ def test_emit_first_run_welcome_noops_when_no_registry(
 
 
 def test_welcome_fallback_path_message_includes_agy_and_nanocoder() -> None:
-    """Fallback PATH message should mention AGY and Nanocoder alongside supported agents."""
     buf, rich_console = _make_console()
     results = [BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None)]
     ctx = _make_display_context_for_console(rich_console)
@@ -263,7 +241,6 @@ def test_welcome_fallback_path_message_includes_agy_and_nanocoder() -> None:
 
 
 def test_welcome_panel_next_steps_install_step_includes_agy_and_nanocoder() -> None:
-    """Welcome-panel next steps should mention AGY and Nanocoder in the install step."""
     output = "\n".join(welcome_panel_next_steps())
 
     assert "agy" in output.lower(), (
@@ -275,7 +252,6 @@ def test_welcome_panel_next_steps_install_step_includes_agy_and_nanocoder() -> N
 
 
 def test_emit_first_run_welcome_banner_printed_before_panel() -> None:
-    """Banner should be printed before the 'Ralph Workflow first-run setup' panel."""
     printed: list[object] = []
 
     class _RecordingConsole:
@@ -290,13 +266,7 @@ def test_emit_first_run_welcome_banner_printed_before_panel() -> None:
     emit_first_run_welcome(results, display_context=ctx)
 
     assert len(printed) >= _MIN_PRINT_CALLS, "Expected at least two print calls (banner + panel)"
-    # First call is the welcome banner — ParallelDisplay.emit_welcome_banner may
-    # emit a single Text/Rule renderable rather than a full Group after the
-    # wt-007 consolidation. The structural invariant we still pin is that
-    # *something* banner-shaped is printed before the welcome Panel.
     assert printed[0] is not None, "First printed object should be a banner renderable"
-    # The welcome Panel may now be wrapped in a Group renderable, so scan
-    # all subsequent print calls for the first Panel.
     found_panel = any(isinstance(item, Panel) for item in printed[1:])
     assert found_panel, (
         f"Expected a Rich Panel somewhere after the banner, got: "
@@ -305,7 +275,6 @@ def test_emit_first_run_welcome_banner_printed_before_panel() -> None:
 
 
 def test_emit_first_run_welcome_next_steps_mentions_diagnose() -> None:
-    """Next steps should mention ralph --diagnose."""
     buf, rich_console = _make_console()
     results = [BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None)]
     ctx = _make_display_context_for_console(rich_console)
@@ -318,7 +287,6 @@ def test_emit_first_run_welcome_next_steps_mentions_diagnose() -> None:
 
 
 def test_emit_first_run_welcome_next_steps_edit_and_prompt_present() -> None:
-    """Existing next-step copy (edit and PROMPT.md) must still be present."""
     buf, rich_console = _make_console()
     results = [BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None)]
     ctx = _make_display_context_for_console(rich_console)
@@ -330,7 +298,6 @@ def test_emit_first_run_welcome_next_steps_edit_and_prompt_present() -> None:
 
 
 def test_no_raw_markup_tokens_in_output() -> None:
-    """Rendered output must not contain raw Rich markup tokens."""
     buf, rich_console = _make_console()
     results = [BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None)]
     ctx = _make_display_context_for_console(rich_console)
@@ -338,17 +305,13 @@ def test_no_raw_markup_tokens_in_output() -> None:
     emit_first_run_welcome(results, display_context=ctx)
 
     output = buf.getvalue()
-    # Human-facing content must be present
     assert "Next steps:" in output
     assert "PROMPT.md" in output
     assert "ralph --diagnose" in output
-    # No raw markup tokens should appear
     _assert_no_raw_markup(output)
 
 
 def test_no_raw_markup_tokens_with_detected_agents(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Agent availability lines must not contain raw markup tokens."""
-    # Make claude appear missing
     monkeypatch.setattr("shutil.which", lambda cmd: None)
 
     buf, rich_console = _make_console()
@@ -365,7 +328,6 @@ def test_no_raw_markup_tokens_with_detected_agents(monkeypatch: pytest.MonkeyPat
 
 
 def test_install_hint_shown_for_claude_missing(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Missing claude agent should show the claude install URL hint."""
     monkeypatch.setattr("shutil.which", lambda cmd: None)
 
     buf, rich_console = _make_console()
@@ -382,7 +344,6 @@ def test_install_hint_shown_for_claude_missing(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_install_hint_shown_for_opencode_missing(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Missing opencode agent should show the opencode install URL hint."""
     monkeypatch.setattr("shutil.which", lambda cmd: None)
 
     buf, rich_console = _make_console()
@@ -401,7 +362,6 @@ def test_install_hint_shown_for_opencode_missing(monkeypatch: pytest.MonkeyPatch
 def test_install_hint_not_shown_for_unknown_agent_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Unknown missing agent should NOT show any install URL."""
     monkeypatch.setattr("shutil.which", lambda cmd: None)
 
     buf, rich_console = _make_console()
@@ -419,7 +379,6 @@ def test_install_hint_not_shown_for_unknown_agent_missing(
 
 
 def test_install_hint_not_shown_when_agent_on_path(monkeypatch: pytest.MonkeyPatch) -> None:
-    """When claude is on PATH, no install hint should appear."""
     monkeypatch.setattr("shutil.which", lambda cmd: "/usr/bin/claude")
 
     buf, rich_console = _make_console()
@@ -435,10 +394,8 @@ def test_install_hint_not_shown_when_agent_on_path(monkeypatch: pytest.MonkeyPat
 
 
 def test_no_cmd_agent_does_not_show_install_hint() -> None:
-    """Agent with empty cmd must not render missing-on-PATH or install-hint paths."""
     buf, rich_console = _make_console()
     results = [BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None)]
-    # Agent with empty cmd named "claude" — must NOT trigger install URL lookup
     agent = _FakeAgent(cmd="", display_name="claude")
     registry = _FakeRegistry({"claude-no-cmd": agent})
     ctx = _make_display_context_for_console(rich_console)
@@ -454,7 +411,6 @@ def test_no_cmd_agent_does_not_show_install_hint() -> None:
 def test_real_registry_missing_claude_shows_install_url(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Real AgentRegistry with missing claude produces install URL in welcome output."""
     monkeypatch.setattr("shutil.which", lambda cmd: None)
 
     cfg = UnifiedConfig()
@@ -477,7 +433,6 @@ def test_real_registry_missing_claude_shows_install_url(
 def test_real_registry_generic_fallback_only_for_unknown_agents(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Real AgentRegistry: generic fallback does NOT appear when known agents are detected."""
     monkeypatch.setattr("shutil.which", lambda cmd: None)
 
     cfg = UnifiedConfig()
@@ -490,14 +445,12 @@ def test_real_registry_generic_fallback_only_for_unknown_agents(
     emit_first_run_welcome(results, agent_registry=registry, display_context=ctx)
 
     output = buf.getvalue()
-    # The generic fallback message should NOT appear since known agents were detected
     assert "Ensure your AI agents are on PATH" not in output
     assert "Detected agents:" in output
     _assert_no_raw_markup(output)
 
 
 def test_emit_first_run_welcome_includes_pitch_sentence() -> None:
-    """Welcome panel must include the elevator-pitch sentence about the pipeline loop."""
     buf, rich_console = _make_console()
     results = [BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None)]
     ctx = _make_display_context_for_console(rich_console)
@@ -516,7 +469,6 @@ def test_emit_first_run_welcome_includes_pitch_sentence() -> None:
 
 
 def test_emit_first_run_welcome_docs_pointer_includes_pydoc_ralph() -> None:
-    """Welcome panel docs pointer must include 'python -m pydoc ralph'."""
     buf, rich_console = _make_console()
     results = [BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None)]
     ctx = _make_display_context_for_console(rich_console)
@@ -531,7 +483,6 @@ def test_emit_first_run_welcome_docs_pointer_includes_pydoc_ralph() -> None:
 
 
 def test_emit_first_run_welcome_panel_includes_getting_started_pointer() -> None:
-    """First-run welcome panel must point new users to getting-started.md."""
     buf, rich_console = _make_console()
     results = [BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None)]
     ctx = _make_display_context_for_console(rich_console)
@@ -549,7 +500,6 @@ def test_emit_first_run_welcome_agents_section_before_config_files(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Detected agents section must appear before Global/Local config files sections."""
     monkeypatch.setattr("shutil.which", lambda cmd: None)
 
     buf, rich_console = _make_console()

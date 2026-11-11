@@ -1,40 +1,4 @@
 #!/usr/bin/env python3
-"""fabrication_guard.py — Multi-level fabrication defense for Ralph Workflow.
-
-LEVEL 1 — Pattern detection (regex, no network, <100ms):
-  Catches known bad patterns (Nightcrawler misattribution, stale install counts,
-  unverified npm package claims, bare star counts, etc.). Runs as pre-commit hook.
-
-LEVEL 2 — Existence verification (network, cached, ~5s first run):
-  Verifies every GitHub repo URL, npm package, and external link referenced in
-  public-facing markdown actually exists. Uses GitHub API + npm registry.
-  Results cached in .git/fabrication-cache.json.
-
-LEVEL 3 — Quantitative claim verification (network, authenticated, ~30s):
-  Cross-references specific claims (star counts, fork counts, file line counts,
-  issue numbers) against live GitHub API data. Requires GITHUB_TOKEN.
-
-The gate is unweakenable by design:
-  - No whitelist of "safe" files — every .md file is in scope
-  - No opt-out per-file — exemption requires updating EXEMPT_FILES in this script
-  - Pre-commit hook blocks any commit that fails Level 1
-
-Usage:
-    ./scripts/fabrication_guard.py                   # Level 1 (fast, local, default)
-    ./scripts/fabrication_guard.py --level 2          # Level 1+2 (network, cached)
-    ./scripts/fabrication_guard.py --level 3          # Level 1+2+3 (full, needs token)
-    ./scripts/fabrication_guard.py --level 1 --quick  # L1 only, staged files only
-    ./scripts/fabrication_guard.py path/to/file.md    # Specific file(s)
-    ./scripts/fabrication_guard.py --json             # Machine-readable output
-
-Environment:
-    GITHUB_TOKEN    — GitHub personal access token for Level 3 (optional for L2)
-
-Exit codes:
-    0  — all checks passed
-    1  — fabrication(s) detected
-    2  — internal error
-"""
 from __future__ import annotations
 
 import argparse
@@ -50,24 +14,11 @@ from dataclasses import dataclass, asdict, field
 from pathlib import Path
 from typing import Iterable, Optional
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Configuration
-# ═══════════════════════════════════════════════════════════════════════════
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _resolve_git_dir() -> Path:
-    """Locate the real git directory, handling worktree mode.
-
-    In a regular repo, ``<worktree>/.git`` is a directory; the cache sits
-    alongside ``HEAD``/``refs``/etc. In a linked worktree, ``<worktree>/.git``
-    is a *file* containing ``gitdir: <main>/.git/worktrees/<name>``. Writing
-    ``<worktree>/.git/fabrication-cache.json`` then fails because ``.git`` is
-    not a directory. Resolve the actual git dir via the file or via
-    ``git rev-parse --git-dir`` so the cache is written in a writable
-    directory in both modes.
-    """
     fs_git = REPO_ROOT / ".git"
     if fs_git.is_dir():
         return fs_git
@@ -92,11 +43,8 @@ def _resolve_git_dir() -> Path:
 
 CACHE_PATH = _resolve_git_dir() / "fabrication-cache.json"
 
-# Default: scan the entire repo. No whitelist, no carve-outs.
 DEFAULT_ROOTS: tuple[Path, ...] = (Path("."),)
 
-# ▸ Level 1 — Banned patterns
-# Each entry: (name, regex, severity, why)
 BANNED_PATTERNS: tuple[tuple[str, re.Pattern[str], str, str], ...] = (
     (
         "nightcrawler-credits-ralph",
@@ -151,9 +99,6 @@ BANNED_PATTERNS: tuple[tuple[str, re.Pattern[str], str, str], ...] = (
     ),
     (
         "markdown-link-to-nonexistent-repo",
-        # Catches: "[owner/repo](https://github.com/owner/repo)" — any GitHub
-        # repo link in a claim context. Must have verify: annotation.
-        # Only fires in files that look like USERS.md / SHOWCASE.md (have ### headings).
         re.compile(
             r"\[[\w\-\.]+/[\w\-\.]+\]\(https://github\.com/[\w\-\.]+/[\w\-\.]+\)",
         ),
@@ -164,7 +109,6 @@ BANNED_PATTERNS: tuple[tuple[str, re.Pattern[str], str, str], ...] = (
     ),
 )
 
-# Files exempt from ALL levels (the guard's own docs, changelog, agent instructions)
 EXEMPT_FILES: frozenset[str] = frozenset(
     {
         "scripts/verify_social_proof.py",
@@ -176,10 +120,6 @@ EXEMPT_FILES: frozenset[str] = frozenset(
     }
 )
 
-# Directories excluded from the full-repo scan (vendored/generated content).
-# wt-* prefix directories are Ralph-Workflow test-fixture output and are
-# auto-excluded at runtime (they contain generated READMEs that may have
-# stale claims — not our public copy).
 EXEMPT_DIRS: frozenset[str] = frozenset(
     {
         ".venv", "venv", "node_modules", "__pycache__",
@@ -191,7 +131,6 @@ EXEMPT_DIRS: frozenset[str] = frozenset(
 
 
 def _auto_exclude_wt_dirs(root: Path = Path(".")) -> frozenset[str]:
-    """Find and auto-exclude wt-* test-fixture directories."""
     wt_dirs: set[str] = set()
     if root.exists():
         for d in root.iterdir():
@@ -199,7 +138,6 @@ def _auto_exclude_wt_dirs(root: Path = Path(".")) -> frozenset[str]:
                 wt_dirs.add(d.name)
     return frozenset(wt_dirs)
 
-# Sections that document the rejection list (allowed to name banned patterns)
 DOCUMENTING_SECTION_HEADINGS: tuple[str, ...] = (
     "Auto-rejection patterns",
     "Evidence gate",
@@ -209,15 +147,10 @@ DOCUMENTING_SECTION_HEADINGS: tuple[str, ...] = (
     "Banned patterns",
 )
 
-# Files where "GitHub repo link" soft-pattern requires verify: annotation.
-# (These are the social-proof files. Other files with markdown links are fine.)
 CLAIM_FILES: frozenset[str] = frozenset(
     {"USERS.md", "SHOWCASE.md", "README.md", "ralph-workflow/README.md"}
 )
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Level 1 — Pattern detection
-# ═══════════════════════════════════════════════════════════════════════════
 
 @dataclass(frozen=True)
 class Finding:
@@ -231,7 +164,6 @@ class Finding:
 
 
 def _is_evidence_annotated(file_text: str, line_no: int) -> bool:
-    """True if the block around line_no contains a `verify:` annotation."""
     lines = file_text.splitlines()
     lo = max(0, line_no - 7)
     hi = min(len(lines), line_no + 6)
@@ -240,7 +172,6 @@ def _is_evidence_annotated(file_text: str, line_no: int) -> bool:
 
 
 def _is_documenting_section(file_text: str, line_no: int) -> bool:
-    """True if line is in a section that documents the rejection list."""
     lines = file_text.splitlines()
     for i in range(line_no - 1, -1, -1):
         stripped = lines[i].strip()
@@ -251,7 +182,6 @@ def _is_documenting_section(file_text: str, line_no: int) -> bool:
 
 
 def level1_scan(path: Path) -> list[Finding]:
-    """Scan a single file for banned patterns (Level 1)."""
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
@@ -266,7 +196,6 @@ def level1_scan(path: Path) -> list[Finding]:
     rel_path = str(path)
 
     for name, pattern, severity, why in BANNED_PATTERNS:
-        # The markdown-link-to-nonexistent-repo pattern only fires in claim files
         if name == "markdown-link-to-nonexistent-repo":
             if rel_path not in CLAIM_FILES and not any(
                 rel_path.endswith(f) for f in CLAIM_FILES
@@ -289,11 +218,7 @@ def level1_scan(path: Path) -> list[Finding]:
     return findings
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Level 2 — Existence verification
-# ═══════════════════════════════════════════════════════════════════════════
 
-# Patterns to extract external resource references
 GITHUB_REPO_URL_RE = re.compile(
     r"https://github\.com/([\w\-\.]+)/([\w\-\.]+)"
 )
@@ -310,7 +235,6 @@ EXTERNAL_URL_RE = re.compile(
 
 
 def _extract_resources(text: str) -> tuple[set[str], set[str], set[str]]:
-    """Extract GitHub repos, npm packages, and external URLs from text."""
     repos: set[str] = set()
     npm_pkgs: set[str] = set()
     urls: set[str] = set()
@@ -333,7 +257,6 @@ def _extract_resources(text: str) -> tuple[set[str], set[str], set[str]]:
 
 
 def _load_cache() -> dict:
-    """Load the existence-check cache."""
     if CACHE_PATH.exists():
         try:
             return json.loads(CACHE_PATH.read_text())
@@ -343,17 +266,14 @@ def _load_cache() -> dict:
 
 
 def _save_cache(cache: dict) -> None:
-    """Save the existence-check cache."""
     CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
     CACHE_PATH.write_text(json.dumps(cache, indent=2))
 
 
 def _check_github_repo(owner: str, repo: str, cache: dict) -> tuple[bool, str]:
-    """Check if a GitHub repo exists. Returns (exists, detail)."""
     key = f"github:{owner}/{repo}"
     if key in cache:
         entry = cache[key]
-        # Cache for 24 hours
         if time.time() - entry.get("ts", 0) < 86400:
             return entry["ok"], entry.get("detail", "")
 
@@ -390,7 +310,6 @@ def _check_github_repo(owner: str, repo: str, cache: dict) -> tuple[bool, str]:
 
 
 def _check_npm_package(pkg: str, cache: dict) -> tuple[bool, str]:
-    """Check if an npm package exists. Returns (exists, detail)."""
     key = f"npm:{pkg}"
     if key in cache:
         entry = cache[key]
@@ -417,7 +336,6 @@ def _check_npm_package(pkg: str, cache: dict) -> tuple[bool, str]:
 
 
 def _check_url(url: str, cache: dict) -> tuple[bool, str]:
-    """Check if an external URL is reachable. Returns (exists, detail)."""
     key = f"url:{url}"
     if key in cache:
         entry = cache[key]
@@ -442,7 +360,6 @@ def _check_url(url: str, cache: dict) -> tuple[bool, str]:
 
 
 def level2_scan(path: Path, cache: dict) -> list[Finding]:
-    """Verify all external resources referenced in a file actually exist."""
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
@@ -455,7 +372,6 @@ def level2_scan(path: Path, cache: dict) -> list[Finding]:
         owner, name = repo.split("/", 1)
         exists, detail = _check_github_repo(owner, name, cache)
         if not exists:
-            # Find the line
             for i, line in enumerate(text.splitlines(), 1):
                 if f"github.com/{repo}" in line.replace(" ", ""):
                     findings.append(Finding(
@@ -481,10 +397,9 @@ def level2_scan(path: Path, cache: dict) -> list[Finding]:
                     ))
                     break
 
-    # Only check non-GitHub/non-npm URLs for 404s
     for url in urls:
         if "github.com" in url or "npmjs.com" in url:
-            continue  # already checked above
+            continue
         exists, detail = _check_url(url, cache)
         if not exists:
             for i, line in enumerate(text.splitlines(), 1):
@@ -501,11 +416,7 @@ def level2_scan(path: Path, cache: dict) -> list[Finding]:
     return findings
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Level 3 — Quantitative claim verification
-# ═══════════════════════════════════════════════════════════════════════════
 
-# Patterns for quantitative claims that can be verified
 STAR_CLAIM_RE = re.compile(
     r"(?:^|\s)(\d+(?:\.\d+)?[kK]?)\s*[★\u2605](?:\s|,|\.|$)"
 )
@@ -521,14 +432,9 @@ FILE_LINE_CLAIM_RE = re.compile(
 
 
 def level3_scan(path: Path, cache: dict) -> list[Finding]:
-    """Cross-reference quantitative claims against live data.
-
-    Requires GITHUB_TOKEN for reliable API access. Without it, this level
-    is skipped (returns empty).
-    """
     token = os.environ.get("GITHUB_TOKEN", "")
     if not token:
-        return []  # Silently skip — needs auth
+        return []
 
     try:
         text = path.read_text(encoding="utf-8")
@@ -538,11 +444,9 @@ def level3_scan(path: Path, cache: dict) -> list[Finding]:
     findings: list[Finding] = []
     lines = text.splitlines()
 
-    # Check star claims against live GitHub API
     for m in STAR_CLAIM_RE.finditer(text):
         claimed = m.group(1).lower().replace("k", "000").replace(".", "")
         line_no = text.count("\n", 0, m.start()) + 1
-        # Find nearest GitHub repo URL above this line
         context_start = max(0, line_no - 15)
         context = "\n".join(lines[context_start:line_no])
         repo_match = GITHUB_REPO_URL_RE.search(context)
@@ -561,7 +465,6 @@ def level3_scan(path: Path, cache: dict) -> list[Finding]:
                             "Update the count with current data.",
                     ))
 
-    # Check issue references
     for m in ISSUE_CLAIM_RE.finditer(text):
         owner, repo_name, issue_num = m.group(1), m.group(2), m.group(3)
         line_no = text.count("\n", 0, m.start()) + 1
@@ -603,12 +506,8 @@ def level3_scan(path: Path, cache: dict) -> list[Finding]:
     return findings
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# File discovery
-# ═══════════════════════════════════════════════════════════════════════════
 
 def _is_exempt(path: Path) -> bool:
-    """Check if a file is exempt from all levels."""
     rel = str(path)
     if rel in EXEMPT_FILES:
         return True
@@ -618,7 +517,6 @@ def _is_exempt(path: Path) -> bool:
 
 
 def _is_excluded_dir(path: Path, extra_dirs: frozenset[str] = frozenset()) -> bool:
-    """Check if path is under an excluded directory."""
     all_dirs = EXEMPT_DIRS | extra_dirs
     return any(p.name in all_dirs for p in path.parents)
 
@@ -627,7 +525,6 @@ def iter_markdown_files(
     roots: Iterable[Path],
     extra_exclude_dirs: frozenset[str] = frozenset(),
 ) -> Iterable[Path]:
-    """Yield every non-exempt markdown file under the given roots."""
     seen: set[Path] = set()
     for root in roots:
         if not root.exists():
@@ -649,7 +546,6 @@ def iter_markdown_files(
 
 
 def get_staged_markdown_files() -> list[Path]:
-    """Get list of staged markdown files (for pre-commit hook)."""
     extra_dirs = _auto_exclude_wt_dirs(REPO_ROOT)
     try:
         result = subprocess.run(
@@ -668,9 +564,6 @@ def get_staged_markdown_files() -> list[Path]:
         return []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# CLI
-# ═══════════════════════════════════════════════════════════════════════════
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
@@ -698,7 +591,6 @@ def main(argv: list[str]) -> int:
     )
     args = parser.parse_args(argv)
 
-    # Determine files to scan
     extra_exclude = _auto_exclude_wt_dirs(Path("."))
 
     if args.quick:
@@ -712,7 +604,6 @@ def main(argv: list[str]) -> int:
     elif args.paths:
         files = list(iter_markdown_files(args.paths, extra_exclude))
     else:
-        # Full repo scan
         roots = [p for p in DEFAULT_ROOTS if p.exists()]
         files = list(iter_markdown_files(roots, extra_exclude))
 
@@ -723,26 +614,21 @@ def main(argv: list[str]) -> int:
             print(json.dumps({"ok": True, "scanned": 0, "findings": []}))
         return 0
 
-    # Load cache for Level 2/3
     cache: dict = {} if args.no_cache else _load_cache()
 
     all_findings: list[Finding] = []
 
-    # Level 1 — always runs
     for path in files:
         all_findings.extend(level1_scan(path))
 
-    # Level 2 — existence verification
     if args.level >= 2:
         for path in files:
             all_findings.extend(level2_scan(path, cache))
 
-    # Level 3 — quantitative verification
     if args.level >= 3:
         for path in files:
             all_findings.extend(level3_scan(path, cache))
 
-    # Output
     hard_failures = [f for f in all_findings if f.severity == "hard"]
     soft_failures = [f for f in all_findings if f.severity == "soft"]
 
@@ -770,7 +656,6 @@ def main(argv: list[str]) -> int:
                 print(f"    why: {f.why}", file=sys.stderr)
                 print(file=sys.stderr)
 
-    # Hard failures = exit 1. Soft failures = warning only.
     return 1 if hard_failures else 0
 
 

@@ -1,14 +1,3 @@
-"""Verify that ``--generate-commit`` routes artifact submission through the
-canonical path (receipt → sentinel → artifact file).
-
-The commit plumbing uses ``run_id="commit-plumbing"``. This test exercises
-the full agent-attempt-with-recovery loop end-to-end with a fake agent that
-calls ``handle_submit_md_artifact`` (the real canonical entry point), then checks
-that every expected side-effect is present and that the plumbing module itself
-does not contain any ad-hoc writes to ``.agent/receipts/`` or
-``.agent/completion_seen_*.json``.
-"""
-
 from __future__ import annotations
 
 import importlib
@@ -36,7 +25,6 @@ if TYPE_CHECKING:
 
 
 def _plumbing_module() -> types.ModuleType:
-    """Resolve ``commit_plumbing`` lazily so the cycle resolves cleanly."""
     importlib.import_module("ralph.cli.commands.commit")
     return importlib.import_module("ralph.pipeline.plumbing.commit_plumbing")
 
@@ -128,8 +116,6 @@ def test_generate_commit_end_to_end_uses_canonical_submit(
         backend=backend,
     )
 
-    # RFC-013 P3: completion sentinel is DB-backed. Verify via the
-    # completion-signal check which honors both DB and legacy file.
     assert _check_completion_sentinel(tmp_path, plumbing_module._COMMIT_RUN_ID) is True
 
     artifact_path = tmp_path / ".agent" / "artifacts" / "commit_message.md"

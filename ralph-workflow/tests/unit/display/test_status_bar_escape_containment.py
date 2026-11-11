@@ -1,19 +1,3 @@
-"""Regression tests for terminal-escape containment at Status Bar sinks.
-
-Every assertion in this file is made against a PUBLIC surface:
-
-* the Status Bar layout is exercised through
-  :func:`ralph.display.render_status_bar` (the pure, public renderer), and
-* the persisted record is exercised through
-  :class:`ralph.display.record_writer.RenderedRecordWriter` (the public
-  writer), and
-* the Status Bar lifecycle is exercised through
-  ``ParallelDisplay.status_bar.start()`` / ``.stop()`` (the public
-  lifecycle) against the console the test itself injected.
-
-No private helper, private attribute, or private module path is touched.
-"""
-
 from __future__ import annotations
 
 import io
@@ -29,14 +13,11 @@ from ralph.display.status_bar import StatusBar, StatusBarModel
 
 
 class _TtyStringIO(io.StringIO):
-    """In-memory stream that reports ``isatty() is True``."""
-
     def isatty(self) -> bool:
         return True
 
 
 def _render(phase_label: str) -> str:
-    """Render the Status Bar footer for ``phase_label`` and return the plain text."""
     console = Console(file=io.StringIO(), force_terminal=True, width=120)
     ctx = make_display_context(console=console, env={})
     model = StatusBarModel(
@@ -48,7 +29,6 @@ def _render(phase_label: str) -> str:
 
 
 def test_rendered_status_bar_removes_full_terminal_control_sequences() -> None:
-    """Private-parameter CSI, OSC, and two-character ESC cannot leak into labels."""
     text = "before\x1b[<35;1;2Mmouse\x1b[>0cattrs\x1b]2;title\x07title\x1bMafter"
 
     plain = _render(text)
@@ -60,7 +40,6 @@ def test_rendered_status_bar_removes_full_terminal_control_sequences() -> None:
 
 
 def test_rendered_status_bar_keeps_tab_normalization_behavior() -> None:
-    """Tabs remain one space so width budgeting has the established behavior."""
     plain = _render("plain\tlabel")
 
     assert "plain label" in plain, f"tab must normalize to a single space; got {plain!r}"
@@ -68,7 +47,6 @@ def test_rendered_status_bar_keeps_tab_normalization_behavior() -> None:
 
 
 def test_persisted_record_removes_full_terminal_control_sequences(tmp_path: Path) -> None:
-    """The persisted record uses the canonical full-range terminal stripper."""
     text = "before\x1b[<35;1;2Mmouse\x1b[>0cattrs\x1b]2;title\x07title\x1bMafter"
 
     writer = RenderedRecordWriter(tmp_path, "agent-x")
@@ -95,13 +73,11 @@ def test_persisted_record_removes_full_terminal_control_sequences(tmp_path: Path
 
 
 def _build_display(buf: io.StringIO) -> tuple[ParallelDisplay, Console]:
-    """Build a ``ParallelDisplay`` over the caller-owned console buffer."""
     console = Console(file=buf, force_terminal=True, width=120)
     return ParallelDisplay(make_display_context(console=console, env={})), console
 
 
 def _status_bar_of(display: ParallelDisplay) -> StatusBar:
-    """Return the composed Status Bar through its public accessor."""
     status_bar = display.status_bar
     assert isinstance(status_bar, StatusBar)
     return status_bar
@@ -116,7 +92,6 @@ def _model() -> StatusBarModel:
 
 
 def test_status_bar_writes_no_bytes_to_non_tty_output() -> None:
-    """Redirected output must never include cursor erase controls."""
     buf = io.StringIO()
     display, _console = _build_display(buf)
     status_bar = _status_bar_of(display)
@@ -131,7 +106,6 @@ def test_status_bar_writes_no_bytes_to_non_tty_output() -> None:
 
 
 def test_status_bar_teardown_preserves_prior_tty_transcript() -> None:
-    """S-1: TTY teardown must not erase prior command output or the footer row."""
     buf = _TtyStringIO()
     display, console = _build_display(buf)
     status_bar = _status_bar_of(display)
@@ -154,7 +128,6 @@ def test_status_bar_teardown_preserves_prior_tty_transcript() -> None:
 
 
 def test_status_bar_teardown_is_idempotent_and_writes_no_extra_bytes() -> None:
-    """Repeated teardown calls never emit additional terminal controls."""
     buf = _TtyStringIO()
     display, _console = _build_display(buf)
     status_bar = _status_bar_of(display)

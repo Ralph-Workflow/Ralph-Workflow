@@ -1,4 +1,3 @@
-"""System information dataclass for diagnostics."""
 
 from __future__ import annotations
 
@@ -16,13 +15,6 @@ from ralph.git.subprocess_runner import GitRunOptions, run_git
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-#: Signature of the git probe :meth:`SystemInfo.gather` uses: ``(argv) ->
-#: trimmed stdout or None``. ``None`` means the command failed, timed out
-#: or git is absent. The probe is a parameter rather than a hard-wired
-#: call so callers — notably the test suite — can gather system
-#: information without forking ``git rev-parse``/``branch``/``status``
-#: against the surrounding repository, which costs real wall clock that
-#: scales with the size of the working tree.
 GitProbe = Callable[[list[str]], "str | None"]
 
 
@@ -38,17 +30,6 @@ def _get_shell(env: Mapping[str, str]) -> str | None:
 
 
 def run_git_probe(args: list[str]) -> str | None:
-    """Run a git command for diagnostics and return its trimmed stdout.
-
-    This is the production :data:`GitProbe`. It never raises: a non-zero
-    exit, a timeout, or a missing git binary all report ``None``.
-
-    Args:
-        args: Git arguments, without the leading ``git``.
-
-    Returns:
-        Trimmed stdout on success, otherwise ``None``.
-    """
     try:
         result = run_git(args, cwd=None, label="git-diagnostics", options=GitRunOptions(timeout=5))
         if result.returncode == 0:
@@ -72,7 +53,6 @@ def _count_uncommitted_changes(git_probe: GitProbe) -> int:
 
 @dataclass
 class SystemInfo:
-    """System information for diagnostics."""
 
     os: str
     arch: str
@@ -90,18 +70,6 @@ class SystemInfo:
         *,
         git_probe: GitProbe = run_git_probe,
     ) -> SystemInfo:
-        """Gather system information.
-
-        Args:
-            env: Environment mapping used to resolve the login shell.
-                Defaults to ``os.environ``.
-            git_probe: Seam used for every git query. Defaults to the real
-                subprocess runner; inject a stub to gather without forking
-                git.
-
-        Returns:
-            A populated :class:`SystemInfo`.
-        """
         os_name = sys.platform
         arch = platform.machine()
         working_directory = _get_working_directory()

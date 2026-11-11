@@ -1,9 +1,3 @@
-"""MCP tool registry visibility tests for analysis and planning drains.
-
-Guards against silent regressions where capability defaults look right but the
-runtime tool registry filters tools via a different code path.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -140,7 +134,6 @@ def test_planning_prompt_defaults_match_runtime_plan_tool_visibility(tmp_path: P
 def test_analysis_prompt_tool_visibility_regression_uses_runtime_drain(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Plan S-3: generic non-planning prompts must use a real analysis drain."""
     prompt_capabilities, _ = default_caps_and_flags_for_drain(SessionDrain.ANALYSIS)
     observed_drains: list[str] = []
 

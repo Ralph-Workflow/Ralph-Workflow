@@ -1,15 +1,3 @@
-"""Schema-upgrade resolution for the project policy preflight.
-
-The project policy preflight may encounter older copies of the
-canonical policy files whose schema marker pre-dates the current
-schema. The user is asked exactly ONCE -- not once per file -- to
-either upgrade or freeze every such file. ``_maybe_resolve_schema_upgrade``
-exposes that consent gate; ``_freeze_policy_files`` performs the
-freeze pinning.
-
-Lives in its own module so :mod:`ralph.project_policy.cli_integration`
-stays under the 1000-line repository cap.
-"""
 
 from __future__ import annotations
 
@@ -29,13 +17,11 @@ if TYPE_CHECKING:
     from .cli_integration import EmitFn
 
 
-#: Stable choice keys. Control flow branches on these, never on the copy.
 _CHOICE_UPGRADE: str = "upgrade"
 _CHOICE_FREEZE: str = "freeze"
 _CHOICE_EXPLAIN: str = "explain"
 
 
-#: Explanation shown (via the info panel) before the upgrade-or-freeze menu.
 _SCHEMA_EXPLAIN: str = (
     "The schema is the structure Ralph Workflow's deterministic validator "
     "reads: the markers, the declared gate commands, and the placeholders "
@@ -53,7 +39,6 @@ _SCHEMA_EXPLAIN: str = (
 
 
 def _schema_choices(count: int) -> tuple[_prompt_ui.PromptChoice, ...]:
-    """Build the upgrade-or-freeze menu for ``count`` outdated policy files."""
     files = "file" if count == 1 else "files"
     return (
         _prompt_ui.PromptChoice(
@@ -81,7 +66,6 @@ def _maybe_resolve_schema_upgrade(
     select: _prompt_ui.SelectFn | None,
     is_tty: Callable[[], bool] | None,
 ) -> bool:
-    """Offer a single all-or-nothing upgrade-or-freeze choice for older copies."""
     paths = [
         f"{policy_markers.CANONICAL_DIR}{name}"
         for name in (
@@ -192,7 +176,6 @@ def _ask(
     *,
     fallback_notice: str,
 ) -> str:
-    """Ask one menu, returning ``default`` if the seam itself blows up."""
     try:
         return select(question, choices, default)
     except Exception as exc:
@@ -206,11 +189,10 @@ def _freeze_policy_files(
     emit: EmitFn,
     outdated: Sequence[tuple[str, str, int]],
 ) -> None:
-    """Pin every outdated policy file at its installed schema version."""
     frozen: list[str] = []
     for path, marker, installed_version in outdated:
         content = workspace.read(path)
-        workspace.write(  # deterministic-writer-ok: schema-freeze write; committed by commit_policy_writes below (the helper sits inside a sibling guard but the write's deterministic intent is fixed)
+        workspace.write(
             path,
             content.replace(
                 marker,

@@ -1,9 +1,3 @@
-"""Injected collaborators for the update-check flow.
-
-Split out of :mod:`ralph.update_check` so each module owns a single public class
-(repo structure policy); the package re-exports it and wires the production
-implementations in ``default_deps``.
-"""
 
 from __future__ import annotations
 
@@ -20,7 +14,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class UpdateCheckDeps:
-    """Injected collaborators for the update-check flow (real impls in :func:`default_deps`)."""
 
     current_version: str
     environ: Mapping[str, str]

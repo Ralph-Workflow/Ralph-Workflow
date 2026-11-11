@@ -1,5 +1,3 @@
-"""Cheap-model safety checks for the shared markdown submission procedure."""
-
 from __future__ import annotations
 
 import re

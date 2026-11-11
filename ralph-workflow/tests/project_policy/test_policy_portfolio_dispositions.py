@@ -1,26 +1,3 @@
-"""Mechanical disposition oracle for ``docs/ralph-workflow-policy/policy-portfolio.toml``.
-
-This oracle enforces four structural rules declared by the testing policy:
-
-1. Every ``REMOVE``/``MERGE``/``REPLACE`` control carries an explicit
-   ``category-[1-4]`` token somewhere in
-   ``fault_sensitivity``/``layer``/``evidence``/``lifecycle``.
-2. Every ``MERGE``/``REPLACE`` control names the surviving or replacement test
-   in ``evidence`` or ``lifecycle``.
-3. Every ``human``- or ``triggered``-lane control records an evidence
-   location: a dated review note, a named script, or a named receipt.
-4. No name from a ``removed-tests:`` marker (or the floor set of test names
-   predating this oracle) appears in any documentation root.
-
-The oracle uses ``tomllib`` + ``pathlib`` only — no private ``ralph`` names,
-no source reading, no I/O outside the documentation roots. Reads stay
-inside the 1 s per-test cap because the sweep is bounded by the size of
-the docs roots.
-
-See: ``docs/ralph-workflow-policy/policy-portfolio.toml`` and the S-7 step
-of ``.agent/PLAN.md``.
-"""
-
 from __future__ import annotations
 
 import re
@@ -34,9 +11,6 @@ from tests.doc_roots import PACKAGE_ROOT, REPOSITORY_ROOT
 
 PORTFOLIO_PATH = REPOSITORY_ROOT / "docs" / "ralph-workflow-policy" / "policy-portfolio.toml"
 
-# Floor set of test names removed before this oracle existed. Their
-# appearance in any documentation root is an automatic fail (a stale
-# citation).
 FLOOR_REMOVED_NAMES: frozenset[str] = frozenset(
     {
         "test_live_search_returns_results",
@@ -45,9 +19,6 @@ FLOOR_REMOVED_NAMES: frozenset[str] = frozenset(
     }
 )
 
-# Documentation roots swept for stale removed-name citations. Excludes the
-# portfolio itself (which legitimately records the names) and this oracle
-# (whose floor-set literal would otherwise self-match).
 DOCS_ROOTS: tuple[Path, ...] = (
     REPOSITORY_ROOT / "docs",
     REPOSITORY_ROOT / "README.md",
@@ -92,7 +63,6 @@ def _control_text_blob(entry: dict[str, object], fields: tuple[str, ...]) -> str
 
 
 def _scan_paths_for_removed_names() -> list[tuple[Path, str]]:
-    """Return ``(path, name)`` hits for any removed-test name found in docs roots."""
     portfolio = _load_portfolio()
     removed_names: set[str] = set(FLOOR_REMOVED_NAMES)
     for entry in _iter_controls(portfolio):
@@ -138,7 +108,6 @@ def _scan_paths_for_removed_names() -> list[tuple[Path, str]]:
 
 
 def test_remove_merge_replace_controls_carry_a_category_token() -> None:
-    """Every REMOVE/MERGE/REPLACE control names a category-1..4 token."""
     portfolio = _load_portfolio()
     fields = ("fault_sensitivity", "layer", "evidence", "lifecycle")
     missing: list[str] = []
@@ -154,7 +123,6 @@ def test_remove_merge_replace_controls_carry_a_category_token() -> None:
 
 
 def test_merge_replace_controls_name_a_surviving_test() -> None:
-    """Every MERGE/REPLACE control records the surviving/replacement test name."""
     portfolio = _load_portfolio()
     fields = ("evidence", "lifecycle")
     missing: list[str] = []
@@ -170,7 +138,6 @@ def test_merge_replace_controls_name_a_surviving_test() -> None:
 
 
 def test_human_or_triggered_lane_controls_record_evidence_location() -> None:
-    """Every human/triggered-lane control records an evidence location."""
     portfolio = _load_portfolio()
     fields = ("evidence", "lifecycle")
     missing: list[str] = []
@@ -192,7 +159,6 @@ def test_human_or_triggered_lane_controls_record_evidence_location() -> None:
 
 @pytest.mark.timeout_seconds(5)
 def test_no_removed_test_names_in_documentation_roots() -> None:
-    """No removed test name (floor set + removed-tests markers) appears in docs roots."""
     hits = _scan_paths_for_removed_names()
     rendered = "\n".join(f"{path}: {name}" for path, name in hits[:10])
     assert not hits, "Removed test names found in documentation roots:\n" + rendered

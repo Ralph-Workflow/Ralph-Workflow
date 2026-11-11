@@ -1,4 +1,3 @@
-"""Pydantic models for policy configuration (agents.toml, pipeline.toml, artifacts.toml)."""
 
 from ralph.policy.models._agent_chain_config import AgentChainConfig
 from ralph.policy.models._agent_drain_config import AgentDrainConfig

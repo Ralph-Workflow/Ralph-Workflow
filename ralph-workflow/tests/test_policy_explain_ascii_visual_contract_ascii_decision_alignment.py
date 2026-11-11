@@ -1,15 +1,3 @@
-"""Lock-down tests for render_explanation_ascii() ASCII marker contracts.
-
-These tests verify that the required ASCII visual markers are present in the
-rendered output for three structural patterns:
-  - spine (=ENTRY=>, ==SUCCESS==>, ==FAILURE==>, Legend: block)
-  - loopback (<<==[loopback]==, [LOOPBACK: ...], >> RE-ENTRY at ...)
-  - fan-out / rejoin (>>> FAN_OUT ..., <<< REJOIN)
-
-Tests use synthetic PolicyExplanation / PolicyBundle instances so they do not
-depend on the bundled default pipeline.toml.
-"""
-
 from __future__ import annotations
 
 from ralph.policy.explain import (
@@ -67,8 +55,6 @@ def _minimal_recovery() -> RecoveryExplanation:
 
 
 class TestAsciiDecisionAlignment:
-    """Decision branches are padded/aligned to the longest decision label."""
-
     def _decision_explanation(self) -> PolicyExplanation:
         analysis = _make_phase(
             "analysis",
@@ -89,17 +75,14 @@ class TestAsciiDecisionAlignment:
         )
 
     def test_decisions_are_aligned(self) -> None:
-        """All decision arrows end with --> at the same column."""
         output = render_explanation_ascii(self._decision_explanation())
         lines = output.split("\n")
-        # Diagram decision lines are indented with 4 spaces; legend lines have 2-space indent
         decision_lines = [
             line
             for line in lines
             if line.startswith("    +--[") and "-->" in line and "workflow_fallback" not in line
         ]
         assert len(decision_lines) >= 2
-        # Find the position of '-->' in each line
         arrow_positions = [line.index("-->") for line in decision_lines]
         assert len(set(arrow_positions)) == 1, (
             f"Decision arrows should be aligned but got positions: {arrow_positions}\n"

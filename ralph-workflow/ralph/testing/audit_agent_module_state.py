@@ -1,28 +1,3 @@
-"""Static audit to prevent re-introduction of module-level agent state.
-
-After the wt-016-consolidate-agent refactor, :class:`ralph.agents.catalog.AgentCatalog`
-is the single source of truth for all agent-registration state (parsers,
-custom-command registry, strategy dispatch).  This audit scans the
-``ralph.agents`` subtree for any module-level dict that would re-introduce
-a parallel state source, and fails CI when such a dict is found.
-
-A module-level dict assignment is a violation when:
-
-1. The assigned name starts with ``_PARSER_REGISTRY``,
-   ``_CUSTOM_COMMAND_REGISTRY``, or ``_STRATEGY_DISPATCH`` (case-sensitive);
-2. OR the assigned name contains both ``registry`` and one of
-   (``agent``, ``parser``) substrings (case-sensitive);
-3. AND the value is a dict literal (not a class declaration, not a
-   ``MappingProxyType(...)`` view, not a frozenset/tuple/list);
-4. AND the assignment is at module level (not inside a function or class);
-5. AND the module is not in :data:`AUDIT_MODULE_STATE_ALLOWLIST`.
-
-Usage:
-    python -m ralph.testing.audit_agent_module_state [codebase_root]
-
-Returns exit code 0 if no violations found, 1 otherwise.
-"""
-
 from __future__ import annotations
 
 import ast
@@ -33,16 +8,9 @@ from pathlib import Path
 
 from ralph.testing.audit_agent_registry_sync import RegistrySyncViolation
 
-# Allowlist of (file_path, line) tuples that are explicitly permitted to
-# carry module-level dict state.  Empty by default — populate by adding a
-# documented justification in
-# ``tests/test_audit_agent_module_state.py`` and an entry here.
 AUDIT_MODULE_STATE_ALLOWLIST: frozenset[tuple[str, int]] = frozenset()
 
 
-# Subtrees of ralph-workflow/ that the audit scans.  Defined explicitly so
-# the audit does not accidentally scan the full ralph-workflow/ tree (and
-# the path filter keeps the audit well under the 1s budget cap).
 _AUDIT_SUBTREES: tuple[str, ...] = (
     "ralph/agents",
     "ralph/agents/parsers",
@@ -50,9 +18,6 @@ _AUDIT_SUBTREES: tuple[str, ...] = (
 )
 
 
-# Names that, when assigned at module level to a dict, are flagged by
-# the audit.  These are the historical module-level state names that
-# the refactor consolidated into :class:`AgentCatalog`.
 _FORBIDDEN_NAME_PREFIXES: tuple[str, ...] = (
     "_PARSER_REGISTRY",
     "_CUSTOM_COMMAND_REGISTRY",
@@ -63,14 +28,6 @@ _FORBIDDEN_NAME_PREFIXES: tuple[str, ...] = (
 def _is_module_level_dict_assignment(
     node: ast.Assign | ast.AnnAssign,
 ) -> tuple[str, ast.expr] | None:
-    """Return ``(name, value)`` if ``node`` is a module-level dict assignment.
-
-    Handles both plain assignments (``_FOO = {...}``) and annotated
-    assignments (``_FOO: dict[str, object] = {...}``).
-
-    Returns ``None`` for class definitions, ``MappingProxyType(...)`` views,
-    frozenset / tuple / list assignments, or non-dict assignments.
-    """
     if isinstance(node, ast.Assign):
         targets: list[ast.expr] = list(node.targets)
         value: ast.expr | None = node.value
@@ -90,20 +47,12 @@ def _is_module_level_dict_assignment(
 
 
 def _name_violates(name: str) -> bool:
-    """Return True when ``name`` matches the forbidden patterns."""
     if any(name.startswith(prefix) for prefix in _FORBIDDEN_NAME_PREFIXES):
         return True
     lower = name.lower()
     return "registry" in lower and ("agent" in lower or "parser" in lower)
 
 
-#: Pre-filter regex for the cheap text-level gate.
-#: A file that contains NONE of the forbidden-name substrings cannot
-#: produce a module-level dict violation, so the AST parse (the slow
-#: step) is skipped for the vast majority of files. The set of
-#: substrings here is the UNION of ``_name_violates``'s two cases:
-#: every ``_FORBIDDEN_NAME_PREFIXES`` entry, plus the lower-cased
-#: ``registry``/``agent``/``parser`` substring combinations.
 _CANDIDATE_NAME_RE = re.compile(
     r"_PARSER_REGISTRY|_CUSTOM_COMMAND_REGISTRY|_STRATEGY_DISPATCH|"
     r"registry[_\w]*agent|agent[_\w]*registry|"
@@ -113,26 +62,10 @@ _CANDIDATE_NAME_RE = re.compile(
 
 
 def _has_candidate_name(content: str) -> bool:
-    """Return True when ``content`` has any substring that could be a violation.
-
-    Cheap text-level pre-filter that lets the scan skip the slow
-    ``ast.parse`` step for files that obviously contain none of the
-    forbidden-name patterns. Matches the same names
-    :func:`_name_violates` would flag, so it never produces a false
-    negative (a file that contains a candidate substring but parses
-    cleanly with no module-level dict assignment still returns ``[]``
-    from :func:`_scan_file`).
-    """
     return _CANDIDATE_NAME_RE.search(content) is not None
 
 
 def _scan_file(content: str, rel_path: str) -> list[RegistrySyncViolation]:
-    """Scan a single file for module-level dict violations."""
-    # Pre-filter: skip the slow AST parse for files that obviously
-    # contain none of the forbidden-name patterns. The 1.0s per-test
-    # budget enforced by ``ralph.verify_timeout`` is the binding
-    # constraint; ast.parse on every file in ralph/agents pushes the
-    # audit close to the cap under heavy pytest-xdist load.
     if not _has_candidate_name(content):
         return []
     violations: list[RegistrySyncViolation] = []
@@ -168,24 +101,12 @@ def _scan_file(content: str, rel_path: str) -> list[RegistrySyncViolation]:
 
 
 def _collect_py_files(root: Path) -> list[Path]:
-    """Return all ``*.py`` files under any of the audit subtrees.
-
-    Uses :func:`os.walk` rather than :meth:`Path.rglob` because
-    ``rglob`` materializes a fresh :class:`Path` for every match
-    and is ~3-4x slower on cold caches. Under heavy
-    ``pytest-xdist`` load (this audit is run in parallel with 8
-    workers by ``test_run_audit_against_repo_finds_no_violations``)
-    the slower ``rglob`` is the difference between a sub-1s pass
-    and a timeout. The path-prefix check preserves the original
-    "__pycache__" skip behavior.
-    """
     seen: set[Path] = set()
     files: list[Path] = []
     for subtree in _AUDIT_SUBTREES:
         base = root / subtree
         if not base.is_dir():
             continue
-        # filesystem-read-ok: audit scanner excludes bytecode caches during bounded verification.
         for parent, dirs, fs in os.walk(base):
             dirs[:] = [d for d in dirs if d != "__pycache__"]
             for name in fs:
@@ -200,14 +121,6 @@ def _collect_py_files(root: Path) -> list[Path]:
 
 
 def run_audit(package_root: Path) -> list[RegistrySyncViolation]:
-    """Run the audit and return the list of violations found.
-
-    File-read failures are reported as ``file_read_error`` violations
-    (NOT silently skipped) so the audit cannot be defeated by an
-    unreadable file hiding a forbidden module-level dict reintroduction.
-    The audit's role is prevention — a fail-closed stance on file reads
-    preserves that contract.
-    """
     violations: list[RegistrySyncViolation] = []
     for py_file in _collect_py_files(package_root):
         rel_path = str(py_file.relative_to(package_root))

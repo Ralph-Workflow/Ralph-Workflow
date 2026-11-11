@@ -1,14 +1,3 @@
-"""End-to-end test: custom-named pipeline with no canonical phase names.
-
-Proves that the runtime no longer depends on built-in phase names.
-A workflow with phases named:
-  kickoff → build → gate (analysis loop) → seal (commit) → verify (verification)
-  → done (terminal success) or crashed (terminal failure)
-exercises every role type and all routing transitions using only policy-declared names.
-
-All phase transitions are driven through the reducer. No real agents are invoked.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -41,17 +30,6 @@ _BUILD_LOOP_MAX = 3
 
 
 def _build_custom_bundle() -> PolicyBundle:
-    """Build a custom policy bundle with no canonical phase names.
-
-    The pipeline exercises every phase role:
-    - kickoff: execution
-    - build: execution
-    - gate: analysis (with build_loop counter)
-    - seal: commit (increments build_pass, resets build_loop)
-    - verify: verification (routes to done on success, crashed on failure)
-    - crashed: terminal (failure outcome)
-    - done: terminal (success outcome)
-    """
     pipeline = PipelinePolicy(
         phases={
             "kickoff": PhaseDefinition(
@@ -163,7 +141,6 @@ def _build_custom_bundle() -> PolicyBundle:
 
 
 def _initial_state(policy: PipelinePolicy) -> PipelineState:
-    """Build initial PipelineState for the custom pipeline."""
     return PipelineState(
         phase="kickoff",
         phase_chains={
@@ -182,8 +159,6 @@ def custom_bundle() -> PolicyBundle:
 
 
 class TestCustomPipelinePolicyExplainer:
-    """Verify the policy explainer works for a custom pipeline."""
-
     def test_explain_policy_covers_custom_phases(self, custom_bundle: PolicyBundle) -> None:
         exp = explain_policy(custom_bundle)
         phase_names = {p.name for p in exp.phases}
@@ -194,7 +169,6 @@ class TestCustomPipelinePolicyExplainer:
     ) -> None:
         exp = explain_policy(custom_bundle)
         text = render_explanation_text(exp)
-        # Phase names in the output should be custom, not canonical
         for name in ["kickoff", "build", "gate", "seal", "verify", "crashed", "done"]:
             assert name in text, f"Custom phase '{name}' missing from explanation"
 

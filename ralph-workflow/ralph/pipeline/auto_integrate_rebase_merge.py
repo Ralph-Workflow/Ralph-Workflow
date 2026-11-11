@@ -1,16 +1,3 @@
-"""Rebase-then-endpoint-merge engine driver for auto-integration.
-
-This module owns one integration phase: replay the feature, resolve a
-real conflict in place, and only then fall back to one endpoint merge.
-The caller owns the durable record, landing, and retry loop.
-
-The in-place rebase-stop resolution, the terminal-state probe, and the
-:class:`RebaseRunResult` outcome vocabulary live in the private companion
-module :mod:`ralph.pipeline._auto_integrate_rebase_resolve` so this
-module stays under the repo-structure file-size cap; the closed
-skip-reason registry, the range routing, and the fallback branch table
-stay here and re-export every moved name unchanged.
-"""
 
 from __future__ import annotations
 
@@ -98,67 +85,20 @@ if TYPE_CHECKING:
         GitOps,
     )
 
-# ---------------------------------------------------------------------------
-# THE CLOSED REGISTRY OF REBASE-SKIP REASONS.
-#
-# Automatic rebase is ALWAYS the first attempt of an integration. The
-# five slugs below are the ONLY ways an attempt may go straight to the
-# endpoint merge, and each one names the CURRENT observation it is
-# derived from -- never a policy constant, never a bare "skip".
-#
-# The registry is closed on purpose. A sixth reason is a product
-# decision, not an implementation detail: adding one requires
-# registering it here (slug + observation + description) AND updating
-# the drift guard in ``tests/test_auto_integrate_skip_reasons.py``,
-# which fails when a reason is used without being registered.
-# ---------------------------------------------------------------------------
 
-#: Slug: a merge commit sits in the replay range (B3).
 SKIP_MERGE_COMMITS_IN_RANGE = "merge_commits_in_range"
-#: Slug: a root commit sits in the replay range (B7).
 SKIP_ROOT_COMMITS_IN_RANGE = "root_commits_in_range"
-#: Slug: the replay has nothing to replay (B4/B6).
 SKIP_ALL_EMPTY_REPLAY = "all_empty_replay"
-#: Slug: two distinct replay paths collide under case folding.
 SKIP_CASE_FOLDING_COLLISION = "case_folding_collision"
-#: Slug: the previous attempt of this seam produced a merge commit.
 SKIP_RETRY_AFTER_MERGE_COMMIT = "retry_after_merge_commit"
 
-#: Operator-facing description of the merge-commits skip.
-#:
-#: B3 -- merge commits in the replay range are flattened and dropped
-#: by a plain ``git rebase``; routing to the endpoint merge
-#: preserves them. ``rebase --rebase-merges`` exists, but its
-#: side-effects on history topology and the documented edge cases
-#: make it unsuitable for the always-on auto-integration path.
 _REASON_MERGE_COMMITS = "branch contains merge commits; routing to endpoint merge"
-#: Operator-facing description of the root-commits skip.
-#:
-#: B7 -- root commits have no parent to rebase onto. ``rebase
-#: --root`` exists, but the spec scopes it out of automation
-#: (B7) because of the operator-clarity cost of replaying
-#: history.
 _REASON_ROOT_COMMITS = "branch contains root commits; routing to endpoint merge"
-#: Operator-facing description of the all-empty-replay skip.
-#:
-#: B4/B6 -- an all-empty replay (every commit became empty on
-#: replay because the change is already upstream, or the replay
-#: range is empty altogether) is the case the rebase ``--empty=drop``
-#: flag was supposed to absorb. Older gits that ignore the flag
-#: abandon to endpoint merge anyway; the routing here short-circuits
-#: the loop and still lands the branch via the merge fallback.
 _REASON_ALL_EMPTY = "branch has no replayable commits; routing to endpoint merge"
-#: Operator-facing description of the case-folding-collision skip.
 _REASON_CASE_COLLISION = "branch range has case-folding path collision; routing to endpoint merge"
 
-#: ``RebaseNoOp`` reason recorded when the bounded retry deliberately
-#: skips ``rebase_onto`` to preserve the previous attempt's merge commit.
 REBASE_SKIPPED_FOR_MERGE = "rebase skipped on retry to preserve the integration merge commit"
 
-#: The closed registry: slug -> (observation that justifies the skip,
-#: operator-facing description). Every entry names the observation the
-#: skip is derived from, so an operator can re-derive it from the same
-#: repository state the attempt saw.
 SKIP_REASON_REGISTRY: dict[str, tuple[str, str]] = {
     SKIP_MERGE_COMMITS_IN_RANGE: (
         "git rev-list --merges <target>..HEAD is non-empty",
@@ -210,37 +150,22 @@ __all__ = [
 
 
 def registered_skip_slugs() -> frozenset[str]:
-    """Return the closed set of registered auto-rebase skip reason slugs."""
     return frozenset(SKIP_REASON_REGISTRY)
 
 
 def skip_reason_observation(slug: str) -> str:
-    """Return the observation that justifies a registered skip reason."""
     return _registered_spec(slug)[0]
 
 
 def skip_reason_description(slug: str) -> str:
-    """Return the operator-facing description of a registered skip reason."""
     return _registered_spec(slug)[1]
 
 
 def skip_reason_text(slug: str) -> str:
-    """Return the recorded reason text of a registered skip reason.
-
-    The text is ``"<slug>: <description>"`` so the slug survives into
-    the durable record: a reader (and the drift guard) can tell WHICH
-    registered reason applied without parsing prose.
-    """
     return f"{slug}: {skip_reason_description(slug)}"
 
 
 def skip_reason_slug(text: str) -> str | None:
-    """Return the registered slug a recorded reason text names, if any.
-
-    The slug may sit beside other recorded facts (the publication
-    annotation leads the text, for example), so every ``"; "``-separated
-    part is inspected.
-    """
     for part in text.split("; "):
         head, separator, _tail = part.partition(": ")
         if separator and head in SKIP_REASON_REGISTRY:
@@ -249,18 +174,10 @@ def skip_reason_slug(text: str) -> str | None:
 
 
 def is_registered_skip_reason(text: str) -> bool:
-    """Whether a recorded reason text names a registered skip reason."""
     return skip_reason_slug(text) is not None
 
 
 def with_skip_reason(record: RebaseState, skip_reason: str | None) -> RebaseState:
-    """Return ``record`` carrying the named rebase-skip reason.
-
-    The skip reason is APPENDED to the reason the attempt already
-    recorded, so the headline the operator must act on stays first and
-    the reason the rebase was skipped stays visible next to it. The
-    append is idempotent: a reason already present is not repeated.
-    """
     if skip_reason is None:
         return record
     existing = record.last_reason or ""
@@ -271,12 +188,6 @@ def with_skip_reason(record: RebaseState, skip_reason: str | None) -> RebaseStat
 
 
 def _registered_spec(slug: str) -> tuple[str, str]:
-    """Return the registry entry for ``slug`` or fail loudly.
-
-    A slug that is not registered is a DRIFT bug: the closed set is the
-    product's contract, so an unregistered reason must never reach the
-    operator log or the durable record.
-    """
     spec = SKIP_REASON_REGISTRY.get(slug)
     if spec is None:
         raise ValueError(
@@ -293,7 +204,6 @@ def _environmental_rebase_result(
     reason: str,
     git_ops: GitOps | None,
 ) -> RebaseRunResult:
-    """Stop after an environmental rebase failure without attempting a merge."""
     _abort_rebase_after_conflict(root, git_ops=git_ops)
     state = record_skip(
         reason=reason,
@@ -325,58 +235,6 @@ def run_rebase_or_merge(
     git_ops: GitOps | None = None,
     agent_runner: AgentRunner | None = None,
 ) -> RebaseRunResult:
-    """Drive rebase_onto, resolving conflicts in place before any fallback.
-
-    On success returns a ``RebaseRunResult`` with ``short_circuit``
-    ``None`` and the ``rebase_outcome`` / ``merge_outcome`` the
-    caller uses to build the final :class:`RebaseState`. A rebase that
-    FAILS, and a conflicted rebase whose in-place resolution does not
-    land, both fall back to the endpoint merge —
-    a rebase that fails for any reason must never end the integration
-    attempt while a single three-way merge could still land it. When
-    aborting a conflicted rebase leaves it in progress, the durable crash
-    record is retained so startup recovery can restore the repository.
-
-    The automatic rebase is ALWAYS the first attempt. The ONLY ways
-    this function skips it are the five registered reasons in
-    :data:`SKIP_REASON_REGISTRY`, and each one is derived from the
-    CURRENT observation of the repository:
-
-    * ``prefer_merge`` -- the immediately preceding attempt of this
-      seam produced a merge commit. A plain ``git rebase`` (no
-      ``--rebase-merges``) would drop that merge and replay the raw
-      feature commits back into the conflict the resolver just
-      settled. Registered as
-      :data:`SKIP_RETRY_AFTER_MERGE_COMMIT`.
-    * the pre-flight range routing below -- B3 merge commits, B7 root
-      commits, B4/B6 all-empty replays, and a case-folding path
-      collision, each named by its own registered slug.
-
-    Every skip records its registered reason text on the returned
-    :class:`RebaseRunResult` so the caller can put it in the durable
-    state; no skip is silent and no skip is unnamed.
-
-    Before ``rebase_onto`` is called the function also detects ranges
-    a plain rebase would mishandle (B3 merge commits, B7 root commits,
-    B4/B6 all-empty replays) and routes them straight to the endpoint
-    merge so the rebase engine never silently flattens a merge
-    resolution, replays an already-upstream patch into a conflict, or
-    drops a root commit. The rebase ``--empty=drop`` flag from step 2
-    still lands the all-empty case on modern git; this routing is the
-    backstop for older git that ignores the flag.
-
-    With a ``rebase_stop_resolver`` a CONFLICTED rebase is resolved in
-    place -- commit by commit, through ``git rebase --continue`` -- before
-    the abort-and-endpoint-merge fallback is considered at all.
-    ``display`` is used only to own the resolution footer for the whole
-    loop; it is optional and never required for correctness.
-
-    ``git_ops`` and ``agent_runner`` are the injected MUTATION seams:
-    the rebase, its abort and the resolver dispatch run through them,
-    so a fault-injecting double can drive the whole attempt without a
-    repository. The routing decisions above stay here -- they are
-    decisions, not mutations.
-    """
     if prefer_merge:
         retry_reason = skip_reason_text(SKIP_RETRY_AFTER_MERGE_COMMIT)
         return replace(
@@ -388,13 +246,6 @@ def run_rebase_or_merge(
             ),
             skip_reason=retry_reason,
         )
-    # Pre-flight routing: detect ranges a plain ``rebase --onto``
-    # would silently mishandle and skip the rebase phase entirely.
-    # The rebase result is replaced with a ``RebaseNoOp`` carrying
-    # the routing reason so the operator log line tells the operator
-    # WHY the merge was chosen; the headline ``merged`` comes from
-    # the endpoint merge that follows. The same registered reason text
-    # rides back on the result so the durable state records it too.
     routing_reason = _range_routing_probe(root, target)
     if routing_reason is not None:
         logger.info("auto_integrate: {} (target '{}')", routing_reason, target)
@@ -407,8 +258,6 @@ def run_rebase_or_merge(
             ),
             skip_reason=routing_reason,
         )
-    # Untracked leftovers identical to the target would make the rebase
-    # refuse its checkout; clear them so the rebase is actually tried.
     clear_untracked_merge_obstructions(root, target)
     rebase_outcome = (
         git_ops.rebase_onto(root, target)
@@ -444,55 +293,11 @@ def run_rebase_or_merge(
         )
         if resolved is not None:
             return resolved
-        # The endpoint merge is a different integration shape (one merge
-        # of the whole branch, not a commit-by-commit replay), and it is
-        # the last way to land the target.
 
     return _fallback_to_endpoint_merge(root, target, rebase_outcome, conflict_resolver, git_ops)
 
 
 def range_routing_reason(root: Path, target: str) -> str | None:
-    """Decide whether the feature range must skip ``rebase_onto``.
-
-    Returns the routing reason text (``"<slug>: <description>"``) the
-    operator log line should carry, or ``None`` to run the rebase. The
-    check is index-/ref-queries only; no git mutation, so a routing
-    decision that turns out wrong is reversible by retrying with
-    ``prefer_merge=False`` next seam.
-
-    Each predicate is a cheap ``rev-list`` over ``<target>..HEAD``:
-
-    * **B4/B6** — an all-empty replay. Two shapes reach it: the replay
-      range is EMPTY (the branch holds no commit the rebase could
-      replay, so the rebase would be a no-op that cannot move the
-      branch onto the target), or every commit becomes empty on replay
-      because the change is already upstream. Both are the case the
-      rebase ``--empty=drop`` flag was supposed to absorb (B4).
-      Modern git honors the flag; older git abandons. Detection:
-      ``rev-list --count <target>..HEAD`` is the total number of
-      feature commits; ``rev-list --cherry-pick --no-merges
-      <target>..HEAD`` is the number of commits the replay would
-      actually need to apply. When the range is empty, or the
-      cherry-picked range is empty while the range is not, the rebase
-      would walk through zero meaningful stops and the merge is the
-      only path that moves the ref. The endpoint merge is the B4/B6
-      backstop.
-    * **B3** — ``rev-list --merges``: nonzero means a merge commit
-      sits in the range; a plain ``rebase`` would drop it. Route to
-      endpoint merge so the resolution the agent was paid to produce
-      survives the integration.
-    * **B7** — ``rev-list --max-parents=0``: nonzero means a root
-      commit sits in the range; ``rebase --root`` is out of scope
-      (B7). Route to endpoint merge.
-    """
-    # Total feature commits in the range. ``None`` (the topology query
-    # failed) falls through so the rebase engine's own classification
-    # is the final answer — never a routing guess based on an
-    # unanswerable query. A count of ZERO is a REAL observation, not an
-    # unanswerable one: the branch holds nothing the rebase could
-    # replay, so the rebase would be a no-op that leaves the branch
-    # behind the target. The endpoint merge fast-forwards it, which is
-    # the only operation that can move that ref.
     total = _rev_list_count(root, target, extra_args=())
     if total is None:
         return None
@@ -502,11 +307,6 @@ def range_routing_reason(root: Path, target: str) -> str | None:
 
 
 def _range_topology_reason(root: Path, target: str, total: int) -> str | None:
-    """Return the registered reason the range topology forces, if any.
-
-    ``total`` is the commit count already proven by the caller, so the
-    empty-replay probe does not re-query it.
-    """
     merges = _rev_list_count(root, target, extra_args=("--merges",))
     if merges is not None and merges > 0:
         return skip_reason_text(SKIP_MERGE_COMMITS_IN_RANGE)
@@ -538,7 +338,6 @@ def _range_routing_probe(root: Path, target: str) -> str | None:
 
 
 def _range_has_case_collision(root: Path, target: str) -> bool:
-    """True only for distinct replay paths that collide on case-folding filesystems."""
     result = run_git(
         ("diff", "--name-only", "-z", f"{target}..HEAD"),
         cwd=root,
@@ -556,30 +355,6 @@ def _range_has_case_collision(root: Path, target: str) -> bool:
 
 
 def _rev_list_count(root: Path, target: str, *, extra_args: tuple[str, ...]) -> int | None:
-    """Run ``git rev-list <args> <target>..HEAD`` and return the count.
-
-    Returns ``None`` when the query failed (non-zero exit or
-    malformed output) so the caller can treat the topology as
-    UNKNOWN rather than the literal "zero commits" case the old
-    implementation returned. Topology queries are guarded by the
-    universal per-call timeout and the non-interactive env baseline
-    (D1/D15), so a non-zero exit is genuine: a deleted target ref
-    (E4), a corrupt object store (H5), or a sibling agent holding a
-    lock (A10/E9). Failing closed by treating those as
-    "unanswerable" routes through the rebase engine's own
-    classification rather than silently merging when the rebase
-    would have been the correct path -- the exact bug class that
-    would silently flatten a merge commit (B3) or replay an
-    already-upstream patch into a conflict (B6).
-
-    The revision range ``<target>..HEAD`` MUST come BEFORE any
-    ``--`` separator. ``--`` tells ``git rev-list`` that the
-    following arguments are paths to limit the walk to, and a
-    ``<ref>..<ref>`` token placed after ``--`` is interpreted as a
-    filesystem path; git then exits 129 with usage text and the
-    pipeline logs the topology as unknown. There are no paths to
-    limit to here, so no ``--`` separator is needed at all.
-    """
     result = run_git(
         ("rev-list", "--count", *extra_args, f"{target}..HEAD"),
         cwd=root,
@@ -609,25 +384,6 @@ def _rev_list_count(root: Path, target: str, *, extra_args: tuple[str, ...]) -> 
 
 
 def _all_empty_replay(root: Path, target: str, feature_count: int) -> bool:
-    """True when every feature commit is already on ``target`` upstream.
-
-    The cherry-pick walker in ``rev-list`` drops commits whose
-    patch-id matches one already in the upstream history (B6). A
-    non-empty feature range with an EMPTY cherry-picked range is
-    therefore the B4 all-empty-replay case: every commit was
-    already applied, so the rebase will walk through zero
-    meaningful stops regardless of ``--empty=drop``. The endpoint
-    merge is the only path that lands the branch.
-
-    ``feature_count`` is the total commit count already proven by
-    the caller; a separate re-query is redundant and would
-    re-introduce the topology-error hole the ``_rev_list_count``
-    return-type change closed. ``None`` from the cherry-pick walker
-    means the topology query failed: routing on an unanswerable
-    question is exactly the bug this whole change is about, so the
-    walker returning ``None`` is treated as "not all-empty" and
-    the rebase engine takes over.
-    """
     if feature_count == 0:
         return False
     cherry_count = _rev_list_count(root, target, extra_args=("--cherry-pick", "--no-merges"))
@@ -643,26 +399,8 @@ def _fallback_to_endpoint_merge(
     conflict_resolver: ConflictResolver | None,
     git_ops: GitOps | None = None,
 ) -> RebaseRunResult:
-    """Abort the unfinished rebase and attempt the endpoint merge (AC-06/AC-07).
-
-    With a ``conflict_resolver``, a conflicted endpoint merge is
-    handed to the resolver and — on full resolution — committed
-    deterministically, so the integration continues to the
-    fast-forward phase instead of giving up (see
-    :mod:`ralph.pipeline.auto_integrate_resolve`).
-
-    R6/AC-06: runs :func:`post_attempt_verify` BEFORE the endpoint
-    merge so a rebase abort that left in-progress markers is
-    surfaced loudly before the merge starts. The merge itself
-    runs through the same invariant via :func:`_endpoint_merge_result`
-    on its conflict / resolution paths. The ``owns_resolution``
-    flag is ``True`` when the conflict resolver is mid-edit.
-    """
     _abort_rebase_after_conflict(root, git_ops=git_ops)
     if rebase_in_progress(root):
-        # Keep the pre-mutation record: abort_rebase can fail after the
-        # rebase engine has created state, and recovery needs that record
-        # to prove ownership and retry the abort/reset on the next run.
         post_attempt_verify(
             root, expected_head_sha=None, owns_resolution=conflict_resolver is not None
         )
@@ -710,13 +448,6 @@ def _verify_terminal_probe(
 
 
 def _restore_blocked_paths(root: Path, paths: tuple[str, ...]) -> bool:
-    """Restore the refusal-named paths to HEAD; report success.
-
-    Scoped to exactly the paths git named in its overwrite refusal — the
-    rest of the tree and index are never touched. Best-effort: ``False``
-    names a restore failure (the refusal recurs, now against a charged,
-    finite budget), never an exception.
-    """
     if not paths:
         return True
     result = run_git(
@@ -736,14 +467,6 @@ def _restore_blocked_paths(root: Path, paths: tuple[str, ...]) -> bool:
 
 
 def _preserve_refusal_paths(root: Path) -> tuple[str | None, str | None]:
-    """Preserve the current work — including the refusal-named paths — durably.
-
-    Thin wrapper over the existing stale-resolution snapshot path, so the
-    backup ref holds the staged, worktree and untracked variants of the
-    named paths while the tree and the real index stay untouched. Returns
-    ``(backup_ref, None)`` on success or ``(None, error)``; a failure
-    names the error so the durable record can carry it.
-    """
     try:
         head_sha, query_ok = observe_branch_sha(root, "HEAD")
         if not query_ok or not head_sha:
@@ -755,16 +478,6 @@ def _preserve_refusal_paths(root: Path) -> tuple[str | None, str | None]:
 
 
 def _reobserve_corrected_state(root: Path, target: str) -> tuple[Observation, DirtShape] | None:
-    """Re-observe the repository and correct the contradicted worktree reading.
-
-    The refusal's own file list is git's authoritative answer to "what
-    local work blocks the merge"; when the live worktree reading says
-    CLEAN or UNTRACKED it is overridden by that evidence (the 2026-10-27
-    livelock state: a clean observation answering a path-bearing refusal
-    forever). Returns ``None`` — back off, act on nothing — when the
-    re-observation cannot be read: unknown readings never block and the
-    bridge never acts on them.
-    """
     from ralph.pipeline.integration_director import IntegrationDirector
 
     observation = IntegrationDirector(root, target=target).observe()
@@ -787,7 +500,6 @@ def _refusal_bridge_reason(
     restore_ok: bool | None,
     preservation_error: str | None,
 ) -> str:
-    """Render the one bridge log/record line from the CURRENT observation only."""
     parts = [
         f"endpoint merge refused ({merge_result.reason})",
         f"decided {action.value} from re-observed worktree={observation.worktree.value}",
@@ -811,48 +523,11 @@ def _bridge_merge_refusal(
     rebase_outcome: RebaseConflicts | RebaseFailed | RebaseNoOp,
     merge_result: MergeResult,
 ) -> RebaseRunResult | None:
-    """Bridge a path-bearing merge refusal into the typed obstruction flow.
-
-    Observed 2026-10-27: the live observation read CLEAN, the endpoint
-    merge refused ("local changes would be overwritten" naming
-    ``app/models/evidence_artifact.rb``), the refusal was recorded as a
-    generic conflict, and the seam re-derived the identical state every
-    ~7 s forever. This bridge closes that loop. It runs ONLY when:
-
-    * the merge result is a path-bearing typed obstruction
-      (:func:`ralph.git.merge.merge_refusal_obstruction`), or a legacy
-      refusal record whose ``blocked_paths`` claim is confirmed by safe
-      re-observation (a fresh ``MERGE_HEAD`` probe proving no merge
-      began); and
-    * the live repository proves no merge is in progress — a genuine
-      ``MERGE_HEAD`` content conflict keeps its existing safety
-      contracts, and an unreadable merge state backs off.
-
-    Then, with no resolver agent and no commit agent for this class: the
-    tree is re-observed and the contradicted clean reading corrected by
-    the refusal's own evidence; the refusal-named paths are preserved to
-    a backup ref through the existing snapshot path and restored to the
-    baseline; the ONE durable attempt budget is charged through the owner
-    seam so identical repeats spend budget and advance the escalation
-    cycle; and the returned state is a skip (never a conflict, never
-    unresolved), so the next seam re-enters at automatic rebase-first
-    against changed evidence. Exactly one warning names the outcome.
-
-    Returns ``None`` whenever any gate is not met, leaving every existing
-    contract (genuine conflicts, resolver dispatch, unreadable states)
-    untouched.
-    """
     paths = merge_refusal_obstruction(merge_result)
     if paths is None:
         if not merge_result.blocked_paths:
             return None
-        # Pre-change refusal record: paths claimed without the typed
-        # cause. Safe re-observation decides below — only a repository
-        # that proves no merge began is bridged on the legacy claim.
         paths = merge_result.blocked_paths
-    # MERGE_HEAD semantics override every claim, typed or legacy: an
-    # in-progress merge is a real content conflict; an unreadable state
-    # is never proof of absence, so the bridge backs off rather than acts.
     if merge_state(root) != MERGE_STATE_NONE:
         return None
     corrected = _reobserve_corrected_state(root, target)
@@ -875,8 +550,6 @@ def _bridge_merge_refusal(
         if preserved_ref is not None:
             restore_ok = _restore_blocked_paths(root, paths)
     elif action is not NextAction.WAIT_FOR_ENVIRONMENT and ladder_rung_for_action(action) is None:
-        # The table answered outside the refusal-cleanup class (land,
-        # reintegrate, resolver): the existing contracts own that action.
         return None
     charge_integration_attempt(root, observation=observation, next_action=action)
     reason = _refusal_bridge_reason(
@@ -901,17 +574,8 @@ def _endpoint_merge_result(
     rebase_outcome: RebaseConflicts | RebaseFailed | RebaseNoOp,
     conflict_resolver: ConflictResolver | None,
 ) -> RebaseRunResult:
-    """Run the endpoint merge and map its outcome onto one branch table.
-
-    Shared by the rebase-conflict fallback and the merge-only retry so
-    both paths keep exactly one branch table; ``rebase_outcome`` is the
-    marker each caller wants preserved for ``_classify_rebase_outcome``.
-    """
     merge_result = endpoint_merge_with_resolution(root, target, conflict_resolver)
     if merge_result is None:
-        # The merge attempt raised; surface that as the headline
-        # conflict state (the merge-attempt reason is more
-        # informative than the generic "both conflicted" message).
         _clear_record_if_no_inflight_op(root)
         return RebaseRunResult(
             rebase_outcome=rebase_outcome,
@@ -955,13 +619,6 @@ def _endpoint_merge_result(
             ),
         )
 
-    # The RebaseConflicts / RebaseFailed marker is preserved so
-    # _classify_rebase_outcome can distinguish the AC-06
-    # rebase-conflicted-then-cleanly-merged path (headline: merged)
-    # from the AC-05 plain-rebase path (headline: rebased). Both
-    # conflicted paths return earlier, so this tail is reached only
-    # when merge_outcome.outcome is in {"success", "noop"} and the
-    # classifier returns the "merged" headline, not "conflict".
     return RebaseRunResult(
         rebase_outcome=rebase_outcome,
         merge_attempted=True,
@@ -971,7 +628,6 @@ def _endpoint_merge_result(
 
 
 def _abort_rebase_after_conflict(root: Path, git_ops: GitOps | None = None) -> None:
-    """Abort a conflicted rebase; never raises."""
     try:
         if git_ops is not None and type(git_ops).__name__ != "_ProductionGitOps":
             git_ops.abort_rebase(root)
@@ -981,19 +637,4 @@ def _abort_rebase_after_conflict(root: Path, git_ops: GitOps | None = None) -> N
         logger.warning("auto_integrate: abort_rebase failed: {}", abort_exc)
 
 
-# ----- AC-14 catalog evidence -----
-# This file is the authoritative source for the catalog entries listed
-# below. Each ``# AC-14 rationale: <ID>`` line is the code-adjacent
-# marker the AC-14 audit looks for; each ``# ladder rung: <N>``
-# names the rung the entry sits on. Adding a new entry here requires
-# BOTH lines or the audit fails.
 
-# AC-14 rationale: B3
-# ladder rung: 3
-# AC-14 rationale: B6
-# ladder rung: 3
-# AC-14 rationale: B7
-# ladder rung: 3
-# AC-14 rationale: D11
-# ladder rung: 3
-# ----- end AC-14 catalog evidence -----

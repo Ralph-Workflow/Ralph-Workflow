@@ -1,5 +1,3 @@
-"""Outcome judging: in-scope work lands without declare_complete."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -54,14 +52,6 @@ def test_identical_blobs_are_mechanical() -> None:
 
 
 def test_binary_conflict_is_the_agents_choice_never_ralphs() -> None:
-    """Ralph still picks no side -- the resolver does, and must say so.
-
-    The session holds write_file and delete_path, so a binary conflict
-    is something it can carry out; what it cannot do is leave evidence
-    in the file, since a binary conflict has no markers. So it is a
-    declared DECISION. Calling it unreachable escalated the whole
-    conflict set on sight, starving every text conflict beside it.
-    """
     from ralph.pipeline.conflict_resolution.sight import ConflictSight, classify_stage_map
 
     kind = classify_stage_map(
@@ -72,7 +62,6 @@ def test_binary_conflict_is_the_agents_choice_never_ralphs() -> None:
 
 
 def test_file_directory_collision_is_the_agents_declared_choice() -> None:
-    """The session can create directories and delete paths."""
     from ralph.pipeline.conflict_resolution.sight import ConflictSight, classify_stage_map
 
     kind = classify_stage_map(
@@ -83,12 +72,6 @@ def test_file_directory_collision_is_the_agents_declared_choice() -> None:
 
 
 def test_modify_delete_is_the_resolvers_decision_not_out_of_reach() -> None:
-    """One side edited, the other deleted: a judgement, not an impossibility.
-
-    Git records stages 1+3 (or 1+2) for a modify/delete and leaves the
-    surviving file in the worktree. Escalating it on sight spent no
-    resolver on one of the commonest conflicts there is.
-    """
     from ralph.pipeline.conflict_resolution.sight import ConflictSight, classify_stage_map
 
     modified_by_them = {1: ("100644", "base"), 3: ("100644", "theirs")}
@@ -98,15 +81,6 @@ def test_modify_delete_is_the_resolvers_decision_not_out_of_reach() -> None:
 
 
 def test_only_a_submodule_pointer_is_genuinely_out_of_reach() -> None:
-    """git is denied to the session, so it cannot write a gitlink.
-
-    Everything else it CAN carry out: the session holds write_file,
-    edit_file, delete_path and create_directory. Calling a binary or a
-    file-vs-directory collision unreachable escalated the whole conflict
-    set on sight, so an ordinary text conflict beside a PNG was never
-    offered to any resolver -- on every run, because nothing about the
-    repository changed in between.
-    """
     from ralph.pipeline.conflict_resolution.sight import ConflictSight, classify_stage_map
 
     gitlink = {1: ("160000", "base"), 3: ("160000", "theirs")}
@@ -114,7 +88,6 @@ def test_only_a_submodule_pointer_is_genuinely_out_of_reach() -> None:
     both_gitlinks = {1: ("160000", "b"), 2: ("160000", "o"), 3: ("160000", "t")}
     assert classify_stage_map(both_gitlinks, binary=False) is ConflictSight.OUT_OF_REACH
 
-    # Carryable, but unreadable off the file: each needs a declaration.
     tree = {1: ("100644", "base"), 2: ("040000", "ours")}
     assert classify_stage_map(tree, binary=False) is ConflictSight.AGENT_DECISION
     assert (
@@ -126,29 +99,15 @@ def test_only_a_submodule_pointer_is_genuinely_out_of_reach() -> None:
 def test_a_markerless_decision_demands_declared_completion(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Ralph cannot SEE a keep-or-delete decision, so it must be declared.
-
-    A modify/delete has no markers, so the textual proof every other
-    conflict is judged by is satisfied before anyone touches the file.
-    Without declared completion an agent that did nothing would silently
-    land "keep", quietly reversing a deletion the other side intended.
-    """
     from ralph.pipeline.conflict_resolution import driver as driver_module
     from ralph.pipeline.conflict_resolution.sight import ConflictSight
     from tests._conflict_resolution_phase_parity_seams import _policy_bundle
 
-    # Loaded before ``Path.exists`` is stubbed out below: loading reads policy files.
     bundle = _policy_bundle()
     captured: list[bool] = []
 
     class _FirstInvocationSeen(BaseException):
-        """Ends the run once the resolver is invoked.
-
-        Failed rounds are not charged here (``classify_failed_resolution_attempt``
-        is stubbed), so the round loop would otherwise retry forever; it used
-        to end only when the per-test timeout interrupted it. A
-        ``BaseException`` so the driver's failure handling cannot absorb it.
-        """
+        pass
 
     def _capture(**kwargs: object) -> bool:
         captured.append(bool(kwargs.get("require_completion_evidence")))
@@ -194,13 +153,6 @@ def test_a_markerless_decision_demands_declared_completion(
 def test_a_widened_conflict_marker_is_still_a_conflict_marker(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`conflict-marker-size` is a documented gitattribute.
-
-    A repository that widens the fence produced ``<<<<<<<< HEAD``, which
-    does not start with ``"<<<<<<< "`` -- and every gate that proves a
-    resolution real reads this one scan, so all of them went blind at
-    once and conflict markers were committed into history as a success.
-    """
     from ralph.git import merge as merge_module
 
     root = Path("/repo")
@@ -220,13 +172,6 @@ def test_a_widened_conflict_marker_is_still_a_conflict_marker(
 
 
 def test_a_markerless_conflict_is_a_decision_however_it_became_markerless() -> None:
-    """`binary`, `-merge` and `merge=binary` all suppress the markers.
-
-    A NUL-byte probe cannot see any of them, so an ASCII lockfile was
-    judged an ordinary conflict -- and an ordinary conflict passes the
-    marker scan the moment it is created, which credited an agent that
-    did nothing and dropped the other side.
-    """
     from ralph.pipeline.conflict_resolution.sight import ConflictSight, classify_stage_map
 
     two_sided = {1: ("100644", "base"), 2: ("100644", "ours"), 3: ("100644", "theirs")}
@@ -240,14 +185,6 @@ def test_a_markerless_conflict_is_a_decision_however_it_became_markerless() -> N
 def test_a_narrow_conflict_marker_is_still_a_conflict_marker(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`conflict-marker-size` moves the fence in BOTH directions.
-
-    A width the scan does not expect blinds every gate that proves a
-    resolution real, so the markers get committed and reported as a
-    success. A narrow ``>`` fence is indistinguishable from a Markdown
-    blockquote, so the width is asked of git per path rather than
-    guessed at.
-    """
     from ralph.git import merge as merge_module
     from ralph.git.git_run_result import GitRunResult
 
@@ -288,12 +225,6 @@ def test_a_narrow_conflict_marker_is_still_a_conflict_marker(
 def test_a_non_ascii_path_is_not_reported_as_marker_free(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """NUL-separated git output preserves a non-ASCII marker-bearing path.
-
-    The quoted string cannot be opened, so every content gate that reads
-    the path reported "no markers" for a file it never saw -- and the
-    markers were committed under a line asserting the stop was clean.
-    """
     from ralph.git import merge as merge_module
     from ralph.git.git_run_result import GitRunResult
 
@@ -342,11 +273,6 @@ def test_a_non_ascii_path_is_not_reported_as_marker_free(
 def test_a_file_git_wrote_in_utf16_is_not_reported_as_marker_free(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`working-tree-encoding` makes git write markers we could not read.
-
-    Decoding with ``errors="replace"`` hid the fences behind replacement
-    characters, so they were committed and reported as a success.
-    """
     from ralph.git import merge as merge_module
 
     root = Path("/repo")
@@ -363,7 +289,6 @@ def test_a_file_git_wrote_in_utf16_is_not_reported_as_marker_free(
 def test_a_present_but_unreadable_path_is_not_evidence_of_a_clean_one(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The scan skipped what it could not read, which passed vacuously."""
     from ralph.git import merge as merge_module
 
     root = Path("/repo")
@@ -379,12 +304,6 @@ def test_a_present_but_unreadable_path_is_not_evidence_of_a_clean_one(
 def test_git_itself_corroborates_the_marker_scan(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Our scan reads the worktree; git reads what would be committed.
-
-    A clean/smudge `filter`, a `working-tree-encoding`, or an unusual
-    `conflict-marker-size` all put the committed bytes out of reach of
-    an outside reader -- so git's own check is the corroborating gate.
-    """
     from ralph.git import merge as merge_module
     from ralph.git.git_run_result import GitRunResult
 
@@ -401,7 +320,6 @@ def test_git_itself_corroborates_the_marker_scan(
         del options, call_class
         assert cwd == root
         if args[:2] == ("cat-file", "blob"):
-            # The staged blobs git checked, served for the reported lines.
             return GitRunResult(
                 args=("git", *args), returncode=0, stdout=staged[args[2]], stderr=""
             )
@@ -430,12 +348,6 @@ def test_git_itself_corroborates_the_marker_scan(
 
 
 def test_operator_backup_files_are_not_mistaken_for_git_residue() -> None:
-    """`f.txt~` is vim's; `f.txt~HEAD` is ort's.
-
-    The residue glob deleted both, destroying operator files that no
-    side of the conflict ever mentioned, on every merge resolution and
-    every rebase stop.
-    """
     from ralph.pipeline.conflict_resolution.ort_residue import is_ort_residue_name
 
     assert is_ort_residue_name("f.txt", "f.txt~HEAD") is True

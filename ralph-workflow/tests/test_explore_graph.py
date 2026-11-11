@@ -1,11 +1,3 @@
-"""Black-box tests for ``ralph_graph`` MCP tool behavior.
-
-Covers AC-07: ralph_graph is registered and implements prompt-exact
-neighbors, path, impact, hubs, and tests queries with bounded
-traversal, evidence-backed output, capability gates, and structured
-freshness/truncation metadata.
-"""
-
 from __future__ import annotations
 
 import json
@@ -80,7 +72,6 @@ def _build_index(workspace: Path, tmp_path: Path) -> ExploreStore:
 
 
 def test_ralph_graph_is_listed_with_explore_tools() -> None:
-    """AC-07: ralph_graph is registered with the explore tools."""
     names = _all_tool_names()
     assert RALPH_GRAPH_TOOL in names
     assert RALPH_INDEX_STATUS_TOOL in names
@@ -91,7 +82,6 @@ def test_ralph_graph_is_listed_with_explore_tools() -> None:
 def test_graph_neighbors_returns_prompt_exact_bounded_evidence_backed_edges(
     tmp_path: Path,
 ) -> None:
-    """AC-07: ``neighbors`` returns bounded, evidence-backed edges."""
     workspace = _seed_workspace(tmp_path)
     store = _build_index(workspace, tmp_path)
     try:
@@ -123,9 +113,6 @@ def test_graph_neighbors_returns_prompt_exact_bounded_evidence_backed_edges(
         ):
             assert key in payload, f"missing field: {key}"
         assert payload["query_type"] == "neighbors"
-        # ``hello`` is called from the file but no other symbol
-        # calls it, so the in-neighborhood should be empty or
-        # contain only the file/node itself.
         assert isinstance(payload["edges"], list)
     finally:
         store.close()
@@ -134,7 +121,6 @@ def test_graph_neighbors_returns_prompt_exact_bounded_evidence_backed_edges(
 def test_graph_path_impact_hubs_and_tests_follow_prompt_schema_and_limits(
     tmp_path: Path,
 ) -> None:
-    """AC-07: path/impact/hubs/tests return the prompt-exact schema."""
     workspace = _seed_workspace(tmp_path)
     store = _build_index(workspace, tmp_path)
     try:
@@ -188,16 +174,12 @@ def test_graph_path_impact_hubs_and_tests_follow_prompt_schema_and_limits(
         )
         tests_payload = _decode(tests_result)
         assert tests_payload["query_type"] == "tests"
-        # The seeds include tests/test_module.py; ``tests`` is a
-        # suggestion, not a proof. The missing_data flag must be
-        # present so callers do not over-read the result.
         assert "behavioral_coverage_unproven" in tests_payload["missing_data"]
     finally:
         store.close()
 
 
 def test_graph_rejects_invalid_query_type(tmp_path: Path) -> None:
-    """ralph_graph fails closed on unsupported query types."""
     workspace = _seed_workspace(tmp_path)
     store = _build_index(workspace, tmp_path)
     try:
@@ -219,17 +201,6 @@ def test_graph_rejects_invalid_query_type(tmp_path: Path) -> None:
     ["neighbors", "path", "impact", "tests"],
 )
 def test_graph_rejects_targetless_required_query_types(tmp_path: Path, query_type: str) -> None:
-    """AC-05: ``neighbors``/``path``/``impact``/``tests`` require ``target``.
-
-    The contract documented in
-    ``_specs_explore.ralph_graph.description`` states ``target`` is
-    required for these four query types and optional only for
-    ``hubs``. The handler must enforce that at the parameter boundary
-    rather than running a degenerate traversal that returns no
-    evidence. ``hubs`` is the single allowed targetless query type
-    and is covered separately by
-    :func:`test_graph_hubs_accepts_targetless_query`.
-    """
     from ralph.mcp.tools.coordination import InvalidParamsError
 
     with pytest.raises(InvalidParamsError) as exc_info:
@@ -238,20 +209,16 @@ def test_graph_rejects_targetless_required_query_types(tmp_path: Path, query_typ
             _Workspace(tmp_path),
             {"query_type": query_type},
         )
-    # The error message must name the missing field and the query type so an
-    # agent can repair the call deterministically without requiring an index.
     message = str(exc_info.value)
     assert "target" in message
     assert query_type in message
 
 
 def test_graph_hubs_accepts_targetless_query(tmp_path: Path) -> None:
-    """AC-05: ``hubs`` is the single allowed targetless query type."""
     workspace = _seed_workspace(tmp_path)
     store = _build_index(workspace, tmp_path)
     try:
         session = _FakeSession(explore_index=_FakeIndex(store))
-        # Must not raise InvalidParamsError for the missing target.
         result = handle_ralph_graph(
             session,
             _Workspace(workspace),
@@ -306,8 +273,6 @@ def test_graph_rejects_limit_out_of_range(tmp_path: Path) -> None:
 
 
 class _FakeIndex:
-    """Minimal explore-index handle carrying just the SQLite store."""
-
     def __init__(self, store: ExploreStore) -> None:
         self.store = store
         self.last_refresh_kind = "none"
@@ -317,13 +282,7 @@ class _FakeIndex:
         self.reindex_in_progress = False
 
 
-# --- AC-05: bounded timeout_ms and explicit cancellation -----------------
-
-
 def test_graph_schema_exposes_bounded_timeout_ms_and_cancel() -> None:
-    """AC-05: the ralph_graph schema must declare a bounded timeout
-    and an explicit cancellation input.
-    """
     spec = _explore_specs_by_name()[RALPH_GRAPH_TOOL]
     properties = spec.metadata.definition.input_schema["properties"]
     assert "timeout_ms" in properties
@@ -337,9 +296,6 @@ def test_graph_schema_exposes_bounded_timeout_ms_and_cancel() -> None:
 
 
 def test_graph_rejects_oversized_timeout_ms(tmp_path: Path) -> None:
-    """AC-05: callers cannot extend the budget arbitrarily. The
-    handler rejects ``timeout_ms`` above the documented cap.
-    """
     workspace = _seed_workspace(tmp_path)
     store = _build_index(workspace, tmp_path)
     try:
@@ -362,7 +318,6 @@ def test_graph_rejects_oversized_timeout_ms(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("timeout_ms", (0, -1))
 def test_graph_rejects_non_positive_timeout_ms(tmp_path: Path, timeout_ms: int) -> None:
-    """Regression: graph validation rejects every non-positive timeout cheaply."""
     workspace = _seed_workspace(tmp_path)
     store = _build_index(workspace, tmp_path)
     try:
@@ -386,20 +341,12 @@ def test_graph_rejects_non_positive_timeout_ms(tmp_path: Path, timeout_ms: int) 
 def test_graph_deadline_exceeded_returns_bounded_incomplete_result(
     tmp_path: Path,
 ) -> None:
-    """AC-05: when the deadline elapses before the query starts,
-    the dispatcher returns a bounded, truthful incomplete result
-    with ``deadline_exceeded=true`` and the missing-data marker.
-    No mutable work is exposed to readers.
-    """
     from ralph.mcp.explore import graph as graph_module
     from ralph.mcp.explore.store import ExploreStore
 
     _seed_workspace(tmp_path)
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     try:
-        # A deadline already in the past: the smallest positive monotonic
-        # instant (a non-positive deadline disables the check), which any
-        # running clock has passed -- no real clock read needed.
         past = 1e-9
         result = graph_module.run_query(
             store,
@@ -416,7 +363,6 @@ def test_graph_deadline_exceeded_returns_bounded_incomplete_result(
         assert result.impacted_files == ()
         assert result.suggested_tests == ()
         assert result.truncated is True
-        # index_generation reports the last committed value (0 here).
         assert result.index_generation == 0
     finally:
         store.close()
@@ -425,10 +371,6 @@ def test_graph_deadline_exceeded_returns_bounded_incomplete_result(
 def test_graph_cancel_request_returns_bounded_incomplete_result(
     tmp_path: Path,
 ) -> None:
-    """AC-05: ``cancel=true`` returns a bounded, truthful
-    incomplete result with ``cancelled=true`` and the
-    ``cancelled`` marker in ``missing_data``.
-    """
     from ralph.mcp.explore import graph as graph_module
     from ralph.mcp.explore.store import ExploreStore
 
@@ -452,10 +394,6 @@ def test_graph_cancel_request_returns_bounded_incomplete_result(
 
 
 def test_graph_cancel_via_session_attribute_honored(tmp_path: Path) -> None:
-    """AC-05: the handler reads ``cancel=true`` and sets the
-    session cancel flag; the dispatcher honors it on the next
-    call and returns a bounded incomplete result.
-    """
     workspace = _seed_workspace(tmp_path)
     store = _build_index(workspace, tmp_path)
     try:
@@ -482,10 +420,6 @@ def test_graph_cancel_via_session_attribute_honored(tmp_path: Path) -> None:
 def test_graph_handler_returns_cancelled_and_deadline_fields(
     tmp_path: Path,
 ) -> None:
-    """The response payload always carries ``cancelled`` and
-    ``deadline_exceeded`` so callers can branch on them without
-    a second round-trip.
-    """
     workspace = _seed_workspace(tmp_path)
     store = _build_index(workspace, tmp_path)
     try:
@@ -498,7 +432,6 @@ def test_graph_handler_returns_cancelled_and_deadline_fields(
         payload = _decode(result)
         assert "cancelled" in payload
         assert "deadline_exceeded" in payload
-        # Default path: both are False.
         assert payload["cancelled"] is False
         assert payload["deadline_exceeded"] is False
     finally:

@@ -1,18 +1,3 @@
-"""Acceptance Scenario 8: legacy representation migration on restart.
-
-Seed a contradicting legacy checkpoint + integration record pair as RAW
-disk bytes (checkpoint claims ``development``, the legacy record claims
-``integrating`` with legacy evidence keys), then restart through the
-production startup/recovery path — the same ``Checkpoint.load`` resume
-read and the same ``read_record`` recovery preamble
-(``recover_incomplete_integration``) that ``run_loop`` startup uses.
-Migration must resolve to exactly one authoritative state and never
-merge contradictory truths heuristically. Git outranks both files: with
-no operation in progress and HEAD already on the target, Git disproves
-the record's ``integrating`` claim, so recovery clears the record rather
-than retaining it (a retained stale record deferred catch-up forever).
-"""
-
 from __future__ import annotations
 
 import json
@@ -33,10 +18,6 @@ from ralph.workspace.scope import WorkspaceScope
 if TYPE_CHECKING:
     from ralph.pipeline.rebase_state import RebaseState
 
-#: Legacy record payload: phase claims an in-flight integration while the
-#: checkpoint below claims development, and the diagnostic evidence carries
-#: the legacy repository-global ``ls-files`` key which must raise explicit
-#: intervention rather than being silently migrated.
 _LEGACY_INTERVENTION_PAYLOAD: dict[str, object] = {
     "phase": "integrating",
     "target": "main",
@@ -47,8 +28,6 @@ _LEGACY_INTERVENTION_PAYLOAD: dict[str, object] = {
     ],
 }
 
-#: Legacy record payload with legacy dictionary evidence keys, which must
-#: migrate cleanly to the new key space without intervention.
 _LEGACY_DICT_EVIDENCE_PAYLOAD: dict[str, object] = {
     "phase": "integrating",
     "target": "main",
@@ -76,14 +55,6 @@ def _seed_raw_legacy_pair(
     *,
     checkpoint_payload: dict[str, object] | None = None,
 ) -> None:
-    """Write raw legacy checkpoint + record bytes directly under ``root``.
-
-    Bypasses ``Checkpoint.save`` and ``write_record`` so the production
-    resume read (``Checkpoint.load``) and the recovery preamble
-    (``read_record`` inside ``recover_incomplete_integration``) must
-    parse and migrate the legacy bytes on restart, exactly as a real
-    process restart does.
-    """
     agent_dir = root / ".agent"
     agent_dir.mkdir(parents=True, exist_ok=True)
     active_checkpoint: dict[str, object] = (
@@ -96,13 +67,6 @@ def _seed_raw_legacy_pair(
 
 
 def _restart_via_production_recovery(root: Path) -> tuple[RebaseState, Path]:
-    """Restart via the production startup/recovery seam.
-
-    Loads the pipeline checkpoint through the same resume path
-    ``run._load_configuration`` uses and runs the same recovery preamble
-    ``run_loop._run_auto_integrate_recovery_preamble`` runs before the
-    dispatch loop.
-    """
     checkpoint_path = root / ".agent" / "checkpoint.json"
     reloaded = Checkpoint(checkpoint_path).load()
     assert reloaded is not None
@@ -114,15 +78,6 @@ def _restart_via_production_recovery(root: Path) -> tuple[RebaseState, Path]:
 
 
 def _assert_git_is_the_single_authority(root: Path, recovered: RebaseState) -> None:
-    """Recovery reconciled from Git: no record survives, dispatch resumes.
-
-    Git shows no operation in progress and HEAD already sits on the
-    target, so it disproves the legacy record's ``integrating`` claim.
-    Recovery must not come back owning that record (a retained stale
-    record deferred catch-up forever) and must not leave a hybrid of the
-    checkpoint and the record behind: the record is cleared, so Git is
-    the one authority and ordinary dispatch is allowed.
-    """
     assert recovery_retained_record(recovered) is False
     assert read_record(root) is None
     verdict = inspect_integration_resolution(root, recovered)
@@ -130,10 +85,6 @@ def _assert_git_is_the_single_authority(root: Path, recovered: RebaseState) -> N
 
 
 def test_legacy_restart_intervention_record_is_single_authority(tmp_git_repo: Path) -> None:
-    """Contradicting legacy pair with global evidence loads cleanly: the
-    legacy repository-global key is dropped silently on load (it never
-    raises intervention), and recovery re-derives state from Git, which
-    outranks both the checkpoint and the record."""
     _seed_raw_legacy_pair(tmp_git_repo, _LEGACY_INTERVENTION_PAYLOAD)
 
     pre_recovery = read_record(tmp_git_repo)
@@ -148,11 +99,8 @@ def test_legacy_restart_intervention_record_is_single_authority(tmp_git_repo: Pa
 
 
 def test_legacy_restart_clean_dict_evidence_is_single_authority(tmp_git_repo: Path) -> None:
-    """Contradicting legacy pair with dictionary evidence migrates cleanly
-    on load, and recovery resolves it to the single Git authority."""
     _seed_raw_legacy_pair(tmp_git_repo, _LEGACY_DICT_EVIDENCE_PAYLOAD)
 
-    # Legacy dictionary evidence migrates cleanly to the new key space on load.
     pre_recovery = read_record(tmp_git_repo)
     assert pre_recovery is not None
     pre_evidence = dict(pre_recovery.diagnostic_evidence)
@@ -166,10 +114,6 @@ def test_legacy_restart_clean_dict_evidence_is_single_authority(tmp_git_repo: Pa
 
 
 def test_policy_defaults_bundle_consistent(tmp_git_repo: Path) -> None:
-    """The default policy bundle loads and a stale pre-seeded
-    ``last_decision`` in the legacy checkpoint does not survive the
-    production restart: the recovery outcome is recomputed from the
-    current authority, not copied from the checkpoint."""
     bundle = load_policy(Path(__file__).parents[2] / "ralph" / "policy" / "defaults")
     assert bundle.pipeline is not None
 

@@ -1,5 +1,3 @@
-"""Tests for ralph/mcp/upstream/agent_probe.py."""
-
 from __future__ import annotations
 
 import json
@@ -72,11 +70,6 @@ def _stub_kimi_tool_listing(
     monkeypatch: pytest.MonkeyPatch,
     tools: tuple[object, ...] = (),
 ) -> None:
-    """Stub the Kimi relay-schema probe's upstream ``tools/list``.
-
-    The probe's schema walk is the observable behavior under test; the
-    transport client itself is faked so no network is touched.
-    """
     monkeypatch.setattr(
         "ralph.mcp.upstream.agent_probe._list_upstream_tools_for_probe",
         lambda server: tools,
@@ -138,14 +131,11 @@ def test_probe_emits_codex_config_toml_with_mcp_servers_table(
 
     assert captured_configs, "Codex prepare did not write config.toml before release"
     parsed = tomllib.loads(captured_configs[0])
-    # The probe augments the TOML in-memory; verify _prepare_codex_home produced
-    # baseline output, and that the augmented copy parses with the server entry.
-    # Re-augment from the probe internals to assert that table shape.
     augmented = augment_codex_config_with_server(captured_configs[0], server)
     parsed_augmented = tomllib.loads(augmented)
     assert "docs" in parsed_augmented["mcp_servers"]
     assert parsed_augmented["mcp_servers"]["docs"]["url"] == server.url
-    del parsed  # silence unused warning
+    del parsed
 
 
 def test_probe_emits_opencode_config_with_remote_mcp_entry(
@@ -192,7 +182,6 @@ def test_kimi_in_default_probe_transports() -> None:
 def test_probe_emits_agy_config_with_server_url_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AGY probe synthesizes MCP config with serverUrl (not url) for the Ralph entry."""
     server = _http_server()
     captured_blobs: list[tuple[str, dict[str, object]]] = []
 
@@ -338,7 +327,6 @@ def test_probe_skips_stdio_for_agy(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_probe_emits_kimi_config_with_url_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Kimi probe synthesizes MCP config with a plain url key for the Ralph entry."""
     server = _http_server()
     captured_blobs: list[tuple[str, dict[str, object]]] = []
 
@@ -396,13 +384,6 @@ def test_probe_skips_stdio_for_kimi(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_probe_kimi_rejects_moonshot_unrelayable_schema(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The Kimi probe fails preflight when a relayed tool's schema would 400.
-
-    Regression for the live failure (2026-08-17): Kimi relays upstream
-    ``tools/list`` entries verbatim to Moonshot, which rejects ``type``
-    mixed with composition keywords at any level. The preflight probe is
-    the only gate that can reject that schema before a paid call.
-    """
     from ralph.mcp.upstream.upstream_tool import UpstreamTool
 
     server = _http_server()
@@ -436,7 +417,6 @@ def test_probe_kimi_rejects_moonshot_unrelayable_schema(
 def test_probe_kimi_accepts_flattenable_schema(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A schema Moonshot accepts verbatim (plain property vocabulary)."""
     from ralph.mcp.upstream.upstream_tool import UpstreamTool
 
     server = _http_server()
@@ -470,14 +450,6 @@ def test_probe_kimi_accepts_flattenable_schema(
 
 
 def test_probe_regression_codex_augmentation_survives_a_quote_in_the_url() -> None:
-    """A URL carrying TOML metacharacters MUST NOT produce a config Codex rejects.
-
-    The augmentation used to interpolate the URL into ``url = "{...}"`` as raw
-    text, so one double quote or backslash from ``.agent/mcp.toml`` closed the
-    string early and the caller's own ``tomllib.loads`` raised a bare
-    ``TOMLDecodeError`` instead of ``AgentTransportProbeError``. Serializing
-    the entry as a mapping makes the escaping the serializer's problem.
-    """
     server = _http_server(url='http://example.invalid/mcp?q="x"\\y')
 
     parsed = tomllib.loads(augment_codex_config_with_server("", server))
@@ -486,11 +458,6 @@ def test_probe_regression_codex_augmentation_survives_a_quote_in_the_url() -> No
 
 
 def test_probe_regression_codex_augmentation_survives_a_dotted_server_name() -> None:
-    """A server name that is not a bare TOML key must still land under its own key.
-
-    ``[mcp_servers.{name}]`` written as text turns ``my.server`` into a nested
-    ``mcp_servers.my.server`` table -- a different server than the one probed.
-    """
     server = _http_server(name="my.server")
 
     parsed = tomllib.loads(augment_codex_config_with_server("", server))
@@ -499,12 +466,6 @@ def test_probe_regression_codex_augmentation_survives_a_dotted_server_name() -> 
 
 
 def test_probe_regression_codex_augmentation_does_not_duplicate_an_inline_table() -> None:
-    """Appending to an inline ``mcp_servers`` table must not restate the key.
-
-    TOML forbids defining a key twice, so text-appending a
-    ``[mcp_servers.x]`` header below ``mcp_servers = {...}`` produced exactly
-    the "duplicate key" abort this probe exists to rule out.
-    """
     base = 'mcp_servers = { other = { url = "http://other.invalid/mcp" } }\n'
 
     parsed = tomllib.loads(augment_codex_config_with_server(base, _http_server()))

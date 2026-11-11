@@ -1,5 +1,3 @@
-"""Tests for transport-neutral prompt echo detection."""
-
 from __future__ import annotations
 
 from ralph.agents.execution_state import is_prompt_echo_line

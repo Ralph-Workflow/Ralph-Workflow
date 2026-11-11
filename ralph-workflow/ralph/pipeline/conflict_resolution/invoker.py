@@ -1,4 +1,3 @@
-"""Default conflict-resolution invocation builder."""
 
 from __future__ import annotations
 
@@ -49,16 +48,10 @@ def default_invoker(
     target: str,
     require_completion_evidence: bool = False,
 ) -> ResolutionInvoker:
-    """Build a conflict-only invocation that shares session cap and status context."""
     cap = session.total_resolution_cap_seconds
     interval = limits.status_interval_seconds
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
-        # The cap is also checked between rounds, but a round spends
-        # every live candidate, so it can expire inside one. A zero
-        # remaining cap is rejected by the watchdog's timeout policy,
-        # and that ValueError would be filed as a launch EXCEPTION --
-        # naming the wrong terminal reason for the operator's own cap.
         remaining = _remaining_operator_cap(cap, session, clock)
         if remaining is not None and remaining <= 0.0:
             session.terminal_reason = ResolutionTerminationReason.OPERATOR_CAP_REACHED
@@ -81,14 +74,8 @@ def default_invoker(
             unresolved_paths=session.unresolved_paths,
             agent_name=agent_name,
         )
-        # Late binding through the driver namespace: tests monkeypatch
-        # ``driver.invoke_resolution_agent`` there.
         from ralph.pipeline.conflict_resolution import driver as _driver
 
-        # getattr on a module is untyped; both candidates share the same
-        # keyword contract (the direct function and any test double).
-        # Direct attribute access so mypy sees the real signature; tests
-        # monkeypatch this name on the driver module.
         patched = _driver.invoke_resolution_agent
         result = patched(
             agent_name=agent_name,

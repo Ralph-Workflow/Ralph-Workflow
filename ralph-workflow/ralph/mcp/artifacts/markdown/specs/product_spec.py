@@ -1,4 +1,3 @@
-"""Markdown spec for product specifications."""
 
 from __future__ import annotations
 

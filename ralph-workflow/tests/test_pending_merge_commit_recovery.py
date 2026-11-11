@@ -65,7 +65,6 @@ def _fast_rev_parse(root: Path, ref_name: str) -> str | None:
 
 
 def _git(root: Path, *args: str) -> GitRunResult:
-    # RALPH-TEST-REASON: GitPython fast-paths for rev-parse, show, and branch reduce test CPU overhead
     if args == ("branch", "--show-current"):
         name = _fast_branch_name(root)
         if name is not None:
@@ -101,7 +100,6 @@ def _commit(root: Path, path: str, content: str) -> str:
     repo = Repo(root)
     try:
         repo.index.add([path])
-        # RALPH-TEST-REASON: GitPython commit replaces subprocess git add/commit to reduce CPU overhead
         commit = repo.index.commit(path)
         assert commit.hexsha
         return commit.hexsha
@@ -118,7 +116,6 @@ def _prepared(root: Path) -> tuple[str, IntegrationRecord]:
         td = Path(tempfile.mkdtemp(prefix="prepared-merge-template-"))
         from git import Repo
 
-        # RALPH-TEST-REASON: GitPython config replaces subprocess git config to reduce CPU overhead
         repo = Repo.init(td)
         with repo.config_writer() as cfg:
             cfg.set_value("user", "name", "Test Committer")
@@ -133,24 +130,14 @@ def _prepared(root: Path) -> tuple[str, IntegrationRecord]:
             target = "main"
             assert _git(td, "branch", "-M", target).returncode == 0
         _commit(td, "shared.txt", "base\n")
-        assert (
-            _git(td, "switch", "-c", "feature").returncode == 0
-        )  # RALPH-TEST-REASON: template setup uses td instead of root to avoid repeated subprocesses
+        assert _git(td, "switch", "-c", "feature").returncode == 0
         _commit(td, "shared.txt", "feature\n")
-        assert (
-            _git(td, "switch", target).returncode == 0
-        )  # RALPH-TEST-REASON: template setup uses td instead of root to avoid repeated subprocesses
+        assert _git(td, "switch", target).returncode == 0
         _commit(td, "shared.txt", "target\n")
-        assert (
-            _git(td, "switch", "feature").returncode == 0
-        )  # RALPH-TEST-REASON: template setup uses td instead of root to avoid repeated subprocesses
-        assert (
-            _git(td, "merge", "--no-edit", target).returncode != 0
-        )  # RALPH-TEST-REASON: template setup uses td instead of root to avoid repeated subprocesses
+        assert _git(td, "switch", "feature").returncode == 0
+        assert _git(td, "merge", "--no-edit", target).returncode != 0
         FsWorkspace(td).write("shared.txt", "resolved\n")
-        assert (
-            _git(td, "add", "shared.txt").returncode == 0
-        )  # RALPH-TEST-REASON: template setup uses td instead of root to avoid repeated subprocesses
+        assert _git(td, "add", "shared.txt").returncode == 0
         assert prepare_pending_merge(td, target) is None
         record = read_record(td)
         assert record is not None
@@ -182,8 +169,6 @@ def test_pending_merge_refuses_changed_or_unreadable_evidence(
             f"{record.merge_commit_head}\n",
         )
     else:
-        # The pending-merge identity query fails: the public git runner
-        # answers with a non-zero status, so no identity value is read.
         monkeypatch.setattr(
             "ralph.git.subprocess_runner.run_git",
             lambda *_args, **_kwargs: GitRunResult(
@@ -221,7 +206,7 @@ def test_crash_after_merge_commit_recovers_landing_without_recommitting(tmp_git_
     assert read_record(root) is None
 
 
-@pytest.mark.timeout_seconds(15)  # Headroom under concurrent 9-shard CPU load
+@pytest.mark.timeout_seconds(15)
 def test_moving_target_preserves_completed_pending_merge(tmp_git_repo: Path) -> None:
     root = tmp_git_repo
     target, record = _prepared(root)

@@ -1,7 +1,3 @@
-"""Tests verifying retry counters and cooldowns are durable, restart-surviving,
-bounded, and respect clock boundaries.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -36,8 +32,6 @@ def _make_failure(
 
 
 class TestAutoIntegrateBackoffClockBoundaries:
-    """auto_integrate_backoff respects clock boundaries and bounds."""
-
     def test_compute_retry_delay_bounds(self) -> None:
         assert compute_retry_delay(0) == 0.0
         d1 = compute_retry_delay(1, jitter=lambda: 1.0)

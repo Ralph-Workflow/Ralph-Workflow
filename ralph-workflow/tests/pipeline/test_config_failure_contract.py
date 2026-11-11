@@ -1,5 +1,3 @@
-"""Tests for Unit 7a: CONFIG_FAILURE contract, resolver path, and run_loop integration."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -42,14 +40,12 @@ from ralph.workspace.scope import WorkspaceScope
 
 
 def test_resolution_failure_cause_and_termination_reason() -> None:
-    """CONFIG_FAILURE must exist on both enums and be marked as not spent."""
     assert ResolutionFailureCause.CONFIG_FAILURE == "CONFIG_FAILURE"
     assert ResolutionTerminationReason.CONFIG_FAILURE == "CONFIG_FAILURE"
     assert ResolutionTerminationReason.CONFIG_FAILURE in RESOLVER_NOT_SPENT_TERMINATION_REASONS
 
 
 def test_workspace_context_error_structure(tmp_path: Path) -> None:
-    """WorkspaceContextError must carry file, reason, and fix."""
     bad_file = tmp_path / ".agent" / "ralph-workflow.toml"
     err = WorkspaceContextError(
         file=bad_file,
@@ -63,7 +59,6 @@ def test_workspace_context_error_structure(tmp_path: Path) -> None:
 
 
 def test_workspace_context_wraps_config_toml_error(tmp_path: Path) -> None:
-    """Invalid TOML syntax in .agent/ralph-workflow.toml raises WorkspaceContextError."""
     agent_dir = tmp_path / ".agent"
     agent_dir.mkdir(parents=True)
     cfg_file = agent_dir / "ralph-workflow.toml"
@@ -81,11 +76,9 @@ def test_workspace_context_wraps_config_toml_error(tmp_path: Path) -> None:
 
 
 def test_workspace_context_wraps_system_exit(tmp_path: Path) -> None:
-    """Schema validation failure triggering SystemExit raises WorkspaceContextError."""
     agent_dir = tmp_path / ".agent"
     agent_dir.mkdir(parents=True)
     cfg_file = agent_dir / "ralph-workflow.toml"
-    # General max_cycles expects an integer or None; passing an invalid string triggers ValidationError
     cfg_file.write_text('[general]\nmax_cycles = "not-an-int"\n', encoding="utf-8")
 
     try:
@@ -99,7 +92,6 @@ def test_workspace_context_wraps_system_exit(tmp_path: Path) -> None:
 
 
 def test_auto_integrate_agent_resolver_catches_workspace_context_error(tmp_path: Path) -> None:
-    """Resolver catches WorkspaceContextError, sets session non-charging, returns CONFIG_FAILURE."""
     agent_dir = tmp_path / ".agent"
     agent_dir.mkdir(parents=True)
     cfg_file = agent_dir / "ralph-workflow.toml"
@@ -143,19 +135,16 @@ def test_auto_integrate_agent_resolver_catches_workspace_context_error(tmp_path:
 
 
 def test_rebase_resolution_result_unpacking() -> None:
-    """RebaseResolutionResult supports 2-tuple unpacking, 3-tuple unpacking, and property access."""
     res = RebaseResolutionResult(False, "reason text", ResolutionFailureCause.CONFIG_FAILURE)
     assert res.succeeded is False
     assert res.reason == "reason text"
     assert res.failure_cause == ResolutionFailureCause.CONFIG_FAILURE
 
-    # 2-tuple unpacking (for backward-compatible callers like _integration_continuation.py)
     unpacked_two = res[:2]
     r2, re2 = unpacked_two
     assert r2 is False
     assert re2 == "reason text"
 
-    # 3-tuple unpacking
     r3, re3, c3 = res
     assert r3 is False
     assert re3 == "reason text"
@@ -163,7 +152,6 @@ def test_rebase_resolution_result_unpacking() -> None:
 
 
 def test_resolve_conflicted_rebase_carries_config_failure(tmp_path: Path) -> None:
-    """resolve_conflicted_rebase carries CONFIG_FAILURE into record_conflict."""
 
     def _fake_resolve_rebase(root: Any, target: Any, resolver: Any, session: Any = None) -> bool:
         outcome = resolver(root, target, None)
@@ -204,7 +192,6 @@ def test_resolve_conflicted_rebase_carries_config_failure(tmp_path: Path) -> Non
     )
     assert res.succeeded is False
 
-    # Simulate run through resolve_conflicted_rebase with monkeypatched set_resolving_rebase
     from ralph.pipeline import auto_integrate_rebase_merge as merge_mod
 
     set_resolving = MagicMock(return_value=True)
@@ -231,7 +218,6 @@ def test_resolve_conflicted_rebase_carries_config_failure(tmp_path: Path) -> Non
 
 
 def test_run_loop_does_not_bump_consecutive_conflicts_on_config_failure() -> None:
-    """handle_pending_retry does NOT charge conflict-attempt counter for CONFIG_FAILURE."""
     rebase = RebaseState(
         last_outcome=RebaseOutcomeKind.CONFLICT,
         last_reason="fix .agent/ralph-workflow.toml then run ralph --check-config",
@@ -254,7 +240,6 @@ def test_run_loop_does_not_bump_consecutive_conflicts_on_config_failure() -> Non
 
 
 def test_run_loop_integration_alert_format_with_cause_and_fix() -> None:
-    """WAITING message at run_loop.py:743 formats cause + fix."""
     fix_msg = "fix /path/to/.agent/ralph-workflow.toml then run ralph --check-config"
     rebase = RebaseState(
         last_outcome=RebaseOutcomeKind.CONFLICT,
@@ -270,7 +255,6 @@ def test_run_loop_integration_alert_format_with_cause_and_fix() -> None:
 
 
 def test_run_loop_waiting_log_gate_emits_once() -> None:
-    """WAITING log gate emits only once per state change, not on duplicate ticks."""
     records: list[dict[str, Any]] = []
     sink_id = logger.add(lambda msg: records.append(dict(msg.record)), level="INFO")
     try:
@@ -283,15 +267,12 @@ def test_run_loop_waiting_log_gate_emits_once() -> None:
         mock_ctx.sleep = MagicMock()
 
         state = PipelineState(phase="planning", last_unavailability_reason="agents busy")
-        # Direct call to log_waiting_state
         log_waiting_state(state, mock_ctx, "planning", "agents busy", 5000)
         assert len(records) == 1
 
-        # Second call with identical state - gated!
         log_waiting_state(state, mock_ctx, "planning", "agents busy", 5000)
         assert len(records) == 1
 
-        # Third call with new state - emits!
         log_waiting_state(state, mock_ctx, "planning", "cooldown active", 5000)
         assert len(records) == 2
     finally:
@@ -299,7 +280,6 @@ def test_run_loop_waiting_log_gate_emits_once() -> None:
 
 
 def test_run_loop_logs_carried_reason() -> None:
-    """resolve_paused_rebase logs the carried reason on failure."""
     records: list[dict[str, Any]] = []
     sink_id = logger.add(lambda msg: records.append(dict(msg.record)), level="WARNING")
     try:
@@ -337,7 +317,6 @@ def test_run_loop_logs_carried_reason() -> None:
 
 
 def test_run_loop_self_recovery_on_repaired_config_triggers_single_retry(tmp_path: Path) -> None:
-    """A repaired configuration file causes handle_pending_retry to self-recover and retry once."""
     from ralph.pipeline.retry_diagnostic import RetryDiagnosticHooks
 
     agent_dir = tmp_path / ".agent"
@@ -364,8 +343,6 @@ def test_run_loop_self_recovery_on_repaired_config_triggers_single_retry(tmp_pat
     records: list[dict[str, Any]] = []
     sink_id = logger.add(lambda msg: records.append(dict(msg.record)), level="INFO")
     try:
-        # First pass: broken config file on disk. The watcher is initialized,
-        # records baseline fingerprint, and falls through to sleep without retry.
         state1 = handle_pending_retry(
             state,
             mock_ctx,
@@ -378,10 +355,8 @@ def test_run_loop_self_recovery_on_repaired_config_triggers_single_retry(tmp_pat
         mock_ctx.sleep.reset_mock()
         assert not any("configuration failure self-recovery:" in r["message"] for r in records)
 
-        # Repair the configuration file on disk.
         cfg_file.write_text("[general]\nmax_cycles = 10\n", encoding="utf-8")
 
-        # Second pass: repaired file triggers self-recovery retry immediately (no sleep).
         state2 = handle_pending_retry(
             state1,
             mock_ctx,
@@ -398,7 +373,6 @@ def test_run_loop_self_recovery_on_repaired_config_triggers_single_retry(tmp_pat
             for r in records
         )
 
-        # Third pass: unchanged repaired file must NOT retry again (single retry policy).
         records.clear()
         _state3 = handle_pending_retry(
             state2,

@@ -1,4 +1,3 @@
-"""Typed terminal error for an agent whose quota or rate limit is exhausted."""
 
 from __future__ import annotations
 
@@ -8,7 +7,6 @@ _MAX_QUOTA_DETAIL_CHARS = 512
 
 
 class QuotaExhaustedError(AgentInvocationError):
-    """Raised when an agent cannot continue until its quota or rate limit resets."""
 
     def __init__(self, agent_name: str, detail: str | None = None) -> None:
         self.skip_same_agent_retries = True

@@ -1,42 +1,3 @@
-"""End-to-end pipeline test: development_final_commit_review -> development_final_commit.
-
-Black-box proof that the final-commit review -> final-commit transition
-works through the real ``runner.run`` harness with real git operations
-on the filesystem (NOT a direct call to ``handle_commit_review_phase``).
-
-Mirrors the canonical pattern from
-``tests/integration/test_pipeline_with_engine_internal_artifacts.py``:
-
-* Real ``FsWorkspace`` against a real ``tmp_git_repo``.
-* One tracked file left with an uncommitted modification, so the pipeline
-  reaches a commit-review phase WITH pending work. A commit-review phase
-  entered on a clean tree is an EMPTY commit review: it neither invokes
-  the agent nor runs ``handle_commit_review_phase``, so the tracked
-  engine-internal residue would survive untouched.
-* Patches ``phase_event_after_agent_run`` so cleanup phases actually
-  execute ``handle_commit_review_phase``.
-* The real git commit is observed through ``Repo.head.log`` (NOT
-  ``repo.iter_commits``) -- per plan step 18 / AC-08.
-
-This test exercises the final-commit review -> final-commit transition,
-which has no other dedicated test in the suite. Per-test timeout is
-capped at 15s.
-
-After the pipeline terminates:
-* Every originally-failing tracked file is deleted from disk.
-* ``.gitignore`` and ``.git/info/exclude`` were auto-seeded.
-* The pipeline terminated at ``complete`` (NOT ``failed_terminal``).
-* A real git commit was created (observed via ``Repo.head.log`` --
-  NOT ``repo.iter_commits`` -- per plan step 18 / AC-08, with a new
-  SHA appearing in the post-run reflog that was not present in the
-  pre-run reflog, and the new commit's tree does NOT contain the
-  deleted tracked files).
-* ``development_final_commit_review`` and ``development_final_commit``
-  were entered as EMPTY commit phases (no agent invoked): the earlier
-  cleanup phase already committed the whole live changed set, so the
-  final pair had nothing left to do.
-"""
-
 from __future__ import annotations
 
 from functools import lru_cache
@@ -86,13 +47,6 @@ ORIGINALLY_FAILING_PATHS: tuple[str, ...] = (
     ".agent/tmp/mcp-server.log",
 )
 
-#: A tracked source file left with an UNCOMMITTED modification. The
-#: commit-review phase is reached in production because the pipeline has
-#: pending work to commit; a commit-review phase entered on a clean tree is
-#: an EMPTY commit review (no agent, no cleanup handler) by design. The
-#: pending work below is what makes the cleanup phase run its real handler,
-#: so the tracked engine-internal residue is genuinely deleted and the
-#: subsequent commit phase genuinely commits the deletion.
 PENDING_WORK_PATH: str = "src/pending_work.py"
 
 EXPECTED_GITIGNORE_FRAGMENTS: tuple[str, ...] = (
@@ -142,7 +96,6 @@ def _resolve_tree_sha_from_workspace(workspace: FsWorkspace) -> str | None:
 
 
 def _write_commit_review_artifact(workspace: FsWorkspace, content: dict[str, object]) -> None:
-    """Write a commit_review artifact to the workspace."""
     raw_actions = content["actions"]
     actions = [
         (action["action"], action.get("path", action.get("pattern", ""))) for action in raw_actions
@@ -159,7 +112,6 @@ def _write_commit_review_artifact(workspace: FsWorkspace, content: dict[str, obj
 
 
 def _write_commit_message_artifacts(repo_root: Path, subject: str) -> None:
-    """Write the canonical commit-message Markdown artifact."""
     artifact_path = repo_root / ".agent" / "artifacts" / "commit_message.md"
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
     artifact_path.write_text(
@@ -181,7 +133,6 @@ def _write_commit_message_artifacts(repo_root: Path, subject: str) -> None:
 
 
 def _track_and_commit(repo_root: Path, rel_paths: tuple[str, ...] | list[str] | str) -> None:
-    """Stage relative path(s) in ``repo_root`` and commit them in one shot."""
     paths = [rel_paths] if isinstance(rel_paths, str) else list(rel_paths)
     repo = Repo(repo_root)
     try:
@@ -193,7 +144,6 @@ def _track_and_commit(repo_root: Path, rel_paths: tuple[str, ...] | list[str] | 
 
 @pytest.fixture
 def engine_internal_workspace(tmp_git_repo: Path) -> FsWorkspace:
-    """Pre-stage the originally-failing tracked paths and pending work."""
     root_checkpoint = tmp_git_repo / "checkpoint.json"
     root_checkpoint.write_text('{"phase": "development"}')
     raw_log = tmp_git_repo / ".agent" / "raw" / "opencode.log"
@@ -211,12 +161,6 @@ def engine_internal_workspace(tmp_git_repo: Path) -> FsWorkspace:
         ),
     )
 
-    # Leave ONE tracked file with an uncommitted modification. The pipeline
-    # reaches a commit-review phase because it has pending work; a
-    # commit-review phase entered on a clean tree is an EMPTY commit
-    # cleanup that neither invokes the agent nor runs the cleanup handler,
-    # so the tracked engine-internal residue would survive untouched and
-    # the cleanup -> commit transition under test would never be exercised.
     pending_work = tmp_git_repo / PENDING_WORK_PATH
     pending_work.parent.mkdir(parents=True, exist_ok=True)
     pending_work.write_text("initial pending work\n", encoding="utf-8")
@@ -234,9 +178,6 @@ def _default_policy_bundle() -> PolicyBundle:
 
 
 def _config() -> UnifiedConfig:
-    # These tests prove final cleanup→commit, not auto-integrate. Disable
-    # incidental integration so commit seams do not pay real git
-    # rebase/backoff cost under the subprocess_e2e 60s suite budget.
     return UnifiedConfig.model_validate({"general": {"auto_integrate_enabled": False}})
 
 
@@ -261,27 +202,6 @@ def test_pipeline_final_cleanup_to_final_commit_end_to_end(
     memory_workspace: MemoryWorkspace,
     engine_internal_workspace: FsWorkspace,
 ) -> None:
-    """End-to-end proof: final-cleanup -> final-commit transition creates a real git commit.
-
-    Drives ``runner.run`` end-to-end with the canonical
-    ``CommitReviewAlwaysLoopbackInvoker`` helper PLUS a real
-    ``execute_commit_effect`` call for every ``CommitEffect`` (the runner's
-    own DI seam).
-
-    Exercises the ``development_final_commit_review`` phase through the
-    same ``runner.run`` harness as the development variant. The cleanup
-    handler is registered for ALL role='commit_review' phases, so the
-    same ``handle_commit_review_phase`` handles both the development
-    and final-commit review variants.
-
-    After the pipeline terminates:
-    * Every originally-failing tracked file is deleted from disk.
-    * ``.gitignore`` and ``.git/info/exclude`` were auto-seeded.
-    * The pipeline terminated at ``complete`` (NOT ``failed_terminal``).
-    * A real git commit was created (Repo.head.log count incremented
-      beyond the template's initial commit, and the new commit's tree
-      does NOT contain the deleted tracked files).
-    """
     repo_root = Path(engine_internal_workspace.root)
     policy_bundle = _default_policy_bundle()
 
@@ -454,7 +374,6 @@ def test_pipeline_final_cleanup_to_final_commit_end_to_end(
 
 
 def _newest_commit_tree_paths(repo_root: Path) -> set[str]:
-    """Return the set of paths in the most recent commit's tree."""
     repo = Repo(repo_root)
     try:
         newest = repo.head.commit
@@ -468,21 +387,6 @@ def _newest_commit_tree_paths(repo_root: Path) -> set[str]:
 
 
 def _head_log_unique_shas(repo_root: Path) -> set[str]:
-    """Return the set of unique SHAs recorded in ``Repo.head.log()``.
-
-    Uses ``Repo.head.log()`` (NOT ``repo.iter_commits('HEAD')``) per
-    plan step 18 / AC-08: ``Repo.head.log`` is the reflog-level view
-    that captures EVERY change to HEAD (commits, branch switches,
-    resets). Deduplicating ``newhexsha`` across the reflog gives the
-    set of unique SHAs HEAD has ever pointed to in this session, which
-    is the strongest possible black-box signal that the
-    final-cleanup -> final-commit transition actually created a real
-    commit (a new SHA appears in the post-run reflog that was not
-    present in the pre-run reflog).
-
-    Returns:
-        The set of unique commit SHAs observed in the reflog.
-    """
     repo = Repo(repo_root)
     try:
         return {entry.newhexsha for entry in repo.head.log()}

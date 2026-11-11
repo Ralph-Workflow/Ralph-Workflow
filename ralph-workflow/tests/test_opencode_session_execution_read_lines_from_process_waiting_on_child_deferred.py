@@ -1,9 +1,3 @@
-"""Black-box regression tests for OpenCode session-aware execution.
-
-All tests use in-memory fakes — no real subprocesses, no real wall-clock waits,
-no real psutil. Verifies five acceptance scenarios and two edge cases.
-"""
-
 from __future__ import annotations
 
 import threading
@@ -26,22 +20,13 @@ from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
 from ralph.process.liveness import FakeLivenessProbe
 
-# Poll interval used in the wait helper - matches _DESCENDANT_WAIT_POLL_SECONDS
 _DESCENDANT_WAIT_POLL_SECONDS = 0.5
-
-# Local aliases: tests call the same public functions but under the private-looking names
-# that were used when this module was monolithic (pre-package split).
 
 
 class TestReadLinesFromProcessWaitingOnChildDeferred:
-    """_read_lines_from_process defers termination when classify_quiet returns WAITING_ON_CHILD."""
-
-    # OpenCode's prompt is delivered on stdin, so a process fake must
-    # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
     stdin = None
 
     def test_waiting_on_child_defers_then_active_fires(self) -> None:
-        """WAITING_ON_CHILD defers; handle is only terminated when ACTIVE fires afterward."""
 
         stop_event = threading.Event()
 
@@ -82,8 +67,6 @@ class TestReadLinesFromProcessWaitingOnChildDeferred:
         handle = _TestHandle()
 
         class _OnceThenActive(OpenCodeExecutionStrategy):
-            """Returns WAITING_ON_CHILD on first classify_quiet call, ACTIVE on subsequent."""
-
             def __init__(self) -> None:
                 self.call_count = 0
 
@@ -95,9 +78,6 @@ class TestReadLinesFromProcessWaitingOnChildDeferred:
 
         strategy = _OnceThenActive()
         probe = FakeLivenessProbe(active=False)
-        # FakeClock advances time on every wait_for_event call, no real wall time.
-        # With idle_timeout=1.0 and poll interval 0.05s, the watchdog fires after ~20 ticks.
-        # drain_window=0.0 fires immediately on ACTIVE (no re-consultation loop).
         fake_clock = FakeClock(start=0.0)
 
         with pytest.raises(IdleStreamTimeoutError):
@@ -121,5 +101,4 @@ class TestReadLinesFromProcessWaitingOnChildDeferred:
                 )
             )
 
-        # Handle was terminated exactly once (on ACTIVE fire, not on WAITING_ON_CHILD deferral).
         assert handle.terminate_count == 1, f"Expected 1 termination; got {handle.terminate_count}"

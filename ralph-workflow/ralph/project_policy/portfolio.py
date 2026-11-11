@@ -1,9 +1,3 @@
-"""Typed deterministic composition for bounded project-policy portfolios.
-
-The TOML contract composes controls in one order: invariant kernel, selected
-risk/context profiles, local tightening, then narrow exceptions. Declaration
-order never affects the returned portfolio.
-"""
 
 from __future__ import annotations
 
@@ -42,10 +36,6 @@ MAX_LANES: Final[int] = 16
 MAX_EXCEPTIONS: Final[int] = 16
 MAX_CONTEXT_VALUES: Final[int] = 16
 
-# Same strict, narrow contract as the citation ``path:`` field. The
-# regex restricts the value to a scheme-less relative path so a
-# portfolio control cannot smuggle a URL, whitespace, or a ``..``
-# escape past the existence check.
 _PORTFOLIO_PATH_VALUE_RE = re.compile(r"^[A-Za-z0-9_.][A-Za-z0-9_\-./]*$")
 _ALLOWED_ROOT = frozenset(
     {
@@ -90,15 +80,8 @@ _ALLOWED_CONTROL = frozenset(
         "disposition",
         "removed-tests",
         "cost_basis",
-        # v2 additions: the detector's actual observation and the trigger
-        # for retiring the control. The claim-scope rule (B7) checks
-        # ``protected_outcome`` against ``detects`` for broad-guarantee
-        # phrases; ``retirement_trigger`` is a free-form string that the
-        # review surface can quote back.
         "detects",
         "retirement_trigger",
-        # v3 additions: required enforcement mode (deterministic: <id> or
-        # advisory: <reason>; review: <trigger>).
         "enforcement",
     }
 )
@@ -161,7 +144,6 @@ class _Profile:
 
 @dataclass(frozen=True, slots=True)
 class PolicyPortfolio:
-    """An immutable effective portfolio suitable for cache signatures."""
 
     schema_version: str
     context: tuple[tuple[str, str | tuple[str, ...]], ...]
@@ -197,16 +179,6 @@ def _parse_evidence_path(
     *,
     workspace_exists: Callable[[str], bool] | None,
 ) -> str | None:
-    """Return the optional ``evidence_path`` value when it should be existence-checked.
-
-    The portfolio control's evidence is REQUIRED as a prose string
-    (existing behaviour, unchanged). The optional ``evidence_path``
-    field is additive: it names a repository-local path that
-    existence-checks against the workspace root. A value that fails
-    the strict regex OR names a non-existent path is reported as
-    malformed / missing so a portfolio cannot pass with a stale
-    citation.
-    """
     raw = table.get("evidence_path")
     if not isinstance(raw, str) or not raw.strip():
         return None
@@ -221,13 +193,6 @@ def _validate_evidence_path(
     *,
     workspace_exists: Callable[[str], bool] | None,
 ) -> None:
-    """Run the optional ``evidence_path`` existence check.
-
-    The ``evidence`` field stays a prose string (existing contract);
-    the explicit ``evidence_path`` field is the additive trigger that
-    activates the existence check. A malformed value OR a path that
-    does not exist under the repository root fails the parse closed.
-    """
     evidence_path = _parse_evidence_path(table, workspace_exists=workspace_exists)
     if evidence_path is None:
         return
@@ -251,18 +216,6 @@ def _text(table: Mapping[str, object], key: str, label: str) -> str:
 
 
 def _check_claim_scope(control_id: str, protected_outcome: str, detects: str) -> None:
-    """Apply the deterministic claim-scope rule (B7).
-
-    A control is rejected when its ``protected_outcome`` carries any phrase
-    from :data:`markers.CLAIM_SCOPE_PHRASES` that does NOT also appear in
-    the same control's ``detects`` field. The rule enforces the v5
-    outcome-oriented kernel: a broad guarantee (``dependency direction
-    enforced``, ``all inputs validated``) is a claim about the WORLD, not
-    about a detector, and is rejected unless the detector's observation
-    literally mentions the same phrase. The substring predicate is the
-    deterministic floor; the human-review rubric covers the residual
-    semantic gap.
-    """
     outcome_lower = protected_outcome.lower()
     detects_lower = detects.lower()
     for phrase in CLAIM_SCOPE_PHRASES:
@@ -438,8 +391,6 @@ def _parse_controls(
         evidence = _text(table, "evidence", f"control {control_id}")
         if any(token in evidence.lower() for token in _FORBIDDEN_EVIDENCE):
             raise _error(f"control {control_id} requires inspectable evidence/oracle")
-        # Optional ``evidence_path`` existence check. Extracted into a
-        # helper to keep the parser's branch count bounded.
         _validate_evidence_path(control_id, table, workspace_exists=workspace_exists)
         outcome = _text(table, "protected_outcome", f"control {control_id}")
         if outcome in outcomes:
@@ -607,11 +558,10 @@ def _apply_exceptions(
 
 _DEFAULT_PORTFOLIO_CACHE: list[
     PolicyPortfolio
-] = []  # bounded-accumulator-ok: at most one cached default PolicyPortfolio
+] = []
 
 
 def default_portfolio() -> PolicyPortfolio:
-    """Return the cached built-in default policy portfolio."""
     if not _DEFAULT_PORTFOLIO_CACHE:
         starter_content = read_starter(PORTFOLIO_STARTER_NAME)
         _DEFAULT_PORTFOLIO_CACHE.append(_parse_portfolio_toml_strict(starter_content))
@@ -700,18 +650,6 @@ def parse_portfolio_toml(
     strict_optional_files: bool = True,
     known_enforcers: Collection[str] | None = None,
 ) -> PolicyPortfolio:
-    """Parse, validate, and deterministically compose one portfolio manifest.
-
-    ``workspace_exists`` is the production-side resolver for the
-    optional ``evidence_path`` existence check. The production ingress
-    in :func:`ralph.project_policy.validators._check_portfolio` always
-    supplies it; unit tests that exercise the parser in isolation may
-    omit it, in which case the existence check degrades to a no-op
-    while the strict shape validation still runs.
-
-    When ``strict_optional_files=False``, invalid TOML or schema failures
-    emit a loguru warning and fall back to the built-in default portfolio.
-    """
     if strict_optional_files:
         return _parse_portfolio_toml_strict(
             content,
@@ -746,20 +684,10 @@ def load_portfolio_toml(
     expected_schema_version: str | None = None,
     strict_optional_files: bool = False,
 ) -> PolicyPortfolio:
-    """Load and validate a portfolio TOML file with fallback to built-in default.
-
-    When strict_optional_files=False (the default), missing files return the
-    built-in default silently. Syntax errors, decode errors, permission errors,
-    or schema validation failures emit a loguru warning and fall back to the
-    built-in default without modifying the file on disk.
-    When strict_optional_files=True, errors are re-raised.
-    """
     path_obj = Path(path)
-    # filesystem-read-ok: probe optional portfolio file existence for fallback loading
     if not path_obj.exists():
         return default_portfolio()
 
-    # Load raw TOML with fallback seam (handles OSError, UnicodeDecodeError, TOMLDecodeError)
     raw = load_optional_toml(
         path_obj,
         kind="portfolio",
@@ -770,7 +698,6 @@ def load_portfolio_toml(
         return default_portfolio()
 
     try:
-        # filesystem-read-ok: read portfolio toml for schema validation
         content = path_obj.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         if strict_optional_files:

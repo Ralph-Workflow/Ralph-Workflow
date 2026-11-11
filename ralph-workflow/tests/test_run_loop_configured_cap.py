@@ -1,10 +1,3 @@
-"""Tests for configured counter-cap enforcement (D1/O1).
-
-Verifies that RebaseState and run_loop enforce configured counter-caps
-(testing caps 2, 64, 65, and over-cap persisted states) without sleeping
-after the cap is reached.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -42,7 +35,6 @@ def _create_retry_ctx(
     root: Path,
     sleep_sink: list[float],
 ) -> run_loop._LoopContext:
-    """Build a minimal typed _LoopContext for _wait_for_integration_retry."""
     latest_state: list[PipelineState] = []
     return cast(
         "run_loop._LoopContext",
@@ -74,16 +66,11 @@ def _create_retry_ctx(
 
 @pytest.mark.parametrize("cap", [2, 64, 65])
 def test_rebase_state_record_consecutive_conflicts_respects_cap(cap: int) -> None:
-    """RebaseState.record_consecutive_conflicts respects the explicit cap."""
     base = RebaseState()
-    # Below cap: passes through
     assert base.record_consecutive_conflicts(cap - 1, cap=cap).consecutive_conflicts == cap - 1
-    # At cap: passes through
     assert base.record_consecutive_conflicts(cap, cap=cap).consecutive_conflicts == cap
-    # Above cap: clamped to cap
     assert base.record_consecutive_conflicts(cap + 1, cap=cap).consecutive_conflicts == cap
     assert base.record_consecutive_conflicts(cap + 100, cap=cap).consecutive_conflicts == cap
-    # Negative and None
     assert base.record_consecutive_conflicts(-5, cap=cap).consecutive_conflicts == 0
     assert base.record_consecutive_conflicts(None, cap=cap).consecutive_conflicts == 0
 
@@ -94,7 +81,6 @@ def test_wait_for_retry_pending_path_configurable_cap_escalates_without_sleep(
     monkeypatch: MonkeyPatch,
     cap: int,
 ) -> None:
-    """Pending path does not escalate to intervention on conflict count; remains pending and sleeps."""
     sleeps: list[float] = []
     ctx = _create_retry_ctx(tmp_path, sleeps)
     ctx.config = UnifiedConfig.model_validate(
@@ -115,7 +101,6 @@ def test_wait_for_retry_pending_path_configurable_cap_escalates_without_sleep(
 
     monkeypatch.setattr(run_loop, "_handoff_retained_failure", _recording_handoff)
 
-    # Start just below cap: cap - 1 attempts already spent
     initial_state = PipelineState(
         phase="development",
         rebase=RebaseState(
@@ -125,7 +110,6 @@ def test_wait_for_retry_pending_path_configurable_cap_escalates_without_sleep(
     )
     assert initial_state.rebase.is_intervention_required is False
 
-    # Pending path remains pending and sleeps, preserving state without intervention
     result = run_loop._wait_for_integration_retry(initial_state, ctx)
 
     assert sleeps == [5.0], "Pending path must sleep 5s to retry"
@@ -140,7 +124,6 @@ def test_wait_for_retry_intervention_path_configurable_cap_escalates_without_sle
     monkeypatch: MonkeyPatch,
     cap: int,
 ) -> None:
-    """Intervention path dispatches handoff once without sleep."""
     sleeps: list[float] = []
     ctx = _create_retry_ctx(tmp_path, sleeps)
     ctx.config = UnifiedConfig.model_validate(
@@ -161,7 +144,6 @@ def test_wait_for_retry_intervention_path_configurable_cap_escalates_without_sle
 
     monkeypatch.setattr(run_loop, "_handoff_retained_failure", _recording_handoff)
 
-    # Start at cap - 1 with the durable ladder-escalation flag set
     initial_state = PipelineState(
         phase="development",
         rebase=RebaseState(
@@ -193,7 +175,6 @@ def test_wait_for_retry_over_cap_persisted_pending_governed_by_effective_cap(
     cap: int,
     persisted_count: int,
 ) -> None:
-    """Over-cap persisted state in pending path remains pending and sleeps without handoff."""
     sleeps: list[float] = []
     ctx = _create_retry_ctx(tmp_path, sleeps)
     ctx.config = UnifiedConfig.model_validate(
@@ -214,7 +195,6 @@ def test_wait_for_retry_over_cap_persisted_pending_governed_by_effective_cap(
 
     monkeypatch.setattr(run_loop, "_handoff_retained_failure", _recording_handoff)
 
-    # Persisted state loaded with over-cap count, pending (not yet marked intervention_required)
     initial_state = PipelineState(
         phase="development",
         rebase=RebaseState(
@@ -246,7 +226,6 @@ def test_wait_for_retry_over_cap_persisted_intervention_governed_by_effective_ca
     cap: int,
     persisted_count: int,
 ) -> None:
-    """Over-cap persisted state in intervention path dispatches handoff once without sleep."""
     sleeps: list[float] = []
     ctx = _create_retry_ctx(tmp_path, sleeps)
     ctx.config = UnifiedConfig.model_validate(
@@ -267,7 +246,6 @@ def test_wait_for_retry_over_cap_persisted_intervention_governed_by_effective_ca
 
     monkeypatch.setattr(run_loop, "_handoff_retained_failure", _recording_handoff)
 
-    # Persisted state loaded with over-cap count, already marked ladder-escalation
     initial_state = PipelineState(
         phase="development",
         rebase=RebaseState(

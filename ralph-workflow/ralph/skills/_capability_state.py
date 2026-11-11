@@ -1,4 +1,3 @@
-"""Capability state model."""
 
 from __future__ import annotations
 
@@ -10,7 +9,6 @@ from ralph.skills._capability_status import CapabilityStatus
 
 
 class CapabilityState(RalphBaseModel):
-    """Capability health state for all dependency-backed helpers."""
 
     model_config = ConfigDict(frozen=True)
 

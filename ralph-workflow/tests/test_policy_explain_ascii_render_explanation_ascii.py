@@ -1,16 +1,3 @@
-"""Unit tests for ASCII workflow diagram rendering in ralph --explain-policy.
-
-Tests cover:
-- Default pipeline diagram contains entry marker
-- Default pipeline diagram contains decision branches
-- Default pipeline diagram contains loopback arrows
-- Default pipeline diagram contains fanout annotation
-- Default pipeline diagram contains success terminal markers
-- Non-terminal phases do NOT have failure terminal markers
-- Minimal two-phase pipeline diagram
-- Minimal pipeline contains expected structural elements
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -27,11 +14,6 @@ from ralph.policy.render import render_explanation_ascii, render_explanation_tex
 
 
 def _get_default_policy_path() -> Path:
-    """Find the default policy directory.
-
-    Searches in multiple locations to find the bundled defaults.
-    """
-    # Try relative to this test file
     candidates = [
         Path(__file__).parent.parent / "ralph" / "policy" / "defaults",
         Path(__file__).parent.parent.parent / "ralph" / "policy" / "defaults",
@@ -43,10 +25,7 @@ def _get_default_policy_path() -> Path:
 
 
 class TestRenderExplanationAscii:
-    """Tests for render_explanation_ascii function."""
-
     def test_renders_entry_marker(self) -> None:
-        """Default pipeline diagram contains entry marker =ENTRY=>."""
         policy_dir = _get_default_policy_path()
         bundle = load_policy(policy_dir)
         explanation = explain_policy(bundle)
@@ -55,7 +34,6 @@ class TestRenderExplanationAscii:
         assert "=ENTRY=>" in output
 
     def test_renders_success_terminal_marker(self) -> None:
-        """Default pipeline diagram contains success terminal marker ==SUCCESS==>."""
         policy_dir = _get_default_policy_path()
         bundle = load_policy(policy_dir)
         explanation = explain_policy(bundle)
@@ -64,65 +42,40 @@ class TestRenderExplanationAscii:
         assert "==SUCCESS==>" in output
 
     def test_renders_decision_branches(self) -> None:
-        """Default pipeline diagram contains decision branch arrows.
-
-        Note: 'completed' decision equals on_success for all phases, so it's
-        not rendered as a branch. We test for 'failed' and 'request_changes'
-        which differ from on_success.
-        """
         policy_dir = _get_default_policy_path()
         bundle = load_policy(policy_dir)
         explanation = explain_policy(bundle)
         output = render_explanation_ascii(explanation)
 
-        # Decision branches use the format +--[decision_name]---...---> target
-        # 'completed' equals on_success so not rendered; we check others
-        # Use prefix check to handle padding alignment
         assert "+--[failed]" in output
         assert "+--[request_changes]" in output
 
     def test_renders_loopback_arrow(self) -> None:
-        """Default pipeline diagram contains loopback annotations."""
         policy_dir = _get_default_policy_path()
         bundle = load_policy(policy_dir)
         explanation = explain_policy(bundle)
         output = render_explanation_ascii(explanation)
 
-        # New loopback format uses left-pointing arrows so it cannot be
-        # mistaken for a forward arrow.
         assert "<<==[loopback]==" in output
         assert "returns to '" in output
-        # Old formats must NOT be present
         assert "<--[loopback]--" not in output
         assert "loop back to development" not in output
 
     def test_renders_fanout_annotation(self) -> None:
-        """Default pipeline diagram contains fanout annotation for development phase."""
         policy_dir = _get_default_policy_path()
         bundle = load_policy(policy_dir)
         explanation = explain_policy(bundle)
         output = render_explanation_ascii(explanation)
 
-        # Fanout annotation describes bounded concurrency and queued waves.
         assert ">>> FAN_OUT" in output
-        # Should mention development phase in context of fanout
         assert "development" in output
 
     def test_non_terminal_phases_do_not_show_failure_marker(self) -> None:
-        """Non-terminal phases with on_failure='failed' do NOT show ==FAILURE==> marker.
-
-        Per PLAN analysis: ==FAILURE==> should only appear for actual terminal
-        failure phases (terminal_outcome='failure'), not for any phase whose
-        on_failure routes to the 'failed' pseudo-terminal.
-        """
         policy_dir = _get_default_policy_path()
         bundle = load_policy(policy_dir)
         explanation = explain_policy(bundle)
         output = render_explanation_ascii(explanation)
 
-        # development_commit has on_failure='failed' but is NOT terminal
-        # review_commit has on_failure='failed' but is NOT terminal
-        # Neither should show ==FAILURE==>
         lines = output.split("\n")
         in_development_commit = False
         in_review_commit = False
@@ -139,8 +92,6 @@ class TestRenderExplanationAscii:
                 in_development_commit = False
                 in_review_commit = False
 
-            # If we're in development_commit or review_commit block,
-            # the next non-blank line should NOT be ==FAILURE==>
             if (in_development_commit or in_review_commit) and line.strip():
                 phase_name = "development_commit" if in_development_commit else "review_commit"
                 assert "==FAILURE==>" not in line, (
@@ -151,27 +102,18 @@ class TestRenderExplanationAscii:
                 in_review_commit = False
 
     def test_contains_boxed_phase_lines(self) -> None:
-        """Default pipeline diagram contains properly formatted phase boxes."""
         policy_dir = _get_default_policy_path()
         bundle = load_policy(policy_dir)
         explanation = explain_policy(bundle)
         output = render_explanation_ascii(explanation)
         lines = output.split("\n")
 
-        # Phase boxes are lines that contain '|' with phase name content
-        # e.g., "|    planning    |"
         boxed_lines = [
             line for line in lines if "|" in line and ("planning" in line or "development" in line)
         ]
         assert len(boxed_lines) > 0, "Expected at least one boxed phase line"
 
     def test_renders_minimal_two_phase_pipeline_diagram(self) -> None:
-        """Minimal two-phase pipeline (start -> done) renders expected glyphs.
-
-        Builds a minimal policy by hand and verifies the ASCII diagram contains
-        the required structural elements per PLAN step 8a.
-        """
-        # Build a minimal two-phase policy
         start_phase = PhaseExplanation(
             name="start",
             role="execution",
@@ -228,12 +170,8 @@ class TestRenderExplanationAscii:
 
         output = render_explanation_ascii(explanation)
 
-        # Verify entry marker
         assert "=ENTRY=>" in output, "Expected entry marker =ENTRY=>"
-        # Verify success terminal marker
         assert "==SUCCESS==>" in output, "Expected success terminal marker ==SUCCESS==>"
-        # Verify boxed phase name - check that 'start' appears in a box context
-        # The box border line contains '+' and the content line contains 'start' and '|'
         lines = output.split("\n")
         has_start_box = any(
             "start" in line and (line.strip().startswith("+") or "|" in line) for line in lines
@@ -241,31 +179,17 @@ class TestRenderExplanationAscii:
         assert has_start_box, f"Expected boxed phase name 'start' in output, got: {output}"
 
     def test_default_pipeline_diagram_contains_decision_branches(self) -> None:
-        """Default pipeline diagram contains decision branches for all non-success routes.
-
-        This is the PLAN step 8b test: assert output contains [completed],
-        [request_changes], [failed] substrings (decision arrow syntax).
-        """
         policy_dir = _get_default_policy_path()
         bundle = load_policy(policy_dir)
         explanation = explain_policy(bundle)
         output = render_explanation_ascii(explanation)
 
-        # Decision branch format: +--[decision_name]--> target
-        # Default pipeline has decisions: completed, request_changes, failed
         assert "+--[completed]-->" in output or "+--[request_changes]-->" in output, (
             "Expected at least one decision branch in output"
         )
-        # Check for the specific decisions we know exist
         assert "+--[failed]-->" in output or "+--[request_changes]-->" in output
 
     def test_failed_decision_branches_render_configured_target(self) -> None:
-        """Render only failed branches that differ from on_success.
-
-        Planning-analysis failed targets planning, while development-analysis
-        failed targets development. Both explicit rework branches render and
-        neither short-circuits to the global ``failed_terminal`` node.
-        """
         policy_dir = _get_default_policy_path()
         bundle = load_policy(policy_dir)
         explanation = explain_policy(bundle)
@@ -277,9 +201,7 @@ class TestRenderExplanationAscii:
             bundle.pipeline.phases["development_analysis"].decisions["failed"].target
             == "development"
         )
-        # failed_terminal is still rendered as the global failure terminal.
         assert "failed_terminal" in output
-        # No analysis [failed] branch short-circuits to failed_terminal.
         assert not any(
             "[failed]" in line and "-->" in line and "failed_terminal" in line for line in lines
         ), (
@@ -288,13 +210,6 @@ class TestRenderExplanationAscii:
         )
 
     def test_parallel_fanout_rejoin_shape_visible(self) -> None:
-        """Default pipeline ASCII diagram shows both FAN_OUT and REJOIN annotations.
-
-        The parallel shape must be visually legible: the fan-out source phase,
-        the FAN_OUT annotation with parameters, and the REJOIN marker must all
-        appear in the correct order so the reader can see where the parallel
-        branch starts and where it ends.
-        """
         policy_dir = _get_default_policy_path()
         bundle = load_policy(policy_dir)
         explanation = explain_policy(bundle)
@@ -316,7 +231,6 @@ class TestRenderExplanationAscii:
         assert rejoin_pos > fanout_pos, "REJOIN annotation must appear after FAN_OUT"
 
     def test_render_text_emits_bypass_route_sentences(self) -> None:
-        """render_explanation_text emits bypass_route explanation sentences."""
         phase = PhaseExplanation(
             name="review",
             role="review",

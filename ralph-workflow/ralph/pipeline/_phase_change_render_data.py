@@ -1,4 +1,3 @@
-"""Internal render data for phase change transitions."""
 
 from __future__ import annotations
 
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class _PhaseChangeRenderData:
-    """Canonical display payload for a single phase change."""
 
     previous_phase: str
     current_phase: str

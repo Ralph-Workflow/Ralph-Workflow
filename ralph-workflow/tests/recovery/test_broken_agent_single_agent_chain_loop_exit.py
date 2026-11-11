@@ -1,5 +1,3 @@
-"""Regression coverage for single-agent broken-agent recovery."""
-
 from __future__ import annotations
 
 import tempfile
@@ -26,7 +24,6 @@ def _minimal_policy_bundle() -> PolicyBundle:
 
 
 def test_broken_agent_reducer_reconstructs_original_exit_evidence() -> None:
-    """S-3: recovery receives the nonzero exit evidence that caused fallover."""
     state = PipelineState(
         phase="development",
         agent_retry_intent=AgentRetryIntent(
@@ -57,7 +54,6 @@ def test_broken_agent_reducer_reconstructs_original_exit_evidence() -> None:
 
 
 def test_broken_agent_regression_single_agent_chain_enters_wait_state() -> None:
-    """S-2: a broken sole agent waits for cooldown instead of looping through recovery."""
     policy_bundle = _minimal_policy_bundle()
     controller = RecoveryController(
         options=RecoveryControllerOptions(

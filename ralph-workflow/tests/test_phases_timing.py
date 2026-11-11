@@ -1,5 +1,3 @@
-"""Unit tests for phase timing utilities."""
-
 from __future__ import annotations
 
 from importlib import import_module
@@ -17,7 +15,6 @@ ITERATION_NUMBER = 2
 
 
 def test_capture_time_returns_monotonic_float() -> None:
-    """Captured timestamps should be monotonic float values."""
     started = timing.capture_time()
 
     assert isinstance(started, float)
@@ -25,7 +22,6 @@ def test_capture_time_returns_monotonic_float() -> None:
 
 
 def test_elapsed_reports_duration_since_start(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Elapsed duration should be non-negative and monotonic."""
     monkeypatch.setattr(timing, "monotonic", lambda: START_TIME + ELAPSED_TIME)
 
     duration = timing.elapsed(START_TIME)
@@ -34,7 +30,6 @@ def test_elapsed_reports_duration_since_start(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_elapsed_seconds_rounds_down_to_whole_seconds(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Whole-second elapsed helper should floor sub-second durations."""
     monkeypatch.setattr(timing, "monotonic", lambda: START_TIME + 0.99)
 
     seconds = timing.elapsed_seconds(START_TIME)
@@ -44,7 +39,6 @@ def test_elapsed_seconds_rounds_down_to_whole_seconds(monkeypatch: pytest.Monkey
 
 
 def test_phase_timer_records_named_phase_duration(monkeypatch: pytest.MonkeyPatch) -> None:
-    """PhaseTimer should produce a structured completed timing record."""
     times = iter([START_TIME, START_TIME + ELAPSED_TIME])
     monkeypatch.setattr(timing, "capture_time", lambda: next(times))
     monkeypatch.setattr(timing, "monotonic", lambda: START_TIME + ELAPSED_TIME)

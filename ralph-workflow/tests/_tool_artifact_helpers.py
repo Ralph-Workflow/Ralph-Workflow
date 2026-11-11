@@ -1,17 +1,3 @@
-"""Shared helpers for the MCP tool-artifact test suites.
-
-The ``_tool_artifact_1_helper_*`` and ``_tool_artifact_2_helper_*`` module
-stacks were near-identical duplicates of the same four helpers (an
-in-memory artifact backend, a failing-write backend, a workspace double,
-and a session double). They are now re-export-only shims over this single
-implementation, so the helper logic exists in exactly one place while every
-legacy import path keeps working unchanged.
-
-The helper classes are private and exported through public aliases because
-the repo-structure policy allows at most one public top-level class per
-module and this module carries four helpers.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -23,8 +9,6 @@ if TYPE_CHECKING:
 
 
 class _MemoryBackend(FileBackend):
-    """In-memory artifact backend used by the tool-artifact suites."""
-
     def __init__(self) -> None:
         self._files: dict[Path, str] = {}
         self._directories: set[Path] = set()
@@ -47,7 +31,6 @@ class _MemoryBackend(FileBackend):
         self._store(path, content)
 
     def _store(self, path: Path, content: str) -> None:
-        """Record ``content`` for ``path`` and register its parent directories."""
         self._directories.add(path.parent)
         self._directories.update(path.parent.parents)
         self._files[path] = content
@@ -78,8 +61,6 @@ class _MemoryBackend(FileBackend):
 
 
 class _FailingArtifactBackend(_MemoryBackend):
-    """Memory backend whose writes to one configured path always fail."""
-
     def __init__(self, failing_path: Path, *, message: str = "artifact store unavailable") -> None:
         super().__init__()
         self._failing_path = failing_path
@@ -92,8 +73,6 @@ class _FailingArtifactBackend(_MemoryBackend):
 
 
 class _MockWorkspace:
-    """Workspace double exposing only ``absolute_path``."""
-
     def __init__(self, root: Path) -> None:
         self.root = root
 
@@ -102,8 +81,6 @@ class _MockWorkspace:
 
 
 class _MockSession:
-    """Session double for the artifact tool handlers."""
-
     session_id: str = "test-session"
     run_id: str = ""
     broker_secret = None

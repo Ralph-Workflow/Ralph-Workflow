@@ -1,5 +1,3 @@
-"""Regression coverage for S-3's runner-owned visual capture lifecycle."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -26,7 +24,6 @@ def _capture_set(*, target: str, run_id: str) -> CaptureSet:
 def test_visual_lifecycle_regression_runner_retains_before_and_recaptures_after(
     tmp_path: Path,
 ) -> None:
-    """S-3: development capture is before-agent, fresh after-agent, and matrix-identical."""
     from ralph.pipeline.runner import run_visual_capture_lifecycle
 
     target = "checkout"

@@ -1,5 +1,3 @@
-# Deprecated: Ralph-orchestrated workers are removed from the execution model; parallelism is owned by the developer agent's own sub-agents. See docs/sphinx/concepts.md §"Deprecated: Ralph-orchestrated workers".
-"""Parallel execution mode definitions for same-workspace parallel workers v1."""
 
 from __future__ import annotations
 
@@ -21,17 +19,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class SameWorkspaceContext:
-    """Runtime context for same-workspace parallel execution.
-
-    Workers run against ``repo_root`` directly. Per-worker mutable state lives
-    under ``worker_namespace_root / <unit_id> / {artifacts,tmp,logs,handoffs}``.
-    Workers share one checkout; post-development coordination is state aggregation only.
-
-    The session contract fields (``session_drain``, ``session_capabilities``,
-    ``session_model_identity``, ``session_capability_profile``) carry the parent
-    phase's resolved MCP session plan verbatim so that parallel workers expose
-    the same multimodal capability surface as the serial execution path.
-    """
 
     repo_root: Path
     mcp_factory: McpServerFactory

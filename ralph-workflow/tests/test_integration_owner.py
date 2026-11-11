@@ -1,28 +1,3 @@
-"""Single-owner integration decision tests.
-
-The owner adapter (:mod:`ralph.pipeline.integration_owner`) is the ONE
-place an integration decision is produced. These tests pin the three
-contracts that make it safe for every other seam to delegate to it:
-
-* **The projection is total.** Every one of the nine
-  :class:`~ralph.pipeline.integration_decision.NextAction` members maps
-  to exactly one
-  :class:`~ralph.pipeline._integration_action.IntegrationAction`; a
-  member without a mapping raises ``ValueError`` instead of defaulting
-  to a permissive action.
-* **The charge boundary is exact.** A mutation-class decision is
-  charged to the durable attempt ledger exactly once; a
-  non-mutation-class decision spends no escalation budget.
-* **The reason comes from the current observation.** The reason is
-  rendered from the seven-dimension observation that produced the
-  decision, never from a stored message.
-
-No real subprocess, no real ``time.sleep`` and no real filesystem
-outside the per-test ``tmp_path`` fixture: the observation is injected
-and the durable ledger is written by the production code under
-``tmp_path``. This is the ``audit_test_policy`` contract.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -61,10 +36,6 @@ from ralph.pipeline.integration_owner import (
     project_integration_action,
 )
 
-# ---------------------------------------------------------------------------
-# Helpers.
-# ---------------------------------------------------------------------------
-
 
 def _observation(
     *,
@@ -77,7 +48,6 @@ def _observation(
     record: IntegrationRecordState = IntegrationRecordState.NONE,
     agent_active: bool = False,
 ) -> Observation:
-    """Build a synthetic seven-dimension observation."""
     return Observation(
         target_vs_feature=target_vs_feature,
         target_vs_remote=target_vs_remote,
@@ -91,27 +61,18 @@ def _observation(
 
 
 def _ledger_path(tmp_path: Path) -> Path:
-    """Return the durable attempt-ledger path used by one test."""
     return tmp_path / ".agent" / "integration_attempt_ledger.json"
 
 
 def _ledger_state(tmp_path: Path) -> AttemptLedgerState:
-    """Read the durable ledger state back from disk."""
     return AttemptLedger(tmp_path, ledger_path=_ledger_path(tmp_path)).read()
 
 
 def _signature(observation: Observation) -> str:
-    """Return the durable state signature the ledger charges against."""
     return AttemptState().signature(observation)
 
 
-# ---------------------------------------------------------------------------
-# The projection is total.
-# ---------------------------------------------------------------------------
-
-
 def test_every_next_action_member_maps_to_exactly_one_integration_action() -> None:
-    """Every decision member projects onto a closed integration action."""
     assert len(NextAction) >= 9
     for member in NextAction:
         projected = project_integration_action(member)
@@ -122,12 +83,6 @@ def test_every_next_action_member_maps_to_exactly_one_integration_action() -> No
 def test_unmapped_next_action_member_raises_value_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A member without a mapping fails closed instead of defaulting.
-
-    Simulates a future ``NextAction`` member that the projection table
-    does not cover yet: the projection must raise rather than pick a
-    permissive action for it.
-    """
     without_land = {
         member: action
         for member, action in integration_owner.NEXT_ACTION_TO_INTEGRATION_ACTION.items()
@@ -143,12 +98,6 @@ def test_unmapped_next_action_member_raises_value_error(
 
 
 def test_only_mutation_class_decisions_are_chargeable() -> None:
-    """The chargeable set is exactly the mutation-class decisions.
-
-    Charge rule: a decision whose action asks the boundary to change
-    integration state is charged to the durable ledger; the two
-    wait-shaped decisions are not.
-    """
     chargeable = (
         NextAction.COMMIT,
         NextAction.LAND,
@@ -166,13 +115,7 @@ def test_only_mutation_class_decisions_are_chargeable() -> None:
         assert member not in MUTATION_CLASS_ACTIONS
 
 
-# ---------------------------------------------------------------------------
-# The projection reaches the integration vocabulary.
-# ---------------------------------------------------------------------------
-
-
 def test_landed_work_projects_to_land_target(tmp_path: Path) -> None:
-    """Contained feature + clean worktree lands the target."""
     action, _reason = decide_integration(
         tmp_path,
         observation=_observation(),
@@ -182,7 +125,6 @@ def test_landed_work_projects_to_land_target(tmp_path: Path) -> None:
 
 
 def test_conflicted_worktree_projects_to_resolve_active_operation(tmp_path: Path) -> None:
-    """An unmerged worktree dispatches the resolver for the active operation."""
     action, _reason = decide_integration(
         tmp_path,
         observation=_observation(worktree=WorktreeState.UNMERGED),
@@ -192,7 +134,6 @@ def test_conflicted_worktree_projects_to_resolve_active_operation(tmp_path: Path
 
 
 def test_dirty_worktree_projects_to_continue_git_operation(tmp_path: Path) -> None:
-    """Uncommitted worktree changes continue the git operation."""
     action, _reason = decide_integration(
         tmp_path,
         observation=_observation(worktree=WorktreeState.TRACKED_CHANGES),
@@ -202,7 +143,6 @@ def test_dirty_worktree_projects_to_continue_git_operation(tmp_path: Path) -> No
 
 
 def test_repairable_record_projects_to_resolve_active_operation(tmp_path: Path) -> None:
-    """A stale durable record on a not-yet-landed tree drives the repair rung."""
     action, _reason = decide_integration(
         tmp_path,
         observation=_observation(
@@ -215,7 +155,6 @@ def test_repairable_record_projects_to_resolve_active_operation(tmp_path: Path) 
 
 
 def test_target_moved_projects_to_reintegrate_against_target(tmp_path: Path) -> None:
-    """A target that moved past the feature reintegrates against it."""
     action, _reason = decide_integration(
         tmp_path,
         observation=_observation(target_vs_feature=TargetVsFeature.BEHIND),
@@ -224,20 +163,7 @@ def test_target_moved_projects_to_reintegrate_against_target(tmp_path: Path) -> 
     assert action is IntegrationAction.REINTEGRATE_AGAINST_TARGET
 
 
-# ---------------------------------------------------------------------------
-# The charge boundary.
-# ---------------------------------------------------------------------------
-
-
 def test_mutation_class_decision_is_charged_to_the_ledger_exactly_once(tmp_path: Path) -> None:
-    """One mutation-class decision persists exactly one escalation charge.
-
-    Charge rule: a mutation-class decision (an action that asks the
-    boundary to change integration state) is charged to the durable
-    ledger exactly once - one repeat count for the observation's
-    ``(signature, action)`` key. Two charges for one decision would
-    burn the escalation budget twice for a single attempt.
-    """
     observation = _observation(worktree=WorktreeState.UNMERGED)
     action, _reason = decide_integration(
         tmp_path,
@@ -252,14 +178,6 @@ def test_mutation_class_decision_is_charged_to_the_ledger_exactly_once(tmp_path:
 
 
 def test_pure_wait_spends_no_escalation_budget(tmp_path: Path) -> None:
-    """A pure environment wait records no repeat count and no rung advance.
-
-    Charge rule: a non-mutation-class decision spends no escalation
-    budget. A pure environment wait is charged against the SEPARATE,
-    finite unknown-attempt budget - that budget is what makes the wait
-    finite instead of endless - but it never records a repeat count and
-    never advances the ladder rung.
-    """
     action, _reason = decide_integration(
         tmp_path,
         observation=_observation(worktree=WorktreeState.UNKNOWN),
@@ -274,12 +192,6 @@ def test_pure_wait_spends_no_escalation_budget(tmp_path: Path) -> None:
 
 
 def test_exhausted_unknown_budget_decision_spends_no_budget_at_all(tmp_path: Path) -> None:
-    """A decision with an exhausted unknown budget writes no charge at all.
-
-    The escalation ladder is exhausted, so the boundary stops spending
-    budget: no repeat count, no rung advance, no unknown-attempt
-    charge.
-    """
     ledger_path = _ledger_path(tmp_path)
     seed = AttemptLedger(tmp_path, ledger_path=ledger_path, unknown_budget=1)
     seed.charge("seed-signature", "wait", is_unknown=True)
@@ -298,7 +210,6 @@ def test_exhausted_unknown_budget_decision_spends_no_budget_at_all(tmp_path: Pat
 
 
 def test_the_charge_is_durable_before_the_caller_acts(tmp_path: Path) -> None:
-    """The charge is persisted: a fresh ledger read sees the attempt."""
     ledger_path = _ledger_path(tmp_path)
     observation = _observation(worktree=WorktreeState.UNMERGED)
     decide_integration(tmp_path, observation=observation, ledger_path=ledger_path)
@@ -307,13 +218,7 @@ def test_the_charge_is_durable_before_the_caller_acts(tmp_path: Path) -> None:
     assert reloaded.repeat_counts == {(_signature(observation), "dispatch_resolver"): 1}
 
 
-# ---------------------------------------------------------------------------
-# The reason comes from the current observation.
-# ---------------------------------------------------------------------------
-
-
 def test_reason_is_derived_from_the_current_observation(tmp_path: Path) -> None:
-    """Two different observations produce two different reasons."""
     landed = _observation(worktree=WorktreeState.CLEAN)
     conflicted = _observation(worktree=WorktreeState.UNMERGED)
 
@@ -334,7 +239,6 @@ def test_reason_is_derived_from_the_current_observation(tmp_path: Path) -> None:
 
 
 def test_reason_never_echoes_a_stored_durable_message(tmp_path: Path) -> None:
-    """The reason is rendered from the observation, not from the record."""
     marker = "durable-record-marker"
     record = IntegrationRecord(
         phase="integrating",
@@ -353,13 +257,6 @@ def test_reason_never_echoes_a_stored_durable_message(tmp_path: Path) -> None:
 
 
 def test_caller_record_the_observation_does_not_see_fails_closed(tmp_path: Path) -> None:
-    """A caller holding a record the observation does not see fails closed.
-
-    The caller holds a durable record while the observation proves there
-    is none: the caller is holding a stale view. The owner projects that
-    onto the repairable record state instead of deciding as if no
-    integration obligation existed.
-    """
     observation = _observation(target_vs_feature=TargetVsFeature.BEHIND)
     record = IntegrationRecord(
         phase="integrating",
@@ -385,16 +282,10 @@ def test_caller_record_the_observation_does_not_see_fails_closed(tmp_path: Path)
     assert "record=stale" in reason
 
 
-# ---------------------------------------------------------------------------
-# The owner observes through the existing machinery.
-# ---------------------------------------------------------------------------
-
-
 def test_owner_observes_through_the_director_machinery(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Without an injected observation the owner observes via the director."""
     sentinel = _observation(worktree=WorktreeState.UNMERGED)
 
     def _fake_observe(self: IntegrationDirector) -> Observation:
@@ -409,11 +300,6 @@ def test_owner_observes_through_the_director_machinery(
 
 
 def test_verdict_exposes_the_charged_ledger_state(tmp_path: Path) -> None:
-    """The verdict carries the observation and the charged ledger state.
-
-    This is the seam the director delegates to: it never has to re-read
-    the ledger to learn what the decision cost.
-    """
     verdict = decide_integration_verdict(
         tmp_path,
         observation=_observation(worktree=WorktreeState.UNMERGED),
@@ -428,20 +314,7 @@ def test_verdict_exposes_the_charged_ledger_state(tmp_path: Path) -> None:
     }
 
 
-# ---------------------------------------------------------------------------
-# Dirt-shape refinement: the cleanup ladder is reachable through the owner.
-# ---------------------------------------------------------------------------
-
-
 def test_dirty_tree_verdict_carries_the_cleanup_ladder_rung(tmp_path: Path) -> None:
-    """A dirty tree with a blocking shape answers the cleanup ladder, not legacy COMMIT.
-
-    The owner refines the observation's worktree state into a typed dirt
-    shape before it asks the decision table, so the dirty-tree branch
-    selects the deterministic cleanup action (save-and-restore for
-    unowned dirt) and the verdict projects it onto
-    :class:`~ralph.pipeline.integration_decision.CleanupLadderRung`.
-    """
     verdict = decide_integration_verdict(
         tmp_path,
         observation=_observation(worktree=WorktreeState.TRACKED_CHANGES),
@@ -461,14 +334,6 @@ def test_dirty_tree_verdict_carries_the_cleanup_ladder_rung(tmp_path: Path) -> N
 def test_repeated_unchanged_dirty_observation_escalates_the_rung(
     tmp_path: Path,
 ) -> None:
-    """Each charged repeat of the same dirty observation climbs one rung.
-
-    The first contact answers the direct cleanup action (rung 1, normal
-    cleanup); once the durable ledger proves the signature has been
-    attempted past the repeat threshold, the table falls forward to the
-    next cleanup-ladder rung — never a re-run of the action that failed
-    to change the state.
-    """
     ledger_path = _ledger_path(tmp_path)
     observation = _observation(worktree=WorktreeState.TRACKED_CHANGES)
 
@@ -483,7 +348,6 @@ def test_repeated_unchanged_dirty_observation_escalates_the_rung(
 
 
 def test_clean_tree_verdict_carries_no_ladder_rung(tmp_path: Path) -> None:
-    """A clean tree never projects onto the cleanup ladder."""
     verdict = decide_integration_verdict(
         tmp_path,
         observation=_observation(),
@@ -496,7 +360,6 @@ def test_clean_tree_verdict_carries_no_ladder_rung(tmp_path: Path) -> None:
 
 
 def test_unknown_reading_verdict_carries_no_ladder_rung(tmp_path: Path) -> None:
-    """An unreadable worktree probe backs off — never a cleanup rung."""
     verdict = decide_integration_verdict(
         tmp_path,
         observation=_observation(worktree=WorktreeState.UNKNOWN),
@@ -511,12 +374,6 @@ def test_unknown_reading_verdict_carries_no_ladder_rung(tmp_path: Path) -> None:
 def test_explicit_dirt_refinement_overrides_internal_classification(
     tmp_path: Path,
 ) -> None:
-    """A caller holding richer evidence passes the shape/attribution explicitly.
-
-    Phase-owned dirt routes to the commit-phase commit (integration never
-    packages a phase's own work), which is not a cleanup-ladder rung;
-    the explicit attribution is carried on the verdict verbatim.
-    """
     verdict = decide_integration_verdict(
         tmp_path,
         observation=_observation(worktree=WorktreeState.TRACKED_CHANGES),

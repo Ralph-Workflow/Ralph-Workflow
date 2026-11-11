@@ -1,4 +1,3 @@
-"""Execution step records for checkpoint history."""
 
 from __future__ import annotations
 
@@ -14,7 +13,6 @@ def _timestamp() -> str:
 
 @dataclass(frozen=True)
 class ExecutionStep:
-    """Single history entry for checkpoint replay and auditing."""
 
     phase: str
     iteration: int
@@ -32,7 +30,6 @@ class ExecutionStep:
         step_type: str,
         outcome: StepOutcome,
     ) -> ExecutionStep:
-        """Create a new execution step."""
         return cls(
             phase=phase,
             iteration=iteration,
@@ -41,7 +38,6 @@ class ExecutionStep:
         )
 
     def to_dict(self) -> dict[str, object]:
-        """Return a JSON-safe dictionary representation."""
         return {
             "phase": self.phase,
             "iteration": self.iteration,
@@ -54,7 +50,6 @@ class ExecutionStep:
 
     @classmethod
     def from_dict(cls, data: dict[str, object]) -> ExecutionStep:
-        """Construct ExecutionStep from dictionary representation."""
         raw_outcome = data.get("outcome")
         if isinstance(raw_outcome, dict):
             typed_outcome: dict[str, object] = {str(k): v for k, v in raw_outcome.items()}

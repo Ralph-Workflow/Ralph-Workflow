@@ -1,12 +1,3 @@
-"""Typed lease outcomes for exclusive worktree ownership.
-
-`integration_transaction` is the single classification point for the
-worktree lease: every caller branches on the typed :class:`LeaseOutcome`
-rather than re-deriving "busy" from a falseness check. Environment
-failures (unresolvable or invalid git dir, lock I/O errors) are typed
-``UNKNOWN`` with evidence and are never reported as contention; only a
-live ``flock`` holder is ``HELD_BY_LIVE_OWNER``.
-"""
 
 from __future__ import annotations
 
@@ -26,7 +17,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class LeaseOutcome:
-    """Typed lease result with evidence for UNKNOWN classifications."""
 
     kind: LeaseOutcomeKind
     reason: LeaseUnknownReason | None = None
@@ -34,21 +24,12 @@ class LeaseOutcome:
 
     @property
     def acquired(self) -> bool:
-        """True only when the lease is genuinely held."""
         return self.kind is LeaseOutcomeKind.ACQUIRED
 
     def __bool__(self) -> bool:
-        """Legacy-truthiness compatibility: true only when genuinely acquired.
-
-        Production consumers must branch on ``.acquired`` / ``.kind`` /
-        ``describe`` rather than boolean truthiness; ``__bool__`` exists so
-        existing fakes yielding bare ``True``/``False`` semantics via
-        ``bool``-shaped expectations keep working under ``not outcome``.
-        """
         return self.acquired
 
     def describe(self, busy_message: str) -> str:
-        """Reason-accurate skip line: "busy" wording only for real contention."""
         if self.kind is LeaseOutcomeKind.HELD_BY_LIVE_OWNER:
             return busy_message
         reason = self.reason.name if self.reason is not None else "UNCLASSIFIED"
@@ -73,13 +54,6 @@ class LeaseOutcome:
 
 @contextmanager
 def integration_transaction(root: Path) -> Iterator[LeaseOutcome]:
-    """Nonblocking lease yielding a typed :class:`LeaseOutcome`.
-
-    A missing ``.git`` marker (not a git checkout) is degraded-but-proceeding
-    and yields ``ACQUIRED``. Only a live ``flock`` holder yields
-    ``HELD_BY_LIVE_OWNER``; every environment failure yields ``UNKNOWN``
-    with a typed reason and evidence (git stderr or errno).
-    """
     git_marker = root / ".git"
     if not git_marker.exists():
         yield LeaseOutcome.acquired_outcome()
@@ -100,7 +74,7 @@ def integration_transaction(root: Path) -> Iterator[LeaseOutcome]:
     path = Path(observed.stdout.strip()) / "ralph-auto-integrate.lock"
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        handle = path.open(  # filesystem-write-ok: persistent integration advisory-lock inode
+        handle = path.open(
             "a+", encoding="utf-8"
         )
     except OSError as error:

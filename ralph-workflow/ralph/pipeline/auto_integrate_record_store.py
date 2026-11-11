@@ -1,8 +1,3 @@
-"""Durable store and workspace boundary for IntegrationRecord transitions.
-
-Split from :mod:`ralph.pipeline.auto_integrate_record` so neither
-module carries two top-level classes (repo-structure policy).
-"""
 
 from __future__ import annotations
 
@@ -29,11 +24,6 @@ if TYPE_CHECKING:
 
 
 class IntegrationRecordStore:
-    """Injected durable store and workspace boundary for IntegrationRecord transitions.
-
-    Guarantees that every Transition is durable and atomic through the injected
-    backend / workspace. Crash before or after a transition is idempotent.
-    """
 
     def __init__(
         self,
@@ -57,19 +47,15 @@ class IntegrationRecordStore:
         return record_path(self._workspace_root)
 
     def read(self) -> IntegrationRecord | None:
-        """Read the authoritative record from this store."""
         return read_record(self._workspace_root, backend=self._backend)
 
     def write(self, record: IntegrationRecord) -> None:
-        """Atomically persist record to this store."""
         write_record(self._workspace_root, record, backend=self._backend)
 
     def clear(self) -> None:
-        """Clear the record file from this store."""
         clear_record(self._workspace_root, backend=self._backend)
 
     def read_outcome(self) -> RecordReadOutcome:
-        """Read the authoritative record as a CLOSED typed outcome."""
         return read_record_outcome(self._workspace_root, backend=self._backend)
 
     def transition(
@@ -77,16 +63,6 @@ class IntegrationRecordStore:
         transition: Transition,
         **fields: object,
     ) -> IntegrationRecord:
-        """Apply a Transition atomically and durably to the stored record.
-
-        Consumes the typed read outcome: when the durable evidence is
-        UNREADABLE **or BUSY**, EVERY mutation is refused with a typed
-        refusal -- the corrupt bytes are the only proof an integration
-        was interrupted, so overwriting them with a fresh
-        START_INTEGRATING record would erase the evidence, and a BUSY
-        read grants no fresh retry allowance. ABSENT keeps the
-        existing START_INTEGRATING / CLEAR semantics.
-        """
         outcome = self.read_outcome()
         if outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE:
             raise RecordUnreadableError(
@@ -124,7 +100,6 @@ class IntegrationRecordStore:
                 f"Cannot apply transition {transition.name!r}: "
                 f"no active record found at {self.record_path}"
             )
-        # Idempotent replay after crash for PROMOTE_TO_INTEGRATED
         if transition.name == "PROMOTE_TO_INTEGRATED" and current.phase == "integrated":
             expected_sha = fields.get("integrated_feature_sha")
             if expected_sha is None or current.integrated_feature_sha == expected_sha:
@@ -141,7 +116,6 @@ def apply_record_transition(
     backend: FileBackend = DEFAULT_FILE_BACKEND,
     **fields: object,
 ) -> IntegrationRecord:
-    """Apply a transition and persist it atomically to the durable record."""
     store = IntegrationRecordStore(workspace_root, backend=backend)
     return store.transition(transition, **fields)
 

@@ -51,20 +51,6 @@ def _non_blank_output_signal(line: str) -> AgentActivitySignal | None:
 
 
 def _error_message_from_error_field(obj: dict[str, object]) -> str:
-    """Extract a stable error message from a top-level ``error`` event object.
-
-    Delegates to the canonical :func:`extract_error_message` so the watchdog's
-    fingerprint and the operator-facing parser message are derived from ONE
-    resolution order. They had diverged: this function stopped at
-    ``error.name`` while OpenCode nests the real text at
-    ``error.data.message``, so a 402 "requires more credits", a 404 "Not
-    Found", and a 429 all fingerprinted as the single string ``"APIError"``.
-    ``RepetitionTracker`` then read three unrelated failures as one repeating
-    error and could fire REPEATED_ERROR_LOOP on a sequence that is not a loop
-    -- while every diagnostic showed the operator only ``"APIError"``.
-    """
-    # Load only when processing an error event: importing the parser package
-    # during execution-state initialization re-enters the agent catalog graph.
     parser_base: object = import_module("ralph.agents.parsers.base")
     if not isinstance(parser_base, _ParserBaseModule):
         raise TypeError("ralph.agents.parsers.base lacks extract_error_message")
@@ -72,13 +58,6 @@ def _error_message_from_error_field(obj: dict[str, object]) -> str:
 
 
 def _tool_state_error_message(obj: dict[str, object]) -> str | None:
-    """Extract the error message from an opencode tool event whose state errored.
-
-    An MCP tool-call failure surfaces NOT as a top-level ``{"type":"error"}`` line
-    but as a ``tool_use``/``tool_result`` line whose ``part.state.status`` is
-    ``"error"`` (mirrors ``OpenCodeParser._parse_tool_use``). Returns the error
-    string, or None when the line is not a tool-state error.
-    """
     part = obj.get("part")
     if not isinstance(part, dict):
         return None
@@ -92,14 +71,6 @@ def _tool_state_error_message(obj: dict[str, object]) -> str | None:
 
 
 def _error_output_signal(line: str) -> AgentActivitySignal | None:
-    """Return an ERROR_LINE signal when the line is a JSON error event.
-
-    The signal's ``raw`` carries the extracted error message (not the full JSON
-    envelope) so fingerprinting is stable across occurrences. Tool-state errors
-    stay ``TOOL_USE`` signals with ``error_message`` attached; that preserves the
-    identical-call evidence while feeding the repeated-error breaker. Returns None
-    for non-error or non-JSON lines so callers fall through to normal classification.
-    """
     stripped = line.strip()
     if not stripped:
         return None
@@ -123,13 +94,6 @@ _PROGRESS_NOTE = re.compile(r"note='([^']*)'")
 
 
 def _progress_report_signal(line: str) -> AgentActivitySignal | None:
-    """Return a PROGRESS_REPORT signal when the line echoes a report_progress result.
-
-    Detected by the stable ``PROGRESS_PIPELINE_MARKER`` the coordination tool
-    appends. The signal's ``raw`` carries only ``status``/``note`` (not the
-    per-call timestamp) so the watchdog can tell a repeated cosmetic heartbeat
-    from a genuinely changed status. Returns None for non-progress lines.
-    """
     if PROGRESS_PIPELINE_MARKER not in line:
         return None
     status_match = _PROGRESS_STATUS.search(line)
@@ -142,51 +106,27 @@ def _progress_report_signal(line: str) -> AgentActivitySignal | None:
 
 
 _OPENCODE_CHILD_SPAWN_TYPES = frozenset({"child_started", "child.spawned"})
-# Names that are child-scoped BY CONSTRUCTION -- the ``child_`` prefix is the
-# scope marker, so no further evidence is needed.
 _OPENCODE_CHILD_PROGRESS_TYPES = frozenset({"child_progress"})
 _OPENCODE_CHILD_HEARTBEAT_TYPES = frozenset({"child_heartbeat"})
 _OPENCODE_CHILD_TERMINAL_TYPES = frozenset({"child_complete", "child_failed", "child.terminal"})
 
-# Ambiguous names: child-scoped ONLY when the event carries an explicit child
-# scope marker. These used to count unconditionally, which is the same
-# false-positive the generic classifier below was hardened against -- a PARENT
-# that emitted one bare ``{"type":"heartbeat"}`` during startup looked like a
-# live subagent and masked the NO_OUTPUT_AT_START kill. A frame that names a
-# child (``{"type":"tool_call","child_id":"child-A"}``) is real child activity;
-# the same frame without one is just a provider frame.
 _OPENCODE_SCOPED_PROGRESS_TYPES = frozenset({"progress", "tool_call", "writing_artifact"})
 _OPENCODE_SCOPED_HEARTBEAT_TYPES = frozenset({"heartbeat"})
-#: Keys whose presence proves an event refers to a child, not the parent.
 _OPENCODE_CHILD_SCOPE_KEYS = ("child_id", "childId", "subagent_id", "subagentId")
 
-#: OpenCode's native subagent dispatch tools. A call to one of these IS a
-#: child-scope signal: it is how OpenCode delegates to a subagent. ``task`` is
-#: the tool the live runtime actually emits (verified against ``opencode
-#: 1.18.14`` on 2025-11-19 via
-#: ``tests/display/_fixtures/opencode_wire_provenance.md``; the original
-#: observation was against 1.17.15); the rest are accepted so a runtime
-#: rename does not silently blind the watchdog again.
 _OPENCODE_SUBAGENT_TOOLS = frozenset({"agent", "delegate", "spawn_agent", "subagent", "task"})
 
-_OPENCODE_CHILD_KIND = {  # bounded-accumulator-ok: static
+_OPENCODE_CHILD_KIND = {
     **dict.fromkeys(_OPENCODE_CHILD_SPAWN_TYPES, AgentActivityKind.CHILD_PROCESS),
     **dict.fromkeys(_OPENCODE_CHILD_PROGRESS_TYPES, AgentActivityKind.CHILD_PROGRESS),
     **dict.fromkeys(_OPENCODE_CHILD_HEARTBEAT_TYPES, AgentActivityKind.CHILD_HEARTBEAT),
     **dict.fromkeys(_OPENCODE_CHILD_TERMINAL_TYPES, AgentActivityKind.CHILD_TERMINAL_ACK),
 }
 
-#: Top-level OpenCode event names that carry a tool call in ``part``.
 _OPENCODE_TOOL_EVENT_TYPES = frozenset({"tool_use", "tool_result"})
 
 
 def _opencode_tool_name(obj: dict[str, object]) -> str | None:
-    """Return the tool name of an OpenCode tool event, or ``None``.
-
-    ``None`` means the event is not an OpenCode tool event at all: a wrong
-    top-level type, a missing/non-dict ``part``, a ``part`` that is not a tool
-    part (e.g. ``step-start``), or a blank tool name.
-    """
     if str(obj.get("type", "")) not in _OPENCODE_TOOL_EVENT_TYPES:
         return None
     part = obj.get("part")
@@ -194,47 +134,16 @@ def _opencode_tool_name(obj: dict[str, object]) -> str | None:
         return None
     part_obj = cast("dict[str, object]", part)
     part_type = part_obj.get("type")
-    # The parser and captured OpenCode wire fixtures accept tool parts that
-    # omit ``part.type``. Keep explicit non-tool parts (such as step-start)
-    # excluded, but let a non-blank nested tool name establish this as a tool
-    # call when the optional discriminator is absent.
     if part_type is not None and part_type != "tool":
         return None
     return str(part_obj.get("tool", "")).strip() or None
 
 
 def _is_opencode_subagent_tool(tool_name: str | None) -> bool:
-    """Return whether an OpenCode tool name denotes native delegated work."""
     return tool_name is not None and tool_name.lower() in _OPENCODE_SUBAGENT_TOOLS
 
 
 def _opencode_tool_signal(obj: dict[str, object], line: str) -> AgentActivitySignal | None:
-    """Classify an OpenCode tool event from its REAL wire shape.
-
-    OpenCode emits ONE terminal event per tool call, with the call and its
-    result both embedded in ``part.state``::
-
-        {"type":"tool_use","part":{"type":"tool","tool":"task","callID":"call_..",
-         "state":{"status":"completed","input":{...},"output":"..."}}}
-
-    A ``task`` (subagent) call is a genuine child-scope signal, so it maps to
-    CHILD_PROGRESS and reaches the watchdog's ``subagent_output`` channel. Every
-    other tool maps to TOOL_USE, which is what ``_tool_activity_seen`` looks
-    for. Before this existed, every OpenCode line -- subagent dispatches
-    included -- fell through to a plain OUTPUT_LINE.
-
-    An ERRORED tool stays a TOOL_USE (and a ``task`` stays CHILD_PROGRESS).
-    Reclassifying it as ERROR_LINE looks tidier but loses more than it gains:
-    the tool-call dimension is the ONLY dimension that catches an agent
-    re-running one failing command forever, because a real failure's text
-    (exit codes, pytest counts, elapsed times) varies per attempt and
-    ``RepetitionTracker.fingerprint`` cannot collapse it, while the
-    ``(tool, args)`` pair is identical every time. Measured: 30 identical
-    failing ``ralph_exec`` calls over 600s fire REPEATED_IDENTICAL_TOOL_CALL
-    at t=160s as TOOL_USE, and fire nothing at all as ERROR_LINE. Routing the
-    error away would also blind the subagent-activity sink exactly when a
-    subagent fails, since ``observe_line`` forwards only CHILD_* kinds.
-    """
     tool_name = _opencode_tool_name(obj)
     if tool_name is None:
         return None
@@ -251,34 +160,16 @@ def _opencode_tool_signal(obj: dict[str, object], line: str) -> AgentActivitySig
             AgentActivityKind.CHILD_PROGRESS, raw=line, error_message=tool_error
         )
     if str(obj.get("type", "")) == "tool_result":
-        # OpenCode 1.17.x collapses call+result into one ``tool_use`` event, so
-        # this branch is defensive. Classifying a result as TOOL_USE would feed
-        # the tool-call repetition breaker twice for one call.
         return AgentActivitySignal(
             AgentActivityKind.TOOL_RESULT, raw=line, error_message=tool_error
         )
     return AgentActivitySignal(AgentActivityKind.TOOL_USE, raw=line, error_message=tool_error)
 
 
-#: OpenCode brackets EVERY tool call with these frame markers. The parser
-#: yields no output line for them, so they are cosmetic to the operator.
 _OPENCODE_STEP_FRAME_TYPES = frozenset({"step_start", "step_finish"})
 
 
 def _opencode_step_frame_signal(line: str) -> AgentActivitySignal | None:
-    """Return a LIFECYCLE signal for an OpenCode step frame, else ``None``.
-
-    These frames classified as OUTPUT_LINE, which routes to
-    ``record_activity()`` -> ``RepetitionTracker.note_progress()``. Because a
-    ``step_finish`` follows every single tool call, the repetition streaks were
-    reset after each one, and neither REPEATED_IDENTICAL_TOOL_CALL nor
-    REPEATED_ERROR_LOOP could accumulate on the real interleaved stream --
-    an agent re-issuing one failing command forever stayed invisible.
-
-    LIFECYCLE keeps the agent off the idle deadline (a frame IS evidence the
-    process is alive) without claiming forward progress, which is exactly what
-    a frame marker is worth.
-    """
     stripped = line.strip()
     if not stripped.startswith("{"):
         return None
@@ -295,7 +186,6 @@ def _opencode_step_frame_signal(line: str) -> AgentActivitySignal | None:
 
 
 def _classify_opencode_child_signal(line: str) -> AgentActivitySignal | None:
-    """Return a child-lifecycle ActivitySignal when the line is a recognised OpenCode event."""
     stripped = line.strip()
     if not stripped:
         return None
@@ -320,12 +210,6 @@ def _opencode_scoped_child_kind(
     obj: dict[str, object],
     event_type: str,
 ) -> AgentActivityKind | None:
-    """Classify an ambiguous event name, but ONLY when it names a child.
-
-    ``{"type":"tool_call","child_id":"child-A"}`` is child activity;
-    ``{"type":"tool_call"}`` on its own is a parent-level provider frame and
-    must NOT be read as proof that a subagent is alive.
-    """
     if event_type not in _OPENCODE_SCOPED_PROGRESS_TYPES | _OPENCODE_SCOPED_HEARTBEAT_TYPES:
         return None
     if not any(obj.get(key) for key in _OPENCODE_CHILD_SCOPE_KEYS):
@@ -335,50 +219,6 @@ def _opencode_scoped_child_kind(
     return AgentActivityKind.CHILD_PROGRESS
 
 
-# Cross-transport generic child-signal classifier.
-#
-# The OpenCode strategy uses the specialised ``_classify_opencode_child_signal``
-# above (which understands the OpenCode wire format). For every other
-# transport (Claude, Codex, Generic, Agy, Nanocoder) we run a STRICT
-# classifier that recognises ONLY event names that explicitly carry a
-# child- or subagent-scope marker. Bare provider-level event names
-# (``progress``, ``tool_call``, ``task_progress``, ``heartbeat``,
-# ``alive``) are NOT classified -- these are generic provider wire
-# frames that appear in parent-level stdout and do NOT prove that a
-# subagent is active. Treating bare frames as child activity was a
-# false-positive deferral: a parent agent that emitted any
-# ``{"type":"heartbeat"}`` frame during its own startup would be
-# marked as alive, masking the short NO_OUTPUT_AT_START kill and the
-# StuckClassifier path. The pre-fix behaviour was reproduced by
-# forwarding both raw ``{"type":"heartbeat"}`` and
-# ``{"type":"tool_call"}`` lines into the subagent sink in a
-# ``uv run python`` probe (see
-# ``tests/agents/execution_state/test_generic_child_signal.py``
-# for the regression tests that pin the no-false-positive
-# contract).
-#
-# The STRICT classifier recognises ONLY:
-#
-#   * child-scoped event names (``child_progress``, ``subagent_progress``,
-#     ``child_heartbeat``, ``subagent_heartbeat``, ``child_alive``,
-#     ``subagent_alive``) -> CHILD_PROGRESS / CHILD_HEARTBEAT.
-#   * the ``child_`` / ``subagent_`` prefix family -> CHILD_PROGRESS.
-#
-# Plain-text markers (``[child]``, ``[subagent]``,
-# ``subagent progress``, ``child progress``) classify
-# as CHILD_PROGRESS; ``subagent heartbeat`` / ``child heartbeat``
-# classify as CHILD_HEARTBEAT. The plain-text marker set is
-# intentionally narrow: only markers at the START of the line with
-# optional leading whitespace are recognised, so an arbitrary prose
-# line like ``User wrote a YAML snippet: subagent: worker`` does NOT
-# classify as child activity. Bare ``subagent: `` / ``child: ``
-# substring matches are NOT classified (no leading marker).
-#
-# Terminal signals (``child_complete``, ``child_failed``,
-# ``child_terminal``, ``subagent_complete``, ``subagent_failed``,
-# ``subagent_cancelled``, ``subagent_terminal``, ``child_cancelled``)
-# are NOT classified by the generic classifier -- terminal signals
-# do not invoke the sink (same contract as OpenCode).
 _GENERIC_CHILD_PROGRESS_KIND: frozenset[str] = frozenset(
     {
         "child_progress",
@@ -406,15 +246,6 @@ _GENERIC_CHILD_TERMINAL_KIND: frozenset[str] = frozenset(
     }
 )
 _GENERIC_CHILD_SCOPE_PREFIXES: tuple[str, ...] = ("child_", "subagent_")
-# Plain-text child-status markers. These are anchored at the START of
-# the line (with optional leading whitespace) so an arbitrary prose
-# line like ``User wrote a YAML snippet: subagent: worker`` does NOT
-# classify as child activity. The marker set is intentionally narrow:
-# only ``[child]``, ``[subagent]``, ``subagent progress``,
-# ``child progress`` classify as CHILD_PROGRESS; ``subagent heartbeat``
-# and ``child heartbeat`` classify as CHILD_HEARTBEAT. Bare
-# ``progress`` / ``task progress`` / ``heartbeat`` / ``alive``
-# plain-text lines are NOT classified (no explicit child scoping).
 _GENERIC_PROGRESS_MARKERS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^\s*\[child\]", re.IGNORECASE),
     re.compile(r"^\s*\[subagent\]", re.IGNORECASE),
@@ -428,13 +259,6 @@ _GENERIC_HEARTBEAT_MARKERS: tuple[re.Pattern[str], ...] = (
 
 
 def _extract_event_kind_from_json(line: str) -> str | None:
-    """Return the lowercased ``type`` / ``event`` value from a JSON envelope, or None.
-
-    A best-effort extractor: returns None for non-JSON, non-dict, or
-    empty inputs. The two keys ``type`` and ``event`` are tried in order
-    so a single helper handles both OpenCode-style and Codex-style wire
-    formats.
-    """
     stripped = line.strip()
     if not stripped:
         return None
@@ -455,62 +279,6 @@ def _extract_event_kind_from_json(line: str) -> str | None:
 
 
 def _classify_generic_child_signal(line: str) -> AgentActivitySignal | None:
-    """Cross-transport generic child-signal classifier (PLAN AC-08 contract).
-
-    Returns an ``AgentActivitySignal`` for lines that carry a recognised
-    cross-transport child-scope marker; returns ``None`` for empty /
-    whitespace lines, regular stdout without markers, and terminal
-    child events (which do not invoke the sink).
-
-    The classifier recognises three families of markers so
-    Claude / Codex / Generic / Agy / Nanocoder transports (which
-    emit child-scope markers under their own format) still feed the
-    watchdog's per-channel evidence surface per PLAN step 8. The
-    classifier is intentionally STRICT: only explicit child- or
-    subagent-scoped event names classify. Bare provider-level
-    event names (``progress``, ``tool_call``, ``task_progress``,
-    ``heartbeat``, ``alive``) are NOT classified -- they appear
-    in parent-level stdout and do NOT prove that a subagent is
-    active. See :func:`_classify_generic_child_signal_from_json`
-    for the full false-positive contract.
-
-    1. JSON envelopes whose ``type`` / ``event`` value is in
-       :data:`_GENERIC_CHILD_PROGRESS_KIND` (e.g. ``child_progress``,
-       ``subagent_progress``) -> CHILD_PROGRESS. Bare
-       ``progress`` / ``tool_call`` / ``task_progress`` events are
-       NOT classified (no child scoping).
-    2. JSON envelopes whose ``type`` / ``event`` value is in
-       :data:`_GENERIC_CHILD_HEARTBEAT_KIND` (e.g. ``child_heartbeat``,
-       ``subagent_heartbeat``, ``child_alive``, ``subagent_alive``)
-       -> CHILD_HEARTBEAT. Bare ``heartbeat`` / ``alive`` events are
-       NOT classified (no child scoping).
-    3. Any ``type`` / ``event`` value starting with the ``child_`` /
-       ``subagent_`` prefix (e.g. ``subagent_progress_phase1``,
-       ``child_progress_phase1``) -> CHILD_PROGRESS.
-    4. Plain-text markers (anchored regex match at line start with
-       optional leading whitespace) ``[child]``, ``[subagent]``,
-       ``subagent progress``, ``child progress`` -> CHILD_PROGRESS;
-       ``subagent heartbeat`` / ``child heartbeat`` -> CHILD_HEARTBEAT.
-       Bare ``progress`` / ``task progress`` / ``heartbeat`` /
-       ``alive`` plain-text lines (without the ``subagent`` /
-       ``child`` qualifier) are NOT classified (no explicit
-       child scoping).
-
-    Terminal events (``child_complete``, ``child_failed``,
-    ``child_terminal``, ``child_cancelled``, ``subagent_complete``,
-    ``subagent_failed``, ``subagent_cancelled``, ``subagent_terminal``)
-    return ``None`` (terminal signals do not invoke the sink,
-    same contract as OpenCode).
-
-    This classifier is purely additive on top of the existing
-    ``_classify_opencode_child_signal`` specialised classifier.
-    Transport-specific strategies continue to use the specialised
-    classifier for their own wire format; the generic classifier is
-    the safety net for transports that emit child-scope markers
-    under a different format (Claude ``[child]``, Codex JSON
-    ``event=child_progress`` or ``event=progress``, plain-text
-    ``subagent heartbeat``).
-    """
     if not line.strip():
         return None
     signal = _classify_generic_child_signal_from_json(line)
@@ -522,40 +290,6 @@ def _classify_generic_child_signal(line: str) -> AgentActivitySignal | None:
 def _classify_generic_child_signal_from_json(
     line: str,
 ) -> AgentActivitySignal | None:
-    """Classify a JSON envelope by its ``type``/``event`` field (PLAN AC-08).
-
-    Returns ``None`` for non-JSON, non-dict, or unknown type/event
-    envelopes (the caller falls through to plain-text matching).
-    Terminal events return ``None`` (terminal signals do not invoke
-    the sink).
-
-    Per the analysis-feedback fix, the classifier recognises ONLY
-    explicit child- or subagent-scoped event names:
-
-    * values in :data:`_GENERIC_CHILD_PROGRESS_KIND`
-      (``child_progress``, ``subagent_progress``) -> CHILD_PROGRESS.
-    * values in :data:`_GENERIC_CHILD_HEARTBEAT_KIND`
-      (``child_heartbeat``, ``subagent_heartbeat``, ``child_alive``,
-      ``subagent_alive``) -> CHILD_HEARTBEAT.
-    * any value starting with the ``child_`` / ``subagent_`` prefix
-      (e.g. ``subagent_progress_phase1``, ``child_progress_phase1``,
-      ``subagent_heartbeat_extra``) -> CHILD_PROGRESS. The prefix
-      match defaults to CHILD_PROGRESS because that is the safer
-      interpretation -- an unknown child-scoped event name still
-      means a child agent is producing output.
-
-    Bare provider-level event names (``progress``, ``tool_call``,
-    ``task_progress``, ``heartbeat``, ``alive``) are NOT classified
-    -- they are generic provider wire frames (Gemini ``tool_call``
-    in ``tests/test_parsers_1.py``, Generic ``heartbeat`` in
-    ``tests/test_parsers_1.py``, Codex ``heartbeat`` in
-    ``tests/test_parsers_1.py``) that appear in parent-level stdout
-    and do NOT prove that a subagent is active. Pre-fix, the
-    classifier forwarded these bare frames into the subagent sink
-    via ``BaseExecutionStrategy.observe_line`` and refreshed
-    ``record_subagent_work`` for genuine parent-level traffic,
-    masking the short NO_OUTPUT_AT_START kill.
-    """
     event_kind = _extract_event_kind_from_json(line)
     if event_kind is None:
         return None
@@ -573,25 +307,6 @@ def _classify_generic_child_signal_from_json(
 def _classify_generic_child_signal_from_text(
     line: str,
 ) -> AgentActivitySignal | None:
-    """Classify a plain-text line by its child-scope marker tokens.
-
-    Heartbeat markers take precedence over progress markers. The
-    classifier matches the marker patterns (anchored at the start
-    of the line with optional leading whitespace) so an arbitrary
-    prose line that happens to mention ``subagent: `` or
-    ``child: `` mid-sentence does NOT classify as child activity.
-
-    The plain-text marker set is intentionally narrow: only
-    ``[child]``, ``[subagent]``, ``subagent progress``,
-    ``child progress`` (each at line start with optional
-    whitespace) are recognised as CHILD_PROGRESS; ``subagent
-    heartbeat`` and ``child heartbeat`` classify as
-    CHILD_HEARTBEAT. Bare ``progress`` / ``task progress`` /
-    ``heartbeat`` / ``alive`` plain-text lines (without the
-    ``subagent`` / ``child`` qualifier) are NOT classified (no
-    explicit child scoping). The JSON path handles the broader
-    contract for those bare transport-level event names.
-    """
     for pattern in _GENERIC_HEARTBEAT_MARKERS:
         if pattern.match(line):
             return AgentActivitySignal(AgentActivityKind.CHILD_HEARTBEAT, raw=line)
@@ -602,7 +317,6 @@ def _classify_generic_child_signal_from_text(
 
 
 def _opencode_child_id_from_object(obj: dict[str, object]) -> str | None:
-    """Return a valid explicit child ID from a decoded OpenCode envelope."""
     for key in (*_OPENCODE_CHILD_SCOPE_KEYS, "id"):
         value = obj.get(key)
         if isinstance(value, str) and value:
@@ -613,13 +327,6 @@ def _opencode_child_id_from_object(obj: dict[str, object]) -> str | None:
 
 
 def parse_opencode_child_id(line: str) -> str | None:
-    """Return an explicit OpenCode child or native-task call identifier.
-
-    Child lifecycle frames use every documented child-scope spelling or ``id``.
-    Native OpenCode ``task`` tools instead identify the logical subagent call as
-    ``part.callID``. Both forms are attributable activity for the watchdog;
-    only lifecycle frame types are routed into the child-liveness registry.
-    """
     stripped = line.strip()
     if not stripped:
         return None
@@ -630,10 +337,6 @@ def parse_opencode_child_id(line: str) -> str | None:
     if not isinstance(parsed, dict):
         return None
     obj = cast("dict[str, object]", parsed)
-    # Native task envelopes carry an unrelated top-level event ID as well as
-    # their logical subagent identity in ``part.callID``. Prefer the latter so
-    # parser, activity sink, and liveness registry all attribute the task to
-    # the same child lifecycle.
     native_task_id = _opencode_native_task_call_id(obj)
     if native_task_id is not None:
         return native_task_id
@@ -641,7 +344,6 @@ def parse_opencode_child_id(line: str) -> str | None:
 
 
 def _opencode_native_task_call_id(obj: dict[str, object]) -> str | None:
-    """Return a native subagent call ID without treating ordinary tools as children."""
     if not _is_opencode_subagent_tool(_opencode_tool_name(obj)):
         return None
     part = obj.get("part")
@@ -660,7 +362,6 @@ def _route_opencode_line_to_registry(
     registry: ChildLivenessRegistry,
     scope_prefix: str,
 ) -> None:
-    """Parse an OpenCode NDJSON line and route lifecycle events into the registry."""
     stripped = line.strip()
     if not stripped:
         return
@@ -672,10 +373,6 @@ def _route_opencode_line_to_registry(
         return
     obj = cast("dict[str, object]", parsed)
     event_type = str(obj.get("type", ""))
-    # ``tool_use``/``task`` frames use ``part.callID`` for the child. Their
-    # top-level ``id`` is merely the enclosing event ID, not a lifecycle ID.
-    # Route the native shape first so that generic envelope metadata cannot
-    # suppress the subagent lifecycle.
     if _opencode_native_task_call_id(obj) is not None:
         _route_opencode_native_task(obj, registry, scope_prefix)
         return
@@ -685,7 +382,6 @@ def _route_opencode_line_to_registry(
 
 
 def _opencode_pid(value: object) -> int | None:
-    """Return a positive integral OpenCode PID while rejecting bool and fractions."""
     if isinstance(value, int) and not isinstance(value, bool) and value > 0:
         return value
     if isinstance(value, float) and value.is_integer() and value > 0:
@@ -700,7 +396,6 @@ def _route_opencode_lifecycle_event(
     child_id: str,
     event_type: str,
 ) -> None:
-    """Route an explicit OpenCode child lifecycle frame into the registry."""
     if event_type in _OPENCODE_CHILD_SPAWN_TYPES:
         pid = _opencode_pid(obj.get("pid"))
         registry.register_child(child_id, scope_prefix, pid=pid)
@@ -719,12 +414,6 @@ def _route_opencode_native_task(
     registry: ChildLivenessRegistry,
     scope_prefix: str,
 ) -> None:
-    """Represent OpenCode's native ``task`` tool as a scoped child lifecycle.
-
-    The native wire protocol uses ``part.callID`` rather than standalone
-    ``child_*`` frames. Its pending/running and completed states therefore need
-    to update the same child-evidence registry that the watchdog consults.
-    """
     if not _is_opencode_subagent_tool(_opencode_tool_name(obj)):
         return
     part = obj.get("part")
@@ -743,17 +432,12 @@ def _route_opencode_native_task(
     registry.record_progress(call_id, phase=status)
     if status in {"completed", "error"}:
         registry.record_terminal_ack(call_id, terminal_state=status)
-        # The out-of-band store probe records the same child under its
-        # SESSION id (``state.metadata.sessionId``). Without this ack the
-        # session-keyed record stayed ``running`` until its progress TTL
-        # pruned it, 45 s after the task had visibly finished.
         child_session_id = _opencode_native_task_session_id(state_obj)
         if child_session_id is not None:
             registry.record_terminal_ack(child_session_id, terminal_state=status)
 
 
 def _opencode_native_task_session_id(state: dict[str, object]) -> str | None:
-    """Return ``state.metadata.sessionId`` of a native ``task`` frame, if present."""
     metadata = state.get("metadata")
     if not isinstance(metadata, dict):
         return None
@@ -780,7 +464,6 @@ def _probe_check_quiet(
     liveness_probe: LivenessProbe,
     probe_prefix: str,
 ) -> tuple[AgentExecutionState | None, bool]:
-    """Returns (decided_state_or_none, scoped_evidence_stale)."""
     try:
         snap = liveness_probe.child_snapshot(probe_prefix)
         verdict = classify_child_snapshot(snap)
@@ -800,16 +483,12 @@ def _registry_check_for_exit(
     registry: ChildLivenessRegistry,
     label_prefix: str | None,
 ) -> tuple[AgentExecutionState | None, bool]:
-    """Returns (decided_state_or_none, scoped_evidence_stale)."""
     scope_prefix = label_prefix if label_prefix is not None else ""
     had_scoped_records = registry.has_records(scope_prefix)
     try:
         reg_snap = registry.snapshot(scope_prefix)
         verdict = classify_child_snapshot(reg_snap)
         if verdict.all_children_terminal:
-            # Child acknowledgement proves only that there is no child left to
-            # wait for. Parent completion remains a durable sentinel/receipt
-            # decision owned by ``completion_signals_terminal`` below.
             return None, had_scoped_records
         if verdict.deferral_allowed:
             return AgentExecutionState.WAITING_ON_CHILD, False
@@ -823,7 +502,6 @@ def _probe_check_exit(
     liveness_probe: LivenessProbe,
     label_prefix: str | None,
 ) -> tuple[AgentExecutionState | None, bool]:
-    """Returns (decided_state_or_none, scoped_evidence_stale)."""
     prefix = label_prefix if label_prefix is not None else ""
     try:
         snap = liveness_probe.child_snapshot(prefix)
@@ -850,20 +528,6 @@ def _evidence_precedence(
     registry: ChildLivenessRegistry | None = None,
     scoped_evidence_seen: bool = False,
 ) -> AgentExecutionState:
-    """Evidence-precedence exit classification.
-
-    Priority:
-      1. durable phase completion evidence -> TERMINAL_COMPLETE
-      2. registry: deferral_allowed -> WAITING_ON_CHILD
-      3. probe: deferral_allowed -> WAITING_ON_CHILD
-      4. scoped Ralph child evidence exists but is stale or terminal -> RESUMABLE_CONTINUE
-      5. OS descendants (only when no scoped Ralph evidence exists at all) -> WAITING_ON_CHILD
-      6. else -> RESUMABLE_CONTINUE
-    """
-    # ``ralph.agents.completion_signals`` reaches the MCP artifact and
-    # recovery chains, so it is imported here rather than at module scope:
-    # every process that imports the agent registry would otherwise pay
-    # that import cost.
     from ralph.agents.completion_signals import completion_signals_terminal
 
     if completion_signals_terminal(completion_signals):
@@ -898,27 +562,10 @@ def _classify_claude_prefixed_line(stripped: str) -> AgentActivitySignal | None:
     return AgentActivitySignal(AgentActivityKind.LIFECYCLE, raw=stripped)
 
 
-#: Claude's native subagent dispatch tool. A ``Task`` call is a child-scope
-#: signal: it is how Claude delegates to a subagent.
 _CLAUDE_SUBAGENT_TOOLS = frozenset({"task"})
 
 
 def _claude_nested_tool_kind(obj: dict[str, object]) -> AgentActivityKind | None:
-    """Classify a tool call nested inside a Claude ``assistant`` message.
-
-    Claude's ``--output-format=stream-json`` does NOT put the tool call at the
-    top level; it nests it in ``message.content[]``::
-
-        {"type":"assistant","message":{"content":[
-            {"type":"tool_use","name":"Task", ...}]}}
-
-    Matching only a TOP-LEVEL ``{"type":"tool_use"}`` meant every real Claude
-    tool call -- ``Task`` subagent dispatches included -- fell through to
-    OUTPUT_LINE. A ``Task`` call maps to CHILD_PROGRESS so it reaches the
-    watchdog's ``subagent_output`` channel: that is the signal that tells the
-    watchdog a subagent is doing work, and without it a live subagent looks
-    like a dead one.
-    """
     message = obj.get("message")
     if not isinstance(message, dict):
         return None

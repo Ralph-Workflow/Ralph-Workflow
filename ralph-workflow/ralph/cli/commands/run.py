@@ -1,7 +1,3 @@
-"""Run pipeline command for Ralph Workflow CLI.
-
-This module implements the main pipeline execution command.
-"""
 
 from __future__ import annotations
 
@@ -91,7 +87,6 @@ if TYPE_CHECKING:
         ) -> int: ...
 
     class _RunnerModule(Protocol):
-        """Typed accessor for the lazily imported pipeline runner module."""
 
         run: _RunnerFunc
 
@@ -100,22 +95,15 @@ _state = _RunFuncState()
 
 
 def _get_run_func() -> _RunnerFunc | None:
-    """Return the pipeline runner callable, importing it lazily on first call.
-
-    The module-level ``_state.run_func`` is set so tests can inject a fake runner
-    via ``monkeypatch.setattr(_state, 'run_func', ...)``. A sentinel distinguishes
-    "not yet loaded" from the genuine ``None`` produced by an ImportError, ensuring
-    repeated calls do not retry the import after a failure.
-    """
     if _state.run_func is not _RUN_FUNC_UNSET:
         return cast(
             "_RunnerFunc | None", _state.run_func
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
 
     try:
         module = cast(
             "_RunnerModule", import_module("ralph.pipeline.runner")
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
     except ImportError:
         _state.run_func = None
         return None
@@ -127,7 +115,6 @@ def _get_run_func() -> _RunnerFunc | None:
 ConfigOverrides = dict[str, object]
 
 
-# Exit codes
 _EXIT_SUCCESS = 0
 _EXIT_CONFIG_ERROR = 1
 _EXIT_INTERRUPT = 130
@@ -153,7 +140,7 @@ def _validate_custom_mcp_servers(workspace_root: Path) -> int:
     module = import_module("ralph.pipeline.runner")
     return cast(
         "int", module.validate_custom_mcp_servers(workspace_root)
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
 
 
 validate_custom_mcp_servers = _validate_custom_mcp_servers
@@ -176,7 +163,6 @@ _GENERATED_AGENT_STATE_FILES: tuple[str, ...] = (
 
 
 class RunPipelineRequest(NamedTuple):
-    """Parameters for a pipeline run request."""
 
     config_path: Path | None = None
     cli_overrides: ConfigOverrides | None = None
@@ -191,14 +177,6 @@ class RunPipelineRequest(NamedTuple):
 
 
 def _prompt_changed_since_last_materialization(workspace_root: Path) -> bool:
-    """Return True when the operator-visible prompt differs from the materialised one.
-
-    The operator-visible prompt is resolved through
-    :func:`ralph.pro_support.prompt.resolve_effective_prompt_path` so
-    the ``PROMPT_PATH`` env var is honoured in Pro mode. The
-    materialised ``.agent/PRODUCT_CRITERIA.md`` remains engine-owned
-    and is the second operand of the comparison.
-    """
     prompt_path = resolve_effective_prompt_path(workspace_root, os.environ)
     product_criteria_path = workspace_root / ".agent" / "PRODUCT_CRITERIA.md"
     if not prompt_path.exists() or not product_criteria_path.exists():
@@ -214,7 +192,6 @@ def _prompt_changed_since_last_materialization(workspace_root: Path) -> bool:
 def _clear_generated_pipeline_state(workspace_root: Path) -> None:
     agent_dir = workspace_root / ".agent"
     for relative_dir in _GENERATED_AGENT_STATE_DIRS:
-        # filesystem-write-ok: reset explicitly generated pipeline state before a fresh run
         shutil.rmtree(agent_dir / relative_dir, ignore_errors=True)
     for relative_file in _GENERATED_AGENT_STATE_FILES:
         (agent_dir / relative_file).unlink(missing_ok=True)
@@ -228,13 +205,6 @@ def _invalidate_pipeline_state_if_prompt_changed(workspace_root: Path) -> bool:
 
 
 def _record_config_telemetry(config: UnifiedConfig, workspace_root: Path | None) -> None:
-    """Attach the agent-config snapshot and policy-schema state to Sentry.
-
-    Runs at the single pipeline config-load chokepoint: ``_init_telemetry()``
-    initializes Sentry before any config exists, so this is the earliest point
-    the resolved agent table can be forwarded. Fail-soft — telemetry must never
-    break the run.
-    """
     try:
         from ralph.project_policy.schema_state import policy_schema_state
         from ralph.telemetry._sentry import (
@@ -247,8 +217,6 @@ def _record_config_telemetry(config: UnifiedConfig, workspace_root: Path | None)
             return
         set_agent_config_context(config.agents)
         if workspace_root is not None:
-            # Derived only when telemetry is live: it stats and reads every
-            # policy file, and the result feeds nothing else.
             set_policy_schema_context(policy_schema_state(workspace_root))
     except Exception:
         return
@@ -261,11 +229,6 @@ def _load_configuration(
     *,
     display_context: DisplayContext,
 ) -> _LoadResult | int:
-    """Load configuration and resolve workspace scope.
-
-    Returns:
-        _LoadResult on success, or int error code on failure.
-    """
     display = resolve_active_display(None, display_context)
     try:
         workspace_scope = None if config_path is not None else resolve_workspace_scope()
@@ -323,7 +286,6 @@ def _load_configuration(
 
 
 def _print_not_initialized_panel(*, display_context: DisplayContext) -> None:
-    """Print a friendly 'not initialized' panel for completely fresh workspaces."""
     display = resolve_active_display(None, display_context)
     content_lines: list[str] = [
         "Ralph Workflow orchestrates AI coding agents through a "
@@ -341,12 +303,10 @@ def _print_not_initialized_panel(*, display_context: DisplayContext) -> None:
 
 
 def _validate_loaded_policy_bundle(policy_bundle: PolicyBundle) -> None:
-    """Validate cross-drain policy contracts for an already loaded bundle."""
     validate_drain_contracts(policy_bundle)
 
 
 def _warn_missing_chain_fallback(message: str) -> None:
-    """Log a non-fatal missing fallback without disrupting the preflight."""
     logger.warning(message)
 
 
@@ -355,7 +315,6 @@ def _run_policy_preflight_checks(
     *,
     display_context: DisplayContext,
 ) -> int:
-    """Run policy-backed preflight checks against the already loaded bundle."""
     display = resolve_active_display(None, display_context)
     try:
         agent_registry = AgentRegistry.from_config(request.config)
@@ -401,15 +360,8 @@ def _run_preflight_checks(
     *,
     display_context: DisplayContext,
 ) -> int:
-    """Run all preflight validation checks.
-
-    Returns:
-        _EXIT_SUCCESS if all checks pass, _EXIT_PREFLIGHT if any check fails.
-    """
     display = resolve_active_display(None, display_context)
-    # validate_required_inputs requires workspace_scope
     if request.workspace_scope is not None:
-        # Fresh-state detection: workspace has neither PROMPT.md nor .agent
         prompt_path = resolve_effective_prompt_path(request.workspace_scope.root, os.environ)
         agent_dir = request.workspace_scope.root / ".agent"
         if not prompt_path.exists() and not agent_dir.exists():
@@ -428,11 +380,10 @@ def _run_preflight_checks(
             )
             return _EXIT_PREFLIGHT
 
-    # Only run policy-based validations if we have a loaded policy bundle.
     if request.policy_bundle is not None:
         loaded_policy_bundle = cast(
             "PolicyBundle", request.policy_bundle
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         try:
             validate_loaded_policy_bundle(loaded_policy_bundle)
         except PolicyValidationError as e:
@@ -458,7 +409,6 @@ def print_dry_run(
     *,
     display_context: DisplayContext,
 ) -> None:
-    """Print dry-run information."""
     display = resolve_active_display(None, display_context)
     fallback_phase = policy_bundle.pipeline.entry_phase if policy_bundle is not None else "unknown"
     phase = initial_state.phase if initial_state else fallback_phase
@@ -476,7 +426,6 @@ def _build_runner_kwargs(
     display_is_active: bool,
     run_func: _RunnerFunc,
 ) -> dict[str, object]:
-    """Build the kwargs dict to pass to the pipeline runner."""
     kwargs: dict[str, object] = {}
     runner_params = signature(run_func).parameters
     if request.verbosity is not None and "verbosity" in runner_params:
@@ -515,11 +464,6 @@ def _execute_pipeline(
     display: ParallelDisplay | None = None,
     display_is_active: bool = False,
 ) -> int:
-    """Execute the pipeline.
-
-    Returns:
-        Exit code from pipeline runner.
-    """
     active_display = resolve_active_display(display, display_context)
     run_func = _get_run_func()
     if run_func is None:
@@ -527,7 +471,7 @@ def _execute_pipeline(
         active_display.emit_warning("Pipeline runner is unavailable")
         return _EXIT_CONFIG_ERROR
 
-    from ralph.mcp.explore.dirty_paths import _dirty_scheduler  # S-3: lifecycle hooks
+    from ralph.mcp.explore.dirty_paths import _dirty_scheduler
 
     try:
         kwargs = _build_runner_kwargs(
@@ -568,7 +512,6 @@ def _execute_pipeline(
 
 
 def _save_interrupt_checkpoint(initial_state: PipelineState) -> None:
-    """Save checkpoint on interrupt."""
     try:
         update_data: ConfigOverrides = {"interrupted_by_user": True}
         interrupted_state = initial_state.model_copy(update=update_data)
@@ -599,17 +542,15 @@ def _pipeline_config_error_text(message: str) -> Text:
 
 
 def _maybe_enter_process_view(stack: ExitStack) -> Path | None:
-    """Enter a process-scoped skills view when machine-global skills are unavailable."""
     if has_machine_global_skills():
         return None
     return stack.enter_context(SkillsProcessView())
 
 
 def _warn_if_capabilities_degraded(display_context: DisplayContext, workspace_root: Path) -> None:
-    """Print a soft warning if any baseline capability appears degraded (no network I/O)."""
     state_path = default_state_path()
     if not state_path.exists():
-        return  # no state file yet; skip (first run before init)
+        return
     health = SkillManager().check_baseline_health()
     mandatory_keys = ("web_search", "visit_url", "skills")
     if any(not health.get(k) for k in mandatory_keys):
@@ -624,12 +565,6 @@ def _warn_if_capabilities_degraded(display_context: DisplayContext, workspace_ro
 
 
 def _print_project_skill_conflict_hint(failures: list[str]) -> None:
-    """Surface a NEEDS_REPAIR project-scope auto-seed hint to the user.
-
-    When a conflict blocks the project-scope install during a normal `ralph`
-    run, the user must see that `ralph --force-init-skills` is the remediation
-    path, so the hint is NOT routed through `logger.debug`.
-    """
     if not failures:
         return
     display = resolve_active_display(None, make_display_context())
@@ -637,12 +572,6 @@ def _print_project_skill_conflict_hint(failures: list[str]) -> None:
 
 
 def _print_user_global_update_hint() -> None:
-    """Surface an outdated user-global baseline on a normal ``ralph`` run.
-
-    The user-global canonical root is NOT auto-repaired on a normal run (see
-    ``SkillManager.check_skills_for_updates``); this helper prints the
-    remediation hint on the same non-DEBUG channel as the project-scope hint.
-    """
     display = resolve_active_display(None, make_display_context())
     display.emit_warning(
         "Baseline skills have an update available. "
@@ -657,16 +586,6 @@ def _sync_shipped_skills_on_pipeline_run(
     keep_run_id: str | None = None,
     retention_max_age_seconds: float | None = None,
 ) -> None:
-    """Sync skills, auto-commit updates, then sweep retained run state.
-
-    The extracted helper performs the equivalent of ``from
-    ``from ralph.skills._auto_commit import commit_skill_writes`` and
-    ``commit_skill_writes(target_root, written_paths, pre_contents, create_commit)``.
-    The compatibility
-    wrapper keeps the historical ``Auto-committed skill updates`` and
-    ``Skill auto-commit failed (non-fatal): {}`` operator contract while
-    preserving the best-effort boundary (``except Exception as exc:  # auto-commit is best-effort; never break the pipeline``).
-    """
     sync_shipped_skills(
         workspace_root,
         keep_run_id=keep_run_id,
@@ -698,17 +617,10 @@ def _run_retention_sweep_for_setup(
 
 
 def _emit_setup_warning(message: str) -> None:
-    """Emit a setup-time non-fatal warning via the active display, falling back to loguru.
-
-    The display is resolved lazily (the function may be invoked before
-    the CLI display context is fully ready), and a loguru warning is
-    always emitted so the message reaches the operator's log stream
-    even when the display sink is not attached.
-    """
     logger.warning(message)
-    with suppress(Exception):  # pragma: no cover - defensive: best-effort warning path
+    with suppress(Exception):
         display = resolve_active_display(None, make_display_context())
-    with suppress(Exception):  # pragma: no cover - defensive: best-effort warning path
+    with suppress(Exception):
         display.emit_warning(message)
 
 
@@ -725,20 +637,6 @@ def _run_project_policy_readiness(
     emit_factory: Callable[[str], None] | None = None,
     invoke_remediation_agent_factory: Callable[[Workspace], InvokePolicyAgent] | None = None,
 ) -> int:
-    """Run the project-policy-readiness preflight at run_pipeline startup.
-
-    Thin wrapper that delegates to the orchestrator in
-    :mod:`ralph.project_policy.cli_integration`. Exists at this layer so
-    tests can monkey-patch ``run_module._run_project_policy_readiness``
-    to stub the preflight without invoking the real orchestrator.
-
-    The IMPORT itself is inside the try: the orchestrator is a fault boundary, but
-    it cannot catch a failure that happens while importing the module that defines
-    it. A broken optional dependency somewhere under ``ralph.project_policy``
-    would otherwise take down the whole run -- which is exactly what the boundary
-    exists to prevent. Policy never blocks the run, including when policy cannot
-    even be loaded.
-    """
     try:
         from ralph.project_policy.cli_integration import (
             run_project_policy_readiness as _orchestrator,
@@ -757,8 +655,6 @@ def _run_project_policy_readiness(
         logger.opt(exception=True).warning(
             "project-policy preflight could not run; continuing the development run"
         )
-        # An --*-only invocation has no development run to fall through to, so it
-        # must still report the failure through its exit code.
         return _EXIT_PREFLIGHT if mode.exits_after() else _EXIT_SUCCESS
 
 
@@ -769,7 +665,6 @@ def _detail_text(label: str, detail: str) -> Text:
     return text
 
 
-# Backward compatibility: expose run_pipeline for direct invocation
 def run_pipeline(
     request: RunPipelineRequest | None = None,
     *,
@@ -778,19 +673,6 @@ def run_pipeline(
     model_identity: MultimodalModelIdentity | None = None,
     **kwargs: Unpack[_LegacyRunPipelineKwargs],
 ) -> int:
-    """Run the Ralph Workflow pipeline (backward compatibility wrapper).
-
-    Args:
-        request: RunPipelineRequest namedtuple with all pipeline options.
-        display_context: Display context for consistent rendering. If None, a default
-            context is created using make_display_context().
-        **kwargs: Additional keyword arguments for backward compatibility.
-            Accepted keys: config_path, cli_overrides, dry_run, resume, verbosity,
-            counter_overrides.
-
-    Returns:
-        Exit code (0 for success, non-zero for failure).
-    """
     _ensure_broker_secret()
     protect_broker_secret()
     ctx = display_context if display_context is not None else make_display_context()
@@ -818,8 +700,6 @@ def run_pipeline(
     effective_counter_overrides = effective_request.counter_overrides or {}
     effective_parallel_worker_manifest = effective_request.parallel_worker_manifest
     if effective_parallel_worker_manifest is None:
-        # Read from the in-scope DisplayContext env mapping (per wt-007 DI contract);
-        # never re-read os.environ directly here.
         manifest_from_env = ctx.env.get(str(RALPH_PARALLEL_WORKER_MANIFEST_ENV))
         if manifest_from_env:
             effective_parallel_worker_manifest = Path(manifest_from_env)
@@ -832,8 +712,6 @@ def run_pipeline(
             pro_hooks=effective_request.pro_hooks,
         )
 
-    # Phase 1: Load configuration, then run preflight validation (before any
-    # pipeline activity)
     load_result = _load_configuration(
         effective_request.config_path,
         effective_request.cli_overrides or {},
@@ -857,7 +735,6 @@ def run_pipeline(
     if preflight_result != _EXIT_SUCCESS:
         return preflight_result
 
-    # Phase 2b: sync shipped skills (TTL-cached), then warn if capabilities are degraded
     if load_result.workspace_scope is not None:
         _sync_shipped_skills_on_pipeline_run(
             workspace_root=load_result.workspace_scope.root,
@@ -866,15 +743,6 @@ def run_pipeline(
         )
         _warn_if_capabilities_degraded(ctx, load_result.workspace_scope.root)
 
-    # Phase 2c: project-policy preflight (deterministic validator, opt-out
-    # honored, change-aware cache, then the bounded remediation/analysis
-    # pipeline). Parallel-worker sub-runs return before reaching this path.
-    #
-    # POLICY NEVER BLOCKS THE RUN. The orchestrator is a fault boundary that
-    # swallows every failure -- including its own bugs -- and returns
-    # _EXIT_SUCCESS, so a policy problem cannot cost the user their development
-    # run. The ONLY non-zero it can return is for an --*-only mode, which has
-    # no development run to proceed to. That is what this branch checks.
     active_display: ParallelDisplay | None = None
     if load_result.workspace_scope is not None:
         active_display = resolve_active_display(None, ctx)
@@ -894,9 +762,6 @@ def run_pipeline(
                 policy_readiness_result,
             )
 
-    # Phase 3/4: dry-run, then execute the pipeline; every exit path releases
-    # the active-run lease (AC-9) so a later sweep may reclaim this run's
-    # aged bookkeeping.
     try:
         if effective_request.dry_run:
             if active_display is not None:
@@ -932,14 +797,13 @@ def run_pipeline(
 
 
 def _unregister_active_run(load_result: _LoadResult) -> None:
-    """Best-effort release of the process-local active-run lease."""
     if load_result.workspace_scope is None:
         return
     try:
         from ralph.workspace.agent_dir_retention import unregister_active_run
 
         unregister_active_run(load_result.workspace_scope.root, load_result.run_id)
-    except Exception as exc:  # release is best-effort; never break the pipeline
+    except Exception as exc:
         logger.debug("Active-run unregistration failed (non-fatal): {}", exc)
 
 

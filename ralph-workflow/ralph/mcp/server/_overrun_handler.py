@@ -1,10 +1,3 @@
-"""OverrunHandler protocol for the bounded pre-serve path.
-
-The class lives in its own module so ``_pre_serve_overrun`` conforms to the
-repo-structure policy (at most one public top-level class per module). It is
-re-exported from :mod:`ralph.mcp.server._pre_serve_overrun`, so every existing
-importer keeps working unchanged.
-"""
 
 from __future__ import annotations
 
@@ -18,7 +11,6 @@ if TYPE_CHECKING:
 
 
 class OverrunHandler(Protocol):
-    """Callable that handles a pre-serve overrun condition."""
 
     def __call__(
         self,

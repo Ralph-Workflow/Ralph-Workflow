@@ -1,5 +1,3 @@
-"""Regression coverage for suppressed conflict resolver strategy reporting."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -18,7 +16,6 @@ if TYPE_CHECKING:
 
 
 def test_next_strategy_gets_a_fresh_budget_and_is_named(monkeypatch: MonkeyPatch) -> None:
-    """Escalation both resets its per-rung budget and tells the operator its name."""
     state = RebaseState(
         last_action="conflict",
         last_target="main",

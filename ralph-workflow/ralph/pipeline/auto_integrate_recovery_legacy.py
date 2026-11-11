@@ -1,11 +1,3 @@
-"""Legacy rebase-recovery helpers split from :mod:`ralph.pipeline.auto_integrate_recovery`.
-
-Holds the ``legacy_rebase_startup_block`` entry point (still public,
-re-exported by the orchestrator) and the per-marker reclaim helpers
-that close the wt-23 silent-noop bug. Every helper is one bounded
-filesystem repair; none of them decides whether a reclaim may happen
-at all. The orchestrator keeps the policy that does.
-"""
 
 from __future__ import annotations
 
@@ -69,24 +61,13 @@ __all__ = [
 
 
 def _clear_legacy_checkpoint(workspace_root: Path) -> None:
-    """Retire only a terminal checkpoint already proved clean by Git."""
     checkpoint_path = workspace_root / ".agent" / "rebase_checkpoint.json"
     for path in (checkpoint_path, checkpoint_path.with_suffix(".json.bak")):
         if path.exists():
-            # filesystem-write-ok: retire only validated terminal legacy evidence
             path.unlink()
 
 
 def legacy_rebase_startup_block(workspace_root: Path) -> RebaseState | None:
-    """Reconcile only provably retired legacy evidence; otherwise block startup.
-
-    Legacy checkpoints predate the auto-integration record.  Treating them as
-    disposable made planning possible while a previous rebase was unresolved.
-    This boundary is deliberately side-effect minimal: it clears a validated
-    terminal checkpoint only after Git proves no rebase or merge exists.
-    """
-    # Non-repository test and orchestration contexts cannot have legacy Git
-    # rebase state. Do not turn their ordinary startup into a filesystem read.
     if not (workspace_root / ".git").exists():
         return None
     inspection = inspect_legacy_rebase_checkpoint(workspace_root)
@@ -118,44 +99,13 @@ def legacy_rebase_startup_block(workspace_root: Path) -> RebaseState | None:
 
 
 def _reclaim_unowned_stale_rebase(root: Path) -> RebaseState | None:
-    """Reclaim inert rebase state that no ownership record accounts for.
-
-    Failure mode this closes (recorded on wt-23, 2026-07-22):
-    a leftover ``rebase-merge``/``rebase-apply`` directory
-    or lone ``REBASE_HEAD`` marker with NO durable record fails
-    ``check_rebase_preconditions`` at every seam -- startup, phase
-    boundaries, the commit seam -- forever, and nothing ever cleans it,
-    because recovery's no-record branch used to return ``None``
-    unconditionally. That is the forbidden permanent silent noop.
-
-    A clean index can be a valid resolution choosing HEAD's content.
-    Live operation metadata therefore prevents reclamation even on a clean
-    tree. Only malformed residue without a usable operation identity
-    reaches cleanup; dirty work is preserved independently.
-
-    Returns ``None`` when there is nothing to reclaim or the state is
-    protected (dirty tree); a ``recovered`` state after a successful
-    reclaim; a ``skipped`` state when the reclaim itself failed.
-
-    Implementation note: the actual reclaim work is delegated to a
-    sequence of small helpers (``_recover_rebase_state``,
-    ``_recover_merge_marker``, ``_recover_sequencer_state``,
-    ``_recover_detached_head``) so this orchestrator stays below the
-    ruff PLR0912 (too-many-branches) cap while each branch lives in
-    a focused helper that can be unit-tested in isolation.
-    """
     git_dir = _rebase_bookkeeping_dir(root)
     if git_dir is None:
-        # Not a git checkout (or git unaskable): nothing observable to
-        # reclaim, and the pre-fix contract for the no-record branch --
-        # return ``None``, never a synthesized outcome -- must hold.
         return None
     blocking = _collect_blocking_markers(git_dir, root)
     if not blocking:
         return None
     if not is_repo_clean(root):
-        # AC-11 case 4: unmerged paths / tracked modifications mean an
-        # operator (or live agent) owns this rebase. Preserve it.
         logger.warning(
             "recovery: unowned in-progress rebase found in {} but the tree"
             " is dirty; preserving it (operator-owned, AC-11 case 4)",
@@ -185,8 +135,6 @@ def _reclaim_unowned_stale_rebase(root: Path) -> RebaseState | None:
         _recover_merge_marker(root, git_dir)
         _recover_sequencer_state(root, git_dir)
         _recover_detached_head(root, git_dir)
-        # A9: the live-PID guard already cleared the index.lock for
-        # us; nothing more to do.
     except Exception as exc:
         logger.warning("recovery: failed to reclaim stale unowned rebase state: {}", exc)
         return _record_skip(
@@ -204,7 +152,6 @@ def _reclaim_unowned_stale_rebase(root: Path) -> RebaseState | None:
 
 
 def _unowned_operation_may_be_live(root: Path, git_dir: Path) -> bool:
-    """Clean indexes can represent valid resolutions; reclaim only proven residue."""
     state_dir = _select_rebase_state_dir(git_dir)
     if state_dir is not None and not _rebase_state_dir_is_corrupt(state_dir):
         return True
@@ -219,14 +166,6 @@ def _unowned_operation_may_be_live(root: Path, git_dir: Path) -> bool:
 
 
 def _collect_blocking_markers(git_dir: Path, root: Path) -> list[str] | None:
-    """Collect the blocking markers ``git_dir`` carries.
-
-    Returns ``None`` when a LIVE ``index.lock`` holder means the
-    reclaim must defer (E9 contention, NOT staleness). Returns an
-    empty list when there is nothing to reclaim at all. Otherwise
-    returns the list of marker names (``"index.lock"`` included when
-    the holder is provably dead) that justify a reclaim.
-    """
     blocking: list[str] = [name for name in _TERMINAL_MARKER_FILES if (git_dir / name).exists()]
     lock_paths = [git_dir / "index.lock", *_common_dir_lock_paths(root)]
     for lock_path in lock_paths:
@@ -245,18 +184,6 @@ def _collect_blocking_markers(git_dir: Path, root: Path) -> list[str] | None:
 
 
 def _recover_rebase_state(root: Path, git_dir: Path) -> None:
-    """Clear rebase bookkeeping under ``git_dir``.
-
-    A3: a corrupted state dir cannot be aborted with git's own
-    commands because git refuses --abort/--continue when
-    ``head-name``/``onto``/``todo`` are missing. We trust the
-    local ``refs/heads/<branch>`` rather than git's state
-    files, so the recover strategy is "delete the state dir,
-    then leave the ref alone". A lone ``REBASE_HEAD`` marker
-    (no state dir) is removed directly -- ``git rebase --abort``
-    is not available for it but the precondition check blocks
-    on its presence.
-    """
     rebase_state_dir = _select_rebase_state_dir(git_dir)
     if rebase_state_dir is not None:
         if _rebase_state_dir_is_corrupt(rebase_state_dir):
@@ -272,33 +199,15 @@ def _recover_rebase_state(root: Path, git_dir: Path) -> None:
 
 
 def _discard_dead_rebase_progress(root: Path) -> None:
-    """Drop the progress sidecar of a rebase this recovery just ended.
-
-    ``abort_rebase_discarding_progress`` pairs the two so they cannot
-    drift; these branches end a rebase without it. Both restore HEAD to
-    ``orig-head``, so retrying reproduces a byte-identical
-    ``(orig-head, onto)`` identity -- the sidecar is accepted, its dead
-    attempt's stops are read as already landed, and the retry SKIPS a
-    genuinely unresolved stop instead of offering it to a resolver.
-    Never raises: a sidecar that cannot be cleared must not abort
-    recovery.
-    """
     from ralph.pipeline.conflict_resolution.progress import clear_progress
 
     try:
         clear_progress(root)
-    except Exception as exc:  # pragma: no cover -- defensive
+    except Exception as exc:
         logger.warning("auto_integrate: could not clear the rebase progress record: {}", exc)
 
 
 def _recover_merge_marker(root: Path, git_dir: Path) -> None:
-    """Clear a stale ``MERGE_HEAD`` after attempting ``git merge --abort``.
-
-    ``git merge --abort`` can refuse a synthetic / truncated
-    ``MERGE_HEAD``; on a clean tree the marker itself is the only
-    thing blocking preconditions, so we remove it directly when
-    ``--abort`` could not.
-    """
     if not (git_dir / "MERGE_HEAD").exists():
         return
     if merge_state(root) == MERGE_STATE_NONE:
@@ -311,14 +220,6 @@ def _recover_merge_marker(root: Path, git_dir: Path) -> None:
 
 
 def _recover_sequencer_state(root: Path, git_dir: Path) -> None:
-    """Clear cherry-pick / revert residue under ``git_dir``.
-
-    A6: sequencer operations leave ``CHERRY_PICK_HEAD`` /
-    ``REVERT_HEAD`` / ``.git/sequencer`` on disk. ``sequencer/todo``
-    exists iff a sequencer op is paused. Each marker is removed
-    individually so partial residue does not leak across recovery
-    attempts.
-    """
     sequencer_todo = git_dir / "sequencer" / "todo"
     if not (
         (git_dir / "CHERRY_PICK_HEAD").exists()
@@ -339,13 +240,6 @@ def _recover_sequencer_state(root: Path, git_dir: Path) -> None:
 
 
 def _recover_detached_head(root: Path, git_dir: Path) -> None:
-    """Re-attach a detached HEAD residue to its original branch.
-
-    A11: detached-HEAD residue (no state dir, HEAD on a raw
-    OID) is re-attached to the original branch. The local ref
-    still holds the branch tip; the HEAD is just detached, so
-    updating HEAD back to ``refs/heads/<branch>`` is enough.
-    """
     if not _detached_head_no_state(root, git_dir):
         return
     branch = _detached_branch_name(root)

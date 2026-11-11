@@ -1,8 +1,3 @@
-"""Startup polling and bounded pre-serve helpers for the MCP server runtime.
-
-Extracted from ``ralph.mcp.server.runtime`` to keep the module under the
-1000-line repo-structure limit.
-"""
 
 from __future__ import annotations
 
@@ -53,14 +48,6 @@ def _poll_registry_build_gate(
     *,
     clock_fn: Callable[[], float] = time.monotonic,
 ) -> None:
-    """Block on a sentinel file; raise typed ``McpServerError`` on deadline.
-
-    Test seam paralleling ``_FallbackStandaloneServer``'s
-    ``MCP_TEST_PRE_SERVE_GATE_ENV`` poll. Production never sets the
-    env var, so real runs return immediately. When the env var names a
-    sentinel path, the gate polls until either the file appears OR
-    the deadline fires.
-    """
     gate_path = env_map.get(MCP_TEST_REGISTRY_BUILD_GATE_ENV)
     if not gate_path:
         return
@@ -68,7 +55,7 @@ def _poll_registry_build_gate(
     effective_deadline_s = min(budget_s, _REGISTRY_BUILD_GATE_HARD_DEADLINE_S)
     while not DEFAULT_FILE_BACKEND.exists(
         gate_path_obj
-    ):  # filesystem-read-ok: subprocess-E2E test seam polls a path the test fixture creates on its side; routed through the shared FileBackend seam
+    ):
         elapsed = clock_fn() - t0
         if elapsed >= effective_deadline_s:
             raise McpServerError(
@@ -77,7 +64,6 @@ def _poll_registry_build_gate(
                 elapsed_s=elapsed,
                 restart_count=0,
             )
-        # filesystem-poll-ok: test-only registry-build gate polls a sentinel file the subprocess-E2E fixture creates; production never sets this env, and the loop is deadline-bounded
         time.sleep(0.005)
 
 
@@ -92,12 +78,6 @@ def _poll_bounded_pre_serve(
     load_mcp_config_fn: McpConfigLoader = load_mcp_config,
     clock_fn: Callable[[], float] = time.monotonic,
 ) -> tuple[FsWorkspace, McpConfig]:
-    """Run the pre-serve critical path with a wall-clock deadline.
-
-    Executes allowed_roots access, FsWorkspace construction, and load_mcp_config
-    inside a ThreadPoolExecutor worker thread and raises McpServerError
-    (last_stage="config_loading") if the budget is exceeded.
-    """
     real_deadline_s = mcp_real_startup_deadline_from_env(env_map)
     remaining_s = max(0.0, real_deadline_s - (clock_fn() - t0))
     effective_timeout_s = remaining_s
@@ -105,7 +85,7 @@ def _poll_bounded_pre_serve(
     def _do_pre_serve() -> tuple[FsWorkspace, McpConfig]:
         allowed_roots = cast(
             "tuple[Path, ...]", getattr(effective_session, "allowed_roots", ())
-        )  # cast-policy: seam: structural boundary
+        )
         ws = (
             workspace
             if workspace is not None
@@ -131,7 +111,7 @@ def _poll_bounded_pre_serve(
         return future.result(timeout=effective_timeout_s)
     except concurrent.futures.TimeoutError:
         elapsed = clock_fn() - t0
-        fail_closed_pre_serve_overrun(  # never returns: ``os._exit``
+        fail_closed_pre_serve_overrun(
             workspace_root,
             stage="config_loading",
             elapsed_s=elapsed,

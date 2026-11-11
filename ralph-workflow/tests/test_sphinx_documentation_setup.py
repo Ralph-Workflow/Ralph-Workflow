@@ -27,7 +27,6 @@ REFERENCE_MD_PATH = SPHINX_DIR / "reference.md"
 README_PATH = REPO_ROOT / "README.md"
 DISPLAY_DOC_PATH = REPO_ROOT / "docs" / "sphinx" / "display.rst"
 
-# Public packages that must have non-empty docstrings (pydoc-first contract)
 _PUBLIC_PACKAGES_WITH_REQUIRED_DOCSTRINGS = [
     "ralph.testing",
     "ralph.checkpoint",
@@ -40,7 +39,6 @@ _PUBLIC_PACKAGES_WITH_REQUIRED_DOCSTRINGS = [
     "ralph.mcp.webvisit",
 ]
 
-# Pages that must cross-link to getting-started.md
 _PAGES_WITH_GETTING_STARTED_LINKS = [
     "cli.md",
     "concepts.md",
@@ -73,7 +71,6 @@ def _index_toctree_docnames(index_content: str) -> list[str]:
 
 
 def test_display_manual_documents_the_background_query_timeout() -> None:
-    """S-8: the operator manual lists the bounded OSC 11 timeout override."""
     content = DISPLAY_DOC_PATH.read_text(encoding="utf-8")
 
     assert "RALPH_TERMINAL_BG_TIMEOUT_MS" in content
@@ -103,7 +100,6 @@ def test_root_gitignore_ignores_real_sphinx_build_tree() -> None:
 
 
 def test_getting_started_in_index_toctree() -> None:
-    """'getting-started' must appear in index.rst toctree for Sphinx navigation."""
     index_content = INDEX_RST_PATH.read_text(encoding="utf-8")
     assert "getting-started" in index_content, (
         "index.rst toctree must include 'getting-started' so the new tutorial page "
@@ -112,37 +108,30 @@ def test_getting_started_in_index_toctree() -> None:
 
 
 def test_getting_started_file_exists_and_has_required_content() -> None:
-    """getting-started.md must exist and contain required tutorial content."""
     assert GETTING_STARTED_PATH.exists(), (
         f"docs/sphinx/getting-started.md does not exist at {GETTING_STARTED_PATH}"
     )
 
     content = _get_getting_started_content()
 
-    # Must contain the literal 'ralph --init' command
     assert "ralph --init" in content, (
         "getting-started.md must contain the literal command 'ralph --init'"
     )
 
-    # Must contain a PROMPT.md example with '# Goal'
     assert "# Goal" in content, "getting-started.md must contain a '# Goal' example for PROMPT.md"
 
-    # Must link to concepts.md
     assert "concepts.md" in content, "getting-started.md must link to concepts.md"
 
-    # Must link to troubleshooting.md
     assert "troubleshooting.md" in content, "getting-started.md must link to troubleshooting.md"
 
 
 def test_sphinx_pages_link_to_getting_started() -> None:
-    """Each key Sphinx page must contain a link to getting-started.md near the top."""
     sphinx_dir = REPO_ROOT / "docs" / "sphinx"
     missing: list[str] = []
 
     for page in _PAGES_WITH_GETTING_STARTED_LINKS:
         path = sphinx_dir / page
         assert path.exists(), f"docs/sphinx/{page} does not exist"
-        # Check within first 1000 characters for the getting-started link
         content = path.read_text(encoding="utf-8")
         if "getting-started.md" not in content[:1000]:
             missing.append(page)
@@ -163,7 +152,6 @@ def test_docs_extra_includes_linkify_dependency_when_sphinx_enables_linkify() ->
 
 
 def test_index_rst_has_navigation_callout() -> None:
-    """index.rst must have both a :doc:`getting-started` reference and a note/callout."""
     content = INDEX_RST_PATH.read_text(encoding="utf-8")
 
     assert ":doc:`getting-started`" in content, (
@@ -176,7 +164,6 @@ def test_index_rst_has_navigation_callout() -> None:
 
 
 def test_index_toctree_entries_resolve_to_real_sphinx_pages() -> None:
-    """Every index.rst toctree doc reference must point at an existing page."""
     content = INDEX_RST_PATH.read_text(encoding="utf-8")
     sphinx_dir = INDEX_RST_PATH.parent
 
@@ -193,7 +180,6 @@ def test_index_toctree_entries_resolve_to_real_sphinx_pages() -> None:
 
 
 def _md_toctree_docnames(content: str) -> list[str]:
-    """Extract toctree docnames from a MyST Markdown file."""
     docnames: list[str] = []
     in_toctree = False
     in_directive = False
@@ -218,7 +204,6 @@ def _md_toctree_docnames(content: str) -> list[str]:
 
 
 def test_developer_internals_toctree_entries_resolve_to_real_sphinx_pages() -> None:
-    """Every toctree entry in developer-internals.md must point at an existing page."""
     content = DEVELOPER_INTERNALS_PATH.read_text(encoding="utf-8")
 
     missing = [
@@ -234,17 +219,6 @@ def test_developer_internals_toctree_entries_resolve_to_real_sphinx_pages() -> N
 
 
 def test_supervising_api_page_in_developer_section() -> None:
-    """supervising-api is folded into developer-internals.md.
-
-    The wt-026 consolidation merged transcript.md and supervising-api.md
-    into developer-internals.md as `## Streaming Blocks and Long-Content
-    Display` and `## Supervising API` sections. The standalone pages
-    no longer exist, so the developer-internals toctree does not list
-    them. Product requirement 9 is satisfied because the supervising
-    API content is now discoverable through the developer section
-    (`developer-internals.md#supervising-api`) and does not appear on
-    any operator-facing page.
-    """
     dev_content = DEVELOPER_INTERNALS_PATH.read_text(encoding="utf-8")
     assert "## Supervising API" in dev_content, (
         "developer-internals.md must contain a '## Supervising API' section. "
@@ -254,7 +228,6 @@ def test_supervising_api_page_in_developer_section() -> None:
 
 
 def test_agents_page_exists() -> None:
-    """docs/sphinx/agents.md must exist."""
     agents_page = SPHINX_DIR / "agents.md"
     assert agents_page.exists(), (
         "docs/sphinx/agents.md does not exist. "
@@ -263,11 +236,6 @@ def test_agents_page_exists() -> None:
 
 
 def test_agents_page_not_in_developer_internals_toctree() -> None:
-    """developer-internals.md toctree must NOT include 'agents'.
-
-    The agents.md page exists but is not wired into the developer navigation
-    toctree to avoid a pre-existing docs blocker.
-    """
     content = DEVELOPER_INTERNALS_PATH.read_text(encoding="utf-8")
     docnames = _md_toctree_docnames(content)
     assert "agents" not in docnames, (
@@ -278,7 +246,6 @@ def test_agents_page_not_in_developer_internals_toctree() -> None:
 
 
 def test_public_packages_have_non_empty_docstrings() -> None:
-    """Every public package in _PUBLIC_PACKAGES_WITH_REQUIRED_DOCSTRINGS must have a docstring."""
     missing: list[str] = []
 
     for pkg_name in _PUBLIC_PACKAGES_WITH_REQUIRED_DOCSTRINGS:
@@ -293,15 +260,6 @@ def test_public_packages_have_non_empty_docstrings() -> None:
 
 
 def test_readme_has_developer_reference_and_modules_rst_pointers() -> None:
-    """README.md must route to the canonical handler pages for developer/API docs.
-
-    The wt-026 documentation consolidation removed the inline
-    developer-reference.md / modules.rst pointers from README.md; those
-    pages are now reached via `ralph-workflow/docs/sphinx/index.rst`
-    (the canonical Sphinx manual home), which keeps both pages in its
-    Reference toctree. The route README.md -> ralph-workflow/docs/sphinx/index.rst
-    is the single source of truth for the developer/API surface.
-    """
     readme = README_PATH.read_text(encoding="utf-8")
     assert "docs/sphinx/index.rst" in readme, (
         "README.md must route the developer/API surface to "

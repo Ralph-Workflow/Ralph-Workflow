@@ -1,10 +1,3 @@
-"""Safe target-branch reconciliation for configured remote sync.
-
-A diverged local target is rebased only in the clean worktree that owns the
-target branch. This keeps checked-out indexes coherent and never rewrites the
-fetched remote commit. Agent-owned resolutions survive interruption for
-continuation in the target worktree.
-"""
 
 from __future__ import annotations
 
@@ -56,19 +49,12 @@ CLEAN_ABORTED_RECONCILIATION_CONFLICT = "cleanly aborted conflict:"
 
 @dataclass(frozen=True)
 class ReconciliationOutcome:
-    """Structured result of a target reconciliation attempt.
-
-    ``cleanly_aborted`` is true only after the abort, target-SHA verification,
-    and durable-record cleanup all succeeded.  It is intentionally separate
-    from ``reason``, which is operator-facing presentation text.
-    """
 
     reconciled: bool
     reason: str
     cleanly_aborted: bool = False
 
     def __iter__(self) -> Iterator[bool | str]:
-        """Preserve the two-value compatibility contract for direct callers."""
         yield self.reconciled
         yield self.reason
 
@@ -82,13 +68,6 @@ def reconcile_target_onto_remote(
     conflict_resolution_config: UnifiedConfig | None = None,
     reclaim_target_worktree: bool = True,
 ) -> ReconciliationOutcome:
-    """Rebase unpublished local target commits onto ``remote/target`` safely.
-
-    If an existing worktree owns the target branch, reconciliation is performed
-    there. If no worktree owns the target, a safe temporary reconciliation
-    workspace is used and cleaned up on completion, failure, or interruption,
-    preserving dirty feature work in the caller's worktree.
-    """
     try:
         owner = _reconciliation_owner(repo_root, target)
     except Exception:
@@ -146,7 +125,6 @@ def _reconcile_owned_target(
     *,
     is_temporary: bool = False,
 ) -> ReconciliationOutcome:
-    """Reconcile an owned target while retaining recovery ownership on every failure."""
     record = IntegrationRecord(
         phase="integrating",
         target=target,
@@ -201,7 +179,6 @@ def _resolve_owned_reconciliation(
     *,
     is_temporary: bool = False,
 ) -> ReconciliationOutcome:
-    """Retain every failure once a durable receipt grants the agent ownership."""
     _original, onto = current_rebase_identity(owner)
     write_record(
         repo_root,
@@ -244,7 +221,6 @@ def _resolve_rebase_with_session(
     resolver: RebaseStopResolver,
     session: ResolutionSession | None,
 ) -> bool:
-    """Preserve the legacy resolver seam when no typed config reached this caller."""
     if session is None:
         return resolve_rebase_in_progress(owner, target, resolver)
     return resolve_rebase_in_progress(owner, target, resolver, session=session)
@@ -253,7 +229,6 @@ def _resolve_rebase_with_session(
 def _clear_successful_reconciliation_record(
     repo_root: Path, target: str, remote: str
 ) -> ReconciliationOutcome:
-    """Clear durable ownership only after reconciliation finished cleanly."""
     try:
         retained = read_record(repo_root)
         if retained is not None:
@@ -282,7 +257,6 @@ def _cleanup_temporary_worktree(
     repo_root: Path,
     pre_target_sha: str | None = None,
 ) -> None:
-    """Ensure temporary reconciliation worktree and durable records are completely cleaned."""
     with contextlib.suppress(Exception):
         if rebase_in_progress(temp_dir):
             abort_rebase_discarding_progress(temp_dir)
@@ -296,8 +270,8 @@ def _cleanup_temporary_worktree(
 
     if (
         temp_dir.exists()
-    ):  # filesystem-read-ok: transient reconciliation worktree scratch existence check
-        shutil.rmtree(  # filesystem-write-ok: transient reconciliation worktree scratch directory cleanup
+    ):
+        shutil.rmtree(
             temp_dir, ignore_errors=True
         )
 
@@ -315,7 +289,6 @@ def _cleanup_temporary_worktree(
 
 
 def _reconciliation_owner(repo_root: Path, target: str) -> Path | None:
-    """Locate the worktree to lease before observing or reclaiming its contents."""
     try:
         primary_root = find_main_worktree_root(repo_root)
         verdict, owner = worktree_lookup(primary_root, target)
@@ -342,7 +315,6 @@ def _reconciliation_owner(repo_root: Path, target: str) -> Path | None:
 def _unowned_target_preconditions(
     primary_root: Path, target: str, remote: str
 ) -> tuple[str | None, str | None, str | None]:
-    """Return pre_target_sha, remote_target_sha, and failure reason."""
     remote_ref = f"{remote}/{target}"
     try:
         pre_sha = branch_sha(primary_root, target)
@@ -370,7 +342,6 @@ def _reconcile_in_temporary_workspace(
     rebase_stop_resolver: RebaseStopResolver | None,
     conflict_resolution_config: UnifiedConfig | None,
 ) -> ReconciliationOutcome:
-    """Execute reconciliation inside a temporary git worktree."""
     safe_target = target.replace("/", "_")
     temp_dir = Path(tempfile.mkdtemp(prefix=f"{_TEMP_WORKTREE_PREFIX}{safe_target}-"))
 
@@ -380,9 +351,8 @@ def _reconcile_in_temporary_workspace(
         label="reconciliation:add-temp-worktree",
     )
     if add_res.returncode != 0:
-        # filesystem-read-ok: transient reconciliation worktree scratch existence check
         if temp_dir.exists():
-            shutil.rmtree(  # filesystem-write-ok: transient reconciliation worktree scratch directory cleanup on allocation failure
+            shutil.rmtree(
                 temp_dir, ignore_errors=True
             )
         with contextlib.suppress(Exception):
@@ -435,7 +405,6 @@ def _reconcile_unowned_target(
     rebase_stop_resolver: RebaseStopResolver | None = None,
     conflict_resolution_config: UnifiedConfig | None = None,
 ) -> ReconciliationOutcome:
-    """Safely reconcile a target branch that is not checked out in any worktree."""
     try:
         primary_root = find_main_worktree_root(repo_root)
     except Exception:
@@ -471,7 +440,6 @@ def _reconciliation_preconditions(
     reclaim_target_worktree: bool,
     expected_owner: Path,
 ) -> tuple[Path | None, str | None, str | None]:
-    """Return a clean owning target worktree and its pre-rebase SHA."""
     try:
         verdict, owner = worktree_lookup(find_main_worktree_root(repo_root), target)
         if verdict != WORKTREE_FOUND or owner is None:
@@ -504,7 +472,6 @@ def _abort_restore_or_retain_record(
     *,
     is_temporary: bool = False,
 ) -> ReconciliationOutcome:
-    """Abort a failed reconciliation and restore the target before clearing ownership."""
     try:
         if rebase_in_progress(owner):
             abort_rebase_discarding_progress(owner)

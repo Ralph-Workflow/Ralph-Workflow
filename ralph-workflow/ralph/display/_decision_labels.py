@@ -1,4 +1,3 @@
-"""Decision-to-badge label mapping for pipeline completion summaries."""
 
 from __future__ import annotations
 

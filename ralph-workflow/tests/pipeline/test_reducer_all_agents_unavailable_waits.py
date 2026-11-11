@@ -1,5 +1,3 @@
-"""Regression tests for reducer all-agents-unavailable waiting."""
-
 from __future__ import annotations
 
 import tempfile
@@ -108,7 +106,6 @@ def test_agent_failure_falls_over_when_an_agent_is_available() -> None:
 
 
 def test_failed_route_does_not_treat_agent_cooldown_as_terminal_intervention() -> None:
-    """A cooldown at the recovery route remains a wait, never a hard stop."""
     from ralph.pipeline import run_loop
 
     clock = FakeClock(start=0.0)

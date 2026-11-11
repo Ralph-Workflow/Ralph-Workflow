@@ -1,5 +1,3 @@
-"""Tests for ``tests._support.typed_accessors`` — the test-side runtime validators."""
-
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -17,10 +15,6 @@ from tests._support.typed_accessors import (
     must_str_list,
     must_text,
 )
-
-# ---------------------------------------------------------------------------
-# Single-value accessors
-# ---------------------------------------------------------------------------
 
 
 class TestMustStr:
@@ -44,7 +38,6 @@ class TestMustInt:
         assert must_int(7) == 7
 
     def test_rejects_bool(self) -> None:
-        # bool is a subclass of int but tests must distinguish
         with pytest.raises(TypeError, match="expected int"):
             must_int(True)
 
@@ -63,11 +56,6 @@ class TestMustBool:
     def test_rejects_int(self) -> None:
         with pytest.raises(TypeError):
             must_bool(1)
-
-
-# ---------------------------------------------------------------------------
-# Container accessors
-# ---------------------------------------------------------------------------
 
 
 class TestMustMapping:
@@ -131,11 +119,6 @@ class TestMustStrList:
             must_str_list(["a", 1])
 
 
-# ---------------------------------------------------------------------------
-# MCP / external-payload helper
-# ---------------------------------------------------------------------------
-
-
 class TestMustText:
     def test_returns_text_attribute(self) -> None:
         block = SimpleNamespace(text="hello world")
@@ -155,13 +138,7 @@ class TestMustText:
             must_text(SimpleNamespace(blob=b"x"), field="payload")
 
 
-# ---------------------------------------------------------------------------
-# Smoke
-# ---------------------------------------------------------------------------
-
-
 def test_helpers_compose_for_realistic_payload() -> None:
-    """A realistic deserialized fixture can be walked without any cast."""
     fixture: object = {
         "name": "agent-1",
         "max_retries": 3,

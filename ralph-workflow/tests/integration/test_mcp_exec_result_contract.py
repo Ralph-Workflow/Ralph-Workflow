@@ -39,8 +39,6 @@ def test_jsonrpc_exec_family_returns_inline_text_result(
             returncode=0,
         )
 
-    # Both exec and the unsafe/raw family run through the bounded `run_command`;
-    # patch it in each module's namespace (unsafe_exec imports it by name).
     monkeypatch.setattr(exec_tool, "run_command", _fake_run_command)
     monkeypatch.setattr(unsafe_exec_tool, "run_command", _fake_run_command)
 

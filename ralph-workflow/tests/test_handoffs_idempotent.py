@@ -1,15 +1,3 @@
-"""Black-box tests for the parallel-summary handoff writer's idempotent-write guard.
-
-The parallel_development_summary is an internally generated record (not an
-agent-authored markdown artifact), so fan-out renders its own markdown handoff
-directly. The writer must skip the physical write when the destination already
-contains byte-identical markdown, while still guaranteeing the file reflects
-the rendered summary; the first write and any changed re-render still write.
-
-The writer is exercised end-to-end through a counting in-memory FileBackend so
-no real filesystem I/O is performed.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -23,8 +11,6 @@ if TYPE_CHECKING:
 
 
 class _CountingBackend(FileBackend):
-    """In-memory FileBackend that records write_text invocations."""
-
     def __init__(self) -> None:
         self._files: dict[Path, str] = {}
         self.write_text_calls: list[tuple[Path, str]] = []

@@ -1,6 +1,5 @@
 Parallel execution of independent ready units is required by default. Execute only coupled steps in the main session. Before starting any implementation, inventory units and dependencies, then dispatch every ready unit concurrently in one wave to sub-agents. The main session owns shared contracts, integration, cross-unit verification, and artifact submission; workers own only their declared files. Plans without declared units but with independent ready steps (real dependencies, exact authorized ownership) are treated as the same ready group and dispatched too. Respect dependencies, collect each unit's implementation and verification proof, then integrate and run cross-unit and full verification in the main session. Never let two agents edit the same file; keep integration, final verification, and artifact submission in the main session.
 
-### FIRST ACTION: dispatch the initial wave
 
 Before editing any implementation file, read the plan's parallel dispatch
 manifest and launch every unit in `Initial wave:` in one batch of parallel tool

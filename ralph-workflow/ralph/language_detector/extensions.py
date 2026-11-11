@@ -1,4 +1,3 @@
-"""File extension to language mapping for project detection."""
 
 from __future__ import annotations
 
@@ -43,10 +42,8 @@ NON_PRIMARY_LANGUAGES: set[str] = {
 
 
 def extension_to_language(extension: str) -> str | None:
-    """Map a file extension to a language name."""
     return EXTENSION_TO_LANGUAGE.get(extension.lower())
 
 
 def is_non_primary_language(language: str) -> bool:
-    """Return whether a language should not be preferred as primary."""
     return language in NON_PRIMARY_LANGUAGES

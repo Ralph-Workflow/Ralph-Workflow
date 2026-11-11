@@ -1,5 +1,3 @@
-"""Tests for relative-read protection in real-config guard after chdir."""
-
 from __future__ import annotations
 
 import textwrap
@@ -32,7 +30,6 @@ def test_real_config_guard_catches_relative_read_after_chdir_in_pytester(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A test that chdirs into guarded config and reads a relative name fails loudly."""
     guarded_dir = tmp_path / "guarded_config"
     guarded_dir.mkdir(parents=True)
     existing_file = guarded_dir / "ralph-workflow.toml"
@@ -92,7 +89,6 @@ def test_real_config_guard_catches_relative_read_after_chdir_in_pytester(
 def test_extract_read_path_handles_relative_path_after_chdir(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """_extract_read_path catches relative path reads when cwd is inside guarded directories."""
     guarded_dir = tmp_path / "guarded_config"
     guarded_dir.mkdir(parents=True)
     target = guarded_dir / "ralph-workflow.toml"
@@ -105,11 +101,9 @@ def test_extract_read_path_handles_relative_path_after_chdir(
 
     monkeypatch.setenv("RALPH_TEST_GUARDED_CONFIG_DIRS", str(guarded_dir))
 
-    # In outside dir: relative read of outside file returns None
     monkeypatch.chdir(outside_dir)
     assert _extract_read_path(("safe.txt", "r")) is None
 
-    # In guarded dir: relative read of guarded file is caught
     monkeypatch.chdir(guarded_dir)
     assert _extract_read_path(("ralph-workflow.toml", "r")) == target.resolve()
     assert _extract_read_path(("./ralph-workflow.toml", "r")) == target.resolve()
@@ -118,7 +112,6 @@ def test_extract_read_path_handles_relative_path_after_chdir(
 def test_default_production_guard_catches_relative_read_after_chdir(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Production guard catches relative reads when cwd is real XDG/dot-config directory."""
     fake_home = tmp_path / "fake_home"
     fake_config = fake_home / ".config"
     fake_config.mkdir(parents=True)

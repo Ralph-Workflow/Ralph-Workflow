@@ -1,17 +1,3 @@
-"""One-way legacy-evidence and rebase outcome migration tests.
-
-Acceptance scenario 8: legacy on-disk checkpoints carrying pre-fix diagnostic
-evidence or string last_action fields migrate transparently through the public
-loaders (read_record and RebaseState.model_validate).
-
-The rewrite exercises only the public boundaries:
-- Writes legacy on-disk JSON and reloads via public read_record
-- Validates RebaseState via RebaseState.model_validate
-- Asserts migrated last_outcome and the run-loop's typed PhaseDecision
-- Covers the full round-trip for all 19 verbs plus None in RebaseOutcomeKind.from_legacy
-  (including remote_failed).
-"""
-
 from __future__ import annotations
 
 import json
@@ -75,7 +61,6 @@ def _policy() -> PipelinePolicy:
 def test_public_checkpoint_reload_migrates_legacy_keys_and_routes_decision(
     tmp_path: Path,
 ) -> None:
-    """Public read_record migrates legacy diagnostic keys and drives PhaseDecision."""
     record_file = tmp_path / ".agent" / AUTO_INTEGRATE_RECORD_FILENAME
     record_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -94,7 +79,6 @@ def test_public_checkpoint_reload_migrates_legacy_keys_and_routes_decision(
     }
     record_file.write_text(json.dumps(legacy_payload), encoding="utf-8")
 
-    # Call public reload boundary
     loaded = read_record(tmp_path)
     assert loaded is not None
     assert loaded.phase == "integrating"
@@ -103,11 +87,9 @@ def test_public_checkpoint_reload_migrates_legacy_keys_and_routes_decision(
     assert "unstaged_work" in keys
     assert "commit_controls" in keys
     assert "merge_state_files:/tmp/repo/.git/worktrees/wt/MERGE_HEAD" in keys
-    # Common-dir reflog observation is dropped with marker
     assert "/tmp/repo/.git/logs/refs/heads/main" not in keys
     assert "legacy common-dir reflog observation dropped" in (loaded.repair_cap_reason or "")
 
-    # Run-loop decision on migrated record
     policy = _policy()
     state = PipelineState(phase="development", rebase=RebaseState())
     decision = decide_phase_transition(
@@ -122,13 +104,6 @@ def test_public_checkpoint_reload_migrates_legacy_keys_and_routes_decision(
 def test_public_checkpoint_reload_global_evidence_loads_cleanly(
     tmp_path: Path,
 ) -> None:
-    """Legacy repository-global evidence (for-each-ref / ls-files) loads cleanly.
-
-    The new diagnostic path drops the legacy global key silently
-    and re-derives state from Git. Surfacing intervention here was
-    the production livelock: the diagnostic could not re-verify
-    and refused to proceed.
-    """
     record_file = tmp_path / ".agent" / AUTO_INTEGRATE_RECORD_FILENAME
     record_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -147,23 +122,12 @@ def test_public_checkpoint_reload_global_evidence_loads_cleanly(
     loaded = read_record(tmp_path)
     assert loaded is not None
     assert loaded.diagnostic_intervention_required is False
-    # The dropped legacy key is no longer carried as live evidence.
     assert ("for-each-ref", "deadbeef") not in dict(loaded.diagnostic_evidence)
 
 
 def test_unrecognised_durable_evidence_key_loads_cleanly_without_intervention(
     tmp_path: Path,
 ) -> None:
-    """AC1 / O1: any evidence key the current collector cannot interpret must clear.
-
-    The migration loader previously kept an unrecognised evidence key
-    on the record when no intervention flag was stored. The diagnostic
-    path then could not verify the held evidence and the record
-    retained forever (production livelock). The fix drops unrecognised
-    keys regardless of the intervention flag: the loaded record carries
-    empty evidence, no ownership, and no intervention flag, so the
-    next seam re-derives state from Git and makes progress.
-    """
     record_file = tmp_path / ".agent" / AUTO_INTEGRATE_RECORD_FILENAME
     record_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -173,26 +137,20 @@ def test_unrecognised_durable_evidence_key_loads_cleanly_without_intervention(
         "pre_feature_sha": "a" * 40,
         "pre_target_sha": "b" * 40,
         "owning_worktree": str(tmp_path),
-        # Key the current collector cannot interpret; no intervention
-        # flag stored. This is the case the old loader retained.
         "diagnostic_evidence": [["future_unknown_kind", "value"]],
     }
     record_file.write_text(json.dumps(payload), encoding="utf-8")
 
     loaded = read_record(tmp_path)
     assert loaded is not None
-    # Evidence is cleared; the loader no longer leaves the unknown
-    # key on the record (AC1 / O1).
     assert loaded.diagnostic_evidence == ()
     assert loaded.diagnostic_ownership is None
     assert loaded.diagnostic_intervention_required is False
-    # The unknown key is no longer in the live evidence tuple.
     assert ("future_unknown_kind", "value") not in dict(loaded.diagnostic_evidence)
 
 
 @pytest.mark.parametrize("verb", ALL_19_LEGACY_VERBS)
 def test_rebase_state_model_validate_migrates_all_19_verbs(verb: str) -> None:
-    """RebaseState.model_validate deserializes all 19 legacy last_action strings."""
     state = RebaseState.model_validate({"last_action": verb})
     expected_kind = RebaseOutcomeKind.from_legacy(verb)
     assert state.last_outcome == expected_kind
@@ -200,7 +158,6 @@ def test_rebase_state_model_validate_migrates_all_19_verbs(verb: str) -> None:
 
 
 def test_rebase_state_model_validate_none() -> None:
-    """RebaseState.model_validate with None last_action remains None."""
     state = RebaseState.model_validate({"last_action": None})
     assert state.last_outcome is None
     assert state.last_action is None
@@ -208,7 +165,6 @@ def test_rebase_state_model_validate_none() -> None:
 
 @pytest.mark.parametrize("verb", ALL_19_LEGACY_VERBS)
 def test_rebase_outcome_kind_round_trip_all_19_verbs(verb: str) -> None:
-    """Each of the 19 live legacy verbs round-trips through RebaseOutcomeKind."""
     kind = RebaseOutcomeKind.from_legacy(verb)
     assert kind is not None
     assert kind.value == verb
@@ -216,12 +172,10 @@ def test_rebase_outcome_kind_round_trip_all_19_verbs(verb: str) -> None:
 
 
 def test_rebase_outcome_kind_round_trip_none() -> None:
-    """None maps cleanly to None."""
     assert RebaseOutcomeKind.from_legacy(None) is None
 
 
 def test_rebase_outcome_kind_remote_failed_explicit() -> None:
-    """remote_failed is specifically covered and projects through last_action."""
     kind = RebaseOutcomeKind.from_legacy("remote_failed")
     assert kind is RebaseOutcomeKind.REMOTE_FAILED
     state = RebaseState(last_outcome=kind)
@@ -229,7 +183,6 @@ def test_rebase_outcome_kind_remote_failed_explicit() -> None:
 
 
 def test_rebase_state_model_validate_legacy_action_with_none_outcome() -> None:
-    """When last_action is present and last_outcome is explicitly None, last_action is migrated."""
     state = RebaseState.model_validate({"last_action": "conflict", "last_outcome": None})
     assert state.last_outcome == RebaseOutcomeKind.CONFLICT
     assert state.last_action == "conflict"
@@ -248,7 +201,6 @@ def test_rebase_state_model_validate_legacy_action_with_none_outcome() -> None:
 
 
 def test_rebase_state_model_validate_unknown_legacy_action_blocks_dispatch() -> None:
-    """Unknown legacy action produces UNKNOWN and blocks ordinary dispatch and terminal success."""
     state = RebaseState.model_validate({"last_action": "unrecognized_bogus"})
     assert state.last_outcome == RebaseOutcomeKind.UNKNOWN
     assert state.last_action == "unknown"
@@ -279,7 +231,6 @@ def test_rebase_state_model_validate_unknown_legacy_action_blocks_dispatch() -> 
 def test_rebase_state_model_validate_contradictory_values_blocks_dispatch(
     payload: dict[str, object],
 ) -> None:
-    """Contradictory last_action and last_outcome produce UNKNOWN and block dispatch."""
     state = RebaseState.model_validate(payload)
     assert state.last_outcome == RebaseOutcomeKind.UNKNOWN
     assert state.last_action == "unknown"

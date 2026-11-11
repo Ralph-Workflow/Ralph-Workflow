@@ -1,4 +1,3 @@
-"""WAITING_ON_CHILD branch helpers for :class:`IdleWatchdog`."""
 
 from __future__ import annotations
 
@@ -23,13 +22,6 @@ def effective_waiting_ceiling(
     self: IdleWatchdog,
     corroboration: CorroborationSnapshot,
 ) -> float:
-    """Compute the effective waiting ceiling based on corroboration.
-
-    Returns the shorter no-progress ceiling when the child is alive but not
-    making forward progress (heartbeat-only, stale-label, or OS-descendant-only).
-    Returns the standard full ceiling when the child is making progress or when
-    the no-progress ceiling is disabled (None).
-    """
     alive_by = corroboration.alive_by
     _effective = self._config.max_waiting_on_child_seconds
     if alive_by is None:
@@ -91,30 +83,11 @@ def compute_effective_suspect(
     return self._config.suspect_waiting_on_child_seconds, "standard"
 
 
-def handle_waiting_branch(  # noqa: PLR0911, PLR0912, PLR0915 - 5 orchestrated reasons + gate path + stuck_job_sub_ceiling + activity-only skip
+def handle_waiting_branch(
     self: IdleWatchdog,
     now: float,
     classify_quiet: Callable[[], AgentExecutionState],
 ) -> WatchdogVerdict:
-    """Handle the WAITING_ON_CHILD deferral branch.
-
-    Accumulates time within the current run WITHOUT mutating the cumulative
-    total (which is only updated on transition out of WAITING). The ceiling
-    check uses cumulative + current-run total to avoid double-counting.
-
-    Emits structured status events (ENTERED, PROGRESS, SUSPECTED_FROZEN,
-    HARD_STOP) rather than per-tick debug spam. Status emission cadence is
-    governed by waiting_status_interval_seconds and does NOT affect ceiling math.
-
-    When max_waiting_on_child_no_progress_seconds is set and corroboration shows
-    non-progress evidence (heartbeat-only, stale-label, or OS-descendant-only),
-    the shorter no-progress ceiling is used instead of the full ceiling.
-
-    The execution strategy is re-consulted on every tick so that a run
-    that entered WAITING_ON_CHILD while a child was demonstrably active
-    transitions back to the normal idle path as soon as the child evidence
-    goes stale, rather than lingering until the larger cumulative ceiling.
-    """
     idle_elapsed = now - self._last_activity
     if self._waiting_on_child_started_at is None:
         self._entry_corroboration = self._safe_corroborate()
@@ -137,11 +110,6 @@ def handle_waiting_branch(  # noqa: PLR0911, PLR0912, PLR0915 - 5 orchestrated r
     current_run_elapsed = now - self._waiting_on_child_started_at
     candidate_total = self._cumulative_waiting_on_child_seconds + current_run_elapsed
 
-    # Re-consult the execution strategy: if the child evidence is no
-    # longer fresh, transition out of WAITING_ON_CHILD and let the
-    # normal idle path (or activity-channel deferral) decide. This
-    # prevents a stale/dead child from stretching the wait until the
-    # cumulative ceiling.
     try:
         current_quiet_state = classify_quiet()
     except Exception:
@@ -162,25 +130,6 @@ def handle_waiting_branch(  # noqa: PLR0911, PLR0912, PLR0915 - 5 orchestrated r
     )
     effective_suspect, suspect_reason = self._compute_effective_suspect(alive_by, candidate_total)
 
-    # Stuck-job sub-ceiling (CHILDREN_PERSIST_TOO_LONG). When the
-    # cumulative waiting time has exceeded the configured sub-ceiling
-    # AND the corroborator reports a STALE alive_by (the child is
-    # alive in the OS but is not producing fresh progress / heartbeat
-    # evidence), the watchdog MUST fire CHILDREN_PERSIST_TOO_LONG.
-    # This is the analysis-feedback contract for the 2365s false
-    # negative: a stuck-but-alive subagent could push cumulative time
-    # well past the standard 600s ``max_waiting_on_child_no_progress_seconds``
-    # ceiling without ``classify_stuck`` ever returning STUCK because
-    # the corroborator was reporting ``OS_DESCENDANT_ONLY_STALE_PROGRESS``
-    # (or any stale alive_by value). The sub-ceiling short-circuits
-    # the longer wait so the orchestrator is freed well before the
-    # cumulative 1800s ceiling. The branch is checked BEFORE the
-    # ``candidate_total >= effective_ceiling`` block so a stuck job
-    # (sub-ceiling shorter than the standard ceiling) trips the
-    # sub-ceiling first. The branch is gated on the corroborator's
-    # stale alive_by so a productive live child (FRESH_PROGRESS /
-    # FRESH_HEARTBEAT_ONLY) is NOT killed by the sub-ceiling; only
-    # the stuck-but-alive pattern trips.
     if (
         self._config.stuck_job_sub_ceiling_seconds is not None
         and current_corr.scoped_child_active
@@ -216,11 +165,6 @@ def handle_waiting_branch(  # noqa: PLR0911, PLR0912, PLR0915 - 5 orchestrated r
         for ev_key, ev_value in evidence_block_sj.items():
             if ev_key not in diag_sj:
                 diag_sj[ev_key] = ev_value
-        # wt-047-stall-label: emit STALLED alongside HARD_STOP. The
-        # watchdog is the sole owner of the STALLED label; the
-        # HARD_STOP + gate-passed FIRE is the explicit liveness
-        # signal that the bar must mirror. ``_set_stall`` is
-        # idempotent.
         self._set_stall(active=True, now=now, idle_elapsed=idle_elapsed)
         self._emit(
             WaitingStatusKind.HARD_STOP,
@@ -244,22 +188,6 @@ def handle_waiting_branch(  # noqa: PLR0911, PLR0912, PLR0915 - 5 orchestrated r
     if candidate_total >= effective_ceiling:
         if self._config.profile == TimeoutProfile.ACTIVITY_ONLY:
             return WatchdogVerdict.CONTINUE
-        # Hard enforcement (R3, Trustworthy Idle Watchdog spec): the
-        # CUMULATIVE waiting ceiling fires UNCONDITIONALLY when
-        # ``candidate_total >= effective_ceiling``. Per PROMPT:
-        # "There must be a hard, bounded ceiling after which a true
-        # hang fires regardless of deferral reasons." Pre-fix this
-        # block consulted ``self._gate_fire(...)`` and returned
-        # ``WatchdogVerdict.CONTINUE`` when ``_classify_stuck_now``
-        # returned ``SILENT_SUBAGENT`` (or any other non-STUCK kind);
-        # that consult was the structural cause of the 2365s
-        # indefinite deferral (the headline R3 defect). The
-        # SUB-ceiling block at lines 158-237 above RETAINED its
-        # ``self._gate_fire`` consultation because it is the smart
-        # sub-ceiling bounded by ``stuck_job_sub_ceiling_seconds``
-        # (default 600s) and gates on the corroborator's stale
-        # alive_by; the cumulative ceiling at this block is the
-        # absolute backstop that no deferral reason can bypass.
         self._last_fire_reason = WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
         corr_diag_hs = self._build_corroboration_diag(current_corr)
         corr_diag_hs["evidence"] = self._build_evidence_string(corr_diag_hs)
@@ -280,11 +208,6 @@ def handle_waiting_branch(  # noqa: PLR0911, PLR0912, PLR0915 - 5 orchestrated r
         for ev_key, ev_value in evidence_block.items():
             if ev_key not in diag:
                 diag[ev_key] = ev_value
-        # wt-047-stall-label: emit STALLED alongside HARD_STOP. The
-        # watchdog is the sole owner of the STALLED label; the
-        # cumulative ceiling + unconditional FIRE is the explicit
-        # liveness signal the bar must mirror. ``_set_stall`` is
-        # idempotent.
         self._set_stall(active=True, now=now, idle_elapsed=idle_elapsed)
         self._emit(
             WaitingStatusKind.HARD_STOP,
@@ -320,13 +243,6 @@ def handle_waiting_branch(  # noqa: PLR0911, PLR0912, PLR0915 - 5 orchestrated r
             effective_suspect,
             effective_ceiling,
         )
-        # wt-047-stall-label: emit STALLED alongside SUSPECTED_FROZEN.
-        # The watchdog is the sole owner of the STALLED label; the
-        # suspect-threshold cross is the explicit liveness signal the
-        # bar must mirror. ``_set_stall`` is idempotent so a later
-        # HARD_STOP transition is a no-op. The flag is also reset on
-        # EXITED (``_accumulate_waiting_run``) so the wait-then-resume
-        # path emits STALL_RESUMED exactly once on exit.
         self._set_stall(active=True, now=now, idle_elapsed=idle_elapsed)
         self._emit(
             WaitingStatusKind.SUSPECTED_FROZEN,
@@ -344,18 +260,6 @@ def handle_waiting_branch(  # noqa: PLR0911, PLR0912, PLR0915 - 5 orchestrated r
         _ceiling_lbl = self._effective_ceiling_label(current_corr, effective_ceiling)
         corr_diag_pr["effective_ceiling"] = effective_ceiling
         corr_diag_pr["effective_ceiling_label"] = _ceiling_lbl
-        # Human-readable heartbeat (R6, Trustworthy Idle Watchdog spec).
-        # The previous format was the terse ``cumulative={}s ceiling={}s``
-        # line which was informative to a tool but opaque to a human.
-        # The new format names: (a) what is happening -- the agent is
-        # WAITING on a real subagent; (b) the live subagent count from
-        # the filtered monitor (R1 -- never the broader
-        # ``descendant_snapshot()`` count); (c) the elapsed seconds;
-        # (d) the hard ceiling before action is taken. The throttle at
-        # this branch is governed by ``waiting_status_interval_seconds``
-        # (default 30s); the first emission happens at WAITING_ON_CHILD
-        # entry, then at each interval boundary. The throttle is
-        # unchanged -- only the human-readable payload.
         heartbeat_count = self._subagent_count_for_heartbeat()
         self._log.info(
             "idle watchdog: agent waiting on subagent ({} alive) for {}s - hard ceiling at {}s",
@@ -371,24 +275,6 @@ def handle_waiting_branch(  # noqa: PLR0911, PLR0912, PLR0915 - 5 orchestrated r
             diagnostic=cast("dict[str, str | int | float | bool | list[object]]", corr_diag_pr),
         )
 
-    # SUBAGENT_PROGRESS waiting-status event. Surfaces the
-    # most-recent subagent activity description AND the live
-    # subagent count from the process monitor in the waiting-
-    # status stream so operators see what the dispatched
-    # subagent is doing in real time. This REUSES the existing
-    # parser-layer ``ActivityEventKind.SUBAGENT_PROGRESS``
-    # surface (``self._last_subagent_progress_description``
-    # updated via ``record_subagent_work`` and the
-    # ``_process_monitor.live_subagent_count()`` process-tree
-    # signal) -- it does NOT introduce a new per-worker log
-    # poll. The emit is rate-limited by
-    # ``watchdog_subagent_progress_interval_seconds`` (30 s
-    # default, matching the existing PROGRESS cadence) so
-    # the new event does NOT introduce additional churn.
-    # The predicate is: emit only when EITHER a subagent
-    # observation has been recorded OR the process monitor
-    # reports a live subagent count > 0 -- both surfaces
-    # are agent-agnostic (no per-worker log discovery).
     live_subagent_count = (
         self._process_monitor.live_subagent_count() if self._process_monitor is not None else 0
     )

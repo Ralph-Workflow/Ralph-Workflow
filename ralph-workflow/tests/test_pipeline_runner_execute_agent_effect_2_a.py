@@ -1,5 +1,3 @@
-"""Tests for ralph/pipeline/runner.py — pipeline runner."""
-
 from __future__ import annotations
 
 from functools import lru_cache
@@ -51,11 +49,11 @@ DEVELOPER_ITERATIONS = 5
 REVIEWER_PASSES = 2
 SECOND_ITERATION = 2
 INTERRUPT_EXIT_CODE = 130
-_TRUNCATED_TEXT_MAX = runner_module.MAX_TEXT_LENGTH + 1  # content + ellipsis
-_TRUNCATED_RESULT_BRIEF_MAX = runner_module.MAX_TOOL_RESULT_BRIEF + 1  # content + ellipsis
-_TRUNCATED_METADATA_MAX = runner_module.MAX_METADATA_SUMMARY_LENGTH + 1  # content + ellipsis
+_TRUNCATED_TEXT_MAX = runner_module.MAX_TEXT_LENGTH + 1
+_TRUNCATED_RESULT_BRIEF_MAX = runner_module.MAX_TOOL_RESULT_BRIEF + 1
+_TRUNCATED_METADATA_MAX = runner_module.MAX_METADATA_SUMMARY_LENGTH + 1
 _AVAILABLE_WIDTH_FLOOR = 40
-_TRUNCATE_RESULT_LEN = 6  # 5 chars + 1 ellipsis char
+_TRUNCATE_RESULT_LEN = 6
 
 
 @lru_cache(maxsize=1)
@@ -710,15 +708,6 @@ class TestExecuteAgentEffectA:
         self,
         tmp_path: Path,
     ) -> None:
-        """S-3 (G3/C1): ``_materialize_master_prompt`` forwards
-        ``ctx.agent_config.transport`` to the injected materializer,
-        independently of the managed-session path
-        (``tests/test_managed_agent_sessions.py``'s
-        ``test_managed_session_with_agy_transport_threads_dispatcher_hint``).
-        This is the phase-invocation route every real pipeline phase (plan,
-        development, commit) uses via ``execute_agent_effect`` ->
-        ``_invoke_agent_with_recovery`` -> ``_materialize_master_prompt``.
-        """
         captured: dict[str, object] = {}
         ctx = MagicMock()
         ctx.workspace_scope.root = tmp_path
@@ -749,11 +738,6 @@ class TestExecuteAgentEffectA:
         self,
         tmp_path: Path,
     ) -> None:
-        """An injected materializer with a narrower signature (no ``transport``
-        keyword, e.g. a bare-bones test fake) must not be called with an
-        argument it cannot handle -- the same runtime-introspection guard
-        ``worker_namespace``/``planning_style`` already rely on.
-        """
         ctx = MagicMock()
         ctx.workspace_scope.root = tmp_path
         ctx.effect.phase = "plan"
@@ -826,13 +810,6 @@ class TestExecuteAgentEffectA:
         self,
         tmp_path: Path,
     ) -> None:
-        """Parallel workers must not touch shared repo-root phase outputs.
-
-        The worker's workspace is write-restricted to its allowed directories
-        plus its namespace; pre-run cleanup of the shared development_result
-        artifact is the parent's job. The worker invocation must neither
-        crash on the restricted scope nor delete the shared artifact.
-        """
         effect = InvokeAgentEffect(
             agent_name="developer",
             phase="development",

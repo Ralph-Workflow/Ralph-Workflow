@@ -1,5 +1,3 @@
-"""Regression coverage for plans whose retained draft was never submitted."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -26,7 +24,6 @@ Location: ralph/mcp/artifacts/completion_receipts.py
 def test_plan_submission_regression_unsubmitted_staged_draft_blocks_completion(
     tmp_path: Path,
 ) -> None:
-    """S-1: a draft ahead of canonical content must prevent terminal completion."""
     session = MockSession()
     session.run_id = "plan-run"
     workspace = _workspace(tmp_path)

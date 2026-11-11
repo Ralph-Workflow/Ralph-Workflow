@@ -1,4 +1,3 @@
-"""Evidence-grounded intermediate representation for commit artifacts."""
 
 from __future__ import annotations
 
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class CommitMessageIR:
-    """Canonical factual fields used to render a commit-message artifact."""
 
     intent: str
     change_areas: tuple[str, ...]
@@ -25,7 +23,6 @@ class CommitMessageIR:
 
 
 def build_commit_message_ir(evidence: CommitEvidenceBundle, *, subject: str) -> CommitMessageIR:
-    """Build a grounded IR; all non-subject claims come from live evidence."""
     behavior_risk = (*evidence.behavior_facts, *evidence.compatibility_hints, *evidence.risk_hints)
     verification = evidence.verification_facts
     return CommitMessageIR(
@@ -41,7 +38,6 @@ def build_commit_message_ir(evidence: CommitEvidenceBundle, *, subject: str) -> 
 
 
 def _body_items(ir: CommitMessageIR) -> tuple[str, ...]:
-    """Cover grounded categories before applying the evidence-derived cap."""
     categories = tuple(
         parts for parts in (ir.rationale, ir.behavior_risk, ir.verification) if parts
     )
@@ -57,7 +53,6 @@ def _body_items(ir: CommitMessageIR) -> tuple[str, ...]:
 
 
 def render_commit_message_artifact(ir: CommitMessageIR) -> str:
-    """Render the IR into the canonical commit_message Markdown grammar."""
     lines = ["---", "type: commit", f"subject: {ir.intent}", "---"]
     if body_items := _body_items(ir):
         lines.extend(

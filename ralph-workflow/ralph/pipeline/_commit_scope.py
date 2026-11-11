@@ -1,18 +1,3 @@
-"""Commit scope resolution: which repository paths a commit artifact may stage.
-
-The commit-message artifact may name the exact set of files the commit
-is allowed to stage (``files``) or the set it must leave out
-(``excluded_files``). Resolving that selection against the LIVE changed
-set is the boundary where a malformed artifact could ask the executor to
-stage a path outside the worktree, so the whole resolution -- path
-normalization, de-duplication, the symlink / escape guard and the
-exact-match check -- lives here as ONE cohesive unit.
-
-Extracted from :mod:`ralph.pipeline.commit_executor` without any
-behavior change: the helper names, their signatures and their semantics
-are identical, and the executor re-exports them under the same private
-names, so every existing call site and test keeps resolving them.
-"""
 
 from __future__ import annotations
 
@@ -89,44 +74,8 @@ def _resolve_commit_scope(
 
 
 def _reject_symlink_in_commit_scope(normalized_path: str, repo_root: Path | None) -> None:
-    """Reject ``normalized_path`` if it escapes ``repo_root`` via symlinks.
-
-    Defense-in-depth: a malformed commit payload could include a path
-    that is a symlink OR a path whose parent directory is a symlink
-    chain pointing outside the worktree. ``_normalize_repo_relative_path``
-    only checks the literal path string (absolute / ``..`` segments) and
-    does not look at the filesystem. Without this guard, a symlink at
-    a relative path (or any symlink in the parent chain) could stage a
-    file outside the worktree when ``git add`` resolves the symlink
-    target.
-
-    Two checks are applied:
-
-    1. **Literal-path symlink check** (defense-in-depth at the boundary):
-       walks every parent directory AND the candidate path itself and
-       rejects the first symlink found. Catches the obvious case where
-       ``foo`` is a symlink in the worktree pointing somewhere else.
-
-    2. **Resolved-path escape check** (defense-in-depth against parent
-       symlink chains): resolves the candidate path with ``strict=False``
-       (so broken symlinks also fire) and verifies the resolved
-       location is still under ``repo_root``. Catches the parent-chain
-       case where ``dir/file.txt`` is regular, but ``dir`` is a symlink
-       pointing outside the worktree (the literal-path check above
-       catches it too, but the resolved-path check provides a clean
-       error message for the escape attempt).
-
-    The checks are best-effort: a missing path is allowed through (the
-    symlink won't fire if it doesn't exist; ``_stage_files`` will
-    surface a real I/O error if needed).
-    """
     if repo_root is None:
         return
-    # An embedded NUL is named for what it is. Without this, ``resolve()``
-    # below raises ``ValueError: embedded null byte``, the escape check
-    # catches it, and the commit fails claiming the path is "outside
-    # repository root" — a lie the agent cannot act on, while the artifact
-    # is retained and the next pass fails the same way.
     if "\x00" in normalized_path:
         raise ValueError(
             f"Refusing to stage a path containing an embedded NUL in commit scope: "

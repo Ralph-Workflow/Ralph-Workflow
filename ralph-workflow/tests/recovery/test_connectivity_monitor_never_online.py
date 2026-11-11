@@ -1,12 +1,3 @@
-"""The real connectivity monitor only reports OFFLINE after it has seen the network.
-
-A host whose egress blocks the probe targets (corporate proxy-only network,
-offline local-model use) never reaches them at all. That is "probe targets
-unreachable", not "connectivity lost": reporting OFFLINE would pause the run
-before every iteration forever. The monitor therefore stays UNKNOWN until a
-probe first succeeds, and only a failure AFTER that is a real OFFLINE.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -21,8 +12,6 @@ _PROBE_ROUNDS = 5
 
 
 class _ScriptedProbe:
-    """Probe whose reachability answers follow a script, then repeat the last one."""
-
     def __init__(self, answers: list[bool]) -> None:
         self._answers = answers
         self.calls = 0
@@ -55,7 +44,6 @@ def test_targets_unreachable_since_start_is_unknown_not_offline() -> None:
 
     asyncio.run(_run_rounds(monitor, probe, _PROBE_ROUNDS))
 
-    # The run loop pauses only on OFFLINE, so UNKNOWN lets the run proceed.
     assert monitor.current_state == ConnectivityState.UNKNOWN
     assert all(evt.state != ConnectivityState.OFFLINE for evt in events)
 

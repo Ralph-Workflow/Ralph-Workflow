@@ -1,18 +1,3 @@
-"""Generic execution phase handler.
-
-Handles any phase with role='execution'. Behavior is determined by the drain's
-artifact contract:
-
-- Drain produces artifact_type='plan': artifact integrity, noop detection, plan
-  draft management (PreparePromptEffect clears stale drafts).
-- Drain produces artifact_type='development_result': plan input integrity and noop
-  routing before validating the output artifact. Accepted plan shape is not gated.
-- All other drains: validate the configured output artifact contract only.
-
-On PreparePromptEffect: clears a stale plan draft when the phase produces a plan.
-On InvokeAgentEffect: validates the output artifact contract, with type-specific
-pre-validation for plan and development_result drains.
-"""
 
 from __future__ import annotations
 
@@ -84,7 +69,6 @@ def _snapshot_file_path(phase: str) -> str:
 
 
 def record_workspace_snapshot(workspace: Workspace, phase: str) -> dict[str, str]:
-    """Capture and record the pre-execution workspace snapshot for a phase."""
     snap = take_workspace_snapshot(workspace)
     snap_path = _snapshot_file_path(phase)
     with suppress(Exception):
@@ -93,7 +77,6 @@ def record_workspace_snapshot(workspace: Workspace, phase: str) -> dict[str, str
 
 
 def _load_pre_execution_snapshot(workspace: Workspace, phase: str) -> dict[str, str] | None:
-    """Load recorded pre-execution snapshot from disk."""
     snap_path = _snapshot_file_path(phase)
     try:
         if workspace.exists(snap_path):
@@ -115,11 +98,6 @@ def detect_workspace_files_changed(
     *,
     baseline: dict[str, str] | None = None,
 ) -> bool:
-    """Detect whether any workspace files were added, removed, or modified.
-
-    Compares the current workspace state to the recorded pre-execution baseline.
-    Pre-existing files (e.g. README, source code) do NOT falsely count as changes.
-    """
     after = take_workspace_snapshot(workspace)
     before = baseline if baseline is not None else _load_pre_execution_snapshot(workspace, phase)
 
@@ -130,7 +108,6 @@ def detect_workspace_files_changed(
 
 
 def _detect_workspace_files_changed(workspace: Workspace, phase: str = "") -> bool:
-    """Backward-compatible wrapper for detect_workspace_files_changed."""
     return detect_workspace_files_changed(workspace, phase)
 
 
@@ -190,18 +167,6 @@ def handle_execution_phase(
     assigned_work_unit_id: str | None = None,
     pre_execution_snapshot: dict[str, str] | None = None,
 ) -> list[Event]:
-    """Generic handler for any phase with role='execution'.
-
-    Args:
-        effect: The effect that triggered this phase.
-        ctx: Phase context with workspace and policy.
-        output_artifact_path: Optional explicit output artifact path.
-        assigned_work_unit_id: Optional work unit ID.
-        pre_execution_snapshot: Optional pre-execution workspace snapshot.
-
-    Returns:
-        List of events to emit.
-    """
     if isinstance(effect, PreparePromptEffect):
         return _handle_prepare_prompt(effect, ctx)
 
@@ -278,7 +243,6 @@ def _clear_retry_hint_after_accepted_artifact(
     required_artifact: RequiredArtifact | None,
     worker_retry_hint_path: str | None,
 ) -> list[Event]:
-    """Clear retained context only after the current phase accepts its artifact."""
     if required_artifact is not None and not any(
         isinstance(event, PhaseFailureEvent) for event in events
     ):
@@ -313,7 +277,6 @@ def _validate_plan_output(
     ra: RequiredArtifact,
     phase_def: PhaseDefinition | None,
 ) -> list[Event]:
-    """Validate the plan artifact produced by a planning-type phase."""
     phase = effect.phase
     if not ctx.workspace.exists(ra.artifact_path):
         detail = legacy_json_rejection_detail(ctx.workspace, ra.artifact_path) or (
@@ -370,11 +333,6 @@ def _validate_plan_input(
     *,
     retry_hint_path_override: str | None = None,
 ) -> list[Event] | None:
-    """Validate the plan INPUT for development-type phases.
-
-    Returns a list of failure events on error, an empty list to signal noop
-    (caller should return AGENT_SUCCESS immediately), or None on success.
-    """
     phase = effect.phase
     if not ctx.workspace.exists(PLAN_ARTIFACT_PATH):
         upstream = _find_plan_producing_phase(ctx.pipeline_policy, ctx.artifacts_policy)
@@ -416,12 +374,6 @@ def _validate_output_artifact(
     *,
     retry_hint_path_override: str | None = None,
 ) -> tuple[list[Event] | None, dict[str, object] | None]:
-    """Validate an output artifact and retain its normalized content.
-
-    When ``artifact_required`` is false and the artifact is absent, the empty
-    result treats it as success. A present optional artifact is still parsed
-    and normalized.
-    """
     phase = effect.phase
     if not ctx.workspace.exists(ra.artifact_path):
         if not ra.artifact_required:
@@ -537,7 +489,6 @@ def _worker_retry_hint_path(
 def _find_plan_producing_phase(
     pipeline_policy: PipelinePolicy, artifacts_policy: ArtifactsPolicy
 ) -> str:
-    """Find the phase name that produces plan artifacts."""
     for contract in artifacts_policy.artifacts.values():
         if contract.artifact_type == "plan":
             for phase_name, phase_def in pipeline_policy.phases.items():

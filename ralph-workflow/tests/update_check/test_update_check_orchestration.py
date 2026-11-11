@@ -1,5 +1,3 @@
-"""End-to-end orchestration of the nag and diagnose surfaces (no threads/network)."""
-
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -86,7 +84,6 @@ def test_nag_skipped_on_non_interactive_terminal() -> None:
     fresh = VersionCheckState(last_checked=1000.0, latest_version="0.9.1")
     deps = _deps(state=fresh, now=1000.0, spawn_calls=spawn_calls, fetch_latest=_boom)
     maybe_render_update_nag(ctx, deps=deps)
-    # No output and no background refresh spawned when not attached to a terminal.
     assert ctx.console.printed == []
     assert spawn_calls == []
 
@@ -138,7 +135,6 @@ def test_scheduled_refresh_fetches_and_persists() -> None:
         saved=saved,
     )
     maybe_render_update_nag(ctx, deps=deps)
-    # Execute the scheduled background job synchronously.
     spawn_calls[0]()
     assert saved == [
         (
@@ -184,7 +180,6 @@ def test_update_status_cache_only_when_network_disallowed() -> None:
     def _boom() -> str | None:
         raise AssertionError("must not fetch when network is disallowed")
 
-    # Stale cache, but allow_network=False must not trigger a fetch.
     stale = VersionCheckState(last_checked=0.0, latest_version="0.8.5")
     deps = _deps(state=stale, now=10_000_000.0, fetch_latest=_boom)
     status = update_status(allow_network=False, deps=deps)

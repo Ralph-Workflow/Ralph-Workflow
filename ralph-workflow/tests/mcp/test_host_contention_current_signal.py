@@ -1,5 +1,3 @@
-"""B-signal: bounded CURRENT host-load check."""
-
 import threading
 
 from ralph.mcp.server._mcp_health_event import (
@@ -9,7 +7,6 @@ from ralph.mcp.server._mcp_health_event import (
 
 
 def test_current_host_is_contended_true_at_ratio() -> None:
-    # 85% utilization of a 1000-watch budget = 850 watches live.
     target = int(1000 * CONTENDED_WATCH_RATIO)
     assert (
         current_host_is_contended(
@@ -58,8 +55,6 @@ def test_current_host_is_contended_bounded_under_blocked_reader() -> None:
 
 
 def test_contention_signal_truthful_watch_pressure_no_cpu_claim() -> None:
-    """Verify contention signal derives truthfully from inotify watch budget without CPU claim."""
-    # Under watch capacity below ratio, contention is False regardless of CPU state.
     assert (
         current_host_is_contended(
             watch_limit_reader=lambda: 1000,
@@ -67,7 +62,6 @@ def test_contention_signal_truthful_watch_pressure_no_cpu_claim() -> None:
         )
         is False
     )
-    # Under watch capacity at or above ratio, contention is True.
     assert (
         current_host_is_contended(
             watch_limit_reader=lambda: 1000,

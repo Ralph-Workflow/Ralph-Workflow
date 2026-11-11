@@ -1,26 +1,3 @@
-"""Artifact-submission canonical-path audit.
-
-Enforces the single-writer contract for run-scoped completion receipts,
-completion sentinels, and canonical artifact files. Any code outside the
-allowlisted canonical sites that writes one of these files is a bypass and
-fails ``make verify``.
-
-Scans ``ralph/`` (skipping the audit module itself, the canonical submit
-module, and ``tests/``). Uses AST analysis to find:
-
-- Direct writes to ``.agent/receipts/``, ``.agent/completion_seen_*.json``,
-  ``.agent/artifacts/<canonical-type>.md`` (and its obsolete ``.json`` form), or
-  ``.agent/tmp/<canonical-type>.json`` (via ``write_text``, ``write_bytes``,
-  ``open(...)``, or equivalent file-copy helpers).
-- Calls to ``write_artifact_receipt`` / ``delete_artifact_receipt`` outside
-  allowlisted sites.
-
-Usage:
-    python -m ralph.testing.audit_artifact_submission_canonical_path [codebase_root]
-
-Exit 0 = clean, 1 = bypass found, 2 = root not found.
-"""
-
 from __future__ import annotations
 
 import ast
@@ -47,7 +24,6 @@ _SKIP_DIRS: frozenset[str] = frozenset(
 _CANONICAL_TYPES: frozenset[str] = KNOWN_ARTIFACT_TYPES
 
 
-# File paths (relative to codebase root) that own the audited writes/calls.
 _FILE_ALLOWLIST: frozenset[str] = frozenset(
     {
         "ralph/mcp/artifacts/canonical_submit.py",
@@ -56,7 +32,6 @@ _FILE_ALLOWLIST: frozenset[str] = frozenset(
 
 _ARG_INDEX_2 = 2
 
-# Forbidden path patterns. Stored as (regex, category, detail) tuples.
 _FORBIDDEN_PATH_PATTERNS: tuple[tuple[str, str, str], ...] = (
     (
         r"\.agent/receipts/",
@@ -80,7 +55,6 @@ _FORBIDDEN_PATH_PATTERNS: tuple[tuple[str, str, str], ...] = (
     ),
 )
 
-# Lower-level functions that may only be called from allowlisted sites.
 _FORBIDDEN_CALLS: tuple[tuple[str, str, str], ...] = (
     (
         "write_artifact_receipt",
@@ -146,16 +120,6 @@ _FORBIDDEN_CALLS: tuple[tuple[str, str, str], ...] = (
 
 _AUDIT_MODULE_ROOT = Path(__file__).parent.parent.parent
 
-# Cheap text pre-filter: any source that contains none of these substrings
-# cannot match a forbidden path literal or forbidden call target, so the
-# full AST pass on it is pure overhead. On a 1121-file tree the pre-filter
-# collapses the AST workload from ~1100 files to ~150 files and reduces
-# the audit end-to-end wall time from ~29s to well under the 30s
-# per-step cap ``_VERIFY_STEP_TIMEOUT_SECONDS`` enforced by
-# ``ralph/verify.py``. Keep this list synced with
-# ``_FORBIDDEN_PATH_PATTERNS`` (string side) and ``_FORBIDDEN_CALLS``
-# (function side). A module is only worth a full AST walk if it
-# contains at least one of these needles.
 _AUDIT_PRE_FILTER_NEEDLES: tuple[str, ...] = (
     ".agent",
     "write_artifact_receipt",
@@ -174,7 +138,6 @@ _AUDIT_PRE_FILTER_NEEDLES: tuple[str, ...] = (
 
 
 def _assert_invariants() -> None:
-    """Import-time guard: if/raise RuntimeError (NOT assert) so python -O cannot strip."""
     if not _CANONICAL_TYPES:
         raise RuntimeError("_CANONICAL_TYPES must not be empty")
     if "commit_message" not in _CANONICAL_TYPES:
@@ -190,12 +153,6 @@ def _assert_invariants() -> None:
         raise RuntimeError("_SKIP_DIRS must not be empty")
     if not _AUDIT_PRE_FILTER_NEEDLES:
         raise RuntimeError("_AUDIT_PRE_FILTER_NEEDLES must not be empty")
-    # The pre-filter must mention every forbidden literal substring so the
-    # AST short-circuit cannot silently drop a file that contains an
-    # audited literal or call. ``.agent/`` covers every
-    # ``_FORBIDDEN_PATH_PATTERNS`` entry; each ``_FORBIDDEN_CALLS`` target
-    # is added verbatim so files importing ``shutil.copy`` etc. survive
-    # the pre-filter.
     _needed_targets = {".agent", *(target for target, _c, _d in _FORBIDDEN_CALLS)}
     missing = sorted(
         target
@@ -212,8 +169,6 @@ _assert_invariants()
 
 
 class BypassFinding:
-    """A single canonical-path bypass finding."""
-
     def __init__(
         self,
         file_path: str,
@@ -231,7 +186,6 @@ class BypassFinding:
 
 
 def _collect_string_literals(node: ast.AST) -> list[str]:
-    """Recursively collect every string constant anywhere in ``node``."""
     literals: list[str] = []
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         literals.append(node.value)
@@ -248,13 +202,6 @@ def _collect_string_literals(node: ast.AST) -> list[str]:
 
 
 def _path_segments(node: ast.AST) -> list[str | None]:
-    """Return path segments for a ``Path(...) / ... / ...`` expression.
-
-    Literal segments are returned as strings; non-literal segments (names,
-    attribute lookups, pure f-string placeholders, etc.) are returned as
-    ``None``. This preserves the structure needed to reconstruct a path with
-    ``/`` separators while still detecting variable-composed paths.
-    """
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
         return _path_segments(node.left) + _path_segments(node.right)
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
@@ -275,7 +222,6 @@ def _path_segments(node: ast.AST) -> list[str | None]:
 
 
 def _join_path_segments(segments: list[str | None]) -> str | None:
-    """Join literal path segments with ``/``, skipping non-literal segments."""
     literal_segments = [segment for segment in segments if segment is not None]
     if not literal_segments:
         return None
@@ -287,9 +233,6 @@ def _path_has_variable_segment(segments: list[str | None]) -> bool:
 
 
 def _path_matches_forbidden(path_expr: ast.expr) -> tuple[str, str] | None:
-    """Return (category, detail) if the path expression contains a forbidden pattern."""
-    # Candidate 1: legacy flat concatenation of all string literals in the
-    # expression. Catches simple cases like ``Path('.agent/receipts/x.json')``.
     literals = _collect_string_literals(path_expr)
     if literals:
         combined = "".join(literals)
@@ -297,8 +240,6 @@ def _path_matches_forbidden(path_expr: ast.expr) -> tuple[str, str] | None:
             if re.search(pattern, combined):
                 return category, detail
 
-    # Candidate 2: reconstructed ``Path(...) / ...`` composition with ``/``
-    # separators. Catches ``Path('.agent') / 'receipts' / run_id / ...``.
     segments = _path_segments(path_expr)
     joined = _join_path_segments(segments)
     if joined is not None:
@@ -306,12 +247,6 @@ def _path_matches_forbidden(path_expr: ast.expr) -> tuple[str, str] | None:
             if re.search(pattern, joined):
                 return category, detail
 
-        # Candidate 3: variable-composed paths under ``.agent/artifacts/`` or
-        # ``.agent/tmp/`` whose filename we cannot resolve statically. Because
-        # the type may be a canonical artifact type, treat canonical-directory
-        # writes as bypasses; literal fully-known paths are handled by candidate
-        # 2. Markdown writes under ``.agent/tmp/`` remain the supported agent
-        # fallback and are intentionally not forbidden.
         if _path_has_variable_segment(segments):
             lower = joined.lower()
             if ".agent/artifacts/" in lower:
@@ -329,7 +264,6 @@ def _path_matches_forbidden(path_expr: ast.expr) -> tuple[str, str] | None:
 
 
 def _dotted_name(node: ast.expr) -> str | None:
-    """Return a dotted name for simple attribute/name chains."""
     parts: list[str] = []
     current: ast.expr = node
     while isinstance(current, ast.Attribute):
@@ -343,27 +277,23 @@ def _dotted_name(node: ast.expr) -> str | None:
 
 
 def _is_write_text_call(node: ast.Call) -> bool:
-    """Return True for backend.write_text / Path.write_text style calls."""
     if not isinstance(node.func, ast.Attribute):
         return False
     return node.func.attr == "write_text"
 
 
 def _is_write_bytes_call(node: ast.Call) -> bool:
-    """Return True for backend.write_bytes / Path.write_bytes style calls."""
     if not isinstance(node.func, ast.Attribute):
         return False
     return node.func.attr == "write_bytes"
 
 
 def _is_open_call(node: ast.Call) -> bool:
-    """Return True for open(...) / io.open(...) calls."""
     name = _dotted_name(node.func)
     return name in {"open", "io.open"}
 
 
 def _is_forbidden_function_call(node: ast.Call) -> tuple[str, str] | None:
-    """Return (category, detail) for calls to forbidden lower-level helpers."""
     name = _dotted_name(node.func)
     if name is None and isinstance(node.func, ast.Name):
         name = node.func.id
@@ -378,7 +308,6 @@ def _finding_from_path_match(
     rel_path: str,
     lineno: int,
 ) -> BypassFinding | None:
-    """Return a finding from a forbidden-path match, or None."""
     if match is None:
         return None
     category, detail = match
@@ -395,7 +324,6 @@ def _find_write_text_finding(
     rel_path: str,
     lineno: int,
 ) -> BypassFinding | None:
-    """Check a ``write_text`` call for forbidden paths."""
     candidates: list[ast.expr] = []
     if node.args:
         candidates.append(node.args[0])
@@ -413,7 +341,6 @@ def _find_write_bytes_finding(
     rel_path: str,
     lineno: int,
 ) -> BypassFinding | None:
-    """Check a ``write_bytes`` call for forbidden paths."""
     candidates: list[ast.expr] = []
     if node.args:
         candidates.append(node.args[0])
@@ -431,7 +358,6 @@ def _find_open_finding(
     rel_path: str,
     lineno: int,
 ) -> BypassFinding | None:
-    """Check an ``open`` call for forbidden paths."""
     if not node.args:
         return None
     return _finding_from_path_match(_path_matches_forbidden(node.args[0]), rel_path, lineno)
@@ -443,20 +369,17 @@ _PATH_REPLACE_METHODS: frozenset[str] = frozenset({"replace", "rename"})
 
 
 def _method_name(node: ast.Call) -> str | None:
-    """Return the method name for a call like obj.method(...), or None."""
     if isinstance(node.func, ast.Attribute):
         return node.func.attr
     return None
 
 
 def _is_shutil_move_call(node: ast.Call) -> bool:
-    """Return True for any call whose method name matches a shutil copy/move function."""
     name = _method_name(node)
     return name is not None and name in _SHUTIL_METHODS
 
 
 def _is_os_rename_call(node: ast.Call) -> bool:
-    """Return True for any call whose method name matches os.rename/renames/replace."""
     name = _method_name(node)
     if name is None or name not in _OS_RENAME_METHODS:
         return False
@@ -471,7 +394,6 @@ def _is_os_rename_call(node: ast.Call) -> bool:
 
 
 def _is_path_replace_call(node: ast.Call) -> bool:
-    """Return True for any call whose method name matches Path.replace/rename."""
     name = _method_name(node)
     if name is None or name not in _PATH_REPLACE_METHODS:
         return False
@@ -480,7 +402,6 @@ def _is_path_replace_call(node: ast.Call) -> bool:
 
 
 def _find_shutil_destination(node: ast.Call) -> ast.expr | None:
-    """Extract the destination argument from a shutil call (2nd positional or dst= keyword)."""
     if len(node.args) >= _ARG_INDEX_2:
         return node.args[1]
     for kw in node.keywords:
@@ -490,14 +411,12 @@ def _find_shutil_destination(node: ast.Call) -> ast.expr | None:
 
 
 def _find_os_rename_destination(node: ast.Call) -> ast.expr | None:
-    """Extract the destination argument from os.rename/replace (2nd positional)."""
     if len(node.args) >= _ARG_INDEX_2:
         return node.args[1]
     return None
 
 
 def _find_path_replace_destination(node: ast.Call) -> ast.expr | None:
-    """Extract the destination argument from Path.replace/rename (1st positional)."""
     if node.args:
         return node.args[0]
     return None
@@ -508,7 +427,6 @@ def _find_shutil_move_finding(
     rel_path: str,
     lineno: int,
 ) -> BypassFinding | None:
-    """Check a shutil copy/move call for forbidden destination paths."""
     dst = _find_shutil_destination(node)
     if dst is None:
         return None
@@ -520,7 +438,6 @@ def _find_os_rename_finding(
     rel_path: str,
     lineno: int,
 ) -> BypassFinding | None:
-    """Check an os.rename/replace call for forbidden destination paths."""
     dst = _find_os_rename_destination(node)
     if dst is None:
         return None
@@ -532,7 +449,6 @@ def _find_path_replace_finding(
     rel_path: str,
     lineno: int,
 ) -> BypassFinding | None:
-    """Check a Path.replace/rename call for forbidden destination paths."""
     dst = _find_path_replace_destination(node)
     if dst is None:
         return None
@@ -544,7 +460,6 @@ def _find_forbidden_call_finding(
     rel_path: str,
     lineno: int,
 ) -> BypassFinding | None:
-    """Check a function call for forbidden lower-level helpers."""
     match = _is_forbidden_function_call(node)
     return _finding_from_path_match(match, rel_path, lineno)
 
@@ -553,7 +468,6 @@ def _process_call_node(
     node: ast.Call,
     rel_path: str,
 ) -> BypassFinding | None:
-    """Inspect a single AST call node and return any bypass finding."""
     lineno: int = node.lineno if isinstance(node.lineno, int) else 0
 
     finding: BypassFinding | None = None
@@ -575,13 +489,6 @@ def _process_call_node(
 
 
 def audit_file(file_path: Path, rel_path: str) -> list[BypassFinding]:
-    """Audit a single Python file for canonical-path bypasses.
-
-    Modules whose source contains no ``_AUDIT_PRE_FILTER_NEEDLES`` substring
-    cannot match a forbidden literal or forbidden call target; the AST pass
-    on them is pure overhead. The cheap bytes-level pre-filter short-circuits
-    those files before ``ast.parse`` is paid for.
-    """
     findings: list[BypassFinding] = []
     try:
         source_bytes = file_path.read_bytes()
@@ -610,15 +517,6 @@ def audit_file(file_path: Path, rel_path: str) -> list[BypassFinding]:
 
 
 def audit(codebase_root: Path | None = None) -> list[BypassFinding]:
-    """Audit the codebase for artifact-submission bypasses.
-
-    Args:
-        codebase_root: Root directory to scan. Defaults to the ralph-workflow
-            package root (three directories above this module).
-
-    Returns:
-        A list of bypass findings; empty when clean.
-    """
     if codebase_root is None:
         codebase_root = Path(__file__).parent.parent.parent
 
@@ -640,7 +538,6 @@ def audit(codebase_root: Path | None = None) -> list[BypassFinding]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the canonical-path audit and return an exit code."""
     args = argv if argv is not None else sys.argv[1:]
     codebase_root = Path(args[0]) if args else None
 

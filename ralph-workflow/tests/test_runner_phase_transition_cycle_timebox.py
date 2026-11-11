@@ -1,14 +1,3 @@
-"""Live operator surface for the plan-to-final-commit cycle timebox.
-
-The cycle deadline was previously invisible while a run was in flight: the
-elapsed/remaining numbers appeared only in the end-of-run report, so an
-operator watching the run could not tell how much of the cycle budget was
-left. These tests pin the timebox status onto the live phase-transition
-banner, which renders context only on MAJOR transitions. A deadline-forced
-finalization is deliberately NOT reported there — every transition it makes
-is minor, so the notice would be dropped before an operator saw it.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -37,7 +26,6 @@ def _banner_output(state: PipelineState, previous_phase: str) -> str:
 
 
 def test_active_cycle_shows_elapsed_and_remaining_on_phase_banner() -> None:
-    """An active cycle puts its consumed/remaining budget on a major phase change."""
     state = PipelineState(
         phase="development",
         previous_phase="development_commit",
@@ -53,7 +41,6 @@ def test_active_cycle_shows_elapsed_and_remaining_on_phase_banner() -> None:
 
 
 def test_inactive_cycle_shows_no_timebox_item() -> None:
-    """Before the cycle starts there is no deadline to report."""
     state = PipelineState(
         phase="planning_analysis",
         previous_phase="planning",
@@ -66,12 +53,6 @@ def test_inactive_cycle_shows_no_timebox_item() -> None:
 
 
 def test_redirect_leaves_no_banner_item_because_the_operator_never_sees_one() -> None:
-    """The wind-down legs are minor transitions, so no context is rendered there.
-
-    Pinning this keeps a "deadline reached" item from being reintroduced on a
-    surface that drops it: the redirect is reported by the routing log and the
-    run-time report instead.
-    """
     from ralph.pipeline.cycle_timing import cycle_timebox_status_item
 
     state = PipelineState(

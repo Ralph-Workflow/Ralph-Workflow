@@ -1,5 +1,3 @@
-"""Black-box regressions for consumed frontmatter vocabulary diagnostics."""
-
 import pytest
 
 from ralph.mcp.artifacts.markdown import MdArtifactSpec, parse_and_validate
@@ -74,7 +72,6 @@ def test_closed_status_regression_done_hard_fails_at_frontmatter_line(
     body: str,
     valid_vocabulary: tuple[str, ...],
 ) -> None:
-    """Regress the user-requested closed-status diagnostic anchoring contract."""
     _assert_closed_vocabulary_error(
         artifact_type,
         _document(frontmatter, body),
@@ -182,9 +179,6 @@ def test_consumed_status_missing_or_empty_names_every_accepted_value(
 @pytest.mark.parametrize(
     ("artifact_type", "frontmatter", "valid_vocabulary", "requires_sections"),
     (
-        # development_result only requires sections for ``status: completed``;
-        # an unknown status leaves the body free-form, so the vocabulary error
-        # is the only one raised.
         pytest.param(
             "development_result",
             ("type: development_result", "status: done"),
@@ -338,7 +332,6 @@ def test_closed_type_regression_wrong_hard_fails_at_frontmatter_line(
     body: str,
     valid_vocabulary: tuple[str, ...],
 ) -> None:
-    """Regress the user-requested closed-type diagnostic anchoring contract."""
     _assert_closed_vocabulary_error(
         artifact_type,
         _document(frontmatter, body),

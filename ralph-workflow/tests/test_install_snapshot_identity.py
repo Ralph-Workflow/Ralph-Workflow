@@ -1,10 +1,3 @@
-"""Tests for dev-snapshot identity: which checkout owns the machine-wide `rdev`.
-
-The snapshot directory and the `rdev` launcher are shared by every checkout and
-worktree on the machine, so an install silently takes them over from whoever
-installed last. These tests pin the reporting that makes the handover visible.
-"""
-
 from __future__ import annotations
 
 from contextlib import nullcontext
@@ -20,7 +13,6 @@ _build_meta = import_module("ralph._build_meta")
 
 
 def _write_snapshot(root: Path, *, version: str, commit: str, source_path: str) -> Path:
-    """Materialise a minimal dev snapshot so its identity can be read back."""
     package = root / "ralph"
     package.mkdir(parents=True)
     (package / "__init__.py").write_text(f'__version__ = "{version}"\n', encoding="utf-8")
@@ -37,7 +29,6 @@ def _write_snapshot(root: Path, *, version: str, commit: str, source_path: str) 
 def test_read_snapshot_identity_reports_the_checkout_a_snapshot_came_from(
     tmp_path: Path,
 ) -> None:
-    """A single global snapshot must be able to name the checkout that owns it."""
     snapshot = _write_snapshot(
         tmp_path / "current",
         version="0.9.19",
@@ -65,7 +56,6 @@ def test_read_snapshot_identity_reports_the_checkout_a_snapshot_came_from(
 def test_snapshot_identity_round_trips_through_the_real_build_meta_writer(
     tmp_path: Path, source_path: str
 ) -> None:
-    """The identity reader must parse exactly what the installer's writer emits."""
     package = tmp_path / "snapshot" / "ralph"
     package.mkdir(parents=True)
     repo_package = Path(install_module.__file__).parent
@@ -90,12 +80,10 @@ def test_snapshot_identity_round_trips_through_the_real_build_meta_writer(
 def test_read_snapshot_identity_returns_none_when_no_snapshot_is_installed(
     tmp_path: Path,
 ) -> None:
-    """A first-time install has no previous identity to report."""
     assert install_module.read_snapshot_identity(tmp_path / "missing") is None
 
 
 def test_install_summary_flags_a_snapshot_taken_over_by_another_checkout() -> None:
-    """The clobber that makes `rdev` run a stale build must be stated outright."""
     summary = install_module.render_install_summary(
         source=Path("/checkouts/main/ralph-workflow"),
         commit="483cd5cc9d3977dc8d2a499414a76c5a814384ed",
@@ -120,7 +108,6 @@ def test_install_summary_flags_a_snapshot_taken_over_by_another_checkout() -> No
 
 
 def test_install_summary_does_not_cry_takeover_for_a_reinstall_of_the_same_checkout() -> None:
-    """Re-installing from the same checkout is routine and must not read as a warning."""
     summary = install_module.render_install_summary(
         source=Path("/checkouts/main/ralph-workflow"),
         commit="483cd5cc9d3977dc8d2a499414a76c5a814384ed",
@@ -152,7 +139,6 @@ def test_install_summary_omits_the_replaced_line_on_a_first_install() -> None:
 
 
 def test_install_dev_checkout_reports_what_it_installed_and_what_it_replaced() -> None:
-    """`make dev` must say which checkout now owns `rdev`, and which one lost it."""
     emitted: list[str] = []
     previous = install_module.SnapshotIdentity(
         source_path="/checkouts/wt-063-kimi-support/ralph-workflow",
@@ -192,7 +178,6 @@ def test_install_dev_checkout_reports_what_it_installed_and_what_it_replaced() -
 
 
 def test_install_dev_checkout_reads_the_previous_identity_before_overwriting_it() -> None:
-    """The replaced build can only be reported if it is read before the copy runs."""
     order: list[str] = []
 
     def fake_copy(_source: Path, destination: Path) -> Path:
@@ -231,7 +216,6 @@ def test_install_dev_checkout_reads_the_previous_identity_before_overwriting_it(
 
 
 def test_install_dev_checkout_stamps_the_source_checkout_path() -> None:
-    """The snapshot must carry the checkout path so `rdev` can name its origin."""
     stamped: dict[str, str] = {}
 
     def fake_writer(
@@ -275,7 +259,6 @@ def test_install_dev_checkout_stamps_the_source_checkout_path() -> None:
 def test_build_provenance_line_names_the_source_checkout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`--version` must expose which checkout the running build came from."""
     monkeypatch.setattr(_build_meta, "BUILD_SOURCE_PATH", "/checkouts/main/ralph-workflow")
     monkeypatch.setattr(
         _build_meta, "BUILD_SOURCE_COMMIT", "483cd5cc9d3977dc8d2a499414a76c5a814384ed"
@@ -290,7 +273,6 @@ def test_build_provenance_line_names_the_source_checkout(
 def test_build_provenance_line_is_empty_for_a_published_install(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A released install has no checkout provenance and must stay silent."""
     monkeypatch.setattr(_build_meta, "BUILD_SOURCE_PATH", "")
     monkeypatch.setattr(_build_meta, "BUILD_SOURCE_COMMIT", "")
 

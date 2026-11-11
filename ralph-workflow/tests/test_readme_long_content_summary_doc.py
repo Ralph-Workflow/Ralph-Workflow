@@ -1,5 +1,3 @@
-"""Regression tests: long-content display docs for streaming must stay in sync with code."""
-
 from __future__ import annotations
 
 import re

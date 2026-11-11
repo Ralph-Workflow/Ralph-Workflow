@@ -1,5 +1,3 @@
-"""Successful phase routing clears active failure categories."""
-
 from __future__ import annotations
 
 from ralph.pipeline.progress import advance_phase

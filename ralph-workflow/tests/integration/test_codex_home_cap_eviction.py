@@ -1,5 +1,3 @@
-"""Regression coverage for the bounded Codex lifetime-home registry."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -15,7 +13,6 @@ if TYPE_CHECKING:
 def test_codex_home_regression_lifetime_registry_cap_never_removes_active_homes(
     tmp_path: Path,
 ) -> None:
-    """S-10: registry eviction drops only atexit tracking, never a live home."""
     original_homes = codex_module._all_allocated_codex_homes
     original_cap = codex_module._ALL_CODEX_HOMES_CAP
     codex_module._all_allocated_codex_homes = set()

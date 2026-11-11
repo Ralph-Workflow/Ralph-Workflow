@@ -1,5 +1,3 @@
-"""Shared plan artifact fixtures for tests."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -70,7 +68,6 @@ Expect: the repository test suite passes with exit code 0
 
 
 def development_result_markdown(unit_id: str) -> str:
-    """Return a valid development-result document for a synthetic worker."""
     return f"""\
 ---
 type: development_result
@@ -95,7 +92,6 @@ def commit_review_markdown(
     *,
     tree_sha: str | None = None,
 ) -> str:
-    """Return a valid commit-review document for action/value pairs."""
     rendered_actions = "\n".join(
         f"- [A-{index}] {action} | {value}"
         for index, (action, value) in enumerate(actions, start=1)
@@ -113,7 +109,6 @@ def commit_review_markdown(
 
 
 def commit_message_markdown(subject: str) -> str:
-    """Return a valid conventional-commit Markdown artifact."""
     return f"""\
 ---
 type: commit
@@ -133,7 +128,6 @@ subject: {subject}
 
 
 def analysis_decision_markdown(artifact_type: str, status: str) -> str:
-    """Return a valid analysis-decision document with the requested status."""
     return f"""\
 ---
 type: {artifact_type}

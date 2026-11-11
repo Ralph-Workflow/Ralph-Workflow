@@ -1,38 +1,3 @@
-"""Opt-out detection and idempotent AGENTS.md/CLAUDE.md bootstrap.
-
-All operations act on an injected :class:`~ralph.workspace.protocol.Workspace`.
-There is no raw ``pathlib.Path`` I/O so the bootstrap is fully testable
-with :class:`~ralph.workspace.memory.MemoryWorkspace`.
-
-Behavior summary:
-
-* :func:`is_opted_out` returns True ONLY when AGENTS.md exists AND its
-  contents contain the byte-exact :data:`markers.OPT_OUT_MARKER` substring.
-  Missing AGENTS.md returns False; near-miss prose, extra whitespace, or
-  any case change returns False.
-
-* :func:`bootstrap` is idempotent:
-
-  * AGENTS.md missing -> create a deterministic minimal placeholder that
-    contains the managed block, references :data:`markers.CANONICAL_DIR`,
-    and instructs the first remediation agent to inspect the project,
-    create and maintain the canonical files under ``docs/ralph-workflow-policy/``,
-    migrate existing policies, configure executable gates, require agents
-    to run those gates, and replace placeholder state. The placeholder
-    MUST NOT claim any tool, command, or safeguard exists.
-
-  * AGENTS.md present WITHOUT the managed block -> append exactly one
-    managed block after existing content, preserving all prior bytes
-    byte-for-byte.
-
-  * AGENTS.md present WITH the managed block -> no-op.
-
-  * CLAUDE.md missing -> create a minimal file pointing Claude-compatible
-    agents to AGENTS.md.
-
-  * CLAUDE.md present -> preserve unrelated content; append a one-line
-    AGENTS.md pointer only when no AGENTS.md reference already exists.
-"""
 
 from __future__ import annotations
 
@@ -46,17 +11,10 @@ if TYPE_CHECKING:
     from ralph.project_policy._readiness_assessment import ReadinessAssessment
     from ralph.workspace.protocol import Workspace
 
-#: Matches the managed block's begin marker for ANY version token. The token
-#: carries the version of the managed block TEXT, so a project bootstrapped
-#: under an older text still carries a managed block this module must be able
-#: to find (and re-render in place) instead of mistaking it for a malformed
-#: file.
 _AGENTS_BLOCK_BEGIN_RE: Final[re.Pattern[str]] = re.compile(
     r"<!-- ralph-workflow-policy:begin v\d+ -->"
 )
 
-#: The three readiness dimensions the READY block reports, in the order the
-#: block prints them. Used to carry the reported state across a re-render.
 _READINESS_DIMENSIONS_RE: Final[re.Pattern[str]] = re.compile(
     r"structure complete=(?P<structure_complete>[a-z]+), "
     r"implementation verified=(?P<implementation_verified>[a-z]+), "
@@ -65,12 +23,6 @@ _READINESS_DIMENSIONS_RE: Final[re.Pattern[str]] = re.compile(
 
 
 class _ManagedBlock(NamedTuple):
-    """One managed block located inside an AGENTS.md document.
-
-    ``begin_index`` and ``end_index`` are offsets into the document: the
-    begin marker starts at ``begin_index`` and the end marker starts at
-    ``end_index``. ``body`` is the text strictly between the two markers.
-    """
 
     begin_marker: str
     begin_index: int
@@ -78,10 +30,6 @@ class _ManagedBlock(NamedTuple):
     body: str
 
 
-# Placeholder AGENTS.md content shipped on a fresh project. It instructs the
-# first remediation agent to inspect the project, customize canonical files,
-# and reconcile existing policies. It does NOT claim any tool, command, or
-# safeguard exists.
 _AGENTS_PLACEHOLDER_TEMPLATE = """{begin}
 This project participates in Ralph Workflow's project-policy-readiness
 preflight. Before ordinary planning or development begins, the canonical
@@ -125,35 +73,12 @@ whitespace, or case changes do not satisfy any requirement.
 {end}
 """
 
-# Distinctive phrase present ONLY in the bootstrap placeholder body. Used to
-# recognize an untouched placeholder so it can be condensed after READY; an
-# agent- or user-rewritten block never contains it and is preserved.
 _PLACEHOLDER_SENTINEL = "The remediation agent MUST, in order:"
 
-# Distinctive phrase present ONLY in the Ralph-managed condensed block.
-# Used to recognize a block previously written by this module so subsequent
-# remediation/analysis calls can refresh its three readiness dimensions
-# instead of leaving stale values. A user- or agent-rewritten block never
-# contains this phrase and is preserved byte-for-byte.
 _RALPH_MANAGED_SIGNATURE = "Readiness reports THREE dimensions, not two:"
 
 
-# Concise managed block written once the project is READY. The bootstrap
-# placeholder above is TEMPORARY scaffolding for the first remediation agent;
-# leaving its long instruction list in AGENTS.md forever would bury the
-# user's own content. The condensed block keeps only what every future AI
-# agent needs: the pointer to the canonical policy dir and the obligation to
-# follow it (which also keeps the validator's canonical-dir-in-block gate
-# satisfied).
-#
-# v5: the block now reports the three readiness dimensions (structure
-# complete, implementation verified, outcome evidence reviewed) so an
-# agent reading AGENTS.md sees the current state and not just the
-# two-state "READY / not READY" projection. A structural READY is
-# the caching gate; semantic correctness is the agent's
-# responsibility and is reported separately.
 class _AgentsReadyTemplate(str):
-    """String template that defaults readiness dimensions to 'unknown'."""
 
     def format(self, *args: object, **kwargs: object) -> str:
         kwargs.setdefault("structure_complete", "unknown")
@@ -175,8 +100,6 @@ Readiness reports THREE dimensions, not two: structure complete={structure_compl
 """
 )
 
-# CLAUDE.md minimal content. Point Claude-compatible agents at AGENTS.md
-# without overriding any of its directives.
 _CLAUDE_MINIMAL_CONTENT = (
     "# CLAUDE.md\n\n"
     "Claude-compatible agents working in this repository MUST follow the\n"
@@ -187,7 +110,6 @@ _CLAUDE_MINIMAL_CONTENT = (
 
 
 def is_opted_out(workspace: Workspace) -> bool:
-    """Return True iff AGENTS.md exists and contains the byte-exact opt-out marker."""
     if not workspace.exists(markers.AGENTS_MD):
         return False
     content = workspace.read(markers.AGENTS_MD)
@@ -195,15 +117,6 @@ def is_opted_out(workspace: Workspace) -> bool:
 
 
 def has_significant_unmanaged_content(workspace: Workspace) -> bool:
-    """Return True iff AGENTS.md is marker-free and holds significant content.
-
-    Significant means at least one markdown heading line (starting with
-    :data:`markers.SIGNIFICANT_HEADING_PREFIX`) or at least
-    :data:`markers.SIGNIFICANT_NONEMPTY_LINE_THRESHOLD` non-empty lines.
-    Any Ralph marker (managed block or opt-out) means the repository has
-    already been bootstrapped or already decided, so the interactive
-    skip-inline-policy offer must not fire.
-    """
     if not workspace.exists(markers.AGENTS_MD):
         return False
     content = workspace.read(markers.AGENTS_MD)
@@ -216,13 +129,6 @@ def has_significant_unmanaged_content(workspace: Workspace) -> bool:
 
 
 def write_opt_out(workspace: Workspace) -> list[str]:
-    """Append the byte-exact opt-out marker to AGENTS.md.
-
-    Persists the user's "keep my existing policy" choice from the run
-    preflight prompt. Prior bytes are preserved; a file already carrying
-    the marker is left untouched. Returns the changed-file list
-    (``[markers.AGENTS_MD]`` or ``[]``), mirroring :func:`bootstrap`.
-    """
     content = workspace.read(markers.AGENTS_MD) if workspace.exists(markers.AGENTS_MD) else ""
     if markers.OPT_OUT_MARKER in content:
         return []
@@ -237,7 +143,6 @@ def write_opt_out(workspace: Workspace) -> list[str]:
 
 
 def _managed_block() -> str:
-    """Return the managed AGENTS.md instruction block content."""
     return _AGENTS_PLACEHOLDER_TEMPLATE.format(
         begin=markers.AGENTS_BLOCK_BEGIN,
         end=markers.AGENTS_BLOCK_END,
@@ -246,7 +151,6 @@ def _managed_block() -> str:
 
 
 def _extract_readiness_dimensions(body: str) -> tuple[str, str, str]:
-    """Extract (structure_complete, implementation_verified, outcome_evidence_reviewed) from body."""
     match = _READINESS_DIMENSIONS_RE.search(body)
     if match:
         return (
@@ -262,7 +166,6 @@ def _render_ready_block(
     implementation_verified: str,
     outcome_evidence_reviewed: str,
 ) -> str:
-    """Render the concise ready block with explicit readiness dimensions."""
     return _AGENTS_READY_TEMPLATE.format(
         begin=markers.AGENTS_BLOCK_BEGIN,
         end=markers.AGENTS_BLOCK_END,
@@ -274,12 +177,6 @@ def _render_ready_block(
 
 
 def _locate_managed_block(content: str) -> _ManagedBlock | None:
-    """Return the unique managed block in content, or None if malformed/missing.
-
-    Matches any version of the begin marker (``<!-- ralph-workflow-policy:begin v\\d+ -->``).
-    Returns None if there is not exactly one begin marker and exactly one end marker,
-    or if the begin marker appears after the end marker.
-    """
     begin_matches = list(_AGENTS_BLOCK_BEGIN_RE.finditer(content))
     end_count = content.count(markers.AGENTS_BLOCK_END)
     if len(begin_matches) != 1 or end_count != 1:
@@ -298,7 +195,6 @@ def _locate_managed_block(content: str) -> _ManagedBlock | None:
 
 
 def _has_well_formed_managed_block(content: str) -> bool:
-    """Return True only when the managed block is structurally complete."""
     return _locate_managed_block(content) is not None
 
 
@@ -307,12 +203,6 @@ def _maybe_migrate_ralph_block(
     content: str,
     block: _ManagedBlock,
 ) -> list[str] | None:
-    """Migrate recognized Ralph-owned blocks if outdated.
-
-    Returns [markers.AGENTS_MD] if modified, or None if no migration was performed.
-    User-authored blocks (neither placeholder sentinel nor Ralph-managed signature)
-    are left untouched and return None.
-    """
     body = block.body
     is_placeholder = _PLACEHOLDER_SENTINEL in body
     is_ralph_managed = _RALPH_MANAGED_SIGNATURE in body
@@ -350,22 +240,6 @@ def _maybe_migrate_ralph_block(
 
 
 def _bootstrap_agents_md(workspace: Workspace) -> list[str]:
-    """Create or update AGENTS.md; return the changed-file list.
-
-    Bootstrap is intentionally conservative on malformed AGENTS.md state:
-    partial managed-block markers (begin without end, end without begin),
-    duplicate markers, or begin-after-end pairing are left for the
-    deterministic remediation agent rather than silently appended-to,
-    because appending to those states would create a second begin marker
-    the validator would then flag and a Ralph bootstrap would never be
-    able to clear. A clean (marker-free) pre-existing AGENTS.md still
-    receives an appended managed block, which is the original bootstrap
-    contract for first-time projects.
-
-    A well-formed block recognized as a Ralph-owned placeholder or ready
-    block is migrated in place if it carries outdated instructions or markers.
-    User-authored managed blocks are preserved byte-for-byte.
-    """
     if not workspace.exists(markers.AGENTS_MD):
         workspace.write(markers.AGENTS_MD, _managed_block().rstrip() + "\n")
         return [markers.AGENTS_MD]
@@ -375,17 +249,9 @@ def _bootstrap_agents_md(workspace: Workspace) -> list[str]:
         migrated = _maybe_migrate_ralph_block(workspace, content, block)
         if migrated is not None:
             return migrated
-        return []  # idempotent: block already present and current, or user-authored.
-    if _has_any_managed_marker(content):
-        # Partial/duplicate/misordered managed-block state: do NOT append
-        # another block. The deterministic validator emits a stable
-        # RWP-MARKER:agents-block-* finding and the remediation agent
-        # repairs the file in one change. Appending here would create a
-        # second begin marker the validator would also flag, leaving the
-        # file in an unfixable state until the agent deletes the duplicate.
         return []
-    # Clean AGENTS.md (no managed markers at all): append one managed block
-    # so the project enters Ralph's policy-readiness contract.
+    if _has_any_managed_marker(content):
+        return []
     if not content.endswith("\n"):
         content = content + "\n"
     workspace.write(
@@ -396,24 +262,14 @@ def _bootstrap_agents_md(workspace: Workspace) -> list[str]:
 
 
 def _has_any_managed_marker(content: str) -> bool:
-    """Return True if the content contains ANY managed block marker.
-
-    A clean (marker-free) AGENTS.md returns False; a file with at least
-    one begin or end marker (whether well-formed, partial, duplicate, or
-    misordered) returns True. Bootstrap uses this to decide between
-    "append one managed block" (clean state) and "leave for remediation"
-    (any malformed state).
-    """
     return _AGENTS_BLOCK_BEGIN_RE.search(content) is not None or markers.AGENTS_BLOCK_END in content
 
 
 def _bootstrap_claude_md(workspace: Workspace) -> list[str]:
-    """Create or update CLAUDE.md; return the changed-file list."""
     if not workspace.exists(markers.CLAUDE_MD):
         workspace.write(markers.CLAUDE_MD, _CLAUDE_MINIMAL_CONTENT)
         return [markers.CLAUDE_MD]
     content = workspace.read(markers.CLAUDE_MD)
-    # Idempotent: skip if AGENTS.md is already referenced.
     if "AGENTS.md" in content:
         return []
     separator = "" if content.endswith("\n") else "\n"
@@ -428,25 +284,6 @@ def condense_placeholder_block(
     workspace: Workspace,
     assessment: ReadinessAssessment | None = None,
 ) -> list[str]:
-    """Condense the bootstrap placeholder, then refresh the ready block.
-
-    First call (untouched bootstrap placeholder still in place, OR a
-    previous Ralph-managed ready block whose dimension values need
-    updating or whose policy loading instructions are outdated): writes the
-    concise ready block carrying the current assessment. The bootstrap
-    placeholder is temporary scaffolding for the first remediation agent;
-    once the policies exist and validate, only the short pointer block
-    remains. Subsequent calls with an unchanged assessment and current
-    instructions are idempotent and return ``[]``; subsequent calls with a
-    different assessment refresh the three dimension values.
-
-    A block whose body was rewritten by an agent or the user (matches
-    neither the placeholder sentinel nor the Ralph-managed signature),
-    a missing AGENTS.md, or a malformed block is left untouched — user-
-    and agent-authored content is never clobbered.
-
-    Returns the changed-file list (``[markers.AGENTS_MD]`` or ``[]``).
-    """
     if not workspace.exists(markers.AGENTS_MD):
         return []
     content = workspace.read(markers.AGENTS_MD)
@@ -468,8 +305,6 @@ def condense_placeholder_block(
     has_loading_order = "execution-kernel.md first" in body
     has_current_marker = block.begin_marker == markers.AGENTS_BLOCK_BEGIN
 
-    # Idempotent guard: if already carrying current instructions, current marker,
-    # and the three readiness values match, skip rewrite.
     if (
         has_loading_order
         and has_current_marker
@@ -488,15 +323,8 @@ def condense_placeholder_block(
     return [markers.AGENTS_MD]
 
 
-#: Decided-value ceiling for the managed Ralph Workflow instruction block in
-#: AGENTS.md. Advisory: the managed block carries only non-inferable pointers
-#: and readiness state (about 33 lines today); keeping it under 40 lines prevents
-#: instruction bloat that dilutes user-authored rules.
 MANAGED_BLOCK_LINE_BUDGET: Final[int] = markers.MANAGED_BLOCK_LINE_BUDGET
 
-#: Decided-value ceiling for the whole project AGENTS.md file. Advisory: Anthropic's
-#: stated 200-line ceiling keeps the primary instruction file lean so load-bearing
-#: rules stay salient; bulk summaries belong in docs rather than instructions.
 PROJECT_AGENTS_MD_LINE_BUDGET: Final[int] = markers.PROJECT_AGENTS_MD_LINE_BUDGET
 
 _GIT_REFS: Final[frozenset[str]] = frozenset(
@@ -505,12 +333,6 @@ _GIT_REFS: Final[frozenset[str]] = frozenset(
 
 
 def check_agents_md_line_budgets(content: str) -> list[PolicyFinding]:
-    """Validate project AGENTS.md and managed block line counts against decided-value budgets.
-
-    Advisory / warning-only checks: emits a finding when the total file exceeds
-    :data:`PROJECT_AGENTS_MD_LINE_BUDGET` (200 lines) or the managed block exceeds
-    :data:`MANAGED_BLOCK_LINE_BUDGET` (40 lines).
-    """
     findings: list[PolicyFinding] = []
     lines = content.splitlines()
     if len(lines) > PROJECT_AGENTS_MD_LINE_BUDGET:
@@ -613,7 +435,6 @@ def _check_one_candidate(
 
 
 def check_agents_md_path_citations(workspace: Workspace, content: str) -> list[PolicyFinding]:
-    """Validate that paths cited in AGENTS.md exist in the workspace."""
     block = _locate_managed_block(content)
     if block is not None:
         content = (
@@ -635,12 +456,6 @@ def check_agents_md_path_citations(workspace: Workspace, content: str) -> list[P
 
 
 def bootstrap(workspace: Workspace) -> list[str]:
-    """Idempotently bootstrap AGENTS.md and CLAUDE.md.
-
-    Returns the list of workspace-relative paths that were created or
-    modified. Repeated calls never duplicate the managed block or append a
-    second pointer to CLAUDE.md.
-    """
     changed = _bootstrap_agents_md(workspace)
     changed.extend(_bootstrap_claude_md(workspace))
     return changed

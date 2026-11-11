@@ -1,5 +1,3 @@
-"""_RecordingMcpFactory helper for test_same_workspace_fan_out_e2e."""
-
 from __future__ import annotations
 
 from ralph.mcp.server.factory import McpServerHandle

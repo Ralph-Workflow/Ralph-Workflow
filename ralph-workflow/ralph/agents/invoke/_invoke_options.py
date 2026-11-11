@@ -1,26 +1,3 @@
-"""Invocation options and the invoke path's collaborator-injection surface.
-
-``InvokeOptions`` is the public handle callers use to shape one agent
-invocation.  Besides the per-invocation values it carries the scoped
-collaborator overrides used to inject fakes into the invoke path WITHOUT
-reaching into module internals:
-
-* :meth:`InvokeOptions.command_builder_override` replaces the argv builder.
-* :meth:`InvokeOptions.process_monitor_factory_override` replaces the
-  process-monitor factory.
-* :meth:`InvokeOptions.workspace_monitor_factory_override` replaces the
-  workspace-monitor factory.
-* :meth:`InvokeOptions.upstream_env_applier_override` replaces the upstream
-  MCP env projection used by the per-transport runtime resolvers.
-* :meth:`InvokeOptions.platform_override` replaces the host platform the
-  runtime resolvers use for OS-specific path selection.
-
-Every override is scoped to a ``with`` block and is stored in a
-:class:`~contextvars.ContextVar`, so the override is visible to the code that
-runs inside the block (including the generators the invoke path yields from)
-and is undone when the block exits -- even if the block raises.  Production
-callers never open an override scope, so the default behaviour is unchanged.
-"""
 
 from __future__ import annotations
 
@@ -56,7 +33,6 @@ if TYPE_CHECKING:
 
 
 class _CommandBuilder(Protocol):
-    """Builds the argv for one agent invocation."""
 
     def __call__(
         self,
@@ -68,7 +44,6 @@ class _CommandBuilder(Protocol):
 
 
 class _ProcessMonitorFactory(Protocol):
-    """Builds the process monitor for one agent invocation."""
 
     def __call__(
         self,
@@ -83,7 +58,6 @@ class _ProcessMonitorFactory(Protocol):
 
 
 class _WorkspaceMonitorFactory(Protocol):
-    """Builds the workspace monitor for one agent invocation."""
 
     def __call__(
         self,
@@ -95,7 +69,6 @@ class _WorkspaceMonitorFactory(Protocol):
 
 
 class _UpstreamEnvApplier(Protocol):
-    """Projects resolved upstream MCP servers into the runtime and server envs."""
 
     def __call__(
         self,
@@ -130,32 +103,14 @@ _PLATFORM_OVERRIDE: ContextVar[str | None] = ContextVar(
 
 @dataclass(frozen=True)
 class InvokeOptions:
-    """Options for agent invocation."""
 
-    # Optional workspace-monitor factory. Production callers leave this
-    # ``None`` so :mod:`ralph.agents.invoke` constructs the real
-    # ``WorkspaceMonitor`` (which starts a real watchdog observer).
-    # Tests that only exercise routing / dispatch behavior inject a
-    # factory that returns ``None`` (skip the observer entirely) or a
-    # fake monitor so they do not block on the real watchdog observer's
-    # ``start`` / ``stop`` cost under the 1-second per-test timeout
-    # enforced by ``tests/conftest.py``. The factory signature mirrors
-    # :func:`ralph.agents.invoke._start_workspace_monitor` so callers
-    # can pass a thin ``lambda *args, **kwargs: None`` shortcut.
     workspace_monitor_factory: (
         Callable[[Path, WorkspaceChangeClassifier | None], WorkspaceMonitor | None] | None
     ) = None
     workspace_probe: WorkspaceChangeProbe | None = None
     workspace: Workspace | None = None
     phase: str | None = None
-    # Name of the agent this invocation runs as. It is part of the
-    # attempt identity carried by the failure observation, so the ledger
-    # owner can attribute the attempt without inventing an identity.
     agent_name: str | None = None
-    # Sink that receives the immutable, attempt-scoped observation of a
-    # failed attempt. The sink is installed by the caller for ONE attempt
-    # and is invoked at most once per failed attempt, so the observation
-    # can never leak into a later attempt.
     failure_observation_sink: Callable[[AgentFailureEvent], None] | None = None
 
     model_flag: str | None = None
@@ -217,33 +172,8 @@ class InvokeOptions:
     initial_session_id: str | None = None
     settings_json: str | None = None
     stop_sentinel_path: Path | None = None
-    # Live runtime signals from the pipeline that the watchdog consults
-    # on every evaluate() call so the StuckClassifier gate can return
-    # DUPLICATE_KILL (when the pipeline is already in a wait state)
-    # or WAITING_ON_CONNECTIVITY (when the network is offline) and
-    # defer the fire. Both providers are optional; the watchdog
-    # falls back to "no live signal" when they are None.
     connectivity_state_provider: Callable[[], str | None] | None = None
     is_waiting_state_provider: Callable[[], bool] | None = None
-    # R1 / R5 (Trustworthy Idle Watchdog spec): when the orchestrator
-    # pre-builds a per-invocation ``SubagentPidRegistry`` and its
-    # per-transport ``SubagentPidSource``, it threads them through
-    # here so the SAME registry reaches both the strategy layer
-    # (``strategy_for_command(..., subagent_pid_source=...)``) and
-    # the parser layer (``stream_parsed_agent_activity(...
-    # subagent_pid_registry=...)``). Without these fields, the
-    # strategy layer builds a FRESH registry internally and the
-    # parser-registered PIDs never reach the strategy's filtered
-    # count -- the watchdog-visible filtered subagent count is
-    # desynchronized from the parser's authoritative registration
-    # set. The shared-registry contract is documented at
-    # ``ralph/agents/registry.py:build_subagent_pid_registry``.
-    #
-    # Both fields default to ``None`` so the legacy direct-call
-    # signature ``invoke_agent(config, prompt_file, options=...)``
-    # still works (the strategy layer builds a fresh registry
-    # internally for backward compat with test fakes that pre-date
-    # the R5 cross-transport wiring).
     subagent_pid_registry: SubagentPidRegistry | None = None
     subagent_pid_source: SubagentPidSource | None = None
 
@@ -253,28 +183,10 @@ class InvokeOptions:
             if override is not None:
                 object.__setattr__(self, "workspace_monitor_factory", override)
 
-    # ------------------------------------------------------------------
-    # Scoped collaborator overrides (the invoke path's injection seam)
-    # ------------------------------------------------------------------
-    #
-    # Each override is a context manager that installs a fake for the
-    # duration of the block.  They live on the public options class so a
-    # caller can inject a collaborator without importing (or rebinding) a
-    # production private.
 
     @classmethod
     @contextmanager
     def command_builder_override(cls, builder: _CommandBuilder) -> Iterator[None]:
-        """Replace the argv builder for the duration of the block.
-
-        Args:
-            builder: Callable invoked with the agent config, the prompt
-                file and the resolved ``BuildCommandOptions``; it returns
-                the argv for the invocation.
-
-        Yields:
-            Nothing; the scope is the unit of installation.
-        """
         token = _COMMAND_BUILDER_OVERRIDE.set(builder)
         try:
             yield
@@ -284,16 +196,6 @@ class InvokeOptions:
     @classmethod
     @contextmanager
     def process_monitor_factory_override(cls, factory: _ProcessMonitorFactory) -> Iterator[None]:
-        """Replace the process-monitor factory for the duration of the block.
-
-        Args:
-            factory: Callable invoked with the process handle, the agent
-                config, the timeout policy and the optional subagent PID
-                source; it returns the monitor (or ``None`` to skip it).
-
-        Yields:
-            Nothing; the scope is the unit of installation.
-        """
         token = _PROCESS_MONITOR_FACTORY_OVERRIDE.set(factory)
         try:
             yield
@@ -306,15 +208,6 @@ class InvokeOptions:
         cls,
         factory: _WorkspaceMonitorFactory | None,
     ) -> Iterator[None]:
-        """Replace the workspace-monitor factory for the duration of the block.
-
-        Args:
-            factory: Callable invoked with the workspace path and optional
-                workspace change classifier; returns a WorkspaceMonitor or None.
-
-        Yields:
-            Nothing; the scope is the unit of installation.
-        """
         token = _WORKSPACE_MONITOR_FACTORY_OVERRIDE.set(factory)
         try:
             yield
@@ -324,16 +217,6 @@ class InvokeOptions:
     @classmethod
     @contextmanager
     def upstream_env_applier_override(cls, applier: _UpstreamEnvApplier) -> Iterator[None]:
-        """Replace the upstream MCP env projection for the duration of the block.
-
-        Args:
-            applier: Callable invoked with the resolved upstreams, the
-                workspace path and the runtime / server environment dicts
-                it mutates.
-
-        Yields:
-            Nothing; the scope is the unit of installation.
-        """
         token = _UPSTREAM_ENV_APPLIER_OVERRIDE.set(applier)
         try:
             yield
@@ -343,18 +226,6 @@ class InvokeOptions:
     @classmethod
     @contextmanager
     def platform_override(cls, platform: str) -> Iterator[None]:
-        """Replace the host platform for the duration of the block.
-
-        The runtime resolvers use the platform to pick OS-specific paths
-        (the Cursor IDE state database lives in a different place on
-        macOS).  Overriding it keeps those paths testable on any host.
-
-        Args:
-            platform: Platform identifier, e.g. ``"darwin"`` or ``"linux"``.
-
-        Yields:
-            Nothing; the scope is the unit of installation.
-        """
         token = _PLATFORM_OVERRIDE.set(platform)
         try:
             yield

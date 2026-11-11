@@ -1,5 +1,3 @@
-"""Tests: OpenCode stale-session substrings classify as AGENT + reset_session=True."""
-
 from __future__ import annotations
 
 import pytest
@@ -9,7 +7,7 @@ from ralph.recovery.classifier import FailureCategory, FailureClassifier
 
 
 class _AgentInvocationError(Exception):
-    """Simulates AgentInvocationError via class name matching."""
+    pass
 
 
 _AgentInvocationError.__name__ = "AgentInvocationError"
@@ -29,7 +27,6 @@ _CLASSIFIER = FailureClassifier()
     ],
 )
 def test_opencode_stale_session_message_sets_reset_session_true(message: str) -> None:
-    """OpenCode stale-session substrings trigger reset_session=True and AGENT category."""
     exc = _AgentInvocationError(message)
     failure = _CLASSIFIER.classify(exc, phase="development", agent="opencode")
 
@@ -43,7 +40,6 @@ def test_opencode_stale_session_message_sets_reset_session_true(message: str) ->
 
 
 def test_opencode_stale_session_attributed_to_agent() -> None:
-    """OpenCode stale-session failure is attributed to the agent."""
     exc = _AgentInvocationError("Session not found: abc123")
     failure = _CLASSIFIER.classify(exc, phase="development", agent="opencode")
 
@@ -52,7 +48,6 @@ def test_opencode_stale_session_attributed_to_agent() -> None:
 
 
 def test_unrelated_opencode_error_does_not_trigger_reset_session() -> None:
-    """Non-stale-session OpenCode errors keep reset_session=False."""
     exc = _AgentInvocationError("Agent 'opencode' failed with code 1: some other error")
     failure = _CLASSIFIER.classify(exc, phase="development", agent="opencode")
 
@@ -60,7 +55,6 @@ def test_unrelated_opencode_error_does_not_trigger_reset_session() -> None:
 
 
 def test_stale_session_detection_is_case_insensitive() -> None:
-    """Lowercase stale-session payloads still trigger reset_session=True."""
     exc = _AgentInvocationError("agent 'opencode' failed: session not found: lower-case")
     failure = _CLASSIFIER.classify(exc, phase="development", agent="opencode")
 
@@ -69,7 +63,6 @@ def test_stale_session_detection_is_case_insensitive() -> None:
 
 
 def test_stale_session_detection_reads_agent_invocation_parsed_output() -> None:
-    """Classifier inspects parsed_output, not just the top-level exception string."""
     exc = AgentInvocationError(
         "opencode",
         1,

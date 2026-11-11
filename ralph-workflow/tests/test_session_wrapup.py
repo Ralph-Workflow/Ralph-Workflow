@@ -1,5 +1,3 @@
-"""MCP development-timebox warning and completion-admission regressions."""
-
 from __future__ import annotations
 
 import time
@@ -118,18 +116,10 @@ def test_reset_wrapup_notification_preserves_wire_compatibility(tmp_path: Path) 
     assert state is ServerState.RUNNING
 
 
-# ---------------------------------------------------------------------------
-# S-6: budget-aware development_wrapup_notice
-# ---------------------------------------------------------------------------
-
-
 def test_development_wrapup_notice_states_remaining_minutes_when_epochs_published(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S-6: MCP deadline delivery surfaces remaining minutes and parallel-dispatch
-    guidance to the developer. Ralph-orchestrated workers are removed; the
-    notice is now single-audience (developer only) and ignores worker_namespace."""
     from ralph.mcp.protocol.env import DEV_DEADLINE_EPOCH_ENV
 
     now = time.time()
@@ -148,9 +138,6 @@ def test_development_wrapup_notice_states_remaining_minutes_when_epochs_publishe
 def test_development_wrapup_notice_keeps_static_text_without_epochs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Without published epochs, the notice keeps the existing static text
-    (no remaining-minutes figure, no ready-group suggestion).
-    """
     from ralph.mcp.protocol.env import DEV_DEADLINE_EPOCH_ENV
     from ralph.mcp.server._session_wrapup import development_wrapup_notice
 

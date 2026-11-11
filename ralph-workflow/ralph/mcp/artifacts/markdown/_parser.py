@@ -1,14 +1,3 @@
-"""Pure parser for the deliberately small markdown artifact grammar.
-
-The parser recognizes exactly four content shapes inside ``## Section``
-headings: stable-ID list items (``- [ID] text``), indented item
-continuation lines (``  Key: value``), stable-ID sub-blocks
-(``### [ID] Title`` followed by free body lines), and plain body lines.
-It never rejects a shape by itself — which shapes a given section may
-use is a per-section :class:`SectionRule` decision enforced by the
-shared structure validator, so the parser stays spec-agnostic and a
-truncated document still yields a line-anchored parse.
-"""
 
 from __future__ import annotations
 
@@ -33,11 +22,6 @@ _ITEM = re.compile(
 )
 _LIST_PREFIX = re.compile(r"^- (?:\[[ xX]\] )?")
 
-# The artifact spec registry (ralph/mcp/artifacts/markdown/registry.py) routes
-# every parsed markdown document to the registered validator. A document
-# whose grammar is broken at the parser level cannot be routed at all — the
-# consumer phrase below is the same one every other blocking diagnostic
-# uses, and ``resolve by`` describes the grammar repair the agent must make.
 _PARSER_ROUTING_CONSUMER = (
     "blocking because the artifact spec registry "
     "(ralph/mcp/artifacts/markdown/registry.py) routes the parsed markdown "
@@ -47,7 +31,6 @@ _PARSER_ROUTING_CONSUMER = (
 
 
 class _SectionBuilder:
-    """Mutable accumulator for one section while the parser scans lines."""
 
     def __init__(self, name: str, line: int, level: int) -> None:
         self.name = name
@@ -55,17 +38,17 @@ class _SectionBuilder:
         self.level = level
         self.lines: list[
             ParsedLine
-        ] = []  # bounded-accumulator-ok: bounded by one document's line count within a single parse call
+        ] = []
         self.items: list[
             ParsedItem
-        ] = []  # bounded-accumulator-ok: bounded by one document's line count within a single parse call
+        ] = []
         self.blocks: list[
             ParsedBlock
-        ] = []  # bounded-accumulator-ok: bounded by one document's line count within a single parse call
+        ] = []
         self.block: ParsedBlock | None = None
         self.block_lines: list[
             ParsedLine
-        ] = []  # bounded-accumulator-ok: bounded by one document's line count within a single parse call
+        ] = []
 
     def finish_block(self) -> None:
         if self.block is not None:
@@ -81,7 +64,6 @@ class _SectionBuilder:
         self.block_lines = []
 
     def start_block(self, identifier: str, title: str, line: int) -> None:
-        """Finish the prior block and begin one parsed stable-ID block."""
         self.finish_block()
         self.block = ParsedBlock(identifier, title, line, ())
 
@@ -102,7 +84,6 @@ def parse_markdown_document(
     *,
     allow_nested_headings: bool = False,
 ) -> tuple[ParsedDocument, list[Diagnostic]]:
-    """Parse ``text`` without raising, returning every recoverable grammar error."""
     diagnostics: list[Diagnostic] = []
     lines = text.splitlines()
     frontmatter: dict[str, str] = {}
@@ -140,7 +121,7 @@ def parse_markdown_document(
             and (
                 allow_nested_headings
                 or cast("str", block_heading.group("marks"))
-                == "###"  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                == "###"
             )
         ):
             finish_item()
@@ -166,7 +147,7 @@ def parse_markdown_document(
             and (
                 allow_nested_headings
                 or cast("str", heading.group("marks"))
-                == "##"  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                == "##"
             )
         ):
             finish_item()
@@ -177,7 +158,7 @@ def parse_markdown_document(
                 line_number,
                 len(
                     cast("str", heading.group("marks"))
-                ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                ),
             )
             continue
         if not line.strip():
@@ -211,13 +192,13 @@ def parse_markdown_document(
             current.finish_block()
             checkbox = cast(
                 "str | None", item.group("checked")
-            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            )
             identifier = cast(
                 "str", item.group("identifier")
-            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            )
             item_text = cast(
                 "str", item.group("text")
-            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            )
             last_item = ParsedItem(
                 identifier=identifier,
                 text=item_text,
@@ -240,7 +221,6 @@ def parse_markdown_document(
 
 
 def stray_line_diagnostic(line: ParsedLine, section: str | None) -> Diagnostic:
-    """Describe a body line found in a section whose rule forbids body content."""
     if _LIST_PREFIX.match(line.text) is not None:
         return Diagnostic(
             line.line,
@@ -257,7 +237,6 @@ def _parse_frontmatter(
     frontmatter_lines: dict[str, int],
     diagnostics: list[Diagnostic],
 ) -> int:
-    """Parse a leading frontmatter block and return the next unconsumed index."""
     for index in range(1, len(lines)):
         line = lines[index]
         line_number = index + 1

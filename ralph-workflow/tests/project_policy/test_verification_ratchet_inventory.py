@@ -1,15 +1,3 @@
-"""Pin the verification starter's B9 ratchet inventory (R3).
-
-These tests parse the SHIPPED ``verification-policy.md`` starter and
-assert that its body carries the plan-enumerated ratchet declaration
-(R3: ``verification-budget-ratchet``), that the declaration is linked
-to a Guard inventory row whose Guard cell starts with the matching
-backticked control id, and that the public readiness validator
-accepts the file. The ratchet's row detects unauthorized budget
-growth (recorded ``verification_time_budget`` shrinking is free;
-growth is rejected absent a reviewed change).
-"""
-
 from __future__ import annotations
 
 import re
@@ -23,7 +11,6 @@ _R3_ID = "verification-budget-ratchet"
 
 
 def _filled_in_body(name: str) -> str:
-    """Read a starter and resolve placeholders the way the remediation prompt does."""
     content = read_starter(name)
     for prefix in ("<!-- RALPH-STARTER-TEMPLATE", "<!-- REPLACE-ME"):
         while (start := content.find(prefix)) != -1:
@@ -36,14 +23,12 @@ def _filled_in_body(name: str) -> str:
 
 
 def test_body_declares_r3_control_token() -> None:
-    """The R3 body declaration carries the inline ``verification-budget-ratchet`` token."""
     content = _filled_in_body("verification-policy.md")
     ids = re.findall(markers.CONTROL_TOKEN_RE, content)
     assert _R3_ID in ids
 
 
 def test_guard_inventory_carries_r3_row() -> None:
-    """The Guard inventory table has a row whose Guard cell starts with the R3 id."""
     content = _filled_in_body("verification-policy.md")
     findings = _check_guard_inventory(
         content, path="verification-policy.md", filename="verification-policy.md"
@@ -58,22 +43,10 @@ def test_guard_inventory_carries_r3_row() -> None:
 
 
 def test_r3_row_detects_unauthorized_budget_growth() -> None:
-    """The R3 row's Detected condition literally detects unauthorized growth.
-
-    Per the plan: ``verification_time_budget`` shrinking is free;
-    growth is rejected absent a reviewed change. The row's
-    ``Detected condition`` cell must mention the recorded
-    ``verification_time_budget`` so the detector can observe the
-    actual value, not a vague "fast" claim.
-    """
     content = _filled_in_body("verification-policy.md")
     findings = _check_guard_inventory(
         content, path="verification-policy.md", filename="verification-policy.md"
     )
-    # We can't easily check the row's exact cell without parsing
-    # twice, so assert that the R3 row's full presence is accepted
-    # (no claim-scope findings) and that no R3-related inventory
-    # findings exist.
     bad = [
         f
         for f in findings
@@ -89,15 +62,6 @@ def test_r3_row_detects_unauthorized_budget_growth() -> None:
 
 
 def test_r3_row_actually_mentions_verification_time_budget() -> None:
-    """The R3 row's Detected condition MUST literally name the budget fact.
-
-    This is the fault-sensitive check: a future edit that drops the
-    ``verification_time_budget`` phrase from the row's Detected
-    condition (replacing it with a vague "fast" claim) is a
-    regression, and this test fails to prove it. A mutation that
-    removes the phrase from the shipped corpus must produce a
-    failing test.
-    """
     content = _filled_in_body("verification-policy.md")
     rows = _parse_guard_inventory(content)
     r3_rows = [row for row in rows if _R3_ID in row["guard"]]
@@ -120,7 +84,6 @@ def test_r3_row_actually_mentions_verification_time_budget() -> None:
 
 
 def test_public_validator_accepts_filled_in_verification_starter() -> None:
-    """The public validator returns zero RWP-INVENTORY findings for the filled-in starter."""
     content = _filled_in_body("verification-policy.md")
     findings = _validate_existing_policy_file(
         content, path="verification-policy.md", filename="verification-policy.md"

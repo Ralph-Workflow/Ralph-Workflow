@@ -1,10 +1,8 @@
-"""Watchdog-relevant agent activity kind enumeration."""
 
 from enum import StrEnum
 
 
 class AgentActivityKind(StrEnum):
-    """Kinds of agent activity that can reset the idle watchdog."""
 
     OUTPUT_LINE = "output_line"
     STREAM_DELTA = "stream_delta"

@@ -1,9 +1,3 @@
-"""Workspace tool handlers for MCP interactions.
-
-Ports the Rust ``mcp_server::tool_workspace`` helpers into Python so MCP
-handlers can read, list, search, and write workspace files while enforcing
-session capabilities and edit area policies.
-"""
 
 from __future__ import annotations
 

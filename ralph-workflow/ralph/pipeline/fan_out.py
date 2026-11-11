@@ -1,11 +1,3 @@
-# Deprecated: Ralph-orchestrated workers are removed from the execution model; parallelism is owned by the developer agent's own sub-agents. See docs/sphinx/concepts.md §"Deprecated: Ralph-orchestrated workers".
-"""Fan-out parallel execution for the pipeline runner.
-
-Dormant since the parallelization rework; not invoked by the effect router
-when ``dispatch_mode='agent_subagents'`` (the bundled default). Retained for
-future use. Re-arm by setting ``[phases.<phase>.parallelization] dispatch_mode
-= 'ralph_fan_out'`` on the relevant phase in pipeline.toml.
-"""
 
 from __future__ import annotations
 
@@ -120,19 +112,6 @@ def _notify_subscriber(subscriber: _PipelineSubscriberLike | None, state: Pipeli
 
 
 def _recovery_owner(ctx: _FanOutCtx) -> RecoveryController | None:
-    """Return the recovery owner this fan-out can reach, if any.
-
-    A fan-out crash is a phase failure, so the OWNER of the "may this
-    agent try again" decision is the run's recovery controller. Handing
-    the reducer ``None`` while an owner exists would make the reducer
-    fail the phase closed instead of applying the owner's verdict, so
-    the crash would never earn the one bounded retry the owner may
-    grant. ``PipelineDeps.recovery_controller`` is the controller the
-    run loop installed for this run -- the same owner every other phase
-    path consults -- so reaching it here does not create a second
-    decision owner. When no owner is reachable the reducer's documented
-    fail-closed route applies instead.
-    """
     if ctx.pipeline_deps is None:
         return None
     return ctx.pipeline_deps.recovery_controller
@@ -151,7 +130,6 @@ def write_parallel_development_summary(
     state: PipelineState,
     verification: VerificationResult | None = None,
 ) -> None:
-    """Write the Markdown parallel-development summary after fan-out completes."""
     v = verification or VerificationResult(ran=False, passed=None, exit_code=None)
     workers: list[dict[str, object]] = []
     for unit in effect.work_units:
@@ -215,7 +193,6 @@ def write_parallel_development_summary(
     markdown = _render_parallel_summary_markdown(summary)
     agent_artifacts = workspace_scope.root / ".agent" / "artifacts"
     summary_path = agent_artifacts / "parallel_development_summary.md"
-    # filesystem-write-ok: fan-out coordination state under .agent/fan_out, runtime coordination not tracked
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     write_text_if_changed(DEFAULT_FILE_BACKEND, summary_path, markdown, encoding="utf-8")
     logger.debug(
@@ -233,17 +210,9 @@ def write_parallel_summary_handoff(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> str | None:
-    """Write the markdown handoff for the internally generated parallel summary.
-
-    The summary is engine-generated (never an agent-submitted markdown
-    artifact), so fan-out renders the handoff itself. It reuses the
-    development-result handoff path so the analysis phase picks it up through
-    the same fallback path without code changes.
-    """
     relative_path = handoff_path_for_artifact("parallel_development_summary")
     if relative_path is None:
         return None
-    # filesystem-write-ok: fan-out coordination state under .agent/fan_out, runtime coordination not tracked
     destination = workspace_root / relative_path
     write_text_if_changed(
         backend,
@@ -256,7 +225,6 @@ def write_parallel_summary_handoff(
 
 
 def _render_parallel_summary_markdown(content: Mapping[str, object]) -> str:
-    """Render the parallel development summary for analysis agent consumption."""
     lines = ["# Parallel Development Summary"]
 
     workers = content.get("workers")
@@ -305,7 +273,7 @@ def _parallel_display_cls() -> type[ParallelDisplay]:
     module = import_module("ralph.display.parallel_display")
     return cast(
         "type[ParallelDisplay]", module.ParallelDisplay
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
 
 
 def _fan_out_display_and_subscriber(
@@ -319,7 +287,7 @@ def _fan_out_display_and_subscriber(
     else:
         console = cast(
             "Console | None", getattr(display, "console", None)
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         parallel_display = parallel_display_cls(make_display_context(console=console))
     effective_subscriber = dashboard_subscriber or pipeline_subscriber
     if effective_subscriber is None and hasattr(parallel_display, "subscriber"):
@@ -336,25 +304,15 @@ def build_session_mcp_plan_for_phase(
     workspace_scope: WorkspaceScope,
     config: UnifiedConfig | None,
 ) -> tuple[SessionMcpPlan, str]:
-    """Build session MCP plan for fan-out workers matching the serial execution contract.
-
-    Public because the chain-transport decision it makes is the whole
-    multimodal guard for a phase: which CLI the one shared session is
-    tagged with, and whether a provider is resolved for it at all. As a
-    private function that decision could only be tested through its
-    parts -- and a mutation sweep confirmed both wirings could be
-    reverted with the entire suite green, including one that restored
-    the defect this resolution exists to prevent.
-    """
     phase_def = policy_bundle.pipeline.phases.get(effect.phase)
 
     _effect_drain = cast(
         "str | None", getattr(effect, "drain", None)
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     drain: str = (
         cast(
             "str", _effect_drain
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
         or (phase_def.drain if phase_def and hasattr(phase_def, "drain") else None)
         or effect.phase
         or "development"
@@ -377,19 +335,11 @@ def build_session_mcp_plan_for_phase(
     _transport_raw = cast("object", getattr(agent_config, "transport", None))
     transport = (
         cast("AgentTransport | None", _transport_raw) if agent_config is not None else None
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     _model_flag_raw = cast("object", getattr(agent_config, "model_flag", None))
     model_flag = (
         cast("str | None", _model_flag_raw) if agent_config is not None else None
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-    # One phase session can serve any agent in the chain, but it is built
-    # before the chain is walked. Tagging it with the FIRST agent's
-    # transport hands a restricted later agent an inline image; resolve
-    # across all candidates with the shared conservative rule instead.
-    #
-    # MUST come after the model flag is read: the flag belongs to the
-    # first candidate, and once the tag names a different CLI the two no
-    # longer describe the same agent.
+    )
     chain_transport, chain_is_ambiguous = resolve_phase_session_transport(candidate_agents, config)
     transport, model_flag = phase_session_identity(
         transport, model_flag, chain_transport, chain_is_ambiguous=chain_is_ambiguous
@@ -421,14 +371,14 @@ def _fan_out_worker_context(
         if executor_cls is not None
         else cast(
             "_ExecutorFactory", SubprocessAgentExecutor
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
     )
     _mcp_factory_cls = (
         mcp_factory_cls
         if mcp_factory_cls is not None
         else cast(
             "_McpFactory", DynamicBindingMcpServerFactory
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
     )
     executor = _executor_cls(_parallel_worker_command(), signal_bridge=bridge)
     workspace = FsWorkspace(
@@ -491,7 +441,6 @@ def _persist_parallel_worker_manifests(
             prompt_file=str(runtime_paths.prompt_dump_path),
             workspace_root=str(repo_root),
         )
-        # filesystem-write-ok: fan-out coordination state under .agent/fan_out, runtime coordination not tracked
         manifest_path = worker_namespace / "worker-manifest.json"
         write_text_if_changed(
             DEFAULT_FILE_BACKEND,
@@ -513,11 +462,6 @@ def _worker_commands_from_manifests(
 
 
 def _cleared_after_successful_wave(state: PipelineState) -> PipelineState:
-    """Drop fan-out tracking state once every worker in the wave succeeded.
-
-    A failed or interrupted wave keeps work_units and worker_states so the
-    next development entry resumes only the unfinished units.
-    """
     worker_states = state.worker_states
     if worker_states and all(ws.status == WorkerStatus.SUCCEEDED for ws in worker_states.values()):
         return state.with_parallel_execution_cleared()
@@ -537,7 +481,7 @@ def _resume_fan_out_state(
         if reducer_reduce_fn is not None
         else cast(
             "_ReducerReduceFn", reducer_reduce
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
     )
     resumed_state, _ = _reduce(state, PipelineEvent.WORKERS_RESUMED, pipeline_policy)
     _notify_subscriber(subscriber, resumed_state)
@@ -567,14 +511,13 @@ async def _run_post_fanout_verification(
     *,
     run_process_async_fn: _RunProcessAsyncFn | None = None,
 ) -> str | None:
-    """Run workspace-wide verification exactly once after all workers complete."""
     logger.debug("Running post-fanout workspace-wide verification (serialized)")
     _run = (
         run_process_async_fn
         if run_process_async_fn is not None
         else cast(
             "_RunProcessAsyncFn", run_process_async
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
     )
     verify_result = await _run(
         "make",
@@ -612,7 +555,7 @@ async def _run_verify_phase(
         if ctx.reducer_reduce_fn is not None
         else cast(
             "_ReducerReduceFn", reducer_reduce
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
     )
     current, _ = _reduce(current, verify_ev, ctx.policy_bundle.pipeline)
     _notify_subscriber(ctx.pipeline_subscriber, current)
@@ -630,14 +573,14 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
         if ctx.reducer_reduce_fn is not None
         else cast(
             "_ReducerReduceFn", reducer_reduce
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
     )
     _install = (
         ctx.install_signal_handlers_fn
         if ctx.install_signal_handlers_fn is not None
         else cast(
             "_InstallSignalHandlersFn", install_signal_handlers
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        )
     )
     teardown_fn: Callable[[], None] | None = None
     try:
@@ -674,10 +617,6 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
             executor_cls=ctx.executor_cls,
             mcp_factory_cls=ctx.mcp_factory_cls,
         )
-        # The router derives work units from the plan artifact, so the state
-        # entering fan-out may carry empty work_units. The reducer seeds
-        # worker_states from state.work_units on FAN_OUT_STARTED, so the wave
-        # state must carry the effect's units before any event is reduced.
         seeded_state = (
             ctx.state
             if ctx.state.work_units
@@ -715,10 +654,6 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
         for ev in fan_out_events:
             current, _ = _reduce(current, ev, ctx.policy_bundle.pipeline)
             _notify_subscriber(ctx.pipeline_subscriber, current)
-        # Clear tracking BEFORE checkpointing: a checkpoint that retains
-        # work_units past a fully successful wave would hard-fail routing of
-        # the advanced (non-parallelized) phase on crash-resume. The pre-clear
-        # state is kept solely for the per-worker summary below.
         wave_state = current
         current = _cleared_after_successful_wave(current)
         _save_checkpoint_or_log(
@@ -751,10 +686,6 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
         return current
     except KeyboardInterrupt:
         raise
-    # ``SystemExit`` from library code is a recoverable fan-out failure under the
-    # recovery-first design; ``asyncio.CancelledError`` and every other
-    # non-``Exception`` BaseException (harness deadline, ``GeneratorExit``) must
-    # propagate so cancellation and outside aborts are never swallowed.
     except (Exception, SystemExit) as exc:
         logger.exception(
             "Fan-out execution crashed in phase={phase}: {err}",
@@ -796,42 +727,41 @@ def execute_fan_out_sync(
     pipeline_deps: PipelineDeps | None = None,
     **opts: object,
 ) -> PipelineState:
-    """Execute fan-out development synchronously by wrapping asyncio.run()."""
     policy_bundle = cast(
         "PolicyBundle", opts["policy_bundle"]
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     workspace_scope = cast(
         "WorkspaceScope", opts["workspace_scope"]
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     pipeline_subscriber = cast(
         "_PipelineSubscriberLike | None", opts.get("pipeline_subscriber")
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     dashboard_subscriber = cast(
         "_PipelineSubscriberLike | None", opts.get("dashboard_subscriber")
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     config = cast(
         "UnifiedConfig | None", opts.get("config")
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     config_path = cast(
         "Path | None", opts.get("config_path")
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     cli_overrides = cast("dict[str, object] | None", opts.get("cli_overrides"))
     monitor_stop_cb = cast("Callable[[], None] | None", opts.get("_monitor_stop_cb"))
     install_fn = cast(
         "_InstallSignalHandlersFn | None", opts.get("_install_signal_handlers")
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     executor_cls = cast(
         "_ExecutorFactory | None", opts.get("_executor_cls")
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     mcp_factory_cls = cast(
         "_McpFactory | None", opts.get("_mcp_factory_cls")
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     run_process_fn = cast(
         "_RunProcessAsyncFn | None", opts.get("_run_process_async")
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     reducer_fn = cast(
         "_ReducerReduceFn | None", opts.get("_reducer_reduce")
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
     on_successful_completion = cast(
         "Callable[[PipelineState], PipelineState] | None", opts.get("_on_successful_completion")
     )

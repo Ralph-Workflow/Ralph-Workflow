@@ -1,5 +1,3 @@
-"""Unit tests for git commit review operations."""
-
 from __future__ import annotations
 
 import shutil
@@ -30,7 +28,6 @@ pytestmark = pytest.mark.subprocess_e2e
 
 
 def test_delete_file_from_repo_removes_untracked_file(tmp_git_repo: Path) -> None:
-    """Test that delete_file_from_repo removes an untracked file."""
     binary = tmp_git_repo / "binary.exe"
     binary.write_text("binary content")
 
@@ -43,7 +40,6 @@ def test_delete_file_from_repo_removes_untracked_file(tmp_git_repo: Path) -> Non
 
 @pytest.mark.timeout_seconds(5)
 def test_delete_file_from_repo_unstages_staged_file(tmp_git_repo: Path) -> None:
-    """Test that delete_file_from_repo unstages and removes a staged file."""
     binary = tmp_git_repo / "staged.bin"
     binary.write_text("staged content")
 
@@ -52,13 +48,11 @@ def test_delete_file_from_repo_unstages_staged_file(tmp_git_repo: Path) -> None:
         repo.index.add(["staged.bin"])
         repo.index.commit("add staged file")
 
-        # Modify after commit
         binary.write_text("modified content")
 
         delete_file_from_repo(tmp_git_repo, "staged.bin")
 
         assert not binary.exists()
-        # Verify file is no longer tracked in the index
         ls_files = repo.git.ls_files("--stage", "staged.bin")
         assert ls_files.strip() == ""
     finally:
@@ -66,14 +60,11 @@ def test_delete_file_from_repo_unstages_staged_file(tmp_git_repo: Path) -> None:
 
 
 def test_delete_file_from_repo_ignores_nonexistent_path(tmp_git_repo: Path) -> None:
-    """Test that delete_file_from_repo does not raise for nonexistent files."""
-    # Should not raise
     delete_file_from_repo(tmp_git_repo, "nonexistent.file")
     delete_file_from_repo(tmp_git_repo, "path/does/not/exist")
 
 
 def test_add_to_git_exclude_creates_file_if_missing(tmp_git_repo: Path) -> None:
-    """Test that add_to_git_exclude creates .git/info/exclude if missing."""
     exclude_path = tmp_git_repo / ".git" / "info" / "exclude"
 
     add_to_git_exclude(tmp_git_repo, ["*.pyc"])
@@ -84,7 +75,6 @@ def test_add_to_git_exclude_creates_file_if_missing(tmp_git_repo: Path) -> None:
 
 
 def test_add_to_git_exclude_appends_new_patterns(tmp_git_repo: Path) -> None:
-    """Test that add_to_git_exclude appends patterns without removing existing ones."""
     exclude_path = tmp_git_repo / ".git" / "info" / "exclude"
     exclude_path.parent.mkdir(parents=True, exist_ok=True)
     exclude_path.write_text("existing pattern\n")
@@ -98,7 +88,6 @@ def test_add_to_git_exclude_appends_new_patterns(tmp_git_repo: Path) -> None:
 
 
 def test_add_to_git_exclude_deduplicates_patterns(tmp_git_repo: Path) -> None:
-    """Test that add_to_git_exclude does not add duplicate patterns."""
     exclude_path = tmp_git_repo / ".git" / "info" / "exclude"
     exclude_path.parent.mkdir(parents=True, exist_ok=True)
     exclude_path.write_text("*.pyc\n")
@@ -152,11 +141,6 @@ def test_add_to_git_exclude_never_untracks_non_secret_project_files(
 def test_atomic_append_text_writes_via_path_replace(
     tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Atomic helper writes via sibling staging + ``Path.replace``.
-
-    Mirrors the pattern from ``ralph/mcp/transport/agy.py:99-127`` so
-    SIGKILL mid-write leaves the target file intact.
-    """
     target = tmp_git_repo / "atomic_target.txt"
     target.write_text("initial\n", encoding="utf-8")
 
@@ -188,20 +172,6 @@ def test_atomic_append_text_writes_via_path_replace(
 def test_atomic_append_text_fails_closed_on_unreadable_existing_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """When the existing file cannot be read, the helper must NOT clobber it.
-
-    Regression for the analysis decision ``how_to_fix`` item: the previous
-    implementation caught ``OSError`` from ``Path.read_bytes`` and silently
-    treated the file as empty, then published ``existing + payload`` via
-    ``Path.replace()``. A transient read failure (permission denied,
-    broken FS, transient I/O error) would therefore CLOBBER the original
-    content with just the appended payload -- exactly the kind of silent
-    corruption the atomic helper exists to prevent.
-
-    The fix is fail-closed: when ``path.exists()`` is True but the read
-    raises ``OSError``, the helper re-raises so the caller can decide.
-    A missing file is still treated as empty (legitimate creation case).
-    """
     target = tmp_path / "gitignore_existing.txt"
     target.write_text("EXISTING-CONTENT\n", encoding="utf-8")
     pre_bytes = target.read_bytes()
@@ -263,20 +233,6 @@ def test_atomic_append_text_separator_normalization(
     target_subpath: str,
     publish_callable: Callable[[Path, Path, str], object],
 ) -> None:
-    """Boundary normalization: an existing file lacking a trailing newline gets one inserted.
-
-    Regression for the analysis decision ``how_to_fix`` item: the previous
-    implementation concatenated ``existing + payload`` without normalizing
-    the boundary. For a file containing ``"existing-without-newline"`` and
-    a payload of ``"*.cache\\n"`` the published result was
-    ``"existing-without-newline*.cache\\n"`` -- a malformed single-line
-    ignore rule rather than two separate rules.
-
-    Parametrized across the three production callers
-    (``_atomic_append_text`` directly, ``append_to_gitignore``, and
-    ``add_to_git_exclude``) to verify boundary normalization is applied
-    at every layer, not just at the helper level.
-    """
     target = tmp_git_repo / target_subpath
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("existing-without-newline", encoding="utf-8")
@@ -292,12 +248,6 @@ def test_atomic_append_text_separator_normalization(
 def test_atomic_append_text_cleans_sibling_on_exception(
     tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """When the write raises mid-call, the sibling staging file must be cleaned.
-
-    The helper must not leave a dangling staging file when the publish
-    step fails. Otherwise a SIGKILL or disk-full during cleanup could
-    silently corrupt subsequent invocations.
-    """
     target = tmp_git_repo / "atomic_target2.txt"
     target.write_text("initial\n", encoding="utf-8")
 
@@ -309,8 +259,6 @@ def test_atomic_append_text_cleans_sibling_on_exception(
         real_unlink(self)
 
     def fake_write_bytes(self: Path, data: bytes) -> int:
-        # Raise immediately so the replace() call never runs; we then
-        # verify the unlink() cleanup is attempted on the staging path.
         del data
         raise OSError("simulated mid-write failure")
 
@@ -329,14 +277,6 @@ def test_atomic_append_text_cleans_sibling_on_exception(
 def test_add_to_git_exclude_routes_through_atomic_helper(
     tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``add_to_git_exclude`` must call the atomic helper for the new payload.
-
-    Defense-in-depth: the previous implementation used a non-atomic
-    ``open('a')`` write that could truncate or corrupt the file on
-    SIGKILL mid-write. The hardening routes the new payload through
-    ``_atomic_append_text`` so a SIGKILL during cleanup leaves the
-    exclude file intact.
-    """
     captured: list[tuple[Path, str]] = []
     real_atomic = cc_module._atomic_append_text
 
@@ -362,7 +302,6 @@ def test_add_to_git_exclude_routes_through_atomic_helper(
 def test_append_to_gitignore_routes_through_atomic_helper(
     tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``append_to_gitignore`` must call the atomic helper for the new payload."""
     captured: list[tuple[Path, str]] = []
     real_atomic = ops._atomic_append_text
 
@@ -387,14 +326,6 @@ def test_append_to_gitignore_routes_through_atomic_helper(
 def test_delete_file_from_repo_rejects_symlink_pointing_to_sibling_inside_repo(
     tmp_git_repo: Path,
 ) -> None:
-    """Symlink at a deletable path that points to a sibling regular file must be rejected.
-
-    The symlink check MUST run on the unresolved target -- ``Path.resolve()``
-    follows symlinks, so a symlink at ``evil_link`` resolves to its sibling
-    and a post-resolve ``is_symlink()`` check would not fire on the symlink
-    itself. The cleanup helper must reject the symlink path before the
-    resolve, so the sibling file is preserved.
-    """
     sibling = tmp_git_repo / "sibling.txt"
     sibling.write_text("I am the sibling target\n")
     evil_link = tmp_git_repo / "evil_link"
@@ -410,14 +341,6 @@ def test_delete_file_from_repo_rejects_symlink_pointing_to_sibling_inside_repo(
 def test_delete_file_from_repo_rejects_symlink_pointing_outside_repo(
     tmp_git_repo: Path, tmp_path: Path
 ) -> None:
-    """Symlink that escapes the repo root via a target outside must be rejected.
-
-    Defense-in-depth: the earlier ``is_absolute()`` / ``..`` segment check
-    on the literal path string catches most escape attempts, but a symlink
-    whose literal path is inside the repo can still resolve outside. The
-    pre-resolve symlink check plus the post-resolve ``relative_to`` check
-    together cover both vectors.
-    """
     outside = tmp_path / "outside.txt"
     outside.write_text("outside the repo\n")
     escape_link = tmp_git_repo / "escape_link"
@@ -431,12 +354,6 @@ def test_delete_file_from_repo_rejects_symlink_pointing_outside_repo(
 
 
 def test_delete_file_from_repo_rejects_broken_symlink_inside_repo(tmp_git_repo: Path) -> None:
-    """A broken symlink (target missing) must also be rejected as a symlink.
-
-    The post-resolve ``exists()`` check would fall through silently for a
-    broken symlink (since the target is missing). The pre-resolve symlink
-    check catches the case before the resolve.
-    """
     broken_link = tmp_git_repo / "broken_link"
     broken_link.symlink_to(tmp_git_repo / "nonexistent_target")
 
@@ -449,18 +366,6 @@ def test_delete_file_from_repo_rejects_broken_symlink_inside_repo(tmp_git_repo: 
 def test_delete_file_from_repo_propagates_oserror_on_unlink_failure(
     tmp_git_repo: Path,
 ) -> None:
-    """A failed ``Path.unlink`` call must propagate ``OSError`` to the caller.
-
-    The current implementation swallows ``OSError`` via
-    ``with suppress(OSError):`` -- a real delete failure would log success
-    even when nothing was deleted. The hardening removes the suppression
-    so ``OSError`` propagates to the caller's WARNING log.
-
-    Deterministic failure injection: create a DIRECTORY (not a file) at the
-    target path. ``Path.unlink(missing_ok=True)`` on a directory raises
-    ``OSError`` (Errno 21 ``IsADirectoryError`` on POSIX, Errno 5
-    ``PermissionError`` on Windows -- both subclass ``OSError``).
-    """
     undeletable = tmp_git_repo / "undeletable_dir"
     undeletable.mkdir()
 
@@ -472,7 +377,6 @@ def test_delete_file_from_repo_propagates_oserror_on_unlink_failure(
 
 
 def test_ensure_git_initialized_inits_non_repo_directory(tmp_path: Path) -> None:
-    """Test that ensure_git_initialized initializes a non-git directory."""
     non_repo = tmp_path / "non_repo"
     non_repo.mkdir()
 
@@ -481,41 +385,20 @@ def test_ensure_git_initialized_inits_non_repo_directory(tmp_path: Path) -> None
     ensure_git_initialized(non_repo)
 
     assert (non_repo / ".git").exists()
-    # Verify it's a valid git repo
     with Repo(non_repo) as repo:
         assert repo.active_branch.name in ("main", "master", "HEAD")
 
 
 def test_ensure_git_initialized_is_noop_for_existing_repo(tmp_git_repo: Path) -> None:
-    """Test that ensure_git_initialized does nothing for existing repos."""
-    # Should not raise
     ensure_git_initialized(tmp_git_repo)
 
-    # Repo should still be valid
     with Repo(tmp_git_repo) as repo:
         assert repo.active_branch.name in ("main", "master", "HEAD")
-        # Commit should still exist
         assert repo.head.commit.hexsha
-
-
-# --- Phase 4 edge-case tests for delete_file_from_repo ---
-#
-# Each test pins one observable behavior of the cleanup helper. The names
-# follow the plan: test_<unit>_<behavior> so the test id matches the
-# failing-commit-phase symptoms the user reported.
 
 
 @pytest.mark.timeout_seconds(5)
 def test_delete_file_from_repo_handles_untracked_existing_file(tmp_git_repo: Path) -> None:
-    """Untracked existing file at a deletable path is removed end-to-end.
-
-    The helper must accept an existing-but-untracked file and remove it
-    without raising. The git index step is a no-op (no index entries),
-    but ``Path.unlink(missing_ok=True)`` must still remove the file from
-    the worktree. A prior implementation gated the unlink on the
-    ``tracked_in_index`` flag and silently skipped untracked files --
-    the hardening makes the unlink unconditional.
-    """
     binary = tmp_git_repo / "untracked.exe"
     binary.write_text("binary content")
 
@@ -529,14 +412,6 @@ def test_delete_file_from_repo_handles_untracked_existing_file(tmp_git_repo: Pat
 
 @pytest.mark.timeout_seconds(5)
 def test_delete_file_from_repo_handles_dot_slash_prefixed_path(tmp_git_repo: Path) -> None:
-    """A ``./`` prefix on the relative path must be normalized to the bare path.
-
-    The cleanup helper accepts ``./binary.exe`` equivalently to
-    ``binary.exe`` -- the ``PurePath`` constructor treats ``./`` as a no-op
-    in the parts tuple, so the relative-to-repo check passes for both
-    shapes. This pins the helper's tolerance for the prefix an agent may
-    include when normalizing paths via os.path.relpath or similar.
-    """
     binary = tmp_git_repo / "binary.exe"
     binary.write_text("binary content")
 
@@ -556,17 +431,6 @@ def test_delete_file_from_repo_handles_dot_slash_prefixed_path(tmp_git_repo: Pat
 def test_delete_file_from_repo_rejects_symlinked_parent_dir(
     tmp_git_repo: Path, tmp_path: Path
 ) -> None:
-    """A path that traverses through a symlinked parent pointing outside is rejected.
-
-    The unresolved-path ``is_symlink()`` check guards against a symlink at
-    the literal path; the post-resolve ``relative_to`` guard catches a
-    path that resolves through a symlinked parent to a location outside
-    the repo root. With ``safe_alias`` pointing outside, calling
-    ``delete_file_from_repo(tmp_git_repo, "safe_alias/foo.txt")`` would
-    either resolve to ``<outside>/foo.txt`` (relative_to fails) or hit
-    the unresolved-path symlink check when ``safe_alias`` is itself a
-    symlink whose resolution escapes the repo.
-    """
     outside = tmp_path / "outside"
     outside.mkdir()
     (outside / "foo.txt").write_text("outside content\n")
@@ -589,27 +453,6 @@ def test_delete_file_from_repo_rejects_symlinked_parent_dir(
 def test_delete_file_from_repo_propagates_index_lock_error(
     tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """An existing ``.git/index.lock`` causes git operations to fail and the error propagates.
-
-    The cleanup helper wraps the git index lookup in
-    ``with suppress(InvalidGitRepositoryError):`` -- that suppression is
-    intentionally narrow: it does NOT swallow ``GitCommandError``,
-    ``OSError``, or any other error class. A stale ``index.lock`` will
-    cause the underlying ``git rm -f --cached -- <path>`` (invoked via
-    the ``Repo`` index lookup) to fail with ``GitCommandError``
-    (``exit code 128`` and stderr ``Unable to create '.../index.lock':
-    File exists.``), and that failure must propagate to the caller so
-    the WARNING log surfaces the real cause instead of silently claiming
-    success.
-
-    The test pins the narrow exception contract: ``GitCommandError`` is
-    the specific class that surfaces. The production helper does NOT
-    swallow it via the ``InvalidGitRepositoryError`` suppression. The
-    plan originally specified ``OSError`` as the assertion target, but
-    GitPython wraps git-exit failures in ``GitCommandError`` (which is
-    NOT an ``OSError`` subclass on any supported Python version). The
-    narrower assertion is the right regression guard.
-    """
     binary = tmp_git_repo / "binary.exe"
     binary.write_text("binary content")
 
@@ -620,7 +463,6 @@ def test_delete_file_from_repo_propagates_index_lock_error(
     finally:
         repo.close()
 
-    # Simulate a concurrent git operation by writing the lock file.
     monkeypatch.setattr("ralph.git._lock_recovery._LIVE_HOLDER_PATIENCE_S", 0.0)
     (tmp_git_repo / ".git" / "index.lock").write_text("locked", encoding="utf-8")
     assert (tmp_git_repo / ".git" / "index.lock").exists()
@@ -632,21 +474,12 @@ def test_delete_file_from_repo_propagates_index_lock_error(
             f"Stderr must surface the index-lock conflict, got: {excinfo.value!s}"
         )
     finally:
-        # Best-effort cleanup so tmp_git_repo can be reaped.
         with suppress(FileNotFoundError):
             (tmp_git_repo / ".git" / "index.lock").unlink()
 
 
 @pytest.mark.timeout_seconds(5)
 def test_delete_file_from_repo_accepts_str_path_argument(tmp_git_repo: Path) -> None:
-    """Passing a ``str`` (not ``Path``) as ``repo_root`` is accepted without TypeError.
-
-    The helper signature is ``def delete_file_from_repo(repo_root: Path | str, ...)``
-    -- the first line normalizes via ``Path(repo_root).resolve()`` so a
-    string path is equivalent to a Path. This pins that public contract
-    so a future refactor that drops the ``Path()`` wrapper surfaces as a
-    TypeError regression.
-    """
     binary = tmp_git_repo / "binary.exe"
     binary.write_text("binary content")
 
@@ -665,23 +498,8 @@ def test_delete_file_from_repo_accepts_str_path_argument(tmp_git_repo: Path) -> 
     assert not binary.exists(), "File MUST be removed when repo_root is passed as str"
 
 
-# --- Phase 8 edge-case tests for ensure_git_initialized ---
-#
-# Each test pins one observable behavior of the git-init helper. The names
-# follow the plan: test_ensure_git_initialized_<behavior> so the test id
-# maps directly to the contract pinned by the existing
-# ``test_ensure_git_initialized_*`` tests.
-
-
 @pytest.mark.timeout_seconds(5)
 def test_ensure_git_initialized_accepts_str_path_argument(tmp_path: Path) -> None:
-    """Passing a ``str`` (not ``Path``) as ``repo_root`` initializes a non-git directory.
-
-    The helper signature is ``def ensure_git_initialized(repo_root: Path | str) -> None``
-    -- the implementation passes the value through to ``Repo(repo_root, ...)``
-    which accepts both. This pins the public contract so a future refactor
-    that drops the union-arg support surfaces as a TypeError regression.
-    """
     non_repo = tmp_path / "non_repo_str"
     non_repo.mkdir()
     assert not (non_repo / ".git").exists()
@@ -695,14 +513,6 @@ def test_ensure_git_initialized_accepts_str_path_argument(tmp_path: Path) -> Non
 
 @pytest.mark.timeout_seconds(5)
 def test_ensure_git_initialized_does_not_clobber_existing_repo(tmp_git_repo: Path) -> None:
-    """Pre-existing repo: HEAD SHA is preserved across ``ensure_git_initialized``.
-
-    Pins the no-clobber contract: when ``.git`` already points at a
-    valid git repository, the helper must NOT re-initialize. The HEAD
-    SHA is the simplest regression anchor -- a fresh ``Repo.init``
-    would create a new ``.git/HEAD`` with no commits and the SHA check
-    would fail.
-    """
     head_sha_before = get_head_sha(tmp_git_repo)
     assert head_sha_before
     head_commit_before = Repo(tmp_git_repo).head.commit.hexsha
@@ -721,17 +531,6 @@ def test_ensure_git_initialized_does_not_clobber_existing_repo(tmp_git_repo: Pat
 def test_ensure_git_initialized_handles_gitfile_layout_separate_git_dir(
     tmp_path: Path,
 ) -> None:
-    """A gitfile layout (worktree pointing at a separate git dir) is accepted.
-
-    The plan pins the separate-git-dir case so a worktree-style layout
-    (where ``.git`` is a file containing ``gitdir: <path>``) does NOT
-    crash the helper. ``Repo(repo_root)`` resolves the gitfile
-    transparently and ``search_parent_directories=False`` keeps the
-    helper scoped to the requested path.
-    """
-    # Build a separate-git-dir layout: a real git repo at
-    # ``separate_dir`` plus a worktree directory whose ``.git`` is a
-    # file pointing at ``separate_dir``.
     separate_dir = tmp_path / "separate"
     separate_dir.mkdir()
     Repo.init(separate_dir)
@@ -746,34 +545,14 @@ def test_ensure_git_initialized_handles_gitfile_layout_separate_git_dir(
         "Setup invariant: worktree/.git must be a gitfile, not a directory"
     )
 
-    # Must not raise.
     ensure_git_initialized(worktree)
 
-    # The separate git dir is still valid.
     with Repo(separate_dir) as repo:
         assert repo.active_branch.name in ("main", "master", "HEAD")
 
 
 @pytest.mark.timeout_seconds(5)
 def test_ensure_git_initialized_raises_on_corrupt_git_dir(tmp_path: Path) -> None:
-    """Corrupt ``.git`` raises ``GitCommandError`` (file is not a directory or gitfile).
-
-    The helper wraps ``Repo(repo_root)`` in
-    ``with suppress(InvalidGitRepositoryError):`` and falls back to
-    ``Repo.init(repo_root)`` on the suppressed branch. With ``.git``
-    pointing at a regular file (NOT a directory, NOT a gitfile with
-    ``gitdir: ...``), the ``Repo(...)`` constructor sees a non-empty
-    file as the ``.git`` path and falls through to ``Repo.init(...)``
-    on the suppressed branch -- which then fails with
-    ``GitCommandError`` (``exit code 128`` and stderr
-    ``fatal: invalid gitfile format: <path>/.git``) because the
-    existing file is not parseable as a gitfile.
-
-    The test pins the narrow exception contract: ``GitCommandError`` is
-    the specific class that surfaces. The corrupt ``.git`` file is
-    preserved on disk (NOT silently overwritten by ``Repo.init`` --
-    ``init`` errors out before mutating the directory).
-    """
     corrupt = tmp_path / "corrupt_repo"
     corrupt.mkdir()
     (corrupt / ".git").write_text("not a git directory, not a gitfile\n", encoding="utf-8")
@@ -784,7 +563,6 @@ def test_ensure_git_initialized_raises_on_corrupt_git_dir(tmp_path: Path) -> Non
     assert "invalid gitfile format" in str(excinfo.value), (
         f"Stderr must surface the invalid-gitfile-format error, got: {excinfo.value!s}"
     )
-    # The corrupt .git file must NOT have been silently re-initialized.
     assert (corrupt / ".git").is_file(), (
         "ensure_git_initialized must NOT silently re-init over a corrupt .git"
     )
@@ -793,32 +571,7 @@ def test_ensure_git_initialized_raises_on_corrupt_git_dir(tmp_path: Path) -> Non
     ), "Corrupt .git file content must NOT have been modified by a silent re-init"
 
 
-# ---------------------------------------------------------------------------
-# Pre-emptive untrack helper tests (commit_review phase safety net)
-# ---------------------------------------------------------------------------
-#
-# These tests pin the helper that the commit_review phase calls BEFORE
-# the agent runs to remove tracked engine-internal files from the index.
-# Without this safety net, the agent's delete_file action for tracked
-# engine files is rejected ("Refusing to delete non-housekeeping file")
-# even when the file is in the canonical engine allowlist, because the
-# safety check happens AFTER the file was checked into HEAD.
-#
-# The helper takes an ``is_internal_path`` predicate as a positional
-# argument (NOT imported) so it stays decoupled from the leaf module
-# and has no circular-import risk. Tests pass a lambda that always
-# returns True (matches all engine-internal paths) to exercise the
-# full index walk, or a lambda that always returns False to pin the
-# non-engine preservation contract.
-
-
 def _track_and_commit(repo_root: Path, rel_path: str) -> None:
-    """Stage and commit ``rel_path`` against ``repo_root``.
-
-    Mirrors the helper used in ``tests/test_phases_commit_review.py``
-    so the pre-emptive untrack tests can verify what is and is not
-    in ``git ls-files --cached`` after the helper runs.
-    """
     repo = Repo(repo_root)
     try:
         repo.index.add([rel_path])
@@ -831,17 +584,6 @@ def _track_and_commit(repo_root: Path, rel_path: str) -> None:
 def test_untrack_engine_internal_files_removes_tracked_engine_files(
     tmp_git_repo: Path,
 ) -> None:
-    """Pre-emptive untrack: tracked engine files are removed from the index.
-
-    Pins the contract that ``untrack_engine_internal_files`` runs
-    ``git rm --cached`` (NOT ``git rm``) on every tracked path that
-    matches the predicate. The working-tree files MAY still exist
-    after the call -- only the INDEX entries are removed. The test
-    asserts the three originally-failing tracked paths
-    (``.agent/raw/opencode.log``, ``.agent/tmp/mcp-server.log``,
-    ``checkpoint.json``) are NO LONGER in ``git ls-files --cached``
-    AND are NO LONGER in ``Repo.index.entries``.
-    """
     log_path = tmp_git_repo / ".agent" / "raw" / "opencode.log"
     mcp_log_path = tmp_git_repo / ".agent" / "tmp" / "mcp-server.log"
     checkpoint_path = tmp_git_repo / "checkpoint.json"
@@ -855,11 +597,6 @@ def test_untrack_engine_internal_files_removes_tracked_engine_files(
     _track_and_commit(tmp_git_repo, ".agent/tmp/mcp-server.log")
     _track_and_commit(tmp_git_repo, "checkpoint.json")
 
-    # Use a predicate that mirrors the canonical ``is_agent_internal_path``
-    # allowlist: only engine-internal paths are untracked. A bare
-    # ``lambda p: True`` would also untrack ``README.md`` from the
-    # ``tmp_git_repo`` template fixture and obscure the contract this
-    # test pins.
     def _engine_path(p: str) -> bool:
         return p in {
             ".agent/raw/opencode.log",
@@ -894,9 +631,6 @@ def test_untrack_engine_internal_files_removes_tracked_engine_files(
     finally:
         repo.close()
 
-    # Working-tree files MAY still exist -- the helper uses ``git rm --cached``,
-    # not ``git rm``. Pin that contract so a future refactor that swaps to
-    # ``git rm`` (which deletes the file from disk) surfaces as a regression.
     assert log_path.exists(), "Working-tree file must remain after ``git rm --cached``"
     assert mcp_log_path.exists(), "Working-tree file must remain after ``git rm --cached``"
     assert checkpoint_path.exists(), "Working-tree file must remain after ``git rm --cached``"
@@ -906,15 +640,6 @@ def test_untrack_engine_internal_files_removes_tracked_engine_files(
 def test_untrack_engine_internal_files_preserves_non_engine_files(
     tmp_git_repo: Path,
 ) -> None:
-    """Non-engine tracked files are NOT removed when the predicate rejects them.
-
-    Pins the safety boundary: only paths the predicate accepts are
-    untracked. A predicate that always returns False leaves the index
-    untouched -- the helper must NEVER widen the deletion surface on
-    its own. The test pre-stages ``src/main.go`` and
-    ``tests/test_foo.py`` and asserts both are STILL in
-    ``git ls-files --cached`` after the helper runs.
-    """
     src_path = tmp_git_repo / "src" / "main.go"
     src_path.parent.mkdir(parents=True, exist_ok=True)
     src_path.write_text("package main\n")
@@ -948,15 +673,6 @@ def test_untrack_engine_internal_files_preserves_non_engine_files(
 def test_untrack_engine_internal_files_rejects_symlinks(
     tmp_git_repo: Path,
 ) -> None:
-    """A symlink under ``.agent/`` is rejected before any ``git rm --cached``.
-
-    Pins the contract that the helper calls
-    ``Path(repo_root / path).is_symlink()`` BEFORE issuing
-    ``git rm --cached``. A symlink under ``.agent/`` could point
-    outside the repo (git follows symlinks); the helper must skip
-    the entry and log a WARNING, returning ``[]`` so the caller can
-    record the symlink as deliberately-preserved.
-    """
     target = tmp_git_repo / ".agent" / "raw" / "evil_link"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.symlink_to(tmp_git_repo / "outside_target")
@@ -992,16 +708,6 @@ def test_untrack_engine_internal_files_rejects_symlinks(
 def test_untrack_engine_internal_files_handles_empty_index(
     tmp_git_repo: Path,
 ) -> None:
-    """Fresh repo with no commits: helper returns ``[]`` without raising.
-
-    Pins the empty-index edge case: ``tmp_git_repo`` has the initial
-    commit from the template fixture, so the test pre-removes that
-    commit by deleting HEAD and rebuilding the repo with no
-    checkpoints. The helper must complete without raising and return
-    an empty list -- a missing index entry must NOT crash the
-    pre-emptive untrack step.
-    """
-    # Rebuild the repo with NO commits so the index is empty.
     shutil.rmtree(tmp_git_repo)
     tmp_git_repo.mkdir()
     Repo.init(tmp_git_repo)
@@ -1013,15 +719,6 @@ def test_untrack_engine_internal_files_handles_empty_index(
 
 @pytest.mark.timeout_seconds(5)
 def test_untrack_engine_internal_files_handles_non_git_directory(tmp_path: Path) -> None:
-    """A non-git directory: helper returns ``[]`` without raising.
-
-    Pins the broken-git-state edge case: the helper wraps
-    ``Repo(repo_root)`` in a try/finally and suppresses construction
-    failures so a workspace whose root is NOT a git repo does not
-    stall the commit_review phase. The caller (``handle_commit_review_phase``)
-    also wraps the helper in try/except, so a fail-closed return of
-    ``[]`` is the canonical contract.
-    """
     non_repo = tmp_path / "non_repo"
     non_repo.mkdir()
     assert not (non_repo / ".git").exists(), "Setup invariant: non_repo must not be a git repo"
@@ -1035,19 +732,6 @@ def test_untrack_engine_internal_files_handles_non_git_directory(tmp_path: Path)
 def test_untrack_engine_internal_files_skills_silent(
     tmp_git_repo: Path,
 ) -> None:
-    """wt-025 / AC-03 leaf contract: tracked skill symlinks under the FIVE roots
-    are early-skipped BEFORE the symlink-WARNING block, so the helper emits
-    ZERO WARNING-level log lines when the only ``.agent/``-ish tracked paths
-    are intentional project-scope skill symlinks.
-
-    Pre-stages a tracked ``.agents/skills/<name>`` symlink (intentional by
-    design; see commit ``e4b47d2fb``) and asserts:
-
-      * the helper returns ``[]`` (the symlink is NOT untracked),
-      * no WARNING-level log message was emitted, and
-      * the symlink is STILL in ``git ls-files --cached`` (early-skip
-        preserved the entry).
-    """
     canonical_skill = tmp_git_repo / ".opencode" / "skills" / "brainstorming"
     canonical_skill.mkdir(parents=True, exist_ok=True)
     canonical_skill.joinpath("SKILL.md").write_text("# brainstorming skill\n", encoding="utf-8")
@@ -1061,10 +745,7 @@ def test_untrack_engine_internal_files_skills_silent(
     captured_warnings: list[str] = []
     sink_id = logger.add(captured_warnings.append, level="WARNING", format="{message}")
     try:
-        # Predicate accepts ONLY the .agents/skills/* path (which is the
-        # one that would historically fire the symlink-WARNING). The test
-        # pins that the skill-root early-skip runs BEFORE the predicate gate,
-        # not after.
+
         def _engine_path(p: str) -> bool:
             return p == ".agents/skills/brainstorming"
 
@@ -1091,39 +772,6 @@ def test_untrack_engine_internal_files_skills_silent(
 def test_untrack_engine_internal_files_does_not_warn_on_skill_symlinks(
     tmp_git_repo: Path,
 ) -> None:
-    """wt-025 / AC-03 / PROMPT.md: ZERO WARNING lines for tracked skill symlinks.
-
-    PROMPT.md logs a wall of WARNING lines:
-
-        WARNING | ralph.git.commit_review:untrack_engine_internal_files:183
-        - Refusing to git rm --cached symlink under tracked engine-internal path: ...
-
-    This test pins the FIX at the unit-test layer: when the helper is
-    invoked with a mixed index containing TWO tracked project-scope skill
-    symlinks (under TWO different FIVE-roots) AND a tracked engine-internal
-    file under ``.agent/PROMPT.md``, the helper must
-
-      (1) NOT emit any WARNING message matching
-          ``Refusing to git rm --cached symlink under tracked engine-internal path``
-          -- the early-skip block runs BEFORE the symlink-WARNING block, so
-          the skill symlinks never reach the WARNING branch.
-
-      (2) emit AT LEAST ONE DEBUG message containing
-          ``Skipping tracked skill-root path`` -- proves the early-skip
-          actually fired for one of the FIVE roots. A WARNING-level loguru
-          sink would silently drop this DEBUG message (the PA-005 bug),
-          so this test installs a SINGLE DEBUG-level sink.
-
-      (3) preserve the TWO FIVE-root symlinks in ``git ls-files --cached``
-          AND remove the engine-internal ``.agent/PROMPT.md`` path.
-
-    The DEBUG sink is essential: the existing WARNING-sink test
-    ``test_untrack_engine_internal_files_skills_silent`` only proves the
-    absence of WARNING lines but cannot prove the early-skip fired (a
-    WARNING sink discards DEBUG messages). The combined contract
-    (WARNING-absent AND DEBUG-present) is the canonical structural pin.
-    """
-    # Stage TWO tracked project-scope skill symlinks under TWO different FIVE roots.
     canonical_a = tmp_git_repo / ".opencode" / "skills" / "coding-standards"
     canonical_a.mkdir(parents=True, exist_ok=True)
     canonical_a.joinpath("SKILL.md").write_text("# coding-standards skill\n", encoding="utf-8")
@@ -1134,27 +782,16 @@ def test_untrack_engine_internal_files_does_not_warn_on_skill_symlinks(
     canonical_b = tmp_git_repo / ".opencode" / "skills" / "brainstorming"
     canonical_b.mkdir(parents=True, exist_ok=True)
     canonical_b.joinpath("SKILL.md").write_text("# brainstorming skill\n", encoding="utf-8")
-    # The second FIVE-root sibling is the canonical itself (not a sibling symlink),
-    # which exercises the ``_SKILL_ROOT_PREFIXES`` early-skip on a non-symlink entry too.
-    # This is the broader case the audit pins: ANY path under a FIVE root gets skipped.
 
     _track_and_commit(tmp_git_repo, ".opencode/skills/coding-standards/SKILL.md")
     _track_and_commit(tmp_git_repo, ".agents/skills/coding-standards")
     _track_and_commit(tmp_git_repo, ".opencode/skills/brainstorming/SKILL.md")
 
-    # Stage ONE tracked engine-internal file so the helper has a real
-    # ``git rm --cached`` target -- this pins that the helper still runs
-    # the engine-internal removal branch on the SAME invocation that
-    # skipped the skill symlinks.
     prompt_path = tmp_git_repo / ".agent" / "PROMPT.md"
     prompt_path.parent.mkdir(parents=True, exist_ok=True)
     prompt_path.write_text("# prompt\n", encoding="utf-8")
     _track_and_commit(tmp_git_repo, ".agent/PROMPT.md")
 
-    # Install a SINGLE DEBUG-level sink (NOT WARNING -- a WARNING sink would
-    # silently drop the DEBUG-level 'Skipping tracked skill-root path'
-    # message and the positive assertion would be vacuous). The
-    # ``format='{message}'`` keeps the captured list as bare strings.
     captured: list[str] = []
     sink_id = logger.add(captured.append, level="DEBUG", format="{message}")
     try:
@@ -1166,7 +803,6 @@ def test_untrack_engine_internal_files_does_not_warn_on_skill_symlinks(
     finally:
         logger.remove(sink_id)
 
-    # Assertion (1): NO captured message matches the WARNING line from PROMPT.md.
     offending = [
         msg
         for msg in captured
@@ -1176,25 +812,16 @@ def test_untrack_engine_internal_files_does_not_warn_on_skill_symlinks(
         f"Helper must NOT emit the WARNING line for tracked skill symlinks; got: {offending!r}"
     )
 
-    # Assertion (2): AT LEAST ONE captured DEBUG message contains the early-skip
-    # substring -- proves the early-skip block fired. Without a DEBUG sink,
-    # this assertion would be vacuous (the WARNING sink would discard DEBUGs).
     early_skip_messages = [msg for msg in captured if "Skipping tracked skill-root path" in msg]
     assert early_skip_messages, (
         f"Early-skip block MUST emit at least one DEBUG message containing "
         f"'Skipping tracked skill-root path'; captured: {captured!r}"
     )
 
-    # Assertion (3): the helper still removed the engine-internal path on the
-    # SAME invocation that skipped the skill symlinks (no over-correction).
     assert untracked == [".agent/PROMPT.md"], (
         f"Engine-internal ``.agent/PROMPT.md`` MUST be untracked; got: {untracked!r}"
     )
 
-    # Assertion (4): the FIVE-root symlinks remain in the index AND the
-    # engine-internal path is gone. Use ``git ls-files --cached`` (the
-    # canonical contract) -- not ``Repo.index.entries`` with a bare-path
-    # lookup, which can drop the entry on macOS symlink indirection.
     repo = Repo(tmp_git_repo)
     try:
         cached_paths = set(repo.git.ls_files("--cached").splitlines())

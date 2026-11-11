@@ -1,5 +1,3 @@
-"""The integration-resolution drain has one name, and the shipped policy declares it."""
-
 from __future__ import annotations
 
 from pathlib import Path

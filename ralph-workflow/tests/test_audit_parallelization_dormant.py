@@ -1,15 +1,3 @@
-"""Tests for the first-class-delegation planning guidance audit.
-
-The ``test_audit_returns_zero_when_all_invariants_satisfied`` and
-``test_audit_module_path`` tests were removed in the wt-05-test-opti pass
-because they duplicate the clean-tree audit already executed by
-``make verify`` (the ``audit_parallelization_dormant`` step in
-``_VERIFY_STEPS``). Running them again through pytest on the default
-profile added per-shard wall-clock cost while proving nothing the
-verify step does not already prove. The remaining tests cover the
-audit's regression contract with monkey-patched sources.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

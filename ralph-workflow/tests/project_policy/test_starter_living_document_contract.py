@@ -1,19 +1,3 @@
-"""Every starter policy carries the living-document contract.
-
-The canonical policy files are living documents: they must evolve as the
-project grows and as verified facts change. Two guardrails bound that
-evolution:
-
-* conflicts between starter boilerplate and the project's established
-  policy resolve IN FAVOR OF the existing project policy (adapt the
-  canonical file to the project, never the reverse);
-* evolution must never subvert a policy's INTENT — weakening or deleting a
-  requirement to make a failing change pass is forbidden.
-
-These tests pin the contract section in every starter and its echo in the
-remediation prompt and the condensed AGENTS.md block.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -68,8 +52,6 @@ def test_condensed_agents_block_mentions_policies_evolve() -> None:
 
 
 def test_testing_policy_browser_budget_language() -> None:
-    """The testing-policy.md starter must carry the browser-time budget
-    admission rule verbatim so remediation agents implement it correctly."""
     path = _STARTERS_DIR / "testing-policy.md"
     content = path.read_text(encoding="utf-8")
     assert "BROWSER-TIME BUDGET" in content
@@ -78,12 +60,6 @@ def test_testing_policy_browser_budget_language() -> None:
 
 
 def test_condensed_agents_block_carries_pending_resolution_mandate() -> None:
-    """The ready block is the ONLY dev-cycle-facing surface that makes resolving
-    RALPH-PENDING deferrals an ongoing obligation. Because RALPH-PENDING is
-    accepted by the validator on every policy, this instruction is the sole
-    compensating control that keeps a deferral from living forever — it MUST
-    not be silently droppable. Guard the load-bearing phrases explicitly.
-    """
     ws = MemoryWorkspace()
     agents_md.bootstrap(ws)
     assert agents_md.condense_placeholder_block(ws) == [markers.AGENTS_MD]

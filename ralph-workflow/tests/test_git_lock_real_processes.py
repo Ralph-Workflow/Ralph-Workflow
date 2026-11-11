@@ -1,5 +1,3 @@
-"""Lock liveness against REAL processes and a real git repository (Linux /proc)."""
-
 from __future__ import annotations
 
 import os
@@ -22,7 +20,6 @@ pytestmark = [
         not sys.platform.startswith("linux") or not Path("/proc/self/fd").is_dir(),
         reason="exercises /proc process inspection",
     ),
-    # Real processes and a real /proc scan: the 1s default per-test cap is for fakes.
     pytest.mark.subprocess_e2e,
     pytest.mark.timeout_seconds(30),
 ]
@@ -80,8 +77,6 @@ def _age(lock: Path, seconds: float) -> None:
 
 
 class _Holder(Protocol):
-    """The holder-process factory the ``holder`` fixture hands to the tests."""
-
     def __call__(self, lock: Path, mode: str = "plain") -> subprocess.Popen[str]: ...
 
 
@@ -129,7 +124,6 @@ def test_lock_held_open_by_a_live_process_is_never_removed(worktree: Path, holde
 
 
 def test_non_dumpable_live_holder_is_not_declared_dead(worktree: Path, holder: _Holder) -> None:
-    """A holder whose fd table we cannot read must not be ruled out by guesswork."""
     lock = _private_lock(worktree)
     proc = holder(lock, "nodump")
     assert not os.access(f"/proc/{proc.pid}/fd", os.R_OK)
@@ -137,7 +131,6 @@ def test_non_dumpable_live_holder_is_not_declared_dead(worktree: Path, holder: _
 
 
 def test_idle_read_only_git_helper_in_the_repo_does_not_pin_an_orphan(worktree: Path) -> None:
-    """A persistent ``git cat-file --batch`` (GitPython, IDEs) never takes the lock."""
     lock = _private_lock(worktree)
     lock.write_text("orphan")
     _age(lock, 5000)
@@ -189,7 +182,6 @@ def _orphan(lock: Path) -> None:
 def test_run_git_clears_an_orphaned_lock_for_any_command(
     worktree: Path, args: list[str], lock_rel: str
 ) -> None:
-    """No run_git caller has to know about locks: the one spawn point recovers."""
     from ralph.git.subprocess_runner import run_git
 
     gitdir = Path(_git(worktree, "rev-parse", "--absolute-git-dir").strip())
@@ -222,7 +214,6 @@ def test_run_git_does_not_steal_a_lock_a_live_process_holds(
 
 
 def _slow_ref_transaction_hook(repo_git_dir: Path) -> None:
-    """A reference-transaction hook that holds the ref lock (fd closed) for a while."""
     hooks = repo_git_dir / "hooks"
     hooks.mkdir(exist_ok=True)
     hook = hooks / "reference-transaction"
@@ -234,7 +225,6 @@ def _slow_ref_transaction_hook(repo_git_dir: Path) -> None:
 def test_a_git_holding_a_ref_lock_without_an_open_fd_is_live(
     worktree: Path, tmp_path: Path, mode: str
 ) -> None:
-    """Git holds ``refs/heads/x.lock`` with no fd open between prepare and commit."""
     import shutil
 
     common = Path(_git(worktree, "rev-parse", "--git-common-dir").strip())

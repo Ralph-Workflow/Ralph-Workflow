@@ -1,5 +1,3 @@
-"""Black-box regression coverage for durable auto-integration record publication."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -11,8 +9,6 @@ from ralph.pipeline.auto_integrate_record import IntegrationRecord, write_record
 
 
 class _RecordBackend(FileBackend):
-    """In-memory durable publication boundary that exposes observable mutations."""
-
     def __init__(self) -> None:
         self.files: dict[Path, bytes] = {}
         self.write_calls: list[tuple[Path, bytes]] = []
@@ -68,7 +64,6 @@ def _record() -> IntegrationRecord:
 
 
 def test_auto_integrate_record_regression_identical_replay_skips_publication_and_barrier() -> None:
-    """S-2: replaying unchanged durable state makes no new filesystem mutations."""
     backend = _RecordBackend()
     root = Path("/virtual-workspace")
     record = _record()
@@ -89,22 +84,16 @@ def test_auto_integrate_record_regression_identical_replay_skips_publication_and
     assert backend.files[record_file] == record.model_dump_json().encode("utf-8")
 
 
-# --- Transition-table coverage (Work Unit B) ---
-
-
 def test_transition_table_has_fifteen_unique_entries() -> None:
-    """The closed transition table has 15 unique values."""
     from ralph.pipeline.auto_integrate_record import Transition, transition_by_name
 
     names = {t.name for t in Transition.ALL}
     assert len(names) == 15
-    # And each name resolves through the lookup.
     for name in names:
         assert transition_by_name(name).name == name
 
 
 def test_transition_apply_rejects_unknown_field() -> None:
-    """Smuggling an unknown field past the table raises ValueError."""
     from ralph.pipeline.auto_integrate_record import MARK_RESOLVING_REBASE
 
     record = _record()
@@ -113,19 +102,16 @@ def test_transition_apply_rejects_unknown_field() -> None:
 
 
 def test_with_transition_uses_legal_field_map() -> None:
-    """``MARK_RESOLVING_REBASE`` writes only the resolving_rebase field."""
     from ralph.pipeline.auto_integrate_record import MARK_RESOLVING_REBASE
 
     record = _record()
     updated = record.with_transition(MARK_RESOLVING_REBASE, resolving_rebase=True)
     assert updated.resolving_rebase is True
-    # No other field was touched.
     assert updated.target == record.target
     assert updated.pre_feature_sha == record.pre_feature_sha
 
 
 def test_release_diagnostic_evidence_clears_fields() -> None:
-    """``RELEASE_DIAGNOSTIC_EVIDENCE`` clears the diagnostic evidence and ownership."""
     from ralph.pipeline.auto_integrate_record import (
         HOLD_DIAGNOSTIC_EVIDENCE,
         RELEASE_DIAGNOSTIC_EVIDENCE,
@@ -148,7 +134,6 @@ def test_release_diagnostic_evidence_clears_fields() -> None:
 
 
 def test_raise_diagnostic_intervention_sets_field() -> None:
-    """``RAISE_DIAGNOSTIC_INTERVENTION`` is the bounded-retry terminus."""
     from ralph.pipeline.auto_integrate_record import RAISE_DIAGNOSTIC_INTERVENTION
 
     record = _record()
@@ -164,7 +149,6 @@ def test_raise_diagnostic_intervention_sets_field() -> None:
 
 
 def test_promote_to_integrated_requires_integrating_phase() -> None:
-    """``PROMOTE_TO_INTEGRATED`` rejects records whose phase is not ``integrating``."""
     from ralph.pipeline.auto_integrate_record import PROMOTE_TO_INTEGRATED
 
     integrated = _record().model_copy(
@@ -179,7 +163,6 @@ def test_promote_to_integrated_requires_integrating_phase() -> None:
 
 
 def test_accept_repair_edits_rejects_integrated_phase() -> None:
-    """``ACCEPT_REPAIR_EDITS`` rejects records whose phase is not ``integrating``."""
     from ralph.pipeline.auto_integrate_record import ACCEPT_REPAIR_EDITS
 
     integrated = _record().model_copy(update={"phase": "integrated"})
@@ -192,7 +175,6 @@ def test_accept_repair_edits_rejects_integrated_phase() -> None:
 
 
 def test_resume_repair_rejects_integrated_phase() -> None:
-    """``RESUME_REPAIR`` rejects records whose phase is not ``integrating``."""
     from ralph.pipeline.auto_integrate_record import RESUME_REPAIR
 
     integrated = _record().model_copy(update={"phase": "integrated"})
@@ -205,7 +187,6 @@ def test_resume_repair_rejects_integrated_phase() -> None:
 
 
 def test_legacy_record_loads_with_defaulted_intervention_field() -> None:
-    """A legacy on-disk record without the new fields loads with defaults."""
     from ralph.pipeline.auto_integrate_record import (
         IntegrationRecord,
         parse_record_payload,
@@ -222,18 +203,10 @@ def test_legacy_record_loads_with_defaulted_intervention_field() -> None:
     assert isinstance(parsed, IntegrationRecord)
     assert parsed.diagnostic_intervention_required is False
     assert parsed.repair_cap_reason is None
-    # The legacy ``work`` key was migrated to ``unstaged_work``.
     assert dict(parsed.diagnostic_evidence).get("unstaged_work") == "old-key"
 
 
 def test_legacy_record_with_for_each_ref_loads_without_intervention() -> None:
-    """A legacy record carrying ``for-each-ref`` loads without intervention.
-
-    The legacy global evidence key is dropped at load time so the
-    diagnostic path can re-derive state from Git; surfacing
-    intervention here was the production livelock (the diagnostic
-    could not re-verify and refused to proceed).
-    """
     from ralph.pipeline.auto_integrate_record import parse_record_payload
 
     legacy = {
@@ -246,12 +219,10 @@ def test_legacy_record_with_for_each_ref_loads_without_intervention() -> None:
     parsed = parse_record_payload(legacy)
     assert parsed is not None
     assert parsed.diagnostic_intervention_required is False
-    # The dropped legacy key is no longer carried as live evidence.
     assert dict(parsed.diagnostic_evidence) == {}
 
 
 def test_legacy_record_with_branch_reflog_drops_observation() -> None:
-    """The branch reflog is common-dir; the migrator drops it with a reason marker."""
     from ralph.pipeline.auto_integrate_record import parse_record_payload
 
     legacy = {
@@ -273,7 +244,6 @@ def test_legacy_record_with_branch_reflog_drops_observation() -> None:
 
 
 def test_legacy_record_with_merge_state_path_key_migrated() -> None:
-    """A legacy ``str(absolute_path)`` for a merge state file is re-categorised."""
     from ralph.pipeline.auto_integrate_record import parse_record_payload
 
     legacy = {
@@ -294,7 +264,6 @@ def test_legacy_record_with_merge_state_path_key_migrated() -> None:
 
 
 def test_transition_rejects_unknown_name() -> None:
-    """``transition_by_name`` raises on an unknown name."""
     from ralph.pipeline.auto_integrate_record import transition_by_name
 
     with pytest.raises(ValueError, match="unknown transition"):
@@ -302,14 +271,12 @@ def test_transition_rejects_unknown_name() -> None:
 
 
 def test_legacy_format_records_clear_intervention_for_next_action() -> None:
-    """Legacy formats clear intervention flags so next_integration_action does not require intervention."""
     from ralph.pipeline._integration_action import (
         IntegrationAction,
         next_integration_action,
     )
     from ralph.pipeline.auto_integrate_record import parse_record_payload
 
-    # 1. Unparseable lease ownership
     payload_lease = {
         "phase": "integrating",
         "target": "main",
@@ -325,7 +292,6 @@ def test_legacy_format_records_clear_intervention_for_next_action() -> None:
     assert rec1.diagnostic_ownership is None
     assert next_integration_action(rec1) != IntegrationAction.REQUIRE_INTERVENTION
 
-    # 2. Legacy global key (ls-files)
     payload_ls = {
         "phase": "integrating",
         "target": "main",

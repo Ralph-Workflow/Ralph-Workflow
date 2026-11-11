@@ -1,13 +1,3 @@
-"""Transition-matrix tests for canonical workflow progress accounting.
-
-These tests lock the intended contract before refactoring:
-- outer counters only change when a cycle/pass completes
-- inner analysis counters track loopbacks within the current cycle/pass
-- capped correction routing preserves outer counters and review flags
-- skipped commits route onward without silently counting completed progress
-- checkpoint-facing mirrors derive exactly from canonical PipelineState counters
-"""
-
 from __future__ import annotations
 
 from importlib import import_module
@@ -208,7 +198,6 @@ def test_review_analysis_loopback_updates_only_review_analysis_fields() -> None:
 
 
 def test_capped_review_analysis_loopback_preserves_outer_progress_and_marks_issue_state() -> None:
-    """At max iteration, ANALYSIS_LOOPBACK still routes to fix and marks issues."""
     policy = _policy_with_loop_counter_default(
         _progress_policy(),
         "review_analysis_iteration",
@@ -315,12 +304,6 @@ def test_checkpoint_builder_derives_progress_mirrors_from_pipeline_state() -> No
 
 
 def test_checkpoint_builder_derives_progress_from_policy_with_custom_counter_names() -> None:
-    """When policy is supplied, checkpoint mirrors use BFS-ordered tracked counters.
-
-    Proves the runtime never hardcodes canonical counter names: a renamed policy
-    ('design_cycles' and 'audit_passes') still populates actual_developer_runs and
-    actual_reviewer_runs correctly via policy-driven BFS resolution.
-    """
     custom_policy = PipelinePolicy(
         entry_phase="design",
         terminal_phase="done",
@@ -409,19 +392,11 @@ def test_checkpoint_builder_derives_progress_from_policy_with_custom_counter_nam
         .build()
     )
 
-    # 'design_cycles' is the first tracked counter in BFS commit order → developer runs
     assert payload.run_context.actual_developer_runs == 3
-    # 'audit_passes' is the second tracked counter → reviewer runs
     assert payload.run_context.actual_reviewer_runs == 1
 
 
 class TestProgressPolicyRequired:
-    """Commit-role phase transitions require policy to be provided.
-
-    These tests enforce that apply_commit_outcome and advance_phase raise ValueError
-    when called for a commit-role phase without providing the PipelinePolicy.
-    """
-
     def _commit_phase_policy(self) -> PipelinePolicy:
         return PipelinePolicy(
             phases={
@@ -452,7 +427,6 @@ class TestProgressPolicyRequired:
         )
 
     def test_apply_commit_outcome_requires_policy(self) -> None:
-        """apply_commit_outcome raises ValueError when policy=None for a commit-role phase."""
         state = PipelineState(
             phase="feature_commit",
             loop_iterations={"development_analysis_iteration": 0},
@@ -463,7 +437,6 @@ class TestProgressPolicyRequired:
             apply_commit_outcome(state, advanced_state, skipped=False, policy=None)
 
     def test_apply_commit_outcome_with_policy_does_not_raise(self) -> None:
-        """apply_commit_outcome succeeds when policy is provided for a commit-role phase."""
         policy = self._commit_phase_policy()
         state = PipelineState(
             phase="feature_commit",
@@ -473,18 +446,15 @@ class TestProgressPolicyRequired:
         advanced_state = state.copy_with(phase="complete")
 
         result = apply_commit_outcome(state, advanced_state, skipped=False, policy=policy)
-        # skipped=False increments iteration per commit_policy.increments_counter="iteration"
         assert result.get_outer_progress("iteration") == state.get_outer_progress("iteration") + 1
 
     def test_advance_phase_requires_policy_for_commit_target(self) -> None:
-        """advance_phase raises ValueError when policy=None for any target phase."""
         state = PipelineState(phase="planning")
 
         with pytest.raises(ValueError, match="requires PipelinePolicy"):
             advance_phase(state, "feature_commit", policy=None)
 
     def test_advance_phase_with_policy_does_not_raise(self) -> None:
-        """advance_phase succeeds when policy is provided."""
         policy = self._commit_phase_policy()
         state = PipelineState(phase="planning")
 

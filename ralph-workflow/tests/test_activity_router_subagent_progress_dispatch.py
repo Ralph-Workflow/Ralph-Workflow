@@ -1,42 +1,3 @@
-"""SUBAGENT_PROGRESS dispatch on the ``ActivityRouter -> on_event`` path.
-
-The prompt's "real-time subagent progress for ALL supported agents"
-contract requires that ``SubprocessAgentExecutor`` (which feeds the
-``ActivityRouter.push_raw_line`` API for runner/parallel execution)
-also surfaces per-tool subagent progress, not only the
-``stream_parsed_agent_activity`` path used by the invocation engine.
-
-The pre-fix router mapped a parsed line to a single canonical
-``ActivityEventKind`` via ``map_parser_type_to_kind`` and emitted ONE
-event; the parser's ``emit_subagent_activity`` hook (which feeds the
-watchdog's per-task subagent sink AND surfaces a sanitized
-``tool_use:<name>`` summary on the operator-visible transcript) was
-NEVER invoked on this path.  As a result, a tool_use line from a
-real ``SubprocessAgentExecutor`` run did not refresh the watchdog's
-subagent channel on the runner/parallel execution path.
-
-This test pins the post-fix wiring:
-
-  * ``ActivityRouter.push_raw_line`` invokes the parser's
-    ``emit_subagent_activity`` hook for every parsed line so the
-    watchdog's subagent sink sees the same per-tool evidence the
-    invocation engine sees via ``stream_parsed_agent_activity``.
-
-  * When the parser hook yields a non-empty sanitized summary, the
-    router ALSO emits a ``SUBAGENT_PROGRESS`` event through
-    ``_on_event`` so the operator sees real-time per-tool subagent
-    progress on the console transcript.
-
-  * A buggy parser hook (raises) does NOT crash the router; a buggy
-    sink (raises) does NOT crash the router.  Both are swallowed
-    defensively (the helper ``invoke_subagent_sink`` is already
-    exception-swallowing at the helper boundary).
-
-All assertions use the public ActivityRouter API and a captured
-subagent sink via ``set_subagent_sink`` (the same ContextVar the
-invocation engine uses).  No subprocess, no real sleep.
-"""
-
 from __future__ import annotations
 
 import json
@@ -57,15 +18,6 @@ from ralph.mcp.server._activity_sink import (
 
 
 def test_router_emits_subagent_progress_for_tool_use_line() -> None:
-    """A tool_use NDJSON line MUST produce a SUBAGENT_PROGRESS event.
-
-    Drives ``ClaudeParser`` (via the default parser factory) with a
-    single ``content_block_start`` tool_use line.  The captured
-    ``_on_event`` callback MUST receive a ``SUBAGENT_PROGRESS`` event
-    whose content is the sanitized ``tool_use:Bash`` summary, and the
-    per-task subagent sink MUST receive the same summary so the
-    watchdog's ``record_subagent_work`` channel is refreshed.
-    """
     events: list[tuple[str, ActivityEventKind, str | None, str | None]] = []
     sink_calls: list[str] = []
 
@@ -123,12 +75,6 @@ def test_router_emits_subagent_progress_for_tool_use_line() -> None:
 
 
 def test_router_emits_subagent_progress_for_text_line() -> None:
-    """Text content_block_delta lines MUST also surface subagent progress.
-
-    Mirrors ``stream_parsed_agent_activity``: text lines flow through
-    ``emit_subagent_activity`` so the watchdog's subagent channel sees
-    model-text progress between tool calls.
-    """
     events: list[tuple[str, ActivityEventKind, str | None, str | None]] = []
 
     def _on_event(
@@ -164,13 +110,6 @@ def test_router_emits_subagent_progress_for_text_line() -> None:
 
 
 def test_router_subagent_progress_is_silent_when_parser_has_no_hook() -> None:
-    """A parser without ``emit_subagent_activity`` MUST NOT emit SUBAGENT_PROGRESS.
-
-    The pre-fix behavior is preserved for non-template parsers (e.g.
-    custom user parsers that only implement ``parse``): no
-    SUBAGENT_PROGRESS event, no sink call.  The router MUST NOT
-    crash on parsers that don't expose the hook.
-    """
     events: list[tuple[str, ActivityEventKind, str | None, str | None]] = []
     sink_calls: list[str] = []
 
@@ -211,12 +150,6 @@ def test_router_subagent_progress_is_silent_when_parser_has_no_hook() -> None:
 
 
 def test_router_swallows_buggy_parser_hook_exception() -> None:
-    """A parser hook that raises MUST NOT crash the router.
-
-    Mirrors the existing fail-soft contract: the activity stream must
-    not crash when a buggy parser hook raises (the operator must still
-    see the parsed line in the buffer and on the on_event callback).
-    """
     events: list[tuple[str, ActivityEventKind, str | None, str | None]] = []
 
     def _on_event(
@@ -239,7 +172,6 @@ def test_router_swallows_buggy_parser_hook_exception() -> None:
         parser_factory=lambda _provider: _BuggyParser(),
         on_event=_on_event,
     )
-    # Must not raise.
     router.push_raw_line("u", "anything", provider=ActivityProvider.GENERIC)
 
     tool_use_events = [e for e in events if e[1] is ActivityEventKind.TOOL_USE]
@@ -254,14 +186,6 @@ def test_router_swallows_buggy_parser_hook_exception() -> None:
 
 
 def test_router_subagent_progress_with_no_sink_registered() -> None:
-    """No registered subagent sink MUST NOT crash the router.
-
-    Mirrors ``stream_parsed_agent_activity`` behavior: when the
-    watchdog is not registered as the subagent sink, the router
-    still emits SUBAGENT_PROGRESS via the on_event callback (the
-    transcript breadcrumb), and ``invoke_subagent_sink`` is a
-    fail-soft no-op.
-    """
     events: list[tuple[str, ActivityEventKind, str | None, str | None]] = []
 
     def _on_event(
@@ -297,30 +221,7 @@ def test_router_subagent_progress_with_no_sink_registered() -> None:
         reset_subagent_sink(saved_token)
 
 
-# ---------------------------------------------------------------------------
-# Cross-transport router support: Claude Interactive and Pi
-# ---------------------------------------------------------------------------
-# The prompt requires real-time subagent progress for ALL supported
-# agents. The pre-fix ``ActivityRouter`` only knew about CLAUDE,
-# CODEX, OPENCODE, GEMINI, AGY, and GENERIC. Claude Interactive
-# (``ClaudeInteractiveParser``) and Pi (``PiParser``) silently fell
-# back to GENERIC on the router path, so an interactive Claude
-# transcript or a Pi stream could not surface per-tool
-# ``SUBAGENT_PROGRESS`` events through the router.
-#
-# These tests prove the cross-transport visibility contract: when a
-# line is pushed with the Claude-Interactive or Pi provider, the
-# router uses the corresponding parser (not GenericParser) and the
-# ``on_event`` callback receives the parsed events. The
-# black-box contract is "router uses the right parser for every
-# transport", not "the parser emits X" (the parser-specific tests
-# live with the parser).
-
-
 def test_router_uses_claude_interactive_parser_for_claude_interactive_provider() -> None:
-    """``ActivityRouter`` with provider=CLAUDE_INTERACTIVE MUST use
-    ``ClaudeInteractiveParser`` (not GenericParser).
-    """
     events: list[tuple[str, ActivityEventKind, str | None, str | None]] = []
 
     def _on_event(
@@ -333,17 +234,11 @@ def test_router_uses_claude_interactive_parser_for_claude_interactive_provider()
         events.append((unit_id, kind, content, raw_ref))
 
     router = ActivityRouter(on_event=_on_event)
-    # Use a known ClaudeInteractiveParser line shape: the transcript
-    # emits ``claude: <text>`` lines. We do not pin the parser's
-    # output format (that lives in parser tests); we pin the
-    # black-box contract "router uses the right parser class".
     router.push_raw_line(
         "u",
         "claude: hello from interactive transcript",
         provider=ActivityProvider.CLAUDE_INTERACTIVE,
     )
-    # The event must be parseable (not an ERROR event from the
-    # GenericParser misclassifying the prefix).
     error_events = [e for e in events if e[1] is ActivityEventKind.ERROR]
     assert not error_events, (
         "ActivityRouter.push_raw_line with CLAUDE_INTERACTIVE"
@@ -353,7 +248,6 @@ def test_router_uses_claude_interactive_parser_for_claude_interactive_provider()
 
 
 def test_router_uses_pi_parser_for_pi_provider() -> None:
-    """``ActivityRouter`` with provider=PI MUST use ``PiParser`` (not GenericParser)."""
     events: list[tuple[str, ActivityEventKind, str | None, str | None]] = []
 
     def _on_event(
@@ -366,16 +260,11 @@ def test_router_uses_pi_parser_for_pi_provider() -> None:
         events.append((unit_id, kind, content, raw_ref))
 
     router = ActivityRouter(on_event=_on_event)
-    # Pin the black-box contract: the router MUST NOT raise and
-    # MUST surface parsed events via on_event for the Pi transport.
     router.push_raw_line(
         "u",
         '{"type": "session", "id": "sess-1"}',
         provider=ActivityProvider.PI,
     )
-    # PiParser is permissive; an empty event list is acceptable as
-    # long as the router did NOT raise and did NOT misclassify as
-    # a GenericParser ERROR.
     error_events = [e for e in events if e[1] is ActivityEventKind.ERROR]
     assert not error_events, (
         "ActivityRouter.push_raw_line with PI MUST route through"
@@ -384,39 +273,22 @@ def test_router_uses_pi_parser_for_pi_provider() -> None:
 
 
 def test_detect_provider_from_command_recognizes_pi() -> None:
-    """``detect_provider_from_command(['pi', ...])`` MUST return ``ActivityProvider.PI``.
-
-    Pre-fix the CLI-substring detection in ``detect_provider_from_command``
-    did not include ``pi`` so a Pi invocation was misclassified as
-    ``ActivityProvider.GENERIC`` (Pi's substring did not match any
-    of the listed substrings). The fix adds ``pi`` to the substring
-    table so the router selects ``PiParser`` for a Pi invocation.
-    """
     assert detect_provider_from_command(["pi"]) is ActivityProvider.PI
     assert detect_provider_from_command(["/usr/local/bin/pi"]) is ActivityProvider.PI
     assert detect_provider_from_command(["pi-mono"]) is ActivityProvider.PI
 
 
 def test_detect_provider_from_command_recognizes_claude_interactive() -> None:
-    """``detect_provider_from_command(['claude-interactive', ...])`` MUST
-    return ``ActivityProvider.CLAUDE_INTERACTIVE`` (not ``CLAUDE``).
-    """
     assert (
         detect_provider_from_command(["claude-interactive"]) is ActivityProvider.CLAUDE_INTERACTIVE
     )
     assert (
         detect_provider_from_command(["claude_interactive"]) is ActivityProvider.CLAUDE_INTERACTIVE
     )
-    # Plain ``claude`` is still routed to CLAUDE (the more specific
-    # ``claude-interactive`` substring MUST NOT consume the bare
-    # ``claude`` substring).
     assert detect_provider_from_command(["claude"]) is ActivityProvider.CLAUDE
 
 
 def test_provider_for_transport_round_trips_supported_transports() -> None:
-    """``provider_for_transport`` MUST return the canonical provider for
-    every supported ``AgentTransport`` value.
-    """
     assert provider_for_transport("claude") is ActivityProvider.CLAUDE
     assert provider_for_transport("claude_interactive") is ActivityProvider.CLAUDE_INTERACTIVE
     assert provider_for_transport("codex") is ActivityProvider.CODEX
@@ -426,7 +298,5 @@ def test_provider_for_transport_round_trips_supported_transports() -> None:
     assert provider_for_transport("agy") is ActivityProvider.AGY
     assert provider_for_transport("pi") is ActivityProvider.PI
     assert provider_for_transport("nanocoder") is ActivityProvider.NANOCODER
-    # ``generic`` is the fallback parser for transports that do not have
-    # their own parser; ``None`` and unknown values also fall back to GENERIC.
     assert provider_for_transport("generic") is ActivityProvider.GENERIC
     assert provider_for_transport(None) is ActivityProvider.GENERIC

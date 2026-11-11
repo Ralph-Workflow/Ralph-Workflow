@@ -1,4 +1,3 @@
-"""Backward-compatible boolean projections of the typed resolution outcomes."""
 
 from __future__ import annotations
 
@@ -34,7 +33,6 @@ def run_conflict_resolution_pipeline(
     session: ResolutionSession | None = None,
     strategy_history: tuple[str, ...] = (),
 ) -> bool:
-    """Backward-compatible boolean projection of the typed merge outcome."""
     from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_outcome
 
     return run_conflict_resolution_outcome(
@@ -69,7 +67,6 @@ def run_rebase_conflict_resolution_pipeline(
     session: ResolutionSession | None = None,
     strategy_history: tuple[str, ...] = (),
 ) -> bool:
-    """Backward-compatible projection of the out-of-graph ``PHASE_RESOLUTION`` outcome."""
     from ralph.pipeline.conflict_resolution.driver import run_rebase_conflict_resolution_outcome
 
     return run_rebase_conflict_resolution_outcome(

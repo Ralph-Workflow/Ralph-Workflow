@@ -14,13 +14,6 @@ from ralph.git.git_run_result import GitRunResult
 
 
 def _stage_change(repo: Repo, repo_root: Path, name: str, content: str) -> None:
-    """Stage one file so the candidate tree differs from HEAD's tree.
-
-    Content-based idempotency (AC11) short-circuits only when the tree
-    about to be committed already equals HEAD's tree; these tests probe
-    the write path (race, CAS failure, hooks), so each scenario stages
-    real pending work first.
-    """
     path = repo_root / name
     path.write_text(content, encoding="utf-8")
     repo.index.add([name])
@@ -43,10 +36,6 @@ def test_create_commit_cas_race_does_not_publish_candidate(
             nonlocal advanced
             result = original_run_git(args, cwd=cwd, label=label, options=options)
             if label == "git-write-tree" and not advanced:
-                # Concurrent advance lands between our staging and the
-                # ref CAS: HEAD moves while our candidate tree still
-                # differs from the (new) HEAD tree, so the seam must
-                # reach commit-tree and lose the CAS -- never publish.
                 advanced = True
                 marker = tmp_git_repo / "race.txt"
                 marker.write_text("concurrent\n", encoding="utf-8")
@@ -87,7 +76,6 @@ def test_create_commit_cas_failure_with_unchanged_head_raises_operation_error(
         monkeypatch.setattr(operations_module, "run_git", failed_update_ref)
         with pytest.raises(GitOperationError, match="lock denied"):
             operations_module.create_commit(tmp_git_repo, "candidate", expected_head=expected_head)
-        # The candidate was never published: HEAD is unchanged.
         assert repo.head.commit.hexsha == expected_head
     finally:
         repo.close()

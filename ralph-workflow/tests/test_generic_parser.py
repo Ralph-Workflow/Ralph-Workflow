@@ -1,5 +1,3 @@
-"""Tests for GenericParser thought/reasoning → thinking type mapping."""
-
 from __future__ import annotations
 
 import json
@@ -12,7 +10,6 @@ pytestmark = pytest.mark.timeout_seconds(2)
 
 
 def test_thought_field_emits_thinking() -> None:
-    """A payload with top-level 'thought' field emits type='thinking'."""
     parser = GenericParser()
     line = json.dumps({"thought": "Thinking about Z"})
     results = list(parser.parse(iter([line])))
@@ -22,7 +19,6 @@ def test_thought_field_emits_thinking() -> None:
 
 
 def test_reasoning_field_emits_thinking() -> None:
-    """A payload with top-level 'reasoning' field emits type='thinking'."""
     parser = GenericParser()
     line = json.dumps({"reasoning": "Reasoning about W"})
     results = list(parser.parse(iter([line])))
@@ -32,7 +28,6 @@ def test_reasoning_field_emits_thinking() -> None:
 
 
 def test_content_field_wins_over_thought() -> None:
-    """When both 'content' and 'thought' exist, 'content' is used as type='text'."""
     parser = GenericParser()
     line = json.dumps({"content": "Real content", "thought": "Shadow thought"})
     results = list(parser.parse(iter([line])))
@@ -44,7 +39,6 @@ def test_content_field_wins_over_thought() -> None:
 
 
 def test_text_field_wins_over_reasoning() -> None:
-    """When both 'text' and 'reasoning' exist, 'text' is used as type='text'."""
     parser = GenericParser()
     line = json.dumps({"text": "Actual text", "reasoning": "Internal reasoning"})
     results = list(parser.parse(iter([line])))
@@ -56,7 +50,6 @@ def test_text_field_wins_over_reasoning() -> None:
 
 
 def test_message_field_wins_over_thought() -> None:
-    """'message' field takes priority over 'thought'."""
     parser = GenericParser()
     line = json.dumps({"message": "User message", "thought": "Hidden thought"})
     results = list(parser.parse(iter([line])))
@@ -65,7 +58,6 @@ def test_message_field_wins_over_thought() -> None:
 
 
 def test_empty_thought_field_produces_no_output() -> None:
-    """An empty 'thought' string must not emit anything."""
     parser = GenericParser()
     line = json.dumps({"thought": ""})
     results = list(parser.parse(iter([line])))
@@ -74,7 +66,6 @@ def test_empty_thought_field_produces_no_output() -> None:
 
 
 def test_empty_reasoning_field_produces_no_output() -> None:
-    """An empty 'reasoning' string must not emit anything."""
     parser = GenericParser()
     line = json.dumps({"reasoning": ""})
     results = list(parser.parse(iter([line])))
@@ -83,7 +74,6 @@ def test_empty_reasoning_field_produces_no_output() -> None:
 
 
 def test_thought_type_is_thinking_not_text() -> None:
-    """Confirming that thought fields yield type='thinking', not type='text'."""
     parser = GenericParser()
     line = json.dumps({"thought": "Deep contemplation"})
     results = list(parser.parse(iter([line])))
@@ -94,7 +84,6 @@ def test_thought_type_is_thinking_not_text() -> None:
 
 
 def test_reasoning_type_is_thinking_not_text() -> None:
-    """Confirming that reasoning fields yield type='thinking', not type='text'."""
     parser = GenericParser()
     line = json.dumps({"reasoning": "Step by step"})
     results = list(parser.parse(iter([line])))
@@ -105,16 +94,13 @@ def test_reasoning_type_is_thinking_not_text() -> None:
 
 
 def test_thought_alongside_lifecycle_suppressed_type() -> None:
-    """Lifecycle type suppresses the whole event; thought field is not reached."""
     parser = GenericParser()
-    # type=thinking is in _LIFECYCLE_EVENT_TYPES, so it suppresses the whole event
     line = json.dumps({"type": "thinking", "thought": "hidden"})
     results = list(parser.parse(iter([line])))
     assert results == [], f"Lifecycle type must suppress entire event, got: {results}"
 
 
 def test_plain_tool_line_emits_tool_use() -> None:
-    """A clean '[plain] tool: NAME' line emits a tool_use with the tool name."""
     parser = GenericParser()
     results = list(parser.parse(iter(["[plain] tool: mcp__ralph__list_directory"])))
     tool_uses = [r for r in results if r.type == "tool_use"]
@@ -123,9 +109,6 @@ def test_plain_tool_line_emits_tool_use() -> None:
 
 
 def test_ansi_decorated_tool_line_still_emits_tool_use() -> None:
-    """A '[plain] tool: NAME' line wrapped in ANSI color codes (nanocoder TUI
-    output piped without a PTY) must still be detected as a tool_use, so MCP tool
-    calls render live instead of being misclassified as raw content."""
     parser = GenericParser()
     ansi_line = "\x1b[36m[plain] tool: mcp__ralph__list_directory\x1b[0m"
     results = list(parser.parse(iter([ansi_line])))

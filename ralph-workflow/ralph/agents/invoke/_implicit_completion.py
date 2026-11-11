@@ -1,4 +1,3 @@
-"""Scoped implicit-completion policy for transports that cannot resume."""
 
 from __future__ import annotations
 

@@ -1,5 +1,3 @@
-"""Behavior tests for stable markdown reference integrity."""
-
 from ralph.mcp.artifacts.markdown._parsed_item import ParsedItem
 from ralph.mcp.artifacts.markdown._references import (
     validate_acyclic_dependencies,
@@ -24,9 +22,6 @@ def test_reference_and_cycle_errors_name_the_stable_target() -> None:
         {"S1": ["S2"], "S2": ["S1"]}, line_by_id={"S1": 3, "S2": 4}
     )
 
-    # Error message convention: what (target/source) → named consumer →
-    # resolve-by step. Each blocking diagnostic names the reader that
-    # breaks on the bad reference.
     assert dangling[0].message.startswith("'S1' references unknown ID 'S9'")
     assert "blocking because" in dangling[0].message
     assert "resolve by" in dangling[0].message

@@ -1,5 +1,3 @@
-"""Round-trip integration test: a fresh mcp.toml entry surfaces to every agent."""
-
 from __future__ import annotations
 
 import json

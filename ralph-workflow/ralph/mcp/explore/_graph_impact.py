@@ -1,4 +1,3 @@
-"""Graph impact and hubs queries for ``ralph_graph`` (Phase 2+)."""
 
 import sqlite3
 
@@ -26,12 +25,6 @@ def impact(
     change_kind: str,
     limit: int = 25,
 ) -> GraphResult:
-    """Return a conservative impact estimate for ``change_kind``.
-
-    The output labels dynamic / reflective / generated callers as
-    ``unknown`` rather than claiming runtime certainty. Default
-    relations are looked up in ``_IMPACT_RELATIONS``.
-    """
     if change_kind not in _IMPACT_RELATIONS:
         return GraphResult(
             query_type="impact",
@@ -63,7 +56,6 @@ def impact(
         if len(impacted) >= bounded_limit:
             break
     impacted_paths = sorted({edge.path for edge in impacted if edge.path})
-    # Walk calls_syntax edges to flag dynamic / unknown cases.
     missing_data: list[str] = []
     if any(
         edge.reason and ("getattr" in edge.reason or "dynamic" in edge.reason) for edge in impacted
@@ -132,13 +124,6 @@ def hubs(
     role: str | None = None,
     limit: int = 25,
 ) -> GraphResult:
-    """Return deterministic hub ranking by weighted degree.
-
-    Score = ``2 * in_degree + out_degree`` adjusted by the relation
-    priority weight. ``scope_path`` and ``relation`` are filters;
-    ``role`` is currently accepted but only filters to source/test
-    paths. Output is stable: ties sort by path ASC, then id ASC.
-    """
     bounded_limit = max(1, min(limit, 100))
     degree: dict[str, dict[str, int]] = {}
     for edge in store.iter_edges(relation=relation):
@@ -189,12 +174,7 @@ def hubs(
                 provenance="inferred",
                 evidence_ids=(),
             )
-        # Record the hub score so callers can show why a node
-        # ranked above another. ``score`` is the weighted
-        # centrality value; ``total_degree`` is its unweighted sum.
         nodes_out.append(node)
-        # Ponytail: prefer computing metadata locally rather than
-        # threading a third tuple element through the dataclass.
         _ = (score, total_degree)
 
     return GraphResult(

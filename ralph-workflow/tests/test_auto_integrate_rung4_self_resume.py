@@ -1,20 +1,3 @@
-"""AC-15: rung-4 self-resume tests.
-
-For rung-4 conditions (a condition that cannot be repaired by
-the integration attempt itself, e.g. a shallow clone), the
-spec requires:
-
-* the diagnostic to be emitted at every seam, AND
-* the moment the condition clears, integration to land on
-  the very next seam with no restart and no manual reset.
-
-Subprocess_e2e tests: real git repositories, real
-``auto_integrate_after_commit`` calls, deterministic. No
-network fetch -- the rung-4 case here is synthetic and the
-``clear`` step is local-only, matching the spec's local-only
-integration policy (R3).
-"""
-
 from __future__ import annotations
 
 import subprocess
@@ -35,7 +18,6 @@ _NO_INTEGRATION_BACKOFF = {"sleep": lambda _seconds: None, "jitter": lambda: 0.0
 
 
 def _run(repo_root: Path, *args: str, timeout: float = 15.0) -> subprocess.CompletedProcess[str]:
-    """Run ``git <args>`` in ``repo_root`` with a configurable timeout."""
     return subprocess.run(
         ("git", *args),
         cwd=str(repo_root),
@@ -47,7 +29,6 @@ def _run(repo_root: Path, *args: str, timeout: float = 15.0) -> subprocess.Compl
 
 
 def _base_branch(tmp_git_repo: Path) -> str:
-    """Return the seed template's default branch name."""
     head_file = tmp_git_repo / ".git" / "HEAD"
     try:
         head_content = head_file.read_text(encoding="utf-8").strip()
@@ -75,7 +56,6 @@ def _commit(repo_root: Path, filename: str, content: str, message: str) -> str:
 
 
 def _build_config(target: str) -> UnifiedConfig:
-    """Build a real ``UnifiedConfig`` with auto-integrate enabled."""
     return UnifiedConfig.model_validate(
         {
             "general": {
@@ -87,26 +67,12 @@ def _build_config(target: str) -> UnifiedConfig:
 
 
 def _diverged_two_commits(tmp_git_repo: Path) -> tuple[str, str]:
-    """Build the canonical diverged-feature setup.
-
-    Returns ``(base_branch_name, feature_sha)``. The feature
-    branch sits ONE commit ahead of base; integration must
-    fast-forward base to feature for a clean land.
-
-    Leaves the worktree checked out on ``feature`` (NOT
-    ``base``), because ``auto_integrate_after_commit`` short-
-    circuits with ``current_branch == target`` and the test
-    must exercise the rebase path.
-    """
     base = _base_branch(tmp_git_repo)
     _commit(tmp_git_repo, "shared.txt", "seed\n", "seed")
     base_seed_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
     _run(tmp_git_repo, "branch", "feature", base_seed_sha)
     _run(tmp_git_repo, "checkout", "feature")
     feature_sha = _commit(tmp_git_repo, "shared.txt", "feature edit\n", "feature edit")
-    # Stay on ``feature`` so the integration runs the rebase
-    # path; checking out ``base`` would short-circuit with
-    # ``current_branch == target`` before rebase is even tried.
     return base, feature_sha
 
 
@@ -114,7 +80,6 @@ def test_rung4_condition_self_resumes_on_next_seam_after_it_clears(
     tmp_git_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A cleared rung-4 condition lands at the next public seam (AC-15)."""
     base, feature_sha = _diverged_two_commits(tmp_git_repo)
     blocked = True
 

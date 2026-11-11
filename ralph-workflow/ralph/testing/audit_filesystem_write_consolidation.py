@@ -1,113 +1,291 @@
-"""Package-wide filesystem-write consolidation audit.
-
-Provides a fail-closed, package-wide AST walk that rejects every raw
-filesystem mutation under ``ralph/`` unless the call site carries
-an explicit ``# filesystem-write-ok: <reason>`` marker naming the
-behavioral contract (transient scratch, deliberately timestamped,
-genuine append-only stream, etc.).
-
-The audit walks every ``.py`` file under ``package_root`` by
-default, prunes only the audit / testing / vendor roots, and treats
-newly added production modules as in scope automatically. Sanctioned
-deviations require a local marker; no blanket path allowlists.
-
-The audit detects the following raw mutation classes:
-
-  * ``Path.write_text`` / ``Path.write_bytes`` (raw full-file overwrite)
-  * ``open(path, mode)`` and ``os.fdopen(fd, mode)`` with a write/append/
-    extend mode (``"w"``, ``"a"``, ``"x"``, ``"wb"``, ``"ab"``, ``"r+"``,
-    ``"w+"``, ``"a+"`` and their ``b``/``t`` variants)
-  * ``os.replace`` / ``os.rename`` / ``os.renames`` / ``Path.replace`` /
-    ``Path.rename`` (atomic moves)
-  * ``Path.unlink`` / ``os.remove`` / ``os.unlink`` / ``Path.rmdir``
-    (raw deletes)
-  * ``Path.mkdir`` / ``os.mkdir`` / ``os.makedirs`` / ``os.open``
-    (raw directory or file creation)
-  * ``shutil.rmtree`` / ``shutil.copy`` / ``shutil.copy2`` /
-    ``shutil.copyfile`` / ``shutil.copytree`` / ``shutil.copymode`` /
-    ``shutil.move``
-    (raw copies / moves / tree deletes)
-  * ``os.fsync`` / ``os.sync`` (raw durability barriers outside
-    the canonical primitive)
-  * ``Path.touch`` (raw mtime bumps)
-  * ``Path.chmod`` / ``os.chmod`` (raw permission metadata changes)
-  * ``truncate`` (raw truncation)
-
-The audit uses only ``ast`` and ``Path.read_text`` over source
-files. It does not start subprocesses, sleep, access the network,
-or mutate production data.
-
-Exit codes:
-  0 = clean
-  1 = violations found
-  2 = root not found
-
-Usage::
-
-    python -m ralph.testing.audit_filesystem_write_consolidation [package_root]
-
-References:
-    docs/agents/filesystem-lifecycle.md for the consolidation contract.
-"""
-
 from __future__ import annotations
 
 import ast
 import sys
-import tokenize
 from dataclasses import dataclass
-from io import StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from ralph.testing._audit_scope import build_parent_map, qualified_scope
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-#: Module roots that always participate in the package-wide walk.
-#: These are the production-only roots; we deliberately exclude
-#: testing / audit / vendor / generated paths.
 _DEFAULT_PACKAGE_ROOTS: tuple[str, ...] = ("ralph",)
 _MODE_POSITION: int = 1
 
-#: Files inside the package that are exempt from the audit: they
-#: define the shared primitive itself, or are responsible for
-#: rendering the consolidation's own documentation and config.
-#: Each entry is a path relative to the package root that is being
-#: walked, in POSIX form (e.g. ``"mcp/artifacts/idempotent_write.py"``).
 _DEFAULT_EXEMPT_PATHS: frozenset[str] = frozenset(
     {
-        # The shared primitives — they contain ``write_text`` calls
-        # by design (they wrap the lower-level ``backend.write_text``
-        # / ``backend.replace`` interface) and are the approved
-        # destination for all consolidated writes.
         "mcp/artifacts/idempotent_write.py",
         "mcp/artifacts/file_backend.py",
-        # The concrete backend implementation that uses ``os.fsync``,
-        # ``Path.replace``, ``Path.unlink`` etc. as part of the
-        # canonical primitive boundary. Anything inside
-        # ``_path_file_backend.py`` IS the abstraction.
         "mcp/artifacts/_path_file_backend.py",
-        # The audit module itself is outside its production target.
         "testing/audit_filesystem_write_consolidation.py",
     }
 )
 
-#: Comment marker that suppresses a violation at the call site. The
-#: marker must name a behavioral contract (D3 — exceptions are
-#: explicit and local). The format is fixed; an empty reason is
-#: treated as drift.
-_MARKER_TOKEN = "filesystem-write-ok:"
 _OPEN_MODE_POSITION = 1
 _OPEN_MODE_MIN_ARGS = 2
 _GETATTR_NAME_POSITION = 1
 _GETATTR_MIN_ARGS = 2
 
-#: Module-level qualifiers (typically ``shutil``, ``os``, ``pathlib``)
-#: whose free-function calls are considered raw filesystem mutation
-#: when they target writes/mutations we want the consolidation to
-#: own. These qualifiers are matched against the AST ``ast.Call``
-#: whose function is an ``ast.Attribute`` whose value is an
-#: ``ast.Name`` whose ``id`` is in this set.
+EXEMPT_CALL_SITES: frozenset[tuple[str, str, str]] = frozenset(
+    {
+        ("ralph/_install_copy_tree.py", "copy_install_tree", "raw_copytree"),
+        ("ralph/_install_runtime.py", "_fsync_directory", "raw_fsync"),
+        ("ralph/_install_runtime.py", "_fsync_directory", "raw_open"),
+        ("ralph/_install_runtime.py", "write_dev_launcher", "raw_chmod"),
+        ("ralph/_install_runtime.py", "write_dev_launcher", "raw_fdopen_write"),
+        ("ralph/_install_runtime.py", "write_dev_launcher", "raw_fsync"),
+        ("ralph/_install_runtime.py", "write_dev_launcher", "raw_replace"),
+        ("ralph/_install_runtime.py", "write_dev_launcher", "raw_unlink"),
+        (
+            "ralph/agents/invoke/_runtime_resolvers/__init__.py",
+            "CodexRuntimeResolver.resolve._release",
+            "raw_rmtree",
+        ),
+        ("ralph/agents/invoke/_runtime_resolvers/__init__.py", "_project_agy_auth", "raw_copy2"),
+        ("ralph/cli/commands/cleanup.py", "cleanup", "raw_rmtree"),
+        ("ralph/cli/commands/run.py", "_clear_generated_pipeline_state", "raw_rmtree"),
+        ("ralph/config/_bootstrap_backup.py", "_migrate_legacy_global_config", "raw_copy2"),
+        ("ralph/config/agents_file_writer.py", "_publish_backup", "raw_fdopen_write"),
+        ("ralph/config/agents_file_writer.py", "_publish_backup", "raw_open"),
+        ("ralph/config/agents_file_writer.py", "write_agents_toml", "raw_chmod"),
+        ("ralph/config/agents_file_writer.py", "write_agents_toml", "raw_fdopen_write"),
+        ("ralph/config/agents_file_writer.py", "write_agents_toml", "raw_replace"),
+        ("ralph/config/agents_file_writer.py", "write_agents_toml", "raw_unlink"),
+        ("ralph/config/bootstrap.py", "_copy_with_backup", "raw_copy2"),
+        ("ralph/config/bootstrap.py", "_copy_with_backup", "raw_move"),
+        ("ralph/display/_terminal_bg_query.py", "_tty_fd", "raw_open"),
+        ("ralph/display/raw_overflow.py", "RawOverflowLog._write", "raw_open_write"),
+        ("ralph/display/raw_overflow.py", "_is_live_foreign_capture", "raw_open"),
+        ("ralph/display/record_writer.py", "RenderedRecordWriter.flush", "raw_open_write"),
+        ("ralph/display/terminal_restore.py", "_default_tty_stream", "raw_fdopen_write"),
+        ("ralph/display/terminal_restore.py", "_default_tty_stream", "raw_open"),
+        ("ralph/git/_git_command_queue_lease.py", "_acquire_lock_file", "raw_open"),
+        ("ralph/git/_lock_recovery.py", "_reap_mutex", "raw_open_write"),
+        ("ralph/git/_worktree_lease.py", "_takeover_lock_file", "raw_open"),
+        ("ralph/git/hooks.py", "_backup_existing_hook", "raw_copyfile"),
+        ("ralph/git/hooks.py", "_remove_hook", "raw_move"),
+        ("ralph/git/operations.py", "_atomic_append_text", "raw_write_text"),
+        ("ralph/git/operations.py", "create_commit", "raw_unlink"),
+        ("ralph/git/operations.py", "create_commit_with_hooks", "raw_write_text"),
+        ("ralph/git/proposal_seal.py", "seal_baseline", "raw_copy2"),
+        ("ralph/git/proposal_seal.py", "seal_pending", "raw_copy2"),
+        ("ralph/git/rebase/rebase_checkpoint.py", "_backup_checkpoint", "raw_copy2"),
+        ("ralph/git/rebase/rebase_checkpoint.py", "_backup_checkpoint", "raw_replace"),
+        ("ralph/git/rebase/rebase_checkpoint.py", "_backup_checkpoint", "raw_unlink"),
+        ("ralph/git/rebase/rebase_checkpoint.py", "acquire_rebase_lock", "raw_write_text"),
+        ("ralph/git/rebase/rebase_checkpoint.py", "restore_from_backup", "raw_copy2"),
+        ("ralph/git/rebase/rebase_checkpoint.py", "save_rebase_checkpoint", "raw_replace"),
+        ("ralph/git/rebase/rebase_checkpoint.py", "save_rebase_checkpoint", "raw_unlink"),
+        ("ralph/git/rebase/rebase_checkpoint.py", "save_rebase_checkpoint", "raw_write_text"),
+        ("ralph/install_transaction.py", "_remove_tree", "raw_rmtree"),
+        ("ralph/install_transaction.py", "install_lock", "raw_fdopen_write"),
+        ("ralph/install_transaction.py", "install_lock", "raw_open"),
+        (
+            "ralph/mcp/explore/_bench_product_baseline.py",
+            "_seeded_probe_workspace",
+            "raw_write_text",
+        ),
+        ("ralph/mcp/explore/_bench_r6_metrics.py", "_measure_changed_refresh", "raw_rmtree"),
+        ("ralph/mcp/explore/_bench_r6_metrics.py", "_measure_operational", "raw_rmtree"),
+        ("ralph/mcp/explore/_bench_r6_metrics.py", "_measure_operational", "raw_write_text"),
+        ("ralph/mcp/explore/_bench_r6_metrics.py", "_measure_query_latency", "raw_rmtree"),
+        ("ralph/mcp/explore/_bench_r6_metrics.py", "_rebuild_index", "raw_rmtree"),
+        ("ralph/mcp/explore/_bench_r6_metrics.py", "_seed_large_synthetic", "raw_write_text"),
+        ("ralph/mcp/explore/_bench_r6_metrics.py", "_seed_ralph_self_workspace", "raw_copytree"),
+        ("ralph/mcp/explore/_bench_r6_metrics.py", "_seed_small_workspace", "raw_write_text"),
+        ("ralph/mcp/explore/_bench_r6_metrics.py", "capture_baseline", "raw_write_text"),
+        ("ralph/mcp/explore/_bench_r6_metrics.py", "measure_cold_build", "raw_rmtree"),
+        ("ralph/mcp/explore/_pipeline_staged.py", "_staged_full_reindex", "raw_rmtree"),
+        ("ralph/mcp/explore/_store_class.py", "ExploreStore.__init__", "raw_mkdir"),
+        ("ralph/mcp/explore/handlers.py", "build_explore_index", "raw_unlink"),
+        ("ralph/mcp/explore/recovery.py", "_write_state_file", "raw_write_text"),
+        ("ralph/mcp/explore/recovery.py", "run_recovery_action", "raw_rmtree"),
+        ("ralph/mcp/explore/recovery.py", "try_advisory_lock", "raw_open"),
+        ("ralph/mcp/explore/reindex_bench.py", "_index_snapshot", "raw_rmtree"),
+        ("ralph/mcp/explore/reindex_bench.py", "_run_reindex", "raw_rmtree"),
+        ("ralph/mcp/explore/reindex_bench.py", "_seed_corpus", "raw_write_text"),
+        ("ralph/mcp/explore/reindex_bench.py", "_seeded_workspace", "raw_rmtree"),
+        (
+            "ralph/mcp/server/_fallback_standalone_server.py",
+            "_FallbackStandaloneServer._setup_handover_pause._pause_watcher",
+            "raw_write_text",
+        ),
+        ("ralph/mcp/server/_handover_protocol.py", "request_old_child_pause", "raw_write_text"),
+        ("ralph/mcp/server/_handover_protocol.py", "signal_candidate_resume", "raw_write_text"),
+        ("ralph/mcp/server/_mcp_health_event.py", "record_restart_decision", "raw_open_write"),
+        ("ralph/mcp/server/_snapshots.py", "snapshot_inputs", "raw_copy2"),
+        ("ralph/mcp/server/_snapshots.py", "write_snapshot", "raw_open_write"),
+        ("ralph/mcp/server/_start_stage_tracker.py", "_do_record", "raw_fsync"),
+        ("ralph/mcp/server/_start_stage_tracker.py", "_do_record", "raw_open"),
+        ("ralph/mcp/server/_start_stage_tracker.py", "_do_record", "raw_replace"),
+        ("ralph/mcp/server/_start_stage_tracker.py", "_do_record", "raw_unlink"),
+        ("ralph/mcp/server/_start_stage_tracker.py", "record_overrun._write_record", "raw_fsync"),
+        (
+            "ralph/mcp/server/_start_stage_tracker.py",
+            "record_overrun._write_record",
+            "raw_open_write",
+        ),
+        (
+            "ralph/mcp/server/_transport_repetition_tracker.py",
+            "TransportRepetitionTracker._observe_with_carried_state",
+            "raw_open_write",
+        ),
+        (
+            "ralph/mcp/server/_transport_repetition_tracker.py",
+            "TransportRepetitionTracker._write_carried_state",
+            "raw_open_write",
+        ),
+        ("ralph/mcp/server/_wire_ledger.py", "append_wire_record", "raw_open_write"),
+        (
+            "ralph/mcp/server/lifecycle.py",
+            "RestartAwareMcpBridge._record_contention_deferral",
+            "raw_open_write",
+        ),
+        ("ralph/mcp/server/lifecycle.py", "_create_session_file", "raw_fdopen_write"),
+        ("ralph/mcp/server/lifecycle.py", "_create_session_file", "raw_unlink"),
+        ("ralph/mcp/server/lifecycle.py", "_spawn_process", "raw_open"),
+        ("ralph/mcp/tools/_exec_output_spill.py", "spill_output", "raw_fdopen_write"),
+        ("ralph/mcp/tools/_exec_output_spill.py", "spill_output", "raw_unlink"),
+        ("ralph/mcp/transport/codex.py", "_copy_codex_home_entry", "raw_copy2"),
+        ("ralph/mcp/transport/codex.py", "_copy_codex_home_entry", "raw_copytree"),
+        ("ralph/mcp/transport/codex.py", "cleanup_codex_homes", "raw_rmtree"),
+        ("ralph/mcp/transport/codex.py", "release_codex_home", "raw_rmtree"),
+        ("ralph/mcp/transport/cursor.py", "_copy_cursor_home_entry", "raw_copy2"),
+        ("ralph/mcp/transport/cursor.py", "_copy_cursor_home_entry", "raw_copytree"),
+        ("ralph/mcp/transport/pi.py", "write_pi_mcp_extension.cleanup", "raw_rmtree"),
+        (
+            "ralph/mcp/transport/private_config_root.py",
+            "prepare_private_config_root",
+            "raw_write_text",
+        ),
+        (
+            "ralph/mcp/transport/private_config_root.py",
+            "prepare_private_config_root.cleanup",
+            "raw_rmtree",
+        ),
+        ("ralph/mcp/upstream/tool_catalog_cache.py", "_write_catalog_file", "raw_open"),
+        ("ralph/pipeline/_auto_integrate_recovery_git_state.py", "remove_path", "raw_rmtree"),
+        (
+            "ralph/pipeline/_integration_ladder_adapters.py",
+            "_ProductionEnvironmentProbe._write_failure",
+            "raw_open_write",
+        ),
+        (
+            "ralph/pipeline/_integration_ladder_adapters.py",
+            "_ProductionFileQuarantine.prune_regenerable_artifacts",
+            "raw_rmtree",
+        ),
+        (
+            "ralph/pipeline/_integration_ladder_adapters.py",
+            "_ProductionFileQuarantine.rename_into_quarantine",
+            "raw_renames",
+        ),
+        (
+            "ralph/pipeline/_integration_ladder_adapters.py",
+            "_ProductionGitPlumbing.archive_paths",
+            "raw_open_write",
+        ),
+        (
+            "ralph/pipeline/_integration_ladder_adapters.py",
+            "_ProductionGitPlumbing.remove_operation_state",
+            "raw_rmtree",
+        ),
+        (
+            "ralph/pipeline/auto_integrate_backup_refs.py",
+            "create_rebase_backup_ref",
+            "raw_write_text",
+        ),
+        (
+            "ralph/pipeline/auto_integrate_backup_refs.py",
+            "create_stale_resolution_snapshot",
+            "raw_write_text",
+        ),
+        (
+            "ralph/pipeline/auto_integrate_catchup_coordination.py",
+            "_write_fetch_after",
+            "raw_write_text",
+        ),
+        (
+            "ralph/pipeline/auto_integrate_catchup_coordination.py",
+            "remote_sync_transaction",
+            "raw_open_write",
+        ),
+        (
+            "ralph/pipeline/auto_integrate_remote_reconcile.py",
+            "_cleanup_temporary_worktree",
+            "raw_rmtree",
+        ),
+        (
+            "ralph/pipeline/auto_integrate_remote_reconcile.py",
+            "_reconcile_in_temporary_workspace",
+            "raw_rmtree",
+        ),
+        (
+            "ralph/pipeline/auto_integrate_transaction.py",
+            "integration_transaction",
+            "raw_open_write",
+        ),
+        ("ralph/pipeline/effect_executor.py", "_write_agent_retry_prompt", "raw_write_text"),
+        ("ralph/pipeline/effect_executor.py", "_write_retry_context_file", "raw_write_text"),
+        (
+            "ralph/pipeline/integration_attempt_ledger.py",
+            "AttemptLedger._atomic_write",
+            "raw_fsync",
+        ),
+        ("ralph/pipeline/integration_attempt_ledger.py", "AttemptLedger._atomic_write", "raw_open"),
+        (
+            "ralph/pipeline/integration_attempt_ledger.py",
+            "AttemptLedger._atomic_write",
+            "raw_open_write",
+        ),
+        ("ralph/pipeline/integration_attempt_ledger.py", "AttemptLedger._locked", "raw_open_write"),
+        (
+            "ralph/pipeline/plumbing/commit_plumbing.py",
+            "_write_commit_prompt_file",
+            "raw_write_text",
+        ),
+        ("ralph/pipeline/plumbing/smoke_plumbing.py", "run_smoke_plumbing", "raw_write_text"),
+        ("ralph/pipeline/runner.py", "_write_rejection_hint", "raw_write_text"),
+        ("ralph/pipeline/watchdog_fire_record.py", "record_watchdog_fire", "raw_open_write"),
+        ("ralph/skills/_installer.py", "_materialize_project_sibling_dir", "raw_copytree"),
+        ("ralph/skills/_installer.py", "_materialize_project_sibling_dir", "raw_rmtree"),
+        ("ralph/skills/_installer.py", "_mirror_baseline_skills_to_siblings", "raw_copy2"),
+        ("ralph/skills/_installer.py", "_mirror_baseline_skills_to_siblings", "raw_rmtree"),
+        ("ralph/skills/_installer.py", "_mirror_skill_to_sibling_root", "raw_copytree"),
+        ("ralph/skills/_installer.py", "_mirror_skill_to_sibling_root", "raw_rmtree"),
+        ("ralph/skills/_installer.py", "_prune_removed_baseline_skills", "raw_rmtree"),
+        ("ralph/skills/_process_view.py", "SkillsProcessView.__enter__", "raw_mkdir"),
+        ("ralph/telemetry/_user_identity.py", "_identity_lock", "raw_open"),
+        ("ralph/telemetry/_user_identity.py", "_write_user_id_file", "raw_chmod"),
+        ("ralph/telemetry/_user_identity.py", "_write_user_id_file", "raw_fdopen_write"),
+        ("ralph/telemetry/_user_identity.py", "_write_user_id_file", "raw_fsync"),
+        ("ralph/telemetry/_user_identity.py", "_write_user_id_file", "raw_replace"),
+        ("ralph/telemetry/_user_identity.py", "_write_user_id_file", "raw_unlink"),
+        ("ralph/test_suites.py", "_run_shards", "raw_write_text"),
+        (
+            "ralph/workspace/_cross_process_watch_lock.py",
+            "CrossProcessWatchLock.try_acquire",
+            "raw_open_write",
+        ),
+        (
+            "ralph/workspace/_shared_awareness.py",
+            "SharedAwarenessSidecar._write_document",
+            "raw_write_text",
+        ),
+        ("ralph/workspace/agent_dir_retention.py", "_metadata_lock", "raw_open_write"),
+        ("ralph/workspace/agent_dir_retention.py", "_sweep_codex_home_dirs", "raw_rmtree"),
+        ("ralph/workspace/agent_dir_retention.py", "_sweep_receipt_dirs", "raw_rmtree"),
+        ("ralph/workspace/fs.py", "FsWorkspace.append", "raw_mkdir"),
+        ("ralph/workspace/fs.py", "FsWorkspace.append", "raw_open_write"),
+        ("ralph/workspace/fs.py", "FsWorkspace.copy", "raw_copy2"),
+        ("ralph/workspace/fs.py", "FsWorkspace.copy", "raw_copytree"),
+        ("ralph/workspace/fs.py", "FsWorkspace.delete", "raw_rmtree"),
+        ("ralph/workspace/fs.py", "FsWorkspace.delete", "raw_unlink"),
+        ("ralph/workspace/fs.py", "FsWorkspace.move", "raw_move"),
+    }
+)
 _RAW_MUTATION_QUALIFIERS: frozenset[str] = frozenset(
     {
         "os",
@@ -116,13 +294,6 @@ _RAW_MUTATION_QUALIFIERS: frozenset[str] = frozenset(
     }
 )
 
-#: Attribute names that are recognised as raw filesystem mutation
-#: when called on one of :data:`_RAW_MUTATION_QUALIFIERS`. Each entry
-#: pairs the attribute name with the primitive hint or guidance the
-#: diagnostic cites (D2 — actionable, not merely "a check failed").
-#:
-#: ``open`` is special: only flag when the first argument is a
-#: write-mode constant; see :func:`_is_write_mode_open`.
 _RAW_MUTATION_ATTRS: dict[str, str] = {
     "replace": "raw atomic-replace bypasses the canonical primitives; "
     "route through ralph.mcp.artifacts.idempotent_write",
@@ -131,9 +302,9 @@ _RAW_MUTATION_ATTRS: dict[str, str] = {
     "renames": "raw renames bypasses the canonical primitives; "
     "route through ralph.mcp.artifacts.idempotent_write",
     "unlink": "raw unlink bypasses the canonical delete primitive; "
-    "delete only under a `# filesystem-write-ok: <reason>` marker",
+    "delete only through the canonical delete primitive",
     "remove": "raw os.remove bypasses the canonical delete primitive; "
-    "delete only under a `# filesystem-write-ok: <reason>` marker",
+    "delete only through the canonical delete primitive",
     "mkdir": "raw mkdir bypasses the canonical directory creation primitive; "
     "use workspace.fs.mkdirs or annotate the call",
     "makedirs": "raw makedirs bypasses the canonical directory creation primitive; "
@@ -157,9 +328,9 @@ _RAW_MUTATION_ATTRS: dict[str, str] = {
     "move": "raw shutil.move bypasses the canonical move boundary; "
     "route through an approved persistence primitive appropriate to the move or mark",
     "touch": "raw touch bumps mtime without content change; "
-    "annotate with `# filesystem-write-ok: <reason>` or remove the call",
+    "register the call site in EXEMPT_CALL_SITES or remove the call",
     "chmod": "raw permission metadata mutation bypasses the filesystem activity guard; "
-    "retain only under a `# filesystem-write-ok: <reason>` marker naming the permission contract",
+    "retain only as a registered call site naming the permission contract",
     "open": "raw os.open bypasses the canonical file-creation boundary; "
     "route through a shared persistence primitive or mark the local lifecycle reason",
     "truncate": "raw truncate bypasses the canonical truncation primitive; "
@@ -169,8 +340,6 @@ _RAW_MUTATION_ATTRS: dict[str, str] = {
 
 @dataclass(frozen=True)
 class FilesystemWriteViolation:
-    """A single filesystem-write consolidation audit violation."""
-
     kind: str
     file_path: str
     line: int
@@ -183,7 +352,6 @@ class FilesystemWriteViolation:
 def _coerce_exempt_paths(
     exempt_paths: frozenset[str] | Sequence[str] | None,
 ) -> frozenset[str]:
-    """Coerce a caller-supplied exempt set into the canonical frozenset."""
     if exempt_paths is None:
         return _DEFAULT_EXEMPT_PATHS
     return frozenset(exempt_paths)
@@ -193,17 +361,7 @@ def _coerce_package_roots(
     package_root: Path,
     package_roots: Sequence[str] | None,
 ) -> list[Path]:
-    """Resolve the package-relative roots to absolute Paths under package_root.
-
-    When ``package_roots`` is empty, the package_root itself is the
-    walk target — the audit walks every ``.py`` file directly under
-    ``package_root``. When ``package_roots`` is supplied, the walk
-    targets each ``package_root / rel`` directory.
-    """
     if package_roots is None:
-        # ``main(["ralph"])`` receives the package directory itself;
-        # whereas callers scanning a repository root provide a sibling
-        # ``ralph/`` directory. Support both public invocation forms.
         if package_root.name == "ralph":
             return [package_root]
         package_roots = _DEFAULT_PACKAGE_ROOTS
@@ -213,11 +371,6 @@ def _coerce_package_roots(
 
 
 def _collect_python_files(root: Path) -> list[Path]:
-    """Return every ``.py`` file under ``root`` (recursive), sorted.
-
-    ``__pycache__`` directories are pruned so stale ``.pyc`` files
-    don't pollute the walk.
-    """
     if not root.is_dir():
         return []
     result: list[Path] = []
@@ -232,35 +385,19 @@ def _collect_python_files(root: Path) -> list[Path]:
 
 
 def _is_write_mode_open(call: ast.Call, *, path_method: bool = False) -> bool:
-    """True if ``call`` opens a file in a write/append/update mode.
-
-    Builtin ``open(path, mode)`` takes its mode as the second positional
-    argument; ``Path.open(mode)`` takes it as the first.  When the mode is
-    dynamic the audit fails closed, while omitted modes preserve Python's
-    read-only default.
-    """
     mode_position = 0 if path_method else _OPEN_MODE_POSITION
     minimum_args = 1 if path_method else _OPEN_MODE_MIN_ARGS
     mode_arg: ast.expr | None = call.args[mode_position] if len(call.args) >= minimum_args else None
     if mode_arg is None:
         mode_arg = next((keyword.value for keyword in call.keywords if keyword.arg == "mode"), None)
     if mode_arg is None:
-        return False  # builtin open() defaults to read mode.
+        return False
     if not isinstance(mode_arg, ast.Constant) or not isinstance(mode_arg.value, str):
-        return True  # Unknown mode fails closed.
+        return True
     return any(flag in mode_arg.value for flag in ("w", "a", "x", "+"))
 
 
 def _raw_write_text_call(node: ast.Call) -> str | None:
-    """Return a raw full-file overwrite name, including dynamic lookups.
-
-    Receiver names are not proof of routing: an arbitrary new module can name
-    an unguarded writer ``backend`` or ``self``. Likewise, resolving
-    ``write_text`` through ``getattr`` must not evade the package-wide audit.
-    Only shared primitive modules are exempt, so every other raw overwrite
-    fails closed and must route through an idempotent helper or carry a local
-    contract marker.
-    """
     if isinstance(node.func, ast.Attribute):
         attr = node.func.attr
         return attr if attr in {"write_text", "write_bytes"} else None
@@ -279,12 +416,6 @@ def _raw_fdopen_call(
     direct_fdopen_aliases: frozenset[str],
     fdopen_module_aliases: frozenset[str],
 ) -> bool:
-    """True if ``node`` is an ``os.fdopen(fd, mode, ...)`` write acquisition.
-
-    Descriptor-backed file streams are still filesystem mutations.  Recognize
-    direct and imported aliases so that a temporary-file creation sequence
-    cannot evade the same local-contract requirement as ``open``.
-    """
     if isinstance(node.func, ast.Name) and node.func.id in direct_fdopen_aliases:
         return _is_write_mode_open(node)
     return (
@@ -301,15 +432,6 @@ def _raw_builtin_open_call(
     direct_open_aliases: frozenset[str],
     open_module_aliases: frozenset[str],
 ) -> bool:
-    """True if ``node`` is a builtin ``open(path, mode, ...)`` with write/append mode.
-
-    ``open`` is the only commonly-used write primitive whose
-    function is a bare :class:`ast.Name` rather than an
-    :class:`ast.Attribute`. Other module-qualified calls (``io.open``,
-    ``builtins.open``) are also detected: when the receiver is an
-    ``ast.Attribute`` whose deepest name is ``open``, we treat it
-    as the builtin too.
-    """
     if isinstance(node.func, ast.Name) and node.func.id in {"open", *direct_open_aliases}:
         return _is_write_mode_open(node)
     if isinstance(node.func, ast.Attribute) and node.func.attr == "open":
@@ -320,35 +442,18 @@ def _raw_builtin_open_call(
             *open_module_aliases,
         }:
             return _is_write_mode_open(node)
-        # `webbrowser.open(...)` is not a filesystem operation.  The audit
-        # matches calls by method name, so exclude this standard-library API
-        # explicitly while retaining fail-closed handling for every other
-        # mutating `.open(...)` form.
         if isinstance(receiver, ast.Name) and receiver.id in {"os", "webbrowser"}:
             return False
-        # Path.open(...) is another raw file-writing entry point.  Its
-        # receiver may be a Path variable, a Path(...) call, or a chained
-        # pathlib expression, so treating every non-builtin ``.open`` call
-        # with a mutating mode as raw is the fail-closed policy.
         return _is_write_mode_open(node, path_method=True)
     return False
 
 
 def _call_root_name(node: ast.AST) -> str | None:
-    """Return the deepest name on the call chain rooted at *node*.
-
-    Used to detect patterns like ``Path(...).unlink()``,
-    ``pathlib.Path(...).mkdir()``, ``os.path.join(...).replace(...)``
-    (the last form is uncommon for filesystem mutations but the
-    resolver is general enough to handle it). Returns ``None`` when
-    the chain does not terminate in a name we recognise.
-    """
     if isinstance(node, ast.Name):
         return node.id
     if isinstance(node, ast.Attribute):
         return _call_root_name(node.value)
     if isinstance(node, ast.Call):
-        # ``Path(p)`` — the call's function name is the root.
         return _call_root_name(node.func)
     return None
 
@@ -363,14 +468,6 @@ def _import_aliases(
     frozenset[str],
     frozenset[str],
 ]:
-    """Return module, mutation, and mode-sensitive ``open`` aliases from *tree*.
-
-    Import aliases must not turn package-wide enforcement into an easily
-    evaded spelling convention: ``import os as filesystem``, ``from os import
-    replace as publish``, and ``from io import open as persist`` remain raw
-    filesystem mutations. ``open`` aliases are kept separate because their
-    mode determines whether the call mutates.
-    """
     module_aliases: dict[str, str] = {}
     direct_mutations: dict[str, str] = {}
     direct_open_aliases: set[str] = set()
@@ -420,14 +517,12 @@ def _import_aliases(
 def _raw_direct_import_mutation_call(
     node: ast.Call, direct_mutations: dict[str, str]
 ) -> str | None:
-    """Return the raw mutation called through a directly imported alias, if any."""
     if isinstance(node.func, ast.Name):
         return direct_mutations.get(node.func.id)
     return None
 
 
 def _scope_key(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> int | None:
-    """Return the nearest function scope identity, or ``None`` at module scope."""
     current: ast.AST | None = node
     while current is not None:
         if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -441,16 +536,6 @@ def _path_variable_names(
     module_aliases: dict[str, str],
     parents: dict[ast.AST, ast.AST],
 ) -> frozenset[tuple[int | None, str]]:
-    """Return function-scoped local names directly initialized from pathlib.
-
-    This deliberately small provenance pass closes common bypasses where a
-    ``Path(...)`` value or the canonical workspace path resolvers (``_abs`` /
-    ``absolute_path``) are assigned before their mutating method is called. It
-    does not guess that arbitrary objects are paths, avoiding false positives
-    for domain methods named ``unlink`` or ``replace``. Provenance remains
-    scoped to the function containing the assignment so a ``Path`` local in
-    one function cannot misclassify a same-named string parameter elsewhere.
-    """
     names: set[tuple[int | None, str]] = set()
     pathlib_constructors = {"Path", "PurePath", "PosixPath", "WindowsPath"}
     workspace_path_resolvers = {"_abs", "absolute_path"}
@@ -480,7 +565,6 @@ def _path_variable_names(
 
 
 def _path_target_key(target: ast.expr) -> str | None:
-    """Return a conservative key for a local or ``self``-held path target."""
     if isinstance(target, ast.Name):
         return target.id
     if (
@@ -493,12 +577,6 @@ def _path_target_key(target: ast.expr) -> str | None:
 
 
 def _path_receiver_key(receiver: ast.expr) -> str | None:
-    """Return the matching provenance key for a mutation receiver.
-
-    ``Path.parent`` preserves path provenance, so a workspace-resolved
-    destination assigned to a local cannot evade directory-creation checks by
-    deriving its parent before calling ``mkdir``.
-    """
     if isinstance(receiver, ast.Attribute) and receiver.attr == "parent":
         return _path_receiver_key(receiver.value)
     return _path_target_key(receiver)
@@ -510,27 +588,6 @@ def _raw_qualified_mutation_call(
     path_variables: frozenset[tuple[int | None, str]],
     parents: dict[ast.AST, ast.AST],
 ) -> str | None:
-    """Return the attribute name if *node* is a raw qualified mutation.
-
-    Matches ``os.replace``, ``shutil.copy``, ``pathlib.Path.unlink``,
-    ``Path(...).unlink()`` (a call returning a Path with a
-    subsequent method call), etc. against :data:`_RAW_MUTATION_QUALIFIERS`
-    and :data:`_RAW_MUTATION_ATTRS`.
-
-    The receiver chain is resolved to its deepest name so that:
-
-    * ``os.replace(src, dst)`` — ``os`` is the root.
-    * ``shutil.copy2(src, dst)`` — ``shutil`` is the root.
-    * ``pathlib.Path(p).unlink()`` — ``pathlib`` is the root.
-    * ``Path(p).unlink()`` (after ``from pathlib import Path``) —
-      the receiver is a ``Call`` to ``Path``; the root name is
-      ``Path`` which is recognised as a pathlib primitive alias.
-
-    Returns:
-        The matched attribute name (``"replace"``, ``"copy"``,
-        ``"unlink"``, ...) when the call is a flagged raw mutation,
-        ``None`` otherwise.
-    """
     if not isinstance(node.func, ast.Attribute):
         return None
     attr = node.func.attr
@@ -562,12 +619,6 @@ def _raw_qualified_mutation_call(
 
 
 def _is_workspace_resolver_receiver(receiver: ast.expr) -> bool:
-    """Return whether a receiver derives from a workspace path resolver.
-
-    A resolver result often flows through ``.parent`` before a directory
-    mutation. Treat that one attribute chain as path provenance so a direct
-    ``self._abs(path).parent.mkdir(...)`` cannot bypass the shared backend.
-    """
     if isinstance(receiver, ast.Call):
         return isinstance(receiver.func, ast.Attribute) and receiver.func.attr in {
             "_abs",
@@ -577,16 +628,9 @@ def _is_workspace_resolver_receiver(receiver: ast.expr) -> bool:
 
 
 def _qualified_mutation_attr(attr: str, receiver: ast.expr, root: str) -> str | None:
-    """Return a flagged mutation attribute when its receiver is a known filesystem API."""
     if root in _RAW_MUTATION_QUALIFIERS:
-        # ``os.environ.copy()`` and similar attribute-chain calls are not
-        # filesystem mutations. ``os``/``shutil`` primitives must be called
-        # directly on the imported module; pathlib path construction is
-        # deliberately allowed to be chained (``pathlib.Path(p).unlink()``).
         is_direct_module_call = isinstance(receiver, ast.Name) and receiver.id == root
         return attr if root not in {"os", "shutil"} or is_direct_module_call else None
-    # ``Path`` / ``PurePath`` / ``PosixPath`` / ``WindowsPath`` are
-    # typically imported from ``pathlib``; treat them as pathlib aliases.
     pathlib_aliases = {"Path", "PurePath", "PosixPath", "WindowsPath"}
     pathlib_mutations = {
         "write_text",
@@ -604,7 +648,6 @@ def _qualified_mutation_attr(attr: str, receiver: ast.expr, root: str) -> str | 
 
 
 def _violation_message(attr: str) -> str:
-    """Build the actionable diagnostic for a raw full-file write."""
     if attr == "write_bytes":
         primitive_hint = "write_bytes_if_changed or atomic_write_bytes_if_changed"
     else:
@@ -613,53 +656,25 @@ def _violation_message(attr: str) -> str:
         f"raw {attr} overwrite bypasses the stable-path mutation guard "
         f"(macOS fseventsd amplification); route through "
         f"ralph.mcp.artifacts.idempotent_write:{primitive_hint}, "
-        f"or annotate the call with `# filesystem-write-ok: <reason>` "
+        f"or register the call site in EXEMPT_CALL_SITES "
         f"naming the behavioral contract (transient scratch, "
         f"deliberately timestamped, append-only stream, etc.)"
     )
 
 
 def _qualified_violation_message(qualifier: str, attr: str) -> str:
-    """Build the actionable diagnostic for a raw qualified mutation."""
     guidance = _RAW_MUTATION_ATTRS[attr]
     return (
         f"{qualifier}.{attr}(): {guidance}; "
-        f"or annotate the call with `# filesystem-write-ok: <reason>` "
+        f"or register the call site in EXEMPT_CALL_SITES "
         f"naming the behavioral contract (transient scratch, "
         f"deliberately timestamped, atomic-replace boundary, etc.)"
     )
 
 
-def _marker_comment_lines(source: str) -> set[int]:
-    """Return lines with a reasoned filesystem-write marker in a Python comment."""
-    if _MARKER_TOKEN not in source:
-        return set()
-    marker_lines: set[int] = set()
-    for token in tokenize.generate_tokens(StringIO(source).readline):
-        if token.type != tokenize.COMMENT or _MARKER_TOKEN not in token.string:
-            continue
-        marker_idx = token.string.find(_MARKER_TOKEN)
-        reason = token.string[marker_idx + len(_MARKER_TOKEN) :].strip()
-        if reason:
-            marker_lines.add(token.start[0])
-    return marker_lines
-
-
-def _has_marker_on_or_before(line_idx: int, marker_lines: set[int]) -> bool:
-    """True if any of the lines immediately before *line_idx* carries a marker.
-
-    The marker is accepted on the call line itself (trailing
-    comment) or on the immediately preceding source line. We do
-    not allow the marker to live arbitrarily far up the file —
-    that would weaken D3's "local exception" guarantee.
-    """
-    return line_idx in marker_lines or (line_idx - 1) in marker_lines
-
-
 def _parse_candidate_module(
     source: str, module_path: Path, rel_path: str
 ) -> ast.Module | FilesystemWriteViolation:
-    """Parse candidate source or return its fail-closed syntax violation."""
     try:
         return ast.parse(source, filename=str(module_path))
     except SyntaxError as exc:
@@ -675,7 +690,6 @@ def _parse_candidate_module(
 
 
 def _read_candidate_source(module_path: Path, rel_path: str) -> str | FilesystemWriteViolation:
-    """Read one module or return its fail-closed unreadable-source violation."""
     try:
         return module_path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
@@ -692,7 +706,6 @@ def _read_candidate_source(module_path: Path, rel_path: str) -> str | Filesystem
 def _prepare_module(
     module_path: Path, rel_path: str
 ) -> tuple[ast.Module, str] | list[FilesystemWriteViolation]:
-    """Read and parse every module, preserving fail-closed diagnostics."""
     source_or_violation = _read_candidate_source(module_path, rel_path)
     if isinstance(source_or_violation, FilesystemWriteViolation):
         return [source_or_violation]
@@ -706,18 +719,13 @@ def _scan_module(
     module_path: Path,
     rel_path: str,
 ) -> list[FilesystemWriteViolation]:
-    """Run the AST walk against one module and return its violations."""
     prepared = _prepare_module(module_path, rel_path)
     if isinstance(prepared, list):
         return prepared
-    tree, source = prepared
-
-    # Pre-compute reasoned comment markers so a string or docstring
-    # cannot silently become a D3 exception annotation.
-    marker_lines = _marker_comment_lines(source)
+    tree, _source = prepared
 
     nodes = list(ast.walk(tree))
-    parents = {child: node for node in nodes for child in ast.iter_child_nodes(node)}
+    parents = build_parent_map(tree)
     (
         module_aliases,
         direct_mutations,
@@ -727,90 +735,97 @@ def _scan_module(
         fdopen_module_aliases,
     ) = _import_aliases(nodes)
     path_variables = _path_variable_names(nodes, module_aliases, parents)
-    violations: list[FilesystemWriteViolation] = []
+    violations: list[tuple[FilesystemWriteViolation, ast.Call]] = []
     for node in nodes:
         if not isinstance(node, ast.Call):
             continue
-        # Path.write_text / Path.write_bytes
         attr = _raw_write_text_call(node)
         if attr is not None:
-            if _has_marker_on_or_before(node.lineno, marker_lines):
-                continue
-            violations.append(
-                FilesystemWriteViolation(
-                    kind="raw_write_text",
-                    file_path=rel_path,
-                    line=node.lineno,
-                    message=_violation_message(attr),
-                )
+            violation = FilesystemWriteViolation(
+                kind="raw_write_text",
+                file_path=rel_path,
+                line=node.lineno,
+                message=_violation_message(attr),
             )
+            violations.append((violation, node))
             continue
-        # os.fdopen(fd, "w" / "a" / ...) and aliases
         if _raw_fdopen_call(node, direct_fdopen_aliases, fdopen_module_aliases):
-            if _has_marker_on_or_before(node.lineno, marker_lines):
-                continue
             violations.append(
-                FilesystemWriteViolation(
-                    kind="raw_fdopen_write",
-                    file_path=rel_path,
-                    line=node.lineno,
-                    message=(
-                        "raw os.fdopen() with a write/append mode bypasses the "
-                        "filesystem activity guard; route stable content through "
-                        "ralph.mcp.artifacts.idempotent_write or annotate the call with "
-                        "`# filesystem-write-ok: <reason>` naming the transient or "
-                        "append-stream lifecycle contract"
+                (
+                    FilesystemWriteViolation(
+                        kind="raw_fdopen_write",
+                        file_path=rel_path,
+                        line=node.lineno,
+                        message=(
+                            "raw os.fdopen() with a write/append mode bypasses the "
+                            "filesystem activity guard; route stable content through "
+                            "ralph.mcp.artifacts.idempotent_write, or register the call "
+                            "site in EXEMPT_CALL_SITES naming the transient or "
+                            "append-stream lifecycle contract"
+                        ),
                     ),
+                    node,
                 )
             )
             continue
-        # builtin / Path.open(path, "w" / "a" / ...)
         if _raw_builtin_open_call(node, direct_open_aliases, open_module_aliases):
-            if _has_marker_on_or_before(node.lineno, marker_lines):
-                continue
             violations.append(
-                FilesystemWriteViolation(
-                    kind="raw_open_write",
-                    file_path=rel_path,
-                    line=node.lineno,
-                    message=(
-                        "raw builtin open() with a write/append mode bypasses the "
-                        "stable-path mutation guard; route through "
-                        "ralph.mcp.artifacts.idempotent_write "
-                        "(write_text_if_changed / atomic_write_text_if_changed / "
-                        "write_bytes_if_changed / atomic_write_bytes_if_changed) "
-                        "or annotate the call with "
-                        "`# filesystem-write-ok: <reason>` naming the "
-                        "behavioral contract (deliberate binary append, "
-                        "deliberately timestamped, atomic-create, etc.)"
+                (
+                    FilesystemWriteViolation(
+                        kind="raw_open_write",
+                        file_path=rel_path,
+                        line=node.lineno,
+                        message=(
+                            "raw builtin open() with a write/append mode bypasses the "
+                            "stable-path mutation guard; route through "
+                            "ralph.mcp.artifacts.idempotent_write "
+                            "(write_text_if_changed / atomic_write_text_if_changed / "
+                            "write_bytes_if_changed / atomic_write_bytes_if_changed), "
+                            "or register the call site in EXEMPT_CALL_SITES naming the "
+                            "behavioral contract (deliberate binary append, "
+                            "deliberately timestamped, atomic-create, etc.)"
+                        ),
                     ),
+                    node,
                 )
             )
             continue
-        # ``from os import replace as publish`` and similar direct imports.
-        direct_violation = _direct_import_violation(node, direct_mutations, marker_lines, rel_path)
+        direct_violation = _direct_import_violation(node, direct_mutations, rel_path)
         if direct_violation is not None:
-            violations.append(direct_violation)
+            violations.append((direct_violation, node))
             continue
-        # os.* / shutil.* / pathlib.Path.* raw mutation
         qattr = _raw_qualified_mutation_call(node, module_aliases, path_variables, parents)
         if qattr is not None:
-            if _has_marker_on_or_before(node.lineno, marker_lines):
-                continue
             qualifier = _call_receiver_root(node) or "?"
             violations.append(
-                FilesystemWriteViolation(
-                    kind=f"raw_{qattr}",
-                    file_path=rel_path,
-                    line=node.lineno,
-                    message=_qualified_violation_message(qualifier, qattr),
+                (
+                    FilesystemWriteViolation(
+                        kind=f"raw_{qattr}",
+                        file_path=rel_path,
+                        line=node.lineno,
+                        message=_qualified_violation_message(qualifier, qattr),
+                    ),
+                    node,
                 )
             )
-    return violations
+    return _registered_violations(violations, rel_path, parents)
+
+
+def _registered_violations(
+    violations: list[tuple[FilesystemWriteViolation, ast.Call]],
+    rel_path: str,
+    parents: dict[ast.AST, ast.AST],
+) -> list[FilesystemWriteViolation]:
+    kept: list[FilesystemWriteViolation] = []
+    for violation, node in violations:
+        scope = qualified_scope(node, parents)
+        if (rel_path, scope, violation.kind) in EXEMPT_CALL_SITES:
+            continue
+        kept.append(violation)
+    return kept
 
 
 def _call_receiver_root(node: ast.Call) -> str | None:
-    """Return the root receiver name of an attribute call."""
     if not isinstance(node.func, ast.Attribute):
         return None
     return _call_root_name(node.func.value)
@@ -819,12 +834,10 @@ def _call_receiver_root(node: ast.Call) -> str | None:
 def _direct_import_violation(
     node: ast.Call,
     direct_mutations: dict[str, str],
-    marker_lines: set[int],
     rel_path: str,
 ) -> FilesystemWriteViolation | None:
-    """Return a violation for a directly imported raw mutation, if present."""
     direct_attr = _raw_direct_import_mutation_call(node, direct_mutations)
-    if direct_attr is None or _has_marker_on_or_before(node.lineno, marker_lines):
+    if direct_attr is None:
         return None
     return FilesystemWriteViolation(
         kind=f"raw_{direct_attr}",
@@ -841,25 +854,6 @@ def audit_filesystem_write_consolidation(
     exempt_paths: frozenset[str] | Sequence[str] | None = None,
     package_roots: Sequence[str] | None = None,
 ) -> list[FilesystemWriteViolation]:
-    """Return a list of package-wide filesystem-write violations.
-
-    Args:
-        package_root: The ``ralph-workflow`` repo root.
-        module_paths: When provided, restrict the audit to these
-            package-relative paths (used by tests and for
-            debugging). When ``None``, walk every ``.py`` file under
-            each ``package_roots`` directory under ``package_root``.
-        exempt_paths: Package-relative paths that are exempt from
-            the audit (the shared primitives, the audit module
-            itself, etc.).
-        package_roots: When ``None``, defaults to ``("ralph",)``.
-
-    The audit walks ``.py`` files via ``Path.rglob``, prunes
-    ``__pycache__`` directories, and treats every production module
-    as in scope by default. Newly added modules automatically
-    participate — the audit cannot be silently bypassed by adding
-    new code (D1).
-    """
     if not package_root.is_dir():
         return [
             FilesystemWriteViolation(
@@ -927,23 +921,12 @@ def audit_filesystem_write_consolidation(
 
 
 def _is_exempt(rel_path: str, exempt: frozenset[str]) -> bool:
-    """True if ``rel_path`` matches any entry in ``exempt``.
-
-    Exempt entries may be expressed as either the full path
-    (``ralph/mcp/artifacts/idempotent_write.py``) or the path
-    relative to the walked root (``mcp/artifacts/idempotent_write.py``
-    when the walk target is ``ralph/``). Matching against the full
-    path keeps the canonical form; matching the suffix lets the
-    default exempt set work whether the caller supplied
-    ``package_roots=("ralph",)`` or walked ``package_root`` directly.
-    """
     if rel_path in exempt:
         return True
     return any(rel_path == entry or rel_path.endswith("/" + entry) for entry in exempt)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Return 0 when clean, 1 on violations, or 2 for a missing package root."""
     if argv is None:
         argv = sys.argv[1:]
 
@@ -962,11 +945,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(
             "Fix the drift: stable full-file writes in ralph/ must route through "
             "ralph.mcp.artifacts.idempotent_write (write_text_if_changed or "
-            "atomic_write_text_if_changed), or carry a local "
-            "`# filesystem-write-ok: <reason>` marker naming the behavioral "
-            "contract (transient scratch, deliberately timestamped, append-only "
-            "stream, etc.). The marker must include a reason — an empty reason "
-            "fails closed per D3."
+            "atomic_write_text_if_changed), or be registered in "
+            "EXEMPT_CALL_SITES as (file, qualified callable, kind) naming the "
+            "behavioral contract (transient scratch, deliberately timestamped, "
+            "append-only stream, etc.)."
         )
         return 1
 

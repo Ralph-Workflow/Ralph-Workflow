@@ -1,5 +1,3 @@
-"""Tests for ralph/pipeline/runner.py — pipeline runner."""
-
 from __future__ import annotations
 
 from functools import lru_cache
@@ -38,11 +36,11 @@ DEVELOPER_ITERATIONS = 5
 REVIEWER_PASSES = 2
 SECOND_ITERATION = 2
 INTERRUPT_EXIT_CODE = 130
-_TRUNCATED_TEXT_MAX = runner_module.MAX_TEXT_LENGTH + 1  # content + ellipsis
-_TRUNCATED_RESULT_BRIEF_MAX = runner_module.MAX_TOOL_RESULT_BRIEF + 1  # content + ellipsis
-_TRUNCATED_METADATA_MAX = runner_module.MAX_METADATA_SUMMARY_LENGTH + 1  # content + ellipsis
+_TRUNCATED_TEXT_MAX = runner_module.MAX_TEXT_LENGTH + 1
+_TRUNCATED_RESULT_BRIEF_MAX = runner_module.MAX_TOOL_RESULT_BRIEF + 1
+_TRUNCATED_METADATA_MAX = runner_module.MAX_METADATA_SUMMARY_LENGTH + 1
 _AVAILABLE_WIDTH_FLOOR = 40
-_TRUNCATE_RESULT_LEN = 6  # 5 chars + 1 ellipsis char
+_TRUNCATE_RESULT_LEN = 6
 
 
 @lru_cache(maxsize=1)
@@ -134,7 +132,6 @@ def _stub_workspace_scope_and_policy(monkeypatch: MonkeyPatch, tmp_path: Path) -
 def test_materialize_agent_prompt_if_needed_routes_injected_phase_materializer(
     tmp_path: Path,
 ) -> None:
-    """The ``materialize_fn`` parameter routes an injected phase materializer."""
     policy_bundle = _load_default_policy_bundle()
     workspace = FsWorkspace(tmp_path)
     workspace.write("PROMPT.md", "Create a fresh plan")
@@ -300,9 +297,6 @@ class TestExecuteEffect:
     def test_execute_effect_forwards_run_id_to_execute_agent_effect(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """S-2 run_id threading: ``execute_effect``'s InvokeAgentEffect branch
-        forwards a caller-supplied ``run_id`` into ``execute_agent_effect``
-        instead of letting it be silently regenerated there."""
         captured: dict[str, object] = {}
 
         def fake_execute_agent_effect(
@@ -333,8 +327,6 @@ class TestExecuteEffect:
     def test_execute_effect_with_optional_display_forwards_run_id(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """S-2 run_id threading: the public wrapper chain forwards run_id
-        through to whatever ``execute_effect`` resolves to at call time."""
         captured: dict[str, object] = {}
 
         def fake_execute_effect(

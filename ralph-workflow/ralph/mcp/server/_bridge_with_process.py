@@ -1,4 +1,3 @@
-"""Protocol for a session bridge that exposes its process."""
 
 from __future__ import annotations
 

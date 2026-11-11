@@ -1,4 +1,3 @@
-"""Web search configuration models for `mcp.toml`."""
 
 from __future__ import annotations
 
@@ -12,7 +11,6 @@ from ralph.timeout_defaults import WEBSEARCH_BACKEND_TIMEOUT_SECONDS
 
 
 class WebSearchConfig(RalphBaseModel):
-    """Top-level `web_search` config in `mcp.toml`."""
 
     model_config = ConfigDict(frozen=True)
 

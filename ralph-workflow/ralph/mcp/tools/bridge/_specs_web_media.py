@@ -1,4 +1,3 @@
-"""Tool specs for web and media operations (conditionally included)."""
 
 from __future__ import annotations
 
@@ -22,7 +21,6 @@ if TYPE_CHECKING:
 
 
 def web_media_specs(mcp_config: McpConfig) -> list[ToolSpec]:
-    """Return conditionally-included tool specs for web and media operations."""
     specs: list[ToolSpec] = []
     if mcp_config.web_search.enabled:
         specs.append(
@@ -203,12 +201,6 @@ def web_media_specs(mcp_config: McpConfig) -> list[ToolSpec]:
                 handler_name="handle_download_url",
             ),
         )
-    # S-14 (criterion 1): the multimodal MCP endpoints always stay
-    # enabled. ``MediaConfig.enabled`` is coerced to True via a
-    # ``field_validator`` and the gate is dropped here so a future
-    # change cannot reintroduce the opt-out. ``max_inline_bytes``
-    # remains a genuine tunable and is forwarded by the registry
-    # via ``extra_kwargs={"max_inline_bytes": mcp_cfg.media.max_inline_bytes}``.
     specs.append(
         ToolSpec(
             metadata=_metadata(

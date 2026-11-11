@@ -1,10 +1,3 @@
-"""Minimal legacy HTTP+SSE MCP server fixture.
-
-Exposes a legacy `/sse` endpoint that emits an `endpoint` event naming a
-message POST endpoint. Client JSON-RPC responses are delivered back over the
-open SSE stream as `message` events so tests exercise the full legacy flow.
-"""
-
 from __future__ import annotations
 
 import sys

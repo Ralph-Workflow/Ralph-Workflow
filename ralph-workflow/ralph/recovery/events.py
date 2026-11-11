@@ -1,4 +1,3 @@
-"""Structured failure events and event bus for recovery observability."""
 
 from __future__ import annotations
 
@@ -18,10 +17,9 @@ _AnyListener = Callable[[FailureEvent | FalloverEvent], None]
 
 
 class FailureEventBus:
-    """Simple publish/subscribe bus for failure and fallover events."""
 
     def __init__(self) -> None:
-        self._listeners: list[_AnyListener] = []  # bounded-accumulator-ok: drained
+        self._listeners: list[_AnyListener] = []
 
     def publish(self, evt: FailureEvent | FalloverEvent) -> None:
         if isinstance(evt, FailureEvent):
@@ -46,7 +44,6 @@ class FailureEventBus:
                 logger.debug("FailureEventBus listener raised", exc_info=True)
 
     def subscribe(self, cb: _AnyListener) -> UnsubscribeFn:
-        """Register a listener. Returns a callable that unsubscribes it."""
         self._listeners.append(cb)
 
         def _unsubscribe() -> None:

@@ -1,4 +1,3 @@
-"""Directory listing, glob matching, and recursive walk operations."""
 
 from __future__ import annotations
 
@@ -12,9 +11,6 @@ from ralph.workspace.skip import RECURSIVE_SKIP_DIRECTORY_NAMES
 if TYPE_CHECKING:
     from ralph.workspace import Workspace
 
-# Recursive walks (list_directory, glob, grep enumeration) must be bounded so a
-# huge plain tree (e.g. a large vendor/ without a .git marker) cannot block the
-# MCP server thread for a long time and starve the agent of output.
 _RECURSIVE_MAX_ENTRIES = 10_000
 _RECURSIVE_MAX_DEPTH = 50
 _TRUNCATION_NOTE = (
@@ -81,7 +77,6 @@ def _list_dir_recursive_output(workspace: Workspace, path: str) -> str:
 
 
 def _match_parts_with_doublestar(path_parts: list[str], pat_parts: list[str]) -> bool:
-    """Recursively match path segments against a pattern with ** segments."""
     if not pat_parts:
         return not path_parts
     if pat_parts[0] == "**":
@@ -100,7 +95,6 @@ def _match_parts_with_doublestar(path_parts: list[str], pat_parts: list[str]) ->
 
 
 def match_glob(rel_path: str, pattern: str) -> bool:
-    """Match a path against a glob pattern supporting *, **, and ? segments."""
     path_parts = rel_path.split("/")
     pat_parts = pattern.split("/")
     if "**" in pat_parts:
@@ -114,11 +108,6 @@ def match_glob(rel_path: str, pattern: str) -> bool:
 
 
 def _collect_files_recursive(workspace: Workspace, base_path: str) -> list[str]:
-    """Recursively collect files under base_path, respecting skip dirs.
-
-    Bounded by `_RECURSIVE_MAX_ENTRIES` / `_RECURSIVE_MAX_DEPTH` so enumeration
-    (used by glob and grep) over a huge plain tree cannot run unbounded.
-    """
     results: list[str] = []
     _collect_files_recursive_bounded(workspace, base_path, results, 0)
     return results
@@ -150,7 +139,6 @@ def _collect_matching_files(
     pattern: str,
     exclude: list[str] | None = None,
 ) -> list[str]:
-    """Collect files matching a glob pattern under base_path."""
     try:
         all_files: list[str] = list(workspace.iter_files(base_path))
     except Exception:

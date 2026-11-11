@@ -1,5 +1,3 @@
-"""Unit tests for ralph.pipeline.runner.validate_custom_mcp_servers."""
-
 from __future__ import annotations
 
 from io import StringIO
@@ -283,11 +281,6 @@ def test_strict_mode_probe_failure_returns_one(
 def test_strict_mode_agent_upstream_probe_failure_returns_zero_and_warns(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A third-party (agent-native) server failing the agent probe must not abort.
-
-    Agent-native MCP servers are best-effort: a probe failure warns and continues,
-    even in strict mode, because the agent runtime owns them — not Ralph.
-    """
     server = _agent_http_server("angular")
     monkeypatch.setattr(
         "ralph.mcp.transport.claude.load_existing_claude_upstream_servers",
@@ -386,7 +379,6 @@ def test_soft_mode_probe_failure_returns_zero_and_logs_warning(
 def test_strict_mode_agent_upstream_catalog_failure_returns_zero_and_warns(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A third-party server failing tool-catalog collection must not abort preflight."""
     server = _agent_http_server("angular")
     monkeypatch.setattr(
         "ralph.mcp.transport.claude.load_existing_claude_upstream_servers",
@@ -426,7 +418,6 @@ def test_strict_mode_agent_upstream_catalog_failure_returns_zero_and_warns(
 def test_strict_mode_custom_catalog_failure_returns_one(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A Ralph-owned custom server failing tool-catalog collection still aborts in strict mode."""
     server = _custom_http_server("alpha")
     monkeypatch.setattr("ralph.mcp.transport.common.mcp_toml_as_upstreams", lambda _p: (server,))
     monkeypatch.delenv("RALPH_MCP_STRICT", raising=False)

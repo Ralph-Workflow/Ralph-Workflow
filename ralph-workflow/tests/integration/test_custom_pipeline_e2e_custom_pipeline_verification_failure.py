@@ -1,14 +1,3 @@
-"""End-to-end test: custom-named pipeline with no canonical phase names.
-
-Proves that the runtime no longer depends on built-in phase names.
-A workflow with phases named:
-  kickoff → build → gate (analysis loop) → seal (commit) → verify (verification)
-  → done (terminal success) or crashed (terminal failure)
-exercises every role type and all routing transitions using only policy-declared names.
-
-All phase transitions are driven through the reducer. No real agents are invoked.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -41,17 +30,6 @@ _BUILD_LOOP_MAX = 3
 
 
 def _build_custom_bundle() -> PolicyBundle:
-    """Build a custom policy bundle with no canonical phase names.
-
-    The pipeline exercises every phase role:
-    - kickoff: execution
-    - build: execution
-    - gate: analysis (with build_loop counter)
-    - seal: commit (increments build_pass, resets build_loop)
-    - verify: verification (routes to done on success, crashed on failure)
-    - crashed: terminal (failure outcome)
-    - done: terminal (success outcome)
-    """
     pipeline = PipelinePolicy(
         phases={
             "kickoff": PhaseDefinition(
@@ -163,7 +141,6 @@ def _build_custom_bundle() -> PolicyBundle:
 
 
 def _initial_state(policy: PipelinePolicy) -> PipelineState:
-    """Build initial PipelineState for the custom pipeline."""
     return PipelineState(
         phase="kickoff",
         phase_chains={
@@ -182,15 +159,12 @@ def custom_bundle() -> PolicyBundle:
 
 
 class TestCustomPipelineVerificationFailure:
-    """Verification failure routes to the custom failure terminal phase."""
-
     def _advance_to_verify(self, policy: PipelinePolicy) -> PipelineState:
-        """Helper: advance state from kickoff all the way to verify."""
         state = _initial_state(policy)
-        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)  # kickoff→build
-        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)  # build→gate
-        state, _ = reducer_reduce(state, PipelineEvent.ANALYSIS_SUCCESS, policy)  # gate→seal
-        state, _ = reducer_reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)  # seal→verify
+        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
+        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
+        state, _ = reducer_reduce(state, PipelineEvent.ANALYSIS_SUCCESS, policy)
+        state, _ = reducer_reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
         assert state.phase == "verify", f"Expected verify, got {state.phase}"
         return state
 
@@ -211,11 +185,10 @@ class TestCustomPipelineVerificationFailure:
         policy = custom_bundle.pipeline
         state = self._advance_to_verify(policy)
 
-        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)  # verify→done
+        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
         assert state.phase == "done", f"Expected done, got {state.phase}"
 
     def test_crashed_phase_is_not_canonical_terminal(self, custom_bundle: PolicyBundle) -> None:
-        """The crashed phase is a non-canonical failure terminal — not 'failed' or 'complete'."""
         assert "crashed" in custom_bundle.pipeline.phases
         phase_def = custom_bundle.pipeline.phases["crashed"]
         assert phase_def.role == "terminal"

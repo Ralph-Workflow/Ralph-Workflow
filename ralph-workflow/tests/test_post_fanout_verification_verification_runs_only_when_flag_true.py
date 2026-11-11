@@ -1,5 +1,3 @@
-"""Tests for serialized post-fanout workspace verification."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -37,7 +35,6 @@ def _make_scope(tmp_path: Path) -> WorkspaceScope:
 
 class TestVerificationRunsOnlyWhenFlagTrue:
     def test_verification_flag_defaults_to_false_on_effect(self) -> None:
-        """FanOutEffect.run_post_fanout_verification must default to False."""
         effect = FanOutEffect(
             work_units=(
                 WorkUnit(unit_id="unit-a", description="A", allowed_directories=["src/a"]),
@@ -49,7 +46,6 @@ class TestVerificationRunsOnlyWhenFlagTrue:
         )
 
     def test_verification_only_runs_when_flag_true(self) -> None:
-        """Verification conditional: flag=False means _run_post_fanout_verification never called."""
         effect_false = FanOutEffect(
             work_units=(WorkUnit(unit_id="u", description="u", allowed_directories=["src/u"]),),
             max_workers=1,
@@ -61,7 +57,6 @@ class TestVerificationRunsOnlyWhenFlagTrue:
             run_post_fanout_verification=True,
         )
         any_worker_failed = False
-        # Simulate the conditional logic from _run_fan_out_async
         verify_calls_false = 0
         if effect_false.run_post_fanout_verification and not any_worker_failed:
             verify_calls_false += 1
@@ -73,7 +68,6 @@ class TestVerificationRunsOnlyWhenFlagTrue:
         assert verify_calls_true == 1
 
     def test_policy_post_fanout_verification_defaults_to_false(self) -> None:
-        """The default pipeline policy must have post_fanout_verification=False."""
 
         defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
         bundle = load_policy(defaults_dir)

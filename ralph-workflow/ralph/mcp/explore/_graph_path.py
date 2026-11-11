@@ -1,4 +1,3 @@
-"""Graph path query for ``ralph_graph`` (Phase 2+)."""
 
 import sqlite3
 from collections.abc import Sequence
@@ -28,12 +27,6 @@ def path_query(
     depth: int = 4,
     limit: int = 25,
 ) -> GraphResult:
-    """Bounded shortest-path search between two endpoints.
-
-    Returns ``missing_data=("endpoint_unresolved",)`` when either
-    endpoint cannot be resolved. Paths sort by length, then minimum
-    edge confidence, then lexicographic path string for stable output.
-    """
     relations_actual = tuple(relations) if relations else _RELATION_PRIORITY
     a_id, _a_name = _resolve_target(store, target)
     b_id, _b_name = _resolve_target(store, target_b)
@@ -53,7 +46,6 @@ def path_query(
     bounded_max_paths = max(1, min(max_paths, 10))
     bounded_limit = max(1, min(limit, 100))
 
-    # BFS forward from a_id, recording path.
     queue: list[tuple[str, list[str], list[GraphEdge]]] = [(a_id, [a_id], [])]
     visited: set[str] = {a_id}
     found: list[tuple[list[str], list[GraphEdge]]] = []

@@ -1,5 +1,3 @@
-"""Black-box unit tests for :mod:`ralph.pro_support.watcher`."""
-
 from __future__ import annotations
 
 import io
@@ -147,12 +145,6 @@ def test_watcher_never_calls_heartbeat_factory_when_marker_never_appears() -> No
 
 
 def test_watcher_stop_interrupts_sleep_within_50ms() -> None:
-    """Default sleeper uses ``Event.wait``; ``stop()`` must interrupt promptly.
-
-    The daemon runs in Event.wait(timeout=10.0). Calling stop() from the main
-    thread must wake the daemon within 50ms (a real responsiveness assertion;
-    see ``_WALL_CLOCK_ALLOWLIST`` justification for ``test_pro_support_watcher``).
-    """
 
     def _loader() -> dict[str, object] | None:
         return None
@@ -190,7 +182,6 @@ def test_watcher_rejects_non_positive_poll_interval() -> None:
 
 
 def test_watcher_does_not_write_to_marker_directory(tmp_path: Path) -> None:
-    """The watcher (with the real marker reader) must NEVER write to <workspace>/.ralph/."""
     marker_dir = tmp_path / ".ralph"
     marker_dir.mkdir()
     payload = {"runId": "abc", "port": 7432, "heartbeatToken": "tok"}
@@ -268,16 +259,7 @@ def test_watcher_does_not_emit_bare_json_log_line() -> None:
         assert not _BARE_JSON_LINE.match(line), f"bare JSON log line: {line!r}"
 
 
-# ---------------------------------------------------------------------------
-# wt-024 Step 6: cascade ProMarkerWatcher.stop() to the adopted heartbeat
-# ---------------------------------------------------------------------------
-
-
 def test_watcher_stop_cascades_to_adopted_heartbeat_client() -> None:
-    """wt-024 Step 6: when the watcher adopts a heartbeat client,
-    ``stop()`` MUST also stop the adopted client so the heartbeat
-    drain thread is reaped instead of leaking.
-    """
     stop_calls: list[None] = []
     adoption_event = threading.Event()
 
@@ -313,8 +295,6 @@ def test_watcher_stop_cascades_to_adopted_heartbeat_client() -> None:
 
 
 def test_watcher_stop_does_not_fail_when_no_heartbeat_was_adopted() -> None:
-    """wt-024 Step 6: stop() must remain idempotent and non-raising when
-    the watcher never adopted a heartbeat (marker never appeared)."""
     _sleeper, _sleeps = _make_noop_sleeper()
     watcher = ProMarkerWatcher(
         sleeper=_sleeper,
@@ -323,14 +303,11 @@ def test_watcher_stop_does_not_fail_when_no_heartbeat_was_adopted() -> None:
         poll_interval_seconds=0.001,
     )
     watcher.start()
-    # Sleep briefly so the loop runs once
     threading.Event().wait(timeout=0.05)
-    # Must not raise even though no heartbeat was adopted
     watcher.stop()
 
 
 def test_watcher_stop_swallows_heartbeat_stop_exception() -> None:
-    """wt-024 Step 6: a refusing heartbeat client must not break watcher.stop()."""
 
     class _BrokenHeartbeatClient:
         def stop(self) -> None:
@@ -357,5 +334,4 @@ def test_watcher_stop_swallows_heartbeat_stop_exception() -> None:
     try:
         _wait_for_event(adoption_event, timeout=2.0, label="adoption")
     finally:
-        # Must not raise even though _BrokenHeartbeatClient.stop() raises
         watcher.stop()

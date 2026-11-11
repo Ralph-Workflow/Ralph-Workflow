@@ -1,17 +1,3 @@
-"""End-to-end integration test: custom-named pipeline (design → build → audit → sign_off → done).
-
-Proves that policy-driven routing works with only user-defined phase names and
-that no canonical phase name (planning, development, review, fix, complete, failed)
-is hard-required anywhere in the runtime.
-
-Exercises:
-  - Policy validation via validate_policy_completeness
-  - Reducer-driven routing through all phase roles
-  - Post-commit routing via resolve_post_commit_phase
-  - ASCII explain-policy output contains custom names only
-  - Parallelization policy in a custom-named phase
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -59,15 +45,6 @@ CANONICAL_PHASE_NAMES = frozenset(
 
 
 def _build_custom_bundle() -> PolicyBundle:
-    """Build the design → build → audit → sign_off → done custom pipeline.
-
-    Phase roles:
-      design:    execution
-      build:     execution (with parallelization)
-      audit:     analysis (loops back to build on request_changes)
-      sign_off:  commit (increments cycles counter, resets audit_round)
-      terminal:  terminal success (done), terminal failure (rejected)
-    """
     pipeline = PipelinePolicy(
         entry_phase="design",
         terminal_phase="done",
@@ -197,14 +174,10 @@ def custom_bundle() -> PolicyBundle:
 
 
 class TestCustomNamedPipelineValidation:
-    """Policy validation for the custom-named bundle."""
-
     def test_validate_policy_completeness_passes(self, custom_bundle: PolicyBundle) -> None:
-        """validate_policy_completeness raises nothing for the custom-named bundle."""
         validate_policy_completeness(custom_bundle)
 
     def test_no_canonical_phase_names_in_policy(self, custom_bundle: PolicyBundle) -> None:
-        """Custom phase names must not overlap with canonical default phase names."""
         phase_names = set(custom_bundle.pipeline.phases.keys())
         overlap = phase_names & CANONICAL_PHASE_NAMES
         assert overlap == set(), f"Custom phases overlap with canonical: {overlap}"

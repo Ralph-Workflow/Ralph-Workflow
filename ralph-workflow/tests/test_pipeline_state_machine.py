@@ -1,5 +1,3 @@
-"""Unit tests for the pipeline state machine (Authority 3)."""
-
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -40,13 +38,6 @@ def _policy_with(
 
 
 def test_decide_blocks_for_recovery_when_legacy_flagged_record_present() -> None:
-    """A legacy flagged record never ends the run on a person.
-
-    The retired ``diagnostic_intervention_required`` hand-off flag is
-    cleared when the record loads; a record that still carries it in
-    memory routes into the recovery/ladder escalation, never the
-    terminal operator hand-off.
-    """
     record = IntegrationRecord(
         phase="integrating",
         target="main",
@@ -119,7 +110,6 @@ def test_decide_returns_terminal_success_when_next_phase_is_terminal() -> None:
 
 
 def test_decide_returns_block_for_recovery_when_integration_unresolved() -> None:
-    """An unresolved rebase state blocks even when no record is present."""
     policy = _policy_with({"plan": {"on_success": "build"}}, terminal=("done",))
     decision = decide_phase_transition(
         _state("plan"),
@@ -149,7 +139,6 @@ def test_is_terminal_success_eligible_returns_true_when_all_clear() -> None:
 
 
 def test_decide_blocks_terminal_success_when_worker_states_contradict_cached_join() -> None:
-    """A stale join_complete cache with live RUNNING workers must not yield terminal success."""
     state = _state("done")
     state.worker_states = {"unit-1": SimpleNamespace(unit_id="unit-1", status="running")}
     record = None
@@ -186,13 +175,6 @@ def test_decide_returns_block_for_recovery_when_integrated_with_reintegrate_pend
 
 
 def test_decide_durable_record_outranks_cached_block_for_recovery() -> None:
-    """A retained durable record keeps the run blocked for recovery.
-
-    The durable record is the current authority obligation; the cached
-    decision of the previous turn is only its output. The retained
-    record blocks for recovery (the ladder escalation), never on a
-    person.
-    """
     record = IntegrationRecord(
         phase="integrated",
         target="main",
@@ -214,21 +196,6 @@ def test_decide_durable_record_outranks_cached_block_for_recovery() -> None:
 
 
 def test_persisted_block_does_not_block_when_no_authority_obligation() -> None:
-    """A persisted ``BLOCK_FOR_RECOVERY`` decision must NOT block a fresh
-    state with no current authority obligation.
-
-    The blocking decision is a derived projection over CURRENT
-    authority outputs, not a feedback input. The previous run
-    loop turn's persisted decision is the *output* of the
-    decision; re-using it as an *input* would let a settled
-    obligation remain blocked because the previous turn's
-    decision was blocking. With no current integration record
-    and no current ``integration_unresolved`` flag, the decision
-    must progress.
-    """
-    # No integration_record, no integration_unresolved, but a
-    # persisted blocking decision from a previous turn. The
-    # current state must NOT inherit the previous block.
     rebase_state = RebaseState(last_decision=PhaseDecision.BLOCK_FOR_RECOVERY.value)
     policy = _policy_with({"plan": {"on_success": "build"}}, terminal=("done",))
     decision = decide_phase_transition(
@@ -242,7 +209,6 @@ def test_persisted_block_does_not_block_when_no_authority_obligation() -> None:
 
 
 def test_persisted_intervention_does_not_block_when_no_authority_obligation() -> None:
-    """Same one-way-projection rule for the intervention decision."""
     rebase_state = RebaseState(last_decision=PhaseDecision.REPORT_INTERVENTION_REQUIRED.value)
     policy = _policy_with({"plan": {"on_success": "build"}}, terminal=("done",))
     decision = decide_phase_transition(
@@ -256,7 +222,6 @@ def test_persisted_intervention_does_not_block_when_no_authority_obligation() ->
 
 
 def test_decide_returns_block_for_recovery_when_integrated_without_landing() -> None:
-    """An integrated record with feature SHA present and reintegrate_pending=False still blocks."""
     record = IntegrationRecord(
         phase="integrated",
         target="main",
@@ -276,7 +241,6 @@ def test_decide_returns_block_for_recovery_when_integrated_without_landing() -> 
 
 
 def test_decide_returns_block_for_recovery_when_rebase_state_unlanded() -> None:
-    """RebaseState with rebased outcome but fast_forwarded=False blocks dispatch."""
     rebase_state = RebaseState(
         last_outcome=RebaseOutcomeKind.REBASED,
         fast_forwarded=False,

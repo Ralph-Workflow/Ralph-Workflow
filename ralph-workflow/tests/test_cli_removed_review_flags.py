@@ -1,5 +1,3 @@
-"""Unit tests for CLI."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -12,16 +10,6 @@ from ralph.cli.main import (
 )
 from ralph.display.context import DisplayContext, make_display_context
 
-# ``test_cli_removed_review_flags.py`` invokes the production
-# ``ralph --help`` Typer app via ``CliRunner.invoke``. Each cold
-# Typer app invocation pays an import cost that, under 12-way
-# xdist contention, has been observed to push individual test
-# runs past the 1s per-test wall-clock budget. 5s is the
-# documented minimum for non-trivial tests (see
-# ``ralph/verify_timeout.py``) and is well under the 60s combined
-# ``make verify`` budget. The 1s default policy is preserved
-# globally; this module-level marker only relaxes the cap for the
-# CLI help-text tests in this file.
 pytestmark = pytest.mark.timeout_seconds(5)
 
 if TYPE_CHECKING:
@@ -36,7 +24,6 @@ _BUNDLED_POLICY_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" /
 
 
 def _make_display_context_for_console(console: Console) -> DisplayContext:
-    """Create a DisplayContext for a given console."""
     return make_display_context(console=console, env={})
 
 
@@ -49,36 +36,13 @@ _REMOVED_REVIEW_FLAGS = (
 
 
 def _invoke_help(cli_runner: CliRunner) -> str:
-    """Invoke `ralph --help` exactly once per test method.
-
-    Consolidating the four parameter cases plus the two single-purpose
-    assertions into a single ``--help`` invocation keeps the per-test
-    wall-clock well under the 1s budget under xdist worker contention:
-    each cold Typer app invocation costs more than a normal pure-Python
-    test, and four redundant invocations under 12-way parallel load
-    pushed the worst-case tail past the timeout. One help capture per
-    test method keeps the helper cheap while preserving every
-    assertion the original parameterized coverage demanded.
-    """
     result = cli_runner.invoke(app, ["--help"])
     assert result.exit_code == 0
     return result.stdout
 
 
 class TestRemovedReviewFlags:
-    """Verify that review-era CLI flags that no longer exist are absent from help output."""
-
     def test_removed_review_flags_collectively_absent(self, cli_runner: CliRunner) -> None:
-        """A single ``ralph --help`` invocation must omit every removed review flag.
-
-        Consolidating the four-flag assertion into one CLI startup is
-        not optional: each cold Typer app invocation pays an import
-        cost that, under 12-way xdist contention, pushes individual
-        parameterized runs past the 1s per-test wall-clock budget.
-        One invocation per test method keeps the cost fixed while the
-        consolidated assertion preserves the original guarantee that
-        *every* removed review-era flag is absent.
-        """
         stdout = _invoke_help(cli_runner)
         for flag in _REMOVED_REVIEW_FLAGS:
             assert flag not in stdout

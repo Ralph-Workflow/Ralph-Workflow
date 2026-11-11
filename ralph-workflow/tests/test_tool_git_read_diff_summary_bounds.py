@@ -1,19 +1,3 @@
-"""Regression tests: summary-mode ``git_diff`` is bounded and runs no helpers.
-
-Three defects in the summary path of ``handle_git_diff``:
-
-- git's stderr was a pipe nobody read while stdout was streamed, so a git
-  that writes more stderr than the pipe buffer blocked forever, and the
-  stdout read loop had no deadline of its own;
-- the read-only contract only rejected ``--ext-diff``/``--textconv`` flags,
-  while git runs ``diff.external`` and textconv drivers from config by
-  default;
-- a diff of exactly ``max_bytes`` bytes was reported as truncated.
-
-Every test drives the public handler with a fake process manager, so no
-real git runs.
-"""
-
 from __future__ import annotations
 
 import json
@@ -30,14 +14,11 @@ from tests.mock_workspace_root import MockWorkspaceRoot
 if TYPE_CHECKING:
     from pathlib import Path
 
-#: Bound on every blocking wait inside the fakes, so the pre-fix code fails
-#: these tests instead of hanging them.
 _FAKE_WAIT_SECONDS = 2.0
 
 
 @pytest.fixture(autouse=True)
 def _resolve_cwd_without_git_probe(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Keep the handler hermetic despite the mandatory cwd probe."""
     monkeypatch.setattr(
         "ralph.mcp.tools.git_read.resolve_git_cwd",
         lambda **_kwargs: (tmp_path, False, None),
@@ -45,8 +26,6 @@ def _resolve_cwd_without_git_probe(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
 
 
 class _BytesPipe:
-    """Readable pipe over fixed bytes; sets ``drained`` once EOF is read."""
-
     def __init__(self, data: bytes) -> None:
         self._data = data
         self._offset = 0
@@ -63,12 +42,6 @@ class _BytesPipe:
 
 
 class _StdoutBlockedOnStderr(_BytesPipe):
-    """Stdout that yields nothing until stderr is drained.
-
-    Models git blocked on a full stderr pipe: it cannot write stdout until
-    somebody reads its stderr.
-    """
-
     def __init__(self, data: bytes, stderr: _BytesPipe) -> None:
         super().__init__(data)
         self._stderr = stderr
@@ -82,8 +55,6 @@ class _StdoutBlockedOnStderr(_BytesPipe):
 
 
 class _StdoutBlockedUntilKilled:
-    """Stdout of a git that never writes and never exits on its own."""
-
     def __init__(self, killed: threading.Event) -> None:
         self._killed = killed
 
@@ -107,8 +78,6 @@ class _FakeProcess:
 
 
 class _RecordingManager:
-    """Fake process manager: numstat gets a fixed line, plain diff gets ``process``."""
-
     def __init__(self, process: _FakeProcess) -> None:
         self.process = process
         self.commands: list[list[str]] = []
@@ -184,7 +153,6 @@ def test_every_diff_invocation_disables_external_helpers(
     handle_git_diff(session, workspace, {"args": ["--staged"], "format": "summary"})
 
     diff_commands = [command for command in manager.commands if command[:2] == ["git", "diff"]]
-    # raw, then summary's --numstat pass and its capped excerpt pass.
     assert len(diff_commands) == 3
     for command in diff_commands:
         assert "--no-ext-diff" in command

@@ -1,4 +1,3 @@
-"""Agent diagnostics dataclass."""
 
 from __future__ import annotations
 
@@ -23,7 +22,6 @@ def _is_agent_available(cmd: str) -> bool:
 
 @dataclass
 class AgentDiagnostics:
-    """Diagnostics for all agents."""
 
     total_agents: int
     available_agents: int
@@ -37,7 +35,6 @@ class AgentDiagnostics:
         *,
         is_available_fn: Callable[[str], bool] = _is_agent_available,
     ) -> AgentDiagnostics:
-        """Test agent availability using the given registry."""
         all_agents = registry.list_agents()
 
         agent_statuses: list[AgentStatus] = []

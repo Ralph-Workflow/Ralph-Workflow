@@ -1,4 +1,3 @@
-"""Compiled lifecycle-completion metadata for block-authored policies."""
 
 from __future__ import annotations
 
@@ -8,7 +7,6 @@ from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 
 
 class LifecyclePhasePolicy(_FrozenPolicyModel):
-    """Lifecycle-owned accounting metadata keyed by compiled completion phase."""
 
     lifecycle_name: str = Field(..., description="Authored group-block name")
     completion_block: str = Field(

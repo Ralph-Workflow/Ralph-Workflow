@@ -1,4 +1,3 @@
-"""Tool specs for file write operations."""
 
 from __future__ import annotations
 
@@ -16,7 +15,6 @@ from ralph.mcp.tools.names import (
 
 
 def file_write_specs() -> list[ToolSpec]:
-    """Return tool specs for file write operations."""
     return [
         ToolSpec(
             metadata=_metadata(

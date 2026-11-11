@@ -1,15 +1,3 @@
-"""Regression tests for MCP server tools/list alias exposure.
-
-The live failure mode in the post-tool-result wedge is that the MCP server's
-``tools/list`` returns raw tool names (e.g. ``read_file``) but Claude Code's
-strict MCP mode only invokes tools by their ``mcp__<server>__<tool>`` alias
-(e.g. ``mcp__ralph__read_file``). The call comes back as
-``No such tool available: mcp__ralph__read_file`` and the agent wedges.
-
-These tests pin the dual-alias exposure rule and the alias-to-canonical
-dispatch resolver so the bug cannot silently regress.
-"""
-
 from __future__ import annotations
 
 from typing import Any
@@ -87,8 +75,6 @@ def test_tools_list_alias_matches_canonical_description_and_input_schema() -> No
 
 
 class _DuplicateNameRegistry:
-    """A registry that emits two definitions sharing one name."""
-
     def list_definitions(self) -> list[ToolDefinition]:
         definition = ToolDefinition(
             name="dup",
@@ -99,9 +85,6 @@ class _DuplicateNameRegistry:
 
 
 def test_tools_list_runtime_invariant_rejects_duplicate_names() -> None:
-    """If the tool surface regresses and emits a duplicate name, the runtime
-    invariant must RAISE at _handle_tools_list (it stays loud even though
-    handle_request now wraps it into a JSON-RPC error)."""
     server = McpServer(
         session=object(),
         workspace=object(),
@@ -114,8 +97,6 @@ def test_tools_list_runtime_invariant_rejects_duplicate_names() -> None:
 
 
 def test_handle_request_wraps_duplicate_name_invariant_as_jsonrpc_error() -> None:
-    """The same invariant, reached via handle_request, becomes a -32603 error
-    rather than crashing the transport."""
     server = McpServer(
         session=object(),
         workspace=object(),

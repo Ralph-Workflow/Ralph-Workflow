@@ -1,5 +1,3 @@
-"""Shared conflict identity and bookkeeping across rebase, endpoint merge, and remote refresh."""
-
 from __future__ import annotations
 
 import inspect
@@ -21,12 +19,10 @@ _RESOLUTION_PHASE = "rebase_conflict_resolution"
 
 
 def _ledger() -> AgentFailureLedger:
-    """A ledger with no recorded agent failure: every candidate is eligible."""
     return AgentFailureLedger(clock=FakeClock())
 
 
 def _benched_ledger(agent: str = "resolver") -> AgentFailureLedger:
-    """A ledger whose candidate is on cooldown for the resolution phase."""
     ledger = _ledger()
     for _ in range(3):
         ledger.record(AttemptFact(phase=_RESOLUTION_PHASE, agent=agent, artifact_valid=False))
@@ -117,7 +113,6 @@ def test_observe_conflict_identity_includes_paths_and_oids(
 def test_remote_refresh_books_conflict_identity_and_rejects_a_duplicate(
     monkeypatch: object, tmp_path: Path
 ) -> None:
-    """Remote refresh observes ConflictIdentity and cannot start a duplicate attempt."""
     from ralph.config.models import UnifiedConfig
     from ralph.pipeline.auto_integrate_conflict_budget import (
         ConflictIdentity,
@@ -190,7 +185,6 @@ def test_remote_refresh_books_conflict_identity_and_rejects_a_duplicate(
 def test_remote_refresh_failure_still_books_conflict_budget(
     monkeypatch: object, tmp_path: Path
 ) -> None:
-    """A None pull outcome must still run apply_conflict_budget before returning."""
     from ralph.config.models import UnifiedConfig
     from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity
     from ralph.pipeline.auto_integrate_remote_sync import pull_and_reconcile_target
@@ -239,12 +233,6 @@ def test_remote_refresh_failure_still_books_conflict_budget(
 def test_endpoint_merge_fallback_keeps_resolver_when_rebase_ownership_cannot_be_recorded(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Failure before a rebase agent starts may fall back, keeping the endpoint resolver.
-
-    No agent edits exist when durable ownership cannot be recorded. The
-    fallback can safely abort that untouched rebase, but must still give the
-    endpoint conflict its resolver despite the shared attempt budget.
-    """
     from ralph.git.merge import MergeResult
     from ralph.git.rebase.rebase import RebaseConflicts
     from ralph.pipeline import auto_integrate_rebase_merge as merge_module
@@ -312,7 +300,6 @@ def test_endpoint_merge_fallback_keeps_resolver_when_rebase_ownership_cannot_be_
 
 
 def test_exhausted_feature_budget_does_not_block_a_distinct_remote_identity() -> None:
-    """Remote reconciliation keeps its own bookkeeping even when feature spend is done."""
     feature = ConflictIdentity(
         feature_sha="feat",
         target_sha="main",
@@ -342,12 +329,6 @@ def test_exhausted_feature_budget_does_not_block_a_distinct_remote_identity() ->
 
 
 def test_resolver_eligibility_follows_the_ledger_not_the_stored_count() -> None:
-    """A high stored conflict count must not suppress an eligible resolver.
-
-    The stored counter describes the repository, not the health of an
-    agent. A resolver the failure ledger still has available is eligible
-    however many times this conflict has been observed unresolved.
-    """
     identity = ConflictIdentity(feature_sha="feat", target_sha="main")
     state = RebaseState(
         last_action="conflict",
@@ -361,7 +342,6 @@ def test_resolver_eligibility_follows_the_ledger_not_the_stored_count() -> None:
 
 
 def test_a_benched_resolver_is_refused_whatever_the_stored_count_says() -> None:
-    """The ledger owns the refusal: a benched candidate never runs."""
     identity = ConflictIdentity(feature_sha="feat", target_sha="main")
     state = RebaseState(
         last_action="conflict",
@@ -384,13 +364,6 @@ def test_a_benched_resolver_is_refused_whatever_the_stored_count_says() -> None:
 
 
 def test_the_predicate_carries_no_attempt_budget() -> None:
-    """No count-based selector survives behind the ledger.
-
-    The predicate takes no attempt budget at all, and a stored count at
-    its maximum never suppresses a resolver the ledger has available --
-    not even when no ledger could be reached, because the count is not a
-    second opinion about agent health.
-    """
     assert "attempts" not in inspect.signature(resolver_allowed).parameters
 
     identity = ConflictIdentity(feature_sha="feat", target_sha="main")

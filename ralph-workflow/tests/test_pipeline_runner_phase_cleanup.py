@@ -1,10 +1,3 @@
-"""Runner-level integration test: phase scope kills phase-labeled processes on exit.
-
-This test drives the real runner path — runner_module.run() — to verify
-that process_phase_scope (at the _run_pipeline_step boundary) cleans up
-all phase-labeled child processes when the phase finishes.
-"""
-
 from __future__ import annotations
 
 import contextlib
@@ -60,8 +53,6 @@ def _config() -> object:
 
 
 class _FakeBridge:
-    """Minimal stand-in for an MCP session bridge."""
-
     def shutdown(self) -> None:
         pass
 
@@ -99,11 +90,6 @@ def _stub_determine_effect(effects: list[object]) -> object:
         *,
         config: object = None,
     ) -> object:
-        # The runner may legitimately dispatch more than one pipeline step
-        # before the terminal state is reached (e.g. an extra prepare
-        # dispatch under load). Once the scripted effect has been consumed,
-        # return a terminal effect so the loop exits deterministically
-        # instead of raising IndexError from an empty queue.
         if not effects:
             return runner_module.ExitSuccessEffect()
         return effects.pop(0)
@@ -166,11 +152,6 @@ def test_runner_phase_scope_kills_phase_labeled_child(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """_run_pipeline_step wraps phase body in process_phase_scope(state.phase).
-
-    A process spawned inside _execute_agent_effect with label 'phase:<phase>:worker'
-    must be dead after runner.run() exits, because the phase scope tears it down.
-    """
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
     pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory, psutil=FakePsutil())
     spawned_pid: list[int] = []
@@ -213,7 +194,6 @@ def test_runner_phase_scope_kills_phase_labeled_child(
     assert exit_code == 0
     assert spawned_pid, "Fake handler must have spawned a process"
 
-    # Verify the process was terminated by the phase scope
     record = pm.get_record(spawned_pid[0])
     assert record is not None
     assert record.status in (ProcessStatus.KILLED, ProcessStatus.EXITED)
@@ -223,7 +203,6 @@ def test_runner_phase_scope_does_not_kill_other_labels(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """process_phase_scope only kills processes whose label starts with 'phase:<phase_name>'."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
     pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory, psutil=FakePsutil())
     spawned: dict[str, int] = {}
@@ -275,15 +254,10 @@ def test_runner_phase_scope_does_not_kill_other_labels(
     assert exit_code == 0
     assert spawned, "Fake handler must have spawned processes"
 
-    # Phase-labeled process should be killed
     phase_record = pm.get_record(spawned["phase"])
     assert phase_record is not None
     assert phase_record.status in (ProcessStatus.KILLED, ProcessStatus.EXITED)
 
-    # Bystander should still be running because phase scope only kills
-    # phase-labeled records. Session-wide shutdown is bypassed via the
-    # no-op process_teardown injected above; that new teardown contract
-    # has its own dedicated coverage in tests/pipeline/test_run_loop_cleanup_shutdown.py.
     bystander_record = pm.get_record(spawned["bystander"], include_terminal=False)
     assert bystander_record is not None
     assert bystander_record.status == ProcessStatus.RUNNING
@@ -293,12 +267,6 @@ def test_runner_interrupt_shuts_down_tracked_children_even_outside_phase_scope(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """KeyboardInterrupt must tear down tracked children before returning 130.
-
-    This covers the serial runner path, where agent subprocesses are not labeled
-    under ``phase:<phase>`` and therefore cannot rely on ``process_phase_scope``
-    prefix cleanup alone.
-    """
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
     pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory, psutil=FakePsutil())
     spawned_pid: list[int] = []
@@ -347,7 +315,6 @@ def test_runner_interrupt_shuts_down_tracked_children_even_outside_phase_scope(
     assert exit_code == _INTERRUPT_EXIT_CODE
     assert spawned_pid, "Fake handler must have spawned a tracked child"
 
-    # Verify the process was terminated
     record = pm.get_record(spawned_pid[0])
     assert record is not None
     assert record.status in (ProcessStatus.KILLED, ProcessStatus.EXITED)

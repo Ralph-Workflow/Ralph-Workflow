@@ -1,15 +1,3 @@
-"""The installer must resolve global tools, never its own ``uv run`` virtualenv.
-
-``make install`` / ``python -m ralph.install`` run through ``uv run``, which puts
-the checkout's ``.venv/bin`` first on ``PATH``. A bare ``shutil.which`` there
-finds the checkout's editable ``ralph`` and the dev-extra ``uv``:
-
-* ``--from <wheel>`` then rewrote the checkout's own ``ralph/_build_meta.py``
-  with the ``-build`` flavor instead of marking the uv-tool install, and
-* the ``rdev`` launcher hard-coded ``.venv/bin/uv``, which breaks as soon as
-  that virtualenv is rebuilt or its volume is unmounted.
-"""
-
 from __future__ import annotations
 
 import os
@@ -31,7 +19,6 @@ def _executable(directory: Path, name: str) -> Path:
 
 @pytest.fixture
 def installer_venv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
-    """Put a fake installer virtualenv ``bin`` ahead of a fake global ``bin`` on PATH."""
     venv_bin = tmp_path / "checkout" / ".venv" / "bin"
     global_bin = tmp_path / "home" / ".local" / "bin"
     for name in ("ralph", "uv"):
@@ -46,7 +33,6 @@ def installer_venv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Pat
 def test_from_path_marks_the_global_install_not_the_installer_venv(
     installer_venv: tuple[Path, Path],
 ) -> None:
-    """The ``-build`` flavor must land in the uv-tool install, not the checkout."""
     _venv_bin, global_bin = installer_venv
     looked_up: list[str] = []
 
@@ -71,7 +57,6 @@ def test_from_path_marks_the_global_install_not_the_installer_venv(
 def test_dev_launcher_uses_the_global_uv_not_the_installer_venv(
     installer_venv: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``rdev`` must not depend on the checkout's ``.venv`` surviving."""
     _venv_bin, global_bin = installer_venv
     captured: dict[str, object] = {}
     monkeypatch.setattr(install_module, "detect_existing_ralph", lambda **_kwargs: None)
@@ -87,7 +72,6 @@ def test_dev_launcher_uses_the_global_uv_not_the_installer_venv(
 def test_stable_install_uses_the_global_uv_not_the_installer_venv(
     installer_venv: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The stable path resolves ``uv`` the same way as the dev path."""
     _venv_bin, global_bin = installer_venv
     captured: dict[str, object] = {}
     preflighted: list[str] = []

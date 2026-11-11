@@ -1,5 +1,3 @@
-"""Public prompt rendering checks for permissive plan submission."""
-
 from __future__ import annotations
 
 from pathlib import Path

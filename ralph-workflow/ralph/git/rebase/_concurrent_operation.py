@@ -1,4 +1,3 @@
-"""_ConcurrentOperation dataclass for detected concurrent git operations."""
 
 from __future__ import annotations
 

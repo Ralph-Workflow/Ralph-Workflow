@@ -61,11 +61,7 @@ class _RaisingPtyLineReader:
         del args, kwargs
 
     def read_lines(self) -> object:
-        # Stub generator: yields a placeholder, then raises on the next iteration
-        # so the caller observes the watchdog timeout immediately. The placeholder
-        # yield exists only to mark this function as a generator; the raise is
-        # what the caller actually observes.
-        yield ""  # placeholder: never observed as a real line by callers
+        yield ""
         raise _IdleStreamTimeoutError(
             300.0,
             WatchdogFireReason.STALLED_AFTER_TOOL_RESULT,
@@ -416,26 +412,6 @@ def test_handle_queued_line_keeps_post_tool_result_marker_through_lifecycle_nois
 
 
 def test_pty_line_reader_check_fire_attaches_typed_idle_watchdog_cause() -> None:
-    """AC-05: PTY watchdog path propagates the typed ``IdleWatchdogKilledError``.
-
-    The non-PTY watchdog path (``_process_reader._check_fire``) builds
-    an ``IdleWatchdogKilledError`` with the watchdog's typed
-    attributes (``reason``, ``signal``) and attaches it as
-    ``__cause__`` of the returned ``_IdleStreamTimeoutError``. The
-    failure_classifier's typed-attribute branch in
-    ``failure_classifier.py`` walks the ``__cause__`` chain to find
-    the typed cause, so the watchdog kill is classified as AGENT
-    (not as a connectivity blip) regardless of how deep the typed
-    cause is buried.
-
-    This test pins the PTY path to the same contract: the PTY
-    ``_check_fire`` must also build an ``IdleWatchdogKilledError``
-    and attach it as ``__cause__`` of the wrapper. Without this
-    contract, a PTY-backed agent's watchdog kill would be
-    substring-classified, relabeling a SIGTERM as a connectivity
-    blip because the wrapper's message happens to contain the word
-    "timeout".
-    """
     master_fd = os.open("/dev/null", os.O_RDONLY)
     try:
         handle = _FakeHandle(master_fd)
@@ -459,8 +435,6 @@ def test_pty_line_reader_check_fire_attaches_typed_idle_watchdog_cause() -> None
         assert result is not None
         _pending_lines, exc = result
 
-        # The PTY watchdog path now propagates the typed watchdog
-        # exception as the __cause__ of the stream-timeout wrapper.
         typed_cause = exc.__cause__
         assert typed_cause is not None, (
             "PTY watchdog path must attach IdleWatchdogKilledError as __cause__"
@@ -469,9 +443,6 @@ def test_pty_line_reader_check_fire_attaches_typed_idle_watchdog_cause() -> None
             f"PTY watchdog __cause__ must be IdleWatchdogKilledError, "
             f"got {type(typed_cause).__name__}"
         )
-        # The typed exception carries the watchdog's authoritative
-        # attributes so the failure_classifier can consult
-        # exc.reason / exc.signal directly.
         assert typed_cause.reason == WatchdogFireReason.NO_OUTPUT_DEADLINE.value
         assert typed_cause.signal == 15
     finally:
@@ -479,17 +450,6 @@ def test_pty_line_reader_check_fire_attaches_typed_idle_watchdog_cause() -> None
 
 
 def test_pty_line_reader_check_fire_classifies_as_agent_via_chain() -> None:
-    """AC-05 end-to-end: a PTY watchdog kill classifies as AGENT, not ENVIRONMENTAL.
-
-    A regression test that proves the full chain
-    ``_IdleStreamTimeoutError`` (PTY wrapper, with the watchdog's
-    ``IdleWatchdogKilledError`` attached as ``__cause__``) is
-    classified as AGENT by the failure_classifier. Without the typed
-    cause attached, the classifier would fall through to the
-    text-based matching, which would relabel the SIGTERM as
-    ENVIRONMENTAL because the wrapper message contains the word
-    "timeout".
-    """
     master_fd = os.open("/dev/null", os.O_RDONLY)
     try:
         handle = _FakeHandle(master_fd)
@@ -513,9 +473,6 @@ def test_pty_line_reader_check_fire_classifies_as_agent_via_chain() -> None:
         assert result is not None
         _pending_lines, exc = result
 
-        # The failure_classifier must see the typed watchdog cause
-        # via the __cause__ walk and classify as AGENT, not
-        # ENVIRONMENTAL.
         classified = FailureClassifier().classify(
             exc, phase="pty_watchdog", agent="claude", connectivity_state="online"
         )
@@ -536,11 +493,7 @@ class _NoOutputAtStartRaisingPtyLineReader:
         del args, kwargs
 
     def read_lines(self) -> object:
-        # Stub generator: yields a placeholder, then raises on the next iteration
-        # so the caller observes the watchdog timeout immediately. The placeholder
-        # yield exists only to mark this function as a generator; the raise is
-        # what the caller actually observes.
-        yield ""  # placeholder: never observed as a real line by callers
+        yield ""
         raise _IdleStreamTimeoutError(
             30.0,
             WatchdogFireReason.NO_OUTPUT_AT_START,
@@ -551,21 +504,6 @@ class _NoOutputAtStartRaisingPtyLineReader:
 def test_run_pty_and_read_lines_resume_safe_for_no_output_at_start(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """PTY runner preserves session_resume_safe=True for NO_OUTPUT_AT_START.
-
-    The PTY runner must raise ``AgentInactivityTimeoutError`` with
-    ``session_resume_safe=True`` when the watchdog fires
-    ``NO_OUTPUT_AT_START`` -- the agent produced no output for the
-    configured ``no_output_at_start_seconds`` (default 30s). A
-    watchdog kill at the NO_OUTPUT_AT_START threshold is NOT a phase
-    transition: the same agent session should be resumed via the
-    ``resumable_session_id`` so the recovery controller does NOT
-    restart from scratch.
-
-    This pins the PTY-path membership of ``NO_OUTPUT_AT_START`` in the
-    session_resume_safe whitelist (the closed literal in
-    ``_pty_runner.py``).
-    """
     master_fd = os.open("/dev/null", os.O_RDONLY)
     try:
         handle = _FakeHandle(master_fd)

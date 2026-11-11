@@ -1,16 +1,3 @@
-"""Tests for gitlink conflict escalation and deterministic resolution (Defect 10).
-
-Contract:
-1. Ancestor/descendant gitlinks with objects present are deterministically resolved
-   without invoking an agent.
-2. When submodule objects are missing or the submodule is uninitialized/absent,
-   submodule update/fetch is attempted before declining. If objects become present
-   and form an ancestor/descendant pair, the conflict is deterministically resolved.
-3. If gitlinks are diverged or objects remain impossible to obtain, the conflict
-   escalates on sight with the unresolved path and operator_command_for_paths(paths),
-   without spending or consulting the resolver chain.
-"""
-
 from __future__ import annotations
 
 import shutil
@@ -74,11 +61,6 @@ def _git(cwd: Path, *args: str, input_text: str | None = None) -> GitRunResult:
 
 
 def _setup_submodule_remote(tmp_path: Path) -> tuple[Path, str, str, str]:
-    """Create a submodule remote with base, branch_a, and branch_b (diverged).
-
-    Returns:
-        (sub_origin_path, sha_base, sha_a, sha_b)
-    """
     sub_origin = tmp_path / "sub_remote"
     _git(tmp_path, "init", "-q", "-b", "main", str(sub_origin))
 
@@ -97,14 +79,12 @@ def _setup_submodule_remote(tmp_path: Path) -> tuple[Path, str, str, str]:
 
 
 def _add_descendant_commit(sub_origin: Path) -> str:
-    """Commit a descendant of branch_a to sub_origin and return its SHA."""
     _git(sub_origin, "checkout", "-q", "branch_a")
     _git(sub_origin, "commit", "--allow-empty", "-m", "descendant of a")
     return _git(sub_origin, "rev-parse", "HEAD").stdout.strip()
 
 
 def _setup_superproject(tmp_path: Path, sub_origin: Path) -> Path:
-    """Create a superproject with submodule 'sub' registered."""
     super_repo = tmp_path / "super"
     _git(tmp_path, "init", "-q", "-b", "main", str(super_repo))
     _git(super_repo, "commit", "--allow-empty", "-m", "initial super commit")
@@ -122,9 +102,6 @@ def _setup_superproject(tmp_path: Path, sub_origin: Path) -> Path:
     return super_repo
 
 
-#: Files of a superproject that carry the absolute path of the submodule
-#: remote. A copied superproject has to point at the private copy of the
-#: remote that belongs to the test that owns the copy.
 _SUBMODULE_REMOTE_URL_FILES: tuple[str, ...] = (
     ".gitmodules",
     ".git/config",
@@ -133,12 +110,6 @@ _SUBMODULE_REMOTE_URL_FILES: tuple[str, ...] = (
 
 
 def _repoint_submodule_remote(super_repo: Path, old_url: str, new_url: str) -> None:
-    """Point a copied superproject at the private copy of the submodule remote.
-
-    The URL lives in the committed ``.gitmodules`` as well as in the two
-    config files, and a clone of the superproject reads the committed copy,
-    so the commit that carries ``.gitmodules`` is rewritten as well.
-    """
     for relative in _SUBMODULE_REMOTE_URL_FILES:
         target = super_repo / relative
         text = target.read_text(encoding="utf-8")
@@ -151,13 +122,6 @@ def _repoint_submodule_remote(super_repo: Path, old_url: str, new_url: str) -> N
 
 @pytest.fixture(scope="module")
 def _remote_template(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, str, str, str]:
-    """Build the submodule remote once for the whole module.
-
-    The remote is an immutable input to every proof in this file: the base,
-    branch_a and branch_b commits are the only things read from it, and the
-    descendant commit a proof adds is added to the private copy the proof
-    owns.
-    """
     template_root = tmp_path_factory.mktemp("gitlink-remote-template")
     return _setup_submodule_remote(template_root)
 
@@ -167,12 +131,6 @@ def _superproject_template(
     tmp_path_factory: pytest.TempPathFactory,
     _remote_template: tuple[Path, str, str, str],
 ) -> Path:
-    """Build the superproject once for the whole module.
-
-    The superproject records the absolute path of the submodule remote, so
-    every private copy is repointed at the private copy of the remote that
-    belongs to the same test.
-    """
     template_root = tmp_path_factory.mktemp("gitlink-superproject-template")
     return _setup_superproject(template_root, _remote_template[0])
 
@@ -182,7 +140,6 @@ def submodule_remote(
     tmp_path: Path,
     _remote_template: tuple[Path, str, str, str],
 ) -> tuple[Path, str, str, str]:
-    """Hand the test a private copy of the module's submodule remote."""
     template, sha_base, sha_a, sha_b = _remote_template
     sub_origin = tmp_path / "sub_remote"
     shutil.copytree(template, sub_origin)
@@ -196,7 +153,6 @@ def super_repo(
     _remote_template: tuple[Path, str, str, str],
     _superproject_template: Path,
 ) -> Path:
-    """Hand the test a private superproject wired to its own remote copy."""
     sub_origin = submodule_remote[0]
     repo_path = tmp_path / "super"
     shutil.copytree(_superproject_template, repo_path)
@@ -208,7 +164,6 @@ def super_repo(
 def allow_file_transport(
     tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
 ) -> Path:
-    """Configure a temporary gitconfig permitting file:// transport for local submodules."""
     cfg_dir = tmp_path_factory.mktemp("git_file_proto")
     cfg_file = cfg_dir / "gitconfig"
     cfg_file.write_text('[protocol "file"]\n\tallow = always\n', encoding="utf-8")
@@ -221,14 +176,11 @@ def test_gitlink_ancestor_descendant_objects_present_resolved(
     submodule_remote: tuple[Path, str, str, str],
     super_repo: Path,
 ) -> None:
-    """When both sides are ancestor/descendant and objects exist, resolve deterministically."""
     sub_origin, base, sha_a, _sha_b = submodule_remote
     sha_desc = _add_descendant_commit(sub_origin)
 
-    # Fetch descendant commit into super/sub so all objects are present
     _git(super_repo / "sub", "fetch", "-q", "origin")
 
-    # Set up conflicted stages in index: stage 2 (ours) = sha_a, stage 3 (theirs) = sha_desc
     index_info = f"160000 {base} 1\tsub\n160000 {sha_a} 2\tsub\n160000 {sha_desc} 3\tsub\n"
     _git(super_repo, "update-index", "--index-info", input_text=index_info)
 
@@ -243,7 +195,6 @@ def test_gitlink_ancestor_descendant_objects_present_resolved(
     resolved = try_deterministic_resolution(super_repo, stop)
     assert resolved is True
 
-    # Check that stage 0 is cleanly set to the descendant SHA and no unmerged stages remain
     unmerged = _git(super_repo, "ls-files", "-u").stdout.strip()
     assert unmerged == "", (
         f"expected conflict to be resolved, but unmerged entries remain:\n{unmerged}"
@@ -260,18 +211,14 @@ def test_gitlink_submodule_absent_objects_fetchable_resolved(
     submodule_remote: tuple[Path, str, str, str],
     super_repo: Path,
 ) -> None:
-    """When submodule is absent/uninitialized, fetch/init is attempted and resolves."""
     sub_origin, base, sha_a, _sha_b = submodule_remote
     sha_desc = _add_descendant_commit(sub_origin)
 
-    # Clone super_repo without submodules so clone / sub is uninitialized
     clone_repo = tmp_path / "super_clone"
     _git(tmp_path, "clone", "-q", str(super_repo), str(clone_repo))
 
-    # Verify submodule in clone is indeed uninitialized
     assert not (clone_repo / "sub" / ".git").exists()
 
-    # Set unmerged stages in clone index
     index_info = f"160000 {base} 1\tsub\n160000 {sha_a} 2\tsub\n160000 {sha_desc} 3\tsub\n"
     _git(clone_repo, "update-index", "--index-info", input_text=index_info)
 
@@ -299,18 +246,14 @@ def test_gitlink_denied_file_transport_escalates_on_sight_without_agent(
     submodule_remote: tuple[Path, str, str, str],
     super_repo: Path,
 ) -> None:
-    """When file transport is denied, submodule fetch fails closed into actionable escalation without agent."""
     sub_origin, base, sha_a, _sha_b = submodule_remote
     sha_desc = _add_descendant_commit(sub_origin)
 
-    # Clone super_repo without submodules so clone / sub is uninitialized
     clone_repo = tmp_path / "super_clone"
     _git(tmp_path, "clone", "-q", str(super_repo), str(clone_repo))
 
-    # Verify submodule in clone is indeed uninitialized
     assert not (clone_repo / "sub" / ".git").exists()
 
-    # Set up conflicted stages with ancestor/descendant commits (sha_a -> sha_desc)
     index_info = f"160000 {base} 1\tsub\n160000 {sha_a} 2\tsub\n160000 {sha_desc} 3\tsub\n"
     _git(clone_repo, "update-index", "--index-info", input_text=index_info)
 
@@ -327,13 +270,10 @@ def test_gitlink_denied_file_transport_escalates_on_sight_without_agent(
     with bind_active_rebase_resolution_session(session):
         resolved = try_deterministic_resolution(clone_repo, stop)
 
-    # 1. Deterministic resolution declines because transport remains denied
     assert resolved is False
 
-    # 2. Submodule remains uninitialized (transport was denied, not bypassed)
     assert not (clone_repo / "sub" / ".git").exists()
 
-    # 3. Yields one existing actionable gitlink escalation on sight without an agent invocation
     assert session.terminal_reason is ResolutionTerminationReason.OUT_OF_REACH
     assert session.last_failure_cause is ResolutionFailureCause.AGENT_FAILURE
     assert session.unresolved_paths == ("sub",)
@@ -345,13 +285,11 @@ def test_gitlink_denied_file_transport_escalates_on_sight_without_agent(
     assert expected_cmd in session.exhaustion_reason
     assert agent_calls == []
 
-    # 4. Confirm unmerged index entries remain intact (fail-closed, not half-resolved)
     unmerged = _git(clone_repo, "ls-files", "-u", "sub").stdout.strip()
     assert f"160000 {base} 1\tsub" in unmerged
     assert f"160000 {sha_a} 2\tsub" in unmerged
     assert f"160000 {sha_desc} 3\tsub" in unmerged
 
-    # 5. Production driver verifies no agent is invoked and yields actionable escalation
     from ralph.config.models import UnifiedConfig
     from ralph.pipeline.conflict_resolution.driver import run_rebase_conflict_resolution_outcome
     from ralph.policy import load_policy
@@ -392,11 +330,9 @@ def test_gitlink_submodule_present_missing_objects_fetched_and_resolved(
     submodule_remote: tuple[Path, str, str, str],
     super_repo: Path,
 ) -> None:
-    """When submodule exists but a needed descendant object is missing, fetch resolves it."""
     sub_origin, base, sha_a, _sha_b = submodule_remote
     sha_desc = _add_descendant_commit(sub_origin)
 
-    # Do not fetch descendant into super/sub yet; verify sha_desc is missing
     cat_check = run_git(
         ["cat-file", "-e", sha_desc],
         cwd=super_repo / "sub",
@@ -418,7 +354,6 @@ def test_gitlink_submodule_present_missing_objects_fetched_and_resolved(
     resolved = try_deterministic_resolution(super_repo, stop)
     assert resolved is True
 
-    # Confirm descendant commit is present in the submodule.
     cat_check_after = run_git(
         ["cat-file", "-e", sha_desc],
         cwd=super_repo / "sub",
@@ -435,13 +370,10 @@ def test_diverged_gitlink_escalates_on_sight_no_agent_invoked(
     submodule_remote: tuple[Path, str, str, str],
     super_repo: Path,
 ) -> None:
-    """Diverged gitlink escalates on sight naming path and operator command; no agent invoked."""
     _sub_origin, base, sha_a, sha_b = submodule_remote
 
-    # Fetch branch_b into super/sub so both diverged objects are present locally
     _git(super_repo / "sub", "fetch", "-q", "origin")
 
-    # Set up diverged gitlink conflict in index (sha_a vs sha_b)
     index_info = f"160000 {base} 1\tsub\n160000 {sha_a} 2\tsub\n160000 {sha_b} 3\tsub\n"
     _git(super_repo, "update-index", "--index-info", input_text=index_info)
 
@@ -459,10 +391,8 @@ def test_diverged_gitlink_escalates_on_sight_no_agent_invoked(
     with bind_active_rebase_resolution_session(session):
         resolved = try_deterministic_resolution(super_repo, stop)
 
-    # Deterministic resolution must decline
     assert resolved is False
 
-    # Escalation on sight must have populated the session with OUT_OF_REACH
     assert session.terminal_reason is ResolutionTerminationReason.OUT_OF_REACH
     assert session.last_failure_cause is ResolutionFailureCause.AGENT_FAILURE
     assert session.unresolved_paths == ("sub",)
@@ -473,7 +403,6 @@ def test_diverged_gitlink_escalates_on_sight_no_agent_invoked(
     assert "sub" in session.exhaustion_reason
     assert expected_cmd in session.exhaustion_reason
 
-    # Classification check via sight.py
     kinds = classify_unmerged_conflicts(super_repo, ("sub",))
     assert kinds.get("sub") is ConflictSight.OUT_OF_REACH
     assert out_of_reach_paths(kinds) == ("sub",)
@@ -482,7 +411,6 @@ def test_diverged_gitlink_escalates_on_sight_no_agent_invoked(
     assert "sub" in msg
     assert expected_cmd in msg
 
-    # Verify no agent was invoked
     assert agent_calls == []
 
 
@@ -491,7 +419,6 @@ def test_gitlink_unfetchable_objects_escalates_on_sight(
     submodule_remote: tuple[Path, str, str, str],
     super_repo: Path,
 ) -> None:
-    """Gitlink with missing objects that cannot be fetched escalates on sight."""
     _sub_origin, base, sha_a, _sha_b = submodule_remote
 
     nonexistent_sha = "ffffffffffffffffffffffffffffffffffffffff"
@@ -521,7 +448,6 @@ def test_diverged_gitlink_production_driver_and_rebase_seam(
     submodule_remote: tuple[Path, str, str, str],
     super_repo: Path,
 ) -> None:
-    """Production driver and rebase seam carry operator command for diverged gitlinks on sight."""
     from ralph.config.models import UnifiedConfig
     from ralph.pipeline import resolve_rebase_with_config
     from ralph.pipeline.auto_integrate_resolve import handle_unsuccessful_resolution
@@ -531,7 +457,6 @@ def test_diverged_gitlink_production_driver_and_rebase_seam(
     _sub_origin, base, sha_a, sha_b = submodule_remote
     _git(super_repo / "sub", "fetch", "-q", "origin")
 
-    # Set up paused rebase state in .git
     rebase_dir = super_repo / ".git" / "rebase-merge"
     rebase_dir.mkdir()
     (rebase_dir / "onto").write_text(base + "\n")
@@ -541,7 +466,6 @@ def test_diverged_gitlink_production_driver_and_rebase_seam(
     (rebase_dir / "head-name").write_text("refs/heads/feature\n")
     _git(super_repo, "update-ref", "REBASE_HEAD", "HEAD")
 
-    # Conflicted gitlink stage entries: base, sha_a (ours), sha_b (theirs)
     index_info = f"160000 {base} 1\tsub\n160000 {sha_a} 2\tsub\n160000 {sha_b} 3\tsub\n"
     _git(super_repo, "update-index", "--index-info", input_text=index_info)
 
@@ -563,7 +487,6 @@ def test_diverged_gitlink_production_driver_and_rebase_seam(
     policy_bundle = load_policy(repo_root / "ralph" / "policy" / "defaults")
     config = UnifiedConfig.model_validate({"general": {}})
 
-    # 1. Drive production driver directly: escalates on sight without invoking agent
     session = ResolutionSession()
     outcome = run_rebase_conflict_resolution_outcome(
         root=super_repo,
@@ -587,7 +510,6 @@ def test_diverged_gitlink_production_driver_and_rebase_seam(
         "agent invoker must not be called during driver on-sight escalation"
     )
 
-    # 2. Assert handle_unsuccessful_resolution carries path and operator command
     merge_result = handle_unsuccessful_resolution(
         outcome,
         outcome.exhaustion_message,
@@ -596,7 +518,6 @@ def test_diverged_gitlink_production_driver_and_rebase_seam(
     assert merge_result.reason is not None
     assert "git add -- sub" in merge_result.reason
 
-    # 3. Drive rebase seam: verify carried reason preserves git add -- sub
     def stop_resolver(root: Path, target: str, rebase_stop: RebaseStop) -> ResolutionOutcome | bool:
         return run_rebase_conflict_resolution_outcome(
             root=root,
@@ -611,7 +532,6 @@ def test_diverged_gitlink_production_driver_and_rebase_seam(
             invoke=mock_invoker,
         )
 
-    # Re-apply conflicted index state for rebase resolution loop
     _git(super_repo, "update-index", "--index-info", input_text=index_info)
     rebase_resolution_result = resolve_rebase_with_config(
         super_repo,
@@ -630,7 +550,6 @@ def test_diverged_gitlink_production_driver_and_rebase_seam(
 def test_gitlink_deterministic_staging_command_failure_preserves_index(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A command failure during deterministic staging fails closed without losing index entries."""
     from ralph.git.git_run_result import GitRunResult
 
     super_repo = tmp_path / "super"
@@ -646,11 +565,9 @@ def test_gitlink_deterministic_staging_command_failure_preserves_index(
     sha_a = "2" * 40
     sha_desc = "3" * 40
 
-    # Conflicted stages: stage 1 = base, stage 2 = sha_a, stage 3 = sha_desc
     index_info = f"160000 {base} 1\tsub\n160000 {sha_a} 2\tsub\n160000 {sha_desc} 3\tsub\n"
     _git(super_repo, "update-index", "--index-info", input_text=index_info)
 
-    # Injected failure on git-gitlink-resolve-readd to verify restore path
     orig_run_git = run_git
 
     def fake_run_git(
@@ -664,7 +581,6 @@ def test_gitlink_deterministic_staging_command_failure_preserves_index(
         if label == "git-gitlink-object":
             return GitRunResult(args=("cat-file",), returncode=0, stdout="", stderr="")
         if label == "git-gitlink-ancestor":
-            # ours (sha_a) is ancestor of theirs (sha_desc)
             return GitRunResult(args=("merge-base",), returncode=0, stdout="", stderr="")
         if label == "git-gitlink-resolve-readd":
             return GitRunResult(
@@ -687,7 +603,6 @@ def test_gitlink_deterministic_staging_command_failure_preserves_index(
     resolved = try_deterministic_resolution(super_repo, stop)
     assert resolved is False
 
-    # Fail closed: index entries for 'sub' must not be deleted or lost
     unmerged = _git(super_repo, "ls-files", "-u", "sub").stdout.strip()
     assert f"160000 {base} 1\tsub" in unmerged
     assert f"160000 {sha_a} 2\tsub" in unmerged

@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# verify_claims.sh — pre-deploy gate: blocks deployment if unverified claims exist
-# Run: bash scripts/verify_claims.sh (exits 0=clean, 1=violations found)
 set -euo pipefail
 
 WORKSPACE="/home/mistlight/.openclaw/workspace"
@@ -16,7 +14,6 @@ yellow(){ echo -e "\033[33m$1\033[0m"; }
 echo "=== Claim Verification Gate ==="
 echo ""
 
-# --- Rule 1: No dead links (asciinema recordings, 404 repos we know about) ---
 echo -n "[1] Dead link scan... "
 DEAD=$(grep -r 'asciinema\|JDnY0' "$RALPH_SITE/app/views" "$RALPH_SITE/content" "$RALPH_WF/README.md" 2>/dev/null | grep -v '.git/' | grep -v 'node_modules/' || true)
 if [ -n "$DEAD" ]; then
@@ -27,7 +24,6 @@ else
     green "PASS"
 fi
 
-# --- Rule 2: Numbers near stats-words must have a source citation ---
 echo -n "[2] Numeric claims sourcing... "
 UNSOURCED=$(grep -rPn '(?<!href=")(?<!\>)\b\d{2,}\s+(tests|PRs|merged PRs|modules|LOC|specialized agents|quality gates|valid transitions|providers|sprint)|\d{2,3}\s+HN points|\d+,\d{3}\+\s+(installs|downloads|stars)|\d+\s+agents\b|\d{2,}\s+(state|transition|quality gate)' \
     "$RALPH_SITE/app/views/pages/compare.html.erb" \
@@ -51,7 +47,6 @@ else
     green "PASS"
 fi
 
-# --- Rule 3: No fabrication patterns from the 2026-06-16 audit ---
 echo -n "[3] Fabrication pattern scan... "
 FABS=""
 for PATTERN in \
@@ -81,7 +76,6 @@ else
     green "PASS"
 fi
 
-# --- Rule 4: SHOWCASE.md must separate pattern ecosystem from product credits ---
 echo -n "[4] SHOWCASE.md conflation scan... "
 SHOWCASE="$WORKSPACE/SHOWCASE.md"
 if ! grep -q 'Pattern Ecosystem\|NOT Ralph Workflow credits\|0 verified' "$SHOWCASE" 2>/dev/null; then
@@ -91,7 +85,6 @@ else
     green "PASS"
 fi
 
-# --- Rule 5: No stale statistics (>30 days without re-verification) ---
 echo -n "[5] Stale stat scan... "
 STALE=$(grep -n '169,000' "$RALPH_SITE/app/views/pages/compare.html.erb" 2>/dev/null || true)
 if [ -n "$STALE" ]; then
@@ -100,7 +93,6 @@ else
     green "PASS"
 fi
 
-# --- Rule 6: Blog fabrication patterns ---
 echo -n "[6] Blog fabrication scan... "
 FAB_BLOG=""
 if grep -rq 'miserness\|Mizerness' "$RALPH_SITE/content/blog/" 2>/dev/null; then
@@ -121,7 +113,6 @@ else
     green "PASS"
 fi
 
-# --- Rule 7: YC batch claims ---
 echo -n "[7] YC batch claim scan... "
 YC_UNVER=$(grep -rn 'YC P26\|YC S25\|YC W26' \
     "$RALPH_SITE/app/views" \
@@ -133,7 +124,6 @@ else
     green "PASS"
 fi
 
-# --- Rule 8: Linked repos must actually exist (spot-check 5 per run) ---
 echo -n "[8] GitHub repo verification (spot-check 5)... "
 BAD_REPOS=""
 REPO_LINKS=$(grep -roPh 'github\.com/[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+' \

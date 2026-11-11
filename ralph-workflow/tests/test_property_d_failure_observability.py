@@ -1,15 +1,3 @@
-# property-test: D — failure observability, counters, log record, startup banner
-"""Failure is observable.
-
-Every post-header failure produces a structured, attributable log record and
-increments a named counter. The counter surface is minimal: post-header
-failures, terminal-frame emissions, and health-probe outcomes are counted and
-exposed. Startup announces the live configuration.
-
-This test exercises the McpMetrics dataclass directly and asserts the
-counter behavior on the production McpServer and the in-memory /health route.
-"""
-
 from __future__ import annotations
 
 import threading
@@ -50,11 +38,6 @@ def _make_mcp_server(tmp_path: Path, *, metrics: McpMetrics | None = None) -> Mc
 
 
 def _broken_request() -> JsonRpcRequest:
-    """A request that triggers the dispatch to raise (unknown method path)."""
-    # Use a request whose _dispatch_request raises. We can do that by passing
-    # a request whose method is unknown but with an invalid params structure
-    # that bypasses the normal not-found path. Easier: monkeypatch the
-    # server's _dispatch_request.
     return JsonRpcRequest(
         jsonrpc="2.0",
         method="tools/call",
@@ -64,14 +47,12 @@ def _broken_request() -> JsonRpcRequest:
 
 
 def test_post_header_failure_increments_counter(tmp_path: Path) -> None:
-    """A request whose handler raises increments post_header_failures."""
     metrics = McpMetrics()
     mcp_server = _make_mcp_server(tmp_path, metrics=metrics)
 
     def explode(server: McpServer, request: JsonRpcRequest, state: ServerState) -> Never:
         raise RuntimeError("simulated dispatch failure")
 
-    # Monkeypatch _dispatch_request to raise.
     original = mcp_server._dispatch_request
     mcp_server._dispatch_request = lambda req, state: explode(mcp_server, req, state)
     response, _state = mcp_server.handle_request(_broken_request(), ServerState.RUNNING)
@@ -79,16 +60,10 @@ def test_post_header_failure_increments_counter(tmp_path: Path) -> None:
     assert response.error is not None
     assert response.error["code"] == -32603
     assert metrics.snapshot()["post_header_failures"] == 1
-    mcp_server._dispatch_request = original  # restore
+    mcp_server._dispatch_request = original
 
 
 def test_post_header_failure_100_concurrent_increments_counter(tmp_path: Path) -> None:
-    """Concurrent failures increment the counter race-free (Lock-protected).
-
-    32 workers are enough to prove Lock-protected race freedom while staying
-    inside the per-test time budget even when the full shard suite runs in
-    parallel (100 real OS threads regularly exceed the 1s cap under load).
-    """
     metrics = McpMetrics()
     mcp_server = _make_mcp_server(tmp_path, metrics=metrics)
 
@@ -114,7 +89,6 @@ def test_post_header_failure_100_concurrent_increments_counter(tmp_path: Path) -
 
 
 def test_health_probe_outcome_counter_increments(tmp_path: Path) -> None:
-    """A failed /health probe increments health_probe_outcomes[failure]."""
     metrics = McpMetrics()
     mcp_server = _make_mcp_server(tmp_path, metrics=metrics)
     original_make = _in_memory_transport._make_fake_server
@@ -138,7 +112,6 @@ def test_health_probe_outcome_counter_increments(tmp_path: Path) -> None:
 
 
 def test_health_probe_success_increments_success_counter(tmp_path: Path) -> None:
-    """A successful /health probe increments health_probe_outcomes[success]."""
     metrics = McpMetrics()
     mcp_server = _make_mcp_server(tmp_path, metrics=metrics)
     original_make = _in_memory_transport._make_fake_server
@@ -162,7 +135,6 @@ def test_health_probe_success_increments_success_counter(tmp_path: Path) -> None
 
 
 def test_terminal_frame_emission_counter_increments() -> None:
-    """The terminal_frame_emissions counter is incrementable."""
     metrics = McpMetrics()
     metrics.record_terminal_frame("tools/call")
     metrics.record_terminal_frame("tools/call")
@@ -170,7 +142,6 @@ def test_terminal_frame_emission_counter_increments() -> None:
 
 
 def test_metrics_snapshot_has_all_three_keys() -> None:
-    """snapshot() returns all three named counters."""
     metrics = McpMetrics()
     snapshot = metrics.snapshot()
     assert "post_header_failures" in snapshot
@@ -179,11 +150,9 @@ def test_metrics_snapshot_has_all_three_keys() -> None:
 
 
 def test_startup_banner_contains_all_six_fields() -> None:
-    """The startup banner announces transport/session/dispatch/drain/kill/probe/auth."""
     text = (
         Path(__file__).parent.parent / "ralph" / "mcp" / "server" / "_fallback_standalone_server.py"
     ).read_text()
-    # The loguru format string must include all six fields.
     for field in (
         "transport",
         "session_class",
@@ -197,7 +166,6 @@ def test_startup_banner_contains_all_six_fields() -> None:
 
 
 def test_mcp_metrics_constructible_with_no_io() -> None:
-    """McpMetrics is constructible with no I/O (no socket, no file, no time)."""
     metrics = McpMetrics()
     metrics.record_post_header_failure(
         request_id="r1", method="tools/call", session_impl="AgentSession", cause="RuntimeError"
@@ -214,17 +182,7 @@ def test_mcp_metrics_constructible_with_no_io() -> None:
 
 
 def test_metrics_record_does_not_require_real_wall_clock() -> None:
-    """The counter methods must NOT read time.monotonic() / time.perf_counter().
-
-    The McpMetrics module does not import time; the audit policy enforces
-    that the production counters are pure and deterministic. Verify by
-    reading the module's source: a missing `import time` (other than the
-    import time as _time inside unrelated modules) confirms no wall-clock
-    dependency.
-    """
     text = (Path(__file__).parent.parent / "ralph" / "mcp" / "server" / "_metrics.py").read_text()
-    # The module must not import time at all — there is no wall-clock need.
-    # Allow the docstring / comments to mention time but not actually import.
     assert "import time" not in text or ("import time" in text and "time.monotonic" not in text), (
         "McpMetrics must not read time.monotonic / time.perf_counter"
     )

@@ -74,7 +74,6 @@ def test_interactive_parser_suppresses_repeated_json_tool_use_event() -> None:
 
 
 def test_claude_interactive_parser_regression_session_id_is_emitted_once() -> None:
-    """User-reported Claude smoke parsing regression, 2026-07-14."""
     parser = ClaudeInteractiveTranscriptParser()
     session_id = "pty-session-77"
 
@@ -108,7 +107,6 @@ def test_claude_interactive_parser_regression_session_id_is_emitted_once() -> No
 
 
 def test_claude_interactive_parser_regression_parallel_results_keep_tool_identity() -> None:
-    """User-reported Claude smoke parsing regression, 2026-07-14."""
     parser = ClaudeInteractiveParser()
     lines = iter(
         [
@@ -193,7 +191,6 @@ def test_claude_interactive_parser_regression_parallel_results_keep_tool_identit
 
 
 def test_claude_interactive_activity_stream_regression_renders_tool_result() -> None:
-    """User-reported Claude smoke parsing regression, 2026-07-14."""
     config = AgentConfig(
         cmd="claude",
         json_parser=JsonParserType.CLAUDE,
@@ -240,23 +237,15 @@ def test_claude_interactive_activity_stream_regression_renders_tool_result() -> 
         rendered_output_sink=rendered,
     )
 
-    # After wt-028-display the pipeline runner routes through the
-    # single agent-event renderer registry. The output carries the
-    # registry's icon + INFO/RUN label prefix and the friendly tool
-    # name + formatted args.
     assert len(rendered) == 2
     tool_line = rendered[0]
     assert "claude/haiku" not in tool_line
     assert "ralph.read_file" in tool_line
     assert "path=PROMPT.md" in tool_line
-    # The plain-text path carries the icon (◐ for running) so the
-    # meaning survives color-off rendering.
     assert "◐" in tool_line
     result_line = rendered[1]
     assert "claude/haiku" not in result_line
     assert "prompt contents" in result_line
-    # The plain-text path carries the icon (✓ for success) so the
-    # meaning survives color-off rendering.
     assert "✓" in result_line
 
 
@@ -344,10 +333,6 @@ def test_claude_interactive_strategy_prioritizes_tool_use_over_later_output_from
 
     assert signal is not None
     assert signal.kind == AgentActivityKind.TOOL_USE
-    # The signal's raw is the watchdog-readable envelope, NOT the operator
-    # marker: the marker carries no arguments, so fingerprinting it collapsed
-    # every call of one tool onto `<name>|{}` and fired a false
-    # REPEATED_IDENTICAL_TOOL_CALL. `event.text` keeps the marker for display.
     assert json.loads(signal.raw) == {"type": "tool_use", "name": "read_file", "input": {}}
 
 
@@ -374,11 +359,6 @@ def test_claude_interactive_parser_surfaces_subscription_limit_errors() -> None:
     assert results[0].content == "You've hit your session limit · resets 3:45pm"
 
 
-# ---------------------------------------------------------------------------
-# Thinking status parsing — Claude Code interactive TUI status display
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize(
     "raw_line, expected_kinds",
     [
@@ -391,7 +371,6 @@ def test_claude_interactive_parser_surfaces_subscription_limit_errors() -> None:
         ("\r●Let me try reading the file\n", []),
         ("\r↓292 tokens\n", []),
         ("\r(5s · thinking)\n", []),
-        # Normal output text must still be classified as output
         ("\rNow let me explore the repository\n", ["output"]),
         ("\rRendered help text includes tool: read_file as an example.\n", ["output"]),
     ],
@@ -453,17 +432,11 @@ def test_vt_normalization_preserves_thinking_status_structure() -> None:
 
 
 def test_plain_text_contains_thinking_symbol_still_classified_as_output() -> None:
-    """Text containing '·' (middle dot) in normal sentences must not be mistaken for thinking."""
     parser = ClaudeInteractiveTranscriptParser()
 
     events = parser.feed("You've hit your session limit · resets 3:45pm\n")
 
     assert [event.kind for event in events] == ["output"]
-
-
-# ---------------------------------------------------------------------------
-# TUI chrome detection tests — _is_tui_chrome, _count_box_drawing
-# ---------------------------------------------------------------------------
 
 
 def test_count_box_drawing_returns_zero_for_plain_text() -> None:
@@ -553,7 +526,6 @@ def test_is_tui_chrome_does_not_filter_json_ndjson_events() -> None:
 
 
 def test_is_tui_chrome_agent_output_with_unicode_box_drawing_is_preserved() -> None:
-    """Agent output containing Unicode box-drawing chars with substantial content."""
 
     table_line = "\u2502 Name        \u2502 Status  \u2502 Description                    \u2502"
     assert _is_tui_chrome(table_line) is False
@@ -573,11 +545,6 @@ def test_is_tui_chrome_keyboard_shortcut_hint() -> None:
 
     assert _is_tui_chrome("shift+tab to cycle") is True
     assert _is_tui_chrome("esc to interrupt") is True
-
-
-# ---------------------------------------------------------------------------
-# Integration: _event_for_text returns None for TUI chrome
-# ---------------------------------------------------------------------------
 
 
 def test_event_for_text_returns_none_for_box_drawing_border() -> None:
@@ -610,11 +577,6 @@ def test_is_tui_chrome_does_not_filter_genuine_thinking_through_event_for_text()
     event = parser._event_for_text("\u25cfLet me try reading the file")
 
     assert event is None
-
-
-# ---------------------------------------------------------------------------
-# Integration: feed() silently drops TUI lines
-# ---------------------------------------------------------------------------
 
 
 def test_feed_drops_tui_lines_but_keeps_real_output() -> None:
@@ -655,11 +617,6 @@ def test_feed_preserves_legitimate_agent_text_after_tui_splash() -> None:
     assert len(output_texts) >= 1
     assert "I will now implement the fix." in output_texts
     assert "The following changes are needed:" in output_texts
-
-
-# ---------------------------------------------------------------------------
-# Oracle-identified boundary tests
-# ---------------------------------------------------------------------------
 
 
 def test_is_tui_chrome_does_not_filter_agent_output_starting_with_up_arrow() -> None:
@@ -717,11 +674,6 @@ def test_event_for_text_classifies_thinking_cycle_as_thinking() -> None:
     assert event is None
 
 
-# ---------------------------------------------------------------------------
-# Lenient thinking fragment tests
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize(
     "fragment",
     [
@@ -753,19 +705,11 @@ def test_lenient_thinking_catches_thinking_fragments(fragment: str) -> None:
 )
 def test_lenient_thinking_does_not_false_positive_on_prose(text: str) -> None:
     parser = ClaudeInteractiveTranscriptParser()
-    # Legitimate prose with "thinking" arrives via JSON with mode="output".
-    # In idle mode (simulated here), the word-boundary "thinking" check drops it
-    # as a precaution. Set mode to "output" to test the real code path.
     parser._current_content_mode = "output"
     event = parser._event_for_text(text)
 
     assert event is not None, f"Text {text!r} was dropped"
     assert event.kind == "output", f"Text {text!r} classified as {event.kind}, expected output"
-
-
-# ---------------------------------------------------------------------------
-# Oracle-identified gap tests
-# ---------------------------------------------------------------------------
 
 
 def test_lenient_catches_thinking_with_trailing_paren() -> None:
@@ -802,7 +746,6 @@ def test_bare_token_counter_variant_dropped() -> None:
 
 def test_short_prose_with_thinking_is_output() -> None:
     parser = ClaudeInteractiveTranscriptParser()
-    # "I am thinking" arrives via JSON with mode="output" in real usage
     parser._current_content_mode = "output"
     event = parser._event_for_text("I am thinking")
 

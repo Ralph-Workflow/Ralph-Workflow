@@ -1,4 +1,3 @@
-"""Data types and states for the explore recovery scheduler."""
 
 from __future__ import annotations
 
@@ -7,7 +6,6 @@ from dataclasses import dataclass
 
 
 class HealthState(enum.StrEnum):
-    """Health states reported by the scheduler."""
 
     HEALTHY = "healthy"
     BUILDING = "building"
@@ -18,7 +16,6 @@ class HealthState(enum.StrEnum):
 
 @dataclass
 class _RecoveryState:
-    """Snapshot of the scheduler state for the status payload."""
 
     health: HealthState = HealthState.HEALTHY
     last_failure_code: str | None = None

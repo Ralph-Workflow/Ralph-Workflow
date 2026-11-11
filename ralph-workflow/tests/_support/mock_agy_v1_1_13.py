@@ -1,13 +1,3 @@
-"""Measured AGY v1.1.13 wire vocabulary for the AGY smoke mock.
-
-Split out of ``tests/_support/mock_agy.py`` (wt-015-agy-support S-5) so the
-default simulator stays under the repository file-size floor; see that
-module's docstring for the ``MOCK_AGY_V1_1_13`` contract. This module is
-imported lazily from ``mock_agy.main`` only when the flag is set, so the
-default (flag-unset) subprocess path never pays for it and byte
-compatibility is preserved.
-"""
-
 from __future__ import annotations
 
 import json
@@ -24,26 +14,10 @@ from tests._support.mock_agy import (
     _smoke_test_result_markdown,
 )
 
-# --- v1.1.13 measured vocabulary (wt-015-agy-support S-5) ---
-#
-# Replays the frame shapes measured from the live v1.1.13 capture
-# (.agent/raw/agy_gemini-3.6-flash-low.log, sanitized as
-# tests/display/_fixtures/agy_wire_v1_1_13.jsonl): a step-level
-# ``tool_name`` of ``invoke_subagent`` on subagent frames, the bodiless
-# ``system_message`` step_type, and ``call_mcp_tool`` frames whose
-# ``tool_info.parameters`` carry ``ServerName`` / ``ToolName`` /
-# ``Arguments``. Unlike the deliberately Ralph-free default tool list,
-# this init advertises ``call_mcp_tool`` so the smoke harness's evidence
-# ceiling can reach WIRE for a run that actually dialed the server.
 V1_1_13_INIT_TOOL_NAMES: tuple[str, ...] = (*_MOCK_INIT_TOOL_NAMES, "call_mcp_tool")
 
 V1_1_13_SUBAGENT_ROLE = "Todo Edge Case Researcher"
 
-#: Fallback receipt shape mirroring the live capture's DONE output when the
-#: real MCP round trip could not be made (no endpoint). The harness still
-#: grades submission authoritatively from the server-side receipt, so a
-#: synthesized transcript output can never pass a failed round trip off as
-#: a submission.
 _V1_1_13_FALLBACK_SUBMIT_OUTPUT = (
     '{"artifact_type": "smoke_test_result", "valid": true, '
     '"diagnostics": [], "counts": {"error": 0, "warning": 0, "info": 0}}'
@@ -53,7 +27,6 @@ _MCP_TIMEOUT_SECONDS = 10
 
 
 def _mcp_post(endpoint: str, payload: dict[str, object]) -> dict[str, object] | None:
-    """POST one JSON-RPC frame and return the parsed SSE ``data:`` payload."""
     request = urllib.request.Request(
         endpoint,
         data=json.dumps(payload).encode("utf-8"),
@@ -74,7 +47,6 @@ def _mcp_post(endpoint: str, payload: dict[str, object]) -> dict[str, object] | 
 
 
 def _mcp_result_text(response: dict[str, object] | None) -> str | None:
-    """Extract the first text block from a tools/call JSON-RPC response."""
     if not isinstance(response, dict):
         return None
     result = response.get("result")
@@ -89,29 +61,10 @@ def _mcp_result_text(response: dict[str, object] | None) -> str | None:
 
 
 def drive_real_mcp_round_trips() -> tuple[str | None, str | None]:
-    """Submit the smoke artifact and declare completion over real MCP.
-
-    Stdlib-only JSON-RPC client mirroring the calls the live binary makes:
-    ``initialize``, ``tools/call ralph_submit_md_artifact`` (the same
-    markdown the default fallback writer produces), then ``tools/call
-    declare_complete``. Returns the server's text outputs for the two
-    tools/call frames (``None`` per call when the round trip could not be
-    made). No Ralph helper is imported here: the receipt, completion
-    sentinel, and wire-ledger records are produced solely by the server's
-    handlers, so a graded WIRE provenance always reflects a real round
-    trip (the PA-005 failure mode).
-    """
     endpoint = os.environ.get("RALPH_MCP_ENDPOINT")
     if not endpoint:
         return None, None
     if _MOCK_BEHAVIOR in {"missing_artifact", "missing_completion"}:
-        # The selector prunes the round trip itself, not only the frame
-        # that reports it: a run that STILL submits the artifact (or
-        # declares completion) over the real wire leaves a valid
-        # HMAC-bound receipt/sentinel behind, so the harness has no
-        # observable break to grade and exits 0 -- defeating the
-        # negative contract. Skipping the call here makes the wire
-        # record genuinely absent.
         return None, None
     try:
         _mcp_post(
@@ -160,27 +113,8 @@ def drive_real_mcp_round_trips() -> tuple[str | None, str | None]:
     return _mcp_result_text(submit_response), _mcp_result_text(complete_response)
 
 
-# ---------------------------------------------------------------------------
-# MOCK_AGY_BEHAVIOR selectors (wt-015-agy-support S-5 negative-contract
-# selectors). Each selector alters ONLY its named contract signal so a
-# superficial green smoke cannot mask a broken one:
-#
-#   ``no_output``          -> empty stdout (parser receives nothing)
-#   ``malformed_stream``   -> plain-text, non-JSON output (no parser events)
-#   ``failed_result``      -> closing ``result`` frame with status FAILED
-#   ``missing_dispatch``   -> no subagent dispatch frame
-#   ``missing_result``     -> subagent ACTIVE frames but no DONE result
-#   ``missing_artifact``   -> no ralph_submit_md_artifact MCP round trip
-#   ``missing_completion`` -> no declare_complete MCP round trip
-#
-# ``drive_real_mcp_round_trips`` consults the same constant and skips the
-# real round trip for both selectors; pruning only the FRAMES while still
-# performing the call would leave a valid broker receipt/sentinel on disk
-# and the harness would PASS the run it was asked to break.
-# ---------------------------------------------------------------------------
 _MOCK_BEHAVIOR = os.environ.get("MOCK_AGY_BEHAVIOR", "normal")
 
-#: Plain-text bytes for ``malformed_stream``: definitively NOT stream-json.
 _MOCK_MALFORMED_LINES: tuple[str, ...] = (
     "I will create the todo list implementation.",
     "Here is some ordinary model prose without any JSON frames.",
@@ -189,7 +123,6 @@ _MOCK_MALFORMED_LINES: tuple[str, ...] = (
 
 
 def _v1_1_13_submit_parameters() -> dict[str, object]:
-    """Measured ``call_mcp_tool`` parameters for ralph_submit_md_artifact."""
     return {
         "Arguments": {
             "artifact_type": "smoke_test_result",
@@ -201,7 +134,6 @@ def _v1_1_13_submit_parameters() -> dict[str, object]:
 
 
 def _v1_1_13_declare_parameters() -> dict[str, object]:
-    """Measured ``call_mcp_tool`` parameters for declare_complete."""
     return {
         "Arguments": {},
         "ServerName": "ralph",
@@ -210,7 +142,6 @@ def _v1_1_13_declare_parameters() -> dict[str, object]:
 
 
 def _v1_1_13_subagent_entry() -> dict[str, object]:
-    """Measured subagent entry carrying role/prompt/workspace metadata."""
     return {
         "type_name": "research",
         "role": V1_1_13_SUBAGENT_ROLE,
@@ -235,22 +166,6 @@ def _emit_v1_1_13_stdout(
     submit_output: str | None,
     complete_output: str | None,
 ) -> None:
-    """Emit the measured v1.1.13 stream-json vocabulary in the plan's order.
-
-    Order: subagent ACTIVE/DONE pair (step-level ``tool_name``
-    ``invoke_subagent``), bodiless ``system_message``, the
-    ``call_mcp_tool`` -> ``ralph_submit_md_artifact`` ACTIVE/DONE pair whose
-    DONE output is the real server receipt, the ``call_mcp_tool`` ->
-    ``declare_complete`` pair, a ``read_file`` pair aimed at the todo list,
-    a ``view_file`` pair (proving the ``view_file <basename>`` summary
-    rule), and a ``write_to_file`` pair (the write-surface event whose
-    correlated result renders through the display's syntax preview). Non
-    stream-json formats fall back to the default emitter; the v1.1.13
-    vocabulary is stream-json only.
-
-    The ``_MOCK_BEHAVIOR`` negative selectors prune exactly one contract
-    signal each from the event stream below.
-    """
     if output_format != "stream-json":
         _emit_normal_stdout(model, output_format)
         return
@@ -486,8 +401,6 @@ def _emit_v1_1_13_stdout(
                     "step_type": "tool",
                     "tool_name": "write_to_file",
                     "duration_seconds": 0.08,
-                    # No ``output`` key: the measured capture shows write_to_file
-                    # produces no output on DONE.
                     "tool_info": {
                         "name": "write_to_file",
                         "parameters": {"TargetFile": OUTPUT_FILE_RELPATH},

@@ -1,24 +1,3 @@
-"""Canonical workflow progress accounting.
-
-This module owns all mutations for workflow progress fields, including completed
-outer progress counters, inner analysis-loop counters, routing budgets, review-issue
-flags tied to progress boundaries, and checkpoint-facing progress mirrors derived
-from canonical state and active policy.
-
-Contract:
-
-* Outer progress counters are named by policy (via budget_counters); the runtime
-  never assumes a specific counter name.
-* Analysis loopbacks mutate only the inner loop counter for the current cycle or pass.
-* Capped analysis loopback preserves outer progress and carries the inner loop counter
-  to the cap until analysis or commit outcome resets it.
-* Skipped commits honour the commit_policy.skipped_advances_progress flag; when
-  true (the default), a skip still advances outer progress and ends the current inner
-  loop, so routing can distinguish a consumed-but-skipped iteration from one that never ran.
-* Checkpoint mirrors derive from canonical ``PipelineState`` and policy-declared budget
-  counters: the first budget-tracked counter (in commit-phase BFS order) maps to
-  ``actual_developer_runs``; the second maps to ``actual_reviewer_runs``.
-"""
 
 from __future__ import annotations
 
@@ -42,13 +21,6 @@ if TYPE_CHECKING:
 
 
 def review_issues_found(state: PipelineState, policy: PipelinePolicy | None = None) -> bool:
-    """Return True when the current review outcome indicates issues were found.
-
-    When policy is provided, checks the active review phase's clean_outcome to
-    determine whether the stored review_outcome represents an issues-found state.
-    When policy is None or no review phase with clean_outcome is declared, falls
-    back to checking whether review_outcome is non-None.
-    """
     if state.review_outcome is None:
         return False
     if policy is not None:
@@ -64,29 +36,24 @@ def review_issues_found(state: PipelineState, policy: PipelinePolicy | None = No
 
 @dataclass(frozen=True)
 class AnalysisLoopCounter:
-    """Canonical analysis-loop counter semantics derived from completed loopbacks."""
 
     completed: int
     cap: int
 
     @property
     def display_iteration(self) -> int:
-        """Return the saturated 1-based label shown to users."""
         return min(max(self.completed, 0), max(self.cap - 1, 0)) + 1
 
     @property
     def is_final(self) -> bool:
-        """Return True when the current run is the final labeled analysis run."""
         return self.completed >= self.cap - 1
 
     @property
     def should_skip_reentry(self) -> bool:
-        """Return True when the next attempt to enter analysis must be skipped."""
         return self.completed >= self.cap
 
     @property
     def next_completed(self) -> int:
-        """Return the clamped completed count after one more loopback."""
         return max(0, min(self.completed + 1, self.cap))
 
 
@@ -94,7 +61,6 @@ def resolve_analysis_cap(
     iteration_field: str,
     policy: PipelinePolicy,
 ) -> int:
-    """Resolve the effective analysis cap from live policy."""
     if iteration_field in policy.loop_counters:
         return policy.loop_counters[iteration_field].default_max
     msg = (
@@ -109,16 +75,6 @@ def completed_analysis_passes(
     phase: str,
     policy: PipelinePolicy,
 ) -> int:
-    """Return how many analysis passes of ``phase`` have actually finished.
-
-    :class:`AnalysisLoopCounter` reads its input as completed passes, which is
-    what the stored counter means everywhere it is charged on loopback — after
-    the pass. A phase guarded by an ``invocation_gate`` is charged on ENTRY
-    instead, so its counter includes the pass currently running. Taking that
-    charge back out is what keeps the operator's label on the pass in front of
-    them: without it the first gated pass rendered as the second, the last two
-    shared a label, and the final-pass hint arrived an iteration early.
-    """
     phase_def = policy.phases.get(phase)
     if phase_def is None or phase_def.loop_policy is None:
         return 0
@@ -129,20 +85,10 @@ def completed_analysis_passes(
 
 
 def is_final_analysis_iteration(current_iteration: int, max_iterations: int) -> bool:
-    """Return True when the current analysis state should be treated as final.
-
-    This intentionally matches the user-facing label semantics.
-    """
     return AnalysisLoopCounter(current_iteration, max_iterations).is_final
 
 
 def should_skip_analysis_reentry(current_iteration: int, max_iterations: int) -> bool:
-    """Return True when the *next* attempt to enter analysis must be skipped.
-
-    ``current_iteration`` stores completed loopbacks, while the visible FINAL label is
-    rendered for the current run. That means re-entry should skip only *after* the
-    final labeled run has already happened.
-    """
     return AnalysisLoopCounter(current_iteration, max_iterations).should_skip_reentry
 
 
@@ -152,19 +98,6 @@ def advance_phase(
     *,
     policy: PipelinePolicy | None,
 ) -> PipelineState:
-    """Advance phases while applying only canonical routing-budget bookkeeping.
-
-    Resets ``recovery_epoch`` to ``0`` on every normal forward advance so the
-    missing-plan recovery loop counter is scoped to the CURRENT consecutive
-    recovery loop, not the lifetime total of unrelated recoveries. Callers
-    that need to override ``recovery_epoch`` (e.g. ``recover_missing_plan_handoff``
-    in ``ralph/pipeline/_runner_state_helpers.py`` and ``_advance_to_failed``
-    in ``ralph/pipeline/reducer.py``) explicitly set it after this function
-    returns, so the reset is invisible to the recovery bookkeeping contract
-    and visible to every other forward-progress path. This keeps
-    ``pipeline_policy.recovery.cycle_cap`` scoped to the current missing-plan
-    recovery loop rather than inflating across successful forward transitions.
-    """
     if policy is None:
         msg = (
             f"advance_phase requires PipelinePolicy to advance to '{target_phase}'; "
@@ -203,7 +136,6 @@ def apply_analysis_success(
     *,
     policy: PipelinePolicy | None = None,
 ) -> PipelineState:
-    """Reset inner-loop progress when analysis exits successfully to commit/approval."""
     result = advanced_state.copy_with(review_outcome=None)
     if policy is not None:
         phase_def = policy.phases.get(state.phase)
@@ -222,7 +154,6 @@ def apply_analysis_loopback(
     review_outcome: str | None = None,
     increment: bool = True,
 ) -> PipelineState:
-    """Apply canonical loopback bookkeeping for an analysis phase."""
     result = advanced_state
     if increment:
         clamped = AnalysisLoopCounter(
@@ -239,12 +170,6 @@ def resolve_execution_cycle_loop_counter(
     phase: str,
     policy: PipelinePolicy,
 ) -> str | None:
-    """Return the analysis counter for an execution phase's own retry loop.
-
-    The relationship is policy-defined: follow successful transitions until an
-    analysis phase loops back to the originating execution phase. This leaves
-    unrelated analysis loops and custom counter names untouched.
-    """
     visited: set[str] = set()
     current: str | None = phase
     while current is not None and current not in visited:
@@ -269,7 +194,6 @@ def apply_execution_cycle_outcome(
     *,
     policy: PipelinePolicy,
 ) -> PipelineState:
-    """Charge one declared analysis-loop cycle for a terminal execution outcome."""
     iteration_field = resolve_execution_cycle_loop_counter(state.phase, policy)
     if iteration_field is None:
         return advanced_state
@@ -288,11 +212,6 @@ def charge_analysis_cycle_for_gate(
     *,
     policy: PipelinePolicy,
 ) -> PipelineState:
-    """Charge one analysis-loop cycle when the invocation gate admits analysis.
-
-    Uses the gate's declared ``execution_phase`` (rather than the current
-    commit-phase state) to resolve the analysis loop counter.
-    """
     iteration_field = resolve_execution_cycle_loop_counter(execution_phase, policy)
     if iteration_field is None:
         return state
@@ -309,11 +228,6 @@ def cumulative_execution_seconds(
     state: PipelineState,
     execution_phase: str,
 ) -> float:
-    """Sum unrounded elapsed seconds for ``execution_phase`` in the current cycle.
-
-    Uses ``elapsed.total_seconds()`` (not the truncated ``elapsed_seconds``)
-    so fractional totals that straddle the threshold are resolved correctly.
-    """
     start = state.cycle_timing_start_index
     return sum(
         record.elapsed.total_seconds()
@@ -327,16 +241,6 @@ def analysis_loopback_is_already_charged(
     state: PipelineState,
     policy: PipelinePolicy,
 ) -> bool:
-    """Return whether this ANALYSIS loop was entered by an execution-charged cycle.
-
-    Restricted to analysis phases on purpose. The charged flag is set when the
-    invocation gate admits an analysis cycle and is cleared only on entry to an
-    execution phase, so it is still set when the run reaches a commit-review
-    phase later in the same cycle. Suppressing the charge there stopped that
-    phase's own loop counter from ever advancing, so its cap never fired and a
-    cleanup that kept asking to loop looped forever — with no timebox left to
-    bound it, since the cycle has already concluded by then.
-    """
     phase_def = policy.phases.get(phase)
     if phase_def is None or phase_def.loop_policy is None or phase_def.role != "analysis":
         return False
@@ -350,12 +254,6 @@ def apply_commit_outcome(
     skipped: bool,
     policy: PipelinePolicy | None = None,
 ) -> PipelineState:
-    """Apply canonical outer-progress semantics for commit success vs skip.
-
-    Policy is required. Lifecycle-owned accounting takes precedence when the
-    current phase is declared in pipeline.lifecycle_phases. Otherwise commit_policy
-    drives the legacy fallback behavior.
-    """
     if policy is None:
         msg = f"apply_commit_outcome requires PipelinePolicy for commit-role phase {state.phase!r}"
         raise ValueError(msg)
@@ -375,7 +273,6 @@ def apply_commit_outcome(
 
 
 def consume_post_commit_phase_override(state: PipelineState) -> PipelineState:
-    """Clear a transient post-commit route after its target has been resolved."""
     return state.copy_with(post_commit_phase_override=None)
 
 
@@ -384,7 +281,6 @@ def _apply_lifecycle_completion_policy(
     advanced_state: PipelineState,
     lifecycle: LifecyclePhasePolicy,
 ) -> PipelineState:
-    """Apply lifecycle-owned counter and loop-reset semantics."""
     result = advanced_state
     for field_name in lifecycle.loop_resets:
         result = result.with_loop_iteration(field_name, 0)
@@ -401,12 +297,9 @@ def _apply_commit_outcome_policy_driven(
     skipped: bool,
     commit_policy: object,
 ) -> PipelineState:
-    """Apply commit outcome using policy-declared commit_policy."""
     if not isinstance(commit_policy, PhaseCommitPolicy):
         return advanced_state
 
-    # Reset loop counters declared in loop_resets via with_loop_iteration
-    # (handles both legacy typed fields and custom dict-based fields)
     result = advanced_state
     for field_name in commit_policy.loop_resets:
         result = result.with_loop_iteration(field_name, 0)
@@ -429,14 +322,12 @@ def apply_budget_counter_increment(
     advanced_state: PipelineState,
     counter: str | None,
 ) -> PipelineState:
-    """Increment a policy-declared budget counter when a lifecycle route completes."""
     if counter is None or counter == "none":
         return advanced_state
     return advanced_state.with_outer_progress(counter, state.get_outer_progress(counter) + 1)
 
 
 def _tracked_budget_counters_in_commit_order(policy: PipelinePolicy) -> list[str]:
-    """Return tracked budget counter names in the order their commit phases appear in BFS."""
     phases = policy.phases
     visited: set[str] = set()
     queue: list[str] = [policy.entry_phase]
@@ -484,12 +375,6 @@ def derive_run_context_progress(
     run_context: RunContext,
     policy: PipelinePolicy | None = None,
 ) -> RunContext:
-    """Derive checkpoint-facing progress mirrors from canonical pipeline state.
-
-    Resolves counter names by BFS through commit phases in the active policy;
-    the first budget-tracked counter maps to actual_developer_runs, the second to
-    actual_reviewer_runs. When policy is None, both fields are set to 0.
-    """
     if policy is not None:
         tracked = _tracked_budget_counters_in_commit_order(policy)
         dev_counter = tracked[0] if len(tracked) > 0 else None

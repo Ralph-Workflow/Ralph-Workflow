@@ -1,4 +1,3 @@
-"""Shared type alias for policy block models."""
 
 from __future__ import annotations
 

@@ -1,5 +1,3 @@
-# Deprecated: Ralph-orchestrated workers are removed from the execution model; parallelism is owned by the developer agent's own sub-agents. See docs/sphinx/concepts.md §"Deprecated: Ralph-orchestrated workers".
-"""PipelinePolicy Pydantic model."""
 
 from typing import Self
 
@@ -20,7 +18,6 @@ from ralph.policy.models._recovery_policy import RecoveryPolicy
 
 
 class PipelinePolicy(_FrozenPolicyModel):
-    """Top-level pipeline.toml policy document."""
 
     blocks: dict[str, PolicyBlock] = Field(
         default_factory=dict,
@@ -107,7 +104,6 @@ class PipelinePolicy(_FrozenPolicyModel):
         return values
 
     def terminal_states(self) -> set[str]:
-        """Return the full set of terminal state names for transition validation."""
         return _terminal_phase_names(self)
 
     @model_validator(mode="after")
@@ -319,14 +315,6 @@ class PipelinePolicy(_FrozenPolicyModel):
 
     @model_validator(mode="after")
     def recordable_cycle_outcomes_are_routable(self) -> Self:
-        """Reject a cycle outcome this workflow can record but cannot route.
-
-        The redirect stamps this outcome, and a stamped outcome suppresses the
-        unrecorded-outcome fallback. If no route declares it, the timed-out
-        cycle falls through the route table onto the commit phase's success
-        transition — ending the run while its budget still had room, which is
-        the exact failure the timebox is supposed to avoid.
-        """
         if not self.post_commit_routes:
             return self
         for phase_name in sorted({route.when.phase for route in self.post_commit_routes}):
@@ -345,11 +333,6 @@ class PipelinePolicy(_FrozenPolicyModel):
                         for route in routes
                     ):
                         continue
-                    # Routing matches on the PAIR, so a table that covers every
-                    # budget state and every outcome separately can still leave
-                    # a pair uncovered. That pair falls through to the phase's
-                    # success transition: onto a terminal it ends the run with
-                    # budget left, back into the cycle it never terminates.
                     raise ValueError(
                         f"post_commit_routes for commit phase '{phase_name}' do not cover "
                         f"budget_state='{budget_state}' with cycle outcome '{outcome}', which "
@@ -361,39 +344,18 @@ class PipelinePolicy(_FrozenPolicyModel):
         return self
 
     def _recordable_cycle_outcomes(self) -> set[str]:
-        """Return every cycle outcome this workflow can stamp on a cycle.
-
-        Both sources count: the outcome a deadline redirect finalizes with
-        (when a timebox is declared), and the outcomes analysis decisions
-        declare on routes that can actually reach a commit phase. A recorded
-        verdict is never re-routed as a different one at runtime, so the route
-        table has to cover all of them.
-        """
         outcomes: set[str] = set()
         if self.cycle_timebox is not None:
             outcomes.add(self.cycle_timebox.finalization_cycle_outcome)
         terminals = self.terminal_states()
         for phase_def in self.phases.values():
             for route in phase_def.decisions.values():
-                # A decision that routes straight to a terminal never reaches a
-                # commit phase, so its outcome needs no post-commit route.
                 if route.cycle_outcome is not None and route.target not in terminals:
                     outcomes.add(route.cycle_outcome)
         return outcomes
 
     @model_validator(mode="after")
     def cycle_timebox_ends_outside_the_cycle(self) -> Self:
-        """Reject a cycle end that sits inside the cycle it is meant to end.
-
-        Entry to ``end_entry`` stops the clock. If it names a phase the cycle
-        routes through normally — say the
-        intermediate commit review rather than the final one, a one-word
-        difference between two real phase names — then the first ordinary
-        re-entry disarms the deadline, and it can never re-arm, because
-        starting a cycle requires the declared start transition. The rest of
-        that cycle then runs with no deadline, no warning, and nothing
-        published to the agent.
-        """
         ct = self.cycle_timebox
         if ct is None:
             return self
@@ -411,15 +373,6 @@ class PipelinePolicy(_FrozenPolicyModel):
         return self
 
     def _phases_inside_cycle(self, ct: CycleTimeboxPolicy | DevelopmentTimeboxPolicy) -> set[str]:
-        """Return the phases a cycle routes through on its way round again.
-
-        A phase is inside the cycle when it is reachable from the guarded
-        entry AND can route back to it, without passing through the phases
-        that precede the cycle. Defining it by the loop rather than by the
-        declared ends keeps the check honest: the ends are exactly what is
-        being validated, so excluding them up front would make any value
-        pass.
-        """
         pre_cycle = {self.entry_phase, ct.start_source}
         forward = self._reachable_avoiding([ct.start_entry, ct.guarded_entry], avoid=pre_cycle)
         return {
@@ -436,7 +389,6 @@ class PipelinePolicy(_FrozenPolicyModel):
         avoid: set[str],
         exclude_start: bool = False,
     ) -> set[str]:
-        """Return phases reachable by forward edges, never entering ``avoid``."""
         seen: set[str] = set()
         frontier = list(starts)
         first = True
@@ -479,7 +431,6 @@ class PipelinePolicy(_FrozenPolicyModel):
         return self
 
     def effective_retry_policy(self, phase_name: str) -> PhaseRetryPolicy:
-        """Resolve the effective retry policy for a phase."""
         phase_def = self.phases.get(phase_name)
         if phase_def is not None and phase_def.retry_policy is not None:
             return phase_def.retry_policy
@@ -487,7 +438,6 @@ class PipelinePolicy(_FrozenPolicyModel):
 
 
 def _terminal_phase_names(policy: PipelinePolicy) -> set[str]:
-    """Return all terminal phase names from policy."""
     names: set[str] = {
         policy.terminal_phase,
         policy.recovery.failed_route,
@@ -497,13 +447,6 @@ def _terminal_phase_names(policy: PipelinePolicy) -> set[str]:
 
 
 def _phase_declares_edge(policy: PipelinePolicy, source: str, target: str) -> bool:
-    """Return whether ``source`` declares a direct route to ``target``.
-
-    A declared edge is any transition, decision target, bypass route,
-    result-status post-commit target, or post-commit route whose source
-    phase is ``source`` and whose target is ``target``. This is the graph
-    predicate the cycle-timebox start transition must satisfy.
-    """
     phase_def = policy.phases.get(source)
     if phase_def is not None:
         t = phase_def.transitions

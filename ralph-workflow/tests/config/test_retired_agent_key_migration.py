@@ -15,18 +15,6 @@ from ralph.config.loader import (
 
 
 def _head_sha(repo_root: Path) -> str:
-    """Return the commit sha HEAD resolves to, read from the on-disk git metadata.
-
-    Reading the ref files keeps the proof inside the default test lane: no
-    git binary is spawned, so the test never crosses the real-Git boundary
-    the test-policy audit guards.
-
-    Args:
-        repo_root: Root of the git working tree to inspect.
-
-    Returns:
-        The full commit sha HEAD points at.
-    """
     git_dir = repo_root / ".git"
     head = (git_dir / "HEAD").read_text(encoding="utf-8").strip()
     if not head.startswith("ref:"):
@@ -118,17 +106,11 @@ def test_load_config_migrates_retired_agent_key_from_global_agents_source(
 
     assert config.agents["claude"].cmd == "claude"
     assert not hasattr(config.agents["claude"], "can_commit")
-    # Leaves the disk file byte-identical
-    assert (
-        agents_path.read_text(encoding="utf-8") == original_text
-    )  # RALPH-TEST-REASON: loader migration is in-memory only to guarantee agents file immutability per Req 2
-    # Does not create .migration or .bak
+    assert agents_path.read_text(encoding="utf-8") == original_text
     assert not (config_home / ".ralph-workflow-agents.toml.migration").exists()
     assert not (config_home / "ralph-workflow-agents.toml.bak").exists()
     assert list(config_home.glob("*.migration")) == []
     assert list(config_home.glob("*.bak")) == []
-    # Does NOT make any git commit (create_commit not called)
-    # Deduplicated warning emitted
     assert any("regenerate-config" in r and "agent_can_commit" in r for r in records)
 
 
@@ -166,13 +148,6 @@ def test_load_toml_does_not_rewrite_malformed_retired_agent_source(tmp_path: Pat
 def test_explicit_config_route_warns_once_and_keeps_disk_and_head_untouched(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, tmp_git_repo: Path
 ) -> None:
-    """The explicit ``--config`` route names the retired key, its file, and the in-memory-only migration.
-
-    ``load_config(config_path=...)`` is the library entry point behind
-    ``ralph --config <path>``. The retired assignment is migrated in memory
-    only, so the operator must see one deduplicated warning that names the
-    file, the file on disk keeps its exact bytes, and no commit is created.
-    """
     reset_retired_agent_key_warnings()
     config_home = tmp_path / "xdg-config"
     config_home.mkdir()
@@ -207,12 +182,9 @@ def test_explicit_config_route_warns_once_and_keeps_disk_and_head_untouched(
     finally:
         logger.remove(sink_id)
 
-    # The retired key is gone from the in-memory config.
     assert config.agents["claude"].cmd == "claude"
     assert not hasattr(config.agents["claude"], "can_commit")
 
-    # Exactly one operator-visible warning names the file and the
-    # in-memory-only migration.
     warnings = [record for record in records if "agent_can_commit" in record]
     assert len(warnings) == 1, warnings
     warning = warnings[0]
@@ -221,8 +193,6 @@ def test_explicit_config_route_warns_once_and_keeps_disk_and_head_untouched(
     assert "not modified" in warning
     assert "ralph --regenerate-config" in warning
 
-    # The file on disk is byte-identical, and no backup, temp, or migration
-    # artifact appeared next to it.
     assert config_path.read_bytes() == initial_bytes
     assert hashlib.sha256(config_path.read_bytes()).hexdigest() == initial_sha256
     assert {entry.name for entry in tmp_git_repo.iterdir()} == initial_dir_contents
@@ -232,10 +202,8 @@ def test_explicit_config_route_warns_once_and_keeps_disk_and_head_untouched(
         entry.name.startswith(".ralph-workflow.toml.tmp.") for entry in tmp_git_repo.iterdir()
     )
 
-    # No commit was created: HEAD still points at the seeded commit.
     assert _head_sha(tmp_git_repo) == initial_head
 
-    # A second load of the same file in the same process does not warn again.
     records.clear()
     sink_id = logger.add(records.append, level="WARNING", format="{message}")
     try:
@@ -248,12 +216,6 @@ def test_explicit_config_route_warns_once_and_keeps_disk_and_head_untouched(
 def test_agents_layer_and_explicit_route_warn_once_for_the_same_file(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """One file read by both routes produces exactly one warning.
-
-    The agents layer and the generic explicit-config route share ONE warning
-    authority keyed by the resolved path, so a file both routes read never
-    warns twice for the same process.
-    """
     reset_retired_agent_key_warnings()
     config_home = tmp_path / "xdg-config"
     config_home.mkdir()

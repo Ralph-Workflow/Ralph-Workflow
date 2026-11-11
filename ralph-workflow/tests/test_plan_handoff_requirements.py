@@ -115,7 +115,6 @@ def test_non_new_plan_prompts_require_existing_plan_handoff(
 def test_plan_handoff_regression_draft_fallback_requires_valid_plan(
     draft: str, raises: bool
 ) -> None:
-    """S-5: resume may use only a draft that clears PLAN001."""
     workspace = MemoryWorkspace()
     workspace.write(".agent/artifacts/.plan.draft.md", draft)
     if raises:
@@ -132,7 +131,6 @@ def test_plan_handoff_regression_draft_fallback_requires_valid_plan(
 
 
 def test_review_role_requires_existing_plan_handoff(tmp_path: Path) -> None:
-    """A custom review-role phase must require an existing plan."""
     pipeline_policy = PipelinePolicy(
         phases={
             "review": PhaseDefinition(

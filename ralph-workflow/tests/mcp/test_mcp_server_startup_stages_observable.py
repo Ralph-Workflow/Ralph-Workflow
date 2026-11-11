@@ -1,18 +1,3 @@
-"""R4-LOGS invariant: every startup stage is flushed to logger.info AND written to the stage file.
-
-This test drives the REAL production seams (``run_standalone_server``)
-in-process via threading. The server is started in a background thread;
-once the ``ready_event`` fires we allow ``on_ready`` to fire and then
-immediately read the stage file and captured log lines. The server thread
-is then stopped via ``stop_event`` and joined, and the test asserts it did
-not outlive the join, so no server thread survives the test.
-
-The seven stages in ``RUNTIME_STAGES`` form a closed vocabulary; every
-stage after the first is guaranteed to be recorded only after the
-previous one completes (the runtime uses a synchronous single-threaded
-composition, so there are no async ordering ambiguities).
-"""
-
 from __future__ import annotations
 
 import threading
@@ -36,16 +21,11 @@ from ralph.mcp.server.runtime import run_standalone_server
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-# Module-level capture list assigned via a mutable container so the fixture
-# can rebind the contents without using ``global``. The lint audit forbids
-# no-q-a directives in test files, so we route around the language-level
-# global statement instead of suppressing the warning.
 _loguru_records_box: list[list[str]] = [[]]
 
 
 @pytest.fixture(autouse=True)
 def _loguru_sink() -> Iterator[None]:
-    """Install a loguru sink that captures all messages into the shared box."""
     _loguru_records_box[0] = []
 
     def sink(message: object) -> None:
@@ -58,32 +38,6 @@ def _loguru_sink() -> Iterator[None]:
 
 @pytest.mark.timeout_seconds(10)
 def test_all_seven_stages_logged_and_recorded(tmp_path: Path) -> None:
-    """Each of the seven RUNTIME_STAGES emits a flushed logger.info line AND a stage-file record.
-
-    The stages are recorded in strict order by the synchronous startup path:
-    ``env_loaded``, ``session_ready``, ``config_loading``, ``config_loaded``,
-    ``upstream_catalog_or_discovery_done``, ``registry_built``, ``ready_to_serve``.
-    ``config_loading`` is the boundary that fires BEFORE the bounded pre-serve
-    executor (allowed_roots, FsWorkspace, load_mcp_config); ``config_loaded``
-    fires AFTER. ``ready_to_serve`` is recorded inside the ``on_ready`` callback
-    that fires when the server socket is actually listening (immediately after
-    ``ready_event`` is set).
-
-    ``timeout_seconds(10)`` bounds this test at the same ceiling its own
-    readiness wait already declares (``ready_event.wait(timeout=10.0)`` below).
-    Without the marker the test inherits the 1.0 s default per-test SIGALRM
-    budget from ``tests/conftest.py``, which is TIGHTER than the wait the test
-    itself considers legitimate — so on a saturated host the policy timer fires
-    while startup is still inside its documented bound. The cost is real I/O:
-    the runtime fsyncs the stage file once per stage (seven synchronous
-    flush+fsync writes, see ``_start_stage_tracker``) and binds a real
-    loopback socket, so the tail is dominated by filesystem sync latency under
-    the concurrent ``make test`` fan-out rather than by anything the test can
-    make deterministic. Measured median is ~0.06 s (0.05-0.08 s across 24
-    concurrent invocations); the marker only raises the ceiling so the tail is
-    absorbed, it does not add runtime and it leaves every assertion intact.
-    """
-    # Build a session file so ``session_from_env`` succeeds without a real agent.
     session = AgentSession(
         session_id="test-session",
         run_id="test-run",
@@ -103,9 +57,6 @@ def test_all_seven_stages_logged_and_recorded(tmp_path: Path) -> None:
         stop_event = threading.Event()
 
         def run_server() -> None:
-            # Port 0 lets the kernel pick a free port: pytest-xdist runs
-            # multiple shards in parallel, and a fixed port would make two
-            # shards race on the same bind (Address already in use).
             run_standalone_server(
                 tmp_path,
                 ready_event=ready_event,
@@ -121,7 +72,6 @@ def test_all_seven_stages_logged_and_recorded(tmp_path: Path) -> None:
         server_thread.start()
 
         try:
-            # Wait for the server to signal it is listening. on_ready has already fired.
             assert ready_event.wait(timeout=10.0), "server did not signal ready within 10s"
         finally:
             stop_event.set()
@@ -134,7 +84,6 @@ def test_all_seven_stages_logged_and_recorded(tmp_path: Path) -> None:
         elif "RALPH_MCP_SESSION_FILE" in os.environ:
             del os.environ["RALPH_MCP_SESSION_FILE"]
 
-    # --- log assertions -------------------------------------------------------
     stage_lines = [ln for ln in _loguru_records_box[0] if "ralph-mcp startup: stage=" in ln]
     assert len(stage_lines) == len(RUNTIME_STAGES), (
         f"expected {len(RUNTIME_STAGES)} stage log lines, got {len(stage_lines)}: {stage_lines!r}"
@@ -145,7 +94,6 @@ def test_all_seven_stages_logged_and_recorded(tmp_path: Path) -> None:
             f"stage={stage!r} missing from log output at position {idx}"
         )
 
-    # --- stage-file assertions -----------------------------------------------
     last = read_last_stage(tmp_path)
     assert last == RUNTIME_STAGES[-1], f"expected last stage {RUNTIME_STAGES[-1]!r}, got {last!r}"
 
@@ -155,13 +103,11 @@ def test_all_seven_stages_logged_and_recorded(tmp_path: Path) -> None:
 
 
 def test_stage_file_absent_before_run(tmp_path: Path) -> None:
-    """No stage file exists before run_standalone_server is called."""
     sp = stage_file_path(tmp_path)
     assert not sp.exists()
 
 
 def test_closed_stage_vocabulary_is_seven() -> None:
-    """The RUNTIME_STAGES tuple has exactly seven entries in the documented order."""
     assert len(RUNTIME_STAGES) == 7
     assert RUNTIME_STAGES == (
         "env_loaded",
@@ -175,9 +121,6 @@ def test_closed_stage_vocabulary_is_seven() -> None:
 
 
 def test_observed_stage_deadline_enforces_bound(tmp_path: Path) -> None:
-    """When the fake clock reports elapsed time past a stage budget, the
-    build path raises McpServerError with last_stage matching the offending
-    stage and elapsed_s > budget."""
     from unittest.mock import patch
 
     from ralph.mcp.protocol._startup_timeouts import mcp_discovery_budget_from_env

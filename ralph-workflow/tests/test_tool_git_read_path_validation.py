@@ -1,5 +1,3 @@
-"""Real-git coverage for git-read cwd validation."""
-
 from __future__ import annotations
 
 from collections.abc import Callable

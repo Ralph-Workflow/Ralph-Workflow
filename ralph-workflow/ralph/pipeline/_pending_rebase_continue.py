@@ -1,4 +1,3 @@
-"""Preserve a proved rebase stop while its normal continuation is blocked."""
 
 from __future__ import annotations
 
@@ -20,7 +19,6 @@ from ralph.pipeline.auto_integrate_record import (
 
 
 def prepare_pending_rebase(root: Path, target: str | None = None) -> None:
-    """Persist the verified index before invoking Git continuation."""
     record = read_record(root)
     if record is None:
         if target is None:
@@ -67,7 +65,6 @@ def prepare_pending_rebase(root: Path, target: str | None = None) -> None:
 
 
 def pending_rebase_identity_matches(root: Path, record: IntegrationRecord) -> bool:
-    """Prove that retrying continuation uses the same verified stop and index."""
     return (
         bool(
             record.rebase_continue_head
@@ -84,7 +81,6 @@ def pending_rebase_identity_matches(root: Path, record: IntegrationRecord) -> bo
 
 
 def finish_pending_rebase(root: Path) -> None:
-    """Release only the stop snapshot after Git proves continuation advanced."""
     record = read_record(root)
     if record is not None:
         if classify_git_operation(
@@ -116,7 +112,6 @@ def finish_pending_rebase(root: Path) -> None:
 
 
 def retain_pending_rebase_error(root: Path, error: Exception) -> None:
-    """Persist actionable hook/lock diagnostics without changing the prepared index."""
     record = read_record(root)
     if record is not None and classify_git_operation(record) is GitOperationKind.AWAITING_CONTINUE:
         write_record(
@@ -129,7 +124,6 @@ def retain_pending_rebase_error(root: Path, error: Exception) -> None:
 
 
 def resume_pending_rebase(root: Path, record: IntegrationRecord) -> IntegrationRecord | str:
-    """Retry the exact prepared continuation and classify the resulting operation."""
     if record.repair_commit_controls is not None:
         from ralph.pipeline._pending_repair_edits import capture_commit_controls
 
@@ -220,7 +214,6 @@ def _retain_next_rebase_stop(root: Path) -> str:
 def _complete_pending_rebase_snapshot(
     root: Path, record: IntegrationRecord
 ) -> IntegrationRecord | None:
-    """Reprove a staged stop after a failed tree query without accepting changed parents."""
     from ralph.pipeline.conflict_resolution.rebase_loop import current_rebase_identity
 
     original, onto = current_rebase_identity(root)
@@ -244,7 +237,6 @@ def _complete_pending_rebase_snapshot(
 
 
 def _resolved_stop_landed(root: Path, record: IntegrationRecord) -> bool:
-    """Accept crash recovery only when the first continued commit has the proved tree."""
     if not record.rebase_continue_head or not record.rebase_continue_tree:
         return False
     if (
@@ -267,7 +259,6 @@ def _resolved_stop_landed(root: Path, record: IntegrationRecord) -> bool:
 
 
 def _sequencer_snapshot(root: Path) -> tuple[tuple[str, str], ...]:
-    """Save the exact replay queue before Git may consume a command without updating HEAD."""
     entries: list[tuple[str, str]] = []
     for name in ("git-rebase-todo", "done", "msgnum", "end"):
         location = _git_value(root, "rev-parse", "--git-path", f"rebase-merge/{name}")
@@ -282,7 +273,6 @@ def _sequencer_snapshot(root: Path) -> tuple[tuple[str, str], ...]:
 
 
 def restore_pending_rebase_sequence(root: Path, record: IntegrationRecord) -> None:
-    """Restore consumed queue entries only when no prepared stop commit reached HEAD."""
     if not record.rebase_continue_metadata or not pending_rebase_identity_matches(root, record):
         return
     from ralph.mcp.artifacts.idempotent_write import atomic_write_bytes_if_changed

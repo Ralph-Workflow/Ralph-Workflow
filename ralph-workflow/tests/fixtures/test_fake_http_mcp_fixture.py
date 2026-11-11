@@ -1,5 +1,3 @@
-"""Tests for the HTTP MCP session protocol using the in-process harness."""
-
 from __future__ import annotations
 
 from ralph.mcp.protocol.startup import (

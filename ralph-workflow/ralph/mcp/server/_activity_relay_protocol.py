@@ -1,4 +1,3 @@
-"""Bounded wire-format helpers shared by activity-relay endpoints."""
 
 from __future__ import annotations
 
@@ -14,7 +13,6 @@ RELAY_MAX_MESSAGE_BYTES = 4096
 
 
 def receive_bounded_line(connection: socket.socket) -> bytes:
-    """Receive exactly one bounded newline-framed relay message."""
     chunks = bytearray()
     while len(chunks) <= RELAY_MAX_MESSAGE_BYTES:
         piece = connection.recv(min(1024, RELAY_MAX_MESSAGE_BYTES + 1 - len(chunks)))
@@ -32,7 +30,6 @@ def receive_bounded_line(connection: socket.socket) -> bytes:
 
 
 def decode_json_object(raw: bytes, *, label: str) -> dict[str, object]:
-    """Decode a relay payload as a JSON object with string keys."""
     try:
         decoded = cast("object", json.loads(raw.decode("utf-8")))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:

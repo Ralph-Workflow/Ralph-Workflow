@@ -65,7 +65,6 @@ def test_transcript_lines_from_assistant_thinking_preserves_envelope() -> None:
 
 
 def test_claude_interactive_transcript_bridge_regression_preserves_tool_envelopes() -> None:
-    """User-reported Claude smoke parsing regression, 2026-07-14."""
     transcript_parser = ClaudeInteractiveTranscriptParser()
     bridged_lines: list[str] = []
     events = [

@@ -1,58 +1,3 @@
-"""WU-T3: Edge cases E5.x (processes & signals), E6.x (time & budgets), E7.x (resources).
-
-Catalogue coverage:
-- E5.1: PID reuse guard checked against Process handle and bridge generation.
-- E5.2: Unkillable child (D state) does not block candidate promotion.
-- E5.3: Stopped child (SIGSTOP) trips deferral ceiling and forces replacement.
-- E5.4: Zombie child reaped by poll().
-- E6.1: Suspend/resume clock jumps respect cooldown.
-- E6.2: Probe-overrun slack correctly classifies contention vs server death.
-- E6.3: Flapping (alternating success and failure) resets consecutive failure counter.
-- E6.4: Budget arithmetic constants checked at import time.
-- E7.1: ENOSPC on .agent/: Wire ledger fails closed with WireLedgerIOError.
-- E7.2: Limit exhaustion: candidate spawn failure keeps old child serving.
-- E7.3: Fresh contention signal defers restart when child is alive.
-
-Testing-policy white-box exception (bridge internals):
-
-The cases marked ``# policy: white-box-exception`` below reach into the
-bridge's private restart machinery and into the module-level scheduling
-knobs of ``ralph.mcp.server.lifecycle``. The private symbols involved are
-``RestartAwareMcpBridge._bridge_generation``,
-``RestartAwareMcpBridge._handle_failed_probe_under_lock``,
-``RestartAwareMcpBridge._hand_over_accept``,
-``RestartAwareMcpBridge._perform_restart`` and the module-level timing
-constants ``_HANDOVER_ACK_TIMEOUT_S``, ``_HANDOVER_KILL_WAIT_S``,
-``_UNKILLABLE_REAP_BACKOFF_S`` and ``_UNKILLABLE_REAP_RETRY_S``.
-
-Quoted policy clause -- docs/ralph-workflow-policy/testing-policy.md:25-26,
-"Default requirements":
-  "White-box tests that reach into private internals are permitted only
-   when no observable surface can express the regression."
-
-Why no public observable expresses these regressions: the bridge's public
-surface (``run_id``, ``restart_count``, ``diagnostics()``,
-``check_health_and_restart_if_needed()``, ``shutdown()``) publishes the
-OUTCOME of a restart, never the VERDICT that produced it. The handover
-verdict probe (``_handle_failed_probe_under_lock``), the make-before-break
-accept step (``_hand_over_accept``) and the restart driver
-(``_perform_restart``) are consumed inside the bridge's own lock and are
-published on no public surface; ``_bridge_generation`` is the PID-reuse
-guard counter and has no public accessor (``run_id`` is a different
-identifier). Re-expressing these cases publicly would mean driving a real
-child replacement through a real socket handover instead of pinning the
-decision point, and no public diagnostic field carries that verdict.
-
-The four timing constants are INTERNAL SCHEDULING KNOBS with no public
-observable of their own: they bound how long the bridge waits for a child's
-pause acknowledgement, its kill, and the background reap of an unkillable
-child. They are patched only to force the deterministic branch (the bounded
-wait expires immediately instead of racing the wall clock against the
-per-test budget), while every ASSERTED outcome stays observable on the
-public surface: the promoted child PID, the surviving old child, the
-restart count and the deferral counters.
-"""
-
 from __future__ import annotations
 
 import os
@@ -126,26 +71,18 @@ def _make_inner(
     )
 
 
-# ---------------------------------------------------------------------------
-# E5.1: PID reuse guard checked against Process handle and bridge generation
-# ---------------------------------------------------------------------------
 def test_e51_pid_reuse_guard_anchored_to_bridge_generation() -> None:
     inner = _make_inner(poll_result=None, pid=1001)
     bridge = lifecycle.RestartAwareMcpBridge(
         inner,
-        restart_fn=lambda: _make_inner(poll_result=None, pid=1001),  # OS reuses same PID 1001
+        restart_fn=lambda: _make_inner(poll_result=None, pid=1001),
         restart_policy=McpRestartPolicy(max_restarts=5, cooldown_seconds=0.0),
         run_id="test-run",
     )
-    # policy: white-box-exception
     initial_gen = bridge._bridge_generation
 
-    # Generation increments on restart / tool-registry-reset
-    # policy: white-box-exception
     bridge._bridge_generation += 1
 
-    # Stale probe from prior generation with same PID is discarded
-    # policy: white-box-exception
     restarted = bridge._handle_failed_probe_under_lock(
         fresh_b_signal=False,
         probe_duration_s=1.0,
@@ -156,40 +93,11 @@ def test_e51_pid_reuse_guard_anchored_to_bridge_generation() -> None:
     assert bridge.restart_count == 0
 
 
-# ---------------------------------------------------------------------------
-# E5.2: Unkillable child (D state) does not block candidate promotion
-# ---------------------------------------------------------------------------
 def test_e52_unkillable_child_does_not_block_promotion(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """E5.2: An old child that survives SIGKILL inside the bounded pause-kill
-    window MUST NOT block promotion of a verified candidate. Single-acceptor
-    safety is preserved because (a) the pause sentinel was written so the
-    old child drops its accepting FD on its next pass, and (b) a D-state
-    survivor cannot run user code. Promotion proceeds; the survivor handle
-    is registered for bounded background reap, joined at bridge shutdown.
-
-    The test passes ``workspace_root`` to force the production handshake
-    code path (the ``if self._workspace_root is not None`` guard at
-    lifecycle.py:1709), and uses a fake whose ``kill()`` and ``terminate()``
-    are absorbed without flipping ``_poll_result`` so ``is_alive_process``
-    keeps returning True — exactly the D-state observation pattern.
-
-    Direct call to ``_hand_over_accept`` rather than ``_perform_restart`` so
-    the test exercises the actual production handshake code while staying
-    inside the per-test budget. The fake sleeper is wired in to keep the
-    bounded ack-wait at its production timeout (1.0 s); the production
-    helper then escalates SIGTERM -> SIGKILL and observes the survivor is
-    still alive, schedules bounded reap, and falls through to promotion.
-    """
-    # Make the bounded ack/kill waits expire immediately. The sleeper itself
-    # ``time.sleep()``s on the production timeout, so we shrink the constants
-    # by patching them locally to a smaller bounded value rather than racing
-    # wall-clock against the per-test budget.
     monkeypatch.setattr(lifecycle, "_HANDOVER_ACK_TIMEOUT_S", 0.05)
     monkeypatch.setattr(lifecycle, "_HANDOVER_KILL_WAIT_S", 0.05)
-    # The bounded background reap is unrelated to the assertion, so suppress
-    # it to keep the test free of background-thread cleanup noise.
     monkeypatch.setattr(lifecycle, "_UNKILLABLE_REAP_BACKOFF_S", 0.0)
     monkeypatch.setattr(lifecycle, "_UNKILLABLE_REAP_RETRY_S", 0.0)
 
@@ -206,36 +114,14 @@ def test_e52_unkillable_child_does_not_block_promotion(
         sleep_fn=time.sleep,
     )
 
-    # Drive the production handshake synchronously. This proves that the
-    # real production handshake code path (the one guarded by
-    # ``if self._workspace_root is not None`` at lifecycle.py:1709) now
-    # treats an unkillable survivor as a non-blocker instead of raising
-    # McpServerError and abandoning the candidate.
-    # policy: white-box-exception
     bridge._hand_over_accept(old_inner, candidate)
 
-    # Hand-over completed without raising. Single-acceptor safety is
-    # preserved (E1.2): the pause sentinel was written so the old child
-    # drops its accepting FD on its next pass, and the D-state survivor
-    # cannot run user code. Promotion proceeds through the surrounding
-    # _promote_and_reap call in the real make-before-break path, which
-    # test_bridge_make_before_break.py covers. The bounded background reap
-    # is registered on the bridge and is joined at bridge shutdown.
-    assert bridge.process is old_inner.process  # hand_over_accept does NOT swap the serving child
+    assert bridge.process is old_inner.process
 
 
 def test_e52_unkillable_child_promotes_via_full_make_before_break(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """E5.2 (full): D-state / unkillable survivor does not block promotion.
-
-    Drives the FULL ``_perform_restart`` path with both ``process_exited=False``
-    (so the old child's handle is registered as alive) and an unkillable
-    surrogate whose ``poll()`` always returns ``None``. The previous
-    production code raised ``McpServerError`` here, abandoning the candidate
-    and aborting the agent run; the new code schedules a bounded background
-    reap and lets the candidate promotion proceed.
-    """
     monkeypatch.setattr(lifecycle, "_HANDOVER_ACK_TIMEOUT_S", 0.05)
     monkeypatch.setattr(lifecycle, "_HANDOVER_KILL_WAIT_S", 0.05)
     monkeypatch.setattr(lifecycle, "_UNKILLABLE_REAP_BACKOFF_S", 0.0)
@@ -254,18 +140,13 @@ def test_e52_unkillable_child_promotes_via_full_make_before_break(
         sleep_fn=time.sleep,
     )
 
-    # policy: white-box-exception
     promoted = bridge._perform_restart(process_exited=False, probe_duration_s=1.0)
     assert promoted is True
     assert bridge.process is candidate.process
     assert bridge.process.pid == 2002
 
 
-# ---------------------------------------------------------------------------
-# E5.3: Stopped child (SIGSTOP) trips deferral ceiling and forces replacement
-# ---------------------------------------------------------------------------
 def test_e53_stopped_child_trips_deferral_ceiling_and_forces_replacement() -> None:
-    # Stopped child is alive in kernel (poll() is None) but unresponsive
     stopped_inner = _make_inner(poll_result=None, pid=1001)
     replacement = _make_inner(poll_result=None, pid=2002)
 
@@ -277,9 +158,7 @@ def test_e53_stopped_child_trips_deferral_ceiling_and_forces_replacement() -> No
         sleep_fn=lambda s: None,
     )
 
-    # Accumulate deferrals up to the count ceiling
     for _ in range(bridge.diagnostics().probe_deferral_count_ceiling):
-        # policy: white-box-exception
         restarted = bridge._handle_failed_probe_under_lock(
             fresh_b_signal=True,
             probe_duration_s=1.0,
@@ -293,8 +172,6 @@ def test_e53_stopped_child_trips_deferral_ceiling_and_forces_replacement() -> No
         == bridge.diagnostics().probe_deferral_count_ceiling
     )
 
-    # Next failure trips the ceiling and forces replacement despite fresh contention signal
-    # policy: white-box-exception
     restarted = bridge._handle_failed_probe_under_lock(
         fresh_b_signal=True,
         probe_duration_s=1.0,
@@ -306,20 +183,7 @@ def test_e53_stopped_child_trips_deferral_ceiling_and_forces_replacement() -> No
     assert bridge.restart_count == 1
 
 
-# ---------------------------------------------------------------------------
-# E5.4: Zombie child reaped by poll()
-# ---------------------------------------------------------------------------
 def test_e54_zombie_child_reaped_by_poll() -> None:
-    """E5.4: OS zombie child is reaped by poll(), proving os.kill(pid, 0) is not a liveness test.
-
-    A terminated child process remains in the OS process table as a zombie until
-    the parent reaps it (via waitpid/poll). During this zombie state:
-      1. os.kill(pid, 0) succeeds, demonstrating that signal delivery check
-         alone cannot distinguish a living process from a dead unreaped zombie.
-      2. proc.poll() issues waitpid(WNOHANG), reaping the zombie and returning its exit code.
-      3. After poll() reaps the zombie, os.kill(pid, 0) raises ProcessLookupError (ESRCH),
-         confirming the process has been completely removed from the OS table.
-    """
     proc = subprocess.Popen([sys.executable, "-c", "import sys; sys.exit(0)"])
     try:
         p = psutil.Process(proc.pid)
@@ -334,20 +198,13 @@ def test_e54_zombie_child_reaped_by_poll() -> None:
                 break
             time.sleep(0.02)
 
-        # 0. The zombie state was ACTUALLY observed. Without this the two
-        #    assertions below would also hold for a still-running child,
-        #    because os.kill(pid, 0) succeeds on a live process too — the
-        #    test would stop proving that a zombie is liveness-indistinguishable.
         assert observed_zombie, "child must be observed in the OS zombie state before reaping"
 
-        # 1. os.kill(pid, 0) succeeds on the zombie child -> NOT a liveness test
         os.kill(proc.pid, 0)
 
-        # 2. poll() reaps the zombie child and returns its returncode
         returncode = proc.poll()
         assert returncode == 0
 
-        # 3. After poll() has reaped it, the PID is gone from the OS table
         with pytest.raises(ProcessLookupError):
             os.kill(proc.pid, 0)
     finally:
@@ -357,35 +214,18 @@ def test_e54_zombie_child_reaped_by_poll() -> None:
 
 
 def test_e54_is_alive_process_uses_poll_not_bare_kill() -> None:
-    """E5.4 unit: ``is_alive_process`` relies on the OWNED handle's ``poll()``.
-
-    The canonical E5.4-safe liveness test is the process handle's
-    ``poll()`` — anchored to the handle we own rather than a bare pid
-    the kernel may have recycled. ``os.kill(pid, 0)`` is NOT safe
-    because it succeeds against an unreaped zombie and so cannot
-    distinguish a living process from a dead one. The
-    ``is_alive_process`` helper routes through the handle.
-    """
-    # Live handle: poll() is None — is_alive_process returns True.
     live = _FakeProcess(poll_result=None, pid=1001)
     assert lifecycle.is_alive_process(live) is True
 
-    # Dead handle: poll() returns the exit code (zombie-reaped).
-    # is_alive_process returns False regardless of the underlying pid.
     dead = _FakeProcess(poll_result=0, pid=1001)
     assert lifecycle.is_alive_process(dead) is False
 
-    # No poll callable at all: fail-closed (returns False) so MagicMock
-    # and other incomplete doubles cannot leak through.
     class _NoPoll:
         pass
 
     assert lifecycle.is_alive_process(_NoPoll()) is False
 
 
-# ---------------------------------------------------------------------------
-# E6.1: Suspend/resume clock jumps respect cooldown and trip wall-time ceiling
-# ---------------------------------------------------------------------------
 def test_e61_suspend_resume_clock_jump_trips_wall_time_ceiling() -> None:
     current_time = [1000.0]
 
@@ -404,8 +244,6 @@ def test_e61_suspend_resume_clock_jump_trips_wall_time_ceiling() -> None:
         sleep_fn=lambda s: None,
     )
 
-    # First deferral records start time
-    # policy: white-box-exception
     restarted = bridge._handle_failed_probe_under_lock(
         fresh_b_signal=True,
         probe_duration_s=1.0,
@@ -415,11 +253,8 @@ def test_e61_suspend_resume_clock_jump_trips_wall_time_ceiling() -> None:
     assert restarted is False
     assert bridge.diagnostics().deferred_probe_failures == 1
 
-    # Host suspends and resumes: clock jumps past wall-time ceiling
     current_time[0] += bridge.diagnostics().probe_deferral_wall_time_ceiling_s + 10.0
 
-    # Next failure trips wall-time ceiling and forces replacement
-    # policy: white-box-exception
     restarted = bridge._handle_failed_probe_under_lock(
         fresh_b_signal=True,
         probe_duration_s=1.0,
@@ -430,19 +265,7 @@ def test_e61_suspend_resume_clock_jump_trips_wall_time_ceiling() -> None:
     assert bridge.process.pid == 2002
 
 
-# ---------------------------------------------------------------------------
-# E6.2: Probe-overrun slack bounds contention classification
-# ---------------------------------------------------------------------------
 def test_e62_probe_slack_bounds_classification() -> None:
-    """Constant guard for E6.2.
-
-    The BEHAVIOURAL proof of E6.2 -- that an overrun past ``timeout + slack`` is
-    classified as contention rather than a server failure, and that the
-    deferral ceiling still forces a restart for a genuinely hung server -- lives
-    in
-    ``tests/mcp/test_probe_overrun_self_measure.py::test_e62_probe_overrun_is_contention_and_deferral_ceiling_is_the_backstop``.
-    These assertions only pin the constant the behavioural test exercises.
-    """
     bridge = lifecycle.RestartAwareMcpBridge(
         _make_inner(poll_result=None, pid=1001),
         restart_fn=lambda: _make_inner(poll_result=None, pid=2002),
@@ -453,13 +276,9 @@ def test_e62_probe_slack_bounds_classification() -> None:
     assert bridge.diagnostics().probe_deadline_slack_s <= 1.0
 
 
-# ---------------------------------------------------------------------------
-# E6.3: Flapping (alternating success and failure) hysteresis retains failure counter
-# ---------------------------------------------------------------------------
 def test_e63_flapping_server_resets_consecutive_failures() -> None:
     inner = _make_inner(poll_result=None, pid=1001)
-    # Sequence: Fail, Pass, Fail, Pass, Pass, Pass, Fail
-    probe_results = [True, False, True, False, False, False, True]  # True = fail, False = pass
+    probe_results = [True, False, True, False, False, False, True]
 
     def probe_fn(endpoint: str, timeout: timedelta) -> None:
         failed = probe_results.pop(0)
@@ -475,46 +294,36 @@ def test_e63_flapping_server_resets_consecutive_failures() -> None:
         sleep_fn=lambda s: None,
     )
 
-    # 1st probe fails -> consecutive failures = 1, successes = 0
     assert bridge.check_health_and_restart_if_needed() is False
     assert bridge.diagnostics().consecutive_probe_failures == 1
     assert bridge.diagnostics().consecutive_probe_successes == 0
 
-    # 2nd probe passes (1 success) -> consecutive failures RETAINED at 1 (not cleared by lucky probe)
     assert bridge.check_health_and_restart_if_needed() is False
     assert bridge.diagnostics().consecutive_probe_failures == 1
     assert bridge.diagnostics().consecutive_probe_successes == 1
 
-    # 3rd probe fails -> consecutive failures incremented to 2, successes reset to 0
     assert bridge.check_health_and_restart_if_needed() is False
     assert bridge.diagnostics().consecutive_probe_failures == 2
     assert bridge.diagnostics().consecutive_probe_successes == 0
 
-    # 4th probe passes (1 success) -> failures still retained at 2
     assert bridge.check_health_and_restart_if_needed() is False
     assert bridge.diagnostics().consecutive_probe_failures == 2
     assert bridge.diagnostics().consecutive_probe_successes == 1
 
-    # 5th probe passes (2 consecutive successes) -> failures still retained at 2
     assert bridge.check_health_and_restart_if_needed() is False
     assert bridge.diagnostics().consecutive_probe_failures == 2
     assert bridge.diagnostics().consecutive_probe_successes == 2
 
-    # 6th probe passes (3 consecutive successes == _PROBE_SUCCESS_HYSTERESIS_COUNT) -> reset to 0!
     assert bridge.check_health_and_restart_if_needed() is False
     assert bridge.diagnostics().consecutive_probe_failures == 0
     assert bridge.diagnostics().consecutive_probe_successes == 3
     assert bridge.restart_count == 0
 
-    # 7th probe fails -> consecutive failures = 1
     assert bridge.check_health_and_restart_if_needed() is False
     assert bridge.diagnostics().consecutive_probe_failures == 1
     assert bridge.diagnostics().consecutive_probe_successes == 0
 
 
-# ---------------------------------------------------------------------------
-# E6.4: Budget arithmetic constants checked at import time
-# ---------------------------------------------------------------------------
 def test_e64_import_time_invariants_positive() -> None:
     bridge = lifecycle.RestartAwareMcpBridge(
         _make_inner(poll_result=None, pid=1001),
@@ -527,11 +336,6 @@ def test_e64_import_time_invariants_positive() -> None:
     assert bridge.diagnostics().tool_registry_max_resets > 0
     assert bridge.diagnostics().respawn_alias_verify_timeout_s > 0
 
-    # Pin both computed bounds (E6.4 + E2.3):
-    # (a) worst-case time to terminal exhaustion with old child dead.
-    # Each failed attempt also pays the bounded teardown of its own child
-    # (StandaloneMcpProcess.shutdown), so the cleanup term is part of the
-    # per-attempt cost and not only of the candidate-delay bound.
     assert bridge.diagnostics().worst_case_terminal_exhaustion_dead_child_s > 0
     expected_dead_exhaustion = McpRestartPolicy.max_restarts * (
         McpRestartPolicy.cooldown_seconds
@@ -542,7 +346,6 @@ def test_e64_import_time_invariants_positive() -> None:
         expected_dead_exhaustion == bridge.diagnostics().worst_case_terminal_exhaustion_dead_child_s
     )
 
-    # (b) candidate delay bound with old child alive (candidate deadline + handover ack + kill wait + drain + failed-candidate teardown)
     assert bridge.diagnostics().candidate_delay_bound_alive_child_s > 0
     expected_alive_bound = (
         bridge.diagnostics().candidate_deadline_s
@@ -553,7 +356,6 @@ def test_e64_import_time_invariants_positive() -> None:
     )
     assert expected_alive_bound == bridge.diagnostics().candidate_delay_bound_alive_child_s
 
-    # E2.3 candidate startup deadline bounds
     assert (
         0
         < bridge.diagnostics().candidate_startup_deadline_s
@@ -561,9 +363,6 @@ def test_e64_import_time_invariants_positive() -> None:
     )
 
 
-# ---------------------------------------------------------------------------
-# E7.1: ENOSPC on .agent/: Wire ledger fails closed with WireLedgerIOError
-# ---------------------------------------------------------------------------
 def test_e71_enospc_fail_closed_for_ledger_only(tmp_path: pathlib.Path) -> None:
     secret = "test-secret"
     with (
@@ -580,9 +379,6 @@ def test_e71_enospc_fail_closed_for_ledger_only(tmp_path: pathlib.Path) -> None:
         )
 
 
-# ---------------------------------------------------------------------------
-# E7.2: Limit exhaustion keeps old child serving
-# ---------------------------------------------------------------------------
 def test_e72_candidate_limit_exhaustion_keeps_old_child() -> None:
     old_inner = _make_inner(poll_result=None, pid=1001)
 
@@ -596,16 +392,12 @@ def test_e72_candidate_limit_exhaustion_keeps_old_child() -> None:
         run_id="test-run",
     )
 
-    # policy: white-box-exception
     restarted = bridge._perform_restart(process_exited=False, probe_duration_s=1.0)
     assert restarted is False
     assert bridge.process.pid == 1001
     assert old_inner.process.poll() is None
 
 
-# ---------------------------------------------------------------------------
-# E7.3: Contention guard defers restart when child is alive
-# ---------------------------------------------------------------------------
 def test_e73_contention_signal_defers_restart() -> None:
     old_inner = _make_inner(poll_result=None, pid=1001)
     bridge = lifecycle.RestartAwareMcpBridge(
@@ -616,8 +408,6 @@ def test_e73_contention_signal_defers_restart() -> None:
         contention_signal_producer=lambda: True,
     )
 
-    # Failed probe under contention defers restart
-    # policy: white-box-exception
     restarted = bridge._handle_failed_probe_under_lock(
         fresh_b_signal=True,
         probe_duration_s=1.0,

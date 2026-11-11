@@ -1,61 +1,3 @@
-"""Citation/URL regression tests for the long-running exec root-cause doc.
-
-Asserts the verified client-timeout table in
-``ralph-workflow/docs/agents/exec-long-running-root-cause.md`` stays
-defensible on file:line and URL evidence:
-
-1. No malformed local-path "URL" appears anywhere in the doc. The
-   WU-5 reproduced defect was the AGY row citing
-   ``https://ralph-workflow/ralph/mcp/transport/agy.py:79-95`` — a
-   workspace path masquerading as a public URL. This test rejects the
-   pattern and any ``file://`` or ``/Users/`` or absolute ``/home/``
-   URL the same way ``scripts/fabrication_guard.py`` would reject a
-   claim.
-2. The AGY row's source/citation column names the verified public URL
-   (``https://antigravity.google/docs/mcp/``) and does NOT name the
-   deleted local-source URL. Working-tree pointers in the row are
-   labelled as such, not presented as public citations.
-3. The verified table's "Config key written" column cites a real
-   ``ralph/mcp/transport/<x>.py`` line that exists in the working tree
-   and contains the named field. The test does NOT depend on the
-   exact line number — only on the file:line resolving to a real
-   token. A drift edit that drops the field name surfaces as a test
-   failure; a drift edit that shifts the line by one does not.
-4. The doc separates "unknown client default" from "bounded
-   implemented defense". The test asserts both the prose marker
-   (``UNKNOWN`` in the "Verified client default" column for clients
-   whose docs page does not name a tool-call timeout) AND the
-   "bounded implemented defense" framing paragraph are present.
-5. Every external ``https://`` URL the doc claims is the
-   authoritative client-side source for a fact (URLs in the table's
-   "Source/citation" column) is well-formed and uses ``https://``
-   only — no ``http://`` claims sneaking past the fabrication guard's
-   transport rule.
-
-6. Every current-state claim the doc makes about progress-token
-   handling, the exec entry path, and the wall-clock cap matches what
-   the working tree actually does. Two claims were false when this
-   test was written — "there is no progress-token handling" (the code
-   extracts tokens at ``exec_sse_streaming.py:62-89`` and emits
-   ``notifications/progress`` at ``exec_sse_streaming.py:107-126``)
-   and "the inactivity window is the kill rule for short in-request
-   calls" (the production path at ``exec.py:792-821`` starts a
-   registry job unconditionally; ``exec.py:777-790`` is an injected
-   runner seam). The doc now labels that evidence historical; these
-   assertions keep it labelled.
-7. Every backticked ``<file>.py:<line>`` citation in the doc resolves
-   to a line that exists in the working tree, and each citation this
-   unit repaired resolves to a line carrying the exact token the doc
-   claims. Drift is the only way a citation goes stale.
-
-The test does NOT hit the network. It treats the URLs as opaque
-strings and asserts on their shape plus their textual appearance in
-the verified doc sections. A URL whose host 404s is a separate
-failure mode (``scripts/fabrication_guard.py --level 2``); this
-test exists to catch the WU-5 class of bug (workspace path
-masquerading as a URL) at the cheapest possible cost.
-"""
-
 from __future__ import annotations
 
 import re
@@ -72,7 +14,6 @@ TRANSPORT_DIR = REPOSITORY_ROOT / "ralph-workflow" / "ralph" / "mcp" / "transpor
 
 
 def _read_doc() -> str:
-    """Return the full text of the root-cause doc."""
     assert DOC_PATH.exists(), (
         f"root-cause doc missing at {DOC_PATH}; the WU-5 verification path "
         "depends on this file existing"
@@ -81,7 +22,6 @@ def _read_doc() -> str:
 
 
 def _read_transport(transport_basename: str) -> str:
-    """Return the full text of a single transport module."""
     transport_path = TRANSPORT_DIR / transport_basename
     assert transport_path.exists(), (
         f"transport module missing at {transport_path}; the per-transport "
@@ -90,24 +30,14 @@ def _read_transport(transport_basename: str) -> str:
     return transport_path.read_text(encoding="utf-8")
 
 
-# Patterns that must NEVER appear in the doc — these are the shape of the
-# WU-5 reproduced defect (a workspace path or absolute-local-path masquerading
-# as a public URL).
 MALFORMED_URL_PATTERNS: tuple[re.Pattern[str], ...] = (
-    # Workspace path that looks like a URL but resolves into the repo.
     re.compile(r"https?://ralph-workflow/"),
-    # `file://` scheme — never a real citation in a public-facing doc.
     re.compile(r"file://"),
-    # Absolute local home paths — never a real citation in a public-facing doc.
     re.compile(r"https?://[^\s)]*/Users/"),
     re.compile(r"https?://[^\s)]*/home/"),
 )
 
 
-# Per-transport pair: (transport basename, config-key field name the doc
-# says is written). The test asserts the working tree's transport file
-# actually contains that field name. Drift edits that delete the field
-# surface as failures; line-number drift does not.
 TRANSPORT_FIELD_NAMES = (
     ("codex.py", "tool_timeout_sec"),
     ("claude.py", "_CLAUDE_TOOL_TIMEOUT_MS"),
@@ -120,20 +50,12 @@ TRANSPORT_FIELD_NAMES = (
 )
 
 
-# Clients the verified table must mark as UNKNOWN. The doc's contract
-# (per its own "Unknown client defaults vs bounded implemented defenses"
-# section) is that every client whose cited docs page does not name a
-# tool-call timeout carries the UNKNOWN marker.
 UNKNOWN_CLIENT_KEYWORDS = (
     "Cursor",
     "AGY",
 )
 
 
-# External URLs the doc cites as the authoritative source for a fact.
-# The shape test rejects any URL that is not ``https://``; the presence
-# test rejects the doc deleting any of these URLs from the table (a
-# deletion would be a regression on the verification trail).
 REQUIRED_TABLE_URLS = (
     "https://developers.openai.com/codex/config-file/config-reference",
     "https://code.claude.com/docs/en/mcp",
@@ -144,20 +66,16 @@ REQUIRED_TABLE_URLS = (
     "https://cursor.com/docs/mcp",
     "https://moonshotai.github.io/kimi-code/en/configuration/config-files",
     "https://moonshotai.github.io/kimi-code/en/customization/mcp",
-    # The unversioned docs path 404s and the npm web listing is bot-gated;
-    # both were rotated to the URLs that actually serve the cited content.
     "https://docs.nanocollective.org/nanocoder/docs/v1.31.0/configuration/mcp-configuration/",
     "https://registry.npmjs.org/@nanocollective/nanocoder",
     "https://github.com/Nano-Collective/nanocoder",
     "https://antigravity.google/docs/mcp/",
 )
 
-# A backticked ``<path>.py:<line>`` or ``<path>.py:<start>-<end>`` citation.
 CITATION_RE = re.compile(r"`([A-Za-z0-9_./]+\.py):([0-9]+)(?:-([0-9]+))?`")
 
 
 def _package_python_index() -> dict[str, list[Path]]:
-    """Return a basename -> candidate-paths index over the shipped package."""
     index: dict[str, list[Path]] = {}
     for path in sorted((PACKAGE_ROOT / "ralph").rglob("*.py")):
         if "__pycache__" in path.parts:
@@ -167,7 +85,6 @@ def _package_python_index() -> dict[str, list[Path]]:
 
 
 def _resolve_citation(cited: str, index: dict[str, list[Path]]) -> Path | None:
-    """Resolve a doc citation to a working-tree path, or None if unresolvable."""
     direct = PACKAGE_ROOT / cited
     if direct.is_file():
         return direct
@@ -175,13 +92,6 @@ def _resolve_citation(cited: str, index: dict[str, list[Path]]) -> Path | None:
     return candidates[0] if len(candidates) == 1 else None
 
 
-# Claims that were FALSE against the working tree and must never come
-# back as present-tense assertions. Each maps to the doc line the
-# correction replaced. Only the PRESENT-TENSE forms are listed: the
-# doc deliberately keeps the past-tense restatements ("there was no
-# progress-token handling", "had no daemon-style submit-and-poll") as
-# historical evidence, so a substring test on those would flag the
-# history instead of the falsehood.
 FORBIDDEN_PRESENT_TENSE_CLAIMS: tuple[str, ...] = (
     "returns zero matches",
     "There is no progress-token handling",
@@ -192,27 +102,18 @@ FORBIDDEN_PRESENT_TENSE_CLAIMS: tuple[str, ...] = (
 )
 
 
-# Citations this unit repaired, as (doc-relative path, line, token the
-# doc claims is on that line). Drift in the source fails here, which is
-# the signal to update the doc rather than to widen the range.
 REPAIRED_CITATIONS: tuple[tuple[str, int, str], ...] = (
-    # Cause 4 — progress-token extraction and progress-frame emission.
     ("ralph/mcp/server/exec_sse_streaming.py", 62, "def extract_progress_token"),
     ("ralph/mcp/server/exec_sse_streaming.py", 123, '"method": "notifications/progress"'),
     ("ralph/mcp/server/exec_sse_streaming.py", 231, '"method": "notifications/message"'),
-    # Cause 1 — output-only inactivity window (historical) and its poll loop.
     ("ralph/process/manager/_managed_process.py", 315, "last_output_at_ref[0] = _time.monotonic()"),
     ("ralph/process/manager/_managed_process.py", 392, 'timeout_cause = "inactivity"'),
-    # Cause 1 — the production entry path vs the injected-runner seam.
     ("ralph/mcp/tools/exec.py", 809, "job_id = effective_registry.start("),
     ("ralph/mcp/tools/exec.py", 819, "wait_ms=EXEC_SOFT_REPLY_BUDGET_MS"),
-    # Cause 2 — the seam's hard_cap and the registry's job ceiling clamp.
     ("ralph/mcp/tools/exec.py", 636, "hard_timeout=EXEC_MAX_TIMEOUT_MS / 1000"),
     ("ralph/mcp/tools/_exec_jobs.py", 252, "EXEC_JOB_CEILING_MAX_S"),
     ("ralph/mcp/tools/_exec_jobs.py", 544, "job.ceiling_ms / 1000.0"),
-    # Cause 3 — the Pi bridge startup deadline.
     ("ralph/mcp/transport/pi.py", 85, "MCP_STARTUP_TIMEOUT_MS = 10_000"),
-    # Cause 5c — child runtime shutdown seam.
     ("ralph/mcp/server/lifecycle.py", 3434, '"ralph.mcp.server",'),
     (
         "ralph/mcp/server/_standalone_mcp_process.py",
@@ -230,14 +131,6 @@ REPAIRED_CITATIONS: tuple[tuple[str, int, str], ...] = (
 
 
 class TestRootCauseDocCitations:
-    """The doc must not contain any of the WU-5 reproduced defect shapes.
-
-    The doc's present-tense claims must also match what the code does
-    today. The two contracts are enforced by a single consolidated
-    class because the repo-structure audit forbids multiple top-level
-    test classes in this file.
-    """
-
     def test_no_workspace_path_masquerading_as_url(self) -> None:
         text = _read_doc()
         for pattern in MALFORMED_URL_PATTERNS:
@@ -250,11 +143,6 @@ class TestRootCauseDocCitations:
             )
 
     def test_no_local_source_path_in_citation_column(self) -> None:
-        """The AGY-row defect: ``https://ralph-workflow/ralph/mcp/transport/agy.py``.
-
-        This test is the WU-5 explicit acceptance check. A regression on
-        this assertion means the malformed URL has reappeared.
-        """
         text = _read_doc()
         assert "https://ralph-workflow/ralph/mcp/transport/agy.py" not in text, (
             "AGY row still cites the deleted local-source URL "
@@ -265,7 +153,6 @@ class TestRootCauseDocCitations:
         )
 
     def test_agy_row_cites_verified_public_url(self) -> None:
-        """The AGY row's source/citation must include the verified public URL."""
         text = _read_doc()
         assert "https://antigravity.google/docs/mcp/" in text, (
             "AGY row must cite https://antigravity.google/docs/mcp/ as the "
@@ -275,18 +162,12 @@ class TestRootCauseDocCitations:
             "authProviderType, oauth, disabled, disabledTools)."
         )
 
-    # -----------------------------------------------------------------------
-    # Unknown vs Implemented
-    # -----------------------------------------------------------------------
-
     def test_unknown_marker_present_for_docs_no_surface_clients(self) -> None:
         text = _read_doc()
         for client_keyword in UNKNOWN_CLIENT_KEYWORDS:
             assert f"{client_keyword}" in text, (
                 f"root-cause doc does not mention {client_keyword} at all"
             )
-        # The phrasing contract: every unknown-default row in the verified
-        # client-timeout table must carry the ``UNKNOWN`` marker.
         unknown_marker_count = text.count("UNKNOWN")
         assert unknown_marker_count >= len(UNKNOWN_CLIENT_KEYWORDS), (
             f"root-cause doc has only {unknown_marker_count} 'UNKNOWN' "
@@ -325,10 +206,6 @@ class TestRootCauseDocCitations:
             "transport row is not anchored."
         )
 
-    # -----------------------------------------------------------------------
-    # Required URLs
-    # -----------------------------------------------------------------------
-
     @pytest.mark.parametrize("url", REQUIRED_TABLE_URLS)
     def test_url_present(self, url: str) -> None:
         text = _read_doc()
@@ -347,10 +224,6 @@ class TestRootCauseDocCitations:
             "as soft warnings; the doc's contract is the stronger "
             "https://-only rule."
         )
-
-    # -----------------------------------------------------------------------
-    # Per-transport fields
-    # -----------------------------------------------------------------------
 
     @pytest.mark.parametrize(
         ("transport_basename", "field_name"),
@@ -382,10 +255,6 @@ class TestRootCauseDocCitations:
             "state."
         )
 
-    # -----------------------------------------------------------------------
-    # Doc structure
-    # -----------------------------------------------------------------------
-
     def test_verified_table_sections_present(self) -> None:
         text = _read_doc()
         assert "## Verified client-timeout table" in text, (
@@ -403,9 +272,7 @@ class TestRootCauseDocCitations:
         )
 
     def test_table_separator_rows_match_new_columns(self) -> None:
-        """The markdown table header must list the new three columns in order."""
         text = _read_doc()
-        # The verified table header line must contain the new column names.
         header = re.search(
             r"\|\s*Client\s*\|\s*Config key written\s*\|\s*Verified client "
             r"default\s*\|\s*Source/citation\s*\|",
@@ -421,12 +288,7 @@ class TestRootCauseDocCitations:
         )
 
     def test_legacy_default_column_label_not_present(self) -> None:
-        """The original WU-5 broken header label must NOT still appear."""
         text = _read_doc()
-        # The original header used 'Default tool-call timeout' as a column
-        # label. The new header uses 'Verified client default'. The phrase
-        # may still appear in body prose, but as a stand-alone header cell
-        # it must not.
         bad_header = re.search(
             r"\|\s*Default tool-call timeout\s*\|",
             text,
@@ -437,10 +299,6 @@ class TestRootCauseDocCitations:
             "renamed it to 'Verified client default' to enforce the "
             "unknown-vs-implemented separation. Revert the rename."
         )
-
-    # -----------------------------------------------------------------------
-    # Current-state claims (formerly TestDocCurrentStateMatchesWorkingTree)
-    # -----------------------------------------------------------------------
 
     def test_no_false_present_tense_claims_reintroduced(self) -> None:
         text = _read_doc()

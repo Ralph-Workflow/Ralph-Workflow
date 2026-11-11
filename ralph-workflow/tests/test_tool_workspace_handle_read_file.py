@@ -1,5 +1,3 @@
-"""Tests for ralph/mcp/tool_workspace.py — MCP workspace tool handlers."""
-
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -65,7 +63,6 @@ class TestHandleReadFile:
     def test_snapshot_preserves_directory_type_when_memory_workspace_has_a_name_collision(
         self,
     ) -> None:
-        """S-4: one observation preserves the workspace's public directory semantics."""
         ws = MemoryWorkspace()
         ws.create_dir("occupied")
         ws.write("occupied", "not readable as a file")
@@ -95,10 +92,6 @@ class TestHandleReadFile:
             handle_read_file(MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "missing.txt"})
 
     def test_rejected_path_raises_tool_error_not_a_retryable_protocol_error(self) -> None:
-        """Path resolution raises ``ValueError`` for a path carrying an embedded
-        NUL or resolving outside the workspace. Uncaught, that leaves the handler
-        as a retryable protocol error the agent re-issues; ``write_file``,
-        ``delete_path`` and ``stat_path`` all degrade to a terminal error here."""
         ws = MagicMock()
         ws.snapshot = None
         ws.stat.side_effect = ValueError("embedded null byte")

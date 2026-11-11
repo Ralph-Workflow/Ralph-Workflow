@@ -1,13 +1,3 @@
-"""Regression tests: wire-ledger cost must not grow with the ledger's length.
-
-A long run chains a health-probe handshake onto the ledger every few
-seconds. Appending re-read the whole file to find the chain head, and the
-per-tick completion check re-verified the whole chain, so Ralph slowed
-down the longer it ran. These tests pin that the chain head is read from
-the tail, that each row is HMAC-checked once, and that the incremental
-view still fails closed on a rewritten ledger.
-"""
-
 from __future__ import annotations
 
 import json
@@ -91,13 +81,13 @@ def test_partial_trailing_line_is_seen_but_not_committed(tmp_path: Path) -> None
     path = _ledger_path(tmp_path, _SECRET)
     full = path.read_bytes()
     cut = full.rindex(b"{")
-    path.write_bytes(full[:-1])  # last row present but its newline not yet written
+    path.write_bytes(full[:-1])
     index = _counting_index(path, [])
     intact, rows = index.snapshot()
     assert intact is True
     assert [row["tool_name"] for row in rows] == ["t", "declare_complete"]
 
-    path.write_bytes(full[: cut + 10])  # an append caught mid-write
+    path.write_bytes(full[: cut + 10])
     intact, rows = index.snapshot()
     assert intact is True
     assert [row["tool_name"] for row in rows] == ["t"]

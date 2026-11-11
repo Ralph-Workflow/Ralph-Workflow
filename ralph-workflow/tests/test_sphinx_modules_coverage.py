@@ -1,5 +1,3 @@
-"""Test that every public ralph module and package is covered in Sphinx autodoc."""
-
 from __future__ import annotations
 
 import ast
@@ -7,17 +5,17 @@ import re
 from functools import cache
 from pathlib import Path
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "module docstring floor": "documented public modules now carry no module docstring",
+}
 _RALPH_ROOT = Path(__file__).parent.parent / "ralph"
 _MODULES_RST = Path(__file__).parent.parent / "docs" / "sphinx" / "modules.rst"
 
-# Modules and packages intentionally excluded from autodoc coverage, with reasons.
-# These are internal/helper modules that should not appear in the public API reference.
 _EXCLUDED: dict[str, str] = {
     "pipeline.auto_integrate_resolution_state": "internal integration-state helper, not public API",
     "pipeline.integration_resolution_status": "internal integration verdict enum, not public API",
     "pipeline.integration_resolution_types": "internal integration verdict value, not public API",
     "testing.fake_process": "test infrastructure, not public API",
-    # Internal event/model types not intended as public API
     "agents.catalog": "internal injectable registry, not public API",
     "agents.invocation_context": "internal DI seam, not public API",
     "agents.post_exit_verdict": "internal watchdog verdict type, not public API",
@@ -119,10 +117,10 @@ _EXCLUDED: dict[str, str] = {
     "testing.audit_agent_internal_paths": "test infrastructure, not public API",
     "testing.audit_skill_auto_commit": "test infrastructure, not public API",
     "testing.audit_artifact_skill_types": "test infrastructure, not public API",
-    "testing.audit_public_docstrings": "test infrastructure, not public API",
     "testing.audit_fsevents_watch_consolidation": "test infrastructure, not public API",
     "testing.audit_filesystem_polling_invocation": "test infrastructure, not public API",
     "testing.audit_log_sink_buffering": "test infrastructure, not public API",
+    "testing._audit_scope": "test infrastructure, not public API",
 }
 _EXCLUDED_PREFIXES = tuple(f"{name}." for name in _EXCLUDED)
 
@@ -150,26 +148,18 @@ _TOP_LEVEL_SECTION_HEADERS = frozenset(
 
 @cache
 def _walk_public_modules_and_packages(root: Path, prefix: str = "") -> tuple[str, ...]:
-    """Walk root and return all public module/package names.
-
-    A public name is a directory with __init__.py or a .py file (not starting
-    with _).  Names are returned as dot-separated qualified paths relative to
-    the root (e.g. "mcp.server", "mcp.server.factory").
-    """
     results: list[str] = []
     for entry in sorted(root.iterdir()):
         if entry.name.startswith("_"):
             continue
 
         if entry.suffix == ".py":
-            # Leaf module (but not __main__.py which is entry-point only)
             if entry.name == "__main__.py":
                 continue
             name = prefix + entry.stem if prefix else entry.stem
             results.append(name)
         elif entry.is_dir():
             if (entry / "__init__.py").exists():
-                # Package: recurse into it
                 child_prefix = prefix + entry.name + "." if prefix else entry.name + "."
                 results.append(prefix + entry.name if prefix else entry.name)
                 results.extend(_walk_public_modules_and_packages(entry, child_prefix))
@@ -177,39 +167,22 @@ def _walk_public_modules_and_packages(root: Path, prefix: str = "") -> tuple[str
 
 
 def _extract_documented_modules(modules_rst_text: str) -> set[str]:
-    """Extract module names from modules.rst RST source.
-
-    Handles two forms:
-      - ``.. automodule:: ralph.foo.bar``  (explicit automodule directive)
-      - RST section-title lines like "ralph.mcp.server" or "ralph/mcp/server"
-        that represent documented module headings.
-    """
     documented: set[str] = set()
 
-    # 1. Explicit automodule directives
     for directive in re.findall(r"^\.\. automodule:: (.+)$", modules_rst_text, re.MULTILINE):
         module_name = directive.strip()
-        # Normalise ralph.mcp -> mcp, ralph.mcp.server -> mcp.server
         if module_name.startswith("ralph."):
             documented.add(module_name[len("ralph.") :])
         else:
             documented.add(module_name)
 
-    # 2. RST section-title lines that look like module paths.
-    #    A title like "ralph.mcp.server" or "ralph/mcp/server" under the
-    #    "API Reference" heading represents documentation for that module.
-    #    We identify them by matching dotted or slash-separated Ralph paths.
     for rst_line in modules_rst_text.splitlines():
         line = rst_line.rstrip()
-        # Skip directive lines
         if line.startswith(".. ") or line.startswith("   ") or line.startswith("\t"):
             continue
-        # Skip RST field lists and comments
         if line.startswith(":") or line.startswith(".."):
             continue
-        # A bare module-like title (letters, dots, slashes, underscores)
         if re.match(r"^[\w./]+$", line) and ("." in line or "/" in line):
-            # Normalise slashes to dots and strip ralph. prefix
             normalised = line.replace("/", ".").strip(".")
             if normalised.startswith("ralph."):
                 normalised = normalised[len("ralph.") :]
@@ -220,38 +193,22 @@ def _extract_documented_modules(modules_rst_text: str) -> set[str]:
 
 
 def test_all_public_modules_and_packages_covered_in_modules_rst() -> None:
-    """Every public Python module/package under ralph/ must appear in modules.rst.
-
-    This test inventories the complete public surface of the ralph package
-    (all packages and leaf modules, excluding private/_-prefixed names and
-    intentionally internal namespaces listed in _EXCLUDED) and verifies each
-    has a corresponding entry in docs/sphinx/modules.rst.
-
-    Entries in _EXCLUDED are checked for consistency: if modules.rst documents
-    a name that is also in _EXCLUDED, the test fails to catch the policy
-    disagreement.
-    """
     modules_rst_text = _MODULES_RST.read_text(encoding="utf-8")
     documented = _extract_documented_modules(modules_rst_text)
 
-    # Build the full public surface
     all_names: list[str] = _walk_public_modules_and_packages(_RALPH_ROOT)
 
-    # Filter out excluded namespaces
     def is_excluded(name: str) -> bool:
         return name in _EXCLUDED or name.startswith(_EXCLUDED_PREFIXES)
 
     public_names = [n for n in all_names if not is_excluded(n)]
 
-    # Check for excluded modules that are still documented (policy disagreement)
     policy_disagreements: list[str] = []
     for excluded_name, reason in _EXCLUDED.items():
-        # Check both the top-level package and any nested modules
         if excluded_name in documented:
             policy_disagreements.append(
                 f"  ralph.{excluded_name} is documented in modules.rst but _EXCLUDED says: {reason}"
             )
-        # Also check nested modules of excluded packages
         policy_disagreements.extend(
             f"  ralph.{doc_name} is documented in modules.rst "
             f"but parent '{excluded_name}' is _EXCLUDED: {reason}"
@@ -267,7 +224,6 @@ def test_all_public_modules_and_packages_covered_in_modules_rst() -> None:
         "from _EXCLUDED."
     )
 
-    # Find undocumented public modules
     missing = [name for name in sorted(public_names) if name not in documented]
 
     assert not missing, (
@@ -280,18 +236,10 @@ def test_all_public_modules_and_packages_covered_in_modules_rst() -> None:
 
 
 def _resolve_to_source(rel_name: str, ralph_root: Path) -> Path | None:
-    """Map a documented ralph submodule name to its backing source file.
-
-    ``rel_name`` is relative to ``ralph`` (e.g. ``mcp.server.factory``).
-    Returns the leaf ``.py`` path for modules or the ``__init__.py`` for packages.
-    Returns ``None`` if neither exists.
-    """
     parts = rel_name.split(".")
-    # Try as leaf module
     leaf = ralph_root.joinpath(*parts[:-1], parts[-1] + ".py")
     if leaf.exists():
         return leaf
-    # Try as package
     pkg = ralph_root.joinpath(*parts, "__init__.py")
     if pkg.exists():
         return pkg
@@ -300,7 +248,6 @@ def _resolve_to_source(rel_name: str, ralph_root: Path) -> Path | None:
 
 @cache
 def _ast_module_docstring(source_path: Path) -> str:
-    """Return the top-level module docstring from a source file, or empty string."""
     tree = ast.parse(source_path.read_text(encoding="utf-8"))
     if (
         tree.body
@@ -314,12 +261,6 @@ def _ast_module_docstring(source_path: Path) -> str:
 
 @cache
 def _documented_public_targets() -> list[str]:
-    """Return documented module names (relative to ralph) that are also public surface.
-
-    This is the intersection of the modules.rst documented set and the names
-    produced by the public surface walker, so __main__ modules and explicitly
-    excluded names are not included.
-    """
     modules_rst_text = _MODULES_RST.read_text(encoding="utf-8")
     documented = _extract_documented_modules(modules_rst_text)
     all_names = _walk_public_modules_and_packages(_RALPH_ROOT)
@@ -331,43 +272,43 @@ def _documented_public_targets() -> list[str]:
     return sorted(documented & public_names)
 
 
-# Pre-populate caches at module import time so file I/O and AST parsing
-# happen before the per-test SIGALRM window is set up.
-for _tgt in _documented_public_targets():
-    _src = _resolve_to_source(_tgt, _RALPH_ROOT)
-    if _src is not None:
-        _ast_module_docstring(_src)
+def _has_module_docstring(source: Path) -> bool:
+    for raw_line in source.read_text(encoding="utf-8").splitlines():
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if stripped.startswith("from __future__"):
+            continue
+        return stripped[0] in {'"', "'"}
+    return False
 
 
-def test_documented_public_modules_have_non_empty_docstrings() -> None:
-    """Every public module/package documented in modules.rst must have a docstring.
-
-    Uses AST-based inspection so the check is import-free and exhaustive.
-    """
-    missing: list[str] = []
+def _collect_documented_public_modules_with_docstrings() -> tuple[str, ...]:
+    offending: list[str] = []
     for rel_name in _documented_public_targets():
         source = _resolve_to_source(rel_name, _RALPH_ROOT)
         if source is None:
-            continue  # covered by coverage test
-        docstring = _ast_module_docstring(source)
-        if not docstring.strip():
-            missing.append(f"  ralph.{rel_name}  ({source.relative_to(_RALPH_ROOT.parent)})")
+            continue
+        if _has_module_docstring(source):
+            offending.append(f"  ralph.{rel_name}  ({source.relative_to(_RALPH_ROOT.parent)})")
+    return tuple(offending)
 
-    assert not missing, (
-        "The following documented public modules/packages have no top-level "
-        "module docstring (pydoc-first contract):\n"
-        + "\n".join(missing)
-        + "\n\nAdd a module docstring to each listed source file."
+
+_DOCUMENTED_PUBLIC_MODULES_WITH_DOCSTRINGS: tuple[str, ...] = (
+    _collect_documented_public_modules_with_docstrings()
+)
+
+
+def test_documented_public_modules_have_no_module_docstrings() -> None:
+    offending = _DOCUMENTED_PUBLIC_MODULES_WITH_DOCSTRINGS
+
+    assert not offending, (
+        "The following documented public modules/packages carry a module "
+        "docstring; source files carry no docstrings:\n" + "\n".join(offending)
     )
 
 
 def test_all_documented_autodoc_targets_resolve_to_real_source() -> None:
-    """Every automodule target in modules.rst must resolve to a real source file.
-
-    Each ``.. automodule:: ralph.*`` entry must map to either a ``.py`` module
-    file or a package ``__init__.py`` in the ralph source tree.  Phantom targets
-    left over from older designs (e.g. ralph.phases.development) must be removed.
-    """
     modules_rst_text = _MODULES_RST.read_text(encoding="utf-8")
     phantom: list[str] = []
     for directive in re.findall(r"^\.\.\s+automodule::\s+(.+)$", modules_rst_text, re.MULTILINE):
@@ -388,7 +329,6 @@ def test_all_documented_autodoc_targets_resolve_to_real_source() -> None:
 
 
 def test_modules_rst_has_no_stale_readme_package_map_claim() -> None:
-    """modules.rst must not claim to mirror a README package map."""
     modules_rst_text = _MODULES_RST.read_text(encoding="utf-8")
     assert "package map in ``ralph-workflow/README.md``" not in modules_rst_text, (
         "docs/sphinx/modules.rst still contains the stale claim that it mirrors "

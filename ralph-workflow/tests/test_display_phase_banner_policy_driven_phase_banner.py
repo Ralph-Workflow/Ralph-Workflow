@@ -1,5 +1,3 @@
-"""Tests for ParallelDisplay phase banner methods — phase transition display."""
-
 from __future__ import annotations
 
 from io import StringIO
@@ -23,7 +21,6 @@ from ralph.policy.models import (
 
 
 def _ctx_from_console(console: Console) -> DisplayContext:
-    """Create a DisplayContext from a Console for testing."""
     return make_display_context(console=console)
 
 
@@ -64,8 +61,6 @@ def test_show_phase_start_with_agent_name() -> None:
 
 
 def test_show_phase_transition_with_context() -> None:
-    # Context dict is only rendered for major transitions (requires a policy that resolves
-    # to a major role pair). Use execution → analysis as the canonical major pair.
     policy = _make_two_phase_policy("execution", "analysis", "planning", "analysis_phase")
     console = Console(record=True, width=120)
     display = resolve_active_display(None, _ctx_from_console(console))
@@ -78,11 +73,7 @@ def test_show_phase_transition_with_context() -> None:
     assert "iteration=1/5" in output
 
 
-# --- New tests for expanded transitions and descriptions ---
-
-
 def test_major_transition_analysis_to_commit_with_policy() -> None:
-    """Analysis → commit is a major transition that shows routing labels without status prose."""
     policy = _make_two_phase_policy("analysis", "commit", "dev_analysis", "dev_commit")
     console = Console(record=True, width=120)
     display = resolve_active_display(None, _ctx_from_console(console))
@@ -90,12 +81,10 @@ def test_major_transition_analysis_to_commit_with_policy() -> None:
     output = console.export_text()
     assert "Dev Analysis" in output
     assert "Dev Commit" in output
-    # Phase-close banner handles status prose; transition shows only routing
     assert "Analysis approved" not in output
 
 
 def test_major_transition_analysis_loopback_with_policy() -> None:
-    """Analysis loopback → execution is a major transition with routing labels only."""
     policy = _make_two_phase_policy("analysis", "execution", "check", "work")
     console = Console(record=True, width=120)
     display = resolve_active_display(None, _ctx_from_console(console))
@@ -103,12 +92,10 @@ def test_major_transition_analysis_loopback_with_policy() -> None:
     output = console.export_text()
     assert "Check" in output
     assert "Work" in output
-    # Phase-close banner handles status prose; transition shows only routing
     assert "Analysis requested changes" not in output
 
 
 def test_major_transition_review_to_terminal_with_policy() -> None:
-    """Review → terminal should be a major transition when policy provides roles."""
     terminal_name = "done"
     policy = PipelinePolicy(
         phases={
@@ -137,7 +124,6 @@ def test_major_transition_review_to_terminal_with_policy() -> None:
 
 
 def test_unknown_transition_renders_gracefully() -> None:
-    """Unknown transition pair should still render without crashing."""
     console = Console(record=True, width=120)
     display = resolve_active_display(None, _ctx_from_console(console))
     display.emit_phase_transition("unknown_phase", "another_unknown")
@@ -148,25 +134,18 @@ def test_unknown_transition_renders_gracefully() -> None:
 
 @pytest.mark.timeout_seconds(5)
 def test_major_role_pairs_transition_shows_no_duplicated_description() -> None:
-    """Major role-pair transitions must not show duplicated description prose.
-
-    The phase-close banner already communicates exit context via exit_trigger;
-    the transition banner should not repeat status prose.
-    """
     console = Console(record=True, width=120)
     display = resolve_active_display(None, _ctx_from_console(console))
     for from_role, to_role in MAJOR_ROLE_PAIRS:
         policy = _make_two_phase_policy(from_role, to_role, "phase_a", "phase_b")
         display.emit_phase_transition("phase_a", "phase_b", pipeline_policy=policy)
         output = console.export_text()
-        # Transition must not contain status prose that the phase-close banner handles
         assert "complete" not in output.lower().split("—")[0] or "Phase A" in output, (
             f"Transition ({from_role}->{to_role}) should not contain duplicated status prose"
         )
 
 
 def test_transition_without_policy_renders_as_minor_no_description() -> None:
-    """Without policy, transitions are always minor with no description."""
     console = Console(record=True, width=120)
     display = resolve_active_display(None, _ctx_from_console(console))
     display.emit_phase_transition("development", "development_analysis")
@@ -175,11 +154,7 @@ def test_transition_without_policy_renders_as_minor_no_description() -> None:
     assert "Development Analysis" in output
 
 
-# --- Tests for show_phase_start_from_entry (canonical API) ---
-
-
 def test_show_phase_start_from_entry_outer_dev_label() -> None:
-    """emit_phase_start_from_entry renders canonical Cycle N/cap label."""
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=200)
     entry = PhaseEntryModel(phase_name="development", outer_dev_iteration=3, outer_dev_cap=7)
@@ -192,7 +167,6 @@ def test_show_phase_start_from_entry_outer_dev_label() -> None:
 
 
 def test_show_phase_start_from_entry_inner_analysis_label() -> None:
-    """emit_phase_start_from_entry renders canonical iter N/cap label."""
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=200)
     entry = PhaseEntryModel(
@@ -206,7 +180,6 @@ def test_show_phase_start_from_entry_inner_analysis_label() -> None:
 
 
 def test_show_phase_start_from_entry_no_raw_counter_format() -> None:
-    """emit_phase_start_from_entry never emits legacy [counter_name N/cap] format."""
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=200)
     entry = PhaseEntryModel(
@@ -225,11 +198,7 @@ def test_show_phase_start_from_entry_no_raw_counter_format() -> None:
     assert "iter 1/3" in output
 
 
-# --- Tests for default mode banners ---
-
-
 def _make_execution_to_analysis_policy() -> PipelinePolicy:
-    """Build a policy with execution → analysis → terminal for mode transition tests."""
     return PipelinePolicy(
         phases={
             "planning": PhaseDefinition(
@@ -256,7 +225,6 @@ def _make_execution_to_analysis_policy() -> PipelinePolicy:
 
 
 def test_show_phase_transition_at_medium_width_has_one_rule_no_description() -> None:
-    """Default mode at medium width major transition uses a single titled Rule (no duplication)."""
     console = Console(record=True, width=80)
     ctx = make_display_context(
         console=console,
@@ -268,16 +236,13 @@ def test_show_phase_transition_at_medium_width_has_one_rule_no_description() -> 
 
     assert "Planning" in output
     assert "Development" in output
-    # Section rule and titled Rule both appear; both contain rule glyph
     assert "[phase-transition]" in output
     assert "Planning → Development" in output
-    # Must NOT contain duplicated transition description prose
     assert "Work complete" not in output
     assert "analyzing results" not in output
 
 
 def test_show_phase_transition_at_wide_width_has_one_rule_no_description() -> None:
-    """Default mode at wide width major transition uses a single titled Rule."""
     console = Console(record=True, width=120)
     ctx = make_display_context(
         console=console,
@@ -289,10 +254,8 @@ def test_show_phase_transition_at_wide_width_has_one_rule_no_description() -> No
 
     assert "Planning" in output
     assert "Development" in output
-    # Section rule and titled Rule both appear
     assert "[phase-transition]" in output
     assert "Planning → Development" in output
-    # Must NOT contain duplicated transition description prose
     assert "Work complete" not in output
     assert "analyzing results" not in output
 
@@ -303,7 +266,6 @@ def _make_two_phase_policy(
     from_name: str = "phase_a",
     to_name: str = "phase_b",
 ) -> PipelinePolicy:
-    """Build a minimal two-phase PipelinePolicy for display tests."""
     terminal_name = "done"
     return PipelinePolicy(
         phases={
@@ -331,22 +293,17 @@ def _make_two_phase_policy(
 
 
 class TestPolicyDrivenPhaseBanner:
-    """Phase banner renders correctly when a PipelinePolicy provides role context."""
-
     def test_phase_style_uses_role_over_name(self) -> None:
-        """A renamed execution phase gets the execution style, not muted fallback."""
         policy = _make_two_phase_policy("execution", "analysis", "my_work", "my_check")
         style = phase_style("my_work", pipeline_policy=policy)
         assert style == "theme.phase.development"
 
     def test_phase_style_analysis_role(self) -> None:
-        """A phase with analysis role resolves to development_analysis theme."""
         policy = _make_two_phase_policy("execution", "analysis", "work", "inspect")
         style = phase_style("inspect", pipeline_policy=policy)
         assert style == "theme.phase.development_analysis"
 
     def test_phase_style_terminal_failure_role(self) -> None:
-        """A terminal-failure phase gets the failed theme style."""
         terminal_name = "fail"
         policy = PipelinePolicy(
             phases={
@@ -370,18 +327,15 @@ class TestPolicyDrivenPhaseBanner:
         assert style == "theme.phase.failed"
 
     def test_transition_uses_role_pair_for_major_detection(self) -> None:
-        """execution→analysis transition treated as major when policy provides roles."""
         policy = _make_two_phase_policy("execution", "analysis", "my_work", "my_check")
         console = Console(record=True)
         display = resolve_active_display(None, make_display_context(console=console))
         display.emit_phase_transition("my_work", "my_check", pipeline_policy=policy)
         output = console.export_text()
-        # Major transition produces a Rule with the phase label
         assert "My Work" in output
         assert "My Check" in output
 
     def test_transition_without_policy_renders_as_minor(self) -> None:
-        """No policy → transition renders as minor (no description)."""
         console = Console(record=True)
         display = resolve_active_display(None, make_display_context(console=console))
         display.emit_phase_transition("planning", "development")
@@ -390,7 +344,6 @@ class TestPolicyDrivenPhaseBanner:
         assert "Development" in output
 
     def test_show_phase_start_with_policy_uses_role_style(self) -> None:
-        """emit_phase_start passes through pipeline_policy to _phase_style."""
         policy = _make_two_phase_policy("execution", "analysis", "my_work", "my_check")
         console = Console(record=True)
         ctx = _ctx_from_console(console)

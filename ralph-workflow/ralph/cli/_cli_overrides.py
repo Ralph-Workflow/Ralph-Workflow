@@ -7,7 +7,6 @@ if TYPE_CHECKING:
 
 
 class CLIOverrides(TypedDict):
-    """CLI configuration overrides."""
 
     general: GeneralOverrides
     developer_agent: str | None

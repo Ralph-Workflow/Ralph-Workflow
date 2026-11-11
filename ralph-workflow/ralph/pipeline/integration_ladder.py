@@ -1,57 +1,3 @@
-"""Autonomous fallback-ladder executors for a tree that stays dirty.
-
-The decision table in :mod:`ralph.pipeline.integration_decision` names
-the cleanup-ladder rungs (rungs 2-6 of the autonomous fallback ladder in
-the product criteria); this module is the MACHINERY behind those names.
-Each rung is an executor with a narrow seam (git plumbing, filesystem
-quarantine, environment probe, injectable clock) so the ORDER and the
-fallback logic of a rung are provable with fakes in milliseconds.
-
-The rungs (see each function for the full contract):
-
-2. :func:`preserve_via_temp_index` — plumbing snapshot commit that
-   never touches the working tree or the real index (the subprocess
-   runner scrubs ``GIT_INDEX_FILE`` from child environments for the
-   D13 fleet-safety rule, so the equivalent ``stash create`` /
-   ``commit-tree`` plumbing from
-   :mod:`ralph.pipeline.auto_integrate_backup_refs` stands in for the
-   temporary-index recipe), else prune regenerable artifacts and
-   verified-landed backup refs and write a patch+tar sidecar; proceed
-   only once one durable copy is verified readable.
-3. :func:`quarantine_and_restore` — rename unrestorable paths into a
-   quarantine directory, then force the baseline with
-   ``read-tree``/``checkout-index``; impossible rename skips to rung 4.
-4. :func:`rebuild_in_fresh_worktree` — rebuild on the current target
-   at a new path, apply the preserved work, land from there with
-   compare-and-swap (a concurrent target advance names the race and
-   overwrites nothing), repoint the original checkout only when it is
-   still where the ladder observed it.
-5. :func:`adapt_environment_and_retry` — classify the environment
-   failure, set the matching safe config for the owned path, then
-   capped exponential backoff on the injectable clock, re-observing
-   each tick; never exits, one rate-limited reminder.
-6. :func:`last_resort_recovery` — hard reset ONLY when all six
-   preconditions in :data:`LAST_RESORT_PRECONDITIONS` hold, each
-   recorded in the durable ledger; preserves first, aborts the
-   operation, resets to the feature tip (or target), cleans blocking
-   untracked paths, removes stale locks, recreates the worktree if
-   even that fails; never touches preserved refs/sidecar.
-
-Rules for every rung: intent is recorded BEFORE acting and the outcome
-AFTER (both in :attr:`AttemptLedgerState.ladder_evidence`); every rung
-is idempotent; a rung whose observation shows it cannot succeed is
-reported as ``impossible`` and skipped, not repeated; rungs 1-5 never
-discard work; preserved copies stay recoverable until landing is
-verified. A restart mid-ladder resumes at the recorded rung
-(:func:`resume_rung`) without repeating finished rungs or losing
-preserved copies. All Git goes through
-:func:`ralph.git.subprocess_runner.run_git` (serialized by the
-per-repository git command queue); porcelain is parsed with ``-z``;
-hooks are disabled where git allows; time goes through the injectable
-:class:`~ralph.pipeline.integration_actions.Clock`; large dirt is
-streamed (``git diff --output=`` writes the patch straight to disk,
-``tarfile`` streams entries).
-"""
 
 from __future__ import annotations
 
@@ -122,16 +68,8 @@ __all__ = [
 ]
 
 
-#: Bounded attempt budget for the WHOLE cleanup ladder: the last-resort
-#: reset is unreachable until at least this many cleanup-ladder charges
-#: are durably recorded, so a transient failure (a lock held for a
-#: minute, a remote blip, a writer that stops) has had time to clear and
-#: never triggers a reset.
 LADDER_ATTEMPT_BUDGET: Final[int] = 16
 
-#: The six last-resort preconditions, in evaluation order. Each name is
-#: recorded in the ledger under ``precondition:<name>`` with its
-#: evidence; the reset runs only when every value starts with ``met``.
 LAST_RESORT_PRECONDITIONS: Final[tuple[str, ...]] = (
     "rungs_1_to_5_tried_or_shown_impossible",
     "salvage_resolver_agent_tried",
@@ -141,14 +79,8 @@ LAST_RESORT_PRECONDITIONS: Final[tuple[str, ...]] = (
     "fresh_reobservation_confirms_blocking_state",
 )
 
-#: Rung-6 verdict for a caller that supplies no re-observed blocking
-#: signature: the hard reset is explicitly disabled for it (see
-#: :func:`last_resort_recovery`).
 LAST_RESORT_DISABLED_NO_SIGNATURE: Final[str] = "failed:disabled:no-blocking-signature"
 
-#: Salvage-attempt kinds the last-resort precondition (b) waits for,
-#: recorded under ``salvage:<kind>`` by the owning seams through
-#: :func:`record_salvage_attempt`.
 SALVAGE_KINDS: Final[tuple[str, ...]] = (
     "resolver_agent",
     "rebase_first_retry",
@@ -158,16 +90,6 @@ SALVAGE_KINDS: Final[tuple[str, ...]] = (
 
 @dataclass(frozen=True)
 class LadderStepResult:
-    """The typed outcome of one ladder-rung step.
-
-    ``outcome`` is the closed :data:`LadderOutcome` vocabulary;
-    ``reason`` names what happened from the CURRENT observation only;
-    ``preserved_ref`` / ``preserved_sidecar`` locate the durable copy
-    the rung created (at most one is set); ``quarantined_paths`` lists
-    what rung 3 moved aside; ``next_rung`` is the escalation hint for
-    ``impossible`` outcomes (quarantine names rung 4); ``evidence`` is
-    what was recorded into the durable ledger for this step.
-    """
 
     rung: CleanupLadderRung
     outcome: LadderOutcome
@@ -179,16 +101,9 @@ class LadderStepResult:
     evidence: dict[str, str] = field(default_factory=dict)
 
 
-# Ledger evidence helpers (intent before, outcome after; restart resume).
 
 
 def ladder_charge_count(state: AttemptLedgerState) -> int:
-    """Return the durable cleanup-ladder attempt count recorded in ``state``.
-
-    Every charged repeat for a cleanup-ladder action counts, plus the
-    saturating aggregate that absorbed evicted entries, so the budget
-    can never be restored by eviction, restart or reload.
-    """
     total = state.saturated_repeats
     for (_signature, action), count in state.repeat_counts.items():
         if action in _LADDER_ACTION_VALUES:
@@ -197,27 +112,12 @@ def ladder_charge_count(state: AttemptLedgerState) -> int:
 
 
 def record_salvage_attempt(ledger: AttemptLedger, kind: str, outcome: str) -> None:
-    """Record one salvage attempt for the last-resort precondition (b).
-
-    The owning seams call this after trying a salvage means on the
-    leftover state: ``resolver_agent``, ``rebase_first_retry`` (the
-    rebase-first ladder re-attempted after a rung) and
-    ``fresh_worktree_rebuild`` (rung 4 from the preserved copy).
-    ``outcome`` (``succeeded:...`` / ``failed:...``) is terminal.
-    """
     if kind not in SALVAGE_KINDS:
         raise ValueError(f"unknown salvage kind: {kind!r}")
     _record_evidence(ledger, f"salvage:{kind}", outcome)
 
 
 def resume_rung(state: AttemptLedgerState) -> CleanupLadderRung | None:
-    """Return the rung a restart resumes at, or ``None`` when the ladder is spent.
-
-    The first rung without a finished recorded outcome is where the run
-    resumes: finished rungs are never repeated, a rung left at ``intent``
-    (crash between intent and outcome) is re-run idempotently, and
-    preserved-copy locations survive the restart verbatim.
-    """
     for rung in CLEANUP_LADDER_ORDER:
         value = state.ladder_evidence.get(_rung_key(rung))
         if value is None or value == "intent":
@@ -232,13 +132,6 @@ def evaluate_last_resort_preconditions(
     fresh_signature: str,
     budget: int = LADDER_ATTEMPT_BUDGET,
 ) -> dict[str, str]:
-    """Evaluate the six last-resort preconditions against the durable ledger.
-
-    Every value is ``met: <evidence>`` or ``unmet: <reason>``; the hard
-    reset is allowed only when all six are ``met``. This function is
-    pure: it reads ``state`` and the two signatures, and the caller
-    persists what it returns.
-    """
     evidence = state.ladder_evidence
     results: dict[str, str] = {}
 
@@ -283,7 +176,6 @@ def evaluate_last_resort_preconditions(
     return results
 
 
-# Rung 2 — alternate preservation.
 
 
 def preserve_via_temp_index(
@@ -296,22 +188,11 @@ def preserve_via_temp_index(
     owning_worktree: str | None = None,
     is_landed: Callable[[str], bool] | None = None,
 ) -> LadderStepResult:
-    """Rung 2: preserve the dirt with plumbing; fall back to a patch+tar sidecar.
-
-    Tries the durable ref first; when the ref cannot be written, frees
-    space (Ralph's regenerable artifacts, then verified-landed backup
-    refs) and writes a binary patch plus a tar of the changed paths
-    into the state directory. Proceeds only once one durable copy is
-    verified readable — never before."""
     rung = CleanupLadderRung.ALTERNATE_PRESERVATION
     key = _rung_key(rung)
     _record_evidence(ledger, key, "intent")
     paths = git.changed_paths(root)
     if paths is None:
-        # The probe failed: unknown is NEVER clean. Reporting
-        # "nothing-to-preserve" here would let a destructive later rung
-        # proceed as if the tree were known-clean — fail closed instead
-        # and let the caller re-observe and escalate.
         value = "failed:changed-paths-unreadable"
         _record_evidence(ledger, key, value)
         return LadderStepResult(rung, "failed", value, evidence={key: value})
@@ -331,7 +212,6 @@ def preserve_via_temp_index(
                 rung, "succeeded", value, preserved_ref=ref, evidence={key: value}
             )
 
-    # The ref route failed: free space, then write the patch+tar sidecar.
     pruned = fs.prune_regenerable_artifacts(state_dir)
     pruned_refs: tuple[str, ...] = ()
     if is_landed is not None:
@@ -345,7 +225,7 @@ def preserve_via_temp_index(
     preserved_dir = state_dir / "preserved"
     preserved_dir.mkdir(
         parents=True, exist_ok=True
-    )  # filesystem-write-ok: ladder sidecar dir under the Ralph .agent state dir
+    )
     digest = hashlib.sha256("\0".join(paths).encode(errors="surrogateescape")).hexdigest()
     token = f"{digest[:12]}-{head[:8] if head else 'nohead'}"
     patch_path = preserved_dir / f"{token}.patch"
@@ -367,7 +247,6 @@ def preserve_via_temp_index(
     return LadderStepResult(rung, "failed", value, evidence={key: value})
 
 
-# Rung 3 — quarantine the obstacle.
 
 
 def quarantine_and_restore(
@@ -380,14 +259,6 @@ def quarantine_and_restore(
     state_dir: Path,
     clock: Clock,
 ) -> LadderStepResult:
-    """Rung 3: move unrestorable paths aside by rename, then force the baseline.
-
-    Paths Git cannot restore (locked, wrong owner, directory-for-file,
-    symlink out of tree) are renamed into the quarantine directory; the
-    tree is then forced to the baseline with ``read-tree`` +
-    ``checkout-index -f``. An impossible rename reports ``impossible``
-    and names rung 4 — the rung is skipped, never repeated.
-    """
     rung = CleanupLadderRung.QUARANTINE
     key = _rung_key(rung)
     _record_evidence(ledger, key, "intent")
@@ -430,7 +301,6 @@ def quarantine_and_restore(
     )
 
 
-# Rung 4 — fresh isolated worktree.
 
 
 def rebuild_in_fresh_worktree(
@@ -445,29 +315,9 @@ def rebuild_in_fresh_worktree(
     preserved_ref: str | None = None,
     expected_target_sha: str | None = None,
 ) -> LadderStepResult:
-    """Rung 4: rebuild on the current target in a fresh isolated worktree.
-
-    Creates a new worktree from the current target, applies the
-    preserved work there (cherry-pick; a real conflict is the resolver
-    agent's job, decided upstream), then lands the target from the fresh
-    worktree with compare-and-swap semantics: the expected sha is the
-    one observed at rung start (passed in, or probed fresh — an
-    unreadable probe fails closed), and a concurrent advance of the
-    target ref is a typed ``failed:land:target-moved-concurrently``
-    outcome that names the race and issues no overwrite, so the caller
-    re-observes. The original checkout is repointed only when it is
-    still where the ladder observed it (or detached and clean per a
-    fresh probe); a not-now repoint defers without failing the rung —
-    the durable outcome is the landed target. A successful rebuild also
-    records the ``salvage:fresh_worktree_rebuild`` evidence
-    precondition (b) waits for.
-    """
     rung = CleanupLadderRung.FRESH_WORKTREE
     key = _rung_key(rung)
     _record_evidence(ledger, key, "intent")
-    # Observe BOTH shas BEFORE any mutation: the expected target sha the
-    # CAS will be checked against, and the original worktree's HEAD the
-    # safe-repoint precondition will be checked against.
     expected = (
         expected_target_sha if expected_target_sha is not None else git.target_sha(root, target)
     )
@@ -522,13 +372,10 @@ def rebuild_in_fresh_worktree(
     return LadderStepResult(rung, "succeeded", value, evidence={key: value})
 
 
-# Rung 5 — degrade, don't die.
 
-#: Rate-limited reminder registry: the failure class -> last reminder
-#: timestamp. Static key universe (the five EnvironmentFailure members).
 _REMINDED_AT: dict[
     str, float
-] = {}  # bounded-accumulator-ok: static key universe of the five EnvironmentFailure classes; every entry is overwritten in place, never appended
+] = {}
 
 
 def _remind_once(
@@ -536,7 +383,6 @@ def _remind_once(
     clock: Clock,
     remind: Callable[[str], None] | None,
 ) -> None:
-    """Log one rate-limited reminder per failure class, naming the next action."""
     now = clock.now()
     last = _REMINDED_AT.get(failure)
     if last is not None and now - last < BACKOFF_CAP_SECONDS:
@@ -554,7 +400,6 @@ def _remind_once(
 
 
 def _waiting_count(state: AttemptLedgerState, key: str) -> int:
-    """Return how many degrade ticks the ledger has recorded for this rung."""
     value = state.ladder_evidence.get(key, "")
     prefix = "waiting:n="
     if not value.startswith(prefix):
@@ -576,20 +421,8 @@ def adapt_environment_and_retry(
     observe: Callable[[], str] | None = None,
     remind: Callable[[str], None] | None = None,
 ) -> LadderStepResult:
-    """Rung 5: adapt the broken environment, then keep going with capped backoff.
-
-    Classifies the environment failure, sets the matching safe config
-    for the owned path (``safe.directory`` addition,
-    regenerable-artifact pruning, an alternative writable work location,
-    gitdir repair), then sleeps a capped exponential backoff on the
-    INJECTABLE clock and re-observes, so the moment the environment
-    heals the run proceeds. The rung never exits; the reminder is
-    logged once per failure class."""
     rung = CleanupLadderRung.ENVIRONMENT_DEGRADE
     key = _rung_key(rung)
-    # Read the tick counter BEFORE recording intent: the intent record
-    # overwrites the previous ``waiting:n=...`` value, and the backoff
-    # must still grow exponentially across ticks.
     attempts = _waiting_count(ledger.read(), key)
     _record_evidence(ledger, key, "intent")
     failure = env.failure_class(root, remote=remote)
@@ -605,8 +438,6 @@ def adapt_environment_and_retry(
             adapted.append(f"alt-state-dir={alternative}")
     elif failure == "missing_gitdir" and git.repair_gitdir(root):
         adapted.append("gitdir-repaired")
-    # ``1 << n`` is the capped exponential step (2 ** n); a shift stays
-    # typed ``int`` where ``int ** int`` reads as ``Any`` under mypy here.
     delay = min(BACKOFF_CAP_SECONDS, BACKOFF_BASE_SECONDS * (1 << min(attempts, 10)))
     clock.sleep(delay)
     fresh = observe() if observe is not None else ""
@@ -619,7 +450,6 @@ def adapt_environment_and_retry(
     return LadderStepResult(rung, "waiting", value, evidence={key: value})
 
 
-# Rung 6 — the last of the last resorts: hard reset.
 
 
 def last_resort_recovery(
@@ -641,33 +471,6 @@ def last_resort_recovery(
     is_landed: Callable[[str], bool] | None = None,
     budget: int = LADDER_ATTEMPT_BUDGET,
 ) -> LadderStepResult:
-    """Rung 6: hard reset, ONLY when every last-resort precondition is met.
-
-    The six preconditions in :data:`LAST_RESORT_PRECONDITIONS` are
-    evaluated against the durable ledger and the fresh re-observation;
-    each result is recorded under ``precondition:<name>``. When ANY is
-    unmet the rung returns ``failed`` naming it and NEVER touches the
-    tree — the reset never runs early, never because an attempt merely
-    failed once, and never when the state healed by itself. When all
-    six hold: preservation runs first, the operation is aborted (or its
-    state deleted), the tree resets to the feature tip (or the current
-    target when the tip is unusable), blocking untracked paths are
-    cleaned, stale locks removed, the worktree recreated if even the
-    reset fails. Preserved refs/sidecars are never touched.
-
-    **Disabled without a blocking signature.** The reset is only safe for
-    a caller that re-observed the blocking state within the current tick
-    and passes BOTH the decided and the fresh signature (plus the real
-    feature tip and branch). A caller that passes no ``decided_signature``
-    -- today the planning seam
-    (:func:`ralph.pipeline._integration_owner_seam.execute_planning_ladder_rung`),
-    which holds neither a re-observation signature nor the feature tip --
-    gets the explicit verdict ``failed:disabled:no-blocking-signature``
-    instead of a misleading precondition miss, and the tree is never
-    touched. Stale locks are removed through the shared age + liveness +
-    identity reaper and only from this worktree's own git dir plus the
-    common dir's shared top-level and ref locks.
-    """
     rung = CleanupLadderRung.LAST_RESORT
     key = _rung_key(rung)
     _record_evidence(ledger, key, "intent")
@@ -691,9 +494,6 @@ def last_resort_recovery(
         _record_evidence(ledger, key, value)
         return LadderStepResult(rung, "failed", value, evidence=preconditions)
 
-    # All six preconditions hold. Any preservation that can still run
-    # runs immediately before the reset — the reset loses only what no
-    # rung could save.
     state = ledger.read()
     if "preserved:alternate_preservation" not in state.ladder_evidence and paths:
         preserved = preserve_via_temp_index(
@@ -716,9 +516,9 @@ def last_resort_recovery(
         git.remove_operation_state(root, in_progress_kind)
 
     if feature_tip is not None and git.ref_is_readable(root, feature_tip):
-        tip: str = feature_tip  # the feature tip is usable.
+        tip: str = feature_tip
     else:
-        tip = target  # the tip is unusable: reset to the current target.
+        tip = target
     if not git.reset_hard(root, tip) and not (
         git.recreate_worktree(root, branch) and git.reset_hard(root, tip)
     ):
@@ -737,7 +537,6 @@ def last_resort_recovery(
     return LadderStepResult(rung, "succeeded", value, evidence=preconditions)
 
 
-# Dispatcher.
 
 
 def run_ladder_rung(
@@ -766,12 +565,6 @@ def run_ladder_rung(
     budget: int = LADDER_ATTEMPT_BUDGET,
     expected_target_sha: str | None = None,
 ) -> LadderStepResult:
-    """Execute one cleanup-ladder rung through the owner-routed projection.
-
-    Unspecified seams resolve to the production adapters and the
-    installed clock, so a boundary holding the owner's verdict runs
-    any rung with one call.
-    """
     plumbing = git if git is not None else default_git_plumbing()
     quarantine = fs if fs is not None else default_file_quarantine()
     probe = env if env is not None else default_environment_probe()
@@ -846,41 +639,27 @@ def run_ladder_rung(
     )
 
 
-# ---------------------------------------------------------------------------
-# Default seam resolvers (lazy: the adapters live in the private companion
-# module so this file stays under the repo-structure size cap).
-# ---------------------------------------------------------------------------
 
 
 def default_git_plumbing() -> GitPlumbing:
-    """Return the production git-plumbing adapter (queue-routed git runner)."""
     from ralph.pipeline._integration_ladder_adapters import _ProductionGitPlumbing
 
     return _ProductionGitPlumbing()
 
 
 def reap_worktree_stale_locks(git_dir: Path, common_dir: Path) -> tuple[str, ...]:
-    """Remove the provably orphaned git locks of ONE worktree; return those removed.
-
-    The production rung-6 lock removal: only this worktree's private git
-    dir and the common dir's shared top-level and ref locks are
-    considered (never a sibling linked worktree's), and each lock must
-    pass the shared stale-lock reaper's age, liveness and identity gates.
-    """
     from ralph.pipeline._integration_ladder_adapters import reap_ladder_stale_locks
 
     return reap_ladder_stale_locks(git_dir, common_dir)
 
 
 def default_file_quarantine() -> FileQuarantine:
-    """Return the production filesystem-quarantine adapter."""
     from ralph.pipeline._integration_ladder_adapters import _ProductionFileQuarantine
 
     return _ProductionFileQuarantine()
 
 
 def default_environment_probe() -> EnvironmentProbe:
-    """Return the production environment-probe adapter."""
     from ralph.pipeline._integration_ladder_adapters import _ProductionEnvironmentProbe
 
     return _ProductionEnvironmentProbe()

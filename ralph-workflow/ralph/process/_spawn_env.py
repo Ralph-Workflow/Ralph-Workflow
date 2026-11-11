@@ -1,4 +1,3 @@
-"""Sanitize inherited environment variables that harm descendant processes."""
 
 from __future__ import annotations
 
@@ -20,9 +19,6 @@ INSTALLER_PYTHON_INJECTION_VARS: frozenset[str] = frozenset(
     }
 )
 
-# Parent-owned conflict-resolution relay controls. These must never reach an
-# agent-controlled child. The standalone MCP server receives them only during
-# bootstrap and immediately removes them after constructing its sender.
 ACTIVITY_RELAY_CONTROL_ENV_VARS: frozenset[str] = frozenset(
     {
         "RALPH_MCP_ACTIVITY_RELAY_ENDPOINT",
@@ -33,7 +29,6 @@ BROKER_SECRET_ENV = "RALPH_BROKER_SECRET"
 
 
 def scrub_activity_relay_controls[T: MutableMapping[str, str]](env: T) -> T:
-    """Remove parent-owned activity-relay controls in place and return the same map."""
     for name in ACTIVITY_RELAY_CONTROL_ENV_VARS:
         env.pop(name, None)
     return env
@@ -46,27 +41,6 @@ def child_env_for_spawn(
     allow_broker_secret: bool = False,
     cwd: str | None = None,
 ) -> dict[str, str]:
-    """Return the environment map a spawned child actually receives.
-
-    ``None`` means "inherit the parent environment", which is materialized so
-    private controls can still be stripped. Otherwise the caller's map is
-    copied and sanitized the same way.
-
-    When the child is given a ``cwd``, ``PWD`` is realigned to name it and the
-    now-meaningless ``OLDPWD`` is dropped. ``cwd=`` changes the child's working
-    directory but leaves the inherited ``PWD`` pointing at the parent's, and a
-    surprising number of tools trust ``PWD`` over ``getcwd()`` -- OpenCode
-    resolves its project root as ``resolve(process.env.PWD ?? process.cwd())``,
-    so a stale value silently pointed it at a different tree than the one Ralph
-    was driving whenever Ralph was launched from outside the workspace.
-    ``ralph.mcp.tools.exec`` has always done this for the exec tool; the agent
-    spawn path had not.
-
-    Spawn-argument validation runs against this map rather than the caller's:
-    a variable removed here can never reach the child, so it can never poison
-    it, and rejecting a spawn over it would refuse a launch that would have
-    succeeded.
-    """
     child_env = dict(os.environ if env is None else env)
     if cwd is not None:
         child_env["PWD"] = cwd
@@ -79,15 +53,8 @@ def child_env_for_spawn(
 
 
 def strip_malloc_debug_noise(env: MutableMapping[str, str]) -> tuple[str, ...]:
-    """Remove inherited macOS malloc-stack-logging toggles from ``env``."""
     return tuple(name for name in MALLOC_DEBUG_NOISE_VARS if env.pop(name, None) is not None)
 
 
 def sanitize_process_environment() -> tuple[str, ...]:
-    """Remove inherited malloc-debug toggles before this process launches descendants.
-
-    Activity-relay controls are scrubbed at each agent-controlled child spawn,
-    not from the standalone MCP server's own bootstrap environment: that server
-    must read its one-time relay controls before it can remove them.
-    """
     return strip_malloc_debug_noise(os.environ)

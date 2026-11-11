@@ -1,11 +1,3 @@
-"""Tests proving register_agent_support is a thin shim.
-
-These tests verify that register_agent_support:
-1. Has an unchanged public signature
-2. Returns an AgentConfig that matches what's in the catalog
-3. Calls AgentSupport.from_registration_kwargs and AgentCatalog.add in order
-"""
-
 from __future__ import annotations
 
 import inspect
@@ -46,10 +38,7 @@ class _FakeStrategy(BaseExecutionStrategy):
 
 
 class TestRegisterAgentSupportShim:
-    """Test that register_agent_support is a thin shim."""
-
     def test_register_agent_support_signature_unchanged(self) -> None:
-        """The public signature must not change (additive only)."""
         sig = inspect.signature(register_agent_support)
         param_names = set(sig.parameters.keys())
 
@@ -72,9 +61,6 @@ class TestRegisterAgentSupportShim:
             "display_name",
             "subagent_capability",
             "no_default_session_flag",
-            # S-4 (wt-015): generic data-driven seams replacing AGY name-typed
-            # branches — additive, defaulted kwargs; every future agent opts in
-            # via these rather than by name.
             "dynamic_alias_help",
             "dynamic_alias_help_prefix",
             "empty_output_diagnostic_factory",
@@ -85,7 +71,6 @@ class TestRegisterAgentSupportShim:
         )
 
     def test_register_agent_support_returns_agent_config_from_catalog(self) -> None:
-        """register_agent_support returns an AgentConfig matching what's in the catalog."""
         name = "test-shim-agent"
 
         config = register_agent_support(
@@ -117,7 +102,6 @@ class TestRegisterAgentSupportShim:
     def test_register_agent_support_calls_helpers_in_order(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """register_agent_support delegates to from_registration_kwargs then add."""
         call_order: list[str] = []
 
         original_method = AgentSupport.from_registration_kwargs
@@ -167,22 +151,9 @@ class TestRegisterAgentSupportShim:
 
 
 class TestRegistrationDelegationToAgentCatalog:
-    """Pin the post-consolidation contract: every public registration
-    helper delegates to ``AgentCatalog.add`` (or, for
-    ``register_my_agent``, through ``register_agent_support`` which itself
-    delegates to ``AgentCatalog.add``).
-
-    These tests use ``monkeypatch`` on the class method so any future
-    wrapper or subclass is still detected — only the actual class method
-    counts as a call.
-    """
-
     def test_register_agent_support_delegates_to_agent_catalog_add(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """``register_agent_support`` calls ``AgentCatalog.add`` exactly once
-        with an :class:`AgentSupport` instance.
-        """
         captured: list[AgentSupport] = []
         original_add = AgentCatalog.add
 
@@ -224,9 +195,6 @@ class TestRegistrationDelegationToAgentCatalog:
     def test_register_agent_support_to_catalog_delegates_to_agent_catalog_add(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """``register_agent_support_to_catalog`` calls ``AgentCatalog.add``
-        exactly once with the pre-built :class:`AgentSupport` instance.
-        """
         captured: list[AgentSupport] = []
         original_add = AgentCatalog.add
 
@@ -258,9 +226,6 @@ class TestRegistrationDelegationToAgentCatalog:
     def test_register_my_agent_delegates_through_register_agent_support(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """``register_my_agent`` routes through ``register_agent_support``
-        exactly once with the expected kwargs.
-        """
         captured: list[dict[str, object]] = []
         original_register_agent_support = register_agent_support
 

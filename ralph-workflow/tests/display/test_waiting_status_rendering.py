@@ -1,11 +1,3 @@
-"""Tests for status bar and parallel display status line rendering.
-
-Verifies that:
-1. Status text renders resolution failure cause and fix once, wrapped and untruncated.
-2. Status bar formatting does not hard-truncate the cause and fix ("fix <file> then run ralph --check-config"), wrapping cleanly.
-3. Repeated renders while in waiting/resolution failure add no redundant log lines.
-"""
-
 from __future__ import annotations
 
 import io
@@ -24,7 +16,6 @@ def _make_console(width: int = 80, *, is_terminal: bool = False) -> tuple[Consol
 
 
 def test_waiting_status_text_preserves_cause_and_fix() -> None:
-    """status_text preserves the resolution failure cause and fix untruncated."""
     reason = "fix /home/user/.config/ralph-workflow.toml then run ralph --check-config"
     value = f"integration conflict ({reason}) — resolution required"
     rendered = status_text("WAITING", value, "yellow")
@@ -35,7 +26,6 @@ def test_waiting_status_text_preserves_cause_and_fix() -> None:
 
 
 def test_waiting_status_text_wraps_when_width_constrained() -> None:
-    """status_text wraps cleanly with hanging indent when width is constrained."""
     reason = "fix /home/user/.config/ralph-workflow.toml then run ralph --check-config"
     value = f"integration conflict ({reason}) — resolution required"
     rendered = status_text("WAITING", value, "yellow", width=80)
@@ -46,13 +36,11 @@ def test_waiting_status_text_wraps_when_width_constrained() -> None:
         assert len(line) <= 80, f"Line exceeds width 80: {line!r} (len={len(line)})"
     assert "/home/user/.config/ralph-workflow.toml" in rendered
     assert "--check-config" in rendered
-    # Verify words are preserved when normalized for wrapping
     normalized = " ".join(rendered.split())
     assert reason in normalized
 
 
 def test_waiting_status_bar_model_renders_cause_and_fix_untruncated_and_wrapped() -> None:
-    """StatusBarModel formatting does not hard-truncate the cause and fix; wraps cleanly."""
     console, _ = _make_console(width=80, is_terminal=True)
     ctx = make_display_context(console=console, env={})
     cause_and_fix = "fix /home/user/.config/ralph-workflow.toml then run ralph --check-config"
@@ -69,18 +57,15 @@ def test_waiting_status_bar_model_renders_cause_and_fix_untruncated_and_wrapped(
     rendered = render_status_bar(model, ctx, home="/home/user")
     plain = rendered.plain
 
-    # Verify cause and fix is untruncated
     assert "fix /home/user/.config/ralph-workflow.toml" in plain
     assert "then run ralph --check-config" in plain
     assert "resolution required" in plain
 
-    # Verify every individual line fits within width budget
     for line in plain.split("\n"):
         assert len(line) <= 80, f"Rendered line exceeds terminal width: {line!r} (len={len(line)})"
 
 
 def test_waiting_status_bar_repeated_renders_add_no_log_line() -> None:
-    """Repeated StatusBar updates while waiting add no duplicate log lines."""
     console, stream = _make_console(width=100, is_terminal=False)
     ctx = make_display_context(console=console, env={})
     display = ParallelDisplay(ctx)
@@ -103,7 +88,6 @@ def test_waiting_status_bar_repeated_renders_add_no_log_line() -> None:
     assert "/home/user/.config/ralph-workflow.toml" in output_after_first
     assert "--check-config" in output_after_first
 
-    # Simulate subsequent timer ticks while waiting for user to fix file
     for elapsed in [2.0, 3.0, 4.0, 5.0]:
         model_tick_n = StatusBarModel(
             workspace_root="/home/user/project",
@@ -115,12 +99,10 @@ def test_waiting_status_bar_repeated_renders_add_no_log_line() -> None:
         )
         status_bar.update(model_tick_n)
 
-    # Output must not have grown from elapsed seconds ticking during waiting
     assert stream.getvalue() == output_after_first
 
 
 def test_waiting_status_bar_emits_when_cause_changes() -> None:
-    """StatusBar emits a new line when the underlying failure cause or alert changes."""
     console, stream = _make_console(width=120, is_terminal=False)
     ctx = make_display_context(console=console, env={})
     display = ParallelDisplay(ctx)
@@ -153,7 +135,6 @@ def test_waiting_status_bar_emits_when_cause_changes() -> None:
 
 
 def test_waiting_parallel_display_repeated_status_emits_add_no_log_line() -> None:
-    """ParallelDisplay.emit and emit_status_line deduplicate repeated WAITING status lines."""
     console, stream = _make_console(width=100, is_terminal=False)
     ctx = make_display_context(console=console, env={})
     display = ParallelDisplay(ctx)
@@ -169,13 +150,11 @@ def test_waiting_parallel_display_repeated_status_emits_add_no_log_line() -> Non
     assert len(output_after_first) > 0
     assert "then run ralph --check-config" in output_after_first
 
-    # Repeated emits of the same waiting status line should be no-ops
     for _ in range(5):
         display.emit(None, line)
 
     assert stream.getvalue() == output_after_first
 
-    # Now test emit_status_line deduplication
     stream.truncate(0)
     stream.seek(0)
     display.emit_status_line("run", line)
@@ -189,7 +168,6 @@ def test_waiting_parallel_display_repeated_status_emits_add_no_log_line() -> Non
 
 
 def test_waiting_parallel_display_emit_renders_cause_and_fix_wrapped_and_untruncated() -> None:
-    """ParallelDisplay.emit renders long cause and fix lines wrapped, not truncated."""
     console, stream = _make_console(width=80, is_terminal=False)
     ctx = make_display_context(console=console, env={})
     display = ParallelDisplay(ctx)
@@ -204,6 +182,5 @@ def test_waiting_parallel_display_emit_renders_cause_and_fix_wrapped_and_untrunc
     display.emit(None, line)
     output = stream.getvalue()
 
-    # The cause and fix must be completely present
     assert "/home/user/.config/ralph-workflow-long-filename.toml" in output
     assert "--check-config" in output

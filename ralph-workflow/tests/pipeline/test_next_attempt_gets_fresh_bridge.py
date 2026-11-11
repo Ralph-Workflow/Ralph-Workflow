@@ -1,10 +1,3 @@
-"""Tests for fresh bridge acquisition on McpServerError retry.
-
-R4: When McpServerError is raised, the next attempt in a fresh attempt loop
-gets a new bridge_factory(...) call, and the conversion captures the rich
-McpServerError fields in retry_intent.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -45,7 +38,6 @@ class _FakeBridge(RestartAwareMcpBridge):
         return self.agent_endpoint_uri()
 
     def shutdown(self) -> None:
-        """Matches RestartAwareMcpBridge.shutdown(self) signature."""
         self.shutdown_called = True
 
 
@@ -92,8 +84,6 @@ def _make_deps(tmp_path: Path):
 def test_mcp_server_error_conversion_returns_agent_failure(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """When run_with_direct_mcp_recovery raises McpServerError, the conversion
-    returns PipelineEvent.AGENT_FAILURE."""
 
     config = UnifiedConfig(general=GeneralConfig(agent_idle_timeout_seconds=300.0))
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
@@ -138,8 +128,6 @@ def test_mcp_server_error_conversion_returns_agent_failure(
 def test_mcp_server_error_conversion_captures_rich_fields(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The conversion via _handle_terminal_agent_invocation_error captures the rich
-    McpServerError fields in the agent_invocation_error_sink."""
 
     config = UnifiedConfig(general=GeneralConfig(agent_idle_timeout_seconds=300.0))
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
@@ -200,8 +188,6 @@ def test_mcp_server_error_conversion_captures_rich_fields(
 def test_next_attempt_gets_fresh_bridge_after_mcp_server_error(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """When McpServerError is raised, the next attempt obtains a fresh bridge
-    from pipeline_deps.bridge_factory rather than reusing the dead bridge."""
 
     config = UnifiedConfig(general=GeneralConfig(agent_idle_timeout_seconds=300.0))
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
@@ -234,7 +220,6 @@ def test_next_attempt_gets_fresh_bridge_after_mcp_server_error(
         fake_run_with_direct_mcp_recovery,
     )
 
-    # Attempt 1: McpServerError -> returns AGENT_FAILURE
     result1 = effect_executor_module.execute_agent_effect(
         effect,
         config,
@@ -247,18 +232,14 @@ def test_next_attempt_gets_fresh_bridge_after_mcp_server_error(
     )
     assert result1 == PipelineEvent.AGENT_FAILURE
 
-    # Verify dead bridge was shut down and retry intent populated
     assert dead_bridge.shutdown_called is True
     intent = effect_executor_module.pop_last_captured_retry_intent()
     assert intent.failure_reason == "McpServerError"
 
-    # Bridge factory calls prior to attempt 2
     bridge_factory = deps.bridge_factory
     assert hasattr(bridge_factory, "calls")
     calls_before = len(bridge_factory.calls)
 
-    # Attempt 2: Even if caller passes dead_bridge, fresh bridge is requested
-    # and instantiated via pipeline_deps.bridge_factory
     result2 = effect_executor_module.execute_agent_effect(
         effect,
         config,

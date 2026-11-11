@@ -1,14 +1,3 @@
-"""Renderers are reused across ``render_template`` calls with equal partials.
-
-Building a fresh Jinja ``Environment`` and re-normalizing every partial on
-each call was the dominant cost of rendering a prompt, and the pipeline
-renders the same partial set many times per run.  Reuse is only safe if a
-shared renderer keeps no state between renders, so this pins the
-observable contract: the same inputs render the same output regardless of
-what was rendered before, concurrent renders do not corrupt each other,
-and two different partial sets never answer for one another.
-"""
-
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
@@ -29,14 +18,6 @@ def _render(name: str, items: str) -> str:
 def test_timeout_propagates_instead_of_becoming_template_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An async TimeoutError interrupting a render must surface, not degrade.
-
-    The per-test SIGALRM timeout raises ``TimeoutError`` asynchronously inside
-    ``TemplateRenderer.render`` under heavy parallel load. The defensive
-    ``except Exception`` used to convert it into ``TemplateRenderingError``, so
-    callers silently rendered the static fallback template and tests failed on
-    missing template-specific phrases. A timeout is not a template defect.
-    """
     from ralph.prompts.template_engine import TemplateRenderer
 
     def raise_timeout(text: str) -> str:
@@ -68,7 +49,6 @@ def test_concurrent_renders_do_not_corrupt_each_other() -> None:
 
 
 def test_distinct_partial_sets_stay_separate() -> None:
-    """A cached renderer must never answer for a different partial set."""
     variables = {"name": "alice"}
     hello = render_template(_INCLUDING_TEMPLATE, variables, _PARTIALS)
     hi = render_template(_INCLUDING_TEMPLATE, variables, {"greeting": "Hi {{ name }}"})

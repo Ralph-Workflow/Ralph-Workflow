@@ -1,5 +1,3 @@
-"""Fail-closed regression coverage for filesystem-write consolidation."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -16,7 +14,6 @@ def _write_fake_package(tmp_path: Path, module_rel: str, body: str) -> Path:
 
 
 def test_synthetic_unknown_writer_in_production_would_fail(tmp_path: Path) -> None:
-    """S-6: an unrecognized production ``os.replace`` must be rejected."""
     module_rel = "sneaky/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -34,7 +31,6 @@ def test_synthetic_unknown_writer_in_production_would_fail(tmp_path: Path) -> No
 
 
 def test_pathlib_path_unlink_detected(tmp_path: Path) -> None:
-    """S-6: chained pathlib deletion cannot bypass mutation enforcement."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,

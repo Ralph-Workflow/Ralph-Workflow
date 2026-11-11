@@ -1,10 +1,3 @@
-"""Focused tests for handle_directory_tree changed_only filtering (AC-09).
-
-Prior analysis how_to_fix item 8 requires directory_tree to parse
-and apply ``changed_only`` using the same dirty-path source as
-``list_directory`` (peek_dirty_paths from the explore store).
-"""
-
 from __future__ import annotations
 
 import json
@@ -29,7 +22,6 @@ pytestmark = pytest.mark.timeout_seconds(5)
 
 
 def _flat_paths(node: dict[str, object]) -> list[str]:
-    """Return ``path`` fields (depth-first) for every node in the tree."""
 
     paths: list[str] = []
     node_type_obj = node.get("type")
@@ -47,8 +39,6 @@ def _flat_paths(node: dict[str, object]) -> list[str]:
 
 
 class _FakeSession:
-    """Minimal session with capability check + explore_index slot."""
-
     def __init__(self, explore_index: Any | None, *, capability: bool) -> None:
         self.explore_index = explore_index
         self._has_capability = capability
@@ -59,8 +49,6 @@ class _FakeSession:
 
 
 class _TreeWorkspace:
-    """Workspace stub whose contents are returned verbatim."""
-
     def __init__(self, children_by_dir: dict[str, list[str]]) -> None:
         self._children = children_by_dir
 
@@ -108,10 +96,8 @@ def test_changed_only_returns_only_dirty_subtree(tmp_path: Path) -> None:
     payload = json.loads(result.content[0].text)
     paths = _flat_paths(payload["tree"])
 
-    # The changed subtree is present (file + every ancestor kept).
     assert "src/app.py" in paths
     assert "src" in paths
-    # Nothing unrelated leaks through.
     assert all(not p.startswith("docs") for p in paths if p)
     assert "docs/index.md" not in paths
     assert "docs/changelog.md" not in paths
@@ -137,7 +123,6 @@ def test_changed_only_empty_dirty_set_omits_all_subtrees(tmp_path: Path) -> None
     assert result.is_error is False
     payload = json.loads(result.content[0].text)
     paths = _flat_paths(payload["tree"])
-    # Empty dirty set should drop every subtree.
     assert paths == []
 
 
@@ -167,7 +152,6 @@ def test_changed_only_use_index_never_preserves_raw_tree(tmp_path: Path) -> None
         for child in must_dict_list(payload.get("children", []))
         if isinstance(child, dict)
     )
-    # Raw tree unchanged - both a and b appear regardless of dirty state.
     assert names == ["a", "b"]
 
 
@@ -199,8 +183,6 @@ def test_changed_only_capability_missing(tmp_path: Path) -> None:
 
 
 def test_changed_only_non_dirty_view_preserves_existing_tests(tmp_path: Path) -> None:
-    # Regression: live ``view == "raw" + use_index == "never"`` path must
-    # still ignore ``changed_only`` entirely (raw tree shape preserved).
     ws = _TreeWorkspace({"": ["a"]})
     result = handle_directory_tree(
         MockSession(WORKSPACE_READ_CAPABILITY),

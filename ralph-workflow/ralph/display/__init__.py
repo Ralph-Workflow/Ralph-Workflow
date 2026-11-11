@@ -1,143 +1,3 @@
-"""Display helpers for CLI output.
-
-These exports cover progress rendering, phase/status display, and simple table
-views used by CLI diagnostics and listing commands.
-
-.. important:: Display Architecture and DI Contract
-
-   **Single source of truth:** ``DisplayContext`` is the only permitted source
-   of ``Console``, ``Theme``, terminal width, color policy, display mode, and
-   adaptive character limits. No renderer may construct its own ``rich.Console``.
-
-   **Single display owner:** ``ParallelDisplay`` is the single source of truth
-   for all user-facing display logic in Ralph Workflow. All 42 consolidated
-   ``emit_*`` methods (41 instance methods on ``ParallelDisplay`` plus the
-   module-level ``emit_activity_line``) own every banner, table, panel, and
-   one-shot status surface. The legacy ``ralph.display.phase_banner``,
-   ``ralph.display.artifact_renderer``, ``ralph.display.first_run_panel``,
-   ``ralph.display.tables``, ``ralph.banner``, and ``ralph.cli.options``
-   modules have been deleted. The persistent bottom Status Bar is composed
-   via the ``ralph.display.status_bar`` module: ``StatusBar`` (a lifecycle
-   class reachable as ``ParallelDisplay.status_bar``) composes the Live
-   region, and the pure free function
-   ``ralph.display.status_bar.render_status_bar(model, ctx, *, home=None)``
-   owns the layout / color / spacing / alignment / truncation logic (its
-   pure-function shape is what makes the layout testable in isolation). The
-   single push-side surface is ``ParallelDisplay.update_status_bar(model)``;
-   ``StatusBar.update(model)`` stores the model and the persistent footer
-   is rendered on the
-   ``ralph.display.status_bar._STATUS_BAR_REFRESH_PER_SECOND = 4.0`` Hz
-   cadence (i.e. no eager ``live.refresh()`` from update). The Status Bar
-   is the single owner of the run-level footer (working directory, active
-   phase, applicable cycle counts) on real-TTY runs, gated on
-   ``ctx.console.is_terminal AND ctx.console.file.isatty()`` to stay out of
-   non-interactive output.
-
-   **DI requirement:** Every public emit method on ``ParallelDisplay`` is
-   reachable through a ``DisplayContext``; callers resolve an active display
-   via ``resolve_active_display(display_context)`` and call
-   ``display.emit_*``. There are no silent ``Console``-only fallbacks in
-   production code. Callers must construct a ``DisplayContext`` via
-   ``make_display_context()`` before invoking renderers.
-
-   **Invariant enforcement:** ``tests/display/test_di_invariants.py`` scans
-   every file under ``ralph/display/`` to assert that ``Console(`` and
-   ``Theme(`` only appear in ``theme.py``, and that
-   ``os.environ``/``os.getenv`` only appear in ``context.py`` and
-   ``content_condenser.py``. The companion
-   ``tests/display/test_single_mode_anti_drift.py`` AST-scans
-   ``ralph/display/`` to assert that no future commit re-introduces a
-   compact / medium / wide branch (single ``default`` mode is the only
-   owner of display layout).
-
-   **Terminal state restoration:** ``ralph.display.terminal_restore`` is the
-   single owner of terminal state restoration. It captures TTY mode snapshots
-   at CLI entry, registers an ``atexit`` hook for normal exits, runs before
-   ``hard_exit`` in ``InterruptController.force_exit``, and restores on
-   ``SIGTERM`` and ``SIGHUP``. It restores cursor visibility, the alternate
-   screen, mouse and focus reporting, bracketed paste, normal cursor and keypad
-   modes, scroll region, G0 ASCII charset, SGR, and autowrap; it then drains
-   queued terminal input. When stdout is redirected it uses stderr or the
-   controlling terminal, and the OSC 11 probe preserves the entry snapshot.
-
-   **Display mode (single default):** After the wt-028-display consolidation,
-   ``DisplayContext.mode`` is always the literal string ``"default"``. There
-   is no width-based dispatch, no ``compact`` / ``medium`` / ``wide`` tier,
-   and no per-mode limits table. The historical ``RALPH_FORCE_NARROW``
-   env var is silently ignored. The persistent bottom Status Bar is
-   the single owner of run-level layout, color, spacing, truncation,
-   and live-update behavior. Width-driven degradation happens in the
-   documented order below so the bar always fits ``ctx.width`` and
-   remains readable at every applicable width (see
-   :mod:`ralph.display.status_bar` for the full implementation):
-
-   1. Long paths middle-truncate to absorb excess length on long paths.
-   2. Long phase labels tail-truncate to absorb excess length on labels.
-   3. Iteration label form degrades canonical (``Cycle 1/3`` /
-      ``iter 2/5``) -> compact (``C1/3`` / ``i2/5``) -> minimal
-      (``1/3`` / ``2/5``) below the canonical-fit threshold. Custom
-      outer labels (such as ``Remediation`` or ``Round``) override ``Cycle``.
-   4. The phase marker is dropped below the marker-fit threshold.
-   5. Per-iteration glyphs are dropped below the glyph-fit threshold.
-   6. Iteration segments drop one at a time (outer_dev first, then
-      inner_analysis, then both) below the iteration-visibility
-      threshold (14 cols). Below that threshold the bar degrades
-      cleanly to whatever subset of phase + path fits.
-
-   **Environment variable precedence (highest to lowest):**
-
-   - ``force_width`` argument to ``make_display_context()`` — overrides
-     terminal width detection.
-   - ``COLUMNS`` (positive integer) — overrides the console's auto-detected
-     width.
-   - ``console.width`` — the default fallback from Rich's terminal detection.
-
-   **Color environment variables:**
-
-   - ``NO_COLOR`` (any non-empty value) — disables all color output. Takes precedence
-     over ``FORCE_COLOR`` and is the supported way to turn colour off.
-   - ``FORCE_COLOR`` (any non-empty value) — enables color output on non-TTY streams.
-     When no colour system is explicitly selected, Ralph resolves it to
-     ``"truecolor"``; Rich's ``color_system=None`` disables ANSI output entirely.
-   - ``RALPH_TERMINAL_BG`` (``light``/``dark`` or ``#RRGGBB``) — overrides
-     terminal-background detection.
-   - ``RALPH_TERMINAL_BG_TIMEOUT_MS`` (positive integer) — changes the bounded
-     OSC 11 background-query deadline from its 100 ms default.
-
-   **Glyph environment variables:**
-
-   - ``RALPH_FORCE_ASCII`` (``1``/``true``/``yes``/``on``) — disables Unicode
-     glyphs; renderers use ASCII fallbacks (e.g. ``->`` instead of ``→``).
-   - ``TERM=dumb`` — disables Unicode glyphs via the same fallback path.
-
-   **Streaming environment variables:**
-
-   - ``RALPH_STREAMING_DEDUP`` (``0``/``false``/``no``/``off``) — disables
-     consecutive-fragment deduplication in streaming blocks.
-   - ``RALPH_STREAMING_CHECKPOINTS`` (``0``/``false``/``no``/``off``) —
-     disables periodic checkpoint lines during long streaming blocks.
-
-   **Long-content environment variables:**
-
-   - ``RALPH_LONG_CONTENT_SUMMARY`` (``0``/``false``/``no``/``off``) —
-     disables fallback-headline generation for long content blocks
-     (handled in ``content_condenser.py``).
-   - ``RALPH_LONG_CONTENT_AI_SUMMARY`` (``0``/``false``/``no``/``off``) —
-     disables AI-based headline generation for long content blocks.
-
-   **Width refresh (cross-platform):** The runner installs a width refresher
-   via ``install_width_refresher()`` at pipeline start. On POSIX this uses a
-   SIGWINCH signal handler; on Windows or non-main threads it falls back to a
-   poll-based daemon thread. Either path calls ``DisplayContext.refreshed()``
-   which re-reads the current terminal width and recomputes adaptive limits
-   while keeping the mode at ``"default"``. Renderers that buffer adaptive
-   limits (e.g. ``PlainLogRenderer``) call ``refreshed()`` at phase
-   boundaries via ``flush_blocks()`` to pick up new sizes. The runner also
-   keeps its live display object and nested plain renderer synced with the
-   refreshed context so later banners and summaries use the new limits.
-   The returned stop callback is invoked on shutdown to clean up any poll
-   thread.
-"""
 
 from ralph.display._run_start_orientation import RunStartOrientation
 from ralph.display.context import (
@@ -157,13 +17,6 @@ from ralph.display.status_bar import (
     render_status_bar,
 )
 
-#: Names exported from :mod:`ralph.display.parallel_display`. That module
-#: pulls the artifact-reader and markdown-spec chains, so importing it
-#: eagerly charged every process that touched the display package (the CLI
-#: entry point, every spawned agent child, and every pytest worker) for
-#: roughly a second of import CPU. The names are resolved on first
-#: attribute access instead, so a process that never renders a display pays
-#: none of it.
 _PARALLEL_DISPLAY_EXPORTS = frozenset(
     {
         "ParallelDisplay",
@@ -181,7 +34,6 @@ _PARALLEL_DISPLAY_EXPORTS = frozenset(
 
 
 def __getattr__(name: str) -> object:
-    """Resolve a lazily-exported :mod:`ralph.display.parallel_display` name."""
     if name in _PARALLEL_DISPLAY_EXPORTS:
         from typing import cast
 

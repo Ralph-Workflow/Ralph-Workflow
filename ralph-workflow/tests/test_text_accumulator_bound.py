@@ -1,15 +1,3 @@
-"""Black-box tests for ``TextAccumulator.raw_lines`` bound.
-
-wt-024 memory-perf GAP-MEM-04: ``TextAccumulator.raw_lines`` grows
-without bound on input that never hits a ``'\n\n'`` paragraph
-boundary. The fix forces a flush once ``raw_lines`` exceeds
-``_MAX_RAW_LINES`` so pathological input cannot grow the list without
-limit.
-
-Normal paragraph-bounded input is unaffected because the forced flush
-only triggers above the cap with no paragraph boundary.
-"""
-
 from __future__ import annotations
 
 import json
@@ -24,7 +12,6 @@ if TYPE_CHECKING:
 
 
 def test_raw_lines_bounded_on_no_paragraph_boundary() -> None:
-    """raw_lines must be bounded by _MAX_RAW_LINES; forced flush emits a line."""
     acc = TextAccumulator()
     emitted: list[AgentOutputLine] = []
     for _ in range(_MAX_RAW_LINES + 100):
@@ -39,7 +26,6 @@ def test_raw_lines_bounded_on_no_paragraph_boundary() -> None:
 
 
 def test_interactive_parser_flushes_consecutive_output_deltas_at_cap() -> None:
-    """Consecutive structured output cannot wait until end-of-stream to flush."""
 
     def lines() -> Iterator[str]:
         for index in range(_MAX_RAW_LINES + 1):

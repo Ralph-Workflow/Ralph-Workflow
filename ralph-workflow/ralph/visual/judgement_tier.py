@@ -1,4 +1,3 @@
-"""Tier selection for deterministic and on-demand visual review."""
 
 from __future__ import annotations
 
@@ -11,14 +10,12 @@ from ralph.visual.on_demand_judgement_result import OnDemandJudgementResult
 
 
 class JudgementTier(StrEnum):
-    """The visual-review execution tier and its bounded data contracts."""
 
     DETERMINISTIC = "deterministic"
     ON_DEMAND = "on-demand"
 
     @property
     def is_blocking(self) -> bool:
-        """Return whether this tier belongs in the verification gate."""
         return self is JudgementTier.DETERMINISTIC
 
 
@@ -28,7 +25,6 @@ def run_on_demand_judgement(
     *,
     deps: OnDemandJudgementDeps | None = None,
 ) -> OnDemandJudgementResult:
-    """Submit a non-blocking, ledger-attributed vision verdict through bounded seams."""
     if not target.strip() or not intent.strip():
         return OnDemandJudgementResult(blocker="target and design intent are required")
     if deps is None:
@@ -65,7 +61,6 @@ def run_on_demand_judgement(
 
 
 def resolve_judgement_tier(value: str | None) -> JudgementTier:
-    """Resolve an explicit tier, defaulting verification to deterministic."""
     if value is None:
         return JudgementTier.DETERMINISTIC
     return JudgementTier(value)

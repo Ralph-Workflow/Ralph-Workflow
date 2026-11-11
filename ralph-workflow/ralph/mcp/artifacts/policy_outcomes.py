@@ -1,4 +1,3 @@
-"""Shared helpers for interpreting MCP approval outcomes."""
 
 from __future__ import annotations
 
@@ -12,11 +11,10 @@ def _attribute_value(
 ) -> object | None:
     return cast(
         "object | None", getattr(obj, attribute_name, default)
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    )
 
 
 def is_policy_approved(outcome: object | None) -> bool:
-    """Return True if the given policy outcome represents an approval decision."""
     if outcome is True:
         return True
     if isinstance(outcome, str):

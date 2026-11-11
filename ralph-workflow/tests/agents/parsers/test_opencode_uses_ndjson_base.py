@@ -1,11 +1,3 @@
-"""Migration test: OpenCodeParser must inherit from NdjsonParserBase.
-
-After the consolidation refactor, OpenCodeParser inherits from
-:class:`ralph.agents.parsers._ndjson_base.NdjsonParserBase` and delegates
-the data: prefix strip, [DONE] short-circuit, json parse dispatch,
-lifecycle suppression, and error extraction to the base layer.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -22,8 +14,6 @@ def _lines(*raw: str) -> Iterator[str]:
 
 
 class TestOpenCodeUsesNdjsonBase:
-    """Pin subclass relationship and migration behavior preservation."""
-
     def test_opencode_parser_subclass_of_ndjson_base(self) -> None:
         assert issubclass(OpenCodeParser, NdjsonParserBase)
 
@@ -58,19 +48,11 @@ class TestOpenCodeUsesNdjsonBase:
             )
         )
         text_results = [r for r in results if r.type == "text"]
-        # The accumulated text from the stream + step_finish should yield
-        # at least one "Hello world" text result.
         assert any(r.content == "Hello world" for r in text_results), (
             f"Expected 'Hello world' in {text_results!r}"
         )
 
     def test_errored_tool_still_surfaces_the_dispatch(self) -> None:
-        """A tool whose state errored MUST stay visible as a dispatch.
-
-        Emitting only the error erased the call from the tool timeline, so an
-        errored ``task`` dispatch was reported as "subagent dispatch was not
-        observed" even though the subagent was genuinely dispatched.
-        """
         parser = OpenCodeParser()
         line = (
             '{"type": "tool_use", "sessionID": "ses_1", "part": {"type": "tool",'
@@ -85,7 +67,6 @@ class TestOpenCodeUsesNdjsonBase:
         assert results[1].content == "MCP error -32001: Request timed out"
 
     def test_streamed_completed_tool_does_not_repeat_its_dispatch(self) -> None:
-        """A running -> completed native call has one dispatch and one result."""
         parser = OpenCodeParser()
         running = (
             '{"type":"tool_use","part":{"type":"tool","tool":"task",'
@@ -103,11 +84,6 @@ class TestOpenCodeUsesNdjsonBase:
         assert [result.content for result in results] == ["task", "done"]
 
     def test_integer_epoch_timestamp_is_preserved(self) -> None:
-        """OpenCode stamps events with an integer epoch-ms.
-
-        The string-only source-timestamp branch skipped it, so every OpenCode
-        record fell back to the display clock instead of the agent's own.
-        """
         parser = OpenCodeParser()
         line = (
             '{"type": "text", "timestamp": 1785133508187, "sessionID": "ses_1",'

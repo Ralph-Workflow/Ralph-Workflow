@@ -1,4 +1,3 @@
-"""Built-in execution-strategy builders and activity classifiers."""
 
 from __future__ import annotations
 

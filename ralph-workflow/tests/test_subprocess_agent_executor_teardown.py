@@ -1,25 +1,3 @@
-"""Regression tests for SubprocessAgentExecutor teardown invariants.
-
-These tests verify the AC-02 finally-block guarantee: a non-terminal agent
-handle is always terminated when ``SubprocessAgentExecutor.run()`` exits,
-even when the underlying asyncio.gather() is cancelled mid-flight or the
-subprocess's ``handle.wait()`` would otherwise hang forever.
-
-The teardown guarantee is the foundation for the
-``# mcp-timeout-ok: bounded by activity-aware idle watchdog teardown``
-marker on ``await asyncio.gather(drain_output(), handle.wait())`` in
-``ralph/agents/subprocess_executor.py``: the surrounding finally block
-ALWAYS terminates a non-terminal handle, so a hard wait_for ceiling
-around the gather is unnecessary (and would risk killing a slow-but-
-healthy agent).
-
-This file intentionally does NOT carry ``pytestmark = pytest.mark.subprocess_e2e``
-because the test harness excludes subprocess_e2e-marked tests from the
-canonical ``make verify`` run (see ``ralph/test_suites.py``). The tests
-use only fakes (FakeControllableAsyncProcess + an injected ProcessManager
-factory) and execute in well under 1.0s each.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -35,9 +13,6 @@ from ralph.testing._fake_psutil import FakePsutil
 from ralph.testing._fake_psutil_process import FakePsutilProcess
 from ralph.testing.fake_process import FakeControllableAsyncProcess
 
-#: Event-loop yields allowed while waiting for the spawned fake's output to
-#: drain before cancelling. Yields cost no wall-clock time; the budget only
-#: bounds the loop if the drain never happens.
 _CANCELLATION_YIELD_BUDGET = 100
 
 if TYPE_CHECKING:
@@ -59,22 +34,6 @@ def _make_unit(unit_id: str) -> WorkUnit:
 
 
 class _RecordingControllableAsyncProcess(FakeControllableAsyncProcess):
-    """FakeControllableAsyncProcess that records terminate() / kill() calls.
-
-    The base fake silently flips internal state when terminate() / kill()
-    are called. This subclass records each call so a regression test can
-    assert the teardown guarantee (the finally block always terminates a
-    non-terminal handle) without relying on the FakeControllableAsyncProcess
-    internal _returncode field, which is a private attribute and would
-    violate the black-box testability rule.
-
-    The constructor uses an explicit signature matching the parent class
-    so the ``super().__init__(...)`` call is fully typed (the type-ignore
-    policy forbids suppressions in test files).
-    """
-
-    # OpenCode's prompt is delivered on stdin, so a process fake must
-    # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
     stdin = None
 
     def __init__(
@@ -104,15 +63,6 @@ class _RecordingControllableAsyncProcess(FakeControllableAsyncProcess):
 
 
 class _RecordingPsutilProcess(FakePsutilProcess):
-    """FakePsutilProcess that records terminate() calls.
-
-    When psutil is injected, ProcessManager's ``_escalate_termination_async``
-    uses the psutil process-tree path: ``root = psutil.process_from_pid(pid)``
-    then ``root.terminate()`` (NOT the underlying async fake's terminate()).
-    Subclassing FakePsutilProcess and overriding terminate() keeps the test
-    fully typed (the type-ignore policy forbids suppressions in test files).
-    """
-
     def __init__(self, pid: int) -> None:
         super().__init__(pid=pid)
         self.terminate_calls: int = 0
@@ -125,11 +75,6 @@ class _RecordingPsutilProcess(FakePsutilProcess):
 def _build_factory(
     fake: _RecordingControllableAsyncProcess,
 ) -> Callable[..., asyncio.Future[object]]:
-    """Return an async factory that hands out the recording fake.
-
-    The signature matches ``_AsyncProcessFactory`` (Protocol) but is annotated
-    loosely enough that the test file stays fully typed without suppressions.
-    """
 
     async def _factory(
         command: list[str],
@@ -148,16 +93,6 @@ def _build_factory(
 
 
 def _make_fake_psutil(pid: int) -> tuple[FakePsutil, _RecordingPsutilProcess]:
-    """Construct a FakePsutil with ``pid`` pre-registered as a recording root.
-
-    Injecting a FakePsutil whose ``process_from_pid(pid)`` returns a
-    ``FakePsutilProcess`` makes the manager's pre-kill liveness check
-    return ``ALIVE`` for our synthetic PID (otherwise the manager
-    short-circuits ``terminate()`` with ``cause=already_gone`` because
-    ``os.kill(pid, 0)`` raises ``ProcessLookupError`` on a fake PID).
-    Pre-registering a ``_RecordingPsutilProcess`` lets the test assert
-    the psutil-side ``terminate()`` calls.
-    """
     fake_psutil = FakePsutil()
     recording = _RecordingPsutilProcess(pid=pid)
     fake_psutil._processes[pid] = recording
@@ -166,24 +101,6 @@ def _make_fake_psutil(pid: int) -> tuple[FakePsutil, _RecordingPsutilProcess]:
 
 @pytest.mark.asyncio
 async def test_finally_block_terminates_non_terminal_handle() -> None:
-    """AC-02 regression: the finally block terminates a non-terminal handle.
-
-    Configures a recording fake whose ``completion_event`` is NEVER set, so
-    ``handle.wait()`` would hang forever absent the finally teardown.
-    Cancels ``executor.run()`` once the spawned fake's output has drained —
-    an event-loop condition rather than a wall-clock timeout — so the
-    hanging gather is cancelled and the finally block is forced to run
-    deterministically and without spending real time.
-
-    Asserts the recording psutil root observed at least one ``terminate()``
-    call — the teardown guarantee that backs the
-    ``# mcp-timeout-ok: bounded by activity-aware idle watchdog teardown``
-    marker on ``await asyncio.gather(drain_output(), handle.wait())``.
-
-    The test is purely black-box: it observes the INJECTED fakes only,
-    never reads production private attributes, and uses no real subprocess
-    / sleep.
-    """
     pid = 42
     fake = _RecordingControllableAsyncProcess(
         pid=pid,
@@ -206,10 +123,6 @@ async def test_finally_block_terminates_non_terminal_handle() -> None:
     executor = SubprocessAgentExecutor(["fake-cmd"], _pm=pm)
     unit = _make_unit("teardown-invariant-test")
 
-    # Cancellation is driven by the event loop rather than by a wall-clock
-    # timeout: the run is cancelled once the fake has actually been spawned
-    # (so the hanging gather has been entered), which forces the finally
-    # block deterministically and costs no real time.
     run_task = asyncio.ensure_future(
         executor.run(
             unit,
@@ -235,18 +148,6 @@ async def test_finally_block_terminates_non_terminal_handle() -> None:
 
 @pytest.mark.asyncio
 async def test_normal_completion_does_not_terminate_via_finally() -> None:
-    """When the gather completes normally, the finally block is a no-op for termination.
-
-    Counterpart to ``test_finally_block_terminates_non_terminal_handle``:
-    if the agent subprocess exits cleanly, the handle's record transitions
-    to a terminal status BEFORE the finally block runs, so the
-    ``if handle.record.status not in _TERMINAL_STATUSES`` guard skips the
-    redundant ``handle.terminate(...)`` call.
-
-    This pins the contract that the finally block is a SAFETY NET, not a
-    mandatory kill: it only fires when the handle is still alive (e.g. the
-    gather was cancelled or the run raised before completion).
-    """
     pid = 43
     completion = asyncio.Event()
     fake = _RecordingControllableAsyncProcess(
@@ -307,23 +208,10 @@ async def test_normal_completion_does_not_terminate_via_finally() -> None:
 
 @pytest.mark.asyncio
 async def test_silent_then_successful_child_keeps_output_and_is_not_terminated() -> None:
-    """Silence below existing triggers is not death: output survives completion.
-
-    A child that produces no further output for a long simulated interval
-    (well below existing idle/no-output watchdog triggers) and then
-    completes normally must not be terminated by ownership teardown, and
-    every line already drained must remain intact. This is the
-    "silence is not death" half of the subprocess ownership contract;
-    watchdog non-fire under ACTIVE quiet is covered separately in
-    ``tests/test_live_post_tool_result_wedge.py``.
-    """
     from ralph.agents.execution_state import AgentExecutionState
     from ralph.agents.idle_watchdog import IdleWatchdog, TimeoutPolicy, WatchdogVerdict
     from ralph.agents.timeout_clock import FakeClock
 
-    # Existing defaults keep long silence legal; use the same shape with
-    # a short idle deadline so FakeClock can advance past "long quiet"
-    # without approaching any fire threshold while classify_quiet is ACTIVE.
     policy = TimeoutPolicy(
         idle_timeout_seconds=0.05,
         max_waiting_on_child_seconds=10.0,
@@ -337,7 +225,7 @@ async def test_silent_then_successful_child_keeps_output_and_is_not_terminated()
     clock = FakeClock(start=0.0)
     watchdog = IdleWatchdog(policy, clock)
     watchdog.record_activity()
-    clock.advance(20.0)  # long quiet, still under drain / child-wait ceilings
+    clock.advance(20.0)
     verdict = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE)
     assert verdict != WatchdogVerdict.FIRE
 
@@ -363,8 +251,6 @@ async def test_silent_then_successful_child_keeps_output_and_is_not_terminated()
     observed: list[str] = []
 
     async def release_after_drain() -> None:
-        # Simulate a long silent interval after output has been drained,
-        # then let the child complete normally.
         for _ in range(20):
             await asyncio.sleep(0)
         completion.set()

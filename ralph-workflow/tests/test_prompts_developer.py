@@ -1,5 +1,3 @@
-"""Rendered prompt contracts for development and concise planning guidance."""
-
 from pathlib import Path
 
 from ralph.prompts.developer import (
@@ -28,22 +26,12 @@ def test_developer_prompt_includes_plan_and_submission_contract(tmp_path: Path) 
     assert "### [S-1] Change it" in prompt
     assert "development_result" in prompt
     assert "ralph_submit_md_artifact" in prompt
-    # Parallel-by-default rewrite: the non-worker developer prompt must
-    # state that parallel execution of independent ready units is
-    # required by default, the literal heading, the sequential-only
-    # exception clause, and the large-plan-cue phrasing. These are the
-    # shared-wording-contract anchors the rewrite pins.
     assert "Parallel execution of independent ready units is required by default" in prompt
     assert "## PARALLEL EXECUTION (required by default)" in prompt
     assert "Sequential execution requires an explicit plan reason" in prompt
     assert "not a reason to stop, hand back, split the task, or return `partial`" in prompt
-    # Reporting anchor (S-1 edit 2): the development result must justify
-    # sequential execution by the plan text that forced it.
     assert "which plan text forced it" in prompt
-    # Queue-in-waves wording (S-1 edit 4): a full cap queues remaining
-    # ready units, never broadens ownership.
     assert "queue the remaining ready units" in prompt
-    # The removed "runtime limit" reporting-anchor escape must be gone.
     assert "runtime limit" not in prompt
 
 

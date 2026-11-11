@@ -1,13 +1,3 @@
-"""Watchdog tests for report_progress repetition handling.
-
-Part of closing the 5-hour-runaway hole: the agent stayed "alive" partly because
-every ``report_progress`` call reset the stall timers, so a cosmetic heartbeat
-repeating the same status forever looked like forward progress. Fixed behavior:
-a progress report that REPEATS the previous status counts toward the
-repeated-error circuit breaker and does not reset the idle baseline, while a
-progress report whose status CHANGES counts as genuine progress.
-"""
-
 from __future__ import annotations
 
 from ralph.agents.execution_state import AgentExecutionState
@@ -47,12 +37,12 @@ _STUCK = "status='Verifying state from read-only tools; exec is timing out' note
 def test_repeated_identical_progress_reports_trip_the_circuit_breaker() -> None:
     clock = FakeClock()
     watchdog = IdleWatchdog(_policy(consecutive=5), clock)
-    watchdog.record_progress_report(_STUCK)  # first occurrence establishes the status
+    watchdog.record_progress_report(_STUCK)
     for _ in range(4):
         watchdog.record_progress_report(_STUCK)
         clock.advance(34.0)
         assert _evaluate(watchdog) == WatchdogVerdict.CONTINUE
-    watchdog.record_progress_report(_STUCK)  # 5th repeat
+    watchdog.record_progress_report(_STUCK)
     assert _evaluate(watchdog) == WatchdogVerdict.FIRE
     assert watchdog.last_fire_reason == WatchdogFireReason.REPEATED_ERROR_LOOP
 
@@ -75,5 +65,5 @@ def test_changed_progress_report_resets_idle_baseline() -> None:
     watchdog.record_progress_report("status='starting' note=''")
     clock.advance(200.0)
     watchdog.record_progress_report("status='now doing real work' note=''")
-    clock.advance(200.0)  # only 200s since the changed (progress) report
+    clock.advance(200.0)
     assert _evaluate(watchdog) == WatchdogVerdict.CONTINUE

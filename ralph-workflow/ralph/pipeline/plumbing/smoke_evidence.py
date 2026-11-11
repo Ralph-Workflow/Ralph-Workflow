@@ -1,17 +1,3 @@
-"""Evidence Provenance: the trust lattice for smoke-gate contract facts.
-
-Every contract fact the interactive smoke gate reports (``artifact_submitted``,
-``explicit_completion_seen``, ``tool_activity_seen``) used to be a bare
-``bool``. A ``True`` earned by a real ``tools/call`` on Ralph's MCP server and
-a ``True`` the harness wrote to itself were indistinguishable, so the gate
-could print ``Breaks: none`` for a run that never reached the transport it
-claimed to be testing.
-
-This module ships the fix: no fact reaches the report without saying where it
-came from, and the verdict is derived from the weakest provenance backing any
-required fact. See ``.agent/PRODUCT_CRITERIA.md`` (Evidence Provenance / F1)
-for the product brief this implements.
-"""
 
 from __future__ import annotations
 
@@ -40,14 +26,6 @@ __all__ = [
 
 @dataclass(frozen=True)
 class Evidence:
-    """One graded fact: whether it holds, how confidently, and why.
-
-    ``Evidence`` cannot be constructed without a ``Provenance`` — the type
-    system, not code review, is what stops a future contributor from
-    reintroducing a bare ``bool``. A holding fact can never carry
-    ``Provenance.ABSENT``: "it happened" and "there is no evidence it
-    happened" are mutually exclusive by construction.
-    """
 
     holds: bool
     provenance: Provenance
@@ -66,7 +44,6 @@ class Evidence:
 
 
 def absent(detail: str) -> Evidence:
-    """Return the canonical "this fact does not hold" Evidence value."""
     return Evidence(holds=False, provenance=Provenance.ABSENT, detail=detail)
 
 
@@ -75,19 +52,6 @@ DEGRADED = "DEGRADED"
 
 
 def grade_verdict(evidence: Mapping[str, Evidence]) -> tuple[str, Provenance]:
-    """Return ``(verdict_label, weakest_provenance)`` for a set of required facts.
-
-    ``PASS`` requires every fact in ``evidence`` to both hold and be graded
-    ``Provenance.WIRE``. Any fact below that bar — including one that simply
-    does not hold — demotes the verdict to ``DEGRADED``, reported with the
-    single weakest provenance among *all* facts (not just the failing ones),
-    matching the brief's rule that the verdict is a pure function of the
-    weakest provenance backing any required fact.
-
-    An empty ``evidence`` mapping has no required fact to back a ``PASS`` and
-    grades ``DEGRADED`` at ``Provenance.ABSENT`` — there is nothing to
-    demonstrate trust with.
-    """
     if not evidence:
         return DEGRADED, Provenance.ABSENT
     weakest = min(ev.provenance for ev in evidence.values())
@@ -100,7 +64,6 @@ def grade_verdict(evidence: Mapping[str, Evidence]) -> tuple[str, Provenance]:
 
 
 def format_verdict(evidence: Mapping[str, Evidence]) -> str:
-    """Return the operator-facing verdict string, e.g. ``DEGRADED (host-synthesized)``."""
     label, weakest = grade_verdict(evidence)
     if label == PASS:
         return PASS
@@ -114,19 +77,6 @@ def grade_artifact_submission_evidence(
     submitted: bool,
     secret: str | None,
 ) -> Evidence:
-    """Grade an artifact-submission fact: fallback promotion vs. a wire hit.
-
-    ``submitted`` is the pre-computed authoritative bool (a receipt exists,
-    possibly after promoting a fallback document through the canonical submit
-    path). A submission backed by a matching ``tools/call`` ledger record
-    grades ``WIRE``; any other submitted receipt (including one promoted from
-    the model's fallback markdown file) grades ``WORKSPACE_EFFECT`` — real,
-    but not attributable to a witnessed tool call.
-
-    Shared by the smoke gate and ``ralph.agents.completion_signals.
-    evaluate_completion`` so both grade a phase's required-artifact fact the
-    same way, instead of maintaining the WIRE-grading decision twice.
-    """
     if not submitted:
         return absent("smoke_test_result artifact was not submitted")
     if wire_evidence_for(workspace_root, run_id, tool_name="artifact", secret=secret):
@@ -150,20 +100,6 @@ def grade_completion_sentinel_evidence(
     host_synthesized: bool,
     secret: str | None,
 ) -> Evidence:
-    """Grade a completion-sentinel fact.
-
-    A sentinel the harness wrote to itself (a host-synthesis fallback)
-    grades ``HOST_SYNTHESIZED`` — it caps the run's verdict at ``DEGRADED``
-    and names itself, rather than reading as unqualified proof the agent
-    called ``declare_complete``. An unsigned sentinel (no broker secret in
-    scope) is capped at ``TRANSCRIPT``: "not a weaker WIRE fact — not a WIRE
-    fact." Only a sentinel backed by a matching ``declare_complete``
-    wire-ledger record grades ``WIRE``.
-
-    Shared by the smoke gate and ``ralph.agents.completion_signals.
-    evaluate_completion`` so both grade a phase's completion-sentinel fact
-    the same way, instead of maintaining the WIRE-grading decision twice.
-    """
     if not present:
         return absent("completion sentinel was not observed")
     if host_synthesized:

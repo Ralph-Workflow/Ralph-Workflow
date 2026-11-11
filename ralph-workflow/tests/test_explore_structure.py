@@ -1,10 +1,3 @@
-"""Black-box tests for Phase 2 Python and Markdown structure extraction.
-
-AC-06: The reindex pipeline persists deterministic Python AST and
-Markdown structure rows in ``spans`` / ``symbols`` / ``edges``
-tables. Changed-file reindex leaves no stale graph rows behind.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -21,7 +14,6 @@ from ralph.mcp.explore.structure import (
     extract_structure,
 )
 
-# ponytail: SQLite initialization competes for filesystem locks under xdist; 2s preserves the integration contract without changing the 60s suite budget.
 pytestmark = pytest.mark.timeout_seconds(2.0)
 
 
@@ -42,7 +34,6 @@ def _build_index(workspace: Path, tmp_path: Path) -> ExploreStore:
 
 
 def test_python_structure_extracts_symbols_spans_and_edges(tmp_path: Path) -> None:
-    """AC-06: Python extraction produces real symbols + spans + edges."""
     workspace = _seed_workspace(tmp_path)
     store = _build_index(workspace, tmp_path)
     try:
@@ -50,9 +41,6 @@ def test_python_structure_extracts_symbols_spans_and_edges(tmp_path: Path) -> No
         assert counts["spans"] > 0, "spans rows should be populated for Python"
         assert counts["symbols"] > 0, "symbols rows should be populated"
         assert counts["edges"] > 0, "edges rows should be populated"
-        # ``hello`` is the function name; the qualified name in our
-        # extractor uses ``parent.child`` or just the bare name when
-        # the parent is the module.
         names = {row.name for row in store.iter_symbols()}
         assert "hello" in names
         assert "Foo" in names
@@ -60,10 +48,6 @@ def test_python_structure_extracts_symbols_spans_and_edges(tmp_path: Path) -> No
         assert "module.hello" in qualified
         relations = {row.relation for row in store.iter_edges()}
         assert "contains" in relations
-        # Imports and class bases produce edges too. Not every
-        # file has imports, so we do not assert on the relation
-        # being present.
-        # Provenance is recorded as ``extracted`` for parser edges.
         for row in store.iter_edges():
             assert row.provenance in {"extracted", "inferred", "unknown"}
     finally:
@@ -73,20 +57,15 @@ def test_python_structure_extracts_symbols_spans_and_edges(tmp_path: Path) -> No
 def test_markdown_structure_extracts_heading_anchors_and_code_fence_edges(
     tmp_path: Path,
 ) -> None:
-    """AC-06: Markdown headings produce spans, symbols, and contains edges."""
     workspace = _seed_workspace(tmp_path)
     store = _build_index(workspace, tmp_path)
     try:
-        # Find the markdown file's structure rows.
         markdown_spans = list(store.iter_spans("README.md"))
         assert any(span.kind.startswith("h") for span in markdown_spans), (
             "Markdown extraction should emit at least one h-level span"
         )
         markdown_symbols = list(store.iter_symbols("README.md"))
         assert any(sym.kind.startswith("h") for sym in markdown_symbols)
-        # Setext-style headings are also covered via the
-        # ``md_setext`` extracted_from marker.
-        # Verify direct extraction works too.
         content = (workspace / "README.md").read_text(encoding="utf-8")
         result = extract_markdown(
             path="README.md",
@@ -103,13 +82,11 @@ def test_markdown_structure_extracts_heading_anchors_and_code_fence_edges(
 def test_changed_file_reindex_replaces_structure_rows_without_stale_edges(
     tmp_path: Path,
 ) -> None:
-    """AC-06: changed-file reindex replaces the structure rows atomically."""
     workspace = _seed_workspace(tmp_path)
     store = _build_index(workspace, tmp_path)
     try:
         before = {sym.qualified_name for sym in store.iter_symbols("module.py")}
         assert "module.hello" in before
-        # Rewrite module.py with a different function set.
         (workspace / "module.py").write_text("def new_func():\n    return 42\n")
         reindex(store, workspace, options=ReindexOptions(timeout_ms=5000))
         after = {sym.qualified_name for sym in store.iter_symbols("module.py")}
@@ -122,15 +99,6 @@ def test_changed_file_reindex_replaces_structure_rows_without_stale_edges(
 
 
 def test_python_structure_emits_full_prompt_relation_set(tmp_path: Path) -> None:
-    """AC-02: the Python extractor emits every prompt-promised
-    mechanically-evidenced relation: ``defines``, ``contains``,
-    ``imports``, ``calls_syntax``, ``references_text``,
-    ``inherits_syntax``, ``tests``, ``mentions``.
-
-    Each edge carries an explicit ``provenance`` (``extracted`` for
-    parser-verified rows, ``inferred`` for text-match rows) so
-    callers can audit synthetic vs. real facts.
-    """
     workspace = tmp_path / "ws"
     workspace.mkdir()
     (workspace / "module.py").write_text(
@@ -156,11 +124,6 @@ def test_python_structure_emits_full_prompt_relation_set(tmp_path: Path) -> None
     reindex(store, workspace, options=ReindexOptions(timeout_ms=5000))
     try:
         relations = {row.relation for row in store.iter_edges(path="module.py")}
-        # Every prompt-promised relation must be present. AC-02
-        # requires the extractor to emit ``defines`` for every
-        # parser-recognized definition span (functions, classes,
-        # async functions); the relations assertion must catch a
-        # missing or stalled extractor.
         assert "defines" in relations, (
             "Python extractor must emit ``defines`` edges for each "
             "parser-recognized definition span"
@@ -172,7 +135,6 @@ def test_python_structure_emits_full_prompt_relation_set(tmp_path: Path) -> None
         assert "inherits_syntax" in relations
         assert "tests" in relations
         assert "mentions" in relations
-        # Every edge must carry a recognized provenance.
         provenances = {row.provenance for row in store.iter_edges(path="module.py")}
         assert provenances.issubset({"extracted", "inferred", "ambiguous"})
     finally:
@@ -180,7 +142,6 @@ def test_python_structure_emits_full_prompt_relation_set(tmp_path: Path) -> None
 
 
 def test_unsupported_language_returns_empty_extraction(tmp_path: Path) -> None:
-    """Files outside Python/Markdown get empty structure rows."""
     workspace = _seed_workspace(tmp_path)
     (workspace / "data.json").write_text('{"a": 1}')
     store = _build_index(workspace, tmp_path)
@@ -196,7 +157,6 @@ def test_unsupported_language_returns_empty_extraction(tmp_path: Path) -> None:
 
 
 def test_extractor_version_is_pinned() -> None:
-    """The structure extractor advertises a stable version string."""
     assert EXTRACTOR_VERSION == "phase2-structure-v1"
 
 
@@ -207,16 +167,10 @@ def test_extract_structure_dispatches_by_extension() -> None:
         content_hash="abc",
         generation=1,
     )
-    # Python extraction always emits at least the module span.
     assert any(span.kind == "module" for span in result.spans)
 
 
 def test_extract_python_syntax_error_raises_python_extraction_error(tmp_path: Path) -> None:
-    """PA-001 / AC-02: A Python file that fails to parse raises the
-    typed :class:`PythonExtractionError` so the reindex pipeline can
-    fail-closed in its preflight while preserving the prior lexical
-    and structure rows for the path.
-    """
     import pytest
 
     from ralph.mcp.explore.structure import PythonExtractionError
@@ -235,11 +189,6 @@ def test_extract_python_syntax_error_raises_python_extraction_error(tmp_path: Pa
 
 
 def test_extract_markdown_recognizes_links_with_mentions_relation() -> None:
-    """AC-02: Markdown link extraction must emit exact-span
-    ``mentions`` relation rows with ``extracted`` provenance and
-    a resolvable symbol id. The fixture must expose its matching
-    evidence-backed edge/span so callers can audit the link.
-    """
     content = (
         "# Heading\n\nSee [example](https://example.test) and [docs](docs/index.md) for more.\n"
     )
@@ -251,24 +200,19 @@ def test_extract_markdown_recognizes_links_with_mentions_relation() -> None:
     )
     relations = {row.relation for row in result.edges}
     assert "mentions" in relations
-    # Find the link edges.
     link_edges = [row for row in result.edges if row.relation == "mentions"]
     assert len(link_edges) == 2, (
         f"expected 2 mentions edges for two links, got {len(link_edges)}: "
         f"{[e.reason for e in link_edges]}"
     )
-    # Each link edge must have exact spans and extracted provenance.
     for edge in link_edges:
         assert edge.provenance == "extracted"
         assert edge.confidence == CONFIDENCE_EXTRACTED
         assert edge.span_id is not None
         assert edge.generation == 1
-    # The link symbol ids must be resolvable in the symbol rows
-    # so callers can dereference the evidence.
     link_symbol_ids = {edge.target_id for edge in link_edges}
     symbol_ids = {sym.symbol_id for sym in result.symbols}
     assert link_symbol_ids.issubset(symbol_ids)
-    # The link span ids must be resolvable in the span rows.
     link_span_ids = {edge.span_id for edge in link_edges}
     span_ids = {span.span_id for span in result.spans}
     assert link_span_ids.issubset(span_ids)

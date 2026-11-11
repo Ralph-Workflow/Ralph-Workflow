@@ -1,20 +1,3 @@
-"""Round-execution machinery of the conflict-resolution driver.
-
-The per-round candidate-spending loop (:func:`_run_one_round`), the
-per-attempt bookkeeping helpers, and the on-disk unresolved-path scan
-live in this private companion module so
-:mod:`ralph.pipeline.conflict_resolution.driver` stays under the
-repo-structure file-size cap; the driver keeps the session lifecycle,
-the round loop orchestration, and the public entry points, and
-re-exports every name defined here unchanged.
-
-Names that tests monkeypatch on the driver module (``_sleep_seconds``,
-``emit_conflict_phase_line``, ``paths_with_conflict_markers``,
-``classify_failed_resolution_attempt``) are reached through a deferred
-``driver`` module attribute access, exactly like the late binding
-:mod:`ralph.pipeline.conflict_resolution.invoker` already uses, so the
-monkeypatch surface is unchanged by the split.
-"""
 
 from __future__ import annotations
 
@@ -84,14 +67,6 @@ __all__ = [
 
 @dataclass(frozen=True)
 class RoundAttempt:
-    """Record success and whether a resolution candidate was invoked.
-
-    ``count_dropped``/``probe_changed`` carry the per-attempt observation
-    facts gathered once through the injected observer BEFORE any
-    classify/charge call (§11, Design item 4), so the driver's
-    success-with-unresolved charge reuses the same single observation
-    instead of scanning the worktree a second time.
-    """
 
     succeeded: bool
     invoked: bool
@@ -162,20 +137,8 @@ def _paths_still_unresolved(
     substantive: frozenset[str],
     observer: WorktreeConflictObserver,
 ) -> tuple[str, ...]:
-    """Paths a round has NOT resolved, by the evidence on disk.
-
-    Surviving markers are the usual proof, but the marker scan skips a
-    path it cannot read -- so a file the resolver DELETED passed it
-    vacuously, and a two-sided content conflict was reported resolved by
-    dropping both sides. A declared decision may legitimately end in a
-    deletion; an ordinary conflict may not, because neither side asked
-    for the file to disappear.
-    """
     marked = list(observer.paths_with_conflict_markers(root, conflicted))
     decisions = set(decision_paths)
-    # A path both sides wrote content into, now empty, is not a
-    # resolution: a truncating resolver dropped BOTH sides, and with the
-    # markers gone the scan had nothing left to object to.
     emptied = (
         path
         for path in conflicted
@@ -230,8 +193,6 @@ def _handle_candidate_failure(
     *,
     workspace_changed: bool = False,
 ) -> None:
-    # Late binding through the driver namespace: tests monkeypatch
-    # ``driver.classify_failed_resolution_attempt`` there.
     from ralph.pipeline.conflict_resolution import driver as _driver_mod
 
     if not isinstance(invoker_result, ResolutionOutcome):
@@ -245,11 +206,6 @@ def _handle_candidate_failure(
             session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
         else:
             session.last_failure_cause = ResolutionFailureCause.UNRESOLVED_CONFLICT
-    # Typed outcomes (§11): exception objects are genuinely external RAW
-    # text; every other shape here is one Ralph observed itself, so the
-    # classifier rides on the typed outcome and never re-matches session
-    # prose. A bare unsuccessful return with no recorded outcome is the
-    # generic attempt-failed shape.
     raw_failure: BaseException | str | None
     if isinstance(session.last_attempt_failure, BaseException):
         outcome = ConflictAttemptOutcome.RAW
@@ -286,23 +242,6 @@ def _execute_single_candidate(
     policy_bundle: PolicyBundle,
     observe_unresolved: Callable[[], tuple[str, ...]] | None = None,
 ) -> tuple[bool, ResolutionOutcome | bool, RoundAttempt]:
-    """Run one candidate and charge the ledger after ONE observation.
-
-    Per-attempt observation/charging boundary (§11, Design item 4): the
-    round-level unresolved set is observed ONCE through the injected
-    observer BEFORE any classify/charge call, on every outcome branch
-    (success-with-unresolved, false return, raised exception), so a count
-    drop restarts the consecutive-unproductive streak exactly like a
-    workspace change while the total still accrues. The pre-attempt count
-    is held in a local because the observation overwrites
-    ``session.unresolved_paths`` and the driver rewrites it after every
-    round. The returned :class:`RoundAttempt` carries the observation facts
-    so the driver's success-with-unresolved charge reuses them instead of
-    scanning the worktree again. The raised exception's own text is
-    genuinely external RAW input (site 10) and keeps the text path.
-    """
-    # Late binding through the driver namespace: tests monkeypatch
-    # ``driver.classify_failed_resolution_attempt`` there.
     from ralph.pipeline.conflict_resolution import driver as _driver_mod
 
     session.terminal_reason = None
@@ -312,8 +251,6 @@ def _execute_single_candidate(
     workspace = session.workspace
     if probe is not None and workspace is not None:
         probe.observe_before(PHASE_RESOLUTION, workspace)
-    # Hold the pre-attempt count BEFORE the runner can report anything:
-    # the single observation below overwrites ``session.unresolved_paths``.
     unresolved_before = len(session.unresolved_paths)
     raised: BaseException | None = None
     succeeded = False
@@ -336,9 +273,6 @@ def _execute_single_candidate(
         session.terminal_reason = ResolutionTerminationReason.EXCEPTION
         session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
         raised = exc
-    # The single observation boundary: exactly ONE unresolved-set
-    # observation precedes every classification/ledger charge, whatever
-    # branch the attempt took.
     count_dropped = False
     if observe_unresolved is not None:
         unresolved_after = observe_unresolved()
@@ -397,8 +331,6 @@ def _check_worktree_repair(
         != ResolutionAction.ACCEPT_WORKTREE_REPAIR
     ):
         return False
-    # Late binding through the driver namespace: tests monkeypatch
-    # ``driver.emit_conflict_phase_line`` there.
     from ralph.pipeline.conflict_resolution import driver as _driver_mod
 
     _driver_mod.emit_conflict_phase_line(
@@ -420,22 +352,6 @@ def _run_one_round(
     worktree_resolved: Callable[[], bool] | None = None,
     observe_unresolved: Callable[[], tuple[str, ...]] | None = None,
 ) -> RoundAttempt:
-    """Spend eligible candidates in priority order, respecting bounded retries.
-
-    A successful candidate does not advance priority. Cooldowns survive
-    rounds and stops; the controller selects again before every invocation.
-    ``worktree_resolved`` decides the post-attempt worktree-repair from the
-    SAME single observed set stored in ``session.unresolved_paths`` — it
-    must not rescan the worktree (analysis WU-1).
-    ``observe_unresolved`` observes the round-level unresolved set through
-    the injected observer; EVERY outcome branch uses it exactly ONCE
-    BEFORE charging the ledger so a count drop counts as progress
-    (§11, Design item 4).
-
-    Clear terminal evidence before each candidate to preserve attribution.
-    """
-    # Late binding through the driver namespace: tests monkeypatch
-    # ``driver.emit_conflict_phase_line`` there.
     from ralph.pipeline.conflict_resolution import driver as _driver_mod
 
     total = len(candidates)
@@ -522,7 +438,6 @@ def _preferred_conflict_candidate(
     visited: set[int],
     skipped: frozenset[str],
 ) -> int | None:
-    """Select by priority among this round's remaining eligible candidates."""
     from ralph.recovery.controller import RecoveryController
 
     eligible = [
@@ -545,9 +460,6 @@ def _preferred_conflict_candidate(
         return candidates.index(selection.agent)
     delay = controller.earliest_available_wait_ms(PHASE_RESOLUTION, eligible)
     if delay > 0:
-        # Wait out the earliest cooldown ONCE, then check controller again.
-        # Late binding through the driver namespace: tests monkeypatch
-        # ``driver._sleep_seconds`` there.
         from ralph.pipeline.conflict_resolution import driver as _driver_mod
 
         _driver_mod._sleep_seconds(delay / 1000.0)
@@ -564,7 +476,6 @@ def _preferred_conflict_candidate(
 
 
 def _reset_conflict_success(session: ResolutionSession, agent: str) -> None:
-    """Reset only the successful resolver's cooldown history."""
     if session.recovery_controller is not None:
         from ralph.pipeline.conflict_resolution.resolver_health import clear_resolver
 
@@ -572,15 +483,12 @@ def _reset_conflict_success(session: ResolutionSession, agent: str) -> None:
 
 
 def _sleep_conflict_retry(session: ResolutionSession, policy_bundle: PolicyBundle) -> None:
-    """Honor RecoveryController backoff, falling back to the chain's retry_delay_ms."""
     delay_ms = session.last_retry_delay_ms
     if delay_ms <= 0:
         drain = policy_bundle.agents.agent_drains.get(PHASE_RESOLUTION)
         chain = policy_bundle.agents.agent_chains.get(drain.chain) if drain else None
         delay_ms = chain.retry_delay_ms if chain else 0
     if delay_ms > 0:
-        # Late binding through the driver namespace: tests monkeypatch
-        # ``driver._sleep_seconds`` there.
         from ralph.pipeline.conflict_resolution import driver as _driver_mod
 
         _driver_mod._sleep_seconds(delay_ms / 1000.0)

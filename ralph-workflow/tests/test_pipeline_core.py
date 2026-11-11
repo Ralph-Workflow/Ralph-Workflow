@@ -1,5 +1,3 @@
-"""Unit tests for the modular ``PipelineCore`` surface and its factory."""
-
 from __future__ import annotations
 
 import dataclasses
@@ -30,7 +28,6 @@ def _fake_display_context() -> DisplayContext:
 
 
 def test_pipeline_core_constructed_with_all_collaborators() -> None:
-    """``PipelineCore`` can be constructed with all four PROMPT collaborators."""
     display_context = _fake_display_context()
     model_identity = MagicMock()
     master_prompt_materializer = MagicMock()
@@ -53,7 +50,6 @@ def test_pipeline_core_constructed_with_all_collaborators() -> None:
 
 
 def test_pipeline_core_is_frozen_dataclass() -> None:
-    """``PipelineCore`` is immutable; mutation raises ``FrozenInstanceError``."""
     core = PipelineCore(display_context=_fake_display_context())
     mutable_core: Any = core
 
@@ -62,7 +58,6 @@ def test_pipeline_core_is_frozen_dataclass() -> None:
 
 
 def test_build_minimal_pipeline_core_wires_production_defaults() -> None:
-    """``build_minimal_pipeline_core`` returns a ``PipelineCore`` with production defaults."""
     config = UnifiedConfig()
     display_context = _fake_display_context()
 
@@ -77,7 +72,6 @@ def test_build_minimal_pipeline_core_wires_production_defaults() -> None:
 
 
 def test_build_minimal_pipeline_core_forwards_model_identity() -> None:
-    """``build_minimal_pipeline_core`` forwards an injected ``model_identity``."""
     config = UnifiedConfig()
     display_context = _fake_display_context()
     model_identity = MagicMock()
@@ -88,7 +82,6 @@ def test_build_minimal_pipeline_core_forwards_model_identity() -> None:
 
 
 def test_build_minimal_pipeline_core_rejects_pro_hooks() -> None:
-    """``build_minimal_pipeline_core`` does not accept extended fields like ``pro_hooks``."""
     config = UnifiedConfig()
     display_context = _fake_display_context()
 
@@ -100,7 +93,6 @@ def test_build_minimal_pipeline_core_rejects_pro_hooks() -> None:
 
 
 def test_apply_pro_hooks_to_core_propagates_collaborators() -> None:
-    """``apply_pro_hooks_to_core`` propagates the four PROMPT collaborators."""
     core = PipelineCore(display_context=_fake_display_context())
     new_display_context = _fake_display_context()
     new_model_identity = MagicMock()
@@ -127,7 +119,6 @@ def test_apply_pro_hooks_to_core_propagates_collaborators() -> None:
 
 
 def test_apply_pro_hooks_to_core_identity_when_all_none() -> None:
-    """``apply_pro_hooks_to_core`` returns the input core when all overrides are ``None``."""
     core = PipelineCore(display_context=_fake_display_context())
     pro_hooks = ProPipelineHooks()
 
@@ -137,12 +128,10 @@ def test_apply_pro_hooks_to_core_identity_when_all_none() -> None:
 
 
 def test_pipeline_deps_importable_and_is_dataclass() -> None:
-    """``PipelineDeps`` remains importable and is still a dataclass."""
     assert dataclasses.is_dataclass(PipelineDeps)
 
 
 def test_pipeline_deps_has_embedded_core() -> None:
-    """``PipelineDeps`` embeds a ``PipelineCore`` accessible via the ``core`` field."""
     config = UnifiedConfig()
     display_context = _fake_display_context()
 
@@ -154,7 +143,6 @@ def test_pipeline_deps_has_embedded_core() -> None:
 
 
 def test_pipeline_deps_backward_compat_properties_read_from_core() -> None:
-    """``PipelineDeps`` exposes the four collaborators via backward-compat properties."""
     config = UnifiedConfig()
     display_context = _fake_display_context()
     model_identity = MagicMock()

@@ -1,10 +1,3 @@
-"""Integration tests for MCP wire-level roundtrip.
-
-- HTTP transport tests: replaced with in-process McpServer.handle_request() calls —
-  no daemon threads, no socket polling, no httpx against localhost.
-- stdio transport: uses the fake stdio server fixture to test Ralph's MCP client.
-"""
-
 from __future__ import annotations
 
 import json
@@ -31,14 +24,11 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.subprocess_e2e
 
-# Description length bounds enforced by the quality bar
 _MIN_DESCRIPTION_CHARS = 20
 _MAX_DESCRIPTION_CHARS = 500
 
-# Content used by the append_file roundtrip assertion
 _APPEND_CONTENT = "hi"
 
-# Capabilities required by the built-in Ralph tools
 _REQUIRED_CAPABILITIES = {
     "WorkspaceRead",
     "WorkspaceWriteAny",
@@ -75,7 +65,6 @@ def _build_server(
 
 
 def _do_initialize(server: McpServer) -> ServerState:
-    """Send initialize + notifications/initialized; return running ServerState."""
     req = JsonRpcRequest(
         jsonrpc="2.0",
         method="initialize",
@@ -110,7 +99,6 @@ def _do_tool_call(
     name: str,
     args: dict[str, object],
 ) -> dict[str, object]:
-    """Make a tools/call request and return the MCP result object."""
     call_id[0] += 1
     req = JsonRpcRequest(
         jsonrpc="2.0",
@@ -263,13 +251,7 @@ def _do_workspace_write_roundtrips(
 
 @pytest.mark.integration
 class TestHttpMcpServer:
-    """Test the Ralph MCP server by driving it in-process via handle_request().
-
-    No daemon threads, no socket polling, no HTTP transport overhead.
-    """
-
     def test_initialize_tools_list_read_file_roundtrip(self, temp_workspace: Path) -> None:
-        """Full MCP roundtrip exercising initialize, tools/list, and tools/call."""
         server = _build_server(temp_workspace)
         state = _do_initialize(server)
         tools = _do_tools_list(server, state)
@@ -290,7 +272,6 @@ class TestHttpMcpServer:
     def test_retired_plan_section_tool_returns_markdown_replacement_error(
         self, temp_workspace: Path
     ) -> None:
-        """Retired JSON tools stay absent and fail with actionable replacement guidance."""
         server = _build_server(temp_workspace, drain="planning")
         state = _do_initialize(server)
         response = _do_tool_call_response(
@@ -313,12 +294,6 @@ class TestHttpMcpServer:
         assert "ralph_stage_md_artifact" in message
 
     def test_new_workspace_tools_roundtrip(self, temp_workspace: Path) -> None:
-        """In-process roundtrip for the expanded workspace tool surface.
-
-        Exercises stat_path, list_allowed_roots, read_multiple_files, directory_tree,
-        search_files, grep_files, edit_file (dry_run + apply), append_file,
-        create_directory, move_file, copy_file, and delete_path end-to-end.
-        """
         _seed_extended_workspace(temp_workspace)
 
         server = _build_server(temp_workspace, session_id="test-new-tools", drain="development")
@@ -330,7 +305,6 @@ class TestHttpMcpServer:
         _do_workspace_write_roundtrips(server, state, call_id)
 
     def test_visit_url_tools_call(self, temp_workspace: Path) -> None:
-        """tools/call for visit_url returns expected JSON shape (network mocked)."""
         server = _build_server(temp_workspace)
         state = _do_initialize(server)
         _do_tools_list(server, state)

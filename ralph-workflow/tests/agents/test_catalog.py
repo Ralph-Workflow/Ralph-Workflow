@@ -1,5 +1,3 @@
-"""Tests for AgentCatalog."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -34,14 +32,6 @@ class _FakeStrategy(BaseExecutionStrategy):
 
 
 def _fake_capabilities() -> tuple[DisplayCapabilityStance, ...]:
-    """Return a complete, unimplemented-stance declaration for a test fake.
-
-    The S-4 contract requires every built-in to declare every
-    catalog-derived capability; fakes used in catalog tests carry an
-    honest ``UNIMPLEMENTED`` stance rather than a SUPPORTED one so
-    no operator-visible claim leaks from a test fixture into the
-    built-in matrix.
-    """
     return tuple(
         DisplayCapabilityStance.unimplemented(c, reason="test fake")
         for c in (
@@ -71,8 +61,6 @@ def _make_support(
 
 
 class TestAgentCatalog:
-    """Black-box tests for AgentCatalog."""
-
     def test_add_and_get_roundtrip(self) -> None:
         catalog = AgentCatalog()
         support = _make_support("test-agent")
@@ -160,14 +148,6 @@ class TestAgentCatalog:
         assert len(claude_agents) == 1
 
     def test_ccs_dynamic_alias_support_declares_session_not_observable(self) -> None:
-        """``ccs/<alias>`` inherits the CLAUDE transport but does not emit session IDs.
-
-        CCS aliases resolve to ``cmd="ccs <alias>"`` and ``transport=CLAUDE``,
-        so the synthesized :class:`AgentSupport` inherits the ``claude``
-        built-in's parser, strategy, and display capabilities. The wrapper
-        hides Claude's session-id banner, so the smoke harness must not
-        require an observable session ID for CCS aliases.
-        """
         support = default_catalog().get("ccs/mm")
         assert support is not None, "ccs/mm must resolve in the default catalog"
         assert support.spec.transport is AgentTransport.CLAUDE
@@ -211,29 +191,21 @@ class TestAgentCatalog:
 
 
 class TestReplaceBuiltin:
-    """``AgentCatalog.replace_builtin`` is the entry point used by
-    :meth:`AgentRegistry.register` to install a configured
-    ``[agents.<name>]`` override on top of a built-in.
-    """
-
     def test_replace_builtin_swaps_entries_and_by_command(self) -> None:
-        """``replace_builtin`` must update both ``_entries`` and ``_by_command``."""
         catalog = AgentCatalog()
         original = _make_support("pi", transport=AgentTransport.PI, cmd="pi", is_builtin=True)
         catalog.add(original)
         assert catalog.get("pi") is original
-        assert catalog.get("pi")  # by cmd too
+        assert catalog.get("pi")
 
         new_support = _make_support(
             "pi", transport=AgentTransport.PI, cmd="pi-custom", is_builtin=True
         )
         catalog.replace_builtin("pi", new_support)
 
-        # ``_entries['pi']`` must point at the override.
         found = catalog.get("pi")
         assert found is new_support
         assert found.config.cmd == "pi-custom"
-        # ``_by_command`` must point at the override under the new cmd.
         assert catalog.get("pi-custom") is new_support
 
     def test_replace_builtin_rejects_non_builtin_replacement(self) -> None:
@@ -257,7 +229,6 @@ class TestReplaceBuiltin:
 
     def test_replace_builtin_rejects_non_builtin_existing_entry(self) -> None:
         catalog = AgentCatalog()
-        # Add a non-built-in registration and try to replace it.
         non_builtin = _make_support("custom-agent", transport=AgentTransport.GENERIC)
         catalog.add(non_builtin)
         replacement = _make_support(

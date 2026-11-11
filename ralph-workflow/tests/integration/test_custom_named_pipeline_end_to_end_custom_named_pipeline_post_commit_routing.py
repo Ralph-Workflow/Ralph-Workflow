@@ -1,17 +1,3 @@
-"""End-to-end integration test: custom-named pipeline (design → build → audit → sign_off → done).
-
-Proves that policy-driven routing works with only user-defined phase names and
-that no canonical phase name (planning, development, review, fix, complete, failed)
-is hard-required anywhere in the runtime.
-
-Exercises:
-  - Policy validation via validate_policy_completeness
-  - Reducer-driven routing through all phase roles
-  - Post-commit routing via resolve_post_commit_phase
-  - ASCII explain-policy output contains custom names only
-  - Parallelization policy in a custom-named phase
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -59,15 +45,6 @@ CANONICAL_PHASE_NAMES = frozenset(
 
 
 def _build_custom_bundle() -> PolicyBundle:
-    """Build the design → build → audit → sign_off → done custom pipeline.
-
-    Phase roles:
-      design:    execution
-      build:     execution (with parallelization)
-      audit:     analysis (loops back to build on request_changes)
-      sign_off:  commit (increments cycles counter, resets audit_round)
-      terminal:  terminal success (done), terminal failure (rejected)
-    """
     pipeline = PipelinePolicy(
         entry_phase="design",
         terminal_phase="done",
@@ -197,10 +174,7 @@ def custom_bundle() -> PolicyBundle:
 
 
 class TestCustomNamedPipelinePostCommitRouting:
-    """Post-commit routing uses custom phase names exclusively."""
-
     def test_post_commit_remaining_routes_to_design(self, custom_bundle: PolicyBundle) -> None:
-        """When cycles budget is remaining, sign_off commit routes back to design."""
         policy = custom_bundle.pipeline
         state = PipelineState(
             phase="sign_off",
@@ -211,7 +185,6 @@ class TestCustomNamedPipelinePostCommitRouting:
         assert next_phase == "design", f"Expected design, got {next_phase}"
 
     def test_post_commit_exhausted_routes_to_done(self, custom_bundle: PolicyBundle) -> None:
-        """When cycles budget is exhausted (0), sign_off commit routes to done."""
         policy = custom_bundle.pipeline
         state = PipelineState(
             phase="sign_off",

@@ -1,5 +1,3 @@
-"""Regression tests: completion_summary derives styles from roles, not canonical phase names."""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -23,7 +21,6 @@ from ralph.policy.models import (
 
 
 def _make_custom_policy() -> PipelinePolicy:
-    """Custom PipelinePolicy: design (execution), sign_off (commit), done/halt (terminal)."""
     return PipelinePolicy(
         entry_phase="design",
         terminal_phase="done",
@@ -96,11 +93,8 @@ def _console() -> Console:
 
 class TestStyleForTerminalFailure:
     def test_terminal_failure_style_uses_policy_phase_when_present(self) -> None:
-        """Non-canonical failure terminal routes via role+terminal_outcome to failed style."""
         policy = _make_custom_policy()
         style = style_for_terminal_failure(policy)
-        # 'halt' has role='terminal' and terminal_outcome='failure'
-        # so phase_style("halt", policy) → "theme.phase.failed"
         expected = phase_style("halt", policy)
         assert style == expected
         assert style == "theme.phase.failed"

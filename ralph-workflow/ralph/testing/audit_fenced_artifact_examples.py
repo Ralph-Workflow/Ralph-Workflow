@@ -1,31 +1,3 @@
-"""Validate fenced artifact examples in prompt templates and format docs.
-
-The audit covers two ways prompt authors teach artifact Markdown:
-
-* literal fenced blocks in every packaged ``.jinja``/``.j2`` template and
-  bundled format document; and
-* complete example documents passed to the shared
-  ``render_artifact_submission`` macro, which creates the fence at render time.
-
-Artifact types are resolved fail-closed from an ``artifact=<registered_type>``
-fence declaration, the format document's declared type, the submission macro's
-literal type argument, or concrete ``type:`` frontmatter. The commit
-frontmatter variants ``commit`` and ``skip`` resolve to the registered
-``commit_message`` spec. Non-artifact code fences and the generic
-``type: <artifact_type>`` grammar schematic are intentionally ignored.
-
-Every resolved example is passed to
-``ralph.mcp.artifacts.markdown.parse_and_validate`` with the registered spec.
-Warnings are permitted because the artifact grammar explicitly uses warnings
-for tolerated descriptive vocabulary; any error diagnostic fails the audit.
-
-Usage:
-    python -m ralph.testing.audit_fenced_artifact_examples
-
-Exit 0 means every fenced artifact example validates; exit 1 means at least
-one example is unresolved or invalid.
-"""
-
 from __future__ import annotations
 
 import re
@@ -133,16 +105,12 @@ def _literal_fenced_examples(
         if opening is None:
             index += 1
             continue
-        marker = cast(
-            "str", opening.group("fence")
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        marker = cast("str", opening.group("fence"))
         closing_index = index + 1
         while closing_index < len(lines) and not _is_closing_fence(lines[closing_index], marker):
             closing_index += 1
         if closing_index == len(lines):
-            info = cast(
-                "str", opening.group("info")
-            ).strip()  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            info = cast("str", opening.group("info")).strip()
             if info.startswith(("markdown", "md")):
                 violations.append(f"{source_name}:{index + 1} unterminated markdown fence")
             break
@@ -151,9 +119,7 @@ def _literal_fenced_examples(
                 source_name=source_name,
                 first_content_line=index + 2,
                 markdown="\n".join(lines[index + 1 : closing_index]) + "\n",
-                fence_info=cast(
-                    "str", opening.group("info")
-                ).strip(),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                fence_info=cast("str", opening.group("info")).strip(),
             )
         )
         index = closing_index + 1
@@ -163,15 +129,11 @@ def _literal_fenced_examples(
 def _set_blocks(source: str) -> tuple[_SetBlock, ...]:
     blocks: list[_SetBlock] = []
     for match in _SET_BLOCK_RE.finditer(source):
-        body = cast(
-            "str", match.group("body")
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        body = cast("str", match.group("body"))
         leading_newlines = len(body) - len(body.lstrip("\n"))
         blocks.append(
             _SetBlock(
-                name=cast(
-                    "str", match.group("name")
-                ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                name=cast("str", match.group("name")),
                 body=body,
                 first_content_line=(
                     source.count("\n", 0, match.start("body")) + leading_newlines + 1
@@ -183,9 +145,7 @@ def _set_blocks(source: str) -> tuple[_SetBlock, ...]:
 
 
 def _render_example_body(body: str) -> str:
-    strict_undefined = cast(
-        "type[Undefined]", StrictUndefined
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    strict_undefined = cast("type[Undefined]", StrictUndefined)
     environment = Environment(
         autoescape=False,
         undefined=strict_undefined,
@@ -250,11 +210,7 @@ def _frontmatter_type(markdown: str) -> tuple[bool, str | None]:
     match = _FRONTMATTER_TYPE_RE.search(frontmatter)
     return (
         True,
-        None
-        if match is None
-        else cast(
-            "str", match.group("artifact_type")
-        ).strip(),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        None if match is None else cast("str", match.group("artifact_type")).strip(),
     )
 
 
@@ -314,19 +270,10 @@ def _resolve_example_type(
     artifact_like, frontmatter_type = _frontmatter_type(example.markdown)
     fence_type = _declared_fence_type(example.fence_info)
     declared_type = fence_type or example.declared_artifact_type
-    # A fenced block that does NOT start with ``---`` frontmatter is a
-    # section snippet, not a complete artifact. The format doc's
-    # ``default_artifact_type`` MUST NOT silently upgrade such snippets
-    # into full-article validations; doing so would force every example
-    # to carry the full frontmatter just to teach a single section.
-    # Treat the snippet as a snippet: skip validation unless the fence
-    # info or the surrounding macro explicitly opts in via ``artifact=``.
     if not artifact_like:
         if declared_type is None:
             return None, None
         return _resolve_declared_type(declared_type, registered)
-    # From here on the fence IS artifact-like (opens with ``---``) so the
-    # format doc's declared type applies when nothing narrower was set.
     declared_type = declared_type or default_artifact_type
     if (
         declared_type is None
@@ -385,20 +332,6 @@ def check_source_examples(
     *,
     declared_artifact_type: str | None = None,
 ) -> list[str]:
-    """Validate every artifact example present in one source document.
-
-    Args:
-        source_name: Stable path-like label used in diagnostics.
-        source: Prompt-template or format-document source text.
-        declared_artifact_type: Registered spec declared by the surrounding
-            format document, when the frontmatter ``type`` is a variant such
-            as ``commit`` or ``skip``.
-
-    Returns:
-        One source-anchored string per extraction, type-resolution, or
-        validation error. Non-artifact fences and validator warnings are
-        omitted.
-    """
     registered = _registered_artifact_types()
     literal_examples, violations = _literal_fenced_examples(source_name, source)
     macro_examples, macro_violations = _macro_generated_examples(source_name, source)
@@ -463,13 +396,10 @@ def _plan_units(markdown: str) -> tuple[_PlanUnit, ...]:
 
 
 def _plan_subplans(markdown: str) -> tuple[_PlanUnit, ...]:
-    """Return prefix/suffix execution Subplans keyed by terminal stable step ID."""
     headings = list(re.finditer(r"^## (?P<title>.+?)\s*$", markdown, re.MULTILINE))
     units: list[_PlanUnit] = []
     for index, heading in enumerate(headings):
-        title = cast(
-            "str", heading.group("title")
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        title = cast("str", heading.group("title"))
         if not (
             re.fullmatch(
                 r"(?:Sub(?:[\s-]?plan)(?:\s*[:\-\u2013\u2014]\s*|\s+).+|"
@@ -491,9 +421,7 @@ def _plan_subplans(markdown: str) -> tuple[_PlanUnit, ...]:
 def _plan_main_fan_in(markdown: str) -> _PlanUnit | None:
     headings = list(re.finditer(r"^## (?P<title>.+?)\s*$", markdown, re.MULTILINE))
     for index, heading in enumerate(headings):
-        title = cast(
-            "str", heading.group("title")
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        title = cast("str", heading.group("title"))
         lowered = title.casefold()
         if "integration" not in lowered or "verif" not in lowered:
             continue
@@ -506,12 +434,7 @@ def _plan_section_unit(title: str, body: str) -> _PlanUnit | None:
     steps = list(re.finditer(r"^### \[(?P<step_id>S-\d+)\]", body, re.MULTILINE))
     if not steps:
         return None
-    own_step_ids = {
-        cast(
-            "str", step.group("step_id")
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-        for step in steps
-    }
+    own_step_ids = {cast("str", step.group("step_id")) for step in steps}
     dependencies: list[str] = []
     for index, step in enumerate(steps):
         end = steps[index + 1].start() if index + 1 < len(steps) else len(body)
@@ -521,18 +444,14 @@ def _plan_section_unit(title: str, body: str) -> _PlanUnit | None:
             step_body,
             re.MULTILINE,
         ):
-            dependency_text = cast(
-                "str", match.group("ids")
-            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            dependency_text = cast("str", match.group("ids"))
             dependencies.extend(
                 part.strip()
                 for part in dependency_text.split(",")
                 if part.strip() not in own_step_ids
             )
     return _PlanUnit(
-        cast(
-            "str", steps[-1].group("step_id")
-        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        cast("str", steps[-1].group("step_id")),
         title,
         tuple(dependencies),
         len(steps),
@@ -562,21 +481,6 @@ def _large_plan_shape_violation(example: _ArtifactExample) -> str | None:
 
 
 def check_plan_example_coverage(source_name: str, source: str) -> list[str]:
-    """Check the plan format reference's task-size example coverage.
-
-    Complete grammar validation remains the responsibility of
-    :func:`check_source_examples`; this companion check locks the teaching
-    corpus to tiny, medium, and large plan shapes and verifies that the large
-    shape demonstrates bounded parallel fan-out followed by fan-in
-    verification.
-
-    Args:
-        source_name: Stable path-like label used in diagnostics.
-        source: Plan format-document source text.
-
-    Returns:
-        Source-anchored coverage and shape failures.
-    """
     examples, _ = _literal_fenced_examples(source_name, source)
     by_size: dict[str, list[_ArtifactExample]] = {
         "tiny": [],
@@ -600,9 +504,7 @@ def check_plan_example_coverage(source_name: str, source: str) -> list[str]:
                 f"{source_name}:1 plan examples must include example-size={example_size}"
             )
     for example in by_size["tiny"]:
-        step_count = len(
-            cast("list[str]", _PLAN_STEP_HEADING_RE.findall(example.markdown))
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        step_count = len(cast("list[str]", _PLAN_STEP_HEADING_RE.findall(example.markdown)))
         if step_count not in {1, 2}:
             violations.append(
                 f"{source_name}:{example.first_content_line} "
@@ -614,9 +516,7 @@ def check_plan_example_coverage(source_name: str, source: str) -> list[str]:
                 "example-size=tiny must not declare parallel work units"
             )
     for example in by_size["medium"]:
-        step_count = len(
-            cast("list[str]", _PLAN_STEP_HEADING_RE.findall(example.markdown))
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        step_count = len(cast("list[str]", _PLAN_STEP_HEADING_RE.findall(example.markdown)))
         if step_count not in {3, 4}:
             violations.append(
                 f"{source_name}:{example.first_content_line} "
@@ -630,13 +530,6 @@ def check_plan_example_coverage(source_name: str, source: str) -> list[str]:
 
 
 def collect_violations() -> list[str]:
-    """Validate all packaged prompt-template and format-doc examples.
-
-    Returns:
-        A sorted list of source-anchored failures. An empty list means every
-        resolved example passed ``parse_and_validate`` with its registered
-        spec.
-    """
     violations: list[str] = []
     template_root = packaged_template_root()
     template_paths = sorted(
@@ -674,16 +567,6 @@ def collect_violations() -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the fenced artifact example audit.
-
-    Args:
-        argv: Unused argument list, accepted for consistency with other audit
-            entry points.
-
-    Returns:
-        ``0`` when every example validates against its registered spec,
-        otherwise ``1`` after printing actionable diagnostics.
-    """
     del argv
     violations = collect_violations()
     if violations:

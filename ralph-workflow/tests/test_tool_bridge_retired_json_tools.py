@@ -1,12 +1,3 @@
-"""Retired JSON artifact tools must fail with an error naming the markdown replacement.
-
-CONTRACT (PROMPT.md): the markdown artifact migration removed the JSON artifact
-MCP tools. An agent calling a removed tool name gets a clear error that says the
-tool was removed in the markdown artifact migration and names the specific
-markdown replacement to call instead — while keeping the ``is not registered``
-phrasing the recovery classifier keys on.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -14,8 +5,6 @@ import pytest
 from ralph.mcp.tools.bridge._tool_bridge import ToolBridge
 from ralph.mcp.tools.bridge._tool_dispatch_error import ToolDispatchError
 
-# The retired JSON tool names and their markdown replacements, pinned as
-# literals so a drifting mapping in the bridge fails this test.
 _EXPECTED_REPLACEMENTS: tuple[tuple[str, str], ...] = (
     ("ralph_submit_artifact", "ralph_submit_md_artifact"),
     ("ralph_submit_plan_section", "ralph_stage_md_artifact"),
@@ -43,10 +32,10 @@ def _get_error_message(name: str) -> str:
 @pytest.mark.parametrize(("retired", "replacement"), _EXPECTED_REPLACEMENTS)
 def test_retired_json_tool_names_markdown_replacement(retired: str, replacement: str) -> None:
     message = _get_error_message(retired)
-    assert "is not registered" in message  # recovery classifier contract
+    assert "is not registered" in message
     assert "removed" in message
     assert "markdown artifact migration" in message
-    assert f"'{replacement}'" in message  # tells the agent what to actually call
+    assert f"'{replacement}'" in message
 
 
 @pytest.mark.parametrize(
@@ -59,7 +48,6 @@ def test_retired_json_tool_names_markdown_replacement(retired: str, replacement:
     ],
 )
 def test_retired_tool_with_invented_prefix_names_replacement(prefixed: str) -> None:
-    """Mis-prefixed retired names get the same removal error as the bare name."""
     message = _get_error_message(prefixed)
     assert "is not registered" in message
     assert "markdown artifact migration" in message
@@ -75,7 +63,6 @@ def test_retired_tool_message_exact_shape() -> None:
 
 
 def test_non_retired_unknown_tool_keeps_generic_message() -> None:
-    """The retired-tool path must not swallow ordinary unknown-tool errors."""
     message = _get_error_message("ralph_totally_unknown")
     assert "is not registered" in message
     assert "Available tools" in message

@@ -1,5 +1,3 @@
-"""Regression coverage for proactive missing-credential failures (S-2)."""
-
 from __future__ import annotations
 
 from ralph.agents.invoke import MissingCredentialsError
@@ -8,7 +6,6 @@ from ralph.pipeline.agent_retry_intent import AgentRetryIntent
 
 
 def test_missing_credentials_error_routes_to_fast_fallover() -> None:
-    """S-2: missing provider credentials skip same-agent retries."""
     error = MissingCredentialsError("opencode", "OPENAI_API_KEY not set")
 
     intent = resolve_retry_intent(

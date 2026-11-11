@@ -1,4 +1,3 @@
-"""Protocol for a process with a pid attribute."""
 
 from __future__ import annotations
 

@@ -1,4 +1,3 @@
-"""Construct optional watchdog observers with bounded event ingestion."""
 
 from __future__ import annotations
 
@@ -15,35 +14,21 @@ MAX_WATCHDOG_EVENT_QUEUE = 4096
 
 
 class _WatchObserverProtocol(Protocol):
-    """Describe the watchdog observer lifecycle the workspace monitor drives.
-
-    The workspace monitor owns exactly one observer and drives four
-    members on it: ``schedule`` (the single recursive root watch),
-    ``start``, ``stop`` and ``join``. This is the whole surface an
-    injected observer has to provide, so a caller can supply a double
-    that implements the lifecycle without the watchdog event queue the
-    production observer carries.
-    """
 
     def schedule(self, event_handler: object, path: str, **kwargs: object) -> None:
-        """Register one watch for ``path``."""
         ...
 
     def start(self) -> None:
-        """Begin delivering events for the registered watches."""
         ...
 
     def stop(self) -> None:
-        """Stop delivering events for the registered watches."""
         ...
 
     def join(self, timeout: float | None = None) -> None:
-        """Wait for the observer's delivery thread to finish."""
         ...
 
 
 class ObserverProtocol(Protocol):
-    """Describe the watchdog observer surface used by workspace monitoring."""
 
     _event_queue: Queue[object]
 
@@ -55,13 +40,10 @@ class ObserverProtocol(Protocol):
     def join(self, timeout: float | None = None) -> None: ...
 
 
-#: Creates the observer a workspace watch registers its single recursive
-#: root watch with. ``None`` means "no observer is available".
 WatchObserverFactory = Callable[[], _WatchObserverProtocol | None]
 
 
 def create_watchdog_observer() -> ObserverProtocol | None:
-    """Create a watchdog observer with a bounded queue when watchdog is installed."""
 
     class _WatchdogObserversModule(Protocol):
         Observer: type[ObserverProtocol]

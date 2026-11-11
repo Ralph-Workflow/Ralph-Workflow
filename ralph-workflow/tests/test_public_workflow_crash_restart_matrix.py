@@ -1,16 +1,3 @@
-"""Crash/restart matrix verifying recovery across durable pipeline transitions.
-
-Injects crashes before and after the 5 core integration transitions:
-1. Integration (START_INTEGRATING)
-2. Continuation (MARK_PENDING_REBASE_CONTINUE)
-3. Reintegration (MARK_REINTEGRATE_PENDING)
-4. Landing (PROMOTE_TO_INTEGRATED)
-5. Publication (Publication after landing)
-
-Asserts each produces a known typed PhaseDecision or IntegrationAction without
-replaying completed business work.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -63,7 +50,7 @@ def _policy() -> PipelinePolicy:
 
 
 class SimulatedProcessCrashError(Exception):
-    """Simulated crash exception injected before or after durable write."""
+    pass
 
 
 def _mock_head_sha(root: Path) -> str:
@@ -94,7 +81,6 @@ def _mock_run_rebase(*args: object, **kwargs: object) -> RebaseRunResult:
 def _setup_initial_state(
     transition_name: str, tmp_path: Path
 ) -> tuple[IntegrationRecord | None, RebaseState, str]:
-    """Set up durable on-disk state prior to invoking the production transition."""
     if transition_name == "integration":
         clear_record(tmp_path)
         rebase = RebaseState(
@@ -292,7 +278,6 @@ def _execute_transition_under_fault_injection(
     initial_record: IntegrationRecord | None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Execute real production transition call with before/after crash fault injection."""
     if transition_name == "integration":
         _inject_integration_fault(tmp_path, crash_point, monkeypatch)
     elif transition_name == "continuation":
@@ -390,7 +375,6 @@ def test_crash_restart_matrix_routes_authoritatively(
 
     initial_record, initial_rebase, initial_phase = _setup_initial_state(transition_name, tmp_path)
 
-    # Establish business work performed before crash and persist pipeline checkpoint
     pre_crash_state = PipelineState(
         phase=initial_phase,
         loop_iterations={"development": 2},
@@ -399,7 +383,6 @@ def test_crash_restart_matrix_routes_authoritatively(
     )
     save(pre_crash_state, ckpt_file)
 
-    # Execute production transition with fault injection interrupting before or after durable write
     _execute_transition_under_fault_injection(
         transition_name=transition_name,
         crash_point=crash_point,
@@ -410,10 +393,8 @@ def test_crash_restart_matrix_routes_authoritatively(
         monkeypatch=monkeypatch,
     )
 
-    # Simulate process restart: reload checkpoint and durable record from disk
     reloaded_state = load(ckpt_file)
     assert reloaded_state is not None
-    # Verify completed business work was preserved across restart without replay
     assert reloaded_state.loop_iterations.get("development") == 2
     assert reloaded_state.checkpoint_saved_count == 1
     expected_reloaded_phase = (
@@ -425,7 +406,6 @@ def test_crash_restart_matrix_routes_authoritatively(
 
     restarted_record = read_record(tmp_path)
 
-    # Invoke public recovery/startup boundary
     resolution_verdict = inspect_integration_resolution(tmp_path, reloaded_state.rebase)
     assert resolution_verdict is not None
     if expected_decision == PhaseDecision.REPORT_TERMINAL_SUCCESS:
@@ -433,7 +413,6 @@ def test_crash_restart_matrix_routes_authoritatively(
     elif restarted_record is not None:
         assert not resolution_verdict.dispatch_allowed
 
-    # Assert authority outcomes from durable state without replaying completed work
     if restarted_record is not None:
         action = next_integration_action(restarted_record, policy=policy)
     else:

@@ -1,4 +1,3 @@
-"""One named section parsed from a markdown artifact document."""
 
 from __future__ import annotations
 
@@ -13,13 +12,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class ParsedSection:
-    """A named document section and its closed-grammar content.
-
-    ``lines`` holds section-level body lines (prose or ``Key: value``
-    fields), ``items`` the stable-ID list items, and ``blocks`` the
-    ``### [ID] Title`` sub-blocks. Which of the three a section may use
-    is a per-section rule enforced by the shared structure validator.
-    """
 
     name: str
     line: int

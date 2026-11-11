@@ -1,17 +1,3 @@
-"""``resources/read`` must not serve image bytes the tool surface withheld.
-
-A transport whose CLI cannot carry an inline image back into its own API
-request is denied one on the tool surface -- sending it kills the turn.
-The resource surface reads the same artifact registry, and Ralph Workflow
-actively points agents at it ("Retrieve via resources/read with the full
-URI"), so leaving it ungated reopened the same failure by a side door and
-made the tool-side explanation ("cannot accept the bytes by any route")
-untrue.
-
-Non-image modalities are unaffected: the guard is about the image block
-specifically, not about the resource surface in general.
-"""
-
 from __future__ import annotations
 
 import base64
@@ -33,8 +19,6 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.timeout_seconds(10)
 
-#: The shape a flagless ``ralph run`` produces for a Codex agent: the
-#: provider is genuinely unresolved, and only the transport is known.
 _CODEX_IDENTITY = MultimodalModelIdentity(provider="unknown", model_id=None, transport="codex")
 
 
@@ -64,7 +48,6 @@ def _read_media_uri(server: McpServer, state: ServerState, path: str, msg_id: in
 def test_restricted_transport_cannot_read_withheld_image_bytes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The side door is closed for exactly the artifact that was withheld."""
     server, _workspace, backend, session = build_multimodal_harness()
     install_media_backend(monkeypatch, backend)
     session.model_identity = _CODEX_IDENTITY
@@ -82,7 +65,6 @@ def test_restricted_transport_cannot_read_withheld_image_bytes(
 def test_restricted_transport_can_still_read_a_pdf_resource(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Negative case: the guard is about images, not the resource surface."""
     server, _workspace, backend, session = build_multimodal_harness()
     install_media_backend(monkeypatch, backend)
     session.model_identity = _CODEX_IDENTITY
@@ -101,32 +83,16 @@ def test_restricted_transport_can_still_read_a_pdf_resource(
 def test_a_profile_that_knows_the_cli_closes_the_side_door_too(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The two surfaces must gate on ONE identity, not two.
-
-    A session can know its CLI through its stored capability profile
-    while its own identity does not: ``profile_for_caller`` adopts the
-    profile's transport when the identity has none. That is not exotic
-    -- ``session_payload_json`` writes ``capability_profile`` with its
-    transport but OMITS ``model_identity`` entirely when the identity is
-    unresolvable, so a child reads back exactly this split.
-
-    The tool surface reads the profile's identity and withheld the
-    image; this side door read the session's and served the bytes,
-    making the tool's own explanation ("cannot accept the bytes by any
-    route") false.
-    """
     from ralph.mcp.multimodal.capabilities import resolve_capability_profile
 
     server, _workspace, backend, session = build_multimodal_harness()
     install_media_backend(monkeypatch, backend)
-    # The identity itself knows nothing; only the stored profile does.
     session.model_identity = MultimodalModelIdentity(
         provider="unknown", model_id=None, transport=None
     )
     session.stored_capability_profile = resolve_capability_profile(_CODEX_IDENTITY)
     state = ServerState.RUNNING
 
-    # Not vacuous: the split the test is about is really present.
     assert session.caller_model_identity.transport is None
     assert session.caller_capability_profile.identity.transport == "codex"
 

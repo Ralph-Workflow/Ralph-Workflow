@@ -1,5 +1,3 @@
-"""Round-trip integration test coverage for legacy HTTP+SSE upstream entries."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
